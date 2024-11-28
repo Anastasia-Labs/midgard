@@ -30,18 +30,6 @@
 
 ; We use the term Full Representation to refer to the raw data representation and Compact Representation to denote the lightweight, on-chain based representation.
 
-state_queue =
-  { key: $hash32 / null ; block header hash
-  , next: $hash32 / null
-  , data: block_compact
-  }
-
-confirmed_state =
-  { key: null
-  , next: $hash32 / null
-  , data: block_compact
-  }
-
 ; Block
 ; Full Representation
 block =
