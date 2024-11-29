@@ -9,7 +9,6 @@ This chapter describes Midgard's L1 contract-based consensus protocol, which est
 It consists of the following components:
 
 \begin{itemize}
-    \item The Midgard hub oracle wires all the onchain components together by storing their minting policy IDs and spending validator addresses for easy reference.
     \item The operator directory is an onchain data structure that tracks active, retired, and newly registered Midgard operators.
     \item The scheduler is an onchain mechanism that assigns evenly sized time windows to operators on a rotating schedule.
     \item The state queue is an onchain data structure that holds operators' committed block headers until they are merged into the confirmed state or disqualified by fraud proofs.
@@ -17,6 +16,7 @@ It consists of the following components:
     \item Computation threads facilitate the onchain validation of submitted fraud proofs, splitting it up into steps that fit within Cardano's limits on transaction size, computation, and memory.
     \item The fraud proof catalogue defines the universe of fraud proof verification procedures for which computation threads can be spawned to target a block header in the state queue.
     \item A fraud proof token indicates that a computation thread has successfully concluded to verify a fraud proof about a block header in the state queue.
+    \item The Midgard hub oracle wires all the onchain components together by storing their minting policy IDs and spending validator addresses for easy reference.
 \end{itemize}
 
 \end{document}

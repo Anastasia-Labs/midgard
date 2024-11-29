@@ -16,4 +16,9 @@ Midgard's protocol is responsible for deducting those fees from the deposits and
 
 The timestamp in the operator's node in the Operator Directory should be updated whenever an operator optimistically resolves a settlement node, in the same way that it is updated when committing a block to the state queue.
 
+\notebox{Apply changes to the \nameref{h:operator-directory} (\cref{h:operator-directory}) to ensure that an operator's bond is not released to the operator until all last settlement nodes are resolved.}\todo
+
+\tipbox{Perhaps resolving a settlement node should also release to the operator the user fees collected for processing the deposits and withdrawals in the node.
+This would incentivize the operator to promptly resolve settlement nodes.}
+
 \end{document}

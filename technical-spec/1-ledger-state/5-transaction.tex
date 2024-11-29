@@ -5,6 +5,16 @@
 \section{Transaction}
 \label{h:transaction}
 
+A transaction set in Midgard is a finite map from transaction ID to Midgard L2 transaction, where the ID is also constrained to be the Blake-256 hash of the transaction:
+\begin{align*}
+    \T{TxSet} &\coloneq \T{Map(TxId, MidgardTx)} \\
+      &\coloneq \Bigl\{
+        (k_i: \T{TxId}, v_i: \T{MidgardTx}) \mid 
+        k_i \equiv \mathcal{H}_\T{Blake-256}(v_i) ,\;
+        \forall i \neq j.\; k_i \neq k_j
+    \Bigr\}
+\end{align*}
+
 An L2 transaction in a Midgard block is an endogenous event.
 Its corresponding utxo set transition is validated purely based on the information contained in the utxo set.
 This contrasts with deposit and withdrawal events, which create and spend utxos (respectively) based on information observed outside the L2 ledger.
@@ -122,7 +132,8 @@ We use the empty set symbol \code{$\varnothing$} to indicate fields required to 
         \varnothing\;\T{withdrawals} : & \quad?\;\T{Map(RewardAccount, Coin)} \\
         \T{fee} : & \T{Coin} \\
         \star\;\T{validity\_interval} : & \quad?\;\T{MidgardSValidityInterval} \\
-        \star\;\T{required\_observers} : & \quad?\;\T{[MidgardSCredential]} \\
+        \star\;\T{required\_observers} : & \quad?\;\T{[ScriptCredential]} \\
+        \T{required\_signer\_hashes} : & \quad?\;\T{[VKeyCredential]} \\
         \T{mint} : & \quad?\;\T{Value} \\
         \T{script\_integrity\_hash} : & \quad?\;\T{Hash} \\
         \T{auxiliary\_data\_hash} : & \quad?\;\T{Hash} \\
@@ -141,7 +152,6 @@ We use the empty set symbol \code{$\varnothing$} to indicate fields required to 
         \T{redeemer\_tx\_wits} : & \quad?\;\T{Redeemers}
     \end{array} \right\}\\
     \T{MidgardSValidityInterval} \coloneq\;& (\T{Option(PosixTime), Option(PosixTime)}) \\ 
-    \T{MidgardSCredential} \coloneq\;& \T{ScriptHashObj(ScriptHash)} \\
                        \mid\;& \T{KeyHashObj(VKeyHash)} \\
     \T{MidgardSScript} \coloneq\;& \T{TimelockScript}(\star\;\T{TimelockObserver}) \\
                           \mid\;& \T{PlutusScript}(\T{MidgardSPlutusVersion},\T{PlutusBinary}) \\
@@ -152,42 +162,37 @@ We use the empty set symbol \code{$\varnothing$} to indicate fields required to 
 \subsection{Midgard transaction types}
 \label{h:midgard-transaction-types}
 
-\notebox{Midgard's transaction types modify the simplified types above mainly by adding counter fields for variable-length fields, along with other changes to facilitate L1 scripts traversing the L2 transaction contents to verify fraud proofs.}
-
-\notebox{
-    The DA layer will be responsible for confirming hashes of lists, sets or other objects.
-    In other words, the mismatched hashes are a form of DA frauds.
-}
+Midgard's transaction types modify the above simplified types by replacing all variable-length fields with hashes (indicated by the letter $\mathcal{H}$ below).
+The data availability layer is responsible for confirming that the hashes correspond to their preimages, and DA fraud proofs can be submitted if this correspondence is violated.
 
 \begingroup
 \allowdisplaybreaks
 \begin{align*}
     \T{MidgardTx} \coloneq\;& \left\{
     \begin{array}{ll}
-        \T{body} : & \T{Hash(MidgardTxBody)} \\
-        \T{wits} : & \T{Hash(MidgardTxWits)} \\
+        \T{body} : & \mathcal{H}(\T{MidgardTxBody}) \\
+        \T{wits} : & \mathcal{H}(\T{MidgardTxWits}) \\
         \T{is\_valid} : & \T{Bool} \\
     \end{array} \right\} \\
     \T{MidgardTxBody} \coloneq\;& \left\{
     \begin{array}{ll}
-        \T{spend\_inputs} : & \T{Hash([OutputRef])} \\
-        \T{reference\_inputs} : & \quad?\;\T{Hash([OutputRef])} \\
-        \T{outputs} : & \T{Hash([Output])} \\
+        \T{spend\_inputs} : & \mathcal{H}(\T{[OutputRef]}) \\
+        \T{reference\_inputs} : & \quad?\;\mathcal{H}(\T{[OutputRef]}) \\
+        \T{outputs} : & \mathcal{H}(\T{[Output]}) \\
         \T{fee} : & \T{Coin} \\
-        \T{validity\_interval\_start} : & \quad?\;\T{Int} \\
-        \T{validity\_interval\_end} : & \quad?\;\T{Int} \\
-        \T{required\_observers} : & \quad?\;\T{Hash([MidgardSCredential])} \\
+        \T{validity\_interval} : & \quad?\;\T{MidgardSValidityInterval} \\
+        \T{required\_observers} : & \quad?\;\mathcal{H}(\T{[ScriptCredential]}) \\
+        \T{required\_signer\_hashes} : & \quad?\;\mathcal{H}(\T{[VKeyCredential]}) \\
         \T{mint} : & \quad?\;\T{Value} \\
         \T{script\_integrity\_hash} : & \quad?\;\T{Hash} \\
         \T{auxiliary\_data\_hash} : & \quad?\;\T{Hash} \\
-        \T{network\_id} : & \quad?\;\T{Network} \\
-        \T{required\_signers} : & \quad?\;\T{Hash(Set(Address))} \\
+        \T{network\_id} : & \quad?\;\T{Network}
     \end{array} \right\}\\
     \T{MidgardTxWits} \coloneq\;& \left\{
     \begin{array}{ll}
-        \T{addr\_tx\_wits} : & \quad?\;\T{Hash(Set(VKey, Signature, VKeyHash))} \\
-        \T{script\_tx\_wits} : & \quad?\;\T{Hash(Map(ScriptHash, MidgardSScript))} \\
-        \T{redeemer\_tx\_wits} : & \quad?\;\T{Hash(Redeemers)}
+        \T{addr\_tx\_wits} : & \quad?\;\mathcal{H}(\T{Set(VKey, Signature, VKeyHash)}) \\
+        \T{script\_tx\_wits} : & \quad?\;\mathcal{H}(\T{Map(ScriptHash, MidgardSScript)}) \\
+        \T{redeemer\_tx\_wits} : & \quad?\;\mathcal{H}(\T{Redeemers})
     \end{array} \right\}\\
 \end{align*}
 \endgroup

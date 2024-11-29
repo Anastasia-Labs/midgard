@@ -19,22 +19,22 @@ Operator shifts are evenly sized according to the \code{shift\_duration} Midgard
 The scheduler assigns operators to shifts by iterating over the list of active operators in key-descending order, allowing new operators into the list at the end of each cycle.
 The state queue enforces this schedule by requiring the time-validity upper bound of every block commitment transaction to fall within its operator's shift.
 
-During a shift, an operator is expected to commit blocks to the state queue at a regular cadence.
-However, Cardano's L1 consensus protocol introduces randomness into this process, so the operator does not know in advance at which precise time and block their block commitment transaction will be confirmed.
-In practice, each block commitment transaction must set a fairly long time-validity interval (e.g., 5 minutes) to have a reasonable probability of confirmation on L1.
-On the other hand, the operator will often see the transaction confirmed much earlier than the end of this time-validity interval, so they have little reason to wait after confirmation to commit the next block.\footnote{In fact, an operator may commit blocks without waiting for L1 confirmation.
+Each block's event interval is between the previous block's time-validity upper bound and its own time-validity upper bound.
+The block's time-validity lower bound is irrelevant to Midgard's consensus protocol because the causal relationship between blocks is determined by the forward links between state queue nodes, as well as the backwards links between block headers.
+An operator is free to submit blocks at a rapid cadence during their shift.%
+\footnote{Indeed, an operator may commit blocks without waiting for L1 confirmation.
 As long as the blocks are valid, no one can interfere with the operator's chain of block commitment transactions.
 Moreover, if operators coordinate their activity offchain, this rapid cadence can be mostly maintained across shift boundaries.}
-
-In this way, consecutive blocks will overlap significantly in their time-validity intervals, but each block's time-validity upper bound will likely be shifted forward by a random amount relative to its predecessor so that it has a similar probability of confirmation.
-Furthermore, the state queue enforces that each block's time-validity lower bound must be within its predecessor's time-validity interval.
-Therefore, the sequence of block time-validity intervals induces a partitioning of time, whereby each block's event interval is the portion of its time-validity interval that occurs after its predecessor's time-validity interval.
 
 \begin{figure}[htb]
 \centering
 \includegraphics[scale=1]{\subfix{../images/time-model.pdf}}
 \caption{Midgard time model.
-Each rectangle shows a block's time-validity interval and its relationship to the operator windows (top axis) and event intervals (bottom axis).}
+Each rectangle shows a block's time-validity interval.
+  The color indicates the operator who must have committed the block.
+  The top axis shows the operator shifts.
+  The bottom axis shows the event intervals.
+  }
 \label{fig:time-model}
 \end{figure}
 

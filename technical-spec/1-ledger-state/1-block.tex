@@ -1,0 +1,132 @@
+\documentclass[../midgard.tex]{subfiles}
+\graphicspath{{\subfix{../images/}}}
+\begin{document}
+
+\section{Block}
+\label{h:block}
+
+A block consists of a header hash, a header, and a block body:
+\begin{equation*}
+    \T{Block} \coloneq \left\{
+    \begin{array}{ll}
+        \T{header\_hash} : & \T{HeaderHash} \\
+        \T{header} : & \T{Header} \\
+        \T{block\_body} : & \T{BlockBody}
+    \end{array} \right\}
+\end{equation*}
+
+The block body contains the block's transactions, deposits, and withdrawals, along with
+the unspent outputs that result from applying the block's transition to the previous block's unspent outputs.
+\begin{equation*}
+    \T{BlockBody} \coloneq \left\{
+    \begin{array}{ll}
+        \T{utxos} : & \T{UtxoSet} \\
+        \T{transactions} : & \T{TxSet} \\
+        \T{deposits} : & \T{DepositSet} \\
+        \T{withdrawals} : & \T{WithdrawalSet} \\
+    \end{array} \right\}
+\end{equation*}
+
+\Cref{fig:block-transition} shows how the block's \code{utxos} are derived from the previous block's \code{utxos} by applying the block's events.
+Withdrawals are applied before transactions, which are applied before deposits.
+
+\begin{figure}[htb] % place the figure ’here’ or at the page top
+    \centering % center the figure
+    \begin{tikzpicture}[node distance=2cm]
+        \node (s1) [initialstate] {\codeNC{prev\_utxos}};
+        \node (s2) [finalstate, right of = s1, xshift=10cm]
+            {\codeNC{utxos}};
+        
+        \path[every node/.style={font=\sffamily\normalsize}] [arrow]
+            (s1.south east) edge [bend right = 30]
+                 node [anchor = north, above, yshift = 0.5em] {\codeNC{withdrawals}} ($(s1.south east)!0.33!(s2.south west)$)
+            ($(s1.south east)!0.33!(s2.south west)$) edge [bend right = 30]
+                 node [anchor = north, above, yshift = 0.5em] {\codeNC{transactions}} ($(s1.south east)!0.66!(s2.south west)$)
+            ($(s1.south east)!0.66!(s2.south west)$) edge [bend right = 30]
+                 node [anchor = north, above, yshift = 0.5em] {\codeNC{deposits}} (s2.south west)
+            (s1.north east) edge [bend left = 15]
+                node [anchor = south, below, yshift = -0.5em] {Block transition} (s2.north west);
+    \end{tikzpicture}
+    \caption{A block's transition from a previous block's utxo set to a new utxo set.}
+    \label{fig:block-transition}
+\end{figure}
+
+The block is what gets serialized and stored on Midgard's data availability layer.
+During serialization, each of the block body's sets is serialized as a sequence of pairs, sorted in ascending order on the unique key of each element.
+
+However, only the header hash and header are stored on Cardano L1.
+This is sufficient because the header specifies Merkle Patricia Trie (MPT) root hashes for each of the sets in the block body.
+Each of these root hashes can be verified onchain by streaming over the corresponding set's elements, hashing them, and iteratively calculating the root hash.
+
+\Cref{fig:block-tx-mpt} shows an example MPT representation of a block's transactions.
+The $(\T{TxId_i}, \T{MidgardTx_i})$ pairs are the data blocks of the tree, which are individually hashed to form the leaves $L_i$ of the tree.
+The hashes of sibling leaves are concatenated and hashed to form their parent nodes.
+The nodes $N_{ij}$ are formed by concatenating and hashing their children's hashes.
+The \code{transactions\_root} is formed by concatenating and hashing its children's hashes.
+
+\begin{figure}[htb]
+\centering
+\begin{tikzpicture}[
+    level distance=1.5cm,
+    sibling distance=5cm,
+    edge from parent/.style={draw, -{Circle[open]}, thick},
+    every node/.style={merklenode},
+    level 1/.style={sibling distance=8cm},  % Increased distance for first level
+    level 2/.style={sibling distance=4cm}   % Adjusted distance for second level
+]
+
+% Root node
+  \node[merkleroot] {transactions\_root: $\mathcal{H}(N_{12} \mid\mid N_{34})$}
+    child { node[merklenode] {$N_{12}: \mathcal{H}(L_1 \mid\mid L_2)$}
+        child { node[merkleleaf] {$L_1: \mathcal{H}(D_1)$}
+          child { node[merkledata] {$D_1$ \\ $(\T{TxId_1}, \T{MidgardTx_1})$} }
+        }
+        child { node[merkleleaf] {$L_2: \mathcal{H}(D_2)$}
+          child { node[merkledata] {$D_2$ \\ $(\T{TxId_2}, \T{MidgardTx_2})$} }
+        }
+    }
+    child { node[merklenode] {$N_{34}: \mathcal{H}(L_3 \mid\mid L_4)$}
+        child { node[merkleleaf] {$L_3: \mathcal{H}(D_3)$}
+          child { node[merkledata] {$D_3$ \\ $(\T{TxId_3}, \T{MidgardTx_3})$} }
+        }
+        child { node[merkleleaf] {$L_4: \mathcal{H}(D_4)$}
+          child { node[merkledata] {$D_4$ \\ $(\T{TxId_4}, \T{MidgardTx_4})$} }
+        }
+    };
+
+\end{tikzpicture}
+\caption{A Merkle Patricia Trie example for a block's transactions.}
+\label{fig:block-tx-mpt}
+\end{figure}
+
+\subsection{Block header}
+\label{h:block-header}
+
+A block header is a record with fixed-size fields: integers, hashes, and fixed-size bytestrings.
+\begin{equation*}
+    \T{Header} \coloneq \left\{
+    \begin{array}{ll}
+        \T{prev\_utxos\_root} : & \T{RootHash} \\
+        \T{utxos\_root} : & \T{RootHash} \\
+        \T{transactions\_root} : & \T{RootHash} \\
+        \T{deposits\_root} : & \T{RootHash} \\
+        \T{withdrawals\_root} : & \T{RootHash} \\
+        \T{start\_time} : & \T{PosixTime} \\
+        \T{end\_time} : & \T{PosixTime} \\
+        \T{prev\_header\_hash} : & \T{HeaderHash} \\
+        \T{operator\_vkey} : & \T{VerificationKey} \\
+        \T{protocol\_version} : & \T{Int} \\
+    \end{array} \right\}
+\end{equation*}
+
+These header fields are interpreted as follows:
+\begin{itemize}
+    \item The \code{*\_root} fields are the MPT root hashes of the corresponding sets in the block body.
+    \item The \code{prev\_utxos\_root} is a copy of the \code{utxos\_root} from the previous block, included for convenience in the fraud proof verification procedures.
+    \item The \code{start\_time} and \code{end\_time} fields are the block's event interval bounds (see \cref{h:time-model}).
+    \item The \code{prev\_header\_hash} field is a hash of the previous block header. For the genesis block, this field is set to 32 \code{0x00} bytes.
+    \item The \code{operator\_vkey} field is the cryptographic verification key for signatures of the operator who committed the block header to the L1 state queue.
+    \item The \code{protocol\_version} is the Midgard protocol version that applies to this block.
+\end{itemize}
+
+\end{document}

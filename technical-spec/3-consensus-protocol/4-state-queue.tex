@@ -67,9 +67,8 @@ Redeemers:
 
             \item Verify block timestamps:
             \begin{enumerate}[resume]
-                \item The \code{start\_time} and \code{end\_time} of \code{header\_node} must match the transaction's time-validity interval.
-                \item The \code{start\_time} of \code{header\_node} must be within the time-validity interval of \code{previous\_header\_node}.
-                \item The \code{event\_start\_time} of \code{header\_node} must be equal to the \code{end\_time} of the \code{previous\_header\_node}.
+                \item The \code{start\_time} of \code{header\_node} must be equal to the \code{end\_time} of the \code{previous\_header\_node}.
+                \item The \code{end\_time} of \code{header\_node} must match the transaction's time-validity upper bound.
                 \item The \code{end\_time} of \code{header\_node} must be within the shift interval of \code{scheduler\_state}.
             \end{enumerate}
             

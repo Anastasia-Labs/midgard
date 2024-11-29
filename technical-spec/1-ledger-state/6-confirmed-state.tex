@@ -1,0 +1,65 @@
+\documentclass[../midgard.tex]{subfiles}
+\graphicspath{{\subfix{../images/}}}
+\begin{document}
+
+\section{Confirmed state}
+\label{h:confirmed-state}
+
+When a Midgard block becomes confirmed, a selection of its block header fields is split into two groups (discarding the rest).
+These groups are used to populate the fields of two record types in Midgard's confirmed state:
+\begingroup
+\allowdisplaybreaks
+\begin{align*}
+    \T{ConfirmedState} &\coloneq \left\{
+    \begin{array}{ll}
+        \T{header\_hash} : & \T{HeaderHash} \\
+        \T{prev\_header\_hash} : & \T{HeaderHash} \\
+        \T{utxo\_root} : & \T{MPTR} \\
+        \T{start\_time} : & \T{PosixTime} \\
+        \T{end\_time} : & \T{PosixTime} \\
+        \T{protocol\_version} : & \T{Int} \\
+    \end{array} \right\} \\
+    \T{Settlement} &\coloneq \left\{
+    \begin{array}{ll}
+        \T{deposit\_root} : & \T{MPTR} \\
+        \T{withdraw\_root} : & \T{MPTR} \\
+        \T{start\_time}: & \T{PosixTime} \\
+        \T{end\_time}: & \T{PosixTime}
+    \end{array} \right\}
+\end{align*}
+\endgroup
+
+At genesis, \code{ConfirmedState} is set as follows:
+\begin{equation*}
+    \T{genesisConfirmedState} \coloneq \left\{
+        \begin{array}{ll}
+            \T{header\_hash} \coloneq & 0 \\
+            \T{prev\_header\_hash} \coloneq & 0 \\
+            \T{utxo\_root} \coloneq & \T{MPTR}_\T{empty} \\
+            \T{start\_time} \coloneq & \T{system\_start} \\
+            \T{end\_time} \coloneq & \T{system\_start} \\
+            \T{protocol\_version} \coloneq & 0
+        \end{array} \right\}
+\end{equation*}
+
+Midgard only stores the latest confirmed block's \code{ConfirmedState} on L1, always overwriting the previous one.
+By contrast, its \code{Settlement} never overwrites that of the previous block.
+Instead, the \code{Settlement} spins into a separate settlement node that users and operators can reference to process deposits and withdrawal requests.
+
+When all deposits and withdrawals in a settlement node have been processed, the current operator (see \cref{h:scheduler}) can mark it as optimistically resolved.
+It stays in this state for a duration set according to Midgard's \code{settlement\_resolution\_duration} protocol parameter, providing an opportunity for fraud proofs to be verified on L1 that disprove the operator's claim that the settlement node is resolved.
+Afterward, the settlement node is resolved, and the operator can spend it to recover its min-ADA.
+
+\tipbox{We're also considering an alternative model where confirmed block headers are not condensed on L1.
+  Instead, they become immutable after confirmation, and we use a pointer to indicate the latest confirmed block header.
+  This has broad implications for Midgard's onchain and offchain architecture.
+
+The advantage of this approach is that block headers are always available for scripts (including fraud proofs) to access directly on L1.
+This may simplify the data stored in each block.
+
+The disadvantage is that operators cannot recover the min-ADA deposit for every confirmed block.
+Furthermore, Midgard increasingly bloats Cardano's utxo set with utxos that are rarely accessed.
+}
+
+\end{document}
+hefuler
