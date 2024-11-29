@@ -113,7 +113,7 @@ A block header is a record with fixed-size fields: integers, hashes, and fixed-s
         \T{withdrawals\_root} : & \T{RootHash} \\
         \T{start\_time} : & \T{PosixTime} \\
         \T{end\_time} : & \T{PosixTime} \\
-        \T{prev\_header\_hash} : & \T{Option(HeaderHash)} \\
+        \T{prev\_header\_hash} : & \T{HeaderHash} \\
         \T{operator\_vkey} : & \T{VerificationKey} \\
         \T{protocol\_version} : & \T{Int} \\
     \end{array} \right\}
@@ -124,8 +124,7 @@ These header fields are interpreted as follows:
     \item The \code{*\_root} fields are the MPT root hashes of the corresponding sets in the block body.
     \item The \code{prev\_utxos\_root} is a copy of the \code{utxos\_root} from the previous block, included for convenience in the fraud proof verification procedures.
     \item The \code{start\_time} and \code{end\_time} fields are the block's event interval bounds (see \cref{h:time-model}).
-    \item The \code{prev\_header\_hash} field is a hash of the previous block header.
-      It is empty for the ledger's genesis block but must be set for all subsequent blocks.
+    \item The \code{prev\_header\_hash} field is a hash of the previous block header. For the genesis block, this field is set to 32 \code{0x00} bytes.
     \item The \code{operator\_vkey} field is the cryptographic verification key for signatures of the operator who committed the block header to the L1 state queue.
     \item The \code{protocol\_version} is the Midgard protocol version that applies to this block.
 \end{itemize}
