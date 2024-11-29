@@ -5,19 +5,28 @@
 \section{Withdrawal event}
 \label{h:withdrawal-event}
 
-A withdrawal event in a Midgard block acknowledges that a user has created an L1 utxo at the Midgard L1 withdrawal address, requesting the transfer of an L2 utxo's tokens to the L1 ledger.
-\begin{equation*}
-    \T{WithdrawalEvent} \coloneq \left\{
-    \begin{array}{ll}
-        \T{l1\_nonce} : & \T{OutputRef} \\
-        \T{l2\_outref} :& \T{OutputRef} \\
-        \T{l1\_address} : & \T{Address} \\
-        \T{l1\_datum} : & \T{Option(Data)}
-    \end{array} \right\}
-\end{equation*}
+A withdrawal set is a finite map from withdrawal ID to withdrawal info:
+\begin{align*}
+    \T{WithdrawalSet} &\coloneq \T{Map(WithdrawalId, WithdrawalInfo)} \\
+      &\coloneq \Bigl\{
+        (k_i: \T{WithdrawalId}, v_i: \T{WithdrawalInfo}) \mid \forall i \neq j.\; k_i \neq k_j
+    \Bigr\}
+\end{align*}
 
-The \code{l1\_nonce} field corresponds to one of the inputs spent by the user in the L1 transaction that created the L1 withdrawal request utxo.
-This field is needed to identify the L1 withdrawal utxo, ensure that withdrawal events are unique, and detect when an operator has fabricated a withdrawal event without the corresponding withdrawal request existing in the L1 ledger.
+A withdrawal event in a Midgard block acknowledges that a user has created an L1 utxo at the Midgard L1 withdrawal address, requesting the transfer of an L2 utxo's tokens to the L1 ledger.
+\begin{align*}
+    \T{WithdrawalEvent} &\coloneq \T{(WithdrawalId, WithdrawalInfo)} \\
+    \T{WithdrawalId} &\coloneq \T{OutputRef} \\
+    \T{WithdrawalInfo} &\coloneq \left\{
+        \begin{array}{ll}
+            \T{l2\_outref} :& \T{OutputRef} \\
+            \T{l1\_address} : & \T{Address} \\
+            \T{l1\_datum} : & \T{Option(Data)}
+        \end{array} \right\}
+\end{align*}
+
+The \code{WithdrawalId} of a withdrawal event corresponds to one of the inputs spent by the user in the L1 transaction that created the L1 withdrawal request utxo.
+This key is needed to identify the L1 withdrawal utxo, ensure that withdrawal events are unique, and detect when an operator has fabricated a withdrawal event without the corresponding withdrawal request existing in the L1 ledger.
 
 If a withdrawal event is permitted by Midgard's ledger rules to be included in a block, its effect is to remove the output at output-reference \code{l2\_outref} from the block's utxo set.
 

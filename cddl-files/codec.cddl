@@ -33,56 +33,81 @@
 ; Block
 ; Full Representation
 block =
-  { header_hash
-  , header
-  , block_body
+  { header_hash : header_hash
+  , header : header
+  , block_body : block_body
   }
 
+; Block Body
+; Full Representation only!
+; Compact Representation is already included in the header
 block_body =
-  { previous_utxos: [* utxo]
-  , withdraw_events: [* withdraw_event]
-  , transactions: [* transaction]
-  , deposit_events: [* deposit_event]
-  , utxos: [* utxo]
+  { utxos : map<output_reference, transaction_output>
+  , transactions : map<transaction_id, transaction>
+  , deposits : map<deposit_id, deposit_info>
+  , withdrawals : map<withdrawal_id, withdrawal_info>
   }
 
+; Block Header
+; Full Representation (same as Compact Representation)
 header =
-  { block_number: uint
-  , block_hash: $hash32
-  , previous_block_hash: $hash32 / null
-  , start_time: $posix_time
-  , end_time: $posix_time
+  { prev_utxos_root : mptr
+  , utxos_root : mptr
+  , transactions_root : mptr
+  , deposits_root : mptr
+  , withdrawals_root : mptr
+  , start_time : $posix_time
+  , event_start_time : $posix_time
+  , end_time : $posix_time
+  , prev_header_hash : header_hash / null
   , operator_vkey : $vkey
-  , block_ignature: $signature
-  , protocol_version: [uint, uint]
-  , transaction_count: uint
+  , protocol_version : uint
+  , utxos_count : uint
+  , transactions_count : uint
+  , deposits_count : uint
+  , withdrawals_count : uint
   }
 
-; Block
+; Deposit event
+; Full Representation
+deposit_event = [deposit_id, deposit_info]
+
+deposit_id = output_reference
+
+deposit_info =
+  { l2_address : address
+  , l2_datum : data
+  }
+
+; Deposit event
 ; Compact Representation
-block_compact =
-  { header_compact
-  , block_body_roots
+deposit_event_compact = [deposit_id, deposit_info_compact]
+
+deposit_info_compact =
+  { l2_address : address
+  , l2_datum : $hash32
   }
 
-block_body_roots =
-  { previous_utxos_root: $hash32
-  , withdraw_events_root: $hash32
-  , transactions_root: $hash32
-  , deposit_events_root: $hash32
-  , utxos_root: $hash32
+; Withdrawal event
+; Full Representation
+withdrawal_event = [withdrawal_id, withdrawal_info]
+
+withdrawal_id = output_reference
+
+withdrawal_info =
+  { l2_outref : output_reference
+  , l1_address : address
+  , l1_datum : data
   }
 
-header_compact =
-  { block_number: uint
-  , previous_block_hash: $hash32 / null
-  , start_time: $posix_time
-  , end_time: $posix_time
-  , operator_vkey: $vkey
-  , protocol_version: [uint, uint]
-  , transaction_count: uint
-  , deposit_count: uint
-  , withdrawal_count: uint
+; Withdrawal event
+; Compact Representation
+withdrawal_event_compact = [withdrawal_id, withdrawal_info_compact]
+
+withdrawal_info_compact =
+  { l2_outref : output_reference
+  , l1_address : address
+  , l1_datum : $hash32
   }
 
 ; Transaction
@@ -108,8 +133,9 @@ transaction =
 ; Compact Representation
 
 transaction_compact =
-  { transaction_body_hash: $hash32
-  , transaction_witness_set_hash: $hash32
+  { transaction_body_hash : $hash32
+  , transaction_witness_set_hash : $hash32
+  , boolean ; is_valid tag (see note 1)
   }
 
 ; Transaction Body
@@ -120,8 +146,6 @@ transaction_body =
   , 1 : [* transaction_output]
   , 2 : coin                                ; fee
   , ? 3 : uint                              ; time to live (see note 2)
-  , ? 4 : []                                ; (see note 3)
-  , ? 5 : withdrawals                       ; (see note 4)
   , ? 7 : auxiliary_data_hash               ; (see note 5)
   , ? 8 : uint                              ; validity_interval_start (see note 2)
   , ? 9 : mint
@@ -135,8 +159,6 @@ transaction_body =
 ; Implementation Notes
 ;   1. The order of inputs is preserved according to Cardano CIP 128.
 ;   2. The validity_interval_start and ttl (time to live) values are inherited from Cardano L1.
-;   3. Certificates do not modify the Midgard Ledger state.
-;   4. Withdrawals do not modify the Midgard Ledger state, as staking is not supported. Their only purpose is to utilize the "withdraw zero" pattern.
 ;   5. auxiliary_data_hash represents the Merkle root hash of metadata.
 ;   6. network_id indicates whether the transaction is for Midgard Mainnet (10) or Testnet (11).
 ;   7. Fields certificates (4), withdrawals_hash (5), collateral_inputs (13), collateral_return(16) , total_collateral (17), voting_procedures (19),
@@ -152,7 +174,6 @@ transaction_body_compact =
   , 1 : outputs_hash   ; outputs_hash
   , 2 : uint           ; fee
   , ? 3 : uint         ; validity_interval_end (ttl)
-  , ? 4 : $hash32      ; certificates_hash
   , ? 7 : $hash32      ; auxiliary_data_hash
   , ? 8 : uint         ; validity_interval_start
   , ? 9 : $hash32      ; mint_hash
@@ -163,11 +184,10 @@ transaction_body_compact =
   , ? 23 : $hash32     ; required_observers_hash
   }
 
-inputs_set_hash = non_empty_oset<transaction_input_compact>
-inputs_hash = $hash32 ; hash of inputs_set_hash
+inputs_hash = $hash32 ; hash of inputs_set
 
-outputs_list_hash = [* transaction_output_compact]
-outputs_hash = $hash32 ; hash of outputs_list_hash
+outputs_list_compact = [* transaction_output_compact]
+outputs_hash = $hash32 ; hash of outputs_list_compact
 
 
 ; Implementation Notes
@@ -193,19 +213,19 @@ transaction_witness_set_compact =
   }
 
 ; Transaction Input
-; Full Representation
-transaction_input = [transaction_id : $hash32, index : uint .size 2]
+; Full Representation (same as Compact Representation)
+transaction_input = output_reference
 
-; Transaction Input
-; Compact Representation
-transaction_input_compact = $hash32
+output_reference = [transaction_id : transaction_id, index : uint .size 2]
+
+transaction_id = $hash32
 
 ; Transaction Output
 ; Full Representation
 transaction_output =
   { 0 : address
   , 1 : value
-  , ? 2 : datum_option
+  , ? 2 : data
   , ? 3 : script_ref
   }
 ; Note: Midgard only uses post_alonzo_transaction_output
@@ -248,15 +268,14 @@ multiasset_compact<a0> =
   { + policy_id => $hash32 } ; hash of { asset_name => a0 } 
 
 ; Datum Option
-; Full Representation
-datum_option =
-  [ 0
-  , $hash32 // 1
-  , data
-  ]
+; Note: Midgard requires all datums to be inline, so we don't use datum_option.
+; datum_option =
+;   [  0, $hash32
+;   // 1, data
+;   ]
 
 ; Compact Representation
-datum_option_compact = $hash32
+; datum_option_compact = $hash32
 
 ; Full Representation
 withdrawals = {+ reward_account => 0}
@@ -266,7 +285,10 @@ reward_account = h'E090000000000000000000000000000000000000000000000000000000'
 
 required_signers = nonempty_set<addr_keyhash>
 
-credential = [0, addr_keyhash // 1, scripthash]
+credential =
+  [  0, addr_keyhash
+  // 1, scripthash
+  ]
 
 mint = multiasset<nonZeroInt64>
 
@@ -307,6 +329,13 @@ nonempty_set<a> = #6.258([+ a]) ; Identical to basic set, but must contain at le
 
 nonempty_oset<a> = #6.258([+ a]) ; Element order is preserved
 
+; Maps
+
+; Unordered collection of elements identified by unique keys
+; Duplicate keys are not allowed
+; Order of elements is ascending by key
+map<a,b> = #5([* [a,b]])
+
 ; Numeric Types
 
 positive_int = 1 .. 18446744073709551615 ; Positive Integer only, Range: [1, 2^{64} - 1]
@@ -334,3 +363,6 @@ addr_keyhash = $hash28
 scripthash = $hash28
 
 mptr = $hash32 ; Merkle Patricia Tree Root
+
+header_hash = $hash32
+

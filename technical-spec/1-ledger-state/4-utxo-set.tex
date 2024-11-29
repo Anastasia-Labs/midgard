@@ -5,18 +5,19 @@
 \section{Utxo set}
 \label{h:utxo-set}
 
-A utxo set is a finite map from output references to outputs of transactions:
-\begin{equation*}
-    \T{UtxoSet} \coloneq \Bigl\{
+A utxo set is a finite map from output reference to transaction output:
+\begin{align*}
+    \T{UtxoSet} &\coloneq \T{Map(OutputRef, Output)} \\
+      &\coloneq \Bigl\{
         (k_i: \T{OutputRef}, v_i: \T{Output}) \mid \forall i \neq j.\; k_i \neq k_j
     \Bigr\}
-\end{equation*}
+\end{align*}
 
 An output reference is a tuple that uniquely identifies an output by a hash of the ledger event that created it (either a transaction or a deposit) and its index among the outputs of that event.
 \begin{equation*}
     \T{OutputRef} \coloneq \left\{
     \begin{array}{ll}
-        \T{id} : & \T{EventHash} \\
+        \T{id} : & \T{TxId} \\
         \T{index} : & \T{Int}
     \end{array} \right\}
 \end{equation*}
@@ -25,8 +26,8 @@ An output is a tuple describing a bundle of tokens, data, and a script that have
 \begin{equation*}
     \T{Output} \coloneq \left\{
     \begin{array}{ll}
-        \T{value} : & \T{Value} \\
         \T{addr} : & \T{Address} \\
+        \T{value} : & \T{Value} \\
         \T{datum} : & \T{Option(Data)} \\
         \T{script} : & \T{Option(Script)}
     \end{array} \right\}
