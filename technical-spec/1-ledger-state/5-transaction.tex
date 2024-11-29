@@ -132,7 +132,8 @@ We use the empty set symbol \code{$\varnothing$} to indicate fields required to 
         \varnothing\;\T{withdrawals} : & \quad?\;\T{Map(RewardAccount, Coin)} \\
         \T{fee} : & \T{Coin} \\
         \star\;\T{validity\_interval} : & \quad?\;\T{MidgardSValidityInterval} \\
-        \star\;\T{required\_observers} : & \quad?\;\T{[MidgardSCredential]} \\
+        \star\;\T{required\_observers} : & \quad?\;\T{[ScriptCredential]} \\
+        \T{required\_signer\_hashes} : & \quad?\;\T{[VKeyCredential]} \\
         \T{mint} : & \quad?\;\T{Value} \\
         \T{script\_integrity\_hash} : & \quad?\;\T{Hash} \\
         \T{auxiliary\_data\_hash} : & \quad?\;\T{Hash} \\
@@ -151,7 +152,6 @@ We use the empty set symbol \code{$\varnothing$} to indicate fields required to 
         \T{redeemer\_tx\_wits} : & \quad?\;\T{Redeemers}
     \end{array} \right\}\\
     \T{MidgardSValidityInterval} \coloneq\;& (\T{Option(PosixTime), Option(PosixTime)}) \\ 
-    \T{MidgardSCredential} \coloneq\;& \T{ScriptHashObj(ScriptHash)} \\
                        \mid\;& \T{KeyHashObj(VKeyHash)} \\
     \T{MidgardSScript} \coloneq\;& \T{TimelockScript}(\star\;\T{TimelockObserver}) \\
                           \mid\;& \T{PlutusScript}(\T{MidgardSPlutusVersion},\T{PlutusBinary}) \\
@@ -181,7 +181,8 @@ The data availability layer is responsible for confirming that the hashes corres
         \T{outputs} : & \mathcal{H}(\T{[Output]}) \\
         \T{fee} : & \T{Coin} \\
         \T{validity\_interval} : & \quad?\;\T{MidgardSValidityInterval} \\
-        \T{required\_observers} : & \quad?\;\mathcal{H}(\T{[MidgardSCredential]}) \\
+        \T{required\_observers} : & \quad?\;\mathcal{H}(\T{[ScriptCredential]}) \\
+        \T{required\_signer\_hashes} : & \quad?\;\mathcal{H}(\T{[VKeyCredential]}) \\
         \T{mint} : & \quad?\;\T{Value} \\
         \T{script\_integrity\_hash} : & \quad?\;\T{Hash} \\
         \T{auxiliary\_data\_hash} : & \quad?\;\T{Hash} \\
