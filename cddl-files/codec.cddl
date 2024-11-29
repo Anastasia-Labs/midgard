@@ -267,19 +267,6 @@ multiasset<a0> =
 multiasset_compact<a0> =
   { + policy_id => $hash32 } ; hash of { asset_name => a0 } 
 
-; Datum Option
-; Note: Midgard requires all datums to be inline, so we don't use datum_option.
-; datum_option =
-;   [  0, $hash32
-;   // 1, data
-;   ]
-
-; Compact Representation
-; datum_option_compact = $hash32
-
-; Full Representation
-withdrawals = {+ reward_account => 0}
-
 reward_account = h'E090000000000000000000000000000000000000000000000000000000'
                   / h'F0A0000000000000000000000000000000000000000000000000000000'
 
