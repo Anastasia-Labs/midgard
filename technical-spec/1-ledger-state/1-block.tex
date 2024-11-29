@@ -117,16 +117,12 @@ A block header is a record with fixed-size fields: integers, hashes, and fixed-s
         \T{prev\_header\_hash} : & \T{Option(HeaderHash)} \\
         \T{operator\_vkey} : & \T{VerificationKey} \\
         \T{protocol\_version} : & \T{Int} \\
-        \T{utxos\_count} : & \T{Int} \\
-        \T{transactions\_count} : & \T{Int} \\
-        \T{deposits\_count} : & \T{Int} \\
-        \T{withdrawals\_count} : & \T{Int}
     \end{array} \right\}
 \end{equation*}
 
 These header fields are interpreted as follows:
 \begin{itemize}
-    \item The \code{*\_root} and \code{*\_count} fields are the MPT root hashes and element counts of the corresponding sets in the block body.
+    \item The \code{*\_root} fields are the MPT root hashes of the corresponding sets in the block body.
     \item The \code{prev\_utxos\_root} is a copy of the \code{utxos\_root} from the previous block, included for convenience in the fraud proof verification procedures.
     \item The \code{start\_time} and \code{end\_time} fields are the bounds of the block commitment transaction's time-validity interval.
     \item The \code{event\_start\_time} and \code{end\_time} fields are the bounds of the block's event interval.

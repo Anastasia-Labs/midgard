@@ -20,14 +20,11 @@ These groups are used to populate the fields of two record types in Midgard's co
         \T{start\_time} : & \T{PosixTime} \\
         \T{end\_time} : & \T{PosixTime} \\
         \T{protocol\_version} : & \T{Int} \\
-        \T{utxo\_count} : & \T{Int}
     \end{array} \right\} \\
     \T{SettlementHeader} &\coloneq \left\{
     \begin{array}{ll}
         \T{deposit\_root} : & \T{MPTR} \\
         \T{withdraw\_root} : & \T{MPTR} \\
-        \T{deposit\_count} : & \T{Int} \\
-        \T{withdraw\_count} : & \T{Int} \\
         \T{event\_start\_time}: & \T{PosixTime} \\
         \T{event\_end\_time}: & \T{PosixTime} \\
         \T{operator\_vkey} : & \T{VerificationKey}
