@@ -149,28 +149,30 @@ By moving most processing off the main chain, the system can handle more transac
 \
 + *Optimistic Rollups*
 
-  - Assume transactions are valid by default.
+  - Assume transactions are valid unless proven otherwise (as Midgard does).
 
-  - Only verify transactions if a fraud proof is submitted.
-  - Midgard L2 utilizes optimistic rollups to effectively scale the Cardano blockchain.
+  - Only verify in detail if a fraud proof is submitted, increasing efficiency and speed.
   
 + *State Channels*
 
   - Allow participants to conduct transactions off-chain.
 
-  - Only the final state is recorded on the main blockchain.
+  - Only the final state is recorded on the main blockchain, reducing on-chain load.
 
 + *Sidechains*
 
-  - Separate blockchains connected to the main chain.
+  - Independent blockchains that run parallel to the main chain.
 
-  - Handle specific types of transactions independently.
+  - Allow for assets to be transferred between the main chain and the sidechain.
+
+  - enabling complex operations and applications without burdening the primary network
 
 + *Plasma*
 
-  - Creates smaller chains linked to the main blockchain.
+  - Creates smaller, more efficient chains that run alongside the main blockchain.
 
-  - Ensures scalability by offloading processing.
+  - They process transactions independently and periodically submit proofs to the main chain.
+  - This ensures security and integrity while reducing the load on the primary network
 
 #pagebreak()
 #v(50pt)
