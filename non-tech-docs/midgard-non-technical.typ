@@ -175,7 +175,6 @@ By moving most processing off the main chain, the system can handle more transac
   - This ensures security and integrity while reducing the load on the primary network
 
 #pagebreak()
-#v(50pt)
 
 \
 = Key Concepts
@@ -185,7 +184,7 @@ By moving most processing off the main chain, the system can handle more transac
 
   - *Midgard L2* operates on top of *Cardano’s* main blockchain *(Layer 1)* to help handle more transactions at once.
 
-  - It uses a special technology called *optimistic rollups* to manage transactions efficiently.
+  - It uses *optimistic rollups* to manage transactions efficiently without constantly checking every single one.
 
 + *Operators*
 
@@ -199,23 +198,23 @@ By moving most processing off the main chain, the system can handle more transac
 
   - Watchers are like undercover inspectors who keep an eye on the Operators to ensure no one is cheating. 
   
-  - If they spot any suspicious activity, they raise a red flag (submit a “*fraud  proof*”) to challenge the Operator’s actions.
+  - They are incentivized to raise a red flag (submit a “*fraud  proof*”) if they spot any suspicious activity that challenges the Operator’s actions.
   
   - If the fraud proof is valid, the bad update is canceled, and the Operator may face penalties.
 
 +  *Fraud Proofs*
 
-  - A fraud proof is basically evidence that something went wrong with the transactions.
+  - A fraud proof is evidence provided by Watchers to prove that a transaction or state update is invalid.
   
   - During a designated challenge period, Watchers can submit fraud proofs to contest invalid state commitments.
   
   - If a fraud proof is validated, the fraudulent update is undone and penalizes the dishonest Operator and they may lose their bond.
 
 +  *State Management – Keeping Track*
-
-  - Midgard uses a smart system to keep track of all transactions and states (like the current traffic conditions).
   
-  - Instead of storing every single transaction in detail, Midgard creates a secure and concise summary using *Merkle roots*. This ensures everything stays organized and secure without handling every tiny detail.
+  - Instead of storing every single transaction in detail, Midgard uses compact cryptographic summaries *(Merkle roots)* to represent the current state, incoming transactions, and the next state. 
+  
+  This creates a secure and concise summary which ensures everything stays efficiently organized and secure without handling every tiny detail.
 
 +  *Optimistic Rollup*
 
@@ -227,9 +226,9 @@ By moving most processing off the main chain, the system can handle more transac
 
 +  *Tokenless Design*
 
-  - Midgard uses *ADA*, Cardano’s native currency, for all transactions and incentives.
+  - Midgard solely relies on *ADA*, Cardano’s native currency, for all transactions and incentives.
 
-  - There’s no need for an additional token, simplifying the system and maintaining focus on ADA.
+  - No additional token is required, keeping the system straightforward and ADA-centric.
 
 #pagebreak()
 \
@@ -243,22 +242,23 @@ By moving most processing off the main chain, the system can handle more transac
   \
 == State Commitments
   \
-  - Operators regularly send summaries (state commitments) to Cardano’s main blockchain.
+  - Operators regularly publish state commitments (summaries of the current and upcoming state) to the main blockchain.
 
-  - These summaries include the current state, new transactions, and what the state will be next, all represented in a compact form using Merkle roots.
+  - These commitments use Merkle roots to represent large sets of data compactly, ensuring security and verifiability.
+
   \
 == Challenge Period
   \
   - After an update is submitted, there’s a waiting period called the challenge period.
 
-  - During this time, Watchers can check for any mistakes or fraudulent activities in the update.
+  - During this challenge period, Watchers can review the update and submit fraud proofs if they find any discrepancies.
   \
 == Dispute Resolution
   \
   - If a Watcher submits a fraud proof during the challenge period, the system verifies it.
 
   - If the fraud proof is correct, the bad update is undone, and the responsible Operator may be penalized.
-  - If no one raises a concern, the update is finalized and becomes part of the main blockchain.
+  - If no one raises a concern, the update is finalized and becomes part of Cardano’s official history
 
 #pagebreak()
 
@@ -267,14 +267,8 @@ By moving most processing off the main chain, the system can handle more transac
 \
 == Midgard's Optimistic Rollup Architecture
 \
-At the heart of Midgard’s functionality is its *optimistic rollup* architecture, designed to scale Cardano while maintaining its security. 
+At the heart of Midgard is its optimistic rollup framework. This tailored solution for Cardano pairs a *validator network* with *efficient state management*, *UTxO-optimized fraud proofs*, and *balanced economic incentives*. The result is a *high-throughput* Layer 2 solution maintaining *strong security* guarantees.
 
-This system combines several elements:
-
-  - *Validator Network:* Ensures transactions are processed correctly.
-
-  - *Efficient State Management:* Uses Merkle roots to create compact and secure sum-
-maries of all activities, making it easy to keep everything organized.
 \
 === Operator Network
 \
@@ -299,8 +293,10 @@ maries of all activities, making it easy to keep everything organized.
 \
 === UTxO-Optimized Fraud Proofs 
 \
-Leverages Cardano’s UTxO (Unspent Transaction Output) model to efficiently detect
-and prove any dishonest activities without needing to review every single transaction in detail. This makes fraud detection faster and more effective.
+- Fraud proofs are adapted to Cardano’s *eUTxO* (extended Unspent Transaction Output) model, allowing local and parallel validation.
+
+- They target specific transaction aspects (e.g., input validity, timestamps, fees) efficiently.
+- This approach ensures faster and more cost-effective fraud detection compared to account-based systems.
 
 \
 === Balanced Economic Incentives
