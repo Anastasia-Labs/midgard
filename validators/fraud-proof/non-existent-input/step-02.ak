@@ -1,11 +1,13 @@
+use aiken/builtin
 // imports 
 // midgard-merkle is used as a library to verify merkle inclusion proofs 
 use aiken/cbor
 use aiken/collection/list
-use aiken/crypto.{ScriptHash}
+use aiken/crypto.{ScriptHash, blake2b_256}
 use cardano/address.{Address, Script, VerificationKey}
 use cardano/assets.{PolicyId, Value, flatten, from_asset, quantity_of}
 use cardano/transaction.{InlineDatum, Output, OutputReference, Transaction}
+use midgard/common/datum.{MidgardTx, MidgardTxBody}
 
 // Invalid Input Reference fraud proof: A transaction tx in a proposed block contains an input referencing a nonexistent output.
 
@@ -19,18 +21,6 @@ use cardano/transaction.{InlineDatum, Output, OutputReference, Transaction}
 pub type StepDatum {
   fraud_prover: ByteArray,
   data: Data,
-}
-
-//TODO This should be importend from a library, it's the state queue Datum
-pub type StateDatum {
-  block_hash: ByteArray,
-  block_roots: BlockRoots,
-}
-
-pub type BlockRoots {
-  block_withdraw_root: ByteArray,
-  block_tx_root: ByteArray,
-  block_deposit_root: ByteArray,
 }
 
 pub type MembershipProofInputs {
@@ -56,11 +46,11 @@ pub type InvalidInputSpendStep2State {
 pub type Step2redeemer {
   Cancel { index_output: Int }
   Continue {
-    frauded_input: OutputReference,
-    // TODO: Should this field be here?
-    frauded_state_queue_tx_hash: ByteArray,
-    input_utxos: List<OutputReference>,
+    frauded_input: Data,
+    input_utxos: Data,
     index_output: Int,
+    tx_body: MidgardTxBody,
+    tx: MidgardTx,
   }
 }
 
@@ -87,43 +77,54 @@ validator not_existing_input(
         expect Some((_, ct_token_asset_name, _)) =
           list.at(flatten(own_input.output.value), 1)
 
-        expect Some((_, _, lovelace)) =
-          list.at(flatten(own_input.output.value), 0)
-
-        expect Some(output_to_fraud_prover) =
-          list.at(self.outputs, index_output)
-        //The conditions are
-        //- Burn the fraud token
-        //- verify that the output is going to fraud prover address
-        //- send the ada back to the prover
-        and {
+        //*****************/
+        //1) the fraud token should be burnt
+        expect
           self.mint == from_asset(
             policy_id: ct_token_policy_id,
             asset_name: ct_token_asset_name,
             quantity: -1,
-          ),
+          )
+
+        //*****************/
+        //let's find the amount of ADA inside the input of the fraud proof to be cancelled
+        expect Some((_, _, lovelace)) =
+          list.at(flatten(own_input.output.value), 0)
+        //let's find the output that goes to the fraud prover
+        expect Some(output_to_fraud_prover) =
+          list.at(self.outputs, index_output)
+
+        //*****************/
+        //2)verify that the output is going to fraud prover address
+        expect
           validate_output_to_fraud_prover(
             output_to_fraud_prover,
             step_datum.fraud_prover,
-          ),
-          quantity_of(output_to_fraud_prover.value, "", "") == lovelace,
-        }
-      }
+          )
 
-      Continue {
-        frauded_input,
-        frauded_state_queue_tx_hash,
-        input_utxos,
-        index_output,
-      } -> {
+        //*****************/
+        //3)send the ada back to the prover
+        expect quantity_of(output_to_fraud_prover.value, "", "") == lovelace
+        True
+      }
+      // I want to pass the transaction, verify that the hash is equal to the tx I found previously, and verify that the 
+      Continue { frauded_input, input_utxos, index_output, tx_body, tx } -> {
         //we get the previous datum and find the tx_hash that is the one we want to check
         expect InvalidInputSpendStep1State { tx_hash, .. } = step_datum.data
-        let tx_evaluated = cbor.serialise(input_utxos)
 
-        //let's find the input invalid inside 
-        let flag_input_present = list.has(input_utxos, frauded_input)
+        //1) The list of inputs is part of the transactio
+        expect bytes_input_list: ByteArray = input_utxos
+        expect blake2b_256(bytes_input_list) == tx_body.spend_inputs
 
-        //let's see if the input utxos given hashed gives this hash
+        //2) The passed input list contains the frauded list
+        expect list.has(builtin.un_list_data(input_utxos), frauded_input)
+
+        //3) Is the midgard body part of the Midgard tx that we are passing?
+        expect blake2b_256(cbor.serialise(tx_body)) == tx.body
+
+        //4) Is the midgard tx passing hashed the same one we got in the previous step
+        expect blake2b_256(cbor.serialise(tx)) == tx_hash
+
         expect Some(own_input) =
           list.find(
             self.inputs,
@@ -138,27 +139,25 @@ validator not_existing_input(
         expect Some(output_state) = list.at(self.outputs, index_output)
         expect InlineDatum(datum_output) = output_state.datum
         expect datum_parsed: StepDatum = datum_output
-
-        expect Script(hash) = output_state.address.payment_credential
-        let step2_state =
-          InvalidInputSpendStep2State {
-            tx_hash: frauded_state_queue_tx_hash,
-            // TODO: Is `own_input` correct?
-            input: own_input.output_reference,
-          }
-        let step_2_datum =
-          StepDatum { fraud_prover: step_datum.fraud_prover, data: step2_state }
-        and {
-          tx_hash == tx_evaluated,
-          flag_input_present,
-          step_2_datum == datum_parsed,
+        //5) Is the fraud token kept
+        expect
           quantity_of(
             output_state.value,
             ct_token_policy_id,
             ct_token_asset_name,
-          ) == 1,
-          hash == next_step_spending_validator,
-        }
+          ) == 1
+
+        expect parsed_frauded_input: OutputReference = frauded_input
+        let step2_state =
+          InvalidInputSpendStep2State { tx_hash, input: parsed_frauded_input }
+        let step_2_datum =
+          StepDatum { fraud_prover: step_datum.fraud_prover, data: step2_state }
+        //6) Does the new step store the right datum?
+        expect step_2_datum == datum_parsed
+        //7) Does the new step goes to the right validator?
+        expect Script(hash) = output_state.address.payment_credential
+        expect hash == next_step_spending_validator
+        True
       }
     }
   }

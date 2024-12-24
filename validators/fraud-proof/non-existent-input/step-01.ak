@@ -8,6 +8,7 @@ use cardano/address.{Address, Script, VerificationKey}
 use cardano/assets.{PolicyId, Value, flatten, from_asset, quantity_of}
 use cardano/transaction.{InlineDatum, Output, OutputReference, Transaction}
 use linked_list/types.{Key, NodeDatum}
+use midgard/common/datum.{StateQueueDatum}
 use midgard/computation_thread.{StepDatum}
 
 // Invalid Input Reference fraud proof: A transaction tx in a proposed block contains an input referencing a nonexistent output.
@@ -26,18 +27,6 @@ use midgard/computation_thread.{StepDatum}
 // (ii) tx_root is merkle root of transactions in the state queue block
 // (iii) tx_hash is the hash of the transaction that is being proven to be in tx_root
 // (iv) input is the input inside the tx, that has no reference in the current state queue old_tx_root
-
-//TODO This should be importend from a library, it's the state queue Datum
-pub type StateDatum {
-  block_hash: ByteArray,
-  block_roots: BlockRoots,
-}
-
-pub type BlockRoots {
-  block_withdraw_root: ByteArray,
-  block_tx_root: ByteArray,
-  block_deposit_root: ByteArray,
-}
 
 pub type MembershipProofInputs {
   root: ByteArray,
@@ -85,27 +74,35 @@ validator step_01(
         expect Some((_, ct_token_asset_name, _)) =
           list.at(flatten(own_input.output.value), 1)
 
-        expect Some((_, _, lovelace)) =
-          list.at(flatten(own_input.output.value), 0)
-
-        expect Some(output_to_fraud_prover) =
-          list.at(self.outputs, index_output)
-        //The conditions are
-        //- Burn the fraud token
-        //- verify that the output is going to fraud prover address
-        //- send the ada back to the prover
-        and {
+        //*****************/
+        //1) the fraud token should be burnt
+        expect
           self.mint == from_asset(
             policy_id: ct_token_policy_id,
             asset_name: ct_token_asset_name,
             quantity: -1,
-          ),
+          )
+
+        //*****************/
+        //let's find the amount of ADA inside the input of the fraud proof to be cancelled
+        expect Some((_, _, lovelace)) =
+          list.at(flatten(own_input.output.value), 0)
+        //let's find the output that goes to the fraud prover
+        expect Some(output_to_fraud_prover) =
+          list.at(self.outputs, index_output)
+
+        //*****************/
+        //2)verify that the output is going to fraud prover address
+        expect
           validate_output_to_fraud_prover(
             output_to_fraud_prover,
             step_datum.fraud_prover,
-          ),
-          quantity_of(output_to_fraud_prover.value, "", "") == lovelace,
-        }
+          )
+
+        //*****************/
+        //3)send the ada back to the prover
+        expect quantity_of(output_to_fraud_prover.value, "", "") == lovelace
+        True
       }
       //  ------- Computation Step 1 - Membership Verification of tx ------- 
       // Step - 1: Fraud Prover Input: state_queue_node_ref_input_index, tx_hash, proof_path 
@@ -135,13 +132,13 @@ validator step_01(
           frauded_state_queue_node_input.output.datum
 
         expect parsed_node_datum: NodeDatum = frauded_state_queue_node_datum
-        expect parsed_frauded_state_queue_node_datum: StateDatum =
+        expect parsed_frauded_state_queue_node_datum: StateQueueDatum =
           parsed_node_datum.data
 
         //let's extract BLOCKHASH and TX_ROOT from the block in state queue
         expect Key(block_hash) = parsed_node_datum.key
         let extracted_tx_root =
-          parsed_frauded_state_queue_node_datum.block_roots.block_tx_root
+          parsed_frauded_state_queue_node_datum.data.utxos_root
         expect Some(own_input) =
           list.find(
             self.inputs,
@@ -152,7 +149,38 @@ validator step_01(
         expect Some((_, ct_token_asset_name, _)) =
           list.at(flatten(own_input.output.value), 1)
 
+        //1) the token name removed the first 4 bytes is exactly the block_hash we are refering to
+        expect drop(ct_token_asset_name, n: 4) == block_hash
+
+        //let's get the new datum to check if it's correct
+        expect Some(output_state) = list.at(self.outputs, index_output)
+        expect InlineDatum(datum_output) = output_state.datum
+        expect datum_parsed: StepDatum = datum_output
+
+        let step1_state =
+          InvalidInputSpendStep1State {
+            tx_hash: frauded_state_queue_tx_hash,
+            merkle_proof: tx_to_root_proof_path,
+          }
+        let step_1_datum =
+          StepDatum { fraud_prover: step_datum.fraud_prover, data: step1_state }
+        //2) The new datum is correct
+        expect step_1_datum == datum_parsed
+
+        //3) The fraud token is kept 
+        expect
+          quantity_of(
+            output_state.value,
+            ct_token_policy_id,
+            ct_token_asset_name,
+          ) == 1
+
+        //4) The next step is the right validator
+        expect Script(hash) = output_state.address.payment_credential
+        expect hash == next_step_spending_validator
+
         //Let's find if the tx is part of the block in state queue
+        //5) is the tx part of the block? 
         let merkleized_logic =
           merkelized_validator.delegated_validation(
             function_input: MembershipProofInputs {
@@ -168,31 +196,9 @@ validator step_01(
             },
             redeemers: self.redeemers,
           )
+        expect merkleized_logic
 
-        //let's get the new datum
-        expect Some(output_state) = list.at(self.outputs, index_output)
-        expect InlineDatum(datum_output) = output_state.datum
-        expect datum_parsed: StepDatum = datum_output
-
-        expect Script(hash) = output_state.address.payment_credential
-        let step1_state =
-          InvalidInputSpendStep1State {
-            tx_hash: frauded_state_queue_tx_hash,
-            merkle_proof: tx_to_root_proof_path,
-          }
-        let step_1_datum =
-          StepDatum { fraud_prover: step_datum.fraud_prover, data: step1_state }
-        and {
-          drop(ct_token_asset_name, n: 28) == block_hash,
-          step_1_datum == datum_parsed,
-          quantity_of(
-            output_state.value,
-            ct_token_policy_id,
-            ct_token_asset_name,
-          ) == 1,
-          hash == next_step_spending_validator,
-          merkleized_logic,
-        }
+        True
       }
     }
   }
