@@ -4,6 +4,5 @@ artifacts/
 build/
 # Aiken's default documentation export
 docs/
-
 .direnv
 utils.log

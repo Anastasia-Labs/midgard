@@ -1,13 +1,14 @@
 use aiken/collection/list
 use aiken/crypto.{ScriptHash}
 use aiken/primitive/bytearray.{drop}
+use aiken_design_patterns/linked_list/ordered.{NodeDatum}
 use aiken_design_patterns/merkelized_validator
 use cardano/address.{Script}
 use cardano/assets.{PolicyId, flatten, from_asset, quantity_of}
 use cardano/transaction.{InlineDatum, Output, OutputReference, Transaction}
-use linked_list/types.{NodeDatum}
 use midgard/computation_thread.{StepDatum}
 use midgard/fraud_proof/double_spend.{validate_output_to_fraud_prover}
+use midgard/ledger_state
 use midgard/state_queue
 
 // -------- GOAL DEFINITION --------------------------------------
@@ -133,13 +134,16 @@ validator step_01(
             self.reference_inputs,
             frauded_state_queue_node_ref_input_index,
           )
-        expect InlineDatum(frauded_state_queue_node_datum) =
+        expect InlineDatum(frauded_state_queue_datum_data) =
           frauded_state_queue_node_input.output.datum
-        expect parsed_frauded_node_datum: NodeDatum =
-          frauded_state_queue_node_datum
-        expect parsed_state_queue_datum: state_queue.Datum =
-          parsed_frauded_node_datum.data
-        let block_hash = parsed_state_queue_datum.block_hash
+        expect frauded_state_queue_node_datum: state_queue.Datum =
+          frauded_state_queue_datum_data
+        expect parsed_state_queue_datum: ledger_state.Header =
+          frauded_state_queue_node_datum.data
+        // TODO: `Header` does not contain the block hash. Which one should
+        // change?
+        // let block_hash = parsed_state_queue_datum.block_hash
+        let block_hash = parsed_state_queue_datum.utxos_root
         // (1.2) Get ct_token_asset_name
         expect Some(own_input) =
           list.find(

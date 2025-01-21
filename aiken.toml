@@ -1,5 +1,6 @@
 name = "al-ft/midgard"
 version = "0.0.0"
+compiler = "v1.1.9"
 plutus = "v3"
 license = "Apache-2.0"
 description = "Aiken contracts for project 'al-ft/midgard'"
@@ -11,7 +12,7 @@ platform = "github"
 
 [[dependencies]]
 name = "aiken-lang/stdlib"
-version = "v2.1.0"
+version = "v2.2.0"
 source = "github"
 
 [[dependencies]]
@@ -21,7 +22,7 @@ source = "github"
 
 [[dependencies]]
 name = "anastasia-labs/aiken-design-patterns"
-version = "v1.0.0"
+version = "v1.2.0"
 source = "github"
 
 [config]

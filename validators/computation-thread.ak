@@ -1,13 +1,14 @@
 use aiken/collection/list
 use aiken/primitive/bytearray
+use aiken_design_patterns/linked_list/ordered.{Key, NodeDatum}
 use cardano/assets.{PolicyId, flatten, quantity_of}
 use cardano/transaction.{InlineDatum, Input, Output, Transaction}
-use linked_list/types.{Key, NodeDatum}
 use midgard/common/utils.{is_output_to_sc}
 use midgard/computation_thread as ct
 use midgard/computation_thread.{StepDatum}
 use midgard/fraud_proof/catalogue as fpc
 use midgard/hub_oracle
+use midgard/ledger_state
 use midgard/state_queue
 
 validator computation_thread_policy(
@@ -52,15 +53,18 @@ validator computation_thread_policy(
           parsed_fraud_proof_catalogue_node_datum.key
         expect InlineDatum(frauded_state_queue_node_datum) =
           frauded_state_queue_node_input.output.datum
-        expect parsed_frauded_state_queue_node_datum: NodeDatum =
+        expect parsed_frauded_state_queue_node_datum: state_queue.Datum =
           frauded_state_queue_node_datum
-        expect parsed_frauded_state_queue_node_app_data: state_queue.Datum =
+        expect parsed_frauded_state_queue_node_app_data: ledger_state.Header =
           parsed_frauded_state_queue_node_datum.data
 
         let token_to_mint_asset_name =
           bytearray.concat(
             parsed_fraud_proof_catalogue_node_datum_key,
-            parsed_frauded_state_queue_node_app_data.block_hash,
+            // TODO: `Header` does not contain the block hash. Which one should
+            // change?
+            // parsed_frauded_state_queue_node_app_data.block_hash,
+            parsed_frauded_state_queue_node_app_data.utxos_root,
           )
         and {
           quantity_of(self.mint, policy_id, token_to_mint_asset_name) == 1,
