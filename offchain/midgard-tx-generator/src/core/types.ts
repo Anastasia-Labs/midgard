@@ -3,7 +3,8 @@
  */
 
 interface MidgardTransaction {
-  // codec.cddl transaction format
+  // Based on codec.cddl transaction format
+  // This is the target format we want to generate once Midgard Provider is implemented
   transaction_body: {
     inputs: Array<{ txHash: string; index: number }>; // transaction_input
     outputs: Array<{
