@@ -86,11 +86,10 @@ validator step_01(
             self.inputs,
             fn(a_input) { a_input.output_reference == input },
           )
-        expect Some((_, ct_token_asset_name, _)) =
-          list.at(flatten(own_input.output.value), 1)
+        expect
+          quantity_of(output.value, ct_token_policy_id, ct_token_asset_name) == 1
 
-        expect Some((_, _, lovelace)) =
-          list.at(flatten(own_input.output.value), 0)
+        expect lovelace == lovelace_of(output.value)
         // (2.1)
         expect Some(output_to_fraud_prover) = list.at(self.outputs, 0)
         and {
@@ -146,8 +145,8 @@ validator step_01(
             self.inputs,
             fn(a_input) { a_input.output_reference == input },
           )
-        expect Some((_, ct_token_asset_name, _)) =
-          list.at(flatten(own_input.output.value), 1)
+        expect
+          quantity_of(output.value, ct_token_policy_id, ct_token_asset_name) == 1
 
         // (2) -- Awaiting observer scripts to circumvent registering the stake validator --
         // Until then: Delegate merkle proof verification to a stake validator - call out midgard-merkle endpoint to 
