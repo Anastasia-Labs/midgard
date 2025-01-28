@@ -37,8 +37,8 @@ validator double_spend_s_last(ct_token_policy_id: PolicyId) {
             self.inputs,
             fn(a_input) { a_input.output_reference == input },
           )
-        expect
-          quantity_of(output.value, ct_token_policy_id, ct_token_asset_name) == 1
+        expect Some(_, ct_token_assetname, _) =
+          list.at(flatten(own_input.output.value), 1)
 
         expect lovelace == lovelace_of(output.value)
         expect Some(output_to_fraud_prover) = list.at(self.outputs, 0)

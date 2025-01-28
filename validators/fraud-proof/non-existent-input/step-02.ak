@@ -33,8 +33,8 @@ validator main(
             fn(a_input) { a_input.output_reference == input },
           )
         //let's find the assetname fraud token
-        expect
-          quantity_of(output.value, ct_token_policy_id, ct_token_asset_name) == 1
+        expect Some(_, ct_token_assetname, _) =
+          list.at(flatten(own_input.output.value), 1)
 
         //*****************/
         //1) the fraud token should be burnt
@@ -90,8 +90,8 @@ validator main(
           )
 
         //Let's find the assetname
-        expect
-          quantity_of(output.value, ct_token_policy_id, ct_token_asset_name) == 1
+        expect Some(_, ct_token_assetname, _) =
+          list.at(flatten(own_input.output.value), 1)
 
         //let's get the new datum
         expect Some(output_state) = list.at(self.outputs, index_output)
