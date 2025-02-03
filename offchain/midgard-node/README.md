@@ -34,8 +34,19 @@ docker run --rm --publish 3000:3000 -it -e SEED_PHRASE="$SEED_PHRASE" \
   $(docker build --build-context sdk=../midgard-sdk -q .)
 ```
 
+### Build & all the services
+
+``` sh
+SEED_PHRASE="your seed phrase" HYDRA_SCRIPTS_TX_ID="your_transaction" nix develop
+sudo chown --recursive $(whoami):$(whoami) /var/run/docker.sock
+
+docker compose up -d
+docker compose ps
+```
+
 ### Test node
 
 ``` sh
 curl http://localhost:3000
 ```
+

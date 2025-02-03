@@ -25,6 +25,7 @@
               nodejs_22
               typescript-language-server
               docker rootlesskit
+              docker-compose
             ];
           };
         });

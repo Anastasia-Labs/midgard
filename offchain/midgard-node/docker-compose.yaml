@@ -1,0 +1,150 @@
+services:
+  midgard-node:
+    build:
+      context: .
+      additional_contexts:
+        - sdk=../midgard-sdk
+      dockerfile: ./Dockerfile
+    environment:
+      - SEED_PHRASE="${SEED_PHRASE}"
+  cardano-node:
+    image: ghcr.io/intersectmbo/cardano-node:10.1.4
+    volumes:
+      - ./devnet:/ipc
+      - ../db:/data/db
+    environment:
+      - NETWORK=preprod
+
+  hydra-node:
+    # NOTE: Make sure to use the same image in ./seed-devnet.sh
+    image: ghcr.io/cardano-scaling/hydra-node:0.19.0
+    build:
+      context: ../
+      target: hydra-node
+    volumes:
+      - ./hydra-keys:/keys:ro
+      - ./devnet:/devnet
+    ports:
+      - "4001:4001"
+      - "5001:5001"
+    command:
+      [
+        "--node-id",
+        "1",
+        "--api-host",
+        "0.0.0.0",
+        "--host",
+        "172.16.238.10",
+        "--monitoring-port",
+        "6001",
+        "--peer",
+        "hydra-node-2:5001",
+        "--peer",
+        "hydra-node-3:5001",
+        "--peer",
+        "hydra-node-4:5001",
+        "--peer",
+        "hydra-node-5:5001",
+
+        "--hydra-scripts-tx-id",
+        "${HYDRA_SCRIPTS_TX_ID}",
+
+        "--hydra-signing-key",
+        "/keys/alice.sk",
+        "--hydra-verification-key",
+        "/keys/bob.vk",
+        "--hydra-verification-key",
+        "/keys/carol.vk",
+        "--hydra-verification-key",
+        "/keys/dave.vk",
+        "--hydra-verification-key",
+        "/keys/erin.vk",
+
+        "--cardano-signing-key",
+        "/devnet/credentials/alice.sk",
+        "--cardano-verification-key",
+        "/devnet/credentials/bob.vk",
+        "--cardano-verification-key",
+        "/devnet/credentials/carol.vk",
+        "--cardano-verification-key",
+        "/devnet/credentials/dave.vk",
+        "--cardano-verification-key",
+        "/devnet/credentials/erin.vk",
+
+        "--ledger-protocol-parameters",
+        "/devnet/protocol-parameters.json",
+
+        "--testnet-magic",
+        "1",
+        "--node-socket",
+        "/devnet/node.socket",
+        "--persistence-dir",
+        "/devnet/persistence/alice",
+        "--contestation-period",
+        "60",
+      ]
+    networks:
+      hydra_net:
+        ipv4_address: 172.16.238.10
+    restart: always
+
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: prometheus
+    ports:
+      - "9090:9090"
+    user: root
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./prometheus-data:/prometheus
+    networks:
+      hydra_net:
+        ipv4_address: 172.16.238.5
+
+  cadvisor:
+    image: gcr.io/cadvisor/cadvisor:v0.49.1
+    hostname: cadvisor
+    volumes:
+      - "/:/rootfs:ro"
+      - "/var/run:/var/run:ro"
+      - "/sys:/sys:ro"
+      - "/var/lib/docker/:/var/lib/docker:ro"
+      - "/dev/disk/:/dev/disk:ro"
+    networks:
+      hydra_net:
+        ipv4_address: 172.16.238.6
+
+  grafana:
+    container_name: grafana
+    image: grafana/grafana:latest
+    ports:
+      - "3000:3000"
+    environment:
+      - GF_PATHS_PROVISIONING=/etc/grafana/provisioning
+      - DS_PROMETHEUS=prometheus
+    volumes:
+      - "grafana-data:/var/lib/grafana"
+      - "./grafana/datasources.yml:/etc/grafana/provisioning/datasources/datasources.yml"
+      - "./grafana/dashboard.json:/var/lib/grafana/dashboards/dashboard.json"
+      - "./grafana/default.yaml:/etc/grafana/provisioning/dashboards/default.yaml"
+    depends_on:
+      - prometheus
+    networks:
+      hydra_net:
+        ipv4_address: 172.16.238.7
+
+networks:
+  hydra_net:
+    driver: bridge
+    ipam:
+      driver: default
+      config:
+        - subnet: 172.16.238.0/24
+          gateway: 172.16.238.1
+
+volumes:
+  grafana-data:
+    driver: local
