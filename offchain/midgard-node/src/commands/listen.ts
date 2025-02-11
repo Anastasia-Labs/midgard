@@ -12,6 +12,7 @@ import * as MPF from "@aiken-lang/merkle-patricia-forestry";
 import * as SDK from "@al-ft/midgard-sdk";
 import { Data, LucidEvolution, OutRef, UTxO } from "@lucid-evolution/lucid";
 import express from "express";
+import promClient from 'prom-client';
 
 // TODO: Placehoder, must be imported from SDK.
 const fetchLatestBlock = async (
@@ -62,6 +63,11 @@ const outRefsAreEqual = (outRef0: OutRef, outRef1: OutRef): boolean => {
   );
 };
 
+const register = new promClient.Registry();
+register.setDefaultLabels({
+  app: 'monitoring-article',
+});
+
 export const listen = (
   lucid: LucidEvolution,
   port: number,
@@ -69,7 +75,14 @@ export const listen = (
   confirmedStatePollingInterval: number
 ) => {
   const app = express();
-  app.get("/", (req, res) => {
+
+  app.get('/metrics', async (req, res) => {
+    res.type(register.contentType);
+    res.send("Got metrics");
+    //res.send(await register.metrics());
+  });
+
+  app.get("/api", (req, res) => {
     res.type("text/plain");
     const txHex = req.query.tx;
     const txIsString = typeof txHex === "string";

@@ -1,12 +1,4 @@
 services:
-  midgard-node:
-    build:
-      context: .
-      additional_contexts:
-        - sdk=../midgard-sdk
-      dockerfile: ./Dockerfile
-    environment:
-      - SEED_PHRASE="${SEED_PHRASE}"
   cardano-node:
     image: ghcr.io/intersectmbo/cardano-node:10.1.4
     volumes:
@@ -15,77 +7,27 @@ services:
     environment:
       - NETWORK=preprod
 
-  hydra-node:
-    # NOTE: Make sure to use the same image in ./seed-devnet.sh
-    image: ghcr.io/cardano-scaling/hydra-node:0.19.0
+  midgard-node:
     build:
-      context: ../
-      target: hydra-node
-    volumes:
-      - ./hydra-keys:/keys:ro
-      - ./devnet:/devnet
-    ports:
-      - "4001:4001"
-      - "5001:5001"
+      context: .
+      additional_contexts:
+        - sdk=../midgard-sdk
+      dockerfile: ./Dockerfile
+    environment:
+      - SEED_PHRASE="${SEED_PHRASE}"
     command:
-      [
-        "--node-id",
-        "1",
-        "--api-host",
-        "0.0.0.0",
-        "--host",
-        "172.16.238.10",
-        "--monitoring-port",
-        "6001",
-        "--peer",
-        "hydra-node-2:5001",
-        "--peer",
-        "hydra-node-3:5001",
-        "--peer",
-        "hydra-node-4:5001",
-        "--peer",
-        "hydra-node-5:5001",
-
-        "--hydra-scripts-tx-id",
-        "${HYDRA_SCRIPTS_TX_ID}",
-
-        "--hydra-signing-key",
-        "/keys/alice.sk",
-        "--hydra-verification-key",
-        "/keys/bob.vk",
-        "--hydra-verification-key",
-        "/keys/carol.vk",
-        "--hydra-verification-key",
-        "/keys/dave.vk",
-        "--hydra-verification-key",
-        "/keys/erin.vk",
-
-        "--cardano-signing-key",
-        "/devnet/credentials/alice.sk",
-        "--cardano-verification-key",
-        "/devnet/credentials/bob.vk",
-        "--cardano-verification-key",
-        "/devnet/credentials/carol.vk",
-        "--cardano-verification-key",
-        "/devnet/credentials/dave.vk",
-        "--cardano-verification-key",
-        "/devnet/credentials/erin.vk",
-
-        "--ledger-protocol-parameters",
-        "/devnet/protocol-parameters.json",
-
-        "--testnet-magic",
-        "1",
-        "--node-socket",
-        "/devnet/node.socket",
-        "--persistence-dir",
-        "/devnet/persistence/alice",
-        "--contestation-period",
-        "60",
-      ]
+      - node
+      - ./dist/index.js
+      - listen
+      - --provider
+      - Koios
+      - -p
+      - 4000
+    ports:
+      - "4000:4000"
     networks:
       hydra_net:
-        ipv4_address: 172.16.238.10
+        ipv4_address: 172.16.238.8
     restart: always
 
   prometheus:
