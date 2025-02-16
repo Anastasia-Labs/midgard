@@ -169,6 +169,7 @@ validator step(
         // Is the midgard tx passing hashed the same one we got in the previous step
         expect blake2b_256(cbor.serialise(tx)) == bad_state_queue_tx_hash
 
+        //TODO missing the part that we prove that this input is not part of any previous utxo root,  PROVING NOT INCLUSION
         // Since we are doing everything in one step we want to burn the thread token
         expect
           Pair(ct_token_asset_name, -1) == get_singleton_asset_with_policy(
