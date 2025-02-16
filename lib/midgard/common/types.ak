@@ -1,4 +1,4 @@
-use aiken/crypto.{VerificationKey, VerificationKeyHash}
+use aiken/crypto.{Blake2b_256, Hash, VerificationKey, VerificationKeyHash}
 use cardano/assets.{AssetName, PolicyId}
 
 /// A number of milliseconds since 00:00:00 UTC on 1 January 1970.
@@ -60,3 +60,6 @@ pub type Header {
   operator_vkey: VerificationKey,
   protocol_version: Int,
 }
+
+pub type MerkleRoot =
+  Hash<Blake2b_256, ByteArray>
