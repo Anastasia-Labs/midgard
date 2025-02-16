@@ -1,5 +1,10 @@
+use aiken/crypto.{ScriptHash}
 use cardano/address.{Address}
-use cardano/assets.{PolicyId}
+use cardano/assets.{AssetName, PolicyId}
+use cardano/transaction.{InlineDatum, Input, Output}
+use midgard/common/utils
+
+pub const asset_name: AssetName = #""
 
 pub type Datum {
   registered_operators: PolicyId,
@@ -16,4 +21,22 @@ pub type Datum {
   state_queue_addr: Address,
   fraud_proof_catalogue_addr: Address,
   fraud_proof_addr: Address,
+}
+
+/// The assumption here is that the UTxO with the datum is authenticated with an
+/// NFT which its policy is the same as the address's payment script hash.
+pub fn get_datum(
+  reference_inputs: List<Input>,
+  hub_oracle_script_hash: ScriptHash,
+  hub_ref_input_index: Int,
+) -> Datum {
+  expect Input { output: Output { datum: InlineDatum(hub_datum_data), .. }, .. } =
+    utils.get_authentic_input_of(
+      reference_inputs,
+      hub_oracle_script_hash,
+      asset_name,
+      hub_ref_input_index,
+    )
+  expect hub_datum: Datum = hub_datum_data
+  hub_datum
 }

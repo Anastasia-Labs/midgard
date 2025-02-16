@@ -1,0 +1,25 @@
+:set -XOverloadedStrings
+:set -XTypeApplications
+:set -XDataKinds
+:set -fno-warn-unused-imports
+:set -fobject-code
+:set -fno-warn-incomplete-patterns
+:set -XImpredicativeTypes
+
+:m +Midgard.Utils
+:m +MerkleTree.Helpers
+:m +MerkleTree.MerklePatriciaForestry
+:m +Types.Constants
+:m +Types.Blocks
+:m +Types.StateCommitment
+:m +Plutarch
+:m +Plutarch.Internal 
+:m +Plutarch.Evaluate
+:m +Plutarch.Bitwise
+:m +Plutarch.ByteString 
+:m +Plutarch.Num
+:m +Data.Either
+:m +Plutarch.Builtin
+:m +Plutarch.Lift
+:m +Plutarch.Prelude
+:m +Profile

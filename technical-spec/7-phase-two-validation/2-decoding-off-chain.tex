@@ -9,14 +9,118 @@ This section details the process of decoding UPLC script bytes into executable T
 
 \subsection{Byte Format Specification}
 
-The exact byte format specification for UPLC scripts will be detailed in a future update, following thorough verification of the encoding scheme.
+UPLC scripts are serialized using the flat format, which provides a compact binary representation optimized for blockchain storage. The format consists of:
+
+\begin{itemize}
+    \item Version number (major.minor.patch) encoded as three natural numbers
+    \item Term structure encoded as tagged bit sequences
+    \item Constants encoded based on their type (integers, bytestrings, etc.)
+    \item Built-in functions encoded as 7-bit tags
+    \item De Bruijn indices for variable references
+    \item Padding bits to ensure byte alignment
+\end{itemize}
 
 \subsection{Decoding Process}
 
+The decoding process follows these key steps:
+
+\begin{enumerate}
+    \item Read and validate the version number
+    \item Parse the term structure by interpreting tag bits:
+        \begin{itemize}
+            \item 0011 - Application
+            \item 0100 - Constants
+            \item 0111 - Built-in functions
+            \item etc.
+        \end{itemize}
+    \item Decode constants according to their type tags
+    \item Resolve built-in function references via their 7-bit tags
+    \item Construct the final term tree
+\end{enumerate}
+
 \subsection{Term Construction Process}
+
+The decoder maintains state during term construction:
+
+\begin{equation*}
+    \text{BytesToTermStep} \coloneq \left\{
+    \begin{array}{ll}
+        \text{step\_type} : & \text{DecodingStepType} \\
+        \text{input\_bytes} : & \text{ScriptBytes} \\
+        \text{remaining\_bytes} : & \text{ScriptBytes} \\
+        \text{partial\_term} : & \text{Term} \\
+        \text{transformation\_proof} : & \text{Hash}
+    \end{array} \right\}
+\end{equation*}
+
+\subsection{Decoding Step Types}
+
+The \text{DecodingStepType} represents the specific transformation being performed:
+
+\begin{equation*}
+    \text{DecodingStepType} \coloneq \left\{
+    \begin{array}{ll}
+        \text{VersionDecode} : & \text{(major, minor, patch)} \\
+        \text{TermTagDecode} : & \text{TagBits} \\
+        \text{TypeTagDecode} : & \text{[TypeTag]} \\
+        \text{ConstantDecode} : & \text{Type} \times \text{Value} \\
+        \text{BuiltinDecode} : & \text{BuiltinTag} \\
+        \text{PaddingValidate} : & \text{PaddingBits}
+    \end{array} \right\}
+\end{equation*}
+
+\subsection{Transformation Proofs}
+
+Each step's \text{transformation\_proof} must demonstrate:
+
+\begin{itemize}
+    \item Valid consumption of input bytes according to the format specification
+    \item Correct interpretation of decoded values
+    \item Proper handling of any padding or alignment requirements
+    \item Maintenance of the well-formed term structure
+\end{itemize}
+
+For example, a \text{ConstantDecode} proof must show:
+\begin{itemize}
+    \item The type tag list was properly terminated
+    \item The constant value matches its declared type
+    \item Any required padding was correctly handled
+    \item The remaining bytes are properly aligned
+\end{itemize}
+
+\subsection{Validation Chain}
+
+The complete decoding process produces a sequence of \text{BytesToTermStep}s that can be independently verified. This enables:
+
+\begin{itemize}
+    \item Detection of malformed script bytes
+    \item Identification of specific decoding failures
+    \item Construction of fraud proofs for invalid transformations
+    \item Verification of the complete decoding process
+\end{itemize}
 
 \subsection{Transformation Types}
 
-The specific byte format and transformation rules for different Term types will be detailed in a future specification update, after thorough verification of the encoding scheme.
+Different term types require specific decoding transformations:
+
+\begin{itemize}
+    \item Constants - Decoded based on type tags and specific encoding rules
+    \item Applications - Recursively decode function and argument terms
+    \item Built-ins - Lookup via 7-bit tag table
+    \item Variables - Convert de Bruijn indices to term references
+\end{itemize}
+
+\subsection{Validation Requirements}
+
+The decoder must enforce several validation rules:
+
+\begin{itemize}
+    \item Version compatibility check
+    \item Well-formed term structure
+    \item Valid constant values
+    \item Recognized built-in functions
+    \item Proper scope for de Bruijn indices
+    \item Complete byte consumption (no trailing data)
+\end{itemize}
 
 \end{document}

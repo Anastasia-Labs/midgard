@@ -1,0 +1,44 @@
+{
+  "name": "midgard-txs-generator",
+  "version": "0.1.0",
+  "description": "Midgard Transaction Generator for L2",
+  "engines": {
+    "node": ">=18.18",
+    "npm": ">=10.5"
+  },
+  "type": "module",
+  "main": "dist/index.js",
+  "module": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "rm -rf ./dist && tsc && rm -rf ./dist/tests",
+    "prettier": "prettier -w '**/*.{js,jsx,ts,tsx,json,.*}'",
+    "lint": "concurrently \"prettier --check '**/*.{js,jsx,ts,tsx,json,.*}'\" \"eslint ./src --max-warnings=0\"",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@lucid-evolution/lucid": "^0.4.20",
+    "decimal.js": "^10.4.3",
+    "lodash": "^4.17.21",
+    "p-limit": "^6.2.0",
+    "p-retry": "^6.2.1"
+  },
+  "devDependencies": {
+    "@eslint/js": "^8.56.0",
+    "@types/lodash": "^4.14.202",
+    "@types/node": "^20.11.5",
+    "@typescript-eslint/eslint-plugin": "^8.21.0",
+    "@typescript-eslint/parser": "^8.21.0",
+    "chalk": "^5.4.1",
+    "concurrently": "^8.2.2",
+    "eslint": "^8.56.0",
+    "eslint-plugin-simple-import-sort": "^12.0.0",
+    "prettier": "^3.2.4",
+    "typescript": "^5.3.3",
+    "vite-tsconfig-paths": "^5.0.1",
+    "vitest": "^1.2.1"
+  }
+}

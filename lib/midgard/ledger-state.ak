@@ -1,24 +1,37 @@
-use aiken/crypto.{VerificationKey}
 use cardano/assets.{Value}
 use midgard/common/types.{
   Coin, HashedBody, HashedLisOutputs, HashedListReferenceOutputs, HashedScripts,
-  HashedVerificationKeys, HashedWitness, HeaderHash, MidgardSValidityInterval,
-  Network, POSIXTime, RootHash,
+  HashedVerificationKeys, HashedWitness, HeaderHash, MerkleRoot,
+  MidgardSValidityInterval, Network, POSIXTime, PubKeyHash,
 }
 
 pub type Header {
-  prev_utxos_root: RootHash,
-  utxos_root: RootHash,
-  transactions_root: RootHash,
-  deposits_root: RootHash,
-  withdrawals_root: RootHash,
-  start_time: POSIXTime,
+  prev_utxos_root: MerkleRoot,
+  utxos_root: MerkleRoot,
+  transactions_root: MerkleRoot,
+  deposits_root: MerkleRoot,
+  withdrawals_root: MerkleRoot,
   end_time: POSIXTime,
   prev_header_hash: HeaderHash,
-  operator_vkey: VerificationKey,
+  operator_vkey: PubKeyHash,
   protocol_version: Int,
 }
 
+pub type ConfirmedState {
+  header_hash: HeaderHash,
+  prev_header_hash: HeaderHash,
+  utxo_root: MerkleRoot,
+  start_time: POSIXTime,
+  end_time: POSIXTime,
+}
+
+// TODO:
+// Some helper types for handling transaction inputs in the fraud proof
+// pub type TxInput =
+//   Data
+
+// pub type TxInputs =
+//   List<TxInput>
 pub type Block {
   header_hash: HeaderHash,
   header: Header,
