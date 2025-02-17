@@ -13,8 +13,32 @@ UPLC scripts are serialized using the flat format, which provides a compact bina
 
 \begin{itemize}
     \item Version number (major.minor.patch) encoded as three natural numbers
-    \item Term structure encoded as tagged bit sequences
-    \item Constants encoded based on their type (integers, bytestrings, etc.)
+    \item Term structure encoded in 4-bit tags (TERM\_TAG\_WIDTH = 4). Specifically:
+    \begin{itemize}
+        \item 0x0 = Var
+        \item 0x1 = Delay
+        \item 0x2 = Lambda
+        \item 0x3 = Application
+        \item 0x4 = Constant
+        \item 0x5 = Force
+        \item 0x6 = Error
+        \item 0x7 = Builtin
+        \item 0x8 = Constr
+        \item 0x9 = Case
+    \end{itemize}
+    \item Constants encoded using a 4-bit constructor tag (CONST\_TAG\_WIDTH = 4), with recognized tags:
+    \begin{itemize}
+      \item 0x0 = Integer
+      \item 0x1 = ByteString
+      \item 0x2 = String
+      \item 0x3 = Unit
+      \item 0x4 = Bool
+      \item 0x8 = Data
+      \item 0x9 = BLS12\_381G1Element (not currently supported in Flat decoding)
+      \item 0xA = BLS12\_381G2Element (not currently supported)
+      \item 0xB = BLS12\_381MlResult (not currently supported)
+      \item For lists and pairs, nested tags are used (e.g.\ [7,5,\dots] or [7,7,6,\dots]).
+    \end{itemize}
     \item Built-in functions encoded as 7-bit tags
     \item De Bruijn indices for variable references
     \item Padding bits to ensure byte alignment
@@ -28,10 +52,16 @@ The decoding process follows these key steps:
     \item Read and validate the version number
     \item Parse the term structure by interpreting tag bits:
         \begin{itemize}
+            \item 0000 - Var
+            \item 0001 - Delay
+            \item 0010 - Lambda
             \item 0011 - Application
-            \item 0100 - Constants
+            \item 0100 - Constant
+            \item 0101 - Force
+            \item 0110 - Error
             \item 0111 - Built-in functions
-            \item etc.
+            \item 1000 - Constr
+            \item 1001 - Case
         \end{itemize}
     \item Decode constants according to their type tags
     \item Resolve built-in function references via their 7-bit tags
@@ -104,7 +134,20 @@ The complete decoding process produces a sequence of \text{BytesToTermStep}s tha
 Different term types require specific decoding transformations:
 
 \begin{itemize}
-    \item Constants - Decoded based on type tags and specific encoding rules
+    \item \textbf{Delay} - Decodes a single sub-term to be delayed
+    \item \textbf{Lambda} - Decodes the parameter binder, then the body sub-term
+    \item \textbf{Force} - Decodes a single sub-term to be forced
+    \item \textbf{Error} - No subfields (represents a failing term)
+    \item \textbf{Constr} - Decodes an integer constructor tag, then a list of fields
+    \item \textbf{Case} - Decodes one “constr” sub-term (the scrutinee), then a list of branch terms
+
+    \item Constants - Decoded based on a 4-bit constructor tag plus any required type tags:
+    \begin{itemize}
+      \item Integers, ByteStrings, Strings, Units, and Bools
+      \item Lists and Pairs use nested tags for element types
+      \item \texttt{Data} for specialized Plutus data
+      \item BLS12\_381 types (G1, G2, ML results) are tagged but not supported in current decoding
+    \end{itemize}
     \item Applications - Recursively decode function and argument terms
     \item Built-ins - Lookup via 7-bit tag table
     \item Variables - Convert de Bruijn indices to term references
