@@ -1,14 +1,8 @@
-use cardano/assets.{AssetName, PolicyId}
+use midgard/common/types.{TokensOfPolicy}
 
-pub const max_token_count = 10
+pub const max_policy_count_per_utxo = 10
 
-pub type Datum = List<Token>
-
-pub type Token {
-  mint_policy_id: PolicyId,
-  mint_asset_name: AssetName,
-  mint_quantity: Int,
-}
+pub type Datum = List<TokensOfPolicy>
 
 pub type SpendRedeemer {
   MergeUTxOs
