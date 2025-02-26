@@ -10,6 +10,9 @@ pub type AssetClass {
   asset_name: AssetName,
 }
 
+pub type TokensOfPolicy =
+  Pair<PolicyId, Pairs<AssetName, Int>>
+
 pub type PubKeyHash =
   VerificationKeyHash
 

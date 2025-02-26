@@ -1,8 +1,9 @@
 use aiken/crypto.{ScriptHash}
 use aiken/merkle_patricia_forestry as mpf
 use cardano/address.{Address}
+use cardano/assets.{AssetName}
 use cardano/transaction.{OutputReference}
-use midgard/common/types.{POSIXTime}
+use midgard/common/types.{POSIXTime, TokensOfPolicy}
 use midgard/user_events
 
 pub type Event =
@@ -11,6 +12,7 @@ pub type Event =
 pub type Info {
   l2_address: Address,
   l2_datum: Option<Data>,
+  tokens: TokensOfPolicy,
 }
 
 pub type Datum {
@@ -29,7 +31,8 @@ pub type SpendPurpose {
 
 pub type SpendRedeemer {
   hub_ref_input_index: Int,
-  mpf_ref_input_index: Int,
+  settlement_ref_input_index: Int,
+  settlement_node_asset_name: AssetName,
   membership_proof: mpf.Proof,
   purpose: SpendPurpose,
 }

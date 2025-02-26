@@ -21,7 +21,8 @@ A withdrawal event in a Midgard block acknowledges that a user has created an L1
         \begin{array}{ll}
             \T{l2\_outref} :& \T{OutputRef} \\
             \T{l1\_address} : & \T{Address} \\
-            \T{l1\_datum} : & \T{Option(Data)}
+            \T{l1\_datum} : & \T{Option(Data)} \\
+            \T{token} : & \T{(PolicyId, Pairs(AssetName, Int))}
         \end{array} \right\}
 \end{align*}
 
@@ -31,8 +32,8 @@ This key is needed to identify the L1 withdrawal utxo, ensure that withdrawal ev
 If a withdrawal event is permitted by Midgard's ledger rules to be included in a block, its effect is to remove the output at output-reference \code{l2\_outref} from the block's utxo set.
 
 Suppose the block containing the withdrawal event is confirmed.
-In that case, tokens from the Midgard reserve and confirmed deposits can be used to pay for the creation of an L1 utxo at the address (\code{l1\_address}) and with the inline datum (\code{l1\_datum}) specified by the user, containing the value from the withdrawn L2 utxo.
-The L1 withdrawal request utxo must be spent in the transaction that pays out the withdrawal.
+In that case, ADA from the Midgard reserve and confirmed deposits can be used to pay for the creation of an L1 utxo at the address (\code{l1\_address}) and with the inline datum (\code{l1\_datum}) specified by the user, containing the value from the withdrawn L2 utxo.
+The L1 withdrawal request utxo must be spent in the transaction that pays out the withdrawal. If there are any tokens being withdrawn, they need to be minted rather than extracted from the reserve.
 
 \Cref{h:withdrawal-order} describes the lifecycle of a withdrawal request in further detail, including how the withdrawal event information is validated.
 
