@@ -38,6 +38,57 @@ export const showTime = (d: Date): string => {
     .replace(/\//g, ".");
 };
 
+const logWithTime = (
+  color: chalk_.ChalkInstance,
+  label: string,
+  msg: string,
+) => {
+  const now = new Date();
+  const timeStr = showTime(now);
+  console.log(
+    `${color(chalk.bold(`${timeStr}\u0009${label}`))}${
+      label === "" ? "" : " "
+    }${color(msg)}`,
+  );
+};
+
+export const logSuccess = (msg: string) => {
+  logWithTime(chalk.green, "SUCCESS!", msg);
+};
+
+export const logWarning = (msg: string, quiet?: true) => {
+  if (!quiet) {
+    logWithTime(
+      chalk.yellow,
+      "WARNING",
+      `
+${msg}`,
+    );
+  }
+};
+
+export const logAbort = (msg: string) => {
+  logWithTime(
+    chalk.red,
+    "ABORT",
+    `
+${msg}`,
+  );
+};
+
+export const logDim = (msg: string) => {
+  logWithTime(chalk.dim, "", msg);
+};
+
+export const logInfo = (msg: string) => {
+  logWithTime(
+    chalk.blue,
+    "INFO",
+    `
+${msg}`,
+  );
+};
+
 export const isHexString = (str: string): boolean => {
   const hexRegex = /^[0-9A-Fa-f]+$/;
   return hexRegex.test(str);
@@ -49,7 +100,7 @@ export const setupLucid = async (
 ): Promise<LucidEvolution> => {
   const seedPhrase = process.env.SEED_PHRASE;
   if (!seedPhrase) {
-    Effect.logError("No wallet seed phrase found (SEED_PHRASE)");
+    logAbort("No wallet seed phrase found (SEED_PHRASE)");
     process.exit(1);
   }
   const networkStr = `${network}`.toLowerCase();
@@ -57,7 +108,7 @@ export const setupLucid = async (
   if (providerName === "Blockfrost" || providerName === "Maestro") {
     const apiKey = process.env.API_KEY;
     if (!apiKey) {
-      Effect.logError("No API key was found (API_KEY)");
+      logAbort("No API key was found (API_KEY)");
       process.exit(1);
     }
     if (providerName === "Blockfrost") {
@@ -79,7 +130,7 @@ export const setupLucid = async (
     const kupoURL = process.env.KUPO_URL;
     const ogmiosURL = process.env.OGMIOS_URL;
     if (!kupoURL || !ogmiosURL) {
-      Effect.logError(
+      logAbort(
         "Make sure to set both KUPO_URL and OGMIOS_URL environment variables",
       );
       process.exit(1);
@@ -91,7 +142,7 @@ export const setupLucid = async (
     lucid.selectWallet.fromSeed(seedPhrase);
     return lucid;
   } catch (e) {
-    Effect.logError(errorToString(e));
+    logAbort(errorToString(e));
     process.exit(1);
   }
 };
@@ -110,7 +161,7 @@ export const findSpentAndProducedUTxOs = (
       try {
         spent.push(coreToOutRef(inputs.get(i)));
       } catch (e) {
-        Effect.logInfo(`Catched in findSpentAndProducedUTxOs ${e}`);
+        console.log(e);
       }
     }
     const txHash = CML.hash_transaction(txBody).to_hex();
@@ -123,13 +174,13 @@ export const findSpentAndProducedUTxOs = (
         };
         produced.push(utxo);
       } catch (e) {
-        Effect.logInfo(`Catched in findSpentAndProducedUTxOs ${e}`);
+        console.log(e);
       }
     }
     return Effect.succeed({ spent, produced });
   } catch (_e) {
     return Effect.fail(
-      new Error(`Something went wrong decoding the transaction: ${_e}`),
+      new Error("Something went wrong decoding the transaction"),
     );
   }
 };
