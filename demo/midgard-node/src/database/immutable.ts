@@ -1,9 +1,9 @@
 import { fromHex, toHex } from "@lucid-evolution/lucid";
 import { Option } from "effect";
 import sqlite3 from "sqlite3";
+import { logAbort, logInfo } from "../utils.js";
 import * as utils from "./utils.js";
 import { clearTable } from "./utils.js";
-import { Effect } from "effect";
 
 export const createQuery = `
   CREATE TABLE IF NOT EXISTS immutable (
@@ -21,10 +21,10 @@ export const insert = async (
   await new Promise<void>((resolve, reject) => {
     db.run(query, [fromHex(tx_hash), fromHex(tx_cbor)], function (err) {
       if (err) {
-        Effect.logError(`immutable db: error inserting tx: ${err.message}`);
+        logAbort(`immutable db: error inserting tx: ${err.message}`);
         reject(err);
       } else {
-        Effect.logInfo(`immutable db: tx stored with rowid ${this.lastID}`);
+        logInfo(`immutable db: tx stored with rowid ${this.lastID}`);
         resolve();
       }
     });
@@ -43,11 +43,11 @@ export const insertTxs = async (
     for (const { txHash, txCbor } of txs) {
       stmt.run([txHash, txCbor], function (err) {
         if (err) {
-          Effect.logError(`immutable db: error inserting tx: ${err.message}`);
+          logAbort(`immutable db: error inserting tx: ${err.message}`);
           reject(err);
           return;
         }
-        Effect.logInfo(`immutable db: tx stored with rowid ${this.lastID}`);
+        logInfo(`immutable db: tx stored with rowid ${this.lastID}`);
       });
     }
 
@@ -66,7 +66,7 @@ export const retrieve = async (db: sqlite3.Database) => {
   const result = await new Promise<[string, string][]>((resolve, reject) => {
     db.all(query, (err, rows: { tx_hash: Buffer; tx_cbor: Buffer }[]) => {
       if (err) {
-        Effect.logError(`immutable db: retrieving error: ${err.message}`);
+        logAbort(`immutable db: retrieving error: ${err.message}`);
         reject(err);
       }
       const result: [string, string][] = rows.map((row) => [
