@@ -1,5 +1,6 @@
 use aiken/collection/list
 use aiken/interval.{Finite, Interval, is_entirely_after}
+use aiken/primitive/bytearray
 use aiken_design_patterns/linked_list/ordered.{Key} as ordered
 use cardano/assets.{PolicyId, quantity_of}
 use cardano/transaction.{
@@ -192,7 +193,13 @@ validator spend(
           parsed_active_node_datum.key == Key(
             parsed_scheduler_output_datum.operator,
           )
-        //10. TODO 
+        //10.
+        expect Key(root_node_link_as_bytearray) =
+          parsed_active_root_node_datum.link
+        expect or {
+            bytearray.compare(root_node_link_as_bytearray, datum.operator) == Equal,
+            bytearray.compare(root_node_link_as_bytearray, datum.operator) == Greater,
+          }
         expect parsed_active_root_node_datum.link == Key(datum.operator)
         //11 and 12.
         expect Some(registered_node_ref_input) =

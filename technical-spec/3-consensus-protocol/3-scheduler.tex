@@ -134,7 +134,9 @@ Redeemers:
                 \item The transaction must include a reference input of the root \code{active\_operators} node.
                   Let \code{root\_node} be that node.
                 \item The \code{key} of \code{operator\_node} must match \code{operator}.
-                \item The \code{link} of \code{root\_node} must match or exceed \code{previous\_operator}.
+                \item The \code{link} of \code{root\_node} must match or exceed \code{previous\_operator}.%
+                \footnote{In other words, this means that there is no \codeNC{active\_operators} node with a smaller key than \codeNC{previous\_operator}.
+                  If there were such a node, then we would advance the scheduler to that node instead of rewinding.}
             \end{enumerate}
             
             \item Verify that no registered operator is eligible to activate:
