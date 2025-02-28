@@ -7,20 +7,20 @@ import {
 } from "@lucid-evolution/lucid";
 import { Option } from "effect";
 import sqlite3, { Database } from "sqlite3";
-import { logAbort, logInfo } from "../utils.js";
 import * as blocks from "./blocks.js";
 import * as confirmedLedger from "./confirmedLedger.js";
 import * as immutable from "./immutable.js";
 import * as latestLedger from "./latestLedger.js";
 import * as mempool from "./mempool.js";
 import * as mempoolLedger from "./mempoolLedger.js";
+import { Effect } from "effect"
 
 export async function initializeDb(dbFilePath: string) {
   const db = new sqlite3.Database(dbFilePath, (err) => {
     if (err) {
-      logAbort(`Error opening database: ${err.message}`);
+      Effect.logError(`Error opening database: ${err.message}`);
     } else {
-      logInfo("Connected to the SQLite database");
+      Effect.logInfo("Connected to the SQLite database");
     }
   });
   db.exec(`
@@ -62,28 +62,28 @@ export const insertUTxOs = async (
   return new Promise<void>((resolve, reject) => {
     db.run("BEGIN TRANSACTION;", (err) => {
       if (err) {
-        logAbort(`${tableName} db: error starting transaction: ${err.message}`);
+        Effect.logError(`${tableName} db: error starting transaction: ${err.message}`);
         return reject(err);
       }
       db.run(query, values, (err) => {
         if (err) {
-          logAbort(`${tableName} db: error inserting UTXOs: ${err.message}`);
+          Effect.logError(`${tableName} db: error inserting UTXOs: ${err.message}`);
           db.run("ROLLBACK;", () => reject(err));
         } else {
-          logInfo(`${tableName} db: ${utxos.length} new UTXOs added`);
+          Effect.logInfo(`${tableName} db: ${utxos.length} new UTXOs added`);
           db.run(assetQuery, assetValues, (err) => {
             if (err) {
-              logAbort(
+              Effect.logError(
                 `${tableName} db: error inserting assets: ${err.message}`,
               );
               db.run("ROLLBACK;", () => reject(err));
             } else {
-              logInfo(
+              Effect.logInfo(
                 `${tableName}: ${normalizedAssets.length} assets added to ${assetTableName}`,
               );
               db.run("COMMIT;", (err) => {
                 if (err) {
-                  logAbort(
+                  Effect.logError(
                     `${tableName}: error committing transaction: ${err.message}`,
                   );
                   return reject(err);
@@ -132,7 +132,7 @@ export const retrieveUTxOs = async (
   return new Promise((resolve, reject) => {
     db.all(query, (err, rows: UTxOFromRow[]) => {
       if (err) {
-        logAbort(`${tableName} db: error retrieving utxos: ${err.message}`);
+        Effect.logError(`${tableName} db: error retrieving utxos: ${err.message}`);
         return reject(err);
       }
       resolve(rows.map((r) => utxoFromRow(r)));
@@ -152,10 +152,10 @@ export const clearUTxOs = async (
   await new Promise<void>((resolve, reject) => {
     db.run(query, values, function (err) {
       if (err) {
-        logAbort(`${tableName} db: utxos removing error: ${err.message}`);
+        Effect.logError(`${tableName} db: utxos removing error: ${err.message}`);
         reject(err);
       } else {
-        logInfo(`${tableName} db: ${this.changes} utxos removed`);
+        Effect.logInfo(`${tableName} db: ${this.changes} utxos removed`);
         resolve();
       }
     });
@@ -183,7 +183,7 @@ export const retrieveTxCborsByHashes = async (
   const result = await new Promise<string[]>((resolve, reject) => {
     db.all(query, values, (err, rows: { tx_cbor: Buffer }[]) => {
       if (err) {
-        logAbort(`${tableName} db: retrieving error: ${err.message}`);
+        Effect.logError(`${tableName} db: retrieving error: ${err.message}`);
         reject(err);
       }
       resolve(rows.map((r) => toHex(new Uint8Array(r.tx_cbor))));
@@ -197,10 +197,10 @@ export const clearTable = async (db: sqlite3.Database, tableName: string) => {
   await new Promise<void>((resolve, reject) => {
     db.run(query, function (err) {
       if (err) {
-        logAbort(`${tableName} db: clearing error: ${err.message}`);
+        Effect.logError(`${tableName} db: clearing error: ${err.message}`);
         reject(err);
       } else {
-        logInfo(`${tableName} db: cleared`);
+        Effect.logInfo(`${tableName} db: cleared`);
         resolve();
       }
     });
@@ -270,8 +270,8 @@ const transformAssetsToObject = (
       assetsObject[unit] = BigInt(asset.quantity);
     });
     return assetsObject;
-  } catch (error) {
-    logAbort("error parsing assets:" + error);
+  } catch (e) {
+    Effect.logError(`error parsing assets: ${e}`);
     return {};
   }
 };

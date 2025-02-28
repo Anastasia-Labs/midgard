@@ -1,7 +1,6 @@
 import { fromHex, toHex } from "@lucid-evolution/lucid";
-import { Option } from "effect";
+import { Effect, Option } from "effect";
 import sqlite3 from "sqlite3";
-import { logAbort, logInfo } from "../utils.js";
 import { clearTable } from "./utils.js";
 
 export const createQuery = `
@@ -26,10 +25,10 @@ export const insert = async (
   await new Promise<void>((resolve, reject) => {
     db.run(query, values, function (err) {
       if (err) {
-        logAbort(`blocks db: inserting error: ${err.message}`);
+        Effect.logError(`blocks db: inserting error: ${err.message}`);
         reject(err);
       } else {
-        logInfo(`blocks db: ${tx_hashes.length} new tx_hashes added`);
+        Effect.logInfo(`blocks db: ${tx_hashes.length} new tx_hashes added`);
         resolve();
       }
     });
@@ -44,7 +43,7 @@ export const retrieveTxHashesByBlockHash = async (
   const txHashes = await new Promise<string[]>((resolve, reject) => {
     db.all(query, [fromHex(blockHash)], (err, rows: { tx_hash: Buffer }[]) => {
       if (err) {
-        logAbort(`blocks db: retrieving error: ${err.message}`);
+        Effect.logError(`blocks db: retrieving error: ${err.message}`);
         reject(err);
       }
       resolve(rows.map((r) => toHex(new Uint8Array(r.tx_hash))));
@@ -61,7 +60,7 @@ export const retrieveBlockHashByTxHash = async (
   const blockHash = await new Promise<string[]>((resolve, reject) => {
     db.all(query, [fromHex(txHash)], (err, rows: { header_hash: Buffer }[]) => {
       if (err) {
-        logAbort(`blocks db: retrieving error: ${err.message}`);
+        Effect.logError(`blocks db: retrieving error: ${err.message}`);
         reject(err);
       }
       resolve(rows.map((r) => toHex(new Uint8Array(r.header_hash))));
@@ -78,10 +77,10 @@ export const clearBlock = async (
   await new Promise<void>((resolve, reject) => {
     db.run(query, [fromHex(blockHash)], function (err) {
       if (err) {
-        logAbort(`blocks db: clearing error: ${err.message}`);
+        Effect.logError(`blocks db: clearing error: ${err.message}`);
         reject(err);
       } else {
-        logInfo(`blocks db: cleared`);
+        Effect.logInfo(`blocks db: cleared`)
         resolve();
       }
     });
@@ -93,7 +92,7 @@ export const retrieve = async (db: sqlite3.Database) => {
   const blocks = await new Promise<[string, string][]>((resolve, reject) => {
     db.all(query, (err, rows: { header_hash: Buffer; tx_hash: Buffer }[]) => {
       if (err) {
-        logAbort(`blocks db: retrieving error: ${err.message}`);
+        Effect.logError(`blocks db: retrieving error: ${err.message}`);
         reject(err);
       }
       const result: [string, string][] = rows.map((row) => [

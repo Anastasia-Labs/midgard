@@ -1,8 +1,6 @@
 import {
   findSpentAndProducedUTxOs,
   isHexString,
-  logInfo,
-  logWarning,
 } from "../utils.js";
 import {
   LucidEvolution,
@@ -126,7 +124,7 @@ export const listen = (
         const txHash = await Effect.runPromise(program);
         res.json({ message: `Initiation successful: ${txHash}` });
       } catch (e) {
-        logWarning(`Initiation failed: ${e}`);
+        Effect.logWarning(`Initiation failed: ${e}`);
         res.status(500).json({
           message: "Initiation failed.",
         });
@@ -194,7 +192,7 @@ export const listen = (
     });
 
     app.listen(port, () =>
-      logInfo(`Server running at http://localhost:${port}`),
+      Effect.logInfo(`Server running at http://localhost:${port}`)
     );
   });
 
@@ -214,7 +212,7 @@ const monitorStateQueue = (
       const fetchedBlocksOutRef = UtilsTx.utxoToOutRef(latestBlock);
       if (!UtilsTx.outRefsAreEqual(latestBlockOutRef, fetchedBlocksOutRef)) {
         latestBlockOutRef = fetchedBlocksOutRef;
-        logInfo("Committing a new block...");
+        Effect.logInfo("Committing a new block...");
         yield* StateQueueTx.buildAndSubmitCommitmentBlock(
           lucid,
           db,

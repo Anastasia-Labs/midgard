@@ -12,12 +12,12 @@ const makeUser = Effect.gen(function* ($) {
   user.selectWallet.fromSeed(nodeConfig.SEED_PHRASE);
   yield* pipe(
     Effect.promise(() => user.wallet().address()),
-    Effect.flatMap((address) => Effect.log(`Wallet : ${address}`)),
+    Effect.flatMap((address) => Effect.logInfo(`Wallet : ${address}`)),
   );
   yield* pipe(
     Effect.promise(() => user.wallet().getUtxos()),
     Effect.flatMap((utxos) =>
-      Effect.log(`Total Wallet UTxOs: ${utxos.length}`),
+      Effect.logInfo(`Total Wallet UTxOs: ${utxos.length}`),
     ),
   );
   return {
