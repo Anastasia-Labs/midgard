@@ -59,7 +59,8 @@ program.command("listen").action(async () => {
     Effect.provide(NodeConfig.layer),
   );
 
-  await Effect.runPromiseExit(program);
+  const result = await Effect.runPromiseExit(program);
+  console.dir(result, { depth: null });
 });
 
 program.parse(process.argv);

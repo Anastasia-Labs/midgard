@@ -40,7 +40,7 @@ export const resetStateQueue = Effect.gen(function* () {
     yield* SDK.Endpoints.fetchAllStateQueueUTxOsProgram(lucid, fetchConfig);
 
   // Collect and burn 10 UTxOs and asset names at a time:
-  const batchSize = 10;
+  const batchSize = 1;
   for (let i = 0; i < allUTxOsAndAssetNames.length; i += batchSize) {
     const batch = allUTxOsAndAssetNames.slice(i, i + batchSize);
     yield* collectAndBurnStateQueueNodesProgram(

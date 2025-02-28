@@ -1,0 +1,45 @@
+{
+  "name": "@midgard-manager/cli",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "bin": {
+    "midgard": "./dist/bin.js"
+  },
+  "scripts": {
+    "build": "tsup && pnpm copy-package-json",
+    "build:ts": "tsup",
+    "clean": "rimraf dist/*",
+    "check": "tsc -b tsconfig.json",
+    "lint": "eslint . --max-warnings=0",
+    "start": "node dist/bin.js",
+    "copy-package-json": "tsx scripts/copy-package-json.ts",
+    "test": "echo 'No tests yet' && exit 0"
+  },
+  "dependencies": {
+    "@anastasia-labs/cardano-multiplatform-lib-nodejs": "^6.0.2-3",
+    "@effect/cli": "latest",
+    "@effect/platform": "latest",
+    "@effect/platform-node": "latest",
+    "@effect/printer": "latest",
+    "@effect/printer-ansi": "latest",
+    "@effect/schema": "latest",
+    "@effect/typeclass": "latest",
+    "@inquirer/prompts": "^7.2.1",
+    "@lucid-evolution/lucid": "^0.4.20",
+    "@midgard-manager/tx-generator": "workspace:*",
+    "@types/node-cron": "^3.0.11",
+    "chalk": "^4.1.2",
+    "effect": "latest",
+    "node-cron": "^3.0.3",
+    "ora-classic": "^5.4.2"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.0",
+    "eslint": "^8.56.0",
+    "rimraf": "^5.0.5",
+    "tsup": "^8.0.1",
+    "tsx": "^4.7.1",
+    "typescript": "^5.3.3"
+  }
+}

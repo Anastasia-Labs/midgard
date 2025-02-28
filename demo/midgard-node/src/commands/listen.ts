@@ -71,7 +71,7 @@ export const listen = (
         });
       } else {
         res
-          .status(400)
+          .status(404)
           .json({ message: `Invalid transaction hash: ${txHash}` });
       }
     });
@@ -148,9 +148,9 @@ export const listen = (
         );
         await Effect.runPromise(program);
         res.json({ message: "Collected all UTxOs successfully!" });
-      } catch (_e) {
+      } catch (e) {
         res.status(400).json({
-          message: "Failed to collect one or more UTxOs. Please try again.",
+          message: `Failed to collect one or more UTxOs. Please try again. Error: ${e}`,
         });
       }
       try {
@@ -181,16 +181,19 @@ export const listen = (
             spentAndProducedProgram,
           );
           // TODO: Avoid abstraction, dedicate a SQL command.
-          await UtilsDB.modifyMultipleTables(
-            db,
-            [MempoolDB.insert, tx.toHash(), txCBOR],
-            [MempoolLedgerDB.clearUTxOs, spent],
-            [MempoolLedgerDB.insert, produced],
-          );
+          await MempoolDB.insert(db, tx.toHash(), txCBOR);
+          await MempoolLedgerDB.clearUTxOs(db, spent);
+          await MempoolLedgerDB.insert(db, produced);
+          // await UtilsDB.modifyMultipleTables(
+          //   db,
+          //   [MempoolDB.insert, tx.toHash(), txCBOR],
+          //   [MempoolLedgerDB.clearUTxOs, spent],
+          //   [MempoolLedgerDB.insert, produced],
+          // );
           Effect.runSync(Metric.increment(txCounter));
           res.json({ message: "Successfully submitted the transaction" });
         } catch (e) {
-          res.status(400).json({ message: "Something went wrong" });
+          res.status(400).json({ message: `Something went wrong: ${e}` });
         }
       } else {
         res.status(400).json({ message: "Invalid CBOR provided" });
@@ -267,19 +270,40 @@ export const runNode = Effect.gen(function* () {
     stateQueueAddress: spendScriptAddress,
     stateQueuePolicyId: policyId,
   };
-  const db = yield* Effect.tryPromise(() =>
-    UtilsDB.initializeDb(nodeConfig.DATABASE_PATH),
+
+  const db = yield* Effect.tryPromise({
+    try: () => UtilsDB.initializeDb(nodeConfig.DATABASE_PATH),
+    catch: (e) => new Error(`${e}`),
+  });
+
+  const otlpTraceExporter = new OTLPTraceExporter({
+    url: `http://localhost:${nodeConfig.OTLP_PORT}/v1/traces`,
+  });
+
+  // Log the OTLP port
+  logInfo(
+    `OTLP Trace Exporter running at http://localhost:${nodeConfig.OTLP_PORT}/v1/traces`,
   );
+
+  const prometheusExporter = new PrometheusExporter({
+    port: nodeConfig.PROM_METRICS_PORT,
+  });
+
+  // Ensure Prometheus exporter is started
+  yield* Effect.tryPromise({
+    try: async () => {
+      await prometheusExporter.startServer();
+      logInfo(
+        `Prometheus metrics available at http://localhost:${nodeConfig.PROM_METRICS_PORT}/metrics`,
+      );
+    },
+    catch: (e) => new Error(`Failed to start Prometheus metrics server: ${e}`),
+  });
+
   const MetricsLive = NodeSdk.layer(() => ({
     resource: { serviceName: "midgard-node" },
-    spanProcessor: new BatchSpanProcessor(
-      new OTLPTraceExporter({
-        url: `http://localhost:${nodeConfig.OTLP_PORT}/v1/traces`,
-      }),
-    ),
-    metricReader: new PrometheusExporter({
-      port: nodeConfig.PROM_METRICS_PORT,
-    }),
+    spanProcessor: new BatchSpanProcessor(otlpTraceExporter),
+    metricReader: prometheusExporter,
   }));
 
   yield* Effect.all([

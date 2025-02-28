@@ -12,7 +12,7 @@ services:
       - ./dist/index.js
       - listen
     ports:
-      - "8080:8080" # api server
+      - "3000:3000" # api server
       - "9464:9464" # prometheus exporter
       - "4318:4318" # opentelemetry
     volumes:
@@ -52,7 +52,7 @@ services:
     container_name: grafana
     image: grafana/grafana:latest
     ports:
-      - "3000:3000"
+      - "3001:3000"
     environment:
       - GF_PATHS_PROVISIONING=/etc/grafana/provisioning
       - DS_PROMETHEUS=prometheus
