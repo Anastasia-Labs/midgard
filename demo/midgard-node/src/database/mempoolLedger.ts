@@ -8,7 +8,7 @@ import {
   utxoFromRow,
   UTxOFromRow,
 } from "./utils.js";
-import { Effect } from "effect"
+import { Effect } from "effect";
 
 export const createQuery = `
   CREATE TABLE IF NOT EXISTS mempool_ledger (
@@ -71,7 +71,9 @@ export const retrieveUTxOsAtAddress = async (
   return new Promise((resolve, reject) => {
     db.all(query, [address], (err, rows: UTxOFromRow[]) => {
       if (err) {
-        Effect.logError(`mempool_ledger db: error retrieving utxos: ${err.message}`);
+        Effect.logError(
+          `mempool_ledger db: error retrieving utxos: ${err.message}`,
+        );
         return reject(err);
       }
       resolve(rows.map((r) => utxoFromRow(r)));

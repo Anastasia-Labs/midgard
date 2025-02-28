@@ -13,7 +13,7 @@ import * as immutable from "./immutable.js";
 import * as latestLedger from "./latestLedger.js";
 import * as mempool from "./mempool.js";
 import * as mempoolLedger from "./mempoolLedger.js";
-import { Effect } from "effect"
+import { Effect } from "effect";
 
 export async function initializeDb(dbFilePath: string) {
   const db = new sqlite3.Database(dbFilePath, (err) => {
@@ -62,12 +62,16 @@ export const insertUTxOs = async (
   return new Promise<void>((resolve, reject) => {
     db.run("BEGIN TRANSACTION;", (err) => {
       if (err) {
-        Effect.logError(`${tableName} db: error starting transaction: ${err.message}`);
+        Effect.logError(
+          `${tableName} db: error starting transaction: ${err.message}`,
+        );
         return reject(err);
       }
       db.run(query, values, (err) => {
         if (err) {
-          Effect.logError(`${tableName} db: error inserting UTXOs: ${err.message}`);
+          Effect.logError(
+            `${tableName} db: error inserting UTXOs: ${err.message}`,
+          );
           db.run("ROLLBACK;", () => reject(err));
         } else {
           Effect.logInfo(`${tableName} db: ${utxos.length} new UTXOs added`);
@@ -132,7 +136,9 @@ export const retrieveUTxOs = async (
   return new Promise((resolve, reject) => {
     db.all(query, (err, rows: UTxOFromRow[]) => {
       if (err) {
-        Effect.logError(`${tableName} db: error retrieving utxos: ${err.message}`);
+        Effect.logError(
+          `${tableName} db: error retrieving utxos: ${err.message}`,
+        );
         return reject(err);
       }
       resolve(rows.map((r) => utxoFromRow(r)));
@@ -152,7 +158,9 @@ export const clearUTxOs = async (
   await new Promise<void>((resolve, reject) => {
     db.run(query, values, function (err) {
       if (err) {
-        Effect.logError(`${tableName} db: utxos removing error: ${err.message}`);
+        Effect.logError(
+          `${tableName} db: utxos removing error: ${err.message}`,
+        );
         reject(err);
       } else {
         Effect.logInfo(`${tableName} db: ${this.changes} utxos removed`);

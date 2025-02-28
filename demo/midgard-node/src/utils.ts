@@ -110,7 +110,7 @@ export const findSpentAndProducedUTxOs = (
       try {
         spent.push(coreToOutRef(inputs.get(i)));
       } catch (e) {
-        Effect.logInfo(`Catched in findSpentAndProducedUTxOsL ${e}`);
+        Effect.logInfo(`Catched in findSpentAndProducedUTxOs ${e}`);
       }
     }
     const txHash = CML.hash_transaction(txBody).to_hex();
@@ -123,7 +123,7 @@ export const findSpentAndProducedUTxOs = (
         };
         produced.push(utxo);
       } catch (e) {
-        Effect.logInfo(`Catched in findSpentAndProducedUTxOsL ${e}`);
+        Effect.logInfo(`Catched in findSpentAndProducedUTxOs ${e}`);
       }
     }
     return Effect.succeed({ spent, produced });

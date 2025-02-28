@@ -80,7 +80,7 @@ export const clearBlock = async (
         Effect.logError(`blocks db: clearing error: ${err.message}`);
         reject(err);
       } else {
-        Effect.logInfo(`blocks db: cleared`)
+        Effect.logInfo(`blocks db: cleared`);
         resolve();
       }
     });

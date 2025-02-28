@@ -3,7 +3,7 @@ import { Option } from "effect";
 import sqlite3 from "sqlite3";
 import * as utils from "./utils.js";
 import { clearTable } from "./utils.js";
-import { Effect } from "effect"
+import { Effect } from "effect";
 
 export const createQuery = `
   CREATE TABLE IF NOT EXISTS mempool (
