@@ -19,7 +19,7 @@ import {
   ImmutableDB,
   UtilsDB,
 } from "../database/index.js";
-import { Duration, Effect, Option, Schedule, Metric, pipe } from "effect";
+import { Duration, Effect, Option, Schedule, Metric, pipe, Logger } from "effect";
 import { User, NodeConfig } from "@/config.js";
 import { AlwaysSucceedsContract } from "@/services/always-succeeds.js";
 import { NodeSdk } from "@effect/opentelemetry";
@@ -34,6 +34,7 @@ export const listen = (
   port: number,
 ): Effect.Effect<void, never, never> =>
   Effect.sync(() => {
+    Effect.provide(Logger.pretty)
     const app = express();
     const txCounter = Metric.counter("tx_count", {
       description: "A counter for tracking transactions",
