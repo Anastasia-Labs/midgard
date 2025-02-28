@@ -12,6 +12,7 @@ use cardano/transaction.{
 }
 use midgard/active_operators
 use midgard/ledger_state.{ConfirmedState, Header}
+use midgard/protocol_parameters.{shift_duration}
 use midgard/registered_operators
 use midgard/retired_operators
 use midgard/scheduler.{Datum as SchedulerDatum}
@@ -149,7 +150,7 @@ validator mint(
         expect
           header_node_block_data.end_time >= parsed_scheduler_state_datum.start_time
         expect
-          header_node_block_data.end_time <= parsed_scheduler_state_datum.end_time
+          header_node_block_data.end_time <= parsed_scheduler_state_datum.start_time + shift_duration
 
         // Update the operator's timestamp in the active operators set:
         // (11) The transaction must include an input, spent via the Update

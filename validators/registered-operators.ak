@@ -9,6 +9,7 @@ use cardano/transaction.{
   InlineDatum, Input, Output, OutputReference, Transaction,
 }
 use midgard/hub_oracle
+use midgard/protocol_parameters.{registration_duration}
 use midgard/registered_operators.{
   Activate, Active, Datum, Deinit, Deregister, Init, MintRedeemer, Register,
   Registered, RemoveDuplicateSlashBond, Retired,
@@ -33,7 +34,6 @@ validator spend(registered_operators_mint_script_hash: ByteArray) {
 
 validator mint(
   required_bond: Int,
-  registration_duration: Int,
   slashing_penalty: Int,
   hub_oracle_script_hash: PolicyId,
   hub_oracle_asset_name: ByteArray,
