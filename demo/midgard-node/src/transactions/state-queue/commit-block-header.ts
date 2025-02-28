@@ -1,18 +1,13 @@
 // Build a tx Merkle root with all the mempool txs
 
+import { DB, LatestLedgerDB, MempoolDB } from "@/database/index.js";
+import { AlwaysSucceeds } from "@/services/index.js";
+import { findAllSpentAndProducedUTxOs } from "@/utils.js";
+import * as SDK from "@al-ft/midgard-sdk";
 import { LucidEvolution } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 import { Database } from "sqlite3";
-import * as SDK from "@al-ft/midgard-sdk";
 import { handleSignSubmit } from "../utils.js";
-import {
-  LatestLedgerDB,
-  MempoolDB,
-  ImmutableDB,
-  UtilsDB,
-} from "@/database/index.js";
-import { findAllSpentAndProducedUTxOs } from "@/utils.js";
-import { AlwaysSucceeds } from "@/services/index.js";
 
 // Apply mempool txs to LatestLedgerDB, and find the new UTxO set
 
@@ -28,7 +23,7 @@ export const buildAndSubmitCommitmentBlock = (
   lucid: LucidEvolution,
   db: Database,
   fetchConfig: SDK.TxBuilder.StateQueue.FetchConfig,
-  endTime: number,
+  endTime: number
 ) =>
   Effect.gen(function* () {
     // Fetch transactions from the first block
@@ -40,7 +35,7 @@ export const buildAndSubmitCommitmentBlock = (
       const { spent: spentList, produced: producedList } =
         yield* findAllSpentAndProducedUTxOs(txCbors);
       const utxoList = yield* Effect.tryPromise(() =>
-        LatestLedgerDB.retrieve(db),
+        LatestLedgerDB.retrieve(db)
       );
       // Remove spent UTxOs from utxoList
       const filteredUTxOList = utxoList.filter(
@@ -48,13 +43,13 @@ export const buildAndSubmitCommitmentBlock = (
           !spentList.some(
             (spent) =>
               spent.txHash === utxo.txHash &&
-              spent.outputIndex === utxo.outputIndex,
-          ),
+              spent.outputIndex === utxo.outputIndex
+          )
       );
 
       // Merge filtered utxoList with producedList
       const newUTxOList = [...filteredUTxOList, ...producedList].map(
-        (utxo) => utxo.txHash + utxo.outputIndex,
+        (utxo) => utxo.txHash + utxo.outputIndex
       );
       const utxoRoot = yield* SDK.Utils.mptFromList(newUTxOList);
       const { spendScript } = yield* AlwaysSucceeds.AlwaysSucceedsContract;
@@ -70,20 +65,13 @@ export const buildAndSubmitCommitmentBlock = (
         lucid,
         fetchConfig,
         commitBlockParams,
-        aoUpdateCommitmentTimeParams,
+        aoUpdateCommitmentTimeParams
       );
       // Submit the transaction
       yield* handleSignSubmit(lucid, txBuilder);
       // TODO: For final product, handle tx submission failures properly.
       yield* Effect.tryPromise({
-        try: () =>
-          UtilsDB.modifyMultipleTables(
-            db,
-            [LatestLedgerDB.clearUTxOs, spentList],
-            [LatestLedgerDB.insert, producedList],
-            [MempoolDB.clear],
-            [ImmutableDB.insertTxs, txs],
-          ),
+        try: () => DB.submitBlock(db, spentList, producedList, txs),
         catch: (e) => new Error(`Transaction failed: ${e}`),
       });
     }

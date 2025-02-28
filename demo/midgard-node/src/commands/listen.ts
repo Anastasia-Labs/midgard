@@ -1,47 +1,40 @@
+import { NodeConfig, User } from "@/config.js";
+import { AlwaysSucceedsContract } from "@/services/always-succeeds.js";
+import { StateQueueTx, UtilsTx } from "@/transactions/index.js";
+import * as SDK from "@al-ft/midgard-sdk";
+import { NodeSdk } from "@effect/opentelemetry";
+import {
+  LucidEvolution,
+  OutRef,
+  getAddressDetails,
+} from "@lucid-evolution/lucid";
+import { PrometheusExporter } from "@opentelemetry/exporter-prometheus";
+import { OTLPTraceExporter } from "@opentelemetry/exporter-trace-otlp-http";
+import { BatchSpanProcessor } from "@opentelemetry/sdk-trace-base";
+import { Duration, Effect, Metric, Option, Schedule, pipe } from "effect";
+import express from "express";
+import sqlite3 from "sqlite3";
+import {
+  BlocksDB,
+  ConfirmedLedgerDB,
+  DB,
+  ImmutableDB,
+  LatestLedgerDB,
+  MempoolDB,
+  MempoolLedgerDB,
+  UtilsDB,
+} from "../database/index.js";
 import {
   findSpentAndProducedUTxOs,
   isHexString,
   logInfo,
   logWarning,
 } from "../utils.js";
-import {
-  LucidEvolution,
-  OutRef,
-  getAddressDetails,
-} from "@lucid-evolution/lucid";
-import * as SDK from "@al-ft/midgard-sdk";
-import express from "express";
-import sqlite3 from "sqlite3";
-import {
-  MempoolDB,
-  MempoolLedgerDB,
-  LatestLedgerDB,
-  ConfirmedLedgerDB,
-  BlocksDB,
-  ImmutableDB,
-  UtilsDB,
-} from "../database/index.js";
-import {
-  Duration,
-  Effect,
-  Option,
-  Schedule,
-  Metric,
-  pipe,
-  Console,
-} from "effect";
-import { User, NodeConfig } from "@/config.js";
-import { AlwaysSucceedsContract } from "@/services/always-succeeds.js";
-import { NodeSdk } from "@effect/opentelemetry";
-import { BatchSpanProcessor } from "@opentelemetry/sdk-trace-base";
-import { PrometheusExporter } from "@opentelemetry/exporter-prometheus";
-import { OTLPTraceExporter } from "@opentelemetry/exporter-trace-otlp-http";
-import { StateQueueTx, UtilsTx } from "@/transactions/index.js";
 
 export const listen = (
   lucid: LucidEvolution,
   db: sqlite3.Database,
-  port: number,
+  port: number
 ): Effect.Effect<void, never, never> =>
   Effect.sync(() => {
     const app = express();
@@ -90,9 +83,9 @@ export const listen = (
             MempoolLedgerDB.retrieve(db).then((allUTxOs) =>
               res.json({
                 utxos: allUTxOs.filter(
-                  (a) => a.address === addrDetails.address.bech32,
+                  (a) => a.address === addrDetails.address.bech32
                 ),
-              }),
+              })
             );
           } else {
             res.status(400).json({ message: `Invalid address: ${addr}` });
@@ -114,7 +107,7 @@ export const listen = (
         hdrHash.length === 32
       ) {
         BlocksDB.retrieveTxHashesByBlockHash(db, hdrHash).then((hashes) =>
-          res.json({ hashes }),
+          res.json({ hashes })
         );
       } else {
         res
@@ -129,7 +122,7 @@ export const listen = (
           StateQueueTx.stateQueueInit,
           Effect.provide(User.layer),
           Effect.provide(AlwaysSucceedsContract.layer),
-          Effect.provide(NodeConfig.layer),
+          Effect.provide(NodeConfig.layer)
         );
         const txHash = await Effect.runPromise(program);
         res.json({ message: `Initiation successful: ${txHash}` });
@@ -148,7 +141,7 @@ export const listen = (
           StateQueueTx.resetStateQueue,
           Effect.provide(User.layer),
           Effect.provide(AlwaysSucceedsContract.layer),
-          Effect.provide(NodeConfig.layer),
+          Effect.provide(NodeConfig.layer)
         );
         await Effect.runPromise(program);
         res.json({ message: "Collected all UTxOs successfully!" });
@@ -182,18 +175,9 @@ export const listen = (
           const tx = lucid.fromTx(txCBOR);
           const spentAndProducedProgram = findSpentAndProducedUTxOs(txCBOR);
           const { spent, produced } = await Effect.runPromise(
-            spentAndProducedProgram,
+            spentAndProducedProgram
           );
-          // TODO: Avoid abstraction, dedicate a SQL command.
-          await MempoolDB.insert(db, tx.toHash(), txCBOR);
-          await MempoolLedgerDB.clearUTxOs(db, spent);
-          await MempoolLedgerDB.insert(db, produced);
-          // await UtilsDB.modifyMultipleTables(
-          //   db,
-          //   [MempoolDB.insert, tx.toHash(), txCBOR],
-          //   [MempoolLedgerDB.clearUTxOs, spent],
-          //   [MempoolLedgerDB.insert, produced],
-          // );
+          await DB.submitTx(db, tx.toHash(), txCBOR, spent, produced);
           Effect.runSync(Metric.increment(txCounter));
           res.json({ message: "Successfully submitted the transaction" });
         } catch (e) {
@@ -205,7 +189,7 @@ export const listen = (
     });
 
     app.listen(port, () =>
-      logInfo(`Server running at http://localhost:${port}`),
+      logInfo(`Server running at http://localhost:${port}`)
     );
   });
 
@@ -213,14 +197,14 @@ const monitorStateQueue = (
   lucid: LucidEvolution,
   fetchConfig: SDK.TxBuilder.StateQueue.FetchConfig,
   db: sqlite3.Database,
-  pollingInterval: number,
+  pollingInterval: number
 ) =>
   Effect.gen(function* () {
     let latestBlockOutRef: OutRef = { txHash: "", outputIndex: 0 };
     const monitor = Effect.gen(function* () {
       const latestBlock = yield* SDK.Endpoints.fetchLatestCommitedBlockProgram(
         lucid,
-        fetchConfig,
+        fetchConfig
       );
       const fetchedBlocksOutRef = UtilsTx.utxoToOutRef(latestBlock);
       if (!UtilsTx.outRefsAreEqual(latestBlockOutRef, fetchedBlocksOutRef)) {
@@ -230,12 +214,12 @@ const monitorStateQueue = (
           lucid,
           db,
           fetchConfig,
-          Date.now(),
+          Date.now()
         );
       }
     });
     const schedule = Schedule.addDelay(Schedule.forever, () =>
-      Duration.millis(pollingInterval),
+      Duration.millis(pollingInterval)
     );
     yield* Effect.repeat(monitor, schedule);
   });
@@ -243,7 +227,7 @@ const monitorStateQueue = (
 export const storeTx = async (
   lucid: LucidEvolution,
   db: sqlite3.Database,
-  tx: string,
+  tx: string
 ) =>
   Effect.gen(function* () {
     const txHash = lucid.fromTx(tx).toHash();
@@ -254,15 +238,15 @@ const monitorConfirmedState = (
   lucid: LucidEvolution,
   fetchConfig: SDK.TxBuilder.StateQueue.FetchConfig,
   db: sqlite3.Database,
-  pollingInterval: number,
+  pollingInterval: number
 ) =>
   Effect.gen(function* () {
     const schedule = Schedule.addDelay(Schedule.forever, () =>
-      Duration.millis(pollingInterval),
+      Duration.millis(pollingInterval)
     );
     yield* Effect.repeat(
       StateQueueTx.buildAndSubmitMergeTx(lucid, db, fetchConfig),
-      schedule,
+      schedule
     );
   });
 
@@ -286,7 +270,7 @@ export const runNode = Effect.gen(function* () {
 
   // Log the OTLP port
   logInfo(
-    `OTLP Trace Exporter running at http://localhost:${nodeConfig.OTLP_PORT}/v1/traces`,
+    `OTLP Trace Exporter running at http://localhost:${nodeConfig.OTLP_PORT}/v1/traces`
   );
 
   const prometheusExporter = new PrometheusExporter({
@@ -298,7 +282,7 @@ export const runNode = Effect.gen(function* () {
     try: async () => {
       await prometheusExporter.startServer();
       logInfo(
-        `Prometheus metrics available at http://localhost:${nodeConfig.PROM_METRICS_PORT}/metrics`,
+        `Prometheus metrics available at http://localhost:${nodeConfig.PROM_METRICS_PORT}/metrics`
       );
     },
     catch: (e) => new Error(`Failed to start Prometheus metrics server: ${e}`),
@@ -322,6 +306,6 @@ export const runNode = Effect.gen(function* () {
   ]).pipe(
     Effect.withSpan("midgard-node"),
     Effect.tap(() => Effect.annotateCurrentSpan("migdard-node", "runner")),
-    Effect.provide(MetricsLive),
+    Effect.provide(MetricsLive)
   );
 });

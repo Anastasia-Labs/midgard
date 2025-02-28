@@ -5,11 +5,12 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import {
   BlocksDB,
   ConfirmedLedgerDB,
+  DB,
   ImmutableDB,
   LatestLedgerDB,
   MempoolDB,
-  UtilsDB,
   MempoolLedgerDB,
+  UtilsDB,
 } from "../src/database/index.js";
 
 describe("database", () => {
@@ -66,6 +67,7 @@ describe("database", () => {
         "6e461fe947e14c4a53b905d0aa92f08bff98fb94129f6ed26877fcf1c8a4495192c0b379fb06aa3b",
     },
   };
+
   it("should store tx hashes in blocks db", async () => {
     await BlocksDB.insert(db, block1Hash, [tx1Hash]);
     const result1 = await BlocksDB.retrieve(db);
@@ -183,7 +185,7 @@ describe("database", () => {
   it("retrieves utxos by address in the mempool ledger db", async () => {
     const result1 = await MempoolLedgerDB.retrieveUTxOsAtAddress(
       db,
-      "non-existent address",
+      "non-existent address"
     );
     expect(result1).toEqual([]);
 
@@ -247,7 +249,7 @@ describe("database", () => {
     const nonExistentTxHash = "1234";
     const result1 = await ImmutableDB.retrieveTxCborByHash(
       db,
-      nonExistentTxHash,
+      nonExistentTxHash
     );
     expect(result1).toEqual(Option.none());
 
@@ -386,6 +388,45 @@ describe("database", () => {
     await LatestLedgerDB.clear(db);
     const result = await LatestLedgerDB.retrieve(db);
     expect(result.length).toBe(0);
+  });
+
+  it("submitTx transaction affects mempool db", async () => {
+    await MempoolLedgerDB.clear;
+    await MempoolLedgerDB.insert(db, [utxo1]);
+    const mempoolLedgerInit = await MempoolLedgerDB.retrieve(db);
+    const spent = [{ txHash: utxo1.txHash, outputIndex: utxo1.outputIndex }];
+    const produced = [utxo2];
+    await DB.submitTx(db, tx1Hash, tx1, spent, produced);
+    const mempool = await MempoolDB.retrieve(db);
+    expect(mempool.map((o) => Object.values(o))).toStrictEqual([
+      [tx1Hash, tx1],
+    ]);
+  });
+
+  it("submitTx transaction affects mempool ledger db", async () => {
+    const mempoolLedger = await MempoolLedgerDB.retrieve(db);
+    expect(mempoolLedger).toStrictEqual([utxo2]);
+  });
+
+  it("submitBlock transaction affects latest ledger db", async () => {
+    await ImmutableDB.clear(db);
+    const spent = [{ txHash: utxo1.txHash, outputIndex: utxo1.outputIndex }];
+    const produced = [utxo2];
+    const txs = [{ txCbor: tx1, txHash: tx1Hash }];
+    await DB.submitBlock(db, spent, produced, txs);
+    const latestLedger = await LatestLedgerDB.retrieve(db);
+    expect(latestLedger).toStrictEqual([utxo2]);
+  });
+
+  it("submitBlock transaction affects mempool db", async () => {
+    const mempool = await MempoolDB.retrieve(db);
+    expect(mempool).toStrictEqual([]);
+  });
+
+  it("submitBlock transaction affects immutable db", async () => {
+    const immutable = await ImmutableDB.retrieve(db);
+    console.log(immutable);
+    expect(immutable).toStrictEqual([[tx1Hash, tx1]]);
   });
 });
 
