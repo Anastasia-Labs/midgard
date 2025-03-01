@@ -425,8 +425,25 @@ describe("database", () => {
 
   it("submitBlock transaction affects immutable db", async () => {
     const immutable = await ImmutableDB.retrieve(db);
-    console.log(immutable);
     expect(immutable).toStrictEqual([[tx1Hash, tx1]]);
+  });
+
+  it("buildAndSubmitMergeTx transaction affects confirmed ledger db", async () => {
+    const spent = [{ txHash: utxo1.txHash, outputIndex: utxo1.outputIndex }];
+    const produced = [utxo2];
+    const headerHash = "1234";
+    await BlocksDB.clear(db);
+    await BlocksDB.insert(db, headerHash, [tx1Hash]);
+    await ConfirmedLedgerDB.insert(db, [utxo1]);
+    await ImmutableDB.insert(db, tx2Hash, tx2);
+    await DB.buildAndSubmitMergeTx(db, spent, produced, headerHash);
+    const confirmedLedger = await ConfirmedLedgerDB.retrieve(db);
+    expect(confirmedLedger).toEqual([utxo2]);
+  });
+
+  it("buildAndSubmitMergeTx transaction affects blocks db", async () => {
+    const blocks = await BlocksDB.retrieve(db);
+    expect(blocks).toEqual([]);
   });
 });
 

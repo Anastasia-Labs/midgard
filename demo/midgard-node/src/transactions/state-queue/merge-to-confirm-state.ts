@@ -7,7 +7,7 @@
  * 4. Build and submit the merge transaction.
  */
 
-import { BlocksDB, ConfirmedLedgerDB, UtilsDB } from "@/database/index.js";
+import { DB } from "@/database/index.js";
 import { AlwaysSucceeds } from "@/services/index.js";
 import { findAllSpentAndProducedUTxOs } from "@/utils.js";
 import * as SDK from "@al-ft/midgard-sdk";
@@ -59,13 +59,7 @@ export const buildAndSubmitMergeTx = (
     // - Remove all the tx hashes of the merged block from BlocksDB
     yield* Effect.tryPromise({
       try: () =>
-        UtilsDB.modifyMultipleTables(
-          //TODO: remove
-          db,
-          [ConfirmedLedgerDB.clearUTxOs, spentOutRefs],
-          [ConfirmedLedgerDB.insert, producedUTxOs],
-          [BlocksDB.clearBlock, headerHash]
-        ),
+        DB.buildAndSubmitMergeTx(db, spentOutRefs, producedUTxOs, headerHash),
       catch: (e) => new Error(`Transaction failed: ${e}`),
     });
   });

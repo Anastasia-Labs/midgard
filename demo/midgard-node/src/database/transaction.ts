@@ -293,3 +293,121 @@ export const submitBlock = async (
     }
   });
 };
+
+export const buildAndSubmitMergeTx = async (
+  db: sqlite3.Database,
+  spentOutRefs: OutRef[],
+  producedUTxOs: UTxO[],
+  headerHash: string
+) => {
+  return new Promise<void>(async (resolve, reject) => {
+    try {
+      await new Promise<void>((resolve) => {
+        db.run("BEGIN TRANSACTION;", function (err) {
+          if (err) {
+            logAbort(`db: error beggining transaction: ${err.message}`);
+            reject(err);
+          }
+          resolve();
+        });
+      });
+
+      await new Promise<void>((resolve) => {
+        const query = `DELETE FROM confirmed_ledger WHERE (tx_hash, output_index) IN (${spentOutRefs
+          .map(() => `(?, ?)`)
+          .join(", ")})`;
+        const values = spentOutRefs.flatMap((r) => [
+          fromHex(r.txHash),
+          r.outputIndex,
+        ]);
+        db.run(query, values, function (err) {
+          if (err) {
+            logAbort(
+              `confirmed_ledger db: error clearing utxos: ${err.message}`
+            );
+            reject(err);
+          }
+          resolve();
+        });
+      });
+
+      await new Promise<void>((resolve) => {
+        const query = `
+          INSERT INTO confirmed_ledger
+              (tx_hash, output_index, address, datum_hash, datum, script_ref_type, script_ref_script)
+            VALUES
+          ${producedUTxOs.map(() => `(?, ?, ?, ?, ?, ?, ?)`).join(", ")}
+          `;
+        const values = producedUTxOs.flatMap((utxo) =>
+          Object.values(utxoToRow(utxo))
+        );
+        db.run(query, values, function (err) {
+          if (err) {
+            logAbort(
+              `confirmed_ledger db: error inserting utxos: ${err.message}`
+            );
+            reject(err);
+          }
+          resolve();
+        });
+      });
+
+      await new Promise<void>((resolve) => {
+        const normalizedAssets = producedUTxOs.flatMap((utxo) =>
+          utxoToNormalizedAssets(utxo)
+        );
+        const query = `
+          INSERT INTO confirmed_ledger_assets
+              (tx_hash, output_index, unit, quantity)
+            VALUES
+              ${normalizedAssets.map(() => `(?, ?, ?, ?)`).join(", ")}
+          `;
+        const values = normalizedAssets.flatMap((v) => Object.values(v));
+        db.run(query, values, function (err) {
+          if (err) {
+            logAbort(
+              `confirmed_ledger db: error inserting assets: ${err.message}`
+            );
+            reject(err);
+          }
+          resolve();
+        });
+      });
+
+      await new Promise<void>((resolve) => {
+        const query = `DELETE from blocks WHERE header_hash = ?`;
+        db.run(query, [fromHex(headerHash)], function (err) {
+          if (err) {
+            logAbort(`blocks db: clearing error: ${err.message}`);
+            reject(err);
+          } else {
+            resolve();
+          }
+        });
+      });
+
+      await new Promise<void>((resolve) => {
+        db.run("COMMIT;", function (err) {
+          if (err) {
+            logAbort(`db: error commiting transaction: ${err.message}`);
+            reject(err);
+          }
+          resolve();
+        });
+      });
+
+      resolve();
+    } catch (err) {
+      await new Promise<void>((resolve) => {
+        db.run("ROLLBACK;", function (err) {
+          if (err) {
+            logAbort(`db: transaction rollback error: ${err.message}`);
+            reject(err);
+          }
+          resolve();
+        });
+      });
+      throw err;
+    }
+  });
+};
