@@ -101,7 +101,7 @@ export const buildAndSubmitCommitmentBlock = (
       });
       // TODO: For final product, handle tx submission failures properly.
       yield* Effect.tryPromise({
-        try: async () => await DB.submitBlock(db, spentList, producedList, txs),
+        try: () => DB.submitBlock(db, spentList, producedList, txs),
         catch: (e) => new Error(`Transaction failed: ${e}`),
       });
     }
