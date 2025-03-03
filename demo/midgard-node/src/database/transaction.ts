@@ -43,7 +43,7 @@ const runRollbackTransaction = async (
   funcName: string,
   err: any
 ) => {
-  logAbort(`db: an error occurred during transaction: ${err}`);
+  logAbort(`db: an error occurred during transaction from ${funcName}: ${err}`);
   await runAsync(db, "ROLLBACK", undefined, (err) =>
     logAbort(`db: transaction rollback error from ${funcName}: ${err.message}`)
   );
