@@ -4,25 +4,23 @@ import { makeReturn } from "../../core.js";
 import { getConfirmedStateFromUTxO } from "../../utils/state-queue.js";
 import { getNodeDatumFromUTxO } from "../../utils/linked-list.js";
 import { LedgerState, LinkedList, StateQueue } from "../../tx-builder/index.js";
-
+import { utxosAtByNFTPolicyId } from "@/utils/common.js";
 export const fetchConfirmedStateAndItsLinkProgram = (
   lucid: LucidEvolution,
   config: StateQueue.FetchConfig,
 ): Effect.Effect<{ confirmed: UTxO; link?: UTxO }, Error> =>
   Effect.gen(function* () {
-    const rootUTxOs = yield* Effect.tryPromise({
-      try: () =>
-        lucid.utxosAtWithUnit(
-          config.stateQueueAddress,
-          toUnit(config.stateQueuePolicyId, fromText("Node")),
-        ),
-      catch: (e) => new Error(`Failed to fetch root UTxOs: ${e}`),
-    });
+    const allUTxOs = yield* utxosAtByNFTPolicyId(
+      lucid,
+      config.stateQueueAddress,
+      config.stateQueuePolicyId,
+      // toUnit(config.stateQueuePolicyId, fromText("Node"))
+    );
     let confirmedStateResult:
       | { data: LedgerState.ConfirmedState; link: LinkedList.NodeKey }
       | undefined;
     const filteredForConfirmedState = yield* Effect.allSuccesses(
-      rootUTxOs.map((u: UTxO) => {
+      allUTxOs.map((u: UTxO) => {
         const confirmedStateEffect = getConfirmedStateFromUTxO(u);
         return Effect.map(confirmedStateEffect, (confirmedState) => {
           confirmedStateResult = confirmedState;
@@ -30,17 +28,20 @@ export const fetchConfirmedStateAndItsLinkProgram = (
         });
       }),
     );
+    // console.log("allUTxOs :>> ", allUTxOs);
     if (filteredForConfirmedState.length === 1 && confirmedStateResult) {
       const confirmedStateUTxO = filteredForConfirmedState[0];
       if (confirmedStateResult.link !== "Empty") {
         const firstLink = confirmedStateResult.link.Key;
+        console.log("firstLink :>> ", firstLink);
         const filteredForLink = yield* Effect.allSuccesses(
-          rootUTxOs.map((u: UTxO) => {
+          allUTxOs.map((u: UTxO) => {
             const nodeDatumEffect = getNodeDatumFromUTxO(u);
             return Effect.andThen(nodeDatumEffect, (nodeDatum) => {
+              console.log("nodeDatum :>> ", nodeDatum);
               if (
                 nodeDatum.key !== "Empty" &&
-                nodeDatum.key.Key === firstLink
+                nodeDatum.key.Key.key === firstLink.key
               ) {
                 return Effect.succeed(u);
               } else {

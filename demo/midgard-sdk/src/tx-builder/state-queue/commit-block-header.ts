@@ -1,8 +1,11 @@
 import {
+  Assets,
   Data,
   LucidEvolution,
   TxBuilder,
+  fromText,
   paymentCredentialOf,
+  toUnit,
 } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 import { CommitBlockParams, FetchConfig } from "./types.js";
@@ -14,6 +17,7 @@ import {
 } from "../../utils/ledger-state.js";
 import { getNodeDatumFromUTxO } from "@/utils/linked-list.js";
 import { getConfirmedStateFromUTxO } from "@/utils/state-queue.js";
+import { NodeDatum } from "../linked-list.js";
 
 /**
  * Builds portions of a tx required for submitting a new block, using the
@@ -32,6 +36,8 @@ export const commitTxBuilder = (
     transactionsRoot,
     endTime,
     stateQueueSpendingScript,
+    policyId,
+    stateQueueMintingScript,
   }: CommitBlockParams,
 ): Effect.Effect<TxBuilder, Error> =>
   Effect.gen(function* () {
@@ -42,48 +48,84 @@ export const commitTxBuilder = (
     const pubkeyHash = paymentCredentialOf(walletAddress).hash;
     const latestBlock = yield* fetchLatestCommitedBlockProgram(lucid, config);
     const latestNodeDatum = yield* getNodeDatumFromUTxO(latestBlock);
-    const makeNewHeaderProgram: () => Effect.Effect<Header, Error> = () => {
+    const makeNewHeaderProgram: () => Effect.Effect<
+      { nodeDatum: NodeDatum; header: Header },
+      Error
+    > = () => {
       if (latestNodeDatum.key === "Empty") {
         const confirmedStateProgram = getConfirmedStateFromUTxO(latestBlock);
-        return Effect.map(confirmedStateProgram, (confirmedState) => ({
-          prevUtxosRoot: confirmedState.data.utxoRoot,
-          utxosRoot: newUTxOsRoot,
-          transactionsRoot,
-          depositsRoot: "00".repeat(32),
-          withdrawalsRoot: "00".repeat(32),
-          startTime: confirmedState.data.endTime,
-          endTime,
-          prevHeaderHash: confirmedState.data.headerHash,
-          operatorVkey: pubkeyHash,
-          protocolVersion: confirmedState.data.protocolVersion,
-        }));
+        return Effect.map(confirmedStateProgram, (confirmedState) => {
+          return {
+            nodeDatum: {
+              ...latestNodeDatum,
+              next: { Key: { key: confirmedState.data.headerHash } },
+            },
+            header: {
+              prevUtxosRoot: confirmedState.data.utxoRoot,
+              utxosRoot: newUTxOsRoot,
+              transactionsRoot,
+              depositsRoot: "00".repeat(32),
+              withdrawalsRoot: "00".repeat(32),
+              startTime: confirmedState.data.endTime,
+              endTime,
+              prevHeaderHash: confirmedState.data.headerHash,
+              operatorVkey: pubkeyHash,
+              protocolVersion: confirmedState.data.protocolVersion,
+            },
+          };
+        });
       } else {
         const latestHeaderProgram = getHeaderFromBlockUTxO(latestBlock);
         return Effect.andThen(latestHeaderProgram, (latestHeader) => {
           const prevHeaderHashProgram = hashHeader(latestHeader);
-          return Effect.map(prevHeaderHashProgram, (prevHeaderHash) => ({
-            ...latestHeader,
-            prevUtxosRoot: latestHeader.utxosRoot,
-            utxosRoot: newUTxOsRoot,
-            transactionsRoot,
-            startTime: latestHeader.endTime,
-            endTime,
-            prevHeaderHash,
-          }));
+          return Effect.map(prevHeaderHashProgram, (prevHeaderHash) => {
+            return {
+              nodeDatum: {
+                ...latestNodeDatum,
+                next: { Key: { key: prevHeaderHash } },
+              },
+              header: {
+                ...latestHeader,
+                prevUtxosRoot: latestHeader.utxosRoot,
+                utxosRoot: newUTxOsRoot,
+                transactionsRoot,
+                startTime: latestHeader.endTime,
+                endTime,
+                prevHeaderHash,
+              },
+            };
+          });
         });
       }
     };
-    const newHeader: Header = yield* makeNewHeaderProgram();
+    const { nodeDatum: updatedNodeDatum, header: newHeader } =
+      yield* makeNewHeaderProgram();
+    console.log("newHeader :>> ", newHeader);
+    const assets: Assets = {
+      [toUnit(policyId, fromText("Node") + newHeader.prevHeaderHash)]: 1n,
+    };
+    const newNodeDatum: NodeDatum = {
+      key: updatedNodeDatum.next,
+      next: "Empty",
+      data: Data.castTo(newHeader, Header),
+    };
     const tx = lucid
       .newTx()
-      .validFrom(Number(newHeader.startTime))
-      .validTo(Number(endTime))
+      // .validFrom(Number(newHeader.startTime))
+      // .validTo(Number(endTime))
       .collectFrom([latestBlock], "d87980") // TODO: Placeholder redeemer.
       .pay.ToContract(
         config.stateQueueAddress,
-        { kind: "inline", value: Data.to(newHeader, Header) },
+        { kind: "inline", value: Data.to(newNodeDatum, NodeDatum) },
+        assets,
+      )
+      .pay.ToContract(
+        config.stateQueueAddress,
+        { kind: "inline", value: Data.to(updatedNodeDatum, NodeDatum) },
         latestBlock.assets,
       )
-      .attach.Script(stateQueueSpendingScript);
+      .mintAssets(assets, Data.void())
+      .attach.Script(stateQueueSpendingScript)
+      .attach.Script(stateQueueMintingScript);
     return tx;
   });

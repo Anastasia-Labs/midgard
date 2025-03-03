@@ -1,5 +1,12 @@
 import * as SDK from "@al-ft/midgard-sdk";
-import { LucidEvolution, Script, UTxO, toUnit } from "@lucid-evolution/lucid";
+import {
+  Assets,
+  Data,
+  LucidEvolution,
+  Script,
+  UTxO,
+  toUnit,
+} from "@lucid-evolution/lucid";
 import { AlwaysSucceeds } from "@/services/index.js";
 import { User } from "@/config.js";
 import { Effect } from "effect";
@@ -14,15 +21,18 @@ const collectAndBurnStateQueueNodesProgram = (
 ): Effect.Effect<void, Error> =>
   Effect.gen(function* () {
     const tx = lucid.newTx();
+    const assetsToBurn: Assets = {};
     utxosAndAssetNames.map(({ utxo, assetName }) => {
-      tx.collectFrom([utxo], "d87980") // TODO: Placeholder redeemer.
-        .mintAssets(
-          { [toUnit(fetchConfig.stateQueuePolicyId, assetName)]: -1n },
-          "d87980",
-        );
+      const unit = toUnit(fetchConfig.stateQueuePolicyId, assetName);
+      if (assetsToBurn[unit] !== undefined) {
+        assetsToBurn[unit] -= 1n;
+      } else {
+        assetsToBurn[unit] = -1n;
+      }
+      tx.collectFrom([utxo], Data.void());
     });
-    tx.attach
-      .Script(stateQueueSpendingScript)
+    tx.mintAssets(assetsToBurn, Data.void())
+      .attach.Script(stateQueueSpendingScript)
       .attach.Script(stateQueueMintingScript);
     const completed = yield* tx.completeProgram();
     return yield* handleSignSubmit(lucid, completed);
@@ -40,7 +50,7 @@ export const resetStateQueue = Effect.gen(function* () {
     yield* SDK.Endpoints.fetchAllStateQueueUTxOsProgram(lucid, fetchConfig);
 
   // Collect and burn 10 UTxOs and asset names at a time:
-  const batchSize = 1;
+  const batchSize = 10;
   for (let i = 0; i < allUTxOsAndAssetNames.length; i += batchSize) {
     const batch = allUTxOsAndAssetNames.slice(i, i + batchSize);
     yield* collectAndBurnStateQueueNodesProgram(

@@ -80,46 +80,46 @@ export class MidgardNodeClient {
         }
 
         let attempts = 0;
-        while (attempts < this.retryAttempts) {
-          try {
-            const response = await fetch(
-              `${this.baseUrl}/submit?tx_cbor=${encodeURIComponent(cborHex)}`,
-              {
-                method: 'POST',
-                headers: {
-                  'Content-Type': 'text/plain',
-                },
-                signal,
-              }
-            );
-
-            if (!response.ok) {
-              const error = await response.json();
-              throw new Error(error.message || `Unexpected status: ${response.status}`);
+        // while (attempts < this.retryAttempts) {
+        try {
+          const response = await fetch(
+            `${this.baseUrl}/submit?tx_cbor=${encodeURIComponent(cborHex)}`,
+            {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'text/plain',
+              },
+              signal,
             }
+          );
 
-            const result = await response.json();
-
-            // Log the successful transaction submission
-            if (this.enableLogs && result && result.txId) {
-              logSubmittedTransaction(result.txId, txType);
-            }
-
-            // For successful submissions, return the raw result
-            return result;
-          } catch (error) {
-            attempts++;
-            if (attempts === this.retryAttempts) {
-              // Log the failed transaction if we've exhausted all attempts
-              if (this.enableLogs) {
-                const errorMsg = error instanceof Error ? error.message : String(error);
-                logFailedTransaction('unknown', txType, errorMsg);
-              }
-              throw error; // Let the Effect.catchAll handle it
-            }
-            await new Promise((resolve) => setTimeout(resolve, this.retryDelay));
+          if (!response.ok) {
+            const error = await response.json();
+            throw new Error(error.message || `Unexpected status: ${response.status}`);
           }
+
+          const result = await response.json();
+
+          // Log the successful transaction submission
+          if (this.enableLogs && result && result.txId) {
+            logSubmittedTransaction(result.txId, txType);
+          }
+
+          // For successful submissions, return the raw result
+          return result;
+        } catch (error) {
+          attempts++;
+          if (attempts === this.retryAttempts) {
+            // Log the failed transaction if we've exhausted all attempts
+            if (this.enableLogs) {
+              const errorMsg = error instanceof Error ? error.message : String(error);
+              logFailedTransaction('unknown', txType, errorMsg);
+            }
+            throw error; // Let the Effect.catchAll handle it
+          }
+          await new Promise((resolve) => setTimeout(resolve, this.retryDelay));
         }
+        // }
 
         throw new Error('All retry attempts failed');
       })()

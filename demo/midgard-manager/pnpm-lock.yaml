@@ -9,7 +9,7 @@ importers:
   .:
     dependencies:
       '@lucid-evolution/lucid':
-        specifier: ^0.4.20
+        specifier: ^0.4.23
         version: 0.4.23(@harmoniclabs/bytestring@1.0.0)(@harmoniclabs/cbor@1.6.5)(@harmoniclabs/crypto@0.2.5)(@harmoniclabs/pair@1.0.0)(fast-check@3.23.2)
       chalk:
         specifier: ^4.1.2
@@ -18,8 +18,8 @@ importers:
         specifier: ^11.1.0
         version: 11.1.0
       effect:
-        specifier: ^3.11.10
-        version: 3.13.3
+        specifier: ^3.13.4
+        version: 3.13.4
       p-limit:
         specifier: ^5.0.0
         version: 5.0.0
@@ -395,12 +395,12 @@ packages:
       - utf-8-validate
     dev: false
 
-  /@effect/platform@0.71.7(effect@3.13.3):
+  /@effect/platform@0.71.7(effect@3.13.4):
     resolution: {integrity: sha512-Ttw8OhbcP1x5cPgcX4VdnDSWrskVdUrf9bO3eDd++TTcQzEiYVu9GZJaSMvz6Yqzfzt+1tIKoKi2jp6dLdJ9dg==}
     peerDependencies:
       effect: ^3.11.10
     dependencies:
-      effect: 3.13.3
+      effect: 3.13.4
       find-my-way-ts: 0.1.5
       multipasta: 0.2.5
     dev: false
@@ -436,24 +436,24 @@ packages:
       effect: 3.13.3
     dev: false
 
-  /@effect/schema@0.66.16(effect@3.13.3)(fast-check@3.23.2):
+  /@effect/schema@0.66.16(effect@3.13.4)(fast-check@3.23.2):
     resolution: {integrity: sha512-sT/k5NOgKslGPzs3DUaCFuM6g2JQoIIT8jpwEorAZooplPIMK2xIspr7ECz6pp6Dc7Wz/ppXGk7HVyGZQsIYEQ==}
     deprecated: this package has been merged into the main effect package
     peerDependencies:
       effect: ^3.1.3
       fast-check: ^3.13.2
     dependencies:
-      effect: 3.13.3
+      effect: 3.13.4
       fast-check: 3.23.2
     dev: false
 
-  /@effect/schema@0.68.27(effect@3.13.3):
+  /@effect/schema@0.68.27(effect@3.13.4):
     resolution: {integrity: sha512-/rmIb+4QaQTecdTfeYSZtNikIV+BeIbYDl/hpgBTaS96en7pKNW5hcygFQhdocjKguIL7Y/be+oUrVafWV60ew==}
     deprecated: this package has been merged into the main effect package
     peerDependencies:
       effect: ^3.5.7
     dependencies:
-      effect: 3.13.3
+      effect: 3.13.4
       fast-check: 3.23.2
     dev: false
 
@@ -1346,7 +1346,7 @@ packages:
       '@anastasia-labs/cardano-multiplatform-lib-browser': 6.0.2-3
       '@anastasia-labs/cardano-multiplatform-lib-nodejs': 6.0.2-3
       '@cardano-sdk/core': 0.45.4
-      '@effect/schema': 0.66.16(effect@3.13.3)(fast-check@3.23.2)
+      '@effect/schema': 0.66.16(effect@3.13.4)(fast-check@3.23.2)
       '@emurgo/cardano-message-signing-nodejs': 1.1.0
       '@lucid-evolution/core-types': 0.1.22
       '@lucid-evolution/core-utils': 0.1.16
@@ -1356,7 +1356,7 @@ packages:
       '@lucid-evolution/uplc': 0.2.19
       '@lucid-evolution/utils': 0.1.64(@harmoniclabs/bytestring@1.0.0)(@harmoniclabs/cbor@1.6.5)(@harmoniclabs/crypto@0.2.5)(@harmoniclabs/pair@1.0.0)
       '@lucid-evolution/wallet': 0.1.70(@harmoniclabs/bytestring@1.0.0)(@harmoniclabs/cbor@1.6.5)(@harmoniclabs/crypto@0.2.5)(@harmoniclabs/pair@1.0.0)
-      effect: 3.13.3
+      effect: 3.13.4
     transitivePeerDependencies:
       - '@dcspark/cardano-multiplatform-lib-asmjs'
       - '@dcspark/cardano-multiplatform-lib-browser'
@@ -1387,13 +1387,13 @@ packages:
     dependencies:
       '@anastasia-labs/cardano-multiplatform-lib-browser': 6.0.2-3
       '@anastasia-labs/cardano-multiplatform-lib-nodejs': 6.0.2-3
-      '@effect/platform': 0.71.7(effect@3.13.3)
-      '@effect/schema': 0.68.27(effect@3.13.3)
+      '@effect/platform': 0.71.7(effect@3.13.4)
+      '@effect/schema': 0.68.27(effect@3.13.4)
       '@lucid-evolution/core-types': 0.1.22
       '@lucid-evolution/core-utils': 0.1.16
       '@lucid-evolution/utils': 0.1.64(@harmoniclabs/bytestring@1.0.0)(@harmoniclabs/cbor@1.6.5)(@harmoniclabs/crypto@0.2.5)(@harmoniclabs/pair@1.0.0)
       '@lucid-evolution/wallet': 0.1.70(@harmoniclabs/bytestring@1.0.0)(@harmoniclabs/cbor@1.6.5)(@harmoniclabs/crypto@0.2.5)(@harmoniclabs/pair@1.0.0)
-      effect: 3.13.3
+      effect: 3.13.4
     transitivePeerDependencies:
       - '@harmoniclabs/bytestring'
       - '@harmoniclabs/cbor'
@@ -1421,7 +1421,7 @@ packages:
     dependencies:
       '@anastasia-labs/cardano-multiplatform-lib-browser': 6.0.2-3
       '@anastasia-labs/cardano-multiplatform-lib-nodejs': 6.0.2-3
-      '@effect/schema': 0.68.27(effect@3.13.3)
+      '@effect/schema': 0.68.27(effect@3.13.4)
       '@harmoniclabs/plutus-data': 1.2.4(@harmoniclabs/bytestring@1.0.0)(@harmoniclabs/cbor@1.6.5)
       '@harmoniclabs/uplc': 1.4.0(@harmoniclabs/bytestring@1.0.0)(@harmoniclabs/cbor@1.6.5)(@harmoniclabs/crypto@0.2.5)(@harmoniclabs/pair@1.0.0)(@harmoniclabs/plutus-data@1.2.4)
       '@lucid-evolution/core-types': 0.1.22
@@ -1431,7 +1431,7 @@ packages:
       '@lucid-evolution/uplc': 0.2.19
       bip39: 3.1.0
       cbor-x: 1.6.0
-      effect: 3.13.3
+      effect: 3.13.4
     transitivePeerDependencies:
       - '@harmoniclabs/bytestring'
       - '@harmoniclabs/cbor'
@@ -2497,6 +2497,13 @@ packages:
 
   /effect@3.13.3:
     resolution: {integrity: sha512-r58d/ky/NC22/sQJWssKkRB5DSJ+cKZHAMDe+ANhbatkIDgUfxsOdeXsrERR+ng2pVZJ6s7GLneAs44Wa60HUw==}
+    dependencies:
+      '@standard-schema/spec': 1.0.0
+      fast-check: 3.23.2
+    dev: false
+
+  /effect@3.13.4:
+    resolution: {integrity: sha512-XZgCImyBpONuKdsBRk37JfV7242yxTu8r/TcL5ZELIyqRbMYa+Prr86cz1INxXi7iFXfU0havZkCJGyYp1BsiA==}
     dependencies:
       '@standard-schema/spec': 1.0.0
       fast-check: 3.23.2

@@ -23,6 +23,7 @@ export const handleSignSubmit = (
 ): Effect.Effect<string, Error> =>
   Effect.gen(function* () {
     const signed = yield* signBuilder.sign.withWallet().completeProgram();
+    console.log("signed.toCBOR() :>> ", signed.toCBOR());
     const txHash = yield* signed
       .submitProgram()
       .pipe(
@@ -30,11 +31,11 @@ export const handleSignSubmit = (
           Schedule.compose(Schedule.exponential(5_000), Schedule.recurs(5)),
         ),
       );
-    yield* Effect.logDebug(`🚀 Transaction submitted: ${txHash}`);
-    yield* Effect.logDebug(`Confirming Transaction...`);
+    yield* Effect.logInfo(`🚀 Transaction submitted: ${txHash}`);
+    yield* Effect.logInfo(`Confirming Transaction...`);
     yield* Effect.tryPromise(() => lucid.awaitTx(txHash, 10_000));
-    yield* Effect.logDebug(`✅ Transaction confirmed: ${txHash}`);
-    yield* Effect.logDebug("Pausing for 10 seconds...");
+    yield* Effect.logInfo(`✅ Transaction confirmed: ${txHash}`);
+    yield* Effect.logInfo("Pausing for 10 seconds...");
     yield* Effect.sleep("10 seconds");
     return txHash;
   });
