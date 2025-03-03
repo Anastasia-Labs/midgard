@@ -7,15 +7,14 @@
  * 4. Build and submit the merge transaction.
  */
 
-import { Database } from "sqlite3";
-import { LucidEvolution, Script } from "@lucid-evolution/lucid";
-import * as SDK from "@al-ft/midgard-sdk";
-import { Effect } from "effect";
-import { fetchFirstBlockTxs, handleSignSubmit } from "../utils.js";
+import * as DB from "@/database/transaction.js";
 import { findAllSpentAndProducedUTxOs } from "@/utils.js";
-import { BlocksDB, ConfirmedLedgerDB, UtilsDB } from "@/database/index.js";
-import { AlwaysSucceeds } from "@/services/index.js";
+import * as SDK from "@al-ft/midgard-sdk";
+import { LucidEvolution, Script } from "@lucid-evolution/lucid";
+import { Effect } from "effect";
+import { Database } from "sqlite3";
 import { parentPort } from "worker_threads";
+import { fetchFirstBlockTxs, handleSignSubmit } from "../utils.js";
 
 /**
  * Build and submit the merge transaction.
@@ -31,12 +30,12 @@ export const buildAndSubmitMergeTx = (
   db: Database,
   fetchConfig: SDK.TxBuilder.StateQueue.FetchConfig,
   spendScript: Script,
-  mintScript: Script,
+  mintScript: Script
 ) =>
   Effect.gen(function* ($) {
     // Fetch transactions from the first block
     const { txs: firstBlockTxs, headerHash } = yield* $(
-      fetchFirstBlockTxs(lucid, fetchConfig, db),
+      fetchFirstBlockTxs(lucid, fetchConfig, db)
     );
     // Build the transaction
     const txBuilder = yield* SDK.Endpoints.mergeToConfirmedStateProgram(
@@ -45,7 +44,7 @@ export const buildAndSubmitMergeTx = (
       {
         stateQueueSpendingScript: spendScript,
         stateQueueMintingScript: mintScript,
-      },
+      }
     );
 
     // Submit the transaction
@@ -63,12 +62,7 @@ export const buildAndSubmitMergeTx = (
     // - Remove all the tx hashes of the merged block from BlocksDB
     yield* Effect.tryPromise({
       try: () =>
-        UtilsDB.modifyMultipleTables(
-          db,
-          [ConfirmedLedgerDB.clearUTxOs, spentOutRefs],
-          [ConfirmedLedgerDB.insert, producedUTxOs],
-          [BlocksDB.clearBlock, headerHash],
-        ),
+        DB.buildAndSubmitMergeTx(db, spentOutRefs, producedUTxOs, headerHash),
       catch: (e) => new Error(`Transaction failed: ${e}`),
     });
   });

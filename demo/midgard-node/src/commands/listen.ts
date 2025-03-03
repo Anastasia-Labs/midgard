@@ -1,29 +1,30 @@
+import { NodeConfig, User } from "@/config.js";
+import * as DB from "@/database/transaction.js";
+import { AlwaysSucceedsContract } from "@/services/always-succeeds.js";
+import { StateQueueTx } from "@/transactions/index.js";
+import { NodeSdk } from "@effect/opentelemetry";
+import { getAddressDetails, LucidEvolution } from "@lucid-evolution/lucid";
+import { diag, DiagConsoleLogger, DiagLogLevel } from "@opentelemetry/api";
+import { PrometheusExporter } from "@opentelemetry/exporter-prometheus";
+import { Effect, Metric, Option, pipe } from "effect";
+import express from "express";
+import sqlite3 from "sqlite3";
+import { Worker } from "worker_threads";
+import {
+  BlocksDB,
+  ConfirmedLedgerDB,
+  ImmutableDB,
+  LatestLedgerDB,
+  MempoolDB,
+  MempoolLedgerDB,
+  UtilsDB,
+} from "../database/index.js";
 import {
   findSpentAndProducedUTxOs,
   isHexString,
   logInfo,
   logWarning,
 } from "../utils.js";
-import { LucidEvolution, getAddressDetails } from "@lucid-evolution/lucid";
-import express from "express";
-import sqlite3 from "sqlite3";
-import {
-  MempoolDB,
-  MempoolLedgerDB,
-  LatestLedgerDB,
-  ConfirmedLedgerDB,
-  BlocksDB,
-  ImmutableDB,
-  UtilsDB,
-} from "../database/index.js";
-import { Effect, Option, Metric, pipe } from "effect";
-import { User, NodeConfig } from "@/config.js";
-import { AlwaysSucceedsContract } from "@/services/always-succeeds.js";
-import { NodeSdk } from "@effect/opentelemetry";
-import { PrometheusExporter } from "@opentelemetry/exporter-prometheus";
-import { StateQueueTx } from "@/transactions/index.js";
-import { Worker } from "worker_threads";
-import { diag, DiagConsoleLogger, DiagLogLevel } from "@opentelemetry/api";
 
 const mempoolTxGauge = Metric.gauge("mempool_tx_count", {
   description:
@@ -74,7 +75,7 @@ const mergeBlockCounter = Metric.counter("merge_block_count", {
 export const listen = (
   lucid: LucidEvolution,
   db: sqlite3.Database,
-  port: number,
+  port: number
 ): Effect.Effect<void, never, never> =>
   Effect.sync(() => {
     const app = express();
@@ -98,7 +99,7 @@ export const listen = (
                 Option.match(ret, {
                   onSome: (retrieved) => {
                     logInfo(
-                      `GET /tx - Transaction found in immutable: ${txHash}`,
+                      `GET /tx - Transaction found in immutable: ${txHash}`
                     );
                     res.json({ tx: retrieved });
                   },
@@ -130,22 +131,22 @@ export const listen = (
           if (addrDetails.paymentCredential) {
             MempoolLedgerDB.retrieve(db).then((allUTxOs) => {
               const filtered = allUTxOs.filter(
-                (a) => a.address === addrDetails.address.bech32,
+                (a) => a.address === addrDetails.address.bech32
               );
               logInfo(
-                `GET /utxos - Found ${filtered.length} UTXOs for address: ${addr}`,
+                `GET /utxos - Found ${filtered.length} UTXOs for address: ${addr}`
               );
               res.json({ utxos: filtered });
             });
           } else {
             logWarning(
-              `GET /utxos - Invalid address (no payment credential): ${addr}`,
+              `GET /utxos - Invalid address (no payment credential): ${addr}`
             );
             res.status(400).json({ message: `Invalid address: ${addr}` });
           }
         } catch (e) {
           logWarning(
-            `GET /utxos - Invalid address format: ${addr}, error: ${e}`,
+            `GET /utxos - Invalid address format: ${addr}, error: ${e}`
           );
           res.status(400).json({ message: `Invalid address: ${addr}` });
         }
@@ -166,7 +167,7 @@ export const listen = (
       ) {
         BlocksDB.retrieveTxHashesByBlockHash(db, hdrHash).then((hashes) => {
           logInfo(
-            `GET /block - Found ${hashes.length} transactions for block: ${hdrHash}`,
+            `GET /block - Found ${hashes.length} transactions for block: ${hdrHash}`
           );
           res.json({ hashes });
         });
@@ -185,7 +186,7 @@ export const listen = (
           StateQueueTx.stateQueueInit,
           Effect.provide(User.layer),
           Effect.provide(AlwaysSucceedsContract.layer),
-          Effect.provide(NodeConfig.layer),
+          Effect.provide(NodeConfig.layer)
         );
         const txHash = await Effect.runPromise(program);
         logInfo(`GET /init - Initialization successful: ${txHash}`);
@@ -206,7 +207,7 @@ export const listen = (
           StateQueueTx.resetStateQueue,
           Effect.provide(User.layer),
           Effect.provide(AlwaysSucceedsContract.layer),
-          Effect.provide(NodeConfig.layer),
+          Effect.provide(NodeConfig.layer)
         );
         await Effect.runPromise(program);
         res.json({ message: "Collected all UTxOs successfully!" });
@@ -241,21 +242,13 @@ export const listen = (
           const tx = lucid.fromTx(txCBOR);
           const spentAndProducedProgram = findSpentAndProducedUTxOs(txCBOR);
           const { spent, produced } = await Effect.runPromise(
-            spentAndProducedProgram,
+            spentAndProducedProgram
           );
           // TODO: Avoid abstraction, dedicate a SQL command.
-          await MempoolDB.insert(db, tx.toHash(), txCBOR);
-          await MempoolLedgerDB.clearUTxOs(db, spent);
-          await MempoolLedgerDB.insert(db, produced);
-          // await UtilsDB.modifyMultipleTables(
-          //   db,
-          //   [MempoolDB.insert, tx.toHash(), txCBOR],
-          //   [MempoolLedgerDB.clearUTxOs, spent],
-          //   [MempoolLedgerDB.insert, produced],
-          // );
+          await DB.submitTx(db, tx.toHash(), txCBOR, spent, produced);
           Effect.runSync(Metric.increment(txCounter));
           logInfo(
-            `POST /submit - Transaction submitted successfully: ${tx.toHash()}`,
+            `POST /submit - Transaction submitted successfully: ${tx.toHash()}`
           );
           res.json({ message: "Successfully submitted the transaction" });
         } catch (e) {
@@ -269,14 +262,14 @@ export const listen = (
     });
 
     app.listen(port, () =>
-      logInfo(`Server running at http://localhost:${port}`),
+      logInfo(`Server running at http://localhost:${port}`)
     );
   });
 
 export const storeTx = async (
   lucid: LucidEvolution,
   db: sqlite3.Database,
-  tx: string,
+  tx: string
 ) =>
   Effect.gen(function* () {
     const txHash = lucid.fromTx(tx).toHash();
@@ -298,7 +291,7 @@ export const runNode = Effect.gen(function* () {
     },
     () => {
       `Prometheus metrics available at http://localhost:${nodeConfig.PROM_METRICS_PORT}/metrics`;
-    },
+    }
   );
   const originalStop = prometheusExporter.stopServer;
   prometheusExporter.stopServer = async function () {
@@ -314,7 +307,7 @@ export const runNode = Effect.gen(function* () {
         logInfo("Prometheus exporter stopped successfully.");
       } else {
         logWarning(
-          "Prometheus exporter is already undefined or was never initialized.",
+          "Prometheus exporter is already undefined or was never initialized."
         );
       }
     } catch (error) {
@@ -373,6 +366,6 @@ export const runNode = Effect.gen(function* () {
     Effect.withSpan("midgard-node"),
     Effect.tap(() => Effect.annotateCurrentSpan("migdard-node", "runner")),
     Effect.provide(MetricsLive),
-    Effect.catchAllCause(Effect.logError),
+    Effect.catchAllCause(Effect.logError)
   );
 });
