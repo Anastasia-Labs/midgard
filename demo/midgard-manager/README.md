@@ -19,13 +19,24 @@ pnpm start interactive
 # Show help
 pnpm start --help
 
-# Transaction generator
-pnpm tx-generator start --test-wallet --type mixed --batch-size 10 --interval 5 --concurrency 1
+# Transaction Generator Examples
+
+# For exact number of transactions
+pnpm tx-generator start --test-wallet --type one-to-one --batch-size 100
+
+# For higher throughput testing
+pnpm tx-generator start --test-wallet --type mixed --batch-size 100 --interval 5 --concurrency 5
 ```
 
 ## Configuration
 
-The CLI uses a centralized configuration system thats dynamically is changed on actions.
+The CLI uses a centralized configuration system that can be modified through:
+
+- Interactive mode menus
+- CLI commands
+- Manual edit of `config/settings.json`
+
+Example configuration:
 
 ```json
 {
@@ -45,8 +56,4 @@ The CLI uses a centralized configuration system thats dynamically is changed on 
 }
 ```
 
-Configuration can be modified through:
-
-- Interactive mode menus
-- CLI commands
-- Manual edit of `config/settings.json`
+For detailed transaction generator options and behaviors, see the tx-generator package README.

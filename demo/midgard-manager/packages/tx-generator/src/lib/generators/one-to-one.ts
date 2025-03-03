@@ -170,11 +170,6 @@ const generateOneToOneTransactions = async (
         type: 'Midgard L2 User Transaction',
       };
 
-      // Submit to node if client provided
-      if (nodeClient) {
-        await nodeClient.submitTransaction(tx.cborHex, tx.description);
-      }
-
       // Add to transactions array
       transactions.push(tx);
 

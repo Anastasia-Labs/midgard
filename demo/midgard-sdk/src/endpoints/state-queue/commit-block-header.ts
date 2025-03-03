@@ -18,13 +18,10 @@ export const commitBlockHeaderProgram = (
     const completedTx = yield* Effect.tryPromise({
       try: () =>
         commitTx
-          .compose(
-            ActiveOperators.updateCommitmentTimeTxBuilder(
-              lucid,
-              aoUpdateParams,
-            ),
-          )
-          .complete(),
+          // .compose(
+          //   ActiveOperators.updateCommitmentTimeTxBuilder(lucid, aoUpdateParams)
+          // )
+          .complete({ localUPLCEval: false }),
       catch: (e) => new Error(`${e}`),
     });
     return completedTx;

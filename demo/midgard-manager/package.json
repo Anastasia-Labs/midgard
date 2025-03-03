@@ -20,10 +20,10 @@
     "lint:fix": "eslint . --fix"
   },
   "dependencies": {
-    "@lucid-evolution/lucid": "^0.4.20",
+    "@lucid-evolution/lucid": "^0.4.23",
     "chalk": "^4.1.2",
     "commander": "^11.1.0",
-    "effect": "^3.11.10",
+    "effect": "^3.13.4",
     "p-limit": "^5.0.0"
   },
   "devDependencies": {
