@@ -6,10 +6,9 @@ import {
 } from "@lucid-evolution/lucid";
 import { Effect, Schedule } from "effect";
 import * as SDK from "@al-ft/midgard-sdk";
-import { Database } from "sqlite3";
 import * as BlocksDB from "../database/blocks.js";
 import * as ImmutableDB from "../database/immutable.js";
-
+import pg from "pg";
 /**
  * Handle the signing and submission of a transaction.
  *
@@ -23,7 +22,6 @@ export const handleSignSubmit = (
 ): Effect.Effect<string, Error> =>
   Effect.gen(function* () {
     const signed = yield* signBuilder.sign.withWallet().completeProgram();
-    console.log("signed.toCBOR() :>> ", signed.toCBOR());
     const txHash = yield* signed
       .submitProgram()
       .pipe(
@@ -75,7 +73,7 @@ export const handleSignSubmitWithoutConfirmation = (
 export const fetchFirstBlockTxs = (
   lucid: LucidEvolution,
   fetchConfig: SDK.TxBuilder.StateQueue.FetchConfig,
-  db: Database,
+  db: pg.Pool,
 ): Effect.Effect<{ txs: string[]; headerHash: string }, Error> =>
   Effect.gen(function* () {
     const { link: firstBlockUTxO } =
@@ -95,7 +93,9 @@ export const fetchFirstBlockTxs = (
       });
       const txs = yield* Effect.tryPromise({
         try: () => ImmutableDB.retrieveTxCborsByHashes(db, txHashes),
-        catch: (e) => new Error(`${e}`),
+        catch: (e) => {
+          return new Error(`${e}`);
+        },
       });
       return { txs, headerHash };
     }

@@ -100,7 +100,7 @@ export const commitTxBuilder = (
     };
     const { nodeDatum: updatedNodeDatum, header: newHeader } =
       yield* makeNewHeaderProgram();
-    console.log("newHeader :>> ", newHeader);
+    // console.log("newHeader :>> ", newHeader);
     const assets: Assets = {
       [toUnit(policyId, fromText("Node") + newHeader.prevHeaderHash)]: 1n,
     };

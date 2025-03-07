@@ -1,11 +1,18 @@
-import { NodeConfig, User } from "@/config.js";
-import { AlwaysSucceedsContract } from "@/services/always-succeeds.js";
-import { StateQueueTx } from "@/transactions/index.js";
+import { makeConfig, NodeConfig, User } from "@/config.js";
+import {
+  AlwaysSucceedsContract,
+  makeAlwaysSucceedsServiceFn,
+} from "@/services/always-succeeds.js";
+import { StateQueueTx, UtilsTx } from "@/transactions/index.js";
 import { NodeSdk } from "@effect/opentelemetry";
-import { getAddressDetails, LucidEvolution } from "@lucid-evolution/lucid";
+import {
+  getAddressDetails,
+  LucidEvolution,
+  OutRef,
+} from "@lucid-evolution/lucid";
 import { diag, DiagConsoleLogger, DiagLogLevel } from "@opentelemetry/api";
 import { PrometheusExporter } from "@opentelemetry/exporter-prometheus";
-import { Effect, Metric, Option, pipe } from "effect";
+import { Duration, Effect, Metric, Option, pipe, Schedule } from "effect";
 import express from "express";
 import pg from "pg";
 import { Worker } from "worker_threads";
@@ -24,40 +31,9 @@ import {
   logInfo,
   logWarning,
 } from "../utils.js";
-
-const mempoolTxGauge = Metric.gauge("mempool_tx_count", {
-  description:
-    "A gauge for tracking the current number of transactions in the mempool",
-  bigint: true,
-});
-
-const commitBlockNumTxGauge = Metric.gauge("commit_block_num_tx_count", {
-  description:
-    "A gauge for tracking the current number of transactions in the commit block",
-  bigint: true,
-});
-
-const totalTxSizeGauge = Metric.gauge("total_tx_size", {
-  description:
-    "A gauge for tracking the total size of transactions in the commit block",
-});
-
-const commitBlockCounter = Metric.counter("commit_block_count", {
-  description: "A counter for tracking the number of committed blocks",
-  bigint: true,
-  incremental: true,
-});
-
-const commitBlockTxCounter = Metric.counter("commit_block_tx_count", {
-  description:
-    "A counter for tracking the number of transactions in the commit block",
-  bigint: true,
-  incremental: true,
-});
-
-const commitBlockTxSizeGauge = Metric.gauge("commit_block_tx_size", {
-  description: "A gauge for tracking the size of the commit block transaction",
-});
+import * as SDK from "@al-ft/midgard-sdk";
+import { OTLPTraceExporter } from "@opentelemetry/exporter-trace-otlp-http";
+import { BatchSpanProcessor } from "@opentelemetry/sdk-trace-base";
 
 const txCounter = Metric.counter("tx_count", {
   description: "A counter for tracking submit transactions",
@@ -65,22 +41,22 @@ const txCounter = Metric.counter("tx_count", {
   incremental: true,
 });
 
-const mergeBlockCounter = Metric.counter("merge_block_count", {
-  description: "A counter for tracking merge blocks",
+const mempoolTxGauge = Metric.gauge("mempool_tx_count", {
+  description:
+    "A gauge for tracking the current number of transactions in the mempool",
   bigint: true,
-  incremental: true,
 });
 
 export const listen = (
   lucid: LucidEvolution,
   pool: pg.Pool,
-  port: number
+  port: number,
 ): Effect.Effect<void, never, never> =>
   Effect.sync(() => {
     const app = express();
     app.get("/tx", (req, res) => {
       const txHash = req.query.tx_hash;
-      logInfo(`GET /tx - Request received for tx_hash: ${txHash}`);
+      // logInfo(`GET /tx - Request received for tx_hash: ${txHash}`);
 
       if (
         typeof txHash === "string" &&
@@ -98,7 +74,7 @@ export const listen = (
                 Option.match(ret, {
                   onSome: (retrieved) => {
                     logInfo(
-                      `GET /tx - Transaction found in immutable: ${txHash}`
+                      `GET /tx - Transaction found in immutable: ${txHash}`,
                     );
                     res.json({ tx: retrieved });
                   },
@@ -113,7 +89,7 @@ export const listen = (
           });
         });
       } else {
-        logWarning(`GET /tx - Invalid transaction hash: ${txHash}`);
+        // logWarning(`GET /tx - Invalid transaction hash: ${txHash}`);
         res
           .status(404)
           .json({ message: `Invalid transaction hash: ${txHash}` });
@@ -130,22 +106,22 @@ export const listen = (
           if (addrDetails.paymentCredential) {
             MempoolLedgerDB.retrieve(pool).then((allUTxOs) => {
               const filtered = allUTxOs.filter(
-                (a) => a.address === addrDetails.address.bech32
+                (a) => a.address === addrDetails.address.bech32,
               );
               logInfo(
-                `GET /utxos - Found ${filtered.length} UTXOs for address: ${addr}`
+                `GET /utxos - Found ${filtered.length} UTXOs for address: ${addr}`,
               );
               res.json({ utxos: filtered });
             });
           } else {
             logWarning(
-              `GET /utxos - Invalid address (no payment credential): ${addr}`
+              `GET /utxos - Invalid address (no payment credential): ${addr}`,
             );
             res.status(400).json({ message: `Invalid address: ${addr}` });
           }
         } catch (e) {
           logWarning(
-            `GET /utxos - Invalid address format: ${addr}, error: ${e}`
+            `GET /utxos - Invalid address format: ${addr}, error: ${e}`,
           );
           res.status(400).json({ message: `Invalid address: ${addr}` });
         }
@@ -166,7 +142,7 @@ export const listen = (
       ) {
         BlocksDB.retrieveTxHashesByBlockHash(pool, hdrHash).then((hashes) => {
           logInfo(
-            `GET /block - Found ${hashes.length} transactions for block: ${hdrHash}`
+            `GET /block - Found ${hashes.length} transactions for block: ${hdrHash}`,
           );
           res.json({ hashes });
         });
@@ -185,7 +161,7 @@ export const listen = (
           StateQueueTx.stateQueueInit,
           Effect.provide(User.layer),
           Effect.provide(AlwaysSucceedsContract.layer),
-          Effect.provide(NodeConfig.layer)
+          Effect.provide(NodeConfig.layer),
         );
         const txHash = await Effect.runPromise(program);
         logInfo(`GET /init - Initialization successful: ${txHash}`);
@@ -206,7 +182,7 @@ export const listen = (
           StateQueueTx.resetStateQueue,
           Effect.provide(User.layer),
           Effect.provide(AlwaysSucceedsContract.layer),
-          Effect.provide(NodeConfig.layer)
+          Effect.provide(NodeConfig.layer),
         );
         await Effect.runPromise(program);
         res.json({ message: "Collected all UTxOs successfully!" });
@@ -234,14 +210,14 @@ export const listen = (
 
     app.post("/submit", async (req, res) => {
       const txCBOR = req.query.tx_cbor;
-      logInfo(`POST /submit - Submit request received for transaction`);
+      // logInfo(`POST /submit - Submit request received for transaction`);
 
       if (typeof txCBOR === "string" && isHexString(txCBOR)) {
         try {
           const tx = lucid.fromTx(txCBOR);
           const spentAndProducedProgram = findSpentAndProducedUTxOs(txCBOR);
           const { spent, produced } = await Effect.runPromise(
-            spentAndProducedProgram
+            spentAndProducedProgram,
           );
           // TODO: Avoid abstraction, dedicate a SQL command.
           await MempoolDB.insert(pool, tx.toHash(), txCBOR);
@@ -254,41 +230,119 @@ export const listen = (
           //   [MempoolLedgerDB.insert, produced],
           // );
           Effect.runSync(Metric.increment(txCounter));
-          logInfo(
-            `POST /submit - Transaction submitted successfully: ${tx.toHash()}`
-          );
+          // logInfo(
+          //   `POST /submit - Transaction submitted successfully: ${tx.toHash()}`
+          // );
           res.json({ message: "Successfully submitted the transaction" });
         } catch (e) {
-          logWarning(`POST /submit - Submission failed: ${e}`);
+          // logWarning(`POST /submit - Submission failed: ${e}`);
           res.status(400).json({ message: `Something went wrong: ${e}` });
         }
       } else {
-        logWarning("POST /submit - Invalid CBOR provided");
+        // logWarning("POST /submit - Invalid CBOR provided");
         res.status(400).json({ message: "Invalid CBOR provided" });
       }
     });
 
     app.listen(port, () =>
-      logInfo(`Server running at http://localhost:${port}`)
+      logInfo(`Server running at http://localhost:${port}`),
     );
   });
 
 export const storeTx = async (
   lucid: LucidEvolution,
   pool: pg.Pool,
-  tx: string
+  tx: string,
 ) =>
   Effect.gen(function* () {
     const txHash = lucid.fromTx(tx).toHash();
     yield* Effect.tryPromise(() => MempoolDB.insert(pool, txHash, tx));
   });
 
+const monitorStateQueue = (
+  lucid: LucidEvolution,
+  fetchConfig: SDK.TxBuilder.StateQueue.FetchConfig,
+  db: pg.Pool,
+  pollingInterval: number,
+) =>
+  pipe(
+    Effect.gen(function* () {
+      let latestBlockOutRef: OutRef = { txHash: "", outputIndex: 0 };
+      const action = Effect.gen(function* () {
+        yield* Effect.logInfo("monitorStateQueue...");
+        const txList = yield* Effect.tryPromise(() => MempoolDB.retrieve(db));
+        const numTx = BigInt(txList.length);
+        yield* mempoolTxGauge(Effect.succeed(numTx));
+        const latestBlock =
+          yield* SDK.Endpoints.fetchLatestCommitedBlockProgram(
+            lucid,
+            fetchConfig,
+          );
+        const fetchedBlocksOutRef = UtilsTx.utxoToOutRef(latestBlock);
+
+        if (!UtilsTx.outRefsAreEqual(latestBlockOutRef, fetchedBlocksOutRef)) {
+          latestBlockOutRef = fetchedBlocksOutRef;
+          yield* Effect.logInfo("Committing a new block...");
+          yield* StateQueueTx.buildAndSubmitCommitmentBlock(
+            lucid,
+            db,
+            fetchConfig,
+            Date.now(),
+          );
+        }
+      }).pipe(Effect.catchAllCause(Effect.logWarning));
+      const schedule = Schedule.addDelay(Schedule.forever, () =>
+        Duration.millis(pollingInterval),
+      );
+      yield* Effect.repeat(action, schedule);
+    }),
+    // Effect.withSpan("monitor-state-queue")
+    // Effect.fork // Forking ensures the effect keeps running
+  );
+
+// possible issues:
+// 1. tx-generator: large batch size & high concurrency
+// 2. after initing node, can't commit the block
+
+const monitorConfirmedState = (
+  lucid: LucidEvolution,
+  fetchConfig: SDK.TxBuilder.StateQueue.FetchConfig,
+  db: pg.Pool,
+  pollingInterval: number,
+) =>
+  pipe(
+    Effect.gen(function* () {
+      yield* Effect.logInfo("monitor confirmed state...");
+      const nodeConfig = yield* makeConfig;
+      const { spendScript, mintScript } =
+        yield* makeAlwaysSucceedsServiceFn(nodeConfig);
+      const schedule = Schedule.addDelay(Schedule.forever, () =>
+        Duration.millis(pollingInterval),
+      );
+      const action = StateQueueTx.buildAndSubmitMergeTx(
+        lucid,
+        db,
+        fetchConfig,
+        spendScript,
+        mintScript,
+      ).pipe(Effect.catchAllCause(Effect.logWarning));
+      yield* Effect.repeat(action, schedule);
+    }),
+    // Effect.withSpan("monitor-confirmed-state")
+    // Effect.fork // Forking ensures the effect keeps running
+  );
+
 export const runNode = Effect.gen(function* () {
   diag.setLogger(new DiagConsoleLogger(), DiagLogLevel.DEBUG);
   const { user } = yield* User;
   const nodeConfig = yield* NodeConfig;
+  const { spendScriptAddress, policyId } = yield* AlwaysSucceedsContract;
+  const fetchConfig: SDK.TxBuilder.StateQueue.FetchConfig = {
+    stateQueueAddress: spendScriptAddress,
+    stateQueuePolicyId: policyId,
+  };
   const pool = new pg.Pool({
-    host: "postgres",
+    host: nodeConfig.POSTGRES_HOST,
     user: nodeConfig.POSTGRES_USER,
     password: nodeConfig.POSTGRES_PASSWORD,
     database: nodeConfig.POSTGRES_DB,
@@ -300,6 +354,15 @@ export const runNode = Effect.gen(function* () {
     try: () => UtilsDB.initializeDb(pool),
     catch: (e) => new Error(`${e}`),
   });
+
+  // const otlpTraceExporter = new OTLPTraceExporter({
+  //   url: `http://localhost:${nodeConfig.OTLP_PORT}/v1/traces`,
+  // });
+
+  // // Log the OTLP port
+  // logInfo(
+  //   `OTLP Trace Exporter running at http://localhost:${nodeConfig.OTLP_PORT}/v1/traces`,
+  // );
   const prometheusExporter = new PrometheusExporter(
     {
       port: nodeConfig.PROM_METRICS_PORT,
@@ -307,7 +370,7 @@ export const runNode = Effect.gen(function* () {
     },
     () => {
       `Prometheus metrics available at http://localhost:${nodeConfig.PROM_METRICS_PORT}/metrics`;
-    }
+    },
   );
   const originalStop = prometheusExporter.stopServer;
   prometheusExporter.stopServer = async function () {
@@ -318,42 +381,36 @@ export const runNode = Effect.gen(function* () {
   const MetricsLive = NodeSdk.layer(() => ({
     resource: { serviceName: "midgard-node" },
     metricReader: prometheusExporter,
+    spanProcessor: new BatchSpanProcessor(new OTLPTraceExporter()),
   }));
 
-  const workers = [
-    new Worker(new URL("./worker-monitorStateQueue.js", import.meta.url)),
-    new Worker(new URL("./worker-monitorConfirmedState.js", import.meta.url)),
-  ];
-  workers.forEach((w) => {
-    w.on("message", (message) => {
-      switch (message.type) {
-        case "commit-block-metrics":
-          const { txSize, numTx, totalTxSize } = message.data;
-          Effect.runSync(commitBlockTxSizeGauge(Effect.succeed(txSize)));
-          Effect.runSync(commitBlockNumTxGauge(Effect.succeed(numTx)));
-          Effect.runSync(Metric.increment(commitBlockCounter));
-          Effect.runSync(Metric.incrementBy(commitBlockTxCounter, numTx));
-          Effect.runSync(totalTxSizeGauge(Effect.succeed(totalTxSize)));
-          break;
-        case "mempool-metrics":
-          Effect.runSync(mempoolTxGauge(Effect.succeed(message.data.numTx)));
-          break;
-        case "merge-tx-metric":
-          Effect.runSync(Metric.increment(mergeBlockCounter));
-          break;
-        case "metrics":
-          break;
-        default:
-          logWarning(`Unknown message type: ${message.type}`);
-      }
-    });
-    w.postMessage("start");
+  const FirstThread = listen(user, pool, nodeConfig.PORT);
+
+  const SecondThread = monitorStateQueue(
+    user,
+    fetchConfig,
+    pool,
+    nodeConfig.POLLING_INTERVAL,
+  );
+
+  const ThirdThread = monitorConfirmedState(
+    user,
+    fetchConfig,
+    pool,
+    nodeConfig.CONFIRMED_STATE_POLLING_INTERVAL,
+  );
+
+  const program = Effect.all([FirstThread, SecondThread, ThirdThread], {
+    concurrency: "unbounded",
   });
 
-  yield* Effect.all([listen(user, pool, nodeConfig.PORT)]).pipe(
-    Effect.withSpan("midgard-node"),
-    Effect.tap(() => Effect.annotateCurrentSpan("migdard-node", "runner")),
+  pipe(
+    program,
+    // Effect.awaitAllChildren,
+    Effect.withSpan("midgard"),
+    // Effect.tap(() => Effect.annotateCurrentSpan("migdard-node", "runner")),
     Effect.provide(MetricsLive),
-    Effect.catchAllCause(Effect.logError)
+    Effect.catchAllCause(Effect.logError),
+    Effect.runPromise,
   );
 });

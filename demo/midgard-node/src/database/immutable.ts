@@ -15,7 +15,7 @@ export const createQuery = `
 export const insert = async (
   pool: Pool,
   txHash: string,
-  txCbor: string
+  txCbor: string,
 ): Promise<void> => {
   const query = `INSERT INTO immutable (tx_hash, tx_cbor) VALUES ($1, $2)`;
   try {
@@ -32,7 +32,7 @@ export const insert = async (
 
 export const insertTxs = async (
   pool: Pool,
-  txs: { txHash: string; txCbor: string }[]
+  txs: { txHash: string; txCbor: string }[],
 ): Promise<void> => {
   const query = `INSERT INTO immutable (tx_hash, tx_cbor) VALUES ($1, $2)`;
 
@@ -42,10 +42,10 @@ export const insertTxs = async (
         Buffer.from(txHash, "hex"),
         Buffer.from(txCbor, "hex"),
       ]);
-      logInfo(`immutable db: tx stored`);
+      // logInfo(`immutable db: tx stored`);
     }
   } catch (err) {
-    logAbort(`immutable db: error inserting tx: ${err}`);
+    // logAbort(`immutable db: error inserting tx: ${err}`);
     throw err;
   }
 };
@@ -59,20 +59,20 @@ export const retrieve = async (pool: Pool): Promise<[string, string][]> => {
       row.tx_cbor.toString("hex"),
     ]);
   } catch (err) {
-    logAbort(`immutable db: retrieving error: ${err}`);
+    // logAbort(`immutable db: retrieving error: ${err}`);
     throw err;
   }
 };
 
 export const retrieveTxCborByHash = async (
   pool: Pool,
-  txHash: string
+  txHash: string,
 ): Promise<Option.Option<string>> =>
   utils.retrieveTxCborByHash(pool, "immutable", txHash);
 
 export const retrieveTxCborsByHashes = async (
   pool: Pool,
-  txHashes: string[]
+  txHashes: string[],
 ): Promise<string[]> =>
   utils.retrieveTxCborsByHashes(pool, "immutable", txHashes);
 

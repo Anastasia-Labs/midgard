@@ -14,7 +14,7 @@ export const createQuery = `
 export const insert = async (
   pool: Pool,
   txHash: string,
-  txCbor: string
+  txCbor: string,
 ): Promise<void> => {
   const query = `INSERT INTO mempool (tx_hash, tx_cbor) VALUES ($1, $2)`;
   try {
@@ -22,22 +22,22 @@ export const insert = async (
       Buffer.from(txHash, "hex"),
       Buffer.from(txCbor, "hex"),
     ]);
-    logInfo(`mempool db: tx stored`);
+    // logInfo(`mempool db: tx stored`);
   } catch (err) {
-    logAbort(`mempool db: error inserting tx: ${err}`);
+    // logAbort(`mempool db: error inserting tx: ${err}`);
     throw err;
   }
 };
 
 export const retrieveTxCborByHash = async (
   pool: Pool,
-  txHash: string
+  txHash: string,
 ): Promise<Option.Option<string>> =>
   utils.retrieveTxCborByHash(pool, "mempool", txHash);
 
 export const retrieveTxCborsByHashes = async (
   pool: Pool,
-  txHashes: string[]
+  txHashes: string[],
 ): Promise<string[]> =>
   utils.retrieveTxCborsByHashes(pool, "mempool", txHashes);
 
@@ -50,7 +50,7 @@ export const retrieve = async (pool: Pool): Promise<[string, string][]> => {
       row.tx_cbor.toString("hex"),
     ]);
   } catch (err) {
-    logAbort(`mempool db: retrieving error: ${err}`);
+    // logAbort(`mempool db: retrieving error: ${err}`);
     throw err;
   }
 };

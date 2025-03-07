@@ -32,7 +32,7 @@ export const mergeTxBuilder = (
   Effect.gen(function* () {
     const { confirmed: confirmedUTxO, link: firstBlockUTxO } =
       yield* fetchConfirmedStateAndItsLinkProgram(lucid, fetchConfig);
-    console.log("firstBlockUTxO :>> ", firstBlockUTxO);
+    // console.log("firstBlockUTxO :>> ", firstBlockUTxO);
     if (!firstBlockUTxO) {
       return yield* Effect.fail(new Error("No blocks in queue"));
     } else {
@@ -44,7 +44,7 @@ export const mergeTxBuilder = (
         catch: (e) => new Error(`${e}`),
       });
       const blockNode: NodeDatum = yield* getNodeDatumFromUTxO(firstBlockUTxO);
-      console.log("blockNode :>> ", blockNode);
+      // console.log("blockNode :>> ", blockNode);
       const blockHeader: Header = yield* getHeaderFromBlockUTxO(firstBlockUTxO);
       const headerHash = yield* hashHeader(blockHeader);
       const newConfirmedState = {

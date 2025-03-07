@@ -9,6 +9,8 @@
     "dist"
   ],
   "scripts": {
+    "clean": "rimraf dist",
+    "reset": "rimraf dist node_modules *.tgz",
     "build": "tsup src/index.ts --minify --format esm,cjs --dts --clean",
     "lint": "eslint",
     "repack": "pnpm run build  && pnpm pack",
@@ -32,7 +34,8 @@
     "ts-node": "^10.9.2",
     "tsup": "^8.4.0",
     "typescript": "^5.7.3",
-    "vitest": "2.1.8"
+    "vitest": "2.1.8",
+    "rimraf": "^6.0.1"
   },
   "directories": {
     "test": "test"

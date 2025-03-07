@@ -41,7 +41,7 @@ export const insertUTxOs = async (
   pool: Pool,
   tableName: string,
   assetTableName: string,
-  utxos: UTxO[]
+  utxos: UTxO[],
 ): Promise<void> => {
   const values = utxos.flatMap((utxo) => Object.values(utxoToRow(utxo)));
   const query = `
@@ -52,7 +52,7 @@ export const insertUTxOs = async (
   `;
 
   const normalizedAssets = utxos.flatMap((utxo) =>
-    utxoToNormalizedAssets(utxo)
+    utxoToNormalizedAssets(utxo),
   );
   const assetQuery = `
     INSERT INTO ${assetTableName}
@@ -66,20 +66,20 @@ export const insertUTxOs = async (
   try {
     await client.query("BEGIN");
     await client.query(query, values);
-    logInfo(`${tableName} db: ${utxos.length} new UTXOs added`);
+    // logInfo(`${tableName} db: ${utxos.length} new UTXOs added`);
     await client.query(assetQuery, assetValues);
-    logInfo(
-      `${tableName}: ${normalizedAssets.length} assets added to ${assetTableName}`
-    );
+    // logInfo(
+    //   `${tableName}: ${normalizedAssets.length} assets added to ${assetTableName}`,
+    // );
     await client.query("COMMIT");
     client.release();
   } catch (err) {
-    logAbort(`${tableName} db: error inserting UTXOs or assets: ${err}`);
+    // logAbort(`${tableName} db: error inserting UTXOs or assets: ${err}`);
     if (client) {
       try {
         await client.query("ROLLBACK");
       } catch (rollbackErr) {
-        logAbort(`Error rolling back: ${rollbackErr}`);
+        // logAbort(`Error rolling back: ${rollbackErr}`);
       } finally {
         client.release();
       }
@@ -91,7 +91,7 @@ export const insertUTxOs = async (
 export const retrieveUTxOs = async (
   pool: Pool,
   tableName: string,
-  assetTableName: string
+  assetTableName: string,
 ): Promise<UTxO[]> => {
   const query = `
     SELECT
@@ -122,7 +122,7 @@ export const retrieveUTxOs = async (
     const result = await pool.query(query);
     return result.rows.map((r) => utxoFromRow(r));
   } catch (err) {
-    logAbort(`${tableName} db: error retrieving utxos: ${err}`);
+    // logAbort(`${tableName} db: error retrieving utxos: ${err}`);
     throw err;
   }
 };
@@ -130,7 +130,7 @@ export const retrieveUTxOs = async (
 export const clearUTxOs = async (
   pool: Pool,
   tableName: string,
-  refs: OutRef[]
+  refs: OutRef[],
 ): Promise<void> => {
   const query = `DELETE FROM ${tableName} WHERE (tx_hash, output_index) IN (${refs
     .map((_, i) => `($${i * 2 + 1}, $${i * 2 + 2})`)
@@ -142,9 +142,9 @@ export const clearUTxOs = async (
 
   try {
     const result = await pool.query(query, values);
-    logInfo(`${tableName} db: ${result.rowCount} utxos removed`);
+    // logInfo(`${tableName} db: ${result.rowCount} utxos removed`);
   } catch (err) {
-    logAbort(`${tableName} db: utxos removing error: ${err}`);
+    // logAbort(`${tableName} db: utxos removing error: ${err}`);
     throw err;
   }
 };
@@ -170,7 +170,7 @@ export const clearTxs = async (
 export const retrieveTxCborByHash = async (
   pool: Pool,
   tableName: string,
-  txHash: string
+  txHash: string,
 ): Promise<Option.Option<string>> => {
   const query = `SELECT tx_cbor FROM ${tableName} WHERE tx_hash = $1`;
   try {
@@ -181,7 +181,7 @@ export const retrieveTxCborByHash = async (
       return Option.none();
     }
   } catch (err) {
-    logAbort(`db: retrieving error: ${err}`);
+    // logAbort(`db: retrieving error: ${err}`);
     throw err;
   }
 };
@@ -189,7 +189,7 @@ export const retrieveTxCborByHash = async (
 export const retrieveTxCborsByHashes = async (
   pool: Pool,
   tableName: string,
-  txHashes: string[]
+  txHashes: string[],
 ): Promise<string[]> => {
   const query = `SELECT tx_cbor FROM ${tableName} WHERE tx_hash = ANY($1)`;
   try {
@@ -198,22 +198,22 @@ export const retrieveTxCborsByHashes = async (
     ]);
     return result.rows.map((row) => row.tx_cbor.toString("hex"));
   } catch (err) {
-    logAbort(`${tableName} db: retrieving error: ${err}`);
+    // logAbort(`${tableName} db: retrieving error: ${err}`);
     throw err;
   }
 };
 
 export const clearTable = async (
   pool: Pool,
-  tableName: string
+  tableName: string,
 ): Promise<void> => {
   const query = `TRUNCATE TABLE ${tableName} CASCADE;`;
 
   try {
     await pool.query(query);
-    logInfo(`${tableName} db: cleared`);
+    // logInfo(`${tableName} db: cleared`);
   } catch (err) {
-    logAbort(`${tableName} db: clearing error: ${err}`);
+    // logAbort(`${tableName} db: clearing error: ${err}`);
     throw err;
   }
 };
@@ -248,7 +248,7 @@ export function utxoFromRow(row: UTxOFromRow): UTxO {
       acc[key] = quantityBigInt;
       return acc;
     },
-    {} as Record<Unit | "lovelace", bigint>
+    {} as Record<Unit | "lovelace", bigint>,
   );
   return {
     txHash: toHex(row.tx_hash),

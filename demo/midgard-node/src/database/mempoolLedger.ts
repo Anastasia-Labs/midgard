@@ -38,7 +38,7 @@ export const retrieve = async (pool: Pool): Promise<UTxO[]> =>
 
 export const retrieveUTxOsAtAddress = async (
   pool: Pool,
-  address: string
+  address: string,
 ): Promise<UTxO[]> => {
   const query = `
     SELECT
@@ -71,7 +71,7 @@ export const retrieveUTxOsAtAddress = async (
     const result = await pool.query(query, [address]);
     return result.rows.map((r) => utxoFromRow(r));
   } catch (err) {
-    logAbort(`mempool_ledger db: error retrieving utxos: ${err}`);
+    // logAbort(`mempool_ledger db: error retrieving utxos: ${err}`);
     throw err;
   }
 };

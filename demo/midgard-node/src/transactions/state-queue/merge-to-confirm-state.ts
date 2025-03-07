@@ -9,13 +9,24 @@
 
 import { LucidEvolution, Script } from "@lucid-evolution/lucid";
 import * as SDK from "@al-ft/midgard-sdk";
-import { Effect } from "effect";
-import { fetchFirstBlockTxs, handleSignSubmit } from "../utils.js";
+import { Effect, Metric } from "effect";
+import {
+  fetchFirstBlockTxs,
+  handleSignSubmit,
+  handleSignSubmitWithoutConfirmation,
+} from "../utils.js";
 import { findAllSpentAndProducedUTxOs } from "@/utils.js";
 import { BlocksDB, ConfirmedLedgerDB, UtilsDB } from "@/database/index.js";
 import { AlwaysSucceeds } from "@/services/index.js";
 import { parentPort } from "worker_threads";
 import pg from "pg";
+
+const mergeBlockCounter = Metric.counter("merge_block_count", {
+  description: "A counter for tracking merge blocks",
+  bigint: true,
+  incremental: true,
+});
+
 /**
  * Build and submit the merge transaction.
  *
@@ -30,13 +41,13 @@ export const buildAndSubmitMergeTx = (
   db: pg.Pool,
   fetchConfig: SDK.TxBuilder.StateQueue.FetchConfig,
   spendScript: Script,
-  mintScript: Script
+  mintScript: Script,
 ) =>
   Effect.gen(function* ($) {
-    console.log("buildAndSubmitMergeTx... :>> ");
+    yield* Effect.logInfo("buildAndSubmitMergeTx... :>> ");
     // Fetch transactions from the first block
     const { txs: firstBlockTxs, headerHash } = yield* $(
-      fetchFirstBlockTxs(lucid, fetchConfig, db)
+      fetchFirstBlockTxs(lucid, fetchConfig, db),
     );
     // Build the transaction
     const txBuilder = yield* SDK.Endpoints.mergeToConfirmedStateProgram(
@@ -45,31 +56,35 @@ export const buildAndSubmitMergeTx = (
       {
         stateQueueSpendingScript: spendScript,
         stateQueueMintingScript: mintScript,
-      }
+      },
     );
 
     // Submit the transaction
     yield* handleSignSubmit(lucid, txBuilder);
-    parentPort?.postMessage({
-      type: "merge-tx-metric",
-    });
-
-    console.log("firstBlockTxs :>> ", firstBlockTxs);
+    yield* Metric.increment(mergeBlockCounter);
+    yield* Effect.logInfo("Merge transaction submitted, updating the db...");
+    if (firstBlockTxs.length === 0) {
+      return;
+    }
     const { spent: spentOutRefs, produced: producedUTxOs } =
       yield* findAllSpentAndProducedUTxOs(firstBlockTxs);
 
     const bs = 100;
+    yield* Effect.logInfo("Clear confirmed ledger db...");
     for (let i = 0; i < spentOutRefs.length; i += bs) {
       yield* Effect.tryPromise(() =>
-        ConfirmedLedgerDB.clearUTxOs(db, spentOutRefs.slice(i, i + bs))
+        ConfirmedLedgerDB.clearUTxOs(db, spentOutRefs.slice(i, i + bs)),
       );
     }
+    yield* Effect.logInfo("Insert produced UTxOs...");
     for (let i = 0; i < producedUTxOs.length; i += bs) {
       yield* Effect.tryPromise(() =>
-        ConfirmedLedgerDB.insert(db, producedUTxOs.slice(i, i + bs))
+        ConfirmedLedgerDB.insert(db, producedUTxOs.slice(i, i + bs)),
       );
     }
+    yield* Effect.logInfo("Clear block from BlocksDB...");
     yield* Effect.tryPromise(() => BlocksDB.clearBlock(db, headerHash));
+    yield* Effect.logInfo("Merge transaction completed.");
     // - Clear all the spent UTxOs from the confirmed ledger
     // - Add all the produced UTxOs from the confirmed ledger
     // - Remove all the tx hashes of the merged block from BlocksDB

@@ -10,11 +10,15 @@ export const fetchConfirmedStateAndItsLinkProgram = (
   config: StateQueue.FetchConfig,
 ): Effect.Effect<{ confirmed: UTxO; link?: UTxO }, Error> =>
   Effect.gen(function* () {
-    const allUTxOs = yield* utxosAtByNFTPolicyId(
-      lucid,
-      config.stateQueueAddress,
-      config.stateQueuePolicyId,
-      // toUnit(config.stateQueuePolicyId, fromText("Node"))
+    const allUTxOs = yield* Effect.catchAll(
+      utxosAtByNFTPolicyId(
+        lucid,
+        config.stateQueueAddress,
+        config.stateQueuePolicyId,
+        // toUnit(config.stateQueuePolicyId, fromText("Node"))
+      ),
+      (error) =>
+        Effect.fail(new Error(`Failed to fetch UTxOs: ${error.message}`)),
     );
     let confirmedStateResult:
       | { data: LedgerState.ConfirmedState; link: LinkedList.NodeKey }
@@ -33,7 +37,7 @@ export const fetchConfirmedStateAndItsLinkProgram = (
       const confirmedStateUTxO = filteredForConfirmedState[0];
       if (confirmedStateResult.link !== "Empty") {
         const firstLink = confirmedStateResult.link.Key;
-        console.log("firstLink :>> ", firstLink);
+        // console.log("firstLink :>> ", firstLink);
         const filteredForLink = yield* Effect.allSuccesses(
           allUTxOs.map((u: UTxO) => {
             const nodeDatumEffect = getNodeDatumFromUTxO(u);

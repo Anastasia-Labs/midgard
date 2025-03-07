@@ -12,7 +12,7 @@ export const createQuery = `
 export const insert = async (
   pool: Pool,
   headerHash: string,
-  txHashes: string[]
+  txHashes: string[],
 ): Promise<void> => {
   const query = `
       INSERT INTO blocks (header_hash, tx_hash)
@@ -25,30 +25,30 @@ export const insert = async (
 
   try {
     await pool.query(query, values);
-    logInfo(`blocks db: ${txHashes.length} new tx_hashes added`);
+    // logInfo(`blocks db: ${txHashes.length} new tx_hashes added`);
   } catch (err) {
-    logAbort(`blocks db: inserting error: ${err}`);
+    // logAbort(`blocks db: inserting error: ${err}`);
     throw err;
   }
 };
 
 export const retrieveTxHashesByBlockHash = async (
   pool: Pool,
-  blockHash: string
+  blockHash: string,
 ): Promise<string[]> => {
   const query = `SELECT tx_hash FROM blocks WHERE header_hash = $1`;
   try {
     const result = await pool.query(query, [Buffer.from(blockHash, "hex")]);
     return result.rows.map((row) => row.tx_hash.toString("hex"));
   } catch (err) {
-    logAbort(`blocks db: retrieving error: ${err}`);
+    // logAbort(`blocks db: retrieving error: ${err}`);
     throw err;
   }
 };
 
 export const retrieveBlockHashByTxHash = async (
   pool: Pool,
-  txHash: string
+  txHash: string,
 ): Promise<Option.Option<string>> => {
   const query = `SELECT header_hash FROM blocks WHERE tx_hash = $1`;
   try {
@@ -59,21 +59,21 @@ export const retrieveBlockHashByTxHash = async (
       return Option.none();
     }
   } catch (err) {
-    logAbort(`blocks db: retrieving error: ${err}`);
+    // logAbort(`blocks db: retrieving error: ${err}`);
     throw err;
   }
 };
 
 export const clearBlock = async (
   pool: Pool,
-  blockHash: string
+  blockHash: string,
 ): Promise<void> => {
   const query = `DELETE FROM blocks WHERE header_hash = $1`;
   try {
     await pool.query(query, [Buffer.from(blockHash, "hex")]);
-    logInfo(`blocks db: cleared`);
+    // logInfo(`blocks db: cleared`);
   } catch (err) {
-    logAbort(`blocks db: clearing error: ${err}`);
+    // logAbort(`blocks db: clearing error: ${err}`);
     throw err;
   }
 };
@@ -87,7 +87,7 @@ export const retrieve = async (pool: Pool): Promise<[string, string][]> => {
       row.tx_hash.toString("hex"),
     ]);
   } catch (err) {
-    logAbort(`blocks db: retrieving error: ${err}`);
+    // logAbort(`blocks db: retrieving error: ${err}`);
     throw err;
   }
 };

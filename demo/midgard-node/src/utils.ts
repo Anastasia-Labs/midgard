@@ -147,10 +147,8 @@ export const setupLucid = async (
   }
 };
 
-export const findSpentAndProducedUTxOs = (
-  txCBOR: string,
-): Effect.Effect<{ spent: OutRef[]; produced: UTxO[] }, Error> => {
-  try {
+export const findSpentAndProducedUTxOs = (txCBOR: string) =>
+  Effect.gen(function* () {
     const spent: OutRef[] = [];
     const produced: UTxO[] = [];
     const tx = CML.Transaction.from_cbor_hex(txCBOR);
@@ -158,45 +156,31 @@ export const findSpentAndProducedUTxOs = (
     const inputs = txBody.inputs();
     const outputs = txBody.outputs();
     for (let i = 0; i < inputs.len(); i++) {
-      try {
-        spent.push(coreToOutRef(inputs.get(i)));
-      } catch (e) {
-        console.log(e);
-      }
+      // TODO: custom error
+      yield* Effect.try(() => spent.push(coreToOutRef(inputs.get(i))));
     }
     const txHash = CML.hash_transaction(txBody).to_hex();
     for (let i = 0; i < outputs.len(); i++) {
-      try {
+      yield* Effect.try(() => {
         const utxo: UTxO = {
           txHash: txHash,
           outputIndex: i,
           ...coreToTxOutput(outputs.get(i)),
         };
         produced.push(utxo);
-      } catch (e) {
-        console.log(e);
-      }
+      });
     }
-    return Effect.succeed({ spent, produced });
-  } catch (_e) {
-    return Effect.fail(
-      new Error("Something went wrong decoding the transaction"),
-    );
-  }
-};
+    return { spent, produced };
+  });
 
 export const findAllSpentAndProducedUTxOs = (
   txCBORs: string[],
 ): Effect.Effect<{ spent: OutRef[]; produced: UTxO[] }, Error> =>
   Effect.gen(function* () {
-    const allEffects = Effect.validateAll(findSpentAndProducedUTxOs)(txCBORs);
-    const allSpentsAndProduces = yield* Effect.mapError(
-      allEffects,
-      (errors: [Error, ...Error[]]) => {
-        return new Error(errors.map((e) => `${e}`).join("\n"));
-      },
+    const allEffects = yield* Effect.all(
+      txCBORs.map(findSpentAndProducedUTxOs),
     );
-    return allSpentsAndProduces.reduce(
+    return allEffects.reduce(
       (
         { spent: spentAcc, produced: producedAcc },
         { spent: currSpent, produced: currProduced },
