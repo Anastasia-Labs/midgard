@@ -16,12 +16,11 @@ export type NodeConfigDep = {
   L1_KUPO_KEY: string;
   L1_OPERATOR_SEED_PHRASE: string;
   NETWORK: Network;
-  DATABASE_PATH: string;
   PORT: number;
   POLLING_INTERVAL: number;
   CONFIRMED_STATE_POLLING_INTERVAL: number;
   PROM_METRICS_PORT: number;
-  OTLP_PORT: number;
+  OLTP_EXPORTER_URL: string;
   POSTGRES_USER: string;
   POSTGRES_PASSWORD: string;
   POSTGRES_DB: string;
@@ -77,7 +76,7 @@ export class User extends Context.Tag("User")<
 
 export const NETWORK: Network = "Preprod";
 
-export const makeConfig = Effect.gen(function* ($) {
+export const makeConfig = Effect.gen(function* () {
   const config = yield* Config.all([
     Config.string("L1_PROVIDER"),
     Config.string("L1_BLOCKFROST_API_URL"),
@@ -86,14 +85,15 @@ export const makeConfig = Effect.gen(function* ($) {
     Config.string("L1_KUPO_KEY"),
     Config.string("L1_OPERATOR_SEED_PHRASE"),
     Config.string("NETWORK"),
-    Config.string("DATABASE_PATH"),
     Config.integer("PORT").pipe(Config.withDefault(3000)),
     Config.integer("POLLING_INTERVAL").pipe(Config.withDefault(10000)),
     Config.integer("CONFIRMED_STATE_POLLING_INTERVAL").pipe(
       Config.withDefault(60000),
     ),
     Config.integer("PROM_METRICS_PORT").pipe(Config.withDefault(9464)),
-    Config.integer("OTLP_PORT").pipe(Config.withDefault(4318)),
+    Config.string("OLTP_EXPORTER_URL").pipe(
+      Config.withDefault("http://0.0.0.0:4318/v1/traces"),
+    ),
     Config.string("POSTGRES_USER").pipe(Config.withDefault("postgres")),
     Config.string("POSTGRES_PASSWORD").pipe(Config.withDefault("postgres")),
     Config.string("POSTGRES_DB").pipe(Config.withDefault("midgard")),
@@ -114,16 +114,15 @@ export const makeConfig = Effect.gen(function* ($) {
     L1_KUPO_KEY: config[4],
     L1_OPERATOR_SEED_PHRASE: config[5],
     NETWORK: config[6] as Network,
-    DATABASE_PATH: config[7],
-    PORT: config[8],
-    POLLING_INTERVAL: config[9],
-    CONFIRMED_STATE_POLLING_INTERVAL: config[10],
-    PROM_METRICS_PORT: config[11],
-    OTLP_PORT: config[12],
-    POSTGRES_USER: config[13],
-    POSTGRES_PASSWORD: config[14],
-    POSTGRES_DB: config[15],
-    POSTGRES_HOST: config[16],
+    PORT: config[7],
+    POLLING_INTERVAL: config[8],
+    CONFIRMED_STATE_POLLING_INTERVAL: config[9],
+    PROM_METRICS_PORT: config[10],
+    OLTP_EXPORTER_URL: config[11],
+    POSTGRES_USER: config[12],
+    POSTGRES_PASSWORD: config[13],
+    POSTGRES_DB: config[14],
+    POSTGRES_HOST: config[15],
   };
 }).pipe(Effect.orDie);
 

@@ -152,7 +152,7 @@ export const clearUTxOs = async (
 export const clearTxs = async (
   pool: Pool,
   tableName: string,
-  txHashes: string[]
+  txHashes: string[],
 ): Promise<void> => {
   const query = `DELETE FROM ${tableName} WHERE tx_hash IN (${txHashes
     .map((_, i) => `$${i + 1}`)

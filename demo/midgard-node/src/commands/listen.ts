@@ -10,12 +10,10 @@ import {
   LucidEvolution,
   OutRef,
 } from "@lucid-evolution/lucid";
-import { diag, DiagConsoleLogger, DiagLogLevel } from "@opentelemetry/api";
 import { PrometheusExporter } from "@opentelemetry/exporter-prometheus";
 import { Duration, Effect, Metric, Option, pipe, Schedule } from "effect";
 import express from "express";
 import pg from "pg";
-import { Worker } from "worker_threads";
 import {
   BlocksDB,
   ConfirmedLedgerDB,
@@ -210,7 +208,7 @@ export const listen = (
 
     app.post("/submit", async (req, res) => {
       const txCBOR = req.query.tx_cbor;
-      // logInfo(`POST /submit - Submit request received for transaction`);
+      logInfo(`POST /submit - Submit request received for transaction`);
 
       if (typeof txCBOR === "string" && isHexString(txCBOR)) {
         try {
@@ -277,7 +275,7 @@ const monitorStateQueue = (
           yield* SDK.Endpoints.fetchLatestCommitedBlockProgram(
             lucid,
             fetchConfig,
-          );
+          ).pipe(Effect.withSpan("fetchLatestCommitedBlockProgram"));
         const fetchedBlocksOutRef = UtilsTx.utxoToOutRef(latestBlock);
 
         if (!UtilsTx.outRefsAreEqual(latestBlockOutRef, fetchedBlocksOutRef)) {
@@ -288,15 +286,18 @@ const monitorStateQueue = (
             db,
             fetchConfig,
             Date.now(),
-          );
+          ).pipe(Effect.withSpan("buildAndSubmitCommitmentBlock"));
         }
-      }).pipe(Effect.catchAllCause(Effect.logWarning));
+      }).pipe(
+        Effect.withSpan("monitor-state-queue"),
+        Effect.catchAllCause(Effect.logWarning),
+      );
       const schedule = Schedule.addDelay(Schedule.forever, () =>
         Duration.millis(pollingInterval),
       );
       yield* Effect.repeat(action, schedule);
     }),
-    // Effect.withSpan("monitor-state-queue")
+
     // Effect.fork // Forking ensures the effect keeps running
   );
 
@@ -325,15 +326,17 @@ const monitorConfirmedState = (
         fetchConfig,
         spendScript,
         mintScript,
-      ).pipe(Effect.catchAllCause(Effect.logWarning));
+      ).pipe(
+        Effect.withSpan("monitor-confirmed-state"),
+        Effect.catchAllCause(Effect.logWarning),
+      );
       yield* Effect.repeat(action, schedule);
     }),
-    // Effect.withSpan("monitor-confirmed-state")
+
     // Effect.fork // Forking ensures the effect keeps running
   );
 
 export const runNode = Effect.gen(function* () {
-  diag.setLogger(new DiagConsoleLogger(), DiagLogLevel.DEBUG);
   const { user } = yield* User;
   const nodeConfig = yield* NodeConfig;
   const { spendScriptAddress, policyId } = yield* AlwaysSucceedsContract;
@@ -355,18 +358,9 @@ export const runNode = Effect.gen(function* () {
     catch: (e) => new Error(`${e}`),
   });
 
-  // const otlpTraceExporter = new OTLPTraceExporter({
-  //   url: `http://localhost:${nodeConfig.OTLP_PORT}/v1/traces`,
-  // });
-
-  // // Log the OTLP port
-  // logInfo(
-  //   `OTLP Trace Exporter running at http://localhost:${nodeConfig.OTLP_PORT}/v1/traces`,
-  // );
   const prometheusExporter = new PrometheusExporter(
     {
       port: nodeConfig.PROM_METRICS_PORT,
-      // host: "localhost",
     },
     () => {
       `Prometheus metrics available at http://localhost:${nodeConfig.PROM_METRICS_PORT}/metrics`;
@@ -381,34 +375,48 @@ export const runNode = Effect.gen(function* () {
   const MetricsLive = NodeSdk.layer(() => ({
     resource: { serviceName: "midgard-node" },
     metricReader: prometheusExporter,
-    spanProcessor: new BatchSpanProcessor(new OTLPTraceExporter()),
+    spanProcessor: new BatchSpanProcessor(
+      new OTLPTraceExporter({ url: nodeConfig.OLTP_EXPORTER_URL }),
+    ),
   }));
 
-  const FirstThread = listen(user, pool, nodeConfig.PORT);
+  const appThread = listen(user, pool, nodeConfig.PORT);
 
-  const SecondThread = monitorStateQueue(
+  const monitorStateQueueThread = monitorStateQueue(
     user,
     fetchConfig,
     pool,
     nodeConfig.POLLING_INTERVAL,
   );
 
-  const ThirdThread = monitorConfirmedState(
+  const monitorConfirmedStateThread = monitorConfirmedState(
     user,
     fetchConfig,
     pool,
     nodeConfig.CONFIRMED_STATE_POLLING_INTERVAL,
   );
 
-  const program = Effect.all([FirstThread, SecondThread, ThirdThread], {
-    concurrency: "unbounded",
+  const monitorMempoolThread = Effect.gen(function* () {
+    const txList = yield* Effect.tryPromise(() => MempoolDB.retrieve(pool));
+    const numTx = BigInt(txList.length);
+    yield* mempoolTxGauge(Effect.succeed(numTx));
   });
+
+  const program = Effect.all(
+    [
+      appThread,
+      monitorStateQueueThread,
+      monitorConfirmedStateThread,
+      monitorMempoolThread,
+    ],
+    {
+      concurrency: "unbounded",
+    },
+  );
 
   pipe(
     program,
-    // Effect.awaitAllChildren,
     Effect.withSpan("midgard"),
-    // Effect.tap(() => Effect.annotateCurrentSpan("migdard-node", "runner")),
     Effect.provide(MetricsLive),
     Effect.catchAllCause(Effect.logError),
     Effect.runPromise,
