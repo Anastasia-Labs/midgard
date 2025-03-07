@@ -47,8 +47,11 @@ export const utxosAtByNFTPolicyId = (
   Effect.gen(function* () {
     const allUTxOs = yield* Effect.tryPromise({
       try: () => lucid.utxosAt(addressOrCred),
-      catch: (e) =>
-        new Error(`Failed to fetch UTxOs at: ${addressOrCred} -- Cause: ${e}`),
+      catch: (e) => {
+        return new Error(
+          `Failed to fetch UTxOs at: ${addressOrCred} -- Cause: ${e}`,
+        );
+      },
     });
     const nftEffects: Effect.Effect<UTxO, Error>[] = allUTxOs.map((u: UTxO) => {
       const nftsEffect = getSingleAssetApartFromAda(u.assets);

@@ -1,5 +1,5 @@
-import { Address, OutRef, UTxO } from "@lucid-evolution/lucid";
-import sqlite3 from "sqlite3";
+import { OutRef, UTxO } from "@lucid-evolution/lucid";
+import { Pool } from "pg";
 import { logAbort } from "../utils.js";
 import * as utils from "./utils.js";
 import {
@@ -7,80 +7,76 @@ import {
   insertUTxOs,
   retrieveUTxOs,
   utxoFromRow,
-  UTxOFromRow,
 } from "./utils.js";
 
 export const createQuery = `
   CREATE TABLE IF NOT EXISTS mempool_ledger (
-    tx_hash BLOB NOT NULL,
+    tx_hash BYTEA NOT NULL,
     output_index INTEGER NOT NULL,
     address TEXT NOT NULL,
-    datum_hash BLOB,
-    datum BLOB,
+    datum_hash BYTEA,
+    datum BYTEA,
     script_ref_type VARCHAR (8),
-    script_ref_script BLOB,
+    script_ref_script BYTEA,
     PRIMARY KEY (tx_hash, output_index)
   );
   CREATE TABLE IF NOT EXISTS mempool_ledger_assets (
-    tx_hash BLOB NOT NULL,
+    tx_hash BYTEA NOT NULL,
     output_index INTEGER NOT NULL,
-    unit BLOB,
-    quantity BIGINT NOT NULL,
+    unit BYTEA,
+    quantity NUMERIC NOT NULL,
     FOREIGN KEY (tx_hash, output_index)
       REFERENCES mempool_ledger(tx_hash, output_index)
       ON DELETE CASCADE
   );`;
 
-export const insert = async (db: sqlite3.Database, utxos: UTxO[]) =>
-  insertUTxOs(db, "mempool_ledger", "mempool_ledger_assets", utxos);
+export const insert = async (pool: Pool, utxos: UTxO[]) =>
+  insertUTxOs(pool, "mempool_ledger", "mempool_ledger_assets", utxos);
 
-export const retrieve = async (db: sqlite3.Database): Promise<UTxO[]> =>
-  retrieveUTxOs(db, "mempool_ledger", "mempool_ledger_assets");
+export const retrieve = async (pool: Pool): Promise<UTxO[]> =>
+  retrieveUTxOs(pool, "mempool_ledger", "mempool_ledger_assets");
 
 export const retrieveUTxOsAtAddress = async (
-  db: sqlite3.Database,
-  address: Address,
+  pool: Pool,
+  address: string,
 ): Promise<UTxO[]> => {
   const query = `
-      SELECT
-        t.tx_hash,
-        t.output_index,
-        address,
-        json_group_array(json_object('unit', hex(a.unit), 'quantity', a.quantity)) AS assets,
-        datum_hash,
-        datum,
-        script_ref_type,
-        script_ref_script
-      FROM mempool_ledger AS t
-        LEFT JOIN mempool_ledger_assets AS a
-          ON t.tx_hash = a.tx_hash AND t.output_index = a.output_index
-      WHERE address = ?
-      GROUP BY
-        t.tx_hash,
-        t.output_index,
-        address,
-        datum_hash,
-        datum,
-        script_ref_type,
-        script_ref_script
-      ORDER BY
-        t.tx_hash,
-        t.output_index
-      ;
-      `;
-  return new Promise((resolve, reject) => {
-    db.all(query, [address], (err, rows: UTxOFromRow[]) => {
-      if (err) {
-        logAbort(`mempool_ledger db: error retrieving utxos: ${err.message}`);
-        return reject(err);
-      }
-      resolve(rows.map((r) => utxoFromRow(r)));
-    });
-  });
+    SELECT
+      t.tx_hash,
+      t.output_index,
+      address,
+      json_agg(json_build_object('unit', encode(a.unit, 'hex'), 'quantity', a.quantity)) AS assets,
+      datum_hash,
+      datum,
+      script_ref_type,
+      script_ref_script
+    FROM mempool_ledger AS t
+      LEFT JOIN mempool_ledger_assets AS a
+        ON t.tx_hash = a.tx_hash AND t.output_index = a.output_index
+    WHERE address = $1
+    GROUP BY
+      t.tx_hash,
+      t.output_index,
+      address,
+      datum_hash,
+      datum,
+      script_ref_type,
+      script_ref_script
+    ORDER BY
+      t.tx_hash,
+      t.output_index
+  ;`;
+
+  try {
+    const result = await pool.query(query, [address]);
+    return result.rows.map((r) => utxoFromRow(r));
+  } catch (err) {
+    // logAbort(`mempool_ledger db: error retrieving utxos: ${err}`);
+    throw err;
+  }
 };
 
-export const clearUTxOs = async (db: sqlite3.Database, refs: OutRef[]) =>
-  utils.clearUTxOs(db, "mempool_ledger", refs);
+export const clearUTxOs = async (pool: Pool, refs: OutRef[]) =>
+  utils.clearUTxOs(pool, "mempool_ledger", refs);
 
-export const clear = async (db: sqlite3.Database) =>
-  clearTable(db, "mempool_ledger");
+export const clear = async (pool: Pool) => clearTable(pool, "mempool_ledger");

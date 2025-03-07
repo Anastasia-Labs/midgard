@@ -6,10 +6,9 @@ import {
 } from "@lucid-evolution/lucid";
 import { Effect, Schedule } from "effect";
 import * as SDK from "@al-ft/midgard-sdk";
-import { Database } from "sqlite3";
 import * as BlocksDB from "../database/blocks.js";
 import * as ImmutableDB from "../database/immutable.js";
-
+import pg from "pg";
 /**
  * Handle the signing and submission of a transaction.
  *
@@ -30,11 +29,11 @@ export const handleSignSubmit = (
           Schedule.compose(Schedule.exponential(5_000), Schedule.recurs(5)),
         ),
       );
-    yield* Effect.logDebug(`🚀 Transaction submitted: ${txHash}`);
-    yield* Effect.logDebug(`Confirming Transaction...`);
-    yield* Effect.tryPromise(() => lucid.awaitTx(txHash, 40_000));
-    yield* Effect.logDebug(`✅ Transaction confirmed: ${txHash}`);
-    yield* Effect.logDebug("Pausing for 10 seconds...");
+    yield* Effect.logInfo(`🚀 Transaction submitted: ${txHash}`);
+    yield* Effect.logInfo(`Confirming Transaction...`);
+    yield* Effect.tryPromise(() => lucid.awaitTx(txHash, 10_000));
+    yield* Effect.logInfo(`✅ Transaction confirmed: ${txHash}`);
+    yield* Effect.logInfo("Pausing for 10 seconds...");
     yield* Effect.sleep("10 seconds");
     return txHash;
   });
@@ -73,8 +72,8 @@ export const handleSignSubmitWithoutConfirmation = (
  */
 export const fetchFirstBlockTxs = (
   lucid: LucidEvolution,
-  fetchConfig: SDK.Types.FetchConfig,
-  db: Database,
+  fetchConfig: SDK.TxBuilder.StateQueue.FetchConfig,
+  db: pg.Pool,
 ): Effect.Effect<{ txs: string[]; headerHash: string }, Error> =>
   Effect.gen(function* () {
     const { link: firstBlockUTxO } =
@@ -94,7 +93,9 @@ export const fetchFirstBlockTxs = (
       });
       const txs = yield* Effect.tryPromise({
         try: () => ImmutableDB.retrieveTxCborsByHashes(db, txHashes),
-        catch: (e) => new Error(`${e}`),
+        catch: (e) => {
+          return new Error(`${e}`);
+        },
       });
       return { txs, headerHash };
     }

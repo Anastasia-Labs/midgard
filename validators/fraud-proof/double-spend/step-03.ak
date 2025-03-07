@@ -1,18 +1,18 @@
 use aiken/builtin
-use aiken/cbor
 use aiken/collection/list
-use aiken/crypto.{ScriptHash, blake2b_256}
+use aiken/crypto.{ScriptHash}
 use cardano/assets.{PolicyId}
 use cardano/transaction.{OutputReference, Transaction}
+use midgard/common/utils.{verify_hash_32}
 use midgard/computation_thread.{StepDatum}
 use midgard/fraud_proof/common/utils.{
   get_singleton_ct_token, handle_cancel, validate_step_output,
-}
+} as fraud_proof_utils
 use midgard/fraud_proof/double_spend/step_02.{StepState as Step2State}
 use midgard/fraud_proof/double_spend/step_03.{
   Cancel, Continue, StepRedeemer as Step3Redeemer, StepState as Step3State,
 }
-use midgard/ledger_state.{MidgardTx, MidgardTxBody}
+use midgard/ledger_state.{MidgardTxBodyCompact, MidgardTxCompact}
 
 validator main(
   double_spend_step_04_validator_script_hash: ScriptHash,
@@ -58,16 +58,16 @@ validator main(
         // -------- double spend validation specific logic START --------
         // fraud prover provides a list of output references that are known to be part of the fraudulent block as the tx1, and tx2 full transactions,
         // once serialized and hashed match the verified_tx1_hash and verified_tx2_hash hashes we have verified to be a part of the supposedly "fraudulent" block in previous steps.
-        expect blake2b_256(cbor.serialise(tx1)) == verified_tx1_hash
-        expect blake2b_256(cbor.serialise(tx2)) == verified_tx2_hash
+        verify_hash_32(tx1, verified_tx1_hash)
+        verify_hash_32(tx2, verified_tx2_hash)
 
         // tx bodies provided by fraud prover, once serialized and hashed, match the hashed body field part of the inputted transactions
-        expect blake2b_256(cbor.serialise(tx1_body)) == tx1.body
-        expect blake2b_256(cbor.serialise(tx2_body)) == tx2.body
+        verify_hash_32(tx1_body, tx1.body)
+        verify_hash_32(tx2_body, tx2.body)
 
         // input lists match tx body spend_inputs
-        expect blake2b_256(tx1_input_utxos) == tx1_body.spend_inputs
-        expect blake2b_256(tx2_input_utxos) == tx2_body.spend_inputs
+        verify_hash_32(tx1_input_utxos, tx1_body.spend_inputs)
+        verify_hash_32(tx2_input_utxos, tx2_body.spend_inputs)
 
         // both input lists contain the fraudulent input
         expect list.has(builtin.un_list_data(tx1_input_utxos), fraudulent_input)

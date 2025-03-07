@@ -12,11 +12,13 @@ export const fetchLatestCommitedBlockProgram = (
   config: StateQueue.FetchConfig,
 ): Effect.Effect<UTxO, Error> =>
   Effect.gen(function* () {
+    yield* Effect.logInfo("Fetching latest commited block...");
     const allBlocks = yield* utxosAtByNFTPolicyId(
       lucid,
       config.stateQueueAddress,
       config.stateQueuePolicyId,
     );
+    yield* Effect.logInfo("allBlocks", allBlocks.length);
     const filtered = yield* Effect.allSuccesses(
       allBlocks.map((u: UTxO) => {
         const nodeKeyEffect = getLinkFromBlockUTxO(u);

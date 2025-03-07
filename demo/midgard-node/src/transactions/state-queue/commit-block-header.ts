@@ -1,10 +1,12 @@
 // Build a tx Merkle root with all the mempool txs
 
 import { LucidEvolution } from "@lucid-evolution/lucid";
-import { Effect } from "effect";
-import { Database } from "sqlite3";
+import { Effect, Metric } from "effect";
 import * as SDK from "@al-ft/midgard-sdk";
-import { handleSignSubmit } from "../utils.js";
+import {
+  handleSignSubmit,
+  handleSignSubmitWithoutConfirmation,
+} from "../utils.js";
 import {
   LatestLedgerDB,
   MempoolDB,
@@ -12,7 +14,37 @@ import {
   UtilsDB,
 } from "@/database/index.js";
 import { findAllSpentAndProducedUTxOs } from "@/utils.js";
-import { AlwaysSucceeds } from "@/services/index.js";
+import { makeConfig } from "@/config.js";
+import { makeAlwaysSucceedsServiceFn } from "@/services/always-succeeds.js";
+import pg from "pg";
+
+const commitBlockNumTxGauge = Metric.gauge("commit_block_num_tx_count", {
+  description:
+    "A gauge for tracking the current number of transactions in the commit block",
+  bigint: true,
+});
+
+const totalTxSizeGauge = Metric.gauge("total_tx_size", {
+  description:
+    "A gauge for tracking the total size of transactions in the commit block",
+});
+
+const commitBlockCounter = Metric.counter("commit_block_count", {
+  description: "A counter for tracking the number of committed blocks",
+  bigint: true,
+  incremental: true,
+});
+
+const commitBlockTxCounter = Metric.counter("commit_block_tx_count", {
+  description:
+    "A counter for tracking the number of transactions in the commit block",
+  bigint: true,
+  incremental: true,
+});
+
+const commitBlockTxSizeGauge = Metric.gauge("commit_block_tx_size", {
+  description: "A gauge for tracking the size of the commit block transaction",
+});
 
 // Apply mempool txs to LatestLedgerDB, and find the new UTxO set
 
@@ -26,61 +58,104 @@ import { AlwaysSucceeds } from "@/services/index.js";
 
 export const buildAndSubmitCommitmentBlock = (
   lucid: LucidEvolution,
-  db: Database,
+  db: pg.Pool,
   fetchConfig: SDK.TxBuilder.StateQueue.FetchConfig,
   endTime: number,
 ) =>
   Effect.gen(function* () {
+    Effect.logInfo("buildAndSubmitCommitmentBlock... :>> ");
     // Fetch transactions from the first block
     const txList = yield* Effect.tryPromise(() => MempoolDB.retrieve(db));
-    const txs = txList.map(([txHash, txCbor]) => ({ txHash, txCbor }));
-    const txRoot = yield* SDK.Utils.mptFromList(txs.map((tx) => tx.txCbor));
-    const txCbors = txList.map(([_txHash, txCbor]) => txCbor);
-    const { spent: spentList, produced: producedList } =
-      yield* findAllSpentAndProducedUTxOs(txCbors);
-    const utxoList = yield* Effect.tryPromise(() =>
-      LatestLedgerDB.retrieve(db),
-    );
-    // Remove spent UTxOs from utxoList
-    const filteredUTxOList = utxoList.filter(
-      (utxo) =>
-        !spentList.some(
-          (spent) =>
-            spent.txHash === utxo.txHash &&
-            spent.outputIndex === utxo.outputIndex,
-        ),
-    );
+    const numTx = BigInt(txList.length);
+    // console.log("numTx :>> ", numTx);
+    if (numTx > 0n) {
+      const txs = txList.map(([txHash, txCbor]) => ({ txHash, txCbor }));
+      const txRoot = yield* SDK.Utils.mptFromList(txs.map((tx) => tx.txCbor));
+      const txCbors = txList.map(([_txHash, txCbor]) => txCbor);
+      const { spent: spentList, produced: producedList } =
+        yield* findAllSpentAndProducedUTxOs(txCbors);
+      const utxoList = yield* Effect.tryPromise(() =>
+        LatestLedgerDB.retrieve(db),
+      );
+      // Remove spent UTxOs from utxoList
+      const filteredUTxOList = utxoList.filter(
+        (utxo) =>
+          !spentList.some(
+            (spent) =>
+              spent.txHash === utxo.txHash &&
+              spent.outputIndex === utxo.outputIndex,
+          ),
+      );
 
-    // Merge filtered utxoList with producedList
-    const newUTxOList = [...filteredUTxOList, ...producedList];
-    const utxoRoot = yield* SDK.Utils.mptFromList(newUTxOList);
-    const { spendScript } = yield* AlwaysSucceeds.AlwaysSucceedsContract;
-    // Build commitment block
-    const commitBlockParams: SDK.TxBuilder.StateQueue.CommitBlockParams = {
-      newUTxOsRoot: utxoRoot.hash.toString(),
-      transactionsRoot: txRoot.hash.toString(),
-      endTime: BigInt(endTime),
-      stateQueueSpendingScript: spendScript,
-    };
-    const aoUpdateCommitmentTimeParams = {};
-    const txBuilder = yield* SDK.Endpoints.commitBlockHeaderProgram(
-      lucid,
-      fetchConfig,
-      commitBlockParams,
-      aoUpdateCommitmentTimeParams,
-    );
-    // Submit the transaction
-    yield* handleSignSubmit(lucid, txBuilder);
-    // TODO: For final product, handle tx submission failures properly.
-    yield* Effect.tryPromise({
-      try: () =>
-        UtilsDB.modifyMultipleTables(
-          db,
-          [LatestLedgerDB.clearUTxOs, spentList],
-          [LatestLedgerDB.insert, producedList],
-          [MempoolDB.clear],
-          [ImmutableDB.insertTxs, txs],
-        ),
-      catch: (e) => new Error(`Transaction failed: ${e}`),
-    });
+      // Merge filtered utxoList with producedList
+      const newUTxOList = [...filteredUTxOList, ...producedList].map(
+        (utxo) => utxo.txHash + utxo.outputIndex,
+      );
+
+      const utxoRoot = yield* SDK.Utils.mptFromList(newUTxOList);
+      const nodeConfig = yield* makeConfig;
+      const { policyId, spendScript, mintScript } =
+        yield* makeAlwaysSucceedsServiceFn(nodeConfig);
+      // Build commitment block
+      const commitBlockParams: SDK.TxBuilder.StateQueue.CommitBlockParams = {
+        newUTxOsRoot: utxoRoot.hash.toString("hex"),
+        transactionsRoot: txRoot.hash.toString("hex"),
+        endTime: BigInt(endTime),
+        stateQueueSpendingScript: spendScript,
+        policyId,
+        stateQueueMintingScript: mintScript,
+      };
+      const aoUpdateCommitmentTimeParams = {};
+      const txBuilder = yield* SDK.Endpoints.commitBlockHeaderProgram(
+        lucid,
+        fetchConfig,
+        commitBlockParams,
+        aoUpdateCommitmentTimeParams,
+      );
+      const txSize = txBuilder.toCBOR().length / 2;
+      // console.log("txBuilder.toCBOR() :>> ", txBuilder.toCBOR());
+      console.log("txSize :>> ", txSize);
+      // Submit the transaction
+      yield* handleSignSubmit(lucid, txBuilder);
+      const totalTxSize = txCbors.reduce(
+        (acc, cbor) => acc + cbor.length / 2,
+        0,
+      );
+      yield* commitBlockTxSizeGauge(Effect.succeed(txSize));
+      yield* commitBlockNumTxGauge(Effect.succeed(numTx));
+      yield* Metric.increment(commitBlockCounter);
+      yield* Metric.incrementBy(commitBlockTxCounter, numTx);
+      yield* totalTxSizeGauge(Effect.succeed(totalTxSize));
+      // console.log("spentList.length :>> ", spentList.length);
+      const bs = 100;
+      for (let i = 0; i < spentList.length; i += bs) {
+        yield* Effect.tryPromise(() =>
+          LatestLedgerDB.clearUTxOs(db, spentList.slice(i, i + bs)),
+        );
+      }
+      for (let i = 0; i < producedList.length; i += bs) {
+        yield* Effect.tryPromise(() =>
+          LatestLedgerDB.insert(db, producedList.slice(i, i + bs)),
+        );
+      }
+      for (let i = 0; i < txs.length; i += bs) {
+        yield* Effect.tryPromise(() =>
+          ImmutableDB.insertTxs(db, txs.slice(i, i + bs)),
+        );
+      }
+
+      yield* Effect.tryPromise(() => MempoolDB.clear(db));
+      // TODO: For final product, handle tx submission failures properly.
+      // yield* Effect.tryPromise({
+      //   try: () =>
+      //     UtilsDB.modifyMultipleTables(
+      //       db,
+      //       [LatestLedgerDB.clearUTxOs, spentList],
+      //       [LatestLedgerDB.insert, producedList],
+      //       [MempoolDB.clear],
+      //       [ImmutableDB.insertTxs, txs]
+      //     ),
+      //   catch: (e) => new Error(`Transaction failed: ${e}`),
+      // });
+    }
   });

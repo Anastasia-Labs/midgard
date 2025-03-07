@@ -43,6 +43,8 @@ export type CommitBlockParams = {
   transactionsRoot: MerkleRoot;
   endTime: POSIXTime;
   stateQueueSpendingScript: Script;
+  policyId: PolicyId;
+  stateQueueMintingScript: Script;
 };
 
 export type MergeParams = {

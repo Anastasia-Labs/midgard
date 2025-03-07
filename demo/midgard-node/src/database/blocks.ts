@@ -1,109 +1,95 @@
-import { fromHex, toHex } from "@lucid-evolution/lucid";
 import { Option } from "effect";
-import sqlite3 from "sqlite3";
+import { Pool } from "pg";
 import { logAbort, logInfo } from "../utils.js";
 import { clearTable } from "./utils.js";
 
 export const createQuery = `
   CREATE TABLE IF NOT EXISTS blocks (
-    header_hash BLOB NOT NULL,
-    tx_hash BLOB NOT NULL UNIQUE
+    header_hash BYTEA NOT NULL,
+    tx_hash BYTEA NOT NULL UNIQUE
   );`;
 
 export const insert = async (
-  db: sqlite3.Database,
-  header_hash: string,
-  tx_hashes: string[],
+  pool: Pool,
+  headerHash: string,
+  txHashes: string[],
 ): Promise<void> => {
   const query = `
-    INSERT INTO blocks (header_hash, tx_hash)
-    VALUES
-    ${tx_hashes.map(() => `(?, ?)`).join(", ")}`;
-  const values = tx_hashes.flatMap((tx_hash) => [
-    fromHex(header_hash),
-    fromHex(tx_hash),
+      INSERT INTO blocks (header_hash, tx_hash)
+      VALUES
+      ${txHashes.map((_, i) => `($${i * 2 + 1}, $${i * 2 + 2})`).join(", ")}`;
+  const values = txHashes.flatMap((txHash) => [
+    Buffer.from(headerHash, "hex"),
+    Buffer.from(txHash, "hex"),
   ]);
-  await new Promise<void>((resolve, reject) => {
-    db.run(query, values, function (err) {
-      if (err) {
-        logAbort(`blocks db: inserting error: ${err.message}`);
-        reject(err);
-      } else {
-        logInfo(`blocks db: ${tx_hashes.length} new tx_hashes added`);
-        resolve();
-      }
-    });
-  });
+
+  try {
+    await pool.query(query, values);
+    // logInfo(`blocks db: ${txHashes.length} new tx_hashes added`);
+  } catch (err) {
+    // logAbort(`blocks db: inserting error: ${err}`);
+    throw err;
+  }
 };
 
 export const retrieveTxHashesByBlockHash = async (
-  db: sqlite3.Database,
+  pool: Pool,
   blockHash: string,
 ): Promise<string[]> => {
-  const query = `SELECT tx_hash FROM blocks WHERE header_hash = ?`;
-  const txHashes = await new Promise<string[]>((resolve, reject) => {
-    db.all(query, [fromHex(blockHash)], (err, rows: { tx_hash: Buffer }[]) => {
-      if (err) {
-        logAbort(`blocks db: retrieving error: ${err.message}`);
-        reject(err);
-      }
-      resolve(rows.map((r) => toHex(new Uint8Array(r.tx_hash))));
-    });
-  });
-  return txHashes;
+  const query = `SELECT tx_hash FROM blocks WHERE header_hash = $1`;
+  try {
+    const result = await pool.query(query, [Buffer.from(blockHash, "hex")]);
+    return result.rows.map((row) => row.tx_hash.toString("hex"));
+  } catch (err) {
+    // logAbort(`blocks db: retrieving error: ${err}`);
+    throw err;
+  }
 };
 
 export const retrieveBlockHashByTxHash = async (
-  db: sqlite3.Database,
+  pool: Pool,
   txHash: string,
 ): Promise<Option.Option<string>> => {
-  const query = `SELECT header_hash FROM blocks WHERE tx_hash = ?`;
-  const blockHash = await new Promise<string[]>((resolve, reject) => {
-    db.all(query, [fromHex(txHash)], (err, rows: { header_hash: Buffer }[]) => {
-      if (err) {
-        logAbort(`blocks db: retrieving error: ${err.message}`);
-        reject(err);
-      }
-      resolve(rows.map((r) => toHex(new Uint8Array(r.header_hash))));
-    });
-  });
-  return Option.fromIterable(blockHash);
+  const query = `SELECT header_hash FROM blocks WHERE tx_hash = $1`;
+  try {
+    const result = await pool.query(query, [Buffer.from(txHash, "hex")]);
+    if (result.rows.length > 0) {
+      return Option.some(result.rows[0].header_hash.toString("hex"));
+    } else {
+      return Option.none();
+    }
+  } catch (err) {
+    // logAbort(`blocks db: retrieving error: ${err}`);
+    throw err;
+  }
 };
 
 export const clearBlock = async (
-  db: sqlite3.Database,
+  pool: Pool,
   blockHash: string,
 ): Promise<void> => {
-  const query = `DELETE from blocks WHERE header_hash = ?`;
-  await new Promise<void>((resolve, reject) => {
-    db.run(query, [fromHex(blockHash)], function (err) {
-      if (err) {
-        logAbort(`blocks db: clearing error: ${err.message}`);
-        reject(err);
-      } else {
-        logInfo(`blocks db: cleared`);
-        resolve();
-      }
-    });
-  });
+  const query = `DELETE FROM blocks WHERE header_hash = $1`;
+  try {
+    await pool.query(query, [Buffer.from(blockHash, "hex")]);
+    // logInfo(`blocks db: cleared`);
+  } catch (err) {
+    // logAbort(`blocks db: clearing error: ${err}`);
+    throw err;
+  }
 };
 
-export const retrieve = async (db: sqlite3.Database) => {
+export const retrieve = async (pool: Pool): Promise<[string, string][]> => {
   const query = `SELECT * FROM blocks`;
-  const blocks = await new Promise<[string, string][]>((resolve, reject) => {
-    db.all(query, (err, rows: { header_hash: Buffer; tx_hash: Buffer }[]) => {
-      if (err) {
-        logAbort(`blocks db: retrieving error: ${err.message}`);
-        reject(err);
-      }
-      const result: [string, string][] = rows.map((row) => [
-        toHex(new Uint8Array(row.header_hash)),
-        toHex(new Uint8Array(row.tx_hash)),
-      ]);
-      resolve(result);
-    });
-  });
-  return blocks;
+  try {
+    const result = await pool.query(query);
+    return result.rows.map((row) => [
+      row.header_hash.toString("hex"),
+      row.tx_hash.toString("hex"),
+    ]);
+  } catch (err) {
+    // logAbort(`blocks db: retrieving error: ${err}`);
+    throw err;
+  }
 };
 
-export const clear = async (db: sqlite3.Database) => clearTable(db, `blocks`);
+export const clear = async (pool: Pool) => clearTable(pool, `blocks`);
