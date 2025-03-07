@@ -8,7 +8,7 @@
     "midgard-node": "./dist/index.js"
   },
   "scripts": {
-    "clean": "rimraf dist",
+    "clean": "rimraf dist node_modules",
     "build": "tsup src/index.ts --minify --format esm",
     "quick-test": "pnpm run build && node dist/index.js --help",
     "format": "prettier --write \"**/*.{ts,tsx,md}\"",
@@ -28,7 +28,7 @@
   "dependencies": {
     "@aiken-lang/merkle-patricia-forestry": "^1.2.0",
     "@al-ft/midgard-sdk": "file:../midgard-sdk/al-ft-midgard-sdk-0.1.0.tgz",
-    "@effect/opentelemetry": "^0.44.4",
+    "@effect/opentelemetry": "^0.44.6",
     "@effect/platform-node": "^0.73.4",
     "@lucid-evolution/lucid": "^0.4.23",
     "@opentelemetry/api": "^1.9.0",
@@ -43,8 +43,8 @@
     "effect": "^3.13.4",
     "express": "^4.21.2",
     "pg": "^8.13.3",
-    "vitest": "^3.0.7",
-    "rimraf": "^6.0.1"
+    "rimraf": "^6.0.1",
+    "vitest": "^3.0.7"
   },
   "devDependencies": {
     "@commander-js/extra-typings": "^13.1.0",

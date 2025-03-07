@@ -32,6 +32,8 @@ import {
   logWarning,
 } from "../utils.js";
 import * as SDK from "@al-ft/midgard-sdk";
+import { OTLPTraceExporter } from "@opentelemetry/exporter-trace-otlp-http";
+import { BatchSpanProcessor } from "@opentelemetry/sdk-trace-base";
 
 const txCounter = Metric.counter("tx_count", {
   description: "A counter for tracking submit transactions",
@@ -294,8 +296,13 @@ const monitorStateQueue = (
       );
       yield* Effect.repeat(action, schedule);
     }),
-    Effect.fork, // Forking ensures the effect keeps running
+    // Effect.withSpan("monitor-state-queue")
+    // Effect.fork // Forking ensures the effect keeps running
   );
+
+// possible issues:
+// 1. tx-generator: large batch size & high concurrency
+// 2. after initing node, can't commit the block
 
 const monitorConfirmedState = (
   lucid: LucidEvolution,
@@ -321,7 +328,8 @@ const monitorConfirmedState = (
       ).pipe(Effect.catchAllCause(Effect.logWarning));
       yield* Effect.repeat(action, schedule);
     }),
-    Effect.fork, // Forking ensures the effect keeps running
+    // Effect.withSpan("monitor-confirmed-state")
+    // Effect.fork // Forking ensures the effect keeps running
   );
 
 export const runNode = Effect.gen(function* () {
@@ -373,32 +381,36 @@ export const runNode = Effect.gen(function* () {
   const MetricsLive = NodeSdk.layer(() => ({
     resource: { serviceName: "midgard-node" },
     metricReader: prometheusExporter,
+    spanProcessor: new BatchSpanProcessor(new OTLPTraceExporter()),
   }));
 
-  const program = Effect.gen(function* () {
-    yield* Effect.fork(listen(user, pool, nodeConfig.PORT));
-    yield* monitorStateQueue(
-      user,
-      fetchConfig,
-      pool,
-      nodeConfig.POLLING_INTERVAL,
-    );
-    yield* monitorConfirmedState(
-      user,
-      fetchConfig,
-      pool,
-      nodeConfig.CONFIRMED_STATE_POLLING_INTERVAL,
-    );
-    yield* Effect.never;
+  const FirstThread = listen(user, pool, nodeConfig.PORT);
+
+  const SecondThread = monitorStateQueue(
+    user,
+    fetchConfig,
+    pool,
+    nodeConfig.POLLING_INTERVAL,
+  );
+
+  const ThirdThread = monitorConfirmedState(
+    user,
+    fetchConfig,
+    pool,
+    nodeConfig.CONFIRMED_STATE_POLLING_INTERVAL,
+  );
+
+  const program = Effect.all([FirstThread, SecondThread, ThirdThread], {
+    concurrency: "unbounded",
   });
 
   pipe(
     program,
-    Effect.awaitAllChildren,
-    Effect.withSpan("midgard-node"),
-    Effect.tap(() => Effect.annotateCurrentSpan("migdard-node", "runner")),
+    // Effect.awaitAllChildren,
+    Effect.withSpan("midgard"),
+    // Effect.tap(() => Effect.annotateCurrentSpan("migdard-node", "runner")),
     Effect.provide(MetricsLive),
     Effect.catchAllCause(Effect.logError),
-    Effect.runFork,
+    Effect.runPromise,
   );
 });
