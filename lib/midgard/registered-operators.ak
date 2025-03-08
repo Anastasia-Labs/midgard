@@ -1,7 +1,8 @@
-use midgard/common/types.{POSIXTime}
+use midgard/common/types.{PosixTime}
+use midgard/protocol_parameters.{registration_duration}
 
 pub type Datum {
-  registration_time: POSIXTime,
+  registration_time: PosixTime,
 }
 
 pub type WitnessStatus {
@@ -47,4 +48,10 @@ pub type MintRedeemer {
     anchor_node_input_index: Int,
     witness_status: WitnessStatus,
   }
+}
+
+/// A registered operator is eligible to active when the registration_duration
+/// elapses after the operator's registration time.
+pub fn eligible_activation_time(registration_time: PosixTime) -> PosixTime {
+  registration_time + registration_duration
 }

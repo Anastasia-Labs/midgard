@@ -1,7 +1,7 @@
-use midgard/common/types.{POSIXTime}
+use midgard/common/types.{PosixTime}
 
 pub type Datum {
-  commitment_time: Option<POSIXTime>,
+  commitment_time: Option<PosixTime>,
 }
 
 pub type MintRedeemer {
