@@ -82,7 +82,7 @@ export const fetchFirstBlockTxs = (
         fetchConfig,
       );
     if (!firstBlockUTxO) {
-      return yield* Effect.fail(new Error("No blocks in queue"));
+      return { txs: [], headerHash: "" };
     } else {
       const blockHeader =
         yield* SDK.Utils.getHeaderFromBlockUTxO(firstBlockUTxO);

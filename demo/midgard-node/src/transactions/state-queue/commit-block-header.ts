@@ -3,16 +3,8 @@
 import { LucidEvolution } from "@lucid-evolution/lucid";
 import { Effect, Metric } from "effect";
 import * as SDK from "@al-ft/midgard-sdk";
-import {
-  handleSignSubmit,
-  handleSignSubmitWithoutConfirmation,
-} from "../utils.js";
-import {
-  LatestLedgerDB,
-  MempoolDB,
-  ImmutableDB,
-  UtilsDB,
-} from "@/database/index.js";
+import { handleSignSubmitWithoutConfirmation } from "../utils.js";
+import { LatestLedgerDB, MempoolDB, ImmutableDB } from "@/database/index.js";
 import { findAllSpentAndProducedUTxOs } from "@/utils.js";
 import { makeConfig } from "@/config.js";
 import { makeAlwaysSucceedsServiceFn } from "@/services/always-succeeds.js";
@@ -65,18 +57,24 @@ export const buildAndSubmitCommitmentBlock = (
   Effect.gen(function* () {
     Effect.logInfo("buildAndSubmitCommitmentBlock... :>> ");
     // Fetch transactions from the first block
-    const txList = yield* Effect.tryPromise(() => MempoolDB.retrieve(db));
+    const txList = yield* Effect.tryPromise(() => MempoolDB.retrieve(db)).pipe(
+      Effect.withSpan("retrieve mempool transaction"),
+    );
     const numTx = BigInt(txList.length);
     // console.log("numTx :>> ", numTx);
     if (numTx > 0n) {
       const txs = txList.map(([txHash, txCbor]) => ({ txHash, txCbor }));
-      const txRoot = yield* SDK.Utils.mptFromList(txs.map((tx) => tx.txCbor));
+      const txRoot = yield* SDK.Utils.mptFromList(
+        txs.map((tx) => tx.txCbor),
+      ).pipe(Effect.withSpan("build MPT tx root"));
       const txCbors = txList.map(([_txHash, txCbor]) => txCbor);
       const { spent: spentList, produced: producedList } =
-        yield* findAllSpentAndProducedUTxOs(txCbors);
+        yield* findAllSpentAndProducedUTxOs(txCbors).pipe(
+          Effect.withSpan("findAllSpentAndProducedUTxOs"),
+        );
       const utxoList = yield* Effect.tryPromise(() =>
         LatestLedgerDB.retrieve(db),
-      );
+      ).pipe(Effect.withSpan("retrieve latest ledger utxo list"));
       // Remove spent UTxOs from utxoList
       const filteredUTxOList = utxoList.filter(
         (utxo) =>
@@ -116,7 +114,9 @@ export const buildAndSubmitCommitmentBlock = (
       // console.log("txBuilder.toCBOR() :>> ", txBuilder.toCBOR());
       console.log("txSize :>> ", txSize);
       // Submit the transaction
-      yield* handleSignSubmit(lucid, txBuilder);
+      yield* handleSignSubmitWithoutConfirmation(lucid, txBuilder).pipe(
+        Effect.withSpan("handleSignSubmit-commit-block"),
+      );
       const totalTxSize = txCbors.reduce(
         (acc, cbor) => acc + cbor.length / 2,
         0,
@@ -131,20 +131,22 @@ export const buildAndSubmitCommitmentBlock = (
       for (let i = 0; i < spentList.length; i += bs) {
         yield* Effect.tryPromise(() =>
           LatestLedgerDB.clearUTxOs(db, spentList.slice(i, i + bs)),
-        );
+        ).pipe(Effect.withSpan(`latest-ledger-clearUTxOs-${i}`));
       }
       for (let i = 0; i < producedList.length; i += bs) {
         yield* Effect.tryPromise(() =>
           LatestLedgerDB.insert(db, producedList.slice(i, i + bs)),
-        );
+        ).pipe(Effect.withSpan(`latest-ledger-insert-${i}`));
       }
       for (let i = 0; i < txs.length; i += bs) {
         yield* Effect.tryPromise(() =>
           ImmutableDB.insertTxs(db, txs.slice(i, i + bs)),
-        );
+        ).pipe(Effect.withSpan(`immutable-db-insert-${i}`));
       }
 
-      yield* Effect.tryPromise(() => MempoolDB.clear(db));
+      yield* Effect.tryPromise(() => MempoolDB.clear(db)).pipe(
+        Effect.withSpan("clear mempool"),
+      );
       // TODO: For final product, handle tx submission failures properly.
       // yield* Effect.tryPromise({
       //   try: () =>

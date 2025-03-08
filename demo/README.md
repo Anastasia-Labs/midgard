@@ -37,7 +37,7 @@ This will start:
 
 ## Generate dummy transactions
 
-See [Midgard Manager](https://github.com/HVining/midgard-manager#readme)
+See [Midgard Manager](./midgard-manager/README.md)
 
 ## Monitoring
 
