@@ -1,7 +1,11 @@
 use aiken/crypto.{Blake2b_224, Blake2b_256, Hash, VerificationKeyHash}
 
 /// A number of milliseconds since 00:00:00 UTC on 1 January 1970.
-pub type POSIXTime =
+pub type PosixTime =
+  Int
+
+/// A duration of milliseconds to be added/removed from a PosixTime
+pub type PosixTimeDuration =
   Int
 
 /// A commonly used synonym for a verification key hash.
