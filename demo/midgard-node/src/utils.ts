@@ -14,79 +14,26 @@ import {
   UTxO,
 } from "@lucid-evolution/lucid";
 import * as chalk_ from "chalk";
-import { Effect } from "effect";
+import { Duration, Effect, pipe, Schedule } from "effect";
 
 export const chalk = new chalk_.Chalk();
 
 export type ProviderName = "Blockfrost" | "Koios" | "Kupmios" | "Maestro";
 
-export const errorToString = (error: any): string => {
-  return error.message ?? JSON.stringify(error);
-};
-
-export const showTime = (d: Date): string => {
-  return d
-    .toLocaleString("en-US", {
-      month: "2-digit",
-      day: "2-digit",
-      year: "numeric",
-      hour: "2-digit",
-      minute: "2-digit",
-      second: "2-digit",
-      hour12: false,
-    })
-    .replace(/\//g, ".");
-};
-
-const logWithTime = (
-  color: chalk_.ChalkInstance,
-  label: string,
-  msg: string,
-) => {
-  const now = new Date();
-  const timeStr = showTime(now);
-  console.log(
-    `${color(chalk.bold(`${timeStr}\u0009${label}`))}${
-      label === "" ? "" : " "
-    }${color(msg)}`,
-  );
-};
-
 export const logSuccess = (msg: string) => {
-  logWithTime(chalk.green, "SUCCESS!", msg);
+  Effect.runSync(Effect.logInfo(`🎉 ${msg}`));
 };
 
-export const logWarning = (msg: string, quiet?: true) => {
-  if (!quiet) {
-    logWithTime(
-      chalk.yellow,
-      "WARNING",
-      `
-${msg}`,
-    );
-  }
+export const logWarning = (msg: string) => {
+  Effect.runSync(Effect.logWarning(`⚠️  ${msg}`));
 };
 
 export const logAbort = (msg: string) => {
-  logWithTime(
-    chalk.red,
-    "ABORT",
-    `
-${msg}`,
-  );
-};
-
-export const logDim = (msg: string) => {
-  logWithTime(chalk.dim, "", msg);
+  Effect.runSync(Effect.logError(msg));
 };
 
 export const logInfo = (msg: string) => {
-  logWithTime(
-    chalk.blue,
-    "INFO",
-    `
-${msg}`,
-  );
+  Effect.runSync(Effect.logInfo(`ℹ️  ${msg}`));
 };
 
 export const isHexString = (str: string): boolean => {
@@ -142,7 +89,7 @@ export const setupLucid = async (
     lucid.selectWallet.fromSeed(seedPhrase);
     return lucid;
   } catch (e) {
-    logAbort(errorToString(e));
+    logAbort(`${e}`);
     process.exit(1);
   }
 };

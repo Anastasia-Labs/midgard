@@ -10,10 +10,7 @@
 import { LucidEvolution, Script } from "@lucid-evolution/lucid";
 import * as SDK from "@al-ft/midgard-sdk";
 import { Effect, Metric } from "effect";
-import {
-  fetchFirstBlockTxs,
-  handleSignSubmitWithoutConfirmation,
-} from "../utils.js";
+import { fetchFirstBlockTxs, handleSignSubmit } from "../utils.js";
 import { findAllSpentAndProducedUTxOs } from "@/utils.js";
 import { BlocksDB, ConfirmedLedgerDB } from "@/database/index.js";
 import pg from "pg";
@@ -43,7 +40,7 @@ export const buildAndSubmitMergeTx = (
 ) =>
   Effect.gen(function* () {
     yield* Effect.logInfo(
-      "Fetching confirmed state and the first block in queue from L1...",
+      "🔸 Fetching confirmed state and the first block in queue from L1...",
     );
     const { confirmed: confirmedUTxO, link: firstBlockUTxO } =
       yield* SDK.Endpoints.fetchConfirmedStateAndItsLinkProgram(
@@ -52,20 +49,21 @@ export const buildAndSubmitMergeTx = (
       );
     if (firstBlockUTxO) {
       yield* Effect.logInfo(
-        `First block found: ${firstBlockUTxO.txHash}#${firstBlockUTxO.outputIndex}`,
+        `🔸 First block found: ${firstBlockUTxO.txHash}#${firstBlockUTxO.outputIndex}`,
       );
       // Fetch transactions from the first block
-      yield* Effect.logInfo("Looking up its transactions from BlocksDB...");
+      yield* Effect.logInfo("🔸 Looking up its transactions from BlocksDB...");
       const { txs: firstBlockTxs, headerHash } = yield* fetchFirstBlockTxs(
         firstBlockUTxO,
         db,
       ).pipe(Effect.withSpan("fetchFirstBlockTxs"));
       if (firstBlockTxs.length === 0) {
         yield* Effect.logInfo(
-          "Failed to find first block's transactions in BlocksDB.",
+          "🔸 ❌ Failed to find first block's transactions in BlocksDB.",
         );
         return;
       }
+      yield* Effect.logInfo("🔸 Building merge transaction...");
       // Build the transaction
       const txBuilder = yield* SDK.Endpoints.mergeToConfirmedStateProgram(
         lucid,
@@ -78,14 +76,19 @@ export const buildAndSubmitMergeTx = (
         },
       ).pipe(Effect.withSpan("mergeToConfirmedStateProgram"));
 
-      // Submit the transaction
-      yield* handleSignSubmitWithoutConfirmation(lucid, txBuilder).pipe(
-        Effect.withSpan("handleSignSubmit-merge-tx"),
-      );
+      // Increment the merge block counter before successful L1 as it seems
+      // confirmation can timeout.
       yield* Metric.increment(mergeBlockCounter).pipe(
         Effect.withSpan("increment-merge-block-counter"),
       );
-      yield* Effect.logInfo("Merge transaction submitted, updating the db...");
+
+      // Submit the transaction
+      yield* handleSignSubmit(lucid, txBuilder).pipe(
+        Effect.withSpan("handleSignSubmit-merge-tx"),
+      );
+      yield* Effect.logInfo(
+        "🔸 Merge transaction submitted, updating the db...",
+      );
       if (firstBlockTxs.length === 0) {
         return;
       }
@@ -94,39 +97,29 @@ export const buildAndSubmitMergeTx = (
           Effect.withSpan("findAllSpentAndProducedUTxOs"),
         );
 
+      // - Clear all the spent UTxOs from the confirmed ledger
+      // - Add all the produced UTxOs from the confirmed ledger
+      // - Remove all the tx hashes of the merged block from BlocksDB
       const bs = 100;
-      yield* Effect.logInfo("Clear confirmed ledger db...");
+      yield* Effect.logInfo("🔸 Clear confirmed ledger db...");
       for (let i = 0; i < spentOutRefs.length; i += bs) {
         yield* Effect.tryPromise(() =>
           ConfirmedLedgerDB.clearUTxOs(db, spentOutRefs.slice(i, i + bs)),
         ).pipe(Effect.withSpan(`confirmed-ledger-clearUTxOs-${i}`));
       }
-      yield* Effect.logInfo("Insert produced UTxOs...");
+      yield* Effect.logInfo("🔸 Insert produced UTxOs...");
       for (let i = 0; i < producedUTxOs.length; i += bs) {
         yield* Effect.tryPromise(() =>
           ConfirmedLedgerDB.insert(db, producedUTxOs.slice(i, i + bs)),
         ).pipe(Effect.withSpan(`confirmed-ledger-insert-${i}`));
       }
-      yield* Effect.logInfo("Clear block from BlocksDB...");
+      yield* Effect.logInfo("🔸 Clear block from BlocksDB...");
       yield* Effect.tryPromise(() => BlocksDB.clearBlock(db, headerHash)).pipe(
         Effect.withSpan("clear-block-from-BlocksDB"),
       );
-      yield* Effect.logInfo("Merge transaction completed.");
-      // - Clear all the spent UTxOs from the confirmed ledger
-      // - Add all the produced UTxOs from the confirmed ledger
-      // - Remove all the tx hashes of the merged block from BlocksDB
-      // yield* Effect.tryPromise({
-      //   try: () =>
-      //     UtilsDB.modifyMultipleTables(
-      //       db,
-      //       [ConfirmedLedgerDB.clearUTxOs, spentOutRefs],
-      //       [ConfirmedLedgerDB.insert, producedUTxOs],
-      //       [BlocksDB.clearBlock, headerHash]
-      //     ),
-      //   catch: (e) => new Error(`Transaction failed: ${e}`),
-      // });
+      yield* Effect.logInfo("🔸 ☑️  Merge transaction completed.");
     } else {
-      yield* Effect.logInfo("No blocks found in queue.");
+      yield* Effect.logInfo("🔸 No blocks found in queue.");
       return;
     }
   });

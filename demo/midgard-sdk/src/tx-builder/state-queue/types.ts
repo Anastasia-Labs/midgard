@@ -6,6 +6,7 @@ import {
   POSIXTimeSchema,
 } from "../common.js";
 import { NodeDatumSchema } from "../linked-list.js";
+import { Header } from "../ledger-state.js";
 
 export const ConfigSchema = Data.Object({
   initUTxO: OutputReferenceSchema,
@@ -39,9 +40,9 @@ export type FetchConfig = {
 };
 
 export type CommitBlockParams = {
-  newUTxOsRoot: MerkleRoot;
-  transactionsRoot: MerkleRoot;
-  endTime: POSIXTime;
+  anchorUTxO: UTxO;
+  updatedAnchorDatum: Datum;
+  newHeader: Header;
   stateQueueSpendingScript: Script;
   policyId: PolicyId;
   stateQueueMintingScript: Script;
