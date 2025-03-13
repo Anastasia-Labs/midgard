@@ -11,7 +11,7 @@ use midgard/active_operators
 use midgard/hub_oracle
 use midgard/retired_operators.{
   Datum as RetiredOperatorDatum, Deinit, Init, MintRedeemer, RecoverOperatorBond,
-  RemoveOperatorSlashBond, RetireOperator,
+  RemoveOperatorBadSettlement, RemoveOperatorBadState, RetireOperator,
 }
 use midgard/state_queue.{RemoveFraudulentBlockHeader}
 
@@ -116,7 +116,7 @@ validator mint(
           },
         }
       }
-      RemoveOperatorSlashBond {
+      RemoveOperatorBadState {
         slashed_retired_operator_key,
         hub_oracle_ref_input_index,
         retired_operator_slashed_node_input_index,
@@ -148,6 +148,44 @@ validator mint(
           self.fee >= slashing_penalty,
           state_queue_redeemer_pair.1st == Mint(
             parsed_hub_oracle_datum.state_queue,
+          ),
+          fraudulent_operator == slashed_retired_operator_key,
+        }
+      }
+      RemoveOperatorBadSettlement {
+        slashed_retired_operator_key,
+        hub_oracle_ref_input_index,
+        retired_operator_slashed_node_input_index,
+        retired_operator_anchor_node_input_index,
+        settlement_queue_redeemer_index,
+      } -> {
+        expect Some(hub_oracle_ref_input) =
+          list.at(self.reference_inputs, hub_oracle_ref_input_index)
+        expect InlineDatum(hub_oracle_datum) = hub_oracle_ref_input.output.datum
+        expect parsed_hub_oracle_datum: hub_oracle.Datum = hub_oracle_datum
+        expect Some(settlement_queue_redeemer_pair) =
+          list.at(self.redeemers, settlement_queue_redeemer_index)
+        // TODO: use correct settlement queue redeemer
+        expect RemoveFraudulentBlockHeader { fraudulent_operator, .. } =
+          settlement_queue_redeemer_pair.2nd
+        and {
+          quantity_of(
+            hub_oracle_ref_input.output.value,
+            hub_oracle_script_hash,
+            hub_oracle_asset_name,
+          ) == 1,
+          ordered.remove(
+            Key(slashed_retired_operator_key),
+            retired_operator_slashed_node_input_index,
+            retired_operator_anchor_node_input_index,
+            node_in_outputs,
+            node_outputs,
+            node_mint,
+          ),
+          self.fee >= slashing_penalty,
+          // TODO: use correct settlement queue redeemer
+          settlement_queue_redeemer_pair.1st == Mint(
+            parsed_hub_oracle_datum.settlement_queue,
           ),
           fraudulent_operator == slashed_retired_operator_key,
         }

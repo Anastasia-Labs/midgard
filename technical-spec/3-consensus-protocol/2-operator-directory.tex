@@ -188,7 +188,7 @@ Redeemers:
             \item The \code{commitment\_time} field of \code{active\_node} must be \code{None}.
             \item The transaction must Remove a node from the \code{registered\_operators} queue, as evidenced by burning a \code{registered\_operators} node NFT corresponding to the \code{active\_node} key.
         \end{enumerate}
-    \item[Remove Operator Slash Bond.] Remove an operator's node from the \code{active\_operators} set without returning the operator's ADA bond to the operator.
+    \item[Remove Operator Bad State.] Remove an operator's node from the \code{active\_operators} set without returning the operator's ADA bond to the operator.
       Conditions:
         \begin{enumerate}
             \item Let \code{slashed\_operator} be a redeemer argument indicating the operator being slashed.
@@ -288,7 +288,7 @@ Redeemers:
             \item If the \code{commitment\_time} field of \code{retired\_node} is \emph{not} \code{None}, then the lower bound of the transaction validity interval must meet or exceed the sum of \code{commitment\_time} and the Midgard \code{maturity\_duration} protocol parameter.
         \end{enumerate}
     The operator consents to the transaction, so the ADA bond is assumed to be returned to the operator's control.
-    \item[Remove Operator Slash Bond.] Remove an operator's node from the \code{retired\_operators} set without returning the operator's ADA bond to the operator.
+    \item[Remove Operator Bad State.] Remove an operator's node from the \code{retired\_operators} set without returning the operator's ADA bond to the operator.
       Conditions:
         \begin{enumerate}
             \item Let \code{slashed\_operator} be a redeemer argument indicating the operator being slashed.

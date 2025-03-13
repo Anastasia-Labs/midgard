@@ -311,14 +311,14 @@ validator mint(
           when operator_status is {
             // (5) If `operator_status is active:
             //     The transaction must Remove a node from the `active_operators`
-            //     set via the Remove Operator Slash Bond redeemer.
+            //     set via the Remove Operator Bad State redeemer.
             //     The `slashed_operator` argument provided to that redeemer must
             //     match `fraudulent_operator`.
             registered_operators.Active -> {
               expect Some(active_operators_redeemer_pair) =
                 list.at(self.redeemers, operators_redeemer_index)
               expect Mint(mint_script_hash) = active_operators_redeemer_pair.1st
-              expect active_operators.RemoveOperatorSlashBond {
+              expect active_operators.RemoveOperatorBadState {
                 slashed_active_operator_key,
                 ..
               } = active_operators_redeemer_pair.2nd
@@ -329,7 +329,7 @@ validator mint(
             }
             // (6) Otherwise:
             //     The transaction must Remove a node from the `retired_operators`
-            //     set via the Remove Operator Slash Bond redeemer.
+            //     set via the Remove Operator Bad State redeemer.
             //     The `slashed_operator` argument provided to that redeemer must
             //     match `fraudulent_operator`.
             registered_operators.Retired -> {
@@ -337,7 +337,7 @@ validator mint(
                 list.at(self.redeemers, operators_redeemer_index)
               expect Mint(mint_script_hash) =
                 retired_operators_redeemer_pair.1st
-              expect retired_operators.RemoveOperatorSlashBond {
+              expect retired_operators.RemoveOperatorBadState {
                 slashed_retired_operator_key,
                 ..
               } = retired_operators_redeemer_pair.2nd

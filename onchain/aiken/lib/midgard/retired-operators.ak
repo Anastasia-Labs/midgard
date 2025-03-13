@@ -19,11 +19,18 @@ pub type MintRedeemer {
     removed_node_input_index: Int,
     anchor_node_input_index: Int,
   }
-  RemoveOperatorSlashBond {
+  RemoveOperatorBadState {
     slashed_retired_operator_key: ByteArray,
     hub_oracle_ref_input_index: Int,
     retired_operator_slashed_node_input_index: Int,
     retired_operator_anchor_node_input_index: Int,
     state_queue_redeemer_index: Int,
+  }
+  RemoveOperatorBadSettlement {
+    slashed_retired_operator_key: ByteArray,
+    hub_oracle_ref_input_index: Int,
+    retired_operator_slashed_node_input_index: Int,
+    retired_operator_anchor_node_input_index: Int,
+    settlement_queue_redeemer_index: Int,
   }
 }

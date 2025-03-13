@@ -110,12 +110,12 @@ Redeemers:
             \item Let \code{operator\_status} be a redeemer argument indicating whether the fraudulent operator is active or retired.
             \item If \code{operator\_status} is active:
                 \begin{enumerate}
-                    \item The transaction must Remove a node from the \code{active\_operators} set via the Remove Operator Slash Bond redeemer.
+                    \item The transaction must Remove a node from the \code{active\_operators} set via the Remove Operator Bad State redeemer.
                       The \code{slashed\_operator} argument provided to that redeemer must match \code{fraudulent\_operator}.
                 \end{enumerate}
             \item Otherwise:
                 \begin{enumerate}
-                    \item The transaction must Remove a node from the \code{retired\_operators} set via the Remove Operator Slash Bond redeemer.
+                    \item The transaction must Remove a node from the \code{retired\_operators} set via the Remove Operator Bad State redeemer.
                       The \code{slashed\_operator} argument provided to that redeemer must match \code{fraudulent\_operator}.
                 \end{enumerate}
         \end{enumerate}

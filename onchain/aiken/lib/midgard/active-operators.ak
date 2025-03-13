@@ -23,12 +23,19 @@ pub type MintRedeemer {
     active_operator_anchor_node_output_index: Int,
     registered_operators_redeemer_index: Int,
   }
-  RemoveOperatorSlashBond {
+  RemoveOperatorBadState {
     slashed_active_operator_key: ByteArray,
     hub_oracle_ref_input_index: Int,
     active_operator_slashed_node_input_index: Int,
     active_operator_anchor_node_input_index: Int,
     state_queue_redeemer_index: Int,
+  }
+  RemoveOperatorBadSettlement {
+    slashed_active_operator_key: ByteArray,
+    hub_oracle_ref_input_index: Int,
+    active_operator_slashed_node_input_index: Int,
+    active_operator_anchor_node_input_index: Int,
+    settlement_queue_redeemer_index: Int,
   }
   RetireOperator {
     active_operator_key: ByteArray,
