@@ -35,4 +35,5 @@ export const validateValidityRange = (
         `Upper bound (${upperBound}) not in slot range (${currentSlot}).`,
       );
     }
+    return true;
   });

@@ -1,7 +1,12 @@
 import { OutRef, UTxO } from "@lucid-evolution/lucid";
 import { Pool } from "pg";
 import * as utils from "./utils.js";
-import { clearTable, insertUTxOs, retrieveUTxOs } from "./utils.js";
+import {
+  clearTable,
+  insertUTxOs,
+  retrieveUTxOs,
+  retrieveUTxOsByOutRef,
+} from "./utils.js";
 
 export const createQuery = `
   CREATE TABLE IF NOT EXISTS latest_ledger (
@@ -30,6 +35,12 @@ export const insert = async (pool: Pool, utxos: UTxO[]) =>
 
 export const retrieve = async (pool: Pool): Promise<UTxO[]> =>
   retrieveUTxOs(pool, "latest_ledger", "latest_ledger_assets");
+
+export const retrieveByOutRef = async (
+  pool: Pool,
+  outRef: OutRef,
+): Promise<UTxO[]> =>
+  retrieveUTxOsByOutRef(pool, outRef, "latest_ledger", "latest_ledger_assets");
 
 export const clearUTxOs = async (pool: Pool, refs: OutRef[]) =>
   utils.clearUTxOs(pool, "latest_ledger", refs);
