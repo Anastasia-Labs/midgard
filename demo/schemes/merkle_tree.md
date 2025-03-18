@@ -2,36 +2,28 @@
 
 flowchart TB
 
-subgraph MercleTreeScheme[Tx Block as Merkle Patricia Tree]
+subgraph MercleTreeScheme[" "]
     direction BT
-    MTSRootHash[Root hash]
-    MTSTx0[TX0]
-    MTSTx0RH[" "]
-    MTSTx1[TX1]
-    MTSTx1RH["TX1 Root Hash<br>TX = {RootInput, RootOutput...}"]
-    MTSRootInput[RootInput]
-    MTSRootOutput[RootOutput]
-    MTSInput1[Input]
-    MTSInput2[Input]
-    MTSOutput1[Output]
-    MTSOutput2[Output]
-    MTSInput1Blank[" "]
-    MTSInput2Blank1[" "]
-    MTSInput2Blank2[" "]
-    MTSOutput1Blank[" "]
-    MTSOutput2Blank1[" "]
-    MTSOutput2Blank2[" "]
+    Description[A Merkle Patricia Trie example for a block’s transactions]
+    TxRoot["`transactions root:<br>H (𝑁₁₂ || 𝑁₃₄ )`"]
+    N12["𝑁₁₂ : H(𝐿₁ || 𝐿₂ )"]
+    N34["𝑁₃₄ : H(𝐿₃ || 𝐿₄ )"]
+    L1["𝐿₁ : H(𝐷₁)"]
+    L2["𝐿₂ : H(𝐷₂)"]
+    L3["𝐿₃ : H(𝐷₃)"]
+    L4["𝐿₄ : H(𝐷₄)"]
+    D1["𝐷₁ (TxId₁, MidgardTx₁)"]
+    D2["𝐷₂ (TxId₂, MidgardTx₂)"]
+    D3["𝐷₃ (TxId₃, MidgardTx₃)"]
+    D4["𝐷₄ (TxId₄, MidgardTx₄)"]
 
-    MTSTx0 & MTSTx1 --> MTSRootHash
-    MTSTx0RH --> MTSTx0
-    MTSTx1RH --> MTSTx1
-    MTSRootInput & MTSRootOutput --> MTSTx1RH
-    MTSInput1 & MTSInput2 --> MTSRootInput
-    MTSOutput1 & MTSOutput2 --> MTSRootOutput
-    MTSInput1Blank --> MTSInput1
-    MTSInput2Blank1 & MTSInput2Blank2 --> MTSInput2
-    MTSOutput1Blank --> MTSOutput1
-    MTSOutput2Blank1 & MTSOutput2Blank2 --> MTSOutput2
+    N12 & N34 --> TxRoot
+    L1 & L2 --> N12
+    L3 & L4 --> N34
+    D1 --> L1
+    D2 --> L2
+    D3 --> L3
+    D4 --> L4
+
 end
-
 ```
