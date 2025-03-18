@@ -79,6 +79,18 @@ pub fn get_own_address(output_reference: OutputReference, txInputs: List<Input>)
   input.output.address
 }
 
+/// Helper function for accessing spending UTxO using its input index.
+pub fn get_own_input_at(
+  inputs: List<Input>,
+  own_out_ref: OutputReference,
+  input_index: Int,
+) -> Output {
+  expect Some(Input { output: own_utxo, output_reference: spent_own_out_ref }) =
+    list.at(inputs, input_index)
+  expect (own_out_ref == spent_own_out_ref)?
+  own_utxo
+}
+
 pub fn is_output_to_sc(output: Output, scHash: ByteArray) -> Bool {
   when output.address.payment_credential is {
     Script(hash) -> hash == scHash
