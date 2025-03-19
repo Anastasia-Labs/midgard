@@ -15,7 +15,7 @@ const wrapper = (input: WorkerInput): Effect.Effect<WorkerOutput, Error> =>
     })();
     return yield* Effect.map(
       trieProgram,
-      (t: Trie) => ({ root: t.hash.toString("hex") }) as WorkerOutput
+      (t: Trie) => ({ root: t.hash.toString("hex") }) as WorkerOutput,
     );
   });
 
@@ -30,9 +30,9 @@ Effect.runPromise(
     Effect.catchAll((e) =>
       Effect.succeed({
         error: e instanceof Error ? e.message : "Unknown error from MPT worker",
-      })
-    )
-  )
+      }),
+    ),
+  ),
 ).then((output) => {
   Effect.runSync(Effect.logInfo("👷 Work completed."));
   parentPort?.postMessage(output);

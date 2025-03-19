@@ -20,7 +20,7 @@ export interface WorkerInput {
   data: {
     items: any[];
     itemsType: "txs" | "utxos";
-  }
+  };
 }
 
 export interface WorkerOutput {

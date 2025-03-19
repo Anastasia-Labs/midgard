@@ -6,6 +6,7 @@ import {
   clearTable,
   insertUTxOs,
   retrieveUTxOs,
+  retrieveUTxOsByOutRef,
   utxoFromRow,
 } from "./utils.js";
 
@@ -35,6 +36,17 @@ export const insert = async (pool: Pool, utxos: UTxO[]) =>
 
 export const retrieve = async (pool: Pool): Promise<UTxO[]> =>
   retrieveUTxOs(pool, "mempool_ledger", "mempool_ledger_assets");
+
+export const retrieveByOutRef = async (
+  pool: Pool,
+  outRef: OutRef,
+): Promise<UTxO[]> =>
+  retrieveUTxOsByOutRef(
+    pool,
+    outRef,
+    "mempool_ledger",
+    "mempool_ledger_assets",
+  );
 
 export const retrieveUTxOsAtAddress = async (
   pool: Pool,

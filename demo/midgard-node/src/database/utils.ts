@@ -127,6 +127,47 @@ export const retrieveUTxOs = async (
   }
 };
 
+export const retrieveUTxOsByOutRef = async (
+  pool: Pool,
+  outRef: OutRef,
+  tableName: string,
+  assetTableName: string,
+): Promise<UTxO[]> => {
+  const query = `
+    SELECT
+      t.tx_hash,
+      t.output_index,
+      address,
+      json_agg(json_build_object('unit', encode(a.unit, 'hex'), 'quantity', a.quantity)) AS assets,
+      datum_hash,
+      datum,
+      script_ref_type,
+      script_ref_script
+    FROM ${tableName} AS t
+      LEFT JOIN ${assetTableName} AS a
+        ON t.tx_hash = a.tx_hash AND t.output_index = a.output_index
+    WHERE t.tx_hash = ${outRef.txHash} AND t.output_index = ${outRef.outputIndex}
+    GROUP BY
+      t.tx_hash,
+      t.output_index,
+      address,
+      datum_hash,
+      datum,
+      script_ref_type,
+      script_ref_script
+    ORDER BY
+      t.tx_hash,
+      t.output_index;
+  `;
+  try {
+    const result = await pool.query(query);
+    return result.rows.map((r) => utxoFromRow(r));
+  } catch (err) {
+    // logAbort(`${tableName} db: error retrieving utxos: ${err}`);
+    throw err;
+  }
+};
+
 export const clearUTxOs = async (
   pool: Pool,
   tableName: string,
