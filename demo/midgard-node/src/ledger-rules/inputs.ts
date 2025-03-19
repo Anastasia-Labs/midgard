@@ -25,31 +25,28 @@ export const validateInputs = (
   Effect.gen(function* () {
     for (let i = 0; i < inputs.length; i++) {
       const outRef = inputs[i];
-
-      const [entryLedger, entryMempool] = yield* Effect.all([
-        Effect.tryPromise({
-          try: () => LatestLedgerDB.retrieveByOutRef(pool, outRef),
-          catch: (e) =>
-            new Error(`Failed to retrieve UTxO from latest ledger: ${e}`),
-        }),
-        Effect.tryPromise({
-          try: () => MempoolLedgerDB.retrieveByOutRef(pool, outRef),
-          catch: (e) => new Error(`Failed to retrieve UTxO from mempool: ${e}`),
-        }),
-      ]);
-
-      const valid =
-        (entryMempool.length === 1 && entryLedger.length === 0) ||
-        (entryMempool.length === 0 && entryLedger.length === 1);
-
-      if (!valid) {
-        throw new Error(
-          `Could not spend UTxO: ${JSON.stringify({
-            txHash: outRef.txHash,
-            outputIndex: outRef.outputIndex,
-          })}\nIt does not exist or was already spent.`,
-        );
+      const entryMempool = yield* Effect.tryPromise({
+        try: () => MempoolLedgerDB.retrieveByOutRef(pool, outRef),
+        catch: (e) => new Error(`Failed to retrieve UTxO from mempool: ${e}`),
+      });
+      if (entryMempool.length === 1) {
+        // Found in mempool, continue
+        continue;
       }
+      const entryLedger = yield* Effect.tryPromise({
+        try: () => LatestLedgerDB.retrieveByOutRef(pool, outRef),
+        catch: (e) => new Error(`Failed to retrieve UTxO from ledger: ${e}`),
+      });
+      if (entryLedger.length === 1) {
+        // Found in ledger, continue
+        continue;
+      }
+      throw new Error(
+        `Could not spend UTxO: ${JSON.stringify({
+          txHash: outRef.txHash,
+          outputIndex: outRef.outputIndex,
+        })}\nIt does not exist or was already spent.`,
+      );
     }
     return true;
   });
