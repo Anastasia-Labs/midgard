@@ -245,7 +245,8 @@ export const listen = (
           const { spent, produced } = await Effect.runPromise(
             spentAndProducedProgram,
           );
-          Effect.runSync(LedgerRules.validateInputs(pool, spent));
+          // TODO: wait for deposit to complete
+          // Effect.runPromise(LedgerRules.validateInputs(pool, spent));
           await MempoolDB.insert(pool, tx.toHash(), txCBOR);
           await MempoolLedgerDB.clearUTxOs(pool, spent);
           await MempoolLedgerDB.insert(pool, produced);
