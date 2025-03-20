@@ -106,7 +106,8 @@ pub type DepositInfo {
   tokens: Tokens,
 }
 
-pub type DepositEvent = CrossLayerEvent<DepositId, DepositInfo>
+pub type DepositEvent =
+  CrossLayerEvent<DepositId, DepositInfo>
 
 // ### Withdrawal event
 
@@ -120,7 +121,8 @@ pub type WithdrawalInfo {
   tokens: Tokens,
 }
 
-pub type WithdrawalEvent = CrossLayerEvent<WithdrawalId, WithdrawalInfo>
+pub type WithdrawalEvent =
+  CrossLayerEvent<WithdrawalId, WithdrawalInfo>
 
 // ## Transaction
 

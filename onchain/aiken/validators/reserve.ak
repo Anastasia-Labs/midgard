@@ -6,8 +6,7 @@ use cardano/assets
 use cardano/certificate.{Certificate, RegisterCredential, UnregisterCredential}
 use cardano/transaction.{NoDatum, Output, OutputReference, Transaction}
 use midgard/hub_oracle as hub
-use midgard/reserve.{MergeRedeemer,
-  MergeUTxOs, FundWithdrawal, SpendRedeemer}
+use midgard/reserve.{FundWithdrawal, MergeRedeemer, MergeUTxOs, SpendRedeemer}
 
 validator spend(
   hub_oracle: ScriptHash,
@@ -32,11 +31,8 @@ validator spend(
       FundWithdrawal { hub_ref_input_index, withdrawal_event_ref_input_index } -> {
         let Transaction { inputs, outputs, reference_inputs, .. } = tx
 
-        let hub.Datum {
-          withdrawal: withdrawal_policy_id,
-          withdrawal_addr,
-          ..
-        } = hub.get_datum(reference_inputs, hub_oracle, hub_ref_input_index)
+        let hub.Datum { withdrawal: withdrawal_policy_id, withdrawal_addr, .. } =
+          hub.get_datum(reference_inputs, hub_oracle, hub_ref_input_index)
 
         todo
       }
