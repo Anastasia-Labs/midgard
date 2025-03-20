@@ -8,6 +8,7 @@ import { Effect, pipe } from "effect";
 import { NodeConfig, User } from "./config.js";
 import dotenv from "dotenv";
 import { AlwaysSucceeds } from "./services/index.js";
+import { NodeRuntime } from "@effect/platform-node";
 
 dotenv.config();
 const VERSION = packageJson.version;
@@ -59,7 +60,7 @@ program.command("listen").action(async () => {
     Effect.provide(NodeConfig.layer),
   );
 
-  await Effect.runPromiseExit(program);
+  NodeRuntime.runMain(program);
 });
 
 program.parse(process.argv);

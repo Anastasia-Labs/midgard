@@ -1,0 +1,31 @@
+name: Aiken CI
+
+on:
+  push:
+    branches: ["main"]
+    paths:
+      - onchain/aiken/**
+  pull_request:
+    paths:
+      - onchain/aiken/**
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        shell: bash
+        working-directory: ./onchain/aiken
+    steps:
+      - uses: actions/checkout@v3
+      - uses: aiken-lang/setup-aiken@v1
+        with:
+          version: v1.1.9
+      - name: Run Aiken auto-formatter
+        run: aiken fmt --check
+      - name: Compile Aiken code and run test suite
+        run: aiken check -D
+      - name: Check that aiken.lock is up-to-date
+        run: git diff --name-only --exit-code aiken.lock
+      - name: Check that plutus.json is up-to-date
+        run: git diff --name-only --exit-code plutus.json

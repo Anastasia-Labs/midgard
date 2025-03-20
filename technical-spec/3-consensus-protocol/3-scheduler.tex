@@ -134,7 +134,9 @@ Redeemers:
                 \item The transaction must include a reference input of the root \code{active\_operators} node.
                   Let \code{root\_node} be that node.
                 \item The \code{key} of \code{operator\_node} must match \code{operator}.
-                \item The \code{link} of \code{root\_node} must match or exceed \code{previous\_operator}.
+                \item The \code{link} of \code{root\_node} must match or exceed \code{previous\_operator}.%
+                \footnote{In other words, this means that there is no \codeNC{active\_operators} node with a smaller key than \codeNC{previous\_operator}.
+                  If there were such a node, then we would advance the scheduler to that node instead of rewinding.}
             \end{enumerate}
             
             \item Verify that no registered operator is eligible to activate:
@@ -143,7 +145,7 @@ Redeemers:
                   Let \code{registered\_node} be that node.
                 \item \code{registered\_node} must be the last node of the \code{registered\_operators} queue.
                   This means it corresponds to the \emph{earliest} registrant that hasn't yet activated because new registrants are prepended to the beginning of that queue.
-                \item \code{registered\_node} is \emph{not yet} eligible for activation --- the lower bound of the transaction validity interval is smaller than the sum of the \code{registration\_time} of the \code{registered\_node} and the Midgard \code{registration\_duration} protocol parameter.
+                \item \code{registered\_node} is \emph{not yet} eligible for activation --- the upper bound of the transaction validity interval is smaller than the sum of the \code{registration\_time} of the \code{registered\_node} and the Midgard \code{registration\_duration} protocol parameter.
             \end{enumerate}
         \end{itemize}
 \end{description}

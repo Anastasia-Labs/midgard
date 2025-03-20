@@ -1,6 +1,8 @@
+use aiken/cbor
 use aiken/collection/dict
 use aiken/collection/list
-use aiken/crypto.{ScriptHash, VerificationKeyHash}
+use aiken/crypto.{ScriptHash, VerificationKeyHash, blake2b_224, blake2b_256}
+use aiken/interval.{Finite, Interval, NegativeInfinity, PositiveInfinity}
 use aiken_design_patterns/validity_range_normalization as vrn
 use cardano/address.{Address, Script}
 use cardano/assets.{AssetName, PolicyId, Value, tokens}
@@ -8,7 +10,25 @@ use cardano/transaction.{Input, Output, OutputReference, ValidityRange}
 use midgard/common/constants.{
   max_validity_range_for_current_time, posix_time_none,
 }
-use midgard/common/types.{POSIXTime}
+use midgard/common/types.{H28, H32, PosixTime}
+
+/// Check whether the interval starts on or after the point.
+pub fn is_hereafter(self: Interval<Int>, point: Int) -> Bool {
+  when self.lower_bound.bound_type is {
+    Finite(lo) -> point <= lo
+    NegativeInfinity -> False
+    PositiveInfinity -> True
+  }
+}
+
+/// Check whether the interval ends on or before the point.
+pub fn is_herebefore(self: Interval<Int>, point: Int) -> Bool {
+  when self.upper_bound.bound_type is {
+    Finite(hi) -> hi <= point
+    PositiveInfinity -> False
+    NegativeInfinity -> True
+  }
+}
 
 pub fn validate_mint(
   mints: Value,
@@ -35,7 +55,7 @@ pub fn safe_list_init(elems: List<a>) {
   elems_except_last
 }
 
-pub fn is_posix_time_none(time: POSIXTime) {
+pub fn is_posix_time_none(time: PosixTime) {
   time == posix_time_none
 }
 
@@ -78,7 +98,7 @@ pub fn is_output_to_sc(output: Output, scHash: ByteArray) -> Bool {
   }
 }
 
-pub fn get_current_time(validity_range: ValidityRange) -> POSIXTime {
+pub fn get_current_time(validity_range: ValidityRange) -> PosixTime {
   when vrn.normalize_time_range(validity_range) is {
     vrn.ClosedRange { lower, upper } -> {
       expect upper - lower <= max_validity_range_for_current_time
@@ -183,4 +203,14 @@ pub fn get_singleton_asset_with_policy(
       |> dict.to_pairs
 
   p
+}
+
+// Verify a 32-byte hash (Blake2b-256)
+pub fn verify_hash_32(data: Data, data_hash: H32<Data>) {
+  expect blake2b_256(cbor.serialise(data)) == data_hash
+}
+
+// Verify a 28-byte hash (Blake2b-224)
+pub fn verify_hash_28(data: Data, data_hash: H28<Data>) {
+  expect blake2b_224(cbor.serialise(data)) == data_hash
 }

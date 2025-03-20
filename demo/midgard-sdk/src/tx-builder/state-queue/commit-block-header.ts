@@ -1,12 +1,15 @@
-import { Data, LucidEvolution, TxBuilder } from "@lucid-evolution/lucid";
-import { Effect } from "effect";
-import { CommitBlockParams, FetchConfig } from "./types.js";
-import { fetchLatestCommitedBlockProgram } from "../../endpoints/state-queue/fetch-latest-block.js";
-import { Header } from "../ledger-state.js";
 import {
-  getHeaderFromBlockUTxO,
-  hashHeader,
-} from "../../utils/ledger-state.js";
+  Assets,
+  Data,
+  LucidEvolution,
+  TxBuilder,
+  fromText,
+  toUnit,
+} from "@lucid-evolution/lucid";
+import { Effect } from "effect";
+import { CommitBlockParams, Datum, FetchConfig } from "./types.js";
+import { Header } from "../ledger-state.js";
+import { hashHeader } from "@/utils/ledger-state.js";
 
 /**
  * Builds portions of a tx required for submitting a new block, using the
@@ -21,35 +24,44 @@ export const commitTxBuilder = (
   lucid: LucidEvolution,
   config: FetchConfig,
   {
-    newUTxOsRoot,
-    transactionsRoot,
-    endTime,
+    anchorUTxO: latestBlock,
+    updatedAnchorDatum: updatedNodeDatum,
+    newHeader,
     stateQueueSpendingScript,
+    policyId,
+    stateQueueMintingScript,
   }: CommitBlockParams,
 ): Effect.Effect<TxBuilder, Error> =>
   Effect.gen(function* () {
-    const latestBlock = yield* fetchLatestCommitedBlockProgram(lucid, config);
-    const latestHeader = yield* getHeaderFromBlockUTxO(latestBlock);
-    const prevHeaderHash = yield* hashHeader(latestHeader);
-    const newHeader = {
-      ...latestHeader,
-      prevUtxosRoot: latestHeader.utxosRoot,
-      utxosRoot: newUTxOsRoot,
-      transactionsRoot,
-      startTime: latestHeader.endTime,
-      endTime,
-      prevHeaderHash,
+    const newHeaderHash = yield* hashHeader(newHeader);
+
+    const assets: Assets = {
+      [toUnit(policyId, fromText("Node") + newHeaderHash)]: 1n,
     };
+
+    const newNodeDatum: Datum = {
+      key: updatedNodeDatum.next,
+      next: "Empty",
+      data: Data.castTo(newHeader, Header),
+    };
+
     const tx = lucid
       .newTx()
-      .validFrom(Number(latestHeader.endTime))
-      .validTo(Number(endTime))
-      .collectFrom([latestBlock], "d87980") // TODO: Placeholder redeemer.
+      // .validFrom(Number(newHeader.startTime))
+      // .validTo(Number(endTime))
+      .collectFrom([latestBlock], Data.void())
       .pay.ToContract(
         config.stateQueueAddress,
-        { kind: "inline", value: Data.to(newHeader, Header) },
+        { kind: "inline", value: Data.to(newNodeDatum, Datum) },
+        assets,
+      )
+      .pay.ToContract(
+        config.stateQueueAddress,
+        { kind: "inline", value: Data.to(updatedNodeDatum, Datum) },
         latestBlock.assets,
       )
-      .attach.Script(stateQueueSpendingScript);
+      .mintAssets(assets, Data.void())
+      .attach.Script(stateQueueSpendingScript)
+      .attach.Script(stateQueueMintingScript);
     return tx;
   });

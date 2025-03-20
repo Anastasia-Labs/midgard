@@ -13,12 +13,24 @@
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 % Color
-\usepackage{xcolor}
+\usepackage[table,xcdraw,svgnames]{xcolor}
+
+% Cover page
 \definecolor{midgard-cover-page-green}{HTML}{043815}
 \definecolor{midgard-cover-page-draft}{HTML}{828282}
 
+% Inline code
 \definecolor{inline-code-dark-red}{HTML}{9a2626}
+
+% Hyperlinks
 \definecolor{link-blue}{HTML}{074db5}
+
+% Highlights in block quotes
+\colorlet{highlight-blue}{DeepSkyBlue!30}
+\colorlet{highlight-yellow}{yellow!50}
+\colorlet{highlight-lime}{lime!30}
+\colorlet{highlight-pink}{pink!30}
+\colorlet{highlight-purple}{MediumOrchid!30}
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 % Line and paragraph spacing
@@ -106,6 +118,31 @@
   mathescape,
   backgroundcolor=\color{gray!20},
 }
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% Quote blocks
+\usepackage{adjustbox}
+\newcommand{\@quoteSym}{\fontsize{4em}{4.8em}\selectfont\textcolor{gray}{``}}
+\newenvironment{quotePretty}{%
+  \begin{center}\begin{adjustbox}{bgcolor=WhiteSmoke,minipage=0.95\linewidth}%
+  \begin{adjustbox}{center,minipage=0.85\linewidth}%
+}{
+  \end{adjustbox}%
+  \adjustbox{rlap,valign=b,raise=0.5em,scale={-1}{-1}}{\@quoteSym}% 
+  \hspace{-\linewidth}%
+  \adjustbox{rlap,valign=B,raise=0.5em,left=\linewidth}{\@quoteSym}%
+  \hspace{-\linewidth}%   
+  \end{adjustbox}\end{center}%
+}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% Highlighting
+\usepackage{soul}
+\DeclareRobustCommand{\hlBlue}[1]{{\sethlcolor{highlight-blue}\hl{#1}}}
+\DeclareRobustCommand{\hlYellow}[1]{{\sethlcolor{highlight-yellow}\hl{#1}}}
+\DeclareRobustCommand{\hlLime}[1]{{\sethlcolor{highlight-lime}\hl{#1}}}
+\DeclareRobustCommand{\hlPink}[1]{{\sethlcolor{highlight-pink}\hl{#1}}}
+\DeclareRobustCommand{\hlPurple}[1]{{\sethlcolor{highlight-purple}\hl{#1}}}
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 % References, hyperlinks, and bibliography

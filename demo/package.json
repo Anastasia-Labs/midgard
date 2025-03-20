@@ -6,10 +6,12 @@
     "format": "prettier --write \"**/*.{ts,tsx,md}\"",
     "format-check": "prettier --check \"**/*.{ts,tsx,md}\"",
     "test": "turbo test",
-    "clean": "turbo clean && rm -rf node_modules"
+    "clean": "turbo clean && rm -rf node_modules",
+    "install-sdk": "pnpm --filter midgard-sdk install",
+    "repack-sdk": "pnpm --filter midgard-sdk repack"
   },
   "devDependencies": {
-    "prettier": "^3.2.5",
+    "prettier": "^3.5.2",
     "turbo": "1.13.3"
   },
   "engines": {

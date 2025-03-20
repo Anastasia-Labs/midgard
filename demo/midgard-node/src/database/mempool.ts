@@ -1,63 +1,63 @@
-import { fromHex, toHex } from "@lucid-evolution/lucid";
 import { Option } from "effect";
-import sqlite3 from "sqlite3";
+import { Pool } from "pg";
 import { logAbort, logInfo } from "../utils.js";
 import * as utils from "./utils.js";
 import { clearTable } from "./utils.js";
 
 export const createQuery = `
   CREATE TABLE IF NOT EXISTS mempool (
-    tx_hash BLOB NOT NULL UNIQUE,
-    tx_cbor BLOB NOT NULL UNIQUE,
+    tx_hash BYTEA NOT NULL UNIQUE,
+    tx_cbor BYTEA NOT NULL UNIQUE,
     PRIMARY KEY (tx_hash)
   );`;
 
 export const insert = async (
-  db: sqlite3.Database,
-  tx_hash: string,
-  tx_cbor: string,
-) => {
-  const query = `INSERT INTO mempool (tx_hash, tx_cbor) VALUES (?, ?)`;
-  await new Promise<void>((resolve, reject) => {
-    db.run(query, [fromHex(tx_hash), fromHex(tx_cbor)], function (err) {
-      if (err) {
-        logAbort(`mempool db: error inserting tx: ${err.message}`);
-        reject(err);
-      } else {
-        logInfo(`mempool db: tx stored with rowid ${this.lastID}`);
-        resolve();
-      }
-    });
-  });
+  pool: Pool,
+  txHash: string,
+  txCbor: string,
+): Promise<void> => {
+  const query = `INSERT INTO mempool (tx_hash, tx_cbor) VALUES ($1, $2)`;
+  try {
+    await pool.query(query, [
+      Buffer.from(txHash, "hex"),
+      Buffer.from(txCbor, "hex"),
+    ]);
+    // logInfo(`mempool db: tx stored`);
+  } catch (err) {
+    // logAbort(`mempool db: error inserting tx: ${err}`);
+    throw err;
+  }
 };
 
 export const retrieveTxCborByHash = async (
-  db: sqlite3.Database,
+  pool: Pool,
   txHash: string,
 ): Promise<Option.Option<string>> =>
-  utils.retrieveTxCborByHash(db, "mempool", txHash);
+  utils.retrieveTxCborByHash(pool, "mempool", txHash);
 
 export const retrieveTxCborsByHashes = async (
-  db: sqlite3.Database,
+  pool: Pool,
   txHashes: string[],
-): Promise<string[]> => utils.retrieveTxCborsByHashes(db, "mempool", txHashes);
+): Promise<string[]> =>
+  utils.retrieveTxCborsByHashes(pool, "mempool", txHashes);
 
-export const retrieve = async (db: sqlite3.Database) => {
+export const retrieve = async (
+  pool: Pool,
+): Promise<{ txHash: string; txCbor: string }[]> => {
   const query = `SELECT * FROM mempool`;
-  const mempool = await new Promise<[string, string][]>((resolve, reject) => {
-    db.all(query, (err, rows: { tx_hash: Buffer; tx_cbor: Buffer }[]) => {
-      if (err) {
-        logAbort(`mempool db: retrieving error: ${err.message}`);
-        reject(err);
-      }
-      const result: [string, string][] = rows.map((row) => [
-        toHex(new Uint8Array(row.tx_hash)),
-        toHex(new Uint8Array(row.tx_cbor)),
-      ]);
-      resolve(result);
-    });
-  });
-  return mempool;
+  try {
+    const result = await pool.query(query);
+    return result.rows.map((row) => ({
+      txHash: row.tx_hash.toString("hex"),
+      txCbor: row.tx_cbor.toString("hex"),
+    }));
+  } catch (err) {
+    // logAbort(`mempool db: retrieving error: ${err}`);
+    throw err;
+  }
 };
 
-export const clear = async (db: sqlite3.Database) => clearTable(db, "mempool");
+export const clearTxs = async (pool: Pool, txHashes: string[]) =>
+  utils.clearTxs(pool, "mempool", txHashes);
+
+export const clear = async (pool: Pool) => clearTable(pool, "mempool");

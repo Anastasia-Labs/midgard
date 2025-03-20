@@ -1,6 +1,7 @@
 use aiken/collection/list
 use aiken/primitive/bytearray
-use aiken_design_patterns/linked_list/ordered.{Key, NodeDatum}
+use aiken_design_patterns/linked_list/ordered as ordered
+use aiken_design_patterns/linked_list/unordered as unordered
 use cardano/assets.{PolicyId, flatten, quantity_of}
 use cardano/transaction.{InlineDatum, Input, Output, Transaction}
 use midgard/common/utils.{is_output_to_sc}
@@ -9,7 +10,6 @@ use midgard/computation_thread.{StepDatum}
 use midgard/fraud_proof/catalogue as fpc
 use midgard/hub_oracle
 use midgard/ledger_state
-use midgard/state_queue
 
 validator computation_thread_policy(
   fraud_proof_catalogue_script_hash: ByteArray,
@@ -45,15 +45,15 @@ validator computation_thread_policy(
 
         expect InlineDatum(fraud_proof_catalogue_node_datum) =
           fraud_proof_catalogue_node_input.output.datum
-        expect parsed_fraud_proof_catalogue_node_datum: NodeDatum =
+        expect parsed_fraud_proof_catalogue_node_datum: ordered.NodeDatum =
           fraud_proof_catalogue_node_datum
         expect parsed_fraud_proof_catalogue_node_app_data: fpc.Datum =
           parsed_fraud_proof_catalogue_node_datum.data
-        expect Key(parsed_fraud_proof_catalogue_node_datum_key) =
+        expect ordered.Key(parsed_fraud_proof_catalogue_node_datum_key) =
           parsed_fraud_proof_catalogue_node_datum.key
         expect InlineDatum(frauded_state_queue_node_datum) =
           frauded_state_queue_node_input.output.datum
-        expect parsed_frauded_state_queue_node_datum: state_queue.Datum =
+        expect parsed_frauded_state_queue_node_datum: unordered.NodeDatum =
           frauded_state_queue_node_datum
         expect parsed_frauded_state_queue_node_app_data: ledger_state.Header =
           parsed_frauded_state_queue_node_datum.data

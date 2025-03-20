@@ -21,6 +21,32 @@ url="$2"
 
 zero=$(git hash-object --stdin </dev/null | tr '[0-9a-f]' '0')
 
+dirRoot="$(git rev-parse --show-toplevel)"
+dirAiken="$dirRoot/onchain/aiken"
+
+# Get the upstream branch to which we're pushing. Ignore error if none configured.
+remoteBranch="$(git rev-parse --abbrev-ref --symbolic-full-name @{u} 2>/dev/null)"
+# Get the main branch (usually origin/main)
+mainBranch="$(git symbolic-ref refs/remotes/origin/HEAD | sed 's@^refs/remotes/@@')"
+
+if [ $? -eq 0 ]; then
+  # If the upstream branch exists, check Aiken changes against it.
+  aikenChanged=$(git diff --cached --quiet $remoteBranch -- $dirAiken)
+else
+  # Otherwise, check Aiken changes against the main branch. 
+  aikenChanged=$(git diff --cached --quiet $mainBranch -- $dirAiken)
+fi
+
+# Skip Aiken checks if Aiken files haven't changed relative to target upstream branch
+if $aikenChanged; then
+    echo "Aiken files are unchanged. Skipping checks."
+    exit 0
+else
+    echo "Aiken files have changed. Checking."
+fi
+
+cd $dirAiken
+
 aiken build
 if [ $? -ne 0 ]; then
   echo >&2 'CANCELLED PUSH: Aiken build failed'

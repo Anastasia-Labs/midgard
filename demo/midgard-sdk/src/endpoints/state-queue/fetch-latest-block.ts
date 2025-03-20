@@ -7,7 +7,7 @@ import {
 import { makeReturn } from "../../core.js";
 import { StateQueue } from "../../tx-builder/index.js";
 
-export const fetchLatestCommitedBlockProgram = (
+export const fetchLatestCommittedBlockProgram = (
   lucid: LucidEvolution,
   config: StateQueue.FetchConfig,
 ): Effect.Effect<UTxO, Error> =>
@@ -17,6 +17,7 @@ export const fetchLatestCommitedBlockProgram = (
       config.stateQueueAddress,
       config.stateQueuePolicyId,
     );
+    yield* Effect.logInfo("allBlocks", allBlocks.length);
     const filtered = yield* Effect.allSuccesses(
       allBlocks.map((u: UTxO) => {
         const nodeKeyEffect = getLinkFromBlockUTxO(u);
@@ -35,14 +36,14 @@ export const fetchLatestCommitedBlockProgram = (
   });
 
 /**
- * Attempts fetching the commited block at the very end of the state queue
+ * Attempts fetching the committed block at the very end of the state queue
  * linked list.
  *
  * @param lucid - The `LucidEvolution` API object.
  * @param config - Configuration values required to know where to look for which NFT.
  * @returns {UTxO} - The authentic UTxO which links to no other nodes.
  */
-export const fetchLatestCommitedBlock = (
+export const fetchLatestCommittedBlock = (
   lucid: LucidEvolution,
   config: StateQueue.FetchConfig,
-) => makeReturn(fetchLatestCommitedBlockProgram(lucid, config)).unsafeRun();
+) => makeReturn(fetchLatestCommittedBlockProgram(lucid, config)).unsafeRun();

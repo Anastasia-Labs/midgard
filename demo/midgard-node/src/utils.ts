@@ -16,77 +16,35 @@ import {
 import * as chalk_ from "chalk";
 import { Effect } from "effect";
 
+export interface WorkerInput {
+  data: {
+    items: any[];
+    itemsType: "txs" | "utxos";
+  }
+}
+
+export interface WorkerOutput {
+  root: string;
+}
+
 export const chalk = new chalk_.Chalk();
 
 export type ProviderName = "Blockfrost" | "Koios" | "Kupmios" | "Maestro";
 
-export const errorToString = (error: any): string => {
-  return error.message ?? JSON.stringify(error);
-};
-
-export const showTime = (d: Date): string => {
-  return d
-    .toLocaleString("en-US", {
-      month: "2-digit",
-      day: "2-digit",
-      year: "numeric",
-      hour: "2-digit",
-      minute: "2-digit",
-      second: "2-digit",
-      hour12: false,
-    })
-    .replace(/\//g, ".");
-};
-
-const logWithTime = (
-  color: chalk_.ChalkInstance,
-  label: string,
-  msg: string,
-) => {
-  const now = new Date();
-  const timeStr = showTime(now);
-  console.log(
-    `${color(chalk.bold(`${timeStr}\u0009${label}`))}${
-      label === "" ? "" : " "
-    }${color(msg)}`,
-  );
-};
-
 export const logSuccess = (msg: string) => {
-  logWithTime(chalk.green, "SUCCESS!", msg);
+  Effect.runSync(Effect.logInfo(`🎉 ${msg}`));
 };
 
-export const logWarning = (msg: string, quiet?: true) => {
-  if (!quiet) {
-    logWithTime(
-      chalk.yellow,
-      "WARNING",
-      `
-${msg}`,
-    );
-  }
+export const logWarning = (msg: string) => {
+  Effect.runSync(Effect.logWarning(`⚠️  ${msg}`));
 };
 
 export const logAbort = (msg: string) => {
-  logWithTime(
-    chalk.red,
-    "ABORT",
-    `
-${msg}`,
-  );
-};
-
-export const logDim = (msg: string) => {
-  logWithTime(chalk.dim, "", msg);
+  Effect.runSync(Effect.logError(msg));
 };
 
 export const logInfo = (msg: string) => {
-  logWithTime(
-    chalk.blue,
-    "INFO",
-    `
-${msg}`,
-  );
+  Effect.runSync(Effect.logInfo(`ℹ️  ${msg}`));
 };
 
 export const isHexString = (str: string): boolean => {
@@ -142,15 +100,13 @@ export const setupLucid = async (
     lucid.selectWallet.fromSeed(seedPhrase);
     return lucid;
   } catch (e) {
-    logAbort(errorToString(e));
+    logAbort(`${e}`);
     process.exit(1);
   }
 };
 
-export const findSpentAndProducedUTxOs = (
-  txCBOR: string,
-): Effect.Effect<{ spent: OutRef[]; produced: UTxO[] }, Error> => {
-  try {
+export const findSpentAndProducedUTxOs = (txCBOR: string) =>
+  Effect.gen(function* () {
     const spent: OutRef[] = [];
     const produced: UTxO[] = [];
     const tx = CML.Transaction.from_cbor_hex(txCBOR);
@@ -158,45 +114,31 @@ export const findSpentAndProducedUTxOs = (
     const inputs = txBody.inputs();
     const outputs = txBody.outputs();
     for (let i = 0; i < inputs.len(); i++) {
-      try {
-        spent.push(coreToOutRef(inputs.get(i)));
-      } catch (e) {
-        console.log(e);
-      }
+      // TODO: custom error
+      yield* Effect.try(() => spent.push(coreToOutRef(inputs.get(i))));
     }
     const txHash = CML.hash_transaction(txBody).to_hex();
     for (let i = 0; i < outputs.len(); i++) {
-      try {
+      yield* Effect.try(() => {
         const utxo: UTxO = {
           txHash: txHash,
           outputIndex: i,
           ...coreToTxOutput(outputs.get(i)),
         };
         produced.push(utxo);
-      } catch (e) {
-        console.log(e);
-      }
+      });
     }
-    return Effect.succeed({ spent, produced });
-  } catch (_e) {
-    return Effect.fail(
-      new Error("Something went wrong decoding the transaction"),
-    );
-  }
-};
+    return { spent, produced };
+  });
 
 export const findAllSpentAndProducedUTxOs = (
   txCBORs: string[],
 ): Effect.Effect<{ spent: OutRef[]; produced: UTxO[] }, Error> =>
   Effect.gen(function* () {
-    const allEffects = Effect.validateAll(findSpentAndProducedUTxOs)(txCBORs);
-    const allSpentsAndProduces = yield* Effect.mapError(
-      allEffects,
-      (errors: [Error, ...Error[]]) => {
-        return new Error(errors.map((e) => `${e}`).join("\n"));
-      },
+    const allEffects = yield* Effect.all(
+      txCBORs.map(findSpentAndProducedUTxOs),
     );
-    return allSpentsAndProduces.reduce(
+    return allEffects.reduce(
       (
         { spent: spentAcc, produced: producedAcc },
         { spent: currSpent, produced: currProduced },

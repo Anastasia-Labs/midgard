@@ -6,7 +6,6 @@ import {
   TxBuilder,
   toUnit,
 } from "@lucid-evolution/lucid";
-import { fetchConfirmedStateAndItsLinkProgram } from "../../endpoints/state-queue/fetch-confirmed-state-and-its-link.js";
 import { getSingleAssetApartFromAda } from "../../utils/common.js";
 import { ConfirmedState, Header } from "../ledger-state.js";
 import { getNodeDatumFromUTxO } from "../../utils/linked-list.js";
@@ -27,58 +26,58 @@ import { Redeemer, FetchConfig, MergeParams } from "./types.js";
 export const mergeTxBuilder = (
   lucid: LucidEvolution,
   fetchConfig: FetchConfig,
-  { stateQueueSpendingScript, stateQueueMintingScript }: MergeParams,
+  {
+    confirmedUTxO,
+    firstBlockUTxO,
+    stateQueueSpendingScript,
+    stateQueueMintingScript,
+  }: MergeParams,
 ): Effect.Effect<TxBuilder, Error> =>
   Effect.gen(function* () {
-    const { confirmed: confirmedUTxO, link: firstBlockUTxO } =
-      yield* fetchConfirmedStateAndItsLinkProgram(lucid, fetchConfig);
-    if (!firstBlockUTxO) {
-      return yield* Effect.fail(new Error("No blocks in queue"));
-    } else {
-      const confirmedNode = yield* getNodeDatumFromUTxO(confirmedUTxO);
-      const currentConfirmedNodeDatum = confirmedNode;
-      const currentConfirmedState: ConfirmedState = yield* Effect.try({
-        try: () =>
-          Data.castFrom(currentConfirmedNodeDatum.data, ConfirmedState),
-        catch: (e) => new Error(`${e}`),
-      });
-      const blockHeader: Header = yield* getHeaderFromBlockUTxO(firstBlockUTxO);
-      const headerHash = yield* hashHeader(blockHeader);
-      const newConfirmedState = {
-        ...currentConfirmedState,
-        headerHash,
-        prevHeaderHash: currentConfirmedState.headerHash,
-        utxoRoot: blockHeader.utxosRoot,
-        startTime: currentConfirmedState.endTime,
-        endTime: blockHeader.endTime,
-      };
-      const newConfirmedNodeDatum: NodeDatum = {
-        ...currentConfirmedNodeDatum,
-        data: Data.castTo(newConfirmedState, ConfirmedState),
-      };
-      const [nftSym, nftName, _nftQty] = yield* getSingleAssetApartFromAda(
-        firstBlockUTxO.assets,
-      );
-      const assetsToBurn: Assets = {
-        [toUnit(nftSym, nftName)]: -1n,
-      };
-      const tx = lucid
-        .newTx()
-        .collectFrom(
-          [confirmedUTxO, firstBlockUTxO],
-          Data.to("MergeToConfirmedState", Redeemer),
-        )
-        .pay.ToContract(
-          fetchConfig.stateQueueAddress,
-          {
-            kind: "inline",
-            value: Data.to(newConfirmedNodeDatum, NodeDatum),
-          },
-          confirmedUTxO.assets,
-        )
-        .mintAssets(assetsToBurn)
-        .attach.Script(stateQueueSpendingScript)
-        .attach.Script(stateQueueMintingScript);
-      return tx;
-    }
+    const confirmedNode = yield* getNodeDatumFromUTxO(confirmedUTxO);
+    const currentConfirmedNodeDatum = confirmedNode;
+    const currentConfirmedState: ConfirmedState = yield* Effect.try({
+      try: () => Data.castFrom(currentConfirmedNodeDatum.data, ConfirmedState),
+      catch: (e) => new Error(`${e}`),
+    });
+    const blockNode: NodeDatum = yield* getNodeDatumFromUTxO(firstBlockUTxO);
+    const blockHeader: Header = yield* getHeaderFromBlockUTxO(firstBlockUTxO);
+    const headerHash = yield* hashHeader(blockHeader);
+    const newConfirmedState = {
+      ...currentConfirmedState,
+      headerHash,
+      prevHeaderHash: currentConfirmedState.headerHash,
+      utxoRoot: blockHeader.utxosRoot,
+      startTime: currentConfirmedState.endTime,
+      endTime: blockHeader.endTime,
+    };
+    const newConfirmedNodeDatum: NodeDatum = {
+      ...currentConfirmedNodeDatum,
+      data: Data.castTo(newConfirmedState, ConfirmedState),
+      next: blockNode.next,
+    };
+    const [nftSym, nftName, _nftQty] = yield* getSingleAssetApartFromAda(
+      firstBlockUTxO.assets,
+    );
+    const assetsToBurn: Assets = {
+      [toUnit(nftSym, nftName)]: -1n,
+    };
+    const tx = lucid
+      .newTx()
+      .collectFrom(
+        [confirmedUTxO, firstBlockUTxO],
+        Data.to("MergeToConfirmedState", Redeemer),
+      )
+      .pay.ToContract(
+        fetchConfig.stateQueueAddress,
+        {
+          kind: "inline",
+          value: Data.to(newConfirmedNodeDatum, NodeDatum),
+        },
+        confirmedUTxO.assets,
+      )
+      .mintAssets(assetsToBurn, Data.void())
+      .attach.Script(stateQueueSpendingScript)
+      .attach.Script(stateQueueMintingScript);
+    return tx;
   });
