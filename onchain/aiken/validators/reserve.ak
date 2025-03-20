@@ -7,7 +7,7 @@ use cardano/certificate.{Certificate, RegisterCredential, UnregisterCredential}
 use cardano/transaction.{NoDatum, Output, OutputReference, Transaction}
 use midgard/hub_oracle as hub
 use midgard/reserve.{MergeRedeemer,
-  MergeUTxOs, SatisfyWithdrawal, SpendRedeemer}
+  MergeUTxOs, FundWithdrawal, SpendRedeemer}
 
 validator spend(
   hub_oracle: ScriptHash,
@@ -21,15 +21,15 @@ validator spend(
     tx: Transaction,
   ) {
     when redeemer is {
-      MergeUTxOs -> {
-        // 1. Essentially expecting a single withdrawal present in the
-        //    transaction to keep this check as minimal as possible.
-        let Pair(credentials, _) = tx.withdrawals |> builtin.head_list
+      MergeUTxOs { withdrawal_index } -> {
+        // Fetch credentials of specified withdrawal pair.
+        expect Some(Pair(credentials, _)) =
+          tx.withdrawals |> list.at(withdrawal_index)
 
-        // 2. The single withdrawal must be validated by the merge logic script.
+        // 1. Fetched credential must be equals to the merge logic's.
         credentials == Script(merge_logic_script_hash)
       }
-      SatisfyWithdrawal -> todo
+      FundWithdrawal -> todo
     }
   }
 

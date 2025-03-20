@@ -1,6 +1,6 @@
 pub type SpendRedeemer {
-  MergeUTxOs
-  SatisfyWithdrawal
+  MergeUTxOs { withdrawal_index: Int }
+  FundWithdrawal
 }
 
 pub type MergeRedeemer {
