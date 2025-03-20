@@ -81,13 +81,6 @@ pub type ConfirmedState {
 
 // ## User events
 
-/// Wrapper datatype for both deposit and withdraw events. This allows a unified
-/// serialization function to be defined.
-pub type CrossLayerEvent<id, info> {
-  id: id,
-  info: info,
-}
-
 pub fn unsafe_event_to_key_value_pair(
   event_datum_data: Data,
 ) -> Pair<Data, Data> {
@@ -106,8 +99,10 @@ pub type DepositInfo {
   tokens: Tokens,
 }
 
-pub type DepositEvent =
-  CrossLayerEvent<DepositId, DepositInfo>
+pub type DepositEvent {
+  id: DepositId,
+  info: DepositInfo,
+}
 
 // ### Withdrawal event
 
@@ -121,8 +116,10 @@ pub type WithdrawalInfo {
   tokens: Tokens,
 }
 
-pub type WithdrawalEvent =
-  CrossLayerEvent<WithdrawalId, WithdrawalInfo>
+pub type WithdrawalEvent {
+  id: WithdrawalId,
+  info: WithdrawalInfo,
+}
 
 // ## Transaction
 
