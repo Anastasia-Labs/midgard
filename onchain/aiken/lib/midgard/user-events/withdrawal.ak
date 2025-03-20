@@ -2,21 +2,11 @@ use aiken/crypto.{ScriptHash}
 use aiken/merkle_patricia_forestry as mpf
 use cardano/address.{Address}
 use cardano/transaction.{OutputReference}
-use midgard/common/types.{PosixTime, Tokens}
-use midgard/user_events
-
-pub type Event =
-  user_events.Event<Info>
-
-pub type Info {
-  l2_out_ref: OutputReference,
-  l1_address: Address,
-  l1_datum: Option<Data>,
-  tokens: Tokens,
-}
+use midgard/common/types.{PosixTime}
+use midgard/ledger_state
 
 pub type Datum {
-  event: Event,
+  event: ledger_state.WithdrawalEvent,
   inclusion_time: PosixTime,
   witness: ScriptHash,
   refund_address: Address,
