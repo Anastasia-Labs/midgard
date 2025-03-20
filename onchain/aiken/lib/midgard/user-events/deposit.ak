@@ -3,7 +3,7 @@ use aiken/merkle_patricia_forestry as mpf
 use cardano/address.{Address}
 use cardano/assets.{AssetName}
 use cardano/transaction.{OutputReference}
-use midgard/common/types.{POSIXTime, Tokens}
+use midgard/common/types.{PosixTime, Tokens}
 use midgard/user_events
 
 pub type Event =
@@ -17,7 +17,7 @@ pub type Info {
 
 pub type Datum {
   event: Event,
-  inclusion_time: POSIXTime,
+  inclusion_time: PosixTime,
   witness: ScriptHash,
   refund_address: Address,
   refund_datum: Option<Data>,
