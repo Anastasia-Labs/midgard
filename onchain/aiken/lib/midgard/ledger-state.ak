@@ -14,13 +14,15 @@
 //// These types must correspond to the CBOR types defined in Midgard's
 //// Codec Standard (/codec.cddl).
 
+use aiken/builtin
 use aiken/collection/dict.{Dict}
 use aiken/crypto.{ScriptHash, Signature, VerificationKey, VerificationKeyHash}
+use cardano/address.{Address}
 use cardano/assets.{Lovelace, Value}
 use cardano/transaction.{
   Output, OutputReference, Redeemer, ScriptPurpose, TransactionId, ValidityRange,
 }
-use midgard/common/types.{H28, H32, MerkleRoot, PosixTime, PubKeyHash}
+use midgard/common/types.{H28, H32, MerkleRoot, PosixTime, PubKeyHash, Tokens}
 
 // # Ledger state types
 
@@ -77,25 +79,47 @@ pub type ConfirmedState {
   protocol_version: Int,
 }
 
-// ## Deposit event
+// ## User events
 
-// TODO
+pub fn unsafe_event_to_key_value_pair(
+  event_datum_data: Data,
+) -> Pair<Data, Data> {
+  expect [id_data, info_data, ..] = builtin.unconstr_fields(event_datum_data)
+  Pair(id_data, info_data)
+}
+
+// ### Deposit event
+
 pub type DepositId =
-  Void
+  OutputReference
 
-// TODO
-pub type DepositEvent =
-  Void
+pub type DepositInfo {
+  l2_address: Address,
+  l2_datum: Option<Data>,
+  tokens: Tokens,
+}
 
-// ## Withdrawal event
+pub type DepositEvent {
+  id: DepositId,
+  info: DepositInfo,
+}
 
-// TODO
+// ### Withdrawal event
+
 pub type WithdrawalId =
-  Void
+  OutputReference
 
-// TODO
-pub type WithdrawalEvent =
-  Void
+pub type WithdrawalInfo {
+  l2_out_ref: OutputReference,
+  l1_address: Address,
+  l1_datum: Option<Data>,
+  tokens: Tokens,
+}
+
+pub type WithdrawalEvent {
+  id: WithdrawalId,
+  info: WithdrawalInfo,
+}
 
 // ## Transaction
 

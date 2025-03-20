@@ -1,16 +1,23 @@
+use aiken/builtin
 use aiken/cbor
 use aiken/collection/dict
 use aiken/collection/list
 use aiken/crypto.{ScriptHash, VerificationKeyHash, blake2b_224, blake2b_256}
 use aiken/interval.{Finite, Interval, NegativeInfinity, PositiveInfinity}
+use aiken/merkle_patricia_forestry as mpf
+use aiken_design_patterns/merkelized_validator
 use aiken_design_patterns/validity_range_normalization as vrn
 use cardano/address.{Address, Script}
 use cardano/assets.{AssetName, PolicyId, Value, tokens}
-use cardano/transaction.{Input, Output, OutputReference, ValidityRange}
+use cardano/transaction.{
+  Input, Output, OutputReference, Redeemer, ScriptPurpose, ValidityRange,
+}
+use env
 use midgard/common/constants.{
   max_validity_range_for_current_time, posix_time_none,
 }
-use midgard/common/types.{H28, H32, PosixTime}
+use midgard/common/types.{H28,
+  H32, MerkleRoot, MerklingInput, PosixTime, Tokens}
 
 /// Check whether the interval starts on or after the point.
 pub fn is_hereafter(self: Interval<Int>, point: Int) -> Bool {
@@ -79,6 +86,18 @@ pub fn get_own_address(output_reference: OutputReference, txInputs: List<Input>)
   input.output.address
 }
 
+/// Helper function for accessing spending UTxO using its input index.
+pub fn get_own_input_at(
+  inputs: List<Input>,
+  own_out_ref: OutputReference,
+  input_index: Int,
+) -> Output {
+  expect Some(Input { output: own_utxo, output_reference: spent_own_out_ref }) =
+    list.at(inputs, input_index)
+  expect (own_out_ref == spent_own_out_ref)?
+  own_utxo
+}
+
 pub fn is_output_to_sc(output: Output, scHash: ByteArray) -> Bool {
   when output.address.payment_credential is {
     Script(hash) -> hash == scHash
@@ -101,6 +120,15 @@ pub fn has_signed(
   extra_signatories: List<VerificationKeyHash>,
 ) -> Bool {
   extra_signatories |> list.has(signer)
+}
+
+pub fn get_single_asset_from_value(v: Value) -> (PolicyId, AssetName, Int) {
+  expect [Pair(sym, tn_qty_pairs)] =
+    v
+      |> assets.to_dict
+      |> dict.to_pairs
+  expect [Pair(tn, qty)] = tn_qty_pairs |> dict.to_pairs
+  (sym, tn, qty)
 }
 
 pub fn get_single_asset_from_value_apart_from_ada(
@@ -201,4 +229,78 @@ pub fn verify_hash_32(data: Data, data_hash: H32<Data>) {
 // Verify a 28-byte hash (Blake2b-224)
 pub fn verify_hash_28(data: Data, data_hash: H28<Data>) {
   expect blake2b_224(cbor.serialise(data)) == data_hash
+}
+
+/// Given a value, an NFT, and a `Tokens` (structured identical to `Value`, but
+/// safe for storage in datums), this helper ensures that the given `Value` is
+/// a correct representation of the given `Tokens`. Meaning it expects `Value`
+/// to only have the `Tokens`, the NFT, and some ADA. It also validates that 0
+/// ADA is included in `Tokens` (this does NOT validate the absence of ADA
+/// policy ID and asset name in `Tokens`, TODO?).
+pub fn authentic_value_has_tokens(
+  value: Value,
+  nft_policy_id: PolicyId,
+  nft_asset_name: AssetName,
+  tokens: Tokens,
+) -> Bool {
+  let without_nft =
+    value
+      |> assets.add(nft_policy_id, nft_asset_name, -1)
+  assets.match(without_nft, tokens, fn(_, tokens_ada) { tokens_ada == 0 })
+}
+
+pub fn get_redeemer_at(
+  redeemers: Pairs<ScriptPurpose, Redeemer>,
+  expected_purpose: ScriptPurpose,
+  redeemer_index: Int,
+) -> Redeemer {
+  expect Some(redeemer_pair) = redeemers |> list.at(redeemer_index)
+  expect redeemer_pair.1st == expected_purpose
+  redeemer_pair.2nd
+}
+
+pub fn plutarch_phas(
+  mpf_root: ByteArray,
+  key: Data,
+  value: Data,
+  membership_proof: mpf.Proof,
+  redeemers: Pairs<ScriptPurpose, Redeemer>,
+) -> Bool {
+  merkelized_validator.generic_delegated_validation(
+    staking_validator: env.plutarch_phas_validator_hash,
+    withdraw_redeemer_validator: fn(membership_validator_redeemer: Data) -> Bool {
+      expect [
+        input_root_data, input_key_data, input_value_data, input_proof_data,
+        ..
+      ] = builtin.unconstr_fields(membership_validator_redeemer)
+      let mpf_root_data: Data = mpf_root
+      let proof_data: Data = membership_proof
+      and {
+        mpf_root_data == input_root_data,
+        key == input_key_data,
+        value == input_value_data,
+        proof_data == input_proof_data,
+      }
+    },
+    redeemers: redeemers,
+  )
+}
+
+pub fn plutarch_pinsert(
+  root: ByteArray,
+  key: Data,
+  value: Data,
+  proof: mpf.Proof,
+  redeemers: Pairs<ScriptPurpose, Redeemer>,
+) -> MerkleRoot {
+  merkelized_validator.delegated_compute(
+    function_input: MerklingInput { root, key, value, proof },
+    staking_validator: env.plutarch_pinsert_validator_hash,
+    input_data_coercer: fn(input: Data) {
+      expect coerced: MerklingInput = input
+      coerced
+    },
+    output_data_coercer: builtin.un_b_data,
+    redeemers: redeemers,
+  )
 }

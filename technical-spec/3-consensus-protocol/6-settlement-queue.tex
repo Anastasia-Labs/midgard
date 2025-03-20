@@ -6,7 +6,7 @@
 \label{h:settlement-queue}
 
 A queue similar to the state queue.
-Nodes are appended to it for any state queue blocks that are merged into the confirmed state and contain deposit or withdrawal events.
+Nodes are appended to it for any state queue blocks that are merged into the confirmed state and contain deposit and withdrawal events.
 
 Users refer to state queue nodes to spend the corresponding withdrawal order and deposit utxos, along with any needed reserve utxos, to execute the corresponding deposit and withdrawal events.
 
@@ -20,5 +20,79 @@ The timestamp in the operator's node in the Operator Directory should be updated
 
 \tipbox{Perhaps resolving a settlement node should also release to the operator the user fees collected for processing the deposits and withdrawals in the node.
 This would incentivize the operator to promptly resolve settlement nodes.}
+
+The linked list structure here allows for refunds whenever an event has not been included in the confirmed state (an example scenario would be fraudulent exclusion of an event that goes unnoticed). With an unordered linked list, along with captured time ranges of block commitments in settlement nodes, time gaps in this queue and missing events can be validated for refunds. Therefore, the refund process can be broken down as such:
+\begin{itemize}
+  \item Inclusion time of the event must be behind confirmed state's end time.
+  \item If the inclusion time falls in one of the time gaps of settlement queue, refund request is valid.
+  \item Otherwise, if the inclusion time is within the time range of an existing settlement node, refund can only be allowed if an exclusion proof in the event's corresponding tree is provided.
+\end{itemize}
+
+\subsection{Minting policy}
+\label{h:settlement-queue-minting-policy}
+
+The \code{settlement\_queue} minting policy is statically parametrized on the \code{hub\_oracle} minting policy. It's responsible for appends to the \code{settlement\_queue} list's end, and also removal of nodes anywhere in the list.
+\begin{description}
+    \item[Init.] Initialize the \code{settlement\_queue} via the Midgard hub oracle.
+      Conditions:
+        \begin{enumerate}
+            \item The transaction must mint the Midgard hub oracle NFT.
+            \item The transaction must Init the \code{settlement\_queue} list.
+        \end{enumerate}
+    \item[Deinit.] Deinitialize the \code{settlement\_queue} via the Midgard hub oracle.
+      Conditions:
+        \begin{enumerate}
+            \item The transaction must burn the Midgard hub oracle NFT.
+            \item The transaction must Deinit the \code{settlement\_queue} list.
+        \end{enumerate}
+    \item[New Settlement.] Spawn a new node to store merged block's user events.
+      Conditions:
+        \begin{enumerate}
+            \item The confirmed state utxo must be getting spent. This is synanymous to the oldest block being merged into the confirmed state.
+            \item The asset name (i.e.\ key) of this NFT must be the same as the header hash of the merging block.
+            \item This new node must be appended to the end of the \code{settlement\_queue} list.
+            \item Current operator must be stored in the new node.
+            \item Tree roots stored in the new settlement node must be identical to the tree roots found in the merging block.
+            \item No time must be stored as the moment of resolution claim.
+        \end{enumerate}
+    \item[Remove Matured Settlement.] Remove a settlement node.
+      Conditions:
+        \begin{enumerate}
+            \item The transaction must Remove a node from the \code{settlement\_queue}.
+            \item The stored operator key must sign the transaction.
+            \item The current time (lower bound of the interval) must be greater than the stored claim time, plus \code{settlement\_resolution\_duration} protocol parameter. 
+        \end{enumerate}
+\end{description}
+
+\subsection{Spending validator}
+\label{h:settlement-queue-spending-validator}
+
+The spending validator of \code{settlement\_queue} is statically parametrized on the \code{settlement\_queue} and \code{hub\_oracle} minting policy.
+Conditions:
+\begin{description}
+    \item[Claim as Resolved.] Spend a settlement node and inject a time for claiming all the included event have been processed.
+      Conditions:
+        \begin{enumerate}
+            \item The transaction must be signed by the stored operator key.
+            \item The node must not have been previously claimed as resolved.
+            \item ``Update Commitment Time'' endpoint of \code{active\_operators}'s spending validator (\ref{h:active-operators-spending-validator}) is invoked for the stored operator.
+            \item The new commitment time must be stored in the reproduced settlement node utxo.
+        \end{enumerate}
+    \item[Revoke Resolved Flag.] Change back the claim of resolution.
+      Conditions:
+        \begin{enumerate}
+            \item One unprocessed event utxo must be referenced, along with a valid membership proof in its corresponding tree.
+            \item ``Remove Operator Slash Bond'' endpoint of \code{active\_operators}'s minting policy (\ref{h:retired-operators-minting-policy}) must be invoked in the transaction.
+            \item The slashed operator must be the same for both the \code{settlement\_queue} and \code{active\_operators} scripts.
+            \item The settlement node must be reproduced in its previous position within the \code{setlement\_queue} list.
+            \item The time of claim must be removed from the reproduced settlement node.
+            \item The operator must also be removed. This node will become a permanent node of the \code{setlement\_queue} list and can't be spent.
+        \end{enumerate}
+    \item[Conclude Settlement.] Spend and remove a matured settlement.
+      Conditions:
+        \begin{enumerate}
+            \item The settlement node's NFT must be burnt.
+        \end{enumerate}
+\end{description}
 
 \end{document}

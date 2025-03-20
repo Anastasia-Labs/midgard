@@ -14,6 +14,7 @@ A user initiates a withdrawal from Midgard by submitting an L1 transaction that 
     \item Spend an input \code{l1\_nonce}, which uniquely identifies this withdrawal order.
     \item Register a staking script credential to witness the withdrawal order.
       The staking script is parametrized by \code{l1\_nonce}, and the credential's purpose is to disprove the existence of the withdrawal order whenever the credential is \emph{not} registered.
+    \item If any tokens are included in the withdrawal order, they must all be minted to satisfy the order.
     \item Mint a withdrawal order token to verify the following datum:
         \begin{equation*}
         \T{WithdrawalOrderDatum} \coloneq \left\{
