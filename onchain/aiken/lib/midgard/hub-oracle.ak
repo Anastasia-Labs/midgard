@@ -24,6 +24,8 @@ pub type Datum {
   state_queue_addr: Address,
   fraud_proof_catalogue_addr: Address,
   fraud_proof_addr: Address,
+  deposit_addr: Address,
+  withdrawal_addr: Address,
   settlement_queue_addr: Address,
   reserve_addr: Address,
 }

@@ -29,7 +29,17 @@ validator spend(
         // 1. Fetched credential must be equals to the merge logic's.
         credentials == Script(merge_logic_script_hash)
       }
-      FundWithdrawal -> todo
+      FundWithdrawal { hub_ref_input_index, withdrawal_event_ref_input_index } -> {
+        let Transaction { inputs, outputs, reference_inputs, .. } = tx
+
+        let hub.Datum {
+          withdrawal: withdrawal_policy_id,
+          withdrawal_addr,
+          ..
+        } = hub.get_datum(reference_inputs, hub_oracle, hub_ref_input_index)
+
+        todo
+      }
     }
   }
 
