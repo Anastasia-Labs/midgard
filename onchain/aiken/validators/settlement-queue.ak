@@ -17,9 +17,9 @@ use midgard/common/utils
 use midgard/hub_oracle as hub
 use midgard/ledger_state
 use midgard/settlement_queue.{
-  ClaimAsResolved, ConcludeSettlement, Datum, Deinit, Init, ListStateTransition,
-  MintRedeemer, NodeData, RemoveSettlement, RevokeResolvedFlag, SpawnSettlement,
-  SpendRedeemer, UpdateResolvedFlag, settlement_resolution_duration,
+  AppendSettlementNode, AttachResolutionClaim, Datum, Deinit,
+  DisproveResolutionClaim, Init, ListStateTransition, MintRedeemer, NodeData,
+  RemoveSettlementNode, SpendRedeemer, settlement_resolution_duration,
 }
 use midgard/state_queue
 use midgard/user_events
@@ -37,6 +37,7 @@ validator spend(
   ) {
     expect Some(node_datum) = m_datum
 
+    // TODO: operator should not be in NodeData
     expect NodeData {
       deposits_root,
       withdrawals_root,
@@ -48,13 +49,23 @@ validator spend(
     when redeemer is {
       ListStateTransition ->
         list_state_transition(assets.tokens(tx.mint, settlement_policy_id))
-      UpdateResolvedFlag {
+      AttachResolutionClaim {
         node_input_index,
         node_output_index,
         hub_ref_input_index,
         active_operators_node_input_index,
         active_operators_redeemer_index,
-        purpose,
+        operator,
+        ..
+      } |
+      DisproveResolutionClaim {
+        node_input_index,
+        node_output_index,
+        hub_ref_input_index,
+        active_operators_node_input_index,
+        active_operators_redeemer_index,
+        operator,
+        ..
       } -> {
         let Transaction {
           inputs,
@@ -74,7 +85,7 @@ validator spend(
 
         // Using the singular one-to-one indexer design pattern.
         singular_utxo_indexer.spend(
-          fn(in_ix, input, spend_purpose, out_ix, output) {
+          fn(in_ix, input, _redeemer, out_ix, output) {
             // 1. Prevent double satisfaction (TODO: this is probably not
             //    needed).
             expect in_ix == out_ix
@@ -103,8 +114,11 @@ validator spend(
             //    before.
             expect Some(operator_vkey) = operator
 
-            when spend_purpose is {
-              ClaimAsResolved -> {
+            when redeemer is {
+              AttachResolutionClaim { .. } -> {
+                // TODO: check operator of claim
+                // TODO: update bond unlock time of operator
+
                 // 5. Operator must have signed this claim.
                 expect operator_vkey |> utils.has_signed(extra_signatories)
 
@@ -120,7 +134,7 @@ validator spend(
 
                 // 8. Found redeemer data must have the same structure as active
                 //    operator's update commitment time redeemer.
-                expect active_operators.UpdateCommitmentTime {
+                expect active_operators.UpdateBondHoldNewSettlement {
                   active_node_output_index,
                   ..
                 }: active_operators.SpendRedeemer =
@@ -150,7 +164,7 @@ validator spend(
                   ..
                 }) = list.at(outputs, active_node_output_index)
 
-                // TODO: Update the `UpdateCommitmentTime` redeemer to carry
+                // TODO: Update the `UpdateBondHoldNewSettlement` redeemer to carry
                 // this key, instead of reading it from the output datum.
                 expect ordered.NodeDatum {
                   key: ordered.Key(active_operators_node_key),
@@ -164,8 +178,8 @@ validator spend(
 
                 // 12. Active operator's updated datum is expected to record the
                 //     new commitment time.
-                expect active_operators.Datum{commitment_time: Some(
-                  new_commitment_time,
+                expect active_operators.Datum{bond_unlock_time: Some(
+                  new_bond_unlock_time,
                 )}: active_operators.Datum = active_operators_data
 
                 // 13. The only change in the updated datum must be the addition
@@ -175,16 +189,17 @@ validator spend(
                     ..node_datum,
                     data: NodeData {
                       ..node_data,
-                      time_of_claimed_as_resolved: Some(new_commitment_time),
+                      time_of_claimed_as_resolved: Some(new_bond_unlock_time),
                     },
                   }
                 cont_output_datum_data == expected_cont_output_datum_data
               }
-              RevokeResolvedFlag {
+              DisproveResolutionClaim {
                 unresolved_event_ref_input_index,
                 unresolved_event_asset_name,
                 event_type,
                 membership_proof,
+                ..
               } -> {
                 let (event_script, events_root) =
                   when event_type is {
@@ -252,7 +267,8 @@ validator spend(
 
                 // 6. Found redeemer data must have the same structure as active
                 //    operator's bond slash redeemer.
-                expect active_operators.RemoveOperatorSlashBond {
+                // TODO: the fraudulent operator can also be retired
+                expect active_operators.RemoveOperatorBadSettlement {
                   slashed_active_operator_key,
                   ..
                 }: active_operators.MintRedeemer =
@@ -260,7 +276,7 @@ validator spend(
 
                 // 7. Operator vkey found in the slash bond redeemer must match
                 //    the one stored in the spending settlement UTxO.
-                expect slashed_active_operator_key == operator_vkey
+                expect slashed_active_operator_key == operator
 
                 // 8. The only change in the datum should be removal of the
                 //    claim, and also removal of the operator.
@@ -275,17 +291,16 @@ validator spend(
                   }
                 cont_output_datum_data == expected_cont_output_datum_data
               }
+              _ -> False
             }
           },
-          purpose,
+          redeemer,
           node_input_index,
           node_output_index,
           own_out_ref,
           tx,
         )
       }
-      ConcludeSettlement ->
-        list_state_transition(assets.tokens(tx.mint, settlement_policy_id))
     }
   }
 
@@ -320,7 +335,7 @@ validator mint(hub_oracle: ScriptHash) {
           assets.quantity_of(mint, hub_oracle, hub.asset_name) == -1,
           unordered.deinit(node_in_outputs, node_mint, own_policy),
         }
-      SpawnSettlement {
+      AppendSettlementNode {
         anchor_node_output_index,
         node_output_index,
         state_queue_merge_redeemer_index,
@@ -402,7 +417,7 @@ validator mint(hub_oracle: ScriptHash) {
           }
         parsed_settlement_output_datum.data == expected_produced_node_data
       }
-      RemoveSettlement {
+      RemoveSettlementNode {
         key_to_remove,
         removed_node_input_index,
         anchor_node_input_index,

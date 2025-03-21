@@ -18,20 +18,21 @@ pub type NodeData {
 
 pub type SpendRedeemer {
   ListStateTransition
-  UpdateResolvedFlag {
+  AttachResolutionClaim {
     node_input_index: Int,
     node_output_index: Int,
     hub_ref_input_index: Int,
     active_operators_node_input_index: Int,
     active_operators_redeemer_index: Int,
-    purpose: Purpose,
+    operator: ByteArray,
   }
-  ConcludeSettlement
-}
-
-pub type Purpose {
-  ClaimAsResolved
-  RevokeResolvedFlag {
+  DisproveResolutionClaim {
+    node_input_index: Int,
+    node_output_index: Int,
+    hub_ref_input_index: Int,
+    active_operators_node_input_index: Int,
+    active_operators_redeemer_index: Int,
+    operator: ByteArray,
     unresolved_event_ref_input_index: Int,
     unresolved_event_asset_name: AssetName,
     event_type: EventType,
@@ -47,13 +48,13 @@ pub type EventType {
 pub type MintRedeemer {
   Init
   Deinit
-  SpawnSettlement {
+  AppendSettlementNode {
     anchor_node_output_index: Int,
     node_output_index: Int,
     state_queue_merge_redeemer_index: Int,
     hub_ref_input_index: Int,
   }
-  RemoveSettlement {
+  RemoveSettlementNode {
     key_to_remove: ByteArray,
     removed_node_input_index: Int,
     anchor_node_input_index: Int,

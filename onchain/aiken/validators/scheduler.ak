@@ -7,9 +7,7 @@ use cardano/transaction.{
   InlineDatum, Input, Output, OutputReference, Transaction, ValidityRange,
 }
 use midgard/common/utils.{get_singleton_asset_with_policy}
-use midgard/registered_operators.{
-  Datum as RegisteredOperatorDatum, eligible_activation_time,
-}
+use midgard/registered_operators.{Datum as RegisteredOperatorDatum}
 use midgard/scheduler.{
   Advance, Datum, Deinit, Init, MintRedeemer, Rewind, SpendRedeemer,
   scheduler_asset_name, shift_end_time,
@@ -229,10 +227,7 @@ validator spend(
         expect registered_node_data: RegisteredOperatorDatum =
           parsed_registered_node_datum.data
         expect Finite(valid_to) = self.validity_range.upper_bound.bound_type
-        expect
-          valid_to < eligible_activation_time(
-            registered_node_data.registration_time,
-          )
+        expect valid_to < registered_node_data.activation_time
         // Done.
         True
       }

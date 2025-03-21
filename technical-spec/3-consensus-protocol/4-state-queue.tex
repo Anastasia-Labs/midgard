@@ -73,7 +73,7 @@ Redeemers:
             
             \item Update the operator's timestamp in the active operators set:
             \begin{enumerate}[resume]
-                \item The transaction must include an input, spent via the Update Commitment Time redeemer, of an \code{active\_operators} node with a key matching the \code{operator}.
+                \item The transaction must include an input, spent via the Update Bond Hold New State redeemer, of an \code{active\_operators} node with a key matching the \code{operator}.
             \end{enumerate}
         \end{itemize}
 
@@ -110,12 +110,12 @@ Redeemers:
             \item Let \code{operator\_status} be a redeemer argument indicating whether the fraudulent operator is active or retired.
             \item If \code{operator\_status} is active:
                 \begin{enumerate}
-                    \item The transaction must Remove a node from the \code{active\_operators} set via the Remove Operator Slash Bond redeemer.
+                    \item The transaction must Remove a node from the \code{active\_operators} set via the Remove Operator Bad State redeemer.
                       The \code{slashed\_operator} argument provided to that redeemer must match \code{fraudulent\_operator}.
                 \end{enumerate}
             \item Otherwise:
                 \begin{enumerate}
-                    \item The transaction must Remove a node from the \code{retired\_operators} set via the Remove Operator Slash Bond redeemer.
+                    \item The transaction must Remove a node from the \code{retired\_operators} set via the Remove Operator Bad State redeemer.
                       The \code{slashed\_operator} argument provided to that redeemer must match \code{fraudulent\_operator}.
                 \end{enumerate}
         \end{enumerate}
