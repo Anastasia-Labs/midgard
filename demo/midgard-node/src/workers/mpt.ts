@@ -55,7 +55,11 @@ const wrapper = (
     const newLatestLedger = [...filteredUTxOList, ...producedList];
 
     const mempoolTxsTrieProgram = SDK.Utils.mptFromTxs(mempoolTxs);
-    const newLatestLedgerTrieProgram = SDK.Utils.mptFromUTxOs(newLatestLedger);
+    const newLatestLedgerTrieProgram = SDK.Utils.mptFromUTxOs(
+      spentList,
+      producedList,
+      newLatestLedger,
+    );
 
     const [mempoolTxsTrie, newLatestLedgerTrie] = yield* Effect.all(
       [mempoolTxsTrieProgram, newLatestLedgerTrieProgram],

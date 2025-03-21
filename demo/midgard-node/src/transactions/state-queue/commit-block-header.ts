@@ -74,6 +74,19 @@ export const buildAndSubmitCommitmentBlock = (
     if (mempoolTxsCount > 0n) {
       yield* Effect.logInfo(`🔹 ${mempoolTxsCount} retrieved.`);
 
+      const nodeConfig = yield* makeConfig;
+
+      const { policyId, spendScript, mintScript } =
+        yield* makeAlwaysSucceedsServiceFn(nodeConfig);
+
+      yield* Effect.logInfo("🔹 Fetching latest commited block...");
+      const latestBlock = yield* SDK.Endpoints.fetchLatestCommittedBlockProgram(
+        lucid,
+        fetchConfig,
+      );
+
+      // const prevUtxosRoot = SDK.Utils.getLatestBlocksUtxosRoot(latestBlock);
+
       const mempoolTxHashes: Uint8Array[] = [];
       const mempoolTxCbors: Uint8Array[] = [];
 
@@ -118,17 +131,6 @@ export const buildAndSubmitCommitmentBlock = (
 
       yield* Effect.logInfo(`🔹 Mempool tx root found: ${txRoot}`);
       yield* Effect.logInfo(`🔹 New UTxO root found: ${utxoRoot}`);
-
-      const nodeConfig = yield* makeConfig;
-
-      const { policyId, spendScript, mintScript } =
-        yield* makeAlwaysSucceedsServiceFn(nodeConfig);
-
-      yield* Effect.logInfo("🔹 Fetching latest commited block...");
-      const latestBlock = yield* SDK.Endpoints.fetchLatestCommittedBlockProgram(
-        lucid,
-        fetchConfig,
-      );
 
       yield* Effect.logInfo("🔹 Finding updated block datum and new header...");
       const { nodeDatum: updatedNodeDatum, header: newHeader } =
