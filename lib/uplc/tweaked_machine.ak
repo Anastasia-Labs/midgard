@@ -300,6 +300,10 @@ fn list_at(list: List<a>, index: Int) -> a {
   }
 }
 
+fn serialize_hash(data: Data) -> ByteArray {
+  data |> builtin.serialise_data |> hashing_algo
+}
+
 pub fn call_builtin(
   ctx: Context,
   fun: Int,
@@ -309,62 +313,59 @@ pub fn call_builtin(
   // Remember args are applied in reverse order
   // So the last argument is at the front of the list
   // TODO: Use callback to reduce redundancy
-  if fun < 43 {
-    when fun is {
-      // AddInteger
-      0 ->
-        when args is {
-          [VCon(Integer(b)) as second, VCon(Integer(a)) as first] -> {
-            expect [second_hash, first_hash] = arg_hashes
+  //
+  let function_call =
+    fn(callback) {
+      if fun < 43 {
+        when fun is {
+          // AddInteger
+          0 ->
+            when args is {
+              [VCon(Integer(b)) as second, VCon(Integer(a)) as first] -> {
+                let return_val_bytes =
+                  VCon(Integer(a + b)) |> builtin.serialise_data
 
-            expect
-              second_hash == (
-                second |> builtin.serialise_data |> hashing_algo
-              )
-            expect
-              first_hash == ( first |> builtin.serialise_data |> hashing_algo )
+                callback(
+                  Return(ctx, return_val_bytes |> hashing_algo),
+                  [second |> serialize_hash, first |> serialize_hash],
+                  return_val_bytes,
+                )
+              }
 
-            let return_val_bytes =
-              VCon(Integer(a + b)) |> builtin.serialise_data
+              _ -> ErrorState("Bad Args: 0")
+            }
+          // SubtractInteger
+          1 ->
+            when args is {
+              [VCon(Integer(b)) as second, VCon(Integer(a)) as first] -> {
+                let return_val_bytes =
+                  VCon(Integer(a - b)) |> builtin.serialise_data
 
-            // Bro I'm pretty sure
-            expect builtin.length_of_bytearray(return_val_bytes) <= 16384
+                callback(
+                  Return(ctx, return_val_bytes |> hashing_algo),
+                  [second |> serialize_hash, first |> serialize_hash],
+                  return_val_bytes,
+                )
+              }
 
-            Return(ctx, return_val_bytes |> hashing_algo)
-          }
-
-          _ -> ErrorState("Bad Args: 0")
+              _ -> ErrorState("Bad Args: 1")
+            }
+          // Case for negative builtins
+          _ -> ErrorState("No Builtin Found")
         }
-      // SubtractInteger
-      1 ->
-        when args is {
-          [VCon(Integer(b)), VCon(Integer(a))] -> {
-            expect [second_hash as second, first_hash as first] = arg_hashes
-
-            expect
-              second_hash == (
-                second |> builtin.serialise_data |> hashing_algo
-              )
-            expect
-              first_hash == ( first |> builtin.serialise_data |> hashing_algo )
-
-            let return_val_bytes =
-              VCon(Integer(a - b)) |> builtin.serialise_data
-
-            // Bro I'm pretty sure
-            expect builtin.length_of_bytearray(return_val_bytes) <= 16384
-
-            Return(ctx, return_val_bytes |> hashing_algo)
-          }
-
-          _ -> ErrorState("Bad Args: 1")
-        }
-      // Case for negative builtins
-      _ -> ErrorState("No Builtin Found")
+      } else {
+        fail @"TODO"
+      }
     }
-  } else {
-    fail @"TODO"
-  }
+
+  let state, actual_arg_hashes, result_bytes <- function_call()
+
+  expect actual_arg_hashes == arg_hashes
+
+  // like a little less than 4x tx size
+  expect builtin.length_of_bytearray(result_bytes) <= 64000
+
+  state
 }
 
 fn discharge_value(_value: Value) -> Term {
