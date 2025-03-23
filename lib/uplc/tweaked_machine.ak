@@ -50,7 +50,7 @@ pub type MachineState {
   Return(Context, ValueHash)
   IteratingEnv(Context, EnvHash, Int)
   CallingBuiltin(Context, Int, List<ValueHash>)
-  Done(TermHash)
+  Done(Term)
   ErrorState(ByteArray)
 }
 
@@ -169,7 +169,7 @@ pub fn return(
           // No callback needed since we don't use inner_context
           // We can do something special here and just compare value to unit
           // since we should never reach Done for anything other than unit
-          Done(discharge_value(value) |> serialize_hash)
+          discharge_value(value)
 
         FrameConstr(env, tag, fields, eval_fields, ctx_hash) -> {
           // FrameConstr(Env, Int, List<TermHash>, List<Value>, ContextHash)
@@ -365,7 +365,10 @@ pub fn call_builtin(
   state
 }
 
-fn discharge_value(value: Value) -> Term {
-  expect value == VCon(Unit)
-  TConstant(Unit)
+fn discharge_value(value: Value) -> MachineState {
+  if value == VCon(Unit) {
+    Done(TConstant(Unit))
+  } else {
+    ErrorState("non-unit termination")
+  }
 }
