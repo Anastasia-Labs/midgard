@@ -13,14 +13,12 @@ import {
   WorkerOutput,
   findAllSpentAndProducedUTxOs,
 } from "@/utils.js";
-import { UtilsTx } from "@/transactions/index.js";
 import * as SDK from "@al-ft/midgard-sdk";
-import { LucidEvolution, utxoToCore } from "@lucid-evolution/lucid";
+import { LucidEvolution, fromHex } from "@lucid-evolution/lucid";
 import { Effect, Metric } from "effect";
 import pg from "pg";
-import { handleSignSubmit } from "../utils.js";
 import { Worker } from "worker_threads";
-import path from "path";
+import { handleSignSubmit } from "../utils.js";
 
 const commitBlockNumTxGauge = Metric.gauge("commit_block_num_tx_count", {
   description:
@@ -76,82 +74,6 @@ export const buildAndSubmitCommitmentBlock = (
     if (mempoolTxsCount > 0n) {
       yield* Effect.logInfo(`🔹 ${mempoolTxsCount} retrieved.`);
 
-      const mempoolTxCbors = mempoolTxs.map((tx) => tx.txCbor);
-      const mempoolTxHashes = mempoolTxs.map((tx) => tx.txHash);
-
-      const { spent: spentList, produced: producedList } =
-        yield* findAllSpentAndProducedUTxOs(mempoolTxCbors).pipe(
-          Effect.withSpan("findAllSpentAndProducedUTxOs"),
-        );
-
-      const latestLedgerUTxOs = yield* Effect.tryPromise(() =>
-        LatestLedgerDB.retrieve(db),
-      ).pipe(Effect.withSpan("retrieve latest ledger utxo list"));
-
-      // Remove spent UTxOs from latestLedgerUTxOs
-      const filteredUTxOList = latestLedgerUTxOs.filter(
-        (utxo) =>
-          !spentList.some((spent) => UtilsTx.outRefsAreEqual(utxo, spent)),
-      );
-
-      // Merge filtered latestLedgerUTxOs with producedList
-      const newLatestLedger = [...filteredUTxOList, ...producedList];
-
-      const workerHelper = (input: WorkerInput) =>
-        Effect.async<string, Error, never>((resume) => {
-          Effect.runSync(Effect.logInfo("👷 Starting worker..."));
-          const worker = new Worker(new URL("./mpt.js", import.meta.url), {
-            workerData: input,
-          });
-          worker.on("message", (output: WorkerOutput) => {
-            if ("error" in output) {
-              resume(
-                Effect.fail(new Error(`Error in worker: ${output.error}`)),
-              );
-            } else {
-              resume(Effect.succeed(output.root));
-            }
-            worker.terminate();
-          });
-          worker.on("error", (e: Error) => {
-            resume(Effect.fail(new Error(`Error in worker: ${e}`)));
-            worker.terminate();
-          });
-          worker.on("exit", (code: number) => {
-            if (code !== 0) {
-              resume(
-                Effect.fail(new Error(`Worker exited with code: ${code}`)),
-              );
-            }
-          });
-          return Effect.sync(() => {
-            worker.terminate();
-          });
-        });
-
-      const txRootWorkerProgram = workerHelper({
-        data: {
-          items: mempoolTxs,
-          itemsType: "txs",
-        },
-      }).pipe(Effect.withSpan("txRootWorkerProgram"));
-
-      const utxoRootWorkerProgram = workerHelper({
-        data: {
-          items: newLatestLedger.map((utxo) => utxoToCore(utxo).to_cbor_hex()),
-          itemsType: "utxos",
-        },
-      }).pipe(Effect.withSpan("utxoRootWorkerProgram"));
-
-      yield* Effect.logInfo("🔹 Building MPT roots...");
-      const [txRoot, utxoRoot] = yield* Effect.all(
-        [txRootWorkerProgram, utxoRootWorkerProgram],
-        { concurrency: 2 },
-      );
-
-      yield* Effect.logInfo(`🔹 Mempool tx root found: ${txRoot}`);
-      yield* Effect.logInfo(`🔹 New UTxO root found: ${utxoRoot}`);
-
       const nodeConfig = yield* makeConfig;
 
       const { policyId, spendScript, mintScript } =
@@ -162,6 +84,53 @@ export const buildAndSubmitCommitmentBlock = (
         lucid,
         fetchConfig,
       );
+
+      // const prevUtxosRoot = SDK.Utils.getLatestBlocksUtxosRoot(latestBlock);
+
+      const mempoolTxHashes: Uint8Array[] = [];
+      const mempoolTxCbors: Uint8Array[] = [];
+
+      mempoolTxs.map(({ txHash, txCbor }) => {
+        mempoolTxHashes.push(txHash);
+        mempoolTxCbors.push(txCbor);
+      });
+
+      const { spent: spentList, produced: producedList } =
+        yield* findAllSpentAndProducedUTxOs(mempoolTxCbors).pipe(
+          Effect.withSpan("findAllSpentAndProducedUTxOs"),
+        );
+
+      const worker = Effect.async<WorkerOutput, Error, never>((resume) => {
+        Effect.runSync(Effect.logInfo(`👷 Starting worker...`));
+        const worker = new Worker(new URL("./mpt.js", import.meta.url), {
+          workerData: { data: { command: "start" } },
+        });
+        worker.on("message", (output: WorkerOutput) => {
+          if ("error" in output) {
+            resume(Effect.fail(new Error(`Error in worker: ${output.error}`)));
+          } else {
+            resume(Effect.succeed(output));
+          }
+          worker.terminate();
+        });
+        worker.on("error", (e: Error) => {
+          resume(Effect.fail(new Error(`Error in worker: ${e}`)));
+          worker.terminate();
+        });
+        worker.on("exit", (code: number) => {
+          if (code !== 0) {
+            resume(Effect.fail(new Error(`Worker exited with code: ${code}`)));
+          }
+        });
+        return Effect.sync(() => {
+          worker.terminate();
+        });
+      });
+
+      const { txRoot, utxoRoot } = yield* worker;
+
+      yield* Effect.logInfo(`🔹 Mempool tx root found: ${txRoot}`);
+      yield* Effect.logInfo(`🔹 New UTxO root found: ${utxoRoot}`);
 
       yield* Effect.logInfo("🔹 Finding updated block datum and new header...");
       const { nodeDatum: updatedNodeDatum, header: newHeader } =
@@ -247,7 +216,7 @@ export const buildAndSubmitCommitmentBlock = (
         yield* Effect.tryPromise(() =>
           BlocksDB.insert(
             db,
-            newHeaderHash,
+            fromHex(newHeaderHash),
             mempoolTxHashes.slice(i, i + batchSize),
           ),
         ).pipe(Effect.withSpan(`immutable-db-insert-${i}`));

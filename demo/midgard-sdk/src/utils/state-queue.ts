@@ -116,3 +116,17 @@ export const updateLatestBlocksDatumAndGetTheNewHeader = (
       };
     }
   });
+
+export const getLatestBlocksUtxosRoot = (
+  latestBlock: UTxO,
+): Effect.Effect<string, Error> =>
+  Effect.gen(function* () {
+    const latestNodeDatum = yield* getNodeDatumFromUTxO(latestBlock);
+    if (latestNodeDatum.key === "Empty") {
+      const confirmedState = yield* getConfirmedStateFromUTxO(latestBlock);
+      return confirmedState.data.utxoRoot;
+    } else {
+      const latestHeader = yield* getHeaderFromBlockUTxO(latestBlock);
+      return latestHeader.utxosRoot;
+    }
+  });

@@ -16,10 +16,10 @@ importers:
         version: file:../midgard-sdk/al-ft-midgard-sdk-0.1.0.tgz(@harmoniclabs/bytestring@1.0.0)(@harmoniclabs/cbor@1.6.5)(@harmoniclabs/crypto@0.2.5)(@harmoniclabs/pair@1.0.0)(fast-check@3.23.2)
       '@effect/opentelemetry':
         specifier: ^0.44.6
-        version: 0.44.12(@opentelemetry/api@1.9.0)(@opentelemetry/resources@1.30.1(@opentelemetry/api@1.9.0))(@opentelemetry/sdk-metrics@1.30.1(@opentelemetry/api@1.9.0))(@opentelemetry/sdk-trace-base@1.30.1(@opentelemetry/api@1.9.0))(@opentelemetry/sdk-trace-node@1.30.1(@opentelemetry/api@1.9.0))(@opentelemetry/sdk-trace-web@1.30.1(@opentelemetry/api@1.9.0))(@opentelemetry/semantic-conventions@1.30.0)(effect@3.13.12)
+        version: 0.44.12(@opentelemetry/api@1.9.0)(@opentelemetry/resources@1.30.1(@opentelemetry/api@1.9.0))(@opentelemetry/sdk-metrics@1.30.1(@opentelemetry/api@1.9.0))(@opentelemetry/sdk-trace-base@1.30.1(@opentelemetry/api@1.9.0))(@opentelemetry/sdk-trace-node@1.30.1(@opentelemetry/api@1.9.0))(@opentelemetry/sdk-trace-web@1.30.1(@opentelemetry/api@1.9.0))(@opentelemetry/semantic-conventions@1.30.0)(effect@3.14.1)
       '@effect/platform-node':
         specifier: ^0.73.4
-        version: 0.73.7(@effect/platform@0.77.6(effect@3.13.12))(effect@3.13.12)
+        version: 0.73.7(@effect/platform@0.77.6(effect@3.14.1))(effect@3.14.1)
       '@lucid-evolution/lucid':
         specifier: ^0.4.23
         version: 0.4.24(@harmoniclabs/bytestring@1.0.0)(@harmoniclabs/cbor@1.6.5)(@harmoniclabs/crypto@0.2.5)(@harmoniclabs/pair@1.0.0)(fast-check@3.23.2)
@@ -52,7 +52,7 @@ importers:
         version: 16.4.7
       effect:
         specifier: ^3.13.4
-        version: 3.13.12
+        version: 3.14.1
       express:
         specifier: ^4.21.2
         version: 4.21.2
@@ -64,17 +64,17 @@ importers:
         version: 6.0.1
       vitest:
         specifier: ^3.0.7
-        version: 3.0.9(@types/node@22.13.10)
+        version: 3.0.9(@types/node@22.13.11)
     devDependencies:
       '@commander-js/extra-typings':
         specifier: ^13.1.0
         version: 13.1.0(commander@13.1.0)
       '@types/express':
         specifier: ^5.0.0
-        version: 5.0.0
+        version: 5.0.1
       '@types/node':
         specifier: ^22.13.5
-        version: 22.13.10
+        version: 22.13.11
       '@types/pg':
         specifier: ^8.11.11
         version: 8.11.11
@@ -94,7 +94,7 @@ packages:
     resolution: {integrity: sha512-yEie4HFRoQS+ShbEYGNcVEQKFvnClXHFEysYT7lqoL1FGVxwvWWTBsctsEXolUIvusslztzrnJyUG67KGljBKw==}
 
   '@al-ft/midgard-sdk@file:../midgard-sdk/al-ft-midgard-sdk-0.1.0.tgz':
-    resolution: {integrity: sha512-3W+LOJhXCtlbNXYKLtdROmpT/PrKizaaw6/Ih2QSge1ldWdEHPhWmW98YczCf8im+9G8J+UMiQtoOBIi/iof5w==, tarball: file:../midgard-sdk/al-ft-midgard-sdk-0.1.0.tgz}
+    resolution: {integrity: sha512-4aoANU4Jhp3C2gLexlIOfJy8bSOE+L1rbAEQNnP9jXOGSbQAsOP1RpwTI9mrdQMPCCmlEmXNUvNa46BJj35UxQ==, tarball: file:../midgard-sdk/al-ft-midgard-sdk-0.1.0.tgz}
     version: 0.1.0
 
   '@anastasia-labs/cardano-multiplatform-lib-browser@6.0.2-2':
@@ -856,8 +856,8 @@ packages:
   '@types/express-serve-static-core@5.0.6':
     resolution: {integrity: sha512-3xhRnjJPkULekpSzgtoNYYcTWgEZkp4myc+Saevii5JPnHNvHMRlBSHDbs7Bh1iPPoVTERHEZXyhyLbMEsExsA==}
 
-  '@types/express@5.0.0':
-    resolution: {integrity: sha512-DvZriSMehGHL1ZNLzi6MidnsDhUZM/x2pRdDIKdwbUNqqwHxMlRdkxtn6/EPKyqKpHqTl/4nRZsRNLpZxZRpPQ==}
+  '@types/express@5.0.1':
+    resolution: {integrity: sha512-UZUw8vjpWFXuDnjFTh7/5c2TWDlQqeXHi6hcN7F2XSVT5P+WmUnnbFS3KA6Jnc6IsEqI2qCVu2bK0R0J4A8ZQQ==}
 
   '@types/http-errors@2.0.4':
     resolution: {integrity: sha512-D0CFMMtydbJAegzOyHjtiKPLlvnm3iTZyZRSZoLq2mRhDdmLfIWOCYPfQJ4cu2erKghU++QvjcUjp/5h7hESpA==}
@@ -868,8 +868,8 @@ packages:
   '@types/mime@1.3.5':
     resolution: {integrity: sha512-/pyBZWSLD2n0dcHE3hq8s8ZvcETHtEuF+3E7XVt0Ig2nvsVQXdghHVcEkIWjy9A0wKfTn97a/PSDYohKIlnP/w==}
 
-  '@types/node@22.13.10':
-    resolution: {integrity: sha512-I6LPUvlRH+O6VRUqYOcMudhaIdUVWfsjnZavnsraHvpBwaEyMN29ry+0UVJhImYL16xsscu0aske3yA+uPOWfw==}
+  '@types/node@22.13.11':
+    resolution: {integrity: sha512-iEUCUJoU0i3VnrCmgoWCXttklWcvoCIx4jzcP22fioIVSdTmjgoEvmAO/QPw6TcS9k5FrNgn4w7q5lGOd1CT5g==}
 
   '@types/pg@8.11.11':
     resolution: {integrity: sha512-kGT1qKM8wJQ5qlawUrEkXgvMSXoV213KfMGXcwfDwUIfUHXqXYXOfS1nE1LINRJVVVx5wCm70XnFlMHaIcQAfw==}
@@ -1073,8 +1073,8 @@ packages:
     resolution: {integrity: sha512-NOKm8xhkzAjzFx8B2v5OAHT+u5pRQc2UCa2Vq9jYL/31o2wi9mxBA7LIFs3sV5VSC49z6pEhfbMULvShKj26WA==}
     engines: {node: '>= 6'}
 
-  consola@3.4.1:
-    resolution: {integrity: sha512-zaUUWockhqxFf4bSXS+kTJwxWvAyMuKtShx0BWcGrMEUqbETcBCT91iQs9pECNx7yz8VH4VeWW/1KAbhE8kiww==}
+  consola@3.4.2:
+    resolution: {integrity: sha512-5IKcdX0nnYavi6G7TtOhwkYzyjfJlatbjMjuLSfE2kYT5pMDOilZ4OvMhi637CcDICTmz3wARPoyhqyX1Y+XvA==}
     engines: {node: ^14.18.0 || >=16.10.0}
 
   content-disposition@0.5.4:
@@ -1165,8 +1165,8 @@ packages:
   ee-first@1.1.1:
     resolution: {integrity: sha512-WMwm9LhRUo+WUaRN+vRuETqG89IgZphVSNkdFgeb6sS/E4OrDIN7t48CAewSHXc6C8lefD8KKfr5vY61brQlow==}
 
-  effect@3.13.12:
-    resolution: {integrity: sha512-XHvZA8lOX7vxk+ME3Q+4BN6EVYsyo8csdHmHsD4oYEtWPb2Ou3WPkpavlHOD+DNap8QIwfZjmDtshcGlgV34hA==}
+  effect@3.14.1:
+    resolution: {integrity: sha512-YrE6KYUu8r+fF3/cvdM+SZRZRjarVGhfcJwQjP/YyMmF79fwE1Rf0nWqLZ9Xfw7a9njm5/wmrYP83RYt5WTTbQ==}
 
   emoji-regex@8.0.0:
     resolution: {integrity: sha512-MSjYzcWNOA0ewAHpz0MxpYFvwg6yjy1NG3xteoqz644VCo/RPgnr1/GGt+ic3iJTzQ8Eu3TdM14SawnVUmGE6A==}
@@ -1536,8 +1536,8 @@ packages:
   nanoassert@2.0.0:
     resolution: {integrity: sha512-7vO7n28+aYO4J+8w96AzhmU8G+Y/xpPDJz/se19ICsqj/momRbb9mh9ZUtkoJ5X3nTnPdhEJyc0qnM6yAsHBaA==}
 
-  nanoid@3.3.10:
-    resolution: {integrity: sha512-vSJJTG+t/dIKAUhUDw/dLdZ9s//5OxcHqLaDWWrW4Cdq7o6tdLIczUkMXt2MBNmk6sJRZBZRXVixs7URY1CmIg==}
+  nanoid@3.3.11:
+    resolution: {integrity: sha512-N8SpfPUnUp1bK+PMYW8qSWdl9U+wwNWI4QKxOYDy9JAro3WMX7p2OeVRF9v+347pnakNevPmiHhNmZ2HbFA76w==}
     engines: {node: ^10 || ^12 || ^13.7 || ^14 || >=15.0.1}
     hasBin: true
 
@@ -2283,7 +2283,7 @@ snapshots:
       '@aiken-lang/merkle-patricia-forestry': 1.2.0
       '@lucid-evolution/lucid': 0.4.24(@harmoniclabs/bytestring@1.0.0)(@harmoniclabs/cbor@1.6.5)(@harmoniclabs/crypto@0.2.5)(@harmoniclabs/pair@1.0.0)(fast-check@3.23.2)
       '@noble/hashes': 1.7.1
-      effect: 3.13.12
+      effect: 3.14.1
     transitivePeerDependencies:
       - '@dcspark/cardano-multiplatform-lib-asmjs'
       - '@dcspark/cardano-multiplatform-lib-browser'
@@ -2323,7 +2323,7 @@ snapshots:
       cross-fetch: 3.2.0
       fastq: 1.19.1
       isomorphic-ws: 4.0.1(ws@7.5.10)
-      nanoid: 3.3.10
+      nanoid: 3.3.11
       ts-custom-error: 3.3.1
       ws: 7.5.10
     transitivePeerDependencies:
@@ -2409,30 +2409,30 @@ snapshots:
     dependencies:
       commander: 13.1.0
 
-  '@effect/opentelemetry@0.44.12(@opentelemetry/api@1.9.0)(@opentelemetry/resources@1.30.1(@opentelemetry/api@1.9.0))(@opentelemetry/sdk-metrics@1.30.1(@opentelemetry/api@1.9.0))(@opentelemetry/sdk-trace-base@1.30.1(@opentelemetry/api@1.9.0))(@opentelemetry/sdk-trace-node@1.30.1(@opentelemetry/api@1.9.0))(@opentelemetry/sdk-trace-web@1.30.1(@opentelemetry/api@1.9.0))(@opentelemetry/semantic-conventions@1.30.0)(effect@3.13.12)':
+  '@effect/opentelemetry@0.44.12(@opentelemetry/api@1.9.0)(@opentelemetry/resources@1.30.1(@opentelemetry/api@1.9.0))(@opentelemetry/sdk-metrics@1.30.1(@opentelemetry/api@1.9.0))(@opentelemetry/sdk-trace-base@1.30.1(@opentelemetry/api@1.9.0))(@opentelemetry/sdk-trace-node@1.30.1(@opentelemetry/api@1.9.0))(@opentelemetry/sdk-trace-web@1.30.1(@opentelemetry/api@1.9.0))(@opentelemetry/semantic-conventions@1.30.0)(effect@3.14.1)':
     dependencies:
       '@opentelemetry/api': 1.9.0
       '@opentelemetry/resources': 1.30.1(@opentelemetry/api@1.9.0)
       '@opentelemetry/semantic-conventions': 1.30.0
-      effect: 3.13.12
+      effect: 3.14.1
     optionalDependencies:
       '@opentelemetry/sdk-metrics': 1.30.1(@opentelemetry/api@1.9.0)
       '@opentelemetry/sdk-trace-base': 1.30.1(@opentelemetry/api@1.9.0)
       '@opentelemetry/sdk-trace-node': 1.30.1(@opentelemetry/api@1.9.0)
       '@opentelemetry/sdk-trace-web': 1.30.1(@opentelemetry/api@1.9.0)
 
-  '@effect/platform-node-shared@0.27.7(@effect/platform@0.77.6(effect@3.13.12))(effect@3.13.12)':
+  '@effect/platform-node-shared@0.27.7(@effect/platform@0.77.6(effect@3.14.1))(effect@3.14.1)':
     dependencies:
-      '@effect/platform': 0.77.6(effect@3.13.12)
+      '@effect/platform': 0.77.6(effect@3.14.1)
       '@parcel/watcher': 2.5.1
-      effect: 3.13.12
+      effect: 3.14.1
       multipasta: 0.2.5
 
-  '@effect/platform-node@0.73.7(@effect/platform@0.77.6(effect@3.13.12))(effect@3.13.12)':
+  '@effect/platform-node@0.73.7(@effect/platform@0.77.6(effect@3.14.1))(effect@3.14.1)':
     dependencies:
-      '@effect/platform': 0.77.6(effect@3.13.12)
-      '@effect/platform-node-shared': 0.27.7(@effect/platform@0.77.6(effect@3.13.12))(effect@3.13.12)
-      effect: 3.13.12
+      '@effect/platform': 0.77.6(effect@3.14.1)
+      '@effect/platform-node-shared': 0.27.7(@effect/platform@0.77.6(effect@3.14.1))(effect@3.14.1)
+      effect: 3.14.1
       mime: 3.0.0
       undici: 7.5.0
       ws: 8.18.1
@@ -2440,26 +2440,26 @@ snapshots:
       - bufferutil
       - utf-8-validate
 
-  '@effect/platform@0.71.7(effect@3.13.12)':
+  '@effect/platform@0.71.7(effect@3.14.1)':
     dependencies:
-      effect: 3.13.12
+      effect: 3.14.1
       find-my-way-ts: 0.1.5
       multipasta: 0.2.5
 
-  '@effect/platform@0.77.6(effect@3.13.12)':
+  '@effect/platform@0.77.6(effect@3.14.1)':
     dependencies:
-      effect: 3.13.12
+      effect: 3.14.1
       find-my-way-ts: 0.1.5
       multipasta: 0.2.5
 
-  '@effect/schema@0.66.16(effect@3.13.12)(fast-check@3.23.2)':
+  '@effect/schema@0.66.16(effect@3.14.1)(fast-check@3.23.2)':
     dependencies:
-      effect: 3.13.12
+      effect: 3.14.1
       fast-check: 3.23.2
 
-  '@effect/schema@0.68.27(effect@3.13.12)':
+  '@effect/schema@0.68.27(effect@3.14.1)':
     dependencies:
-      effect: 3.13.12
+      effect: 3.14.1
       fast-check: 3.23.2
 
   '@emurgo/cardano-message-signing-browser@1.1.0': {}
@@ -2636,7 +2636,7 @@ snapshots:
     dependencies:
       '@anastasia-labs/cardano-multiplatform-lib-browser': 6.0.2-3
       '@anastasia-labs/cardano-multiplatform-lib-nodejs': 6.0.2-3
-      '@effect/schema': 0.66.16(effect@3.13.12)(fast-check@3.23.2)
+      '@effect/schema': 0.66.16(effect@3.14.1)(fast-check@3.23.2)
       '@emurgo/cardano-message-signing-nodejs': 1.1.0
       '@lucid-evolution/core-types': 0.1.22
       '@lucid-evolution/core-utils': 0.1.16
@@ -2646,7 +2646,7 @@ snapshots:
       '@lucid-evolution/uplc': 0.2.19
       '@lucid-evolution/utils': 0.1.65(@harmoniclabs/bytestring@1.0.0)(@harmoniclabs/cbor@1.6.5)(@harmoniclabs/crypto@0.2.5)(@harmoniclabs/pair@1.0.0)
       '@lucid-evolution/wallet': 0.1.71(@harmoniclabs/bytestring@1.0.0)(@harmoniclabs/cbor@1.6.5)(@harmoniclabs/crypto@0.2.5)(@harmoniclabs/pair@1.0.0)
-      effect: 3.13.12
+      effect: 3.14.1
     transitivePeerDependencies:
       - '@dcspark/cardano-multiplatform-lib-asmjs'
       - '@dcspark/cardano-multiplatform-lib-browser'
@@ -2673,13 +2673,13 @@ snapshots:
     dependencies:
       '@anastasia-labs/cardano-multiplatform-lib-browser': 6.0.2-3
       '@anastasia-labs/cardano-multiplatform-lib-nodejs': 6.0.2-3
-      '@effect/platform': 0.71.7(effect@3.13.12)
-      '@effect/schema': 0.68.27(effect@3.13.12)
+      '@effect/platform': 0.71.7(effect@3.14.1)
+      '@effect/schema': 0.68.27(effect@3.14.1)
       '@lucid-evolution/core-types': 0.1.22
       '@lucid-evolution/core-utils': 0.1.16
       '@lucid-evolution/utils': 0.1.65(@harmoniclabs/bytestring@1.0.0)(@harmoniclabs/cbor@1.6.5)(@harmoniclabs/crypto@0.2.5)(@harmoniclabs/pair@1.0.0)
       '@lucid-evolution/wallet': 0.1.71(@harmoniclabs/bytestring@1.0.0)(@harmoniclabs/cbor@1.6.5)(@harmoniclabs/crypto@0.2.5)(@harmoniclabs/pair@1.0.0)
-      effect: 3.13.12
+      effect: 3.14.1
     transitivePeerDependencies:
       - '@dcspark/cardano-multiplatform-lib-asmjs'
       - '@dcspark/cardano-multiplatform-lib-browser'
@@ -2709,7 +2709,7 @@ snapshots:
       '@anastasia-labs/cardano-multiplatform-lib-browser': 6.0.2-3
       '@anastasia-labs/cardano-multiplatform-lib-nodejs': 6.0.2-3
       '@cardano-sdk/core': 0.45.5
-      '@effect/schema': 0.68.27(effect@3.13.12)
+      '@effect/schema': 0.68.27(effect@3.14.1)
       '@harmoniclabs/plutus-data': 1.2.4(@harmoniclabs/bytestring@1.0.0)(@harmoniclabs/cbor@1.6.5)
       '@harmoniclabs/uplc': 1.4.1(@harmoniclabs/bytestring@1.0.0)(@harmoniclabs/cbor@1.6.5)(@harmoniclabs/crypto@0.2.5)(@harmoniclabs/pair@1.0.0)(@harmoniclabs/plutus-data@1.2.4(@harmoniclabs/bytestring@1.0.0)(@harmoniclabs/cbor@1.6.5))
       '@lucid-evolution/core-types': 0.1.22
@@ -2719,7 +2719,7 @@ snapshots:
       '@lucid-evolution/uplc': 0.2.19
       bip39: 3.1.0
       cbor-x: 1.6.0
-      effect: 3.13.12
+      effect: 3.14.1
     transitivePeerDependencies:
       - '@dcspark/cardano-multiplatform-lib-asmjs'
       - '@dcspark/cardano-multiplatform-lib-browser'
@@ -3037,30 +3037,29 @@ snapshots:
   '@types/body-parser@1.19.5':
     dependencies:
       '@types/connect': 3.4.38
-      '@types/node': 22.13.10
+      '@types/node': 22.13.11
 
   '@types/connect@3.4.38':
     dependencies:
-      '@types/node': 22.13.10
+      '@types/node': 22.13.11
 
   '@types/dns-packet@5.6.5':
     dependencies:
-      '@types/node': 22.13.10
+      '@types/node': 22.13.11
 
   '@types/estree@1.0.6': {}
 
   '@types/express-serve-static-core@5.0.6':
     dependencies:
-      '@types/node': 22.13.10
+      '@types/node': 22.13.11
       '@types/qs': 6.9.18
       '@types/range-parser': 1.2.7
       '@types/send': 0.17.4
 
-  '@types/express@5.0.0':
+  '@types/express@5.0.1':
     dependencies:
       '@types/body-parser': 1.19.5
       '@types/express-serve-static-core': 5.0.6
-      '@types/qs': 6.9.18
       '@types/serve-static': 1.15.7
 
   '@types/http-errors@2.0.4': {}
@@ -3069,13 +3068,13 @@ snapshots:
 
   '@types/mime@1.3.5': {}
 
-  '@types/node@22.13.10':
+  '@types/node@22.13.11':
     dependencies:
       undici-types: 6.20.0
 
   '@types/pg@8.11.11':
     dependencies:
-      '@types/node': 22.13.10
+      '@types/node': 22.13.11
       pg-protocol: 1.8.0
       pg-types: 4.0.2
 
@@ -3086,12 +3085,12 @@ snapshots:
   '@types/send@0.17.4':
     dependencies:
       '@types/mime': 1.3.5
-      '@types/node': 22.13.10
+      '@types/node': 22.13.11
 
   '@types/serve-static@1.15.7':
     dependencies:
       '@types/http-errors': 2.0.4
-      '@types/node': 22.13.10
+      '@types/node': 22.13.11
       '@types/send': 0.17.4
 
   '@vitest/expect@3.0.9':
@@ -3101,13 +3100,13 @@ snapshots:
       chai: 5.2.0
       tinyrainbow: 2.0.0
 
-  '@vitest/mocker@3.0.9(vite@6.2.2(@types/node@22.13.10))':
+  '@vitest/mocker@3.0.9(vite@6.2.2(@types/node@22.13.11))':
     dependencies:
       '@vitest/spy': 3.0.9
       estree-walker: 3.0.3
       magic-string: 0.30.17
     optionalDependencies:
-      vite: 6.2.2(@types/node@22.13.10)
+      vite: 6.2.2(@types/node@22.13.11)
 
   '@vitest/pretty-format@3.0.9':
     dependencies:
@@ -3316,7 +3315,7 @@ snapshots:
 
   commander@4.1.1: {}
 
-  consola@3.4.1: {}
+  consola@3.4.2: {}
 
   content-disposition@0.5.4:
     dependencies:
@@ -3398,7 +3397,7 @@ snapshots:
 
   ee-first@1.1.1: {}
 
-  effect@3.13.12:
+  effect@3.14.1:
     dependencies:
       '@standard-schema/spec': 1.0.0
       fast-check: 3.23.2
@@ -3789,7 +3788,7 @@ snapshots:
 
   nanoassert@2.0.0: {}
 
-  nanoid@3.3.10: {}
+  nanoid@3.3.11: {}
 
   napi-macros@2.2.2: {}
 
@@ -3922,7 +3921,7 @@ snapshots:
 
   postcss@8.5.3:
     dependencies:
-      nanoid: 3.3.10
+      nanoid: 3.3.11
       picocolors: 1.1.1
       source-map-js: 1.2.1
 
@@ -3964,7 +3963,7 @@ snapshots:
       '@protobufjs/path': 1.1.2
       '@protobufjs/pool': 1.1.0
       '@protobufjs/utf8': 1.1.0
-      '@types/node': 22.13.10
+      '@types/node': 22.13.11
       long: 5.3.1
 
   proxy-addr@2.0.7:
@@ -4237,7 +4236,7 @@ snapshots:
       bundle-require: 5.1.0(esbuild@0.25.1)
       cac: 6.7.14
       chokidar: 4.0.3
-      consola: 3.4.1
+      consola: 3.4.2
       debug: 4.4.0
       esbuild: 0.25.1
       joycon: 3.1.1
@@ -4303,13 +4302,13 @@ snapshots:
 
   vary@1.1.2: {}
 
-  vite-node@3.0.9(@types/node@22.13.10):
+  vite-node@3.0.9(@types/node@22.13.11):
     dependencies:
       cac: 6.7.14
       debug: 4.4.0
       es-module-lexer: 1.6.0
       pathe: 2.0.3
-      vite: 6.2.2(@types/node@22.13.10)
+      vite: 6.2.2(@types/node@22.13.11)
     transitivePeerDependencies:
       - '@types/node'
       - jiti
@@ -4324,19 +4323,19 @@ snapshots:
       - tsx
       - yaml
 
-  vite@6.2.2(@types/node@22.13.10):
+  vite@6.2.2(@types/node@22.13.11):
     dependencies:
       esbuild: 0.25.1
       postcss: 8.5.3
       rollup: 4.36.0
     optionalDependencies:
-      '@types/node': 22.13.10
+      '@types/node': 22.13.11
       fsevents: 2.3.3
 
-  vitest@3.0.9(@types/node@22.13.10):
+  vitest@3.0.9(@types/node@22.13.11):
     dependencies:
       '@vitest/expect': 3.0.9
-      '@vitest/mocker': 3.0.9(vite@6.2.2(@types/node@22.13.10))
+      '@vitest/mocker': 3.0.9(vite@6.2.2(@types/node@22.13.11))
       '@vitest/pretty-format': 3.0.9
       '@vitest/runner': 3.0.9
       '@vitest/snapshot': 3.0.9
@@ -4352,11 +4351,11 @@ snapshots:
       tinyexec: 0.3.2
       tinypool: 1.0.2
       tinyrainbow: 2.0.0
-      vite: 6.2.2(@types/node@22.13.10)
-      vite-node: 3.0.9(@types/node@22.13.10)
+      vite: 6.2.2(@types/node@22.13.11)
+      vite-node: 3.0.9(@types/node@22.13.11)
       why-is-node-running: 2.3.0
     optionalDependencies:
-      '@types/node': 22.13.10
+      '@types/node': 22.13.11
     transitivePeerDependencies:
       - jiti
       - less

@@ -1,6 +1,5 @@
 import { Option } from "effect";
 import { Pool } from "pg";
-import { logAbort, logInfo } from "../utils.js";
 import { clearTable } from "./utils.js";
 
 export const createQuery = `
@@ -11,17 +10,14 @@ export const createQuery = `
 
 export const insert = async (
   pool: Pool,
-  headerHash: string,
-  txHashes: string[],
+  headerHash: Uint8Array,
+  txHashes: Uint8Array[],
 ): Promise<void> => {
   const query = `
       INSERT INTO blocks (header_hash, tx_hash)
       VALUES
       ${txHashes.map((_, i) => `($${i * 2 + 1}, $${i * 2 + 2})`).join(", ")}`;
-  const values = txHashes.flatMap((txHash) => [
-    Buffer.from(headerHash, "hex"),
-    Buffer.from(txHash, "hex"),
-  ]);
+  const values = txHashes.flatMap((txHash) => [headerHash, txHash]);
 
   try {
     await pool.query(query, values);
@@ -34,12 +30,12 @@ export const insert = async (
 
 export const retrieveTxHashesByBlockHash = async (
   pool: Pool,
-  blockHash: string,
-): Promise<string[]> => {
+  blockHash: Uint8Array,
+): Promise<Uint8Array[]> => {
   const query = `SELECT tx_hash FROM blocks WHERE header_hash = $1`;
   try {
-    const result = await pool.query(query, [Buffer.from(blockHash, "hex")]);
-    return result.rows.map((row) => row.tx_hash.toString("hex"));
+    const result = await pool.query(query, [blockHash]);
+    return result.rows.map((row) => row.tx_hash);
   } catch (err) {
     // logAbort(`blocks db: retrieving error: ${err}`);
     throw err;
@@ -48,13 +44,13 @@ export const retrieveTxHashesByBlockHash = async (
 
 export const retrieveBlockHashByTxHash = async (
   pool: Pool,
-  txHash: string,
-): Promise<Option.Option<string>> => {
+  txHash: Uint8Array,
+): Promise<Option.Option<Uint8Array>> => {
   const query = `SELECT header_hash FROM blocks WHERE tx_hash = $1`;
   try {
-    const result = await pool.query(query, [Buffer.from(txHash, "hex")]);
+    const result = await pool.query(query, [txHash]);
     if (result.rows.length > 0) {
-      return Option.some(result.rows[0].header_hash.toString("hex"));
+      return Option.some(result.rows[0].header_hash);
     } else {
       return Option.none();
     }
@@ -66,11 +62,11 @@ export const retrieveBlockHashByTxHash = async (
 
 export const clearBlock = async (
   pool: Pool,
-  blockHash: string,
+  blockHash: Uint8Array,
 ): Promise<void> => {
   const query = `DELETE FROM blocks WHERE header_hash = $1`;
   try {
-    await pool.query(query, [Buffer.from(blockHash, "hex")]);
+    await pool.query(query, [blockHash]);
     // logInfo(`blocks db: cleared`);
   } catch (err) {
     // logAbort(`blocks db: clearing error: ${err}`);
@@ -78,14 +74,13 @@ export const clearBlock = async (
   }
 };
 
-export const retrieve = async (pool: Pool): Promise<[string, string][]> => {
+export const retrieve = async (
+  pool: Pool,
+): Promise<[Uint8Array, Uint8Array][]> => {
   const query = `SELECT * FROM blocks`;
   try {
     const result = await pool.query(query);
-    return result.rows.map((row) => [
-      row.header_hash.toString("hex"),
-      row.tx_hash.toString("hex"),
-    ]);
+    return result.rows.map((row) => [row.header_hash, row.tx_hash]);
   } catch (err) {
     // logAbort(`blocks db: retrieving error: ${err}`);
     throw err;

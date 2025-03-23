@@ -7,13 +7,13 @@
  * 4. Build and submit the merge transaction.
  */
 
-import { LucidEvolution, Script } from "@lucid-evolution/lucid";
-import * as SDK from "@al-ft/midgard-sdk";
-import { Effect, Metric } from "effect";
-import { fetchFirstBlockTxs, handleSignSubmit } from "../utils.js";
-import { findAllSpentAndProducedUTxOs } from "@/utils.js";
 import { BlocksDB, ConfirmedLedgerDB } from "@/database/index.js";
+import { findAllSpentAndProducedUTxOs } from "@/utils.js";
+import * as SDK from "@al-ft/midgard-sdk";
+import { LucidEvolution, Script, fromHex } from "@lucid-evolution/lucid";
+import { Effect, Metric } from "effect";
 import pg from "pg";
+import { fetchFirstBlockTxs, handleSignSubmit } from "../utils.js";
 
 const mergeBlockCounter = Metric.counter("merge_block_count", {
   description: "A counter for tracking merge blocks",
@@ -110,13 +110,17 @@ export const buildAndSubmitMergeTx = (
       yield* Effect.logInfo("🔸 Insert produced UTxOs...");
       for (let i = 0; i < producedUTxOs.length; i += bs) {
         yield* Effect.tryPromise(() =>
-          ConfirmedLedgerDB.insert(db, producedUTxOs.slice(i, i + bs)),
+          ConfirmedLedgerDB.insert(
+            db,
+            producedUTxOs.slice(i, i + bs),
+            // .map((u) => utxoToOutRefAndCBORArray(u)),
+          ),
         ).pipe(Effect.withSpan(`confirmed-ledger-insert-${i}`));
       }
       yield* Effect.logInfo("🔸 Clear block from BlocksDB...");
-      yield* Effect.tryPromise(() => BlocksDB.clearBlock(db, headerHash)).pipe(
-        Effect.withSpan("clear-block-from-BlocksDB"),
-      );
+      yield* Effect.tryPromise(() =>
+        BlocksDB.clearBlock(db, fromHex(headerHash)),
+      ).pipe(Effect.withSpan("clear-block-from-BlocksDB"));
       yield* Effect.logInfo("🔸 ☑️  Merge transaction completed.");
     } else {
       yield* Effect.logInfo("🔸 No blocks found in queue.");
