@@ -20,13 +20,13 @@ import { Pool } from "pg";
  */
 export const validateInputs = (
   pool: Pool,
-  inputs: OutRef[],
+  inputs: Uint8Array[],
 ): Effect.Effect<boolean, Error> =>
   Effect.gen(function* () {
     for (let i = 0; i < inputs.length; i++) {
-      const outRef = inputs[i];
+      const txIn = inputs[i];
       const entryMempool = yield* Effect.tryPromise({
-        try: () => MempoolLedgerDB.retrieveByOutRef(pool, outRef),
+        try: () => MempoolLedgerDB.retrieveByTxIns(pool, [txIn]),
         catch: (e) => new Error(`Failed to retrieve UTxO from mempool: ${e}`),
       });
       if (entryMempool.length === 1) {
@@ -34,7 +34,7 @@ export const validateInputs = (
         continue;
       }
       const entryLedger = yield* Effect.tryPromise({
-        try: () => LatestLedgerDB.retrieveByOutRef(pool, outRef),
+        try: () => LatestLedgerDB.retrieveByTxIns(pool, [txIn]),
         catch: (e) => new Error(`Failed to retrieve UTxO from ledger: ${e}`),
       });
       if (entryLedger.length === 1) {
@@ -42,10 +42,7 @@ export const validateInputs = (
         continue;
       }
       throw new Error(
-        `Could not spend UTxO: ${JSON.stringify({
-          txHash: outRef.txHash,
-          outputIndex: outRef.outputIndex,
-        })}\nIt does not exist or was already spent.`,
+        `Could not spend UTxO: ${txIn.toString()}\nIt does not exist or was already spent.`,
       );
     }
     return true;

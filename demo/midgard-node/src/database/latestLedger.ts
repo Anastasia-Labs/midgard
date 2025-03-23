@@ -1,6 +1,11 @@
 import { Pool } from "pg";
 import * as utils from "./utils.js";
-import { clearTable, insertUTxOsCBOR, retrieveUTxOsCBOR } from "./utils.js";
+import {
+  clearTable,
+  insertUTxOsCBOR,
+  retrieveUTxOsCBOR,
+  retrieveUTxOsCBORByTxIns,
+} from "./utils.js";
 
 export const createQuery = `
   CREATE TABLE IF NOT EXISTS latest_ledger (
@@ -19,6 +24,12 @@ export const retrieve = async (
   pool: Pool,
 ): Promise<{ outputReference: Uint8Array; output: Uint8Array }[]> =>
   retrieveUTxOsCBOR(pool, "latest_ledger");
+
+export const retrieveByTxIns = async (
+  pool: Pool,
+  txIns: Uint8Array[],
+): Promise<{ outputReference: Uint8Array; output: Uint8Array }[]> =>
+  retrieveUTxOsCBORByTxIns(pool, "latest_ledger", txIns);
 
 export const clearUTxOs = async (pool: Pool, refs: Uint8Array[]) =>
   utils.clearUTxOs(pool, "latest_ledger", refs);
