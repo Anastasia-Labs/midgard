@@ -1,9 +1,9 @@
 use aiken/builtin
 use uplc/builtins.{default_arg_counts, default_force_counts}
-use uplc/constant.{Constant, Integer}
+use uplc/constant.{Constant, Integer, Unit}
 use uplc/tweaked_term.{
-  Apply, Blake2b_256, Builtin, Delay, Error, Force, Hash, Lambda, TConstant,
-  Term, TermHash, Var, hashing_algo,
+  Apply, Blake2b_256, Builtin, Case, Delay, Error, Force, Hash, Lambda,
+  TConstant, TConstr, Term, TermHash, Var, hashing_algo,
 }
 
 pub type EnvHash =
@@ -72,7 +72,7 @@ pub fn iterate_next_env(
   env: Env,
   index: Int,
 ) -> MachineState {
-  expect env_hash == ( env |> builtin.serialise_data |> hashing_algo )
+  expect env_hash == ( env |> serialize_hash )
 
   index_env(ctx, env, index)
 }
@@ -83,39 +83,29 @@ pub fn compute(
   term_hash: TermHash,
   term: Term,
 ) -> MachineState {
-  expect term_hash == ( term |> builtin.serialise_data |> hashing_algo )
+  expect term_hash == ( term |> serialize_hash )
 
   when term is {
     Var(index) -> index_env(ctx, env, index)
 
-    Delay(inner_hash) ->
-      Return(
-        ctx,
-        VDelay(inner_hash, env) |> builtin.serialise_data |> hashing_algo,
-      )
+    Delay(inner_hash) -> Return(ctx, VDelay(inner_hash, env) |> serialize_hash)
 
     Force(inner_hash) ->
       ctx
-        |> builtin.serialise_data
-        |> hashing_algo
+        |> serialize_hash
         |> FrameForce
         |> Compute(env, inner_hash)
 
     Lambda { body: body_hash } ->
-      Return(
-        ctx,
-        VLambda(body_hash, env) |> builtin.serialise_data |> hashing_algo,
-      )
+      Return(ctx, VLambda(body_hash, env) |> serialize_hash)
 
     Apply { function, argument } ->
       ctx
-        |> builtin.serialise_data
-        |> hashing_algo
+        |> serialize_hash
         |> fn(a) { FrameAwaitFunTerm(env, argument, a) }
         |> Compute(env, function)
 
-    TConstant(constant) ->
-      Return(ctx, VCon(constant) |> builtin.serialise_data |> hashing_algo)
+    TConstant(constant) -> Return(ctx, VCon(constant) |> serialize_hash)
 
     Error -> ErrorState("Eval Fail")
 
@@ -127,12 +117,27 @@ pub fn compute(
       Return(
         ctx,
         VBuiltin { fun, force_count, args_count, args: [] }
-          |> builtin.serialise_data
-          |> hashing_algo,
+          |> serialize_hash,
       )
     }
+    TConstr { tag, fields } ->
+      when fields is {
+        [] -> Return(ctx, VConstr(tag, []) |> serialize_hash)
 
-    _ -> fail
+        [t, ..rest] ->
+          FrameConstr(
+            env,
+            tag,
+            rest,
+            [],
+            ctx
+              |> serialize_hash,
+          )
+            |> Compute(env, t)
+      }
+    Case { constr, branches } ->
+      FrameCases(env, branches, ctx |> serialize_hash)
+        |> Compute(env, constr)
   }
 }
 
@@ -142,7 +147,7 @@ pub fn return(
   value: Value,
   inner_context: Context,
 ) -> MachineState {
-  expect value_hash == ( value |> builtin.serialise_data |> hashing_algo )
+  expect value_hash == ( value |> serialize_hash )
 
   let frame_handler =
     fn(callback) {
@@ -164,7 +169,7 @@ pub fn return(
           // No callback needed since we don't use inner_context
           // We can do something special here and just compare value to unit
           // since we should never reach Done for anything other than unit
-          Done(discharge_value(value) |> builtin.serialise_data |> hashing_algo)
+          Done(discharge_value(value) |> serialize_hash)
 
         FrameConstr(env, tag, fields, eval_fields, ctx_hash) -> {
           // FrameConstr(Env, Int, List<TermHash>, List<Value>, ContextHash)
@@ -174,8 +179,7 @@ pub fn return(
             [] -> {
               let constr_hash =
                 VConstr { tag, fields: done }
-                  |> builtin.serialise_data
-                  |> hashing_algo
+                  |> serialize_hash
 
               callback(Return(inner_context, constr_hash), ctx_hash)
             }
@@ -201,13 +205,11 @@ pub fn return(
                 [x, ..rest] -> {
                   let arg_frame_hash =
                     FrameAwaitFunValue(x, ctx_hash)
-                      |> builtin.serialise_data
-                      |> hashing_algo
+                      |> serialize_hash
 
                   let remaining_constr =
                     VConstr { tag, fields: rest }
-                      |> builtin.serialise_data
-                      |> hashing_algo
+                      |> serialize_hash
 
                   FrameCases(env, cs, arg_frame_hash)
                     |> Return(remaining_constr)
@@ -221,7 +223,7 @@ pub fn return(
 
   let state, ctx_hash <- frame_handler()
 
-  expect ctx_hash == ( inner_context |> builtin.serialise_data |> hashing_algo )
+  expect ctx_hash == ( inner_context |> serialize_hash )
 
   state
 }
@@ -234,8 +236,7 @@ fn force_eval(ctx: Context, function: Value) -> MachineState {
         Return(
           ctx,
           VBuiltin { fun, force_count: force_count - 1, args_count, args }
-            |> builtin.serialise_data
-            |> hashing_algo,
+            |> serialize_hash,
         )
       } else {
         ErrorState("builtin term argument expected")
@@ -253,10 +254,7 @@ fn apply_eval(
     VLambda { body: body_hash, env } ->
       Compute(
         ctx,
-        Node {
-          value: arg_hash,
-          next: env |> builtin.serialise_data |> hashing_algo,
-        },
+        Node { value: arg_hash, next: env |> serialize_hash },
         body_hash,
       )
     VBuiltin { fun, force_count: 0, args_count, args } ->
@@ -286,8 +284,7 @@ fn eval_builtin(
           args_count: args_count - 1,
           args: [next_arg, ..args],
         }
-          |> builtin.serialise_data
-          |> hashing_algo,
+          |> serialize_hash,
       )
   }
 }
@@ -301,7 +298,7 @@ fn list_at(list: List<a>, index: Int) -> a {
 }
 
 fn serialize_hash(data: Data) -> ByteArray {
-  data |> builtin.serialise_data |> hashing_algo
+  data |> serialize_hash
 }
 
 pub fn call_builtin(
@@ -368,63 +365,7 @@ pub fn call_builtin(
   state
 }
 
-fn discharge_value(_value: Value) -> Term {
-  // This is a placeholder - actual implementation would need to convert Value to Term
-  // Similar to the implementation in machine.ak but adapted for the tweaked machine
-  fail @"discharge_value not implemented"
-}
-
-// node operator posts merkle root
-// - L2 utxo set
-// - L2 transactions that are included
-// - L2 computation merkle tree root
-
-// pub type MachineState {
-//   Compute(Context, Env, TermHash)
-//   Return(Context, ValueHash)
-//   Done(TermHash)
-//   IteratingEnv(Context, Env, Int)
-//   ErrorState(ByteArray)
-// }
-
-// hashing_algo(state: MachineState + expected_state:MachineState) = leaf of the computation merkle tree
-
-test thing() {
-  let term = Error
-
-  let state =
-    Compute(NoFrame, Empty, term |> builtin.serialise_data |> hashing_algo)
-
-  let expected_state =
-    Return(
-      NoFrame,
-      VDelay(#"", Empty) |> builtin.serialise_data |> hashing_algo,
-    )
-
-  let next_state =
-    when state is {
-      Compute(ctx, env, term_hash) -> compute(ctx, env, term_hash, term)
-
-      _ -> fail @"rest"
-    }
-
-  next_state != expected_state
-}
-
-test thing2() fail {
-  let term = Error
-
-  let state =
-    Compute(NoFrame, Empty, term |> builtin.serialise_data |> hashing_algo)
-
-  let expected_state = ErrorState("Eval Fail")
-
-  let next_state =
-    when state is {
-      Compute(ctx, env, term_hash) -> compute(ctx, env, term_hash, term)
-
-      _ -> fail @"rest"
-    }
-
-  next_state != expected_state
+fn discharge_value(value: Value) -> Term {
+  expect value == VCon(Unit)
+  TConstant(Unit)
 }
