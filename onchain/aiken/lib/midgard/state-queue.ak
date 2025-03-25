@@ -1,3 +1,4 @@
+use aiken_design_patterns/linked_list/unordered.{NodeDatum}
 use cardano/assets.{AssetName}
 use cardano/transaction.{OutputReference}
 use midgard/registered_operators.{WitnessStatus}
@@ -9,6 +10,9 @@ use midgard/registered_operators.{WitnessStatus}
 pub const confirmed_asset_name: AssetName = "CONFIRMED_STATE"
 
 pub const block_asset_name: AssetName = #""
+
+pub type Datum =
+  NodeDatum
 
 pub type Config {
   init_utxo: OutputReference,
