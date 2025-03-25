@@ -1,7 +1,9 @@
 use aiken/cbor
 use aiken/collection/dict
 use aiken/collection/list
-use aiken/crypto.{ScriptHash, VerificationKeyHash, blake2b_224, blake2b_256}
+use aiken/crypto.{
+  ScriptHash, VerificationKey, VerificationKeyHash, blake2b_224, blake2b_256,
+}
 use aiken/interval.{Finite, Interval, NegativeInfinity, PositiveInfinity}
 use aiken_design_patterns/validity_range_normalization as vrn
 use cardano/address.{Address, Script}
@@ -213,4 +215,8 @@ pub fn verify_hash_32(data: Data, data_hash: H32<Data>) {
 // Verify a 28-byte hash (Blake2b-224)
 pub fn verify_hash_28(data: Data, data_hash: H28<Data>) {
   expect blake2b_224(cbor.serialise(data)) == data_hash
+}
+
+pub fn get_verification_key_hash(key: VerificationKey) -> VerificationKeyHash {
+  blake2b_224(key)
 }
