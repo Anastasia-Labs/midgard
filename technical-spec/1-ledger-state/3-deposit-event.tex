@@ -21,6 +21,7 @@ A deposit event in a Midgard block acknowledges that a user has created an L1 ut
         \begin{array}{ll}
             \T{l2\_address} : & \T{Address} \\
             \T{l2\_datum} : & \T{Option(Data)} \\
+            \T{midgard\_tokens} : & \T{Pairs(PolicyId, Pairs(AssetName, Int))}
         \end{array} \right\}
 \end{align*}
 
@@ -39,7 +40,24 @@ The L2 output reference of this new utxo is as follows:
 \end{equation*}
 In other words, the L2 ledger treats the new utxo as if it was created by a notional transaction with \code{TxId} equal to the hash of the deposit ID.
 
-If the block containing the deposit event is confirmed, the corresponding L1 deposit utxo may be absorbed into the Midgard reserves or used to pay for withdrawals.
+If the block containing the deposit event is confirmed, the corresponding L1 deposit utxo may be absorbed into the Midgard reserve.
 \Cref{h:deposit} describes the lifecycle of a deposit in further detail, including how the deposit event information is validated.
+
+\subsection{Tokens Management}
+\label{h:tokens-management}
+
+Tokens can be catagorized in two classes: Cardano native tokens (or CNTs for short), and Midgard-compatible tokens, which we'll call MCTs.
+MCTs are tokens that can be minted on both layers, capable of detecting their layer based on the index of the \code{ScriptContext} instance passed to their underlying UPLC.
+
+They also have implemented logic for cross-layer transfers. Meaning, these tokens are meant to be burnt and re-minted when moving between layers.
+This preserves the integrity of token supplies, and prevents added complexity for supply management.
+As an example, a deposited token from L1 that ends up burnt on L2, requires additional logic to coordinate this supply discrepency.
+
+However, this is not an issue for CNTs, and therefore they can simply be held within the Midgard reserve, just like ADA.
+
+Whether a token is a CNT or an MCT is decided optimistically, with the \nameref{h:midgard-token-registry} (\cref{h:midgard-token-registry}) contract providing a record for proofs.
+
+If a deposit is not declaring an included token as Midgard-compatible, the active operator can safely ignore that deposit.
+To prove such deposits are ignored unjustly, the prover must include the token's registration utxo in the fraud proof transaction.
 
 \end{document}
