@@ -143,3 +143,18 @@ export const retrieveUTxOsCBOR = async (
     }));
   return result;
 };
+
+export const retrieveUTxOsCBORByTxIns = async (
+  pool: Pool,
+  tableName: string,
+  txIns: Uint8Array[],
+): Promise<{ outputReference: Uint8Array; output: Uint8Array }[]> => {
+  const query = `SELECT * FROM ${tableName} WHERE tx_in_cbor = ANY($1)`;
+  const rows = await pool.query(query, txIns);
+  const result: { outputReference: Uint8Array; output: Uint8Array }[] =
+    rows.rows.map((r) => ({
+      outputReference: r.tx_in_cbor,
+      output: r.tx_out_cbor,
+    }));
+  return result;
+};
