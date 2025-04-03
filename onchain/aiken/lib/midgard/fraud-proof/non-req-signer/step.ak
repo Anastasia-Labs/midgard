@@ -12,7 +12,7 @@ pub type StepRedeemer {
     bad_tx: MidgardTxCompact,
     bad_tx_body: MidgardTxBodyCompact,
     bad_spend_inputs: Data,
-    bad_input: Data,
+    bad_signer: ByteArray,
     required_signers: List<VerificationKeyHash>,
     index_output: Int,
     computation_thread_redeemer_index: Int,
