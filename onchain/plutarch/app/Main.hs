@@ -1,9 +1,12 @@
 {-# OPTIONS_GHC -Wno-unused-imports #-}
 {-# OPTIONS_GHC -Wno-unused-top-binds #-}
 
+{-# LANGUAGE ImpredicativeTypes #-}
+
 module Main (main) where
 
 import Cardano.Binary qualified as CBOR
+import Control.Monad (forM_)
 import Data.Aeson (KeyValue ((.=)), object)
 import Data.Aeson.Encode.Pretty (encodePretty)
 import Data.Bifunctor (
@@ -28,6 +31,7 @@ import Plutarch.Evaluate (
   evalScript,
   applyArguments
  )
+import Plutarch.LedgerApi.V3 (PScriptContext)
 import Plutarch.Prelude
 import Plutarch.Script (Script, serialiseScript)
 import PlutusLedgerApi.V2 (
@@ -35,7 +39,6 @@ import PlutusLedgerApi.V2 (
   ExBudget,
  )
 import System.IO
-
 
 encodeSerialiseCBOR :: Script -> Text
 encodeSerialiseCBOR = Text.decodeUtf8 . Base16.encode . CBOR.serialize' . serialiseScript
@@ -84,6 +87,11 @@ writePlutusScriptNoTrace :: String -> FilePath -> ClosedTerm a -> IO ()
 writePlutusScriptNoTrace title filepath term =
   writePlutusScript NoTracing title filepath term
 
+scripts :: [(String, ClosedTerm (PScriptContext :--> PUnit))]
+scripts = []
+
 main :: IO ()
 main = do
   putStrLn "Writing Plutus Scripts to files"
+  forM_ scripts $ \(name, script) -> do
+    writePlutusScriptNoTrace name ("./compiled/" <> name <> ".json") script
