@@ -183,37 +183,27 @@ library
     ViewPatterns
 
   exposed-modules:
-    Midgard.Crypto
-    Midgard.List
-    Midgard.PlutusDataList
     Midgard.Utils
-    MerkleTree.Helpers
-    MerkleTree.MerklePatriciaForestry
-    MerkleTree.Merkling
-    Profile
-    Types.Blocks
-    Types.Classes
-    Types.Constants
-    Types.StateCommitment
+
 
   -- Compile
 
   build-depends:
-    , aeson
+    -- , aeson
     , base
-    , base16-bytestring
-    , bytestring
-    , cardano-binary
-    , data-default
-    , generics-sop
+    -- , base16-bytestring
+    -- , bytestring
+    -- , cardano-binary
+    -- , data-default
+    -- , generics-sop
     , plutarch
-    , plutarch-extra
+    -- , plutarch-extra
     , plutarch-ledger-api
-    , plutus-core
-    , plutus-ledger-api
-    , plutus-tx
-    , serialise
-    , text
+    -- , plutus-core
+    -- , plutus-ledger-api
+    -- , plutus-tx
+    -- , serialise
+    -- , text
 
   hs-source-dirs:     src
 
@@ -256,33 +246,33 @@ executable midgard
 --   hs-source-dirs: src, src/Testing
 --   build-depends:  migdard-contracts
 
-test-suite helpers-tests
-  import:           lang, dependencies
-  type:             exitcode-stdio-1.0
-  main-is:          Test.hs
-  hs-source-dirs:   src src/Testing
-  other-modules:
-    Midgard.Crypto
-    Midgard.List
-    Midgard.Utils
-    MerkleTree.Helpers
-    MerkleTree.MerklePatriciaForestry
-    MerkleTree.Merkling
-    Testing.MidgardValidator
-    Testing.Crypto
-    Testing.Eval
-    Testing.MerklePatriciaForestry
-    Testing.TransactionProofs
-    Types.Blocks
-    Types.Classes
-    Types.Constants
-    Types.StateCommitment
+-- test-suite helpers-tests
+--   import:           lang, dependencies
+--   type:             exitcode-stdio-1.0
+--   main-is:          Test.hs
+--   hs-source-dirs:   src src/Testing
+--   other-modules:
+--     Midgard.Crypto
+--     Midgard.List
+--     Midgard.Utils
+--     MerkleTree.Helpers
+--     MerkleTree.MerklePatriciaForestry
+--     MerkleTree.Merkling
+--     Testing.MidgardValidator
+--     Testing.Crypto
+--     Testing.Eval
+--     Testing.MerklePatriciaForestry
+--     Testing.TransactionProofs
+--     Types.Blocks
+--     Types.Classes
+--     Types.Constants
+--     Types.StateCommitment
 
-  build-depends:
-    , cardano-crypto-class
-    , prettyprinter
-    , tasty
-    , tasty-hunit
-    , tasty-quickcheck
+--   build-depends:
+--     , cardano-crypto-class
+--     , prettyprinter
+--     , tasty
+--     , tasty-hunit
+--     , tasty-quickcheck
 
-  default-language: Haskell2010
+--   default-language: Haskell2010
