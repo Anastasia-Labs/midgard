@@ -182,28 +182,27 @@ library
     UndecidableInstances
     ViewPatterns
 
-  exposed-modules:
-    Midgard.Utils
-
+  exposed-modules:    Midgard.Utils
 
   -- Compile
 
   build-depends:
-    -- , aeson
     , base
-    -- , base16-bytestring
-    -- , bytestring
-    -- , cardano-binary
-    -- , data-default
-    -- , generics-sop
     , plutarch
-    -- , plutarch-extra
     , plutarch-ledger-api
-    -- , plutus-core
-    -- , plutus-ledger-api
-    -- , plutus-tx
-    -- , serialise
-    -- , text
+
+  -- , aeson
+  -- , base16-bytestring
+  -- , bytestring
+  -- , cardano-binary
+  -- , data-default
+  -- , generics-sop
+  -- , plutarch-extra
+  -- , plutus-core
+  -- , plutus-ledger-api
+  -- , plutus-tx
+  -- , serialise
+  -- , text
 
   hs-source-dirs:     src
 

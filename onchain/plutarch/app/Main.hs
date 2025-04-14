@@ -17,15 +17,15 @@ import Data.Text (
  )
 import Data.Text.Encoding qualified as Text
 import Plutarch (
-  Config (..), 
+  Config (..),
   compile,
  )
 import Plutarch.Evaluate (
+  applyArguments,
   evalScript,
-  applyArguments
  )
 import Plutarch.LedgerApi.V3 (PScriptContext)
-import Plutarch.Prelude ( type (:-->), ClosedTerm, PUnit )
+import Plutarch.Prelude (ClosedTerm, PUnit, type (:-->))
 import Plutarch.Script (Script, serialiseScript)
 import PlutusLedgerApi.V2 (
   Data,
