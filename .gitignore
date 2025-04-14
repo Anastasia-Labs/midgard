@@ -6,4 +6,4 @@ build/
 docs/
 .direnv
 utils.log
-*/dist-newstyle
+**/dist-newstyle
