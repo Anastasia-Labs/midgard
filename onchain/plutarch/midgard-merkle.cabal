@@ -187,22 +187,22 @@ library
   -- Compile
 
   build-depends:
+    , aeson
+    , aeson-pretty
     , base
+    , base16-bytestring
+    , bytestring
+    , cardano-binary
+    , data-default
+    , generics-sop
     , plutarch
+    , plutarch-extra
     , plutarch-ledger-api
-
-  -- , aeson
-  -- , base16-bytestring
-  -- , bytestring
-  -- , cardano-binary
-  -- , data-default
-  -- , generics-sop
-  -- , plutarch-extra
-  -- , plutus-core
-  -- , plutus-ledger-api
-  -- , plutus-tx
-  -- , serialise
-  -- , text
+    , plutus-core
+    , plutus-ledger-api
+    , plutus-tx
+    , serialise
+    , text
 
   hs-source-dirs:     src
 
@@ -227,7 +227,7 @@ common dependencies
     , text
 
 executable midgard
-  import:         lang, dependencies
+  import:         lang
   main-is:        Main.hs
 
   -- Modules included in this executable, other than Main.
@@ -235,7 +235,12 @@ executable midgard
 
   -- LANGUAGE extensions used by modules in this package.
   -- other-extensions:
-  build-depends:  midgard-merkle
+  build-depends:
+    , base
+    , midgard-merkle
+    , plutarch
+    , plutarch-ledger-api
+
   hs-source-dirs: app
 
 -- executable test-midgard
@@ -245,33 +250,18 @@ executable midgard
 --   hs-source-dirs: src, src/Testing
 --   build-depends:  migdard-contracts
 
--- test-suite helpers-tests
---   import:           lang, dependencies
---   type:             exitcode-stdio-1.0
---   main-is:          Test.hs
---   hs-source-dirs:   src src/Testing
---   other-modules:
---     Midgard.Crypto
---     Midgard.List
---     Midgard.Utils
---     MerkleTree.Helpers
---     MerkleTree.MerklePatriciaForestry
---     MerkleTree.Merkling
---     Testing.MidgardValidator
---     Testing.Crypto
---     Testing.Eval
---     Testing.MerklePatriciaForestry
---     Testing.TransactionProofs
---     Types.Blocks
---     Types.Classes
---     Types.Constants
---     Types.StateCommitment
+test-suite helpers-tests
+  import:           lang, dependencies
+  type:             exitcode-stdio-1.0
+  main-is:          Main.hs
+  hs-source-dirs:   test
+  other-modules:    Testing.Midgard.Utils
+  build-depends:
+    , cardano-crypto-class
+    , midgard-merkle
+    , prettyprinter
+    , tasty
+    , tasty-hunit
+    , tasty-quickcheck
 
---   build-depends:
---     , cardano-crypto-class
---     , prettyprinter
---     , tasty
---     , tasty-hunit
---     , tasty-quickcheck
-
---   default-language: Haskell2010
+  default-language: Haskell2010
