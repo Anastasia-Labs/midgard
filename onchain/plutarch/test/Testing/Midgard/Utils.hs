@@ -8,7 +8,6 @@ import Midgard.Utils
 import Plutarch
 import Plutarch.LedgerApi.V3 (PScriptContext)
 import Plutarch.Prelude
-import PlutusLedgerApi.V1 (interval)
 import PlutusLedgerApi.V3
 import PlutusTx qualified
 import PlutusTx.AssocMap qualified as AssocMap
@@ -114,10 +113,10 @@ mkCtx red certs = ScriptContext txInfo (Redeemer red)
         mempty
         mempty
         0 -- fee
-        emptyMintValue -- mint
+        mempty -- mint
         certs -- certs
         AssocMap.empty -- withdrawals
-        (interval (POSIXTime 1) (POSIXTime 2)) -- valid range
+        (Interval (LowerBound NegInf True) (UpperBound PosInf True)) -- valid range
         mempty -- signatories
         AssocMap.empty -- redeemers
         AssocMap.empty -- data
