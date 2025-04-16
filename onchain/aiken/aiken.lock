@@ -16,6 +16,11 @@ name = "anastasia-labs/aiken-design-patterns"
 version = "v1.2.0"
 source = "github"
 
+[[requirements]]
+name = "aiken-lang/merkle-patricia-forestry"
+version = "2.0.0"
+source = "github"
+
 [[packages]]
 name = "aiken-lang/stdlib"
 version = "v2.2.0"
@@ -31,6 +36,12 @@ source = "github"
 [[packages]]
 name = "anastasia-labs/aiken-design-patterns"
 version = "v1.2.0"
+requirements = []
+source = "github"
+
+[[packages]]
+name = "aiken-lang/merkle-patricia-forestry"
+version = "2.0.0"
 requirements = []
 source = "github"
 

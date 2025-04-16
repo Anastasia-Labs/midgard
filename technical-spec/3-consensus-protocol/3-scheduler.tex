@@ -145,7 +145,7 @@ Redeemers:
                   Let \code{registered\_node} be that node.
                 \item \code{registered\_node} must be the last node of the \code{registered\_operators} queue.
                   This means it corresponds to the \emph{earliest} registrant that hasn't yet activated because new registrants are prepended to the beginning of that queue.
-                \item \code{registered\_node} is \emph{not yet} eligible for activation --- the upper bound of the transaction validity interval is smaller than the sum of the \code{registration\_time} of the \code{registered\_node} and the Midgard \code{registration\_duration} protocol parameter.
+                \item \code{registered\_node} is \emph{not yet} eligible for activation --- the upper bound of the transaction validity interval is smaller than the \code{activation\_time} of the \code{registered\_node}.
             \end{enumerate}
         \end{itemize}
 \end{description}

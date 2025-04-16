@@ -39,6 +39,24 @@ export const buildAndSubmitMergeTx = (
   mintScript: Script,
 ) =>
   Effect.gen(function* () {
+    if (global.BLOCKS_IN_QUEUE === 0) {
+      // yield* Effect.logInfo("🔸 No blocks to merge.");
+      return;
+    }
+
+    // Avoid a merge tx if the queue is too short while a block submission is in
+    // progress (performing a merge with such conditions has a chance of wasting
+    // the work done for root computaions).
+    if (global.BLOCKS_IN_QUEUE < 2 && global.BLOCK_SUBMISSION_IN_PROGRESS) {
+
+      // yield* Effect.logInfo(
+      //   "🔸 There are too few blocks in queue while a block submission is in progress.
+      // );
+      return;
+    }
+
+    yield* Effect.logInfo("🔸 Merging of oldest block started.");
+
     yield* Effect.logInfo(
       "🔸 Fetching confirmed state and the first block in queue from L1...",
     );
@@ -122,7 +140,9 @@ export const buildAndSubmitMergeTx = (
         BlocksDB.clearBlock(db, fromHex(headerHash)),
       ).pipe(Effect.withSpan("clear-block-from-BlocksDB"));
       yield* Effect.logInfo("🔸 ☑️  Merge transaction completed.");
+      global.BLOCKS_IN_QUEUE -= 1;
     } else {
+      global.BLOCKS_IN_QUEUE = 0;
       yield* Effect.logInfo("🔸 No blocks found in queue.");
       return;
     }

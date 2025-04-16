@@ -4,8 +4,10 @@ import { logAbort, logInfo } from "../utils.js";
 import * as utils from "./utils.js";
 import { clearTable } from "./utils.js";
 
+export const tableName = "immutable";
+
 export const createQuery = `
-  CREATE TABLE IF NOT EXISTS immutable (
+  CREATE TABLE IF NOT EXISTS ${tableName} (
     tx_hash BYTEA NOT NULL UNIQUE,
     tx_cbor BYTEA NOT NULL UNIQUE,
     PRIMARY KEY (tx_hash)
@@ -17,12 +19,12 @@ export const insert = async (
   txHash: Uint8Array,
   txCbor: Uint8Array,
 ): Promise<void> => {
-  const query = `INSERT INTO immutable (tx_hash, tx_cbor) VALUES ($1, $2)`;
+  const query = `INSERT INTO ${tableName} (tx_hash, tx_cbor) VALUES ($1, $2)`;
   try {
     await pool.query(query, [txHash, txCbor]);
-    logInfo(`immutable db: tx stored`);
+    logInfo(`${tableName} db: tx stored`);
   } catch (err) {
-    logAbort(`immutable db: error inserting tx: ${err}`);
+    logAbort(`${tableName} db: error inserting tx: ${err}`);
     throw err;
   }
 };
@@ -31,15 +33,15 @@ export const insertTxs = async (
   pool: Pool,
   txs: { txHash: Uint8Array; txCbor: Uint8Array }[],
 ): Promise<void> => {
-  const query = `INSERT INTO immutable (tx_hash, tx_cbor) VALUES ($1, $2)`;
+  const query = `INSERT INTO ${tableName} (tx_hash, tx_cbor) VALUES ($1, $2)`;
 
   try {
     for (const { txHash, txCbor } of txs) {
       await pool.query(query, [txHash, txCbor]);
-      // logInfo(`immutable db: tx stored`);
+      // logInfo(`${tableName} db: tx stored`);
     }
   } catch (err) {
-    // logAbort(`immutable db: error inserting tx: ${err}`);
+    // logAbort(`${tableName} db: error inserting tx: ${err}`);
     throw err;
   }
 };
@@ -47,7 +49,7 @@ export const insertTxs = async (
 export const retrieve = async (
   pool: Pool,
 ): Promise<{ txHash: Uint8Array; txCbor: Uint8Array }[]> => {
-  const query = `SELECT * FROM immutable`;
+  const query = `SELECT * FROM ${tableName}`;
   try {
     const result = await pool.query(query);
     return result.rows.map((row) => ({
@@ -55,7 +57,7 @@ export const retrieve = async (
       txCbor: row.tx_cbor,
     }));
   } catch (err) {
-    // logAbort(`immutable db: retrieving error: ${err}`);
+    // logAbort(`${tableName} db: retrieving error: ${err}`);
     throw err;
   }
 };
@@ -64,12 +66,12 @@ export const retrieveTxCborByHash = async (
   pool: Pool,
   txHash: Uint8Array,
 ): Promise<Option.Option<Uint8Array>> =>
-  utils.retrieveTxCborByHash(pool, "immutable", txHash);
+  utils.retrieveTxCborByHash(pool, tableName, txHash);
 
 export const retrieveTxCborsByHashes = async (
   pool: Pool,
   txHashes: Uint8Array[],
 ): Promise<Uint8Array[]> =>
-  utils.retrieveTxCborsByHashes(pool, "immutable", txHashes);
+  utils.retrieveTxCborsByHashes(pool, tableName, txHashes);
 
-export const clear = async (pool: Pool) => clearTable(pool, "immutable");
+export const clear = async (pool: Pool) => clearTable(pool, tableName);

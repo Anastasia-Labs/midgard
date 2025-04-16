@@ -2,8 +2,10 @@ import { Option } from "effect";
 import { Pool } from "pg";
 import { clearTable } from "./utils.js";
 
+export const tableName = "blocks";
+
 export const createQuery = `
-  CREATE TABLE IF NOT EXISTS blocks (
+  CREATE TABLE IF NOT EXISTS ${tableName} (
     header_hash BYTEA NOT NULL,
     tx_hash BYTEA NOT NULL UNIQUE
   );`;
@@ -14,16 +16,16 @@ export const insert = async (
   txHashes: Uint8Array[],
 ): Promise<void> => {
   const query = `
-      INSERT INTO blocks (header_hash, tx_hash)
+      INSERT INTO ${tableName} (header_hash, tx_hash)
       VALUES
       ${txHashes.map((_, i) => `($${i * 2 + 1}, $${i * 2 + 2})`).join(", ")}`;
   const values = txHashes.flatMap((txHash) => [headerHash, txHash]);
 
   try {
     await pool.query(query, values);
-    // logInfo(`blocks db: ${txHashes.length} new tx_hashes added`);
+    // logInfo(`${tableName} db: ${txHashes.length} new tx_hashes added`);
   } catch (err) {
-    // logAbort(`blocks db: inserting error: ${err}`);
+    // logAbort(`${tableName} db: inserting error: ${err}`);
     throw err;
   }
 };
@@ -32,12 +34,12 @@ export const retrieveTxHashesByBlockHash = async (
   pool: Pool,
   blockHash: Uint8Array,
 ): Promise<Uint8Array[]> => {
-  const query = `SELECT tx_hash FROM blocks WHERE header_hash = $1`;
+  const query = `SELECT tx_hash FROM ${tableName} WHERE header_hash = $1`;
   try {
     const result = await pool.query(query, [blockHash]);
     return result.rows.map((row) => row.tx_hash);
   } catch (err) {
-    // logAbort(`blocks db: retrieving error: ${err}`);
+    // logAbort(`${tableName} db: retrieving error: ${err}`);
     throw err;
   }
 };
@@ -46,7 +48,7 @@ export const retrieveBlockHashByTxHash = async (
   pool: Pool,
   txHash: Uint8Array,
 ): Promise<Option.Option<Uint8Array>> => {
-  const query = `SELECT header_hash FROM blocks WHERE tx_hash = $1`;
+  const query = `SELECT header_hash FROM ${tableName} WHERE tx_hash = $1`;
   try {
     const result = await pool.query(query, [txHash]);
     if (result.rows.length > 0) {
@@ -55,7 +57,7 @@ export const retrieveBlockHashByTxHash = async (
       return Option.none();
     }
   } catch (err) {
-    // logAbort(`blocks db: retrieving error: ${err}`);
+    // logAbort(`${tableName} db: retrieving error: ${err}`);
     throw err;
   }
 };
@@ -64,12 +66,12 @@ export const clearBlock = async (
   pool: Pool,
   blockHash: Uint8Array,
 ): Promise<void> => {
-  const query = `DELETE FROM blocks WHERE header_hash = $1`;
+  const query = `DELETE FROM ${tableName} WHERE header_hash = $1`;
   try {
     await pool.query(query, [blockHash]);
-    // logInfo(`blocks db: cleared`);
+    // logInfo(`${tableName} db: cleared`);
   } catch (err) {
-    // logAbort(`blocks db: clearing error: ${err}`);
+    // logAbort(`${tableName} db: clearing error: ${err}`);
     throw err;
   }
 };
@@ -77,14 +79,14 @@ export const clearBlock = async (
 export const retrieve = async (
   pool: Pool,
 ): Promise<[Uint8Array, Uint8Array][]> => {
-  const query = `SELECT * FROM blocks`;
+  const query = `SELECT * FROM ${tableName}`;
   try {
     const result = await pool.query(query);
     return result.rows.map((row) => [row.header_hash, row.tx_hash]);
   } catch (err) {
-    // logAbort(`blocks db: retrieving error: ${err}`);
+    // logAbort(`${tableName} db: retrieving error: ${err}`);
     throw err;
   }
 };
 
-export const clear = async (pool: Pool) => clearTable(pool, `blocks`);
+export const clear = async (pool: Pool) => clearTable(pool, tableName);

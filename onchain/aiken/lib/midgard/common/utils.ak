@@ -1,7 +1,9 @@
 use aiken/cbor
 use aiken/collection/dict
 use aiken/collection/list
-use aiken/crypto.{ScriptHash, VerificationKeyHash, blake2b_224, blake2b_256}
+use aiken/crypto.{
+  ScriptHash, VerificationKey, VerificationKeyHash, blake2b_224, blake2b_256,
+}
 use aiken/interval.{Finite, Interval, NegativeInfinity, PositiveInfinity}
 use aiken_design_patterns/validity_range_normalization as vrn
 use cardano/address.{Address, Script}
@@ -77,6 +79,18 @@ pub fn get_own_address(output_reference: OutputReference, txInputs: List<Input>)
     list.find(txInputs, fn(x) { x.output_reference == output_reference })
 
   input.output.address
+}
+
+/// Helper function for accessing spending UTxO using its input index.
+pub fn get_own_input_at(
+  inputs: List<Input>,
+  own_out_ref: OutputReference,
+  input_index: Int,
+) -> Output {
+  expect Some(Input { output: own_utxo, output_reference: spent_own_out_ref }) =
+    list.at(inputs, input_index)
+  expect (own_out_ref == spent_own_out_ref)?
+  own_utxo
 }
 
 pub fn is_output_to_sc(output: Output, scHash: ByteArray) -> Bool {
@@ -201,4 +215,8 @@ pub fn verify_hash_32(data: Data, data_hash: H32<Data>) {
 // Verify a 28-byte hash (Blake2b-224)
 pub fn verify_hash_28(data: Data, data_hash: H28<Data>) {
   expect blake2b_224(cbor.serialise(data)) == data_hash
+}
+
+pub fn get_verification_key_hash(key: VerificationKey) -> VerificationKeyHash {
+  blake2b_224(key)
 }

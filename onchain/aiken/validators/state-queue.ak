@@ -11,11 +11,13 @@ use cardano/transaction.{
   InlineDatum, Input, Mint, Output, OutputReference, Spend, Transaction,
 }
 use midgard/active_operators
+use midgard/common/utils
 use midgard/ledger_state.{ConfirmedState, Header}
-use midgard/protocol_parameters.{shift_duration}
+use midgard/protocol_parameters.{maturity_duration, shift_duration}
 use midgard/registered_operators
 use midgard/retired_operators
-use midgard/scheduler.{Datum as SchedulerDatum}
+use midgard/scheduler.{Datum as SchedulerDatum, scheduler_asset_name}
+use midgard/settlement_queue
 use midgard/state_queue.{
   CommitBlockHeader, Deinit, Init, MergeToConfirmedState, MintRedeemer,
   RemoveFraudulentBlockHeader,
@@ -45,7 +47,7 @@ validator mint(
   retired_operators_script_hash: PolicyId,
   scheduler_script_hash: PolicyId,
   fraud_proof_script_hash: PolicyId,
-  maturity_duration: Int,
+  settlement_queue_script_hash: PolicyId,
 ) {
   mint(redeemer: MintRedeemer, policy_id: PolicyId, self: Transaction) {
     let node_in_outputs = get_node_inputs(self.inputs, policy_id)
@@ -62,8 +64,7 @@ validator mint(
         }
       CommitBlockHeader {
         operator,
-        scheduler_asset_name,
-        scheduler_state_ref_input_index,
+        scheduler_ref_input_index,
         active_node_input_index,
         header_node_output_index,
         previous_header_node_output_index,
@@ -118,18 +119,17 @@ validator mint(
         // according to the scheduler:
         // (6) The transaction must include a reference input with the scheduler NFT.
         //     Let that input be the `scheduler_state`.
-        expect Some(scheduler_state_ref_input) =
-          list.at(self.reference_inputs, scheduler_state_ref_input_index)
+        expect Some(scheduler_ref_input) =
+          list.at(self.reference_inputs, scheduler_ref_input_index)
         expect InlineDatum(scheduler_state_datum) =
-          scheduler_state_ref_input.output.datum
+          scheduler_ref_input.output.datum
         expect parsed_scheduler_state_datum: SchedulerDatum =
           scheduler_state_datum
         expect
-          quantity_of(
-            scheduler_state_ref_input.output.value,
+          Pair(scheduler_asset_name, 1) == utils.get_singleton_asset_with_policy(
+            scheduler_ref_input.output.value,
             scheduler_script_hash,
-            scheduler_asset_name,
-          ) == 1
+          )
 
         // (7) The `operator` field of `scheduler_state` must match `operator`.
         expect operator == parsed_scheduler_state_datum.operator
@@ -154,13 +154,13 @@ validator mint(
 
         // Update the operator's timestamp in the active operators set:
         // (11) The transaction must include an input, spent via the Update
-        //      Commitment Time redeemer, of an `active_operators` node with a key
-        //      matching the `operator`.
+        //      Bond Hold New State redeemer, of an `active_operators` node with
+        //      a key matching the `operator`.
         expect Some(active_operators_redeemer_pair) =
           list.at(self.redeemers, active_operators_redeemer_index)
         expect Spend(active_node_input_output_reference) =
           active_operators_redeemer_pair.1st
-        expect active_operators.UpdateCommitmentTime { .. } =
+        expect active_operators.UpdateBondHoldNewState { .. } =
           active_operators_redeemer_pair.2nd
         expect Some(active_node_input) =
           list.at(self.inputs, active_node_input_index)
@@ -184,14 +184,16 @@ validator mint(
         header_node_input_index,
         confirmed_state_node_input_index,
         confirmed_state_node_output_index,
+        settlement_queue_redeemer_index,
       } -> {
         // (1) The transaction must Remove a node from the `state_queue`.
         //     Let `header_node` be the removed node, `confirmed_state_node` be
         //     its predecessor node before removal,
         //     and `confirmed_state_node_output` be the remaining node after removal.
         expect Some(header_node_input) =
-          list.at(self.outputs, header_node_input_index)
-        expect InlineDatum(header_node_input_datum) = header_node_input.datum
+          list.at(self.inputs, header_node_input_index)
+        expect InlineDatum(header_node_input_datum) =
+          header_node_input.output.datum
         expect parsed_header_node_input_datum: NodeDatum =
           header_node_input_datum
         expect Header { start_time, end_time, protocol_version, .. } =
@@ -261,12 +263,24 @@ validator mint(
         expect
           parsed_confirmed_state_node_output_datum_data == expected_new_confirmed_state
 
-        // TODO
         // (6) If either the `deposits_root` or `withdrawals_root` of `header_node`
         //     is _not_ the MPT root hash of the empty set, a `settlement_queue`
         //     node must be appended via the New Settlement redeemer.
         //     The redeemer must mention \code{header\_node} by input index.
-        // 
+        //
+        // Note: we trust the redeemer arguments provided to settlement_queue
+        // because we expect it to check them.
+        expect Some(settlement_queue_redeemer_pair) =
+          self.redeemers |> list.at(settlement_queue_redeemer_index)
+        expect
+          settlement_queue_redeemer_pair.1st == Mint(
+            settlement_queue_script_hash,
+          )
+        expect settlement_queue.AppendSettlementNode { key_to_add, .. }: settlement_queue.MintRedeemer =
+          settlement_queue_redeemer_pair.2nd
+        //
+        expect key_to_add == header_node_key
+
         // Done.
         True
       }
@@ -311,14 +325,14 @@ validator mint(
           when operator_status is {
             // (5) If `operator_status is active:
             //     The transaction must Remove a node from the `active_operators`
-            //     set via the Remove Operator Slash Bond redeemer.
+            //     set via the Remove Operator Bad State redeemer.
             //     The `slashed_operator` argument provided to that redeemer must
             //     match `fraudulent_operator`.
             registered_operators.Active -> {
               expect Some(active_operators_redeemer_pair) =
                 list.at(self.redeemers, operators_redeemer_index)
               expect Mint(mint_script_hash) = active_operators_redeemer_pair.1st
-              expect active_operators.RemoveOperatorSlashBond {
+              expect active_operators.RemoveOperatorBadState {
                 slashed_active_operator_key,
                 ..
               } = active_operators_redeemer_pair.2nd
@@ -329,7 +343,7 @@ validator mint(
             }
             // (6) Otherwise:
             //     The transaction must Remove a node from the `retired_operators`
-            //     set via the Remove Operator Slash Bond redeemer.
+            //     set via the Remove Operator Bad State redeemer.
             //     The `slashed_operator` argument provided to that redeemer must
             //     match `fraudulent_operator`.
             registered_operators.Retired -> {
@@ -337,7 +351,7 @@ validator mint(
                 list.at(self.redeemers, operators_redeemer_index)
               expect Mint(mint_script_hash) =
                 retired_operators_redeemer_pair.1st
-              expect retired_operators.RemoveOperatorSlashBond {
+              expect retired_operators.RemoveOperatorBadState {
                 slashed_retired_operator_key,
                 ..
               } = retired_operators_redeemer_pair.2nd

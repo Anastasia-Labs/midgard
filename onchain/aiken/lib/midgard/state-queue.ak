@@ -1,6 +1,7 @@
+use aiken_design_patterns/linked_list/unordered.{NodeDatum}
 use cardano/assets.{AssetName}
 use cardano/transaction.{OutputReference}
-use midgard/registered_operators.{WitnessStatus}
+use midgard/registered_operators.{OperatorStatus}
 
 /// TODO?
 /// > [!NOTE]
@@ -9,6 +10,9 @@ use midgard/registered_operators.{WitnessStatus}
 pub const confirmed_asset_name: AssetName = "CONFIRMED_STATE"
 
 pub const block_asset_name: AssetName = #""
+
+pub type Datum =
+  NodeDatum
 
 pub type Config {
   init_utxo: OutputReference,
@@ -20,8 +24,7 @@ pub type MintRedeemer {
   Deinit
   CommitBlockHeader {
     operator: ByteArray,
-    scheduler_asset_name: ByteArray,
-    scheduler_state_ref_input_index: Int,
+    scheduler_ref_input_index: Int,
     active_node_input_index: Int,
     header_node_output_index: Int,
     previous_header_node_output_index: Int,
@@ -32,6 +35,7 @@ pub type MintRedeemer {
     header_node_input_index: Int,
     confirmed_state_node_input_index: Int,
     confirmed_state_node_output_index: Int,
+    settlement_queue_redeemer_index: Int,
   }
   RemoveFraudulentBlockHeader {
     removed_node_input_index: Int,
@@ -40,6 +44,6 @@ pub type MintRedeemer {
     fraud_proof_ref_input_index: Int,
     fraud_proof_asset_name: ByteArray,
     fraudulent_operator: ByteArray,
-    operator_status: WitnessStatus,
+    operator_status: OperatorStatus,
   }
 }

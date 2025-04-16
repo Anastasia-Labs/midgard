@@ -174,12 +174,7 @@ export const listen = (
     app.get("/commit", async (_req, res) => {
       log("GET /commit - Manual block commitment order received");
       try {
-        const program = pipe(
-          makeBlockCommitmentAction(pool),
-          Effect.provide(User.layer),
-          Effect.provide(AlwaysSucceedsContract.layer),
-          Effect.provide(NodeConfig.layer),
-        );
+        const program = makeBlockCommitmentAction();
         const txHash = await Effect.runPromise(program);
         log(`GET /commit - Block commitment successful: ${txHash}`);
         res.json({ message: `Block commitment successful: ${txHash}` });
@@ -277,30 +272,16 @@ export const listen = (
     app.listen(port, () => log(`Server running at http://localhost:${port}`));
   });
 
-const makeBlockCommitmentAction = (db: pg.Pool) =>
+const makeBlockCommitmentAction = () =>
   Effect.gen(function* () {
     yield* Effect.logInfo("🔹 New block commitment process started.");
-
-    const { user: lucid } = yield* User;
-    const { spendScriptAddress, policyId } =
-      yield* AlwaysSucceeds.AlwaysSucceedsContract;
-    const fetchConfig: SDK.TxBuilder.StateQueue.FetchConfig = {
-      stateQueueAddress: spendScriptAddress,
-      stateQueuePolicyId: policyId,
-    };
-
-    yield* StateQueueTx.buildAndSubmitCommitmentBlock(
-      lucid,
-      db,
-      fetchConfig,
-      Date.now(),
-    ).pipe(Effect.withSpan("buildAndSubmitCommitmentBlock"));
+    yield* StateQueueTx.buildAndSubmitCommitmentBlock().pipe(
+      Effect.withSpan("buildAndSubmitCommitmentBlock"),
+    );
   });
 
 const makeMergeAction = (db: pg.Pool) =>
   Effect.gen(function* () {
-    yield* Effect.logInfo("🔸 Merging of oldest block started.");
-
     const { user: lucid } = yield* User;
     const { spendScriptAddress, policyId, spendScript, mintScript } =
       yield* AlwaysSucceeds.AlwaysSucceedsContract;
@@ -325,11 +306,11 @@ const makeMempoolAction = (db: pg.Pool) =>
     yield* mempoolTxGauge(Effect.succeed(numTx));
   });
 
-const blockCommitmentFork = (db: pg.Pool, pollingInterval: number) =>
+const blockCommitmentFork = (pollingInterval: number) =>
   pipe(
     Effect.gen(function* () {
       yield* Effect.logInfo("🔵 Block commitment fork started.");
-      const action = makeBlockCommitmentAction(db).pipe(
+      const action = makeBlockCommitmentAction().pipe(
         Effect.withSpan("block-commitment-fork"),
         Effect.catchAllCause(Effect.logWarning),
       );
@@ -413,11 +394,8 @@ export const runNode = Effect.gen(function* () {
 
   const appThread = listen(user, pool, nodeConfig.PORT);
 
-  const blockCommitmentThread = pipe(
-    blockCommitmentFork(pool, nodeConfig.POLLING_INTERVAL),
-    Effect.provide(User.layer),
-    Effect.provide(AlwaysSucceedsContract.layer),
-    Effect.provide(NodeConfig.layer),
+  const blockCommitmentThread = blockCommitmentFork(
+    nodeConfig.POLLING_INTERVAL,
   );
 
   const mergeThread = pipe(

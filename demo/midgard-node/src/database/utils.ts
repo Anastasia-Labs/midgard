@@ -1,5 +1,5 @@
 import { Option } from "effect";
-import { Pool } from "pg";
+import { Pool, PoolClient } from "pg";
 import { logAbort, logInfo } from "../utils.js";
 import * as blocks from "./blocks.js";
 import * as confirmedLedger from "./confirmedLedger.js";
@@ -30,7 +30,7 @@ export async function initializeDb(pool: Pool) {
 }
 
 export const clearUTxOs = async (
-  pool: Pool,
+  pool: Pool | PoolClient,
   tableName: string,
   refs: Uint8Array[],
 ): Promise<void> => {
@@ -51,7 +51,7 @@ export const clearUTxOs = async (
 };
 
 export const clearTxs = async (
-  pool: Pool,
+  pool: Pool | PoolClient,
   tableName: string,
   txHashes: Uint8Array[],
 ): Promise<void> => {
@@ -68,7 +68,7 @@ export const clearTxs = async (
 };
 
 export const retrieveTxCborByHash = async (
-  pool: Pool,
+  pool: Pool | PoolClient,
   tableName: string,
   txHash: Uint8Array,
 ): Promise<Option.Option<Uint8Array>> => {
@@ -87,7 +87,7 @@ export const retrieveTxCborByHash = async (
 };
 
 export const retrieveTxCborsByHashes = async (
-  pool: Pool,
+  pool: Pool | PoolClient,
   tableName: string,
   txHashes: Uint8Array[],
 ): Promise<Uint8Array[]> => {
@@ -102,7 +102,7 @@ export const retrieveTxCborsByHashes = async (
 };
 
 export const clearTable = async (
-  pool: Pool,
+  pool: Pool | PoolClient,
   tableName: string,
 ): Promise<void> => {
   const query = `TRUNCATE TABLE ${tableName} CASCADE;`;
@@ -117,7 +117,7 @@ export const clearTable = async (
 };
 
 export const insertUTxOsCBOR = async (
-  pool: Pool,
+  pool: Pool | PoolClient,
   tableName: string,
   utxosCBOR: { outputReference: Uint8Array; output: Uint8Array }[],
 ): Promise<void> => {
@@ -131,7 +131,7 @@ export const insertUTxOsCBOR = async (
 };
 
 export const retrieveUTxOsCBOR = async (
-  pool: Pool,
+  pool: Pool | PoolClient,
   tableName: string,
 ): Promise<{ outputReference: Uint8Array; output: Uint8Array }[]> => {
   const query = `SELECT * FROM ${tableName}`;

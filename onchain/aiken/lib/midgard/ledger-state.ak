@@ -20,7 +20,7 @@ use cardano/assets.{Lovelace, Value}
 use cardano/transaction.{
   Output, OutputReference, Redeemer, ScriptPurpose, TransactionId, ValidityRange,
 }
-use midgard/common/types.{H28, H32, MerkleRoot, PosixTime, PubKeyHash}
+use midgard/common/types.{H28, H32, MerkleRoot, PosixTime}
 
 // # Ledger state types
 
@@ -50,7 +50,7 @@ pub type Header {
   start_time: PosixTime,
   end_time: PosixTime,
   prev_header_hash: HeaderHash,
-  operator_vkey: PubKeyHash,
+  operator_vkey: VerificationKeyHash,
   protocol_version: Int,
 }
 

@@ -49,7 +49,7 @@ validator computation_thread_policy(
           fraud_proof_catalogue_node_datum
         expect parsed_fraud_proof_catalogue_node_app_data: fpc.Datum =
           parsed_fraud_proof_catalogue_node_datum.data
-        expect ordered.Key(parsed_fraud_proof_catalogue_node_datum_key) =
+        expect ordered.Key { key: parsed_fraud_proof_catalogue_node_datum_key } =
           parsed_fraud_proof_catalogue_node_datum.key
         expect InlineDatum(frauded_state_queue_node_datum) =
           frauded_state_queue_node_input.output.datum

@@ -22,8 +22,9 @@ export interface WorkerInput {
 }
 
 export interface WorkerOutput {
-  txRoot: string;
-  utxoRoot: string;
+  txSize: number;
+  mempoolTxsCount: number;
+  sizeOfBlocksTxs: number;
 }
 
 export const chalk = new chalk_.Chalk();
@@ -131,13 +132,16 @@ export const findSpentAndProducedUTxOs = (txCBOR: Uint8Array) =>
     }
     const txHash = CML.hash_transaction(txBody).to_hex();
     for (let i = 0; i < outputs.len(); i++) {
-      yield* Effect.try(() => {
-        const utxo: UTxO = {
-          txHash: txHash,
-          outputIndex: i,
-          ...coreToTxOutput(outputs.get(i)),
-        };
-        produced.push(utxoToCBOR(utxo));
+      yield* Effect.try({
+        try: () => {
+          const utxo: UTxO = {
+            txHash: txHash,
+            outputIndex: i,
+            ...coreToTxOutput(outputs.get(i)),
+          };
+          produced.push(utxoToCBOR(utxo));
+        },
+        catch: (e) => new Error(`${e}`),
       });
     }
     return { spent, produced };

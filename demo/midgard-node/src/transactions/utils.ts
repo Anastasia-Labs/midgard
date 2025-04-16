@@ -24,6 +24,7 @@ export const handleSignSubmit = (
 ): Effect.Effect<string, Error> =>
   Effect.gen(function* () {
     const signed = yield* signBuilder.sign.withWallet().completeProgram();
+    yield* Effect.logInfo("✉️  Submitting transaction...");
     const txHash = yield* signed
       .submitProgram()
       .pipe(

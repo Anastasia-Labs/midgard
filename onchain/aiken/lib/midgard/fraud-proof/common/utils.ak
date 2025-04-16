@@ -44,7 +44,7 @@ pub fn get_tx_root_validate_block_hash(
     state_queue_node_input.output.datum
   expect state_queue_node_datum: unordered.NodeDatum = state_queue_datum_data
   expect parsed_state_queue_datum: Header = state_queue_node_datum.data
-  expect unordered.Key(block_hash) = state_queue_node_datum.key
+  expect unordered.Key { key: block_hash } = state_queue_node_datum.key
   let extracted_tx_root = parsed_state_queue_datum.transactions_root
 
   // Get CT token and check match with the block hash
