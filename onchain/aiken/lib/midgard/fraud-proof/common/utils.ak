@@ -53,6 +53,29 @@ pub fn get_tx_root_validate_block_hash(
   extracted_tx_root
 }
 
+pub fn get_required_signers(
+  tx: Transaction,
+  state_queue_node_ref_input_index: Int,
+  ct_token_asset_name: ByteArray,
+) -> ByteArray {
+  // Reference input with block_hash 
+  expect Some(state_queue_node_input) =
+    list.at(tx.reference_inputs, state_queue_node_ref_input_index)
+
+  // Extract tx_root via the state queue block hash
+  expect InlineDatum(state_queue_datum_data) =
+    state_queue_node_input.output.datum
+  expect state_queue_node_datum: unordered.NodeDatum = state_queue_datum_data
+  expect parsed_state_queue_datum: Header = state_queue_node_datum.data
+  expect unordered.Key(block_hash) = state_queue_node_datum.key
+  let extracted_tx_root = parsed_state_queue_datum.transactions_root
+
+  // Get CT token and check match with the block hash
+  expect drop(ct_token_asset_name, n: 4) == block_hash
+
+  extracted_tx_root
+}
+
 // Relevant to (1): tx_root provided by fraud prover in redeemer matches block_hash from the state queue block from the reference input
 pub fn get_prev_utxo_root(
   tx: Transaction,
