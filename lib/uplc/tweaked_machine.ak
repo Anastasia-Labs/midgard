@@ -314,41 +314,61 @@ pub fn call_builtin(
   let function_call =
     fn(callback) {
       if fun < 43 {
-        when fun is {
-          // AddInteger
-          0 ->
-            when args is {
-              [VCon(Integer(b)) as second, VCon(Integer(a)) as first] -> {
-                let return_val_bytes =
-                  VCon(Integer(a + b)) |> builtin.serialise_data
+        if fun < 22 {
+          when fun is {
+            // AddInteger
+            0 ->
+              when args is {
+                [VCon(Integer(b)) as second, VCon(Integer(a)) as first] -> {
+                  let return_val_bytes =
+                    VCon(Integer(a + b)) |> builtin.serialise_data
 
-                callback(
-                  Return(ctx, return_val_bytes |> hashing_algo),
-                  [second |> serialize_hash, first |> serialize_hash],
-                  return_val_bytes,
-                )
+                  callback(
+                    Return(ctx, return_val_bytes |> hashing_algo),
+                    [second |> serialize_hash, first |> serialize_hash],
+                    return_val_bytes,
+                  )
+                }
+
+                _ -> ErrorState("Bad Args: 0")
               }
+            // SubtractInteger
+            1 ->
+              when args is {
+                [VCon(Integer(b)) as second, VCon(Integer(a)) as first] -> {
+                  let return_val_bytes =
+                    VCon(Integer(a - b)) |> builtin.serialise_data
 
-              _ -> ErrorState("Bad Args: 0")
-            }
-          // SubtractInteger
-          1 ->
-            when args is {
-              [VCon(Integer(b)) as second, VCon(Integer(a)) as first] -> {
-                let return_val_bytes =
-                  VCon(Integer(a - b)) |> builtin.serialise_data
+                  callback(
+                    Return(ctx, return_val_bytes |> hashing_algo),
+                    [second |> serialize_hash, first |> serialize_hash],
+                    return_val_bytes,
+                  )
+                }
 
-                callback(
-                  Return(ctx, return_val_bytes |> hashing_algo),
-                  [second |> serialize_hash, first |> serialize_hash],
-                  return_val_bytes,
-                )
+                _ -> ErrorState("Bad Args: 1")
               }
+            // MultiplyInteger
+            2 ->
+              when args is {
+                [VCon(Integer(b)) as second, VCon(Integer(a)) as first] -> {
+                  let return_val_bytes =
+                    VCon(Integer(a * b)) |> builtin.serialise_data
 
-              _ -> ErrorState("Bad Args: 1")
-            }
-          // Case for negative builtins
-          _ -> ErrorState("No Builtin Found")
+                  callback(
+                    Return(ctx, return_val_bytes |> hashing_algo),
+                    [second |> serialize_hash, first |> serialize_hash],
+                    return_val_bytes,
+                  )
+                }
+
+                _ -> ErrorState("Bad Args: 1")
+              }
+            // Case for negative builtins
+            _ -> ErrorState("No Builtin Found")
+          }
+        } else {
+          fail @"TODO"
         }
       } else {
         fail @"TODO"
