@@ -6,7 +6,7 @@ import * as LatestLedgerCloneDB from "./latestLedgerClone.js";
 import * as MempoolDB from "./mempool.js";
 import * as MempoolLedgerDB from "./mempoolLedger.js";
 import { Pool } from "pg";
-import { logAbort, logInfo } from "@/utils.js";
+import { logAbort, logInfo } from "../utils.js";
 
 export const initializeDb = async (pool: Pool) => {
   try {
