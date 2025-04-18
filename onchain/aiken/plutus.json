@@ -1511,8 +1511,8 @@
         }
       ]
     },
-    "VerificationKey": {
-      "title": "VerificationKey",
+    "VerificationKeyHash": {
+      "title": "VerificationKeyHash",
       "dataType": "bytes"
     },
     "aiken/interval/IntervalBound$Int": {
@@ -3076,7 +3076,7 @@
             },
             {
               "title": "operator",
-              "$ref": "#/definitions/VerificationKey"
+              "$ref": "#/definitions/VerificationKeyHash"
             },
             {
               "title": "scheduler_ref_input_index",
@@ -3107,7 +3107,7 @@
             },
             {
               "title": "operator",
-              "$ref": "#/definitions/VerificationKey"
+              "$ref": "#/definitions/VerificationKeyHash"
             },
             {
               "title": "operator_status",
