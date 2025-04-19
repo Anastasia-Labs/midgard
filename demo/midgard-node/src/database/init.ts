@@ -5,27 +5,29 @@ import * as LatestLedgerDB from "./latestLedger.js";
 import * as LatestLedgerCloneDB from "./latestLedgerClone.js";
 import * as MempoolDB from "./mempool.js";
 import * as MempoolLedgerDB from "./mempoolLedger.js";
-import { Pool } from "pg";
 import { logAbort, logInfo } from "../utils.js";
+import { Sql } from "postgres";
 
-export const initializeDb = async (pool: Pool) => {
+export const initializeDb = async (sql: Sql) => {
   try {
-    await pool.query(`
-      SET default_transaction_isolation TO 'serializable';
-    `);
+    // Set transaction isolation level
+    await sql`SET default_transaction_isolation TO 'serializable'`;
 
-    await pool.query(BlocksDB.createQuery);
-    await pool.query(MempoolDB.createQuery);
-    await pool.query(MempoolLedgerDB.createQuery);
-    await pool.query(ImmutableDB.createQuery);
-    await pool.query(ConfirmedLedgerDB.createQuery);
-    await pool.query(LatestLedgerDB.createQuery);
-    await pool.query(LatestLedgerCloneDB.createQuery);
+    // Create tables
+    await BlocksDB.createQuery(sql);
+    await MempoolDB.createQuery(sql);
+    await MempoolLedgerDB.createQuery(sql);
+    await ImmutableDB.createQuery(sql);
+    await ConfirmedLedgerDB.createQuery(sql);
+    await LatestLedgerDB.createQuery(sql);
+    await LatestLedgerCloneDB.createQuery(sql);
 
     logInfo("Connected to the PostgreSQL database");
-    return pool;
+    return sql;
   } catch (err) {
-    logAbort(`Error initializing database: ${err}`);
+    logAbort(
+      `Error initializing database: ${err instanceof Error ? err.message : err}`,
+    );
     throw err;
   }
 };

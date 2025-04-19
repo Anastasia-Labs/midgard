@@ -6,16 +6,15 @@ import * as SDK from "@al-ft/midgard-sdk";
 import { NodeSdk } from "@effect/opentelemetry";
 import {
   CML,
-  LucidEvolution,
   fromHex,
   getAddressDetails,
+  LucidEvolution,
 } from "@lucid-evolution/lucid";
 import { PrometheusExporter } from "@opentelemetry/exporter-prometheus";
 import { OTLPTraceExporter } from "@opentelemetry/exporter-trace-otlp-http";
 import { BatchSpanProcessor } from "@opentelemetry/sdk-trace-base";
 import { Duration, Effect, Metric, Option, pipe, Schedule } from "effect";
 import express from "express";
-import pg from "pg";
 import {
   BlocksDB,
   ConfirmedLedgerDB,
@@ -26,6 +25,7 @@ import {
   MempoolLedgerDB,
 } from "../database/index.js";
 import { findSpentAndProducedUTxOs, isHexString } from "../utils.js";
+import postgres, { Sql } from "postgres";
 
 const txCounter = Metric.counter("tx_count", {
   description: "A counter for tracking submit transactions",
@@ -46,7 +46,7 @@ const ledgerSizeGauge = Metric.gauge("ledger_utxo_count", {
 
 export const listen = (
   lucid: LucidEvolution,
-  pool: pg.Pool,
+  db: Sql,
   port: number,
 ): Effect.Effect<void, never, never> =>
   Effect.sync(() => {
@@ -61,14 +61,14 @@ export const listen = (
         isHexString(txHash) &&
         txHash.length === 32
       ) {
-        MempoolDB.retrieveTxCborByHash(pool, fromHex(txHash)).then((ret) => {
+        MempoolDB.retrieveTxCborByHash(db, fromHex(txHash)).then((ret) => {
           Option.match(ret, {
             onSome: (retrieved) => {
               log(`GET /tx - Transaction found in mempool: ${txHash}`);
               res.json({ tx: retrieved });
             },
             onNone: () =>
-              ImmutableDB.retrieveTxCborByHash(pool, fromHex(txHash)).then(
+              ImmutableDB.retrieveTxCborByHash(db, fromHex(txHash)).then(
                 (ret) => {
                   Option.match(ret, {
                     onSome: (retrieved) => {
@@ -104,7 +104,7 @@ export const listen = (
         try {
           const addrDetails = getAddressDetails(addr);
           if (addrDetails.paymentCredential) {
-            MempoolLedgerDB.retrieve(pool).then((allUTxOs) => {
+            MempoolLedgerDB.retrieve(db).then((allUTxOs) => {
               const filtered = allUTxOs.filter(({ output }) => {
                 const cmlOutput = CML.TransactionOutput.from_cbor_bytes(output);
                 const address = cmlOutput.address().to_bech32();
@@ -140,7 +140,7 @@ export const listen = (
         isHexString(hdrHash) &&
         hdrHash.length === 32
       ) {
-        BlocksDB.retrieveTxHashesByBlockHash(pool, fromHex(hdrHash)).then(
+        BlocksDB.retrieveTxHashesByBlockHash(db, fromHex(hdrHash)).then(
           (hashes) => {
             log(
               `GET /block - Found ${hashes.length} transactions for block: ${hdrHash}`,
@@ -195,7 +195,7 @@ export const listen = (
       log("GET /merge - Manual merge order received");
       try {
         const program = pipe(
-          makeMergeAction(pool),
+          makeMergeAction(db),
           Effect.provide(User.layer),
           Effect.provide(AlwaysSucceedsContract.layer),
           Effect.provide(NodeConfig.layer),
@@ -230,12 +230,12 @@ export const listen = (
       }
       try {
         await Promise.all([
-          MempoolDB.clear(pool),
-          MempoolLedgerDB.clear(pool),
-          BlocksDB.clear(pool),
-          ImmutableDB.clear(pool),
-          LatestLedgerDB.clear(pool),
-          ConfirmedLedgerDB.clear(pool),
+          MempoolDB.clear(db),
+          MempoolLedgerDB.clear(db),
+          BlocksDB.clear(db),
+          ImmutableDB.clear(db),
+          LatestLedgerDB.clear(db),
+          ConfirmedLedgerDB.clear(db),
         ]);
         // res.json({ message: "Cleared all tables successfully!" });
       } catch (_e) {
@@ -258,9 +258,9 @@ export const listen = (
           const { spent, produced } = await Effect.runPromise(
             spentAndProducedProgram,
           );
-          await MempoolDB.insert(pool, fromHex(tx.toHash()), txCBOR);
-          await MempoolLedgerDB.clearUTxOs(pool, spent);
-          await MempoolLedgerDB.insert(pool, produced);
+          await MempoolDB.insert(db, fromHex(tx.toHash()), txCBOR);
+          await MempoolLedgerDB.clearUTxOs(db, spent);
+          await MempoolLedgerDB.insert(db, produced);
           Effect.runSync(Metric.increment(txCounter));
           // log(`▫️ L2 Transaction processed successfully: ${tx.toHash()}`);
           res.json({ message: "Successfully submitted the transaction" });
@@ -285,7 +285,7 @@ const makeBlockCommitmentAction = () =>
     );
   });
 
-const makeMergeAction = (db: pg.Pool) =>
+const makeMergeAction = (db: Sql) =>
   Effect.gen(function* () {
     const { user: lucid } = yield* User;
     const { spendScriptAddress, policyId, spendScript, mintScript } =
@@ -304,14 +304,14 @@ const makeMergeAction = (db: pg.Pool) =>
     );
   });
 
-const makeMempoolAction = (db: pg.Pool) =>
+const makeMempoolAction = (db: Sql) =>
   Effect.gen(function* () {
     const txList = yield* Effect.tryPromise(() => MempoolDB.retrieve(db));
     const numTx = BigInt(txList.length);
     yield* mempoolTxGauge(Effect.succeed(numTx));
   });
 
-const makeLedgerAction = (db: pg.Pool) =>
+const makeLedgerAction = (db: Sql) =>
   Effect.gen(function* () {
     const utxoList = yield* Effect.tryPromise(() =>
       LatestLedgerDB.retrieve(db),
@@ -339,7 +339,7 @@ const blockCommitmentFork = (pollingInterval: number) =>
 // possible issues:
 // 1. tx-generator: large batch size & high concurrency
 // 2. after initing node, can't commit the block
-const mergeFork = (db: pg.Pool, pollingInterval: number) =>
+const mergeFork = (db: Sql, pollingInterval: number) =>
   pipe(
     Effect.gen(function* () {
       yield* Effect.logInfo("🟠 Merge fork started.");
@@ -355,7 +355,7 @@ const mergeFork = (db: pg.Pool, pollingInterval: number) =>
     // Effect.fork, // Forking ensures the effect keeps running
   );
 
-const mempoolFork = (db: pg.Pool) =>
+const mempoolFork = (db: Sql) =>
   pipe(
     Effect.gen(function* () {
       yield* Effect.logInfo("🟢 Mempool fork started.");
@@ -367,7 +367,7 @@ const mempoolFork = (db: pg.Pool) =>
     Effect.catchAllCause(Effect.logWarning),
   );
 
-const ledgerFork = (db: pg.Pool) =>
+const ledgerFork = (db: Sql) =>
   pipe(
     Effect.gen(function* () {
       yield* Effect.logInfo("📒 Ledger fork started.");
@@ -382,17 +382,17 @@ const ledgerFork = (db: pg.Pool) =>
 export const runNode = Effect.gen(function* () {
   const { user } = yield* User;
   const nodeConfig = yield* NodeConfig;
-  const pool = new pg.Pool({
+  const db = postgres({
     host: nodeConfig.POSTGRES_HOST,
-    user: nodeConfig.POSTGRES_USER,
+    username: nodeConfig.POSTGRES_USER,
     password: nodeConfig.POSTGRES_PASSWORD,
     database: nodeConfig.POSTGRES_DB,
     max: 20,
-    idleTimeoutMillis: 30000,
-    connectionTimeoutMillis: 2000,
+    idle_timeout: 30,
+    connect_timeout: 2,
   });
   yield* Effect.tryPromise({
-    try: () => InitDB.initializeDb(pool),
+    try: () => InitDB.initializeDb(db),
     catch: (e) => new Error(`${e}`),
   });
 
@@ -418,22 +418,22 @@ export const runNode = Effect.gen(function* () {
     ),
   }));
 
-  const appThread = listen(user, pool, nodeConfig.PORT);
+  const appThread = listen(user, db, nodeConfig.PORT);
 
   const blockCommitmentThread = blockCommitmentFork(
     nodeConfig.POLLING_INTERVAL,
   );
 
   const mergeThread = pipe(
-    mergeFork(pool, nodeConfig.CONFIRMED_STATE_POLLING_INTERVAL),
+    mergeFork(db, nodeConfig.CONFIRMED_STATE_POLLING_INTERVAL),
     Effect.provide(User.layer),
     Effect.provide(AlwaysSucceedsContract.layer),
     Effect.provide(NodeConfig.layer),
   );
 
-  const monitorMempoolThread = pipe(mempoolFork(pool));
+  const monitorMempoolThread = pipe(mempoolFork(db));
 
-  const monitorLedgerThread = pipe(ledgerFork(pool));
+  const monitorLedgerThread = pipe(ledgerFork(db));
 
   const program = Effect.all(
     [

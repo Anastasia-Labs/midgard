@@ -1,29 +1,29 @@
-import { Pool } from "pg";
+import { Sql } from "postgres";
 import * as utils from "./utils.js";
 import { clearTable, insertUTxOsCBOR, retrieveUTxOsCBOR } from "./utils.js";
 
 export const tableName = "confirmed_ledger";
 
-export const createQuery = `
-  CREATE TABLE IF NOT EXISTS ${tableName} (
+export const createQuery = (sql: Sql) => sql`
+  CREATE TABLE IF NOT EXISTS ${sql(tableName)} (
     tx_in_cbor BYTEA NOT NULL,
     tx_out_cbor BYTEA NOT NULL,
     PRIMARY KEY (tx_in_cbor)
   );
-  `;
+`;
 
 export const insert = async (
-  pool: Pool,
+  sql: Sql,
   utxosCBOR: { outputReference: Uint8Array; output: Uint8Array }[],
-) => insertUTxOsCBOR(pool, tableName, utxosCBOR);
+) => insertUTxOsCBOR(sql, tableName, utxosCBOR);
 
 export const retrieve = async (
-  pool: Pool,
+  sql: Sql,
 ): Promise<{ outputReference: Uint8Array; output: Uint8Array }[]> =>
-  retrieveUTxOsCBOR(pool, tableName);
+  retrieveUTxOsCBOR(sql, tableName);
 
-export const clearUTxOs = async (pool: Pool, refs: Uint8Array[]) =>
-  utils.clearUTxOs(pool, tableName, refs);
+export const clearUTxOs = async (sql: Sql, refs: Uint8Array[]) =>
+  utils.clearUTxOs(sql, tableName, refs);
 
-export const clear = async (pool: Pool): Promise<void> =>
-  clearTable(pool, tableName);
+export const clear = async (sql: Sql): Promise<void> =>
+  clearTable(sql, tableName);

@@ -1,39 +1,30 @@
 import { Option } from "effect";
-import { Pool, PoolClient } from "pg";
+import { Sql } from "postgres";
 import { logAbort, logInfo } from "../utils.js";
 
 export const clearUTxOs = async (
-  pool: Pool | PoolClient,
+  sql: Sql,
   tableName: string,
   refs: Uint8Array[],
 ): Promise<void> => {
-  const query = `DELETE FROM ${tableName} WHERE (tx_in_cbor) IN (${refs
-    .map((_, i) => `($${i + 1})`)
-    .join(", ")})`;
-  // const values = refs.flatMap((r) => [
-  //   Buffer.from(r),
-  // ]);
-
   try {
-    await pool.query(query, refs);
-    // logInfo(`${tableName} db: ${result.rowCount} utxos removed`);
+    await sql`DELETE FROM ${sql(tableName)} WHERE tx_in_cbor IN ${sql(refs)}`;
   } catch (err) {
-    // logAbort(`${tableName} db: utxos removing error: ${err}`);
     throw err;
   }
 };
 
 export const clearTxs = async (
-  pool: Pool | PoolClient,
+  sql: Sql,
   tableName: string,
   txHashes: Uint8Array[],
 ): Promise<void> => {
-  const query = `DELETE FROM ${tableName} WHERE tx_hash IN (${txHashes
-    .map((_, i) => `$${i + 1}`)
-    .join(", ")})`;
   try {
-    const result = await pool.query(query, txHashes);
-    logInfo(`${tableName} db: ${result.rowCount} txs removed`);
+    const result = await sql`
+      DELETE FROM ${sql(tableName)}
+      WHERE tx_hash IN ${sql(txHashes)}
+    `;
+    logInfo(`${tableName} db: ${result.count} txs removed`);
   } catch (err) {
     logAbort(`${tableName} db: txs removing error: ${err}`);
     throw err;
@@ -41,78 +32,77 @@ export const clearTxs = async (
 };
 
 export const retrieveTxCborByHash = async (
-  pool: Pool | PoolClient,
+  sql: Sql,
   tableName: string,
   txHash: Uint8Array,
 ): Promise<Option.Option<Uint8Array>> => {
-  const query = `SELECT tx_cbor FROM ${tableName} WHERE tx_hash = $1`;
   try {
-    const result = await pool.query(query, [txHash]);
-    if (result.rows.length > 0) {
-      return Option.some(result.rows[0].tx_cbor);
-    } else {
-      return Option.none();
-    }
+    const result = await sql`
+      SELECT tx_cbor FROM ${sql(tableName)} 
+      WHERE tx_hash = ${txHash}
+    `;
+    return result.length > 0 ? Option.some(result[0].tx_cbor) : Option.none();
   } catch (err) {
-    // logAbort(`db: retrieving error: ${err}`);
     throw err;
   }
 };
 
 export const retrieveTxCborsByHashes = async (
-  pool: Pool | PoolClient,
+  sql: Sql,
   tableName: string,
   txHashes: Uint8Array[],
 ): Promise<Uint8Array[]> => {
-  const query = `SELECT tx_cbor FROM ${tableName} WHERE tx_hash = ANY($1)`;
   try {
-    const result = await pool.query(query, [txHashes]);
-    return result.rows.map((row) => row.tx_cbor);
+    const result = await sql`
+      SELECT tx_cbor FROM ${sql(tableName)}
+      WHERE tx_hash IN ${sql(txHashes)}
+    `;
+    return result.map((row) => row.tx_cbor);
   } catch (err) {
-    // logAbort(`${tableName} db: retrieving error: ${err}`);
     throw err;
   }
 };
 
 export const clearTable = async (
-  pool: Pool | PoolClient,
+  sql: Sql,
   tableName: string,
 ): Promise<void> => {
-  const query = `TRUNCATE TABLE ${tableName} CASCADE;`;
-
   try {
-    await pool.query(query);
-    // logInfo(`${tableName} db: cleared`);
+    await sql`TRUNCATE TABLE ${sql(tableName)} CASCADE`;
   } catch (err) {
-    // logAbort(`${tableName} db: clearing error: ${err}`);
     throw err;
   }
 };
 
 export const insertUTxOsCBOR = async (
-  pool: Pool | PoolClient,
+  sql: Sql,
   tableName: string,
   utxosCBOR: { outputReference: Uint8Array; output: Uint8Array }[],
 ): Promise<void> => {
-  const query = `
-  INSERT INTO ${tableName} (tx_in_cbor, tx_out_cbor)
-  VALUES
-  ${utxosCBOR.map((_, i) => `($${i * 2 + 1}, $${i * 2 + 2})`).join(", ")}
+  const values = utxosCBOR.map((u) => ({
+    tx_in_cbor: u.outputReference,
+    tx_out_cbor: u.output,
+  }));
+  try {
+    await sql`
+    INSERT INTO ${sql(tableName)} ${sql(values)}
   `;
-  const values = utxosCBOR.flatMap((u) => [u.outputReference, u.output]);
-  await pool.query(query, values);
+  } catch (e) {
+    logAbort(`${tableName} db: error inserting utxos: ${e}`);
+  }
 };
 
 export const retrieveUTxOsCBOR = async (
-  pool: Pool | PoolClient,
+  sql: Sql,
   tableName: string,
 ): Promise<{ outputReference: Uint8Array; output: Uint8Array }[]> => {
-  const query = `SELECT * FROM ${tableName}`;
-  const rows = await pool.query(query);
-  const result: { outputReference: Uint8Array; output: Uint8Array }[] =
-    rows.rows.map((r) => ({
-      outputReference: r.tx_in_cbor,
-      output: r.tx_out_cbor,
+  try {
+    const result = await sql`SELECT * FROM ${sql(tableName)}`;
+    return result.map((row) => ({
+      outputReference: row.tx_in_cbor,
+      output: row.tx_out_cbor,
     }));
-  return result;
+  } catch (err) {
+    throw err;
+  }
 };

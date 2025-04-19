@@ -10,6 +10,7 @@ import { Effect, Schedule } from "effect";
 import pg from "pg";
 import * as BlocksDB from "../database/blocks.js";
 import * as ImmutableDB from "../database/immutable.js";
+import { Sql } from "postgres";
 
 /**
  * Handle the signing and submission of a transaction.
@@ -73,7 +74,7 @@ export const handleSignSubmitWithoutConfirmation = (
  */
 export const fetchFirstBlockTxs = (
   firstBlockUTxO: UTxO,
-  db: pg.Pool,
+  db: Sql,
 ): Effect.Effect<{ txs: Uint8Array[]; headerHash: string }, Error> =>
   Effect.gen(function* () {
     const blockHeader = yield* SDK.Utils.getHeaderFromBlockUTxO(firstBlockUTxO);

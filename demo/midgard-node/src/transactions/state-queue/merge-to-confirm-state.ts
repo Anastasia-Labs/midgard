@@ -14,6 +14,7 @@ import { LucidEvolution, Script, fromHex } from "@lucid-evolution/lucid";
 import { Effect, Metric } from "effect";
 import pg from "pg";
 import { fetchFirstBlockTxs, handleSignSubmit } from "../utils.js";
+import { Sql } from "postgres";
 
 const mergeBlockCounter = Metric.counter("merge_block_count", {
   description: "A counter for tracking merge blocks",
@@ -33,7 +34,7 @@ const mergeBlockCounter = Metric.counter("merge_block_count", {
  */
 export const buildAndSubmitMergeTx = (
   lucid: LucidEvolution,
-  db: pg.Pool,
+  db: Sql,
   fetchConfig: SDK.TxBuilder.StateQueue.FetchConfig,
   spendScript: Script,
   mintScript: Script,
