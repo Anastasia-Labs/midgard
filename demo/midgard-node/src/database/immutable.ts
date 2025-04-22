@@ -1,72 +1,117 @@
-import { Option } from "effect";
-import { Sql } from "postgres";
-import { logAbort, logInfo } from "../utils.js";
-import * as utils from "./utils.js";
-import { clearTable } from "./utils.js";
+import { Effect, Option } from "effect";
+import { SqlClient, SqlError } from "@effect/sql";
+import {
+  clearTable,
+  retrieveTxCborByHash as utilsRetrieveTxCborByHash,
+  retrieveTxCborsByHashes as utilsRetrieveTxCborsByHashes,
+} from "./utils.js";
 
 export const tableName = "immutable";
 
-export const createQuery = (sql: Sql) => sql`
-  CREATE TABLE IF NOT EXISTS ${sql(tableName)} (
+export const createQuery = `
+  CREATE TABLE IF NOT EXISTS ${tableName} (
     tx_hash BYTEA NOT NULL UNIQUE,
     tx_cbor BYTEA NOT NULL UNIQUE,
     PRIMARY KEY (tx_hash)
   );
 `;
 
-export const insert = async (
-  sql: Sql,
+export const insert = (
   txHash: Uint8Array,
   txCbor: Uint8Array,
-): Promise<void> => {
-  try {
+): Effect.Effect<void, SqlError.SqlError, SqlClient.SqlClient> =>
+  Effect.gen(function* () {
+    yield* Effect.logInfo(`${tableName} db: attempt to insert tx`);
+    const sql = yield* SqlClient.SqlClient;
+
     const value = { tx_hash: txHash, tx_cbor: txCbor };
-    await sql`INSERT INTO ${sql(tableName)} ${sql(value)}`;
-    logInfo(`${tableName} db: tx stored`);
-  } catch (err) {
-    logAbort(`${tableName} db: error inserting tx: ${err}`);
-    throw err;
-  }
-};
+    yield* sql`INSERT INTO ${sql(tableName)} ${sql.insert(value)}`;
 
-export const insertTxs = async (
-  sql: Sql,
+    yield* Effect.logInfo(`${tableName} db: tx stored`);
+  }).pipe(
+    Effect.withLogSpan(`insert ${tableName}`),
+    Effect.tapErrorTag("SqlError", (e) =>
+      Effect.logError(
+        `${tableName} db: error inserting tx: ${JSON.stringify(e)}`,
+      ),
+    ),
+    Effect.asVoid,
+  );
+
+export const insertTxs = (
   txs: { txHash: Uint8Array; txCbor: Uint8Array }[],
-): Promise<void> => {
-  try {
-    const values = txs.map((tx) => ({ tx_hash: tx.txHash, txCbor: tx.txCbor }));
-    await sql`INSERT INTO ${sql(tableName)} ${sql(values)}`;
-  } catch (err) {
-    logAbort(`${tableName} db: error inserting txs: ${err}`);
-    throw err;
-  }
-};
+): Effect.Effect<void, SqlError.SqlError, SqlClient.SqlClient> =>
+  Effect.gen(function* () {
+    yield* Effect.logInfo(`${tableName} db: attempt to insert multiple txs`);
+    const sql = yield* SqlClient.SqlClient;
 
-export const retrieve = async (
-  sql: Sql,
-): Promise<{ txHash: Uint8Array; txCbor: Uint8Array }[]> => {
-  try {
-    const result = await sql`SELECT * FROM ${sql(tableName)}`;
-    return result.map((row) => ({
+    if (txs.length === 0) {
+      yield* Effect.logDebug("No txs provided, skipping insertion.");
+      return;
+    }
+
+    const values = txs.map((tx) => ({
+      tx_hash: tx.txHash,
+      tx_cbor: tx.txCbor,
+    }));
+    yield* sql`INSERT INTO ${sql(tableName)} ${sql.insert(values)}`;
+
+    yield* Effect.logInfo(`${tableName} db: inserted ${values.length} txs`);
+  }).pipe(
+    Effect.withLogSpan(`insertTxs ${tableName}`),
+    Effect.tapErrorTag("SqlError", (e) =>
+      Effect.logError(
+        `${tableName} db: error inserting txs: ${JSON.stringify(e)}`,
+      ),
+    ),
+    Effect.asVoid,
+  );
+
+export const retrieve = (): Effect.Effect<
+  { txHash: Uint8Array; txCbor: Uint8Array }[],
+  SqlError.SqlError,
+  SqlClient.SqlClient
+> =>
+  Effect.gen(function* () {
+    yield* Effect.logDebug(`${tableName} db: attempt retrieve all txs`);
+    const sql = yield* SqlClient.SqlClient;
+
+    const rows = yield* sql<{
+      tx_hash: Uint8Array;
+      tx_cbor: Uint8Array;
+    }>`SELECT tx_hash, tx_cbor FROM ${sql(tableName)}`;
+
+    const result = rows.map((row) => ({
       txHash: row.tx_hash,
       txCbor: row.tx_cbor,
     }));
-  } catch (err) {
-    logAbort(`${tableName} db: error retrieving tx: ${err}`);
-    throw err;
-  }
-};
 
-export const retrieveTxCborByHash = async (
-  sql: Sql,
+    yield* Effect.logDebug(`${tableName} db: retrieved ${result.length} txs`);
+    return result;
+  }).pipe(
+    Effect.withLogSpan(`retrieve all ${tableName}`),
+    Effect.tapErrorTag("SqlError", (e) =>
+      Effect.logError(
+        `${tableName} db: retrieving txs error: ${JSON.stringify(e)}`,
+      ),
+    ),
+  );
+
+export const retrieveTxCborByHash = (
   txHash: Uint8Array,
-): Promise<Option.Option<Uint8Array>> =>
-  utils.retrieveTxCborByHash(sql, tableName, txHash);
+): Effect.Effect<
+  Option.Option<Uint8Array>,
+  SqlError.SqlError,
+  SqlClient.SqlClient
+> => utilsRetrieveTxCborByHash(tableName, txHash);
 
-export const retrieveTxCborsByHashes = async (
-  sql: Sql,
+export const retrieveTxCborsByHashes = (
   txHashes: Uint8Array[],
-): Promise<Uint8Array[]> =>
-  utils.retrieveTxCborsByHashes(sql, tableName, txHashes);
+): Effect.Effect<Uint8Array[], SqlError.SqlError, SqlClient.SqlClient> =>
+  utilsRetrieveTxCborsByHashes(tableName, txHashes);
 
-export const clear = async (sql: Sql) => clearTable(sql, tableName);
+export const clear = (): Effect.Effect<
+  void,
+  SqlError.SqlError,
+  SqlClient.SqlClient
+> => clearTable(tableName);

@@ -5,29 +5,49 @@ import * as LatestLedgerDB from "./latestLedger.js";
 import * as LatestLedgerCloneDB from "./latestLedgerClone.js";
 import * as MempoolDB from "./mempool.js";
 import * as MempoolLedgerDB from "./mempoolLedger.js";
-import { logAbort, logInfo } from "../utils.js";
-import { Sql } from "postgres";
 
-export const initializeDb = async (sql: Sql) => {
-  try {
-    // Set transaction isolation level
-    await sql`SET default_transaction_isolation TO 'serializable'`;
+import { Effect } from "effect";
+import { SqlClient, SqlError } from "@effect/sql";
 
-    // Create tables
-    await BlocksDB.createQuery(sql);
-    await MempoolDB.createQuery(sql);
-    await MempoolLedgerDB.createQuery(sql);
-    await ImmutableDB.createQuery(sql);
-    await ConfirmedLedgerDB.createQuery(sql);
-    await LatestLedgerDB.createQuery(sql);
-    await LatestLedgerCloneDB.createQuery(sql);
+const executeCreateQuery = (
+  sql: SqlClient.SqlClient,
+  module: { tableName: string; createQuery: string },
+) =>
+  Effect.flatMap(Effect.logDebug(`Creating table ${module.tableName}...`), () =>
+    sql.unsafe(module.createQuery).pipe(
+      Effect.tapBoth({
+        onFailure: (e) =>
+          Effect.logError(`Failed to create table ${module.tableName}`, e),
+        onSuccess: () =>
+          Effect.logDebug(
+            `Table ${module.tableName} created or already exists.`,
+          ),
+      }),
+    ),
+  );
 
-    logInfo("Connected to the PostgreSQL database");
-    return sql;
-  } catch (err) {
-    logAbort(
-      `Error initializing database: ${err instanceof Error ? err.message : err}`,
-    );
-    throw err;
-  }
-};
+export const initializeDb = (): Effect.Effect<
+  void,
+  SqlError.SqlError,
+  SqlClient.SqlClient
+> =>
+  Effect.gen(function* () {
+    yield* Effect.logInfo("Initializing database schema...");
+    const sql = yield* SqlClient.SqlClient;
+
+    yield* executeCreateQuery(sql, BlocksDB);
+    yield* executeCreateQuery(sql, MempoolDB);
+    yield* executeCreateQuery(sql, MempoolLedgerDB);
+    yield* executeCreateQuery(sql, ImmutableDB);
+    yield* executeCreateQuery(sql, ConfirmedLedgerDB);
+    yield* executeCreateQuery(sql, LatestLedgerDB);
+    yield* executeCreateQuery(sql, LatestLedgerCloneDB);
+
+    yield* Effect.logInfo("Database schema initialization completed.");
+  }).pipe(
+    Effect.withLogSpan("initializeDb"),
+    Effect.tapErrorTag("SqlError", (e) =>
+      Effect.logError("Database initialization failed", e),
+    ),
+    Effect.asVoid,
+  );

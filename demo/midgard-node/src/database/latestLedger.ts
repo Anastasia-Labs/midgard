@@ -1,28 +1,40 @@
-import { Sql } from "postgres";
-import * as utils from "./utils.js";
-import { clearTable, insertUTxOsCBOR, retrieveUTxOsCBOR } from "./utils.js";
+import { Effect } from "effect";
+import { SqlClient, SqlError } from "@effect/sql";
+import {
+  clearTable,
+  insertUTxOsCBOR,
+  retrieveUTxOsCBOR,
+  clearUTxOs as utilsClearUTxOs,
+} from "./utils.js";
 
 export const tableName = "latest_ledger";
 
-export const createQuery = (sql: Sql) => sql`
-  CREATE TABLE IF NOT EXISTS ${sql(tableName)} (
+export const createQuery = `
+  CREATE TABLE IF NOT EXISTS ${tableName} (
     tx_in_cbor BYTEA NOT NULL,
     tx_out_cbor BYTEA NOT NULL,
     PRIMARY KEY (tx_in_cbor)
   );
 `;
 
-export const insert = async (
-  sql: Sql,
+export const insert = (
   utxosCBOR: { outputReference: Uint8Array; output: Uint8Array }[],
-) => insertUTxOsCBOR(sql, tableName, utxosCBOR);
+): Effect.Effect<void, SqlError.SqlError, SqlClient.SqlClient> =>
+  insertUTxOsCBOR(tableName, utxosCBOR);
 
-export const retrieve = async (
-  sql: Sql,
-): Promise<{ outputReference: Uint8Array; output: Uint8Array }[]> =>
-  retrieveUTxOsCBOR(sql, tableName);
+export const retrieve = (): Effect.Effect<
+  { outputReference: Uint8Array; output: Uint8Array }[],
+  SqlError.SqlError,
+  SqlClient.SqlClient
+> => retrieveUTxOsCBOR(tableName);
 
-export const clearUTxOs = async (sql: Sql, refs: Uint8Array[]) =>
-  utils.clearUTxOs(sql, tableName, refs);
+export const clearUTxOs = (
+  refs: Uint8Array[],
+): Effect.Effect<void, SqlError.SqlError, SqlClient.SqlClient> =>
+  utilsClearUTxOs(tableName, refs);
 
-export const clear = async (sql: Sql) => clearTable(sql, tableName);
+export const clear = (): Effect.Effect<
+  void,
+  SqlError.SqlError,
+  SqlClient.SqlClient
+> => clearTable(tableName);
