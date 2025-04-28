@@ -1,3 +1,4 @@
+use aiken/builtin
 use aiken/cbor
 use aiken/collection/dict
 use aiken/collection/list
@@ -5,14 +6,19 @@ use aiken/crypto.{
   ScriptHash, VerificationKey, VerificationKeyHash, blake2b_224, blake2b_256,
 }
 use aiken/interval.{Finite, Interval, NegativeInfinity, PositiveInfinity}
+use aiken/merkle_patricia_forestry as mpf
+use aiken_design_patterns/merkelized_validator
 use aiken_design_patterns/validity_range_normalization as vrn
 use cardano/address.{Address, Script}
 use cardano/assets.{AssetName, PolicyId, Value, tokens}
-use cardano/transaction.{Input, Output, OutputReference, ValidityRange}
+use cardano/transaction.{
+  Input, Output, OutputReference, Redeemer, ScriptPurpose, ValidityRange,
+}
+use env
 use midgard/common/constants.{
   max_validity_range_for_current_time, posix_time_none,
 }
-use midgard/common/types.{H28, H32, PosixTime}
+use midgard/common/types.{H28, H32, PosixTime, Tokens}
 
 /// Check whether the interval starts on or after the point.
 pub fn is_hereafter(self: Interval<Int>, point: Int) -> Bool {
@@ -117,6 +123,15 @@ pub fn has_signed(
   extra_signatories |> list.has(signer)
 }
 
+pub fn get_single_asset_from_value(v: Value) -> (PolicyId, AssetName, Int) {
+  expect [Pair(sym, tn_qty_pairs)] =
+    v
+      |> assets.to_dict
+      |> dict.to_pairs
+  expect [Pair(tn, qty)] = tn_qty_pairs |> dict.to_pairs
+  (sym, tn, qty)
+}
+
 pub fn get_single_asset_from_value_apart_from_ada(
   v: Value,
 ) -> (PolicyId, AssetName, Int) {
@@ -129,25 +144,21 @@ pub fn get_single_asset_from_value_apart_from_ada(
   (sym, tn, qty)
 }
 
-/// For beacon UTxOs with specific policy IDs at a given address.
-pub fn get_authentic_input_with_policy_at_address(
+/// For beacon UTxOs with specific policy IDs. Note that the address is not
+/// checked.
+pub fn get_authentic_input_with_policy_at(
   inputs: List<Input>,
-  address: Address,
   nft_policy_id: PolicyId,
-  nft_token_name: ByteArray,
   input_index: Int,
 ) -> Input {
   expect Some(
-    Input { output: Output { address: input_addr, value: input_value, .. }, .. } as found_input,
+    Input { output: Output { value: input_value, .. }, .. } as found_input,
   ) = list.at(inputs, input_index)
 
-  let input_nft_triplet =
+  expect (input_nft_policy_id, _, 1) =
     get_single_asset_from_value_apart_from_ada(input_value)
 
-  expect and {
-      input_addr == address,
-      input_nft_triplet == (nft_policy_id, nft_token_name, 1),
-    }
+  expect input_nft_policy_id == nft_policy_id
 
   found_input
 }
@@ -215,6 +226,93 @@ pub fn verify_hash_32(data: Data, data_hash: H32<Data>) {
 // Verify a 28-byte hash (Blake2b-224)
 pub fn verify_hash_28(data: Data, data_hash: H28<Data>) {
   expect blake2b_224(cbor.serialise(data)) == data_hash
+}
+
+/// Given a value, an NFT, and a `Tokens` (structured identical to `Value`, but
+/// safe for storage in datums), this helper ensures that the given `Value` is
+/// a correct representation of the given `Tokens`. Meaning it expects `Value`
+/// to only have the `Tokens`, the NFT, and some ADA. It also validates that 0
+/// ADA is included in `Tokens` (this does NOT validate the absence of ADA
+/// policy ID and asset name in `Tokens`, TODO?).
+pub fn authentic_value_has_tokens(
+  value: Value,
+  nft_policy_id: PolicyId,
+  nft_asset_name: AssetName,
+  tokens: Tokens,
+) -> Bool {
+  let without_nft =
+    value
+      |> assets.add(nft_policy_id, nft_asset_name, -1)
+  assets.match(without_nft, tokens, fn(_, tokens_ada) { tokens_ada == 0 })
+}
+
+pub fn get_redeemer_at(
+  redeemers: Pairs<ScriptPurpose, Redeemer>,
+  expected_purpose: ScriptPurpose,
+  redeemer_index: Int,
+) -> Redeemer {
+  expect Some(redeemer_pair) = redeemers |> list.at(redeemer_index)
+  expect redeemer_pair.1st == expected_purpose
+  redeemer_pair.2nd
+}
+
+pub fn plutarch_phas(
+  mpf_root: ByteArray,
+  key: Data,
+  value: Data,
+  membership_proof: mpf.Proof,
+  redeemers: Pairs<ScriptPurpose, Redeemer>,
+) -> Bool {
+  merkelized_validator.generic_delegated_validation(
+    staking_validator: env.plutarch_phas_validator_hash,
+    withdraw_redeemer_validator: fn(phas_validator_redeemer: Data) -> Bool {
+      expect [
+        redeemer_root_data, redeemer_key_data, redeemer_value_data,
+        redeemer_proof_data,
+        ..
+      ] = builtin.un_list_data(phas_validator_redeemer)
+
+      let mpf_root_data: Data = mpf_root
+
+      let proof_data: Data = membership_proof
+
+      and {
+        redeemer_root_data == mpf_root_data,
+        redeemer_key_data == key,
+        redeemer_value_data == value,
+        redeemer_proof_data == proof_data,
+      }
+    },
+    redeemers: redeemers,
+  )
+}
+
+pub fn plutarch_pexcludes(
+  mpf_root: ByteArray,
+  key: Data,
+  non_membership_proof: mpf.Proof,
+  redeemers: Pairs<ScriptPurpose, Redeemer>,
+) -> Bool {
+  merkelized_validator.generic_delegated_validation(
+    staking_validator: env.plutarch_pexcludes_validator_hash,
+    withdraw_redeemer_validator: fn(pexcludes_validator_redeemer: Data) -> Bool {
+      expect [redeemer_root_data,
+        redeemer_key_data,
+        redeemer_proof_data, ..] =
+        builtin.un_list_data(pexcludes_validator_redeemer)
+
+      let mpf_root_data: Data = mpf_root
+
+      let proof_data: Data = non_membership_proof
+
+      and {
+        redeemer_root_data == mpf_root_data,
+        redeemer_key_data == key,
+        redeemer_proof_data == proof_data,
+      }
+    },
+    redeemers: redeemers,
+  )
 }
 
 pub fn get_verification_key_hash(key: VerificationKey) -> VerificationKeyHash {
