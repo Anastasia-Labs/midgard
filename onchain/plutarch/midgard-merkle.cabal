@@ -22,6 +22,7 @@ maintainer:         colll78@colll78
 extra-source-files: CHANGELOG.md
 
 common lang
+  default-language:   GHC2021
   ghc-options:
     -Werror -Wall -Weverything -Wcompat -Wincomplete-uni-patterns
     -Wno-unused-do-bind -Wno-partial-type-signatures
@@ -37,7 +38,7 @@ common lang
     -Wno-unrecognised-warning-flags -Wno-unrecognised-pragmas
     -Wno-operator-whitespace -fprint-equality-relations
     -fprint-explicit-kinds -fprint-explicit-foralls
-    -Wno-unused-packages
+    -Wno-unused-packages -Wno-partial-fields
 
   default-extensions:
     BangPatterns
@@ -102,110 +103,6 @@ common lang
     UndecidableInstances
     ViewPatterns
 
-  default-language:   GHC2021
-
-library
-  -- import:         lang
-  ghc-options:
-    -Wall -Wcompat -Wincomplete-uni-patterns -Wno-unused-do-bind
-    -Wno-partial-type-signatures -Wno-missing-import-lists
-    -Wmissing-export-lists -Wincomplete-record-updates
-    -Wmissing-deriving-strategies -Wno-name-shadowing -Wunused-foralls
-    -Wno-unused-packages -Wno-missing-local-signatures
-    -Wno-implicit-prelude -fprint-explicit-foralls
-    -fprint-explicit-kinds -Wunused-imports
-    -Wno-missing-safe-haskell-mode -Wno-missing-kind-signatures
-    -Wno-operator-whitespace -Wno-unsafe
-    -Wno-prepositive-qualified-module -Wno-partial-fields
-    -Wno-monomorphism-restriction -Wno-missed-specialisations
-    -Wno-all-missed-specializations -Wno-unused-packages
-
-  default-extensions:
-    BangPatterns
-    BinaryLiterals
-    ConstrainedClassMethods
-    ConstraintKinds
-    DataKinds
-    DeriveAnyClass
-    DeriveDataTypeable
-    DeriveFoldable
-    DeriveFunctor
-    DeriveGeneric
-    DeriveLift
-    DeriveTraversable
-    DerivingStrategies
-    DerivingVia
-    DoAndIfThenElse
-    DuplicateRecordFields
-    EmptyCase
-    EmptyDataDecls
-    EmptyDataDeriving
-    ExistentialQuantification
-    ExplicitForAll
-    FlexibleContexts
-    FlexibleInstances
-    ForeignFunctionInterface
-    GADTSyntax
-    GeneralisedNewtypeDeriving
-    HexFloatLiterals
-    ImplicitPrelude
-    ImportQualifiedPost
-    InstanceSigs
-    KindSignatures
-    LambdaCase
-    MonomorphismRestriction
-    MultiParamTypeClasses
-    NamedFieldPuns
-    NamedWildCards
-    NoStarIsType
-    NumericUnderscores
-    OverloadedLabels
-    OverloadedRecordDot
-    OverloadedStrings
-    PackageImports
-    PartialTypeSignatures
-    PatternGuards
-    PolyKinds
-    PostfixOperators
-    QualifiedDo
-    RankNTypes
-    RecordWildCards
-    RelaxedPolyRec
-    ScopedTypeVariables
-    StandaloneDeriving
-    StandaloneKindSignatures
-    TupleSections
-    TypeApplications
-    TypeFamilies
-    TypeOperators
-    TypeSynonymInstances
-    UndecidableInstances
-    ViewPatterns
-
-  exposed-modules:    Midgard.Utils
-
-  -- Compile
-
-  build-depends:
-    , aeson
-    , aeson-pretty
-    , base
-    , base16-bytestring
-    , bytestring
-    , cardano-binary
-    , data-default
-    , generics-sop
-    , plutarch
-    , plutarch-extra
-    , plutarch-ledger-api
-    , plutus-core
-    , plutus-ledger-api
-    , plutus-tx
-    , serialise
-    , text
-
-  hs-source-dirs:     src
-
 common dependencies
   build-depends:
     , aeson
@@ -214,9 +111,7 @@ common dependencies
     , base16-bytestring
     , bytestring
     , cardano-binary
-    , cborg
     , data-default
-    , directory
     , plutarch
     , plutarch-extra
     , plutarch-ledger-api
@@ -226,29 +121,20 @@ common dependencies
     , serialise
     , text
 
+library
+  import:             lang, dependencies
+  exposed-modules:    Midgard.Utils
+  hs-source-dirs:     src
+
 executable midgard
   import:         lang
   main-is:        Main.hs
-
-  -- Modules included in this executable, other than Main.
-  -- other-modules:
-
-  -- LANGUAGE extensions used by modules in this package.
-  -- other-extensions:
   build-depends:
     , base
     , midgard-merkle
     , plutarch
     , plutarch-ledger-api
-
   hs-source-dirs: app
-
--- executable test-midgard
---   import:         lang, dependencies
---   main-is:        Test.hs
---   other-modules:  Testing.Eval
---   hs-source-dirs: src, src/Testing
---   build-depends:  migdard-contracts
 
 test-suite helpers-tests
   import:           lang, dependencies
@@ -263,5 +149,3 @@ test-suite helpers-tests
     , tasty
     , tasty-hunit
     , tasty-quickcheck
-
-  default-language: Haskell2010
