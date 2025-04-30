@@ -1,50 +1,32 @@
-import { Context, Effect, Layer, Redacted, Config } from "effect";
+import { Context, Effect, Layer, Redacted, Config, Scope } from "effect";
 import { PgClient } from "@effect/sql-pg";
 import { SqlClient, SqlError } from "@effect/sql";
-import { ConfigError } from "effect/ConfigError";
 import { NodeConfig, NodeConfigDep } from "@/config.js";
-import { initializeDb } from "../database/init.js";
+import { ConfigError } from "effect/ConfigError";
 
-const makeSqlClientService = Effect.gen(function* ($) {
-  const nodeConfig = yield* NodeConfig;
+export const createPgLayerEffect =
+  Effect.gen(function* () {
+    const nodeConfig = yield* NodeConfig;
+    const pgConfig = {
+      host: nodeConfig.POSTGRES_HOST,
+      username: nodeConfig.POSTGRES_USER,
+      password: Redacted.make(nodeConfig.POSTGRES_PASSWORD),
+      database: nodeConfig.POSTGRES_DB,
+      maxConnections: 20,
+      idleTimeout: 30,
+      connectTimeout: 2,
+    };
+    return PgClient.layer(pgConfig);
+  }).pipe(Effect.orDie);
 
-  const config = {
-    host: nodeConfig.POSTGRES_HOST,
-    database: nodeConfig.POSTGRES_DB,
-    username: nodeConfig.POSTGRES_USER,
-    password: Redacted.make(nodeConfig.POSTGRES_PASSWORD),
-  };
+const SqlClientLive: Layer.Layer<
+  SqlClient.SqlClient,
+  SqlError.SqlError | ConfigError,
+  NodeConfig
+> = Layer.unwrapEffect(createPgLayerEffect);
 
-  const baseClientLayer = PgClient.layer(config);
+export const Database = {
+  layer: SqlClientLive
+};
 
-  const getClientAndInitialize = Effect.gen(function* () {
-    const sqlClient = yield* SqlClient.SqlClient;
-    yield* initializeDb();
-    return sqlClient;
-  });
-
-  const clientEffect = Effect.provide(getClientAndInitialize, baseClientLayer);
-
-  const clientEffectWithErrorMapping = clientEffect.pipe(
-    Effect.mapError((error): SqlError.SqlError => {
-      if (error instanceof SqlError.SqlError) {
-        return error;
-      }
-      console.error("SqlClientService: Encountered unexpected error:", error);
-      return new SqlError.SqlError({
-        message: "An unexpected error occurred during SqlClient setup",
-        cause: error,
-      });
-    }),
-  );
-
-  return yield* clientEffectWithErrorMapping.pipe(Effect.orDie);
-}).pipe(Effect.orDie);
-
-export class SqlClientService extends Context.Tag("SqlClientService")<
-  SqlClientService,
-  SqlClient.SqlClient
->() {
-  static readonly layer: Layer.Layer<SqlClientService, never, NodeConfig> =
-    Layer.effect(SqlClientService, makeSqlClientService);
-}
+export type Database = SqlClient.SqlClient;
