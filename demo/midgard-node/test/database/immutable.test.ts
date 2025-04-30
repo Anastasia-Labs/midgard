@@ -1,8 +1,10 @@
 import { describe, it, expect } from "@effect/vitest";
 import { Effect, Option } from "effect";
 import { SqlClient, SqlError } from "@effect/sql";
+import type { ConfigError } from "effect/ConfigError";
+import { Buffer } from "node:buffer";
 
-import { testLayer } from "./runner";
+import { testSqlLayer } from "./runner";
 
 import {
   insert,
@@ -13,6 +15,11 @@ import {
   clear,
   tableName,
 } from "../../src/database/immutable.js";
+
+type Tx = {
+  txHash: Uint8Array | Buffer;
+  txCbor: Uint8Array | Buffer;
+};
 
 const makeHash = (value: number, length = 8): Uint8Array => {
   const arr = new Uint8Array(length);
@@ -35,158 +42,172 @@ const makeTx = (idVal: number): { txHash: Uint8Array; txCbor: Uint8Array } => ({
   txCbor: makeCbor(idVal * 10),
 });
 
+const compareTx = (a: Tx, b: Tx): boolean => {
+  return (
+    Buffer.compare(Buffer.from(a.txHash), Buffer.from(b.txHash)) === 0 &&
+    Buffer.compare(Buffer.from(a.txCbor), Buffer.from(b.txCbor)) === 0
+  );
+};
+
+const sortTxArray = (arr: ReadonlyArray<Tx>): ReadonlyArray<Tx> => {
+  return [...arr].sort((a, b) =>
+    Buffer.compare(Buffer.from(a.txHash), Buffer.from(b.txHash)),
+  );
+};
+
+const sortByteArray = (
+  arr: ReadonlyArray<Uint8Array | Buffer>,
+): ReadonlyArray<Uint8Array | Buffer> => {
+  return [...arr].sort((a, b) =>
+    Buffer.compare(Buffer.from(a), Buffer.from(b)),
+  );
+};
+
+const byteArraysToNumberArrays = (
+  arr: ReadonlyArray<Uint8Array | Buffer>,
+): number[][] => {
+  return arr.map((byteArr) => Array.from(byteArr));
+};
+
 describe("Immutable Database", () => {
-  it("should insert a single tx and retrieve all", () =>
-    Effect.gen(function* () {
-      const tx1 = makeTx(10);
+  it.effect("should insert a single tx and retrieve all", () =>
+    Effect.provide(
+      Effect.gen(function* () {
+        const tx1 = makeTx(10);
+        yield* clear();
+        yield* insert(tx1.txHash, tx1.txCbor);
+        const retrievedData = yield* retrieve();
+        expect(retrievedData.length).toBe(1);
+        expect(compareTx(retrievedData[0], tx1)).toBe(true);
+      }),
+      testSqlLayer,
+    ),
+  );
 
-      yield* clear();
-      yield* insert(tx1.txHash, tx1.txCbor);
+  it.effect("should insert multiple txs and retrieve all", () =>
+    Effect.provide(
+      Effect.gen(function* () {
+        const tx1 = makeTx(20);
+        const tx2 = makeTx(30);
+        const txsToInsert = [tx1, tx2];
+        yield* clear();
+        yield* insertTxs(txsToInsert);
+        const retrievedData = yield* retrieve();
+        expect(retrievedData.length).toBe(txsToInsert.length);
+        const sortedRetrieved = sortTxArray(retrievedData);
+        const sortedExpected = sortTxArray(txsToInsert);
+        expect(sortedRetrieved.length).toBe(sortedExpected.length);
+        for (let i = 0; i < sortedRetrieved.length; i++) {
+          expect(compareTx(sortedRetrieved[i], sortedExpected[i])).toBe(true);
+        }
+      }),
+      testSqlLayer,
+    ),
+  );
 
-      const retrievedData = yield* retrieve();
+  it.effect(
+    "should return an empty array when retrieving from an empty table",
+    () =>
+      Effect.provide(
+        Effect.gen(function* () {
+          yield* clear();
+          const retrievedData = yield* retrieve();
+          expect(retrievedData.length).toBe(0);
+          expect(retrievedData).toEqual([]);
+        }),
+        testSqlLayer,
+      ),
+  );
 
-      yield* Effect.try(() => expect(retrievedData.length).toBe(1));
-      yield* Effect.try(() =>
-        expect(Array.from(retrievedData[0].txHash)).toEqual(
-          Array.from(tx1.txHash),
-        ),
-      );
-      yield* Effect.try(() =>
-        expect(Array.from(retrievedData[0].txCbor)).toEqual(
-          Array.from(tx1.txCbor),
-        ),
-      );
-    }).pipe(Effect.provide(testLayer)));
+  it.effect("should clear the table", () =>
+    Effect.provide(
+      Effect.gen(function* () {
+        const tx1 = makeTx(40);
+        yield* clear();
+        yield* insert(tx1.txHash, tx1.txCbor);
+        const beforeClear = yield* retrieve();
+        expect(beforeClear.length).toBe(1);
+        yield* clear();
+        const afterClear = yield* retrieve();
+        expect(afterClear.length).toBe(0);
+      }),
+      testSqlLayer,
+    ),
+  );
 
-  it("should insert multiple txs and retrieve all", () =>
-    Effect.gen(function* () {
-      const tx1 = makeTx(20);
-      const tx2 = makeTx(30);
-      const txsToInsert = [tx1, tx2];
+  it.effect("should handle inserting an empty array of txs gracefully", () =>
+    Effect.provide(
+      Effect.gen(function* () {
+        yield* clear();
+        yield* insertTxs([]);
+        const retrievedData = yield* retrieve();
+        expect(retrievedData.length).toBe(0);
+      }),
+      testSqlLayer,
+    ),
+  );
 
-      yield* clear();
-      yield* insertTxs(txsToInsert);
+  it.effect("should retrieve tx cbor by hash", () =>
+    Effect.provide(
+      Effect.gen(function* () {
+        const tx1 = makeTx(50);
+        const tx2 = makeTx(60);
+        const nonExistentHash = makeHash(99);
+        yield* clear();
+        yield* insertTxs([tx1, tx2]);
+        const result1 = yield* retrieveTxCborByHash(tx1.txHash);
+        expect(Option.isSome(result1)).toBe(true);
+        if (Option.isSome(result1)) {
+          expect(Buffer.from(result1.value).toString("hex")).toEqual(
+            Buffer.from(tx1.txCbor).toString("hex"),
+          );
+        }
+        const result2 = yield* retrieveTxCborByHash(tx2.txHash);
+        expect(Option.isSome(result2)).toBe(true);
+        if (Option.isSome(result2)) {
+          expect(Buffer.from(result2.value).toString("hex")).toEqual(
+            Buffer.from(tx2.txCbor).toString("hex"),
+          );
+        }
+        const resultNone = yield* retrieveTxCborByHash(nonExistentHash);
+        expect(Option.isNone(resultNone)).toBe(true);
+      }),
+      testSqlLayer,
+    ),
+  );
 
-      const retrievedData = yield* retrieve();
+  it.effect("should retrieve multiple tx cbors by hashes", () =>
+    Effect.provide(
+      Effect.gen(function* () {
+        const tx1 = makeTx(70);
+        const tx2 = makeTx(80);
+        const tx3 = makeTx(90);
+        const nonExistentHash = makeHash(99);
+        const hashesToRetrieve = [tx1.txHash, tx3.txHash, nonExistentHash];
+        const expectedSubset = [tx1.txCbor, tx3.txCbor];
+        const allTxs = [tx1, tx2, tx3];
+        const allHashes = allTxs.map((tx) => tx.txHash);
+        const allExpectedCbors = allTxs.map((tx) => tx.txCbor);
 
-      yield* Effect.try(() =>
-        expect(retrievedData.length).toBe(txsToInsert.length),
-      );
+        yield* clear();
+        yield* insertTxs(allTxs);
 
-      const mapData = (d: { txHash: Uint8Array; txCbor: Uint8Array }) => ({
-        txHash: Array.from(d.txHash),
-        txCbor: Array.from(d.txCbor),
-      });
-      const sortData = (a: { txHash: number[] }, b: { txHash: number[] }) =>
-        a.txHash[0] - b.txHash[0];
-
-      const retrievedMapped = retrievedData.map(mapData).sort(sortData);
-      const expectedMapped = txsToInsert.map(mapData).sort(sortData);
-
-      yield* Effect.try(() => expect(retrievedMapped).toEqual(expectedMapped));
-    }).pipe(Effect.provide(testLayer)));
-
-  it("should return an empty array when retrieving from an empty table", () =>
-    Effect.gen(function* () {
-      yield* clear();
-      const retrievedData = yield* retrieve();
-      yield* Effect.try(() => expect(retrievedData.length).toBe(0));
-      yield* Effect.try(() => expect(retrievedData).toEqual([]));
-    }).pipe(Effect.provide(testLayer)));
-
-  it("should clear the table", () =>
-    Effect.gen(function* () {
-      const tx1 = makeTx(40);
-      yield* clear();
-      yield* insert(tx1.txHash, tx1.txCbor);
-
-      const beforeClear = yield* retrieve();
-      yield* Effect.try(() => expect(beforeClear.length).toBe(1));
-
-      yield* clear();
-
-      const afterClear = yield* retrieve();
-      yield* Effect.try(() => expect(afterClear.length).toBe(0));
-    }).pipe(Effect.provide(testLayer)));
-
-  it("should handle inserting an empty array of txs gracefully", () =>
-    Effect.gen(function* () {
-      yield* clear();
-      yield* insertTxs([]);
-      const retrievedData = yield* retrieve();
-      yield* Effect.try(() => expect(retrievedData.length).toBe(0));
-    }).pipe(Effect.provide(testLayer)));
-
-  it("should retrieve tx cbor by hash", () =>
-    Effect.gen(function* () {
-      const tx1 = makeTx(50);
-      const tx2 = makeTx(60);
-      const nonExistentHash = makeHash(99);
-
-      yield* clear();
-      yield* insertTxs([tx1, tx2]);
-
-      const result1 = yield* retrieveTxCborByHash(tx1.txHash);
-      yield* Effect.try(() => expect(Option.isSome(result1)).toBe(true));
-      if (Option.isSome(result1)) {
-        yield* Effect.try(() =>
-          expect(Array.from(result1.value)).toEqual(Array.from(tx1.txCbor)),
+        const resultSubset = yield* retrieveTxCborsByHashes(hashesToRetrieve);
+        expect(resultSubset.length).toBe(2);
+        expect(byteArraysToNumberArrays(sortByteArray(resultSubset))).toEqual(
+          byteArraysToNumberArrays(sortByteArray(expectedSubset)),
         );
-      }
 
-      const result2 = yield* retrieveTxCborByHash(tx2.txHash);
-      yield* Effect.try(() => expect(Option.isSome(result2)).toBe(true));
-      if (Option.isSome(result2)) {
-        yield* Effect.try(() =>
-          expect(Array.from(result2.value)).toEqual(Array.from(tx2.txCbor)),
+        const resultAll = yield* retrieveTxCborsByHashes(allHashes);
+        expect(resultAll.length).toBe(3);
+        expect(byteArraysToNumberArrays(sortByteArray(resultAll))).toEqual(
+          byteArraysToNumberArrays(sortByteArray(allExpectedCbors)),
         );
-      }
 
-      const resultNone = yield* retrieveTxCborByHash(nonExistentHash);
-      yield* Effect.try(() => expect(Option.isNone(resultNone)).toBe(true));
-    }).pipe(Effect.provide(testLayer)));
-
-  it("should retrieve multiple tx cbors by hashes", () =>
-    Effect.gen(function* () {
-      const tx1 = makeTx(70);
-      const tx2 = makeTx(80);
-      const tx3 = makeTx(90);
-      const nonExistentHash = makeHash(99);
-      const hashesToRetrieve = [tx1.txHash, tx3.txHash, nonExistentHash];
-      const allHashes = [tx1.txHash, tx2.txHash, tx3.txHash];
-
-      yield* clear();
-      yield* insertTxs([tx1, tx2, tx3]);
-
-      const resultSubset = yield* retrieveTxCborsByHashes(hashesToRetrieve);
-      yield* Effect.try(() => expect(resultSubset.length).toBe(2));
-
-      const mapCbor = (c: Uint8Array) => Array.from(c);
-      const sortCbor = (a: number[], b: number[]) => a[0] - b[0];
-
-      const retrievedSubsetMapped = resultSubset.map(mapCbor).sort(sortCbor);
-      const expectedSubsetMapped = [tx1.txCbor, tx3.txCbor]
-        .map(mapCbor)
-        .sort(sortCbor);
-      yield* Effect.try(() =>
-        expect(retrievedSubsetMapped).toEqual(expectedSubsetMapped),
-      );
-
-      const resultAll = yield* retrieveTxCborsByHashes(allHashes);
-      yield* Effect.try(() => expect(resultAll.length).toBe(3));
-      const retrievedAllMapped = resultAll.map(mapCbor).sort(sortCbor);
-      const expectedAllMapped = [tx1.txCbor, tx2.txCbor, tx3.txCbor]
-        .map(mapCbor)
-        .sort(sortCbor);
-      yield* Effect.try(() =>
-        expect(retrievedAllMapped).toEqual(expectedAllMapped),
-      );
-
-      const resultEmpty = yield* retrieveTxCborsByHashes([]);
-      yield* Effect.try(() => expect(resultEmpty.length).toBe(12));
-    }).pipe(Effect.provide(testLayer)));
-
-  it("should fail explicitly", () =>
-    Effect.fail("THIS_TEST_SHOULD_FAIL") // Explicitly fail the Effect
-      .pipe(Effect.provide(testLayer))); // Still need to provide the layer
+        const resultEmpty = yield* retrieveTxCborsByHashes([]);
+        expect(resultEmpty.length).toBe(0);
+      }),
+      testSqlLayer,
+    ),
+  );
 });
