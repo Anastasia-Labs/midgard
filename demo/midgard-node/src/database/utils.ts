@@ -1,7 +1,11 @@
 import { Option } from "effect";
-import { logAbort, logInfo } from "../utils.js";
 import { Effect } from "effect";
 import { SqlClient, SqlError } from "@effect/sql";
+
+export const mapSqlError = Effect.mapError(
+  (sqlError: SqlError.SqlError) =>
+    new Error(`SQL Error (${sqlError._tag}): ${JSON.stringify(sqlError)}`),
+);
 
 export const clearUTxOs = (
   tableName: string,

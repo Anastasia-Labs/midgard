@@ -25,7 +25,7 @@ const runGlobalEffect = async (
         any,
         ConfigError | SqlError.SqlError | Error,
         never
-      >, // Add expected Error type
+      >,
     );
   } catch (error) {
     console.error(

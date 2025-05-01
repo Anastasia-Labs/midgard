@@ -3,6 +3,7 @@ import { SqlClient, SqlError } from "@effect/sql";
 import {
   clearTable,
   insertUTxOsCBOR,
+  mapSqlError,
   retrieveUTxOsCBOR,
   clearUTxOs as utilsClearUTxOs,
 } from "./utils.js";
@@ -16,6 +17,13 @@ export const createQuery = `
     PRIMARY KEY (tx_in_cbor)
   );
 `;
+
+export const clone = (): Effect.Effect<void, Error, SqlClient.SqlClient> =>
+  Effect.gen(function* () {
+    yield* Effect.logInfo(`${tableName} db: attempt to clone`);
+    const sql = yield* SqlClient.SqlClient;
+    yield* sql`INSERT INTO ${sql(tableName)} SELECT * FROM ${sql(tableName)}`;
+  }).pipe(mapSqlError);
 
 export const insert = (
   utxosCBOR: { outputReference: Uint8Array; output: Uint8Array }[],

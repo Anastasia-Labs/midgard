@@ -1,6 +1,6 @@
 import { parentPort, workerData } from "worker_threads";
 import * as SDK from "@al-ft/midgard-sdk";
-import { Effect, Schedule, pipe } from "effect";
+import { Effect, Redacted, Schedule, Scope, pipe } from "effect";
 import {
   WorkerInput,
   WorkerOutput,
@@ -18,31 +18,26 @@ import {
 } from "@/database/index.js";
 import { handleSignSubmit } from "@/transactions/utils.js";
 import { fromHex } from "@lucid-evolution/lucid";
-import postgres from "postgres";
+import { SqlClient, SqlError } from "@effect/sql";
+import { ConfigError } from "effect/ConfigError";
+import { Database } from "../services/database.js";
 
 const wrapper = (
   _input: WorkerInput,
-): Effect.Effect<WorkerOutput, Error, NodeConfig | User> =>
+): Effect.Effect<
+  WorkerOutput,
+  Error | SqlError.SqlError,
+  NodeConfig | User | Database
+> =>
   // ) =>
   Effect.gen(function* () {
     const nodeConfig = yield* NodeConfig;
     const { user: lucid } = yield* User;
 
-    const db = postgres({
-      host: nodeConfig.POSTGRES_HOST,
-      username: nodeConfig.POSTGRES_USER,
-      password: nodeConfig.POSTGRES_PASSWORD,
-      database: nodeConfig.POSTGRES_DB,
-      max: 20,
-      idle_timeout: 30,
-      connect_timeout: 2,
-    });
-
     yield* Effect.logInfo("🔹 Retrieving all mempool transactions...");
-    const mempoolTxs = yield* Effect.tryPromise({
-      try: () => MempoolDB.retrieve(db),
-      catch: (e) => new Error(`${e}`),
-    }).pipe(Effect.withSpan("retrieve mempool transaction"));
+    const mempoolTxs = yield* MempoolDB.retrieve().pipe(
+      Effect.withSpan("retrieve mempool transaction"),
+    );
 
     const mempoolTxsCount = mempoolTxs.length;
 
@@ -69,17 +64,9 @@ const wrapper = (
       const utxoTrie = new Trie(utxoStore);
       const txsTrie = new Trie(txsStore);
 
-      yield* Effect.tryPromise({
-        try: () => LatestLedgerCloneDB.clear(db),
-        catch: (e) => new Error(`${e}`),
-      });
-      yield* Effect.tryPromise({
-        try: () => db`
-          INSERT INTO ${db(LatestLedgerCloneDB.tableName)}
-          SELECT * FROM ${db(LatestLedgerCloneDB.tableName)}
-        `,
-        catch: (e) => new Error(`${e}`),
-      });
+      yield* LatestLedgerCloneDB.clear();
+
+      yield* LatestLedgerCloneDB.clone();
 
       const mempoolTxHashes: Uint8Array[] = [];
       let sizeOfBlocksTxs = 0;
@@ -103,21 +90,12 @@ const wrapper = (
             txCbor,
           ).pipe(Effect.withSpan("findSpentAndProducedUTxOs"));
 
-          yield* Effect.tryPromise({
-            try: () => LatestLedgerCloneDB.clearUTxOs(db, spent),
-            catch: (e) => new Error(`${e}`),
-          });
-          yield* Effect.tryPromise({
-            try: () => LatestLedgerCloneDB.insert(db, produced),
-            catch: (e) => new Error(`${e}`),
-          });
+          yield* LatestLedgerCloneDB.clearUTxOs(spent);
+          yield* LatestLedgerCloneDB.insert(produced);
         }),
       );
 
-      const updatedLatestLedgerUTxOs = yield* Effect.tryPromise({
-        try: () => LatestLedgerCloneDB.retrieve(db),
-        catch: (e) => new Error(`${e}`),
-      });
+      const updatedLatestLedgerUTxOs = yield* LatestLedgerCloneDB.retrieve();
 
       const txRoot = txsTrie.hash.toString("hex");
 
@@ -204,48 +182,30 @@ const wrapper = (
       const batchSize = 100;
 
       yield* Effect.logInfo("🔹 Clearing LatestLedgerDB...");
-      yield* Effect.tryPromise({
-        try: () => LatestLedgerDB.clear(db),
-        catch: (e) => new Error(`${e}`),
-      });
+      yield* LatestLedgerDB.clear();
 
       yield* Effect.logInfo("🔹 Inserting updated UTxO set LatestLedgerDB...");
-      yield* Effect.tryPromise({
-        try: () => db`
-          INSERT INTO ${db(LatestLedgerCloneDB.tableName)}
-          SELECT * FROM ${db(LatestLedgerCloneDB.tableName)}
-        `,
-        catch: (e) => new Error(`${e}`),
-      });
+      yield* LatestLedgerCloneDB.clone();
 
       yield* Effect.logInfo(
         "🔹 Inserting included transactions into ImmutableDB and BlocksDB...",
       );
       for (let i = 0; i < mempoolTxsCount; i += batchSize) {
-        yield* Effect.tryPromise({
-          try: () =>
-            ImmutableDB.insertTxs(db, mempoolTxs.slice(i, i + batchSize)),
-          catch: (e) => new Error(`${e}`),
-        }).pipe(Effect.withSpan(`immutable-db-insert-${i}`));
-
-        yield* Effect.tryPromise({
-          try: () =>
-            BlocksDB.insert(
-              db,
-              fromHex(newHeaderHash),
-              mempoolTxHashes.slice(i, i + batchSize),
-            ),
-          catch: (e) => new Error(`${e}`),
-        }).pipe(Effect.withSpan(`immutable-db-insert-${i}`));
+        yield* ImmutableDB.insertTxs(mempoolTxs.slice(i, i + batchSize)).pipe(
+          Effect.withSpan(`immutable-db-insert-${i}`),
+        );
+        yield* BlocksDB.insert(
+          fromHex(newHeaderHash),
+          mempoolTxHashes.slice(i, i + batchSize),
+        ).pipe(Effect.withSpan(`blocks-db-insert-${i}`));
       }
 
       yield* Effect.logInfo(
         "🔹 Clearing included transactions from MempoolDB...",
       );
-      yield* Effect.tryPromise({
-        try: () => MempoolDB.clearTxs(db, mempoolTxHashes),
-        catch: (e) => new Error(`${e}`),
-      }).pipe(Effect.withSpan("clear mempool"));
+      yield* MempoolDB.clearTxs(mempoolTxHashes).pipe(
+        Effect.withSpan("clear mempool"),
+      );
 
       const output: WorkerOutput = {
         txSize,
@@ -273,6 +233,7 @@ const inputData = workerData as WorkerInput;
 
 const program = pipe(
   wrapper(inputData),
+  Effect.provide(Database.layer),
   Effect.provide(User.layer),
   Effect.provide(NodeConfig.layer),
 );

@@ -10,7 +10,9 @@ import { Effect, Schedule } from "effect";
 import pg from "pg";
 import * as BlocksDB from "../database/blocks.js";
 import * as ImmutableDB from "../database/immutable.js";
-import { Sql } from "postgres";
+import { Database } from "@/services/database.js";
+import { SqlError } from "@effect/sql/SqlError";
+import { SqlClient } from "@effect/sql";
 
 /**
  * Handle the signing and submission of a transaction.
@@ -74,21 +76,18 @@ export const handleSignSubmitWithoutConfirmation = (
  */
 export const fetchFirstBlockTxs = (
   firstBlockUTxO: UTxO,
-  db: Sql,
-): Effect.Effect<{ txs: Uint8Array[]; headerHash: string }, Error> =>
+): Effect.Effect<
+  { txs: Uint8Array[]; headerHash: string },
+  Error | SqlError,
+  Database
+> =>
   Effect.gen(function* () {
     const blockHeader = yield* SDK.Utils.getHeaderFromBlockUTxO(firstBlockUTxO);
     const headerHash = yield* SDK.Utils.hashHeader(blockHeader);
-    const txHashes = yield* Effect.tryPromise({
-      try: () => BlocksDB.retrieveTxHashesByBlockHash(db, fromHex(headerHash)),
-      catch: (e) => new Error(`${e}`),
-    });
-    const txs = yield* Effect.tryPromise({
-      try: () => ImmutableDB.retrieveTxCborsByHashes(db, txHashes),
-      catch: (e) => {
-        return new Error(`${e}`);
-      },
-    });
+    const txHashes = yield* BlocksDB.retrieveTxHashesByBlockHash(
+      fromHex(headerHash),
+    );
+    const txs = yield* ImmutableDB.retrieveTxCborsByHashes(txHashes);
     return { txs, headerHash };
   });
 
