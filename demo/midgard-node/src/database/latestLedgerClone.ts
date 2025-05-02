@@ -27,22 +27,19 @@ export const clone = (): Effect.Effect<void, Error, SqlClient.SqlClient> =>
 
 export const insert = (
   utxosCBOR: { outputReference: Uint8Array; output: Uint8Array }[],
-): Effect.Effect<void, SqlError.SqlError, SqlClient.SqlClient> =>
+): Effect.Effect<void, Error, SqlClient.SqlClient> =>
   insertUTxOsCBOR(tableName, utxosCBOR);
 
 export const retrieve = (): Effect.Effect<
   { outputReference: Uint8Array; output: Uint8Array }[],
-  SqlError.SqlError,
+  Error,
   SqlClient.SqlClient
 > => retrieveUTxOsCBOR(tableName);
 
 export const clearUTxOs = (
   refs: Uint8Array[],
-): Effect.Effect<void, SqlError.SqlError, SqlClient.SqlClient> =>
+): Effect.Effect<void, Error, SqlClient.SqlClient> =>
   utilsClearUTxOs(tableName, refs);
 
-export const clear = (): Effect.Effect<
-  void,
-  SqlError.SqlError,
-  SqlClient.SqlClient
-> => clearTable(tableName);
+export const clear = (): Effect.Effect<void, Error, SqlClient.SqlClient> =>
+  clearTable(tableName);

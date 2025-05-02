@@ -10,7 +10,7 @@ export const mapSqlError = Effect.mapError(
 export const clearUTxOs = (
   tableName: string,
   refs: Uint8Array[],
-): Effect.Effect<void, SqlError.SqlError, SqlClient.SqlClient> =>
+): Effect.Effect<void, Error, SqlClient.SqlClient> =>
   Effect.gen(function* () {
     yield* Effect.logDebug(`${tableName} db: attempt to clear UTXOs by refs`);
     const sql = yield* SqlClient.SqlClient;
@@ -33,12 +33,13 @@ export const clearUTxOs = (
         `${tableName} db: clearing UTXOs error: ${JSON.stringify(e)}`,
       ),
     ),
+    mapSqlError,
   );
 
 export const clearTxs = (
   tableName: string,
   txHashes: Uint8Array[],
-): Effect.Effect<void, SqlError.SqlError, SqlClient.SqlClient> =>
+): Effect.Effect<void, Error, SqlClient.SqlClient> =>
   Effect.gen(function* () {
     yield* Effect.logDebug(`${tableName} db: attempt to clear txs by hashes`);
     const sql = yield* SqlClient.SqlClient;
@@ -59,16 +60,13 @@ export const clearTxs = (
         `${tableName} db: txs removing error: ${JSON.stringify(e)}`,
       ),
     ),
+    mapSqlError,
   );
 
 export const retrieveTxCborByHash = (
   tableName: string,
   txHash: Uint8Array,
-): Effect.Effect<
-  Option.Option<Uint8Array>,
-  SqlError.SqlError,
-  SqlClient.SqlClient
-> =>
+): Effect.Effect<Option.Option<Uint8Array>, Error, SqlClient.SqlClient> =>
   Effect.gen(function* () {
     yield* Effect.logDebug(
       `${tableName} db: attempt retrieve tx_cbor for hash ${txHash}`,
@@ -95,12 +93,13 @@ export const retrieveTxCborByHash = (
         `${tableName} db: retrieving tx_cbor error: ${JSON.stringify(e)}`,
       ),
     ),
+    mapSqlError,
   );
 
 export const retrieveTxCborsByHashes = (
   tableName: string,
   txHashes: Uint8Array[],
-): Effect.Effect<Uint8Array[], SqlError.SqlError, SqlClient.SqlClient> =>
+): Effect.Effect<Uint8Array[], Error, SqlClient.SqlClient> =>
   Effect.gen(function* () {
     yield* Effect.logDebug(
       `${tableName} db: attempt retrieve tx_cbors for hashes`,
@@ -131,12 +130,13 @@ export const retrieveTxCborsByHashes = (
         `${tableName} db: retrieving tx_cbors error: ${JSON.stringify(e)}`,
       ),
     ),
+    mapSqlError,
   );
 
 export const insertUTxOsCBOR = (
   tableName: string,
   utxosCBOR: { outputReference: Uint8Array; output: Uint8Array }[],
-): Effect.Effect<void, SqlError.SqlError, SqlClient.SqlClient> =>
+): Effect.Effect<void, Error, SqlClient.SqlClient> =>
   Effect.gen(function* () {
     yield* Effect.logInfo(`${tableName} db: attempt to insert utxos`);
     const sql = yield* SqlClient.SqlClient;
@@ -163,6 +163,7 @@ export const insertUTxOsCBOR = (
         `${tableName} db: error inserting utxos: ${JSON.stringify(e)}`,
       ),
     ),
+    mapSqlError,
     Effect.asVoid, // Ensure the final effect is void
   );
 
@@ -170,7 +171,7 @@ export const retrieveUTxOsCBOR = (
   tableName: string,
 ): Effect.Effect<
   { outputReference: Uint8Array; output: Uint8Array }[],
-  SqlError.SqlError,
+  Error,
   SqlClient.SqlClient
 > =>
   Effect.gen(function* () {
@@ -196,11 +197,12 @@ export const retrieveUTxOsCBOR = (
         `${tableName} db: retrieving utxos error: ${JSON.stringify(e)}`,
       ),
     ),
+    mapSqlError,
   );
 
 export const clearTable = (
   tableName: string,
-): Effect.Effect<void, SqlError.SqlError, SqlClient.SqlClient> =>
+): Effect.Effect<void, Error, SqlClient.SqlClient> =>
   Effect.gen(function* () {
     yield* Effect.logDebug(`${tableName} db: attermt to clear table`);
     const sql = yield* SqlClient.SqlClient;
@@ -213,4 +215,5 @@ export const clearTable = (
     Effect.tapErrorTag("SqlError", (e) =>
       Effect.logError(`${tableName} db: clearing error: ${JSON.stringify(e)}`),
     ),
+    mapSqlError,
   );

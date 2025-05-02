@@ -1,7 +1,7 @@
-import { Context, Effect, Layer, Redacted, Config, Scope } from "effect";
+import { Effect, Layer, Redacted } from "effect";
 import { PgClient } from "@effect/sql-pg";
 import { SqlClient, SqlError } from "@effect/sql";
-import { NodeConfig, NodeConfigDep } from "@/config.js";
+import { NodeConfig } from "@/config.js";
 import { ConfigError } from "effect/ConfigError";
 
 export const createPgLayerEffect = Effect.gen(function* () {

@@ -24,11 +24,7 @@ import { Database } from "../services/database.js";
 
 const wrapper = (
   _input: WorkerInput,
-): Effect.Effect<
-  WorkerOutput,
-  Error | SqlError.SqlError,
-  NodeConfig | User | Database
-> =>
+): Effect.Effect<WorkerOutput, Error, NodeConfig | User | Database> =>
   // ) =>
   Effect.gen(function* () {
     const nodeConfig = yield* NodeConfig;

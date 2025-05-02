@@ -56,11 +56,7 @@ type EndpointResponse<R> =
 
 const getTxEndpoint = (
   txHash: unknown,
-): Effect.Effect<
-  EndpointResponse<{ tx: Uint8Array }>,
-  SqlError.SqlError | Error,
-  Database
-> =>
+): Effect.Effect<EndpointResponse<{ tx: Uint8Array }>, Error, Database> =>
   Effect.gen(function* () {
     if (
       typeof txHash !== "string" ||
@@ -103,7 +99,7 @@ const getUtxosEndpoint = (
   EndpointResponse<{
     utxos: { outputReference: Uint8Array; output: Uint8Array }[];
   }>,
-  SqlError.SqlError | Error,
+  Error,
   Database
 > =>
   Effect.gen(function* () {
@@ -146,7 +142,7 @@ const getBlockEndpoint = (
   hdrHash: unknown,
 ): Effect.Effect<
   EndpointResponse<Uint8Array<ArrayBufferLike>[]>,
-  SqlError.SqlError | Error,
+  Error,
   Database
 > =>
   Effect.gen(function* () {
@@ -178,7 +174,7 @@ const getBlockEndpoint = (
 
 const getInitEndpoint = (): Effect.Effect<
   EndpointResponse<{ message: string }>,
-  SqlError.SqlError | Error,
+  Error,
   Database | User | AlwaysSucceedsContract
 > =>
   Effect.gen(function* () {
@@ -202,7 +198,7 @@ const getInitEndpoint = (): Effect.Effect<
 
 const getCommitEndpoint = (): Effect.Effect<
   EndpointResponse<{ message: string }>,
-  SqlError.SqlError | Error,
+  Error,
   Database
 > =>
   Effect.gen(function* () {
@@ -228,7 +224,7 @@ const getCommitEndpoint = (): Effect.Effect<
 
 const getMergeEndpoint = (): Effect.Effect<
   EndpointResponse<{ message: string }>,
-  SqlError.SqlError | Error,
+  Error,
   Database | User | AlwaysSucceedsContract
 > =>
   Effect.gen(function* () {
@@ -258,7 +254,7 @@ const getMergeEndpoint = (): Effect.Effect<
 
 const getResetEndpoint = (): Effect.Effect<
   EndpointResponse<{ message: string }>,
-  SqlError.SqlError | Error,
+  Error,
   Database | User | AlwaysSucceedsContract
 > =>
   Effect.gen(function* () {
@@ -293,7 +289,7 @@ const postSubmitEndpoint = (
   txString: unknown,
 ): Effect.Effect<
   EndpointResponse<{ message: string }>,
-  SqlError.SqlError | Error,
+  Error,
   Database | User
 > =>
   Effect.gen(function* () {

@@ -1,6 +1,6 @@
 import { Effect, Option } from "effect";
 import { SqlClient, SqlError } from "@effect/sql";
-import { clearTable } from "./utils.js";
+import { clearTable, mapSqlError } from "./utils.js";
 
 export const tableName = "blocks";
 
@@ -18,7 +18,7 @@ interface BlockRow {
 export const insert = (
   headerHash: Uint8Array,
   txHashes: Uint8Array[],
-): Effect.Effect<void, SqlError.SqlError, SqlClient.SqlClient> =>
+): Effect.Effect<void, Error, SqlClient.SqlClient> =>
   Effect.gen(function* () {
     yield* Effect.logInfo(`${tableName} db: attempt to insert blocks`);
     const sql = yield* SqlClient.SqlClient;
@@ -43,12 +43,13 @@ export const insert = (
       Effect.logError(`${tableName} db: inserting error: ${JSON.stringify(e)}`),
     ),
     Effect.withLogSpan(`insert ${tableName}`),
+    mapSqlError,
     Effect.asVoid,
   );
 
 export const retrieveTxHashesByBlockHash = (
   blockHash: Uint8Array,
-): Effect.Effect<Uint8Array[], SqlError.SqlError, SqlClient.SqlClient> =>
+): Effect.Effect<Uint8Array[], Error, SqlClient.SqlClient> =>
   Effect.gen(function* () {
     yield* Effect.logDebug(
       `${tableName} db: attempt retrieve tx_hashes for block ${blockHash}`,
@@ -72,15 +73,12 @@ export const retrieveTxHashesByBlockHash = (
         `${tableName} db: retrieving tx_hashes error: ${JSON.stringify(e)}`,
       ),
     ),
+    mapSqlError,
   );
 
 export const retrieveBlockHashByTxHash = (
   txHash: Uint8Array,
-): Effect.Effect<
-  Option.Option<Uint8Array>,
-  SqlError.SqlError,
-  SqlClient.SqlClient
-> =>
+): Effect.Effect<Option.Option<Uint8Array>, Error, SqlClient.SqlClient> =>
   Effect.gen(function* () {
     yield* Effect.logDebug(
       `${tableName} db: attempt retrieve block_hash for tx_hash ${txHash}`,
@@ -107,11 +105,12 @@ export const retrieveBlockHashByTxHash = (
         `${tableName} db: retrieving block_hash error: ${JSON.stringify(e)}`,
       ),
     ),
+    mapSqlError,
   );
 
 export const clearBlock = (
   blockHash: Uint8Array,
-): Effect.Effect<void, SqlError.SqlError, SqlClient.SqlClient> =>
+): Effect.Effect<void, Error, SqlClient.SqlClient> =>
   Effect.gen(function* () {
     yield* Effect.logDebug(`${tableName} db: attempt clear block ${blockHash}`);
     const sql = yield* SqlClient.SqlClient;
@@ -130,11 +129,12 @@ export const clearBlock = (
         `${tableName} db: clearing block error: ${JSON.stringify(e)}`,
       ),
     ),
+    mapSqlError,
   );
 
 export const retrieve = (): Effect.Effect<
   [Uint8Array, Uint8Array][],
-  SqlError.SqlError,
+  Error,
   SqlClient.SqlClient
 > =>
   Effect.gen(function* () {
@@ -154,10 +154,8 @@ export const retrieve = (): Effect.Effect<
         `${tableName} db: retrieving error: ${JSON.stringify(e)}`,
       ),
     ),
+    mapSqlError,
   );
 
-export const clear = (): Effect.Effect<
-  void,
-  SqlError.SqlError,
-  SqlClient.SqlClient
-> => clearTable(tableName).pipe(Effect.withLogSpan(`clear ${tableName}`));
+export const clear = (): Effect.Effect<void, Error, SqlClient.SqlClient> =>
+  clearTable(tableName).pipe(Effect.withLogSpan(`clear ${tableName}`));

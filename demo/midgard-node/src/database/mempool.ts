@@ -5,6 +5,7 @@ import {
   retrieveTxCborByHash as utilsRetrieveTxCborByHash,
   retrieveTxCborsByHashes as utilsRetrieveTxCborsByHashes,
   clearTxs as utilsClearTxs,
+  mapSqlError,
 } from "./utils.js";
 
 export const tableName = "mempool";
@@ -20,7 +21,7 @@ export const createQuery = `
 export const insert = (
   txHash: Uint8Array,
   txCbor: Uint8Array,
-): Effect.Effect<void, SqlError.SqlError, SqlClient.SqlClient> =>
+): Effect.Effect<void, Error, SqlClient.SqlClient> =>
   Effect.gen(function* () {
     yield* Effect.logInfo(`${tableName} db: attempt to insert tx`);
     const sql = yield* SqlClient.SqlClient;
@@ -37,24 +38,22 @@ export const insert = (
       ),
     ),
     Effect.asVoid,
+    mapSqlError,
   );
 
 export const retrieveTxCborByHash = (
   txHash: Uint8Array,
-): Effect.Effect<
-  Option.Option<Uint8Array>,
-  SqlError.SqlError,
-  SqlClient.SqlClient
-> => utilsRetrieveTxCborByHash(tableName, txHash);
+): Effect.Effect<Option.Option<Uint8Array>, Error, SqlClient.SqlClient> =>
+  utilsRetrieveTxCborByHash(tableName, txHash);
 
 export const retrieveTxCborsByHashes = (
   txHashes: Uint8Array[],
-): Effect.Effect<Uint8Array[], SqlError.SqlError, SqlClient.SqlClient> =>
+): Effect.Effect<Uint8Array[], Error, SqlClient.SqlClient> =>
   utilsRetrieveTxCborsByHashes(tableName, txHashes);
 
 export const retrieve = (): Effect.Effect<
   { txHash: Uint8Array; txCbor: Uint8Array }[],
-  SqlError.SqlError,
+  Error,
   SqlClient.SqlClient
 > =>
   Effect.gen(function* () {
@@ -80,15 +79,13 @@ export const retrieve = (): Effect.Effect<
         `${tableName} db: retrieving txs error: ${JSON.stringify(e)}`,
       ),
     ),
+    mapSqlError,
   );
 
 export const clearTxs = (
   txHashes: Uint8Array[],
-): Effect.Effect<void, SqlError.SqlError, SqlClient.SqlClient> =>
+): Effect.Effect<void, Error, SqlClient.SqlClient> =>
   utilsClearTxs(tableName, txHashes);
 
-export const clear = (): Effect.Effect<
-  void,
-  SqlError.SqlError,
-  SqlClient.SqlClient
-> => clearTable(tableName);
+export const clear = (): Effect.Effect<void, Error, SqlClient.SqlClient> =>
+  clearTable(tableName);

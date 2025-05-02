@@ -8,6 +8,7 @@ import * as MempoolLedgerDB from "./mempoolLedger.js";
 
 import { Effect } from "effect";
 import { SqlClient, SqlError } from "@effect/sql";
+import { mapSqlError } from "./utils.js";
 
 const executeCreateQuery = (
   sql: SqlClient.SqlClient,
@@ -28,7 +29,7 @@ const executeCreateQuery = (
 
 export const initializeDb = (): Effect.Effect<
   void,
-  SqlError.SqlError,
+  Error,
   SqlClient.SqlClient
 > =>
   Effect.gen(function* () {
@@ -50,4 +51,5 @@ export const initializeDb = (): Effect.Effect<
       Effect.logError("Database initialization failed", e),
     ),
     Effect.asVoid,
+    mapSqlError,
   );
