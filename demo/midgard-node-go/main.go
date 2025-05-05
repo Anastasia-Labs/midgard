@@ -3,12 +3,10 @@ package main
 import (
 	"fmt"
 	"os"
-	"strings"
 
 	"github.com/Anastasia-Labs/midgard-node-go/cmd"
-	"github.com/Anastasia-Labs/midgard-node-go/config"
+	"github.com/Anastasia-Labs/midgard-node-go/pkg"
 	"github.com/spf13/cobra"
-	"github.com/spf13/viper"
 )
 
 var rootCmd = &cobra.Command{
@@ -19,13 +17,7 @@ var rootCmd = &cobra.Command{
 }
 
 func init() {
-	var configValue string
-	rootCmd.PersistentFlags().StringVarP(&configValue, "config-file", "c", "./config/config.toml", "config file?")
-	configFiles := strings.Split(configValue, ";")
-	err := config.ReadConfig(viper.GetViper(), configFiles)
-	if err != nil {
-		panic("Load config: " + err.Error())
-	}
+	pkg.AddConfigFlag(rootCmd)
 	rootCmd.AddCommand(cmd.NodeCmd)
 
 }

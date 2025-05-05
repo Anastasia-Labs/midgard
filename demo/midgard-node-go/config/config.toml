@@ -3,6 +3,10 @@ level = "info"
 
 [node]
 peers = []
+providerkey = ""
+network = "preprod"
+provider = "blockfrost"
+seedphrase = ""
 
 [crypto]
 keypath = "./config/node_private_key.pem"

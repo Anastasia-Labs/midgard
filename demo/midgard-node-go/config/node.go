@@ -5,17 +5,25 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/Anastasia-Labs/midgard-node-go/pkg"
 	"github.com/spf13/viper"
 )
 
 type NodeConfig struct {
+	ProviderKey   string
+	Network       string
+	SeedPhrase    string
 	CryptoKeyPath string
 	Peers         []string
 	LogLevel      string
 }
 
 func NewNodeConfig() (*NodeConfig, error) {
+	pkg.LoadConfig()
 	return &NodeConfig{
+		ProviderKey:   viper.GetString("node.providerkey"),
+		Network:       viper.GetString("node.network"),
+		SeedPhrase:    viper.GetString("node.seedphrase"),
 		CryptoKeyPath: viper.GetString("crypto.keypath"),
 		Peers:         viper.GetStringSlice("node.peers"),
 		LogLevel:      viper.GetString("logger.loglevel"),

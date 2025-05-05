@@ -46,7 +46,7 @@ var NodeCmd = &cobra.Command{
 		logger.Info("Read node config success!!!")
 		logger.Debug("Create node controller...")
 		ctx := context.Background()
-		nodectl, err := controller.NewNodeController(cfg.Peers, cfg.CryptoKeyPath, ctx, logger)
+		nodectl, err := controller.NewNodeController(cfg, ctx, logger)
 		restAPIRouter := gin.Default()
 		pprof.Register(restAPIRouter)
 		metrics := nodectl.RegisterMetrics(GetMetricsOpts())
@@ -60,6 +60,7 @@ var NodeCmd = &cobra.Command{
 		{
 			v1.POST("/tx", nodectl.SubmitTx)
 			v1.GET("/mempool", nodectl.GetMempool)
+			v1.GET("/init", nodectl.InitProtocol)
 		}
 		server := &http.Server{
 			Addr:    ":8080",
