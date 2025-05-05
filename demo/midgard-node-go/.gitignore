@@ -1,0 +1,53 @@
+# Binaries for programs and plugins
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.bin
+*.zip
+
+# Build artifacts
+*.test
+*.out
+*.log
+
+# IDE and editor files
+.DS_Store
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Dependency directories
+vendor/
+go.work.sum
+
+# Environment and configuration files
+.env
+.env.*
+.envrc
+*.local
+
+# Private keys and certificates
+*.pem
+*.key
+*.crt
+
+# Temporary files
+*.tmp
+*.bak
+*.old
+*.ignore
+.private
+
+# Coverage and test reports
+*.cover
+*.coverage
+*.csv
+*.json
+*.html
+
+# Docker-related files
+.dockerignore
+Dockerfile.test

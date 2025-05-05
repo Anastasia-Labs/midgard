@@ -1,0 +1,8 @@
+[logger]
+level = "info"
+
+[node]
+peers = []
+
+[crypto]
+keypath = "./config/node_private_key.pem"
