@@ -61,6 +61,7 @@ var NodeCmd = &cobra.Command{
 			v1.POST("/tx", nodectl.SubmitTx)
 			v1.GET("/mempool", nodectl.GetMempool)
 			v1.GET("/init", nodectl.InitProtocol)
+			v1.GET("/reset", nodectl.ResetProtocol)
 		}
 		server := &http.Server{
 			Addr:    ":8080",

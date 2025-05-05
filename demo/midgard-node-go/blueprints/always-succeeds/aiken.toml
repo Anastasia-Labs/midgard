@@ -1,0 +1,18 @@
+name = "anastasia-labs/aiken-always-succeeds"
+version = "0.0.0"
+compiler = "v1.1.9"
+plutus = "v3"
+license = "Apache-2.0"
+description = "Aiken contracts for project 'anastasia-labs/aiken-always-succeeds'"
+
+[repository]
+user = "anastasia-labs"
+project = "aiken-always-succeeds"
+platform = "github"
+
+[[dependencies]]
+name = "aiken-lang/stdlib"
+version = "v2.2.0"
+source = "github"
+
+[config]

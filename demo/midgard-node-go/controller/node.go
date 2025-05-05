@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/Anastasia-Labs/midgard-node-go/config"
+	"github.com/Anastasia-Labs/midgard-node-go/contracts"
 	"github.com/Anastasia-Labs/midgard-node-go/entity"
 	"github.com/Salvionied/apollo"
 	"github.com/Salvionied/apollo/constants"
@@ -19,14 +20,15 @@ import (
 )
 
 type NodeController struct {
-	chainCtx   BlockFrostChainContext.BlockFrostChainContext
-	seedPhrase string
-	node       *entity.Node
-	mempool    *entity.Mempool
-	peers      []string
-	metrics    entity.Metrics
-	logger     *zap.SugaredLogger
-	ctx        context.Context
+	chainCtx     BlockFrostChainContext.BlockFrostChainContext
+	seedPhrase   string
+	contractInfo *contracts.ContractInfo
+	node         *entity.Node
+	mempool      *entity.Mempool
+	peers        []string
+	metrics      entity.Metrics
+	logger       *zap.SugaredLogger
+	ctx          context.Context
 }
 
 func NewNodeController(cfg *config.NodeConfig, ctx context.Context, logger *zap.SugaredLogger) (*NodeController, error) {
@@ -73,6 +75,12 @@ func NewNodeController(cfg *config.NodeConfig, ctx context.Context, logger *zap.
 		logger.Error("BlockFrostChainContext", zap.Error(err))
 		return nil, err
 	}
+	ci, err := contracts.GetContractInfo()
+	if err != nil {
+		logger.Error("GetContracts", zap.Error(err))
+		return nil, err
+	}
+	nodectl.contractInfo = ci
 	return nodectl, nil
 }
 
@@ -106,8 +114,13 @@ func (n *NodeController) InitProtocol(c *gin.Context) {
 
 	builder := apollo.New(&cc)
 	builder, err := builder.SetWalletFromMnemonic(n.seedPhrase, constants.PREPROD)
+	if err != nil {
+		n.logger.Debug(err)
+	}
 	builder, err = builder.SetWalletAsChangeAddress()
-
+	if err != nil {
+		n.logger.Debug(err)
+	}
 	utxos, err := n.chainCtx.Utxos(*builder.GetWallet().GetAddress())
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"Utxos": err.Error()})
@@ -118,7 +131,7 @@ func (n *NodeController) InitProtocol(c *gin.Context) {
 		PayToAddressBech32("addr_test1qq7qwehzy0ynscvcexe9ha3qehdvrlm50kdkv9vc45t9phccvc9ujer30k5azhkm5jfun87uzvx829cft2j8namukunsqvk4ux", 1_000_000).
 		Complete()
 	if err != nil {
-		fmt.Println(err)
+		n.logger.Debug(err)
 	}
 	builder = builder.Sign()
 	tx := builder.GetTx()
@@ -131,6 +144,21 @@ func (n *NodeController) InitProtocol(c *gin.Context) {
 
 	// fmt.Println(hex.EncodeToString(tx_id.Payload))
 	c.JSON(http.StatusOK, hex.EncodeToString(cborred))
+}
+
+func (n *NodeController) ResetProtocol(c *gin.Context) {
+	cc := apollo.NewEmptyBackend()
+
+	builder := apollo.New(&cc)
+	builder, err := builder.SetWalletFromMnemonic(n.seedPhrase, constants.PREPROD)
+	if err != nil {
+		n.logger.Debug(err)
+	}
+	builder, err = builder.SetWalletAsChangeAddress()
+	if err != nil {
+		n.logger.Debug(err)
+	}
+
 }
 
 func (n *NodeController) Stop() {
