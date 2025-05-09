@@ -20,9 +20,10 @@ use aiken/crypto.{ScriptHash, Signature, VerificationKey, VerificationKeyHash}
 use cardano/address.{Address}
 use cardano/assets.{Lovelace, Value}
 use cardano/transaction.{
-  Output, OutputReference, Redeemer, ScriptPurpose, TransactionId, ValidityRange,
+  Datum as CardanoDatum, Output, OutputReference, Redeemer, ScriptPurpose,
+  TransactionId, ValidityRange,
 }
-use midgard/common/types.{H28, H32, MerkleRoot, PosixTime}
+use midgard/common/types.{H28, H32, MerkleRoot, PosixTime, ValuePairs}
 
 // # Ledger state types
 
@@ -81,6 +82,11 @@ pub type ConfirmedState {
 
 // ## User events
 
+pub fn unsafe_event_to_id_data(event_datum_data: Data) -> Data {
+  expect [id_data, ..] = builtin.unconstr_fields(event_datum_data)
+  id_data
+}
+
 pub fn unsafe_event_to_key_value_pair(
   event_datum_data: Data,
 ) -> Pair<Data, Data> {
@@ -108,10 +114,31 @@ pub type DepositEvent {
 pub type WithdrawalId =
   OutputReference
 
-pub type WithdrawalInfo {
-  l2_out_ref: OutputReference,
+pub type WithdrawalBody {
+  l2_outref: OutputReference,
+  l2_owner: VerificationKeyHash,
+  l2_value: ValuePairs,
   l1_address: Address,
-  l1_datum: Option<Data>,
+  l1_datum: CardanoDatum,
+}
+
+pub type WithdrawalSignature =
+  Pair<VerificationKey, Signature>
+
+pub type WithdrawalValidity {
+  WithdrawalIsValid
+  NonExistentWithdrawalUtxo
+  SpentWithdrawalUtxo { l2_tx_hash: H32<MidgardTxCompact> }
+  IncorrectWithdrawalOwner
+  IncorrectWithdrawalValue
+  IncorrectWithdrawalSignature
+  TooManyTokensInWithdrawal
+}
+
+pub type WithdrawalInfo {
+  body: WithdrawalBody,
+  signature: WithdrawalSignature,
+  validity: WithdrawalValidity,
 }
 
 pub type WithdrawalEvent {

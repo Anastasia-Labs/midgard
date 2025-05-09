@@ -21,7 +21,6 @@ use midgard/settlement_queue.{
   RemoveSettlementNode, ResolutionClaim, SpendRedeemer,
 }
 use midgard/state_queue
-use midgard/user_events
 
 validator spend(hub_oracle: ScriptHash, settlement_policy_id: ScriptHash) {
   spend(
@@ -204,7 +203,7 @@ validator spend(hub_oracle: ScriptHash, settlement_policy_id: ScriptHash) {
         // Unsafe coercion is fine here as we have already validated the
         // authenticity of the UTxO.
         let Pair(event_key, event_value) =
-          user_events.unsafe_to_key_value_pair(event_datum_data)
+          ledger_state.unsafe_event_to_key_value_pair(event_datum_data)
 
         // 6. A valid membership proof must be provided, proving that `unprocessed_event` is a
         //    member of the corresponding tree in the settlement node.

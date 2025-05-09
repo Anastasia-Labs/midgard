@@ -1,19 +1,18 @@
-use aiken/collection/dict
-use aiken/collection/list
 use aiken/crypto.{ScriptHash}
 use aiken_design_patterns/singular_utxo_indexer
 use cardano/assets.{PolicyId}
 use cardano/transaction.{
-  Input, Mint, NoDatum, Output, OutputReference, Transaction,
+  InlineDatum, Input, Mint, Output, OutputReference, Transaction,
 }
-use env
 use midgard/common/utils.{plutarch_phas}
+use midgard/escrow
 use midgard/hub_oracle as hub
 use midgard/ledger_state
 use midgard/settlement_queue
 use midgard/user_events
-use midgard/user_events/deposit.{Datum,
-  Refund, SpendRedeemer, TransferToReserve}
+use midgard/user_events/withdrawal.{
+  Datum, Refund, SpendRedeemer, TransferToEscrow,
+}
 
 validator spend(hub_oracle: ScriptHash) {
   spend(
@@ -29,14 +28,16 @@ validator spend(hub_oracle: ScriptHash) {
       output_index,
       hub_ref_input_index,
       settlement_ref_input_index,
-      mint_redeemer_index,
+      burn_redeemer_index,
+      escrow_mint_redeemer_index,
       purpose,
     } = redeemer
 
     let hub.Datum {
-      deposit: deposit_policy_id,
+      withdrawal: withdrawal_policy_id,
       settlement_queue: settlement_queue_policy_id,
-      reserve_addr,
+      escrow: escrow_policy_id,
+      escrow_addr,
       ..
     } = hub.get_datum(reference_inputs, hub_oracle, hub_ref_input_index)
 
@@ -48,20 +49,20 @@ validator spend(hub_oracle: ScriptHash) {
       )
 
     expect settlement_queue.NodeData {
-      deposits_root,
+      withdrawals_root,
       start_time: settlement_start_time,
       end_time: settlement_end_time,
       ..
     } = parsed_settlement_node_datum.data
 
-    expect Some(deposit_datum) = datum
+    expect Some(withdrawal_datum) = datum
     let user_events.Datum {
-      event: deposit_event,
+      event: withdrawal_event,
       inclusion_time,
       refund_address,
       refund_datum,
       ..
-    } = deposit_datum
+    } = withdrawal_datum
 
     // 1. Spending a user event UTxO must also be accompanied by the burning of
     //    its NFT (and consequently deregistration of its witness staking
@@ -69,8 +70,8 @@ validator spend(hub_oracle: ScriptHash) {
     expect user_events.BurnEventNFT { nonce_asset_name: burn_asset_name, .. }: user_events.MintRedeemer =
       utils.get_redeemer_at(
         redeemers,
-        Mint(deposit_policy_id),
-        mint_redeemer_index,
+        Mint(withdrawal_policy_id),
+        burn_redeemer_index,
       )
 
     singular_utxo_indexer.spend(
@@ -86,44 +87,66 @@ validator spend(hub_oracle: ScriptHash) {
         } = output
 
         when spend_purpose is {
-          TransferToReserve { membership_proof } -> {
-            // 3. Output value must be the same as the input value, except for
-            //    the deposit NFT.
-            //    TODO: Reserve contract might end up requiring an NFT.
-            //    TODO: Fees must be deduced whenever we have a clear plan for
-            //          them (for `TransferToReserve` endpoint).
+          TransferToEscrow { membership_proof } -> {
+            // 3. Output value must be the same as the input value, without the
+            //    withdrawal NFT, and with the escrow NFT added.
             expect
               output_value == (
-                own_value |> assets.add(deposit_policy_id, burn_asset_name, -1)
+                own_value
+                  |> assets.add(withdrawal_policy_id, burn_asset_name, -1)
+                  |> assets.add(escrow_policy_id, burn_asset_name, 1)
               )
 
-            let Pair(deposit_event_id, deposit_event_info) =
-              ledger_state.unsafe_event_to_key_value_pair(deposit_event)
+            // 4. TODO: Anticipating what the escrow mint redeemer should look
+            //          like.
+            expect escrow.MintRedeemer { withdrawal_utxo_out_ref }: escrow.MintRedeemer =
+              utils.get_redeemer_at(
+                redeemers,
+                Mint(escrow_policy_id),
+                escrow_mint_redeemer_index,
+              )
+            expect withdrawal_utxo_out_ref == own_out_ref
 
-            and {
-              // 4. The referenced settlement node's deposit tree must contain
-              //    the subject deposit event. No need to check for the
-              //    inclusion time of the deposit.
+            let Pair(withdrawal_event_id, withdrawal_event_info) =
+              ledger_state.unsafe_event_to_key_value_pair(withdrawal_event)
+
+            // 5. The referenced settlement node's withdrawal tree must contain
+            //    the subject withdrawal event. No need to check for the
+            //    inclusion time of the withdrawal.
+            expect
               plutarch_phas(
-                deposits_root,
-                deposit_event_id,
-                deposit_event_info,
+                withdrawals_root,
+                withdrawal_event_id,
+                withdrawal_event_info,
                 membership_proof,
                 redeemers,
-              ),
-              // 5. Assert no datum is attached to the produced UTxO.
-              //    TODO: This might change depending on implementation of
-              //          reserve.
-              output_datum == NoDatum,
-              // 6. Deposit must go to the reserve.
-              output_address == reserve_addr,
+              )
+
+            expect ledger_state.WithdrawalInfo { body: withdrawal_body, .. } =
+              withdrawal_event_info
+
+            let ledger_state.WithdrawalBody {
+              l2_value,
+              l1_address,
+              l1_datum,
+              ..
+            } = withdrawal_body
+
+            let expected_output_datum: Data =
+              escrow.Datum { l2_value, l1_address, l1_datum }
+
+            and {
+              // 6. Assert proper datum is attached to the escrow UTxO.
+              output_datum == InlineDatum(expected_output_datum),
+              // 7. Withdrawal must go to the escrow contract.
+              output_address == escrow_addr,
             }
           }
           Refund { refund_approach } ->
             // 3. Numerous validations for the refund logic.
             user_events.validate_refund(
               own_value,
-              deposit_policy_id,
+              withdrawal_policy_id,
               burn_asset_name,
               output_address,
               output_value,
@@ -131,8 +154,8 @@ validator spend(hub_oracle: ScriptHash) {
               refund_address,
               refund_datum,
               refund_approach,
-              deposits_root,
-              ledger_state.unsafe_event_to_id_data(deposit_event),
+              withdrawals_root,
+              ledger_state.unsafe_event_to_id_data(withdrawal_event),
               settlement_queue_policy_id,
               parsed_settlement_node_datum.link,
               settlement_start_time,
@@ -165,53 +188,31 @@ validator mint(hub_oracle: ScriptHash) {
     // 1. Perform numerous validations and grant access to:
     //    - Serialized and hashed nonce based on the output reference of a
     //      specified input UTxO
-    //    - The output value of the UTxO at the deposit address
+    //    - The output value of the UTxO at the withdrawal address for the
+    //      minting (not burning) endpoint
     let
-      l2_id,
-      output_deposit_value,
+      l1_id,
+      output_withdrawal_order_value,
     <-
       user_events.validate_mint(
         hub_oracle,
         fn(hub_datum) {
-          let hub.Datum { deposit_addr, .. } = hub_datum
-          deposit_addr
+          let hub.Datum { withdrawal_addr, .. } = hub_datum
+          withdrawal_addr
         },
         redeemer,
         own_policy,
         tx,
       )
 
-    // 2. Going through all the tokens of the produced UTxO and counting its
-    //    tokens, while also validating that it only contains one valid
-    //    authentication NFT.
-    let
-      output_deposit_nft_is_valid,
-      total_token_count,
-    <-
-      list.foldl2(
-        output_deposit_value |> assets.to_dict |> dict.to_pairs,
-        False,
-        0,
-        fn(policy_tokens_pair, beacon_found, token_count_so_far, return) {
-          if !beacon_found && policy_tokens_pair.1st == own_policy {
-            expect [output_deposit_nft_tn_qty] =
-              policy_tokens_pair.2nd |> dict.to_pairs
-            expect output_deposit_nft_tn_qty == Pair(l2_id, 1)
-            return(True, token_count_so_far)
-          } else {
-            let policy_token_count = dict.size(policy_tokens_pair.2nd)
-            return(beacon_found, token_count_so_far + policy_token_count)
-          }
-        },
+    let output_withdrawal_order_nft_triplet =
+      utils.get_single_asset_from_value_apart_from_ada(
+        output_withdrawal_order_value,
       )
 
-    and {
-      // 3. Deposit NFT must be included in the produced UTxO.
-      output_deposit_nft_is_valid,
-      // 4. Total token count in the deposit UTxO (including ADA) must not
-      //    exceed the relevant protocol parameter.
-      total_token_count <= env.max_tokens_allowed_in_deposits,
-    }
+    // 2. The output value of the UTxO at the withdrawal address must contain
+    //    only ADA and the authentication NFT.
+    output_withdrawal_order_nft_triplet == (own_policy, l1_id, 1)
   }
 
   else(_) {

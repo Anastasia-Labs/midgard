@@ -17,6 +17,7 @@ pub type Datum {
   deposit: PolicyId,
   withdrawal: PolicyId,
   settlement_queue: PolicyId,
+  escrow: PolicyId,
   registered_operators_addr: Address,
   active_operators_addr: Address,
   retired_operators_addr: Address,
@@ -28,6 +29,8 @@ pub type Datum {
   withdrawal_addr: Address,
   settlement_queue_addr: Address,
   reserve_addr: Address,
+  escrow_addr: Address,
+  reserve_observer: ScriptHash,
 }
 
 /// The assumption here is that the UTxO with the datum is authenticated with an

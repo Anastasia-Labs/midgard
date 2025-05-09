@@ -58,7 +58,7 @@ It oversees correctness of datums, and registration/unregistration of events' co
     Conditions:
       \begin{enumerate}
         \item Let \code{l1\_nonce} be the output reference of a utxo on L1 that is spent in the deposit transaction.
-        \item Let \code{l2\_id} be the Blake2b256 hash of \code{l1\_nonce}.
+        \item Let \code{l2\_id} be the Blake2b256 hash of serialized \code{l1\_nonce}.
         \item An NFT with own policy ID and asset name of \code{l2\_id} must be minted and included in the deposit utxo.
         \item The witness staking script, instantiated with \code{l2\_id} must be registered in the transaction.
         \item The redeemer used for registering the witness script must be equal to the \code{deposit} policy ID.
@@ -75,7 +75,7 @@ It oversees correctness of datums, and registration/unregistration of events' co
         \item Let \code{l2\_id} be the corresponding ID of the target deposit event, provided via the redeemer.
         \item An NFT with own policy ID and asset name of \code{l2\_id} must be burnt.
         \item The witness staking script, instantiated with \code{l2\_id} must be unregistered in the transaction.
-        \item The redeemer used for unregistrering the witness script must be correct. Namely, it must be equal to \code{deposit} policy ID.
+        \item The redeemer used for unregistrering the witness script must be correct. Namely, it must be equal to the \code{deposit} policy ID.
       \end{enumerate}
 \end{description}
 
@@ -94,13 +94,13 @@ It's responsible for concluding deposits, whether for transfering them to Midgar
         This also implies the inclusion time of the deposit falls within the time interval of \code{settlement\_node}.
       \item Let \code{reserve\_addr} be the address of the Midgard reserve retrieved from hub oracle.
       \item The utxo produced at \code{reserve\_addr} must contain all the tokens from the deposit utxo, except for the deposit NFT.
-      \item The \code{BurnDepositNFT} endpoint of the deposit minting script must be invoked with the corresponding \code{l2\_id} of the deposit utxo.
+      \item The \code{BurnEventNFT} endpoint of the deposit minting script must be invoked with the corresponding \code{l2\_id} of the deposit utxo.
       \item No datum and no reference script must be attached to the reserve utxo.
     \end{enumerate}
   \item[Refund.] 
     Conditions:
     \begin{enumerate}
-      \item The \code{BurnDepositNFT} endpoint of the deposit minting script must be invoked with the corresponding \code{l2\_id} of the deposit utxo.
+      \item The \code{BurnEventNFT} endpoint of the deposit minting script must be invoked with the corresponding \code{l2\_id} of the deposit utxo.
       \item All the tokens included in the deposit utxo (except for the deposit NFT) must go to the \code{refund\_address} specified in the deposit datum.
       \item The datum attached to the produced utxo must also match the one stated in deposit datum.
       \item 

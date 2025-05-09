@@ -9,7 +9,7 @@ pub type PosixTime =
 pub type PosixTimeDuration =
   Int
 
-pub type Tokens =
+pub type ValuePairs =
   Pairs<PolicyId, Pairs<AssetName, Int>>
 
 /// A 28-byte hash calculated with the Blake2b-224 algorithm.
