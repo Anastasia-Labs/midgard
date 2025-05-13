@@ -14,26 +14,49 @@ A withdrawal set is a finite map from withdrawal ID to withdrawal info:
 \end{align*}
 
 A withdrawal event in a Midgard block acknowledges that a user has created an L1 utxo at the Midgard L1 withdrawal address, requesting the transfer of an L2 utxo's tokens to the L1 ledger.
+\begingroup
+\allowdisplaybreaks{}
 \begin{align*}
     \T{WithdrawalEvent} &\coloneq \T{(WithdrawalId, WithdrawalInfo)} \\
     \T{WithdrawalId} &\coloneq \T{OutputRef} \\
     \T{WithdrawalInfo} &\coloneq \left\{
         \begin{array}{ll}
+            \T{body} :& \T{WithdrawalBody} \\
+            \T{signature} :& \T{(VerificationKey, Signature)} \\
+            \T{validity} :& \T{WithdrawalValidity} \\
+        \end{array} \right\}\\
+    \T{WithdrawalBody} &\coloneq{} \left\{
+        \begin{array}{ll}
             \T{l2\_outref} :& \T{OutputRef} \\
+            \T{l2\_owner} :& \T{VerificationKeyHash} \\
+            \T{l2\_value} :& \T{Value} \\
             \T{l1\_address} : & \T{Address} \\
             \T{l1\_datum} : & \T{Option(Data)}
-        \end{array} \right\}
+        \end{array} \right\}\\
+    \T{WithdrawalValidity} \coloneq\;& \T{WithdrawalIsValid} \\
+                               \mid\;& \T{NonExistentWithdrawalUtxo} \\
+                               \mid\;& \T{SpentWithdrawalUtxo} \\
+                               \mid\;& \T{IncorrectWithdrawalOwner} \\
+                               \mid\;& \T{IncorrectWithdrawalValue} \\
+                               \mid\;& \T{IncorrectWithdrawalSignature} \\
+                               \mid\;& \T{TooManyTokensInWithdrawal}
 \end{align*}
+\endgroup
 
-The \code{WithdrawalId} of a withdrawal event corresponds to one of the inputs spent by the user in the L1 transaction that created the L1 withdrawal request utxo.
+The \code{WithdrawalId} of a withdrawal event corresponds to one of the inputs spent by the user in the L1 transaction that created the L1 withdrawal request utxo (more specifically, it's the hash of its serialized output-reference).
 This key is needed to identify the L1 withdrawal utxo, ensure that withdrawal events are unique, and detect when an operator has fabricated a withdrawal event without the corresponding withdrawal request existing in the L1 ledger.
 
 If a withdrawal event is permitted by Midgard's ledger rules to be included in a block, its effect is to remove the output at output-reference \code{l2\_outref} from the block's utxo set.
 
 Suppose the block containing the withdrawal event is confirmed.
-In that case, tokens from the Midgard reserve and confirmed deposits can be used to pay for the creation of an L1 utxo at the address (\code{l1\_address}) and with the inline datum (\code{l1\_datum}) specified by the user, containing the value from the withdrawn L2 utxo.
-The L1 withdrawal request utxo must be spent in the transaction that pays out the withdrawal.
+In that case, ADA from the Midgard reserve and confirmed deposits can be used to pay for the creation of an L1 utxo at the address (\code{l1\_address}) and with the datum (\code{l1\_datum}) specified by the user, containing \code{l2\_value} from the withdrawn L2 utxo.
 
-\Cref{h:withdrawal-order} describes the lifecycle of a withdrawal request in further detail, including how the withdrawal event information is validated.
+The L1 withdrawal request utxo will be sent to the \code{escrow} contract, after which it can be gradually funded from the reserve. Once fully funded, its utxo can be transfered to \code{l1\_address} with \code{l1\_datum} attached.
+
+As observable from the \code{validity} field, withdrawal orders are optimistic in the sense that their declared information is not validated at the time of creation.
+However, since inclusion of the orders is obligatory, operators can mark any invalid orders by pointing where the error is present.
+Consequently, any block containing withdrawal orders that are incorrectly marked as invalid will be considered fraudulent.
+
+\Cref{h:withdrawal-order} describes the lifecycle of a withdrawal request in further detail.
 
 \end{document}
