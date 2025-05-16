@@ -12,7 +12,6 @@ import { findAllSpentAndProducedUTxOs } from "@/utils.js";
 import * as SDK from "@al-ft/midgard-sdk";
 import { LucidEvolution, Script, fromHex } from "@lucid-evolution/lucid";
 import { Effect, Metric } from "effect";
-import { Sql } from "postgres";
 import { fetchFirstBlockTxs, handleSignSubmit } from "../utils.js";
 
 const mergeBlockCounter = Metric.counter("merge_block_count", {
@@ -33,7 +32,6 @@ const mergeBlockCounter = Metric.counter("merge_block_count", {
  */
 export const buildAndSubmitMergeTx = (
   lucid: LucidEvolution,
-  db: Sql,
   fetchConfig: SDK.TxBuilder.StateQueue.FetchConfig,
   spendScript: Script,
   mintScript: Script,
@@ -88,7 +86,6 @@ export const buildAndSubmitMergeTx = (
       yield* Effect.logInfo("🔸 Looking up its transactions from BlocksDB...");
       const { txs: firstBlockTxs, headerHash } = yield* fetchFirstBlockTxs(
         firstBlockUTxO,
-        db,
       ).pipe(Effect.withSpan("fetchFirstBlockTxs"));
       if (firstBlockTxs.length === 0) {
         yield* Effect.logInfo(
@@ -130,24 +127,20 @@ export const buildAndSubmitMergeTx = (
       const bs = 100;
       yield* Effect.logInfo("🔸 Clear confirmed ledger db...");
       for (let i = 0; i < spentOutRefs.length; i += bs) {
-        yield* Effect.tryPromise(() =>
-          ConfirmedLedgerDB.clearUTxOs(db, spentOutRefs.slice(i, i + bs)),
-        ).pipe(Effect.withSpan(`confirmed-ledger-clearUTxOs-${i}`));
+        yield* ConfirmedLedgerDB.clearUTxOs(spentOutRefs.slice(i, i + bs)).pipe(
+          Effect.withSpan(`confirmed-ledger-clearUTxOs-${i}`),
+        );
       }
       yield* Effect.logInfo("🔸 Insert produced UTxOs...");
       for (let i = 0; i < producedUTxOs.length; i += bs) {
-        yield* Effect.tryPromise(() =>
-          ConfirmedLedgerDB.insert(
-            db,
-            producedUTxOs.slice(i, i + bs),
-            // .map((u) => utxoToOutRefAndCBORArray(u)),
-          ),
-        ).pipe(Effect.withSpan(`confirmed-ledger-insert-${i}`));
+        yield* ConfirmedLedgerDB.insert(producedUTxOs.slice(i, i + bs))
+          // .map((u) => utxoToOutRefAndCBORArray(u)),
+          .pipe(Effect.withSpan(`confirmed-ledger-insert-${i}`));
       }
       yield* Effect.logInfo("🔸 Clear block from BlocksDB...");
-      yield* Effect.tryPromise(() =>
-        BlocksDB.clearBlock(db, fromHex(headerHash)),
-      ).pipe(Effect.withSpan("clear-block-from-BlocksDB"));
+      yield* BlocksDB.clearBlock(fromHex(headerHash)).pipe(
+        Effect.withSpan("clear-block-from-BlocksDB"),
+      );
       yield* Effect.logInfo("🔸 ☑️  Merge transaction completed.");
 
       yield* Metric.increment(mergeBlockCounter).pipe(

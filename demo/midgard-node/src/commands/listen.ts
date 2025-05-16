@@ -4,27 +4,37 @@ import { AlwaysSucceeds } from "@/services/index.js";
 import { StateQueueTx } from "@/transactions/index.js";
 import * as SDK from "@al-ft/midgard-sdk";
 import { NodeSdk } from "@effect/opentelemetry";
-import {
-  CML,
-  LucidEvolution,
-  fromHex,
-  getAddressDetails,
-} from "@lucid-evolution/lucid";
+import { CML, fromHex, getAddressDetails } from "@lucid-evolution/lucid";
 import { PrometheusExporter } from "@opentelemetry/exporter-prometheus";
 import { OTLPTraceExporter } from "@opentelemetry/exporter-trace-otlp-http";
 import { BatchSpanProcessor } from "@opentelemetry/sdk-trace-base";
-import { Duration, Effect, Metric, Option, pipe, Schedule } from "effect";
-import express from "express";
-import { Sql } from "postgres";
+import {
+  Duration,
+  Effect,
+  Either,
+  Layer,
+  Metric,
+  Option,
+  pipe,
+  Schedule,
+} from "effect";
 import {
   BlocksDB,
   ConfirmedLedgerDB,
   ImmutableDB,
+  InitDB,
   LatestLedgerDB,
   MempoolDB,
   MempoolLedgerDB,
 } from "../database/index.js";
 import { findSpentAndProducedUTxOs, isHexString } from "../utils.js";
+import { SqlClientLive } from "@/services/database.js";
+import * as Reactivity from "@effect/experimental/Reactivity";
+import { HttpRouter, HttpServer, HttpServerResponse } from "@effect/platform";
+import { ParsedSearchParams } from "@effect/platform/HttpServerRequest";
+import { createServer } from "node:http";
+import { NodeHttpServer } from "@effect/platform-node";
+import { HttpBodyError } from "@effect/platform/HttpBody";
 
 const txCounter = Metric.counter("tx_count", {
   description: "A counter for tracking submit transactions",
@@ -38,238 +48,251 @@ const mempoolTxGauge = Metric.gauge("mempool_tx_count", {
   bigint: true,
 });
 
-export const listen = (
-  lucid: LucidEvolution,
-  sql: Sql,
-  port: number,
-): Effect.Effect<void, never, never> =>
-  Effect.sync(() => {
-    const log = (msg: string) => Effect.runSync(Effect.logInfo(msg));
-    const app = express();
-    app.get("/tx", (req, res) => {
-      const txHash = req.query.tx_hash;
-      // logInfo(`GET /tx - Request received for tx_hash: ${txHash}`);
-
-      if (
-        typeof txHash === "string" &&
-        isHexString(txHash) &&
-        txHash.length === 32
-      ) {
-        MempoolDB.retrieveTxCborByHash(sql, fromHex(txHash)).then((ret) => {
-          Option.match(ret, {
-            onSome: (retrieved) => {
-              log(`GET /tx - Transaction found in mempool: ${txHash}`);
-              res.json({ tx: retrieved });
-            },
-            onNone: () =>
-              ImmutableDB.retrieveTxCborByHash(sql, fromHex(txHash)).then(
-                (ret) => {
-                  Option.match(ret, {
-                    onSome: (retrieved) => {
-                      log(
-                        `GET /tx - Transaction found in immutable: ${txHash}`,
-                      );
-                      res.json({ tx: retrieved });
-                    },
-                    onNone: () => {
-                      log(`GET /tx - No transaction found: ${txHash}`);
-                      res
-                        .status(404)
-                        .json({ message: "No matching transactions found" });
-                    },
-                  });
-                },
-              ),
-          });
-        });
-      } else {
-        // log(`GET /tx - Invalid transaction hash: ${txHash}`);
-        res
-          .status(404)
-          .json({ message: `Invalid transaction hash: ${txHash}` });
-      }
-    });
-
-    app.get("/utxos", (req, res) => {
-      const addr = req.query.addr;
-      log(`GET /utxos - Request received for address: ${addr}`);
-
-      if (typeof addr === "string") {
-        try {
-          const addrDetails = getAddressDetails(addr);
-          if (addrDetails.paymentCredential) {
-            MempoolLedgerDB.retrieve(sql).then((allUTxOs) => {
-              const filtered = allUTxOs.filter(({ value: output }) => {
-                const cmlOutput = CML.TransactionOutput.from_cbor_bytes(output);
-                const address = cmlOutput.address().to_bech32();
-                return (address === addrDetails.address.bech32);
-              });
-              log(
-                `GET /utxos - Found ${filtered.length} UTXOs for address: ${addr}`,
-              );
-              res.json({ utxos: filtered });
-            });
-          } else {
-            log(
-              `GET /utxos - Invalid address (no payment credential): ${addr}`,
-            );
-            res.status(400).json({ message: `Invalid address: ${addr}` });
-          }
-        } catch (e) {
-          log(`GET /utxos - Invalid address format: ${addr}, error: ${e}`);
-          res.status(400).json({ message: `Invalid address: ${addr}` });
-        }
-      } else {
-        log(`GET /utxos - Invalid address type: ${addr}`);
-        res.status(400).json({ message: `Invalid address: ${addr}` });
-      }
-    });
-
-    app.get("/block", (req, res) => {
-      const hdrHash = req.query.header_hash;
-      log(`GET /block - Request received for header_hash: ${hdrHash}`);
-
-      if (
-        typeof hdrHash === "string" &&
-        isHexString(hdrHash) &&
-        hdrHash.length === 32
-      ) {
-        BlocksDB.retrieveTxHashesByBlockHash(sql, fromHex(hdrHash)).then(
-          (hashes) => {
-            log(
-              `GET /block - Found ${hashes.length} transactions for block: ${hdrHash}`,
-            );
-            res.json({ hashes });
-          },
-        );
-      } else {
-        log(`GET /block - Invalid block header hash: ${hdrHash}`);
-        res
-          .status(400)
-          .json({ message: `Invalid block header hash: ${hdrHash}` });
-      }
-    });
-
-    app.get("/init", async (_req, res) => {
-      log("✨ Initialization request received");
-      try {
-        const program = pipe(
-          StateQueueTx.stateQueueInit,
-          Effect.provide(User.layer),
-          Effect.provide(AlwaysSucceedsContract.layer),
-          Effect.provide(NodeConfig.layer),
-        );
-        const txHash = await Effect.runPromise(program);
-        log(`GET /init - Initialization successful: ${txHash}`);
-        res.json({ message: `Initiation successful: ${txHash}` });
-      } catch (e) {
-        log(`GET /init - Initialization failed: ${e}`);
-        res.status(500).json({
-          message: "Initiation failed.",
-        });
-      }
-    });
-
-    app.get("/commit", async (_req, res) => {
-      log("GET /commit - Manual block commitment order received");
-      try {
-        const program = makeBlockCommitmentAction();
-        const txHash = await Effect.runPromise(program);
-        log(`GET /commit - Block commitment successful: ${txHash}`);
-        res.json({ message: `Block commitment successful: ${txHash}` });
-      } catch (e) {
-        log(`GET /commit - Block commitment failed: ${e}`);
-        res.status(500).json({
-          message: "Block commitment failed.",
-        });
-      }
-    });
-
-    app.get("/merge", async (_req, res) => {
-      log("GET /merge - Manual merge order received");
-      try {
-        const program = pipe(
-          makeMergeAction(sql),
-          Effect.provide(User.layer),
-          Effect.provide(AlwaysSucceedsContract.layer),
-          Effect.provide(NodeConfig.layer),
-        );
-        const txHash = await Effect.runPromise(program);
-        log(`GET /merge - Merging confirmed state successful: ${txHash}`);
-        res.json({ message: `Merging confirmed state successful: ${txHash}` });
-      } catch (e) {
-        log(`GET /merge - Merging confirmed state failed: ${e}`);
-        res.status(500).json({
-          message: "Merging confirmed state failed.",
-        });
-      }
-    });
-
-    app.get("/reset", async (_req, res) => {
-      log("🚧 Reset request received");
-      res.type("text/plain");
-      try {
-        const program = pipe(
-          StateQueueTx.resetStateQueue,
-          Effect.provide(User.layer),
-          Effect.provide(AlwaysSucceedsContract.layer),
-          Effect.provide(NodeConfig.layer),
-        );
-        await Effect.runPromise(program);
-        res.json({ message: "Collected all UTxOs successfully!" });
-      } catch (e) {
-        res.status(400).json({
-          message: `Failed to collect one or more UTxOs. Please try again. Error: ${e}`,
-        });
-      }
-      try {
-        await Promise.all([
-          MempoolDB.clear(sql),
-          MempoolLedgerDB.clear(sql),
-          BlocksDB.clear(sql),
-          ImmutableDB.clear(sql),
-          LatestLedgerDB.clear(sql),
-          ConfirmedLedgerDB.clear(sql),
-        ]);
-        // res.json({ message: "Cleared all tables successfully!" });
-      } catch (_e) {
-        // res.status(400).json({
-        //   message: "Failed to clear one or more tables. Please try again.",
-        // });
-      }
-    });
-
-    app.post("/submit", async (req, res) => {
-      const txString = req.query.tx_cbor;
-
-      // log("◻️ Submit request received for transaction");
-
-      if (typeof txString === "string" && isHexString(txString)) {
-        try {
-          const txCBOR = fromHex(txString);
-          const tx = lucid.fromTx(txString);
-          const spentAndProducedProgram = findSpentAndProducedUTxOs(txCBOR);
-          const { spent, produced } = await Effect.runPromise(
-            spentAndProducedProgram,
-          );
-          await MempoolDB.insert(sql, fromHex(tx.toHash()), txCBOR);
-          await MempoolLedgerDB.clearUTxOs(sql, spent);
-          await MempoolLedgerDB.insert(sql, produced);
-          Effect.runSync(Metric.increment(txCounter));
-          // log(`▫️ L2 Transaction processed successfully: ${tx.toHash()}`);
-          res.json({ message: "Successfully submitted the transaction" });
-        } catch (e) {
-          // log(`▫️ L2 transaction failed: ${e}`);
-          res.status(400).json({ message: `Something went wrong: ${e}` });
-        }
-      } else {
-        log("▫️ Invalid CBOR provided");
-        res.status(400).json({ message: "Invalid CBOR provided" });
-      }
-    });
-
-    app.listen(port, () => log(`Server running at http://localhost:${port}`));
+const handle500 = (location: string, error: Error | HttpBodyError) =>
+  Effect.gen(function* () {
+    yield* Effect.logInfo(
+      `Something went wrong at ${location} handler: ${error}`,
+    );
+    return yield* HttpServerResponse.json(
+      { error: `Something went wrong` },
+      { status: 500 },
+    );
   });
+
+const getTxHandler = Effect.gen(function* () {
+  const params = yield* ParsedSearchParams;
+  const txHashParam = params["tx_hash"];
+  if (
+    typeof txHashParam !== "string" ||
+    !isHexString(txHashParam) ||
+    txHashParam.length !== 32
+  ) {
+    // yield* Effect.logInfo(`Invalid transaction hash: ${txHashParam}`);
+    return yield* HttpServerResponse.json(
+      { error: `Invalid transaction hash: ${txHashParam}` },
+      { status: 404 },
+    );
+  }
+  const txHashBytes = fromHex(txHashParam);
+  const retMempool = yield* MempoolDB.retrieveTxCborByHash(txHashBytes);
+  if (Option.isSome(retMempool)) {
+    yield* Effect.logInfo(
+      `GET /tx - Transaction found in mempool: ${txHashParam}`,
+    );
+    return yield* HttpServerResponse.json({ tx: retMempool.value });
+  }
+  const retImmutable = yield* ImmutableDB.retrieveTxCborByHash(txHashBytes);
+  if (Option.isSome(retImmutable)) {
+    yield* Effect.logInfo(
+      `GET /tx - Transaction found in immutable: ${txHashParam}`,
+    );
+    return yield* HttpServerResponse.json({ tx: retImmutable.value });
+  }
+  yield* Effect.logInfo(`Transaction not found: ${txHashParam}`);
+  return yield* HttpServerResponse.json(
+    { error: `Transaction not found: ${txHashParam}` },
+    { status: 404 },
+  );
+}).pipe(Effect.catchAll((e) => handle500("getTx", e)));
+
+const getUtxosHandler = Effect.gen(function* () {
+  const params = yield* ParsedSearchParams;
+  const addr = params["addr"];
+
+  if (typeof addr !== "string") {
+    yield* Effect.logInfo(`GET /utxos - Invalid address type: ${addr}`);
+    return yield* HttpServerResponse.json(
+      { error: `Invalid address type: ${addr}` },
+      { status: 400 },
+    );
+  }
+  try {
+    const addrDetails = getAddressDetails(addr);
+    if (!addrDetails.paymentCredential) {
+      yield* Effect.logInfo(`Invalid address format: ${addr}`);
+      return yield* HttpServerResponse.json(
+        { error: `Invalid address format: ${addr}` },
+        { status: 400 },
+      );
+    }
+    const allUTxOs = yield* MempoolLedgerDB.retrieve();
+    const filtered = allUTxOs.filter(({ value }) => {
+      const cmlOutput = CML.TransactionOutput.from_cbor_bytes(value);
+      return cmlOutput.address().to_bech32() === addrDetails.address.bech32;
+    });
+    yield* Effect.logInfo(`Found ${filtered.length} UTXOs for ${addr}`);
+    return yield* HttpServerResponse.json({ utxos: filtered });
+  } catch (error) {
+    yield* Effect.logInfo(`Invalid address: ${addr}`);
+    return yield* HttpServerResponse.json(
+      { error: `Invalid address: ${addr}` },
+      { status: 400 },
+    );
+  }
+}).pipe(Effect.catchAll((e) => handle500("getUtxos", e)));
+
+const getBlockHandler = Effect.gen(function* () {
+  const params = yield* ParsedSearchParams;
+  const hdrHash = params["header_hash"];
+  yield* Effect.logInfo(
+    `GET /block - Request received for header_hash: ${hdrHash}`,
+  );
+
+  if (
+    typeof hdrHash !== "string" ||
+    !isHexString(hdrHash) ||
+    hdrHash.length !== 32
+  ) {
+    yield* Effect.logInfo(`GET /block - Invalid block hash: ${hdrHash}`);
+    return yield* HttpServerResponse.json(
+      { error: `Invalid block hash: ${hdrHash}` },
+      { status: 400 },
+    );
+  }
+  const hashes = yield* BlocksDB.retrieveTxHashesByBlockHash(fromHex(hdrHash));
+  yield* Effect.logInfo(
+    `GET /block - Found ${hashes.length} txs for block: ${hdrHash}`,
+  );
+  return yield* HttpServerResponse.json({ hashes });
+}).pipe(Effect.catchAll((e) => handle500("getBlock", e)));
+
+const getInitHandler = Effect.gen(function* () {
+  yield* Effect.logInfo(`✨ Initialization request received`);
+  const result = yield* Effect.either(StateQueueTx.stateQueueInit);
+  if (Either.isRight(result)) {
+    yield* Effect.logInfo(
+      `GET /init - Initialization successful: ${result.right}`,
+    );
+    return yield* HttpServerResponse.json({
+      message: `Initiation successful: ${result}`,
+    });
+  } else {
+    yield* Effect.logInfo(`GET /init - Initialization failed: ${result.left}`);
+    return yield* HttpServerResponse.json(
+      { error: "Initialization failed" },
+      { status: 500 },
+    );
+  }
+}).pipe(Effect.catchAll((e) => handle500("getInit", e)));
+
+const getCommitEndpoint = Effect.gen(function* () {
+  yield* Effect.logInfo(`GET /commit - Manual block commitment order received`);
+  const result = yield* Effect.either(makeBlockCommitmentAction());
+  if (Either.isRight(result)) {
+    yield* Effect.logInfo(
+      `GET /commit - Block commitment successful: ${result.right}`,
+    );
+    return yield* HttpServerResponse.json({
+      message: `Block commitment successful: ${result.right}`,
+    });
+  } else {
+    yield* Effect.logInfo(
+      `GET /commit - Block commitment failed: ${result.left}`,
+    );
+    return yield* HttpServerResponse.json(
+      { error: "Block commitment failed." },
+      { status: 500 },
+    );
+  }
+}).pipe(Effect.catchAll((e) => handle500("getCommit", e)));
+
+const getMergeHandler = Effect.gen(function* () {
+  yield* Effect.logInfo(`GET /merge - Manual merge order received`);
+  const result = yield* Effect.either(makeMergeAction());
+  if (Either.isRight(result)) {
+    yield* Effect.logInfo(
+      `GET /merge - Merging confirmed state successful: ${result.right}`,
+    );
+    return yield* HttpServerResponse.json({
+      message: `Merging confirmed state successful: ${result.right}`,
+    });
+  } else {
+    yield* Effect.logInfo(
+      `GET /merge - Merging confirmed state failed: ${result.left}`,
+    );
+    return yield* HttpServerResponse.json(
+      { error: "Merging confirmed state failed." },
+      { status: 500 },
+    );
+  }
+}).pipe(Effect.catchAll((e) => handle500("getMerge", e)));
+
+const getResetHandler = Effect.gen(function* () {
+  yield* Effect.logInfo(`🚧 Reset request received`);
+  const result = yield* Effect.either(StateQueueTx.resetStateQueue);
+  if (Either.isLeft(result)) {
+    return yield* HttpServerResponse.json(
+      {
+        error: `Failed to collect one or more UTxOs. Please try again. Error: ${result.left}`,
+      },
+      { status: 400 },
+    );
+  } else {
+    yield* Effect.all(
+      [
+        MempoolDB.clear(),
+        MempoolLedgerDB.clear(),
+        BlocksDB.clear(),
+        ImmutableDB.clear(),
+        LatestLedgerDB.clear(),
+        ConfirmedLedgerDB.clear(),
+      ],
+      { discard: true },
+    );
+    return yield* HttpServerResponse.json({
+      message: `Collected all UTxOs successfully!`,
+    });
+  }
+}).pipe(Effect.catchAll((e) => handle500("getReset", e)));
+
+const postSubmitHandler = Effect.gen(function* () {
+  // yield* Effect.logInfo(`◻️ Submit request received for transaction`);
+  const params = yield* ParsedSearchParams;
+  const txStringParam = params["tx_cbor"];
+  if (typeof txStringParam !== "string" || !isHexString(txStringParam)) {
+    yield* Effect.logInfo(`▫️ Invalid CBOR provided`);
+    return yield* HttpServerResponse.json(
+      { error: `Invalid CBOR provided` },
+      { status: 400 },
+    );
+  } else {
+    const txString = txStringParam;
+    const { user: lucid } = yield* User;
+    const result = yield* Effect.either(
+      Effect.gen(function* () {
+        const txCBOR = fromHex(txString);
+        const tx = lucid.fromTx(txString);
+        const { spent, produced } = yield* findSpentAndProducedUTxOs(txCBOR);
+        yield* MempoolDB.insert(fromHex(tx.toHash()), txCBOR);
+        yield* MempoolLedgerDB.clearUTxOs(spent);
+        yield* MempoolLedgerDB.insert(produced);
+        Effect.runSync(Metric.increment(txCounter));
+      }),
+    );
+    if (Either.isRight(result)) {
+      return yield* HttpServerResponse.json({
+        message: `Successfully submitted the transaction`,
+      });
+    } else {
+      yield* Effect.logInfo(`▫️ L2 transaction failed: ${result.left}`);
+      return yield* HttpServerResponse.json(
+        { error: `Something went wrong: ${result.left}` },
+        { status: 400 },
+      );
+    }
+  }
+}).pipe(Effect.catchAll((e) => handle500("postSubmit", e)));
+
+const router = HttpRouter.empty.pipe(
+  HttpRouter.get("/tx", getTxHandler),
+  HttpRouter.get("/utxos", getUtxosHandler),
+  HttpRouter.get("/block", getBlockHandler),
+  HttpRouter.get("/init", getInitHandler),
+  HttpRouter.get("/commit", getCommitEndpoint),
+  HttpRouter.get("/merge", getMergeHandler),
+  HttpRouter.get("/reset", getResetHandler),
+  HttpRouter.post("/submit", postSubmitHandler),
+);
 
 const makeBlockCommitmentAction = () =>
   Effect.gen(function* () {
@@ -279,7 +302,7 @@ const makeBlockCommitmentAction = () =>
     );
   });
 
-const makeMergeAction = (db: Sql) =>
+const makeMergeAction = () =>
   Effect.gen(function* () {
     const { user: lucid } = yield* User;
     const { spendScriptAddress, policyId, spendScript, mintScript } =
@@ -291,16 +314,15 @@ const makeMergeAction = (db: Sql) =>
 
     yield* StateQueueTx.buildAndSubmitMergeTx(
       lucid,
-      db,
       fetchConfig,
       spendScript,
       mintScript,
     );
   });
 
-const makeMempoolAction = (db: Sql) =>
+const makeMempoolAction = () =>
   Effect.gen(function* () {
-    const txList = yield* Effect.tryPromise(() => MempoolDB.retrieve(db));
+    const txList = yield* MempoolDB.retrieve();
     const numTx = BigInt(txList.length);
     yield* mempoolTxGauge(Effect.succeed(numTx));
   });
@@ -324,14 +346,14 @@ const blockCommitmentFork = (pollingInterval: number) =>
 // possible issues:
 // 1. tx-generator: large batch size & high concurrency
 // 2. after initing node, can't commit the block
-const mergeFork = (db: Sql, pollingInterval: number) =>
+const mergeFork = (pollingInterval: number) =>
   pipe(
     Effect.gen(function* () {
       yield* Effect.logInfo("🟠 Merge fork started.");
       const schedule = Schedule.addDelay(Schedule.forever, () =>
         Duration.millis(pollingInterval),
       );
-      const action = makeMergeAction(db).pipe(
+      const action = makeMergeAction().pipe(
         Effect.withSpan("merge-confirmed-state-fork"),
         Effect.catchAllCause(Effect.logWarning),
       );
@@ -340,14 +362,14 @@ const mergeFork = (db: Sql, pollingInterval: number) =>
     // Effect.fork, // Forking ensures the effect keeps running
   );
 
-const mempoolFork = (db: Sql) =>
+const mempoolFork = () =>
   pipe(
     Effect.gen(function* () {
       yield* Effect.logInfo("🟢 Mempool fork started.");
       const schedule = Schedule.addDelay(Schedule.forever, () =>
         Duration.millis(1000),
       );
-      yield* Effect.repeat(makeMempoolAction(db), schedule);
+      yield* Effect.repeat(makeMempoolAction(), schedule);
     }),
     Effect.catchAllCause(Effect.logWarning),
   );
@@ -355,7 +377,6 @@ const mempoolFork = (db: Sql) =>
 export const runNode = Effect.gen(function* () {
   const { user } = yield* User;
   const nodeConfig = yield* NodeConfig;
-  const db = nodeConfig.DB_CONN;
 
   const prometheusExporter = new PrometheusExporter(
     {
@@ -365,6 +386,7 @@ export const runNode = Effect.gen(function* () {
       `Prometheus metrics available at http://localhost:${nodeConfig.PROM_METRICS_PORT}/metrics`;
     },
   );
+
   const originalStop = prometheusExporter.stopServer;
   prometheusExporter.stopServer = async function () {
     Effect.runSync(Effect.logInfo("Prometheus exporter is stopping!"));
@@ -379,26 +401,40 @@ export const runNode = Effect.gen(function* () {
     ),
   }));
 
-  const appThread = listen(user, db, nodeConfig.PORT);
+  yield* Effect.logInfo("📚 Opening connection to db...");
+  yield* InitDB.initializeDb().pipe(Effect.provide(SqlClientLive));
+
+  const ListenLayer = Layer.provide(
+    HttpServer.serve(router),
+    NodeHttpServer.layer(createServer, { port: 3000 }),
+  );
+
+  const appThread = pipe(
+    Layer.launch(ListenLayer),
+  );
 
   const blockCommitmentThread = blockCommitmentFork(
     nodeConfig.POLLING_INTERVAL,
   );
 
   const mergeThread = pipe(
-    mergeFork(db, nodeConfig.CONFIRMED_STATE_POLLING_INTERVAL),
-    Effect.provide(User.layer),
-    Effect.provide(AlwaysSucceedsContract.layer),
-    Effect.provide(NodeConfig.layer),
+    mergeFork(nodeConfig.CONFIRMED_STATE_POLLING_INTERVAL),
   );
 
-  const monitorMempoolThread = pipe(mempoolFork(db));
+  const monitorMempoolThread = pipe(
+    mempoolFork(),
+  );
 
   const program = Effect.all(
     [appThread, blockCommitmentThread, mergeThread, monitorMempoolThread],
     {
       concurrency: "unbounded",
     },
+  ).pipe(
+    Effect.provide(SqlClientLive),
+    Effect.provide(AlwaysSucceedsContract.layer),
+    Effect.provide(User.layer),
+    Effect.provide(NodeConfig.layer),
   );
 
   pipe(

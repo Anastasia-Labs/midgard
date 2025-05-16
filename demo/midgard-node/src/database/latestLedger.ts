@@ -1,4 +1,3 @@
-import { Sql } from "postgres";
 import {
   clearTable,
   insertKeyValues,
@@ -8,17 +7,11 @@ import {
 
 export const tableName = "latest_ledger";
 
-export const insert = async (
-  sql: Sql,
-  utxosCBOR: { key: Uint8Array; value: Uint8Array }[],
-) => insertKeyValues(sql, tableName, utxosCBOR);
+export const insert = (utxosCBOR: { key: Uint8Array; value: Uint8Array }[]) =>
+  insertKeyValues(tableName, utxosCBOR);
 
-export const retrieve = async (
-  sql: Sql,
-): Promise<{ key: Uint8Array; value: Uint8Array }[]> =>
-  retrieveKeyValues(sql, tableName);
+export const retrieve = () => retrieveKeyValues(tableName);
 
-export const clearUTxOs = async (sql: Sql, refs: Uint8Array[]) =>
-  delMultiple(sql, tableName, refs);
+export const clearUTxOs = (refs: Uint8Array[]) => delMultiple(tableName, refs);
 
-export const clear = async (sql: Sql) => clearTable(sql, tableName);
+export const clear = () => clearTable(tableName);
