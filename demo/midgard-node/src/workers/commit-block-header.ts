@@ -9,7 +9,7 @@ import {
 import { makeAlwaysSucceedsServiceFn } from "@/services/always-succeeds.js";
 import { BlocksDB, ImmutableDB, MempoolDB } from "@/database/index.js";
 import { handleSignSubmit } from "@/transactions/utils.js";
-import { fromHex, toHex } from "@lucid-evolution/lucid";
+import { toHex } from "@lucid-evolution/lucid";
 import * as ETH from "@ethereumjs/mpt";
 import * as ETH_UTILS from "@ethereumjs/util";
 import { PostgresCheckpointDB } from "./db.js";
@@ -35,11 +35,15 @@ const wrapper = (
     const mempoolDB = new PostgresCheckpointDB(
       client,
       "mempool_clone",
+      "tx_hash",
+      "tx_cbor",
       "mempool",
     );
     const ledgerDB = new PostgresCheckpointDB(
       client,
       "latest_ledger_clone",
+      "utxo_outref",
+      "utxo_output",
       "latest_ledger",
     );
     yield* Effect.all(
@@ -93,7 +97,7 @@ const wrapper = (
       // automatically pull a previously stored root from the database.
       yield* Effect.sync(() => ledgerTrie.root(ledgerRootBeforeMempoolTxs));
 
-      const mempoolTxHashes: Uint8Array[] = [];
+      const mempoolTxHashes: string[] = [];
       let sizeOfBlocksTxs = 0;
 
       yield* Effect.logInfo(
@@ -106,7 +110,11 @@ const wrapper = (
           sizeOfBlocksTxs += txCbor.length;
 
           yield* Effect.tryPromise({
-            try: () => mempoolTrie.put(txHash, txCbor),
+            try: () =>
+              mempoolTrie.put(
+                Buffer.from(txHash, "hex"),
+                Buffer.from(txCbor, "hex"),
+              ),
             catch: (e) => new Error(`${e}`),
           });
 
@@ -116,14 +124,14 @@ const wrapper = (
 
           const delOps: ETH_UTILS.BatchDBOp[] = spent.map((outRef) => ({
             type: "del",
-            key: outRef,
+            key: Buffer.from(outRef, "hex"),
           }));
 
           const putOps: ETH_UTILS.BatchDBOp[] = produced.map(
-            ({ key: outputReference, value: output }) => ({
+            ({ outref: outputReference, output }) => ({
               type: "put",
-              key: outputReference,
-              value: output,
+              key: Buffer.from(outputReference, "hex"),
+              value: Buffer.from(output, "hex"),
             }),
           );
 
@@ -218,16 +226,21 @@ const wrapper = (
         batchIndices,
         (startIndex) => {
           const endIndex = startIndex + batchSize;
-          const batchTxs = mempoolTxs.slice(startIndex, endIndex);
+          const batchTxs = mempoolTxs
+            .slice(startIndex, endIndex)
+            .map(({ key: txHash, value: txCbor }) => ({
+              txHash,
+              txCbor,
+            }));
           const batchHashes = mempoolTxHashes.slice(startIndex, endIndex);
 
           return pipe(
             Effect.all(
               [
-                ImmutableDB.insertTxs(batchTxs).pipe(
+                ImmutableDB.insert(batchTxs).pipe(
                   Effect.withSpan(`immutable-db-insert-${startIndex}`),
                 ),
-                BlocksDB.insert(fromHex(newHeaderHash), batchHashes).pipe(
+                BlocksDB.insert(newHeaderHash, batchHashes).pipe(
                   Effect.withSpan(`blocks-db-insert-${startIndex}`),
                 ),
               ],
@@ -264,9 +277,7 @@ const wrapper = (
 
       return output;
     } else {
-      yield* Effect.logInfo(
-        "🔹 No transactions were found in MempoolDB",
-      );
+      yield* Effect.logInfo("🔹 No transactions were found in MempoolDB");
       const output: WorkerOutput = {
         txSize: 0,
         mempoolTxsCount: 0,
