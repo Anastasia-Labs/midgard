@@ -1,6 +1,6 @@
 import { parentPort, workerData } from "worker_threads";
 import * as SDK from "@al-ft/midgard-sdk";
-import { Effect, Layer, Redacted, Schedule, pipe } from "effect";
+import { Effect, Schedule, pipe } from "effect";
 import {
   WorkerInput,
   WorkerOutput,
@@ -13,8 +13,8 @@ import { fromHex, toHex } from "@lucid-evolution/lucid";
 import * as ETH from "@ethereumjs/mpt";
 import * as ETH_UTILS from "@ethereumjs/util";
 import { PostgresCheckpointDB } from "./db.js";
-import { NodeConfig, NodeConfigDep, User } from "@/config.js";
-import { Database, mkPgConfig } from "@/services/database.js";
+import { NodeConfig, User } from "@/config.js";
+import { Database } from "@/services/database.js";
 import { SqlClient } from "@effect/sql";
 
 // Key of the row which its value is the persisted trie root.

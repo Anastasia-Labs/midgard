@@ -1,6 +1,5 @@
 import { Blockfrost, Kupmios, Lucid, Network } from "@lucid-evolution/lucid";
-import { Config, Context, Effect, Layer, pipe } from "effect";
-import { InitDB } from "@/database/index.js";
+import { Config, Context, Effect, Layer } from "effect";
 
 const SUPPORTED_PROVIDERS = ["kupmios", "blockfrost"] as const;
 type Provider = (typeof SUPPORTED_PROVIDERS)[number];

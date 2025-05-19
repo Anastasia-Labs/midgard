@@ -34,7 +34,7 @@ export const retrieveValue = (
     const sql = yield* SqlClient.SqlClient;
     yield* Effect.logDebug(`${tableName} db: attempt to retrieve value`);
 
-    const result = yield* sql<(Uint8Array[])>`SELECT value FROM ${sql(
+    const result = yield* sql<Uint8Array[]>`SELECT value FROM ${sql(
       tableName,
     )} WHERE key = ${Buffer.from(key)} LIMIT 1 `;
     return Option.fromNullable(result[0]?.[0]);
@@ -166,15 +166,16 @@ export const retrieveKeyValues = (
   );
 
 export const mapSqlError = <A, E, R>(
-  effect: Effect.Effect<A, E, R>
+  effect: Effect.Effect<A, E, R>,
 ): Effect.Effect<A, Exclude<E, SqlError.SqlError> | Error, R> =>
   effect.pipe(
-    Effect.catchAll((e): Effect.Effect<A, Exclude<E, SqlError.SqlError> | Error, R> => {
-      if (e instanceof SqlError.SqlError) {
-        return Effect.fail(
-          new Error(`SQL Error (${e._tag}): ${JSON.stringify(e)}`)
-        )
-      }
-      else return Effect.fail(e as Exclude<E, SqlError.SqlError>)
-    })
-  )
+    Effect.catchAll(
+      (e): Effect.Effect<A, Exclude<E, SqlError.SqlError> | Error, R> => {
+        if (e instanceof SqlError.SqlError) {
+          return Effect.fail(
+            new Error(`SQL Error (${e._tag}): ${JSON.stringify(e)}`),
+          );
+        } else return Effect.fail(e as Exclude<E, SqlError.SqlError>);
+      },
+    ),
+  );

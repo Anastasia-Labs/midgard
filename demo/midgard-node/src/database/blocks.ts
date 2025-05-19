@@ -1,4 +1,4 @@
-import { Effect, Option } from "effect";
+import { Effect } from "effect";
 import { clearTable, mapSqlError } from "./utils.js";
 import { SqlClient } from "@effect/sql";
 import { Database } from "@/services/database.js";
@@ -89,11 +89,11 @@ export const retrieveBlockHashByTxHash = (
     }>`SELECT header_hash FROM ${sql(tableName)} WHERE tx_hash = ${Buffer.from(txHash)} LIMIT 1`;
 
     if (rows.length <= 0) {
-      const msg = `No block_hash found for ${txHash} tx_hash`
+      const msg = `No block_hash found for ${txHash} tx_hash`;
       yield* Effect.logDebug(msg);
       yield* Effect.fail(new Error(msg));
     }
-    const result = rows[0].header_hash
+    const result = rows[0].header_hash;
     yield* Effect.logDebug(
       `${tableName} db: retrieved block_hash for tx ${txHash}: ${result}`,
     );

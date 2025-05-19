@@ -1,4 +1,3 @@
-import { Option } from "effect";
 import {
   clearTable,
   insertKeyValue,

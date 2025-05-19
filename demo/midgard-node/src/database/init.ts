@@ -5,7 +5,7 @@ import * as ImmutableDB from "./immutable.js";
 import * as LatestLedgerDB from "./latestLedger.js";
 import * as MempoolDB from "./mempool.js";
 import * as MempoolLedgerDB from "./mempoolLedger.js";
-import { mapSqlError, mkKeyValueCreateQuery } from "./utils.js";
+import { mkKeyValueCreateQuery } from "./utils.js";
 import { Effect } from "effect";
 import { Database } from "@/services/database.js";
 

@@ -29,7 +29,6 @@ import {
 } from "../database/index.js";
 import { findSpentAndProducedUTxOs, isHexString } from "../utils.js";
 import { SqlClientLive } from "@/services/database.js";
-import * as Reactivity from "@effect/experimental/Reactivity";
 import { HttpRouter, HttpServer, HttpServerResponse } from "@effect/platform";
 import { ParsedSearchParams } from "@effect/platform/HttpServerRequest";
 import { createServer } from "node:http";
@@ -409,9 +408,7 @@ export const runNode = Effect.gen(function* () {
     NodeHttpServer.layer(createServer, { port: 3000 }),
   );
 
-  const appThread = pipe(
-    Layer.launch(ListenLayer),
-  );
+  const appThread = pipe(Layer.launch(ListenLayer));
 
   const blockCommitmentThread = blockCommitmentFork(
     nodeConfig.POLLING_INTERVAL,
@@ -421,9 +418,7 @@ export const runNode = Effect.gen(function* () {
     mergeFork(nodeConfig.CONFIRMED_STATE_POLLING_INTERVAL),
   );
 
-  const monitorMempoolThread = pipe(
-    mempoolFork(),
-  );
+  const monitorMempoolThread = pipe(mempoolFork());
 
   const program = Effect.all(
     [appThread, blockCommitmentThread, mergeThread, monitorMempoolThread],
