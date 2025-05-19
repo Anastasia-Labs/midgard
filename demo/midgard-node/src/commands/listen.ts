@@ -11,7 +11,6 @@ import { BatchSpanProcessor } from "@opentelemetry/sdk-trace-base";
 import {
   Duration,
   Effect,
-  Either,
   Layer,
   Metric,
   Option,
@@ -157,92 +156,95 @@ const getBlockHandler = Effect.gen(function* () {
 
 const getInitHandler = Effect.gen(function* () {
   yield* Effect.logInfo(`✨ Initialization request received`);
-  const result = yield* Effect.either(StateQueueTx.stateQueueInit);
-  if (Either.isRight(result)) {
-    yield* Effect.logInfo(
-      `GET /init - Initialization successful: ${result.right}`,
-    );
-    return yield* HttpServerResponse.json({
-      message: `Initiation successful: ${result}`,
-    });
-  } else {
-    yield* Effect.logInfo(`GET /init - Initialization failed: ${result.left}`);
-    return yield* HttpServerResponse.json(
-      { error: "Initialization failed" },
-      { status: 500 },
-    );
-  }
-}).pipe(Effect.catchAll((e) => handle500("getInit", e)));
+  const result = yield* StateQueueTx.stateQueueInit;
+  yield* Effect.logInfo(`GET /init - Initialization successful: ${result}`);
+  return yield* HttpServerResponse.json({
+    message: `Initiation successful: ${result}`,
+  });
+}).pipe(
+  Effect.catchAll((e) =>
+    Effect.gen(function* () {
+      yield* Effect.logInfo(`GET /init - Initialization failed: ${e}`);
+      return yield* HttpServerResponse.json(
+        { error: "Initialization failed" },
+        { status: 500 },
+      );
+    }),
+  ),
+);
 
 const getCommitEndpoint = Effect.gen(function* () {
   yield* Effect.logInfo(`GET /commit - Manual block commitment order received`);
-  const result = yield* Effect.either(makeBlockCommitmentAction());
-  if (Either.isRight(result)) {
-    yield* Effect.logInfo(
-      `GET /commit - Block commitment successful: ${result.right}`,
-    );
-    return yield* HttpServerResponse.json({
-      message: `Block commitment successful: ${result.right}`,
-    });
-  } else {
-    yield* Effect.logInfo(
-      `GET /commit - Block commitment failed: ${result.left}`,
-    );
-    return yield* HttpServerResponse.json(
-      { error: "Block commitment failed." },
-      { status: 500 },
-    );
-  }
-}).pipe(Effect.catchAll((e) => handle500("getCommit", e)));
+  const result = yield* makeBlockCommitmentAction();
+  yield* Effect.logInfo(`GET /commit - Block commitment successful: ${result}`);
+  return yield* HttpServerResponse.json({
+    message: `Block commitment successful: ${result}`,
+  });
+}).pipe(
+  Effect.catchAll((e) =>
+    Effect.gen(function* () {
+      yield* Effect.logInfo(`GET /commit - Block commitment failed: ${e}`);
+      return yield* HttpServerResponse.json(
+        { error: "Block commitment failed." },
+        { status: 500 },
+      );
+    }),
+  ),
+);
 
 const getMergeHandler = Effect.gen(function* () {
   yield* Effect.logInfo(`GET /merge - Manual merge order received`);
-  const result = yield* Effect.either(makeMergeAction());
-  if (Either.isRight(result)) {
-    yield* Effect.logInfo(
-      `GET /merge - Merging confirmed state successful: ${result.right}`,
-    );
-    return yield* HttpServerResponse.json({
-      message: `Merging confirmed state successful: ${result.right}`,
-    });
-  } else {
-    yield* Effect.logInfo(
-      `GET /merge - Merging confirmed state failed: ${result.left}`,
-    );
-    return yield* HttpServerResponse.json(
-      { error: "Merging confirmed state failed." },
-      { status: 500 },
-    );
-  }
-}).pipe(Effect.catchAll((e) => handle500("getMerge", e)));
+  const result = yield* makeMergeAction();
+  yield* Effect.logInfo(
+    `GET /merge - Merging confirmed state successful: ${result}`,
+  );
+  return yield* HttpServerResponse.json({
+    message: `Merging confirmed state successful: ${result}`,
+  });
+}).pipe(
+  Effect.catchAll((e) =>
+    Effect.gen(function* () {
+      yield* Effect.logInfo(
+        `GET /merge - Merging confirmed state failed: ${e}`,
+      );
+      return yield* HttpServerResponse.json(
+        { error: "Merging confirmed state failed." },
+        { status: 500 },
+      );
+    }),
+  ),
+);
 
 const getResetHandler = Effect.gen(function* () {
   yield* Effect.logInfo(`🚧 Reset request received`);
-  const result = yield* Effect.either(StateQueueTx.resetStateQueue);
-  if (Either.isLeft(result)) {
-    return yield* HttpServerResponse.json(
-      {
-        error: `Failed to collect one or more UTxOs. Please try again. Error: ${result.left}`,
-      },
-      { status: 400 },
-    );
-  } else {
-    yield* Effect.all(
-      [
-        MempoolDB.clear(),
-        MempoolLedgerDB.clear(),
-        BlocksDB.clear(),
-        ImmutableDB.clear(),
-        LatestLedgerDB.clear(),
-        ConfirmedLedgerDB.clear(),
-      ],
-      { discard: true },
-    );
-    return yield* HttpServerResponse.json({
-      message: `Collected all UTxOs successfully!`,
-    });
-  }
-}).pipe(Effect.catchAll((e) => handle500("getReset", e)));
+  yield* StateQueueTx.resetStateQueue;
+  yield* Effect.all(
+    [
+      MempoolDB.clear(),
+      MempoolLedgerDB.clear(),
+      BlocksDB.clear(),
+      ImmutableDB.clear(),
+      LatestLedgerDB.clear(),
+      ConfirmedLedgerDB.clear(),
+    ],
+    { discard: true },
+  );
+  return yield* HttpServerResponse.json({
+    message: `Collected all UTxOs successfully!`,
+  });
+}).pipe(
+  Effect.catchAll((e) =>
+    Effect.gen(function* () {
+      yield* Effect.logInfo(`Failed to collect one or more UTxOs. Error: ${e}`);
+      return yield* HttpServerResponse.json(
+        {
+          error: `Failed to collect one or more UTxOs. Please try again. Error: ${e}`,
+        },
+        { status: 400 },
+      );
+    }),
+  ),
+);
 
 const postSubmitHandler = Effect.gen(function* () {
   // yield* Effect.logInfo(`◻️ Submit request received for transaction`);
@@ -257,30 +259,30 @@ const postSubmitHandler = Effect.gen(function* () {
   } else {
     const txString = txStringParam;
     const { user: lucid } = yield* User;
-    const result = yield* Effect.either(
-      Effect.gen(function* () {
-        const txCBOR = fromHex(txString);
-        const tx = lucid.fromTx(txString);
-        const { spent, produced } = yield* findSpentAndProducedUTxOs(txCBOR);
-        yield* MempoolDB.insert(fromHex(tx.toHash()), txCBOR);
-        yield* MempoolLedgerDB.clearUTxOs(spent);
-        yield* MempoolLedgerDB.insert(produced);
-        Effect.runSync(Metric.increment(txCounter));
-      }),
-    );
-    if (Either.isRight(result)) {
+    return yield* Effect.gen(function* () {
+      const txCBOR = fromHex(txString);
+      const tx = lucid.fromTx(txString);
+      const { spent, produced } = yield* findSpentAndProducedUTxOs(txCBOR);
+      yield* MempoolDB.insert(fromHex(tx.toHash()), txCBOR);
+      yield* MempoolLedgerDB.clearUTxOs(spent);
+      yield* MempoolLedgerDB.insert(produced);
+      Effect.runSync(Metric.increment(txCounter));
       return yield* HttpServerResponse.json({
         message: `Successfully submitted the transaction`,
       });
-    } else {
-      yield* Effect.logInfo(`▫️ L2 transaction failed: ${result.left}`);
+    });
+  }
+}).pipe(
+  Effect.catchAll((e) =>
+    Effect.gen(function* () {
+      yield* Effect.logInfo(`▫️ L2 transaction failed: ${e}`);
       return yield* HttpServerResponse.json(
-        { error: `Something went wrong: ${result.left}` },
+        { error: `Something went wrong: ${e}` },
         { status: 400 },
       );
-    }
-  }
-}).pipe(Effect.catchAll((e) => handle500("postSubmit", e)));
+    }),
+  ),
+);
 
 const router = HttpRouter.empty.pipe(
   HttpRouter.get("/tx", getTxHandler),
