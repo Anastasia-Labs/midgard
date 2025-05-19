@@ -175,7 +175,7 @@ const getInitHandler = Effect.gen(function* () {
 
 const getCommitEndpoint = Effect.gen(function* () {
   yield* Effect.logInfo(`GET /commit - Manual block commitment order received`);
-  const result = yield* makeBlockCommitmentAction();
+  const result = yield* blockCommitmentAction;
   yield* Effect.logInfo(`GET /commit - Block commitment successful: ${result}`);
   return yield* HttpServerResponse.json({
     message: `Block commitment successful: ${result}`,
@@ -194,7 +194,7 @@ const getCommitEndpoint = Effect.gen(function* () {
 
 const getMergeHandler = Effect.gen(function* () {
   yield* Effect.logInfo(`GET /merge - Manual merge order received`);
-  const result = yield* makeMergeAction();
+  const result = yield* mergeAction;
   yield* Effect.logInfo(
     `GET /merge - Merging confirmed state successful: ${result}`,
   );
@@ -295,34 +295,28 @@ const router = HttpRouter.empty.pipe(
   HttpRouter.post("/submit", postSubmitHandler),
 );
 
-const makeBlockCommitmentAction = () =>
-  Effect.gen(function* () {
-    yield* Effect.logInfo("🔹 New block commitment process started.");
-    yield* StateQueueTx.buildAndSubmitCommitmentBlock().pipe(
-      Effect.withSpan("buildAndSubmitCommitmentBlock"),
-    );
-  });
+const blockCommitmentAction = Effect.gen(function* () {
+  yield* Effect.logInfo("🔹 New block commitment process started.");
+  yield* StateQueueTx.buildAndSubmitCommitmentBlock().pipe(
+    Effect.withSpan("buildAndSubmitCommitmentBlock"),
+)});
 
-const makeMergeAction = () =>
-  Effect.gen(function* () {
-    const { user: lucid } = yield* User;
-    const { spendScriptAddress, policyId, spendScript, mintScript } =
-      yield* AlwaysSucceeds.AlwaysSucceedsContract;
-    const fetchConfig: SDK.TxBuilder.StateQueue.FetchConfig = {
-      stateQueueAddress: spendScriptAddress,
-      stateQueuePolicyId: policyId,
-    };
+const mergeAction = Effect.gen(function* () {
+  const { user: lucid } = yield* User;
+  const { spendScriptAddress, policyId, spendScript, mintScript } =
+    yield* AlwaysSucceeds.AlwaysSucceedsContract;
+  const fetchConfig: SDK.TxBuilder.StateQueue.FetchConfig = {
+    stateQueueAddress: spendScriptAddress,
+    stateQueuePolicyId: policyId,
+  };
+  yield* StateQueueTx.buildAndSubmitMergeTx(
+    lucid,
+    fetchConfig,
+    spendScript,
+    mintScript,
+)});
 
-    yield* StateQueueTx.buildAndSubmitMergeTx(
-      lucid,
-      fetchConfig,
-      spendScript,
-      mintScript,
-    );
-  });
-
-const makeMempoolAction = () =>
-  Effect.gen(function* () {
+const mempoolAction = Effect.gen(function* () {
     const txList = yield* MempoolDB.retrieve();
     const numTx = BigInt(txList.length);
     yield* mempoolTxGauge(Effect.succeed(numTx));
@@ -332,7 +326,7 @@ const blockCommitmentFork = (pollingInterval: number) =>
   pipe(
     Effect.gen(function* () {
       yield* Effect.logInfo("🔵 Block commitment fork started.");
-      const action = makeBlockCommitmentAction().pipe(
+      const action = blockCommitmentAction.pipe(
         Effect.withSpan("block-commitment-fork"),
         Effect.catchAllCause(Effect.logWarning),
       );
@@ -354,7 +348,7 @@ const mergeFork = (pollingInterval: number) =>
       const schedule = Schedule.addDelay(Schedule.forever, () =>
         Duration.millis(pollingInterval),
       );
-      const action = makeMergeAction().pipe(
+      const action = mergeAction.pipe(
         Effect.withSpan("merge-confirmed-state-fork"),
         Effect.catchAllCause(Effect.logWarning),
       );
@@ -370,7 +364,7 @@ const mempoolFork = () =>
       const schedule = Schedule.addDelay(Schedule.forever, () =>
         Duration.millis(1000),
       );
-      yield* Effect.repeat(makeMempoolAction(), schedule);
+      yield* Effect.repeat(mempoolAction, schedule);
     }),
     Effect.catchAllCause(Effect.logWarning),
   );
