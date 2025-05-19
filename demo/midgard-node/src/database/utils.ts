@@ -34,10 +34,10 @@ export const retrieveValue = (
     const sql = yield* SqlClient.SqlClient;
     yield* Effect.logDebug(`${tableName} db: attempt to retrieve value`);
 
-    const result = yield* sql`SELECT value FROM ${sql(
+    const result = yield* sql<(Uint8Array[])>`SELECT value FROM ${sql(
       tableName,
-    )} WHERE key = ${Buffer.from(key)}  LIMIT 1 `;
-    return Option.fromNullable(result[0]?.[0] as Uint8Array);
+    )} WHERE key = ${Buffer.from(key)} LIMIT 1 `;
+    return Option.fromNullable(result[0]?.[0]);
   }).pipe(
     Effect.withLogSpan(`retrieve value ${tableName}`),
     Effect.tapErrorTag("SqlError", (e) =>
