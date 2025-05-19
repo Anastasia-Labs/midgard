@@ -27,7 +27,7 @@ import {
   MempoolLedgerDB,
 } from "../database/index.js";
 import { findSpentAndProducedUTxOs, isHexString } from "../utils.js";
-import { SqlClientLive } from "@/services/database.js";
+import { Database } from "@/services/database.js";
 import { HttpRouter, HttpServer, HttpServerResponse } from "@effect/platform";
 import { ParsedSearchParams } from "@effect/platform/HttpServerRequest";
 import { createServer } from "node:http";
@@ -396,7 +396,7 @@ export const runNode = Effect.gen(function* () {
     ),
   }));
 
-  yield* InitDB.initializeDb().pipe(Effect.provide(SqlClientLive));
+  yield* InitDB.initializeDb().pipe(Effect.provide(Database.layer));
 
   const ListenLayer = Layer.provide(
     HttpServer.serve(router),
@@ -421,7 +421,7 @@ export const runNode = Effect.gen(function* () {
       concurrency: "unbounded",
     },
   ).pipe(
-    Effect.provide(SqlClientLive),
+    Effect.provide(Database.layer),
     Effect.provide(AlwaysSucceedsContract.layer),
     Effect.provide(User.layer),
     Effect.provide(NodeConfig.layer),

@@ -10,7 +10,7 @@ export const createPgLayerEffect = Effect.gen(function* () {
   return PgClient.layer(mkPgConfig(nodeConfig));
 }).pipe(Effect.orDie);
 
-export const SqlClientLive: Layer.Layer<
+const SqlClientLive: Layer.Layer<
   SqlClient.SqlClient,
   SqlError.SqlError | ConfigError,
   NodeConfig
