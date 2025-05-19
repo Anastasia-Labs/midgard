@@ -236,7 +236,7 @@ const wrapper = (
             Effect.withSpan(`batch-insert-${startIndex}-${endIndex}`),
           );
         },
-        { concurrency: 2 },
+        { concurrency: batchIndices.length },
       );
 
       yield* Effect.logInfo(
