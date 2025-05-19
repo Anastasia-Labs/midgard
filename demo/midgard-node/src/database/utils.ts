@@ -165,7 +165,16 @@ export const retrieveKeyValues = (
     mapSqlError,
   );
 
-export const mapSqlError = Effect.mapError(
-  (sqlError: SqlError.SqlError) =>
-    new Error(`SQL Error (${sqlError._tag}): ${JSON.stringify(sqlError)}`),
-);
+export const mapSqlError = <A, E, R>(
+  effect: Effect.Effect<A, E, R>
+): Effect.Effect<A, Exclude<E, SqlError.SqlError> | Error, R> =>
+  effect.pipe(
+    Effect.catchAll((e): Effect.Effect<A, Exclude<E, SqlError.SqlError> | Error, R> => {
+      if (e instanceof SqlError.SqlError) {
+        return Effect.fail(
+          new Error(`SQL Error (${e._tag}): ${JSON.stringify(e)}`)
+        )
+      }
+      else return Effect.fail(e as Exclude<E, SqlError.SqlError>)
+    })
+  )

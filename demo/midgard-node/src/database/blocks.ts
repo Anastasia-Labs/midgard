@@ -77,7 +77,7 @@ export const retrieveTxHashesByBlockHash = (
 
 export const retrieveBlockHashByTxHash = (
   txHash: Uint8Array,
-): Effect.Effect<Option.Option<Uint8Array>, Error, SqlClient.SqlClient> =>
+): Effect.Effect<Uint8Array, Error, SqlClient.SqlClient> =>
   Effect.gen(function* () {
     yield* Effect.logDebug(
       `${tableName} db: attempt retrieve block_hash for tx_hash ${txHash}`,
@@ -88,13 +88,14 @@ export const retrieveBlockHashByTxHash = (
       header_hash: Uint8Array;
     }>`SELECT header_hash FROM ${sql(tableName)} WHERE tx_hash = ${Buffer.from(txHash)} LIMIT 1`;
 
-    const result =
-      rows.length > 0
-        ? Option.some(rows[0].header_hash)
-        : Option.none<Uint8Array>();
-
+    if (rows.length <= 0) {
+      const msg = `No block_hash found for ${txHash} tx_hash`
+      yield* Effect.logDebug(msg);
+      yield* Effect.fail(new Error(msg));
+    }
+    const result = rows[0].header_hash
     yield* Effect.logDebug(
-      `${tableName} db: retrieved block_hash for tx ${txHash}: ${Option.match(result, { onNone: () => "None", onSome: () => "Some(...)})" })}`,
+      `${tableName} db: retrieved block_hash for tx ${txHash}: ${result}`,
     );
     return result;
   }).pipe(
