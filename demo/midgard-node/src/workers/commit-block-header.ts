@@ -253,7 +253,7 @@ const wrapper = (
       };
 
       yield* Effect.logInfo(
-        "🔹 Clearing LatestLedgerDB, inserting updated UTxO set LatestLedgerDB and closing the connection...",
+        "🔹 Clearing LatestLedgerDB, inserting updated UTxO set LatestLedgerDB",
       );
       // yield* ledgerDB.conclude()
       // yield* Effect.tryPromise({
@@ -265,7 +265,7 @@ const wrapper = (
       return output;
     } else {
       yield* Effect.logInfo(
-        "🔹 No transactions were found in MempoolDB, closing the connection...",
+        "🔹 No transactions were found in MempoolDB",
       );
       const output: WorkerOutput = {
         txSize: 0,
