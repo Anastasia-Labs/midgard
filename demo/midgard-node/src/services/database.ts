@@ -6,6 +6,7 @@ import { ConfigError } from "effect/ConfigError";
 
 export const createPgLayerEffect = Effect.gen(function* () {
   const nodeConfig = yield* NodeConfig;
+  yield* Effect.logInfo("📚 Opening connection to db...");
   return PgClient.layer(mkPgConfig(nodeConfig));
 }).pipe(Effect.orDie);
 

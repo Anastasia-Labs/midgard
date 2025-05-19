@@ -396,7 +396,6 @@ export const runNode = Effect.gen(function* () {
     ),
   }));
 
-  yield* Effect.logInfo("📚 Opening connection to db...");
   yield* InitDB.initializeDb().pipe(Effect.provide(SqlClientLive));
 
   const ListenLayer = Layer.provide(
