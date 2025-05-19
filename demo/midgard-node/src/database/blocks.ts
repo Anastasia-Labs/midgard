@@ -1,89 +1,155 @@
-import { Option } from "effect";
-import { Sql } from "postgres";
-import { clearTable } from "./utils.js";
+import { Effect } from "effect";
+import { clearTable, mapSqlError } from "./utils.js";
+import { SqlClient } from "@effect/sql";
 
 export const tableName = "blocks";
 
-export const createQuery = (sql: Sql) => sql`
+export type BlockRecord = {
+  block_header_hash: string;
+  tx_hash: string;
+};
+
+export const createQuery = Effect.gen(function* () {
+  const sql = yield* SqlClient.SqlClient;
+  yield* sql`
   CREATE TABLE IF NOT EXISTS ${sql(tableName)} (
-    header_hash BYTEA NOT NULL,
-    tx_hash BYTEA NOT NULL UNIQUE
+    block_header_hash TEXT NOT NULL,
+    tx_hash TEXT NOT NULL UNIQUE
   );`;
+}).pipe(Effect.withLogSpan(`creating table ${tableName}`), mapSqlError);
 
-export const insert = async (
-  sql: Sql,
-  headerHash: Uint8Array,
-  txHashes: Uint8Array[],
-): Promise<void> => {
-  try {
-    const headerHashBuffer: Buffer = Buffer.from(headerHash);
-    const pairs = txHashes.map((txHash) => ({
-      header_hash: headerHashBuffer,
-      tx_hash: Buffer.from(txHash),
-    }));
-    await sql`INSERT INTO ${sql(tableName)} ${sql(
-      pairs,
-    )} ON CONFLICT (tx_hash) DO NOTHING`;
-  } catch (err) {
-    throw err;
-  }
-};
+export const insert = (headerHash: string, txHashes: string[]) =>
+  Effect.gen(function* () {
+    yield* Effect.logInfo(`${tableName} db: attempt to insert blocks`);
+    const sql = yield* SqlClient.SqlClient;
 
-export const retrieveTxHashesByBlockHash = async (
-  sql: Sql,
-  blockHash: Uint8Array,
-): Promise<Uint8Array[]> => {
-  try {
-    const result = await sql`SELECT tx_hash FROM ${sql(
-      tableName,
-    )} WHERE header_hash = ${Buffer.from(blockHash)}`;
-    return result.map((row) => Uint8Array.from(row.tx_hash));
-  } catch (err) {
-    throw err;
-  }
-};
-
-export const retrieveBlockHashByTxHash = async (
-  sql: Sql,
-  txHash: Uint8Array,
-): Promise<Option.Option<Uint8Array>> => {
-  try {
-    const result = await sql`SELECT header_hash FROM ${sql(
-      tableName,
-    )} WHERE tx_hash = ${Buffer.from(txHash)}`;
-    if (result.length > 0) {
-      return Option.some(result[0].header_hash);
-    } else {
-      return Option.none();
+    if (!txHashes.length) {
+      yield* Effect.logDebug("No txHashes provided, skipping block insertion.");
+      return;
     }
-  } catch (err) {
-    throw err;
-  }
-};
+    const rowsToInsert = txHashes.map((txHash: string) => ({
+      block_header_hash: headerHash,
+      tx_hash: txHash,
+    }));
 
-export const clearBlock = async (
-  sql: Sql,
-  blockHash: Uint8Array,
-): Promise<void> => {
-  try {
-    await sql`DELETE FROM ${sql(tableName)} WHERE header_hash = ${Buffer.from(blockHash)}`;
-  } catch (err) {
-    throw err;
-  }
-};
+    yield* sql`INSERT INTO ${sql(tableName)} ${sql.insert(rowsToInsert)}`;
 
-export const retrieve = async (
-  sql: Sql,
-): Promise<[Uint8Array, Uint8Array][]> => {
-  try {
-    const result = await sql`SELECT * FROM ${sql(tableName)}`;
-    return result.map((row) => [
-      Uint8Array.from(row.header_hash),
-      Uint8Array.from(row.tx_hash),
-    ]);
-  } catch (err) {
-    throw err;
-  }
-};
+    yield* Effect.logInfo(
+      `${tableName} db: ${rowsToInsert.length} block rows inserted.`,
+    );
+  }).pipe(
+    Effect.tapErrorTag("SqlError", (e) =>
+      Effect.logError(`${tableName} db: inserting error: ${e}`),
+    ),
+    Effect.withLogSpan(`insert ${tableName}`),
+    mapSqlError,
+    Effect.asVoid,
+  );
 
-export const clear = async (sql: Sql) => clearTable(sql, tableName);
+export const retrieveTxHashesByBlockHash = (blockHash: string) =>
+  Effect.gen(function* () {
+    yield* Effect.logDebug(
+      `${tableName} db: attempt retrieve tx_hashes for block ${blockHash}`,
+    );
+    const sql = yield* SqlClient.SqlClient;
+
+    const rows = yield* sql<{
+      tx_hash: string;
+    }>`SELECT tx_hash FROM ${sql(tableName)} WHERE block_header_hash = ${blockHash}`;
+
+    const result = rows.map((row) => row.tx_hash);
+
+    yield* Effect.logDebug(
+      `${tableName} db: retrieved ${result.length} tx_hashes for block ${blockHash}`,
+    );
+    return result;
+  }).pipe(
+    Effect.withLogSpan(`retrieveTxHashesByBlockHash ${tableName}`),
+    Effect.tapErrorTag("SqlError", (e) =>
+      Effect.logError(
+        `${tableName} db: retrieving tx_hashes error: ${JSON.stringify(e)}`,
+      ),
+    ),
+    mapSqlError,
+  );
+
+export const retrieveBlockHashByTxHash = (
+  txHash: string,
+): Effect.Effect<string, Error, SqlClient.SqlClient> =>
+  Effect.gen(function* () {
+    yield* Effect.logDebug(
+      `${tableName} db: attempt retrieve block_hash for tx_hash ${txHash}`,
+    );
+    const sql = yield* SqlClient.SqlClient;
+
+    const rows = yield* sql<{
+      block_header_hash: string;
+    }>`SELECT block_header_hash FROM ${sql(tableName)} WHERE tx_hash = ${txHash} LIMIT 1`;
+
+    if (rows.length <= 0) {
+      const msg = `No block_hash found for ${txHash} tx_hash`;
+      yield* Effect.logDebug(msg);
+      yield* Effect.fail(new Error(msg));
+    }
+    const result = rows[0].block_header_hash;
+    yield* Effect.logDebug(
+      `${tableName} db: retrieved block_hash for tx ${txHash}: ${result}`,
+    );
+    return result;
+  }).pipe(
+    Effect.withLogSpan(`retrieveBlockHashByTxHash ${tableName}`),
+    Effect.tapErrorTag("SqlError", (e) =>
+      Effect.logError(
+        `${tableName} db: retrieving block_hash error: ${JSON.stringify(e)}`,
+      ),
+    ),
+    mapSqlError,
+  );
+
+export const clearBlock = (
+  blockHash: string,
+): Effect.Effect<void, Error, SqlClient.SqlClient> =>
+  Effect.gen(function* () {
+    yield* Effect.logDebug(`${tableName} db: attempt clear block ${blockHash}`);
+    const sql = yield* SqlClient.SqlClient;
+
+    const result =
+      yield* sql`DELETE FROM ${sql(tableName)} WHERE block_header_hash = ${blockHash}`;
+
+    yield* Effect.logInfo(
+      `${tableName} db: cleared ${result.length} rows for block ${blockHash}`,
+    );
+    return Effect.void;
+  }).pipe(
+    Effect.withLogSpan(`clearBlock ${tableName}`),
+    Effect.tapErrorTag("SqlError", (e) =>
+      Effect.logError(
+        `${tableName} db: clearing block error: ${JSON.stringify(e)}`,
+      ),
+    ),
+    mapSqlError,
+  );
+
+export const retrieve = (): Effect.Effect<
+  BlockRecord[],
+  Error,
+  SqlClient.SqlClient
+> =>
+  Effect.gen(function* () {
+    yield* Effect.logInfo(`${tableName} db: attempt to retrieve blocks`);
+    const sql = yield* SqlClient.SqlClient;
+    const rows = yield* sql<BlockRecord>`SELECT * FROM ${sql(tableName)}`;
+    yield* Effect.logDebug(`${tableName} db: retrieved ${rows.length} rows.`);
+    return Array.from(rows);
+  }).pipe(
+    Effect.withLogSpan(`retrieve ${tableName}`),
+    Effect.tapErrorTag("SqlError", (e) =>
+      Effect.logError(
+        `${tableName} db: retrieving error: ${JSON.stringify(e)}`,
+      ),
+    ),
+    mapSqlError,
+  );
+
+export const clear = (): Effect.Effect<void, Error, SqlClient.SqlClient> =>
+  clearTable(tableName).pipe(Effect.withLogSpan(`clear ${tableName}`));
