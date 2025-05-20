@@ -1,7 +1,5 @@
 import { Blockfrost, Kupmios, Lucid, Network } from "@lucid-evolution/lucid";
-import { Config, Context, Effect, Layer, pipe } from "effect";
-import postgres, { Sql } from "postgres";
-import { InitDB } from "@/database/index.js";
+import { Config, Context, Effect, Layer } from "effect";
 
 const SUPPORTED_PROVIDERS = ["kupmios", "blockfrost"] as const;
 type Provider = (typeof SUPPORTED_PROVIDERS)[number];
@@ -23,7 +21,10 @@ export type NodeConfigDep = {
   CONFIRMED_STATE_POLLING_INTERVAL: number;
   PROM_METRICS_PORT: number;
   OLTP_EXPORTER_URL: string;
-  DB_CONN: Sql;
+  POSTGRES_USER: string;
+  POSTGRES_PASSWORD: string;
+  POSTGRES_DB: string;
+  POSTGRES_HOST: string;
 };
 
 export const makeUserFn = (nodeConfig: NodeConfigDep) =>
@@ -46,16 +47,6 @@ export const makeUserFn = (nodeConfig: NodeConfigDep) =>
       }
     });
     user.selectWallet.fromSeed(nodeConfig.L1_OPERATOR_SEED_PHRASE);
-    yield* pipe(
-      Effect.promise(() => user.wallet().address()),
-      Effect.flatMap((address) => Effect.log(`Wallet : ${address}`)),
-    );
-    yield* pipe(
-      Effect.promise(() => user.wallet().getUtxos()),
-      Effect.flatMap((utxos) =>
-        Effect.log(`Total Wallet UTxOs: ${utxos.length}`),
-      ),
-    );
     return {
       user,
     };
@@ -94,29 +85,10 @@ export const makeConfig = Effect.gen(function* () {
       Config.withDefault("http://0.0.0.0:4318/v1/traces"),
     ),
     Config.string("POSTGRES_HOST").pipe(Config.withDefault("postgres")), // service name
-    Config.string("POSTGRES_USER").pipe(Config.withDefault("postgres")),
     Config.string("POSTGRES_PASSWORD").pipe(Config.withDefault("postgres")),
     Config.string("POSTGRES_DB").pipe(Config.withDefault("midgard")),
+    Config.string("POSTGRES_USER").pipe(Config.withDefault("postgres")),
   ]);
-
-  yield* Effect.logInfo("📚 Opening connection to db...");
-
-  const db = postgres({
-    host: config[12],
-    username: config[13],
-    password: config[14],
-    database: config[15],
-    max: 20,
-    idle_timeout: 30000,
-    connect_timeout: 2000,
-  });
-
-  yield* Effect.tryPromise({
-    try: () => InitDB.initializeDb(db),
-    catch: (e) => new Error(`${e}`),
-  });
-
-  yield* Effect.logInfo("📚 Done");
 
   const provider = config[0].toLowerCase();
   if (!isValidProvider(provider)) {
@@ -137,7 +109,10 @@ export const makeConfig = Effect.gen(function* () {
     CONFIRMED_STATE_POLLING_INTERVAL: config[9],
     PROM_METRICS_PORT: config[10],
     OLTP_EXPORTER_URL: config[11],
-    DB_CONN: db,
+    POSTGRES_HOST: config[12],
+    POSTGRES_PASSWORD: config[13],
+    POSTGRES_DB: config[14],
+    POSTGRES_USER: config[15],
   };
 }).pipe(Effect.orDie);
 

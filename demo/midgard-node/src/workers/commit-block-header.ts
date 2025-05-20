@@ -12,51 +12,52 @@ import { handleSignSubmit } from "@/transactions/utils.js";
 import { fromHex, toHex } from "@lucid-evolution/lucid";
 import * as ETH from "@ethereumjs/mpt";
 import * as ETH_UTILS from "@ethereumjs/util";
-import { PostgresDB } from "./db.js";
+import { PostgresCheckpointDB } from "./db.js";
 import { NodeConfig, User } from "@/config.js";
+import { Database } from "@/services/database.js";
+import { SqlClient } from "@effect/sql";
 
 // Key of the row which its value is the persisted trie root.
 const rootKey = ETH.ROOT_DB_KEY;
 
 const wrapper = (
   _input: WorkerInput,
-): Effect.Effect<WorkerOutput, Error, NodeConfig | User> =>
+): Effect.Effect<
+  WorkerOutput,
+  Error,
+  NodeConfig | User | SqlClient.SqlClient
+> =>
   Effect.gen(function* () {
     const nodeConfig = yield* NodeConfig;
     const { user: lucid } = yield* User;
-    const pool = nodeConfig.DB_CONN;
+    const client = yield* SqlClient.SqlClient;
 
-    const mempoolDB = new PostgresDB("mempool_clone", "mempool", pool);
-    const ledgerDB = new PostgresDB(
+    const mempoolDB = new PostgresCheckpointDB(
+      client,
+      "mempool_clone",
+      "mempool",
+    );
+    const ledgerDB = new PostgresCheckpointDB(
+      client,
       "latest_ledger_clone",
       "latest_ledger",
-      pool,
     );
-
     yield* Effect.all(
       [
         // Open the empty clone table for collecting mempool transactions and
         // finding the root incrementally.
-        Effect.tryPromise({
-          try: () => mempoolDB.open(),
-          catch: (e) => new Error(`${e}`),
-        }),
+        mempoolDB.openEffect(),
         // Open the clone ledger table (duplicate of `LatestLedgerDB`), for
         // continuing state updates.
-        Effect.tryPromise({
-          try: () => ledgerDB.open(true),
-          catch: (e) => new Error(`${e}`),
-        }),
+        ledgerDB.openEffect(),
       ],
       { concurrency: 2 },
     );
 
     yield* Effect.logInfo("🔹 Retrieving all mempool transactions...");
-    const mempoolTxs = yield* Effect.tryPromise({
-      try: mempoolDB.getAllFromReference,
-      catch: (e) => new Error(`${e}`),
-    }).pipe(Effect.withSpan("retrieve mempool transaction"));
-
+    const mempoolTxs = yield* mempoolDB
+      .getAllFromReferenceEffect()
+      .pipe(Effect.withSpan("retrieve mempool transaction"));
     const mempoolTxsCount = mempoolTxs.length;
 
     if (mempoolTxsCount > 0) {
@@ -66,7 +67,7 @@ const wrapper = (
       const mempoolTrie = yield* Effect.tryPromise({
         try: () =>
           ETH.createMPT({
-            db: mempoolDB,
+            db: mempoolDB.db,
             valueEncoding: ETH_UTILS.ValueEncoding.Bytes,
           }),
         catch: (e) => new Error(`${e}`),
@@ -75,7 +76,7 @@ const wrapper = (
       const ledgerTrie = yield* Effect.tryPromise({
         try: () =>
           ETH.createMPT({
-            db: ledgerDB,
+            db: ledgerDB.db,
             useRootPersistence: true,
             valueEncoding: ETH_UTILS.ValueEncoding.Bytes,
           }),
@@ -208,31 +209,42 @@ const wrapper = (
       yield* Effect.logInfo(
         "🔹 Inserting included transactions into ImmutableDB and BlocksDB...",
       );
-      for (let i = 0; i < mempoolTxsCount; i += batchSize) {
-        yield* Effect.tryPromise({
-          try: () =>
-            ImmutableDB.insertTxs(pool, mempoolTxs.slice(i, i + batchSize)),
-          catch: (e) => new Error(`${e}`),
-        }).pipe(Effect.withSpan(`immutable-db-insert-${i}`));
 
-        yield* Effect.tryPromise({
-          try: () =>
-            BlocksDB.insert(
-              pool,
-              fromHex(newHeaderHash),
-              mempoolTxHashes.slice(i, i + batchSize),
+      const batchIndices = Array.from(
+        { length: Math.ceil(mempoolTxsCount / batchSize) },
+        (_, i) => i * batchSize,
+      );
+      yield* Effect.forEach(
+        batchIndices,
+        (startIndex) => {
+          const endIndex = startIndex + batchSize;
+          const batchTxs = mempoolTxs.slice(startIndex, endIndex);
+          const batchHashes = mempoolTxHashes.slice(startIndex, endIndex);
+
+          return pipe(
+            Effect.all(
+              [
+                ImmutableDB.insertTxs(batchTxs).pipe(
+                  Effect.withSpan(`immutable-db-insert-${startIndex}`),
+                ),
+                BlocksDB.insert(fromHex(newHeaderHash), batchHashes).pipe(
+                  Effect.withSpan(`blocks-db-insert-${startIndex}`),
+                ),
+              ],
+              { concurrency: 2 },
             ),
-          catch: (e) => new Error(`${e}`),
-        }).pipe(Effect.withSpan(`immutable-db-insert-${i}`));
-      }
+            Effect.withSpan(`batch-insert-${startIndex}-${endIndex}`),
+          );
+        },
+        { concurrency: batchIndices.length },
+      );
 
       yield* Effect.logInfo(
         "🔹 Clearing included transactions from MempoolDB...",
       );
-      yield* Effect.tryPromise({
-        try: () => MempoolDB.clearTxs(pool, mempoolTxHashes),
-        catch: (e) => new Error(`${e}`),
-      }).pipe(Effect.withSpan("clear mempool"));
+      yield* MempoolDB.clearTxs(mempoolTxHashes).pipe(
+        Effect.withSpan("clear mempool"),
+      );
 
       const output: WorkerOutput = {
         txSize,
@@ -241,22 +253,20 @@ const wrapper = (
       };
 
       yield* Effect.logInfo(
-        "🔹 Clearing LatestLedgerDB, inserting updated UTxO set LatestLedgerDB and closing the connection...",
+        "🔹 Clearing LatestLedgerDB, inserting updated UTxO set LatestLedgerDB",
       );
-      yield* Effect.tryPromise({
-        try: ledgerDB.conclude,
-        catch: (e) => new Error(`${e}`),
-      });
+      // yield* ledgerDB.conclude()
+      // yield* Effect.tryPromise({
+      //   try: ledgerDB.conclude(),
+      //   catch: (e) => new Error(`${e}`),
+      // });
+      yield* ledgerDB.transferToReference();
 
       return output;
     } else {
       yield* Effect.logInfo(
-        "🔹 No transactions were found in MempoolDB, closing the connection...",
+        "🔹 No transactions were found in MempoolDB",
       );
-      yield* Effect.tryPromise({
-        try: () => pool.end(),
-        catch: (e) => new Error(`${e}`),
-      });
       const output: WorkerOutput = {
         txSize: 0,
         mempoolTxsCount: 0,
@@ -274,6 +284,7 @@ const inputData = workerData as WorkerInput;
 
 const program = pipe(
   wrapper(inputData),
+  Effect.provide(Database.layer),
   Effect.provide(User.layer),
   Effect.provide(NodeConfig.layer),
 );
