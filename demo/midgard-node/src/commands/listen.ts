@@ -4,7 +4,7 @@ import { AlwaysSucceeds } from "@/services/index.js";
 import { StateQueueTx } from "@/transactions/index.js";
 import * as SDK from "@al-ft/midgard-sdk";
 import { NodeSdk } from "@effect/opentelemetry";
-import { CML, fromHex, getAddressDetails } from "@lucid-evolution/lucid";
+import { CML, getAddressDetails } from "@lucid-evolution/lucid";
 import { PrometheusExporter } from "@opentelemetry/exporter-prometheus";
 import { OTLPTraceExporter } from "@opentelemetry/exporter-trace-otlp-http";
 import { BatchSpanProcessor } from "@opentelemetry/sdk-trace-base";
@@ -71,20 +71,21 @@ const getTxHandler = Effect.gen(function* () {
       { status: 404 },
     );
   }
-  const txHashBytes = fromHex(txHashParam);
-  const retMempool = yield* MempoolDB.retrieveTxCborByHash(txHashBytes);
-  if (Option.isSome(retMempool)) {
+  const retMempool = yield* MempoolDB.retrieveTxCborsByHashes([txHashParam]);
+  if (retMempool.length > 0) {
     yield* Effect.logInfo(
       `GET /tx - Transaction found in mempool: ${txHashParam}`,
     );
-    return yield* HttpServerResponse.json({ tx: retMempool.value });
+    return yield* HttpServerResponse.json({ tx: retMempool[0] });
   }
-  const retImmutable = yield* ImmutableDB.retrieveTxCborByHash(txHashBytes);
-  if (Option.isSome(retImmutable)) {
+  const retImmutable = yield* ImmutableDB.retrieveTxCborsByHashes([
+    txHashParam,
+  ]);
+  if (retImmutable.length > 0) {
     yield* Effect.logInfo(
       `GET /tx - Transaction found in immutable: ${txHashParam}`,
     );
-    return yield* HttpServerResponse.json({ tx: retImmutable.value });
+    return yield* HttpServerResponse.json({ tx: retImmutable[0] });
   }
   yield* Effect.logInfo(`Transaction not found: ${txHashParam}`);
   return yield* HttpServerResponse.json(
@@ -113,9 +114,9 @@ const getUtxosHandler = Effect.gen(function* () {
         { status: 400 },
       );
     }
-    const allUTxOs = yield* MempoolLedgerDB.retrieve();
-    const filtered = allUTxOs.filter(({ value }) => {
-      const cmlOutput = CML.TransactionOutput.from_cbor_bytes(value);
+    const allUTxOs = yield* MempoolLedgerDB.retrieveAll();
+    const filtered = allUTxOs.filter(({ utxo_output }) => {
+      const cmlOutput = CML.TransactionOutput.from_cbor_hex(utxo_output);
       return cmlOutput.address().to_bech32() === addrDetails.address.bech32;
     });
     yield* Effect.logInfo(`Found ${filtered.length} UTXOs for ${addr}`);
@@ -131,9 +132,9 @@ const getUtxosHandler = Effect.gen(function* () {
 
 const getBlockHandler = Effect.gen(function* () {
   const params = yield* ParsedSearchParams;
-  const hdrHash = params["header_hash"];
+  const hdrHash = params["block_header_hash"];
   yield* Effect.logInfo(
-    `GET /block - Request received for header_hash: ${hdrHash}`,
+    `GET /block - Request received for block_header_hash: ${hdrHash}`,
   );
 
   if (
@@ -147,7 +148,7 @@ const getBlockHandler = Effect.gen(function* () {
       { status: 400 },
     );
   }
-  const hashes = yield* BlocksDB.retrieveTxHashesByBlockHash(fromHex(hdrHash));
+  const hashes = yield* BlocksDB.retrieveTxHashesByBlockHash(hdrHash);
   yield* Effect.logInfo(
     `GET /block - Found ${hashes.length} txs for block: ${hdrHash}`,
   );
@@ -260,10 +261,9 @@ const postSubmitHandler = Effect.gen(function* () {
     const txString = txStringParam;
     const { user: lucid } = yield* User;
     return yield* Effect.gen(function* () {
-      const txCBOR = fromHex(txString);
       const tx = lucid.fromTx(txString);
-      const { spent, produced } = yield* findSpentAndProducedUTxOs(txCBOR);
-      yield* MempoolDB.insert(fromHex(tx.toHash()), txCBOR);
+      const { spent, produced } = yield* findSpentAndProducedUTxOs(txString);
+      yield* MempoolDB.insert([{ txHash: tx.toHash(), txCbor: txString }]);
       yield* MempoolLedgerDB.clearUTxOs(spent);
       yield* MempoolLedgerDB.insert(produced);
       Effect.runSync(Metric.increment(txCounter));
@@ -299,7 +299,8 @@ const blockCommitmentAction = Effect.gen(function* () {
   yield* Effect.logInfo("🔹 New block commitment process started.");
   yield* StateQueueTx.buildAndSubmitCommitmentBlock().pipe(
     Effect.withSpan("buildAndSubmitCommitmentBlock"),
-)});
+  );
+});
 
 const mergeAction = Effect.gen(function* () {
   const { user: lucid } = yield* User;
@@ -314,13 +315,14 @@ const mergeAction = Effect.gen(function* () {
     fetchConfig,
     spendScript,
     mintScript,
-)});
+  );
+});
 
 const mempoolAction = Effect.gen(function* () {
-    const txList = yield* MempoolDB.retrieve();
-    const numTx = BigInt(txList.length);
-    yield* mempoolTxGauge(Effect.succeed(numTx));
-  });
+  const count = yield* MempoolDB.countAll();
+  const numTx = BigInt(count);
+  yield* mempoolTxGauge(Effect.succeed(numTx));
+});
 
 const blockCommitmentFork = (pollingInterval: number) =>
   pipe(
@@ -370,7 +372,6 @@ const mempoolFork = () =>
   );
 
 export const runNode = Effect.gen(function* () {
-  const { user } = yield* User;
   const nodeConfig = yield* NodeConfig;
 
   const prometheusExporter = new PrometheusExporter(

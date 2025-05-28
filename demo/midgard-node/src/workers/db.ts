@@ -15,11 +15,15 @@ export class PostgresCheckpointDB
   _rootsRef: Ref.Ref<Uint8Array[]>;
   _client: Database;
   _tableName: string;
+  _keyColumnName: string;
+  _valueColumnName: string;
   _referenceTableName: string | undefined;
 
   constructor(
     client: Database,
     tableName: string,
+    keyColumnName: string,
+    valueColumnName: string,
     referenceTableName?: string,
     options: { cacheSize?: number } = {},
   ) {
@@ -36,22 +40,34 @@ export class PostgresCheckpointDB
     this.cache = new LRUCache({ max: options.cacheSize ?? 100 });
     this._client = client;
     this._tableName = tableName;
+    this._keyColumnName = keyColumnName;
+    this._valueColumnName = valueColumnName;
     this._referenceTableName = referenceTableName;
     this._transactionDepthRef = Ref.unsafeMake(0);
     this._rootsRef = Ref.unsafeMake<Uint8Array[]>([]);
   }
 
   openEffect = (copyFromReference?: true) => {
-    const { _tableName, _referenceTableName, clear } = this;
+    const {
+      _tableName,
+      _referenceTableName,
+      _keyColumnName,
+      _valueColumnName,
+      clear,
+    } = this;
     return Effect.gen(function* () {
       const sql = yield* SqlClient.SqlClient;
       yield* sql`SET client_min_messages = 'error'`;
-      yield* UtilsDB.mkKeyValueCreateQuery(_tableName);
+      yield* UtilsDB.mkKeyValueCreateQuery(
+        _tableName,
+        _keyColumnName,
+        _valueColumnName,
+      );
       if (_referenceTableName && copyFromReference) {
         sql.withTransaction(
           Effect.gen(function* () {
             yield* UtilsDB.clearTable(_tableName);
-            yield* sql`INSERT INTO ${sql(_tableName)} SELECT * FROM ${sql(_referenceTableName)}`;
+            yield* sql`INSERT INTO ${sql(_tableName)} SELECT ${sql(_keyColumnName)}, ${sql(_valueColumnName)} FROM ${sql(_referenceTableName)}`;
           }),
         );
       } else {
@@ -68,7 +84,8 @@ export class PostgresCheckpointDB
   }
 
   getEffect = (key: Uint8Array) => {
-    const { cache, checkpoints, _tableName } = this;
+    const { cache, checkpoints, _tableName, _keyColumnName, _valueColumnName } =
+      this;
     return Effect.gen(function* () {
       const keyHex = bytesToHex(key);
       if (cache.has(keyHex)) return cache.get(keyHex);
@@ -78,10 +95,11 @@ export class PostgresCheckpointDB
         if (value !== undefined) return value;
       }
       const sql = yield* SqlClient.SqlClient;
-      const rows = yield* sql<{ value: Uint8Array }>`
-        SELECT value FROM ${sql(_tableName)}
-        WHERE key = ${Buffer.from(key)}`;
-      return rows[0]?.value;
+      const rows = yield* sql<{ [_valueColumnName]: string }>`
+        SELECT ${sql(_valueColumnName)} FROM ${sql(_tableName)}
+        WHERE ${sql(_keyColumnName)} = ${keyHex}`;
+      const value = rows[0]?.[_valueColumnName];
+      return value ? Buffer.from(value) : undefined;
     });
   };
 
@@ -93,50 +111,58 @@ export class PostgresCheckpointDB
   }
 
   getAllEffect = () => {
-    const { _tableName } = this;
+    const { _tableName, _keyColumnName, _valueColumnName } = this;
     return Effect.gen(function* () {
       const sql = yield* SqlClient.SqlClient;
-      const rows = yield* sql<{ key: Uint8Array; value: Uint8Array }>`
-        SELECT * FROM ${sql(_tableName)}`;
+      const rows = yield* sql<{
+        [_keyColumnName]: string;
+        [_valueColumnName]: string;
+      }>`
+        SELECT ${sql(_keyColumnName)}, ${sql(_valueColumnName)} FROM ${sql(_tableName)}`;
       return rows.map((row) => ({
-        key: Buffer.from(row.key),
-        value: Buffer.from(row.value),
+        key: Buffer.from(row[_keyColumnName]),
+        value: Buffer.from(row[_valueColumnName]),
       }));
     });
   };
 
   getAllFromReferenceEffect = () => {
-    const { _referenceTableName } = this;
+    const { _referenceTableName, _keyColumnName, _valueColumnName } = this;
     return Effect.gen(function* () {
       if (!_referenceTableName) {
         throw new Error("No reference tables set");
       }
       const sql = yield* SqlClient.SqlClient;
       const rows = yield* sql<{
-        key: Uint8Array;
-        value: Uint8Array;
-      }>`SELECT * FROM ${sql(_referenceTableName)}`;
+        [_keyColumnName]: string;
+        [_valueColumnName]: string;
+      }>`SELECT ${sql(_keyColumnName)}, ${sql(_valueColumnName)} FROM ${sql(_referenceTableName)}`;
       return rows.map((row) => ({
-        key: Buffer.from(row.key),
-        value: Buffer.from(row.value),
+        key: row[_keyColumnName],
+        value: row[_valueColumnName],
       }));
     });
   };
 
   putEffect = (key: Uint8Array, value: Uint8Array) => {
-    const { cache, checkpoints, _tableName } = this;
+    const { cache, checkpoints, _tableName, _keyColumnName, _valueColumnName } =
+      this;
     return Effect.gen(function* () {
       const keyHex = bytesToHex(key);
       cache.set(keyHex, value);
+      const valueHex = bytesToHex(value);
 
       if (checkpoints.length > 0) {
         checkpoints[checkpoints.length - 1].keyValueMap.set(keyHex, value);
       } else {
         const sql = yield* SqlClient.SqlClient;
-        const rowsToInsert = { key: key, value: value };
+        const rowsToInsert = {
+          [_keyColumnName]: keyHex,
+          [_valueColumnName]: valueHex,
+        };
         yield* sql`
           INSERT INTO ${sql(_tableName)} ${sql.insert(rowsToInsert)}
-          ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value
+          ON CONFLICT (${sql(_keyColumnName)}) DO UPDATE SET ${sql(_valueColumnName)} = EXCLUDED.${sql(_valueColumnName)}
           `;
       }
     });
@@ -150,7 +176,7 @@ export class PostgresCheckpointDB
   }
 
   delEffect = (key: Uint8Array) => {
-    const { cache, checkpoints, _tableName } = this;
+    const { cache, checkpoints, _tableName, _keyColumnName } = this;
     return Effect.gen(function* () {
       const keyHex = bytesToHex(key);
       cache.set(keyHex, undefined);
@@ -158,7 +184,7 @@ export class PostgresCheckpointDB
         checkpoints[checkpoints.length - 1].keyValueMap.set(keyHex, undefined);
       } else {
         const sql = yield* SqlClient.SqlClient;
-        yield* sql`DELETE FROM ${sql(_tableName)} WHERE key = ${key}`;
+        yield* sql`DELETE FROM ${sql(_tableName)} WHERE ${sql(_keyColumnName)} = ${keyHex}`;
       }
     });
   };
@@ -188,7 +214,13 @@ export class PostgresCheckpointDB
   };
 
   transferToReference = () => {
-    const { _tableName, _referenceTableName, clearReference } = this;
+    const {
+      _tableName,
+      _referenceTableName,
+      _keyColumnName,
+      _valueColumnName,
+      clearReference,
+    } = this;
     return Effect.gen(function* () {
       if (!_referenceTableName) {
         throw new Error("No reference tables set");
@@ -199,7 +231,7 @@ export class PostgresCheckpointDB
       yield* sql.withTransaction(
         Effect.gen(function* () {
           yield* clearReference();
-          yield* sql`INSERT INTO ${sql(refTableName)} SELECT * FROM ${sql(tableName)}`;
+          yield* sql`INSERT INTO ${sql(refTableName)} SELECT ${sql(_keyColumnName)}, ${sql(_valueColumnName)} FROM ${sql(tableName)}`;
         }),
       );
     });
@@ -304,6 +336,8 @@ export class PostgresCheckpointDB
     return new PostgresCheckpointDB(
       this._client,
       this._tableName,
+      this._keyColumnName,
+      this._valueColumnName,
       this._referenceTableName,
       { cacheSize: this.cache.max },
     );

@@ -4,7 +4,6 @@ import {
   OutRef,
   TxSignBuilder,
   UTxO,
-  fromHex,
 } from "@lucid-evolution/lucid";
 import { Effect, Schedule } from "effect";
 import * as BlocksDB from "../database/blocks.js";
@@ -73,13 +72,11 @@ export const handleSignSubmitWithoutConfirmation = (
  */
 export const fetchFirstBlockTxs = (
   firstBlockUTxO: UTxO,
-): Effect.Effect<{ txs: Uint8Array[]; headerHash: string }, Error, Database> =>
+): Effect.Effect<{ txs: string[]; headerHash: string }, Error, Database> =>
   Effect.gen(function* () {
     const blockHeader = yield* SDK.Utils.getHeaderFromBlockUTxO(firstBlockUTxO);
     const headerHash = yield* SDK.Utils.hashHeader(blockHeader);
-    const txHashes = yield* BlocksDB.retrieveTxHashesByBlockHash(
-      fromHex(headerHash),
-    );
+    const txHashes = yield* BlocksDB.retrieveTxHashesByBlockHash(headerHash);
     const txs = yield* ImmutableDB.retrieveTxCborsByHashes(txHashes);
     return { txs, headerHash };
   });
