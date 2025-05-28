@@ -106,27 +106,27 @@ export const setupLucid = async (
 };
 
 export function utxoToCBOR(utxo: UTxO): {
-  key: Uint8Array;
-  value: Uint8Array;
+  outref: string;
+  output: string;
 } {
   const cmlUTxO = utxoToCore(utxo);
   return {
-    key: cmlUTxO.input().to_cbor_bytes(),
-    value: cmlUTxO.output().to_cbor_bytes(),
+    outref: cmlUTxO.input().to_cbor_hex(),
+    output: cmlUTxO.output().to_cbor_hex(),
   };
 }
 
-export const findSpentAndProducedUTxOs = (txCBOR: Uint8Array) =>
+export const findSpentAndProducedUTxOs = (txCBOR: string) =>
   Effect.gen(function* () {
-    const spent: Uint8Array[] = [];
-    const produced: { key: Uint8Array; value: Uint8Array }[] = [];
-    const tx = CML.Transaction.from_cbor_bytes(txCBOR);
+    const spent: string[] = [];
+    const produced: { outref: string; output: string }[] = [];
+    const tx = CML.Transaction.from_cbor_hex(txCBOR);
     const txBody = tx.body();
     const inputs = txBody.inputs();
     const outputs = txBody.outputs();
     for (let i = 0; i < inputs.len(); i++) {
       yield* Effect.try({
-        try: () => spent.push(inputs.get(i).to_cbor_bytes()),
+        try: () => spent.push(inputs.get(i).to_cbor_hex()),
         catch: (e) => new Error(`${e}`),
       });
     }
@@ -148,11 +148,11 @@ export const findSpentAndProducedUTxOs = (txCBOR: Uint8Array) =>
   });
 
 export const findAllSpentAndProducedUTxOs = (
-  txCBORs: Uint8Array[],
+  txCBORs: string[],
 ): Effect.Effect<
   {
-    spent: Uint8Array[];
-    produced: { key: Uint8Array; value: Uint8Array }[];
+    spent: string[];
+    produced: { outref: string; output: string }[];
   },
   Error
 > =>

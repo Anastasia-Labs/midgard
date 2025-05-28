@@ -10,7 +10,7 @@
 import { BlocksDB, ConfirmedLedgerDB } from "@/database/index.js";
 import { findAllSpentAndProducedUTxOs } from "@/utils.js";
 import * as SDK from "@al-ft/midgard-sdk";
-import { LucidEvolution, Script, fromHex } from "@lucid-evolution/lucid";
+import { LucidEvolution, Script } from "@lucid-evolution/lucid";
 import { Effect, Metric } from "effect";
 import { fetchFirstBlockTxs, handleSignSubmit } from "../utils.js";
 
@@ -138,7 +138,7 @@ export const buildAndSubmitMergeTx = (
           .pipe(Effect.withSpan(`confirmed-ledger-insert-${i}`));
       }
       yield* Effect.logInfo("🔸 Clear block from BlocksDB...");
-      yield* BlocksDB.clearBlock(fromHex(headerHash)).pipe(
+      yield* BlocksDB.clearBlock(headerHash).pipe(
         Effect.withSpan("clear-block-from-BlocksDB"),
       );
       yield* Effect.logInfo("🔸 ☑️  Merge transaction completed.");
