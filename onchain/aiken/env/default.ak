@@ -20,6 +20,10 @@ pub const l2_outbox_policy_id: PolicyId =
 
 pub const l2_outbox_asset_name: AssetName = #""
 
+pub const mct_deposit_redeemer_index: Int = 1852
+
+pub const mct_withdrawal_redeemer_index: Int = 1815
+
 pub const plutarch_phas_validator_hash: ScriptHash = #""
 
 pub const plutarch_pexcludes_validator_hash: ScriptHash = #""
