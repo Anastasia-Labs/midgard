@@ -1,0 +1,50 @@
+\documentclass[../midgard.tex]{subfiles}
+\graphicspath{{\subfix{../images/}}}
+\begin{document}
+
+\section{Witness Staking Script}
+\label{h:witness}
+
+A generic staking script on L1, parameterized by the unique identifier of a user event, whose registration state can be used to prove a falsely stated user event has not happened.
+
+There are 3 logical endpoints this script needs to support:
+\begin{enumerate}
+    \item Validating registration for an authentic user event.
+    \item Validating unregistration for the conclusion of a previously registered user event.
+    \item Allowing an isolated registration that is immediately followed by an unregistration in the same transaction.\footnote{This is possible because Cardano ledger allows custom ordering of publish redeemers (TODO?).}
+      Essentially proving the unregistered state of the staking script, without changing its state.
+\end{enumerate}
+
+\subsection{Staking script}
+\label{h:witness-staking-script}
+The \code{witness} script is parameterized by the unique ID of a corresponding user event (deposit, withdrawal, or transaction order).
+Let \code{event\_id} be this identifier, which is the Blake2b256 hash of an L1 nonce output-reference spent in the user event's first transaction.
+
+\begin{description}
+  \item[Mint or Burn.] Script invocation to be included in the first transaction of a user event.
+    Conditions:
+      \begin{enumerate}
+          \item Let \code{target\_policy} be the policy ID of the user event NFT, accessed via the redeemer.
+          \item Registration/unregistration of this witness script is respectively tied to the \code{target\_policy}'s mint/burn logic. 
+              \begin{itemize}
+                  \item Registration is allowed if a user event NFT with asset name of \code{event\_id} is minted.
+                  \item Unregistration is allowed if a user event NFT with asset name of \code{event\_id} is burnt.
+              \end{itemize}
+      \end{enumerate}
+  \item[Register to Prove Not Registered.] Redeemer for proving the unregistered state of the witness script instance.
+    Conditions:
+      \begin{enumerate}
+          \item Let \code{redeemer\_index} be the positional index of the current redeemer (\code{RegisterCredential} certificate) within the \code{redeemers} field of the transaction.
+          \item The redeemer pair that comes after \code{redeemer\_index} must be of the same credential under an \code{UnregisterCredential} certificate.
+          \item Redeemer data of this following redeemer must be a \code{UnregisterToProveNotRegistered}, such that the index it carries is equal to \code{redeemer\_index}.
+      \end{enumerate}
+  \item[Unregister to Prove Not Registered.] Redeemer to follow \code{RegisterToProveNotRegistered}.
+    Conditions:
+      \begin{enumerate}
+          \item Let \code{redeemer\_index} be the positional index of the \code{RegisterToProveNotRegistered} redeemer (\code{RegisterCredential} certificate) within the \code{redeemers} field of the transaction.
+          \item Current certificate must be an \code{UnregisterCredential}, and its underlying credential must be equal to the one retrieved using \code{redeemer\_index}.
+          \item Redeemer data at \code{redeemer\_index} must be a \code{RegisterToProveNotRegistered}, such that the index it carries is equal to \code{redeemer\_index}.
+      \end{enumerate}
+\end{description}
+
+\end{document}
