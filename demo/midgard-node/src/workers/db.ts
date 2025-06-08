@@ -11,16 +11,12 @@ export class PostgresCheckpointDB
   implements DB<Uint8Array, Uint8Array>
 {
   cache: LRUCache<string, Uint8Array>;
-  _transactionDepthRef: Ref.Ref<number>;
-  _rootsRef: Ref.Ref<Uint8Array[]>;
   _client: Database;
   _tableName: string;
-  _referenceTableName: string | undefined;
 
   constructor(
     client: Database,
     tableName: string,
-    referenceTableName?: string,
     options: { cacheSize?: number } = {},
   ) {
     super({
@@ -36,27 +32,14 @@ export class PostgresCheckpointDB
     this.cache = new LRUCache({ max: options.cacheSize ?? 100 });
     this._client = client;
     this._tableName = tableName;
-    this._referenceTableName = referenceTableName;
-    this._transactionDepthRef = Ref.unsafeMake(0);
-    this._rootsRef = Ref.unsafeMake<Uint8Array[]>([]);
   }
 
-  openEffect = (copyFromReference?: true) => {
-    const { _tableName, _referenceTableName, clear } = this;
+  openEffect = () => {
+    const { _tableName } = this;
     return Effect.gen(function* () {
       const sql = yield* SqlClient.SqlClient;
       yield* sql`SET client_min_messages = 'error'`;
       yield* UtilsDB.mkKeyValueCreateQuery(_tableName);
-      if (_referenceTableName && copyFromReference) {
-        sql.withTransaction(
-          Effect.gen(function* () {
-            yield* UtilsDB.clearTable(_tableName);
-            yield* sql`INSERT INTO ${sql(_tableName)} SELECT * FROM ${sql(_referenceTableName)}`;
-          }),
-        );
-      } else {
-        yield* clear();
-      }
     });
   };
 
@@ -81,7 +64,11 @@ export class PostgresCheckpointDB
       const rows = yield* sql<{ value: Uint8Array }>`
         SELECT value FROM ${sql(_tableName)}
         WHERE key = ${Buffer.from(key)}`;
-      return rows[0]?.value;
+      const value = rows[0]?.value;
+      if (value) {
+        cache.set(keyHex, value);
+      }
+      return value;
     });
   };
 
@@ -98,24 +85,6 @@ export class PostgresCheckpointDB
       const sql = yield* SqlClient.SqlClient;
       const rows = yield* sql<{ key: Uint8Array; value: Uint8Array }>`
         SELECT * FROM ${sql(_tableName)}`;
-      return rows.map((row) => ({
-        key: Buffer.from(row.key),
-        value: Buffer.from(row.value),
-      }));
-    });
-  };
-
-  getAllFromReferenceEffect = () => {
-    const { _referenceTableName } = this;
-    return Effect.gen(function* () {
-      if (!_referenceTableName) {
-        throw new Error("No reference tables set");
-      }
-      const sql = yield* SqlClient.SqlClient;
-      const rows = yield* sql<{
-        key: Uint8Array;
-        value: Uint8Array;
-      }>`SELECT * FROM ${sql(_referenceTableName)}`;
       return rows.map((row) => ({
         key: Buffer.from(row.key),
         value: Buffer.from(row.value),
@@ -177,136 +146,58 @@ export class PostgresCheckpointDB
     });
   };
 
-  clearReference = () => {
-    const { _tableName, _referenceTableName } = this;
-    return Effect.gen(function* () {
-      if (!_referenceTableName) {
-        throw new Error("No reference tables set");
-      }
-      yield* UtilsDB.clearTable(_tableName);
-    });
-  };
-
-  transferToReference = () => {
-    const { _tableName, _referenceTableName, clearReference } = this;
-    return Effect.gen(function* () {
-      if (!_referenceTableName) {
-        throw new Error("No reference tables set");
-      }
-      const sql = yield* SqlClient.SqlClient;
-      const tableName = _tableName;
-      const refTableName = _referenceTableName;
-      yield* sql.withTransaction(
-        Effect.gen(function* () {
-          yield* clearReference();
-          yield* sql`INSERT INTO ${sql(refTableName)} SELECT * FROM ${sql(tableName)}`;
-        }),
-      );
-    });
-  };
-
   async batch(opStack: BatchDBOp[]): Promise<void> {
     const { putEffect, delEffect } = this;
     return Effect.gen(function* () {
-      const sql = yield* SqlClient.SqlClient;
-      yield* sql.withTransaction(
-        Effect.gen(function* () {
-          for (const op of opStack) {
-            if (op.type === "put") {
-              yield* putEffect(op.key, op.value);
-            } else {
-              yield* delEffect(op.key);
-            }
-          }
-        }),
-      );
+      for (const op of opStack) {
+        if (op.type === "put") {
+          yield* putEffect(op.key, op.value);
+        } else {
+          yield* delEffect(op.key);
+        }
+      }
     }).pipe(
       Effect.provide(Layer.succeed(SqlClient.SqlClient, this._client)),
-      Effect.scoped,
       Effect.runPromise,
     );
   }
 
   checkpoint(root: Uint8Array): void {
     super.checkpoint(root);
-    const { _transactionDepthRef, _rootsRef } = this;
+    const savepointName = `mpt_savepoint_${this.checkpoints.length}`;
     Effect.runFork(
       Effect.gen(function* () {
         const sql = yield* SqlClient.SqlClient;
-        const depth = yield* Ref.get(_transactionDepthRef);
-        // First checkpoint = start transaction
-        if (depth === 0) {
-          yield* sql`BEGIN`;
-        }
-        // Nested checkpoint = create savepoint
-        else {
-          yield* sql`SAVEPOINT root_${bytesToHex(root)}`;
-        }
-        yield* Ref.update(_transactionDepthRef, (n) => n + 1);
-        yield* Ref.update(_rootsRef, (roots) => [...roots, root]);
+        yield* sql`SAVEPOINT ${sql(savepointName)}`;
       }).pipe(Effect.provide(Layer.succeed(SqlClient.SqlClient, this._client))),
     );
   }
 
   async commit(): Promise<void> {
-    const { _transactionDepthRef, _rootsRef } = this;
-    const superCommit = super.commit;
+    if (this.checkpoints.length === 0) {
+      return;
+    }
+    const savepointName = `mpt_savepoint_${this.checkpoints.length}`;
+    await super.commit();
     await Effect.runPromise(
       Effect.gen(function* () {
-        const roots = yield* Ref.get(_rootsRef);
-        if (roots.length === 0) return Effect.void;
-        const root = yield* rootsPop(_rootsRef);
-        superCommit();
         const sql = yield* SqlClient.SqlClient;
-        yield* Ref.update(_transactionDepthRef, (n) => n - 1);
-        const depth = yield* Ref.get(_transactionDepthRef);
-        if (depth === 0) yield* sql`COMMIT`;
-        else yield* sql`RELEASE SAVEPOINT root_${bytesToHex(root)}`;
-        return Effect.void;
+        yield* sql`RELEASE SAVEPOINT ${sql(savepointName)}`;
       }).pipe(Effect.provide(Layer.succeed(SqlClient.SqlClient, this._client))),
     );
   }
 
   async revert(): Promise<Uint8Array> {
-    const { _rootsRef, _transactionDepthRef } = this;
-    const superRevert = super.revert;
-    return await Effect.runPromise(
+    if (this.checkpoints.length === 0) return super.revert();
+    const savepointName = `mpt_savepoint_${this.checkpoints.length}`;
+    await Effect.runPromise(
       Effect.gen(function* () {
-        const roots = yield* Ref.get(_rootsRef);
-        if (roots.length === 0) {
-          throw new Error("No checkpoints to revert");
-        }
-        const root = yield* rootsPop(_rootsRef);
-        superRevert();
         const sql = yield* SqlClient.SqlClient;
-        const depth = yield* Ref.updateAndGet(
-          _transactionDepthRef,
-          (n) => n - 1,
-        );
-
-        // Full rollback if root checkpoint
-        if (depth === 0) yield* sql`ROLLBACK`;
-        else yield* sql`ROLLBACK TO SAVEPOINT root_${bytesToHex(root)}`;
-        return root;
+        yield* sql`ROLLBACK TO SAVEPOINT ${sql(savepointName)}`;
       }).pipe(Effect.provide(Layer.succeed(SqlClient.SqlClient, this._client))),
     );
-  }
-
-  async conclude() {
-    await Effect.runPromise(
-      this.transferToReference().pipe(
-        Effect.provide(Layer.succeed(SqlClient.SqlClient, this._client)),
-      ),
-    );
-  }
-
-  shallowCopy(): PostgresCheckpointDB {
-    return new PostgresCheckpointDB(
-      this._client,
-      this._tableName,
-      this._referenceTableName,
-      { cacheSize: this.cache.max },
-    );
+    const newRoot = await super.revert();
+    return newRoot;
   }
 }
 
@@ -334,9 +225,9 @@ const convertOps = (
   });
 };
 
-const rootsPop = (rootsRef: Ref.Ref<Uint8Array[]>) =>
-  Ref.modify(rootsRef, (roots) => {
-    const newRoots = roots.slice(0, -1);
-    const last = roots[roots.length - 1];
-    return [last, newRoots];
-  });
+// const rootsPop = (rootsRef: Ref.Ref<Uint8Array[]>) =>
+//   Ref.modify(rootsRef, (roots) => {
+//     const newRoots = roots.slice(0, -1);
+//     const last = roots[roots.length - 1];
+//     return [last, newRoots];
+//   });
