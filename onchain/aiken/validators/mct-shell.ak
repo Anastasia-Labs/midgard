@@ -2,12 +2,33 @@ use aiken/builtin
 use aiken/collection/list
 use aiken/crypto.{ScriptHash}
 use cardano/address.{Credential, Script}
-use cardano/assets.{Lovelace}
+use cardano/assets.{Lovelace, PolicyId}
 use cardano/script_context.{Minting, ScriptInfo}
+use cardano/transaction.{Redeemer, ScriptPurpose, Mint}
 use env
+use midgard/common/utils
+use midgard/user_events
 
-validator main(l1_observer: ScriptHash, l2_observer: ScriptHash) {
-  else(script_ctx_data: Data) {
+/// TODO: Bringing this from `config` is probably much better.
+const deposit_policy_id: PolicyId =
+  #"00000000000000000000000000000000000000000000000000000000"
+
+fn wrapper(
+  l1_observer: ScriptHash,
+  l2_observer: ScriptHash,
+  script_ctx_data: Data,
+  validator_function: fn(
+    ScriptHash,
+    ScriptHash,
+    Data,
+  ) -> Bool,
+) -> Bool {
+  validator_function(l1_observer, l2_observer, script_ctx_data)
+}
+
+validator main(outer_l1_observer: ScriptHash, outer_l2_observer: ScriptHash) {
+  else(outer_script_ctx_data: Data) {
+    let l1_observer, l2_observer, script_ctx_data <- wrapper(outer_l1_observer, outer_l2_observer, outer_script_ctx_data)
     let Pair(layer_index, ctx_data_list) =
       builtin.un_constr_data(script_ctx_data)
 
@@ -27,9 +48,21 @@ validator main(l1_observer: ScriptHash, l2_observer: ScriptHash) {
       let must_burn = redeemeer_index == env.mct_deposit_redeemer_index
       let must_mint = redeemeer_index == env.mct_withdrawal_redeemer_index
 
-      if must_burn || must_mint {
-        expect [] = redeemer_data_list
+      if must_burn {
+        expect [mint_redeemer_index_data, ..] = redeemer_data_list
         expect Minting(own_policy): ScriptInfo = script_info_data
+        expect redeemers: Pairs<ScriptPurpose, Redeemer> = redeemers_data
+        let deposit_burn_redeemer_data = utils.get_redeemer_at(
+          redeemers: redeemers,
+          expected_purpose: Mint(deposit_policy_id),
+          redeemer_index: builtin.un_i_data(mint_redeemer_index_data),
+        )
+        expect user_events.BurnEventNFT {
+          nonce_asset_name: deposit_nft_asset_name,
+          ..
+        }: user_events.MintRedeemer = deposit_burn_redeemer_data
+        todo
+      } else if must_mint {
         todo
       } else {
         // 1. Coerce withdrawals into withdrawal pairs.
