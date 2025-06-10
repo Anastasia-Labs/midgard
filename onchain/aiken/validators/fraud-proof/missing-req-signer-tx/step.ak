@@ -5,7 +5,7 @@ use aiken/collection/list
 use aiken/crypto.{ScriptHash}
 use cardano/address.{VerificationKey}
 use cardano/assets.{PolicyId}
-use cardano/transaction.{Input, OutputReference, Transaction}
+use cardano/transaction.{Input, Output, OutputReference, Transaction}
 use midgard/common/utils.{verify_hash_32}
 use midgard/computation_thread.{StepDatum}
 use midgard/fraud_proof/common/types.{MembershipProofInputs}
@@ -13,7 +13,7 @@ use midgard/fraud_proof/common/utils.{
   get_singleton_ct_token, get_tx_root_validate_block_hash, handle_cancel,
   validate_final_step_output, validate_membership_proof,
 } as fraud_proof_utils
-use midgard/fraud_proof/missing_req_signer/step.{
+use midgard/fraud_proof/missing_req_signer_tx/step.{
   Cancel, Continue, StepRedeemer as Step1Redeemer,
 }
 
@@ -22,6 +22,7 @@ validator main(
   fraud_proof_token_policy: PolicyId,
   // Script hash of stake validator (forwarded merkle proof logic)
   plutarch_midgard_merkle_validator_inclusion: ScriptHash,
+  plutarch_midgard_merkle_validator_inclusion_parent: ScriptHash,
   // Computation thread token policy
   ct_token_policy_id: PolicyId,
 ) {
@@ -55,8 +56,15 @@ validator main(
         bad_tx_to_root_proof_path,
         bad_tx,
         bad_tx_body,
+        parent_tx_hash,
+        parent_tx_info_hash,
+        parent_tx_to_root_proof_path,
+        parent_tx,
+        parent_tx_body,
         bad_spend_inputs,
         bad_input,
+        parent_outputs_data,
+        parent_outputs,
         required_signers,
         index_output,
         computation_thread_redeemer_index,
@@ -89,9 +97,39 @@ validator main(
         verify_hash_32(bad_tx_body, bad_tx.body)
         verify_hash_32(bad_spend_inputs, bad_tx_body.spend_inputs)
 
-        expect list.has(builtin.un_list_data(bad_spend_inputs), bad_input)
+        //Validation that parent tx is in the same block
+        expect
+          validate_membership_proof(
+            tx,
+            plutarch_midgard_merkle_validator_inclusion_parent,
+            MembershipProofInputs {
+              tx_root: extracted_tx_root,
+              tx_hash: parent_tx_hash,
+              tx_info_hash: parent_tx_info_hash,
+              tx_to_root_proof_path: parent_tx_to_root_proof_path,
+            },
+          )
+        // Membership of the output provided in redeemer inside the parent output
+        verify_hash_32(parent_tx, parent_tx_hash)
+        verify_hash_32(parent_tx_body, parent_tx.body)
+        verify_hash_32(parent_outputs_data, parent_tx_body.outputs)
 
+        //I am using 2 times the sime data in the redeemer because I cannot cast from data to output due to opaque casting
+        //Is there a solution to fix this and optimize?
         expect invalid_input: Input = bad_input
+        //is the output inside the list at the right index of the output reference?
+        expect Some(real_output) =
+          list.at(parent_outputs, invalid_input.output_reference.output_index)
+        expect invalid_input.output_reference.transaction_id == parent_tx_hash
+        expect invalid_input.output == real_output
+
+        //let's look for the output at the right index
+        expect
+          list.has(
+            builtin.un_list_data(bad_spend_inputs),
+            invalid_input.output_reference,
+          )
+
         //retrieval of the pubkeyhash of the input
         expect VerificationKey(missing_signature) =
           invalid_input.output.address.payment_credential

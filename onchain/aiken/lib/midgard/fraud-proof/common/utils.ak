@@ -9,7 +9,7 @@ use cardano/transaction.{InlineDatum, Input, Output, Transaction}
 use midgard/common/utils.{get_singleton_asset_with_policy} as get_singleton_asset_with_policy
 use midgard/computation_thread.{StepDatum, Success}
 use midgard/fraud_proof/common/types.{
-  ExclusionProofInputTx, ExclusionProofUtxo, FraudProofDatum,
+  ExclusionProofInputTx, ExclusionProofUtxo, FraudProofDatum, InclusionProofUtxo,
   MembershipProofInputs,
 }
 use midgard/ledger_state.{Header}
@@ -164,6 +164,29 @@ pub fn validate_exclusion_utxo_proof(
       staking_validator: plutarch_midgard_merkle_validator,
       input_data_coercer: fn(withdraw_redeemer: Data) {
         expect coerced: ExclusionProofUtxo = withdraw_redeemer
+        coerced
+      },
+      redeemers: tx.redeemers,
+    )
+  True
+}
+
+pub fn validate_inclusion_utxo_proof(
+  tx: Transaction,
+  plutarch_midgard_merkle_validator: ScriptHash,
+  proof_input: InclusionProofUtxo,
+) -> Bool {
+  expect
+    merkelized_validator.delegated_validation(
+      function_input: InclusionProofUtxo {
+        utxo_root: proof_input.utxo_root,
+        valid_utxo: proof_input.valid_utxo,
+        valid_utxo_info_hash: proof_input.valid_utxo_info_hash,
+        utxo_to_root_proof_path: proof_input.utxo_to_root_proof_path,
+      },
+      staking_validator: plutarch_midgard_merkle_validator,
+      input_data_coercer: fn(withdraw_redeemer: Data) {
+        expect coerced: InclusionProofUtxo = withdraw_redeemer
         coerced
       },
       redeemers: tx.redeemers,
