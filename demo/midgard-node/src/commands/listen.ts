@@ -33,6 +33,7 @@ import { ParsedSearchParams } from "@effect/platform/HttpServerRequest";
 import { createServer } from "node:http";
 import { NodeHttpServer } from "@effect/platform-node";
 import { HttpBodyError } from "@effect/platform/HttpBody";
+import { SqlClient } from "@effect/sql";
 
 const txCounter = Metric.counter("tx_count", {
   description: "A counter for tracking submit transactions",
@@ -260,12 +261,15 @@ const postSubmitHandler = Effect.gen(function* () {
     const txString = txStringParam;
     const { user: lucid } = yield* User;
     return yield* Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
       const txCBOR = fromHex(txString);
       const tx = lucid.fromTx(txString);
       const { spent, produced } = yield* findSpentAndProducedUTxOs(txCBOR);
-      yield* MempoolDB.insert(fromHex(tx.toHash()), txCBOR);
-      yield* MempoolLedgerDB.clearUTxOs(spent);
-      yield* MempoolLedgerDB.insert(produced);
+      sql.withTransaction(Effect.gen(function* () {
+        yield* MempoolDB.insert(fromHex(tx.toHash()), txCBOR);
+        yield* MempoolLedgerDB.clearUTxOs(spent);
+        yield* MempoolLedgerDB.insert(produced);
+      }));
       Effect.runSync(Metric.increment(txCounter));
       return yield* HttpServerResponse.json({
         message: `Successfully submitted the transaction`,
@@ -299,7 +303,8 @@ const blockCommitmentAction = Effect.gen(function* () {
   yield* Effect.logInfo("🔹 New block commitment process started.");
   yield* StateQueueTx.buildAndSubmitCommitmentBlock().pipe(
     Effect.withSpan("buildAndSubmitCommitmentBlock"),
-)});
+  );
+});
 
 const mergeAction = Effect.gen(function* () {
   const { user: lucid } = yield* User;
@@ -314,13 +319,14 @@ const mergeAction = Effect.gen(function* () {
     fetchConfig,
     spendScript,
     mintScript,
-)});
+  );
+});
 
 const mempoolAction = Effect.gen(function* () {
-    const txList = yield* MempoolDB.retrieve();
-    const numTx = BigInt(txList.length);
-    yield* mempoolTxGauge(Effect.succeed(numTx));
-  });
+  const txList = yield* MempoolDB.retrieve();
+  const numTx = BigInt(txList.length);
+  yield* mempoolTxGauge(Effect.succeed(numTx));
+});
 
 const blockCommitmentFork = (pollingInterval: number) =>
   pipe(

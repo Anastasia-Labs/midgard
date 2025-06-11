@@ -30,7 +30,7 @@ export const mkPgConfig = (nodeConfig: NodeConfigDep) => {
     database: nodeConfig.POSTGRES_DB,
     maxConnections: 20,
     idleTimeout: Duration.minutes(5),
-    connectTimeout: Duration.seconds(2),
+    connectTimeout: Duration.seconds(200),
     validateConnection: true,
     trace: "all",
   };

@@ -28,6 +28,6 @@
     "experimentalSpecifierResolution": "node",
     "require": ["tsconfig-paths/register"]
   },
-  "include": ["src", "tests"],
+  "include": ["src", "tests", "test/commit-block-header.worker.test.ts"],
   "exclude": ["node_modules", "dist"]
 }
