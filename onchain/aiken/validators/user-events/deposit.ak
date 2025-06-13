@@ -2,7 +2,7 @@ use aiken/collection/dict
 use aiken/collection/list
 use aiken/crypto.{ScriptHash}
 use aiken_design_patterns/singular_utxo_indexer
-use cardano/assets.{PolicyId}
+use cardano/assets.{PolicyId, Value}
 use cardano/transaction.{
   Input, Mint, NoDatum, Output, OutputReference, Transaction,
 }
@@ -169,7 +169,7 @@ validator mint(hub_oracle: ScriptHash) {
     let
       l2_id,
       output_deposit_value,
-      _,
+      deposit_info_data,
     <-
       user_events.validate_mint(
         hub_oracle,
@@ -182,26 +182,54 @@ validator mint(hub_oracle: ScriptHash) {
         tx,
       )
 
-    // 2. Going through all the tokens of the produced UTxO and counting its
+    expect ledger_state.DepositInfo { midgard_tokens, .. } = deposit_info_data
+
+    let midgard_tokens_value: Value = assets.from_asset_list(midgard_tokens)
+
+    // 2. Going through all the tokens of the produced UTxO, counting its
     //    tokens, while also validating that it only contains one valid
-    //    authentication NFT.
+    //    authentication NFT, and that all the specified Midgard-compatible
+    //    tokens are includedd.
     let
       output_deposit_nft_is_valid,
       total_token_count,
+      mcts_not_included_in_deposit_utxo,
     <-
-      list.foldl2(
+      utils.foldl3(
         output_deposit_value |> assets.to_dict |> dict.to_pairs,
         False,
         0,
-        fn(policy_tokens_pair, beacon_found, token_count_so_far, return) {
+        midgard_tokens_value |> assets.to_dict |> dict.to_pairs,
+        fn(
+          policy_tokens_pair,
+          beacon_found,
+          token_count_so_far,
+          remaining_midgard_tokens,
+          return,
+        ) {
           if !beacon_found && policy_tokens_pair.1st == own_policy {
             expect [output_deposit_nft_tn_qty] =
               policy_tokens_pair.2nd |> dict.to_pairs
             expect output_deposit_nft_tn_qty == Pair(l2_id, 1)
-            return(True, token_count_so_far)
+            return(True, token_count_so_far, remaining_midgard_tokens)
           } else {
             let policy_token_count = dict.size(policy_tokens_pair.2nd)
-            return(beacon_found, token_count_so_far + policy_token_count)
+            when remaining_midgard_tokens is {
+              [] ->
+                return(
+                  beacon_found,
+                  token_count_so_far + policy_token_count,
+                  remaining_midgard_tokens,
+                )
+              [mct_pair, ..rest_of_mct_pairs] -> {
+                expect mct_pair == policy_tokens_pair
+                return(
+                  beacon_found,
+                  token_count_so_far + policy_token_count,
+                  rest_of_mct_pairs,
+                )
+              }
+            }
           }
         },
       )
@@ -212,6 +240,8 @@ validator mint(hub_oracle: ScriptHash) {
       // 4. Total token count in the deposit UTxO (including ADA) must not
       //    exceed the relevant protocol parameter.
       total_token_count <= env.max_tokens_allowed_in_deposits,
+      // 5. All declared MCTs must be included in the deposit UTxO.
+      list.is_empty(mcts_not_included_in_deposit_utxo),
     }
   }
 

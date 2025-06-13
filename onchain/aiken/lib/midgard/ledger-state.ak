@@ -103,6 +103,7 @@ pub type DepositId =
 pub type DepositInfo {
   l2_address: Address,
   l2_datum: Option<Data>,
+  midgard_tokens: ValuePairs,
 }
 
 pub type DepositEvent {

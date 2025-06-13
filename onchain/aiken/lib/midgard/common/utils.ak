@@ -259,6 +259,24 @@ pub fn authentic_value_has_tokens(
   assets.match(without_nft, tokens, fn(_, tokens_ada) { tokens_ada == 0 })
 }
 
+/// Fold a list from left with 3 accumulators.
+pub fn foldl3(
+  self: List<x>,
+  zero_a: a,
+  zero_b: b,
+  zero_c: c,
+  with: fn(x, a, b, c, fn(a, b, c) -> result) -> result,
+  return: fn(a, b, c) -> result,
+) -> result {
+  when self is {
+    [] -> return(zero_a, zero_b, zero_c)
+    [x, ..xs] -> {
+      let acc_a, acc_b, acc_c <- with(x, zero_a, zero_b, zero_c)
+      foldl3(xs, acc_a, acc_b, acc_c, with, return)
+    }
+  }
+}
+
 /// Traverses two lists in parallel, accumulating a value using the provided
 /// `with` function. The lists are traversed from right, and the smaller list
 /// determines the number of elements traversed.
