@@ -62,7 +62,7 @@ It's responsible for appends to the \code{settlement\_queue} list's end, and als
           \item The transaction must burn the Midgard hub oracle NFT.
           \item The transaction must Deinit the \code{settlement\_queue} list.
       \end{enumerate}
-  \item[Append Settlement Node.] Append a settlement node to store a merged block's deposits and withdrawals.
+  \item[Append Settlement Node.] Append a settlement node to store a merged block's deposits, withdrawals and transaction orders.
     Conditions:
       \begin{enumerate}
         \item The transaction must include the Midgard hub oracle NFT in a reference input.
@@ -75,6 +75,7 @@ It's responsible for appends to the \code{settlement\_queue} list's end, and als
           \begin{itemize}
             \item \code{deposits\_root}
             \item \code{withdrawals\_root}
+            \item \code{tx\_orders\_root}
             \item \code{start\_time}
             \item \code{end\_time}
           \end{itemize}
@@ -121,8 +122,8 @@ Conditions:
           Let \code{operator} be the operator of that claim.
         \item The spent input must be reproduced as a settlement node without a resolution claim.
         \item The transaction must include the Midgard hub oracle NFT in a reference input.
-        \item Let \code{active\_operators}, \code{deposit}, and \code{withdrawal} be the corresponding policy IDs in the Midgard hub oracle.
-        \item The transaction must include either a deposit or a withdrawal order as a reference input.
+        \item Let \code{active\_operators}, \code{deposit}, \code{withdrawal}, and \code{tx\_order} be the corresponding policy IDs in the Midgard hub oracle.
+        \item The transaction must include either a deposit, a withdrawal, or an transaction order as a reference input.
           Let that reference input be \code{unprocessed\_event}.
         \item A valid membership proof must be provided, proving that \code{unprocessed\_event} is a member of the corresponding tree in the settlement node.
         \item The transaction's time-validity upper bound must be earlier than the resolution claim's \code{resolution\_time}.

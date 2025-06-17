@@ -12,7 +12,12 @@ import { findAllSpentAndProducedUTxOs } from "@/utils.js";
 import * as SDK from "@al-ft/midgard-sdk";
 import { LucidEvolution, Script, fromHex } from "@lucid-evolution/lucid";
 import { Effect, Metric } from "effect";
-import { fetchFirstBlockTxs, handleSignSubmit } from "../utils.js";
+import {
+  ConfirmError,
+  fetchFirstBlockTxs,
+  handleSignSubmit,
+  SubmitError,
+} from "../utils.js";
 
 const mergeBlockCounter = Metric.counter("merge_block_count", {
   description: "A counter for tracking merge blocks",
@@ -107,9 +112,19 @@ export const buildAndSubmitMergeTx = (
       ).pipe(Effect.withSpan("mergeToConfirmedStateProgram"));
 
       // Submit the transaction
-      yield* handleSignSubmit(lucid, txBuilder).pipe(
-        Effect.withSpan("handleSignSubmit-merge-tx"),
-      );
+      const onSubmitFailure = (err: SubmitError) =>
+        Effect.gen(function* () {
+          yield* Effect.logError(`Sumbit tx error: ${err}`);
+          yield* Effect.fail(err.err);
+        });
+      const onConfirmFailure = (err: ConfirmError) =>
+        Effect.logError(`Confirm tx error: ${err}`);
+      yield* handleSignSubmit(
+        lucid,
+        txBuilder,
+        onSubmitFailure,
+        onConfirmFailure,
+      ).pipe(Effect.withSpan("handleSignSubmit-merge-tx"));
       yield* Effect.logInfo(
         "🔸 Merge transaction submitted, updating the db...",
       );

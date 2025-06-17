@@ -1,0 +1,36 @@
+\documentclass[../midgard.tex]{subfiles}
+\graphicspath{{\subfix{../images/}}}
+\begin{document}
+
+\section{Transaction Order event}
+\label{h:transaction-order-event}
+
+A transaction order set is a finite map from transaction order ID to a Midgard transaction:
+\begin{align*}
+    \T{TxOrderSet} &\coloneq \T{Map(TxOrderId, MidgardTx)} \\
+      &\coloneq \Bigl\{
+        (k_i: \T{TxOrderId}, v_i: \T{MidgardTx}) \mid \forall i \neq j.\; k_i \neq k_j
+    \Bigr\}
+\end{align*}
+
+Transaction orders are events on L1 as an alternative to the L2 transaction submission to operators.
+Similar to a deposit or withdrawal event, a transaction order in a Midgard block acknowledges that a user has created an L1 utxo at the Midgard L1 transaction order address, obligating the operator to include the given L2 transaction.
+In turn, the operator is free to set \code{MidgardTxValidity}, if the included transaction is invalid.
+This invalidity claim itself can then be subject to fraud proofs if the operator had stated incorrectly.
+\begingroup
+\allowdisplaybreaks{}
+\begin{align*}
+    \T{TxOrderEvent} &\coloneq \T{(TxOrderId, MidgardTx)} \\
+    \T{TxOrderId} &\coloneq \T{OutputRef}
+\end{align*}
+\endgroup
+
+The \code{TxOrderId} of a transaction order event corresponds to one of the inputs spent by the user in the L1 transaction that created the transaction order utxo on L1 (more specifically, it's the hash of its serialized output-reference).
+This key is needed to identify the L1 transaction order utxo, and ensure that each order is unique.
+
+The effect of an included transaction order on a block's utxo set is identical to any other transaction from block's transaction tree.
+Meaning it simply should remove all the transaction's inputs from the ledger, and add all its outputs.
+
+\Cref{h:transaction-order} describes the lifecycle of a transaction order request in further detail.
+
+\end{document}
