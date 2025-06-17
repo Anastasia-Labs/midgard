@@ -1,7 +1,7 @@
 use aiken/collection/list
 use aiken/crypto.{ScriptHash}
 use aiken_design_patterns/linked_list/unordered as unordered
-use cardano/assets.{PolicyId}
+use cardano/assets.{Lovelace, PolicyId}
 use cardano/transaction.{
   InlineDatum, Input, Output, OutputReference, Transaction,
 }
@@ -12,7 +12,7 @@ use midgard/fraud_proof/common/utils.{
   get_singleton_ct_token, get_tx_root_validate_block_hash, handle_cancel,
   validate_final_step_output, validate_membership_proof,
 } as fraud_proof_utils
-use midgard/fraud_proof/zero_input/step.{
+use midgard/fraud_proof/min_fee/step.{
   Cancel, Continue, StepRedeemer as Step1Redeemer,
 }
 use midgard/ledger_state.{Header}
@@ -24,6 +24,8 @@ validator main(
   plutarch_midgard_merkle_validator_inclusion: ScriptHash,
   // Computation thread token policy
   ct_token_policy_id: PolicyId,
+  // Minimum fee for the transaction
+  min_fee: Lovelace,
 ) {
   spend(
     datum: Option<StepDatum>,
@@ -67,7 +69,7 @@ validator main(
             ct_token_asset_name,
           )
 
-        // -------- Zero input: validation-specific logic START --------
+        // -------- Min fee: validation-specific logic START --------
         // Membership proof for tx
         expect
           validate_membership_proof(
@@ -84,8 +86,8 @@ validator main(
         verify_hash_32(bad_tx, bad_tx_hash)
         verify_hash_32(bad_tx_body, bad_tx.body)
 
-        //The list of inputs must be empty
-        verify_hash_32([], bad_tx_body.spend_inputs)
+        // Fee must be greater than or equal to the minimum fee
+        expect bad_tx_body.fee < min_fee
 
         // -------- Zero input: validation-specific logic END --------
         expect
