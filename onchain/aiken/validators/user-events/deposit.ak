@@ -22,7 +22,7 @@ validator spend(hub_oracle: ScriptHash) {
     own_out_ref: OutputReference,
     tx: Transaction,
   ) {
-    let Transaction { reference_inputs, redeemers, .. } = tx
+    let Transaction { reference_inputs, mint, redeemers, .. } = tx
 
     let SpendRedeemer {
       input_index,

@@ -296,8 +296,7 @@ pub fn validate_event_nft_burn(
     assets.quantity_of(mint, own_policy, nonce_asset_name) == -1,
     // 2. Witness staking script corresponding to the NFT must be getting
     //    unregistered.
-    // 3. `PublishRedeemer` for unregistration must be equal to
-    //    `own_policy`
+    // 3. `PublishRedeemer` for unregistration must be equal to `own_policy`
     validate_witness_redeemer(
       expected_witness_script_hash: expected_witness_script_hash,
       witness_redeemer_index: witness_unregistration_redeemer_index,
