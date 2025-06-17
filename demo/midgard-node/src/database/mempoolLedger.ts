@@ -1,25 +1,23 @@
-import { Pool } from "pg";
-import * as utils from "./utils.js";
-import { clearTable, insertUTxOsCBOR, retrieveUTxOsCBOR } from "./utils.js";
+import { Effect } from "effect";
+import {
+  clearTable,
+  insertKeyValues,
+  retrieveKeyValues,
+  delMultiple,
+} from "./utils.js";
+import { Database } from "@/services/database.js";
 
-export const createQuery = `
-CREATE TABLE IF NOT EXISTS mempool_ledger (
-    tx_in_cbor BYTEA NOT NULL,
-    tx_out_cbor BYTEA NOT NULL,
-    PRIMARY KEY (tx_in_cbor)
-  );`;
+export const tableName = "mempool_ledger";
 
-export const insert = async (
-  pool: Pool,
-  utxosCBOR: { outputReference: Uint8Array; output: Uint8Array }[],
-) => insertUTxOsCBOR(pool, "mempool_ledger", utxosCBOR);
+export const insert = (utxosCBOR: { key: Uint8Array; value: Uint8Array }[]) =>
+  insertKeyValues(tableName, utxosCBOR);
 
-export const retrieve = async (
-  pool: Pool,
-): Promise<{ outputReference: Uint8Array; output: Uint8Array }[]> =>
-  retrieveUTxOsCBOR(pool, "mempool_ledger");
+export const retrieve = (): Effect.Effect<
+  { key: Uint8Array; value: Uint8Array }[],
+  Error,
+  Database
+> => retrieveKeyValues(tableName);
 
-export const clearUTxOs = async (pool: Pool, refs: Uint8Array[]) =>
-  utils.clearUTxOs(pool, "mempool_ledger", refs);
+export const clearUTxOs = (refs: Uint8Array[]) => delMultiple(tableName, refs);
 
-export const clear = async (pool: Pool) => clearTable(pool, "mempool_ledger");
+export const clear = () => clearTable(tableName);

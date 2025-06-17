@@ -60,7 +60,7 @@ validator mint(
       } -> {
         expect Some(old_node_input) =
           list.at(self.inputs, anchor_node_input_index)
-        expect Key(old_node_key) =
+        expect Key { key: old_node_key } =
           ordered.get_key(ordered.get_raw_key_and_link(old_node_input.output))
         let new_node_key_as_int = bytearray.to_int_big_endian(new_node_key)
         let old_node_key_as_int = bytearray.to_int_big_endian(old_node_key)
@@ -69,7 +69,7 @@ validator mint(
           list.at(self.outputs, appended_node_output_index)
         expect InlineDatum(appended_node_output_datum) =
           appended_node_output.datum
-        expect catalogue.Datum(_) = appended_node_output_datum
+        expect catalogue.Datum { .. } = appended_node_output_datum
 
         and {
           ordered.append(

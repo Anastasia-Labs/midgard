@@ -273,7 +273,7 @@ Formal specification:
         paymentHK(addr(u))
         \;\middle|\;
         \begin{array}{l}
-           (r, u) \in utxos_{post} \\
+           (r, u) \in utxos \\
            r \in spend\_inputs(t) \\
            addr(u) \in Addr^{vkey}
         \end{array}
@@ -283,31 +283,59 @@ Formal specification:
     
 This ledger rule is violated if any of the following violations occur:
 \begin{itemize-multi}
-  \item \hyperref[violation:MISSING-REQ-SIGNER]{MISSING-REQ-SIGNER}
+  \item \hyperref[violation:MISSING-REQ-SIGNER-TX]{MISSING-REQ-SIGNER-TX}
+  \item \hyperref[violation:MISSING-REQ-SIGNER-UTXO]{MISSING-REQ-SIGNER-UTXO}
   \item \hyperref[violation:NON-REQ-SIGNER]{NON-REQ-SIGNER}
 \end{itemize-multi}
 
-\subsubsection{MISSING-REQ-SIGNER violation}
-\label{violation:MISSING-REQ-SIGNER}
-A transaction $t$ is in the ledger, and it violates the "Required signatures" property.
+\subsubsection{MISSING-REQ-SIGNER-TX violation}
+\label{violation:MISSING-REQ-SIGNER-TX}
+A transaction $t_1$ spends a utxo $u$, produced in the block by transaction $t_2$ at a public key address, without providing the required signature as a witness.
 Formal specification:
 \begin{equation*}
 \begin{split}
-  &\exists t \in txs,\; \exists r \in spend\_inputs(t),\; \exists u \in output(t): \\
-    &\quad
-      (r, u) \in utxos_{post} \;\land\\
-    &\quad paymentHK(addr(u)) \notin required\_signer\_hashes(t) \;\land\\
+  &\exists t_1, t_2 \in txs,\; \exists i \in spend\_inputs(t_1)\; \exists u \in outputs(t_2) : \\
+    &(tx\_hash(i) = tx\_hash(t_2)) \;\land\\
+    &(u = elem\_at(outputs(t_2), i.index)) \;\land\\
+    &\quad paymentHK(addr(u)) \notin required\_signer\_hashes(t_1) \;\land\\
     &\quad addr(u) \in Addr^{vkey}
 \end{split}
 \end{equation*}
 
 Fraud proof construction:
 \begin{enumerate}
-  \item Let $t$ be the transaction alleged to violate the ledger rule. 
-  \item A membership proof must be provided that shows that the transaction is included in the ledger
-  \item A DA layer proof must be presented that shows that $r \in spend\_inputs(t)$
-  \item A membership proof must be generated that shows that $(r, u) \in utxos_{post}$
-  \item A DA layer proof must be shown that proves that \\ $paymentHK(addr(u)) \notin required\_signer\_hashes(t)$
+  \item Let $t_1$ be the transaction alleged to violate the ledger rule.
+  \item A membership proof must be provided that shows that $t_1$ is included in the block.
+  \item Let $t_2$ be another transaction in the block.
+  \item A membership proof must be provided that shows that $t_2$ is included in the block.
+  \item Verify that $i \in spend\_inputs(t_1)$.
+  \item Verify that $i$ matches $t_2$ on transaction hash. 
+  \item Let $u$ be the $t_2$ output indexed by $i$. 
+  \item Verify that the payment credential of $u$ is a public key hash and that it is included in the required signers of the transaction.
+\end{enumerate}
+
+\subsubsection{MISSING-REQ-SIGNER-UTXO violation}
+\label{violation:MISSING-REQ-SIGNER-UTXO}
+A transaction $t_1$ spends a utxo $u$ from the previous block's utxo set without providing the required signature as a witness.
+Formal specification:
+\begin{equation*}
+\begin{split}
+  &\exists t_1 \in txs,\; \exists i \in spend\_inputs(t_1)\; \exists (j,u) \in utxos_{pre} : \\
+    &(i = j) \;\land\\
+    &\quad paymentHK(addr(u)) \notin required\_signer\_hashes(t_1) \;\land\\
+    &\quad addr(u) \in Addr^{vkey}
+\end{split}
+\end{equation*}
+
+Fraud proof construction:
+\begin{enumerate}
+  \item Let $t_1$ be the transaction alleged to violate the ledger rule. 
+  \item A membership proof must be provided that shows that $t_1$ is included in the block.
+  \item Verify that $i \in spend\_inputs(t_1)$.
+  \item Verify that $i$ matches $t_2$ on transaction hash. 
+  \item Let $u$ be a utxo and $j$ be an output reference. 
+  \item A membership proof must be provided that $(j,u) \in utxos_{pre}$.
+  \item Verify that the payment credential of $u$ is a public key hash and that it is included in the required signers of the transaction.
 \end{enumerate}
 
 \subsubsection{NON-REQ-SIGNER violation}

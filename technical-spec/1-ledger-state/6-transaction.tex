@@ -171,7 +171,7 @@ The data availability layer is responsible for confirming that the hashes corres
     \begin{array}{ll}
         \T{body} : & \mathcal{H}(\T{MidgardTxBody}) \\
         \T{wits} : & \mathcal{H}(\T{MidgardTxWits}) \\
-        \T{is\_valid} : & \T{Bool} \\
+        \T{validity} : & \T{MidgardTxValidity} \\
     \end{array} \right\} \\
     \T{MidgardTxBody} \coloneq\;& \left\{
     \begin{array}{ll}
@@ -193,6 +193,13 @@ The data availability layer is responsible for confirming that the hashes corres
         \T{script\_tx\_wits} : & \quad?\;\mathcal{H}(\T{Map(ScriptHash, MidgardSScript)}) \\
         \T{redeemer\_tx\_wits} : & \quad?\;\mathcal{H}(\T{Redeemers})
     \end{array} \right\}\\
+    \T{MidgardTxValidity} \coloneq\;& \T{TxIsValid} \\
+                              \mid\;& \T{NonExistentInputUtxo} \\
+                              \mid\;& \T{InvalidSignature} \\
+                              \mid\;& \T{FailedScript} \\
+                              \mid\;& \T{FeeTooLow} \\
+                              \mid\;& \T{UnbalancedTx} \\
+                              \mid\;& \T{etc. (TODO)}
 \end{align*}
 \endgroup
 

@@ -3,8 +3,8 @@ import { Effect } from "effect";
 import { inspect } from "node:util";
 
 export const mptFromUTxOs = (
-  spentUtxos: Uint8Array[],
-  producedUtxos: { outputReference: Uint8Array; output: Uint8Array }[],
+  _spentUtxos: Uint8Array[],
+  _producedUtxos: { outputReference: Uint8Array; output: Uint8Array }[],
   ledgerAfterUpdate: { outputReference: Uint8Array; output: Uint8Array }[],
 ): Effect.Effect<Trie, Error> =>
   Effect.gen(function* () {
@@ -15,6 +15,7 @@ export const mptFromUTxOs = (
       catch: (e) => new Error(`${e}`),
     });
 
+    /*
     const trieProgram = Effect.tryPromise({
       try: async () => Trie.load(store),
       catch: (e) => new Error(`${e}`),
@@ -46,27 +47,42 @@ export const mptFromUTxOs = (
       }),
     );
 
-    // Silently ignoring failed updates and falling back to `fromList`.
+    // Silently ignoring failed updates and falling back to restarting from an
+    // empty trie.
     yield* Effect.catchAll(
       Effect.all([...deletePrograms, ...insertPrograms], { concurrency: 1 }),
       (e) =>
         Effect.gen(function* () {
           yield* Effect.logInfo(
-            `😔 Fallback to \`fromList\`... Failed to update trie: ${e}`,
+            `😔 Fallback to restarting from scratch... Failed to update trie: ${e}`,
           );
-          yield* Effect.try({
-            try: async () => {
-              trie = await Trie.fromList(
-                ledgerAfterUpdate.map(({ outputReference, output }) => ({
-                  key: Buffer.from(outputReference),
-                  value: Buffer.from(output),
-                })),
-                store,
-              );
-            },
-            catch: (e) => new Error(`${e}`),
-          });
+          trie = new Trie(store);
+          yield* Effect.forEach(
+            ledgerAfterUpdate,
+            ({ outputReference, output }) =>
+              Effect.tryPromise({
+                try: () =>
+                  trie.insert(
+                    Buffer.from(outputReference),
+                    Buffer.from(output),
+                  ),
+                catch: (e) => new Error(`${e}`),
+              }),
+          );
         }),
+    );
+    */
+
+    yield* Effect.logInfo(`Building UTxO root from scratch...`);
+
+    const trie = new Trie(store);
+
+    yield* Effect.forEach(ledgerAfterUpdate, ({ outputReference, output }) =>
+      Effect.tryPromise({
+        try: () =>
+          trie.insert(Buffer.from(outputReference), Buffer.from(output)),
+        catch: (e) => new Error(`${e}`),
+      }),
     );
 
     yield* Effect.logInfo(`🌲 Updated UTxO trie: ${inspect(trie)}`);

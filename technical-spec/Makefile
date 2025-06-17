@@ -6,7 +6,8 @@ help:
 	@echo "Targets:"
 	@echo "  help      -- show this help"
 	@echo "  shell     -- open nix dev shell"
-	@echo "  build     -- build the specification midgard.pdf"
+	@echo "  spec      -- build the specification midgard.pdf"
+	@echo "  build     -- alias for 'make spec'"
 	@echo "  clean     -- clean up latexmk files"
 	@echo "  nix-build -- open nix shell & build"
 	@echo "  nix-clean -- open nix shell & clean"
@@ -15,9 +16,12 @@ help:
 shell:
 	nix develop
 
-.PHONY: build
-build:
+.PHONY: spec
+spec:
 	latexmk -pdf -verbose -file-line-error -synctex=1 -interaction=nonstopmode
+
+.PHONY: build
+build: spec
 
 .PHONY: clean
 clean:

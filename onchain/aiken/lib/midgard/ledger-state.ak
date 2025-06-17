@@ -14,13 +14,16 @@
 //// These types must correspond to the CBOR types defined in Midgard's
 //// Codec Standard (/codec.cddl).
 
+use aiken/builtin
 use aiken/collection/dict.{Dict}
 use aiken/crypto.{ScriptHash, Signature, VerificationKey, VerificationKeyHash}
+use cardano/address.{Address}
 use cardano/assets.{Lovelace, Value}
 use cardano/transaction.{
-  Output, OutputReference, Redeemer, ScriptPurpose, TransactionId, ValidityRange,
+  Datum as CardanoDatum, Output, OutputReference, Redeemer, ScriptPurpose,
+  TransactionId, ValidityRange,
 }
-use midgard/common/types.{H28, H32, MerkleRoot, PosixTime, PubKeyHash}
+use midgard/common/types.{H28, H32, MerkleRoot, PosixTime, ValuePairs}
 
 // # Ledger state types
 
@@ -47,10 +50,11 @@ pub type Header {
   transactions_root: MerkleRoot,
   deposits_root: MerkleRoot,
   withdrawals_root: MerkleRoot,
+  tx_orders_root: MerkleRoot,
   start_time: PosixTime,
   end_time: PosixTime,
   prev_header_hash: HeaderHash,
-  operator_vkey: PubKeyHash,
+  operator_vkey: VerificationKeyHash,
   protocol_version: Int,
 }
 
@@ -77,25 +81,61 @@ pub type ConfirmedState {
   protocol_version: Int,
 }
 
-// ## Deposit event
+// ## User events
 
-// TODO
+pub fn unsafe_event_to_id_data(event_datum_data: Data) -> Data {
+  expect [id_data, ..] = builtin.unconstr_fields(event_datum_data)
+  id_data
+}
+
+pub fn unsafe_event_to_key_value_pair(
+  event_datum_data: Data,
+) -> Pair<Data, Data> {
+  expect [id_data, info_data, ..] = builtin.unconstr_fields(event_datum_data)
+  Pair(id_data, info_data)
+}
+
+// ### Deposit event
+
 pub type DepositId =
-  Void
+  OutputReference
 
-// TODO
-pub type DepositEvent =
-  Void
+pub type DepositInfo {
+  l2_address: Address,
+  l2_datum: Option<Data>,
+}
 
-// ## Withdrawal event
+pub type DepositEvent {
+  id: DepositId,
+  info: DepositInfo,
+}
 
-// TODO
+// ### Withdrawal event
+
 pub type WithdrawalId =
-  Void
+  OutputReference
 
-// TODO
-pub type WithdrawalEvent =
-  Void
+pub type WithdrawalInfo {
+  l2_outref: OutputReference,
+  l2_value: ValuePairs,
+  l1_address: Address,
+  l1_datum: CardanoDatum,
+}
+
+pub type WithdrawalEvent {
+  id: WithdrawalId,
+  info: WithdrawalInfo,
+}
+
+// ### Transaction order event
+
+pub type TxOrderId =
+  OutputReference
+
+pub type TxOrderEvent {
+  id: TxOrderId,
+  tx: MidgardTxCompact,
+}
 
 // ## Transaction
 

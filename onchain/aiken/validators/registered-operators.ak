@@ -88,7 +88,7 @@ validator mint(
             node_mint,
           ),
           list.has(self.extra_signatories, key_to_prepend),
-          registered_operator_data.registration_time == valid_to,
+          registered_operator_data.activation_time == valid_to + registration_duration,
           quantity_of(registered_node_output.value, "", "") == required_bond,
           quantity_of(
             hub_oracle_ref_input.output.value,
@@ -159,7 +159,7 @@ validator mint(
             node_outputs,
             node_mint,
           ),
-          valid_from >= registered_operator_data.registration_time + registration_duration,
+          valid_from >= registered_operator_data.activation_time,
           quantity_of(
             hub_oracle_ref_input.output.value,
             hub_oracle_script_hash,

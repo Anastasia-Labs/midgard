@@ -22,8 +22,9 @@ export interface WorkerInput {
 }
 
 export interface WorkerOutput {
-  txRoot: string;
-  utxoRoot: string;
+  txSize: number;
+  mempoolTxsCount: number;
+  sizeOfBlocksTxs: number;
 }
 
 export const chalk = new chalk_.Chalk();
@@ -105,20 +106,20 @@ export const setupLucid = async (
 };
 
 export function utxoToCBOR(utxo: UTxO): {
-  outputReference: Uint8Array;
-  output: Uint8Array;
+  key: Uint8Array;
+  value: Uint8Array;
 } {
   const cmlUTxO = utxoToCore(utxo);
   return {
-    outputReference: cmlUTxO.input().to_cbor_bytes(),
-    output: cmlUTxO.output().to_cbor_bytes(),
+    key: cmlUTxO.input().to_cbor_bytes(),
+    value: cmlUTxO.output().to_cbor_bytes(),
   };
 }
 
 export const findSpentAndProducedUTxOs = (txCBOR: Uint8Array) =>
   Effect.gen(function* () {
     const spent: Uint8Array[] = [];
-    const produced: { outputReference: Uint8Array; output: Uint8Array }[] = [];
+    const produced: { key: Uint8Array; value: Uint8Array }[] = [];
     const tx = CML.Transaction.from_cbor_bytes(txCBOR);
     const txBody = tx.body();
     const inputs = txBody.inputs();
@@ -131,13 +132,16 @@ export const findSpentAndProducedUTxOs = (txCBOR: Uint8Array) =>
     }
     const txHash = CML.hash_transaction(txBody).to_hex();
     for (let i = 0; i < outputs.len(); i++) {
-      yield* Effect.try(() => {
-        const utxo: UTxO = {
-          txHash: txHash,
-          outputIndex: i,
-          ...coreToTxOutput(outputs.get(i)),
-        };
-        produced.push(utxoToCBOR(utxo));
+      yield* Effect.try({
+        try: () => {
+          const utxo: UTxO = {
+            txHash: txHash,
+            outputIndex: i,
+            ...coreToTxOutput(outputs.get(i)),
+          };
+          produced.push(utxoToCBOR(utxo));
+        },
+        catch: (e) => new Error(`${e}`),
       });
     }
     return { spent, produced };
@@ -148,7 +152,7 @@ export const findAllSpentAndProducedUTxOs = (
 ): Effect.Effect<
   {
     spent: Uint8Array[];
-    produced: { outputReference: Uint8Array; output: Uint8Array }[];
+    produced: { key: Uint8Array; value: Uint8Array }[];
   },
   Error
 > =>
