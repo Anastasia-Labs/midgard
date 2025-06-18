@@ -49,7 +49,7 @@ export const makeAlwaysSucceedsServiceFn = (nodeConfig: NodeConfigDep) =>
     };
   }).pipe(Effect.orDie);
 
-const makeAlwaysSucceedsService = Effect.gen(function* ($) {
+const makeAlwaysSucceedsService = Effect.gen(function* () {
   const nodeConfig = yield* NodeConfig;
   return yield* makeAlwaysSucceedsServiceFn(nodeConfig);
 });
