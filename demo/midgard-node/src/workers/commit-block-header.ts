@@ -8,7 +8,11 @@ import {
 } from "@/utils.js";
 import { makeAlwaysSucceedsServiceFn } from "@/services/always-succeeds.js";
 import { BlocksDB, ImmutableDB, MempoolDB } from "@/database/index.js";
-import { handleSignSubmit } from "@/transactions/utils.js";
+import {
+  ConfirmError,
+  handleSignSubmit,
+  SubmitError,
+} from "@/transactions/utils.js";
 import { fromHex, toHex } from "@lucid-evolution/lucid";
 import * as ETH from "@ethereumjs/mpt";
 import * as ETH_UTILS from "@ethereumjs/util";
@@ -22,11 +26,7 @@ const rootKey = ETH.ROOT_DB_KEY;
 
 const wrapper = (
   _input: WorkerInput,
-): Effect.Effect<
-  WorkerOutput,
-  Error,
-  NodeConfig | User | Database
-> =>
+): Effect.Effect<WorkerOutput, Error, NodeConfig | User | Database> =>
   Effect.gen(function* () {
     const nodeConfig = yield* NodeConfig;
     const { user: lucid } = yield* User;
@@ -200,9 +200,19 @@ const wrapper = (
 
       // Using sign and submit helper with confirmation so that databases are
       // only updated after a successful on-chain registration of the block.
-      yield* handleSignSubmit(lucid, txBuilder).pipe(
-        Effect.withSpan("handleSignSubmit-commit-block"),
-      );
+      const onSubmitFailure = (err: SubmitError) =>
+        Effect.gen(function* () {
+          yield* Effect.logError(`Sumbit tx error: ${err}`);
+          yield* Effect.fail(err.err);
+        });
+      const onConfirmFailure = (err: ConfirmError) =>
+        Effect.logError(`Confirm tx error: ${err}`);
+      yield* handleSignSubmit(
+        lucid,
+        txBuilder,
+        onSubmitFailure,
+        onConfirmFailure,
+      ).pipe(Effect.withSpan("handleSignSubmit-commit-block"));
 
       const batchSize = 100;
 
@@ -264,9 +274,7 @@ const wrapper = (
 
       return output;
     } else {
-      yield* Effect.logInfo(
-        "🔹 No transactions were found in MempoolDB",
-      );
+      yield* Effect.logInfo("🔹 No transactions were found in MempoolDB");
       const output: WorkerOutput = {
         txSize: 0,
         mempoolTxsCount: 0,

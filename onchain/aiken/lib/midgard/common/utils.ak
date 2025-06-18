@@ -278,8 +278,9 @@ pub fn foldl3(
 }
 
 /// Traverses two lists in parallel, accumulating a value using the provided
-/// `with` function. The lists are traversed from right, and the smaller list
-/// determines the number of elements traversed.
+/// `with` function. The lists are traversed from left to right, stopping after
+/// the smaller list's elements are exhausted. However, the `with` function
+/// is applied in reverse order (i.e. right to left).
 pub fn zip_foldr(
   self: List<a>,
   bs: List<b>,

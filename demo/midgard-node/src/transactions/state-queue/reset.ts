@@ -10,7 +10,7 @@ import {
 import { AlwaysSucceeds } from "@/services/index.js";
 import { User } from "@/config.js";
 import { Effect } from "effect";
-import { handleSignSubmit } from "../utils.js";
+import { ConfirmError, handleSignSubmit, SubmitError } from "../utils.js";
 
 const collectAndBurnStateQueueNodesProgram = (
   lucid: LucidEvolution,
@@ -35,7 +35,19 @@ const collectAndBurnStateQueueNodesProgram = (
       .attach.Script(stateQueueSpendingScript)
       .attach.Script(stateQueueMintingScript);
     const completed = yield* tx.completeProgram();
-    return yield* handleSignSubmit(lucid, completed);
+    const onSubmitFailure = (err: SubmitError) =>
+      Effect.gen(function* () {
+        yield* Effect.logError(`Sumbit tx error: ${err}`);
+        yield* Effect.fail(err.err);
+      });
+    const onConfirmFailure = (err: ConfirmError) =>
+      Effect.logError(`Confirm tx error: ${err}`);
+    return yield* handleSignSubmit(
+      lucid,
+      completed,
+      onSubmitFailure,
+      onConfirmFailure,
+    );
   });
 
 export const resetStateQueue = Effect.gen(function* () {

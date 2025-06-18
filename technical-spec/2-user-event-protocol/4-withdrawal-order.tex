@@ -32,7 +32,7 @@ To actually bring the funds to L1, users must then submit an L1 transaction that
     \item Send min-ADA to the Midgard withdrawal order address, along with the withdrawal order token and the above datum.
 \end{enumerate}
 
-\notebox{By adjusting incentives, users can be relieved from producing the withdrawal event utxo on L1 themselves, and rely on operators to take care of this second step.}
+\notebox{We could adapt Midgard's incentive structure to encourage operators to perform this second step on L1 on behalf of users, relieving users from this chore during normal protocol operation.}
 
 At the time of the L1 withdrawal order, its \code{inclusion\_time} is set to the sum of the L1 transaction's validity interval upper bound and the \code{event\_wait\_duration} Midgard protocol parameter.
 According to Midgard's ledger rules:
