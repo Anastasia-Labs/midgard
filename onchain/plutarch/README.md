@@ -31,6 +31,33 @@ const data = rawData.map(item => ({
 const trie = await Trie.fromList(data);
 ```
 
+### Exporting plutarch funtions into files as staking validators
+
+1. Import your Plutarch functions alongside the corresponding staking wrapper based on the arity of your function into `Main.hs`. Staking wrappers support functions with up to four arguments.
+
+```haskell
+module Main where
+
+import MyModule (scriptExample)
+import Plutarch.Prelude ((#))
+import Utils (stakingWrapper2)
+```
+
+2. Add your function, wrapped into staking wrapper, alongiside with it's name into scripts variable:
+
+```haskell
+scripts :: [(String, ClosedTerm a)]
+scripts = ["scriptExample", stakingWrapper2 # scriptExample]
+```
+
+3. Run the app:
+
+```
+cabal run midgard
+```
+
+4. Your compiled scripts will be in the compiled folder.
+
 # Set up nix config 
 Put the following lines in your nix configuration file (usually located at /etc/nix/nix.conf)
 
