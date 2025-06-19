@@ -1,8 +1,8 @@
-use aiken/collection/dict
+use aiken/collection/dict.{Dict}
 use aiken/collection/list
 use aiken/crypto.{ScriptHash}
 use aiken_design_patterns/singular_utxo_indexer
-use cardano/assets.{PolicyId, Value}
+use cardano/assets.{AssetName, PolicyId}
 use cardano/transaction.{
   Input, Mint, NoDatum, Output, OutputReference, Transaction,
 }
@@ -22,7 +22,7 @@ validator spend(hub_oracle: ScriptHash) {
     own_out_ref: OutputReference,
     tx: Transaction,
   ) {
-    let Transaction { reference_inputs, mint, redeemers, .. } = tx
+    let Transaction { reference_inputs, redeemers, .. } = tx
 
     let SpendRedeemer {
       input_index,
@@ -184,12 +184,16 @@ validator mint(hub_oracle: ScriptHash) {
 
     expect ledger_state.DepositInfo { midgard_tokens, .. } = deposit_info_data
 
-    let midgard_tokens_value: Value = assets.from_asset_list(midgard_tokens)
+    let midgard_tokens_pairs: Pairs<PolicyId, Dict<AssetName, Int>> =
+      midgard_tokens
+        |> assets.from_asset_list
+        |> assets.to_dict
+        |> dict.to_pairs
 
     // 2. Going through all the tokens of the produced UTxO, counting its
     //    tokens, while also validating that it only contains one valid
     //    authentication NFT, and that all the specified Midgard-compatible
-    //    tokens are includedd.
+    //    tokens are included.
     let
       output_deposit_nft_is_valid,
       total_token_count,
@@ -199,7 +203,7 @@ validator mint(hub_oracle: ScriptHash) {
         output_deposit_value |> assets.to_dict |> dict.to_pairs,
         False,
         0,
-        midgard_tokens_value |> assets.to_dict |> dict.to_pairs,
+        midgard_tokens_pairs,
         fn(
           policy_tokens_pair,
           beacon_found,
