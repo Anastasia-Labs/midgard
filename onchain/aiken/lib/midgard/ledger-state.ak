@@ -103,7 +103,7 @@ pub type DepositId =
 pub type DepositInfo {
   l2_address: Address,
   l2_datum: Option<Data>,
-  midgard_tokens: ValuePairs,
+  bridged_tokens: ValuePairs,
 }
 
 pub type DepositEvent {
@@ -119,6 +119,7 @@ pub type WithdrawalId =
 pub type WithdrawalInfo {
   l2_outref: OutputReference,
   l2_value: ValuePairs,
+  bridged_tokens: ValuePairs,
   l1_address: Address,
   l1_datum: CardanoDatum,
 }

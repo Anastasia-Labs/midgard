@@ -63,13 +63,13 @@ validator main(outer_l1_observer: ScriptHash, outer_l2_observer: ScriptHash) {
         // @constr<env.mct_deposit_redeemer_index>
         // pub type RedeemerForDeposit {
         //   deposit_input_index_data: Int,
-        //   midgard_tokens_index: Int,
+        //   bridged_tokens_index: Int,
         //   mint_field_value_index: Int,
         // }
         // ```
         // TODO: Define the datatype above when the decorators are supported.
         expect [
-          deposit_input_index_data, midgard_tokens_index_data,
+          deposit_input_index_data, bridged_tokens_index_data,
           mint_field_value_index_data,
           ..
         ] = redeemer_data_list
@@ -96,7 +96,7 @@ validator main(outer_l1_observer: ScriptHash, outer_l2_observer: ScriptHash) {
         expect user_events.Datum {
           event: ledger_state.DepositEvent {
             info: ledger_state.DepositInfo {
-              midgard_tokens: deposit_input_midgard_tokens,
+              bridged_tokens: deposit_input_bridged_tokens,
               ..
             },
             ..
@@ -107,8 +107,8 @@ validator main(outer_l1_observer: ScriptHash, outer_l2_observer: ScriptHash) {
         // Find own policy ID and associated tokens at the given index in the
         // declared list of MCTs.
         expect Some(mct_own_policy_tokens_pair_data) =
-          deposit_input_midgard_tokens
-            |> list.at(builtin.un_i_data(midgard_tokens_index_data))
+          deposit_input_bridged_tokens
+            |> list.at(builtin.un_i_data(bridged_tokens_index_data))
 
         expect [mct_own_policy_data,
           mct_own_tokens_data, ..] =

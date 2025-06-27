@@ -10,7 +10,7 @@ use cardano/transaction.{
 use env
 use midgard/common/types.{ValuePairs}
 use midgard/common/utils.{plutarch_phas}
-use midgard/escrow
+use midgard/payout_accumulator as payout
 use midgard/hub_oracle as hub
 use midgard/ledger_state
 use midgard/settlement_queue
@@ -18,7 +18,7 @@ use midgard/state_queue
 use midgard/user_events
 use midgard/user_events/withdrawal.{
   AuthenticateWithdrawal, BurnWithdrawalNFT, Datum, MintRedeemer, Refund,
-  SpendRedeemer, TransferToEscrow,
+  SpendRedeemer, TransferToPayoutAccumulator,
 }
 
 validator spend(hub_oracle: ScriptHash) {
@@ -36,15 +36,15 @@ validator spend(hub_oracle: ScriptHash) {
       hub_ref_input_index,
       settlement_ref_input_index,
       burn_redeemer_index,
-      escrow_mint_redeemer_index,
+      payout_mint_redeemer_index,
       purpose,
     } = redeemer
 
     let hub.Datum {
       withdrawal: withdrawal_policy_id,
       settlement_queue: settlement_queue_policy_id,
-      escrow: escrow_policy_id,
-      escrow_addr,
+      payout_accum: payout_policy_id,
+      payout_accum_addr: payout_addr,
       ..
     } = hub.get_datum(reference_inputs, hub_oracle, hub_ref_input_index)
 
@@ -94,23 +94,23 @@ validator spend(hub_oracle: ScriptHash) {
         } = output
 
         when spend_purpose is {
-          TransferToEscrow { membership_proof } -> {
+          TransferToPayoutAccumulator { membership_proof } -> {
             // 3. Output value must be the same as the input value, without the
-            //    withdrawal NFT, and with the escrow NFT added.
+            //    withdrawal NFT, and with the payout NFT added.
             expect
               output_value == (
                 own_value
                   |> assets.add(withdrawal_policy_id, burn_asset_name, -1)
-                  |> assets.add(escrow_policy_id, burn_asset_name, 1)
+                  |> assets.add(payout_policy_id, burn_asset_name, 1)
               )
 
-            // 4. TODO: Anticipating what the escrow mint redeemer should look
+            // 4. TODO: Anticipating what the payout mint redeemer should look
             //          like.
-            expect escrow.MintRedeemer { withdrawal_utxo_out_ref }: escrow.MintRedeemer =
+            expect payout.MintRedeemer { withdrawal_utxo_out_ref }: payout.MintRedeemer =
               utils.get_redeemer_at(
                 redeemers,
-                Mint(escrow_policy_id),
-                escrow_mint_redeemer_index,
+                Mint(payout_policy_id),
+                payout_mint_redeemer_index,
               )
             expect withdrawal_utxo_out_ref == own_out_ref
 
@@ -137,13 +137,13 @@ validator spend(hub_oracle: ScriptHash) {
             } = withdrawal_event_info
 
             let expected_output_datum: Data =
-              escrow.Datum { l2_value, l1_address, l1_datum }
+              payout.Datum { l2_value, l1_address, l1_datum }
 
             and {
-              // 6. Assert proper datum is attached to the escrow UTxO.
+              // 6. Assert proper datum is attached to the payout UTxO.
               output_datum == InlineDatum(expected_output_datum),
-              // 7. Withdrawal must go to the escrow contract.
-              output_address == escrow_addr,
+              // 7. Withdrawal must go to the payout contract.
+              output_address == payout_addr,
             }
           }
           Refund { refund_approach } ->

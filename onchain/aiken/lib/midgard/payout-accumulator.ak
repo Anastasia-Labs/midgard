@@ -4,6 +4,7 @@ use midgard/common/types.{ValuePairs}
 
 pub type Datum {
   l2_value: ValuePairs,
+  bridged_tokens: ValuePairs,
   l1_address: Address,
   l1_datum: CardanoDatum,
 }
