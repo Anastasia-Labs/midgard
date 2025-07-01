@@ -63,7 +63,6 @@ validator main(
         parent_tx_body,
         bad_spend_inputs,
         bad_input,
-        parent_outputs_data,
         parent_outputs,
         required_signers,
         index_output,
@@ -112,16 +111,21 @@ validator main(
         // Membership of the output provided in redeemer inside the parent output
         verify_hash_32(parent_tx, parent_tx_hash)
         verify_hash_32(parent_tx_body, parent_tx.body)
-        verify_hash_32(parent_outputs_data, parent_tx_body.outputs)
+        verify_hash_32(parent_outputs, parent_tx_body.outputs)
 
         //I am using 2 times the sime data in the redeemer because I cannot cast from data to output due to opaque casting
         //Is there a solution to fix this and optimize?
         expect invalid_input: Input = bad_input
         //is the output inside the list at the right index of the output reference?
         expect Some(real_output) =
-          list.at(parent_outputs, invalid_input.output_reference.output_index)
+          list.at(
+            builtin.un_list_data(parent_outputs),
+            invalid_input.output_reference.output_index,
+          )
+        let bad_output = Output()
+        real_output
         expect invalid_input.output_reference.transaction_id == parent_tx_hash
-        expect invalid_input.output == real_output
+        expect invalid_input.output == bad_output
 
         //let's look for the output at the right index
         expect
