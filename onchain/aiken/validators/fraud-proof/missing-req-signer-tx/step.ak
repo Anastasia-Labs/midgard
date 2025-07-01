@@ -3,9 +3,9 @@
 use aiken/builtin
 use aiken/collection/list
 use aiken/crypto.{ScriptHash}
-use cardano/address.{VerificationKey}
+use cardano/address.{Address, VerificationKey}
 use cardano/assets.{PolicyId}
-use cardano/transaction.{Input, Output, OutputReference, Transaction}
+use cardano/transaction.{Input, OutputReference, Transaction}
 use midgard/common/utils.{verify_hash_32}
 use midgard/computation_thread.{StepDatum}
 use midgard/fraud_proof/common/types.{MembershipProofInputs}
@@ -122,10 +122,12 @@ validator main(
             builtin.un_list_data(parent_outputs),
             invalid_input.output_reference.output_index,
           )
-        let bad_output = Output()
-        real_output
+        expect [bad_output_address_data, ..] =
+          builtin.unconstr_fields(real_output)
+
+        expect bad_address: Address = bad_output_address_data
         expect invalid_input.output_reference.transaction_id == parent_tx_hash
-        expect invalid_input.output == bad_output
+        expect invalid_input.output.address == bad_address
 
         //let's look for the output at the right index
         expect

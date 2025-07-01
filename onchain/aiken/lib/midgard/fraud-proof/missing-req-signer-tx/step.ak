@@ -1,5 +1,4 @@
 use aiken/crypto.{VerificationKeyHash}
-use cardano/transaction.{Output}
 use midgard/fraud_proof/common/types.{Proof}
 use midgard/ledger_state.{MidgardTxBodyCompact, MidgardTxCompact}
 
