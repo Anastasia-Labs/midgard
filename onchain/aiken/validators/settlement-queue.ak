@@ -1,11 +1,9 @@
-use aiken/builtin
 use aiken/collection/list
 use aiken/crypto.{ScriptHash}
 use aiken/interval.{Finite, Interval}
 use aiken_design_patterns/linked_list/unordered.{
   Key, NodeDatum, get_node_inputs, get_node_outputs, list_state_transition,
 }
-use aiken_design_patterns/merkelized_validator
 use cardano/assets.{PolicyId}
 use cardano/transaction.{
   InlineDatum, Input, Mint, Output, OutputReference, Spend, Transaction,
@@ -23,13 +21,8 @@ use midgard/settlement_queue.{
   RemoveSettlementNode, ResolutionClaim, SpendRedeemer,
 }
 use midgard/state_queue
-use midgard/user_events
 
-validator spend(
-  hub_oracle: ScriptHash,
-  settlement_policy_id: ScriptHash,
-  plutarch_phas_validator_hash: ScriptHash,
-) {
+validator spend(hub_oracle: ScriptHash, settlement_policy_id: ScriptHash) {
   spend(
     m_datum: Option<Datum>,
     redeemer: SpendRedeemer,
@@ -38,8 +31,13 @@ validator spend(
   ) {
     expect Some(node_datum) = m_datum
 
-    expect NodeData { deposits_root, withdrawals_root, resolution_claim, .. } as input_node_data =
-      node_datum.data
+    expect NodeData {
+      deposits_root,
+      withdrawals_root,
+      tx_orders_root,
+      resolution_claim,
+      ..
+    } as input_node_data = node_datum.data
 
     when redeemer is {
       ListStateTransition ->
@@ -122,17 +120,18 @@ validator spend(
 
         // 8. The transaction must include the `scheduler` utxo as a reference input,
         //    indicating that the current operator matches the resolution claim's operator.
-        expect Some(scheduler_ref_input) =
-          list.at(tx.reference_inputs, scheduler_ref_input_index)
-        expect InlineDatum(scheduler_state_datum) =
-          scheduler_ref_input.output.datum
+        expect Input {
+          output: Output { datum: InlineDatum(scheduler_state_datum), .. },
+          ..
+        } =
+          utils.get_authentic_input_with_nft_at(
+            tx.reference_inputs,
+            scheduler,
+            scheduler_asset_name,
+            scheduler_ref_input_index,
+          )
         expect parsed_scheduler_state_datum: SchedulerDatum =
           scheduler_state_datum
-        expect
-          Pair(scheduler_asset_name, 1) == utils.get_singleton_asset_with_policy(
-            scheduler_ref_input.output.value,
-            scheduler,
-          )
         expect operator == parsed_scheduler_state_datum.operator
 
         // Done. 
@@ -185,25 +184,26 @@ validator spend(
           active_operators,
           deposit: deposit_script_hash,
           withdrawal: withdrawal_script_hash,
+          tx_order: tx_order_script_hash,
           retired_operators,
           ..
         } = hub.get_datum(tx.reference_inputs, hub_oracle, hub_ref_input_index)
 
-        // 5. The transaction must include either a deposit or a withdrawal order as a reference
-        //    input. Let that reference input be `unprocessed_event`.
+        // 5. The transaction must include either a deposit, a withdrawal order,
+        //    or an L2 transaction order as a reference input. Let that
+        //    reference input be `unprocessed_event`.
         let (event_script, events_root) =
           when event_type is {
             settlement_queue.Deposit -> (deposit_script_hash, deposits_root)
             settlement_queue.Withdrawal ->
               (withdrawal_script_hash, withdrawals_root)
+            settlement_queue.TxOrder -> (tx_order_script_hash, tx_orders_root)
           }
-        // TODO:
-        // https://github.com/Anastasia-Labs/midgard/pull/174#discussion_r2012732492
         expect Input {
           output: Output { datum: InlineDatum(event_datum_data), .. },
           ..
         } =
-          utils.get_authentic_input_of(
+          utils.get_authentic_input_with_nft_at(
             tx.reference_inputs,
             event_script,
             unresolved_event_asset_name,
@@ -212,28 +212,16 @@ validator spend(
         // Unsafe coercion is fine here as we have already validated the
         // authenticity of the UTxO.
         let Pair(event_key, event_value) =
-          user_events.unsafe_to_key_value_pair(event_datum_data)
+          ledger_state.unsafe_event_to_key_value_pair(event_datum_data)
 
         // 6. A valid membership proof must be provided, proving that `unprocessed_event` is a
         //    member of the corresponding tree in the settlement node.
         expect
-          merkelized_validator.generic_delegated_validation(
-            staking_validator: plutarch_phas_validator_hash,
-            withdraw_redeemer_validator: fn(membership_validator_redeemer: Data) -> Bool {
-              expect [
-                input_root_data, input_key_data, input_value_data,
-                input_proof_data,
-                ..
-              ] = builtin.unconstr_fields(membership_validator_redeemer)
-              let mpf_root_data: Data = events_root
-              let proof_data: Data = membership_proof
-              and {
-                mpf_root_data == input_root_data,
-                event_key == input_key_data,
-                event_value == input_value_data,
-                proof_data == input_proof_data,
-              }
-            },
+          utils.plutarch_phas(
+            mpf_root: events_root,
+            key: event_key,
+            value: event_value,
+            membership_proof: membership_proof,
             redeemers: tx.redeemers,
           )
 
@@ -362,6 +350,7 @@ validator mint(hub_oracle: ScriptHash) {
         expect ledger_state.Header {
           deposits_root,
           withdrawals_root,
+          tx_orders_root,
           start_time,
           end_time,
           ..
@@ -385,7 +374,8 @@ validator mint(hub_oracle: ScriptHash) {
         }) = list.at(node_outputs, node_output_index)
 
         // 5. `merged_block` and `new_settlement_node` must match on all these fields:
-        //    `deposits_root`, `withdrawals_root`, `start_time`, `end_time`.
+        //    `deposits_root`, `withdrawals_root`, `tx_orders_root`, `start_time`,
+        //    `end_time`.
         // 6. The `resolution_claim` of `new_settlement_node` must be empty.
         expect parsed_settlement_output_datum: Datum =
           settlement_output_datum_data
@@ -393,6 +383,7 @@ validator mint(hub_oracle: ScriptHash) {
           NodeData {
             deposits_root,
             withdrawals_root,
+            tx_orders_root,
             start_time,
             end_time,
             resolution_claim: None,

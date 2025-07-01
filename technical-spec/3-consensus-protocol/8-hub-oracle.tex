@@ -19,7 +19,9 @@ It consists of a single utxo holding the hub oracle NFT and a datum of the follo
         \T{fraud\_proof} : & \T{PolicyId} \\
         \T{deposit} : & \T{PolicyId} \\
         \T{withdrawal} : & \T{PolicyId} \\
+        \T{tx\_order} : & \T{PolicyId} \\
         \T{settlement\_queue} : & \T{PolicyId} \\
+        \T{escrow} : & \T{PolicyId} \\
         \\
         \T{registered\_operators\_addr} : & \T{Address} \\
         \T{active\_operators\_addr} : & \T{Address} \\
@@ -28,7 +30,13 @@ It consists of a single utxo holding the hub oracle NFT and a datum of the follo
         \T{state\_queue\_addr} : & \T{Address} \\
         \T{fraud\_proof\_catalogue\_addr} : & \T{Address} \\
         \T{fraud\_proof\_addr} : & \T{Address} \\
-        \T{reserve\_addr} : & \T{Address}
+        \T{deposit\_addr} : & \T{Address} \\
+        \T{withdrawal\_addr} : & \T{Address} \\
+        \T{tx\_order\_addr} : & \T{Address} \\
+        \T{settlement\_queue\_addr} : & \T{Address} \\
+        \T{reserve\_addr} : & \T{Address} \\ 
+        \T{escrow\_addr} : & \T{Address} \\ 
+        \T{reserve\_observer} : & \T{ScriptHash}
     \end{array} \right\}
 \end{equation*}
 

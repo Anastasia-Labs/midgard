@@ -15,7 +15,7 @@ A transaction order is created by an L1 transaction that performs the following:
         \begin{equation*}
         \T{TxOrderDatum} \coloneq \left\{
             \begin{array}{ll}
-                \T{tx} : & \T{MidgardTx}, \\
+                \T{event} : & \T{TxOrderEvent}, \\
                 \T{inclusion\_time} : & \T{PosixTime}, \\
                 \T{witness} : & \T{ScriptHash}, \\
                 \T{refund\_address}: & \T{Address}, \\
@@ -32,27 +32,81 @@ According to Midgard's ledger rules:
     \item[Transaction order inclusion.] A block header must include transaction orders with inclusion times falling within the block header's event interval, and it must \emph{not} include any other transaction orders.
 \end{description}
 
-Analogously to deposits, transaction orders will eventually be included in the state queue, as long as operators continue committing valid block headers.
+\notebox{The transaction order's \code{inclusion\_time} must be within its L2 transaction's time-validity interval.
+This is guaranteed optimistically via the \code{validity} field of the underlying \code{MidgardTx}.
+}
+
+Analogously to deposits and withdrawals, transaction orders will eventually be included in the state queue, as long as operators continue committing valid block headers.
 Furthermore, if any blocks are removed from the state queue, any new committed block must include the transaction orders that should have been included in the removed blocks.
 
 The transaction order fulfills its purpose when its inclusion time is within the confirmed header's event interval.
-Whether or not the outcome of the order's \code{tx} L2 transaction was merged into the confirmed state, nothing more can be achieved with the transaction order, and it can be refunded according to the \code{refund\_address} and \code{refund\_datum}.
+Whether or not the outcome of the order's L2 transaction was merged into the confirmed state, nothing more can be achieved with the transaction order, and it can be refunded according to the \code{refund\_address} and \code{refund\_datum}.
 
-The transaction order's \code{witness} staking credential must be deregistered when the deposit utxo is spent.
-
-\subsection{Staking script}
-\label{h:transaction-order-staking-script}
+The transaction order's \code{witness} staking credential must be deregistered when the order utxo is spent.
 
 \subsection{Minting policy}
 \label{h:transaction-order-minting-policy}
 
-\notebox{The transaction order's \code{inclusion\_time} must be within its \code{tx} L2 transaction's time-validity interval.
+The \code{tx\_order} minting policy is statically parametrized on the \code{hub\_oracle} minting policy.
+It oversees correctness of datums, and registration/unregistration of events' corresponding witness staking scripts.
 
-}
+\begin{description}
+  \item[Authenticate Order.] Properly record a new L2 transaction order order event on L1.
+    Conditions:
+      \begin{enumerate}
+        \item Let \code{l1\_nonce} be the output reference of a utxo on L1 that is spent in the order transaction.
+        \item Let \code{l1\_id} be the Blake2b256 hash of serialized \code{l1\_nonce}.
+        \item An NFT with own policy ID and asset name of \code{l1\_id} must be minted and included in the transaction order utxo.
+        \item The witness staking script, instantiated with \code{l1\_id} must be registered in the transaction.
+        \item The redeemer used for registering the witness script must be equal to the \code{tx\_order} policy ID.
+        \item Let \code{tx\_order\_addr} be the address of the transaction order contract from Midgard's hub oracle.
+        \item Transaction order utxo must be produced at \code{tx\_order\_addr}.
+        \item The transaction order's \code{inclusion\_time} must be equal to transaction's time-validity upper bound plus \code{event\_wait\_duration} Midgard protocol parameter.
+        \item The hash of the witness script must be correctly stored in the datum.
+      \end{enumerate}
+    \item[Burn Transaction Order NFT.] Oversee the conclusion of transaction order by requiring its NFTs to be burnt.
+    Conditions:
+      \begin{enumerate}
+        \item Let \code{l1\_id} be the corresponding ID of the target transaction order, provided via the redeemer.
+        \item An NFT with own policy ID and asset name of \code{l1\_id} must be burnt.
+        \item The witness staking script, instantiated with \code{l1\_id} must be unregistered in the transaction.
+        \item The redeemer used for unregistrering the witness script must be correct.
+          Namely, it must be equal to the \code{tx\_order} policy ID.
+      \end{enumerate}
+\end{description}
 
 \subsection{Spending validator}
 \label{h:transaction-order-spending-validator}
 
-\todo
+The \code{tx\_order} spending validator is statically parametrized on the \code{hub\_oracle} minting policy.
+It's responsible for validating conclusion of transaction orders, or refunding stranded ones.
+
+\begin{description}
+  \item[Conclude.] Transaction for spending a confirmed transaction order.
+    Conditions:
+    \begin{enumerate}
+      \item Let \code{settlement\_node} be the referenced settlement node.
+      \item The transaction order must be included in the transaction order tree of \code{settlement\_node}.
+        This also implies the inclusion time of the order falls within the time interval of \code{settlement\_node}.
+      \item The \code{BurnEventNFT} endpoint of the transaction order minting script must be invoked with the corresponding \code{l1\_id} of the order utxo.
+      \item Let \code{refund\_address} and \code{refund\_datum} be the refund information retrieved from the transaction order's datum.
+      \item The min-ADA of the transaction order utxo must go to \code{refund\_address}.
+      \item The datum attached to this output utxo must be the same as \code{refund\_datum}.
+      \item \todo{} No reference script must be attached to the output utxo.
+    \end{enumerate}
+  \item[Refund.] 
+    Conditions:
+    \begin{enumerate}
+      \item The \code{BurnEventNFT} endpoint of the transaction order minting script must be invoked with the corresponding \code{l1\_id} of the order utxo.
+      \item Let \code{refund\_address} and \code{refund\_datum} be the refund information retrieved from the transaction order's datum.
+      \item The min-ADA of the transaction order utxo must go to \code{refund\_address}.
+      \item The datum attached to this output utxo must be the same as \code{refund\_datum}.
+      \item 
+        \begin{itemize}
+          \item If inclusion time of the stranded transaction order falls within the time range of an existing settlement node, refund can only be allowed if the settlement node's corresponding tree does not contain the transaction order (proven by providing a non-membership proof).
+          \item Otherwise, if the inclusion time falls in one of the time gaps of settlement queue, refund request is considered valid by referencing the immediate settlement node and showing the inclusion time falls in the gap.
+        \end{itemize}
+    \end{enumerate}
+\end{description}
 
 \end{document}

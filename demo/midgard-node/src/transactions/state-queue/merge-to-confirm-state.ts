@@ -12,8 +12,12 @@ import { findAllSpentAndProducedUTxOs } from "@/utils.js";
 import * as SDK from "@al-ft/midgard-sdk";
 import { LucidEvolution, Script, fromHex } from "@lucid-evolution/lucid";
 import { Effect, Metric } from "effect";
-import pg from "pg";
-import { fetchFirstBlockTxs, handleSignSubmit } from "../utils.js";
+import {
+  ConfirmError,
+  fetchFirstBlockTxs,
+  handleSignSubmit,
+  SubmitError,
+} from "../utils.js";
 
 const mergeBlockCounter = Metric.counter("merge_block_count", {
   description: "A counter for tracking merge blocks",
@@ -33,7 +37,6 @@ const mergeBlockCounter = Metric.counter("merge_block_count", {
  */
 export const buildAndSubmitMergeTx = (
   lucid: LucidEvolution,
-  db: pg.Pool,
   fetchConfig: SDK.TxBuilder.StateQueue.FetchConfig,
   spendScript: Script,
   mintScript: Script,
@@ -47,12 +50,27 @@ export const buildAndSubmitMergeTx = (
     // Avoid a merge tx if the queue is too short while a block submission is in
     // progress (performing a merge with such conditions has a chance of wasting
     // the work done for root computaions).
-    if (global.BLOCKS_IN_QUEUE < 2 && global.BLOCK_SUBMISSION_IN_PROGRESS) {
-
+    if (global.BLOCKS_IN_QUEUE < 4) {
       // yield* Effect.logInfo(
       //   "🔸 There are too few blocks in queue while a block submission is in progress.
       // );
       return;
+    }
+
+    if (global.BLOCK_SUBMISSION_IN_PROGRESS) {
+      yield* Effect.logInfo(
+        "🔸 Fetching state queue length to ensure it won't interfere with block submission that's in progress...",
+      );
+      const stateQueueUtxos = yield* Effect.tryPromise({
+        try: () => lucid.utxosAt(fetchConfig.stateQueueAddress),
+        catch: (e) => new Error(`${e}`),
+      });
+
+      global.BLOCKS_IN_QUEUE = stateQueueUtxos.length;
+
+      if (global.BLOCKS_IN_QUEUE < 4) {
+        return;
+      }
     }
 
     yield* Effect.logInfo("🔸 Merging of oldest block started.");
@@ -73,7 +91,6 @@ export const buildAndSubmitMergeTx = (
       yield* Effect.logInfo("🔸 Looking up its transactions from BlocksDB...");
       const { txs: firstBlockTxs, headerHash } = yield* fetchFirstBlockTxs(
         firstBlockUTxO,
-        db,
       ).pipe(Effect.withSpan("fetchFirstBlockTxs"));
       if (firstBlockTxs.length === 0) {
         yield* Effect.logInfo(
@@ -94,16 +111,20 @@ export const buildAndSubmitMergeTx = (
         },
       ).pipe(Effect.withSpan("mergeToConfirmedStateProgram"));
 
-      // Increment the merge block counter before successful L1 as it seems
-      // confirmation can timeout.
-      yield* Metric.increment(mergeBlockCounter).pipe(
-        Effect.withSpan("increment-merge-block-counter"),
-      );
-
       // Submit the transaction
-      yield* handleSignSubmit(lucid, txBuilder).pipe(
-        Effect.withSpan("handleSignSubmit-merge-tx"),
-      );
+      const onSubmitFailure = (err: SubmitError) =>
+        Effect.gen(function* () {
+          yield* Effect.logError(`Sumbit tx error: ${err}`);
+          yield* Effect.fail(err.err);
+        });
+      const onConfirmFailure = (err: ConfirmError) =>
+        Effect.logError(`Confirm tx error: ${err}`);
+      yield* handleSignSubmit(
+        lucid,
+        txBuilder,
+        onSubmitFailure,
+        onConfirmFailure,
+      ).pipe(Effect.withSpan("handleSignSubmit-merge-tx"));
       yield* Effect.logInfo(
         "🔸 Merge transaction submitted, updating the db...",
       );
@@ -121,25 +142,26 @@ export const buildAndSubmitMergeTx = (
       const bs = 100;
       yield* Effect.logInfo("🔸 Clear confirmed ledger db...");
       for (let i = 0; i < spentOutRefs.length; i += bs) {
-        yield* Effect.tryPromise(() =>
-          ConfirmedLedgerDB.clearUTxOs(db, spentOutRefs.slice(i, i + bs)),
-        ).pipe(Effect.withSpan(`confirmed-ledger-clearUTxOs-${i}`));
+        yield* ConfirmedLedgerDB.clearUTxOs(spentOutRefs.slice(i, i + bs)).pipe(
+          Effect.withSpan(`confirmed-ledger-clearUTxOs-${i}`),
+        );
       }
       yield* Effect.logInfo("🔸 Insert produced UTxOs...");
       for (let i = 0; i < producedUTxOs.length; i += bs) {
-        yield* Effect.tryPromise(() =>
-          ConfirmedLedgerDB.insert(
-            db,
-            producedUTxOs.slice(i, i + bs),
-            // .map((u) => utxoToOutRefAndCBORArray(u)),
-          ),
-        ).pipe(Effect.withSpan(`confirmed-ledger-insert-${i}`));
+        yield* ConfirmedLedgerDB.insert(producedUTxOs.slice(i, i + bs))
+          // .map((u) => utxoToOutRefAndCBORArray(u)),
+          .pipe(Effect.withSpan(`confirmed-ledger-insert-${i}`));
       }
       yield* Effect.logInfo("🔸 Clear block from BlocksDB...");
-      yield* Effect.tryPromise(() =>
-        BlocksDB.clearBlock(db, fromHex(headerHash)),
-      ).pipe(Effect.withSpan("clear-block-from-BlocksDB"));
+      yield* BlocksDB.clearBlock(fromHex(headerHash)).pipe(
+        Effect.withSpan("clear-block-from-BlocksDB"),
+      );
       yield* Effect.logInfo("🔸 ☑️  Merge transaction completed.");
+
+      yield* Metric.increment(mergeBlockCounter).pipe(
+        Effect.withSpan("increment-merge-block-counter"),
+      );
+
       global.BLOCKS_IN_QUEUE -= 1;
     } else {
       global.BLOCKS_IN_QUEUE = 0;

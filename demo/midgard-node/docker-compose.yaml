@@ -28,6 +28,8 @@ services:
       # - "4318:4318" # opentelemetry
     volumes:
       - ./db:/app/db
+    depends_on:
+      - postgres
     logging: *default-logging
     networks:
       midgard_net:
