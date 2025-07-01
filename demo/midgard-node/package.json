@@ -14,6 +14,7 @@
     "format": "prettier --write \"**/*.{ts,tsx,md}\"",
     "format-check": "prettier --check \"**/*.{ts,tsx,md}\"",
     "listen": "pnpm run build && node dist/index.js listen",
+    "playground": "pnpm run build && node dist/index.js playground",
     "init": "pnpm run build && node dist/index.js init",
     "test": "export NODE_ENV='emulator' && vitest run"
   },

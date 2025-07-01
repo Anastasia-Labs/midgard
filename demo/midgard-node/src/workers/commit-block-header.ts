@@ -154,7 +154,7 @@ const wrapper = (
               Effect.withSpan(`batch-insert-${startIndex}-${endIndex}`),
             );
           },
-          { concurrency: batchIndices.length },
+          { concurrency: "unbounded" },
         );
 
         yield* Effect.logInfo(

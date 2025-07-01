@@ -3,7 +3,7 @@ import { BatchDBOp, bytesToHex, DB } from "@ethereumjs/util";
 import { Effect, Layer } from "effect";
 import { CheckpointDB } from "@ethereumjs/mpt";
 import { LRUCache } from "lru-cache";
-import { UtilsDB } from "@/database/index.js";
+import { UtilsDB, LatestLedgerDB } from "@/database/index.js";
 import { Database } from "@/services/database.js";
 import { findSpentAndProducedUTxOs } from "@/utils.js";
 import * as ETH from "@ethereumjs/mpt";
@@ -32,9 +32,12 @@ export const makeMpts = () =>
       catch: (e) => new Error(`${e}`),
     });
 
-    // Ledger MPT from the other side should use a checkpoint database —
-    // its MPT building operations are paired with database ones
-    const ledgerCheckpointDB = new PostgresCheckpointDB(sql, "latest_ledger");
+    // Ledger MPT from the other side should use a checkpoint database — its MPT
+    // building operations are paired with database ones
+    const ledgerCheckpointDB = new PostgresCheckpointDB(
+      sql,
+      LatestLedgerDB.tableName,
+    );
     yield* ledgerCheckpointDB.openEffect();
     const ledgerTrie = yield* Effect.tryPromise({
       try: () =>
@@ -141,7 +144,7 @@ export class PostgresCheckpointDB
   }
 
   openEffect = () => {
-    const { _tableName } = this;
+    const { _tableName } = this
     return Effect.gen(function* () {
       const sql = yield* SqlClient.SqlClient;
       yield* sql`SET client_min_messages = 'error'`;
@@ -199,21 +202,14 @@ export class PostgresCheckpointDB
   };
 
   putEffect = (key: Uint8Array, value: Uint8Array) => {
-    const { cache, checkpoints, _tableName } = this;
+    const { _tableName } = this;
     return Effect.gen(function* () {
-      const keyHex = bytesToHex(key);
-      cache.set(keyHex, value);
-
-      if (checkpoints.length > 0) {
-        checkpoints[checkpoints.length - 1].keyValueMap.set(keyHex, value);
-      } else {
-        const sql = yield* SqlClient.SqlClient;
-        const rowsToInsert = { key: key, value: value };
-        yield* sql`
-          INSERT INTO ${sql(_tableName)} ${sql.insert(rowsToInsert)}
-          ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value
-          `;
-      }
+      const sql = yield* SqlClient.SqlClient;
+      const rowsToInsert = { key: key, value: value };
+      yield* sql`
+        INSERT INTO ${sql(_tableName)} ${sql.insert(rowsToInsert)}
+        ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value
+        `;
     });
   };
 
@@ -222,6 +218,12 @@ export class PostgresCheckpointDB
       Effect.provide(Layer.succeed(SqlClient.SqlClient, this._client)),
       Effect.runPromise,
     );
+    const { cache, checkpoints } = this;
+    if (this.hasCheckpoints()) {
+      const keyHex = bytesToHex(key);
+      checkpoints[checkpoints.length - 1].keyValueMap.set(keyHex, value);
+      cache.set(keyHex, value);
+    }
   }
 
   delEffect = (key: Uint8Array) => {

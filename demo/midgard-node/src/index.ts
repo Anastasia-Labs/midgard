@@ -2,13 +2,14 @@
 
 import { Command } from "commander";
 import { ENV_VARS_GUIDE, chalk } from "./utils.js";
-import { runNode } from "./commands/index.js";
+import { runNode, runPlayground } from "./commands/index.js";
 import packageJson from "../package.json" with { type: "json" };
 import { Effect, pipe } from "effect";
 import { NodeConfig, User } from "./config.js";
 import dotenv from "dotenv";
 import { AlwaysSucceeds } from "./services/index.js";
 import { NodeRuntime } from "@effect/platform-node";
+import {Database} from "./services/database.js";
 
 // Initialize global flags:
 global.BLOCKS_IN_QUEUE = 0;
@@ -61,6 +62,17 @@ program.command("listen").action(async () => {
     runNode,
     Effect.provide(User.layer),
     Effect.provide(AlwaysSucceeds.AlwaysSucceedsContract.layer),
+    Effect.provide(NodeConfig.layer),
+  );
+
+  NodeRuntime.runMain(program);
+});
+
+program.command("playground").action(async () => {
+  const program = pipe(
+    runPlayground,
+    Effect.provide(Database.layer),
+    Effect.provide(User.layer),
     Effect.provide(NodeConfig.layer),
   );
 

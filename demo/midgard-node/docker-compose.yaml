@@ -21,7 +21,7 @@ services:
     command:
       - node
       - ./dist/index.js
-      - listen
+      - playground
     ports:
       - "3000:3000" # api server
       - "9464:9464" # prometheus exporter
