@@ -436,7 +436,7 @@ Formal specification:
 \begin{split}
   &\forall t \in Ledger,\; \forall u \in output(t):\\
     &\quad
-      addr(u) \in Addr^{native}_{v2} \implies \bigl(
+      is\_native\_script\_addr(addr(u)) \implies \bigl(
         \exists (h, s) \in script\_tx\_wits(t),\; script\_hash(addr(u)) = h 
       \bigr)
 \end{split}
@@ -454,7 +454,7 @@ Formal specification:
 \begin{equation*}
 \begin{split}
   &\exists t \in txs,\; \exists u \in output(t):\\
-    &\quad addr(u) \in Addr^{native}_{v2} \;\land\\
+    &\quad is\_native\_script\_addr(addr(u)) \;\land\\
     &\quad \bigl(
         \nexists (h, s) \in script\_tx\_wits(t),\; script\_hash(addr(u)) = h
       \bigr)
