@@ -23,7 +23,9 @@ export const delMultiple = (
     yield* Effect.logDebug(
       `${tableName} db: attempt to delete multiply entries`,
     );
-    yield* sql`DELETE FROM ${sql(tableName)} WHERE key IN ${sql.in(keys)}`;
+    const result =
+      yield* sql`DELETE FROM ${sql(tableName)} WHERE key IN ${sql.in(keys)} RETURNING key`;
+    yield* Effect.logDebug(`${tableName} db: deleted ${result.length} rows`);
   }).pipe(Effect.withLogSpan(`delMutiple table ${tableName}`), mapSqlError);
 
 export const retrieveValue = (
