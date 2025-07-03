@@ -1,6 +1,7 @@
 use cardano/address.{Address}
 use cardano/transaction.{Datum as CardanoDatum, OutputReference}
 use midgard/common/types.{ValuePairs}
+use midgard/ledger_state
 
 pub type Datum {
   l2_value: ValuePairs,
@@ -17,3 +18,6 @@ pub type SpendRedeemer {
 pub type MintRedeemer {
   withdrawal_utxo_out_ref: OutputReference,
 }
+
+pub type PublishRedeemer =
+  Data<ledger_state.MidgardTxWitnessSetCompact>

@@ -10,9 +10,9 @@ use cardano/transaction.{
 use env
 use midgard/common/types.{ValuePairs}
 use midgard/common/utils.{plutarch_phas}
-use midgard/payout_accumulator as payout
 use midgard/hub_oracle as hub
 use midgard/ledger_state
+use midgard/payout_accumulator as payout
 use midgard/settlement_queue
 use midgard/state_queue
 use midgard/user_events
@@ -131,13 +131,14 @@ validator spend(hub_oracle: ScriptHash) {
 
             expect ledger_state.WithdrawalInfo {
               l2_value,
+              bridged_tokens,
               l1_address,
               l1_datum,
               ..
             } = withdrawal_event_info
 
             let expected_output_datum: Data =
-              payout.Datum { l2_value, l1_address, l1_datum }
+              payout.Datum { l2_value, l1_address, l1_datum, bridged_tokens }
 
             and {
               // 6. Assert proper datum is attached to the payout UTxO.

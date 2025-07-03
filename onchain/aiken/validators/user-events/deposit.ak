@@ -182,10 +182,11 @@ validator mint(hub_oracle: ScriptHash) {
         tx,
       )
 
-    expect ledger_state.DepositInfo { midgard_tokens, .. } = deposit_info_data
+    expect ledger_state.DepositInfo { bridged_tokens, .. }: ledger_state.DepositInfo =
+      deposit_info_data
 
-    let midgard_tokens_pairs: Pairs<PolicyId, Dict<AssetName, Int>> =
-      midgard_tokens
+    let bridged_tokens_pairs: Pairs<PolicyId, Dict<AssetName, Int>> =
+      bridged_tokens
         |> assets.from_asset_list
         |> assets.to_dict
         |> dict.to_pairs
@@ -203,27 +204,27 @@ validator mint(hub_oracle: ScriptHash) {
         output_deposit_value |> assets.to_dict |> dict.to_pairs,
         False,
         0,
-        midgard_tokens_pairs,
+        bridged_tokens_pairs,
         fn(
           policy_tokens_pair,
           beacon_found,
           token_count_so_far,
-          remaining_midgard_tokens,
+          remaining_bridged_tokens,
           return,
         ) {
           if !beacon_found && policy_tokens_pair.1st == own_policy {
             expect [output_deposit_nft_tn_qty] =
               policy_tokens_pair.2nd |> dict.to_pairs
             expect output_deposit_nft_tn_qty == Pair(l2_id, 1)
-            return(True, token_count_so_far, remaining_midgard_tokens)
+            return(True, token_count_so_far, remaining_bridged_tokens)
           } else {
             let policy_token_count = dict.size(policy_tokens_pair.2nd)
-            when remaining_midgard_tokens is {
+            when remaining_bridged_tokens is {
               [] ->
                 return(
                   beacon_found,
                   token_count_so_far + policy_token_count,
-                  remaining_midgard_tokens,
+                  remaining_bridged_tokens,
                 )
               [mct_pair, ..rest_of_mct_pairs] -> {
                 expect mct_pair == policy_tokens_pair
