@@ -10,7 +10,7 @@ import {
   SubmitError,
 } from "@/transactions/utils.js";
 import { fromHex } from "@lucid-evolution/lucid";
-import { makeMpts, processMpts } from "./db.js";
+import { makeMpts, processMpts, withTrieTransaction } from "./db.js";
 import { NodeConfig, User } from "@/config.js";
 import { Database } from "@/services/database.js";
 import { SqlClient } from "@effect/sql";
@@ -38,14 +38,11 @@ const wrapper = (
     }
     const endTime = Date.now();
     yield* Effect.logInfo(`🔹 ${mempoolTxsCount} retrieved.`);
-    const sql = yield* SqlClient.SqlClient;
 
     const { ledgerTrie, mempoolTrie } = yield* makeMpts();
-    const ledgerRootBeforeMempoolTxs = yield* Effect.sync(() =>
-      ledgerTrie.root(),
-    );
 
-    return yield* sql.withTransaction(
+    return yield* withTrieTransaction(
+      ledgerTrie,
       Effect.gen(function* () {
         const { utxoRoot, txRoot, mempoolTxHashes, sizeOfBlocksTxs } =
           yield* processMpts(ledgerTrie, mempoolTrie, mempoolTxs);
@@ -170,18 +167,7 @@ const wrapper = (
           sizeOfBlocksTxs,
         };
         return output;
-      }).pipe(
-        Effect.catchAll((e) =>
-          Effect.gen(function* () {
-            yield* Effect.logError(e);
-            yield* Effect.logInfo("🔹 Reverting changers...");
-            yield* Effect.sync(() =>
-              ledgerTrie.root(ledgerRootBeforeMempoolTxs),
-            );
-            return yield* Effect.fail(e);
-          }),
-        ),
-      ),
+      }),
     );
   });
 

@@ -68,6 +68,7 @@ export const processMpts = (
 ) =>
   Effect.gen(function* () {
     const mempoolTxHashes: Uint8Array[] = [];
+    const batchDBOps: ETH_UTILS.BatchDBOp[] = [];
     let sizeOfBlocksTxs = 0;
     yield* Effect.logInfo("🔹 Going through mempool txs and finding roots...");
     yield* Effect.forEach(mempoolTxs, ({ key: txHash, value: txCbor }) =>
@@ -92,14 +93,14 @@ export const processMpts = (
             value: output,
           }),
         );
-        const batchDBOps: ETH_UTILS.BatchDBOp[] = [...delOps, ...putOps];
-
-        yield* Effect.tryPromise({
-          try: () => ledgerTrie.batch(batchDBOps),
-          catch: (e) => new Error(`${e}`),
-        });
+        yield* Effect.sync(() => batchDBOps.push(...[...delOps, ...putOps]));
       }),
     );
+
+    yield* Effect.tryPromise({
+      try: () => ledgerTrie.batch(batchDBOps),
+      catch: (e) => new Error(`${e}`),
+    });
 
     const utxoRoot = toHex(ledgerTrie.root());
     const txRoot = toHex(mempoolTrie.root());
@@ -114,6 +115,25 @@ export const processMpts = (
       sizeOfBlocksTxs: sizeOfBlocksTxs,
     };
   });
+
+export const withTrieTransaction = (
+  trie: ETH.MerklePatriciaTrie,
+  eff: Effect.Effect<any, any, any>,
+) =>
+  Effect.gen(function* () {
+    yield* Effect.sync(() => trie.checkpoint());
+    const sql = yield* SqlClient.SqlClient;
+    const res = yield* sql.withTransaction(eff);
+    yield* Effect.sync(() => trie.commit());
+    return res;
+  }).pipe(
+    Effect.catchAll((e) =>
+      Effect.gen(function* () {
+        yield* Effect.tryPromise(() => trie.revert());
+        yield* Effect.fail(e);
+      }),
+    ),
+  );
 
 export class PostgresCheckpointDB
   extends CheckpointDB
@@ -174,9 +194,7 @@ export class PostgresCheckpointDB
         SELECT value FROM ${sql(_tableName)}
         WHERE key = ${Buffer.from(key)}`;
       const value = rows[0]?.value;
-      if (value) {
-        cache.set(keyHex, value);
-      }
+      if (value) yield* Effect.sync(() => cache.set(keyHex, value));
       return value;
     });
   };
@@ -202,14 +220,20 @@ export class PostgresCheckpointDB
   };
 
   putEffect = (key: Uint8Array, value: Uint8Array) => {
-    const { _tableName } = this;
+    const { _tableName, cache, checkpoints } = this;
     return Effect.gen(function* () {
-      const sql = yield* SqlClient.SqlClient;
-      const rowsToInsert = { key: key, value: value };
-      yield* sql`
-        INSERT INTO ${sql(_tableName)} ${sql.insert(rowsToInsert)}
-        ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value
-        `;
+      const keyHex = bytesToHex(key);
+      if (checkpoints.length > 0) {
+        checkpoints[checkpoints.length - 1].keyValueMap.set(keyHex, value);
+      } else {
+        const sql = yield* SqlClient.SqlClient;
+        const rowsToInsert = { key: key, value: value };
+        yield* sql`
+          INSERT INTO ${sql(_tableName)} ${sql.insert(rowsToInsert)}
+          ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value
+          `;
+      }
+      yield* Effect.sync(() => cache.set(keyHex, value));
     });
   };
 
@@ -226,17 +250,44 @@ export class PostgresCheckpointDB
     }
   }
 
+  putMultipleEffect = (ops: ETH_UTILS.PutBatch<Uint8Array, Uint8Array>[]) => {
+    const { cache, checkpoints, _tableName } = this;
+    return Effect.gen(function* () {
+      if (ops.length === 0) return;
+      if (checkpoints.length > 0) {
+        const keyValueMap = checkpoints[checkpoints.length - 1].keyValueMap;
+        for (const { key, value } of ops) {
+          const keyHex = bytesToHex(key);
+          keyValueMap.set(keyHex, value);
+        }
+      } else {
+        const sql = yield* SqlClient.SqlClient;
+        const rowsToInsert = ops.map(({ key, value }) => ({ key, value }));
+        yield* sql`
+        INSERT INTO ${sql(_tableName)} ${sql.insert(rowsToInsert)}
+        ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value
+      `;
+      }
+      yield* Effect.sync(() => {
+        for (const { key, value } of ops) {
+          const keyHex = bytesToHex(key);
+          cache.set(keyHex, value);
+        }
+      });
+    });
+  };
+
   delEffect = (key: Uint8Array) => {
     const { cache, checkpoints, _tableName } = this;
     return Effect.gen(function* () {
       const keyHex = bytesToHex(key);
-      cache.set(keyHex, undefined);
       if (checkpoints.length > 0) {
         checkpoints[checkpoints.length - 1].keyValueMap.set(keyHex, undefined);
       } else {
         const sql = yield* SqlClient.SqlClient;
         yield* sql`DELETE FROM ${sql(_tableName)} WHERE key = ${key}`;
       }
+      yield* Effect.sync(() => cache.set(keyHex, undefined));
     });
   };
 
@@ -247,6 +298,32 @@ export class PostgresCheckpointDB
     );
   }
 
+  delMultipleEffect = (ops: ETH_UTILS.DelBatch<Uint8Array>[]) => {
+    const { cache, checkpoints, _tableName } = this;
+    return Effect.gen(function* () {
+      if (ops.length === 0) return;
+      if (checkpoints.length > 0) {
+        const keyValueMap = checkpoints[checkpoints.length - 1].keyValueMap;
+        for (const { key } of ops) {
+          const keyHex = bytesToHex(key);
+          keyValueMap.set(keyHex, undefined);
+        }
+      } else {
+        const sql = yield* SqlClient.SqlClient;
+        const keys = ops.map((op) => op.key);
+        yield* sql`
+        DELETE FROM ${sql(_tableName)} WHERE key IN (${sql.in(keys)})
+      `;
+      }
+      yield* Effect.sync(() => {
+        for (const { key } of ops) {
+          const keyHex = bytesToHex(key);
+          cache.set(keyHex, undefined);
+        }
+      });
+    });
+  };
+
   clear = () => {
     const { _tableName } = this;
     return Effect.gen(function* () {
@@ -255,58 +332,64 @@ export class PostgresCheckpointDB
   };
 
   async batch(opStack: BatchDBOp[]): Promise<void> {
-    const { putEffect, delEffect } = this;
+    const { putMultipleEffect, delMultipleEffect } = this;
+    const splittedOps = splitBatchOps(opStack);
     return Effect.gen(function* () {
-      for (const op of opStack) {
-        if (op.type === "put") {
-          yield* putEffect(op.key, op.value);
-        } else {
-          yield* delEffect(op.key);
-        }
-      }
+      const sql = yield* SqlClient.SqlClient;
+      yield* sql.withTransaction(
+        Effect.gen(function* () {
+          for (const ops of splittedOps) {
+            if (isPutBatch(ops)) {
+              yield* putMultipleEffect(ops);
+            } else {
+              yield* delMultipleEffect(ops);
+            }
+          }
+        }),
+      );
     }).pipe(
       Effect.provide(Layer.succeed(SqlClient.SqlClient, this._client)),
       Effect.runPromise,
     );
   }
-  // This methods  didn't get well with`sql.withTransaction`
-  // async checkpoint(root: Uint8Array): Promise<void> {
-  //   super.checkpoint(root);
-  //   const savepointName = `mpt_savepoint_${this.checkpoints.length}`;
-  //   await Effect.runPromise(
-  //     Effect.gen(function* () {
-  //       const sql = yield* SqlClient.SqlClient;
-  //       yield* sql`SAVEPOINT ${sql(savepointName)}`;
-  //     }).pipe(Effect.provide(Layer.succeed(SqlClient.SqlClient, this._client))),
-  //   );
-  // }
 
-  // async commit(): Promise<void> {
-  //   if (this.checkpoints.length === 0) {
-  //     return;
-  //   }
-  //   const savepointName = `mpt_savepoint_${this.checkpoints.length}`;
-  //   await Effect.runPromise(
-  //     Effect.gen(function* () {
-  //       const sql = yield* SqlClient.SqlClient;
-  //       yield* sql`RELEASE SAVEPOINT ${sql(savepointName)}`;
-  //     }).pipe(Effect.provide(Layer.succeed(SqlClient.SqlClient, this._client))),
-  //   );
-  //   await super.commit();
-  // }
+  async checkpoint(root: Uint8Array): Promise<void> {
+    super.checkpoint(root);
+    const savepointName = `mpt_savepoint_${this.checkpoints.length}`;
+    await Effect.runPromise(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        yield* sql`SAVEPOINT ${sql(savepointName)}`;
+      }).pipe(Effect.provide(Layer.succeed(SqlClient.SqlClient, this._client))),
+    );
+  }
 
-  // async revert(): Promise<Uint8Array> {
-  //   if (this.checkpoints.length === 0) return super.revert();
-  //   const savepointName = `mpt_savepoint_${this.checkpoints.length}`;
-  //   await Effect.runPromise(
-  //     Effect.gen(function* () {
-  //       const sql = yield* SqlClient.SqlClient;
-  //       yield* sql`ROLLBACK TO SAVEPOINT ${sql(savepointName)}`;
-  //     }).pipe(Effect.provide(Layer.succeed(SqlClient.SqlClient, this._client))),
-  //   );
-  //   const newRoot = await super.revert();
-  //   return newRoot;
-  // }
+  async commit(): Promise<void> {
+    if (this.checkpoints.length === 0) {
+      return;
+    }
+    const savepointName = `mpt_savepoint_${this.checkpoints.length}`;
+    await Effect.runPromise(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        yield* sql`RELEASE SAVEPOINT ${sql(savepointName)}`;
+      }).pipe(Effect.provide(Layer.succeed(SqlClient.SqlClient, this._client))),
+    );
+    await super.commit();
+  }
+
+  async revert(): Promise<Uint8Array> {
+    if (this.checkpoints.length === 0) return super.revert();
+    const savepointName = `mpt_savepoint_${this.checkpoints.length}`;
+    await Effect.runPromise(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        yield* sql`ROLLBACK TO SAVEPOINT ${sql(savepointName)}`;
+      }).pipe(Effect.provide(Layer.succeed(SqlClient.SqlClient, this._client))),
+    );
+    const newRoot = await super.revert();
+    return newRoot;
+  }
 }
 
 const convertOps = (
@@ -332,3 +415,55 @@ const convertOps = (
         };
   });
 };
+
+function splitBatchOps(
+  ops: BatchDBOp<Uint8Array, Uint8Array>[],
+): (
+  | ETH_UTILS.PutBatch<Uint8Array, Uint8Array>[]
+  | ETH_UTILS.DelBatch<Uint8Array>[]
+)[] {
+  const result: (
+    | ETH_UTILS.PutBatch<Uint8Array, Uint8Array>[]
+    | ETH_UTILS.DelBatch<Uint8Array>[]
+  )[] = [];
+  let currentPutGroup: ETH_UTILS.PutBatch<Uint8Array, Uint8Array>[] = [];
+  let currentDelGroup: ETH_UTILS.DelBatch<Uint8Array>[] = [];
+  let currentType: "put" | "del" | null = null;
+
+  for (const op of ops) {
+    if (op.type !== currentType) {
+      if (currentType === "put" && currentPutGroup.length > 0) {
+        result.push(currentPutGroup);
+        currentPutGroup = [];
+      } else if (currentType === "del" && currentDelGroup.length > 0) {
+        result.push(currentDelGroup);
+        currentDelGroup = [];
+      }
+
+      currentType = op.type;
+      if (op.type === "put") {
+        currentPutGroup.push(op as ETH_UTILS.PutBatch<Uint8Array, Uint8Array>);
+      } else {
+        currentDelGroup.push(op as ETH_UTILS.DelBatch<Uint8Array>);
+      }
+    } else {
+      if (op.type === "put") {
+        currentPutGroup.push(op as ETH_UTILS.PutBatch<Uint8Array, Uint8Array>);
+      } else {
+        currentDelGroup.push(op as ETH_UTILS.DelBatch<Uint8Array>);
+      }
+    }
+  }
+  if (currentType === "put" && currentPutGroup.length > 0) {
+    result.push(currentPutGroup);
+  } else if (currentType === "del" && currentDelGroup.length > 0) {
+    result.push(currentDelGroup);
+  }
+  return result;
+}
+
+function isPutBatch(
+  ops: BatchDBOp<Uint8Array, Uint8Array>[],
+): ops is ETH_UTILS.PutBatch<Uint8Array, Uint8Array>[] {
+  return ops[0].type === "put";
+}

@@ -42,18 +42,22 @@ const playgroundFork =
       )
     );
     yield* Effect.all([
+      Effect.logInfo("PUTTING 02"),
       Effect.tryPromise({
         try: () => trie.put(fromHex("02"), fromHex("c0fff0")),
         catch: (e) => new Error(`${e}`),
       }),
+      Effect.logInfo("PUTTING 03"),
       Effect.tryPromise({
         try: () => trie.put(fromHex("03"), fromHex("c0fff1")),
         catch: (e) => new Error(`${e}`),
       }),
+      Effect.logInfo("DELETING 04"),
       Effect.tryPromise({
         try: () => trie.del(fromHex("04")),
         catch: (e) => new Error(`${e}`),
       }),
+      Effect.logInfo("COMMITTING..."),
       Effect.tryPromise({
         try: trie.commit,
         catch: (e) => new Error(`${e}`),
@@ -62,10 +66,11 @@ const playgroundFork =
       Effect.catchAll(
         (_e) => Effect.gen(function* () {
           yield* Effect.logInfo("REVERTING...");
-          yield* Effect.tryPromise({
-            try: trie.revert,
-            catch: (e) => new Error(`${e}`)
-          });
+          yield* Effect.logInfo(trie);
+          // yield* Effect.tryPromise({
+          //   try: trie.revert,
+          //   catch: (e) => new Error(`${e}`)
+          // });
         }),
       )
     );
