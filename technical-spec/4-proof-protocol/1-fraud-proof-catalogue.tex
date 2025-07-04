@@ -5,71 +5,37 @@
 \section{Fraud proof catalogue}
 \label{h:fraud-proof-catalogue}
 
-Midgard uses a key-unordered linked list (see \cref{h:key-ordered-list}) to track all possible categories of fraud that can occur in Midgard blocks.
-Every enforced Midgard ledger rule (see \cref{h:ledger-rules-and-fraud-proofs}) must be represented by a fraud proof category indicating the violation of that rule.
+For every possible violation of Midgard's ledger rules (see \cref{h:ledger-rules-and-fraud-proofs}), Midgard defines an onchain procedure (see \cref{h:fraud-proof-computation-threads}) to verify whether a given fraud proof demonstrates the existence of that violation in a given block.
 
-Each node in the \code{fraud\_proof\_catalogue} specifies the script hash of the first step in a fraud proof computation (see \cref{h:fraud-proof-computation-threads}), which inspects a given block and succeeds if the block has an instance of the fraud category.
-The node keys are sequentially ordered and 4 bytes each, allowing the catalogue to track 4096 fraud proof categories.
-
+Midgard's fraud proof catalogue defines the universe of fraud proof verification procedures.
+It maps a unique 4-byte integer ($\mathcal{B}_4$) index to the first step of each procedure.%
+\footnote{Using 4-byte integer indices means that the catalogue can store up to 4096 procedures, which is more than sufficient for Midgard's ledger rules.}
+On Cardano L1, the Merkle Patricia Trie (MPT) root hash ($\mathcal{RH}$) of this map is stored in a single designated utxo created at Midgard's initialization.
 \begin{align*}
-    \T{FraudProofCatalogueDatum} &\coloneq \left\{
-    \begin{array}{ll}
-        \T{init\_step}  : & \T{ScriptHash}
-    \end{array} \right\} \\
+  \T{FraudProofCatalogueDatum}
+      &\coloneq \mathcal{RH}\Bigl( \T{Map}(\mathcal{B}_4, \T{ScriptHash}) \Bigr) \\
+      &\coloneq \mathcal{RH}\Bigl(\Bigl\{
+        (k_i: \mathcal{B}_4, v_i: \T{ScriptHash}) \mid \forall i \neq j.\; k_i \neq k_j
+    \Bigr\}\Bigr)
 \end{align*}
 
 \subsection{Minting policy}
 \label{h:fraud-proof-catalogue-minting-policy}
 
-The \code{fraud\_proof\_catalogue} minting policy is statically parametrized on the \code{hub\_oracle} minting policy and the Midgard governance key.\footnote{For now, Midgard governance is centralized on a pubkey.
-This should be replaced by the proper governance mechanism when it is specified.} Redeemers:
+The \code{fraud\_proof\_catalogue} minting policy is statically parametrized on the \code{hub\_oracle} minting policy.
+Redeemers:
 \begin{description}
-    \item[Init.] Initialize the \code{fraud\_proof\_catalogue} via the Midgard hub oracle.
+    \item[Mint.] Initialize the \code{fraud\_proof\_catalogue} via the Midgard hub oracle.
       Conditions:
         \begin{enumerate}
             \item The transaction must mint the Midgard hub oracle NFT.
-            \item The transaction must Init the \code{fraud\_proof\_catalogue} list.
-        \end{enumerate}
-    \item[Deinit.] Deinitialize the \code{fraud\_proof\_catalogue} via the Midgard hub oracle.
-      Conditions:
-        \begin{enumerate}
-            \item The transaction must burn the Midgard hub oracle NFT.
-            \item The transaction must Deinit the \code{fraud\_proof\_catalogue} list.
-        \end{enumerate}
-    \item[New Fraud Category.] Catalogue a new Midgard fraud category.
-      Conditions:
-        \begin{enumerate}
-            \item The transaction must Append a node to the \code{fraud\_proof\_catalogue}.
-              Let that node be \code{new\_node}.
-            \item The Midgard governance key must sign the transaction.
-            \item Let \code{old\_node} be the node that links to \code{new\_node} in the transaction outputs.
-            \item The \code{new\_node} key must be four bytes long.
-            \item If \code{old\_node} is the root node:
-                \begin{itemize}
-                    \item The \code{new\_node} key must be zero.
-                \end{itemize}
-            \item Otherwise:
-                \begin{itemize}
-                    \item The \code{old\_node} key must be less than 4095.
-                    \item The \code{new\_node} must be larger than \code{old\_node} key by one.
-                \end{itemize}
-        \end{enumerate}
-    \item[Remove Fraud Category.] Remove a Midgard fraud category.
-      Conditions:
-        \begin{enumerate}
-            \item The transaction must Remove a node from the \code{fraud\_proof\_catalogue}.
-            \item The Midgard governance key must sign the transaction.
         \end{enumerate}
 \end{description}
 
 \subsection{Spending validator}
 \label{h:fraud-proof-catalogue-spending-validator}
 
-The spending validator of \code{fraud\_proof\_catalogue\_addr} is statically parametrized on the \code{fraud\_proof\_catalogue} minting policy.
-Conditions:
-\begin{enumerate}
-    \item The transaction must burn a \code{fraud\_proof\_catalogue} token.
-    \item The transaction must \emph{not} mint or burn any other tokens.
-\end{enumerate}
+The spending validator of \code{fraud\_proof\_catalogue\_addr} does \emph{not} allow its utxo to be spent.
+Midgard's fraud proof verification procedures are defined once and for all at initialization.
 
 \end{document}

@@ -1,0 +1,70 @@
+\documentclass[../midgard.tex]{subfiles}
+\graphicspath{{\subfix{../images/}}}
+\begin{document}
+
+\section{Protocol invariants}
+\label{h:protocol-invariants}
+
+Midgard's design must ensure that the following protocol invariants always hold.
+Auditors of the Midgard protocol are strongly encouraged to consider these invariants in their analysis.
+\begin{description}
+  \item[Block merging order.] Each valid block is merged to the confirmed state before its descendants.
+
+    If this invariant fails to hold, a block previously considered valid may become invalid because the confirmed state may unexpectedly change due to an out-of-order block being merged.
+    This would significantly worsen the waiting time for L2 transaction confirmation, as users would not be able to rely on a block's validity at commitment time to hold during its maturity period.
+
+    Midgard enforces this invariant by using the linked list data structure in the state queue, which ensures that blocks are appended to the end of the queue and merged from the beginning of the queue.
+    See \cref{h:state-queue}.
+
+  \item[Valid blocks.] Every valid block can eventually be merged to the confirmed state.
+
+    If this invariant fails to hold, Midgard's confirmed state may become stuck because some valid block cannot be merged and cannot be removed from the state queue for fraud.
+    This would be catastrophic because there would be no way to retrieve any funds from Midgard other than withdrawals that have already been confirmed by previous blocks but not yet paid out.
+
+    Midgard enforces this invariant by ensuring that the Merge to Confirmed State state queue redeemer always works for blocks that are mature with no unmerged predecessors left in the state queue.
+    Furthermore, Midgard ensures that onchain verification scripts for fraud proofs can never succeed when targeting valid blocks.
+    See \cref{h:state-queue} and \cref{h:fraud-proof-catalogue}.
+
+  \item[Invalid blocks.] Every invalid block can be invalidated by an L1-verified fraud proof before its maturity period elapses, allowing it to be removed from the state queue.
+
+    Suppose this invariant fails to hold for any violation type. In that case, dishonest operators can exploit the violation with impunity, and no one can prevent the invalid state from being merged to the confirmed state.
+    Depending on the violation type, dishonest operators may use various exploits to steal user funds.
+
+    Midgard enforces this invariant by defining an onchain verification script for every possible violation of Midgard's ledger rules.
+    Furthermore, Midgard ensures that these scripts can always succeed when targeting invalid blocks containing their corresponding violation type.
+    See \cref{h:fraud-proof-catalogue}, \cref{h:fraud-proof-computation-threads}, and \cref{h:ledger-rules-and-fraud-proofs}.
+
+  \item[Registered and active operators.] Anyone with a sufficient ADA bond can eventually become an active operator, and every active operator will eventually get a shift to commit blocks.
+
+    If this invariant fails to hold, Midgard may fail to attract enough active operators to ensure robust and continuous block production.
+    If all active operators cease participating in the Midgard protocol and no newcomers can become active operators or obtain a shift, then Midgard block production would cease.
+
+    Midgard enforces this invariant by using the linked list data structures to assign shifts to all active operators in a round-robin fashion.
+    Furthermore, it uses another linked list to register new operators and ensures that they can always activate after a prescribed wait duration.
+    See \cref{h:active-operators}, \cref{h:retired-operators}, and \cref{h:scheduler}.
+
+  \item[Operator bond.] No operator can retrieve their bond before the maturity period elapses for their most recent block, and every operator can do so afterward.
+
+    If the first clause of this invariant fails to hold, then a dishonest operator can prevent themself from being slashed and the fraud prover from being rewarded when a fraud proof removes the operator's fraudulent block from the state queue.
+    This would weaken Midgard's incentives by reducing risk for dishonest operators and eliminating the reward for honest watchers, so that only altruistic watchers and those directly hurt by the fraud would be incentivized to stop it.
+
+    If the second clause of this invariant fails to hold, then people would hesitate to become operators due to the risk that their bond might get stuck in Midgard.
+
+    Midgard enforces this invariant through the operator directory, which tracks the maturity period of the latest block committed by each operator. It holds the operator bonds during these periods and allows them to be retrieved afterward.
+    See \cref{h:operator-directory}.
+
+  \item[Censorship protection.] If block production continues, operators cannot censor deposits, withdrawal orders, and transaction orders from being confirmed.
+
+    If this invariant fails to hold, then some user funds may get stranded in Midgard because operators would prevent them from interacting with Midgard's state.
+
+    Midgard enforces this by assigning an inclusion time to every L1 user event (i.e.deposits, withdrawal orders, and transaction orders) and assigning an event interval to every block.
+    Any block can be removed as invalid if it does not include an L1 user event with an inclusion time that falls within the block's event interval.
+    The event intervals are non-overlapping between blocks and have no gaps.
+    This means that every L1 user event must eventually be included in a valid block unless block production halts.
+
+    Meanwhile, the "registered and active operators" invariant and the escape hatch mechanism (see \cref{h:escape-hatch}) mitigate the possibility that block production stops indefinitely.
+    Thus, Midgard user events are protected from censorship.
+\end{description}
+
+\end{document}
+

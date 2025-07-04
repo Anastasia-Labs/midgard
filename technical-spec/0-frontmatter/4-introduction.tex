@@ -58,9 +58,9 @@ However, any user can escalate his L2 transaction request by posting a transacti
 Similar to Midgard deposits and withdrawals, an L1 transaction order is assigned an inclusion time that guarantees its inclusion in a subsequent valid block.
 
 If Midgard operators stop committing blocks at all to the state queue, then the inclusion times on their own cannot guarantee that deposits, withdrawals, and L2 transactions will be processed in a timely manner.
-However, for this extreme case, Midgard's consensus protocol includes the escape hatch mechanism, which allows a special non-optimistic block to be appended to the state queue by a non-operator.
-This block can include any deposits, withdrawals, and L2 transactions that are verified on L1 to comply with Midgard's ledger rules.
-This ensures that user funds cannot be stranded on Midgard even if its operators entirely stop committing blocks.
+However, for this extreme case, Midgard's consensus protocol includes the escape hatch mechanism, which temporarily lowers the bond requirement for new operators.
+This makes it easier for honest actors to become Midgard operators and start committing blocks to the state queue.
+This ensures that user funds cannot be stranded on Midgard even if its current operators entirely stop committing blocks.
 
 \subsection*{Feedback and contributions welcome!}
 \label{h:feedback-and-contributions-welcome}
