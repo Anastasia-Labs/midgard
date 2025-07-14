@@ -1,10 +1,7 @@
 use aiken/collection/list
 use aiken/crypto.{ScriptHash}
-use aiken_design_patterns/linked_list/unordered as unordered
-use cardano/assets.{Lovelace, PolicyId}
-use cardano/transaction.{
-  InlineDatum, Input, Output, OutputReference, Transaction,
-}
+use cardano/assets.{PolicyId}
+use cardano/transaction.{Input, OutputReference, Transaction}
 use midgard/common/utils.{verify_hash_32}
 use midgard/computation_thread.{StepDatum}
 use midgard/fraud_proof/common/types.{MembershipProofInputs}
@@ -15,7 +12,6 @@ use midgard/fraud_proof/common/utils.{
 use midgard/fraud_proof/min_fee/step.{
   Cancel, Continue, StepRedeemer as Step1Redeemer,
 }
-use midgard/ledger_state.{Header}
 
 validator main(
   // Fraud proof token policy
@@ -24,8 +20,6 @@ validator main(
   plutarch_midgard_merkle_validator_inclusion: ScriptHash,
   // Computation thread token policy
   ct_token_policy_id: PolicyId,
-  // Minimum fee for the transaction
-  min_fee: Lovelace,
 ) {
   spend(
     datum: Option<StepDatum>,
@@ -87,7 +81,7 @@ validator main(
         verify_hash_32(bad_tx_body, bad_tx.body)
 
         // Fee must be greater than or equal to the minimum fee
-        expect bad_tx_body.fee < min_fee
+        expect bad_tx_body.fee < bad_tx_body.min_fee
 
         // -------- Zero input: validation-specific logic END --------
         expect
@@ -108,20 +102,4 @@ validator main(
   else(_) {
     fail
   }
-}
-
-pub fn get_validity_range_validate_block_hash(
-  tx: Transaction,
-  state_queue_node_ref_input_index: Int,
-) -> (Int, Int) {
-  // Reference input with block_hash 
-  expect Some(state_queue_node_input) =
-    list.at(tx.reference_inputs, state_queue_node_ref_input_index)
-
-  // Extract tx_root via the state queue block hash
-  expect InlineDatum(state_queue_datum_data) =
-    state_queue_node_input.output.datum
-  expect state_queue_node_datum: unordered.NodeDatum = state_queue_datum_data
-  expect parsed_state_queue_datum: Header = state_queue_node_datum.data
-  (parsed_state_queue_datum.start_time, parsed_state_queue_datum.end_time)
 }
