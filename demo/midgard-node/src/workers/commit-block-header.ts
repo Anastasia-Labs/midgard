@@ -1,11 +1,7 @@
 import { parentPort, workerData } from "worker_threads";
 import * as SDK from "@al-ft/midgard-sdk";
 import { Effect, Schedule, pipe } from "effect";
-import {
-  WorkerInput,
-  WorkerOutput,
-  findSpentAndProducedUTxOs,
-} from "@/utils.js";
+import { WorkerInput, WorkerOutput } from "@/utils.js";
 import { makeAlwaysSucceedsServiceFn } from "@/services/always-succeeds.js";
 import { BlocksDB, ImmutableDB, MempoolDB } from "@/database/index.js";
 import {
@@ -13,16 +9,16 @@ import {
   handleSignSubmit,
   SubmitError,
 } from "@/transactions/utils.js";
-import { fromHex, toHex } from "@lucid-evolution/lucid";
-import * as ETH from "@ethereumjs/mpt";
-import * as ETH_UTILS from "@ethereumjs/util";
-import { PostgresCheckpointDB } from "./db.js";
+import { fromHex } from "@lucid-evolution/lucid";
+import { makeMpts, processMpts, withTrieTransaction } from "./db.js";
 import { NodeConfig, User } from "@/config.js";
 import { Database } from "@/services/database.js";
-import { SqlClient } from "@effect/sql";
 
-// Key of the row which its value is the persisted trie root.
-const rootKey = ETH.ROOT_DB_KEY;
+const emptyOutput: WorkerOutput = {
+  txSize: 0,
+  mempoolTxsCount: 0,
+  sizeOfBlocksTxs: 0,
+};
 
 const wrapper = (
   _input: WorkerInput,
@@ -30,263 +26,154 @@ const wrapper = (
   Effect.gen(function* () {
     const nodeConfig = yield* NodeConfig;
     const { user: lucid } = yield* User;
-    const client = yield* SqlClient.SqlClient;
-
-    const mempoolDB = new PostgresCheckpointDB(
-      client,
-      "mempool_clone",
-      "mempool",
-    );
-    const ledgerDB = new PostgresCheckpointDB(
-      client,
-      "latest_ledger_clone",
-      "latest_ledger",
-    );
-    yield* Effect.all(
-      [
-        // Open the empty clone table for collecting mempool transactions and
-        // finding the root incrementally.
-        mempoolDB.openEffect(),
-        // Open the clone ledger table (duplicate of `LatestLedgerDB`), for
-        // continuing state updates.
-        ledgerDB.openEffect(),
-      ],
-      { concurrency: 2 },
-    );
 
     yield* Effect.logInfo("🔹 Retrieving all mempool transactions...");
-    const mempoolTxs = yield* mempoolDB
-      .getAllFromReferenceEffect()
-      .pipe(Effect.withSpan("retrieve mempool transaction"));
+    const mempoolTxs = yield* MempoolDB.retrieve();
     const mempoolTxsCount = mempoolTxs.length;
 
-    if (mempoolTxsCount > 0) {
-      const endTime = Date.now();
-      yield* Effect.logInfo(`🔹 ${mempoolTxsCount} retrieved.`);
-
-      const mempoolTrie = yield* Effect.tryPromise({
-        try: () =>
-          ETH.createMPT({
-            db: mempoolDB.db,
-            valueEncoding: ETH_UTILS.ValueEncoding.Bytes,
-          }),
-        catch: (e) => new Error(`${e}`),
-      });
-
-      const ledgerTrie = yield* Effect.tryPromise({
-        try: () =>
-          ETH.createMPT({
-            db: ledgerDB.db,
-            useRootPersistence: true,
-            valueEncoding: ETH_UTILS.ValueEncoding.Bytes,
-          }),
-        catch: (e) => new Error(`${e}`),
-      });
-
-      const ledgerRootBeforeMempoolTxs = yield* Effect.tryPromise({
-        try: () => ledgerTrie.get(rootKey),
-        catch: (e) => new Error(`${e}`),
-      }).pipe(Effect.orElse(() => Effect.succeed(ledgerTrie.EMPTY_TRIE_ROOT)));
-
-      // Ensuring persisted root is stored in trie's private property. Looking
-      // at `mpt`'s source code, initializing an MPT does NOT seem to
-      // automatically pull a previously stored root from the database.
-      yield* Effect.sync(() => ledgerTrie.root(ledgerRootBeforeMempoolTxs));
-
-      const mempoolTxHashes: Uint8Array[] = [];
-      let sizeOfBlocksTxs = 0;
-
-      yield* Effect.logInfo(
-        "🔹 Going through mempool txs and finding roots...",
-      );
-      yield* Effect.forEach(mempoolTxs, ({ key: txHash, value: txCbor }) =>
-        Effect.gen(function* () {
-          mempoolTxHashes.push(txHash);
-
-          sizeOfBlocksTxs += txCbor.length;
-
-          yield* Effect.tryPromise({
-            try: () => mempoolTrie.put(txHash, txCbor),
-            catch: (e) => new Error(`${e}`),
-          });
-
-          const { spent, produced } = yield* findSpentAndProducedUTxOs(
-            txCbor,
-          ).pipe(Effect.withSpan("findSpentAndProducedUTxOs"));
-
-          const delOps: ETH_UTILS.BatchDBOp[] = spent.map((outRef) => ({
-            type: "del",
-            key: outRef,
-          }));
-
-          const putOps: ETH_UTILS.BatchDBOp[] = produced.map(
-            ({ key: outputReference, value: output }) => ({
-              type: "put",
-              key: outputReference,
-              value: output,
-            }),
-          );
-
-          const batchDBOps: ETH_UTILS.BatchDBOp[] = [...delOps, ...putOps];
-
-          yield* Effect.tryPromise({
-            try: () => ledgerTrie.batch(batchDBOps),
-            catch: (e) => new Error(`${e}`),
-          });
-        }),
-      );
-
-      const utxoRoot = toHex(ledgerTrie.root());
-      const txRoot = toHex(mempoolTrie.root());
-
-      yield* Effect.logInfo(`🔹 Mempool tx root found: ${txRoot}`);
-      yield* Effect.logInfo(`🔹 New UTxO root found: ${utxoRoot}`);
-
-      const { policyId, spendScript, spendScriptAddress, mintScript } =
-        yield* makeAlwaysSucceedsServiceFn(nodeConfig);
-      const fetchConfig: SDK.TxBuilder.StateQueue.FetchConfig = {
-        stateQueueAddress: spendScriptAddress,
-        stateQueuePolicyId: policyId,
-      };
-      const retryPolicy = Schedule.exponential("100 millis").pipe(
-        Schedule.compose(Schedule.recurs(4)),
-      );
-      yield* Effect.logInfo("🔹 Fetching latest commited block...");
-      const latestBlock = yield* SDK.Endpoints.fetchLatestCommittedBlockProgram(
-        lucid,
-        fetchConfig,
-      ).pipe(
-        Effect.retry(retryPolicy),
-        Effect.withSpan("fetchLatestCommittedBlockProgram"),
-      );
-
-      yield* Effect.logInfo("🔹 Finding updated block datum and new header...");
-      const { nodeDatum: updatedNodeDatum, header: newHeader } =
-        yield* SDK.Utils.updateLatestBlocksDatumAndGetTheNewHeader(
-          lucid,
-          latestBlock,
-          utxoRoot,
-          txRoot,
-          BigInt(endTime),
-        );
-      const newHeaderHash = yield* SDK.Utils.hashHeader(newHeader);
-
-      yield* Effect.logInfo(`🔹 New header hash is: ${newHeaderHash}`);
-
-      // Build commitment block
-      const commitBlockParams: SDK.TxBuilder.StateQueue.CommitBlockParams = {
-        anchorUTxO: latestBlock,
-        updatedAnchorDatum: updatedNodeDatum,
-        newHeader: newHeader,
-        stateQueueSpendingScript: spendScript,
-        policyId,
-        stateQueueMintingScript: mintScript,
-      };
-
-      const aoUpdateCommitmentTimeParams = {};
-
-      yield* Effect.logInfo("🔹 Building block commitment transaction...");
-      const txBuilder = yield* SDK.Endpoints.commitBlockHeaderProgram(
-        lucid,
-        fetchConfig,
-        commitBlockParams,
-        aoUpdateCommitmentTimeParams,
-      );
-
-      const txSize = txBuilder.toCBOR().length / 2;
-      yield* Effect.logInfo(
-        `🔹 Transaction built successfully. Size: ${txSize}`,
-      );
-
-      // Using sign and submit helper with confirmation so that databases are
-      // only updated after a successful on-chain registration of the block.
-      const onSubmitFailure = (err: SubmitError) =>
-        Effect.gen(function* () {
-          yield* Effect.logError(`Sumbit tx error: ${err}`);
-          yield* Effect.fail(err.err);
-        });
-      const onConfirmFailure = (err: ConfirmError) =>
-        Effect.logError(`Confirm tx error: ${err}`);
-      yield* handleSignSubmit(
-        lucid,
-        txBuilder,
-        onSubmitFailure,
-        onConfirmFailure,
-      ).pipe(Effect.withSpan("handleSignSubmit-commit-block"));
-
-      const batchSize = 100;
-
-      yield* Effect.logInfo(
-        "🔹 Inserting included transactions into ImmutableDB and BlocksDB...",
-      );
-
-      const batchIndices = Array.from(
-        { length: Math.ceil(mempoolTxsCount / batchSize) },
-        (_, i) => i * batchSize,
-      );
-      yield* Effect.forEach(
-        batchIndices,
-        (startIndex) => {
-          const endIndex = startIndex + batchSize;
-          const batchTxs = mempoolTxs.slice(startIndex, endIndex);
-          const batchHashes = mempoolTxHashes.slice(startIndex, endIndex);
-
-          return pipe(
-            Effect.all(
-              [
-                ImmutableDB.insertTxs(batchTxs).pipe(
-                  Effect.withSpan(`immutable-db-insert-${startIndex}`),
-                ),
-                BlocksDB.insert(fromHex(newHeaderHash), batchHashes).pipe(
-                  Effect.withSpan(`blocks-db-insert-${startIndex}`),
-                ),
-              ],
-              { concurrency: 2 },
-            ),
-            Effect.withSpan(`batch-insert-${startIndex}-${endIndex}`),
-          );
-        },
-        { concurrency: batchIndices.length },
-      );
-
-      yield* Effect.logInfo(
-        "🔹 Clearing included transactions from MempoolDB...",
-      );
-      yield* MempoolDB.clearTxs(mempoolTxHashes).pipe(
-        Effect.withSpan("clear mempool"),
-      );
-
-      const output: WorkerOutput = {
-        txSize,
-        mempoolTxsCount,
-        sizeOfBlocksTxs,
-      };
-
-      yield* Effect.logInfo(
-        "🔹 Clearing LatestLedgerDB, inserting updated UTxO set LatestLedgerDB",
-      );
-      // yield* ledgerDB.conclude()
-      // yield* Effect.tryPromise({
-      //   try: ledgerDB.conclude(),
-      //   catch: (e) => new Error(`${e}`),
-      // });
-      yield* ledgerDB.transferToReference();
-
-      return output;
-    } else {
+    if (mempoolTxsCount === 0) {
       yield* Effect.logInfo("🔹 No transactions were found in MempoolDB");
-      const output: WorkerOutput = {
-        txSize: 0,
-        mempoolTxsCount: 0,
-        sizeOfBlocksTxs: 0,
-      };
-      return output;
+      return emptyOutput;
     }
+    const endTime = Date.now();
+    yield* Effect.logInfo(`🔹 ${mempoolTxsCount} retrieved.`);
+
+    const { ledgerTrie, mempoolTrie } = yield* makeMpts();
+
+    lucid.selectWallet.fromSeed(nodeConfig.L1_OPERATOR_SEED_PHRASE);
+
+    return yield* withTrieTransaction(
+      ledgerTrie,
+      Effect.gen(function* () {
+        const { utxoRoot, txRoot, mempoolTxHashes, sizeOfBlocksTxs } =
+          yield* processMpts(ledgerTrie, mempoolTrie, mempoolTxs);
+        const { policyId, spendScript, spendScriptAddress, mintScript } =
+          yield* makeAlwaysSucceedsServiceFn(nodeConfig);
+        const fetchConfig: SDK.TxBuilder.StateQueue.FetchConfig = {
+          stateQueueAddress: spendScriptAddress,
+          stateQueuePolicyId: policyId,
+        };
+        const retryPolicy = Schedule.exponential("100 millis").pipe(
+          Schedule.compose(Schedule.recurs(4)),
+        );
+        yield* Effect.logInfo("🔹 Fetching latest commited block...");
+        const latestBlock =
+          yield* SDK.Endpoints.fetchLatestCommittedBlockProgram(
+            lucid,
+            fetchConfig,
+          ).pipe(
+            Effect.retry(retryPolicy),
+            Effect.withSpan("fetchLatestCommittedBlockProgram"),
+          );
+        yield* Effect.logInfo(
+          "🔹 Finding updated block datum and new header...",
+        );
+        const { nodeDatum: updatedNodeDatum, header: newHeader } =
+          yield* SDK.Utils.updateLatestBlocksDatumAndGetTheNewHeader(
+            lucid,
+            latestBlock,
+            utxoRoot,
+            txRoot,
+            BigInt(endTime),
+          );
+
+        const newHeaderHash = yield* SDK.Utils.hashHeader(newHeader);
+        yield* Effect.logInfo(`🔹 New header hash is: ${newHeaderHash}`);
+
+        // Build commitment block
+        const commitBlockParams: SDK.TxBuilder.StateQueue.CommitBlockParams = {
+          anchorUTxO: latestBlock,
+          updatedAnchorDatum: updatedNodeDatum,
+          newHeader: newHeader,
+          stateQueueSpendingScript: spendScript,
+          policyId,
+          stateQueueMintingScript: mintScript,
+        };
+
+        const aoUpdateCommitmentTimeParams = {};
+
+        yield* Effect.logInfo("🔹 Building block commitment transaction...");
+        const txBuilder = yield* SDK.Endpoints.commitBlockHeaderProgram(
+          lucid,
+          fetchConfig,
+          commitBlockParams,
+          aoUpdateCommitmentTimeParams,
+        );
+        const txSize = txBuilder.toCBOR().length / 2;
+        yield* Effect.logInfo(
+          `🔹 Transaction built successfully. Size: ${txSize}`,
+        );
+
+        // Using sign and submit helper with confirmation so that databases are
+        // only updated after a successful on-chain registration of the block.
+        const onSubmitFailure = (err: SubmitError) =>
+          Effect.gen(function* () {
+            yield* Effect.logError(`Sumbit tx error: ${err}`);
+            yield* Effect.fail(err.err);
+          });
+        const onConfirmFailure = (err: ConfirmError) =>
+          Effect.logError(`Confirm tx error: ${err}`);
+        yield* handleSignSubmit(
+          lucid,
+          txBuilder,
+          onSubmitFailure,
+          onConfirmFailure,
+        ).pipe(Effect.withSpan("handleSignSubmit-commit-block"));
+
+        const batchSize = 100;
+
+        yield* Effect.logInfo(
+          "🔹 Inserting included transactions into ImmutableDB and BlocksDB...",
+        );
+
+        const batchIndices = Array.from(
+          { length: Math.ceil(mempoolTxsCount / batchSize) },
+          (_, i) => i * batchSize,
+        );
+        yield* Effect.forEach(
+          batchIndices,
+          (startIndex) => {
+            const endIndex = startIndex + batchSize;
+            const batchTxs = mempoolTxs.slice(startIndex, endIndex);
+            const batchHashes = mempoolTxHashes.slice(startIndex, endIndex);
+
+            return pipe(
+              Effect.all(
+                [
+                  ImmutableDB.insertTxs(batchTxs).pipe(
+                    Effect.withSpan(`immutable-db-insert-${startIndex}`),
+                  ),
+                  BlocksDB.insert(fromHex(newHeaderHash), batchHashes).pipe(
+                    Effect.withSpan(`blocks-db-insert-${startIndex}`),
+                  ),
+                ],
+                { concurrency: 2 },
+              ),
+              Effect.withSpan(`batch-insert-${startIndex}-${endIndex}`),
+            );
+          },
+          { concurrency: batchIndices.length },
+        );
+
+        yield* Effect.logInfo(
+          "🔹 Clearing included transactions from MempoolDB...",
+        );
+        yield* MempoolDB.clearTxs(mempoolTxHashes).pipe(
+          Effect.withSpan("clear mempool"),
+        );
+
+        const output: WorkerOutput = {
+          txSize,
+          mempoolTxsCount,
+          sizeOfBlocksTxs,
+        };
+        return output;
+      }),
+    );
   });
 
-if (parentPort === null) {
+if (parentPort === null)
   throw new Error("MPT computation must be run as a worker");
-}
 
 const inputData = workerData as WorkerInput;
 

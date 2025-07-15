@@ -10,7 +10,12 @@
 import { BlocksDB, ConfirmedLedgerDB } from "@/database/index.js";
 import { findAllSpentAndProducedUTxOs } from "@/utils.js";
 import * as SDK from "@al-ft/midgard-sdk";
-import { LucidEvolution, Script, fromHex } from "@lucid-evolution/lucid";
+import {
+  Address,
+  LucidEvolution,
+  Script,
+  fromHex,
+} from "@lucid-evolution/lucid";
 import { Effect, Metric } from "effect";
 import {
   ConfirmError,
@@ -18,12 +23,45 @@ import {
   handleSignSubmit,
   SubmitError,
 } from "../utils.js";
+import { Database } from "@/services/database.js";
 
 const mergeBlockCounter = Metric.counter("merge_block_count", {
   description: "A counter for tracking merge blocks",
   bigint: true,
   incremental: true,
 });
+
+// 30 minutes.
+const MAX_LIFE_OF_LOCAL_SYNC: number = 1_800_000;
+
+const MIN_QUEUE_LENGTH_FOR_MERGING: number = 8;
+
+const getStateQueueLength = (
+  lucid: LucidEvolution,
+  stateQueueAddress: Address,
+): Effect.Effect<number, Error> =>
+  Effect.gen(function* () {
+    const now_millis = Date.now();
+    if (
+      now_millis - global.LATEST_SYNC_OF_STATE_QUEUE_LENGTH >
+      MAX_LIFE_OF_LOCAL_SYNC
+    ) {
+      // We consider in-memory state queue length stale.
+      yield* Effect.logInfo("🔸 Fetching state queue length...");
+      const stateQueueUtxos = yield* Effect.tryPromise({
+        try: () => lucid.utxosAt(stateQueueAddress),
+        catch: (e) => new Error(`${e}`),
+      });
+
+      global.BLOCKS_IN_QUEUE = stateQueueUtxos.length - 1;
+
+      global.LATEST_SYNC_OF_STATE_QUEUE_LENGTH = Date.now();
+
+      return stateQueueUtxos.length;
+    } else {
+      return global.BLOCKS_IN_QUEUE;
+    }
+  });
 
 /**
  * Build and submit the merge transaction.
@@ -40,37 +78,19 @@ export const buildAndSubmitMergeTx = (
   fetchConfig: SDK.TxBuilder.StateQueue.FetchConfig,
   spendScript: Script,
   mintScript: Script,
-) =>
+): Effect.Effect<void, Error, Database> =>
   Effect.gen(function* () {
-    if (global.BLOCKS_IN_QUEUE === 0) {
-      // yield* Effect.logInfo("🔸 No blocks to merge.");
-      return;
-    }
-
-    // Avoid a merge tx if the queue is too short while a block submission is in
-    // progress (performing a merge with such conditions has a chance of wasting
-    // the work done for root computaions).
-    if (global.BLOCKS_IN_QUEUE < 4) {
+    const currentStateQueueLength = yield* getStateQueueLength(
+      lucid,
+      fetchConfig.stateQueueAddress,
+    );
+    // Avoid a merge tx if the queue is too short (performing a merge with such
+    // conditions has a chance of wasting the work done for root computaions).
+    if (currentStateQueueLength < MIN_QUEUE_LENGTH_FOR_MERGING || global.RESET_IN_PROGRESS) {
       // yield* Effect.logInfo(
-      //   "🔸 There are too few blocks in queue while a block submission is in progress.
+      //   "🔸 There are too few blocks in queue.
       // );
       return;
-    }
-
-    if (global.BLOCK_SUBMISSION_IN_PROGRESS) {
-      yield* Effect.logInfo(
-        "🔸 Fetching state queue length to ensure it won't interfere with block submission that's in progress...",
-      );
-      const stateQueueUtxos = yield* Effect.tryPromise({
-        try: () => lucid.utxosAt(fetchConfig.stateQueueAddress),
-        catch: (e) => new Error(`${e}`),
-      });
-
-      global.BLOCKS_IN_QUEUE = stateQueueUtxos.length;
-
-      if (global.BLOCKS_IN_QUEUE < 4) {
-        return;
-      }
     }
 
     yield* Effect.logInfo("🔸 Merging of oldest block started.");
@@ -85,7 +105,7 @@ export const buildAndSubmitMergeTx = (
       );
     if (firstBlockUTxO) {
       yield* Effect.logInfo(
-        `🔸 First block found: ${firstBlockUTxO.txHash}#${firstBlockUTxO.outputIndex}`,
+        `🔸 First block found: ${firstBlockUTxO.utxo.txHash}#${firstBlockUTxO.utxo.outputIndex}`,
       );
       // Fetch transactions from the first block
       yield* Effect.logInfo("🔸 Looking up its transactions from BlocksDB...");
@@ -165,6 +185,7 @@ export const buildAndSubmitMergeTx = (
       global.BLOCKS_IN_QUEUE -= 1;
     } else {
       global.BLOCKS_IN_QUEUE = 0;
+      global.LATEST_SYNC_OF_STATE_QUEUE_LENGTH = Date.now();
       yield* Effect.logInfo("🔸 No blocks found in queue.");
       return;
     }

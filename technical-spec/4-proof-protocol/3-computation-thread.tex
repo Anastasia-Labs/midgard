@@ -35,15 +35,15 @@ Redeemers:
 \begin{description}
     \item[Init.] Conditions:
         \begin{enumerate}
-            \item The transaction must reference a node of the \code{fraud\_proof\_catalogue}.
-              Let that node be \code{fraud\_category}.
+            \item The transaction must include the \code{fraud\_proof\_catalogue} NFT in a reference input.
+            \item Let \code{fraud\_category\_id} and \code{fraud\_category} be a four-byte key and its corresponding value (a script hash) in the MPT root hash stored in the \code{fraud\_proof\_catalogue}.
             \item The transaction must include the Midgard hub oracle NFT in a reference input.
             \item Let \code{state\_queue} be the policy ID in the corresponding field of the Midgard hub oracle.
-            \item The transaction must reference a node from the \code{state\_queue}.
+            \item The transaction must reference a \code{state\_queue} node.
               Let \code{fraud\_node} be that node.
             \item The transaction must mint a single token of the \code{computation\_thread} minting policy.
-              The token name must concatenate the four-byte key of \code{fraud\_category} and the 28-byte block header hash in the key of \code{fraud\_node}.
-            \item The computation thread token must be sent to the spending validator defined in the \code{init\_step} field of \code{fraud\_category}.
+              The token name must concatenate \code{fraud\_category\_id} and the 28-byte block header hash in the key of \code{fraud\_node}.
+            \item The computation thread token must be sent to the spending validator address of \code{fraud\_category}.
               Let \code{output\_state} be that transaction output.
             \item The \code{output\_state} datum type must be \code{StepDatum(Void)}.\footnote{Aiken calls it StepDatum(Void), while Plutarch calls it StepDatum(PUnit).} 
             \item The transaction must be signed by the \code{fraud\_prover} pub-key hash of \code{output\_state}.

@@ -9,8 +9,8 @@
 \frontmatter
 \subfileinclude{0-frontmatter/1-cover-page}
 \subfileinclude{0-frontmatter/2-abstract}
-\subfileinclude{0-frontmatter/3-toc}
 \mainmatter
+\subfileinclude{0-frontmatter/3-toc}
 \subfileinclude{0-frontmatter/4-introduction}
 
 \subfile{1-ledger-state/0-chapter}
@@ -67,10 +67,12 @@
 \subfile{B-l1-transactions/0-chapter}
 
 \subfile{C-considerations/0-chapter}
-\subfile{C-considerations/1-protocol-parameters}
-\subfileinclude{C-considerations/2-protocol-security}
+\subfile{C-considerations/1-protocol-invariants}
+\subfileinclude{C-considerations/2-protocol-parameters}
+\subfileinclude{C-considerations/3-protocol-security}
 
-\listoffigures
+\phantomsection
 \addcontentsline{toc}{chapter}{List of figures}
+\listoffigures
 
 \end{document}

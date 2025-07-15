@@ -21,7 +21,7 @@ It consists of a single utxo holding the hub oracle NFT and a datum of the follo
         \T{withdrawal} : & \T{PolicyId} \\
         \T{tx\_order} : & \T{PolicyId} \\
         \T{settlement\_queue} : & \T{PolicyId} \\
-        \T{escrow} : & \T{PolicyId} \\
+        \T{payout\_accum} : & \T{PolicyId} \\
         \\
         \T{registered\_operators\_addr} : & \T{Address} \\
         \T{active\_operators\_addr} : & \T{Address} \\
@@ -35,8 +35,7 @@ It consists of a single utxo holding the hub oracle NFT and a datum of the follo
         \T{tx\_order\_addr} : & \T{Address} \\
         \T{settlement\_queue\_addr} : & \T{Address} \\
         \T{reserve\_addr} : & \T{Address} \\ 
-        \T{escrow\_addr} : & \T{Address} \\ 
-        \T{reserve\_observer} : & \T{ScriptHash}
+        \T{payout\_accum\_addr} : & \T{Address}
     \end{array} \right\}
 \end{equation*}
 
@@ -45,7 +44,7 @@ It consists of a single utxo holding the hub oracle NFT and a datum of the follo
 \subsection{Minting policy}
 \label{h:hub-oracle-minting-policy}
 
-The \code{hub\_oracle} minting policy ensures that all Midgard lists are initialized together, sent to their respective spending validator addresses, and deinitialized together.
+The \code{hub\_oracle} minting policy ensures that all Midgard lists are initialized together and sent to their respective spending validator addresses.
 Redeemers:
 \begin{description}
     \item[Init.] Initialize all Midgard lists and send their root nodes to their respective validator addresses.
@@ -62,26 +61,11 @@ Redeemers:
             \item No other tokens must be minted or burned.
         \end{enumerate}
     The nonce utxo proves authority for initialization --- whoever controls it is authorized to initialize the Midgard L1 data structures.
-    
-    \item[Burn.] Deinitialize all Midgard lists and burn the hub oracle NFT.
-      Conditions:
-        \begin{enumerate}
-            \item The transaction must burn the hub oracle NFT.
-            \item Let \code{hub\_oracle\_input} be the transaction input that holds the hub oracle NFT.
-            \item The root node NFT of every linked list policy ID in the \code{hub\_oracle\_input} datum must be burned.
-            \item The NFT of the \code{scheduler} policy ID in \code{hub\_oracle\_output} must be burned.
-        \end{enumerate}
-    Any other burned tokens are irrelevant, and the \code{burn\_everyting} spending validator ensures that no tokens are minted.
 \end{description}
 
 \subsection{Spending validator}
 \label{h:hub-oracle-spending-validator}
 
-The \code{burn\_everything} validator requires every non-ADA token in the transaction to be burned.
-Conditions:
-\begin{enumerate}
-    \item The transaction must have a single output.
-    \item The transaction's output must only contain ADA.
-\end{enumerate}
+The spending validator of \code{hub\_oracle} does not allow its utxo to be spent.
 
 \end{document}

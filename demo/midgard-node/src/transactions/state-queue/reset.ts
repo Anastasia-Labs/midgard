@@ -4,11 +4,10 @@ import {
   Data,
   LucidEvolution,
   Script,
-  UTxO,
   toUnit,
 } from "@lucid-evolution/lucid";
 import { AlwaysSucceeds } from "@/services/index.js";
-import { User } from "@/config.js";
+import { NodeConfig, User } from "@/config.js";
 import { Effect } from "effect";
 import { ConfirmError, handleSignSubmit, SubmitError } from "../utils.js";
 
@@ -17,12 +16,13 @@ const collectAndBurnStateQueueNodesProgram = (
   fetchConfig: SDK.TxBuilder.StateQueue.FetchConfig,
   stateQueueSpendingScript: Script,
   stateQueueMintingScript: Script,
-  utxosAndAssetNames: { utxo: UTxO; assetName: string }[],
+  stateQueueUTxOs: SDK.TxBuilder.StateQueue.StateQueueUTxO[],
 ): Effect.Effect<void, Error> =>
   Effect.gen(function* () {
+    global.RESET_IN_PROGRESS = true;
     const tx = lucid.newTx();
     const assetsToBurn: Assets = {};
-    utxosAndAssetNames.map(({ utxo, assetName }) => {
+    stateQueueUTxOs.map(({ utxo, assetName }) => {
       const unit = toUnit(fetchConfig.stateQueuePolicyId, assetName);
       if (assetsToBurn[unit] !== undefined) {
         assetsToBurn[unit] -= 1n;
@@ -42,15 +42,18 @@ const collectAndBurnStateQueueNodesProgram = (
       });
     const onConfirmFailure = (err: ConfirmError) =>
       Effect.logError(`Confirm tx error: ${err}`);
-    return yield* handleSignSubmit(
+    const txHash = yield* handleSignSubmit(
       lucid,
       completed,
       onSubmitFailure,
       onConfirmFailure,
     );
+    global.RESET_IN_PROGRESS = false;
+    return txHash;
   });
 
 export const resetStateQueue = Effect.gen(function* () {
+  const nodeConfig = yield* NodeConfig;
   const { user: lucid } = yield* User;
   const alwaysSucceeds = yield* AlwaysSucceeds.AlwaysSucceedsContract;
   const fetchConfig: SDK.TxBuilder.StateQueue.FetchConfig = {
@@ -58,13 +61,15 @@ export const resetStateQueue = Effect.gen(function* () {
     stateQueueAddress: alwaysSucceeds.spendScriptAddress,
   };
 
-  const allUTxOsAndAssetNames =
-    yield* SDK.Endpoints.fetchAllStateQueueUTxOsProgram(lucid, fetchConfig);
+  const allStateQueueUTxOs =
+    yield* SDK.Endpoints.fetchUnsortedStateQueueUTxOsProgram(lucid, fetchConfig);
+
+  lucid.selectWallet.fromSeed(nodeConfig.L1_OPERATOR_SEED_PHRASE);
 
   // Collect and burn 10 UTxOs and asset names at a time:
   const batchSize = 40;
-  for (let i = 0; i < allUTxOsAndAssetNames.length; i += batchSize) {
-    const batch = allUTxOsAndAssetNames.slice(i, i + batchSize);
+  for (let i = 0; i < allStateQueueUTxOs.length; i += batchSize) {
+    const batch = allStateQueueUTxOs.slice(i, i + batchSize);
     yield* collectAndBurnStateQueueNodesProgram(
       lucid,
       fetchConfig,
@@ -73,4 +78,6 @@ export const resetStateQueue = Effect.gen(function* () {
       batch,
     );
   }
+  global.LATEST_SYNC_OF_STATE_QUEUE_LENGTH = Date.now();
+  global.BLOCKS_IN_QUEUE = 0;
 });

@@ -49,7 +49,7 @@ export const commitTxBuilder = (
       .newTx()
       // .validFrom(Number(newHeader.startTime))
       // .validTo(Number(endTime))
-      .collectFrom([latestBlock], Data.void())
+      .collectFrom([latestBlock.utxo], Data.void())
       .pay.ToContract(
         config.stateQueueAddress,
         { kind: "inline", value: Data.to(newNodeDatum, Datum) },
@@ -58,7 +58,7 @@ export const commitTxBuilder = (
       .pay.ToContract(
         config.stateQueueAddress,
         { kind: "inline", value: Data.to(updatedNodeDatum, Datum) },
-        latestBlock.assets,
+        latestBlock.utxo.assets,
       )
       .mintAssets(assets, Data.void())
       .attach.Script(stateQueueSpendingScript)

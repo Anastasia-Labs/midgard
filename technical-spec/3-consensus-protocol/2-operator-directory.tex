@@ -2,6 +2,10 @@
 \graphicspath{{\subfix{../images/}}}
 \begin{document}
 
+% TODO: Ensure that bonds can't be stolen during transfers.
+% TODO: Ensure that slashing penalties and rewards are paid.
+% TODO: Add interactions with escape hatch mechanism.
+
 \section{Operator directory}
 \label{h:operator-directory}
 
@@ -67,12 +71,6 @@ Redeemers:
             \item The transaction must mint the Midgard hub oracle NFT.
             \item The transaction must Init the \code{registered\_operators} queue.
         \end{enumerate}
-    \item[Deinit.] Deinitialize the \code{registered\_operators} queue via the Midgard hub oracle.
-      Conditions:
-        \begin{enumerate}
-            \item The transaction must burn the Midgard hub oracle NFT.
-            \item The transaction must Deinit the \code{registered\_operators} queue.
-        \end{enumerate}
     \item[Register Operator.] Prepend a node into the \code{registered\_operators} queue with the operator's ADA bond at the operator's key, noting the registration time.
       Grouped conditions:
         \begin{itemize}
@@ -83,13 +81,6 @@ Redeemers:
                 \item The \code{key} field of \code{registered\_node} must correspond to a public key hash that signed the transaction.
                 \item The \code{activation\_time} field of \code{registered\_node} must equal the sum of the Midgard \code{registration\_duration} protocol parameter and the upper bound of the transaction's validity interval.
                 \item The Lovelace in the \code{registered\_node} must equal the \code{required\_bond} Midgard parameter.
-            \end{enumerate}
-            \item Verify that the registrant is not already active or retired.
-            \begin{enumerate}[resume]
-                \item The transaction must include the Midgard hub oracle NFT in a reference input.
-                \item Let \code{active\_operators} be the policy ID in the corresponding field of the Midgard hub oracle.
-                \item The transaction must include a reference input of a \code{active\_operators} node that proves the \code{registered\_node} key's non-membership in that list.
-                \item The transaction must include a reference input of a \code{retired\_operators} node that proves the \code{registered\_node} key's non-membership in that list.
             \end{enumerate}
         \end{itemize}
     \item[Activate Operator.] Transfer an operator node from the \code{registered\_operators} queue to the \code{active\_operators} set.
@@ -173,12 +164,6 @@ Redeemers:
         \begin{enumerate}
             \item The transaction must mint the Midgard hub oracle NFT.
             \item The transaction must Init the \code{active\_operators} set.
-        \end{enumerate}
-    \item[Deinit.] Deinitialize the \code{active\_operators} set via the Midgard hub oracle.
-      Conditions:
-        \begin{enumerate}
-            \item The transaction must burn the Midgard hub oracle NFT.
-            \item The transaction must Deinit the \code{active\_operators} set.
         \end{enumerate}
     \item[Activate Operator.] Transfer an operator node from the \code{registered\_operators} queue to the \code{active\_operators} set.
       Conditions:
@@ -298,12 +283,6 @@ Redeemers:
         \begin{enumerate}
             \item The transaction must mint the Midgard hub oracle NFT.
             \item The transaction must Init the \code{retired\_operators} set.
-        \end{enumerate}
-    \item[Deinit.] Deinitialize the \code{retired\_operators} set via the Midgard hub oracle.
-      Conditions:
-        \begin{enumerate}
-            \item The transaction must burn the Midgard hub oracle NFT.
-            \item The transaction must Deinit the \code{retired\_operators} set.
         \end{enumerate}
     \item[Retire Operator.] Transfer an operator node, unchanged, from the \code{active\_operators} set to the \code{retired\_operators} set.
       Conditions:

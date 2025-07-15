@@ -25,7 +25,7 @@ Midgard's \code{operator\_inactivity\_timeout} protocol parameter controls when 
 \subsection{Utxo representation}
 \label{h:scheduler-utxo-representation}
 
-The scheduler state consists of a single utxo that holds the scheduler NFT, minted when Midgard is initialized and burned when Midgard is deinitialized via the hub oracle.
+The scheduler state consists of a single utxo that holds the scheduler NFT, minted when Midgard is initialized via the hub oracle.
 That utxo's datum type is as follows:
 \begin{equation*}
     \T{SchedulerDatum} \coloneq \left\{
@@ -40,7 +40,7 @@ The shift's inclusive lower bound is \code{shift\_start}, and its exclusive uppe
 \subsection{Minting policy}
 \label{h:scheduler-minting-policy}
 
-The \code{scheduler} minting policy initializes and deinitializes the scheduler state.
+The \code{scheduler} minting policy initializes the scheduler state.
 It is statically parametrized on the \code{hub\_oracle} minting policy.
 Redeemers:
 
@@ -50,13 +50,6 @@ Redeemers:
         \begin{enumerate}
             \item The transaction must mint the Midgard hub oracle token.
             \item The transaction must mint the \code{scheduler} NFT.
-        \end{enumerate}
-
-    \item[Deinit.] Deinitialize the \code{scheduler} via the Midgard hub oracle.
-      Conditions:
-        \begin{enumerate}
-            \item The transaction must burn the Midgard hub oracle token.
-            \item The transaction must burn the \code{scheduler} NFT.
         \end{enumerate}
 \end{description}
 

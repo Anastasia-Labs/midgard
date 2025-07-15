@@ -15,10 +15,11 @@ export type NodeConfigDep = {
   L1_OGMIOS_KEY: string;
   L1_KUPO_KEY: string;
   L1_OPERATOR_SEED_PHRASE: string;
+  L1_OPERATOR_SEED_PHRASE_FOR_MERGE_TX: string;
   NETWORK: Network;
   PORT: number;
-  POLLING_INTERVAL: number;
-  CONFIRMED_STATE_POLLING_INTERVAL: number;
+  WAIT_BETWEEN_BLOCK_COMMITMENT: number;
+  WAIT_BETWEEN_MERGE_TXS: number;
   PROM_METRICS_PORT: number;
   OLTP_EXPORTER_URL: string;
   POSTGRES_USER: string;
@@ -74,10 +75,11 @@ export const makeConfig = Effect.gen(function* () {
     Config.string("L1_OGMIOS_KEY"),
     Config.string("L1_KUPO_KEY"),
     Config.string("L1_OPERATOR_SEED_PHRASE"),
+    Config.string("L1_OPERATOR_SEED_PHRASE_FOR_MERGE_TX"),
     Config.string("NETWORK"),
     Config.integer("PORT").pipe(Config.withDefault(3000)),
-    Config.integer("POLLING_INTERVAL").pipe(Config.withDefault(10000)),
-    Config.integer("CONFIRMED_STATE_POLLING_INTERVAL").pipe(
+    Config.integer("WAIT_BETWEEN_BLOCK_COMMITMENT").pipe(Config.withDefault(10000)),
+    Config.integer("WAIT_BETWEEN_MERGE_TXS").pipe(
       Config.withDefault(60000),
     ),
     Config.integer("PROM_METRICS_PORT").pipe(Config.withDefault(9464)),
@@ -103,16 +105,17 @@ export const makeConfig = Effect.gen(function* () {
     L1_OGMIOS_KEY: config[3],
     L1_KUPO_KEY: config[4],
     L1_OPERATOR_SEED_PHRASE: config[5],
-    NETWORK: config[6] as Network,
-    PORT: config[7],
-    POLLING_INTERVAL: config[8],
-    CONFIRMED_STATE_POLLING_INTERVAL: config[9],
-    PROM_METRICS_PORT: config[10],
-    OLTP_EXPORTER_URL: config[11],
-    POSTGRES_HOST: config[12],
-    POSTGRES_PASSWORD: config[13],
-    POSTGRES_DB: config[14],
-    POSTGRES_USER: config[15],
+    L1_OPERATOR_SEED_PHRASE_FOR_MERGE_TX: config[6],
+    NETWORK: config[7] as Network,
+    PORT: config[8],
+    WAIT_BETWEEN_BLOCK_COMMITMENT: config[9],
+    WAIT_BETWEEN_MERGE_TXS: config[10],
+    PROM_METRICS_PORT: config[11],
+    OLTP_EXPORTER_URL: config[12],
+    POSTGRES_HOST: config[13],
+    POSTGRES_PASSWORD: config[14],
+    POSTGRES_DB: config[15],
+    POSTGRES_USER: config[16],
   };
 }).pipe(Effect.orDie);
 

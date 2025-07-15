@@ -4,18 +4,54 @@
 
 \section{Escape hatch}
 \label{h:escape-hatch}
-\todo
 
-An escape hatch block can be added to the state queue as follows:
-\begin{enumerate}
-    \item Spend transaction order and withdrawal order utxos, refunding all of their min-ADA.
-    \item Reference compliance proof tokens verifying that the spent orders fully comply with Midgard's ledger rules.
-    \item Append a node to the state queue with a special EscapeHatch datum.
-\end{enumerate}
+The Midgard escape hatch is an L1 mechanism that can be triggered if the last block in the state queue is too old relative to the current time, as controlled by the Midgard \code{escape\_hatch\_block\_age} parameter.
+In other words, it is triggered in the extreme case when the Midgard active operators have completely stopped committing blocks to the state queue.
 
-If the escape hatch block is removed (because it is a child of a fraudulent block), its transaction and withdrawal orders are lost.
-However, they can be recreated, and their compliance proofs can be reused to create another escape hatch block (omitting any orders that are no longer valid).
+When the escape hatch is triggered, Midgard enters an emergency period with a duration controlled by the Midgard \code{emergency\_duration} parameter.
+During this emergency period, the Operator Directory allows new operators to register with a reduced bond requirement.
+As a result, honest actors can more easily become operators to restart Midgard block production.
 
-An escape hatch block is merged into the confirmed state like an operator block: copy over the relevant fields to the ConfirmedHeader and append a node to the settlement queue if the escape hatch block contains any withdrawal events.
+When the emergency period is over, the reduced-bond operators have a grace period to voluntarily either retire or increase their bonds to remain as regular operators.
+After the grace period, anyone can retire any remaining operator that has not increased their bond, applying a minor penalty to the bond and claiming it as a reward.
+See \cref{h:operator-directory}.
+
+\subsection{Utxo representation}%
+\label{h:escape-hatch-utxo-representation}%
+
+The Midgard escape hatch is represented onchain by a single utxo holding an NFT with this datum:
+\begin{equation*}
+  \T{EscapeHatchDatum} \coloneq \left\{
+  \begin{array}{ll}
+    \T{emergency\_end\_time}: & \T{PosixTime}
+  \end{array}\right\}
+\end{equation*}
+This datum is set to zero when Midgard is initialized.
+When the escape hatch is triggered, it is set to the time when the emergency period will end.
+
+\subsection{Minting policy}%
+\label{h:escape-hatch-minting-policy}%
+
+The \code{escape\_hatch} minting policy initializes the escape hatch state. It is statically parametrized on the \code{hub\_oracle} minting policy.
+Redeemers:
+\begin{description}
+  \item[Init.] The transaction must mint the Midgard hub oracle token.
+\end{description}
+
+\subsection{Spending validator}%
+\label{h:escape-hatch-spending-validator}%
+
+The spending validator of \code{escape\_hatch\_addr} controls the escape hatch trigger.
+Redeemers:
+\begin{description}
+  \item[Trigger Escape Hatch.] Conditions:
+    \begin{enumerate}
+      \item Let \code{last\_header\_node} be the last node in the \code{state\_queue}.
+      \item The transaction's time-validity lower bound must exceed \code{last\_header\_node.end\_time} by \code{escape\_hatch\_block\_age}.
+      \item The transaction's time-validity interval duration must not exceed \code{escape\_hatch\_trigger\_duration}.
+      \item Let \code{escape\_hatch\_output} be the transaction output that holds the \code{escape\_hatch} token.
+      \item The \code{emergency\_end\_time} of \code{escape\_hatch\_output} must match the transaction's time-validity upper bound, moved forward by \code{emergency\_duration}.
+    \end{enumerate}
+\end{description}
 
 \end{document}

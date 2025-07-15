@@ -44,7 +44,7 @@ With the utxo created at the outbox contract, incentives can be adjusted so that
 Inclusion of a withdrawal event in a block leads to the removal of the output at output-reference \code{l2\_outref} from the block's utxo set.
 
 Suppose the block containing the withdrawal event is confirmed.
-The L1 withdrawal request utxo will be sent to the \code{escrow} contract, after which it can be gradually funded from the reserve. Once fully funded, its utxo can be transfered to \code{l1\_address} with \code{l1\_datum} attached.
+The L1 withdrawal request utxo will be sent to the \code{payout\_accumulator} contract, after which it can be gradually funded from the reserve. Once fully funded, its utxo can be transfered to \code{l1\_address} with \code{l1\_datum} attached.
 
 \Cref{h:withdrawal-order} describes the lifecycle of a withdrawal request in further detail.
 

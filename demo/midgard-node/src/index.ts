@@ -12,7 +12,8 @@ import { NodeRuntime } from "@effect/platform-node";
 
 // Initialize global flags:
 global.BLOCKS_IN_QUEUE = 0;
-global.BLOCK_SUBMISSION_IN_PROGRESS = false;
+global.LATEST_SYNC_OF_STATE_QUEUE_LENGTH = 0;
+global.RESET_IN_PROGRESS = false;
 
 dotenv.config();
 const VERSION = packageJson.version;
