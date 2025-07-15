@@ -156,6 +156,7 @@ pub type MidgardTxBodyCompact {
   reference_inputs: H32<List<OutputReference>>,
   outputs: H32<List<Output>>,
   fee: Lovelace,
+  min_fee: Lovelace,
   validity_interval: ValidityRange,
   required_observers: H32<List<ScriptHash>>,
   required_signer_hashes: H32<List<VerificationKeyHash>>,
