@@ -47,7 +47,7 @@ Withdrawals are applied before transactions, which are applied before deposits.
             (s1.north east) edge [bend left = 15]
                 node [anchor = south, below, yshift = -0.5em] {Block transition} (s2.north west);
     \end{tikzpicture}
-    \caption{A block's transition from a previous block's utxo set to a new utxo set.}
+    \caption[Block transition]{A block's transition from a previous block's utxo set to a new utxo set.}
     \label{fig:block-transition}
 \end{figure}
 
@@ -95,7 +95,7 @@ The \code{transactions\_root} is formed by concatenating and hashing its childre
     };
 
 \end{tikzpicture}
-\caption{A Merkle Patricia Trie example for a block's transactions.}
+\caption[Merkle Patricia Trie example]{A Merkle Patricia Trie example for a block's transactions.}
 \label{fig:block-tx-mpt}
 \end{figure}
 

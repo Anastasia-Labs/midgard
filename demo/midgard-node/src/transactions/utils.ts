@@ -11,6 +11,12 @@ import * as BlocksDB from "../database/blocks.js";
 import * as ImmutableDB from "../database/immutable.js";
 import { Database } from "@/services/database.js";
 
+const RETRY_ATTEMPTS = 2;
+
+const INIT_RETRY_AFTER_MILLIS = 5_000;
+
+const PAUSE_DURATION = "5 seconds";
+
 /**
  * Handle the signing and submission of a transaction.
  *
@@ -32,7 +38,10 @@ export const handleSignSubmit = (
     yield* Effect.logInfo("✉️  Submitting transaction...");
     const txHash = yield* signed.submitProgram().pipe(
       Effect.retry(
-        Schedule.compose(Schedule.exponential(5_000), Schedule.recurs(5)),
+        Schedule.compose(
+          Schedule.exponential(INIT_RETRY_AFTER_MILLIS),
+          Schedule.recurs(RETRY_ATTEMPTS),
+        ),
       ),
       Effect.mapError((err) => new SubmitError({ err })),
     );
@@ -43,8 +52,8 @@ export const handleSignSubmit = (
       catch: (err: any) => new ConfirmError({ err, txHash }),
     });
     yield* Effect.logInfo(`🎉 Transaction confirmed: ${txHash}`);
-    yield* Effect.logInfo("⌛ Pausing for 10 seconds...");
-    yield* Effect.sleep("10 seconds");
+    yield* Effect.logInfo(`⌛ Pausing for ${PAUSE_DURATION}...`);
+    yield* Effect.sleep(PAUSE_DURATION);
     yield* Effect.logInfo("✅ Pause ended.");
     return txHash;
   }).pipe(
@@ -80,7 +89,10 @@ export const handleSignSubmitWithoutConfirmation = (
       .pipe(Effect.mapError((err) => new SignError({ err })));
     const txHash = yield* signed.submitProgram().pipe(
       Effect.retry(
-        Schedule.compose(Schedule.exponential(5_000), Schedule.recurs(5)),
+        Schedule.compose(
+          Schedule.exponential(INIT_RETRY_AFTER_MILLIS),
+          Schedule.recurs(RETRY_ATTEMPTS),
+        ),
       ),
       Effect.mapError((err) => new SubmitError({ err })),
     );
@@ -120,10 +132,11 @@ export class ConfirmError extends Data.TaggedError("ConfirmError")<{
  * @returns An Effect that resolves to an array of transactions.
  */
 export const fetchFirstBlockTxs = (
-  firstBlockUTxO: UTxO,
+  firstBlockUTxO: SDK.TxBuilder.StateQueue.StateQueueUTxO,
 ): Effect.Effect<{ txs: Uint8Array[]; headerHash: string }, Error, Database> =>
   Effect.gen(function* () {
-    const blockHeader = yield* SDK.Utils.getHeaderFromBlockUTxO(firstBlockUTxO);
+    const blockHeader =
+      yield* SDK.Utils.getHeaderFromStateQueueUTxO(firstBlockUTxO);
     const headerHash = yield* SDK.Utils.hashHeader(blockHeader);
     const txHashes = yield* BlocksDB.retrieveTxHashesByBlockHash(
       fromHex(headerHash),

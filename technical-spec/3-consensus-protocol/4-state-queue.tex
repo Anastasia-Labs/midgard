@@ -37,13 +37,6 @@ Redeemers:
             \item The transaction must Init the \code{state\_queue}.
         \end{enumerate}
 
-    \item[Deinit.] Deinitialize the \code{state\_queue} via the Midgard hub oracle.
-      Conditions:
-        \begin{enumerate}
-            \item The transaction must burn the Midgard hub oracle token.
-            \item The transaction must Deinit the \code{state\_queue}.
-        \end{enumerate}
-
     \item[Commit Block Header.] An operator commits a block header to the state queue if it is the operator's turn according to the rotating schedule.
       Grouped conditions:
         \begin{itemize}
@@ -134,8 +127,6 @@ Redeemers:
         \end{enumerate}
     \end{itemize}
 \end{description}
-
-\notebox{Add redeemers for escape hatch blocks.}\todo
 
 \subsection{Spending validator}
 \label{h:state-queue-spending-validator}

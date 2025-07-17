@@ -13,3 +13,4 @@ svg-inkscape/
 gitHeadLocal.gin
 
 !images/*.pdf
+!images/**/*.pdf

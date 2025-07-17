@@ -2,6 +2,7 @@ import { Effect } from "effect";
 import { clearTable, mapSqlError } from "./utils.js";
 import { SqlClient } from "@effect/sql";
 import { Database } from "@/services/database.js";
+import { toHex } from "@lucid-evolution/lucid";
 
 export const tableName = "blocks";
 
@@ -19,7 +20,7 @@ export const insert = (
   txHashes: Uint8Array[],
 ): Effect.Effect<void, Error, Database> =>
   Effect.gen(function* () {
-    yield* Effect.logInfo(`${tableName} db: attempt to insert blocks`);
+    // yield* Effect.logInfo(`${tableName} db: attempt to insert blocks`);
     const sql = yield* SqlClient.SqlClient;
 
     if (!txHashes.length) {
@@ -34,9 +35,9 @@ export const insert = (
 
     yield* sql`INSERT INTO ${sql(tableName)} ${sql.insert(rowsToInsert)}`;
 
-    yield* Effect.logInfo(
-      `${tableName} db: ${rowsToInsert.length} block rows inserted.`,
-    );
+    // yield* Effect.logInfo(
+    //   `${tableName} db: ${rowsToInsert.length} block rows inserted.`,
+    // );
   }).pipe(
     Effect.tapErrorTag("SqlError", (e) =>
       Effect.logError(`${tableName} db: inserting error: ${e}`),
@@ -114,13 +115,10 @@ export const clearBlock = (
   Effect.gen(function* () {
     yield* Effect.logDebug(`${tableName} db: attempt clear block ${blockHash}`);
     const sql = yield* SqlClient.SqlClient;
-
-    const result =
-      yield* sql`DELETE FROM ${sql(tableName)} WHERE header_hash = ${Buffer.from(blockHash)}`;
-
-    yield* Effect.logInfo(
-      `${tableName} db: cleared ${result.length} rows for block ${blockHash}`,
-    );
+    yield* sql`DELETE FROM ${sql(tableName)} WHERE header_hash = ${Buffer.from(blockHash)}`;
+    // yield* Effect.logInfo(
+    //   `${tableName} db: cleared ${result.entries()} rows for block ${toHex(blockHash)}`,
+    // );
     return Effect.void;
   }).pipe(
     Effect.withLogSpan(`clearBlock ${tableName}`),
@@ -138,7 +136,7 @@ interface BlockRow {
 }
 
 export const retrieve = (): Effect.Effect<
-  [Uint8Array, Uint8Array][],
+  (readonly [Uint8Array, Uint8Array])[],
   Error,
   Database
 > =>
@@ -146,7 +144,7 @@ export const retrieve = (): Effect.Effect<
     yield* Effect.logInfo(`${tableName} db: attempt to retrieve blocks`);
     const sql = yield* SqlClient.SqlClient;
     const rows = yield* sql<BlockRow>`SELECT * FROM ${sql(tableName)}`;
-    const result: [Uint8Array, Uint8Array][] = rows.map(
+    const result: (readonly [Uint8Array, Uint8Array])[] = rows.map(
       (row: BlockRow) =>
         [
           Uint8Array.from(row.header_hash),

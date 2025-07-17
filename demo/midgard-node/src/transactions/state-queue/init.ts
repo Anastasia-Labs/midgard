@@ -2,9 +2,10 @@ import { Effect } from "effect";
 import { ConfirmError, handleSignSubmit, SubmitError } from "../utils.js";
 import * as SDK from "@al-ft/midgard-sdk";
 import { AlwaysSucceeds } from "@/services/index.js";
-import { User } from "@/config.js";
+import { NodeConfig, User } from "@/config.js";
 
 export const stateQueueInit = Effect.gen(function* () {
+  const nodeConfig = yield* NodeConfig;
   const { user: lucid } = yield* User;
   const { spendScriptAddress, mintScript, policyId } =
     yield* AlwaysSucceeds.AlwaysSucceedsContract;
@@ -13,6 +14,7 @@ export const stateQueueInit = Effect.gen(function* () {
     policyId: policyId,
     stateQueueMintingScript: mintScript,
   };
+  lucid.selectWallet.fromSeed(nodeConfig.L1_OPERATOR_SEED_PHRASE);
   const txBuilder = yield* SDK.Endpoints.initTxProgram(lucid, initParams);
   const onSubmitFailure = (err: SubmitError) =>
     Effect.gen(function* () {

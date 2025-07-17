@@ -42,7 +42,7 @@ According to Midgard's ledger rules:
 
 The withdrawal order's outcome is determined as follows:
 \begin{itemize}
-    \item If the withdrawal event is included in a settlement queue node, its utxo can be transferred to the escrow contract so that it can be funded from the Midgard reserve.
+    \item If the withdrawal event is included in a settlement queue node, its utxo can be transferred to the payout accumulator contract so that it can be funded from the Midgard reserve.
     \item If the withdrawal order's inclusion time is within the confirmed header's event interval but not within the event interval of any settlement queue node, then the withdrawal order utxo can be refunded to its user according to the \code{refund\_address} and \code{refund\_datum} fields.
 \end{itemize}
 
@@ -74,7 +74,7 @@ It oversees correctness of datums, and registration/unregistration of events' co
         \item \code{l2\_value} and \code{value} from \code{l2\_output} must be equal.
         \item Address from \code{l2\_output} must be the same as outbox contract's on L2.
       \end{enumerate}
-    \item[Burn Withdrawal NFT.] Oversee start of the funding for a withdrawal order by requiring its NFTs to be burnt, and having the utxo reproduced at the \code{escrow} contract.
+    \item[Burn Withdrawal NFT.] Oversee start of the funding for a withdrawal order by requiring its NFTs to be burnt, and having the utxo reproduced at the \code{payout\_accum} contract.
     Conditions:
       \begin{enumerate}
         \item Let \code{l1\_id} be the corresponding ID of the target withdrawal order, provided via the redeemer.
@@ -89,21 +89,21 @@ It oversees correctness of datums, and registration/unregistration of events' co
 \label{h:withdrawal-order-spending-validator}
 
 The \code{withdrawal} spending validator is statically parametrized on the \code{hub\_oracle} minting policy.
-It's responsible for initializing the funding phase of a withdrawal order by reproducing its utxo at the \code{escrow} contract, or refunding stranded withdrawal orders.
+It's responsible for initializing the funding phase of a withdrawal order by reproducing its utxo at the \code{payout\_accumulator} contract, or refunding stranded withdrawal orders.
 
 \begin{description}
-  \item[Transfer to Escrow.] Transaction for reproducing the order at the escrow contract to be filled up from the Midgard reserve.
+  \item[Initialize Payout Accumulator.] Transaction for reproducing the order at the payout accumulator contract to be filled up from the Midgard reserve.
     Conditions:
     \begin{enumerate}
       \item Let \code{settlement\_node} be the referenced settlement node.
       \item The withdrawal order must be included in the withdrawal tree of \code{settlement\_node}.
         This also implies the inclusion time of the order falls within the time interval of \code{settlement\_node}.
-      \item Let \code{escrow\_addr} be the address of the intermediary escrow contract retrieved from hub oracle.
-      \item The utxo produced at \code{escrow\_addr} must have the same \code{value} as the withdrawal order utxo, without the withdrawal NFT, and with the \code{escrow} NFT (same asset name) added.
+      \item Let \code{payout\_accum\_addr} be the address of the intermediary payout accumulator contract retrieved from hub oracle.
+      \item The utxo produced at \code{payout\_accum\_addr} must have the same \code{value} as the withdrawal order utxo, without the withdrawal NFT, and with the \code{payout\_accum} NFT (same asset name) added.
       \item The \code{BurnEventNFT} endpoint of the withdrawal minting script must be invoked with the corresponding \code{l1\_id} of the withdrawal utxo.
-      \item The minting logic from \code{escrow} must be invoked, minting an NFT with the same asset name as the withdrawal NFT being burnt in the transaction.
-      \item The datum attached to the escrow utxo must hand over \code{l2\_value}, \code{l1\_address} and \code{l1\_datum} unchanged.
-      \item No reference script must be attached to the escrow utxo.
+      \item The minting logic from \code{payout\_accum} must be invoked, minting an NFT with the same asset name as the withdrawal NFT being burnt in the transaction.
+      \item The datum attached to the payout accumulator utxo must hand over \code{l2\_value}, \code{l1\_address} and \code{l1\_datum} unchanged.
+      \item No reference script must be attached to the payout accumulator utxo.
     \end{enumerate}
   \item[Refund.] 
     Conditions:

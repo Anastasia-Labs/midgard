@@ -6,15 +6,14 @@ import {
   TxBuilder,
   toUnit,
 } from "@lucid-evolution/lucid";
-import { getSingleAssetApartFromAda } from "../../utils/common.js";
 import { ConfirmedState, Header } from "../ledger-state.js";
-import { getNodeDatumFromUTxO } from "../../utils/linked-list.js";
 import {
-  getHeaderFromBlockUTxO,
+  getHeaderFromStateQueueUTxO,
   hashHeader,
 } from "../../utils/ledger-state.js";
 import { NodeDatum } from "../linked-list.js";
 import { Redeemer, FetchConfig, MergeParams } from "./types.js";
+import { getConfirmedStateFromStateQueueUTxO } from "@/utils/state-queue.js";
 
 /**
  * Merge
@@ -34,14 +33,10 @@ export const mergeTxBuilder = (
   }: MergeParams,
 ): Effect.Effect<TxBuilder, Error> =>
   Effect.gen(function* () {
-    const confirmedNode = yield* getNodeDatumFromUTxO(confirmedUTxO);
-    const currentConfirmedNodeDatum = confirmedNode;
-    const currentConfirmedState: ConfirmedState = yield* Effect.try({
-      try: () => Data.castFrom(currentConfirmedNodeDatum.data, ConfirmedState),
-      catch: (e) => new Error(`${e}`),
-    });
-    const blockNode: NodeDatum = yield* getNodeDatumFromUTxO(firstBlockUTxO);
-    const blockHeader: Header = yield* getHeaderFromBlockUTxO(firstBlockUTxO);
+    const { data: currentConfirmedState } =
+      yield* getConfirmedStateFromStateQueueUTxO(confirmedUTxO);
+    const blockHeader: Header =
+      yield* getHeaderFromStateQueueUTxO(firstBlockUTxO);
     const headerHash = yield* hashHeader(blockHeader);
     const newConfirmedState = {
       ...currentConfirmedState,
@@ -52,20 +47,17 @@ export const mergeTxBuilder = (
       endTime: blockHeader.endTime,
     };
     const newConfirmedNodeDatum: NodeDatum = {
-      ...currentConfirmedNodeDatum,
+      ...confirmedUTxO.datum,
       data: Data.castTo(newConfirmedState, ConfirmedState),
-      next: blockNode.next,
+      next: firstBlockUTxO.datum.next,
     };
-    const [nftSym, nftName, _nftQty] = yield* getSingleAssetApartFromAda(
-      firstBlockUTxO.assets,
-    );
     const assetsToBurn: Assets = {
-      [toUnit(nftSym, nftName)]: -1n,
+      [toUnit(fetchConfig.stateQueuePolicyId, firstBlockUTxO.assetName)]: -1n,
     };
     const tx = lucid
       .newTx()
       .collectFrom(
-        [confirmedUTxO, firstBlockUTxO],
+        [confirmedUTxO.utxo, firstBlockUTxO.utxo],
         Data.to("MergeToConfirmedState", Redeemer),
       )
       .pay.ToContract(
@@ -74,7 +66,7 @@ export const mergeTxBuilder = (
           kind: "inline",
           value: Data.to(newConfirmedNodeDatum, NodeDatum),
         },
-        confirmedUTxO.assets,
+        confirmedUTxO.utxo.assets,
       )
       .mintAssets(assetsToBurn, Data.void())
       .attach.Script(stateQueueSpendingScript)

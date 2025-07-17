@@ -298,3 +298,10 @@
 
 % Force fancy headers in chapter pages
 \patchcmd{\chapter}{\thispagestyle{plain}}{\thispagestyle{fancy}}{}{}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% List of figures and figure numbering
+\usepackage{tocloft}
+\counterwithin{figure}{subsection}
+\setlength{\cftfignumwidth}{3em}
+\renewcommand{\thefigure}{\thesection.\arabic{figure}}
