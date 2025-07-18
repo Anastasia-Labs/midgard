@@ -1,6 +1,7 @@
 import { Database } from "@/services/database.js";
 import { SqlClient, SqlError } from "@effect/sql";
 import { Effect, Option } from "effect";
+import { CML, UTxO } from "@lucid-evolution/lucid";
 
 export const mkKeyValueCreateQuery = (
   tableName: string,
@@ -180,4 +181,137 @@ export const mapSqlError = <A, E, R>(
         } else return Effect.fail(e as Exclude<E, SqlError.SqlError>);
       },
     ),
+  );
+
+const txOutputArrayToAddress = (
+  txOutputArray: Uint8Array
+): String => {
+  const txOutput = CML.TransactionOutput.from_cbor_bytes(txOutputArray)
+  const address = txOutput.address().to_bech32()
+  return address
+}
+
+export const insertKeyValueUTxOWithAddress = (
+  tableName: string,
+  outReferenceArray: Uint8Array,
+  txOutputArray: Uint8Array,
+): Effect.Effect<void, Error, Database> =>
+  Effect.gen(function* () {
+    yield* Effect.logDebug(`${tableName} db: attempt to insert keyValueUTxO`);
+    const sql = yield* SqlClient.SqlClient;
+
+    const address = txOutputArrayToAddress(txOutputArray)
+
+    yield* sql`INSERT INTO ${sql(tableName)} ${sql.insert({
+      key: Buffer.from(outReferenceArray),
+      txOutputArray: Buffer.from(txOutputArray),
+      address: Buffer.from(address),
+    })} ON CONFLICT (key) DO UPDATE SET txOutputArray = ${Buffer.from(txOutputArray)}, address = ${Buffer.from(address)}`;
+  }).pipe(
+    Effect.withLogSpan(`insert keyValueUTxO ${tableName}`),
+    Effect.tapErrorTag("SqlError", (e) =>
+      Effect.logError(`${tableName} db: insert keyValueUTxO: ${JSON.stringify(e)}`),
+    ),
+    mapSqlError,
+  );
+
+export const insertKeyValuesUTxOWithAddress = (
+  tableName: string,
+  values: { outReferenceArray: Uint8Array,
+            txOutputArray: Uint8Array,
+          }[],
+): Effect.Effect<void, Error, Database> =>
+  Effect.gen(function* () {
+    yield* Effect.logDebug(`${tableName} db: attempt to insert keyValuesUTxO`);
+    const sql = yield* SqlClient.SqlClient;
+
+    const triples = values.map((kv) => (
+      {
+      key: Buffer.from(kv.outReferenceArray),
+      txOutputArray: Buffer.from(kv.txOutputArray),
+      address: Buffer.from(txOutputArrayToAddress(kv.txOutputArray)
+),
+    }));
+    yield* sql`INSERT INTO ${sql(tableName)} ${sql.insert(triples)}`;
+  }).pipe(
+    Effect.withLogSpan(`insert keyValuesUTxO ${tableName}`),
+    Effect.tapErrorTag("SqlError", (e) =>
+      Effect.logError(
+        `${tableName} db: insert keyValuesUTxO: ${JSON.stringify(e)}`,
+      ),
+    ),
+    mapSqlError,
+  );
+
+export const retrieveKeyValuesUTxO = (
+  tableName: string,
+): Effect.Effect<
+  {
+    key: Uint8Array;
+    txOutputArray: Uint8Array;
+    address: String;
+  }[],
+  Error,
+  Database
+> =>
+  Effect.gen(function* () {
+    yield* Effect.logDebug(`${tableName} db: attempt to retrieve keyValuesUTxO`);
+    const sql = yield* SqlClient.SqlClient;
+    const rows = yield* sql`SELECT * FROM ${sql(tableName)}`;
+    return rows.map((row: unknown) => {
+      const { key, txOutputArray, address } = row as {
+        key: Buffer;
+        txOutputArray: Buffer;
+        address: Buffer;
+      };
+      return {
+        key: new Uint8Array(key.buffer, key.byteOffset, key.byteLength),
+        txOutputArray: new Uint8Array(txOutputArray.buffer, txOutputArray.byteOffset, txOutputArray.byteLength),
+        address: new String(address),
+      };
+    });
+  }).pipe(
+    Effect.withLogSpan(`insert keyValuesUTxO ${tableName}`),
+    Effect.tapErrorTag("SqlError", (e) =>
+      Effect.logError(
+        `${tableName} db: insert keyValuesUTxO: ${JSON.stringify(e)}`,
+      ),
+    ),
+    mapSqlError,
+  );
+
+export const retrieveKeyValuesUTxOWithAddress = (
+  tableName: string,
+  address: String,
+): Effect.Effect<
+  {
+    key: Uint8Array;
+    txOutputArray: Uint8Array;
+  }[],
+  Error,
+  Database
+> =>
+  Effect.gen(function* () {
+    yield* Effect.logDebug(`${tableName} db: attempt to retrieve keyValuesUTxO`);
+    const sql = yield* SqlClient.SqlClient;
+    const rows = yield* sql`SELECT * FROM ${sql(tableName)} WHERE address = ${Buffer.from(address)}`;
+    return rows.map((row: unknown) => {
+      const { key, txOutputArray, address } = row as {
+        key: Buffer;
+        txOutputArray: Buffer;
+        address: Buffer;
+      };
+      return {
+        key: new Uint8Array(key.buffer, key.byteOffset, key.byteLength),
+        txOutputArray: new Uint8Array(txOutputArray.buffer, txOutputArray.byteOffset, txOutputArray.byteLength),
+      };
+    });
+  }).pipe(
+    Effect.withLogSpan(`insert keyValuesUTxO ${tableName}`),
+    Effect.tapErrorTag("SqlError", (e) =>
+      Effect.logError(
+        `${tableName} db: insert keyValuesUTxO: ${JSON.stringify(e)}`,
+      ),
+    ),
+    mapSqlError,
   );
