@@ -12,6 +12,7 @@ use midgard/fraud_proof/common/utils.{
 use midgard/fraud_proof/min_fee/step.{
   Cancel, Continue, StepRedeemer as Step1Redeemer,
 }
+use midgard/ledger_state.{MidgardTxCompact}
 
 validator main(
   // Fraud proof token policy
@@ -81,7 +82,7 @@ validator main(
         verify_hash_32(bad_tx_body, bad_tx.body)
 
         // Fee must be greater than or equal to the minimum fee
-        expect bad_tx_body.fee < bad_tx_body.min_fee
+        expect bad_tx_body.fee < get_min_transaction_fee(bad_tx)
 
         // -------- Zero input: validation-specific logic END --------
         expect
@@ -102,4 +103,9 @@ validator main(
   else(_) {
     fail
   }
+}
+
+//TODO: This will need execution traces to calculate it
+fn get_min_transaction_fee(_transaction: MidgardTxCompact) {
+  0
 }
