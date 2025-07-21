@@ -26,6 +26,7 @@ export type NodeConfigDep = {
   POSTGRES_PASSWORD: string;
   POSTGRES_DB: string;
   POSTGRES_HOST: string;
+  MPT_DB_PATH: string;
 };
 
 export const makeUserFn = (nodeConfig: NodeConfigDep) =>
@@ -78,10 +79,10 @@ export const makeConfig = Effect.gen(function* () {
     Config.string("L1_OPERATOR_SEED_PHRASE_FOR_MERGE_TX"),
     Config.string("NETWORK"),
     Config.integer("PORT").pipe(Config.withDefault(3000)),
-    Config.integer("WAIT_BETWEEN_BLOCK_COMMITMENT").pipe(Config.withDefault(10000)),
-    Config.integer("WAIT_BETWEEN_MERGE_TXS").pipe(
-      Config.withDefault(60000),
+    Config.integer("WAIT_BETWEEN_BLOCK_COMMITMENT").pipe(
+      Config.withDefault(10000),
     ),
+    Config.integer("WAIT_BETWEEN_MERGE_TXS").pipe(Config.withDefault(60000)),
     Config.integer("PROM_METRICS_PORT").pipe(Config.withDefault(9464)),
     Config.string("OLTP_EXPORTER_URL").pipe(
       Config.withDefault("http://0.0.0.0:4318/v1/traces"),
@@ -90,6 +91,7 @@ export const makeConfig = Effect.gen(function* () {
     Config.string("POSTGRES_PASSWORD").pipe(Config.withDefault("postgres")),
     Config.string("POSTGRES_DB").pipe(Config.withDefault("midgard")),
     Config.string("POSTGRES_USER").pipe(Config.withDefault("postgres")),
+    Config.string("MPT_DB").pipe(Config.withDefault("./midgard-mpt-db")),
   ]);
 
   const provider = config[0].toLowerCase();
@@ -116,6 +118,7 @@ export const makeConfig = Effect.gen(function* () {
     POSTGRES_PASSWORD: config[14],
     POSTGRES_DB: config[15],
     POSTGRES_USER: config[16],
+    MPT_DB_PATH: config[17],
   };
 }).pipe(Effect.orDie);
 

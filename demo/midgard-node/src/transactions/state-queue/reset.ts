@@ -62,7 +62,10 @@ export const resetStateQueue = Effect.gen(function* () {
   };
 
   const allStateQueueUTxOs =
-    yield* SDK.Endpoints.fetchUnsortedStateQueueUTxOsProgram(lucid, fetchConfig);
+    yield* SDK.Endpoints.fetchUnsortedStateQueueUTxOsProgram(
+      lucid,
+      fetchConfig,
+    );
 
   lucid.selectWallet.fromSeed(nodeConfig.L1_OPERATOR_SEED_PHRASE);
 

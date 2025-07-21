@@ -20,14 +20,16 @@ import { Worker } from "worker_threads";
 import { fileURLToPath } from "url";
 import fs from "fs";
 import {
+  LevelDB,
   makeMpts,
-  PostgresCheckpointDB,
   processMpts,
   withTrieTransaction,
 } from "../src/workers/db.js";
 import { SqlClient } from "@effect/sql";
 import * as ETH from "@ethereumjs/mpt";
 import * as ETH_UTILS from "@ethereumjs/util";
+import { Level } from "level";
+import { rm } from "fs/promises";
 dotenv.config({ path: ".env" });
 
 const NUM_OF_BLOCKS = 5;
@@ -99,12 +101,11 @@ describe("CheckpointDB", () => {
       yield* initializeDb();
       yield* flushDb;
       const sql = yield* SqlClient.SqlClient;
-      const ledgerCheckpointDB = new PostgresCheckpointDB(sql, "latest_ledger");
-      yield* ledgerCheckpointDB.openEffect();
+      const levelDb = new Level("./test-trie-db", { valueEncoding: "binary" });
       const ledgerTrie = yield* Effect.tryPromise({
         try: () =>
           ETH.createMPT({
-            db: ledgerCheckpointDB.db,
+            db: new LevelDB(levelDb),
             useRootPersistence: true,
             valueEncoding: ETH_UTILS.ValueEncoding.Bytes,
           }),
@@ -191,6 +192,10 @@ describe("CheckpointDB", () => {
       const root5Combinator = yield* Effect.sync(() => ledgerTrie.root());
       expect(toHex(root5Combinator)).toEqual(toHex(root2));
       expect(mempoolDBCombinator).toEqual([]);
+      yield* Effect.tryPromise(() => levelDb.close());
+      yield* Effect.tryPromise(async () =>
+        rm("./test-trie-db", { recursive: true, force: true }),
+      );
     }).pipe(
       Effect.provide(Database.layer),
       Effect.provide(User.layer),
@@ -229,6 +234,9 @@ describe("Commit Block Header Worker", () => {
       );
       expect(txRoot).toEqual(
         "992bf3cbb70bf1841575b24e8ce5d419c3bb770cac45f944cc653717734e8da7",
+      );
+      yield* Effect.tryPromise(async () =>
+        rm("./midgard-mpt-db", { recursive: true, force: true }),
       );
     }).pipe(
       Effect.provide(Database.layer),

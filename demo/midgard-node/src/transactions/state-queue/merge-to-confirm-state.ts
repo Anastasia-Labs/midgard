@@ -86,7 +86,10 @@ export const buildAndSubmitMergeTx = (
     );
     // Avoid a merge tx if the queue is too short (performing a merge with such
     // conditions has a chance of wasting the work done for root computaions).
-    if (currentStateQueueLength < MIN_QUEUE_LENGTH_FOR_MERGING || global.RESET_IN_PROGRESS) {
+    if (
+      currentStateQueueLength < MIN_QUEUE_LENGTH_FOR_MERGING ||
+      global.RESET_IN_PROGRESS
+    ) {
       // yield* Effect.logInfo(
       //   "🔸 There are too few blocks in queue.
       // );

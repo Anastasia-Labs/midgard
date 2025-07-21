@@ -261,20 +261,24 @@ const getLogStateQueueHandler = Effect.gen(function* () {
   );
   let drawn = `
 ---------------------------- STATE QUEUE ----------------------------`;
-  yield* Effect.allSuccesses(sortedUTxOs.map((u) => Effect.gen(function* () {
-    let info = "";
-    const isHead = u.datum.key === "Empty";
-    const isEnd = u.datum.next === "Empty";
-    const emoji = isHead ? "🚢" : isEnd ? "⚓" : "⛓ ";
-    if (u.datum.key !== "Empty") {
-    // if (isHead) {
-      const icon = isEnd ? "  " : emoji;
-      info = `
+  yield* Effect.allSuccesses(
+    sortedUTxOs.map((u) =>
+      Effect.gen(function* () {
+        let info = "";
+        const isHead = u.datum.key === "Empty";
+        const isEnd = u.datum.next === "Empty";
+        const emoji = isHead ? "🚢" : isEnd ? "⚓" : "⛓ ";
+        if (u.datum.key !== "Empty") {
+          // if (isHead) {
+          const icon = isEnd ? "  " : emoji;
+          info = `
 ${icon} ╰─ header: ${u.datum.key.Key.key}`;
-    }
-    drawn = `${drawn}
+        }
+        drawn = `${drawn}
 ${emoji} ${u.utxo.txHash}#${u.utxo.outputIndex}${info}`;
-  })));
+      }),
+    ),
+  );
   drawn += `
 ---------------------------------------------------------------------
 `;
@@ -318,7 +322,7 @@ const getLogSemaphoresHandler = Effect.gen(function* () {
   yield* Effect.logInfo(`✍  Logging semaphores...`);
   yield* Effect.logInfo(`
   BLOCKS_IN_QUEUE ⋅⋅⋅⋅ ${global.BLOCKS_IN_QUEUE}
-  LATEST_SYNC ⋅⋅⋅⋅⋅⋅⋅⋅ ${(new Date(global.LATEST_SYNC_OF_STATE_QUEUE_LENGTH)).toLocaleString()}
+  LATEST_SYNC ⋅⋅⋅⋅⋅⋅⋅⋅ ${new Date(global.LATEST_SYNC_OF_STATE_QUEUE_LENGTH).toLocaleString()}
   RESET_IN_PROGRESS ⋅⋅ ${global.RESET_IN_PROGRESS}
 `);
   return yield* HttpServerResponse.json({
@@ -500,9 +504,7 @@ export const runNode = Effect.gen(function* () {
     nodeConfig.WAIT_BETWEEN_BLOCK_COMMITMENT,
   );
 
-  const mergeThread = pipe(
-    mergeFork(nodeConfig.WAIT_BETWEEN_MERGE_TXS),
-  );
+  const mergeThread = pipe(mergeFork(nodeConfig.WAIT_BETWEEN_MERGE_TXS));
 
   const monitorMempoolThread = pipe(mempoolFork());
 
