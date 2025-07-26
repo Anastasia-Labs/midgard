@@ -5,23 +5,23 @@ import * as ImmutableDB from "./immutable.js";
 import * as LatestLedgerDB from "./latestLedger.js";
 import * as MempoolDB from "./mempool.js";
 import * as MempoolLedgerDB from "./mempoolLedger.js";
-import { mkKeyValueCreateQuery } from "./utils.js";
+import { createKeyValueTable, createLedgerTable } from "./utils.js";
 import { Effect } from "effect";
 import { Database } from "@/services/database.js";
 
 export const initializeDb: () => Effect.Effect<void, Error, Database> = () =>
   Effect.gen(function* () {
     const sql = yield* SqlClient.SqlClient;
-    // await sql`SET default_transaction_read_only TO 'off'`;
+    // yield* sql`SET default_transaction_read_only TO 'off'`;
     yield* sql`SET client_min_messages = 'error'`;
     yield* sql`SET default_transaction_isolation TO 'serializable'`;
 
-    yield* BlocksDB.createQuery;
-    yield* mkKeyValueCreateQuery(MempoolDB.tableName);
-    yield* mkKeyValueCreateQuery(MempoolLedgerDB.tableName);
-    yield* mkKeyValueCreateQuery(ImmutableDB.tableName);
-    yield* mkKeyValueCreateQuery(ConfirmedLedgerDB.tableName);
-    yield* mkKeyValueCreateQuery(LatestLedgerDB.tableName);
+    yield* BlocksDB.init;
+    yield* MempoolDB.init;
+    yield* createLedgerTable(MempoolLedgerDB.tableName);
+    yield* createKeyValueTable(ImmutableDB.tableName);
+    yield* createLedgerTable(ConfirmedLedgerDB.tableName);
+    yield* createLedgerTable(LatestLedgerDB.tableName);
 
     Effect.logInfo("Connected to the PostgreSQL database");
   });

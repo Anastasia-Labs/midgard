@@ -63,7 +63,7 @@ export const makeMpts = () =>
 export const processMpts = (
   ledgerTrie: ETH.MerklePatriciaTrie,
   mempoolTrie: ETH.MerklePatriciaTrie,
-  mempoolTxs: { key: Uint8Array; value: Uint8Array }[],
+  mempoolTxs: readonly { key: Uint8Array; value: Uint8Array }[],
 ) =>
   Effect.gen(function* () {
     const mempoolTxHashes: Uint8Array[] = [];
@@ -86,10 +86,13 @@ export const processMpts = (
           key: outRef,
         }));
         const putOps: ETH_UTILS.BatchDBOp[] = produced.map(
-          ({ key: outputReference, value: output }) => ({
+          ({
+            outReferenceBytes: outputReference,
+            txOutputBytes: txOutputBytes,
+          }) => ({
             type: "put",
             key: outputReference,
-            value: output,
+            value: txOutputBytes,
           }),
         );
         yield* Effect.sync(() => batchDBOps.push(...[...delOps, ...putOps]));

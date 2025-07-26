@@ -106,20 +106,23 @@ export const setupLucid = async (
 };
 
 export function utxoToCBOR(utxo: UTxO): {
-  key: Uint8Array;
-  value: Uint8Array;
+  outReferenceBytes: Uint8Array;
+  txOutputBytes: Uint8Array;
 } {
   const cmlUTxO = utxoToCore(utxo);
   return {
-    key: cmlUTxO.input().to_cbor_bytes(),
-    value: cmlUTxO.output().to_cbor_bytes(),
+    outReferenceBytes: cmlUTxO.input().to_cbor_bytes(),
+    txOutputBytes: cmlUTxO.output().to_cbor_bytes(),
   };
 }
 
 export const findSpentAndProducedUTxOs = (txCBOR: Uint8Array) =>
   Effect.gen(function* () {
     const spent: Uint8Array[] = [];
-    const produced: { key: Uint8Array; value: Uint8Array }[] = [];
+    const produced: {
+      outReferenceBytes: Uint8Array;
+      txOutputBytes: Uint8Array;
+    }[] = [];
     const tx = CML.Transaction.from_cbor_bytes(txCBOR);
     const txBody = tx.body();
     const inputs = txBody.inputs();
@@ -152,7 +155,7 @@ export const findAllSpentAndProducedUTxOs = (
 ): Effect.Effect<
   {
     spent: Uint8Array[];
-    produced: { key: Uint8Array; value: Uint8Array }[];
+    produced: { outReferenceBytes: Uint8Array; txOutputBytes: Uint8Array }[];
   },
   Error
 > =>

@@ -133,13 +133,17 @@ export class ConfirmError extends Data.TaggedError("ConfirmError")<{
  */
 export const fetchFirstBlockTxs = (
   firstBlockUTxO: SDK.TxBuilder.StateQueue.StateQueueUTxO,
-): Effect.Effect<{ txs: Uint8Array[]; headerHash: string }, Error, Database> =>
+): Effect.Effect<
+  { txs: readonly Buffer[]; headerHash: string },
+  Error,
+  Database
+> =>
   Effect.gen(function* () {
     const blockHeader =
       yield* SDK.Utils.getHeaderFromStateQueueUTxO(firstBlockUTxO);
     const headerHash = yield* SDK.Utils.hashHeader(blockHeader);
-    const txHashes = yield* BlocksDB.retrieveTxHashesByBlockHash(
-      fromHex(headerHash),
+    const txHashes = yield* BlocksDB.retrieveTxHashesByHeaderHash(
+      Buffer.from(fromHex(headerHash)),
     );
     const txs = yield* ImmutableDB.retrieveTxCborsByHashes(txHashes);
     return { txs, headerHash };

@@ -1,17 +1,18 @@
 import {
   clearTable,
-  insertKeyValues,
-  retrieveKeyValues,
+  insertLedgerEntries,
+  retrieveLedgerEntries,
   delMultiple,
+  LedgerEntry,
 } from "./utils.js";
 
 export const tableName = "latest_ledger";
 
-export const insert = (utxosCBOR: { key: Uint8Array; value: Uint8Array }[]) =>
-  insertKeyValues(tableName, utxosCBOR);
+export const insertMultiple = (entries: LedgerEntry[]) =>
+  insertLedgerEntries(tableName, entries);
 
-export const retrieve = () => retrieveKeyValues(tableName);
+export const retrieve = () => retrieveLedgerEntries(tableName);
 
-export const clearUTxOs = (refs: Uint8Array[]) => delMultiple(tableName, refs);
+export const clearUTxOs = (refs: Buffer[]) => delMultiple(tableName, refs);
 
 export const clear = () => clearTable(tableName);

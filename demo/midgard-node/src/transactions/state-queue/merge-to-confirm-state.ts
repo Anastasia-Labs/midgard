@@ -78,7 +78,8 @@ export const buildAndSubmitMergeTx = (
   fetchConfig: SDK.TxBuilder.StateQueue.FetchConfig,
   spendScript: Script,
   mintScript: Script,
-): Effect.Effect<void, Error, Database> =>
+  // ): Effect.Effect<void, Error, Database> =>
+) =>
   Effect.gen(function* () {
     const currentStateQueueLength = yield* getStateQueueLength(
       lucid,

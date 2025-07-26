@@ -4,19 +4,11 @@ import { AlwaysSucceeds } from "@/services/index.js";
 import { StateQueueTx } from "@/transactions/index.js";
 import * as SDK from "@al-ft/midgard-sdk";
 import { NodeSdk } from "@effect/opentelemetry";
-import { CML, fromHex, getAddressDetails, toHex } from "@lucid-evolution/lucid";
+import { fromHex, getAddressDetails, toHex } from "@lucid-evolution/lucid";
 import { PrometheusExporter } from "@opentelemetry/exporter-prometheus";
 import { OTLPTraceExporter } from "@opentelemetry/exporter-trace-otlp-http";
 import { BatchSpanProcessor } from "@opentelemetry/sdk-trace-base";
-import {
-  Duration,
-  Effect,
-  Layer,
-  Metric,
-  Option,
-  pipe,
-  Schedule,
-} from "effect";
+import { Duration, Effect, Layer, Metric, pipe, Schedule } from "effect";
 import {
   BlocksDB,
   ConfirmedLedgerDB,
@@ -34,6 +26,7 @@ import { createServer } from "node:http";
 import { NodeHttpServer } from "@effect/platform-node";
 import { HttpBodyError } from "@effect/platform/HttpBody";
 import { SqlClient } from "@effect/sql";
+import { makeMpts } from "@/workers/db.js";
 
 const txCounter = Metric.counter("tx_count", {
   description: "A counter for tracking submit transactions",
@@ -72,26 +65,21 @@ const getTxHandler = Effect.gen(function* () {
       { status: 404 },
     );
   }
-  const txHashBytes = fromHex(txHashParam);
-  const retMempool = yield* MempoolDB.retrieveTxCborByHash(txHashBytes);
-  if (Option.isSome(retMempool)) {
-    yield* Effect.logInfo(
-      `GET /tx - Transaction found in mempool: ${txHashParam}`,
-    );
-    return yield* HttpServerResponse.json({ tx: retMempool.value });
-  }
-  const retImmutable = yield* ImmutableDB.retrieveTxCborByHash(txHashBytes);
-  if (Option.isSome(retImmutable)) {
-    yield* Effect.logInfo(
-      `GET /tx - Transaction found in immutable: ${txHashParam}`,
-    );
-    return yield* HttpServerResponse.json({ tx: retImmutable.value });
-  }
-  yield* Effect.logInfo(`Transaction not found: ${txHashParam}`);
-  return yield* HttpServerResponse.json(
-    { error: `Transaction not found: ${txHashParam}` },
-    { status: 404 },
+  const txHashBytes = Buffer.from(fromHex(txHashParam));
+  const foundCbor: Uint8Array = yield* MempoolDB.retrieveByHash(
+    txHashBytes,
+  ).pipe(
+    Effect.map((mempoolTx) => mempoolTx.txCbor),
+    Effect.catchAll((_e) =>
+      Effect.gen(function* () {
+        yield* Effect.logInfo(
+          `GET /tx - Transaction found in mempool: ${txHashParam}`,
+        );
+        return yield* ImmutableDB.retrieveTxCborByHash(txHashBytes);
+      }),
+    ),
   );
+  return yield* HttpServerResponse.json({ tx: toHex(foundCbor) });
 }).pipe(Effect.catchAll((e) => handle500("getTx", e)));
 
 const getUtxosHandler = Effect.gen(function* () {
@@ -114,13 +102,32 @@ const getUtxosHandler = Effect.gen(function* () {
         { status: 400 },
       );
     }
-    const allUTxOs = yield* MempoolLedgerDB.retrieve();
-    const filtered = allUTxOs.filter(({ value }) => {
-      const cmlOutput = CML.TransactionOutput.from_cbor_bytes(value);
-      return cmlOutput.address().to_bech32() === addrDetails.address.bech32;
+
+    const utxosWithAddress = yield* MempoolLedgerDB.retrieveByAddress(
+      addrDetails.address.bech32,
+    );
+    const { ledgerTrie } = yield* makeMpts();
+    const utxosWithAddressNotConsumed = yield* Effect.allSuccesses(
+      utxosWithAddress.map((entry) =>
+        Effect.tryPromise(() => ledgerTrie.get(entry.outref)).pipe(
+          Effect.andThen((res) => {
+            if (res === null) {
+              return Effect.fail(null);
+            } else {
+              return Effect.succeed(res);
+            }
+          }),
+        ),
+      ),
+      { concurrency: "unbounded" },
+    );
+
+    yield* Effect.logInfo(
+      `Found ${utxosWithAddressNotConsumed.length} UTXOs for ${addr}`,
+    );
+    return yield* HttpServerResponse.json({
+      utxos: utxosWithAddressNotConsumed,
     });
-    yield* Effect.logInfo(`Found ${filtered.length} UTXOs for ${addr}`);
-    return yield* HttpServerResponse.json({ utxos: filtered });
   } catch (error) {
     yield* Effect.logInfo(`Invalid address: ${addr}`);
     return yield* HttpServerResponse.json(
@@ -346,12 +353,16 @@ const postSubmitHandler = Effect.gen(function* () {
     return yield* Effect.gen(function* () {
       const sql = yield* SqlClient.SqlClient;
       const txCBOR = fromHex(txString);
+      const deserializedTx = CML.Transaction.from_cbor_bytes(txCBOR);
+      const txBody = deserializedTx.body();
+      const txHash = CML.hash_transaction(txBody);
+      const txHashHex = txHash.to_hex();
+      const txHashBytes = txHash.to_raw_bytes();
       const tx = lucid.fromTx(txString);
-      const { spent, produced } = yield* findSpentAndProducedUTxOs(txCBOR);
+      const { produced } = yield* findSpentAndProducedUTxOs(txCBOR);
       yield* sql.withTransaction(
         Effect.gen(function* () {
           yield* MempoolDB.insert(fromHex(tx.toHash()), txCBOR);
-          yield* MempoolLedgerDB.clearUTxOs(spent);
           yield* MempoolLedgerDB.insert(produced);
         }),
       );
