@@ -10,7 +10,7 @@ use midgard/common/utils.{get_singleton_asset_with_policy} as get_singleton_asse
 use midgard/computation_thread.{StepDatum, Success}
 use midgard/fraud_proof/common/types.{
   ExclusionProofInputTx, ExclusionProofUtxo, FraudProofDatum,
-  MembershipProofInputs,
+  MembershipProofInputs, MembershipProofWithdrawal,
 }
 use midgard/ledger_state.{Header}
 
@@ -100,6 +100,29 @@ pub fn validate_membership_proof(
   True
 }
 
+pub fn validate_withdrawal_inclusion_proof(
+  tx: Transaction,
+  plutarch_midgard_merkle_validator: ScriptHash,
+  proof_withdrawal: MembershipProofWithdrawal,
+) -> Bool {
+  expect
+    merkelized_validator.delegated_validation(
+      function_input: MembershipProofWithdrawal {
+        withdrawal_root: proof_withdrawal.withdrawal_root,
+        withdrawal_info: proof_withdrawal.withdrawal_info,
+        withdrawal_info_hash: proof_withdrawal.withdrawal_info_hash,
+        withdrawal_to_root_proof_path: proof_withdrawal.withdrawal_to_root_proof_path,
+      },
+      staking_validator: plutarch_midgard_merkle_validator,
+      input_data_coercer: fn(withdraw_redeemer: Data) {
+        expect coerced: MembershipProofWithdrawal = withdraw_redeemer
+        coerced
+      },
+      redeemers: tx.redeemers,
+    )
+  True
+}
+
 // Relevant to (2)
 pub fn validate_exclusion_proof(
   tx: Transaction,
@@ -146,6 +169,26 @@ pub fn validate_exclusion_utxo_proof(
       redeemers: tx.redeemers,
     )
   True
+}
+
+// Relevant to (1): tx_root provided by fraud prover in redeemer matches block_hash from the state queue block from the reference input
+pub fn get_withdrawals_root(
+  tx: Transaction,
+  state_queue_node_ref_input_index: Int,
+) -> ByteArray {
+  // Reference input with block_hash 
+  expect Some(state_queue_node_input) =
+    list.at(tx.reference_inputs, state_queue_node_ref_input_index)
+
+  // Extract tx_root via the state queue block hash
+  expect InlineDatum(state_queue_datum_data) =
+    state_queue_node_input.output.datum
+  expect state_queue_node_datum: unordered.NodeDatum = state_queue_datum_data
+  expect parsed_state_queue_datum: Header = state_queue_node_datum.data
+  let extracted_prev_withdrawals_root =
+    parsed_state_queue_datum.withdrawals_root
+
+  extracted_prev_withdrawals_root
 }
 
 // Common validation for any step's output state (except final step)
