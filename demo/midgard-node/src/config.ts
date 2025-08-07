@@ -19,6 +19,7 @@ export type NodeConfigDep = {
   NETWORK: Network;
   PORT: number;
   WAIT_BETWEEN_BLOCK_COMMITMENT: number;
+  WAIT_BETWEEN_BLOCK_CONFIRMATION: number;
   WAIT_BETWEEN_MERGE_TXS: number;
   PROM_METRICS_PORT: number;
   OLTP_EXPORTER_URL: string;
@@ -84,9 +85,12 @@ export const makeConfig = Effect.gen(function* () {
     Config.string("NETWORK"),
     Config.integer("PORT").pipe(Config.withDefault(3000)),
     Config.integer("WAIT_BETWEEN_BLOCK_COMMITMENT").pipe(
+      Config.withDefault(1000),
+    ),
+    Config.integer("WAIT_BETWEEN_BLOCK_CONFIRMATION").pipe(
       Config.withDefault(10000),
     ),
-    Config.integer("WAIT_BETWEEN_MERGE_TXS").pipe(Config.withDefault(60000)),
+    Config.integer("WAIT_BETWEEN_MERGE_TXS").pipe(Config.withDefault(10000)),
     Config.integer("PROM_METRICS_PORT").pipe(Config.withDefault(9464)),
     Config.string("OLTP_EXPORTER_URL").pipe(
       Config.withDefault("http://0.0.0.0:4318/v1/traces"),
@@ -123,18 +127,19 @@ export const makeConfig = Effect.gen(function* () {
     NETWORK: config[7] as Network,
     PORT: config[8],
     WAIT_BETWEEN_BLOCK_COMMITMENT: config[9],
-    WAIT_BETWEEN_MERGE_TXS: config[10],
-    PROM_METRICS_PORT: config[11],
-    OLTP_EXPORTER_URL: config[12],
-    POSTGRES_HOST: config[13],
-    POSTGRES_PASSWORD: config[14],
-    POSTGRES_DB: config[15],
-    POSTGRES_USER: config[16],
-    LEDGER_MPT_DB_PATH: config[17],
-    MEMPOOL_MPT_DB_PATH: config[18],
-    TESTNET_GENESIS_WALLET_SEED_PHRASE_A: config[19],
-    TESTNET_GENESIS_WALLET_SEED_PHRASE_B: config[20],
-    TESTNET_GENESIS_WALLET_SEED_PHRASE_C: config[21],
+    WAIT_BETWEEN_BLOCK_CONFIRMATION: config[10],
+    WAIT_BETWEEN_MERGE_TXS: config[11],
+    PROM_METRICS_PORT: config[12],
+    OLTP_EXPORTER_URL: config[13],
+    POSTGRES_HOST: config[14],
+    POSTGRES_PASSWORD: config[15],
+    POSTGRES_DB: config[16],
+    POSTGRES_USER: config[17],
+    LEDGER_MPT_DB_PATH: config[18],
+    MEMPOOL_MPT_DB_PATH: config[19],
+    TESTNET_GENESIS_WALLET_SEED_PHRASE_A: config[20],
+    TESTNET_GENESIS_WALLET_SEED_PHRASE_B: config[21],
+    TESTNET_GENESIS_WALLET_SEED_PHRASE_C: config[22],
   };
 }).pipe(Effect.orDie);
 

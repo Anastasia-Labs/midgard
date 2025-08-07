@@ -1,6 +1,4 @@
-// Build a tx Merkle root with all the mempool txs
-
-import { WorkerOutput } from "@/utils.js";
+import { WorkerOutput } from "@/workers/utils/commit-block-header.js";
 import { Effect, Metric } from "effect";
 import { Worker } from "worker_threads";
 
@@ -32,44 +30,48 @@ const commitBlockTxSizeGauge = Metric.gauge("commit_block_tx_size", {
   description: "A gauge for tracking the size of the commit block transaction",
 });
 
-// Apply mempool txs to LatestLedgerDB, and find the new UTxO set
-
-// Update LatestLedgerDB to store this updated set
-
-// Clear included transactions from MempoolDB, and inject them into ImmutableDB
-
-// Build a Merkle root using this updated UTxO set
-
-// Build and submit the commitment block using these 2 roots
-
 export const buildAndSubmitCommitmentBlock = () =>
   Effect.gen(function* () {
     if (global.RESET_IN_PROGRESS) {
       return yield* Effect.logInfo("🔹 Reset in progress...");
     }
     const worker = Effect.async<WorkerOutput, Error, never>((resume) => {
-      Effect.runSync(Effect.logInfo(`👷 Starting worker...`));
+      Effect.runSync(Effect.logInfo(`👷 Starting block commitment worker...`));
       const worker = new Worker(
         new URL("./commit-block-header.js", import.meta.url),
         {
-          workerData: { data: { command: "start" } },
+          workerData: {
+            data: {
+              availableConfirmedBlock: global.AVAILABLE_CONFIRMED_BLOCK,
+              mempoolTxsCountSoFar: global.PROCESSED_UNSUBMITTED_TXS_COUNT,
+              sizeOfProcessedTxsSoFar: global.PROCESSED_UNSUBMITTED_TXS_SIZE,
+            },
+          },
         },
       );
       worker.on("message", (output: WorkerOutput) => {
-        if ("error" in output) {
-          resume(Effect.fail(new Error(`Error in worker: ${output.error}`)));
+        if (output.type === "FailureOutput") {
+          resume(
+            Effect.fail(
+              new Error(`Error in commitment worker: ${output.error}`),
+            ),
+          );
         } else {
           resume(Effect.succeed(output));
         }
         worker.terminate();
       });
       worker.on("error", (e: Error) => {
-        resume(Effect.fail(new Error(`Error in worker: ${e}`)));
+        resume(Effect.fail(new Error(`Error in commitment worker: ${e}`)));
         worker.terminate();
       });
       worker.on("exit", (code: number) => {
         if (code !== 0) {
-          resume(Effect.fail(new Error(`Worker exited with code: ${code}`)));
+          resume(
+            Effect.fail(
+              new Error(`Commitment worker exited with code: ${code}`),
+            ),
+          );
         }
       });
       return Effect.sync(() => {
@@ -77,17 +79,37 @@ export const buildAndSubmitCommitmentBlock = () =>
       });
     });
 
-    const { txSize, mempoolTxsCount, sizeOfBlocksTxs } = yield* worker;
+    const workerOutput: WorkerOutput = yield* worker;
 
-    if (txSize > 0) {
-      global.BLOCKS_IN_QUEUE += 1;
-
-      yield* commitBlockTxSizeGauge(Effect.succeed(txSize));
-      yield* commitBlockNumTxGauge(Effect.succeed(BigInt(mempoolTxsCount)));
-      yield* Metric.increment(commitBlockCounter);
-      yield* Metric.incrementBy(commitBlockTxCounter, BigInt(mempoolTxsCount));
-      yield* totalTxSizeGauge(Effect.succeed(sizeOfBlocksTxs));
-
-      yield* Effect.logInfo("🔹 ☑️  Block submission completed.");
+    switch (workerOutput.type) {
+      case "SuccessfulSubmissionOutput": {
+        global.BLOCKS_IN_QUEUE += 1;
+        global.AVAILABLE_CONFIRMED_BLOCK = "";
+        global.UNCONFIRMED_SUBMITTED_BLOCK = workerOutput.submittedTxHash;
+        yield* commitBlockTxSizeGauge(Effect.succeed(workerOutput.txSize));
+        yield* commitBlockNumTxGauge(
+          Effect.succeed(BigInt(workerOutput.mempoolTxsCount)),
+        );
+        yield* Metric.increment(commitBlockCounter);
+        yield* Metric.incrementBy(
+          commitBlockTxCounter,
+          BigInt(workerOutput.mempoolTxsCount),
+        );
+        yield* totalTxSizeGauge(Effect.succeed(workerOutput.sizeOfBlocksTxs));
+        yield* Effect.logInfo("🔹 ☑️  Block submission completed.");
+        break;
+      }
+      case "SkippedSubmissionOutput": {
+        global.PROCESSED_UNSUBMITTED_TXS_COUNT += workerOutput.mempoolTxsCount;
+        global.PROCESSED_UNSUBMITTED_TXS_SIZE +=
+          workerOutput.sizeOfProcessedTxs;
+        break;
+      }
+      case "EmptyMempoolOutput": {
+        break;
+      }
+      case "FailureOutput": {
+        break;
+      }
     }
   });

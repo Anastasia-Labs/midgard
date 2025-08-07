@@ -4,6 +4,7 @@ import * as ConfirmedLedgerDB from "./confirmedLedger.js";
 import * as ImmutableDB from "./immutable.js";
 import * as LatestLedgerDB from "./latestLedger.js";
 import * as MempoolDB from "./mempool.js";
+import * as ProcessedMempoolDB from "./processedMempool.js";
 import * as MempoolLedgerDB from "./mempoolLedger.js";
 import { createKeyValueTable, createLedgerTable } from "./utils.js";
 import { Effect } from "effect";
@@ -24,6 +25,7 @@ export const initializeDb: () => Effect.Effect<
 
     yield* BlocksDB.init;
     yield* createKeyValueTable(MempoolDB.tableName);
+    yield* createKeyValueTable(ProcessedMempoolDB.tableName);
     yield* createLedgerTable(MempoolLedgerDB.tableName);
     yield* createKeyValueTable(ImmutableDB.tableName);
     yield* createLedgerTable(ConfirmedLedgerDB.tableName);

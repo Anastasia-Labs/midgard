@@ -26,7 +26,9 @@ import { createServer } from "node:http";
 import { NodeHttpServer } from "@effect/platform-node";
 import { HttpBodyError } from "@effect/platform/HttpBody";
 import { insertGenesisUtxos } from "@/database/genesis.js";
-import { deleteLedgerMpt, deleteMempoolMpt } from "@/workers/db.js";
+import { deleteLedgerMpt, deleteMempoolMpt } from "@/workers/utils/mpt.js";
+import { Worker } from "worker_threads";
+import { WorkerOutput as BlockConfirmationWorkerOutput } from "@/workers/utils/confirm-block-commitments.js";
 
 const txCounter = Metric.counter("tx_count", {
   description: "A counter for tracking submit transactions",
@@ -385,6 +387,70 @@ const blockCommitmentAction = Effect.gen(function* () {
   );
 });
 
+const blockConfirmationAction = Effect.gen(function* () {
+  yield* Effect.logInfo("🟤 New block confirmation process started.");
+  const worker = Effect.async<BlockConfirmationWorkerOutput, Error>(
+    (resume) => {
+      Effect.runSync(
+        Effect.logInfo(`👷 Starting block confirmation worker...`),
+      );
+      const worker = new Worker(
+        new URL("./confirm-block-commitments.js", import.meta.url),
+        {
+          workerData: {
+            data: {
+              unconfirmedSubmittedBlock: global.UNCONFIRMED_SUBMITTED_BLOCK,
+            },
+          },
+        },
+      );
+      worker.on("message", (output: BlockConfirmationWorkerOutput) => {
+        if (output.type === "FailedConfirmationOutput") {
+          resume(
+            Effect.fail(
+              new Error(`Error in confirmation worker: ${output.error}`),
+            ),
+          );
+        } else {
+          resume(Effect.succeed(output));
+        }
+        worker.terminate();
+      });
+      worker.on("error", (e: Error) => {
+        resume(Effect.fail(new Error(`Error in confirmation worker: ${e}`)));
+        worker.terminate();
+      });
+      worker.on("exit", (code: number) => {
+        if (code !== 0) {
+          resume(
+            Effect.fail(
+              new Error(`Confirmation worker exited with code: ${code}`),
+            ),
+          );
+        }
+      });
+      return Effect.sync(() => {
+        worker.terminate();
+      });
+    },
+  );
+  const workerOutput: BlockConfirmationWorkerOutput = yield* worker;
+  switch (workerOutput.type) {
+    case "SuccessfulConfirmationOutput": {
+      global.UNCONFIRMED_SUBMITTED_BLOCK = "";
+      global.AVAILABLE_CONFIRMED_BLOCK = workerOutput.blocksUTxO;
+      yield* Effect.logInfo("🟤 ☑️  Submitted block confirmed.");
+      break;
+    }
+    case "NoTxForConfirmationOutput": {
+      break;
+    }
+    case "FailedConfirmationOutput": {
+      break;
+    }
+  }
+});
+
 const mergeAction = Effect.gen(function* () {
   const nodeConfig = yield* NodeConfig;
   const { user: lucid } = yield* User;
@@ -409,20 +475,30 @@ const mempoolAction = Effect.gen(function* () {
 });
 
 const blockCommitmentFork = (rerunDelay: number) =>
-  pipe(
-    Effect.gen(function* () {
-      yield* Effect.logInfo("🔵 Block commitment fork started.");
-      const action = blockCommitmentAction.pipe(
-        Effect.withSpan("block-commitment-fork"),
-        Effect.catchAllCause(Effect.logWarning),
-      );
-      const schedule = Schedule.addDelay(Schedule.forever, () =>
-        Duration.millis(rerunDelay),
-      );
-      yield* Effect.repeat(action, schedule);
-    }),
-    // Effect.fork, // Forking ensures the effect keeps running
-  );
+  Effect.gen(function* () {
+    yield* Effect.logInfo("🔵 Block commitment fork started.");
+    const action = blockCommitmentAction.pipe(
+      Effect.withSpan("block-commitment-fork"),
+      Effect.catchAllCause(Effect.logWarning),
+    );
+    const schedule = Schedule.addDelay(Schedule.forever, () =>
+      Duration.millis(rerunDelay),
+    );
+    yield* Effect.repeat(action, schedule);
+  });
+
+const blockConfirmationFork = (rerunDelay: number) =>
+  Effect.gen(function* () {
+    yield* Effect.logInfo("🟫 Block confirmation fork started.");
+    const action = blockConfirmationAction.pipe(
+      Effect.withSpan("block-confirmation-fork"),
+      Effect.catchAllCause(Effect.logWarning),
+    );
+    const schedule = Schedule.addDelay(Schedule.forever, () =>
+      Duration.millis(rerunDelay),
+    );
+    yield* Effect.repeat(action, schedule);
+  });
 
 // possible issues:
 // 1. tx-generator: large batch size & high concurrency
@@ -494,12 +570,22 @@ export const runNode = Effect.gen(function* () {
     nodeConfig.WAIT_BETWEEN_BLOCK_COMMITMENT,
   );
 
+  const blockConfirmationThread = blockConfirmationFork(
+    nodeConfig.WAIT_BETWEEN_BLOCK_CONFIRMATION,
+  );
+
   const mergeThread = pipe(mergeFork(nodeConfig.WAIT_BETWEEN_MERGE_TXS));
 
   const monitorMempoolThread = pipe(mempoolFork());
 
   const program = Effect.all(
-    [appThread, blockCommitmentThread, mergeThread, monitorMempoolThread],
+    [
+      appThread,
+      blockCommitmentThread,
+      blockConfirmationThread,
+      mergeThread,
+      monitorMempoolThread,
+    ],
     {
       concurrency: "unbounded",
     },

@@ -24,7 +24,7 @@ import {
   makeMpts,
   processMpts,
   withTrieTransaction,
-} from "../src/workers/db.js";
+} from "../src/workers/utils/mpt.js";
 import { SqlClient } from "@effect/sql";
 import * as ETH from "@ethereumjs/mpt";
 import * as ETH_UTILS from "@ethereumjs/util";

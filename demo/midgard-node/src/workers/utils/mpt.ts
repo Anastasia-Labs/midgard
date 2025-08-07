@@ -113,7 +113,7 @@ export const processMpts = (
     utxoRoot: string;
     txRoot: string;
     mempoolTxHashes: Buffer[];
-    sizeOfBlocksTxs: number;
+    sizeOfProcessedTxs: number;
   },
   Error,
   Database
@@ -122,7 +122,7 @@ export const processMpts = (
     const mempoolTxHashes: Buffer[] = [];
     const mempoolBatchOps: ETH_UTILS.BatchDBOp[] = [];
     const batchDBOps: ETH_UTILS.BatchDBOp[] = [];
-    let sizeOfBlocksTxs = 0;
+    let sizeOfProcessedTxs = 0;
     yield* Effect.logInfo("🔹 Going through mempool txs and finding roots...");
     yield* Effect.forEach(mempoolTxs, (kv: KVPair) =>
       Effect.gen(function* () {
@@ -133,7 +133,7 @@ export const processMpts = (
           txCbor,
           txHash,
         ).pipe(Effect.withSpan("findSpentAndProducedUTxOs"));
-        sizeOfBlocksTxs += txCbor.length;
+        sizeOfProcessedTxs += txCbor.length;
         const delOps: ETH_UTILS.BatchDBOp[] = spent.map((outRef) => ({
           type: "del",
           key: outRef,
@@ -181,7 +181,7 @@ export const processMpts = (
       utxoRoot: utxoRoot,
       txRoot: txRoot,
       mempoolTxHashes: mempoolTxHashes,
-      sizeOfBlocksTxs: sizeOfBlocksTxs,
+      sizeOfProcessedTxs: sizeOfProcessedTxs,
     };
   });
 

@@ -31,25 +31,7 @@ export const handleSignSubmit = (
   onConfirmFailure: (error: ConfirmError) => Effect.Effect<void, Error>,
 ): Effect.Effect<string | void, Error> =>
   Effect.gen(function* () {
-    const walletAddr = yield* Effect.tryPromise({
-      try: () => lucid.wallet().address(),
-      catch: (e) => new Error(`${e}`),
-    });
-    yield* Effect.logInfo(`✍  Signing tx with ${walletAddr}...`);
-    const signed = yield* signBuilder.sign
-      .withWallet()
-      .completeProgram()
-      .pipe(Effect.mapError((err) => new SignError({ err })));
-    yield* Effect.logInfo("✉️  Submitting transaction...");
-    const txHash = yield* signed.submitProgram().pipe(
-      Effect.retry(
-        Schedule.compose(
-          Schedule.exponential(INIT_RETRY_AFTER_MILLIS),
-          Schedule.recurs(RETRY_ATTEMPTS),
-        ),
-      ),
-      Effect.mapError((err) => new SubmitError({ err })),
-    );
+    const txHash = yield* signSubmitHelper(lucid, signBuilder);
     yield* Effect.logInfo(`🚀 Transaction submitted: ${txHash}`);
     yield* Effect.logInfo(`⏳ Confirming Transaction...`);
     yield* Effect.tryPromise({
@@ -80,28 +62,17 @@ export const handleSignSubmit = (
 /**
  * Handle the signing and submission of a transaction without waiting for the transaction to be confirmed.
  *
+ * @param lucid - The LucidEvolution instance. Here it's only used for logging the signer's address.
  * @param signBuilder - The transaction sign builder.
  * @returns An Effect that resolves when the transaction is signed, submitted, and confirmed.
  */
-export const handleSignSubmitWithoutConfirmation = (
+export const handleSignSubmitNoConfirmation = (
+  lucid: LucidEvolution,
   signBuilder: TxSignBuilder,
   onSubmitFailure: (error: SubmitError) => Effect.Effect<void, Error>,
 ): Effect.Effect<string | void, Error> =>
   Effect.gen(function* () {
-    const signed = yield* signBuilder.sign
-      .withWallet()
-      .completeProgram()
-      .pipe(Effect.mapError((err) => new SignError({ err })));
-    const txHash = yield* signed.submitProgram().pipe(
-      Effect.retry(
-        Schedule.compose(
-          Schedule.exponential(INIT_RETRY_AFTER_MILLIS),
-          Schedule.recurs(RETRY_ATTEMPTS),
-        ),
-      ),
-      Effect.mapError((err) => new SubmitError({ err })),
-    );
-    yield* Effect.logDebug(`🚀 Transaction submitted: ${txHash}`);
+    const txHash = yield* signSubmitHelper(lucid, signBuilder);
     return txHash;
   }).pipe(
     Effect.catchAll((err: SignError | SubmitError) =>
@@ -113,6 +84,34 @@ export const handleSignSubmitWithoutConfirmation = (
           ),
     ),
   );
+
+const signSubmitHelper = (
+  lucid: LucidEvolution,
+  signBuilder: TxSignBuilder,
+): Effect.Effect<string, SignError | SubmitError> =>
+  Effect.gen(function* () {
+    const walletAddr = yield* Effect.tryPromise({
+      try: () => lucid.wallet().address(),
+      catch: (e) => new Error(`${e}`),
+    }).pipe(Effect.catchAll((_e) => Effect.succeed("<unknown>")));
+    yield* Effect.logInfo(`✍  Signing tx with ${walletAddr}...`);
+    const signed = yield* signBuilder.sign
+      .withWallet()
+      .completeProgram()
+      .pipe(Effect.mapError((err) => new SignError({ err })));
+    yield* Effect.logInfo("✉️  Submitting transaction...");
+    const txHash = yield* signed.submitProgram().pipe(
+      Effect.retry(
+        Schedule.compose(
+          Schedule.exponential(INIT_RETRY_AFTER_MILLIS),
+          Schedule.recurs(RETRY_ATTEMPTS),
+        ),
+      ),
+      Effect.mapError((err) => new SubmitError({ err })),
+    );
+    yield* Effect.logInfo(`🚀 Transaction submitted: ${txHash}`);
+    return txHash;
+  });
 
 export type HandleSignSubmitError = SignError | SubmitError | ConfirmError;
 
@@ -144,8 +143,9 @@ export const fetchFirstBlockTxs = (
   Database
 > =>
   Effect.gen(function* () {
-    const blockHeader =
-      yield* SDK.Utils.getHeaderFromStateQueueUTxO(firstBlockUTxO);
+    const blockHeader = yield* SDK.Utils.getHeaderFromStateQueueDatum(
+      firstBlockUTxO.datum,
+    );
     const headerHash = yield* SDK.Utils.hashHeader(blockHeader).pipe(
       Effect.map((hh) => Buffer.from(fromHex(hh))),
     );

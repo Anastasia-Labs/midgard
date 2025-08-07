@@ -36,10 +36,7 @@ export const fetchUnsortedStateQueueUTxOsProgram = (
       config.stateQueueAddress,
       config.stateQueuePolicyId,
     );
-    return yield* utxosToStateQueueUTxOs(
-      allUTxOs,
-      config.stateQueuePolicyId,
-    );
+    return yield* utxosToStateQueueUTxOs(allUTxOs, config.stateQueuePolicyId);
   });
 
 /**

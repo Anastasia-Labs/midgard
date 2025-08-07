@@ -2,7 +2,7 @@ import { Effect } from "effect";
 import { LucidEvolution } from "@lucid-evolution/lucid";
 import { makeReturn } from "../../core.js";
 import {
-  getConfirmedStateFromStateQueueUTxO,
+  getConfirmedStateFromStateQueueDatum,
   utxosToStateQueueUTxOs,
   findLinkStateQueueUTxO,
 } from "../../utils/state-queue.js";
@@ -25,7 +25,17 @@ export const fetchConfirmedStateAndItsLinkProgram = (
       config.stateQueuePolicyId,
     );
     const filteredForConfirmedState = yield* Effect.allSuccesses(
-      allUTxOs.map(getConfirmedStateFromStateQueueUTxO),
+      allUTxOs.map((u) =>
+        Effect.gen(function* () {
+          const dataAndLink = yield* getConfirmedStateFromStateQueueDatum(
+            u.datum,
+          );
+          return {
+            ...dataAndLink,
+            utxo: u,
+          };
+        }),
+      ),
     );
     if (filteredForConfirmedState.length === 1) {
       const { utxo: confirmedStateUTxO, link: confirmedStatesLink } =

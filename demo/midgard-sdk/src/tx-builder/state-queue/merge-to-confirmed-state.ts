@@ -8,12 +8,12 @@ import {
 } from "@lucid-evolution/lucid";
 import { ConfirmedState, Header } from "../ledger-state.js";
 import {
-  getHeaderFromStateQueueUTxO,
+  getHeaderFromStateQueueDatum,
   hashHeader,
 } from "../../utils/ledger-state.js";
 import { NodeDatum } from "../linked-list.js";
 import { Redeemer, FetchConfig, MergeParams } from "./types.js";
-import { getConfirmedStateFromStateQueueUTxO } from "@/utils/state-queue.js";
+import { getConfirmedStateFromStateQueueDatum } from "@/utils/state-queue.js";
 
 /**
  * Merge
@@ -34,9 +34,10 @@ export const mergeTxBuilder = (
 ): Effect.Effect<TxBuilder, Error> =>
   Effect.gen(function* () {
     const { data: currentConfirmedState } =
-      yield* getConfirmedStateFromStateQueueUTxO(confirmedUTxO);
-    const blockHeader: Header =
-      yield* getHeaderFromStateQueueUTxO(firstBlockUTxO);
+      yield* getConfirmedStateFromStateQueueDatum(confirmedUTxO.datum);
+    const blockHeader: Header = yield* getHeaderFromStateQueueDatum(
+      firstBlockUTxO.datum,
+    );
     const headerHash = yield* hashHeader(blockHeader);
     const newConfirmedState = {
       ...currentConfirmedState,

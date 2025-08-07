@@ -12,7 +12,7 @@ import { getNodeDatumFromUTxO } from "./linked-list.js";
 import { MerkleRoot, POSIXTime } from "../tx-builder/common.js";
 import { Datum } from "@/tx-builder/state-queue/types.js";
 import { getSingleAssetApartFromAda } from "./common.js";
-import { getHeaderFromStateQueueUTxO, hashHeader } from "./ledger-state.js";
+import { getHeaderFromStateQueueDatum, hashHeader } from "./ledger-state.js";
 
 type StateQueueUTxO = StateQueue.StateQueueUTxO;
 
@@ -48,22 +48,17 @@ export const utxosToStateQueueUTxOs = (
 };
 
 /**
- * Given a StateQueueUTxO, this function confirmes the node is root (i.e. no
- * keys in its datum), and attempts to coerce its underlying data into a
- * `ConfirmedState`.
+ * Given a StateQueue datum, this function confirmes the node is root
+ * (i.e. no keys in its datum), and attempts to coerce its underlying data into
+ * a `ConfirmedState`.
  */
-export const getConfirmedStateFromStateQueueUTxO = (
-  utxo: StateQueueUTxO,
-): Effect.Effect<
-  { utxo: StateQueueUTxO; data: ConfirmedState; link: NodeKey },
-  Error
-> => {
+export const getConfirmedStateFromStateQueueDatum = (
+  nodeDatum: Datum,
+): Effect.Effect<{ data: ConfirmedState; link: NodeKey }, Error> => {
   try {
-    const nodeDatum = utxo.datum;
     if (nodeDatum.key === "Empty") {
       const confirmedState = Data.castFrom(nodeDatum.data, ConfirmedState);
       return Effect.succeed({
-        utxo,
         data: confirmedState,
         link: nodeDatum.next,
       });
@@ -81,14 +76,14 @@ export const getConfirmedStateFromStateQueueUTxO = (
  * new `Header` that should be included in the new block's datum.
  *
  * @param lucid - The `LucidEvolution` API object.
- * @param latestBlock - UTxO of the latest block in queue.
+ * @param latestBlocksDatum - Datum of the UTxO of the latest block in queue.
  * @param newUTxOsRoot - MPF root of the updated ledger.
  * @param transactionsRoot - MPF root of the transactions included in the new block.
  * @param endTime - POSIX time of the new block's closing range.
  */
 export const updateLatestBlocksDatumAndGetTheNewHeader = (
   lucid: LucidEvolution,
-  latestBlock: StateQueueUTxO,
+  latestBlocksDatum: Datum,
   newUTxOsRoot: MerkleRoot,
   transactionsRoot: MerkleRoot,
   endTime: POSIXTime,
@@ -101,12 +96,12 @@ export const updateLatestBlocksDatumAndGetTheNewHeader = (
 
     const pubKeyHash = paymentCredentialOf(walletAddress).hash;
 
-    if (latestBlock.datum.key === "Empty") {
+    if (latestBlocksDatum.key === "Empty") {
       const { data: confirmedState } =
-        yield* getConfirmedStateFromStateQueueUTxO(latestBlock);
+        yield* getConfirmedStateFromStateQueueDatum(latestBlocksDatum);
       return {
         nodeDatum: {
-          ...latestBlock.datum,
+          ...latestBlocksDatum,
           next: { Key: { key: confirmedState.headerHash } },
         },
         header: {
@@ -123,11 +118,12 @@ export const updateLatestBlocksDatumAndGetTheNewHeader = (
         },
       };
     } else {
-      const latestHeader = yield* getHeaderFromStateQueueUTxO(latestBlock);
+      const latestHeader =
+        yield* getHeaderFromStateQueueDatum(latestBlocksDatum);
       const prevHeaderHash = yield* hashHeader(latestHeader);
       return {
         nodeDatum: {
-          ...latestBlock.datum,
+          ...latestBlocksDatum,
           next: { Key: { key: prevHeaderHash } },
         },
         header: {
@@ -178,7 +174,14 @@ export const sortStateQueueUTxOs = (
 ): Effect.Effect<StateQueueUTxO[], Error> =>
   Effect.gen(function* () {
     const filteredForConfirmedState = yield* Effect.allSuccesses(
-      stateQueueUTxOs.map(getConfirmedStateFromStateQueueUTxO),
+      stateQueueUTxOs.map((u) =>
+        Effect.gen(function* () {
+          const dataAndLink = yield* getConfirmedStateFromStateQueueDatum(
+            u.datum,
+          );
+          return { ...dataAndLink, utxo: u };
+        }),
+      ),
     );
     if (filteredForConfirmedState.length === 1) {
       const { utxo: confirmedStateUTxO, link: linkToOldestBlock } =

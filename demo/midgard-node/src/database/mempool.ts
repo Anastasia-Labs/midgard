@@ -5,8 +5,6 @@ import {
   delMultiple,
   retrieveValues,
   retrieveNumberOfEntries,
-  LedgerColumns,
-  LedgerEntry,
   retrieveValue,
   KVPair,
   KVColumns,

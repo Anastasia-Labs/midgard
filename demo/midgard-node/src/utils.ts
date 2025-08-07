@@ -1,3 +1,4 @@
+import { parentPort, workerData } from "worker_threads";
 import {
   Blockfrost,
   CML,
@@ -10,24 +11,12 @@ import {
   Provider,
 } from "@lucid-evolution/lucid";
 import * as chalk_ from "chalk";
-import { Effect } from "effect";
+import { Effect, pipe } from "effect";
 import {
   LedgerColumns,
   LedgerEntry,
   MinimalLedgerEntry,
 } from "./database/utils.js";
-
-export interface WorkerInput {
-  data: {
-    command: string;
-  };
-}
-
-export interface WorkerOutput {
-  txSize: number;
-  mempoolTxsCount: number;
-  sizeOfBlocksTxs: number;
-}
 
 export type ProcessedTx = {
   txId: Buffer;
@@ -35,6 +24,11 @@ export type ProcessedTx = {
   spent: Buffer[];
   produced: LedgerEntry[];
 };
+
+// For some reason importing these directly into the new confirmation worker
+// failed. This is probably a temporary workaround.
+export const reexportedParentPort = parentPort;
+export const reexportedWorkerData = workerData;
 
 export const chalk = new chalk_.Chalk();
 
@@ -192,6 +186,41 @@ export const breakDownTx = (
       produced,
     };
   });
+
+/**
+ * Given a batch size and a total count, the required continuation will be
+ * provided with start and end indices.
+ *
+ * @param batchSize - Size of each batch
+ * @param totalCount - Total count of the iterable meant to be batched
+ * @param opName - A name to make logs more readable (doesn't affect the logic)
+ * @param effectMaker - A continuation that is provided with starting and ending indices for each batch.
+ */
+export const batchProgram = <A, C>(
+  batchSize: number,
+  totalCount: number,
+  opName: string,
+  effectMaker: (
+    startIndex: number,
+    endIndex: number,
+  ) => Effect.Effect<A, Error, C>,
+) => {
+  const batchIndices = Array.from(
+    { length: Math.ceil(totalCount / batchSize) },
+    (_, i) => i * batchSize,
+  );
+  return Effect.forEach(
+    batchIndices,
+    (startIndex) => {
+      const endIndex = startIndex + batchSize;
+      return pipe(
+        effectMaker(startIndex, endIndex),
+        Effect.withSpan(`batch-${opName}-${startIndex}-${endIndex}`),
+      );
+    },
+    { concurrency: "unbounded" },
+  );
+};
 
 export const ENV_VARS_GUIDE = `
 Make sure you first have set the environment variable for your seed phrase:

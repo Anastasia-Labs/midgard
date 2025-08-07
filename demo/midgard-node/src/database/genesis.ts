@@ -10,7 +10,7 @@ import {
   walletFromSeed,
 } from "@lucid-evolution/lucid";
 import { NodeConfig } from "@/config.js";
-import { makeMpts } from "@/workers/db.js";
+import { makeMpts } from "@/workers/utils/mpt.js";
 
 const makeGenesisUTxOs = (
   network: Network,
