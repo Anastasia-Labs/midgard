@@ -1,13 +1,15 @@
 import { Effect } from "effect";
-import { clearTable, mapSqlError } from "./utils.js";
+import * as Common from "@/database/utils/common.js"
 import { SqlClient, SqlError } from "@effect/sql";
 import { Database } from "@/services/database.js";
 
 export const tableName = "blocks";
 
 export enum Columns {
+  HEIGHT = "height",
   HEADER_HASH = "header_hash",
   TX_ID = "tx_id",
+  TIMESTAMPTZ = "time_stamp_tz",
 }
 
 export enum ColumnsIndices {
@@ -15,17 +17,25 @@ export enum ColumnsIndices {
   TX_ID = "idx_blocks_tx_id",
 }
 
-type Entry = {
-  [blockCols in Columns]: Buffer;
+type EntryNoHeightAndTS = {
+  [Columns.HEADER_HASH]: Buffer;
+  [Columns.TX_ID]: Buffer;
 };
+
+type Entry = EntryNoHeightAndTS & {
+  [Columns.HEIGHT]: number;
+  [Columns.TIMESTAMPTZ]: Date;
+}
 
 export const init = Effect.gen(function* () {
   const sql = yield* SqlClient.SqlClient;
   yield* sql.withTransaction(
     Effect.gen(function* () {
       yield* sql`CREATE TABLE IF NOT EXISTS ${sql(tableName)} (
+      ${sql(Columns.HEIGHT)} SERIAL PRIMARY KEY,
       ${sql(Columns.HEADER_HASH)} BYTEA NOT NULL,
-      ${sql(Columns.TX_ID)} BYTEA NOT NULL UNIQUE
+      ${sql(Columns.TX_ID)} BYTEA NOT NULL UNIQUE,
+      ${sql(Columns.TIMESTAMPTZ)} TIMESTAMPTZ NOT NULL DEFAULT(NOW())
     );`;
       yield* sql`CREATE INDEX ${sql(
         ColumnsIndices.HEADER_HASH,
@@ -47,7 +57,7 @@ export const insert = (
       yield* Effect.logDebug("No txHashes provided, skipping block insertion.");
       return;
     }
-    const rowsToInsert: Entry[] = txHashes.map((txHash: Buffer) => ({
+    const rowsToInsert: EntryNoHeightAndTS[] = txHashes.map((txHash: Buffer) => ({
       [Columns.HEADER_HASH]: headerHash,
       [Columns.TX_ID]: txHash,
     }));
@@ -57,7 +67,7 @@ export const insert = (
       Effect.logError(`${tableName} db: inserting error: ${e}`),
     ),
     Effect.withLogSpan(`insert ${tableName}`),
-    mapSqlError,
+    Common.mapSqlError,
     Effect.asVoid,
   );
 
@@ -85,7 +95,7 @@ export const retrieveTxHashesByHeaderHash = (
         `${tableName} db: retrieving txHashes error: ${JSON.stringify(e)}`,
       ),
     ),
-    mapSqlError,
+    Common.mapSqlError,
   );
 
 export const retrieveHeaderHashByTxHash = (
@@ -118,7 +128,7 @@ export const retrieveHeaderHashByTxHash = (
         `${tableName} db: retrieving headerHash error: ${JSON.stringify(e)}`,
       ),
     ),
-    mapSqlError,
+    Common.mapSqlError,
   );
 
 /** Associated inputs are also deleted.
@@ -145,7 +155,7 @@ export const clearBlock = (
         `${tableName} db: clearing block error: ${JSON.stringify(e)}`,
       ),
     ),
-    mapSqlError,
+    Common.mapSqlError,
   );
 
 export const retrieve = (): Effect.Effect<readonly Entry[], Error, Database> =>
@@ -162,8 +172,8 @@ export const retrieve = (): Effect.Effect<readonly Entry[], Error, Database> =>
         `${tableName} db: retrieving error: ${JSON.stringify(e)}`,
       ),
     ),
-    mapSqlError,
+    Common.mapSqlError,
   );
 
 export const clear = (): Effect.Effect<void, Error, Database> =>
-  clearTable(tableName).pipe(Effect.withLogSpan(`clear ${tableName}`));
+  Common.clearTable(tableName).pipe(Effect.withLogSpan(`clear ${tableName}`));

@@ -1,18 +1,13 @@
-import {
-  clearTable,
-  insertLedgerEntries,
-  retrieveLedgerEntries,
-  delMultiple,
-  LedgerEntry,
-} from "./utils.js";
+import * as LedgerUtils from "@/database/utils/ledger.js";
+import * as Common from "@/database/utils/common.js"
 
 export const tableName = "latest_ledger";
 
-export const insertMultiple = (entries: LedgerEntry[]) =>
-  insertLedgerEntries(tableName, entries);
+export const insertMultiple = (entries: LedgerUtils.Entry[]) =>
+  LedgerUtils.insertEntries(tableName, entries);
 
-export const retrieve = () => retrieveLedgerEntries(tableName);
+export const retrieve = () => LedgerUtils.retrieveEntries(tableName);
 
-export const clearUTxOs = (refs: Buffer[]) => delMultiple(tableName, refs);
+export const clearUTxOs = (refs: Buffer[]) => LedgerUtils.delEntries(tableName, refs);
 
-export const clear = () => clearTable(tableName);
+export const clear = () => Common.clearTable(tableName);

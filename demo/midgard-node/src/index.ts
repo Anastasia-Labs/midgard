@@ -41,7 +41,7 @@ program.version(VERSION).description(
            %%%%%%%%%%            ##########
           ###%%%%%%%              ##########
          #########                  #########
-  
+
    ${chalk.bgGray(
      "    " +
        chalk.bold(

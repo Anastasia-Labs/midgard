@@ -26,7 +26,7 @@ import {
   handleSignSubmit,
   SubmitError,
 } from "../utils.js";
-import { LedgerEntry } from "@/database/utils.js";
+import { LedgerEntry } from "@/database/utils/utils.js";
 import {
   breakDownTx,
 } from "@/utils.js";

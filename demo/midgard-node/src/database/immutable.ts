@@ -1,31 +1,25 @@
 import { Effect } from "effect";
-import {
-  KVPair,
-  clearTable,
-  insertKeyValue,
-  insertKeyValues,
-  retrieveKeyValues,
-  retrieveValue,
-  retrieveValues,
-} from "./utils.js";
+import * as TxUtils from "@/database/utils/tx.js";
+import * as Common from "@/database/utils/common.js"
 import { Database } from "@/services/database.js";
 
 export const tableName = "immutable";
 
-export const insert = (tx: KVPair): Effect.Effect<void, Error, Database> =>
-  insertKeyValue(tableName, tx);
+export const insertTransaction = (tx: TxUtils.Entry
+): Effect.Effect<void, Error, Database> =>
+  TxUtils.insertEntry(tableName, tx);
 
-export const insertTxs = (
-  txs: KVPair[],
-): Effect.Effect<void, Error, Database> => insertKeyValues(tableName, txs);
+export const insertTransactions = (
+  txs: TxUtils.Entry[],
+): Effect.Effect<void, Error, Database> => TxUtils.insertEntries(tableName, txs);
 
-export const retrieve = () => retrieveKeyValues(tableName);
+export const retrieve = () => TxUtils.retrieveEntries(tableName);
 
 export const retrieveTxCborByHash = (txHash: Buffer) =>
-  retrieveValue(tableName, txHash);
+  TxUtils.retrieveValue(tableName, txHash);
 
 export const retrieveTxCborsByHashes = (
   txHashes: Buffer[] | readonly Buffer[],
-) => retrieveValues(tableName, txHashes);
+) => TxUtils.retrieveValues(tableName, txHashes);
 
-export const clear = () => clearTable(tableName);
+export const clear = () => Common.clearTable(tableName);
