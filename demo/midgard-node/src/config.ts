@@ -1,5 +1,6 @@
 import { Blockfrost, Kupmios, Lucid, Network, UTxO, walletFromSeed } from "@lucid-evolution/lucid";
-import { Config, Context, Effect, Layer } from "effect";
+import { Config, ConfigError, Context, Effect, Either, Layer } from "effect";
+import { isHexString } from "./utils.js";
 
 const SUPPORTED_PROVIDERS = ["kupmios", "blockfrost"] as const;
 type Provider = (typeof SUPPORTED_PROVIDERS)[number];
@@ -103,9 +104,7 @@ export const makeConfig = Effect.gen(function* () {
     Config.string("MEMPOOL_MPT_DB_PATH").pipe(
       Config.withDefault("./midgard-mempool-mpt-db"),
     ),
-    Config.string("TESTNET_GENESIS_WALLET_SEED_PHRASE_A"),
-    Config.string("TESTNET_GENESIS_WALLET_SEED_PHRASE_B"),
-    Config.string("TESTNET_GENESIS_WALLET_SEED_PHRASE_C"),
+    configUTxOs("GENESIS_UTXOS"),
   ]);
 
   const provider = config[0].toLowerCase();
@@ -115,9 +114,6 @@ export const makeConfig = Effect.gen(function* () {
     );
   }
   const network: Network = config[7];
-  const seedA = config[20];
-  const seedB = config[21];
-  const seedC = config[22];
   return {
     L1_PROVIDER: provider,
     L1_BLOCKFROST_API_URL: config[1],
@@ -139,68 +135,7 @@ export const makeConfig = Effect.gen(function* () {
     POSTGRES_USER: config[17],
     LEDGER_MPT_DB_PATH: config[18],
     MEMPOOL_MPT_DB_PATH: config[19],
-    GENESIS_UTXOS: network === "Mainnet" ? [] : [
-      {
-        txHash:
-          "bb217abaca60fc0ca68c1555eca6a96d2478547818ae76ce6836133f3cc546e0",
-        outputIndex: 1,
-        address: walletFromSeed(seedA, { network }).address,
-        assets: {
-          lovelace: BigInt("4027026465"),
-          "25561d09e55d60b64525b9cdb3cfbec23c94c0634320fec2eaddde584c616365436f696e33":
-            BigInt("10000"),
-        },
-      },
-      {
-        txHash:
-          "c7c0973c6bbf1a04a9f306da7814b4fa564db649bf48b0bd93c273bd03143547",
-        outputIndex: 0,
-        address: walletFromSeed(seedA, { network }).address,
-        assets: {
-          lovelace: BigInt("3289566"),
-          "5c677ba4dd295d9286e0e22786fea9ed735a6ae9c07e7a45ae4d95c84372696d696e616c50756e6b73204c6f6f74":
-            BigInt("1"),
-        },
-      },
-      {
-        txHash:
-          "d1a25b8e9c3b985d9d2f0a5f2e6ca7efa1c43b10f2c0b61f29e4a2cd8142b09e",
-        outputIndex: 0,
-        address: walletFromSeed(seedB, { network }).address,
-        assets: {
-          lovelace: BigInt("200"),
-        },
-      },
-      {
-        txHash:
-          "ea0f3c47bf18b02e9deb4e3a1239d8b263d765c4f7a3d12a9f62e8775e8c6141",
-        outputIndex: 1,
-        address: walletFromSeed(seedB, { network }).address,
-        assets: {
-          lovelace: BigInt("1500"),
-        },
-      },
-      {
-        txHash:
-          "f40b9f6a507af50aad4ccf6c15157b6d05c7affe23ec55cf4109cc2549c97a37",
-        outputIndex: 2,
-        address: walletFromSeed(seedB, { network }).address,
-        assets: {
-          lovelace: BigInt("125243"),
-        },
-      },
-      {
-        txHash:
-          "8e32d18c07cba2b65577bc829a9875e2fc3cdb554d5b0abbb3d4e3a71a3e3e3d",
-        outputIndex: 0,
-        address: walletFromSeed(seedC, { network }).address,
-        assets: {
-          lovelace: BigInt("300"),
-          "25561d09e55d60b64525b9cdb3cfbec23c94c0634320fec2eaddde584c616365436f696e33":
-            BigInt("15"),
-        },
-      },
-    ],
+    GENESIS_UTXOS: network === "Mainnet" ? [] : config[20],
   };
 }).pipe(Effect.orDie);
 
@@ -210,3 +145,93 @@ export class NodeConfig extends Context.Tag("NodeConfig")<
 >() {
   static readonly layer = Layer.effect(NodeConfig, makeConfig);
 }
+
+const configUTxOs = (name: string): Config.Config<UTxO[]> =>
+  Config.mapOrFail(
+    Config.string(name),
+    (jsonString): Either.Either<UTxO[], ConfigError.ConfigError> => {
+      try {
+        if (!jsonString || jsonString.trim() === '') {
+          return Either.left(
+            ConfigError.InvalidData([], `Config ${name} is empty or not provided`)
+          );
+        }
+        const parsed = JSON.parse(jsonString);
+
+        if (!Array.isArray(parsed)) {
+          return Either.left(
+            ConfigError.InvalidData([], `Config ${name} must be a JSON array`)
+          );
+        }
+
+        const utxos: UTxO[] = [];
+        for (let i = 0; i < parsed.length; i++) {
+          const item = parsed[i];
+
+          if (!item || typeof item !== 'object') {
+            return Either.left(
+              ConfigError.InvalidData([], `Config ${name}[${i}] must be an object`)
+            );
+          }
+          if (typeof item.txHash !== 'string' || !isHexString(item.txHash) || item.txHash.length !== 64) {
+            return Either.left(
+              ConfigError.InvalidData([], `Config ${name}[${i}].txHash must be a 64-character hex string`)
+            );
+          }
+          if (typeof item.outputIndex !== 'number' || item.outputIndex < 0) {
+            return Either.left(
+              ConfigError.InvalidData([], `Config ${name}[${i}].outputIndex must be a non-negative number`)
+            );
+          }
+          if (typeof item.address !== 'string') {
+            return Either.left(
+              ConfigError.InvalidData([], `Config ${name}[${i}].address must be a string`)
+            );
+          }
+          if (!item.assets || typeof item.assets !== 'object') {
+            return Either.left(
+              ConfigError.InvalidData([], `Config ${name}[${i}].assets must be an object`)
+            );
+          }
+
+           const assets: Record<string, bigint> = {};
+           for (const [assetId, quantity] of Object.entries(item.assets)) {
+             if (typeof quantity === 'string') {
+               if (quantity === '') {
+                 return Either.left(
+                   ConfigError.InvalidData([], `Config ${name}[${i}].assets[${assetId}] cannot be empty string`)
+                 );
+               }
+               assets[assetId] = BigInt(quantity);
+             } else if (typeof quantity === 'number') {
+               assets[assetId] = BigInt(quantity);
+             } else if (typeof quantity === 'bigint') {
+               assets[assetId] = quantity;
+             } else {
+               return Either.left(
+                 ConfigError.InvalidData([], `Config ${name}[${i}].assets[${assetId}] must be a number, string, or bigint`)
+               );
+             }
+           }
+
+          const utxo: UTxO = {
+            txHash: item.txHash,
+            outputIndex: item.outputIndex,
+            address: item.address,
+            assets,
+            datum: item.datum || null,
+            datumHash: item.datumHash || null,
+            scriptRef: item.scriptRef || null,
+          };
+
+          utxos.push(utxo);
+        }
+
+        return Either.right(utxos);
+      } catch (error) {
+        return Either.left(
+          ConfigError.InvalidData([], `Failed to parse ${name} as JSON: ${error}`)
+        );
+      }
+    }
+  );
