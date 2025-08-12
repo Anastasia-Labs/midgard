@@ -1,4 +1,11 @@
-import { Blockfrost, Kupmios, Lucid, Network, UTxO, walletFromSeed } from "@lucid-evolution/lucid";
+import {
+  Blockfrost,
+  Kupmios,
+  Lucid,
+  Network,
+  UTxO,
+  getAddressDetails,
+} from "@lucid-evolution/lucid";
 import { Config, ConfigError, Context, Effect, Either, Layer } from "effect";
 import { isHexString } from "./utils.js";
 
@@ -104,7 +111,7 @@ export const makeConfig = Effect.gen(function* () {
     Config.string("MEMPOOL_MPT_DB_PATH").pipe(
       Config.withDefault("./midgard-mempool-mpt-db"),
     ),
-    configUTxOs("GENESIS_UTXOS"),
+    configUTxOs("GENESIS_UTXOS").pipe(Config.withDefault<UTxO[]>([])),
   ]);
 
   const provider = config[0].toLowerCase();
@@ -151,68 +158,95 @@ const configUTxOs = (name: string): Config.Config<UTxO[]> =>
     Config.string(name),
     (jsonString): Either.Either<UTxO[], ConfigError.ConfigError> => {
       try {
-        if (!jsonString || jsonString.trim() === '') {
-          return Either.left(
-            ConfigError.InvalidData([], `Config ${name} is empty or not provided`)
+        if (!jsonString || jsonString.trim() === "")
+          throw ConfigError.InvalidData(
+            [],
+            `Config ${name} is empty or not provided`,
           );
-        }
+
         const parsed = JSON.parse(jsonString);
 
-        if (!Array.isArray(parsed)) {
-          return Either.left(
-            ConfigError.InvalidData([], `Config ${name} must be a JSON array`)
+        // Validate that it's an array
+        if (!Array.isArray(parsed))
+          throw ConfigError.InvalidData(
+            [],
+            `Config ${name} must be a JSON array`,
           );
-        }
 
+        // Validate each UTxO in the array
         const utxos: UTxO[] = [];
         for (let i = 0; i < parsed.length; i++) {
           const item = parsed[i];
 
-          if (!item || typeof item !== 'object') {
-            return Either.left(
-              ConfigError.InvalidData([], `Config ${name}[${i}] must be an object`)
+          // Basic structure validation
+          if (!item || typeof item !== "object")
+            throw ConfigError.InvalidData(
+              [],
+              `Config ${name}[${i}] must be an object`,
             );
-          }
-          if (typeof item.txHash !== 'string' || !isHexString(item.txHash) || item.txHash.length !== 64) {
-            return Either.left(
-              ConfigError.InvalidData([], `Config ${name}[${i}].txHash must be a 64-character hex string`)
+
+          if (
+            typeof item.txHash !== "string" ||
+            !isHexString(item.txHash) ||
+            item.txHash.length !== 64
+          )
+            throw ConfigError.InvalidData(
+              [],
+              `Config ${name}[${i}].txHash must be a 64-character hex string`,
             );
-          }
-          if (typeof item.outputIndex !== 'number' || item.outputIndex < 0) {
-            return Either.left(
-              ConfigError.InvalidData([], `Config ${name}[${i}].outputIndex must be a non-negative number`)
+
+          if (typeof item.outputIndex !== "number" || item.outputIndex < 0)
+            throw ConfigError.InvalidData(
+              [],
+              `Config ${name}[${i}].outputIndex must be a non-negative number`,
             );
-          }
-          if (typeof item.address !== 'string') {
-            return Either.left(
-              ConfigError.InvalidData([], `Config ${name}[${i}].address must be a string`)
+
+          if (typeof item.address !== "string")
+            throw ConfigError.InvalidData(
+              [],
+              `Config ${name}[${i}].address must be a string`,
             );
-          }
-          if (!item.assets || typeof item.assets !== 'object') {
-            return Either.left(
-              ConfigError.InvalidData([], `Config ${name}[${i}].assets must be an object`)
+
+          try {
+            const addrDetails = getAddressDetails(item.address);
+            if (!addrDetails.paymentCredential) {
+              throw ConfigError.InvalidData(
+                [],
+                `Config ${name}[${i}].address is not a valid Cardano address`,
+              );
+            }
+          } catch (error) {
+            throw ConfigError.InvalidData(
+              [],
+              `Config ${name}[${i}].address validation failed: ${error}`,
             );
           }
 
-           const assets: Record<string, bigint> = {};
-           for (const [assetId, quantity] of Object.entries(item.assets)) {
-             if (typeof quantity === 'string') {
-               if (quantity === '') {
-                 return Either.left(
-                   ConfigError.InvalidData([], `Config ${name}[${i}].assets[${assetId}] cannot be empty string`)
-                 );
-               }
-               assets[assetId] = BigInt(quantity);
-             } else if (typeof quantity === 'number') {
-               assets[assetId] = BigInt(quantity);
-             } else if (typeof quantity === 'bigint') {
-               assets[assetId] = quantity;
-             } else {
-               return Either.left(
-                 ConfigError.InvalidData([], `Config ${name}[${i}].assets[${assetId}] must be a number, string, or bigint`)
-               );
-             }
-           }
+          if (!item.assets || typeof item.assets !== "object")
+            throw ConfigError.InvalidData(
+              [],
+              `Config ${name}[${i}].assets must be an object`,
+            );
+
+          const assets: Record<string, bigint> = {};
+          for (const [assetId, quantity] of Object.entries(item.assets)) {
+            if (typeof quantity === "string") {
+              if (quantity === "")
+                throw ConfigError.InvalidData(
+                  [],
+                  `Config ${name}[${i}].assets[${assetId}] cannot be empty string`,
+                );
+              assets[assetId] = BigInt(quantity);
+            } else if (typeof quantity === "number") {
+              assets[assetId] = BigInt(quantity);
+            } else if (typeof quantity === "bigint") {
+              assets[assetId] = quantity;
+            } else
+              throw ConfigError.InvalidData(
+                [],
+                `Config ${name}[${i}].assets[${assetId}] must be a number, string, or bigint`,
+              );
+          }
 
           const utxo: UTxO = {
             txHash: item.txHash,
@@ -230,8 +264,11 @@ const configUTxOs = (name: string): Config.Config<UTxO[]> =>
         return Either.right(utxos);
       } catch (error) {
         return Either.left(
-          ConfigError.InvalidData([], `Failed to parse ${name} as JSON: ${error}`)
+          ConfigError.InvalidData(
+            [],
+            `Failed to parse ${name} as JSON: ${error}`,
+          ),
         );
       }
-    }
+    },
   );
