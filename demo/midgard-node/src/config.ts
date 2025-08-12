@@ -157,83 +157,73 @@ const configUTxOs = (name: string): Config.Config<UTxO[]> =>
   Config.mapOrFail(
     Config.string(name),
     (jsonString): Either.Either<UTxO[], ConfigError.ConfigError> => {
+
+      const throwConfigError = (err: string) => {
+        throw ConfigError.InvalidData([], err);
+      };
+
+      const validate = (cond: boolean, err: string): void => {
+        if (!cond) throwConfigError(err);
+      };
+
       try {
-        if (!jsonString || jsonString.trim() === "")
-          throw ConfigError.InvalidData(
-            [],
-            `Config ${name} is empty or not provided`,
-          );
+        validate(
+          jsonString?.trim() !== "",
+          `Config ${name} is empty or not provided`,
+        );
 
         const parsed = JSON.parse(jsonString);
 
-        // Validate that it's an array
-        if (!Array.isArray(parsed))
-          throw ConfigError.InvalidData(
-            [],
-            `Config ${name} must be a JSON array`,
-          );
+        validate(Array.isArray(parsed), `Config ${name} must be a JSON array`);
 
-        // Validate each UTxO in the array
         const utxos: UTxO[] = [];
         for (let i = 0; i < parsed.length; i++) {
           const item = parsed[i];
 
-          // Basic structure validation
-          if (!item || typeof item !== "object")
-            throw ConfigError.InvalidData(
-              [],
-              `Config ${name}[${i}] must be an object`,
-            );
+          validate(
+            item && typeof item === "object",
+            `Config ${name}[${i}] must be a non-null object`,
+          );
 
-          if (
-            typeof item.txHash !== "string" ||
-            !isHexString(item.txHash) ||
-            item.txHash.length !== 64
-          )
-            throw ConfigError.InvalidData(
-              [],
-              `Config ${name}[${i}].txHash must be a 64-character hex string`,
-            );
+          validate(
+            typeof item.txHash === "string" &&
+              isHexString(item.txHash) &&
+              item.txHash.length === 64,
+            `Config ${name}[${i}].txHash must be a 64-character hex string`,
+          );
 
-          if (typeof item.outputIndex !== "number" || item.outputIndex < 0)
-            throw ConfigError.InvalidData(
-              [],
-              `Config ${name}[${i}].outputIndex must be a non-negative number`,
-            );
+          validate(
+            typeof item.outputIndex === "number" && item.outputIndex >= 0,
+            `Config ${name}[${i}].outputIndex must be a non-negative number`,
+          );
 
-          if (typeof item.address !== "string")
-            throw ConfigError.InvalidData(
-              [],
-              `Config ${name}[${i}].address must be a string`,
-            );
+          validate(
+            typeof item.address === "string",
+            `Config ${name}[${i}].address must be a string`,
+          );
 
           try {
             const addrDetails = getAddressDetails(item.address);
-            if (!addrDetails.paymentCredential) {
-              throw ConfigError.InvalidData(
-                [],
-                `Config ${name}[${i}].address is not a valid Cardano address`,
-              );
-            }
+            validate(
+              !!addrDetails.paymentCredential,
+              `Config ${name}[${i}].address is not a valid Cardano address`,
+            );
           } catch (error) {
-            throw ConfigError.InvalidData(
-              [],
+            throwConfigError(
               `Config ${name}[${i}].address validation failed: ${error}`,
             );
           }
 
-          if (!item.assets || typeof item.assets !== "object")
-            throw ConfigError.InvalidData(
-              [],
-              `Config ${name}[${i}].assets must be an object`,
-            );
+          validate(
+            !!item.assets && typeof item.assets === "object",
+            `Config ${name}[${i}].assets must be an object`,
+          );
 
           const assets: Record<string, bigint> = {};
           for (const [assetId, quantity] of Object.entries(item.assets)) {
             if (typeof quantity === "string") {
               if (quantity === "")
-                throw ConfigError.InvalidData(
-                  [],
+                throwConfigError(
                   `Config ${name}[${i}].assets[${assetId}] cannot be empty string`,
                 );
               assets[assetId] = BigInt(quantity);
@@ -242,8 +232,7 @@ const configUTxOs = (name: string): Config.Config<UTxO[]> =>
             } else if (typeof quantity === "bigint") {
               assets[assetId] = quantity;
             } else
-              throw ConfigError.InvalidData(
-                [],
+              throwConfigError(
                 `Config ${name}[${i}].assets[${assetId}] must be a number, string, or bigint`,
               );
           }
