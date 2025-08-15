@@ -6,6 +6,8 @@ import { Effect } from "effect";
 import { fromHex } from "@lucid-evolution/lucid";
 import { SqlClient } from "@effect/sql";
 import { breakDownTx } from "@/utils.js";
+import * as AddressDB from "@/database/address.js"
+
 
 export const tableName = "mempool";
 
@@ -24,6 +26,9 @@ export const insert = (
     yield* MempoolLedgerDB.insert(produced);
     // Remove spent inputs from MempoolLedgerDB.
     yield* MempoolLedgerDB.clearUTxOs(spent);
+    // Add handled addresses to the lookup table
+    yield* AddressDB.insert(spent, produced)
+
   }).pipe(
     Effect.withLogSpan(`insert ${tableName}`),
     Effect.tapError((e) =>

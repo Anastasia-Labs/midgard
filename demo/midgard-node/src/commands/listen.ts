@@ -10,6 +10,7 @@ import { OTLPTraceExporter } from "@opentelemetry/exporter-trace-otlp-http";
 import { BatchSpanProcessor } from "@opentelemetry/sdk-trace-base";
 import { Duration, Effect, Layer, Metric, pipe, Schedule } from "effect";
 import {
+  AddressDB,
   BlocksDB,
   ConfirmedLedgerDB,
   ImmutableDB,
@@ -253,6 +254,43 @@ const getResetHandler = Effect.gen(function* () {
   ),
 );
 
+const getCBORsWithAddressHandler = Effect.gen(function* () {
+  const params = yield* ParsedSearchParams;
+  const addr = params["addr"];
+
+  if (typeof addr !== "string") {
+    yield* Effect.logInfo(`GET /utxos - Invalid address type: ${addr}`);
+    return yield* HttpServerResponse.json(
+      { error: `Invalid address type: ${addr}` },
+      { status: 400 },
+    );
+  }
+  try {
+    const addrDetails = getAddressDetails(addr);
+    if (!addrDetails.paymentCredential) {
+      yield* Effect.logInfo(`Invalid address format: ${addr}`);
+      return yield* HttpServerResponse.json(
+        { error: `Invalid address format: ${addr}` },
+        { status: 400 },
+      );
+    }
+
+    const cbors = yield* AddressDB.retrieve(addrDetails.address.bech32);
+    yield* Effect.logInfo(
+      `Found ${cbors.length} CBORs with ${addr}`,
+    );
+    return yield* HttpServerResponse.json({
+      cbors: cbors,
+    });
+  } catch (error) {
+    yield* Effect.logInfo(`Invalid address: ${addr}`);
+    return yield* HttpServerResponse.json(
+      { error: `Invalid address: ${addr}` },
+      { status: 400 },
+    );
+  }
+}).pipe(Effect.catchAll((e) => handle500("getCBORsWithAddress", e)));
+
 const getLogStateQueueHandler = Effect.gen(function* () {
   yield* Effect.logInfo(`✍  Drawing state queue UTxOs...`);
   const { user: lucid } = yield* User;
@@ -378,6 +416,7 @@ const router = HttpRouter.empty.pipe(
   HttpRouter.get("/commit", getCommitEndpoint),
   HttpRouter.get("/merge", getMergeHandler),
   HttpRouter.get("/reset", getResetHandler),
+  HttpRouter.get("/cbors", getCBORsWithAddressHandler),
   HttpRouter.get("/logStateQueue", getLogStateQueueHandler),
   HttpRouter.get("/logBlocksDB", getLogBlocksDBHandler),
   HttpRouter.get("/logGlobals", getLogGlobalsHandler),

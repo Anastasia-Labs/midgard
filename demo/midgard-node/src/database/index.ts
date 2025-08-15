@@ -1,3 +1,4 @@
+export * as AddressDB from "./address.js"
 export * as BlocksDB from "./blocks.js";
 export * as ConfirmedLedgerDB from "./confirmedLedger.js";
 export * as ImmutableDB from "./immutable.js";
