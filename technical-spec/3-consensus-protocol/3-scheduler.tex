@@ -25,7 +25,7 @@ Midgard's \code{operator\_inactivity\_timeout} protocol parameter controls when 
 \subsection{Utxo representation}
 \label{h:scheduler-utxo-representation}
 
-The scheduler state consists of a single utxo that holds the scheduler NFT, minted when Midgard is initialized and burned when Midgard is deinitialized via the hub oracle.
+The scheduler state consists of a single utxo that holds the scheduler NFT, minted when Midgard is initialized via the hub oracle.
 That utxo's datum type is as follows:
 \begin{equation*}
     \T{SchedulerDatum} \coloneq \left\{
@@ -40,7 +40,7 @@ The shift's inclusive lower bound is \code{shift\_start}, and its exclusive uppe
 \subsection{Minting policy}
 \label{h:scheduler-minting-policy}
 
-The \code{scheduler} minting policy initializes and deinitializes the scheduler state.
+The \code{scheduler} minting policy initializes the scheduler state.
 It is statically parametrized on the \code{hub\_oracle} minting policy.
 Redeemers:
 
@@ -50,13 +50,6 @@ Redeemers:
         \begin{enumerate}
             \item The transaction must mint the Midgard hub oracle token.
             \item The transaction must mint the \code{scheduler} NFT.
-        \end{enumerate}
-
-    \item[Deinit.] Deinitialize the \code{scheduler} via the Midgard hub oracle.
-      Conditions:
-        \begin{enumerate}
-            \item The transaction must burn the Midgard hub oracle token.
-            \item The transaction must burn the \code{scheduler} NFT.
         \end{enumerate}
 \end{description}
 
@@ -134,7 +127,9 @@ Redeemers:
                 \item The transaction must include a reference input of the root \code{active\_operators} node.
                   Let \code{root\_node} be that node.
                 \item The \code{key} of \code{operator\_node} must match \code{operator}.
-                \item The \code{link} of \code{root\_node} must match or exceed \code{previous\_operator}.
+                \item The \code{link} of \code{root\_node} must match or exceed \code{previous\_operator}.%
+                \footnote{In other words, this means that there is no \codeNC{active\_operators} node with a smaller key than \codeNC{previous\_operator}.
+                  If there were such a node, then we would advance the scheduler to that node instead of rewinding.}
             \end{enumerate}
             
             \item Verify that no registered operator is eligible to activate:
@@ -143,7 +138,7 @@ Redeemers:
                   Let \code{registered\_node} be that node.
                 \item \code{registered\_node} must be the last node of the \code{registered\_operators} queue.
                   This means it corresponds to the \emph{earliest} registrant that hasn't yet activated because new registrants are prepended to the beginning of that queue.
-                \item \code{registered\_node} is \emph{not yet} eligible for activation --- the lower bound of the transaction validity interval is smaller than the sum of the \code{registration\_time} of the \code{registered\_node} and the Midgard \code{registration\_duration} protocol parameter.
+                \item \code{registered\_node} is \emph{not yet} eligible for activation --- the upper bound of the transaction validity interval is smaller than the \code{activation\_time} of the \code{registered\_node}.
             \end{enumerate}
         \end{itemize}
 \end{description}

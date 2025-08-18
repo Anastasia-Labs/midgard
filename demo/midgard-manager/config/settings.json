@@ -1,0 +1,10 @@
+{
+  "node": {
+    "endpoint": "http://localhost:3000"
+  },
+  "generator": {
+    "enabled": false,
+    "batchSize": 10,
+    "intervalMs": 1000
+  }
+}

@@ -14,26 +14,38 @@ A withdrawal set is a finite map from withdrawal ID to withdrawal info:
 \end{align*}
 
 A withdrawal event in a Midgard block acknowledges that a user has created an L1 utxo at the Midgard L1 withdrawal address, requesting the transfer of an L2 utxo's tokens to the L1 ledger.
+\begingroup
+\allowdisplaybreaks{}
 \begin{align*}
     \T{WithdrawalEvent} &\coloneq \T{(WithdrawalId, WithdrawalInfo)} \\
     \T{WithdrawalId} &\coloneq \T{OutputRef} \\
     \T{WithdrawalInfo} &\coloneq \left\{
         \begin{array}{ll}
             \T{l2\_outref} :& \T{OutputRef} \\
+            \T{l2\_value} :& \T{Value} \\
             \T{l1\_address} : & \T{Address} \\
             \T{l1\_datum} : & \T{Option(Data)}
         \end{array} \right\}
 \end{align*}
+\endgroup
 
-The \code{WithdrawalId} of a withdrawal event corresponds to one of the inputs spent by the user in the L1 transaction that created the L1 withdrawal request utxo.
+The \code{WithdrawalId} of a withdrawal event corresponds to one of the inputs spent by the user in the L1 transaction that created the L1 withdrawal request utxo (more specifically, it's the hash of its serialized output-reference).
 This key is needed to identify the L1 withdrawal utxo, ensure that withdrawal events are unique, and detect when an operator has fabricated a withdrawal event without the corresponding withdrawal request existing in the L1 ledger.
 
-If a withdrawal event is permitted by Midgard's ledger rules to be included in a block, its effect is to remove the output at output-reference \code{l2\_outref} from the block's utxo set.
+Any withdrawal request must first be sent to the outbox contract on L2 in order to provide a few guarantees for the L1 order:
+\begin{enumerate}
+  \item Consent of owners
+  \item Since utxos at outbox contract become unspendable via L2 transactions, their persistence in ledger until the inclusion of their withdrawal events on L1 is guaranteed
+  \item Quantity of tokens do not exceed the corresponding protocol parameter
+\end{enumerate}
+
+With the utxo created at the outbox contract, incentives can be adjusted so that operators will continue the withdrawal order on L1, and therefore relieve users from providing the min ADA themselves.
+
+Inclusion of a withdrawal event in a block leads to the removal of the output at output-reference \code{l2\_outref} from the block's utxo set.
 
 Suppose the block containing the withdrawal event is confirmed.
-In that case, tokens from the Midgard reserve and confirmed deposits can be used to pay for the creation of an L1 utxo at the address (\code{l1\_address}) and with the inline datum (\code{l1\_datum}) specified by the user, containing the value from the withdrawn L2 utxo.
-The L1 withdrawal request utxo must be spent in the transaction that pays out the withdrawal.
+The L1 withdrawal request utxo will be sent to the \code{payout\_accumulator} contract, after which it can be gradually funded from the reserve. Once fully funded, its utxo can be transfered to \code{l1\_address} with \code{l1\_datum} attached.
 
-\Cref{h:withdrawal-order} describes the lifecycle of a withdrawal request in further detail, including how the withdrawal event information is validated.
+\Cref{h:withdrawal-order} describes the lifecycle of a withdrawal request in further detail.
 
 \end{document}

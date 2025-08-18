@@ -1,0 +1,82 @@
+\documentclass[../midgard.tex]{subfiles}
+\graphicspath{{\subfix{../images/}}}
+\begin{document}
+
+\section{Protocol parameters}
+\label{h:protocol-parameters}
+
+\subsection{Midgard consensus protocol parameters}
+
+The following parameters must be set before Midgard is initialized.
+Their actual values will be determined once Midgard is fully implemented, tested, and benchmarks.
+However, for the reader's intuition, we provide approximate values that we expect for the parameters:
+
+\begin{table}[H]
+\centering
+\begin{tabular}{llr}\toprule
+  Parameter & Definition & Expected approx. value \\ \midrule
+  \code{event\_wait\_duration} &
+    \cref{h:deposit} &
+    2--4 minutes \\
+  \code{fraud\_prover\_reward} &
+    \cref{h:operator-directory} &
+    30\%--50\% of the \code{required\_bond} parameter \\
+  \code{maturity\_duration} &
+    \cref{h:state-queue} &
+    3--7 days \\
+  \code{registration\_duration} &
+    \cref{h:operator-directory} &
+    1 day \\
+  \code{required\_bond} &
+    \cref{h:operator-directory} &
+    50K--200K~ADA \\
+  \code{shift\_duration} &
+    \cref{h:time-model} &
+    1 hour \\
+  \code{slashing\_penalty} &
+    \cref{h:operator-directory} &
+    50\%--70\% of the \code{required\_bond} parameter
+  \\ \bottomrule
+\end{tabular}
+\caption[Midgard consensus protocol parameters]{Midgard consensus protocol parameters.}
+\label{table:midgard-consensus-protocol-parameters}
+\end{table}
+
+Midgard does not use the Ouroboros consensus protocol, so it does not need to set the associated protocol parameters.
+
+\subsection{Midgard ledger parameters}
+\label{h:midgard-ledger-parameters}
+
+Midgard's L2 transactions transition its ledger similarly to Cardano's ledger but with the exceptions defined in \cref{h:deviations-from-cardano-transaction-types}.
+Consequently, Midgard uses the same ledger-associated protocol parameters as Cardano but omits certain parameters as follows:
+\begin{itemize}
+  \item No staking or governance parameters.
+  \item No parameters for obsolete pre-Conway features.
+\end{itemize}
+
+\subsection{Midgard fee structure}
+\label{h:midgard-fee-structure}
+
+Midgard will collect fees from all L2 transactions, in a similar way to how fees are collected for Cardano L1 transactions.
+Furthermore, Midgard may collect fees for processing deposits and withdrawals, as these user events incur costs separate from L2 transactions.
+However, Midgard's fee parameters are expected to be orders of magnitude smaller than Cardano's fee parameters.
+
+Midgard's L1 operating costs per block are fixed, regardless of the number and complexity of transactions in the block.
+Midgard's DA temporary storage costs per block are proportional to the number and size of transactions in the block, but these variable costs are orders of magnitude smaller than Cardano L1 storage costs.
+Midgard's revenue per block is proportional to the number and complexity of transactions in the block.
+Therefore, on a per-block basis, Midgard's fee revenue grows faster than its costs as the number of transactions in the block increases.
+This means that Midgard can sustain much lower L2 transaction fees once it attains a certain average level of L2 activity.
+
+The specific values of Midgard's fee parameters will be determined before launch based on simulations, benchmarks, and community feedback.
+
+\subsection{Midgard network parameters}
+\label{h:midgard-network-parameters}
+
+Technically, Midgard operator nodes do not need to communicate with each for consensus.
+Instead, they participate in the consensus protocol by interacting with Midgard's smart contracts on L1.
+
+However, in practice, an offchain peer-to-peer gossip network between operators may help them run things a bit more smoothly for users.
+If so, there may be associated protocol parameters to help peers discover the network topology and communicate with other peers.
+
+\end{document}
+

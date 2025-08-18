@@ -15,11 +15,7 @@ The blocks are stored temporarily on Midgard's data availability layer and perma
 The blocks' headers are committed to Midgard's L1 state queue data structure to establish immutability for the blocks' sequence and contents as part of Midgard's L1 contract-based consensus protocol.
 Block headers have a fixed byte size regardless of how many deposit, transaction, and withdrawal events are held by their blocks---this size leverage between blocks and headers is how Midgard multiplies Cardano's transaction throughput.
 
-Midgard L1 contract-based consensus protocol irreversibly considers a block to be confirmed as soon as all its predecessors are confirmed and one of the following holds:
-\begin{description}
-    \item[Optimistic confirmation.] The block's maturity period has elapsed without any fraud proof being verified on L1 to prove that the block violates one of Midgard's ledger rules.
-    \item[Non-optimistic confirmation.] A compliance proof has been verified on L1 to prove that the block complies with all Midgard ledger rules.
-\end{description}
+Midgard L1 contract-based consensus protocol irreversibly considers a block to be confirmed as soon as all its predecessors are confirmed and the block's maturity period has elapsed, as long as no fraud proofs have been verified on L1 to prove that the block violates one of Midgard's ledger rules.
 
 The irreversibility of block confirmation allows the L1 representation of confirmed block headers to be condensed.
 For instance, it can stop tracking confirmed withdrawal requests after they are paid out and confirmed deposits after they are absorbed into Midgard's reserve.

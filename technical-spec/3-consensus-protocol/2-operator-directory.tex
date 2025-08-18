@@ -2,6 +2,10 @@
 \graphicspath{{\subfix{../images/}}}
 \begin{document}
 
+% TODO: Ensure that bonds can't be stolen during transfers.
+% TODO: Ensure that slashing penalties and rewards are paid.
+% TODO: Add interactions with escape hatch mechanism.
+
 \section{Operator directory}
 \label{h:operator-directory}
 
@@ -33,13 +37,13 @@ It separates operators into three groups based on their status, with every group
     \item \code{retired\_operators} is a set that tracks retired operators waiting to recover their ADA bonds, implemented as a key-ordered linked list.
 \end{itemize}
 
-The Operator Directory keeps track of the registration time of every registered operator.
-It also keeps track of the latest commitment times of every active and retired operator so that retired operators cannot recover their ADA bonds before their latest committed block headers mature.
+The Operator Directory keeps track of the activation time of every registered operator, which indicates when the operator will become eligible for activation.
+It also keeps track of any holds on the ADA bonds of active and retired operators, which prevent those operators from recovering their bonds until their latest committed blocks and latest settlement resolution claims mature.
 \begin{align*}
-    \T{RegisteredOperator} &\coloneq \Bigl( \T{registration\_time}: \T{PosixTime} \Bigr) \\
-    \T{ActiveOperator}     &\coloneq \Bigl( \T{commitment\_time}:
+    \T{RegisteredOperator} &\coloneq \Bigl( \T{activation\_time}: \T{PosixTime} \Bigr) \\
+    \T{ActiveOperator}     &\coloneq \Bigl( \T{bond\_unlock\_time}:
         \T{Option}(\T{PosixTime}) \Bigr) \\
-    \T{RetiredOperator}    &\coloneq \Bigl( \T{commitment\_time}:
+    \T{RetiredOperator}    &\coloneq \Bigl( \T{bond\_unlock\_time}:
         \T{Option}(\T{PosixTime}) \Bigr)
 \end{align*}
 
@@ -67,12 +71,6 @@ Redeemers:
             \item The transaction must mint the Midgard hub oracle NFT.
             \item The transaction must Init the \code{registered\_operators} queue.
         \end{enumerate}
-    \item[Deinit.] Deinitialize the \code{registered\_operators} queue via the Midgard hub oracle.
-      Conditions:
-        \begin{enumerate}
-            \item The transaction must burn the Midgard hub oracle NFT.
-            \item The transaction must Deinit the \code{registered\_operators} queue.
-        \end{enumerate}
     \item[Register Operator.] Prepend a node into the \code{registered\_operators} queue with the operator's ADA bond at the operator's key, noting the registration time.
       Grouped conditions:
         \begin{itemize}
@@ -81,15 +79,8 @@ Redeemers:
                 \item The transaction must Prepend a node into the \code{registered\_operators} queue.
                   Let that node be \code{registered\_node}.
                 \item The \code{key} field of \code{registered\_node} must correspond to a public key hash that signed the transaction.
-                \item The \code{registration\_time} field of \code{registered\_node} must equal the upper bound of the transaction's validity interval.
+                \item The \code{activation\_time} field of \code{registered\_node} must equal the sum of the Midgard \code{registration\_duration} protocol parameter and the upper bound of the transaction's validity interval.
                 \item The Lovelace in the \code{registered\_node} must equal the \code{required\_bond} Midgard parameter.
-            \end{enumerate}
-            \item Verify that the registrant is not already active or retired.
-            \begin{enumerate}[resume]
-                \item The transaction must include the Midgard hub oracle NFT in a reference input.
-                \item Let \code{active\_operators} be the policy ID in the corresponding field of the Midgard hub oracle.
-                \item The transaction must include a reference input of a \code{active\_operators} node that proves the \code{registered\_node} key's non-membership in that list.
-                \item The transaction must include a reference input of a \code{retired\_operators} node that proves the \code{registered\_node} key's non-membership in that list.
             \end{enumerate}
         \end{itemize}
     \item[Activate Operator.] Transfer an operator node from the \code{registered\_operators} queue to the \code{active\_operators} set.
@@ -99,7 +90,7 @@ Redeemers:
             \begin{enumerate}
                 \item The transaction must Remove a node from the \code{registered\_operators} queue.
                   Let that node be \code{registered\_node}.
-                \item The lower bound of the transaction validity interval must meet or exceed the sum of the \code{registration\_time} and the Midgard \code{registration\_duration} protocol parameter.
+                \item The lower bound of the transaction validity interval must meet or exceed the \code{activation\_time}.
             \end{enumerate}
             \item Verify that the registrant is being added to active operators:
             \begin{enumerate}[resume]
@@ -174,21 +165,15 @@ Redeemers:
             \item The transaction must mint the Midgard hub oracle NFT.
             \item The transaction must Init the \code{active\_operators} set.
         \end{enumerate}
-    \item[Deinit.] Deinitialize the \code{active\_operators} set via the Midgard hub oracle.
-      Conditions:
-        \begin{enumerate}
-            \item The transaction must burn the Midgard hub oracle NFT.
-            \item The transaction must Deinit the \code{active\_operators} set.
-        \end{enumerate}
     \item[Activate Operator.] Transfer an operator node from the \code{registered\_operators} queue to the \code{active\_operators} set.
       Conditions:
         \begin{enumerate}
             \item The transaction must Insert a node into the \code{active\_operators} set.
               Let that node be \code{active\_node}.
-            \item The \code{commitment\_time} field of \code{active\_node} must be \code{None}.
+            \item The \code{bond\_unlock\_time} field of \code{active\_node} must be \code{None}.
             \item The transaction must Remove a node from the \code{registered\_operators} queue, as evidenced by burning a \code{registered\_operators} node NFT corresponding to the \code{active\_node} key.
         \end{enumerate}
-    \item[Remove Operator Slash Bond.] Remove an operator's node from the \code{active\_operators} set without returning the operator's ADA bond to the operator.
+    \item[Remove Operator Bad State.] Remove an operator's node from the \code{active\_operators} set without returning the operator's ADA bond to the operator, as a consequence of committing a fraudulent block to the state queue.
       Conditions:
         \begin{enumerate}
             \item Let \code{slashed\_operator} be a redeemer argument indicating the operator being slashed.
@@ -202,7 +187,24 @@ Redeemers:
               The \code{fraudulent\_operator} argument provided to that redeemer must match \code{slashed\_operator}.
         \end{enumerate}
 
+        % TODO fix
         The state queue's onchain code is responsible for disposing of the operator's ADA bond.
+    \item[Remove Operator Bad Settlement.] Remove an operator's node from the \code{active\_operators} set without returning the operator's ADA bond to the operator, as a consequence of attaching a fraudulent resolution claim to the settlement queue.
+      Conditions:
+        \begin{enumerate}
+            \item Let \code{slashed\_operator} be a redeemer argument indicating the operator being slashed.
+            \item The transaction must Remove a node from the \code{active\_operators} set.
+              Let that node be \code{removed\_node}.
+            \item \code{slashed\_operator} must match the key of \code{removed\_node}.
+            \item The transaction fees must meet or exceed the \code{slashing\_penalty} protocol parameter, denominated in Lovelaces.
+            \item The transaction must include the Midgard hub oracle NFT in a reference input.
+            \item Let \code{settlement\_queue\_addr} be the address in the corresponding field of the Midgard hub oracle.
+            \item The transaction must spend a node from the \code{settlement\_queue\_addr} via the Disprove Resolution Claim redeemer.
+              The \code{fraudulent\_operator} argument provided to that redeemer must match \code{slashed\_operator}.
+        \end{enumerate}
+
+        % TODO fix
+        The settlement queue's onchain code is responsible for disposing of the operator's ADA bond.
     \item[Retire Operator.] Transfer an operator node, unchanged, from the \code{active\_operators} set to the \code{retired\_operators} set.
       Conditions:
         \begin{enumerate}
@@ -210,7 +212,7 @@ Redeemers:
               Let that node be \code{active\_node}.
             \item The transaction must Insert a node into the \code{retired\_operators} set, as evidenced by minting a \code{retired\_operators} node NFT corresponding to the \code{active\_node} key.
             \item Let \code{retired\_node} be the node inserted into the \code{retired\_operators} set.
-            \item The \code{commitment\_time} must match between \code{active\_node} and \code{retired\_node}.
+            \item The \code{bond\_unlock\_time} must match between \code{active\_node} and \code{retired\_node}.
         \end{enumerate}
 \end{description}
 
@@ -218,7 +220,7 @@ Redeemers:
 \label{h:active-operators-spending-validator}
 
 The spending validator of \code{active\_operators\_addr} forwards to its corresponding minting policy (statically parametrized) when the transaction invokes it.
-When the policy isn't invoked, the spending validator allows an operator's commitment time to be updated.
+When the minting policy isn't invoked, the spending validator updates the bond unlock time of an operator that commits a new block to the state queue or attaches a resolution claim to a settlement queue node.
 Redeemers:
 \begin{description}
     \item[List State Transition.] Forward to minting policy.
@@ -226,21 +228,39 @@ Redeemers:
         \begin{enumerate}
             \item The transaction must mint or burn tokens of the \code{active\_operators} minting policy.
         \end{enumerate}
-    \item[Update Commitment Time.] Update an operator's commitment time when they commit a block to the state queue.
+    \item[Update Bond Hold New State.] Update an operator's bond unlock time when they commit a block to the state queue.
       Grouped conditions:
         \begin{itemize}
-            \item Update the commitment time of a operator:
+            \item Update the bond unlock time of a operator:
             \begin{enumerate} 
                 \item The transaction must \emph{not} mint or burn tokens of the \code{active\_operators} minting policy.
                 \item Let \code{active\_node} be an output of the transaction indicated by a redeemer argument.
                 \item \code{active\_node} must be an \code{active\_operators} node that matches the datum argument of the spending validator on the \code{key} and \code{link} fields.
-                \item The \code{commitment\_time} field of \code{active\_node} must match the upper bound of the transaction validity interval.
+                \item The \code{bond\_unlock\_time} field of \code{active\_node} must match the sum of the Midgard \code{maturity\_duration} parameter and the upper bound of the transaction validity interval.
             \end{enumerate}
             \item Verify that the operator is currently committing a block header to the state queue:
             \begin{enumerate}[resume]
                 \item The transaction must include the Midgard hub oracle NFT in a reference input.
                 \item Let \code{state\_queue} be the policy ID in the corresponding field of the Midgard hub oracle.
                 \item The transaction must Append a node into the \code{state\_queue} via the Commit Block Header redeemer.
+                  The redeemer's \code{operator} field must match the \code{key} field of the \code{active\_node}.
+            \end{enumerate}
+        \end{itemize}
+    \item[Update Bond Hold New Settlement.] Update an operator's bond unlock time when they attach a resolution claim to a settlement node.
+      Grouped conditions:
+        \begin{itemize}
+            \item Update the bond unlock time of a operator:
+            \begin{enumerate} 
+                \item The transaction must \emph{not} mint or burn tokens of the \code{active\_operators} minting policy.
+                \item Let \code{active\_node} be an output of the transaction indicated by a redeemer argument.
+                \item \code{active\_node} must be an \code{active\_operators} node that matches the datum argument of the spending validator on the \code{key} and \code{link} fields.
+                \item The \code{bond\_unlock\_time} field of \code{active\_node} must match the sum of the Midgard \code{maturity\_duration} parameter and the upper bound of the transaction validity interval.
+            \end{enumerate}
+            \item Verify that the operator is currently committing a block header to the state queue:
+            \begin{enumerate}[resume]
+                \item The transaction must include the Midgard hub oracle NFT in a reference input.
+                \item Let \code{settlement\_queue\_addr} be the policy ID in the corresponding field of the Midgard hub oracle.
+                \item The transaction must spend a settlement queue node with the Attach Resolution Claim redeemer.
                   The redeemer's \code{operator} field must match the \code{key} field of the \code{active\_node}.
             \end{enumerate}
         \end{itemize}
@@ -264,12 +284,6 @@ Redeemers:
             \item The transaction must mint the Midgard hub oracle NFT.
             \item The transaction must Init the \code{retired\_operators} set.
         \end{enumerate}
-    \item[Deinit.] Deinitialize the \code{retired\_operators} set via the Midgard hub oracle.
-      Conditions:
-        \begin{enumerate}
-            \item The transaction must burn the Midgard hub oracle NFT.
-            \item The transaction must Deinit the \code{retired\_operators} set.
-        \end{enumerate}
     \item[Retire Operator.] Transfer an operator node, unchanged, from the \code{active\_operators} set to the \code{retired\_operators} set.
       Conditions:
         \begin{enumerate}
@@ -285,10 +299,10 @@ Redeemers:
         \begin{enumerate}
             \item The transaction must Remove a node from the \code{retired\_operators} set.
               Let that node be \code{retired\_node}.
-            \item If the \code{commitment\_time} field of \code{retired\_node} is \emph{not} \code{None}, then the lower bound of the transaction validity interval must meet or exceed the sum of \code{commitment\_time} and the Midgard \code{maturity\_duration} protocol parameter.
+            \item If the \code{bond\_unlock\_time} field of \code{retired\_node} is \emph{not} \code{None}, then the lower bound of the transaction validity interval must meet or exceed the \code{bond\_unlock\_time}.
         \end{enumerate}
     The operator consents to the transaction, so the ADA bond is assumed to be returned to the operator's control.
-    \item[Remove Operator Slash Bond.] Remove an operator's node from the \code{retired\_operators} set without returning the operator's ADA bond to the operator.
+    \item[Remove Operator Bad State.] Remove an operator's node from the \code{retired\_operators} set without returning the operator's ADA bond to the operator.
       Conditions:
         \begin{enumerate}
             \item Let \code{slashed\_operator} be a redeemer argument indicating the operator being slashed.
@@ -302,7 +316,24 @@ Redeemers:
               The \code{fraudulent\_operator} argument provided to that redeemer must match \code{slashed\_operator}.
         \end{enumerate}
 
+        % TODO fix
         The state queue's onchain code is responsible for paying out the fraud prover's reward from the operator's forfeited ADA bond.
+    \item[Remove Operator Bad Settlement.] Remove an operator's node from the \code{retired\_operators} set without returning the operator's ADA bond to the operator, as a consequence of attaching a fraudulent resolution claim to the settlement queue.
+      Conditions:
+        \begin{enumerate}
+            \item Let \code{slashed\_operator} be a redeemer argument indicating the operator being slashed.
+            \item The transaction must Remove a node from the \code{retired\_operators} set.
+              Let that node be \code{removed\_node}.
+            \item \code{slashed\_operator} must match the key of \code{removed\_node}.
+            \item The transaction fees must meet or exceed the \code{slashing\_penalty} protocol parameter, denominated in Lovelaces.
+            \item The transaction must include the Midgard hub oracle NFT in a reference input.
+            \item Let \code{settlement\_queue\_addr} be the address in the corresponding field of the Midgard hub oracle.
+            \item The transaction must spend a node from the \code{settlement\_queue\_addr} via the Disprove Resolution Claim redeemer.
+              The \code{fraudulent\_operator} argument provided to that redeemer must match \code{slashed\_operator}.
+        \end{enumerate}
+
+        % TODO fix
+        The settlement queue's onchain code is responsible for disposing of the operator's ADA bond.
 \end{description}
 
 \subsubsection{Spending validator}

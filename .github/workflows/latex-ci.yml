@@ -1,0 +1,52 @@
+name: Latex CI
+
+on:
+  push:
+    branches: [ main ]
+    paths: [ 'technical-spec/**' ]
+  workflow_dispatch:  # For manual testing
+  # TODO: Change to release trigger later
+  # release:
+  #   types: [published]
+
+jobs:
+  generate_pdf:
+    runs-on: ubuntu-latest
+    
+    # Add permissions for GitHub Pages
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+    
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+
+    - name: Compile LaTeX to PDF
+      uses: xu-cheng/latex-action@v3
+      with:
+        root_file: midgard.tex
+        working_directory: technical-spec/
+
+    - name: Organize PDFs
+      run: |
+        mkdir -p pdfs
+        # Copy the PDF from technical-spec directory
+        if ls technical-spec/*.pdf 1> /dev/null 2>&1; then
+          cp technical-spec/*.pdf pdfs/
+        else
+          echo "No PDFs found - check if LaTeX compilation succeeded"
+        fi
+
+    # Deploy to GitHub Pages (for direct URL access)
+    - name: Setup GitHub Pages
+      uses: actions/configure-pages@v4
+      
+    - name: Upload to GitHub Pages
+      uses: actions/upload-pages-artifact@v3
+      with:
+        path: pdfs/
+        
+    - name: Deploy to GitHub Pages
+      uses: actions/deploy-pages@v4

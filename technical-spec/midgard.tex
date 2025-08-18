@@ -9,8 +9,8 @@
 \frontmatter
 \subfileinclude{0-frontmatter/1-cover-page}
 \subfileinclude{0-frontmatter/2-abstract}
-\subfileinclude{0-frontmatter/3-toc}
 \mainmatter
+\subfileinclude{0-frontmatter/3-toc}
 \subfileinclude{0-frontmatter/4-introduction}
 
 \subfile{1-ledger-state/0-chapter}
@@ -18,14 +18,16 @@
 \subfile{1-ledger-state/2-utxo-set}
 \subfile{1-ledger-state/3-deposit-event}
 \subfile{1-ledger-state/4-withdrawal-event}
-\subfile{1-ledger-state/5-transaction}
-\subfile{1-ledger-state/6-confirmed-state}
+\subfile{1-ledger-state/5-transaction-order-event}
+\subfile{1-ledger-state/6-transaction}
+\subfile{1-ledger-state/7-confirmed-state}
 
 \subfile{2-user-event-protocol/0-chapter}
 \subfile{2-user-event-protocol/1-deposit}
 \subfileinclude{2-user-event-protocol/2-transaction-request}
 \subfileinclude{2-user-event-protocol/3-transaction-order}
 \subfileinclude{2-user-event-protocol/4-withdrawal-order}
+\subfileinclude{2-user-event-protocol/5-witness-staking-script}
 
 
 \subfile{3-consensus-protocol/0-chapter}
@@ -63,9 +65,14 @@
 \subfileinclude{A-general-data-structures/2-single-threaded-state-machine}
 
 \subfile{B-l1-transactions/0-chapter}
-\subfile{C-parameters/0-chapter}
 
-\listoffigures
+\subfile{C-considerations/0-chapter}
+\subfile{C-considerations/1-protocol-invariants}
+\subfileinclude{C-considerations/2-protocol-parameters}
+\subfileinclude{C-considerations/3-protocol-security}
+
+\phantomsection
 \addcontentsline{toc}{chapter}{List of figures}
+\listoffigures
 
 \end{document}

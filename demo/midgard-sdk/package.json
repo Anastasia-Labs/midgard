@@ -1,0 +1,50 @@
+{
+  "name": "@al-ft/midgard-sdk",
+  "version": "0.1.0",
+  "description": "https://docs.github.com/en/packages/quickstart",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "type": "module",
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "clean": "rimraf dist",
+    "reset": "rimraf dist node_modules *.tgz",
+    "build": "tsup src/index.ts --minify --format esm,cjs --dts --clean",
+    "lint": "eslint",
+    "repack": "pnpm run build  && pnpm pack",
+    "format": "prettier --write \"**/*.{ts,tsx,md}\"",
+    "format-check": "prettier --check \"**/*.{ts,tsx,md}\"",
+    "ts-node": "ts-node",
+    "test": "vitest run"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "devDependencies": {
+    "@effect/vitest": "^0.17.8",
+    "@sinclair/typebox": "^0.34.28",
+    "@types/node": "^22.13.5",
+    "@typescript-eslint/eslint-plugin": "^8.25.0",
+    "@typescript-eslint/parser": "^8.25.0",
+    "eslint": "^9.21.0",
+    "eslint-config-prettier": "^9.1.0",
+    "prettier": "^3.5.2",
+    "ts-node": "^10.9.2",
+    "tsup": "^8.4.0",
+    "typescript": "^5.7.3",
+    "vitest": "2.1.8",
+    "rimraf": "^6.0.1"
+  },
+  "directories": {
+    "test": "test"
+  },
+  "dependencies": {
+    "@aiken-lang/merkle-patricia-forestry": "^1.2.0",
+    "@lucid-evolution/lucid": "^0.4.23",
+    "@noble/hashes": "^1.7.1",
+    "effect": "^3.14.22"
+  },
+  "packageManager": "pnpm@9.15.4+sha512.b2dc20e2fc72b3e18848459b37359a32064663e5627a51e4c74b2c29dd8e8e0491483c3abb40789cfd578bf362fb6ba8261b05f0387d76792ed6e23ea3b1b6a0"
+}

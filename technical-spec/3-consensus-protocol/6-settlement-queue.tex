@@ -5,20 +5,134 @@
 \section{Settlement queue}
 \label{h:settlement-queue}
 
-A queue similar to the state queue.
-Nodes are appended to it for any state queue blocks that are merged into the confirmed state and contain deposit or withdrawal events.
+The settlement queue tracks confirmed deposits and withdrawal orders until they are spent.
+Each settlement node in the queue is created whenever a block merges into the confirmed state and includes any deposits or withdrawals.
+The settlement node contains the block's deposits root hash, withdrawals root hash, and event interval.
+Users must reference a settlement node to spend its confirmed deposits or withdrawal orders.
 
-Users refer to state queue nodes to spend the corresponding withdrawal order and deposit utxos, along with any needed reserve utxos, to execute the corresponding deposit and withdrawal events.
+The current operator can optimistically resolve any settlement node, claiming that its confirmed deposits and withdrawal orders have all been spent.
+To do so, the operator attaches a resolution claim to the settlement queue for the \code{maturity\_duration} (a protocol parameter).
+During this maturity period, if the operator's resolution claim is proven fraudulent, the prover can slash the operator's bond and remove the resolution claim from the settlement node.
+After the maturity period, the settlement node can be removed from the queue if the resolution claim is intact.
 
-When all deposit and withdrawal events in a settlement node have been executed, the current operator can optimistically mark it as resolved.
-Once the maturity period elapses for this optimistic claim, the operator can remove the node from the settlement queue and claim fees from the Midgard reserve corresponding to the number of deposits and withdrawals contained in the node.
-Midgard's protocol is responsible for deducting those fees from the deposits and withdrawals accordingly.
+\tipbox{Perhaps resolving a settlement node should also release the user fees collected from the node's deposits and withdrawals to the operator.
+These fees would incentivize the operator to resolve settlement nodes promptly.}
 
-The timestamp in the operator's node in the Operator Directory should be updated whenever an operator optimistically resolves a settlement node, in the same way that it is updated when committing a block to the state queue.
+The timestamp in the operator's node in the Operator Directory should be updated whenever an operator optimistically resolves a settlement node, similar to how it is updated when committing a block to the state queue.
+Updating this timestamp ensures that the operator cannot recover their bond until all their resolution claims have matured in the settlement queue.
 
-\notebox{Apply changes to the \nameref{h:operator-directory} (\cref{h:operator-directory}) to ensure that an operator's bond is not released to the operator until all last settlement nodes are resolved.}\todo
+\subsection{Linked list representation}%
+\label{h:settlement-queue-linked-list}%
 
-\tipbox{Perhaps resolving a settlement node should also release to the operator the user fees collected for processing the deposits and withdrawals in the node.
-This would incentivize the operator to promptly resolve settlement nodes.}
+The settlement queue's nodes are arranged as an L1 linked list in the same chronological order as their corresponding confirmed blocks.
+This chronological order makes it possible to prove that an unspent L1 event is \emph{stranded}---it has not been included in any existing confirmed block but cannot be included in any new block.
+
+For example, suppose an operator block fraudulently excludes an L1 deposit, but no fraud prover removes the block before its confirmation.
+In that case, the deposit cannot be included in any subsequent block or spent into the reserves.
+Without the refund mechanism based on proof of stranding, the deposit would stay stranded forever at Midgard's deposit address.
+
+An L1 event is stranded (and can therefore be refunded) if it satisfies all of the following conditions:
+\begin{enumerate}
+  \item The event's inclusion time is earlier than the confirmed state's end time.
+  \item Any of the following conditions hold:
+    \begin{enumerate}
+      \item The event's inclusion time is \emph{not} within the event interval of any settlement node.
+      \item The event's inclusion time is within the event interval of a settlement node.
+        However, the event is \emph{not} in the corresponding deposit or withdrawal tree in the settlement node.
+    \end{enumerate}
+\end{enumerate}
+
+In this way, while the Midgard protocol prevents deposits from ever being stranded in the first place (as long as fraud proofs are promptly submitted), the refund mechanism ensures that they can still be retrieved if they occur.
+
+\subsection{Minting policy}
+\label{h:settlement-queue-minting-policy}
+
+The \code{settlement\_queue} minting policy is statically parametrized on the \code{hub\_oracle} minting policy.
+It's responsible for appends to the \code{settlement\_queue} list's end, and also removal of nodes anywhere in the list.
+\begin{description}
+  \item[Init.] Initialize the \code{settlement\_queue} via the Midgard hub oracle.
+    Conditions:
+      \begin{enumerate}
+        \item The transaction must mint the Midgard hub oracle NFT.
+        \item The transaction must Init the \code{settlement\_queue} list.
+      \end{enumerate}
+  \item[Append Settlement Node.] Append a settlement node to store a merged block's deposits, withdrawals and transaction orders.
+    Conditions:
+      \begin{enumerate}
+        \item The transaction must include the Midgard hub oracle NFT in a reference input.
+        \item Let \code{state\_queue} be the policy ID in the corresponding field of the Midgard hub oracle.
+        \item The transaction must Remove a \code{state\_queue} node via the Merge To Confirmed State redeemer.
+          Let \code{merged\_block} be the block being merged to the confirmed state, and let \code{header\_hash} be its header-hash key.
+        \item The transaction must Append a node to the settlement queue with a key matching \code{header\_hash}.
+          Let \code{new\_settlement\_node} be the node being appended.
+        \item \code{merged\_block} and \code{new\_settlement\_node} must match on all of these fields:
+          \begin{itemize}
+            \item \code{deposits\_root}
+            \item \code{withdrawals\_root}
+            \item \code{tx\_orders\_root}
+            \item \code{start\_time}
+            \item \code{end\_time}
+          \end{itemize}
+        \item The \code{resolution\_claim} of \code{new\_settlement\_node} must be empty.
+      \end{enumerate}
+  \item[Resolve Settlement Node.] Remove a settlement node if its resolution claim has matured.
+    Conditions:
+      \begin{enumerate}
+        \item The transaction must Remove a node from the \code{settlement\_queue}.
+          Let \code{removed\_settlement\_node} be this node.
+        \item The \code{resolution\_claim} of \code{removed\_settlement\_node} must not be empty.
+        \item The transaction must be signed by the \code{operator} of the \code{resolution\_claim}.
+        \item The transaction's time-validity lower bound must match or exceed the \code{resolution\_time} of the \code{resolution\_claim}.
+      \end{enumerate}
+\end{description}
+
+\subsection{Spending validator}
+\label{h:settlement-queue-spending-validator}
+
+The spending validator of \code{settlement\_queue} is statically parametrized on the \code{settlement\_queue} and \code{hub\_oracle} minting policy.
+Conditions:
+\begin{description}
+  \item[List State Transition.] Forward to minting policy.
+    Conditions:
+      \begin{enumerate}
+          \item The transaction must mint or burn tokens of the \code{settlement\_queue} minting policy.
+      \end{enumerate}
+  \item[Attach Resolution Claim.] The current operator attaches a resolution claim to a settlement node.
+    Conditions:
+      \begin{enumerate}
+        \item The spent input must be a settlement node without a resolution claim.
+        \item The spent input must be reproduced as a settlement node with a resolution claim.
+        \item The transaction must be signed by the resolution claim's operator.
+        \item The transaction must include the Midgard hub oracle NFT in a reference input.
+        \item Let \code{active\_operators} and \code{scheduler} be the corresponding policy IDs in the Midgard hub oracle.
+        \item The transaction must include an input (\code{operator\_node}), spent via the Update Bond Hold New Settlement redeemer, of an \code{active\_operators} node with a key matching the resolution claim's operator.
+        \item The \code{bond\_unlock\_time} of the \code{operator\_node} must match the \code{resolution\_time} of the resolution claim.
+        \item The transaction must include the \code{scheduler} utxo as a reference input, indicating that the current operator matches the resolution claim's operator.
+      \end{enumerate}
+  \item[Disprove Resolution Claim.] Disprove and detach a settlement node's resolution claim, slashing the claimant operator.
+    Conditions:
+      \begin{enumerate}
+        \item The spent input must be a settlement node with a resolution claim.
+          Let \code{operator} be the operator of that claim.
+        \item The spent input must be reproduced as a settlement node without a resolution claim.
+        \item The transaction must include the Midgard hub oracle NFT in a reference input.
+        \item Let \code{active\_operators}, \code{deposit}, \code{withdrawal}, and \code{tx\_order} be the corresponding policy IDs in the Midgard hub oracle.
+        \item The transaction must include either a deposit, a withdrawal, or an transaction order as a reference input.
+          Let that reference input be \code{unprocessed\_event}.
+        \item A valid membership proof must be provided, proving that \code{unprocessed\_event} is a member of the corresponding tree in the settlement node.
+        \item The transaction's time-validity upper bound must be earlier than the resolution claim's \code{resolution\_time}.
+        \item Let \code{operator\_status} be a redeemer argument indicating whether \code{operator} is active or retired.
+        \item If \code{operator\_status} is active:
+            \begin{enumerate}
+                \item The transaction must Remove a node from the \code{active\_operators} set via the Remove Operator Bad Settlement redeemer.
+                  The \code{slashed\_operator} argument provided to that redeemer must match \code{operator}.
+            \end{enumerate}
+        \item Otherwise:
+            \begin{enumerate}
+                \item The transaction must Remove a node from the \code{retired\_operators} set via the Remove Operator Bad Settlement redeemer.
+                  The \code{slashed\_operator} argument provided to that redeemer must match \code{operator}.
+            \end{enumerate}
+      \end{enumerate}
+\end{description}
 
 \end{document}

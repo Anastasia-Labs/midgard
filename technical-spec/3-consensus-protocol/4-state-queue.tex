@@ -37,13 +37,6 @@ Redeemers:
             \item The transaction must Init the \code{state\_queue}.
         \end{enumerate}
 
-    \item[Deinit.] Deinitialize the \code{state\_queue} via the Midgard hub oracle.
-      Conditions:
-        \begin{enumerate}
-            \item The transaction must burn the Midgard hub oracle token.
-            \item The transaction must Deinit the \code{state\_queue}.
-        \end{enumerate}
-
     \item[Commit Block Header.] An operator commits a block header to the state queue if it is the operator's turn according to the rotating schedule.
       Grouped conditions:
         \begin{itemize}
@@ -54,7 +47,6 @@ Redeemers:
                 \item The transaction must Append a node to the \code{state\_queue}.
                   Among the transaction outputs, let that node be \code{header\_node} and its predecessor node be \code{previous\_header\_node}.
                 \item \code{operator} must be the operator of \code{header\_node}.
-                \item Let \code{previous\_operator} be the operator of \code{previous\_header\_node}.
                 \item The \code{key} field of \code{header\_node} must be the hash of its \code{data} field.
             \end{enumerate}
 
@@ -74,8 +66,7 @@ Redeemers:
             
             \item Update the operator's timestamp in the active operators set:
             \begin{enumerate}[resume]
-                \item The transaction must include an input, spent via the Update Commitment Time redeemer, of an \code{active\_operators} node with a key matching the \code{operator}.
-                  Let \code{operator\_node} be that node.
+                \item The transaction must include an input, spent via the Update Bond Hold New State redeemer, of an \code{active\_operators} node with a key matching the \code{operator}.
             \end{enumerate}
         \end{itemize}
 
@@ -83,10 +74,17 @@ Redeemers:
       Conditions:
     \begin{enumerate}
         \item The transaction must Remove a node from the \code{state\_queue}.
-          Let \code{header\_node} be the removed node and \code{confirmed\_state\_node} be its predecessor node before removal.
-        \item \code{confirmed\_state\_node} must be the root node of \code{state\_queue}.
-        \item \code{header\_node} must be mature --- the lower bound of the transaction validity interval meets or exceeds the sum of the \code{commitment\_time} field of \code{header\_node} and the Midgard \code{maturity\_duration} protocol parameter.
-        \item \code{header\_node} and \code{confirmed\_state\_node} must match on the \code{data} field.
+          Let \code{header\_node} be the removed node, \code{confirmed\_state\_node\_input} be its predecessor node before removal, and \code{confirmed\_state\_node\_output} be the remaining node after removal.
+        \item \code{confirmed\_state\_node\_input} and \code{confirmed\_state\_node\_output} must both be root nodes of \code{state\_queue}.
+        \item \code{header\_node} must be mature --- the lower bound of the transaction validity interval meets or exceeds the sum of the \code{end\_time} field of \code{header\_node} and the Midgard \code{maturity\_duration} protocol parameter.
+        \item \code{confirmed\_state\_node\_output} must match:
+          \begin{enumerate}
+            \item \code{confirmed\_state\_node\_input} on \code{start\_time}.
+            \item \code{header\_node} on \code{prev\_header\_hash}, \code{utxo\_root}, \code{end\_time}, and \code{protocol\_version}.
+          \end{enumerate}
+        \item The \code{header\_hash} of \code{confirmed\_state\_node\_output} must match the \code{header\_node} key.
+        \item If either the \code{deposits\_root} or \code{withdrawals\_root} of \code{header\_node} is \emph{not} the MPT root hash of the empty set, a \code{settlement\_queue} node must be appended via the New Settlement redeemer.
+          The redeemer must mention \code{header\_node} by input index.
     \end{enumerate}
 
     \item[Remove Fraudulent Block Header.] Remove a fraudulent block header from the state queue and slash its operator's ADA bond.
@@ -105,12 +103,12 @@ Redeemers:
             \item Let \code{operator\_status} be a redeemer argument indicating whether the fraudulent operator is active or retired.
             \item If \code{operator\_status} is active:
                 \begin{enumerate}
-                    \item The transaction must Remove a node from the \code{active\_operators} set via the Remove Operator Slash Bond redeemer.
+                    \item The transaction must Remove a node from the \code{active\_operators} set via the Remove Operator Bad State redeemer.
                       The \code{slashed\_operator} argument provided to that redeemer must match \code{fraudulent\_operator}.
                 \end{enumerate}
             \item Otherwise:
                 \begin{enumerate}
-                    \item The transaction must Remove a node from the \code{retired\_operators} set via the Remove Operator Slash Bond redeemer.
+                    \item The transaction must Remove a node from the \code{retired\_operators} set via the Remove Operator Bad State redeemer.
                       The \code{slashed\_operator} argument provided to that redeemer must match \code{fraudulent\_operator}.
                 \end{enumerate}
         \end{enumerate}
@@ -123,14 +121,12 @@ Redeemers:
                 \begin{enumerate}
                     \item \code{fraud\_proof\_block\_hash} matches the \code{predecessor\_node} key.
                       This means that a child of the fraudulent node is being removed.
-                    \item \code{fraud\_proof\_block\_hash} matches the \code{removed\_node} key, and last node of \code{state\_queue} is \code{removed\_node}.
+                    \item \code{fraud\_proof\_block\_hash} matches the \code{removed\_node} key, and the last node of \code{state\_queue} is \code{removed\_node}.
                       This means that the fraudulent node is being removed and has no more children.
                 \end{enumerate}
         \end{enumerate}
     \end{itemize}
 \end{description}
-
-\notebox{Add redeemers for escape hatch blocks.}\todo
 
 \subsection{Spending validator}
 \label{h:state-queue-spending-validator}
