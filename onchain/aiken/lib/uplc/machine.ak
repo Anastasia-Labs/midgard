@@ -2,7 +2,7 @@ use aiken/builtin
 use uplc/builtins.{
   add_integer, default_arg_counts, default_force_counts, subtract_integer,
 }
-use uplc/constant.{Integer}
+use uplc/constant.{Bool, ByteString, Integer}
 use uplc/term.{
   Apply, Builtin, Case, Delay, Error, Force, Lambda, TConstant, TConstr, Term,
   Var,
@@ -153,13 +153,133 @@ fn call_builtin(fun: Int, args: List<Value>) -> Value {
       0 ->
         when args is {
           [VCon(Integer(b)), VCon(Integer(a))] -> VCon(Integer(a + b))
-          _ -> fail @"Fail Case Here"
+          _ -> fail @"Invalid context for AddInteger"
         }
       // SubtractInteger
       1 ->
         when args is {
           [VCon(Integer(b)), VCon(Integer(a))] -> VCon(Integer(a - b))
-          _ -> fail @"Fail Case Here"
+          _ -> fail @"Invalid context for SubtractInteger"
+        }
+      // MultiplyInteger
+      2 ->
+        when args is {
+          [VCon(Integer(b)), VCon(Integer(a))] -> VCon(Integer(a * b))
+          _ -> fail @"Invalid context for MultiplyInteger"
+        }
+      // DivideInteger
+      3 ->
+        when args is {
+          [VCon(Integer(b)), VCon(Integer(a))] -> VCon(Integer(a / b))
+          _ -> fail @"Invalid context for DivideInteger"
+        }
+      // QuotientInteger
+      4 ->
+        when args is {
+          [VCon(Integer(b)), VCon(Integer(a))] -> VCon(Integer(a % b))
+          _ -> fail @"Invalid context for QuotientInteger"
+        }
+      // RemainderInteger
+      5 ->
+        when args is {
+          [VCon(Integer(b)), VCon(Integer(a))] ->
+            VCon(Integer(builtin.remainder_integer(a, b)))
+          _ -> fail @"Invalid context for RemainderInteger"
+        }
+      // ModInteger
+      6 ->
+        when args is {
+          [VCon(Integer(b)), VCon(Integer(a))] ->
+            VCon(Integer(builtin.mod_integer(a, b)))
+          _ -> fail @"Invalid context for ModInteger"
+        }
+      // EqualsInteger
+      7 ->
+        when args is {
+          [VCon(Integer(b)), VCon(Integer(a))] ->
+            VCon(Bool(builtin.equals_integer(a, b)))
+          _ -> fail @"Invalid context for EqualsInteger"
+        }
+      // LessThanInteger
+      8 ->
+        when args is {
+          [VCon(Integer(b)), VCon(Integer(a))] ->
+            VCon(Bool(builtin.less_than_integer(a, b)))
+          _ -> fail @"Invalid context for LessThanInteger"
+        }
+      // LessThanEqualsInteger
+      9 ->
+        when args is {
+          [VCon(Integer(b)), VCon(Integer(a))] ->
+            VCon(Bool(builtin.less_than_equals_integer(a, b)))
+          _ -> fail @"Invalid context for LessThanEqualsInteger"
+        }
+      // AppendByteString
+      10 ->
+        when args is {
+          [VCon(ByteString(b)), VCon(ByteString(a))] ->
+            VCon(ByteString(builtin.append_bytearray(a, b)))
+          _ -> fail @"Invalid context for AppendByteString"
+        }
+      // ConsByteString
+      11 ->
+        when args is {
+          [VCon(ByteString(b)), VCon(Integer(a))] ->
+            VCon(ByteString(builtin.cons_bytearray(a, b)))
+          _ -> fail @"Invalid context for ConsByteString"
+        }
+      // SliceByteString
+      12 ->
+        when args is {
+          [VCon(ByteString(c)), VCon(Integer(b)), VCon(Integer(a))] ->
+            VCon(ByteString(builtin.slice_bytearray(a, b, c)))
+          _ -> fail @"Invalid context for SliceByteString"
+        }
+      // LengthOfByteString
+      13 ->
+        when args is {
+          [VCon(ByteString(a))] -> VCon(Integer(builtin.length_of_bytearray(a)))
+          _ -> fail @"Invalid context for LengthOfByteString"
+        }
+      // IndexByteString
+      14 ->
+        when args is {
+          [VCon(Integer(b)), VCon(ByteString(a))] ->
+            VCon(Integer(builtin.index_bytearray(a, b)))
+          _ -> fail @"Invalid context for IndexByteString"
+        }
+      // EqualsByteString
+      15 ->
+        when args is {
+          [VCon(ByteString(b)), VCon(ByteString(a))] ->
+            VCon(Bool(builtin.equals_bytearray(a, b)))
+          _ -> fail @"Invalid context for IndexByteString"
+        }
+      // LessThanByteString
+      16 ->
+        when args is {
+          [VCon(ByteString(b)), VCon(ByteString(a))] ->
+            VCon(Bool(builtin.less_than_bytearray(a, b)))
+          _ -> fail @"Invalid context for LessThanByteString"
+        }
+      // LessThanEqualsByteString
+      17 ->
+        when args is {
+          [VCon(ByteString(b)), VCon(ByteString(a))] ->
+            VCon(Bool(builtin.less_than_equals_bytearray(a, b)))
+          _ -> fail @"Invalid context for LessThanEqualsByteString"
+        }
+      // Sha2_256
+      18 ->
+        when args is {
+          [VCon(ByteString(a))] -> VCon(ByteString(builtin.sha2_256(a)))
+          _ -> fail @"Invalid context for Sha2_256"
+        }
+      // Sha3_256
+      19 ->
+        when args is {
+          [VCon(ByteString(a))] -> VCon(ByteString(builtin.sha3_256(a)))
+          _ -> fail @"Invalid context for Sha3_256"
         }
       // Case for negative builtins
       _ -> fail @"Invalid builtin"

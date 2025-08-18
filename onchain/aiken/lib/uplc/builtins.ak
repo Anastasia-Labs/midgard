@@ -262,7 +262,8 @@ pub const default_force_counts = {
     // CountSetBits
     // FindFirstSetBit
     // Ripemd_160
-    #[0,
+    #[
+      0,
       0,
       0,
       0,
@@ -442,7 +443,8 @@ pub const default_arg_counts = {
     // CountSetBits
     // FindFirstSetBit
     // Ripemd_160
-    #[2,
+    #[
+      2,
       2,
       2,
       2,
