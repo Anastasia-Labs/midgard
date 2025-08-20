@@ -2,7 +2,7 @@ use aiken/builtin
 use uplc/builtins.{
   add_integer, default_arg_counts, default_force_counts, subtract_integer,
 }
-use uplc/constant.{Bool, ByteString, Integer}
+use uplc/constant.{Bool, ByteString, Integer, String}
 use uplc/term.{
   Apply, Builtin, Case, Delay, Error, Force, Lambda, TConstant, TConstr, Term,
   Var,
@@ -153,133 +153,198 @@ fn call_builtin(fun: Int, args: List<Value>) -> Value {
       0 ->
         when args is {
           [VCon(Integer(b)), VCon(Integer(a))] -> VCon(Integer(a + b))
-          _ -> fail @"Invalid context for AddInteger"
+          _ -> fail @"Bad args for AddInteger"
         }
       // SubtractInteger
       1 ->
         when args is {
           [VCon(Integer(b)), VCon(Integer(a))] -> VCon(Integer(a - b))
-          _ -> fail @"Invalid context for SubtractInteger"
+          _ -> fail @"Bad args for SubtractInteger"
         }
       // MultiplyInteger
       2 ->
         when args is {
           [VCon(Integer(b)), VCon(Integer(a))] -> VCon(Integer(a * b))
-          _ -> fail @"Invalid context for MultiplyInteger"
+          _ -> fail @"Bad args for MultiplyInteger"
         }
       // DivideInteger
       3 ->
         when args is {
           [VCon(Integer(b)), VCon(Integer(a))] -> VCon(Integer(a / b))
-          _ -> fail @"Invalid context for DivideInteger"
+          _ -> fail @"Bad args for DivideInteger"
         }
       // QuotientInteger
       4 ->
         when args is {
           [VCon(Integer(b)), VCon(Integer(a))] -> VCon(Integer(a % b))
-          _ -> fail @"Invalid context for QuotientInteger"
+          _ -> fail @"Bad args for QuotientInteger"
         }
       // RemainderInteger
       5 ->
         when args is {
           [VCon(Integer(b)), VCon(Integer(a))] ->
             VCon(Integer(builtin.remainder_integer(a, b)))
-          _ -> fail @"Invalid context for RemainderInteger"
+          _ -> fail @"Bad args for RemainderInteger"
         }
       // ModInteger
       6 ->
         when args is {
           [VCon(Integer(b)), VCon(Integer(a))] ->
             VCon(Integer(builtin.mod_integer(a, b)))
-          _ -> fail @"Invalid context for ModInteger"
+          _ -> fail @"Bad args for ModInteger"
         }
       // EqualsInteger
       7 ->
         when args is {
           [VCon(Integer(b)), VCon(Integer(a))] ->
             VCon(Bool(builtin.equals_integer(a, b)))
-          _ -> fail @"Invalid context for EqualsInteger"
+          _ -> fail @"Bad args for EqualsInteger"
         }
       // LessThanInteger
       8 ->
         when args is {
           [VCon(Integer(b)), VCon(Integer(a))] ->
             VCon(Bool(builtin.less_than_integer(a, b)))
-          _ -> fail @"Invalid context for LessThanInteger"
+          _ -> fail @"Bad args for LessThanInteger"
         }
       // LessThanEqualsInteger
       9 ->
         when args is {
           [VCon(Integer(b)), VCon(Integer(a))] ->
             VCon(Bool(builtin.less_than_equals_integer(a, b)))
-          _ -> fail @"Invalid context for LessThanEqualsInteger"
+          _ -> fail @"Bad args for LessThanEqualsInteger"
         }
       // AppendByteString
       10 ->
         when args is {
           [VCon(ByteString(b)), VCon(ByteString(a))] ->
             VCon(ByteString(builtin.append_bytearray(a, b)))
-          _ -> fail @"Invalid context for AppendByteString"
+          _ -> fail @"Bad args for AppendByteString"
         }
       // ConsByteString
       11 ->
         when args is {
           [VCon(ByteString(b)), VCon(Integer(a))] ->
             VCon(ByteString(builtin.cons_bytearray(a, b)))
-          _ -> fail @"Invalid context for ConsByteString"
+          _ -> fail @"Bad args for ConsByteString"
         }
       // SliceByteString
       12 ->
         when args is {
           [VCon(ByteString(c)), VCon(Integer(b)), VCon(Integer(a))] ->
             VCon(ByteString(builtin.slice_bytearray(a, b, c)))
-          _ -> fail @"Invalid context for SliceByteString"
+          _ -> fail @"Bad args for SliceByteString"
         }
       // LengthOfByteString
       13 ->
         when args is {
           [VCon(ByteString(a))] -> VCon(Integer(builtin.length_of_bytearray(a)))
-          _ -> fail @"Invalid context for LengthOfByteString"
+          _ -> fail @"Bad args for LengthOfByteString"
         }
       // IndexByteString
       14 ->
         when args is {
           [VCon(Integer(b)), VCon(ByteString(a))] ->
             VCon(Integer(builtin.index_bytearray(a, b)))
-          _ -> fail @"Invalid context for IndexByteString"
+          _ -> fail @"Bad args for IndexByteString"
         }
       // EqualsByteString
       15 ->
         when args is {
           [VCon(ByteString(b)), VCon(ByteString(a))] ->
             VCon(Bool(builtin.equals_bytearray(a, b)))
-          _ -> fail @"Invalid context for IndexByteString"
+          _ -> fail @"Bad args for IndexByteString"
         }
       // LessThanByteString
       16 ->
         when args is {
           [VCon(ByteString(b)), VCon(ByteString(a))] ->
             VCon(Bool(builtin.less_than_bytearray(a, b)))
-          _ -> fail @"Invalid context for LessThanByteString"
+          _ -> fail @"Bad args for LessThanByteString"
         }
       // LessThanEqualsByteString
       17 ->
         when args is {
           [VCon(ByteString(b)), VCon(ByteString(a))] ->
             VCon(Bool(builtin.less_than_equals_bytearray(a, b)))
-          _ -> fail @"Invalid context for LessThanEqualsByteString"
+          _ -> fail @"Bad args for LessThanEqualsByteString"
         }
       // Sha2_256
       18 ->
         when args is {
           [VCon(ByteString(a))] -> VCon(ByteString(builtin.sha2_256(a)))
-          _ -> fail @"Invalid context for Sha2_256"
+          _ -> fail @"Bad args for Sha2_256"
         }
       // Sha3_256
       19 ->
         when args is {
           [VCon(ByteString(a))] -> VCon(ByteString(builtin.sha3_256(a)))
-          _ -> fail @"Invalid context for Sha3_256"
+          _ -> fail @"Bad args for Sha3_256"
+        }
+      // Blake2b_256
+      20 ->
+        when args is {
+          [VCon(ByteString(a))] -> VCon(ByteString(builtin.blake2b_256(a)))
+          _ -> fail @"Bad args for Blake2b_256"
+        }
+      // Blake2b_224
+      21 ->
+        when args is {
+          [VCon(ByteString(a))] -> VCon(ByteString(builtin.blake2b_224(a)))
+          _ -> fail @"Bad args for Blake2b_224"
+        }
+      // Keccak_256
+      22 ->
+        when args is {
+          [VCon(ByteString(a))] -> VCon(ByteString(builtin.keccak_256(a)))
+          _ -> fail @"Bad args for Keccak_256"
+        }
+      // VerifyEd25519Signature
+      23 ->
+        when args is {
+          [VCon(ByteString(c)), VCon(ByteString(b)), VCon(ByteString(a))] ->
+            VCon(Bool(builtin.verify_ed25519_signature(a, b, c)))
+          _ -> fail @"Bad args for VerifyEd25519Signature"
+        }
+      // VerifyEcdsaSecp256k1Signature
+      24 ->
+        when args is {
+          [VCon(ByteString(c)), VCon(ByteString(b)), VCon(ByteString(a))] ->
+            VCon(Bool(builtin.verify_ecdsa_secp256k1_signature(a, b, c)))
+          _ -> fail @"Bad args for VerifyEcdsaSecp256k1Signature"
+        }
+      // VerifySchnorrSecp256k1Signature
+      25 ->
+        when args is {
+          [VCon(ByteString(c)), VCon(ByteString(b)), VCon(ByteString(a))] ->
+            VCon(Bool(builtin.verify_schnorr_secp256k1_signature(a, b, c)))
+          _ -> fail @"Bad args for VerifySchnorrSecp256k1Signature"
+        }
+      // AppendString
+      26 ->
+        when args is {
+          [VCon(String(b)), VCon(String(a))] ->
+            VCon(String(builtin.append_string(a, b)))
+          _ -> fail @"Bad args for AppendString"
+        }
+      // EqualsString
+      27 ->
+        when args is {
+          [VCon(String(b)), VCon(String(a))] ->
+            VCon(Bool(builtin.equals_string(a, b)))
+          _ -> fail @"Bad args for EqualsString"
+        }
+      // EncodeUtf8
+      28 ->
+        when args is {
+          [VCon(String(a))] -> VCon(ByteString(builtin.encode_utf8(a)))
+          _ -> fail @"Bad args for EncodeUtf8"
+        }
+      // DecodeUtf8
+      29 ->
+        when args is {
+          [VCon(ByteString(a))] -> VCon(String(builtin.decode_utf8(a)))
+          _ -> fail @"Bad args for DecodeUtf8"
         }
       // Case for negative builtins
       _ -> fail @"Invalid builtin"
