@@ -21,4 +21,4 @@ export const retrieveTxCborsByHashes = (
   txHashes: Buffer[] | readonly Buffer[],
 ) => Tx.retrieveValues(tableName, txHashes);
 
-export const clear = () => clearTable(tableName);
+export const clear = clearTable(tableName);

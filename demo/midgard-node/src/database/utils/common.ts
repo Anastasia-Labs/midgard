@@ -30,7 +30,7 @@ export const clearTable = (
   }).pipe(
     Effect.withLogSpan(`clear ${tableName}`),
     Effect.tapErrorTag("SqlError", (e) =>
-      Effect.logError(`${tableName} db: clearing error: ${JSON.stringify(e)}`),
+      Effect.logError(`${tableName} db: truncate error: ${JSON.stringify(e)}`),
     ),
     mapSqlError,
   );

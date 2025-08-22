@@ -23,4 +23,4 @@ export const retrieveByAddress = (
 export const clearUTxOs = (refs: Buffer[]) =>
   Ledger.delEntries(tableName, refs);
 
-export const clear = () => clearTable(tableName);
+export const clear = clearTable(tableName);

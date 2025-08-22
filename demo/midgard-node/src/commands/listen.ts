@@ -10,6 +10,7 @@ import { OTLPTraceExporter } from "@opentelemetry/exporter-trace-otlp-http";
 import { BatchSpanProcessor } from "@opentelemetry/sdk-trace-base";
 import { Duration, Effect, Layer, Metric, pipe, Schedule } from "effect";
 import {
+  AddressHistoryDB,
   BlocksDB,
   ConfirmedLedgerDB,
   ImmutableDB,
@@ -90,7 +91,7 @@ const getTxHandler = Effect.gen(function* () {
 
 const getUtxosHandler = Effect.gen(function* () {
   const params = yield* ParsedSearchParams;
-  const addr = params["addr"];
+  const addr = params["address"];
 
   if (typeof addr !== "string") {
     yield* Effect.logInfo(`GET /utxos - Invalid address type: ${addr}`);
@@ -225,12 +226,13 @@ const getResetHandler = Effect.gen(function* () {
   yield* StateQueueTx.resetStateQueue;
   yield* Effect.all(
     [
-      MempoolDB.clear(),
-      MempoolLedgerDB.clear(),
-      BlocksDB.clear(),
-      ImmutableDB.clear(),
-      LatestLedgerDB.clear(),
-      ConfirmedLedgerDB.clear(),
+      MempoolDB.clear,
+      MempoolLedgerDB.clear,
+      BlocksDB.clear,
+      ImmutableDB.clear,
+      LatestLedgerDB.clear,
+      ConfirmedLedgerDB.clear,
+      AddressHistoryDB.clear,
       deleteMempoolMpt,
       deleteLedgerMpt,
     ],
@@ -252,6 +254,41 @@ const getResetHandler = Effect.gen(function* () {
     }),
   ),
 );
+
+const getTxsOfAddressHandler = Effect.gen(function* () {
+  const params = yield* ParsedSearchParams;
+  const addr = params["address"];
+
+  if (typeof addr !== "string") {
+    yield* Effect.logInfo(`GET /txs - Invalid address type: ${addr}`);
+    return yield* HttpServerResponse.json(
+      { error: `Invalid address type: ${addr}` },
+      { status: 400 },
+    );
+  }
+  try {
+    const addrDetails = getAddressDetails(addr);
+    if (!addrDetails.paymentCredential) {
+      yield* Effect.logInfo(`Invalid address format: ${addr}`);
+      return yield* HttpServerResponse.json(
+        { error: `Invalid address format: ${addr}` },
+        { status: 400 },
+      );
+    }
+
+    const cbors = yield* AddressHistoryDB.retrieve(addrDetails.address.bech32);
+    yield* Effect.logInfo(`Found ${cbors.length} CBORs with ${addr}`);
+    return yield* HttpServerResponse.json({
+      cbors: cbors,
+    });
+  } catch (error) {
+    yield* Effect.logInfo(`Invalid address: ${addr}`);
+    return yield* HttpServerResponse.json(
+      { error: `Invalid address: ${addr}` },
+      { status: 400 },
+    );
+  }
+}).pipe(Effect.catchAll((e) => handle500("getTxsOfAddressHandler", e)));
 
 const getLogStateQueueHandler = Effect.gen(function* () {
   yield* Effect.logInfo(`✍  Drawing state queue UTxOs...`);
@@ -378,6 +415,7 @@ const router = HttpRouter.empty.pipe(
   HttpRouter.get("/commit", getCommitEndpoint),
   HttpRouter.get("/merge", getMergeHandler),
   HttpRouter.get("/reset", getResetHandler),
+  HttpRouter.get("/txs", getTxsOfAddressHandler),
   HttpRouter.get("/logStateQueue", getLogStateQueueHandler),
   HttpRouter.get("/logBlocksDB", getLogBlocksDBHandler),
   HttpRouter.get("/logGlobals", getLogGlobalsHandler),
@@ -392,7 +430,7 @@ const blockCommitmentAction = Effect.gen(function* () {
 });
 
 const blockConfirmationAction = Effect.gen(function* () {
-  yield* Effect.logInfo("🟤 New block confirmation process started.");
+  yield* Effect.logInfo("🔍 New block confirmation process started.");
   const worker = Effect.async<BlockConfirmationWorkerOutput, Error>(
     (resume) => {
       Effect.runSync(
@@ -446,7 +484,7 @@ const blockConfirmationAction = Effect.gen(function* () {
     case "SuccessfulConfirmationOutput": {
       global.UNCONFIRMED_SUBMITTED_BLOCK = "";
       global.AVAILABLE_CONFIRMED_BLOCK = workerOutput.blocksUTxO;
-      yield* Effect.logInfo("🟤 ☑️  Submitted block confirmed.");
+      yield* Effect.logInfo("🔍 ☑️  Submitted block confirmed.");
       break;
     }
     case "NoTxForConfirmationOutput": {
@@ -496,7 +534,7 @@ const blockCommitmentFork = (rerunDelay: number) =>
 
 const blockConfirmationFork = (rerunDelay: number) =>
   Effect.gen(function* () {
-    yield* Effect.logInfo("🟫 Block confirmation fork started.");
+    yield* Effect.logInfo("🟤 Block confirmation fork started.");
     const action = blockConfirmationAction.pipe(
       Effect.withSpan("block-confirmation-fork"),
       Effect.catchAllCause(Effect.logWarning),

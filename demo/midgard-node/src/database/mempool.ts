@@ -6,6 +6,7 @@ import { Effect } from "effect";
 import { fromHex } from "@lucid-evolution/lucid";
 import { SqlClient } from "@effect/sql";
 import { breakDownTx } from "@/utils.js";
+import * as AddressHistoryDB from "@/database/addressHistory.js";
 
 export const tableName = "mempool";
 
@@ -24,6 +25,8 @@ export const insert = (
     yield* MempoolLedgerDB.insert(produced);
     // Remove spent inputs from MempoolLedgerDB.
     yield* MempoolLedgerDB.clearUTxOs(spent);
+    // Add handled addresses to the lookup table
+    yield* AddressHistoryDB.insert(spent, produced);
   }).pipe(
     Effect.withLogSpan(`insert ${tableName}`),
     Effect.tapError((e) =>
@@ -62,4 +65,4 @@ export const clearTxs = (
   txHashes: Buffer[],
 ): Effect.Effect<void, Error, Database> => Tx.delMultiple(tableName, txHashes);
 
-export const clear = () => clearTable(tableName);
+export const clear = clearTable(tableName);

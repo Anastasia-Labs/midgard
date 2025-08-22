@@ -8,6 +8,7 @@ import * as ProcessedMempoolDB from "./processedMempool.js";
 import * as MempoolLedgerDB from "./mempoolLedger.js";
 import * as Tx from "@/database/utils/tx.js";
 import * as Ledger from "@/database/utils/ledger.js";
+import * as AddressHistory from "@/database/addressHistory.js";
 import { Effect } from "effect";
 import { Database } from "@/services/database.js";
 import { insertGenesisUtxos } from "./genesis.js";
@@ -31,7 +32,7 @@ export const initializeDb: () => Effect.Effect<
     yield* Tx.createTable(ImmutableDB.tableName);
     yield* Ledger.createTable(ConfirmedLedgerDB.tableName);
     yield* Ledger.createTable(LatestLedgerDB.tableName);
-
+    yield* AddressHistory.init;
     yield* insertGenesisUtxos;
 
     yield* Effect.logInfo("PostgreSQL database initialized Successfully.");

@@ -39,7 +39,7 @@ const wrapper = (
     const nodeConfig = yield* NodeConfig;
     const { user: lucid } = yield* User;
     if (workerInput.data.firstRun) {
-      yield* Effect.logInfo("🟤 First run. Fetching the latest block...");
+      yield* Effect.logInfo("🔍 First run. Fetching the latest block...");
       const latestBlock = yield* fetchLatestBlock(nodeConfig, lucid);
       const serializedUTxO = yield* serializeStateQueueUTxO(latestBlock);
       return {
@@ -52,7 +52,7 @@ const wrapper = (
       };
     } else {
       const targetTxHash = workerInput.data.unconfirmedSubmittedBlock;
-      yield* Effect.logInfo(`🟤 Confirming tx: ${targetTxHash}`);
+      yield* Effect.logInfo(`🔍 Confirming tx: ${targetTxHash}`);
       yield* Effect.retry(
         Effect.tryPromise({
           try: () => lucid.awaitTx(targetTxHash),
@@ -60,19 +60,19 @@ const wrapper = (
         }),
         Schedule.recurs(4),
       );
-      yield* Effect.logInfo("🟤 Tx confirmed. Fetching the block...");
+      yield* Effect.logInfo("🔍 Tx confirmed. Fetching the block...");
       const latestBlock = yield* fetchLatestBlock(nodeConfig, lucid);
       if (latestBlock.utxo.txHash == targetTxHash) {
-        yield* Effect.logInfo("🟤 Serializing state queue UTxO...");
+        yield* Effect.logInfo("🔍 Serializing state queue UTxO...");
         const serializedUTxO = yield* serializeStateQueueUTxO(latestBlock);
-        yield* Effect.logInfo("🟤 Done.");
+        yield* Effect.logInfo("🔍 Done.");
         return {
           type: "SuccessfulConfirmationOutput",
           blocksUTxO: serializedUTxO,
         };
       } else {
         yield* Effect.logInfo(
-          "🟤 ⚠️  Latest block's txHash doesn't match the confirmed tx.",
+          "🔍 ⚠️  Latest block's txHash doesn't match the confirmed tx.",
         );
         return {
           type: "FailedConfirmationOutput",

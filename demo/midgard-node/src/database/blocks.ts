@@ -177,5 +177,4 @@ export const retrieve = (): Effect.Effect<readonly Entry[], Error, Database> =>
     mapSqlError,
   );
 
-export const clear = (): Effect.Effect<void, Error, Database> =>
-  clearTable(tableName).pipe(Effect.withLogSpan(`clear ${tableName}`));
+export const clear = clearTable(tableName);
