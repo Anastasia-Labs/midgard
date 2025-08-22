@@ -1,6 +1,7 @@
 import { Effect } from "effect";
 import * as SDK from "@al-ft/midgard-sdk";
 import { CML, Data, coreToUtxo, utxoToCore } from "@lucid-evolution/lucid";
+import { SerializationError, DeserializationError } from "@/utils.js";
 
 export type WorkerInput = {
   data: {
@@ -48,15 +49,23 @@ export type SerializedStateQueueUTxO = Omit<
 
 export const serializeStateQueueUTxO = (
   stateQueueUTxO: SDK.TxBuilder.StateQueue.StateQueueUTxO,
-): Effect.Effect<SerializedStateQueueUTxO, Error> =>
+): Effect.Effect<SerializedStateQueueUTxO, SerializationError> =>
   Effect.gen(function* () {
     const core = yield* Effect.try({
       try: () => utxoToCore(stateQueueUTxO.utxo),
-      catch: (e) => new Error(`${e}`),
+      catch: (e) =>
+        new SerializationError({
+          message: `Failed to serialize UTxO: ${e}`,
+          cause: e,
+        }),
     });
     const datumCBOR = yield* Effect.try({
       try: () => Data.to(stateQueueUTxO.datum, SDK.TxBuilder.StateQueue.Datum),
-      catch: (e) => new Error(`${e}`),
+      catch: (e) =>
+        new SerializationError({
+          message: `Failed to serialize datum: ${e}`,
+          cause: e,
+        }),
     });
     return {
       ...stateQueueUTxO,
@@ -67,19 +76,30 @@ export const serializeStateQueueUTxO = (
 
 export const deserializeStateQueueUTxO = (
   stateQueueUTxO: SerializedStateQueueUTxO,
-): Effect.Effect<SDK.TxBuilder.StateQueue.StateQueueUTxO, Error> =>
+): Effect.Effect<
+  SDK.TxBuilder.StateQueue.StateQueueUTxO,
+  DeserializationError
+> =>
   Effect.gen(function* () {
     const u = yield* Effect.try({
       try: () =>
         coreToUtxo(
           CML.TransactionUnspentOutput.from_cbor_hex(stateQueueUTxO.utxo),
         ),
-      catch: (e) => new Error(`${e}`),
+      catch: (e) =>
+        new DeserializationError({
+          message: `Failed to deserialize UTxO: ${e}`,
+          cause: e,
+        }),
     });
     const d = yield* Effect.try({
       try: () =>
         Data.from(stateQueueUTxO.datum, SDK.TxBuilder.StateQueue.Datum),
-      catch: (e) => new Error(`${e}`),
+      catch: (e) =>
+        new DeserializationError({
+          message: `Failed to deserialize datum: ${e}`,
+          cause: e,
+        }),
     });
     return {
       ...stateQueueUTxO,

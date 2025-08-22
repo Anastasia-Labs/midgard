@@ -6,7 +6,7 @@ import {
   UTxO,
   walletFromSeed,
 } from "@lucid-evolution/lucid";
-import { Config, Context, Effect, Layer } from "effect";
+import { Config, Context, Data, Effect, Layer } from "effect";
 
 const SUPPORTED_PROVIDERS = ["kupmios", "blockfrost"] as const;
 type Provider = (typeof SUPPORTED_PROVIDERS)[number];
@@ -62,7 +62,15 @@ export const makeUserFn = (nodeConfig: NodeConfigDep) =>
     return {
       user,
     };
-  });
+  }).pipe(
+    Effect.mapError(
+      (e) =>
+        new ConfigError({
+          message: `An error occurred on lucid initialization`,
+          cause: e,
+        }),
+    ),
+  );
 
 const makeUser = Effect.gen(function* () {
   const nodeConfig = yield* NodeConfig;
@@ -117,9 +125,11 @@ export const makeConfig = Effect.gen(function* () {
 
   const provider = config[0].toLowerCase();
   if (!isValidProvider(provider)) {
-    throw new Error(
-      `Invalid L1_PROVIDER: ${provider}. Supported providers: ${SUPPORTED_PROVIDERS.join(", ")}`,
-    );
+    throw new ConfigError({
+      message: `Invalid L1 provider: ${provider}`,
+      field: "L1_PROVIDER",
+      value: provider,
+    });
   }
   const network: Network = config[7];
   const seedA = config[20];
@@ -220,3 +230,10 @@ export class NodeConfig extends Context.Tag("NodeConfig")<
 >() {
   static readonly layer = Layer.effect(NodeConfig, makeConfig);
 }
+
+export class ConfigError extends Data.TaggedError("ConfigurationError")<{
+  readonly message: string;
+  readonly field?: string;
+  readonly value?: string;
+  readonly cause?: unknown;
+}> {}

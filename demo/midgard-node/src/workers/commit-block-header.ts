@@ -28,12 +28,13 @@ import { NodeConfig, User } from "@/config.js";
 import { Database } from "@/services/database.js";
 import { batchProgram } from "@/utils.js";
 import { Columns as TxColumns } from "@/database/utils/tx.js";
+import { WorkerError } from "./utils/common.js";
 
 const BATCH_SIZE = 100;
 
 const wrapper = (
   workerInput: WorkerInput,
-): Effect.Effect<WorkerOutput, Error, NodeConfig | User | Database> =>
+): Effect.Effect<WorkerOutput, WorkerError, NodeConfig | User | Database> =>
   Effect.gen(function* () {
     const nodeConfig = yield* NodeConfig;
     const { user: lucid } = yield* User;
@@ -89,7 +90,7 @@ const wrapper = (
           // The tx confirmation worker has not yet confirmed a previously
           // submitted tx, so the root we have found can not be used yet.
           // However, it is stored on disk in our LevelDB mempool. Therefore,
-          // the processed txs must be transferred to `ProccessedMempoolDB` from
+          // the processed txs must be transferred to `ProcessedMempoolDB` from
           // `MempoolDB`.
           //
           // TODO: Handle failures properly.
@@ -158,7 +159,7 @@ const wrapper = (
 
           const onSubmitFailure = (err: SubmitError) =>
             Effect.gen(function* () {
-              yield* Effect.logError(`🔹 ⚠️  Tx submit failed: ${err.err}`);
+              yield* Effect.logError(`🔹 ⚠️  Tx submit failed: ${err.message}`);
               yield* Effect.logError(
                 "🔹 ⚠️  Mempool trie will be preserved, but db will be cleared.",
               );
@@ -256,7 +257,10 @@ const wrapper = (
   });
 
 if (parentPort === null)
-  throw new Error("MPT computation must be run as a worker");
+  throw new WorkerError({
+    worker: "commit-block-header",
+    message: "MPT computation must be run as a worker",
+  });
 
 const inputData = workerData as WorkerInput;
 
@@ -269,12 +273,14 @@ const program = pipe(
 
 Effect.runPromise(
   program.pipe(
-    Effect.catchAll((e) =>
-      Effect.succeed({
+    Effect.catchAll((e) => {
+      const errorMessage =
+        e instanceof Error ? e.message : "Unknown error from MPT worker";
+      return Effect.succeed({
         type: "FailureOutput",
-        error: e instanceof Error ? e.message : "Unknown error from MPT worker",
-      }),
-    ),
+        error: errorMessage,
+      });
+    }),
   ),
 ).then((output) => {
   Effect.runSync(

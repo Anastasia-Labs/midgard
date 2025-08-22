@@ -1,6 +1,7 @@
 import { WorkerOutput } from "@/workers/utils/commit-block-header.js";
 import { Effect, Metric } from "effect";
 import { Worker } from "worker_threads";
+import { WorkerError } from "@/workers/utils/common.js";
 
 const commitBlockNumTxGauge = Metric.gauge("commit_block_num_tx_count", {
   description:
@@ -35,7 +36,7 @@ export const buildAndSubmitCommitmentBlock = () =>
     if (global.RESET_IN_PROGRESS) {
       return yield* Effect.logInfo("🔹 Reset in progress...");
     }
-    const worker = Effect.async<WorkerOutput, Error, never>((resume) => {
+    const worker = Effect.async<WorkerOutput, WorkerError, never>((resume) => {
       Effect.runSync(Effect.logInfo(`👷 Starting block commitment worker...`));
       const worker = new Worker(
         new URL("./commit-block-header.js", import.meta.url),
@@ -53,7 +54,10 @@ export const buildAndSubmitCommitmentBlock = () =>
         if (output.type === "FailureOutput") {
           resume(
             Effect.fail(
-              new Error(`Error in commitment worker: ${output.error}`),
+              new WorkerError({
+                worker: "commit-block-header",
+                message: `Error in commitment worker: ${output.error}`,
+              }),
             ),
           );
         } else {
@@ -62,14 +66,25 @@ export const buildAndSubmitCommitmentBlock = () =>
         worker.terminate();
       });
       worker.on("error", (e: Error) => {
-        resume(Effect.fail(new Error(`Error in commitment worker: ${e}`)));
+        resume(
+          Effect.fail(
+            new WorkerError({
+              worker: "commit-block-header",
+              message: `Error in commitment worker: ${e}`,
+              cause: e,
+            }),
+          ),
+        );
         worker.terminate();
       });
       worker.on("exit", (code: number) => {
         if (code !== 0) {
           resume(
             Effect.fail(
-              new Error(`Commitment worker exited with code: ${code}`),
+              new WorkerError({
+                worker: "commit-block-header",
+                message: `Commitment worker exited with code: ${code}`,
+              }),
             ),
           );
         }

@@ -16,14 +16,9 @@ import { BlocksDB, ConfirmedLedgerDB } from "@/database/index.js";
 import * as SDK from "@al-ft/midgard-sdk";
 import { Address, LucidEvolution, Script } from "@lucid-evolution/lucid";
 import { Effect, Metric } from "effect";
-import {
-  ConfirmError,
-  fetchFirstBlockTxs,
-  handleSignSubmit,
-  SubmitError,
-} from "../utils.js";
+import { ConfirmError, fetchFirstBlockTxs, handleSignSubmit, SubmitError } from "../utils.js";
 import { Entry as LedgerEntry } from "@/database/utils/ledger.js";
-import { breakDownTx } from "@/utils.js";
+import { breakDownTx, LucidError } from "@/utils.js";
 
 const mergeBlockCounter = Metric.counter("merge_block_count", {
   description: "A counter for tracking merged blocks",
@@ -39,7 +34,7 @@ const MIN_QUEUE_LENGTH_FOR_MERGING: number = 8;
 const getStateQueueLength = (
   lucid: LucidEvolution,
   stateQueueAddress: Address,
-): Effect.Effect<number, Error> =>
+): Effect.Effect<number, LucidError> =>
   Effect.gen(function* () {
     const now_millis = Date.now();
     if (
@@ -52,7 +47,11 @@ const getStateQueueLength = (
       );
       const stateQueueUtxos = yield* Effect.tryPromise({
         try: () => lucid.utxosAt(stateQueueAddress),
-        catch: (e) => new Error(`${e}`),
+        catch: (e) =>
+          new LucidError({
+            message: `Failed to fetch UTxOs at state queue address: ${stateQueueAddress}`,
+            cause: e,
+          }),
       });
 
       global.BLOCKS_IN_QUEUE = Math.max(0, stateQueueUtxos.length - 1);
@@ -88,7 +87,7 @@ export const buildAndSubmitMergeTx = (
       fetchConfig.stateQueueAddress,
     );
     // Avoid a merge tx if the queue is too short (performing a merge with such
-    // conditions has a chance of wasting the work done for root computaions).
+    // conditions has a chance of wasting the work done for root computations).
     if (
       currentStateQueueLength < MIN_QUEUE_LENGTH_FOR_MERGING ||
       global.RESET_IN_PROGRESS
@@ -140,8 +139,8 @@ export const buildAndSubmitMergeTx = (
       // Submit the transaction
       const onSubmitFailure = (err: SubmitError) =>
         Effect.gen(function* () {
-          yield* Effect.logError(`Sumbit tx error: ${err}`);
-          yield* Effect.fail(err.err);
+          yield* Effect.logError(`Submit tx error: ${err}`);
+          yield* Effect.fail(err);
         });
       const onConfirmFailure = (err: ConfirmError) =>
         Effect.logError(`Confirm tx error: ${err}`);

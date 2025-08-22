@@ -1,7 +1,18 @@
 import { Effect } from "effect";
-import { mapSqlError, clearTable } from "@/database/utils/common.js";
+import {
+  clearTable,
+  DeleteError,
+  InsertError,
+  SelectError,
+} from "@/database/utils/common.js";
 import { SqlClient, SqlError } from "@effect/sql";
 import { Database } from "@/services/database.js";
+import {
+  mapCreateTableError,
+  mapDeleteError,
+  mapInsertError,
+  mapSelectError,
+} from "@/database/utils/common.js";
 
 export const tableName = "blocks";
 
@@ -45,12 +56,12 @@ export const init = Effect.gen(function* () {
       )} ON ${sql(tableName)} (${sql(Columns.TX_ID)});`;
     }),
   );
-});
+}).pipe(mapCreateTableError(tableName));
 
 export const insert = (
   headerHash: Buffer,
   txHashes: Buffer[],
-): Effect.Effect<void, Error, Database> =>
+): Effect.Effect<void, InsertError, Database> =>
   Effect.gen(function* () {
     const sql = yield* SqlClient.SqlClient;
     if (!txHashes.length) {
@@ -69,13 +80,13 @@ export const insert = (
       Effect.logError(`${tableName} db: inserting error: ${e}`),
     ),
     Effect.withLogSpan(`insert ${tableName}`),
-    mapSqlError,
+    mapInsertError(tableName),
     Effect.asVoid,
   );
 
 export const retrieveTxHashesByHeaderHash = (
   headerHash: Buffer,
-): Effect.Effect<readonly Buffer[], Error, Database> =>
+): Effect.Effect<readonly Buffer[], SelectError, Database> =>
   Effect.gen(function* () {
     yield* Effect.logDebug(
       `${tableName} db: attempt retrieve txHashes for block ${headerHash}`,
@@ -97,12 +108,12 @@ export const retrieveTxHashesByHeaderHash = (
         `${tableName} db: retrieving txHashes error: ${JSON.stringify(e)}`,
       ),
     ),
-    mapSqlError,
+    mapSelectError(tableName),
   );
 
 export const retrieveHeaderHashByTxHash = (
   txHash: Buffer,
-): Effect.Effect<Buffer, Error, Database> =>
+): Effect.Effect<Buffer, SelectError, Database> =>
   Effect.gen(function* () {
     yield* Effect.logDebug(
       `${tableName} db: attempt retrieve headerHash for txHash ${txHash}`,
@@ -130,14 +141,14 @@ export const retrieveHeaderHashByTxHash = (
         `${tableName} db: retrieving headerHash error: ${JSON.stringify(e)}`,
       ),
     ),
-    mapSqlError,
+    mapSelectError(tableName),
   );
 
 /** Associated inputs are also deleted.
  */
 export const clearBlock = (
   headerHash: Buffer,
-): Effect.Effect<void, Error, Database> =>
+): Effect.Effect<void, DeleteError, Database> =>
   Effect.gen(function* () {
     yield* Effect.logDebug(
       `${tableName} db: attempt clear block ${headerHash}`,
@@ -157,10 +168,14 @@ export const clearBlock = (
         `${tableName} db: clearing block error: ${JSON.stringify(e)}`,
       ),
     ),
-    mapSqlError,
+    mapDeleteError(tableName),
   );
 
-export const retrieve = (): Effect.Effect<readonly Entry[], Error, Database> =>
+export const retrieve = (): Effect.Effect<
+  readonly Entry[],
+  SelectError,
+  Database
+> =>
   Effect.gen(function* () {
     yield* Effect.logInfo(`${tableName} db: attempt to retrieve blocks`);
     const sql = yield* SqlClient.SqlClient;
@@ -174,8 +189,8 @@ export const retrieve = (): Effect.Effect<readonly Entry[], Error, Database> =>
         `${tableName} db: retrieving error: ${JSON.stringify(e)}`,
       ),
     ),
-    mapSqlError,
+    mapSelectError(tableName),
   );
 
-export const clear = (): Effect.Effect<void, Error, Database> =>
+export const clear = (): Effect.Effect<void, DeleteError, Database> =>
   clearTable(tableName).pipe(Effect.withLogSpan(`clear ${tableName}`));

@@ -1,8 +1,8 @@
 import { Effect } from "effect";
-import { ConfirmError, handleSignSubmit, SubmitError } from "../utils.js";
 import * as SDK from "@al-ft/midgard-sdk";
 import { AlwaysSucceeds } from "@/services/index.js";
 import { NodeConfig, User } from "@/config.js";
+import { ConfirmError, handleSignSubmit, SubmitError} from "../utils.js";
 
 export const stateQueueInit = Effect.gen(function* () {
   const nodeConfig = yield* NodeConfig;
@@ -18,8 +18,8 @@ export const stateQueueInit = Effect.gen(function* () {
   const txBuilder = yield* SDK.Endpoints.initTxProgram(lucid, initParams);
   const onSubmitFailure = (err: SubmitError) =>
     Effect.gen(function* () {
-      yield* Effect.logError(`Sumbit tx error: ${err}`);
-      yield* Effect.fail(err.err);
+      yield* Effect.logError(`Submit tx error: ${err}`);
+      yield* Effect.fail(err);
     });
   const onConfirmFailure = (err: ConfirmError) =>
     Effect.logError(`Confirm tx error: ${err}`);
