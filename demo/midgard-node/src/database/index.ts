@@ -7,5 +7,5 @@ export * as ProcessedMempoolDB from "./processedMempool.js";
 export * as MempoolLedgerDB from "./mempoolLedger.js";
 export * as InitDB from "./init.js";
 export * as CommonUtils from "./utils/common.js";
-export * as LedgerUtils from "./utils/ledger.js";
-export * as TxUtils from "./utils/tx.js";
+export * as Ledger from "./utils/ledger.js";
+export * as Tx from "./utils/tx.js";

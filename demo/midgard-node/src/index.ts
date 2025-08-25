@@ -9,6 +9,7 @@ import { NodeConfig, User } from "./config.js";
 import dotenv from "dotenv";
 import { AlwaysSucceeds } from "./services/index.js";
 import { NodeRuntime } from "@effect/platform-node";
+import { MempoolDB } from "./database/index.js";
 
 // Initialize global flags:
 global.BLOCKS_IN_QUEUE = 0;
