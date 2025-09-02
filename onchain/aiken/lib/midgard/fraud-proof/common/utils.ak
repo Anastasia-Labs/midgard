@@ -7,6 +7,7 @@ use cardano/address.{Script, VerificationKey}
 use cardano/assets.{PolicyId, lovelace_of}
 use cardano/transaction.{InlineDatum, Input, Output, Transaction}
 use midgard/common/utils.{get_singleton_asset_with_policy} as get_singleton_asset_with_policy
+use midgard/common/utils.{get_authentic_input_with_policy_at} as get_authentic_input_with_policy_at
 use midgard/computation_thread.{StepDatum, Success}
 use midgard/fraud_proof/common/types.{
   ExclusionProofInputTx, ExclusionProofUtxo, FraudProofDatum,
@@ -33,11 +34,16 @@ use midgard/ledger_state.{Header}
 pub fn get_tx_root_validate_block_hash(
   tx: Transaction,
   state_queue_node_ref_input_index: Int,
+  state_queue_policy: PolicyId,
   ct_token_asset_name: ByteArray,
 ) -> ByteArray {
   // Reference input with block_hash 
-  expect Some(state_queue_node_input) =
-    list.at(tx.reference_inputs, state_queue_node_ref_input_index)
+  let state_queue_node_input =
+    get_authentic_input_with_policy_at(
+      tx.reference_inputs,
+      state_queue_policy,
+      state_queue_node_ref_input_index,
+    )
 
   // Extract tx_root via the state queue block hash
   expect InlineDatum(state_queue_datum_data) =
