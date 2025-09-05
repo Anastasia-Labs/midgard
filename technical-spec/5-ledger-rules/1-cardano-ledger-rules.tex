@@ -222,9 +222,44 @@ Formal specification:
 
 Fraud proof construction:
 \begin{enumerate}
-  \item Let $t$ be the transaction alleged to violate the ledger rule. 
+  \item Let $t$ be the transaction alleged to violate the ledger rule.
   \item A membership proof must be provided that shows that the transaction is included in the ledger
   \item A DA layer proof must be presented that certifies that $length(spend\_inputs(t)) = 0$
+\end{enumerate}
+
+\subsection{Rule: Maximum number of collateral inputs}
+\label{rule:collateral-inputs-max}
+Every valid transaction in the ledger must have less than MAX\_COLLATERAL\_INPUTS collateral inputs.
+Formal specification:
+\begin{empheq}[box=\ledgerRuleBox]{equation*}
+\begin{split}
+  &\forall t \in Ledger:\\
+    &\quad |collateral\_inputs(t)| \leq MAX\_COLLATERAL\_INPUTS
+\end{split}
+\end{empheq}
+
+This ledger rule is violated if any of the following violations occur:
+\begin{itemize-multi}
+  \item \hyperref[violation:OVER-MAX-COLLATERAL-INPUTS]{OVER-MAX-COLLATERAL-INPUTS}
+\end{itemize-multi}
+
+\subsubsection{OVER-MAX-COLLATERAL-INPUTS violation}
+\label{violation:OVER-MAX-COLLATERAL-INPUTS}
+A transaction $t$ is in the ledger and spends no inputs.
+Formal specification:
+\begin{equation*}
+\begin{split}
+  &\exists t \in txs:\\
+    &\quad |collateral\_inputs(t)| > MAX\_COLLATERAL\_INPUTS
+\end{split}
+\end{equation*}
+
+Fraud proof construction:
+\begin{enumerate}
+  \item Let $t$ be the transaction alleged to violate the ledger rule.
+  \item A membership proof must be provided that shows that the transaction is included in the ledger
+  \item A DA layer proof must be presented that certifies that \break
+        $length(collateral\_inputs(t)) > MAX\_COLLATERAL\_INPUTS$
 \end{enumerate}
 
 \subsection{Rule: Minimum fee}
@@ -428,15 +463,31 @@ Fraud proof construction:
   \item A DA layer proof must be presented that shows that a signature with $h$ does not exist
 \end{enumerate}
 
-\subsection{Rule: Native scripts are available}
-\label{rule:native-scripts-are-available}
+% TODO: move this to appendix?
+% TODO: depending on the actual Plutus script implementation, these rules might change
+\subsection{On Cardano native and Plutus scripts}
+
+\paragraph{}
+On the Cardano main chain and on Midgard chain(s), two types of scripts are available to be used for dapps.
+Native scripts are simple declarative validators that only support some logic "calculations", including verifying the number of signatures in a given set and checking that the timestamp of the transaction is before or after a specified value.
+With Plutus scripts more in-depth validation logic can be tied to the spending of script UTxOs, and thus supporting the complexity of dapps on other blockchains.
+
+\paragraph{}
+Cardano native scripts were originally introduced in the Shelley era, and the specification was later expanded in the Allegra/Mary era.
+The serialization and validation rules can be found at the relevant specification documents (\url{https://github.com/intersectmbo/cardano-ledger/releases/latest/download/shelley-ledger.pdf} and \url{https://github.com/intersectmbo/cardano-ledger/releases/latest/download/mary-ledger.pdf} respectively).
+
+\paragraph{}
+Plutus script serialization and execution rules are described in the "Formal Specification of the Plutus Core Language", which can be found at \url{https://plutus.cardano.intersectmbo.org/resources/plutus-core-spec.pdf}.
+
+\subsection{Rule: scripts are available}
+\label{rule:scripts-are-available}
 All native scripts are provided.
 Formal specification:
 \begin{empheq}[box=\ledgerRuleBox]{equation*}
 \begin{split}
   &\forall t \in Ledger,\; \forall u \in output(t):\\
     &\quad
-      addr(u) \in Addr^{native}_{v2} \implies \bigl(
+      addr(u) \in Addr^{script}_{v2} \implies \bigl(
         \exists (h, s) \in script\_tx\_wits(t),\; script\_hash(addr(u)) = h 
       \bigr)
 \end{split}
@@ -444,17 +495,17 @@ Formal specification:
 
 This ledger rule is violated if any of the following violations occur:
 \begin{itemize-multi}
-  \item \hyperref[violation:MISSING-NATIVE-SCRIPT]{MISSING-NATIVE-SCRIPT}
+  \item \hyperref[violation:MISSING-SCRIPT]{MISSING-SCRIPT}
 \end{itemize-multi}
 
-\subsubsection{MISSING-NATIVE-SCRIPT violation}
-\label{violation:MISSING-NATIVE-SCRIPT}
+\subsubsection{MISSING-SCRIPT violation}
+\label{violation:MISSING-SCRIPT}
 A required script, corresponding to $h$ is missing.
 Formal specification:
 \begin{equation*}
 \begin{split}
   &\exists t \in txs,\; \exists u \in output(t):\\
-    &\quad addr(u) \in Addr^{native}_{v2} \;\land\\
+    &\quad addr(u) \in Addr^{script}_{v2} \;\land\\
     &\quad \bigl(
         \nexists (h, s) \in script\_tx\_wits(t),\; script\_hash(addr(u)) = h
       \bigr)
@@ -470,34 +521,37 @@ Fraud proof construction:
         $script\_hash(addr(u)) = h$ in $script\_tx\_wits(t)$.
 \end{enumerate}
 
-\subsection{Rule: Native scripts validated}
-\label{rule:native-scripts-validated}
+\subsection{Rule: Scripts validated}
+\label{rule:scripts-validated}
 
-All native scripts validations pass.
+All scripts validations pass.
 Formal specification:
 \begin{empheq}[box=\ledgerRuleBox]{equation*}
 \begin{split}
   &\forall t \in Ledger,\; \forall (h, s) \in script\_tx\_wits(t):\\
-    &\quad native\_validation\_succeeds(s, t)
+    &\quad script\_validation\_succeeds(s, t)
 \end{split}
 \end{empheq}
 
-% TODO: clarify validation logic
-\todo
+Notes:
+\begin{itemize}
+  \item the function $script\_validation\_succeeds$ must be able to validate the transaction against both native scripts and Plutus scripts (depending on the value of $s$)
+  \item in both cases the $script\_validation\_succeeds$ function must return $false$ in case any script execution limit is reached during execution
+\end{itemize}
 
 This ledger rule is violated if any of the following violations occur:
 \begin{itemize-multi}
-  \item \hyperref[violation:NATIVE-SCRIPT-INVALID]{NATIVE-SCRIPT-INVALID}
+  \item \hyperref[violation:SCRIPT-INVALID]{SCRIPT-INVALID}
 \end{itemize-multi}
 
-\subsubsection{NATIVE-SCRIPT-INVALID violation}
-\label{violation:NATIVE-SCRIPT-INVALID}
+\subsubsection{SCRIPT-INVALID violation}
+\label{violation:SCRIPT-INVALID}
 A native script $s$ validation fails.
 Formal specification:
 \begin{equation*}
 \begin{split}
   &\exists t \in txs,\; \exists (h, s) \in script\_tx\_wits(t):\\
-    &\quad \lnot native\_validation\_succeeds(s, t)
+    &\quad \lnot script\_validation\_succeeds(s, t)
 \end{split}
 \end{equation*}
 
@@ -506,7 +560,7 @@ Fraud proof construction:
   \item Let $t$ be the transaction alleged to violate the ledger rule. 
   \item A membership proof must be provided that shows that the transaction $t$ is included in the ledger.
   \item A DA layer proof must be shown that certifies that $(h, s)$ exists in $script\_tx\_wits(t)$.
-  \item The $native\_validation\_succeeds(s, t)$ fails.
+  \item The $script\_validation\_succeeds(s, t)$ fails.
 \end{enumerate}
 
 \subsection{Rule: Value preservation}
@@ -843,23 +897,5 @@ Fraud proof construction:
   \item A membership proof must be created for $t_1$ such that $tx\_hash(t_1) = tx\_hash(i)$
   \item A DA layer proof must be presented that certifies that $length(outputs(t_1)) < index(i)$
 \end{enumerate}
-
-% TODO: maybe also include $inputs \cap reference\_inputs = \varnothing$
-
-% \subsection{Rule: Validator scripts are available}
-% \label{rule:validator-scripts-are-available}
-
-% TODO: This is a placeholder, it will only be relevant once Midgard implements phase 2 validations (smart contracts).
-
-% \subsection{Rule: Validator scripts adhere to execution limits}
-% \label{rule:validator-scripts-adhere-to-execution-limits}
-
-% TODO: This is a placeholder, it will only be relevant once Midgard implements phase 2 validations (smart contracts).
-
-% \subsection{Rule: Validator scripts accept transaction}
-% \label{rule:validator-scripts-accept-transaction}
-
-% TODO: This is a placeholder, it will only be relevant once Midgard implements phase 2 validations (smart contracts).
-% Maybe separate out staking and minting scripts in a separate rule
 
 \end{document}
