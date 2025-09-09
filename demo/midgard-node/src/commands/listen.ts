@@ -20,6 +20,7 @@ import {
   Schedule,
 } from "effect";
 import {
+  AddressHistoryDB,
   BlocksDB,
   ConfirmedLedgerDB,
   ImmutableDB,
@@ -132,7 +133,7 @@ const getTxHandler = Effect.gen(function* () {
 
 const getUtxosHandler = Effect.gen(function* () {
   const params = yield* ParsedSearchParams;
-  const addr = params["addr"];
+  const addr = params["address"];
 
   if (typeof addr !== "string") {
     yield* Effect.logInfo(`GET /utxos - Invalid address type: ${addr}`);
@@ -263,6 +264,7 @@ const getResetHandler = Effect.gen(function* () {
       ImmutableDB.clear,
       LatestLedgerDB.clear,
       ConfirmedLedgerDB.clear,
+      AddressHistoryDB.clear,
       deleteMempoolMpt,
       deleteLedgerMpt,
     ],
@@ -274,6 +276,46 @@ const getResetHandler = Effect.gen(function* () {
 }).pipe(
   Effect.catchTag("HttpBodyError", (e) => failWith500("GET", "reset", e)),
   Effect.catchAll((e) => failWith500("GET", "reset", e, "sdk error")),
+);
+
+const getTxsOfAddressHandler = Effect.gen(function* () {
+  const params = yield* ParsedSearchParams;
+  const addr = params["address"];
+
+  if (typeof addr !== "string") {
+    yield* Effect.logInfo(`GET /txs - Invalid address type: ${addr}`);
+    return yield* HttpServerResponse.json(
+      { error: `Invalid address type: ${addr}` },
+      { status: 400 },
+    );
+  }
+  try {
+    const addrDetails = getAddressDetails(addr);
+    if (!addrDetails.paymentCredential) {
+      yield* Effect.logInfo(`Invalid address format: ${addr}`);
+      return yield* HttpServerResponse.json(
+        { error: `Invalid address format: ${addr}` },
+        { status: 400 },
+      );
+    }
+
+    const cbors = yield* AddressHistoryDB.retrieve(addrDetails.address.bech32);
+    yield* Effect.logInfo(`Found ${cbors.length} CBORs with ${addr}`);
+    return yield* HttpServerResponse.json({
+      cbors: cbors,
+    });
+  } catch (error) {
+    yield* Effect.logInfo(`Invalid address: ${addr}`);
+    return yield* HttpServerResponse.json(
+      { error: `Invalid address: ${addr}` },
+      { status: 400 },
+    );
+  }
+}).pipe(
+  Effect.catchTag("HttpBodyError", (e) => failWith500("GET", "txs", e)),
+  Effect.catchTag("DBSelectError", (e) =>
+    failWith500("GET", "txs", e.cause ?? e, "database error"),
+  ),
 );
 
 const getLogStateQueueHandler = Effect.gen(function* () {
@@ -416,6 +458,7 @@ const router = (
       HttpRouter.get("/tx", getTxHandler),
       HttpRouter.get("/utxos", getUtxosHandler),
       HttpRouter.get("/block", getBlockHandler),
+      HttpRouter.get("/txs", getTxsOfAddressHandler),
       HttpRouter.get("/init", getInitHandler),
       HttpRouter.get("/commit", getCommitEndpoint),
       HttpRouter.get("/merge", getMergeHandler),
@@ -576,7 +619,7 @@ const blockCommitmentFork = (rerunDelay: number) =>
 
 const blockConfirmationFork = (rerunDelay: number) =>
   Effect.gen(function* () {
-    yield* Effect.logInfo("🟫 Block confirmation fork started.");
+    yield* Effect.logInfo("🟤 Block confirmation fork started.");
     const action = blockConfirmationAction.pipe(
       Effect.withSpan("block-confirmation-fork"),
       Effect.catchAllCause(Effect.logWarning),

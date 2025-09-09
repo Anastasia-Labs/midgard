@@ -195,4 +195,4 @@ export const retrieve = (): Effect.Effect<
 
 export const clear: Effect.Effect<void, DBTruncateError, Database> = clearTable(
   tableName,
-).pipe(Effect.withLogSpan(`clear ${tableName}`));
+);

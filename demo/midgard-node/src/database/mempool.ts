@@ -11,6 +11,7 @@ import {
 import * as MempoolLedgerDB from "./mempoolLedger.js";
 import { Effect } from "effect";
 import { SqlClient } from "@effect/sql";
+import * as AddressHistoryDB from "@/database/addressHistory.js";
 import { ProcessedTx, CmlDeserializationError } from "@/utils.js";
 
 export const tableName = "mempool";
@@ -33,6 +34,8 @@ export const insert = (
     yield* MempoolLedgerDB.insert(produced);
     // Remove spent inputs from MempoolLedgerDB.
     yield* MempoolLedgerDB.clearUTxOs(spent);
+    // Add handled addresses to the lookup table
+    yield* AddressHistoryDB.insert(spent, produced);
   }).pipe(
     Effect.withLogSpan(`insert ${tableName}`),
     Effect.tapError((e) =>

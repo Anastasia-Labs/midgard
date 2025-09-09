@@ -143,22 +143,22 @@ export const startGenerator = async (
   }
   console.log();
 
-const generateUniqueUTxOs = (baseUTxO: UTxO, count: number) =>
-  Array.from({ length: count }, () => ({
-    ...baseUTxO,
-    txHash: randomBytes(32).toString('hex').toUpperCase(),
-    outputIndex: Math.floor(Math.random() * 1001), // Random outputIndex 0 -> 1000
-  }));
+  const generateUniqueUTxOs = (baseUTxO: UTxO, count: number) =>
+    Array.from({ length: count }, () => ({
+      ...baseUTxO,
+      txHash: randomBytes(32).toString('hex').toUpperCase(),
+      outputIndex: Math.floor(Math.random() * 1001), // Random outputIndex 0 -> 1000
+    }));
 
-    
   // Define the transaction generation function
   const generateTransactions = async () => {
     try {
       const uniqueUTxOs = generateUniqueUTxOs(fullConfig.initialUTxO, fullConfig.batchSize);
-      
+
       const tasks = Array(fullConfig.batchSize)
         .fill(null)
-        .map(async (_, index) => {  // ← Add index parameter
+        .map(async (_, index) => {
+          // ← Add index parameter
           return concurrencyLimiter(async () => {
             const taskUTxO = uniqueUTxOs[index];
             const useOneToOne =
