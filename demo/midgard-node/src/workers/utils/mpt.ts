@@ -32,6 +32,28 @@ export const makeMemoryMpt: Effect.Effect<ETH.MerklePatriciaTrie, MptError> =
     });
   });
 
+const makeMemoryMptProcessor = (
+  label: string,
+  allOps: ETH_UTILS.BatchDBOp[][],
+  rootsArray: string[],
+): Effect.Effect<void, MptError> =>
+  Effect.forEach(
+    allOps,
+    (ops) =>
+      makeMemoryMpt.pipe(
+        Effect.andThen((mpt) =>
+          Effect.gen(function* () {
+            yield* Effect.tryPromise({
+              try: () => mpt.batch(ops),
+              catch: (e) => MptError.batch(label, e),
+            });
+            rootsArray.push(toHex(mpt.root()));
+          }),
+        ),
+      ),
+    { concurrency: "unbounded" },
+  );
+
 export const makeMpts: Effect.Effect<
   { ledgerTrie: ETH.MerklePatriciaTrie; mempoolTrie: ETH.MerklePatriciaTrie },
   MptError,
@@ -214,6 +236,9 @@ export const processMpts = (
       }),
     );
 
+    const inputsRoots: string[] = [];
+    const outputsRoots: string[] = [];
+
     yield* Effect.all(
       [
         Effect.tryPromise({
@@ -224,32 +249,8 @@ export const processMpts = (
           try: () => ledgerTrie.batch(batchDBOps),
           catch: (e) => MptError.batch("ledger", e),
         }),
-        Effect.forEach(
-          allInputsOps,
-          (inputsOps) =>
-            makeMemoryMpt.pipe(
-              Effect.andThen((mpt) =>
-                Effect.tryPromise({
-                  try: () => mpt.batch(inputsOps),
-                  catch: (e) => MptError.batch("inputs", e),
-                }),
-              ),
-            ),
-          { concurrency: "unbounded" },
-        ),
-        Effect.forEach(
-          allOutputsOps,
-          (outputsOps) =>
-            makeMemoryMpt.pipe(
-              Effect.andThen((mpt) =>
-                Effect.tryPromise({
-                  try: () => mpt.batch(outputsOps),
-                  catch: (e) => MptError.batch("outputs", e),
-                }),
-              ),
-            ),
-          { concurrency: "unbounded" },
-        ),
+        makeMemoryMptProcessor("inputs", allInputsOps, inputsRoots),
+        makeMemoryMptProcessor("outputs", allOutputsOps, outputsRoots),
       ],
       { concurrency: "unbounded" },
     );
@@ -259,6 +260,8 @@ export const processMpts = (
 
     yield* Effect.logInfo(`🔹 New transaction root found: ${txRoot}`);
     yield* Effect.logInfo(`🔹 New UTxO root found: ${utxoRoot}`);
+    yield* Effect.logInfo(`🔹 All inputs roots count: ${inputsRoots.length}`);
+    yield* Effect.logInfo(`🔹 All outputs roots count: ${outputsRoots.length}`);
 
     return {
       utxoRoot: utxoRoot,
