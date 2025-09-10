@@ -59,6 +59,13 @@ export const bufferToHex = (buf: Buffer): string => {
   }
 };
 
+/**
+ * Given a number smaller than 65536, returns a `Uint8Array` of 2 bytes.
+ */
+export const unsafeIntToU16 = (i: number): Uint8Array => {
+  return Uint8Array.of((i >> 8) & 0xff, i & 0xff);
+};
+
 export const setupLucid = async (
   network: Network,
   providerName: ProviderName,

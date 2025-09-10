@@ -193,6 +193,5 @@ export const retrieve = (): Effect.Effect<
     sqlErrorToDBSelectError(tableName),
   );
 
-export const clear: Effect.Effect<void, DBTruncateError, Database> = clearTable(
-  tableName,
-);
+export const clear: Effect.Effect<void, DBTruncateError, Database> =
+  clearTable(tableName);

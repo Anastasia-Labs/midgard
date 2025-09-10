@@ -1,7 +1,17 @@
 import { Database } from "@/services/database.js";
 import { SqlClient } from "@effect/sql";
 import { Effect } from "effect";
-import { DBCreateError, DBDeleteError, DBInsertError, DBSelectError, clearTable, sqlErrorToDBCreateError, sqlErrorToDBDeleteError, sqlErrorToDBInsertError, sqlErrorToDBSelectError } from "@/database/utils/common.js";
+import {
+  DBCreateError,
+  DBDeleteError,
+  DBInsertError,
+  DBSelectError,
+  clearTable,
+  sqlErrorToDBCreateError,
+  sqlErrorToDBDeleteError,
+  sqlErrorToDBInsertError,
+  sqlErrorToDBSelectError,
+} from "@/database/utils/common.js";
 import { Address } from "@lucid-evolution/lucid";
 import * as MempoolDB from "@/database/mempool.js";
 import * as ImmutableDB from "@/database/immutable.js";
@@ -83,7 +93,10 @@ export const delTxHash = (
       Ledger.Columns.TX_ID,
     )} = ${tx_hash}`;
     yield* Effect.logDebug(`${tableName} db: deleted ${result.length} rows`);
-  }).pipe(Effect.withLogSpan(`delTxHash table ${tableName}`), sqlErrorToDBDeleteError(tableName));
+  }).pipe(
+    Effect.withLogSpan(`delTxHash table ${tableName}`),
+    sqlErrorToDBDeleteError(tableName),
+  );
 
 /**
  * Retreives all cbors from MempoolDB and ImmutableDB
@@ -98,7 +111,9 @@ export const retrieve = (
 ): Effect.Effect<readonly Buffer[], DBSelectError, Database> =>
   Effect.gen(function* () {
     const sql = yield* SqlClient.SqlClient;
-    yield* Effect.logInfo(`${tableName} db: attempt to retrieve value with address ${address}`);
+    yield* Effect.logInfo(
+      `${tableName} db: attempt to retrieve value with address ${address}`,
+    );
 
     const result = yield* sql<Buffer>`SELECT ${sql(Tx.Columns.TX)} FROM (
       SELECT ${sql(Tx.Columns.TX_ID)}, ${sql(Tx.Columns.TX)}

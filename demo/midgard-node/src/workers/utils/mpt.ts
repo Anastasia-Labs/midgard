@@ -9,7 +9,11 @@ import { NodeConfig } from "@/config.js";
 import * as Tx from "@/database/utils/tx.js";
 import * as Ledger from "@/database/utils/ledger.js";
 import { Database } from "@/services/database.js";
-import { CmlUnexpectedError, findSpentAndProducedUTxOs } from "@/utils.js";
+import {
+  CmlUnexpectedError,
+  findSpentAndProducedUTxOs,
+  unsafeIntToU16,
+} from "@/utils.js";
 import * as FS from "fs";
 
 // Key of the row which its value is the persisted trie root.
@@ -19,6 +23,14 @@ const LEVELDB_ENCODING_OPTS = {
   keyEncoding: ETH_UTILS.KeyEncoding.Bytes,
   valueEncoding: ETH_UTILS.ValueEncoding.Bytes,
 };
+
+export const makeMemoryMpt: Effect.Effect<ETH.MerklePatriciaTrie, MptError> =
+  Effect.gen(function* () {
+    return yield* Effect.tryPromise({
+      try: () => ETH.createMPT(),
+      catch: (e) => MptError.trieCreate("memory", e),
+    });
+  });
 
 export const makeMpts: Effect.Effect<
   { ledgerTrie: ETH.MerklePatriciaTrie; mempoolTrie: ETH.MerklePatriciaTrie },
@@ -150,6 +162,8 @@ export const processMpts = (
     const mempoolTxHashes: Buffer[] = [];
     const mempoolBatchOps: ETH_UTILS.BatchDBOp[] = [];
     const batchDBOps: ETH_UTILS.BatchDBOp[] = [];
+    const allInputsOps: ETH_UTILS.BatchDBOp[][] = [];
+    const allOutputsOps: ETH_UTILS.BatchDBOp[][] = [];
     let sizeOfProcessedTxs = 0;
     yield* Effect.logInfo("🔹 Going through mempool txs and finding roots...");
     yield* Effect.forEach(mempoolTxs, (entry: Tx.Entry) =>
@@ -162,26 +176,41 @@ export const processMpts = (
           txHash,
         ).pipe(Effect.withSpan("findSpentAndProducedUTxOs"));
         sizeOfProcessedTxs += txCbor.length;
-        const delOps: ETH_UTILS.BatchDBOp[] = spent.map((outRef) => ({
-          type: "del",
-          key: outRef,
-        }));
-        const putOps: ETH_UTILS.BatchDBOp[] = produced.map(
-          (le: Ledger.MinimalEntry) => ({
+        const inputsOps: ETH_UTILS.BatchDBOp[] = [];
+        const outputsOps: ETH_UTILS.BatchDBOp[] = [];
+        // const delOps: ETH_UTILS.BatchDBOp[] = [];
+        // const putOps: ETH_UTILS.BatchDBOp[] = [];
+        for (let i = 0; i < spent.length; i++) {
+          const outRef = spent[i];
+          inputsOps.push({
+            type: "put",
+            key: unsafeIntToU16(i),
+            value: outRef,
+          });
+          batchDBOps.push({
+            type: "del",
+            key: outRef,
+          });
+        }
+        for (let i = 0; i < produced.length; i++) {
+          const le: Ledger.MinimalEntry = produced[i];
+          const opt: ETH_UTILS.BatchDBOp = {
             type: "put",
             key: le[Ledger.Columns.OUTREF],
             value: le[Ledger.Columns.OUTPUT],
-          }),
-        );
-        yield* Effect.sync(() =>
+          };
+          outputsOps.push(opt);
+          batchDBOps.push(opt);
+        }
+        yield* Effect.sync(() => {
+          allInputsOps.push(inputsOps);
+          allOutputsOps.push(outputsOps);
           mempoolBatchOps.push({
             type: "put",
             key: txHash,
             value: txCbor,
-          }),
-        );
-        yield* Effect.sync(() => batchDBOps.push(...delOps));
-        yield* Effect.sync(() => batchDBOps.push(...putOps));
+          });
+        });
       }),
     );
 
@@ -195,6 +224,32 @@ export const processMpts = (
           try: () => ledgerTrie.batch(batchDBOps),
           catch: (e) => MptError.batch("ledger", e),
         }),
+        Effect.forEach(
+          allInputsOps,
+          (inputsOps) =>
+            makeMemoryMpt.pipe(
+              Effect.andThen((mpt) =>
+                Effect.tryPromise({
+                  try: () => mpt.batch(inputsOps),
+                  catch: (e) => MptError.batch("inputs", e),
+                }),
+              ),
+            ),
+          { concurrency: "unbounded" },
+        ),
+        Effect.forEach(
+          allOutputsOps,
+          (outputsOps) =>
+            makeMemoryMpt.pipe(
+              Effect.andThen((mpt) =>
+                Effect.tryPromise({
+                  try: () => mpt.batch(outputsOps),
+                  catch: (e) => MptError.batch("outputs", e),
+                }),
+              ),
+            ),
+          { concurrency: "unbounded" },
+        ),
       ],
       { concurrency: "unbounded" },
     );
@@ -292,7 +347,7 @@ export class MptError extends Data.TaggedError("MptError")<{
   }
   static trieCreate(trie: string, cause?: unknown) {
     return new MptError({
-      message: `An error occurred on ${trie} trie create`,
+      message: `An error occurred on ${trie} trie create: ${cause}`,
       cause,
     });
   }
