@@ -1,5 +1,5 @@
 import { Database } from "@/services/database.js";
-import { SqlClient } from "@effect/sql";
+import { SqlClient, SqlError } from "@effect/sql";
 import { Effect } from "effect";
 import {
   DBSelectError,
@@ -71,7 +71,7 @@ export const retrieveValue = (
     const sql = yield* SqlClient.SqlClient;
     yield* Effect.logDebug(`${tableName} db: attempt to retrieve value`);
 
-    const result = yield* sql<Buffer>`SELECT ${sql(Columns.TX)} FROM ${sql(
+    const result = yield* sql<{[Columns.TX]: Buffer}>`SELECT ${sql(Columns.TX)} FROM ${sql(
       tableName,
     )} WHERE ${sql(Columns.TX_ID)} = ${tx_id}`;
 
@@ -85,7 +85,12 @@ export const retrieveValue = (
     //     }) ;
     // }
 
-    return result[0];
+    if (result.length === 0) yield* new SqlError.SqlError({
+      cause: `No value found for tx_id ${tx_id.toString("hex")}`,
+      // table: tableName,
+    });
+
+    return result[0][Columns.TX];
   }).pipe(
     Effect.withLogSpan(`retrieve value ${tableName}`),
     Effect.tapErrorTag("SqlError", (e) =>

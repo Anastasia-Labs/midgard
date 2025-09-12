@@ -97,7 +97,7 @@ const getTxHandler = Effect.gen(function* () {
   if (
     typeof txHashParam !== "string" ||
     !isHexString(txHashParam) ||
-    txHashParam.length !== 32
+    txHashParam.length !== 64
   ) {
     // yield* Effect.logInfo(`Invalid transaction hash: ${txHashParam}`);
     return yield* HttpServerResponse.json(
@@ -106,7 +106,8 @@ const getTxHandler = Effect.gen(function* () {
     );
   }
   const txHashBytes = Buffer.from(fromHex(txHashParam));
-  const foundCbor: Uint8Array = yield* MempoolDB.retrieveTxCborByHash(
+  yield* Effect.logInfo("txHashBytes", txHashBytes);
+  const foundCbor: Buffer = yield* MempoolDB.retrieveTxCborByHash(
     txHashBytes,
   ).pipe(
     Effect.catchAll((_e) =>
@@ -120,10 +121,11 @@ const getTxHandler = Effect.gen(function* () {
       }),
     ),
   );
+  yield* Effect.logInfo("foundCbor", foundCbor);
   yield* Effect.logInfo(
     `GET /tx - Transaction found in mempool: ${txHashParam}`,
   );
-  return yield* HttpServerResponse.json({ tx: toHex(foundCbor) });
+  return yield* HttpServerResponse.json({ tx: bufferToHex(foundCbor) });
 }).pipe(
   Effect.catchTag("HttpBodyError", (e) => failWith500("GET", "tx", e)),
   Effect.catchTag("DBSelectError", (e) =>
