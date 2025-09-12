@@ -9,15 +9,7 @@ import { NodeConfig, User } from "./config.js";
 import dotenv from "dotenv";
 import { AlwaysSucceeds } from "./services/index.js";
 import { NodeRuntime } from "@effect/platform-node";
-
-// Initialize global flags:
-global.BLOCKS_IN_QUEUE = 0;
-global.LATEST_SYNC_OF_STATE_QUEUE_LENGTH = 0;
-global.RESET_IN_PROGRESS = false;
-global.AVAILABLE_CONFIRMED_BLOCK = "";
-global.PROCESSED_UNSUBMITTED_TXS_COUNT = 0;
-global.PROCESSED_UNSUBMITTED_TXS_SIZE = 0;
-global.UNCONFIRMED_SUBMITTED_BLOCK = "";
+import { Globals } from "./globals.js";
 
 dotenv.config();
 const VERSION = packageJson.version;
@@ -27,7 +19,7 @@ const program = new Command();
 program.version(VERSION).description(
   `
   ${chalk.red(
-    `                        @#
+    `                       @#
                          @@%#
                         %@@@%#
                        %%%%%%##
@@ -67,6 +59,7 @@ program.command("listen").action(async () => {
     Effect.provide(User.layer),
     Effect.provide(AlwaysSucceeds.AlwaysSucceedsContract.layer),
     Effect.provide(NodeConfig.layer),
+    Effect.provide(Globals.Default),
   );
 
   NodeRuntime.runMain(program);

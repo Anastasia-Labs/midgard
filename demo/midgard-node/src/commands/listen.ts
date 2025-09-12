@@ -17,6 +17,7 @@ import {
   Metric,
   pipe,
   Queue,
+  Ref,
   Schedule,
 } from "effect";
 import {
@@ -49,8 +50,13 @@ import { HttpBodyError } from "@effect/platform/HttpBody";
 import { insertGenesisUtxos } from "@/database/genesis.js";
 import { deleteLedgerMpt, deleteMempoolMpt } from "@/workers/utils/mpt.js";
 import { Worker } from "worker_threads";
-import { WorkerOutput as BlockConfirmationWorkerOutput } from "@/workers/utils/confirm-block-commitments.js";
+import {
+  WorkerInput as BlockConfirmationWorkerInput,
+  WorkerOutput as BlockConfirmationWorkerOutput,
+} from "@/workers/utils/confirm-block-commitments.js";
 import { WorkerError } from "@/workers/utils/common.js";
+import { Globals } from "@/globals.js";
+import { SerializedStateQueueUTxO } from "@/workers/utils/commit-block-header.js";
 
 const txCounter = Metric.counter("tx_count", {
   description: "A counter for tracking submit transactions",
@@ -359,14 +365,32 @@ ${bHex} -──▶ ${keyValues[bHex]} tx(s)`;
 
 const getLogGlobalsHandler = Effect.gen(function* () {
   yield* Effect.logInfo(`✍  Logging global variables...`);
+  const globals = yield* Globals;
+  const BLOCKS_IN_QUEUE: number = yield* Ref.get(globals.BLOCKS_IN_QUEUE);
+  const LATEST_SYNC_OF_STATE_QUEUE_LENGTH: number = yield* Ref.get(
+    globals.LATEST_SYNC_OF_STATE_QUEUE_LENGTH,
+  );
+  const RESET_IN_PROGRESS: boolean = yield* Ref.get(globals.RESET_IN_PROGRESS);
+  const AVAILABLE_CONFIRMED_BLOCK: "" | SerializedStateQueueUTxO =
+    yield* Ref.get(globals.AVAILABLE_CONFIRMED_BLOCK);
+  const PROCESSED_UNSUBMITTED_TXS_COUNT: number = yield* Ref.get(
+    globals.PROCESSED_UNSUBMITTED_TXS_COUNT,
+  );
+  const PROCESSED_UNSUBMITTED_TXS_SIZE: number = yield* Ref.get(
+    globals.PROCESSED_UNSUBMITTED_TXS_SIZE,
+  );
+  const UNCONFIRMED_SUBMITTED_BLOCK: string = yield* Ref.get(
+    globals.UNCONFIRMED_SUBMITTED_BLOCK,
+  );
+
   yield* Effect.logInfo(`
-  BLOCKS_IN_QUEUE ⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅ ${global.BLOCKS_IN_QUEUE}
-  LATEST_SYNC ⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅ ${new Date(global.LATEST_SYNC_OF_STATE_QUEUE_LENGTH).toLocaleString()}
-  RESET_IN_PROGRESS ⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅ ${global.RESET_IN_PROGRESS}
-  AVAILABLE_CONFIRMED_BLOCK ⋅⋅⋅⋅⋅⋅⋅⋅⋅ ${global.AVAILABLE_CONFIRMED_BLOCK}
-  PROCESSED_UNSUBMITTED_TXS_COUNT ⋅⋅⋅ ${global.PROCESSED_UNSUBMITTED_TXS_COUNT}
-  PROCESSED_UNSUBMITTED_TXS_SIZE ⋅⋅⋅⋅ ${global.PROCESSED_UNSUBMITTED_TXS_SIZE}
-  UNCONFIRMED_SUBMITTED_BLOCK ⋅⋅⋅⋅⋅⋅⋅ ${global.UNCONFIRMED_SUBMITTED_BLOCK}
+  BLOCKS_IN_QUEUE ⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅ ${BLOCKS_IN_QUEUE}
+  LATEST_SYNC ⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅ ${new Date(LATEST_SYNC_OF_STATE_QUEUE_LENGTH).toLocaleString()}
+  RESET_IN_PROGRESS ⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅ ${RESET_IN_PROGRESS}
+  AVAILABLE_CONFIRMED_BLOCK ⋅⋅⋅⋅⋅⋅⋅⋅⋅ ${JSON.stringify(AVAILABLE_CONFIRMED_BLOCK)}
+  PROCESSED_UNSUBMITTED_TXS_COUNT ⋅⋅⋅ ${PROCESSED_UNSUBMITTED_TXS_COUNT}
+  PROCESSED_UNSUBMITTED_TXS_SIZE ⋅⋅⋅⋅ ${PROCESSED_UNSUBMITTED_TXS_SIZE}
+  UNCONFIRMED_SUBMITTED_BLOCK ⋅⋅⋅⋅⋅⋅⋅ ${UNCONFIRMED_SUBMITTED_BLOCK}
 `);
   return yield* HttpServerResponse.json({
     message: `Global variables logged!`,
@@ -410,6 +434,7 @@ const router = (
   | NodeConfig
   | AlwaysSucceedsContract
   | HttpServerRequest.HttpServerRequest
+  | Globals
 > =>
   HttpRouter.empty
     .pipe(
@@ -436,7 +461,9 @@ const router = (
     );
 
 const blockCommitmentAction = Effect.gen(function* () {
-  if (!global.RESET_IN_PROGRESS) {
+  const globals = yield* Globals;
+  const RESET_IN_PROGRESS = yield* Ref.get(globals.RESET_IN_PROGRESS);
+  if (!RESET_IN_PROGRESS) {
     yield* Effect.logInfo("🔹 New block commitment process started.");
     yield* StateQueueTx.buildAndSubmitCommitmentBlock().pipe(
       Effect.withSpan("buildAndSubmitCommitmentBlock"),
@@ -445,7 +472,15 @@ const blockCommitmentAction = Effect.gen(function* () {
 });
 
 const blockConfirmationAction = Effect.gen(function* () {
-  if (!global.RESET_IN_PROGRESS) {
+  const globals = yield* Globals;
+  const RESET_IN_PROGRESS = yield* Ref.get(globals.RESET_IN_PROGRESS);
+  if (!RESET_IN_PROGRESS) {
+    const UNCONFIRMED_SUBMITTED_BLOCK = yield* Ref.get(
+      globals.UNCONFIRMED_SUBMITTED_BLOCK,
+    );
+    const AVAILABLE_CONFIRMED_BLOCK = yield* Ref.get(
+      globals.AVAILABLE_CONFIRMED_BLOCK,
+    );
     yield* Effect.logInfo("🔍 New block confirmation process started.");
     const worker = Effect.async<
       BlockConfirmationWorkerOutput,
@@ -461,11 +496,11 @@ const blockConfirmationAction = Effect.gen(function* () {
           workerData: {
             data: {
               firstRun:
-                global.UNCONFIRMED_SUBMITTED_BLOCK === "" &&
-                global.AVAILABLE_CONFIRMED_BLOCK === "",
-              unconfirmedSubmittedBlock: global.UNCONFIRMED_SUBMITTED_BLOCK,
+                UNCONFIRMED_SUBMITTED_BLOCK === "" &&
+                AVAILABLE_CONFIRMED_BLOCK === "",
+              unconfirmedSubmittedBlock: UNCONFIRMED_SUBMITTED_BLOCK,
             },
-          },
+          } as BlockConfirmationWorkerInput, // TODO: Consider other approaches to avoid type assertion here.
         },
       );
       worker.on("message", (output: BlockConfirmationWorkerOutput) => {
@@ -514,8 +549,11 @@ const blockConfirmationAction = Effect.gen(function* () {
     const workerOutput: BlockConfirmationWorkerOutput = yield* worker;
     switch (workerOutput.type) {
       case "SuccessfulConfirmationOutput": {
-        global.UNCONFIRMED_SUBMITTED_BLOCK = "";
-        global.AVAILABLE_CONFIRMED_BLOCK = workerOutput.blocksUTxO;
+        yield* Ref.set(globals.UNCONFIRMED_SUBMITTED_BLOCK, "");
+        yield* Ref.set(
+          globals.AVAILABLE_CONFIRMED_BLOCK,
+          workerOutput.blocksUTxO,
+        );
         yield* Effect.logInfo("🔍 ☑️  Submitted block confirmed.");
         break;
       }
@@ -699,6 +737,7 @@ export const runNode = Effect.gen(function* () {
     Effect.provide(AlwaysSucceedsContract.layer),
     Effect.provide(User.layer),
     Effect.provide(NodeConfig.layer),
+    Effect.provide(Globals.Default),
   );
 
   pipe(

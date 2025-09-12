@@ -8,8 +8,9 @@ import {
 } from "@lucid-evolution/lucid";
 import { AlwaysSucceeds } from "@/services/index.js";
 import { NodeConfig, User } from "@/config.js";
-import { Effect } from "effect";
+import { Effect, Ref } from "effect";
 import { TxConfirmError, handleSignSubmit, TxSubmitError } from "../utils.js";
+import { Globals } from "@/globals.js";
 
 const collectAndBurnStateQueueNodesProgram = (
   lucid: LucidEvolution,
@@ -17,9 +18,10 @@ const collectAndBurnStateQueueNodesProgram = (
   stateQueueSpendingScript: Script,
   stateQueueMintingScript: Script,
   stateQueueUTxOs: SDK.TxBuilder.StateQueue.StateQueueUTxO[],
-): Effect.Effect<void, Error> =>
+): Effect.Effect<void, Error, Globals> =>
   Effect.gen(function* () {
-    global.RESET_IN_PROGRESS = true;
+    const globals = yield* Globals;
+    yield* Ref.set(globals.RESET_IN_PROGRESS, true);
     const tx = lucid.newTx();
     const assetsToBurn: Assets = {};
     stateQueueUTxOs.map(({ utxo, assetName }) => {
@@ -53,7 +55,7 @@ const collectAndBurnStateQueueNodesProgram = (
       onSubmitFailure,
       onConfirmFailure,
     );
-    global.RESET_IN_PROGRESS = false;
+    yield* Ref.set(globals.RESET_IN_PROGRESS, false);
     return txHash;
   });
 
@@ -86,6 +88,8 @@ export const resetStateQueue = Effect.gen(function* () {
       batch,
     );
   }
-  global.LATEST_SYNC_OF_STATE_QUEUE_LENGTH = Date.now();
-  global.BLOCKS_IN_QUEUE = 0;
+  const globals = yield* Globals;
+
+  yield* Ref.set(globals.LATEST_SYNC_OF_STATE_QUEUE_LENGTH, Date.now());
+  yield* Ref.set(globals.BLOCKS_IN_QUEUE, 0);
 });
