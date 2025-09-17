@@ -7,7 +7,7 @@ pub type Datum =
   user_events.Datum<ledger_state.WithdrawalEvent>
 
 pub type SpendPurpose {
-  TransferToEscrow { membership_proof: mpf.Proof }
+  TransferToPayout { membership_proof: mpf.Proof }
   Refund { refund_approach: user_events.RefundApproach }
 }
 
@@ -17,7 +17,7 @@ pub type SpendRedeemer {
   hub_ref_input_index: Int,
   settlement_ref_input_index: Int,
   burn_redeemer_index: Int,
-  escrow_mint_redeemer_index: Int,
+  payout_mint_redeemer_index: Int,
   purpose: SpendPurpose,
 }
 
