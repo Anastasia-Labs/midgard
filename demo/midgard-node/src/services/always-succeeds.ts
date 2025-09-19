@@ -4,6 +4,7 @@ import {
   applyDoubleCborEncoding,
   MintingPolicy,
   mintingPolicyToId,
+  Script,
   SpendingValidator,
   validatorToAddress,
 } from "@lucid-evolution/lucid";
@@ -11,7 +12,7 @@ import { NodeConfig, NodeConfigDep } from "@/config.js";
 
 export const makeAlwaysSucceedsServiceFn = (nodeConfig: NodeConfigDep) =>
   Effect.gen(function* () {
-    const spendingCBOR = yield* pipe(
+    const spendingCBOR : string = yield* pipe(
       Effect.fromNullable(
         scripts.default.validators.find(
           (v) => v.title === "always_succeeds.spend.else",
@@ -39,17 +40,61 @@ export const makeAlwaysSucceedsServiceFn = (nodeConfig: NodeConfigDep) =>
       type: "PlutusV3",
       script: applyDoubleCborEncoding(mintingCBOR),
     };
+
+
+    const spendingDepositCBOR : string = yield* pipe(
+      Effect.fromNullable(
+        scripts.default.validators.find(
+          (v) => v.title === "always_succeeds.spend.else",
+        ),
+      ),
+      Effect.andThen((script) => script.compiledCode),
+    );
+    const spendDepositScript: SpendingValidator = {
+      type: "PlutusV3",
+      script: applyDoubleCborEncoding(spendingDepositCBOR),
+    };
+    const spendDepositScriptAddress = validatorToAddress(
+      nodeConfig.NETWORK,
+      spendDepositScript,
+    );
+    const mintingDepositCBOR = yield* pipe(
+      Effect.fromNullable(
+        scripts.default.validators.find(
+          (v) => v.title === "always_succeeds.mint.else",
+        ),
+      ),
+      Effect.andThen((script) => script.compiledCode),
+    );
+    const mintDepositScript: MintingPolicy = {
+      type: "PlutusV3",
+      script: applyDoubleCborEncoding(mintingDepositCBOR),
+    };
+
     const policyId = mintingPolicyToId(mintScript);
     return {
       spendingCBOR,
       spendScript,
       spendScriptAddress,
       mintScript,
+
+      spendingDepositCBOR,
+      spendDepositScript,
+      spendDepositScriptAddress,
+      mintDepositScript,
+
       policyId,
     };
   }).pipe(Effect.orDie);
 
-const makeAlwaysSucceedsService = Effect.gen(function* () {
+const makeAlwaysSucceedsService : Effect.Effect<{
+    spendingCBOR: string;
+    spendScript: Script;
+    spendScriptAddress: string;
+    mintScript: Script;
+    policyId: string;
+  }, never, NodeConfig> =
+  Effect.gen(function* () {
   const nodeConfig = yield* NodeConfig;
   return yield* makeAlwaysSucceedsServiceFn(nodeConfig);
 });
