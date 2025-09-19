@@ -1,18 +1,23 @@
 import { Store, Trie } from "@aiken-lang/merkle-patricia-forestry";
 import { Effect } from "effect";
 import { inspect } from "node:util";
+import { MptError } from "./common.js";
 
 export const mptFromUTxOs = (
   _spentUtxos: Uint8Array[],
   _producedUtxos: { outputReference: Uint8Array; output: Uint8Array }[],
   ledgerAfterUpdate: { outputReference: Uint8Array; output: Uint8Array }[],
-): Effect.Effect<Trie, Error> =>
+): Effect.Effect<Trie, MptError> =>
   Effect.gen(function* () {
     const store = new Store("utxosStore");
 
     yield* Effect.tryPromise({
       try: () => store.ready(),
-      catch: (e) => new Error(`${e}`),
+      catch: (e) =>
+        new MptError({
+          message: `Failed to initialize UTxO store`,
+          cause: e,
+        }),
     });
 
     /*
@@ -81,7 +86,7 @@ export const mptFromUTxOs = (
       Effect.tryPromise({
         try: () =>
           trie.insert(Buffer.from(outputReference), Buffer.from(output)),
-        catch: (e) => new Error(`${e}`),
+        catch: (e) => MptError.put("UTxO trie", e),
       }),
     );
 
@@ -92,13 +97,17 @@ export const mptFromUTxOs = (
 
 export const mptFromTxs = (
   txs: { txHash: Uint8Array; txCbor: Uint8Array }[],
-): Effect.Effect<Trie, Error> =>
+): Effect.Effect<Trie, MptError> =>
   Effect.gen(function* () {
     const store = new Store("txsStore");
 
     yield* Effect.tryPromise({
       try: () => store.ready(),
-      catch: (e) => new Error(`${e}`),
+      catch: (e) =>
+        new MptError({
+          message: `Failed to initialize txs store`,
+          cause: e,
+        }),
     });
 
     const trie = new Trie(store);
@@ -108,7 +117,7 @@ export const mptFromTxs = (
       ({ txHash, txCbor }) =>
         Effect.tryPromise({
           try: () => trie.insert(Buffer.from(txHash), Buffer.from(txCbor)),
-          catch: (e) => new Error(`${e}`),
+          catch: (e) => MptError.put("txs trie", e),
         }),
       { concurrency: 1 }, // omitting this is equivalent to sequential traversal.
     );

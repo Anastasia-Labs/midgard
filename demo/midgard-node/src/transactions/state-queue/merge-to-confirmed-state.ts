@@ -21,9 +21,16 @@ import {
   fetchFirstBlockTxs,
   handleSignSubmit,
   TxSubmitError,
+  TxSignError,
 } from "../utils.js";
 import { Entry as LedgerEntry } from "@/database/utils/ledger.js";
-import { breakDownTx, LucidError } from "@/utils.js";
+import { breakDownTx } from "@/utils.js";
+import { Database } from "@/services/database.js";
+import {
+  DBDeleteError,
+  DBInsertError,
+  DBSelectError,
+} from "@/database/utils/common.js";
 
 const mergeBlockCounter = Metric.counter("merge_block_count", {
   description: "A counter for tracking merged blocks",
@@ -39,7 +46,7 @@ const MIN_QUEUE_LENGTH_FOR_MERGING: number = 8;
 const getStateQueueLength = (
   lucid: LucidEvolution,
   stateQueueAddress: Address,
-): Effect.Effect<number, LucidError> =>
+): Effect.Effect<number, SDK.Utils.LucidError> =>
   Effect.gen(function* () {
     const now_millis = Date.now();
     if (
@@ -53,7 +60,7 @@ const getStateQueueLength = (
       const stateQueueUtxos = yield* Effect.tryPromise({
         try: () => lucid.utxosAt(stateQueueAddress),
         catch: (e) =>
-          new LucidError({
+          new SDK.Utils.LucidError({
             message: `Failed to fetch UTxOs at state queue address: ${stateQueueAddress}`,
             cause: e,
           }),
@@ -84,8 +91,20 @@ export const buildAndSubmitMergeTx = (
   fetchConfig: SDK.TxBuilder.StateQueue.FetchConfig,
   spendScript: Script,
   mintScript: Script,
-  // ): Effect.Effect<void, Error, Database> =>
-) =>
+): Effect.Effect<
+  void,
+  | SDK.Utils.LucidError
+  | SDK.Utils.StateQueueError
+  | SDK.Utils.AssetError
+  | DBSelectError
+  | SDK.Utils.HashingError
+  | TxSubmitError
+  | TxSignError
+  | SDK.Utils.CmlDeserializationError
+  | DBDeleteError
+  | DBInsertError,
+  Database
+> =>
   Effect.gen(function* () {
     const currentStateQueueLength = yield* getStateQueueLength(
       lucid,

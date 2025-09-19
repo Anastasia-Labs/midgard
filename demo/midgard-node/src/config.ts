@@ -7,7 +7,7 @@ import {
   walletFromSeed,
 } from "@lucid-evolution/lucid";
 import { Config, Context, Data, Effect, Layer } from "effect";
-import { GenericErrorFields } from "./utils.js";
+import * as SDK from "@al-ft/midgard-sdk";
 
 type Provider = "Kupmios" | "Blockfrost";
 
@@ -220,7 +220,7 @@ export class NodeConfig extends Context.Tag("NodeConfig")<
 }
 
 export class ConfigError extends Data.TaggedError("ConfigError")<
-  GenericErrorFields & {
+  SDK.Utils.GenericErrorFields & {
     readonly field?: string;
     readonly value?: string;
   }

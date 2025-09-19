@@ -19,7 +19,10 @@ const inputData = workerData as WorkerInput;
 const fetchLatestBlock = (
   nodeConfig: NodeConfigDep,
   lucid: LucidEvolution,
-): Effect.Effect<SDK.TxBuilder.StateQueue.StateQueueUTxO, Error> =>
+): Effect.Effect<
+  SDK.TxBuilder.StateQueue.StateQueueUTxO,
+  SDK.Utils.StateQueueError | SDK.Utils.LucidError | SDK.Utils.AssetError
+> =>
   Effect.gen(function* () {
     const { policyId, spendScriptAddress } =
       yield* makeAlwaysSucceedsServiceFn(nodeConfig);

@@ -11,7 +11,9 @@ import {
 import * as MempoolLedgerDB from "./mempoolLedger.js";
 import { Effect } from "effect";
 import { SqlClient } from "@effect/sql";
-import { ProcessedTx, CmlDeserializationError } from "@/utils.js";
+import * as SDK from "@al-ft/midgard-sdk";
+import { ProcessedTx } from "@/utils.js";
+
 
 export const tableName = "mempool";
 
@@ -19,7 +21,7 @@ export const insert = (
   processedTx: ProcessedTx,
 ): Effect.Effect<
   void,
-  DBInsertError | DBDeleteError | CmlDeserializationError,
+  DBInsertError | DBDeleteError | SDK.Utils.CmlDeserializationError,
   Database
 > =>
   Effect.gen(function* () {

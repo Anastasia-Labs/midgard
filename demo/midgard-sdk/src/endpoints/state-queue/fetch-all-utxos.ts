@@ -1,7 +1,12 @@
 import { LucidEvolution } from "@lucid-evolution/lucid";
 import { StateQueue } from "@/tx-builder/index.js";
 import { Effect } from "effect";
-import { utxosAtByNFTPolicyId } from "@/utils/common.js";
+import {
+  AssetError,
+  LucidError,
+  StateQueueError,
+  utxosAtByNFTPolicyId,
+} from "@/utils/common.js";
 import { makeReturn } from "@/core.js";
 import {
   sortStateQueueUTxOs,
@@ -12,7 +17,7 @@ import { StateQueueUTxO } from "@/tx-builder/state-queue/types.js";
 export const fetchSortedStateQueueUTxOsProgram = (
   lucid: LucidEvolution,
   config: StateQueue.FetchConfig,
-): Effect.Effect<StateQueueUTxO[], Error> =>
+): Effect.Effect<StateQueueUTxO[], StateQueueError | LucidError | AssetError> =>
   Effect.gen(function* () {
     const allUTxOs = yield* utxosAtByNFTPolicyId(
       lucid,
@@ -29,7 +34,7 @@ export const fetchSortedStateQueueUTxOsProgram = (
 export const fetchUnsortedStateQueueUTxOsProgram = (
   lucid: LucidEvolution,
   config: StateQueue.FetchConfig,
-): Effect.Effect<StateQueueUTxO[], Error> =>
+): Effect.Effect<StateQueueUTxO[], LucidError | AssetError> =>
   Effect.gen(function* () {
     const allUTxOs = yield* utxosAtByNFTPolicyId(
       lucid,

@@ -2,12 +2,13 @@ import { makeReturn } from "@/core.js";
 import { LucidEvolution, TxSignBuilder } from "@lucid-evolution/lucid";
 import { StateQueue } from "@/tx-builder/index.js";
 import { Effect } from "effect";
+import { HashingError, StateQueueError } from "@/utils/common.js";
 
 export const mergeToConfirmedStateProgram = (
   lucid: LucidEvolution,
   fetchConfig: StateQueue.FetchConfig,
   mergeParams: StateQueue.MergeParams,
-): Effect.Effect<TxSignBuilder, Error> =>
+): Effect.Effect<TxSignBuilder, StateQueueError | HashingError> =>
   Effect.gen(function* () {
     const completedTx = yield* StateQueue.mergeTxBuilder(
       lucid,
@@ -16,7 +17,11 @@ export const mergeToConfirmedStateProgram = (
     );
     return yield* Effect.tryPromise({
       try: () => completedTx.complete(),
-      catch: (e) => new Error(`${e}`),
+      catch: (e) =>
+        new StateQueueError({
+          message: `Failed to merge to confirmed state`,
+          cause: e,
+        }),
     });
   });
 
