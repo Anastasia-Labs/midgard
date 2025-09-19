@@ -94,7 +94,7 @@ export const retrieve = (): Effect.Effect<
     sqlErrorToDBSelectError(tableName),
   );
 
-export const retrieveTxCount: Effect.Effect<number, DBSelectError, Database> =
+export const retrieveTxCount: Effect.Effect<bigint, DBSelectError, Database> =
   retrieveNumberOfEntries(tableName);
 
 export const clearTxs = (

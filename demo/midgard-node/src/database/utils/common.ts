@@ -6,14 +6,15 @@ import { GenericErrorFields } from "@/utils.js";
 
 export const retrieveNumberOfEntries = (
   tableName: string,
-): Effect.Effect<number, DBSelectError, Database> =>
+): Effect.Effect<bigint, DBSelectError, Database> =>
   Effect.gen(function* () {
     yield* Effect.logDebug(`${tableName} db: attempt to get number of entries`);
     const sql = yield* SqlClient.SqlClient;
     const rows = yield* sql<{
-      count: number;
+      // sql threats COUNT(*) as a string, even if with number type in that field
+      count: string;
     }>`SELECT COUNT(*) FROM ${sql(tableName)}`;
-    return rows[0].count ?? 0;
+    return BigInt(rows[0].count) ?? 0;
   }).pipe(
     Effect.withLogSpan(`retrieveNumberOfEntries ${tableName}`),
     Effect.tapErrorTag("SqlError", (e) =>
