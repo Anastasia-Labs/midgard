@@ -11,3 +11,17 @@ validator mint {
     True
   }
 }
+
+validator spend_deposit {
+  else(_) {
+    trace @"Midgard Demo – Spend Deposit"
+    True
+  }
+}
+
+validator mint_deposit {
+  else(_) {
+    trace @"Midgard Demo – Mint Deposit"
+    True
+  }
+}
