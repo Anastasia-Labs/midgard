@@ -10,3 +10,4 @@ export * as UserEventProtocol from "./user-event-protocol/index.js";
 export * as HubOracle from "./hub-oracle/index.js";
 export * as LinkedList from "./linked-list.js";
 export * as LedgerState from "./ledger-state.js";
+export * as Deposit from "./deposit/types.js"
