@@ -11,7 +11,6 @@ import { StateQueue, Deposit } from "../tx-builder/index.js";
 import { MerkleRoot, POSIXTime } from "../tx-builder/common.js";
 import { Datum } from "@/tx-builder/state-queue/types.js";
 import { getSingleAssetApartFromAda } from "./common.js";
-import { getHeaderFromStateQueueDatum, hashHeader } from "./ledger-state.js";
 
 export const getDepositDatumFromUTxO = (
   nodeUTxO: UTxO,
@@ -28,7 +27,6 @@ export const getDepositDatumFromUTxO = (
     return Effect.fail(new Error("No datum found"));
   }
 };
-
 
 /**
  * Validates correctness of datum, and having a single NFT.

@@ -12,7 +12,7 @@ import { NodeConfig, NodeConfigDep } from "@/config.js";
 
 export const makeAlwaysSucceedsServiceFn = (nodeConfig: NodeConfigDep) =>
   Effect.gen(function* () {
-    const stateQueueSpendingCBOR : string = yield* pipe(
+    const stateQueueSpendingCBOR: string = yield* pipe(
       Effect.fromNullable(
         scripts.default.validators.find(
           (v) => v.title === "always_succeeds.spend_queue.else",
@@ -41,7 +41,7 @@ export const makeAlwaysSucceedsServiceFn = (nodeConfig: NodeConfigDep) =>
       script: applyDoubleCborEncoding(stateQueueMintingCBOR),
     };
 
-    const depositSpendingCBOR : string = yield* pipe(
+    const depositSpendingCBOR: string = yield* pipe(
       Effect.fromNullable(
         scripts.default.validators.find(
           (v) => v.title === "always_succeeds.spend_deposit.else",
@@ -71,7 +71,9 @@ export const makeAlwaysSucceedsServiceFn = (nodeConfig: NodeConfigDep) =>
     };
 
     const stateQueuePolicyId = mintingPolicyToId(stateQueueMintScript);
-    const depositSpendingPolicyId = mintingPolicyToId(depositSpendingMintScript);
+    const depositSpendingPolicyId = mintingPolicyToId(
+      depositSpendingMintScript,
+    );
 
     return {
       stateQueueSpendingCBOR,
@@ -88,14 +90,17 @@ export const makeAlwaysSucceedsServiceFn = (nodeConfig: NodeConfigDep) =>
     };
   }).pipe(Effect.orDie);
 
-const makeAlwaysSucceedsService : Effect.Effect<{
+const makeAlwaysSucceedsService: Effect.Effect<
+  {
     stateQueueSpendingCBOR: string;
     stateQueueSpendScript: Script;
     stateQueueSpendScriptAddress: string;
     stateQueueMintScript: Script;
     stateQueuePolicyId: string;
-  }, never, NodeConfig> =
-  Effect.gen(function* () {
+  },
+  never,
+  NodeConfig
+> = Effect.gen(function* () {
   const nodeConfig = yield* NodeConfig;
   return yield* makeAlwaysSucceedsServiceFn(nodeConfig);
 });
