@@ -2,16 +2,16 @@
 \graphicspath{{\subfix{../images/}}}
 \begin{document}
 
-\section{Reserve and payout accumulator}
-\label{h:reserve-and-payout-accumulator}
+\section{Reserve and payout}
+\label{h:reserve-and-payout}
 
-Midgard's reserve safeguards funds absorbed from confirmed deposits until Midgard's payout accumulators collect them.
+Midgard's reserve safeguards funds absorbed from confirmed deposits until Midgard's payout accumulator utxos collect them.
 Midgard's payout accumulators collect funds from Midgard's reserve in order to pay out confirmed withdrawal orders in full.
 
 When a deposit is absorbed into Midgard's reserve, its funds (excluding the deposit ID token) are sent to a single utxo at the reserve address without a datum, without a reference script attached, and without being merged with the funds from any other deposits (see \cref{h:deposit-spending-validator}).
 In other words, the deposit utxo is reproduced one-to-one at the reserve address after removing the datum and ID token that identified the deposit.
 
-Each payout accumulator is initialized by proving that its corresponding withdrawal order is confirmed (via a settlement node), burning the withdrawal order's ID token, and minting the corresponding payout ID token (see \cref{h:withdrawal-order-spending-validator}).
+Each payout accumulator utxo is initialized by proving that its corresponding withdrawal order is confirmed (via a settlement node), burning the withdrawal order's ID token, and minting the corresponding payout ID token (see \cref{h:withdrawal-order-spending-validator}).
 The payout accumulator's datum is:
 \begin{equation*}
   \T{PayoutDatum} \coloneq \left\{
@@ -33,46 +33,46 @@ Redeemers:
 \begin{description}
   \item[Spend.] Spend a reserve utxo to transfer some of its funds into a payout accumulator.
     \begin{enumerate}
-      \item The transaction must spend an input from the \code{payout\_accum\_addr} via the \code{Collect\_Reserve\_Funds} redeemer.
+      \item The transaction must spend an input from the \code{payout\_addr} via the \code{Collect\_Reserve\_Funds} redeemer.
     \end{enumerate}
 \end{description}
 
-\subsection{Payout accumulator minting policy}%
-\label{h:payout-accumulator-minting-policy}%
+\subsection{Payout minting policy}%
+\label{h:payout-minting-policy}%
 
-The \code{payout\_accum} minting policy ensures that only a single payout accumulator can be initialized or payout can be completed per transaction.
+The \code{payout} minting policy ensures that only a single payout accumulator can be initialized or payout can be completed per transaction.
 Redeemers:
 \begin{description}
-  \item[Mint.] Mint a single payout accumulator token.
+  \item[Mint.] Mint a single payout token.
     Conditions:
     \begin{enumerate}
-      \item The transaction must mint exactly one token of \code{payout\_accum}.
+      \item The transaction must mint exactly one token of \code{payout}.
       \item The transaction must burn exactly one token of \code{withdrawal}.
       \item The minted and burned tokens must match on token name.
       \item The transaction must not mint or burn any other tokens.
     \end{enumerate}
-  \item[Burn.] Burn a single payout accumulator token.
+  \item[Burn.] Burn a single payout token.
     Conditions:
     \begin{enumerate}
-      \item The transaction must burn exactly one token of \code{payout\_accum}.
+      \item The transaction must burn exactly one token of \code{payout}.
       \item The transaction must not mint or burn any other tokens.
     \end{enumerate}
 \end{description}
 
-\subsection{Payout accumulator spending validator}%
-\label{h:payout-accumulator-spending-validator}%
+\subsection{Payout spending validator}%
+\label{h:payout-spending-validator}%
 
 The spending validator of \code{payout\_addr} is responsible for collecting funds from the Midgard reserve until a complete payout can be sent to its destination.
 \begin{description}
   \item[Collect Reserve Funds.] Collect funds from the Midgard reserve.
     Conditions:
     \begin{enumerate}
-      \item Let \code{payout\_accum\_input} be the transaction input being spent.
-        Let \code{payout\_accum\_datum} be its datum.
+      \item Let \code{payout\_input} be the transaction input being spent.
+        Let \code{payout\_datum} be its datum.
       \item Let \code{reserve\_input} be the sole transaction input from \code{reserve\_addr}.
-      \item Let \code{payout\_accum\_output} be a transaction output.
-      \item \code{payout\_accum\_input} and \code{payout\_accum\_output} must each hold exactly one \code{payout\_accum} token and it must match between them.
-      \item Let \code{value\_diff} be the sum of values of \code{payout\_input} and \code{reserve\_input}, minus the value of \code{payout\_output}.
+      \item Let \code{payout\_output} be a transaction output.
+      \item \code{payout\_input} and \code{payout\_output} must each hold exactly one \code{payout} token and it must match between them.
+      \item Let \code{value\_diff} be the sum of values of \code{payout\_input} and \code{reserve\_input}, minus the value of \code{payout}.
       \item \code{value\_diff} must not be negative.
       \item If \code{value\_diff} is positive:
         \begin{itemize}
@@ -83,13 +83,13 @@ The spending validator of \code{payout\_addr} is responsible for collecting fund
   \item[Complete Payout.] When the payout accumulator contains sufficient funds, complete the payout to the destination address and datum.
     Conditions:
     \begin{enumerate}
-      \item Let \code{payout\_accum\_input} be the transaction input being spent.
-        Let \code{payout\_accum\_datum} be its datum.
-      \item \code{payout\_accum\_input} must hold exactly one token of \code{payout\_accum}, which must be the only \code{payout\_accum} burned in the transaction.
+      \item Let \code{payout\_input} be the transaction input being spent.
+        Let \code{payout\_datum} be its datum.
+      \item \code{payout\_input} must hold exactly one token of \code{payout}, which must be the only \code{payout} burned in the transaction.
       \item Let \code{payout\_output} be a transaction output.
-      \item \code{payout\_output.address} must match \code{payout\_accum\_datum.l1\_address}.
-      \item \code{payout\_output.datum} must match \code{payout\_accum\_datum.l1\_datum}.
-      \item \code{payout\_output.value} must match or exceed \code{payout\_accum\_datum.l2\_value}, excluding the burned token.
+      \item \code{payout\_output.address} must match \code{payout\_datum.l1\_address}.
+      \item \code{payout\_output.datum} must match \code{payout\_datum.l1\_datum}.
+      \item \code{payout\_output.value} must match or exceed \code{payout\_datum.l2\_value}, excluding the burned token.
       \item The transaction must not mint or burn any other tokens.
     \end{enumerate}
 \end{description}
