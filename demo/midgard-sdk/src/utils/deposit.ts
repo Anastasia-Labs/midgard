@@ -1,14 +1,6 @@
-import { ConfirmedState, Header } from "../tx-builder/ledger-state.js";
-import {
-  Data,
-  LucidEvolution,
-  UTxO,
-  paymentCredentialOf,
-} from "@lucid-evolution/lucid";
-import { NodeKey } from "../tx-builder/linked-list.js";
+import { Data, UTxO } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
-import { StateQueue, Deposit } from "../tx-builder/index.js";
-import { MerkleRoot, POSIXTime } from "../tx-builder/common.js";
+import { Deposit } from "../tx-builder/index.js";
 import { Datum } from "@/tx-builder/state-queue/types.js";
 import { getSingleAssetApartFromAda } from "./common.js";
 
