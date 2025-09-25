@@ -15,7 +15,7 @@ const isUTxOTimeValid = (
     );
   });
 
-export const fetchUnsortedDepositUTxOsProgram = (
+export const fetchDepositUTxOsProgram = (
   lucid: LucidEvolution,
   config: Deposit.FetchConfig,
 ): Effect.Effect<Deposit.DepositUTxO[], Error> =>

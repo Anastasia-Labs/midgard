@@ -1,16 +1,15 @@
 import { Data, UTxO } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
-import { Deposit } from "../tx-builder/index.js";
-import { Datum } from "@/tx-builder/state-queue/types.js";
-import { getSingleAssetApartFromAda } from "./common.js";
+import { Datum, DepositUTxO } from "@/tx-builder/user-events/deposit/types.js";
+import { getSingleAssetApartFromAda } from "@/utils/common.js";
 
 export const getDepositDatumFromUTxO = (
   nodeUTxO: UTxO,
-): Effect.Effect<Deposit.Datum, Error> => {
+): Effect.Effect<Datum, Error> => {
   const datumCBOR = nodeUTxO.datum;
   if (datumCBOR) {
     try {
-      const nodeDatum = Data.from(datumCBOR, Deposit.Datum);
+      const nodeDatum = Data.from(datumCBOR, Datum);
       return Effect.succeed(nodeDatum);
     } catch {
       return Effect.fail(new Error("Could not coerce to a deposit datum"));
@@ -26,7 +25,7 @@ export const getDepositDatumFromUTxO = (
 export const utxoToDepositUTxO = (
   utxo: UTxO,
   nftPolicy: string,
-): Effect.Effect<Deposit.DepositUTxO, Error> =>
+): Effect.Effect<DepositUTxO, Error> =>
   Effect.gen(function* () {
     const datum = yield* getDepositDatumFromUTxO(utxo);
     const [sym, assetName, _qty] = yield* getSingleAssetApartFromAda(
@@ -46,7 +45,7 @@ export const utxoToDepositUTxO = (
 export const utxosToDepositUTxOs = (
   utxos: UTxO[],
   nftPolicy: string,
-): Effect.Effect<Deposit.DepositUTxO[], Error> => {
+): Effect.Effect<DepositUTxO[], Error> => {
   const effects = utxos.map((u) => utxoToDepositUTxO(u, nftPolicy));
   return Effect.allSuccesses(effects);
 };

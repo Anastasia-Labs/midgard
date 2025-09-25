@@ -15,7 +15,7 @@ export const makeAlwaysSucceedsServiceFn = (nodeConfig: NodeConfigDep) =>
     const stateQueueSpendingCBOR: string = yield* pipe(
       Effect.fromNullable(
         scripts.default.validators.find(
-          (v) => v.title === "always_succeeds.spend_queue.else",
+          (v) => v.title === "always_succeeds.state_queue_spend.else",
         ),
       ),
       Effect.andThen((script) => script.compiledCode),
@@ -31,7 +31,7 @@ export const makeAlwaysSucceedsServiceFn = (nodeConfig: NodeConfigDep) =>
     const stateQueueMintingCBOR = yield* pipe(
       Effect.fromNullable(
         scripts.default.validators.find(
-          (v) => v.title === "always_succeeds.mint_queue.else",
+          (v) => v.title === "always_succeeds.state_queue_mint.else",
         ),
       ),
       Effect.andThen((script) => script.compiledCode),
@@ -44,7 +44,7 @@ export const makeAlwaysSucceedsServiceFn = (nodeConfig: NodeConfigDep) =>
     const depositSpendingCBOR: string = yield* pipe(
       Effect.fromNullable(
         scripts.default.validators.find(
-          (v) => v.title === "always_succeeds.spend_deposit.else",
+          (v) => v.title === "always_succeeds.deposit_spend.else",
         ),
       ),
       Effect.andThen((script) => script.compiledCode),
@@ -60,7 +60,7 @@ export const makeAlwaysSucceedsServiceFn = (nodeConfig: NodeConfigDep) =>
     const mintingDepositCBOR = yield* pipe(
       Effect.fromNullable(
         scripts.default.validators.find(
-          (v) => v.title === "always_succeeds.mint_deposit.else",
+          (v) => v.title === "always_succeeds.deposit_mint.else",
         ),
       ),
       Effect.andThen((script) => script.compiledCode),

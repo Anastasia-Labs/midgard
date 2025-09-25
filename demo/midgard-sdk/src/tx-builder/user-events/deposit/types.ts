@@ -1,7 +1,5 @@
-import { Address, PolicyId, Script, Data, UTxO } from "@lucid-evolution/lucid";
-import { OutputReferenceSchema, POSIXTimeSchema } from "../common.js";
-import { NodeDatumSchema } from "../linked-list.js";
-import { Header } from "../ledger-state.js";
+import { Address, PolicyId, Data, UTxO } from "@lucid-evolution/lucid";
+import { POSIXTimeSchema } from "@/tx-builder/common.js";
 
 export const DepositDatumSchema = Data.Object({
   data: Data.Object({
