@@ -97,6 +97,12 @@ const makeAlwaysSucceedsService: Effect.Effect<
     stateQueueSpendScriptAddress: string;
     stateQueueMintScript: Script;
     stateQueuePolicyId: string;
+
+    depositSpendingCBOR: string;
+    depositSpendingScript: Script;
+    depositSpendingScriptAddress: string;
+    depositSpendingMintScript: Script;
+    depositSpendingPolicyId: string;
   },
   never,
   NodeConfig
