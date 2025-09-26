@@ -6,7 +6,7 @@ import {
   paymentCredentialOf,
 } from "@lucid-evolution/lucid";
 import { NodeKey } from "../tx-builder/linked-list.js";
-import { Effect } from "effect";
+import { Effect, Option } from "effect";
 import { StateQueue } from "../tx-builder/index.js";
 import { getNodeDatumFromUTxO } from "./linked-list.js";
 import { MerkleRoot, POSIXTime } from "../tx-builder/common.js";
@@ -79,6 +79,8 @@ export const getConfirmedStateFromStateQueueDatum = (
  * @param latestBlocksDatum - Datum of the UTxO of the latest block in queue.
  * @param newUTxOsRoot - MPF root of the updated ledger.
  * @param transactionsRoot - MPF root of the transactions included in the new block.
+ * @param depositsRoot - MPF root of the deposit transactions included in the new block.
+ * @param withdrawalsRoot - MPF root of the withdrawal transactions included in the new block.
  * @param endTime - POSIX time of the new block's closing range.
  */
 export const updateLatestBlocksDatumAndGetTheNewHeader = (
@@ -86,6 +88,8 @@ export const updateLatestBlocksDatumAndGetTheNewHeader = (
   latestBlocksDatum: Datum,
   newUTxOsRoot: MerkleRoot,
   transactionsRoot: MerkleRoot,
+  depositsRootOption: Option.Option<MerkleRoot>,
+  withdrawalsRootOption: Option.Option<MerkleRoot>,
   endTime: POSIXTime,
 ): Effect.Effect<{ nodeDatum: Datum; header: Header }, Error> =>
   Effect.gen(function* () {
@@ -95,7 +99,6 @@ export const updateLatestBlocksDatumAndGetTheNewHeader = (
     });
 
     const pubKeyHash = paymentCredentialOf(walletAddress).hash;
-
     if (latestBlocksDatum.key === "Empty") {
       const { data: confirmedState } =
         yield* getConfirmedStateFromStateQueueDatum(latestBlocksDatum);
@@ -108,8 +111,8 @@ export const updateLatestBlocksDatumAndGetTheNewHeader = (
           prevUtxosRoot: confirmedState.utxoRoot,
           utxosRoot: newUTxOsRoot,
           transactionsRoot,
-          depositsRoot: "00".repeat(32),
-          withdrawalsRoot: "00".repeat(32),
+          depositsRoot: Option.getOrElse(depositsRootOption, () => "00".repeat(32)),
+          withdrawalsRoot: Option.getOrElse(withdrawalsRootOption, () => "00".repeat(32)),
           startTime: confirmedState.endTime,
           endTime,
           prevHeaderHash: confirmedState.headerHash,

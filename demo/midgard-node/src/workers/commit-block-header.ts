@@ -1,6 +1,6 @@
 import { parentPort, workerData } from "worker_threads";
 import * as SDK from "@al-ft/midgard-sdk";
-import { Cause, Effect, pipe } from "effect";
+import { Cause, Effect, pipe, Option } from "effect";
 import {
   WorkerInput,
   WorkerOutput,
@@ -131,6 +131,8 @@ const wrapper = (
               latestBlock.datum,
               utxoRoot,
               txRoot,
+              Option.none(),
+              Option.none(),
               BigInt(endTime),
             );
 
