@@ -13,6 +13,7 @@ import { Effect } from "effect";
 import { SqlClient } from "@effect/sql";
 import * as AddressHistoryDB from "@/database/addressHistory.js";
 import { ProcessedTx, CmlDeserializationError } from "@/utils.js";
+import { LedgerUtils } from "./index.js";
 
 export const tableName = "mempool";
 
@@ -57,13 +58,22 @@ export const insertMultiple = (
     // Insert the tx itself in `MempoolDB`.
     yield* Tx.insertEntries(tableName, txEntries);
 
-    const allProduced = processedTxs.flatMap((v) => v.produced);
-    const allSpent = processedTxs.flatMap((v) => v.spent);
+    const initAcc: { allProduced: LedgerUtils.Entry[]; allSpent: Buffer[] } = {
+      allProduced: [],
+      allSpent: [],
+    };
+    const { allProduced, allSpent } = processedTxs.reduce((acc, v) => {
+      acc.allProduced.push(...v.produced);
+      acc.allSpent.push(...v.spent);
+      return acc;
+    }, initAcc);
 
     // Insert produced UTxOs in `MempoolLedgerDB`.
     yield* MempoolLedgerDB.insert(allProduced);
     // Remove spent inputs from MempoolLedgerDB.
     yield* MempoolLedgerDB.clearUTxOs(allSpent);
+    // Update AddressHistoryDB
+    yield* AddressHistoryDB.insert(allSpent, allProduced);
   }).pipe(
     Effect.withLogSpan(`insert ${tableName}`),
     Effect.tapError((e) => Effect.logError(`${tableName} db: insert: ${e}`)),
@@ -94,7 +104,7 @@ export const retrieve = (): Effect.Effect<
     sqlErrorToDBSelectError(tableName),
   );
 
-export const retrieveTxCount: Effect.Effect<number, DBSelectError, Database> =
+export const retrieveTxCount: Effect.Effect<bigint, DBSelectError, Database> =
   retrieveNumberOfEntries(tableName);
 
 export const clearTxs = (

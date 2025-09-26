@@ -1,7 +1,17 @@
 import { Database } from "@/services/database.js";
-import { SqlClient } from "@effect/sql";
+import { SqlClient, SqlError } from "@effect/sql";
 import { Effect } from "effect";
-import { DBCreateError, DBDeleteError, DBInsertError, DBSelectError, clearTable, sqlErrorToDBCreateError, sqlErrorToDBDeleteError, sqlErrorToDBInsertError, sqlErrorToDBSelectError } from "@/database/utils/common.js";
+import {
+  DBCreateError,
+  DBDeleteError,
+  DBInsertError,
+  DBSelectError,
+  clearTable,
+  sqlErrorToDBCreateError,
+  sqlErrorToDBDeleteError,
+  sqlErrorToDBInsertError,
+  sqlErrorToDBSelectError,
+} from "@/database/utils/common.js";
 import { Address } from "@lucid-evolution/lucid";
 import * as MempoolDB from "@/database/mempool.js";
 import * as ImmutableDB from "@/database/immutable.js";
@@ -33,7 +43,7 @@ export const insertEntries = (
   entries: Entry[],
 ): Effect.Effect<void, DBInsertError, Database> =>
   Effect.gen(function* () {
-    yield* Effect.logDebug(`${tableName} db: attempt to insert entries`);
+    yield* Effect.logInfo(`${tableName} db: attempt to insert entries`);
     const sql = yield* SqlClient.SqlClient;
     yield* sql`INSERT INTO ${sql(tableName)} ${sql.insert(entries)}`;
   }).pipe(
@@ -49,11 +59,11 @@ export const insert = (
   produced: Ledger.Entry[],
 ): Effect.Effect<void, DBInsertError, Database> =>
   Effect.gen(function* () {
-    yield* Effect.logDebug(`${tableName} db: attempt to insert entries`);
+    yield* Effect.logInfo(`${tableName} db: attempt to insert entries`);
     const sql = yield* SqlClient.SqlClient;
 
     const inputEntries =
-      yield* sql<Entry>`SELECT (${sql(Ledger.Columns.TX_ID)}, ${sql(Ledger.Columns.ADDRESS)})
+      yield* sql<Entry>`SELECT ${sql(Ledger.Columns.TX_ID)}, ${sql(Ledger.Columns.ADDRESS)}
     FROM ${sql(MempoolLedgerDB.tableName)}
     WHERE ${sql(Ledger.Columns.TX_ID)} IN ${sql.in(spent)}`;
 
@@ -62,7 +72,7 @@ export const insert = (
       [Ledger.Columns.ADDRESS]: e[Ledger.Columns.ADDRESS],
     }));
 
-    insertEntries([...inputEntries, ...outputEntries]);
+    yield* insertEntries([...new Set([...inputEntries, ...outputEntries])]);
   }).pipe(
     Effect.withLogSpan(`entries ${tableName}`),
     Effect.tapErrorTag("SqlError", (e) =>
@@ -83,7 +93,10 @@ export const delTxHash = (
       Ledger.Columns.TX_ID,
     )} = ${tx_hash}`;
     yield* Effect.logDebug(`${tableName} db: deleted ${result.length} rows`);
-  }).pipe(Effect.withLogSpan(`delTxHash table ${tableName}`), sqlErrorToDBDeleteError(tableName));
+  }).pipe(
+    Effect.withLogSpan(`delTxHash table ${tableName}`),
+    sqlErrorToDBDeleteError(tableName),
+  );
 
 /**
  * Retreives all cbors from MempoolDB and ImmutableDB
@@ -98,9 +111,13 @@ export const retrieve = (
 ): Effect.Effect<readonly Buffer[], DBSelectError, Database> =>
   Effect.gen(function* () {
     const sql = yield* SqlClient.SqlClient;
-    yield* Effect.logInfo(`${tableName} db: attempt to retrieve value with address ${address}`);
+    yield* Effect.logInfo(
+      `${tableName} db: attempt to retrieve value with address ${address}`,
+    );
 
-    const result = yield* sql<Buffer>`SELECT ${sql(Tx.Columns.TX)} FROM (
+    const result = yield* sql<
+      Pick<Tx.Entry, Tx.Columns.TX>
+    >`SELECT ${sql(Tx.Columns.TX)} FROM (
       SELECT ${sql(Tx.Columns.TX_ID)}, ${sql(Tx.Columns.TX)}
       FROM ${sql(MempoolDB.tableName)}
       UNION
@@ -112,7 +129,7 @@ export const retrieve = (
     )} ON tx_union.${sql(Tx.Columns.TX_ID)} = ${sql(tableName)}.${sql(Ledger.Columns.TX_ID)}
     WHERE ${sql(Ledger.Columns.ADDRESS)} = ${address};`;
 
-    return result;
+    return result.map((r) => r[Tx.Columns.TX]);
   }).pipe(
     Effect.withLogSpan(`retrieve value ${tableName}`),
     Effect.tapErrorTag("SqlError", (e) =>
