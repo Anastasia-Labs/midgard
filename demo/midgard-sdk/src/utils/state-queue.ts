@@ -89,7 +89,7 @@ export const updateLatestBlocksDatumAndGetTheNewHeader = (
   endTime: POSIXTime,
 ): Effect.Effect<{ nodeDatum: Datum; header: Header }, Error> =>
   Effect.gen(function* () {
-    const walletAddress = yield* Effect.tryPromise({
+    const walletAddress : string = yield* Effect.tryPromise({
       try: () => lucid.wallet().address(),
       catch: (e) => new Error(`Failed to find the wallet: ${e}`),
     });

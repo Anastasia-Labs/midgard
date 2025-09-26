@@ -10,6 +10,7 @@ import {
 } from "@lucid-evolution/lucid";
 import { NodeConfig, NodeConfigDep } from "@/config.js";
 
+// TODO: remove all non-layer usages of this function
 export const makeAlwaysSucceedsServiceFn = (nodeConfig: NodeConfigDep) =>
   Effect.gen(function* () {
     const stateQueueSpendingCBOR: string = yield* pipe(
@@ -92,6 +93,8 @@ export const makeAlwaysSucceedsServiceFn = (nodeConfig: NodeConfigDep) =>
 
 const makeAlwaysSucceedsService: Effect.Effect<
   {
+  // TODO: rename to `AuthenticatedValidator`
+
     stateQueueSpendingCBOR: string;
     stateQueueSpendScript: Script;
     stateQueueSpendScriptAddress: string;
