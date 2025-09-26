@@ -10,7 +10,6 @@ import { Data, Effect, Schedule } from "effect";
 import * as BlocksDB from "../database/blocks.js";
 import { Database } from "@/services/index.js";
 import { ImmutableDB } from "@/database/index.js";
-import { GenericErrorFields } from "@/utils.js";
 import { DBSelectError } from "@/database/utils/common.js";
 import { UnknownException } from "effect/Cause";
 
@@ -109,7 +108,7 @@ const signSubmitHelper = (
     const walletAddr = yield* Effect.tryPromise(() =>
       lucid.wallet().address(),
     ).pipe(Effect.catchAll((_e) => Effect.succeed("<unknown>")));
-    yield* Effect.logInfo(`✍  Signing tx with ${walletAddr}...`);
+    yield* Effect.logInfo(`✍  Signing tx with ${walletAddr}`);
     const signedProgram = signBuilder.sign
       .withWallet()
       .completeProgram()
@@ -161,7 +160,7 @@ export const fetchFirstBlockTxs = (
   firstBlockUTxO: SDK.TxBuilder.StateQueue.StateQueueUTxO,
 ): Effect.Effect<
   { txs: readonly Buffer[]; headerHash: Buffer },
-  DBSelectError | Error,
+  SDK.Utils.HashingError | SDK.Utils.DataCoercionError | DBSelectError,
   Database
 > =>
   Effect.gen(function* () {
@@ -189,19 +188,19 @@ export const outRefsAreEqual = (outRef0: OutRef, outRef1: OutRef): boolean => {
 };
 
 export class TxSignError extends Data.TaggedError("TxSignError")<
-  GenericErrorFields & {
+  SDK.Utils.GenericErrorFields & {
     readonly txHash?: string;
   }
 > {}
 
 export class TxSubmitError extends Data.TaggedError("TxSubmitError")<
-  GenericErrorFields & {
+  SDK.Utils.GenericErrorFields & {
     readonly txHash?: string;
   }
 > {}
 
 export class TxConfirmError extends Data.TaggedError("TxConfirmError")<
-  GenericErrorFields & {
+  SDK.Utils.GenericErrorFields & {
     readonly txHash?: string;
   }
 > {}

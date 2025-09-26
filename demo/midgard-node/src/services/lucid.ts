@@ -34,6 +34,10 @@ const makeLucid: Effect.Effect<
       new ConfigError({
         message: `An error occurred on lucid initialization`,
         cause: e,
+        fieldsAndValues: [
+          ["L1_PROVIDER", nodeConfig.L1_PROVIDER],
+          ["NETWORK", nodeConfig.NETWORK],
+        ],
       }),
   });
   return {

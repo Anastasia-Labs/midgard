@@ -8,7 +8,12 @@ import {
 } from "@lucid-evolution/lucid";
 import { AlwaysSucceedsContract, Globals, Lucid } from "@/services/index.js";
 import { Effect, Ref } from "effect";
-import { TxConfirmError, handleSignSubmit, TxSubmitError } from "../utils.js";
+import {
+  TxConfirmError,
+  handleSignSubmit,
+  TxSubmitError,
+  TxSignError,
+} from "../utils.js";
 
 const collectAndBurnStateQueueNodesProgram = (
   lucid: LucidEvolution,
@@ -16,7 +21,11 @@ const collectAndBurnStateQueueNodesProgram = (
   stateQueueSpendingScript: Script,
   stateQueueMintingScript: Script,
   stateQueueUTxOs: SDK.TxBuilder.StateQueue.StateQueueUTxO[],
-): Effect.Effect<void, Error, Globals> =>
+): Effect.Effect<
+  void,
+  SDK.Utils.LucidError | TxSignError | TxSubmitError,
+  Globals
+> =>
   Effect.gen(function* () {
     const globals = yield* Globals;
     yield* Ref.set(globals.RESET_IN_PROGRESS, true);
@@ -34,7 +43,15 @@ const collectAndBurnStateQueueNodesProgram = (
     tx.mintAssets(assetsToBurn, Data.void())
       .attach.Script(stateQueueSpendingScript)
       .attach.Script(stateQueueMintingScript);
-    const completed = yield* tx.completeProgram();
+    const completed = yield* tx.completeProgram().pipe(
+      Effect.mapError(
+        (e) =>
+          new SDK.Utils.LucidError({
+            message: "Failed to finalize the reset transaction",
+            cause: e,
+          }),
+      ),
+    );
     const onSubmitFailure = (err: TxSubmitError | { _tag: "TxSubmitError" }) =>
       Effect.gen(function* () {
         yield* Effect.logError(`Submit tx error: ${err}`);
@@ -59,7 +76,7 @@ const collectAndBurnStateQueueNodesProgram = (
 
 export const resetStateQueue: Effect.Effect<
   void,
-  Error,
+  SDK.Utils.LucidError | TxSubmitError | TxSignError,
   AlwaysSucceedsContract | Lucid | Globals
 > = Effect.gen(function* () {
   const lucid = yield* Lucid;
@@ -93,4 +110,5 @@ export const resetStateQueue: Effect.Effect<
 
   yield* Ref.set(globals.LATEST_SYNC_OF_STATE_QUEUE_LENGTH, Date.now());
   yield* Ref.set(globals.BLOCKS_IN_QUEUE, 0);
+  yield* Ref.set(globals.AVAILABLE_CONFIRMED_BLOCK, "");
 });

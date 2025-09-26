@@ -11,17 +11,13 @@ import {
 import * as MempoolLedgerDB from "./mempoolLedger.js";
 import { Effect } from "effect";
 import { SqlClient } from "@effect/sql";
-import { ProcessedTx, CmlDeserializationError } from "@/utils.js";
+import { ProcessedTx } from "@/utils.js";
 
 export const tableName = "mempool";
 
 export const insert = (
   processedTx: ProcessedTx,
-): Effect.Effect<
-  void,
-  DBInsertError | DBDeleteError | CmlDeserializationError,
-  Database
-> =>
+): Effect.Effect<void, DBInsertError | DBDeleteError, Database> =>
   Effect.gen(function* () {
     const { txId, txCbor, spent, produced } = processedTx;
     // Insert the tx itself in `MempoolDB`.

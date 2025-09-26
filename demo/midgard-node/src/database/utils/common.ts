@@ -2,7 +2,7 @@ import { Effect } from "effect";
 import { Database } from "@/services/database.js";
 import { Data } from "effect";
 import { SqlClient, SqlError } from "@effect/sql";
-import { GenericErrorFields } from "@/utils.js";
+import * as SDK from "@al-ft/midgard-sdk";
 
 export const retrieveNumberOfEntries = (
   tableName: string,
@@ -42,8 +42,8 @@ export const clearTable = (
     sqlErrorToDBTruncateError(tableName),
   );
 
-type DBErrorFields = GenericErrorFields & {
-  readonly table?: string;
+type DBErrorFields = SDK.Utils.GenericErrorFields & {
+  readonly table: string;
 };
 
 export class DBSelectError extends Data.TaggedError(
@@ -66,7 +66,7 @@ export class DBCreateError extends Data.TaggedError(
 )<DBErrorFields> {}
 export class DBOtherError extends Data.TaggedError(
   "DBOtherError",
-)<DBErrorFields> {}
+)<SDK.Utils.GenericErrorFields> {}
 
 type DBErrorConstructor<T> = new (args: DBErrorFields) => T;
 

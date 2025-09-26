@@ -64,7 +64,8 @@ export const buildAndSubmitCommitmentBlock = () =>
             Effect.fail(
               new WorkerError({
                 worker: "commit-block-header",
-                message: `Error in commitment worker: ${output.error}`,
+                message: `Commitment worker failed`,
+                cause: output.error,
               }),
             ),
           );
@@ -92,6 +93,7 @@ export const buildAndSubmitCommitmentBlock = () =>
               new WorkerError({
                 worker: "commit-block-header",
                 message: `Commitment worker exited with code: ${code}`,
+                cause: `exit code ${code}`,
               }),
             ),
           );

@@ -2,11 +2,11 @@ import { Data, Duration, Effect, Layer, Redacted } from "effect";
 import { PgClient } from "@effect/sql-pg";
 import { SqlClient } from "@effect/sql";
 import { ConfigError, NodeConfig } from "@/services/config.js";
-import { GenericErrorFields } from "@/utils.js";
+import * as SDK from "@al-ft/midgard-sdk";
 
 export class DatabaseInitializationError extends Data.TaggedError(
   "DatabaseInitializationError",
-)<GenericErrorFields> {}
+)<SDK.Utils.GenericErrorFields> {}
 
 const createPgLayerEffect = Effect.gen(function* () {
   const nodeConfig = yield* NodeConfig;
@@ -26,6 +26,11 @@ const createPgLayerEffect = Effect.gen(function* () {
         return new ConfigError({
           message: "Improper config file provided",
           cause: e,
+          fieldsAndValues: [
+            ["POSTGRES_HOST", nodeConfig.POSTGRES_HOST],
+            ["POSTGRES_USER", nodeConfig.POSTGRES_USER],
+            ["POSTGRES_DB", nodeConfig.POSTGRES_DB],
+          ],
         });
       case "SqlError":
         return new DatabaseInitializationError({
