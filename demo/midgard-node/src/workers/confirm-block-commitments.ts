@@ -10,7 +10,7 @@ import {
   WorkerOutput,
 } from "@/workers/utils/confirm-block-commitments.js";
 import { serializeStateQueueUTxO } from "@/workers/utils/commit-block-header.js";
-import { AlwaysSucceedsContract, AuthenticatedValidator, makeAlwaysSucceedsServiceFn } from "@/services/always-succeeds.js";
+import { AlwaysSucceedsContract, AuthenticatedValidator } from "@/services/always-succeeds.js";
 import { LucidEvolution } from "@lucid-evolution/lucid";
 import { TxConfirmError } from "@/transactions/utils.js";
 import { AlwaysSucceeds } from "@/services/index.js";
@@ -37,7 +37,6 @@ const wrapper = (
   workerInput: WorkerInput,
 ): Effect.Effect<WorkerOutput, Error, NodeConfig | User | AlwaysSucceedsContract> =>
   Effect.gen(function* () {
-    const nodeConfig = yield* NodeConfig;
     const alwaysSucceeds = yield* AlwaysSucceeds.AlwaysSucceedsContract;
     const { user: lucid } = yield* User;
     if (workerInput.data.firstRun) {

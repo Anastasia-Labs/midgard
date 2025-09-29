@@ -64,11 +64,16 @@ export const makeAuthenticatedValidator = (
     };
   }).pipe(Effect.orDie);
 
-
-
-// TODO: remove all non-layer usages of this function
-export const makeAlwaysSucceedsServiceFn = (nodeConfig: NodeConfigDep) =>
-  Effect.gen(function* () {
+const makeAlwaysSucceedsService: Effect.Effect<
+  {
+    stateQueueAuthValidator: AuthenticatedValidator,
+    depositAuthValidator: AuthenticatedValidator,
+  },
+  never,
+  NodeConfig
+> = Effect.gen(function* () {
+  const nodeConfig = yield* NodeConfig;
+  return yield* Effect.gen(function* () {
     const stateQueueAuthValidator = yield* makeAuthenticatedValidator(
       nodeConfig,
       "always_succeeds.state_queue_spend.else",
@@ -86,17 +91,6 @@ export const makeAlwaysSucceedsServiceFn = (nodeConfig: NodeConfigDep) =>
       depositAuthValidator,
     };
   }).pipe(Effect.orDie);
-
-const makeAlwaysSucceedsService: Effect.Effect<
-  {
-    stateQueueAuthValidator: AuthenticatedValidator,
-    depositAuthValidator: AuthenticatedValidator,
-  },
-  never,
-  NodeConfig
-> = Effect.gen(function* () {
-  const nodeConfig = yield* NodeConfig;
-  return yield* makeAlwaysSucceedsServiceFn(nodeConfig);
 });
 
 export class AlwaysSucceedsContract extends Context.Tag(
