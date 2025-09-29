@@ -2,7 +2,7 @@ import { LucidEvolution, PolicyId, UTxO } from "@lucid-evolution/lucid";
 import { Deposit } from "@/tx-builder/index.js";
 import { Effect } from "effect";
 import { utxosAtByNFTPolicyId } from "@/utils/common.js";
-import { utxosToDepositUTxOs } from "@/utils/deposit.js";
+import { utxosToDepositUTxOs } from "@/utils/user-events/deposit.js";
 
 const isUTxOTimeValid = (
   depositUTxO: Deposit.DepositUTxO,
@@ -15,7 +15,7 @@ const isUTxOTimeValid = (
     );
   });
 
-export const fetchUnsortedDepositUTxOsProgram = (
+export const fetchDepositUTxOsProgram = (
   lucid: LucidEvolution,
   config: Deposit.FetchConfig,
 ): Effect.Effect<Deposit.DepositUTxO[], Error> =>

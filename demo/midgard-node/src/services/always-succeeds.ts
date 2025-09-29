@@ -10,99 +10,87 @@ import {
 } from "@lucid-evolution/lucid";
 import { NodeConfig, NodeConfigDep } from "@/config.js";
 
-export const makeAlwaysSucceedsServiceFn = (nodeConfig: NodeConfigDep) =>
+export type AuthenticatedValidator = {
+  spendingCBOR: string,
+  spendScript: Script,
+  spendScriptAddress: string,
+  mintScript: Script,
+  policyId: string,
+};
+
+export const makeAuthenticatedValidator = (
+    nodeConfig: NodeConfigDep,
+    spendingTitle: string,
+    mintingTitle: string,
+  ) : Effect.Effect<AuthenticatedValidator, never, never>=>
   Effect.gen(function* () {
-    const stateQueueSpendingCBOR: string = yield* pipe(
+    const spendingCBOR: string = yield* pipe(
       Effect.fromNullable(
         scripts.default.validators.find(
-          (v) => v.title === "always_succeeds.spend_queue.else",
+          (v) => v.title === spendingTitle,
         ),
       ),
       Effect.andThen((script) => script.compiledCode),
     );
-    const stateQueueSpendScript: SpendingValidator = {
+    const spendScript: SpendingValidator = {
       type: "PlutusV3",
-      script: applyDoubleCborEncoding(stateQueueSpendingCBOR),
+      script: applyDoubleCborEncoding(spendingCBOR),
     };
-    const stateQueueSpendScriptAddress = validatorToAddress(
+    const spendScriptAddress = validatorToAddress(
       nodeConfig.NETWORK,
-      stateQueueSpendScript,
+      spendScript,
     );
-    const stateQueueMintingCBOR = yield* pipe(
+    const mintingCBOR = yield* pipe(
       Effect.fromNullable(
         scripts.default.validators.find(
-          (v) => v.title === "always_succeeds.mint_queue.else",
+          (v) => v.title === mintingTitle,
         ),
       ),
       Effect.andThen((script) => script.compiledCode),
     );
-    const stateQueueMintScript: MintingPolicy = {
+    const mintScript: MintingPolicy = {
       type: "PlutusV3",
-      script: applyDoubleCborEncoding(stateQueueMintingCBOR),
+      script: applyDoubleCborEncoding(mintingCBOR),
     };
 
-    const depositSpendingCBOR: string = yield* pipe(
-      Effect.fromNullable(
-        scripts.default.validators.find(
-          (v) => v.title === "always_succeeds.spend_deposit.else",
-        ),
-      ),
-      Effect.andThen((script) => script.compiledCode),
-    );
-    const depositSpendingScript: SpendingValidator = {
-      type: "PlutusV3",
-      script: applyDoubleCborEncoding(depositSpendingCBOR),
-    };
-    const depositSpendingScriptAddress = validatorToAddress(
-      nodeConfig.NETWORK,
-      depositSpendingScript,
-    );
-    const mintingDepositCBOR = yield* pipe(
-      Effect.fromNullable(
-        scripts.default.validators.find(
-          (v) => v.title === "always_succeeds.mint_deposit.else",
-        ),
-      ),
-      Effect.andThen((script) => script.compiledCode),
-    );
-    const depositSpendingMintScript: MintingPolicy = {
-      type: "PlutusV3",
-      script: applyDoubleCborEncoding(mintingDepositCBOR),
-    };
-
-    const stateQueuePolicyId = mintingPolicyToId(stateQueueMintScript);
-    const depositSpendingPolicyId = mintingPolicyToId(
-      depositSpendingMintScript,
-    );
+    const policyId = mintingPolicyToId(mintScript);
 
     return {
-      stateQueueSpendingCBOR,
-      stateQueueSpendScript,
-      stateQueueSpendScriptAddress,
-      stateQueueMintScript,
-      stateQueuePolicyId,
-
-      depositSpendingCBOR,
-      depositSpendingScript,
-      depositSpendingScriptAddress,
-      depositSpendingMintScript,
-      depositSpendingPolicyId,
+      spendingCBOR,
+      spendScript,
+      spendScriptAddress,
+      mintScript,
+      policyId,
     };
   }).pipe(Effect.orDie);
 
 const makeAlwaysSucceedsService: Effect.Effect<
   {
-    stateQueueSpendingCBOR: string;
-    stateQueueSpendScript: Script;
-    stateQueueSpendScriptAddress: string;
-    stateQueueMintScript: Script;
-    stateQueuePolicyId: string;
+    stateQueueAuthValidator: AuthenticatedValidator,
+    depositAuthValidator: AuthenticatedValidator,
   },
   never,
   NodeConfig
 > = Effect.gen(function* () {
   const nodeConfig = yield* NodeConfig;
-  return yield* makeAlwaysSucceedsServiceFn(nodeConfig);
+  return yield* Effect.gen(function* () {
+    const stateQueueAuthValidator = yield* makeAuthenticatedValidator(
+      nodeConfig,
+      "always_succeeds.state_queue_spend.else",
+      "always_succeeds.state_queue_mint.else"
+    )
+
+    const depositAuthValidator = yield* makeAuthenticatedValidator(
+      nodeConfig,
+      "always_succeeds.deposit_spend.else",
+      "always_succeeds.deposit_mint.else"
+    )
+
+    return {
+      stateQueueAuthValidator,
+      depositAuthValidator,
+    };
+  }).pipe(Effect.orDie);
 });
 
 export class AlwaysSucceedsContract extends Context.Tag(

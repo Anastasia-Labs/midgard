@@ -1,8 +1,5 @@
-import { Address, PolicyId, Script, Data, UTxO, ScriptHash,Datum as CardanoDatum } from "@lucid-evolution/lucid";
-import { AddressSchema, OutputReferenceSchema, POSIXTime, POSIXTimeSchema } from "../common.js";
-import { NodeDatumSchema } from "../linked-list.js";
-import { Header } from "../ledger-state.js";
-import { depositTxBuilder } from "../user-events/deposit.js";
+import { Data } from "@lucid-evolution/lucid";
+import { OutputReferenceSchema, POSIXTimeSchema } from "@/tx-builder/common.js";
 
 export const DepositEventSchema = Data.Object({
     id: OutputReferenceSchema,

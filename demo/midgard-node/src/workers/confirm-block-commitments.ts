@@ -10,22 +10,22 @@ import {
   WorkerOutput,
 } from "@/workers/utils/confirm-block-commitments.js";
 import { serializeStateQueueUTxO } from "@/workers/utils/commit-block-header.js";
-import { makeAlwaysSucceedsServiceFn } from "@/services/always-succeeds.js";
+import { AlwaysSucceedsContract, AuthenticatedValidator } from "@/services/always-succeeds.js";
 import { LucidEvolution } from "@lucid-evolution/lucid";
 import { TxConfirmError } from "@/transactions/utils.js";
+import { AlwaysSucceeds } from "@/services/index.js";
+
 
 const inputData = workerData as WorkerInput;
 
 const fetchLatestBlock = (
-  nodeConfig: NodeConfigDep,
   lucid: LucidEvolution,
+  stateQueueAuthValidator: AuthenticatedValidator,
 ): Effect.Effect<SDK.TxBuilder.StateQueue.StateQueueUTxO, Error> =>
   Effect.gen(function* () {
-    const { policyId, spendScriptAddress } =
-      yield* makeAlwaysSucceedsServiceFn(nodeConfig);
     const fetchConfig: SDK.TxBuilder.StateQueue.FetchConfig = {
-      stateQueueAddress: spendScriptAddress,
-      stateQueuePolicyId: policyId,
+      stateQueueAddress: stateQueueAuthValidator.spendScriptAddress,
+      stateQueuePolicyId: stateQueueAuthValidator.policyId,
     };
     return yield* SDK.Endpoints.fetchLatestCommittedBlockProgram(
       lucid,
@@ -35,13 +35,13 @@ const fetchLatestBlock = (
 
 const wrapper = (
   workerInput: WorkerInput,
-): Effect.Effect<WorkerOutput, Error, NodeConfig | User> =>
+): Effect.Effect<WorkerOutput, Error, NodeConfig | User | AlwaysSucceedsContract> =>
   Effect.gen(function* () {
-    const nodeConfig = yield* NodeConfig;
+    const alwaysSucceeds = yield* AlwaysSucceeds.AlwaysSucceedsContract;
     const { user: lucid } = yield* User;
     if (workerInput.data.firstRun) {
       yield* Effect.logInfo("🔍 First run. Fetching the latest block...");
-      const latestBlock = yield* fetchLatestBlock(nodeConfig, lucid);
+      const latestBlock = yield* fetchLatestBlock(lucid, alwaysSucceeds.stateQueueAuthValidator);
       const serializedUTxO = yield* serializeStateQueueUTxO(latestBlock);
       return {
         type: "SuccessfulConfirmationOutput",
@@ -67,7 +67,7 @@ const wrapper = (
         Schedule.recurs(4),
       );
       yield* Effect.logInfo("🔍 Tx confirmed. Fetching the block...");
-      const latestBlock = yield* fetchLatestBlock(nodeConfig, lucid);
+      const latestBlock = yield* fetchLatestBlock(lucid, alwaysSucceeds.stateQueueAuthValidator);
       if (latestBlock.utxo.txHash == targetTxHash) {
         yield* Effect.logInfo("🔍 Serializing state queue UTxO...");
         const serializedUTxO = yield* serializeStateQueueUTxO(latestBlock);
@@ -92,6 +92,7 @@ const wrapper = (
 const program = pipe(
   wrapper(inputData),
   Effect.provide(User.layer),
+  Effect.provide(AlwaysSucceeds.AlwaysSucceedsContract.layer),
   Effect.provide(NodeConfig.layer),
 );
 

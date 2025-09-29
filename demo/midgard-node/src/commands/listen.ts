@@ -281,8 +281,8 @@ const getLogStateQueueHandler = Effect.gen(function* () {
   const { user: lucid } = yield* User;
   const alwaysSucceeds = yield* AlwaysSucceeds.AlwaysSucceedsContract;
   const fetchConfig: SDK.TxBuilder.StateQueue.FetchConfig = {
-    stateQueuePolicyId: alwaysSucceeds.policyId,
-    stateQueueAddress: alwaysSucceeds.spendScriptAddress,
+    stateQueuePolicyId: alwaysSucceeds.stateQueueAuthValidator.policyId,
+    stateQueueAddress: alwaysSucceeds.stateQueueAuthValidator.spendScriptAddress,
   };
   const sortedUTxOs = yield* SDK.Endpoints.fetchSortedStateQueueUTxOsProgram(
     lucid,
@@ -532,18 +532,18 @@ const blockConfirmationAction = Effect.gen(function* () {
 const mergeAction = Effect.gen(function* () {
   const nodeConfig = yield* NodeConfig;
   const { user: lucid } = yield* User;
-  const { spendScriptAddress, policyId, spendScript, mintScript } =
+  const { stateQueueAuthValidator, depositAuthValidator } =
     yield* AlwaysSucceeds.AlwaysSucceedsContract;
   const fetchConfig: SDK.TxBuilder.StateQueue.FetchConfig = {
-    stateQueueAddress: spendScriptAddress,
-    stateQueuePolicyId: policyId,
+    stateQueueAddress: stateQueueAuthValidator.spendScriptAddress,
+    stateQueuePolicyId: stateQueueAuthValidator.policyId,
   };
   lucid.selectWallet.fromSeed(nodeConfig.L1_OPERATOR_SEED_PHRASE_FOR_MERGE_TX);
   yield* StateQueueTx.buildAndSubmitMergeTx(
     lucid,
     fetchConfig,
-    spendScript,
-    mintScript,
+    stateQueueAuthValidator.spendScript,
+    stateQueueAuthValidator.mintScript,
   );
 });
 

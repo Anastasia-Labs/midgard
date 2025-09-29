@@ -1,12 +1,11 @@
 import { parentPort, workerData } from "worker_threads";
 import * as SDK from "@al-ft/midgard-sdk";
-import { Cause, Effect, pipe } from "effect";
+import { Cause, Effect, pipe, Option } from "effect";
 import {
   WorkerInput,
   WorkerOutput,
   deserializeStateQueueUTxO,
 } from "@/workers/utils/commit-block-header.js";
-import { makeAlwaysSucceedsServiceFn } from "@/services/always-succeeds.js";
 import {
   BlocksDB,
   ImmutableDB,
@@ -29,6 +28,7 @@ import { Database } from "@/services/database.js";
 import { batchProgram } from "@/utils.js";
 import { Columns as TxColumns } from "@/database/utils/tx.js";
 import { WorkerError } from "./utils/common.js";
+import { AlwaysSucceeds } from "@/services/index.js";
 
 const BATCH_SIZE = 100;
 
@@ -74,8 +74,7 @@ const wrapper = (
         const { utxoRoot, txRoot, mempoolTxHashes, sizeOfProcessedTxs } =
           yield* processMpts(ledgerTrie, mempoolTrie, mempoolTxs);
 
-        const { policyId, spendScript, spendScriptAddress, mintScript } =
-          yield* makeAlwaysSucceedsServiceFn(nodeConfig);
+        const { stateQueueAuthValidator, depositAuthValidator } = yield* AlwaysSucceeds.AlwaysSucceedsContract;
 
         const skippedSubmissionProgram = batchProgram(
           BATCH_SIZE,
@@ -131,6 +130,8 @@ const wrapper = (
               latestBlock.datum,
               utxoRoot,
               txRoot,
+              Option.none(),
+              Option.none(),
               BigInt(endTime),
             );
 
@@ -143,17 +144,17 @@ const wrapper = (
               anchorUTxO: latestBlock,
               updatedAnchorDatum: updatedNodeDatum,
               newHeader: newHeader,
-              stateQueueSpendingScript: spendScript,
-              policyId,
-              stateQueueMintingScript: mintScript,
+              stateQueueSpendingScript: stateQueueAuthValidator.spendScript,
+              policyId: stateQueueAuthValidator.policyId,
+              stateQueueMintingScript: stateQueueAuthValidator.mintScript,
             };
 
           const aoUpdateCommitmentTimeParams = {};
 
           yield* Effect.logInfo("🔹 Building block commitment transaction...");
           const fetchConfig: SDK.TxBuilder.StateQueue.FetchConfig = {
-            stateQueueAddress: spendScriptAddress,
-            stateQueuePolicyId: policyId,
+            stateQueueAddress: stateQueueAuthValidator.spendScriptAddress,
+            stateQueuePolicyId: stateQueueAuthValidator.policyId,
           };
           lucid.selectWallet.fromSeed(nodeConfig.L1_OPERATOR_SEED_PHRASE);
           const txBuilder = yield* SDK.Endpoints.commitBlockHeaderProgram(
@@ -276,6 +277,7 @@ const program = pipe(
   wrapper(inputData),
   Effect.provide(Database.layer),
   Effect.provide(User.layer),
+  Effect.provide(AlwaysSucceeds.AlwaysSucceedsContract.layer),
   Effect.provide(NodeConfig.layer),
 );
 
