@@ -21,11 +21,11 @@ const fetchLatestBlock = (
   lucid: LucidEvolution,
 ): Effect.Effect<SDK.TxBuilder.StateQueue.StateQueueUTxO, Error> =>
   Effect.gen(function* () {
-    const { policyId, spendScriptAddress } =
+    const { stateQueueAuthValidator, depositAuthValidator } =
       yield* makeAlwaysSucceedsServiceFn(nodeConfig);
     const fetchConfig: SDK.TxBuilder.StateQueue.FetchConfig = {
-      stateQueueAddress: spendScriptAddress,
-      stateQueuePolicyId: policyId,
+      stateQueueAddress: stateQueueAuthValidator.spendScriptAddress,
+      stateQueuePolicyId: stateQueueAuthValidator.policyId,
     };
     return yield* SDK.Endpoints.fetchLatestCommittedBlockProgram(
       lucid,

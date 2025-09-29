@@ -74,7 +74,7 @@ const wrapper = (
         const { utxoRoot, txRoot, mempoolTxHashes, sizeOfProcessedTxs } =
           yield* processMpts(ledgerTrie, mempoolTrie, mempoolTxs);
 
-        const { policyId, spendScript, spendScriptAddress, mintScript } =
+        const { stateQueueAuthValidator, depositAuthValidator } =
           yield* makeAlwaysSucceedsServiceFn(nodeConfig);
 
         const skippedSubmissionProgram = batchProgram(
@@ -145,17 +145,17 @@ const wrapper = (
               anchorUTxO: latestBlock,
               updatedAnchorDatum: updatedNodeDatum,
               newHeader: newHeader,
-              stateQueueSpendingScript: spendScript,
-              policyId,
-              stateQueueMintingScript: mintScript,
+              stateQueueSpendingScript: stateQueueAuthValidator.spendScript,
+              policyId: stateQueueAuthValidator.policyId,
+              stateQueueMintingScript: stateQueueAuthValidator.mintScript,
             };
 
           const aoUpdateCommitmentTimeParams = {};
 
           yield* Effect.logInfo("🔹 Building block commitment transaction...");
           const fetchConfig: SDK.TxBuilder.StateQueue.FetchConfig = {
-            stateQueueAddress: spendScriptAddress,
-            stateQueuePolicyId: policyId,
+            stateQueueAddress: stateQueueAuthValidator.spendScriptAddress,
+            stateQueuePolicyId: stateQueueAuthValidator.policyId,
           };
           lucid.selectWallet.fromSeed(nodeConfig.L1_OPERATOR_SEED_PHRASE);
           const txBuilder = yield* SDK.Endpoints.commitBlockHeaderProgram(
