@@ -6,7 +6,6 @@ import {
   WorkerOutput,
   deserializeStateQueueUTxO,
 } from "@/workers/utils/commit-block-header.js";
-import { makeAlwaysSucceedsServiceFn } from "@/services/always-succeeds.js";
 import {
   BlocksDB,
   ImmutableDB,
@@ -29,6 +28,7 @@ import { Database } from "@/services/database.js";
 import { batchProgram } from "@/utils.js";
 import { Columns as TxColumns } from "@/database/utils/tx.js";
 import { WorkerError } from "./utils/common.js";
+import { AlwaysSucceeds } from "@/services/index.js";
 
 const BATCH_SIZE = 100;
 
@@ -74,8 +74,7 @@ const wrapper = (
         const { utxoRoot, txRoot, mempoolTxHashes, sizeOfProcessedTxs } =
           yield* processMpts(ledgerTrie, mempoolTrie, mempoolTxs);
 
-        const { stateQueueAuthValidator, depositAuthValidator } =
-          yield* makeAlwaysSucceedsServiceFn(nodeConfig);
+        const { stateQueueAuthValidator, depositAuthValidator } = yield* AlwaysSucceeds.AlwaysSucceedsContract;
 
         const skippedSubmissionProgram = batchProgram(
           BATCH_SIZE,
@@ -278,6 +277,7 @@ const program = pipe(
   wrapper(inputData),
   Effect.provide(Database.layer),
   Effect.provide(User.layer),
+  Effect.provide(AlwaysSucceeds.AlwaysSucceedsContract.layer),
   Effect.provide(NodeConfig.layer),
 );
 
