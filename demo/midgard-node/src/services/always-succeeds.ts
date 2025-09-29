@@ -89,7 +89,6 @@ export const makeAlwaysSucceedsServiceFn = (nodeConfig: NodeConfigDep) =>
 
 const makeAlwaysSucceedsService: Effect.Effect<
   {
-  // TODO: rename to `AuthenticatedValidator`
     stateQueueAuthValidator: AuthenticatedValidator,
     depositAuthValidator: AuthenticatedValidator,
   },

@@ -62,8 +62,8 @@ export const resetStateQueue = Effect.gen(function* () {
   const { user: lucid } = yield* User;
   const alwaysSucceeds = yield* AlwaysSucceeds.AlwaysSucceedsContract;
   const fetchConfig: SDK.TxBuilder.StateQueue.FetchConfig = {
-    stateQueuePolicyId: alwaysSucceeds.policyId,
-    stateQueueAddress: alwaysSucceeds.spendScriptAddress,
+    stateQueuePolicyId: alwaysSucceeds.stateQueueAuthValidator.policyId,
+    stateQueueAddress: alwaysSucceeds.stateQueueAuthValidator.spendScriptAddress,
   };
 
   const allStateQueueUTxOs =
@@ -81,8 +81,8 @@ export const resetStateQueue = Effect.gen(function* () {
     yield* collectAndBurnStateQueueNodesProgram(
       lucid,
       fetchConfig,
-      alwaysSucceeds.spendScript,
-      alwaysSucceeds.mintScript,
+      alwaysSucceeds.stateQueueAuthValidator.spendScript,
+      alwaysSucceeds.stateQueueAuthValidator.mintScript,
       batch,
     );
   }

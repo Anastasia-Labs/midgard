@@ -7,12 +7,12 @@ import { TxConfirmError, handleSignSubmit, TxSubmitError } from "../utils.js";
 export const stateQueueInit = Effect.gen(function* () {
   const nodeConfig = yield* NodeConfig;
   const { user: lucid } = yield* User;
-  const { spendScriptAddress, mintScript, policyId } =
+  const { stateQueueAuthValidator, depositAuthValidator } =
     yield* AlwaysSucceeds.AlwaysSucceedsContract;
   const initParams: SDK.TxBuilder.StateQueue.InitParams = {
-    address: spendScriptAddress,
-    policyId: policyId,
-    stateQueueMintingScript: mintScript,
+    address: stateQueueAuthValidator.spendScriptAddress,
+    policyId: stateQueueAuthValidator.policyId,
+    stateQueueMintingScript: stateQueueAuthValidator.mintScript,
   };
   lucid.selectWallet.fromSeed(nodeConfig.L1_OPERATOR_SEED_PHRASE);
   const txBuilderProgram = SDK.Endpoints.initTxProgram(lucid, initParams);
