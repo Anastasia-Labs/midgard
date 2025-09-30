@@ -268,7 +268,7 @@ export class LevelDB {
   }
 }
 
-const keyValueMPT = (
+export const keyValueMptRoot = (
   keys: Buffer[],
   values: Buffer[],
 ) =>
@@ -277,10 +277,8 @@ const keyValueMPT = (
     try: () =>
       ETH.createMPT({
         db: new ETH_UTILS.MapDB(),
-        useRootPersistence: true,
-        // valueEncoding: LEVELDB_ENCODING_OPTS.valueEncoding,
       }),
-    catch: (e) => MptError.trieCreate("mempool", e),
+    catch: (e) => MptError.trieCreate("keyValueMPT", e),
     });
 
     const ops: ETH_UTILS.BatchDBOp[] = yield* Effect.allSuccesses(
@@ -298,9 +296,9 @@ const keyValueMPT = (
 
     yield* Effect.tryPromise({
     try: () => trie.batch(ops),
-    catch: (e) => MptError.batch("key value mpt root", e),
+    catch: (e) => MptError.batch("keyValueMPT root", e),
   });
-  const foundRoot = yield* Effect.sync(() => trie.root());
+  const foundRoot = yield* Effect.sync(() => toHex(trie.root()));
   return foundRoot;
   })
 

@@ -17,6 +17,7 @@ import {
 import { LucidEvolution } from "@lucid-evolution/lucid";
 import { TxConfirmError } from "@/transactions/utils.js";
 import { AlwaysSucceeds } from "@/services/index.js";
+import { keyValueMptRoot } from "./utils/mpt.js"
 import * as ETH from "@ethereumjs/mpt";
 import * as ETH_UTILS from "@ethereumjs/util";
 
@@ -37,25 +38,6 @@ const fetchDepositUTxOs = (
     );
   });
 
-const mpt = (
-
-) =>
-  Effect.gen(function* () {
-    const trie: ETH.MerklePatriciaTrie = yield* Effect.tryPromise({
-    try: () =>
-      ETH.createMPT({
-        db: new ETH_UTILS.MapDB(),
-        useRootPersistence: true,
-        // valueEncoding: LEVELDB_ENCODING_OPTS.valueEncoding,
-      }),
-    catch: (e) => MptError.trieCreate("mempool", e),
-  });
-
-  await trie.put(utf8ToBytes('test'), utf8ToBytes('one'))
-    const value = await trie.get(utf8ToBytes('test'))
-    console.log(value ? bytesToUtf8(value) : 'not found') // 'one'
-  })
-
 const wrapper = (
   workerInput: WorkerInput,
 ): Effect.Effect<
@@ -69,12 +51,18 @@ const wrapper = (
 
     yield* Effect.logInfo("  fetching DepositUTxOs...");
     const depositUTxOs = yield* fetchDepositUTxOs(
-    lucid,
-    alwaysSucceeds.stateQueueAuthValidator,
+        lucid,
+        alwaysSucceeds.stateQueueAuthValidator,
     );
+
+    const keys: Buffer[] = []
+    const values: Buffer[] = []
+
+    const depositRoot = yield* keyValueMptRoot(keys, values)
+
     return {
-    type: "SuccessfulConfirmationOutput",
-    blocksUTxO: serializedUTxO,
+        type: "SuccessfulRootCalculationOutput",
+        mptRoot: depositRoot,
     };
   });
 
