@@ -18,6 +18,10 @@ export type SuccessfulRootCalculationOutput = {
   mptRoot: string;
 };
 
+export type FailedRootCalculationOutput = {
+  type: "FailedRootCalculationOutput";
+  error: string;
+};
 
 export type NoTxForConfirmationOutput = {
   type: "NoTxForConfirmationOutput";
@@ -30,6 +34,7 @@ export type FailedConfirmationOutput = {
 
 export type WorkerOutput =
   | SuccessfulConfirmationOutput
-  | SuccessfulRootCalculationOutput
   | NoTxForConfirmationOutput
-  | FailedConfirmationOutput;
+  | FailedConfirmationOutput
+  | SuccessfulRootCalculationOutput
+  | FailedRootCalculationOutput;

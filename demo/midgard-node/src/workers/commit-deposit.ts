@@ -77,15 +77,15 @@ Effect.runPromise(
   program.pipe(
     Effect.catchAllCause((cause) =>
       Effect.succeed({
-        type: "FailedConfirmationOutput",
-        error: `Tx confirmation worker failure: ${Cause.pretty(cause)}`,
+        type: "FailedRootCalculationOutput",
+        error: `Root calculation worker failure: ${Cause.pretty(cause)}`,
       }),
     ),
   ),
 ).then((output) => {
   Effect.runSync(
     Effect.logInfo(
-      `🔍 Confirmation work completed (${JSON.stringify(output)}).`,
+      `🔍 Root calculation work completed (${JSON.stringify(output)}).`,
     ),
   );
   parentPort?.postMessage(output);
