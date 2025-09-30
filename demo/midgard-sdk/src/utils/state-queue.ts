@@ -93,7 +93,7 @@ export const updateLatestBlocksDatumAndGetTheNewHeader = (
   endTime: POSIXTime,
 ): Effect.Effect<{ nodeDatum: Datum; header: Header }, Error> =>
   Effect.gen(function* () {
-    const walletAddress : string = yield* Effect.tryPromise({
+    const walletAddress: string = yield* Effect.tryPromise({
       try: () => lucid.wallet().address(),
       catch: (e) => new Error(`Failed to find the wallet: ${e}`),
     });
@@ -111,8 +111,12 @@ export const updateLatestBlocksDatumAndGetTheNewHeader = (
           prevUtxosRoot: confirmedState.utxoRoot,
           utxosRoot: newUTxOsRoot,
           transactionsRoot,
-          depositsRoot: Option.getOrElse(depositsRootOption, () => "00".repeat(32)),
-          withdrawalsRoot: Option.getOrElse(withdrawalsRootOption, () => "00".repeat(32)),
+          depositsRoot: Option.getOrElse(depositsRootOption, () =>
+            "00".repeat(32),
+          ),
+          withdrawalsRoot: Option.getOrElse(withdrawalsRootOption, () =>
+            "00".repeat(32),
+          ),
           startTime: confirmedState.endTime,
           endTime,
           prevHeaderHash: confirmedState.headerHash,

@@ -11,24 +11,22 @@ import {
 import { NodeConfig, NodeConfigDep } from "@/config.js";
 
 export type AuthenticatedValidator = {
-  spendingCBOR: string,
-  spendScript: Script,
-  spendScriptAddress: string,
-  mintScript: Script,
-  policyId: string,
+  spendingCBOR: string;
+  spendScript: Script;
+  spendScriptAddress: string;
+  mintScript: Script;
+  policyId: string;
 };
 
 export const makeAuthenticatedValidator = (
-    nodeConfig: NodeConfigDep,
-    spendingTitle: string,
-    mintingTitle: string,
-  ) : Effect.Effect<AuthenticatedValidator, never, never>=>
+  nodeConfig: NodeConfigDep,
+  spendingTitle: string,
+  mintingTitle: string,
+): Effect.Effect<AuthenticatedValidator, never, never> =>
   Effect.gen(function* () {
     const spendingCBOR: string = yield* pipe(
       Effect.fromNullable(
-        scripts.default.validators.find(
-          (v) => v.title === spendingTitle,
-        ),
+        scripts.default.validators.find((v) => v.title === spendingTitle),
       ),
       Effect.andThen((script) => script.compiledCode),
     );
@@ -42,9 +40,7 @@ export const makeAuthenticatedValidator = (
     );
     const mintingCBOR = yield* pipe(
       Effect.fromNullable(
-        scripts.default.validators.find(
-          (v) => v.title === mintingTitle,
-        ),
+        scripts.default.validators.find((v) => v.title === mintingTitle),
       ),
       Effect.andThen((script) => script.compiledCode),
     );
@@ -66,8 +62,8 @@ export const makeAuthenticatedValidator = (
 
 const makeAlwaysSucceedsService: Effect.Effect<
   {
-    stateQueueAuthValidator: AuthenticatedValidator,
-    depositAuthValidator: AuthenticatedValidator,
+    stateQueueAuthValidator: AuthenticatedValidator;
+    depositAuthValidator: AuthenticatedValidator;
   },
   never,
   NodeConfig
@@ -77,14 +73,14 @@ const makeAlwaysSucceedsService: Effect.Effect<
     const stateQueueAuthValidator = yield* makeAuthenticatedValidator(
       nodeConfig,
       "always_succeeds.state_queue_spend.else",
-      "always_succeeds.state_queue_mint.else"
-    )
+      "always_succeeds.state_queue_mint.else",
+    );
 
     const depositAuthValidator = yield* makeAuthenticatedValidator(
       nodeConfig,
       "always_succeeds.deposit_spend.else",
-      "always_succeeds.deposit_mint.else"
-    )
+      "always_succeeds.deposit_mint.else",
+    );
 
     return {
       stateQueueAuthValidator,

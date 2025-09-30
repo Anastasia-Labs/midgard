@@ -10,11 +10,13 @@ import {
   WorkerOutput,
 } from "@/workers/utils/confirm-block-commitments.js";
 import { serializeStateQueueUTxO } from "@/workers/utils/commit-block-header.js";
-import { AlwaysSucceedsContract, AuthenticatedValidator } from "@/services/always-succeeds.js";
+import {
+  AlwaysSucceedsContract,
+  AuthenticatedValidator,
+} from "@/services/always-succeeds.js";
 import { LucidEvolution } from "@lucid-evolution/lucid";
 import { TxConfirmError } from "@/transactions/utils.js";
 import { AlwaysSucceeds } from "@/services/index.js";
-
 
 const inputData = workerData as WorkerInput;
 
@@ -35,13 +37,20 @@ const fetchLatestBlock = (
 
 const wrapper = (
   workerInput: WorkerInput,
-): Effect.Effect<WorkerOutput, Error, NodeConfig | User | AlwaysSucceedsContract> =>
+): Effect.Effect<
+  WorkerOutput,
+  Error,
+  NodeConfig | User | AlwaysSucceedsContract
+> =>
   Effect.gen(function* () {
     const alwaysSucceeds = yield* AlwaysSucceeds.AlwaysSucceedsContract;
     const { user: lucid } = yield* User;
     if (workerInput.data.firstRun) {
       yield* Effect.logInfo("🔍 First run. Fetching the latest block...");
-      const latestBlock = yield* fetchLatestBlock(lucid, alwaysSucceeds.stateQueueAuthValidator);
+      const latestBlock = yield* fetchLatestBlock(
+        lucid,
+        alwaysSucceeds.stateQueueAuthValidator,
+      );
       const serializedUTxO = yield* serializeStateQueueUTxO(latestBlock);
       return {
         type: "SuccessfulConfirmationOutput",
@@ -67,7 +76,10 @@ const wrapper = (
         Schedule.recurs(4),
       );
       yield* Effect.logInfo("🔍 Tx confirmed. Fetching the block...");
-      const latestBlock = yield* fetchLatestBlock(lucid, alwaysSucceeds.stateQueueAuthValidator);
+      const latestBlock = yield* fetchLatestBlock(
+        lucid,
+        alwaysSucceeds.stateQueueAuthValidator,
+      );
       if (latestBlock.utxo.txHash == targetTxHash) {
         yield* Effect.logInfo("🔍 Serializing state queue UTxO...");
         const serializedUTxO = yield* serializeStateQueueUTxO(latestBlock);

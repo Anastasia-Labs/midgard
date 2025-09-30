@@ -19,7 +19,7 @@ export const fetchLatestCommittedBlockProgram = (
       config.stateQueuePolicyId,
     );
     yield* Effect.logInfo("allBlocks", allBlocks.length);
-    const filtered = yield* Effect.allSuccesses(
+    const filtered: StateQueueUTxO[] = yield* Effect.allSuccesses(
       allBlocks.map((u: UTxO) => {
         const stateQueueUTxOEffect = utxoToStateQueueUTxO(
           u,

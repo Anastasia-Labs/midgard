@@ -63,7 +63,8 @@ export const resetStateQueue = Effect.gen(function* () {
   const alwaysSucceeds = yield* AlwaysSucceeds.AlwaysSucceedsContract;
   const fetchConfig: SDK.TxBuilder.StateQueue.FetchConfig = {
     stateQueuePolicyId: alwaysSucceeds.stateQueueAuthValidator.policyId,
-    stateQueueAddress: alwaysSucceeds.stateQueueAuthValidator.spendScriptAddress,
+    stateQueueAddress:
+      alwaysSucceeds.stateQueueAuthValidator.spendScriptAddress,
   };
 
   const allStateQueueUTxOs =

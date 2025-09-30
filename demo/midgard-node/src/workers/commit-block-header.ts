@@ -74,7 +74,8 @@ const wrapper = (
         const { utxoRoot, txRoot, mempoolTxHashes, sizeOfProcessedTxs } =
           yield* processMpts(ledgerTrie, mempoolTrie, mempoolTxs);
 
-        const { stateQueueAuthValidator, depositAuthValidator } = yield* AlwaysSucceeds.AlwaysSucceedsContract;
+        const { stateQueueAuthValidator, depositAuthValidator } =
+          yield* AlwaysSucceeds.AlwaysSucceedsContract;
 
         const skippedSubmissionProgram = batchProgram(
           BATCH_SIZE,
