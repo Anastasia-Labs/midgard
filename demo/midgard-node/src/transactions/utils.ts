@@ -3,15 +3,15 @@ import {
   LucidEvolution,
   OutRef,
   TxSignBuilder,
+  TxSigned,
   UTxO,
   fromHex,
 } from "@lucid-evolution/lucid";
 import { Data, Effect, Schedule } from "effect";
 import * as BlocksDB from "../database/blocks.js";
-import { Database } from "@/services/database.js";
+import { Database } from "@/services/index.js";
 import { ImmutableDB } from "@/database/index.js";
-import { GenericErrorFields } from "@/utils.js";
-import { DBSelectError } from "@/database/utils/common.js";
+import { DatabaseError } from "@/database/utils/common.js";
 import { UnknownException } from "effect/Cause";
 
 const RETRY_ATTEMPTS = 1;
@@ -23,74 +23,49 @@ const PAUSE_DURATION = "5 seconds";
 /**
  * Handle the signing and submission of a transaction.
  *
- * (TODO: the type signature for `onSubmitFailure` is unfortunate. How can this
- * be averted?)
- *
  * @param lucid - The LucidEvolution instance.
  * @param signBuilder - The transaction sign builder.
- * @param onSubmitFailure - A function that given a `TxSubmitError` returns another effect
- * @param onConfirmFailure - A function that given a `TxConfirmError` returns another effect
  * @returns An Effect that resolves when the transaction is signed, submitted, and confirmed.
  */
-export const handleSignSubmit = <E, F>(
+export const handleSignSubmit = (
   lucid: LucidEvolution,
   signBuilder: TxSignBuilder,
-  onSubmitFailure: (
-    error: TxSubmitError | { _tag: "TxSubmitError" },
-  ) => Effect.Effect<void, E>,
-  onConfirmFailure: (error: TxConfirmError) => Effect.Effect<void, F>,
-): Effect.Effect<string | void, E | F | TxSignError> =>
+): Effect.Effect<string, TxSignError | TxSubmitError | TxConfirmError> =>
   Effect.gen(function* () {
     const txHash = yield* signSubmitHelper(lucid, signBuilder);
     yield* Effect.logInfo(`⏳ Confirming Transaction...`);
-    const result = yield* Effect.tryPromise(() =>
-      lucid.awaitTx(txHash, 10_000),
-    ).pipe(
-      Effect.matchEffect({
-        onFailure: (e: UnknownException) => {
-          const confirmError = new TxConfirmError({
-            message: `Failed to confirm transaction`,
-            txHash,
-            cause: e,
-          });
-          return onConfirmFailure(confirmError);
-        },
-        onSuccess: (_b) =>
-          Effect.gen(function* () {
-            yield* Effect.logInfo(`🎉 Transaction confirmed: ${txHash}`);
-            yield* Effect.logInfo(`⌛ Pausing for ${PAUSE_DURATION}...`);
-            yield* Effect.sleep(PAUSE_DURATION);
-            yield* Effect.logInfo("✅ Pause ended.");
-            return txHash;
-          }),
-      }),
-    );
-    return result;
+    yield* Effect.tryPromise({
+      try: () => lucid.awaitTx(txHash, 10_000),
+      catch: (e) =>
+        new TxConfirmError({
+          message: `Failed to confirm transaction`,
+          txHash,
+          cause: e,
+        }),
+    });
+    yield* Effect.logInfo(`🎉 Transaction confirmed: ${txHash}`);
+    yield* Effect.logInfo(`⌛ Pausing for ${PAUSE_DURATION}...`);
+    yield* Effect.sleep(PAUSE_DURATION);
+    yield* Effect.logInfo("✅ Pause ended.");
+    return txHash;
   }).pipe(
     Effect.tapErrorTag("TxSignError", (e) =>
       Effect.logError(`TxSignError: ${e}`),
     ),
-    Effect.catchTag("TxSubmitError", (e) => onSubmitFailure(e)),
   );
 
 /**
  * Handle the signing and submission of a transaction without waiting for the
  * transaction to be confirmed.
  *
- * (TODO: similar to above—type signature of `onSubmitFailure`)
- *
  * @param lucid - The LucidEvolution instance. Here it's only used for logging the signer's address.
  * @param signBuilder - The transaction sign builder.
- * @param onSubmitFailure - A function that given a `TxSubmitError`, returns another effect, allowing for taking control of the logic.
  * @returns An Effect that resolves when the transaction is signed, submitted, and confirmed.
  */
-export const handleSignSubmitNoConfirmation = <E>(
+export const handleSignSubmitNoConfirmation = (
   lucid: LucidEvolution,
   signBuilder: TxSignBuilder,
-  onSubmitFailure: (
-    error: TxSubmitError | { _tag: "TxSubmitError" },
-  ) => Effect.Effect<void, E>,
-): Effect.Effect<string | void, TxSignError | E> =>
+): Effect.Effect<string, TxSignError | TxSubmitError> =>
   Effect.gen(function* () {
     const txHash = yield* signSubmitHelper(lucid, signBuilder);
     return txHash;
@@ -98,7 +73,6 @@ export const handleSignSubmitNoConfirmation = <E>(
     Effect.tapErrorTag("TxSignError", (e) =>
       Effect.logError(`TxSignError: ${e}`),
     ),
-    Effect.catchTag("TxSubmitError", (e) => onSubmitFailure(e)),
   );
 
 const signSubmitHelper = (
@@ -109,7 +83,8 @@ const signSubmitHelper = (
     const walletAddr = yield* Effect.tryPromise(() =>
       lucid.wallet().address(),
     ).pipe(Effect.catchAll((_e) => Effect.succeed("<unknown>")));
-    yield* Effect.logInfo(`✍  Signing tx with ${walletAddr}...`);
+    yield* Effect.logInfo(`✍  Signing tx with ${walletAddr}`);
+    const txHash = signBuilder.toHash();
     const signedProgram = signBuilder.sign
       .withWallet()
       .completeProgram()
@@ -120,6 +95,7 @@ const signSubmitHelper = (
             new TxSignError({
               message: `Failed to sign transaction`,
               cause: e,
+              txHash,
             }),
         ),
       );
@@ -128,7 +104,7 @@ const signSubmitHelper = (
 ${signed.toCBOR()}
 `);
     yield* Effect.logInfo("✉️  Submitting transaction...");
-    const txHash = yield* signed.submitProgram().pipe(
+    yield* signed.submitProgram().pipe(
       Effect.retry(
         Schedule.compose(
           Schedule.exponential(INIT_RETRY_AFTER_MILLIS),
@@ -141,6 +117,7 @@ ${signed.toCBOR()}
           new TxSubmitError({
             message: `Failed to submit transaction`,
             cause: e,
+            txHash,
           }),
       ),
     );
@@ -151,8 +128,6 @@ ${signed.toCBOR()}
 /**
  * Fetch transactions of the first block by querying BlocksDB and ImmutableDB.
  *
- * TODO: `Error` type is temporary as we want the same error that SDK gives.
- *
  * @param firstBlockUTxO - UTxO of the first block in queue.
  * @returns An Effect that resolves to an array of transactions, and block's
  *          header hash.
@@ -161,7 +136,7 @@ export const fetchFirstBlockTxs = (
   firstBlockUTxO: SDK.TxBuilder.StateQueue.StateQueueUTxO,
 ): Effect.Effect<
   { txs: readonly Buffer[]; headerHash: Buffer },
-  DBSelectError | Error,
+  SDK.Utils.HashingError | SDK.Utils.DataCoercionError | DatabaseError,
   Database
 > =>
   Effect.gen(function* () {
@@ -189,19 +164,19 @@ export const outRefsAreEqual = (outRef0: OutRef, outRef1: OutRef): boolean => {
 };
 
 export class TxSignError extends Data.TaggedError("TxSignError")<
-  GenericErrorFields & {
-    readonly txHash?: string;
+  SDK.Utils.GenericErrorFields & {
+    readonly txHash: string;
   }
 > {}
 
 export class TxSubmitError extends Data.TaggedError("TxSubmitError")<
-  GenericErrorFields & {
-    readonly txHash?: string;
+  SDK.Utils.GenericErrorFields & {
+    readonly txHash: string;
   }
 > {}
 
 export class TxConfirmError extends Data.TaggedError("TxConfirmError")<
-  GenericErrorFields & {
-    readonly txHash?: string;
+  SDK.Utils.GenericErrorFields & {
+    readonly txHash: string;
   }
 > {}

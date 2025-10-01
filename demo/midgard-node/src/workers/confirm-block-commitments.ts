@@ -4,27 +4,26 @@ import {
 } from "@/utils.js";
 import * as SDK from "@al-ft/midgard-sdk";
 import { Cause, Effect, Schedule, pipe } from "effect";
-import { NodeConfig, NodeConfigDep, User } from "@/config.js";
+import { AlwaysSucceedsContract, AuthenticatedValidator, Lucid, NodeConfig } from "@/services/index.js";
 import {
   WorkerInput,
   WorkerOutput,
 } from "@/workers/utils/confirm-block-commitments.js";
 import { serializeStateQueueUTxO } from "@/workers/utils/commit-block-header.js";
-import {
-  AlwaysSucceedsContract,
-  AuthenticatedValidator,
-} from "@/services/always-succeeds.js";
 import { LucidEvolution } from "@lucid-evolution/lucid";
 import { TxConfirmError } from "@/transactions/utils.js";
-import { AlwaysSucceeds } from "@/services/index.js";
 
 const inputData = workerData as WorkerInput;
 
 const fetchLatestBlock = (
   lucid: LucidEvolution,
-  stateQueueAuthValidator: AuthenticatedValidator,
-): Effect.Effect<SDK.TxBuilder.StateQueue.StateQueueUTxO, Error> =>
+): Effect.Effect<
+  SDK.TxBuilder.StateQueue.StateQueueUTxO,
+  SDK.Utils.StateQueueError | SDK.Utils.LucidError,
+  AlwaysSucceedsContract | NodeConfig
+> =>
   Effect.gen(function* () {
+    const { stateQueueAuthValidator } = yield* AlwaysSucceedsContract;
     const fetchConfig: SDK.TxBuilder.StateQueue.FetchConfig = {
       stateQueueAddress: stateQueueAuthValidator.spendScriptAddress,
       stateQueuePolicyId: stateQueueAuthValidator.policyId,
@@ -39,18 +38,18 @@ const wrapper = (
   workerInput: WorkerInput,
 ): Effect.Effect<
   WorkerOutput,
-  Error,
-  NodeConfig | User | AlwaysSucceedsContract
+  | SDK.Utils.CborSerializationError
+  | SDK.Utils.CmlUnexpectedError
+  | SDK.Utils.LucidError
+  | SDK.Utils.StateQueueError
+  | TxConfirmError,
+  AlwaysSucceedsContract | Lucid | NodeConfig
 > =>
   Effect.gen(function* () {
-    const alwaysSucceeds = yield* AlwaysSucceeds.AlwaysSucceedsContract;
-    const { user: lucid } = yield* User;
+    const lucid = yield* Lucid;
     if (workerInput.data.firstRun) {
       yield* Effect.logInfo("🔍 First run. Fetching the latest block...");
-      const latestBlock = yield* fetchLatestBlock(
-        lucid,
-        alwaysSucceeds.stateQueueAuthValidator,
-      );
+      const latestBlock = yield* fetchLatestBlock(lucid.api);
       const serializedUTxO = yield* serializeStateQueueUTxO(latestBlock);
       return {
         type: "SuccessfulConfirmationOutput",
@@ -65,7 +64,7 @@ const wrapper = (
       yield* Effect.logInfo(`🔍 Confirming tx: ${targetTxHash}`);
       yield* Effect.retry(
         Effect.tryPromise({
-          try: () => lucid.awaitTx(targetTxHash),
+          try: () => lucid.api.awaitTx(targetTxHash),
           catch: (e) =>
             new TxConfirmError({
               message: `Failed to confirm transaction`,
@@ -76,10 +75,7 @@ const wrapper = (
         Schedule.recurs(4),
       );
       yield* Effect.logInfo("🔍 Tx confirmed. Fetching the block...");
-      const latestBlock = yield* fetchLatestBlock(
-        lucid,
-        alwaysSucceeds.stateQueueAuthValidator,
-      );
+      const latestBlock = yield* fetchLatestBlock(lucid.api);
       if (latestBlock.utxo.txHash == targetTxHash) {
         yield* Effect.logInfo("🔍 Serializing state queue UTxO...");
         const serializedUTxO = yield* serializeStateQueueUTxO(latestBlock);
@@ -103,8 +99,8 @@ const wrapper = (
 
 const program = pipe(
   wrapper(inputData),
-  Effect.provide(User.layer),
-  Effect.provide(AlwaysSucceeds.AlwaysSucceedsContract.layer),
+  Effect.provide(AlwaysSucceedsContract.Default),
+  Effect.provide(Lucid.Default),
   Effect.provide(NodeConfig.layer),
 );
 

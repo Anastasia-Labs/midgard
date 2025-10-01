@@ -13,6 +13,7 @@ import {
 import * as chalk_ from "chalk";
 import { Data, Effect, pipe } from "effect";
 import * as Ledger from "@/database/utils/ledger.js";
+import * as SDK from "@al-ft/midgard-sdk";
 
 export type ProcessedTx = {
   txId: Buffer;
@@ -117,7 +118,7 @@ export const findSpentAndProducedUTxOs = (
   txHash?: Buffer,
 ): Effect.Effect<
   { spent: Buffer[]; produced: Ledger.MinimalEntry[] },
-  CmlUnexpectedError
+  SDK.Utils.CmlUnexpectedError
 > =>
   Effect.gen(function* () {
     const spent: Buffer[] = [];
@@ -132,7 +133,7 @@ export const findSpentAndProducedUTxOs = (
       yield* Effect.try({
         try: () => spent.push(Buffer.from(inputs.get(i).to_cbor_bytes())),
         catch: (e) =>
-          new CmlUnexpectedError({
+          new SDK.Utils.CmlUnexpectedError({
             message: `An error occurred on input CBOR serialization`,
             cause: e,
           }),
@@ -153,12 +154,12 @@ export const findSpentAndProducedUTxOs = (
 
 export const breakDownTx = (
   txCbor: Uint8Array,
-): Effect.Effect<ProcessedTx, CmlDeserializationError> =>
+): Effect.Effect<ProcessedTx, SDK.Utils.CmlDeserializationError> =>
   Effect.gen(function* () {
     const deserializedTx = yield* Effect.try({
       try: () => CML.Transaction.from_cbor_bytes(txCbor),
       catch: (e) =>
-        new CmlDeserializationError({
+        new SDK.Utils.CmlDeserializationError({
           message: `Failed to deserialize transaction: ${txCbor}`,
           cause: e,
         }),
@@ -241,29 +242,6 @@ Kupmios:
 \u0009${chalk.bold("OGMIOS_URL")} \u0009 URL of your Ogmios instance
 `;
 
-export type GenericErrorFields = {
-  readonly message: string;
-  readonly cause?: unknown;
-};
-
-// General errors that don't have specific domains
-
-export class CmlUnexpectedError extends Data.TaggedError(
-  "CmlUnexpectedError",
-)<GenericErrorFields> {}
-
-export class CmlDeserializationError extends Data.TaggedError(
-  "CmlDeserializationError",
-)<GenericErrorFields> {}
-
-export class CborSerializationError extends Data.TaggedError(
-  "CborSerializationError",
-)<GenericErrorFields> {}
-
-export class CborDeserializationError extends Data.TaggedError(
-  "CborDeserializationError",
-)<GenericErrorFields> {}
-
-export class LucidError extends Data.TaggedError(
-  "LucidError",
-)<GenericErrorFields> {}
+export class FileSystemError extends Data.TaggedError(
+  "FileSystemError",
+)<SDK.Utils.GenericErrorFields> {}

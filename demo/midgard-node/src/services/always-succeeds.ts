@@ -1,4 +1,4 @@
-import { Context, Effect, Layer, pipe } from "effect";
+import { Effect, pipe } from "effect";
 import * as scripts from "../../blueprints/always-succeeds/plutus.json" with { type: "json" };
 import {
   applyDoubleCborEncoding,
@@ -8,7 +8,7 @@ import {
   SpendingValidator,
   validatorToAddress,
 } from "@lucid-evolution/lucid";
-import { NodeConfig, NodeConfigDep } from "@/config.js";
+import { NodeConfig } from "@/services/config.js";
 
 export type AuthenticatedValidator = {
   spendingCBOR: string;
@@ -19,11 +19,11 @@ export type AuthenticatedValidator = {
 };
 
 export const makeAuthenticatedValidator = (
-  nodeConfig: NodeConfigDep,
   spendingTitle: string,
   mintingTitle: string,
-): Effect.Effect<AuthenticatedValidator, never, never> =>
+): Effect.Effect<AuthenticatedValidator, never, NodeConfig> =>
   Effect.gen(function* () {
+    const nodeConfig = yield* NodeConfig
     const spendingCBOR: string = yield* pipe(
       Effect.fromNullable(
         scripts.default.validators.find((v) => v.title === spendingTitle),
@@ -68,16 +68,13 @@ const makeAlwaysSucceedsService: Effect.Effect<
   never,
   NodeConfig
 > = Effect.gen(function* () {
-  const nodeConfig = yield* NodeConfig;
   return yield* Effect.gen(function* () {
     const stateQueueAuthValidator = yield* makeAuthenticatedValidator(
-      nodeConfig,
       "always_succeeds.state_queue_spend.else",
       "always_succeeds.state_queue_mint.else",
     );
 
     const depositAuthValidator = yield* makeAuthenticatedValidator(
-      nodeConfig,
       "always_succeeds.deposit_spend.else",
       "always_succeeds.deposit_mint.else",
     );
@@ -89,14 +86,10 @@ const makeAlwaysSucceedsService: Effect.Effect<
   }).pipe(Effect.orDie);
 });
 
-export class AlwaysSucceedsContract extends Context.Tag(
+export class AlwaysSucceedsContract extends Effect.Service<AlwaysSucceedsContract>()(
   "AlwaysSucceedsContract",
-)<
-  AlwaysSucceedsContract,
-  Effect.Effect.Success<typeof makeAlwaysSucceedsService>
->() {
-  static readonly layer = Layer.effect(
-    AlwaysSucceedsContract,
-    makeAlwaysSucceedsService,
-  );
-}
+  {
+    effect: makeAlwaysSucceedsService,
+    dependencies: [NodeConfig.layer],
+  },
+) {}

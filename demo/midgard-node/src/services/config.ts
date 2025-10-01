@@ -1,17 +1,10 @@
-import {
-  Blockfrost,
-  Kupmios,
-  Lucid,
-  Network,
-  UTxO,
-  walletFromSeed,
-} from "@lucid-evolution/lucid";
+import { Network, UTxO, walletFromSeed } from "@lucid-evolution/lucid";
 import { Config, Context, Data, Effect, Layer } from "effect";
-import { GenericErrorFields } from "./utils.js";
+import * as SDK from "@al-ft/midgard-sdk";
 
 type Provider = "Kupmios" | "Blockfrost";
 
-export type NodeConfigDep = {
+type NodeConfigDep = {
   L1_PROVIDER: Provider;
   L1_BLOCKFROST_API_URL: string;
   L1_BLOCKFROST_KEY: string;
@@ -35,53 +28,7 @@ export type NodeConfigDep = {
   GENESIS_UTXOS: UTxO[];
 };
 
-export const makeUserFn = (nodeConfig: NodeConfigDep) =>
-  Effect.gen(function* () {
-    const user = yield* Effect.tryPromise({
-      try: () => {
-        switch (nodeConfig.L1_PROVIDER) {
-          case "Kupmios":
-            return Lucid(
-              new Kupmios(nodeConfig.L1_KUPO_KEY, nodeConfig.L1_OGMIOS_KEY),
-              nodeConfig.NETWORK,
-            );
-          case "Blockfrost":
-            return Lucid(
-              new Blockfrost(
-                nodeConfig.L1_BLOCKFROST_API_URL,
-                nodeConfig.L1_BLOCKFROST_KEY,
-              ),
-              nodeConfig.NETWORK,
-            );
-        }
-      },
-      catch: (e) =>
-        new ConfigError({
-          message: `An error occurred on lucid initialization`,
-          cause: e,
-        }),
-    });
-    user.selectWallet.fromSeed(nodeConfig.L1_OPERATOR_SEED_PHRASE);
-    return {
-      user,
-    };
-  });
-
-const makeUser = Effect.gen(function* () {
-  const nodeConfig = yield* NodeConfig;
-  return yield* makeUserFn(nodeConfig);
-}).pipe(Effect.orDie);
-
-export class User extends Context.Tag("User")<
-  User,
-  Effect.Effect.Success<typeof makeUser>
->() {
-  static readonly layer = Layer.effect(User, makeUser);
-}
-
-export const NETWORK: Network = "Preprod";
-
-export const makeConfig = Effect.gen(function* () {
+const makeConfig = Effect.gen(function* () {
   const config = yield* Config.all([
     Config.literal("Kupmios", "Blockfrost")("L1_PROVIDER"),
     Config.string("L1_BLOCKFROST_API_URL"),
@@ -220,8 +167,7 @@ export class NodeConfig extends Context.Tag("NodeConfig")<
 }
 
 export class ConfigError extends Data.TaggedError("ConfigError")<
-  GenericErrorFields & {
-    readonly field?: string;
-    readonly value?: string;
+  SDK.Utils.GenericErrorFields & {
+    readonly fieldsAndValues: [string, string][];
   }
 > {}

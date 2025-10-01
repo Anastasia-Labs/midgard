@@ -10,6 +10,7 @@ import { Effect } from "effect";
 import { CommitBlockParams, Datum, FetchConfig } from "./types.js";
 import { Header } from "../ledger-state.js";
 import { hashHeader } from "@/utils/ledger-state.js";
+import { HashingError } from "@/utils/common.js";
 
 /**
  * Builds portions of a tx required for submitting a new block, using the
@@ -31,9 +32,10 @@ export const commitTxBuilder = (
     policyId,
     stateQueueMintingScript,
   }: CommitBlockParams,
-): Effect.Effect<TxBuilder, Error> =>
+): Effect.Effect<TxBuilder, HashingError> =>
   Effect.gen(function* () {
     const newHeaderHash = yield* hashHeader(newHeader);
+    // const endTime = newHeader.endTime;
 
     const assets: Assets = {
       [toUnit(policyId, fromText("Node") + newHeaderHash)]: 1n,

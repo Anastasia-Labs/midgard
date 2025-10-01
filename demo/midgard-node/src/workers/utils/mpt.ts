@@ -1,16 +1,17 @@
 import { SqlClient } from "@effect/sql";
 import { BatchDBOp } from "@ethereumjs/util";
-import { Data, Effect } from "effect";
+import { Cause, Data, Effect } from "effect";
 import * as ETH from "@ethereumjs/mpt";
 import * as ETH_UTILS from "@ethereumjs/util";
 import { UTxO, toHex, utxoToCore } from "@lucid-evolution/lucid";
 import { Level } from "level";
-import { NodeConfig } from "@/config.js";
+import { Database, NodeConfig } from "@/services/index.js";
 import * as Tx from "@/database/utils/tx.js";
 import * as Ledger from "@/database/utils/ledger.js";
-import { Database } from "@/services/database.js";
-import { CmlUnexpectedError, findSpentAndProducedUTxOs } from "@/utils.js";
+import { FileSystemError, findSpentAndProducedUTxOs } from "@/utils.js";
 import * as FS from "fs";
+import * as SDK from "@al-ft/midgard-sdk";
+import { DatabaseError } from "@/database/utils/common.js";
 
 // Key of the row which its value is the persisted trie root.
 const rootKey = ETH.ROOT_DB_KEY;
@@ -26,19 +27,6 @@ export const makeMpts: Effect.Effect<
   NodeConfig
 > = Effect.gen(function* () {
   const nodeConfig = yield* NodeConfig;
-  // Since there is no way to create an MPT from txs that are already in
-  // the mempool database, we have two options here:
-  // 1. We could add txs to the MPT directly from the submit endpoint.
-  //    However, this would require sharing the MPT object between the server and
-  //    worker threads, which is not trivial. Also, exposing trie database details
-  //    to the submit endpoint does not seem like good coding practice.
-  // 2. We could use an in-memory database. Since only transaction CBORs are stored
-  //    in the mempool, this should not add any overhead compared to inserting
-  //    each tx twice (in the mempool and in the tree itself). So it shouldn't
-  //    become a bottleneck. If it does, we could reconsider the first option.
-  //
-  // ^ Old comment, we are now storing mempool's LevelDB on disk as well. This
-  //   allows us to continue a work that's been done in cases of failures.
   const mempoolLevelDb = new Level<string, Uint8Array>(
     nodeConfig.MEMPOOL_MPT_DB_PATH,
     LEVELDB_ENCODING_OPTS,
@@ -52,8 +40,6 @@ export const makeMpts: Effect.Effect<
       }),
     catch: (e) => MptError.trieCreate("mempool", e),
   });
-  // Ledger MPT from the other side should use a checkpoint database —
-  // its MPT building operations are paired with database ones
   const ledgerLevelDb = new Level<string, Uint8Array>(
     nodeConfig.LEDGER_MPT_DB_PATH,
     LEVELDB_ENCODING_OPTS,
@@ -111,23 +97,34 @@ export const makeMpts: Effect.Effect<
   };
 });
 
-export const deleteMempoolMpt: Effect.Effect<void, MptError, NodeConfig> =
-  Effect.gen(function* () {
-    const config = yield* NodeConfig;
-    yield* Effect.try({
-      try: () =>
-        FS.rmSync(config.MEMPOOL_MPT_DB_PATH, { recursive: true, force: true }),
-      catch: (e) => MptError.trieDelete("mempool", e),
-    });
-  }).pipe(Effect.withLogSpan("Delete mempool MPT"));
+export const deleteMempoolMpt: Effect.Effect<
+  void,
+  FileSystemError,
+  NodeConfig
+> = Effect.gen(function* () {
+  const config = yield* NodeConfig;
+  yield* Effect.try({
+    try: () =>
+      FS.rmSync(config.MEMPOOL_MPT_DB_PATH, { recursive: true, force: true }),
+    catch: (e) =>
+      new FileSystemError({
+        message: "Failed to delete mempool's LevelDB file from disk",
+        cause: e,
+      }),
+  });
+}).pipe(Effect.withLogSpan("Delete mempool MPT"));
 
-export const deleteLedgerMpt: Effect.Effect<void, MptError, NodeConfig> =
+export const deleteLedgerMpt: Effect.Effect<void, FileSystemError, NodeConfig> =
   Effect.gen(function* () {
     const config = yield* NodeConfig;
     yield* Effect.try({
       try: () =>
         FS.rmSync(config.LEDGER_MPT_DB_PATH, { recursive: true, force: true }),
-      catch: (e) => MptError.trieDelete("ledger", e),
+      catch: (e) =>
+        new FileSystemError({
+          message: "Failed to delete ledger's LevelDB file from disk",
+          cause: e,
+        }),
     });
   }).pipe(Effect.withLogSpan("Delete ledger MPT"));
 
@@ -143,7 +140,7 @@ export const processMpts = (
     mempoolTxHashes: Buffer[];
     sizeOfProcessedTxs: number;
   },
-  MptError | CmlUnexpectedError,
+  MptError | SDK.Utils.CmlUnexpectedError,
   Database
 > =>
   Effect.gen(function* () {
@@ -213,20 +210,72 @@ export const processMpts = (
     };
   });
 
-export const withTrieTransaction = (
+export const keyValueMptRoot = (
+  keys: Buffer[],
+  values: Buffer[],
+): Effect.Effect<string, MptError, never> =>
+  Effect.gen(function* () {
+    const trie: ETH.MerklePatriciaTrie = yield* Effect.tryPromise({
+    try: () =>
+      ETH.createMPT({
+        db: new ETH_UTILS.MapDB(),
+      }),
+    catch: (e) => MptError.trieCreate("keyValueMPT", e),
+    });
+
+    const ops: ETH_UTILS.BatchDBOp[] = yield* Effect.allSuccesses(
+      keys.map((key: Buffer, i: number) =>
+        Effect.gen(function* () {
+          const op: ETH_UTILS.BatchDBOp = {
+            type: "put",
+            key: key,
+            value: values[i], // Poor mans zip
+          };
+          return op;
+        }),
+      ),
+    );
+
+    yield* Effect.tryPromise({
+    try: () => trie.batch(ops),
+    catch: (e) => MptError.batch("keyValueMPT root", e),
+  });
+  const foundRoot = yield* Effect.sync(() => toHex(trie.root()));
+  return foundRoot;
+  })
+
+export const withTrieTransaction = <A, E, R>(
   trie: ETH.MerklePatriciaTrie,
-  eff: Effect.Effect<any, any, any>,
-) =>
+  eff: Effect.Effect<A, E, R>,
+): Effect.Effect<void | A, E | DatabaseError | MptError, Database | R> =>
   Effect.gen(function* () {
     yield* Effect.sync(() => trie.checkpoint());
     const sql = yield* SqlClient.SqlClient;
-    const res = yield* sql.withTransaction(eff);
+    const x = sql.withTransaction(eff).pipe(
+      Effect.catchTag("SqlError", (e) =>
+        Effect.fail(
+          new DatabaseError({
+            message: "The effect executed within an SQL transaction failed",
+            table: "<unknown>",
+            cause: e,
+          }),
+        ),
+      ),
+    );
+    const res = yield* x;
     yield* Effect.sync(() => trie.commit());
     return res;
   }).pipe(
     Effect.catchAll((e) =>
       Effect.gen(function* () {
-        yield* Effect.tryPromise(() => trie.revert());
+        yield* Effect.tryPromise({
+          try: () => trie.revert(),
+          catch: (e) =>
+            new MptError({
+              message: "Failed to revert operations performed on an MPT",
+              cause: e,
+            }),
+        });
         yield* Effect.fail(e);
       }),
     ),
@@ -268,65 +317,36 @@ export class LevelDB {
   }
 }
 
-export const keyValueMptRoot = (
-  keys: Buffer[],
-  values: Buffer[],
-) =>
-  Effect.gen(function* () {
-    const trie: ETH.MerklePatriciaTrie = yield* Effect.tryPromise({
-    try: () =>
-      ETH.createMPT({
-        db: new ETH_UTILS.MapDB(),
-      }),
-    catch: (e) => MptError.trieCreate("keyValueMPT", e),
-    });
-
-    const ops: ETH_UTILS.BatchDBOp[] = yield* Effect.allSuccesses(
-      keys.map((key: Buffer, i: number) =>
-        Effect.gen(function* () {
-          const op: ETH_UTILS.BatchDBOp = {
-            type: "put",
-            key: key,
-            value: values[i], // Poor mans zip
-          };
-          return op;
-        }),
-      ),
-    );
-
-    yield* Effect.tryPromise({
-    try: () => trie.batch(ops),
-    catch: (e) => MptError.batch("keyValueMPT root", e),
-  });
-  const foundRoot = yield* Effect.sync(() => toHex(trie.root()));
-  return foundRoot;
-  })
-
-export class MptError extends Data.TaggedError("MptError")<{
-  readonly message: string;
-  readonly cause?: unknown;
-}> {
-  static get(trie: string, cause?: unknown) {
+export class MptError extends Data.TaggedError(
+  "MptError",
+)<SDK.Utils.GenericErrorFields> {
+  static get(trie: string, cause: unknown) {
     return new MptError({
-      message: `An error occurred on ${trie} trie get operation`,
+      message: `An error occurred getting an entry from ${trie} trie`,
       cause,
     });
   }
-  static batch(trie: string, cause?: unknown) {
+  static put(trie: string, cause: unknown) {
     return new MptError({
-      message: `An error occurred on ${trie} trie batch operation`,
+      message: `An error occurred inserting a new entry in ${trie} trie`,
       cause,
     });
   }
-  static trieDelete(trie: string, cause?: unknown) {
+  static batch(trie: string, cause: unknown) {
     return new MptError({
-      message: `An error occurred on whole ${trie} trie delete`,
+      message: `An error occurred during a batch operation on ${trie} trie`,
       cause,
     });
   }
-  static trieCreate(trie: string, cause?: unknown) {
+  static del(trie: string, cause: unknown) {
     return new MptError({
-      message: `An error occurred on ${trie} trie create`,
+      message: `An error occurred deleting an entry from ${trie} trie`,
+      cause,
+    });
+  }
+  static trieCreate(trie: string, cause: unknown) {
+    return new MptError({
+      message: `An error occurred creating ${trie} trie`,
       cause,
     });
   }
