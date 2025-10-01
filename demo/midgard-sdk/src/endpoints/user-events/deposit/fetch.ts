@@ -15,6 +15,8 @@ const isUTxOTimeValid = (
     );
   });
 
+// TOOD: add custom error type instead of Error to the types
+
 export const fetchDepositUTxOsProgram = (
   lucid: LucidEvolution,
   config: Deposit.FetchConfig,

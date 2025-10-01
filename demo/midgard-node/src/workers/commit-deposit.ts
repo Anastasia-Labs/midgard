@@ -14,19 +14,43 @@ import {
   AlwaysSucceedsContract,
   AuthenticatedValidator,
 } from "@/services/always-succeeds.js";
-import { LucidEvolution } from "@lucid-evolution/lucid";
+import { Lucid, LucidEvolution } from "@lucid-evolution/lucid";
 import { TxConfirmError } from "@/transactions/utils.js";
-import { AlwaysSucceeds } from "@/services/index.js";
 import { keyValueMptRoot } from "./utils/mpt.js"
 import * as ETH from "@ethereumjs/mpt";
 import * as ETH_UTILS from "@ethereumjs/util";
 
 const inputData = workerData as WorkerInput;
 
+// TODO: rewrite it with `midgard-node/src/workers/confirm-block-commitments.ts` in mind
+
+const fetchLatestBlock = (
+  lucid: LucidEvolution,
+): Effect.Effect<
+  SDK.TxBuilder.StateQueue.StateQueueUTxO,
+  SDK.Utils.StateQueueError | SDK.Utils.LucidError,
+  AlwaysSucceedsContract | NodeConfig
+> =>
+  Effect.gen(function* () {
+    const { stateQueueAuthValidator } = yield* AlwaysSucceedsContract;
+    const fetchConfig: SDK.TxBuilder.StateQueue.FetchConfig = {
+      stateQueueAddress: stateQueueAuthValidator.spendScriptAddress,
+      stateQueuePolicyId: stateQueueAuthValidator.policyId,
+    };
+    return yield* SDK.Endpoints.fetchLatestCommittedBlockProgram(
+      lucid,
+      fetchConfig,
+    );
+  });
+
 const fetchDepositUTxOs = (
   lucid: LucidEvolution,
   depositAuthValidator: AuthenticatedValidator,
-): Effect.Effect<SDK.TxBuilder.Deposit.DepositUTxO[], Error> =>
+): Effect.Effect<
+  SDK.TxBuilder.Deposit.DepositUTxO[],
+  // SDK.Utils.StateQueueError | SDK.Utils.LucidError,
+  AlwaysSucceedsContract | NodeConfig
+> =>
   Effect.gen(function* () {
     const fetchConfig: SDK.TxBuilder.Deposit.FetchConfig = {
       depositAddress: depositAuthValidator.spendScriptAddress,
@@ -46,13 +70,12 @@ const wrapper = (
   NodeConfig | User | AlwaysSucceedsContract
 > =>
   Effect.gen(function* () {
-    const alwaysSucceeds = yield* AlwaysSucceeds.AlwaysSucceedsContract;
-    const { user: lucid } = yield* User;
+    const alwaysSucceeds = yield* AlwaysSucceedsContract;
+    const { api: lucid } = yield* Lucid;
 
     yield* Effect.logInfo("  fetching DepositUTxOs...");
     const depositUTxOs = yield* fetchDepositUTxOs(
         lucid,
-        alwaysSucceeds.stateQueueAuthValidator,
     );
 
     const keys: Buffer[] = []
@@ -69,7 +92,7 @@ const wrapper = (
 const program = pipe(
   wrapper(inputData),
   Effect.provide(User.layer),
-  Effect.provide(AlwaysSucceeds.AlwaysSucceedsContract.layer),
+  Effect.provide(AlwaysSucceedsContract.Default),
   Effect.provide(NodeConfig.layer),
 );
 
