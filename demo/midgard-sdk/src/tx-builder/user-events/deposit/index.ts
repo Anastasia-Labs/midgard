@@ -1,17 +1,16 @@
-import { Data, fromText, LucidEvolution, Script, TxBuilder} from "@lucid-evolution/lucid";
-import { DepositDatum, DepositEvent, MintRedeemer } from "./types.js";
+import { Data, Integer, LucidEvolution, Script, TxBuilder} from "@lucid-evolution/lucid";
+import { DepositDatum, DepositInfo, MintRedeemer } from "./types.js";
+import { POSIXTime } from "@/tx-builder/common.js";
+import { sha3_256 } from "@noble/hashes/sha3";
+import { Int } from "effect/Schema";
+
 
 export type DepositParams = {
+  depositScriptAddress: string,
   mintingPolicy: Script,
   policyId: string,
-  witnessScript: Script,
-  depositEvent: DepositEvent,
-  assetName: string,
-  deposit_address: string
-  validity_range: number
-  mintRedeemer: MintRedeemer,
-  refund_address: string,
-  refund_datum: string
+  depositInfo: DepositInfo,
+  inclusionTime: POSIXTime,
 };
 
 /**
@@ -22,31 +21,43 @@ export type DepositParams = {
  * @returns {TxBuilder} A TxBuilder instance that can be used to build the transaction.
  */
 
-export const depositTxBuilder = (
+export const depositTxBuilder = async (
   lucid: LucidEvolution,
   params: DepositParams,
-): TxBuilder => {
+): Promise<TxBuilder> => {
 
+  const redeemer: MintRedeemer = {
+    AuthenticateEvent: {
+        nonce_input_index: 0n,
+        event_output_index: 0n,
+        hub_ref_input_index: 0n,
+        witness_registration_redeemer_index: 0n
+    }
+  };
+  const authenticateEvent = Data.to(redeemer,MintRedeemer);
+  const utxos = await lucid.wallet().getUtxos();
+  if (utxos.length === 0) {
+    throw new Error("No UTxOs found in wallet");
+  }
+  const inputUtxo = utxos[0];
+  const assetName = sha3_256(inputUtxo.txHash);
+  const depositNFT = params.policyId+assetName;
   const currDatum: DepositDatum = {
-  event: params.depositEvent,
-  inclusion_time: 900000n,
-  witness: "00".repeat(28),
-  refund_address: params.refund_address,
-  refund_datum: params.refund_datum
-};
-  const depositDatum = Data.to<DepositDatum>(currDatum, DepositDatum);
-  const depositNFT = params.policyId+params.assetName;
-  const authenticateEvent = Data.to(params.mintRedeemer, MintRedeemer);
-  const tx = lucid
+  event: {id: { txHash: { hash: inputUtxo.txHash }, outputIndex: BigInt(inputUtxo.outputIndex)}, info : params.depositInfo},
+  inclusion_time: params.inclusionTime,
+ };
+   const depositDatum = Data.to(currDatum, DepositDatum);
+   const tx = lucid
     .newTx()
+    .collectFrom([inputUtxo])
     .mintAssets({
       [depositNFT]: 1n
     },authenticateEvent)
-    .pay.ToAddressWithData(params.deposit_address,{
+    .pay.ToAddressWithData(params.depositScriptAddress,{
       kind: "inline",
       value: depositDatum,
     },{[depositNFT]: 1n })
-    .validTo(params.validity_range)
+    .validTo(Number(params.inclusionTime))
     .attach.MintingPolicy(params.mintingPolicy)
     return tx;
 };

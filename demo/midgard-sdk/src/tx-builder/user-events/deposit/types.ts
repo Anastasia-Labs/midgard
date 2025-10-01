@@ -12,12 +12,17 @@ export const DepositEventSchema = Data.Object({
 export type DepositEvent = Data.Static<typeof DepositEventSchema>;
 export const DepositEvent = DepositEventSchema as unknown as DepositEvent;
 
+export const DepositInfoSchema = Data.Object({
+    l2_address: Data.Bytes(),
+    l2_datum: Data.Nullable(Data.Bytes())
+});
+
+export type DepositInfo = Data.Static<typeof DepositInfoSchema>;
+export const DepositInfo = DepositInfoSchema as unknown as DepositInfo;
+
 export const DepositDatumSchema = Data.Object({
     event: DepositEventSchema,
     inclusion_time: POSIXTimeSchema, // inclusion time is important , time range , 
-    witness: Data.Bytes(),
-    refund_address: Data.Bytes(),
-    refund_datum: Data.Bytes(),
     })
 
 export type DepositDatum = Data.Static<typeof DepositDatumSchema>;
