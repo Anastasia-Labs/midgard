@@ -99,3 +99,11 @@ export const hashHexWithBlake2b224 = (
 export const hashHexWithBlake2b256 = (
   hash: string,
 ): Effect.Effect<string, Error> => blake2bHelper(hash, 32, "Blake2b256");
+
+export const bufferToHex = (buf: Buffer): string => {
+  try {
+    return buf.toString("hex");
+  } catch (_) {
+    return "<no hex for undefined>";
+  }
+};

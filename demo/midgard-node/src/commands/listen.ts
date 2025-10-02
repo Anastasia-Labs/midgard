@@ -32,7 +32,6 @@ import {
 import {
   ProcessedTx,
   breakDownTx,
-  bufferToHex,
   isHexString,
 } from "../utils.js";
 import { Database } from "@/services/database.js";
@@ -51,6 +50,7 @@ import { deleteLedgerMpt, deleteMempoolMpt } from "@/workers/utils/mpt.js";
 import { Worker } from "worker_threads";
 import { WorkerOutput as BlockConfirmationWorkerOutput } from "@/workers/utils/confirm-block-commitments.js";
 import { WorkerError } from "@/workers/utils/common.js";
+import { bufferToHex } from "../../../midgard-sdk/src/utils/common.js";
 
 const txCounter = Metric.counter("tx_count", {
   description: "A counter for tracking submit transactions",

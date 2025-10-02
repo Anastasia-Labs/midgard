@@ -1,9 +1,9 @@
-import { Data, Integer, LucidEvolution, Script, TxBuilder} from "@lucid-evolution/lucid";
-import { DepositDatum, DepositInfo, MintRedeemer } from "./types.js";
+import { Data, Integer, LucidEvolution, Script, toUnit, TxBuilder} from "@lucid-evolution/lucid";
+import { Datum, DepositInfo, MintRedeemer } from "./types.js";
 import { POSIXTime } from "@/tx-builder/common.js";
-import { sha3_256 } from "@noble/hashes/sha3";
-import { Int } from "effect/Schema";
-
+import { bufferToHex, hashHexWithBlake2b256 } from "@/utils/common.js";
+import { Effect } from "effect";
+import { HashingError, LucidError } from "@/utils/common.js";
 
 export type DepositParams = {
   depositScriptAddress: string,
@@ -21,10 +21,11 @@ export type DepositParams = {
  * @returns {TxBuilder} A TxBuilder instance that can be used to build the transaction.
  */
 
-export const depositTxBuilder = async (
+export const depositTxBuilder = (
   lucid: LucidEvolution,
   params: DepositParams,
-): Promise<TxBuilder> => {
+): Effect.Effect<TxBuilder, HashingError | LucidError > =>
+  Effect.gen(function* () {
 
   const redeemer: MintRedeemer = {
     AuthenticateEvent: {
@@ -35,18 +36,19 @@ export const depositTxBuilder = async (
     }
   };
   const authenticateEvent = Data.to(redeemer,MintRedeemer);
-  const utxos = await lucid.wallet().getUtxos();
+  const utxos = yield* Effect.promise(() => lucid.wallet().getUtxos());
   if (utxos.length === 0) {
     throw new Error("No UTxOs found in wallet");
   }
   const inputUtxo = utxos[0];
-  const assetName = sha3_256(inputUtxo.txHash);
-  const depositNFT = params.policyId+assetName;
-  const currDatum: DepositDatum = {
+  const assetNameBuffer = yield* hashHexWithBlake2b256(inputUtxo.txHash);
+  const assetName = bufferToHex(Buffer.from(assetNameBuffer));
+  const depositNFT = toUnit(params.policyId,assetName);
+  const currDatum: Datum = {
   event: {id: { txHash: { hash: inputUtxo.txHash }, outputIndex: BigInt(inputUtxo.outputIndex)}, info : params.depositInfo},
   inclusion_time: params.inclusionTime,
  };
-   const depositDatum = Data.to(currDatum, DepositDatum);
+   const depositDatum = Data.to(currDatum, Datum);
    const tx = lucid
     .newTx()
     .collectFrom([inputUtxo])
@@ -60,6 +62,6 @@ export const depositTxBuilder = async (
     .validTo(Number(params.inclusionTime))
     .attach.MintingPolicy(params.mintingPolicy)
     return tx;
-};
+});
 
 export * from "./types.js";
