@@ -20,27 +20,6 @@ const inputData = workerData as WorkerInput;
 
 // TODO: rewrite it with `midgard-node/src/workers/confirm-block-commitments.ts` in mind
 
-
-
-const fetchLatestBlock = (
-  lucid: LucidEvolution,
-): Effect.Effect<
-  SDK.TxBuilder.StateQueue.StateQueueUTxO,
-  SDK.Utils.StateQueueError | SDK.Utils.LucidError,
-  AlwaysSucceedsContract | NodeConfig
-> =>
-  Effect.gen(function* () {
-    const { stateQueueAuthValidator } = yield* AlwaysSucceedsContract;
-    const fetchConfig: SDK.TxBuilder.StateQueue.FetchConfig = {
-      stateQueueAddress: stateQueueAuthValidator.spendScriptAddress,
-      stateQueuePolicyId: stateQueueAuthValidator.policyId,
-    };
-    return yield* SDK.Endpoints.fetchLatestCommittedBlockProgram(
-      lucid,
-      fetchConfig,
-    );
-  });
-
 const fetchDepositUTxOs = (
   lucid: LucidEvolution,
 ): Effect.Effect<
