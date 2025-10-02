@@ -12,7 +12,7 @@ export const getHeaderFromStateQueueDatum = (
   nodeDatum: StateQueueDatum,
 ): Effect.Effect<Header, DataCoercionError> =>
   Effect.gen(function* () {
-    const header = yield* Effect.try({
+    const header: Header = yield* Effect.try({
       try: () => Data.castFrom(nodeDatum.data, Header),
       catch: (e) =>
         new DataCoercionError({

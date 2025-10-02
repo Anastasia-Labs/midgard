@@ -3,19 +3,19 @@ import { Deposit } from "@/tx-builder/index.js";
 import { Effect } from "effect";
 import { utxosAtByNFTPolicyId, LucidError, DataCoercionError, AssetError, UnauthenticUtxoError } from "@/utils/common.js";
 import { utxosToDepositUTxOs } from "@/utils/user-events/deposit.js";
+import { POSIXTime } from "@/tx-builder/common.js";
 
 const isUTxOTimeValid = (
   depositUTxO: Deposit.DepositUTxO,
+  inclusionStartTime: POSIXTime,
+  inclusionEndTime: POSIXTime,
 ): Effect.Effect<Boolean, never> =>
   Effect.gen(function* () {
-    const { data: depositData } = depositUTxO.datum;
-    const currentTime = BigInt(Date.now());
+    const depositData = depositUTxO.datum;
     return (
-      depositData.startTime <= currentTime && currentTime <= depositData.endTime
+      inclusionStartTime <= depositData.inclusionTime && depositData.inclusionTime <= inclusionEndTime
     );
   });
-
-// TOOD: add custom error type instead of Error to the types
 
 export const fetchDepositUTxOsProgram = (
   lucid: LucidEvolution,
@@ -31,5 +31,5 @@ export const fetchDepositUTxOsProgram = (
       allUTxOs,
       config.depositPolicyId,
     );
-    return depositUTxOs.filter(isUTxOTimeValid);
+    return depositUTxOs.filter((utxo) => isUTxOTimeValid(utxo, config.inclusionStartTime, config.inclusionEndTime));
   });
