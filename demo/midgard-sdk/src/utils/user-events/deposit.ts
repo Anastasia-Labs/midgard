@@ -1,15 +1,15 @@
 import { Data, UTxO } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
-import { Datum, DepositUTxO } from "@/tx-builder/user-events/deposit/types.js";
+import { DepositDatum, DepositUTxO } from "@/tx-builder/user-events/deposit/types.js";
 import { AssetError, DataCoercionError, UnauthenticUtxoError, getSingleAssetApartFromAda } from "@/utils/common.js";
 
 export const getDepositDatumFromUTxO = (
   nodeUTxO: UTxO,
-): Effect.Effect<Datum, DataCoercionError> => {
+): Effect.Effect<DepositDatum, DataCoercionError> => {
   const datumCBOR = nodeUTxO.datum;
   if (datumCBOR) {
     try {
-      const depositDatum = Data.from(datumCBOR, Datum);
+      const depositDatum = Data.from(datumCBOR, DepositDatum);
       return Effect.succeed(depositDatum);
     } catch {
       return Effect.fail(
