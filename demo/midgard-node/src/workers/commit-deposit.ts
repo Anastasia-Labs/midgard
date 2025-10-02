@@ -4,7 +4,12 @@ import {
 } from "@/utils.js";
 import * as SDK from "@al-ft/midgard-sdk";
 import { Cause, Effect, pipe } from "effect";
-import { AlwaysSucceedsContract, AuthenticatedValidator, Lucid, NodeConfig } from "@/services/index.js";
+import {
+  AlwaysSucceedsContract,
+  AuthenticatedValidator,
+  Lucid,
+  NodeConfig,
+} from "@/services/index.js";
 import {
   WorkerInput,
   WorkerOutput,
@@ -12,7 +17,7 @@ import {
 import { serializeStateQueueUTxO } from "@/workers/utils/commit-block-header.js";
 import { LucidEvolution } from "@lucid-evolution/lucid";
 import { TxConfirmError } from "@/transactions/utils.js";
-import { keyValueMptRoot } from "./utils/mpt.js"
+import { keyValueMptRoot } from "./utils/mpt.js";
 import * as ETH from "@ethereumjs/mpt";
 import * as ETH_UTILS from "@ethereumjs/util";
 
@@ -24,7 +29,10 @@ const fetchDepositUTxOs = (
   lucid: LucidEvolution,
 ): Effect.Effect<
   SDK.TxBuilder.Deposit.DepositUTxO[],
-  SDK.Utils.LucidError | SDK.Utils.DataCoercionError | SDK.Utils.AssetError | SDK.Utils.UnauthenticUtxoError,
+  | SDK.Utils.LucidError
+  | SDK.Utils.DataCoercionError
+  | SDK.Utils.AssetError
+  | SDK.Utils.UnauthenticUtxoError,
   AlwaysSucceedsContract | NodeConfig
 > =>
   Effect.gen(function* () {
@@ -33,10 +41,7 @@ const fetchDepositUTxOs = (
       depositAddress: depositAuthValidator.spendScriptAddress,
       depositPolicyId: depositAuthValidator.policyId,
     };
-    return yield* SDK.Endpoints.fetchDepositUTxOsProgram(
-      lucid,
-      fetchConfig,
-    );
+    return yield* SDK.Endpoints.fetchDepositUTxOsProgram(lucid, fetchConfig);
   });
 
 const wrapper = (
@@ -50,18 +55,16 @@ const wrapper = (
     const { api: lucid } = yield* Lucid;
 
     yield* Effect.logInfo("  fetching DepositUTxOs...");
-    const depositUTxOs = yield* fetchDepositUTxOs(
-        lucid,
-    );
+    const depositUTxOs = yield* fetchDepositUTxOs(lucid);
 
-    const keys: Buffer[] = []
-    const values: Buffer[] = []
+    const keys: Buffer[] = [];
+    const values: Buffer[] = [];
 
-    const depositRoot = yield* keyValueMptRoot(keys, values)
+    const depositRoot = yield* keyValueMptRoot(keys, values);
 
     return {
-        type: "SuccessfulRootCalculationOutput",
-        mptRoot: depositRoot,
+      type: "SuccessfulRootCalculationOutput",
+      mptRoot: depositRoot,
     };
   });
 

@@ -23,7 +23,7 @@ export const makeAuthenticatedValidator = (
   mintingTitle: string,
 ): Effect.Effect<AuthenticatedValidator, never, NodeConfig> =>
   Effect.gen(function* () {
-    const nodeConfig = yield* NodeConfig
+    const nodeConfig = yield* NodeConfig;
     const spendingCBOR: string = yield* pipe(
       Effect.fromNullable(
         scripts.default.validators.find((v) => v.title === spendingTitle),

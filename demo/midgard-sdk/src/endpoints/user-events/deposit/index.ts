@@ -1,1 +1,1 @@
-export * from "./fetch.js"
+export * from "./fetch.js";

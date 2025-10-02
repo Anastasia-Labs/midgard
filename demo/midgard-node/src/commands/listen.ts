@@ -663,7 +663,7 @@ const mergeAction = Effect.gen(function* () {
   const { stateQueueAuthValidator, depositAuthValidator } =
     yield* AlwaysSucceedsContract;
 
-    const fetchConfig: SDK.TxBuilder.StateQueue.FetchConfig = {
+  const fetchConfig: SDK.TxBuilder.StateQueue.FetchConfig = {
     stateQueueAddress: stateQueueAuthValidator.spendScriptAddress,
     stateQueuePolicyId: stateQueueAuthValidator.policyId,
   };

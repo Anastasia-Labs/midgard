@@ -1,7 +1,15 @@
 import { Data, UTxO } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
-import { DepositDatum, DepositUTxO } from "@/tx-builder/user-events/deposit/types.js";
-import { AssetError, DataCoercionError, UnauthenticUtxoError, getSingleAssetApartFromAda } from "@/utils/common.js";
+import {
+  DepositDatum,
+  DepositUTxO,
+} from "@/tx-builder/user-events/deposit/types.js";
+import {
+  AssetError,
+  DataCoercionError,
+  UnauthenticUtxoError,
+  getSingleAssetApartFromAda,
+} from "@/utils/common.js";
 
 export const getDepositDatumFromUTxO = (
   nodeUTxO: UTxO,
@@ -21,11 +29,11 @@ export const getDepositDatumFromUTxO = (
     }
   } else {
     return Effect.fail(
-        new DataCoercionError({
-          message: `Could not coerce to a deposit datum`,
-          cause: `No CBOR datum found`,
-        }),
-      );
+      new DataCoercionError({
+        message: `Could not coerce to a deposit datum`,
+        cause: `No CBOR datum found`,
+      }),
+    );
   }
 };
 
@@ -35,7 +43,10 @@ export const getDepositDatumFromUTxO = (
 export const utxoToDepositUTxO = (
   utxo: UTxO,
   nftPolicy: string,
-): Effect.Effect<DepositUTxO, AssetError | DataCoercionError | UnauthenticUtxoError> =>
+): Effect.Effect<
+  DepositUTxO,
+  AssetError | DataCoercionError | UnauthenticUtxoError
+> =>
   Effect.gen(function* () {
     const datum = yield* getDepositDatumFromUTxO(utxo);
     const [sym, assetName, _qty] = yield* getSingleAssetApartFromAda(
@@ -58,7 +69,10 @@ export const utxoToDepositUTxO = (
 export const utxosToDepositUTxOs = (
   utxos: UTxO[],
   nftPolicy: string,
-): Effect.Effect<DepositUTxO[], AssetError | DataCoercionError | UnauthenticUtxoError> => {
+): Effect.Effect<
+  DepositUTxO[],
+  AssetError | DataCoercionError | UnauthenticUtxoError
+> => {
   const effects = utxos.map((u) => utxoToDepositUTxO(u, nftPolicy));
   return Effect.allSuccesses(effects);
 };

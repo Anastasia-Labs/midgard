@@ -216,11 +216,11 @@ export const keyValueMptRoot = (
 ): Effect.Effect<string, MptError, never> =>
   Effect.gen(function* () {
     const trie: ETH.MerklePatriciaTrie = yield* Effect.tryPromise({
-    try: () =>
-      ETH.createMPT({
-        db: new ETH_UTILS.MapDB(),
-      }),
-    catch: (e) => MptError.trieCreate("keyValueMPT", e),
+      try: () =>
+        ETH.createMPT({
+          db: new ETH_UTILS.MapDB(),
+        }),
+      catch: (e) => MptError.trieCreate("keyValueMPT", e),
     });
 
     const ops: ETH_UTILS.BatchDBOp[] = yield* Effect.allSuccesses(
@@ -237,12 +237,12 @@ export const keyValueMptRoot = (
     );
 
     yield* Effect.tryPromise({
-    try: () => trie.batch(ops),
-    catch: (e) => MptError.batch("keyValueMPT root", e),
+      try: () => trie.batch(ops),
+      catch: (e) => MptError.batch("keyValueMPT root", e),
+    });
+    const foundRoot = yield* Effect.sync(() => toHex(trie.root()));
+    return foundRoot;
   });
-  const foundRoot = yield* Effect.sync(() => toHex(trie.root()));
-  return foundRoot;
-  })
 
 export const withTrieTransaction = <A, E, R>(
   trie: ETH.MerklePatriciaTrie,
