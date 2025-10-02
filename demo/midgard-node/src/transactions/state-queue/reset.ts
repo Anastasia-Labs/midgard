@@ -82,8 +82,9 @@ export const resetStateQueue: Effect.Effect<
   const lucid = yield* Lucid;
   const alwaysSucceeds = yield* AlwaysSucceedsContract;
   const fetchConfig: SDK.TxBuilder.StateQueue.FetchConfig = {
-    stateQueuePolicyId: alwaysSucceeds.policyId,
-    stateQueueAddress: alwaysSucceeds.spendScriptAddress,
+    stateQueuePolicyId: alwaysSucceeds.stateQueueAuthValidator.policyId,
+    stateQueueAddress:
+      alwaysSucceeds.stateQueueAuthValidator.spendScriptAddress,
   };
   yield* lucid.switchToOperatorsMainWallet;
   const allStateQueueUTxOs =
@@ -101,8 +102,8 @@ export const resetStateQueue: Effect.Effect<
     yield* collectAndBurnStateQueueNodesProgram(
       lucid.api,
       fetchConfig,
-      alwaysSucceeds.spendScript,
-      alwaysSucceeds.mintScript,
+      alwaysSucceeds.stateQueueAuthValidator.spendScript,
+      alwaysSucceeds.stateQueueAuthValidator.mintScript,
       batch,
     );
   }

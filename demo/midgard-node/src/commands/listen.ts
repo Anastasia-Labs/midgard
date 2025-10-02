@@ -372,8 +372,9 @@ const getLogStateQueueHandler = Effect.gen(function* () {
   const lucid = yield* Lucid;
   const alwaysSucceeds = yield* AlwaysSucceedsContract;
   const fetchConfig: SDK.TxBuilder.StateQueue.FetchConfig = {
-    stateQueuePolicyId: alwaysSucceeds.policyId,
-    stateQueueAddress: alwaysSucceeds.spendScriptAddress,
+    stateQueuePolicyId: alwaysSucceeds.stateQueueAuthValidator.policyId,
+    stateQueueAddress:
+      alwaysSucceeds.stateQueueAuthValidator.spendScriptAddress,
   };
   const sortedUTxOs = yield* SDK.Endpoints.fetchSortedStateQueueUTxOsProgram(
     lucid.api,
@@ -659,18 +660,19 @@ const blockConfirmationAction = Effect.gen(function* () {
 
 const mergeAction = Effect.gen(function* () {
   const lucid = yield* Lucid;
-  const { spendScriptAddress, policyId, spendScript, mintScript } =
+  const { stateQueueAuthValidator, depositAuthValidator } =
     yield* AlwaysSucceedsContract;
+
   const fetchConfig: SDK.TxBuilder.StateQueue.FetchConfig = {
-    stateQueueAddress: spendScriptAddress,
-    stateQueuePolicyId: policyId,
+    stateQueueAddress: stateQueueAuthValidator.spendScriptAddress,
+    stateQueuePolicyId: stateQueueAuthValidator.policyId,
   };
   yield* lucid.switchToOperatorsMergingWallet;
   yield* StateQueueTx.buildAndSubmitMergeTx(
     lucid.api,
     fetchConfig,
-    spendScript,
-    mintScript,
+    stateQueueAuthValidator.spendScript,
+    stateQueueAuthValidator.mintScript,
   );
 });
 

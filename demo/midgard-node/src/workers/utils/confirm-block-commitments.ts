@@ -13,6 +13,16 @@ export type SuccessfulConfirmationOutput = {
   blocksUTxO: SerializedStateQueueUTxO;
 };
 
+export type SuccessfulRootCalculationOutput = {
+  type: "SuccessfulRootCalculationOutput";
+  mptRoot: string;
+};
+
+export type FailedRootCalculationOutput = {
+  type: "FailedRootCalculationOutput";
+  error: string;
+};
+
 export type NoTxForConfirmationOutput = {
   type: "NoTxForConfirmationOutput";
 };
@@ -25,4 +35,6 @@ export type FailedConfirmationOutput = {
 export type WorkerOutput =
   | SuccessfulConfirmationOutput
   | NoTxForConfirmationOutput
-  | FailedConfirmationOutput;
+  | FailedConfirmationOutput
+  | SuccessfulRootCalculationOutput
+  | FailedRootCalculationOutput;

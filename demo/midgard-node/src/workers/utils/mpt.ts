@@ -31,7 +31,7 @@ export const makeMpts: Effect.Effect<
     nodeConfig.MEMPOOL_MPT_DB_PATH,
     LEVELDB_ENCODING_OPTS,
   );
-  const mempoolTrie = yield* Effect.tryPromise({
+  const mempoolTrie: ETH.MerklePatriciaTrie = yield* Effect.tryPromise({
     try: () =>
       ETH.createMPT({
         db: new LevelDB(mempoolLevelDb),
@@ -44,7 +44,7 @@ export const makeMpts: Effect.Effect<
     nodeConfig.LEDGER_MPT_DB_PATH,
     LEVELDB_ENCODING_OPTS,
   );
-  const ledgerTrie = yield* Effect.tryPromise({
+  const ledgerTrie: ETH.MerklePatriciaTrie = yield* Effect.tryPromise({
     try: () =>
       ETH.createMPT({
         db: new LevelDB(ledgerLevelDb),
@@ -208,6 +208,40 @@ export const processMpts = (
       mempoolTxHashes: mempoolTxHashes,
       sizeOfProcessedTxs: sizeOfProcessedTxs,
     };
+  });
+
+export const keyValueMptRoot = (
+  keys: Buffer[],
+  values: Buffer[],
+): Effect.Effect<string, MptError, never> =>
+  Effect.gen(function* () {
+    const trie: ETH.MerklePatriciaTrie = yield* Effect.tryPromise({
+      try: () =>
+        ETH.createMPT({
+          db: new ETH_UTILS.MapDB(),
+        }),
+      catch: (e) => MptError.trieCreate("keyValueMPT", e),
+    });
+
+    const ops: ETH_UTILS.BatchDBOp[] = yield* Effect.allSuccesses(
+      keys.map((key: Buffer, i: number) =>
+        Effect.gen(function* () {
+          const op: ETH_UTILS.BatchDBOp = {
+            type: "put",
+            key: key,
+            value: values[i], // Poor mans zip
+          };
+          return op;
+        }),
+      ),
+    );
+
+    yield* Effect.tryPromise({
+      try: () => trie.batch(ops),
+      catch: (e) => MptError.batch("keyValueMPT root", e),
+    });
+    const foundRoot = yield* Effect.sync(() => toHex(trie.root()));
+    return foundRoot;
   });
 
 export const withTrieTransaction = <A, E, R>(
