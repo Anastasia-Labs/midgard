@@ -14,6 +14,7 @@
 cd midgard-sdk
 pnpm install
 ```
+
 2. Clean SDK if needed:
 
 ```sh
@@ -54,12 +55,14 @@ docker ps -a
 ```
 
 7. You can view logs of `midgard-node` with `docker`:
+
 ```sh
 # Change container's name as needed:
 sudo docker logs -f midgard-node-midgard-node-1
 ```
 
 If you faced an error regarding `DATABASE_PATH`, use the following command:
+
 ```sh
 # Optional: You can view your docker images to get the correct name:
 docker images
@@ -70,9 +73,11 @@ docker image rm midgard-node-midgard-node --force
 # And restart the services:
 docker-compose up -d
 ```
+
 Now you should be able to interact with `midgard-node`.
 
 8. If you made any changes to `midgard-node` and had an image running, restart it with the 3 steps:
+
 ```sh
 docker-compose down -v
 docker image rm midgard-node-midgard-node --force
