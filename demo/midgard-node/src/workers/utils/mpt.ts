@@ -317,7 +317,7 @@ export class MidgardMpt {
   };
 
   public static create(levelDBFilePath: string, trieName: string): Effect.Effect<MidgardMpt, MptError> {
-    return Effect.gen(function* (this: MidgardMpt) {
+    return Effect.gen(function* () {
       const level = new Level<string, Uint8Array>(
         levelDBFilePath,
         LEVELDB_ENCODING_OPTS,
@@ -331,8 +331,8 @@ export class MidgardMpt {
           }),
           catch: (e) => MptError.trieCreate(trieName, e),
         })
-      const mptRepo = new MidgardMpt(levelDB, levelDBFilePath, trie, trieName)
-      return mptRepo;
+      const wrapper = new MidgardMpt(levelDB, levelDBFilePath, trie, trieName)
+      return wrapper;
     })
   };
 
@@ -341,10 +341,12 @@ export class MidgardMpt {
   };
 
   public batch(arg: ETH_UTILS.BatchDBOp[]): Effect.Effect<void, MptError> {
-    return Effect.gen(function* (this: MidgardMpt) {
+    const trieName = this.trieName;
+    const trieBatch = this.trie.batch;
+    return Effect.gen(function* () {
       return yield* Effect.tryPromise({
-        try: () => this.trie.batch(arg),
-        catch: (e) => MptError.batch(this.trieName, e),
+        try: () => trieBatch(arg),
+        catch: (e) => MptError.batch(trieName, e),
       })
    })
   }
@@ -358,9 +360,11 @@ export class MidgardMpt {
   }
 
   public rootIsEmpty(): Effect.Effect<boolean> {
-    return Effect.gen(function* (this: MidgardMpt) {
-      const root = yield* this.getRoot();
-      return root === this.trie.EMPTY_TRIE_ROOT;
+    const getRoot = this.getRoot;
+    const emptyRoot = this.trie.EMPTY_TRIE_ROOT
+    return Effect.gen(function* () {
+      const root = yield* getRoot();
+      return root === emptyRoot;
    })
   }
 
