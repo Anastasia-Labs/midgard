@@ -19,13 +19,19 @@ const LEVELDB_ENCODING_OPTS = {
 };
 
 export const makeMpts: Effect.Effect<
-  { ledgerTrie: MidgardMpt; mempoolTrie: MidgardMpt},
+  { ledgerTrie: MidgardMpt; mempoolTrie: MidgardMpt },
   MptError,
   NodeConfig
 > = Effect.gen(function* () {
   const nodeConfig = yield* NodeConfig;
-  const mempoolTrie = yield* MidgardMpt.create(nodeConfig.MEMPOOL_MPT_DB_PATH, "mempool")
-  const ledgerTrie = yield* MidgardMpt.create(nodeConfig.LEDGER_MPT_DB_PATH, "ledger")
+  const mempoolTrie = yield* MidgardMpt.create(
+    nodeConfig.MEMPOOL_MPT_DB_PATH,
+    "mempool",
+  );
+  const ledgerTrie = yield* MidgardMpt.create(
+    nodeConfig.LEDGER_MPT_DB_PATH,
+    "ledger",
+  );
   const ledgerRootIsEmpty = yield* ledgerTrie.rootIsEmpty();
   if (ledgerRootIsEmpty) {
     yield* Effect.logInfo(
@@ -48,7 +54,7 @@ export const makeMpts: Effect.Effect<
         }),
       ),
     );
-    yield* ledgerTrie.batch(ops)
+    yield* ledgerTrie.batch(ops);
     const rootAfterGenesis = yield* ledgerTrie.getRootHex();
     yield* Effect.logInfo(
       `🔹 New ledger trie root after inserting genesis utxos: ${rootAfterGenesis}`,
@@ -62,20 +68,20 @@ export const makeMpts: Effect.Effect<
 
 export const deleteMempoolMpt = Effect.gen(function* () {
   const config = yield* NodeConfig;
-  yield* deleteMPT(config.MEMPOOL_MPT_DB_PATH, "mempool")
-})
+  yield* deleteMpt(config.MEMPOOL_MPT_DB_PATH, "mempool");
+});
 
 export const deleteLedgerMpt = Effect.gen(function* () {
   const config = yield* NodeConfig;
-  yield* deleteMPT(config.LEDGER_MPT_DB_PATH, "ledger")
-})
+  yield* deleteMpt(config.LEDGER_MPT_DB_PATH, "ledger");
+});
 
-const deleteMPT = (path: string, name: string): Effect.Effect<
-  void,
-  FileSystemError
-> => Effect.try({
-    try: () =>
-      FS.rmSync(path, { recursive: true, force: true }),
+export const deleteMpt = (
+  path: string,
+  name: string,
+): Effect.Effect<void, FileSystemError> =>
+  Effect.try({
+    try: () => FS.rmSync(path, { recursive: true, force: true }),
     catch: (e) =>
       new FileSystemError({
         message: `Failed to delete ${name}'s LevelDB file from disk`,
@@ -214,7 +220,7 @@ export const withTrieTransaction = <A, E, R>(
   }).pipe(
     Effect.catchAll((e) =>
       Effect.gen(function* () {
-        yield* trie.revert()
+        yield* trie.revert();
         yield* Effect.fail(e);
       }),
     ),
@@ -285,7 +291,7 @@ export class MptError extends Data.TaggedError(
   }
   static trieCreate(trie: string, cause: unknown) {
     return new MptError({
-      message: `An error occurred creating ${trie} trie`,
+      message: `An error occurred creating ${trie} trie: ${cause}`,
       cause,
     });
   }
@@ -305,18 +311,26 @@ export class MptError extends Data.TaggedError(
 
 export class MidgardMpt {
   public trie: ETH.MerklePatriciaTrie;
-  public trieName: string
+  public trieName: string;
   public database: LevelDB;
   public databaseFilePath: string;
 
-  private constructor(database: LevelDB, databaseFilePath: string, trie: ETH.MerklePatriciaTrie, trieName: string) {
+  private constructor(
+    database: LevelDB,
+    databaseFilePath: string,
+    trie: ETH.MerklePatriciaTrie,
+    trieName: string,
+  ) {
     this.database = database;
     this.databaseFilePath = databaseFilePath;
     this.trie = trie;
     this.trieName = trieName;
-  };
+  }
 
-  public static create(levelDBFilePath: string, trieName: string): Effect.Effect<MidgardMpt, MptError> {
+  public static create(
+    levelDBFilePath: string,
+    trieName: string,
+  ): Effect.Effect<MidgardMpt, MptError> {
     return Effect.gen(function* () {
       const level = new Level<string, Uint8Array>(
         levelDBFilePath,
@@ -324,69 +338,77 @@ export class MidgardMpt {
       );
       const levelDB = new LevelDB(level);
       const trie = yield* Effect.tryPromise({
-        try: () => ETH.createMPT({
-          db: levelDB,
-          useRootPersistence: true,
-          valueEncoding: LEVELDB_ENCODING_OPTS.valueEncoding,
+        try: () =>
+          ETH.createMPT({
+            db: levelDB,
+            useRootPersistence: true,
+            valueEncoding: LEVELDB_ENCODING_OPTS.valueEncoding,
           }),
-          catch: (e) => MptError.trieCreate(trieName, e),
-        })
-      const wrapper = new MidgardMpt(levelDB, levelDBFilePath, trie, trieName)
+        catch: (e) => MptError.trieCreate(trieName, e),
+      });
+      const wrapper = new MidgardMpt(levelDB, levelDBFilePath, trie, trieName);
       return wrapper;
-    })
-  };
+    });
+  }
 
   public delete(): Effect.Effect<void, FileSystemError> {
-    return deleteMPT(this.databaseFilePath, this.trieName)
-  };
+    return deleteMpt(this.databaseFilePath, this.trieName);
+  }
 
   public batch(arg: ETH_UTILS.BatchDBOp[]): Effect.Effect<void, MptError> {
     const trieName = this.trieName;
-    const trieBatch = this.trie.batch;
-    return Effect.gen(function* () {
-      return yield* Effect.tryPromise({
-        try: () => trieBatch(arg),
-        catch: (e) => MptError.batch(trieName, e),
-      })
-   })
+    const trieBatch = this.trie.batch(arg);
+    return Effect.tryPromise({
+      try: () => trieBatch,
+      catch: (e) => MptError.batch(trieName, e),
+    });
   }
 
   public getRoot(): Effect.Effect<Uint8Array> {
-   return Effect.sync(() => this.trie.root());
-  };
+    return Effect.sync(() => {
+      const root = this.trie.root();
+      // Normalize to pure Uint8Array for type consistency
+      // trie.root() returns different constructor types depending on the source:
+      //   - Fresh (computed): Uint8Array
+      //   - Persisted (loaded from Level.js): Buffer (Node.js returns Buffer for 'view' encoding)
+      return root instanceof Uint8Array && !Buffer.isBuffer(root)
+        ? root
+        : new Uint8Array(root.buffer, root.byteOffset, root.byteLength);
+    });
+  }
 
   public getRootHex(): Effect.Effect<string> {
     return Effect.sync(() => toHex(this.trie.root()));
   }
 
   public rootIsEmpty(): Effect.Effect<boolean> {
-    const getRoot = this.getRoot;
-    const emptyRoot = this.trie.EMPTY_TRIE_ROOT
+    const getRootHex = this.getRootHex();
+    const emptyRootHex = toHex(this.trie.EMPTY_TRIE_ROOT);
     return Effect.gen(function* () {
-      const root = yield* getRoot();
-      return root === emptyRoot;
-   })
+      const rootHex = yield* getRootHex;
+      return rootHex === emptyRootHex;
+    });
   }
 
   public checkpoint(): Effect.Effect<void> {
-    return Effect.sync(() => this.trie.checkpoint())
-  };
+    return Effect.sync(() => this.trie.checkpoint());
+  }
 
   public commit(): Effect.Effect<void, MptError> {
     return Effect.tryPromise({
       try: () => this.trie.commit(),
       catch: (e) => MptError.trieCommit(this.trieName, e),
-    })
-  };
+    });
+  }
 
   public revert(): Effect.Effect<void, MptError> {
     return Effect.tryPromise({
       try: () => this.trie.revert(),
       catch: (e) => MptError.trieRevert(this.trieName, e),
-    })
-  };
+    });
+  }
 
   public databaseStats() {
-    return this.trie.database()._stats
+    return this.trie.database()._stats;
   }
 }
