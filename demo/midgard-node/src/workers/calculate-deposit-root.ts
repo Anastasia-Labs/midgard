@@ -58,11 +58,17 @@ const wrapper = (
     yield* Effect.logInfo("  fetching DepositUTxOs...");
     const depositUTxOs = yield* fetchDepositUTxOs(lucid, startTime, endTime);
 
-    const outRefs = depositUTxOs.map((utxo) => Data.to(utxo.datum.event.id, SDK.TxBuilder.Common.OutputReference));
-    const depositInfos = depositUTxOs.map((utxo) => Data.to(utxo.datum.event.info, SDK.TxBuilder.Deposit.DepositInfo));
+    const outRefs = depositUTxOs.map((utxo) =>
+      Data.to(utxo.datum.event.id, SDK.TxBuilder.Common.OutputReference),
+    );
+    const depositInfos = depositUTxOs.map((utxo) =>
+      Data.to(utxo.datum.event.info, SDK.TxBuilder.Deposit.DepositInfo),
+    );
 
     const keys: Buffer[] = outRefs.map((ref) => Buffer.from(fromHex(ref)));
-    const values: Buffer[] = depositInfos.map((ref) => Buffer.from(fromHex(ref)));
+    const values: Buffer[] = depositInfos.map((ref) =>
+      Buffer.from(fromHex(ref)),
+    );
 
     const depositRoot = yield* keyValueMptRoot(keys, values);
 

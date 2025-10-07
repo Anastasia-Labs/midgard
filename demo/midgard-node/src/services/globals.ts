@@ -31,14 +31,16 @@ export class Globals extends Effect.Service<Globals>()("Globals", {
     const PROCESSED_UNSUBMITTED_TXS_SIZE: Ref.Ref<number> = yield* Ref.make(0);
 
     // TODO?: We might be able to avoid `as` here.
-    const UNCONFIRMED_SUBMITTED_BLOCK_HASH: Ref.Ref<"" | TxHash> = yield* Ref.make(
-      "" as "" | TxHash,
+    const UNCONFIRMED_SUBMITTED_BLOCK_HASH: Ref.Ref<"" | TxHash> =
+      yield* Ref.make("" as "" | TxHash);
+
+    const UNCONFIRMED_SUBMITTED_BLOCK_TIME: Ref.Ref<bigint> = yield* Ref.make(
+      BigInt(0),
     );
 
-    const UNCONFIRMED_SUBMITTED_BLOCK_TIME: Ref.Ref<bigint> = yield* Ref.make(BigInt(0));
-
     // A global queue with calculated deposit blocks.
-    const DEPOSIT_ROOTS_QUEUE: Queue.Queue<string> = yield* Queue.unbounded<string>();
+    const DEPOSIT_ROOTS_QUEUE: Queue.Queue<string> =
+      yield* Queue.unbounded<string>();
 
     return {
       BLOCKS_IN_QUEUE,

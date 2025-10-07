@@ -664,11 +664,8 @@ const blockConfirmationAction = Effect.gen(function* () {
 
 const calculateDepositRootAction = Effect.gen(function* () {
   const globals = yield* Globals;
-  const worker = Effect.async<
-      DerpositRootWorkerOutput,
-      WorkerError,
-      never
-    >((resume) => {
+  const worker = Effect.async<DerpositRootWorkerOutput, WorkerError, never>(
+    (resume) => {
       Effect.runSync(
         Effect.logInfo(`🔍 Starting deposit root calculation worker...`),
       );
@@ -719,26 +716,26 @@ const calculateDepositRootAction = Effect.gen(function* () {
       return Effect.sync(() => {
         worker.terminate();
       });
-    });
-    const workerOutput: DerpositRootWorkerOutput = yield* worker;
-    switch (workerOutput.type) {
-      case "SuccessfulRootCalculationOutput": {
-        yield* globals.DEPOSIT_ROOTS_QUEUE.offer(
-          workerOutput.mptRoot,
-        );
-        // TODO: provide the `workerOutput.inclusionTime` somewhere
-        yield* Effect.logInfo("🔍 ☑️  Submitted deposit root to the roots queue.");
-        break;
-      }
-      case "NoTxForCoRootCalculation": {
-        break;
-      }
-      case "FailedRootCalculationOutput": {
-        break;
-      }
+    },
+  );
+  const workerOutput: DerpositRootWorkerOutput = yield* worker;
+  switch (workerOutput.type) {
+    case "SuccessfulRootCalculationOutput": {
+      yield* globals.DEPOSIT_ROOTS_QUEUE.offer(workerOutput.mptRoot);
+      // TODO: provide the `workerOutput.inclusionTime` somewhere
+      yield* Effect.logInfo(
+        "🔍 ☑️  Submitted deposit root to the roots queue.",
+      );
+      break;
     }
+    case "NoTxForCoRootCalculation": {
+      break;
+    }
+    case "FailedRootCalculationOutput": {
+      break;
+    }
+  }
 });
-
 
 const mergeAction = Effect.gen(function* () {
   const lucid = yield* Lucid;

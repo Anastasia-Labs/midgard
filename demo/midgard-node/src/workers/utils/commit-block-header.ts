@@ -1,6 +1,12 @@
 import { Effect } from "effect";
 import * as SDK from "@al-ft/midgard-sdk";
-import { CML, Data, UTxO, coreToUtxo, utxoToCore } from "@lucid-evolution/lucid";
+import {
+  CML,
+  Data,
+  UTxO,
+  coreToUtxo,
+  utxoToCore,
+} from "@lucid-evolution/lucid";
 
 export type WorkerInput = {
   data: {
@@ -54,7 +60,7 @@ export const serializeStateQueueUTxO = (
   SDK.Utils.CmlUnexpectedError | SDK.Utils.CborSerializationError
 > =>
   Effect.gen(function* () {
-    const core : CML.TransactionUnspentOutput = yield* Effect.try({
+    const core: CML.TransactionUnspentOutput = yield* Effect.try({
       try: () => utxoToCore(stateQueueUTxO.utxo),
       catch: (e) =>
         new SDK.Utils.CmlUnexpectedError({

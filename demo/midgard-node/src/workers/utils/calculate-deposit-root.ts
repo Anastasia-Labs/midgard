@@ -16,7 +16,7 @@ export type FailedRootCalculationOutput = {
 };
 
 export type NoTxForRootCalculation = {
-  type: "NoTxForCoRootCalculation"
+  type: "NoTxForCoRootCalculation";
 };
 
 export type WorkerOutput =
