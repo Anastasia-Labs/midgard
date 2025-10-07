@@ -1,10 +1,19 @@
-import { NodeConfig, User } from "@/config.js";
-import { AlwaysSucceedsContract } from "@/services/always-succeeds.js";
-import { AlwaysSucceeds } from "@/services/index.js";
+import {
+  Database,
+  NodeConfig,
+  Lucid,
+  AlwaysSucceedsContract,
+  Globals,
+} from "@/services/index.js";
 import { StateQueueTx } from "@/transactions/index.js";
 import * as SDK from "@al-ft/midgard-sdk";
 import { NodeSdk } from "@effect/opentelemetry";
-import { fromHex, getAddressDetails, toHex } from "@lucid-evolution/lucid";
+import {
+  TxSubmitError,
+  fromHex,
+  getAddressDetails,
+  toHex,
+} from "@lucid-evolution/lucid";
 import { PrometheusExporter } from "@opentelemetry/exporter-prometheus";
 import { OTLPTraceExporter } from "@opentelemetry/exporter-trace-otlp-http";
 import { BatchSpanProcessor } from "@opentelemetry/sdk-trace-base";
@@ -17,6 +26,7 @@ import {
   Metric,
   pipe,
   Queue,
+  Ref,
   Schedule,
 } from "effect";
 import {
@@ -29,12 +39,7 @@ import {
   MempoolLedgerDB,
   ProcessedMempoolDB,
 } from "../database/index.js";
-import {
-  ProcessedTx,
-  breakDownTx,
-  isHexString,
-} from "../utils.js";
-import { Database } from "@/services/database.js";
+import { ProcessedTx, breakDownTx, isHexString } from "../utils.js";
 import {
   HttpRouter,
   HttpServer,
@@ -48,9 +53,27 @@ import { HttpBodyError } from "@effect/platform/HttpBody";
 import { insertGenesisUtxos } from "@/database/genesis.js";
 import { deleteLedgerMpt, deleteMempoolMpt } from "@/workers/utils/mpt.js";
 import { Worker } from "worker_threads";
-import { WorkerOutput as BlockConfirmationWorkerOutput } from "@/workers/utils/confirm-block-commitments.js";
+import {
+  WorkerInput as BlockConfirmationWorkerInput,
+  WorkerOutput as BlockConfirmationWorkerOutput,
+} from "@/workers/utils/confirm-block-commitments.js";
+import {
+  WorkerInput as DerpositRootWorkerInput,
+  WorkerOutput as DerpositRootWorkerOutput,
+} from "@/workers/utils/calculate-deposit-root.js";
 import { WorkerError } from "@/workers/utils/common.js";
-import { bufferToHex } from "../../../midgard-sdk/src/utils/common.js";
+import { SerializedStateQueueUTxO } from "@/workers/utils/commit-block-header.js";
+import { DatabaseError } from "@/database/utils/common.js";
+import { TxConfirmError, TxSignError } from "@/transactions/utils.js";
+
+const TX_ENDPOINT: string = "tx";
+const MERGE_ENDPOINT: string = "merge";
+const UTXOS_ENDPOINT: string = "utxos";
+const BLOCK_ENDPOINT: string = "block";
+const INIT_ENDPOINT: string = "init";
+const COMMIT_ENDPOINT: string = "commit";
+const RESET_ENDPOINT: string = "reset";
+const SUBMIT_ENDPOINT: string = "submit";
 
 const txCounter = Metric.counter("tx_count", {
   description: "A counter for tracking submit transactions",
@@ -86,9 +109,22 @@ const failWith500Helper = (
 const failWith500 = (
   method: "GET" | "POST",
   endpoint: string,
-  error?: Error | HttpBodyError | string | unknown,
+  error: HttpBodyError | string | any,
   msgOverride?: string,
 ) => failWith500Helper(`${method} /${endpoint}`, "failure", error, msgOverride);
+
+const handleDBGetFailure = (endpoint: string, e: DatabaseError) =>
+  failWith500("GET", endpoint, e.cause, `db failure with table ${e.table}`);
+
+const handleTxGetFailure = (
+  endpoint: string,
+  e: TxSignError | TxConfirmError | TxSubmitError,
+) => failWith500("GET", endpoint, e.cause, `${e._tag}: ${e.message}`);
+
+const handleGenericGetFailure = (
+  endpoint: string,
+  e: SDK.Utils.GenericErrorFields,
+) => failWith500("GET", endpoint, e.cause, e.message);
 
 const getTxHandler = Effect.gen(function* () {
   const params = yield* ParsedSearchParams;
@@ -113,21 +149,19 @@ const getTxHandler = Effect.gen(function* () {
         const fromImmutable =
           yield* ImmutableDB.retrieveTxCborByHash(txHashBytes);
         yield* Effect.logInfo(
-          `GET /tx - Transaction found in ImmutableDB: ${txHashParam}`,
+          `GET /${TX_ENDPOINT} - Transaction found in ImmutableDB: ${txHashParam}`,
         );
         return fromImmutable;
       }),
     ),
   );
   yield* Effect.logInfo(
-    `GET /tx - Transaction found in mempool: ${txHashParam}`,
+    `GET /${TX_ENDPOINT} - Transaction found in mempool: ${txHashParam}`,
   );
   return yield* HttpServerResponse.json({ tx: toHex(foundCbor) });
 }).pipe(
-  Effect.catchTag("HttpBodyError", (e) => failWith500("GET", "tx", e)),
-  Effect.catchTag("DBSelectError", (e) =>
-    failWith500("GET", "tx", e.cause ?? e, "tx not found in database"),
-  ),
+  Effect.catchTag("HttpBodyError", (e) => failWith500("GET", TX_ENDPOINT, e)),
+  Effect.catchTag("DatabaseError", (e) => handleDBGetFailure(TX_ENDPOINT, e)),
 );
 
 const getUtxosHandler = Effect.gen(function* () {
@@ -135,7 +169,9 @@ const getUtxosHandler = Effect.gen(function* () {
   const addr = params["addr"];
 
   if (typeof addr !== "string") {
-    yield* Effect.logInfo(`GET /utxos - Invalid address type: ${addr}`);
+    yield* Effect.logInfo(
+      `GET /${UTXOS_ENDPOINT} - Invalid address type: ${addr}`,
+    );
     return yield* HttpServerResponse.json(
       { error: `Invalid address type: ${addr}` },
       { status: 400 },
@@ -156,8 +192,8 @@ const getUtxosHandler = Effect.gen(function* () {
     );
 
     const response = utxosWithAddress.map((entry) => ({
-      outref: bufferToHex(entry.outref),
-      value: bufferToHex(entry.output),
+      outref: SDK.Utils.bufferToHex(entry.outref),
+      value: SDK.Utils.bufferToHex(entry.output),
     }));
 
     yield* Effect.logInfo(`Found ${response.length} UTxOs for ${addr}`);
@@ -172,9 +208,11 @@ const getUtxosHandler = Effect.gen(function* () {
     );
   }
 }).pipe(
-  Effect.catchTag("HttpBodyError", (e) => failWith500("GET", "utxos", e)),
-  Effect.catchTag("DBSelectError", (e) =>
-    failWith500("GET", "utxos", e.cause ?? e, "database error"),
+  Effect.catchTag("HttpBodyError", (e) =>
+    failWith500("GET", UTXOS_ENDPOINT, e),
+  ),
+  Effect.catchTag("DatabaseError", (e) =>
+    handleDBGetFailure(UTXOS_ENDPOINT, e),
   ),
 );
 
@@ -190,7 +228,9 @@ const getBlockHandler = Effect.gen(function* () {
     !isHexString(hdrHash) ||
     hdrHash.length !== 32
   ) {
-    yield* Effect.logInfo(`GET /block - Invalid block hash: ${hdrHash}`);
+    yield* Effect.logInfo(
+      `GET /${BLOCK_ENDPOINT} - Invalid block hash: ${hdrHash}`,
+    );
     return yield* HttpServerResponse.json(
       { error: `Invalid block hash: ${hdrHash}` },
       { status: 400 },
@@ -200,13 +240,15 @@ const getBlockHandler = Effect.gen(function* () {
     Buffer.from(fromHex(hdrHash)),
   );
   yield* Effect.logInfo(
-    `GET /block - Found ${hashes.length} txs for block: ${hdrHash}`,
+    `GET /${BLOCK_ENDPOINT} - Found ${hashes.length} txs for block: ${hdrHash}`,
   );
   return yield* HttpServerResponse.json({ hashes });
 }).pipe(
-  Effect.catchTag("HttpBodyError", (e) => failWith500("GET", "block", e)),
-  Effect.catchTag("DBSelectError", (e) =>
-    failWith500("GET", "block", e.cause ?? e, "database error"),
+  Effect.catchTag("HttpBodyError", (e) =>
+    failWith500("GET", BLOCK_ENDPOINT, e),
+  ),
+  Effect.catchTag("DatabaseError", (e) =>
+    handleDBGetFailure(BLOCK_ENDPOINT, e),
   ),
 );
 
@@ -214,41 +256,80 @@ const getInitHandler = Effect.gen(function* () {
   yield* Effect.logInfo(`✨ Initialization request received`);
   const result = yield* StateQueueTx.stateQueueInit;
   yield* insertGenesisUtxos;
-  yield* Effect.logInfo(`GET /init - Initialization successful: ${result}`);
+  yield* Effect.logInfo(
+    `GET /${INIT_ENDPOINT} - Initialization successful: ${result}`,
+  );
   return yield* HttpServerResponse.json({
     message: `Initiation successful: ${result}`,
   });
 }).pipe(
-  Effect.catchTag("HttpBodyError", (e) => failWith500("GET", "init", e)),
-  Effect.catchAll((e) => failWith500("GET", "init", e, "sdk error")),
+  Effect.catchTag("HttpBodyError", (e) => failWith500("GET", INIT_ENDPOINT, e)),
+  Effect.catchTag("LucidError", (e) =>
+    handleGenericGetFailure(INIT_ENDPOINT, e),
+  ),
+  Effect.catchTag("DatabaseError", (e) => handleDBGetFailure(INIT_ENDPOINT, e)),
+  Effect.catchTag("TxSubmitError", (e) => handleTxGetFailure(INIT_ENDPOINT, e)),
+  Effect.catchTag("TxSignError", (e) => handleTxGetFailure(INIT_ENDPOINT, e)),
 );
 
 const getCommitEndpoint = Effect.gen(function* () {
-  yield* Effect.logInfo(`GET /commit - Manual block commitment order received`);
+  yield* Effect.logInfo(
+    `GET /${COMMIT_ENDPOINT} - Manual block commitment order received`,
+  );
   const result = yield* blockCommitmentAction;
-  yield* Effect.logInfo(`GET /commit - Block commitment successful: ${result}`);
+  yield* Effect.logInfo(
+    `GET /${COMMIT_ENDPOINT} - Block commitment successful: ${result}`,
+  );
   return yield* HttpServerResponse.json({
     message: `Block commitment successful: ${result}`,
   });
 }).pipe(
-  Effect.catchTag("HttpBodyError", (e) => failWith500("GET", "commit", e)),
+  Effect.catchTag("HttpBodyError", (e) =>
+    failWith500("GET", COMMIT_ENDPOINT, e),
+  ),
   Effect.catchTag("WorkerError", (e) =>
-    failWith500("GET", "commit", e.cause ?? e, "failed worker"),
+    failWith500("GET", COMMIT_ENDPOINT, e.cause, "failed worker"),
   ),
 );
 
 const getMergeHandler = Effect.gen(function* () {
-  yield* Effect.logInfo(`GET /merge - Manual merge order received`);
+  yield* Effect.logInfo(`GET /${MERGE_ENDPOINT} - Manual merge order received`);
   const result = yield* mergeAction;
   yield* Effect.logInfo(
-    `GET /merge - Merging confirmed state successful: ${result}`,
+    `GET /${MERGE_ENDPOINT} - Merging confirmed state successful: ${result}`,
   );
   return yield* HttpServerResponse.json({
     message: `Merging confirmed state successful: ${result}`,
   });
 }).pipe(
-  Effect.catchTag("HttpBodyError", (e) => failWith500("GET", "merge", e)),
-  Effect.catchAll((e) => failWith500("GET", "merge", e, "sdk error")),
+  Effect.catchTag("HttpBodyError", (e) =>
+    failWith500("GET", MERGE_ENDPOINT, e),
+  ),
+  Effect.catchTag("DatabaseError", (e) =>
+    handleDBGetFailure(MERGE_ENDPOINT, e),
+  ),
+  Effect.catchTag("TxSubmitError", (e) =>
+    handleTxGetFailure(MERGE_ENDPOINT, e),
+  ),
+  Effect.catchTag("TxSignError", (e) => handleTxGetFailure(MERGE_ENDPOINT, e)),
+  Effect.catchTag("CmlDeserializationError", (e) =>
+    handleGenericGetFailure(MERGE_ENDPOINT, e),
+  ),
+  Effect.catchTag("DataCoercionError", (e) =>
+    handleGenericGetFailure(MERGE_ENDPOINT, e),
+  ),
+  Effect.catchTag("LinkedListError", (e) =>
+    handleGenericGetFailure(MERGE_ENDPOINT, e),
+  ),
+  Effect.catchTag("HashingError", (e) =>
+    handleGenericGetFailure(MERGE_ENDPOINT, e),
+  ),
+  Effect.catchTag("LucidError", (e) =>
+    handleGenericGetFailure(MERGE_ENDPOINT, e),
+  ),
+  Effect.catchTag("StateQueueError", (e) =>
+    handleGenericGetFailure(MERGE_ENDPOINT, e),
+  ),
 );
 
 const getResetHandler = Effect.gen(function* () {
@@ -273,19 +354,29 @@ const getResetHandler = Effect.gen(function* () {
   });
 }).pipe(
   Effect.catchTag("HttpBodyError", (e) => failWith500("GET", "reset", e)),
-  Effect.catchAll((e) => failWith500("GET", "reset", e, "sdk error")),
+  Effect.catchTag("DatabaseError", (e) =>
+    handleDBGetFailure(RESET_ENDPOINT, e),
+  ),
+  Effect.catchTag("TxSubmitError", (e) =>
+    handleTxGetFailure(RESET_ENDPOINT, e),
+  ),
+  Effect.catchTag("TxSignError", (e) => handleTxGetFailure(RESET_ENDPOINT, e)),
+  Effect.catchTag("LucidError", (e) =>
+    handleGenericGetFailure(RESET_ENDPOINT, e),
+  ),
 );
 
 const getLogStateQueueHandler = Effect.gen(function* () {
   yield* Effect.logInfo(`✍  Drawing state queue UTxOs...`);
-  const { user: lucid } = yield* User;
-  const alwaysSucceeds = yield* AlwaysSucceeds.AlwaysSucceedsContract;
+  const lucid = yield* Lucid;
+  const alwaysSucceeds = yield* AlwaysSucceedsContract;
   const fetchConfig: SDK.TxBuilder.StateQueue.FetchConfig = {
     stateQueuePolicyId: alwaysSucceeds.stateQueueAuthValidator.policyId,
-    stateQueueAddress: alwaysSucceeds.stateQueueAuthValidator.spendScriptAddress,
+    stateQueueAddress:
+      alwaysSucceeds.stateQueueAuthValidator.spendScriptAddress,
   };
   const sortedUTxOs = yield* SDK.Endpoints.fetchSortedStateQueueUTxOsProgram(
-    lucid,
+    lucid.api,
     fetchConfig,
   );
   let drawn = `
@@ -319,7 +410,12 @@ ${emoji} ${u.utxo.txHash}#${u.utxo.outputIndex}${info}`;
   Effect.catchTag("HttpBodyError", (e) =>
     failWith500("GET", "logStateQueue", e),
   ),
-  Effect.catchAll((e) => failWith500("GET", "logStateQueue", e, "sdk error")),
+  Effect.catchTag("LinkedListError", (e) =>
+    handleGenericGetFailure("logStateQueue", e),
+  ),
+  Effect.catchTag("LucidError", (e) =>
+    handleGenericGetFailure("logStateQueue", e),
+  ),
 );
 
 const getLogBlocksDBHandler = Effect.gen(function* () {
@@ -352,21 +448,37 @@ ${bHex} -──▶ ${keyValues[bHex]} tx(s)`;
   });
 }).pipe(
   Effect.catchTag("HttpBodyError", (e) => failWith500("GET", "logBlocksDB", e)),
-  Effect.catchTag("DBSelectError", (e) =>
-    failWith500("GET", "logBlocksDB", e.cause ?? e, "database error"),
-  ),
+  Effect.catchTag("DatabaseError", (e) => handleDBGetFailure("logBlocksDB", e)),
 );
 
 const getLogGlobalsHandler = Effect.gen(function* () {
   yield* Effect.logInfo(`✍  Logging global variables...`);
+  const globals = yield* Globals;
+  const BLOCKS_IN_QUEUE: number = yield* Ref.get(globals.BLOCKS_IN_QUEUE);
+  const LATEST_SYNC_OF_STATE_QUEUE_LENGTH: number = yield* Ref.get(
+    globals.LATEST_SYNC_OF_STATE_QUEUE_LENGTH,
+  );
+  const RESET_IN_PROGRESS: boolean = yield* Ref.get(globals.RESET_IN_PROGRESS);
+  const AVAILABLE_CONFIRMED_BLOCK: "" | SerializedStateQueueUTxO =
+    yield* Ref.get(globals.AVAILABLE_CONFIRMED_BLOCK);
+  const PROCESSED_UNSUBMITTED_TXS_COUNT: number = yield* Ref.get(
+    globals.PROCESSED_UNSUBMITTED_TXS_COUNT,
+  );
+  const PROCESSED_UNSUBMITTED_TXS_SIZE: number = yield* Ref.get(
+    globals.PROCESSED_UNSUBMITTED_TXS_SIZE,
+  );
+  const UNCONFIRMED_SUBMITTED_BLOCK_HASH: string = yield* Ref.get(
+    globals.UNCONFIRMED_SUBMITTED_BLOCK_HASH,
+  );
+
   yield* Effect.logInfo(`
-  BLOCKS_IN_QUEUE ⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅ ${global.BLOCKS_IN_QUEUE}
-  LATEST_SYNC ⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅ ${new Date(global.LATEST_SYNC_OF_STATE_QUEUE_LENGTH).toLocaleString()}
-  RESET_IN_PROGRESS ⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅ ${global.RESET_IN_PROGRESS}
-  AVAILABLE_CONFIRMED_BLOCK ⋅⋅⋅⋅⋅⋅⋅⋅⋅ ${global.AVAILABLE_CONFIRMED_BLOCK}
-  PROCESSED_UNSUBMITTED_TXS_COUNT ⋅⋅⋅ ${global.PROCESSED_UNSUBMITTED_TXS_COUNT}
-  PROCESSED_UNSUBMITTED_TXS_SIZE ⋅⋅⋅⋅ ${global.PROCESSED_UNSUBMITTED_TXS_SIZE}
-  UNCONFIRMED_SUBMITTED_BLOCK ⋅⋅⋅⋅⋅⋅⋅ ${global.UNCONFIRMED_SUBMITTED_BLOCK}
+  BLOCKS_IN_QUEUE ⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅ ${BLOCKS_IN_QUEUE}
+  LATEST_SYNC ⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅ ${new Date(LATEST_SYNC_OF_STATE_QUEUE_LENGTH).toLocaleString()}
+  RESET_IN_PROGRESS ⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅ ${RESET_IN_PROGRESS}
+  AVAILABLE_CONFIRMED_BLOCK ⋅⋅⋅⋅⋅⋅⋅⋅⋅ ${JSON.stringify(AVAILABLE_CONFIRMED_BLOCK)}
+  PROCESSED_UNSUBMITTED_TXS_COUNT ⋅⋅⋅ ${PROCESSED_UNSUBMITTED_TXS_COUNT}
+  PROCESSED_UNSUBMITTED_TXS_SIZE ⋅⋅⋅⋅ ${PROCESSED_UNSUBMITTED_TXS_SIZE}
+  UNCONFIRMED_SUBMITTED_BLOCK_HASH ⋅⋅⋅⋅⋅⋅⋅ ${UNCONFIRMED_SUBMITTED_BLOCK_HASH}
 `);
   return yield* HttpServerResponse.json({
     message: `Global variables logged!`,
@@ -406,24 +518,25 @@ const router = (
   HttpServerResponse.HttpServerResponse,
   HttpBodyError,
   | Database
-  | User
+  | Lucid
   | NodeConfig
   | AlwaysSucceedsContract
   | HttpServerRequest.HttpServerRequest
+  | Globals
 > =>
   HttpRouter.empty
     .pipe(
-      HttpRouter.get("/tx", getTxHandler),
-      HttpRouter.get("/utxos", getUtxosHandler),
-      HttpRouter.get("/block", getBlockHandler),
-      HttpRouter.get("/init", getInitHandler),
-      HttpRouter.get("/commit", getCommitEndpoint),
-      HttpRouter.get("/merge", getMergeHandler),
-      HttpRouter.get("/reset", getResetHandler),
-      HttpRouter.get("/logStateQueue", getLogStateQueueHandler),
-      HttpRouter.get("/logBlocksDB", getLogBlocksDBHandler),
-      HttpRouter.get("/logGlobals", getLogGlobalsHandler),
-      HttpRouter.post("/submit", postSubmitHandler(txQueue)),
+      HttpRouter.get(`/${TX_ENDPOINT}`, getTxHandler),
+      HttpRouter.get(`/${UTXOS_ENDPOINT}`, getUtxosHandler),
+      HttpRouter.get(`/${BLOCK_ENDPOINT}`, getBlockHandler),
+      HttpRouter.get(`/${INIT_ENDPOINT}`, getInitHandler),
+      HttpRouter.get(`/${COMMIT_ENDPOINT}`, getCommitEndpoint),
+      HttpRouter.get(`/${MERGE_ENDPOINT}`, getMergeHandler),
+      HttpRouter.get(`/${RESET_ENDPOINT}`, getResetHandler),
+      HttpRouter.get(`/logStateQueue`, getLogStateQueueHandler),
+      HttpRouter.get(`/logBlocksDB`, getLogBlocksDBHandler),
+      HttpRouter.get(`/logGlobals`, getLogGlobalsHandler),
+      HttpRouter.post(`/${SUBMIT_ENDPOINT}`, postSubmitHandler(txQueue)),
     )
     .pipe(
       Effect.catchAllCause((cause) =>
@@ -436,7 +549,9 @@ const router = (
     );
 
 const blockCommitmentAction = Effect.gen(function* () {
-  if (!global.RESET_IN_PROGRESS) {
+  const globals = yield* Globals;
+  const RESET_IN_PROGRESS = yield* Ref.get(globals.RESET_IN_PROGRESS);
+  if (!RESET_IN_PROGRESS) {
     yield* Effect.logInfo("🔹 New block commitment process started.");
     yield* StateQueueTx.buildAndSubmitCommitmentBlock().pipe(
       Effect.withSpan("buildAndSubmitCommitmentBlock"),
@@ -445,7 +560,15 @@ const blockCommitmentAction = Effect.gen(function* () {
 });
 
 const blockConfirmationAction = Effect.gen(function* () {
-  if (!global.RESET_IN_PROGRESS) {
+  const globals = yield* Globals;
+  const RESET_IN_PROGRESS = yield* Ref.get(globals.RESET_IN_PROGRESS);
+  if (!RESET_IN_PROGRESS) {
+    const UNCONFIRMED_SUBMITTED_BLOCK_HASH = yield* Ref.get(
+      globals.UNCONFIRMED_SUBMITTED_BLOCK_HASH,
+    );
+    const AVAILABLE_CONFIRMED_BLOCK = yield* Ref.get(
+      globals.AVAILABLE_CONFIRMED_BLOCK,
+    );
     yield* Effect.logInfo("🔍 New block confirmation process started.");
     const worker = Effect.async<
       BlockConfirmationWorkerOutput,
@@ -461,11 +584,11 @@ const blockConfirmationAction = Effect.gen(function* () {
           workerData: {
             data: {
               firstRun:
-                global.UNCONFIRMED_SUBMITTED_BLOCK === "" &&
-                global.AVAILABLE_CONFIRMED_BLOCK === "",
-              unconfirmedSubmittedBlock: global.UNCONFIRMED_SUBMITTED_BLOCK,
+                UNCONFIRMED_SUBMITTED_BLOCK_HASH === "" &&
+                AVAILABLE_CONFIRMED_BLOCK === "",
+              unconfirmedSubmittedBlock: UNCONFIRMED_SUBMITTED_BLOCK_HASH,
             },
-          },
+          } as BlockConfirmationWorkerInput, // TODO: Consider other approaches to avoid type assertion here.
         },
       );
       worker.on("message", (output: BlockConfirmationWorkerOutput) => {
@@ -474,7 +597,8 @@ const blockConfirmationAction = Effect.gen(function* () {
             Effect.fail(
               new WorkerError({
                 worker: "confirm-block-commitments",
-                message: `Error in confirmation worker: ${output.error}`,
+                message: `Confirmation worker failed.`,
+                cause: output.error,
               }),
             ),
           );
@@ -502,6 +626,7 @@ const blockConfirmationAction = Effect.gen(function* () {
               new WorkerError({
                 worker: "confirm-block-commitments",
                 message: `Confirmation worker exited with code: ${code}`,
+                cause: `exit code ${code}`,
               }),
             ),
           );
@@ -514,8 +639,11 @@ const blockConfirmationAction = Effect.gen(function* () {
     const workerOutput: BlockConfirmationWorkerOutput = yield* worker;
     switch (workerOutput.type) {
       case "SuccessfulConfirmationOutput": {
-        global.UNCONFIRMED_SUBMITTED_BLOCK = "";
-        global.AVAILABLE_CONFIRMED_BLOCK = workerOutput.blocksUTxO;
+        yield* Ref.set(globals.UNCONFIRMED_SUBMITTED_BLOCK_HASH, "");
+        yield* Ref.set(
+          globals.AVAILABLE_CONFIRMED_BLOCK,
+          workerOutput.blocksUTxO,
+        );
         yield* Effect.logInfo("🔍 ☑️  Submitted block confirmed.");
         break;
       }
@@ -529,18 +657,93 @@ const blockConfirmationAction = Effect.gen(function* () {
   }
 });
 
+const calculateDepositRootAction = Effect.gen(function* () {
+  const globals = yield* Globals;
+  const worker = Effect.async<DerpositRootWorkerOutput, WorkerError, never>(
+    (resume) => {
+      Effect.runSync(
+        Effect.logInfo(`🔍 Starting deposit root calculation worker...`),
+      );
+      const worker = new Worker(
+        new URL("./calculate-deposit-root.js", import.meta.url),
+      );
+      worker.on("message", (output: DerpositRootWorkerOutput) => {
+        if (output.type === "FailedRootCalculationOutput") {
+          resume(
+            Effect.fail(
+              new WorkerError({
+                worker: "calculate-deposit-root",
+                message: `Deposit root calculation worker failed.`,
+                cause: output.error,
+              }),
+            ),
+          );
+        } else {
+          resume(Effect.succeed(output));
+        }
+        worker.terminate();
+      });
+      worker.on("error", (e: Error) => {
+        resume(
+          Effect.fail(
+            new WorkerError({
+              worker: "calculate-deposit-root",
+              message: `Error in deposit root worker: ${e}`,
+              cause: e,
+            }),
+          ),
+        );
+        worker.terminate();
+      });
+      worker.on("exit", (code: number) => {
+        if (code !== 0) {
+          resume(
+            Effect.fail(
+              new WorkerError({
+                worker: "calculate-deposit-root",
+                message: `Root deposit worker exited with code: ${code}`,
+                cause: `exit code ${code}`,
+              }),
+            ),
+          );
+        }
+      });
+      return Effect.sync(() => {
+        worker.terminate();
+      });
+    },
+  );
+  const workerOutput: DerpositRootWorkerOutput = yield* worker;
+  switch (workerOutput.type) {
+    case "SuccessfulRootCalculationOutput": {
+      yield* globals.DEPOSIT_ROOTS_QUEUE.offer(workerOutput.mptRoot);
+      // TODO: provide the `workerOutput.inclusionTime` somewhere
+      yield* Effect.logInfo(
+        "🔍 ☑️  Submitted deposit root to the roots queue.",
+      );
+      break;
+    }
+    case "NoTxForCoRootCalculation": {
+      break;
+    }
+    case "FailedRootCalculationOutput": {
+      break;
+    }
+  }
+});
+
 const mergeAction = Effect.gen(function* () {
-  const nodeConfig = yield* NodeConfig;
-  const { user: lucid } = yield* User;
+  const lucid = yield* Lucid;
   const { stateQueueAuthValidator, depositAuthValidator } =
-    yield* AlwaysSucceeds.AlwaysSucceedsContract;
+    yield* AlwaysSucceedsContract;
+
   const fetchConfig: SDK.TxBuilder.StateQueue.FetchConfig = {
     stateQueueAddress: stateQueueAuthValidator.spendScriptAddress,
     stateQueuePolicyId: stateQueueAuthValidator.policyId,
   };
-  lucid.selectWallet.fromSeed(nodeConfig.L1_OPERATOR_SEED_PHRASE_FOR_MERGE_TX);
+  yield* lucid.switchToOperatorsMergingWallet;
   yield* StateQueueTx.buildAndSubmitMergeTx(
-    lucid,
+    lucid.api,
     fetchConfig,
     stateQueueAuthValidator.spendScript,
     stateQueueAuthValidator.mintScript,
@@ -585,6 +788,19 @@ const blockConfirmationFork = (rerunDelay: number) =>
     yield* Effect.logInfo("🟫 Block confirmation fork started.");
     const action = blockConfirmationAction.pipe(
       Effect.withSpan("block-confirmation-fork"),
+      Effect.catchAllCause(Effect.logWarning),
+    );
+    const schedule = Schedule.addDelay(Schedule.forever, () =>
+      Duration.millis(rerunDelay),
+    );
+    yield* Effect.repeat(action, schedule);
+  });
+
+const calculateDepositRootFork = (rerunDelay: number) =>
+  Effect.gen(function* () {
+    yield* Effect.logInfo("🟪 Calculate deposit root fork started.");
+    const action = calculateDepositRootAction.pipe(
+      Effect.withSpan("calculate-deposit-root"),
       Effect.catchAllCause(Effect.logWarning),
     );
     const schedule = Schedule.addDelay(Schedule.forever, () =>
@@ -676,6 +892,10 @@ export const runNode = Effect.gen(function* () {
     nodeConfig.WAIT_BETWEEN_BLOCK_CONFIRMATION,
   );
 
+  const calculateDepositRootThread = calculateDepositRootFork(
+    nodeConfig.WAIT_BETWEEN_ROOT_DEPOSIT_CALCULATION,
+  );
+
   const mergeThread = mergeFork(nodeConfig.WAIT_BETWEEN_MERGE_TXS);
 
   const monitorMempoolThread = monitorMempoolFork;
@@ -687,6 +907,7 @@ export const runNode = Effect.gen(function* () {
       appThread,
       blockCommitmentThread,
       blockConfirmationThread,
+      calculateDepositRootThread,
       mergeThread,
       monitorMempoolThread,
       txQueueProcessorThread,
@@ -696,9 +917,10 @@ export const runNode = Effect.gen(function* () {
     },
   ).pipe(
     Effect.provide(Database.layer),
-    Effect.provide(AlwaysSucceedsContract.layer),
-    Effect.provide(User.layer),
+    Effect.provide(AlwaysSucceedsContract.Default),
+    Effect.provide(Lucid.Default),
     Effect.provide(NodeConfig.layer),
+    Effect.provide(Globals.Default),
   );
 
   pipe(

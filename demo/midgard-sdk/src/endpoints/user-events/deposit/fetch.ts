@@ -1,24 +1,36 @@
 import { LucidEvolution, PolicyId, UTxO } from "@lucid-evolution/lucid";
 import { Deposit } from "@/tx-builder/index.js";
 import { Effect } from "effect";
-import { utxosAtByNFTPolicyId } from "@/utils/common.js";
+import {
+  utxosAtByNFTPolicyId,
+  LucidError,
+  DataCoercionError,
+  AssetError,
+  UnauthenticUtxoError,
+} from "@/utils/common.js";
 import { utxosToDepositUTxOs } from "@/utils/user-events/deposit.js";
+import { POSIXTime } from "@/tx-builder/common.js";
 
 const isUTxOTimeValid = (
   depositUTxO: Deposit.DepositUTxO,
-): Effect.Effect<Boolean, Error> =>
+  inclusionStartTime: POSIXTime,
+  inclusionEndTime: POSIXTime,
+): Effect.Effect<Boolean, never> =>
   Effect.gen(function* () {
-    const { data: depositData } = depositUTxO.datum;
-    const currentTime = BigInt(Date.now());
+    const depositData = depositUTxO.datum;
     return (
-      depositData.startTime <= currentTime && currentTime <= depositData.endTime
+      inclusionStartTime <= depositData.inclusionTime &&
+      depositData.inclusionTime <= inclusionEndTime
     );
   });
 
 export const fetchDepositUTxOsProgram = (
   lucid: LucidEvolution,
   config: Deposit.FetchConfig,
-): Effect.Effect<Deposit.DepositUTxO[], Error> =>
+): Effect.Effect<
+  Deposit.DepositUTxO[],
+  LucidError | DataCoercionError | AssetError | UnauthenticUtxoError
+> =>
   Effect.gen(function* () {
     const allUTxOs = yield* utxosAtByNFTPolicyId(
       lucid,
@@ -29,5 +41,7 @@ export const fetchDepositUTxOsProgram = (
       allUTxOs,
       config.depositPolicyId,
     );
-    return depositUTxOs.filter(isUTxOTimeValid);
+    return depositUTxOs.filter((utxo) =>
+      isUTxOTimeValid(utxo, config.inclusionStartTime, config.inclusionEndTime),
+    );
   });

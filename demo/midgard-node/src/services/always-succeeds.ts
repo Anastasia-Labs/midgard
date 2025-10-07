@@ -1,4 +1,4 @@
-import { Context, Effect, Layer, pipe } from "effect";
+import { Effect, pipe } from "effect";
 import * as scripts from "../../blueprints/always-succeeds/plutus.json" with { type: "json" };
 import {
   applyDoubleCborEncoding,
@@ -8,27 +8,25 @@ import {
   SpendingValidator,
   validatorToAddress,
 } from "@lucid-evolution/lucid";
-import { NodeConfig, NodeConfigDep } from "@/config.js";
+import { NodeConfig } from "@/services/config.js";
 
 export type AuthenticatedValidator = {
-  spendingCBOR: string,
-  spendScript: Script,
-  spendScriptAddress: string,
-  mintScript: Script,
-  policyId: string,
+  spendingCBOR: string;
+  spendScript: Script;
+  spendScriptAddress: string;
+  mintScript: Script;
+  policyId: string;
 };
 
 export const makeAuthenticatedValidator = (
-    nodeConfig: NodeConfigDep,
-    spendingTitle: string,
-    mintingTitle: string,
-  ) : Effect.Effect<AuthenticatedValidator, never, never>=>
+  spendingTitle: string,
+  mintingTitle: string,
+): Effect.Effect<AuthenticatedValidator, never, NodeConfig> =>
   Effect.gen(function* () {
+    const nodeConfig = yield* NodeConfig;
     const spendingCBOR: string = yield* pipe(
       Effect.fromNullable(
-        scripts.default.validators.find(
-          (v) => v.title === spendingTitle,
-        ),
+        scripts.default.validators.find((v) => v.title === spendingTitle),
       ),
       Effect.andThen((script) => script.compiledCode),
     );
@@ -42,9 +40,7 @@ export const makeAuthenticatedValidator = (
     );
     const mintingCBOR = yield* pipe(
       Effect.fromNullable(
-        scripts.default.validators.find(
-          (v) => v.title === mintingTitle,
-        ),
+        scripts.default.validators.find((v) => v.title === mintingTitle),
       ),
       Effect.andThen((script) => script.compiledCode),
     );
@@ -66,25 +62,22 @@ export const makeAuthenticatedValidator = (
 
 const makeAlwaysSucceedsService: Effect.Effect<
   {
-    stateQueueAuthValidator: AuthenticatedValidator,
-    depositAuthValidator: AuthenticatedValidator,
+    stateQueueAuthValidator: AuthenticatedValidator;
+    depositAuthValidator: AuthenticatedValidator;
   },
   never,
   NodeConfig
 > = Effect.gen(function* () {
-  const nodeConfig = yield* NodeConfig;
   return yield* Effect.gen(function* () {
     const stateQueueAuthValidator = yield* makeAuthenticatedValidator(
-      nodeConfig,
       "always_succeeds.state_queue_spend.else",
-      "always_succeeds.state_queue_mint.else"
-    )
+      "always_succeeds.state_queue_mint.else",
+    );
 
     const depositAuthValidator = yield* makeAuthenticatedValidator(
-      nodeConfig,
       "always_succeeds.deposit_spend.else",
-      "always_succeeds.deposit_mint.else"
-    )
+      "always_succeeds.deposit_mint.else",
+    );
 
     return {
       stateQueueAuthValidator,
@@ -93,14 +86,10 @@ const makeAlwaysSucceedsService: Effect.Effect<
   }).pipe(Effect.orDie);
 });
 
-export class AlwaysSucceedsContract extends Context.Tag(
+export class AlwaysSucceedsContract extends Effect.Service<AlwaysSucceedsContract>()(
   "AlwaysSucceedsContract",
-)<
-  AlwaysSucceedsContract,
-  Effect.Effect.Success<typeof makeAlwaysSucceedsService>
->() {
-  static readonly layer = Layer.effect(
-    AlwaysSucceedsContract,
-    makeAlwaysSucceedsService,
-  );
-}
+  {
+    effect: makeAlwaysSucceedsService,
+    dependencies: [NodeConfig.layer],
+  },
+) {}

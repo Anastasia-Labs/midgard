@@ -1,10 +1,9 @@
 import { Effect } from "effect";
-import { Database } from "@/services/database.js";
+import { Database, NodeConfig } from "@/services/index.js";
 import { Columns as LedgerColumns } from "./utils/ledger.js";
 import * as MempoolLedgerDB from "./mempoolLedger.js";
 import { UTxO, utxoToCore } from "@lucid-evolution/lucid";
-import { NodeConfig } from "@/config.js";
-import { DBInsertError } from "./utils/common.js";
+import { DatabaseError } from "./utils/common.js";
 
 /**
  * Inserts genesis UTXOs from the imported TypeScript module into the MPT database
@@ -12,7 +11,7 @@ import { DBInsertError } from "./utils/common.js";
  */
 export const insertGenesisUtxos: Effect.Effect<
   void,
-  DBInsertError,
+  DatabaseError,
   NodeConfig | Database
 > = Effect.gen(function* () {
   const config = yield* NodeConfig;

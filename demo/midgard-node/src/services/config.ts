@@ -1,17 +1,10 @@
-import {
-  Blockfrost,
-  Kupmios,
-  Lucid,
-  Network,
-  UTxO,
-  walletFromSeed,
-} from "@lucid-evolution/lucid";
+import { Network, UTxO, walletFromSeed } from "@lucid-evolution/lucid";
 import { Config, Context, Data, Effect, Layer } from "effect";
-import { GenericErrorFields } from "./utils.js";
+import * as SDK from "@al-ft/midgard-sdk";
 
 type Provider = "Kupmios" | "Blockfrost";
 
-export type NodeConfigDep = {
+type NodeConfigDep = {
   L1_PROVIDER: Provider;
   L1_BLOCKFROST_API_URL: string;
   L1_BLOCKFROST_KEY: string;
@@ -23,6 +16,7 @@ export type NodeConfigDep = {
   PORT: number;
   WAIT_BETWEEN_BLOCK_COMMITMENT: number;
   WAIT_BETWEEN_BLOCK_CONFIRMATION: number;
+  WAIT_BETWEEN_ROOT_DEPOSIT_CALCULATION: number;
   WAIT_BETWEEN_MERGE_TXS: number;
   PROM_METRICS_PORT: number;
   OLTP_EXPORTER_URL: string;
@@ -35,53 +29,7 @@ export type NodeConfigDep = {
   GENESIS_UTXOS: UTxO[];
 };
 
-export const makeUserFn = (nodeConfig: NodeConfigDep) =>
-  Effect.gen(function* () {
-    const user = yield* Effect.tryPromise({
-      try: () => {
-        switch (nodeConfig.L1_PROVIDER) {
-          case "Kupmios":
-            return Lucid(
-              new Kupmios(nodeConfig.L1_KUPO_KEY, nodeConfig.L1_OGMIOS_KEY),
-              nodeConfig.NETWORK,
-            );
-          case "Blockfrost":
-            return Lucid(
-              new Blockfrost(
-                nodeConfig.L1_BLOCKFROST_API_URL,
-                nodeConfig.L1_BLOCKFROST_KEY,
-              ),
-              nodeConfig.NETWORK,
-            );
-        }
-      },
-      catch: (e) =>
-        new ConfigError({
-          message: `An error occurred on lucid initialization`,
-          cause: e,
-        }),
-    });
-    user.selectWallet.fromSeed(nodeConfig.L1_OPERATOR_SEED_PHRASE);
-    return {
-      user,
-    };
-  });
-
-const makeUser = Effect.gen(function* () {
-  const nodeConfig = yield* NodeConfig;
-  return yield* makeUserFn(nodeConfig);
-}).pipe(Effect.orDie);
-
-export class User extends Context.Tag("User")<
-  User,
-  Effect.Effect.Success<typeof makeUser>
->() {
-  static readonly layer = Layer.effect(User, makeUser);
-}
-
-export const NETWORK: Network = "Preprod";
-
-export const makeConfig = Effect.gen(function* () {
+const makeConfig = Effect.gen(function* () {
   const config = yield* Config.all([
     Config.literal("Kupmios", "Blockfrost")("L1_PROVIDER"),
     Config.string("L1_BLOCKFROST_API_URL"),
@@ -96,6 +44,9 @@ export const makeConfig = Effect.gen(function* () {
       Config.withDefault(1000),
     ),
     Config.integer("WAIT_BETWEEN_BLOCK_CONFIRMATION").pipe(
+      Config.withDefault(10000),
+    ),
+    Config.integer("WAIT_BETWEEN_ROOT_DEPOSIT_CALCULATION").pipe(
       Config.withDefault(10000),
     ),
     Config.integer("WAIT_BETWEEN_MERGE_TXS").pipe(Config.withDefault(10000)),
@@ -120,9 +71,9 @@ export const makeConfig = Effect.gen(function* () {
 
   const provider: Provider = config[0];
   const network: Network = config[7];
-  const seedA = config[20];
-  const seedB = config[21];
-  const seedC = config[22];
+  const seedA = config[21];
+  const seedB = config[22];
+  const seedC = config[23];
 
   const genesisUtxos: UTxO[] = [
     {
@@ -199,15 +150,16 @@ export const makeConfig = Effect.gen(function* () {
     PORT: config[8],
     WAIT_BETWEEN_BLOCK_COMMITMENT: config[9],
     WAIT_BETWEEN_BLOCK_CONFIRMATION: config[10],
-    WAIT_BETWEEN_MERGE_TXS: config[11],
-    PROM_METRICS_PORT: config[12],
-    OLTP_EXPORTER_URL: config[13],
-    POSTGRES_HOST: config[14],
-    POSTGRES_PASSWORD: config[15],
-    POSTGRES_DB: config[16],
-    POSTGRES_USER: config[17],
-    LEDGER_MPT_DB_PATH: config[18],
-    MEMPOOL_MPT_DB_PATH: config[19],
+    WAIT_BETWEEN_ROOT_DEPOSIT_CALCULATION: config[11],
+    WAIT_BETWEEN_MERGE_TXS: config[12],
+    PROM_METRICS_PORT: config[13],
+    OLTP_EXPORTER_URL: config[14],
+    POSTGRES_HOST: config[15],
+    POSTGRES_PASSWORD: config[16],
+    POSTGRES_DB: config[17],
+    POSTGRES_USER: config[18],
+    LEDGER_MPT_DB_PATH: config[19],
+    MEMPOOL_MPT_DB_PATH: config[20],
     GENESIS_UTXOS: network === "Mainnet" ? [] : genesisUtxos,
   };
 }).pipe(Effect.orDie);
@@ -220,8 +172,7 @@ export class NodeConfig extends Context.Tag("NodeConfig")<
 }
 
 export class ConfigError extends Data.TaggedError("ConfigError")<
-  GenericErrorFields & {
-    readonly field?: string;
-    readonly value?: string;
+  SDK.Utils.GenericErrorFields & {
+    readonly fieldsAndValues: [string, string][];
   }
 > {}

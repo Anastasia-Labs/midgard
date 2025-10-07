@@ -13,7 +13,7 @@ export const DatumSchema = Data.Object({
   activeOperatorsAddr: AddressSchema,
   retiredOperatorsAddr: AddressSchema,
   schedulerAddr: AddressSchema,
-  state_queueAddr: AddressSchema,
+  stateQueueAddr: AddressSchema,
   fraudProofCatalogueAddr: AddressSchema,
   fraudProofAddr: AddressSchema,
 });

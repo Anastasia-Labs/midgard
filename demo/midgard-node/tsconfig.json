@@ -18,7 +18,6 @@
     "target": "es2020",
     "outDir": "dist",
     "baseUrl": ".",
-    "typeRoots": ["src/globals.d.ts"],
     "paths": {
       "@/*": ["src/*"]
     }

@@ -5,15 +5,20 @@ import {
   getConfirmedStateFromStateQueueDatum,
   utxosToStateQueueUTxOs,
   findLinkStateQueueUTxO,
-} from "../../utils/state-queue.js";
-import { StateQueue } from "../../tx-builder/index.js";
-import { utxosAtByNFTPolicyId } from "@/utils/common.js";
+  StateQueueError,
+} from "@/utils/state-queue.js";
+import { StateQueue } from "@/tx-builder/index.js";
+import { LucidError, utxosAtByNFTPolicyId } from "@/utils/common.js";
 import { StateQueueUTxO } from "@/tx-builder/state-queue/types.js";
+import { LinkedListError } from "@/utils/linked-list.js";
 
 export const fetchConfirmedStateAndItsLinkProgram = (
   lucid: LucidEvolution,
   config: StateQueue.FetchConfig,
-): Effect.Effect<{ confirmed: StateQueueUTxO; link?: StateQueueUTxO }, Error> =>
+): Effect.Effect<
+  { confirmed: StateQueueUTxO; link?: StateQueueUTxO },
+  StateQueueError | LucidError | LinkedListError
+> =>
   Effect.gen(function* () {
     const initUTxOs = yield* utxosAtByNFTPolicyId(
       lucid,
@@ -49,7 +54,12 @@ export const fetchConfirmedStateAndItsLinkProgram = (
         link: linkUTxO,
       };
     } else {
-      return yield* Effect.fail(new Error("Confirmed state not found"));
+      return yield* Effect.fail(
+        new StateQueueError({
+          message: "Failed to fetch confirmed state and its link",
+          cause: "Exactly 1 authentic confirmed state UTxO was expected",
+        }),
+      );
     }
   });
 

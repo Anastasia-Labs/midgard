@@ -1,38 +1,43 @@
 import { Effect } from "effect";
 import * as SDK from "@al-ft/midgard-sdk";
-import { AlwaysSucceeds } from "@/services/index.js";
-import { NodeConfig, User } from "@/config.js";
-import { TxConfirmError, handleSignSubmit, TxSubmitError } from "../utils.js";
+import { AlwaysSucceedsContract, Lucid, NodeConfig } from "@/services/index.js";
+import {
+  TxConfirmError,
+  handleSignSubmit,
+  TxSubmitError,
+  TxSignError,
+} from "../utils.js";
 
-export const stateQueueInit = Effect.gen(function* () {
-  const nodeConfig = yield* NodeConfig;
-  const { user: lucid } = yield* User;
+export const stateQueueInit: Effect.Effect<
+  string | void,
+  TxSubmitError | TxSignError | SDK.Utils.LucidError,
+  Lucid | NodeConfig | AlwaysSucceedsContract
+> = Effect.gen(function* () {
+  const lucid = yield* Lucid;
   const { stateQueueAuthValidator, depositAuthValidator } =
-    yield* AlwaysSucceeds.AlwaysSucceedsContract;
+    yield* AlwaysSucceedsContract;
   const initParams: SDK.TxBuilder.StateQueue.InitParams = {
     address: stateQueueAuthValidator.spendScriptAddress,
     policyId: stateQueueAuthValidator.policyId,
     stateQueueMintingScript: stateQueueAuthValidator.mintScript,
   };
-  lucid.selectWallet.fromSeed(nodeConfig.L1_OPERATOR_SEED_PHRASE);
-  const txBuilderProgram = SDK.Endpoints.initTxProgram(lucid, initParams);
+  yield* lucid.switchToOperatorsMainWallet;
+  const txBuilderProgram = SDK.Endpoints.initTxProgram(lucid.api, initParams);
   const txBuilder = yield* txBuilderProgram;
   const onSubmitFailure = (err: TxSubmitError | { _tag: "TxSubmitError" }) =>
     Effect.gen(function* () {
       yield* Effect.logError(`Submit tx error: ${err}`);
       yield* Effect.fail(
         new TxSubmitError({
-          message: "failed to submit the state queue initiation tx",
+          message: "Failed to submit the state queue initiation tx",
           cause: err,
         }),
       );
     });
   const onConfirmFailure = (err: TxConfirmError) =>
     Effect.logError(`Confirm tx error: ${err}`);
-  return yield* handleSignSubmit(
-    lucid,
-    txBuilder,
-    onSubmitFailure,
-    onConfirmFailure,
+  return yield* handleSignSubmit(lucid.api, txBuilder).pipe(
+    Effect.catchTag("TxSubmitError", onSubmitFailure),
+    Effect.catchTag("TxConfirmError", onConfirmFailure),
   );
 });
