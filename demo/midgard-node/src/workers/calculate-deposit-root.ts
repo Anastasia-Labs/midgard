@@ -14,17 +14,11 @@ import {
 import {
   WorkerInput,
   WorkerOutput,
-} from "@/workers/utils/commit-deposit.js";
-import { serializeStateQueueUTxO } from "@/workers/utils/commit-block-header.js";
+} from "@/workers/utils/calculate-deposit-root.js";
 import { LucidEvolution, CML, Data, fromHex } from "@lucid-evolution/lucid";
-import { TxConfirmError } from "@/transactions/utils.js";
 import { keyValueMptRoot } from "./utils/mpt.js";
-import * as ETH from "@ethereumjs/mpt";
-import * as ETH_UTILS from "@ethereumjs/util";
 
 const inputData = workerData as WorkerInput;
-
-// TODO: rewrite it with `midgard-node/src/workers/confirm-block-commitments.ts` in mind
 
 const fetchDepositUTxOs = (
   lucid: LucidEvolution,
@@ -54,13 +48,12 @@ const wrapper = (
 ): Effect.Effect<
   WorkerOutput,
   Error,
-  NodeConfig | Lucid | AlwaysSucceedsContract | Globals
+  NodeConfig | Lucid | AlwaysSucceedsContract
 > =>
   Effect.gen(function* () {
     const { api: lucid } = yield* Lucid;
-    const globals = yield* Globals
-    const startTime = yield* globals.UNCONFIRMED_SUBMITTED_BLOCK_TIME
-    const endTime = BigInt(Date.now())
+    const startTime = workerInput.data.submittedBlockTime;
+    const endTime = BigInt(Date.now());
 
     yield* Effect.logInfo("  fetching DepositUTxOs...");
     const depositUTxOs = yield* fetchDepositUTxOs(lucid, startTime, endTime);
@@ -72,8 +65,6 @@ const wrapper = (
     const values: Buffer[] = depositInfos.map((ref) => Buffer.from(fromHex(ref)));
 
     const depositRoot = yield* keyValueMptRoot(keys, values);
-
-    yield* globals.DEPOSIT_ROOTS_QUEUE.offer(depositRoot)
 
     return {
       type: "SuccessfulRootCalculationOutput",
@@ -87,7 +78,6 @@ const program = pipe(
   Effect.provide(Lucid.Default),
   Effect.provide(AlwaysSucceedsContract.Default),
   Effect.provide(NodeConfig.layer),
-  Effect.provide(Globals.Default), // TODO: check if that creates a new layer, or references a global default
 );
 
 Effect.runPromise(

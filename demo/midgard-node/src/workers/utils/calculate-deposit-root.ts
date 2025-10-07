@@ -1,6 +1,6 @@
 export type WorkerInput = {
   data: {
-    firstRun: boolean;
+    submittedBlockTime: bigint;
   };
 };
 

@@ -16,6 +16,7 @@ type NodeConfigDep = {
   PORT: number;
   WAIT_BETWEEN_BLOCK_COMMITMENT: number;
   WAIT_BETWEEN_BLOCK_CONFIRMATION: number;
+  WAIT_BETWEEN_ROOT_DEPOSIT_CALCULATION: number;
   WAIT_BETWEEN_MERGE_TXS: number;
   PROM_METRICS_PORT: number;
   OLTP_EXPORTER_URL: string;
@@ -45,6 +46,9 @@ const makeConfig = Effect.gen(function* () {
     Config.integer("WAIT_BETWEEN_BLOCK_CONFIRMATION").pipe(
       Config.withDefault(10000),
     ),
+    Config.integer("WAIT_BETWEEN_ROOT_DEPOSIT_CALCULATION").pipe(
+      Config.withDefault(10000),
+    ),
     Config.integer("WAIT_BETWEEN_MERGE_TXS").pipe(Config.withDefault(10000)),
     Config.integer("PROM_METRICS_PORT").pipe(Config.withDefault(9464)),
     Config.string("OLTP_EXPORTER_URL").pipe(
@@ -67,9 +71,9 @@ const makeConfig = Effect.gen(function* () {
 
   const provider: Provider = config[0];
   const network: Network = config[7];
-  const seedA = config[20];
-  const seedB = config[21];
-  const seedC = config[22];
+  const seedA = config[21];
+  const seedB = config[22];
+  const seedC = config[23];
 
   const genesisUtxos: UTxO[] = [
     {
@@ -146,15 +150,16 @@ const makeConfig = Effect.gen(function* () {
     PORT: config[8],
     WAIT_BETWEEN_BLOCK_COMMITMENT: config[9],
     WAIT_BETWEEN_BLOCK_CONFIRMATION: config[10],
-    WAIT_BETWEEN_MERGE_TXS: config[11],
-    PROM_METRICS_PORT: config[12],
-    OLTP_EXPORTER_URL: config[13],
-    POSTGRES_HOST: config[14],
-    POSTGRES_PASSWORD: config[15],
-    POSTGRES_DB: config[16],
-    POSTGRES_USER: config[17],
-    LEDGER_MPT_DB_PATH: config[18],
-    MEMPOOL_MPT_DB_PATH: config[19],
+    WAIT_BETWEEN_ROOT_DEPOSIT_CALCULATION: config[11],
+    WAIT_BETWEEN_MERGE_TXS: config[12],
+    PROM_METRICS_PORT: config[13],
+    OLTP_EXPORTER_URL: config[14],
+    POSTGRES_HOST: config[15],
+    POSTGRES_PASSWORD: config[16],
+    POSTGRES_DB: config[17],
+    POSTGRES_USER: config[18],
+    LEDGER_MPT_DB_PATH: config[19],
+    MEMPOOL_MPT_DB_PATH: config[20],
     GENESIS_UTXOS: network === "Mainnet" ? [] : genesisUtxos,
   };
 }).pipe(Effect.orDie);
