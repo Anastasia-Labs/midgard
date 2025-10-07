@@ -288,6 +288,7 @@ const wrapper = (
             return {
               type: "SuccessfulSubmissionOutput",
               submittedTxHash: txHash,
+              submittionTime: BigInt(endTime),
               txSize,
               mempoolTxsCount:
                 mempoolTxsCount + workerInput.data.mempoolTxsCountSoFar,

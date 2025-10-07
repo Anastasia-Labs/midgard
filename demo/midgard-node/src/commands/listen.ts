@@ -468,8 +468,8 @@ const getLogGlobalsHandler = Effect.gen(function* () {
   const PROCESSED_UNSUBMITTED_TXS_SIZE: number = yield* Ref.get(
     globals.PROCESSED_UNSUBMITTED_TXS_SIZE,
   );
-  const UNCONFIRMED_SUBMITTED_BLOCK: string = yield* Ref.get(
-    globals.UNCONFIRMED_SUBMITTED_BLOCK,
+  const UNCONFIRMED_SUBMITTED_BLOCK_HASH: string = yield* Ref.get(
+    globals.UNCONFIRMED_SUBMITTED_BLOCK_HASH,
   );
 
   yield* Effect.logInfo(`
@@ -479,7 +479,7 @@ const getLogGlobalsHandler = Effect.gen(function* () {
   AVAILABLE_CONFIRMED_BLOCK ⋅⋅⋅⋅⋅⋅⋅⋅⋅ ${JSON.stringify(AVAILABLE_CONFIRMED_BLOCK)}
   PROCESSED_UNSUBMITTED_TXS_COUNT ⋅⋅⋅ ${PROCESSED_UNSUBMITTED_TXS_COUNT}
   PROCESSED_UNSUBMITTED_TXS_SIZE ⋅⋅⋅⋅ ${PROCESSED_UNSUBMITTED_TXS_SIZE}
-  UNCONFIRMED_SUBMITTED_BLOCK ⋅⋅⋅⋅⋅⋅⋅ ${UNCONFIRMED_SUBMITTED_BLOCK}
+  UNCONFIRMED_SUBMITTED_BLOCK_HASH ⋅⋅⋅⋅⋅⋅⋅ ${UNCONFIRMED_SUBMITTED_BLOCK_HASH}
 `);
   return yield* HttpServerResponse.json({
     message: `Global variables logged!`,
@@ -564,8 +564,8 @@ const blockConfirmationAction = Effect.gen(function* () {
   const globals = yield* Globals;
   const RESET_IN_PROGRESS = yield* Ref.get(globals.RESET_IN_PROGRESS);
   if (!RESET_IN_PROGRESS) {
-    const UNCONFIRMED_SUBMITTED_BLOCK = yield* Ref.get(
-      globals.UNCONFIRMED_SUBMITTED_BLOCK,
+    const UNCONFIRMED_SUBMITTED_BLOCK_HASH = yield* Ref.get(
+      globals.UNCONFIRMED_SUBMITTED_BLOCK_HASH,
     );
     const AVAILABLE_CONFIRMED_BLOCK = yield* Ref.get(
       globals.AVAILABLE_CONFIRMED_BLOCK,
@@ -585,9 +585,9 @@ const blockConfirmationAction = Effect.gen(function* () {
           workerData: {
             data: {
               firstRun:
-                UNCONFIRMED_SUBMITTED_BLOCK === "" &&
+                UNCONFIRMED_SUBMITTED_BLOCK_HASH === "" &&
                 AVAILABLE_CONFIRMED_BLOCK === "",
-              unconfirmedSubmittedBlock: UNCONFIRMED_SUBMITTED_BLOCK,
+              unconfirmedSubmittedBlock: UNCONFIRMED_SUBMITTED_BLOCK_HASH,
             },
           } as BlockConfirmationWorkerInput, // TODO: Consider other approaches to avoid type assertion here.
         },
@@ -640,7 +640,7 @@ const blockConfirmationAction = Effect.gen(function* () {
     const workerOutput: BlockConfirmationWorkerOutput = yield* worker;
     switch (workerOutput.type) {
       case "SuccessfulConfirmationOutput": {
-        yield* Ref.set(globals.UNCONFIRMED_SUBMITTED_BLOCK, "");
+        yield* Ref.set(globals.UNCONFIRMED_SUBMITTED_BLOCK_HASH, "");
         yield* Ref.set(
           globals.AVAILABLE_CONFIRMED_BLOCK,
           workerOutput.blocksUTxO,

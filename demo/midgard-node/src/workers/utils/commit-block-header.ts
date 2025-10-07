@@ -13,6 +13,7 @@ export type WorkerInput = {
 export type SuccessfulSubmissionOutput = {
   type: "SuccessfulSubmissionOutput";
   submittedTxHash: string;
+  submittionTime: bigint;
   txSize: number;
   mempoolTxsCount: number;
   sizeOfBlocksTxs: number;

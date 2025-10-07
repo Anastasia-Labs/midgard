@@ -111,9 +111,14 @@ export const buildAndSubmitCommitmentBlock = () =>
         yield* Ref.update(globals.BLOCKS_IN_QUEUE, (n) => n + 1);
         yield* Ref.set(globals.AVAILABLE_CONFIRMED_BLOCK, "");
         yield* Ref.set(
-          globals.UNCONFIRMED_SUBMITTED_BLOCK,
+          globals.UNCONFIRMED_SUBMITTED_BLOCK_HASH,
           workerOutput.submittedTxHash,
         );
+        yield* Ref.set(
+          globals.UNCONFIRMED_SUBMITTED_BLOCK_TIME,
+          workerOutput.submittionTime,
+        );
+
         yield* Ref.set(globals.PROCESSED_UNSUBMITTED_TXS_COUNT, 0);
         yield* Ref.set(globals.PROCESSED_UNSUBMITTED_TXS_SIZE, 0);
 

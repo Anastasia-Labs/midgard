@@ -7,13 +7,14 @@ import { Cause, Effect, Schema, pipe } from "effect";
 import {
   AlwaysSucceedsContract,
   AuthenticatedValidator,
+  Globals,
   Lucid,
   NodeConfig,
 } from "@/services/index.js";
 import {
   WorkerInput,
   WorkerOutput,
-} from "@/workers/utils/confirm-block-commitments.js";
+} from "@/workers/utils/commit-deposit.js";
 import { serializeStateQueueUTxO } from "@/workers/utils/commit-block-header.js";
 import { LucidEvolution, CML, Data, fromHex } from "@lucid-evolution/lucid";
 import { TxConfirmError } from "@/transactions/utils.js";
@@ -27,6 +28,8 @@ const inputData = workerData as WorkerInput;
 
 const fetchDepositUTxOs = (
   lucid: LucidEvolution,
+  inclusionStartTime: bigint,
+  inclusionEndTime: bigint,
 ): Effect.Effect<
   SDK.TxBuilder.Deposit.DepositUTxO[],
   | SDK.Utils.LucidError
@@ -40,8 +43,8 @@ const fetchDepositUTxOs = (
     const fetchConfig: SDK.TxBuilder.Deposit.FetchConfig = {
       depositAddress: depositAuthValidator.spendScriptAddress,
       depositPolicyId: depositAuthValidator.policyId,
-      inclusionStartTime: BigInt(0),
-      inclusionEndTime: BigInt(0),
+      inclusionStartTime: inclusionStartTime,
+      inclusionEndTime: inclusionEndTime,
     };
     return yield* SDK.Endpoints.fetchDepositUTxOsProgram(lucid, fetchConfig);
   });
@@ -51,13 +54,16 @@ const wrapper = (
 ): Effect.Effect<
   WorkerOutput,
   Error,
-  NodeConfig | Lucid | AlwaysSucceedsContract
+  NodeConfig | Lucid | AlwaysSucceedsContract | Globals
 > =>
   Effect.gen(function* () {
     const { api: lucid } = yield* Lucid;
+    const globals = yield* Globals
+    const startTime = yield* globals.UNCONFIRMED_SUBMITTED_BLOCK_TIME
+    const endTime = BigInt(Date.now())
 
     yield* Effect.logInfo("  fetching DepositUTxOs...");
-    const depositUTxOs = yield* fetchDepositUTxOs(lucid);
+    const depositUTxOs = yield* fetchDepositUTxOs(lucid, startTime, endTime);
 
     const outRefs = depositUTxOs.map((utxo) => Data.to(utxo.datum.event.id, SDK.TxBuilder.Common.OutputReference));
     const depositInfos = depositUTxOs.map((utxo) => Data.to(utxo.datum.event.info, SDK.TxBuilder.Deposit.DepositInfo));
@@ -67,9 +73,12 @@ const wrapper = (
 
     const depositRoot = yield* keyValueMptRoot(keys, values);
 
+    yield* globals.DEPOSIT_ROOTS_QUEUE.offer(depositRoot)
+
     return {
       type: "SuccessfulRootCalculationOutput",
       mptRoot: depositRoot,
+      inclusionTime: endTime,
     };
   });
 
@@ -78,6 +87,7 @@ const program = pipe(
   Effect.provide(Lucid.Default),
   Effect.provide(AlwaysSucceedsContract.Default),
   Effect.provide(NodeConfig.layer),
+  Effect.provide(Globals.Default), // TODO: check if that creates a new layer, or references a global default
 );
 
 Effect.runPromise(
