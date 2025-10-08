@@ -5,7 +5,7 @@ export default defineConfig({
   test: {
     pool: "forks",
     reporters: "verbose",
-    include: ["./test/**/*.test.{js,mjs,cjs,ts,mts,cts,jsx,tsx}"],
+    include: ["./tests/**/*.test.{js,mjs,cjs,ts,mts,cts,jsx,tsx}"],
     testTimeout: 420_000,
     bail: 3,
     environment: "node",

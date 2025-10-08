@@ -13,16 +13,18 @@ import * as FS from "fs";
 import * as SDK from "@al-ft/midgard-sdk";
 import { DatabaseError } from "@/database/utils/common.js";
 
-// Key of the row which its value is the persisted trie root.
-const rootKey = ETH.ROOT_DB_KEY;
-
 const LEVELDB_ENCODING_OPTS = {
   keyEncoding: ETH_UTILS.KeyEncoding.Bytes,
   valueEncoding: ETH_UTILS.ValueEncoding.Bytes,
 };
 
 export const makeMpts: Effect.Effect<
-  { ledgerTrie: ETH.MerklePatriciaTrie; mempoolTrie: ETH.MerklePatriciaTrie },
+  {
+    ledgerTrie: ETH.MerklePatriciaTrie;
+    ledgerDB: Level<string, Uint8Array>;
+    mempoolTrie: ETH.MerklePatriciaTrie;
+    mempoolDB: Level<string, Uint8Array>;
+  },
   MptError,
   NodeConfig
 > = Effect.gen(function* () {
@@ -53,47 +55,54 @@ export const makeMpts: Effect.Effect<
       }),
     catch: (e) => MptError.trieCreate("ledger", e),
   });
-  const mempoolRootBeforeMempoolTxs = yield* Effect.tryPromise(() =>
-    mempoolTrie.get(rootKey),
-  ).pipe(Effect.orElse(() => Effect.succeed(ledgerTrie.EMPTY_TRIE_ROOT)));
-  const ledgerRootBeforeMempoolTxs = yield* Effect.tryPromise(() =>
-    ledgerTrie.get(rootKey),
-  ).pipe(
-    Effect.orElse(() =>
-      Effect.gen(function* () {
-        yield* Effect.sync(() => ledgerTrie.root(ledgerTrie.EMPTY_TRIE_ROOT));
-        const ops: ETH_UTILS.BatchDBOp[] = yield* Effect.allSuccesses(
-          nodeConfig.GENESIS_UTXOS.map((u: UTxO) =>
-            Effect.gen(function* () {
-              const core = yield* Effect.try(() => utxoToCore(u)).pipe(
-                Effect.tapError((e) =>
-                  Effect.logError(`IGNORED ERROR WITH GENESIS UTXOS: ${e}`),
-                ),
-              );
-              const op: ETH_UTILS.BatchDBOp = {
-                type: "put",
-                key: Buffer.from(core.input().to_cbor_bytes()),
-                value: Buffer.from(core.output().to_cbor_bytes()),
-              };
-              return op;
-            }),
-          ),
-        );
-        yield* Effect.tryPromise({
-          try: () => ledgerTrie.batch(ops),
-          catch: (e) => MptError.batch("ledger", e),
-        });
-        const rootAfterGenesis = yield* Effect.sync(() => ledgerTrie.root());
-        return rootAfterGenesis;
-      }),
-    ),
+  const mempoolRootBeforeMempoolTxs = yield* Effect.sync(() =>
+    mempoolTrie.root(),
   );
+
+  const ledgerRootBeforeMempoolTxs = yield* Effect.gen(function* () {
+    const previousRoot = yield* Effect.sync(() => ledgerTrie.root());
+    if (previousRoot !== ledgerTrie.EMPTY_TRIE_ROOT) return previousRoot;
+    else {
+      yield* Effect.logInfo(
+        "🔹 No previous ledger trie root found - inserting genesis utxos",
+      );
+      const ops: ETH_UTILS.BatchDBOp[] = yield* Effect.allSuccesses(
+        nodeConfig.GENESIS_UTXOS.map((u: UTxO) =>
+          Effect.gen(function* () {
+            const core = yield* Effect.try(() => utxoToCore(u)).pipe(
+              Effect.tapError((e) =>
+                Effect.logError(`IGNORED ERROR WITH GENESIS UTXOS: ${e}`),
+              ),
+            );
+            const op: ETH_UTILS.BatchDBOp = {
+              type: "put",
+              key: Buffer.from(core.input().to_cbor_bytes()),
+              value: Buffer.from(core.output().to_cbor_bytes()),
+            };
+            return op;
+          }),
+        ),
+      );
+      yield* Effect.tryPromise({
+        try: () => ledgerTrie.batch(ops),
+        catch: (e) => MptError.batch("ledger", e),
+      });
+      const rootAfterGenesis = yield* Effect.sync(() => ledgerTrie.root());
+      yield* Effect.logInfo(
+        `🔹 New ledger trie root after inserting genesis utxos: ${toHex(rootAfterGenesis)}`,
+      );
+      return rootAfterGenesis;
+    }
+  });
+
   // Ensuring persisted root is stored in tries' private properties
   yield* Effect.sync(() => mempoolTrie.root(mempoolRootBeforeMempoolTxs));
   yield* Effect.sync(() => ledgerTrie.root(ledgerRootBeforeMempoolTxs));
   return {
     ledgerTrie,
+    ledgerDB: ledgerLevelDb,
     mempoolTrie,
+    mempoolDB: mempoolLevelDb,
   };
 });
 

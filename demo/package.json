@@ -5,14 +5,14 @@
     "build": "turbo build",
     "format": "prettier --write \"**/*.{ts,tsx,md}\"",
     "format-check": "prettier --check \"**/*.{ts,tsx,md}\"",
-    "test": "turbo test",
+    "test": "vitest run --mode=test",
     "clean": "turbo clean && rm -rf node_modules",
     "install-sdk": "pnpm --filter midgard-sdk install",
     "repack-sdk": "pnpm --filter midgard-sdk repack"
   },
   "devDependencies": {
     "prettier": "^3.5.2",
-    "turbo": "1.13.3"
+    "vitest": "^1.3.1"
   },
   "engines": {
     "node": ">=18"

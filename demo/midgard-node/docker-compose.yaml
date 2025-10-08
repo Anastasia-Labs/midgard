@@ -34,7 +34,7 @@ services:
     networks:
       midgard_net:
     # restart: always
-  
+
   postgres:
     image: postgres:15-alpine
     restart: always
@@ -89,7 +89,7 @@ services:
     logging: *default-logging
     networks:
       midgard_net:
-    
+
   loki:
     container_name: loki
     image: grafana/loki:3.4.1
@@ -102,7 +102,7 @@ services:
     logging: *default-logging
     networks:
       midgard_net:
-  
+
   promtail:
     image: grafana/promtail:2.7.1
     container_name: promtail
@@ -183,9 +183,29 @@ services:
     networks:
       midgard_net:
 
+  midgard-node-tests:
+    build:
+      context: .
+      additional_contexts:
+        - sdk=../midgard-sdk
+      dockerfile: ./Dockerfile
+    command: ["sh", "-c", "yes | pnpm test"]
+    profiles:
+      - test
+    volumes:
+      - ./:/app
+      - ./db:/app/db
+    depends_on:
+      - postgres
+    networks:
+      midgard_net:
+    logging: *default-logging
+    environment:
+      - COREPACK_EXPERIMENTAL_SKIP_ASK=true=
+
 networks:
   midgard_net:
-  
+
 volumes:
   postgres-data:
     driver: local
