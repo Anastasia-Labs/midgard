@@ -7,7 +7,12 @@ import {
 } from "@lucid-evolution/lucid";
 import { Datum, DepositInfo, MintRedeemer } from "./types.js";
 import { POSIXTime } from "@/tx-builder/common.js";
-import { bufferToHex, hashHexWithBlake2b256, HashingError, LucidError } from "@/utils/common.js";
+import {
+  bufferToHex,
+  hashHexWithBlake2b256,
+  HashingError,
+  LucidError,
+} from "@/utils/common.js";
 import { Effect } from "effect";
 
 export type DepositParams = {
@@ -32,17 +37,20 @@ export const depositTxBuilder = (
 ): Effect.Effect<TxBuilder, HashingError | LucidError> =>
   Effect.gen(function* () {
     const redeemer: MintRedeemer = {
-    AuthenticateEvent: {
+      AuthenticateEvent: {
         nonceInputIndex: 0n,
         eventOutputIndex: 0n,
         hubRefInputIndex: 0n,
-        witnessRegistrationRedeemerIndex: 0n
-    }
-  };
-    const authenticateEvent = Data.to(redeemer,MintRedeemer);
+        witnessRegistrationRedeemerIndex: 0n,
+      },
+    };
+    const authenticateEvent = Data.to(redeemer, MintRedeemer);
     const utxos = yield* Effect.promise(() => lucid.wallet().getUtxos());
     if (utxos.length === 0) {
-       yield* new LucidError({message: "Failed to build the deposit transaction", cause: "No UTxOs found in wallet"});
+      yield* new LucidError({
+        message: "Failed to build the deposit transaction",
+        cause: "No UTxOs found in wallet",
+      });
     }
     const inputUtxo = utxos[0];
     const assetNameBuffer = yield* hashHexWithBlake2b256(inputUtxo.txHash);
