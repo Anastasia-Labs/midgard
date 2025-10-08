@@ -14,7 +14,7 @@ import { Datum } from "@/tx-builder/state-queue/types.js";
 import {
   DataCoercionError,
   GenericErrorFields,
-  getBeaconToken,
+  getStateToken,
   HashingError,
   LucidError,
   MissingDatumError,
@@ -40,7 +40,7 @@ export const utxoToStateQueueUTxO = (
 > =>
   Effect.gen(function* () {
     const datum = yield* getNodeDatumFromUTxO(utxo);
-    const [sym, assetName] = yield* getBeaconToken(utxo.assets);
+    const [sym, assetName] = yield* getStateToken(utxo.assets);
     if (sym !== nftPolicy) {
       yield* Effect.fail(
         new UnauthenticUtxoError({

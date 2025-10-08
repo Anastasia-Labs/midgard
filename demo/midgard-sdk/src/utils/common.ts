@@ -46,7 +46,7 @@ export const getSingleAssetApartFromAda = (
  * Similar to `getSingleAssetApartFromAda`, with the additional requirement for
  * the quantity to be exactly 1.
  */
-export const getBeaconToken = (
+export const getStateToken = (
   assets: Assets,
 ): Effect.Effect<[PolicyId, string], UnauthenticUtxoError> =>
   Effect.gen(function* () {
@@ -93,7 +93,7 @@ export const utxosAtByNFTPolicyId = (
     });
     const nftEffects: Effect.Effect<UTxO, UnauthenticUtxoError>[] =
       allUTxOs.map((u: UTxO) => {
-        const nftsEffect = getBeaconToken(u.assets);
+        const nftsEffect = getStateToken(u.assets);
         return Effect.andThen(
           nftsEffect,
           ([sym, _tn]): Effect.Effect<UTxO, UnauthenticUtxoError> => {
