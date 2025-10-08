@@ -1,16 +1,13 @@
 import {
   Data,
-  Integer,
   LucidEvolution,
-  RedeemerBuilder,
   Script,
   toUnit,
-  TransactionError,
   TxBuilder,
 } from "@lucid-evolution/lucid";
 import { Datum, DepositInfo, MintRedeemer } from "./types.js";
 import { POSIXTime } from "@/tx-builder/common.js";
-import { bufferToHex, hashHexWithBlake2b256 } from "@/utils/common.js";
+import { bufferToHex, hashHexWithBlake2b256, HashingError, LucidError } from "@/utils/common.js";
 import { Effect } from "effect";
 
 export type DepositParams = {
@@ -32,11 +29,20 @@ export type DepositParams = {
 export const depositTxBuilder = (
   lucid: LucidEvolution,
   params: DepositParams,
-): Effect.Effect<TxBuilder, TransactionError | unknown> =>
+): Effect.Effect<TxBuilder, HashingError | LucidError> =>
   Effect.gen(function* () {
+    const redeemer: MintRedeemer = {
+    AuthenticateEvent: {
+        nonceInputIndex: 0n,
+        eventOutputIndex: 0n,
+        hubRefInputIndex: 0n,
+        witnessRegistrationRedeemerIndex: 0n
+    }
+  };
+    const authenticateEvent = Data.to(redeemer,MintRedeemer);
     const utxos = yield* Effect.promise(() => lucid.wallet().getUtxos());
     if (utxos.length === 0) {
-      throw new Error("No UTxOs found in wallet");
+       yield* new LucidError({message: "Failed to build the deposit transaction", cause: "No UTxOs found in wallet"});
     }
     const inputUtxo = utxos[0];
     const assetNameBuffer = yield* hashHexWithBlake2b256(inputUtxo.txHash);
@@ -53,24 +59,6 @@ export const depositTxBuilder = (
       inclusionTime: params.inclusionTime,
     };
     const depositDatum = Data.to(currDatum, Datum);
-    const authenticateEvent: RedeemerBuilder = {
-      kind: "selected",
-      makeRedeemer: (inputIdxs: bigint[]) => {
-        const tupleList = inputIdxs.map((inputIdx, i) => [inputIdx, BigInt(i)]);
-
-        const redeemer: MintRedeemer = {
-          AuthenticateEvent: {
-            nonceInputIndex: tupleList[0][0],
-            eventOutputIndex: 0n,
-            hubRefInputIndex: 0n,
-            witnessRegistrationRedeemerIndex: 0n,
-          },
-        };
-
-        return Data.to(redeemer, MintRedeemer);
-      },
-      inputs: [inputUtxo],
-    };
     const tx = lucid
       .newTx()
       .collectFrom([inputUtxo])
