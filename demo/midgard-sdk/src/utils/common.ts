@@ -149,6 +149,14 @@ export const hashHexWithBlake2b256 = (
   msg: string,
 ): Effect.Effect<string, HashingError> => blake2bHelper(msg, 32, "Blake2b256");
 
+export const bufferToHex = (buf: Buffer): string => {
+  try {
+    return buf.toString("hex");
+  } catch (_) {
+    return "<no hex for undefined>";
+  }
+};
+
 export type GenericErrorFields = {
   readonly message: string;
   readonly cause: any;

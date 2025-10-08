@@ -52,14 +52,6 @@ export const isHexString = (str: string): boolean => {
   return hexRegex.test(str);
 };
 
-export const bufferToHex = (buf: Buffer): string => {
-  try {
-    return buf.toString("hex");
-  } catch (_) {
-    return "<no hex for undefined>";
-  }
-};
-
 export const setupLucid = async (
   network: Network,
   providerName: ProviderName,

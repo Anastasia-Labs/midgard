@@ -5,17 +5,6 @@ import {
   POSIXTimeSchema,
 } from "@/tx-builder/common.js";
 
-export const DepositEventSchema = Data.Object({
-  id: OutputReferenceSchema,
-  info: Data.Object({
-    l2Address: Data.Bytes(),
-    l2Datum: Data.Nullable(Data.Bytes()),
-  }),
-});
-
-export type DepositEvent = Data.Static<typeof DepositEventSchema>;
-export const DepositEvent = DepositEventSchema as unknown as DepositEvent;
-
 export const DepositInfoSchema = Data.Object({
   l2Address: Data.Bytes(),
   l2Datum: Data.Nullable(Data.Bytes()),
@@ -24,17 +13,25 @@ export const DepositInfoSchema = Data.Object({
 export type DepositInfo = Data.Static<typeof DepositInfoSchema>;
 export const DepositInfo = DepositInfoSchema as unknown as DepositInfo;
 
-export const DepositDatumSchema = Data.Object({
+export const DepositEventSchema = Data.Object({
+  id: OutputReferenceSchema,
+  info: DepositInfoSchema,
+});
+
+export type DepositEvent = Data.Static<typeof DepositEventSchema>;
+export const DepositEvent = DepositEventSchema as unknown as DepositEvent;
+
+export const DatumSchema = Data.Object({
   event: DepositEventSchema,
   inclusionTime: POSIXTimeSchema, // inclusion time is important , time range ,
 });
 
-export type DepositDatum = Data.Static<typeof DepositDatumSchema>;
-export const DepositDatum = DepositDatumSchema as unknown as DepositDatum;
+export type Datum = Data.Static<typeof DatumSchema>;
+export const Datum = DatumSchema as unknown as Datum;
 
 export type DepositUTxO = {
   utxo: UTxO;
-  datum: DepositDatum;
+  datum: Datum;
 };
 
 export const MintRedeemerSchema = Data.Enum([

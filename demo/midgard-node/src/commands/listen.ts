@@ -39,12 +39,7 @@ import {
   MempoolLedgerDB,
   ProcessedMempoolDB,
 } from "../database/index.js";
-import {
-  ProcessedTx,
-  breakDownTx,
-  bufferToHex,
-  isHexString,
-} from "../utils.js";
+import { ProcessedTx, breakDownTx, isHexString } from "../utils.js";
 import {
   HttpRouter,
   HttpServer,
@@ -197,8 +192,8 @@ const getUtxosHandler = Effect.gen(function* () {
     );
 
     const response = utxosWithAddress.map((entry) => ({
-      outref: bufferToHex(entry.outref),
-      value: bufferToHex(entry.output),
+      outref: SDK.Utils.bufferToHex(entry.outref),
+      value: SDK.Utils.bufferToHex(entry.output),
     }));
 
     yield* Effect.logInfo(`Found ${response.length} UTxOs for ${addr}`);

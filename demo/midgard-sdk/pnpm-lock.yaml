@@ -12,7 +12,7 @@ importers:
         specifier: ^0.4.23
         version: 0.4.27(@harmoniclabs/bytestring@1.0.0)(@harmoniclabs/cbor@1.6.6)(@harmoniclabs/crypto@0.2.5)(@harmoniclabs/pair@1.0.0)(fast-check@3.23.2)
       '@noble/hashes':
-        specifier: ^1.7.1
+        specifier: ^1.8.0
         version: 1.8.0
       effect:
         specifier: ^3.14.22
