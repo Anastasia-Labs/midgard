@@ -387,7 +387,7 @@ export class MidgardMpt {
   }
 
   public getRootHex(): Effect.Effect<string, MptError> {
-    return Effect.sync(() => toHex(this.trie.root()));
+    return this.getRoot().pipe(Effect.map(toHex));
   }
 
   public rootIsEmpty(): Effect.Effect<boolean, MptError> {
