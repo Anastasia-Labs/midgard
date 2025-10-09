@@ -46,9 +46,7 @@ export const utxoToDepositUTxO = (
 > =>
   Effect.gen(function* () {
     const datum = yield* getDepositDatumFromUTxO(utxo);
-    const [sym, assetName] = yield* getStateToken(
-      utxo.assets,
-    );
+    const [sym, assetName] = yield* getStateToken(utxo.assets);
     if (sym !== nftPolicy) {
       yield* Effect.fail(
         new UnauthenticUtxoError({

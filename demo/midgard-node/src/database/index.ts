@@ -1,5 +1,6 @@
 export * as BlocksDB from "./blocks.js";
 export * as ConfirmedLedgerDB from "./confirmedLedger.js";
+export * as DepositsDB from "./deposits.js";
 export * as ImmutableDB from "./immutable.js";
 export * as LatestLedgerDB from "./latestLedger.js";
 export * as MempoolDB from "./mempool.js";

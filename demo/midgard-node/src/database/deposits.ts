@@ -1,7 +1,6 @@
 import { Database } from "@/services/database.js";
 import { SqlClient } from "@effect/sql";
 import { Effect } from "effect";
-import { Address } from "@lucid-evolution/lucid";
 import {
   sqlErrorToDatabaseError,
   DatabaseError,
@@ -21,8 +20,7 @@ export type Entry = {
   [Columns.INCLUSION_TIME]: Date;
 };
 
-export const createTable = (
-): Effect.Effect<void, DatabaseError, Database> =>
+export const createTable: Effect.Effect<void, DatabaseError, Database> =
   Effect.gen(function* () {
     const sql = yield* SqlClient.SqlClient;
     yield* sql.withTransaction(
@@ -72,8 +70,11 @@ export const insertEntries = (
     sqlErrorToDatabaseError(tableName, "Failed to insert given UTxOs"),
   );
 
-export const retrieveAllEntries = (
-): Effect.Effect<readonly Entry[], DatabaseError, Database> =>
+export const retrieveAllEntries = (): Effect.Effect<
+  readonly Entry[],
+  DatabaseError,
+  Database
+> =>
   Effect.gen(function* () {
     yield* Effect.logDebug(`${tableName} db: attempt to retrieveEntries`);
     const sql = yield* SqlClient.SqlClient;

@@ -15,14 +15,13 @@ const isUTxOTimeValid = (
   depositUTxO: Deposit.DepositUTxO,
   inclusionStartTime: POSIXTime,
   inclusionEndTime: POSIXTime,
-): Boolean =>
-  {
-    const depositData = depositUTxO.datum;
-    return (
-      inclusionStartTime <= depositData.inclusionTime &&
-      depositData.inclusionTime <= inclusionEndTime
-    );
-  };
+): Boolean => {
+  const depositData = depositUTxO.datum;
+  return (
+    inclusionStartTime <= depositData.inclusionTime &&
+    depositData.inclusionTime <= inclusionEndTime
+  );
+};
 
 export const fetchDepositUTxOsProgram = (
   lucid: LucidEvolution,
@@ -43,7 +42,7 @@ export const fetchDepositUTxOsProgram = (
     );
 
     const validDepositUTxOs = depositUTxOs.filter((utxo) =>
-      isUTxOTimeValid(utxo, config.inclusionStartTime, config.inclusionEndTime)
-  );
+      isUTxOTimeValid(utxo, config.inclusionStartTime, config.inclusionEndTime),
+    );
     return validDepositUTxOs;
   });

@@ -16,7 +16,7 @@ type NodeConfigDep = {
   PORT: number;
   WAIT_BETWEEN_BLOCK_COMMITMENT: number;
   WAIT_BETWEEN_BLOCK_CONFIRMATION: number;
-  WAIT_BETWEEN_ROOT_DEPOSIT_CALCULATION: number;
+  WAIT_BETWEEN_DEPOSIT_UTXO_FETCHES: number;
   WAIT_BETWEEN_MERGE_TXS: number;
   PROM_METRICS_PORT: number;
   OLTP_EXPORTER_URL: string;
@@ -46,7 +46,7 @@ const makeConfig = Effect.gen(function* () {
     Config.integer("WAIT_BETWEEN_BLOCK_CONFIRMATION").pipe(
       Config.withDefault(10000),
     ),
-    Config.integer("WAIT_BETWEEN_ROOT_DEPOSIT_CALCULATION").pipe(
+    Config.integer("WAIT_BETWEEN_DEPOSIT_UTXO_FETCHES").pipe(
       Config.withDefault(10000),
     ),
     Config.integer("WAIT_BETWEEN_MERGE_TXS").pipe(Config.withDefault(10000)),
@@ -150,7 +150,7 @@ const makeConfig = Effect.gen(function* () {
     PORT: config[8],
     WAIT_BETWEEN_BLOCK_COMMITMENT: config[9],
     WAIT_BETWEEN_BLOCK_CONFIRMATION: config[10],
-    WAIT_BETWEEN_ROOT_DEPOSIT_CALCULATION: config[11],
+    WAIT_BETWEEN_DEPOSIT_UTXO_FETCHES: config[11],
     WAIT_BETWEEN_MERGE_TXS: config[12],
     PROM_METRICS_PORT: config[13],
     OLTP_EXPORTER_URL: config[14],

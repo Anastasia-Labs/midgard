@@ -114,11 +114,6 @@ export const buildAndSubmitCommitmentBlock = () =>
           globals.UNCONFIRMED_SUBMITTED_BLOCK_HASH,
           workerOutput.submittedTxHash,
         );
-        yield* Ref.set(
-          globals.UNCONFIRMED_SUBMITTED_BLOCK_TIME,
-          workerOutput.submittionTime,
-        );
-
         yield* Ref.set(globals.PROCESSED_UNSUBMITTED_TXS_COUNT, 0);
         yield* Ref.set(globals.PROCESSED_UNSUBMITTED_TXS_SIZE, 0);
 

@@ -57,14 +57,11 @@ import {
   WorkerInput as BlockConfirmationWorkerInput,
   WorkerOutput as BlockConfirmationWorkerOutput,
 } from "@/workers/utils/confirm-block-commitments.js";
-import {
-  WorkerInput as DerpositRootWorkerInput,
-  WorkerOutput as DerpositRootWorkerOutput,
-} from "@/workers/utils/calculate-deposit-root.js";
 import { WorkerError } from "@/workers/utils/common.js";
 import { SerializedStateQueueUTxO } from "@/workers/utils/commit-block-header.js";
 import { DatabaseError } from "@/database/utils/common.js";
 import { TxConfirmError, TxSignError } from "@/transactions/utils.js";
+import { fetchAndInsertDepositUTxOs } from "@/workers/fetch-and-insert-deposit-utxos.js";
 
 const TX_ENDPOINT: string = "tx";
 const MERGE_ENDPOINT: string = "merge";
@@ -657,85 +654,9 @@ const blockConfirmationAction = Effect.gen(function* () {
   }
 });
 
-const calculateDepositRootAction = Effect.gen(function* () {
-  const globals = yield* Globals;
-  const worker = Effect.async<DerpositRootWorkerOutput, WorkerError, never>(
-    (resume) => {
-      Effect.runSync(
-        Effect.logInfo(`🔍 Starting deposit root calculation worker...`),
-      );
-      const worker = new Worker(
-        new URL("./calculate-deposit-root.js", import.meta.url),
-      );
-      worker.on("message", (output: DerpositRootWorkerOutput) => {
-        if (output.type === "FailedRootCalculationOutput") {
-          resume(
-            Effect.fail(
-              new WorkerError({
-                worker: "calculate-deposit-root",
-                message: `Deposit root calculation worker failed.`,
-                cause: output.error,
-              }),
-            ),
-          );
-        } else {
-          resume(Effect.succeed(output));
-        }
-        worker.terminate();
-      });
-      worker.on("error", (e: Error) => {
-        resume(
-          Effect.fail(
-            new WorkerError({
-              worker: "calculate-deposit-root",
-              message: `Error in deposit root worker: ${e}`,
-              cause: e,
-            }),
-          ),
-        );
-        worker.terminate();
-      });
-      worker.on("exit", (code: number) => {
-        if (code !== 0) {
-          resume(
-            Effect.fail(
-              new WorkerError({
-                worker: "calculate-deposit-root",
-                message: `Root deposit worker exited with code: ${code}`,
-                cause: `exit code ${code}`,
-              }),
-            ),
-          );
-        }
-      });
-      return Effect.sync(() => {
-        worker.terminate();
-      });
-    },
-  );
-  const workerOutput: DerpositRootWorkerOutput = yield* worker;
-  switch (workerOutput.type) {
-    case "SuccessfulRootCalculationOutput": {
-      yield* globals.DEPOSIT_ROOTS_QUEUE.offer(workerOutput.mptRoot);
-      // TODO: provide the `workerOutput.inclusionTime` somewhere
-      yield* Effect.logInfo(
-        "🔍 ☑️  Submitted deposit root to the roots queue.",
-      );
-      break;
-    }
-    case "NoTxForCoRootCalculation": {
-      break;
-    }
-    case "FailedRootCalculationOutput": {
-      break;
-    }
-  }
-});
-
 const mergeAction = Effect.gen(function* () {
   const lucid = yield* Lucid;
-  const { stateQueueAuthValidator, depositAuthValidator } =
-    yield* AlwaysSucceedsContract;
+  const { stateQueueAuthValidator } = yield* AlwaysSucceedsContract;
 
   const fetchConfig: SDK.TxBuilder.StateQueue.FetchConfig = {
     stateQueueAddress: stateQueueAuthValidator.spendScriptAddress,
@@ -796,13 +717,10 @@ const blockConfirmationFork = (rerunDelay: number) =>
     yield* Effect.repeat(action, schedule);
   });
 
-const calculateDepositRootFork = (rerunDelay: number) =>
+const fetchAndInsertDepositUTxOsFork = (rerunDelay: number) =>
   Effect.gen(function* () {
-    yield* Effect.logInfo("🟪 Calculate deposit root fork started.");
-    const action = calculateDepositRootAction.pipe(
-      Effect.withSpan("calculate-deposit-root"),
-      Effect.catchAllCause(Effect.logWarning),
-    );
+    yield* Effect.logInfo("🟪 Fetch and insert DepositUTxOs to the DB.");
+    const action = fetchAndInsertDepositUTxOs();
     const schedule = Schedule.addDelay(Schedule.forever, () =>
       Duration.millis(rerunDelay),
     );
@@ -892,8 +810,8 @@ export const runNode = Effect.gen(function* () {
     nodeConfig.WAIT_BETWEEN_BLOCK_CONFIRMATION,
   );
 
-  const calculateDepositRootThread = calculateDepositRootFork(
-    nodeConfig.WAIT_BETWEEN_ROOT_DEPOSIT_CALCULATION,
+  const calculateDepositRootThread = fetchAndInsertDepositUTxOsFork(
+    nodeConfig.WAIT_BETWEEN_DEPOSIT_UTXO_FETCHES,
   );
 
   const mergeThread = mergeFork(nodeConfig.WAIT_BETWEEN_MERGE_TXS);
