@@ -5,7 +5,7 @@ import {
   AssetError,
   DataCoercionError,
   UnauthenticUtxoError,
-  getSingleAssetApartFromAda,
+  getStateToken,
 } from "@/utils/common.js";
 
 export const getDepositDatumFromUTxO = (
@@ -46,7 +46,7 @@ export const utxoToDepositUTxO = (
 > =>
   Effect.gen(function* () {
     const datum = yield* getDepositDatumFromUTxO(utxo);
-    const [sym, assetName, _qty] = yield* getSingleAssetApartFromAda(
+    const [sym, assetName] = yield* getStateToken(
       utxo.assets,
     );
     if (sym !== nftPolicy) {
