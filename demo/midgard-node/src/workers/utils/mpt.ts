@@ -307,6 +307,12 @@ export class MptError extends Data.TaggedError(
       cause,
     });
   }
+  static rootNotSet(trie: string, cause: unknown) {
+    return new MptError({
+      message: `An error occurred getting ${trie} trie root, the root is ${typeof cause}`,
+      cause,
+    });
+  }
 }
 
 export class MidgardMpt {
@@ -364,24 +370,27 @@ export class MidgardMpt {
     });
   }
 
-  public getRoot(): Effect.Effect<Uint8Array> {
-    return Effect.sync(() => {
-      const root = this.trie.root();
+  public getRoot(): Effect.Effect<Uint8Array, MptError> {
+    const trieName = this.trieName;
+    const root = this.trie.root();
+    return Effect.gen(function* () {
+      if (root === undefined || root === null)
+        return yield* Effect.fail(MptError.rootNotSet(trieName, root));
       // Normalize to pure Uint8Array for type consistency
       // trie.root() returns different constructor types depending on the source:
       //   - Fresh (computed): Uint8Array
-      //   - Persisted (loaded from Level.js): Buffer (Node.js returns Buffer for 'view' encoding)
+      //   - Persisted (loaded from Level.js after some changes): Buffer
       return root instanceof Uint8Array && !Buffer.isBuffer(root)
         ? root
         : new Uint8Array(root.buffer, root.byteOffset, root.byteLength);
     });
   }
 
-  public getRootHex(): Effect.Effect<string> {
+  public getRootHex(): Effect.Effect<string, MptError> {
     return Effect.sync(() => toHex(this.trie.root()));
   }
 
-  public rootIsEmpty(): Effect.Effect<boolean> {
+  public rootIsEmpty(): Effect.Effect<boolean, MptError> {
     const getRootHex = this.getRootHex();
     const emptyRootHex = toHex(this.trie.EMPTY_TRIE_ROOT);
     return Effect.gen(function* () {
