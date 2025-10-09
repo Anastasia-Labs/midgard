@@ -105,8 +105,7 @@ const wrapper = (
       const { utxoRoot, txRoot, mempoolTxHashes, sizeOfProcessedTxs } =
         yield* processMpts(ledgerTrie, mempoolTrie, mempoolTxs);
 
-      const { policyId, spendScript, spendScriptAddress, mintScript } =
-        yield* AlwaysSucceedsContract;
+      const { stateQueueAuthValidator } = yield* AlwaysSucceedsContract;
 
       const skippedSubmissionProgram = batchProgram(
         BATCH_SIZE,
@@ -165,6 +164,8 @@ const wrapper = (
             latestBlock.datum,
             utxoRoot,
             txRoot,
+            "00".repeat(32),
+            "00".repeat(32),
             BigInt(endTime),
           );
 
@@ -176,17 +177,17 @@ const wrapper = (
           anchorUTxO: latestBlock,
           updatedAnchorDatum: updatedNodeDatum,
           newHeader: newHeader,
-          stateQueueSpendingScript: spendScript,
-          policyId,
-          stateQueueMintingScript: mintScript,
+          stateQueueSpendingScript: stateQueueAuthValidator.spendScript,
+          policyId: stateQueueAuthValidator.policyId,
+          stateQueueMintingScript: stateQueueAuthValidator.mintScript,
         };
 
         const aoUpdateCommitmentTimeParams = {};
 
         yield* Effect.logInfo("🔹 Building block commitment transaction...");
         const fetchConfig: SDK.TxBuilder.StateQueue.FetchConfig = {
-          stateQueueAddress: spendScriptAddress,
-          stateQueuePolicyId: policyId,
+          stateQueueAddress: stateQueueAuthValidator.spendScriptAddress,
+          stateQueuePolicyId: stateQueueAuthValidator.policyId,
         };
         yield* lucid.switchToOperatorsMainWallet;
         const txBuilder = yield* SDK.Endpoints.commitBlockHeaderProgram(
@@ -287,6 +288,7 @@ const wrapper = (
             return {
               type: "SuccessfulSubmissionOutput",
               submittedTxHash: txHash,
+              submittionTime: BigInt(endTime),
               txSize,
               mempoolTxsCount:
                 mempoolTxsCount + workerInput.data.mempoolTxsCountSoFar,

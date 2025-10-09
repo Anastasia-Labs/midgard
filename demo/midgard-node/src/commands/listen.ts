@@ -39,12 +39,7 @@ import {
   MempoolLedgerDB,
   ProcessedMempoolDB,
 } from "../database/index.js";
-import {
-  ProcessedTx,
-  breakDownTx,
-  bufferToHex,
-  isHexString,
-} from "../utils.js";
+import { ProcessedTx, breakDownTx, isHexString } from "../utils.js";
 import {
   HttpRouter,
   HttpServer,
@@ -66,6 +61,7 @@ import { WorkerError } from "@/workers/utils/common.js";
 import { SerializedStateQueueUTxO } from "@/workers/utils/commit-block-header.js";
 import { DatabaseError } from "@/database/utils/common.js";
 import { TxConfirmError, TxSignError } from "@/transactions/utils.js";
+import { fetchAndInsertDepositUTxOs } from "@/workers/fetch-and-insert-deposit-utxos.js";
 
 const TX_ENDPOINT: string = "tx";
 const MERGE_ENDPOINT: string = "merge";
@@ -193,8 +189,8 @@ const getUtxosHandler = Effect.gen(function* () {
     );
 
     const response = utxosWithAddress.map((entry) => ({
-      outref: bufferToHex(entry.outref),
-      value: bufferToHex(entry.output),
+      outref: SDK.Utils.bufferToHex(entry.outref),
+      value: SDK.Utils.bufferToHex(entry.output),
     }));
 
     yield* Effect.logInfo(`Found ${response.length} UTxOs for ${addr}`);
@@ -372,8 +368,9 @@ const getLogStateQueueHandler = Effect.gen(function* () {
   const lucid = yield* Lucid;
   const alwaysSucceeds = yield* AlwaysSucceedsContract;
   const fetchConfig: SDK.TxBuilder.StateQueue.FetchConfig = {
-    stateQueuePolicyId: alwaysSucceeds.policyId,
-    stateQueueAddress: alwaysSucceeds.spendScriptAddress,
+    stateQueuePolicyId: alwaysSucceeds.stateQueueAuthValidator.policyId,
+    stateQueueAddress:
+      alwaysSucceeds.stateQueueAuthValidator.spendScriptAddress,
   };
   const sortedUTxOs = yield* SDK.Endpoints.fetchSortedStateQueueUTxOsProgram(
     lucid.api,
@@ -467,8 +464,8 @@ const getLogGlobalsHandler = Effect.gen(function* () {
   const PROCESSED_UNSUBMITTED_TXS_SIZE: number = yield* Ref.get(
     globals.PROCESSED_UNSUBMITTED_TXS_SIZE,
   );
-  const UNCONFIRMED_SUBMITTED_BLOCK: string = yield* Ref.get(
-    globals.UNCONFIRMED_SUBMITTED_BLOCK,
+  const UNCONFIRMED_SUBMITTED_BLOCK_HASH: string = yield* Ref.get(
+    globals.UNCONFIRMED_SUBMITTED_BLOCK_HASH,
   );
 
   yield* Effect.logInfo(`
@@ -478,7 +475,7 @@ const getLogGlobalsHandler = Effect.gen(function* () {
   AVAILABLE_CONFIRMED_BLOCK ⋅⋅⋅⋅⋅⋅⋅⋅⋅ ${JSON.stringify(AVAILABLE_CONFIRMED_BLOCK)}
   PROCESSED_UNSUBMITTED_TXS_COUNT ⋅⋅⋅ ${PROCESSED_UNSUBMITTED_TXS_COUNT}
   PROCESSED_UNSUBMITTED_TXS_SIZE ⋅⋅⋅⋅ ${PROCESSED_UNSUBMITTED_TXS_SIZE}
-  UNCONFIRMED_SUBMITTED_BLOCK ⋅⋅⋅⋅⋅⋅⋅ ${UNCONFIRMED_SUBMITTED_BLOCK}
+  UNCONFIRMED_SUBMITTED_BLOCK_HASH ⋅⋅⋅⋅⋅⋅⋅ ${UNCONFIRMED_SUBMITTED_BLOCK_HASH}
 `);
   return yield* HttpServerResponse.json({
     message: `Global variables logged!`,
@@ -563,8 +560,8 @@ const blockConfirmationAction = Effect.gen(function* () {
   const globals = yield* Globals;
   const RESET_IN_PROGRESS = yield* Ref.get(globals.RESET_IN_PROGRESS);
   if (!RESET_IN_PROGRESS) {
-    const UNCONFIRMED_SUBMITTED_BLOCK = yield* Ref.get(
-      globals.UNCONFIRMED_SUBMITTED_BLOCK,
+    const UNCONFIRMED_SUBMITTED_BLOCK_HASH = yield* Ref.get(
+      globals.UNCONFIRMED_SUBMITTED_BLOCK_HASH,
     );
     const AVAILABLE_CONFIRMED_BLOCK = yield* Ref.get(
       globals.AVAILABLE_CONFIRMED_BLOCK,
@@ -584,9 +581,9 @@ const blockConfirmationAction = Effect.gen(function* () {
           workerData: {
             data: {
               firstRun:
-                UNCONFIRMED_SUBMITTED_BLOCK === "" &&
+                UNCONFIRMED_SUBMITTED_BLOCK_HASH === "" &&
                 AVAILABLE_CONFIRMED_BLOCK === "",
-              unconfirmedSubmittedBlock: UNCONFIRMED_SUBMITTED_BLOCK,
+              unconfirmedSubmittedBlock: UNCONFIRMED_SUBMITTED_BLOCK_HASH,
             },
           } as BlockConfirmationWorkerInput, // TODO: Consider other approaches to avoid type assertion here.
         },
@@ -639,7 +636,7 @@ const blockConfirmationAction = Effect.gen(function* () {
     const workerOutput: BlockConfirmationWorkerOutput = yield* worker;
     switch (workerOutput.type) {
       case "SuccessfulConfirmationOutput": {
-        yield* Ref.set(globals.UNCONFIRMED_SUBMITTED_BLOCK, "");
+        yield* Ref.set(globals.UNCONFIRMED_SUBMITTED_BLOCK_HASH, "");
         yield* Ref.set(
           globals.AVAILABLE_CONFIRMED_BLOCK,
           workerOutput.blocksUTxO,
@@ -659,18 +656,18 @@ const blockConfirmationAction = Effect.gen(function* () {
 
 const mergeAction = Effect.gen(function* () {
   const lucid = yield* Lucid;
-  const { spendScriptAddress, policyId, spendScript, mintScript } =
-    yield* AlwaysSucceedsContract;
+  const { stateQueueAuthValidator } = yield* AlwaysSucceedsContract;
+
   const fetchConfig: SDK.TxBuilder.StateQueue.FetchConfig = {
-    stateQueueAddress: spendScriptAddress,
-    stateQueuePolicyId: policyId,
+    stateQueueAddress: stateQueueAuthValidator.spendScriptAddress,
+    stateQueuePolicyId: stateQueueAuthValidator.policyId,
   };
   yield* lucid.switchToOperatorsMergingWallet;
   yield* StateQueueTx.buildAndSubmitMergeTx(
     lucid.api,
     fetchConfig,
-    spendScript,
-    mintScript,
+    stateQueueAuthValidator.spendScript,
+    stateQueueAuthValidator.mintScript,
   );
 });
 
@@ -714,6 +711,16 @@ const blockConfirmationFork = (rerunDelay: number) =>
       Effect.withSpan("block-confirmation-fork"),
       Effect.catchAllCause(Effect.logWarning),
     );
+    const schedule = Schedule.addDelay(Schedule.forever, () =>
+      Duration.millis(rerunDelay),
+    );
+    yield* Effect.repeat(action, schedule);
+  });
+
+const fetchAndInsertDepositUTxOsFork = (rerunDelay: number) =>
+  Effect.gen(function* () {
+    yield* Effect.logInfo("🟪 Fetch and insert DepositUTxOs to the DB.");
+    const action = fetchAndInsertDepositUTxOs();
     const schedule = Schedule.addDelay(Schedule.forever, () =>
       Duration.millis(rerunDelay),
     );
@@ -803,6 +810,10 @@ export const runNode = Effect.gen(function* () {
     nodeConfig.WAIT_BETWEEN_BLOCK_CONFIRMATION,
   );
 
+  const calculateDepositRootThread = fetchAndInsertDepositUTxOsFork(
+    nodeConfig.WAIT_BETWEEN_DEPOSIT_UTXO_FETCHES,
+  );
+
   const mergeThread = mergeFork(nodeConfig.WAIT_BETWEEN_MERGE_TXS);
 
   const monitorMempoolThread = monitorMempoolFork;
@@ -814,6 +825,7 @@ export const runNode = Effect.gen(function* () {
       appThread,
       blockCommitmentThread,
       blockConfirmationThread,
+      calculateDepositRootThread,
       mergeThread,
       monitorMempoolThread,
       txQueueProcessorThread,
