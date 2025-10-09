@@ -184,6 +184,7 @@ services:
       midgard_net:
 
   midgard-node-tests:
+    profiles: ["test"]  # Only start this service when explicitly requested
     build:
       context: .
       additional_contexts:

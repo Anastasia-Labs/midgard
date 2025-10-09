@@ -51,5 +51,5 @@ pnpm test
 For testing inside docker container run
 
 ```sh
-docker-compose run midgard-node-tests
+docker-compose run --rm midgard-node-tests
 ```
