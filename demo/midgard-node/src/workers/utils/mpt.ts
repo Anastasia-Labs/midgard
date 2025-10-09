@@ -310,10 +310,10 @@ export class MptError extends Data.TaggedError(
 }
 
 export class MidgardMpt {
-  public trie: ETH.MerklePatriciaTrie;
-  public trieName: string;
-  public database: LevelDB;
-  public databaseFilePath: string;
+  public readonly trie: ETH.MerklePatriciaTrie;
+  public readonly trieName: string;
+  public readonly database: LevelDB;
+  public readonly databaseFilePath: string;
 
   private constructor(
     database: LevelDB,
