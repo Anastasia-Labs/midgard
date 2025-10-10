@@ -27,7 +27,7 @@ beforeAll(async () => {
   );
 });
 
-describe("The makeMpts tests", () => {
+describe("The mpt tests", () => {
   it.effect("Initialization and basic functions", (_) =>
     Effect.gen(function* () {
       const mpt = yield* createTrie;
@@ -174,6 +174,43 @@ describe("The makeMpts tests", () => {
       Effect.provide(NodeConfig.layer),
     ),
   );
+
+  it.effect("In-memory database", (_) =>
+    Effect.gen(function* () {
+      const mpt = yield* MidgardMpt.create("test-mpt");
+      const initRoot = yield* mpt.getRootHex();
+      expect(initRoot).toBe("56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421")
+      const putOp: ETH_UTILS.BatchDBOp = {
+        type: "put",
+        key: txId1,
+        value: fromHex(tx1),
+      };
+      yield* mpt.batch([putOp]);
+      const root1 = yield* mpt.getRootHex();
+      expect(root1).toStrictEqual(
+          "9cf4055fd9458e7b1f96266162787abcf218598f3213bd65257e2d4d10b144f3",
+      );
+      const delOp: ETH_UTILS.BatchDBOp = {
+        type: "del",
+        key: txId1,
+      };
+      yield* mpt.checkpoint();
+      yield* mpt.batch([delOp]);
+      const root2 = yield* mpt.getRootHex();
+      expect(root2).toStrictEqual(
+        "56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421",
+      );
+      yield* mpt.revert();
+      const root3 = yield* mpt.getRootHex();
+      expect(root3).toStrictEqual(
+          "9cf4055fd9458e7b1f96266162787abcf218598f3213bd65257e2d4d10b144f3",
+      );
+    }).pipe(
+      Effect.provide(Database.layer),
+      Effect.provide(Lucid.Default),
+      Effect.provide(NodeConfig.layer),
+    ),
+  );
 });
 
 const txId1 = Buffer.from("11111111111", "hex");
@@ -182,14 +219,14 @@ const tx1 =
 
 const createTrie: Effect.Effect<MidgardMpt, MptError> = Effect.gen(
   function* () {
-    return yield* MidgardMpt.create("test-mpt-db", "test-mpt");
+    return yield* MidgardMpt.create("test-mpt", "test-mpt-db");
   },
 );
 
 const closeDatabase = (trie: MidgardMpt): Effect.Effect<void, Error> =>
   Effect.gen(function* () {
     return yield* Effect.tryPromise({
-      try: () => trie.database._leveldb.close(),
+      try: () => trie.database ? trie.database._leveldb.close() : Promise.resolve(),
       catch: (e) => new Error(`Error closing database: ${e}`),
     });
   });

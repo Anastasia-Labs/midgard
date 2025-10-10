@@ -25,12 +25,12 @@ export const makeMpts: Effect.Effect<
 > = Effect.gen(function* () {
   const nodeConfig = yield* NodeConfig;
   const mempoolTrie = yield* MidgardMpt.create(
-    nodeConfig.MEMPOOL_MPT_DB_PATH,
     "mempool",
+    nodeConfig.MEMPOOL_MPT_DB_PATH,
   );
   const ledgerTrie = yield* MidgardMpt.create(
-    nodeConfig.LEDGER_MPT_DB_PATH,
     "ledger",
+    nodeConfig.LEDGER_MPT_DB_PATH,
   );
   const ledgerRootIsEmpty = yield* ledgerTrie.rootIsEmpty();
   if (ledgerRootIsEmpty) {
@@ -318,47 +318,61 @@ export class MptError extends Data.TaggedError(
 export class MidgardMpt {
   public readonly trie: ETH.MerklePatriciaTrie;
   public readonly trieName: string;
-  public readonly database: LevelDB;
-  public readonly databaseFilePath: string;
+  public readonly database?: LevelDB;
+  public readonly databaseFilePath?: string;
 
   private constructor(
-    database: LevelDB,
-    databaseFilePath: string,
     trie: ETH.MerklePatriciaTrie,
     trieName: string,
+    database?: LevelDB,
+    databaseFilePath?: string,
   ) {
-    this.database = database;
-    this.databaseFilePath = databaseFilePath;
     this.trie = trie;
     this.trieName = trieName;
+    this.database = database;
+    this.databaseFilePath = databaseFilePath;
   }
 
+  /**
+ * Create a Merkle Patricia Trie (MPT) with a LevelDB-backed database if
+ * `levelDBFilePath` is provided, or an in-memory database otherwise.
+ *
+ * @param trieName - The name identifier for the trie instance.
+ * @param levelDBFilePath - Optional file path for LevelDB persistence.
+ * @returns An Effect that resolves to the created MidgardMpt instance or fails with MptError.
+ */
   public static create(
-    levelDBFilePath: string,
     trieName: string,
+    levelDBFilePath?: string,
   ): Effect.Effect<MidgardMpt, MptError> {
     return Effect.gen(function* () {
-      const level = new Level<string, Uint8Array>(
-        levelDBFilePath,
-        LEVELDB_ENCODING_OPTS,
-      );
-      const levelDB = new LevelDB(level);
+      let db: LevelDB | undefined = undefined;
+      let useRootPersistence = false;
+      let valueEncoding: ETH_UTILS.ValueEncoding | undefined = undefined;
+      if (typeof levelDBFilePath === "string") {
+        const level = new Level<string, Uint8Array>(
+          levelDBFilePath,
+          LEVELDB_ENCODING_OPTS,
+        );
+        db = new LevelDB(level);
+        valueEncoding = LEVELDB_ENCODING_OPTS.valueEncoding;
+        useRootPersistence = true;
+      }
       const trie = yield* Effect.tryPromise({
         try: () =>
-          ETH.createMPT({
-            db: levelDB,
-            useRootPersistence: true,
-            valueEncoding: LEVELDB_ENCODING_OPTS.valueEncoding,
-          }),
+          ETH.createMPT({db, useRootPersistence, valueEncoding}),
         catch: (e) => MptError.trieCreate(trieName, e),
       });
-      const wrapper = new MidgardMpt(levelDB, levelDBFilePath, trie, trieName);
-      return wrapper;
+      return new MidgardMpt(trie, trieName, db, levelDBFilePath);
     });
   }
 
   public delete(): Effect.Effect<void, FileSystemError> {
-    return deleteMpt(this.databaseFilePath, this.trieName);
+    if (this.databaseFilePath) {
+      return deleteMpt(this.databaseFilePath, this.trieName);
+    } else {
+      return Effect.succeed(Effect.void);
+    }
   }
 
   public batch(arg: ETH_UTILS.BatchDBOp[]): Effect.Effect<void, MptError> {
