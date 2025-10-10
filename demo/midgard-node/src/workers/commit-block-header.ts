@@ -28,7 +28,6 @@ import {
 import { fromHex } from "@lucid-evolution/lucid";
 import {
   MptError,
-  deleteMempoolMpt,
   makeMpts,
   processMpts,
   withTrieTransaction,
@@ -211,7 +210,7 @@ const wrapper = (
               "🔹 ⚠️  Mempool trie will be preserved, but db will be cleared.",
             );
             yield* Effect.logInfo("🔹 Mempool Trie stats:");
-            console.dir(mempoolTrie.database()._stats, { depth: null });
+            console.dir(mempoolTrie.databaseStats(), { depth: null });
             return {
               type: "SkippedSubmissionOutput",
               mempoolTxsCount,
@@ -279,7 +278,7 @@ const wrapper = (
                   },
                 ),
                 ProcessedMempoolDB.clear, // uses `TRUNCATE` so no need for batching.
-                deleteMempoolMpt,
+                mempoolTrie.delete(),
               ],
               { concurrency: "unbounded" },
             );
