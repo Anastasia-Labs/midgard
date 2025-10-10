@@ -27,7 +27,7 @@ beforeAll(async () => {
   );
 });
 
-describe("The mpt tests", () => {
+describe("The levelDB mpt tests ", () => {
   it.effect("Initialization and basic functions", (_) =>
     Effect.gen(function* () {
       const mpt = yield* createTrie;
@@ -174,8 +174,10 @@ describe("The mpt tests", () => {
       Effect.provide(NodeConfig.layer),
     ),
   );
+});
 
-  it.effect("In-memory database", (_) =>
+describe("The in-memory db mpt tests ", () => {
+  it.effect("Initialization and basic functions, commit, revert", (_) =>
     Effect.gen(function* () {
       const mpt = yield* MidgardMpt.create("test-mpt");
       const initRoot = yield* mpt.getRootHex();
@@ -211,7 +213,7 @@ describe("The mpt tests", () => {
       Effect.provide(NodeConfig.layer),
     ),
   );
-});
+})
 
 const txId1 = Buffer.from("11111111111", "hex");
 const tx1 =
