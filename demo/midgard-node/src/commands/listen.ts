@@ -810,7 +810,7 @@ export const runNode = Effect.gen(function* () {
     nodeConfig.WAIT_BETWEEN_BLOCK_CONFIRMATION,
   );
 
-  const calculateDepositRootThread = fetchAndInsertDepositUTxOsFork(
+  const fetchAndInsertDepositUTxOsThread = fetchAndInsertDepositUTxOsFork(
     nodeConfig.WAIT_BETWEEN_DEPOSIT_UTXO_FETCHES,
   );
 
@@ -825,7 +825,7 @@ export const runNode = Effect.gen(function* () {
       appThread,
       blockCommitmentThread,
       blockConfirmationThread,
-      calculateDepositRootThread,
+      fetchAndInsertDepositUTxOsThread,
       mergeThread,
       monitorMempoolThread,
       txQueueProcessorThread,
