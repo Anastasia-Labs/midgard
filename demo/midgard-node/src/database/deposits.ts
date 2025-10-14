@@ -9,14 +9,14 @@ import {
 export const tableName = "deposits_utxos";
 
 export enum Columns {
-  OUTREF = "event_id",
-  EVENT_INFO = "event_info",
+  ID = "event_id",
+  INFO = "event_info",
   INCLUSION_TIME = "inclusion_time",
 }
 
 export type Entry = {
-  [Columns.OUTREF]: Buffer;
-  [Columns.EVENT_INFO]: Buffer;
+  [Columns.ID]: Buffer;
+  [Columns.INFO]: Buffer;
   [Columns.INCLUSION_TIME]: Date;
 };
 
@@ -26,10 +26,10 @@ export const createTable: Effect.Effect<void, DatabaseError, Database> =
     yield* sql.withTransaction(
       Effect.gen(function* () {
         yield* sql`CREATE TABLE IF NOT EXISTS ${sql(tableName)} (
-        ${sql(Columns.OUTREF)} BYTEA NOT NULL,
-        ${sql(Columns.EVENT_INFO)} BYTEA NOT NULL,
+        ${sql(Columns.ID)} BYTEA NOT NULL,
+        ${sql(Columns.INFO)} BYTEA NOT NULL,
         ${sql(Columns.INCLUSION_TIME)} TIMESTAMPTZ NOT NULL,
-        PRIMARY KEY (${sql(Columns.OUTREF)})
+        PRIMARY KEY (${sql(Columns.ID)})
       );`;
       }),
     );
@@ -116,11 +116,11 @@ export const retrieveAllEntries = (): Effect.Effect<
   );
 
 export const delEntries = (
-  outrefs: Buffer[],
+  ids: Buffer[],
 ): Effect.Effect<void, DatabaseError, Database> =>
   Effect.gen(function* () {
     const sql = yield* SqlClient.SqlClient;
     yield* sql`DELETE FROM ${sql(tableName)} WHERE ${sql(
-      Columns.OUTREF,
-    )} IN ${sql.in(outrefs)}`;
+      Columns.ID,
+    )} IN ${sql.in(ids)}`;
   }).pipe(sqlErrorToDatabaseError(tableName, "Failed to delete given UTxOs"));

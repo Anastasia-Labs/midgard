@@ -15,10 +15,10 @@ const isUTxOTimeValid = (
   depositUTxO: Deposit.DepositUTxO,
   inclusionStartTime: POSIXTime,
   inclusionEndTime: POSIXTime,
-): Boolean => {
+): boolean => {
   const depositData = depositUTxO.datum;
   return (
-    inclusionStartTime <= depositData.inclusionTime &&
+    inclusionStartTime < depositData.inclusionTime &&
     depositData.inclusionTime <= inclusionEndTime
   );
 };

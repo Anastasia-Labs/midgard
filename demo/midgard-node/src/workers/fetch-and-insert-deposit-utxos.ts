@@ -14,8 +14,8 @@ import { DatabaseError } from "@/database/utils/common.js";
 
 const fetchDepositUTxOs = (
   lucid: LucidEvolution,
-  inclusionStartTime: bigint,
-  inclusionEndTime: bigint,
+  inclusionStartTime: number,
+  inclusionEndTime: number,
 ): Effect.Effect<
   SDK.TxBuilder.Deposit.DepositUTxO[],
   | SDK.Utils.LucidError
@@ -29,8 +29,8 @@ const fetchDepositUTxOs = (
     const fetchConfig: SDK.TxBuilder.Deposit.FetchConfig = {
       depositAddress: depositAuthValidator.spendScriptAddress,
       depositPolicyId: depositAuthValidator.policyId,
-      inclusionStartTime: inclusionStartTime,
-      inclusionEndTime: inclusionEndTime,
+      inclusionStartTime: BigInt(inclusionStartTime),
+      inclusionEndTime: BigInt(inclusionEndTime),
     };
     return yield* SDK.Endpoints.fetchDepositUTxOsProgram(lucid, fetchConfig);
   });
@@ -48,9 +48,8 @@ export const fetchAndInsertDepositUTxOs = (): Effect.Effect<
   Effect.gen(function* () {
     const { api: lucid } = yield* Lucid;
     const globals = yield* Globals;
-    const startTime: bigint = yield* Ref.get(globals.LATEST_DEPOSIT_FETCH_TIME);
-
-    const endTime = BigInt(Date.now());
+    const startTime: number = yield* Ref.get(globals.LATEST_DEPOSIT_FETCH_TIME);
+    const endTime: number = Date.now();
     yield* Ref.set(globals.LATEST_DEPOSIT_FETCH_TIME, endTime);
 
     yield* Effect.logInfo("  fetching DepositUTxOs...");
@@ -68,8 +67,8 @@ export const fetchAndInsertDepositUTxOs = (): Effect.Effect<
       new Date(Number(utxo.datum.inclusionTime)); // TODO: Check if that the correct conversion for the db entry
 
     const entries: DepositsDB.Entry[] = depositUTxOs.map((utxo) => ({
-      [DepositsDB.Columns.OUTREF]: toBuffer(getOutRef(utxo)),
-      [DepositsDB.Columns.EVENT_INFO]: toBuffer(getDepositInfo(utxo)),
+      [DepositsDB.Columns.ID]: toBuffer(getOutRef(utxo)),
+      [DepositsDB.Columns.INFO]: toBuffer(getDepositInfo(utxo)),
       [DepositsDB.Columns.INCLUSION_TIME]: getInclusionTime(utxo),
     }));
 
