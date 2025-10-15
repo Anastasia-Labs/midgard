@@ -28,8 +28,8 @@ type Entry = EntryNoHeightAndTS & {
   [Columns.TIMESTAMPTZ]: Date;
 };
 
-export const init: Effect.Effect<void, DatabaseError, Database> = Effect.gen(
-  function* () {
+export const createTable: Effect.Effect<void, DatabaseError, Database> =
+  Effect.gen(function* () {
     const sql = yield* SqlClient.SqlClient;
     yield* sql.withTransaction(
       Effect.gen(function* () {
@@ -47,8 +47,7 @@ export const init: Effect.Effect<void, DatabaseError, Database> = Effect.gen(
         )} ON ${sql(tableName)} (${sql(Columns.TX_ID)});`;
       }),
     );
-  },
-).pipe(sqlErrorToDatabaseError(tableName, "Failed to create the table"));
+  }).pipe(sqlErrorToDatabaseError(tableName, "Failed to create the table"));
 
 export const insert = (
   headerHash: Buffer,

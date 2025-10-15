@@ -14,12 +14,12 @@ export const stateQueueInit: Effect.Effect<
   Lucid | NodeConfig | AlwaysSucceedsContract
 > = Effect.gen(function* () {
   const lucid = yield* Lucid;
-  const { spendScriptAddress, mintScript, policyId } =
+  const { stateQueueAuthValidator, depositAuthValidator } =
     yield* AlwaysSucceedsContract;
   const initParams: SDK.TxBuilder.StateQueue.InitParams = {
-    address: spendScriptAddress,
-    policyId: policyId,
-    stateQueueMintingScript: mintScript,
+    address: stateQueueAuthValidator.spendScriptAddress,
+    policyId: stateQueueAuthValidator.policyId,
+    stateQueueMintingScript: stateQueueAuthValidator.mintScript,
   };
   yield* lucid.switchToOperatorsMainWallet;
   const txBuilderProgram = SDK.Endpoints.initTxProgram(lucid.api, initParams);

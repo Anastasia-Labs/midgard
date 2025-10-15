@@ -35,8 +35,6 @@ export const commitTxBuilder = (
 ): Effect.Effect<TxBuilder, HashingError> =>
   Effect.gen(function* () {
     const newHeaderHash = yield* hashHeader(newHeader);
-    // const endTime = newHeader.endTime;
-
     const assets: Assets = {
       [toUnit(policyId, fromText("Node") + newHeaderHash)]: 1n,
     };
@@ -47,10 +45,12 @@ export const commitTxBuilder = (
       data: Data.castTo(newHeader, Header),
     };
 
+    // Add 1 minute
+    const endTime = Date.now()
+    const endTimePlusOneMinute = endTime + 60000;
     const tx = lucid
       .newTx()
-      // .validFrom(Number(newHeader.startTime))
-      // .validTo(Number(endTime))
+      .validTo(endTimePlusOneMinute)
       .collectFrom([latestBlock.utxo], Data.void())
       .pay.ToContract(
         config.stateQueueAddress,

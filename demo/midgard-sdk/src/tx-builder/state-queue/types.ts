@@ -1,7 +1,7 @@
 import { Address, PolicyId, Script, Data, UTxO } from "@lucid-evolution/lucid";
-import { OutputReferenceSchema, POSIXTimeSchema } from "../common.js";
-import { NodeDatumSchema } from "../linked-list.js";
-import { Header } from "../ledger-state.js";
+import { OutputReferenceSchema, POSIXTimeSchema } from "@/tx-builder/common.js";
+import { NodeDatumSchema } from "@/tx-builder/linked-list.js";
+import { Header } from "@/tx-builder/ledger-state.js";
 
 export const ConfigSchema = Data.Object({
   initUTxO: OutputReferenceSchema,
@@ -19,7 +19,7 @@ export const RedeemerSchema = Data.Enum([
   Data.Literal("MergeToConfirmedState"),
   Data.Object({
     RemoveFraudulentBlockHeader: Data.Object({
-      fraudulent_operator: Data.Bytes(),
+      fraudulentOperator: Data.Bytes(),
     }),
   }),
 ]);

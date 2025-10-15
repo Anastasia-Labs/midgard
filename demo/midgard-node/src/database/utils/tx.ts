@@ -170,7 +170,7 @@ export const retrieveAllEntries = (
       `${tableName} db: attempt to retrieve all tx entries`,
     );
     const sql = yield* SqlClient.SqlClient;
-    return yield* sql<EntryWithTimeStamp>`SELECT * FROM ${sql(tableName)}`;
+    return yield* sql<EntryWithTimeStamp>`SELECT * FROM ${sql(tableName)} ORDER BY ${Columns.TIMESTAMPTZ} DESC; `;
   }).pipe(
     Effect.withLogSpan(`retrieve ${tableName}`),
     Effect.tapErrorTag("SqlError", (e) =>

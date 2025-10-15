@@ -19,6 +19,7 @@ import {
   ImmutableDB,
   MempoolDB,
   ProcessedMempoolDB,
+  DepositsDB,
 } from "@/database/index.js";
 import {
   handleSignSubmitNoConfirmation,
@@ -33,10 +34,32 @@ import {
   withTrieTransaction,
 } from "@/workers/utils/mpt.js";
 import { FileSystemError, batchProgram } from "@/utils.js";
-import { Columns as TxColumns } from "@/database/utils/tx.js";
+import {
+  EntryWithTimeStamp as TxEntry,
+  Columns as TxColumns,
+} from "@/database/utils/tx.js";
 import { DatabaseError } from "@/database/utils/common.js";
 
 const BATCH_SIZE = 100;
+
+const getLatestBlockDatumEndTime = (
+  latestBlocksDatum: SDK.TxBuilder.StateQueue.Datum,
+): Effect.Effect<Date, SDK.Utils.DataCoercionError, never> =>
+  Effect.gen(function* () {
+    var endTimeBigInt: bigint;
+    if (latestBlocksDatum.key === "Empty") {
+      const { data: confirmedState } =
+        yield* SDK.Utils.getConfirmedStateFromStateQueueDatum(
+          latestBlocksDatum,
+        );
+      endTimeBigInt = confirmedState.endTime;
+    } else {
+      const latestHeader =
+        yield* SDK.Utils.getHeaderFromStateQueueDatum(latestBlocksDatum);
+      endTimeBigInt = latestHeader.endTime;
+    }
+    return new Date(Number(endTimeBigInt));
+  });
 
 const wrapper = (
   workerInput: WorkerInput,
@@ -62,8 +85,8 @@ const wrapper = (
     yield* Effect.logInfo("🔹 Retrieving all mempool transactions...");
 
     const mempoolTxs = yield* MempoolDB.retrieve;
-    const endTime = Date.now();
     const mempoolTxsCount = mempoolTxs.length;
+    var latestTxEntry: TxEntry;
 
     if (mempoolTxsCount === 0) {
       yield* Effect.logInfo(
@@ -77,11 +100,16 @@ const wrapper = (
         return {
           type: "NothingToCommitOutput",
         } as WorkerOutput;
+      } else {
+        latestTxEntry = processedMempoolTxs[0];
       }
       // No new transactions received, but there are uncommitted transactions in
       // the MPT. So its root must be used to submit a new block, and if
       // successful, `ProcessedMempoolDB` must be cleared. Following functions
       // should work fine with 0 mempool txs.
+    } else {
+      yield* Effect.logInfo("🔹 Transactions were found in MempoolDB");
+      latestTxEntry = mempoolTxs[0];
     }
 
     yield* Effect.logInfo(`🔹 ${mempoolTxsCount} retrieved.`);
@@ -104,8 +132,7 @@ const wrapper = (
       const { utxoRoot, txRoot, mempoolTxHashes, sizeOfProcessedTxs } =
         yield* processMpts(ledgerTrie, mempoolTrie, mempoolTxs);
 
-      const { policyId, spendScript, spendScriptAddress, mintScript } =
-        yield* AlwaysSucceedsContract;
+      const { stateQueueAuthValidator } = yield* AlwaysSucceedsContract;
 
       const skippedSubmissionProgram = batchProgram(
         BATCH_SIZE,
@@ -158,13 +185,23 @@ const wrapper = (
 
         yield* lucid.switchToOperatorsMainWallet;
 
+        const startTime = yield* getLatestBlockDatumEndTime(latestBlock.datum);
+        const endTime = latestTxEntry[TxColumns.TIMESTAMPTZ];
+        const deposits = yield* DepositsDB.retrieveTimeBoundEntries(
+          startTime,
+          endTime,
+        );
+        // TODO: calculate deposits root
+
         const { nodeDatum: updatedNodeDatum, header: newHeader } =
           yield* SDK.Utils.updateLatestBlocksDatumAndGetTheNewHeader(
             lucid.api,
             latestBlock.datum,
             utxoRoot,
             txRoot,
-            BigInt(endTime),
+            "00".repeat(32),
+            "00".repeat(32),
+            BigInt(Number(endTime)),
           );
 
         const newHeaderHash = yield* SDK.Utils.hashHeader(newHeader);
@@ -175,17 +212,17 @@ const wrapper = (
           anchorUTxO: latestBlock,
           updatedAnchorDatum: updatedNodeDatum,
           newHeader: newHeader,
-          stateQueueSpendingScript: spendScript,
-          policyId,
-          stateQueueMintingScript: mintScript,
+          stateQueueSpendingScript: stateQueueAuthValidator.spendScript,
+          policyId: stateQueueAuthValidator.policyId,
+          stateQueueMintingScript: stateQueueAuthValidator.mintScript,
         };
 
         const aoUpdateCommitmentTimeParams = {};
 
         yield* Effect.logInfo("🔹 Building block commitment transaction...");
         const fetchConfig: SDK.TxBuilder.StateQueue.FetchConfig = {
-          stateQueueAddress: spendScriptAddress,
-          stateQueuePolicyId: policyId,
+          stateQueueAddress: stateQueueAuthValidator.spendScriptAddress,
+          stateQueuePolicyId: stateQueueAuthValidator.policyId,
         };
         yield* lucid.switchToOperatorsMainWallet;
         const txBuilder = yield* SDK.Endpoints.commitBlockHeaderProgram(
