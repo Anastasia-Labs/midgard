@@ -73,17 +73,15 @@ export const insertEntries = (
 export const retrieveTimeBoundEntries = (
   startTime: Date,
   endTime: Date,
-): Effect.Effect<
-  readonly Entry[],
-  DatabaseError,
-  Database
-> =>
+): Effect.Effect<readonly Entry[], DatabaseError, Database> =>
   Effect.gen(function* () {
-    yield* Effect.logDebug(`${tableName} db: attempt to retrieveTimeBoundEntries`);
+    yield* Effect.logDebug(
+      `${tableName} db: attempt to retrieveTimeBoundEntries`,
+    );
     const sql = yield* SqlClient.SqlClient;
-    return yield* sql<Entry>`SELECT * FROM ${
-    sql(tableName)
-    } WHERE ${startTime} <= ${sql(Columns.INCLUSION_TIME)} AND ${sql(Columns.INCLUSION_TIME)} <= ${endTime}`;
+    return yield* sql<Entry>`SELECT * FROM ${sql(
+      tableName,
+    )} WHERE ${startTime} <= ${sql(Columns.INCLUSION_TIME)} AND ${sql(Columns.INCLUSION_TIME)} <= ${endTime}`;
   }).pipe(
     Effect.withLogSpan(`retrieveTimeBoundEntries ${tableName}`),
     Effect.tapErrorTag("SqlError", (double) =>
@@ -93,7 +91,6 @@ export const retrieveTimeBoundEntries = (
     ),
     sqlErrorToDatabaseError(tableName, "Failed to retrieve all deposit UTxOs"),
   );
-
 
 export const retrieveAllEntries = (): Effect.Effect<
   readonly Entry[],
