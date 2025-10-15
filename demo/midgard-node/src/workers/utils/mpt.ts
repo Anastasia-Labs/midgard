@@ -318,19 +318,19 @@ export class MptError extends Data.TaggedError(
 export class MidgardMpt {
   public readonly trie: ETH.MerklePatriciaTrie;
   public readonly trieName: string;
-  public readonly database?: LevelDB;
-  public readonly databaseFilePath?: string;
+  public readonly databaseAndPath?: {
+    database: LevelDB;
+    databaseFilePath: string;
+  };
 
   private constructor(
     trie: ETH.MerklePatriciaTrie,
     trieName: string,
-    database?: LevelDB,
-    databaseFilePath?: string,
+    databaseAndPath?: { database: LevelDB; databaseFilePath: string },
   ) {
     this.trie = trie;
     this.trieName = trieName;
-    this.database = database;
-    this.databaseFilePath = databaseFilePath;
+    this.databaseAndPath = databaseAndPath;
   }
 
   /**
@@ -346,29 +346,35 @@ export class MidgardMpt {
     levelDBFilePath?: string,
   ): Effect.Effect<MidgardMpt, MptError> {
     return Effect.gen(function* () {
-      let db: LevelDB | undefined = undefined;
-      let useRootPersistence = false;
+      let databaseAndPath:
+        | { database: LevelDB; databaseFilePath: string }
+        | undefined = undefined;
       let valueEncoding: ETH_UTILS.ValueEncoding | undefined = undefined;
       if (typeof levelDBFilePath === "string") {
         const level = new Level<string, Uint8Array>(
           levelDBFilePath,
           LEVELDB_ENCODING_OPTS,
         );
-        db = new LevelDB(level);
+        const db = new LevelDB(level);
+        databaseAndPath = { database: db, databaseFilePath: levelDBFilePath };
         valueEncoding = LEVELDB_ENCODING_OPTS.valueEncoding;
-        useRootPersistence = true;
       }
       const trie = yield* Effect.tryPromise({
-        try: () => ETH.createMPT({ db, useRootPersistence, valueEncoding }),
+        try: () =>
+          ETH.createMPT({
+            db: databaseAndPath?.database,
+            useRootPersistence: Boolean(databaseAndPath),
+            valueEncoding,
+          }),
         catch: (e) => MptError.trieCreate(trieName, e),
       });
-      return new MidgardMpt(trie, trieName, db, levelDBFilePath);
+      return new MidgardMpt(trie, trieName, databaseAndPath);
     });
   }
 
   public delete(): Effect.Effect<void, FileSystemError> {
-    if (this.databaseFilePath) {
-      return deleteMpt(this.databaseFilePath, this.trieName);
+    if (this.databaseAndPath) {
+      return deleteMpt(this.databaseAndPath.databaseFilePath, this.trieName);
     } else {
       return Effect.succeed(Effect.void);
     }

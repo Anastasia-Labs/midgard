@@ -231,7 +231,9 @@ const closeDatabase = (trie: MidgardMpt): Effect.Effect<void, Error> =>
   Effect.gen(function* () {
     return yield* Effect.tryPromise({
       try: () =>
-        trie.database ? trie.database._leveldb.close() : Promise.resolve(),
+        trie.databaseAndPath
+          ? trie.databaseAndPath.database._leveldb.close()
+          : Promise.resolve(),
       catch: (e) => new Error(`Error closing database: ${e}`),
     });
   });
