@@ -334,13 +334,13 @@ export class MidgardMpt {
   }
 
   /**
- * Create a Merkle Patricia Trie (MPT) with a LevelDB-backed database if
- * `levelDBFilePath` is provided, or an in-memory database otherwise.
- *
- * @param trieName - The name identifier for the trie instance.
- * @param levelDBFilePath - Optional file path for LevelDB persistence.
- * @returns An Effect that resolves to the created MidgardMpt instance or fails with MptError.
- */
+   * Create a Merkle Patricia Trie (MPT) with a LevelDB-backed database if
+   * `levelDBFilePath` is provided, or an in-memory database otherwise.
+   *
+   * @param trieName - The name identifier for the trie instance.
+   * @param levelDBFilePath - Optional file path for LevelDB persistence.
+   * @returns An Effect that resolves to the created MidgardMpt instance or fails with MptError.
+   */
   public static create(
     trieName: string,
     levelDBFilePath?: string,
@@ -359,8 +359,7 @@ export class MidgardMpt {
         useRootPersistence = true;
       }
       const trie = yield* Effect.tryPromise({
-        try: () =>
-          ETH.createMPT({db, useRootPersistence, valueEncoding}),
+        try: () => ETH.createMPT({ db, useRootPersistence, valueEncoding }),
         catch: (e) => MptError.trieCreate(trieName, e),
       });
       return new MidgardMpt(trie, trieName, db, levelDBFilePath);

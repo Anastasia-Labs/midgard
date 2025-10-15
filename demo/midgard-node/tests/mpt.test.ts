@@ -181,7 +181,9 @@ describe("The in-memory db mpt tests ", () => {
     Effect.gen(function* () {
       const mpt = yield* MidgardMpt.create("test-mpt");
       const initRoot = yield* mpt.getRootHex();
-      expect(initRoot).toBe("56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421")
+      expect(initRoot).toBe(
+        "56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421",
+      );
       const putOp: ETH_UTILS.BatchDBOp = {
         type: "put",
         key: txId1,
@@ -190,7 +192,7 @@ describe("The in-memory db mpt tests ", () => {
       yield* mpt.batch([putOp]);
       const root1 = yield* mpt.getRootHex();
       expect(root1).toStrictEqual(
-          "9cf4055fd9458e7b1f96266162787abcf218598f3213bd65257e2d4d10b144f3",
+        "9cf4055fd9458e7b1f96266162787abcf218598f3213bd65257e2d4d10b144f3",
       );
       const delOp: ETH_UTILS.BatchDBOp = {
         type: "del",
@@ -205,7 +207,7 @@ describe("The in-memory db mpt tests ", () => {
       yield* mpt.revert();
       const root3 = yield* mpt.getRootHex();
       expect(root3).toStrictEqual(
-          "9cf4055fd9458e7b1f96266162787abcf218598f3213bd65257e2d4d10b144f3",
+        "9cf4055fd9458e7b1f96266162787abcf218598f3213bd65257e2d4d10b144f3",
       );
     }).pipe(
       Effect.provide(Database.layer),
@@ -213,7 +215,7 @@ describe("The in-memory db mpt tests ", () => {
       Effect.provide(NodeConfig.layer),
     ),
   );
-})
+});
 
 const txId1 = Buffer.from("11111111111", "hex");
 const tx1 =
@@ -228,7 +230,8 @@ const createTrie: Effect.Effect<MidgardMpt, MptError> = Effect.gen(
 const closeDatabase = (trie: MidgardMpt): Effect.Effect<void, Error> =>
   Effect.gen(function* () {
     return yield* Effect.tryPromise({
-      try: () => trie.database ? trie.database._leveldb.close() : Promise.resolve(),
+      try: () =>
+        trie.database ? trie.database._leveldb.close() : Promise.resolve(),
       catch: (e) => new Error(`Error closing database: ${e}`),
     });
   });
