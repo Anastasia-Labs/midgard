@@ -167,13 +167,9 @@ export const keyValueMptRoot = (
   values: Buffer[],
 ): Effect.Effect<string, MptError, never> =>
   Effect.gen(function* () {
-    const trie: ETH.MerklePatriciaTrie = yield* Effect.tryPromise({
-      try: () =>
-        ETH.createMPT({
-          db: new ETH_UTILS.MapDB(),
-        }),
-      catch: (e) => MptError.trieCreate("keyValueMPT", e),
-    });
+    const trie = yield* MidgardMpt.create(
+    "keyValueMPT",
+    );
 
     const ops: ETH_UTILS.BatchDBOp[] = yield* Effect.allSuccesses(
       keys.map((key: Buffer, i: number) =>
@@ -188,12 +184,8 @@ export const keyValueMptRoot = (
       ),
     );
 
-    yield* Effect.tryPromise({
-      try: () => trie.batch(ops),
-      catch: (e) => MptError.batch("keyValueMPT root", e),
-    });
-    const foundRoot = yield* Effect.sync(() => toHex(trie.root()));
-    return foundRoot;
+    yield* trie.batch(ops);
+    return yield* trie.getRootHex();
   });
 
 export const withTrieTransaction = <A, E, R>(

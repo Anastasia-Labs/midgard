@@ -26,9 +26,10 @@ import {
   TxSignError,
   TxSubmitError,
 } from "@/transactions/utils.js";
-import { fromHex } from "@lucid-evolution/lucid";
+import { Data, fromHex } from "@lucid-evolution/lucid";
 import {
   MptError,
+  keyValueMptRoot,
   makeMpts,
   processMpts,
   withTrieTransaction,
@@ -191,6 +192,11 @@ const wrapper = (
           startTime,
           endTime,
         );
+
+        const depositIDs = deposits.map(deposit => (deposit[DepositsDB.Columns.ID]));
+        const depositInfos = deposits.map(deposit => (deposit[DepositsDB.Columns.INFO]));
+
+        const depositRoot = yield* keyValueMptRoot(depositIDs, depositInfos)
         // TODO: calculate deposits root
 
         const { nodeDatum: updatedNodeDatum, header: newHeader } =
@@ -199,7 +205,7 @@ const wrapper = (
             latestBlock.datum,
             utxoRoot,
             txRoot,
-            "00".repeat(32),
+            depositRoot,
             "00".repeat(32),
             BigInt(Number(endTime)),
           );
