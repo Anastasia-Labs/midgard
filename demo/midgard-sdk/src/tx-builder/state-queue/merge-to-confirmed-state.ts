@@ -10,7 +10,7 @@ import { ConfirmedState, Header } from "../ledger-state.js";
 import {
   getHeaderFromStateQueueDatum,
   hashHeader,
-} from "../../utils/ledger-state.js";
+} from "@/utils/ledger-state.js";
 import { NodeDatum } from "../linked-list.js";
 import { Redeemer, FetchConfig, MergeParams } from "./types.js";
 import { getConfirmedStateFromStateQueueDatum } from "@/utils/state-queue.js";

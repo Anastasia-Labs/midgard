@@ -40,6 +40,23 @@ import { DatabaseError } from "@/database/utils/common.js";
 
 const BATCH_SIZE = 100;
 
+const getLatestBlockDatumEndTime = (
+  latestBlocksDatum: SDK.TxBuilder.StateQueue.Datum
+): Effect.Effect<Date, SDK.Utils.DataCoercionError, never> =>
+  Effect.gen(function* () {
+    var endTimeBigInt: bigint
+    if (latestBlocksDatum.key === "Empty") {
+      const { data: confirmedState } =
+        yield* SDK.Utils.getConfirmedStateFromStateQueueDatum(latestBlocksDatum);
+      endTimeBigInt = confirmedState.endTime
+    } else {
+      const latestHeader =
+        yield* SDK.Utils.getHeaderFromStateQueueDatum(latestBlocksDatum);
+      endTimeBigInt = latestHeader.endTime;
+    }
+    return new Date(Number(endTimeBigInt))
+  })
+
 const wrapper = (
   workerInput: WorkerInput,
 ): Effect.Effect<
@@ -92,8 +109,6 @@ const wrapper = (
       );
       latestTxEntry = mempoolTxs[0]
     }
-
-    const endTime = latestTxEntry[TxColumns.TIMESTAMPTZ]
 
     yield* Effect.logInfo(`🔹 ${mempoolTxsCount} retrieved.`);
 
@@ -168,7 +183,9 @@ const wrapper = (
 
         yield* lucid.switchToOperatorsMainWallet;
 
-        const deposits = yield* DepositsDB.retrieveTimeBoundEntries(endTime)
+        const startTime = yield* getLatestBlockDatumEndTime(latestBlock.datum)
+        const endTime = latestTxEntry[TxColumns.TIMESTAMPTZ]
+        const deposits = yield* DepositsDB.retrieveTimeBoundEntries(startTime, endTime)
         // TODO: calculate deposits root
 
         const { nodeDatum: updatedNodeDatum, header: newHeader } =
