@@ -71,7 +71,7 @@ export const insertEntries = (
   );
 
 export const retrieveTimeBoundEntries = (
-  startTime: Date,
+  // startTime: Date,
   endTime: Date,
 ): Effect.Effect<
   readonly Entry[],
@@ -83,8 +83,7 @@ export const retrieveTimeBoundEntries = (
     const sql = yield* SqlClient.SqlClient;
     return yield* sql<Entry>`SELECT * FROM ${
     sql(tableName)
-    } WHERE ${startTime} <= ${sql(Columns.INCLUSION_TIME)}
-    AND ${sql(Columns.INCLUSION_TIME)} <= ${endTime}`;
+    } WHERE ${sql(Columns.INCLUSION_TIME)} <= ${endTime}`;
   }).pipe(
     Effect.withLogSpan(`retrieveTimeBoundEntries ${tableName}`),
     Effect.tapErrorTag("SqlError", (double) =>

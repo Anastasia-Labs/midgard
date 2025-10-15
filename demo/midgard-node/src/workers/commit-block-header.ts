@@ -19,6 +19,7 @@ import {
   ImmutableDB,
   MempoolDB,
   ProcessedMempoolDB,
+  DepositsDB,
 } from "@/database/index.js";
 import {
   handleSignSubmitNoConfirmation,
@@ -34,7 +35,7 @@ import {
   withTrieTransaction,
 } from "@/workers/utils/mpt.js";
 import { FileSystemError, batchProgram } from "@/utils.js";
-import { Columns as TxColumns } from "@/database/utils/tx.js";
+import { EntryWithTimeStamp as TxEntry, Columns as TxColumns } from "@/database/utils/tx.js";
 import { DatabaseError } from "@/database/utils/common.js";
 
 const BATCH_SIZE = 100;
@@ -63,8 +64,8 @@ const wrapper = (
     yield* Effect.logInfo("🔹 Retrieving all mempool transactions...");
 
     const mempoolTxs = yield* MempoolDB.retrieve;
-    const endTime = Date.now();
     const mempoolTxsCount = mempoolTxs.length;
+    var latestTxEntry: TxEntry
 
     if (mempoolTxsCount === 0) {
       yield* Effect.logInfo(
@@ -78,12 +79,21 @@ const wrapper = (
         return {
           type: "NothingToCommitOutput",
         } as WorkerOutput;
+      } else {
+        latestTxEntry = processedMempoolTxs[0]
       }
       // No new transactions received, but there are uncommitted transactions in
       // the MPT. So its root must be used to submit a new block, and if
       // successful, `ProcessedMempoolDB` must be cleared. Following functions
       // should work fine with 0 mempool txs.
+    } else {
+      yield* Effect.logInfo(
+        "🔹 Transactions were found in MempoolDB",
+      );
+      latestTxEntry = mempoolTxs[0]
     }
+
+    const endTime = latestTxEntry[TxColumns.TIMESTAMPTZ]
 
     yield* Effect.logInfo(`🔹 ${mempoolTxsCount} retrieved.`);
 
@@ -158,6 +168,9 @@ const wrapper = (
 
         yield* lucid.switchToOperatorsMainWallet;
 
+        const deposits = yield* DepositsDB.retrieveTimeBoundEntries(endTime)
+        // TODO: calculate deposits root
+
         const { nodeDatum: updatedNodeDatum, header: newHeader } =
           yield* SDK.Utils.updateLatestBlocksDatumAndGetTheNewHeader(
             lucid.api,
@@ -166,7 +179,7 @@ const wrapper = (
             txRoot,
             "00".repeat(32),
             "00".repeat(32),
-            BigInt(endTime),
+            BigInt(Number(endTime)),
           );
 
         const newHeaderHash = yield* SDK.Utils.hashHeader(newHeader);
