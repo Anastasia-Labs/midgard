@@ -167,9 +167,7 @@ export const keyValueMptRoot = (
   values: Buffer[],
 ): Effect.Effect<string, MptError, never> =>
   Effect.gen(function* () {
-    const trie = yield* MidgardMpt.create(
-    "keyValueMPT",
-    );
+    const trie = yield* MidgardMpt.create("keyValueMPT");
 
     const ops: ETH_UTILS.BatchDBOp[] = yield* Effect.allSuccesses(
       keys.map((key: Buffer, i: number) =>

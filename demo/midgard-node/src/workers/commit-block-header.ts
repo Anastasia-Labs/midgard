@@ -193,11 +193,14 @@ const wrapper = (
           endTime,
         );
 
-        const depositIDs = deposits.map(deposit => (deposit[DepositsDB.Columns.ID]));
-        const depositInfos = deposits.map(deposit => (deposit[DepositsDB.Columns.INFO]));
+        const depositIDs = deposits.map(
+          (deposit) => deposit[DepositsDB.Columns.ID],
+        );
+        const depositInfos = deposits.map(
+          (deposit) => deposit[DepositsDB.Columns.INFO],
+        );
 
-        const depositRoot = yield* keyValueMptRoot(depositIDs, depositInfos)
-        // TODO: calculate deposits root
+        const depositRoot = yield* keyValueMptRoot(depositIDs, depositInfos);
 
         const { nodeDatum: updatedNodeDatum, header: newHeader } =
           yield* SDK.Utils.updateLatestBlocksDatumAndGetTheNewHeader(
