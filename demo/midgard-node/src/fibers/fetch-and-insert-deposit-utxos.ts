@@ -1,5 +1,5 @@
 import * as SDK from "@al-ft/midgard-sdk";
-import { Cause, Effect, Schema, pipe, Ref } from "effect";
+import { Effect, Ref } from "effect";
 import {
   AlwaysSucceedsContract,
   AuthenticatedValidator,
@@ -35,7 +35,6 @@ const fetchDepositUTxOs = (
     return yield* SDK.Endpoints.fetchDepositUTxOsProgram(lucid, fetchConfig);
   });
 
-// TODO: move this function somewhere else(?)
 export const fetchAndInsertDepositUTxOs = (): Effect.Effect<
   void,
   | SDK.Utils.LucidError

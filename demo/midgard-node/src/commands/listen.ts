@@ -61,7 +61,7 @@ import { WorkerError } from "@/workers/utils/common.js";
 import { SerializedStateQueueUTxO } from "@/workers/utils/commit-block-header.js";
 import { DatabaseError } from "@/database/utils/common.js";
 import { TxConfirmError, TxSignError } from "@/transactions/utils.js";
-import { fetchAndInsertDepositUTxOs } from "@/workers/fetch-and-insert-deposit-utxos.js";
+import { fetchAndInsertDepositUTxOs } from "@/fibers/fetch-and-insert-deposit-utxos.js";
 
 const TX_ENDPOINT: string = "tx";
 const MERGE_ENDPOINT: string = "merge";
