@@ -1,6 +1,7 @@
 import { Effect, Metric, pipe, Schedule } from "effect";
 import { MempoolDB } from "@/database/index.js";
 import { SqlClient } from "@effect/sql/SqlClient";
+import { DatabaseError } from "@/database/utils/common.js";
 
 const mempoolTxGauge = Metric.gauge("mempool_tx_count", {
   description:
@@ -8,7 +9,7 @@ const mempoolTxGauge = Metric.gauge("mempool_tx_count", {
   bigint: true,
 });
 
-const monitorMempoolAction = Effect.gen(function* () {
+const monitorMempoolAction: Effect.Effect<void, DatabaseError, SqlClient> = Effect.gen(function* () {
   const numTx = yield* MempoolDB.retrieveTxCount;
   yield* mempoolTxGauge(Effect.succeed(BigInt(numTx)));
 });

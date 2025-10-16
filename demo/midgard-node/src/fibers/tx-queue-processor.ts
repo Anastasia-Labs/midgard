@@ -3,13 +3,15 @@ import { Chunk, Effect, Metric, pipe, Queue, Schedule } from "effect";
 import { MempoolDB } from "@/database/index.js";
 import { ProcessedTx, breakDownTx } from "@/utils.js";
 import { SqlClient } from "@effect/sql/SqlClient";
+import { DatabaseError } from "@/database/utils/common.js";
+import * as SDK from "@al-ft/midgard-sdk";
 
 const txQueueSizeGauge = Metric.gauge("tx_queue_size", {
   description: "A tracker for the size of the tx queue before processing",
   bigint: true,
 });
 
-const txQueueProcessorAction = (txQueue: Queue.Dequeue<string>) =>
+const txQueueProcessorAction = (txQueue: Queue.Dequeue<string>): Effect.Effect<void, DatabaseError | SDK.Utils.CmlDeserializationError, SqlClient> =>
   Effect.gen(function* () {
     const queueSize = yield* txQueue.size;
     yield* txQueueSizeGauge(Effect.succeed(BigInt(queueSize)));
