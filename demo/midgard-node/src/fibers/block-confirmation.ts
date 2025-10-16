@@ -1,5 +1,5 @@
 import { Globals } from "@/services/index.js";
-import { Duration, Effect, Ref, Schedule } from "effect";
+import { Effect, Ref, Schedule } from "effect";
 import { Worker } from "worker_threads";
 import {
   WorkerInput as BlockConfirmationWorkerInput,
