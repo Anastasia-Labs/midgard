@@ -52,16 +52,18 @@ import { NodeHttpServer } from "@effect/platform-node";
 import { HttpBodyError } from "@effect/platform/HttpBody";
 import { insertGenesisUtxos } from "@/database/genesis.js";
 import { deleteLedgerMpt, deleteMempoolMpt } from "@/workers/utils/mpt.js";
-import { Worker } from "worker_threads";
-import {
-  WorkerInput as BlockConfirmationWorkerInput,
-  WorkerOutput as BlockConfirmationWorkerOutput,
-} from "@/workers/utils/confirm-block-commitments.js";
-import { WorkerError } from "@/workers/utils/common.js";
 import { SerializedStateQueueUTxO } from "@/workers/utils/commit-block-header.js";
 import { DatabaseError } from "@/database/utils/common.js";
 import { TxConfirmError, TxSignError } from "@/transactions/utils.js";
-import { fetchAndInsertDepositUTxOs } from "@/fibers/fetch-and-insert-deposit-utxos.js";
+import { fetchAndInsertDepositUTxOsFiber } from "@/fibers/fetch-and-insert-deposit-utxos.js";
+import { blockConfirmationFiber } from "@/fibers/block-confirmation.js";
+import {
+  blockCommitmentFiber,
+  blockCommitmentAction,
+} from "@/fibers/block-commitment.js";
+import { mergeFiber, mergeAction } from "@/fibers/merge.js";
+import { monitorMempoolFiber } from "@/fibers/monitor-mempool.js";
+import { txQueueProcessorFiber } from "@/fibers/tx-queue-processor.js";
 
 const TX_ENDPOINT: string = "tx";
 const MERGE_ENDPOINT: string = "merge";
@@ -76,17 +78,6 @@ const txCounter = Metric.counter("tx_count", {
   description: "A counter for tracking submit transactions",
   bigint: true,
   incremental: true,
-});
-
-const txQueueSizeGauge = Metric.gauge("tx_queue_size", {
-  description: "A tracker for the size of the tx queue before processing",
-  bigint: true,
-});
-
-const mempoolTxGauge = Metric.gauge("mempool_tx_count", {
-  description:
-    "A gauge for tracking the current number of transactions in the mempool",
-  bigint: true,
 });
 
 const failWith500Helper = (
@@ -545,226 +536,6 @@ const router = (
       ),
     );
 
-const blockCommitmentAction = Effect.gen(function* () {
-  const globals = yield* Globals;
-  const RESET_IN_PROGRESS = yield* Ref.get(globals.RESET_IN_PROGRESS);
-  if (!RESET_IN_PROGRESS) {
-    yield* Effect.logInfo("🔹 New block commitment process started.");
-    yield* StateQueueTx.buildAndSubmitCommitmentBlock().pipe(
-      Effect.withSpan("buildAndSubmitCommitmentBlock"),
-    );
-  }
-});
-
-const blockConfirmationAction = Effect.gen(function* () {
-  const globals = yield* Globals;
-  const RESET_IN_PROGRESS = yield* Ref.get(globals.RESET_IN_PROGRESS);
-  if (!RESET_IN_PROGRESS) {
-    const UNCONFIRMED_SUBMITTED_BLOCK_HASH = yield* Ref.get(
-      globals.UNCONFIRMED_SUBMITTED_BLOCK_HASH,
-    );
-    const AVAILABLE_CONFIRMED_BLOCK = yield* Ref.get(
-      globals.AVAILABLE_CONFIRMED_BLOCK,
-    );
-    yield* Effect.logInfo("🔍 New block confirmation process started.");
-    const worker = Effect.async<
-      BlockConfirmationWorkerOutput,
-      WorkerError,
-      never
-    >((resume) => {
-      Effect.runSync(
-        Effect.logInfo(`🔍 Starting block confirmation worker...`),
-      );
-      const worker = new Worker(
-        new URL("./confirm-block-commitments.js", import.meta.url),
-        {
-          workerData: {
-            data: {
-              firstRun:
-                UNCONFIRMED_SUBMITTED_BLOCK_HASH === "" &&
-                AVAILABLE_CONFIRMED_BLOCK === "",
-              unconfirmedSubmittedBlock: UNCONFIRMED_SUBMITTED_BLOCK_HASH,
-            },
-          } as BlockConfirmationWorkerInput, // TODO: Consider other approaches to avoid type assertion here.
-        },
-      );
-      worker.on("message", (output: BlockConfirmationWorkerOutput) => {
-        if (output.type === "FailedConfirmationOutput") {
-          resume(
-            Effect.fail(
-              new WorkerError({
-                worker: "confirm-block-commitments",
-                message: `Confirmation worker failed.`,
-                cause: output.error,
-              }),
-            ),
-          );
-        } else {
-          resume(Effect.succeed(output));
-        }
-        worker.terminate();
-      });
-      worker.on("error", (e: Error) => {
-        resume(
-          Effect.fail(
-            new WorkerError({
-              worker: "confirm-block-commitments",
-              message: `Error in confirmation worker: ${e}`,
-              cause: e,
-            }),
-          ),
-        );
-        worker.terminate();
-      });
-      worker.on("exit", (code: number) => {
-        if (code !== 0) {
-          resume(
-            Effect.fail(
-              new WorkerError({
-                worker: "confirm-block-commitments",
-                message: `Confirmation worker exited with code: ${code}`,
-                cause: `exit code ${code}`,
-              }),
-            ),
-          );
-        }
-      });
-      return Effect.sync(() => {
-        worker.terminate();
-      });
-    });
-    const workerOutput: BlockConfirmationWorkerOutput = yield* worker;
-    switch (workerOutput.type) {
-      case "SuccessfulConfirmationOutput": {
-        yield* Ref.set(globals.UNCONFIRMED_SUBMITTED_BLOCK_HASH, "");
-        yield* Ref.set(
-          globals.AVAILABLE_CONFIRMED_BLOCK,
-          workerOutput.blocksUTxO,
-        );
-        yield* Effect.logInfo("🔍 ☑️  Submitted block confirmed.");
-        break;
-      }
-      case "NoTxForConfirmationOutput": {
-        break;
-      }
-      case "FailedConfirmationOutput": {
-        break;
-      }
-    }
-  }
-});
-
-const mergeAction = Effect.gen(function* () {
-  const lucid = yield* Lucid;
-  const { stateQueueAuthValidator } = yield* AlwaysSucceedsContract;
-
-  const fetchConfig: SDK.TxBuilder.StateQueue.FetchConfig = {
-    stateQueueAddress: stateQueueAuthValidator.spendScriptAddress,
-    stateQueuePolicyId: stateQueueAuthValidator.policyId,
-  };
-  yield* lucid.switchToOperatorsMergingWallet;
-  yield* StateQueueTx.buildAndSubmitMergeTx(
-    lucid.api,
-    fetchConfig,
-    stateQueueAuthValidator.spendScript,
-    stateQueueAuthValidator.mintScript,
-  );
-});
-
-const monitorMempoolAction = Effect.gen(function* () {
-  const numTx = yield* MempoolDB.retrieveTxCount;
-  yield* mempoolTxGauge(Effect.succeed(BigInt(numTx)));
-});
-
-const txQueueProcessorAction = (txQueue: Queue.Dequeue<string>) =>
-  Effect.gen(function* () {
-    const queueSize = yield* txQueue.size;
-    yield* txQueueSizeGauge(Effect.succeed(BigInt(queueSize)));
-
-    const txStringsChunk: Chunk.Chunk<string> = yield* Queue.takeAll(txQueue);
-    const txStrings = Chunk.toReadonlyArray(txStringsChunk);
-    const brokeDownTxs: ProcessedTx[] = yield* Effect.forEach(txStrings, (tx) =>
-      Effect.gen(function* () {
-        return yield* breakDownTx(fromHex(tx));
-      }),
-    );
-    yield* MempoolDB.insertMultiple(brokeDownTxs);
-  });
-
-const blockCommitmentFork = (rerunDelay: number) =>
-  Effect.gen(function* () {
-    yield* Effect.logInfo("🔵 Block commitment fork started.");
-    const action = blockCommitmentAction.pipe(
-      Effect.withSpan("block-commitment-fork"),
-      Effect.catchAllCause(Effect.logWarning),
-    );
-    const schedule = Schedule.addDelay(Schedule.forever, () =>
-      Duration.millis(rerunDelay),
-    );
-    yield* Effect.repeat(action, schedule);
-  });
-
-const blockConfirmationFork = (rerunDelay: number) =>
-  Effect.gen(function* () {
-    yield* Effect.logInfo("🟫 Block confirmation fork started.");
-    const action = blockConfirmationAction.pipe(
-      Effect.withSpan("block-confirmation-fork"),
-      Effect.catchAllCause(Effect.logWarning),
-    );
-    const schedule = Schedule.addDelay(Schedule.forever, () =>
-      Duration.millis(rerunDelay),
-    );
-    yield* Effect.repeat(action, schedule);
-  });
-
-const fetchAndInsertDepositUTxOsFork = (rerunDelay: number) =>
-  Effect.gen(function* () {
-    yield* Effect.logInfo("🟪 Fetch and insert DepositUTxOs to the DB.");
-    const action = fetchAndInsertDepositUTxOs();
-    const schedule = Schedule.addDelay(Schedule.forever, () =>
-      Duration.millis(rerunDelay),
-    );
-    yield* Effect.repeat(action, schedule);
-  });
-
-// possible issues:
-// 1. tx-generator: large batch size & high concurrency
-// 2. after initing node, can't commit the block
-const mergeFork = (rerunDelay: number) =>
-  pipe(
-    Effect.gen(function* () {
-      yield* Effect.logInfo("🟠 Merge fork started.");
-      const schedule = Schedule.addDelay(Schedule.forever, () =>
-        Duration.millis(rerunDelay),
-      );
-      const action = mergeAction.pipe(
-        Effect.withSpan("merge-confirmed-state-fork"),
-        Effect.catchAllCause(Effect.logWarning),
-      );
-      yield* Effect.repeat(action, schedule);
-    }),
-    // Effect.fork, // Forking ensures the effect keeps running
-  );
-
-const monitorMempoolFork = pipe(
-  Effect.gen(function* () {
-    yield* Effect.logInfo("🟢 Mempool monitor fork started.");
-    const schedule = Schedule.fixed("1000 millis");
-    yield* Effect.repeat(monitorMempoolAction, schedule);
-  }),
-  Effect.catchAllCause(Effect.logWarning),
-);
-
-const txQueueProcessorFork = (txQueue: Queue.Dequeue<string>) =>
-  pipe(
-    Effect.gen(function* () {
-      yield* Effect.logInfo("🔶 Tx queue processor fork started.");
-      const schedule = Schedule.fixed("500 millis");
-      yield* Effect.repeat(txQueueProcessorAction(txQueue), schedule);
-    }),
-    Effect.catchAllCause(Effect.logWarning),
-  );
-
 export const runNode = Effect.gen(function* () {
   const nodeConfig = yield* NodeConfig;
 
@@ -802,33 +573,29 @@ export const runNode = Effect.gen(function* () {
     ),
   );
 
-  const blockCommitmentThread = blockCommitmentFork(
-    nodeConfig.WAIT_BETWEEN_BLOCK_COMMITMENT,
-  );
-
-  const blockConfirmationThread = blockConfirmationFork(
-    nodeConfig.WAIT_BETWEEN_BLOCK_CONFIRMATION,
-  );
-
-  const fetchAndInsertDepositUTxOsThread = fetchAndInsertDepositUTxOsFork(
-    nodeConfig.WAIT_BETWEEN_DEPOSIT_UTXO_FETCHES,
-  );
-
-  const mergeThread = mergeFork(nodeConfig.WAIT_BETWEEN_MERGE_TXS);
-
-  const monitorMempoolThread = monitorMempoolFork;
-
-  const txQueueProcessorThread = txQueueProcessorFork(txQueue);
-
   const program = Effect.all(
     [
       appThread,
-      blockCommitmentThread,
-      blockConfirmationThread,
-      fetchAndInsertDepositUTxOsThread,
-      mergeThread,
-      monitorMempoolThread,
-      txQueueProcessorThread,
+      blockCommitmentFiber(
+        Schedule.spaced(
+          Duration.millis(nodeConfig.WAIT_BETWEEN_BLOCK_COMMITMENT),
+        ),
+      ),
+      blockConfirmationFiber(
+        Schedule.spaced(
+          Duration.millis(nodeConfig.WAIT_BETWEEN_BLOCK_CONFIRMATION),
+        ),
+      ),
+      fetchAndInsertDepositUTxOsFiber(
+        Schedule.spaced(
+          Duration.millis(nodeConfig.WAIT_BETWEEN_DEPOSIT_UTXO_FETCHES),
+        ),
+      ),
+      mergeFiber(
+        Schedule.spaced(Duration.millis(nodeConfig.WAIT_BETWEEN_MERGE_TXS)),
+      ),
+      monitorMempoolFiber(Schedule.spaced(Duration.millis(1000))),
+      txQueueProcessorFiber(Schedule.spaced(Duration.millis(500)), txQueue),
     ],
     {
       concurrency: "unbounded",

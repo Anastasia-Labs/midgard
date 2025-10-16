@@ -2,15 +2,15 @@ import * as SDK from "@al-ft/midgard-sdk";
 import { Effect, Ref } from "effect";
 import {
   AlwaysSucceedsContract,
-  AuthenticatedValidator,
   Globals,
   Lucid,
   NodeConfig,
 } from "@/services/index.js";
 import { LucidEvolution, CML, Data, fromHex } from "@lucid-evolution/lucid";
 import { DepositsDB } from "@/database/index.js";
-import { SqlClient, SqlError } from "@effect/sql";
+import { SqlClient } from "@effect/sql";
 import { DatabaseError } from "@/database/utils/common.js";
+import { Schedule } from "effect";
 
 const fetchDepositUTxOs = (
   lucid: LucidEvolution,
@@ -72,4 +72,21 @@ export const fetchAndInsertDepositUTxOs = (): Effect.Effect<
     }));
 
     yield* DepositsDB.insertEntries(entries);
+  });
+
+export const fetchAndInsertDepositUTxOsFiber = (
+  schedule: Schedule.Schedule<number>,
+): Effect.Effect<
+  void,
+  | SDK.Utils.LucidError
+  | SDK.Utils.DataCoercionError
+  | SDK.Utils.AssetError
+  | SDK.Utils.UnauthenticUtxoError
+  | DatabaseError,
+  AlwaysSucceedsContract | NodeConfig | Lucid | SqlClient.SqlClient | Globals
+> =>
+  Effect.gen(function* () {
+    yield* Effect.logInfo("🟪 Fetch and insert DepositUTxOs to the DB.");
+    const action = fetchAndInsertDepositUTxOs();
+    yield* Effect.repeat(action, schedule);
   });
