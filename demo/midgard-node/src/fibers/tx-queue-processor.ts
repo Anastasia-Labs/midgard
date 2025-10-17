@@ -11,7 +11,13 @@ const txQueueSizeGauge = Metric.gauge("tx_queue_size", {
   bigint: true,
 });
 
-const txQueueProcessorAction = (txQueue: Queue.Dequeue<string>): Effect.Effect<void, DatabaseError | SDK.Utils.CmlDeserializationError, SqlClient> =>
+const txQueueProcessorAction = (
+  txQueue: Queue.Dequeue<string>,
+): Effect.Effect<
+  void,
+  DatabaseError | SDK.Utils.CmlDeserializationError,
+  SqlClient
+> =>
   Effect.gen(function* () {
     const queueSize = yield* txQueue.size;
     yield* txQueueSizeGauge(Effect.succeed(BigInt(queueSize)));

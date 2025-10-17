@@ -14,8 +14,7 @@ export const stateQueueInit: Effect.Effect<
   Lucid | NodeConfig | AlwaysSucceedsContract
 > = Effect.gen(function* () {
   const lucid = yield* Lucid;
-  const { stateQueueAuthValidator } =
-    yield* AlwaysSucceedsContract;
+  const { stateQueueAuthValidator } = yield* AlwaysSucceedsContract;
   const initParams: SDK.TxBuilder.StateQueue.InitParams = {
     address: stateQueueAuthValidator.spendScriptAddress,
     policyId: stateQueueAuthValidator.policyId,

@@ -9,10 +9,11 @@ const mempoolTxGauge = Metric.gauge("mempool_tx_count", {
   bigint: true,
 });
 
-const monitorMempoolAction: Effect.Effect<void, DatabaseError, SqlClient> = Effect.gen(function* () {
-  const numTx = yield* MempoolDB.retrieveTxCount;
-  yield* mempoolTxGauge(Effect.succeed(BigInt(numTx)));
-});
+const monitorMempoolAction: Effect.Effect<void, DatabaseError, SqlClient> =
+  Effect.gen(function* () {
+    const numTx = yield* MempoolDB.retrieveTxCount;
+    yield* mempoolTxGauge(Effect.succeed(BigInt(numTx)));
+  });
 
 export const monitorMempoolFiber = (
   schedule: Schedule.Schedule<number>,
