@@ -150,6 +150,10 @@ export const insertEntries = (
   Effect.gen(function* () {
     yield* Effect.logDebug(`${tableName} db: attempt to insertTXs`);
     const sql = yield* SqlClient.SqlClient;
+    if (!pairs.length) {
+      yield* Effect.logDebug("No pairs provided, skipping insertion.");
+      return;
+    }
     yield* sql`INSERT INTO ${sql(tableName)} ${sql.insert(pairs)}`;
   }).pipe(
     Effect.withLogSpan(`insertTXs ${tableName}`),

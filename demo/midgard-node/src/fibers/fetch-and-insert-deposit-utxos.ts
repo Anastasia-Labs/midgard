@@ -1,5 +1,5 @@
 import * as SDK from "@al-ft/midgard-sdk";
-import { Effect, Ref } from "effect";
+import { Console, Effect, Ref } from "effect";
 import {
   AlwaysSucceedsContract,
   Globals,

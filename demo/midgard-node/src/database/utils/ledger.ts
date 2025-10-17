@@ -82,7 +82,10 @@ export const insertEntries = (
   Effect.gen(function* () {
     yield* Effect.logDebug(`${tableName} db: attempt to insert Ledger UTxOs`);
     const sql = yield* SqlClient.SqlClient;
-
+    if (!entries.length) {
+      yield* Effect.logDebug("No entries provided, skipping insertion.");
+      return;
+    }
     yield* sql`INSERT INTO ${sql(tableName)} ${sql.insert(entries)}`;
   }).pipe(
     Effect.withLogSpan(`insertEntries ${tableName}`),
