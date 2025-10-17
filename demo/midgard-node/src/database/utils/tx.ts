@@ -41,7 +41,7 @@ export const createTable = (
 
 export const delMultiple = (
   tableName: string,
-  tx_id: Buffer[],
+  tx_ids: Buffer[],
 ): Effect.Effect<void, DatabaseError, Database> =>
   Effect.gen(function* () {
     const sql = yield* SqlClient.SqlClient;
@@ -50,7 +50,7 @@ export const delMultiple = (
     );
     const result = yield* sql`DELETE FROM ${sql(tableName)} WHERE ${sql(
       Columns.TX_ID,
-    )} IN ${sql.in(tx_id)} RETURNING ${sql(Columns.TX_ID)}`;
+    )} IN ${sql.in(tx_ids)} RETURNING ${sql(Columns.TX_ID)}`;
     yield* Effect.logDebug(`${tableName} db: deleted ${result.length} rows`);
   }).pipe(
     Effect.withLogSpan(`delMutiple table ${tableName}`),

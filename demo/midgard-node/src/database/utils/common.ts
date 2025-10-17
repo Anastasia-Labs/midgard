@@ -6,14 +6,14 @@ import * as SDK from "@al-ft/midgard-sdk";
 
 export const retrieveNumberOfEntries = (
   tableName: string,
-): Effect.Effect<number, DatabaseError, Database> =>
+): Effect.Effect<bigint, DatabaseError, Database> =>
   Effect.gen(function* () {
     yield* Effect.logDebug(`${tableName} db: attempt to get number of entries`);
     const sql = yield* SqlClient.SqlClient;
     const rows = yield* sql<{
       count: number;
     }>`SELECT COUNT(*) FROM ${sql(tableName)}`;
-    return rows[0].count ?? 0;
+    return BigInt(rows[0].count) ?? 0;
   }).pipe(
     Effect.withLogSpan(`retrieveNumberOfEntries ${tableName}`),
     Effect.tapErrorTag("SqlError", (e) =>
@@ -37,7 +37,7 @@ export const clearTable = (
   }).pipe(
     Effect.withLogSpan(`clear ${tableName}`),
     Effect.tapErrorTag("SqlError", (e) =>
-      Effect.logError(`${tableName} db: clearing error: ${JSON.stringify(e)}`),
+      Effect.logError(`${tableName} db: truncate error: ${JSON.stringify(e)}`),
     ),
     sqlErrorToDatabaseError(tableName, "Failed at truncating table"),
   );

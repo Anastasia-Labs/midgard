@@ -9,6 +9,7 @@ import {
 import * as MempoolLedgerDB from "./mempoolLedger.js";
 import { Effect } from "effect";
 import { SqlClient } from "@effect/sql";
+import * as AddressHistoryDB from "@/database/addressHistory.js";
 import { ProcessedTx } from "@/utils.js";
 
 export const tableName = "mempool";
@@ -27,6 +28,8 @@ export const insert = (
     yield* MempoolLedgerDB.insert(produced);
     // Remove spent inputs from MempoolLedgerDB.
     yield* MempoolLedgerDB.clearUTxOs(spent);
+    // Add handled addresses to the lookup table
+    yield* AddressHistoryDB.insert(spent, produced);
   }).pipe(
     Effect.withLogSpan(`insert ${tableName}`),
     Effect.tapError((e) =>
@@ -84,7 +87,7 @@ export const retrieve: Effect.Effect<
   sqlErrorToDatabaseError(tableName, "Failed to retrieve given transactions"),
 );
 
-export const retrieveTxCount: Effect.Effect<number, DatabaseError, Database> =
+export const retrieveTxCount: Effect.Effect<bigint, DatabaseError, Database> =
   retrieveNumberOfEntries(tableName);
 
 export const clearTxs = (
