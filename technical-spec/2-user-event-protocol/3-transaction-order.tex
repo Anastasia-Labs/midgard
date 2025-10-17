@@ -86,7 +86,7 @@ It's responsible for validating conclusion of transaction orders, or refunding s
     Conditions:
     \begin{enumerate}
       \item Let \code{settlement\_node} be the referenced settlement node.
-      \item The transaction order must be included in the transaction order tree of \code{settlement\_node}.
+      \item The transaction order must be included in the transactions tree of \code{settlement\_node}.
         This also implies the inclusion time of the order falls within the time interval of \code{settlement\_node}.
       \item The \code{BurnEventNFT} endpoint of the transaction order minting script must be invoked with the corresponding \code{l1\_id} of the order utxo.
       \item Let \code{refund\_address} and \code{refund\_datum} be the refund information retrieved from the transaction order's datum.
