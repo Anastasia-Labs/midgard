@@ -14,7 +14,7 @@ export const stateQueueInit: Effect.Effect<
   Lucid | NodeConfig | AlwaysSucceedsContract
 > = Effect.gen(function* () {
   const lucid = yield* Lucid;
-  const { stateQueueAuthValidator, depositAuthValidator } =
+  const { stateQueueAuthValidator } =
     yield* AlwaysSucceedsContract;
   const initParams: SDK.TxBuilder.StateQueue.InitParams = {
     address: stateQueueAuthValidator.spendScriptAddress,
@@ -31,6 +31,7 @@ export const stateQueueInit: Effect.Effect<
         new TxSubmitError({
           message: "Failed to submit the state queue initiation tx",
           cause: err,
+          txHash: txBuilder.toHash(),
         }),
       );
     });
