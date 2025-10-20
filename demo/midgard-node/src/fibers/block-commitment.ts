@@ -112,7 +112,7 @@ export const buildAndSubmitCommitmentBlockAction = () =>
         yield* Ref.update(globals.BLOCKS_IN_QUEUE, (n) => n + 1);
         yield* Ref.set(globals.AVAILABLE_CONFIRMED_BLOCK, "");
         yield* Ref.set(
-          globals.UNCONFIRMED_SUBMITTED_BLOCK_HASH,
+          globals.UNCONFIRMED_SUBMITTED_BLOCK_TX_HASH,
           workerOutput.submittedTxHash,
         );
         yield* Ref.set(globals.PROCESSED_UNSUBMITTED_TXS_COUNT, 0);
@@ -167,9 +167,9 @@ export const blockCommitmentFiber = (
   schedule: Schedule.Schedule<number>,
 ): Effect.Effect<void, never, Globals> =>
   Effect.gen(function* () {
-    yield* Effect.logInfo("🔵 Block commitment fork started.");
+    yield* Effect.logInfo("🔵 Block commitment fiber started.");
     const action = blockCommitmentAction.pipe(
-      Effect.withSpan("block-commitment-fork"),
+      Effect.withSpan("block-commitment-fiber"),
       Effect.catchAllCause(Effect.logWarning),
     );
     yield* Effect.repeat(action, schedule);

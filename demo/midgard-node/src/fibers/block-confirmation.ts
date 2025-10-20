@@ -12,8 +12,8 @@ const blockConfirmationAction: Effect.Effect<void, WorkerError, Globals> =
     const globals = yield* Globals;
     const RESET_IN_PROGRESS = yield* Ref.get(globals.RESET_IN_PROGRESS);
     if (!RESET_IN_PROGRESS) {
-      const UNCONFIRMED_SUBMITTED_BLOCK_HASH = yield* Ref.get(
-        globals.UNCONFIRMED_SUBMITTED_BLOCK_HASH,
+      const UNCONFIRMED_SUBMITTED_BLOCK_TX_HASH = yield* Ref.get(
+        globals.UNCONFIRMED_SUBMITTED_BLOCK_TX_HASH,
       );
       const AVAILABLE_CONFIRMED_BLOCK = yield* Ref.get(
         globals.AVAILABLE_CONFIRMED_BLOCK,
@@ -33,9 +33,9 @@ const blockConfirmationAction: Effect.Effect<void, WorkerError, Globals> =
             workerData: {
               data: {
                 firstRun:
-                  UNCONFIRMED_SUBMITTED_BLOCK_HASH === "" &&
+                  UNCONFIRMED_SUBMITTED_BLOCK_TX_HASH === "" &&
                   AVAILABLE_CONFIRMED_BLOCK === "",
-                unconfirmedSubmittedBlock: UNCONFIRMED_SUBMITTED_BLOCK_HASH,
+                unconfirmedSubmittedBlock: UNCONFIRMED_SUBMITTED_BLOCK_TX_HASH,
               },
             } as BlockConfirmationWorkerInput, // TODO: Consider other approaches to avoid type assertion here.
           },
@@ -88,7 +88,7 @@ const blockConfirmationAction: Effect.Effect<void, WorkerError, Globals> =
       const workerOutput: BlockConfirmationWorkerOutput = yield* worker;
       switch (workerOutput.type) {
         case "SuccessfulConfirmationOutput": {
-          yield* Ref.set(globals.UNCONFIRMED_SUBMITTED_BLOCK_HASH, "");
+          yield* Ref.set(globals.UNCONFIRMED_SUBMITTED_BLOCK_TX_HASH, "");
           yield* Ref.set(
             globals.AVAILABLE_CONFIRMED_BLOCK,
             workerOutput.blocksUTxO,
@@ -110,9 +110,9 @@ export const blockConfirmationFiber = (
   schedule: Schedule.Schedule<number>,
 ): Effect.Effect<void, never, Globals> =>
   Effect.gen(function* () {
-    yield* Effect.logInfo("🟫 Block confirmation fork started.");
+    yield* Effect.logInfo("🟫 Block confirmation fiber started.");
     const action = blockConfirmationAction.pipe(
-      Effect.withSpan("block-confirmation-fork"),
+      Effect.withSpan("block-confirmation-fiber"),
       Effect.catchAllCause(Effect.logWarning),
     );
     yield* Effect.repeat(action, schedule);

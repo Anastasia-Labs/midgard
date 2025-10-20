@@ -20,7 +20,7 @@ export const monitorMempoolFiber = (
 ): Effect.Effect<void, never, SqlClient> =>
   pipe(
     Effect.gen(function* () {
-      yield* Effect.logInfo("🟢 Mempool monitor fork started.");
+      yield* Effect.logInfo("🟢 Mempool monitor fiber started.");
       yield* Effect.repeat(monitorMempoolAction, schedule);
     }),
     Effect.catchAllCause(Effect.logWarning),

@@ -60,7 +60,7 @@ export const insertEntries = (
   Effect.gen(function* () {
     yield* Effect.logDebug(`${tableName} db: attempt to insert Deposit UTxOs`);
     const sql = yield* SqlClient.SqlClient;
-    if (!entries.length) {
+    if (entries.length < 0) {
       yield* Effect.logDebug("No entries provided, skipping insertion.");
       return;
     }
@@ -84,7 +84,7 @@ export const retrieveTimeBoundEntries = (
     const sql = yield* SqlClient.SqlClient;
     return yield* sql<Entry>`SELECT * FROM ${sql(
       tableName,
-    )} WHERE ${startTime} <= ${sql(Columns.INCLUSION_TIME)} AND ${sql(Columns.INCLUSION_TIME)} <= ${endTime}`;
+    )} WHERE ${startTime} < ${sql(Columns.INCLUSION_TIME)} AND ${sql(Columns.INCLUSION_TIME)} <= ${endTime}`;
   }).pipe(
     Effect.withLogSpan(`retrieveTimeBoundEntries ${tableName}`),
     Effect.tapErrorTag("SqlError", (double) =>

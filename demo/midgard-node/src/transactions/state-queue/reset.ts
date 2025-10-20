@@ -109,7 +109,7 @@ export const resetStateQueue: Effect.Effect<
   }
   const globals = yield* Globals;
 
-  yield* Ref.set(globals.LATEST_SYNC_OF_STATE_QUEUE_LENGTH, Date.now());
+  yield* Ref.set(globals.LATEST_SYNC_TIME_OF_STATE_QUEUE_LENGTH, Date.now());
   yield* Ref.set(globals.BLOCKS_IN_QUEUE, 0);
   yield* Ref.set(globals.AVAILABLE_CONFIRMED_BLOCK, "");
 });

@@ -443,8 +443,8 @@ const getLogGlobalsHandler = Effect.gen(function* () {
   yield* Effect.logInfo(`✍  Logging global variables...`);
   const globals = yield* Globals;
   const BLOCKS_IN_QUEUE: number = yield* Ref.get(globals.BLOCKS_IN_QUEUE);
-  const LATEST_SYNC_OF_STATE_QUEUE_LENGTH: number = yield* Ref.get(
-    globals.LATEST_SYNC_OF_STATE_QUEUE_LENGTH,
+  const LATEST_SYNC_TIME_OF_STATE_QUEUE_LENGTH: number = yield* Ref.get(
+    globals.LATEST_SYNC_TIME_OF_STATE_QUEUE_LENGTH,
   );
   const RESET_IN_PROGRESS: boolean = yield* Ref.get(globals.RESET_IN_PROGRESS);
   const AVAILABLE_CONFIRMED_BLOCK: "" | SerializedStateQueueUTxO =
@@ -455,18 +455,18 @@ const getLogGlobalsHandler = Effect.gen(function* () {
   const PROCESSED_UNSUBMITTED_TXS_SIZE: number = yield* Ref.get(
     globals.PROCESSED_UNSUBMITTED_TXS_SIZE,
   );
-  const UNCONFIRMED_SUBMITTED_BLOCK_HASH: string = yield* Ref.get(
-    globals.UNCONFIRMED_SUBMITTED_BLOCK_HASH,
+  const UNCONFIRMED_SUBMITTED_BLOCK_TX_HASH: string = yield* Ref.get(
+    globals.UNCONFIRMED_SUBMITTED_BLOCK_TX_HASH,
   );
 
   yield* Effect.logInfo(`
   BLOCKS_IN_QUEUE ⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅ ${BLOCKS_IN_QUEUE}
-  LATEST_SYNC ⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅ ${new Date(Number(LATEST_SYNC_OF_STATE_QUEUE_LENGTH)).toLocaleString()}
+  LATEST_SYNC ⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅ ${new Date(Number(LATEST_SYNC_TIME_OF_STATE_QUEUE_LENGTH)).toLocaleString()}
   RESET_IN_PROGRESS ⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅ ${RESET_IN_PROGRESS}
   AVAILABLE_CONFIRMED_BLOCK ⋅⋅⋅⋅⋅⋅⋅⋅⋅ ${JSON.stringify(AVAILABLE_CONFIRMED_BLOCK)}
   PROCESSED_UNSUBMITTED_TXS_COUNT ⋅⋅⋅ ${PROCESSED_UNSUBMITTED_TXS_COUNT}
   PROCESSED_UNSUBMITTED_TXS_SIZE ⋅⋅⋅⋅ ${PROCESSED_UNSUBMITTED_TXS_SIZE}
-  UNCONFIRMED_SUBMITTED_BLOCK_HASH ⋅⋅⋅⋅⋅⋅⋅ ${UNCONFIRMED_SUBMITTED_BLOCK_HASH}
+  UNCONFIRMED_SUBMITTED_BLOCK_TX_HASH ⋅⋅⋅⋅⋅⋅⋅ ${UNCONFIRMED_SUBMITTED_BLOCK_TX_HASH}
 `);
   return yield* HttpServerResponse.json({
     message: `Global variables logged!`,

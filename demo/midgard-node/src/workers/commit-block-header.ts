@@ -47,7 +47,7 @@ const getLatestBlockDatumEndTime = (
   latestBlocksDatum: SDK.TxBuilder.StateQueue.Datum,
 ): Effect.Effect<Date, SDK.Utils.DataCoercionError, never> =>
   Effect.gen(function* () {
-    var endTimeBigInt: bigint;
+    let endTimeBigInt: bigint;
     if (latestBlocksDatum.key === "Empty") {
       const { data: confirmedState } =
         yield* SDK.Utils.getConfirmedStateFromStateQueueDatum(
@@ -87,7 +87,7 @@ const wrapper = (
 
     const mempoolTxs = yield* MempoolDB.retrieve;
     const mempoolTxsCount = mempoolTxs.length;
-    var latestTxEntry: TxEntry;
+    let latestTxEntry: TxEntry;
 
     if (mempoolTxsCount === 0) {
       yield* Effect.logInfo(

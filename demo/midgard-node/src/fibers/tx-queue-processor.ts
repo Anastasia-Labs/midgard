@@ -38,7 +38,7 @@ export const txQueueProcessorFiber = (
 ): Effect.Effect<void, never, SqlClient> =>
   pipe(
     Effect.gen(function* () {
-      yield* Effect.logInfo("🔶 Tx queue processor fork started.");
+      yield* Effect.logInfo("🔶 Tx queue processor fiber started.");
       yield* Effect.repeat(txQueueProcessorAction(txQueue), schedule);
     }),
     Effect.catchAllCause(Effect.logWarning),

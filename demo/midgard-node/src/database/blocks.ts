@@ -55,7 +55,7 @@ export const insert = (
 ): Effect.Effect<void, DatabaseError, Database> =>
   Effect.gen(function* () {
     const sql = yield* SqlClient.SqlClient;
-    if (!txHashes.length) {
+    if (txHashes.length < 0) {
       yield* Effect.logDebug("No txHashes provided, skipping block insertion.");
       return;
     }

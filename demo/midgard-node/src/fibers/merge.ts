@@ -47,12 +47,11 @@ export const mergeFiber = (
 > =>
   pipe(
     Effect.gen(function* () {
-      yield* Effect.logInfo("🟠 Merge fork started.");
+      yield* Effect.logInfo("🟠 Merge fiber started.");
       const action = mergeAction.pipe(
-        Effect.withSpan("merge-confirmed-state-fork"),
+        Effect.withSpan("merge-confirmed-state-fiber"),
         Effect.catchAllCause(Effect.logWarning),
       );
       yield* Effect.repeat(action, schedule);
     }),
-    // Effect.fork, // Forking ensures the effect keeps running
   );

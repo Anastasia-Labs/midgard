@@ -50,12 +50,12 @@ const getStateQueueLength = (
 ): Effect.Effect<number, SDK.Utils.LucidError, Globals> =>
   Effect.gen(function* () {
     const globals = yield* Globals;
-    const LATEST_SYNC_OF_STATE_QUEUE_LENGTH = yield* Ref.get(
-      globals.LATEST_SYNC_OF_STATE_QUEUE_LENGTH,
+    const LATEST_SYNC_TIME_OF_STATE_QUEUE_LENGTH = yield* Ref.get(
+      globals.LATEST_SYNC_TIME_OF_STATE_QUEUE_LENGTH,
     );
     const now_millis = Date.now();
     if (
-      now_millis - LATEST_SYNC_OF_STATE_QUEUE_LENGTH >
+      now_millis - LATEST_SYNC_TIME_OF_STATE_QUEUE_LENGTH >
       MAX_LIFE_OF_LOCAL_SYNC
     ) {
       // We consider in-memory state queue length stale.
@@ -75,7 +75,7 @@ const getStateQueueLength = (
         globals.BLOCKS_IN_QUEUE,
         Math.max(0, stateQueueUtxos.length - 1),
       );
-      yield* Ref.set(globals.LATEST_SYNC_OF_STATE_QUEUE_LENGTH, Date.now());
+      yield* Ref.set(globals.LATEST_SYNC_TIME_OF_STATE_QUEUE_LENGTH, Date.now());
 
       return stateQueueUtxos.length;
     } else {
@@ -236,7 +236,7 @@ export const buildAndSubmitMergeTx = (
       yield* Ref.update(globals.BLOCKS_IN_QUEUE, (n) => n - 1);
     } else {
       yield* Ref.set(globals.BLOCKS_IN_QUEUE, 0);
-      yield* Ref.set(globals.LATEST_SYNC_OF_STATE_QUEUE_LENGTH, Date.now());
+      yield* Ref.set(globals.LATEST_SYNC_TIME_OF_STATE_QUEUE_LENGTH, Date.now());
       yield* Effect.logInfo("🔸 No blocks found in queue.");
       return;
     }
