@@ -19,7 +19,7 @@ pub type Datum {
   tx_order: PolicyId,
   settlement_queue: PolicyId,
   payout: PolicyId,
-  escape_hatch: PolicyId,                   
+  escape_hatch: PolicyId,
   registered_operators_addr: Address,
   active_operators_addr: Address,
   retired_operators_addr: Address,
@@ -33,7 +33,7 @@ pub type Datum {
   settlement_queue_addr: Address,
   reserve_addr: Address,
   payout_addr: Address,
-  escape_hatch_addr: Address, 
+  escape_hatch_addr: Address,
   reserve_observer: ScriptHash,
 }
 
