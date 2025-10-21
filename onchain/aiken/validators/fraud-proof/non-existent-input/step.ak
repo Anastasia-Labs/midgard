@@ -39,6 +39,8 @@ validator main(
   plutarch_midgard_merkle_validator_utxo_exclusion: ScriptHash,
   // Script hash of stake validator (forwarded merkle proof logic)
   plutarch_midgard_merkle_validator_exclusion: ScriptHash,
+  //oracle hub contract
+  oracle_hub_contract: ScriptHash,
   // Computation thread token policy
   ct_token_policy_id: PolicyId,
 ) {

@@ -69,6 +69,9 @@ validator main(
         bad_tx1_to_root_proof_path,
         index_output,
       } -> {
+        //TODO get it from the oracle hub
+        let state_queue_policy = ""
+
         let ct_token_asset_name =
           get_singleton_ct_token(own_input, ct_token_policy_id)
         let extracted_tx_root =
@@ -76,6 +79,7 @@ validator main(
             tx,
             bad_state_queue_node_ref_input_index,
             ct_token_asset_name,
+            state_queue_policy,
           )
 
         // -------- Double spend validation specific logic START --------
