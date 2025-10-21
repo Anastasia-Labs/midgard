@@ -1,12 +1,17 @@
 import { Data, UTxO } from "@lucid-evolution/lucid";
-import { Effect } from "effect";
+import { Data as EffectData, Effect } from "effect";
 import { Datum, DepositUTxO } from "@/tx-builder/user-events/deposit/types.js";
 import {
   AssetError,
   DataCoercionError,
   UnauthenticUtxoError,
   getStateToken,
+  GenericErrorFields,
 } from "@/utils/common.js";
+
+export class DepositError extends EffectData.TaggedError(
+  "DepositError",
+)<GenericErrorFields> {}
 
 export const getDepositDatumFromUTxO = (
   nodeUTxO: UTxO,
