@@ -3,9 +3,8 @@ import { Lucid, AlwaysSucceedsContract, Globals } from "@/services/index.js";
 import { StateQueueTx } from "@/transactions/index.js";
 import { TxSignError, TxSubmitError } from "@/transactions/utils.js";
 import * as SDK from "@al-ft/midgard-sdk";
-import { SqlClient } from "@effect/sql/SqlClient";
 import { Effect, pipe, Schedule } from "effect";
-
+import { Database } from "@/services/index.js";
 export const mergeAction: Effect.Effect<
   void,
   | SDK.Utils.CmlDeserializationError
@@ -17,7 +16,7 @@ export const mergeAction: Effect.Effect<
   | DatabaseError
   | TxSubmitError
   | TxSignError,
-  Lucid | AlwaysSucceedsContract | SqlClient | Globals
+  Lucid | AlwaysSucceedsContract | Database | Globals
 > = Effect.gen(function* () {
   const lucid = yield* Lucid;
   const { stateQueueAuthValidator } = yield* AlwaysSucceedsContract;
@@ -43,7 +42,7 @@ export const mergeFiber = (
 ): Effect.Effect<
   void,
   never,
-  Lucid | AlwaysSucceedsContract | SqlClient | Globals
+  Lucid | AlwaysSucceedsContract | Database | Globals
 > =>
   pipe(
     Effect.gen(function* () {

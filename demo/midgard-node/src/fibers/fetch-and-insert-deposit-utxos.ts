@@ -1,14 +1,14 @@
 import * as SDK from "@al-ft/midgard-sdk";
-import { Console, Effect, Ref } from "effect";
+import { Effect, Ref } from "effect";
 import {
   AlwaysSucceedsContract,
   Globals,
   Lucid,
   NodeConfig,
+  Database,
 } from "@/services/index.js";
-import { LucidEvolution, CML, Data, fromHex } from "@lucid-evolution/lucid";
+import { LucidEvolution, Data, fromHex } from "@lucid-evolution/lucid";
 import { DepositsDB } from "@/database/index.js";
-import { SqlClient } from "@effect/sql";
 import { DatabaseError } from "@/database/utils/common.js";
 import { Schedule } from "effect";
 
@@ -18,10 +18,7 @@ const fetchDepositUTxOs = (
   inclusionEndTime: number,
 ): Effect.Effect<
   SDK.TxBuilder.Deposit.DepositUTxO[],
-  | SDK.Utils.LucidError
-  | SDK.Utils.DataCoercionError
-  | SDK.Utils.AssetError
-  | SDK.Utils.UnauthenticUtxoError,
+  SDK.Utils.LucidError,
   AlwaysSucceedsContract | NodeConfig
 > =>
   Effect.gen(function* () {
@@ -35,15 +32,12 @@ const fetchDepositUTxOs = (
     return yield* SDK.Endpoints.fetchDepositUTxOsProgram(lucid, fetchConfig);
   });
 
-export const fetchAndInsertDepositUTxOs = (): Effect.Effect<
+export const fetchAndInsertDepositUTxOs: Effect.Effect<
   void,
   | SDK.Utils.LucidError
-  | SDK.Utils.DataCoercionError
-  | SDK.Utils.AssetError
-  | SDK.Utils.UnauthenticUtxoError
   | DatabaseError,
-  AlwaysSucceedsContract | NodeConfig | Lucid | SqlClient.SqlClient | Globals
-> =>
+  AlwaysSucceedsContract | NodeConfig | Lucid | Database | Globals
+> =
   Effect.gen(function* () {
     const { api: lucid } = yield* Lucid;
     const globals = yield* Globals;
@@ -83,10 +77,10 @@ export const fetchAndInsertDepositUTxOsFiber = (
   | SDK.Utils.AssetError
   | SDK.Utils.UnauthenticUtxoError
   | DatabaseError,
-  AlwaysSucceedsContract | NodeConfig | Lucid | SqlClient.SqlClient | Globals
+  AlwaysSucceedsContract | NodeConfig | Lucid | Database | Globals
 > =>
   Effect.gen(function* () {
     yield* Effect.logInfo("🟪 Fetch and insert DepositUTxOs to the DB.");
-    const action = fetchAndInsertDepositUTxOs();
+    const action = fetchAndInsertDepositUTxOs;
     yield* Effect.repeat(action, schedule);
   });

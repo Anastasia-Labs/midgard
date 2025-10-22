@@ -71,7 +71,7 @@ export const utxosToDepositUTxOs = (
   nftPolicy: string,
 ): Effect.Effect<
   DepositUTxO[],
-  AssetError | DataCoercionError | UnauthenticUtxoError
+  never
 > => {
   const effects = utxos.map((u) => utxoToDepositUTxO(u, nftPolicy));
   return Effect.allSuccesses(effects);

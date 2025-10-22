@@ -28,7 +28,7 @@ export const fetchDepositUTxOsProgram = (
   config: Deposit.FetchConfig,
 ): Effect.Effect<
   Deposit.DepositUTxO[],
-  LucidError | DataCoercionError | AssetError | UnauthenticUtxoError
+  LucidError
 > =>
   Effect.gen(function* () {
     const allUTxOs = yield* utxosAtByNFTPolicyId(
