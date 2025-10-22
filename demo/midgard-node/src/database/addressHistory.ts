@@ -101,7 +101,7 @@ export const delTxHash = (
   );
 
 /**
- * Retreives all cbors from MempoolDB and ImmutableDB which mention provided
+ * Retrieves all cbors from MempoolDB and ImmutableDB which mention provided
  * address.
  *
  * Works by performing an inner join with tables [tx_id | address] and
