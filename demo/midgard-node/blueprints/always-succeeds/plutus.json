@@ -12,20 +12,148 @@
   },
   "validators": [
     {
-      "title": "always_succeeds.mint.else",
+      "title": "always_succeeds.active_operators_mint.else",
       "redeemer": {
         "schema": {}
       },
-      "compiledCode": "58500101002332259800a998012481154d6964676172642044656d6f20e28093204d696e740014a3149a2a660049211856616c696461746f722072657475726e65642066616c736500136564004ae715cd01",
-      "hash": "f56b0b5c60c7bca716b05335dc886e87a378115b52de44e33d84c125"
+      "compiledCode": "5101010023259800a518a4d136564004ae69",
+      "hash": "bd3ae991b5aafccafe5ca70758bd36a9b2f872f57f6d3a1ffa0eb777"
     },
     {
-      "title": "always_succeeds.spend.else",
+      "title": "always_succeeds.active_operators_spend.else",
       "redeemer": {
         "schema": {}
       },
-      "compiledCode": "58510101002332259800a998012481164d6964676172642044656d6f20e28093205370656e640014a3149a2a660049211856616c696461746f722072657475726e65642066616c736500136564004ae715cd01",
-      "hash": "2ffbb8e0ca9c656db8ca88f003d4ddc219cd8865a02fa3aa91d4b68a"
+      "compiledCode": "5101010023259800a518a4d136564004ae69",
+      "hash": "bd3ae991b5aafccafe5ca70758bd36a9b2f872f57f6d3a1ffa0eb777"
+    },
+    {
+      "title": "always_succeeds.deposit_mint.else",
+      "redeemer": {
+        "schema": {}
+      },
+      "compiledCode": "5101010023259800a518a4d136564004ae69",
+      "hash": "bd3ae991b5aafccafe5ca70758bd36a9b2f872f57f6d3a1ffa0eb777"
+    },
+    {
+      "title": "always_succeeds.deposit_spend.else",
+      "redeemer": {
+        "schema": {}
+      },
+      "compiledCode": "5101010023259800a518a4d136564004ae69",
+      "hash": "bd3ae991b5aafccafe5ca70758bd36a9b2f872f57f6d3a1ffa0eb777"
+    },
+    {
+      "title": "always_succeeds.escape_hatch_mint.else",
+      "redeemer": {
+        "schema": {}
+      },
+      "compiledCode": "5101010023259800a518a4d136564004ae69",
+      "hash": "bd3ae991b5aafccafe5ca70758bd36a9b2f872f57f6d3a1ffa0eb777"
+    },
+    {
+      "title": "always_succeeds.escape_hatch_spend.else",
+      "redeemer": {
+        "schema": {}
+      },
+      "compiledCode": "5101010023259800a518a4d136564004ae69",
+      "hash": "bd3ae991b5aafccafe5ca70758bd36a9b2f872f57f6d3a1ffa0eb777"
+    },
+    {
+      "title": "always_succeeds.fraud_proof_catalogue_mint.else",
+      "redeemer": {
+        "schema": {}
+      },
+      "compiledCode": "5101010023259800a518a4d136564004ae69",
+      "hash": "bd3ae991b5aafccafe5ca70758bd36a9b2f872f57f6d3a1ffa0eb777"
+    },
+    {
+      "title": "always_succeeds.fraud_proof_catalogue_spend.else",
+      "redeemer": {
+        "schema": {}
+      },
+      "compiledCode": "5101010023259800a518a4d136564004ae69",
+      "hash": "bd3ae991b5aafccafe5ca70758bd36a9b2f872f57f6d3a1ffa0eb777"
+    },
+    {
+      "title": "always_succeeds.hub_oracle_mint.else",
+      "redeemer": {
+        "schema": {}
+      },
+      "compiledCode": "5101010023259800a518a4d136564004ae69",
+      "hash": "bd3ae991b5aafccafe5ca70758bd36a9b2f872f57f6d3a1ffa0eb777"
+    },
+    {
+      "title": "always_succeeds.hub_oracle_spend.else",
+      "redeemer": {
+        "schema": {}
+      },
+      "compiledCode": "5101010023259800a518a4d136564004ae69",
+      "hash": "bd3ae991b5aafccafe5ca70758bd36a9b2f872f57f6d3a1ffa0eb777"
+    },
+    {
+      "title": "always_succeeds.registered_operators_mint.else",
+      "redeemer": {
+        "schema": {}
+      },
+      "compiledCode": "5101010023259800a518a4d136564004ae69",
+      "hash": "bd3ae991b5aafccafe5ca70758bd36a9b2f872f57f6d3a1ffa0eb777"
+    },
+    {
+      "title": "always_succeeds.retired_operators_mint.else",
+      "redeemer": {
+        "schema": {}
+      },
+      "compiledCode": "5101010023259800a518a4d136564004ae69",
+      "hash": "bd3ae991b5aafccafe5ca70758bd36a9b2f872f57f6d3a1ffa0eb777"
+    },
+    {
+      "title": "always_succeeds.scheduler_mint.else",
+      "redeemer": {
+        "schema": {}
+      },
+      "compiledCode": "5101010023259800a518a4d136564004ae69",
+      "hash": "bd3ae991b5aafccafe5ca70758bd36a9b2f872f57f6d3a1ffa0eb777"
+    },
+    {
+      "title": "always_succeeds.scheduler_spend.else",
+      "redeemer": {
+        "schema": {}
+      },
+      "compiledCode": "5101010023259800a518a4d136564004ae69",
+      "hash": "bd3ae991b5aafccafe5ca70758bd36a9b2f872f57f6d3a1ffa0eb777"
+    },
+    {
+      "title": "always_succeeds.settlement_queue_mint.else",
+      "redeemer": {
+        "schema": {}
+      },
+      "compiledCode": "5101010023259800a518a4d136564004ae69",
+      "hash": "bd3ae991b5aafccafe5ca70758bd36a9b2f872f57f6d3a1ffa0eb777"
+    },
+    {
+      "title": "always_succeeds.settlement_queue_spend.else",
+      "redeemer": {
+        "schema": {}
+      },
+      "compiledCode": "5101010023259800a518a4d136564004ae69",
+      "hash": "bd3ae991b5aafccafe5ca70758bd36a9b2f872f57f6d3a1ffa0eb777"
+    },
+    {
+      "title": "always_succeeds.state_queue_mint.else",
+      "redeemer": {
+        "schema": {}
+      },
+      "compiledCode": "5101010023259800a518a4d136564004ae69",
+      "hash": "bd3ae991b5aafccafe5ca70758bd36a9b2f872f57f6d3a1ffa0eb777"
+    },
+    {
+      "title": "always_succeeds.state_queue_spend.else",
+      "redeemer": {
+        "schema": {}
+      },
+      "compiledCode": "5101010023259800a518a4d136564004ae69",
+      "hash": "bd3ae991b5aafccafe5ca70758bd36a9b2f872f57f6d3a1ffa0eb777"
     }
   ]
 }

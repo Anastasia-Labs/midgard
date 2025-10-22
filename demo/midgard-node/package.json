@@ -28,9 +28,9 @@
   "dependencies": {
     "@aiken-lang/merkle-patricia-forestry": "^1.2.0",
     "@al-ft/midgard-sdk": "file:../midgard-sdk/al-ft-midgard-sdk-0.1.0.tgz",
-    "@effect/experimental": "^0.46.0",
+    "@effect/experimental": "^0.46.8",
     "@effect/opentelemetry": "^0.44.6",
-    "@effect/platform": "^0.80.0",
+    "@effect/platform": "^0.80.21",
     "@effect/platform-node": "^0.80.0",
     "@effect/sql": "^0.34.1",
     "@effect/sql-pg": "^0.35.1",

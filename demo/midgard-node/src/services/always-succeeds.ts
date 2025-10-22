@@ -19,8 +19,8 @@ export type AuthenticatedValidator = {
 };
 
 export const makeAuthenticatedValidator = (
-  spendingTitle: string,
   mintingTitle: string,
+  spendingTitle?: string,
 ): Effect.Effect<AuthenticatedValidator, never, NodeConfig> =>
   Effect.gen(function* () {
     const nodeConfig = yield* NodeConfig;
@@ -62,29 +62,72 @@ export const makeAuthenticatedValidator = (
 
 const makeAlwaysSucceedsService: Effect.Effect<
   {
+    hubOracleAuthValidator: AuthenticatedValidator;
+    schedulerAuthValidator: AuthenticatedValidator;
     stateQueueAuthValidator: AuthenticatedValidator;
+    settlementQueueAuthValidator: AuthenticatedValidator;
+    registeredOperatorsAuthValidator: AuthenticatedValidator;
+    activeOperatorsAuthValidator: AuthenticatedValidator;
+    retiredOperatorsAuthValidator: AuthenticatedValidator;
+    escapeHatchAuthValidator: AuthenticatedValidator;
+    fraudProofCatalogueAuthValidator: AuthenticatedValidator;
     depositAuthValidator: AuthenticatedValidator;
   },
   never,
   NodeConfig
 > = Effect.gen(function* () {
-  return yield* Effect.gen(function* () {
-    const stateQueueAuthValidator = yield* makeAuthenticatedValidator(
-      "always_succeeds.state_queue_spend.else",
-      "always_succeeds.state_queue_mint.else",
+    const hubOracleAuthValidator = yield* makeAuthenticatedValidator(
+      "always_succeeds.hub_oracle_mint.else",
+      "always_succeeds.hub_oracle_spend.else",
     );
-
+    const schedulerAuthValidator = yield* makeAuthenticatedValidator(
+      "always_succeeds.scheduler_mint.else",
+      "always_succeeds.scheduler_spend.else",
+    );
+    const stateQueueAuthValidator = yield* makeAuthenticatedValidator(
+      "always_succeeds.state_queue_mint.else",
+      "always_succeeds.state_queue_spend.else",
+    );
+    const settlementQueueAuthValidator = yield* makeAuthenticatedValidator(
+      "always_succeeds.settlement_queue_mint.else",
+      "always_succeeds.settlement_queue_spend.else",
+    );
+    const registeredOperatorsAuthValidator = yield* makeAuthenticatedValidator(
+      "always_succeeds.registered_operators_mint.else",
+    );
+    const activeOperatorsAuthValidator = yield* makeAuthenticatedValidator(
+      "always_succeeds.active_operators_mint.else",
+      "always_succeeds.active_operators_spend.else",
+    );
+    const retiredOperatorsAuthValidator = yield* makeAuthenticatedValidator(
+      "always_succeeds.retired_operators_mint.else",
+    );
+    const escapeHatchAuthValidator = yield* makeAuthenticatedValidator(
+      "always_succeeds.escape_hatch_mint.else",
+      "always_succeeds.escape_hatch_spend.else",
+    );
+    const fraudProofCatalogueAuthValidator = yield* makeAuthenticatedValidator(
+      "always_succeeds.fraud_proof_catalogue_mint.else",
+      "always_succeeds.fraud_proof_catalogue_spend.else",
+    );
     const depositAuthValidator = yield* makeAuthenticatedValidator(
-      "always_succeeds.deposit_spend.else",
       "always_succeeds.deposit_mint.else",
+      "always_succeeds.deposit_spend.else",
     );
 
     return {
+      hubOracleAuthValidator,
+      schedulerAuthValidator,
       stateQueueAuthValidator,
+      settlementQueueAuthValidator,
+      registeredOperatorsAuthValidator,
+      activeOperatorsAuthValidator,
+      retiredOperatorsAuthValidator,
+      escapeHatchAuthValidator,
+      fraudProofCatalogueAuthValidator,
       depositAuthValidator,
     };
   }).pipe(Effect.orDie);
-});
 
 export class AlwaysSucceedsContract extends Effect.Service<AlwaysSucceedsContract>()(
   "AlwaysSucceedsContract",
