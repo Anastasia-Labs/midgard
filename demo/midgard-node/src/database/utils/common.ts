@@ -47,19 +47,30 @@ export class DatabaseError extends Data.TaggedError("DatabaseError")<
   SDK.Utils.GenericErrorFields & { readonly table: string }
 > {}
 
-type SqlErrorToDatabaseError = <A, R>(
-  error: Effect.Effect<A, SqlError.SqlError, R>,
-) => Effect.Effect<A, DatabaseError, R>;
+// Helper type to replace SqlError with DatabaseError in error unions
+type ReplaceSqlErrorWithDatabaseError<E> = E extends SqlError.SqlError
+  ? DatabaseError
+  : E extends SqlError.SqlError | infer U
+  ? DatabaseError | U
+  : E | DatabaseError;
+
+type SqlErrorToDatabaseError = <A, E, R>(
+  error: Effect.Effect<A, E, R>,
+) => Effect.Effect<A, ReplaceSqlErrorWithDatabaseError<E>, R>;
 
 export const sqlErrorToDatabaseError = (
   tableName: string,
   message: string,
 ): SqlErrorToDatabaseError =>
   Effect.mapError(
-    (error: SqlError.SqlError) =>
-      new DatabaseError({
-        message,
-        table: tableName,
-        cause: error,
-      }),
+    (error: SqlError.SqlError | any) => {
+      if (error._tag === "SqlError") {
+        return new DatabaseError({
+          message,
+          table: tableName,
+          cause: error,
+        });
+      }
+      return error;
+    },
   );
