@@ -17,6 +17,7 @@ type NodeConfigDep = {
   WAIT_BETWEEN_BLOCK_COMMITMENT: number;
   WAIT_BETWEEN_BLOCK_CONFIRMATION: number;
   WAIT_BETWEEN_DEPOSIT_UTXO_FETCHES: number;
+  WAIT_BETWEEN_TX_ORDER_UTXO_FETCHES: number;
   WAIT_BETWEEN_MERGE_TXS: number;
   PROM_METRICS_PORT: number;
   OLTP_EXPORTER_URL: string;
@@ -47,6 +48,9 @@ const makeConfig = Effect.gen(function* () {
       Config.withDefault(10000),
     ),
     Config.integer("WAIT_BETWEEN_DEPOSIT_UTXO_FETCHES").pipe(
+      Config.withDefault(10000),
+    ),
+    Config.integer("WAIT_BETWEEN_TX_ORDER_UTXO_FETCHES").pipe(
       Config.withDefault(10000),
     ),
     Config.integer("WAIT_BETWEEN_MERGE_TXS").pipe(Config.withDefault(10000)),
@@ -151,15 +155,16 @@ const makeConfig = Effect.gen(function* () {
     WAIT_BETWEEN_BLOCK_COMMITMENT: config[9],
     WAIT_BETWEEN_BLOCK_CONFIRMATION: config[10],
     WAIT_BETWEEN_DEPOSIT_UTXO_FETCHES: config[11],
-    WAIT_BETWEEN_MERGE_TXS: config[12],
-    PROM_METRICS_PORT: config[13],
-    OLTP_EXPORTER_URL: config[14],
-    POSTGRES_HOST: config[15],
-    POSTGRES_PASSWORD: config[16],
-    POSTGRES_DB: config[17],
-    POSTGRES_USER: config[18],
-    LEDGER_MPT_DB_PATH: config[19],
-    MEMPOOL_MPT_DB_PATH: config[20],
+    WAIT_BETWEEN_TX_ORDER_UTXO_FETCHES: config[12],
+    WAIT_BETWEEN_MERGE_TXS: config[13],
+    PROM_METRICS_PORT: config[14],
+    OLTP_EXPORTER_URL: config[15],
+    POSTGRES_HOST: config[16],
+    POSTGRES_PASSWORD: config[17],
+    POSTGRES_DB: config[18],
+    POSTGRES_USER: config[19],
+    LEDGER_MPT_DB_PATH: config[20],
+    MEMPOOL_MPT_DB_PATH: config[21],
     GENESIS_UTXOS: network === "Mainnet" ? [] : genesisUtxos,
   };
 }).pipe(Effect.orDie);
