@@ -40,13 +40,6 @@ validator state_queue_mint {
   }
 }
 
-validator settlement_queue_mint {
-  else(_) {
-    trace @"Midgard Demo – Settlement Queue Mint"
-    True
-  }
-}
-
 validator settlement_queue_spend {
   else(_) {
     trace @"Midgard Demo – Settlement Queue Spend"
