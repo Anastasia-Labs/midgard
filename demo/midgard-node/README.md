@@ -39,3 +39,17 @@ docker run --rm --publish 3000:3000 -it -e SEED_PHRASE="$SEED_PHRASE" \
 ```sh
 curl http://localhost:3000
 ```
+
+### Testing
+
+For local testing run
+
+```sh
+pnpm test
+```
+
+For testing inside docker container run
+
+```sh
+docker-compose run --rm midgard-node-tests
+```

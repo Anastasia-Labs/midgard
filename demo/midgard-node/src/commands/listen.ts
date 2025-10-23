@@ -30,6 +30,7 @@ import {
   Schedule,
 } from "effect";
 import {
+  AddressHistoryDB,
   BlocksDB,
   ConfirmedLedgerDB,
   ImmutableDB,
@@ -68,6 +69,7 @@ import { DatabaseError } from "@/database/utils/common.js";
 import { TxConfirmError, TxSignError } from "@/transactions/utils.js";
 
 const TX_ENDPOINT: string = "tx";
+const ADDRESS_HISTORY_ENDPOINT: string = "txs";
 const MERGE_ENDPOINT: string = "merge";
 const UTXOS_ENDPOINT: string = "utxos";
 const BLOCK_ENDPOINT: string = "block";
@@ -133,16 +135,19 @@ const getTxHandler = Effect.gen(function* () {
   if (
     typeof txHashParam !== "string" ||
     !isHexString(txHashParam) ||
-    txHashParam.length !== 32
+    txHashParam.length !== 64
   ) {
-    // yield* Effect.logInfo(`Invalid transaction hash: ${txHashParam}`);
+    yield* Effect.logInfo(
+      `GET /${TX_ENDPOINT} - Invalid transaction hash: ${txHashParam}`,
+    );
     return yield* HttpServerResponse.json(
       { error: `Invalid transaction hash: ${txHashParam}` },
       { status: 404 },
     );
   }
   const txHashBytes = Buffer.from(fromHex(txHashParam));
-  const foundCbor: Uint8Array = yield* MempoolDB.retrieveTxCborByHash(
+  yield* Effect.logInfo("txHashBytes", txHashBytes);
+  const foundCbor: Buffer = yield* MempoolDB.retrieveTxCborByHash(
     txHashBytes,
   ).pipe(
     Effect.catchAll((_e) =>
@@ -159,7 +164,8 @@ const getTxHandler = Effect.gen(function* () {
   yield* Effect.logInfo(
     `GET /${TX_ENDPOINT} - Transaction found in mempool: ${txHashParam}`,
   );
-  return yield* HttpServerResponse.json({ tx: toHex(foundCbor) });
+  yield* Effect.logInfo("foundCbor", foundCbor);
+  return yield* HttpServerResponse.json({ tx: bufferToHex(foundCbor) });
 }).pipe(
   Effect.catchTag("HttpBodyError", (e) => failWith500("GET", TX_ENDPOINT, e)),
   Effect.catchTag("DatabaseError", (e) => handleDBGetFailure(TX_ENDPOINT, e)),
@@ -167,7 +173,7 @@ const getTxHandler = Effect.gen(function* () {
 
 const getUtxosHandler = Effect.gen(function* () {
   const params = yield* ParsedSearchParams;
-  const addr = params["addr"];
+  const addr = params["address"];
 
   if (typeof addr !== "string") {
     yield* Effect.logInfo(
@@ -227,7 +233,7 @@ const getBlockHandler = Effect.gen(function* () {
   if (
     typeof hdrHash !== "string" ||
     !isHexString(hdrHash) ||
-    hdrHash.length !== 32
+    hdrHash.length !== 64
   ) {
     yield* Effect.logInfo(
       `GET /${BLOCK_ENDPOINT} - Invalid block hash: ${hdrHash}`,
@@ -345,6 +351,7 @@ const getResetHandler = Effect.gen(function* () {
       ImmutableDB.clear,
       LatestLedgerDB.clear,
       ConfirmedLedgerDB.clear,
+      AddressHistoryDB.clear,
       deleteMempoolMpt,
       deleteLedgerMpt,
     ],
@@ -364,6 +371,48 @@ const getResetHandler = Effect.gen(function* () {
   Effect.catchTag("TxSignError", (e) => handleTxGetFailure(RESET_ENDPOINT, e)),
   Effect.catchTag("LucidError", (e) =>
     handleGenericGetFailure(RESET_ENDPOINT, e),
+  ),
+);
+
+const getTxsOfAddressHandler = Effect.gen(function* () {
+  const params = yield* ParsedSearchParams;
+  const addr = params["address"];
+
+  if (typeof addr !== "string") {
+    yield* Effect.logInfo(
+      `GET /${ADDRESS_HISTORY_ENDPOINT} - Invalid address type: ${addr}`,
+    );
+    return yield* HttpServerResponse.json(
+      { error: `Invalid address type: ${addr}` },
+      { status: 400 },
+    );
+  }
+  try {
+    const addrDetails = getAddressDetails(addr);
+    if (!addrDetails.paymentCredential) {
+      yield* Effect.logInfo(`Invalid address format: ${addr}`);
+      return yield* HttpServerResponse.json(
+        { error: `Invalid address format: ${addr}` },
+        { status: 400 },
+      );
+    }
+
+    const cbors = yield* AddressHistoryDB.retrieve(addrDetails.address.bech32);
+    yield* Effect.logInfo(`Found ${cbors.length} CBORs with ${addr}`);
+    return yield* HttpServerResponse.json({
+      txs: cbors.map(bufferToHex),
+    });
+  } catch (error) {
+    yield* Effect.logInfo(`Invalid address: ${addr}`);
+    return yield* HttpServerResponse.json(
+      { error: `Invalid address: ${addr}` },
+      { status: 400 },
+    );
+  }
+}).pipe(
+  Effect.catchTag("HttpBodyError", (e) => failWith500("GET", "txs", e)),
+  Effect.catchTag("DatabaseError", (e) =>
+    handleDBGetFailure(ADDRESS_HISTORY_ENDPOINT, e),
   ),
 );
 
@@ -527,6 +576,7 @@ const router = (
   HttpRouter.empty
     .pipe(
       HttpRouter.get(`/${TX_ENDPOINT}`, getTxHandler),
+      HttpRouter.get(`/${ADDRESS_HISTORY_ENDPOINT}`, getTxsOfAddressHandler),
       HttpRouter.get(`/${UTXOS_ENDPOINT}`, getUtxosHandler),
       HttpRouter.get(`/${BLOCK_ENDPOINT}`, getBlockHandler),
       HttpRouter.get(`/${INIT_ENDPOINT}`, getInitHandler),
@@ -676,7 +726,7 @@ const mergeAction = Effect.gen(function* () {
 
 const monitorMempoolAction = Effect.gen(function* () {
   const numTx = yield* MempoolDB.retrieveTxCount;
-  yield* mempoolTxGauge(Effect.succeed(BigInt(numTx)));
+  yield* mempoolTxGauge(Effect.succeed(numTx));
 });
 
 const txQueueProcessorAction = (txQueue: Queue.Dequeue<string>) =>
@@ -686,12 +736,10 @@ const txQueueProcessorAction = (txQueue: Queue.Dequeue<string>) =>
 
     const txStringsChunk: Chunk.Chunk<string> = yield* Queue.takeAll(txQueue);
     const txStrings = Chunk.toReadonlyArray(txStringsChunk);
-    const brokeDownTxs: ProcessedTx[] = yield* Effect.forEach(txStrings, (tx) =>
-      Effect.gen(function* () {
-        return yield* breakDownTx(fromHex(tx));
-      }),
+    const processedTxs: ProcessedTx[] = yield* Effect.forEach(txStrings, (tx) =>
+      breakDownTx(fromHex(tx)),
     );
-    yield* MempoolDB.insertMultiple(brokeDownTxs);
+    yield* MempoolDB.insertMultiple(processedTxs);
   });
 
 const blockCommitmentFork = (rerunDelay: number) =>
@@ -709,7 +757,7 @@ const blockCommitmentFork = (rerunDelay: number) =>
 
 const blockConfirmationFork = (rerunDelay: number) =>
   Effect.gen(function* () {
-    yield* Effect.logInfo("🟫 Block confirmation fork started.");
+    yield* Effect.logInfo("🟤 Block confirmation fork started.");
     const action = blockConfirmationAction.pipe(
       Effect.withSpan("block-confirmation-fork"),
       Effect.catchAllCause(Effect.logWarning),
