@@ -48,7 +48,7 @@ export const createTable = (
         ${sql(Columns.TIMESTAMPTZ)} TIMESTAMPTZ NOT NULL DEFAULT(NOW()),
         PRIMARY KEY (${sql(Columns.OUTREF)})
       );`;
-        yield* sql`CREATE INDEX ${sql(
+        yield* sql`CREATE INDEX IF NOT EXISTS ${sql(
           `idx_${tableName}_${Columns.ADDRESS}`,
         )} ON ${sql(tableName)} (${sql(Columns.ADDRESS)});`;
       }),

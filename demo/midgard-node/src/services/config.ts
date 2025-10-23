@@ -30,50 +30,64 @@ type NodeConfigDep = {
 };
 
 const makeConfig = Effect.gen(function* () {
-  const config = yield* Config.all([
-    Config.literal("Kupmios", "Blockfrost")("L1_PROVIDER"),
-    Config.string("L1_BLOCKFROST_API_URL"),
-    Config.string("L1_BLOCKFROST_KEY"),
-    Config.string("L1_OGMIOS_KEY"),
-    Config.string("L1_KUPO_KEY"),
-    Config.string("L1_OPERATOR_SEED_PHRASE"),
-    Config.string("L1_OPERATOR_SEED_PHRASE_FOR_MERGE_TX"),
-    Config.literal("Mainnet", "Preprod", "Preview", "Custom")("NETWORK"),
-    Config.integer("PORT").pipe(Config.withDefault(3000)),
-    Config.integer("WAIT_BETWEEN_BLOCK_COMMITMENT").pipe(
-      Config.withDefault(1000),
-    ),
-    Config.integer("WAIT_BETWEEN_BLOCK_CONFIRMATION").pipe(
-      Config.withDefault(10000),
-    ),
-    Config.integer("WAIT_BETWEEN_DEPOSIT_UTXO_FETCHES").pipe(
-      Config.withDefault(10000),
-    ),
-    Config.integer("WAIT_BETWEEN_MERGE_TXS").pipe(Config.withDefault(10000)),
-    Config.integer("PROM_METRICS_PORT").pipe(Config.withDefault(9464)),
-    Config.string("OLTP_EXPORTER_URL").pipe(
-      Config.withDefault("http://0.0.0.0:4318/v1/traces"),
-    ),
-    Config.string("POSTGRES_HOST").pipe(Config.withDefault("postgres")), // service name
-    Config.string("POSTGRES_PASSWORD").pipe(Config.withDefault("postgres")),
-    Config.string("POSTGRES_DB").pipe(Config.withDefault("midgard")),
-    Config.string("POSTGRES_USER").pipe(Config.withDefault("postgres")),
-    Config.string("LEDGER_MPT_DB_PATH").pipe(
-      Config.withDefault("midgard-ledger-mpt-db"),
-    ),
-    Config.string("MEMPOOL_MPT_DB_PATH").pipe(
-      Config.withDefault("midgard-mempool-mpt-db"),
-    ),
-    Config.string("TESTNET_GENESIS_WALLET_SEED_PHRASE_A"),
-    Config.string("TESTNET_GENESIS_WALLET_SEED_PHRASE_B"),
-    Config.string("TESTNET_GENESIS_WALLET_SEED_PHRASE_C"),
-  ]);
-
-  const provider: Provider = config[0];
-  const network: Network = config[7];
-  const seedA = config[21];
-  const seedB = config[22];
-  const seedC = config[23];
+  const provider = yield* Config.literal(
+    "Kupmios",
+    "Blockfrost",
+  )("L1_PROVIDER");
+  const blockfrostApiUrl = yield* Config.string("L1_BLOCKFROST_API_URL");
+  const blockfrostKey = yield* Config.string("L1_BLOCKFROST_KEY");
+  const ogmiosKey = yield* Config.string("L1_OGMIOS_KEY");
+  const kupoKey = yield* Config.string("L1_KUPO_KEY");
+  const operatorSeedPhrase = yield* Config.string("L1_OPERATOR_SEED_PHRASE");
+  const operatorSeedPhraseForMergeTx = yield* Config.string(
+    "L1_OPERATOR_SEED_PHRASE_FOR_MERGE_TX",
+  );
+  const network = yield* Config.literal(
+    "Mainnet",
+    "Preprod",
+    "Preview",
+    "Custom",
+  )("NETWORK");
+  const port = yield* Config.integer("PORT").pipe(Config.withDefault(3000));
+  const waitBetweenBlockCommitment = yield* Config.integer(
+    "WAIT_BETWEEN_BLOCK_COMMITMENT",
+  ).pipe(Config.withDefault(1000));
+  const waitBetweenBlockConfirmation = yield* Config.integer(
+    "WAIT_BETWEEN_BLOCK_CONFIRMATION",
+  ).pipe(Config.withDefault(10000));
+  const waitBetweenMergeTxs = yield* Config.integer(
+    "WAIT_BETWEEN_MERGE_TXS",
+  ).pipe(Config.withDefault(10000));
+  const waitBetweenDepositUTxOFetches = yield* Config.integer(
+    "WAIT_BETWEEN_DEPOSIT_UTXO_FETCHES",
+  ).pipe(Config.withDefault(10000));
+  const promMetricsPort = yield* Config.integer("PROM_METRICS_PORT").pipe(
+    Config.withDefault(9464),
+  );
+  const oltpExporterUrl = yield* Config.string("OLTP_EXPORTER_URL").pipe(
+    Config.withDefault("http://0.0.0.0:4318/v1/traces"),
+  );
+  const postgresHost = yield* Config.string("POSTGRES_HOST").pipe(
+    Config.withDefault("postgres"),
+  ); // service name
+  const postgresPassword = yield* Config.string("POSTGRES_PASSWORD").pipe(
+    Config.withDefault("postgres"),
+  );
+  const postgresDb = yield* Config.string("POSTGRES_DB").pipe(
+    Config.withDefault("midgard"),
+  );
+  const postgresUser = yield* Config.string("POSTGRES_USER").pipe(
+    Config.withDefault("postgres"),
+  );
+  const ledgerMptDbPath = yield* Config.string("LEDGER_MPT_DB_PATH").pipe(
+    Config.withDefault("midgard-ledger-mpt-db"),
+  );
+  const mempoolMptDbPath = yield* Config.string("MEMPOOL_MPT_DB_PATH").pipe(
+    Config.withDefault("midgard-mempool-mpt-db"),
+  );
+  const seedA = yield* Config.string("TESTNET_GENESIS_WALLET_SEED_PHRASE_A");
+  const seedB = yield* Config.string("TESTNET_GENESIS_WALLET_SEED_PHRASE_B");
+  const seedC = yield* Config.string("TESTNET_GENESIS_WALLET_SEED_PHRASE_C");
 
   const genesisUtxos: UTxO[] = [
     {
@@ -140,26 +154,26 @@ const makeConfig = Effect.gen(function* () {
 
   return {
     L1_PROVIDER: provider,
-    L1_BLOCKFROST_API_URL: config[1],
-    L1_BLOCKFROST_KEY: config[2],
-    L1_OGMIOS_KEY: config[3],
-    L1_KUPO_KEY: config[4],
-    L1_OPERATOR_SEED_PHRASE: config[5],
-    L1_OPERATOR_SEED_PHRASE_FOR_MERGE_TX: config[6],
+    L1_BLOCKFROST_API_URL: blockfrostApiUrl,
+    L1_BLOCKFROST_KEY: blockfrostKey,
+    L1_OGMIOS_KEY: ogmiosKey,
+    L1_KUPO_KEY: kupoKey,
+    L1_OPERATOR_SEED_PHRASE: operatorSeedPhrase,
+    L1_OPERATOR_SEED_PHRASE_FOR_MERGE_TX: operatorSeedPhraseForMergeTx,
     NETWORK: network,
-    PORT: config[8],
-    WAIT_BETWEEN_BLOCK_COMMITMENT: config[9],
-    WAIT_BETWEEN_BLOCK_CONFIRMATION: config[10],
-    WAIT_BETWEEN_DEPOSIT_UTXO_FETCHES: config[11],
-    WAIT_BETWEEN_MERGE_TXS: config[12],
-    PROM_METRICS_PORT: config[13],
-    OLTP_EXPORTER_URL: config[14],
-    POSTGRES_HOST: config[15],
-    POSTGRES_PASSWORD: config[16],
-    POSTGRES_DB: config[17],
-    POSTGRES_USER: config[18],
-    LEDGER_MPT_DB_PATH: config[19],
-    MEMPOOL_MPT_DB_PATH: config[20],
+    PORT: port,
+    WAIT_BETWEEN_BLOCK_COMMITMENT: waitBetweenBlockCommitment,
+    WAIT_BETWEEN_BLOCK_CONFIRMATION: waitBetweenBlockConfirmation,
+    WAIT_BETWEEN_MERGE_TXS: waitBetweenMergeTxs,
+    WAIT_BETWEEN_DEPOSIT_UTXO_FETCHES: waitBetweenDepositUTxOFetches,
+    PROM_METRICS_PORT: promMetricsPort,
+    OLTP_EXPORTER_URL: oltpExporterUrl,
+    POSTGRES_HOST: postgresHost,
+    POSTGRES_PASSWORD: postgresPassword,
+    POSTGRES_DB: postgresDb,
+    POSTGRES_USER: postgresUser,
+    LEDGER_MPT_DB_PATH: ledgerMptDbPath,
+    MEMPOOL_MPT_DB_PATH: mempoolMptDbPath,
     GENESIS_UTXOS: network === "Mainnet" ? [] : genesisUtxos,
   };
 }).pipe(Effect.orDie);

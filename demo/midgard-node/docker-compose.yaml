@@ -153,7 +153,7 @@ services:
     networks:
       midgard_net:
   tempo-init:
-    image: grafana/tempo:latest
+    image: busybox:latest
     user: root
     entrypoint:
       - "chown"
