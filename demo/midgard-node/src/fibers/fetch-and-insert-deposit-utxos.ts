@@ -34,39 +34,37 @@ const fetchDepositUTxOs = (
 
 export const fetchAndInsertDepositUTxOs: Effect.Effect<
   void,
-  | SDK.Utils.LucidError
-  | DatabaseError,
+  SDK.Utils.LucidError | DatabaseError,
   AlwaysSucceedsContract | NodeConfig | Lucid | Database | Globals
-> =
-  Effect.gen(function* () {
-    const { api: lucid } = yield* Lucid;
-    const globals = yield* Globals;
-    const startTime: number = yield* Ref.get(globals.LATEST_DEPOSIT_FETCH_TIME);
-    const endTime: number = Date.now();
-    yield* Ref.set(globals.LATEST_DEPOSIT_FETCH_TIME, endTime);
+> = Effect.gen(function* () {
+  const { api: lucid } = yield* Lucid;
+  const globals = yield* Globals;
+  const startTime: number = yield* Ref.get(globals.LATEST_DEPOSIT_FETCH_TIME);
+  const endTime: number = Date.now();
+  yield* Ref.set(globals.LATEST_DEPOSIT_FETCH_TIME, endTime);
 
-    yield* Effect.logInfo("  fetching DepositUTxOs...");
-    const depositUTxOs = yield* fetchDepositUTxOs(lucid, startTime, endTime);
+  yield* Effect.logInfo("  fetching DepositUTxOs...");
+  const depositUTxOs = yield* fetchDepositUTxOs(lucid, startTime, endTime);
 
-    const getOutRef = (utxo: SDK.TxBuilder.Deposit.DepositUTxO): string =>
-      Data.to(utxo.datum.event.id, SDK.TxBuilder.Common.OutputReference);
+  const getOutRef = (utxo: SDK.TxBuilder.Deposit.DepositUTxO): string =>
+    Data.to(utxo.datum.event.id, SDK.TxBuilder.Common.OutputReference);
 
-    const getDepositInfo = (utxo: SDK.TxBuilder.Deposit.DepositUTxO): string =>
-      Data.to(utxo.datum.event.info, SDK.TxBuilder.Deposit.DepositInfo);
+  const getDepositInfo = (utxo: SDK.TxBuilder.Deposit.DepositUTxO): string =>
+    Data.to(utxo.datum.event.info, SDK.TxBuilder.Deposit.DepositInfo);
 
-    const toBuffer = (str: string): Buffer => Buffer.from(fromHex(str));
+  const toBuffer = (str: string): Buffer => Buffer.from(fromHex(str));
 
-    const getInclusionTime = (utxo: SDK.TxBuilder.Deposit.DepositUTxO): Date =>
-      new Date(Number(utxo.datum.inclusionTime)); // TODO: Check if that the correct conversion for the db entry
+  const getInclusionTime = (utxo: SDK.TxBuilder.Deposit.DepositUTxO): Date =>
+    new Date(Number(utxo.datum.inclusionTime)); // TODO: Check if that the correct conversion for the db entry
 
-    const entries: DepositsDB.Entry[] = depositUTxOs.map((utxo) => ({
-      [DepositsDB.Columns.ID]: toBuffer(getOutRef(utxo)),
-      [DepositsDB.Columns.INFO]: toBuffer(getDepositInfo(utxo)),
-      [DepositsDB.Columns.INCLUSION_TIME]: getInclusionTime(utxo),
-    }));
+  const entries: DepositsDB.Entry[] = depositUTxOs.map((utxo) => ({
+    [DepositsDB.Columns.ID]: toBuffer(getOutRef(utxo)),
+    [DepositsDB.Columns.INFO]: toBuffer(getDepositInfo(utxo)),
+    [DepositsDB.Columns.INCLUSION_TIME]: getInclusionTime(utxo),
+  }));
 
-    yield* DepositsDB.insertEntries(entries);
-  });
+  yield* DepositsDB.insertEntries(entries);
+});
 
 export const fetchAndInsertDepositUTxOsFiber = (
   schedule: Schedule.Schedule<number>,

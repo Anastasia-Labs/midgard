@@ -69,10 +69,7 @@ export const utxoToDepositUTxO = (
 export const utxosToDepositUTxOs = (
   utxos: UTxO[],
   nftPolicy: string,
-): Effect.Effect<
-  DepositUTxO[],
-  never
-> => {
+): Effect.Effect<DepositUTxO[], never> => {
   const effects = utxos.map((u) => utxoToDepositUTxO(u, nftPolicy));
   return Effect.allSuccesses(effects);
 };

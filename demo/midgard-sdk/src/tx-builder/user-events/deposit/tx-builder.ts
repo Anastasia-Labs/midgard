@@ -36,7 +36,9 @@ export const depositTxBuilder = (
       },
     };
     const authenticateEvent = Data.to(redeemer, MintRedeemer);
-    const utxos: UTxO[] = yield* Effect.promise(() => lucid.wallet().getUtxos());
+    const utxos: UTxO[] = yield* Effect.promise(() =>
+      lucid.wallet().getUtxos(),
+    );
     if (utxos.length === 0) {
       yield* new LucidError({
         message: "Failed to build the deposit transaction",

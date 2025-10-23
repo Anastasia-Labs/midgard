@@ -7,16 +7,12 @@ import { DepositError } from "@/utils/index.js";
 
 export const commitDepositsProgram = (
   lucid: LucidEvolution,
-  depositParams: Deposit.DepositParams
+  depositParams: Deposit.DepositParams,
 ): Effect.Effect<TxSignBuilder, HashingError | LucidError | DepositError> =>
   Effect.gen(function* () {
-    const commitTx = yield* Deposit.depositTxBuilder(
-      lucid,
-      depositParams,
-    );
+    const commitTx = yield* Deposit.depositTxBuilder(lucid, depositParams);
     const completedTx = yield* Effect.tryPromise({
-      try: () =>
-        commitTx.complete({ localUPLCEval: false }),
+      try: () => commitTx.complete({ localUPLCEval: false }),
       catch: (e) =>
         new DepositError({
           message: `Failed to build deposit commitment transaction: ${e}`,
@@ -38,9 +34,4 @@ export const commitBlockHeader = (
   lucid: LucidEvolution,
   depositParams: Deposit.DepositParams,
 ): Promise<TxSignBuilder> =>
-  makeReturn(
-    commitDepositsProgram(
-      lucid,
-    depositParams,
-    ),
-  ).unsafeRun();
+  makeReturn(commitDepositsProgram(lucid, depositParams)).unsafeRun();
