@@ -26,10 +26,7 @@ const isUTxOTimeValid = (
 export const fetchDepositUTxOsProgram = (
   lucid: LucidEvolution,
   config: Deposit.FetchConfig,
-): Effect.Effect<
-  Deposit.DepositUTxO[],
-  LucidError | DataCoercionError | AssetError | UnauthenticUtxoError
-> =>
+): Effect.Effect<Deposit.DepositUTxO[], LucidError> =>
   Effect.gen(function* () {
     const allUTxOs = yield* utxosAtByNFTPolicyId(
       lucid,

@@ -1,9 +1,17 @@
-import { Address, Data, PolicyId, UTxO } from "@lucid-evolution/lucid";
+import { Address, Data, PolicyId, UTxO, Script } from "@lucid-evolution/lucid";
 import {
   OutputReferenceSchema,
   POSIXTime,
   POSIXTimeSchema,
 } from "@/tx-builder/common.js";
+
+export type DepositParams = {
+  depositScriptAddress: string;
+  mintingPolicy: Script;
+  policyId: string;
+  depositInfo: DepositInfo;
+  inclusionTime: POSIXTime;
+};
 
 export const DepositInfoSchema = Data.Object({
   l2Address: Data.Bytes(),

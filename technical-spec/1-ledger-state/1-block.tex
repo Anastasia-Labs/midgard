@@ -17,6 +17,7 @@ A block consists of a header hash, a header, and a block body:
 
 The block body contains the block's transactions, deposits, and withdrawals, along with
 the unspent outputs that result from applying the block's transition to the previous block's unspent outputs.
+The transactions include both transaction requests (submitted to operators' mempools) and transaction orders (submitted as L1 events).
 \begin{equation*}
     \T{BlockBody} \coloneq \left\{
     \begin{array}{ll}
@@ -28,7 +29,9 @@ the unspent outputs that result from applying the block's transition to the prev
 \end{equation*}
 
 \Cref{fig:block-transition} shows how the block's \code{utxos} are derived from the previous block's \code{utxos} by applying the block's events.
-Withdrawals are applied before transactions, which are applied before deposits.
+The events are applied in the following order: withdrawals, then transactions (with transaction orders prioritized over transaction requests), and finally deposits.
+Failing to uphold proper ordering of event application will be considered fraud.
+This ensures transaction orders (which are costlier) are not marked invalid in favor of transaction requests.
 
 \begin{figure}[htb] % place the figure ’here’ or at the page top
     \centering % center the figure
@@ -98,6 +101,18 @@ The \code{transactions\_root} is formed by concatenating and hashing its childre
 \caption[Merkle Patricia Trie example]{A Merkle Patricia Trie example for a block's transactions.}
 \label{fig:block-tx-mpt}
 \end{figure}
+
+\subsection{Transaction requests vs. transaction orders}
+\label{h:tx-requests-vs-tx-orders}
+
+To distinguish between transactions applied to the ledger from different sources, Midgard recognizes two types of transactions within a block:
+\begin{itemize}
+    \item \textbf{Transaction requests:} Transactions submitted to operators' mempools. These are the typical L2 transactions that operators collect from users offchain.
+    \item \textbf{Transaction orders:} Transactions submitted as L1 events through the transaction order contract (see \cref{h:transaction-order-event}). These provide an alternative submission path when users need guaranteed inclusion.
+\end{itemize}
+
+Both transaction requests and transaction orders are included in the block's \code{transactions} set and share the same \code{transactions\_root} Merkle root.
+However, they must be applied to the ledger with transaction orders prioritized over requests.
 
 \subsection{Block header}
 \label{h:block-header}

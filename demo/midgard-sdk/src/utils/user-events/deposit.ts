@@ -1,12 +1,17 @@
 import { Data, UTxO } from "@lucid-evolution/lucid";
-import { Effect } from "effect";
+import { Data as EffectData, Effect } from "effect";
 import { Datum, DepositUTxO } from "@/tx-builder/user-events/deposit/types.js";
 import {
   AssetError,
   DataCoercionError,
   UnauthenticUtxoError,
   getStateToken,
+  GenericErrorFields,
 } from "@/utils/common.js";
+
+export class DepositError extends EffectData.TaggedError(
+  "DepositError",
+)<GenericErrorFields> {}
 
 export const getDepositDatumFromUTxO = (
   nodeUTxO: UTxO,
@@ -64,10 +69,7 @@ export const utxoToDepositUTxO = (
 export const utxosToDepositUTxOs = (
   utxos: UTxO[],
   nftPolicy: string,
-): Effect.Effect<
-  DepositUTxO[],
-  AssetError | DataCoercionError | UnauthenticUtxoError
-> => {
+): Effect.Effect<DepositUTxO[], never> => {
   const effects = utxos.map((u) => utxoToDepositUTxO(u, nftPolicy));
   return Effect.allSuccesses(effects);
 };

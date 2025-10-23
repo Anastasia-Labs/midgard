@@ -39,10 +39,10 @@ export const createTable: Effect.Effect<void, DatabaseError, Database> =
       ${sql(Columns.TX_ID)} BYTEA NOT NULL UNIQUE,
       ${sql(Columns.TIMESTAMPTZ)} TIMESTAMPTZ NOT NULL DEFAULT(NOW())
     );`;
-        yield* sql`CREATE INDEX ${sql(
+        yield* sql`CREATE INDEX IF NOT EXISTS ${sql(
           ColumnsIndices.HEADER_HASH,
         )} ON ${sql(tableName)} (${sql(Columns.HEADER_HASH)});`;
-        yield* sql`CREATE INDEX ${sql(
+        yield* sql`CREATE INDEX IF NOT EXISTS ${sql(
           ColumnsIndices.TX_ID,
         )} ON ${sql(tableName)} (${sql(Columns.TX_ID)});`;
       }),

@@ -46,7 +46,7 @@ export const commitTxBuilder = (
     };
 
     // Add 1 minute
-    const endTime = Date.now()
+    const endTime = Date.now();
     const endTimePlusOneMinute = endTime + 60000;
     const tx = lucid
       .newTx()

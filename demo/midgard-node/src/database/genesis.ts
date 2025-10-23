@@ -45,4 +45,9 @@ export const insertGenesisUtxos: Effect.Effect<
     `🟣 Successfully inserted ${ledgerEntries.length} genesis UTxOs. Funded addresses are:
 ${Array.from(new Set(config.GENESIS_UTXOS.map((u) => u.address))).join("\n")}`,
   );
-});
+}).pipe(
+  Effect.catchTag("DatabaseError", (_e) =>
+    Effect.logInfo(`🟣 Genesis UTxOs already exist. Skipping insertion.`),
+  ),
+  Effect.andThen(Effect.succeed(Effect.void)),
+);

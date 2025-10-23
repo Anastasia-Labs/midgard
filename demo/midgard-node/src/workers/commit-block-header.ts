@@ -200,7 +200,9 @@ const wrapper = (
           (deposit) => deposit[DepositsDB.Columns.INFO],
         );
 
-        const depositRoot = yield* keyValueMptRoot(depositIDs, depositInfos);
+        const depositRootFiber = yield* Effect.fork(
+          keyValueMptRoot(depositIDs, depositInfos),
+        );
 
         const { nodeDatum: updatedNodeDatum, header: newHeader } =
           yield* SDK.Utils.updateLatestBlocksDatumAndGetTheNewHeader(
@@ -208,7 +210,7 @@ const wrapper = (
             latestBlock.datum,
             utxoRoot,
             txRoot,
-            depositRoot,
+            yield* depositRootFiber,
             "00".repeat(32),
             BigInt(Number(endTime)),
           );
