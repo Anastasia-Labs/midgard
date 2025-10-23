@@ -36,6 +36,8 @@ export class Globals extends Effect.Service<Globals>()("Globals", {
 
     const LATEST_DEPOSIT_FETCH_TIME: Ref.Ref<number> = yield* Ref.make(0);
 
+    const LATEST_TX_ORDER_FETCH_TIME: Ref.Ref<number> = yield* Ref.make(0);
+
     return {
       BLOCKS_IN_QUEUE,
       LATEST_SYNC_TIME_OF_STATE_QUEUE_LENGTH,
@@ -45,6 +47,7 @@ export class Globals extends Effect.Service<Globals>()("Globals", {
       PROCESSED_UNSUBMITTED_TXS_SIZE,
       UNCONFIRMED_SUBMITTED_BLOCK_TX_HASH,
       LATEST_DEPOSIT_FETCH_TIME,
+      LATEST_TX_ORDER_FETCH_TIME,
     };
   }),
 }) {}
