@@ -1,0 +1,59 @@
+import { Database } from "@/services/database.js";
+import { SqlClient } from "@effect/sql";
+import { Effect } from "effect";
+import {
+  sqlErrorToDatabaseError,
+  DatabaseError,
+} from "@/database/utils/common.js";
+
+export const tableName = "transaction_order_utxos";
+
+// TODO: make utils module for events
+export enum Columns {
+  ID = "event_id",
+  INFO = "event_info",
+  INCLUSION_TIME = "inclusion_time",
+}
+
+export type Entry = {
+  [Columns.ID]: Buffer;
+  [Columns.INFO]: Buffer;
+  [Columns.INCLUSION_TIME]: Date;
+};
+
+export const createTable: Effect.Effect<void, DatabaseError, Database> =
+  Effect.gen(function* () {
+    const sql = yield* SqlClient.SqlClient;
+    yield* sql.withTransaction(
+      Effect.gen(function* () {
+        yield* sql`CREATE TABLE IF NOT EXISTS ${sql(tableName)} (
+        ${sql(Columns.ID)} BYTEA NOT NULL,
+        ${sql(Columns.INFO)} BYTEA NOT NULL,
+        ${sql(Columns.INCLUSION_TIME)} TIMESTAMPTZ NOT NULL,
+        PRIMARY KEY (${sql(Columns.ID)})
+      );`;
+      }),
+    );
+  }).pipe(
+    Effect.withLogSpan(`creating table ${tableName}`),
+    sqlErrorToDatabaseError(tableName, "Failed to create the table"),
+  );
+
+export const insertEntries = (
+  entries: Entry[],
+): Effect.Effect<void, DatabaseError, Database> =>
+  Effect.gen(function* () {
+    yield* Effect.logDebug(`${tableName} db: attempt to insert TxOrder UTxOs`);
+    const sql = yield* SqlClient.SqlClient;
+    if (entries.length <= 0) {
+      yield* Effect.logDebug("No entries provided, skipping insertion.");
+      return;
+    }
+    yield* sql`INSERT INTO ${sql(tableName)} ${sql.insert(entries)}`;
+  }).pipe(
+    Effect.withLogSpan(`insertEntries ${tableName}`),
+    Effect.tapErrorTag("SqlError", (e) =>
+      Effect.logError(`${tableName} db: insertEntries: ${JSON.stringify(e)}`),
+    ),
+    sqlErrorToDatabaseError(tableName, "Failed to insert given UTxOs"),
+  );
