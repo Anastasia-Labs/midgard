@@ -1,4 +1,4 @@
-import { TxOrdersDB, DepositsDB, LedgerUtils } from "@/database/index.js";
+import { TxOrdersDB, DepositsDB, LedgerUtils, UserEventsUtils } from "@/database/index.js";
 import { Effect } from "effect";
 import * as ETH_UTILS from "@ethereumjs/util";
 import { findSpentAndProducedUTxOs } from "@/utils.js";
@@ -8,7 +8,7 @@ import * as SDK from "@al-ft/midgard-sdk";
 import { keyValueMptRoot, MidgardMpt, MptError } from "./mpt.js";
 import * as Tx from "@/database/utils/tx.js";
 import * as Ledger from "@/database/utils/ledger.js";
-
+import * as UserEvents from "@/database/utils/user-events.js"
 export const processTxOrderEvent = (
   startTime: Date,
   endTime: Date,
@@ -26,10 +26,10 @@ export const processTxOrderEvent = (
     const utxoBatchDBOps: ETH_UTILS.BatchDBOp[] = [];
     yield* Effect.logInfo(`🔹 Processing ${txOrders.length} new tx orders...`);
     let sizeOfProcessedTxs = 0;
-    yield* Effect.forEach(txOrders, (entry: TxOrdersDB.Entry) =>
+    yield* Effect.forEach(txOrders, (entry: UserEvents.Entry) =>
       Effect.gen(function* () {
-        const txHash = entry[TxOrdersDB.Columns.ID];
-        const txCbor = entry[TxOrdersDB.Columns.INFO];
+        const txHash = entry[UserEvents.Columns.ID];
+        const txCbor = entry[UserEvents.Columns.INFO];
         const { spent, produced } = yield* findSpentAndProducedUTxOs(
           txCbor,
           txHash,
@@ -137,10 +137,10 @@ export const processDepositEvent = (
   );
   yield* Effect.logInfo(`🔹 Processing ${deposits.length} new deposits...`);
   const depositIDs = deposits.map(
-    (deposit) => deposit[DepositsDB.Columns.ID],
+    (deposit) => deposit[UserEvents.Columns.ID],
   );
   const depositInfos = deposits.map(
-    (deposit) => deposit[DepositsDB.Columns.INFO],
+    (deposit) => deposit[UserEvents.Columns.INFO],
   );
   const depositRootFiber = yield* Effect.fork(
     keyValueMptRoot(depositIDs, depositInfos),

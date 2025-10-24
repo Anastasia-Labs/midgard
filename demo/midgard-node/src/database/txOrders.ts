@@ -1,81 +1,19 @@
 import { Database } from "@/services/database.js";
-import { SqlClient } from "@effect/sql";
 import { Effect } from "effect";
 import {
-  sqlErrorToDatabaseError,
   DatabaseError,
 } from "@/database/utils/common.js";
+import * as UserEvents from "@/database/utils/user-events.js";
 
 export const tableName = "transaction_order_utxos";
 
-// TODO: make utils module for events
-export enum Columns {
-  ID = "event_id",
-  INFO = "event_info",
-  INCLUSION_TIME = "inclusion_time",
-}
-
-export type Entry = {
-  [Columns.ID]: Buffer;
-  [Columns.INFO]: Buffer;
-  [Columns.INCLUSION_TIME]: Date;
-};
-
-export const createTable: Effect.Effect<void, DatabaseError, Database> =
-  Effect.gen(function* () {
-    const sql = yield* SqlClient.SqlClient;
-    yield* sql.withTransaction(
-      Effect.gen(function* () {
-        yield* sql`CREATE TABLE IF NOT EXISTS ${sql(tableName)} (
-        ${sql(Columns.ID)} BYTEA NOT NULL,
-        ${sql(Columns.INFO)} BYTEA NOT NULL,
-        ${sql(Columns.INCLUSION_TIME)} TIMESTAMPTZ NOT NULL,
-        PRIMARY KEY (${sql(Columns.ID)})
-      );`;
-      }),
-    );
-  }).pipe(
-    Effect.withLogSpan(`creating table ${tableName}`),
-    sqlErrorToDatabaseError(tableName, "Failed to create the table"),
-  );
-
 export const insertEntries = (
-  entries: Entry[],
+  entries: UserEvents.Entry[],
 ): Effect.Effect<void, DatabaseError, Database> =>
-  Effect.gen(function* () {
-    yield* Effect.logDebug(`${tableName} db: attempt to insert TxOrder UTxOs`);
-    const sql = yield* SqlClient.SqlClient;
-    if (entries.length <= 0) {
-      yield* Effect.logDebug("No entries provided, skipping insertion.");
-      return;
-    }
-    yield* sql`INSERT INTO ${sql(tableName)} ${sql.insert(entries)}`;
-  }).pipe(
-    Effect.withLogSpan(`insertEntries ${tableName}`),
-    Effect.tapErrorTag("SqlError", (e) =>
-      Effect.logError(`${tableName} db: insertEntries: ${JSON.stringify(e)}`),
-    ),
-    sqlErrorToDatabaseError(tableName, "Failed to insert given UTxOs"),
-  );
+  UserEvents.insertEntries(tableName, entries);
 
 export const retrieveTimeBoundEntries = (
   startTime: Date,
   endTime: Date,
-): Effect.Effect<readonly Entry[], DatabaseError, Database> =>
-  Effect.gen(function* () {
-    yield* Effect.logDebug(
-      `${tableName} db: attempt to retrieveTimeBoundEntries`,
-    );
-    const sql = yield* SqlClient.SqlClient;
-    return yield* sql<Entry>`SELECT * FROM ${sql(
-      tableName,
-    )} WHERE ${startTime} < ${sql(Columns.INCLUSION_TIME)} AND ${sql(Columns.INCLUSION_TIME)} <= ${endTime}`;
-  }).pipe(
-    Effect.withLogSpan(`retrieveTimeBoundEntries ${tableName}`),
-    Effect.tapErrorTag("SqlError", (double) =>
-      Effect.logError(
-        `${tableName} db: retrieveTimeBoundEntries: ${JSON.stringify(double)}`,
-      ),
-    ),
-    sqlErrorToDatabaseError(tableName, "Failed to retrieve all deposit UTxOs"),
-  );
+): Effect.Effect<readonly UserEvents.Entry[], DatabaseError, Database> =>
+  UserEvents.retrieveTimeBoundEntries(tableName, startTime, endTime);
