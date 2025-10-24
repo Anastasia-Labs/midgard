@@ -39,6 +39,7 @@ import {
   EntryWithTimeStamp as TxEntry,
   Columns as TxColumns,
 } from "@/database/utils/tx.js";
+import { Columns as UserEventsColumns } from "@/database/utils/user-events.js";
 import { DatabaseError } from "@/database/utils/common.js";
 
 const BATCH_SIZE = 100;
@@ -194,10 +195,10 @@ const wrapper = (
         );
 
         const depositIDs = deposits.map(
-          (deposit) => deposit[DepositsDB.Columns.ID],
+          (deposit) => deposit[UserEventsColumns.ID],
         );
         const depositInfos = deposits.map(
-          (deposit) => deposit[DepositsDB.Columns.INFO],
+          (deposit) => deposit[UserEventsColumns.INFO],
         );
 
         const depositRootFiber = yield* Effect.fork(
