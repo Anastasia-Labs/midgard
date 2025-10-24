@@ -31,7 +31,6 @@ import {
   MptError,
   keyValueMptRoot,
   makeMpts,
-  processMpts,
   withTrieTransaction,
 } from "@/workers/utils/mpt.js";
 import { FileSystemError, batchProgram } from "@/utils.js";
@@ -40,6 +39,7 @@ import {
   Columns as TxColumns,
 } from "@/database/utils/tx.js";
 import { DatabaseError } from "@/database/utils/common.js";
+import { processDepositEvent, processTxOrderEvent, processTxRequestEvent } from "./utils/events.js";
 
 const BATCH_SIZE = 100;
 
@@ -87,7 +87,8 @@ const wrapper = (
 
     const mempoolTxs = yield* MempoolDB.retrieve;
     const mempoolTxsCount = mempoolTxs.length;
-    let latestTxEntry: TxEntry;
+    let latestTxEntry: undefined | TxEntry;
+    // let endTime: Date;
 
     if (mempoolTxsCount === 0) {
       yield* Effect.logInfo(
@@ -97,23 +98,26 @@ const wrapper = (
       const processedMempoolTxs = yield* ProcessedMempoolDB.retrieve;
 
       if (processedMempoolTxs.length === 0) {
-        yield* Effect.logInfo("🔹 Nothing to commit.");
-        return {
-          type: "NothingToCommitOutput",
-        } as WorkerOutput;
+        yield* Effect.logInfo("🔹 No transactions were found in ProcessedMempoolDB");
+        // endTime = new Date();
+        // return {
+        //   type: "NothingToCommitOutput",
+        // } as WorkerOutput;
       } else {
         latestTxEntry = processedMempoolTxs[0];
+        // endTime = latestTxEntry[TxColumns.TIMESTAMPTZ]
       }
       // No new transactions received, but there are uncommitted transactions in
       // the MPT. So its root must be used to submit a new block, and if
       // successful, `ProcessedMempoolDB` must be cleared. Following functions
       // should work fine with 0 mempool txs.
     } else {
-      yield* Effect.logInfo("🔹 Transactions were found in MempoolDB");
+      yield* Effect.logInfo(`🔹 ${mempoolTxsCount} transactions were found in MempoolDB`);
       latestTxEntry = mempoolTxs[0];
+      // endTime = latestTxEntry[TxColumns.TIMESTAMPTZ]
     }
 
-    yield* Effect.logInfo(`🔹 ${mempoolTxsCount} retrieved.`);
+    // yield* Effect.logInfo(`🔹 ${mempoolTxsCount} retrieved.`);
 
     const { ledgerTrie, mempoolTrie } = yield* makeMpts;
 
@@ -130,12 +134,9 @@ const wrapper = (
       | MptError,
       AlwaysSucceedsContract | Database | NodeConfig
     > = Effect.gen(function* () {
-      const { utxoRoot, txRoot, mempoolTxHashes, sizeOfProcessedTxs } =
-        yield* processMpts(ledgerTrie, mempoolTrie, mempoolTxs);
-
       const { stateQueueAuthValidator } = yield* AlwaysSucceedsContract;
 
-      const skippedSubmissionProgram = batchProgram(
+      const skippedSubmissionProgram = (mempoolTxHashes : Buffer[]) => batchProgram(
         BATCH_SIZE,
         mempoolTxsCount,
         "skipped-submission-db-transfer",
@@ -167,11 +168,15 @@ const wrapper = (
         yield* Effect.logInfo(
           "🔹 No confirmed blocks available. Transferring to ProcessedMempoolDB...",
         );
-        yield* skippedSubmissionProgram;
+        // TODO: Should we even construct mpts on that iteration? Wouldn't it lead to case
+        // when tx requests applied before tx orders?
+        const { mempoolTxHashes, sizeOfTxRequestTxs } =
+          yield* processTxRequestEvent(ledgerTrie, mempoolTrie, mempoolTxs);
+        yield* skippedSubmissionProgram(mempoolTxHashes);
         return {
           type: "SkippedSubmissionOutput",
           mempoolTxsCount,
-          sizeOfProcessedTxs,
+          sizeOfProcessedTxs: sizeOfTxRequestTxs,
         };
       } else {
         yield* Effect.logInfo(
@@ -187,30 +192,26 @@ const wrapper = (
         yield* lucid.switchToOperatorsMainWallet;
 
         const startTime = yield* getLatestBlockDatumEndTime(latestBlock.datum);
-        const endTime = latestTxEntry[TxColumns.TIMESTAMPTZ];
-        const deposits = yield* DepositsDB.retrieveTimeBoundEntries(
-          startTime,
-          endTime,
-        );
+        const endTime = latestTxEntry === undefined
+          ? new Date()
+          : latestTxEntry[TxColumns.TIMESTAMPTZ];
 
-        const depositIDs = deposits.map(
-          (deposit) => deposit[DepositsDB.Columns.ID],
-        );
-        const depositInfos = deposits.map(
-          (deposit) => deposit[DepositsDB.Columns.INFO],
-        );
+        const sizeOfTxOrderTxs = yield* processTxOrderEvent(startTime, endTime, ledgerTrie);
+        const {mempoolTxHashes, sizeOfTxRequestTxs} = yield* processTxRequestEvent(ledgerTrie, mempoolTrie, mempoolTxs)
+        const {depositRoot, sizeOfDepositTxs} = yield* processDepositEvent(startTime, endTime)
+        const sizeOfProcessedTxs = sizeOfTxOrderTxs + sizeOfTxRequestTxs + sizeOfDepositTxs;
 
-        const depositRootFiber = yield* Effect.fork(
-          keyValueMptRoot(depositIDs, depositInfos),
-        );
+        if (sizeOfProcessedTxs === 0) return  {
+          type: "NothingToCommitOutput",
+        } as WorkerOutput;;
 
         const { nodeDatum: updatedNodeDatum, header: newHeader } =
           yield* SDK.Utils.updateLatestBlocksDatumAndGetTheNewHeader(
             lucid.api,
             latestBlock.datum,
-            utxoRoot,
-            txRoot,
-            yield* depositRootFiber,
+            yield* ledgerTrie.getRoot(),
+            yield* mempoolTrie.getRoot(),
+            depositRoot,
             "00".repeat(32),
             BigInt(Number(endTime)),
           );
@@ -362,7 +363,7 @@ const wrapper = (
                 // logic as the case where no confirmed blocks are available.
                 //
                 // TODO: Handle failures properly.
-                yield* skippedSubmissionProgram;
+                yield* skippedSubmissionProgram(mempoolTxHashes);
                 return yield* failedSubmissionProgram(e);
               }),
           }),
