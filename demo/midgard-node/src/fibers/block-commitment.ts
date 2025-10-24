@@ -1,11 +1,12 @@
+import { Globals } from "@/services/index.js";
+import { Effect, Ref, Schedule } from "effect";
+import { WorkerError } from "@/workers/utils/common.js";
 import {
   WorkerInput,
   WorkerOutput,
 } from "@/workers/utils/commit-block-header.js";
-import { Effect, Metric, Ref } from "effect";
+import { Metric } from "effect";
 import { Worker } from "worker_threads";
-import { WorkerError } from "@/workers/utils/common.js";
-import { Globals } from "@/services/globals.js";
 
 const commitBlockNumTxGauge = Metric.gauge("commit_block_num_tx_count", {
   description:
@@ -35,7 +36,7 @@ const commitBlockTxSizeGauge = Metric.gauge("commit_block_tx_size", {
   description: "A gauge for tracking the size of the commit block transaction",
 });
 
-export const buildAndSubmitCommitmentBlock = () =>
+export const buildAndSubmitCommitmentBlockAction = () =>
   Effect.gen(function* () {
     const globals = yield* Globals;
     const AVAILABLE_CONFIRMED_BLOCK = yield* globals.AVAILABLE_CONFIRMED_BLOCK;
@@ -111,7 +112,7 @@ export const buildAndSubmitCommitmentBlock = () =>
         yield* Ref.update(globals.BLOCKS_IN_QUEUE, (n) => n + 1);
         yield* Ref.set(globals.AVAILABLE_CONFIRMED_BLOCK, "");
         yield* Ref.set(
-          globals.UNCONFIRMED_SUBMITTED_BLOCK,
+          globals.UNCONFIRMED_SUBMITTED_BLOCK_TX_HASH,
           workerOutput.submittedTxHash,
         );
         yield* Ref.set(globals.PROCESSED_UNSUBMITTED_TXS_COUNT, 0);
@@ -148,4 +149,28 @@ export const buildAndSubmitCommitmentBlock = () =>
         break;
       }
     }
+  });
+
+export const blockCommitmentAction: Effect.Effect<void, WorkerError, Globals> =
+  Effect.gen(function* () {
+    const globals = yield* Globals;
+    const RESET_IN_PROGRESS = yield* Ref.get(globals.RESET_IN_PROGRESS);
+    if (!RESET_IN_PROGRESS) {
+      yield* Effect.logInfo("🔹 New block commitment process started.");
+      yield* buildAndSubmitCommitmentBlockAction().pipe(
+        Effect.withSpan("buildAndSubmitCommitmentBlockAction"),
+      );
+    }
+  });
+
+export const blockCommitmentFiber = (
+  schedule: Schedule.Schedule<number>,
+): Effect.Effect<void, never, Globals> =>
+  Effect.gen(function* () {
+    yield* Effect.logInfo("🔵 Block commitment fiber started.");
+    const action = blockCommitmentAction.pipe(
+      Effect.withSpan("block-commitment-fiber"),
+      Effect.catchAllCause(Effect.logWarning),
+    );
+    yield* Effect.repeat(action, schedule);
   });

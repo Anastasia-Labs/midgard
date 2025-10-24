@@ -162,6 +162,30 @@ export const processMpts = (
     };
   });
 
+export const keyValueMptRoot = (
+  keys: Buffer[],
+  values: Buffer[],
+): Effect.Effect<string, MptError, never> =>
+  Effect.gen(function* () {
+    const trie = yield* MidgardMpt.create("keyValueMPT");
+
+    const ops: ETH_UTILS.BatchDBOp[] = yield* Effect.allSuccesses(
+      keys.map((key: Buffer, i: number) =>
+        Effect.gen(function* () {
+          const op: ETH_UTILS.BatchDBOp = {
+            type: "put",
+            key: key,
+            value: values[i], // Poor mans zip
+          };
+          return op;
+        }),
+      ),
+    );
+
+    yield* trie.batch(ops);
+    return yield* trie.getRootHex();
+  });
+
 export const withTrieTransaction = <A, E, R>(
   trie: MidgardMpt,
   eff: Effect.Effect<A, E, R>,

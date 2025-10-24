@@ -14,7 +14,7 @@ import { Datum } from "@/tx-builder/state-queue/types.js";
 import {
   DataCoercionError,
   GenericErrorFields,
-  getBeaconToken,
+  getStateToken,
   HashingError,
   LucidError,
   MissingDatumError,
@@ -40,7 +40,7 @@ export const utxoToStateQueueUTxO = (
 > =>
   Effect.gen(function* () {
     const datum = yield* getNodeDatumFromUTxO(utxo);
-    const [sym, assetName] = yield* getBeaconToken(utxo.assets);
+    const [sym, assetName] = yield* getStateToken(utxo.assets);
     if (sym !== nftPolicy) {
       yield* Effect.fail(
         new UnauthenticUtxoError({
@@ -108,6 +108,8 @@ export const getConfirmedStateFromStateQueueDatum = (
  * @param latestBlocksDatum - Datum of the UTxO of the latest block in queue.
  * @param newUTxOsRoot - MPF root of the updated ledger.
  * @param transactionsRoot - MPF root of the transactions included in the new block.
+ * @param depositsRoot - MPF root of the deposit transactions included in the new block.
+ * @param withdrawalsRoot - MPF root of the withdrawal transactions included in the new block.
  * @param endTime - POSIX time of the new block's closing range.
  */
 export const updateLatestBlocksDatumAndGetTheNewHeader = (
@@ -115,20 +117,21 @@ export const updateLatestBlocksDatumAndGetTheNewHeader = (
   latestBlocksDatum: Datum,
   newUTxOsRoot: MerkleRoot,
   transactionsRoot: MerkleRoot,
+  depositsRoot: MerkleRoot,
+  withdrawalsRoot: MerkleRoot,
   endTime: POSIXTime,
 ): Effect.Effect<
   { nodeDatum: Datum; header: Header },
   DataCoercionError | LucidError | HashingError
 > =>
   Effect.gen(function* () {
-    const walletAddress = yield* Effect.tryPromise({
+    const walletAddress: string = yield* Effect.tryPromise({
       try: () => lucid.wallet().address(),
       catch: (e) =>
         new LucidError({ message: `Failed to find the wallet`, cause: e }),
     });
 
     const pubKeyHash = paymentCredentialOf(walletAddress).hash;
-
     if (latestBlocksDatum.key === "Empty") {
       const { data: confirmedState } =
         yield* getConfirmedStateFromStateQueueDatum(latestBlocksDatum);
@@ -141,8 +144,8 @@ export const updateLatestBlocksDatumAndGetTheNewHeader = (
           prevUtxosRoot: confirmedState.utxoRoot,
           utxosRoot: newUTxOsRoot,
           transactionsRoot,
-          depositsRoot: "00".repeat(32),
-          withdrawalsRoot: "00".repeat(32),
+          depositsRoot: depositsRoot,
+          withdrawalsRoot: withdrawalsRoot,
           startTime: confirmedState.endTime,
           endTime,
           prevHeaderHash: confirmedState.headerHash,

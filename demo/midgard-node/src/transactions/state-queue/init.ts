@@ -14,12 +14,11 @@ export const stateQueueInit: Effect.Effect<
   Lucid | NodeConfig | AlwaysSucceedsContract
 > = Effect.gen(function* () {
   const lucid = yield* Lucid;
-  const { spendScriptAddress, mintScript, policyId } =
-    yield* AlwaysSucceedsContract;
+  const { stateQueueAuthValidator } = yield* AlwaysSucceedsContract;
   const initParams: SDK.TxBuilder.StateQueue.InitParams = {
-    address: spendScriptAddress,
-    policyId: policyId,
-    stateQueueMintingScript: mintScript,
+    address: stateQueueAuthValidator.spendScriptAddress,
+    policyId: stateQueueAuthValidator.policyId,
+    stateQueueMintingScript: stateQueueAuthValidator.mintScript,
   };
   yield* lucid.switchToOperatorsMainWallet;
   const txBuilderProgram = SDK.Endpoints.initTxProgram(lucid.api, initParams);
@@ -31,6 +30,7 @@ export const stateQueueInit: Effect.Effect<
         new TxSubmitError({
           message: "Failed to submit the state queue initiation tx",
           cause: err,
+          txHash: txBuilder.toHash(),
         }),
       );
     });
