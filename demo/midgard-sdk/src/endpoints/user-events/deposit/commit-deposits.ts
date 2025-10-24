@@ -11,7 +11,7 @@ export const commitDepositsProgram = (
 ): Effect.Effect<TxSignBuilder, HashingError | LucidError | DepositError> =>
   Effect.gen(function* () {
     const commitTx = yield* Deposit.depositTxBuilder(lucid, depositParams);
-    const completedTx = yield* Effect.tryPromise({
+    const completedTx: TxSignBuilder = yield* Effect.tryPromise({
       try: () => commitTx.complete({ localUPLCEval: false }),
       catch: (e) =>
         new DepositError({
@@ -30,7 +30,7 @@ export const commitDepositsProgram = (
  * @param depositParams - Parameters required for commiting deposits.
  * @returns A promise that resolves to a `TxSignBuilder` instance.
  */
-export const commitBlockHeader = (
+export const commitDeposits = (
   lucid: LucidEvolution,
   depositParams: Deposit.DepositParams,
 ): Promise<TxSignBuilder> =>
