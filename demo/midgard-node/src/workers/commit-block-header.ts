@@ -209,8 +209,8 @@ const wrapper = (
           yield* SDK.Utils.updateLatestBlocksDatumAndGetTheNewHeader(
             lucid.api,
             latestBlock.datum,
-            yield* ledgerTrie.getRoot(),
-            yield* mempoolTrie.getRoot(),
+            yield* ledgerTrie.getRootHex(),
+            yield* mempoolTrie.getRootHex(),
             depositRoot,
             "00".repeat(32),
             BigInt(Number(endTime)),
