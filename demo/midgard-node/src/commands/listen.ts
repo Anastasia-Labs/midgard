@@ -64,6 +64,7 @@ import {
 import { mergeFiber, mergeAction } from "@/fibers/merge.js";
 import { monitorMempoolFiber } from "@/fibers/monitor-mempool.js";
 import { txQueueProcessorFiber } from "@/fibers/tx-queue-processor.js";
+import { fetchAndInsertTxOrderUTxOsFiber } from "@/fibers/fetch-and-insert-tx-order-utxos.js";
 
 const TX_ENDPOINT: string = "tx";
 const MERGE_ENDPOINT: string = "merge";
@@ -589,6 +590,11 @@ export const runNode = Effect.gen(function* () {
       fetchAndInsertDepositUTxOsFiber(
         Schedule.spaced(
           Duration.millis(nodeConfig.WAIT_BETWEEN_DEPOSIT_UTXO_FETCHES),
+        ),
+      ),
+      fetchAndInsertTxOrderUTxOsFiber(
+        Schedule.spaced(
+          Duration.millis(nodeConfig.WAIT_BETWEEN_TX_ORDER_UTXO_FETCHES),
         ),
       ),
       mergeFiber(
