@@ -9,7 +9,7 @@ import * as MempoolLedgerDB from "./mempoolLedger.js";
 import * as Tx from "@/database/utils/tx.js";
 import * as Ledger from "@/database/utils/ledger.js";
 import * as DepositsDB from "@/database/deposits.js";
-import * as TxOrdersDB from "@/database/txOrders.js";
+import * as UserEvents from "@/database/utils/user-events.js";
 import { Effect } from "effect";
 import { insertGenesisUtxos } from "./genesis.js";
 import { Database, NodeConfig } from "@/services/index.js";
@@ -33,8 +33,7 @@ export const initializeDb: () => Effect.Effect<
     yield* Tx.createTable(ImmutableDB.tableName);
     yield* Ledger.createTable(ConfirmedLedgerDB.tableName);
     yield* Ledger.createTable(LatestLedgerDB.tableName);
-    yield* DepositsDB.createTable;
-    yield* TxOrdersDB.createTable;
+    yield* UserEvents.createTable(DepositsDB.tableName);
 
     yield* insertGenesisUtxos;
 

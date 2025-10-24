@@ -11,3 +11,4 @@ export * as InitDB from "./init.js";
 export * as CommonUtils from "./utils/common.js";
 export * as LedgerUtils from "./utils/ledger.js";
 export * as TxUtils from "./utils/tx.js";
+export * as UserEventsUtils from "./utils/user-events.js";
