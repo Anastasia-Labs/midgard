@@ -26,9 +26,10 @@ import {
   TxSignError,
   TxSubmitError,
 } from "@/transactions/utils.js";
-import { fromHex } from "@lucid-evolution/lucid";
+import { Data, fromHex } from "@lucid-evolution/lucid";
 import {
   MptError,
+  keyValueMptRoot,
   makeMpts,
   withTrieTransaction,
 } from "@/workers/utils/mpt.js";
@@ -37,12 +38,10 @@ import {
   EntryWithTimeStamp as TxEntry,
   Columns as TxColumns,
 } from "@/database/utils/tx.js";
+import { Columns as UserEventsColumns } from "@/database/utils/user-events.js";
 import { DatabaseError } from "@/database/utils/common.js";
-import {
-  processDepositEvent,
-  processTxOrderEvent,
-  processTxRequestEvent,
-} from "./utils/events.js";
+import { RuntimeFiber } from "effect/Fiber";
+import { processDepositEvent, processTxOrderEvent, processTxRequestEvent } from "./utils/events.js";
 
 const BATCH_SIZE = 100;
 
@@ -100,9 +99,7 @@ const wrapper = (
       const processedMempoolTxs = yield* ProcessedMempoolDB.retrieve;
 
       if (processedMempoolTxs.length === 0) {
-        yield* Effect.logInfo(
-          "🔹 No transactions were found in ProcessedMempoolDB",
-        );
+        yield* Effect.logInfo("🔹 No transactions were found in ProcessedMempoolDB");
       } else {
         latestTxEntry = processedMempoolTxs[0];
       }
@@ -111,7 +108,7 @@ const wrapper = (
       // successful, `ProcessedMempoolDB` must be cleared. Following functions
       // should work fine with 0 mempool txs.
     } else {
-      yield* Effect.logInfo(`🔹 Transactions were found in MempoolDB`);
+      yield* Effect.logInfo("🔹 Transactions were found in MempoolDB");
       latestTxEntry = mempoolTxs[0];
     }
 
@@ -132,29 +129,32 @@ const wrapper = (
       | MptError,
       AlwaysSucceedsContract | Database | NodeConfig
     > = Effect.gen(function* () {
+      // TODO: Rearrange event order when fraud proofs are ready
+      const { mempoolTxHashes, sizeOfTxRequestTxs } =
+        yield* processTxRequestEvent(ledgerTrie, mempoolTrie, mempoolTxs);
+
       const { stateQueueAuthValidator } = yield* AlwaysSucceedsContract;
 
-      const skippedSubmissionProgram = (mempoolTxHashes: Buffer[]) =>
-        batchProgram(
-          BATCH_SIZE,
-          mempoolTxsCount,
-          "skipped-submission-db-transfer",
-          (startIndex: number, endIndex: number) => {
-            const batchTxs = mempoolTxs.slice(startIndex, endIndex);
-            const batchHashes = mempoolTxHashes.slice(startIndex, endIndex);
-            return Effect.all(
-              [
-                ProcessedMempoolDB.insertTxs(batchTxs).pipe(
-                  Effect.withSpan(`processed-mempool-db-insert-${startIndex}`),
-                ),
-                MempoolDB.clearTxs(batchHashes).pipe(
-                  Effect.withSpan(`mempool-db-clear-txs-${startIndex}`),
-                ),
-              ],
-              { concurrency: "unbounded" },
-            );
-          },
-        );
+      const skippedSubmissionProgram = batchProgram(
+        BATCH_SIZE,
+        mempoolTxsCount,
+        "skipped-submission-db-transfer",
+        (startIndex: number, endIndex: number) => {
+          const batchTxs = mempoolTxs.slice(startIndex, endIndex);
+          const batchHashes = mempoolTxHashes.slice(startIndex, endIndex);
+          return Effect.all(
+            [
+              ProcessedMempoolDB.insertTxs(batchTxs).pipe(
+                Effect.withSpan(`processed-mempool-db-insert-${startIndex}`),
+              ),
+              MempoolDB.clearTxs(batchHashes).pipe(
+                Effect.withSpan(`mempool-db-clear-txs-${startIndex}`),
+              ),
+            ],
+            { concurrency: "unbounded" },
+          );
+        },
+      );
 
       if (workerInput.data.availableConfirmedBlock === "") {
         // The tx confirmation worker has not yet confirmed a previously
@@ -167,9 +167,7 @@ const wrapper = (
         yield* Effect.logInfo(
           "🔹 No confirmed blocks available. Transferring to ProcessedMempoolDB...",
         );
-        const { mempoolTxHashes, sizeOfTxRequestTxs } =
-          yield* processTxRequestEvent(ledgerTrie, mempoolTrie, mempoolTxs);
-        yield* skippedSubmissionProgram(mempoolTxHashes);
+        yield* skippedSubmissionProgram;
         return {
           type: "SkippedSubmissionOutput",
           mempoolTxsCount,
@@ -189,36 +187,32 @@ const wrapper = (
         yield* lucid.switchToOperatorsMainWallet;
 
         const startTime = yield* getLatestBlockDatumEndTime(latestBlock.datum);
-        const endTime =
+         const endTime =
           latestTxEntry === undefined
             ? new Date()
             : latestTxEntry[TxColumns.TIMESTAMPTZ];
 
-        const sizeOfTxOrderTxs = yield* processTxOrderEvent(
-          startTime,
-          endTime,
-          ledgerTrie,
-        );
-        const { mempoolTxHashes, sizeOfTxRequestTxs } =
-          yield* processTxRequestEvent(ledgerTrie, mempoolTrie, mempoolTxs);
-        const { depositRoot, sizeOfDepositTxs } = yield* processDepositEvent(
-          startTime,
-          endTime,
-        );
+        const sizeOfTxOrderTxs = yield* processTxOrderEvent(startTime, endTime, ledgerTrie);
+        const {depositRoot, sizeOfDepositTxs} = yield* processDepositEvent(startTime, endTime);
         const sizeOfProcessedTxs =
-          sizeOfTxOrderTxs + sizeOfTxRequestTxs + sizeOfDepositTxs;
+          sizeOfTxRequestTxs + sizeOfTxOrderTxs + sizeOfDepositTxs;
 
-        if (sizeOfProcessedTxs === 0)
+        if (sizeOfProcessedTxs === 0) {
+          yield* Effect.logInfo("🔹 Nothing to commit.");
           return {
             type: "NothingToCommitOutput",
           } as WorkerOutput;
+        }
+
+        const utxoRoot = yield* ledgerTrie.getRootHex();
+        const txRoot = yield* mempoolTrie.getRootHex();
 
         const { nodeDatum: updatedNodeDatum, header: newHeader } =
           yield* SDK.Utils.updateLatestBlocksDatumAndGetTheNewHeader(
             lucid.api,
             latestBlock.datum,
-            yield* ledgerTrie.getRootHex(),
-            yield* mempoolTrie.getRootHex(),
+            utxoRoot,
+            txRoot,
             depositRoot,
             "00".repeat(32),
             BigInt(Number(endTime)),
@@ -371,7 +365,7 @@ const wrapper = (
                 // logic as the case where no confirmed blocks are available.
                 //
                 // TODO: Handle failures properly.
-                yield* skippedSubmissionProgram(mempoolTxHashes);
+                yield* skippedSubmissionProgram;
                 return yield* failedSubmissionProgram(e);
               }),
           }),
