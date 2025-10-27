@@ -64,6 +64,7 @@ import {
 import { mergeFiber, mergeAction } from "@/fibers/merge.js";
 import { monitorMempoolFiber } from "@/fibers/monitor-mempool.js";
 import { txQueueProcessorFiber } from "@/fibers/tx-queue-processor.js";
+import { buildAndSubmitGenesisDeposit } from "@/transactions/genesis-deposit.js"
 
 const TX_ENDPOINT: string = "tx";
 const MERGE_ENDPOINT: string = "merge";
@@ -565,6 +566,12 @@ export const runNode = Effect.gen(function* () {
   const txQueue = yield* Queue.unbounded<string>();
 
   yield* InitDB.initializeDb().pipe(Effect.provide(Database.layer));
+  yield* buildAndSubmitGenesisDeposit().pipe(
+    Effect.provide(AlwaysSucceedsContract.Default),
+    Effect.provide(Lucid.Default),
+    Effect.provide(SDK.Services.Parameters.Default),
+    Effect.catchAllCause(Effect.logWarning),
+  );
 
   const appThread = Layer.launch(
     Layer.provide(

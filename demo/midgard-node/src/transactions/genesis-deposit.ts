@@ -1,30 +1,24 @@
 import * as SDK from "@al-ft/midgard-sdk";
-import {
-  Address,
-  LucidEvolution,
-  Script,
-  TxSignBuilder,
-
-} from "@lucid-evolution/lucid";
-import { Effect, } from "effect";
-import { AuthenticatedValidator, Globals } from "@/services/index.js";
+import { Effect } from "effect";
+import { AlwaysSucceedsContract, Lucid } from "@/services/index.js";
+import { GenesisDepositError } from "./utils.js";
 
 /**
- * Build and submit the merge transaction.
- *
- * @param lucid - The LucidEvolution instance.
- * @param depositAuthValidator - The configuration of the deposit validator.
+ * Build and submit the merge transaction using depositAuthValidator.
  * @returns An Effect that commits a genesis deposit on L1.
  */
 export const buildAndSubmitGenesisDeposit = (
-  lucid: LucidEvolution,
-  depositAuthValidator: AuthenticatedValidator,
 ): Effect.Effect<
   void,
-  Error,
-  SDK.Services.Parameters
+  SDK.Utils.LucidError | GenesisDepositError,
+  SDK.Services.Parameters |
+  AlwaysSucceedsContract |
+  Lucid
 > =>
   Effect.gen(function* () {
+    const { api: lucid } = yield* Lucid;
+    const { depositAuthValidator } = yield* AlwaysSucceedsContract
+
     const onchainParameters = yield* SDK.Services.Parameters;
     const depositParams : SDK.TxBuilder.Deposit.DepositParams =
     ({
@@ -37,5 +31,32 @@ export const buildAndSubmitGenesisDeposit = (
         }),
         inclusionTime: BigInt(Date.now() + onchainParameters.event_wait_duration)
     })
-    yield* SDK.Endpoints.commitDepositsProgram(lucid, depositParams)
+
+    const onHashingFailure = (err: SDK.Utils.HashingError) =>
+      Effect.gen(function* () {
+        yield* Effect.logError(`Hashing error: ${err}`);
+        yield* Effect.fail(
+          new GenesisDepositError({
+            message: "failed to submit genesis deposits",
+            cause: err,
+          }),
+        );
+      });
+
+    const onDepositFailure = (err: SDK.Utils.DepositError) =>
+      Effect.gen(function* () {
+        yield* Effect.logError(`Deposit error: ${err}`);
+        yield* Effect.fail(
+          new GenesisDepositError({
+            message: "failed to submit genesis deposits",
+            cause: err,
+          }),
+        );
+      });
+
+
+    yield* SDK.Endpoints.commitDepositsProgram(lucid, depositParams).pipe(
+      Effect.catchTag("HashingError", onHashingFailure),
+      Effect.catchTag("DepositError", onDepositFailure),
+    )
   });
