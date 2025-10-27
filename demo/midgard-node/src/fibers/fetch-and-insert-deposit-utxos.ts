@@ -8,7 +8,7 @@ import {
   Database,
 } from "@/services/index.js";
 import { LucidEvolution, Data, fromHex } from "@lucid-evolution/lucid";
-import { DepositsDB } from "@/database/index.js";
+import { DepositsDB, UserEventsUtils } from "@/database/index.js";
 import { DatabaseError } from "@/database/utils/common.js";
 import { Schedule } from "effect";
 
@@ -57,10 +57,10 @@ export const fetchAndInsertDepositUTxOs: Effect.Effect<
   const getInclusionTime = (utxo: SDK.TxBuilder.Deposit.DepositUTxO): Date =>
     new Date(Number(utxo.datum.inclusionTime)); // TODO: Check if that the correct conversion for the db entry
 
-  const entries: DepositsDB.Entry[] = depositUTxOs.map((utxo) => ({
-    [DepositsDB.Columns.ID]: toBuffer(getOutRef(utxo)),
-    [DepositsDB.Columns.INFO]: toBuffer(getDepositInfo(utxo)),
-    [DepositsDB.Columns.INCLUSION_TIME]: getInclusionTime(utxo),
+  const entries: UserEventsUtils.Entry[] = depositUTxOs.map((utxo) => ({
+    [UserEventsUtils.Columns.ID]: toBuffer(getOutRef(utxo)),
+    [UserEventsUtils.Columns.INFO]: toBuffer(getDepositInfo(utxo)),
+    [UserEventsUtils.Columns.INCLUSION_TIME]: getInclusionTime(utxo),
   }));
 
   yield* DepositsDB.insertEntries(entries);
