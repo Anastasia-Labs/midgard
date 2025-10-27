@@ -18,6 +18,7 @@ import {
   BlocksDB,
   ImmutableDB,
   MempoolDB,
+  ProcessedMempoolDB,
   DepositsDB,
 } from "@/database/index.js";
 import {
@@ -91,17 +92,40 @@ const wrapper = (
     const mempoolTxs = yield* MempoolDB.retrieve;
     const mempoolTxsCount = mempoolTxs.length;
     let latestTxEntry: undefined | TxEntry;
+    // let endTime: Date;
 
     if (mempoolTxsCount === 0) {
       yield* Effect.logInfo(
-        "🔹 No transactions were found in MempoolDB",
+        "🔹 No transactions were found in MempoolDB, checking ProcessedMempoolDB...",
       );
+
+      const processedMempoolTxs = yield* ProcessedMempoolDB.retrieve;
+
+      if (processedMempoolTxs.length === 0) {
+        yield* Effect.logInfo(
+          "🔹 No transactions were found in ProcessedMempoolDB",
+        );
+        // endTime = new Date();
+        // return {
+        //   type: "NothingToCommitOutput",
+        // } as WorkerOutput;
+      } else {
+        latestTxEntry = processedMempoolTxs[0];
+        // endTime = latestTxEntry[TxColumns.TIMESTAMPTZ]
+      }
+      // No new transactions received, but there are uncommitted transactions in
+      // the MPT. So its root must be used to submit a new block, and if
+      // successful, `ProcessedMempoolDB` must be cleared. Following functions
+      // should work fine with 0 mempool txs.
     } else {
       yield* Effect.logInfo(
         `🔹 ${mempoolTxsCount} transactions were found in MempoolDB`,
       );
       latestTxEntry = mempoolTxs[0];
+      // endTime = latestTxEntry[TxColumns.TIMESTAMPTZ]
     }
+
+    // yield* Effect.logInfo(`🔹 ${mempoolTxsCount} retrieved.`);
 
     const { ledgerTrie, mempoolTrie } = yield* makeMpts;
 
@@ -120,17 +144,48 @@ const wrapper = (
     > = Effect.gen(function* () {
       const { stateQueueAuthValidator } = yield* AlwaysSucceedsContract;
 
+      const skippedSubmissionProgram = (mempoolTxHashes: Buffer[]) =>
+        batchProgram(
+          BATCH_SIZE,
+          mempoolTxsCount,
+          "skipped-submission-db-transfer",
+          (startIndex: number, endIndex: number) => {
+            const batchTxs = mempoolTxs.slice(startIndex, endIndex);
+            const batchHashes = mempoolTxHashes.slice(startIndex, endIndex);
+            return Effect.all(
+              [
+                ProcessedMempoolDB.insertTxs(batchTxs).pipe(
+                  Effect.withSpan(`processed-mempool-db-insert-${startIndex}`),
+                ),
+                MempoolDB.clearTxs(batchHashes).pipe(
+                  Effect.withSpan(`mempool-db-clear-txs-${startIndex}`),
+                ),
+              ],
+              { concurrency: "unbounded" },
+            );
+          },
+        );
+
       if (workerInput.data.availableConfirmedBlock === "") {
         // The tx confirmation worker has not yet confirmed a previously
-        // submitted tx
+        // submitted tx, so the root we have found can not be used yet.
+        // However, it is stored on disk in our LevelDB mempool. Therefore,
+        // the processed txs must be transferred to `ProcessedMempoolDB` from
+        // `MempoolDB`.
+        //
         // TODO: Handle failures properly.
         yield* Effect.logInfo(
-          "🔹 No confirmed blocks available. Skipping submission.",
+          "🔹 No confirmed blocks available. Transferring to ProcessedMempoolDB...",
         );
+        // TODO: Should we even construct mpts on that iteration? Wouldn't it lead to case
+        // when tx requests applied before tx orders?
+        const { mempoolTxHashes, sizeOfTxRequestTxs } =
+          yield* processTxRequestEvent(ledgerTrie, mempoolTrie, mempoolTxs);
+        yield* skippedSubmissionProgram(mempoolTxHashes);
         return {
           type: "SkippedSubmissionOutput",
           mempoolTxsCount,
-          sizeOfProcessedTxs: 0,
+          sizeOfProcessedTxs: sizeOfTxRequestTxs,
         };
       } else {
         yield* Effect.logInfo(
@@ -150,7 +205,7 @@ const wrapper = (
           latestTxEntry === undefined
             ? new Date()
             : latestTxEntry[TxColumns.TIMESTAMPTZ];
-        // TODO: with small modification of `processTxRequestEvent` we probably can process all 3 tries in parallel
+
         const sizeOfTxOrderTxs = yield* processTxOrderEvent(
           startTime,
           endTime,
@@ -213,6 +268,8 @@ const wrapper = (
           `🔹 Transaction built successfully. Size: ${txSize}`,
         );
 
+        // let output: WorkerOutput | undefined = undefined;
+
         const failedSubmissionProgram = (
           err: TxSubmitError,
         ): Effect.Effect<WorkerOutput> =>
@@ -240,8 +297,10 @@ const wrapper = (
           Effect.gen(function* () {
             const newHeaderHashBuffer = Buffer.from(fromHex(newHeaderHash));
 
+            const processedMempoolTxs = yield* ProcessedMempoolDB.retrieve;
+
             yield* Effect.logInfo(
-              "🔹 Inserting included transactions into ImmutableDB and BlocksDB, clearing all the processed txs from MempoolDB, and deleting mempool LevelDB...",
+              "🔹 Inserting included transactions into ImmutableDB and BlocksDB, clearing all the processed txs from MempoolDB and ProcessedMempoolDB, and deleting mempool LevelDB...",
             );
             yield* Effect.all(
               [
@@ -256,6 +315,17 @@ const wrapper = (
                       endIndex,
                     );
                     const batchHashesForBlocks = [...batchHashes];
+
+                    const batchProcessedTxs = processedMempoolTxs.slice(
+                      startIndex,
+                      endIndex,
+                    );
+
+                    for (let i = 0; i < batchProcessedTxs.length; i++) {
+                      const txPair = batchProcessedTxs[i];
+                      batchTxs.push(txPair);
+                      batchHashesForBlocks.push(txPair[TxColumns.TX_ID]);
+                    }
 
                     return Effect.all(
                       [
@@ -276,6 +346,7 @@ const wrapper = (
                     );
                   },
                 ),
+                ProcessedMempoolDB.clear, // uses `TRUNCATE` so no need for batching.
                 mempoolTrie.delete(),
               ],
               { concurrency: "unbounded" },
@@ -312,6 +383,7 @@ const wrapper = (
                 // logic as the case where no confirmed blocks are available.
                 //
                 // TODO: Handle failures properly.
+                yield* skippedSubmissionProgram(mempoolTxHashes);
                 return yield* failedSubmissionProgram(e);
               }),
           }),

@@ -37,6 +37,7 @@ import {
   LatestLedgerDB,
   MempoolDB,
   MempoolLedgerDB,
+  ProcessedMempoolDB,
 } from "../database/index.js";
 import { ProcessedTx, breakDownTx, isHexString } from "../utils.js";
 import {
@@ -327,6 +328,7 @@ const getResetHandler = Effect.gen(function* () {
     [
       MempoolDB.clear,
       MempoolLedgerDB.clear,
+      ProcessedMempoolDB.clear,
       BlocksDB.clear,
       ImmutableDB.clear,
       LatestLedgerDB.clear,
