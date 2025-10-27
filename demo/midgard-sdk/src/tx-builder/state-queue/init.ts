@@ -1,5 +1,5 @@
 import { ConfirmedState } from "../ledger-state.js";
-import { NodeDatum } from "../linked-list.js";
+import { NodeDatum } from "../linked-list/linked-list.js";
 import { InitParams } from "./types.js";
 import {
   LucidEvolution,

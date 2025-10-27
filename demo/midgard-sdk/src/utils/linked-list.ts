@@ -1,5 +1,5 @@
 import { Data as EffectData, Effect } from "effect";
-import { NodeDatum } from "../tx-builder/linked-list.js";
+import { NodeDatum } from "../tx-builder/linked-list/linked-list.js";
 import { Data, UTxO } from "@lucid-evolution/lucid";
 import {
   DataCoercionError,

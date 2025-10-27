@@ -28,7 +28,7 @@ export const initLinkedListTxBuilder = (
 
     const nodeDatum: NodeDatum = {
       key: "Empty",
-      next: "Empty", 
+      next: "Empty",
       data: params.data,
     };
 

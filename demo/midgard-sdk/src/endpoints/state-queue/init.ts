@@ -5,7 +5,7 @@ import { Effect } from "effect";
 import { StateQueue } from "@/tx-builder/index.js";
 import { LucidError } from "@/utils/common.js";
 
-export const initTxProgram = (
+export const initStateQueueProgram = (
   lucid: LucidEvolution,
   initParams: StateQueue.InitParams,
 ): Effect.Effect<TxSignBuilder, LucidError> =>
@@ -29,8 +29,8 @@ export const initTxProgram = (
  * @param initParams - Parameters for minting the initialization NFT.
  * @returns A promise that resolves to a `TxSignBuilder` instance.
  */
-export const initTx = (
+export const initStateQueue = (
   lucid: LucidEvolution,
   initParams: StateQueue.InitParams,
 ): Promise<TxSignBuilder> =>
-  makeReturn(initTxProgram(lucid, initParams)).unsafeRun();
+  makeReturn(initStateQueueProgram(lucid, initParams)).unsafeRun();

@@ -11,10 +11,10 @@ import {
   getHeaderFromStateQueueDatum,
   hashHeader,
 } from "../../utils/ledger-state.js";
-import { NodeDatum } from "../linked-list.js";
 import { Redeemer, FetchConfig, MergeParams } from "./types.js";
 import { getConfirmedStateFromStateQueueDatum } from "@/utils/state-queue.js";
 import { DataCoercionError, HashingError } from "@/utils/common.js";
+import { NodeDatum } from "../linked-list/linked-list.js";
 
 /**
  * Merge

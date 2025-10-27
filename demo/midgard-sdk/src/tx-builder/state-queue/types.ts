@@ -1,6 +1,6 @@
 import { Address, PolicyId, Script, Data, UTxO } from "@lucid-evolution/lucid";
 import { OutputReferenceSchema, POSIXTimeSchema } from "@/tx-builder/common.js";
-import { NodeDatumSchema } from "@/tx-builder/linked-list.js";
+import { NodeDatumSchema } from "@/tx-builder/linked-list/linked-list.js";
 import { Header } from "@/tx-builder/ledger-state.js";
 
 export const ConfigSchema = Data.Object({

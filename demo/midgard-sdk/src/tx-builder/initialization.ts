@@ -1,6 +1,11 @@
 import { Effect } from "effect";
-import { LucidEvolution, TxBuilder, UTxO, Script } from "@lucid-evolution/lucid";
-import { HubOracle, FraudProofCatalogue, Scheduler,  } from "./index.js";
+import {
+  LucidEvolution,
+  TxBuilder,
+  UTxO,
+  Script,
+} from "@lucid-evolution/lucid";
+import { HubOracle, FraudProofCatalogue, Scheduler } from "./index.js";
 import { initLinkedListTxBuilder } from "./linked-list/init.js";
 
 export type InitializationParams = {
@@ -8,12 +13,20 @@ export type InitializationParams = {
   genesisTime: bigint;
   initialOperator: string;
   hubOracle: HubOracle.InitParams;
-  scheduler: Omit<Scheduler.InitParams, 'operator' | 'startTime'> & { policyId: string; address: string; mintScript: Script };
+  scheduler: Omit<Scheduler.InitParams, "operator" | "startTime"> & {
+    policyId: string;
+    address: string;
+    mintScript: Script;
+  };
   fraudProofCatalogue: FraudProofCatalogue.InitParams;
   // All the linked lists
   stateQueue: { policyId: string; address: string; mintScript: Script };
   settlementQueue: { policyId: string; address: string; mintScript: Script };
-  registeredOperators: { policyId: string; address: string; mintScript: Script };
+  registeredOperators: {
+    policyId: string;
+    address: string;
+    mintScript: Script;
+  };
   activeOperators: { policyId: string; address: string; mintScript: Script };
   retiredOperators: { policyId: string; address: string; mintScript: Script };
 };
@@ -78,15 +91,18 @@ export const initTxBuilder = (
     });
 
     // 10. Initialize fraud proof catalogue
-    const fraudProofCatalogueTx = FraudProofCatalogue.initTxBuilder(lucid, params.fraudProofCatalogue);
+    const fraudProofCatalogueTx = FraudProofCatalogue.initTxBuilder(
+      lucid,
+      params.fraudProofCatalogue,
+    );
 
     // 11. Compose everything into ONE transaction
     return tx
       .compose(hubOracleTx)
-      .compose(stateQueueTx)           // ← Used 5 times!
-      .compose(registeredOperatorsTx)  // ←
-      .compose(activeOperatorsTx)      // ←
-      .compose(retiredOperatorsTx)     // ←
+      .compose(stateQueueTx) 
+      .compose(registeredOperatorsTx) // ←
+      .compose(activeOperatorsTx) // ←
+      .compose(retiredOperatorsTx) // ←
       .compose(schedulerTx)
       .compose(fraudProofCatalogueTx);
   });

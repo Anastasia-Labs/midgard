@@ -5,7 +5,7 @@ import {
   UTxO,
   paymentCredentialOf,
 } from "@lucid-evolution/lucid";
-import { NodeKey } from "../tx-builder/linked-list.js";
+import { NodeKey } from "../tx-builder/linked-list/linked-list.js";
 import { Data as EffectData, Effect } from "effect";
 import { StateQueue } from "../tx-builder/index.js";
 import { LinkedListError, getNodeDatumFromUTxO } from "./linked-list.js";
