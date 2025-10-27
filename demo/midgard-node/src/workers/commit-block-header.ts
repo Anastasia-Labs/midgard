@@ -26,10 +26,9 @@ import {
   TxSignError,
   TxSubmitError,
 } from "@/transactions/utils.js";
-import { Data, fromHex } from "@lucid-evolution/lucid";
+import { fromHex } from "@lucid-evolution/lucid";
 import {
   MptError,
-  keyValueMptRoot,
   makeMpts,
   withTrieTransaction,
 } from "@/workers/utils/mpt.js";
@@ -92,7 +91,6 @@ const wrapper = (
     const mempoolTxs = yield* MempoolDB.retrieve;
     const mempoolTxsCount = mempoolTxs.length;
     let latestTxEntry: undefined | TxEntry;
-    // let endTime: Date;
 
     if (mempoolTxsCount === 0) {
       yield* Effect.logInfo(
@@ -105,27 +103,19 @@ const wrapper = (
         yield* Effect.logInfo(
           "🔹 No transactions were found in ProcessedMempoolDB",
         );
-        // endTime = new Date();
-        // return {
-        //   type: "NothingToCommitOutput",
-        // } as WorkerOutput;
       } else {
         latestTxEntry = processedMempoolTxs[0];
-        // endTime = latestTxEntry[TxColumns.TIMESTAMPTZ]
       }
       // No new transactions received, but there are uncommitted transactions in
       // the MPT. So its root must be used to submit a new block, and if
       // successful, `ProcessedMempoolDB` must be cleared. Following functions
       // should work fine with 0 mempool txs.
     } else {
-      yield* Effect.logInfo(
-        `🔹 ${mempoolTxsCount} transactions were found in MempoolDB`,
-      );
+      yield* Effect.logInfo(`🔹 Transactions were found in MempoolDB`);
       latestTxEntry = mempoolTxs[0];
-      // endTime = latestTxEntry[TxColumns.TIMESTAMPTZ]
     }
 
-    // yield* Effect.logInfo(`🔹 ${mempoolTxsCount} retrieved.`);
+    yield* Effect.logInfo(`🔹 ${mempoolTxsCount} retrieved.`);
 
     const { ledgerTrie, mempoolTrie } = yield* makeMpts;
 
@@ -177,8 +167,6 @@ const wrapper = (
         yield* Effect.logInfo(
           "🔹 No confirmed blocks available. Transferring to ProcessedMempoolDB...",
         );
-        // TODO: Should we even construct mpts on that iteration? Wouldn't it lead to case
-        // when tx requests applied before tx orders?
         const { mempoolTxHashes, sizeOfTxRequestTxs } =
           yield* processTxRequestEvent(ledgerTrie, mempoolTrie, mempoolTxs);
         yield* skippedSubmissionProgram(mempoolTxHashes);
