@@ -202,9 +202,8 @@ const wrapper = (
           (deposit) => deposit[UserEventsColumns.INFO],
         );
 
-        const depositRootFiber: RuntimeFiber<string, MptError> = yield* Effect.fork(
-          keyValueMptRoot(depositIDs, depositInfos),
-        );
+        const depositRootFiber: RuntimeFiber<string, MptError> =
+          yield* Effect.fork(keyValueMptRoot(depositIDs, depositInfos));
 
         const { nodeDatum: updatedNodeDatum, header: newHeader } =
           yield* SDK.Utils.updateLatestBlocksDatumAndGetTheNewHeader(
