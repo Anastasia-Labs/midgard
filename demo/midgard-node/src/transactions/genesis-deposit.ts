@@ -4,6 +4,7 @@ import {
   LucidEvolution,
   Script,
   TxSignBuilder,
+
 } from "@lucid-evolution/lucid";
 import { Effect, } from "effect";
 import { AuthenticatedValidator, Globals } from "@/services/index.js";
@@ -21,10 +22,10 @@ export const buildAndSubmitGenesisDeposit = (
 ): Effect.Effect<
   void,
   Error,
-  Globals
+  SDK.Services.Parameters
 > =>
   Effect.gen(function* () {
-    const globals = yield* Globals;
+    const onchainParameters = yield* SDK.Services.Parameters;
     const depositParams : SDK.TxBuilder.Deposit.DepositParams =
     ({
         depositScriptAddress: depositAuthValidator.spendScriptAddress,
@@ -34,7 +35,7 @@ export const buildAndSubmitGenesisDeposit = (
             l2Address: "TODO: l2Address",
             l2Datum: "TODO: l2Datum",
         }),
-        inclusionTime: BigInt(Date.now()) // TODO: add eventWaitDuration
+        inclusionTime: BigInt(Date.now() + onchainParameters.event_wait_duration)
     })
     yield* SDK.Endpoints.commitDepositsProgram(lucid, depositParams)
   });
