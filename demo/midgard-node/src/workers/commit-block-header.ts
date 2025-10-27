@@ -41,6 +41,7 @@ import {
 } from "@/database/utils/tx.js";
 import { Columns as UserEventsColumns } from "@/database/utils/user-events.js";
 import { DatabaseError } from "@/database/utils/common.js";
+import { RuntimeFiber } from "effect/Fiber";
 
 const BATCH_SIZE = 100;
 
@@ -201,7 +202,7 @@ const wrapper = (
           (deposit) => deposit[UserEventsColumns.INFO],
         );
 
-        const depositRootFiber = yield* Effect.fork(
+        const depositRootFiber: RuntimeFiber<string, MptError> = yield* Effect.fork(
           keyValueMptRoot(depositIDs, depositInfos),
         );
 
