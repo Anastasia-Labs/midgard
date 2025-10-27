@@ -22,6 +22,8 @@ import { Effect } from "effect";
  * @returns {TxBuilder} A TxBuilder instance that can be used to build the transaction.
  */
 
+// TODO: put it under the index.ts
+
 export const depositTxBuilder = (
   lucid: LucidEvolution,
   params: DepositParams,
