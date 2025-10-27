@@ -1,4 +1,3 @@
-import { BlocksDB, ConfirmedLedgerDB } from "@/database/index.js";
 import * as SDK from "@al-ft/midgard-sdk";
 import {
   Address,
@@ -6,33 +5,18 @@ import {
   Script,
   TxSignBuilder,
 } from "@lucid-evolution/lucid";
-import { DateTime, Effect, Metric, Ref } from "effect";
-import {
-  TxConfirmError,
-  fetchFirstBlockTxs,
-  handleSignSubmit,
-  TxSubmitError,
-  TxSignError,
-} from "./utils.js";
-import { Entry as LedgerEntry } from "@/database/utils/ledger.js";
-import { DatabaseError } from "@/database/utils/common.js";
-import { breakDownTx } from "@/utils.js";
-import { AuthenticatedValidator, Database, Globals } from "@/services/index.js";
-
+import { Effect, } from "effect";
+import { AuthenticatedValidator, Globals } from "@/services/index.js";
 
 /**
  * Build and submit the merge transaction.
  *
  * @param lucid - The LucidEvolution instance.
- * @param fetchConfig - The configuration for fetching data.
- * @param spendScript - State queue's spending script.
- * @param mintScript - State queue's minting script.
- * @returns An Effect that resolves when the merge transaction is built and
- *          submitted.
+ * @param depositAuthValidator - The configuration of the deposit validator.
+ * @returns An Effect that commits a genesis deposit on L1.
  */
 export const buildAndSubmitGenesisDeposit = (
   lucid: LucidEvolution,
-  fetchConfig: SDK.TxBuilder.StateQueue.FetchConfig,
   depositAuthValidator: AuthenticatedValidator,
 ): Effect.Effect<
   void,
