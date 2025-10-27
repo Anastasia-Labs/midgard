@@ -41,7 +41,11 @@ import {
 import { Columns as UserEventsColumns } from "@/database/utils/user-events.js";
 import { DatabaseError } from "@/database/utils/common.js";
 import { RuntimeFiber } from "effect/Fiber";
-import { processDepositEvent, processTxOrderEvent, processTxRequestEvent } from "./utils/user-events.js";
+import {
+  processDepositEvent,
+  processTxOrderEvent,
+  processTxRequestEvent,
+} from "./utils/user-events.js";
 
 const BATCH_SIZE = 100;
 
@@ -99,10 +103,10 @@ const wrapper = (
       const processedMempoolTxs = yield* ProcessedMempoolDB.retrieve;
 
       if (processedMempoolTxs.length === 0) {
-          yield* Effect.logInfo("🔹 Nothing to commit.");
-          return {
-            type: "NothingToCommitOutput",
-          } as WorkerOutput;
+        yield* Effect.logInfo("🔹 Nothing to commit.");
+        return {
+          type: "NothingToCommitOutput",
+        } as WorkerOutput;
       } else {
         latestTxEntry = processedMempoolTxs[0];
       }
@@ -192,8 +196,15 @@ const wrapper = (
         const startTime = yield* getLatestBlockDatumEndTime(latestBlock.datum);
         const endTime = latestTxEntry[TxColumns.TIMESTAMPTZ];
 
-        const sizeOfTxOrderTxs = yield* processTxOrderEvent(startTime, endTime, ledgerTrie);
-        const {depositRoot, sizeOfDepositTxs} = yield* processDepositEvent(startTime, endTime);
+        const sizeOfTxOrderTxs = yield* processTxOrderEvent(
+          startTime,
+          endTime,
+          ledgerTrie,
+        );
+        const { depositRoot, sizeOfDepositTxs } = yield* processDepositEvent(
+          startTime,
+          endTime,
+        );
         const sizeOfProcessedTxs =
           sizeOfTxRequestTxs + sizeOfTxOrderTxs + sizeOfDepositTxs;
 
