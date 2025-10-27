@@ -39,7 +39,11 @@ import {
   Columns as TxColumns,
 } from "@/database/utils/tx.js";
 import { DatabaseError } from "@/database/utils/common.js";
-import { processDepositEvent, processTxOrderEvent, processTxRequestEvent } from "./utils/events.js";
+import {
+  processDepositEvent,
+  processTxOrderEvent,
+  processTxRequestEvent,
+} from "./utils/events.js";
 
 const BATCH_SIZE = 100;
 
@@ -98,7 +102,9 @@ const wrapper = (
       const processedMempoolTxs = yield* ProcessedMempoolDB.retrieve;
 
       if (processedMempoolTxs.length === 0) {
-        yield* Effect.logInfo("🔹 No transactions were found in ProcessedMempoolDB");
+        yield* Effect.logInfo(
+          "🔹 No transactions were found in ProcessedMempoolDB",
+        );
         // endTime = new Date();
         // return {
         //   type: "NothingToCommitOutput",
@@ -112,7 +118,9 @@ const wrapper = (
       // successful, `ProcessedMempoolDB` must be cleared. Following functions
       // should work fine with 0 mempool txs.
     } else {
-      yield* Effect.logInfo(`🔹 ${mempoolTxsCount} transactions were found in MempoolDB`);
+      yield* Effect.logInfo(
+        `🔹 ${mempoolTxsCount} transactions were found in MempoolDB`,
+      );
       latestTxEntry = mempoolTxs[0];
       // endTime = latestTxEntry[TxColumns.TIMESTAMPTZ]
     }
@@ -136,26 +144,27 @@ const wrapper = (
     > = Effect.gen(function* () {
       const { stateQueueAuthValidator } = yield* AlwaysSucceedsContract;
 
-      const skippedSubmissionProgram = (mempoolTxHashes : Buffer[]) => batchProgram(
-        BATCH_SIZE,
-        mempoolTxsCount,
-        "skipped-submission-db-transfer",
-        (startIndex: number, endIndex: number) => {
-          const batchTxs = mempoolTxs.slice(startIndex, endIndex);
-          const batchHashes = mempoolTxHashes.slice(startIndex, endIndex);
-          return Effect.all(
-            [
-              ProcessedMempoolDB.insertTxs(batchTxs).pipe(
-                Effect.withSpan(`processed-mempool-db-insert-${startIndex}`),
-              ),
-              MempoolDB.clearTxs(batchHashes).pipe(
-                Effect.withSpan(`mempool-db-clear-txs-${startIndex}`),
-              ),
-            ],
-            { concurrency: "unbounded" },
-          );
-        },
-      );
+      const skippedSubmissionProgram = (mempoolTxHashes: Buffer[]) =>
+        batchProgram(
+          BATCH_SIZE,
+          mempoolTxsCount,
+          "skipped-submission-db-transfer",
+          (startIndex: number, endIndex: number) => {
+            const batchTxs = mempoolTxs.slice(startIndex, endIndex);
+            const batchHashes = mempoolTxHashes.slice(startIndex, endIndex);
+            return Effect.all(
+              [
+                ProcessedMempoolDB.insertTxs(batchTxs).pipe(
+                  Effect.withSpan(`processed-mempool-db-insert-${startIndex}`),
+                ),
+                MempoolDB.clearTxs(batchHashes).pipe(
+                  Effect.withSpan(`mempool-db-clear-txs-${startIndex}`),
+                ),
+              ],
+              { concurrency: "unbounded" },
+            );
+          },
+        );
 
       if (workerInput.data.availableConfirmedBlock === "") {
         // The tx confirmation worker has not yet confirmed a previously
@@ -192,18 +201,29 @@ const wrapper = (
         yield* lucid.switchToOperatorsMainWallet;
 
         const startTime = yield* getLatestBlockDatumEndTime(latestBlock.datum);
-        const endTime = latestTxEntry === undefined
-          ? new Date()
-          : latestTxEntry[TxColumns.TIMESTAMPTZ];
+        const endTime =
+          latestTxEntry === undefined
+            ? new Date()
+            : latestTxEntry[TxColumns.TIMESTAMPTZ];
 
-        const sizeOfTxOrderTxs = yield* processTxOrderEvent(startTime, endTime, ledgerTrie);
-        const {mempoolTxHashes, sizeOfTxRequestTxs} = yield* processTxRequestEvent(ledgerTrie, mempoolTrie, mempoolTxs)
-        const {depositRoot, sizeOfDepositTxs} = yield* processDepositEvent(startTime, endTime)
-        const sizeOfProcessedTxs = sizeOfTxOrderTxs + sizeOfTxRequestTxs + sizeOfDepositTxs;
+        const sizeOfTxOrderTxs = yield* processTxOrderEvent(
+          startTime,
+          endTime,
+          ledgerTrie,
+        );
+        const { mempoolTxHashes, sizeOfTxRequestTxs } =
+          yield* processTxRequestEvent(ledgerTrie, mempoolTrie, mempoolTxs);
+        const { depositRoot, sizeOfDepositTxs } = yield* processDepositEvent(
+          startTime,
+          endTime,
+        );
+        const sizeOfProcessedTxs =
+          sizeOfTxOrderTxs + sizeOfTxRequestTxs + sizeOfDepositTxs;
 
-        if (sizeOfProcessedTxs === 0) return  {
-          type: "NothingToCommitOutput",
-        } as WorkerOutput;;
+        if (sizeOfProcessedTxs === 0)
+          return {
+            type: "NothingToCommitOutput",
+          } as WorkerOutput;
 
         const { nodeDatum: updatedNodeDatum, header: newHeader } =
           yield* SDK.Utils.updateLatestBlocksDatumAndGetTheNewHeader(

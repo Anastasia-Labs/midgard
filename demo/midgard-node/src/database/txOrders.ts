@@ -1,8 +1,6 @@
 import { Database } from "@/services/database.js";
 import { Effect } from "effect";
-import {
-  DatabaseError,
-} from "@/database/utils/common.js";
+import { DatabaseError } from "@/database/utils/common.js";
 import * as UserEvents from "@/database/utils/user-events.js";
 
 export const tableName = "transaction_order_utxos";

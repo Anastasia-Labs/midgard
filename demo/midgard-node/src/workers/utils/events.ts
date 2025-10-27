@@ -1,4 +1,9 @@
-import { TxOrdersDB, DepositsDB, LedgerUtils, UserEventsUtils } from "@/database/index.js";
+import {
+  TxOrdersDB,
+  DepositsDB,
+  LedgerUtils,
+  UserEventsUtils,
+} from "@/database/index.js";
 import { Effect } from "effect";
 import * as ETH_UTILS from "@ethereumjs/util";
 import { findSpentAndProducedUTxOs } from "@/utils.js";
@@ -8,7 +13,8 @@ import * as SDK from "@al-ft/midgard-sdk";
 import { keyValueMptRoot, MidgardMpt, MptError } from "./mpt.js";
 import * as Tx from "@/database/utils/tx.js";
 import * as Ledger from "@/database/utils/ledger.js";
-import * as UserEvents from "@/database/utils/user-events.js"
+import * as UserEvents from "@/database/utils/user-events.js";
+
 export const processTxOrderEvent = (
   startTime: Date,
   endTime: Date,
@@ -50,9 +56,11 @@ export const processTxOrderEvent = (
         yield* Effect.sync(() => utxoBatchDBOps.push(...putOps));
       }),
     );
-    yield* ledgerTrie.batch(utxoBatchDBOps)
+    yield* ledgerTrie.batch(utxoBatchDBOps);
     const utxoRoot = yield* ledgerTrie.getRootHex();
-    yield* Effect.logInfo(`🔹 ${txOrders.length} new tx orders processed - new ledger root is ${utxoRoot}`);
+    yield* Effect.logInfo(
+      `🔹 ${txOrders.length} new tx orders processed - new ledger root is ${utxoRoot}`,
+    );
     yield* Effect.logInfo(`🔹 New UTxO root found: ${utxoRoot}`);
     return sizeOfProcessedTxs;
   });
@@ -74,7 +82,9 @@ export const processTxRequestEvent = (
     const mempoolBatchOps: ETH_UTILS.BatchDBOp[] = [];
     const batchDBOps: ETH_UTILS.BatchDBOp[] = [];
     let sizeOfProcessedTxs = 0;
-    yield* Effect.logInfo(`🔹 Processing ${mempoolTxs.length} new tx requests...`);
+    yield* Effect.logInfo(
+      `🔹 Processing ${mempoolTxs.length} new tx requests...`,
+    );
     yield* Effect.forEach(mempoolTxs, (entry: Tx.Entry) =>
       Effect.gen(function* () {
         const txHash = entry[Tx.Columns.TX_ID];
@@ -109,9 +119,7 @@ export const processTxRequestEvent = (
     );
 
     yield* Effect.all(
-      [ mempoolTrie.batch(mempoolBatchOps)
-      , ledgerTrie.batch(batchDBOps)
-      ],
+      [mempoolTrie.batch(mempoolBatchOps), ledgerTrie.batch(batchDBOps)],
       { concurrency: "unbounded" },
     );
 
@@ -130,29 +138,36 @@ export const processTxRequestEvent = (
 export const processDepositEvent = (
   startTime: Date,
   endTime: Date,
-): Effect.Effect<{depositRoot: string, sizeOfDepositTxs: number}, DatabaseError | MptError, Database> => Effect.gen(function* () {
-  const deposits = yield* DepositsDB.retrieveTimeBoundEntries(
-    startTime,
-    endTime,
-  );
-  yield* Effect.logInfo(`🔹 Processing ${deposits.length} new deposits...`);
-  const depositIDs = deposits.map(
-    (deposit) => deposit[UserEvents.Columns.ID],
-  );
-  const depositInfos = deposits.map(
-    (deposit) => deposit[UserEvents.Columns.INFO],
-  );
-  const depositRootFiber = yield* Effect.fork(
-    keyValueMptRoot(depositIDs, depositInfos),
-  );
-  const depositRoot = yield* depositRootFiber;
-  const sizeOfDepositTxs = depositInfos
-      .map(i => i.length)
+): Effect.Effect<
+  { depositRoot: string; sizeOfDepositTxs: number },
+  DatabaseError | MptError,
+  Database
+> =>
+  Effect.gen(function* () {
+    const deposits = yield* DepositsDB.retrieveTimeBoundEntries(
+      startTime,
+      endTime,
+    );
+    yield* Effect.logInfo(`🔹 Processing ${deposits.length} new deposits...`);
+    const depositIDs = deposits.map(
+      (deposit) => deposit[UserEvents.Columns.ID],
+    );
+    const depositInfos = deposits.map(
+      (deposit) => deposit[UserEvents.Columns.INFO],
+    );
+    const depositRootFiber = yield* Effect.fork(
+      keyValueMptRoot(depositIDs, depositInfos),
+    );
+    const depositRoot = yield* depositRootFiber;
+    const sizeOfDepositTxs = depositInfos
+      .map((i) => i.length)
       .reduce((acc, curr) => acc + curr, 0);
-  yield* Effect.logInfo(`🔹 ${deposits.length} new deposits processed - new deposit root is ${depositRoot}`);
-  yield* Effect.logInfo(`🔹 New deposits root found: ${depositRoot}`);
-  return {
-    depositRoot,
-    sizeOfDepositTxs,
-};
-})
+    yield* Effect.logInfo(
+      `🔹 ${deposits.length} new deposits processed - new deposit root is ${depositRoot}`,
+    );
+    yield* Effect.logInfo(`🔹 New deposits root found: ${depositRoot}`);
+    return {
+      depositRoot,
+      sizeOfDepositTxs,
+    };
+  });
