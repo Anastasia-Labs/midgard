@@ -8,7 +8,7 @@ import {
   NodeConfig,
 } from "@/services/index.js";
 import { LucidEvolution, CML, Data, fromHex } from "@lucid-evolution/lucid";
-import { TxOrdersDB } from "@/database/index.js";
+import { TxOrdersDB, UserEventsUtils } from "@/database/index.js";
 import { DatabaseError } from "@/database/utils/common.js";
 import { Schedule } from "effect";
 
@@ -68,9 +68,9 @@ export const fetchAndInsertTxOrderUTxOs = (): Effect.Effect<
       new Date(Number(utxo.datum.inclusionTime)); // TODO: Check if that the correct conversion for the db entry
 
     const entries: TxOrdersDB.Entry[] = txOrderUTxOs.map((utxo) => ({
-      [TxOrdersDB.Columns.ID]: toBuffer(getOutRef(utxo)),
-      [TxOrdersDB.Columns.INFO]: toBuffer(getTxOrderInfo(utxo)),
-      [TxOrdersDB.Columns.INCLUSION_TIME]: getInclusionTime(utxo),
+      [UserEventsUtils.Columns.ID]: toBuffer(getOutRef(utxo)),
+      [UserEventsUtils.Columns.INFO]: toBuffer(getTxOrderInfo(utxo)),
+      [UserEventsUtils.Columns.INCLUSION_TIME]: getInclusionTime(utxo),
     }));
 
     yield* TxOrdersDB.insertEntries(entries);
