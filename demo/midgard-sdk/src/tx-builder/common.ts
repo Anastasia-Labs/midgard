@@ -67,3 +67,7 @@ export const AddressSchema = Data.Object({
 });
 export type AddressData = Data.Static<typeof AddressSchema>;
 export const AddressData = AddressSchema as unknown as AddressData;
+
+export const H32Schema = Data.Bytes({ minLength: 32, maxLength: 32 });
+export type H32 = Data.Static<typeof H32Schema>;
+export const H32 = H32Schema as unknown as H32;
