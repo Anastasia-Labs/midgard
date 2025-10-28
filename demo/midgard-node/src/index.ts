@@ -9,8 +9,6 @@ import { Effect, pipe } from "effect";
 import dotenv from "dotenv";
 import { NodeRuntime } from "@effect/platform-node";
 import { DatabaseError } from "@/database/utils/common.js";
-import { SqlError } from "@effect/sql";
-import * as SDK from "@al-ft/midgard-sdk";
 
 dotenv.config();
 const VERSION = packageJson.version;

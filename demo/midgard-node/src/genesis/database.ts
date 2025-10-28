@@ -1,9 +1,9 @@
 import { Effect } from "effect";
 import { Database, NodeConfig } from "@/services/index.js";
-import { Columns as LedgerColumns } from "./utils/ledger.js";
-import * as MempoolLedgerDB from "./mempoolLedger.js";
+import { Columns as LedgerColumns } from "../database/utils/ledger.js";
+import * as MempoolLedgerDB from "../database/mempoolLedger.js";
 import { UTxO, utxoToCore } from "@lucid-evolution/lucid";
-import { DatabaseError } from "./utils/common.js";
+import { DatabaseError } from "../database/utils/common.js";
 
 /**
  * Inserts genesis UTXOs from the imported TypeScript module into the MPT database

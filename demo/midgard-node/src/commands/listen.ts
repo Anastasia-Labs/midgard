@@ -49,7 +49,8 @@ import { ParsedSearchParams } from "@effect/platform/HttpServerRequest";
 import { createServer } from "node:http";
 import { NodeHttpServer } from "@effect/platform-node";
 import { HttpBodyError } from "@effect/platform/HttpBody";
-import { insertGenesisUtxos } from "@/database/genesis.js";
+import { insertGenesisUtxos } from "@/genesis/database.js";
+import { buildAndSubmitGenesisDeposit } from "@/genesis/deposit.js"
 import { deleteLedgerMpt, deleteMempoolMpt } from "@/workers/utils/mpt.js";
 import { SerializedStateQueueUTxO } from "@/workers/utils/commit-block-header.js";
 import { DatabaseError } from "@/database/utils/common.js";
@@ -63,7 +64,6 @@ import {
 import { mergeFiber, mergeAction } from "@/fibers/merge.js";
 import { monitorMempoolFiber } from "@/fibers/monitor-mempool.js";
 import { txQueueProcessorFiber } from "@/fibers/tx-queue-processor.js";
-import { buildAndSubmitGenesisDeposit } from "@/transactions/genesis-deposit.js"
 
 const TX_ENDPOINT: string = "tx";
 const MERGE_ENDPOINT: string = "merge";

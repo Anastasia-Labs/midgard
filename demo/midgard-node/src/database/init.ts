@@ -11,7 +11,7 @@ import * as Ledger from "@/database/utils/ledger.js";
 import * as DepositsDB from "@/database/deposits.js";
 import * as UserEvents from "@/database/utils/user-events.js";
 import { Effect } from "effect";
-import { insertGenesisUtxos } from "./genesis.js";
+import { insertGenesisUtxos } from "../genesis/genesis.js";
 import { Database, NodeConfig } from "@/services/index.js";
 import { DatabaseError } from "./utils/common.js";
 

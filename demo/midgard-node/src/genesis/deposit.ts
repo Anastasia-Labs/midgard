@@ -1,7 +1,7 @@
 import * as SDK from "@al-ft/midgard-sdk";
 import { Effect } from "effect";
 import { AlwaysSucceedsContract, Lucid, NodeConfig } from "@/services/index.js";
-import { GenesisDepositError } from "./utils.js";
+import { GenesisDepositError } from "../transactions/utils.js";
 import { LucidEvolution } from "@lucid-evolution/lucid";
 
 /**
