@@ -1,6 +1,6 @@
 import { Data, UTxO } from "@lucid-evolution/lucid";
 import { Data as EffectData, Effect } from "effect";
-import { Datum, DepositUTxO } from "@/tx-builder/user-events/deposit/types.js";
+import { Datum, DepositUTxO } from "@/tx-builder/user-events/deposit.js";
 import {
   DataCoercionError,
   UnauthenticUtxoError,

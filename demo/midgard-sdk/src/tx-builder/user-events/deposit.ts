@@ -62,7 +62,6 @@ export const MintRedeemerSchema = Data.Enum([
     }),
   }),
 ]);
-
 export type MintRedeemer = Data.Static<typeof MintRedeemerSchema>;
 export const MintRedeemer = MintRedeemerSchema as unknown as MintRedeemer;
 
