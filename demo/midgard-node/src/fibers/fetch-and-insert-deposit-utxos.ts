@@ -46,7 +46,7 @@ export const fetchAndInsertDepositUTxOs: Effect.Effect<
   yield* Effect.logInfo("  fetching DepositUTxOs...");
   const depositUTxOs = yield* fetchDepositUTxOs(lucid, startTime, endTime);
   if (depositUTxOs.length > 0) {
-    yield* Effect.log(`FOUND DEPOSIT UTXOS!!! ${depositUTxOs}`)
+    yield* Effect.log(`FOUND DEPOSIT UTXOS!!! ${depositUTxOs}`);
   }
 
   const getOutRef = (utxo: SDK.TxBuilder.Deposit.DepositUTxO): string =>

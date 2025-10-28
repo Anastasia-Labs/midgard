@@ -147,7 +147,8 @@ export const fetchFirstBlockTxs = (
       Effect.map((hh) => Buffer.from(fromHex(hh))),
     );
     const txHashes = yield* BlocksDB.retrieveTxHashesByHeaderHash(headerHash);
-    const txs: readonly Buffer[] = yield* ImmutableDB.retrieveTxCborsByHashes(txHashes);
+    const txs: readonly Buffer[] =
+      yield* ImmutableDB.retrieveTxCborsByHashes(txHashes);
     return { txs, headerHash };
   });
 
@@ -181,6 +182,6 @@ export class TxConfirmError extends Data.TaggedError("TxConfirmError")<
   }
 > {}
 
-export class GenesisDepositError extends Data.TaggedError("GenesisDepositError")<
-  SDK.Utils.GenericErrorFields
-> {}
+export class GenesisDepositError extends Data.TaggedError(
+  "GenesisDepositError",
+)<SDK.Utils.GenericErrorFields> {}

@@ -50,7 +50,7 @@ import { createServer } from "node:http";
 import { NodeHttpServer } from "@effect/platform-node";
 import { HttpBodyError } from "@effect/platform/HttpBody";
 import { insertGenesisUtxos } from "@/genesis/database.js";
-import { buildAndSubmitGenesisDeposit } from "@/genesis/deposit.js"
+import { buildAndSubmitGenesisDeposit } from "@/genesis/deposit.js";
 import { deleteLedgerMpt, deleteMempoolMpt } from "@/workers/utils/mpt.js";
 import { SerializedStateQueueUTxO } from "@/workers/utils/commit-block-header.js";
 import { DatabaseError } from "@/database/utils/common.js";
