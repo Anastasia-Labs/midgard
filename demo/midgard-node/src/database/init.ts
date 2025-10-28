@@ -11,7 +11,6 @@ import * as Ledger from "@/database/utils/ledger.js";
 import * as DepositsDB from "@/database/deposits.js";
 import * as UserEvents from "@/database/utils/user-events.js";
 import { Effect } from "effect";
-import { insertGenesisUtxos } from "@/genesis/database.js";
 import { Database, NodeConfig } from "@/services/index.js";
 import { DatabaseError } from "./utils/common.js";
 
@@ -34,8 +33,6 @@ export const initializeDb: () => Effect.Effect<
     yield* Ledger.createTable(ConfirmedLedgerDB.tableName);
     yield* Ledger.createTable(LatestLedgerDB.tableName);
     yield* UserEvents.createTable(DepositsDB.tableName);
-
-    yield* insertGenesisUtxos;
 
     yield* Effect.logInfo("PostgreSQL database initialized Successfully.");
   }).pipe(
