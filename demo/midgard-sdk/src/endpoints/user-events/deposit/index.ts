@@ -37,4 +37,3 @@ export const depositsBuilder = (
   makeReturn(depositsBuilderProgram(lucid, depositParams)).unsafeRun();
 
 export * from "./fetch-deposits.js";
-export * from "./commit-deposits.js"

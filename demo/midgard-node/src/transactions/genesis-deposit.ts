@@ -55,7 +55,7 @@ export const buildAndSubmitGenesisDeposit = (
       });
 
 
-    yield* SDK.Endpoints.commitDepositsProgram(lucid, depositParams).pipe(
+    yield* SDK.Endpoints.depositsBuilderProgram(lucid, depositParams).pipe(
       Effect.catchTag("HashingError", onHashingFailure),
       Effect.catchTag("DepositError", onDepositFailure),
     )
