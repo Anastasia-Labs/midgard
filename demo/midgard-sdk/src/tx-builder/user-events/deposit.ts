@@ -1,4 +1,14 @@
-import { Address, CML, LucidEvolution, toUnit, TxBuilder, Data, PolicyId, UTxO, Script } from "@lucid-evolution/lucid";
+import {
+  Address,
+  CML,
+  LucidEvolution,
+  toUnit,
+  TxBuilder,
+  Data,
+  PolicyId,
+  UTxO,
+  Script,
+} from "@lucid-evolution/lucid";
 import {
   hashHexWithBlake2b256,
   HashingError,
@@ -44,6 +54,9 @@ export type DepositUTxO = {
   utxo: UTxO;
   datum: Datum;
   assetName: string;
+  idCbor: Buffer;
+  infoCbor: Buffer;
+  inclusionTime: Date;
 };
 
 export const MintRedeemerSchema = Data.Enum([
@@ -71,7 +84,6 @@ export type FetchConfig = {
   inclusionStartTime: POSIXTime;
   inclusionEndTime: POSIXTime;
 };
-
 
 /**
  * Deposit

@@ -1,12 +1,17 @@
-import { Data, UTxO } from "@lucid-evolution/lucid";
+import { Data, fromHex, UTxO } from "@lucid-evolution/lucid";
 import { Data as EffectData, Effect } from "effect";
-import { Datum, DepositUTxO } from "@/tx-builder/user-events/deposit.js";
+import {
+  Datum,
+  DepositInfo,
+  DepositUTxO,
+} from "@/tx-builder/user-events/deposit.js";
 import {
   DataCoercionError,
   UnauthenticUtxoError,
   getStateToken,
   GenericErrorFields,
 } from "@/utils/common.js";
+import { OutputReference } from "@/tx-builder/common.js";
 
 export class DepositError extends EffectData.TaggedError(
   "DepositError",
@@ -56,7 +61,14 @@ export const utxoToDepositUTxO = (
         }),
       );
     }
-    return { utxo, datum, assetName };
+    return {
+      utxo,
+      datum,
+      assetName,
+      idCbor: Buffer.from(fromHex(Data.to(datum.event.id, OutputReference))),
+      infoCbor: Buffer.from(fromHex(Data.to(datum.event.info, DepositInfo))),
+      inclusionTime: new Date(Number(datum.inclusionTime)),
+    };
   });
 
 /**
