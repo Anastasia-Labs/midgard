@@ -118,7 +118,11 @@ packages:
     resolution: {integrity: sha512-vKypwCNMH7SgP8JQ/fQyXjhDC16DqTiW9x9dLK6AXe2tEWVouNy2GMKmOaS4l6ZF7pTjty5XCD+MqnsxXJBIgg==}
 
   '@al-ft/midgard-sdk@file:../midgard-sdk/al-ft-midgard-sdk-0.1.0.tgz':
+<<<<<<< HEAD
     resolution: {integrity: sha512-fr+DWcMFt7jH5IoXgzUXZNsDQe5Q6Z/hET1/2mtdu/3TfhzyeaP0XtUNmwK7xFVp5PAjeBk7Gn47Tpdn5w/9fw==, tarball: file:../midgard-sdk/al-ft-midgard-sdk-0.1.0.tgz}
+=======
+    resolution: {integrity: sha512-rCYCrQBITSbId/tu6WvVSWk+i1LnIglGc0HaZFT0Hwu4I6h0sn0mY/2FV81ERZQ44eqfWeJmX93w5LmTaE2wHg==, tarball: file:../midgard-sdk/al-ft-midgard-sdk-0.1.0.tgz}
+>>>>>>> basic-deposit
     version: 0.1.0
 
   '@anastasia-labs/cardano-multiplatform-lib-browser@6.0.2-2':
