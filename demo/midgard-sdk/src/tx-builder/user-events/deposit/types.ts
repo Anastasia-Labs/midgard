@@ -17,7 +17,6 @@ export const DepositInfoSchema = Data.Object({
   l2Address: Data.Bytes(),
   l2Datum: Data.Nullable(Data.Bytes()),
 });
-
 export type DepositInfo = Data.Static<typeof DepositInfoSchema>;
 export const DepositInfo = DepositInfoSchema as unknown as DepositInfo;
 
@@ -25,7 +24,6 @@ export const DepositEventSchema = Data.Object({
   id: OutputReferenceSchema,
   info: DepositInfoSchema,
 });
-
 export type DepositEvent = Data.Static<typeof DepositEventSchema>;
 export const DepositEvent = DepositEventSchema as unknown as DepositEvent;
 
@@ -33,13 +31,13 @@ export const DatumSchema = Data.Object({
   event: DepositEventSchema,
   inclusionTime: POSIXTimeSchema, // inclusion time is important , time range ,
 });
-
 export type Datum = Data.Static<typeof DatumSchema>;
 export const Datum = DatumSchema as unknown as Datum;
 
 export type DepositUTxO = {
   utxo: UTxO;
   datum: Datum;
+  assetName: string;
 };
 
 export const MintRedeemerSchema = Data.Enum([

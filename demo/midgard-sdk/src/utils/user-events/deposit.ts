@@ -2,7 +2,6 @@ import { Data, UTxO } from "@lucid-evolution/lucid";
 import { Data as EffectData, Effect } from "effect";
 import { Datum, DepositUTxO } from "@/tx-builder/user-events/deposit/types.js";
 import {
-  AssetError,
   DataCoercionError,
   UnauthenticUtxoError,
   getStateToken,
@@ -21,19 +20,19 @@ export const getDepositDatumFromUTxO = (
     try {
       const depositDatum = Data.from(datumCBOR, Datum);
       return Effect.succeed(depositDatum);
-    } catch {
+    } catch (e) {
       return Effect.fail(
         new DataCoercionError({
-          message: `Could not coerce to a deposit datum`,
-          cause: `CBOR couldn't be coursed automaticaly`,
+          message: `Could not coerce UTxO's datum to a deposit datum`,
+          cause: e,
         }),
       );
     }
   } else {
     return Effect.fail(
       new DataCoercionError({
-        message: `Could not coerce to a deposit datum`,
-        cause: `No CBOR datum found`,
+        message: `Deposit datum coercion failed`,
+        cause: `No datum found`,
       }),
     );
   }
@@ -45,10 +44,7 @@ export const getDepositDatumFromUTxO = (
 export const utxoToDepositUTxO = (
   utxo: UTxO,
   nftPolicy: string,
-): Effect.Effect<
-  DepositUTxO,
-  AssetError | DataCoercionError | UnauthenticUtxoError
-> =>
+): Effect.Effect<DepositUTxO, DataCoercionError | UnauthenticUtxoError> =>
   Effect.gen(function* () {
     const datum = yield* getDepositDatumFromUTxO(utxo);
     const [sym, assetName] = yield* getStateToken(utxo.assets);
@@ -69,7 +65,7 @@ export const utxoToDepositUTxO = (
 export const utxosToDepositUTxOs = (
   utxos: UTxO[],
   nftPolicy: string,
-): Effect.Effect<DepositUTxO[], never> => {
+): Effect.Effect<DepositUTxO[]> => {
   const effects = utxos.map((u) => utxoToDepositUTxO(u, nftPolicy));
   return Effect.allSuccesses(effects);
 };

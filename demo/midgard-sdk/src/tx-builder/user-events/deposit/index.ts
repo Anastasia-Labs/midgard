@@ -27,23 +27,14 @@ export const depositTxBuilder = (
   params: DepositParams,
 ): Effect.Effect<TxBuilder, HashingError | LucidError> =>
   Effect.gen(function* () {
-    const redeemer: MintRedeemer = {
-      AuthenticateEvent: {
-        nonceInputIndex: 0n,
-        eventOutputIndex: 0n,
-        hubRefInputIndex: 0n,
-        witnessRegistrationRedeemerIndex: 0n,
-      },
-    };
-    const authenticateEvent = Data.to(redeemer, MintRedeemer);
-
     const utxos: UTxO[] = yield* Effect.tryPromise({
       try: () => lucid.wallet().getUtxos(),
-      catch: (err) => new LucidError({
-        message: "Failed to fetch wallet UTxOs",
-        cause: err,
-      })
-    })
+      catch: (err) =>
+        new LucidError({
+          message: "Failed to fetch wallet UTxOs",
+          cause: err,
+        }),
+    });
 
     if (utxos.length === 0) {
       yield* new LucidError({
@@ -55,11 +46,13 @@ export const depositTxBuilder = (
     const inputUtxo = utxos[0];
     const transactionInput = CML.TransactionInput.new(
       CML.TransactionHash.from_hex(inputUtxo.txHash),
-      BigInt(inputUtxo.outputIndex)
-    )
-    const assetName = yield* hashHexWithBlake2b256(transactionInput.to_cbor_hex());
+      BigInt(inputUtxo.outputIndex),
+    );
+    const assetName = yield* hashHexWithBlake2b256(
+      transactionInput.to_cbor_hex(),
+    );
     const depositNFT = toUnit(params.policyId, assetName);
-    const currDatum: Datum = {
+    const depositDatum: Datum = {
       event: {
         id: {
           txHash: { hash: inputUtxo.txHash },
@@ -69,7 +62,18 @@ export const depositTxBuilder = (
       },
       inclusionTime: params.inclusionTime,
     };
-    const depositDatum = Data.to(currDatum, Datum);
+    const depositDatumCBOR = Data.to(depositDatum, Datum);
+
+    const mintRedeemer: MintRedeemer = {
+      AuthenticateEvent: {
+        nonceInputIndex: 0n,
+        eventOutputIndex: 0n,
+        hubRefInputIndex: 0n,
+        witnessRegistrationRedeemerIndex: 0n,
+      },
+    };
+    const mintRedeemerCBOR = Data.to(mintRedeemer, MintRedeemer);
+
     const tx = lucid
       .newTx()
       .collectFrom([inputUtxo])
@@ -77,13 +81,13 @@ export const depositTxBuilder = (
         {
           [depositNFT]: 1n,
         },
-        authenticateEvent,
+        mintRedeemerCBOR,
       )
       .pay.ToAddressWithData(
         params.depositScriptAddress,
         {
           kind: "inline",
-          value: depositDatum,
+          value: depositDatumCBOR,
         },
         { [depositNFT]: 1n },
       )
@@ -92,4 +96,4 @@ export const depositTxBuilder = (
     return tx;
   });
 
-  export * from "./types.js";
+export * from "./types.js";

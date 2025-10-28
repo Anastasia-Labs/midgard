@@ -15,7 +15,7 @@ export const depositsBuilderProgram = (
       try: () => commitTx.complete({ localUPLCEval: false }),
       catch: (e) =>
         new DepositError({
-          message: `Failed to build deposit commitment transaction: ${e}`,
+          message: `Failed to build the transaction: ${e}`,
           cause: e,
         }),
     });
@@ -36,4 +36,4 @@ export const depositsBuilder = (
 ): Promise<TxSignBuilder> =>
   makeReturn(depositsBuilderProgram(lucid, depositParams)).unsafeRun();
 
-export * from "./fetch-deposits.js";
+export * from "./fetch.js";

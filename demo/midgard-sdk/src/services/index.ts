@@ -1,1 +1,1 @@
-export * from "./onchain-parameters.js"
+export * from "./onchain-parameters.js";

@@ -1,13 +1,7 @@
-import { LucidEvolution, PolicyId, UTxO } from "@lucid-evolution/lucid";
+import { LucidEvolution } from "@lucid-evolution/lucid";
 import { Deposit } from "@/tx-builder/index.js";
 import { Effect } from "effect";
-import {
-  utxosAtByNFTPolicyId,
-  LucidError,
-  DataCoercionError,
-  AssetError,
-  UnauthenticUtxoError,
-} from "@/utils/common.js";
+import { utxosAtByNFTPolicyId, LucidError } from "@/utils/common.js";
 import { utxosToDepositUTxOs } from "@/utils/user-events/deposit.js";
 import { POSIXTime } from "@/tx-builder/common.js";
 
