@@ -46,7 +46,7 @@ export const fetchDepositUTxOsProgram = (
     return validDepositUTxOs;
   });
 
-export const depositsBuilderProgram = (
+export const depositTxProgram = (
   lucid: LucidEvolution,
   depositParams: Deposit.DepositParams,
 ): Effect.Effect<TxSignBuilder, HashingError | LucidError | DepositError> =>
@@ -71,8 +71,8 @@ export const depositsBuilderProgram = (
  * @param depositParams - Parameters required for commiting deposits.
  * @returns A promise that resolves to a `TxSignBuilder` instance.
  */
-export const depositsBuilder = (
+export const depositTx = (
   lucid: LucidEvolution,
   depositParams: Deposit.DepositParams,
 ): Promise<TxSignBuilder> =>
-  makeReturn(depositsBuilderProgram(lucid, depositParams)).unsafeRun();
+  makeReturn(depositTxProgram(lucid, depositParams)).unsafeRun();
