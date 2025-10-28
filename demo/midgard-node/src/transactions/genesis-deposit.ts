@@ -12,7 +12,6 @@ export const buildAndSubmitGenesisDeposit = (
 ): Effect.Effect<
   void,
   SDK.Utils.LucidError | GenesisDepositError,
-  SDK.Services.Parameters |
   AlwaysSucceedsContract |
   NodeConfig |
   Lucid
@@ -33,7 +32,7 @@ export const buildAndSubmitGenesisDeposit = (
       l2Address = config.GENESIS_UTXOS[0].address
     }
 
-    const onchainParameters = yield* SDK.Services.Parameters;
+    const onchainParameters = SDK.Services.get_parameters(config.NETWORK);
     const depositParams : SDK.TxBuilder.Deposit.DepositParams =
     ({
         depositScriptAddress: depositAuthValidator.spendScriptAddress,

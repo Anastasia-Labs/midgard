@@ -19,7 +19,6 @@ import { OTLPTraceExporter } from "@opentelemetry/exporter-trace-otlp-http";
 import { BatchSpanProcessor } from "@opentelemetry/sdk-trace-base";
 import {
   Cause,
-  Chunk,
   Duration,
   Effect,
   Layer,
@@ -39,7 +38,7 @@ import {
   MempoolLedgerDB,
   ProcessedMempoolDB,
 } from "../database/index.js";
-import { ProcessedTx, breakDownTx, isHexString } from "../utils.js";
+import { isHexString } from "../utils.js";
 import {
   HttpRouter,
   HttpServer,

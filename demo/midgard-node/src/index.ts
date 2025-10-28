@@ -66,7 +66,6 @@ program.command("listen").action(async () => {
     Effect.provide(Services.AlwaysSucceedsContract.Default),
     Effect.provide(Services.Lucid.Default),
     Effect.provide(Services.NodeConfig.layer),
-    Effect.provide(SDK.Services.Parameters.Default),
   );
 
   NodeRuntime.runMain(program, { teardown: undefined });
