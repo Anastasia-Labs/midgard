@@ -1,18 +1,78 @@
-import {
-  CML,
-  Data,
-  LucidEvolution,
-  toUnit,
-  TxBuilder,
-  UTxO,
-} from "@lucid-evolution/lucid";
-import { Datum, DepositParams, MintRedeemer } from "./types.js";
+import { Address, CML, LucidEvolution, toUnit, TxBuilder, Data, PolicyId, UTxO, Script } from "@lucid-evolution/lucid";
 import {
   hashHexWithBlake2b256,
   HashingError,
   LucidError,
 } from "@/utils/common.js";
 import { Effect } from "effect";
+import {
+  OutputReferenceSchema,
+  POSIXTime,
+  POSIXTimeSchema,
+} from "@/tx-builder/common.js";
+
+export type DepositParams = {
+  depositScriptAddress: string;
+  mintingPolicy: Script;
+  policyId: string;
+  depositInfo: DepositInfo;
+  inclusionTime: POSIXTime;
+};
+
+export const DepositInfoSchema = Data.Object({
+  l2Address: Data.Bytes(),
+  l2Datum: Data.Nullable(Data.Bytes()),
+});
+export type DepositInfo = Data.Static<typeof DepositInfoSchema>;
+export const DepositInfo = DepositInfoSchema as unknown as DepositInfo;
+
+export const DepositEventSchema = Data.Object({
+  id: OutputReferenceSchema,
+  info: DepositInfoSchema,
+});
+export type DepositEvent = Data.Static<typeof DepositEventSchema>;
+export const DepositEvent = DepositEventSchema as unknown as DepositEvent;
+
+export const DatumSchema = Data.Object({
+  event: DepositEventSchema,
+  inclusionTime: POSIXTimeSchema, // inclusion time is important , time range ,
+});
+export type Datum = Data.Static<typeof DatumSchema>;
+export const Datum = DatumSchema as unknown as Datum;
+
+export type DepositUTxO = {
+  utxo: UTxO;
+  datum: Datum;
+  assetName: string;
+};
+
+export const MintRedeemerSchema = Data.Enum([
+  Data.Object({
+    AuthenticateEvent: Data.Object({
+      nonceInputIndex: Data.Integer(),
+      eventOutputIndex: Data.Integer(),
+      hubRefInputIndex: Data.Integer(),
+      witnessRegistrationRedeemerIndex: Data.Integer(),
+    }),
+  }),
+  Data.Object({
+    BurnEventNFT: Data.Object({
+      nonceAssetName: Data.Bytes(),
+      witnessUnregistrationRedeemerIndex: Data.Integer(),
+    }),
+  }),
+]);
+
+export type MintRedeemer = Data.Static<typeof MintRedeemerSchema>;
+export const MintRedeemer = MintRedeemerSchema as unknown as MintRedeemer;
+
+export type FetchConfig = {
+  depositAddress: Address;
+  depositPolicyId: PolicyId;
+  inclusionStartTime: POSIXTime;
+  inclusionEndTime: POSIXTime;
+};
+
 
 /**
  * Deposit
@@ -95,5 +155,3 @@ export const depositTxBuilder = (
       .attach.MintingPolicy(params.mintingPolicy);
     return tx;
   });
-
-export * from "./types.js";
