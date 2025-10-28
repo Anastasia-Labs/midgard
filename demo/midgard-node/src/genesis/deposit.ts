@@ -2,7 +2,6 @@ import * as SDK from "@al-ft/midgard-sdk";
 import { Effect } from "effect";
 import { AlwaysSucceedsContract, Lucid, NodeConfig } from "@/services/index.js";
 import { GenesisDepositError } from "../transactions/utils.js";
-import { LucidEvolution } from "@lucid-evolution/lucid";
 
 /**
  * Build and submit the merge transaction using depositAuthValidator.
@@ -19,6 +18,16 @@ export const buildAndSubmitGenesisDeposit = (): Effect.Effect<
     const lucid = yield* Lucid;
 
     let l2Address: string;
+    if (config.NETWORK === "Mainnet") {
+      yield* Effect.fail(
+        new GenesisDepositError({
+          message:
+            "NETWORK is Mainnet, abort buildAndSubmitGenesisDeposit",
+          cause: "",
+        }),
+      );
+      return;
+    }
     if (config.GENESIS_UTXOS.length <= 0) {
       yield* Effect.fail(
         new GenesisDepositError({
