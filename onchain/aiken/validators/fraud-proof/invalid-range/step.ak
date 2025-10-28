@@ -16,6 +16,7 @@ use midgard/fraud_proof/common/utils.{
 use midgard/fraud_proof/invalid_range/step.{
   Cancel, Continue, StepRedeemer as Step1Redeemer,
 }
+use midgard/hub_oracle as hub
 use midgard/ledger_state.{Header}
 
 validator main(
@@ -25,6 +26,7 @@ validator main(
   plutarch_midgard_merkle_validator_inclusion: ScriptHash,
   // Computation thread token policy
   ct_token_policy_id: PolicyId,
+  hub_oracle: ScriptHash,
 ) {
   spend(
     datum: Option<StepDatum>,
@@ -58,7 +60,11 @@ validator main(
         bad_tx_body,
         index_output,
         computation_thread_redeemer_index,
+        hub_ref_input_index,
       } -> {
+        //TODO get it from the oracle hub
+        let hub.Datum { state_queue, .. } =
+          hub.get_datum(tx.reference_inputs, hub_oracle, hub_ref_input_index)
         let ct_token_asset_name =
           get_singleton_ct_token(own_input, ct_token_policy_id)
         let extracted_tx_root =
@@ -66,6 +72,7 @@ validator main(
             tx,
             bad_state_queue_node_ref_input_index,
             ct_token_asset_name,
+            state_queue,
           )
         let (block_valid_from, block_valid_to) =
           get_validity_range_validate_block_hash(
