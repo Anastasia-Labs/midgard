@@ -1,4 +1,5 @@
 import {
+  CML,
   Data,
   LucidEvolution,
   toUnit,
@@ -7,7 +8,6 @@ import {
 } from "@lucid-evolution/lucid";
 import { Datum, DepositParams, MintRedeemer } from "./types.js";
 import {
-  bufferToHex,
   hashHexWithBlake2b256,
   HashingError,
   LucidError,
@@ -36,18 +36,28 @@ export const depositTxBuilder = (
       },
     };
     const authenticateEvent = Data.to(redeemer, MintRedeemer);
-    const utxos: UTxO[] = yield* Effect.promise(() =>
-      lucid.wallet().getUtxos(),
-    );
+
+    const utxos: UTxO[] = yield* Effect.tryPromise({
+      try: () => lucid.wallet().getUtxos(),
+      catch: (err) => new LucidError({
+        message: "Failed to fetch wallet UTxOs",
+        cause: err,
+      })
+    })
+
     if (utxos.length === 0) {
       yield* new LucidError({
         message: "Failed to build the deposit transaction",
         cause: "No UTxOs found in wallet",
       });
     }
+
     const inputUtxo = utxos[0];
-    const assetNameBuffer = yield* hashHexWithBlake2b256(inputUtxo.txHash);
-    const assetName = bufferToHex(Buffer.from(assetNameBuffer, "hex"));
+    const transactionInput = CML.TransactionInput.new(
+      CML.TransactionHash.from_hex(inputUtxo.txHash),
+      BigInt(inputUtxo.outputIndex)
+    )
+    const assetName = yield* hashHexWithBlake2b256(transactionInput.to_cbor_hex());
     const depositNFT = toUnit(params.policyId, assetName);
     const currDatum: Datum = {
       event: {

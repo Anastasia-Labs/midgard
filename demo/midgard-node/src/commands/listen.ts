@@ -565,13 +565,8 @@ export const runNode = Effect.gen(function* () {
 
   const txQueue = yield* Queue.unbounded<string>();
 
-  yield* InitDB.initializeDb().pipe(Effect.provide(Database.layer));
+  yield* InitDB.initializeDb();
   yield* buildAndSubmitGenesisDeposit().pipe(
-    Effect.provide(SDK.Services.Parameters.Default),
-    Effect.provide(AlwaysSucceedsContract.Default),
-    Effect.provide(Lucid.Default),
-    Effect.provide(NodeConfig.layer),
-    Effect.provide(Globals.Default),
     Effect.catchAllCause(Effect.logInfo),
   );
 

@@ -2,6 +2,7 @@ import * as SDK from "@al-ft/midgard-sdk";
 import { Effect } from "effect";
 import { AlwaysSucceedsContract, Lucid, NodeConfig } from "@/services/index.js";
 import { GenesisDepositError } from "./utils.js";
+import { LucidEvolution } from "@lucid-evolution/lucid";
 
 /**
  * Build and submit the merge transaction using depositAuthValidator.
@@ -17,15 +18,9 @@ export const buildAndSubmitGenesisDeposit = (
   Lucid
 > =>
   Effect.gen(function* () {
-    yield* Effect.log("DEBUG: In buildAndSubmitGenesisDeposit")
-    const { api: lucid } = yield* Lucid;
-    yield* Effect.log("DEBUG: lucid")
-
     const { depositAuthValidator } = yield* AlwaysSucceedsContract
-    yield* Effect.log("DEBUG: depositAuthValidator")
-
     const config = yield* NodeConfig
-    yield* Effect.log("DEBUG: config")
+    const lucid = yield* Lucid
 
     let l2Address: string
     if (config.GENESIS_UTXOS.length <= 0) {
@@ -37,11 +32,8 @@ export const buildAndSubmitGenesisDeposit = (
     } else {
       l2Address = config.GENESIS_UTXOS[0].address
     }
-    yield* Effect.log(`DEBUG: l2Address ${l2Address}`)
 
     const onchainParameters = yield* SDK.Services.Parameters;
-    yield* Effect.log(`DEBUG: onchainParameters ${JSON.stringify(onchainParameters)}`)
-
     const depositParams : SDK.TxBuilder.Deposit.DepositParams =
     ({
         depositScriptAddress: depositAuthValidator.spendScriptAddress,
@@ -49,7 +41,7 @@ export const buildAndSubmitGenesisDeposit = (
         policyId: depositAuthValidator.policyId,
         depositInfo: ({
             l2Address: l2Address,
-            l2Datum: "",
+            l2Datum: null,
         }),
         inclusionTime: BigInt(Date.now() + onchainParameters.event_wait_duration)
     })
@@ -76,7 +68,8 @@ export const buildAndSubmitGenesisDeposit = (
         );
       });
 
-    yield* SDK.Endpoints.depositsBuilderProgram(lucid, depositParams).pipe(
+    yield* lucid.switchToOperatorsMainWallet;
+    yield* SDK.Endpoints.depositsBuilderProgram(lucid.api, depositParams).pipe(
       Effect.catchTag("HashingError", onHashingFailure),
       Effect.catchTag("DepositError", onDepositFailure),
     )
