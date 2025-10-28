@@ -6,7 +6,7 @@ import {
   Lucid,
   Database,
 } from "@/services/index.js";
-import { LucidEvolution, fromHex } from "@lucid-evolution/lucid";
+import { LucidEvolution } from "@lucid-evolution/lucid";
 import { DepositsDB, UserEventsUtils } from "@/database/index.js";
 import { DatabaseError } from "@/database/utils/common.js";
 import { Schedule } from "effect";

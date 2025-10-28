@@ -8,8 +8,12 @@ import {
 } from "@/services/index.js";
 import { Columns as LedgerColumns } from "@/database/utils/ledger.js";
 import * as MempoolLedgerDB from "@/database/mempoolLedger.js";
-import { UTxO, utxoToCore } from "@lucid-evolution/lucid";
+import { TxSubmitError, UTxO, utxoToCore } from "@lucid-evolution/lucid";
 import { DatabaseError } from "@/database/utils/common.js";
+import {
+  handleSignSubmitNoConfirmation,
+  TxSignError,
+} from "./transactions/utils.js";
 
 const insertGenesisUtxos: Effect.Effect<
   void,
@@ -56,7 +60,11 @@ ${Array.from(new Set(config.GENESIS_UTXOS.map((u) => u.address))).join("\n")}`,
 
 const submitGenesisDeposits: Effect.Effect<
   void,
-  SDK.Utils.LucidError | SDK.Utils.HashingError | SDK.Utils.DepositError,
+  | SDK.Utils.LucidError
+  | SDK.Utils.HashingError
+  | SDK.Utils.DepositError
+  | TxSubmitError
+  | TxSignError,
   AlwaysSucceedsContract | Lucid | NodeConfig
 > = Effect.gen(function* () {
   const { depositAuthValidator } = yield* AlwaysSucceedsContract;
@@ -83,8 +91,20 @@ const submitGenesisDeposits: Effect.Effect<
   };
 
   yield* lucid.switchToOperatorsMainWallet;
-  yield* SDK.Endpoints.UserEvents.Deposit.depositTxProgram(
+
+  const signedTx = yield* SDK.Endpoints.UserEvents.Deposit.depositTxProgram(
     lucid.api,
     depositParams,
   );
+
+  yield* Effect.logInfo(`🟣 Submitting genesis deposit tx...`);
+  yield* handleSignSubmitNoConfirmation(lucid.api, signedTx);
+});
+
+export const program: Effect.Effect<
+  void,
+  never,
+  AlwaysSucceedsContract | Database | Lucid | NodeConfig
+> = Effect.allSuccesses([insertGenesisUtxos, submitGenesisDeposits], {
+  concurrency: "unbounded",
 });

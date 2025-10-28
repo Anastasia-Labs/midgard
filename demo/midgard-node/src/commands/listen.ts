@@ -363,10 +363,11 @@ const getLogStateQueueHandler = Effect.gen(function* () {
     stateQueueAddress:
       alwaysSucceeds.stateQueueAuthValidator.spendScriptAddress,
   };
-  const sortedUTxOs = yield* SDK.Endpoints.fetchSortedStateQueueUTxOsProgram(
-    lucid.api,
-    fetchConfig,
-  );
+  const sortedUTxOs =
+    yield* SDK.Endpoints.StateQueue.fetchSortedStateQueueUTxOsProgram(
+      lucid.api,
+      fetchConfig,
+    );
   let drawn = `
 ---------------------------- STATE QUEUE ----------------------------`;
   yield* Effect.allSuccesses(

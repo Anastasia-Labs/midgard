@@ -4,12 +4,7 @@ import {
 } from "@/utils.js";
 import * as SDK from "@al-ft/midgard-sdk";
 import { Cause, Effect, Schedule, pipe } from "effect";
-import {
-  AlwaysSucceedsContract,
-  AuthenticatedValidator,
-  Lucid,
-  NodeConfig,
-} from "@/services/index.js";
+import { AlwaysSucceedsContract, Lucid, NodeConfig } from "@/services/index.js";
 import {
   WorkerInput,
   WorkerOutput,
@@ -33,7 +28,7 @@ const fetchLatestBlock = (
       stateQueueAddress: stateQueueAuthValidator.spendScriptAddress,
       stateQueuePolicyId: stateQueueAuthValidator.policyId,
     };
-    return yield* SDK.Endpoints.fetchLatestCommittedBlockProgram(
+    return yield* SDK.Endpoints.StateQueue.fetchLatestCommittedBlockProgram(
       lucid,
       fetchConfig,
     );
