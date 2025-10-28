@@ -31,6 +31,7 @@ validator spend(hub_oracle: ScriptHash) {
       settlement_ref_input_index,
       burn_redeemer_index,
       payout_mint_redeemer_index,
+      membership_proof,
       purpose,
     } = redeemer
 

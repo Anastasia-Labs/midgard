@@ -50,7 +50,6 @@ pub type Header {
   transactions_root: MerkleRoot,
   deposits_root: MerkleRoot,
   withdrawals_root: MerkleRoot,
-  tx_orders_root: MerkleRoot,
   start_time: PosixTime,
   end_time: PosixTime,
   prev_header_hash: HeaderHash,
