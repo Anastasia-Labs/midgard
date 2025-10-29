@@ -239,12 +239,13 @@ const wrapper = (
           stateQueuePolicyId: stateQueueAuthValidator.policyId,
         };
         yield* lucid.switchToOperatorsMainWallet;
-        const txBuilder = yield* SDK.Endpoints.commitBlockHeaderProgram(
-          lucid.api,
-          fetchConfig,
-          commitBlockParams,
-          aoUpdateCommitmentTimeParams,
-        );
+        const txBuilder =
+          yield* SDK.Endpoints.StateQueue.commitBlockHeaderProgram(
+            lucid.api,
+            fetchConfig,
+            commitBlockParams,
+            aoUpdateCommitmentTimeParams,
+          );
         const txSize = txBuilder.toCBOR().length / 2;
         yield* Effect.logInfo(
           `🔹 Transaction built successfully. Size: ${txSize}`,

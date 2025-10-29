@@ -1,15 +1,5 @@
 import { parentPort, workerData } from "worker_threads";
-import {
-  Blockfrost,
-  CML,
-  Koios,
-  Kupmios,
-  Lucid,
-  LucidEvolution,
-  Maestro,
-  Network,
-  Provider,
-} from "@lucid-evolution/lucid";
+import { CML } from "@lucid-evolution/lucid";
 import * as chalk_ from "chalk";
 import { Data, Effect, pipe } from "effect";
 import * as Ledger from "@/database/utils/ledger.js";
@@ -148,6 +138,7 @@ export const batchProgram = <A, E, C>(
   totalCount: number,
   opName: string,
   effectMaker: (startIndex: number, endIndex: number) => Effect.Effect<A, E, C>,
+  concurrencyOverride?: number,
 ) => {
   const batchIndices = Array.from(
     { length: Math.ceil(totalCount / batchSize) },
@@ -162,7 +153,7 @@ export const batchProgram = <A, E, C>(
         Effect.withSpan(`batch-${opName}-${startIndex}-${endIndex}`),
       );
     },
-    { concurrency: "unbounded" },
+    { concurrency: concurrencyOverride ?? "unbounded" },
   );
 };
 

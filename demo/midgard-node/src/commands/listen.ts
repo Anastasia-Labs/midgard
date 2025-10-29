@@ -19,7 +19,6 @@ import { OTLPTraceExporter } from "@opentelemetry/exporter-trace-otlp-http";
 import { BatchSpanProcessor } from "@opentelemetry/sdk-trace-base";
 import {
   Cause,
-  Chunk,
   Duration,
   Effect,
   Layer,
@@ -30,6 +29,7 @@ import {
   Schedule,
 } from "effect";
 import {
+  AddressHistoryDB,
   BlocksDB,
   ConfirmedLedgerDB,
   ImmutableDB,
@@ -39,7 +39,7 @@ import {
   MempoolLedgerDB,
   ProcessedMempoolDB,
 } from "../database/index.js";
-import { ProcessedTx, breakDownTx, isHexString } from "../utils.js";
+import { isHexString } from "../utils.js";
 import {
   HttpRouter,
   HttpServer,
@@ -50,23 +50,25 @@ import { ParsedSearchParams } from "@effect/platform/HttpServerRequest";
 import { createServer } from "node:http";
 import { NodeHttpServer } from "@effect/platform-node";
 import { HttpBodyError } from "@effect/platform/HttpBody";
-import { insertGenesisUtxos } from "@/database/genesis.js";
+import * as Genesis from "@/genesis.js";
 import { deleteLedgerMpt, deleteMempoolMpt } from "@/workers/utils/mpt.js";
 import { SerializedStateQueueUTxO } from "@/workers/utils/commit-block-header.js";
 import { DatabaseError } from "@/database/utils/common.js";
 import { TxConfirmError, TxSignError } from "@/transactions/utils.js";
-import { fetchAndInsertDepositUTxOsFiber } from "@/fibers/fetch-and-insert-deposit-utxos.js";
-import { blockConfirmationFiber } from "@/fibers/block-confirmation.js";
 import {
+  fetchAndInsertDepositUTxOsFiber,
+  fetchAndInsertTxOrderUTxOsFiber,
+  blockConfirmationFiber,
   blockCommitmentFiber,
   blockCommitmentAction,
-} from "@/fibers/block-commitment.js";
-import { mergeFiber, mergeAction } from "@/fibers/merge.js";
-import { monitorMempoolFiber } from "@/fibers/monitor-mempool.js";
-import { txQueueProcessorFiber } from "@/fibers/tx-queue-processor.js";
-import { fetchAndInsertTxOrderUTxOsFiber } from "@/fibers/fetch-and-insert-tx-order-utxos.js";
+  mergeFiber,
+  mergeAction,
+  monitorMempoolFiber,
+  txQueueProcessorFiber,
+} from "@/fibers/index.js";
 
 const TX_ENDPOINT: string = "tx";
+const ADDRESS_HISTORY_ENDPOINT: string = "txs";
 const MERGE_ENDPOINT: string = "merge";
 const UTXOS_ENDPOINT: string = "utxos";
 const BLOCK_ENDPOINT: string = "block";
@@ -121,16 +123,19 @@ const getTxHandler = Effect.gen(function* () {
   if (
     typeof txHashParam !== "string" ||
     !isHexString(txHashParam) ||
-    txHashParam.length !== 32
+    txHashParam.length !== 64
   ) {
-    // yield* Effect.logInfo(`Invalid transaction hash: ${txHashParam}`);
+    yield* Effect.logInfo(
+      `GET /${TX_ENDPOINT} - Invalid transaction hash: ${txHashParam}`,
+    );
     return yield* HttpServerResponse.json(
       { error: `Invalid transaction hash: ${txHashParam}` },
       { status: 404 },
     );
   }
   const txHashBytes = Buffer.from(fromHex(txHashParam));
-  const foundCbor: Uint8Array = yield* MempoolDB.retrieveTxCborByHash(
+  yield* Effect.logInfo("txHashBytes", txHashBytes);
+  const foundCbor: Buffer = yield* MempoolDB.retrieveTxCborByHash(
     txHashBytes,
   ).pipe(
     Effect.catchAll((_e) =>
@@ -147,7 +152,8 @@ const getTxHandler = Effect.gen(function* () {
   yield* Effect.logInfo(
     `GET /${TX_ENDPOINT} - Transaction found in mempool: ${txHashParam}`,
   );
-  return yield* HttpServerResponse.json({ tx: toHex(foundCbor) });
+  yield* Effect.logInfo("foundCbor", bufferToHex(foundCbor));
+  return yield* HttpServerResponse.json({ tx: bufferToHex(foundCbor) });
 }).pipe(
   Effect.catchTag("HttpBodyError", (e) => failWith500("GET", TX_ENDPOINT, e)),
   Effect.catchTag("DatabaseError", (e) => handleDBGetFailure(TX_ENDPOINT, e)),
@@ -155,7 +161,7 @@ const getTxHandler = Effect.gen(function* () {
 
 const getUtxosHandler = Effect.gen(function* () {
   const params = yield* ParsedSearchParams;
-  const addr = params["addr"];
+  const addr = params["address"];
 
   if (typeof addr !== "string") {
     yield* Effect.logInfo(
@@ -215,7 +221,7 @@ const getBlockHandler = Effect.gen(function* () {
   if (
     typeof hdrHash !== "string" ||
     !isHexString(hdrHash) ||
-    hdrHash.length !== 32
+    hdrHash.length !== 56
   ) {
     yield* Effect.logInfo(
       `GET /${BLOCK_ENDPOINT} - Invalid block hash: ${hdrHash}`,
@@ -231,7 +237,7 @@ const getBlockHandler = Effect.gen(function* () {
   yield* Effect.logInfo(
     `GET /${BLOCK_ENDPOINT} - Found ${hashes.length} txs for block: ${hdrHash}`,
   );
-  return yield* HttpServerResponse.json({ hashes });
+  return yield* HttpServerResponse.json({ hashes: hashes.map(bufferToHex) });
 }).pipe(
   Effect.catchTag("HttpBodyError", (e) =>
     failWith500("GET", BLOCK_ENDPOINT, e),
@@ -244,7 +250,7 @@ const getBlockHandler = Effect.gen(function* () {
 const getInitHandler = Effect.gen(function* () {
   yield* Effect.logInfo(`✨ Initialization request received`);
   const result = yield* StateQueueTx.stateQueueInit;
-  yield* insertGenesisUtxos;
+  yield* Genesis.program;
   yield* Effect.logInfo(
     `GET /${INIT_ENDPOINT} - Initialization successful: ${result}`,
   );
@@ -256,7 +262,6 @@ const getInitHandler = Effect.gen(function* () {
   Effect.catchTag("LucidError", (e) =>
     handleGenericGetFailure(INIT_ENDPOINT, e),
   ),
-  Effect.catchTag("DatabaseError", (e) => handleDBGetFailure(INIT_ENDPOINT, e)),
   Effect.catchTag("TxSubmitError", (e) => handleTxGetFailure(INIT_ENDPOINT, e)),
   Effect.catchTag("TxSignError", (e) => handleTxGetFailure(INIT_ENDPOINT, e)),
 );
@@ -333,6 +338,7 @@ const getResetHandler = Effect.gen(function* () {
       ImmutableDB.clear,
       LatestLedgerDB.clear,
       ConfirmedLedgerDB.clear,
+      AddressHistoryDB.clear,
       deleteMempoolMpt,
       deleteLedgerMpt,
     ],
@@ -355,6 +361,48 @@ const getResetHandler = Effect.gen(function* () {
   ),
 );
 
+const getTxsOfAddressHandler = Effect.gen(function* () {
+  const params = yield* ParsedSearchParams;
+  const addr = params["address"];
+
+  if (typeof addr !== "string") {
+    yield* Effect.logInfo(
+      `GET /${ADDRESS_HISTORY_ENDPOINT} - Invalid address type: ${addr}`,
+    );
+    return yield* HttpServerResponse.json(
+      { error: `Invalid address type: ${addr}` },
+      { status: 400 },
+    );
+  }
+  try {
+    const addrDetails = getAddressDetails(addr);
+    if (!addrDetails.paymentCredential) {
+      yield* Effect.logInfo(`Invalid address format: ${addr}`);
+      return yield* HttpServerResponse.json(
+        { error: `Invalid address format: ${addr}` },
+        { status: 400 },
+      );
+    }
+
+    const cbors = yield* AddressHistoryDB.retrieve(addrDetails.address.bech32);
+    yield* Effect.logInfo(`Found ${cbors.length} CBORs with ${addr}`);
+    return yield* HttpServerResponse.json({
+      txs: cbors.map(bufferToHex),
+    });
+  } catch (error) {
+    yield* Effect.logInfo(`Invalid address: ${addr}`);
+    return yield* HttpServerResponse.json(
+      { error: `Invalid address: ${addr}` },
+      { status: 400 },
+    );
+  }
+}).pipe(
+  Effect.catchTag("HttpBodyError", (e) => failWith500("GET", "txs", e)),
+  Effect.catchTag("DatabaseError", (e) =>
+    handleDBGetFailure(ADDRESS_HISTORY_ENDPOINT, e),
+  ),
+);
+
 const getLogStateQueueHandler = Effect.gen(function* () {
   yield* Effect.logInfo(`✍  Drawing state queue UTxOs...`);
   const lucid = yield* Lucid;
@@ -364,10 +412,11 @@ const getLogStateQueueHandler = Effect.gen(function* () {
     stateQueueAddress:
       alwaysSucceeds.stateQueueAuthValidator.spendScriptAddress,
   };
-  const sortedUTxOs = yield* SDK.Endpoints.fetchSortedStateQueueUTxOsProgram(
-    lucid.api,
-    fetchConfig,
-  );
+  const sortedUTxOs =
+    yield* SDK.Endpoints.StateQueue.fetchSortedStateQueueUTxOsProgram(
+      lucid.api,
+      fetchConfig,
+    );
   let drawn = `
 ---------------------------- STATE QUEUE ----------------------------`;
   yield* Effect.allSuccesses(
@@ -516,6 +565,7 @@ const router = (
   HttpRouter.empty
     .pipe(
       HttpRouter.get(`/${TX_ENDPOINT}`, getTxHandler),
+      HttpRouter.get(`/${ADDRESS_HISTORY_ENDPOINT}`, getTxsOfAddressHandler),
       HttpRouter.get(`/${UTXOS_ENDPOINT}`, getUtxosHandler),
       HttpRouter.get(`/${BLOCK_ENDPOINT}`, getBlockHandler),
       HttpRouter.get(`/${INIT_ENDPOINT}`, getInitHandler),
@@ -565,7 +615,9 @@ export const runNode = Effect.gen(function* () {
 
   const txQueue = yield* Queue.unbounded<string>();
 
-  yield* InitDB.initializeDb().pipe(Effect.provide(Database.layer));
+  yield* InitDB.initializeDb();
+
+  yield* Genesis.program;
 
   const appThread = Layer.launch(
     Layer.provide(

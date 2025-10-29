@@ -5,9 +5,8 @@ import {
   Database,
   Globals,
   Lucid,
-  NodeConfig,
 } from "@/services/index.js";
-import { LucidEvolution, CML, Data, fromHex } from "@lucid-evolution/lucid";
+import { LucidEvolution } from "@lucid-evolution/lucid";
 import { TxOrdersDB, UserEventsUtils } from "@/database/index.js";
 import { DatabaseError } from "@/database/utils/common.js";
 import { Schedule } from "effect";
@@ -17,78 +16,65 @@ const fetchTxOrderUTxOs = (
   inclusionStartTime: number,
   inclusionEndTime: number,
 ): Effect.Effect<
-  SDK.TxBuilder.TxOrder.TxOrderUTxO[],
-  | SDK.Utils.LucidError
-  | SDK.Utils.DataCoercionError
-  | SDK.Utils.AssetError
-  | SDK.Utils.UnauthenticUtxoError,
-  AlwaysSucceedsContract | NodeConfig
+  SDK.TxBuilder.UserEvents.TxOrder.TxOrderUTxO[],
+  SDK.Utils.LucidError,
+  AlwaysSucceedsContract
 > =>
   Effect.gen(function* () {
     const { txOrderAuthValidator } = yield* AlwaysSucceedsContract;
-    const fetchConfig: SDK.TxBuilder.TxOrder.FetchConfig = {
+    const fetchConfig: SDK.TxBuilder.UserEvents.TxOrder.FetchConfig = {
       txOrderAddress: txOrderAuthValidator.spendScriptAddress,
       txOrderPolicyId: txOrderAuthValidator.policyId,
       inclusionStartTime: BigInt(inclusionStartTime),
       inclusionEndTime: BigInt(inclusionEndTime),
     };
-    return yield* SDK.Endpoints.fetchTxOrderUTxOsProgram(lucid, fetchConfig);
-  });
-
-export const fetchAndInsertTxOrderUTxOs = (): Effect.Effect<
-  void,
-  | SDK.Utils.LucidError
-  | SDK.Utils.DataCoercionError
-  | SDK.Utils.AssetError
-  | SDK.Utils.UnauthenticUtxoError
-  | DatabaseError,
-  AlwaysSucceedsContract | NodeConfig | Lucid | Database | Globals
-> =>
-  Effect.gen(function* () {
-    const { api: lucid } = yield* Lucid;
-    const globals = yield* Globals;
-    const startTime: number = yield* Ref.get(
-      globals.LATEST_TX_ORDER_FETCH_TIME,
+    return yield* SDK.Endpoints.UserEvents.fetchTxOrderUTxOsProgram(
+      lucid,
+      fetchConfig,
     );
-    const endTime: number = Date.now();
-    yield* Ref.set(globals.LATEST_TX_ORDER_FETCH_TIME, endTime);
-
-    yield* Effect.logInfo("  fetching TxOrder UTxOs...");
-    const txOrderUTxOs = yield* fetchTxOrderUTxOs(lucid, startTime, endTime);
-
-    const getOutRef = (utxo: SDK.TxBuilder.TxOrder.TxOrderUTxO): string =>
-      Data.to(utxo.datum.event.id, SDK.TxBuilder.Common.OutputReference);
-
-    const getTxOrderInfo = (utxo: SDK.TxBuilder.TxOrder.TxOrderUTxO): string =>
-      Data.to(utxo.datum.event.info, SDK.TxBuilder.TxOrder.TxOrderUTxO);
-
-    const toBuffer = (str: string): Buffer => Buffer.from(fromHex(str));
-
-    const getInclusionTime = (utxo: SDK.TxBuilder.TxOrder.TxOrderUTxO): Date =>
-      new Date(Number(utxo.datum.inclusionTime)); // TODO: Check if that the correct conversion for the db entry
-
-    const entries: TxOrdersDB.Entry[] = txOrderUTxOs.map((utxo) => ({
-      [UserEventsUtils.Columns.ID]: toBuffer(getOutRef(utxo)),
-      [UserEventsUtils.Columns.INFO]: toBuffer(getTxOrderInfo(utxo)),
-      [UserEventsUtils.Columns.INCLUSION_TIME]: getInclusionTime(utxo),
-    }));
-
-    yield* TxOrdersDB.insertEntries(entries);
   });
+
+export const fetchAndInsertTxOrderUTxOs = (Effect.Effect<
+  void,
+  SDK.Utils.LucidError | DatabaseError,
+  AlwaysSucceedsContract | Lucid | Database | Globals
+> = Effect.gen(function* () {
+  const { api: lucid } = yield* Lucid;
+  const globals = yield* Globals;
+  const startTime: number = yield* Ref.get(globals.LATEST_TX_ORDER_FETCH_TIME);
+  const endTime: number = Date.now();
+
+  yield* Effect.logInfo("  fetching TxOrderUTxOs...");
+
+  const txOrderUTxOs = yield* fetchTxOrderUTxOs(lucid, startTime, endTime);
+
+  if (txOrderUTxOs.length <= 0) {
+    yield* Effect.logDebug("No tx order UTxOs found.");
+    return;
+  }
+
+  yield* Effect.logInfo(`${txOrderUTxOs.length} deposit UTxOs found.`);
+
+  const entries: TxOrdersDB.Entry[] = txOrderUTxOs.map((utxo) => ({
+    [UserEventsUtils.Columns.ID]: utxo.idCbor,
+    [UserEventsUtils.Columns.INFO]: utxo.infoCbor,
+    [UserEventsUtils.Columns.INCLUSION_TIME]: utxo.inclusionTime,
+  }));
+
+  yield* TxOrdersDB.insertEntries(entries);
+
+  yield* Ref.set(globals.LATEST_TX_ORDER_FETCH_TIME, endTime);
+}));
 
 export const fetchAndInsertTxOrderUTxOsFiber = (
   schedule: Schedule.Schedule<number>,
 ): Effect.Effect<
   void,
-  | SDK.Utils.LucidError
-  | SDK.Utils.DataCoercionError
-  | SDK.Utils.AssetError
-  | SDK.Utils.UnauthenticUtxoError
-  | DatabaseError,
-  AlwaysSucceedsContract | NodeConfig | Lucid | Database | Globals
+  SDK.Utils.LucidError | DatabaseError,
+  AlwaysSucceedsContract | Lucid | Database | Globals
 > =>
   Effect.gen(function* () {
     yield* Effect.logInfo("🟪 Fetch and insert TxOrder UTxOs to the DB.");
-    const action = fetchAndInsertTxOrderUTxOs();
+    const action = fetchAndInsertTxOrderUTxOs;
     yield* Effect.repeat(action, schedule);
   });

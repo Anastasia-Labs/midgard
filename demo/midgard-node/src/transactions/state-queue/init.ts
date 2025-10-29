@@ -21,7 +21,10 @@ export const stateQueueInit: Effect.Effect<
     stateQueueMintingScript: stateQueueAuthValidator.mintScript,
   };
   yield* lucid.switchToOperatorsMainWallet;
-  const txBuilderProgram = SDK.Endpoints.initTxProgram(lucid.api, initParams);
+  const txBuilderProgram = SDK.Endpoints.StateQueue.initTxProgram(
+    lucid.api,
+    initParams,
+  );
   const txBuilder = yield* txBuilderProgram;
   const onSubmitFailure = (err: TxSubmitError | { _tag: "TxSubmitError" }) =>
     Effect.gen(function* () {

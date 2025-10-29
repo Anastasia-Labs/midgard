@@ -17,7 +17,7 @@ export const commitBlockHeaderProgram = (
       fetchConfig,
       sqCommitParams,
     );
-    const completedTx = yield* Effect.tryPromise({
+    const completedTx: TxSignBuilder = yield* Effect.tryPromise({
       try: () =>
         commitTx
           // .compose(
