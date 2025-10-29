@@ -51,35 +51,40 @@ export const DepositEventSchema = Data.Object({
 export type DepositEvent = Data.Static<typeof DepositEventSchema>;
 export const DepositEvent = DepositEventSchema as unknown as DepositEvent;
 
-export const MidgardTxCompactSchema  = Data.Object({
+export const MidgardTxCompactSchema = Data.Object({
   body: H32Schema,
   wits: H32Schema,
   is_valid: Data.Boolean(),
 });
 export type MidgardTxCompact = Data.Static<typeof MidgardTxCompactSchema>;
-export const MidgardTxCompact = MidgardTxCompactSchema as unknown as MidgardTxCompact;
+export const MidgardTxCompact =
+  MidgardTxCompactSchema as unknown as MidgardTxCompact;
 
 export const TxOrderEventSchema = Data.Object({
   txOrderId: OutputReferenceSchema,
-  midgardTx: MidgardTxCompactSchema
+  midgardTx: MidgardTxCompactSchema,
 });
 export type TxOrderEvent = Data.Static<typeof TxOrderEventSchema>;
 export const TxOrderEvent = TxOrderEventSchema as unknown as TxOrderEvent;
 
 export const MidgardNetworkIdSchema = Data.Enum([
-      Data.Literal("Mainnet"),
-      Data.Literal("Testnet")
+  Data.Literal("Mainnet"),
+  Data.Literal("Testnet"),
 ]);
 export type MidgardNetworkId = Data.Static<typeof MidgardNetworkIdSchema>;
-export const MidgardNetworkId = MidgardNetworkIdSchema as unknown as MidgardNetworkId;
+export const MidgardNetworkId =
+  MidgardNetworkIdSchema as unknown as MidgardNetworkId;
 
 export const MidgardTxWitnessSetCompactSchema = Data.Object({
   addr_tx_wits: H32Schema,
   script_tx_wits: H32Schema,
   redeemer_tx_wits: H32Schema,
 });
-export type MidgardTxWitnessSetCompact = Data.Static<typeof MidgardTxWitnessSetCompactSchema>;
-export const MidgardTxWitnessSetCompact = MidgardTxWitnessSetCompactSchema as unknown as MidgardTxWitnessSetCompact;
+export type MidgardTxWitnessSetCompact = Data.Static<
+  typeof MidgardTxWitnessSetCompactSchema
+>;
+export const MidgardTxWitnessSetCompact =
+  MidgardTxWitnessSetCompactSchema as unknown as MidgardTxWitnessSetCompact;
 
 export const ValidityRangeSchema = Data.Object({
   lower_bound: Data.Nullable(Data.Integer()),
@@ -99,7 +104,10 @@ export const MidgardTxBodyCompactSchema = Data.Object({
   mint: H32Schema,
   script_integrity_hash: H32Schema,
   auxiliary_data_hash: H32Schema,
-  network_id: MidgardNetworkIdSchema
+  network_id: MidgardNetworkIdSchema,
 });
-export type MidgardTxBodyCompact = Data.Static<typeof MidgardTxBodyCompactSchema>;
-export const MidgardTxBodyCompact = MidgardTxBodyCompactSchema as unknown as MidgardTxBodyCompact;
+export type MidgardTxBodyCompact = Data.Static<
+  typeof MidgardTxBodyCompactSchema
+>;
+export const MidgardTxBodyCompact =
+  MidgardTxBodyCompactSchema as unknown as MidgardTxBodyCompact;

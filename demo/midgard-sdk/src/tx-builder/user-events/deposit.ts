@@ -128,10 +128,10 @@ export const depositTxBuilder = (
     const depositNFT = toUnit(params.policyId, assetName);
 
     // Convert non-hex strings to hex string, since the address type doesn't enforce that
-    const depositInfo = ({
+    const depositInfo = {
       l2Address: fromText(params.depositInfo.l2Address),
-      l2Datum: params.depositInfo.l2Datum
-    })
+      l2Datum: params.depositInfo.l2Datum,
+    };
 
     const depositDatum: Datum = {
       event: {
@@ -175,9 +175,13 @@ export const depositTxBuilder = (
       .validTo(Number(params.inclusionTime))
       .attach.MintingPolicy(params.mintingPolicy);
     return tx;
-  }).pipe(Effect.catchAllDefect((defect) => {
-    return Effect.fail(new LucidError({
-        message: "Caught defect from depositTxBuilder",
-        cause: defect,
-      }))
-  }));
+  }).pipe(
+    Effect.catchAllDefect((defect) => {
+      return Effect.fail(
+        new LucidError({
+          message: "Caught defect from depositTxBuilder",
+          cause: defect,
+        }),
+      );
+    }),
+  );

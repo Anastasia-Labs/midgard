@@ -17,10 +17,10 @@ import { TxOrderEventSchema } from "@/tx-builder/ledger-state.js";
 import { Effect } from "effect";
 
 export type TransactionOrderParams = {
-  txOrderAddress: string; 
+  txOrderAddress: string;
   mintingPolicy: Script;
   policyId: string;
-  refundAddress: string,
+  refundAddress: string;
   refundDatum: string;
   inclusionTime: POSIXTime;
   midgardTxBody: string;
@@ -31,11 +31,10 @@ export const DatumSchema = Data.Object({
   event: TxOrderEventSchema,
   inclusionTime: POSIXTimeSchema,
   refundAddress: Data.Bytes(),
-  refundDatum: Data.Nullable(Data.Bytes())
+  refundDatum: Data.Nullable(Data.Bytes()),
 });
 export type Datum = Data.Static<typeof DatumSchema>;
 export const Datum = DatumSchema as unknown as Datum;
-
 
 /**
  * TransactionOrder
@@ -83,15 +82,15 @@ export const transactionOrderTxBuilder = (
           txHash: { hash: inputUtxo.txHash },
           outputIndex: BigInt(inputUtxo.outputIndex),
         },
-        midgardTx:  {
-          body:params.midgardTxBody,
+        midgardTx: {
+          body: params.midgardTxBody,
           wits: params.midgardTxWits,
-          is_valid: true
-        }
+          is_valid: true,
+        },
       },
       inclusionTime: params.inclusionTime, //Txn's time-validity upper bound event_wait_duration,
       refundAddress: params.refundAddress,
-      refundDatum: params.refundDatum
+      refundDatum: params.refundDatum,
     };
     const txOrderDatum = Data.to(currDatum, Datum);
     const tx = lucid
