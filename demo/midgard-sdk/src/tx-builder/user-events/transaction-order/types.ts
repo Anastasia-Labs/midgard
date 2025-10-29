@@ -1,10 +1,7 @@
 
 
-// TxOrderEvent ≔ (TxOrderId, MidgardTx)
-// TxOrderId ≔ OutputRef
-
-import { AddressSchema, OutputReferenceSchema, POSIXTime, POSIXTimeSchema } from "@/tx-builder/common.js";
-import { MidgardTxCompactSchema, TxOrderEventSchema } from "@/tx-builder/ledger-state.js";
+import { POSIXTime, POSIXTimeSchema } from "@/tx-builder/common.js";
+import { TxOrderEventSchema } from "@/tx-builder/ledger-state.js";
 import { Data, Script } from "@lucid-evolution/lucid";
 
 export type TransactionOrderParams = {

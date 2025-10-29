@@ -62,7 +62,7 @@ export const transactionOrderTxBuilder = (
           is_valid: true
         }
       },
-      inclusionTime: params.inclusionTime, // inclusion time is important , time range ,
+      inclusionTime: params.inclusionTime, //Txn's time-validity upper bound event_wait_duration,
       refundAddress: params.refundAddress,
       refundDatum: params.refundDatum
     };
