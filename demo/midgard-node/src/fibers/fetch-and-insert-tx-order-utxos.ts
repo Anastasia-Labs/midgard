@@ -2,71 +2,71 @@ import * as SDK from "@al-ft/midgard-sdk";
 import { Effect, Ref } from "effect";
 import {
   AlwaysSucceedsContract,
+  Database,
   Globals,
   Lucid,
-  Database,
 } from "@/services/index.js";
 import { LucidEvolution } from "@lucid-evolution/lucid";
-import { DepositsDB, UserEventsUtils } from "@/database/index.js";
+import { TxOrdersDB, UserEventsUtils } from "@/database/index.js";
 import { DatabaseError } from "@/database/utils/common.js";
 import { Schedule } from "effect";
 
-const fetchDepositUTxOs = (
+const fetchTxOrderUTxOs = (
   lucid: LucidEvolution,
   inclusionStartTime: number,
   inclusionEndTime: number,
 ): Effect.Effect<
-  SDK.TxBuilder.UserEvents.Deposit.DepositUTxO[],
+  SDK.TxBuilder.UserEvents.TxOrder.TxOrderUTxO[],
   SDK.Utils.LucidError,
   AlwaysSucceedsContract
 > =>
   Effect.gen(function* () {
-    const { depositAuthValidator } = yield* AlwaysSucceedsContract;
-    const fetchConfig: SDK.TxBuilder.UserEvents.Deposit.FetchConfig = {
-      depositAddress: depositAuthValidator.spendScriptAddress,
-      depositPolicyId: depositAuthValidator.policyId,
+    const { txOrderAuthValidator } = yield* AlwaysSucceedsContract;
+    const fetchConfig: SDK.TxBuilder.UserEvents.TxOrder.FetchConfig = {
+      txOrderAddress: txOrderAuthValidator.spendScriptAddress,
+      txOrderPolicyId: txOrderAuthValidator.policyId,
       inclusionStartTime: BigInt(inclusionStartTime),
       inclusionEndTime: BigInt(inclusionEndTime),
     };
-    return yield* SDK.Endpoints.UserEvents.Deposit.fetchDepositUTxOsProgram(
+    return yield* SDK.Endpoints.UserEvents.fetchTxOrderUTxOsProgram(
       lucid,
       fetchConfig,
     );
   });
 
-export const fetchAndInsertDepositUTxOs: Effect.Effect<
+export const fetchAndInsertTxOrderUTxOs = (Effect.Effect<
   void,
   SDK.Utils.LucidError | DatabaseError,
   AlwaysSucceedsContract | Lucid | Database | Globals
 > = Effect.gen(function* () {
   const { api: lucid } = yield* Lucid;
   const globals = yield* Globals;
-  const startTime: number = yield* Ref.get(globals.LATEST_DEPOSIT_FETCH_TIME);
+  const startTime: number = yield* Ref.get(globals.LATEST_TX_ORDER_FETCH_TIME);
   const endTime: number = Date.now();
 
-  yield* Effect.logDebug("  fetching DepositUTxOs...");
+  yield* Effect.logInfo("  fetching TxOrderUTxOs...");
 
-  const depositUTxOs = yield* fetchDepositUTxOs(lucid, startTime, endTime);
+  const txOrderUTxOs = yield* fetchTxOrderUTxOs(lucid, startTime, endTime);
 
-  if (depositUTxOs.length <= 0) {
-    yield* Effect.logDebug("No deposit UTxOs found.");
+  if (txOrderUTxOs.length <= 0) {
+    yield* Effect.logDebug("No tx order UTxOs found.");
     return;
   }
 
-  yield* Effect.logInfo(`${depositUTxOs.length} deposit UTxOs found.`);
+  yield* Effect.logInfo(`${txOrderUTxOs.length} deposit UTxOs found.`);
 
-  const entries: UserEventsUtils.Entry[] = depositUTxOs.map((utxo) => ({
+  const entries: TxOrdersDB.Entry[] = txOrderUTxOs.map((utxo) => ({
     [UserEventsUtils.Columns.ID]: utxo.idCbor,
     [UserEventsUtils.Columns.INFO]: utxo.infoCbor,
     [UserEventsUtils.Columns.INCLUSION_TIME]: utxo.inclusionTime,
   }));
 
-  yield* DepositsDB.insertEntries(entries);
+  yield* TxOrdersDB.insertEntries(entries);
 
-  yield* Ref.set(globals.LATEST_DEPOSIT_FETCH_TIME, endTime);
-});
+  yield* Ref.set(globals.LATEST_TX_ORDER_FETCH_TIME, endTime);
+}));
 
-export const fetchAndInsertDepositUTxOsFiber = (
+export const fetchAndInsertTxOrderUTxOsFiber = (
   schedule: Schedule.Schedule<number>,
 ): Effect.Effect<
   void,
@@ -74,7 +74,7 @@ export const fetchAndInsertDepositUTxOsFiber = (
   AlwaysSucceedsContract | Lucid | Database | Globals
 > =>
   Effect.gen(function* () {
-    yield* Effect.logInfo("🟪 Fetch and insert DepositUTxOs to DepositsDB.");
-    const action = fetchAndInsertDepositUTxOs;
+    yield* Effect.logInfo("🟪 Fetch and insert TxOrder UTxOs to the DB.");
+    const action = fetchAndInsertTxOrderUTxOs;
     yield* Effect.repeat(action, schedule);
   });

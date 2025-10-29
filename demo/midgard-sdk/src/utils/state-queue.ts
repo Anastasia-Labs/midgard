@@ -135,32 +135,45 @@ export const updateLatestBlocksDatumAndGetTheNewHeader = (
     if (latestBlocksDatum.key === "Empty") {
       const { data: confirmedState } =
         yield* getConfirmedStateFromStateQueueDatum(latestBlocksDatum);
+      const newHeader = {
+        prevUtxosRoot: confirmedState.utxoRoot,
+        utxosRoot: newUTxOsRoot,
+        transactionsRoot,
+        depositsRoot: "00".repeat(32),
+        withdrawalsRoot: "00".repeat(32),
+        startTime: confirmedState.endTime,
+        endTime,
+        prevHeaderHash: confirmedState.headerHash,
+        operatorVkey: pubKeyHash,
+        protocolVersion: confirmedState.protocolVersion,
+      };
+      const newHeaderHash = yield* hashHeader(newHeader);
       return {
         nodeDatum: {
           ...latestBlocksDatum,
-          next: { Key: { key: confirmedState.headerHash } },
+          next: { Key: { key: newHeaderHash } },
         },
-        header: {
-          prevUtxosRoot: confirmedState.utxoRoot,
-          utxosRoot: newUTxOsRoot,
-          transactionsRoot,
-          depositsRoot: depositsRoot,
-          withdrawalsRoot: withdrawalsRoot,
-          startTime: confirmedState.endTime,
-          endTime,
-          prevHeaderHash: confirmedState.headerHash,
-          operatorVkey: pubKeyHash,
-          protocolVersion: confirmedState.protocolVersion,
-        },
+        header: newHeader,
       };
     } else {
       const latestHeader =
         yield* getHeaderFromStateQueueDatum(latestBlocksDatum);
       const prevHeaderHash = yield* hashHeader(latestHeader);
+      const newHeader = {
+        ...latestHeader,
+        prevUtxosRoot: latestHeader.utxosRoot,
+        utxosRoot: newUTxOsRoot,
+        transactionsRoot,
+        startTime: latestHeader.endTime,
+        endTime,
+        prevHeaderHash,
+        operatorVkey: pubKeyHash,
+      };
+      const newHeaderHash = yield* hashHeader(newHeader);
       return {
         nodeDatum: {
           ...latestBlocksDatum,
-          next: { Key: { key: prevHeaderHash } },
+          next: { Key: { key: newHeaderHash } },
         },
         header: {
           ...latestHeader,

@@ -9,9 +9,10 @@ import * as MempoolLedgerDB from "./mempoolLedger.js";
 import * as Tx from "@/database/utils/tx.js";
 import * as Ledger from "@/database/utils/ledger.js";
 import * as DepositsDB from "@/database/deposits.js";
+import * as TxOrdersDB from "@/database/txOrders.js";
 import * as UserEvents from "@/database/utils/user-events.js";
+import * as AddressHistory from "@/database/addressHistory.js";
 import { Effect } from "effect";
-import { insertGenesisUtxos } from "./genesis.js";
 import { Database, NodeConfig } from "@/services/index.js";
 import { DatabaseError } from "./utils/common.js";
 
@@ -26,16 +27,16 @@ export const initializeDb: () => Effect.Effect<
     yield* sql`SET client_min_messages = 'error'`;
     yield* sql`SET default_transaction_isolation TO 'serializable'`;
 
+    yield* AddressHistory.createTable;
     yield* BlocksDB.createTable;
-    yield* Tx.createTable(MempoolDB.tableName);
-    yield* Tx.createTable(ProcessedMempoolDB.tableName);
-    yield* Ledger.createTable(MempoolLedgerDB.tableName);
-    yield* Tx.createTable(ImmutableDB.tableName);
     yield* Ledger.createTable(ConfirmedLedgerDB.tableName);
     yield* Ledger.createTable(LatestLedgerDB.tableName);
+    yield* Ledger.createTable(MempoolLedgerDB.tableName);
+    yield* Tx.createTable(ImmutableDB.tableName);
+    yield* Tx.createTable(MempoolDB.tableName);
+    yield* Tx.createTable(ProcessedMempoolDB.tableName);
     yield* UserEvents.createTable(DepositsDB.tableName);
-
-    yield* insertGenesisUtxos;
+    yield* UserEvents.createTable(TxOrdersDB.tableName);
 
     yield* Effect.logInfo("PostgreSQL database initialized Successfully.");
   }).pipe(

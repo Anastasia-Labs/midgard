@@ -13,10 +13,12 @@ type NodeConfigDep = {
   L1_OPERATOR_SEED_PHRASE: string;
   L1_OPERATOR_SEED_PHRASE_FOR_MERGE_TX: string;
   NETWORK: Network;
+  PROTOCOL_PARAMETERS: SDK.ProtocolParameters;
   PORT: number;
   WAIT_BETWEEN_BLOCK_COMMITMENT: number;
   WAIT_BETWEEN_BLOCK_CONFIRMATION: number;
   WAIT_BETWEEN_DEPOSIT_UTXO_FETCHES: number;
+  WAIT_BETWEEN_TX_ORDER_UTXO_FETCHES: number;
   WAIT_BETWEEN_MERGE_TXS: number;
   PROM_METRICS_PORT: number;
   OLTP_EXPORTER_URL: string;
@@ -61,6 +63,9 @@ const makeConfig = Effect.gen(function* () {
   const waitBetweenDepositUTxOFetches = yield* Config.integer(
     "WAIT_BETWEEN_DEPOSIT_UTXO_FETCHES",
   ).pipe(Config.withDefault(10000));
+  const waitBetweenTxOrderUTxOFetches = yield* Config.integer(
+    "WAIT_BETWEEN_TX_ORDER_UTXO_FETCHES",
+  ).pipe(Config.withDefault(10000));
   const promMetricsPort = yield* Config.integer("PROM_METRICS_PORT").pipe(
     Config.withDefault(9464),
   );
@@ -97,8 +102,8 @@ const makeConfig = Effect.gen(function* () {
       address: walletFromSeed(seedA, { network }).address,
       assets: {
         lovelace: BigInt("4027026465"),
-        "25561d09e55d60b64525b9cdb3cfbec23c94c0634320fec2eaddde584c616365436f696e33":
-          BigInt("10000"),
+        // "25561d09e55d60b64525b9cdb3cfbec23c94c0634320fec2eaddde584c616365436f696e33":
+        //   BigInt("10000"),
       },
     },
     {
@@ -108,8 +113,8 @@ const makeConfig = Effect.gen(function* () {
       address: walletFromSeed(seedA, { network }).address,
       assets: {
         lovelace: BigInt("3289566"),
-        "5c677ba4dd295d9286e0e22786fea9ed735a6ae9c07e7a45ae4d95c84372696d696e616c50756e6b73204c6f6f74":
-          BigInt("1"),
+        // "5c677ba4dd295d9286e0e22786fea9ed735a6ae9c07e7a45ae4d95c84372696d696e616c50756e6b73204c6f6f74":
+        //   BigInt("1"),
       },
     },
     {
@@ -146,8 +151,8 @@ const makeConfig = Effect.gen(function* () {
       address: walletFromSeed(seedC, { network }).address,
       assets: {
         lovelace: BigInt("300"),
-        "25561d09e55d60b64525b9cdb3cfbec23c94c0634320fec2eaddde584c616365436f696e33":
-          BigInt("15"),
+        // "25561d09e55d60b64525b9cdb3cfbec23c94c0634320fec2eaddde584c616365436f696e33":
+        //   BigInt("15"),
       },
     },
   ];
@@ -161,11 +166,13 @@ const makeConfig = Effect.gen(function* () {
     L1_OPERATOR_SEED_PHRASE: operatorSeedPhrase,
     L1_OPERATOR_SEED_PHRASE_FOR_MERGE_TX: operatorSeedPhraseForMergeTx,
     NETWORK: network,
+    PROTOCOL_PARAMETERS: SDK.getProtocolParameters(network),
     PORT: port,
     WAIT_BETWEEN_BLOCK_COMMITMENT: waitBetweenBlockCommitment,
     WAIT_BETWEEN_BLOCK_CONFIRMATION: waitBetweenBlockConfirmation,
     WAIT_BETWEEN_MERGE_TXS: waitBetweenMergeTxs,
     WAIT_BETWEEN_DEPOSIT_UTXO_FETCHES: waitBetweenDepositUTxOFetches,
+    WAIT_BETWEEN_TX_ORDER_UTXO_FETCHES: waitBetweenTxOrderUTxOFetches,
     PROM_METRICS_PORT: promMetricsPort,
     OLTP_EXPORTER_URL: oltpExporterUrl,
     POSTGRES_HOST: postgresHost,
