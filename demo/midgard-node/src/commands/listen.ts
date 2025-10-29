@@ -19,7 +19,6 @@ import { OTLPTraceExporter } from "@opentelemetry/exporter-trace-otlp-http";
 import { BatchSpanProcessor } from "@opentelemetry/sdk-trace-base";
 import {
   Cause,
-  Chunk,
   Duration,
   Effect,
   Layer,
@@ -39,7 +38,7 @@ import {
   MempoolLedgerDB,
   ProcessedMempoolDB,
 } from "../database/index.js";
-import { ProcessedTx, breakDownTx, isHexString } from "../utils.js";
+import { isHexString } from "../utils.js";
 import {
   HttpRouter,
   HttpServer,
@@ -50,7 +49,7 @@ import { ParsedSearchParams } from "@effect/platform/HttpServerRequest";
 import { createServer } from "node:http";
 import { NodeHttpServer } from "@effect/platform-node";
 import { HttpBodyError } from "@effect/platform/HttpBody";
-import { insertGenesisUtxos } from "@/database/genesis.js";
+import * as Genesis from "@/genesis.js";
 import { deleteLedgerMpt, deleteMempoolMpt } from "@/workers/utils/mpt.js";
 import { SerializedStateQueueUTxO } from "@/workers/utils/commit-block-header.js";
 import { DatabaseError } from "@/database/utils/common.js";
@@ -243,7 +242,7 @@ const getBlockHandler = Effect.gen(function* () {
 const getInitHandler = Effect.gen(function* () {
   yield* Effect.logInfo(`✨ Initialization request received`);
   const result = yield* StateQueueTx.stateQueueInit;
-  yield* insertGenesisUtxos;
+  yield* Genesis.program;
   yield* Effect.logInfo(
     `GET /${INIT_ENDPOINT} - Initialization successful: ${result}`,
   );
@@ -255,7 +254,6 @@ const getInitHandler = Effect.gen(function* () {
   Effect.catchTag("LucidError", (e) =>
     handleGenericGetFailure(INIT_ENDPOINT, e),
   ),
-  Effect.catchTag("DatabaseError", (e) => handleDBGetFailure(INIT_ENDPOINT, e)),
   Effect.catchTag("TxSubmitError", (e) => handleTxGetFailure(INIT_ENDPOINT, e)),
   Effect.catchTag("TxSignError", (e) => handleTxGetFailure(INIT_ENDPOINT, e)),
 );
@@ -363,10 +361,11 @@ const getLogStateQueueHandler = Effect.gen(function* () {
     stateQueueAddress:
       alwaysSucceeds.stateQueueAuthValidator.spendScriptAddress,
   };
-  const sortedUTxOs = yield* SDK.Endpoints.fetchSortedStateQueueUTxOsProgram(
-    lucid.api,
-    fetchConfig,
-  );
+  const sortedUTxOs =
+    yield* SDK.Endpoints.StateQueue.fetchSortedStateQueueUTxOsProgram(
+      lucid.api,
+      fetchConfig,
+    );
   let drawn = `
 ---------------------------- STATE QUEUE ----------------------------`;
   yield* Effect.allSuccesses(
@@ -564,7 +563,9 @@ export const runNode = Effect.gen(function* () {
 
   const txQueue = yield* Queue.unbounded<string>();
 
-  yield* InitDB.initializeDb().pipe(Effect.provide(Database.layer));
+  yield* InitDB.initializeDb();
+
+  yield* Genesis.program;
 
   const appThread = Layer.launch(
     Layer.provide(

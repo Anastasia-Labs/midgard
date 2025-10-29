@@ -143,11 +143,12 @@ export const fetchFirstBlockTxs = (
     const blockHeader = yield* SDK.Utils.getHeaderFromStateQueueDatum(
       firstBlockUTxO.datum,
     );
-    const headerHash = yield* SDK.Utils.hashHeader(blockHeader).pipe(
+    const headerHash: Buffer = yield* SDK.Utils.hashHeader(blockHeader).pipe(
       Effect.map((hh) => Buffer.from(fromHex(hh))),
     );
     const txHashes = yield* BlocksDB.retrieveTxHashesByHeaderHash(headerHash);
-    const txs = yield* ImmutableDB.retrieveTxCborsByHashes(txHashes);
+    const txs: readonly Buffer[] =
+      yield* ImmutableDB.retrieveTxCborsByHashes(txHashes);
     return { txs, headerHash };
   });
 
@@ -180,3 +181,7 @@ export class TxConfirmError extends Data.TaggedError("TxConfirmError")<
     readonly txHash: string;
   }
 > {}
+
+export class GenesisDepositError extends Data.TaggedError(
+  "GenesisDepositError",
+)<SDK.Utils.GenericErrorFields> {}
