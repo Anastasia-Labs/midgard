@@ -16,11 +16,8 @@ import {
   LucidError,
 } from "@/utils/common.js";
 import { Effect } from "effect";
-import {
-  OutputReferenceSchema,
-  POSIXTime,
-  POSIXTimeSchema,
-} from "@/tx-builder/common.js";
+import { POSIXTime, POSIXTimeSchema } from "@/tx-builder/common.js";
+import { DepositEventSchema, DepositInfo } from "@/tx-builder/ledger-state.js";
 
 export type DepositParams = {
   depositScriptAddress: string;
@@ -29,20 +26,6 @@ export type DepositParams = {
   depositInfo: DepositInfo;
   inclusionTime: POSIXTime;
 };
-
-export const DepositInfoSchema = Data.Object({
-  l2Address: Data.Bytes(),
-  l2Datum: Data.Nullable(Data.Bytes()),
-});
-export type DepositInfo = Data.Static<typeof DepositInfoSchema>;
-export const DepositInfo = DepositInfoSchema as unknown as DepositInfo;
-
-export const DepositEventSchema = Data.Object({
-  id: OutputReferenceSchema,
-  info: DepositInfoSchema,
-});
-export type DepositEvent = Data.Static<typeof DepositEventSchema>;
-export const DepositEvent = DepositEventSchema as unknown as DepositEvent;
 
 export const DatumSchema = Data.Object({
   event: DepositEventSchema,
