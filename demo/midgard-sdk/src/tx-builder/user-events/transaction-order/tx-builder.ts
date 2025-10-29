@@ -1,4 +1,5 @@
 import {
+  CML,
   Data,
   LucidEvolution,
   toUnit,
@@ -47,8 +48,14 @@ export const transactionOrderTxBuilder = (
       });
     }
     const inputUtxo = utxos[0];
-    const assetNameBuffer = yield* hashHexWithBlake2b256(inputUtxo.txHash);
-    const assetName = bufferToHex(Buffer.from(assetNameBuffer, "hex"));
+    const transactionInput = CML.TransactionInput.new(
+      CML.TransactionHash.from_hex(inputUtxo.txHash),
+      BigInt(inputUtxo.outputIndex),
+    );
+
+    const assetName = yield* hashHexWithBlake2b256(
+      transactionInput.to_cbor_hex(),
+    );
     const txOrderNFT = toUnit(params.policyId, assetName);
     const currDatum: Datum = {
       event: {
