@@ -19,17 +19,15 @@ import {
   ImmutableDB,
   MempoolDB,
   ProcessedMempoolDB,
-  DepositsDB,
 } from "@/database/index.js";
 import {
   handleSignSubmitNoConfirmation,
   TxSignError,
   TxSubmitError,
 } from "@/transactions/utils.js";
-import { Data, fromHex } from "@lucid-evolution/lucid";
+import { fromHex } from "@lucid-evolution/lucid";
 import {
   MptError,
-  keyValueMptRoot,
   makeMpts,
   withTrieTransaction,
 } from "@/workers/utils/mpt.js";
@@ -38,9 +36,7 @@ import {
   EntryWithTimeStamp as TxEntry,
   Columns as TxColumns,
 } from "@/database/utils/tx.js";
-import { Columns as UserEventsColumns } from "@/database/utils/user-events.js";
 import { DatabaseError } from "@/database/utils/common.js";
-import { RuntimeFiber } from "effect/Fiber";
 import {
   processDepositEvent,
   processTxOrderEvent,
