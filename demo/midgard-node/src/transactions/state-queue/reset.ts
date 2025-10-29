@@ -14,7 +14,8 @@ import {
   handleSignSubmit,
   TxSubmitError,
   TxSignError,
-} from "../utils.js";
+} from "@/transactions/utils.js";
+import { batchProgram } from "@/utils.js";
 
 const collectAndBurnStateQueueNodesProgram = (
   lucid: LucidEvolution,
@@ -53,7 +54,7 @@ const collectAndBurnStateQueueNodesProgram = (
           }),
       ),
     );
-    const onSubmitFailure = (err: TxSubmitError | { _tag: "TxSubmitError" }) =>
+    const onSubmitFailure = (err: TxSubmitError) =>
       Effect.gen(function* () {
         yield* Effect.logError(`Submit tx error: ${err}`);
         yield* Effect.fail(
@@ -86,30 +87,47 @@ export const resetStateQueue: Effect.Effect<
     stateQueueAddress:
       alwaysSucceeds.stateQueueAuthValidator.spendScriptAddress,
   };
+
   yield* lucid.switchToOperatorsMainWallet;
+
+  yield* Effect.logInfo("🚧 Fetching state queue UTxOs...");
+
   const allStateQueueUTxOs =
     yield* SDK.Endpoints.StateQueue.fetchUnsortedStateQueueUTxOsProgram(
       lucid.api,
       fetchConfig,
     );
 
+  if (allStateQueueUTxOs.length <= 0) {
+    yield* Effect.logInfo(`🚧 No state queue UTxOs were found.`);
+  }
+
   yield* lucid.switchToOperatorsMainWallet;
 
-  // Collect and burn 10 UTxOs and asset names at a time:
+  // Collect and burn 40 UTxOs and asset names at a time:
   const batchSize = 40;
-  for (let i = 0; i < allStateQueueUTxOs.length; i += batchSize) {
-    const batch = allStateQueueUTxOs.slice(i, i + batchSize);
-    yield* collectAndBurnStateQueueNodesProgram(
-      lucid.api,
-      fetchConfig,
-      alwaysSucceeds.stateQueueAuthValidator.spendScript,
-      alwaysSucceeds.stateQueueAuthValidator.mintScript,
-      batch,
-    );
-  }
+  yield* batchProgram(
+    batchSize,
+    allStateQueueUTxOs.length,
+    "resetStateQueue",
+    (startIndex, endIndex) =>
+      Effect.gen(function* () {
+        const batch = allStateQueueUTxOs.slice(startIndex, endIndex);
+        yield* Effect.logInfo(`🚧 Batch ${startIndex}-${endIndex}`);
+        yield* collectAndBurnStateQueueNodesProgram(
+          lucid.api,
+          fetchConfig,
+          alwaysSucceeds.stateQueueAuthValidator.spendScript,
+          alwaysSucceeds.stateQueueAuthValidator.mintScript,
+          batch,
+        );
+      }).pipe(Effect.tapError((e) => Effect.logError(e))),
+    1,
+  );
+  yield* Effect.logInfo(`🚧 Resetting global variables...`);
   const globals = yield* Globals;
-
   yield* Ref.set(globals.LATEST_SYNC_TIME_OF_STATE_QUEUE_LENGTH, Date.now());
   yield* Ref.set(globals.BLOCKS_IN_QUEUE, 0);
   yield* Ref.set(globals.AVAILABLE_CONFIRMED_BLOCK, "");
+  yield* Effect.logInfo(`🚧 Done.`);
 });

@@ -1,5 +1,5 @@
 import { Database } from "@/services/database.js";
-import { SqlClient } from "@effect/sql";
+import { SqlClient, SqlError } from "@effect/sql";
 import { Effect } from "effect";
 import {
   DatabaseError,
@@ -41,7 +41,7 @@ export const createTable = (
 
 export const delMultiple = (
   tableName: string,
-  tx_id: Buffer[],
+  tx_ids: Buffer[],
 ): Effect.Effect<void, DatabaseError, Database> =>
   Effect.gen(function* () {
     const sql = yield* SqlClient.SqlClient;
@@ -50,10 +50,10 @@ export const delMultiple = (
     );
     const result = yield* sql`DELETE FROM ${sql(tableName)} WHERE ${sql(
       Columns.TX_ID,
-    )} IN ${sql.in(tx_id)} RETURNING ${sql(Columns.TX_ID)}`;
+    )} IN ${sql.in(tx_ids)} RETURNING ${sql(Columns.TX_ID)}`;
     yield* Effect.logDebug(`${tableName} db: deleted ${result.length} rows`);
   }).pipe(
-    Effect.withLogSpan(`delMutiple table ${tableName}`),
+    Effect.withLogSpan(`delMultiple table ${tableName}`),
     sqlErrorToDatabaseError(
       tableName,
       "Failed to remove the given transactions",
@@ -68,21 +68,18 @@ export const retrieveValue = (
     const sql = yield* SqlClient.SqlClient;
     yield* Effect.logDebug(`${tableName} db: attempt to retrieve value`);
 
-    const result = yield* sql<Buffer>`SELECT ${sql(Columns.TX)} FROM ${sql(
+    const result = yield* sql<
+      Pick<Entry, Columns.TX>
+    >`SELECT ${sql(Columns.TX)} FROM ${sql(
       tableName,
     )} WHERE ${sql(Columns.TX_ID)} = ${tx_id}`;
 
-    // We probably don't need this. SqlError should cover this already.
-    // TODO
-    // if (result.length <= 0) {
-    //   yield*
-    //     new DatabaseError({
-    //       message: `No value found for tx_id ${tx_id.toString("hex")}`,
-    //       table: tableName,
-    //     }) ;
-    // }
+    if (result.length === 0)
+      yield* new SqlError.SqlError({
+        cause: `No value found for tx_id ${tx_id.toString("hex")}`,
+      });
 
-    return result[0];
+    return result[0][Columns.TX];
   }).pipe(
     Effect.withLogSpan(`retrieve value ${tableName}`),
     Effect.tapErrorTag("SqlError", (e) =>
@@ -104,11 +101,13 @@ export const retrieveValues = (
     const sql = yield* SqlClient.SqlClient;
     yield* Effect.logDebug(`${tableName} db: attempt to retrieve values`);
 
-    const result = yield* sql<Buffer>`SELECT ${sql(Columns.TX)} FROM ${sql(
+    const rows = yield* sql<
+      Pick<Entry, Columns.TX>
+    >`SELECT ${sql(Columns.TX)} FROM ${sql(
       tableName,
     )} WHERE ${sql.in(Columns.TX_ID, tx_ids)}`;
 
-    return result;
+    return rows.map((r) => r[Columns.TX]);
   }).pipe(
     Effect.withLogSpan(`retrieve values ${tableName}`),
     Effect.tapErrorTag("SqlError", (e) =>
