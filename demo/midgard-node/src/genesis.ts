@@ -105,6 +105,7 @@ export const program: Effect.Effect<
   void,
   never,
   AlwaysSucceedsContract | Database | Lucid | NodeConfig
-> = Effect.allSuccesses([insertGenesisUtxos, submitGenesisDeposits], {
+> = Effect.all([insertGenesisUtxos, submitGenesisDeposits], {
   concurrency: "unbounded",
-});
+}).pipe(Effect.catchAllCause(Effect.logInfo),);
+

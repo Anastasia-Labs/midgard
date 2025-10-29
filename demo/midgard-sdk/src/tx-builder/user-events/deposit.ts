@@ -8,6 +8,7 @@ import {
   PolicyId,
   UTxO,
   Script,
+  fromText,
 } from "@lucid-evolution/lucid";
 import {
   hashHexWithBlake2b256,
@@ -119,17 +120,30 @@ export const depositTxBuilder = (
       CML.TransactionHash.from_hex(inputUtxo.txHash),
       BigInt(inputUtxo.outputIndex),
     );
+
     const assetName = yield* hashHexWithBlake2b256(
       transactionInput.to_cbor_hex(),
     );
+
     const depositNFT = toUnit(params.policyId, assetName);
+
+    // Convert non-hex strings to hex string
+    let l2Datum = null
+    if (params.depositInfo.l2Datum !== null) {
+      l2Datum = fromText(params.depositInfo.l2Datum)
+    }
+    const depositInfo = ({
+      l2Address: fromText(params.depositInfo.l2Address),
+      l2Datum: l2Datum
+    })
+
     const depositDatum: Datum = {
       event: {
         id: {
           txHash: { hash: inputUtxo.txHash },
           outputIndex: BigInt(inputUtxo.outputIndex),
         },
-        info: params.depositInfo,
+        info: depositInfo,
       },
       inclusionTime: params.inclusionTime,
     };
@@ -165,4 +179,9 @@ export const depositTxBuilder = (
       .validTo(Number(params.inclusionTime))
       .attach.MintingPolicy(params.mintingPolicy);
     return tx;
-  });
+  }).pipe(Effect.catchAllDefect((defect) => {
+    return Effect.fail(new LucidError({
+        message: "Caught defect from depositTxBuilder",
+        cause: defect,
+      }))
+  }));

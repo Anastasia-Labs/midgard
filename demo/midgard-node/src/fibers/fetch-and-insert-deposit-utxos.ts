@@ -44,12 +44,12 @@ export const fetchAndInsertDepositUTxOs: Effect.Effect<
   const startTime: number = yield* Ref.get(globals.LATEST_DEPOSIT_FETCH_TIME);
   const endTime: number = Date.now();
 
-  yield* Effect.logInfo("  fetching DepositUTxOs...");
+  yield* Effect.logDebug("  fetching DepositUTxOs...");
 
   const depositUTxOs = yield* fetchDepositUTxOs(lucid, startTime, endTime);
 
   if (depositUTxOs.length <= 0) {
-    yield* Effect.logInfo("No deposit UTxOs found.");
+    yield* Effect.logDebug("No deposit UTxOs found.");
     return;
   }
 
