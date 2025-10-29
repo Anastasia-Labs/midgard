@@ -152,7 +152,9 @@ const getTxHandler = Effect.gen(function* () {
     `GET /${TX_ENDPOINT} - Transaction found in mempool: ${txHashParam}`,
   );
   yield* Effect.logInfo("foundCbor", SDK.Utils.bufferToHex(foundCbor));
-  return yield* HttpServerResponse.json({ tx: SDK.Utils.bufferToHex(foundCbor) });
+  return yield* HttpServerResponse.json({
+    tx: SDK.Utils.bufferToHex(foundCbor),
+  });
 }).pipe(
   Effect.catchTag("HttpBodyError", (e) => failWith500("GET", TX_ENDPOINT, e)),
   Effect.catchTag("DatabaseError", (e) => handleDBGetFailure(TX_ENDPOINT, e)),
@@ -236,7 +238,9 @@ const getBlockHandler = Effect.gen(function* () {
   yield* Effect.logInfo(
     `GET /${BLOCK_ENDPOINT} - Found ${hashes.length} txs for block: ${hdrHash}`,
   );
-  return yield* HttpServerResponse.json({ hashes: hashes.map(SDK.Utils.bufferToHex) });
+  return yield* HttpServerResponse.json({
+    hashes: hashes.map(SDK.Utils.bufferToHex),
+  });
 }).pipe(
   Effect.catchTag("HttpBodyError", (e) =>
     failWith500("GET", BLOCK_ENDPOINT, e),
