@@ -38,11 +38,7 @@ const insertGenesisUtxos: Effect.Effect<
   });
 
   yield* Effect.logInfo(
-    `🟣 On testnet—Inserting ${ledgerEntries.length} genesis UTxOs...`,
-  );
-
-  yield* Effect.logInfo(
-    `🟣 Debug: Inserting ${ledgerEntries.length} UTxOs into MempoolLedgerDB...`,
+    `🟣 On testnet — Inserting ${ledgerEntries.length} genesis UTxOs...`,
   );
 
   yield* MempoolLedgerDB.insert(ledgerEntries);

@@ -151,8 +151,8 @@ const getTxHandler = Effect.gen(function* () {
   yield* Effect.logInfo(
     `GET /${TX_ENDPOINT} - Transaction found in mempool: ${txHashParam}`,
   );
-  yield* Effect.logInfo("foundCbor", bufferToHex(foundCbor));
-  return yield* HttpServerResponse.json({ tx: bufferToHex(foundCbor) });
+  yield* Effect.logInfo("foundCbor", SDK.Utils.bufferToHex(foundCbor));
+  return yield* HttpServerResponse.json({ tx: SDK.Utils.bufferToHex(foundCbor) });
 }).pipe(
   Effect.catchTag("HttpBodyError", (e) => failWith500("GET", TX_ENDPOINT, e)),
   Effect.catchTag("DatabaseError", (e) => handleDBGetFailure(TX_ENDPOINT, e)),
@@ -236,7 +236,7 @@ const getBlockHandler = Effect.gen(function* () {
   yield* Effect.logInfo(
     `GET /${BLOCK_ENDPOINT} - Found ${hashes.length} txs for block: ${hdrHash}`,
   );
-  return yield* HttpServerResponse.json({ hashes: hashes.map(bufferToHex) });
+  return yield* HttpServerResponse.json({ hashes: hashes.map(SDK.Utils.bufferToHex) });
 }).pipe(
   Effect.catchTag("HttpBodyError", (e) =>
     failWith500("GET", BLOCK_ENDPOINT, e),
@@ -386,7 +386,7 @@ const getTxsOfAddressHandler = Effect.gen(function* () {
     const cbors = yield* AddressHistoryDB.retrieve(addrDetails.address.bech32);
     yield* Effect.logInfo(`Found ${cbors.length} CBORs with ${addr}`);
     return yield* HttpServerResponse.json({
-      txs: cbors.map(bufferToHex),
+      txs: cbors.map(SDK.Utils.bufferToHex),
     });
   } catch (error) {
     yield* Effect.logInfo(`Invalid address: ${addr}`);
@@ -612,12 +612,11 @@ export const runNode = Effect.gen(function* () {
     ),
   }));
 
-  const txQueue = yield* Queue.unbounded<string>();
-
   yield* InitDB.initializeDb();
 
   yield* Genesis.program;
 
+  const txQueue = yield* Queue.unbounded<string>();
   const appThread = Layer.launch(
     Layer.provide(
       HttpServer.serve(router(txQueue)),
