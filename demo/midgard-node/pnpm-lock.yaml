@@ -9,22 +9,22 @@ importers:
   .:
     dependencies:
       '@aiken-lang/merkle-patricia-forestry':
-        specifier: ^1.2.0
+        specifier: ^1.3.1
         version: 1.3.1
       '@al-ft/midgard-sdk':
         specifier: file:../midgard-sdk/al-ft-midgard-sdk-0.1.0.tgz
         version: file:../midgard-sdk/al-ft-midgard-sdk-0.1.0.tgz(@harmoniclabs/bytestring@1.0.0)(@harmoniclabs/cbor@1.6.6)(@harmoniclabs/crypto@0.2.5)(@harmoniclabs/pair@1.0.0)(fast-check@3.23.2)
       '@effect/experimental':
-        specifier: ^0.46.0
+        specifier: ^0.46.8
         version: 0.46.8(@effect/platform@0.80.21(effect@3.18.4))(effect@3.18.4)(lmdb@3.4.1)
       '@effect/opentelemetry':
-        specifier: ^0.44.6
+        specifier: ^0.44.12
         version: 0.44.12(@opentelemetry/api@1.9.0)(@opentelemetry/resources@1.30.1(@opentelemetry/api@1.9.0))(@opentelemetry/sdk-metrics@1.30.1(@opentelemetry/api@1.9.0))(@opentelemetry/sdk-trace-base@1.30.1(@opentelemetry/api@1.9.0))(@opentelemetry/sdk-trace-node@1.30.1(@opentelemetry/api@1.9.0))(@opentelemetry/sdk-trace-web@1.30.1(@opentelemetry/api@1.9.0))(@opentelemetry/semantic-conventions@1.37.0)(effect@3.18.4)
       '@effect/platform':
-        specifier: ^0.80.0
+        specifier: ^0.80.21
         version: 0.80.21(effect@3.18.4)
       '@effect/platform-node':
-        specifier: ^0.80.0
+        specifier: ^0.80.3
         version: 0.80.3(@effect/cluster@0.31.1(@effect/platform@0.80.21(effect@3.18.4))(@effect/rpc@0.57.1(@effect/platform@0.80.21(effect@3.18.4))(effect@3.18.4))(@effect/sql@0.34.1(@effect/experimental@0.46.8(@effect/platform@0.80.21(effect@3.18.4))(effect@3.18.4)(lmdb@3.4.1))(@effect/platform@0.80.21(effect@3.18.4))(effect@3.18.4))(effect@3.18.4))(@effect/platform@0.80.21(effect@3.18.4))(@effect/rpc@0.57.1(@effect/platform@0.80.21(effect@3.18.4))(effect@3.18.4))(@effect/sql@0.34.1(@effect/experimental@0.46.8(@effect/platform@0.80.21(effect@3.18.4))(effect@3.18.4)(lmdb@3.4.1))(@effect/platform@0.80.21(effect@3.18.4))(effect@3.18.4))(effect@3.18.4)
       '@effect/sql':
         specifier: ^0.34.1
@@ -39,7 +39,7 @@ importers:
         specifier: ^9.1.0
         version: 9.1.0
       '@lucid-evolution/lucid':
-        specifier: ^0.4.23
+        specifier: ^0.4.29
         version: 0.4.29(@harmoniclabs/bytestring@1.0.0)(@harmoniclabs/cbor@1.6.6)(@harmoniclabs/crypto@0.2.5)(@harmoniclabs/pair@1.0.0)(fast-check@3.23.2)
       '@opentelemetry/api':
         specifier: ^1.9.0
@@ -60,16 +60,16 @@ importers:
         specifier: ^1.30.1
         version: 1.30.1(@opentelemetry/api@1.9.0)
       chalk:
-        specifier: ^5.4.1
+        specifier: ^5.6.2
         version: 5.6.2
       commander:
         specifier: ^13.1.0
         version: 13.1.0
       dotenv:
-        specifier: ^16.4.7
+        specifier: ^16.6.1
         version: 16.6.1
       effect:
-        specifier: ^3.14.22
+        specifier: ^3.18.4
         version: 3.18.4
       level:
         specifier: ^10.0.0
@@ -81,35 +81,35 @@ importers:
         specifier: ^6.0.1
         version: 6.0.1
       vitest:
-        specifier: ^3.0.7
+        specifier: ^3.2.4
         version: 3.2.4(@types/node@22.18.13)
     devDependencies:
       '@commander-js/extra-typings':
         specifier: ^13.1.0
         version: 13.1.0(commander@13.1.0)
       '@effect/vitest':
-        specifier: ^0.22.0
+        specifier: ^0.22.5
         version: 0.22.5(effect@3.18.4)(vitest@3.2.4(@types/node@22.18.13))
       '@types/express':
-        specifier: ^5.0.0
+        specifier: ^5.0.5
         version: 5.0.5
       '@types/jest':
         specifier: ^29.5.14
         version: 29.5.14
       '@types/node':
-        specifier: ^22.17.0
+        specifier: ^22.18.13
         version: 22.18.13
       prettier:
-        specifier: ^3.5.2
+        specifier: ^3.6.2
         version: 3.6.2
       tsup:
-        specifier: ^8.4.0
+        specifier: ^8.5.0
         version: 8.5.0(postcss@8.5.6)(typescript@5.9.3)
       typescript:
-        specifier: ^5.7.3
+        specifier: ^5.9.3
         version: 5.9.3
       vite:
-        specifier: ^6.3.5
+        specifier: ^6.4.1
         version: 6.4.1(@types/node@22.18.13)
 
 packages:
@@ -118,7 +118,7 @@ packages:
     resolution: {integrity: sha512-vKypwCNMH7SgP8JQ/fQyXjhDC16DqTiW9x9dLK6AXe2tEWVouNy2GMKmOaS4l6ZF7pTjty5XCD+MqnsxXJBIgg==}
 
   '@al-ft/midgard-sdk@file:../midgard-sdk/al-ft-midgard-sdk-0.1.0.tgz':
-    resolution: {integrity: sha512-WYwhE8hfYi7wwGccZTgTD7C/8R1JnEm3MW2Y9pOroST7lrMCGwDtBdA32uMWQR3pc5dyP2bqpOGtHPB9pHnvjQ==, tarball: file:../midgard-sdk/al-ft-midgard-sdk-0.1.0.tgz}
+    resolution: {integrity: sha512-OueSWVukfJOiaFLEgje5xjQS9WyR/Kym5x2PowPNPDG83oqunPsqZkHFh6k665mpFRCVYtf8E9TLpDCIrmknvg==, tarball: file:../midgard-sdk/al-ft-midgard-sdk-0.1.0.tgz}
     version: 0.1.0
 
   '@anastasia-labs/cardano-multiplatform-lib-browser@6.0.2-2':
