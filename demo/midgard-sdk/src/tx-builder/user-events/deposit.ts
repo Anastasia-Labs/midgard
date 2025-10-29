@@ -127,14 +127,10 @@ export const depositTxBuilder = (
 
     const depositNFT = toUnit(params.policyId, assetName);
 
-    // Convert non-hex strings to hex string
-    let l2Datum = null
-    if (params.depositInfo.l2Datum !== null) {
-      l2Datum = fromText(params.depositInfo.l2Datum)
-    }
+    // Convert non-hex strings to hex string, since the address type doesn't enforce that
     const depositInfo = ({
       l2Address: fromText(params.depositInfo.l2Address),
-      l2Datum: l2Datum
+      l2Datum: params.depositInfo.l2Datum
     })
 
     const depositDatum: Datum = {
