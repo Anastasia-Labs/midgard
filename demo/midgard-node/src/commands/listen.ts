@@ -57,6 +57,7 @@ import { DatabaseError } from "@/database/utils/common.js";
 import { TxConfirmError, TxSignError } from "@/transactions/utils.js";
 import {
   fetchAndInsertDepositUTxOsFiber,
+  fetchAndInsertTxOrderUTxOsFiber,
   blockConfirmationFiber,
   blockCommitmentFiber,
   blockCommitmentAction,
@@ -644,6 +645,11 @@ export const runNode = Effect.gen(function* () {
       fetchAndInsertDepositUTxOsFiber(
         Schedule.spaced(
           Duration.millis(nodeConfig.WAIT_BETWEEN_DEPOSIT_UTXO_FETCHES),
+        ),
+      ),
+      fetchAndInsertTxOrderUTxOsFiber(
+        Schedule.spaced(
+          Duration.millis(nodeConfig.WAIT_BETWEEN_TX_ORDER_UTXO_FETCHES),
         ),
       ),
       mergeFiber(

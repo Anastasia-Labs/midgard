@@ -19,7 +19,6 @@ import {
   ImmutableDB,
   MempoolDB,
   ProcessedMempoolDB,
-  DepositsDB,
 } from "@/database/index.js";
 import {
   handleSignSubmitNoConfirmation,
@@ -29,9 +28,7 @@ import {
 import { fromHex } from "@lucid-evolution/lucid";
 import {
   MptError,
-  keyValueMptRoot,
   makeMpts,
-  processMpts,
   withTrieTransaction,
 } from "@/workers/utils/mpt.js";
 import { FileSystemError, batchProgram } from "@/utils.js";
@@ -39,9 +36,12 @@ import {
   EntryWithTimeStamp as TxEntry,
   Columns as TxColumns,
 } from "@/database/utils/tx.js";
-import { Columns as UserEventsColumns } from "@/database/utils/user-events.js";
 import { DatabaseError } from "@/database/utils/common.js";
-import { RuntimeFiber } from "effect/Fiber";
+import {
+  processDepositEvent,
+  processTxOrderEvent,
+  processTxRequestEvent,
+} from "./utils/user-events.js";
 
 const BATCH_SIZE = 100;
 
@@ -132,8 +132,9 @@ const wrapper = (
       | MptError,
       AlwaysSucceedsContract | Database | NodeConfig
     > = Effect.gen(function* () {
-      const { utxoRoot, txRoot, mempoolTxHashes, sizeOfProcessedTxs } =
-        yield* processMpts(ledgerTrie, mempoolTrie, mempoolTxs);
+      // TODO: Rearrange event order when fraud proofs are ready
+      const { mempoolTxHashes, sizeOfTxRequestTxs } =
+        yield* processTxRequestEvent(ledgerTrie, mempoolTrie, mempoolTxs);
 
       const { stateQueueAuthValidator } = yield* AlwaysSucceedsContract;
 
@@ -173,7 +174,7 @@ const wrapper = (
         return {
           type: "SkippedSubmissionOutput",
           mempoolTxsCount,
-          sizeOfProcessedTxs,
+          sizeOfProcessedTxs: sizeOfTxRequestTxs,
         };
       } else {
         yield* Effect.logInfo(
@@ -190,20 +191,21 @@ const wrapper = (
 
         const startTime = yield* getLatestBlockDatumEndTime(latestBlock.datum);
         const endTime = latestTxEntry[TxColumns.TIMESTAMPTZ];
-        const deposits = yield* DepositsDB.retrieveTimeBoundEntries(
+
+        const sizeOfTxOrderTxs = yield* processTxOrderEvent(
+          startTime,
+          endTime,
+          ledgerTrie,
+        );
+        const { depositRoot, sizeOfDepositTxs } = yield* processDepositEvent(
           startTime,
           endTime,
         );
+        const sizeOfProcessedTxs =
+          sizeOfTxRequestTxs + sizeOfTxOrderTxs + sizeOfDepositTxs;
 
-        const depositIDs = deposits.map(
-          (deposit) => deposit[UserEventsColumns.ID],
-        );
-        const depositInfos = deposits.map(
-          (deposit) => deposit[UserEventsColumns.INFO],
-        );
-
-        const depositRootFiber: RuntimeFiber<string, MptError> =
-          yield* Effect.fork(keyValueMptRoot(depositIDs, depositInfos));
+        const utxoRoot = yield* ledgerTrie.getRootHex();
+        const txRoot = yield* mempoolTrie.getRootHex();
 
         const { nodeDatum: updatedNodeDatum, header: newHeader } =
           yield* SDK.Utils.updateLatestBlocksDatumAndGetTheNewHeader(
@@ -211,7 +213,7 @@ const wrapper = (
             latestBlock.datum,
             utxoRoot,
             txRoot,
-            yield* depositRootFiber,
+            depositRoot,
             "00".repeat(32),
             BigInt(Number(endTime)),
           );
