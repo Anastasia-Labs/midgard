@@ -13,6 +13,7 @@ Optional:
 
 ### 1. Prepare your environment:
 Start by copying the .env.example file to create your personal .env file:
+
 ```sh
 cp .env.example .env
 ```
@@ -21,6 +22,15 @@ Fill in required values:
 - L1 providers keys, depending on your L1 provider. If `L1_PROVIDER=Kupmios` then `L1_OGMIOS_KEY` and `L1_KUPO_KEY`. If `L1_PROVIDER=Blockfrost` then `L1_BLOCKFROST_API_URL` and `L1_BLOCKFROST_KEY`. Note that using Blockfrost as a provider can lead to unstable application behavior.
 - `L1_OPERATOR_SEED_PHRASE`
 - `L1_OPERATOR_SEED_PHRASE_FOR_MERGE_TX`
+
+Verify PostgreSQL is installed and the service is active on your system (typically accessible at localhost:5432). Create the required user and database if not done yet.
+Example to create user and database:
+
+```sh
+sudo -u postgres createuser postgres
+sudo -u postgres createdb midgard -O postgres
+```
+
 
 ### 2. Enter nix shell (optional):
 If you use Nix, enter the development shell to ensure dependencies are available:
