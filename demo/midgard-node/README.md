@@ -19,7 +19,7 @@ cp .env.example .env
 ```
 
 Fill in required values:
-- L1 providers keys, depending on your L1 provider. If `L1_PROVIDER=Kupmios` then `L1_OGMIOS_KEY` and `L1_KUPO_KEY`. If `L1_PROVIDER=Blockfrost` then `L1_BLOCKFROST_API_URL` and `L1_BLOCKFROST_KEY`. Note that using Blockfrost as a provider can lead to unstable application behavior.
+- L1 providers keys, depending on your L1 provider. If `L1_PROVIDER=Kupmios` then `L1_OGMIOS_KEY` and `L1_KUPO_KEY`. If `L1_PROVIDER=Blockfrost` then `L1_BLOCKFROST_API_URL` and `L1_BLOCKFROST_KEY`. Note that using Blockfrost as a provider can lead to [unstable application behavior](https://github.com/Anastasia-Labs/midgard/issues/277).
 - `L1_OPERATOR_SEED_PHRASE`
 - `L1_OPERATOR_SEED_PHRASE_FOR_MERGE_TX`
 
