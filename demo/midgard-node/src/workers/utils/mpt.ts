@@ -430,3 +430,10 @@ export class MidgardMpt {
     return this.trie.database()._stats;
   }
 }
+
+export const emptyRootHexProgram: Effect.Effect<string, MptError> = Effect.gen(
+  function* () {
+    const tempMpt = yield* MidgardMpt.create("temp");
+    return yield* tempMpt.getRootHex();
+  },
+);

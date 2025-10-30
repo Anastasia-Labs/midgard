@@ -33,7 +33,7 @@ services:
     logging: *default-logging
     networks:
       midgard_net:
-    # restart: always
+    restart: always
 
   postgres:
     image: postgres:15-alpine

@@ -2,6 +2,7 @@ import { parentPort, workerData } from "worker_threads";
 import * as SDK from "@al-ft/midgard-sdk";
 import { Cause, Effect, Match, pipe } from "effect";
 import {
+  NothingToCommitOutput,
   WorkerInput,
   WorkerOutput,
   deserializeStateQueueUTxO,
@@ -29,21 +30,26 @@ import {
 import { fromHex } from "@lucid-evolution/lucid";
 import {
   MptError,
+  emptyRootHexProgram,
   keyValueMptRoot,
   makeMpts,
   processMpts,
   withTrieTransaction,
 } from "@/workers/utils/mpt.js";
 import { FileSystemError, batchProgram } from "@/utils.js";
+import { Columns as TxColumns } from "@/database/utils/tx.js";
 import {
-  EntryWithTimeStamp as TxEntry,
-  Columns as TxColumns,
-} from "@/database/utils/tx.js";
-import { Columns as UserEventsColumns } from "@/database/utils/user-events.js";
+  Columns as UserEventsColumns,
+  retrieveTimeBoundEntries,
+} from "@/database/utils/user-events.js";
 import { DatabaseError } from "@/database/utils/common.js";
 import { RuntimeFiber } from "effect/Fiber";
 
 const BATCH_SIZE = 100;
+
+export enum UserEventTables {
+  DEPOSITS = DepositsDB.tableName,
+}
 
 const getLatestBlockDatumEndTime = (
   latestBlocksDatum: SDK.TxBuilder.StateQueue.Datum,
@@ -89,7 +95,7 @@ const wrapper = (
 
     const mempoolTxs = yield* MempoolDB.retrieve;
     const mempoolTxsCount = mempoolTxs.length;
-    let latestTxEntry: TxEntry;
+    let endTime: Date | undefined = undefined;
 
     if (mempoolTxsCount === 0) {
       yield* Effect.logInfo(
@@ -98,13 +104,13 @@ const wrapper = (
 
       const processedMempoolTxs = yield* ProcessedMempoolDB.retrieve;
 
-      if (processedMempoolTxs.length === 0) {
-        yield* Effect.logInfo("🔹 Nothing to commit.");
-        return {
-          type: "NothingToCommitOutput",
-        } as WorkerOutput;
-      } else {
-        latestTxEntry = processedMempoolTxs[0];
+      if (processedMempoolTxs.length !== 0) {
+        //   yield* Effect.logInfo("🔹 Nothing to commit.");
+        //   return {
+        //     type: "NothingToCommitOutput",
+        //   } as WorkerOutput;
+        // } else {
+        endTime = processedMempoolTxs[0][TxColumns.TIMESTAMPTZ];
       }
       // No new transactions received, but there are uncommitted transactions in
       // the MPT. So its root must be used to submit a new block, and if
@@ -112,7 +118,7 @@ const wrapper = (
       // should work fine with 0 mempool txs.
     } else {
       yield* Effect.logInfo("🔹 Transactions were found in MempoolDB");
-      latestTxEntry = mempoolTxs[0];
+      endTime = mempoolTxs[0][TxColumns.TIMESTAMPTZ];
     }
 
     yield* Effect.logInfo(`🔹 ${mempoolTxsCount} retrieved.`);
@@ -186,32 +192,67 @@ const wrapper = (
           "🔹 Finding updated block datum and new header...",
         );
 
-        yield* lucid.switchToOperatorsMainWallet;
-
         const startTime = yield* getLatestBlockDatumEndTime(latestBlock.datum);
-        const endTime = latestTxEntry[TxColumns.TIMESTAMPTZ];
-        const deposits = yield* DepositsDB.retrieveTimeBoundEntries(
-          startTime,
-          endTime,
-        );
 
-        const depositIDs = deposits.map(
-          (deposit) => deposit[UserEventsColumns.ID],
-        );
-        const depositInfos = deposits.map(
-          (deposit) => deposit[UserEventsColumns.INFO],
-        );
+        const handleUserEventsProgram = (
+          tableName: string,
+          endDate: Date,
+        ): Effect.Effect<
+          Effect.Effect<string, MptError> | undefined,
+          DatabaseError,
+          Database
+        > =>
+          Effect.gen(function* () {
+            const events = yield* retrieveTimeBoundEntries(
+              tableName,
+              startTime,
+              endDate,
+            );
 
-        const depositRootFiber: RuntimeFiber<string, MptError> =
-          yield* Effect.fork(keyValueMptRoot(depositIDs, depositInfos));
+            if (events.length <= 0) {
+              return undefined;
+            } else {
+              const eventIDs = events.map(
+                (event) => event[UserEventsColumns.ID],
+              );
+              const eventInfos = events.map(
+                (event) => event[UserEventsColumns.INFO],
+              );
+              return keyValueMptRoot(eventIDs, eventInfos);
+            }
+          });
 
+        let depositsRootFiber: RuntimeFiber<string, MptError> | undefined =
+          undefined;
+
+        // No transaction requests found (neither in ProcessedMempoolDB, nor in
+        // MempoolDB). We check if there are any user events slated for
+        // inclusion within `startTime` and current moment.
+        if (endTime === undefined) {
+          const depositsRootProgram = yield* handleUserEventsProgram(
+            DepositsDB.tableName,
+            new Date(),
+          );
+          if (depositsRootProgram === undefined) {
+            yield* Effect.logInfo("🔹 Nothing to commit.");
+            return {
+              type: "NothingToCommitOutput",
+            } as NothingToCommitOutput;
+          } else {
+            depositsRootFiber = yield* Effect.fork(depositsRootProgram);
+          }
+        }
+
+        const depositsRoot = depositsRootFiber
+          ? yield* depositsRootFiber
+          : yield* emptyRootHexProgram;
         const { nodeDatum: updatedNodeDatum, header: newHeader } =
           yield* SDK.Utils.updateLatestBlocksDatumAndGetTheNewHeader(
             lucid.api,
             latestBlock.datum,
             utxoRoot,
             txRoot,
-            yield* depositRootFiber,
+            depositsRoot,
             "00".repeat(32),
             BigInt(Number(endTime)),
           );
