@@ -21,13 +21,14 @@ import {
   POSIXTime,
   POSIXTimeSchema,
 } from "@/tx-builder/common.js";
+import { getProtocolParameters } from "@/protocolParameters.js";
 
 export type DepositParams = {
   depositScriptAddress: string;
   mintingPolicy: Script;
   policyId: string;
+  depositAmount: bigint;
   depositInfo: DepositInfo;
-  inclusionTime: POSIXTime;
 };
 
 export const DepositInfoSchema = Data.Object({
@@ -128,10 +129,15 @@ export const depositTxBuilder = (
     const depositNFT = toUnit(params.policyId, assetName);
 
     // Convert non-hex strings to hex string, since the address type doesn't enforce that
-    const depositInfo = ({
+    const depositInfo = {
       l2Address: fromText(params.depositInfo.l2Address),
-      l2Datum: params.depositInfo.l2Datum
-    })
+      l2Datum: params.depositInfo.l2Datum,
+    };
+
+    const currTime = Date.now();
+    const network = lucid.config().network ?? "Mainnet";
+    const waitTime = getProtocolParameters(network).event_wait_duration;
+    const inclusionTime = currTime + waitTime;
 
     const depositDatum: Datum = {
       event: {
@@ -141,7 +147,7 @@ export const depositTxBuilder = (
         },
         info: depositInfo,
       },
-      inclusionTime: params.inclusionTime,
+      inclusionTime: BigInt(inclusionTime),
     };
     const depositDatumCBOR = Data.to(depositDatum, Datum);
 
@@ -170,14 +176,18 @@ export const depositTxBuilder = (
           kind: "inline",
           value: depositDatumCBOR,
         },
-        { [depositNFT]: 1n },
+        { lovelace: params.depositAmount, [depositNFT]: 1n },
       )
-      .validTo(Number(params.inclusionTime))
+      .validTo(inclusionTime)
       .attach.MintingPolicy(params.mintingPolicy);
     return tx;
-  }).pipe(Effect.catchAllDefect((defect) => {
-    return Effect.fail(new LucidError({
-        message: "Caught defect from depositTxBuilder",
-        cause: defect,
-      }))
-  }));
+  }).pipe(
+    Effect.catchAllDefect((defect) => {
+      return Effect.fail(
+        new LucidError({
+          message: "Caught defect from depositTxBuilder",
+          cause: defect,
+        }),
+      );
+    }),
+  );
