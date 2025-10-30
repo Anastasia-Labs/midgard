@@ -73,17 +73,16 @@ const submitGenesisDeposits: Effect.Effect<
 
   const l2Address = config.GENESIS_UTXOS[0].address;
 
+  // Hard-coded 10 ADA deposit.
   const depositParams: SDK.TxBuilder.UserEvents.Deposit.DepositParams = {
     depositScriptAddress: depositAuthValidator.spendScriptAddress,
     mintingPolicy: depositAuthValidator.mintScript,
     policyId: depositAuthValidator.policyId,
+    depositAmount: 10_000_000n,
     depositInfo: {
       l2Address: l2Address,
       l2Datum: null,
     },
-    inclusionTime: BigInt(
-      Date.now() + config.PROTOCOL_PARAMETERS.event_wait_duration,
-    ),
   };
 
   yield* lucid.switchToOperatorsMainWallet;

@@ -47,7 +47,7 @@ export const DepositEvent = DepositEventSchema as unknown as DepositEvent;
 
 export const DatumSchema = Data.Object({
   event: DepositEventSchema,
-  inclusionTime: POSIXTimeSchema, // inclusion time is important , time range ,
+  inclusionTime: POSIXTimeSchema,
 });
 export type Datum = Data.Static<typeof DatumSchema>;
 export const Datum = DatumSchema as unknown as Datum;
@@ -161,6 +161,7 @@ export const depositTxBuilder = (
     };
     const mintRedeemerCBOR = Data.to(mintRedeemer, MintRedeemer);
 
+    // TODO: Currently there are no considerations for fees and/or min ADA.
     const tx = lucid
       .newTx()
       .collectFrom([inputUtxo])
