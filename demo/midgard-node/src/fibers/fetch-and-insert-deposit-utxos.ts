@@ -25,12 +25,14 @@ const fetchDepositUTxOs = (
     const fetchConfig: SDK.TxBuilder.UserEvents.Deposit.FetchConfig = {
       depositAddress: depositAuthValidator.spendScriptAddress,
       depositPolicyId: depositAuthValidator.policyId,
+      inclusionTime: {
+        start: BigInt(inclusionStartTime),
+        end: BigInt(inclusionEndTime),
+      }
     };
     return yield* SDK.Endpoints.UserEvents.Deposit.fetchDepositUTxOsProgram(
       lucid,
       fetchConfig,
-      BigInt(inclusionStartTime),
-      BigInt(inclusionEndTime),
     );
   });
 

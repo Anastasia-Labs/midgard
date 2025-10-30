@@ -148,7 +148,7 @@ export const resetDeposits: Effect.Effect<
   yield* Effect.logInfo("🚧 Fetching deposit UTxOs...");
 
   const allDepositUTxOs =
-    yield* SDK.Endpoints.UserEvents.Deposit.fetchAllDepositUTxOsProgram(
+    yield* SDK.Endpoints.UserEvents.Deposit.fetchDepositUTxOsProgram(
       lucid.api,
       {
         depositAddress: depositAuthValidator.spendScriptAddress,
