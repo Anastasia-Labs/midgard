@@ -3,6 +3,7 @@
 ## Running Locally Without Docker
 
 ### Prerequisites
+- Ubuntu/debian system
 - Node.js 18+
 - pnpm 9+
 - PostgreSQL 15+ running locally
@@ -11,7 +12,53 @@
 Optional:
 - Nix for dev shell (`nix develop`)
 
-### 1. Prepare your environment:
+### 1. Prerequisites Installation Guide
+1. Install Node.js 18+ and npm
+```sh
+curl -fsSL https://deb.nodesource.com/setup_18.x | sudo -E bash -
+sudo apt-get install -y nodejs
+```
+- Verify installation:
+```sh
+node -v
+npm -v
+```
+Both should output version numbers, with Node.js ≥18 and npm included.
+
+2. Install pnpm 9+
+- Install pnpm globally using npm:
+```sh
+npm install -g pnpm
+```
+- Verify pnpm version:
+```sh
+pnpm -v
+```
+It should be version 9 or higher.
+
+3. Install PostgreSQL 15+ running locally
+```sh
+sudo apt-get update
+sudo apt-get install -y postgresql postgresql-contrib
+```
+- Start PostgreSQL service (if needed):
+```sh
+sudo systemctl start postgresql
+sudo systemctl enable postgresql
+```
+- Verify PostgreSQL version:
+```sh
+psql --version
+```
+Should display version 15 or above.
+
+- Create user and database (if needed):
+```sh
+sudo -u postgres createuser postgres
+sudo -u postgres createdb midgard -O postgres
+```
+
+### 2. Prepare your environment:
 Start by copying the .env.example file to create your personal .env file:
 
 ```sh
@@ -23,23 +70,14 @@ Fill in required values:
 - `L1_OPERATOR_SEED_PHRASE`
 - `L1_OPERATOR_SEED_PHRASE_FOR_MERGE_TX`
 
-Verify PostgreSQL is installed and the service is active on your system (typically accessible at localhost:5432). Create the required user and database if not done yet.
-Example to create user and database:
-
-```sh
-sudo -u postgres createuser postgres
-sudo -u postgres createdb midgard -O postgres
-```
-
-
-### 2. Enter nix shell (optional):
+### 3. Enter nix shell (optional):
 If you use Nix, enter the development shell to ensure dependencies are available:
 
 ```sh
 nix develop
 ```
 
-### 2. Build and prepare the SDK:
+### 4. Build and prepare the SDK:
 Navigate to the midgard-sdk directory, install dependencies, and run the repack script:
 
 ```sh
@@ -48,7 +86,7 @@ pnpm install
 pnpm run repack
 ```
 
-### 3. Build and start the node application:
+### 5. Build and start the node application:
 Move to the midgard-node directory, install dependencies, and start the service:
 
 ```sh
