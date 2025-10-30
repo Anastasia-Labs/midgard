@@ -103,13 +103,18 @@ const wrapper = (
 
       const processedMempoolTxs = yield* ProcessedMempoolDB.retrieve;
 
-      if (processedMempoolTxs.length !== 0) {
+      if (processedMempoolTxs.length === 0) {
+        // No transaction requests are available for inclusion in a block. By
+        // setting `endTime` to `undefined` here, the code below can decide
+        // whether it can stop if no
+        endTime = undefined;
+      } else {
+        // No new transactions received, but there are uncommitted transactions
+        // in the MPT. So its root must be used to submit a new block, and if
+        // successful, `ProcessedMempoolDB` must be cleared. Following functions
+        // should work fine with 0 mempool txs.
         endTime = processedMempoolTxs[0][TxColumns.TIMESTAMPTZ];
       }
-      // No new transactions received, but there are uncommitted transactions in
-      // the MPT. So its root must be used to submit a new block, and if
-      // successful, `ProcessedMempoolDB` must be cleared. Following functions
-      // should work fine with 0 mempool txs.
     } else {
       yield* Effect.logInfo("🔹 Transactions were found in MempoolDB");
       endTime = mempoolTxs[0][TxColumns.TIMESTAMPTZ];
@@ -204,6 +209,9 @@ const wrapper = (
             );
 
             if (events.length <= 0) {
+              yield* Effect.logInfo(
+                `🔹 No events found in ${tableName} table.`,
+              );
               return undefined;
             } else {
               const eventIDs = events.map(
