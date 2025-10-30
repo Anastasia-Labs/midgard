@@ -1,4 +1,4 @@
-import { Effect } from "effect";
+import { Effect, Schedule } from "effect";
 import * as SDK from "@al-ft/midgard-sdk";
 import {
   AlwaysSucceedsContract,
@@ -63,6 +63,8 @@ const submitGenesisDeposits: Effect.Effect<
   | TxSignError,
   AlwaysSucceedsContract | Lucid | NodeConfig
 > = Effect.gen(function* () {
+  yield* Effect.logInfo(`🟣 Building genesis deposit tx...`);
+
   const { depositAuthValidator } = yield* AlwaysSucceedsContract;
   const config = yield* NodeConfig;
   const lucid = yield* Lucid;
@@ -91,8 +93,6 @@ const submitGenesisDeposits: Effect.Effect<
     lucid.api,
     depositParams,
   );
-
-  yield* Effect.logInfo(`🟣 Submitting genesis deposit tx...`);
   yield* handleSignSubmitNoConfirmation(lucid.api, signedTx);
 });
 
@@ -100,6 +100,10 @@ export const program: Effect.Effect<
   void,
   never,
   AlwaysSucceedsContract | Database | Lucid | NodeConfig
-> = Effect.all([insertGenesisUtxos, submitGenesisDeposits], {
-  concurrency: "unbounded",
-}).pipe(Effect.catchAllCause(Effect.logInfo));
+> = Effect.all(
+  [
+    insertGenesisUtxos,
+    submitGenesisDeposits.pipe(Effect.retry(Schedule.fixed("5000 millis"))),
+  ],
+  { concurrency: "unbounded" },
+).pipe(Effect.catchAllCause(Effect.logInfo));
