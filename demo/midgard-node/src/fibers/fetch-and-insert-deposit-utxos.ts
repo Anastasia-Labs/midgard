@@ -44,16 +44,16 @@ export const fetchAndInsertDepositUTxOs: Effect.Effect<
   const startTime: number = yield* Ref.get(globals.LATEST_DEPOSIT_FETCH_TIME);
   const endTime: number = Date.now();
 
-  yield* Effect.logDebug("  fetching DepositUTxOs...");
+  yield* Effect.logDebug("🏦 fetching DepositUTxOs...");
 
   const depositUTxOs = yield* fetchDepositUTxOs(lucid, startTime, endTime);
 
   if (depositUTxOs.length <= 0) {
-    yield* Effect.logDebug("No deposit UTxOs found.");
+    yield* Effect.logDebug("🏦 No deposit UTxOs found.");
     return;
   }
 
-  yield* Effect.logInfo(`${depositUTxOs.length} deposit UTxOs found.`);
+  yield* Effect.logInfo(`🏦 ${depositUTxOs.length} deposit UTxOs found.`);
 
   const entries: UserEventsUtils.Entry[] = depositUTxOs.map((utxo) => ({
     [UserEventsUtils.Columns.ID]: utxo.idCbor,
@@ -74,7 +74,7 @@ export const fetchAndInsertDepositUTxOsFiber = (
   AlwaysSucceedsContract | Lucid | Database | Globals
 > =>
   Effect.gen(function* () {
-    yield* Effect.logInfo("🟪 Fetch and insert DepositUTxOs to DepositsDB.");
+    yield* Effect.logInfo("🏦 Fetch and insert DepositUTxOs to DepositsDB.");
     const action = fetchAndInsertDepositUTxOs;
     yield* Effect.repeat(action, schedule);
   });
