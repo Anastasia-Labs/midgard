@@ -27,7 +27,7 @@ const collectAndBurnUTxOsProgram = (
   assetUTxOs: {
     utxo: UTxO;
     assetName: string;
-}[],
+  }[],
 ): Effect.Effect<
   void,
   SDK.Utils.LucidError | TxSignError | TxSubmitError,
@@ -147,13 +147,14 @@ export const resetDeposits: Effect.Effect<
 
   yield* Effect.logInfo("🚧 Fetching deposit UTxOs...");
 
-  const allDepositUTxOs = yield* SDK.Endpoints.UserEvents.Deposit.fetchAllDepositUTxOsProgram(
-    lucid.api,
-    {
-      depositAddress: depositAuthValidator.spendScriptAddress,
-      depositPolicyId: depositAuthValidator.policyId,
-    },
-  )
+  const allDepositUTxOs =
+    yield* SDK.Endpoints.UserEvents.Deposit.fetchAllDepositUTxOsProgram(
+      lucid.api,
+      {
+        depositAddress: depositAuthValidator.spendScriptAddress,
+        depositPolicyId: depositAuthValidator.policyId,
+      },
+    );
 
   if (allDepositUTxOs.length <= 0) {
     yield* Effect.logInfo(`🚧 No deposit UTxOs were found.`);
