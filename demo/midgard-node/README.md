@@ -2,14 +2,26 @@
 
 ## Running Locally Without Docker
 
-```sh
-# Optional
-nix develop
+### 1. Prepare your environment (optional):
+If you use Nix, enter the development shell to ensure dependencies are available:
 
+```sh
+nix develop
+```
+
+### 2. Build and prepare the SDK:
+Navigate to the midgard-sdk directory, install dependencies, and run the repack script:
+
+```sh
 cd ../midgard-sdk
 pnpm install
 pnpm run repack
+```
 
+### 3. Build and start the node application:
+Move to the midgard-node directory, install dependencies, and start the service:
+
+```sh
 cd ../midgard-node
 pnpm install
 pnpm run listen
