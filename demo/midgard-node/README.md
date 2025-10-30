@@ -1,6 +1,6 @@
 # Midgard Node – Demo CLI Application
 
-## How to Run
+## Running Locally Without Docker
 
 ```sh
 # Optional
@@ -14,6 +14,9 @@ cd ../midgard-node
 pnpm install
 pnpm run listen
 ```
+
+Note:
+If this is not your first time building the app and you see build errors, delete the `node_modules` and `dist` folders in both `midgard-sdk` and `midgard-node` folders, then run the above commands again.
 
 ## Build image
 
