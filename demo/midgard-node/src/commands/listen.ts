@@ -5,7 +5,7 @@ import {
   AlwaysSucceedsContract,
   Globals,
 } from "@/services/index.js";
-import { StateQueueTx } from "@/transactions/index.js";
+import { StateQueueTx, Reset } from "@/transactions/index.js";
 import * as SDK from "@al-ft/midgard-sdk";
 import { NodeSdk } from "@effect/opentelemetry";
 import {
@@ -331,7 +331,9 @@ const getMergeHandler = Effect.gen(function* () {
 
 const getResetHandler = Effect.gen(function* () {
   yield* Effect.logInfo(`🚧 Reset request received`);
-  yield* StateQueueTx.resetStateQueue;
+  yield* Reset.resetStateQueue;
+  yield* Reset.resetDeposits;
+
   yield* Effect.all(
     [
       MempoolDB.clear,

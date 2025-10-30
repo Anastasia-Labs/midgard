@@ -25,7 +25,7 @@ const isUTxOTimeValid = (
   );
 };
 
-export const fetchDepositUTxOsProgram = (
+export const fetchAllDepositUTxOsProgram = (
   lucid: LucidEvolution,
   config: Deposit.FetchConfig,
 ): Effect.Effect<Deposit.DepositUTxO[], LucidError> =>
@@ -40,8 +40,19 @@ export const fetchDepositUTxOsProgram = (
       config.depositPolicyId,
     );
 
+    return depositUTxOs;
+  });
+
+export const fetchDepositUTxOsProgram = (
+  lucid: LucidEvolution,
+  config: Deposit.FetchConfig,
+  inclusionStartTime: POSIXTime,
+  inclusionEndTime: POSIXTime,
+): Effect.Effect<Deposit.DepositUTxO[], LucidError> =>
+  Effect.gen(function* () {
+    const depositUTxOs = yield* fetchAllDepositUTxOsProgram(lucid, config)
     const validDepositUTxOs = depositUTxOs.filter((utxo) =>
-      isUTxOTimeValid(utxo, config.inclusionStartTime, config.inclusionEndTime),
+      isUTxOTimeValid(utxo, inclusionStartTime, inclusionEndTime),
     );
     return validDepositUTxOs;
   });
