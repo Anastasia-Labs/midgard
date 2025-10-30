@@ -307,6 +307,7 @@ export class MptError extends Data.TaggedError(
 
 export class MidgardMpt {
   public readonly trie: ETH.MerklePatriciaTrie;
+  public readonly EMPTY_TRIE_ROOT_HEX: string;
   public readonly trieName: string;
   public readonly databaseAndPath?: {
     database: LevelDB;
@@ -321,6 +322,7 @@ export class MidgardMpt {
     this.trie = trie;
     this.trieName = trieName;
     this.databaseAndPath = databaseAndPath;
+    this.EMPTY_TRIE_ROOT_HEX = toHex(trie.EMPTY_TRIE_ROOT);
   }
 
   /**
@@ -434,6 +436,6 @@ export class MidgardMpt {
 export const emptyRootHexProgram: Effect.Effect<string, MptError> = Effect.gen(
   function* () {
     const tempMpt = yield* MidgardMpt.create("temp");
-    return yield* tempMpt.getRootHex();
+    return tempMpt.EMPTY_TRIE_ROOT_HEX;
   },
 );

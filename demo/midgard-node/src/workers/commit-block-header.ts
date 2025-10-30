@@ -2,7 +2,6 @@ import { parentPort, workerData } from "worker_threads";
 import * as SDK from "@al-ft/midgard-sdk";
 import { Cause, Effect, Match, pipe } from "effect";
 import {
-  NothingToCommitOutput,
   WorkerInput,
   WorkerOutput,
   deserializeStateQueueUTxO,
@@ -105,11 +104,6 @@ const wrapper = (
       const processedMempoolTxs = yield* ProcessedMempoolDB.retrieve;
 
       if (processedMempoolTxs.length !== 0) {
-        //   yield* Effect.logInfo("🔹 Nothing to commit.");
-        //   return {
-        //     type: "NothingToCommitOutput",
-        //   } as WorkerOutput;
-        // } else {
         endTime = processedMempoolTxs[0][TxColumns.TIMESTAMPTZ];
       }
       // No new transactions received, but there are uncommitted transactions in
@@ -194,7 +188,7 @@ const wrapper = (
 
         const startTime = yield* getLatestBlockDatumEndTime(latestBlock.datum);
 
-        const handleUserEventsProgram = (
+        const userEventsProgram = (
           tableName: string,
           endDate: Date,
         ): Effect.Effect<
@@ -225,11 +219,11 @@ const wrapper = (
         let depositsRootFiber: RuntimeFiber<string, MptError> | undefined =
           undefined;
 
-        // No transaction requests found (neither in ProcessedMempoolDB, nor in
-        // MempoolDB). We check if there are any user events slated for
+        // No transaction requests found (neither in `ProcessedMempoolDB`, nor
+        // in `MempoolDB`). We check if there are any user events slated for
         // inclusion within `startTime` and current moment.
         if (endTime === undefined) {
-          const depositsRootProgram = yield* handleUserEventsProgram(
+          const depositsRootProgram = yield* userEventsProgram(
             DepositsDB.tableName,
             new Date(),
           );
@@ -237,7 +231,7 @@ const wrapper = (
             yield* Effect.logInfo("🔹 Nothing to commit.");
             return {
               type: "NothingToCommitOutput",
-            } as NothingToCommitOutput;
+            } as WorkerOutput;
           } else {
             depositsRootFiber = yield* Effect.fork(depositsRootProgram);
           }
@@ -246,6 +240,7 @@ const wrapper = (
         const depositsRoot = depositsRootFiber
           ? yield* depositsRootFiber
           : yield* emptyRootHexProgram;
+
         const { nodeDatum: updatedNodeDatum, header: newHeader } =
           yield* SDK.Utils.updateLatestBlocksDatumAndGetTheNewHeader(
             lucid.api,
@@ -289,8 +284,6 @@ const wrapper = (
         yield* Effect.logInfo(
           `🔹 Transaction built successfully. Size: ${txSize}`,
         );
-
-        // let output: WorkerOutput | undefined = undefined;
 
         const failedSubmissionProgram = (
           err: TxSubmitError,
