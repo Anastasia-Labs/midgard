@@ -16,11 +16,8 @@ import {
   LucidError,
 } from "@/utils/common.js";
 import { Effect } from "effect";
-import {
-  OutputReferenceSchema,
-  POSIXTime,
-  POSIXTimeSchema,
-} from "@/tx-builder/common.js";
+import { POSIXTime, POSIXTimeSchema } from "@/tx-builder/common.js";
+import { DepositEventSchema, DepositInfo } from "@/tx-builder/ledger-state.js";
 
 export type DepositParams = {
   depositScriptAddress: string;
@@ -30,23 +27,9 @@ export type DepositParams = {
   inclusionTime: POSIXTime;
 };
 
-export const DepositInfoSchema = Data.Object({
-  l2Address: Data.Bytes(),
-  l2Datum: Data.Nullable(Data.Bytes()),
-});
-export type DepositInfo = Data.Static<typeof DepositInfoSchema>;
-export const DepositInfo = DepositInfoSchema as unknown as DepositInfo;
-
-export const DepositEventSchema = Data.Object({
-  id: OutputReferenceSchema,
-  info: DepositInfoSchema,
-});
-export type DepositEvent = Data.Static<typeof DepositEventSchema>;
-export const DepositEvent = DepositEventSchema as unknown as DepositEvent;
-
 export const DatumSchema = Data.Object({
   event: DepositEventSchema,
-  inclusionTime: POSIXTimeSchema, // inclusion time is important , time range ,
+  inclusionTime: POSIXTimeSchema,
 });
 export type Datum = Data.Static<typeof DatumSchema>;
 export const Datum = DatumSchema as unknown as Datum;
@@ -128,10 +111,10 @@ export const depositTxBuilder = (
     const depositNFT = toUnit(params.policyId, assetName);
 
     // Convert non-hex strings to hex string, since the address type doesn't enforce that
-    const depositInfo = ({
+    const depositInfo = {
       l2Address: fromText(params.depositInfo.l2Address),
-      l2Datum: params.depositInfo.l2Datum
-    })
+      l2Datum: params.depositInfo.l2Datum,
+    };
 
     const depositDatum: Datum = {
       event: {
@@ -175,9 +158,13 @@ export const depositTxBuilder = (
       .validTo(Number(params.inclusionTime))
       .attach.MintingPolicy(params.mintingPolicy);
     return tx;
-  }).pipe(Effect.catchAllDefect((defect) => {
-    return Effect.fail(new LucidError({
-        message: "Caught defect from depositTxBuilder",
-        cause: defect,
-      }))
-  }));
+  }).pipe(
+    Effect.catchAllDefect((defect) => {
+      return Effect.fail(
+        new LucidError({
+          message: "Caught defect from depositTxBuilder",
+          cause: defect,
+        }),
+      );
+    }),
+  );
