@@ -161,6 +161,7 @@ export const utxosToDepositUTxOs = (
   const effects = utxos.map((u) => utxoToDepositUTxO(u, nftPolicy));
   return Effect.allSuccesses(effects);
 };
+
 const isUTxOTimeValid = (
   depositUTxO: DepositUTxO,
   inclusionStartTime: POSIXTime,
