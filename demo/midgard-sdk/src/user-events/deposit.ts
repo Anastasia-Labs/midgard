@@ -30,7 +30,7 @@ import {
   POSIXTimeSchema,
 } from "@/tx-builder/common.js";
 import { getProtocolParameters } from "@/protocolParameters.js";
-import {makeReturn} from "@/core.js";
+import { makeReturn } from "@/core.js";
 
 export type DepositParams = {
   depositScriptAddress: string;
@@ -87,7 +87,8 @@ export const DepositMintRedeemerSchema = Data.Enum([
   }),
 ]);
 export type DepositMintRedeemer = Data.Static<typeof DepositMintRedeemerSchema>;
-export const DepositMintRedeemer = DepositMintRedeemerSchema as unknown as DepositMintRedeemer;
+export const DepositMintRedeemer =
+  DepositMintRedeemerSchema as unknown as DepositMintRedeemer;
 
 export type DepositFetchConfig = {
   depositAddress: Address;
@@ -188,7 +189,11 @@ export const fetchDepositUTxOsProgram = (
     );
 
     const validDepositUTxOs = depositUTxOs.filter((utxo) =>
-      isUTxOTimeValid(utxo, config.inclusionStartTime, config.inclusionEndTime),
+      isUTxOTimeValid(
+        utxo,
+        config.inclusionTimeUpperBound,
+        config.inclusionTimeLowerBound,
+      ),
     );
     return validDepositUTxOs;
   });
