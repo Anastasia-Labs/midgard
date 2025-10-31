@@ -83,10 +83,8 @@ export const MintRedeemer = MintRedeemerSchema as unknown as MintRedeemer;
 export type FetchConfig = {
   depositAddress: Address;
   depositPolicyId: PolicyId;
-  inclusionTime?: {
-    start: POSIXTime;
-    end: POSIXTime;
-  }
+  inclusionTimeLowerBound?: POSIXTime;
+  inclusionTimeUpperBound?: POSIXTime;
 };
 
 /**

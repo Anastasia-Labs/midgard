@@ -13,16 +13,17 @@ import {
 import { POSIXTime } from "@/tx-builder/common.js";
 import { makeReturn } from "@/core.js";
 
-const isUTxOTimeValid = (
+const isUTxOTimeInBounds = (
   depositUTxO: Deposit.DepositUTxO,
-  inclusionStartTime: POSIXTime,
-  inclusionEndTime: POSIXTime,
+  inclusionTimeLowerBound?: POSIXTime,
+  inclusionTimeUpperBound?: POSIXTime,
 ): boolean => {
   const depositData = depositUTxO.datum;
-  return (
-    inclusionStartTime < depositData.inclusionTime &&
-    depositData.inclusionTime <= inclusionEndTime
-  );
+
+  const biggerThanLower = (inclusionTimeLowerBound === undefined) || (inclusionTimeLowerBound < depositData.inclusionTime);
+  const smallerThanUpper = (inclusionTimeUpperBound === undefined) || (depositData.inclusionTime <= inclusionTimeUpperBound);
+
+  return biggerThanLower && smallerThanUpper
 };
 
 export const fetchDepositUTxOsProgram = (
@@ -40,14 +41,9 @@ export const fetchDepositUTxOsProgram = (
       config.depositPolicyId,
     );
 
-    const inclusionTime = config.inclusionTime
-    if (inclusionTime !== undefined) {
-      depositUTxOs = depositUTxOs.filter((utxo) =>
-        isUTxOTimeValid(utxo, inclusionTime.start, inclusionTime.end),
-      );
-
-    }
-    return depositUTxOs;
+    return depositUTxOs.filter((utxo) =>
+      isUTxOTimeInBounds(utxo, config.inclusionTimeLowerBound, config.inclusionTimeUpperBound),
+    );
   });
 
 export const depositTxProgram = (
