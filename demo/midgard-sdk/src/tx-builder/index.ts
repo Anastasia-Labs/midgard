@@ -5,8 +5,6 @@ export * as FraudProofTokens from "./fraud-proof-tokens/index.js";
 export * as RegisteredOperators from "./registered-operators/index.js";
 export * as RetiredOperators from "./retired-operators/index.js";
 export * as Scheduler from "./scheduler/index.js";
-export * as StateQueue from "./state-queue/index.js";
-export * as UserEvents from "./user-events/index.js";
 export * as HubOracle from "./hub-oracle/index.js";
 export * as LinkedList from "./linked-list.js";
 export * as LedgerState from "./ledger-state.js";
