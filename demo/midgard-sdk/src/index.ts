@@ -1,4 +1,5 @@
 export * from "./user-events/deposit.js";
+export * from "./consensus/state-queue.js";
 
 export * as Endpoints from "./endpoints/index.js";
 export * as Utils from "./utils/index.js";
