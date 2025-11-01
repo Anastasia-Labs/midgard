@@ -20,6 +20,7 @@ import {
   DataCoercionError,
   GenericErrorFields,
   getStateToken,
+  hashHexWithBlake2b224,
   HashingError,
   MissingDatumError,
   UnauthenticUtxoError,
@@ -40,10 +41,6 @@ import {
   NodeKey,
 } from "@/tx-builder/linked-list.js";
 import { ConfirmedState, Header } from "@/tx-builder/ledger-state.js";
-import {
-  getHeaderFromStateQueueDatum,
-  hashHeader,
-} from "@/utils/ledger-state.js";
 
 export const StateQueueConfigSchema = Data.Object({
   initUTxO: OutputReferenceSchema,
@@ -256,6 +253,28 @@ export const getConfirmedStateFromStateQueueDatum = (
     );
   }
 };
+
+// TODO: this function is from ledger-state, mb it should be moved from here
+export const getHeaderFromStateQueueDatum = (
+  nodeDatum: StateQueueDatum,
+): Effect.Effect<Header, DataCoercionError> =>
+  Effect.gen(function* () {
+    const header: Header = yield* Effect.try({
+      try: () => Data.castFrom(nodeDatum.data, Header),
+      catch: (e) =>
+        new DataCoercionError({
+          message: "Failed coercing block's datum data to `Header`",
+          cause: e,
+        }),
+    });
+    return header;
+  });
+
+// TODO: this function is from ledger-state, mb it should be moved from here
+export const hashHeader = (
+  header: Header,
+): Effect.Effect<string, HashingError> =>
+  hashHexWithBlake2b224(Data.to(header, Header));
 
 /**
  * Given the latest block in state queue, along with the required tree roots,
