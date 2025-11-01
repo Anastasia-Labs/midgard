@@ -1,4 +1,3 @@
-import { makeReturn } from "@/core.js";
 import {
   Address,
   Assets,
@@ -27,7 +26,7 @@ import {
   POSIXTime,
   POSIXTimeSchema,
 } from "@/common.js";
-import { LucidError } from "@/common.js";
+import { LucidError, makeReturn } from "@/common.js";
 import {
   NodeDatum,
   NodeDatumSchema,

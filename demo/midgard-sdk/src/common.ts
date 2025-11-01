@@ -1,5 +1,14 @@
 import { Data } from "@lucid-evolution/lucid";
 import { Data as EffectData } from "effect";
+import { Effect } from "effect";
+
+export const makeReturn = <A, E>(program: Effect.Effect<A, E>) => {
+  return {
+    unsafeRun: () => Effect.runPromise(program),
+    safeRun: () => Effect.runPromise(Effect.either(program)),
+    program: () => program,
+  };
+};
 
 export const OutputReferenceSchema = Data.Object({
   txHash: Data.Object({ hash: Data.Bytes({ minLength: 32, maxLength: 32 }) }),

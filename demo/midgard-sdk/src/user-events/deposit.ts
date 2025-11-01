@@ -18,6 +18,7 @@ import {
   HashingError,
   LucidError,
   UnauthenticUtxoError,
+  makeReturn,
 } from "@/common.js";
 import {
   getStateToken,
@@ -32,7 +33,6 @@ import {
   POSIXTimeSchema,
 } from "@/common.js";
 import { getProtocolParameters } from "@/protocolParameters.js";
-import { makeReturn } from "@/core.js";
 
 export type DepositParams = {
   depositScriptAddress: string;

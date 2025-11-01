@@ -4,6 +4,7 @@ import {
   LucidError,
   AddressSchema,
   PolicyIdSchema,
+  makeReturn,
 } from "@/common.js";
 import {
   Address,
@@ -14,7 +15,6 @@ import {
   UTxO,
 } from "@lucid-evolution/lucid";
 import { Data } from "@lucid-evolution/lucid";
-import { makeReturn } from "@/core.js";
 
 export type HubOracleConfig = {
   hubOracleAddress: Address;
