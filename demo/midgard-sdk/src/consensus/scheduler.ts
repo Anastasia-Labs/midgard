@@ -12,7 +12,7 @@ export type SchedulerRewindParams = {};
  * @param params - The parameters
  * @returns {TxBuilder} A TxBuilder instance that can be used to build the transaction.
  */
-export const initTxBuilder = (
+export const incompleteSchedulerInitTxProgram = (
   lucid: LucidEvolution,
   params: SchedulerInitParams,
 ): TxBuilder => {
