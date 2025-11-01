@@ -19,12 +19,10 @@ import {
   LucidError,
   UnauthenticUtxoError,
   makeReturn,
-} from "@/common.js";
-import {
   getStateToken,
   hashHexWithBlake2b256,
   utxosAtByNFTPolicyId,
-} from "@/utils.js";
+} from "@/common.js";
 import { Data as EffectData, Effect } from "effect";
 import {
   OutputReference,

@@ -25,6 +25,9 @@ import {
   OutputReferenceSchema,
   POSIXTime,
   POSIXTimeSchema,
+  getStateToken,
+  hashHexWithBlake2b224,
+  utxosAtByNFTPolicyId,
 } from "@/common.js";
 import { LucidError, makeReturn } from "@/common.js";
 import {
@@ -35,11 +38,6 @@ import {
   LinkedListError,
 } from "@/linked-list.js";
 import { ConfirmedState, Header } from "@/ledger-state.js";
-import {
-  getStateToken,
-  hashHexWithBlake2b224,
-  utxosAtByNFTPolicyId,
-} from "@/utils.js";
 
 export const StateQueueConfigSchema = Data.Object({
   initUTxO: OutputReferenceSchema,

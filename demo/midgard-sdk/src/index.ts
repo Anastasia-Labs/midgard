@@ -1,4 +1,3 @@
-export * from "./utils.js";
 export * from "./common.js";
 export * from "./protocolParameters.js";
 export * from "./ledger-state.js";
