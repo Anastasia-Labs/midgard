@@ -13,7 +13,7 @@ import {
   UTxO,
   OutputDatum,
 } from "@lucid-evolution/lucid";
-import { ActiveOperatorUpdateCommitmentTimeParams } from "@/consensus/active-operators.js";
+import { ActiveOperatorUpdateCommitmentTimeParams } from "@/active-operators.js";
 import { Data as EffectData, Effect } from "effect";
 import {
   DataCoercionError,
