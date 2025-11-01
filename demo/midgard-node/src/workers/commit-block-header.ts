@@ -51,19 +51,17 @@ export enum UserEventTables {
 }
 
 const getLatestBlockDatumEndTime = (
-  latestBlocksDatum: SDK.TxBuilder.StateQueue.Datum,
-): Effect.Effect<Date, SDK.Utils.DataCoercionError, never> =>
+  latestBlocksDatum: SDK.StateQueueDatum,
+): Effect.Effect<Date, SDK.DataCoercionError, never> =>
   Effect.gen(function* () {
     let endTimeBigInt: bigint;
     if (latestBlocksDatum.key === "Empty") {
       const { data: confirmedState } =
-        yield* SDK.Utils.getConfirmedStateFromStateQueueDatum(
-          latestBlocksDatum,
-        );
+        yield* SDK.getConfirmedStateFromStateQueueDatum(latestBlocksDatum);
       endTimeBigInt = confirmedState.endTime;
     } else {
       const latestHeader =
-        yield* SDK.Utils.getHeaderFromStateQueueDatum(latestBlocksDatum);
+        yield* SDK.getHeaderFromStateQueueDatum(latestBlocksDatum);
       endTimeBigInt = latestHeader.endTime;
     }
     return new Date(Number(endTimeBigInt));
@@ -73,12 +71,12 @@ const wrapper = (
   workerInput: WorkerInput,
 ): Effect.Effect<
   WorkerOutput | undefined,
-  | SDK.Utils.CborDeserializationError
-  | SDK.Utils.CmlUnexpectedError
-  | SDK.Utils.DataCoercionError
-  | SDK.Utils.HashingError
-  | SDK.Utils.LucidError
-  | SDK.Utils.StateQueueError
+  | SDK.CborDeserializationError
+  | SDK.CmlUnexpectedError
+  | SDK.DataCoercionError
+  | SDK.HashingError
+  | SDK.LucidError
+  | SDK.StateQueueError
   | ConfigError
   | DatabaseInitializationError
   | DatabaseError
@@ -126,12 +124,12 @@ const wrapper = (
 
     const databaseOperationsProgram: Effect.Effect<
       WorkerOutput,
-      | SDK.Utils.CborDeserializationError
-      | SDK.Utils.CmlUnexpectedError
-      | SDK.Utils.DataCoercionError
-      | SDK.Utils.HashingError
-      | SDK.Utils.LucidError
-      | SDK.Utils.StateQueueError
+      | SDK.CborDeserializationError
+      | SDK.CmlUnexpectedError
+      | SDK.DataCoercionError
+      | SDK.HashingError
+      | SDK.LucidError
+      | SDK.StateQueueError
       | DatabaseError
       | FileSystemError
       | MptError,
@@ -250,7 +248,7 @@ const wrapper = (
           : yield* emptyRootHexProgram;
 
         const { nodeDatum: updatedNodeDatum, header: newHeader } =
-          yield* SDK.Utils.updateLatestBlocksDatumAndGetTheNewHeader(
+          yield* SDK.updateLatestBlocksDatumAndGetTheNewHeaderProgram(
             lucid.api,
             latestBlock.datum,
             utxoRoot,
@@ -260,11 +258,11 @@ const wrapper = (
             BigInt(Number(endTime)),
           );
 
-        const newHeaderHash = yield* SDK.Utils.hashHeader(newHeader);
+        const newHeaderHash = yield* SDK.hashBlockHeader(newHeader);
         yield* Effect.logInfo(`🔹 New header hash is: ${newHeaderHash}`);
 
         // Build commitment block
-        const commitBlockParams: SDK.TxBuilder.StateQueue.CommitBlockParams = {
+        const commitBlockParams: SDK.StateQueueCommitBlockParams = {
           anchorUTxO: latestBlock,
           updatedAnchorDatum: updatedNodeDatum,
           newHeader: newHeader,
@@ -276,18 +274,17 @@ const wrapper = (
         const aoUpdateCommitmentTimeParams = {};
 
         yield* Effect.logInfo("🔹 Building block commitment transaction...");
-        const fetchConfig: SDK.TxBuilder.StateQueue.FetchConfig = {
+        const fetchConfig: SDK.StateQueueFetchConfig = {
           stateQueueAddress: stateQueueAuthValidator.spendScriptAddress,
           stateQueuePolicyId: stateQueueAuthValidator.policyId,
         };
         yield* lucid.switchToOperatorsMainWallet;
-        const txBuilder =
-          yield* SDK.Endpoints.StateQueue.commitBlockHeaderProgram(
-            lucid.api,
-            fetchConfig,
-            commitBlockParams,
-            aoUpdateCommitmentTimeParams,
-          );
+        const txBuilder = yield* SDK.unsignedCommitBlockHeaderTxProgram(
+          lucid.api,
+          fetchConfig,
+          commitBlockParams,
+          aoUpdateCommitmentTimeParams,
+        );
         const txSize = txBuilder.toCBOR().length / 2;
         yield* Effect.logInfo(
           `🔹 Transaction built successfully. Size: ${txSize}`,
