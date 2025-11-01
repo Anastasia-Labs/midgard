@@ -47,7 +47,7 @@ const MIN_QUEUE_LENGTH_FOR_MERGING: number = 8;
 const getStateQueueLength = (
   lucid: LucidEvolution,
   stateQueueAddress: Address,
-): Effect.Effect<number, SDK.Utils.LucidError, Globals> =>
+): Effect.Effect<number, SDK.LucidError, Globals> =>
   Effect.gen(function* () {
     const globals = yield* Globals;
     const LATEST_SYNC_TIME_OF_STATE_QUEUE_LENGTH = yield* Ref.get(
@@ -65,7 +65,7 @@ const getStateQueueLength = (
       const stateQueueUtxos = yield* Effect.tryPromise({
         try: () => lucid.utxosAt(stateQueueAddress),
         catch: (e) =>
-          new SDK.Utils.LucidError({
+          new SDK.LucidError({
             message: `Failed to fetch UTxOs at state queue address: ${stateQueueAddress}`,
             cause: e,
           }),
@@ -98,17 +98,17 @@ const getStateQueueLength = (
  */
 export const buildAndSubmitMergeTx = (
   lucid: LucidEvolution,
-  fetchConfig: SDK.TxBuilder.StateQueue.FetchConfig,
+  fetchConfig: SDK.StateQueueFetchConfig,
   spendScript: Script,
   mintScript: Script,
 ): Effect.Effect<
   void,
-  | SDK.Utils.CmlDeserializationError
-  | SDK.Utils.DataCoercionError
-  | SDK.Utils.HashingError
-  | SDK.Utils.LinkedListError
-  | SDK.Utils.LucidError
-  | SDK.Utils.StateQueueError
+  | SDK.CmlDeserializationError
+  | SDK.DataCoercionError
+  | SDK.HashingError
+  | SDK.LinkedListError
+  | SDK.LucidError
+  | SDK.StateQueueError
   | DatabaseError
   | TxSubmitError
   | TxSignError,
@@ -139,7 +139,7 @@ export const buildAndSubmitMergeTx = (
       "🔸 Fetching confirmed state and the first block in queue from L1...",
     );
     const { confirmed: confirmedUTxO, link: firstBlockUTxO } =
-      yield* SDK.Endpoints.StateQueue.fetchConfirmedStateAndItsLinkProgram(
+      yield* SDK.fetchConfirmedStateAndItsLinkProgram(
         lucid,
         fetchConfig,
       );
@@ -161,7 +161,7 @@ export const buildAndSubmitMergeTx = (
       yield* Effect.logInfo("🔸 Building merge transaction...");
       // Build the transaction
       const txBuilder: TxSignBuilder =
-        yield* SDK.Endpoints.StateQueue.mergeToConfirmedStateProgram(
+        yield* SDK.mergeToConfirmedStateProgram(
           lucid,
           fetchConfig,
           {

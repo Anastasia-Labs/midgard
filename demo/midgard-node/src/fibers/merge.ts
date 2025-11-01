@@ -7,12 +7,12 @@ import { Effect, pipe, Schedule } from "effect";
 import { Database } from "@/services/index.js";
 export const mergeAction: Effect.Effect<
   void,
-  | SDK.Utils.CmlDeserializationError
-  | SDK.Utils.DataCoercionError
-  | SDK.Utils.HashingError
-  | SDK.Utils.LinkedListError
-  | SDK.Utils.LucidError
-  | SDK.Utils.StateQueueError
+  | SDK.CmlDeserializationError
+  | SDK.DataCoercionError
+  | SDK.HashingError
+  | SDK.LinkedListError
+  | SDK.LucidError
+  | SDK.StateQueueError
   | DatabaseError
   | TxSubmitError
   | TxSignError,
@@ -21,7 +21,7 @@ export const mergeAction: Effect.Effect<
   const lucid = yield* Lucid;
   const { stateQueueAuthValidator } = yield* AlwaysSucceedsContract;
 
-  const fetchConfig: SDK.TxBuilder.StateQueue.FetchConfig = {
+  const fetchConfig: SDK.StateQueueFetchConfig = {
     stateQueueAddress: stateQueueAuthValidator.spendScriptAddress,
     stateQueuePolicyId: stateQueueAuthValidator.policyId,
   };

@@ -16,19 +16,19 @@ const fetchDepositUTxOs = (
   inclusionStartTime: number,
   inclusionEndTime: number,
 ): Effect.Effect<
-  SDK.TxBuilder.UserEvents.Deposit.DepositUTxO[],
-  SDK.Utils.LucidError,
+  SDK.DepositUTxO[],
+  SDK.LucidError,
   AlwaysSucceedsContract
 > =>
   Effect.gen(function* () {
     const { depositAuthValidator } = yield* AlwaysSucceedsContract;
-    const fetchConfig: SDK.TxBuilder.UserEvents.Deposit.FetchConfig = {
+    const fetchConfig: SDK.DepositFetchConfig = {
       depositAddress: depositAuthValidator.spendScriptAddress,
       depositPolicyId: depositAuthValidator.policyId,
-      inclusionStartTime: BigInt(inclusionStartTime),
-      inclusionEndTime: BigInt(inclusionEndTime),
+      inclusionTimeLowerBound: BigInt(inclusionStartTime),
+      inclusionTimeUpperBound: BigInt(inclusionEndTime),
     };
-    return yield* SDK.Endpoints.UserEvents.Deposit.fetchDepositUTxOsProgram(
+    return yield* SDK.fetchDepositUTxOsProgram(
       lucid,
       fetchConfig,
     );
@@ -36,7 +36,7 @@ const fetchDepositUTxOs = (
 
 export const fetchAndInsertDepositUTxOs: Effect.Effect<
   void,
-  SDK.Utils.LucidError | DatabaseError,
+  SDK.LucidError | DatabaseError,
   AlwaysSucceedsContract | Lucid | Database | Globals
 > = Effect.gen(function* () {
   const { api: lucid } = yield* Lucid;
@@ -70,7 +70,7 @@ export const fetchAndInsertDepositUTxOsFiber = (
   schedule: Schedule.Schedule<number>,
 ): Effect.Effect<
   void,
-  SDK.Utils.LucidError | DatabaseError,
+  SDK.LucidError | DatabaseError,
   AlwaysSucceedsContract | Lucid | Database | Globals
 > =>
   Effect.gen(function* () {

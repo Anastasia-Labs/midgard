@@ -47,7 +47,7 @@ export const findSpentAndProducedUTxOs = (
   txHash?: Buffer,
 ): Effect.Effect<
   { spent: Buffer[]; produced: Ledger.MinimalEntry[] },
-  SDK.Utils.CmlUnexpectedError
+  SDK.CmlUnexpectedError
 > =>
   Effect.gen(function* () {
     const spent: Buffer[] = [];
@@ -62,7 +62,7 @@ export const findSpentAndProducedUTxOs = (
       yield* Effect.try({
         try: () => spent.push(Buffer.from(inputs.get(i).to_cbor_bytes())),
         catch: (e) =>
-          new SDK.Utils.CmlUnexpectedError({
+          new SDK.CmlUnexpectedError({
             message: `An error occurred on input CBOR serialization`,
             cause: e,
           }),
@@ -83,12 +83,12 @@ export const findSpentAndProducedUTxOs = (
 
 export const breakDownTx = (
   txCbor: Uint8Array,
-): Effect.Effect<ProcessedTx, SDK.Utils.CmlDeserializationError> =>
+): Effect.Effect<ProcessedTx, SDK.CmlDeserializationError> =>
   Effect.gen(function* () {
     const deserializedTx = yield* Effect.try({
       try: () => CML.Transaction.from_cbor_bytes(txCbor),
       catch: (e) =>
-        new SDK.Utils.CmlDeserializationError({
+        new SDK.CmlDeserializationError({
           message: `Failed to deserialize transaction: ${txCbor}`,
           cause: e,
         }),
@@ -174,4 +174,4 @@ Kupmios:
 
 export class FileSystemError extends Data.TaggedError(
   "FileSystemError",
-)<SDK.Utils.GenericErrorFields> {}
+)<SDK.GenericErrorFields> {}

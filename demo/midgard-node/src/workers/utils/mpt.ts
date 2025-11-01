@@ -101,7 +101,7 @@ export const processMpts = (
     mempoolTxHashes: Buffer[];
     sizeOfProcessedTxs: number;
   },
-  MptError | SDK.Utils.CmlUnexpectedError,
+  MptError | SDK.CmlUnexpectedError,
   Database
 > =>
   Effect.gen(function* () {
@@ -254,7 +254,7 @@ export class LevelDB {
 
 export class MptError extends Data.TaggedError(
   "MptError",
-)<SDK.Utils.GenericErrorFields> {
+)<SDK.GenericErrorFields> {
   static get(trie: string, cause: unknown) {
     return new MptError({
       message: `An error occurred getting an entry from ${trie} trie`,

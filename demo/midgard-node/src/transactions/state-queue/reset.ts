@@ -19,13 +19,13 @@ import { batchProgram } from "@/utils.js";
 
 const collectAndBurnStateQueueNodesProgram = (
   lucid: LucidEvolution,
-  fetchConfig: SDK.TxBuilder.StateQueue.FetchConfig,
+  fetchConfig: SDK.StateQueueFetchConfig,
   stateQueueSpendingScript: Script,
   stateQueueMintingScript: Script,
-  stateQueueUTxOs: SDK.TxBuilder.StateQueue.StateQueueUTxO[],
+  stateQueueUTxOs: SDK.StateQueueUTxO[],
 ): Effect.Effect<
   void,
-  SDK.Utils.LucidError | TxSignError | TxSubmitError,
+  SDK.LucidError | TxSignError | TxSubmitError,
   Globals
 > =>
   Effect.gen(function* () {
@@ -48,7 +48,7 @@ const collectAndBurnStateQueueNodesProgram = (
     const completed: TxSignBuilder = yield* tx.completeProgram().pipe(
       Effect.mapError(
         (e) =>
-          new SDK.Utils.LucidError({
+          new SDK.LucidError({
             message: "Failed to finalize the reset transaction",
             cause: e,
           }),
@@ -77,12 +77,12 @@ const collectAndBurnStateQueueNodesProgram = (
 
 export const resetStateQueue: Effect.Effect<
   void,
-  SDK.Utils.LucidError | TxSubmitError | TxSignError,
+  SDK.LucidError | TxSubmitError | TxSignError,
   AlwaysSucceedsContract | Lucid | Globals
 > = Effect.gen(function* () {
   const lucid = yield* Lucid;
   const alwaysSucceeds = yield* AlwaysSucceedsContract;
-  const fetchConfig: SDK.TxBuilder.StateQueue.FetchConfig = {
+  const fetchConfig: SDK.StateQueueFetchConfig = {
     stateQueuePolicyId: alwaysSucceeds.stateQueueAuthValidator.policyId,
     stateQueueAddress:
       alwaysSucceeds.stateQueueAuthValidator.spendScriptAddress,
@@ -93,7 +93,7 @@ export const resetStateQueue: Effect.Effect<
   yield* Effect.logInfo("🚧 Fetching state queue UTxOs...");
 
   const allStateQueueUTxOs =
-    yield* SDK.Endpoints.StateQueue.fetchUnsortedStateQueueUTxOsProgram(
+    yield* SDK.fetchUnsortedStateQueueUTxOsProgram(
       lucid.api,
       fetchConfig,
     );

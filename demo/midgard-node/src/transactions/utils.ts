@@ -133,17 +133,17 @@ ${signed.toCBOR()}
  *          header hash.
  */
 export const fetchFirstBlockTxs = (
-  firstBlockUTxO: SDK.TxBuilder.StateQueue.StateQueueUTxO,
+  firstBlockUTxO: SDK.StateQueueUTxO,
 ): Effect.Effect<
   { txs: readonly Buffer[]; headerHash: Buffer },
-  SDK.Utils.HashingError | SDK.Utils.DataCoercionError | DatabaseError,
+  SDK.HashingError | SDK.DataCoercionError | DatabaseError,
   Database
 > =>
   Effect.gen(function* () {
-    const blockHeader = yield* SDK.Utils.getHeaderFromStateQueueDatum(
+    const blockHeader = yield* SDK.getHeaderFromStateQueueDatum(
       firstBlockUTxO.datum,
     );
-    const headerHash: Buffer = yield* SDK.Utils.hashHeader(blockHeader).pipe(
+    const headerHash: Buffer = yield* SDK.hashHeader(blockHeader).pipe(
       Effect.map((hh) => Buffer.from(fromHex(hh))),
     );
     const txHashes = yield* BlocksDB.retrieveTxHashesByHeaderHash(headerHash);
@@ -165,23 +165,23 @@ export const outRefsAreEqual = (outRef0: OutRef, outRef1: OutRef): boolean => {
 };
 
 export class TxSignError extends Data.TaggedError("TxSignError")<
-  SDK.Utils.GenericErrorFields & {
+  SDK.GenericErrorFields & {
     readonly txHash: string;
   }
 > {}
 
 export class TxSubmitError extends Data.TaggedError("TxSubmitError")<
-  SDK.Utils.GenericErrorFields & {
+  SDK.GenericErrorFields & {
     readonly txHash: string;
   }
 > {}
 
 export class TxConfirmError extends Data.TaggedError("TxConfirmError")<
-  SDK.Utils.GenericErrorFields & {
+  SDK.GenericErrorFields & {
     readonly txHash: string;
   }
 > {}
 
 export class GenesisDepositError extends Data.TaggedError(
   "GenesisDepositError",
-)<SDK.Utils.GenericErrorFields> {}
+)<SDK.GenericErrorFields> {}

@@ -56,9 +56,9 @@ ${Array.from(new Set(config.GENESIS_UTXOS.map((u) => u.address))).join("\n")}`,
 
 const submitGenesisDeposits: Effect.Effect<
   void,
-  | SDK.Utils.LucidError
-  | SDK.Utils.HashingError
-  | SDK.Utils.DepositError
+  | SDK.LucidError
+  | SDK.HashingError
+  | SDK.DepositError
   | TxSubmitError
   | TxSignError,
   AlwaysSucceedsContract | Lucid | NodeConfig
@@ -76,7 +76,7 @@ const submitGenesisDeposits: Effect.Effect<
   const l2Address = config.GENESIS_UTXOS[0].address;
 
   // Hard-coded 10 ADA deposit.
-  const depositParams: SDK.TxBuilder.UserEvents.Deposit.DepositParams = {
+  const depositParams: SDK.DepositParams = {
     depositScriptAddress: depositAuthValidator.spendScriptAddress,
     mintingPolicy: depositAuthValidator.mintScript,
     policyId: depositAuthValidator.policyId,
@@ -89,7 +89,7 @@ const submitGenesisDeposits: Effect.Effect<
 
   yield* lucid.switchToOperatorsMainWallet;
 
-  const signedTx = yield* SDK.Endpoints.UserEvents.Deposit.depositTxProgram(
+  const signedTx = yield* SDK.unsignedDepositTxProgram(
     lucid.api,
     depositParams,
   );

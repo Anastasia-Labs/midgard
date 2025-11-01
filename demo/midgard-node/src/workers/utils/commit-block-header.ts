@@ -48,29 +48,29 @@ export type WorkerOutput =
 // Datatype to use CBOR hex of state queue UTxOs instead of `UTxO` from LE for
 // transferability.
 export type SerializedStateQueueUTxO = Omit<
-  SDK.TxBuilder.StateQueue.StateQueueUTxO,
+  SDK.StateQueueUTxO,
   "utxo" | "datum"
 > & { utxo: string; datum: string };
 
 export const serializeStateQueueUTxO = (
-  stateQueueUTxO: SDK.TxBuilder.StateQueue.StateQueueUTxO,
+  stateQueueUTxO: SDK.StateQueueUTxO,
 ): Effect.Effect<
   SerializedStateQueueUTxO,
-  SDK.Utils.CmlUnexpectedError | SDK.Utils.CborSerializationError
+  SDK.CmlUnexpectedError | SDK.CborSerializationError
 > =>
   Effect.gen(function* () {
     const core: CML.TransactionUnspentOutput = yield* Effect.try({
       try: () => utxoToCore(stateQueueUTxO.utxo),
       catch: (e) =>
-        new SDK.Utils.CmlUnexpectedError({
+        new SDK.CmlUnexpectedError({
           message: `Failed to serialize state queue UTxO: ${e}`,
           cause: e,
         }),
     });
     const datumCBOR = yield* Effect.try({
-      try: () => Data.to(stateQueueUTxO.datum, SDK.TxBuilder.StateQueue.Datum),
+      try: () => Data.to(stateQueueUTxO.datum, SDK.StateQueueDatum),
       catch: (e) =>
-        new SDK.Utils.CborSerializationError({
+        new SDK.CborSerializationError({
           message: `Failed to serialize state queue datum: ${e}`,
           cause: e,
         }),
@@ -85,8 +85,8 @@ export const serializeStateQueueUTxO = (
 export const deserializeStateQueueUTxO = (
   stateQueueUTxO: SerializedStateQueueUTxO,
 ): Effect.Effect<
-  SDK.TxBuilder.StateQueue.StateQueueUTxO,
-  SDK.Utils.CmlUnexpectedError | SDK.Utils.CborDeserializationError
+  SDK.StateQueueUTxO,
+  SDK.CmlUnexpectedError | SDK.CborDeserializationError
 > =>
   Effect.gen(function* () {
     const u: UTxO = yield* Effect.try({
@@ -95,16 +95,16 @@ export const deserializeStateQueueUTxO = (
           CML.TransactionUnspentOutput.from_cbor_hex(stateQueueUTxO.utxo),
         ),
       catch: (e) =>
-        new SDK.Utils.CmlUnexpectedError({
+        new SDK.CmlUnexpectedError({
           message: `Failed to convert state queue UTxO to CML: ${e}`,
           cause: e,
         }),
     });
     const d = yield* Effect.try({
       try: () =>
-        Data.from(stateQueueUTxO.datum, SDK.TxBuilder.StateQueue.Datum),
+        Data.from(stateQueueUTxO.datum, SDK.StateQueueDatum),
       catch: (e) =>
-        new SDK.Utils.CborDeserializationError({
+        new SDK.CborDeserializationError({
           message: `Failed to deserialize datum: ${e}`,
           cause: e,
         }),
