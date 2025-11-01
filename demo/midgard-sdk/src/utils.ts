@@ -1,4 +1,4 @@
-import { Data, Effect } from "effect";
+import { Effect } from "effect";
 import {
   Address,
   Assets,
@@ -11,6 +11,12 @@ import {
   toHex,
 } from "@lucid-evolution/lucid";
 import { blake2b } from "@noble/hashes/blake2.js";
+import {
+  AssetError,
+  HashingError,
+  LucidError,
+  UnauthenticUtxoError,
+} from "./common.js";
 
 export const isHexString = (str: string): boolean => {
   const hexRegex = /^[0-9A-Fa-f]+$/;
@@ -156,48 +162,3 @@ export const bufferToHex = (buf: Buffer): string => {
     return "<no hex for undefined>";
   }
 };
-
-export type GenericErrorFields = {
-  readonly message: string;
-  readonly cause: any;
-};
-
-export class CmlUnexpectedError extends Data.TaggedError(
-  "CmlUnexpectedError",
-)<GenericErrorFields> {}
-
-export class CmlDeserializationError extends Data.TaggedError(
-  "CmlDeserializationError",
-)<GenericErrorFields> {}
-
-export class CborSerializationError extends Data.TaggedError(
-  "CborSerializationError",
-)<GenericErrorFields> {}
-
-export class CborDeserializationError extends Data.TaggedError(
-  "CborDeserializationError",
-)<GenericErrorFields> {}
-
-export class DataCoercionError extends Data.TaggedError(
-  "DataCoercionError",
-)<GenericErrorFields> {}
-
-export class UnauthenticUtxoError extends Data.TaggedError(
-  "UnauthenticUtxoError",
-)<GenericErrorFields> {}
-
-export class MissingDatumError extends Data.TaggedError(
-  "MissingDatumError",
-)<GenericErrorFields> {}
-
-export class LucidError extends Data.TaggedError(
-  "LucidError",
-)<GenericErrorFields> {}
-
-export class HashingError extends Data.TaggedError(
-  "HashingError",
-)<GenericErrorFields> {}
-
-export class AssetError extends Data.TaggedError(
-  "AssetError",
-)<GenericErrorFields> {}

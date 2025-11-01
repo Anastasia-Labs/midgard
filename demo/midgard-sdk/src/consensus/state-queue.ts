@@ -14,33 +14,33 @@ import {
   UTxO,
   OutputDatum,
 } from "@lucid-evolution/lucid";
-import { ActiveOperators } from "@/tx-builder/index.js";
+import { ActiveOperatorUpdateCommitmentTimeParams } from "@/consensus/active-operators.js";
 import { Data as EffectData, Effect } from "effect";
 import {
   DataCoercionError,
   GenericErrorFields,
-  getStateToken,
-  hashHexWithBlake2b224,
   HashingError,
   MissingDatumError,
   UnauthenticUtxoError,
-} from "@/utils/common.js";
-import { LucidError, utxosAtByNFTPolicyId } from "@/utils/common.js";
-
-// TODO: These imports would be changed
-import { getNodeDatumFromUTxO, LinkedListError } from "@/utils/linked-list.js";
-import {
   MerkleRoot,
   OutputReferenceSchema,
   POSIXTime,
   POSIXTimeSchema,
-} from "@/tx-builder/common.js";
+} from "@/common.js";
+import { LucidError } from "@/common.js";
 import {
   NodeDatum,
   NodeDatumSchema,
   NodeKey,
-} from "@/tx-builder/linked-list.js";
-import { ConfirmedState, Header } from "@/tx-builder/ledger-state.js";
+  getNodeDatumFromUTxO,
+  LinkedListError,
+} from "@/linked-list.js";
+import { ConfirmedState, Header } from "@/ledger-state.js";
+import {
+  getStateToken,
+  hashHexWithBlake2b224,
+  utxosAtByNFTPolicyId,
+} from "@/utils.js";
 
 export const StateQueueConfigSchema = Data.Object({
   initUTxO: OutputReferenceSchema,
@@ -460,7 +460,7 @@ export const unsignedCommitBlockHeaderTxProgram = (
   lucid: LucidEvolution,
   fetchConfig: StateQueueFetchConfig,
   sqCommitParams: StateQueueCommitBlockParams,
-  aoUpdateParams: ActiveOperators.UpdateCommitmentTimeParams,
+  aoUpdateParams: ActiveOperatorUpdateCommitmentTimeParams,
 ): Effect.Effect<TxSignBuilder, StateQueueError | HashingError> =>
   Effect.gen(function* () {
     const commitTx = yield* incompleteCommitBlockHeaderTxProgram(
@@ -498,7 +498,7 @@ export const unsignedCommitBlockHeaderTx = (
   lucid: LucidEvolution,
   fetchConfig: StateQueueFetchConfig,
   sqCommitParams: StateQueueCommitBlockParams,
-  aoUpdateParams: ActiveOperators.UpdateCommitmentTimeParams,
+  aoUpdateParams: ActiveOperatorUpdateCommitmentTimeParams,
 ): Promise<TxSignBuilder> =>
   makeReturn(
     unsignedCommitBlockHeaderTxProgram(

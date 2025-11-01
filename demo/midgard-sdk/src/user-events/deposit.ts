@@ -15,20 +15,22 @@ import {
 import {
   DataCoercionError,
   GenericErrorFields,
-  getStateToken,
-  hashHexWithBlake2b256,
   HashingError,
   LucidError,
   UnauthenticUtxoError,
+} from "@/common.js";
+import {
+  getStateToken,
+  hashHexWithBlake2b256,
   utxosAtByNFTPolicyId,
-} from "@/utils/common.js";
+} from "@/utils.js";
 import { Data as EffectData, Effect } from "effect";
 import {
   OutputReference,
   OutputReferenceSchema,
   POSIXTime,
   POSIXTimeSchema,
-} from "@/tx-builder/common.js";
+} from "@/common.js";
 import { getProtocolParameters } from "@/protocolParameters.js";
 import { makeReturn } from "@/core.js";
 

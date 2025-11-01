@@ -1,4 +1,5 @@
 import { Data } from "@lucid-evolution/lucid";
+import { Data as EffectData } from "effect";
 
 export const OutputReferenceSchema = Data.Object({
   txHash: Data.Object({ hash: Data.Bytes({ minLength: 32, maxLength: 32 }) }),
@@ -67,3 +68,48 @@ export const AddressSchema = Data.Object({
 });
 export type AddressData = Data.Static<typeof AddressSchema>;
 export const AddressData = AddressSchema as unknown as AddressData;
+
+export type GenericErrorFields = {
+  readonly message: string;
+  readonly cause: any;
+};
+
+export class CmlUnexpectedError extends EffectData.TaggedError(
+  "CmlUnexpectedError",
+)<GenericErrorFields> {}
+
+export class CmlDeserializationError extends EffectData.TaggedError(
+  "CmlDeserializationError",
+)<GenericErrorFields> {}
+
+export class CborSerializationError extends EffectData.TaggedError(
+  "CborSerializationError",
+)<GenericErrorFields> {}
+
+export class CborDeserializationError extends EffectData.TaggedError(
+  "CborDeserializationError",
+)<GenericErrorFields> {}
+
+export class DataCoercionError extends EffectData.TaggedError(
+  "DataCoercionError",
+)<GenericErrorFields> {}
+
+export class UnauthenticUtxoError extends EffectData.TaggedError(
+  "UnauthenticUtxoError",
+)<GenericErrorFields> {}
+
+export class MissingDatumError extends EffectData.TaggedError(
+  "MissingDatumError",
+)<GenericErrorFields> {}
+
+export class LucidError extends EffectData.TaggedError(
+  "LucidError",
+)<GenericErrorFields> {}
+
+export class HashingError extends EffectData.TaggedError(
+  "HashingError",
+)<GenericErrorFields> {}
+
+export class AssetError extends EffectData.TaggedError(
+  "AssetError",
+)<GenericErrorFields> {}

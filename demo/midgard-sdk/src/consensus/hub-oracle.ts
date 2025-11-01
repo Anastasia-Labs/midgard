@@ -1,5 +1,10 @@
 import { Effect, Data as EffectData } from "effect";
-import { GenericErrorFields, LucidError } from "@/utils/common.js";
+import {
+  GenericErrorFields,
+  LucidError,
+  AddressSchema,
+  PolicyIdSchema,
+} from "@/common.js";
 import {
   Address,
   LucidEvolution,
@@ -10,9 +15,6 @@ import {
 } from "@lucid-evolution/lucid";
 import { Data } from "@lucid-evolution/lucid";
 import { makeReturn } from "@/core.js";
-
-// TODO: this imports would be changed
-import { AddressSchema, PolicyIdSchema } from "@/tx-builder/common.js";
 
 export type HubOracleConfig = {
   hubOracleAddress: Address;

@@ -1,4 +1,4 @@
-import { POSIXTimeSchema } from "@/tx-builder/common.js";
+import { POSIXTimeSchema } from "@/common.js";
 import { LucidEvolution, TxBuilder } from "@lucid-evolution/lucid";
 import { Data } from "@lucid-evolution/lucid";
 
