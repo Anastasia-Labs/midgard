@@ -1,3 +1,3 @@
-export * as Deposit from "./deposit.js";
-export * as TxOrder from "./tx-order.js";
-export * as Withdrawal from "./withdrawal.js";
+export * from "./deposit.js";
+export * from "./tx-order.js";
+export * from "./withdrawal.js";
