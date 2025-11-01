@@ -43,7 +43,7 @@ export const clearTable = (
   );
 
 export class DatabaseError extends Data.TaggedError("DatabaseError")<
-  SDK.Utils.GenericErrorFields & { readonly table: string }
+  SDK.GenericErrorFields & { readonly table: string }
 > {}
 
 type SqlErrorToDatabaseError = <A, R>(
