@@ -28,11 +28,7 @@ const collectAndBurnUTxOsProgram = (
     utxo: UTxO;
     assetName: string;
   }[],
-): Effect.Effect<
-  void,
-  SDK.Utils.LucidError | TxSignError | TxSubmitError,
-  Globals
-> =>
+): Effect.Effect<void, SDK.LucidError | TxSignError | TxSubmitError, Globals> =>
   Effect.gen(function* () {
     const globals = yield* Globals;
     yield* Ref.set(globals.RESET_IN_PROGRESS, true);
@@ -53,7 +49,7 @@ const collectAndBurnUTxOsProgram = (
     const completed: TxSignBuilder = yield* tx.completeProgram().pipe(
       Effect.mapError(
         (e) =>
-          new SDK.Utils.LucidError({
+          new SDK.LucidError({
             message: "Failed to finalize the reset transaction",
             cause: e,
           }),
@@ -82,7 +78,7 @@ const collectAndBurnUTxOsProgram = (
 
 export const resetStateQueue: Effect.Effect<
   void,
-  SDK.Utils.LucidError | TxSubmitError | TxSignError,
+  SDK.LucidError | TxSubmitError | TxSignError,
   AlwaysSucceedsContract | Lucid | Globals
 > = Effect.gen(function* () {
   const lucid = yield* Lucid;
@@ -92,14 +88,13 @@ export const resetStateQueue: Effect.Effect<
 
   yield* Effect.logInfo("🚧 Fetching state queue UTxOs...");
 
-  const allStateQueueUTxOs =
-    yield* SDK.Endpoints.StateQueue.fetchUnsortedStateQueueUTxOsProgram(
-      lucid.api,
-      {
-        stateQueuePolicyId: stateQueueAuthValidator.policyId,
-        stateQueueAddress: stateQueueAuthValidator.spendScriptAddress,
-      },
-    );
+  const allStateQueueUTxOs = yield* SDK.fetchUnsortedStateQueueUTxOsProgram(
+    lucid.api,
+    {
+      stateQueuePolicyId: stateQueueAuthValidator.policyId,
+      stateQueueAddress: stateQueueAuthValidator.spendScriptAddress,
+    },
+  );
 
   if (allStateQueueUTxOs.length <= 0) {
     yield* Effect.logInfo(`🚧 No state queue UTxOs were found.`);
@@ -137,7 +132,7 @@ export const resetStateQueue: Effect.Effect<
 
 export const resetDeposits: Effect.Effect<
   void,
-  SDK.Utils.LucidError | TxSubmitError | TxSignError,
+  SDK.LucidError | TxSubmitError | TxSignError,
   AlwaysSucceedsContract | Lucid | Globals
 > = Effect.gen(function* () {
   const lucid = yield* Lucid;
@@ -147,14 +142,10 @@ export const resetDeposits: Effect.Effect<
 
   yield* Effect.logInfo("🚧 Fetching deposit UTxOs...");
 
-  const allDepositUTxOs =
-    yield* SDK.Endpoints.UserEvents.Deposit.fetchDepositUTxOsProgram(
-      lucid.api,
-      {
-        depositAddress: depositAuthValidator.spendScriptAddress,
-        depositPolicyId: depositAuthValidator.policyId,
-      },
-    );
+  const allDepositUTxOs = yield* SDK.fetchDepositUTxOsProgram(lucid.api, {
+    depositAddress: depositAuthValidator.spendScriptAddress,
+    depositPolicyId: depositAuthValidator.policyId,
+  });
 
   if (allDepositUTxOs.length <= 0) {
     yield* Effect.logInfo(`🚧 No deposit UTxOs were found.`);

@@ -188,7 +188,7 @@ export class NodeConfig extends Context.Tag("NodeConfig")<
 }
 
 export class ConfigError extends Data.TaggedError("ConfigError")<
-  SDK.Utils.GenericErrorFields & {
+  SDK.GenericErrorFields & {
     readonly fieldsAndValues: [string, string][];
   }
 > {}
