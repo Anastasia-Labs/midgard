@@ -23,11 +23,7 @@ const collectAndBurnStateQueueNodesProgram = (
   stateQueueSpendingScript: Script,
   stateQueueMintingScript: Script,
   stateQueueUTxOs: SDK.StateQueueUTxO[],
-): Effect.Effect<
-  void,
-  SDK.LucidError | TxSignError | TxSubmitError,
-  Globals
-> =>
+): Effect.Effect<void, SDK.LucidError | TxSignError | TxSubmitError, Globals> =>
   Effect.gen(function* () {
     const globals = yield* Globals;
     yield* Ref.set(globals.RESET_IN_PROGRESS, true);
@@ -92,11 +88,10 @@ export const resetStateQueue: Effect.Effect<
 
   yield* Effect.logInfo("🚧 Fetching state queue UTxOs...");
 
-  const allStateQueueUTxOs =
-    yield* SDK.fetchUnsortedStateQueueUTxOsProgram(
-      lucid.api,
-      fetchConfig,
-    );
+  const allStateQueueUTxOs = yield* SDK.fetchUnsortedStateQueueUTxOsProgram(
+    lucid.api,
+    fetchConfig,
+  );
 
   if (allStateQueueUTxOs.length <= 0) {
     yield* Effect.logInfo(`🚧 No state queue UTxOs were found.`);

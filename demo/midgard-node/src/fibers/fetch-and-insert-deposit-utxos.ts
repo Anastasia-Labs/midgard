@@ -15,11 +15,7 @@ const fetchDepositUTxOs = (
   lucid: LucidEvolution,
   inclusionStartTime: number,
   inclusionEndTime: number,
-): Effect.Effect<
-  SDK.DepositUTxO[],
-  SDK.LucidError,
-  AlwaysSucceedsContract
-> =>
+): Effect.Effect<SDK.DepositUTxO[], SDK.LucidError, AlwaysSucceedsContract> =>
   Effect.gen(function* () {
     const { depositAuthValidator } = yield* AlwaysSucceedsContract;
     const fetchConfig: SDK.DepositFetchConfig = {
@@ -28,10 +24,7 @@ const fetchDepositUTxOs = (
       inclusionTimeLowerBound: BigInt(inclusionStartTime),
       inclusionTimeUpperBound: BigInt(inclusionEndTime),
     };
-    return yield* SDK.fetchDepositUTxOsProgram(
-      lucid,
-      fetchConfig,
-    );
+    return yield* SDK.fetchDepositUTxOsProgram(lucid, fetchConfig);
   });
 
 export const fetchAndInsertDepositUTxOs: Effect.Effect<

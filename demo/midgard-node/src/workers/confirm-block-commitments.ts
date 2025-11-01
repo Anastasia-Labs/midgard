@@ -28,10 +28,7 @@ const fetchLatestBlock = (
       stateQueueAddress: stateQueueAuthValidator.spendScriptAddress,
       stateQueuePolicyId: stateQueueAuthValidator.policyId,
     };
-    return yield* SDK.fetchLatestCommittedBlockProgram(
-      lucid,
-      fetchConfig,
-    );
+    return yield* SDK.fetchLatestCommittedBlockProgram(lucid, fetchConfig);
   });
 
 const wrapper = (

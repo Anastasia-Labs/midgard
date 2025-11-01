@@ -139,10 +139,7 @@ export const buildAndSubmitMergeTx = (
       "🔸 Fetching confirmed state and the first block in queue from L1...",
     );
     const { confirmed: confirmedUTxO, link: firstBlockUTxO } =
-      yield* SDK.fetchConfirmedStateAndItsLinkProgram(
-        lucid,
-        fetchConfig,
-      );
+      yield* SDK.fetchConfirmedStateAndItsLinkProgram(lucid, fetchConfig);
     if (firstBlockUTxO) {
       yield* Effect.logInfo(
         `🔸 First block found: ${firstBlockUTxO.utxo.txHash}#${firstBlockUTxO.utxo.outputIndex}`,
@@ -160,17 +157,16 @@ export const buildAndSubmitMergeTx = (
       }
       yield* Effect.logInfo("🔸 Building merge transaction...");
       // Build the transaction
-      const txBuilder: TxSignBuilder =
-        yield* SDK.mergeToConfirmedStateProgram(
-          lucid,
-          fetchConfig,
-          {
-            confirmedUTxO,
-            firstBlockUTxO,
-            stateQueueSpendingScript: spendScript,
-            stateQueueMintingScript: mintScript,
-          },
-        ).pipe(Effect.withSpan("mergeToConfirmedStateProgram"));
+      const txBuilder: TxSignBuilder = yield* SDK.mergeToConfirmedStateProgram(
+        lucid,
+        fetchConfig,
+        {
+          confirmedUTxO,
+          firstBlockUTxO,
+          stateQueueSpendingScript: spendScript,
+          stateQueueMintingScript: mintScript,
+        },
+      ).pipe(Effect.withSpan("mergeToConfirmedStateProgram"));
 
       // Submit the transaction
       const onSubmitFailure = (err: TxSubmitError) =>

@@ -111,10 +111,8 @@ const handleTxGetFailure = (
   e: TxSignError | TxConfirmError | TxSubmitError,
 ) => failWith500("GET", endpoint, e.cause, `${e._tag}: ${e.message}`);
 
-const handleGenericGetFailure = (
-  endpoint: string,
-  e: SDK.GenericErrorFields,
-) => failWith500("GET", endpoint, e.cause, e.message);
+const handleGenericGetFailure = (endpoint: string, e: SDK.GenericErrorFields) =>
+  failWith500("GET", endpoint, e.cause, e.message);
 
 const getTxHandler = Effect.gen(function* () {
   const params = yield* ParsedSearchParams;
@@ -415,11 +413,10 @@ const getLogStateQueueHandler = Effect.gen(function* () {
     stateQueueAddress:
       alwaysSucceeds.stateQueueAuthValidator.spendScriptAddress,
   };
-  const sortedUTxOs =
-    yield* SDK.fetchSortedStateQueueUTxOsProgram(
-      lucid.api,
-      fetchConfig,
-    );
+  const sortedUTxOs = yield* SDK.fetchSortedStateQueueUTxOsProgram(
+    lucid.api,
+    fetchConfig,
+  );
   let drawn = `
 ---------------------------- STATE QUEUE ----------------------------`;
   yield* Effect.allSuccesses(

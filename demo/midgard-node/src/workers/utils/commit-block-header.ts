@@ -101,8 +101,7 @@ export const deserializeStateQueueUTxO = (
         }),
     });
     const d = yield* Effect.try({
-      try: () =>
-        Data.from(stateQueueUTxO.datum, SDK.StateQueueDatum),
+      try: () => Data.from(stateQueueUTxO.datum, SDK.StateQueueDatum),
       catch: (e) =>
         new SDK.CborDeserializationError({
           message: `Failed to deserialize datum: ${e}`,

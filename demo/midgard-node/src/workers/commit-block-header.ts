@@ -57,9 +57,7 @@ const getLatestBlockDatumEndTime = (
     let endTimeBigInt: bigint;
     if (latestBlocksDatum.key === "Empty") {
       const { data: confirmedState } =
-        yield* SDK.getConfirmedStateFromStateQueueDatum(
-          latestBlocksDatum,
-        );
+        yield* SDK.getConfirmedStateFromStateQueueDatum(latestBlocksDatum);
       endTimeBigInt = confirmedState.endTime;
     } else {
       const latestHeader =
@@ -281,13 +279,12 @@ const wrapper = (
           stateQueuePolicyId: stateQueueAuthValidator.policyId,
         };
         yield* lucid.switchToOperatorsMainWallet;
-        const txBuilder =
-          yield* SDK.unsignedCommitBlockHeaderTxProgram(
-            lucid.api,
-            fetchConfig,
-            commitBlockParams,
-            aoUpdateCommitmentTimeParams,
-          );
+        const txBuilder = yield* SDK.unsignedCommitBlockHeaderTxProgram(
+          lucid.api,
+          fetchConfig,
+          commitBlockParams,
+          aoUpdateCommitmentTimeParams,
+        );
         const txSize = txBuilder.toCBOR().length / 2;
         yield* Effect.logInfo(
           `🔹 Transaction built successfully. Size: ${txSize}`,
