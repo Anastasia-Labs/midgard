@@ -1,6 +1,13 @@
 import { Effect, Data as EffectData } from "effect";
 import { GenericErrorFields, LucidError } from "@/utils/common.js";
-import { Address, LucidEvolution, PolicyId, toUnit, TxBuilder, UTxO } from "@lucid-evolution/lucid";
+import {
+  Address,
+  LucidEvolution,
+  PolicyId,
+  toUnit,
+  TxBuilder,
+  UTxO,
+} from "@lucid-evolution/lucid";
 import { Data } from "@lucid-evolution/lucid";
 import { makeReturn } from "@/core.js";
 
@@ -140,5 +147,7 @@ export const fetchHubOracleUTxOProgram = (
  * @param config - Configuration values required to know where to look for which NFT.
  * @returns {UTxO} - The authentic hub oracle UTxO.
  */
-export const fetchHubOracleUTxO = (lucid: LucidEvolution, config: HubOracleConfig) =>
-  makeReturn(fetchHubOracleUTxOProgram(lucid, config)).unsafeRun();
+export const fetchHubOracleUTxO = (
+  lucid: LucidEvolution,
+  config: HubOracleConfig,
+) => makeReturn(fetchHubOracleUTxOProgram(lucid, config)).unsafeRun();
