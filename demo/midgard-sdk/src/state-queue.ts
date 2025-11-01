@@ -719,7 +719,7 @@ export const incompleteInitStateQueueTxProgram = (
 export const unsignedInitStateQueueTxProgram = (
   lucid: LucidEvolution,
   initParams: StateQueueInitParams,
-): Effect.Effect<TxSignBuilder, LucidError | StateQueueError> =>
+): Effect.Effect<TxSignBuilder, LucidError> =>
   Effect.gen(function* () {
     const commitTx = yield* incompleteInitStateQueueTxProgram(
       lucid,
