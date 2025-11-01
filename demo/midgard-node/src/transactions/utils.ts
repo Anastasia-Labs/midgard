@@ -143,7 +143,7 @@ export const fetchFirstBlockTxs = (
     const blockHeader = yield* SDK.getHeaderFromStateQueueDatum(
       firstBlockUTxO.datum,
     );
-    const headerHash: Buffer = yield* SDK.hashHeader(blockHeader).pipe(
+    const headerHash: Buffer = yield* SDK.hashBlockHeader(blockHeader).pipe(
       Effect.map((hh) => Buffer.from(fromHex(hh))),
     );
     const txHashes = yield* BlocksDB.retrieveTxHashesByHeaderHash(headerHash);

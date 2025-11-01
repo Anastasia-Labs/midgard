@@ -258,7 +258,7 @@ const wrapper = (
             BigInt(Number(endTime)),
           );
 
-        const newHeaderHash = yield* SDK.hashHeader(newHeader);
+        const newHeaderHash = yield* SDK.hashBlockHeader(newHeader);
         yield* Effect.logInfo(`🔹 New header hash is: ${newHeaderHash}`);
 
         // Build commitment block

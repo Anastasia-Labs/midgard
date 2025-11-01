@@ -268,7 +268,7 @@ export const getHeaderFromStateQueueDatum = (
   });
 
 // TODO: this function is from ledger-state, mb it should be moved from here
-export const hashHeader = (
+export const hashBlockHeader = (
   header: Header,
 ): Effect.Effect<string, HashingError> =>
   hashHexWithBlake2b224(Data.to(header, Header));
@@ -313,15 +313,15 @@ export const updateLatestBlocksDatumAndGetTheNewHeaderProgram = (
         prevUtxosRoot: confirmedState.utxoRoot,
         utxosRoot: newUTxOsRoot,
         transactionsRoot,
-        depositsRoot: "00".repeat(32),
-        withdrawalsRoot: "00".repeat(32),
+        depositsRoot,
+        withdrawalsRoot,
         startTime: confirmedState.endTime,
         endTime,
         prevHeaderHash: confirmedState.headerHash,
         operatorVkey: pubKeyHash,
         protocolVersion: confirmedState.protocolVersion,
       };
-      const newHeaderHash = yield* hashHeader(newHeader);
+      const newHeaderHash = yield* hashBlockHeader(newHeader);
       return {
         nodeDatum: {
           ...latestBlocksDatum,
@@ -332,7 +332,7 @@ export const updateLatestBlocksDatumAndGetTheNewHeaderProgram = (
     } else {
       const latestHeader =
         yield* getHeaderFromStateQueueDatum(latestBlocksDatum);
-      const prevHeaderHash = yield* hashHeader(latestHeader);
+      const prevHeaderHash = yield* hashBlockHeader(latestHeader);
       const newHeader = {
         ...latestHeader,
         prevUtxosRoot: latestHeader.utxosRoot,
@@ -343,7 +343,7 @@ export const updateLatestBlocksDatumAndGetTheNewHeaderProgram = (
         prevHeaderHash,
         operatorVkey: pubKeyHash,
       };
-      const newHeaderHash = yield* hashHeader(newHeader);
+      const newHeaderHash = yield* hashBlockHeader(newHeader);
       return {
         nodeDatum: {
           ...latestBlocksDatum,
@@ -419,7 +419,7 @@ export const incompleteCommitBlockHeaderTxProgram = (
   }: StateQueueCommitBlockParams,
 ): Effect.Effect<TxBuilder, HashingError> =>
   Effect.gen(function* () {
-    const newHeaderHash = yield* hashHeader(newHeader);
+    const newHeaderHash = yield* hashBlockHeader(newHeader);
     const assets: Assets = {
       [toUnit(policyId, fromText("Node") + newHeaderHash)]: 1n,
     };
@@ -803,7 +803,7 @@ export const incompleteStateQueueMergeTxProgram = (
     const blockHeader: Header = yield* getHeaderFromStateQueueDatum(
       firstBlockUTxO.datum,
     );
-    const headerHash = yield* hashHeader(blockHeader);
+    const headerHash = yield* hashBlockHeader(blockHeader);
     const newConfirmedState = {
       ...currentConfirmedState,
       headerHash,
