@@ -728,7 +728,7 @@ export const unsignedInitStateQueueTxProgram = (
     const completedTx: TxSignBuilder = yield* Effect.tryPromise({
       try: () => commitTx.complete({ localUPLCEval: false }),
       catch: (e) =>
-        new StateQueueError({
+        new LucidError({
           message: `Failed to build the init state queue transaction: ${e}`,
           cause: e,
         }),
