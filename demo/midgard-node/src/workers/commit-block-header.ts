@@ -45,7 +45,6 @@ import {
   retrieveTimeBoundEntries,
 } from "@/database/utils/user-events.js";
 import { DatabaseError } from "@/database/utils/common.js";
-import { RuntimeFiber } from "effect/Fiber";
 
 const BATCH_SIZE = 100;
 
@@ -218,6 +217,11 @@ const failedSubmissionProgram = (
     };
   });
 
+/**
+ * Given the target user event table, this helper finds all the events falling
+ * in the given time range and if any was found, returns an `Effect` that finds
+ * the MPT root of those events.
+ */
 const userEventsProgram = (
   tableName: string,
   startDate: Date,
@@ -255,6 +259,7 @@ const buildUnsignedTx = (
   Effect.gen(function* () {
     const lucid = yield* Lucid;
 
+    yield* Effect.logInfo("🔹 Finding updated block datum and new header...");
     const { nodeDatum: updatedNodeDatum, header: newHeader } =
       yield* SDK.updateLatestBlocksDatumAndGetTheNewHeaderProgram(
         lucid.api,
@@ -313,8 +318,6 @@ const databaseOperationsProgram = (
   workerInput: WorkerInput,
   ledgerTrie: MidgardMpt,
   mempoolTrie: MidgardMpt,
-  mempoolTxs: readonly TxTable.EntryWithTimeStamp[],
-  optEndTime: Option.Option<Date>,
 ): Effect.Effect<
   WorkerOutput,
   | SDK.CborDeserializationError
@@ -329,7 +332,12 @@ const databaseOperationsProgram = (
   AlwaysSucceedsContract | Database | NodeConfig | Lucid
 > =>
   Effect.gen(function* () {
+    const mempoolTxs = yield* MempoolDB.retrieve;
     const mempoolTxsCount = mempoolTxs.length;
+
+    const optEndTime: Option.Option<Date> =
+      yield* establishEndTimeFromTxRequests(mempoolTxs);
+
     const { utxoRoot, txRoot, mempoolTxHashes, sizeOfProcessedTxs } =
       yield* processMpts(ledgerTrie, mempoolTrie, mempoolTxs);
 
@@ -359,14 +367,13 @@ const databaseOperationsProgram = (
       const latestBlock = yield* deserializeStateQueueUTxO(
         workerInput.data.availableConfirmedBlock,
       );
-      yield* Effect.logInfo("🔹 Finding updated block datum and new header...");
 
       const startTime = yield* getLatestBlockDatumEndTime(latestBlock.datum);
 
-      // No transaction requests found (neither in `ProcessedMempoolDB`, nor
-      // in `MempoolDB`). We check if there are any user events slated for
-      // inclusion within `startTime` and current moment.
       if (Option.isNone(optEndTime)) {
+        // No transaction requests found (neither in `ProcessedMempoolDB`, nor
+        // in `MempoolDB`). We check if there are any user events slated for
+        // inclusion within `startTime` and current moment.
         const endDate = new Date();
         const optDepositsRootProgram = yield* userEventsProgram(
           DepositsDB.tableName,
@@ -384,57 +391,45 @@ const databaseOperationsProgram = (
           );
           const depositsRoot = yield* depositsRootFiber;
           const emptyRoot = yield* emptyRootHexProgram;
-          const { newHeaderHash, signAndSubmitProgram, txSize } =
-            yield* buildUnsignedTx(
-              stateQueueAuthValidator,
-              latestBlock,
-              emptyRoot,
-              emptyRoot,
-              depositsRoot,
-              endDate,
-            );
+          const { signAndSubmitProgram, txSize } = yield* buildUnsignedTx(
+            stateQueueAuthValidator,
+            latestBlock,
+            emptyRoot,
+            emptyRoot,
+            depositsRoot,
+            endDate,
+          );
 
           return yield* Effect.matchEffect(signAndSubmitProgram, {
-            onFailure: Match.valueTags({
-              TxSignError: (_) => {
-                const failureOutput: WorkerOutput = {
-                  type: "FailureOutput",
-                  error:
-                    "Something went wrong at signing the transaction, for the case of no tx requests and only deposit events.",
-                };
-                return Effect.succeed(failureOutput);
-              },
-              TxSubmitError: (e) =>
-                Effect.gen(function* () {
-                  // For now we'll assume the deposit events will be small in
-                  // number, so we won't concern ourselves with wasted work. That
-                  // is, we won't do anything and just report back with failure.
-                  const failureOutput: WorkerOutput = {
-                    type: "FailureOutput",
-                    error:
-                      "Something went wrong the transaction. No tx requests were present, only deposits.",
-                  };
+            onFailure: (_) => {
+              // For now we'll assume the deposit events will be small in
+              // number, so we won't concern ourselves with wasted work. That
+              // is, we won't do anything and just report back with failure.
+              const failureOutput: WorkerOutput = {
+                type: "FailureOutput",
+                error:
+                  "Something went wrong the transaction. No tx requests were present, only deposits.",
+              };
 
-                  return failureOutput;
-                }),
-            }),
-            // TODO: Reusing `successfulSubmissionProgram` doesn't seem perfect.
+              return Effect.succeed(failureOutput);
+            },
             onSuccess: (txHash) =>
-              successfulSubmissionProgram(
-                mempoolTrie,
-                mempoolTxs,
-                mempoolTxHashes,
-                newHeaderHash,
-                workerInput,
+              Effect.succeed({
+                type: "SuccessfulSubmissionOutput",
+                submittedTxHash: txHash,
                 txSize,
-                sizeOfProcessedTxs,
-                txHash,
-              ),
+                mempoolTxsCount: 0,
+                sizeOfBlocksTxs: workerInput.data.sizeOfProcessedTxsSoFar,
+              } as WorkerOutput),
           });
         }
       } else {
+        // One or more transactions found in either `ProcessedMempoolDB` or
+        // `MempoolDB`. We use the latest transaction's timestamp as the upper
+        // bound of the block we are about to submit.
         const endTime = optEndTime.value;
 
+        yield* Effect.logInfo("🔹 Finding deposits root...");
         const optDepositsRootProgram = yield* userEventsProgram(
           DepositsDB.tableName,
           startTime,
@@ -442,7 +437,6 @@ const databaseOperationsProgram = (
         );
 
         let depositsRoot = yield* emptyRootHexProgram;
-
         if (Option.isSome(optDepositsRootProgram)) {
           const depositsRootFiber = yield* Effect.fork(
             optDepositsRootProgram.value,
@@ -461,6 +455,8 @@ const databaseOperationsProgram = (
           );
 
         return yield* Effect.matchEffect(signAndSubmitProgram, {
+          // TODO: Separating the behavior between these two failures seems
+          //       unnecessary.
           onFailure: Match.valueTags({
             TxSignError: (_) => {
               const failureOutput: WorkerOutput = {
@@ -520,26 +516,13 @@ const wrapper = (
   AlwaysSucceedsContract | Lucid | Database | NodeConfig
 > =>
   Effect.gen(function* () {
-    const lucid = yield* Lucid;
-
     yield* Effect.logInfo("🔹 Retrieving all mempool transactions...");
-
-    const mempoolTxs = yield* MempoolDB.retrieve;
-
-    const optEndTime: Option.Option<Date> =
-      yield* establishEndTimeFromTxRequests(mempoolTxs);
 
     const { ledgerTrie, mempoolTrie } = yield* makeMpts;
 
     const result: void | WorkerOutput = yield* withTrieTransaction(
       ledgerTrie,
-      databaseOperationsProgram(
-        workerInput,
-        ledgerTrie,
-        mempoolTrie,
-        mempoolTxs,
-        optEndTime,
-      ),
+      databaseOperationsProgram(workerInput, ledgerTrie, mempoolTrie),
     );
     if (result) {
       return result;
