@@ -7,7 +7,7 @@ import {
   TxBuilder,
   UTxO,
 } from "@lucid-evolution/lucid";
-import { POSIXTime, POSIXTimeSchema } from "@/tx-builder/common.js";
+import { AddressData, AddressSchema, POSIXTime, POSIXTimeSchema } from "@/tx-builder/common.js";
 import {
   HashingError,
   LucidError,
@@ -16,26 +16,45 @@ import {
 import { TxOrderEventSchema } from "@/tx-builder/ledger-state.js";
 import { Effect } from "effect";
 
-export type TransactionOrderParams = {
+export type TxOrderParams = {
   txOrderAddress: string;
   mintingPolicy: Script;
   policyId: string;
-  refundAddress: string;
+  refundAddress: AddressData;
   refundDatum: string;
   inclusionTime: POSIXTime;
   midgardTxBody: string;
-  midgardTxWits: string;
+  midgardTxWits: string; 
+  cardanoTx: CML.Transaction; // temporary until midgard tx conversion is done
 };
 
-export const DatumSchema = Data.Object({
+export const TxOrderDatumSchema = Data.Object({
   event: TxOrderEventSchema,
   inclusionTime: POSIXTimeSchema,
-  refundAddress: Data.Bytes(),
+  refundAddress: AddressSchema,
   refundDatum: Data.Nullable(Data.Bytes()),
 });
-export type Datum = Data.Static<typeof DatumSchema>;
-export const Datum = DatumSchema as unknown as Datum;
+export type TxOrderDatum = Data.Static<typeof TxOrderDatumSchema>;
+export const TxOrderDatum = TxOrderDatumSchema as unknown as TxOrderDatum;
 
+export const MintRedeemerSchema = Data.Enum([
+  Data.Object({
+    AuthenticateEvent: Data.Object({
+      nonceInputIndex: Data.Integer(),
+      eventOutputIndex: Data.Integer(),
+      hubRefInputIndex: Data.Integer(),
+      witnessRegistrationRedeemerIndex: Data.Integer(),
+    }),
+  }),
+  Data.Object({
+    BurnEventNFT: Data.Object({
+      nonceAssetName: Data.Bytes(),
+      witnessUnregistrationRedeemerIndex: Data.Integer(),
+    }),
+  }),
+]);
+export type MintRedeemer = Data.Static<typeof MintRedeemerSchema>;
+export const MintRedeemer = MintRedeemerSchema as unknown as MintRedeemer;
 /**
  * TransactionOrder
  *
@@ -45,7 +64,7 @@ export const Datum = DatumSchema as unknown as Datum;
  */
 export const transactionOrderTxBuilder = (
   lucid: LucidEvolution,
-  params: TransactionOrderParams,
+  params: TxOrderParams,
 ): Effect.Effect<TxBuilder, HashingError | LucidError> =>
   Effect.gen(function* () {
     const redeemer: MintRedeemer = {
@@ -76,15 +95,18 @@ export const transactionOrderTxBuilder = (
       transactionInput.to_cbor_hex(),
     );
     const txOrderNFT = toUnit(params.policyId, assetName);
-    const currDatum: Datum = {
+    const midgardTxBody = params.cardanoTx.body().to_cbor_hex();
+    const midgardTxWits = params.cardanoTx.witness_set().to_cbor_hex();
+
+    const currDatum: TxOrderDatum = {
       event: {
         txOrderId: {
           txHash: { hash: inputUtxo.txHash },
           outputIndex: BigInt(inputUtxo.outputIndex),
         },
         midgardTx: {
-          body: params.midgardTxBody,
-          wits: params.midgardTxWits,
+          body: midgardTxBody,
+          wits: midgardTxWits,
           is_valid: true,
         },
       },
@@ -92,7 +114,7 @@ export const transactionOrderTxBuilder = (
       refundAddress: params.refundAddress,
       refundDatum: params.refundDatum,
     };
-    const txOrderDatum = Data.to(currDatum, Datum);
+    const txOrderDatum = Data.to(currDatum, TxOrderDatum);
     const tx = lucid
       .newTx()
       .collectFrom([inputUtxo])
