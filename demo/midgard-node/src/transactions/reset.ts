@@ -11,7 +11,7 @@ import {
   toUnit,
 } from "@lucid-evolution/lucid";
 import { AlwaysSucceedsContract, AuthenticatedValidator, Globals, Lucid } from "@/services/index.js";
-import { Effect, Ref } from "effect";
+import { Effect, Option, Ref } from "effect";
 import {
   TxConfirmError,
   handleSignSubmit,
@@ -44,6 +44,72 @@ const collectAndBurnUTxOsTx = (
       .attach.Script(authValidator.spendScript)
       .attach.Script(authValidator.mintScript);
     return tx;
+  })
+
+type ValidatorUTxOsPair = {
+    authValidator: AuthenticatedValidator,
+    assetUTxOs: {
+      utxo: UTxO;
+      assetName: string;
+    }[],
+}
+
+const stringifyBigInt = (obj: any) => JSON.stringify(obj, (_, v) => typeof v === 'bigint' ? v.toString() : v)
+
+const constructBatchTx = (
+  lucid: LucidEvolution,
+  validatorUTxOsPairs: ValidatorUTxOsPair[],
+  batchSize: number,
+): Effect.Effect<Option.Option<{batchTx: TxBuilder, restPairs: ValidatorUTxOsPair[]}>> =>
+  Effect.gen(function* () {
+    yield* Effect.log(`Call constructBatchTx with batchSize: ${batchSize}`)
+
+    const validatorUTxOs = validatorUTxOsPairs.pop()
+    if (validatorUTxOs === undefined) {
+      yield* Effect.log(`No more validator UTxOs`)
+      return Option.none()
+    }
+    if (batchSize === 0) {
+      yield* Effect.log(`No more batch size left`)
+      return Option.none()
+    }
+
+    const partialBatch = validatorUTxOs.assetUTxOs.slice(0, batchSize)
+    const leftFromPartialBatch = validatorUTxOs.assetUTxOs.slice(batchSize +1)
+    if (leftFromPartialBatch.length > 0) {
+      validatorUTxOsPairs.push({authValidator: validatorUTxOs.authValidator, assetUTxOs: leftFromPartialBatch})
+    }
+
+    const partialBatchTx = yield* collectAndBurnUTxOsTx(lucid, validatorUTxOs.authValidator, partialBatch)
+    const batchSizeLeft = batchSize - partialBatch.length
+
+    const optRestBatchTx = yield* constructBatchTx(lucid, validatorUTxOsPairs, batchSizeLeft)
+    return Option.match(optRestBatchTx, {
+      onNone: () => Option.some({batchTx: partialBatchTx, restPairs: validatorUTxOsPairs}),
+      onSome: ({batchTx, restPairs}) => Option.some({batchTx: partialBatchTx.compose(batchTx), restPairs: restPairs})
+    })
+  })
+
+const constructBatchTxs = (
+  lucid: LucidEvolution,
+  validatorUTxOsPairs: ValidatorUTxOsPair[],
+  batchSize: number,
+): Effect.Effect<TxBuilder[]> =>
+  Effect.gen(function* () {
+    let accTransactions: TxBuilder[] = []
+    let currValidatorUTxOsPairs = validatorUTxOsPairs
+    while (currValidatorUTxOsPairs.length >= 0) {
+      const optBatchTx = yield* constructBatchTx(lucid, validatorUTxOsPairs, batchSize)
+      const batchTx = Option.getOrElse(optBatchTx, () => ({
+        batchTx: lucid.newTx(),
+        restPairs: [],
+      }))
+
+      accTransactions.push(batchTx.batchTx)
+      currValidatorUTxOsPairs = batchTx.restPairs
+    }
+
+    return accTransactions
   })
 
 const completeResetTxProgram = (
@@ -112,52 +178,31 @@ export const resetAll: Effect.Effect<
     yield* Effect.logInfo(`🚧 No UTxOs were found.`);
   }
 
+  const validatorUTxOPairs: ValidatorUTxOsPair[] = [
+    {
+      authValidator: stateQueueAuthValidator,
+      assetUTxOs: allStateQueueUTxOs,
+    },
+    {
+      authValidator: depositAuthValidator,
+      assetUTxOs: allDepositUTxOs,
+    },
+  ]
+
   const batchSize = 40;
+  const optBatchTransaction = yield* constructBatchTx(lucid.api, validatorUTxOPairs, batchSize)
+  const batchTransaction = Option.getOrThrow(optBatchTransaction)
 
-  const stateQueuePartialBatch = allStateQueueUTxOs.splice(Math.floor(allStateQueueUTxOs.length / batchSize), allStateQueueUTxOs.length % batchSize)
-  const depositPartialBatch = allDepositUTxOs.splice(Math.floor(allDepositUTxOs.length / batchSize), allDepositUTxOs.length % batchSize)
+  yield* Effect.logInfo(`🚧 StateQueue Batch`);
+  yield* completeResetTxProgram(lucid.api, batchTransaction.batchTx);
 
-  yield* lucid.switchToOperatorsMainWallet;
+  // const batchTransactions = yield* constructBatchTxs(lucid.api, validatorUTxOPairs, batchSize)
+  // yield* Effect.forEach(batchTransactions, (tx, i) =>
+  //   Effect.gen(function* () {
+  //     yield* Effect.logInfo(`🚧 StateQueue Batch ${i}`);
+  //     yield* completeResetTxProgram(lucid.api, tx);
+  // }).pipe(Effect.tapError((e) => Effect.logError(e))))
 
-  const partialBatchTx: TxBuilder = yield* Effect.gen(function* () {
-    const stateQueuePartialTx = yield* collectAndBurnUTxOsTx(lucid.api, stateQueueAuthValidator, stateQueuePartialBatch);
-    const depositPartialTx = yield* collectAndBurnUTxOsTx(lucid.api, depositAuthValidator, depositPartialBatch);
-    return stateQueuePartialTx.compose(depositPartialTx)
-  })
-
-  // Collect and burn UTxOs, that didn't fill a full batch:
-  yield* Effect.logInfo(`🚧 Mixed Batch 0 - ${stateQueuePartialBatch.length + depositPartialBatch.length}`);
-  yield* completeResetTxProgram(lucid.api, partialBatchTx).pipe(Effect.tapError((e) => Effect.logError(e)));
-
-  // Collect and burn full batches of UTxOs at a time:
-
-  yield* batchProgram(
-    batchSize,
-    allStateQueueUTxOs.length,
-    "resetStateQueue",
-    (startIndex, endIndex) =>
-      Effect.gen(function* () {
-        const batch = allStateQueueUTxOs.slice(startIndex, endIndex);
-        yield* Effect.logInfo(`🚧 StateQueue Batch ${startIndex}-${endIndex}`);
-        const tx = yield* collectAndBurnUTxOsTx(lucid.api, stateQueueAuthValidator, batch);
-        yield* completeResetTxProgram(lucid.api, tx);
-      }).pipe(Effect.tapError((e) => Effect.logError(e))),
-    1,
-  );
-
-  yield* batchProgram(
-    batchSize,
-    allDepositUTxOs.length,
-    "resetDeposit",
-    (startIndex, endIndex) =>
-      Effect.gen(function* () {
-        const batch = allDepositUTxOs.slice(startIndex, endIndex);
-        yield* Effect.logInfo(`🚧 Deposit Batch ${startIndex}-${endIndex}`);
-        const tx = yield* collectAndBurnUTxOsTx(lucid.api, depositAuthValidator, batch);
-        yield* completeResetTxProgram(lucid.api, tx);
-      }).pipe(Effect.tapError((e) => Effect.logError(e))),
-    1,
-  );
 
   yield* Effect.logInfo(`🚧 Resetting global variables...`);
   const globals = yield* Globals;
