@@ -329,8 +329,7 @@ const getMergeHandler = Effect.gen(function* () {
 
 const getResetHandler = Effect.gen(function* () {
   yield* Effect.logInfo(`🚧 Reset request received`);
-  yield* Reset.resetStateQueue;
-  yield* Reset.resetDeposits;
+  yield* Reset.resetAll;
 
   yield* Effect.all(
     [

@@ -5,11 +5,12 @@ import {
   LucidEvolution,
   PolicyId,
   Script,
+  TxBuilder,
   TxSignBuilder,
   UTxO,
   toUnit,
 } from "@lucid-evolution/lucid";
-import { AlwaysSucceedsContract, Globals, Lucid } from "@/services/index.js";
+import { AlwaysSucceedsContract, AuthenticatedValidator, Globals, Lucid } from "@/services/index.js";
 import { Effect, Ref } from "effect";
 import {
   TxConfirmError,
@@ -19,23 +20,19 @@ import {
 } from "@/transactions/utils.js";
 import { batchProgram } from "@/utils.js";
 
-const collectAndBurnUTxOsProgram = (
+const collectAndBurnUTxOsTx = (
   lucid: LucidEvolution,
-  policyID: PolicyId,
-  spendingScript: Script,
-  mintingScript: Script,
+  authValidator: AuthenticatedValidator,
   assetUTxOs: {
     utxo: UTxO;
     assetName: string;
   }[],
-): Effect.Effect<void, SDK.LucidError | TxSignError | TxSubmitError, Globals> =>
+) =>
   Effect.gen(function* () {
-    const globals = yield* Globals;
-    yield* Ref.set(globals.RESET_IN_PROGRESS, true);
     const tx = lucid.newTx();
     const assetsToBurn: Assets = {};
     assetUTxOs.map(({ utxo, assetName }) => {
-      const unit = toUnit(policyID, assetName);
+      const unit = toUnit(authValidator.policyId, assetName);
       if (assetsToBurn[unit] !== undefined) {
         assetsToBurn[unit] -= 1n;
       } else {
@@ -44,8 +41,18 @@ const collectAndBurnUTxOsProgram = (
       tx.collectFrom([utxo], Data.void());
     });
     tx.mintAssets(assetsToBurn, Data.void())
-      .attach.Script(spendingScript)
-      .attach.Script(mintingScript);
+      .attach.Script(authValidator.spendScript)
+      .attach.Script(authValidator.mintScript);
+    return tx;
+  })
+
+const completeResetTxProgram = (
+  lucid: LucidEvolution,
+  tx: TxBuilder,
+): Effect.Effect<void, SDK.LucidError | TxSignError | TxSubmitError, Globals> =>
+  Effect.gen(function* () {
+    const globals = yield* Globals;
+    yield* Ref.set(globals.RESET_IN_PROGRESS, true);
     const completed: TxSignBuilder = yield* tx.completeProgram().pipe(
       Effect.mapError(
         (e) =>
@@ -76,17 +83,17 @@ const collectAndBurnUTxOsProgram = (
     return txHash;
   });
 
-export const resetStateQueue: Effect.Effect<
+export const resetAll: Effect.Effect<
   void,
   SDK.LucidError | TxSubmitError | TxSignError,
   AlwaysSucceedsContract | Lucid | Globals
 > = Effect.gen(function* () {
   const lucid = yield* Lucid;
-  const { stateQueueAuthValidator } = yield* AlwaysSucceedsContract;
+  const { stateQueueAuthValidator, depositAuthValidator } = yield* AlwaysSucceedsContract;
 
   yield* lucid.switchToOperatorsMainWallet;
 
-  yield* Effect.logInfo("🚧 Fetching state queue UTxOs...");
+  yield* Effect.logInfo("🚧 Fetching UTxOs...");
 
   const allStateQueueUTxOs = yield* SDK.fetchUnsortedStateQueueUTxOsProgram(
     lucid.api,
@@ -96,14 +103,34 @@ export const resetStateQueue: Effect.Effect<
     },
   );
 
-  if (allStateQueueUTxOs.length <= 0) {
-    yield* Effect.logInfo(`🚧 No state queue UTxOs were found.`);
+  const allDepositUTxOs = yield* SDK.fetchDepositUTxOsProgram(lucid.api, {
+    depositAddress: depositAuthValidator.spendScriptAddress,
+    depositPolicyId: depositAuthValidator.policyId,
+  });
+
+  if (allStateQueueUTxOs.length <= 0 && allDepositUTxOs.length <= 0) {
+    yield* Effect.logInfo(`🚧 No UTxOs were found.`);
   }
+
+  const batchSize = 40;
+
+  const stateQueuePartialBatch = allStateQueueUTxOs.splice(Math.floor(allStateQueueUTxOs.length / batchSize), allStateQueueUTxOs.length % batchSize)
+  const depositPartialBatch = allDepositUTxOs.splice(Math.floor(allDepositUTxOs.length / batchSize), allDepositUTxOs.length % batchSize)
 
   yield* lucid.switchToOperatorsMainWallet;
 
-  // Collect and burn 40 UTxOs and asset names at a time:
-  const batchSize = 40;
+  const partialBatchTx: TxBuilder = yield* Effect.gen(function* () {
+    const stateQueuePartialTx = yield* collectAndBurnUTxOsTx(lucid.api, stateQueueAuthValidator, stateQueuePartialBatch);
+    const depositPartialTx = yield* collectAndBurnUTxOsTx(lucid.api, depositAuthValidator, depositPartialBatch);
+    return stateQueuePartialTx.compose(depositPartialTx)
+  })
+
+  // Collect and burn UTxOs, that didn't fill a full batch:
+  yield* Effect.logInfo(`🚧 Mixed Batch 0 - ${stateQueuePartialBatch.length + depositPartialBatch.length}`);
+  yield* completeResetTxProgram(lucid.api, partialBatchTx).pipe(Effect.tapError((e) => Effect.logError(e)));
+
+  // Collect and burn full batches of UTxOs at a time:
+
   yield* batchProgram(
     batchSize,
     allStateQueueUTxOs.length,
@@ -111,68 +138,31 @@ export const resetStateQueue: Effect.Effect<
     (startIndex, endIndex) =>
       Effect.gen(function* () {
         const batch = allStateQueueUTxOs.slice(startIndex, endIndex);
-        yield* Effect.logInfo(`🚧 Batch ${startIndex}-${endIndex}`);
-        yield* collectAndBurnUTxOsProgram(
-          lucid.api,
-          stateQueueAuthValidator.policyId,
-          stateQueueAuthValidator.spendScript,
-          stateQueueAuthValidator.mintScript,
-          batch,
-        );
+        yield* Effect.logInfo(`🚧 StateQueue Batch ${startIndex}-${endIndex}`);
+        const tx = yield* collectAndBurnUTxOsTx(lucid.api, stateQueueAuthValidator, batch);
+        yield* completeResetTxProgram(lucid.api, tx);
       }).pipe(Effect.tapError((e) => Effect.logError(e))),
     1,
   );
+
+  yield* batchProgram(
+    batchSize,
+    allDepositUTxOs.length,
+    "resetDeposit",
+    (startIndex, endIndex) =>
+      Effect.gen(function* () {
+        const batch = allDepositUTxOs.slice(startIndex, endIndex);
+        yield* Effect.logInfo(`🚧 Deposit Batch ${startIndex}-${endIndex}`);
+        const tx = yield* collectAndBurnUTxOsTx(lucid.api, depositAuthValidator, batch);
+        yield* completeResetTxProgram(lucid.api, tx);
+      }).pipe(Effect.tapError((e) => Effect.logError(e))),
+    1,
+  );
+
   yield* Effect.logInfo(`🚧 Resetting global variables...`);
   const globals = yield* Globals;
   yield* Ref.set(globals.LATEST_SYNC_TIME_OF_STATE_QUEUE_LENGTH, Date.now());
   yield* Ref.set(globals.BLOCKS_IN_QUEUE, 0);
   yield* Ref.set(globals.AVAILABLE_CONFIRMED_BLOCK, "");
-  yield* Effect.logInfo(`🚧 Done resetting state queue UTxOs.`);
-});
-
-export const resetDeposits: Effect.Effect<
-  void,
-  SDK.LucidError | TxSubmitError | TxSignError,
-  AlwaysSucceedsContract | Lucid | Globals
-> = Effect.gen(function* () {
-  const lucid = yield* Lucid;
-  const { depositAuthValidator } = yield* AlwaysSucceedsContract;
-
-  yield* lucid.switchToOperatorsMainWallet;
-
-  yield* Effect.logInfo("🚧 Fetching deposit UTxOs...");
-
-  const allDepositUTxOs = yield* SDK.fetchDepositUTxOsProgram(lucid.api, {
-    depositAddress: depositAuthValidator.spendScriptAddress,
-    depositPolicyId: depositAuthValidator.policyId,
-  });
-
-  if (allDepositUTxOs.length <= 0) {
-    yield* Effect.logInfo(`🚧 No deposit UTxOs were found.`);
-  }
-
-  yield* lucid.switchToOperatorsMainWallet;
-
-  // Collect and burn 40 UTxOs and asset names at a time:
-  const batchSize = 40;
-  yield* batchProgram(
-    batchSize,
-    allDepositUTxOs.length,
-    "resetStateQueue",
-    (startIndex, endIndex) =>
-      Effect.gen(function* () {
-        const batch = allDepositUTxOs.slice(startIndex, endIndex);
-        yield* Effect.logInfo(`🚧 Batch ${startIndex}-${endIndex}`);
-        yield* collectAndBurnUTxOsProgram(
-          lucid.api,
-          depositAuthValidator.policyId,
-          depositAuthValidator.spendScript,
-          depositAuthValidator.mintScript,
-          batch,
-        );
-      }).pipe(Effect.tapError((e) => Effect.logError(e))),
-    1,
-  );
-
-  yield* Effect.logInfo(`🚧 Done resetting deposit UTxOs.`);
+  yield* Effect.logInfo(`🚧 Done resetting UTxOs.`);
 });
