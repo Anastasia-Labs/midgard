@@ -33,13 +33,19 @@ import {
   MidgardMpt,
   MptError,
   emptyRootHexProgram,
+  keyValueMptRoot,
   makeMpts,
   withTrieTransaction,
 } from "@/workers/utils/mpt.js";
 import { FileSystemError, batchProgram } from "@/utils.js";
 import { Columns as TxColumns } from "@/database/utils/tx.js";
 import { DatabaseError } from "@/database/utils/common.js";
-import { processTxOrderEvent, processTxRequestEvent, userEventsProgram } from "./utils/user-events.js";
+import {
+  processDepositEvent,
+  processTxOrderEvent,
+  processTxRequestEvent,
+  userEventsProgram,
+} from "./utils/user-events.js";
 
 const BATCH_SIZE = 100;
 
@@ -354,18 +360,9 @@ const databaseOperationsProgram = (
             type: "NothingToCommitOutput",
           } as WorkerOutput;
         } else {
-          const depositsRoot = yield* Option.match(
+          const depositsRoot = yield* processDepositEvent(
             optDepositsRootProgram,
-            {
-              onNone: () => emptyRootHexProgram,
-              onSome: (p) =>
-                Effect.gen(function* ($) {
-                  const depositsRootFiber = yield* $(Effect.fork(p));
-                  const depositRoot = yield* $(depositsRootFiber);
-                  return depositRoot;
-                })}
-              )
-          yield* Effect.logInfo(`🔹 Deposits root is: ${depositsRoot}`);
+          );
           const { signAndSubmitProgram, txSize } = yield* buildUnsignedTx(
             stateQueueAuthValidator,
             latestBlock,
@@ -411,14 +408,7 @@ const databaseOperationsProgram = (
           endTime,
         );
 
-        let depositsRoot: string = yield* emptyRootHexProgram;
-        if (Option.isSome(optDepositsRootProgram)) {
-          const depositsRootFiber = yield* Effect.fork(
-            optDepositsRootProgram.value,
-          );
-          depositsRoot = yield* depositsRootFiber;
-        }
-        yield* Effect.logInfo(`🔹 Deposits root is: ${depositsRoot}`);
+        const depositsRoot = yield* processDepositEvent(optDepositsRootProgram);
 
         const sizeOfTxOrderTxs = yield* processTxOrderEvent(
           startTime,

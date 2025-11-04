@@ -15,11 +15,7 @@ const fetchTxOrderUTxOs = (
   lucid: LucidEvolution,
   inclusionStartTime: number,
   inclusionEndTime: number,
-): Effect.Effect<
-  SDK.TxOrderUTxO[],
-  SDK.LucidError,
-  AlwaysSucceedsContract
-> =>
+): Effect.Effect<SDK.TxOrderUTxO[], SDK.LucidError, AlwaysSucceedsContract> =>
   Effect.gen(function* () {
     const { txOrderAuthValidator } = yield* AlwaysSucceedsContract;
     const fetchConfig: SDK.TxOrderFetchConfig = {
@@ -28,10 +24,7 @@ const fetchTxOrderUTxOs = (
       inclusionStartTime: BigInt(inclusionStartTime),
       inclusionEndTime: BigInt(inclusionEndTime),
     };
-    return yield* SDK.fetchTxOrderUTxOsProgram(
-      lucid,
-      fetchConfig,
-    );
+    return yield* SDK.fetchTxOrderUTxOsProgram(lucid, fetchConfig);
   });
 
 export const fetchAndInsertTxOrderUTxOs = (Effect.Effect<

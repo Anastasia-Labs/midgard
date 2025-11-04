@@ -5,7 +5,12 @@ import { findSpentAndProducedUTxOs } from "@/utils.js";
 import { Database } from "@/services/database.js";
 import { DatabaseError } from "@/database/utils/common.js";
 import * as SDK from "@al-ft/midgard-sdk";
-import { keyValueMptRoot, MidgardMpt, MptError } from "./mpt.js";
+import {
+  emptyRootHexProgram,
+  keyValueMptRoot,
+  MidgardMpt,
+  MptError,
+} from "./mpt.js";
 import * as Tx from "@/database/utils/tx.js";
 import * as Ledger from "@/database/utils/ledger.js";
 import * as UserEvents from "@/database/utils/user-events.js";
@@ -130,11 +135,28 @@ export const processTxRequestEvent = (
     };
   });
 
-  /**
-   * Given the target user event table, this helper finds all the events falling
-   * in the given time range and if any was found, returns an `Effect` that finds
-   * the MPT root of those events.
-   */
+export const processDepositEvent = (
+  optDepositsRootProgram: Option.Option<Effect.Effect<string, MptError, never>>,
+): Effect.Effect<string, MptError, Database> =>
+  Effect.gen(function* () {
+    const depositsRoot: string = yield* Option.match(optDepositsRootProgram, {
+      onNone: () => emptyRootHexProgram,
+      onSome: (p) =>
+        Effect.gen(function* ($) {
+          const depositsRootFiber = yield* $(Effect.fork(p));
+          const depositRoot = yield* $(depositsRootFiber);
+          return depositRoot;
+        }),
+    });
+    yield* Effect.logInfo(`🔹 Deposits root is: ${depositsRoot}`);
+    return depositsRoot;
+  });
+
+/**
+ * Given the target user event table, this helper finds all the events falling
+ * in the given time range and if any was found, returns an `Effect` that finds
+ * the MPT root of those events.
+ */
 export const userEventsProgram = (
   tableName: string,
   startDate: Date,
