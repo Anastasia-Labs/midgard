@@ -33,18 +33,13 @@ import {
   MidgardMpt,
   MptError,
   emptyRootHexProgram,
-  keyValueMptRoot,
   makeMpts,
-  processMpts,
   withTrieTransaction,
 } from "@/workers/utils/mpt.js";
 import { FileSystemError, batchProgram } from "@/utils.js";
 import { Columns as TxColumns } from "@/database/utils/tx.js";
-import {
-  Columns as UserEventsColumns,
-  retrieveTimeBoundEntries,
-} from "@/database/utils/user-events.js";
 import { DatabaseError } from "@/database/utils/common.js";
+import { processTxOrderEvent, processTxRequestEvent, userEventsProgram } from "./utils/user-events.js";
 
 const BATCH_SIZE = 100;
 
@@ -213,42 +208,6 @@ const failedSubmissionProgram = (
     };
   });
 
-/**
- * Given the target user event table, this helper finds all the events falling
- * in the given time range and if any was found, returns an `Effect` that finds
- * the MPT root of those events.
- */
-const userEventsProgram = (
-  tableName: string,
-  startDate: Date,
-  endDate: Date,
-): Effect.Effect<
-  Option.Option<Effect.Effect<string, MptError>>,
-  DatabaseError,
-  Database
-> =>
-  Effect.gen(function* () {
-    const events = yield* retrieveTimeBoundEntries(
-      tableName,
-      startDate,
-      endDate,
-    );
-
-    if (events.length <= 0) {
-      yield* Effect.logInfo(
-        `🔹 No events found in ${tableName} table between ${startDate.getTime()} and ${endDate.getTime()}.`,
-      );
-      return Option.none();
-    } else {
-      yield* Effect.logInfo(
-        `🔹 ${events.length} event(s) found in ${tableName} table between ${startDate.getTime()} and ${endDate.getTime()}.`,
-      );
-      const eventIDs = events.map((event) => event[UserEventsColumns.ID]);
-      const eventInfos = events.map((event) => event[UserEventsColumns.INFO]);
-      return Option.some(keyValueMptRoot(eventIDs, eventInfos));
-    }
-  });
-
 const buildUnsignedTx = (
   stateQueueAuthValidator: AuthenticatedValidator,
   latestBlock: SDK.StateQueueUTxO,
@@ -320,7 +279,7 @@ const databaseOperationsProgram = (
   ledgerTrie: MidgardMpt,
   mempoolTrie: MidgardMpt,
 ): Effect.Effect<
-  WorkerOutput,
+  WorkerOutput | undefined,
   | SDK.CborDeserializationError
   | SDK.CmlUnexpectedError
   | SDK.DataCoercionError
@@ -339,8 +298,8 @@ const databaseOperationsProgram = (
     const optEndTime: Option.Option<Date> =
       yield* establishEndTimeFromTxRequests(mempoolTxs);
 
-    const { utxoRoot, txRoot, mempoolTxHashes, sizeOfProcessedTxs } =
-      yield* processMpts(ledgerTrie, mempoolTrie, mempoolTxs);
+    const { mempoolTxHashes, sizeOfTxRequestTxs } =
+      yield* processTxRequestEvent(ledgerTrie, mempoolTrie, mempoolTxs);
 
     const { stateQueueAuthValidator } = yield* AlwaysSucceedsContract;
 
@@ -359,7 +318,7 @@ const databaseOperationsProgram = (
       return {
         type: "SkippedSubmissionOutput",
         mempoolTxsCount,
-        sizeOfProcessedTxs,
+        sizeOfProcessedTxs: sizeOfTxRequestTxs,
       };
     } else {
       yield* Effect.logInfo(
@@ -384,23 +343,34 @@ const databaseOperationsProgram = (
           startTime,
           endDate,
         );
-        if (Option.isNone(optDepositsRootProgram)) {
+        const sizeOfTxOrderTxs = yield* processTxOrderEvent(
+          startTime,
+          endDate,
+          ledgerTrie,
+        );
+        if (Option.isNone(optDepositsRootProgram) && sizeOfTxOrderTxs === 0) {
           yield* Effect.logInfo("🔹 Nothing to commit.");
           return {
             type: "NothingToCommitOutput",
           } as WorkerOutput;
         } else {
-          const depositsRootFiber = yield* Effect.fork(
-            optDepositsRootProgram.value,
-          );
-          const depositsRoot = yield* depositsRootFiber;
+          const depositsRoot = yield* Option.match(
+            optDepositsRootProgram,
+            {
+              onNone: () => emptyRootHexProgram,
+              onSome: (p) =>
+                Effect.gen(function* ($) {
+                  const depositsRootFiber = yield* $(Effect.fork(p));
+                  const depositRoot = yield* $(depositsRootFiber);
+                  return depositRoot;
+                })}
+              )
           yield* Effect.logInfo(`🔹 Deposits root is: ${depositsRoot}`);
-          const emptyRoot = yield* emptyRootHexProgram;
           const { signAndSubmitProgram, txSize } = yield* buildUnsignedTx(
             stateQueueAuthValidator,
             latestBlock,
-            emptyRoot, // TODO: fix
-            emptyRoot,
+            yield* ledgerTrie.getRootHex(),
+            yield* mempoolTrie.getRootHex(),
             depositsRoot,
             endDate,
           );
@@ -450,12 +420,19 @@ const databaseOperationsProgram = (
         }
         yield* Effect.logInfo(`🔹 Deposits root is: ${depositsRoot}`);
 
+        const sizeOfTxOrderTxs = yield* processTxOrderEvent(
+          startTime,
+          endTime,
+          ledgerTrie,
+        );
+        const sizeOfProcessedTxs = sizeOfTxRequestTxs + sizeOfTxOrderTxs;
+
         const { newHeaderHash, signAndSubmitProgram, txSize } =
           yield* buildUnsignedTx(
             stateQueueAuthValidator,
             latestBlock,
-            utxoRoot,
-            txRoot,
+            yield* ledgerTrie.getRootHex(),
+            yield* mempoolTrie.getRootHex(),
             depositsRoot,
             endTime,
           );

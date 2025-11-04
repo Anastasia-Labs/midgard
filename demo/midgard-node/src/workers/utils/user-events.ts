@@ -1,11 +1,11 @@
 import { TxOrdersDB, LedgerUtils } from "@/database/index.js";
-import { Effect } from "effect";
+import { Effect, Option } from "effect";
 import * as ETH_UTILS from "@ethereumjs/util";
 import { findSpentAndProducedUTxOs } from "@/utils.js";
 import { Database } from "@/services/database.js";
 import { DatabaseError } from "@/database/utils/common.js";
 import * as SDK from "@al-ft/midgard-sdk";
-import { MidgardMpt, MptError } from "./mpt.js";
+import { keyValueMptRoot, MidgardMpt, MptError } from "./mpt.js";
 import * as Tx from "@/database/utils/tx.js";
 import * as Ledger from "@/database/utils/ledger.js";
 import * as UserEvents from "@/database/utils/user-events.js";
@@ -128,4 +128,40 @@ export const processTxRequestEvent = (
       mempoolTxHashes,
       sizeOfTxRequestTxs: sizeOfProcessedTxs,
     };
+  });
+
+  /**
+   * Given the target user event table, this helper finds all the events falling
+   * in the given time range and if any was found, returns an `Effect` that finds
+   * the MPT root of those events.
+   */
+export const userEventsProgram = (
+  tableName: string,
+  startDate: Date,
+  endDate: Date,
+): Effect.Effect<
+  Option.Option<Effect.Effect<string, MptError>>,
+  DatabaseError,
+  Database
+> =>
+  Effect.gen(function* () {
+    const events = yield* UserEvents.retrieveTimeBoundEntries(
+      tableName,
+      startDate,
+      endDate,
+    );
+
+    if (events.length <= 0) {
+      yield* Effect.logInfo(
+        `🔹 No events found in ${tableName} table between ${startDate.getTime()} and ${endDate.getTime()}.`,
+      );
+      return Option.none();
+    } else {
+      yield* Effect.logInfo(
+        `🔹 ${events.length} event(s) found in ${tableName} table between ${startDate.getTime()} and ${endDate.getTime()}.`,
+      );
+      const eventIDs = events.map((event) => event[UserEvents.Columns.ID]);
+      const eventInfos = events.map((event) => event[UserEvents.Columns.INFO]);
+      return Option.some(keyValueMptRoot(eventIDs, eventInfos));
+    }
   });
