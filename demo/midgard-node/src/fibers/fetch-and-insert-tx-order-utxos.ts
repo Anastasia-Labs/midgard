@@ -16,19 +16,19 @@ const fetchTxOrderUTxOs = (
   inclusionStartTime: number,
   inclusionEndTime: number,
 ): Effect.Effect<
-  SDK.TxBuilder.UserEvents.TxOrder.TxOrderUTxO[],
-  SDK.Utils.LucidError,
+  SDK.TxOrderUTxO[],
+  SDK.LucidError,
   AlwaysSucceedsContract
 > =>
   Effect.gen(function* () {
     const { txOrderAuthValidator } = yield* AlwaysSucceedsContract;
-    const fetchConfig: SDK.TxBuilder.UserEvents.TxOrder.FetchConfig = {
+    const fetchConfig: SDK.TxOrderFetchConfig = {
       txOrderAddress: txOrderAuthValidator.spendScriptAddress,
       txOrderPolicyId: txOrderAuthValidator.policyId,
       inclusionStartTime: BigInt(inclusionStartTime),
       inclusionEndTime: BigInt(inclusionEndTime),
     };
-    return yield* SDK.Endpoints.UserEvents.fetchTxOrderUTxOsProgram(
+    return yield* SDK.fetchTxOrderUTxOsProgram(
       lucid,
       fetchConfig,
     );
@@ -36,7 +36,7 @@ const fetchTxOrderUTxOs = (
 
 export const fetchAndInsertTxOrderUTxOs = (Effect.Effect<
   void,
-  SDK.Utils.LucidError | DatabaseError,
+  SDK.LucidError | DatabaseError,
   AlwaysSucceedsContract | Lucid | Database | Globals
 > = Effect.gen(function* () {
   const { api: lucid } = yield* Lucid;
@@ -55,7 +55,7 @@ export const fetchAndInsertTxOrderUTxOs = (Effect.Effect<
 
   yield* Effect.logInfo(`${txOrderUTxOs.length} deposit UTxOs found.`);
 
-  const entries: TxOrdersDB.Entry[] = txOrderUTxOs.map((utxo) => ({
+  const entries: UserEventsUtils.Entry[] = txOrderUTxOs.map((utxo) => ({
     [UserEventsUtils.Columns.ID]: utxo.idCbor,
     [UserEventsUtils.Columns.INFO]: utxo.infoCbor,
     [UserEventsUtils.Columns.INCLUSION_TIME]: utxo.inclusionTime,
@@ -70,7 +70,7 @@ export const fetchAndInsertTxOrderUTxOsFiber = (
   schedule: Schedule.Schedule<number>,
 ): Effect.Effect<
   void,
-  SDK.Utils.LucidError | DatabaseError,
+  SDK.LucidError | DatabaseError,
   AlwaysSucceedsContract | Lucid | Database | Globals
 > =>
   Effect.gen(function* () {
