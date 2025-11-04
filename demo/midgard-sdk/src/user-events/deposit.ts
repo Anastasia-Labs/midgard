@@ -192,8 +192,8 @@ export const fetchDepositUTxOsProgram = (
     const validDepositUTxOs = depositUTxOs.filter((utxo) =>
       isUTxOTimeValid(
         utxo,
-        config.inclusionTimeUpperBound,
         config.inclusionTimeLowerBound,
+        config.inclusionTimeUpperBound,
       ),
     );
     return validDepositUTxOs;
