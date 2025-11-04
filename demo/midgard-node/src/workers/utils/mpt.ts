@@ -6,7 +6,9 @@ import * as ETH_UTILS from "@ethereumjs/util";
 import { UTxO, toHex, utxoToCore } from "@lucid-evolution/lucid";
 import { Level } from "level";
 import { Database, NodeConfig } from "@/services/index.js";
-import { FileSystemError } from "@/utils.js";
+import * as Tx from "@/database/utils/tx.js";
+import * as Ledger from "@/database/utils/ledger.js";
+import { FileSystemError, findSpentAndProducedUTxOs } from "@/utils.js";
 import * as FS from "fs";
 import * as SDK from "@al-ft/midgard-sdk";
 import { DatabaseError } from "@/database/utils/common.js";
@@ -86,6 +88,79 @@ export const deleteMpt = (
         cause: e,
       }),
   }).pipe(Effect.withLogSpan(`Delete ${name} MPT`));
+
+// Make mempool trie, and fill it with ledger trie with processed mempool txs
+export const processMpts = (
+  ledgerTrie: MidgardMpt,
+  mempoolTrie: MidgardMpt,
+  mempoolTxs: readonly Tx.Entry[],
+): Effect.Effect<
+  {
+    utxoRoot: string;
+    txRoot: string;
+    mempoolTxHashes: Buffer[];
+    sizeOfProcessedTxs: number;
+  },
+  MptError | SDK.CmlUnexpectedError,
+  Database
+> =>
+  Effect.gen(function* () {
+    const mempoolTxHashes: Buffer[] = [];
+    const mempoolBatchOps: ETH_UTILS.BatchDBOp[] = [];
+    const batchDBOps: ETH_UTILS.BatchDBOp[] = [];
+    let sizeOfProcessedTxs = 0;
+    yield* Effect.logInfo("🔹 Going through mempool txs and finding roots...");
+    yield* Effect.forEach(mempoolTxs, (entry: Tx.Entry) =>
+      Effect.gen(function* () {
+        const txHash = entry[Tx.Columns.TX_ID];
+        const txCbor = entry[Tx.Columns.TX];
+        mempoolTxHashes.push(txHash);
+        const { spent, produced } = yield* findSpentAndProducedUTxOs(
+          txCbor,
+          txHash,
+        ).pipe(Effect.withSpan("findSpentAndProducedUTxOs"));
+        sizeOfProcessedTxs += txCbor.length;
+        const delOps: ETH_UTILS.BatchDBOp[] = spent.map((outRef) => ({
+          type: "del",
+          key: outRef,
+        }));
+        const putOps: ETH_UTILS.BatchDBOp[] = produced.map(
+          (le: Ledger.MinimalEntry) => ({
+            type: "put",
+            key: le[Ledger.Columns.OUTREF],
+            value: le[Ledger.Columns.OUTPUT],
+          }),
+        );
+        yield* Effect.sync(() =>
+          mempoolBatchOps.push({
+            type: "put",
+            key: txHash,
+            value: txCbor,
+          }),
+        );
+        yield* Effect.sync(() => batchDBOps.push(...delOps));
+        yield* Effect.sync(() => batchDBOps.push(...putOps));
+      }),
+    );
+
+    yield* Effect.all(
+      [mempoolTrie.batch(mempoolBatchOps), ledgerTrie.batch(batchDBOps)],
+      { concurrency: "unbounded" },
+    );
+
+    const txRoot = yield* mempoolTrie.getRootHex();
+    const utxoRoot = yield* ledgerTrie.getRootHex();
+
+    yield* Effect.logInfo(`🔹 New transaction root found: ${txRoot}`);
+    yield* Effect.logInfo(`🔹 New UTxO root found: ${utxoRoot}`);
+
+    return {
+      utxoRoot,
+      txRoot,
+      mempoolTxHashes: mempoolTxHashes,
+      sizeOfProcessedTxs: sizeOfProcessedTxs,
+    };
+  });
 
 export const keyValueMptRoot = (
   keys: Buffer[],

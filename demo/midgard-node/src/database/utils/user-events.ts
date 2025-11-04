@@ -85,9 +85,10 @@ export const retrieveTimeBoundEntries = (
       `${tableName} db: attempt to retrieveTimeBoundEntries`,
     );
     const sql = yield* SqlClient.SqlClient;
-    return yield* sql<Entry>`SELECT * FROM ${sql(
+    const result = yield* sql<Entry>`SELECT * FROM ${sql(
       tableName,
     )} WHERE ${startTime} < ${sql(Columns.INCLUSION_TIME)} AND ${sql(Columns.INCLUSION_TIME)} <= ${endTime}`;
+    return result;
   }).pipe(
     Effect.withLogSpan(`retrieveTimeBoundEntries ${tableName}`),
     Effect.tapErrorTag("SqlError", (e) =>

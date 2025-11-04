@@ -30,7 +30,7 @@ import {
   POSIXTime,
   POSIXTimeSchema,
 } from "@/common.js";
-import { getProtocolParameters } from "@/protocolParameters.js";
+import { getProtocolParameters } from "@/protocol-parameters.js";
 
 export type DepositParams = {
   depositScriptAddress: string;
@@ -192,8 +192,8 @@ export const fetchDepositUTxOsProgram = (
     const validDepositUTxOs = depositUTxOs.filter((utxo) =>
       isUTxOTimeValid(
         utxo,
-        config.inclusionTimeUpperBound,
         config.inclusionTimeLowerBound,
+        config.inclusionTimeUpperBound,
       ),
     );
     return validDepositUTxOs;

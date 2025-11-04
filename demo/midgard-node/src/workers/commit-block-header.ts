@@ -35,6 +35,7 @@ import {
   emptyRootHexProgram,
   keyValueMptRoot,
   makeMpts,
+  processMpts,
   withTrieTransaction,
 } from "@/workers/utils/mpt.js";
 import { FileSystemError, batchProgram } from "@/utils.js";
@@ -44,11 +45,6 @@ import {
   retrieveTimeBoundEntries,
 } from "@/database/utils/user-events.js";
 import { DatabaseError } from "@/database/utils/common.js";
-import {
-  processTxOrderEvent,
-  processTxRequestEvent,
-} from "./utils/user-events.js";
-import { match } from "effect/String";
 
 const BATCH_SIZE = 100;
 
@@ -108,11 +104,7 @@ const successfulSubmissionProgram = (
   txSize: number,
   sizeOfProcessedTxs: number,
   txHash: string,
-): Effect.Effect<
-  WorkerOutput,
-  DatabaseError | FileSystemError,
-  Database | NodeConfig
-> =>
+): Effect.Effect<WorkerOutput, DatabaseError | FileSystemError, Database> =>
   Effect.gen(function* () {
     const newHeaderHashBuffer = Buffer.from(fromHex(newHeaderHash));
 
@@ -243,9 +235,14 @@ const userEventsProgram = (
     );
 
     if (events.length <= 0) {
-      yield* Effect.logInfo(`🔹 No events found in ${tableName} table.`);
+      yield* Effect.logInfo(
+        `🔹 No events found in ${tableName} table between ${startDate.getTime()} and ${endDate.getTime()}.`,
+      );
       return Option.none();
     } else {
+      yield* Effect.logInfo(
+        `🔹 ${events.length} event(s) found in ${tableName} table between ${startDate.getTime()} and ${endDate.getTime()}.`,
+      );
       const eventIDs = events.map((event) => event[UserEventsColumns.ID]);
       const eventInfos = events.map((event) => event[UserEventsColumns.INFO]);
       return Option.some(keyValueMptRoot(eventIDs, eventInfos));
@@ -262,8 +259,8 @@ const buildUnsignedTx = (
 ) =>
   Effect.gen(function* () {
     const lucid = yield* Lucid;
-
     yield* Effect.logInfo("🔹 Finding updated block datum and new header...");
+    yield* lucid.switchToOperatorsMainWallet;
     const { nodeDatum: updatedNodeDatum, header: newHeader } =
       yield* SDK.updateLatestBlocksDatumAndGetTheNewHeaderProgram(
         lucid.api,
@@ -333,7 +330,7 @@ const databaseOperationsProgram = (
   | DatabaseError
   | FileSystemError
   | MptError,
-  AlwaysSucceedsContract | Database | NodeConfig | Lucid
+  AlwaysSucceedsContract | Database | Lucid
 > =>
   Effect.gen(function* () {
     const mempoolTxs = yield* MempoolDB.retrieve;
@@ -342,8 +339,8 @@ const databaseOperationsProgram = (
     const optEndTime: Option.Option<Date> =
       yield* establishEndTimeFromTxRequests(mempoolTxs);
 
-    const { mempoolTxHashes, sizeOfTxRequestTxs } =
-      yield* processTxRequestEvent(ledgerTrie, mempoolTrie, mempoolTxs);
+    const { utxoRoot, txRoot, mempoolTxHashes, sizeOfProcessedTxs } =
+      yield* processMpts(ledgerTrie, mempoolTrie, mempoolTxs);
 
     const { stateQueueAuthValidator } = yield* AlwaysSucceedsContract;
 
@@ -362,7 +359,7 @@ const databaseOperationsProgram = (
       return {
         type: "SkippedSubmissionOutput",
         mempoolTxsCount,
-        sizeOfProcessedTxs: sizeOfTxRequestTxs,
+        sizeOfProcessedTxs,
       };
     } else {
       yield* Effect.logInfo(
@@ -379,43 +376,31 @@ const databaseOperationsProgram = (
         // in `MempoolDB`). We check if there are any user events slated for
         // inclusion within `startTime` and current moment.
         const endDate = new Date();
+        yield* Effect.logInfo(
+          "🔹 Checking for user events... (no tx requests in queue)",
+        );
         const optDepositsRootProgram = yield* userEventsProgram(
           DepositsDB.tableName,
           startTime,
           endDate,
         );
-        const { ledgerTrie } = yield* makeMpts;
-        const sizeOfTxOrderTxs = yield* processTxOrderEvent(
-          startTime,
-          endDate,
-          ledgerTrie,
-        );
-        if (Option.isNone(optDepositsRootProgram) && sizeOfTxOrderTxs === 0) {
+        if (Option.isNone(optDepositsRootProgram)) {
           yield* Effect.logInfo("🔹 Nothing to commit.");
           return {
             type: "NothingToCommitOutput",
           } as WorkerOutput;
         } else {
-          const emptyRoot = yield* emptyRootHexProgram;
-          const depositsRoot = yield* Option.match(
-            optDepositsRootProgram,
-            {
-              onNone: () => Effect.succeed(emptyRoot),
-              onSome: (p) =>
-                Effect.gen(function* ($) {
-                  const depositsRootFiber = yield* $(Effect.fork(p));
-                  const depositRoot = yield* $(depositsRootFiber);
-                  return depositRoot;
-                }),
-            },
+          const depositsRootFiber = yield* Effect.fork(
+            optDepositsRootProgram.value,
           );
-          const utxoRoot = yield* ledgerTrie.getRootHex();
-          const txRoot = yield* mempoolTrie.getRootHex();
+          const depositsRoot = yield* depositsRootFiber;
+          yield* Effect.logInfo(`🔹 Deposits root is: ${depositsRoot}`);
+          const emptyRoot = yield* emptyRootHexProgram;
           const { signAndSubmitProgram, txSize } = yield* buildUnsignedTx(
             stateQueueAuthValidator,
             latestBlock,
-            utxoRoot,
-            txRoot,
+            emptyRoot, // TODO: fix
+            emptyRoot,
             depositsRoot,
             endDate,
           );
@@ -437,7 +422,7 @@ const databaseOperationsProgram = (
               Effect.succeed({
                 type: "SuccessfulSubmissionOutput",
                 submittedTxHash: txHash,
-                txSize: txSize + sizeOfTxRequestTxs,
+                txSize,
                 mempoolTxsCount: 0,
                 sizeOfBlocksTxs: workerInput.data.sizeOfProcessedTxsSoFar,
               } as WorkerOutput),
@@ -449,28 +434,21 @@ const databaseOperationsProgram = (
         // bound of the block we are about to submit.
         const endTime = optEndTime.value;
 
-        yield* Effect.logInfo("🔹 Finding deposits root...");
+        yield* Effect.logInfo("🔹 Checking for user events...");
         const optDepositsRootProgram = yield* userEventsProgram(
           DepositsDB.tableName,
           startTime,
           endTime,
         );
 
-        let depositsRoot = yield* emptyRootHexProgram;
+        let depositsRoot: string = yield* emptyRootHexProgram;
         if (Option.isSome(optDepositsRootProgram)) {
           const depositsRootFiber = yield* Effect.fork(
             optDepositsRootProgram.value,
           );
           depositsRoot = yield* depositsRootFiber;
         }
-
-        const sizeOfTxOrderTxs = yield* processTxOrderEvent(
-          startTime,
-          endTime,
-          ledgerTrie,
-        );
-        const utxoRoot = yield* ledgerTrie.getRootHex();
-        const txRoot = yield* mempoolTrie.getRootHex();
+        yield* Effect.logInfo(`🔹 Deposits root is: ${depositsRoot}`);
 
         const { newHeaderHash, signAndSubmitProgram, txSize } =
           yield* buildUnsignedTx(
@@ -504,7 +482,7 @@ const databaseOperationsProgram = (
                 return yield* failedSubmissionProgram(
                   mempoolTrie,
                   mempoolTxsCount,
-                  sizeOfTxRequestTxs + sizeOfTxOrderTxs,
+                  sizeOfProcessedTxs,
                   e,
                 );
               }),
@@ -517,7 +495,7 @@ const databaseOperationsProgram = (
               newHeaderHash,
               workerInput,
               txSize,
-              sizeOfTxRequestTxs + sizeOfTxOrderTxs,
+              sizeOfProcessedTxs,
               txHash,
             ),
         });
