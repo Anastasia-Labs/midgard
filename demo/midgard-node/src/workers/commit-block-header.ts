@@ -44,6 +44,11 @@ import {
   retrieveTimeBoundEntries,
 } from "@/database/utils/user-events.js";
 import { DatabaseError } from "@/database/utils/common.js";
+import {
+  processTxOrderEvent,
+  processTxRequestEvent,
+} from "./utils/user-events.js";
+import { match } from "effect/String";
 
 const BATCH_SIZE = 100;
 
@@ -337,8 +342,8 @@ const databaseOperationsProgram = (
     const optEndTime: Option.Option<Date> =
       yield* establishEndTimeFromTxRequests(mempoolTxs);
 
-    const { utxoRoot, txRoot, mempoolTxHashes, sizeOfProcessedTxs } =
-      yield* processMpts(ledgerTrie, mempoolTrie, mempoolTxs);
+    const { mempoolTxHashes, sizeOfTxRequestTxs } =
+      yield* processTxRequestEvent(ledgerTrie, mempoolTrie, mempoolTxs);
 
     const { stateQueueAuthValidator } = yield* AlwaysSucceedsContract;
 
@@ -357,7 +362,7 @@ const databaseOperationsProgram = (
       return {
         type: "SkippedSubmissionOutput",
         mempoolTxsCount,
-        sizeOfProcessedTxs,
+        sizeOfProcessedTxs: sizeOfTxRequestTxs,
       };
     } else {
       yield* Effect.logInfo(
@@ -379,22 +384,38 @@ const databaseOperationsProgram = (
           startTime,
           endDate,
         );
-        if (Option.isNone(optDepositsRootProgram)) {
+        const { ledgerTrie } = yield* makeMpts;
+        const sizeOfTxOrderTxs = yield* processTxOrderEvent(
+          startTime,
+          endDate,
+          ledgerTrie,
+        );
+        if (Option.isNone(optDepositsRootProgram) && sizeOfTxOrderTxs === 0) {
           yield* Effect.logInfo("🔹 Nothing to commit.");
           return {
             type: "NothingToCommitOutput",
           } as WorkerOutput;
         } else {
-          const depositsRootFiber = yield* Effect.fork(
-            optDepositsRootProgram.value,
-          );
-          const depositsRoot = yield* depositsRootFiber;
           const emptyRoot = yield* emptyRootHexProgram;
+          const depositsRoot = yield* Option.match(
+            optDepositsRootProgram,
+            {
+              onNone: () => Effect.succeed(emptyRoot),
+              onSome: (p) =>
+                Effect.gen(function* ($) {
+                  const depositsRootFiber = yield* $(Effect.fork(p));
+                  const depositRoot = yield* $(depositsRootFiber);
+                  return depositRoot;
+                }),
+            },
+          );
+          const utxoRoot = yield* ledgerTrie.getRootHex();
+          const txRoot = yield* mempoolTrie.getRootHex();
           const { signAndSubmitProgram, txSize } = yield* buildUnsignedTx(
             stateQueueAuthValidator,
             latestBlock,
-            emptyRoot,
-            emptyRoot,
+            utxoRoot,
+            txRoot,
             depositsRoot,
             endDate,
           );
@@ -416,7 +437,7 @@ const databaseOperationsProgram = (
               Effect.succeed({
                 type: "SuccessfulSubmissionOutput",
                 submittedTxHash: txHash,
-                txSize,
+                txSize: txSize + sizeOfTxRequestTxs,
                 mempoolTxsCount: 0,
                 sizeOfBlocksTxs: workerInput.data.sizeOfProcessedTxsSoFar,
               } as WorkerOutput),
@@ -434,8 +455,6 @@ const databaseOperationsProgram = (
           startTime,
           endTime,
         );
-        const sizeOfProcessedTxs =
-          sizeOfTxRequestTxs + sizeOfTxOrderTxs + sizeOfDepositTxs;
 
         let depositsRoot = yield* emptyRootHexProgram;
         if (Option.isSome(optDepositsRootProgram)) {
@@ -444,6 +463,14 @@ const databaseOperationsProgram = (
           );
           depositsRoot = yield* depositsRootFiber;
         }
+
+        const sizeOfTxOrderTxs = yield* processTxOrderEvent(
+          startTime,
+          endTime,
+          ledgerTrie,
+        );
+        const utxoRoot = yield* ledgerTrie.getRootHex();
+        const txRoot = yield* mempoolTrie.getRootHex();
 
         const { newHeaderHash, signAndSubmitProgram, txSize } =
           yield* buildUnsignedTx(
@@ -477,7 +504,7 @@ const databaseOperationsProgram = (
                 return yield* failedSubmissionProgram(
                   mempoolTrie,
                   mempoolTxsCount,
-                  sizeOfProcessedTxs,
+                  sizeOfTxRequestTxs + sizeOfTxOrderTxs,
                   e,
                 );
               }),
@@ -490,7 +517,7 @@ const databaseOperationsProgram = (
               newHeaderHash,
               workerInput,
               txSize,
-              sizeOfProcessedTxs,
+              sizeOfTxRequestTxs + sizeOfTxOrderTxs,
               txHash,
             ),
         });

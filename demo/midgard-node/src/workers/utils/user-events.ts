@@ -1,16 +1,11 @@
-import {
-  TxOrdersDB,
-  DepositsDB,
-  LedgerUtils,
-  UserEventsUtils,
-} from "@/database/index.js";
+import { TxOrdersDB, LedgerUtils } from "@/database/index.js";
 import { Effect } from "effect";
 import * as ETH_UTILS from "@ethereumjs/util";
 import { findSpentAndProducedUTxOs } from "@/utils.js";
 import { Database } from "@/services/database.js";
 import { DatabaseError } from "@/database/utils/common.js";
 import * as SDK from "@al-ft/midgard-sdk";
-import { keyValueMptRoot, MidgardMpt, MptError } from "./mpt.js";
+import { MidgardMpt, MptError } from "./mpt.js";
 import * as Tx from "@/database/utils/tx.js";
 import * as Ledger from "@/database/utils/ledger.js";
 import * as UserEvents from "@/database/utils/user-events.js";
@@ -21,7 +16,7 @@ export const processTxOrderEvent = (
   ledgerTrie: MidgardMpt,
 ): Effect.Effect<
   number,
-  DatabaseError | SDK.Utils.CmlUnexpectedError | MptError,
+  DatabaseError | SDK.CmlUnexpectedError | MptError,
   Database
 > =>
   Effect.gen(function* () {
@@ -74,7 +69,7 @@ export const processTxRequestEvent = (
     mempoolTxHashes: Buffer[];
     sizeOfTxRequestTxs: number;
   },
-  MptError | SDK.Utils.CmlUnexpectedError,
+  MptError | SDK.CmlUnexpectedError,
   Database
 > =>
   Effect.gen(function* () {
@@ -132,42 +127,5 @@ export const processTxRequestEvent = (
     return {
       mempoolTxHashes,
       sizeOfTxRequestTxs: sizeOfProcessedTxs,
-    };
-  });
-
-export const processDepositEvent = (
-  startTime: Date,
-  endTime: Date,
-): Effect.Effect<
-  { depositRoot: string; sizeOfDepositTxs: number },
-  DatabaseError | MptError,
-  Database
-> =>
-  Effect.gen(function* () {
-    const deposits = yield* DepositsDB.retrieveTimeBoundEntries(
-      startTime,
-      endTime,
-    );
-    yield* Effect.logInfo(`🔹 Processing ${deposits.length} new deposits...`);
-    const depositIDs = deposits.map(
-      (deposit) => deposit[UserEvents.Columns.ID],
-    );
-    const depositInfos = deposits.map(
-      (deposit) => deposit[UserEvents.Columns.INFO],
-    );
-    const depositRootFiber = yield* Effect.fork(
-      keyValueMptRoot(depositIDs, depositInfos),
-    );
-    const depositRoot = yield* depositRootFiber;
-    const sizeOfDepositTxs = depositInfos
-      .map((i) => i.length)
-      .reduce((acc, curr) => acc + curr, 0);
-    yield* Effect.logInfo(
-      `🔹 ${deposits.length} new deposits processed - new deposit root is ${depositRoot}`,
-    );
-    yield* Effect.logInfo(`🔹 New deposits root found: ${depositRoot}`);
-    return {
-      depositRoot,
-      sizeOfDepositTxs,
     };
   });
