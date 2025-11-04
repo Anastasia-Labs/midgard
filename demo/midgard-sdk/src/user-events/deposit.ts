@@ -30,7 +30,7 @@ import {
   POSIXTime,
   POSIXTimeSchema,
 } from "@/common.js";
-import { getProtocolParameters } from "@/protocolParameters.js";
+import { getProtocolParameters } from "@/protocol-parameters.js";
 
 export type DepositParams = {
   depositScriptAddress: string;
