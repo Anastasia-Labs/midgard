@@ -87,21 +87,22 @@ const constructBatchTx = (
 
 const constructBatchTxs = (
   lucid: LucidEvolution,
-  utxoQueue: ValidatorUTxOsPair[],
+  utxosQueue: ValidatorUTxOsPair[],
   batchSize: number,
 ): Effect.Effect<TxBuilder[]> =>
   Effect.gen(function* () {
     let accTransactions: TxBuilder[] = []
-    let currValidatorUTxOsPairs = utxoQueue
-    while (currValidatorUTxOsPairs.length >= 0) {
-      const optBatchTx = yield* constructBatchTx(lucid, utxoQueue, batchSize)
+    let currUtxoQueue = utxosQueue
+
+    while (currUtxoQueue.length >= 0) {
+      const optBatchTx = yield* constructBatchTx(lucid, utxosQueue, batchSize)
       const batchTx = Option.getOrElse(optBatchTx, () => ({
         batchTx: lucid.newTx(),
         restQueue: [],
       }))
 
       accTransactions.push(batchTx.batchTx)
-      currValidatorUTxOsPairs = batchTx.restQueue
+      currUtxoQueue = batchTx.restQueue
     }
 
     return accTransactions
@@ -173,7 +174,7 @@ export const resetAll: Effect.Effect<
     yield* Effect.logInfo(`🚧 No UTxOs were found.`);
   }
 
-  const validatorUTxOPairs: ValidatorUTxOsPair[] = [
+  const utxosQueue: ValidatorUTxOsPair[] = [
     {
       authValidator: stateQueueAuthValidator,
       assetUTxOs: allStateQueueUTxOs,
@@ -185,19 +186,12 @@ export const resetAll: Effect.Effect<
   ]
 
   const batchSize = 40;
-  const optBatchTransaction = yield* constructBatchTx(lucid.api, validatorUTxOPairs, batchSize)
-  const batchTransaction = Option.getOrThrow(optBatchTransaction)
-
-  yield* Effect.logInfo(`🚧 StateQueue Batch`);
-  yield* completeResetTxProgram(lucid.api, batchTransaction.batchTx);
-
-  // const batchTransactions = yield* constructBatchTxs(lucid.api, validatorUTxOPairs, batchSize)
-  // yield* Effect.forEach(batchTransactions, (tx, i) =>
-  //   Effect.gen(function* () {
-  //     yield* Effect.logInfo(`🚧 StateQueue Batch ${i}`);
-  //     yield* completeResetTxProgram(lucid.api, tx);
-  // }).pipe(Effect.tapError((e) => Effect.logError(e))))
-
+  const batchTransactions = yield* constructBatchTxs(lucid.api, utxosQueue, batchSize)
+  yield* Effect.forEach(batchTransactions, (tx, i) =>
+    Effect.gen(function* () {
+      yield* Effect.logInfo(`🚧 UTxOs Batch ${i}`);
+      yield* completeResetTxProgram(lucid.api, tx);
+  }).pipe(Effect.tapError((e) => Effect.logError(e))))
 
   yield* Effect.logInfo(`🚧 Resetting global variables...`);
   const globals = yield* Globals;
