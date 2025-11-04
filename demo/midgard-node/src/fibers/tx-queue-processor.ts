@@ -15,7 +15,7 @@ const txQueueProcessorAction = (
   txQueue: Queue.Dequeue<string>,
 ): Effect.Effect<
   void,
-  DatabaseError | SDK.Utils.CmlDeserializationError,
+  DatabaseError | SDK.CmlDeserializationError,
   SqlClient
 > =>
   Effect.gen(function* () {
