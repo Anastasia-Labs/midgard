@@ -1,19 +1,13 @@
 use aiken/merkle_patricia_forestry as mpf
-use midgard/ledger_state
+use midgard/ledger_state.{WithdrawalEvent, WithdrawalValidity}
 use midgard/user_events
 
 pub type Datum =
-  user_events.Datum<ledger_state.WithdrawalEvent>
+  user_events.OptimisticDatum<WithdrawalEvent>
 
 pub type SpendPurpose {
-  InitializePayout { membership_proof: mpf.Proof }
-  Refund { refund_approach: user_events.RefundApproach }
-}
-
-pub type RefundApproach {
-  InvalidOrder { membership_proof: mpf.Proof }
-  SkippedEvent { non_membership_proof: mpf.Proof }
-  EventInSettlementGap { settlement_link_ref_input_index: Int }
+  InitializePayout
+  Refund { validity_override: WithdrawalValidity }
 }
 
 pub type SpendRedeemer {
@@ -23,5 +17,6 @@ pub type SpendRedeemer {
   settlement_ref_input_index: Int,
   burn_redeemer_index: Int,
   payout_mint_redeemer_index: Int,
+  membership_proof: mpf.Proof,
   purpose: SpendPurpose,
 }
