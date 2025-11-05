@@ -2,6 +2,8 @@
 
 ## How to Run
 
+### Local Run (without monitoring)
+
 ```sh
 # Optional
 nix develop
@@ -14,6 +16,28 @@ cd ../midgard-node
 pnpm install
 pnpm run listen
 ```
+
+### Local Run (with monitoring)
+
+For running the app locally with **full monitoring capabilities** (Prometheus metrics and Grafana dashboards), use the local monitoring setup:
+
+```sh
+cd local-monitoring
+./start.sh
+```
+
+This will start:
+- Midgard Node (API: http://localhost:3000, Metrics: http://localhost:9464)
+- Prometheus (http://localhost:9090)
+- Grafana with dashboards (http://localhost:3001)
+
+To stop all services:
+```sh
+cd local-monitoring
+./stop.sh
+```
+
+See [local-monitoring/README.md](local-monitoring/README.md) for detailed documentation.
 
 ## Build image
 

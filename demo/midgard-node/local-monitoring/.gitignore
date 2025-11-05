@@ -1,0 +1,19 @@
+# Data directories
+data/
+loki-data/
+tempo-data/
+
+# Grafana provisioning (generated at runtime)
+grafana-provisioning/
+
+# Logs
+*.log
+
+# Backup files
+*.backup
+*.backup-*
+
+# Runtime configurations
+promtail-config-runtime.yaml
+.monitoring.pids
+

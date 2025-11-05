@@ -1,0 +1,52 @@
+server:
+  http_listen_port: 9080
+  grpc_listen_port: 0
+
+positions:
+  filename: /tmp/positions.yaml
+
+clients:
+  - url: http://localhost:3100/loki/api/v1/push
+
+scrape_configs:
+  # Scrape Midgard node logs
+  - job_name: midgard
+    static_configs:
+      - targets:
+          - localhost
+        labels:
+          job: midgard-node
+          service: midgard
+          __path__: LOG_DIR_PLACEHOLDER/midgard.log
+
+  # Scrape Prometheus logs
+  - job_name: prometheus
+    static_configs:
+      - targets:
+          - localhost
+        labels:
+          job: prometheus
+          service: monitoring
+          __path__: LOG_DIR_PLACEHOLDER/prometheus.log
+
+  # Scrape Grafana logs
+  - job_name: grafana
+    static_configs:
+      - targets:
+          - localhost
+        labels:
+          job: grafana
+          service: monitoring
+          __path__: LOG_DIR_PLACEHOLDER/grafana.log
+
+  # Scrape Node Exporter logs
+  - job_name: node_exporter
+    static_configs:
+      - targets:
+          - localhost
+        labels:
+          job: node-exporter
+          service: monitoring
+          __path__: LOG_DIR_PLACEHOLDER/node_exporter.log
+
+
