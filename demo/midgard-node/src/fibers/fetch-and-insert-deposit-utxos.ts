@@ -39,7 +39,7 @@ export const fetchAndInsertDepositUTxOs: Effect.Effect<
 
   yield* Effect.logDebug("🏦 fetching DepositUTxOs...");
 
-  const depositUTxOs = yield* fetchDepositUTxOs(lucid, startTime, endTime);
+  const depositUTxOs: SDK.DepositUTxO[] = yield* fetchDepositUTxOs(lucid, startTime, endTime)
 
   if (depositUTxOs.length <= 0) {
     yield* Effect.logDebug("🏦 No deposit UTxOs found.");
@@ -68,6 +68,9 @@ export const fetchAndInsertDepositUTxOsFiber = (
 > =>
   Effect.gen(function* () {
     yield* Effect.logInfo("🏦 Fetch and insert DepositUTxOs to DepositsDB.");
-    const action = fetchAndInsertDepositUTxOs;
+    const action = fetchAndInsertDepositUTxOs.pipe(
+        Effect.withSpan("fetch-and-inser-deposi-utxos-fiber"),
+        Effect.catchAllCause(Effect.logWarning),
+      );;
     yield* Effect.repeat(action, schedule);
   });
