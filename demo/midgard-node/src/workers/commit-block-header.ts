@@ -104,11 +104,7 @@ const successfulSubmissionProgram = (
   txSize: number,
   sizeOfProcessedTxs: number,
   txHash: string,
-): Effect.Effect<
-  WorkerOutput,
-  DatabaseError | FileSystemError,
-  Database | NodeConfig
-> =>
+): Effect.Effect<WorkerOutput, DatabaseError | FileSystemError, Database> =>
   Effect.gen(function* () {
     const newHeaderHashBuffer = Buffer.from(fromHex(newHeaderHash));
 
@@ -239,9 +235,14 @@ const userEventsProgram = (
     );
 
     if (events.length <= 0) {
-      yield* Effect.logInfo(`🔹 No events found in ${tableName} table.`);
+      yield* Effect.logInfo(
+        `🔹 No events found in ${tableName} table between ${startDate.getTime()} and ${endDate.getTime()}.`,
+      );
       return Option.none();
     } else {
+      yield* Effect.logInfo(
+        `🔹 ${events.length} event(s) found in ${tableName} table between ${startDate.getTime()} and ${endDate.getTime()}.`,
+      );
       const eventIDs = events.map((event) => event[UserEventsColumns.ID]);
       const eventInfos = events.map((event) => event[UserEventsColumns.INFO]);
       return Option.some(keyValueMptRoot(eventIDs, eventInfos));
@@ -258,8 +259,8 @@ const buildUnsignedTx = (
 ) =>
   Effect.gen(function* () {
     const lucid = yield* Lucid;
-
     yield* Effect.logInfo("🔹 Finding updated block datum and new header...");
+    yield* lucid.switchToOperatorsMainWallet;
     const { nodeDatum: updatedNodeDatum, header: newHeader } =
       yield* SDK.updateLatestBlocksDatumAndGetTheNewHeaderProgram(
         lucid.api,
@@ -329,7 +330,7 @@ const databaseOperationsProgram = (
   | DatabaseError
   | FileSystemError
   | MptError,
-  AlwaysSucceedsContract | Database | NodeConfig | Lucid
+  AlwaysSucceedsContract | Database | Lucid
 > =>
   Effect.gen(function* () {
     const mempoolTxs = yield* MempoolDB.retrieve;
@@ -375,6 +376,9 @@ const databaseOperationsProgram = (
         // in `MempoolDB`). We check if there are any user events slated for
         // inclusion within `startTime` and current moment.
         const endDate = new Date();
+        yield* Effect.logInfo(
+          "🔹 Checking for user events... (no tx requests in queue)",
+        );
         const optDepositsRootProgram = yield* userEventsProgram(
           DepositsDB.tableName,
           startTime,
@@ -390,11 +394,12 @@ const databaseOperationsProgram = (
             optDepositsRootProgram.value,
           );
           const depositsRoot = yield* depositsRootFiber;
+          yield* Effect.logInfo(`🔹 Deposits root is: ${depositsRoot}`);
           const emptyRoot = yield* emptyRootHexProgram;
           const { signAndSubmitProgram, txSize } = yield* buildUnsignedTx(
             stateQueueAuthValidator,
             latestBlock,
-            emptyRoot,
+            emptyRoot, // TODO: fix
             emptyRoot,
             depositsRoot,
             endDate,
@@ -429,20 +434,21 @@ const databaseOperationsProgram = (
         // bound of the block we are about to submit.
         const endTime = optEndTime.value;
 
-        yield* Effect.logInfo("🔹 Finding deposits root...");
+        yield* Effect.logInfo("🔹 Checking for user events...");
         const optDepositsRootProgram = yield* userEventsProgram(
           DepositsDB.tableName,
           startTime,
           endTime,
         );
 
-        let depositsRoot = yield* emptyRootHexProgram;
+        let depositsRoot: string = yield* emptyRootHexProgram;
         if (Option.isSome(optDepositsRootProgram)) {
           const depositsRootFiber = yield* Effect.fork(
             optDepositsRootProgram.value,
           );
           depositsRoot = yield* depositsRootFiber;
         }
+        yield* Effect.logInfo(`🔹 Deposits root is: ${depositsRoot}`);
 
         const { newHeaderHash, signAndSubmitProgram, txSize } =
           yield* buildUnsignedTx(

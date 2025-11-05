@@ -198,8 +198,8 @@ export const fetchDepositUTxOsProgram = (
     const validDepositUTxOs = depositUTxOs.filter((utxo) =>
       isEventUTxOInclusionTimeInBounds(
         utxo,
-        config.inclusionTimeUpperBound,
         config.inclusionTimeLowerBound,
+        config.inclusionTimeUpperBound,
       ),
     );
     return validDepositUTxOs;

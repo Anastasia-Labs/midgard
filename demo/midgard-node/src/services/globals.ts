@@ -34,9 +34,7 @@ export class Globals extends Effect.Service<Globals>()("Globals", {
     const UNCONFIRMED_SUBMITTED_BLOCK_TX_HASH: Ref.Ref<"" | TxHash> =
       yield* Ref.make("" as "" | TxHash);
 
-    const LATEST_DEPOSIT_FETCH_TIME: Ref.Ref<number> = yield* Ref.make(
-      Date.now(),
-    );
+    const LATEST_DEPOSIT_FETCH_TIME: Ref.Ref<number> = yield* Ref.make(0);
 
     return {
       BLOCKS_IN_QUEUE,
