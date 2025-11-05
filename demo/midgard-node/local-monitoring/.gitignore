@@ -1,7 +1,5 @@
 # Data directories
 data/
-loki-data/
-tempo-data/
 
 # Grafana provisioning (generated at runtime)
 grafana-provisioning/
