@@ -9,11 +9,62 @@ clients:
   - url: http://localhost:3100/loki/api/v1/push
 
 scrape_configs:
-  # Scrape all logs from data directory
-  - job_name: monitoring
+  # Midgard Node logs
+  - job_name: midgard
     static_configs:
       - targets:
           - localhost
         labels:
-          environment: local
-          __path__: ./data/*.log
+          job: midgard
+          service: midgard-node
+          __path__: ./data/midgard.log
+
+  # Prometheus logs
+  - job_name: prometheus
+    static_configs:
+      - targets:
+          - localhost
+        labels:
+          job: prometheus
+          service: monitoring
+          __path__: ./data/prometheus.log
+
+  # Grafana logs
+  - job_name: grafana
+    static_configs:
+      - targets:
+          - localhost
+        labels:
+          job: grafana
+          service: monitoring
+          __path__: ./data/grafana.log
+
+  # Loki logs
+  - job_name: loki
+    static_configs:
+      - targets:
+          - localhost
+        labels:
+          job: loki
+          service: monitoring
+          __path__: ./data/loki.log
+
+  # Promtail logs
+  - job_name: promtail
+    static_configs:
+      - targets:
+          - localhost
+        labels:
+          job: promtail
+          service: monitoring
+          __path__: ./data/promtail.log
+
+  # Node Exporter logs
+  - job_name: node_exporter
+    static_configs:
+      - targets:
+          - localhost
+        labels:
+          job: node_exporter
+          service: monitoring
+          __path__: ./data/node_exporter.log
