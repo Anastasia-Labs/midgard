@@ -2,44 +2,7 @@
 
 ## How to Run
 
-### Local Run (without monitoring)
-
-```sh
-# Optional
-nix develop
-
-cd ../midgard-sdk
-pnpm install
-pnpm run repack
-
-cd ../midgard-node
-pnpm install
-pnpm run listen
-```
-
-### Local Run (with monitoring)
-
-For running the app locally with **full monitoring capabilities** (Prometheus metrics and Grafana dashboards), use the local monitoring setup:
-
-```sh
-cd local-monitoring
-./start.sh
-```
-
-This will start:
-- Midgard Node (API: http://localhost:3000, Metrics: http://localhost:9464)
-- Prometheus (http://localhost:9090)
-- Grafana with dashboards (http://localhost:3001)
-
-To stop all services:
-```sh
-cd local-monitoring
-./stop.sh
-```
-
-See [local-monitoring/README.md](local-monitoring/README.md) for detailed documentation.
-
-## Build image
+## Build docker image
 
 ### Start docker daemon
 
@@ -64,7 +27,55 @@ docker run --rm --publish 3000:3000 -it -e SEED_PHRASE="$SEED_PHRASE" \
 curl http://localhost:3000
 ```
 
-### Testing
+### Local Run (without monitoring)
+
+```sh
+# Optional
+nix develop
+
+cd ../midgard-sdk
+pnpm install
+pnpm run repack
+
+cd ../midgard-node
+pnpm install
+pnpm run listen
+```
+
+### Local Run (with monitoring)
+
+To run the app locally with **full monitoring capabilities** (Prometheus metrics and Grafana dashboards)
+
+1. Install dependencies:
+
+```sh
+cd local-monitoring
+./install.sh
+```
+
+See [manual installation guide](demo/midgard-node/local-monitoring/INSTALL.md) for details
+
+2. Start monitoring services:
+
+```sh
+./start.sh
+```
+
+Or see [manual starting guide](demo/midgard-node/local-monitoring/start.sh)
+
+This starts:
+- Midgard Node (API: http://localhost:3000, Metrics: http://localhost:9464)
+- Prometheus (http://localhost:9090)
+- Grafana with dashboards (http://localhost:3001)
+
+To stop all services:
+
+```sh
+cd local-monitoring
+./stop.sh
+```
+
+## Testing
 
 For local testing run
 
