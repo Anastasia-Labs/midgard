@@ -147,7 +147,6 @@ const completeResetTxProgram = (
 ): Effect.Effect<void, SDK.LucidError | TxSignError | TxSubmitError, Globals> =>
   Effect.gen(function* () {
     const globals = yield* Globals;
-    yield* Ref.set(globals.RESET_IN_PROGRESS, true);
     const completed: TxSignBuilder = yield* tx.completeProgram().pipe(
       Effect.mapError(
         (e) =>
@@ -183,11 +182,14 @@ export const resetAll: Effect.Effect<
   SDK.LucidError | TxSubmitError | TxSignError,
   AlwaysSucceedsContract | Lucid | Globals
 > = Effect.gen(function* () {
+  const globals = yield* Globals;
+
   const lucid = yield* Lucid;
   const { stateQueueAuthValidator, depositAuthValidator } =
     yield* AlwaysSucceedsContract;
 
   yield* lucid.switchToOperatorsMainWallet;
+  yield* Ref.set(globals.RESET_IN_PROGRESS, true);
 
   yield* Effect.logInfo("🚧 Fetching UTxOs...");
 
@@ -232,9 +234,9 @@ export const resetAll: Effect.Effect<
       yield* completeResetTxProgram(lucid.api, tx);
     }).pipe(Effect.tapError((e) => Effect.logError(e))),
   );
+  yield* Ref.set(globals.RESET_IN_PROGRESS, false);
 
   yield* Effect.logInfo(`🚧 Resetting global variables...`);
-  const globals = yield* Globals;
   yield* Ref.set(globals.LATEST_SYNC_TIME_OF_STATE_QUEUE_LENGTH, Date.now());
   yield* Ref.set(globals.BLOCKS_IN_QUEUE, 0);
   yield* Ref.set(globals.AVAILABLE_CONFIRMED_BLOCK, "");
