@@ -64,7 +64,7 @@ sudo systemctl status docker
 
 - Utils for monitoring in local runs without a docker (grafana, prometheus, loki etc):
 
-1. Run (installing script)[demo/midgard-node/local-monitoring/install.sh] or see (the guide)[demo/midgard-node/local-monitoring/INSTALL.md] for details.
+1. Run [installing script](demo/midgard-node/local-monitoring/install.sh) or see [the guide](demo/midgard-node/local-monitoring/INSTALL.md) for details.
 
 ## Prepare environment variables
 
@@ -158,7 +158,7 @@ docker-compose up -d
 
 ### Local run with monitoring
 
-- Run (starting script)[demo/midgard-node/local-monitoring/start.sh] or see (the guide)[demo/midgard-node/local-monitoring/MANUAL-RUN.md] for details.
+- Run [starting script](demo/midgard-node/local-monitoring/start.sh) or see [the guide](demo/midgard-node/local-monitoring/MANUAL-RUN.md) for details.
 
 ### Local run without monitoring
 
