@@ -1,4 +1,4 @@
-import { Effect } from "effect";
+import { Effect, Schedule } from "effect";
 import * as SDK from "@al-ft/midgard-sdk";
 import {
   AlwaysSucceedsContract,
@@ -56,13 +56,15 @@ ${Array.from(new Set(config.GENESIS_UTXOS.map((u) => u.address))).join("\n")}`,
 
 const submitGenesisDeposits: Effect.Effect<
   void,
-  | SDK.Utils.LucidError
-  | SDK.Utils.HashingError
-  | SDK.Utils.DepositError
+  | SDK.LucidError
+  | SDK.HashingError
+  | SDK.DepositError
   | TxSubmitError
   | TxSignError,
   AlwaysSucceedsContract | Lucid | NodeConfig
 > = Effect.gen(function* () {
+  yield* Effect.logInfo(`🟣 Building genesis deposit tx...`);
+
   const { depositAuthValidator } = yield* AlwaysSucceedsContract;
   const config = yield* NodeConfig;
   const lucid = yield* Lucid;
@@ -73,27 +75,24 @@ const submitGenesisDeposits: Effect.Effect<
 
   const l2Address = config.GENESIS_UTXOS[0].address;
 
-  const depositParams: SDK.TxBuilder.UserEvents.Deposit.DepositParams = {
+  // Hard-coded 10 ADA deposit.
+  const depositParams: SDK.DepositParams = {
     depositScriptAddress: depositAuthValidator.spendScriptAddress,
     mintingPolicy: depositAuthValidator.mintScript,
     policyId: depositAuthValidator.policyId,
+    depositAmount: 10_000_000n,
     depositInfo: {
       l2Address: l2Address,
       l2Datum: null,
     },
-    inclusionTime: BigInt(
-      Date.now() + config.PROTOCOL_PARAMETERS.event_wait_duration,
-    ),
   };
 
   yield* lucid.switchToOperatorsMainWallet;
 
-  const signedTx = yield* SDK.Endpoints.UserEvents.Deposit.depositTxProgram(
+  const signedTx = yield* SDK.unsignedDepositTxProgram(
     lucid.api,
     depositParams,
   );
-
-  yield* Effect.logInfo(`🟣 Submitting genesis deposit tx...`);
   yield* handleSignSubmitNoConfirmation(lucid.api, signedTx);
 });
 
@@ -101,6 +100,10 @@ export const program: Effect.Effect<
   void,
   never,
   AlwaysSucceedsContract | Database | Lucid | NodeConfig
-> = Effect.all([insertGenesisUtxos, submitGenesisDeposits], {
-  concurrency: "unbounded",
-}).pipe(Effect.catchAllCause(Effect.logInfo));
+> = Effect.all(
+  [
+    insertGenesisUtxos,
+    submitGenesisDeposits.pipe(Effect.retry(Schedule.fixed("5000 millis"))),
+  ],
+  { concurrency: "unbounded" },
+).pipe(Effect.catchAllCause(Effect.logInfo));

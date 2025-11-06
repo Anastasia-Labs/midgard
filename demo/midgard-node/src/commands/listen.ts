@@ -112,10 +112,8 @@ const handleTxGetFailure = (
   e: TxSignError | TxConfirmError | TxSubmitError,
 ) => failWith500("GET", endpoint, e.cause, `${e._tag}: ${e.message}`);
 
-const handleGenericGetFailure = (
-  endpoint: string,
-  e: SDK.Utils.GenericErrorFields,
-) => failWith500("GET", endpoint, e.cause, e.message);
+const handleGenericGetFailure = (endpoint: string, e: SDK.GenericErrorFields) =>
+  failWith500("GET", endpoint, e.cause, e.message);
 
 const getTxHandler = Effect.gen(function* () {
   const params = yield* ParsedSearchParams;
@@ -152,9 +150,9 @@ const getTxHandler = Effect.gen(function* () {
   yield* Effect.logInfo(
     `GET /${TX_ENDPOINT} - Transaction found in mempool: ${txHashParam}`,
   );
-  yield* Effect.logInfo("foundCbor", SDK.Utils.bufferToHex(foundCbor));
+  yield* Effect.logInfo("foundCbor", SDK.bufferToHex(foundCbor));
   return yield* HttpServerResponse.json({
-    tx: SDK.Utils.bufferToHex(foundCbor),
+    tx: SDK.bufferToHex(foundCbor),
   });
 }).pipe(
   Effect.catchTag("HttpBodyError", (e) => failWith500("GET", TX_ENDPOINT, e)),
@@ -189,8 +187,8 @@ const getUtxosHandler = Effect.gen(function* () {
     );
 
     const response = utxosWithAddress.map((entry) => ({
-      outref: SDK.Utils.bufferToHex(entry.outref),
-      value: SDK.Utils.bufferToHex(entry.output),
+      outref: SDK.bufferToHex(entry.outref),
+      value: SDK.bufferToHex(entry.output),
     }));
 
     yield* Effect.logInfo(`Found ${response.length} UTxOs for ${addr}`);
@@ -240,7 +238,7 @@ const getBlockHandler = Effect.gen(function* () {
     `GET /${BLOCK_ENDPOINT} - Found ${hashes.length} txs for block: ${hdrHash}`,
   );
   return yield* HttpServerResponse.json({
-    hashes: hashes.map(SDK.Utils.bufferToHex),
+    hashes: hashes.map(SDK.bufferToHex),
   });
 }).pipe(
   Effect.catchTag("HttpBodyError", (e) =>
@@ -391,7 +389,7 @@ const getTxsOfAddressHandler = Effect.gen(function* () {
     const cbors = yield* AddressHistoryDB.retrieve(addrDetails.address.bech32);
     yield* Effect.logInfo(`Found ${cbors.length} CBORs with ${addr}`);
     return yield* HttpServerResponse.json({
-      txs: cbors.map(SDK.Utils.bufferToHex),
+      txs: cbors.map(SDK.bufferToHex),
     });
   } catch (error) {
     yield* Effect.logInfo(`Invalid address: ${addr}`);
@@ -411,16 +409,15 @@ const getLogStateQueueHandler = Effect.gen(function* () {
   yield* Effect.logInfo(`✍  Drawing state queue UTxOs...`);
   const lucid = yield* Lucid;
   const alwaysSucceeds = yield* AlwaysSucceedsContract;
-  const fetchConfig: SDK.TxBuilder.StateQueue.FetchConfig = {
+  const fetchConfig: SDK.StateQueueFetchConfig = {
     stateQueuePolicyId: alwaysSucceeds.stateQueueAuthValidator.policyId,
     stateQueueAddress:
       alwaysSucceeds.stateQueueAuthValidator.spendScriptAddress,
   };
-  const sortedUTxOs =
-    yield* SDK.Endpoints.StateQueue.fetchSortedStateQueueUTxOsProgram(
-      lucid.api,
-      fetchConfig,
-    );
+  const sortedUTxOs = yield* SDK.fetchSortedStateQueueUTxOsProgram(
+    lucid.api,
+    fetchConfig,
+  );
   let drawn = `
 ---------------------------- STATE QUEUE ----------------------------`;
   yield* Effect.allSuccesses(

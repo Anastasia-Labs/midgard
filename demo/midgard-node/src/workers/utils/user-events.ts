@@ -1,16 +1,16 @@
-import {
-  TxOrdersDB,
-  DepositsDB,
-  LedgerUtils,
-  UserEventsUtils,
-} from "@/database/index.js";
-import { Effect } from "effect";
+import { TxOrdersDB, LedgerUtils } from "@/database/index.js";
+import { Effect, Option } from "effect";
 import * as ETH_UTILS from "@ethereumjs/util";
 import { findSpentAndProducedUTxOs } from "@/utils.js";
 import { Database } from "@/services/database.js";
 import { DatabaseError } from "@/database/utils/common.js";
 import * as SDK from "@al-ft/midgard-sdk";
-import { keyValueMptRoot, MidgardMpt, MptError } from "./mpt.js";
+import {
+  emptyRootHexProgram,
+  keyValueMptRoot,
+  MidgardMpt,
+  MptError,
+} from "./mpt.js";
 import * as Tx from "@/database/utils/tx.js";
 import * as Ledger from "@/database/utils/ledger.js";
 import * as UserEvents from "@/database/utils/user-events.js";
@@ -21,7 +21,7 @@ export const processTxOrderEvent = (
   ledgerTrie: MidgardMpt,
 ): Effect.Effect<
   number,
-  DatabaseError | SDK.Utils.CmlUnexpectedError | MptError,
+  DatabaseError | SDK.CmlUnexpectedError | MptError,
   Database
 > =>
   Effect.gen(function* () {
@@ -74,7 +74,7 @@ export const processTxRequestEvent = (
     mempoolTxHashes: Buffer[];
     sizeOfTxRequestTxs: number;
   },
-  MptError | SDK.Utils.CmlUnexpectedError,
+  MptError | SDK.CmlUnexpectedError,
   Database
 > =>
   Effect.gen(function* () {
@@ -136,38 +136,54 @@ export const processTxRequestEvent = (
   });
 
 export const processDepositEvent = (
-  startTime: Date,
-  endTime: Date,
+  optDepositsRootProgram: Option.Option<Effect.Effect<string, MptError, never>>,
+): Effect.Effect<string, MptError, Database> =>
+  Effect.gen(function* () {
+    const depositsRoot: string = yield* Option.match(optDepositsRootProgram, {
+      onNone: () => emptyRootHexProgram,
+      onSome: (p) =>
+        Effect.gen(function* ($) {
+          const depositsRootFiber = yield* $(Effect.fork(p));
+          const depositRoot = yield* $(depositsRootFiber);
+          return depositRoot;
+        }),
+    });
+    yield* Effect.logInfo(`🔹 Deposits root is: ${depositsRoot}`);
+    return depositsRoot;
+  });
+
+/**
+ * Given the target user event table, this helper finds all the events falling
+ * in the given time range and if any was found, returns an `Effect` that finds
+ * the MPT root of those events.
+ */
+export const userEventsProgram = (
+  tableName: string,
+  startDate: Date,
+  endDate: Date,
 ): Effect.Effect<
-  { depositRoot: string; sizeOfDepositTxs: number },
-  DatabaseError | MptError,
+  Option.Option<Effect.Effect<string, MptError>>,
+  DatabaseError,
   Database
 > =>
   Effect.gen(function* () {
-    const deposits = yield* DepositsDB.retrieveTimeBoundEntries(
-      startTime,
-      endTime,
+    const events = yield* UserEvents.retrieveTimeBoundEntries(
+      tableName,
+      startDate,
+      endDate,
     );
-    yield* Effect.logInfo(`🔹 Processing ${deposits.length} new deposits...`);
-    const depositIDs = deposits.map(
-      (deposit) => deposit[UserEvents.Columns.ID],
-    );
-    const depositInfos = deposits.map(
-      (deposit) => deposit[UserEvents.Columns.INFO],
-    );
-    const depositRootFiber = yield* Effect.fork(
-      keyValueMptRoot(depositIDs, depositInfos),
-    );
-    const depositRoot = yield* depositRootFiber;
-    const sizeOfDepositTxs = depositInfos
-      .map((i) => i.length)
-      .reduce((acc, curr) => acc + curr, 0);
-    yield* Effect.logInfo(
-      `🔹 ${deposits.length} new deposits processed - new deposit root is ${depositRoot}`,
-    );
-    yield* Effect.logInfo(`🔹 New deposits root found: ${depositRoot}`);
-    return {
-      depositRoot,
-      sizeOfDepositTxs,
-    };
+
+    if (events.length <= 0) {
+      yield* Effect.logInfo(
+        `🔹 No events found in ${tableName} table between ${startDate.getTime()} and ${endDate.getTime()}.`,
+      );
+      return Option.none();
+    } else {
+      yield* Effect.logInfo(
+        `🔹 ${events.length} event(s) found in ${tableName} table between ${startDate.getTime()} and ${endDate.getTime()}.`,
+      );
+      const eventIDs = events.map((event) => event[UserEvents.Columns.ID]);
+      const eventInfos = events.map((event) => event[UserEvents.Columns.INFO]);
+      return Option.some(keyValueMptRoot(eventIDs, eventInfos));
+    }
   });

@@ -10,18 +10,18 @@ import {
 
 export const stateQueueInit: Effect.Effect<
   string | void,
-  TxSubmitError | TxSignError | SDK.Utils.LucidError,
+  TxSubmitError | TxSignError | SDK.LucidError,
   Lucid | NodeConfig | AlwaysSucceedsContract
 > = Effect.gen(function* () {
   const lucid = yield* Lucid;
   const { stateQueueAuthValidator } = yield* AlwaysSucceedsContract;
-  const initParams: SDK.TxBuilder.StateQueue.InitParams = {
+  const initParams: SDK.StateQueueInitParams = {
     address: stateQueueAuthValidator.spendScriptAddress,
     policyId: stateQueueAuthValidator.policyId,
     stateQueueMintingScript: stateQueueAuthValidator.mintScript,
   };
   yield* lucid.switchToOperatorsMainWallet;
-  const txBuilderProgram = SDK.Endpoints.StateQueue.initTxProgram(
+  const txBuilderProgram = SDK.unsignedInitStateQueueTxProgram(
     lucid.api,
     initParams,
   );
