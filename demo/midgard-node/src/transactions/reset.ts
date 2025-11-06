@@ -10,7 +10,12 @@ import {
   UTxO,
   toUnit,
 } from "@lucid-evolution/lucid";
-import { AlwaysSucceedsContract, AuthenticatedValidator, Globals, Lucid } from "@/services/index.js";
+import {
+  AlwaysSucceedsContract,
+  AuthenticatedValidator,
+  Globals,
+  Lucid,
+} from "@/services/index.js";
 import { Effect, Option, Ref } from "effect";
 import {
   TxConfirmError,
@@ -43,53 +48,75 @@ const collectAndBurnUTxOsTx = (
       .attach.Script(authValidator.spendScript)
       .attach.Script(authValidator.mintScript);
     return tx;
-  })
+  });
 
 type UTxOsQueue = {
-    authValidator: AuthenticatedValidator,
-    assetUTxOs: {
-      utxo: UTxO;
-      assetName: string;
-    }[],
-}
+  authValidator: AuthenticatedValidator;
+  assetUTxOs: {
+    utxo: UTxO;
+    assetName: string;
+  }[];
+};
 
 const constructBatchTx = (
   lucid: LucidEvolution,
   utxosQueue: UTxOsQueue[],
   batchSize: number,
-): Effect.Effect<Option.Option<{batchTx: TxBuilder, restQueue: UTxOsQueue[]}>> =>
+): Effect.Effect<
+  Option.Option<{ batchTx: TxBuilder; restQueue: UTxOsQueue[] }>
+> =>
   Effect.gen(function* () {
     if (batchSize === 0) {
-      return Option.none()
+      return Option.none();
     }
 
-    const validatorUTxOs = utxosQueue.pop()
+    const validatorUTxOs = utxosQueue.pop();
     if (validatorUTxOs === undefined) {
-      return Option.none()
+      return Option.none();
     }
     if (validatorUTxOs.assetUTxOs.length <= 0) {
-      const skippedEmptyAssets = yield* constructBatchTx(lucid, utxosQueue, batchSize)
-      return skippedEmptyAssets
+      const skippedEmptyAssets = yield* constructBatchTx(
+        lucid,
+        utxosQueue,
+        batchSize,
+      );
+      return skippedEmptyAssets;
     }
 
-    const partialBatch = validatorUTxOs.assetUTxOs.slice(0, batchSize)
+    const partialBatch = validatorUTxOs.assetUTxOs.slice(0, batchSize);
 
-    const leftFromPartialBatch = validatorUTxOs.assetUTxOs.slice(batchSize)
+    const leftFromPartialBatch = validatorUTxOs.assetUTxOs.slice(batchSize);
     if (leftFromPartialBatch.length > 0) {
       // Put unconsumed utxos back
-      utxosQueue.push({authValidator: validatorUTxOs.authValidator, assetUTxOs: leftFromPartialBatch})
+      utxosQueue.push({
+        authValidator: validatorUTxOs.authValidator,
+        assetUTxOs: leftFromPartialBatch,
+      });
     }
 
-    const partialBatchTx = yield* collectAndBurnUTxOsTx(lucid, validatorUTxOs.authValidator, partialBatch)
-    const optRestBatchTx = yield* constructBatchTx(lucid, utxosQueue, batchSize - partialBatch.length)
+    const partialBatchTx = yield* collectAndBurnUTxOsTx(
+      lucid,
+      validatorUTxOs.authValidator,
+      partialBatch,
+    );
+    const optRestBatchTx = yield* constructBatchTx(
+      lucid,
+      utxosQueue,
+      batchSize - partialBatch.length,
+    );
 
     const res = Option.match(optRestBatchTx, {
-      onNone: () => Option.some({batchTx: partialBatchTx, restQueue: utxosQueue}),
-      onSome: ({batchTx, restQueue}) => Option.some({batchTx: partialBatchTx.compose(batchTx), restQueue: restQueue})
-    })
+      onNone: () =>
+        Option.some({ batchTx: partialBatchTx, restQueue: utxosQueue }),
+      onSome: ({ batchTx, restQueue }) =>
+        Option.some({
+          batchTx: partialBatchTx.compose(batchTx),
+          restQueue: restQueue,
+        }),
+    });
 
-    return res
-  })
+    return res;
+  });
 
 const constructBatchTxs = (
   lucid: LucidEvolution,
@@ -97,22 +124,22 @@ const constructBatchTxs = (
   batchSize: number,
 ): Effect.Effect<TxBuilder[]> =>
   Effect.gen(function* () {
-    let accTransactions: TxBuilder[] = []
-    let currUtxoQueue = utxosQueue
+    let accTransactions: TxBuilder[] = [];
+    let currUtxoQueue = utxosQueue;
 
     while (currUtxoQueue.length > 0) {
-      const optBatchTx = yield* constructBatchTx(lucid, utxosQueue, batchSize)
+      const optBatchTx = yield* constructBatchTx(lucid, utxosQueue, batchSize);
       const batchTx = Option.getOrElse(optBatchTx, () => ({
         batchTx: lucid.newTx(),
         restQueue: [],
-      }))
+      }));
 
-      accTransactions.push(batchTx.batchTx)
-      currUtxoQueue = batchTx.restQueue
+      accTransactions.push(batchTx.batchTx);
+      currUtxoQueue = batchTx.restQueue;
     }
 
-    return accTransactions
-  })
+    return accTransactions;
+  });
 
 const completeResetTxProgram = (
   lucid: LucidEvolution,
@@ -157,7 +184,8 @@ export const resetAll: Effect.Effect<
   AlwaysSucceedsContract | Lucid | Globals
 > = Effect.gen(function* () {
   const lucid = yield* Lucid;
-  const { stateQueueAuthValidator, depositAuthValidator } = yield* AlwaysSucceedsContract;
+  const { stateQueueAuthValidator, depositAuthValidator } =
+    yield* AlwaysSucceedsContract;
 
   yield* lucid.switchToOperatorsMainWallet;
 
@@ -190,15 +218,20 @@ export const resetAll: Effect.Effect<
       authValidator: stateQueueAuthValidator,
       assetUTxOs: allStateQueueUTxOs,
     },
-  ]
+  ];
 
   const batchSize = 40;
-  const batchTransactions = yield* constructBatchTxs(lucid.api, utxosQueue, batchSize)
+  const batchTransactions = yield* constructBatchTxs(
+    lucid.api,
+    utxosQueue,
+    batchSize,
+  );
   yield* Effect.forEach(batchTransactions, (tx, i) =>
     Effect.gen(function* () {
       yield* Effect.logInfo(`🚧 UTxOs Batch ${i}`);
       yield* completeResetTxProgram(lucid.api, tx);
-  }).pipe(Effect.tapError((e) => Effect.logError(e))))
+    }).pipe(Effect.tapError((e) => Effect.logError(e))),
+  );
 
   yield* Effect.logInfo(`🚧 Resetting global variables...`);
   const globals = yield* Globals;
