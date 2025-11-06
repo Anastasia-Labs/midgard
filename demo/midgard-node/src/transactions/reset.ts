@@ -59,9 +59,6 @@ const constructBatchTx = (
   batchSize: number,
 ): Effect.Effect<Option.Option<{batchTx: TxBuilder, restQueue: UTxOsQueue[]}>> =>
   Effect.gen(function* () {
-    yield* Effect.logInfo(`batchSize: ${batchSize}`)
-    yield* Effect.logInfo(`utxosQueue.length: ${utxosQueue.length}`)
-
     if (batchSize === 0) {
       return Option.none()
     }
