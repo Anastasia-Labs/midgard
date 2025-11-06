@@ -218,12 +218,10 @@ start_promtail() {
     
     print_info "Starting Promtail on port $PROMTAIL_PORT..."
     
-    # Create Promtail config with actual log directory path
-    local promtail_config="$SCRIPT_DIR/promtail-config-runtime.yaml"
-    sed "s|LOG_DIR_PLACEHOLDER|$DATA_DIR|g" "$SCRIPT_DIR/promtail-config.yaml" > "$promtail_config"
-    
+    # Run Promtail from script directory (so relative paths in config work)
+    cd "$SCRIPT_DIR"
     promtail \
-        -config.file="$promtail_config" \
+        -config.file="./promtail-config.yaml" \
         > "$DATA_DIR/promtail.log" 2>&1 &
     
     local pid=$!
@@ -297,14 +295,12 @@ start_grafana() {
 # Function to start Midgard node
 start_midgard() {
     print_info "Starting Midgard node..."
-    print_info "Building Midgard node..."
     
     cd "$NODE_DIR"
-    pnpm run build > /dev/null 2>&1
     
     print_info "Starting Midgard node on port $MIDGARD_API_PORT (metrics on $MIDGARD_METRICS_PORT)..."
     
-    node dist/index.js listen > "$DATA_DIR/midgard.log" 2>&1 &
+    pnpm run listen > "$DATA_DIR/midgard.log" 2>&1 &
     
     local pid=$!
     echo "midgard:$pid" >> "$PID_FILE"
@@ -352,12 +348,12 @@ show_status() {
     if ! command_exists "node_exporter"; then
         print_warning "Node Exporter not installed - CPU/Memory dashboards will show 'No data'"
         print_info "Install: sudo apt install prometheus-node-exporter"
-        print_info "Or see: README.md for installation instructions"
+        print_info "Or see: INSTALL.md for installation instructions"
         echo ""
     fi
     if ! command_exists "loki"; then
         print_warning "Loki not installed - Logs in Grafana will not be available"
-        print_info "See README.md for installation instructions"
+        print_info "See INSTALL.md for installation instructions"
         echo ""
     fi
     echo -e "${YELLOW}To stop all services, run:${NC} ./stop.sh"

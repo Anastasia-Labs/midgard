@@ -117,7 +117,7 @@ stop_services() {
         fi
         
         # Kill midgard node
-        local midgard_pids=$(pgrep -f "node.*dist/index.js.*listen" || true)
+        local midgard_pids=$(pgrep -f "pnpm.*listen" || true)
         if [ -n "$midgard_pids" ]; then
             print_info "Found Midgard Node process(es): $midgard_pids"
             echo "$midgard_pids" | xargs kill 2>/dev/null || true
@@ -206,12 +206,6 @@ cleanup_provisioning() {
     if [ -d "$grafana_provisioning" ]; then
         print_info "Cleaning up Grafana provisioning directory..."
         rm -rf "$grafana_provisioning"
-    fi
-    
-    # Clean up runtime Promtail config
-    local promtail_runtime="$SCRIPT_DIR/promtail-config-runtime.yaml"
-    if [ -f "$promtail_runtime" ]; then
-        rm -f "$promtail_runtime"
     fi
 }
 
