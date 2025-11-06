@@ -14,19 +14,7 @@ This will automatically install all dependencies on your Linux system.
 
 ## Manual Installation
 
-### 1. Node.js & pnpm
-
-```bash
-# Check Node.js version (v18+ required)
-node --version
-
-# Install pnpm globally
-npm install -g pnpm
-```
-
-If Node.js is not installed or too old, install from https://nodejs.org/
-
-### 2. Prometheus
+### 1. Prometheus
 
 **Ubuntu/Debian:**
 ```bash
@@ -43,7 +31,7 @@ sudo chmod +x /usr/local/bin/prometheus
 rm -rf prometheus-2.45.0.linux-amd64*
 ```
 
-### 3. Grafana
+### 2. Grafana
 
 **Ubuntu/Debian:**
 ```bash
@@ -61,7 +49,7 @@ sudo pacman -S grafana
 
 **Other Distributions:** See https://grafana.com/grafana/download
 
-### 4. Node Exporter (System Metrics)
+### 3. Node Exporter (System Metrics)
 
 **Ubuntu/Debian:**
 ```bash
@@ -77,7 +65,7 @@ sudo chmod +x /usr/local/bin/node_exporter
 rm -rf node_exporter-1.6.1.linux-amd64*
 ```
 
-### 5. Loki (Log Aggregation)
+### 4. Loki (Log Aggregation)
 
 ```bash
 wget https://github.com/grafana/loki/releases/download/v3.4.1/loki-linux-amd64.zip
@@ -87,7 +75,7 @@ sudo chmod +x /usr/local/bin/loki
 rm loki-linux-amd64.zip
 ```
 
-### 6. Promtail (Log Shipping)
+### 5. Promtail (Log Shipping)
 
 ```bash
 wget https://github.com/grafana/loki/releases/download/v2.9.0/promtail-linux-amd64.zip
