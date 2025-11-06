@@ -296,7 +296,19 @@ start_grafana() {
 start_midgard() {
     print_info "Starting Midgard node..."
     
+    # Install and build SDK
+    local SDK_DIR="$(cd "$NODE_DIR/../midgard-sdk" && pwd)"
+    print_info "Installing midgard-sdk dependencies..."
+    cd "$SDK_DIR"
+    pnpm install > /dev/null 2>&1
+    
+    print_info "Building midgard-sdk..."
+    pnpm run repack > /dev/null 2>&1
+    
+    # Install node dependencies
+    print_info "Installing midgard-node dependencies..."
     cd "$NODE_DIR"
+    pnpm install > /dev/null 2>&1
     
     print_info "Starting Midgard node on port $MIDGARD_API_PORT (metrics on $MIDGARD_METRICS_PORT)..."
     
