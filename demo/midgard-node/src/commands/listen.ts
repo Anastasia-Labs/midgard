@@ -17,6 +17,7 @@ import {
 import { PrometheusExporter } from "@opentelemetry/exporter-prometheus";
 import { OTLPTraceExporter } from "@opentelemetry/exporter-trace-otlp-http";
 import { BatchSpanProcessor } from "@opentelemetry/sdk-trace-base";
+import { register, collectDefaultMetrics } from "prom-client";
 import {
   Cause,
   Chunk,
@@ -128,6 +129,15 @@ const handleGenericGetFailure = (
   endpoint: string,
   e: SDK.Utils.GenericErrorFields,
 ) => failWith500("GET", endpoint, e.cause, e.message);
+
+// This endpoint exposes the process metrics for Prometheus
+// to scrape in local run without a docker
+const getProcessMetricsHandler = Effect.gen(function* () {
+  const metrics = yield* Effect.promise(() => register.metrics());
+  return HttpServerResponse.text(metrics, {
+    headers: { "Content-Type": register.contentType },
+  });
+});
 
 const getTxHandler = Effect.gen(function* () {
   const params = yield* ParsedSearchParams;
@@ -575,6 +585,7 @@ const router = (
 > =>
   HttpRouter.empty
     .pipe(
+      HttpRouter.get(`/process-metrics`, getProcessMetricsHandler),
       HttpRouter.get(`/${TX_ENDPOINT}`, getTxHandler),
       HttpRouter.get(`/${ADDRESS_HISTORY_ENDPOINT}`, getTxsOfAddressHandler),
       HttpRouter.get(`/${UTXOS_ENDPOINT}`, getUtxosHandler),
@@ -808,6 +819,12 @@ const txQueueProcessorFork = (txQueue: Queue.Dequeue<string>) =>
 
 export const runNode = Effect.gen(function* () {
   const nodeConfig = yield* NodeConfig;
+
+  // Collect default Node.js process metrics (CPU, memory, etc.) to scrape in local run without a docker
+  collectDefaultMetrics({
+    register,
+    labels: { job: "midgard_process" },
+  });
 
   const prometheusExporter = new PrometheusExporter(
     {

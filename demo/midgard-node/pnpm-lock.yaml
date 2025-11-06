@@ -9,22 +9,22 @@ importers:
   .:
     dependencies:
       '@aiken-lang/merkle-patricia-forestry':
-        specifier: ^1.3.1
+        specifier: ^1.2.0
         version: 1.3.1
       '@al-ft/midgard-sdk':
         specifier: file:../midgard-sdk/al-ft-midgard-sdk-0.1.0.tgz
         version: file:../midgard-sdk/al-ft-midgard-sdk-0.1.0.tgz(@harmoniclabs/bytestring@1.0.0)(@harmoniclabs/cbor@1.6.6)(@harmoniclabs/crypto@0.2.5)(@harmoniclabs/pair@1.0.0)(fast-check@3.23.2)
       '@effect/experimental':
-        specifier: ^0.46.8
+        specifier: ^0.46.0
         version: 0.46.8(@effect/platform@0.80.21(effect@3.18.4))(effect@3.18.4)(lmdb@3.4.1)
       '@effect/opentelemetry':
-        specifier: ^0.44.12
+        specifier: ^0.44.6
         version: 0.44.12(@opentelemetry/api@1.9.0)(@opentelemetry/resources@1.30.1(@opentelemetry/api@1.9.0))(@opentelemetry/sdk-metrics@1.30.1(@opentelemetry/api@1.9.0))(@opentelemetry/sdk-trace-base@1.30.1(@opentelemetry/api@1.9.0))(@opentelemetry/sdk-trace-node@1.30.1(@opentelemetry/api@1.9.0))(@opentelemetry/sdk-trace-web@1.30.1(@opentelemetry/api@1.9.0))(@opentelemetry/semantic-conventions@1.37.0)(effect@3.18.4)
       '@effect/platform':
-        specifier: ^0.80.21
+        specifier: ^0.80.0
         version: 0.80.21(effect@3.18.4)
       '@effect/platform-node':
-        specifier: ^0.80.3
+        specifier: ^0.80.0
         version: 0.80.3(@effect/cluster@0.31.1(@effect/platform@0.80.21(effect@3.18.4))(@effect/rpc@0.57.1(@effect/platform@0.80.21(effect@3.18.4))(effect@3.18.4))(@effect/sql@0.34.1(@effect/experimental@0.46.8(@effect/platform@0.80.21(effect@3.18.4))(effect@3.18.4)(lmdb@3.4.1))(@effect/platform@0.80.21(effect@3.18.4))(effect@3.18.4))(effect@3.18.4))(@effect/platform@0.80.21(effect@3.18.4))(@effect/rpc@0.57.1(@effect/platform@0.80.21(effect@3.18.4))(effect@3.18.4))(@effect/sql@0.34.1(@effect/experimental@0.46.8(@effect/platform@0.80.21(effect@3.18.4))(effect@3.18.4)(lmdb@3.4.1))(@effect/platform@0.80.21(effect@3.18.4))(effect@3.18.4))(effect@3.18.4)
       '@effect/sql':
         specifier: ^0.34.1
@@ -39,7 +39,7 @@ importers:
         specifier: ^9.1.0
         version: 9.1.0
       '@lucid-evolution/lucid':
-        specifier: ^0.4.29
+        specifier: ^0.4.23
         version: 0.4.29(@harmoniclabs/bytestring@1.0.0)(@harmoniclabs/cbor@1.6.6)(@harmoniclabs/crypto@0.2.5)(@harmoniclabs/pair@1.0.0)(fast-check@3.23.2)
       '@opentelemetry/api':
         specifier: ^1.9.0
@@ -50,6 +50,9 @@ importers:
       '@opentelemetry/exporter-trace-otlp-http':
         specifier: ^0.57.2
         version: 0.57.2(@opentelemetry/api@1.9.0)
+      '@opentelemetry/host-metrics':
+        specifier: ^0.36.2
+        version: 0.36.2(@opentelemetry/api@1.9.0)
       '@opentelemetry/sdk-trace-base':
         specifier: ^1.30.1
         version: 1.30.1(@opentelemetry/api@1.9.0)
@@ -60,16 +63,16 @@ importers:
         specifier: ^1.30.1
         version: 1.30.1(@opentelemetry/api@1.9.0)
       chalk:
-        specifier: ^5.6.2
+        specifier: ^5.4.1
         version: 5.6.2
       commander:
         specifier: ^13.1.0
         version: 13.1.0
       dotenv:
-        specifier: ^16.6.1
+        specifier: ^16.4.7
         version: 16.6.1
       effect:
-        specifier: ^3.18.4
+        specifier: ^3.14.22
         version: 3.18.4
       level:
         specifier: ^10.0.0
@@ -77,39 +80,42 @@ importers:
       memory-level:
         specifier: ^3.1.0
         version: 3.1.0
+      prom-client:
+        specifier: ^15.1.3
+        version: 15.1.3
       rimraf:
         specifier: ^6.0.1
         version: 6.0.1
       vitest:
-        specifier: ^3.2.4
+        specifier: ^3.0.7
         version: 3.2.4(@types/node@22.18.12)
     devDependencies:
       '@commander-js/extra-typings':
         specifier: ^13.1.0
         version: 13.1.0(commander@13.1.0)
       '@effect/vitest':
-        specifier: ^0.22.5
+        specifier: ^0.22.0
         version: 0.22.5(effect@3.18.4)(vitest@3.2.4(@types/node@22.18.12))
       '@types/express':
-        specifier: ^5.0.5
+        specifier: ^5.0.0
         version: 5.0.5
       '@types/jest':
         specifier: ^29.5.14
         version: 29.5.14
       '@types/node':
-        specifier: ^22.18.12
+        specifier: ^22.17.0
         version: 22.18.12
       prettier:
-        specifier: ^3.6.2
+        specifier: ^3.5.2
         version: 3.6.2
       tsup:
-        specifier: ^8.5.0
+        specifier: ^8.4.0
         version: 8.5.0(postcss@8.5.6)(typescript@5.9.3)
       typescript:
-        specifier: ^5.9.3
+        specifier: ^5.7.3
         version: 5.9.3
       vite:
-        specifier: ^6.4.1
+        specifier: ^6.3.5
         version: 6.4.1(@types/node@22.18.12)
 
 packages:
@@ -118,7 +124,7 @@ packages:
     resolution: {integrity: sha512-vKypwCNMH7SgP8JQ/fQyXjhDC16DqTiW9x9dLK6AXe2tEWVouNy2GMKmOaS4l6ZF7pTjty5XCD+MqnsxXJBIgg==}
 
   '@al-ft/midgard-sdk@file:../midgard-sdk/al-ft-midgard-sdk-0.1.0.tgz':
-    resolution: {integrity: sha512-0akXkfJ357lvX/fr/+iYp0Z/gdpMgHWos6LWYGuJ7d/7ZE4EKzvKO00IXeRs8lD2FODggbGb4m+XKK+bcyuvuQ==, tarball: file:../midgard-sdk/al-ft-midgard-sdk-0.1.0.tgz}
+    resolution: {integrity: sha512-POC09DL8tbmbG1Lwib1RpVrGkVGsMwVPyIjQzTKGu/opcyFdMLy2VYbKH4TAhKELdlzx7WiSysZtgXzqRHrxhg==, tarball: file:../midgard-sdk/al-ft-midgard-sdk-0.1.0.tgz}
     version: 0.1.0
 
   '@anastasia-labs/cardano-multiplatform-lib-browser@6.0.2-2':
@@ -767,6 +773,12 @@ packages:
     peerDependencies:
       '@opentelemetry/api': ^1.3.0
 
+  '@opentelemetry/host-metrics@0.36.2':
+    resolution: {integrity: sha512-eMdea86cfIqx3cdFpcKU3StrjqFkQDIVp7NANVnVWO8O6hDw/DBwGwu4Gi1wJCuoQ2JVwKNWQxUTSRheB6O29Q==}
+    engines: {node: ^18.19.0 || >=20.6.0}
+    peerDependencies:
+      '@opentelemetry/api': ^1.3.0
+
   '@opentelemetry/otlp-exporter-base@0.57.2':
     resolution: {integrity: sha512-XdxEzL23Urhidyebg5E6jZoaiW5ygP/mRjxLHixogbqwDy2Faduzb5N0o/Oi+XTIJu+iyxXdVORjXax+Qgfxag==}
     engines: {node: '>=14'}
@@ -1255,6 +1267,9 @@ packages:
 
   bignumber.js@9.3.1:
     resolution: {integrity: sha512-Ko0uX15oIUS7wJ3Rb30Fs6SkVbLmPBAKdlm7q9+ak9bbIeFf0MwuBsQV6z7+X768/cHsfg+WlysDWJcmthjsjQ==}
+
+  bintrees@1.0.2:
+    resolution: {integrity: sha512-VOMgTMwjAaUG580SXn3LacVgjurrbMme7ZZNYGSSV7mmtY6QQRh0Eg3pwIcntQ77DErK1L0NxkbetjcoXzVwKw==}
 
   bip39@3.1.0:
     resolution: {integrity: sha512-c9kiwdk45Do5GL0vJMe7tS95VjCii65mYAH7DfWl3uW8AVzXKQVUm64i3hzVybBDMp9r7j9iNxR85+ul8MdN/A==}
@@ -2048,6 +2063,10 @@ packages:
   progress-events@1.0.1:
     resolution: {integrity: sha512-MOzLIwhpt64KIVN64h1MwdKWiyKFNc/S6BoYKPIVUHFg0/eIEyBulhWCgn678v/4c0ri3FdGuzXymNCv02MUIw==}
 
+  prom-client@15.1.3:
+    resolution: {integrity: sha512-6ZiOBfCywsD4k1BN9IX0uZhF+tJkV8q8llP64G5Hajs4JOeVLPCwpPVcpXy3BwYiUGgyJzsJJQeOIv7+hDSq8g==}
+    engines: {node: ^16 || ^18 || >=20}
+
   protobufjs@7.5.4:
     resolution: {integrity: sha512-CvexbZtbov6jW2eXAvLukXjXUW1TzFaivC46BpWc/3BpcCysb5Vffu+B3XHMm8lVEuy2Mm4XGex8hBSg1yapPg==}
     engines: {node: '>=12.0.0'}
@@ -2151,7 +2170,6 @@ packages:
   source-map@0.8.0-beta.0:
     resolution: {integrity: sha512-2ymg6oRBpebeZi9UUNsgQ89bhx01TcTkmNTGnNO88imTmbSgy4nfujrgVEFKWpMTEGA11EDkTt7mqObTPdigIA==}
     engines: {node: '>= 8'}
-    deprecated: The work that was done in this beta branch won't be included in future versions
 
   sprintf-js@1.1.3:
     resolution: {integrity: sha512-Oo+0REFV59/rz3gfJNKQiBlwfHaSESl1pcGyABQsnnIfWOFt6JNj5gCog2U6MLZ//IGYD+nA8nI+mTShREReaA==}
@@ -2196,6 +2214,15 @@ packages:
   supports-color@7.2.0:
     resolution: {integrity: sha512-qpCAvRl9stuOHveKsn7HncJRvv501qIacKzQlO/+Lwxc9+0q2wLyv4Dfvt80/DPn2pqOBsJdDiogXGR9+OvwRw==}
     engines: {node: '>=8'}
+
+  systeminformation@5.23.8:
+    resolution: {integrity: sha512-Osd24mNKe6jr/YoXLLK3k8TMdzaxDffhpCxgkfgBHcapykIkd50HXThM3TCEuHO2pPuCsSx2ms/SunqhU5MmsQ==}
+    engines: {node: '>=8.0.0'}
+    os: [darwin, linux, win32, freebsd, openbsd, netbsd, sunos, android]
+    hasBin: true
+
+  tdigest@0.1.2:
+    resolution: {integrity: sha512-+G0LLgjjo9BZX2MfdvPfH+MKLCrxlXSYec5DaPYP1fe6Iyhf0/fSmJ0bFiZ1F8BT6cGXl2LpltQptzjXKWEkKA==}
 
   thenify-all@1.6.0:
     resolution: {integrity: sha512-RNxQH/qI8/t3thXJDwcstUO4zeqo64+Uy/+sNVRBx4Xn2OX+OZ9oP+iJnNFqplFra2ZUVeKCSa2oVWi3T4uVmA==}
@@ -3166,6 +3193,11 @@ snapshots:
       '@opentelemetry/resources': 1.30.1(@opentelemetry/api@1.9.0)
       '@opentelemetry/sdk-trace-base': 1.30.1(@opentelemetry/api@1.9.0)
 
+  '@opentelemetry/host-metrics@0.36.2(@opentelemetry/api@1.9.0)':
+    dependencies:
+      '@opentelemetry/api': 1.9.0
+      systeminformation: 5.23.8
+
   '@opentelemetry/otlp-exporter-base@0.57.2(@opentelemetry/api@1.9.0)':
     dependencies:
       '@opentelemetry/api': 1.9.0
@@ -3604,6 +3636,8 @@ snapshots:
   bech32@2.0.0: {}
 
   bignumber.js@9.3.1: {}
+
+  bintrees@1.0.2: {}
 
   bip39@3.1.0:
     dependencies:
@@ -4365,6 +4399,11 @@ snapshots:
 
   progress-events@1.0.1: {}
 
+  prom-client@15.1.3:
+    dependencies:
+      '@opentelemetry/api': 1.9.0
+      tdigest: 0.1.2
+
   protobufjs@7.5.4:
     dependencies:
       '@protobufjs/aspromise': 1.1.2
@@ -4546,6 +4585,12 @@ snapshots:
   supports-color@7.2.0:
     dependencies:
       has-flag: 4.0.0
+
+  systeminformation@5.23.8: {}
+
+  tdigest@0.1.2:
+    dependencies:
+      bintrees: 1.0.2
 
   thenify-all@1.6.0:
     dependencies:
