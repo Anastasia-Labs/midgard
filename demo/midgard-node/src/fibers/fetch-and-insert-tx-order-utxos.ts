@@ -21,13 +21,13 @@ const fetchTxOrderUTxOs = (
     const fetchConfig: SDK.TxOrderFetchConfig = {
       txOrderAddress: txOrderAuthValidator.spendScriptAddress,
       txOrderPolicyId: txOrderAuthValidator.policyId,
-      inclusionStartTime: BigInt(inclusionStartTime),
-      inclusionEndTime: BigInt(inclusionEndTime),
+      inclusionTimeLowerBound: BigInt(inclusionStartTime),
+      inclusionTimeUpperBound: BigInt(inclusionEndTime),
     };
     return yield* SDK.fetchTxOrderUTxOsProgram(lucid, fetchConfig);
   });
 
-export const fetchAndInsertTxOrderUTxOs = (Effect.Effect<
+export const fetchAndInsertTxOrderUTxOs: Effect.Effect<
   void,
   SDK.LucidError | DatabaseError,
   AlwaysSucceedsContract | Lucid | Database | Globals
@@ -37,7 +37,7 @@ export const fetchAndInsertTxOrderUTxOs = (Effect.Effect<
   const startTime: number = yield* Ref.get(globals.LATEST_TX_ORDER_FETCH_TIME);
   const endTime: number = Date.now();
 
-  yield* Effect.logInfo("  fetching TxOrderUTxOs...");
+  yield* Effect.logInfo("fetching TxOrderUTxOs...");
 
   const txOrderUTxOs = yield* fetchTxOrderUTxOs(lucid, startTime, endTime);
 
@@ -46,7 +46,7 @@ export const fetchAndInsertTxOrderUTxOs = (Effect.Effect<
     return;
   }
 
-  yield* Effect.logInfo(`${txOrderUTxOs.length} deposit UTxOs found.`);
+  yield* Effect.logInfo(`${txOrderUTxOs.length} tx order UTxOs found.`);
 
   const entries: UserEventsUtils.Entry[] = txOrderUTxOs.map((utxo) => ({
     [UserEventsUtils.Columns.ID]: utxo.idCbor,
@@ -57,7 +57,7 @@ export const fetchAndInsertTxOrderUTxOs = (Effect.Effect<
   yield* TxOrdersDB.insertEntries(entries);
 
   yield* Ref.set(globals.LATEST_TX_ORDER_FETCH_TIME, endTime);
-}));
+});
 
 export const fetchAndInsertTxOrderUTxOsFiber = (
   schedule: Schedule.Schedule<number>,
