@@ -118,17 +118,15 @@ const constructBatchTx = (
       batchSize - partialBatch.length,
     );
 
-    const res = Option.match(optRestBatchTx, {
+    return Option.match(optRestBatchTx, {
       onNone: () =>
         Option.some({ batchTx: partialBatchTx, restQueue: utxosQueue }),
       onSome: ({ batchTx, restQueue }) =>
         Option.some({
           batchTx: partialBatchTx.compose(batchTx),
-          restQueue: restQueue,
+          restQueue,
         }),
     });
-
-    return res;
   });
 
 const constructBatchTxs = (
