@@ -9,7 +9,6 @@ import { Effect, pipe } from "effect";
 import dotenv from "dotenv";
 import { NodeRuntime } from "@effect/platform-node";
 import { DatabaseError } from "@/database/utils/common.js";
-import { SqlError } from "@effect/sql";
 
 dotenv.config();
 const VERSION = packageJson.version;
@@ -56,12 +55,15 @@ program.version(VERSION).description(
 program.command("listen").action(async () => {
   const program: Effect.Effect<
     void,
-    | DatabaseError
-    | SqlError.SqlError
-    | Services.ConfigError
-    | Services.DatabaseInitializationError,
+    DatabaseError | Services.ConfigError | Services.DatabaseInitializationError,
     never
-  > = pipe(runNode, Effect.provide(Services.NodeConfig.layer));
+  > = pipe(
+    runNode,
+    Effect.provide(Services.Database.layer),
+    Effect.provide(Services.AlwaysSucceedsContract.Default),
+    Effect.provide(Services.Lucid.Default),
+    Effect.provide(Services.NodeConfig.layer),
+  );
 
   NodeRuntime.runMain(program, { teardown: undefined });
 });
