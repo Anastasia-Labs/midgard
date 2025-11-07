@@ -3,8 +3,6 @@ import {
   Assets,
   Data,
   LucidEvolution,
-  PolicyId,
-  Script,
   TxBuilder,
   TxSignBuilder,
   UTxO,
@@ -13,8 +11,10 @@ import {
 import {
   AlwaysSucceedsContract,
   AuthenticatedValidator,
+  Database,
   Globals,
   Lucid,
+  NodeConfig,
 } from "@/services/index.js";
 import { Effect, Option, Ref } from "effect";
 import {
@@ -23,6 +23,19 @@ import {
   TxSubmitError,
   TxSignError,
 } from "@/transactions/utils.js";
+import {
+  AddressHistoryDB,
+  BlocksDB,
+  ConfirmedLedgerDB,
+  ImmutableDB,
+  LatestLedgerDB,
+  MempoolDB,
+  MempoolLedgerDB,
+  ProcessedMempoolDB,
+} from "@/database/index.js";
+import { deleteLedgerMpt, deleteMempoolMpt } from "@/workers/utils/mpt.js";
+import { DatabaseError } from "@/database/utils/common.js";
+import { FileSystemError } from "@/utils.js";
 
 const collectAndBurnUTxOsTx = (
   lucid: LucidEvolution,
@@ -177,7 +190,7 @@ const completeResetTxProgram = (
     return txHash;
   });
 
-export const resetAll: Effect.Effect<
+export const resetUTxOs: Effect.Effect<
   void,
   SDK.LucidError | TxSubmitError | TxSignError,
   AlwaysSucceedsContract | Lucid | Globals
@@ -242,3 +255,23 @@ export const resetAll: Effect.Effect<
   yield* Ref.set(globals.AVAILABLE_CONFIRMED_BLOCK, "");
   yield* Effect.logInfo(`🚧 Done resetting UTxOs.`);
 });
+
+export const resetDatabases: Effect.Effect<
+  void,
+  DatabaseError | FileSystemError,
+  NodeConfig | Database
+> = Effect.all(
+  [
+    MempoolDB.clear,
+    MempoolLedgerDB.clear,
+    ProcessedMempoolDB.clear,
+    BlocksDB.clear,
+    ImmutableDB.clear,
+    LatestLedgerDB.clear,
+    ConfirmedLedgerDB.clear,
+    AddressHistoryDB.clear,
+    deleteMempoolMpt,
+    deleteLedgerMpt,
+  ],
+  { discard: true },
+);
