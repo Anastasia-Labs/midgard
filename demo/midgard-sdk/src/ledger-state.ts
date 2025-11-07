@@ -5,7 +5,7 @@ import {
   OutputReferenceSchema,
   POSIXTimeSchema,
   PubKeyHashSchema,
-} from "./common.js";
+} from "@/common.js";
 
 export const HeaderHashSchema = Data.Bytes({ minLength: 28, maxLength: 28 });
 export type HeaderHash = Data.Static<typeof HeaderHashSchema>;
