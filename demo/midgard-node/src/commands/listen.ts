@@ -35,8 +35,8 @@ import {
   InitDB,
   MempoolDB,
   MempoolLedgerDB,
-} from "../database/index.js";
-import { isHexString } from "../utils.js";
+} from "@/database/index.js";
+import { isHexString } from "@/utils.js";
 import {
   HttpRouter,
   HttpServer,

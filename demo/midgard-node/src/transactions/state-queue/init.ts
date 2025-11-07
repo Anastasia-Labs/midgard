@@ -6,7 +6,7 @@ import {
   handleSignSubmit,
   TxSubmitError,
   TxSignError,
-} from "../utils.js";
+} from "@/transactions/utils.js";
 
 export const stateQueueInit: Effect.Effect<
   string | void,

@@ -27,7 +27,7 @@ import {
   handleSignSubmit,
   TxSubmitError,
   TxSignError,
-} from "../utils.js";
+} from "@/transactions/utils.js";
 import { Entry as LedgerEntry } from "@/database/utils/ledger.js";
 import { DatabaseError } from "@/database/utils/common.js";
 import { breakDownTx } from "@/utils.js";
