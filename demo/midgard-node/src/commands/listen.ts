@@ -5,7 +5,7 @@ import {
   AlwaysSucceedsContract,
   Globals,
 } from "@/services/index.js";
-import { StateQueueTx, Reset } from "@/transactions/index.js";
+import { StateQueueTx } from "@/transactions/index.js";
 import * as SDK from "@al-ft/midgard-sdk";
 import { NodeSdk } from "@effect/opentelemetry";
 import {
@@ -31,13 +31,10 @@ import {
 import {
   AddressHistoryDB,
   BlocksDB,
-  ConfirmedLedgerDB,
   ImmutableDB,
   InitDB,
-  LatestLedgerDB,
   MempoolDB,
   MempoolLedgerDB,
-  ProcessedMempoolDB,
 } from "../database/index.js";
 import { isHexString } from "../utils.js";
 import {
@@ -51,7 +48,7 @@ import { createServer } from "node:http";
 import { NodeHttpServer } from "@effect/platform-node";
 import { HttpBodyError } from "@effect/platform/HttpBody";
 import * as Genesis from "@/genesis.js";
-import { deleteLedgerMpt, deleteMempoolMpt } from "@/workers/utils/mpt.js";
+import * as Reset from "@/reset.js";
 import { SerializedStateQueueUTxO } from "@/workers/utils/commit-block-header.js";
 import { DatabaseError } from "@/database/utils/common.js";
 import { TxConfirmError, TxSignError } from "@/transactions/utils.js";
