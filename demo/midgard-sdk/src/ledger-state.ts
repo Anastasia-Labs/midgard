@@ -1,10 +1,12 @@
 import { Data } from "@lucid-evolution/lucid";
 import {
+  AddressSchema,
   H32Schema,
   MerkleRootSchema,
   OutputReferenceSchema,
   POSIXTimeSchema,
   PubKeyHashSchema,
+  ValueSchema,
 } from "@/common.js";
 
 export const HeaderHashSchema = Data.Bytes({ minLength: 28, maxLength: 28 });
@@ -111,3 +113,45 @@ export type MidgardTxBodyCompact = Data.Static<
 >;
 export const MidgardTxBodyCompact =
   MidgardTxBodyCompactSchema as unknown as MidgardTxBodyCompact;
+
+export const WithdrawalBodySchema = Data.Object({
+  l2_outref: OutputReferenceSchema,
+  l2_owner: Data.Bytes({ minLength: 28, maxLength: 28 }),
+  l2_value: ValueSchema,
+  l1_address: AddressSchema,
+  l1_datum: Data.Bytes({ minLength: 28, maxLength: 28 }),
+});
+export type WithdrawalBody = Data.Static<typeof WithdrawalBodySchema>;
+export const WithdrawalBody = WithdrawalBodySchema as unknown as WithdrawalBody;
+
+export const WithdrawalSignatureSchema = Data.Map(Data.Bytes(),Data.Bytes());
+export type WithdrawalSignature = Data.Static<typeof WithdrawalSignatureSchema>;
+export const WithdrawalSignature = WithdrawalSignatureSchema as unknown as WithdrawalSignature;
+
+export const WithdrawalValiditySchema = Data.Enum([
+   Data.Literal("WithdrawalIsValid"),
+   Data.Literal("NonExistentWithdrawalUtxo"),
+   Data.Literal("SpentWithdrawalUtxo"),
+   Data.Literal("IncorrectWithdrawalOwner"),
+   Data.Literal("IncorrectWithdrawalValue"),
+   Data.Literal("IncorrectWithdrawalSignature"),
+   Data.Literal("TooManyTokensInWithdrawal")
+]);
+
+export type WithdrawalValidity = Data.Static<typeof WithdrawalValiditySchema>;
+export const WithdrawalValidity = WithdrawalValiditySchema as unknown as WithdrawalValidity;
+
+export const WithdrawalInfoSchema = Data.Object({
+   body: WithdrawalBodySchema,
+   signature: WithdrawalSignatureSchema,
+   validity: WithdrawalValiditySchema,
+});
+export type WithdrawalInfo = Data.Static<typeof WithdrawalInfoSchema>;
+export const WithdrawalInfo = WithdrawalInfoSchema as unknown as WithdrawalInfo;
+
+export const WithdrawalEventSchema = Data.Object({
+    id: OutputReferenceSchema,
+    info: WithdrawalInfoSchema,
+});
+export type WithdrawalEvent = Data.Static<typeof WithdrawalEventSchema>;
+export const WithdrawalEvent = WithdrawalEventSchema as unknown as WithdrawalEvent;

@@ -1,7 +1,48 @@
-import { LucidEvolution, TxBuilder } from "@lucid-evolution/lucid";
+import { AddressData, AddressSchema, HashingError, LucidError, POSIXTime, POSIXTimeSchema, hashHexWithBlake2b256 } from "@/common.js";
+import { WithdrawalBody, WithdrawalEventSchema, WithdrawalInfo, WithdrawalSignature } from "@/ledger-state.js";
+import { CML, Data, LucidEvolution, Script, toUnit, TxBuilder, UTxO } from "@lucid-evolution/lucid";
+import { Effect } from "effect";
 
-export type WithdrawalOrderParams = {};
+export type WithdrawalOrderParams = {
+  withdrawalScriptAddress: string;
+  mintingPolicy: Script;
+  policyId: string;
+  inclusionTime: POSIXTime
+  withdrawalBody : WithdrawalBody;
+  withdrawalSignature: WithdrawalSignature;
+  refundAddress: AddressData;
+  refundDatum: string;
+};
 
+export const WithdrawalOrderDatumSchema = Data.Object({
+  event: WithdrawalEventSchema,
+  inclusionTime: POSIXTimeSchema,
+  refundAddress: AddressSchema,
+  refundDatum: Data.Nullable(Data.Bytes()),
+});
+export type WithdrawalOrderDatum = Data.Static<typeof WithdrawalOrderDatumSchema>;
+export const WithdrawalOrderDatum = WithdrawalOrderDatumSchema as unknown as WithdrawalOrderDatum;
+
+export const WithdrawalMintRedeemerSchema = Data.Enum([
+  Data.Object({
+    AuthenticateEvent: Data.Object({
+      nonceInputIndex: Data.Integer(),
+      eventOutputIndex: Data.Integer(),
+      hubRefInputIndex: Data.Integer(),
+      witnessRegistrationRedeemerIndex: Data.Integer(),
+    }),
+  }),
+  Data.Object({
+    BurnEventNFT: Data.Object({
+      nonceAssetName: Data.Bytes(),
+      witnessUnregistrationRedeemerIndex: Data.Integer(),
+    }),
+  }),
+]);
+export type WithdrawalMintRedeemer = Data.Static<typeof WithdrawalMintRedeemerSchema>;
+export const WithdrawalMintRedeemer =
+  WithdrawalMintRedeemerSchema as unknown as WithdrawalMintRedeemer;
+  
 /**
  * WithdrawalOrder
  *
@@ -12,7 +53,71 @@ export type WithdrawalOrderParams = {};
 export const withdrawalOrderTxBuilder = (
   lucid: LucidEvolution,
   params: WithdrawalOrderParams,
-): TxBuilder => {
-  const tx = lucid.newTx();
-  return tx;
-};
+): Effect.Effect<TxBuilder, HashingError | LucidError> => 
+  Effect.gen(function* () {
+    const redeemer: WithdrawalMintRedeemer = {
+      AuthenticateEvent: {
+        nonceInputIndex: 0n,
+        eventOutputIndex: 0n,
+        hubRefInputIndex: 0n,
+        witnessRegistrationRedeemerIndex: 0n,
+      },
+    };
+    const authenticateEvent = Data.to(redeemer, WithdrawalMintRedeemer);
+    const utxos: UTxO[] = yield* Effect.promise(() =>
+      lucid.wallet().getUtxos(),
+    );
+    if (utxos.length === 0) {
+      yield* new LucidError({
+        message: "Failed to build the deposit transaction",
+        cause: "No UTxOs found in wallet",
+      });
+    }
+    const inputUtxo = utxos[0];
+    const transactionInput = CML.TransactionInput.new(
+      CML.TransactionHash.from_hex(inputUtxo.txHash),
+      BigInt(inputUtxo.outputIndex),
+    );
+
+    const assetName = yield* hashHexWithBlake2b256(
+      transactionInput.to_cbor_hex(),
+    );
+    const withdrawalNFT = toUnit(params.policyId, assetName);
+    const withdrawalOrderDatum: WithdrawalOrderDatum = {
+        event: {
+            id: {
+              txHash: { hash: inputUtxo.txHash },
+              outputIndex: BigInt(inputUtxo.outputIndex),
+            },
+            info:  {
+              body: params.withdrawalBody,
+              signature: params.withdrawalSignature,
+              validity: "WithdrawalIsValid"
+            },
+          },
+          inclusionTime: BigInt(params.inclusionTime),
+          refundAddress: params.refundAddress,
+          refundDatum: params.refundDatum,
+        };
+    const withdrawalOrderDatumCBOR = Data.to(withdrawalOrderDatum, WithdrawalOrderDatum);
+    const tx = lucid
+      .newTx()
+      .collectFrom([inputUtxo])
+      .mintAssets(
+        {
+          [withdrawalNFT]: 1n,
+        },
+        authenticateEvent,
+      )
+      .pay.ToAddressWithData(
+        params.withdrawalScriptAddress,
+        {
+          kind: "inline",
+          value: withdrawalOrderDatumCBOR,
+        },
+        { [withdrawalNFT]: 1n },
+      )
+      .validTo(Number(params.inclusionTime))
+      .attach.MintingPolicy(params.mintingPolicy);
+    return tx;
+  });
