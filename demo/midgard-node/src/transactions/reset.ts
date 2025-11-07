@@ -16,7 +16,7 @@ import {
   Lucid,
   NodeConfig,
 } from "@/services/index.js";
-import { Effect, Option, Ref } from "effect";
+import { Effect, Option, Ref, Schedule } from "effect";
 import {
   TxConfirmError,
   handleSignSubmit,
@@ -155,9 +155,8 @@ const constructBatchTxs = (
 const completeResetTxProgram = (
   lucid: LucidEvolution,
   tx: TxBuilder,
-): Effect.Effect<void, SDK.LucidError | TxSignError | TxSubmitError, Globals> =>
+): Effect.Effect<void, SDK.LucidError | TxSignError | TxSubmitError> =>
   Effect.gen(function* () {
-    const globals = yield* Globals;
     const completed: TxSignBuilder = yield* tx.completeProgram().pipe(
       Effect.mapError(
         (e) =>
@@ -184,25 +183,21 @@ const completeResetTxProgram = (
       Effect.catchTag("TxSubmitError", onSubmitFailure),
       Effect.catchTag("TxConfirmError", onConfirmFailure),
     );
-    yield* Ref.set(globals.RESET_IN_PROGRESS, false);
     return txHash;
   });
 
 export const resetUTxOs: Effect.Effect<
   void,
   SDK.LucidError | TxSubmitError | TxSignError,
-  AlwaysSucceedsContract | Lucid | Globals
+  AlwaysSucceedsContract | Lucid
 > = Effect.gen(function* () {
-  const globals = yield* Globals;
-
   const lucid = yield* Lucid;
   const { stateQueueAuthValidator, depositAuthValidator } =
     yield* AlwaysSucceedsContract;
 
-  yield* lucid.switchToOperatorsMainWallet;
-  yield* Ref.set(globals.RESET_IN_PROGRESS, true);
-
   yield* Effect.logInfo("🚧 Fetching UTxOs...");
+
+  yield* lucid.switchToOperatorsMainWallet;
 
   const allStateQueueUTxOs = yield* SDK.fetchUnsortedStateQueueUTxOsProgram(
     lucid.api,
@@ -245,12 +240,7 @@ export const resetUTxOs: Effect.Effect<
       yield* completeResetTxProgram(lucid.api, tx);
     }).pipe(Effect.tapError((e) => Effect.logError(e))),
   );
-  yield* Ref.set(globals.RESET_IN_PROGRESS, false);
 
-  yield* Effect.logInfo(`🚧 Resetting global variables...`);
-  yield* Ref.set(globals.LATEST_SYNC_TIME_OF_STATE_QUEUE_LENGTH, Date.now());
-  yield* Ref.set(globals.BLOCKS_IN_QUEUE, 0);
-  yield* Ref.set(globals.AVAILABLE_CONFIRMED_BLOCK, "");
   yield* Effect.logInfo(`🚧 Done resetting UTxOs.`);
 });
 
@@ -273,3 +263,29 @@ export const resetDatabases: Effect.Effect<
   ],
   { discard: true },
 );
+
+export const program: Effect.Effect<
+  void,
+  | SDK.LucidError
+  | TxSubmitError
+  | TxSignError
+  | DatabaseError
+  | FileSystemError,
+  Lucid | NodeConfig | AlwaysSucceedsContract | Globals | Database
+> = Effect.gen(function* () {
+  const globals = yield* Globals;
+  yield* Ref.set(globals.RESET_IN_PROGRESS, true);
+
+  yield* Effect.all([
+    resetUTxOs.pipe(Effect.retry(Schedule.fixed("5000 millis"))),
+    resetDatabases,
+  ]);
+
+  yield* Ref.set(globals.RESET_IN_PROGRESS, false);
+
+  yield* Effect.logInfo(`🚧 Resetting global variables...`);
+  yield* Ref.set(globals.LATEST_SYNC_TIME_OF_STATE_QUEUE_LENGTH, Date.now());
+  yield* Ref.set(globals.BLOCKS_IN_QUEUE, 0);
+  yield* Ref.set(globals.AVAILABLE_CONFIRMED_BLOCK, "");
+  yield* Effect.logInfo(`🚧 Done resetting global variables...`);
+});

@@ -329,8 +329,7 @@ const getMergeHandler = Effect.gen(function* () {
 
 const getResetHandler = Effect.gen(function* () {
   yield* Effect.logInfo(`🚧 Reset request received`);
-  yield* Reset.resetUTxOs;
-  yield* Reset.resetDatabases;
+  yield* Reset.program;
 
   return yield* HttpServerResponse.json({
     message: `Collected all UTxOs successfully!`,
