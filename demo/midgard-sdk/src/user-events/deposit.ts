@@ -31,6 +31,7 @@ import {
   POSIXTimeSchema,
 } from "@/common.js";
 import { getProtocolParameters } from "@/protocol-parameters.js";
+import { DepositEventSchema, DepositInfo } from "@/ledger-state.js";
 
 export type DepositParams = {
   depositScriptAddress: string;
@@ -39,20 +40,6 @@ export type DepositParams = {
   depositAmount: bigint;
   depositInfo: DepositInfo;
 };
-
-export const DepositInfoSchema = Data.Object({
-  l2Address: Data.Bytes(),
-  l2Datum: Data.Nullable(Data.Bytes()),
-});
-export type DepositInfo = Data.Static<typeof DepositInfoSchema>;
-export const DepositInfo = DepositInfoSchema as unknown as DepositInfo;
-
-export const DepositEventSchema = Data.Object({
-  id: OutputReferenceSchema,
-  info: DepositInfoSchema,
-});
-export type DepositEvent = Data.Static<typeof DepositEventSchema>;
-export const DepositEvent = DepositEventSchema as unknown as DepositEvent;
 
 export const DepositDatumSchema = Data.Object({
   event: DepositEventSchema,

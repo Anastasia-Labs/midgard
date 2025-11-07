@@ -167,6 +167,10 @@ export const bufferToHex = (buf: Buffer): string => {
   }
 };
 
+export const H32Schema = Data.Bytes({ minLength: 32, maxLength: 32 });
+export type H32 = Data.Static<typeof H32Schema>;
+export const H32 = H32Schema as unknown as H32;
+
 export const OutputReferenceSchema = Data.Object({
   txHash: Data.Object({ hash: Data.Bytes({ minLength: 32, maxLength: 32 }) }),
   outputIndex: Data.Integer(),
