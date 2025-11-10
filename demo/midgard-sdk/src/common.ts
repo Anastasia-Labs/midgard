@@ -122,7 +122,15 @@ export const utxosAtByNFTPolicyId = (
       });
     const authenticUTxOs = yield* Effect.allSuccesses(nftEffects);
     return authenticUTxOs;
-  });
+  }).pipe(
+    Effect.catchAllDefect(
+      (d) =>
+        new LucidError({
+          message: `Unexpected error while fetching UTxOs at: ${addressOrCred}`,
+          cause: d,
+        }),
+    ),
+  );
 
 const blake2bHelper = (
   msg: string,

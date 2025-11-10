@@ -80,8 +80,8 @@ export const DepositMintRedeemer =
 export type DepositFetchConfig = {
   depositAddress: Address;
   depositPolicyId: PolicyId;
-  inclusionTimeUpperBound: POSIXTime;
-  inclusionTimeLowerBound: POSIXTime;
+  inclusionTimeUpperBound?: POSIXTime;
+  inclusionTimeLowerBound?: POSIXTime;
 };
 
 export const getDepositDatumFromUTxO = (
@@ -149,16 +149,22 @@ export const utxosToDepositUTxOs = (
   return Effect.allSuccesses(effects);
 };
 
-const isUTxOTimeValid = (
-  depositUTxO: DepositUTxO,
-  inclusionStartTime: POSIXTime,
-  inclusionEndTime: POSIXTime,
+// TODO: Might be good to define an `EventUTxO` type.
+const isEventUTxOInclusionTimeInBounds = (
+  eventUTxO: { datum: { inclusionTime: bigint } },
+  inclusionTimeLowerBound?: POSIXTime,
+  inclusionTimeUpperBound?: POSIXTime,
 ): boolean => {
-  const depositData = depositUTxO.datum;
-  return (
-    inclusionStartTime < depositData.inclusionTime &&
-    depositData.inclusionTime <= inclusionEndTime
-  );
+  const eventDatum = eventUTxO.datum;
+
+  const biggerThanLower =
+    inclusionTimeLowerBound === undefined ||
+    inclusionTimeLowerBound < eventDatum.inclusionTime;
+  const smallerThanUpper =
+    inclusionTimeUpperBound === undefined ||
+    eventDatum.inclusionTime <= inclusionTimeUpperBound;
+
+  return biggerThanLower && smallerThanUpper;
 };
 
 export const fetchDepositUTxOsProgram = (
@@ -177,7 +183,7 @@ export const fetchDepositUTxOsProgram = (
     );
 
     const validDepositUTxOs = depositUTxOs.filter((utxo) =>
-      isUTxOTimeValid(
+      isEventUTxOInclusionTimeInBounds(
         utxo,
         config.inclusionTimeLowerBound,
         config.inclusionTimeUpperBound,
