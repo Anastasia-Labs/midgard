@@ -22,6 +22,8 @@ import {
   ProcessedMempoolDB,
   DepositsDB,
   TxUtils as TxTable,
+  LedgerUtils,
+  AddressHistoryDB,
 } from "@/database/index.js";
 import {
   handleSignSubmitNoConfirmation,
@@ -32,8 +34,6 @@ import { fromHex } from "@lucid-evolution/lucid";
 import {
   MidgardMpt,
   MptError,
-  emptyRootHexProgram,
-  keyValueMptRoot,
   makeMpts,
   withTrieTransaction,
 } from "@/workers/utils/mpt.js";
@@ -100,6 +100,8 @@ const successfulSubmissionProgram = (
   mempoolTrie: MidgardMpt,
   mempoolTxs: readonly TxTable.EntryWithTimeStamp[],
   mempoolTxHashes: Buffer[],
+  spentTxOrderUTxOs: Buffer[],
+  producedTxOrderUTxOs: LedgerUtils.Entry[],
   newHeaderHash: string,
   workerInput: WorkerInput,
   txSize: number,
@@ -112,7 +114,9 @@ const successfulSubmissionProgram = (
     const processedMempoolTxs = yield* ProcessedMempoolDB.retrieve;
 
     yield* Effect.logInfo(
-      "🔹 Inserting included transactions into ImmutableDB and BlocksDB, clearing all the processed txs from MempoolDB and ProcessedMempoolDB, and deleting mempool LevelDB...",
+      `🔹 Inserting included transactions into ImmutableDB and BlocksDB, \
+      clearing all the processed txs from MempoolDB and ProcessedMempoolDB, \
+      deleting mempool LevelDB, adding new tx orders to AddressHistoryDB`,
     );
     yield* Effect.all(
       [
@@ -154,6 +158,7 @@ const successfulSubmissionProgram = (
         ),
         ProcessedMempoolDB.clear, // uses `TRUNCATE` so no need for batching.
         mempoolTrie.delete(),
+        AddressHistoryDB.insert(spentTxOrderUTxOs, producedTxOrderUTxOs),
       ],
       { concurrency: "unbounded" },
     );
@@ -288,6 +293,7 @@ const databaseOperationsProgram = (
   WorkerOutput | undefined,
   | SDK.CborDeserializationError
   | SDK.CmlUnexpectedError
+  | SDK.CmlDeserializationError
   | SDK.DataCoercionError
   | SDK.HashingError
   | SDK.LucidError
@@ -349,11 +355,8 @@ const databaseOperationsProgram = (
           startTime,
           endDate,
         );
-        const sizeOfTxOrderTxs = yield* processTxOrderEvent(
-          startTime,
-          endDate,
-          ledgerTrie,
-        );
+        const { sizeOfTxOrderTxs, spentTxOrderUTxOs, producedTxOrderUTxOs } =
+          yield* processTxOrderEvent(startTime, endDate, ledgerTrie);
         if (Option.isNone(optDepositsRootProgram) && sizeOfTxOrderTxs === 0) {
           yield* Effect.logInfo("🔹 Nothing to commit.");
           return {
@@ -363,14 +366,15 @@ const databaseOperationsProgram = (
           const depositsRoot = yield* processDepositEvent(
             optDepositsRootProgram,
           );
-          const { signAndSubmitProgram, txSize } = yield* buildUnsignedTx(
-            stateQueueAuthValidator,
-            latestBlock,
-            yield* ledgerTrie.getRootHex(),
-            yield* mempoolTrie.getRootHex(),
-            depositsRoot,
-            endDate,
-          );
+          const { newHeaderHash, signAndSubmitProgram, txSize } =
+            yield* buildUnsignedTx(
+              stateQueueAuthValidator,
+              latestBlock,
+              yield* ledgerTrie.getRootHex(),
+              yield* mempoolTrie.getRootHex(),
+              depositsRoot,
+              endDate,
+            );
 
           return yield* Effect.matchEffect(signAndSubmitProgram, {
             onFailure: (_) => {
@@ -386,13 +390,18 @@ const databaseOperationsProgram = (
               return Effect.succeed(failureOutput);
             },
             onSuccess: (txHash) =>
-              Effect.succeed({
-                type: "SuccessfulSubmissionOutput",
-                submittedTxHash: txHash,
+              successfulSubmissionProgram(
+                mempoolTrie,
+                mempoolTxs,
+                mempoolTxHashes,
+                spentTxOrderUTxOs,
+                producedTxOrderUTxOs,
+                newHeaderHash,
+                workerInput,
                 txSize,
-                mempoolTxsCount: 0,
-                sizeOfBlocksTxs: workerInput.data.sizeOfProcessedTxsSoFar,
-              } as WorkerOutput),
+                sizeOfTxOrderTxs,
+                txHash,
+              ),
           });
         }
       } else {
@@ -410,11 +419,8 @@ const databaseOperationsProgram = (
 
         const depositsRoot = yield* processDepositEvent(optDepositsRootProgram);
 
-        const sizeOfTxOrderTxs = yield* processTxOrderEvent(
-          startTime,
-          endTime,
-          ledgerTrie,
-        );
+        const { spentTxOrderUTxOs, producedTxOrderUTxOs, sizeOfTxOrderTxs } =
+          yield* processTxOrderEvent(startTime, endTime, ledgerTrie);
         const sizeOfProcessedTxs = sizeOfTxRequestTxs + sizeOfTxOrderTxs;
 
         const { newHeaderHash, signAndSubmitProgram, txSize } =
@@ -459,6 +465,8 @@ const databaseOperationsProgram = (
               mempoolTrie,
               mempoolTxs,
               mempoolTxHashes,
+              spentTxOrderUTxOs,
+              producedTxOrderUTxOs,
               newHeaderHash,
               workerInput,
               txSize,
@@ -476,6 +484,7 @@ const wrapper = (
   WorkerOutput | undefined,
   | SDK.CborDeserializationError
   | SDK.CmlUnexpectedError
+  | SDK.CmlDeserializationError
   | SDK.DataCoercionError
   | SDK.HashingError
   | SDK.LucidError
