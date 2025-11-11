@@ -240,8 +240,10 @@ export const incompleteTxOrderTxProgram = (
       transactionInput.to_cbor_hex(),
     );
     const txOrderNFT = toUnit(params.policyId, assetName);
-    const midgardTxBody = params.cardanoTx.body().to_cbor_hex();
-    const midgardTxWits = params.cardanoTx.witness_set().to_cbor_hex();
+    const txBodyCborHex = params.cardanoTx.body().to_cbor_hex();
+    const txWitsCborHex = params.cardanoTx.witness_set().to_cbor_hex();
+    const midgardTxBody = yield* hashHexWithBlake2b256(txBodyCborHex);
+    const midgardTxWits = yield* hashHexWithBlake2b256(txWitsCborHex);
 
     const currDatum: TxOrderDatum = {
       event: {

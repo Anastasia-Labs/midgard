@@ -81,12 +81,10 @@ const submitGenesisTxOrders: Effect.Effect<
     paymentCredential: { PublicKeyCredential: [l2AddressPc] },
     stakeCredential: typeof l2AddressSc === 'string' ? {Inline: [{ ScriptCredential: [l2AddressSc] }]} : null,
   };
-  yield* Effect.logInfo("l2 address", JSON.stringify(l2AddressData))
   const inclusionTime = Number(new Date(Date.now() + 3600 * 1000));
   const txBuilder = lucid.api
     .newTx()
     .pay.ToAddress(l2Address, {lovelace: 1_000_00n})
-    .validTo(inclusionTime)
   const txSignBuilder = yield* Effect.tryPromise({
     try: () => txBuilder.complete(),
     catch: (err) =>
@@ -104,8 +102,8 @@ const submitGenesisTxOrders: Effect.Effect<
     refundAddress: l2AddressData,
     refundDatum: "",
     inclusionTime: BigInt(inclusionTime),
-    midgardTxBody: "", //tx.body().toString(),
-    midgardTxWits: "", //tx.witness_set.toString(),
+    midgardTxBody: tx.body().toString(),
+    midgardTxWits: tx.witness_set.toString(),
     cardanoTx: tx,
   }
 
@@ -166,7 +164,7 @@ export const program: Effect.Effect<
 > = Effect.all(
   [
     insertGenesisUtxos,
-    // submitGenesisDeposits.pipe(Effect.retry(Schedule.fixed("5000 millis"))),
+    submitGenesisDeposits.pipe(Effect.retry(Schedule.fixed("5000 millis"))),
     submitGenesisTxOrders,
   ],
   { concurrency: "unbounded" },
