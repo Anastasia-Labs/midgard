@@ -26,7 +26,6 @@ import {
 import { Data as EffectData, Effect } from "effect";
 import {
   OutputReference,
-  OutputReferenceSchema,
   POSIXTime,
   POSIXTimeSchema,
 } from "@/common.js";

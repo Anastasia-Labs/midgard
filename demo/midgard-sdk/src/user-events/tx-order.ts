@@ -8,10 +8,12 @@ import {
   Script,
   toUnit,
   TxBuilder,
+  TxSignBuilder,
   UTxO,
 } from "@lucid-evolution/lucid";
 import {
   DataCoercionError,
+  GenericErrorFields,
   getStateToken,
   makeReturn,
   OutputReference,
@@ -28,7 +30,7 @@ import {
   hashHexWithBlake2b256,
 } from "@/common.js";
 import { MidgardTxCompact, TxOrderEventSchema } from "@/ledger-state.js";
-import { Effect } from "effect";
+import { Data as EffectData, Effect } from "effect";
 
 export type TxOrderParams = {
   txOrderAddress: string;
@@ -205,7 +207,7 @@ export const fetchTxOrderUTxOs = (
  * @param params - The parameters
  * @returns {TxBuilder} A TxBuilder instance that can be used to build the transaction.
  */
-export const incompleteTxOrderProgram = (
+export const incompleteTxOrderTxProgram = (
   lucid: LucidEvolution,
   params: TxOrderParams,
 ): Effect.Effect<TxBuilder, HashingError | LucidError> =>
@@ -279,3 +281,38 @@ export const incompleteTxOrderProgram = (
       .attach.MintingPolicy(params.mintingPolicy);
     return tx;
   });
+
+export const unsignedTxOrderTxProgram = (
+  lucid: LucidEvolution,
+  depositParams: TxOrderParams,
+): Effect.Effect<TxSignBuilder, HashingError | LucidError | TxOrderError> =>
+  Effect.gen(function* () {
+    const commitTx = yield* incompleteTxOrderTxProgram(lucid, depositParams);
+    const completedTx: TxSignBuilder = yield* Effect.tryPromise({
+      try: () => commitTx.complete({ localUPLCEval: false }),
+      catch: (e) =>
+        new TxOrderError({
+          message: `Failed to build the transaction: ${e}`,
+          cause: e,
+        }),
+    });
+    return completedTx;
+  });
+
+/**
+ * Builds completed tx for submitting tx order using the provided
+ * `LucidEvolution` instance and a tx order config.
+ *
+ * @param lucid - The `LucidEvolution` API object.
+ * @param txOrderParams - Parameters required for commiting tx orders.
+ * @returns A promise that resolves to a `TxSignBuilder` instance.
+ */
+export const unsignedTxOrderTx = (
+  lucid: LucidEvolution,
+  txOrderParams: TxOrderParams,
+): Promise<TxSignBuilder> =>
+  makeReturn(unsignedTxOrderTxProgram(lucid, txOrderParams)).unsafeRun();
+
+export class TxOrderError extends EffectData.TaggedError(
+  "TxOrderError",
+)<GenericErrorFields> {}
