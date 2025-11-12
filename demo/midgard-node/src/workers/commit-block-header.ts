@@ -36,6 +36,7 @@ import {
   keyValueMptRoot,
   makeMpts,
   processMpts,
+  addDeposits,
   withTrieTransaction,
 } from "@/workers/utils/mpt.js";
 import { FileSystemError, batchProgram } from "@/utils.js";
@@ -45,6 +46,7 @@ import {
   retrieveTimeBoundEntries,
 } from "@/database/utils/user-events.js";
 import { DatabaseError } from "@/database/utils/common.js";
+import { RuntimeFiber } from "effect/Fiber";
 
 const BATCH_SIZE = 100;
 
@@ -213,6 +215,11 @@ const failedSubmissionProgram = (
     };
   });
 
+export type UserEventsProgramOutput = {
+  depositRootEffect: Effect.Effect<string, MptError>;
+  depositUTxOs: Buffer[];
+};
+
 /**
  * Given the target user event table, this helper finds all the events falling
  * in the given time range and if any was found, returns an `Effect` that finds
@@ -223,7 +230,7 @@ const userEventsProgram = (
   startDate: Date,
   endDate: Date,
 ): Effect.Effect<
-  Option.Option<Effect.Effect<string, MptError>>,
+  Option.Option<UserEventsProgramOutput>,
   DatabaseError,
   Database
 > =>
@@ -245,7 +252,9 @@ const userEventsProgram = (
       );
       const eventIDs = events.map((event) => event[UserEventsColumns.ID]);
       const eventInfos = events.map((event) => event[UserEventsColumns.INFO]);
-      return Option.some(keyValueMptRoot(eventIDs, eventInfos));
+      const eventUTxOs = events.map((event) => event[UserEventsColumns.UTXO_CBOR]);
+      const userEventsOutput: UserEventsProgramOutput = { depositRootEffect: keyValueMptRoot(eventIDs, eventInfos), depositUTxOs: eventUTxOs }
+      return Option.some(userEventsOutput);
     }
   });
 
@@ -319,20 +328,21 @@ const databaseOperationsProgram = (
   workerInput: WorkerInput,
   ledgerTrie: MidgardMpt,
   mempoolTrie: MidgardMpt,
-): Effect.Effect<
-  WorkerOutput,
-  | SDK.CborDeserializationError
-  | SDK.CmlUnexpectedError
-  | SDK.DataCoercionError
-  | SDK.HashingError
-  | SDK.LucidError
-  | SDK.StateQueueError
-  | DatabaseError
-  | FileSystemError
-  | MptError,
-  AlwaysSucceedsContract | Database | Lucid
-> =>
-  Effect.gen(function* () {
+) =>
+//    Effect.Effect<
+//   WorkerOutput,
+//   | SDK.CborDeserializationError
+//   | SDK.CmlUnexpectedError
+//   | SDK.DataCoercionError
+//   | SDK.HashingError
+//   | SDK.LucidError
+//   | SDK.StateQueueError
+//   | DatabaseError
+//   | FileSystemError
+//   | MptError,
+//   AlwaysSucceedsContract | Database | Lucid
+// >
+ Effect.gen(function* () {
     const mempoolTxs = yield* MempoolDB.retrieve;
     const mempoolTxsCount = mempoolTxs.length;
 
@@ -379,19 +389,20 @@ const databaseOperationsProgram = (
         yield* Effect.logInfo(
           "🔹 Checking for user events... (no tx requests in queue)",
         );
-        const optDepositsRootProgram = yield* userEventsProgram(
+        const optUserEventsProgram: Option.Option<UserEventsProgramOutput> = yield* userEventsProgram(
           DepositsDB.tableName,
           startTime,
           endDate,
         );
-        if (Option.isNone(optDepositsRootProgram)) {
+        if (Option.isNone(optUserEventsProgram)) {
           yield* Effect.logInfo("🔹 Nothing to commit.");
           return {
             type: "NothingToCommitOutput",
           } as WorkerOutput;
         } else {
-          const depositsRootFiber = yield* Effect.fork(
-            optDepositsRootProgram.value,
+          ledgerTrie = yield* addDeposits(ledgerTrie, optUserEventsProgram.value.depositUTxOs)
+          const depositsRootFiber: RuntimeFiber<string, MptError> = yield* Effect.fork(
+            optUserEventsProgram.value.depositRootEffect,
           );
           const depositsRoot = yield* depositsRootFiber;
           yield* Effect.logInfo(`🔹 Deposits root is: ${depositsRoot}`);
@@ -435,16 +446,17 @@ const databaseOperationsProgram = (
         const endTime = optEndTime.value;
 
         yield* Effect.logInfo("🔹 Checking for user events...");
-        const optDepositsRootProgram = yield* userEventsProgram(
+        const optUserEventsProgram = yield* userEventsProgram(
           DepositsDB.tableName,
           startTime,
           endTime,
         );
 
         let depositsRoot: string = yield* emptyRootHexProgram;
-        if (Option.isSome(optDepositsRootProgram)) {
+        if (Option.isSome(optUserEventsProgram)) {
+          ledgerTrie = yield* addDeposits(ledgerTrie, optUserEventsProgram.value.depositUTxOs)
           const depositsRootFiber = yield* Effect.fork(
-            optDepositsRootProgram.value,
+            optUserEventsProgram.value.depositRootEffect,
           );
           depositsRoot = yield* depositsRootFiber;
         }

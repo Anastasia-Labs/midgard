@@ -6,8 +6,7 @@ import * as ETH_UTILS from "@ethereumjs/util";
 import { UTxO, toHex, utxoToCore } from "@lucid-evolution/lucid";
 import { Level } from "level";
 import { Database, NodeConfig } from "@/services/index.js";
-import * as Tx from "@/database/utils/tx.js";
-import * as Ledger from "@/database/utils/ledger.js";
+import { UserEventsUtils, TxUtils, LedgerUtils } from "@/database/index.js"
 import { FileSystemError, findSpentAndProducedUTxOs } from "@/utils.js";
 import * as FS from "fs";
 import * as SDK from "@al-ft/midgard-sdk";
@@ -89,11 +88,46 @@ export const deleteMpt = (
       }),
   }).pipe(Effect.withLogSpan(`Delete ${name} MPT`));
 
+
+export const addDeposits = (
+  ledgerTrie: MidgardMpt,
+  depositUtxoCbors: Buffer[],
+): Effect.Effect<
+  MidgardMpt,
+  MptError | SDK.CmlUnexpectedError,
+  Database
+> =>
+  Effect.gen(function* () {
+    const batchDBOps: ETH_UTILS.BatchDBOp[] = [];
+
+    yield* Effect.logInfo("🔹 Going through deposits...");
+    yield* Effect.forEach(depositUtxoCbors, (cbor: Buffer) =>
+      Effect.gen(function* () {
+        // Spent UTxOs should be found in withdrawals
+        const { produced } = yield* findSpentAndProducedUTxOs(
+          cbor,
+        ).pipe(Effect.withSpan("findSpentAndProducedUTxOs"));
+        const putOps: ETH_UTILS.BatchDBOp[] = produced.map(
+          (le: LedgerUtils.MinimalEntry) => ({
+            type: "put",
+            key: le[LedgerUtils.Columns.OUTREF],
+            value: le[LedgerUtils.Columns.OUTPUT],
+          }),
+        );
+        yield* Effect.sync(() => batchDBOps.push(...putOps));
+      }),
+    );
+
+    yield* ledgerTrie.batch(batchDBOps);
+    return ledgerTrie;
+  });
+
+
 // Make mempool trie, and fill it with ledger trie with processed mempool txs
 export const processMpts = (
   ledgerTrie: MidgardMpt,
   mempoolTrie: MidgardMpt,
-  mempoolTxs: readonly Tx.Entry[],
+  mempoolTxs: readonly TxUtils.Entry[],
 ): Effect.Effect<
   {
     utxoRoot: string;
@@ -110,10 +144,10 @@ export const processMpts = (
     const batchDBOps: ETH_UTILS.BatchDBOp[] = [];
     let sizeOfProcessedTxs = 0;
     yield* Effect.logInfo("🔹 Going through mempool txs and finding roots...");
-    yield* Effect.forEach(mempoolTxs, (entry: Tx.Entry) =>
+    yield* Effect.forEach(mempoolTxs, (entry: TxUtils.Entry) =>
       Effect.gen(function* () {
-        const txHash = entry[Tx.Columns.TX_ID];
-        const txCbor = entry[Tx.Columns.TX];
+        const txHash = entry[TxUtils.Columns.TX_ID];
+        const txCbor = entry[TxUtils.Columns.TX];
         mempoolTxHashes.push(txHash);
         const { spent, produced } = yield* findSpentAndProducedUTxOs(
           txCbor,
@@ -125,10 +159,10 @@ export const processMpts = (
           key: outRef,
         }));
         const putOps: ETH_UTILS.BatchDBOp[] = produced.map(
-          (le: Ledger.MinimalEntry) => ({
+          (le: LedgerUtils.MinimalEntry) => ({
             type: "put",
-            key: le[Ledger.Columns.OUTREF],
-            value: le[Ledger.Columns.OUTPUT],
+            key: le[LedgerUtils.Columns.OUTREF],
+            value: le[LedgerUtils.Columns.OUTPUT],
           }),
         );
         yield* Effect.sync(() =>

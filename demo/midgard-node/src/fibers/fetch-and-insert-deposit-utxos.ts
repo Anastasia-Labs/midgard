@@ -55,6 +55,7 @@ export const fetchAndInsertDepositUTxOs: Effect.Effect<
   const entries: UserEventsUtils.Entry[] = depositUTxOs.map((utxo) => ({
     [UserEventsUtils.Columns.ID]: utxo.idCbor,
     [UserEventsUtils.Columns.INFO]: utxo.infoCbor,
+    [UserEventsUtils.Columns.UTXO_CBOR]: utxo.idCbor, // TODO: check that this is a right cbor
     [UserEventsUtils.Columns.INCLUSION_TIME]: utxo.inclusionTime,
   }));
 

@@ -9,12 +9,14 @@ import {
 export enum Columns {
   ID = "event_id",
   INFO = "event_info",
+  UTXO_CBOR = "utxo_cbor",
   INCLUSION_TIME = "inclusion_time",
 }
 
 export type Entry = {
   [Columns.ID]: Buffer;
   [Columns.INFO]: Buffer;
+  [Columns.UTXO_CBOR]: Buffer;
   [Columns.INCLUSION_TIME]: Date;
 };
 
@@ -28,6 +30,7 @@ export const createTable = (
         yield* sql`CREATE TABLE IF NOT EXISTS ${sql(tableName)} (
         ${sql(Columns.ID)} BYTEA NOT NULL,
         ${sql(Columns.INFO)} BYTEA NOT NULL,
+        ${sql(Columns.UTXO_CBOR)} BYTEA NOT NULL,
         ${sql(Columns.INCLUSION_TIME)} TIMESTAMPTZ NOT NULL,
         PRIMARY KEY (${sql(Columns.ID)})
       );`;
