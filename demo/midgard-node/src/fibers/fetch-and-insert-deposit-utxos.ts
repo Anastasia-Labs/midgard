@@ -6,7 +6,7 @@ import {
   Lucid,
   Database,
 } from "@/services/index.js";
-import { LucidEvolution } from "@lucid-evolution/lucid";
+import { LucidEvolution, utxoToCore } from "@lucid-evolution/lucid";
 import { DepositsDB, UserEventsUtils } from "@/database/index.js";
 import { DatabaseError } from "@/database/utils/common.js";
 import { Schedule } from "effect";
@@ -52,12 +52,17 @@ export const fetchAndInsertDepositUTxOs: Effect.Effect<
 
   yield* Effect.logInfo(`🏦 ${depositUTxOs.length} deposit UTxOs found.`);
 
+
+
   const entries: UserEventsUtils.Entry[] = depositUTxOs.map((utxo) => ({
     [UserEventsUtils.Columns.ID]: utxo.idCbor,
     [UserEventsUtils.Columns.INFO]: utxo.infoCbor,
-    [UserEventsUtils.Columns.UTXO_CBOR]: utxo.idCbor, // TODO: check that this is a right cbor
+    [UserEventsUtils.Columns.ASSET_NAME]: utxo.assetName,
+    [UserEventsUtils.Columns.L1_UTXO_CBOR]: Buffer.from(utxoToCore(utxo.utxo).to_cbor_hex()),
     [UserEventsUtils.Columns.INCLUSION_TIME]: utxo.inclusionTime,
   }));
+
+
 
   yield* DepositsDB.insertEntries(entries);
 

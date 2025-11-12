@@ -252,8 +252,11 @@ const userEventsProgram = (
       );
       const eventIDs = events.map((event) => event[UserEventsColumns.ID]);
       const eventInfos = events.map((event) => event[UserEventsColumns.INFO]);
-      const eventUTxOs = events.map((event) => event[UserEventsColumns.UTXO_CBOR]);
-      const userEventsOutput: UserEventsProgramOutput = { depositRootEffect: keyValueMptRoot(eventIDs, eventInfos), depositUTxOs: eventUTxOs }
+      const eventUTxOs = events.map((event) => event[UserEventsColumns.L1_UTXO_CBOR]);
+      const userEventsOutput: UserEventsProgramOutput = {
+        depositRootEffect: keyValueMptRoot(eventIDs, eventInfos),
+        depositUTxOs: eventUTxOs
+      }
       return Option.some(userEventsOutput);
     }
   });
@@ -399,7 +402,7 @@ const databaseOperationsProgram = (
             type: "NothingToCommitOutput",
           } as WorkerOutput;
         } else {
-          ledgerTrie = yield* addDeposits(ledgerTrie, optUserEventsProgram.value.depositUTxOs)
+          yield* addDeposits(ledgerTrie, optUserEventsProgram.value.depositUTxOs)
           const depositsRootFiber: RuntimeFiber<string, MptError> = yield* Effect.fork(
             optUserEventsProgram.value.depositRootEffect,
           );
@@ -453,7 +456,7 @@ const databaseOperationsProgram = (
 
         let depositsRoot: string = yield* emptyRootHexProgram;
         if (Option.isSome(optUserEventsProgram)) {
-          ledgerTrie = yield* addDeposits(ledgerTrie, optUserEventsProgram.value.depositUTxOs)
+          yield* addDeposits(ledgerTrie, optUserEventsProgram.value.depositUTxOs)
           const depositsRootFiber = yield* Effect.fork(
             optUserEventsProgram.value.depositRootEffect,
           );
