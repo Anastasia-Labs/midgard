@@ -328,20 +328,19 @@ const databaseOperationsProgram = (
   workerInput: WorkerInput,
   ledgerTrie: MidgardMpt,
   mempoolTrie: MidgardMpt,
-) =>
-//    Effect.Effect<
-//   WorkerOutput,
-//   | SDK.CborDeserializationError
-//   | SDK.CmlUnexpectedError
-//   | SDK.DataCoercionError
-//   | SDK.HashingError
-//   | SDK.LucidError
-//   | SDK.StateQueueError
-//   | DatabaseError
-//   | FileSystemError
-//   | MptError,
-//   AlwaysSucceedsContract | Database | Lucid
-// >
+): Effect.Effect<
+  WorkerOutput,
+  | SDK.CborDeserializationError
+  | SDK.CmlUnexpectedError
+  | SDK.DataCoercionError
+  | SDK.HashingError
+  | SDK.LucidError
+  | SDK.StateQueueError
+  | DatabaseError
+  | FileSystemError
+  | MptError,
+  AlwaysSucceedsContract | Database | Lucid
+> =>
  Effect.gen(function* () {
     const mempoolTxs = yield* MempoolDB.retrieve;
     const mempoolTxsCount = mempoolTxs.length;
