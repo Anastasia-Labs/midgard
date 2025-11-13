@@ -1,4 +1,5 @@
 import { AddressData, AddressSchema, HashingError, LucidError, POSIXTime, POSIXTimeSchema, hashHexWithBlake2b256 } from "@/common.js";
+import { UserEventMintRedeemer } from "@/index.js";
 import { WithdrawalBody, WithdrawalEventSchema, WithdrawalInfo, WithdrawalSignature } from "@/ledger-state.js";
 import { CML, Data, LucidEvolution, Script, toUnit, TxBuilder, UTxO } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
@@ -23,26 +24,6 @@ export const WithdrawalOrderDatumSchema = Data.Object({
 export type WithdrawalOrderDatum = Data.Static<typeof WithdrawalOrderDatumSchema>;
 export const WithdrawalOrderDatum = WithdrawalOrderDatumSchema as unknown as WithdrawalOrderDatum;
 
-export const WithdrawalMintRedeemerSchema = Data.Enum([
-  Data.Object({
-    AuthenticateEvent: Data.Object({
-      nonceInputIndex: Data.Integer(),
-      eventOutputIndex: Data.Integer(),
-      hubRefInputIndex: Data.Integer(),
-      witnessRegistrationRedeemerIndex: Data.Integer(),
-    }),
-  }),
-  Data.Object({
-    BurnEventNFT: Data.Object({
-      nonceAssetName: Data.Bytes(),
-      witnessUnregistrationRedeemerIndex: Data.Integer(),
-    }),
-  }),
-]);
-export type WithdrawalMintRedeemer = Data.Static<typeof WithdrawalMintRedeemerSchema>;
-export const WithdrawalMintRedeemer =
-  WithdrawalMintRedeemerSchema as unknown as WithdrawalMintRedeemer;
-  
 /**
  * WithdrawalOrder
  *
@@ -55,7 +36,7 @@ export const withdrawalOrderTxBuilder = (
   params: WithdrawalOrderParams,
 ): Effect.Effect<TxBuilder, HashingError | LucidError> => 
   Effect.gen(function* () {
-    const redeemer: WithdrawalMintRedeemer = {
+    const redeemer: UserEventMintRedeemer = {
       AuthenticateEvent: {
         nonceInputIndex: 0n,
         eventOutputIndex: 0n,
@@ -63,13 +44,13 @@ export const withdrawalOrderTxBuilder = (
         witnessRegistrationRedeemerIndex: 0n,
       },
     };
-    const authenticateEvent = Data.to(redeemer, WithdrawalMintRedeemer);
+    const authenticateEvent = Data.to(redeemer, UserEventMintRedeemer);
     const utxos: UTxO[] = yield* Effect.promise(() =>
       lucid.wallet().getUtxos(),
     );
     if (utxos.length === 0) {
       yield* new LucidError({
-        message: "Failed to build the deposit transaction",
+        message: "Failed to build the withdrawal transaction",
         cause: "No UTxOs found in wallet",
       });
     }

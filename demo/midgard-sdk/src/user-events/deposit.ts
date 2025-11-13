@@ -32,6 +32,7 @@ import {
 } from "@/common.js";
 import { getProtocolParameters } from "@/protocol-parameters.js";
 import { DepositEventSchema, DepositInfo } from "@/ledger-state.js";
+import { UserEventMintRedeemer } from "./index.js";
 
 export type DepositParams = {
   depositScriptAddress: string;
@@ -56,26 +57,6 @@ export type DepositUTxO = {
   infoCbor: Buffer;
   inclusionTime: Date;
 };
-
-export const DepositMintRedeemerSchema = Data.Enum([
-  Data.Object({
-    AuthenticateEvent: Data.Object({
-      nonceInputIndex: Data.Integer(),
-      eventOutputIndex: Data.Integer(),
-      hubRefInputIndex: Data.Integer(),
-      witnessRegistrationRedeemerIndex: Data.Integer(),
-    }),
-  }),
-  Data.Object({
-    BurnEventNFT: Data.Object({
-      nonceAssetName: Data.Bytes(),
-      witnessUnregistrationRedeemerIndex: Data.Integer(),
-    }),
-  }),
-]);
-export type DepositMintRedeemer = Data.Static<typeof DepositMintRedeemerSchema>;
-export const DepositMintRedeemer =
-  DepositMintRedeemerSchema as unknown as DepositMintRedeemer;
 
 export type DepositFetchConfig = {
   depositAddress: Address;
@@ -254,7 +235,7 @@ export const incompleteDepositTxProgram = (
     };
     const depositDatumCBOR = Data.to(depositDatum, DepositDatum);
 
-    const mintRedeemer: DepositMintRedeemer = {
+    const mintRedeemer: UserEventMintRedeemer = {
       AuthenticateEvent: {
         nonceInputIndex: 0n,
         eventOutputIndex: 0n,
@@ -262,7 +243,7 @@ export const incompleteDepositTxProgram = (
         witnessRegistrationRedeemerIndex: 0n,
       },
     };
-    const mintRedeemerCBOR = Data.to(mintRedeemer, DepositMintRedeemer);
+    const mintRedeemerCBOR = Data.to(mintRedeemer, UserEventMintRedeemer);
 
     // TODO: Currently there are no considerations for fees and/or min ADA.
     const tx = lucid

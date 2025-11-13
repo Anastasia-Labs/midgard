@@ -29,6 +29,7 @@ import {
 } from "@/common.js";
 import { MidgardTxCompact, TxOrderEventSchema } from "@/ledger-state.js";
 import { Effect } from "effect";
+import { UserEventMintRedeemer } from "./index.js";
 
 export type TxOrderParams = {
   txOrderAddress: string;
@@ -59,26 +60,6 @@ export type TxOrderUTxO = {
   infoCbor: Buffer;
   inclusionTime: Date;
 };
-
-export const TxOrderMintRedeemerSchema = Data.Enum([
-  Data.Object({
-    AuthenticateEvent: Data.Object({
-      nonceInputIndex: Data.Integer(),
-      eventOutputIndex: Data.Integer(),
-      hubRefInputIndex: Data.Integer(),
-      witnessRegistrationRedeemerIndex: Data.Integer(),
-    }),
-  }),
-  Data.Object({
-    BurnEventNFT: Data.Object({
-      nonceAssetName: Data.Bytes(),
-      witnessUnregistrationRedeemerIndex: Data.Integer(),
-    }),
-  }),
-]);
-export type TxOrderMintRedeemer = Data.Static<typeof TxOrderMintRedeemerSchema>;
-export const TxOrderMintRedeemer =
-  TxOrderMintRedeemerSchema as unknown as TxOrderMintRedeemer;
 
 export type TxOrderFetchConfig = {
   txOrderAddress: Address;
@@ -210,7 +191,7 @@ export const incompleteTxOrderProgram = (
   params: TxOrderParams,
 ): Effect.Effect<TxBuilder, HashingError | LucidError> =>
   Effect.gen(function* () {
-    const redeemer: TxOrderMintRedeemer = {
+    const redeemer: UserEventMintRedeemer = {
       AuthenticateEvent: {
         nonceInputIndex: 0n,
         eventOutputIndex: 0n,
@@ -218,7 +199,7 @@ export const incompleteTxOrderProgram = (
         witnessRegistrationRedeemerIndex: 0n,
       },
     };
-    const authenticateEvent = Data.to(redeemer, TxOrderMintRedeemer);
+    const authenticateEvent = Data.to(redeemer, UserEventMintRedeemer);
     const utxos: UTxO[] = yield* Effect.promise(() =>
       lucid.wallet().getUtxos(),
     );
