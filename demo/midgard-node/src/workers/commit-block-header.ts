@@ -111,7 +111,6 @@ const successfulSubmissionProgram = (
   txHash: string,
 ): Effect.Effect<WorkerOutput, DatabaseError | FileSystemError, Database> =>
   Effect.gen(function* () {
-
     yield* Effect.logInfo(
       "🔹 Inserting included deposits into ImmutableDB and MempoolLedgerDB",
     );
@@ -435,19 +434,19 @@ const databaseOperationsProgram = (
         yield* Effect.logInfo(
           "🔹 Checking for user events... (no tx requests in queue)",
         );
-        const optDepositRootProgram = yield* userEventsProgram(
+        const optDepositsRootProgram = yield* userEventsProgram(
           DepositsDB.tableName,
           startTime,
           endTime,
         );
-        if (Option.isNone(optDepositRootProgram)) {
+        if (Option.isNone(optDepositsRootProgram)) {
           yield* Effect.logInfo("🔹 Nothing to commit.");
           return {
             type: "NothingToCommitOutput",
           } as WorkerOutput;
         } else {
           const depositsRootFiber: RuntimeFiber<string, MptError> =
-            yield* Effect.fork(optDepositRootProgram.value);
+            yield* Effect.fork(optDepositsRootProgram.value);
           const depositsRoot = yield* depositsRootFiber;
           yield* Effect.logInfo(`🔹 Deposits root is: ${depositsRoot}`);
           const emptyRoot = yield* emptyRootHexProgram;
@@ -492,16 +491,16 @@ const databaseOperationsProgram = (
         const insertedDepositUTxOs = yield* addDeposits(ledgerTrie, startTime, endTime);
 
         yield* Effect.logInfo("🔹 Checking for user events...");
-        const optDepositRootProgram = yield* userEventsProgram(
+        const optDepositsRootProgram = yield* userEventsProgram(
           DepositsDB.tableName,
           startTime,
           endTime,
         );
 
         let depositsRoot: string = yield* emptyRootHexProgram;
-        if (Option.isSome(optDepositRootProgram)) {
+        if (Option.isSome(optDepositsRootProgram)) {
           const depositsRootFiber = yield* Effect.fork(
-            optDepositRootProgram.value,
+            optDepositsRootProgram.value,
           );
           depositsRoot = yield* depositsRootFiber;
         }

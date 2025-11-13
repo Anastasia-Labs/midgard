@@ -17,12 +17,6 @@ export type EntryNoTimeStamp = {
   [Columns.TX]: Buffer;
 };
 
-// L2 transaction
-// hash L2 transaction
-// This hash has nothing to do with any other hashes
-
-// L1 transaction hash -> L2 garbage transaction
-
 export type EntryWithTimeStamp = EntryNoTimeStamp & {
   [Columns.TIMESTAMPTZ]: Date;
 };
