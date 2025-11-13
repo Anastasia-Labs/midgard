@@ -3,7 +3,7 @@ import { BatchDBOp } from "@ethereumjs/util";
 import { Data as EffectData, Effect } from "effect";
 import * as ETH from "@ethereumjs/mpt";
 import * as ETH_UTILS from "@ethereumjs/util";
-import { UTxO, toHex, utxoToCore } from "@lucid-evolution/lucid";
+import { CML, UTxO, toHex, utxoToCore } from "@lucid-evolution/lucid";
 import { Level } from "level";
 import {
   AlwaysSucceedsContract,
@@ -101,12 +101,17 @@ export const deleteMpt = (
       }),
   }).pipe(Effect.withLogSpan(`Delete ${name} MPT`));
 
+/*
+  This function pulls the deposits from the `DepositsDB`
+  and adds them to the ledgerTrie. Returns the
+*/
+
 export const addDeposits = (
   ledgerTrie: MidgardMpt,
   startDate: Date,
   endDate: Date,
 ): Effect.Effect<
-  MidgardMpt,
+  CML.TransactionUnspentOutput[],
   MptError | SDK.CmlUnexpectedError | DatabaseError,
   Database | AlwaysSucceedsContract
 > =>
@@ -131,6 +136,7 @@ export const addDeposits = (
     const { depositAuthValidator } = yield* AlwaysSucceedsContract;
 
     yield* Effect.logInfo("🔹 Going through deposits...");
+    let insertedUTxOs: CML.TransactionUnspentOutput[] = []
     const putOpsRaw: (ETH_UTILS.BatchDBOp | void)[] = yield* Effect.forEach(
       deposits,
       (dbDeposit) =>
@@ -139,7 +145,7 @@ export const addDeposits = (
             dbDeposit,
             depositAuthValidator.policyId,
           );
-
+          insertedUTxOs.push(utxo)
           const putOp: ETH_UTILS.BatchDBOp = {
             type: "put",
             key: Buffer.from(utxo.input().to_cbor_bytes()),
@@ -151,7 +157,8 @@ export const addDeposits = (
 
     const putOps = putOpsRaw.flatMap((f) => (f ? [f] : []));
     yield* ledgerTrie.batch(putOps);
-    return ledgerTrie;
+
+    return insertedUTxOs
   });
 
 // Make mempool trie, and fill it with ledger trie with processed mempool txs
