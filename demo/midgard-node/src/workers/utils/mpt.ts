@@ -1,6 +1,6 @@
 import { SqlClient } from "@effect/sql";
 import { BatchDBOp } from "@ethereumjs/util";
-import { Cause, Data, Effect } from "effect";
+import { Data, Effect } from "effect";
 import * as ETH from "@ethereumjs/mpt";
 import * as ETH_UTILS from "@ethereumjs/util";
 import { UTxO, toHex, utxoToCore } from "@lucid-evolution/lucid";
@@ -19,128 +19,80 @@ const LEVELDB_ENCODING_OPTS = {
 };
 
 export const makeMpts: Effect.Effect<
-  {
-    ledgerTrie: ETH.MerklePatriciaTrie;
-    ledgerDB: Level<string, Uint8Array>;
-    mempoolTrie: ETH.MerklePatriciaTrie;
-    mempoolDB: Level<string, Uint8Array>;
-  },
+  { ledgerTrie: MidgardMpt; mempoolTrie: MidgardMpt },
   MptError,
   NodeConfig
 > = Effect.gen(function* () {
   const nodeConfig = yield* NodeConfig;
-  const mempoolLevelDb = new Level<string, Uint8Array>(
+  const mempoolTrie = yield* MidgardMpt.create(
+    "mempool",
     nodeConfig.MEMPOOL_MPT_DB_PATH,
-    LEVELDB_ENCODING_OPTS,
   );
-  const mempoolTrie: ETH.MerklePatriciaTrie = yield* Effect.tryPromise({
-    try: () =>
-      ETH.createMPT({
-        db: new LevelDB(mempoolLevelDb),
-        useRootPersistence: true,
-        valueEncoding: LEVELDB_ENCODING_OPTS.valueEncoding,
-      }),
-    catch: (e) => MptError.trieCreate("mempool", e),
-  });
-  const ledgerLevelDb = new Level<string, Uint8Array>(
+  const ledgerTrie = yield* MidgardMpt.create(
+    "ledger",
     nodeConfig.LEDGER_MPT_DB_PATH,
-    LEVELDB_ENCODING_OPTS,
   );
-  const ledgerTrie: ETH.MerklePatriciaTrie = yield* Effect.tryPromise({
-    try: () =>
-      ETH.createMPT({
-        db: new LevelDB(ledgerLevelDb),
-        useRootPersistence: true,
-        valueEncoding: LEVELDB_ENCODING_OPTS.valueEncoding,
-      }),
-    catch: (e) => MptError.trieCreate("ledger", e),
-  });
-  const mempoolRootBeforeMempoolTxs = yield* Effect.sync(() =>
-    mempoolTrie.root(),
-  );
-
-  const ledgerRootBeforeMempoolTxs = yield* Effect.gen(function* () {
-    const previousRoot = yield* Effect.sync(() => ledgerTrie.root());
-    if (previousRoot !== ledgerTrie.EMPTY_TRIE_ROOT) return previousRoot;
-    else {
-      yield* Effect.logInfo(
-        "🔹 No previous ledger trie root found - inserting genesis utxos",
-      );
-      const ops: ETH_UTILS.BatchDBOp[] = yield* Effect.allSuccesses(
-        nodeConfig.GENESIS_UTXOS.map((u: UTxO) =>
-          Effect.gen(function* () {
-            const core = yield* Effect.try(() => utxoToCore(u)).pipe(
-              Effect.tapError((e) =>
-                Effect.logError(`IGNORED ERROR WITH GENESIS UTXOS: ${e}`),
-              ),
-            );
-            const op: ETH_UTILS.BatchDBOp = {
-              type: "put",
-              key: Buffer.from(core.input().to_cbor_bytes()),
-              value: Buffer.from(core.output().to_cbor_bytes()),
-            };
-            return op;
-          }),
-        ),
-      );
-      yield* Effect.tryPromise({
-        try: () => ledgerTrie.batch(ops),
-        catch: (e) => MptError.batch("ledger", e),
-      });
-      const rootAfterGenesis = yield* Effect.sync(() => ledgerTrie.root());
-      yield* Effect.logInfo(
-        `🔹 New ledger trie root after inserting genesis utxos: ${toHex(rootAfterGenesis)}`,
-      );
-      return rootAfterGenesis;
-    }
-  });
-
-  // Ensuring persisted root is stored in tries' private properties
-  yield* Effect.sync(() => mempoolTrie.root(mempoolRootBeforeMempoolTxs));
-  yield* Effect.sync(() => ledgerTrie.root(ledgerRootBeforeMempoolTxs));
+  const ledgerRootIsEmpty = yield* ledgerTrie.rootIsEmpty();
+  if (ledgerRootIsEmpty) {
+    yield* Effect.logInfo(
+      "🔹 No previous ledger trie root found - inserting genesis utxos",
+    );
+    const ops: ETH_UTILS.BatchDBOp[] = yield* Effect.allSuccesses(
+      nodeConfig.GENESIS_UTXOS.map((u: UTxO) =>
+        Effect.gen(function* () {
+          const core = yield* Effect.try(() => utxoToCore(u)).pipe(
+            Effect.tapError((e) =>
+              Effect.logError(`IGNORED ERROR WITH GENESIS UTXOS: ${e}`),
+            ),
+          );
+          const op: ETH_UTILS.BatchDBOp = {
+            type: "put",
+            key: Buffer.from(core.input().to_cbor_bytes()),
+            value: Buffer.from(core.output().to_cbor_bytes()),
+          };
+          return op;
+        }),
+      ),
+    );
+    yield* ledgerTrie.batch(ops);
+    const rootAfterGenesis = yield* ledgerTrie.getRootHex();
+    yield* Effect.logInfo(
+      `🔹 New ledger trie root after inserting genesis utxos: ${rootAfterGenesis}`,
+    );
+  }
   return {
     ledgerTrie,
-    ledgerDB: ledgerLevelDb,
     mempoolTrie,
-    mempoolDB: mempoolLevelDb,
   };
 });
 
-export const deleteMempoolMpt: Effect.Effect<
-  void,
-  FileSystemError,
-  NodeConfig
-> = Effect.gen(function* () {
+export const deleteMempoolMpt = Effect.gen(function* () {
   const config = yield* NodeConfig;
-  yield* Effect.try({
-    try: () =>
-      FS.rmSync(config.MEMPOOL_MPT_DB_PATH, { recursive: true, force: true }),
+  yield* deleteMpt(config.MEMPOOL_MPT_DB_PATH, "mempool");
+});
+
+export const deleteLedgerMpt = Effect.gen(function* () {
+  const config = yield* NodeConfig;
+  yield* deleteMpt(config.LEDGER_MPT_DB_PATH, "ledger");
+});
+
+export const deleteMpt = (
+  path: string,
+  name: string,
+): Effect.Effect<void, FileSystemError> =>
+  Effect.try({
+    try: () => FS.rmSync(path, { recursive: true, force: true }),
     catch: (e) =>
       new FileSystemError({
-        message: "Failed to delete mempool's LevelDB file from disk",
+        message: `Failed to delete ${name}'s LevelDB file from disk`,
         cause: e,
       }),
-  });
-}).pipe(Effect.withLogSpan("Delete mempool MPT"));
-
-export const deleteLedgerMpt: Effect.Effect<void, FileSystemError, NodeConfig> =
-  Effect.gen(function* () {
-    const config = yield* NodeConfig;
-    yield* Effect.try({
-      try: () =>
-        FS.rmSync(config.LEDGER_MPT_DB_PATH, { recursive: true, force: true }),
-      catch: (e) =>
-        new FileSystemError({
-          message: "Failed to delete ledger's LevelDB file from disk",
-          cause: e,
-        }),
-    });
-  }).pipe(Effect.withLogSpan("Delete ledger MPT"));
+  }).pipe(Effect.withLogSpan(`Delete ${name} MPT`));
 
 // Make mempool trie, and fill it with ledger trie with processed mempool txs
 export const processMpts = (
-  ledgerTrie: ETH.MerklePatriciaTrie,
-  mempoolTrie: ETH.MerklePatriciaTrie,
+  ledgerTrie: MidgardMpt,
+  mempoolTrie: MidgardMpt,
   mempoolTxs: readonly Tx.Entry[],
 ): Effect.Effect<
   {
@@ -149,7 +101,7 @@ export const processMpts = (
     mempoolTxHashes: Buffer[];
     sizeOfProcessedTxs: number;
   },
-  MptError | SDK.Utils.CmlUnexpectedError,
+  MptError | SDK.CmlUnexpectedError,
   Database
 > =>
   Effect.gen(function* () {
@@ -192,28 +144,19 @@ export const processMpts = (
     );
 
     yield* Effect.all(
-      [
-        Effect.tryPromise({
-          try: () => mempoolTrie.batch(mempoolBatchOps),
-          catch: (e) => MptError.batch("mempool", e),
-        }),
-        Effect.tryPromise({
-          try: () => ledgerTrie.batch(batchDBOps),
-          catch: (e) => MptError.batch("ledger", e),
-        }),
-      ],
+      [mempoolTrie.batch(mempoolBatchOps), ledgerTrie.batch(batchDBOps)],
       { concurrency: "unbounded" },
     );
 
-    const txRoot = toHex(mempoolTrie.root());
-    const utxoRoot = toHex(ledgerTrie.root());
+    const txRoot = yield* mempoolTrie.getRootHex();
+    const utxoRoot = yield* ledgerTrie.getRootHex();
 
     yield* Effect.logInfo(`🔹 New transaction root found: ${txRoot}`);
     yield* Effect.logInfo(`🔹 New UTxO root found: ${utxoRoot}`);
 
     return {
-      utxoRoot: utxoRoot,
-      txRoot: txRoot,
+      utxoRoot,
+      txRoot,
       mempoolTxHashes: mempoolTxHashes,
       sizeOfProcessedTxs: sizeOfProcessedTxs,
     };
@@ -224,13 +167,7 @@ export const keyValueMptRoot = (
   values: Buffer[],
 ): Effect.Effect<string, MptError, never> =>
   Effect.gen(function* () {
-    const trie: ETH.MerklePatriciaTrie = yield* Effect.tryPromise({
-      try: () =>
-        ETH.createMPT({
-          db: new ETH_UTILS.MapDB(),
-        }),
-      catch: (e) => MptError.trieCreate("keyValueMPT", e),
-    });
+    const trie = yield* MidgardMpt.create("keyValueMPT");
 
     const ops: ETH_UTILS.BatchDBOp[] = yield* Effect.allSuccesses(
       keys.map((key: Buffer, i: number) =>
@@ -245,22 +182,18 @@ export const keyValueMptRoot = (
       ),
     );
 
-    yield* Effect.tryPromise({
-      try: () => trie.batch(ops),
-      catch: (e) => MptError.batch("keyValueMPT root", e),
-    });
-    const foundRoot = yield* Effect.sync(() => toHex(trie.root()));
-    return foundRoot;
+    yield* trie.batch(ops);
+    return yield* trie.getRootHex();
   });
 
 export const withTrieTransaction = <A, E, R>(
-  trie: ETH.MerklePatriciaTrie,
+  trie: MidgardMpt,
   eff: Effect.Effect<A, E, R>,
 ): Effect.Effect<void | A, E | DatabaseError | MptError, Database | R> =>
   Effect.gen(function* () {
-    yield* Effect.sync(() => trie.checkpoint());
+    yield* trie.checkpoint();
     const sql = yield* SqlClient.SqlClient;
-    const x = sql.withTransaction(eff).pipe(
+    const tx = sql.withTransaction(eff).pipe(
       Effect.catchTag("SqlError", (e) =>
         Effect.fail(
           new DatabaseError({
@@ -271,20 +204,13 @@ export const withTrieTransaction = <A, E, R>(
         ),
       ),
     );
-    const res = yield* x;
-    yield* Effect.sync(() => trie.commit());
+    const res = yield* tx;
+    yield* trie.commit();
     return res;
   }).pipe(
     Effect.catchAll((e) =>
       Effect.gen(function* () {
-        yield* Effect.tryPromise({
-          try: () => trie.revert(),
-          catch: (e) =>
-            new MptError({
-              message: "Failed to revert operations performed on an MPT",
-              cause: e,
-            }),
-        });
+        yield* trie.revert();
         yield* Effect.fail(e);
       }),
     ),
@@ -328,7 +254,7 @@ export class LevelDB {
 
 export class MptError extends Data.TaggedError(
   "MptError",
-)<SDK.Utils.GenericErrorFields> {
+)<SDK.GenericErrorFields> {
   static get(trie: string, cause: unknown) {
     return new MptError({
       message: `An error occurred getting an entry from ${trie} trie`,
@@ -355,8 +281,161 @@ export class MptError extends Data.TaggedError(
   }
   static trieCreate(trie: string, cause: unknown) {
     return new MptError({
-      message: `An error occurred creating ${trie} trie`,
+      message: `An error occurred creating ${trie} trie: ${cause}`,
+      cause,
+    });
+  }
+  static trieCommit(trie: string, cause: unknown) {
+    return new MptError({
+      message: `An error occurred committing ${trie} trie`,
+      cause,
+    });
+  }
+  static trieRevert(trie: string, cause: unknown) {
+    return new MptError({
+      message: `An error occurred reverting ${trie} trie`,
+      cause,
+    });
+  }
+  static rootNotSet(trie: string, cause: unknown) {
+    return new MptError({
+      message: `An error occurred getting ${trie} trie root, the root is ${typeof cause}`,
       cause,
     });
   }
 }
+
+export class MidgardMpt {
+  public readonly trie: ETH.MerklePatriciaTrie;
+  public readonly EMPTY_TRIE_ROOT_HEX: string;
+  public readonly trieName: string;
+  public readonly databaseAndPath?: {
+    database: LevelDB;
+    databaseFilePath: string;
+  };
+
+  private constructor(
+    trie: ETH.MerklePatriciaTrie,
+    trieName: string,
+    databaseAndPath?: { database: LevelDB; databaseFilePath: string },
+  ) {
+    this.trie = trie;
+    this.trieName = trieName;
+    this.databaseAndPath = databaseAndPath;
+    this.EMPTY_TRIE_ROOT_HEX = toHex(trie.EMPTY_TRIE_ROOT);
+  }
+
+  /**
+   * Create a Merkle Patricia Trie (MPT) with a LevelDB-backed database if
+   * `levelDBFilePath` is provided, or an in-memory database otherwise.
+   *
+   * @param trieName - The name identifier for the trie instance.
+   * @param levelDBFilePath - Optional file path for LevelDB persistence.
+   * @returns An Effect that resolves to the created MidgardMpt instance or fails with MptError.
+   */
+  public static create(
+    trieName: string,
+    levelDBFilePath?: string,
+  ): Effect.Effect<MidgardMpt, MptError> {
+    return Effect.gen(function* () {
+      let databaseAndPath:
+        | { database: LevelDB; databaseFilePath: string }
+        | undefined = undefined;
+      let valueEncoding: ETH_UTILS.ValueEncoding | undefined = undefined;
+      if (typeof levelDBFilePath === "string") {
+        const level = new Level<string, Uint8Array>(
+          levelDBFilePath,
+          LEVELDB_ENCODING_OPTS,
+        );
+        const db = new LevelDB(level);
+        databaseAndPath = { database: db, databaseFilePath: levelDBFilePath };
+        valueEncoding = LEVELDB_ENCODING_OPTS.valueEncoding;
+      }
+      const trie = yield* Effect.tryPromise({
+        try: () =>
+          ETH.createMPT({
+            db: databaseAndPath?.database,
+            useRootPersistence: Boolean(databaseAndPath),
+            valueEncoding,
+          }),
+        catch: (e) => MptError.trieCreate(trieName, e),
+      });
+      return new MidgardMpt(trie, trieName, databaseAndPath);
+    });
+  }
+
+  public delete(): Effect.Effect<void, FileSystemError> {
+    if (this.databaseAndPath) {
+      return deleteMpt(this.databaseAndPath.databaseFilePath, this.trieName);
+    } else {
+      return Effect.succeed(Effect.void);
+    }
+  }
+
+  public batch(arg: ETH_UTILS.BatchDBOp[]): Effect.Effect<void, MptError> {
+    const trieName = this.trieName;
+    const trieBatch = this.trie.batch(arg);
+    return Effect.tryPromise({
+      try: () => trieBatch,
+      catch: (e) => MptError.batch(trieName, e),
+    });
+  }
+
+  public getRoot(): Effect.Effect<Uint8Array, MptError> {
+    const trieName = this.trieName;
+    const root = this.trie.root();
+    return Effect.gen(function* () {
+      if (root === undefined || root === null)
+        return yield* Effect.fail(MptError.rootNotSet(trieName, root));
+      // Normalize to pure Uint8Array for type consistency
+      // trie.root() returns different constructor types depending on the source:
+      //   - Fresh (computed): Uint8Array
+      //   - Persisted (loaded from Level.js after some changes): Buffer
+      return root instanceof Uint8Array && !Buffer.isBuffer(root)
+        ? root
+        : new Uint8Array(root.buffer, root.byteOffset, root.byteLength);
+    });
+  }
+
+  public getRootHex(): Effect.Effect<string, MptError> {
+    return this.getRoot().pipe(Effect.map(toHex));
+  }
+
+  public rootIsEmpty(): Effect.Effect<boolean, MptError> {
+    const getRootHex = this.getRootHex();
+    const emptyRootHex = toHex(this.trie.EMPTY_TRIE_ROOT);
+    return Effect.gen(function* () {
+      const rootHex = yield* getRootHex;
+      return rootHex === emptyRootHex;
+    });
+  }
+
+  public checkpoint(): Effect.Effect<void> {
+    return Effect.sync(() => this.trie.checkpoint());
+  }
+
+  public commit(): Effect.Effect<void, MptError> {
+    return Effect.tryPromise({
+      try: () => this.trie.commit(),
+      catch: (e) => MptError.trieCommit(this.trieName, e),
+    });
+  }
+
+  public revert(): Effect.Effect<void, MptError> {
+    return Effect.tryPromise({
+      try: () => this.trie.revert(),
+      catch: (e) => MptError.trieRevert(this.trieName, e),
+    });
+  }
+
+  public databaseStats() {
+    return this.trie.database()._stats;
+  }
+}
+
+export const emptyRootHexProgram: Effect.Effect<string, MptError> = Effect.gen(
+  function* () {
+    const tempMpt = yield* MidgardMpt.create("temp");
+    return tempMpt.EMPTY_TRIE_ROOT_HEX;
+  },
+);

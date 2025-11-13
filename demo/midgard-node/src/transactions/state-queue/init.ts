@@ -6,23 +6,25 @@ import {
   handleSignSubmit,
   TxSubmitError,
   TxSignError,
-} from "../utils.js";
+} from "@/transactions/utils.js";
 
 export const stateQueueInit: Effect.Effect<
   string | void,
-  TxSubmitError | TxSignError | SDK.Utils.LucidError,
+  TxSubmitError | TxSignError | SDK.LucidError,
   Lucid | NodeConfig | AlwaysSucceedsContract
 > = Effect.gen(function* () {
   const lucid = yield* Lucid;
-  const { stateQueueAuthValidator, depositAuthValidator } =
-    yield* AlwaysSucceedsContract;
-  const initParams: SDK.TxBuilder.StateQueue.InitParams = {
+  const { stateQueueAuthValidator } = yield* AlwaysSucceedsContract;
+  const initParams: SDK.StateQueueInitParams = {
     address: stateQueueAuthValidator.spendScriptAddress,
     policyId: stateQueueAuthValidator.policyId,
     stateQueueMintingScript: stateQueueAuthValidator.mintScript,
   };
   yield* lucid.switchToOperatorsMainWallet;
-  const txBuilderProgram = SDK.Endpoints.initTxProgram(lucid.api, initParams);
+  const txBuilderProgram = SDK.unsignedInitStateQueueTxProgram(
+    lucid.api,
+    initParams,
+  );
   const txBuilder = yield* txBuilderProgram;
   const onSubmitFailure = (err: TxSubmitError | { _tag: "TxSubmitError" }) =>
     Effect.gen(function* () {
@@ -31,6 +33,7 @@ export const stateQueueInit: Effect.Effect<
         new TxSubmitError({
           message: "Failed to submit the state queue initiation tx",
           cause: err,
+          txHash: txBuilder.toHash(),
         }),
       );
     });

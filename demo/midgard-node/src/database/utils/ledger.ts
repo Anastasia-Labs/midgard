@@ -48,7 +48,7 @@ export const createTable = (
         ${sql(Columns.TIMESTAMPTZ)} TIMESTAMPTZ NOT NULL DEFAULT(NOW()),
         PRIMARY KEY (${sql(Columns.OUTREF)})
       );`;
-        yield* sql`CREATE INDEX ${sql(
+        yield* sql`CREATE INDEX IF NOT EXISTS ${sql(
           `idx_${tableName}_${Columns.ADDRESS}`,
         )} ON ${sql(tableName)} (${sql(Columns.ADDRESS)});`;
       }),
@@ -82,7 +82,10 @@ export const insertEntries = (
   Effect.gen(function* () {
     yield* Effect.logDebug(`${tableName} db: attempt to insert Ledger UTxOs`);
     const sql = yield* SqlClient.SqlClient;
-
+    if (entries.length <= 0) {
+      yield* Effect.logDebug("No entries provided, skipping insertion.");
+      return;
+    }
     yield* sql`INSERT INTO ${sql(tableName)} ${sql.insert(entries)}`;
   }).pipe(
     Effect.withLogSpan(`insertEntries ${tableName}`),

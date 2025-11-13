@@ -1,15 +1,5 @@
 import { parentPort, workerData } from "worker_threads";
-import {
-  Blockfrost,
-  CML,
-  Koios,
-  Kupmios,
-  Lucid,
-  LucidEvolution,
-  Maestro,
-  Network,
-  Provider,
-} from "@lucid-evolution/lucid";
+import { CML } from "@lucid-evolution/lucid";
 import * as chalk_ from "chalk";
 import { Data, Effect, pipe } from "effect";
 import * as Ledger from "@/database/utils/ledger.js";
@@ -57,7 +47,7 @@ export const findSpentAndProducedUTxOs = (
   txHash?: Buffer,
 ): Effect.Effect<
   { spent: Buffer[]; produced: Ledger.MinimalEntry[] },
-  SDK.Utils.CmlUnexpectedError
+  SDK.CmlUnexpectedError
 > =>
   Effect.gen(function* () {
     const spent: Buffer[] = [];
@@ -72,7 +62,7 @@ export const findSpentAndProducedUTxOs = (
       yield* Effect.try({
         try: () => spent.push(Buffer.from(inputs.get(i).to_cbor_bytes())),
         catch: (e) =>
-          new SDK.Utils.CmlUnexpectedError({
+          new SDK.CmlUnexpectedError({
             message: `An error occurred on input CBOR serialization`,
             cause: e,
           }),
@@ -93,12 +83,12 @@ export const findSpentAndProducedUTxOs = (
 
 export const breakDownTx = (
   txCbor: Uint8Array,
-): Effect.Effect<ProcessedTx, SDK.Utils.CmlDeserializationError> =>
+): Effect.Effect<ProcessedTx, SDK.CmlDeserializationError> =>
   Effect.gen(function* () {
     const deserializedTx = yield* Effect.try({
       try: () => CML.Transaction.from_cbor_bytes(txCbor),
       catch: (e) =>
-        new SDK.Utils.CmlDeserializationError({
+        new SDK.CmlDeserializationError({
           message: `Failed to deserialize transaction: ${txCbor}`,
           cause: e,
         }),
@@ -148,6 +138,7 @@ export const batchProgram = <A, E, C>(
   totalCount: number,
   opName: string,
   effectMaker: (startIndex: number, endIndex: number) => Effect.Effect<A, E, C>,
+  concurrencyOverride?: number,
 ) => {
   const batchIndices = Array.from(
     { length: Math.ceil(totalCount / batchSize) },
@@ -162,7 +153,7 @@ export const batchProgram = <A, E, C>(
         Effect.withSpan(`batch-${opName}-${startIndex}-${endIndex}`),
       );
     },
-    { concurrency: "unbounded" },
+    { concurrency: concurrencyOverride ?? "unbounded" },
   );
 };
 
@@ -183,4 +174,4 @@ Kupmios:
 
 export class FileSystemError extends Data.TaggedError(
   "FileSystemError",
-)<SDK.Utils.GenericErrorFields> {}
+)<SDK.GenericErrorFields> {}

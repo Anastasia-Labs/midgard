@@ -4,12 +4,7 @@ import {
 } from "@/utils.js";
 import * as SDK from "@al-ft/midgard-sdk";
 import { Cause, Effect, Schedule, pipe } from "effect";
-import {
-  AlwaysSucceedsContract,
-  AuthenticatedValidator,
-  Lucid,
-  NodeConfig,
-} from "@/services/index.js";
+import { AlwaysSucceedsContract, Lucid, NodeConfig } from "@/services/index.js";
 import {
   WorkerInput,
   WorkerOutput,
@@ -23,30 +18,27 @@ const inputData = workerData as WorkerInput;
 const fetchLatestBlock = (
   lucid: LucidEvolution,
 ): Effect.Effect<
-  SDK.TxBuilder.StateQueue.StateQueueUTxO,
-  SDK.Utils.StateQueueError | SDK.Utils.LucidError,
+  SDK.StateQueueUTxO,
+  SDK.StateQueueError | SDK.LucidError,
   AlwaysSucceedsContract | NodeConfig
 > =>
   Effect.gen(function* () {
     const { stateQueueAuthValidator } = yield* AlwaysSucceedsContract;
-    const fetchConfig: SDK.TxBuilder.StateQueue.FetchConfig = {
+    const fetchConfig: SDK.StateQueueFetchConfig = {
       stateQueueAddress: stateQueueAuthValidator.spendScriptAddress,
       stateQueuePolicyId: stateQueueAuthValidator.policyId,
     };
-    return yield* SDK.Endpoints.fetchLatestCommittedBlockProgram(
-      lucid,
-      fetchConfig,
-    );
+    return yield* SDK.fetchLatestCommittedBlockProgram(lucid, fetchConfig);
   });
 
 const wrapper = (
   workerInput: WorkerInput,
 ): Effect.Effect<
   WorkerOutput,
-  | SDK.Utils.CborSerializationError
-  | SDK.Utils.CmlUnexpectedError
-  | SDK.Utils.LucidError
-  | SDK.Utils.StateQueueError
+  | SDK.CborSerializationError
+  | SDK.CmlUnexpectedError
+  | SDK.LucidError
+  | SDK.StateQueueError
   | TxConfirmError,
   AlwaysSucceedsContract | Lucid | NodeConfig
 > =>
