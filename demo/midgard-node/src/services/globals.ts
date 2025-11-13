@@ -38,7 +38,9 @@ export class Globals extends Effect.Service<Globals>()("Globals", {
       Date.now(),
     );
 
-    const LATEST_TX_ORDER_FETCH_TIME: Ref.Ref<number> = yield* Ref.make(Date.now());
+    const LATEST_TX_ORDER_FETCH_TIME: Ref.Ref<number> = yield* Ref.make(
+      Date.now(),
+    );
 
     return {
       BLOCKS_IN_QUEUE,

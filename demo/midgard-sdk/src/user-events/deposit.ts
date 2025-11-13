@@ -22,13 +22,10 @@ import {
   getStateToken,
   hashHexWithBlake2b256,
   utxosAtByNFTPolicyId,
+  isEventUTxOInclusionTimeInBounds,
 } from "@/common.js";
 import { Data as EffectData, Effect } from "effect";
-import {
-  OutputReference,
-  POSIXTime,
-  POSIXTimeSchema,
-} from "@/common.js";
+import { OutputReference, POSIXTime, POSIXTimeSchema } from "@/common.js";
 import { getProtocolParameters } from "@/protocol-parameters.js";
 import { DepositEventSchema, DepositInfo } from "@/ledger-state.js";
 
@@ -146,24 +143,6 @@ export const utxosToDepositUTxOs = (
 ): Effect.Effect<DepositUTxO[]> => {
   const effects = utxos.map((u) => utxoToDepositUTxO(u, nftPolicy));
   return Effect.allSuccesses(effects);
-};
-
-// TODO: Might be good to define an `EventUTxO` type.
-const isEventUTxOInclusionTimeInBounds = (
-  eventUTxO: { datum: { inclusionTime: bigint } },
-  inclusionTimeLowerBound?: POSIXTime,
-  inclusionTimeUpperBound?: POSIXTime,
-): boolean => {
-  const eventDatum = eventUTxO.datum;
-
-  const biggerThanLower =
-    inclusionTimeLowerBound === undefined ||
-    inclusionTimeLowerBound < eventDatum.inclusionTime;
-  const smallerThanUpper =
-    inclusionTimeUpperBound === undefined ||
-    eventDatum.inclusionTime <= inclusionTimeUpperBound;
-
-  return biggerThanLower && smallerThanUpper;
 };
 
 export const fetchDepositUTxOsProgram = (

@@ -51,9 +51,11 @@ export const DepositEventSchema = Data.Object({
 export type DepositEvent = Data.Static<typeof DepositEventSchema>;
 export const DepositEvent = DepositEventSchema as unknown as DepositEvent;
 
+// Changed from hashes of body and witness set to full tx representation
+// to enable tx order processing in node. Otherwise it is impossible to
+// get utxos from tx orders.
 export const MidgardTxCompactSchema = Data.Object({
-  body: H32Schema,
-  wits: H32Schema,
+  tx: Data.Bytes(),
   is_valid: Data.Boolean(),
 });
 export type MidgardTxCompact = Data.Static<typeof MidgardTxCompactSchema>;

@@ -15,6 +15,7 @@ import {
   DataCoercionError,
   GenericErrorFields,
   getStateToken,
+  isEventUTxOInclusionTimeInBounds,
   makeReturn,
   OutputReference,
   UnauthenticUtxoError,
@@ -140,9 +141,7 @@ export const utxoToTxOrderUTxO = (
       idCbor: Buffer.from(
         fromHex(Data.to(datum.event.txOrderId, OutputReference)),
       ),
-      infoCbor: Buffer.from(
-        fromHex(Data.to(datum.event.midgardTx, MidgardTxCompact)),
-      ),
+      infoCbor: Buffer.from(fromHex(datum.event.midgardTx.tx)),
       inclusionTime: new Date(Number(datum.inclusionTime)),
     };
   });
@@ -156,18 +155,6 @@ export const utxosToTxOrderUTxOs = (
 ): Effect.Effect<TxOrderUTxO[]> => {
   const effects = utxos.map((u) => utxoToTxOrderUTxO(u, nftPolicy));
   return Effect.allSuccesses(effects);
-};
-
-const isUTxOTimeValid = (
-  txOrderUTxO: TxOrderUTxO,
-  inclusionStartTime: POSIXTime,
-  inclusionEndTime: POSIXTime,
-): boolean => {
-  const txOrderData = txOrderUTxO.datum;
-  return (
-    inclusionStartTime < txOrderData.inclusionTime &&
-    txOrderData.inclusionTime <= inclusionEndTime
-  );
 };
 
 export const fetchTxOrderUTxOsProgram = (
@@ -186,7 +173,7 @@ export const fetchTxOrderUTxOsProgram = (
     );
 
     const validTxOrderUTxOs = txOrderUTxOs.filter((utxo) =>
-      isUTxOTimeValid(
+      isEventUTxOInclusionTimeInBounds(
         utxo,
         config.inclusionTimeLowerBound,
         config.inclusionTimeUpperBound,
@@ -240,10 +227,6 @@ export const incompleteTxOrderTxProgram = (
       transactionInput.to_cbor_hex(),
     );
     const txOrderNFT = toUnit(params.policyId, assetName);
-    const txBodyCborHex = params.cardanoTx.body().to_cbor_hex();
-    const txWitsCborHex = params.cardanoTx.witness_set().to_cbor_hex();
-    const midgardTxBody = yield* hashHexWithBlake2b256(txBodyCborHex);
-    const midgardTxWits = yield* hashHexWithBlake2b256(txWitsCborHex);
 
     const currDatum: TxOrderDatum = {
       event: {
@@ -252,8 +235,7 @@ export const incompleteTxOrderTxProgram = (
           outputIndex: BigInt(inputUtxo.outputIndex),
         },
         midgardTx: {
-          body: midgardTxBody,
-          wits: midgardTxWits,
+          tx: params.cardanoTx.to_cbor_hex(),
           is_valid: true,
         },
       },
