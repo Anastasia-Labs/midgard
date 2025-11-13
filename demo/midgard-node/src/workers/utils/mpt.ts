@@ -3,9 +3,9 @@ import { BatchDBOp } from "@ethereumjs/util";
 import { Data as EffectData, Effect } from "effect";
 import * as ETH from "@ethereumjs/mpt";
 import * as ETH_UTILS from "@ethereumjs/util";
-import { UTxO, toHex, utxoToCore, CML, Data } from "@lucid-evolution/lucid";
+import { UTxO, toHex, utxoToCore } from "@lucid-evolution/lucid";
 import { Level } from "level";
-import { AlwaysSucceedsContract, Database, NodeConfig, makeAuthenticatedValidator } from "@/services/index.js";
+import { AlwaysSucceedsContract, Database, NodeConfig } from "@/services/index.js";
 import { UserEventsUtils, TxUtils, LedgerUtils, DepositsDB } from "@/database/index.js"
 import { FileSystemError, findSpentAndProducedUTxOs } from "@/utils.js";
 import * as FS from "fs";
@@ -121,12 +121,12 @@ export const addDeposits = (
     yield* Effect.logInfo("🔹 Going through deposits...");
     const putOpsRaw: (ETH_UTILS.BatchDBOp | void)[] = yield* Effect.forEach(deposits, (dbDeposit) =>
       Effect.gen(function* () {
-        const {outRef, transactionOutput} = yield* UserEventsUtils.entryConverter(dbDeposit, depositAuthValidator.policyId)
+        const utxo = yield* UserEventsUtils.makeTransactionUnspentOutput(dbDeposit, depositAuthValidator.policyId)
 
         const putOp: ETH_UTILS.BatchDBOp = ({
             type: "put",
-            key: Buffer.from(outRef.to_cbor_bytes()),
-            value: Buffer.from(transactionOutput.to_cbor_bytes()),
+            key: Buffer.from(utxo.input().to_cbor_bytes()),
+            value: Buffer.from(utxo.output().to_cbor_bytes()),
           })
         return putOp
       }).pipe(Effect.catchAllCause(Effect.logInfo))
@@ -400,7 +400,7 @@ export class MidgardMpt {
         databaseAndPath = { database: db, databaseFilePath: levelDBFilePath };
         valueEncoding = LEVELDB_ENCODING_OPTS.valueEncoding;
       }
-      const trie = yield* Effect.tryPromise({
+      const trie: ETH.MerklePatriciaTrie = yield* Effect.tryPromise({
         try: () =>
           ETH.createMPT({
             db: databaseAndPath?.database,

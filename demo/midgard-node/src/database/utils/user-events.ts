@@ -1,6 +1,6 @@
 import { Database } from "@/services/database.js";
 import { SqlClient } from "@effect/sql";
-import { Effect } from "effect";
+import { Effect, Data as EffectData } from "effect";
 import {
   sqlErrorToDatabaseError,
   DatabaseError,
@@ -132,28 +132,39 @@ export const delEntries = (
     )} IN ${sql.in(ids)}`;
   }).pipe(sqlErrorToDatabaseError(tableName, "Failed to delete given UTxOs"));
 
-export const entryConverter = (
+export class UserEventsConversionError extends EffectData.TaggedError(
+  "UserEventsConversionError",
+)<SDK.GenericErrorFields> {}
+
+export const makeTransactionUnspentOutput = (
   entry: Entry,
   policyId: PolicyId,
-) => Effect.gen(function* () {
-      const l1_utxo = CML.TransactionUnspentOutput.from_cbor_bytes(Buffer.from(entry[Columns.L1_UTXO_CBOR]))
+): Effect.Effect<CML.TransactionUnspentOutput, UserEventsConversionError, never> =>
+  Effect.gen(function* () {
+      const l1Utxo = CML.TransactionUnspentOutput.from_cbor_bytes(Buffer.from(entry[Columns.L1_UTXO_CBOR]))
       const policyIdScriptHash = CML.ScriptHash.from_hex(policyId)
       const assets = CML.MapAssetNameToCoin.new()
-      assets.insert(CML.AssetName.from_hex(entry[Columns.ASSET_NAME]), 1n)
+      const inertedAssets = assets.insert(CML.AssetName.from_hex(entry[Columns.ASSET_NAME]), 1n)
       // We assume that it returns a number of succesful insertions
-      if (assets === undefined) {
-        throw new Error("TODO: change me")
+      if (inertedAssets === undefined) {
+        yield* Effect.fail(new UserEventsConversionError({
+          message: "Failed to insert ASSET_NAME to MapAssetNameToCoin",
+          cause: `ASSET_NAME: ${entry[Columns.ASSET_NAME]}`,
+        }))
       }
 
       const verificationNftMultiasset = CML.MultiAsset.new()
-      verificationNftMultiasset.insert_assets(policyIdScriptHash, assets) // Same return as above
-      if (verificationNftMultiasset === undefined) {
-        throw new Error("TODO: change me")
+      const insertedMultiassets = verificationNftMultiasset.insert_assets(policyIdScriptHash, assets) // Same return as above
+      if (insertedMultiassets === undefined) {
+        yield* Effect.fail(new UserEventsConversionError({
+          message: "Failed to insert assets to MultiAsset",
+          cause: `policyIdScriptHash: ${policyIdScriptHash}, assets: ${assets},`,
+        }))
       }
       const verificationNft = CML.Value.new(0n, verificationNftMultiasset)
 
       // We need to subtract the L2 midgard nft before inserting the values to L2 UTxO
-      const l2Amount: CML.Value = l1_utxo.output().amount().checked_sub(verificationNft)
+      const l2Amount: CML.Value = l1Utxo.output().amount().checked_sub(verificationNft)
 
       const depositDatum = Data.from(SDK.bufferToHex(entry[Columns.INFO]), SDK.DepositInfo)
       const l2Address = CML.Address.from_bech32(depositDatum.l2Address)
@@ -170,6 +181,7 @@ export const entryConverter = (
       )
 
       const transactionId = CML.TransactionHash.from_hex(entry[Columns.ASSET_NAME])
-      const outRef = CML.TransactionInput.new(transactionId, 0n)
-      return {outRef, transactionOutput}
+      const transactionInput = CML.TransactionInput.new(transactionId, 0n)
+      const utxo = CML.TransactionUnspentOutput.new(transactionInput, transactionOutput)
+      return utxo
 })
