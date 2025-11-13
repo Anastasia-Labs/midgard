@@ -123,7 +123,7 @@ const successfulSubmissionProgram = (
           "inserting-deposits-to-databases",
           (startIndex: number, endIndex: number) => {
             const batchUTxOs = insertedDepositUTxOs.slice(startIndex, endIndex);
-            const currentDate = new Date() // TODOL perhaps the insertion time is provided somewhere?
+            const currentDate = new Date() // TODO: perhaps the insertion time is provided somewhere?
             const ledgerTableBatch: LedgerUtils.EntryWithTimeStamp[] =
               batchUTxOs.map(utxo => ({
                 [LedgerUtils.Columns.TX_ID]: Buffer.from(utxo.input().transaction_id().to_raw_bytes()),
