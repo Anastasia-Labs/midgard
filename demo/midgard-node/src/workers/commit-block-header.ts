@@ -334,7 +334,7 @@ const databaseOperationsProgram = (
   | MptError,
   AlwaysSucceedsContract | Database | Lucid
 > =>
- Effect.gen(function* () {
+  Effect.gen(function* () {
     const mempoolTxs = yield* MempoolDB.retrieve;
     const mempoolTxsCount = mempoolTxs.length;
 
@@ -378,25 +378,24 @@ const databaseOperationsProgram = (
         // in `MempoolDB`). We check if there are any user events slated for
         // inclusion within `startTime` and current moment.
         const endTime = new Date();
-        yield* addDeposits(ledgerTrie, startTime, endTime)
+        yield* addDeposits(ledgerTrie, startTime, endTime);
 
         yield* Effect.logInfo(
           "🔹 Checking for user events... (no tx requests in queue)",
         );
-        const optUserEventsProgram = yield* userEventsProgram(
+        const optDepositRootProgram = yield* userEventsProgram(
           DepositsDB.tableName,
           startTime,
           endTime,
         );
-        if (Option.isNone(optUserEventsProgram)) {
+        if (Option.isNone(optDepositRootProgram)) {
           yield* Effect.logInfo("🔹 Nothing to commit.");
           return {
             type: "NothingToCommitOutput",
           } as WorkerOutput;
         } else {
-          const depositsRootFiber: RuntimeFiber<string, MptError> = yield* Effect.fork(
-            optUserEventsProgram.value,
-          );
+          const depositsRootFiber: RuntimeFiber<string, MptError> =
+            yield* Effect.fork(optDepositRootProgram.value);
           const depositsRoot = yield* depositsRootFiber;
           yield* Effect.logInfo(`🔹 Deposits root is: ${depositsRoot}`);
           const emptyRoot = yield* emptyRootHexProgram;
@@ -438,19 +437,19 @@ const databaseOperationsProgram = (
         // bound of the block we are about to submit.
         const endTime = optEndTime.value;
 
-        yield* addDeposits(ledgerTrie, startTime, endTime)
+        yield* addDeposits(ledgerTrie, startTime, endTime);
 
         yield* Effect.logInfo("🔹 Checking for user events...");
-        const optUserEventsProgram = yield* userEventsProgram(
+        const optDepositRootProgram = yield* userEventsProgram(
           DepositsDB.tableName,
           startTime,
           endTime,
         );
 
         let depositsRoot: string = yield* emptyRootHexProgram;
-        if (Option.isSome(optUserEventsProgram)) {
+        if (Option.isSome(optDepositRootProgram)) {
           const depositsRootFiber = yield* Effect.fork(
-            optUserEventsProgram.value,
+            optDepositRootProgram.value,
           );
           depositsRoot = yield* depositsRootFiber;
         }

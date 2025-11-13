@@ -5,13 +5,25 @@ import * as ETH from "@ethereumjs/mpt";
 import * as ETH_UTILS from "@ethereumjs/util";
 import { UTxO, toHex, utxoToCore } from "@lucid-evolution/lucid";
 import { Level } from "level";
-import { AlwaysSucceedsContract, Database, NodeConfig } from "@/services/index.js";
-import { UserEventsUtils, TxUtils, LedgerUtils, DepositsDB } from "@/database/index.js"
+import {
+  AlwaysSucceedsContract,
+  Database,
+  NodeConfig,
+} from "@/services/index.js";
+import {
+  UserEventsUtils,
+  TxUtils,
+  LedgerUtils,
+  DepositsDB,
+} from "@/database/index.js";
 import { FileSystemError, findSpentAndProducedUTxOs } from "@/utils.js";
 import * as FS from "fs";
 import * as SDK from "@al-ft/midgard-sdk";
 import { DatabaseError } from "@/database/utils/common.js";
-import { retrieveTimeBoundEntries, Columns as UserEventsColumns } from "@/database/utils/user-events.js";
+import {
+  retrieveTimeBoundEntries,
+  Columns as UserEventsColumns,
+} from "@/database/utils/user-events.js";
 
 const LEVELDB_ENCODING_OPTS = {
   keyEncoding: ETH_UTILS.KeyEncoding.Bytes,
@@ -99,7 +111,7 @@ export const addDeposits = (
   Database | AlwaysSucceedsContract
 > =>
   Effect.gen(function* () {
-    const tableName = DepositsDB.tableName
+    const tableName = DepositsDB.tableName;
     const deposits = yield* retrieveTimeBoundEntries(
       tableName,
       startDate,
@@ -116,27 +128,31 @@ export const addDeposits = (
       );
     }
 
-    const { depositAuthValidator } = yield* AlwaysSucceedsContract
+    const { depositAuthValidator } = yield* AlwaysSucceedsContract;
 
     yield* Effect.logInfo("🔹 Going through deposits...");
-    const putOpsRaw: (ETH_UTILS.BatchDBOp | void)[] = yield* Effect.forEach(deposits, (dbDeposit) =>
-      Effect.gen(function* () {
-        const utxo = yield* UserEventsUtils.makeTransactionUnspentOutput(dbDeposit, depositAuthValidator.policyId)
+    const putOpsRaw: (ETH_UTILS.BatchDBOp | void)[] = yield* Effect.forEach(
+      deposits,
+      (dbDeposit) =>
+        Effect.gen(function* () {
+          const utxo = yield* UserEventsUtils.makeTransactionUnspentOutput(
+            dbDeposit,
+            depositAuthValidator.policyId,
+          );
 
-        const putOp: ETH_UTILS.BatchDBOp = ({
+          const putOp: ETH_UTILS.BatchDBOp = {
             type: "put",
             key: Buffer.from(utxo.input().to_cbor_bytes()),
             value: Buffer.from(utxo.output().to_cbor_bytes()),
-          })
-        return putOp
-      }).pipe(Effect.catchAllCause(Effect.logInfo))
+          };
+          return putOp;
+        }).pipe(Effect.catchAllCause(Effect.logInfo)),
     );
 
-    const putOps = putOpsRaw.flatMap(f => f ? [f] : []);
+    const putOps = putOpsRaw.flatMap((f) => (f ? [f] : []));
     yield* ledgerTrie.batch(putOps);
     return ledgerTrie;
   });
-
 
 // Make mempool trie, and fill it with ledger trie with processed mempool txs
 export const processMpts = (

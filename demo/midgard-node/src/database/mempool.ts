@@ -16,16 +16,15 @@ import { LedgerUtils } from "./index.js";
 export const tableName = "mempool";
 
 // Transaction
-  // inputs
-    // OutputReference
-      // tx_hash
-      // output_index
-  // outputs
-    // UTxO
-      // Assets
-      // Address
-      // Datum
-
+// inputs
+// OutputReference
+// tx_hash
+// output_index
+// outputs
+// UTxO
+// Assets
+// Address
+// Datum
 
 export const insert = (
   processedTx: ProcessedTx,
