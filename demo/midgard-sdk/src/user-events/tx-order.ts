@@ -31,12 +31,8 @@ import {
   hashHexWithBlake2b256,
 } from "@/common.js";
 import { MidgardTxCompact, TxOrderEventSchema } from "@/ledger-state.js";
-<<<<<<< HEAD
-import { Effect } from "effect";
 import { UserEventMintRedeemer } from "./index.js";
-=======
 import { Data as EffectData, Effect } from "effect";
->>>>>>> Preliminary-Off-Chain-for-Tx-Orders
 
 export type TxOrderParams = {
   txOrderAddress: string;
