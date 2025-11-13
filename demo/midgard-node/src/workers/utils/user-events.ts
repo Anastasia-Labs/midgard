@@ -1,7 +1,7 @@
 import { TxOrdersDB, LedgerUtils } from "@/database/index.js";
 import { Effect, Option } from "effect";
 import * as ETH_UTILS from "@ethereumjs/util";
-import { findSpentAndProducedUTxOs } from "@/utils.js";
+import { breakDownTx, findSpentAndProducedUTxOs } from "@/utils.js";
 import { Database } from "@/services/database.js";
 import { DatabaseError } from "@/database/utils/common.js";
 import * as SDK from "@al-ft/midgard-sdk";
@@ -20,8 +20,12 @@ export const processTxOrderEvent = (
   endTime: Date,
   ledgerTrie: MidgardMpt,
 ): Effect.Effect<
-  number,
-  DatabaseError | SDK.CmlUnexpectedError | MptError,
+  {
+    spentTxOrderUTxOs: Buffer[];
+    producedTxOrderUTxOs: LedgerUtils.Entry[];
+    sizeOfTxOrderTxs: number;
+  },
+  DatabaseError | SDK.CmlDeserializationError | MptError,
   Database
 > =>
   Effect.gen(function* () {
@@ -31,16 +35,17 @@ export const processTxOrderEvent = (
     );
     const utxoBatchDBOps: ETH_UTILS.BatchDBOp[] = [];
     yield* Effect.logInfo(`🔹 Processing ${txOrders.length} new tx orders...`);
-    let sizeOfProcessedTxs = 0;
+    let sizeOfTxOrderTxs = 0;
+    const spentUTxOs: Buffer[] = [];
+    const producedUTxOs: LedgerUtils.Entry[] = [];
     yield* Effect.forEach(txOrders, (entry: UserEvents.Entry) =>
       Effect.gen(function* () {
         const txHash = entry[UserEvents.Columns.ID];
         const txCbor = entry[UserEvents.Columns.INFO];
-        const { spent, produced } = yield* findSpentAndProducedUTxOs(
-          txCbor,
-          txHash,
-        ).pipe(Effect.withSpan("findSpentAndProducedUTxOs"));
-        sizeOfProcessedTxs += txCbor.length;
+        const { spent, produced } = yield* breakDownTx(txCbor).pipe(
+          Effect.withSpan("findSpentAndProducedUTxOs"),
+        );
+        sizeOfTxOrderTxs += txCbor.length;
         const delOps: ETH_UTILS.BatchDBOp[] = spent.map((outRef) => ({
           type: "del",
           key: outRef,
@@ -54,6 +59,8 @@ export const processTxOrderEvent = (
         );
         yield* Effect.sync(() => utxoBatchDBOps.push(...delOps));
         yield* Effect.sync(() => utxoBatchDBOps.push(...putOps));
+        yield* Effect.sync(() => spentUTxOs.push(...spent));
+        yield* Effect.sync(() => producedUTxOs.push(...produced));
       }),
     );
     yield* ledgerTrie.batch(utxoBatchDBOps);
@@ -62,7 +69,11 @@ export const processTxOrderEvent = (
       `🔹 ${txOrders.length} new tx orders processed - new ledger root is ${utxoRoot}`,
     );
     yield* Effect.logInfo(`🔹 New UTxO root found: ${utxoRoot}`);
-    return sizeOfProcessedTxs;
+    return {
+      spentTxOrderUTxOs: spentUTxOs,
+      producedTxOrderUTxOs: producedUTxOs,
+      sizeOfTxOrderTxs,
+    };
   });
 
 export const processTxRequestEvent = (

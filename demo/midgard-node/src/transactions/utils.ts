@@ -3,16 +3,14 @@ import {
   LucidEvolution,
   OutRef,
   TxSignBuilder,
-  TxSigned,
   UTxO,
   fromHex,
 } from "@lucid-evolution/lucid";
 import { Data, Effect, Schedule } from "effect";
-import * as BlocksDB from "../database/blocks.js";
+import * as BlocksDB from "@/database/blocks.js";
 import { Database } from "@/services/index.js";
 import { ImmutableDB } from "@/database/index.js";
 import { DatabaseError } from "@/database/utils/common.js";
-import { UnknownException } from "effect/Cause";
 
 const RETRY_ATTEMPTS = 1;
 

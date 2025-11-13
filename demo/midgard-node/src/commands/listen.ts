@@ -31,15 +31,12 @@ import {
 import {
   AddressHistoryDB,
   BlocksDB,
-  ConfirmedLedgerDB,
   ImmutableDB,
   InitDB,
-  LatestLedgerDB,
   MempoolDB,
   MempoolLedgerDB,
-  ProcessedMempoolDB,
-} from "../database/index.js";
-import { isHexString } from "../utils.js";
+} from "@/database/index.js";
+import { isHexString } from "@/utils.js";
 import {
   HttpRouter,
   HttpServer,
@@ -51,7 +48,7 @@ import { createServer } from "node:http";
 import { NodeHttpServer } from "@effect/platform-node";
 import { HttpBodyError } from "@effect/platform/HttpBody";
 import * as Genesis from "@/genesis.js";
-import { deleteLedgerMpt, deleteMempoolMpt } from "@/workers/utils/mpt.js";
+import * as Reset from "@/reset.js";
 import { SerializedStateQueueUTxO } from "@/workers/utils/commit-block-header.js";
 import { DatabaseError } from "@/database/utils/common.js";
 import { TxConfirmError, TxSignError } from "@/transactions/utils.js";
@@ -330,22 +327,8 @@ const getMergeHandler = Effect.gen(function* () {
 
 const getResetHandler = Effect.gen(function* () {
   yield* Effect.logInfo(`🚧 Reset request received`);
-  yield* StateQueueTx.resetStateQueue;
-  yield* Effect.all(
-    [
-      MempoolDB.clear,
-      MempoolLedgerDB.clear,
-      ProcessedMempoolDB.clear,
-      BlocksDB.clear,
-      ImmutableDB.clear,
-      LatestLedgerDB.clear,
-      ConfirmedLedgerDB.clear,
-      AddressHistoryDB.clear,
-      deleteMempoolMpt,
-      deleteLedgerMpt,
-    ],
-    { discard: true },
-  );
+  yield* Reset.program;
+
   return yield* HttpServerResponse.json({
     message: `Collected all UTxOs successfully!`,
   });

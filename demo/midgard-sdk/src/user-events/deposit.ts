@@ -22,14 +22,10 @@ import {
   getStateToken,
   hashHexWithBlake2b256,
   utxosAtByNFTPolicyId,
+  isEventUTxOInclusionTimeInBounds,
 } from "@/common.js";
 import { Data as EffectData, Effect } from "effect";
-import {
-  OutputReference,
-  OutputReferenceSchema,
-  POSIXTime,
-  POSIXTimeSchema,
-} from "@/common.js";
+import { OutputReference, POSIXTime, POSIXTimeSchema } from "@/common.js";
 import { getProtocolParameters } from "@/protocol-parameters.js";
 import { DepositEventSchema, DepositInfo } from "@/ledger-state.js";
 import { UserEventMintRedeemer } from "./index.js";
@@ -61,8 +57,8 @@ export type DepositUTxO = {
 export type DepositFetchConfig = {
   depositAddress: Address;
   depositPolicyId: PolicyId;
-  inclusionTimeUpperBound: POSIXTime;
-  inclusionTimeLowerBound: POSIXTime;
+  inclusionTimeUpperBound?: POSIXTime;
+  inclusionTimeLowerBound?: POSIXTime;
 };
 
 export const getDepositDatumFromUTxO = (
@@ -130,18 +126,6 @@ export const utxosToDepositUTxOs = (
   return Effect.allSuccesses(effects);
 };
 
-const isUTxOTimeValid = (
-  depositUTxO: DepositUTxO,
-  inclusionStartTime: POSIXTime,
-  inclusionEndTime: POSIXTime,
-): boolean => {
-  const depositData = depositUTxO.datum;
-  return (
-    inclusionStartTime < depositData.inclusionTime &&
-    depositData.inclusionTime <= inclusionEndTime
-  );
-};
-
 export const fetchDepositUTxOsProgram = (
   lucid: LucidEvolution,
   config: DepositFetchConfig,
@@ -158,7 +142,7 @@ export const fetchDepositUTxOsProgram = (
     );
 
     const validDepositUTxOs = depositUTxOs.filter((utxo) =>
-      isUTxOTimeValid(
+      isEventUTxOInclusionTimeInBounds(
         utxo,
         config.inclusionTimeLowerBound,
         config.inclusionTimeUpperBound,

@@ -8,10 +8,16 @@ import {
 } from "@/services/index.js";
 import { Columns as LedgerColumns } from "@/database/utils/ledger.js";
 import * as MempoolLedgerDB from "@/database/mempoolLedger.js";
-import { TxSubmitError, UTxO, utxoToCore } from "@lucid-evolution/lucid";
+import {
+  getAddressDetails,
+  TxSubmitError,
+  UTxO,
+  utxoToCore,
+} from "@lucid-evolution/lucid";
 import { DatabaseError } from "@/database/utils/common.js";
 import {
-  handleSignSubmitNoConfirmation,
+  handleSignSubmit,
+  TxConfirmError,
   TxSignError,
 } from "./transactions/utils.js";
 
@@ -54,13 +60,93 @@ ${Array.from(new Set(config.GENESIS_UTXOS.map((u) => u.address))).join("\n")}`,
   Effect.andThen(Effect.succeed(Effect.void)),
 );
 
+const submitGenesisTxOrders: Effect.Effect<
+  void,
+  | SDK.HashingError
+  | SDK.LucidError
+  | SDK.TxOrderError
+  | TxSignError
+  | TxSubmitError
+  | TxConfirmError,
+  AlwaysSucceedsContract | Lucid | NodeConfig
+> = Effect.gen(function* () {
+  yield* Effect.logInfo(`🟣 Building genesis tx order tx...`);
+
+  const { txOrderAuthValidator } = yield* AlwaysSucceedsContract;
+  const config = yield* NodeConfig;
+  const lucid = yield* Lucid;
+
+  if (config.GENESIS_UTXOS.length <= 0) {
+    yield* Effect.logInfo(
+      `🟣 Skipping genesis tx order - no GENESIS_UTXOS configured`,
+    );
+    return;
+  }
+  yield* lucid.switchToOperatorsMainWallet;
+
+  const l2Address = config.GENESIS_UTXOS[0].address;
+  const l2AddressDetails = getAddressDetails(l2Address);
+  const l2AddressPc = l2AddressDetails.paymentCredential?.hash;
+  const l2AddressSc = l2AddressDetails.stakeCredential?.hash;
+  if (!l2AddressPc) {
+    throw new Error(`Invalid L2 address: ${l2Address}`);
+  }
+  const l2AddressData: SDK.AddressData = {
+    paymentCredential: { PublicKeyCredential: [l2AddressPc] },
+    stakeCredential:
+      typeof l2AddressSc === "string"
+        ? { Inline: [{ ScriptCredential: [l2AddressSc] }] }
+        : null,
+  };
+
+  const inclusionTime = Date.now();
+
+  const txBuilder = lucid.api
+    .newTx()
+    .pay.ToAddress(l2Address, { lovelace: 1_000_00n });
+  const txSignBuilder = yield* Effect.tryPromise({
+    try: () => txBuilder.complete(),
+    catch: (err) =>
+      new SDK.LucidError({
+        message: "Failed to build genesis tx order transaction",
+        cause: err,
+      }),
+  });
+  const tx = txSignBuilder.toTransaction();
+
+  const txOrderParams: SDK.TxOrderParams = {
+    txOrderAddress: txOrderAuthValidator.spendScriptAddress,
+    mintingPolicy: txOrderAuthValidator.mintScript,
+    policyId: txOrderAuthValidator.policyId,
+    refundAddress: l2AddressData,
+    refundDatum: "",
+    inclusionTime: BigInt(inclusionTime),
+    midgardTxBody: "",
+    midgardTxWits: "",
+    cardanoTx: tx,
+  };
+
+  const signedTx = yield* SDK.unsignedTxOrderTxProgram(
+    lucid.api,
+    txOrderParams,
+  );
+  yield* Effect.logInfo(
+    `🟣 Submitting genesis tx order to L1 (inclusion time: ${inclusionTime})...`,
+  );
+  yield* handleSignSubmit(lucid.api, signedTx);
+  yield* Effect.logInfo(
+    `🟣 Genesis tx order submitted successfully! Waiting for L1 confirmation...`,
+  );
+});
+
 const submitGenesisDeposits: Effect.Effect<
   void,
   | SDK.LucidError
   | SDK.HashingError
   | SDK.DepositError
   | TxSubmitError
-  | TxSignError,
+  | TxSignError
+  | TxConfirmError,
   AlwaysSucceedsContract | Lucid | NodeConfig
 > = Effect.gen(function* () {
   yield* Effect.logInfo(`🟣 Building genesis deposit tx...`);
@@ -93,17 +179,17 @@ const submitGenesisDeposits: Effect.Effect<
     lucid.api,
     depositParams,
   );
-  yield* handleSignSubmitNoConfirmation(lucid.api, signedTx);
+  yield* handleSignSubmit(lucid.api, signedTx);
 });
 
 export const program: Effect.Effect<
   void,
   never,
   AlwaysSucceedsContract | Database | Lucid | NodeConfig
-> = Effect.all(
-  [
-    insertGenesisUtxos,
-    submitGenesisDeposits.pipe(Effect.retry(Schedule.fixed("5000 millis"))),
-  ],
-  { concurrency: "unbounded" },
-).pipe(Effect.catchAllCause(Effect.logInfo));
+> = Effect.gen(function* () {
+  yield* insertGenesisUtxos;
+  yield* submitGenesisDeposits.pipe(
+    Effect.retry(Schedule.fixed("5000 millis")),
+  );
+  yield* submitGenesisTxOrders;
+}).pipe(Effect.catchAllCause(Effect.logInfo));

@@ -37,7 +37,9 @@ export const fetchAndInsertTxOrderUTxOs: Effect.Effect<
   const startTime: number = yield* Ref.get(globals.LATEST_TX_ORDER_FETCH_TIME);
   const endTime: number = Date.now();
 
-  yield* Effect.logInfo("fetching TxOrderUTxOs...");
+  yield* Effect.logInfo(
+    `🟪 Fetching TxOrderUTxOs (time range: ${startTime} - ${endTime})...`,
+  );
 
   const txOrderUTxOs = yield* fetchTxOrderUTxOs(lucid, startTime, endTime);
 

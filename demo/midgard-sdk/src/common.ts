@@ -122,7 +122,33 @@ export const utxosAtByNFTPolicyId = (
       });
     const authenticUTxOs = yield* Effect.allSuccesses(nftEffects);
     return authenticUTxOs;
-  });
+  }).pipe(
+    Effect.catchAllDefect(
+      (d) =>
+        new LucidError({
+          message: `Unexpected error while fetching UTxOs at: ${addressOrCred}`,
+          cause: d,
+        }),
+    ),
+  );
+
+// TODO: Might be good to define an `EventUTxO` type.
+export const isEventUTxOInclusionTimeInBounds = (
+  eventUTxO: { datum: { inclusionTime: bigint } },
+  inclusionTimeLowerBound?: POSIXTime,
+  inclusionTimeUpperBound?: POSIXTime,
+): boolean => {
+  const eventDatum = eventUTxO.datum;
+
+  const biggerThanLower =
+    inclusionTimeLowerBound === undefined ||
+    inclusionTimeLowerBound < eventDatum.inclusionTime;
+  const smallerThanUpper =
+    inclusionTimeUpperBound === undefined ||
+    eventDatum.inclusionTime <= inclusionTimeUpperBound;
+
+  return biggerThanLower && smallerThanUpper;
+};
 
 const blake2bHelper = (
   msg: string,

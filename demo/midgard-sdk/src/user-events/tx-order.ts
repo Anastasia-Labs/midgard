@@ -8,11 +8,14 @@ import {
   Script,
   toUnit,
   TxBuilder,
+  TxSignBuilder,
   UTxO,
 } from "@lucid-evolution/lucid";
 import {
   DataCoercionError,
+  GenericErrorFields,
   getStateToken,
+  isEventUTxOInclusionTimeInBounds,
   makeReturn,
   OutputReference,
   UnauthenticUtxoError,
@@ -28,8 +31,12 @@ import {
   hashHexWithBlake2b256,
 } from "@/common.js";
 import { MidgardTxCompact, TxOrderEventSchema } from "@/ledger-state.js";
+<<<<<<< HEAD
 import { Effect } from "effect";
 import { UserEventMintRedeemer } from "./index.js";
+=======
+import { Data as EffectData, Effect } from "effect";
+>>>>>>> Preliminary-Off-Chain-for-Tx-Orders
 
 export type TxOrderParams = {
   txOrderAddress: string;
@@ -119,9 +126,7 @@ export const utxoToTxOrderUTxO = (
       idCbor: Buffer.from(
         fromHex(Data.to(datum.event.txOrderId, OutputReference)),
       ),
-      infoCbor: Buffer.from(
-        fromHex(Data.to(datum.event.midgardTx, MidgardTxCompact)),
-      ),
+      infoCbor: Buffer.from(fromHex(datum.event.midgardTx.tx)),
       inclusionTime: new Date(Number(datum.inclusionTime)),
     };
   });
@@ -135,18 +140,6 @@ export const utxosToTxOrderUTxOs = (
 ): Effect.Effect<TxOrderUTxO[]> => {
   const effects = utxos.map((u) => utxoToTxOrderUTxO(u, nftPolicy));
   return Effect.allSuccesses(effects);
-};
-
-const isUTxOTimeValid = (
-  txOrderUTxO: TxOrderUTxO,
-  inclusionStartTime: POSIXTime,
-  inclusionEndTime: POSIXTime,
-): boolean => {
-  const txOrderData = txOrderUTxO.datum;
-  return (
-    inclusionStartTime < txOrderData.inclusionTime &&
-    txOrderData.inclusionTime <= inclusionEndTime
-  );
 };
 
 export const fetchTxOrderUTxOsProgram = (
@@ -165,7 +158,7 @@ export const fetchTxOrderUTxOsProgram = (
     );
 
     const validTxOrderUTxOs = txOrderUTxOs.filter((utxo) =>
-      isUTxOTimeValid(
+      isEventUTxOInclusionTimeInBounds(
         utxo,
         config.inclusionTimeLowerBound,
         config.inclusionTimeUpperBound,
@@ -186,7 +179,7 @@ export const fetchTxOrderUTxOs = (
  * @param params - The parameters
  * @returns {TxBuilder} A TxBuilder instance that can be used to build the transaction.
  */
-export const incompleteTxOrderProgram = (
+export const incompleteTxOrderTxProgram = (
   lucid: LucidEvolution,
   params: TxOrderParams,
 ): Effect.Effect<TxBuilder, HashingError | LucidError> =>
@@ -219,8 +212,6 @@ export const incompleteTxOrderProgram = (
       transactionInput.to_cbor_hex(),
     );
     const txOrderNFT = toUnit(params.policyId, assetName);
-    const midgardTxBody = params.cardanoTx.body().to_cbor_hex();
-    const midgardTxWits = params.cardanoTx.witness_set().to_cbor_hex();
 
     const currDatum: TxOrderDatum = {
       event: {
@@ -229,8 +220,7 @@ export const incompleteTxOrderProgram = (
           outputIndex: BigInt(inputUtxo.outputIndex),
         },
         midgardTx: {
-          body: midgardTxBody,
-          wits: midgardTxWits,
+          tx: params.cardanoTx.to_cbor_hex(),
           is_valid: true,
         },
       },
@@ -260,3 +250,38 @@ export const incompleteTxOrderProgram = (
       .attach.MintingPolicy(params.mintingPolicy);
     return tx;
   });
+
+export const unsignedTxOrderTxProgram = (
+  lucid: LucidEvolution,
+  depositParams: TxOrderParams,
+): Effect.Effect<TxSignBuilder, HashingError | LucidError | TxOrderError> =>
+  Effect.gen(function* () {
+    const commitTx = yield* incompleteTxOrderTxProgram(lucid, depositParams);
+    const completedTx: TxSignBuilder = yield* Effect.tryPromise({
+      try: () => commitTx.complete({ localUPLCEval: false }),
+      catch: (e) =>
+        new TxOrderError({
+          message: `Failed to build the transaction: ${e}`,
+          cause: e,
+        }),
+    });
+    return completedTx;
+  });
+
+/**
+ * Builds completed tx for submitting tx order using the provided
+ * `LucidEvolution` instance and a tx order config.
+ *
+ * @param lucid - The `LucidEvolution` API object.
+ * @param txOrderParams - Parameters required for commiting tx orders.
+ * @returns A promise that resolves to a `TxSignBuilder` instance.
+ */
+export const unsignedTxOrderTx = (
+  lucid: LucidEvolution,
+  txOrderParams: TxOrderParams,
+): Promise<TxSignBuilder> =>
+  makeReturn(unsignedTxOrderTxProgram(lucid, txOrderParams)).unsafeRun();
+
+export class TxOrderError extends EffectData.TaggedError(
+  "TxOrderError",
+)<GenericErrorFields> {}
