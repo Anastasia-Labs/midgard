@@ -215,11 +215,6 @@ const failedSubmissionProgram = (
     };
   });
 
-export type UserEventsProgramOutput = {
-  depositRootEffect: Effect.Effect<string, MptError>;
-  depositUTxOs: Buffer[];
-};
-
 /**
  * Given the target user event table, this helper finds all the events falling
  * in the given time range and if any was found, returns an `Effect` that finds
@@ -230,7 +225,7 @@ const userEventsProgram = (
   startDate: Date,
   endDate: Date,
 ): Effect.Effect<
-  Option.Option<UserEventsProgramOutput>,
+  Option.Option<Effect.Effect<string, MptError>>,
   DatabaseError,
   Database
 > =>
@@ -252,12 +247,7 @@ const userEventsProgram = (
       );
       const eventIDs = events.map((event) => event[UserEventsColumns.ID]);
       const eventInfos = events.map((event) => event[UserEventsColumns.INFO]);
-      const eventUTxOs = events.map((event) => event[UserEventsColumns.L1_UTXO_CBOR]);
-      const userEventsOutput: UserEventsProgramOutput = {
-        depositRootEffect: keyValueMptRoot(eventIDs, eventInfos),
-        depositUTxOs: eventUTxOs
-      }
-      return Option.some(userEventsOutput);
+      return Option.some(keyValueMptRoot(eventIDs, eventInfos));
     }
   });
 
@@ -387,14 +377,16 @@ const databaseOperationsProgram = (
         // No transaction requests found (neither in `ProcessedMempoolDB`, nor
         // in `MempoolDB`). We check if there are any user events slated for
         // inclusion within `startTime` and current moment.
-        const endDate = new Date();
+        const endTime = new Date();
+        yield* addDeposits(ledgerTrie, startTime, endTime)
+
         yield* Effect.logInfo(
           "🔹 Checking for user events... (no tx requests in queue)",
         );
-        const optUserEventsProgram: Option.Option<UserEventsProgramOutput> = yield* userEventsProgram(
+        const optUserEventsProgram = yield* userEventsProgram(
           DepositsDB.tableName,
           startTime,
-          endDate,
+          endTime,
         );
         if (Option.isNone(optUserEventsProgram)) {
           yield* Effect.logInfo("🔹 Nothing to commit.");
@@ -402,9 +394,8 @@ const databaseOperationsProgram = (
             type: "NothingToCommitOutput",
           } as WorkerOutput;
         } else {
-          yield* addDeposits(ledgerTrie, optUserEventsProgram.value.depositUTxOs)
           const depositsRootFiber: RuntimeFiber<string, MptError> = yield* Effect.fork(
-            optUserEventsProgram.value.depositRootEffect,
+            optUserEventsProgram.value,
           );
           const depositsRoot = yield* depositsRootFiber;
           yield* Effect.logInfo(`🔹 Deposits root is: ${depositsRoot}`);
@@ -415,7 +406,7 @@ const databaseOperationsProgram = (
             emptyRoot, // TODO: fix
             emptyRoot,
             depositsRoot,
-            endDate,
+            endTime,
           );
 
           return yield* Effect.matchEffect(signAndSubmitProgram, {
@@ -447,6 +438,8 @@ const databaseOperationsProgram = (
         // bound of the block we are about to submit.
         const endTime = optEndTime.value;
 
+        yield* addDeposits(ledgerTrie, startTime, endTime)
+
         yield* Effect.logInfo("🔹 Checking for user events...");
         const optUserEventsProgram = yield* userEventsProgram(
           DepositsDB.tableName,
@@ -456,9 +449,8 @@ const databaseOperationsProgram = (
 
         let depositsRoot: string = yield* emptyRootHexProgram;
         if (Option.isSome(optUserEventsProgram)) {
-          yield* addDeposits(ledgerTrie, optUserEventsProgram.value.depositUTxOs)
           const depositsRootFiber = yield* Effect.fork(
-            optUserEventsProgram.value.depositRootEffect,
+            optUserEventsProgram.value,
           );
           depositsRoot = yield* depositsRootFiber;
         }

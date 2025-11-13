@@ -5,6 +5,8 @@ import {
   sqlErrorToDatabaseError,
   DatabaseError,
 } from "@/database/utils/common.js";
+import { CML, Data, PolicyId } from "@lucid-evolution/lucid";
+import * as SDK from "@al-ft/midgard-sdk";
 
 export enum Columns {
   ID = "event_id",
@@ -17,7 +19,7 @@ export enum Columns {
 export type Entry = {
   [Columns.ID]: Buffer;
   [Columns.INFO]: Buffer;
-  [Columns.ASSET_NAME]: String;
+  [Columns.ASSET_NAME]: string;
   [Columns.L1_UTXO_CBOR]: Buffer;
   [Columns.INCLUSION_TIME]: Date;
 };
@@ -129,3 +131,45 @@ export const delEntries = (
       Columns.ID,
     )} IN ${sql.in(ids)}`;
   }).pipe(sqlErrorToDatabaseError(tableName, "Failed to delete given UTxOs"));
+
+export const entryConverter = (
+  entry: Entry,
+  policyId: PolicyId,
+) => Effect.gen(function* () {
+      const l1_utxo = CML.TransactionUnspentOutput.from_cbor_bytes(Buffer.from(entry[Columns.L1_UTXO_CBOR]))
+      const policyIdScriptHash = CML.ScriptHash.from_hex(policyId)
+      const assets = CML.MapAssetNameToCoin.new()
+      assets.insert(CML.AssetName.from_hex(entry[Columns.ASSET_NAME]), 1n)
+      // We assume that it returns a number of succesful insertions
+      if (assets === undefined) {
+        throw new Error("TODO: change me")
+      }
+
+      const verificationNftMultiasset = CML.MultiAsset.new()
+      verificationNftMultiasset.insert_assets(policyIdScriptHash, assets) // Same return as above
+      if (verificationNftMultiasset === undefined) {
+        throw new Error("TODO: change me")
+      }
+      const verificationNft = CML.Value.new(0n, verificationNftMultiasset)
+
+      // We need to subtract the L2 midgard nft before inserting the values to L2 UTxO
+      const l2Amount: CML.Value = l1_utxo.output().amount().checked_sub(verificationNft)
+
+      const depositDatum = Data.from(SDK.bufferToHex(entry[Columns.INFO]), SDK.DepositInfo)
+      const l2Address = CML.Address.from_bech32(depositDatum.l2Address)
+
+      let l2Datum = undefined
+      if (depositDatum.l2Datum !== null) {
+        l2Datum = CML.DatumOption.from_cbor_hex(depositDatum.l2Datum)
+      }
+
+      const transactionOutput = CML.TransactionOutput.new(
+        l2Address,
+        l2Amount,
+        l2Datum,
+      )
+
+      const transactionId = CML.TransactionHash.from_hex(entry[Columns.ASSET_NAME])
+      const outRef = CML.TransactionInput.new(transactionId, 0n)
+      return {outRef, transactionOutput}
+})

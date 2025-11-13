@@ -52,8 +52,6 @@ export const fetchAndInsertDepositUTxOs: Effect.Effect<
 
   yield* Effect.logInfo(`🏦 ${depositUTxOs.length} deposit UTxOs found.`);
 
-
-
   const entries: UserEventsUtils.Entry[] = depositUTxOs.map((utxo) => ({
     [UserEventsUtils.Columns.ID]: utxo.idCbor,
     [UserEventsUtils.Columns.INFO]: utxo.infoCbor,
@@ -61,8 +59,6 @@ export const fetchAndInsertDepositUTxOs: Effect.Effect<
     [UserEventsUtils.Columns.L1_UTXO_CBOR]: Buffer.from(utxoToCore(utxo.utxo).to_cbor_hex()),
     [UserEventsUtils.Columns.INCLUSION_TIME]: utxo.inclusionTime,
   }));
-
-
 
   yield* DepositsDB.insertEntries(entries);
 

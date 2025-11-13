@@ -6,11 +6,12 @@ import * as ETH_UTILS from "@ethereumjs/util";
 import { UTxO, toHex, utxoToCore, CML, Data } from "@lucid-evolution/lucid";
 import { Level } from "level";
 import { AlwaysSucceedsContract, Database, NodeConfig, makeAuthenticatedValidator } from "@/services/index.js";
-import { UserEventsUtils, TxUtils, LedgerUtils } from "@/database/index.js"
+import { UserEventsUtils, TxUtils, LedgerUtils, DepositsDB } from "@/database/index.js"
 import { FileSystemError, findSpentAndProducedUTxOs } from "@/utils.js";
 import * as FS from "fs";
 import * as SDK from "@al-ft/midgard-sdk";
 import { DatabaseError } from "@/database/utils/common.js";
+import { retrieveTimeBoundEntries, Columns as UserEventsColumns } from "@/database/utils/user-events.js";
 
 const LEVELDB_ENCODING_OPTS = {
   keyEncoding: ETH_UTILS.KeyEncoding.Bytes,
@@ -88,77 +89,51 @@ export const deleteMpt = (
       }),
   }).pipe(Effect.withLogSpan(`Delete ${name} MPT`));
 
-  // Send funds we want to lock on L2 with appropriate datum to L1 script address
-  // Operator pulls all UTxOs on a script address
-  // Operator puts funds to the ledger
-
-  // L2 Address
-  // Funds we want to lock there
-  // Datum
-
-  // .cbor()
-
-  // DepositEntry -> CML.TransactionOutput
-
-  const deb = CML.TransactionUnspentOutput.new()
-
-  const address = CML.Address.from_bech32()
-
-  // L1_UTxO_CBOR
-
-  const l1_utxo = CML.TransactionUnspentOutput.from_cbor_bytes(Buffer.from(L1_UTxO_CBOR))
-
-  Effect.gen(function* () {
-    const { depositAuthValidator } = yield* AlwaysSucceedsContract
-  })
-
-
-  const policy_id = CML.ScriptHash.from_hex(depositAuthValidator.policyId)
-  const assets = CML.MapAssetNameToCoin.new().insert(CML.AssetName.from_hex(ASSET_NAME), 1n)
-  const verification_nft_multiasset = CML.MultiAsset.new().insert_assets(policy_id, assets)
-  const verification_nft = CML.Value.new(0n, verification_nft_multiasset)
-  const amount: CML.Value = l1_utxo.output().amount().checked_sub(verification_nft)
-
-  const depositDatum = Data.from(SDK.bufferToHex(INFO), SDK.DepositInfo)
-  const l2Datum = CML.DatumOption.from_cbor_hex(depositDatum.l2Datum)
-  const transactionOutput = CML.TransactionOutput.new(
-    address,
-    amount,
-  )
-
-  const transactionId = CML.TransactionHash.from_hex(ASSET_NAME)
-  const outRef = CML.TransactionInput.new(transactionId, 0n)
-
 export const addDeposits = (
   ledgerTrie: MidgardMpt,
-  depositUtxoCbors: Buffer[],
+  startDate: Date,
+  endDate: Date,
 ): Effect.Effect<
   MidgardMpt,
-  MptError | SDK.CmlUnexpectedError,
-  Database
+  MptError | SDK.CmlUnexpectedError | DatabaseError,
+  Database | AlwaysSucceedsContract
 > =>
   Effect.gen(function* () {
-    const batchDBOps: ETH_UTILS.BatchDBOp[] = [];
+    const tableName = DepositsDB.tableName
+    const deposits = yield* retrieveTimeBoundEntries(
+      tableName,
+      startDate,
+      endDate,
+    );
+
+    if (deposits.length <= 0) {
+      yield* Effect.logInfo(
+        `🔹 No deposits found in ${tableName} table between ${startDate.getTime()} and ${endDate.getTime()}.`,
+      );
+    } else {
+      yield* Effect.logInfo(
+        `🔹 ${deposits.length} event(s) found in ${tableName} table between ${startDate.getTime()} and ${endDate.getTime()}.`,
+      );
+    }
+
+    const { depositAuthValidator } = yield* AlwaysSucceedsContract
 
     yield* Effect.logInfo("🔹 Going through deposits...");
-    yield* Effect.forEach(depositUtxoCbors, (cbor: Buffer) =>
+    const putOpsRaw: (ETH_UTILS.BatchDBOp | void)[] = yield* Effect.forEach(deposits, (dbDeposit) =>
       Effect.gen(function* () {
-        // Spent UTxOs should be found in withdrawals
-        const { produced } = yield* findSpentAndProducedUTxOs(
-          cbor,
-        ).pipe(Effect.withSpan("findSpentAndProducedUTxOs"));
-        const putOps: ETH_UTILS.BatchDBOp[] = produced.map(
-          (le: LedgerUtils.MinimalEntry) => ({
+        const {outRef, transactionOutput} = yield* UserEventsUtils.entryConverter(dbDeposit, depositAuthValidator.policyId)
+
+        const putOp: ETH_UTILS.BatchDBOp = ({
             type: "put",
             key: Buffer.from(outRef.to_cbor_bytes()),
             value: Buffer.from(transactionOutput.to_cbor_bytes()),
-          }),
-        );
-        yield* Effect.sync(() => batchDBOps.push(...putOps));
-      }),
+          })
+        return putOp
+      }).pipe(Effect.catchAllCause(Effect.logInfo))
     );
 
-    yield* ledgerTrie.batch(batchDBOps);
+    const putOps = putOpsRaw.flatMap(f => f ? [f] : []);
+    yield* ledgerTrie.batch(putOps);
     return ledgerTrie;
   });
 
