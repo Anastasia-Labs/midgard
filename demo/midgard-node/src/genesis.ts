@@ -74,6 +74,7 @@ const submitGenesisDeposits: Effect.Effect<
   }
 
   const l2Address = config.GENESIS_UTXOS[0].address;
+  yield* Effect.logInfo(`DEBUG! l2Address: ${l2Address}`)
 
   // Hard-coded 10 ADA deposit.
   const depositParams: SDK.DepositParams = {

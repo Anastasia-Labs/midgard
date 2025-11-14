@@ -153,48 +153,65 @@ export const makeTransactionUnspentOutput = (
     const l1Utxo = CML.TransactionUnspentOutput.from_cbor_bytes(
       Buffer.from(entry[Columns.L1_UTXO_CBOR]),
     );
+    yield* Effect.logInfo(`l1Utxo.to_cbor_hex(): ${JSON.stringify(l1Utxo.to_cbor_hex())}`)
+
     const policyIdScriptHash = CML.ScriptHash.from_hex(policyId);
+    yield* Effect.logInfo(`policyIdScriptHash: ${JSON.stringify(policyIdScriptHash)}`)
+
+
     const assets = CML.MapAssetNameToCoin.new();
-    const inertedAssets = assets.insert(
+
+    const insertedAssetsCode = assets.insert(
       CML.AssetName.from_hex(entry[Columns.ASSET_NAME]),
       1n,
     );
-    // We assume that it returns a number of succesful insertions
-    if (inertedAssets === undefined) {
+
+    // We assume that it returns a number if insertions were unsuccessful
+    if (insertedAssetsCode !== undefined) {
       yield* Effect.fail(
         new UserEventsConversionError({
-          message: "Failed to insert ASSET_NAME to MapAssetNameToCoin",
+          message: `Failed to insert ASSET_NAME to MapAssetNameToCoin with code: ${insertedAssetsCode}`,
           cause: `ASSET_NAME: ${entry[Columns.ASSET_NAME]}`,
         }),
       );
     }
+    yield* Effect.logInfo(`assets.len(): ${JSON.stringify(assets.len())}`)
+
 
     const verificationNftMultiasset = CML.MultiAsset.new();
-    const insertedMultiassets = verificationNftMultiasset.insert_assets(
+    const insertedMultiassetsCode = verificationNftMultiasset.insert_assets(
       policyIdScriptHash,
       assets,
     ); // Same return as above
-    if (insertedMultiassets === undefined) {
+    if (insertedMultiassetsCode !== undefined) {
       yield* Effect.fail(
         new UserEventsConversionError({
-          message: "Failed to insert assets to MultiAsset",
+          message: `Failed to insert assets to MultiAsset with code: ${insertedMultiassetsCode}`,
           cause: `policyIdScriptHash: ${policyIdScriptHash}, assets: ${assets},`,
         }),
       );
     }
+
+    yield* Effect.logInfo(`verificationNftMultiasset: ${JSON.stringify(verificationNftMultiasset)}`)
+
     const verificationNft = CML.Value.new(0n, verificationNftMultiasset);
+    yield* Effect.logInfo(`verificationNft: ${JSON.stringify(verificationNft)}`)
 
     // We need to subtract the L2 midgard nft before inserting the values to L2 UTxO
     const l2Amount: CML.Value = l1Utxo
       .output()
       .amount()
       .checked_sub(verificationNft);
+    yield* Effect.logInfo(`l2Amount: ${JSON.stringify(l2Amount)}`)
 
     const depositDatum = Data.from(
       SDK.bufferToHex(entry[Columns.INFO]),
       SDK.DepositInfo,
     );
+    yield* Effect.logInfo(`depositDatum: ${JSON.stringify(depositDatum)}`)
+
     const l2Address = CML.Address.from_bech32(depositDatum.l2Address);
+    yield* Effect.logInfo(`l2Address: ${JSON.stringify(l2Address)}`)
 
     let l2Datum = undefined;
     if (depositDatum.l2Datum !== null) {
@@ -211,6 +228,10 @@ export const makeTransactionUnspentOutput = (
       entry[Columns.ASSET_NAME],
     );
     const transactionInput = CML.TransactionInput.new(transactionId, 0n);
+    yield* Effect.logInfo(`transactionInput: ${JSON.stringify(transactionInput)}`)
+    yield* Effect.logInfo(`transactionOutput: ${JSON.stringify(transactionOutput)}`)
+
+
     const utxo = CML.TransactionUnspentOutput.new(
       transactionInput,
       transactionOutput,

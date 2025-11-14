@@ -57,7 +57,7 @@ export const fetchAndInsertDepositUTxOs: Effect.Effect<
     [UserEventsUtils.Columns.INFO]: utxo.infoCbor,
     [UserEventsUtils.Columns.ASSET_NAME]: utxo.assetName,
     [UserEventsUtils.Columns.L1_UTXO_CBOR]: Buffer.from(
-      utxoToCore(utxo.utxo).to_cbor_hex(),
+      utxoToCore(utxo.utxo).to_cbor_bytes(),
     ),
     [UserEventsUtils.Columns.INCLUSION_TIME]: utxo.inclusionTime,
   }));
