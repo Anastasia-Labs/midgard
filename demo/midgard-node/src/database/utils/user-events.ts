@@ -5,7 +5,7 @@ import {
   sqlErrorToDatabaseError,
   DatabaseError,
 } from "@/database/utils/common.js";
-import { CML, Data, PolicyId } from "@lucid-evolution/lucid";
+import { CML, Data, PolicyId, toText } from "@lucid-evolution/lucid";
 import * as SDK from "@al-ft/midgard-sdk";
 
 export enum Columns {
@@ -153,11 +153,7 @@ export const makeTransactionUnspentOutput = (
     const l1Utxo = CML.TransactionUnspentOutput.from_cbor_bytes(
       Buffer.from(entry[Columns.L1_UTXO_CBOR]),
     );
-    yield* Effect.logInfo(`l1Utxo.to_cbor_hex(): ${JSON.stringify(l1Utxo.to_cbor_hex())}`)
-
     const policyIdScriptHash = CML.ScriptHash.from_hex(policyId);
-    yield* Effect.logInfo(`policyIdScriptHash: ${JSON.stringify(policyIdScriptHash)}`)
-
 
     const assets = CML.MapAssetNameToCoin.new();
 
@@ -175,8 +171,6 @@ export const makeTransactionUnspentOutput = (
         }),
       );
     }
-    yield* Effect.logInfo(`assets.len(): ${JSON.stringify(assets.len())}`)
-
 
     const verificationNftMultiasset = CML.MultiAsset.new();
     const insertedMultiassetsCode = verificationNftMultiasset.insert_assets(
@@ -191,11 +185,7 @@ export const makeTransactionUnspentOutput = (
         }),
       );
     }
-
-    yield* Effect.logInfo(`verificationNftMultiasset: ${JSON.stringify(verificationNftMultiasset)}`)
-
     const verificationNft = CML.Value.new(0n, verificationNftMultiasset);
-    yield* Effect.logInfo(`verificationNft: ${JSON.stringify(verificationNft)}`)
 
     // We need to subtract the L2 midgard nft before inserting the values to L2 UTxO
     const l2Amount: CML.Value = l1Utxo
@@ -208,10 +198,8 @@ export const makeTransactionUnspentOutput = (
       SDK.bufferToHex(entry[Columns.INFO]),
       SDK.DepositInfo,
     );
-    yield* Effect.logInfo(`depositDatum: ${JSON.stringify(depositDatum)}`)
 
-    const l2Address = CML.Address.from_bech32(depositDatum.l2Address);
-    yield* Effect.logInfo(`l2Address: ${JSON.stringify(l2Address)}`)
+    const l2Address = CML.Address.from_bech32(toText(depositDatum.l2Address));
 
     let l2Datum = undefined;
     if (depositDatum.l2Datum !== null) {
@@ -228,9 +216,6 @@ export const makeTransactionUnspentOutput = (
       entry[Columns.ASSET_NAME],
     );
     const transactionInput = CML.TransactionInput.new(transactionId, 0n);
-    yield* Effect.logInfo(`transactionInput: ${JSON.stringify(transactionInput)}`)
-    yield* Effect.logInfo(`transactionOutput: ${JSON.stringify(transactionOutput)}`)
-
 
     const utxo = CML.TransactionUnspentOutput.new(
       transactionInput,

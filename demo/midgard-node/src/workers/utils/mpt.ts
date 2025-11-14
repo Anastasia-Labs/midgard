@@ -140,14 +140,10 @@ export const addDeposits = (
       deposits,
       (dbDeposit) =>
         Effect.gen(function* () {
-          yield* Effect.logInfo(`🔹 DEBUG! before makeTransactionUnspentOutput`);
           const utxo = yield* UserEventsUtils.makeTransactionUnspentOutput(
             dbDeposit,
             depositAuthValidator.policyId,
           );
-
-          yield* Effect.logInfo(`🔹 DEBUG! got utxo: ${JSON.stringify(utxo)}`);
-
 
           insertedUTxOs.push(utxo)
           const putOp: ETH_UTILS.BatchDBOp = {
