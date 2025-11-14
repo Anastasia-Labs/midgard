@@ -1,28 +1,52 @@
-import { AddressData, AddressSchema, HashingError, LucidError, POSIXTime, POSIXTimeSchema, hashHexWithBlake2b256 } from "@/common.js";
-import { UserEventMintRedeemer } from "@/index.js";
-import { WithdrawalBody, WithdrawalEventSchema, WithdrawalInfo, WithdrawalSignature } from "@/ledger-state.js";
-import { CML, Data, LucidEvolution, Script, toUnit, TxBuilder, UTxO } from "@lucid-evolution/lucid";
+import {
+  AddressData,
+  AddressSchema,
+  HashingError,
+  LucidError,
+  POSIXTime,
+  POSIXTimeSchema,
+  hashHexWithBlake2b256,
+} from "@/common.js";
+import { buildMintTransaction, UserEventMintRedeemer } from "@/index.js";
+import {
+  WithdrawalBody,
+  WithdrawalEventSchema,
+  WithdrawalInfo,
+  WithdrawalSignature,
+} from "@/ledger-state.js";
+import {
+  CML,
+  Data,
+  LucidEvolution,
+  Script,
+  toUnit,
+  TxBuilder,
+  UTxO,
+} from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
 export type WithdrawalOrderParams = {
   withdrawalScriptAddress: string;
   mintingPolicy: Script;
   policyId: string;
-  inclusionTime: POSIXTime
-  withdrawalBody : WithdrawalBody;
+  inclusionTime: POSIXTime;
+  withdrawalBody: WithdrawalBody;
   withdrawalSignature: WithdrawalSignature;
   refundAddress: AddressData;
-  refundDatum: string;
+  refundDatum: Data;
 };
 
 export const WithdrawalOrderDatumSchema = Data.Object({
   event: WithdrawalEventSchema,
   inclusionTime: POSIXTimeSchema,
   refundAddress: AddressSchema,
-  refundDatum: Data.Nullable(Data.Bytes()),
+  refundDatum: Data.Any(),
 });
-export type WithdrawalOrderDatum = Data.Static<typeof WithdrawalOrderDatumSchema>;
-export const WithdrawalOrderDatum = WithdrawalOrderDatumSchema as unknown as WithdrawalOrderDatum;
+export type WithdrawalOrderDatum = Data.Static<
+  typeof WithdrawalOrderDatumSchema
+>;
+export const WithdrawalOrderDatum =
+  WithdrawalOrderDatumSchema as unknown as WithdrawalOrderDatum;
 
 /**
  * WithdrawalOrder
@@ -34,7 +58,7 @@ export const WithdrawalOrderDatum = WithdrawalOrderDatumSchema as unknown as Wit
 export const withdrawalOrderTxBuilder = (
   lucid: LucidEvolution,
   params: WithdrawalOrderParams,
-): Effect.Effect<TxBuilder, HashingError | LucidError> => 
+): Effect.Effect<TxBuilder, HashingError | LucidError> =>
   Effect.gen(function* () {
     const redeemer: UserEventMintRedeemer = {
       AuthenticateEvent: {
@@ -49,10 +73,12 @@ export const withdrawalOrderTxBuilder = (
       lucid.wallet().getUtxos(),
     );
     if (utxos.length === 0) {
-      yield* new LucidError({
-        message: "Failed to build the withdrawal transaction",
-        cause: "No UTxOs found in wallet",
-      });
+      yield* Effect.fail(
+        new LucidError({
+          message: "Failed to build the withdrawal transaction",
+          cause: "No UTxOs found in wallet",
+        }),
+      );
     }
     const inputUtxo = utxos[0];
     const transactionInput = CML.TransactionInput.new(
@@ -65,40 +91,35 @@ export const withdrawalOrderTxBuilder = (
     );
     const withdrawalNFT = toUnit(params.policyId, assetName);
     const withdrawalOrderDatum: WithdrawalOrderDatum = {
-        event: {
-            id: {
-              txHash: { hash: inputUtxo.txHash },
-              outputIndex: BigInt(inputUtxo.outputIndex),
-            },
-            info:  {
-              body: params.withdrawalBody,
-              signature: params.withdrawalSignature,
-              validity: "WithdrawalIsValid"
-            },
-          },
-          inclusionTime: BigInt(params.inclusionTime),
-          refundAddress: params.refundAddress,
-          refundDatum: params.refundDatum,
-        };
-    const withdrawalOrderDatumCBOR = Data.to(withdrawalOrderDatum, WithdrawalOrderDatum);
-    const tx = lucid
-      .newTx()
-      .collectFrom([inputUtxo])
-      .mintAssets(
-        {
-          [withdrawalNFT]: 1n,
+      event: {
+        id: {
+          txHash: { hash: inputUtxo.txHash },
+          outputIndex: BigInt(inputUtxo.outputIndex),
         },
-        authenticateEvent,
-      )
-      .pay.ToAddressWithData(
-        params.withdrawalScriptAddress,
-        {
-          kind: "inline",
-          value: withdrawalOrderDatumCBOR,
+        info: {
+          body: params.withdrawalBody,
+          signature: params.withdrawalSignature,
+          validity: "WithdrawalIsValid",
         },
-        { [withdrawalNFT]: 1n },
-      )
-      .validTo(Number(params.inclusionTime))
-      .attach.MintingPolicy(params.mintingPolicy);
+      },
+      inclusionTime: BigInt(params.inclusionTime),
+      refundAddress: params.refundAddress,
+      refundDatum: params.refundDatum,
+    };
+    const withdrawalOrderDatumCBOR = Data.to(
+      withdrawalOrderDatum,
+      WithdrawalOrderDatum,
+    );
+    const tx = buildMintTransaction({
+      lucid,
+      inputUtxo,
+      nft: withdrawalNFT,
+      mintRedeemer: authenticateEvent,
+      scriptAddress: params.withdrawalScriptAddress,
+      datum: withdrawalOrderDatumCBOR,
+      assets: { [withdrawalNFT]: 1n },
+      validTo: Number(params.inclusionTime),
+      mintingPolicy: params.mintingPolicy,
+    });
     return tx;
   });
