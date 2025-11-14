@@ -144,6 +144,7 @@ export const addDeposits = (
             dbDeposit,
             depositAuthValidator.policyId,
           );
+
           insertedUTxOs.push(utxo)
           const putOp: ETH_UTILS.BatchDBOp = {
             type: "put",

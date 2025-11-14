@@ -546,6 +546,7 @@ const databaseOperationsProgram = (
           onSuccess: (txHash) =>
             successfulSubmissionProgram(
               mempoolTrie,
+              insertedDepositUTxOs,
               mempoolTxs,
               mempoolTxHashes,
               newHeaderHash,

@@ -34,6 +34,7 @@ export const createTable = (
         yield* sql`CREATE TABLE IF NOT EXISTS ${sql(tableName)} (
         ${sql(Columns.ID)} BYTEA NOT NULL,
         ${sql(Columns.INFO)} BYTEA NOT NULL,
+        ${sql(Columns.ASSET_NAME)} TEXT NOT NULL,
         ${sql(Columns.L1_UTXO_CBOR)} BYTEA NOT NULL,
         ${sql(Columns.INCLUSION_TIME)} TIMESTAMPTZ NOT NULL,
         PRIMARY KEY (${sql(Columns.ID)})
@@ -53,7 +54,9 @@ export const insertEntry = (
     yield* Effect.logDebug(`${tableName} db: attempt to insert UTxO`);
     const sql = yield* SqlClient.SqlClient;
     // No need to handle conflicts.
-    yield* sql`INSERT INTO ${sql(tableName)} ${sql.insert(entry)}`;
+    yield* sql`INSERT INTO ${sql(tableName)} ${sql.insert(
+      entry
+    )} ON CONFLICT DO NOTHING`;
   }).pipe(
     Effect.withLogSpan(`insertEntry ${tableName}`),
     Effect.tapErrorTag("SqlError", (e) =>
@@ -73,7 +76,9 @@ export const insertEntries = (
       yield* Effect.logDebug("No entries provided, skipping insertion.");
       return;
     }
-    yield* sql`INSERT INTO ${sql(tableName)} ${sql.insert(entries)}`;
+    yield* sql`INSERT INTO ${sql(tableName)} ${sql.insert(
+      entries
+    )} ON CONFLICT DO NOTHING`;
   }).pipe(
     Effect.withLogSpan(`insertEntries ${tableName}`),
     Effect.tapErrorTag("SqlError", (e) =>
