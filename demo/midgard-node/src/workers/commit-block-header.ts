@@ -22,13 +22,15 @@ import {
   ProcessedMempoolDB,
   DepositsDB,
   TxUtils as TxTable,
+  MempoolLedgerDB,
+  LedgerUtils,
 } from "@/database/index.js";
 import {
   handleSignSubmitNoConfirmation,
   TxSignError,
   TxSubmitError,
 } from "@/transactions/utils.js";
-import { fromHex } from "@lucid-evolution/lucid";
+import { CML, fromHex } from "@lucid-evolution/lucid";
 import {
   MidgardMpt,
   MptError,
@@ -36,6 +38,7 @@ import {
   keyValueMptRoot,
   makeMpts,
   processMpts,
+  addDeposits,
   withTrieTransaction,
 } from "@/workers/utils/mpt.js";
 import { FileSystemError, batchProgram } from "@/utils.js";
@@ -45,6 +48,7 @@ import {
   retrieveTimeBoundEntries,
 } from "@/database/utils/user-events.js";
 import { DatabaseError } from "@/database/utils/common.js";
+import { RuntimeFiber } from "effect/Fiber";
 
 const BATCH_SIZE = 100;
 
@@ -97,6 +101,7 @@ const establishEndTimeFromTxRequests = (
 // TODO: Application of user events will likely affect this function as well.
 const successfulSubmissionProgram = (
   mempoolTrie: MidgardMpt,
+  insertedDepositUTxOs: CML.TransactionUnspentOutput[],
   mempoolTxs: readonly TxTable.EntryWithTimeStamp[],
   mempoolTxHashes: Buffer[],
   newHeaderHash: string,
@@ -106,6 +111,62 @@ const successfulSubmissionProgram = (
   txHash: string,
 ): Effect.Effect<WorkerOutput, DatabaseError | FileSystemError, Database> =>
   Effect.gen(function* () {
+    yield* Effect.logInfo(
+      "🔹 Inserting included deposits into ImmutableDB and MempoolLedgerDB",
+    );
+    yield* Effect.all(
+      [
+        batchProgram(
+          Math.floor(BATCH_SIZE / 2),
+          insertedDepositUTxOs.length,
+          "inserting-deposits-to-databases",
+          (startIndex: number, endIndex: number) => {
+            const batchUTxOs = insertedDepositUTxOs.slice(startIndex, endIndex);
+            const currentDate = new Date(); // TODO: perhaps the insertion time is provided somewhere?
+            const ledgerTableBatch: LedgerUtils.EntryWithTimeStamp[] =
+              batchUTxOs.map((utxo) => ({
+                [LedgerUtils.Columns.TX_ID]: Buffer.from(
+                  utxo.input().transaction_id().to_raw_bytes(),
+                ),
+                [LedgerUtils.Columns.OUTREF]: Buffer.from(
+                  utxo.input().to_cbor_bytes(),
+                ),
+                [LedgerUtils.Columns.OUTPUT]: Buffer.from(
+                  utxo.output().to_cbor_bytes(),
+                ),
+                [LedgerUtils.Columns.ADDRESS]: utxo.output().address().to_hex(),
+                [LedgerUtils.Columns.TIMESTAMPTZ]: currentDate,
+              }));
+
+            const txTableBatch: TxTable.EntryWithTimeStamp[] = batchUTxOs.map(
+              (utxo) => ({
+                [TxTable.Columns.TX_ID]: Buffer.from(
+                  utxo.input().transaction_id().to_raw_bytes(),
+                ),
+                [TxTable.Columns.TX]: Buffer.from(utxo.to_cbor_bytes()),
+                [TxTable.Columns.TIMESTAMPTZ]: currentDate,
+              }),
+            );
+
+            return Effect.all(
+              [
+                MempoolLedgerDB.insert(ledgerTableBatch).pipe(
+                  Effect.withSpan(`mempool-ledger-db-insert-${startIndex}`),
+                ),
+                ImmutableDB.insertTxs(txTableBatch).pipe(
+                  Effect.withSpan(`immutable-db-insert-${startIndex}`),
+                ),
+              ],
+              { concurrency: "unbounded" },
+            );
+          },
+        ),
+        ProcessedMempoolDB.clear, // uses `TRUNCATE` so no need for batching.
+        mempoolTrie.delete(),
+      ],
+      { concurrency: "unbounded" },
+    );
+
     const newHeaderHashBuffer = Buffer.from(fromHex(newHeaderHash));
 
     const processedMempoolTxs = yield* ProcessedMempoolDB.retrieve;
@@ -375,14 +436,16 @@ const databaseOperationsProgram = (
         // No transaction requests found (neither in `ProcessedMempoolDB`, nor
         // in `MempoolDB`). We check if there are any user events slated for
         // inclusion within `startTime` and current moment.
-        const endDate = new Date();
+        const endTime = new Date();
+        yield* addDeposits(ledgerTrie, startTime, endTime);
+
         yield* Effect.logInfo(
           "🔹 Checking for user events... (no tx requests in queue)",
         );
         const optDepositsRootProgram = yield* userEventsProgram(
           DepositsDB.tableName,
           startTime,
-          endDate,
+          endTime,
         );
         if (Option.isNone(optDepositsRootProgram)) {
           yield* Effect.logInfo("🔹 Nothing to commit.");
@@ -390,9 +453,8 @@ const databaseOperationsProgram = (
             type: "NothingToCommitOutput",
           } as WorkerOutput;
         } else {
-          const depositsRootFiber = yield* Effect.fork(
-            optDepositsRootProgram.value,
-          );
+          const depositsRootFiber: RuntimeFiber<string, MptError> =
+            yield* Effect.fork(optDepositsRootProgram.value);
           const depositsRoot = yield* depositsRootFiber;
           yield* Effect.logInfo(`🔹 Deposits root is: ${depositsRoot}`);
           const emptyRoot = yield* emptyRootHexProgram;
@@ -402,7 +464,7 @@ const databaseOperationsProgram = (
             emptyRoot, // TODO: fix
             emptyRoot,
             depositsRoot,
-            endDate,
+            endTime,
           );
 
           return yield* Effect.matchEffect(signAndSubmitProgram, {
@@ -433,6 +495,12 @@ const databaseOperationsProgram = (
         // `MempoolDB`. We use the latest transaction's timestamp as the upper
         // bound of the block we are about to submit.
         const endTime = optEndTime.value;
+
+        const insertedDepositUTxOs = yield* addDeposits(
+          ledgerTrie,
+          startTime,
+          endTime,
+        );
 
         yield* Effect.logInfo("🔹 Checking for user events...");
         const optDepositsRootProgram = yield* userEventsProgram(
@@ -490,6 +558,7 @@ const databaseOperationsProgram = (
           onSuccess: (txHash) =>
             successfulSubmissionProgram(
               mempoolTrie,
+              insertedDepositUTxOs,
               mempoolTxs,
               mempoolTxHashes,
               newHeaderHash,

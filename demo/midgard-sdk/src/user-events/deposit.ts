@@ -22,14 +22,12 @@ import {
   getStateToken,
   hashHexWithBlake2b256,
   utxosAtByNFTPolicyId,
-} from "@/common.js";
-import { Data as EffectData, Effect } from "effect";
-import {
   OutputReference,
   OutputReferenceSchema,
   POSIXTime,
   POSIXTimeSchema,
 } from "@/common.js";
+import { Data as EffectData, Effect } from "effect";
 import { getProtocolParameters } from "@/protocol-parameters.js";
 
 export type DepositParams = {
