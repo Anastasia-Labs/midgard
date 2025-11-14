@@ -39,6 +39,23 @@ export const ConfirmedStateSchema = Data.Object({
 export type ConfirmedState = Data.Static<typeof ConfirmedStateSchema>;
 export const ConfirmedState = ConfirmedStateSchema as unknown as ConfirmedState;
 
+export const CardanoDatumSchema = Data.Enum([
+  Data.Literal("NoDatum"),
+  Data.Object({
+    DatumHash: Data.Object({
+      hash: Data.Bytes(),
+    }),
+  }),
+  Data.Object({
+    InlineDatum: Data.Object({
+      data: Data.Any(),
+    }),
+  }),
+]);
+
+export type CardanoDatum = Data.Static<typeof CardanoDatumSchema>;
+export const CardanoDatum = CardanoDatumSchema as unknown as CardanoDatum;
+
 export const DepositInfoSchema = Data.Object({
   l2Address: Data.Bytes(),
   l2Datum: Data.Nullable(Data.Bytes()),
@@ -121,7 +138,7 @@ export const WithdrawalBodySchema = Data.Object({
   l2_owner: Data.Bytes({ minLength: 28, maxLength: 28 }),
   l2_value: ValueSchema,
   l1_address: AddressSchema,
-  l1_datum: Data.Bytes({ minLength: 28, maxLength: 28 }),
+  l1_datum: CardanoDatumSchema,
 });
 export type WithdrawalBody = Data.Static<typeof WithdrawalBodySchema>;
 export const WithdrawalBody = WithdrawalBodySchema as unknown as WithdrawalBody;
