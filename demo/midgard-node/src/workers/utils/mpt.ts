@@ -135,7 +135,7 @@ export const addDeposits = (
     const { depositAuthValidator } = yield* AlwaysSucceedsContract;
 
     yield* Effect.logInfo("🔹 Going through deposits...");
-    let insertedUTxOs: CML.TransactionUnspentOutput[] = []
+    let insertedUTxOs: CML.TransactionUnspentOutput[] = [];
     const putOpsRaw: (ETH_UTILS.BatchDBOp | void)[] = yield* Effect.forEach(
       deposits,
       (dbDeposit) =>
@@ -145,7 +145,7 @@ export const addDeposits = (
             depositAuthValidator.policyId,
           );
 
-          insertedUTxOs.push(utxo)
+          insertedUTxOs.push(utxo);
           const putOp: ETH_UTILS.BatchDBOp = {
             type: "put",
             key: Buffer.from(utxo.input().to_cbor_bytes()),
@@ -158,7 +158,7 @@ export const addDeposits = (
     const putOps = putOpsRaw.flatMap((f) => (f ? [f] : []));
     yield* ledgerTrie.batch(putOps);
 
-    return insertedUTxOs
+    return insertedUTxOs;
   });
 
 // Make mempool trie, and fill it with ledger trie with processed mempool txs

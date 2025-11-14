@@ -55,7 +55,7 @@ export const insertEntry = (
     const sql = yield* SqlClient.SqlClient;
     // No need to handle conflicts.
     yield* sql`INSERT INTO ${sql(tableName)} ${sql.insert(
-      entry
+      entry,
     )} ON CONFLICT DO NOTHING`;
   }).pipe(
     Effect.withLogSpan(`insertEntry ${tableName}`),
@@ -77,7 +77,7 @@ export const insertEntries = (
       return;
     }
     yield* sql`INSERT INTO ${sql(tableName)} ${sql.insert(
-      entries
+      entries,
     )} ON CONFLICT DO NOTHING`;
   }).pipe(
     Effect.withLogSpan(`insertEntries ${tableName}`),
@@ -192,7 +192,7 @@ export const makeTransactionUnspentOutput = (
       .output()
       .amount()
       .checked_sub(verificationNft);
-    yield* Effect.logInfo(`l2Amount: ${JSON.stringify(l2Amount)}`)
+    yield* Effect.logInfo(`l2Amount: ${JSON.stringify(l2Amount)}`);
 
     const depositDatum = Data.from(
       SDK.bufferToHex(entry[Columns.INFO]),
