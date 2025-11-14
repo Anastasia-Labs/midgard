@@ -22,15 +22,12 @@ import {
   getStateToken,
   hashHexWithBlake2b256,
   utxosAtByNFTPolicyId,
+  isEventUTxOInclusionTimeInBounds,
 } from "@/common.js";
 import { Data as EffectData, Effect } from "effect";
-import {
-  OutputReference,
-  OutputReferenceSchema,
-  POSIXTime,
-  POSIXTimeSchema,
-} from "@/common.js";
+import { OutputReference, POSIXTime, POSIXTimeSchema } from "@/common.js";
 import { getProtocolParameters } from "@/protocol-parameters.js";
+import { DepositEventSchema, DepositInfo } from "@/ledger-state.js";
 
 export type DepositParams = {
   depositScriptAddress: string;
@@ -39,20 +36,6 @@ export type DepositParams = {
   depositAmount: bigint;
   depositInfo: DepositInfo;
 };
-
-export const DepositInfoSchema = Data.Object({
-  l2Address: Data.Bytes(),
-  l2Datum: Data.Nullable(Data.Bytes()),
-});
-export type DepositInfo = Data.Static<typeof DepositInfoSchema>;
-export const DepositInfo = DepositInfoSchema as unknown as DepositInfo;
-
-export const DepositEventSchema = Data.Object({
-  id: OutputReferenceSchema,
-  info: DepositInfoSchema,
-});
-export type DepositEvent = Data.Static<typeof DepositEventSchema>;
-export const DepositEvent = DepositEventSchema as unknown as DepositEvent;
 
 export const DepositDatumSchema = Data.Object({
   event: DepositEventSchema,
@@ -160,24 +143,6 @@ export const utxosToDepositUTxOs = (
 ): Effect.Effect<DepositUTxO[]> => {
   const effects = utxos.map((u) => utxoToDepositUTxO(u, nftPolicy));
   return Effect.allSuccesses(effects);
-};
-
-// TODO: Might be good to define an `EventUTxO` type.
-const isEventUTxOInclusionTimeInBounds = (
-  eventUTxO: { datum: { inclusionTime: bigint } },
-  inclusionTimeLowerBound?: POSIXTime,
-  inclusionTimeUpperBound?: POSIXTime,
-): boolean => {
-  const eventDatum = eventUTxO.datum;
-
-  const biggerThanLower =
-    inclusionTimeLowerBound === undefined ||
-    inclusionTimeLowerBound < eventDatum.inclusionTime;
-  const smallerThanUpper =
-    inclusionTimeUpperBound === undefined ||
-    eventDatum.inclusionTime <= inclusionTimeUpperBound;
-
-  return biggerThanLower && smallerThanUpper;
 };
 
 export const fetchDepositUTxOsProgram = (

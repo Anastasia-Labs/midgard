@@ -61,7 +61,7 @@ export const ActiveOperatorMintRedeemerSchema = Data.Enum([
 export type ActiveOperatorMintRedeemer = Data.Static<
   typeof ActiveOperatorMintRedeemerSchema
 >;
-export const MintRedeemer =
+export const ActiveOperatorMintRedeemer =
   ActiveOperatorMintRedeemerSchema as unknown as ActiveOperatorMintRedeemer;
 
 export type ActiveOperatorInitParams = {};
