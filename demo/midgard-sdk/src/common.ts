@@ -1,4 +1,7 @@
-import { Data } from "@lucid-evolution/lucid";
+import {
+  Data,
+  getAddressDetails,
+} from "@lucid-evolution/lucid";
 import { Data as EffectData } from "effect";
 import { Effect } from "effect";
 import {
@@ -265,6 +268,44 @@ export const AddressSchema = Data.Object({
 export type AddressData = Data.Static<typeof AddressSchema>;
 export const AddressData = AddressSchema as unknown as AddressData;
 
+export const parseAddressDataCredentials = (
+  address: string,
+): Effect.Effect<AddressData, ParsingError> =>
+  Effect.gen(function* () {
+    const { paymentCredential, stakeCredential } = getAddressDetails(address);
+    if (!paymentCredential)
+      return yield* Effect.fail(
+        new ParsingError({
+          message: "Failed to parse address data",
+          cause: "Payment key credential is undefined",
+        }),
+      );
+    return {
+      paymentCredential:
+        paymentCredential.type === "Key"
+          ? {
+              PublicKeyCredential: [paymentCredential.hash],
+            }
+          : {
+              ScriptCredential: [paymentCredential.hash],
+            },
+      stakeCredential:
+        stakeCredential && stakeCredential.hash
+          ? {
+              Inline: [
+                stakeCredential.type === "Key"
+                  ? {
+                      PublicKeyCredential: [stakeCredential.hash],
+                    }
+                  : {
+                      ScriptCredential: [stakeCredential.hash],
+                    },
+              ],
+            }
+          : null,
+    };
+  });
+
 export type GenericErrorFields = {
   readonly message: string;
   readonly cause: any;
@@ -288,6 +329,10 @@ export class CborDeserializationError extends EffectData.TaggedError(
 
 export class DataCoercionError extends EffectData.TaggedError(
   "DataCoercionError",
+)<GenericErrorFields> {}
+
+export class ParsingError extends EffectData.TaggedError(
+  "ParsingError",
 )<GenericErrorFields> {}
 
 export class UnauthenticUtxoError extends EffectData.TaggedError(

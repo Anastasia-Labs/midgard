@@ -65,6 +65,7 @@ const submitGenesisTxOrders: Effect.Effect<
   | SDK.HashingError
   | SDK.LucidError
   | SDK.TxOrderError
+  | SDK.ParsingError
   | TxSignError
   | TxSubmitError
   | TxConfirmError,
@@ -85,20 +86,7 @@ const submitGenesisTxOrders: Effect.Effect<
   yield* lucid.switchToOperatorsMainWallet;
 
   const l2Address = config.GENESIS_UTXOS[0].address;
-  const l2AddressDetails = getAddressDetails(l2Address);
-  const l2AddressPc = l2AddressDetails.paymentCredential?.hash;
-  const l2AddressSc = l2AddressDetails.stakeCredential?.hash;
-  if (!l2AddressPc) {
-    throw new Error(`Invalid L2 address: ${l2Address}`);
-  }
-  const l2AddressData: SDK.AddressData = {
-    paymentCredential: { PublicKeyCredential: [l2AddressPc] },
-    stakeCredential:
-      typeof l2AddressSc === "string"
-        ? { Inline: [{ ScriptCredential: [l2AddressSc] }] }
-        : null,
-  };
-
+  const l2AddressData = yield* SDK.parseAddressDataCredentials(l2Address);
   const inclusionTime = Date.now();
 
   const txBuilder = lucid.api
