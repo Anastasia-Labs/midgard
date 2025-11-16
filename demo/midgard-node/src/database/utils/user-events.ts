@@ -200,14 +200,16 @@ export const makeTransactionUnspentOutput = (
       SDK.DepositInfo,
     );
 
+    const midgardAddressDataHex = Data.to(
+      depositDatum.l2Address,
+      SDK.MidgardAddress,
+    );
+
     const l2AddressCred: CML.Credential = yield* Effect.try({
-      try: () =>
-        CML.Credential.from_cbor_hex(
-          Data.to(depositDatum.l2Address, SDK.MidgardAddress),
-        ),
+      try: () => CML.Credential.from_cbor_hex(midgardAddressDataHex),
       catch: (e) =>
         new UserEventsConversionError({
-          message: "",
+          message: `Provided destination Midgard address for deposit is malformed: ${midgardAddressDataHex}`,
           cause: e,
         }),
     });
