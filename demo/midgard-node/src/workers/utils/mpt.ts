@@ -112,7 +112,7 @@ export const addDeposits = (
 ): Effect.Effect<
   CML.TransactionUnspentOutput[],
   MptError | SDK.CmlUnexpectedError | DatabaseError,
-  Database | AlwaysSucceedsContract
+  NodeConfig | AlwaysSucceedsContract | Database
 > =>
   Effect.gen(function* () {
     const tableName = DepositsDB.tableName;

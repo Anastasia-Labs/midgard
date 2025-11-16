@@ -391,7 +391,7 @@ const databaseOperationsProgram = (
   | DatabaseError
   | FileSystemError
   | MptError,
-  AlwaysSucceedsContract | Database | Lucid
+  AlwaysSucceedsContract | Database | Lucid | NodeConfig
 > =>
   Effect.gen(function* () {
     const mempoolTxs = yield* MempoolDB.retrieve;

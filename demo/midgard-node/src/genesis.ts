@@ -56,9 +56,10 @@ ${Array.from(new Set(config.GENESIS_UTXOS.map((u) => u.address))).join("\n")}`,
 
 const submitGenesisDeposits: Effect.Effect<
   void,
-  | SDK.LucidError
-  | SDK.HashingError
+  | SDK.Bech32DeserializationError
   | SDK.DepositError
+  | SDK.HashingError
+  | SDK.LucidError
   | TxSubmitError
   | TxSignError,
   AlwaysSucceedsContract | Lucid | NodeConfig
@@ -73,7 +74,9 @@ const submitGenesisDeposits: Effect.Effect<
     return;
   }
 
-  const l2Address = config.GENESIS_UTXOS[0].address;
+  const l2Address = yield* SDK.midgardAddressFromBech32(
+    config.GENESIS_UTXOS[0].address,
+  );
   yield* Effect.logInfo(`DEBUG! l2Address: ${l2Address}`);
 
   // Hard-coded 10 ADA deposit.

@@ -5,8 +5,9 @@ import {
   sqlErrorToDatabaseError,
   DatabaseError,
 } from "@/database/utils/common.js";
-import { CML, Data, PolicyId, toText } from "@lucid-evolution/lucid";
+import { CML, Data, PolicyId } from "@lucid-evolution/lucid";
 import * as SDK from "@al-ft/midgard-sdk";
+import { NodeConfig } from "@/services/config.js";
 
 export enum Columns {
   ID = "event_id",
@@ -147,11 +148,11 @@ export const makeTransactionUnspentOutput = (
 ): Effect.Effect<
   CML.TransactionUnspentOutput,
   UserEventsConversionError,
-  never
+  NodeConfig
 > =>
   Effect.gen(function* () {
     const l1Utxo = CML.TransactionUnspentOutput.from_cbor_bytes(
-      Buffer.from(entry[Columns.L1_UTXO_CBOR]),
+      entry[Columns.L1_UTXO_CBOR],
     );
     const policyIdScriptHash = CML.ScriptHash.from_hex(policyId);
 
@@ -199,7 +200,23 @@ export const makeTransactionUnspentOutput = (
       SDK.DepositInfo,
     );
 
-    const l2Address = CML.Address.from_bech32(toText(depositDatum.l2Address));
+    const l2AddressCred: CML.Credential = yield* Effect.try({
+      try: () =>
+        CML.Credential.from_cbor_hex(
+          Data.to(depositDatum.l2Address, SDK.MidgardAddress),
+        ),
+      catch: (e) =>
+        new UserEventsConversionError({
+          message: "",
+          cause: e,
+        }),
+    });
+
+    const config = yield* NodeConfig;
+
+    const networkId = config.NETWORK === "Mainnet" ? 0 : 1;
+
+    const l2Address = CML.EnterpriseAddress.new(networkId, l2AddressCred);
 
     let l2Datum = undefined;
     if (depositDatum.l2Datum !== null) {
@@ -207,7 +224,7 @@ export const makeTransactionUnspentOutput = (
     }
 
     const transactionOutput = CML.TransactionOutput.new(
-      l2Address,
+      l2Address.to_address(),
       l2Amount,
       l2Datum,
     );
