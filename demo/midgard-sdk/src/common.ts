@@ -1,4 +1,4 @@
-import { Data } from "@lucid-evolution/lucid";
+import { CML, Data } from "@lucid-evolution/lucid";
 import { Data as EffectData } from "effect";
 import { Effect } from "effect";
 import {
@@ -175,6 +175,52 @@ export const bufferToHex = (buf: Buffer): string => {
   }
 };
 
+export const midgardAddressFromBech32 = (
+  bechStr: string,
+): Effect.Effect<MidgardAddress, Bech32DeserializationError> =>
+  Effect.gen(function* () {
+    const cmlAddr = yield* Effect.try({
+      try: () => CML.Address.from_bech32(bechStr),
+      catch: (e) =>
+        new Bech32DeserializationError({
+          message: `Failed to convert ${bechStr} to a Midgard address.`,
+          cause: e,
+        }),
+    });
+    const paymentCred = cmlAddr.payment_cred();
+    if (paymentCred === undefined) {
+      return yield* new Bech32DeserializationError({
+        message: `Failed attempting to resolve payment part of ${bechStr} into a public key hash.`,
+        cause: "Unknown cause.",
+      });
+    } else {
+      const resolvedAsPubKey = yield* Effect.try(() =>
+        paymentCred.as_pub_key(),
+      ).pipe(Effect.catchAllCause((_cause) => Effect.succeed(undefined)));
+      if (resolvedAsPubKey === undefined) {
+        const resolvedAsScriptHash = yield* Effect.try(() =>
+          paymentCred.as_script(),
+        ).pipe(Effect.catchAllCause((_cause) => Effect.succeed(undefined)));
+        if (resolvedAsScriptHash === undefined) {
+          return yield* new Bech32DeserializationError({
+            message: `Failed attempting to resolve payment part of ${bechStr} into a script hash.`,
+            cause: "Unknown cause.",
+          });
+        } else {
+          const midgardAddress: MidgardAddress = {
+            ScriptCredential: [resolvedAsScriptHash.to_hex()],
+          };
+          return midgardAddress;
+        }
+      } else {
+        const midgardAddress: MidgardAddress = {
+          PublicKeyCredential: [resolvedAsPubKey.to_hex()],
+        };
+        return midgardAddress;
+      }
+    }
+  });
+
 export const OutputReferenceSchema = Data.Object({
   txHash: Data.Object({ hash: Data.Bytes({ minLength: 32, maxLength: 32 }) }),
   outputIndex: Data.Integer(),
@@ -243,10 +289,18 @@ export const AddressSchema = Data.Object({
 export type AddressData = Data.Static<typeof AddressSchema>;
 export const AddressData = AddressSchema as unknown as AddressData;
 
+export const MidgardAddressSchema = CredentialSchema;
+export type MidgardAddress = CredentialD;
+export const MidgardAddress = MidgardAddressSchema as unknown as MidgardAddress;
+
 export type GenericErrorFields = {
   readonly message: string;
   readonly cause: any;
 };
+
+export class Bech32DeserializationError extends EffectData.TaggedError(
+  "Bech32DeserializationError",
+)<GenericErrorFields> {}
 
 export class CmlUnexpectedError extends EffectData.TaggedError(
   "CmlUnexpectedError",
