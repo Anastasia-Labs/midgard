@@ -7,11 +7,10 @@ import {
   POSIXTimeSchema,
   hashHexWithBlake2b256,
 } from "@/common.js";
-import { buildMintTransaction, UserEventMintRedeemer } from "@/index.js";
+import { buildUserEventMintTransaction, UserEventMintRedeemer } from "@/index.js";
 import {
   WithdrawalBody,
   WithdrawalEventSchema,
-  WithdrawalInfo,
   WithdrawalSignature,
 } from "@/ledger-state.js";
 import {
@@ -60,7 +59,7 @@ export const withdrawalOrderTxBuilder = (
   params: WithdrawalOrderParams,
 ): Effect.Effect<TxBuilder, HashingError | LucidError> =>
   Effect.gen(function* () {
-    const redeemer: UserEventMintRedeemer = {
+    const mintRedeemer: UserEventMintRedeemer = {
       AuthenticateEvent: {
         nonceInputIndex: 0n,
         eventOutputIndex: 0n,
@@ -68,7 +67,7 @@ export const withdrawalOrderTxBuilder = (
         witnessRegistrationRedeemerIndex: 0n,
       },
     };
-    const authenticateEvent = Data.to(redeemer, UserEventMintRedeemer);
+    const mintRedeemerCBOR = Data.to(mintRedeemer, UserEventMintRedeemer);
     const utxos: UTxO[] = yield* Effect.promise(() =>
       lucid.wallet().getUtxos(),
     );
@@ -110,15 +109,14 @@ export const withdrawalOrderTxBuilder = (
       withdrawalOrderDatum,
       WithdrawalOrderDatum,
     );
-    const tx = buildMintTransaction({
+    const tx = buildUserEventMintTransaction({
       lucid,
       inputUtxo,
       nft: withdrawalNFT,
-      mintRedeemer: authenticateEvent,
+      mintRedeemer: mintRedeemerCBOR,
       scriptAddress: params.withdrawalScriptAddress,
       datum: withdrawalOrderDatumCBOR,
-      assets: { [withdrawalNFT]: 1n },
-      validTo: Number(params.inclusionTime),
+      validTo: params.inclusionTime,
       mintingPolicy: params.mintingPolicy,
     });
     return tx;

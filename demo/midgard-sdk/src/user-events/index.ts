@@ -1,7 +1,3 @@
-export * from "./deposit.js";
-export * from "./tx-order.js";
-export * from "./withdrawal.js";
-
 import { 
     Assets, 
     Data, 
@@ -10,6 +6,7 @@ import {
     TxBuilder, 
     UTxO 
 } from "@lucid-evolution/lucid";
+import { Int } from "effect/Schema";
 
 export const UserEventMintRedeemerSchema = Data.Enum([
   Data.Object({
@@ -30,19 +27,19 @@ export const UserEventMintRedeemerSchema = Data.Enum([
 export type UserEventMintRedeemer = Data.Static<typeof UserEventMintRedeemerSchema>;
 export const UserEventMintRedeemer = UserEventMintRedeemerSchema as unknown as UserEventMintRedeemer;
 
-export type MintTransactionParams ={
+export type UserEventMintTransactionParams ={
   lucid: LucidEvolution;
   inputUtxo: UTxO;
   nft: string;
   mintRedeemer: string;
   scriptAddress: string;
   datum: string;
-  assets: Assets;
-  validTo: number;
+  extraAssets?: Assets;
+  validTo: number | bigint;
   mintingPolicy: MintingPolicy;
 }
 
-export function buildMintTransaction(params: MintTransactionParams): TxBuilder {
+export const buildUserEventMintTransaction = (params: UserEventMintTransactionParams): TxBuilder => {
   const {
     lucid,
     inputUtxo,
@@ -50,10 +47,12 @@ export function buildMintTransaction(params: MintTransactionParams): TxBuilder {
     mintRedeemer,
     scriptAddress,
     datum,
-    assets,
     validTo,
     mintingPolicy
   } = params;
+
+  const validToNumber = typeof validTo === 'bigint' ? Number(validTo) :
+                       validTo;
 
   return lucid
     .newTx()
@@ -70,8 +69,12 @@ export function buildMintTransaction(params: MintTransactionParams): TxBuilder {
         kind: "inline", 
         value: datum 
      },
-     assets
+     { [nft]: 1n },
     )
-    .validTo(validTo)
+    .validTo(validToNumber)
     .attach.MintingPolicy(mintingPolicy);
 }
+
+export * from "./deposit.js";
+export * from "./tx-order.js";
+export * from "./withdrawal.js";

@@ -31,11 +31,11 @@ import {
   hashHexWithBlake2b256,
 } from "@/common.js";
 import { MidgardTxCompact, TxOrderEventSchema } from "@/ledger-state.js";
-import { UserEventMintRedeemer } from "./index.js";
+import { buildUserEventMintTransaction, UserEventMintRedeemer } from "./index.js";
 import { Data as EffectData, Effect } from "effect";
 
 export type TxOrderParams = {
-  txOrderAddress: string;
+  txOrderScriptAddress: string;
   mintingPolicy: Script;
   policyId: string;
   refundAddress: AddressData;
@@ -180,7 +180,7 @@ export const incompleteTxOrderTxProgram = (
   params: TxOrderParams,
 ): Effect.Effect<TxBuilder, HashingError | LucidError> =>
   Effect.gen(function* () {
-    const redeemer: UserEventMintRedeemer = {
+    const mintRedeemer: UserEventMintRedeemer = {
       AuthenticateEvent: {
         nonceInputIndex: 0n,
         eventOutputIndex: 0n,
@@ -188,7 +188,7 @@ export const incompleteTxOrderTxProgram = (
         witnessRegistrationRedeemerIndex: 0n,
       },
     };
-    const authenticateEvent = Data.to(redeemer, UserEventMintRedeemer);
+    const mintRedeemerCBOR = Data.to(mintRedeemer, UserEventMintRedeemer);
     const utxos: UTxO[] = yield* Effect.promise(() =>
       lucid.wallet().getUtxos(),
     );
@@ -209,7 +209,7 @@ export const incompleteTxOrderTxProgram = (
     );
     const txOrderNFT = toUnit(params.policyId, assetName);
 
-    const currDatum: TxOrderDatum = {
+    const txOrderDatum: TxOrderDatum = {
       event: {
         txOrderId: {
           txHash: { hash: inputUtxo.txHash },
@@ -220,31 +220,22 @@ export const incompleteTxOrderTxProgram = (
           is_valid: true,
         },
       },
-      inclusionTime: params.inclusionTime, //Txn's time-validity upper bound event_wait_duration,
+      inclusionTime: BigInt(params.inclusionTime), //Txn's time-validity upper bound event_wait_duration,
       refundAddress: params.refundAddress,
       refundDatum: params.refundDatum,
     };
-    const txOrderDatum = Data.to(currDatum, TxOrderDatum);
-    const tx = lucid
-      .newTx()
-      .collectFrom([inputUtxo])
-      .mintAssets(
-        {
-          [txOrderNFT]: 1n,
-        },
-        authenticateEvent,
-      )
-      .pay.ToAddressWithData(
-        params.txOrderAddress,
-        {
-          kind: "inline",
-          value: txOrderDatum,
-        },
-        { [txOrderNFT]: 1n },
-      )
-      .validTo(Number(params.inclusionTime))
-      .attach.MintingPolicy(params.mintingPolicy);
-    return tx;
+    const txOrderDatumCBOR = Data.to(txOrderDatum, TxOrderDatum);
+    const tx = buildUserEventMintTransaction({
+          lucid,
+          inputUtxo,
+          nft: txOrderNFT,
+          mintRedeemer: mintRedeemerCBOR,
+          scriptAddress: params.txOrderScriptAddress,
+          datum: txOrderDatumCBOR,
+          validTo: params.inclusionTime,
+          mintingPolicy: params.mintingPolicy,
+        });
+        return tx;
   });
 
 export const unsignedTxOrderTxProgram = (

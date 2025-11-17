@@ -52,7 +52,6 @@ export const CardanoDatumSchema = Data.Enum([
     }),
   }),
 ]);
-
 export type CardanoDatum = Data.Static<typeof CardanoDatumSchema>;
 export const CardanoDatum = CardanoDatumSchema as unknown as CardanoDatum;
 
