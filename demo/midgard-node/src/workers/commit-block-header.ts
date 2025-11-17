@@ -465,11 +465,10 @@ const databaseOperationsProgram = (
           yield* Effect.logInfo(`🔹 New UTxO root found: ${utxoRoot}`);
           yield* Effect.logInfo(`🔹 New transaction root found: ${txRoot}`);
 
-          const emptyRoot = yield* emptyRootHexProgram;
           const { signAndSubmitProgram, txSize } = yield* buildUnsignedTx(
             stateQueueAuthValidator,
             latestBlock,
-            utxoRoot, // TODO: fix
+            utxoRoot,
             txRoot,
             depositsRoot,
             endTime,

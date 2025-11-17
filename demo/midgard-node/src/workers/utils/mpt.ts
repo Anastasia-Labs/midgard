@@ -179,7 +179,7 @@ export const processMpts = (
     const mempoolBatchOps: ETH_UTILS.BatchDBOp[] = [];
     const batchDBOps: ETH_UTILS.BatchDBOp[] = [];
     let sizeOfProcessedTxs = 0;
-    yield* Effect.logInfo("🔹 Going through mempool txs and processings transactions...");
+    yield* Effect.logInfo("🔹 Going through mempool and processings transactions...");
     yield* Effect.forEach(mempoolTxs, (entry: TxUtils.Entry) =>
       Effect.gen(function* () {
         const txHash = entry[TxUtils.Columns.TX_ID];
