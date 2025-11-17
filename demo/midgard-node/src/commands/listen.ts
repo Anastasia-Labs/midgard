@@ -13,7 +13,6 @@ import {
   getAddressDetails,
   toHex,
   CML,
-  fromText,
 } from "@lucid-evolution/lucid";
 import { PrometheusExporter } from "@opentelemetry/exporter-prometheus";
 import { OTLPTraceExporter } from "@opentelemetry/exporter-trace-otlp-http";
@@ -80,6 +79,7 @@ const COMMIT_ENDPOINT: string = "commit";
 const RESET_ENDPOINT: string = "reset";
 const SUBMIT_ENDPOINT: string = "submit";
 const TX_ORDER_ENDPOINT: string = "tx-order";
+const DEPOSIT_ENDPOINT: string = "deposit";
 
 const txCounter = Metric.counter("tx_count", {
   description: "A counter for tracking submit transactions",
@@ -640,6 +640,95 @@ const postTxOrderHandler = Effect.gen(function* () {
   ),
 );
 
+const postDepositHandler = Effect.gen(function* () {
+  yield* Effect.logInfo(`POST /${DEPOSIT_ENDPOINT} - request received`);
+  const lucid = yield* Lucid;
+  const { depositAuthValidator } = yield* AlwaysSucceedsContract;
+
+  const request = yield* HttpServerRequest.HttpServerRequest;
+  const body = yield* request.json;
+  if (typeof body !== "object" || body === null) {
+    yield* Effect.logInfo(`Invalid request body: not an object`);
+    return yield* HttpServerResponse.json(
+      { error: "Invalid request body" },
+      { status: 400 },
+    );
+  }
+  const { amount, address, datum } = body as any;
+
+  if (typeof amount !== "number" && typeof amount !== "bigint") {
+    yield* Effect.logInfo(`Invalid deposit amount: ${amount}`);
+    return yield* HttpServerResponse.json(
+      { error: "Invalid deposit amount: must be a number" },
+      { status: 400 },
+    );
+  }
+  if (typeof address !== "string" || !isHexString(address)) {
+    yield* Effect.logInfo(`Invalid address: ${address}`);
+    return yield* HttpServerResponse.json(
+      { error: "Invalid address: must be a hex string" },
+      { status: 400 },
+    );
+  }
+  let l2DatumValue: string | null = null;
+  if (datum !== undefined && datum !== null) {
+    if (typeof datum !== "string") {
+      yield* Effect.logInfo(`Invalid datum: must be a string`);
+      return yield* HttpServerResponse.json(
+        { error: "Invalid datum: must be a string or null" },
+        { status: 400 },
+      );
+    }
+    l2DatumValue = datum;
+  }
+
+  yield* lucid.switchToOperatorsMainWallet;
+
+  const depositInfo: SDK.DepositInfo = {
+    l2Address: address,
+    l2Datum: l2DatumValue,
+  };
+  const depositParams: SDK.DepositParams = {
+    depositScriptAddress: depositAuthValidator.spendScriptAddress,
+    mintingPolicy: depositAuthValidator.mintScript,
+    policyId: depositAuthValidator.policyId,
+    depositAmount: BigInt(amount),
+    depositInfo: depositInfo,
+  };
+
+  const signedTx = yield* SDK.unsignedDepositTxProgram(
+    lucid.api,
+    depositParams,
+  );
+  yield* Effect.logInfo(`Submitting deposit tx...`);
+  const txHash = yield* handleSignSubmit(lucid.api, signedTx);
+  yield* Effect.logInfo(
+    `Deposit transaction submitted successfully: ${txHash}`,
+  );
+  return yield* HttpServerResponse.json({
+    txHash: txHash,
+  });
+}).pipe(
+  Effect.catchTag("HttpBodyError", (e) =>
+    failWith500("POST", DEPOSIT_ENDPOINT, e),
+  ),
+  Effect.catchTag("LucidError", (e) =>
+    handleGenericFailure("POST", DEPOSIT_ENDPOINT, e),
+  ),
+  Effect.catchTag("HashingError", (e) =>
+    handleGenericFailure("POST", DEPOSIT_ENDPOINT, e),
+  ),
+  Effect.catchTag("DepositError", (e) =>
+    handleGenericFailure("POST", DEPOSIT_ENDPOINT, e),
+  ),
+  Effect.catchTag("TxSignError", (e) =>
+    handleTxFailure("POST", DEPOSIT_ENDPOINT, e),
+  ),
+  Effect.catchTag("TxSubmitError", (e) =>
+    handleTxFailure("POST", DEPOSIT_ENDPOINT, e),
+  ),
+);
+
 const router = (
   txQueue: Queue.Queue<string>,
 ): Effect.Effect<
@@ -667,6 +756,7 @@ const router = (
       HttpRouter.get(`/logGlobals`, getLogGlobalsHandler),
       HttpRouter.post(`/${SUBMIT_ENDPOINT}`, postSubmitHandler(txQueue)),
       HttpRouter.post(`/${TX_ORDER_ENDPOINT}`, postTxOrderHandler),
+      HttpRouter.post(`/${DEPOSIT_ENDPOINT}`, postDepositHandler),
     )
     .pipe(
       Effect.catchAllCause((cause) =>
