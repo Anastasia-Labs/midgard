@@ -91,7 +91,6 @@ export const depositEventToCmlTransactionUnspentOutput = (
       .output()
       .amount()
       .checked_sub(verificationNft);
-    yield* Effect.logInfo(`l2Amount: ${JSON.stringify(l2Amount)}`);
 
     const depositDatum = Data.from(
       SDK.bufferToHex(entry[UserEvents.Columns.INFO]),

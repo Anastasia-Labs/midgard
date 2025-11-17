@@ -41,7 +41,7 @@ import {
   addDeposits,
   withTrieTransaction,
 } from "@/workers/utils/mpt.js";
-import { FileSystemError, batchProgram } from "@/utils.js";
+import { FileSystemError, batchProgram, trivialTransactionFromCMLUnspentOutput } from "@/utils.js";
 import { Columns as TxColumns } from "@/database/utils/tx.js";
 import {
   Columns as UserEventsColumns,
@@ -111,7 +111,7 @@ const applyDepositUTxOsToDatabases = (
           Math.floor(BATCH_SIZE / 2),
           insertedDepositUTxOs.length,
           "inserting-deposits-to-databases",
-          (startIndex: number, endIndex: number) => {
+          (startIndex: number, endIndex: number) => Effect.gen(function* () {
             const batchUTxOs = insertedDepositUTxOs.slice(startIndex, endIndex);
             const ledgerTableBatch: LedgerUtils.EntryWithTimeStamp[] =
               batchUTxOs.map((utxo) => ({
@@ -128,14 +128,17 @@ const applyDepositUTxOsToDatabases = (
                 [LedgerUtils.Columns.TIMESTAMPTZ]: inclusionTime,
               }));
 
-            const txTableBatch: TxTable.EntryWithTimeStamp[] = batchUTxOs.map(
-              (utxo) => ({
-                [TxTable.Columns.TX_ID]: Buffer.from(
-                  utxo.input().transaction_id().to_raw_bytes(),
-                ),
-                [TxTable.Columns.TX]: Buffer.from(utxo.to_cbor_bytes()),
-                [TxTable.Columns.TIMESTAMPTZ]: inclusionTime,
-              }),
+            const txTableBatch: TxTable.EntryWithTimeStamp[] = yield* Effect.forEach(batchUTxOs,
+              (utxo) => ( Effect.gen(function* () {
+                const tx = yield* trivialTransactionFromCMLUnspentOutput(utxo)
+                return {
+                  [TxTable.Columns.TX_ID]: Buffer.from(
+                    utxo.input().transaction_id().to_raw_bytes(),
+                  ),
+                  [TxTable.Columns.TX]: Buffer.from(tx.to_cbor_bytes()),
+                  [TxTable.Columns.TIMESTAMPTZ]: inclusionTime,
+                }
+              })),
             );
 
             return Effect.all(
@@ -150,7 +153,7 @@ const applyDepositUTxOsToDatabases = (
               { concurrency: "unbounded" },
             );
           },
-    );
+    ));
   })
 
 // TODO: Application of user events will likely affect this function as well.
