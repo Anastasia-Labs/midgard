@@ -140,7 +140,7 @@ export const addDeposits = (
       deposits,
       (dbDeposit) =>
         Effect.gen(function* () {
-          const utxo = yield* UserEventsUtils.makeTransactionUnspentOutput(
+          const utxo = yield* DepositsDB.depositEventToCmlTransactionUnspentOutput(
             dbDeposit,
             depositAuthValidator.policyId,
           );

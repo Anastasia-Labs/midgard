@@ -179,7 +179,7 @@ export const midgardAddressFromBech32 = (
   bechStr: string,
 ): Effect.Effect<MidgardAddress, Bech32DeserializationError> =>
   Effect.gen(function* () {
-    const cmlAddr = yield* Effect.try({
+    const cmlAddr: CML.Address = yield* Effect.try({
       try: () => CML.Address.from_bech32(bechStr),
       catch: (e) =>
         new Bech32DeserializationError({
