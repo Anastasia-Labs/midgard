@@ -98,31 +98,21 @@ const establishEndTimeFromTxRequests = (
     }
   });
 
-// TODO: Application of user events will likely affect this function as well.
-const successfulSubmissionProgram = (
-  mempoolTrie: MidgardMpt,
+const applyDepositUTxOsToDatabases = (
   insertedDepositUTxOs: CML.TransactionUnspentOutput[],
-  mempoolTxs: readonly TxTable.EntryWithTimeStamp[],
-  mempoolTxHashes: Buffer[],
-  newHeaderHash: string,
-  workerInput: WorkerInput,
-  txSize: number,
-  sizeOfProcessedTxs: number,
-  txHash: string,
-): Effect.Effect<WorkerOutput, DatabaseError | FileSystemError, Database> =>
+  inclusionTime: Date,
+): Effect.Effect<void,  DatabaseError | FileSystemError, Database> =>
   Effect.gen(function* () {
     yield* Effect.logInfo(
       "🔹 Inserting included deposits into ImmutableDB and MempoolLedgerDB",
     );
-    yield* Effect.all(
-      [
-        batchProgram(
+
+    yield* batchProgram(
           Math.floor(BATCH_SIZE / 2),
           insertedDepositUTxOs.length,
           "inserting-deposits-to-databases",
           (startIndex: number, endIndex: number) => {
             const batchUTxOs = insertedDepositUTxOs.slice(startIndex, endIndex);
-            const currentDate = new Date(); // TODO: perhaps the insertion time is provided somewhere?
             const ledgerTableBatch: LedgerUtils.EntryWithTimeStamp[] =
               batchUTxOs.map((utxo) => ({
                 [LedgerUtils.Columns.TX_ID]: Buffer.from(
@@ -135,7 +125,7 @@ const successfulSubmissionProgram = (
                   utxo.output().to_cbor_bytes(),
                 ),
                 [LedgerUtils.Columns.ADDRESS]: utxo.output().address().to_hex(),
-                [LedgerUtils.Columns.TIMESTAMPTZ]: currentDate,
+                [LedgerUtils.Columns.TIMESTAMPTZ]: inclusionTime,
               }));
 
             const txTableBatch: TxTable.EntryWithTimeStamp[] = batchUTxOs.map(
@@ -144,7 +134,7 @@ const successfulSubmissionProgram = (
                   utxo.input().transaction_id().to_raw_bytes(),
                 ),
                 [TxTable.Columns.TX]: Buffer.from(utxo.to_cbor_bytes()),
-                [TxTable.Columns.TIMESTAMPTZ]: currentDate,
+                [TxTable.Columns.TIMESTAMPTZ]: inclusionTime,
               }),
             );
 
@@ -160,13 +150,24 @@ const successfulSubmissionProgram = (
               { concurrency: "unbounded" },
             );
           },
-        ),
-        ProcessedMempoolDB.clear, // uses `TRUNCATE` so no need for batching.
-        mempoolTrie.delete(),
-      ],
-      { concurrency: "unbounded" },
     );
+  })
 
+// TODO: Application of user events will likely affect this function as well.
+const successfulSubmissionProgram = (
+  mempoolTrie: MidgardMpt,
+  insertedDepositUTxOs: CML.TransactionUnspentOutput[],
+  inclusionTime: Date,
+  mempoolTxs: readonly TxTable.EntryWithTimeStamp[],
+  mempoolTxHashes: Buffer[],
+  newHeaderHash: string,
+  workerInput: WorkerInput,
+  txSize: number,
+  sizeOfProcessedTxs: number,
+  txHash: string,
+): Effect.Effect<WorkerOutput, DatabaseError | FileSystemError, Database> =>
+  Effect.gen(function* () {
+    yield* applyDepositUTxOsToDatabases(insertedDepositUTxOs, inclusionTime);
     const newHeaderHashBuffer = Buffer.from(fromHex(newHeaderHash));
 
     const processedMempoolTxs = yield* ProcessedMempoolDB.retrieve;
@@ -437,7 +438,7 @@ const databaseOperationsProgram = (
         // in `MempoolDB`). We check if there are any user events slated for
         // inclusion within `startTime` and current moment.
         const endTime = new Date();
-        yield* addDeposits(ledgerTrie, startTime, endTime);
+        const depositUTxOs = yield* addDeposits(ledgerTrie, startTime, endTime);
 
         yield* Effect.logInfo(
           "🔹 Checking for user events... (no tx requests in queue)",
@@ -480,14 +481,16 @@ const databaseOperationsProgram = (
 
               return Effect.succeed(failureOutput);
             },
-            onSuccess: (txHash) =>
-              Effect.succeed({
+            onSuccess: (txHash) => Effect.gen(function* () {
+              yield* applyDepositUTxOsToDatabases(depositUTxOs, startTime);
+              return {
                 type: "SuccessfulSubmissionOutput",
                 submittedTxHash: txHash,
                 txSize,
                 mempoolTxsCount: 0,
                 sizeOfBlocksTxs: workerInput.data.sizeOfProcessedTxsSoFar,
-              } as WorkerOutput),
+              } as WorkerOutput
+            }),
           });
         }
       } else {
@@ -559,6 +562,7 @@ const databaseOperationsProgram = (
             successfulSubmissionProgram(
               mempoolTrie,
               insertedDepositUTxOs,
+              startTime,
               mempoolTxs,
               mempoolTxHashes,
               newHeaderHash,
