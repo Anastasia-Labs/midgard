@@ -51,7 +51,7 @@ export const insertEntry = (
   Effect.gen(function* () {
     yield* Effect.logDebug(`${tableName} db: attempt to insert UTxO`);
     const sql = yield* SqlClient.SqlClient;
-    // No need to handle conflicts.
+    // The proirity goes to the oldest entry
     yield* sql`INSERT INTO ${sql(tableName)} ${sql.insert(
       entry,
     )} ON CONFLICT DO NOTHING`;
