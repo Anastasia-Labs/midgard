@@ -168,8 +168,6 @@ export const processMpts = (
   mempoolTxs: readonly TxUtils.Entry[],
 ): Effect.Effect<
   {
-    utxoRoot: string;
-    txRoot: string;
     mempoolTxHashes: Buffer[];
     sizeOfProcessedTxs: number;
   },
@@ -181,7 +179,7 @@ export const processMpts = (
     const mempoolBatchOps: ETH_UTILS.BatchDBOp[] = [];
     const batchDBOps: ETH_UTILS.BatchDBOp[] = [];
     let sizeOfProcessedTxs = 0;
-    yield* Effect.logInfo("🔹 Going through mempool txs and finding roots...");
+    yield* Effect.logInfo("🔹 Going through mempool txs and processings transactions...");
     yield* Effect.forEach(mempoolTxs, (entry: TxUtils.Entry) =>
       Effect.gen(function* () {
         const txHash = entry[TxUtils.Columns.TX_ID];
@@ -220,15 +218,7 @@ export const processMpts = (
       { concurrency: "unbounded" },
     );
 
-    const txRoot = yield* mempoolTrie.getRootHex();
-    const utxoRoot = yield* ledgerTrie.getRootHex();
-
-    yield* Effect.logInfo(`🔹 New transaction root found: ${txRoot}`);
-    yield* Effect.logInfo(`🔹 New UTxO root found: ${utxoRoot}`);
-
     return {
-      utxoRoot,
-      txRoot,
       mempoolTxHashes: mempoolTxHashes,
       sizeOfProcessedTxs: sizeOfProcessedTxs,
     };

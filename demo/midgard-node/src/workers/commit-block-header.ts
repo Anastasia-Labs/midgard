@@ -401,7 +401,7 @@ const databaseOperationsProgram = (
     const optEndTime: Option.Option<Date> =
       yield* establishEndTimeFromTxRequests(mempoolTxs);
 
-    const { utxoRoot, txRoot, mempoolTxHashes, sizeOfProcessedTxs } =
+    const { mempoolTxHashes, sizeOfProcessedTxs } =
       yield* processMpts(ledgerTrie, mempoolTrie, mempoolTxs);
 
     const { stateQueueAuthValidator } = yield* AlwaysSucceedsContract;
@@ -438,7 +438,7 @@ const databaseOperationsProgram = (
         // in `MempoolDB`). We check if there are any user events slated for
         // inclusion within `startTime` and current moment.
         const endTime = new Date();
-        const depositUTxOs = yield* addDeposits(ledgerTrie, startTime, endTime);
+        const insertedDepositUTxOs = yield* addDeposits(ledgerTrie, startTime, endTime);
 
         yield* Effect.logInfo(
           "🔹 Checking for user events... (no tx requests in queue)",
@@ -457,13 +457,20 @@ const databaseOperationsProgram = (
           const depositsRootFiber: RuntimeFiber<string, MptError> =
             yield* Effect.fork(optDepositsRootProgram.value);
           const depositsRoot = yield* depositsRootFiber;
-          yield* Effect.logInfo(`🔹 Deposits root is: ${depositsRoot}`);
+          yield* Effect.logInfo(`🔹 New deposits root found: ${depositsRoot}`);
+
+          const utxoRoot = yield* ledgerTrie.getRootHex();
+          const txRoot = yield* mempoolTrie.getRootHex();
+
+          yield* Effect.logInfo(`🔹 New UTxO root found: ${utxoRoot}`);
+          yield* Effect.logInfo(`🔹 New transaction root found: ${txRoot}`);
+
           const emptyRoot = yield* emptyRootHexProgram;
           const { signAndSubmitProgram, txSize } = yield* buildUnsignedTx(
             stateQueueAuthValidator,
             latestBlock,
-            emptyRoot, // TODO: fix
-            emptyRoot,
+            utxoRoot, // TODO: fix
+            txRoot,
             depositsRoot,
             endTime,
           );
@@ -482,7 +489,7 @@ const databaseOperationsProgram = (
               return Effect.succeed(failureOutput);
             },
             onSuccess: (txHash) => Effect.gen(function* () {
-              yield* applyDepositUTxOsToDatabases(depositUTxOs, startTime);
+              yield* applyDepositUTxOsToDatabases(insertedDepositUTxOs, startTime);
               return {
                 type: "SuccessfulSubmissionOutput",
                 submittedTxHash: txHash,
@@ -519,7 +526,13 @@ const databaseOperationsProgram = (
           );
           depositsRoot = yield* depositsRootFiber;
         }
-        yield* Effect.logInfo(`🔹 Deposits root is: ${depositsRoot}`);
+        yield* Effect.logInfo(`🔹 New deposits root found: ${depositsRoot}`);
+
+        const utxoRoot = yield* ledgerTrie.getRootHex();
+        const txRoot = yield* mempoolTrie.getRootHex();
+
+        yield* Effect.logInfo(`🔹 New UTxO root found: ${utxoRoot}`);
+        yield* Effect.logInfo(`🔹 New transaction root found: ${txRoot}`);
 
         const { newHeaderHash, signAndSubmitProgram, txSize } =
           yield* buildUnsignedTx(
