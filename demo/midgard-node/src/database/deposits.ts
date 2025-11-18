@@ -55,36 +55,27 @@ export const depositEventToCmlTransactionUnspentOutput = (
           cause: e,
         }),
     });
-    const assets = CML.MapAssetNameToCoin.new();
 
-    const insertedAssetsCode = assets.insert(
-      CML.AssetName.from_hex(entry[UserEvents.Columns.ASSET_NAME]),
-      1n,
-    );
-
-    // We assume that it returns a number if insertions were unsuccessful
-    if (insertedAssetsCode !== undefined) {
-      yield* Effect.fail(
+    const assetName: CML.AssetName = yield* Effect.try({
+      try: () => CML.AssetName.from_hex(entry[UserEvents.Columns.ASSET_NAME]),
+      catch: (e) =>
         new DepositConversionError({
-          message: `Failed to insert ASSET_NAME to MapAssetNameToCoin with code: ${insertedAssetsCode}`,
-          cause: `ASSET_NAME: ${entry[UserEvents.Columns.ASSET_NAME]}`,
+          message: `Failed to convert entry[ASSET_NAME] from hex to CML.AssetName`,
+          cause: e,
         }),
-      );
-    }
+    });
+
+    // Insert is a wrapper of a rust insert
+    // Returns element if it exists in the dictionary already
+    const assets = CML.MapAssetNameToCoin.new();
+    assets.insert(assetName, 1n);
 
     const verificationNftMultiasset = CML.MultiAsset.new();
-    const insertedMultiassetsCode = verificationNftMultiasset.insert_assets(
+    verificationNftMultiasset.insert_assets(
       policyIdScriptHash,
       assets,
-    ); // Same return as above
-    if (insertedMultiassetsCode !== undefined) {
-      yield* Effect.fail(
-        new DepositConversionError({
-          message: `Failed to insert assets to MultiAsset with code: ${insertedMultiassetsCode}`,
-          cause: `policyIdScriptHash: ${policyIdScriptHash}, assets: ${assets},`,
-        }),
-      );
-    }
+    );
+
     const verificationNft = CML.Value.new(0n, verificationNftMultiasset);
 
     // We need to subtract the L2 midgard nft before inserting the values to L2 UTxO
