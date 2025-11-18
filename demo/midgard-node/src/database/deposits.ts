@@ -49,7 +49,8 @@ export const depositEventToCmlTransactionUnspentOutput = (
     );
     const policyIdScriptHash: CML.ScriptHash = yield* Effect.try({
       try: () => CML.ScriptHash.from_hex(policyId),
-      catch: (e) => new DepositConversionError({
+      catch: (e) =>
+        new DepositConversionError({
           message: `Failed to convert policyId from hex to CML.ScriptHash`,
           cause: e,
         }),
@@ -97,25 +98,12 @@ export const depositEventToCmlTransactionUnspentOutput = (
       SDK.DepositInfo,
     );
 
-    const midgardAddressDataHex = Data.to(
-      depositDatum.l2Address,
-      SDK.MidgardAddress,
-    );
-
-    const l2AddressCred: CML.Credential = yield* Effect.try({
-      try: () => CML.Credential.from_cbor_hex(midgardAddressDataHex),
-      catch: (e) =>
-        new DepositConversionError({
-          message: `Provided destination Midgard address for deposit is malformed: ${midgardAddressDataHex}`,
-          cause: e,
-        }),
-    });
-
     const config = yield* NodeConfig;
 
-    const networkId = config.NETWORK === "Mainnet" ? 0 : 1;
-
-    const l2Address = CML.EnterpriseAddress.new(networkId, l2AddressCred);
+    const l2AddressBech32 = SDK.midgardAddressToBech32(
+      config.NETWORK,
+      depositDatum.l2Address,
+    );
 
     let l2Datum = undefined;
     if (depositDatum.l2Datum !== null) {
@@ -123,7 +111,7 @@ export const depositEventToCmlTransactionUnspentOutput = (
     }
 
     const transactionOutput = CML.TransactionOutput.new(
-      l2Address.to_address(),
+      CML.Address.from_bech32(l2AddressBech32),
       l2Amount,
       l2Datum,
     );

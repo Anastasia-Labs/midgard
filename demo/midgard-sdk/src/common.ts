@@ -1,4 +1,11 @@
-import { CML, Data } from "@lucid-evolution/lucid";
+import {
+  AddressDetails,
+  CML,
+  credentialToAddress,
+  Data,
+  getAddressDetails,
+  Network,
+} from "@lucid-evolution/lucid";
 import { Data as EffectData } from "effect";
 import { Effect } from "effect";
 import {
@@ -175,51 +182,65 @@ export const bufferToHex = (buf: Buffer): string => {
   }
 };
 
+/**
+ * Assumes the given Bech32 string is that of a Cardano address (TODO).
+ */
 export const midgardAddressFromBech32 = (
   bechStr: string,
 ): Effect.Effect<MidgardAddress, Bech32DeserializationError> =>
   Effect.gen(function* () {
-    const cmlAddr: CML.Address = yield* Effect.try({
-      try: () => CML.Address.from_bech32(bechStr),
+    const addressDetails: AddressDetails = yield* Effect.try({
+      try: () => getAddressDetails(bechStr),
       catch: (e) =>
         new Bech32DeserializationError({
-          message: `Failed to convert ${bechStr} to a Midgard address.`,
+          message: `Failed to break down ${bechStr} to its details.`,
           cause: e,
         }),
     });
-    const paymentCred = cmlAddr.payment_cred();
-    if (paymentCred === undefined) {
+    const cred = addressDetails.paymentCredential;
+    if (cred === undefined) {
       return yield* new Bech32DeserializationError({
-        message: `Failed attempting to resolve payment part of ${bechStr} into a public key hash.`,
+        message: `Failed extracting the payment credential from ${bechStr}.`,
         cause: "Unknown cause.",
       });
     } else {
-      const resolvedAsPubKey = yield* Effect.try(() =>
-        paymentCred.as_pub_key(),
-      ).pipe(Effect.catchAllCause((_cause) => Effect.succeed(undefined)));
-      if (resolvedAsPubKey === undefined) {
-        const resolvedAsScriptHash = yield* Effect.try(() =>
-          paymentCred.as_script(),
-        ).pipe(Effect.catchAllCause((_cause) => Effect.succeed(undefined)));
-        if (resolvedAsScriptHash === undefined) {
-          return yield* new Bech32DeserializationError({
-            message: `Failed attempting to resolve payment part of ${bechStr} into a script hash.`,
-            cause: "Unknown cause.",
-          });
-        } else {
-          const midgardAddress: MidgardAddress = {
-            ScriptCredential: [resolvedAsScriptHash.to_hex()],
-          };
-          return midgardAddress;
-        }
+      if (cred.type === "Key") {
+        const midgardAddress: MidgardAddress = {
+          PublicKeyCredential: [cred.hash],
+        };
+        return midgardAddress;
       } else {
         const midgardAddress: MidgardAddress = {
-          PublicKeyCredential: [resolvedAsPubKey.to_hex()],
+          ScriptCredential: [cred.hash],
         };
         return midgardAddress;
       }
     }
   });
+
+/**
+ * Taking Cardano `Network` as the first argument is temporary (TODO).
+ */
+export const midgardAddressToBech32 = (
+  network: Network,
+  addr: MidgardAddress,
+): string => {
+  if ("PublicKeyCredential" in addr) {
+    const [pubKeyHex] = addr.PublicKeyCredential;
+    const cred: Credential = {
+      type: "Key",
+      hash: pubKeyHex,
+    };
+    return credentialToAddress(network, cred);
+  } else {
+    const [scriptHashHex] = addr.ScriptCredential;
+    const cred: Credential = {
+      type: "Script",
+      hash: scriptHashHex,
+    };
+    return credentialToAddress(network, cred);
+  }
+};
 
 export const OutputReferenceSchema = Data.Object({
   txHash: Data.Object({ hash: Data.Bytes({ minLength: 32, maxLength: 32 }) }),

@@ -41,7 +41,11 @@ import {
   addDeposits,
   withTrieTransaction,
 } from "@/workers/utils/mpt.js";
-import { FileSystemError, batchProgram, trivialTransactionFromCMLUnspentOutput } from "@/utils.js";
+import {
+  FileSystemError,
+  batchProgram,
+  trivialTransactionFromCMLUnspentOutput,
+} from "@/utils.js";
 import { Columns as TxColumns } from "@/database/utils/tx.js";
 import {
   Columns as UserEventsColumns,
@@ -101,60 +105,62 @@ const establishEndTimeFromTxRequests = (
 const applyDepositUTxOsToDatabases = (
   insertedDepositUTxOs: CML.TransactionUnspentOutput[],
   inclusionTime: Date,
-): Effect.Effect<void,  DatabaseError | FileSystemError, Database> =>
+): Effect.Effect<void, DatabaseError | FileSystemError, Database> =>
   Effect.gen(function* () {
     yield* Effect.logInfo(
       "🔹 Inserting included deposits into ImmutableDB and MempoolLedgerDB",
     );
 
     yield* batchProgram(
-          Math.floor(BATCH_SIZE / 2),
-          insertedDepositUTxOs.length,
-          "inserting-deposits-to-databases",
-          (startIndex: number, endIndex: number) => Effect.gen(function* () {
-            const batchUTxOs = insertedDepositUTxOs.slice(startIndex, endIndex);
-            const ledgerTableBatch: LedgerUtils.EntryWithTimeStamp[] =
-              batchUTxOs.map((utxo) => ({
-                [LedgerUtils.Columns.TX_ID]: Buffer.from(
-                  utxo.input().transaction_id().to_raw_bytes(),
-                ),
-                [LedgerUtils.Columns.OUTREF]: Buffer.from(
-                  utxo.input().to_cbor_bytes(),
-                ),
-                [LedgerUtils.Columns.OUTPUT]: Buffer.from(
-                  utxo.output().to_cbor_bytes(),
-                ),
-                [LedgerUtils.Columns.ADDRESS]: utxo.output().address().to_hex(),
-                [LedgerUtils.Columns.TIMESTAMPTZ]: inclusionTime,
-              }));
+      Math.floor(BATCH_SIZE / 2),
+      insertedDepositUTxOs.length,
+      "inserting-deposits-to-databases",
+      (startIndex: number, endIndex: number) =>
+        Effect.gen(function* () {
+          const batchUTxOs = insertedDepositUTxOs.slice(startIndex, endIndex);
+          const ledgerTableBatch: LedgerUtils.EntryWithTimeStamp[] =
+            batchUTxOs.map((utxo) => ({
+              [LedgerUtils.Columns.TX_ID]: Buffer.from(
+                utxo.input().transaction_id().to_raw_bytes(),
+              ),
+              [LedgerUtils.Columns.OUTREF]: Buffer.from(
+                utxo.input().to_cbor_bytes(),
+              ),
+              [LedgerUtils.Columns.OUTPUT]: Buffer.from(
+                utxo.output().to_cbor_bytes(),
+              ),
+              [LedgerUtils.Columns.ADDRESS]: utxo.output().address().to_hex(),
+              [LedgerUtils.Columns.TIMESTAMPTZ]: inclusionTime,
+            }));
 
-            const txTableBatch: TxTable.EntryWithTimeStamp[] = yield* Effect.forEach(batchUTxOs,
-              (utxo) => ( Effect.gen(function* () {
-                const tx = yield* trivialTransactionFromCMLUnspentOutput(utxo)
+          const txTableBatch: TxTable.EntryWithTimeStamp[] =
+            yield* Effect.forEach(batchUTxOs, (utxo) =>
+              Effect.gen(function* () {
+                const tx = yield* trivialTransactionFromCMLUnspentOutput(utxo);
                 return {
                   [TxTable.Columns.TX_ID]: Buffer.from(
                     utxo.input().transaction_id().to_raw_bytes(),
                   ),
                   [TxTable.Columns.TX]: Buffer.from(tx.to_cbor_bytes()),
                   [TxTable.Columns.TIMESTAMPTZ]: inclusionTime,
-                }
-              })),
+                };
+              }),
             );
 
-            return Effect.all(
-              [
-                MempoolLedgerDB.insert(ledgerTableBatch).pipe(
-                  Effect.withSpan(`mempool-ledger-db-insert-${startIndex}`),
-                ),
-                ImmutableDB.insertTxs(txTableBatch).pipe(
-                  Effect.withSpan(`immutable-db-insert-${startIndex}`),
-                ),
-              ],
-              { concurrency: "unbounded" },
-            );
-          },
-    ));
-  })
+          return Effect.all(
+            [
+              MempoolLedgerDB.insert(ledgerTableBatch).pipe(
+                Effect.withSpan(`mempool-ledger-db-insert-${startIndex}`),
+              ),
+              ImmutableDB.insertTxs(txTableBatch).pipe(
+                Effect.withSpan(`immutable-db-insert-${startIndex}`),
+              ),
+            ],
+            { concurrency: "unbounded" },
+          );
+        }),
+    );
+  });
 
 // TODO: Application of user events will likely affect this function as well.
 const successfulSubmissionProgram = (
@@ -404,8 +410,11 @@ const databaseOperationsProgram = (
     const optEndTime: Option.Option<Date> =
       yield* establishEndTimeFromTxRequests(mempoolTxs);
 
-    const { mempoolTxHashes, sizeOfProcessedTxs } =
-      yield* processMpts(ledgerTrie, mempoolTrie, mempoolTxs);
+    const { mempoolTxHashes, sizeOfProcessedTxs } = yield* processMpts(
+      ledgerTrie,
+      mempoolTrie,
+      mempoolTxs,
+    );
 
     const { stateQueueAuthValidator } = yield* AlwaysSucceedsContract;
 
@@ -441,7 +450,11 @@ const databaseOperationsProgram = (
         // in `MempoolDB`). We check if there are any user events slated for
         // inclusion within `startTime` and current moment.
         const endTime = new Date();
-        const insertedDepositUTxOs = yield* addDeposits(ledgerTrie, startTime, endTime);
+        const insertedDepositUTxOs = yield* addDeposits(
+          ledgerTrie,
+          startTime,
+          endTime,
+        );
 
         yield* Effect.logInfo(
           "🔹 Checking for user events... (no tx requests in queue)",
@@ -490,16 +503,20 @@ const databaseOperationsProgram = (
 
               return Effect.succeed(failureOutput);
             },
-            onSuccess: (txHash) => Effect.gen(function* () {
-              yield* applyDepositUTxOsToDatabases(insertedDepositUTxOs, startTime);
-              return {
-                type: "SuccessfulSubmissionOutput",
-                submittedTxHash: txHash,
-                txSize,
-                mempoolTxsCount: 0,
-                sizeOfBlocksTxs: workerInput.data.sizeOfProcessedTxsSoFar,
-              } as WorkerOutput
-            }),
+            onSuccess: (txHash) =>
+              Effect.gen(function* () {
+                yield* applyDepositUTxOsToDatabases(
+                  insertedDepositUTxOs,
+                  startTime,
+                );
+                return {
+                  type: "SuccessfulSubmissionOutput",
+                  submittedTxHash: txHash,
+                  txSize,
+                  mempoolTxsCount: 0,
+                  sizeOfBlocksTxs: workerInput.data.sizeOfProcessedTxsSoFar,
+                } as WorkerOutput;
+              }),
           });
         }
       } else {

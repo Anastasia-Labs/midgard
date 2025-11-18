@@ -16,22 +16,22 @@ importers:
         version: file:../midgard-sdk/al-ft-midgard-sdk-0.1.0.tgz(@harmoniclabs/bytestring@1.0.0)(@harmoniclabs/cbor@1.6.6)(@harmoniclabs/crypto@0.2.5)(@harmoniclabs/pair@1.0.0)(fast-check@3.23.2)
       '@effect/experimental':
         specifier: ^0.46.0
-        version: 0.46.8(@effect/platform@0.80.21(effect@3.19.3))(effect@3.19.3)(lmdb@3.4.1)
+        version: 0.46.8(@effect/platform@0.80.21(effect@3.19.4))(effect@3.19.4)(lmdb@3.4.1)
       '@effect/opentelemetry':
         specifier: ^0.44.6
-        version: 0.44.12(@opentelemetry/api@1.9.0)(@opentelemetry/resources@1.30.1(@opentelemetry/api@1.9.0))(@opentelemetry/sdk-metrics@1.30.1(@opentelemetry/api@1.9.0))(@opentelemetry/sdk-trace-base@1.30.1(@opentelemetry/api@1.9.0))(@opentelemetry/sdk-trace-node@1.30.1(@opentelemetry/api@1.9.0))(@opentelemetry/sdk-trace-web@1.30.1(@opentelemetry/api@1.9.0))(@opentelemetry/semantic-conventions@1.38.0)(effect@3.19.3)
+        version: 0.44.12(@opentelemetry/api@1.9.0)(@opentelemetry/resources@1.30.1(@opentelemetry/api@1.9.0))(@opentelemetry/sdk-metrics@1.30.1(@opentelemetry/api@1.9.0))(@opentelemetry/sdk-trace-base@1.30.1(@opentelemetry/api@1.9.0))(@opentelemetry/sdk-trace-node@1.30.1(@opentelemetry/api@1.9.0))(@opentelemetry/sdk-trace-web@1.30.1(@opentelemetry/api@1.9.0))(@opentelemetry/semantic-conventions@1.38.0)(effect@3.19.4)
       '@effect/platform':
         specifier: ^0.80.0
-        version: 0.80.21(effect@3.19.3)
+        version: 0.80.21(effect@3.19.4)
       '@effect/platform-node':
         specifier: ^0.80.0
-        version: 0.80.3(@effect/cluster@0.31.1(@effect/platform@0.80.21(effect@3.19.3))(@effect/rpc@0.57.1(@effect/platform@0.80.21(effect@3.19.3))(effect@3.19.3))(@effect/sql@0.34.1(@effect/experimental@0.46.8(@effect/platform@0.80.21(effect@3.19.3))(effect@3.19.3)(lmdb@3.4.1))(@effect/platform@0.80.21(effect@3.19.3))(effect@3.19.3))(effect@3.19.3))(@effect/platform@0.80.21(effect@3.19.3))(@effect/rpc@0.57.1(@effect/platform@0.80.21(effect@3.19.3))(effect@3.19.3))(@effect/sql@0.34.1(@effect/experimental@0.46.8(@effect/platform@0.80.21(effect@3.19.3))(effect@3.19.3)(lmdb@3.4.1))(@effect/platform@0.80.21(effect@3.19.3))(effect@3.19.3))(effect@3.19.3)
+        version: 0.80.3(@effect/cluster@0.31.1(@effect/platform@0.80.21(effect@3.19.4))(@effect/rpc@0.57.1(@effect/platform@0.80.21(effect@3.19.4))(effect@3.19.4))(@effect/sql@0.34.1(@effect/experimental@0.46.8(@effect/platform@0.80.21(effect@3.19.4))(effect@3.19.4)(lmdb@3.4.1))(@effect/platform@0.80.21(effect@3.19.4))(effect@3.19.4))(effect@3.19.4))(@effect/platform@0.80.21(effect@3.19.4))(@effect/rpc@0.57.1(@effect/platform@0.80.21(effect@3.19.4))(effect@3.19.4))(@effect/sql@0.34.1(@effect/experimental@0.46.8(@effect/platform@0.80.21(effect@3.19.4))(effect@3.19.4)(lmdb@3.4.1))(@effect/platform@0.80.21(effect@3.19.4))(effect@3.19.4))(effect@3.19.4)
       '@effect/sql':
         specifier: ^0.34.1
-        version: 0.34.1(@effect/experimental@0.46.8(@effect/platform@0.80.21(effect@3.19.3))(effect@3.19.3)(lmdb@3.4.1))(@effect/platform@0.80.21(effect@3.19.3))(effect@3.19.3)
+        version: 0.34.1(@effect/experimental@0.46.8(@effect/platform@0.80.21(effect@3.19.4))(effect@3.19.4)(lmdb@3.4.1))(@effect/platform@0.80.21(effect@3.19.4))(effect@3.19.4)
       '@effect/sql-pg':
         specifier: ^0.35.1
-        version: 0.35.1(@effect/experimental@0.46.8(@effect/platform@0.80.21(effect@3.19.3))(effect@3.19.3)(lmdb@3.4.1))(@effect/platform@0.80.21(effect@3.19.3))(@effect/sql@0.34.1(@effect/experimental@0.46.8(@effect/platform@0.80.21(effect@3.19.3))(effect@3.19.3)(lmdb@3.4.1))(@effect/platform@0.80.21(effect@3.19.3))(effect@3.19.3))(effect@3.19.3)
+        version: 0.35.1(@effect/experimental@0.46.8(@effect/platform@0.80.21(effect@3.19.4))(effect@3.19.4)(lmdb@3.4.1))(@effect/platform@0.80.21(effect@3.19.4))(@effect/sql@0.34.1(@effect/experimental@0.46.8(@effect/platform@0.80.21(effect@3.19.4))(effect@3.19.4)(lmdb@3.4.1))(@effect/platform@0.80.21(effect@3.19.4))(effect@3.19.4))(effect@3.19.4)
       '@ethereumjs/mpt':
         specifier: 7.0.0-alpha.1
         version: 7.0.0-alpha.1
@@ -70,7 +70,7 @@ importers:
         version: 16.6.1
       effect:
         specifier: ^3.14.22
-        version: 3.19.3
+        version: 3.19.4
       level:
         specifier: ^10.0.0
         version: 10.0.0
@@ -89,7 +89,7 @@ importers:
         version: 13.1.0(commander@13.1.0)
       '@effect/vitest':
         specifier: ^0.22.0
-        version: 0.22.5(effect@3.19.3)(vitest@3.2.4(@types/node@22.19.1))
+        version: 0.22.5(effect@3.19.4)(vitest@3.2.4(@types/node@22.19.1))
       '@types/express':
         specifier: ^5.0.0
         version: 5.0.5
@@ -118,7 +118,7 @@ packages:
     resolution: {integrity: sha512-vKypwCNMH7SgP8JQ/fQyXjhDC16DqTiW9x9dLK6AXe2tEWVouNy2GMKmOaS4l6ZF7pTjty5XCD+MqnsxXJBIgg==}
 
   '@al-ft/midgard-sdk@file:../midgard-sdk/al-ft-midgard-sdk-0.1.0.tgz':
-    resolution: {integrity: sha512-HbHNWSdWCQGzAM0w55+HpfyM4N5Fac600uyfN/h8ByG3lXYy+Sr11e8fdxB7ZjBTkpOxjxMjc+/Ew6UXMqnHSw==, tarball: file:../midgard-sdk/al-ft-midgard-sdk-0.1.0.tgz}
+    resolution: {integrity: sha512-Tmq7XY4ZHxseoaTZHUCy4URc4ridOBGvAIi6kjk/g2wt6qqICl5/qSScPuS+mG0K6ABvVSPYZfoxTB5lw6p+CA==, tarball: file:../midgard-sdk/al-ft-midgard-sdk-0.1.0.tgz}
     version: 0.1.0
 
   '@anastasia-labs/cardano-multiplatform-lib-browser@6.0.2-2':
@@ -1310,8 +1310,8 @@ packages:
   '@types/yargs-parser@21.0.3':
     resolution: {integrity: sha512-I4q9QU9MQv4oEOz4tAHJtNz1cwuLxn2F3xcc2iV5WdqLPpUnj30aUuxt1mAxYTG+oe8CZMV/+6rU4S4gRDzqtQ==}
 
-  '@types/yargs@17.0.34':
-    resolution: {integrity: sha512-KExbHVa92aJpw9WDQvzBaGVE2/Pz+pLZQloT2hjL8IqsZnV62rlPOYvNnLmf/L2dyllfVUOVBj64M0z/46eR2A==}
+  '@types/yargs@17.0.35':
+    resolution: {integrity: sha512-qUHkeCyQFxMXg79wQfTtfndEC+N9ZZg76HJftDJp+qH2tV7Gj4OJi7l+PiWwJ+pWtW8GwSmqsDj/oymhrTWXjg==}
 
   '@vitest/expect@3.2.4':
     resolution: {integrity: sha512-Io0yyORnB6sikFlt8QW5K7slY4OjqNX9jmJQ02QDda8lyM6B5oNgVWoSoKPac8/kgnCUzuHQKrSLtu/uOqqrig==}
@@ -1589,8 +1589,8 @@ packages:
   eastasianwidth@0.2.0:
     resolution: {integrity: sha512-I88TYZWc9XiYHRQ4/3c5rjjfgkjhLyW2luGIheGERbNQ6OY7yTybanSpDXZa8y7VUP9YmDcYa+eyq4ca7iLqWA==}
 
-  effect@3.19.3:
-    resolution: {integrity: sha512-LodiPXiyUJWQ5LoMhUGbu0acD2ff5A5teJtUlLKDPVfoeWEBcZLlzK8BeVXpVa0f30UsdHouVCf0C/E0TxYMrA==}
+  effect@3.19.4:
+    resolution: {integrity: sha512-gApFffMwpDVgmw/FzCaYWt6zw4m0xAnQf5+cPS0+Sl85AxfeovJeEIsiEQVlk+ZvtBYcoPXxi65GIyruzanQ5g==}
 
   emoji-regex@8.0.0:
     resolution: {integrity: sha512-MSjYzcWNOA0ewAHpz0MxpYFvwg6yjy1NG3xteoqz644VCo/RPgnr1/GGt+ic3iJTzQ8Eu3TdM14SawnVUmGE6A==}
@@ -1712,8 +1712,8 @@ packages:
     resolution: {integrity: sha512-7Bv8RF0k6xjo7d4A/PxYLbUCfb6c+Vpd2/mB2yRDlew7Jb5hEXiCD9ibfO7wpk8i4sevK6DFny9h7EYbM3/sHg==}
     hasBin: true
 
-  glob@11.0.3:
-    resolution: {integrity: sha512-2Nim7dha1KVkaiF4q6Dj+ngPPMdfvLJEOpZk/jKiUAkqKebpGAWQXAq9z1xu9HKu5lWfqw/FASuccEjyznjPaA==}
+  glob@11.1.0:
+    resolution: {integrity: sha512-vuNwKSaKiqm7g0THUBu2x7ckSs3XJLXE+2ssL7/MfTGPLLcrJQ/4Uq1CjPTtO5cCIiRxqvN6Twy1qOwhL0Xjcw==}
     engines: {node: 20 || >=22}
     hasBin: true
 
@@ -2613,7 +2613,7 @@ snapshots:
     dependencies:
       '@lucid-evolution/lucid': 0.4.29(@harmoniclabs/bytestring@1.0.0)(@harmoniclabs/cbor@1.6.6)(@harmoniclabs/crypto@0.2.5)(@harmoniclabs/pair@1.0.0)(fast-check@3.23.2)
       '@noble/hashes': 1.8.0
-      effect: 3.19.3
+      effect: 3.19.4
     transitivePeerDependencies:
       - '@dcspark/cardano-multiplatform-lib-asmjs'
       - '@dcspark/cardano-multiplatform-lib-browser'
@@ -2751,55 +2751,55 @@ snapshots:
     dependencies:
       commander: 13.1.0
 
-  '@effect/cluster@0.31.1(@effect/platform@0.80.21(effect@3.19.3))(@effect/rpc@0.57.1(@effect/platform@0.80.21(effect@3.19.3))(effect@3.19.3))(@effect/sql@0.34.1(@effect/experimental@0.46.8(@effect/platform@0.80.21(effect@3.19.3))(effect@3.19.3)(lmdb@3.4.1))(@effect/platform@0.80.21(effect@3.19.3))(effect@3.19.3))(effect@3.19.3)':
+  '@effect/cluster@0.31.1(@effect/platform@0.80.21(effect@3.19.4))(@effect/rpc@0.57.1(@effect/platform@0.80.21(effect@3.19.4))(effect@3.19.4))(@effect/sql@0.34.1(@effect/experimental@0.46.8(@effect/platform@0.80.21(effect@3.19.4))(effect@3.19.4)(lmdb@3.4.1))(@effect/platform@0.80.21(effect@3.19.4))(effect@3.19.4))(effect@3.19.4)':
     dependencies:
-      '@effect/platform': 0.80.21(effect@3.19.3)
-      '@effect/rpc': 0.57.1(@effect/platform@0.80.21(effect@3.19.3))(effect@3.19.3)
-      '@effect/sql': 0.34.1(@effect/experimental@0.46.8(@effect/platform@0.80.21(effect@3.19.3))(effect@3.19.3)(lmdb@3.4.1))(@effect/platform@0.80.21(effect@3.19.3))(effect@3.19.3)
-      effect: 3.19.3
+      '@effect/platform': 0.80.21(effect@3.19.4)
+      '@effect/rpc': 0.57.1(@effect/platform@0.80.21(effect@3.19.4))(effect@3.19.4)
+      '@effect/sql': 0.34.1(@effect/experimental@0.46.8(@effect/platform@0.80.21(effect@3.19.4))(effect@3.19.4)(lmdb@3.4.1))(@effect/platform@0.80.21(effect@3.19.4))(effect@3.19.4)
+      effect: 3.19.4
 
-  '@effect/experimental@0.46.8(@effect/platform@0.80.21(effect@3.19.3))(effect@3.19.3)(lmdb@3.4.1)':
+  '@effect/experimental@0.46.8(@effect/platform@0.80.21(effect@3.19.4))(effect@3.19.4)(lmdb@3.4.1)':
     dependencies:
-      '@effect/platform': 0.80.21(effect@3.19.3)
-      effect: 3.19.3
+      '@effect/platform': 0.80.21(effect@3.19.4)
+      effect: 3.19.4
       uuid: 11.1.0
     optionalDependencies:
       lmdb: 3.4.1
 
-  '@effect/opentelemetry@0.44.12(@opentelemetry/api@1.9.0)(@opentelemetry/resources@1.30.1(@opentelemetry/api@1.9.0))(@opentelemetry/sdk-metrics@1.30.1(@opentelemetry/api@1.9.0))(@opentelemetry/sdk-trace-base@1.30.1(@opentelemetry/api@1.9.0))(@opentelemetry/sdk-trace-node@1.30.1(@opentelemetry/api@1.9.0))(@opentelemetry/sdk-trace-web@1.30.1(@opentelemetry/api@1.9.0))(@opentelemetry/semantic-conventions@1.38.0)(effect@3.19.3)':
+  '@effect/opentelemetry@0.44.12(@opentelemetry/api@1.9.0)(@opentelemetry/resources@1.30.1(@opentelemetry/api@1.9.0))(@opentelemetry/sdk-metrics@1.30.1(@opentelemetry/api@1.9.0))(@opentelemetry/sdk-trace-base@1.30.1(@opentelemetry/api@1.9.0))(@opentelemetry/sdk-trace-node@1.30.1(@opentelemetry/api@1.9.0))(@opentelemetry/sdk-trace-web@1.30.1(@opentelemetry/api@1.9.0))(@opentelemetry/semantic-conventions@1.38.0)(effect@3.19.4)':
     dependencies:
       '@opentelemetry/api': 1.9.0
       '@opentelemetry/resources': 1.30.1(@opentelemetry/api@1.9.0)
       '@opentelemetry/semantic-conventions': 1.38.0
-      effect: 3.19.3
+      effect: 3.19.4
     optionalDependencies:
       '@opentelemetry/sdk-metrics': 1.30.1(@opentelemetry/api@1.9.0)
       '@opentelemetry/sdk-trace-base': 1.30.1(@opentelemetry/api@1.9.0)
       '@opentelemetry/sdk-trace-node': 1.30.1(@opentelemetry/api@1.9.0)
       '@opentelemetry/sdk-trace-web': 1.30.1(@opentelemetry/api@1.9.0)
 
-  '@effect/platform-node-shared@0.34.3(@effect/cluster@0.31.1(@effect/platform@0.80.21(effect@3.19.3))(@effect/rpc@0.57.1(@effect/platform@0.80.21(effect@3.19.3))(effect@3.19.3))(@effect/sql@0.34.1(@effect/experimental@0.46.8(@effect/platform@0.80.21(effect@3.19.3))(effect@3.19.3)(lmdb@3.4.1))(@effect/platform@0.80.21(effect@3.19.3))(effect@3.19.3))(effect@3.19.3))(@effect/platform@0.80.21(effect@3.19.3))(@effect/rpc@0.57.1(@effect/platform@0.80.21(effect@3.19.3))(effect@3.19.3))(@effect/sql@0.34.1(@effect/experimental@0.46.8(@effect/platform@0.80.21(effect@3.19.3))(effect@3.19.3)(lmdb@3.4.1))(@effect/platform@0.80.21(effect@3.19.3))(effect@3.19.3))(effect@3.19.3)':
+  '@effect/platform-node-shared@0.34.3(@effect/cluster@0.31.1(@effect/platform@0.80.21(effect@3.19.4))(@effect/rpc@0.57.1(@effect/platform@0.80.21(effect@3.19.4))(effect@3.19.4))(@effect/sql@0.34.1(@effect/experimental@0.46.8(@effect/platform@0.80.21(effect@3.19.4))(effect@3.19.4)(lmdb@3.4.1))(@effect/platform@0.80.21(effect@3.19.4))(effect@3.19.4))(effect@3.19.4))(@effect/platform@0.80.21(effect@3.19.4))(@effect/rpc@0.57.1(@effect/platform@0.80.21(effect@3.19.4))(effect@3.19.4))(@effect/sql@0.34.1(@effect/experimental@0.46.8(@effect/platform@0.80.21(effect@3.19.4))(effect@3.19.4)(lmdb@3.4.1))(@effect/platform@0.80.21(effect@3.19.4))(effect@3.19.4))(effect@3.19.4)':
     dependencies:
-      '@effect/cluster': 0.31.1(@effect/platform@0.80.21(effect@3.19.3))(@effect/rpc@0.57.1(@effect/platform@0.80.21(effect@3.19.3))(effect@3.19.3))(@effect/sql@0.34.1(@effect/experimental@0.46.8(@effect/platform@0.80.21(effect@3.19.3))(effect@3.19.3)(lmdb@3.4.1))(@effect/platform@0.80.21(effect@3.19.3))(effect@3.19.3))(effect@3.19.3)
-      '@effect/platform': 0.80.21(effect@3.19.3)
-      '@effect/rpc': 0.57.1(@effect/platform@0.80.21(effect@3.19.3))(effect@3.19.3)
-      '@effect/sql': 0.34.1(@effect/experimental@0.46.8(@effect/platform@0.80.21(effect@3.19.3))(effect@3.19.3)(lmdb@3.4.1))(@effect/platform@0.80.21(effect@3.19.3))(effect@3.19.3)
+      '@effect/cluster': 0.31.1(@effect/platform@0.80.21(effect@3.19.4))(@effect/rpc@0.57.1(@effect/platform@0.80.21(effect@3.19.4))(effect@3.19.4))(@effect/sql@0.34.1(@effect/experimental@0.46.8(@effect/platform@0.80.21(effect@3.19.4))(effect@3.19.4)(lmdb@3.4.1))(@effect/platform@0.80.21(effect@3.19.4))(effect@3.19.4))(effect@3.19.4)
+      '@effect/platform': 0.80.21(effect@3.19.4)
+      '@effect/rpc': 0.57.1(@effect/platform@0.80.21(effect@3.19.4))(effect@3.19.4)
+      '@effect/sql': 0.34.1(@effect/experimental@0.46.8(@effect/platform@0.80.21(effect@3.19.4))(effect@3.19.4)(lmdb@3.4.1))(@effect/platform@0.80.21(effect@3.19.4))(effect@3.19.4)
       '@parcel/watcher': 2.5.1
-      effect: 3.19.3
+      effect: 3.19.4
       multipasta: 0.2.7
       ws: 8.18.3
     transitivePeerDependencies:
       - bufferutil
       - utf-8-validate
 
-  '@effect/platform-node@0.80.3(@effect/cluster@0.31.1(@effect/platform@0.80.21(effect@3.19.3))(@effect/rpc@0.57.1(@effect/platform@0.80.21(effect@3.19.3))(effect@3.19.3))(@effect/sql@0.34.1(@effect/experimental@0.46.8(@effect/platform@0.80.21(effect@3.19.3))(effect@3.19.3)(lmdb@3.4.1))(@effect/platform@0.80.21(effect@3.19.3))(effect@3.19.3))(effect@3.19.3))(@effect/platform@0.80.21(effect@3.19.3))(@effect/rpc@0.57.1(@effect/platform@0.80.21(effect@3.19.3))(effect@3.19.3))(@effect/sql@0.34.1(@effect/experimental@0.46.8(@effect/platform@0.80.21(effect@3.19.3))(effect@3.19.3)(lmdb@3.4.1))(@effect/platform@0.80.21(effect@3.19.3))(effect@3.19.3))(effect@3.19.3)':
+  '@effect/platform-node@0.80.3(@effect/cluster@0.31.1(@effect/platform@0.80.21(effect@3.19.4))(@effect/rpc@0.57.1(@effect/platform@0.80.21(effect@3.19.4))(effect@3.19.4))(@effect/sql@0.34.1(@effect/experimental@0.46.8(@effect/platform@0.80.21(effect@3.19.4))(effect@3.19.4)(lmdb@3.4.1))(@effect/platform@0.80.21(effect@3.19.4))(effect@3.19.4))(effect@3.19.4))(@effect/platform@0.80.21(effect@3.19.4))(@effect/rpc@0.57.1(@effect/platform@0.80.21(effect@3.19.4))(effect@3.19.4))(@effect/sql@0.34.1(@effect/experimental@0.46.8(@effect/platform@0.80.21(effect@3.19.4))(effect@3.19.4)(lmdb@3.4.1))(@effect/platform@0.80.21(effect@3.19.4))(effect@3.19.4))(effect@3.19.4)':
     dependencies:
-      '@effect/cluster': 0.31.1(@effect/platform@0.80.21(effect@3.19.3))(@effect/rpc@0.57.1(@effect/platform@0.80.21(effect@3.19.3))(effect@3.19.3))(@effect/sql@0.34.1(@effect/experimental@0.46.8(@effect/platform@0.80.21(effect@3.19.3))(effect@3.19.3)(lmdb@3.4.1))(@effect/platform@0.80.21(effect@3.19.3))(effect@3.19.3))(effect@3.19.3)
-      '@effect/platform': 0.80.21(effect@3.19.3)
-      '@effect/platform-node-shared': 0.34.3(@effect/cluster@0.31.1(@effect/platform@0.80.21(effect@3.19.3))(@effect/rpc@0.57.1(@effect/platform@0.80.21(effect@3.19.3))(effect@3.19.3))(@effect/sql@0.34.1(@effect/experimental@0.46.8(@effect/platform@0.80.21(effect@3.19.3))(effect@3.19.3)(lmdb@3.4.1))(@effect/platform@0.80.21(effect@3.19.3))(effect@3.19.3))(effect@3.19.3))(@effect/platform@0.80.21(effect@3.19.3))(@effect/rpc@0.57.1(@effect/platform@0.80.21(effect@3.19.3))(effect@3.19.3))(@effect/sql@0.34.1(@effect/experimental@0.46.8(@effect/platform@0.80.21(effect@3.19.3))(effect@3.19.3)(lmdb@3.4.1))(@effect/platform@0.80.21(effect@3.19.3))(effect@3.19.3))(effect@3.19.3)
-      '@effect/rpc': 0.57.1(@effect/platform@0.80.21(effect@3.19.3))(effect@3.19.3)
-      '@effect/sql': 0.34.1(@effect/experimental@0.46.8(@effect/platform@0.80.21(effect@3.19.3))(effect@3.19.3)(lmdb@3.4.1))(@effect/platform@0.80.21(effect@3.19.3))(effect@3.19.3)
-      effect: 3.19.3
+      '@effect/cluster': 0.31.1(@effect/platform@0.80.21(effect@3.19.4))(@effect/rpc@0.57.1(@effect/platform@0.80.21(effect@3.19.4))(effect@3.19.4))(@effect/sql@0.34.1(@effect/experimental@0.46.8(@effect/platform@0.80.21(effect@3.19.4))(effect@3.19.4)(lmdb@3.4.1))(@effect/platform@0.80.21(effect@3.19.4))(effect@3.19.4))(effect@3.19.4)
+      '@effect/platform': 0.80.21(effect@3.19.4)
+      '@effect/platform-node-shared': 0.34.3(@effect/cluster@0.31.1(@effect/platform@0.80.21(effect@3.19.4))(@effect/rpc@0.57.1(@effect/platform@0.80.21(effect@3.19.4))(effect@3.19.4))(@effect/sql@0.34.1(@effect/experimental@0.46.8(@effect/platform@0.80.21(effect@3.19.4))(effect@3.19.4)(lmdb@3.4.1))(@effect/platform@0.80.21(effect@3.19.4))(effect@3.19.4))(effect@3.19.4))(@effect/platform@0.80.21(effect@3.19.4))(@effect/rpc@0.57.1(@effect/platform@0.80.21(effect@3.19.4))(effect@3.19.4))(@effect/sql@0.34.1(@effect/experimental@0.46.8(@effect/platform@0.80.21(effect@3.19.4))(effect@3.19.4)(lmdb@3.4.1))(@effect/platform@0.80.21(effect@3.19.4))(effect@3.19.4))(effect@3.19.4)
+      '@effect/rpc': 0.57.1(@effect/platform@0.80.21(effect@3.19.4))(effect@3.19.4)
+      '@effect/sql': 0.34.1(@effect/experimental@0.46.8(@effect/platform@0.80.21(effect@3.19.4))(effect@3.19.4)(lmdb@3.4.1))(@effect/platform@0.80.21(effect@3.19.4))(effect@3.19.4)
+      effect: 3.19.4
       mime: 3.0.0
       undici: 7.16.0
       ws: 8.18.3
@@ -2807,54 +2807,54 @@ snapshots:
       - bufferutil
       - utf-8-validate
 
-  '@effect/platform@0.71.7(effect@3.19.3)':
+  '@effect/platform@0.71.7(effect@3.19.4)':
     dependencies:
-      effect: 3.19.3
+      effect: 3.19.4
       find-my-way-ts: 0.1.6
       multipasta: 0.2.7
 
-  '@effect/platform@0.80.21(effect@3.19.3)':
+  '@effect/platform@0.80.21(effect@3.19.4)':
     dependencies:
-      effect: 3.19.3
+      effect: 3.19.4
       find-my-way-ts: 0.1.6
       msgpackr: 1.11.5
       multipasta: 0.2.7
 
-  '@effect/rpc@0.57.1(@effect/platform@0.80.21(effect@3.19.3))(effect@3.19.3)':
+  '@effect/rpc@0.57.1(@effect/platform@0.80.21(effect@3.19.4))(effect@3.19.4)':
     dependencies:
-      '@effect/platform': 0.80.21(effect@3.19.3)
-      effect: 3.19.3
+      '@effect/platform': 0.80.21(effect@3.19.4)
+      effect: 3.19.4
 
-  '@effect/schema@0.66.16(effect@3.19.3)(fast-check@3.23.2)':
+  '@effect/schema@0.66.16(effect@3.19.4)(fast-check@3.23.2)':
     dependencies:
-      effect: 3.19.3
+      effect: 3.19.4
       fast-check: 3.23.2
 
-  '@effect/schema@0.68.27(effect@3.19.3)':
+  '@effect/schema@0.68.27(effect@3.19.4)':
     dependencies:
-      effect: 3.19.3
+      effect: 3.19.4
       fast-check: 3.23.2
 
-  '@effect/sql-pg@0.35.1(@effect/experimental@0.46.8(@effect/platform@0.80.21(effect@3.19.3))(effect@3.19.3)(lmdb@3.4.1))(@effect/platform@0.80.21(effect@3.19.3))(@effect/sql@0.34.1(@effect/experimental@0.46.8(@effect/platform@0.80.21(effect@3.19.3))(effect@3.19.3)(lmdb@3.4.1))(@effect/platform@0.80.21(effect@3.19.3))(effect@3.19.3))(effect@3.19.3)':
+  '@effect/sql-pg@0.35.1(@effect/experimental@0.46.8(@effect/platform@0.80.21(effect@3.19.4))(effect@3.19.4)(lmdb@3.4.1))(@effect/platform@0.80.21(effect@3.19.4))(@effect/sql@0.34.1(@effect/experimental@0.46.8(@effect/platform@0.80.21(effect@3.19.4))(effect@3.19.4)(lmdb@3.4.1))(@effect/platform@0.80.21(effect@3.19.4))(effect@3.19.4))(effect@3.19.4)':
     dependencies:
-      '@effect/experimental': 0.46.8(@effect/platform@0.80.21(effect@3.19.3))(effect@3.19.3)(lmdb@3.4.1)
-      '@effect/platform': 0.80.21(effect@3.19.3)
-      '@effect/sql': 0.34.1(@effect/experimental@0.46.8(@effect/platform@0.80.21(effect@3.19.3))(effect@3.19.3)(lmdb@3.4.1))(@effect/platform@0.80.21(effect@3.19.3))(effect@3.19.3)
+      '@effect/experimental': 0.46.8(@effect/platform@0.80.21(effect@3.19.4))(effect@3.19.4)(lmdb@3.4.1)
+      '@effect/platform': 0.80.21(effect@3.19.4)
+      '@effect/sql': 0.34.1(@effect/experimental@0.46.8(@effect/platform@0.80.21(effect@3.19.4))(effect@3.19.4)(lmdb@3.4.1))(@effect/platform@0.80.21(effect@3.19.4))(effect@3.19.4)
       '@opentelemetry/semantic-conventions': 1.38.0
-      effect: 3.19.3
+      effect: 3.19.4
       postgres: 3.4.7
 
-  '@effect/sql@0.34.1(@effect/experimental@0.46.8(@effect/platform@0.80.21(effect@3.19.3))(effect@3.19.3)(lmdb@3.4.1))(@effect/platform@0.80.21(effect@3.19.3))(effect@3.19.3)':
+  '@effect/sql@0.34.1(@effect/experimental@0.46.8(@effect/platform@0.80.21(effect@3.19.4))(effect@3.19.4)(lmdb@3.4.1))(@effect/platform@0.80.21(effect@3.19.4))(effect@3.19.4)':
     dependencies:
-      '@effect/experimental': 0.46.8(@effect/platform@0.80.21(effect@3.19.3))(effect@3.19.3)(lmdb@3.4.1)
-      '@effect/platform': 0.80.21(effect@3.19.3)
+      '@effect/experimental': 0.46.8(@effect/platform@0.80.21(effect@3.19.4))(effect@3.19.4)(lmdb@3.4.1)
+      '@effect/platform': 0.80.21(effect@3.19.4)
       '@opentelemetry/semantic-conventions': 1.38.0
-      effect: 3.19.3
+      effect: 3.19.4
       uuid: 11.1.0
 
-  '@effect/vitest@0.22.5(effect@3.19.3)(vitest@3.2.4(@types/node@22.19.1))':
+  '@effect/vitest@0.22.5(effect@3.19.4)(vitest@3.2.4(@types/node@22.19.1))':
     dependencies:
-      effect: 3.19.3
+      effect: 3.19.4
       vitest: 3.2.4(@types/node@22.19.1)
 
   '@emurgo/cardano-message-signing-browser@1.1.0': {}
@@ -3123,7 +3123,7 @@ snapshots:
       '@types/istanbul-lib-coverage': 2.0.6
       '@types/istanbul-reports': 3.0.4
       '@types/node': 22.19.1
-      '@types/yargs': 17.0.34
+      '@types/yargs': 17.0.35
       chalk: 4.1.2
 
   '@jridgewell/gen-mapping@0.3.13':
@@ -3179,7 +3179,7 @@ snapshots:
     dependencies:
       '@anastasia-labs/cardano-multiplatform-lib-browser': 6.0.2-3
       '@anastasia-labs/cardano-multiplatform-lib-nodejs': 6.0.2-3
-      '@effect/schema': 0.66.16(effect@3.19.3)(fast-check@3.23.2)
+      '@effect/schema': 0.66.16(effect@3.19.4)(fast-check@3.23.2)
       '@emurgo/cardano-message-signing-nodejs': 1.1.0
       '@lucid-evolution/core-types': 0.1.22
       '@lucid-evolution/core-utils': 0.1.16
@@ -3189,7 +3189,7 @@ snapshots:
       '@lucid-evolution/uplc': 0.2.20
       '@lucid-evolution/utils': 0.1.66(@harmoniclabs/bytestring@1.0.0)(@harmoniclabs/cbor@1.6.6)(@harmoniclabs/crypto@0.2.5)(@harmoniclabs/pair@1.0.0)
       '@lucid-evolution/wallet': 0.1.72(@harmoniclabs/bytestring@1.0.0)(@harmoniclabs/cbor@1.6.6)(@harmoniclabs/crypto@0.2.5)(@harmoniclabs/pair@1.0.0)
-      effect: 3.19.3
+      effect: 3.19.4
     transitivePeerDependencies:
       - '@dcspark/cardano-multiplatform-lib-asmjs'
       - '@dcspark/cardano-multiplatform-lib-browser'
@@ -3217,13 +3217,13 @@ snapshots:
     dependencies:
       '@anastasia-labs/cardano-multiplatform-lib-browser': 6.0.2-3
       '@anastasia-labs/cardano-multiplatform-lib-nodejs': 6.0.2-3
-      '@effect/platform': 0.71.7(effect@3.19.3)
-      '@effect/schema': 0.68.27(effect@3.19.3)
+      '@effect/platform': 0.71.7(effect@3.19.4)
+      '@effect/schema': 0.68.27(effect@3.19.4)
       '@lucid-evolution/core-types': 0.1.22
       '@lucid-evolution/core-utils': 0.1.16
       '@lucid-evolution/utils': 0.1.66(@harmoniclabs/bytestring@1.0.0)(@harmoniclabs/cbor@1.6.6)(@harmoniclabs/crypto@0.2.5)(@harmoniclabs/pair@1.0.0)
       '@lucid-evolution/wallet': 0.1.72(@harmoniclabs/bytestring@1.0.0)(@harmoniclabs/cbor@1.6.6)(@harmoniclabs/crypto@0.2.5)(@harmoniclabs/pair@1.0.0)
-      effect: 3.19.3
+      effect: 3.19.4
     transitivePeerDependencies:
       - '@dcspark/cardano-multiplatform-lib-asmjs'
       - '@dcspark/cardano-multiplatform-lib-browser'
@@ -3254,7 +3254,7 @@ snapshots:
       '@anastasia-labs/cardano-multiplatform-lib-browser': 6.0.2-3
       '@anastasia-labs/cardano-multiplatform-lib-nodejs': 6.0.2-3
       '@cardano-sdk/core': 0.45.10
-      '@effect/schema': 0.68.27(effect@3.19.3)
+      '@effect/schema': 0.68.27(effect@3.19.4)
       '@harmoniclabs/plutus-data': 1.2.6(@harmoniclabs/bytestring@1.0.0)(@harmoniclabs/cbor@1.6.6)
       '@harmoniclabs/uplc': 1.4.1(@harmoniclabs/bytestring@1.0.0)(@harmoniclabs/cbor@1.6.6)(@harmoniclabs/crypto@0.2.5)(@harmoniclabs/pair@1.0.0)(@harmoniclabs/plutus-data@1.2.6(@harmoniclabs/bytestring@1.0.0)(@harmoniclabs/cbor@1.6.6))
       '@lucid-evolution/core-types': 0.1.22
@@ -3264,7 +3264,7 @@ snapshots:
       '@lucid-evolution/uplc': 0.2.20
       bip39: 3.1.0
       cbor-x: 1.6.0
-      effect: 3.19.3
+      effect: 3.19.4
     transitivePeerDependencies:
       - '@dcspark/cardano-multiplatform-lib-asmjs'
       - '@dcspark/cardano-multiplatform-lib-browser'
@@ -3725,7 +3725,7 @@ snapshots:
 
   '@types/yargs-parser@21.0.3': {}
 
-  '@types/yargs@17.0.34':
+  '@types/yargs@17.0.35':
     dependencies:
       '@types/yargs-parser': 21.0.3
 
@@ -4033,7 +4033,7 @@ snapshots:
 
   eastasianwidth@0.2.0: {}
 
-  effect@3.19.3:
+  effect@3.19.4:
     dependencies:
       '@standard-schema/spec': 1.0.0
       fast-check: 3.23.2
@@ -4214,7 +4214,7 @@ snapshots:
       package-json-from-dist: 1.0.1
       path-scurry: 1.11.1
 
-  glob@11.0.3:
+  glob@11.1.0:
     dependencies:
       foreground-child: 3.3.1
       jackspeak: 4.1.1
@@ -4653,7 +4653,7 @@ snapshots:
 
   rimraf@6.1.0:
     dependencies:
-      glob: 11.0.3
+      glob: 11.1.0
       package-json-from-dist: 1.0.1
 
   ripemd160@2.0.3:
