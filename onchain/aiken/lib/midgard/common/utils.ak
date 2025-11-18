@@ -11,7 +11,7 @@ use aiken_design_patterns/merkelized_validator
 use cardano/address.{Address, Script}
 use cardano/assets.{AssetName, PolicyId, Value, tokens}
 use cardano/transaction.{
-  Input, Output, OutputReference, Redeemer, ScriptPurpose,
+  InlineDatum, Input, Output, OutputReference, Redeemer, ScriptPurpose,
 }
 use env
 use midgard/common/constants.{posix_time_none}
@@ -137,7 +137,7 @@ pub fn get_single_asset_from_value_apart_from_ada(
   (sym, tn, qty)
 }
 
-/// For beacon UTxOs with specific policy IDs. Note that the address is not
+/// For state UTxOs with specific policy IDs. Note that the address is not
 /// checked.
 pub fn get_authentic_input_with_policy_at(
   inputs: List<Input>,
@@ -156,7 +156,7 @@ pub fn get_authentic_input_with_policy_at(
   found_input
 }
 
-/// For beacon UTxOs with specific NFTs. Note that the address is not checked.
+/// For state UTxOs with specific NFTs. Note that the address is not checked.
 pub fn get_authentic_input_with_nft_at(
   inputs: List<Input>,
   nft_policy_id: PolicyId,
@@ -175,7 +175,7 @@ pub fn get_authentic_input_with_nft_at(
   found_input
 }
 
-/// For beacon UTxOs of validators which their NFTs have policy IDs equal to
+/// For state UTxOs of validators which their NFTs have policy IDs equal to
 /// their payment credentials.
 pub fn get_authentic_input_of(
   inputs: List<Input>,
@@ -202,6 +202,53 @@ pub fn get_authentic_input_of(
     }
 
   found_ref_input
+}
+
+/// Helper useful for spending validators. Also ensures no reference scripts are
+/// attached.
+pub fn get_continued_output_datum_at(
+  outputs: List<Output>,
+  expected_address: Address,
+  expected_value: Value,
+  output_index: Int,
+) -> Data {
+  expect Some(Output {
+    address: output_address,
+    value: output_value,
+    datum: InlineDatum(output_datum_data),
+    reference_script: None,
+  }) = list.at(outputs, output_index)
+
+  expect output_address == expected_address
+  expect output_value == expected_value
+
+  output_datum_data
+}
+
+/// Helper useful for minting/withdrawal validators. Also ensures no reference
+/// scripts are attached.
+pub fn get_authentic_output_datum_at_address_with_nft_at(
+  outputs: List<Output>,
+  expected_address: Address,
+  nft_policy_id: PolicyId,
+  nft_asset_name: AssetName,
+  output_index: Int,
+) -> Data {
+  expect Some(Output {
+    address: output_address,
+    value: output_value,
+    datum: InlineDatum(output_datum_data),
+    reference_script: None,
+  }) = list.at(outputs, output_index)
+
+  expect expected_address == output_address
+
+  let output_nft_triplet =
+    get_single_asset_from_value_apart_from_ada(output_value)
+
+  expect output_nft_triplet == (nft_policy_id, nft_asset_name, 1)
+
+  output_datum_data
 }
 
 // Used to retrieve asset name from a value with a specific policy id

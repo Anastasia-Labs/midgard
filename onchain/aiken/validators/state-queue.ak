@@ -17,7 +17,7 @@ use midgard/protocol_parameters.{maturity_duration, shift_duration}
 use midgard/registered_operators
 use midgard/retired_operators
 use midgard/scheduler.{Datum as SchedulerDatum, scheduler_asset_name}
-use midgard/settlement_queue
+use midgard/settlement
 use midgard/state_queue.{
   CommitBlockHeader, Deinit, Init, MergeToConfirmedState, MintRedeemer,
   RemoveFraudulentBlockHeader,
@@ -47,7 +47,7 @@ validator mint(
   retired_operators_script_hash: PolicyId,
   scheduler_script_hash: PolicyId,
   fraud_proof_script_hash: PolicyId,
-  settlement_queue_script_hash: PolicyId,
+  settlement_script_hash: PolicyId,
 ) {
   mint(redeemer: MintRedeemer, policy_id: PolicyId, self: Transaction) {
     let node_in_outputs = get_node_inputs(self.inputs, policy_id)
@@ -184,7 +184,7 @@ validator mint(
         header_node_input_index,
         confirmed_state_node_input_index,
         confirmed_state_node_output_index,
-        settlement_queue_redeemer_index,
+        settlement_redeemer_index,
       } -> {
         // (1) The transaction must Remove a node from the `state_queue`.
         //     Let `header_node` be the removed node, `confirmed_state_node` be
@@ -263,23 +263,24 @@ validator mint(
         expect
           parsed_confirmed_state_node_output_datum_data == expected_new_confirmed_state
 
-        // (6) If either the `deposits_root` or `withdrawals_root` of `header_node`
-        //     is _not_ the MPT root hash of the empty set, a `settlement_queue`
-        //     node must be appended via the New Settlement redeemer.
-        //     The redeemer must mention \code{header\_node} by input index.
+        // (6) If either the `deposits_root`, or `withdrawals_root`, or
+        //     `transactions_root` of `header_node` is _not_ the MPT root hash
+        //     of the empty set, a `settlement` utxo must be produced via the
+        //     Spawn redeemer. The redeemer must mention `header_node` by input
+        //     index.
         //
-        // Note: we trust the redeemer arguments provided to settlement_queue
-        // because we expect it to check them.
-        expect Some(settlement_queue_redeemer_pair) =
-          self.redeemers |> list.at(settlement_queue_redeemer_index)
-        expect
-          settlement_queue_redeemer_pair.1st == Mint(
-            settlement_queue_script_hash,
-          )
-        expect settlement_queue.AppendSettlementNode { key_to_add, .. }: settlement_queue.MintRedeemer =
-          settlement_queue_redeemer_pair.2nd
+        // Note: we trust the redeemer provided to settlement because we expect
+        // it to check them.
+        let settlement_minting_redeemer_data =
+          self.redeemers
+            |> utils.get_redeemer_at(
+                Mint(settlement_script_hash),
+                settlement_redeemer_index,
+              )
+        expect settlement.Spawn { settlement_id, .. }: settlement.MintRedeemer =
+          settlement_minting_redeemer_data
         //
-        expect key_to_add == header_node_key
+        expect settlement_id == header_node_key
 
         // Done.
         True
