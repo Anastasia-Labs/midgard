@@ -135,26 +135,30 @@ const applyDepositUTxOsToDatabases = (
             }));
 
           const transactions = yield* Effect.forEach(batchUTxOs, (utxo) =>
-               trivialTransactionFromCMLUnspentOutput(utxo)
-            );
+            trivialTransactionFromCMLUnspentOutput(utxo),
+          );
 
-          const txTableBatch: TxTable.EntryWithTimeStamp[] =
-            transactions.map((tx) => ({
-                  [TxTable.Columns.TX_ID]: Buffer.from(
-                    tx.body().inputs().get(0).transaction_id().to_raw_bytes(),
-                  ),
-                  [TxTable.Columns.TX]: Buffer.from(tx.to_cbor_bytes()),
-                  [TxTable.Columns.TIMESTAMPTZ]: inclusionTime,
-                })
-            );
+          const txTableBatch: TxTable.EntryWithTimeStamp[] = transactions.map(
+            (tx) => ({
+              [TxTable.Columns.TX_ID]: Buffer.from(
+                tx.body().inputs().get(0).transaction_id().to_raw_bytes(),
+              ),
+              [TxTable.Columns.TX]: Buffer.from(tx.to_cbor_bytes()),
+              [TxTable.Columns.TIMESTAMPTZ]: inclusionTime,
+            }),
+          );
 
-          const addressTableBatch: AddressHistoryDB.Entry[] =
-            transactions.map((tx, i) => ({
+          const addressTableBatch: AddressHistoryDB.Entry[] = transactions.map(
+            (tx, i) => ({
               [LedgerUtils.Columns.TX_ID]: Buffer.from(
-                    tx.body().inputs().get(0).transaction_id().to_raw_bytes(),
-                  ),
-              [LedgerUtils.Columns.ADDRESS]: batchUTxOs[i].output().address().to_hex()
-            }))
+                tx.body().inputs().get(0).transaction_id().to_raw_bytes(),
+              ),
+              [LedgerUtils.Columns.ADDRESS]: batchUTxOs[i]
+                .output()
+                .address()
+                .to_hex(),
+            }),
+          );
 
           return Effect.all(
             [

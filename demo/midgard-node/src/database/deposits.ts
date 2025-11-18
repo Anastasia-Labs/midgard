@@ -71,10 +71,7 @@ export const depositEventToCmlTransactionUnspentOutput = (
     assets.insert(assetName, 1n);
 
     const verificationNftMultiasset = CML.MultiAsset.new();
-    verificationNftMultiasset.insert_assets(
-      policyIdScriptHash,
-      assets,
-    );
+    verificationNftMultiasset.insert_assets(policyIdScriptHash, assets);
 
     const verificationNft = CML.Value.new(0n, verificationNftMultiasset);
 

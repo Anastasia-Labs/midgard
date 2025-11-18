@@ -66,7 +66,6 @@ export const insert = (
         Effect.catchAllCause((_) => Effect.succeed([])),
       );
 
-      inputEntries;
       const outputEntries: Entry[] = produced.map((e) => ({
         [Ledger.Columns.TX_ID]: e[Ledger.Columns.TX_ID],
         [Ledger.Columns.ADDRESS]: e[Ledger.Columns.ADDRESS],
