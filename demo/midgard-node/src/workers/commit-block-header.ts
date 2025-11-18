@@ -24,6 +24,7 @@ import {
   TxUtils as TxTable,
   MempoolLedgerDB,
   LedgerUtils,
+  AddressHistoryDB,
 } from "@/database/index.js";
 import {
   handleSignSubmitNoConfirmation,
@@ -108,7 +109,7 @@ const applyDepositUTxOsToDatabases = (
 ): Effect.Effect<void, DatabaseError | FileSystemError, Database> =>
   Effect.gen(function* () {
     yield* Effect.logInfo(
-      "🔹 Inserting included deposits into ImmutableDB and MempoolLedgerDB",
+      "🔹 Inserting included deposits into ImmutableDB, MempoolLedgerDB and AddressHistoryDB",
     );
 
     yield* batchProgram(
@@ -133,19 +134,27 @@ const applyDepositUTxOsToDatabases = (
               [LedgerUtils.Columns.TIMESTAMPTZ]: inclusionTime,
             }));
 
+          const transactions = yield* Effect.forEach(batchUTxOs, (utxo) =>
+               trivialTransactionFromCMLUnspentOutput(utxo)
+            );
+
           const txTableBatch: TxTable.EntryWithTimeStamp[] =
-            yield* Effect.forEach(batchUTxOs, (utxo) =>
-              Effect.gen(function* () {
-                const tx = yield* trivialTransactionFromCMLUnspentOutput(utxo);
-                return {
+            transactions.map((tx) => ({
                   [TxTable.Columns.TX_ID]: Buffer.from(
-                    utxo.input().transaction_id().to_raw_bytes(),
+                    tx.body().inputs().get(0).transaction_id().to_raw_bytes(),
                   ),
                   [TxTable.Columns.TX]: Buffer.from(tx.to_cbor_bytes()),
                   [TxTable.Columns.TIMESTAMPTZ]: inclusionTime,
-                };
-              }),
+                })
             );
+
+          const addressTableBatch: AddressHistoryDB.Entry[] =
+            transactions.map((tx, i) => ({
+              [LedgerUtils.Columns.TX_ID]: Buffer.from(
+                    tx.body().inputs().get(0).transaction_id().to_raw_bytes(),
+                  ),
+              [LedgerUtils.Columns.ADDRESS]: batchUTxOs[i].output().address().to_hex()
+            }))
 
           return Effect.all(
             [
@@ -155,6 +164,9 @@ const applyDepositUTxOsToDatabases = (
               ImmutableDB.insertTxs(txTableBatch).pipe(
                 Effect.withSpan(`immutable-db-insert-${startIndex}`),
               ),
+              AddressHistoryDB.insertEntries(addressTableBatch).pipe(
+                Effect.withSpan(`address-history-db-insert-${startIndex}`),
+              ),
             ],
             { concurrency: "unbounded" },
           );
@@ -162,7 +174,6 @@ const applyDepositUTxOsToDatabases = (
     );
   });
 
-// TODO: Application of user events will likely affect this function as well.
 const successfulSubmissionProgram = (
   mempoolTrie: MidgardMpt,
   insertedDepositUTxOs: CML.TransactionUnspentOutput[],

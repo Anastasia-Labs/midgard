@@ -62,7 +62,7 @@ export const insert = (
       FROM ${sql(MempoolLedgerDB.tableName)}
       WHERE ${sql(Ledger.Columns.TX_ID)} IN ${sql.in(spent)}`;
 
-      const inputEntries = yield* inputEntriesProgram.pipe(
+      const inputEntries: readonly Entry[] = yield* inputEntriesProgram.pipe(
         Effect.catchAllCause((_) => Effect.succeed([])),
       );
 
