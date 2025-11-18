@@ -47,6 +47,7 @@ export const buildUserEventMintTransaction = (params: UserEventMintTransactionPa
     mintRedeemer,
     scriptAddress,
     datum,
+    extraAssets,
     validTo,
     mintingPolicy
   } = params;
@@ -69,7 +70,10 @@ export const buildUserEventMintTransaction = (params: UserEventMintTransactionPa
         kind: "inline", 
         value: datum 
      },
-     { [nft]: 1n },
+     { 
+        [nft]:1n,
+        ...extraAssets
+     },
     )
     .validTo(validToNumber)
     .attach.MintingPolicy(mintingPolicy);

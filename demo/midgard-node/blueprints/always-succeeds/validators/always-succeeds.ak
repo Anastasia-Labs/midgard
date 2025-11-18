@@ -39,3 +39,17 @@ validator tx_order_mint {
     True
   }
 }
+
+validator withdrawal_spend {
+  else(_) {
+    trace @"Midgard Demo – Withdrawal Spend"
+    True
+  }
+}
+
+validator withdrawal_mint {
+  else(_) {
+    trace @"Midgard Demo – Withdrawal Mint"
+    True
+  }
+}

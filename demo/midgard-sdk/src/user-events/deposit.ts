@@ -228,6 +228,9 @@ export const incompleteDepositTxProgram = (
       },
     };
     const mintRedeemerCBOR = Data.to(mintRedeemer, UserEventMintRedeemer);
+    const assets = {
+      lovelace: params.depositAmount,
+    };
 
     // TODO: Currently there are no considerations for fees and/or min ADA.
     const tx = buildUserEventMintTransaction({
@@ -237,6 +240,7 @@ export const incompleteDepositTxProgram = (
           mintRedeemer: mintRedeemerCBOR,
           scriptAddress: params.depositScriptAddress,
           datum: depositDatumCBOR,
+          extraAssets: assets,
           validTo: inclusionTime,
           mintingPolicy: params.mintingPolicy,
         });
