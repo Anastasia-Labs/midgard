@@ -5,7 +5,7 @@ import {
   AddressSchema,
   PolicyIdSchema,
   makeReturn,
-} from "@/common.js";
+} from "./common.js";
 import {
   Address,
   LucidEvolution,
@@ -13,8 +13,11 @@ import {
   toUnit,
   TxBuilder,
   UTxO,
+  Data,
+  Assets,
+  fromText,
+  Script,
 } from "@lucid-evolution/lucid";
-import { Data } from "@lucid-evolution/lucid";
 
 export type HubOracleConfig = {
   hubOracleAddress: Address;
@@ -43,10 +46,24 @@ export const HubOracleDatumSchema = Data.Object({
 export type HubOracleDatum = Data.Static<typeof HubOracleDatumSchema>;
 export const HubOracleDatum = HubOracleDatumSchema as unknown as HubOracleDatum;
 
+export const HubOracleRedeemerSchema = Data.Enum([
+  Data.Literal("Init"),
+  Data.Literal("Burn"),
+]);
+
+export type HubOracleRedeemer = Data.Static<typeof HubOracleRedeemerSchema>;
+export const HubOracleRedeemer =
+  HubOracleRedeemerSchema as unknown as HubOracleRedeemer;
+
 /**
  * Parameters for the init transaction.
  */
-export type HubOracleInitParams = {};
+export type HubOracleInitParams = {
+  policyId: string;
+  address: string;
+  mintScript: Script;
+  datum: HubOracleDatum;
+};
 
 /**
  * Parameters for the burn transaction.
@@ -64,8 +81,23 @@ export const incompleteHubOracleInitTxProgram = (
   lucid: LucidEvolution,
   params: HubOracleInitParams,
 ): TxBuilder => {
-  const tx = lucid.newTx();
-  return tx;
+  const assets: Assets = {
+    [toUnit(params.policyId, fromText(""))]: 1n, // Hub oracle uses empty asset name
+  };
+  const encodedDatum = Data.to<HubOracleDatum>(params.datum, HubOracleDatum);
+
+  const redeemer: HubOracleRedeemer = "Init";
+  const encodedRedeemer = Data.to(redeemer, HubOracleRedeemer);
+
+  return lucid
+    .newTx()
+    .mintAssets(assets, encodedRedeemer)
+    .pay.ToAddressWithData(
+      params.address,
+      { kind: "inline", value: encodedDatum },
+      assets,
+    )
+    .attach.MintingPolicy(params.mintScript);
 };
 
 /**
