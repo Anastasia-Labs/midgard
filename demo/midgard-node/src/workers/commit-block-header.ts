@@ -151,7 +151,6 @@ const applyDepositUTxOsToDatabases = (
           const addressTableBatch: AddressHistoryDB.Entry[] =
             yield* Effect.forEach(batchUTxOs, (utxo) =>
               Effect.gen(function* () {
-                const tx = yield* trivialTransactionFromCMLUnspentOutput(utxo);
                 return {
                   [LedgerUtils.Columns.TX_ID]: Buffer.from(
                     utxo.input().transaction_id().to_raw_bytes(),
