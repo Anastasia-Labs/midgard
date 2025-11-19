@@ -11,6 +11,7 @@ pub type StepRedeemer {
     bad_tx2_info_hash: ByteArray,
     bad_tx2_to_root_proof_path: Proof,
     index_output: Int,
+    hub_ref_input_index: Int,
   }
 }
 

@@ -12,11 +12,13 @@ use midgard/fraud_proof/double_spend/step_01.{StepState as Step1State}
 use midgard/fraud_proof/double_spend/step_02.{
   Cancel, Continue, StepRedeemer as Step2Redeemer, StepState as Step2State,
 }
+use midgard/hub_oracle as hub
 
 validator main(
   double_spend_step_03_validator_script_hash: ScriptHash,
   plutarch_midgard_merkle_validator: ScriptHash,
   ct_token_policy_id: PolicyId,
+  hub_oracle: ScriptHash,
 ) {
   spend(
     datum: Option<StepDatum>,
@@ -47,8 +49,11 @@ validator main(
         bad_tx2_info_hash,
         bad_tx2_to_root_proof_path,
         index_output,
+        hub_ref_input_index,
       } -> {
-        // Check tx hash uniqueness
+        //TODO get it from the oracle hub
+        let hub.Datum { state_queue, .. } =
+          hub.get_datum(tx.reference_inputs, hub_oracle, hub_ref_input_index)
         expect Step1State { verified_tx1_hash }: Step1State = step_datum.data
         expect bad_tx2_hash != verified_tx1_hash
         let ct_token_asset_name =
@@ -58,6 +63,7 @@ validator main(
             tx,
             bad_state_queue_node_ref_input_index,
             ct_token_asset_name,
+            state_queue,
           )
 
         // -------- double spend validation specific logic START --------
