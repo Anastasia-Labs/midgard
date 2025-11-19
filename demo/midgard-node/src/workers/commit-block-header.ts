@@ -23,7 +23,7 @@ import {
   DepositsDB,
   TxUtils as TxTable,
   MempoolLedgerDB,
-  LedgerUtils,
+  LedgerUtils as LedgerTable,
   AddressHistoryDB,
 } from "@/database/index.js";
 import {
@@ -119,19 +119,19 @@ const addDepositUTxOsToDatabases = (
       (startIndex: number, endIndex: number) =>
         Effect.gen(function* () {
           const batchUTxOs = insertedDepositUTxOs.slice(startIndex, endIndex);
-          const ledgerTableBatch: LedgerUtils.EntryWithTimeStamp[] =
+          const ledgerTableBatch: LedgerTable.EntryWithTimeStamp[] =
             batchUTxOs.map((utxo) => ({
-              [LedgerUtils.Columns.TX_ID]: Buffer.from(
+              [LedgerTable.Columns.TX_ID]: Buffer.from(
                 utxo.input().transaction_id().to_raw_bytes(),
               ),
-              [LedgerUtils.Columns.OUTREF]: Buffer.from(
+              [LedgerTable.Columns.OUTREF]: Buffer.from(
                 utxo.input().to_cbor_bytes(),
               ),
-              [LedgerUtils.Columns.OUTPUT]: Buffer.from(
+              [LedgerTable.Columns.OUTPUT]: Buffer.from(
                 utxo.output().to_cbor_bytes(),
               ),
-              [LedgerUtils.Columns.ADDRESS]: utxo.output().address().to_hex(),
-              [LedgerUtils.Columns.TIMESTAMPTZ]: inclusionTime,
+              [LedgerTable.Columns.ADDRESS]: utxo.output().address().to_hex(),
+              [LedgerTable.Columns.TIMESTAMPTZ]: inclusionTime,
             }));
 
           const txTableBatch: TxTable.EntryWithTimeStamp[] =
@@ -152,10 +152,10 @@ const addDepositUTxOsToDatabases = (
             yield* Effect.forEach(batchUTxOs, (utxo) =>
               Effect.gen(function* () {
                 return {
-                  [LedgerUtils.Columns.TX_ID]: Buffer.from(
+                  [LedgerTable.Columns.TX_ID]: Buffer.from(
                     utxo.input().transaction_id().to_raw_bytes(),
                   ),
-                  [LedgerUtils.Columns.ADDRESS]: utxo
+                  [LedgerTable.Columns.ADDRESS]: utxo
                     .output()
                     .address()
                     .to_hex(),
@@ -425,9 +425,6 @@ const databaseOperationsProgram = (
     const mempoolTxs = yield* MempoolDB.retrieve;
     const mempoolTxsCount = mempoolTxs.length;
 
-    const optEndTime: Option.Option<Date> =
-      yield* establishEndTimeFromTxRequests(mempoolTxs);
-
     const { mempoolTxHashes, sizeOfProcessedTxs } = yield* processMpts(
       ledgerTrie,
       mempoolTrie,
@@ -462,6 +459,9 @@ const databaseOperationsProgram = (
       );
 
       const startTime = yield* getLatestBlockDatumEndTime(latestBlock.datum);
+
+      const optEndTime: Option.Option<Date> =
+        yield* establishEndTimeFromTxRequests(mempoolTxs);
 
       if (Option.isNone(optEndTime)) {
         // No transaction requests found (neither in `ProcessedMempoolDB`, nor
