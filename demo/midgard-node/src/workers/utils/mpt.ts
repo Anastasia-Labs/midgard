@@ -11,19 +11,15 @@ import {
   NodeConfig,
 } from "@/services/index.js";
 import {
-  UserEventsUtils,
-  TxUtils,
-  LedgerUtils,
+  TxUtils as Tx,
+  LedgerUtils as Ledger,
   DepositsDB,
 } from "@/database/index.js";
 import { FileSystemError, findSpentAndProducedUTxOs } from "@/utils.js";
 import * as FS from "fs";
 import * as SDK from "@al-ft/midgard-sdk";
 import { DatabaseError } from "@/database/utils/common.js";
-import {
-  retrieveTimeBoundEntries,
-  Columns as UserEventsColumns,
-} from "@/database/utils/user-events.js";
+import { retrieveTimeBoundEntries } from "@/database/utils/user-events.js";
 
 const LEVELDB_ENCODING_OPTS = {
   keyEncoding: ETH_UTILS.KeyEncoding.Bytes,
@@ -101,10 +97,10 @@ export const deleteMpt = (
       }),
   }).pipe(Effect.withLogSpan(`Delete ${name} MPT`));
 
-/*
-  This function pulls the deposits from the `DepositsDB`
-  and adds them to the ledgerTrie. Returns the added utxos.
-*/
+/**
+ * This function pulls the deposits from the `DepositsDB` and adds them to the
+ * `ledgerTrie`. Returns the added utxos.
+ */
 export const addDeposits = (
   ledgerTrie: MidgardMpt,
   startDate: Date,
@@ -162,11 +158,14 @@ export const addDeposits = (
     return insertedUTxOs;
   });
 
-// Make mempool trie, and fill it with ledger trie with processed mempool txs
+/**
+ * Adds provided mempool transactions to `mempoolTrie`, while also applying them
+ * to the provided ledger.
+ */
 export const processMpts = (
   ledgerTrie: MidgardMpt,
   mempoolTrie: MidgardMpt,
-  mempoolTxs: readonly TxUtils.Entry[],
+  mempoolTxs: readonly Tx.Entry[],
 ): Effect.Effect<
   {
     mempoolTxHashes: Buffer[];
@@ -183,10 +182,10 @@ export const processMpts = (
     yield* Effect.logInfo(
       "🔹 Going through mempool and processings transactions...",
     );
-    yield* Effect.forEach(mempoolTxs, (entry: TxUtils.Entry) =>
+    yield* Effect.forEach(mempoolTxs, (entry: Tx.Entry) =>
       Effect.gen(function* () {
-        const txHash = entry[TxUtils.Columns.TX_ID];
-        const txCbor = entry[TxUtils.Columns.TX];
+        const txHash = entry[Tx.Columns.TX_ID];
+        const txCbor = entry[Tx.Columns.TX];
         mempoolTxHashes.push(txHash);
         const { spent, produced } = yield* findSpentAndProducedUTxOs(
           txCbor,
@@ -198,10 +197,10 @@ export const processMpts = (
           key: outRef,
         }));
         const putOps: ETH_UTILS.BatchDBOp[] = produced.map(
-          (le: LedgerUtils.MinimalEntry) => ({
+          (le: Ledger.MinimalEntry) => ({
             type: "put",
-            key: le[LedgerUtils.Columns.OUTREF],
-            value: le[LedgerUtils.Columns.OUTPUT],
+            key: le[Ledger.Columns.OUTREF],
+            value: le[Ledger.Columns.OUTPUT],
           }),
         );
         yield* Effect.sync(() =>
@@ -450,8 +449,9 @@ export class MidgardMpt {
     const trieName = this.trieName;
     const root = this.trie.root();
     return Effect.gen(function* () {
-      if (root === undefined || root === null)
+      if (root === undefined || root === null) {
         return yield* Effect.fail(MptError.rootNotSet(trieName, root));
+      }
       // Normalize to pure Uint8Array for type consistency
       // trie.root() returns different constructor types depending on the source:
       //   - Fresh (computed): Uint8Array
