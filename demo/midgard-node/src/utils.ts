@@ -162,7 +162,6 @@ export const trivialTransactionFromCMLUnspentOutput = (
 ): Effect.Effect<CML.Transaction, never, never> =>
   Effect.gen(function* () {
     const inputs = CML.TransactionInputList.new();
-    inputs.add(transactionUnspentOutput.input());
     const outputs = CML.TransactionOutputList.new();
     outputs.add(transactionUnspentOutput.output());
     const fee = 0n;
