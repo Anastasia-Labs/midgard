@@ -101,7 +101,7 @@ export const deleteMpt = (
  * This function pulls the deposits from the `DepositsDB` and adds them to the
  * `ledgerTrie`. Returns the added utxos.
  */
-export const addDeposits = (
+export const applyDepositsToLedger = (
   ledgerTrie: MidgardMpt,
   startDate: Date,
   endDate: Date,

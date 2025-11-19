@@ -39,7 +39,7 @@ import {
   keyValueMptRoot,
   makeMpts,
   processMpts,
-  addDeposits,
+  applyDepositsToLedger,
   withTrieTransaction,
 } from "@/workers/utils/mpt.js";
 import {
@@ -103,7 +103,7 @@ const establishEndTimeFromTxRequests = (
     }
   });
 
-const applyDepositUTxOsToDatabases = (
+const addDepositUTxOsToDatabases = (
   insertedDepositUTxOs: CML.TransactionUnspentOutput[],
   inclusionTime: Date,
 ): Effect.Effect<void, DatabaseError | FileSystemError, Database> =>
@@ -194,7 +194,7 @@ const successfulSubmissionProgram = (
   txHash: string,
 ): Effect.Effect<WorkerOutput, DatabaseError | FileSystemError, Database> =>
   Effect.gen(function* () {
-    yield* applyDepositUTxOsToDatabases(insertedDepositUTxOs, inclusionTime);
+    yield* addDepositUTxOsToDatabases(insertedDepositUTxOs, inclusionTime);
     const newHeaderHashBuffer = Buffer.from(fromHex(newHeaderHash));
 
     const processedMempoolTxs = yield* ProcessedMempoolDB.retrieve;
@@ -468,7 +468,7 @@ const databaseOperationsProgram = (
         // in `MempoolDB`). We check if there are any user events slated for
         // inclusion within `startTime` and current moment.
         const endTime = new Date();
-        const insertedDepositUTxOs = yield* addDeposits(
+        const insertedDepositUTxOs = yield* applyDepositsToLedger(
           ledgerTrie,
           startTime,
           endTime,
@@ -523,7 +523,7 @@ const databaseOperationsProgram = (
             },
             onSuccess: (txHash) =>
               Effect.gen(function* () {
-                yield* applyDepositUTxOsToDatabases(
+                yield* addDepositUTxOsToDatabases(
                   insertedDepositUTxOs,
                   startTime,
                 );
@@ -543,7 +543,7 @@ const databaseOperationsProgram = (
         // bound of the block we are about to submit.
         const endTime = optEndTime.value;
 
-        const insertedDepositUTxOs = yield* addDeposits(
+        const insertedDepositUTxOs = yield* applyDepositsToLedger(
           ledgerTrie,
           startTime,
           endTime,
