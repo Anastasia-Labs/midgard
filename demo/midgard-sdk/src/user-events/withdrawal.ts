@@ -8,7 +8,10 @@ import {
   hashHexWithBlake2b256,
   makeReturn,
 } from "@/common.js";
-import { buildUserEventMintTransaction, UserEventMintRedeemer } from "@/index.js";
+import {
+  buildUserEventMintTransaction,
+  UserEventMintRedeemer,
+} from "@/index.js";
 import {
   WithdrawalBody,
   WithdrawalEventSchema,
@@ -135,7 +138,10 @@ export const unsignedWithdrawalTxProgram = (
   withdrawalParams: WithdrawalOrderParams,
 ): Effect.Effect<TxSignBuilder, HashingError | LucidError | WithdrawalError> =>
   Effect.gen(function* () {
-    const commitTx = yield* incompleteWithdrawalTxProgram(lucid, withdrawalParams);
+    const commitTx = yield* incompleteWithdrawalTxProgram(
+      lucid,
+      withdrawalParams,
+    );
     const completedTx: TxSignBuilder = yield* Effect.tryPromise({
       try: () => commitTx.complete({ localUPLCEval: false }),
       catch: (e) =>
