@@ -80,6 +80,7 @@ const RESET_ENDPOINT: string = "reset";
 const SUBMIT_ENDPOINT: string = "submit";
 const TX_ORDER_ENDPOINT: string = "tx-order";
 const DEPOSIT_ENDPOINT: string = "deposit";
+const WITHDRAWAL_ENDPOINT: string = "withdrawal";
 
 const txCounter = Metric.counter("tx_count", {
   description: "A counter for tracking submit transactions",
@@ -728,6 +729,112 @@ const postDepositHandler = Effect.gen(function* () {
   ),
 );
 
+const postWithdrawalHandler = Effect.gen(function* () {
+  yield* Effect.logInfo(`POST /${WITHDRAWAL_ENDPOINT} - request received`);
+  const lucid = yield* Lucid;
+  const { withdrawalAuthValidator } = yield* AlwaysSucceedsContract;
+
+  const request = yield* HttpServerRequest.HttpServerRequest;
+  const body = yield* request.json;
+  if (typeof body !== "object" || body === null) {
+    yield* Effect.logInfo(`Invalid request body: not an object`);
+    return yield* HttpServerResponse.json(
+      { error: "Invalid request body" },
+      { status: 400 },
+    );
+  }
+  const { withdrawal_body, withdrawal_signature, refund_address, refund_datum, inclusion_time } = body as any;
+
+  if (typeof withdrawal_body !== "object" || withdrawal_body === null) {
+    yield* Effect.logInfo(`Invalid withdrawal_body: ${withdrawal_body}`);
+    return yield* HttpServerResponse.json(
+      { error: "Invalid withdrawal_body: must be an object" },
+      { status: 400 },
+    );
+  }
+  if (typeof withdrawal_signature !== "object" || withdrawal_signature === null) {
+    yield* Effect.logInfo(`Invalid withdrawal_signature: must be an object`);
+    return yield* HttpServerResponse.json(
+      { error: "Invalid withdrawal_signature: must be an object (Map)" },
+      { status: 400 },
+    );
+  }
+  if (typeof refund_address !== "string") {
+    yield* Effect.logInfo(`Invalid refund_address: ${refund_address}`);
+    return yield* HttpServerResponse.json(
+      { error: "Invalid refund_address: must be a string" },
+      { status: 400 },
+    );
+  }
+  if (typeof refund_datum !== "string") {
+    yield* Effect.logInfo(`Invalid refund_datum: must be a string`);
+    return yield* HttpServerResponse.json(
+      { error: "Invalid refund_datum: must be a string" },
+      { status: 400 },
+    );
+  }
+
+  const refundAddressData = yield* SDK.parseAddressDataCredentials(refund_address);
+
+  let inclusionTimeValue: bigint;
+  if (typeof inclusion_time === "number" || typeof inclusion_time === "bigint") {
+    inclusionTimeValue = BigInt(inclusion_time);
+  } else {
+    const nodeConfig = yield* NodeConfig;
+    const network = nodeConfig.NETWORK;
+    const waitTime = SDK.getProtocolParameters(network).event_wait_duration;
+    inclusionTimeValue = BigInt(Date.now() + waitTime);
+  }
+
+  yield* lucid.switchToOperatorsMainWallet;
+
+  const withdrawalParams: SDK.WithdrawalOrderParams = {
+    withdrawalScriptAddress: withdrawalAuthValidator.spendScriptAddress,
+    mintingPolicy: withdrawalAuthValidator.mintScript,
+    policyId: withdrawalAuthValidator.policyId,
+    withdrawalBody: withdrawal_body,
+    withdrawalSignature: withdrawal_signature,
+    refundAddress: refundAddressData,
+    refundDatum: refund_datum,
+  };
+
+  const signedTx = yield* SDK.unsignedWithdrawalTxProgram(
+    lucid.api,
+    withdrawalParams,
+  );
+
+  yield* Effect.logInfo(`Submitting withdrawal order tx...`);
+  const txHash = yield* handleSignSubmit(lucid.api, signedTx);
+  yield* Effect.logInfo(
+    `Withdrawal order submitted successfully: ${txHash}`,
+  );
+  return yield* HttpServerResponse.json({
+    txHash: txHash,
+  });
+}).pipe(
+  Effect.catchTag("HttpBodyError", (e) =>
+    failWith500("POST", WITHDRAWAL_ENDPOINT, e),
+  ),
+  Effect.catchTag("LucidError", (e) =>
+    handleGenericFailure("POST", WITHDRAWAL_ENDPOINT, e),
+  ),
+  Effect.catchTag("HashingError", (e) =>
+    handleGenericFailure("POST", WITHDRAWAL_ENDPOINT, e),
+  ),
+  Effect.catchTag("ParsingError", (e) =>
+    handleGenericFailure("POST", TX_ORDER_ENDPOINT, e),
+  ),
+  Effect.catchTag("WithdrawalError", (e) =>
+    handleGenericFailure("POST", WITHDRAWAL_ENDPOINT, e),
+  ),
+  Effect.catchTag("TxSignError", (e) =>
+    handleTxFailure("POST", WITHDRAWAL_ENDPOINT, e),
+  ),
+  Effect.catchTag("TxSubmitError", (e) =>
+    handleTxFailure("POST", WITHDRAWAL_ENDPOINT, e),
+  ),
+);
+
 const router = (
   txQueue: Queue.Queue<string>,
 ): Effect.Effect<
@@ -756,6 +863,7 @@ const router = (
       HttpRouter.post(`/${SUBMIT_ENDPOINT}`, postSubmitHandler(txQueue)),
       HttpRouter.post(`/${TX_ORDER_ENDPOINT}`, postTxOrderHandler),
       HttpRouter.post(`/${DEPOSIT_ENDPOINT}`, postDepositHandler),
+      HttpRouter.post(`/${WITHDRAWAL_ENDPOINT}`, postWithdrawalHandler),
     )
     .pipe(
       Effect.catchAllCause((cause) =>
