@@ -14,6 +14,7 @@ import {
   TxUtils as Tx,
   LedgerUtils as Ledger,
   DepositsDB,
+  UserEventsUtils,
 } from "@/database/index.js";
 import { FileSystemError, findSpentAndProducedUTxOs } from "@/utils.js";
 import * as FS from "fs";
@@ -103,34 +104,19 @@ export const deleteMpt = (
  */
 export const applyDepositsToLedger = (
   ledgerTrie: MidgardMpt,
-  startDate: Date,
-  endDate: Date,
+  deposits: readonly UserEventsUtils.Entry[]
 ): Effect.Effect<
   CML.TransactionUnspentOutput[],
   MptError | SDK.CmlUnexpectedError | DatabaseError,
   NodeConfig | AlwaysSucceedsContract | Database
 > =>
   Effect.gen(function* () {
-    const tableName = DepositsDB.tableName;
-    const deposits = yield* retrieveTimeBoundEntries(
-      tableName,
-      startDate,
-      endDate,
-    );
-
     if (deposits.length <= 0) {
-      yield* Effect.logInfo(
-        `🔹 No deposits found in ${tableName} table between ${startDate.getTime()} and ${endDate.getTime()}.`,
-      );
-    } else {
-      yield* Effect.logInfo(
-        `🔹 ${deposits.length} event(s) found in ${tableName} table between ${startDate.getTime()} and ${endDate.getTime()}.`,
-      );
+      return []
     }
 
     const { depositAuthValidator } = yield* AlwaysSucceedsContract;
 
-    yield* Effect.logInfo("🔹 Going through deposits...");
     let insertedUTxOs: CML.TransactionUnspentOutput[] = [];
     const putOpsRaw: (ETH_UTILS.BatchDBOp | void)[] = yield* Effect.forEach(
       deposits,

@@ -25,6 +25,7 @@ import {
   MempoolLedgerDB,
   LedgerUtils as LedgerTable,
   AddressHistoryDB,
+  UserEventsUtils,
 } from "@/database/index.js";
 import {
   handleSignSubmitNoConfirmation,
@@ -113,7 +114,7 @@ const addDepositUTxOsToDatabases = (
     );
 
     yield* batchProgram(
-      Math.floor(BATCH_SIZE / 2),
+      Math.floor(BATCH_SIZE),
       insertedDepositUTxOs.length,
       "inserting-deposits-to-databases",
       (startIndex: number, endIndex: number) =>
@@ -146,12 +147,11 @@ const addDepositUTxOsToDatabases = (
                   [TxTable.Columns.TIMESTAMPTZ]: inclusionTime,
                 };
               }),
+              { concurrency: "unbounded"}
             );
 
-          const addressTableBatch: AddressHistoryDB.Entry[] =
-            yield* Effect.forEach(batchUTxOs, (utxo) =>
-              Effect.gen(function* () {
-                return {
+          const addressTableBatch: AddressHistoryDB.Entry[] = batchUTxOs.map((utxo) =>
+                ({
                   [LedgerTable.Columns.TX_ID]: Buffer.from(
                     utxo.input().transaction_id().to_raw_bytes(),
                   ),
@@ -159,8 +159,7 @@ const addDepositUTxOsToDatabases = (
                     .output()
                     .address()
                     .to_hex(),
-                };
-              }),
+                })
             );
 
           return Effect.all(
@@ -194,7 +193,6 @@ const successfulSubmissionProgram = (
   txHash: string,
 ): Effect.Effect<WorkerOutput, DatabaseError | FileSystemError, Database> =>
   Effect.gen(function* () {
-    yield* addDepositUTxOsToDatabases(insertedDepositUTxOs, inclusionTime);
     const newHeaderHashBuffer = Buffer.from(fromHex(newHeaderHash));
 
     const processedMempoolTxs = yield* ProcessedMempoolDB.retrieve;
@@ -226,6 +224,7 @@ const successfulSubmissionProgram = (
 
             return Effect.all(
               [
+                addDepositUTxOsToDatabases(insertedDepositUTxOs, inclusionTime),
                 ImmutableDB.insertTxs(batchTxs).pipe(
                   Effect.withSpan(`immutable-db-insert-${startIndex}`),
                 ),
@@ -305,14 +304,14 @@ const failedSubmissionProgram = (
 /**
  * Given the target user event table, this helper finds all the events falling
  * in the given time range and if any was found, returns an `Effect` that finds
- * the MPT root of those events.
+ * the MPT root of those events with the retrieved event entries.
  */
 const userEventsProgram = (
   tableName: string,
   startDate: Date,
   endDate: Date,
 ): Effect.Effect<
-  Option.Option<Effect.Effect<string, MptError>>,
+  Option.Option<{mptRoot: Effect.Effect<string, MptError>, retreivedEvents: readonly UserEventsUtils.Entry[]}>,
   DatabaseError,
   Database
 > =>
@@ -334,7 +333,7 @@ const userEventsProgram = (
       );
       const eventIDs = events.map((event) => event[UserEventsColumns.ID]);
       const eventInfos = events.map((event) => event[UserEventsColumns.INFO]);
-      return Option.some(keyValueMptRoot(eventIDs, eventInfos));
+      return Option.some({ mptRoot: keyValueMptRoot(eventIDs, eventInfos), retreivedEvents: events });
     }
   });
 
@@ -468,28 +467,28 @@ const databaseOperationsProgram = (
         // in `MempoolDB`). We check if there are any user events slated for
         // inclusion within `startTime` and current moment.
         const endTime = new Date();
-        const insertedDepositUTxOs = yield* applyDepositsToLedger(
-          ledgerTrie,
-          startTime,
-          endTime,
-        );
 
         yield* Effect.logInfo(
           "🔹 Checking for user events... (no tx requests in queue)",
         );
-        const optDepositsRootProgram = yield* userEventsProgram(
+        const optUserEventsProgram = yield* userEventsProgram(
           DepositsDB.tableName,
           startTime,
           endTime,
         );
-        if (Option.isNone(optDepositsRootProgram)) {
+        if (Option.isNone(optUserEventsProgram)) {
           yield* Effect.logInfo("🔹 Nothing to commit.");
           return {
             type: "NothingToCommitOutput",
           } as WorkerOutput;
         } else {
+          const insertedDepositUTxOs = yield* applyDepositsToLedger(
+            ledgerTrie,
+            optUserEventsProgram.value.retreivedEvents
+          );
+
           const depositsRootFiber: RuntimeFiber<string, MptError> =
-            yield* Effect.fork(optDepositsRootProgram.value);
+            yield* Effect.fork(optUserEventsProgram.value.mptRoot);
           const depositsRoot = yield* depositsRootFiber;
           yield* Effect.logInfo(`🔹 New deposits root found: ${depositsRoot}`);
 
@@ -543,23 +542,23 @@ const databaseOperationsProgram = (
         // bound of the block we are about to submit.
         const endTime = optEndTime.value;
 
-        const insertedDepositUTxOs = yield* applyDepositsToLedger(
-          ledgerTrie,
-          startTime,
-          endTime,
-        );
-
         yield* Effect.logInfo("🔹 Checking for user events...");
-        const optDepositsRootProgram = yield* userEventsProgram(
+        const optUserEventsProgram = yield* userEventsProgram(
           DepositsDB.tableName,
           startTime,
           endTime,
         );
 
         let depositsRoot: string = yield* emptyRootHexProgram;
-        if (Option.isSome(optDepositsRootProgram)) {
+        let insertedDepositUTxOs: CML.TransactionUnspentOutput[] = []
+        if (Option.isSome(optUserEventsProgram)) {
+          insertedDepositUTxOs = yield* applyDepositsToLedger(
+            ledgerTrie,
+            optUserEventsProgram.value.retreivedEvents
+          );
+
           const depositsRootFiber = yield* Effect.fork(
-            optDepositsRootProgram.value,
+            optUserEventsProgram.value.mptRoot,
           );
           depositsRoot = yield* depositsRootFiber;
         }
