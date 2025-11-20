@@ -1,17 +1,26 @@
 import { SqlClient } from "@effect/sql";
 import { BatchDBOp } from "@ethereumjs/util";
-import { Data, Effect } from "effect";
+import { Data as EffectData, Effect } from "effect";
 import * as ETH from "@ethereumjs/mpt";
 import * as ETH_UTILS from "@ethereumjs/util";
-import { UTxO, toHex, utxoToCore } from "@lucid-evolution/lucid";
+import { CML, UTxO, toHex, utxoToCore } from "@lucid-evolution/lucid";
 import { Level } from "level";
-import { Database, NodeConfig } from "@/services/index.js";
-import * as Tx from "@/database/utils/tx.js";
-import * as Ledger from "@/database/utils/ledger.js";
+import {
+  AlwaysSucceedsContract,
+  Database,
+  NodeConfig,
+} from "@/services/index.js";
+import {
+  TxUtils as Tx,
+  LedgerUtils as Ledger,
+  DepositsDB,
+  UserEventsUtils,
+} from "@/database/index.js";
 import { FileSystemError, findSpentAndProducedUTxOs } from "@/utils.js";
 import * as FS from "fs";
 import * as SDK from "@al-ft/midgard-sdk";
 import { DatabaseError } from "@/database/utils/common.js";
+import { retrieveTimeBoundEntries } from "@/database/utils/user-events.js";
 
 const LEVELDB_ENCODING_OPTS = {
   keyEncoding: ETH_UTILS.KeyEncoding.Bytes,
@@ -89,15 +98,63 @@ export const deleteMpt = (
       }),
   }).pipe(Effect.withLogSpan(`Delete ${name} MPT`));
 
-// Make mempool trie, and fill it with ledger trie with processed mempool txs
+/**
+ * This function pulls the deposits from the `DepositsDB` and adds them to the
+ * `ledgerTrie`. Returns the added utxos.
+ */
+export const applyDepositsToLedger = (
+  ledgerTrie: MidgardMpt,
+  deposits: readonly UserEventsUtils.Entry[]
+): Effect.Effect<
+  CML.TransactionUnspentOutput[],
+  MptError | SDK.CmlUnexpectedError | DatabaseError,
+  NodeConfig | AlwaysSucceedsContract | Database
+> =>
+  Effect.gen(function* () {
+    if (deposits.length <= 0) {
+      return []
+    }
+
+    yield* Effect.logInfo(`Applying ${deposits.length} deposit(s) to the ledgerTrie`)
+    const { depositAuthValidator } = yield* AlwaysSucceedsContract;
+
+    let insertedUTxOs: CML.TransactionUnspentOutput[] = [];
+    const putOpsRaw: (ETH_UTILS.BatchDBOp | void)[] = yield* Effect.forEach(
+      deposits,
+      (dbDeposit) =>
+        Effect.gen(function* () {
+          const utxo =
+            yield* DepositsDB.depositEventToCmlTransactionUnspentOutput(
+              dbDeposit,
+              depositAuthValidator.policyId,
+            );
+
+          insertedUTxOs.push(utxo);
+          const putOp: ETH_UTILS.BatchDBOp = {
+            type: "put",
+            key: Buffer.from(utxo.input().to_cbor_bytes()),
+            value: Buffer.from(utxo.output().to_cbor_bytes()),
+          };
+          return putOp;
+        }).pipe(Effect.catchAllCause(Effect.logInfo)),
+    );
+
+    const putOps = putOpsRaw.flatMap((f) => (f ? [f] : []));
+    yield* ledgerTrie.batch(putOps);
+
+    return insertedUTxOs;
+  });
+
+/**
+ * Adds provided mempool transactions to `mempoolTrie`, while also applying them
+ * to the provided ledger.
+ */
 export const processMpts = (
   ledgerTrie: MidgardMpt,
   mempoolTrie: MidgardMpt,
   mempoolTxs: readonly Tx.Entry[],
 ): Effect.Effect<
   {
-    utxoRoot: string;
-    txRoot: string;
     mempoolTxHashes: Buffer[];
     sizeOfProcessedTxs: number;
   },
@@ -109,7 +166,9 @@ export const processMpts = (
     const mempoolBatchOps: ETH_UTILS.BatchDBOp[] = [];
     const batchDBOps: ETH_UTILS.BatchDBOp[] = [];
     let sizeOfProcessedTxs = 0;
-    yield* Effect.logInfo("🔹 Going through mempool txs and finding roots...");
+    yield* Effect.logInfo(
+      "🔹 Going through mempool and processings transactions...",
+    );
     yield* Effect.forEach(mempoolTxs, (entry: Tx.Entry) =>
       Effect.gen(function* () {
         const txHash = entry[Tx.Columns.TX_ID];
@@ -148,15 +207,7 @@ export const processMpts = (
       { concurrency: "unbounded" },
     );
 
-    const txRoot = yield* mempoolTrie.getRootHex();
-    const utxoRoot = yield* ledgerTrie.getRootHex();
-
-    yield* Effect.logInfo(`🔹 New transaction root found: ${txRoot}`);
-    yield* Effect.logInfo(`🔹 New UTxO root found: ${utxoRoot}`);
-
     return {
-      utxoRoot,
-      txRoot,
       mempoolTxHashes: mempoolTxHashes,
       sizeOfProcessedTxs: sizeOfProcessedTxs,
     };
@@ -252,7 +303,7 @@ export class LevelDB {
   }
 }
 
-export class MptError extends Data.TaggedError(
+export class MptError extends EffectData.TaggedError(
   "MptError",
 )<SDK.GenericErrorFields> {
   static get(trie: string, cause: unknown) {
@@ -351,7 +402,7 @@ export class MidgardMpt {
         databaseAndPath = { database: db, databaseFilePath: levelDBFilePath };
         valueEncoding = LEVELDB_ENCODING_OPTS.valueEncoding;
       }
-      const trie = yield* Effect.tryPromise({
+      const trie: ETH.MerklePatriciaTrie = yield* Effect.tryPromise({
         try: () =>
           ETH.createMPT({
             db: databaseAndPath?.database,
@@ -385,8 +436,9 @@ export class MidgardMpt {
     const trieName = this.trieName;
     const root = this.trie.root();
     return Effect.gen(function* () {
-      if (root === undefined || root === null)
+      if (root === undefined || root === null) {
         return yield* Effect.fail(MptError.rootNotSet(trieName, root));
+      }
       // Normalize to pure Uint8Array for type consistency
       // trie.root() returns different constructor types depending on the source:
       //   - Fresh (computed): Uint8Array

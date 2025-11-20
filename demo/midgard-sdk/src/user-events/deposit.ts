@@ -22,14 +22,13 @@ import {
   getStateToken,
   hashHexWithBlake2b256,
   utxosAtByNFTPolicyId,
-} from "@/common.js";
-import { Data as EffectData, Effect } from "effect";
-import {
   OutputReference,
   OutputReferenceSchema,
   POSIXTime,
   POSIXTimeSchema,
+  MidgardAddressSchema,
 } from "@/common.js";
+import { Data as EffectData, Effect } from "effect";
 import { getProtocolParameters } from "@/protocol-parameters.js";
 
 export type DepositParams = {
@@ -41,7 +40,7 @@ export type DepositParams = {
 };
 
 export const DepositInfoSchema = Data.Object({
-  l2Address: Data.Bytes(),
+  l2Address: MidgardAddressSchema,
   l2Datum: Data.Nullable(Data.Bytes()),
 });
 export type DepositInfo = Data.Static<typeof DepositInfoSchema>;
@@ -252,7 +251,7 @@ export const incompleteDepositTxProgram = (
 
     // Convert non-hex strings to hex string, since the address type doesn't enforce that
     const depositInfo = {
-      l2Address: fromText(params.depositInfo.l2Address),
+      l2Address: params.depositInfo.l2Address,
       l2Datum: params.depositInfo.l2Datum,
     };
 
