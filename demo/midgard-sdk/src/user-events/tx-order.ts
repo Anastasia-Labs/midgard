@@ -33,6 +33,7 @@ import {
 import { MidgardTxCompact, TxOrderEventSchema } from "@/ledger-state.js";
 import { buildUserEventMintTransaction, UserEventMintRedeemer } from "./index.js";
 import { Data as EffectData, Effect } from "effect";
+import { getProtocolParameters } from "@/protocol-parameters.js";
 
 export type TxOrderParams = {
   txOrderScriptAddress: string;
@@ -40,7 +41,6 @@ export type TxOrderParams = {
   policyId: string;
   refundAddress: AddressData;
   refundDatum: string;
-  inclusionTime: POSIXTime;
   midgardTxBody: string;
   midgardTxWits: string;
   cardanoTx: CML.Transaction; // temporary until midgard tx conversion is done
@@ -209,6 +209,11 @@ export const incompleteTxOrderTxProgram = (
     );
     const txOrderNFT = toUnit(params.policyId, assetName);
 
+    const currTime = Date.now();
+    const network = lucid.config().network ?? "Mainnet";
+    const waitTime = getProtocolParameters(network).event_wait_duration;
+    const inclusionTime = currTime + waitTime;
+        
     const txOrderDatum: TxOrderDatum = {
       event: {
         txOrderId: {
@@ -220,7 +225,7 @@ export const incompleteTxOrderTxProgram = (
           is_valid: true,
         },
       },
-      inclusionTime: BigInt(params.inclusionTime), //Txn's time-validity upper bound event_wait_duration,
+      inclusionTime: BigInt(inclusionTime), //Txn's time-validity upper bound event_wait_duration,
       refundAddress: params.refundAddress,
       refundDatum: params.refundDatum,
     };
@@ -232,7 +237,7 @@ export const incompleteTxOrderTxProgram = (
           mintRedeemer: mintRedeemerCBOR,
           scriptAddress: params.txOrderScriptAddress,
           datum: txOrderDatumCBOR,
-          validTo: params.inclusionTime,
+          validTo: inclusionTime,
           mintingPolicy: params.mintingPolicy,
         });
         return tx;

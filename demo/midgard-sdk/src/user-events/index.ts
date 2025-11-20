@@ -35,7 +35,7 @@ export type UserEventMintTransactionParams ={
   scriptAddress: string;
   datum: string;
   extraAssets?: Assets;
-  validTo: number | bigint;
+  validTo: number;
   mintingPolicy: MintingPolicy;
 }
 
@@ -47,12 +47,10 @@ export const buildUserEventMintTransaction = (params: UserEventMintTransactionPa
     mintRedeemer,
     scriptAddress,
     datum,
+    extraAssets,
     validTo,
     mintingPolicy
   } = params;
-
-  const validToNumber = typeof validTo === 'bigint' ? Number(validTo) :
-                       validTo;
 
   return lucid
     .newTx()
@@ -69,9 +67,12 @@ export const buildUserEventMintTransaction = (params: UserEventMintTransactionPa
         kind: "inline", 
         value: datum 
      },
-     { [nft]: 1n },
+     { 
+        [nft]:1n,
+        ...(extraAssets || {})
+     },
     )
-    .validTo(validToNumber)
+    .validTo(validTo)
     .attach.MintingPolicy(mintingPolicy);
 }
 

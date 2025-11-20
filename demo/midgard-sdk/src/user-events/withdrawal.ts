@@ -22,13 +22,13 @@ import {
   TxBuilder,
   UTxO,
 } from "@lucid-evolution/lucid";
+import { getProtocolParameters } from "@/protocol-parameters.js";
 import { Effect } from "effect";
 
 export type WithdrawalOrderParams = {
   withdrawalScriptAddress: string;
   mintingPolicy: Script;
   policyId: string;
-  inclusionTime: POSIXTime;
   withdrawalBody: WithdrawalBody;
   withdrawalSignature: WithdrawalSignature;
   refundAddress: AddressData;
@@ -89,6 +89,12 @@ export const withdrawalOrderTxBuilder = (
       transactionInput.to_cbor_hex(),
     );
     const withdrawalNFT = toUnit(params.policyId, assetName);
+    
+    const currTime = Date.now();
+    const network = lucid.config().network ?? "Mainnet";
+    const waitTime = getProtocolParameters(network).event_wait_duration;
+    const inclusionTime = currTime + waitTime;
+
     const withdrawalOrderDatum: WithdrawalOrderDatum = {
       event: {
         id: {
@@ -101,7 +107,7 @@ export const withdrawalOrderTxBuilder = (
           validity: "WithdrawalIsValid",
         },
       },
-      inclusionTime: BigInt(params.inclusionTime),
+      inclusionTime: BigInt(inclusionTime),
       refundAddress: params.refundAddress,
       refundDatum: params.refundDatum,
     };
@@ -116,7 +122,7 @@ export const withdrawalOrderTxBuilder = (
       mintRedeemer: mintRedeemerCBOR,
       scriptAddress: params.withdrawalScriptAddress,
       datum: withdrawalOrderDatumCBOR,
-      validTo: params.inclusionTime,
+      validTo: inclusionTime,
       mintingPolicy: params.mintingPolicy,
     });
     return tx;
