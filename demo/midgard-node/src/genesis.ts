@@ -103,12 +103,11 @@ const submitGenesisTxOrders: Effect.Effect<
   const tx = txSignBuilder.toTransaction();
 
   const txOrderParams: SDK.TxOrderParams = {
-    txOrderAddress: txOrderAuthValidator.spendScriptAddress,
+    txOrderScriptAddress: txOrderAuthValidator.spendScriptAddress,
     mintingPolicy: txOrderAuthValidator.mintScript,
     policyId: txOrderAuthValidator.policyId,
     refundAddress: l2AddressData,
     refundDatum: "",
-    inclusionTime: BigInt(inclusionTime),
     midgardTxBody: "",
     midgardTxWits: "",
     cardanoTx: tx,

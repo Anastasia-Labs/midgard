@@ -596,12 +596,11 @@ const postTxOrderHandler = Effect.gen(function* () {
   const cardanoTx = CML.Transaction.from_cbor_hex(tx_cbor);
 
   const txOrderParams: SDK.TxOrderParams = {
-    txOrderAddress: txOrderAuthValidator.spendScriptAddress,
+    txOrderScriptAddress: txOrderAuthValidator.spendScriptAddress,
     mintingPolicy: txOrderAuthValidator.mintScript,
     policyId: txOrderAuthValidator.policyId,
     refundAddress: refundAddressData,
     refundDatum: refund_datum,
-    inclusionTime: inclusionTimeValue,
     midgardTxBody: "",
     midgardTxWits: "",
     cardanoTx: cardanoTx,
