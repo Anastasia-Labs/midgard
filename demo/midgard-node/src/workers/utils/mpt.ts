@@ -115,6 +115,7 @@ export const applyDepositsToLedger = (
       return []
     }
 
+    yield* Effect.logInfo(`Applying ${deposits.length} deposit(s) to the ledgerTrie`)
     const { depositAuthValidator } = yield* AlwaysSucceedsContract;
 
     let insertedUTxOs: CML.TransactionUnspentOutput[] = [];
