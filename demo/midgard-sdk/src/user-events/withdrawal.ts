@@ -122,7 +122,7 @@ export const withdrawalOrderTxBuilder = (
       mintRedeemer: mintRedeemerCBOR,
       scriptAddress: params.withdrawalScriptAddress,
       datum: withdrawalOrderDatumCBOR,
-      validTo: BigInt(inclusionTime),
+      validTo: inclusionTime,
       mintingPolicy: params.mintingPolicy,
     });
     return tx;

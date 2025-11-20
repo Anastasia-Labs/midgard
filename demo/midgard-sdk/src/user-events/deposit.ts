@@ -241,7 +241,7 @@ export const incompleteDepositTxProgram = (
           scriptAddress: params.depositScriptAddress,
           datum: depositDatumCBOR,
           extraAssets: assets,
-          validTo: BigInt(inclusionTime),
+          validTo: inclusionTime,
           mintingPolicy: params.mintingPolicy,
         });
         return tx;

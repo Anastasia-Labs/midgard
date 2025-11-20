@@ -35,7 +35,7 @@ export type UserEventMintTransactionParams ={
   scriptAddress: string;
   datum: string;
   extraAssets?: Assets;
-  validTo: bigint;
+  validTo: number;
   mintingPolicy: MintingPolicy;
 }
 
@@ -72,7 +72,7 @@ export const buildUserEventMintTransaction = (params: UserEventMintTransactionPa
         ...(extraAssets || {})
      },
     )
-    .validTo(Number(validTo))
+    .validTo(validTo)
     .attach.MintingPolicy(mintingPolicy);
 }
 

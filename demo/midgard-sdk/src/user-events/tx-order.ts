@@ -237,7 +237,7 @@ export const incompleteTxOrderTxProgram = (
           mintRedeemer: mintRedeemerCBOR,
           scriptAddress: params.txOrderScriptAddress,
           datum: txOrderDatumCBOR,
-          validTo: BigInt(inclusionTime),
+          validTo: inclusionTime,
           mintingPolicy: params.mintingPolicy,
         });
         return tx;
