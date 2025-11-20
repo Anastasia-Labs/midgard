@@ -1,11 +1,12 @@
 import {
   AddressData,
   AddressSchema,
+  GenericErrorFields,
   HashingError,
   LucidError,
-  POSIXTime,
   POSIXTimeSchema,
   hashHexWithBlake2b256,
+  makeReturn,
 } from "@/common.js";
 import { buildUserEventMintTransaction, UserEventMintRedeemer } from "@/index.js";
 import {
@@ -20,10 +21,11 @@ import {
   Script,
   toUnit,
   TxBuilder,
+  TxSignBuilder,
   UTxO,
 } from "@lucid-evolution/lucid";
 import { getProtocolParameters } from "@/protocol-parameters.js";
-import { Effect } from "effect";
+import { Data as EffectData, Effect } from "effect";
 
 export type WithdrawalOrderParams = {
   withdrawalScriptAddress: string;
@@ -54,7 +56,7 @@ export const WithdrawalOrderDatum =
  * @param params - The parameters
  * @returns {TxBuilder} A TxBuilder instance that can be used to build the transaction.
  */
-export const withdrawalOrderTxBuilder = (
+export const incompleteWithdrawalTxProgram = (
   lucid: LucidEvolution,
   params: WithdrawalOrderParams,
 ): Effect.Effect<TxBuilder, HashingError | LucidError> =>
@@ -89,7 +91,7 @@ export const withdrawalOrderTxBuilder = (
       transactionInput.to_cbor_hex(),
     );
     const withdrawalNFT = toUnit(params.policyId, assetName);
-    
+
     const currTime = Date.now();
     const network = lucid.config().network ?? "Mainnet";
     const waitTime = getProtocolParameters(network).event_wait_duration;
@@ -127,3 +129,38 @@ export const withdrawalOrderTxBuilder = (
     });
     return tx;
   });
+
+export const unsignedWithdrawalTxProgram = (
+  lucid: LucidEvolution,
+  withdrawalParams: WithdrawalOrderParams,
+): Effect.Effect<TxSignBuilder, HashingError | LucidError | WithdrawalError> =>
+  Effect.gen(function* () {
+    const commitTx = yield* incompleteWithdrawalTxProgram(lucid, withdrawalParams);
+    const completedTx: TxSignBuilder = yield* Effect.tryPromise({
+      try: () => commitTx.complete({ localUPLCEval: false }),
+      catch: (e) =>
+        new WithdrawalError({
+          message: `Failed to build the transaction: ${e}`,
+          cause: e,
+        }),
+    });
+    return completedTx;
+  });
+
+/**
+ * Builds completed tx for submitting withdrawal order using the provided
+ * `LucidEvolution` instance and a withdrawal order config.
+ *
+ * @param lucid - The `LucidEvolution` API object.
+ * @param withdrawalParams - Parameters required for committing withdrawal orders.
+ * @returns A promise that resolves to a `TxSignBuilder` instance.
+ */
+export const unsignedWithdrawalTx = (
+  lucid: LucidEvolution,
+  withdrawalParams: WithdrawalOrderParams,
+): Promise<TxSignBuilder> =>
+  makeReturn(unsignedWithdrawalTxProgram(lucid, withdrawalParams)).unsafeRun();
+
+export class WithdrawalError extends EffectData.TaggedError(
+  "WithdrawalError",
+)<GenericErrorFields> {}
