@@ -629,6 +629,9 @@ const postTxOrderHandler = Effect.gen(function* () {
   Effect.catchTag("HashingError", (e) =>
     handleGenericFailure("POST", TX_ORDER_ENDPOINT, e),
   ),
+  Effect.catchTag("ParsingError", (e) =>
+    handleGenericFailure("POST", TX_ORDER_ENDPOINT, e),
+  ),
   Effect.catchTag("TxOrderError", (e) =>
     handleGenericFailure("POST", TX_ORDER_ENDPOINT, e),
   ),
