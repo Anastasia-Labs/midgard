@@ -1,7 +1,7 @@
 #!/bin/bash
 
-# Midgard Local Monitoring Start Script
-# This script starts the Midgard node along with Prometheus and Grafana for local monitoring
+# Midgard Local Run Start Script
+# This script starts the Midgard node along with Prometheus and Grafana
 # All services run with the same metrics and dashboards as the Docker setup
 
 set -e
@@ -382,7 +382,7 @@ cleanup() {
 
 # Main execution
 main() {
-    print_info "Starting Midgard Local Monitoring..."
+    print_info "Starting Midgard Local Run..."
     echo ""
     
     # Set up trap for graceful shutdown
@@ -433,7 +433,7 @@ main() {
     # Show status
     show_status
     
-    print_success "Midgard Local Monitoring is running!"
+    print_success "Midgard Local Run is running!"
     print_info "Press Ctrl+C to stop all services"
     
     # Keep script running

@@ -1,6 +1,6 @@
-# Manual Run Guide - Midgard Local Monitoring
+# Manual Run Guide - Midgard Local Run
 
-This guide explains how to manually start and stop all monitoring services without using the automated scripts.
+This guide explains how to manually start and stop all services without using the automated scripts.
 
 ## Prerequisites
 
@@ -16,7 +16,7 @@ Ensure all dependencies are installed. See **INSTALL.md** or run:
 ### 1. Create Data Directories
 
 ```bash
-cd /path/to/midgard/demo/midgard-node/local-monitoring
+cd /path/to/midgard/demo/midgard-node/local-run
 mkdir -p data
 ```
 
@@ -100,14 +100,14 @@ grafana-server \
 ### 7. Start Midgard Node
 
 ```bash
-# Navigate to Midgard directory (from local-monitoring)
+# Navigate to Midgard directory (from local-run)
 cd ..
 
 # Start Midgard
-pnpm run listen > local-monitoring/data/midgard.log 2>&1 &
+pnpm run listen > local-run/data/midgard.log 2>&1 &
 
-# Return to monitoring directory
-cd local-monitoring
+# Return to local-run directory
+cd local-run
 ```
 
 ---

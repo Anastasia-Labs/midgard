@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# Midgard Local Monitoring Stop Script
+# Midgard Local Run Stop Script
 # This script stops all services started by start.sh
 
 set -e
@@ -87,7 +87,7 @@ stop_services() {
         local found_any=false
         
         # Kill prometheus (try multiple patterns)
-        local prom_pids=$(pgrep -f "prometheus.*local-monitoring" || true)
+        local prom_pids=$(pgrep -f "prometheus.*local-run" || true)
         if [ -n "$prom_pids" ]; then
             print_info "Found Prometheus process(es): $prom_pids"
             echo "$prom_pids" | xargs kill 2>/dev/null || true
@@ -183,7 +183,7 @@ stop_services() {
         return
     fi
     
-    print_info "Stopping Midgard Local Monitoring services..."
+    print_info "Stopping Midgard services..."
     echo ""
     
     # Read PID file and stop each service
@@ -211,14 +211,14 @@ cleanup_provisioning() {
 
 # Main execution
 main() {
-    print_info "Stopping Midgard Local Monitoring..."
+    print_info "Stopping Midgard Local Run..."
     echo ""
     
     stop_services
     cleanup_provisioning
     
     echo ""
-    print_success "Midgard Local Monitoring stopped successfully"
+    print_success "Midgard Local Run stopped successfully"
     echo ""
 }
 

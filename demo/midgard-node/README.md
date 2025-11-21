@@ -64,7 +64,7 @@ sudo systemctl status docker
 
 - Utils for monitoring in local runs without a docker (grafana, prometheus, loki etc):
 
-1. Run [installing script](local-monitoring/install.sh) or see [the guide](local-monitoring/INSTALL.md) for details.
+1. Run [installing script](local-run/install.sh) or see [the guide](local-run/INSTALL.md) for details.
 
 ## Prepare environment variables
 
@@ -158,7 +158,7 @@ docker-compose up -d
 
 ### Local run with monitoring
 
-- Run [starting script](local-monitoring/start.sh) or see [the guide](local-monitoring/MANUAL-RUN.md) for details.
+- Run [starting script](local-run/start.sh) or see [the guide](local-run/MANUAL-RUN.md) for details.
 
 ### Local run without monitoring
 

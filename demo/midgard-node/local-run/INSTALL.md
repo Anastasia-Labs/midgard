@@ -1,6 +1,6 @@
-# Installation Guide - Midgard Local Monitoring (Linux)
+# Installation Guide - Midgard Local Run (Linux)
 
-This guide covers installing all required dependencies for running Midgard with local monitoring on Linux.
+This guide covers installing all required dependencies for running Midgard locally on Linux.
 
 ## Quick Install (Automated)
 
