@@ -1,0 +1,16 @@
+# Data directories
+data/
+
+# Grafana provisioning (generated at runtime)
+grafana-provisioning/
+
+# Logs
+*.log
+
+# Backup files
+*.backup
+*.backup-*
+
+# Runtime files
+.monitoring.pids
+
