@@ -31,7 +31,10 @@ import {
   hashHexWithBlake2b256,
 } from "@/common.js";
 import { MidgardTxCompact, TxOrderEventSchema } from "@/ledger-state.js";
-import { buildUserEventMintTransaction, UserEventMintRedeemer } from "./index.js";
+import {
+  buildUserEventMintTransaction,
+  UserEventMintRedeemer,
+} from "./index.js";
 import { Data as EffectData, Effect } from "effect";
 import { getProtocolParameters } from "@/protocol-parameters.js";
 
@@ -213,7 +216,7 @@ export const incompleteTxOrderTxProgram = (
     const network = lucid.config().network ?? "Mainnet";
     const waitTime = getProtocolParameters(network).event_wait_duration;
     const inclusionTime = currTime + waitTime;
-        
+
     const txOrderDatum: TxOrderDatum = {
       event: {
         txOrderId: {
@@ -231,16 +234,16 @@ export const incompleteTxOrderTxProgram = (
     };
     const txOrderDatumCBOR = Data.to(txOrderDatum, TxOrderDatum);
     const tx = buildUserEventMintTransaction({
-          lucid,
-          inputUtxo,
-          nft: txOrderNFT,
-          mintRedeemer: mintRedeemerCBOR,
-          scriptAddress: params.txOrderScriptAddress,
-          datum: txOrderDatumCBOR,
-          validTo: inclusionTime,
-          mintingPolicy: params.mintingPolicy,
-        });
-        return tx;
+      lucid,
+      inputUtxo,
+      nft: txOrderNFT,
+      mintRedeemer: mintRedeemerCBOR,
+      scriptAddress: params.txOrderScriptAddress,
+      datum: txOrderDatumCBOR,
+      validTo: inclusionTime,
+      mintingPolicy: params.mintingPolicy,
+    });
+    return tx;
   });
 
 export const unsignedTxOrderTxProgram = (

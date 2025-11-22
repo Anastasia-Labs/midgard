@@ -95,7 +95,7 @@ const makeAlwaysSucceedsService: Effect.Effect<
       stateQueueAuthValidator,
       depositAuthValidator,
       txOrderAuthValidator,
-      withdrawalAuthValidator
+      withdrawalAuthValidator,
     };
   }).pipe(Effect.orDie);
 });

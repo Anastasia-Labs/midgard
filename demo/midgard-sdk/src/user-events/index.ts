@@ -1,10 +1,10 @@
-import { 
-    Assets, 
-    Data, 
-    LucidEvolution, 
-    MintingPolicy, 
-    TxBuilder, 
-    UTxO 
+import {
+  Assets,
+  Data,
+  LucidEvolution,
+  MintingPolicy,
+  TxBuilder,
+  UTxO,
 } from "@lucid-evolution/lucid";
 import { Int } from "effect/Schema";
 
@@ -24,10 +24,13 @@ export const UserEventMintRedeemerSchema = Data.Enum([
     }),
   }),
 ]);
-export type UserEventMintRedeemer = Data.Static<typeof UserEventMintRedeemerSchema>;
-export const UserEventMintRedeemer = UserEventMintRedeemerSchema as unknown as UserEventMintRedeemer;
+export type UserEventMintRedeemer = Data.Static<
+  typeof UserEventMintRedeemerSchema
+>;
+export const UserEventMintRedeemer =
+  UserEventMintRedeemerSchema as unknown as UserEventMintRedeemer;
 
-export type UserEventMintTransactionParams ={
+export type UserEventMintTransactionParams = {
   lucid: LucidEvolution;
   inputUtxo: UTxO;
   nft: string;
@@ -37,9 +40,11 @@ export type UserEventMintTransactionParams ={
   extraAssets?: Assets;
   validTo: number;
   mintingPolicy: MintingPolicy;
-}
+};
 
-export const buildUserEventMintTransaction = (params: UserEventMintTransactionParams): TxBuilder => {
+export const buildUserEventMintTransaction = (
+  params: UserEventMintTransactionParams,
+): TxBuilder => {
   const {
     lucid,
     inputUtxo,
@@ -49,32 +54,32 @@ export const buildUserEventMintTransaction = (params: UserEventMintTransactionPa
     datum,
     extraAssets,
     validTo,
-    mintingPolicy
+    mintingPolicy,
   } = params;
 
   return lucid
     .newTx()
     .collectFrom([inputUtxo])
     .mintAssets(
-        {
-            [nft]: 1n 
-        },
-        mintRedeemer
+      {
+        [nft]: 1n,
+      },
+      mintRedeemer,
     )
     .pay.ToAddressWithData(
       scriptAddress,
-      { 
-        kind: "inline", 
-        value: datum 
-     },
-     { 
-        [nft]:1n,
-        ...(extraAssets || {})
-     },
+      {
+        kind: "inline",
+        value: datum,
+      },
+      {
+        [nft]: 1n,
+        ...(extraAssets || {}),
+      },
     )
     .validTo(validTo)
     .attach.MintingPolicy(mintingPolicy);
-}
+};
 
 export * from "./deposit.js";
 export * from "./tx-order.js";
