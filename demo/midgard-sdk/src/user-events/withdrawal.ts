@@ -4,9 +4,16 @@ import {
   GenericErrorFields,
   HashingError,
   LucidError,
+  POSIXTime,
   POSIXTimeSchema,
   hashHexWithBlake2b256,
   makeReturn,
+  DataCoercionError,
+  getStateToken,
+  isEventUTxOInclusionTimeInBounds,
+  OutputReference,
+  UnauthenticUtxoError,
+  utxosAtByNFTPolicyId,
 } from "@/common.js";
 import {
   buildUserEventMintTransaction,
@@ -15,9 +22,13 @@ import {
 import {
   WithdrawalBody,
   WithdrawalEventSchema,
+  WithdrawalInfo,
   WithdrawalSignature,
 } from "@/ledger-state.js";
 import {
+  Address,
+  PolicyId,
+  fromHex,
   CML,
   Data,
   LucidEvolution,
@@ -51,6 +62,117 @@ export type WithdrawalOrderDatum = Data.Static<
 >;
 export const WithdrawalOrderDatum =
   WithdrawalOrderDatumSchema as unknown as WithdrawalOrderDatum;
+
+export type WithdrawalUTxO = {
+  utxo: UTxO;
+  datum: WithdrawalOrderDatum;
+  assetName: string;
+  idCbor: Buffer;
+  infoCbor: Buffer;
+  inclusionTime: Date;
+};
+
+export type WithdrawalFetchConfig = {
+  withdrawalAddress: Address;
+  withdrawalPolicyId: PolicyId;
+  inclusionTimeUpperBound?: POSIXTime;
+  inclusionTimeLowerBound?: POSIXTime;
+};
+
+export const getWithdrawalDatumFromUTxO = (
+  nodeUTxO: UTxO,
+): Effect.Effect<WithdrawalOrderDatum, DataCoercionError> => {
+  const datumCBOR = nodeUTxO.datum;
+  if (datumCBOR) {
+    try {
+      const withdrawalDatum = Data.from(datumCBOR, WithdrawalOrderDatum);
+      return Effect.succeed(withdrawalDatum);
+    } catch (e) {
+      return Effect.fail(
+        new DataCoercionError({
+          message: `Could not coerce UTxO's datum to a withdrawal datum`,
+          cause: e,
+        }),
+      );
+    }
+  } else {
+    return Effect.fail(
+      new DataCoercionError({
+        message: `Withdrawal datum coercion failed`,
+        cause: `No datum found`,
+      }),
+    );
+  }
+};
+
+/**
+ * Validates correctness of datum, and having a single NFT.
+ */
+export const utxoToWithdrawalUTxO = (
+  utxo: UTxO,
+  nftPolicy: string,
+): Effect.Effect<WithdrawalUTxO, DataCoercionError | UnauthenticUtxoError> =>
+  Effect.gen(function* () {
+    const datum = yield* getWithdrawalDatumFromUTxO(utxo);
+    const [sym, assetName] = yield* getStateToken(utxo.assets);
+    if (sym !== nftPolicy) {
+      yield* Effect.fail(
+        new UnauthenticUtxoError({
+          message: "Failed to convert UTxO to `WithdrawalUTxO`",
+          cause: "UTxO's NFT policy ID is not the same as the withdrawal's",
+        }),
+      );
+    }
+    return {
+      utxo,
+      datum,
+      assetName,
+      idCbor: Buffer.from(fromHex(Data.to(datum.event.id, OutputReference))),
+      infoCbor: Buffer.from(fromHex(Data.to(datum.event.info, WithdrawalInfo))),
+      inclusionTime: new Date(Number(datum.inclusionTime)),
+    };
+  });
+
+/**
+ * Silently drops invalid UTxOs.
+ */
+export const utxosToWithdrawalUTxOs = (
+  utxos: UTxO[],
+  nftPolicy: string,
+): Effect.Effect<WithdrawalUTxO[]> => {
+  const effects = utxos.map((u) => utxoToWithdrawalUTxO(u, nftPolicy));
+  return Effect.allSuccesses(effects);
+};
+
+export const fetchWithdrawalUTxOsProgram = (
+  lucid: LucidEvolution,
+  config: WithdrawalFetchConfig,
+): Effect.Effect<WithdrawalUTxO[], LucidError> =>
+  Effect.gen(function* () {
+    const allUTxOs = yield* utxosAtByNFTPolicyId(
+      lucid,
+      config.withdrawalAddress,
+      config.withdrawalPolicyId,
+    );
+    const withdrawalUTxOs = yield* utxosToWithdrawalUTxOs(
+      allUTxOs,
+      config.withdrawalPolicyId,
+    );
+
+    const validWithdrawalUTxOs = withdrawalUTxOs.filter((utxo) =>
+      isEventUTxOInclusionTimeInBounds(
+        utxo,
+        config.inclusionTimeLowerBound,
+        config.inclusionTimeUpperBound,
+      ),
+    );
+    return validWithdrawalUTxOs;
+  });
+
+export const fetchWithdrawalUTxOs = (
+  lucid: LucidEvolution,
+  config: WithdrawalFetchConfig,
+) => makeReturn(fetchWithdrawalUTxOsProgram(lucid, config));
 
 /**
  * WithdrawalOrder
