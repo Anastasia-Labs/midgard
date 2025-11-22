@@ -18,6 +18,8 @@ type NodeConfigDep = {
   WAIT_BETWEEN_BLOCK_COMMITMENT: number;
   WAIT_BETWEEN_BLOCK_CONFIRMATION: number;
   WAIT_BETWEEN_DEPOSIT_UTXO_FETCHES: number;
+  WAIT_BETWEEN_TX_ORDER_UTXO_FETCHES: number;
+  WAIT_BETWEEN_WITHDRAWAL_UTXO_FETCHES: number;
   WAIT_BETWEEN_MERGE_TXS: number;
   PROM_METRICS_PORT: number;
   OLTP_EXPORTER_URL: string;
@@ -61,6 +63,12 @@ const makeConfig = Effect.gen(function* () {
   ).pipe(Config.withDefault(10000));
   const waitBetweenDepositUTxOFetches = yield* Config.integer(
     "WAIT_BETWEEN_DEPOSIT_UTXO_FETCHES",
+  ).pipe(Config.withDefault(10000));
+  const waitBetweenTxOrderUTxOFetches = yield* Config.integer(
+    "WAIT_BETWEEN_TX_ORDER_UTXO_FETCHES",
+  ).pipe(Config.withDefault(10000));
+  const waitBetweenWithdrawalUTxOFetches = yield* Config.integer(
+    "WAIT_BETWEEN_WITHDRAWAL_UTXO_FETCHES",
   ).pipe(Config.withDefault(10000));
   const promMetricsPort = yield* Config.integer("PROM_METRICS_PORT").pipe(
     Config.withDefault(9464),
@@ -168,6 +176,8 @@ const makeConfig = Effect.gen(function* () {
     WAIT_BETWEEN_BLOCK_CONFIRMATION: waitBetweenBlockConfirmation,
     WAIT_BETWEEN_MERGE_TXS: waitBetweenMergeTxs,
     WAIT_BETWEEN_DEPOSIT_UTXO_FETCHES: waitBetweenDepositUTxOFetches,
+    WAIT_BETWEEN_TX_ORDER_UTXO_FETCHES: waitBetweenTxOrderUTxOFetches,
+    WAIT_BETWEEN_WITHDRAWAL_UTXO_FETCHES: waitBetweenWithdrawalUTxOFetches,
     PROM_METRICS_PORT: promMetricsPort,
     OLTP_EXPORTER_URL: oltpExporterUrl,
     POSTGRES_HOST: postgresHost,

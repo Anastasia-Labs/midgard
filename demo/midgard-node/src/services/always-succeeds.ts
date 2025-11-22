@@ -64,6 +64,8 @@ const makeAlwaysSucceedsService: Effect.Effect<
   {
     stateQueueAuthValidator: AuthenticatedValidator;
     depositAuthValidator: AuthenticatedValidator;
+    txOrderAuthValidator: AuthenticatedValidator;
+    withdrawalAuthValidator: AuthenticatedValidator;
   },
   never,
   NodeConfig
@@ -79,9 +81,21 @@ const makeAlwaysSucceedsService: Effect.Effect<
       "always_succeeds.deposit_mint.else",
     );
 
+    const txOrderAuthValidator = yield* makeAuthenticatedValidator(
+      "always_succeeds.tx_order_spend.else",
+      "always_succeeds.tx_order_mint.else",
+    );
+
+    const withdrawalAuthValidator = yield* makeAuthenticatedValidator(
+      "always_succeeds.withdrawal_spend.else",
+      "always_succeeds.withdrawal_mint.else",
+    );
+
     return {
       stateQueueAuthValidator,
       depositAuthValidator,
+      txOrderAuthValidator,
+      withdrawalAuthValidator,
     };
   }).pipe(Effect.orDie);
 });

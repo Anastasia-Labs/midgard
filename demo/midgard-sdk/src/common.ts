@@ -1,4 +1,4 @@
-import { Data } from "@lucid-evolution/lucid";
+import { Data, getAddressDetails } from "@lucid-evolution/lucid";
 import { Data as EffectData } from "effect";
 import { Effect } from "effect";
 import {
@@ -132,6 +132,24 @@ export const utxosAtByNFTPolicyId = (
     ),
   );
 
+// TODO: Might be good to define an `EventUTxO` type.
+export const isEventUTxOInclusionTimeInBounds = (
+  eventUTxO: { datum: { inclusionTime: bigint } },
+  inclusionTimeLowerBound?: POSIXTime,
+  inclusionTimeUpperBound?: POSIXTime,
+): boolean => {
+  const eventDatum = eventUTxO.datum;
+
+  const biggerThanLower =
+    inclusionTimeLowerBound === undefined ||
+    inclusionTimeLowerBound < eventDatum.inclusionTime;
+  const smallerThanUpper =
+    inclusionTimeUpperBound === undefined ||
+    eventDatum.inclusionTime <= inclusionTimeUpperBound;
+
+  return biggerThanLower && smallerThanUpper;
+};
+
 const blake2bHelper = (
   msg: string,
   dkLen: number,
@@ -174,6 +192,10 @@ export const bufferToHex = (buf: Buffer): string => {
     return "<no hex for undefined>";
   }
 };
+
+export const H32Schema = Data.Bytes({ minLength: 32, maxLength: 32 });
+export type H32 = Data.Static<typeof H32Schema>;
+export const H32 = H32Schema as unknown as H32;
 
 export const OutputReferenceSchema = Data.Object({
   txHash: Data.Object({ hash: Data.Bytes({ minLength: 32, maxLength: 32 }) }),
@@ -243,6 +265,44 @@ export const AddressSchema = Data.Object({
 export type AddressData = Data.Static<typeof AddressSchema>;
 export const AddressData = AddressSchema as unknown as AddressData;
 
+export const parseAddressDataCredentials = (
+  address: string,
+): Effect.Effect<AddressData, ParsingError> =>
+  Effect.gen(function* () {
+    const { paymentCredential, stakeCredential } = getAddressDetails(address);
+    if (!paymentCredential)
+      return yield* Effect.fail(
+        new ParsingError({
+          message: "Failed to parse address data",
+          cause: "Payment key credential is undefined",
+        }),
+      );
+    return {
+      paymentCredential:
+        paymentCredential.type === "Key"
+          ? {
+              PublicKeyCredential: [paymentCredential.hash],
+            }
+          : {
+              ScriptCredential: [paymentCredential.hash],
+            },
+      stakeCredential:
+        stakeCredential && stakeCredential.hash
+          ? {
+              Inline: [
+                stakeCredential.type === "Key"
+                  ? {
+                      PublicKeyCredential: [stakeCredential.hash],
+                    }
+                  : {
+                      ScriptCredential: [stakeCredential.hash],
+                    },
+              ],
+            }
+          : null,
+    };
+  });
+
 export type GenericErrorFields = {
   readonly message: string;
   readonly cause: any;
@@ -266,6 +326,10 @@ export class CborDeserializationError extends EffectData.TaggedError(
 
 export class DataCoercionError extends EffectData.TaggedError(
   "DataCoercionError",
+)<GenericErrorFields> {}
+
+export class ParsingError extends EffectData.TaggedError(
+  "ParsingError",
 )<GenericErrorFields> {}
 
 export class UnauthenticUtxoError extends EffectData.TaggedError(
