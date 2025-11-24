@@ -313,8 +313,8 @@ const databaseOperationsProgram = (
     const optEndTime: Option.Option<Date> =
       yield* establishEndTimeFromTxRequests(mempoolTxs);
 
-    const { mempoolTxHashes, sizeOfTxRequestTxs } =
-      yield* processTxRequestEvent(ledgerTrie, mempoolTrie, mempoolTxs);
+    const { mempoolTxHashes, sizeOfTxRequestTxs, txRequestLedgerUTxOUpdate } =
+      yield* processTxRequestEvent(mempoolTrie, mempoolTxs);
 
     const { stateQueueAuthValidator } = yield* AlwaysSucceedsContract;
 
@@ -386,6 +386,7 @@ const databaseOperationsProgram = (
 
           yield* withdrawalLedgerUTxOUpdate(ledgerTrie);
           yield* txOrderLedgerUTxOUpdate(ledgerTrie);
+          yield* txRequestLedgerUTxOUpdate(ledgerTrie);
           yield* depositLedgerUTxOUpdate(ledgerTrie);
 
           const { newHeaderHash, signAndSubmitProgram, txSize } =
@@ -444,17 +445,22 @@ const databaseOperationsProgram = (
           startTime,
           endTime,
         );
-        const {withdrawalsRoot, withdrawalLedgerUTxOUpdate} = yield* processWithdrawalEvent(
-          optWithdrawalsRootProgram,
-        );
-        const {depositsRoot, depositLedgerUTxOUpdate} = yield* processDepositEvent(optDepositsRootProgram);
+        const { withdrawalsRoot, withdrawalLedgerUTxOUpdate } =
+          yield* processWithdrawalEvent(optWithdrawalsRootProgram);
+        const { depositsRoot, depositLedgerUTxOUpdate } =
+          yield* processDepositEvent(optDepositsRootProgram);
 
-        const { spentTxOrderUTxOs, producedTxOrderUTxOs, sizeOfTxOrderTxs, txOrderLedgerUTxOUpdate } =
-          yield* processTxOrderEvent(startTime, endTime);
+        const {
+          spentTxOrderUTxOs,
+          producedTxOrderUTxOs,
+          sizeOfTxOrderTxs,
+          txOrderLedgerUTxOUpdate,
+        } = yield* processTxOrderEvent(startTime, endTime);
         const sizeOfProcessedTxs = sizeOfTxRequestTxs + sizeOfTxOrderTxs;
 
         yield* withdrawalLedgerUTxOUpdate(ledgerTrie);
         yield* txOrderLedgerUTxOUpdate(ledgerTrie);
+        yield* txRequestLedgerUTxOUpdate(ledgerTrie);
         yield* depositLedgerUTxOUpdate(ledgerTrie);
 
         const { newHeaderHash, signAndSubmitProgram, txSize } =

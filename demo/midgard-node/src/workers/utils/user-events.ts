@@ -79,13 +79,14 @@ export const processTxOrderEvent = (
   });
 
 export const processTxRequestEvent = (
-  ledgerTrie: MidgardMpt,
+  // ledgerTrie: MidgardMpt,
   mempoolTrie: MidgardMpt,
   mempoolTxs: readonly Tx.Entry[],
 ): Effect.Effect<
   {
     mempoolTxHashes: Buffer[];
     sizeOfTxRequestTxs: number;
+    txRequestLedgerUTxOUpdate: LedgerUTxOUpdate;
   },
   MptError | SDK.CmlUnexpectedError,
   Database
@@ -130,21 +131,18 @@ export const processTxRequestEvent = (
         yield* Effect.sync(() => batchDBOps.push(...putOps));
       }),
     );
-
-    yield* Effect.all(
-      [mempoolTrie.batch(mempoolBatchOps), ledgerTrie.batch(batchDBOps)],
-      { concurrency: "unbounded" },
-    );
+    const txRequestLedgerUTxOUpdate = (ledgerTrie: MidgardMpt) =>
+      ledgerTrie.batch(batchDBOps);
+    yield* mempoolTrie.batch(mempoolBatchOps);
 
     const txRoot = yield* mempoolTrie.getRootHex();
-    const utxoRoot = yield* ledgerTrie.getRootHex();
     yield* Effect.logInfo(`🔹 ${mempoolTxs.length} new tx requests processed`);
     yield* Effect.logInfo(`🔹 New transaction root found: ${txRoot}`);
-    yield* Effect.logInfo(`🔹 New UTxO root found: ${utxoRoot}`);
 
     return {
       mempoolTxHashes,
       sizeOfTxRequestTxs: sizeOfProcessedTxs,
+      txRequestLedgerUTxOUpdate,
     };
   });
 
