@@ -4,6 +4,7 @@ import {
   Data,
   LucidEvolution,
   TxBuilder,
+  TxBuilderConfig,
   TxSignBuilder,
   UTxO,
   toUnit,
@@ -60,6 +61,12 @@ const collectAndBurnUTxOsTx = (
     tx.mintAssets(assetsToBurn, Data.void())
       .attach.Script(authValidator.spendScript)
       .attach.Script(authValidator.mintScript);
+
+    console.dir(tx.rawConfig().mintedAssets, {depth: null});
+    const emptyTx = lucid.newTx();
+    tx.compose(emptyTx)
+    console.dir(tx.rawConfig().mintedAssets, {depth: null});
+
     return tx;
   });
 
@@ -70,6 +77,8 @@ type UTxOsQueue = {
     assetName: string;
   }[];
 };
+
+const jsonBigInt = (obj: any) => JSON.stringify(obj, (_, v) => typeof v === 'bigint' ? v.toString() : v)
 
 const constructBatchTx = (
   lucid: LucidEvolution,
@@ -90,13 +99,18 @@ const constructBatchTx = (
     if (validatorUTxOs.assetUTxOs.length <= 0) {
       const skippedEmptyAssets = yield* constructBatchTx(
         lucid,
-        utxosQueue,
+        [...utxosQueue],
         batchSize,
       );
       return skippedEmptyAssets;
     }
 
     const partialBatch = validatorUTxOs.assetUTxOs.slice(0, batchSize);
+    const partialBatchTx = yield* collectAndBurnUTxOsTx(
+      lucid,
+      validatorUTxOs.authValidator,
+      partialBatch,
+    );
 
     const leftFromPartialBatch = validatorUTxOs.assetUTxOs.slice(batchSize);
     if (leftFromPartialBatch.length > 0) {
@@ -107,25 +121,18 @@ const constructBatchTx = (
       });
     }
 
-    const partialBatchTx = yield* collectAndBurnUTxOsTx(
-      lucid,
-      validatorUTxOs.authValidator,
-      partialBatch,
-    );
     const optRestBatchTx = yield* constructBatchTx(
       lucid,
-      utxosQueue,
+      [...utxosQueue],
       batchSize - partialBatch.length,
     );
 
     return Option.match(optRestBatchTx, {
-      onNone: () =>
-        Option.some({ batchTx: partialBatchTx, restQueue: utxosQueue }),
-      onSome: ({ batchTx, restQueue }) =>
-        Option.some({
+      onNone: () => Option.some({ batchTx: partialBatchTx, restQueue: [...utxosQueue] }),
+      onSome: ({ batchTx, restQueue }) => Option.some({
           batchTx: partialBatchTx.compose(batchTx),
           restQueue,
-        }),
+        })
     });
   });
 
@@ -217,7 +224,7 @@ export const resetUTxOs: Effect.Effect<
   }
 
   // The bottom UTxOs are handled first
-  const utxosQueue: UTxOsQueue[] = [
+  let utxosQueue: UTxOsQueue[] = [
     {
       authValidator: depositAuthValidator,
       assetUTxOs: allDepositUTxOs,
@@ -228,7 +235,12 @@ export const resetUTxOs: Effect.Effect<
     },
   ];
 
-  const batchSize = 40;
+  utxosQueue[0].assetUTxOs = utxosQueue[0].assetUTxOs.slice(0,5)
+  utxosQueue[1].assetUTxOs = utxosQueue[1].assetUTxOs.slice(0,5)
+
+  yield* Effect.logInfo(`utxosQueue lengths: ${utxosQueue.map(q => q.assetUTxOs.length)}`)
+
+  const batchSize = 5; // TODO: change back to 40
   const batchTransactions = yield* constructBatchTxs(
     lucid.api,
     utxosQueue,
