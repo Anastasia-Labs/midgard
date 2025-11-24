@@ -22,6 +22,8 @@ import {
   ProcessedMempoolDB,
   DepositsDB,
   TxUtils as TxTable,
+  LedgerUtils,
+  AddressHistoryDB,
 } from "@/database/index.js";
 import {
   handleSignSubmitNoConfirmation,
@@ -32,19 +34,18 @@ import { fromHex } from "@lucid-evolution/lucid";
 import {
   MidgardMpt,
   MptError,
-  emptyRootHexProgram,
-  keyValueMptRoot,
   makeMpts,
-  processMpts,
   withTrieTransaction,
 } from "@/workers/utils/mpt.js";
 import { FileSystemError, batchProgram } from "@/utils.js";
 import { Columns as TxColumns } from "@/database/utils/tx.js";
-import {
-  Columns as UserEventsColumns,
-  retrieveTimeBoundEntries,
-} from "@/database/utils/user-events.js";
 import { DatabaseError } from "@/database/utils/common.js";
+import {
+  processDepositEvent,
+  processTxOrderEvent,
+  processTxRequestEvent,
+  userEventsProgram,
+} from "./utils/user-events.js";
 
 const BATCH_SIZE = 100;
 
@@ -99,6 +100,8 @@ const successfulSubmissionProgram = (
   mempoolTrie: MidgardMpt,
   mempoolTxs: readonly TxTable.EntryWithTimeStamp[],
   mempoolTxHashes: Buffer[],
+  spentTxOrderUTxOs: Buffer[],
+  producedTxOrderUTxOs: LedgerUtils.Entry[],
   newHeaderHash: string,
   workerInput: WorkerInput,
   txSize: number,
@@ -111,7 +114,9 @@ const successfulSubmissionProgram = (
     const processedMempoolTxs = yield* ProcessedMempoolDB.retrieve;
 
     yield* Effect.logInfo(
-      "🔹 Inserting included transactions into ImmutableDB and BlocksDB, clearing all the processed txs from MempoolDB and ProcessedMempoolDB, and deleting mempool LevelDB...",
+      `🔹 Inserting included transactions into ImmutableDB and BlocksDB, \
+      clearing all the processed txs from MempoolDB and ProcessedMempoolDB, \
+      deleting mempool LevelDB, adding new tx orders to AddressHistoryDB`,
     );
     yield* Effect.all(
       [
@@ -153,6 +158,7 @@ const successfulSubmissionProgram = (
         ),
         ProcessedMempoolDB.clear, // uses `TRUNCATE` so no need for batching.
         mempoolTrie.delete(),
+        AddressHistoryDB.insert(spentTxOrderUTxOs, producedTxOrderUTxOs),
       ],
       { concurrency: "unbounded" },
     );
@@ -211,42 +217,6 @@ const failedSubmissionProgram = (
       mempoolTxsCount,
       sizeOfProcessedTxs,
     };
-  });
-
-/**
- * Given the target user event table, this helper finds all the events falling
- * in the given time range and if any was found, returns an `Effect` that finds
- * the MPT root of those events.
- */
-const userEventsProgram = (
-  tableName: string,
-  startDate: Date,
-  endDate: Date,
-): Effect.Effect<
-  Option.Option<Effect.Effect<string, MptError>>,
-  DatabaseError,
-  Database
-> =>
-  Effect.gen(function* () {
-    const events = yield* retrieveTimeBoundEntries(
-      tableName,
-      startDate,
-      endDate,
-    );
-
-    if (events.length <= 0) {
-      yield* Effect.logInfo(
-        `🔹 No events found in ${tableName} table between ${startDate.getTime()} and ${endDate.getTime()}.`,
-      );
-      return Option.none();
-    } else {
-      yield* Effect.logInfo(
-        `🔹 ${events.length} event(s) found in ${tableName} table between ${startDate.getTime()} and ${endDate.getTime()}.`,
-      );
-      const eventIDs = events.map((event) => event[UserEventsColumns.ID]);
-      const eventInfos = events.map((event) => event[UserEventsColumns.INFO]);
-      return Option.some(keyValueMptRoot(eventIDs, eventInfos));
-    }
   });
 
 const buildUnsignedTx = (
@@ -320,9 +290,10 @@ const databaseOperationsProgram = (
   ledgerTrie: MidgardMpt,
   mempoolTrie: MidgardMpt,
 ): Effect.Effect<
-  WorkerOutput,
+  WorkerOutput | undefined,
   | SDK.CborDeserializationError
   | SDK.CmlUnexpectedError
+  | SDK.CmlDeserializationError
   | SDK.DataCoercionError
   | SDK.HashingError
   | SDK.LucidError
@@ -339,8 +310,8 @@ const databaseOperationsProgram = (
     const optEndTime: Option.Option<Date> =
       yield* establishEndTimeFromTxRequests(mempoolTxs);
 
-    const { utxoRoot, txRoot, mempoolTxHashes, sizeOfProcessedTxs } =
-      yield* processMpts(ledgerTrie, mempoolTrie, mempoolTxs);
+    const { mempoolTxHashes, sizeOfTxRequestTxs } =
+      yield* processTxRequestEvent(ledgerTrie, mempoolTrie, mempoolTxs);
 
     const { stateQueueAuthValidator } = yield* AlwaysSucceedsContract;
 
@@ -359,7 +330,7 @@ const databaseOperationsProgram = (
       return {
         type: "SkippedSubmissionOutput",
         mempoolTxsCount,
-        sizeOfProcessedTxs,
+        sizeOfProcessedTxs: sizeOfTxRequestTxs,
       };
     } else {
       yield* Effect.logInfo(
@@ -384,26 +355,26 @@ const databaseOperationsProgram = (
           startTime,
           endDate,
         );
-        if (Option.isNone(optDepositsRootProgram)) {
+        const { sizeOfTxOrderTxs, spentTxOrderUTxOs, producedTxOrderUTxOs } =
+          yield* processTxOrderEvent(startTime, endDate, ledgerTrie);
+        if (Option.isNone(optDepositsRootProgram) && sizeOfTxOrderTxs === 0) {
           yield* Effect.logInfo("🔹 Nothing to commit.");
           return {
             type: "NothingToCommitOutput",
           } as WorkerOutput;
         } else {
-          const depositsRootFiber = yield* Effect.fork(
-            optDepositsRootProgram.value,
+          const depositsRoot = yield* processDepositEvent(
+            optDepositsRootProgram,
           );
-          const depositsRoot = yield* depositsRootFiber;
-          yield* Effect.logInfo(`🔹 Deposits root is: ${depositsRoot}`);
-          const emptyRoot = yield* emptyRootHexProgram;
-          const { signAndSubmitProgram, txSize } = yield* buildUnsignedTx(
-            stateQueueAuthValidator,
-            latestBlock,
-            emptyRoot, // TODO: fix
-            emptyRoot,
-            depositsRoot,
-            endDate,
-          );
+          const { newHeaderHash, signAndSubmitProgram, txSize } =
+            yield* buildUnsignedTx(
+              stateQueueAuthValidator,
+              latestBlock,
+              yield* ledgerTrie.getRootHex(),
+              yield* mempoolTrie.getRootHex(),
+              depositsRoot,
+              endDate,
+            );
 
           return yield* Effect.matchEffect(signAndSubmitProgram, {
             onFailure: (_) => {
@@ -419,13 +390,18 @@ const databaseOperationsProgram = (
               return Effect.succeed(failureOutput);
             },
             onSuccess: (txHash) =>
-              Effect.succeed({
-                type: "SuccessfulSubmissionOutput",
-                submittedTxHash: txHash,
+              successfulSubmissionProgram(
+                mempoolTrie,
+                mempoolTxs,
+                mempoolTxHashes,
+                spentTxOrderUTxOs,
+                producedTxOrderUTxOs,
+                newHeaderHash,
+                workerInput,
                 txSize,
-                mempoolTxsCount: 0,
-                sizeOfBlocksTxs: workerInput.data.sizeOfProcessedTxsSoFar,
-              } as WorkerOutput),
+                sizeOfTxOrderTxs,
+                txHash,
+              ),
           });
         }
       } else {
@@ -441,21 +417,18 @@ const databaseOperationsProgram = (
           endTime,
         );
 
-        let depositsRoot: string = yield* emptyRootHexProgram;
-        if (Option.isSome(optDepositsRootProgram)) {
-          const depositsRootFiber = yield* Effect.fork(
-            optDepositsRootProgram.value,
-          );
-          depositsRoot = yield* depositsRootFiber;
-        }
-        yield* Effect.logInfo(`🔹 Deposits root is: ${depositsRoot}`);
+        const depositsRoot = yield* processDepositEvent(optDepositsRootProgram);
+
+        const { spentTxOrderUTxOs, producedTxOrderUTxOs, sizeOfTxOrderTxs } =
+          yield* processTxOrderEvent(startTime, endTime, ledgerTrie);
+        const sizeOfProcessedTxs = sizeOfTxRequestTxs + sizeOfTxOrderTxs;
 
         const { newHeaderHash, signAndSubmitProgram, txSize } =
           yield* buildUnsignedTx(
             stateQueueAuthValidator,
             latestBlock,
-            utxoRoot,
-            txRoot,
+            yield* ledgerTrie.getRootHex(),
+            yield* mempoolTrie.getRootHex(),
             depositsRoot,
             endTime,
           );
@@ -492,6 +465,8 @@ const databaseOperationsProgram = (
               mempoolTrie,
               mempoolTxs,
               mempoolTxHashes,
+              spentTxOrderUTxOs,
+              producedTxOrderUTxOs,
               newHeaderHash,
               workerInput,
               txSize,
@@ -509,6 +484,7 @@ const wrapper = (
   WorkerOutput | undefined,
   | SDK.CborDeserializationError
   | SDK.CmlUnexpectedError
+  | SDK.CmlDeserializationError
   | SDK.DataCoercionError
   | SDK.HashingError
   | SDK.LucidError

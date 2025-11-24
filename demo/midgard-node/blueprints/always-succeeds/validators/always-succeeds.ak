@@ -25,3 +25,31 @@ validator deposit_mint {
     True
   }
 }
+
+validator tx_order_spend {
+  else(_) {
+    trace @"Midgard Demo – Transaction Order Spend"
+    True
+  }
+}
+
+validator tx_order_mint {
+  else(_) {
+    trace @"Midgard Demo – Transaction Order Mint"
+    True
+  }
+}
+
+validator withdrawal_spend {
+  else(_) {
+    trace @"Midgard Demo – Withdrawal Spend"
+    True
+  }
+}
+
+validator withdrawal_mint {
+  else(_) {
+    trace @"Midgard Demo – Withdrawal Mint"
+    True
+  }
+}
