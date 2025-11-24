@@ -55,7 +55,6 @@ import { TxConfirmError, TxSignError } from "@/transactions/utils.js";
 import {
   fetchAndInsertDepositUTxOsFiber,
   fetchAndInsertTxOrderUTxOsFiber,
-  fetchAndInsertWithdrawalUTxOsFiber,
   blockConfirmationFiber,
   blockCommitmentFiber,
   blockCommitmentAction,
@@ -631,11 +630,6 @@ export const runNode = Effect.gen(function* () {
       fetchAndInsertTxOrderUTxOsFiber(
         Schedule.spaced(
           Duration.millis(nodeConfig.WAIT_BETWEEN_TX_ORDER_UTXO_FETCHES),
-        ),
-      ),
-      fetchAndInsertWithdrawalUTxOsFiber(
-        Schedule.spaced(
-          Duration.millis(nodeConfig.WAIT_BETWEEN_WITHDRAWAL_UTXO_FETCHES),
         ),
       ),
       mergeFiber(
