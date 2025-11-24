@@ -24,6 +24,7 @@ import {
   TxUtils as TxTable,
   LedgerUtils,
   AddressHistoryDB,
+  WithdrawalsDB,
 } from "@/database/index.js";
 import {
   handleSignSubmitNoConfirmation,
@@ -44,6 +45,7 @@ import {
   processDepositEvent,
   processTxOrderEvent,
   processTxRequestEvent,
+  processWithdrawalEvent,
   userEventsProgram,
 } from "./utils/user-events.js";
 
@@ -224,6 +226,7 @@ const buildUnsignedTx = (
   latestBlock: SDK.StateQueueUTxO,
   utxosRoot: string,
   txsRoot: string,
+  withdrawalsRoot: string,
   depositsRoot: string,
   endDate: Date,
 ) =>
@@ -238,7 +241,7 @@ const buildUnsignedTx = (
         utxosRoot,
         txsRoot,
         depositsRoot,
-        "00".repeat(32),
+        withdrawalsRoot,
         BigInt(endDate.getTime()),
       );
 
@@ -350,6 +353,11 @@ const databaseOperationsProgram = (
         yield* Effect.logInfo(
           "🔹 Checking for user events... (no tx requests in queue)",
         );
+        const optWithdrawalsRootProgram = yield* userEventsProgram(
+          WithdrawalsDB.tableName,
+          startTime,
+          endDate,
+        );
         const optDepositsRootProgram = yield* userEventsProgram(
           DepositsDB.tableName,
           startTime,
@@ -357,12 +365,19 @@ const databaseOperationsProgram = (
         );
         const { sizeOfTxOrderTxs, spentTxOrderUTxOs, producedTxOrderUTxOs } =
           yield* processTxOrderEvent(startTime, endDate, ledgerTrie);
-        if (Option.isNone(optDepositsRootProgram) && sizeOfTxOrderTxs === 0) {
+        if (
+          Option.isNone(optDepositsRootProgram) &&
+          Option.isNone(optDepositsRootProgram) &&
+          sizeOfTxOrderTxs === 0
+        ) {
           yield* Effect.logInfo("🔹 Nothing to commit.");
           return {
             type: "NothingToCommitOutput",
           } as WorkerOutput;
         } else {
+          const withdrawalsRoot = yield* processWithdrawalEvent(
+            optWithdrawalsRootProgram,
+          );
           const depositsRoot = yield* processDepositEvent(
             optDepositsRootProgram,
           );
@@ -372,6 +387,7 @@ const databaseOperationsProgram = (
               latestBlock,
               yield* ledgerTrie.getRootHex(),
               yield* mempoolTrie.getRootHex(),
+              withdrawalsRoot,
               depositsRoot,
               endDate,
             );
@@ -411,12 +427,19 @@ const databaseOperationsProgram = (
         const endTime = optEndTime.value;
 
         yield* Effect.logInfo("🔹 Checking for user events...");
+        const optWithdrawalsRootProgram = yield* userEventsProgram(
+          WithdrawalsDB.tableName,
+          startTime,
+          endTime,
+        );
         const optDepositsRootProgram = yield* userEventsProgram(
           DepositsDB.tableName,
           startTime,
           endTime,
         );
-
+        const withdrawalsRoot = yield* processWithdrawalEvent(
+          optWithdrawalsRootProgram,
+        );
         const depositsRoot = yield* processDepositEvent(optDepositsRootProgram);
 
         const { spentTxOrderUTxOs, producedTxOrderUTxOs, sizeOfTxOrderTxs } =
@@ -429,6 +452,7 @@ const databaseOperationsProgram = (
             latestBlock,
             yield* ledgerTrie.getRootHex(),
             yield* mempoolTrie.getRootHex(),
+            withdrawalsRoot,
             depositsRoot,
             endTime,
           );

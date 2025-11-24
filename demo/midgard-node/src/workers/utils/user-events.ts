@@ -146,6 +146,28 @@ export const processTxRequestEvent = (
     };
   });
 
+export const processWithdrawalEvent = (
+  optWithdrawalRootProgram: Option.Option<
+    Effect.Effect<string, MptError, never>
+  >,
+): Effect.Effect<string, MptError, Database> =>
+  Effect.gen(function* () {
+    const withdrawalsRoot: string = yield* Option.match(
+      optWithdrawalRootProgram,
+      {
+        onNone: () => emptyRootHexProgram,
+        onSome: (p) =>
+          Effect.gen(function* ($) {
+            const withdrawalsRootFiber = yield* $(Effect.fork(p));
+            const withdrawalRoot = yield* $(withdrawalsRootFiber);
+            return withdrawalRoot;
+          }),
+      },
+    );
+    yield* Effect.logInfo(`🔹 Withdrawal root is: ${withdrawalsRoot}`);
+    return withdrawalsRoot;
+  });
+
 export const processDepositEvent = (
   optDepositsRootProgram: Option.Option<Effect.Effect<string, MptError, never>>,
 ): Effect.Effect<string, MptError, Database> =>
