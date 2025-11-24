@@ -114,15 +114,15 @@ cd local-run
 
 ## Accessing Services
 
-| Service | URL | Purpose |
-|---------|-----|---------|
-| **Midgard API** | http://localhost:3000 | Submit transactions |
-| **Grafana** | http://localhost:3001 | View dashboards & logs |
-| **Prometheus** | http://localhost:9090 | Query metrics |
-| **Midgard Metrics** | http://localhost:9464/metrics | L2 metrics (OpenTelemetry) |
-| **Process Metrics** | http://localhost:3000/process-metrics | CPU/Memory metrics |
-| **Node Exporter** | http://localhost:9100/metrics | System metrics |
-| **Loki** | http://localhost:3100 | Logs API |
+| Service             | URL                                   | Purpose                              |
+|---------------------|---------------------------------------|--------------------------------------|
+| **Midgard API**     | http://localhost:3000                 | Tx submission, address history, etc. |
+| **Grafana**         | http://localhost:3001                 | View dashboards & logs               |
+| **Prometheus**      | http://localhost:9090                 | Query metrics                        |
+| **Midgard Metrics** | http://localhost:9464/metrics         | L2 metrics (OpenTelemetry)           |
+| **Process Metrics** | http://localhost:3000/process-metrics | CPU/Memory metrics                   |
+| **Node Exporter**   | http://localhost:9100/metrics         | System metrics                       |
+| **Loki**            | http://localhost:3100                 | Logs API                             |
 
 ### Grafana Dashboard
 
