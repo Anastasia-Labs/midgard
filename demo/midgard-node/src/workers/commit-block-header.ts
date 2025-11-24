@@ -363,8 +363,12 @@ const databaseOperationsProgram = (
           startTime,
           endDate,
         );
-        const { sizeOfTxOrderTxs, spentTxOrderUTxOs, producedTxOrderUTxOs } =
-          yield* processTxOrderEvent(startTime, endDate, ledgerTrie);
+        const {
+          sizeOfTxOrderTxs,
+          spentTxOrderUTxOs,
+          producedTxOrderUTxOs,
+          txOrderLedgerUTxOUpdate,
+        } = yield* processTxOrderEvent(startTime, endDate);
         if (
           Option.isNone(optDepositsRootProgram) &&
           Option.isNone(optDepositsRootProgram) &&
@@ -375,12 +379,15 @@ const databaseOperationsProgram = (
             type: "NothingToCommitOutput",
           } as WorkerOutput;
         } else {
-          const withdrawalsRoot = yield* processWithdrawalEvent(
-            optWithdrawalsRootProgram,
-          );
-          const depositsRoot = yield* processDepositEvent(
-            optDepositsRootProgram,
-          );
+          const { withdrawalsRoot, withdrawalLedgerUTxOUpdate } =
+            yield* processWithdrawalEvent(optWithdrawalsRootProgram);
+          const { depositsRoot, depositLedgerUTxOUpdate } =
+            yield* processDepositEvent(optDepositsRootProgram);
+
+          yield* withdrawalLedgerUTxOUpdate(ledgerTrie);
+          yield* txOrderLedgerUTxOUpdate(ledgerTrie);
+          yield* depositLedgerUTxOUpdate(ledgerTrie);
+
           const { newHeaderHash, signAndSubmitProgram, txSize } =
             yield* buildUnsignedTx(
               stateQueueAuthValidator,
@@ -437,14 +444,18 @@ const databaseOperationsProgram = (
           startTime,
           endTime,
         );
-        const withdrawalsRoot = yield* processWithdrawalEvent(
+        const {withdrawalsRoot, withdrawalLedgerUTxOUpdate} = yield* processWithdrawalEvent(
           optWithdrawalsRootProgram,
         );
-        const depositsRoot = yield* processDepositEvent(optDepositsRootProgram);
+        const {depositsRoot, depositLedgerUTxOUpdate} = yield* processDepositEvent(optDepositsRootProgram);
 
-        const { spentTxOrderUTxOs, producedTxOrderUTxOs, sizeOfTxOrderTxs } =
-          yield* processTxOrderEvent(startTime, endTime, ledgerTrie);
+        const { spentTxOrderUTxOs, producedTxOrderUTxOs, sizeOfTxOrderTxs, txOrderLedgerUTxOUpdate } =
+          yield* processTxOrderEvent(startTime, endTime);
         const sizeOfProcessedTxs = sizeOfTxRequestTxs + sizeOfTxOrderTxs;
+
+        yield* withdrawalLedgerUTxOUpdate(ledgerTrie);
+        yield* txOrderLedgerUTxOUpdate(ledgerTrie);
+        yield* depositLedgerUTxOUpdate(ledgerTrie);
 
         const { newHeaderHash, signAndSubmitProgram, txSize } =
           yield* buildUnsignedTx(

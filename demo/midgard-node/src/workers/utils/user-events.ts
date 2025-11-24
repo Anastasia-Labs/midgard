@@ -18,12 +18,12 @@ import * as UserEvents from "@/database/utils/user-events.js";
 export const processTxOrderEvent = (
   startTime: Date,
   endTime: Date,
-  ledgerTrie: MidgardMpt,
 ): Effect.Effect<
   {
     spentTxOrderUTxOs: Buffer[];
     producedTxOrderUTxOs: LedgerUtils.Entry[];
     sizeOfTxOrderTxs: number;
+    txOrderLedgerUTxOUpdate: LedgerUTxOUpdate;
   },
   DatabaseError | SDK.CmlDeserializationError | MptError,
   Database
@@ -40,7 +40,6 @@ export const processTxOrderEvent = (
     const producedUTxOs: LedgerUtils.Entry[] = [];
     yield* Effect.forEach(txOrders, (entry: UserEvents.Entry) =>
       Effect.gen(function* () {
-        const txHash = entry[UserEvents.Columns.ID];
         const txCbor = entry[UserEvents.Columns.INFO];
         const { spent, produced } = yield* breakDownTx(txCbor).pipe(
           Effect.withSpan("findSpentAndProducedUTxOs"),
@@ -63,16 +62,19 @@ export const processTxOrderEvent = (
         yield* Effect.sync(() => producedUTxOs.push(...produced));
       }),
     );
-    yield* ledgerTrie.batch(utxoBatchDBOps);
-    const utxoRoot = yield* ledgerTrie.getRootHex();
-    yield* Effect.logInfo(
-      `🔹 ${txOrders.length} new tx orders processed - new ledger root is ${utxoRoot}`,
-    );
-    yield* Effect.logInfo(`🔹 New UTxO root found: ${utxoRoot}`);
+    const txOrderLedgerUTxOUpdate = (ledgerTrie: MidgardMpt) =>
+      ledgerTrie.batch(utxoBatchDBOps);
+    // yield* ledgerTrie.batch(utxoBatchDBOps);
+    // const utxoRoot = yield* ledgerTrie.getRootHex();
+    // yield* Effect.logInfo(
+    //   `🔹 ${txOrders.length} new tx orders processed - new ledger root is ${utxoRoot}`,
+    // );
+    // yield* Effect.logInfo(`🔹 New UTxO root found: ${utxoRoot}`);
     return {
       spentTxOrderUTxOs: spentUTxOs,
       producedTxOrderUTxOs: producedUTxOs,
       sizeOfTxOrderTxs,
+      txOrderLedgerUTxOUpdate,
     };
   });
 
@@ -147,10 +149,15 @@ export const processTxRequestEvent = (
   });
 
 export const processWithdrawalEvent = (
-  optWithdrawalRootProgram: Option.Option<
-    Effect.Effect<string, MptError, never>
-  >,
-): Effect.Effect<string, MptError, Database> =>
+  optWithdrawalRootProgram: Option.Option<UserEventMptsUpdate>,
+): Effect.Effect<
+  {
+    withdrawalsRoot: string;
+    withdrawalLedgerUTxOUpdate: LedgerUTxOUpdate;
+  },
+  MptError,
+  Database
+> =>
   Effect.gen(function* () {
     const withdrawalsRoot: string = yield* Option.match(
       optWithdrawalRootProgram,
@@ -158,47 +165,75 @@ export const processWithdrawalEvent = (
         onNone: () => emptyRootHexProgram,
         onSome: (p) =>
           Effect.gen(function* ($) {
-            const withdrawalsRootFiber = yield* $(Effect.fork(p));
+            const withdrawalsRootFiber = yield* $(
+              Effect.fork(p.getTxRootProgram),
+            );
             const withdrawalRoot = yield* $(withdrawalsRootFiber);
             return withdrawalRoot;
           }),
       },
     );
+    const withdrawalLedgerUTxOUpdate = (ledgerTrie: MidgardMpt) =>
+      yield* Option.match(optWithdrawalRootProgram, {
+        onNone: () => Effect.succeed(ledgerTrie),
+        onSome: (p) =>
+          Effect.gen(function* ($) {
+            const utxoUpdateFiber = yield* $(
+              Effect.fork(p.updateLedgerUTxOsProgram(ledgerTrie)),
+            );
+            return $(utxoUpdateFiber);
+          }),
+      });
     yield* Effect.logInfo(`🔹 Withdrawal root is: ${withdrawalsRoot}`);
-    return withdrawalsRoot;
+    return { withdrawalsRoot, withdrawalLedgerUTxOUpdate };
   });
 
 export const processDepositEvent = (
-  optDepositsRootProgram: Option.Option<Effect.Effect<string, MptError, never>>,
-): Effect.Effect<string, MptError, Database> =>
+  optDepositsRootProgram: Option.Option<UserEventMptsUpdate>,
+): Effect.Effect<
+  {
+    depositsRoot: string;
+    depositLedgerUTxOUpdate: LedgerUTxOUpdate;
+  },
+  MptError,
+  Database
+> =>
   Effect.gen(function* () {
     const depositsRoot: string = yield* Option.match(optDepositsRootProgram, {
       onNone: () => emptyRootHexProgram,
       onSome: (p) =>
         Effect.gen(function* ($) {
-          const depositsRootFiber = yield* $(Effect.fork(p));
+          const depositsRootFiber = yield* $(Effect.fork(p.getTxRootProgram));
           const depositRoot = yield* $(depositsRootFiber);
           return depositRoot;
         }),
     });
+    const depositLedgerUTxOUpdate = (ledgerTrie: MidgardMpt) =>
+      yield* Option.match(optDepositsRootProgram, {
+        onNone: () => Effect.succeed(ledgerTrie),
+        onSome: (p) =>
+          Effect.gen(function* ($) {
+            const utxoUpdateFiber = yield* $(
+              Effect.fork(p.updateLedgerUTxOsProgram(ledgerTrie)),
+            );
+            return $(utxoUpdateFiber);
+          }),
+      });
     yield* Effect.logInfo(`🔹 Deposits root is: ${depositsRoot}`);
-    return depositsRoot;
+    return { depositsRoot, depositLedgerUTxOUpdate };
   });
 
 /**
  * Given the target user event table, this helper finds all the events falling
- * in the given time range and if any was found, returns an `Effect` that finds
- * the MPT root of those events.
+ * in the given time range and if any was found, returns an two `Effect`s.
+ * First for find the tx MPT root of those events, and second for update utxo set
+ * of the ledger.
  */
 export const userEventsProgram = (
   tableName: string,
   startDate: Date,
   endDate: Date,
-): Effect.Effect<
-  Option.Option<Effect.Effect<string, MptError>>,
-  DatabaseError,
-  Database
-> =>
+): Effect.Effect<Option.Option<UserEventMptsUpdate>, DatabaseError, Database> =>
   Effect.gen(function* () {
     const events = yield* UserEvents.retrieveTimeBoundEntries(
       tableName,
@@ -217,6 +252,48 @@ export const userEventsProgram = (
       );
       const eventIDs = events.map((event) => event[UserEvents.Columns.ID]);
       const eventInfos = events.map((event) => event[UserEvents.Columns.INFO]);
-      return Option.some(keyValueMptRoot(eventIDs, eventInfos));
+      const getTxRootProgram = keyValueMptRoot(eventIDs, eventInfos);
+      const updateLedgerUTxOsProgram = (ledgerTrie: MidgardMpt) =>
+        Effect.gen(function* () {
+          const utxoBatchDBOps: ETH_UTILS.BatchDBOp[] = [];
+          let sizeOfProcessedTxs = 0;
+          yield* Effect.forEach(events, (entry: UserEvents.Entry) =>
+            Effect.gen(function* () {
+              const txCbor = entry[UserEvents.Columns.INFO];
+              const { spent, produced } = yield* breakDownTx(txCbor).pipe(
+                Effect.withSpan("findSpentAndProducedUTxOs"),
+              );
+              sizeOfProcessedTxs += txCbor.length;
+              const delOps: ETH_UTILS.BatchDBOp[] = spent.map((outRef) => ({
+                type: "del",
+                key: outRef,
+              }));
+              const putOps: ETH_UTILS.BatchDBOp[] = produced.map(
+                (le: LedgerUtils.MinimalEntry) => ({
+                  type: "put",
+                  key: le[LedgerUtils.Columns.OUTREF],
+                  value: le[LedgerUtils.Columns.OUTPUT],
+                }),
+              );
+              yield* Effect.sync(() => utxoBatchDBOps.push(...delOps));
+              yield* Effect.sync(() => utxoBatchDBOps.push(...putOps));
+            }),
+          );
+          yield* ledgerTrie.batch(utxoBatchDBOps);
+          return sizeOfProcessedTxs;
+        });
+      return Option.some({
+        getTxRootProgram,
+        updateLedgerUTxOsProgram,
+      });
     }
   });
+
+export type UserEventMptsUpdate = {
+  getTxRootProgram: Effect.Effect<string, MptError>;
+  updateLedgerUTxOsProgram: LedgerUTxOUpdate;
+};
+
+export type LedgerUTxOUpdate = (
+  ledgerTrie: MidgardMpt,
+) => Effect.Effect<void, SDK.CmlDeserializationError | MptError>;
