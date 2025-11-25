@@ -600,8 +600,7 @@ const postTxOrderHandler = Effect.gen(function* () {
       { status: 400 },
     );
   }
-  const refundAddressData =
-    yield* SDK.addressDataFromBech32(refund_address);
+  const refundAddressData = yield* SDK.addressDataFromBech32(refund_address);
 
   yield* lucid.switchToOperatorsMainWallet;
 
@@ -807,8 +806,7 @@ const postWithdrawalHandler = Effect.gen(function* () {
     );
   }
 
-  const refundAddressData =
-    yield* SDK.addressDataFromBech32(refund_address);
+  const refundAddressData = yield* SDK.addressDataFromBech32(refund_address);
 
   yield* lucid.switchToOperatorsMainWallet;
 
