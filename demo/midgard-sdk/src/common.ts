@@ -270,12 +270,12 @@ export const AddressData = AddressSchema as unknown as AddressData;
 
 export const addressDataFromBech32 = (
   address: string,
-): Effect.Effect<AddressData, ParsingError> =>
+): Effect.Effect<AddressData, Bech32DeserializationError> =>
   Effect.gen(function* () {
     const { paymentCredential, stakeCredential } = getAddressDetails(address);
     if (!paymentCredential)
       return yield* Effect.fail(
-        new ParsingError({
+        new Bech32DeserializationError({
           message: "Failed to parse address data",
           cause: "Payment key credential is undefined",
         }),
@@ -331,8 +331,8 @@ export class DataCoercionError extends EffectData.TaggedError(
   "DataCoercionError",
 )<GenericErrorFields> {}
 
-export class ParsingError extends EffectData.TaggedError(
-  "ParsingError",
+export class Bech32DeserializationError extends EffectData.TaggedError(
+  "Bech32DeserializationError",
 )<GenericErrorFields> {}
 
 export class UnauthenticUtxoError extends EffectData.TaggedError(

@@ -65,7 +65,7 @@ const submitGenesisTxOrders: Effect.Effect<
   | SDK.HashingError
   | SDK.LucidError
   | SDK.TxOrderError
-  | SDK.ParsingError
+  | SDK.Bech32DeserializationError
   | TxSignError
   | TxSubmitError
   | TxConfirmError,

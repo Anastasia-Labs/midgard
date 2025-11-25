@@ -638,7 +638,7 @@ const postTxOrderHandler = Effect.gen(function* () {
   Effect.catchTag("HashingError", (e) =>
     handleGenericFailure("POST", TX_ORDER_ENDPOINT, e),
   ),
-  Effect.catchTag("ParsingError", (e) =>
+  Effect.catchTag("Bech32DeserializationError", (e) =>
     handleGenericFailure("POST", TX_ORDER_ENDPOINT, e),
   ),
   Effect.catchTag("TxOrderError", (e) =>
@@ -843,7 +843,7 @@ const postWithdrawalHandler = Effect.gen(function* () {
   Effect.catchTag("HashingError", (e) =>
     handleGenericFailure("POST", WITHDRAWAL_ENDPOINT, e),
   ),
-  Effect.catchTag("ParsingError", (e) =>
+  Effect.catchTag("Bech32DeserializationError", (e) =>
     handleGenericFailure("POST", WITHDRAWAL_ENDPOINT, e),
   ),
   Effect.catchTag("WithdrawalError", (e) =>
