@@ -379,9 +379,12 @@ const databaseOperationsProgram = (
             type: "NothingToCommitOutput",
           } as WorkerOutput;
         } else {
-          const { withdrawalsRoot, withdrawalLedgerUTxOUpdate } =
-            yield* processWithdrawalEvent(optWithdrawalsRootProgram);
-          const { depositsRoot, depositLedgerUTxOUpdate } =
+          const {
+            withdrawalsRoot,
+            withdrawalLedgerUTxOUpdate,
+            sizeOfWithdrawalsTxs,
+          } = yield* processWithdrawalEvent(optWithdrawalsRootProgram);
+          const { depositsRoot, depositLedgerUTxOUpdate, sizeOfDepositTxs } =
             yield* processDepositEvent(optDepositsRootProgram);
 
           yield* withdrawalLedgerUTxOUpdate(ledgerTrie);
@@ -423,7 +426,7 @@ const databaseOperationsProgram = (
                 newHeaderHash,
                 workerInput,
                 txSize,
-                sizeOfTxOrderTxs,
+                sizeOfTxOrderTxs + sizeOfWithdrawalsTxs + sizeOfDepositTxs,
                 txHash,
               ),
           });
@@ -445,9 +448,12 @@ const databaseOperationsProgram = (
           startTime,
           endTime,
         );
-        const { withdrawalsRoot, withdrawalLedgerUTxOUpdate } =
-          yield* processWithdrawalEvent(optWithdrawalsRootProgram);
-        const { depositsRoot, depositLedgerUTxOUpdate } =
+        const {
+          withdrawalsRoot,
+          withdrawalLedgerUTxOUpdate,
+          sizeOfWithdrawalsTxs,
+        } = yield* processWithdrawalEvent(optWithdrawalsRootProgram);
+        const { depositsRoot, depositLedgerUTxOUpdate, sizeOfDepositTxs } =
           yield* processDepositEvent(optDepositsRootProgram);
 
         const {
@@ -456,7 +462,11 @@ const databaseOperationsProgram = (
           sizeOfTxOrderTxs,
           txOrderLedgerUTxOUpdate,
         } = yield* processTxOrderEvent(startTime, endTime);
-        const sizeOfProcessedTxs = sizeOfTxRequestTxs + sizeOfTxOrderTxs;
+        const sizeOfProcessedTxs =
+          sizeOfTxRequestTxs +
+          sizeOfTxOrderTxs +
+          sizeOfWithdrawalsTxs +
+          sizeOfDepositTxs;
 
         yield* withdrawalLedgerUTxOUpdate(ledgerTrie);
         yield* txOrderLedgerUTxOUpdate(ledgerTrie);

@@ -95,7 +95,7 @@ export const processTxRequestEvent = (
     const mempoolTxHashes: Buffer[] = [];
     const mempoolBatchOps: ETH_UTILS.BatchDBOp[] = [];
     const batchDBOps: ETH_UTILS.BatchDBOp[] = [];
-    let sizeOfProcessedTxs = 0;
+    let sizeOfTxRequestTxs = 0;
     yield* Effect.logInfo(
       `🔹 Processing ${mempoolTxs.length} new tx requests...`,
     );
@@ -108,7 +108,7 @@ export const processTxRequestEvent = (
           txCbor,
           txHash,
         ).pipe(Effect.withSpan("findSpentAndProducedUTxOs"));
-        sizeOfProcessedTxs += txCbor.length;
+        sizeOfTxRequestTxs += txCbor.length;
         const delOps: ETH_UTILS.BatchDBOp[] = spent.map((outRef) => ({
           type: "del",
           key: outRef,
@@ -141,7 +141,7 @@ export const processTxRequestEvent = (
 
     return {
       mempoolTxHashes,
-      sizeOfTxRequestTxs: sizeOfProcessedTxs,
+      sizeOfTxRequestTxs,
       txRequestLedgerUTxOUpdate,
     };
   });
@@ -152,6 +152,7 @@ export const processWithdrawalEvent = (
   {
     withdrawalsRoot: string;
     withdrawalLedgerUTxOUpdate: LedgerUTxOUpdate;
+    sizeOfWithdrawalsTxs: number;
   },
   MptError,
   Database
@@ -182,8 +183,16 @@ export const processWithdrawalEvent = (
             return $(utxoUpdateFiber);
           }),
       });
+    const sizeOfWithdrawalsTxs = yield* Option.match(optWithdrawalRootProgram, {
+      onNone: () => Effect.succeed(0),
+      onSome: (p) => Effect.succeed(p.sizeOfProcessedTxs),
+    });
     yield* Effect.logInfo(`🔹 Withdrawal root is: ${withdrawalsRoot}`);
-    return { withdrawalsRoot, withdrawalLedgerUTxOUpdate };
+    return {
+      withdrawalsRoot,
+      withdrawalLedgerUTxOUpdate,
+      sizeOfWithdrawalsTxs,
+    };
   });
 
 export const processDepositEvent = (
@@ -192,6 +201,7 @@ export const processDepositEvent = (
   {
     depositsRoot: string;
     depositLedgerUTxOUpdate: LedgerUTxOUpdate;
+    sizeOfDepositTxs: number;
   },
   MptError,
   Database
@@ -217,8 +227,12 @@ export const processDepositEvent = (
             return $(utxoUpdateFiber);
           }),
       });
+    const sizeOfDepositTxs = yield* Option.match(optDepositsRootProgram, {
+      onNone: () => Effect.succeed(0),
+      onSome: (p) => Effect.succeed(p.sizeOfProcessedTxs),
+    });
     yield* Effect.logInfo(`🔹 Deposits root is: ${depositsRoot}`);
-    return { depositsRoot, depositLedgerUTxOUpdate };
+    return { depositsRoot, depositLedgerUTxOUpdate, sizeOfDepositTxs };
   });
 
 /**
@@ -251,10 +265,10 @@ export const userEventsProgram = (
       const eventIDs = events.map((event) => event[UserEvents.Columns.ID]);
       const eventInfos = events.map((event) => event[UserEvents.Columns.INFO]);
       const getTxRootProgram = keyValueMptRoot(eventIDs, eventInfos);
+      let sizeOfProcessedTxs = 0;
       const updateLedgerUTxOsProgram = (ledgerTrie: MidgardMpt) =>
         Effect.gen(function* () {
           const utxoBatchDBOps: ETH_UTILS.BatchDBOp[] = [];
-          let sizeOfProcessedTxs = 0;
           yield* Effect.forEach(events, (entry: UserEvents.Entry) =>
             Effect.gen(function* () {
               const txCbor = entry[UserEvents.Columns.INFO];
@@ -278,11 +292,11 @@ export const userEventsProgram = (
             }),
           );
           yield* ledgerTrie.batch(utxoBatchDBOps);
-          return sizeOfProcessedTxs;
         });
       return Option.some({
         getTxRootProgram,
         updateLedgerUTxOsProgram,
+        sizeOfProcessedTxs,
       });
     }
   });
@@ -290,6 +304,7 @@ export const userEventsProgram = (
 export type UserEventMptsUpdate = {
   getTxRootProgram: Effect.Effect<string, MptError>;
   updateLedgerUTxOsProgram: LedgerUTxOUpdate;
+  sizeOfProcessedTxs: number;
 };
 
 export type LedgerUTxOUpdate = (
