@@ -1,7 +1,4 @@
-import {
-  Data,
-  getAddressDetails,
-} from "@lucid-evolution/lucid";
+import { Data, getAddressDetails } from "@lucid-evolution/lucid";
 import { Data as EffectData } from "effect";
 import { Effect } from "effect";
 import {

@@ -28,7 +28,10 @@ import { Data as EffectData, Effect } from "effect";
 import { OutputReference, POSIXTime, POSIXTimeSchema } from "@/common.js";
 import { getProtocolParameters } from "@/protocol-parameters.js";
 import { DepositEventSchema, DepositInfo } from "@/ledger-state.js";
-import { buildUserEventMintTransaction, UserEventMintRedeemer } from "./index.js";
+import {
+  buildUserEventMintTransaction,
+  UserEventMintRedeemer,
+} from "./index.js";
 
 export type DepositParams = {
   depositScriptAddress: string;
@@ -234,17 +237,17 @@ export const incompleteDepositTxProgram = (
 
     // TODO: Currently there are no considerations for fees and/or min ADA.
     const tx = buildUserEventMintTransaction({
-          lucid,
-          inputUtxo,
-          nft: depositNFT,
-          mintRedeemer: mintRedeemerCBOR,
-          scriptAddress: params.depositScriptAddress,
-          datum: depositDatumCBOR,
-          extraAssets: assets,
-          validTo: inclusionTime,
-          mintingPolicy: params.mintingPolicy,
-        });
-        return tx;
+      lucid,
+      inputUtxo,
+      nft: depositNFT,
+      mintRedeemer: mintRedeemerCBOR,
+      scriptAddress: params.depositScriptAddress,
+      datum: depositDatumCBOR,
+      extraAssets: assets,
+      validTo: inclusionTime,
+      mintingPolicy: params.mintingPolicy,
+    });
+    return tx;
   }).pipe(
     Effect.catchAllDefect((defect) => {
       return Effect.fail(
