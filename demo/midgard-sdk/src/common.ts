@@ -268,7 +268,7 @@ export const AddressSchema = Data.Object({
 export type AddressData = Data.Static<typeof AddressSchema>;
 export const AddressData = AddressSchema as unknown as AddressData;
 
-export const parseAddressDataCredentials = (
+export const addressDataFromBech32 = (
   address: string,
 ): Effect.Effect<AddressData, ParsingError> =>
   Effect.gen(function* () {
