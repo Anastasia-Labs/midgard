@@ -4,7 +4,6 @@ import {
   Data,
   LucidEvolution,
   TxBuilder,
-  TxBuilderConfig,
   TxSignBuilder,
   UTxO,
   toUnit,
@@ -62,11 +61,6 @@ const collectAndBurnUTxOsTx = (
       .attach.Script(authValidator.spendScript)
       .attach.Script(authValidator.mintScript);
 
-    console.dir(tx.rawConfig().mintedAssets, {depth: null});
-    const emptyTx = lucid.newTx();
-    tx.compose(emptyTx)
-    console.dir(tx.rawConfig().mintedAssets, {depth: null});
-
     return tx;
   });
 
@@ -77,8 +71,6 @@ type UTxOsQueue = {
     assetName: string;
   }[];
 };
-
-const jsonBigInt = (obj: any) => JSON.stringify(obj, (_, v) => typeof v === 'bigint' ? v.toString() : v)
 
 const constructBatchTx = (
   lucid: LucidEvolution,
@@ -143,7 +135,7 @@ const constructBatchTxs = (
 ): Effect.Effect<TxBuilder[]> =>
   Effect.gen(function* () {
     let accTransactions: TxBuilder[] = [];
-    let currUtxoQueue = utxosQueue;
+    let currUtxoQueue = [...utxosQueue];
 
     while (currUtxoQueue.length > 0) {
       const optBatchTx = yield* constructBatchTx(lucid, utxosQueue, batchSize);
@@ -235,12 +227,7 @@ export const resetUTxOs: Effect.Effect<
     },
   ];
 
-  utxosQueue[0].assetUTxOs = utxosQueue[0].assetUTxOs.slice(0,5)
-  utxosQueue[1].assetUTxOs = utxosQueue[1].assetUTxOs.slice(0,5)
-
-  yield* Effect.logInfo(`utxosQueue lengths: ${utxosQueue.map(q => q.assetUTxOs.length)}`)
-
-  const batchSize = 5; // TODO: change back to 40
+  const batchSize = 40;
   const batchTransactions = yield* constructBatchTxs(
     lucid.api,
     utxosQueue,

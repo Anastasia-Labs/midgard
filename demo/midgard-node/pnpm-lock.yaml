@@ -39,8 +39,8 @@ importers:
         specifier: ^9.1.0
         version: 9.1.0
       '@lucid-evolution/lucid':
-        specifier: ^0.4.23
-        version: 0.4.29(@harmoniclabs/bytestring@1.0.0)(@harmoniclabs/cbor@1.6.6)(@harmoniclabs/crypto@0.2.5)(@harmoniclabs/pair@1.0.0)(fast-check@3.23.2)
+        specifier: 0.4.16
+        version: 0.4.16(@harmoniclabs/bytestring@1.0.0)(@harmoniclabs/cbor@1.6.6)(@harmoniclabs/crypto@0.2.5)(@harmoniclabs/pair@1.0.0)(fast-check@3.23.2)
       '@opentelemetry/api':
         specifier: ^1.9.0
         version: 1.9.0
@@ -287,6 +287,12 @@ packages:
       '@effect/rpc': ^0.59.3
       '@effect/sql': ^0.35.2
       effect: ^3.15.1
+
+  '@effect/platform@0.59.3':
+    resolution: {integrity: sha512-DHR4Hl+hhTCzjs1ykRIyzwaala4JMtPVnReLea29hn+M3fKzloic7UpyCkTO7aJdFjthUtAKcW2mr2lDtuqlDA==}
+    peerDependencies:
+      '@effect/schema': ^0.68.27
+      effect: ^3.5.7
 
   '@effect/platform@0.71.7':
     resolution: {integrity: sha512-Ttw8OhbcP1x5cPgcX4VdnDSWrskVdUrf9bO3eDd++TTcQzEiYVu9GZJaSMvz6Yqzfzt+1tIKoKi2jp6dLdJ9dg==}
@@ -803,6 +809,9 @@ packages:
     cpu: [x64]
     os: [win32]
 
+  '@lucid-evolution/core-types@0.1.21':
+    resolution: {integrity: sha512-HPTU7eaWUNp1mmbbF46dyh6CLZNH8kLWyD1yu2OrPDWo5KfeF2EAXcnS3VsyjhjyFtzBLbsoQxjuy1j4jBY0zg==}
+
   '@lucid-evolution/core-types@0.1.22':
     resolution: {integrity: sha512-2ffw82PAjB9wdnW62zWh5J8Wkqrr+sMrdXtndejdu4UYmTdmf7rIClr+AfKO8IStCciVcNT/wQj59PyYu/Jg1Q==}
 
@@ -812,23 +821,44 @@ packages:
   '@lucid-evolution/crc8@0.1.8':
     resolution: {integrity: sha512-88+/S6n+sPgxYtG05rvbJDVb8MoFGzckkR3p26uGrzngYzlJGfxBWIzNhVwfI2mgINPo2C5lkZW3GYnfY0MjuA==}
 
+  '@lucid-evolution/lucid@0.4.16':
+    resolution: {integrity: sha512-rh7CFmqmLJVMRfTIyFyDLWgm4uuGLbEBiOpHCNf/fu1mVmtbji+CO614HUrerw5ihqRJfUS8kRee7FH6Ccu0zQ==}
+
   '@lucid-evolution/lucid@0.4.29':
     resolution: {integrity: sha512-+9pXlHivIGE4xJC6EZ62vtOBfgHgPpbJHgd7d6Ztk3lmbBwsM1PZVQ1WSE2upXSvqGE8KT/99IxmZ3kKfbtDUg==}
+
+  '@lucid-evolution/plutus@0.1.28':
+    resolution: {integrity: sha512-O8vOsed+U3dda32Y5iyvmnPUwuNR0K64RMow/fT+SUAcgDmTNVmXr63YG7lLrY165eC0DB/K6hsHMyqIF5DpBA==}
 
   '@lucid-evolution/plutus@0.1.29':
     resolution: {integrity: sha512-GHmq9Pso+xeFszwKAd9jvRFnmnV4fRKdm+OHYLrS58yh3uazKr9VR+amtT9SmKufoLy/gNo5sL7i6gcNSW+yIg==}
 
+  '@lucid-evolution/provider@0.1.82':
+    resolution: {integrity: sha512-D8WdQx8jR3hd6VY67yV6DbMtftPTAEB6PQ/pfaX5aK5C99GLQjHl1+WPuhlKmx3/0M/maYlmEBI+EMdY4Jonag==}
+
   '@lucid-evolution/provider@0.1.90':
     resolution: {integrity: sha512-8vzVDlWJiDfuvuE2Un18N5uTK8qDkVB5GiglwoDV/qgBNRljQjiih53LbhcGa4KMXgufjZNyNDH854jFkJ95cg==}
+
+  '@lucid-evolution/sign_data@0.1.24':
+    resolution: {integrity: sha512-8K/FuSUYAffRB4JjjjAzjOUqUXDI+r3HyJIAETlJ8Kbo7SZe1IrX6bo82qjaK/WGK4w4kBcoheceWnnsiYPfrQ==}
 
   '@lucid-evolution/sign_data@0.1.25':
     resolution: {integrity: sha512-ZDDl3SyO3Lf+/ji9u0Fg6I9oNs+tW//aHkgz4NlS+9xbx2bT9YU+mV9ZLLjWSZVGTb0TbzT4NGvVqdgRNspdYQ==}
 
+  '@lucid-evolution/uplc@0.2.18':
+    resolution: {integrity: sha512-TukA/1XnhrliAfwopPzX04t8j/7dfVygE9F55MypfibA+btZVOLJpe0VAFmr46HMcxecL/S63iOjuiRHNe+5bw==}
+
   '@lucid-evolution/uplc@0.2.20':
     resolution: {integrity: sha512-+40qeHmjMnM4Sjdq9JAf190a1t3TMbV1vegVLQGqt2AouOkIunZfziBZwuaqcgUVVbynW+j2Qx2ijK83Pap4XQ==}
 
+  '@lucid-evolution/utils@0.1.61':
+    resolution: {integrity: sha512-R55zKpDKmwel8FNkEXpqfMpgbjPgMb0b3l882Yz5kiO4wp9xNl1rlSxcJi8t8+WDPgvC0SzJw5fp6DkUBlo30A==}
+
   '@lucid-evolution/utils@0.1.66':
     resolution: {integrity: sha512-sp6vsxrc0u9rYgb4ExRP4LRQM0oK6mVxqt70axK0T4DSS06KYtCqUWX6kjcOHY8jxDGfjK5RLh9hBY+Gul4OSQ==}
+
+  '@lucid-evolution/wallet@0.1.67':
+    resolution: {integrity: sha512-GZWU5XpQYBL786uJzB1di2T4NfuDUTcmowUqdU2/uUe0zn7gf7WgmFw8sQoAserA1RfpS4XAH8vj3eiws/S3bg==}
 
   '@lucid-evolution/wallet@0.1.72':
     resolution: {integrity: sha512-keGeDV4jUX2MAld79zAGja4mFNQ9FP4HJM8OB8DEnakewTVG4fk38SMSfvuQAh6yH8ZxTNoGUphrMSeVFU4OjQ==}
@@ -2807,6 +2837,13 @@ snapshots:
       - bufferutil
       - utf-8-validate
 
+  '@effect/platform@0.59.3(@effect/schema@0.68.27(effect@3.19.4))(effect@3.19.4)':
+    dependencies:
+      '@effect/schema': 0.68.27(effect@3.19.4)
+      effect: 3.19.4
+      find-my-way-ts: 0.1.6
+      multipasta: 0.2.7
+
   '@effect/platform@0.71.7(effect@3.19.4)':
     dependencies:
       effect: 3.19.4
@@ -3163,6 +3200,11 @@ snapshots:
   '@lmdb/lmdb-win32-x64@3.4.1':
     optional: true
 
+  '@lucid-evolution/core-types@0.1.21':
+    dependencies:
+      '@anastasia-labs/cardano-multiplatform-lib-browser': 6.0.2-2
+      '@anastasia-labs/cardano-multiplatform-lib-nodejs': 6.0.2-2
+
   '@lucid-evolution/core-types@0.1.22':
     dependencies:
       '@anastasia-labs/cardano-multiplatform-lib-browser': 6.0.2-3
@@ -3174,6 +3216,28 @@ snapshots:
       '@anastasia-labs/cardano-multiplatform-lib-nodejs': 6.0.2-2
 
   '@lucid-evolution/crc8@0.1.8': {}
+
+  '@lucid-evolution/lucid@0.4.16(@harmoniclabs/bytestring@1.0.0)(@harmoniclabs/cbor@1.6.6)(@harmoniclabs/crypto@0.2.5)(@harmoniclabs/pair@1.0.0)(fast-check@3.23.2)':
+    dependencies:
+      '@anastasia-labs/cardano-multiplatform-lib-browser': 6.0.2-3
+      '@anastasia-labs/cardano-multiplatform-lib-nodejs': 6.0.2-3
+      '@effect/schema': 0.66.16(effect@3.19.4)(fast-check@3.23.2)
+      '@emurgo/cardano-message-signing-nodejs': 1.1.0
+      '@lucid-evolution/core-types': 0.1.21
+      '@lucid-evolution/core-utils': 0.1.16
+      '@lucid-evolution/plutus': 0.1.28
+      '@lucid-evolution/provider': 0.1.82(@harmoniclabs/bytestring@1.0.0)(@harmoniclabs/cbor@1.6.6)(@harmoniclabs/crypto@0.2.5)(@harmoniclabs/pair@1.0.0)
+      '@lucid-evolution/sign_data': 0.1.24
+      '@lucid-evolution/uplc': 0.2.18
+      '@lucid-evolution/utils': 0.1.61(@harmoniclabs/bytestring@1.0.0)(@harmoniclabs/cbor@1.6.6)(@harmoniclabs/crypto@0.2.5)(@harmoniclabs/pair@1.0.0)
+      '@lucid-evolution/wallet': 0.1.67(@harmoniclabs/bytestring@1.0.0)(@harmoniclabs/cbor@1.6.6)(@harmoniclabs/crypto@0.2.5)(@harmoniclabs/pair@1.0.0)
+      effect: 3.19.4
+    transitivePeerDependencies:
+      - '@harmoniclabs/bytestring'
+      - '@harmoniclabs/cbor'
+      - '@harmoniclabs/crypto'
+      - '@harmoniclabs/pair'
+      - fast-check
 
   '@lucid-evolution/lucid@0.4.29(@harmoniclabs/bytestring@1.0.0)(@harmoniclabs/cbor@1.6.6)(@harmoniclabs/crypto@0.2.5)(@harmoniclabs/pair@1.0.0)(fast-check@3.23.2)':
     dependencies:
@@ -3205,6 +3269,14 @@ snapshots:
       - rxjs
       - utf-8-validate
 
+  '@lucid-evolution/plutus@0.1.28':
+    dependencies:
+      '@anastasia-labs/cardano-multiplatform-lib-browser': 6.0.2-2
+      '@anastasia-labs/cardano-multiplatform-lib-nodejs': 6.0.2-2
+      '@lucid-evolution/core-types': 0.1.21
+      '@lucid-evolution/core-utils': 0.1.16
+      '@sinclair/typebox': 0.32.35
+
   '@lucid-evolution/plutus@0.1.29':
     dependencies:
       '@anastasia-labs/cardano-multiplatform-lib-browser': 6.0.2-3
@@ -3212,6 +3284,23 @@ snapshots:
       '@lucid-evolution/core-types': 0.1.22
       '@lucid-evolution/core-utils': 0.1.16
       '@sinclair/typebox': 0.32.35
+
+  '@lucid-evolution/provider@0.1.82(@harmoniclabs/bytestring@1.0.0)(@harmoniclabs/cbor@1.6.6)(@harmoniclabs/crypto@0.2.5)(@harmoniclabs/pair@1.0.0)':
+    dependencies:
+      '@anastasia-labs/cardano-multiplatform-lib-browser': 6.0.2-3
+      '@anastasia-labs/cardano-multiplatform-lib-nodejs': 6.0.2-3
+      '@effect/platform': 0.59.3(@effect/schema@0.68.27(effect@3.19.4))(effect@3.19.4)
+      '@effect/schema': 0.68.27(effect@3.19.4)
+      '@lucid-evolution/core-types': 0.1.21
+      '@lucid-evolution/core-utils': 0.1.16
+      '@lucid-evolution/utils': 0.1.61(@harmoniclabs/bytestring@1.0.0)(@harmoniclabs/cbor@1.6.6)(@harmoniclabs/crypto@0.2.5)(@harmoniclabs/pair@1.0.0)
+      '@lucid-evolution/wallet': 0.1.67(@harmoniclabs/bytestring@1.0.0)(@harmoniclabs/cbor@1.6.6)(@harmoniclabs/crypto@0.2.5)(@harmoniclabs/pair@1.0.0)
+      effect: 3.19.4
+    transitivePeerDependencies:
+      - '@harmoniclabs/bytestring'
+      - '@harmoniclabs/cbor'
+      - '@harmoniclabs/crypto'
+      - '@harmoniclabs/pair'
 
   '@lucid-evolution/provider@0.1.90(@harmoniclabs/bytestring@1.0.0)(@harmoniclabs/cbor@1.6.6)(@harmoniclabs/crypto@0.2.5)(@harmoniclabs/pair@1.0.0)':
     dependencies:
@@ -3238,6 +3327,15 @@ snapshots:
       - rxjs
       - utf-8-validate
 
+  '@lucid-evolution/sign_data@0.1.24':
+    dependencies:
+      '@anastasia-labs/cardano-multiplatform-lib-browser': 6.0.2-2
+      '@anastasia-labs/cardano-multiplatform-lib-nodejs': 6.0.2-2
+      '@emurgo/cardano-message-signing-browser': 1.1.0
+      '@emurgo/cardano-message-signing-nodejs': 1.1.0
+      '@lucid-evolution/core-types': 0.1.21
+      '@lucid-evolution/core-utils': 0.1.16
+
   '@lucid-evolution/sign_data@0.1.25':
     dependencies:
       '@anastasia-labs/cardano-multiplatform-lib-browser': 6.0.2-3
@@ -3247,7 +3345,30 @@ snapshots:
       '@lucid-evolution/core-types': 0.1.22
       '@lucid-evolution/core-utils': 0.1.16
 
+  '@lucid-evolution/uplc@0.2.18': {}
+
   '@lucid-evolution/uplc@0.2.20': {}
+
+  '@lucid-evolution/utils@0.1.61(@harmoniclabs/bytestring@1.0.0)(@harmoniclabs/cbor@1.6.6)(@harmoniclabs/crypto@0.2.5)(@harmoniclabs/pair@1.0.0)':
+    dependencies:
+      '@anastasia-labs/cardano-multiplatform-lib-browser': 6.0.2-3
+      '@anastasia-labs/cardano-multiplatform-lib-nodejs': 6.0.2-3
+      '@effect/schema': 0.68.27(effect@3.19.4)
+      '@harmoniclabs/plutus-data': 1.2.6(@harmoniclabs/bytestring@1.0.0)(@harmoniclabs/cbor@1.6.6)
+      '@harmoniclabs/uplc': 1.4.1(@harmoniclabs/bytestring@1.0.0)(@harmoniclabs/cbor@1.6.6)(@harmoniclabs/crypto@0.2.5)(@harmoniclabs/pair@1.0.0)(@harmoniclabs/plutus-data@1.2.6(@harmoniclabs/bytestring@1.0.0)(@harmoniclabs/cbor@1.6.6))
+      '@lucid-evolution/core-types': 0.1.21
+      '@lucid-evolution/core-utils': 0.1.16
+      '@lucid-evolution/crc8': 0.1.8
+      '@lucid-evolution/plutus': 0.1.28
+      '@lucid-evolution/uplc': 0.2.18
+      bip39: 3.1.0
+      cbor-x: 1.6.0
+      effect: 3.19.4
+    transitivePeerDependencies:
+      - '@harmoniclabs/bytestring'
+      - '@harmoniclabs/cbor'
+      - '@harmoniclabs/crypto'
+      - '@harmoniclabs/pair'
 
   '@lucid-evolution/utils@0.1.66(@harmoniclabs/bytestring@1.0.0)(@harmoniclabs/cbor@1.6.6)(@harmoniclabs/crypto@0.2.5)(@harmoniclabs/pair@1.0.0)':
     dependencies:
@@ -3278,6 +3399,21 @@ snapshots:
       - react-native-b4a
       - rxjs
       - utf-8-validate
+
+  '@lucid-evolution/wallet@0.1.67(@harmoniclabs/bytestring@1.0.0)(@harmoniclabs/cbor@1.6.6)(@harmoniclabs/crypto@0.2.5)(@harmoniclabs/pair@1.0.0)':
+    dependencies:
+      '@anastasia-labs/cardano-multiplatform-lib-browser': 6.0.2-3
+      '@anastasia-labs/cardano-multiplatform-lib-nodejs': 6.0.2-3
+      '@lucid-evolution/core-types': 0.1.21
+      '@lucid-evolution/core-utils': 0.1.16
+      '@lucid-evolution/sign_data': 0.1.24
+      '@lucid-evolution/utils': 0.1.61(@harmoniclabs/bytestring@1.0.0)(@harmoniclabs/cbor@1.6.6)(@harmoniclabs/crypto@0.2.5)(@harmoniclabs/pair@1.0.0)
+      bip39: 3.1.0
+    transitivePeerDependencies:
+      - '@harmoniclabs/bytestring'
+      - '@harmoniclabs/cbor'
+      - '@harmoniclabs/crypto'
+      - '@harmoniclabs/pair'
 
   '@lucid-evolution/wallet@0.1.72(@harmoniclabs/bytestring@1.0.0)(@harmoniclabs/cbor@1.6.6)(@harmoniclabs/crypto@0.2.5)(@harmoniclabs/pair@1.0.0)':
     dependencies:
