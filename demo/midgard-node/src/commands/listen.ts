@@ -844,7 +844,7 @@ const postWithdrawalHandler = Effect.gen(function* () {
     handleGenericFailure("POST", WITHDRAWAL_ENDPOINT, e),
   ),
   Effect.catchTag("ParsingError", (e) =>
-    handleGenericFailure("POST", TX_ORDER_ENDPOINT, e),
+    handleGenericFailure("POST", WITHDRAWAL_ENDPOINT, e),
   ),
   Effect.catchTag("WithdrawalError", (e) =>
     handleGenericFailure("POST", WITHDRAWAL_ENDPOINT, e),
