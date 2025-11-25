@@ -102,8 +102,8 @@ const successfulSubmissionProgram = (
   mempoolTrie: MidgardMpt,
   mempoolTxs: readonly TxTable.EntryWithTimeStamp[],
   mempoolTxHashes: Buffer[],
-  spentTxOrderUTxOs: Buffer[],
-  producedTxOrderUTxOs: LedgerUtils.Entry[],
+  spentUTxOs: Buffer[],
+  producedUTxOs: LedgerUtils.Entry[],
   newHeaderHash: string,
   workerInput: WorkerInput,
   txSize: number,
@@ -160,7 +160,7 @@ const successfulSubmissionProgram = (
         ),
         ProcessedMempoolDB.clear, // uses `TRUNCATE` so no need for batching.
         mempoolTrie.delete(),
-        AddressHistoryDB.insert(spentTxOrderUTxOs, producedTxOrderUTxOs),
+        AddressHistoryDB.insert(spentUTxOs, producedUTxOs),
       ],
       { concurrency: "unbounded" },
     );
@@ -387,10 +387,15 @@ const databaseOperationsProgram = (
           const { depositsRoot, depositLedgerUTxOUpdate, sizeOfDepositTxs } =
             yield* processDepositEvent(optDepositsRootProgram);
 
-          yield* withdrawalLedgerUTxOUpdate(ledgerTrie);
-          yield* txOrderLedgerUTxOUpdate(ledgerTrie);
+          const withdrawalsUTxOs = yield* withdrawalLedgerUTxOUpdate(ledgerTrie);
+          const txOrderUTxOs = yield* txOrderLedgerUTxOUpdate(ledgerTrie);
+          // No utxos here because address history db update from tx requests already
+          // handled in submit endpoint
           yield* txRequestLedgerUTxOUpdate(ledgerTrie);
-          yield* depositLedgerUTxOUpdate(ledgerTrie);
+          const depositUTxOs = yield* depositLedgerUTxOUpdate(ledgerTrie);
+
+          const spentUTxOs = [...withdrawalsUTxOs.spentUTxOs, ...txOrderUTxOs.spentUTxOs, ...depositUTxOs.spentUTxOs]
+          const producedUTxOs = [...withdrawalsUTxOs.producedUTxOs, ...txOrderUTxOs.producedUTxOs, ...depositUTxOs.producedUTxOs]
 
           const { newHeaderHash, signAndSubmitProgram, txSize } =
             yield* buildUnsignedTx(
@@ -421,8 +426,8 @@ const databaseOperationsProgram = (
                 mempoolTrie,
                 mempoolTxs,
                 mempoolTxHashes,
-                spentTxOrderUTxOs,
-                producedTxOrderUTxOs,
+                spentUTxOs,
+                producedUTxOs,
                 newHeaderHash,
                 workerInput,
                 txSize,
@@ -468,10 +473,23 @@ const databaseOperationsProgram = (
           sizeOfWithdrawalsTxs +
           sizeOfDepositTxs;
 
-        yield* withdrawalLedgerUTxOUpdate(ledgerTrie);
-        yield* txOrderLedgerUTxOUpdate(ledgerTrie);
+        const withdrawalsUTxOs = yield* withdrawalLedgerUTxOUpdate(ledgerTrie);
+        const txOrderUTxOs = yield* txOrderLedgerUTxOUpdate(ledgerTrie);
+        // No utxos here because address history db update from tx requests already
+        // handled in submit endpoint
         yield* txRequestLedgerUTxOUpdate(ledgerTrie);
-        yield* depositLedgerUTxOUpdate(ledgerTrie);
+        const depositUTxOs = yield* depositLedgerUTxOUpdate(ledgerTrie);
+
+        const spentUTxOs = [
+          ...withdrawalsUTxOs.spentUTxOs,
+          ...txOrderUTxOs.spentUTxOs,
+          ...depositUTxOs.spentUTxOs,
+        ];
+        const producedUTxOs = [
+          ...withdrawalsUTxOs.producedUTxOs,
+          ...txOrderUTxOs.producedUTxOs,
+          ...depositUTxOs.producedUTxOs,
+        ];
 
         const { newHeaderHash, signAndSubmitProgram, txSize } =
           yield* buildUnsignedTx(
@@ -516,8 +534,8 @@ const databaseOperationsProgram = (
               mempoolTrie,
               mempoolTxs,
               mempoolTxHashes,
-              spentTxOrderUTxOs,
-              producedTxOrderUTxOs,
+              spentUTxOs,
+              producedUTxOs,
               newHeaderHash,
               workerInput,
               txSize,

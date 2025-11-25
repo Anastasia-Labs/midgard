@@ -62,8 +62,10 @@ export const processTxOrderEvent = (
         yield* Effect.sync(() => producedUTxOs.push(...produced));
       }),
     );
-    const txOrderLedgerUTxOUpdate = (ledgerTrie: MidgardMpt) =>
-      ledgerTrie.batch(utxoBatchDBOps);
+    const txOrderLedgerUTxOUpdate = (ledgerTrie: MidgardMpt) =>Effect.gen(function* () {
+      yield* ledgerTrie.batch(utxoBatchDBOps);
+      return {spentUTxOs, producedUTxOs}
+    })
     // yield* ledgerTrie.batch(utxoBatchDBOps);
     // const utxoRoot = yield* ledgerTrie.getRootHex();
     // yield* Effect.logInfo(
@@ -78,6 +80,8 @@ export const processTxOrderEvent = (
     };
   });
 
+// No spent and produced utxos in ledger update here, because it is already
+// handled by submit endpoint
 export const processTxRequestEvent = (
   // ledgerTrie: MidgardMpt,
   mempoolTrie: MidgardMpt,
@@ -86,7 +90,7 @@ export const processTxRequestEvent = (
   {
     mempoolTxHashes: Buffer[];
     sizeOfTxRequestTxs: number;
-    txRequestLedgerUTxOUpdate: LedgerUTxOUpdate;
+    txRequestLedgerUTxOUpdate: (ledgerTrie: MidgardMpt) => Effect.Effect<void, SDK.CmlDeserializationError | MptError>
   },
   MptError | SDK.CmlUnexpectedError,
   Database
@@ -95,6 +99,8 @@ export const processTxRequestEvent = (
     const mempoolTxHashes: Buffer[] = [];
     const mempoolBatchOps: ETH_UTILS.BatchDBOp[] = [];
     const batchDBOps: ETH_UTILS.BatchDBOp[] = [];
+    const spentUTxOs: Buffer[] = [];
+    const producedUTxOs: LedgerUtils.MinimalEntry[] = [];
     let sizeOfTxRequestTxs = 0;
     yield* Effect.logInfo(
       `🔹 Processing ${mempoolTxs.length} new tx requests...`,
@@ -129,12 +135,12 @@ export const processTxRequestEvent = (
         );
         yield* Effect.sync(() => batchDBOps.push(...delOps));
         yield* Effect.sync(() => batchDBOps.push(...putOps));
+        yield* Effect.sync(() => spentUTxOs.push(...spent));
+        yield* Effect.sync(() => producedUTxOs.push(...produced));
       }),
     );
-    const txRequestLedgerUTxOUpdate = (ledgerTrie: MidgardMpt) =>
-      ledgerTrie.batch(batchDBOps);
+    const txRequestLedgerUTxOUpdate = (ledgerTrie: MidgardMpt) => ledgerTrie.batch(batchDBOps);
     yield* mempoolTrie.batch(mempoolBatchOps);
-
     const txRoot = yield* mempoolTrie.getRootHex();
     yield* Effect.logInfo(`🔹 ${mempoolTxs.length} new tx requests processed`);
     yield* Effect.logInfo(`🔹 New transaction root found: ${txRoot}`);
@@ -173,15 +179,9 @@ export const processWithdrawalEvent = (
       },
     );
     const withdrawalLedgerUTxOUpdate = (ledgerTrie: MidgardMpt) =>
-      yield* Option.match(optWithdrawalRootProgram, {
-        onNone: () => Effect.succeed(ledgerTrie),
-        onSome: (p) =>
-          Effect.gen(function* ($) {
-            const utxoUpdateFiber = yield* $(
-              Effect.fork(p.updateLedgerUTxOsProgram(ledgerTrie)),
-            );
-            return $(utxoUpdateFiber);
-          }),
+      Option.match(optWithdrawalRootProgram, {
+        onNone: () => Effect.succeed({ spentUTxOs: [], producedUTxOs: [] }),
+        onSome: (p) => p.updateLedgerUTxOsProgram(ledgerTrie),
       });
     const sizeOfWithdrawalsTxs = yield* Option.match(optWithdrawalRootProgram, {
       onNone: () => Effect.succeed(0),
@@ -217,15 +217,9 @@ export const processDepositEvent = (
         }),
     });
     const depositLedgerUTxOUpdate = (ledgerTrie: MidgardMpt) =>
-      yield* Option.match(optDepositsRootProgram, {
-        onNone: () => Effect.succeed(ledgerTrie),
-        onSome: (p) =>
-          Effect.gen(function* ($) {
-            const utxoUpdateFiber = yield* $(
-              Effect.fork(p.updateLedgerUTxOsProgram(ledgerTrie)),
-            );
-            return $(utxoUpdateFiber);
-          }),
+      Option.match(optDepositsRootProgram, {
+        onNone: () => Effect.succeed({ spentUTxOs: [], producedUTxOs: [] }),
+        onSome: (p) => p.updateLedgerUTxOsProgram(ledgerTrie),
       });
     const sizeOfDepositTxs = yield* Option.match(optDepositsRootProgram, {
       onNone: () => Effect.succeed(0),
@@ -237,9 +231,11 @@ export const processDepositEvent = (
 
 /**
  * Given the target user event table, this helper finds all the events falling
- * in the given time range and if any was found, returns an two `Effect`s.
- * First for find the tx MPT root of those events, and second for update utxo set
- * of the ledger.
+ * in the given time range and if any was found, returns an two `Effect`s and a
+ * size of processed txs.
+ * First effect finds the tx MPT root of those events, and returns spent and
+ * produced UTxOs.
+ * Second effect updates UTxO set of the ledger trie.
  */
 export const userEventsProgram = (
   tableName: string,
@@ -269,6 +265,8 @@ export const userEventsProgram = (
       const updateLedgerUTxOsProgram = (ledgerTrie: MidgardMpt) =>
         Effect.gen(function* () {
           const utxoBatchDBOps: ETH_UTILS.BatchDBOp[] = [];
+          const spentUTxOs: Buffer[] = [];
+          const producedUTxOs: LedgerUtils.Entry[] = [];
           yield* Effect.forEach(events, (entry: UserEvents.Entry) =>
             Effect.gen(function* () {
               const txCbor = entry[UserEvents.Columns.INFO];
@@ -289,9 +287,12 @@ export const userEventsProgram = (
               );
               yield* Effect.sync(() => utxoBatchDBOps.push(...delOps));
               yield* Effect.sync(() => utxoBatchDBOps.push(...putOps));
+              yield* Effect.sync(() => spentUTxOs.push(...spent));
+              yield* Effect.sync(() => producedUTxOs.push(...produced));
             }),
           );
           yield* ledgerTrie.batch(utxoBatchDBOps);
+          return { spentUTxOs, producedUTxOs };
         });
       return Option.some({
         getTxRootProgram,
@@ -309,4 +310,7 @@ export type UserEventMptsUpdate = {
 
 export type LedgerUTxOUpdate = (
   ledgerTrie: MidgardMpt,
-) => Effect.Effect<void, SDK.CmlDeserializationError | MptError>;
+) => Effect.Effect<
+  { spentUTxOs: Buffer[]; producedUTxOs: LedgerUtils.Entry[] },
+  SDK.CmlDeserializationError | MptError
+>;
