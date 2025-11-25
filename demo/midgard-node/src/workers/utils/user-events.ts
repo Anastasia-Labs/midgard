@@ -20,8 +20,6 @@ export const processTxOrderEvent = (
   endTime: Date,
 ): Effect.Effect<
   {
-    spentTxOrderUTxOs: Buffer[];
-    producedTxOrderUTxOs: LedgerUtils.Entry[];
     sizeOfTxOrderTxs: number;
     txOrderLedgerUTxOUpdate: LedgerUTxOUpdate;
   },
@@ -62,10 +60,11 @@ export const processTxOrderEvent = (
         yield* Effect.sync(() => producedUTxOs.push(...produced));
       }),
     );
-    const txOrderLedgerUTxOUpdate = (ledgerTrie: MidgardMpt) =>Effect.gen(function* () {
-      yield* ledgerTrie.batch(utxoBatchDBOps);
-      return {spentUTxOs, producedUTxOs}
-    })
+    const txOrderLedgerUTxOUpdate = (ledgerTrie: MidgardMpt) =>
+      Effect.gen(function* () {
+        yield* ledgerTrie.batch(utxoBatchDBOps);
+        return { spentUTxOs, producedUTxOs };
+      });
     // yield* ledgerTrie.batch(utxoBatchDBOps);
     // const utxoRoot = yield* ledgerTrie.getRootHex();
     // yield* Effect.logInfo(
@@ -90,7 +89,9 @@ export const processTxRequestEvent = (
   {
     mempoolTxHashes: Buffer[];
     sizeOfTxRequestTxs: number;
-    txRequestLedgerUTxOUpdate: (ledgerTrie: MidgardMpt) => Effect.Effect<void, SDK.CmlDeserializationError | MptError>
+    txRequestLedgerUTxOUpdate: (
+      ledgerTrie: MidgardMpt,
+    ) => Effect.Effect<void, SDK.CmlDeserializationError | MptError>;
   },
   MptError | SDK.CmlUnexpectedError,
   Database
@@ -139,7 +140,8 @@ export const processTxRequestEvent = (
         yield* Effect.sync(() => producedUTxOs.push(...produced));
       }),
     );
-    const txRequestLedgerUTxOUpdate = (ledgerTrie: MidgardMpt) => ledgerTrie.batch(batchDBOps);
+    const txRequestLedgerUTxOUpdate = (ledgerTrie: MidgardMpt) =>
+      ledgerTrie.batch(batchDBOps);
     yield* mempoolTrie.batch(mempoolBatchOps);
     const txRoot = yield* mempoolTrie.getRootHex();
     yield* Effect.logInfo(`🔹 ${mempoolTxs.length} new tx requests processed`);

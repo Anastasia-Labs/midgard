@@ -363,12 +363,8 @@ const databaseOperationsProgram = (
           startTime,
           endDate,
         );
-        const {
-          sizeOfTxOrderTxs,
-          spentTxOrderUTxOs,
-          producedTxOrderUTxOs,
-          txOrderLedgerUTxOUpdate,
-        } = yield* processTxOrderEvent(startTime, endDate);
+        const { sizeOfTxOrderTxs, txOrderLedgerUTxOUpdate } =
+          yield* processTxOrderEvent(startTime, endDate);
         if (
           Option.isNone(optDepositsRootProgram) &&
           Option.isNone(optDepositsRootProgram) &&
@@ -387,15 +383,24 @@ const databaseOperationsProgram = (
           const { depositsRoot, depositLedgerUTxOUpdate, sizeOfDepositTxs } =
             yield* processDepositEvent(optDepositsRootProgram);
 
-          const withdrawalsUTxOs = yield* withdrawalLedgerUTxOUpdate(ledgerTrie);
+          const withdrawalsUTxOs =
+            yield* withdrawalLedgerUTxOUpdate(ledgerTrie);
           const txOrderUTxOs = yield* txOrderLedgerUTxOUpdate(ledgerTrie);
           // No utxos here because address history db update from tx requests already
           // handled in submit endpoint
           yield* txRequestLedgerUTxOUpdate(ledgerTrie);
           const depositUTxOs = yield* depositLedgerUTxOUpdate(ledgerTrie);
 
-          const spentUTxOs = [...withdrawalsUTxOs.spentUTxOs, ...txOrderUTxOs.spentUTxOs, ...depositUTxOs.spentUTxOs]
-          const producedUTxOs = [...withdrawalsUTxOs.producedUTxOs, ...txOrderUTxOs.producedUTxOs, ...depositUTxOs.producedUTxOs]
+          const spentUTxOs = [
+            ...withdrawalsUTxOs.spentUTxOs,
+            ...txOrderUTxOs.spentUTxOs,
+            ...depositUTxOs.spentUTxOs,
+          ];
+          const producedUTxOs = [
+            ...withdrawalsUTxOs.producedUTxOs,
+            ...txOrderUTxOs.producedUTxOs,
+            ...depositUTxOs.producedUTxOs,
+          ];
 
           const { newHeaderHash, signAndSubmitProgram, txSize } =
             yield* buildUnsignedTx(
@@ -461,12 +466,8 @@ const databaseOperationsProgram = (
         const { depositsRoot, depositLedgerUTxOUpdate, sizeOfDepositTxs } =
           yield* processDepositEvent(optDepositsRootProgram);
 
-        const {
-          spentTxOrderUTxOs,
-          producedTxOrderUTxOs,
-          sizeOfTxOrderTxs,
-          txOrderLedgerUTxOUpdate,
-        } = yield* processTxOrderEvent(startTime, endTime);
+        const { sizeOfTxOrderTxs, txOrderLedgerUTxOUpdate } =
+          yield* processTxOrderEvent(startTime, endTime);
         const sizeOfProcessedTxs =
           sizeOfTxRequestTxs +
           sizeOfTxOrderTxs +
