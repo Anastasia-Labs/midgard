@@ -105,7 +105,10 @@ const establishEndTimeFromTxRequests = (
   });
 
 const addDepositUTxOsToDatabases = (
-  insertedDepositUTxOs: CML.TransactionUnspentOutput[],
+  insertedDepositUTxOs: {
+      utxo: CML.TransactionUnspentOutput;
+      inclusionTime: Date;
+  }[],
   inclusionTime: Date,
 ): Effect.Effect<void, DatabaseError | FileSystemError, Database> =>
   Effect.gen(function* () {
@@ -119,9 +122,9 @@ const addDepositUTxOsToDatabases = (
       "inserting-deposits-to-databases",
       (startIndex: number, endIndex: number) =>
         Effect.gen(function* () {
-          const batchUTxOs = insertedDepositUTxOs.slice(startIndex, endIndex);
+          const batchInsertedDepositUTxOs = insertedDepositUTxOs.slice(startIndex, endIndex);
           const ledgerTableBatch: LedgerTable.EntryWithTimeStamp[] =
-            batchUTxOs.map((utxo) => ({
+            batchInsertedDepositUTxOs.map(({utxo, inclusionTime}) => ({
               [LedgerTable.Columns.TX_ID]: Buffer.from(
                 utxo.input().transaction_id().to_raw_bytes(),
               ),
@@ -135,6 +138,7 @@ const addDepositUTxOsToDatabases = (
               [LedgerTable.Columns.TIMESTAMPTZ]: inclusionTime,
             }));
 
+          const batchUTxOs = batchInsertedDepositUTxOs.map(v => v.utxo);
           const txTableBatch: TxTable.EntryWithTimeStamp[] =
             yield* Effect.forEach(batchUTxOs, (utxo) =>
               Effect.gen(function* () {
@@ -182,7 +186,10 @@ const addDepositUTxOsToDatabases = (
 
 const successfulSubmissionProgram = (
   mempoolTrie: MidgardMpt,
-  insertedDepositUTxOs: CML.TransactionUnspentOutput[],
+  insertedDepositUTxOs: {
+      utxo: CML.TransactionUnspentOutput;
+      inclusionTime: Date;
+  }[],
   inclusionTime: Date,
   mempoolTxs: readonly TxTable.EntryWithTimeStamp[],
   mempoolTxHashes: Buffer[],
@@ -550,7 +557,10 @@ const databaseOperationsProgram = (
         );
 
         let depositsRoot: string = yield* emptyRootHexProgram;
-        let insertedDepositUTxOs: CML.TransactionUnspentOutput[] = []
+        let insertedDepositUTxOs: {
+            utxo: CML.TransactionUnspentOutput;
+            inclusionTime: Date;
+          }[] = []
         if (Option.isSome(optUserEventsProgram)) {
           insertedDepositUTxOs = yield* applyDepositsToLedger(
             ledgerTrie,
