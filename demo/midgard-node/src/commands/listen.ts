@@ -8,12 +8,7 @@ import {
 import { StateQueueTx } from "@/transactions/index.js";
 import * as SDK from "@al-ft/midgard-sdk";
 import { NodeSdk } from "@effect/opentelemetry";
-import {
-  fromHex,
-  getAddressDetails,
-  toHex,
-  CML,
-} from "@lucid-evolution/lucid";
+import { fromHex, getAddressDetails, toHex, CML } from "@lucid-evolution/lucid";
 import { PrometheusExporter } from "@opentelemetry/exporter-prometheus";
 import { OTLPTraceExporter } from "@opentelemetry/exporter-trace-otlp-http";
 import { BatchSpanProcessor } from "@opentelemetry/sdk-trace-base";
@@ -109,8 +104,11 @@ const failWith500 = (
   msgOverride?: string,
 ) => failWith500Helper(`${method} /${endpoint}`, "failure", error, msgOverride);
 
-const handleDBFailure = (method: "GET" | "POST", endpoint: string, e: DatabaseError) =>
-  failWith500(method, endpoint, e.cause, `db failure with table ${e.table}`);
+const handleDBFailure = (
+  method: "GET" | "POST",
+  endpoint: string,
+  e: DatabaseError,
+) => failWith500(method, endpoint, e.cause, `db failure with table ${e.table}`);
 
 const handleTxFailure = (
   method: "GET" | "POST",
@@ -118,8 +116,11 @@ const handleTxFailure = (
   e: TxSignError | TxConfirmError | TxSubmitError,
 ) => failWith500(method, endpoint, e.cause, `${e._tag}: ${e.message}`);
 
-const handleGenericFailure = (method: "GET" | "POST", endpoint: string, e: SDK.GenericErrorFields) =>
-  failWith500(method, endpoint, e.cause, e.message);
+const handleGenericFailure = (
+  method: "GET" | "POST",
+  endpoint: string,
+  e: SDK.GenericErrorFields,
+) => failWith500(method, endpoint, e.cause, e.message);
 
 const getTxHandler = Effect.gen(function* () {
   const params = yield* ParsedSearchParams;
@@ -162,7 +163,9 @@ const getTxHandler = Effect.gen(function* () {
   });
 }).pipe(
   Effect.catchTag("HttpBodyError", (e) => failWith500("GET", TX_ENDPOINT, e)),
-  Effect.catchTag("DatabaseError", (e) => handleDBFailure("GET", TX_ENDPOINT, e)),
+  Effect.catchTag("DatabaseError", (e) =>
+    handleDBFailure("GET", TX_ENDPOINT, e),
+  ),
 );
 
 const getUtxosHandler = Effect.gen(function* () {
@@ -270,8 +273,12 @@ const getInitHandler = Effect.gen(function* () {
   Effect.catchTag("LucidError", (e) =>
     handleGenericFailure("GET", INIT_ENDPOINT, e),
   ),
-  Effect.catchTag("TxSubmitError", (e) => handleTxFailure("GET", INIT_ENDPOINT, e)),
-  Effect.catchTag("TxSignError", (e) => handleTxFailure("GET", INIT_ENDPOINT, e)),
+  Effect.catchTag("TxSubmitError", (e) =>
+    handleTxFailure("GET", INIT_ENDPOINT, e),
+  ),
+  Effect.catchTag("TxSignError", (e) =>
+    handleTxFailure("GET", INIT_ENDPOINT, e),
+  ),
 );
 
 const getCommitEndpoint = Effect.gen(function* () {
@@ -313,7 +320,9 @@ const getMergeHandler = Effect.gen(function* () {
   Effect.catchTag("TxSubmitError", (e) =>
     handleTxFailure("GET", MERGE_ENDPOINT, e),
   ),
-  Effect.catchTag("TxSignError", (e) => handleTxFailure("GET", MERGE_ENDPOINT, e)),
+  Effect.catchTag("TxSignError", (e) =>
+    handleTxFailure("GET", MERGE_ENDPOINT, e),
+  ),
   Effect.catchTag("CmlDeserializationError", (e) =>
     handleGenericFailure("GET", MERGE_ENDPOINT, e),
   ),
@@ -349,7 +358,9 @@ const getResetHandler = Effect.gen(function* () {
   Effect.catchTag("TxSubmitError", (e) =>
     handleTxFailure("GET", RESET_ENDPOINT, e),
   ),
-  Effect.catchTag("TxSignError", (e) => handleTxFailure("GET", RESET_ENDPOINT, e)),
+  Effect.catchTag("TxSignError", (e) =>
+    handleTxFailure("GET", RESET_ENDPOINT, e),
+  ),
   Effect.catchTag("LucidError", (e) =>
     handleGenericFailure("GET", RESET_ENDPOINT, e),
   ),
@@ -479,7 +490,9 @@ ${bHex} -──▶ ${keyValues[bHex]} tx(s)`;
   });
 }).pipe(
   Effect.catchTag("HttpBodyError", (e) => failWith500("GET", "logBlocksDB", e)),
-  Effect.catchTag("DatabaseError", (e) => handleDBFailure("GET", "logBlocksDB", e)),
+  Effect.catchTag("DatabaseError", (e) =>
+    handleDBFailure("GET", "logBlocksDB", e),
+  ),
 );
 
 const getLogGlobalsHandler = Effect.gen(function* () {
@@ -543,6 +556,12 @@ const postSubmitHandler = (txQueue: Queue.Enqueue<string>) =>
     ),
   );
 
+type PostTxOrderRequestBody = {
+  tx_cbor: string;
+  refund_address: string;
+  refund_datum: string;
+};
+
 const postTxOrderHandler = Effect.gen(function* () {
   yield* Effect.logInfo(`POST /${TX_ORDER_ENDPOINT} - request received`);
   const lucid = yield* Lucid;
@@ -557,7 +576,8 @@ const postTxOrderHandler = Effect.gen(function* () {
       { status: 400 },
     );
   }
-  const { tx_cbor, refund_address, refund_datum, inclusion_time } = body as any;
+  const { tx_cbor, refund_address, refund_datum } =
+    body as PostTxOrderRequestBody;
 
   if (typeof tx_cbor !== "string" || !isHexString(tx_cbor)) {
     yield* Effect.logInfo(`Invalid tx_cbor: ${tx_cbor}`);
@@ -580,17 +600,8 @@ const postTxOrderHandler = Effect.gen(function* () {
       { status: 400 },
     );
   }
-  const refundAddressData = yield* SDK.parseAddressDataCredentials(refund_address)
-
-  let inclusionTimeValue: bigint;
-  if (typeof inclusion_time === "number" || typeof inclusion_time === "bigint") {
-    inclusionTimeValue = BigInt(inclusion_time);
-  } else {
-    const nodeConfig = yield* NodeConfig;
-    const network = nodeConfig.NETWORK;
-    const waitTime = SDK.getProtocolParameters(network).event_wait_duration;
-    inclusionTimeValue = BigInt(Date.now() + waitTime);
-  }
+  const refundAddressData =
+    yield* SDK.parseAddressDataCredentials(refund_address);
 
   yield* lucid.switchToOperatorsMainWallet;
 
@@ -613,9 +624,7 @@ const postTxOrderHandler = Effect.gen(function* () {
   );
   yield* Effect.logInfo(`Submitting tx order tx...`);
   const txHash = yield* handleSignSubmit(lucid.api, signedTx);
-  yield* Effect.logInfo(
-    `Transaction order submitted successfully: ${txHash}`,
-  );
+  yield* Effect.logInfo(`Transaction order submitted successfully: ${txHash}`);
   return yield* HttpServerResponse.json({
     txHash: txHash,
   });
@@ -639,9 +648,15 @@ const postTxOrderHandler = Effect.gen(function* () {
     handleTxFailure("POST", TX_ORDER_ENDPOINT, e),
   ),
   Effect.catchTag("TxSubmitError", (e) =>
-    handleTxFailure("POST",TX_ORDER_ENDPOINT, e),
+    handleTxFailure("POST", TX_ORDER_ENDPOINT, e),
   ),
 );
+
+type PostDepositRequestBody = {
+  amount: number | bigint;
+  address: string;
+  datum?: string | null;
+};
 
 const postDepositHandler = Effect.gen(function* () {
   yield* Effect.logInfo(`POST /${DEPOSIT_ENDPOINT} - request received`);
@@ -657,7 +672,7 @@ const postDepositHandler = Effect.gen(function* () {
       { status: 400 },
     );
   }
-  const { amount, address, datum } = body as any;
+  const { amount, address, datum } = body as PostDepositRequestBody;
 
   if (typeof amount !== "number" && typeof amount !== "bigint") {
     yield* Effect.logInfo(`Invalid deposit amount: ${amount}`);
@@ -732,6 +747,13 @@ const postDepositHandler = Effect.gen(function* () {
   ),
 );
 
+type PostWithdrawalRequestBody = {
+  withdrawal_body: SDK.WithdrawalBody;
+  withdrawal_signature: SDK.WithdrawalSignature;
+  refund_address: string;
+  refund_datum: string;
+};
+
 const postWithdrawalHandler = Effect.gen(function* () {
   yield* Effect.logInfo(`POST /${WITHDRAWAL_ENDPOINT} - request received`);
   const lucid = yield* Lucid;
@@ -746,7 +768,12 @@ const postWithdrawalHandler = Effect.gen(function* () {
       { status: 400 },
     );
   }
-  const { withdrawal_body, withdrawal_signature, refund_address, refund_datum, inclusion_time } = body as any;
+  const {
+    withdrawal_body,
+    withdrawal_signature,
+    refund_address,
+    refund_datum,
+  } = body as PostWithdrawalRequestBody;
 
   if (typeof withdrawal_body !== "object" || withdrawal_body === null) {
     yield* Effect.logInfo(`Invalid withdrawal_body: ${withdrawal_body}`);
@@ -755,7 +782,10 @@ const postWithdrawalHandler = Effect.gen(function* () {
       { status: 400 },
     );
   }
-  if (typeof withdrawal_signature !== "object" || withdrawal_signature === null) {
+  if (
+    typeof withdrawal_signature !== "object" ||
+    withdrawal_signature === null
+  ) {
     yield* Effect.logInfo(`Invalid withdrawal_signature: must be an object`);
     return yield* HttpServerResponse.json(
       { error: "Invalid withdrawal_signature: must be an object (Map)" },
@@ -777,17 +807,8 @@ const postWithdrawalHandler = Effect.gen(function* () {
     );
   }
 
-  const refundAddressData = yield* SDK.parseAddressDataCredentials(refund_address);
-
-  let inclusionTimeValue: bigint;
-  if (typeof inclusion_time === "number" || typeof inclusion_time === "bigint") {
-    inclusionTimeValue = BigInt(inclusion_time);
-  } else {
-    const nodeConfig = yield* NodeConfig;
-    const network = nodeConfig.NETWORK;
-    const waitTime = SDK.getProtocolParameters(network).event_wait_duration;
-    inclusionTimeValue = BigInt(Date.now() + waitTime);
-  }
+  const refundAddressData =
+    yield* SDK.parseAddressDataCredentials(refund_address);
 
   yield* lucid.switchToOperatorsMainWallet;
 
@@ -808,9 +829,7 @@ const postWithdrawalHandler = Effect.gen(function* () {
 
   yield* Effect.logInfo(`Submitting withdrawal order tx...`);
   const txHash = yield* handleSignSubmit(lucid.api, signedTx);
-  yield* Effect.logInfo(
-    `Withdrawal order submitted successfully: ${txHash}`,
-  );
+  yield* Effect.logInfo(`Withdrawal order submitted successfully: ${txHash}`);
   return yield* HttpServerResponse.json({
     txHash: txHash,
   });
