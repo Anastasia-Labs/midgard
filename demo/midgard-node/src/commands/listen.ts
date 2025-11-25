@@ -22,6 +22,7 @@ import {
   Queue,
   Ref,
   Schedule,
+  Schema as S
 } from "effect";
 import {
   AddressHistoryDB,
@@ -651,11 +652,11 @@ const postTxOrderHandler = Effect.gen(function* () {
   ),
 );
 
-type PostDepositRequestBody = {
-  amount: number | bigint;
-  address: string;
-  datum?: string | null;
-};
+const PostDepositRequestBodySchema = S.Struct({
+  amount: S.Union(S.Number, S.BigInt),
+  address: S.String,
+  datum: S.optional(S.Union(S.String, S.Null)),
+});
 
 const postDepositHandler = Effect.gen(function* () {
   yield* Effect.logInfo(`POST /${DEPOSIT_ENDPOINT} - request received`);
@@ -664,40 +665,25 @@ const postDepositHandler = Effect.gen(function* () {
 
   const request = yield* HttpServerRequest.HttpServerRequest;
   const body = yield* request.json;
-  if (typeof body !== "object" || body === null) {
-    yield* Effect.logInfo(`Invalid request body: not an object`);
+  const result = S.decodeUnknownEither(PostDepositRequestBodySchema)(body);
+  if (result._tag === "Left") {
+    const msg = `Invalid request body: ${result.left}`
+    yield* Effect.logInfo(msg);
     return yield* HttpServerResponse.json(
-      { error: "Invalid request body" },
+      { error: msg },
       { status: 400 },
     );
   }
-  const { amount, address, datum } = body as PostDepositRequestBody;
+  const { amount, address, datum } = result.right;
 
-  if (typeof amount !== "number" && typeof amount !== "bigint") {
-    yield* Effect.logInfo(`Invalid deposit amount: ${amount}`);
-    return yield* HttpServerResponse.json(
-      { error: "Invalid deposit amount: must be a number" },
-      { status: 400 },
-    );
-  }
-  if (typeof address !== "string" || !isHexString(address)) {
+  if (!isHexString(address)) {
     yield* Effect.logInfo(`Invalid address: ${address}`);
     return yield* HttpServerResponse.json(
       { error: "Invalid address: must be a hex string" },
       { status: 400 },
     );
   }
-  let l2DatumValue: string | null = null;
-  if (datum !== undefined && datum !== null) {
-    if (typeof datum !== "string") {
-      yield* Effect.logInfo(`Invalid datum: must be a string`);
-      return yield* HttpServerResponse.json(
-        { error: "Invalid datum: must be a string or null" },
-        { status: 400 },
-      );
-    }
-    l2DatumValue = datum;
-  }
+  const l2DatumValue = datum ?? null
 
   yield* lucid.switchToOperatorsMainWallet;
 
