@@ -106,8 +106,8 @@ const establishEndTimeFromTxRequests = (
 
 const addDepositUTxOsToDatabases = (
   insertedDepositUTxOs: {
-      utxo: CML.TransactionUnspentOutput;
-      inclusionTime: Date;
+    utxo: CML.TransactionUnspentOutput;
+    inclusionTime: Date;
   }[],
 ): Effect.Effect<void, DatabaseError | FileSystemError, Database> =>
   Effect.gen(function* () {
@@ -121,9 +121,12 @@ const addDepositUTxOsToDatabases = (
       "inserting-deposits-to-databases",
       (startIndex: number, endIndex: number) =>
         Effect.gen(function* () {
-          const batchInsertedDepositUTxOs = insertedDepositUTxOs.slice(startIndex, endIndex);
+          const batchInsertedDepositUTxOs = insertedDepositUTxOs.slice(
+            startIndex,
+            endIndex,
+          );
           const ledgerTableBatch: LedgerTable.EntryWithTimeStamp[] =
-            batchInsertedDepositUTxOs.map(({utxo, inclusionTime}) => ({
+            batchInsertedDepositUTxOs.map(({ utxo, inclusionTime }) => ({
               [LedgerTable.Columns.TX_ID]: Buffer.from(
                 utxo.input().transaction_id().to_raw_bytes(),
               ),
@@ -138,31 +141,30 @@ const addDepositUTxOsToDatabases = (
             }));
 
           const txTableBatch: TxTable.EntryWithTimeStamp[] =
-            yield* Effect.forEach(batchInsertedDepositUTxOs, ({utxo, inclusionTime}) =>
-              Effect.gen(function* () {
-                const tx = yield* trivialTransactionFromCMLUnspentOutput(utxo);
-                return {
-                  [TxTable.Columns.TX_ID]: Buffer.from(
-                    utxo.input().transaction_id().to_raw_bytes(),
-                  ),
-                  [TxTable.Columns.TX]: Buffer.from(tx.to_cbor_bytes()),
-                  [TxTable.Columns.TIMESTAMPTZ]: inclusionTime,
-                };
-              }),
-              { concurrency: "unbounded"}
+            yield* Effect.forEach(
+              batchInsertedDepositUTxOs,
+              ({ utxo, inclusionTime }) =>
+                Effect.gen(function* () {
+                  const tx =
+                    yield* trivialTransactionFromCMLUnspentOutput(utxo);
+                  return {
+                    [TxTable.Columns.TX_ID]: Buffer.from(
+                      utxo.input().transaction_id().to_raw_bytes(),
+                    ),
+                    [TxTable.Columns.TX]: Buffer.from(tx.to_cbor_bytes()),
+                    [TxTable.Columns.TIMESTAMPTZ]: inclusionTime,
+                  };
+                }),
+              { concurrency: "unbounded" },
             );
 
-          const addressTableBatch: AddressHistoryDB.Entry[] = batchInsertedDepositUTxOs.map(({ utxo }) =>
-                ({
-                  [LedgerTable.Columns.TX_ID]: Buffer.from(
-                    utxo.input().transaction_id().to_raw_bytes(),
-                  ),
-                  [LedgerTable.Columns.ADDRESS]: utxo
-                    .output()
-                    .address()
-                    .to_hex(),
-                })
-            );
+          const addressTableBatch: AddressHistoryDB.Entry[] =
+            batchInsertedDepositUTxOs.map(({ utxo }) => ({
+              [LedgerTable.Columns.TX_ID]: Buffer.from(
+                utxo.input().transaction_id().to_raw_bytes(),
+              ),
+              [LedgerTable.Columns.ADDRESS]: utxo.output().address().to_hex(),
+            }));
 
           return Effect.all(
             [
@@ -185,8 +187,8 @@ const addDepositUTxOsToDatabases = (
 const successfulSubmissionProgram = (
   mempoolTrie: MidgardMpt,
   insertedDepositUTxOs: {
-      utxo: CML.TransactionUnspentOutput;
-      inclusionTime: Date;
+    utxo: CML.TransactionUnspentOutput;
+    inclusionTime: Date;
   }[],
   mempoolTxs: readonly TxTable.EntryWithTimeStamp[],
   mempoolTxHashes: Buffer[],
@@ -315,7 +317,10 @@ const userEventsProgram = (
   startDate: Date,
   endDate: Date,
 ): Effect.Effect<
-  Option.Option<{mptRoot: Effect.Effect<string, MptError>, retreivedEvents: readonly UserEventsUtils.Entry[]}>,
+  Option.Option<{
+    mptRoot: Effect.Effect<string, MptError>;
+    retreivedEvents: readonly UserEventsUtils.Entry[];
+  }>,
   DatabaseError,
   Database
 > =>
@@ -337,7 +342,10 @@ const userEventsProgram = (
       );
       const eventIDs = events.map((event) => event[UserEventsColumns.ID]);
       const eventInfos = events.map((event) => event[UserEventsColumns.INFO]);
-      return Option.some({ mptRoot: keyValueMptRoot(eventIDs, eventInfos), retreivedEvents: events });
+      return Option.some({
+        mptRoot: keyValueMptRoot(eventIDs, eventInfos),
+        retreivedEvents: events,
+      });
     }
   });
 
@@ -488,7 +496,7 @@ const databaseOperationsProgram = (
         } else {
           const insertedDepositUTxOs = yield* applyDepositsToLedger(
             ledgerTrie,
-            optUserEventsProgram.value.retreivedEvents
+            optUserEventsProgram.value.retreivedEvents,
           );
 
           const depositsRootFiber: RuntimeFiber<string, MptError> =
@@ -526,9 +534,7 @@ const databaseOperationsProgram = (
             },
             onSuccess: (txHash) =>
               Effect.gen(function* () {
-                yield* addDepositUTxOsToDatabases(
-                  insertedDepositUTxOs,
-                );
+                yield* addDepositUTxOsToDatabases(insertedDepositUTxOs);
                 return {
                   type: "SuccessfulSubmissionOutput",
                   submittedTxHash: txHash,
@@ -554,13 +560,13 @@ const databaseOperationsProgram = (
 
         let depositsRoot: string = yield* emptyRootHexProgram;
         let insertedDepositUTxOs: {
-            utxo: CML.TransactionUnspentOutput;
-            inclusionTime: Date;
-          }[] = []
+          utxo: CML.TransactionUnspentOutput;
+          inclusionTime: Date;
+        }[] = [];
         if (Option.isSome(optUserEventsProgram)) {
           insertedDepositUTxOs = yield* applyDepositsToLedger(
             ledgerTrie,
-            optUserEventsProgram.value.retreivedEvents
+            optUserEventsProgram.value.retreivedEvents,
           );
 
           const depositsRootFiber = yield* Effect.fork(

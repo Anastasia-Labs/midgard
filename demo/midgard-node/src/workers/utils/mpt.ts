@@ -104,21 +104,26 @@ export const deleteMpt = (
  */
 export const applyDepositsToLedger = (
   ledgerTrie: MidgardMpt,
-  deposits: readonly UserEventsUtils.Entry[]
+  deposits: readonly UserEventsUtils.Entry[],
 ): Effect.Effect<
- { utxo: CML.TransactionUnspentOutput, inclusionTime: Date }[],
+  { utxo: CML.TransactionUnspentOutput; inclusionTime: Date }[],
   MptError | SDK.CmlUnexpectedError | DatabaseError,
   NodeConfig | AlwaysSucceedsContract | Database
 > =>
   Effect.gen(function* () {
     if (deposits.length <= 0) {
-      return []
+      return [];
     }
 
-    yield* Effect.logInfo(`Applying ${deposits.length} deposit(s) to the ledgerTrie`)
+    yield* Effect.logInfo(
+      `Applying ${deposits.length} deposit(s) to the ledgerTrie`,
+    );
     const { depositAuthValidator } = yield* AlwaysSucceedsContract;
 
-    let insertedUTxOsWithDates: { utxo: CML.TransactionUnspentOutput, inclusionTime: Date }[] = [];
+    let insertedUTxOsWithDates: {
+      utxo: CML.TransactionUnspentOutput;
+      inclusionTime: Date;
+    }[] = [];
     const putOpsRaw: (ETH_UTILS.BatchDBOp | void)[] = yield* Effect.forEach(
       deposits,
       (dbDeposit) =>
@@ -129,7 +134,10 @@ export const applyDepositsToLedger = (
               depositAuthValidator.policyId,
             );
 
-          insertedUTxOsWithDates.push({ utxo, inclusionTime: dbDeposit[UserEventsUtils.Columns.INCLUSION_TIME] });
+          insertedUTxOsWithDates.push({
+            utxo,
+            inclusionTime: dbDeposit[UserEventsUtils.Columns.INCLUSION_TIME],
+          });
           const putOp: ETH_UTILS.BatchDBOp = {
             type: "put",
             key: Buffer.from(utxo.input().to_cbor_bytes()),

@@ -120,11 +120,13 @@ const constructBatchTx = (
     );
 
     return Option.match(optRestBatchTx, {
-      onNone: () => Option.some({ batchTx: partialBatchTx, restQueue: [...utxosQueue] }),
-      onSome: ({ batchTx, restQueue }) => Option.some({
+      onNone: () =>
+        Option.some({ batchTx: partialBatchTx, restQueue: [...utxosQueue] }),
+      onSome: ({ batchTx, restQueue }) =>
+        Option.some({
           batchTx: partialBatchTx.compose(batchTx),
           restQueue,
-        })
+        }),
     });
   });
 
