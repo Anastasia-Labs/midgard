@@ -86,7 +86,7 @@ const submitGenesisTxOrders: Effect.Effect<
   yield* lucid.switchToOperatorsMainWallet;
 
   const l2Address = config.GENESIS_UTXOS[0].address;
-  const l2AddressData = yield* SDK.addressDataFromBech32(l2Address);
+  const l2AddressData = yield* SDK.midgardAddressFromBech32(l2Address);
   const inclusionTime = Date.now();
 
   const txBuilder = lucid.api

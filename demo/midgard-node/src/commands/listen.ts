@@ -8,7 +8,12 @@ import {
 import { StateQueueTx } from "@/transactions/index.js";
 import * as SDK from "@al-ft/midgard-sdk";
 import { NodeSdk } from "@effect/opentelemetry";
-import { fromHex, getAddressDetails, toHex, CML } from "@lucid-evolution/lucid";
+import {
+  fromHex,
+  getAddressDetails,
+  toHex,
+  CML,
+} from "@lucid-evolution/lucid";
 import { PrometheusExporter } from "@opentelemetry/exporter-prometheus";
 import { OTLPTraceExporter } from "@opentelemetry/exporter-trace-otlp-http";
 import { BatchSpanProcessor } from "@opentelemetry/sdk-trace-base";
@@ -23,7 +28,7 @@ import {
   Queue,
   Ref,
   Schedule,
-  Schema as S
+  Schema as S,
 } from "effect";
 import {
   AddressHistoryDB,
@@ -66,7 +71,6 @@ import {
   txQueueProcessorFiber,
 } from "@/fibers/index.js";
 import { RequestError } from "@effect/platform/HttpServerError";
-import { isNotNull } from "effect/Predicate";
 
 const TX_ENDPOINT: string = "tx";
 const ADDRESS_HISTORY_ENDPOINT: string = "txs";
@@ -104,10 +108,12 @@ const parseRequestBody = <A, I>(
     const result = S.decodeUnknownEither(schema)(body);
     if (result._tag === "Left") {
       yield* Effect.logInfo(`Invalid request body: ${result.left}`);
-      return yield* Effect.fail(new RequestBodyParseError({
-        message: "Invalid request body",
-        cause: result.left,
-      }));
+      return yield* Effect.fail(
+        new RequestBodyParseError({
+          message: "Invalid request body",
+          cause: result.left,
+        }),
+      );
     }
     return result.right;
   });
@@ -120,10 +126,7 @@ const handleRequestBodyParseFailure = (
   Effect.gen(function* () {
     const msg = `${method} /${endpoint} - ${error.message}: ${error.cause}`;
     yield* Effect.logInfo(msg);
-    return yield* HttpServerResponse.json(
-      { error: msg },
-      { status: 400 },
-    );
+    return yield* HttpServerResponse.json({ error: msg }, { status: 400 });
   });
 
 const failWith500Helper = (
@@ -635,7 +638,7 @@ const postTxOrderHandler = Effect.gen(function* () {
       { status: 400 },
     );
   }
-  const refundAddressData = yield* SDK.addressDataFromBech32(refund_address);
+  const refundAddress = yield* SDK.midgardAddressFromBech32(refund_address);
 
   yield* lucid.switchToOperatorsMainWallet;
 
@@ -645,7 +648,7 @@ const postTxOrderHandler = Effect.gen(function* () {
     txOrderScriptAddress: txOrderAuthValidator.spendScriptAddress,
     mintingPolicy: txOrderAuthValidator.mintScript,
     policyId: txOrderAuthValidator.policyId,
-    refundAddress: refundAddressData,
+    refundAddress: refundAddress,
     refundDatum: refund_datum,
     midgardTxBody: "",
     midgardTxWits: "",
@@ -664,7 +667,7 @@ const postTxOrderHandler = Effect.gen(function* () {
   });
 }).pipe(
   Effect.catchTag("RequestBodyParseError", (e) =>
-    handleRequestBodyParseFailure("POST", TX_ORDER_ENDPOINT, e)
+    handleRequestBodyParseFailure("POST", TX_ORDER_ENDPOINT, e),
   ),
   Effect.catchTag("HttpBodyError", (e) =>
     failWith500("POST", TX_ORDER_ENDPOINT, e),
@@ -711,7 +714,7 @@ const postDepositHandler = Effect.gen(function* () {
       { status: 400 },
     );
   }
-  const l2DatumValue = datum ?? null
+  const l2DatumValue = datum ?? null;
 
   yield* lucid.switchToOperatorsMainWallet;
 
@@ -741,7 +744,7 @@ const postDepositHandler = Effect.gen(function* () {
   });
 }).pipe(
   Effect.catchTag("RequestBodyParseError", (e) =>
-    handleRequestBodyParseFailure("POST", DEPOSIT_ENDPOINT, e)
+    handleRequestBodyParseFailure("POST", DEPOSIT_ENDPOINT, e),
   ),
   Effect.catchTag("HttpBodyError", (e) =>
     failWith500("POST", DEPOSIT_ENDPOINT, e),
@@ -798,7 +801,9 @@ const postWithdrawalHandler = Effect.gen(function* () {
     ["", new Map([["", BigInt(withdrawal_body.l2_value)]])],
   ]);
 
-  const l1AddressData = yield* SDK.addressDataFromBech32(withdrawal_body.l1_address);
+  const l1Address = yield* SDK.midgardAddressFromBech32(
+    withdrawal_body.l1_address,
+  );
 
   const l1Datum: SDK.CardanoDatum =
     withdrawal_body.l1_datum === "NoDatum"
@@ -812,31 +817,28 @@ const postWithdrawalHandler = Effect.gen(function* () {
             }),
         });
 
-  const refundAddressData = yield* SDK.addressDataFromBech32(refund_address);
+  const refundAddress = yield* SDK.midgardAddressFromBech32(refund_address);
 
   yield* lucid.switchToOperatorsMainWallet;
 
-  const signedTx = yield* SDK.unsignedWithdrawalTxProgram(
-    lucid.api,
-    {
-      withdrawalScriptAddress: withdrawalAuthValidator.spendScriptAddress,
-      mintingPolicy: withdrawalAuthValidator.mintScript,
-      policyId: withdrawalAuthValidator.policyId,
-      withdrawalBody: {
-        l2_outref: {
-          txHash: { hash: withdrawal_body.l2_outref.txHash.hash },
-          outputIndex: BigInt(withdrawal_body.l2_outref.outputIndex),
-        },
-        l2_owner: withdrawal_body.l2_owner,
-        l2_value: { inner: l2ValueInner },
-        l1_address: l1AddressData,
-        l1_datum: l1Datum,
+  const signedTx = yield* SDK.unsignedWithdrawalTxProgram(lucid.api, {
+    withdrawalScriptAddress: withdrawalAuthValidator.spendScriptAddress,
+    mintingPolicy: withdrawalAuthValidator.mintScript,
+    policyId: withdrawalAuthValidator.policyId,
+    withdrawalBody: {
+      l2_outref: {
+        txHash: { hash: withdrawal_body.l2_outref.txHash.hash },
+        outputIndex: BigInt(withdrawal_body.l2_outref.outputIndex),
       },
-      withdrawalSignature: withdrawalSignatureMap,
-      refundAddress: refundAddressData,
-      refundDatum: refund_datum,
+      l2_owner: withdrawal_body.l2_owner,
+      l2_value: { inner: l2ValueInner },
+      l1_address: l1Address,
+      l1_datum: l1Datum,
     },
-  );
+    withdrawalSignature: withdrawalSignatureMap,
+    refundAddress: refundAddress,
+    refundDatum: refund_datum,
+  });
 
   yield* Effect.logInfo(`Submitting withdrawal order tx...`);
   const txHash = yield* handleSignSubmit(lucid.api, signedTx);
@@ -846,7 +848,7 @@ const postWithdrawalHandler = Effect.gen(function* () {
   });
 }).pipe(
   Effect.catchTag("RequestBodyParseError", (e) =>
-    handleRequestBodyParseFailure("POST", WITHDRAWAL_ENDPOINT, e)
+    handleRequestBodyParseFailure("POST", WITHDRAWAL_ENDPOINT, e),
   ),
   Effect.catchTag("HttpBodyError", (e) =>
     failWith500("POST", WITHDRAWAL_ENDPOINT, e),

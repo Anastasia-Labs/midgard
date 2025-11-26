@@ -17,20 +17,20 @@ import {
   getStateToken,
   isEventUTxOInclusionTimeInBounds,
   makeReturn,
+  MidgardAddress,
+  MidgardAddressSchema,
   OutputReference,
   UnauthenticUtxoError,
   utxosAtByNFTPolicyId,
 } from "@/common.js";
 import {
-  AddressData,
-  AddressSchema,
   POSIXTime,
   POSIXTimeSchema,
   HashingError,
   LucidError,
   hashHexWithBlake2b256,
 } from "@/common.js";
-import { MidgardTxCompact, TxOrderEventSchema } from "@/ledger-state.js";
+import { TxOrderEventSchema } from "@/ledger-state.js";
 import {
   buildUserEventMintTransaction,
   UserEventMintRedeemer,
@@ -42,7 +42,7 @@ export type TxOrderParams = {
   txOrderScriptAddress: string;
   mintingPolicy: Script;
   policyId: string;
-  refundAddress: AddressData;
+  refundAddress: MidgardAddress;
   refundDatum: string;
   midgardTxBody: string;
   midgardTxWits: string;
@@ -52,7 +52,7 @@ export type TxOrderParams = {
 export const TxOrderDatumSchema = Data.Object({
   event: TxOrderEventSchema,
   inclusionTime: POSIXTimeSchema,
-  refundAddress: AddressSchema,
+  refundAddress: MidgardAddressSchema,
   refundDatum: Data.Nullable(Data.Bytes()),
 });
 export type TxOrderDatum = Data.Static<typeof TxOrderDatumSchema>;

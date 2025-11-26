@@ -1,9 +1,9 @@
 import {
-  AddressData,
-  AddressSchema,
   GenericErrorFields,
   HashingError,
   LucidError,
+  MidgardAddress,
+  MidgardAddressSchema,
   POSIXTimeSchema,
   hashHexWithBlake2b256,
   makeReturn,
@@ -36,14 +36,14 @@ export type WithdrawalOrderParams = {
   policyId: string;
   withdrawalBody: WithdrawalBody;
   withdrawalSignature: WithdrawalSignature;
-  refundAddress: AddressData;
+  refundAddress: MidgardAddress;
   refundDatum: Data;
 };
 
 export const WithdrawalOrderDatumSchema = Data.Object({
   event: WithdrawalEventSchema,
   inclusionTime: POSIXTimeSchema,
-  refundAddress: AddressSchema,
+  refundAddress: MidgardAddressSchema,
   refundDatum: Data.Any(),
 });
 export type WithdrawalOrderDatum = Data.Static<
