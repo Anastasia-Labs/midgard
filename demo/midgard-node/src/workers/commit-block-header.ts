@@ -109,7 +109,6 @@ const addDepositUTxOsToDatabases = (
       utxo: CML.TransactionUnspentOutput;
       inclusionTime: Date;
   }[],
-  inclusionTime: Date,
 ): Effect.Effect<void, DatabaseError | FileSystemError, Database> =>
   Effect.gen(function* () {
     yield* Effect.logInfo(
@@ -138,9 +137,8 @@ const addDepositUTxOsToDatabases = (
               [LedgerTable.Columns.TIMESTAMPTZ]: inclusionTime,
             }));
 
-          const batchUTxOs = batchInsertedDepositUTxOs.map(v => v.utxo);
           const txTableBatch: TxTable.EntryWithTimeStamp[] =
-            yield* Effect.forEach(batchUTxOs, (utxo) =>
+            yield* Effect.forEach(batchInsertedDepositUTxOs, ({utxo, inclusionTime}) =>
               Effect.gen(function* () {
                 const tx = yield* trivialTransactionFromCMLUnspentOutput(utxo);
                 return {
@@ -154,7 +152,7 @@ const addDepositUTxOsToDatabases = (
               { concurrency: "unbounded"}
             );
 
-          const addressTableBatch: AddressHistoryDB.Entry[] = batchUTxOs.map((utxo) =>
+          const addressTableBatch: AddressHistoryDB.Entry[] = batchInsertedDepositUTxOs.map(({ utxo }) =>
                 ({
                   [LedgerTable.Columns.TX_ID]: Buffer.from(
                     utxo.input().transaction_id().to_raw_bytes(),
@@ -190,7 +188,6 @@ const successfulSubmissionProgram = (
       utxo: CML.TransactionUnspentOutput;
       inclusionTime: Date;
   }[],
-  inclusionTime: Date,
   mempoolTxs: readonly TxTable.EntryWithTimeStamp[],
   mempoolTxHashes: Buffer[],
   newHeaderHash: string,
@@ -231,7 +228,7 @@ const successfulSubmissionProgram = (
 
             return Effect.all(
               [
-                addDepositUTxOsToDatabases(insertedDepositUTxOs, inclusionTime),
+                addDepositUTxOsToDatabases(insertedDepositUTxOs),
                 ImmutableDB.insertTxs(batchTxs).pipe(
                   Effect.withSpan(`immutable-db-insert-${startIndex}`),
                 ),
@@ -531,7 +528,6 @@ const databaseOperationsProgram = (
               Effect.gen(function* () {
                 yield* addDepositUTxOsToDatabases(
                   insertedDepositUTxOs,
-                  startTime,
                 );
                 return {
                   type: "SuccessfulSubmissionOutput",
@@ -621,7 +617,6 @@ const databaseOperationsProgram = (
             successfulSubmissionProgram(
               mempoolTrie,
               insertedDepositUTxOs,
-              startTime,
               mempoolTxs,
               mempoolTxHashes,
               newHeaderHash,

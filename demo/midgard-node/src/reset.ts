@@ -216,7 +216,7 @@ export const resetUTxOs: Effect.Effect<
   }
 
   // The bottom UTxOs are handled first
-  let utxosQueue: UTxOsQueue[] = [
+  const utxosQueue: UTxOsQueue[] = [
     {
       authValidator: depositAuthValidator,
       assetUTxOs: allDepositUTxOs,
