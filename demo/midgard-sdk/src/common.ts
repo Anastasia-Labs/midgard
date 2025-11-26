@@ -1,4 +1,11 @@
-import { Data } from "@lucid-evolution/lucid";
+import {
+  AddressDetails,
+  CML,
+  credentialToAddress,
+  Data,
+  getAddressDetails,
+  Network,
+} from "@lucid-evolution/lucid";
 import { Data as EffectData } from "effect";
 import { Effect } from "effect";
 import {
@@ -175,6 +182,66 @@ export const bufferToHex = (buf: Buffer): string => {
   }
 };
 
+/**
+ * Assumes the given Bech32 string is that of a Cardano address (TODO).
+ */
+export const midgardAddressFromBech32 = (
+  bechStr: string,
+): Effect.Effect<MidgardAddress, Bech32DeserializationError> =>
+  Effect.gen(function* () {
+    const addressDetails: AddressDetails = yield* Effect.try({
+      try: () => getAddressDetails(bechStr),
+      catch: (e) =>
+        new Bech32DeserializationError({
+          message: `Failed to break down ${bechStr} to its details.`,
+          cause: e,
+        }),
+    });
+    const cred = addressDetails.paymentCredential;
+    if (cred === undefined) {
+      return yield* new Bech32DeserializationError({
+        message: `Failed extracting the payment credential from ${bechStr}.`,
+        cause: "Unknown cause.",
+      });
+    } else {
+      if (cred.type === "Key") {
+        const midgardAddress: MidgardAddress = {
+          PublicKeyCredential: [cred.hash],
+        };
+        return midgardAddress;
+      } else {
+        const midgardAddress: MidgardAddress = {
+          ScriptCredential: [cred.hash],
+        };
+        return midgardAddress;
+      }
+    }
+  });
+
+/**
+ * Taking Cardano `Network` as the first argument is temporary (TODO).
+ */
+export const midgardAddressToBech32 = (
+  network: Network,
+  addr: MidgardAddress,
+): string => {
+  if ("PublicKeyCredential" in addr) {
+    const [pubKeyHex] = addr.PublicKeyCredential;
+    const cred: Credential = {
+      type: "Key",
+      hash: pubKeyHex,
+    };
+    return credentialToAddress(network, cred);
+  } else {
+    const [scriptHashHex] = addr.ScriptCredential;
+    const cred: Credential = {
+      type: "Script",
+      hash: scriptHashHex,
+    };
+    return credentialToAddress(network, cred);
+  }
+};
+
 export const OutputReferenceSchema = Data.Object({
   txHash: Data.Object({ hash: Data.Bytes({ minLength: 32, maxLength: 32 }) }),
   outputIndex: Data.Integer(),
@@ -243,10 +310,18 @@ export const AddressSchema = Data.Object({
 export type AddressData = Data.Static<typeof AddressSchema>;
 export const AddressData = AddressSchema as unknown as AddressData;
 
+export const MidgardAddressSchema = CredentialSchema;
+export type MidgardAddress = CredentialD;
+export const MidgardAddress = MidgardAddressSchema as unknown as MidgardAddress;
+
 export type GenericErrorFields = {
   readonly message: string;
   readonly cause: any;
 };
+
+export class Bech32DeserializationError extends EffectData.TaggedError(
+  "Bech32DeserializationError",
+)<GenericErrorFields> {}
 
 export class CmlUnexpectedError extends EffectData.TaggedError(
   "CmlUnexpectedError",

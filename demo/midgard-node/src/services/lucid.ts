@@ -1,4 +1,4 @@
-import { Effect } from "effect";
+import { Effect, Schedule } from "effect";
 import { ConfigError, NodeConfig } from "./config.js";
 import * as LE from "@lucid-evolution/lucid";
 
@@ -39,7 +39,7 @@ const makeLucid: Effect.Effect<
           ["NETWORK", nodeConfig.NETWORK],
         ],
       }),
-  });
+  }).pipe(Effect.retry(Schedule.fixed("1000 millis")));
   return {
     api: lucid,
     switchToOperatorsMainWallet: Effect.sync(() =>
