@@ -1,4 +1,6 @@
 import {
+  AddressData,
+  AddressSchema,
   GenericErrorFields,
   HashingError,
   LucidError,
@@ -36,14 +38,14 @@ export type WithdrawalOrderParams = {
   policyId: string;
   withdrawalBody: WithdrawalBody;
   withdrawalSignature: WithdrawalSignature;
-  refundAddress: MidgardAddress;
+  refundAddress: AddressData;
   refundDatum: Data;
 };
 
 export const WithdrawalOrderDatumSchema = Data.Object({
   event: WithdrawalEventSchema,
   inclusionTime: POSIXTimeSchema,
-  refundAddress: MidgardAddressSchema,
+  refundAddress: AddressSchema,
   refundDatum: Data.Any(),
 });
 export type WithdrawalOrderDatum = Data.Static<
