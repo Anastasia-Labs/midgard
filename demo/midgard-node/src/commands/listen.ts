@@ -8,7 +8,13 @@ import {
 import { StateQueueTx } from "@/transactions/index.js";
 import * as SDK from "@al-ft/midgard-sdk";
 import { NodeSdk } from "@effect/opentelemetry";
-import { fromHex, getAddressDetails, toHex, CML, Data } from "@lucid-evolution/lucid";
+import {
+  fromHex,
+  getAddressDetails,
+  toHex,
+  CML,
+  Data,
+} from "@lucid-evolution/lucid";
 import { PrometheusExporter } from "@opentelemetry/exporter-prometheus";
 import { OTLPTraceExporter } from "@opentelemetry/exporter-trace-otlp-http";
 import { BatchSpanProcessor } from "@opentelemetry/sdk-trace-base";
@@ -96,10 +102,7 @@ const handleRequestBodyParseFailure = (
   Effect.gen(function* () {
     const msg = `${method} /${endpoint} - ${error.message}: ${error.cause}`;
     yield* Effect.logInfo(msg);
-    return yield* HttpServerResponse.json(
-      { error: msg },
-      { status: 400 },
-    );
+    return yield* HttpServerResponse.json({ error: msg }, { status: 400 });
   });
 
 const failWith500Helper = (
@@ -588,18 +591,16 @@ const postTxOrderHandler = Effect.gen(function* () {
 
   const request = yield* HttpServerRequest.HttpServerRequest;
   const body = yield* request.json;
-  if  (typeof body !== "object"
-     || body === null
-     || typeof (body as any).tx_cbor !== "string"
-     || typeof (body as any).refund_address !== "string"
-     || typeof (body as any).refund_datum !== "string"
-    ) {
-    const msg = `Invalid request body: should be an object with tx_cbor, refund_address, refund_datum string fields`
+  if (
+    typeof body !== "object" ||
+    body === null ||
+    typeof (body as any).tx_cbor !== "string" ||
+    typeof (body as any).refund_address !== "string" ||
+    typeof (body as any).refund_datum !== "string"
+  ) {
+    const msg = `Invalid request body: should be an object with tx_cbor, refund_address, refund_datum string fields`;
     yield* Effect.logInfo(msg);
-    return yield* HttpServerResponse.json(
-      { error: msg },
-      { status: 400 },
-    );
+    return yield* HttpServerResponse.json({ error: msg }, { status: 400 });
   }
   const { tx_cbor, refund_address, refund_datum } =
     body as PostTxOrderRequestBody;
@@ -676,24 +677,21 @@ const postDepositHandler = Effect.gen(function* () {
 
   const request = yield* HttpServerRequest.HttpServerRequest;
   const body = yield* request.json;
-  if  (typeof body !== "object"
-     || body === null
-     || typeof (body as any).amount !== "number"
-        && typeof (body as any).amount !== "bigint"
-     || typeof (body as any).address !== "string"
-     || typeof (body as any).datum !== "string"
-        && typeof (body as any).datum !== "undefined"
-        && (body as any).datum !== null
-    ) {
+  if (
+    typeof body !== "object" ||
+    body === null ||
+    (typeof (body as any).amount !== "number" &&
+      typeof (body as any).amount !== "bigint") ||
+    typeof (body as any).address !== "string" ||
+    (typeof (body as any).datum !== "string" &&
+      typeof (body as any).datum !== "undefined" &&
+      (body as any).datum !== null)
+  ) {
     const msg = `Invalid request body: should be an object with fields: amount: number | bigint; address: string; datum?: string | null`;
     yield* Effect.logInfo(msg);
-    return yield* HttpServerResponse.json(
-      { error: msg },
-      { status: 400 },
-    );
+    return yield* HttpServerResponse.json({ error: msg }, { status: 400 });
   }
-  const { amount, address, datum } =
-    body as PostDepositRequestBody;
+  const { amount, address, datum } = body as PostDepositRequestBody;
 
   if (!isHexString(address)) {
     yield* Effect.logInfo(`Invalid address: ${address}`);
@@ -702,7 +700,7 @@ const postDepositHandler = Effect.gen(function* () {
       { status: 400 },
     );
   }
-  const l2DatumValue = datum ?? null
+  const l2DatumValue = datum ?? null;
 
   yield* lucid.switchToOperatorsMainWallet;
 
@@ -765,56 +763,73 @@ const postWithdrawalHandler = Effect.gen(function* () {
 
   const request = yield* HttpServerRequest.HttpServerRequest;
   const body = yield* request.json;
-  if  (typeof body !== "object"
-     || body === null
-     || typeof (body as any).withdrawal_body !== "string"
-     || typeof (body as any).withdrawal_signature !== "string"
-     || typeof (body as any).refund_address !== "string"
-     || typeof (body as any).refund_datum !== "string"
-    ) {
-    const msg = `Invalid request body: should be an object with withdrawal_body, withdrawal_signature, refund_address, refund_datum string fields`
+  if (
+    typeof body !== "object" ||
+    body === null ||
+    typeof (body as any).withdrawal_body !== "string" ||
+    typeof (body as any).withdrawal_signature !== "string" ||
+    typeof (body as any).refund_address !== "string" ||
+    typeof (body as any).refund_datum !== "string"
+  ) {
+    const msg = `Invalid request body: should be an object with withdrawal_body, withdrawal_signature, refund_address, refund_datum string fields`;
     yield* Effect.logInfo(msg);
-    return yield* HttpServerResponse.json(
-      { error: msg },
-      { status: 400 },
-    );
+    return yield* HttpServerResponse.json({ error: msg }, { status: 400 });
   }
-  const { withdrawal_body, withdrawal_signature, refund_address, refund_datum } =
-    body as PostWithdrawalRequestBody;
+  const {
+    withdrawal_body,
+    withdrawal_signature,
+    refund_address,
+    refund_datum,
+  } = body as PostWithdrawalRequestBody;
 
-  const withdrawalBody= yield* Effect.sync(() => Data.from<SDK.WithdrawalBody>(withdrawal_body)).pipe(
-    Effect.catchAll((e) => Effect.fail(new RequestBodyParseError({
-      message: "Failed to parse withdrawal_body",
-      cause: e,
-    }))),
-  )
-  const withdrawalSignature = yield* Effect.sync(() => Data.from<Map<string, string>>(withdrawal_signature)).pipe(
-    Effect.catchAll((e) => Effect.fail(new RequestBodyParseError({
-      message: "Failed to parse withdrawal_signature",
-      cause: e,
-    }))),
-  )
-  const refundAddressData = yield* Effect.sync(() => Data.from<SDK.AddressData>(refund_address)).pipe(
-    Effect.catchAll((e) => Effect.fail(new RequestBodyParseError({
-      message: "Failed to parse refund_address",
-      cause: e,
-    }))),
-  )
+  const withdrawalBody = yield* Effect.sync(() =>
+    Data.from<SDK.WithdrawalBody>(withdrawal_body),
+  ).pipe(
+    Effect.catchAll((e) =>
+      Effect.fail(
+        new RequestBodyParseError({
+          message: "Failed to parse withdrawal_body",
+          cause: e,
+        }),
+      ),
+    ),
+  );
+  const withdrawalSignature = yield* Effect.sync(() =>
+    Data.from<Map<string, string>>(withdrawal_signature),
+  ).pipe(
+    Effect.catchAll((e) =>
+      Effect.fail(
+        new RequestBodyParseError({
+          message: "Failed to parse withdrawal_signature",
+          cause: e,
+        }),
+      ),
+    ),
+  );
+  const refundAddressData = yield* Effect.sync(() =>
+    Data.from<SDK.AddressData>(refund_address),
+  ).pipe(
+    Effect.catchAll((e) =>
+      Effect.fail(
+        new RequestBodyParseError({
+          message: "Failed to parse refund_address",
+          cause: e,
+        }),
+      ),
+    ),
+  );
 
   yield* lucid.switchToOperatorsMainWallet;
 
-  const signedTx = yield* SDK.unsignedWithdrawalTxProgram(
-    lucid.api,
-    {
-      withdrawalScriptAddress: withdrawalAuthValidator.spendScriptAddress,
-      mintingPolicy: withdrawalAuthValidator.mintScript,
-      policyId: withdrawalAuthValidator.policyId,
-      withdrawalBody: withdrawalBody,
-      withdrawalSignature: withdrawalSignature,
-      refundAddress: refundAddressData,
-      refundDatum: refund_datum,
-    },
-  );
+  const signedTx = yield* SDK.unsignedWithdrawalTxProgram(lucid.api, {
+    withdrawalScriptAddress: withdrawalAuthValidator.spendScriptAddress,
+    mintingPolicy: withdrawalAuthValidator.mintScript,
+    policyId: withdrawalAuthValidator.policyId,
+    withdrawalBody: withdrawalBody,
+    withdrawalSignature: withdrawalSignature,
+    refundAddress: refundAddressData,
+    refundDatum: refund_datum,
+  });
 
   yield* Effect.logInfo(`Submitting withdrawal order tx...`);
   const txHash = yield* handleSignSubmit(lucid.api, signedTx);
@@ -824,7 +839,7 @@ const postWithdrawalHandler = Effect.gen(function* () {
   });
 }).pipe(
   Effect.catchTag("RequestBodyParseError", (e) =>
-    handleRequestBodyParseFailure("POST", WITHDRAWAL_ENDPOINT, e)
+    handleRequestBodyParseFailure("POST", WITHDRAWAL_ENDPOINT, e),
   ),
   Effect.catchTag("HttpBodyError", (e) =>
     failWith500("POST", WITHDRAWAL_ENDPOINT, e),
