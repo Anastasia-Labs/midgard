@@ -53,11 +53,8 @@ program.version(VERSION).description(
 );
 
 program.command("listen").action(async () => {
-  const program: Effect.Effect<
-    void,
-    DatabaseError | Services.ConfigError | Services.DatabaseInitializationError,
-    never
-  > = pipe(
+  console.log("====================== A ======================");
+  const program = pipe(
     runNode,
     Effect.provide(Services.Database.layer),
     Effect.provide(Services.AlwaysSucceedsContract.Default),
