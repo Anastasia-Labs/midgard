@@ -628,7 +628,10 @@ const postTxOrderHandler = Effect.gen(function* () {
     );
   }
 
-  const refundAddress = yield* SDK.midgardAddressFromBech32(refund_address);
+  const refundAddress = yield* parseRequestBodyField<SDK.AddressData>(
+    refund_address,
+    "refund_address",
+  );
 
   yield* lucid.switchToOperatorsMainWallet;
 
@@ -663,9 +666,6 @@ const postTxOrderHandler = Effect.gen(function* () {
     handleGenericFailure("POST", TX_ORDER_ENDPOINT, e),
   ),
   Effect.catchTag("HashingError", (e) =>
-    handleGenericFailure("POST", TX_ORDER_ENDPOINT, e),
-  ),
-  Effect.catchTag("Bech32DeserializationError", (e) =>
     handleGenericFailure("POST", TX_ORDER_ENDPOINT, e),
   ),
   Effect.catchTag("TxOrderError", (e) =>

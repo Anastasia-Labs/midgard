@@ -12,12 +12,13 @@ import {
   UTxO,
 } from "@lucid-evolution/lucid";
 import {
+  AddressData,
+  AddressSchema,
   DataCoercionError,
   GenericErrorFields,
   getStateToken,
   isEventUTxOInclusionTimeInBounds,
   makeReturn,
-  MidgardAddress,
   MidgardAddressSchema,
   OutputReference,
   UnauthenticUtxoError,
@@ -42,7 +43,7 @@ export type TxOrderParams = {
   txOrderScriptAddress: string;
   mintingPolicy: Script;
   policyId: string;
-  refundAddress: MidgardAddress;
+  refundAddress: AddressData;
   refundDatum: string;
   midgardTxBody: string;
   midgardTxWits: string;
@@ -52,7 +53,7 @@ export type TxOrderParams = {
 export const TxOrderDatumSchema = Data.Object({
   event: TxOrderEventSchema,
   inclusionTime: POSIXTimeSchema,
-  refundAddress: MidgardAddressSchema,
+  refundAddress: AddressSchema,
   refundDatum: Data.Nullable(Data.Bytes()),
 });
 export type TxOrderDatum = Data.Static<typeof TxOrderDatumSchema>;
