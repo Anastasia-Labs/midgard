@@ -14,6 +14,7 @@ import { OTLPTraceExporter } from "@opentelemetry/exporter-trace-otlp-http";
 import { BatchSpanProcessor } from "@opentelemetry/sdk-trace-base";
 import {
   Cause,
+  Data as EffectData,
   Duration,
   Effect,
   Layer,
@@ -64,6 +65,7 @@ import {
   monitorMempoolFiber,
   txQueueProcessorFiber,
 } from "@/fibers/index.js";
+import { RequestError } from "@effect/platform/HttpServerError";
 
 const TX_ENDPOINT: string = "tx";
 const ADDRESS_HISTORY_ENDPOINT: string = "txs";
@@ -83,6 +85,46 @@ const txCounter = Metric.counter("tx_count", {
   bigint: true,
   incremental: true,
 });
+
+export class RequestBodyParseError extends EffectData.TaggedError(
+  "RequestBodyParseError",
+)<SDK.GenericErrorFields> {}
+
+const parseRequestBody = <A, I>(
+  schema: S.Schema<A, I>,
+): Effect.Effect<
+  A,
+  RequestBodyParseError | RequestError,
+  HttpServerRequest.HttpServerRequest
+> =>
+  Effect.gen(function* () {
+    const request = yield* HttpServerRequest.HttpServerRequest;
+    const body = yield* request.json;
+    const result = S.decodeUnknownEither(schema)(body);
+    if (result._tag === "Left") {
+      const msg = `Invalid request body: ${result.left}`;
+      yield* Effect.logInfo(`Invalid request body: ${result.left}`);
+      return yield* Effect.fail(new RequestBodyParseError({
+        message: "Invalid request body",
+        cause: result.left,
+      }));
+    }
+    return result.right;
+  });
+
+const handleRequestBodyParseFailure = (
+  method: "GET" | "POST",
+  endpoint: string,
+  error: RequestBodyParseError,
+) =>
+  Effect.gen(function* () {
+    const msg = `${method} /${endpoint} - invalid request body: ${error.cause}`;
+    yield* Effect.logInfo(msg);
+    return yield* HttpServerResponse.json(
+      { error: msg },
+      { status: 400 },
+    );
+  });
 
 const failWith500Helper = (
   logLabel: string,
@@ -557,28 +599,20 @@ const postSubmitHandler = (txQueue: Queue.Enqueue<string>) =>
     ),
   );
 
-type PostTxOrderRequestBody = {
-  tx_cbor: string;
-  refund_address: string;
-  refund_datum: string;
-};
+const PostTxOrderRequestBodySchema = S.Struct({
+  tx_cbor: S.String,
+  refund_address: S.String,
+  refund_datum: S.String,
+});
 
 const postTxOrderHandler = Effect.gen(function* () {
   yield* Effect.logInfo(`POST /${TX_ORDER_ENDPOINT} - request received`);
   const lucid = yield* Lucid;
   const { txOrderAuthValidator } = yield* AlwaysSucceedsContract;
 
-  const request = yield* HttpServerRequest.HttpServerRequest;
-  const body = yield* request.json;
-  if (typeof body !== "object" || body === null) {
-    yield* Effect.logInfo(`Invalid request body: not an object`);
-    return yield* HttpServerResponse.json(
-      { error: "Invalid request body" },
-      { status: 400 },
-    );
-  }
-  const { tx_cbor, refund_address, refund_datum } =
-    body as PostTxOrderRequestBody;
+  const { tx_cbor, refund_address, refund_datum } = yield* parseRequestBody(
+    PostTxOrderRequestBodySchema,
+  );
 
   if (typeof tx_cbor !== "string" || !isHexString(tx_cbor)) {
     yield* Effect.logInfo(`Invalid tx_cbor: ${tx_cbor}`);
@@ -629,6 +663,9 @@ const postTxOrderHandler = Effect.gen(function* () {
     txHash: txHash,
   });
 }).pipe(
+  Effect.catchTag("RequestBodyParseError", (e) =>
+    handleRequestBodyParseFailure("POST", TX_ORDER_ENDPOINT, e)
+  ),
   Effect.catchTag("HttpBodyError", (e) =>
     failWith500("POST", TX_ORDER_ENDPOINT, e),
   ),
@@ -663,18 +700,9 @@ const postDepositHandler = Effect.gen(function* () {
   const lucid = yield* Lucid;
   const { depositAuthValidator } = yield* AlwaysSucceedsContract;
 
-  const request = yield* HttpServerRequest.HttpServerRequest;
-  const body = yield* request.json;
-  const result = S.decodeUnknownEither(PostDepositRequestBodySchema)(body);
-  if (result._tag === "Left") {
-    const msg = `Invalid request body: ${result.left}`
-    yield* Effect.logInfo(msg);
-    return yield* HttpServerResponse.json(
-      { error: msg },
-      { status: 400 },
-    );
-  }
-  const { amount, address, datum } = result.right;
+  const { amount, address, datum } = yield* parseRequestBody(
+    PostDepositRequestBodySchema,
+  );
 
   if (!isHexString(address)) {
     yield* Effect.logInfo(`Invalid address: ${address}`);
@@ -712,6 +740,9 @@ const postDepositHandler = Effect.gen(function* () {
     txHash: txHash,
   });
 }).pipe(
+  Effect.catchTag("RequestBodyParseError", (e) =>
+    handleRequestBodyParseFailure("POST", DEPOSIT_ENDPOINT, e)
+  ),
   Effect.catchTag("HttpBodyError", (e) =>
     failWith500("POST", DEPOSIT_ENDPOINT, e),
   ),
