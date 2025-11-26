@@ -90,6 +90,21 @@ const txCounter = Metric.counter("tx_count", {
   incremental: true,
 });
 
+function parseRequestBodyField<T>(
+  field: string,
+  fieldName: string,
+): Effect.Effect<T, RequestBodyParseError> {
+  return Effect.sync(() => Data.from<T>(field)).pipe(
+    Effect.catchAll((e) =>
+      Effect.fail(
+        new RequestBodyParseError({
+          message: `Failed to parse ${fieldName}`,
+          cause: e,
+        }),
+      ),
+    ),
+  );
+}
 export class RequestBodyParseError extends EffectData.TaggedError(
   "RequestBodyParseError",
 )<SDK.GenericErrorFields> {}
@@ -782,41 +797,17 @@ const postWithdrawalHandler = Effect.gen(function* () {
     refund_datum,
   } = body as PostWithdrawalRequestBody;
 
-  const withdrawalBody = yield* Effect.sync(() =>
-    Data.from<SDK.WithdrawalBody>(withdrawal_body),
-  ).pipe(
-    Effect.catchAll((e) =>
-      Effect.fail(
-        new RequestBodyParseError({
-          message: "Failed to parse withdrawal_body",
-          cause: e,
-        }),
-      ),
-    ),
+  const withdrawalBody = yield* parseRequestBodyField<SDK.WithdrawalBody>(
+    withdrawal_body,
+    "withdrawal_body",
   );
-  const withdrawalSignature = yield* Effect.sync(() =>
-    Data.from<Map<string, string>>(withdrawal_signature),
-  ).pipe(
-    Effect.catchAll((e) =>
-      Effect.fail(
-        new RequestBodyParseError({
-          message: "Failed to parse withdrawal_signature",
-          cause: e,
-        }),
-      ),
-    ),
+  const withdrawalSignature = yield* parseRequestBodyField<Map<string, string>>(
+    withdrawal_signature,
+    "withdrawal_signature",
   );
-  const refundAddressData = yield* Effect.sync(() =>
-    Data.from<SDK.AddressData>(refund_address),
-  ).pipe(
-    Effect.catchAll((e) =>
-      Effect.fail(
-        new RequestBodyParseError({
-          message: "Failed to parse refund_address",
-          cause: e,
-        }),
-      ),
-    ),
+  const refundAddressData = yield* parseRequestBodyField<SDK.AddressData>(
+    refund_address,
+    "refund_address",
   );
 
   yield* lucid.switchToOperatorsMainWallet;
