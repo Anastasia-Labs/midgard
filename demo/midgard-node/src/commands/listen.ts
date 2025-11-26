@@ -94,17 +94,16 @@ function parseRequestBodyField<T>(
   field: string,
   fieldName: string,
 ): Effect.Effect<T, RequestBodyParseError> {
-  return Effect.sync(() => Data.from<T>(field)).pipe(
-    Effect.catchAll((e) =>
-      Effect.fail(
-        new RequestBodyParseError({
-          message: `Failed to parse ${fieldName}`,
-          cause: e,
-        }),
-      ),
-    ),
-  );
+  return Effect.try({
+    try: () => Data.from<T>(field),
+    catch: (e) =>
+      new RequestBodyParseError({
+        message: `Failed to parse ${fieldName}`,
+        cause: e,
+      }),
+  });
 }
+
 export class RequestBodyParseError extends EffectData.TaggedError(
   "RequestBodyParseError",
 )<SDK.GenericErrorFields> {}
@@ -717,6 +716,14 @@ const postDepositHandler = Effect.gen(function* () {
       { status: 400 },
     );
   }
+  const amountBigInt = yield* Effect.try({
+    try: () => BigInt(amount),
+    catch: (e) =>
+      new RequestBodyParseError({
+        message: "Invalid amount: must be a valid integer",
+        cause: e,
+      }),
+  });
   const l2DatumValue = datum ?? null;
 
   yield* lucid.switchToOperatorsMainWallet;
@@ -729,7 +736,7 @@ const postDepositHandler = Effect.gen(function* () {
     depositScriptAddress: depositAuthValidator.spendScriptAddress,
     mintingPolicy: depositAuthValidator.mintScript,
     policyId: depositAuthValidator.policyId,
-    depositAmount: BigInt(amount),
+    depositAmount: amountBigInt,
     depositInfo: depositInfo,
   };
 
@@ -748,6 +755,9 @@ const postDepositHandler = Effect.gen(function* () {
 }).pipe(
   Effect.catchTag("HttpBodyError", (e) =>
     failWith500("POST", DEPOSIT_ENDPOINT, e),
+  ),
+  Effect.catchTag("RequestBodyParseError", (e) =>
+    handleRequestBodyParseFailure("POST", DEPOSIT_ENDPOINT, e),
   ),
   Effect.catchTag("LucidError", (e) =>
     handleGenericFailure("POST", DEPOSIT_ENDPOINT, e),
