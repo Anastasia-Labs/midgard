@@ -14,6 +14,7 @@ import { OTLPTraceExporter } from "@opentelemetry/exporter-trace-otlp-http";
 import { BatchSpanProcessor } from "@opentelemetry/sdk-trace-base";
 import {
   Cause,
+  Data as EffectData,
   Duration,
   Effect,
   Layer,
@@ -63,7 +64,6 @@ import {
   monitorMempoolFiber,
   txQueueProcessorFiber,
 } from "@/fibers/index.js";
-import { RequestError } from "@effect/platform/HttpServerError";
 
 const TX_ENDPOINT: string = "tx";
 const ADDRESS_HISTORY_ENDPOINT: string = "txs";
@@ -84,44 +84,23 @@ const txCounter = Metric.counter("tx_count", {
   incremental: true,
 });
 
-// export class RequestBodyParseError extends EffectData.TaggedError(
-//   "RequestBodyParseError",
-// )<SDK.GenericErrorFields> {}
+export class RequestBodyParseError extends EffectData.TaggedError(
+  "RequestBodyParseError",
+)<SDK.GenericErrorFields> {}
 
-// const parseRequestBody = <A, I>(
-//   schema: S.Schema<A, I>,
-// ): Effect.Effect<
-//   A,
-//   RequestBodyParseError | RequestError,
-//   HttpServerRequest.HttpServerRequest
-// > =>
-//   Effect.gen(function* () {
-//     const request = yield* HttpServerRequest.HttpServerRequest;
-//     const body = yield* request.json;
-//     const result = S.decodeUnknownEither(schema)(body);
-//     if (result._tag === "Left") {
-//       yield* Effect.logInfo(`Invalid request body: ${result.left}`);
-//       return yield* Effect.fail(new RequestBodyParseError({
-//         message: "Invalid request body",
-//         cause: result.left,
-//       }));
-//     }
-//     return result.right;
-//   });
-
-// const handleRequestBodyParseFailure = (
-//   method: "GET" | "POST",
-//   endpoint: string,
-//   error: RequestBodyParseError,
-// ) =>
-//   Effect.gen(function* () {
-//     const msg = `${method} /${endpoint} - ${error.message}: ${error.cause}`;
-//     yield* Effect.logInfo(msg);
-//     return yield* HttpServerResponse.json(
-//       { error: msg },
-//       { status: 400 },
-//     );
-//   });
+const handleRequestBodyParseFailure = (
+  method: "GET" | "POST",
+  endpoint: string,
+  error: RequestBodyParseError,
+) =>
+  Effect.gen(function* () {
+    const msg = `${method} /${endpoint} - ${error.message}: ${error.cause}`;
+    yield* Effect.logInfo(msg);
+    return yield* HttpServerResponse.json(
+      { error: msg },
+      { status: 400 },
+    );
+  });
 
 const failWith500Helper = (
   logLabel: string,
@@ -803,9 +782,24 @@ const postWithdrawalHandler = Effect.gen(function* () {
   const { withdrawal_body, withdrawal_signature, refund_address, refund_datum } =
     body as PostWithdrawalRequestBody;
 
-  const withdrawalBody: SDK.WithdrawalBody = Data.from(withdrawal_body);
-  const withdrawalSignature: Map<string, string> = Data.from(withdrawal_signature);
-  const refundAddressData: SDK.AddressData = Data.from(refund_address);
+  const withdrawalBody= yield* Effect.sync(() => Data.from<SDK.WithdrawalBody>(withdrawal_body)).pipe(
+    Effect.catchAll((e) => Effect.fail(new RequestBodyParseError({
+      message: "Failed to parse withdrawal_body",
+      cause: e,
+    }))),
+  )
+  const withdrawalSignature = yield* Effect.sync(() => Data.from<Map<string, string>>(withdrawal_signature)).pipe(
+    Effect.catchAll((e) => Effect.fail(new RequestBodyParseError({
+      message: "Failed to parse withdrawal_signature",
+      cause: e,
+    }))),
+  )
+  const refundAddressData = yield* Effect.sync(() => Data.from<SDK.AddressData>(refund_address)).pipe(
+    Effect.catchAll((e) => Effect.fail(new RequestBodyParseError({
+      message: "Failed to parse refund_address",
+      cause: e,
+    }))),
+  )
 
   yield* lucid.switchToOperatorsMainWallet;
 
@@ -829,9 +823,9 @@ const postWithdrawalHandler = Effect.gen(function* () {
     txHash: txHash,
   });
 }).pipe(
-  // Effect.catchTag("RequestBodyParseError", (e) =>
-  //   handleRequestBodyParseFailure("POST", WITHDRAWAL_ENDPOINT, e)
-  // ),
+  Effect.catchTag("RequestBodyParseError", (e) =>
+    handleRequestBodyParseFailure("POST", WITHDRAWAL_ENDPOINT, e)
+  ),
   Effect.catchTag("HttpBodyError", (e) =>
     failWith500("POST", WITHDRAWAL_ENDPOINT, e),
   ),
@@ -841,9 +835,6 @@ const postWithdrawalHandler = Effect.gen(function* () {
   Effect.catchTag("HashingError", (e) =>
     handleGenericFailure("POST", WITHDRAWAL_ENDPOINT, e),
   ),
-  // Effect.catchTag("Bech32DeserializationError", (e) =>
-  //   handleGenericFailure("POST", WITHDRAWAL_ENDPOINT, e),
-  // ),
   Effect.catchTag("WithdrawalError", (e) =>
     handleGenericFailure("POST", WITHDRAWAL_ENDPOINT, e),
   ),
