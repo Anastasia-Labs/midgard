@@ -695,14 +695,13 @@ const postDepositHandler = Effect.gen(function* () {
   if (
     typeof body !== "object" ||
     body === null ||
-    (typeof (body as any).amount !== "number" &&
-      typeof (body as any).amount !== "bigint") ||
+    typeof (body as any).amount !== "string" ||
     typeof (body as any).address !== "string" ||
     (typeof (body as any).datum !== "string" &&
       typeof (body as any).datum !== "undefined" &&
       (body as any).datum !== null)
   ) {
-    const msg = `Invalid request body: should be an object with fields: amount: number | bigint; address: string; datum?: string | null`;
+    const msg = `Invalid request body: should be an object with amount, address string fields and optional datum string field`;
     yield* Effect.logInfo(msg);
     return yield* HttpServerResponse.json({ error: msg }, { status: 400 });
   }
