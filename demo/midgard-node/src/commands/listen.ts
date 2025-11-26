@@ -66,6 +66,7 @@ import {
   txQueueProcessorFiber,
 } from "@/fibers/index.js";
 import { RequestError } from "@effect/platform/HttpServerError";
+import { isNotNull } from "effect/Predicate";
 
 const TX_ENDPOINT: string = "tx";
 const ADDRESS_HISTORY_ENDPOINT: string = "txs";
@@ -102,7 +103,6 @@ const parseRequestBody = <A, I>(
     const body = yield* request.json;
     const result = S.decodeUnknownEither(schema)(body);
     if (result._tag === "Left") {
-      const msg = `Invalid request body: ${result.left}`;
       yield* Effect.logInfo(`Invalid request body: ${result.left}`);
       return yield* Effect.fail(new RequestBodyParseError({
         message: "Invalid request body",
@@ -118,7 +118,7 @@ const handleRequestBodyParseFailure = (
   error: RequestBodyParseError,
 ) =>
   Effect.gen(function* () {
-    const msg = `${method} /${endpoint} - invalid request body: ${error.cause}`;
+    const msg = `${method} /${endpoint} - ${error.message}: ${error.cause}`;
     yield* Effect.logInfo(msg);
     return yield* HttpServerResponse.json(
       { error: msg },
@@ -763,83 +763,79 @@ const postDepositHandler = Effect.gen(function* () {
   ),
 );
 
-type PostWithdrawalRequestBody = {
-  withdrawal_body: SDK.WithdrawalBody;
-  withdrawal_signature: SDK.WithdrawalSignature;
-  refund_address: string;
-  refund_datum: string;
-};
+const PostWithdrawalRequestBodySchema = S.Struct({
+  withdrawal_body: S.Struct({
+    l2_outref: S.Struct({
+      txHash: S.Struct({ hash: S.String }),
+      outputIndex: S.Union(S.Number, S.BigInt),
+    }),
+    l2_owner: S.String,
+    // simplified value with ada only
+    l2_value: S.Union(S.Number, S.BigInt),
+    l1_address: S.String,
+    l1_datum: S.String,
+  }),
+  withdrawal_signature: S.Array(S.Tuple(S.String, S.String)),
+  refund_address: S.String,
+  refund_datum: S.String,
+});
 
 const postWithdrawalHandler = Effect.gen(function* () {
   yield* Effect.logInfo(`POST /${WITHDRAWAL_ENDPOINT} - request received`);
   const lucid = yield* Lucid;
   const { withdrawalAuthValidator } = yield* AlwaysSucceedsContract;
 
-  const request = yield* HttpServerRequest.HttpServerRequest;
-  const body = yield* request.json;
-  if (typeof body !== "object" || body === null) {
-    yield* Effect.logInfo(`Invalid request body: not an object`);
-    return yield* HttpServerResponse.json(
-      { error: "Invalid request body" },
-      { status: 400 },
-    );
-  }
   const {
     withdrawal_body,
     withdrawal_signature,
     refund_address,
     refund_datum,
-  } = body as PostWithdrawalRequestBody;
+  } = yield* parseRequestBody(PostWithdrawalRequestBodySchema);
 
-  if (typeof withdrawal_body !== "object" || withdrawal_body === null) {
-    yield* Effect.logInfo(`Invalid withdrawal_body: ${withdrawal_body}`);
-    return yield* HttpServerResponse.json(
-      { error: "Invalid withdrawal_body: must be an object" },
-      { status: 400 },
-    );
-  }
-  if (
-    typeof withdrawal_signature !== "object" ||
-    withdrawal_signature === null
-  ) {
-    yield* Effect.logInfo(`Invalid withdrawal_signature: must be an object`);
-    return yield* HttpServerResponse.json(
-      { error: "Invalid withdrawal_signature: must be an object (Map)" },
-      { status: 400 },
-    );
-  }
-  if (typeof refund_address !== "string") {
-    yield* Effect.logInfo(`Invalid refund_address: ${refund_address}`);
-    return yield* HttpServerResponse.json(
-      { error: "Invalid refund_address: must be a string" },
-      { status: 400 },
-    );
-  }
-  if (typeof refund_datum !== "string") {
-    yield* Effect.logInfo(`Invalid refund_datum: must be a string`);
-    return yield* HttpServerResponse.json(
-      { error: "Invalid refund_datum: must be a string" },
-      { status: 400 },
-    );
-  }
+  const withdrawalSignatureMap = new Map<string, string>(withdrawal_signature);
+
+  const l2ValueInner = new Map<string, Map<string, bigint>>([
+    ["", new Map([["", BigInt(withdrawal_body.l2_value)]])],
+  ]);
+
+  const l1AddressData = yield* SDK.addressDataFromBech32(withdrawal_body.l1_address);
+
+  const l1Datum: SDK.CardanoDatum =
+    withdrawal_body.l1_datum === "NoDatum"
+      ? "NoDatum"
+      : yield* Effect.try({
+          try: () => JSON.parse(withdrawal_body.l1_datum),
+          catch: (error) =>
+            new RequestBodyParseError({
+              message: "Invalid l1_datum: must be valid JSON or 'NoDatum'",
+              cause: error,
+            }),
+        });
 
   const refundAddressData = yield* SDK.addressDataFromBech32(refund_address);
 
   yield* lucid.switchToOperatorsMainWallet;
 
-  const withdrawalParams: SDK.WithdrawalOrderParams = {
-    withdrawalScriptAddress: withdrawalAuthValidator.spendScriptAddress,
-    mintingPolicy: withdrawalAuthValidator.mintScript,
-    policyId: withdrawalAuthValidator.policyId,
-    withdrawalBody: withdrawal_body,
-    withdrawalSignature: withdrawal_signature,
-    refundAddress: refundAddressData,
-    refundDatum: refund_datum,
-  };
-
   const signedTx = yield* SDK.unsignedWithdrawalTxProgram(
     lucid.api,
-    withdrawalParams,
+    {
+      withdrawalScriptAddress: withdrawalAuthValidator.spendScriptAddress,
+      mintingPolicy: withdrawalAuthValidator.mintScript,
+      policyId: withdrawalAuthValidator.policyId,
+      withdrawalBody: {
+        l2_outref: {
+          txHash: { hash: withdrawal_body.l2_outref.txHash.hash },
+          outputIndex: BigInt(withdrawal_body.l2_outref.outputIndex),
+        },
+        l2_owner: withdrawal_body.l2_owner,
+        l2_value: { inner: l2ValueInner },
+        l1_address: l1AddressData,
+        l1_datum: l1Datum,
+      },
+      withdrawalSignature: withdrawalSignatureMap,
+      refundAddress: refundAddressData,
+      refundDatum: refund_datum,
+    },
   );
 
   yield* Effect.logInfo(`Submitting withdrawal order tx...`);
@@ -849,6 +845,9 @@ const postWithdrawalHandler = Effect.gen(function* () {
     txHash: txHash,
   });
 }).pipe(
+  Effect.catchTag("RequestBodyParseError", (e) =>
+    handleRequestBodyParseFailure("POST", WITHDRAWAL_ENDPOINT, e)
+  ),
   Effect.catchTag("HttpBodyError", (e) =>
     failWith500("POST", WITHDRAWAL_ENDPOINT, e),
   ),
