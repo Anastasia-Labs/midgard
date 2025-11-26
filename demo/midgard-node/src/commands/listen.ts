@@ -659,6 +659,9 @@ const postTxOrderHandler = Effect.gen(function* () {
     txHash: txHash,
   });
 }).pipe(
+  Effect.catchTag("RequestBodyParseError", (e) =>
+    handleRequestBodyParseFailure("POST", TX_ORDER_ENDPOINT, e),
+  ),
   Effect.catchTag("HttpBodyError", (e) =>
     failWith500("POST", TX_ORDER_ENDPOINT, e),
   ),
