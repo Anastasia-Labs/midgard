@@ -28,7 +28,9 @@ import {
   pipe,
   Queue,
   Ref,
+  Schema as S,
   Schedule,
+  Struct,
 } from "effect";
 import {
   AddressHistoryDB,
@@ -70,6 +72,7 @@ import {
   monitorMempoolFiber,
   txQueueProcessorFiber,
 } from "@/fibers/index.js";
+import { RequestError } from "@effect/platform/HttpServerError";
 
 const TX_ENDPOINT: string = "tx";
 const ADDRESS_HISTORY_ENDPOINT: string = "txs";
@@ -103,6 +106,29 @@ function parseRequestBodyField<T>(
       }),
   });
 }
+
+const parseRequestBody = <A, I>(
+  schema: S.Schema<A, I>,
+): Effect.Effect<
+  A,
+  RequestBodyParseError | RequestError,
+  HttpServerRequest.HttpServerRequest
+> =>
+  Effect.gen(function* () {
+    const request = yield* HttpServerRequest.HttpServerRequest;
+    const body = yield* request.json;
+    const result = S.decodeUnknownEither(schema)(body);
+    if (result._tag === "Left") {
+      yield* Effect.logInfo(`Invalid request body: ${result.left}`);
+      return yield* Effect.fail(
+        new RequestBodyParseError({
+          message: "Invalid request body",
+          cause: result.left,
+        }),
+      );
+    }
+    return result.right;
+  });
 
 export class RequestBodyParseError extends EffectData.TaggedError(
   "RequestBodyParseError",
@@ -592,33 +618,20 @@ const postSubmitHandler = (txQueue: Queue.Enqueue<string>) =>
     ),
   );
 
-type PostTxOrderRequestBody = {
-  tx_cbor: string;
-  refund_address: string;
-  refund_datum?: string;
-};
+const PostTxOrderRequestBodySchema = S.Struct({
+  tx_cbor: S.String,
+  refund_address: S.String,
+  refund_datum: S.optional(S.Union(S.String, S.Null)),
+});
 
 const postTxOrderHandler = Effect.gen(function* () {
   yield* Effect.logInfo(`POST /${TX_ORDER_ENDPOINT} - request received`);
   const lucid = yield* Lucid;
   const { txOrderAuthValidator } = yield* AlwaysSucceedsContract;
 
-  const request = yield* HttpServerRequest.HttpServerRequest;
-  const body = yield* request.json;
-  if (
-    typeof body !== "object" ||
-    body === null ||
-    typeof (body as any).tx_cbor !== "string" ||
-    typeof (body as any).refund_address !== "string" ||
-    (typeof (body as any).refund_datum !== "string" &&
-      (body as any).refund_datum !== undefined)
-  ) {
-    const msg = `Invalid request body: should be an object with tx_cbor, refund_address, refund_datum string fields`;
-    yield* Effect.logInfo(msg);
-    return yield* HttpServerResponse.json({ error: msg }, { status: 400 });
-  }
-  const { tx_cbor, refund_address, refund_datum } =
-    body as PostTxOrderRequestBody;
+  const { tx_cbor, refund_address, refund_datum } = yield* parseRequestBody(
+    PostTxOrderRequestBodySchema,
+  );
 
   if (!isHexString(tx_cbor)) {
     yield* Effect.logInfo(`Invalid tx_cbor: ${tx_cbor}`);
@@ -688,33 +701,20 @@ const postTxOrderHandler = Effect.gen(function* () {
   ),
 );
 
-type PostDepositRequestBody = {
-  amount: string;
-  address: string;
-  datum?: string | null;
-};
+const PostDepositRequestBodySchema = S.Struct({
+  amount: S.String,
+  address: S.String,
+  datum: S.optional(S.Union(S.String, S.Null)),
+});
 
 const postDepositHandler = Effect.gen(function* () {
   yield* Effect.logInfo(`POST /${DEPOSIT_ENDPOINT} - request received`);
   const lucid = yield* Lucid;
   const { depositAuthValidator } = yield* AlwaysSucceedsContract;
 
-  const request = yield* HttpServerRequest.HttpServerRequest;
-  const body = yield* request.json;
-  if (
-    typeof body !== "object" ||
-    body === null ||
-    typeof (body as any).amount !== "string" ||
-    typeof (body as any).address !== "string" ||
-    (typeof (body as any).datum !== "string" &&
-      typeof (body as any).datum !== "undefined" &&
-      (body as any).datum !== null)
-  ) {
-    const msg = `Invalid request body: should be an object with amount, address string fields and optional datum string field`;
-    yield* Effect.logInfo(msg);
-    return yield* HttpServerResponse.json({ error: msg }, { status: 400 });
-  }
-  const { amount, address, datum } = body as PostDepositRequestBody;
+  const { amount, address, datum } = yield* parseRequestBody(
+    PostDepositRequestBodySchema,
+  );
 
   yield* SDK.addressFromBech32(address).pipe(
     Effect.catchAll((e) =>
@@ -786,38 +786,24 @@ const postDepositHandler = Effect.gen(function* () {
   ),
 );
 
-type PostWithdrawalRequestBody = {
-  withdrawal_body: string;
-  withdrawal_signature: string;
-  refund_address: string;
-  refund_datum?: string;
-};
+const PostWithdrawalRequestBodySchema = S.Struct({
+  withdrawal_body: S.String,
+  withdrawal_signature: S.String,
+  refund_address: S.String,
+  refund_datum: S.optional(S.Union(S.String, S.Null)),
+});
 
 const postWithdrawalHandler = Effect.gen(function* () {
   yield* Effect.logInfo(`POST /${WITHDRAWAL_ENDPOINT} - request received`);
   const lucid = yield* Lucid;
   const { withdrawalAuthValidator } = yield* AlwaysSucceedsContract;
 
-  const request = yield* HttpServerRequest.HttpServerRequest;
-  const body = yield* request.json;
-  if (
-    typeof body !== "object" ||
-    body === null ||
-    typeof (body as any).withdrawal_body !== "string" ||
-    typeof (body as any).withdrawal_signature !== "string" ||
-    typeof (body as any).refund_address !== "string" ||
-    (typeof (body as any).refund_datum !== "string" && (body as any).refund_datum !== undefined)
-  ) {
-    const msg = `Invalid request body: should be an object with withdrawal_body, withdrawal_signature, refund_address string fields and optional refund_datum string field`;
-    yield* Effect.logInfo(msg);
-    return yield* HttpServerResponse.json({ error: msg }, { status: 400 });
-  }
   const {
     withdrawal_body,
     withdrawal_signature,
     refund_address,
     refund_datum,
-  } = body as PostWithdrawalRequestBody;
+  } = yield* parseRequestBody(PostWithdrawalRequestBodySchema);
 
   const withdrawalBody = yield* parseRequestBodyField<SDK.WithdrawalBody>(
     withdrawal_body,
@@ -827,7 +813,7 @@ const postWithdrawalHandler = Effect.gen(function* () {
     withdrawal_signature,
     "withdrawal_signature",
   );
-    const refundAddress = yield* SDK.addressFromBech32(refund_address).pipe(
+  const refundAddress = yield* SDK.addressFromBech32(refund_address).pipe(
     Effect.catchAll((e) =>
       Effect.fail(
         new RequestBodyParseError({
@@ -837,6 +823,7 @@ const postWithdrawalHandler = Effect.gen(function* () {
       ),
     ),
   );
+  const refundDatum = refund_datum == null ? undefined : refund_datum;
 
   yield* lucid.switchToOperatorsMainWallet;
 
@@ -847,7 +834,7 @@ const postWithdrawalHandler = Effect.gen(function* () {
     withdrawalBody: withdrawalBody,
     withdrawalSignature: withdrawalSignature,
     refundAddress: refundAddress,
-    refundDatum: refund_datum,
+    refundDatum: refundDatum,
   });
 
   yield* Effect.logInfo(`Submitting withdrawal order tx...`);
