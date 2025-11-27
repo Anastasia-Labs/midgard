@@ -790,7 +790,7 @@ type PostWithdrawalRequestBody = {
   withdrawal_body: string;
   withdrawal_signature: string;
   refund_address: string;
-  refund_datum: string;
+  refund_datum?: string;
 };
 
 const postWithdrawalHandler = Effect.gen(function* () {
@@ -806,9 +806,9 @@ const postWithdrawalHandler = Effect.gen(function* () {
     typeof (body as any).withdrawal_body !== "string" ||
     typeof (body as any).withdrawal_signature !== "string" ||
     typeof (body as any).refund_address !== "string" ||
-    typeof (body as any).refund_datum !== "string"
+    (typeof (body as any).refund_datum !== "string" && (body as any).refund_datum !== undefined)
   ) {
-    const msg = `Invalid request body: should be an object with withdrawal_body, withdrawal_signature, refund_address, refund_datum string fields`;
+    const msg = `Invalid request body: should be an object with withdrawal_body, withdrawal_signature, refund_address string fields and optional refund_datum string field`;
     yield* Effect.logInfo(msg);
     return yield* HttpServerResponse.json({ error: msg }, { status: 400 });
   }
