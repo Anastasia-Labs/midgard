@@ -259,6 +259,43 @@ export const midgardAddressToBech32 = (
   }
 };
 
+export const addressFromBech32 = (
+  bechStr: string,
+): Effect.Effect<AddressData, Bech32DeserializationError> =>
+  Effect.gen(function* () {
+    const addressDetails: AddressDetails = yield* Effect.try({
+      try: () => getAddressDetails(bechStr),
+      catch: (e) =>
+        new Bech32DeserializationError({
+          message: `Failed to break down ${bechStr} to its details.`,
+          cause: e,
+        }),
+    });
+
+    const paymentCred = addressDetails.paymentCredential;
+    if (paymentCred === undefined) {
+      return yield* new Bech32DeserializationError({
+        message: `Failed extracting the payment credential from ${bechStr}.`,
+        cause: "Unknown cause.",
+      });
+    }
+    const paymentCredData:CredentialD = paymentCred.type === "Key"
+      ? { PublicKeyCredential: [paymentCred.hash]}
+      : { ScriptCredential: [paymentCred.hash] };
+
+    const stakeCred = addressDetails.stakeCredential;
+    const stakeCredData:(null | {Inline: [CredentialD]}) = stakeCred === undefined
+      ? null
+      : stakeCred.type === "Key"
+        ? { Inline: [{ PublicKeyCredential: [stakeCred.hash]}] }
+        : { Inline: [{ ScriptCredential: [stakeCred.hash]}] };
+
+    return {
+      paymentCredential: paymentCredData,
+      stakeCredential: stakeCredData,
+    };
+  });
+
 export const H32Schema = Data.Bytes({ minLength: 32, maxLength: 32 });
 export type H32 = Data.Static<typeof H32Schema>;
 export const H32 = H32Schema as unknown as H32;
