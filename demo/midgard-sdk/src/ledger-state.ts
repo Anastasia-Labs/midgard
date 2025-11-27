@@ -3,6 +3,8 @@ import {
   AddressSchema,
   H32Schema,
   MerkleRootSchema,
+  MidgardAddress,
+  MidgardAddressSchema,
   OutputReferenceSchema,
   POSIXTimeSchema,
   PubKeyHashSchema,
@@ -136,7 +138,7 @@ export const WithdrawalBodySchema = Data.Object({
   l2_outref: OutputReferenceSchema,
   l2_owner: Data.Bytes({ minLength: 28, maxLength: 28 }),
   l2_value: ValueSchema,
-  l1_address: AddressSchema,
+  l1_address: MidgardAddressSchema,
   l1_datum: CardanoDatumSchema,
 });
 export type WithdrawalBody = Data.Static<typeof WithdrawalBodySchema>;

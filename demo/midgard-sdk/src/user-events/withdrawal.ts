@@ -37,14 +37,14 @@ export type WithdrawalOrderParams = {
   withdrawalBody: WithdrawalBody;
   withdrawalSignature: WithdrawalSignature;
   refundAddress: AddressData;
-  refundDatum: Data;
+  refundDatum?: Data;
 };
 
 export const WithdrawalOrderDatumSchema = Data.Object({
   event: WithdrawalEventSchema,
   inclusionTime: POSIXTimeSchema,
   refundAddress: AddressSchema,
-  refundDatum: Data.Any(),
+  refundDatum: Data.Nullable(Data.Any()),
 });
 export type WithdrawalOrderDatum = Data.Static<
   typeof WithdrawalOrderDatumSchema
@@ -114,7 +114,7 @@ export const incompleteWithdrawalTxProgram = (
       },
       inclusionTime: BigInt(inclusionTime),
       refundAddress: params.refundAddress,
-      refundDatum: params.refundDatum,
+      refundDatum: params.refundDatum || null,
     };
     const withdrawalOrderDatumCBOR = Data.to(
       withdrawalOrderDatum,

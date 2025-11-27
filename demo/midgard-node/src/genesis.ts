@@ -65,7 +65,7 @@ const submitGenesisTxOrders: Effect.Effect<
   | SDK.HashingError
   | SDK.LucidError
   | SDK.TxOrderError
-  | SDK.ParsingError
+  | SDK.Bech32DeserializationError
   | TxSignError
   | TxSubmitError
   | TxConfirmError,
@@ -86,7 +86,7 @@ const submitGenesisTxOrders: Effect.Effect<
   yield* lucid.switchToOperatorsMainWallet;
 
   const l2Address = config.GENESIS_UTXOS[0].address;
-  const l2AddressData = yield* SDK.parseAddressDataCredentials(l2Address);
+  const l2AddressData = yield* SDK.midgardAddressFromBech32(l2Address);
   const inclusionTime = Date.now();
 
   const txBuilder = lucid.api
@@ -103,12 +103,11 @@ const submitGenesisTxOrders: Effect.Effect<
   const tx = txSignBuilder.toTransaction();
 
   const txOrderParams: SDK.TxOrderParams = {
-    txOrderAddress: txOrderAuthValidator.spendScriptAddress,
+    txOrderScriptAddress: txOrderAuthValidator.spendScriptAddress,
     mintingPolicy: txOrderAuthValidator.mintScript,
     policyId: txOrderAuthValidator.policyId,
     refundAddress: l2AddressData,
     refundDatum: "",
-    inclusionTime: BigInt(inclusionTime),
     midgardTxBody: "",
     midgardTxWits: "",
     cardanoTx: tx,

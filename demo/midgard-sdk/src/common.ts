@@ -1,4 +1,10 @@
-import { Data, getAddressDetails } from "@lucid-evolution/lucid";
+import {
+  AddressDetails,
+  credentialToAddress,
+  Data,
+  getAddressDetails,
+  Network,
+} from "@lucid-evolution/lucid";
 import { Data as EffectData } from "effect";
 import { Effect } from "effect";
 import {
@@ -193,6 +199,103 @@ export const bufferToHex = (buf: Buffer): string => {
   }
 };
 
+/**
+ * Assumes the given Bech32 string is that of a Cardano address (TODO).
+ */
+export const midgardAddressFromBech32 = (
+  bechStr: string,
+): Effect.Effect<MidgardAddress, Bech32DeserializationError> =>
+  Effect.gen(function* () {
+    const addressDetails: AddressDetails = yield* Effect.try({
+      try: () => getAddressDetails(bechStr),
+      catch: (e) =>
+        new Bech32DeserializationError({
+          message: `Failed to break down ${bechStr} to its details.`,
+          cause: e,
+        }),
+    });
+    const cred = addressDetails.paymentCredential;
+    if (cred === undefined) {
+      return yield* new Bech32DeserializationError({
+        message: `Failed extracting the payment credential from ${bechStr}.`,
+        cause: "Unknown cause.",
+      });
+    } else {
+      if (cred.type === "Key") {
+        const midgardAddress: MidgardAddress = {
+          PublicKeyCredential: [cred.hash],
+        };
+        return midgardAddress;
+      } else {
+        const midgardAddress: MidgardAddress = {
+          ScriptCredential: [cred.hash],
+        };
+        return midgardAddress;
+      }
+    }
+  });
+
+/**
+ * Taking Cardano `Network` as the first argument is temporary (TODO).
+ */
+export const midgardAddressToBech32 = (
+  network: Network,
+  addr: MidgardAddress,
+): string => {
+  if ("PublicKeyCredential" in addr) {
+    const [pubKeyHex] = addr.PublicKeyCredential;
+    const cred: Credential = {
+      type: "Key",
+      hash: pubKeyHex,
+    };
+    return credentialToAddress(network, cred);
+  } else {
+    const [scriptHashHex] = addr.ScriptCredential;
+    const cred: Credential = {
+      type: "Script",
+      hash: scriptHashHex,
+    };
+    return credentialToAddress(network, cred);
+  }
+};
+
+export const addressFromBech32 = (
+  bechStr: string,
+): Effect.Effect<AddressData, Bech32DeserializationError> =>
+  Effect.gen(function* () {
+    const addressDetails: AddressDetails = yield* Effect.try({
+      try: () => getAddressDetails(bechStr),
+      catch: (e) =>
+        new Bech32DeserializationError({
+          message: `Failed to break down ${bechStr} to its details.`,
+          cause: e,
+        }),
+    });
+
+    const paymentCred = addressDetails.paymentCredential;
+    if (paymentCred === undefined) {
+      return yield* new Bech32DeserializationError({
+        message: `Failed extracting the payment credential from ${bechStr}.`,
+        cause: "Unknown cause.",
+      });
+    }
+    const paymentCredData:CredentialD = paymentCred.type === "Key"
+      ? { PublicKeyCredential: [paymentCred.hash]}
+      : { ScriptCredential: [paymentCred.hash] };
+
+    const stakeCred = addressDetails.stakeCredential;
+    const stakeCredData:(null | {Inline: [CredentialD]}) = stakeCred === undefined
+      ? null
+      : stakeCred.type === "Key"
+        ? { Inline: [{ PublicKeyCredential: [stakeCred.hash]}] }
+        : { Inline: [{ ScriptCredential: [stakeCred.hash]}] };
+
+    return {
+      paymentCredential: paymentCredData,
+      stakeCredential: stakeCredData,
+    };
+  });
+
 export const H32Schema = Data.Bytes({ minLength: 32, maxLength: 32 });
 export type H32 = Data.Static<typeof H32Schema>;
 export const H32 = H32Schema as unknown as H32;
@@ -265,43 +368,9 @@ export const AddressSchema = Data.Object({
 export type AddressData = Data.Static<typeof AddressSchema>;
 export const AddressData = AddressSchema as unknown as AddressData;
 
-export const parseAddressDataCredentials = (
-  address: string,
-): Effect.Effect<AddressData, ParsingError> =>
-  Effect.gen(function* () {
-    const { paymentCredential, stakeCredential } = getAddressDetails(address);
-    if (!paymentCredential)
-      return yield* Effect.fail(
-        new ParsingError({
-          message: "Failed to parse address data",
-          cause: "Payment key credential is undefined",
-        }),
-      );
-    return {
-      paymentCredential:
-        paymentCredential.type === "Key"
-          ? {
-              PublicKeyCredential: [paymentCredential.hash],
-            }
-          : {
-              ScriptCredential: [paymentCredential.hash],
-            },
-      stakeCredential:
-        stakeCredential && stakeCredential.hash
-          ? {
-              Inline: [
-                stakeCredential.type === "Key"
-                  ? {
-                      PublicKeyCredential: [stakeCredential.hash],
-                    }
-                  : {
-                      ScriptCredential: [stakeCredential.hash],
-                    },
-              ],
-            }
-          : null,
-    };
-  });
+export const MidgardAddressSchema = CredentialSchema;
+export type MidgardAddress = CredentialD;
+export const MidgardAddress = MidgardAddressSchema as unknown as MidgardAddress;
 
 export type GenericErrorFields = {
   readonly message: string;
@@ -328,8 +397,8 @@ export class DataCoercionError extends EffectData.TaggedError(
   "DataCoercionError",
 )<GenericErrorFields> {}
 
-export class ParsingError extends EffectData.TaggedError(
-  "ParsingError",
+export class Bech32DeserializationError extends EffectData.TaggedError(
+  "Bech32DeserializationError",
 )<GenericErrorFields> {}
 
 export class UnauthenticUtxoError extends EffectData.TaggedError(

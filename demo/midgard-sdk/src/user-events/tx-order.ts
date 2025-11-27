@@ -12,25 +12,26 @@ import {
   UTxO,
 } from "@lucid-evolution/lucid";
 import {
+  AddressData,
+  AddressSchema,
   DataCoercionError,
   GenericErrorFields,
   getStateToken,
   isEventUTxOInclusionTimeInBounds,
   makeReturn,
+  MidgardAddressSchema,
   OutputReference,
   UnauthenticUtxoError,
   utxosAtByNFTPolicyId,
 } from "@/common.js";
 import {
-  AddressData,
-  AddressSchema,
   POSIXTime,
   POSIXTimeSchema,
   HashingError,
   LucidError,
   hashHexWithBlake2b256,
 } from "@/common.js";
-import { MidgardTxCompact, TxOrderEventSchema } from "@/ledger-state.js";
+import { TxOrderEventSchema } from "@/ledger-state.js";
 import {
   buildUserEventMintTransaction,
   UserEventMintRedeemer,
