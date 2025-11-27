@@ -716,13 +716,16 @@ const postDepositHandler = Effect.gen(function* () {
   }
   const { amount, address, datum } = body as PostDepositRequestBody;
 
-  if (!isHexString(address)) {
-    yield* Effect.logInfo(`Invalid address: ${address}`);
-    return yield* HttpServerResponse.json(
-      { error: "Invalid address: must be a hex string" },
-      { status: 400 },
-    );
-  }
+  yield* SDK.addressFromBech32(address).pipe(
+    Effect.catchAll((e) =>
+      Effect.fail(
+        new RequestBodyParseError({
+          message: "Invalid address: not a bech32 string",
+          cause: e,
+        }),
+      ),
+    ),
+  );
   const amountBigInt = yield* Effect.try({
     try: () => BigInt(amount),
     catch: (e) =>
