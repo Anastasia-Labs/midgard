@@ -595,7 +595,7 @@ const postSubmitHandler = (txQueue: Queue.Enqueue<string>) =>
 type PostTxOrderRequestBody = {
   tx_cbor: string;
   refund_address: string;
-  refund_datum: string;
+  refund_datum?: string;
 };
 
 const postTxOrderHandler = Effect.gen(function* () {
@@ -610,7 +610,7 @@ const postTxOrderHandler = Effect.gen(function* () {
     body === null ||
     typeof (body as any).tx_cbor !== "string" ||
     typeof (body as any).refund_address !== "string" ||
-    typeof (body as any).refund_datum !== "string"
+    (typeof (body as any).refund_datum !== "string" && (body as any).refund_datum !== undefined)
   ) {
     const msg = `Invalid request body: should be an object with tx_cbor, refund_address, refund_datum string fields`;
     yield* Effect.logInfo(msg);
@@ -641,7 +641,7 @@ const postTxOrderHandler = Effect.gen(function* () {
     mintingPolicy: txOrderAuthValidator.mintScript,
     policyId: txOrderAuthValidator.policyId,
     refundAddress: refundAddress,
-    refundDatum: refund_datum,
+    refundDatum: refund_datum || "NoDatum",
     midgardTxBody: "",
     midgardTxWits: "",
     cardanoTx: cardanoTx,
