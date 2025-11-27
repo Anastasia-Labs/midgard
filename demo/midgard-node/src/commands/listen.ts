@@ -827,9 +827,15 @@ const postWithdrawalHandler = Effect.gen(function* () {
     withdrawal_signature,
     "withdrawal_signature",
   );
-  const refundAddressData = yield* parseRequestBodyField<SDK.AddressData>(
-    refund_address,
-    "refund_address",
+    const refundAddress = yield* SDK.addressFromBech32(refund_address).pipe(
+    Effect.catchAll((e) =>
+      Effect.fail(
+        new RequestBodyParseError({
+          message: "Invalid refund address: not a bech32 string",
+          cause: e,
+        }),
+      ),
+    ),
   );
 
   yield* lucid.switchToOperatorsMainWallet;
@@ -840,7 +846,7 @@ const postWithdrawalHandler = Effect.gen(function* () {
     policyId: withdrawalAuthValidator.policyId,
     withdrawalBody: withdrawalBody,
     withdrawalSignature: withdrawalSignature,
-    refundAddress: refundAddressData,
+    refundAddress: refundAddress,
     refundDatum: refund_datum,
   });
 
