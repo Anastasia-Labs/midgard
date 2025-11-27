@@ -610,7 +610,8 @@ const postTxOrderHandler = Effect.gen(function* () {
     body === null ||
     typeof (body as any).tx_cbor !== "string" ||
     typeof (body as any).refund_address !== "string" ||
-    (typeof (body as any).refund_datum !== "string" && (body as any).refund_datum !== undefined)
+    (typeof (body as any).refund_datum !== "string" &&
+      (body as any).refund_datum !== undefined)
   ) {
     const msg = `Invalid request body: should be an object with tx_cbor, refund_address, refund_datum string fields`;
     yield* Effect.logInfo(msg);
@@ -627,9 +628,15 @@ const postTxOrderHandler = Effect.gen(function* () {
     );
   }
 
-  const refundAddress = yield* parseRequestBodyField<SDK.AddressData>(
-    refund_address,
-    "refund_address",
+  const refundAddress = yield* SDK.addressFromBech32(refund_address).pipe(
+    Effect.catchAll((e) =>
+      Effect.fail(
+        new RequestBodyParseError({
+          message: "Invalid refund address: not a bech32 string",
+          cause: e,
+        }),
+      ),
+    ),
   );
 
   yield* lucid.switchToOperatorsMainWallet;
