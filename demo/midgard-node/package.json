@@ -9,15 +9,14 @@
   },
   "scripts": {
     "clean": "rimraf dist node_modules",
-    "build": "tsup src/index.ts src/cli.ts --minify --format esm && tsup src/workers/* --minify --format esm",
+    "build": "tsup src/index.ts --minify --format esm && tsup src/workers/* --minify --format esm",
     "quick-test": "pnpm run build && node dist/index.js --help",
     "format": "prettier --write \"**/*.{ts,tsx,md}\"",
     "format-check": "prettier --check \"**/*.{ts,tsx,md}\"",
     "listen": "pnpm run build && node dist/index.js listen",
     "init": "pnpm run build && node dist/index.js init",
-    "test": "export NODE_ENV='emulator' && vitest run -- --reporter=basic --disable-console-intercept",
-    "midgard": "pnpm build && node dist/cli.js"
-  },
+    "test": "export NODE_ENV='emulator' && vitest run -- --reporter=basic --disable-console-intercept"
+    },
   "keywords": [
     "cardano",
     "layer2",

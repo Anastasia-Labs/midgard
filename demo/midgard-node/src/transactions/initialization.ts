@@ -1,19 +1,16 @@
 import { Effect } from "effect";
-import { Lucid } from "../services/lucid.js";
-import { AlwaysSucceedsContract } from "../services/always-succeeds.js";
-import {
-  paymentCredentialOf,
-  getAddressDetails,
-  Address,
-} from "@lucid-evolution/lucid";
+import { Lucid } from "@/services/lucid.js";
+import { AlwaysSucceedsContract } from "@/services/always-succeeds.js";
+import { paymentCredentialOf } from "@lucid-evolution/lucid";
 import {
   HubOracleDatum,
+  unsignedInitializationTxProgram,
   InitializationParams,
-  ConfirmedState,
-  EmptyRootData,
-  unsignedInitializationProgram,
-  AddressData,
+  fromAddress,
+  GENESIS_HASH_32,
 } from "@al-ft/midgard-sdk";
+import { handleSignSubmit } from "./utils.js";
+import { genesisTime, stateQueueData } from "./state-queue/init.js";
 
 /**
  * Initializes all Midgard contracts in a single transaction.
@@ -23,52 +20,31 @@ export const initializeMidgard = Effect.gen(function* () {
   const lucidService = yield* Lucid;
   const contracts = yield* AlwaysSucceedsContract;
 
-  // Switch to operator wallet
   yield* lucidService.switchToOperatorsMainWallet;
   const lucid = lucidService.api;
 
-  // Get nonce UTxO
-  const utxos = yield* Effect.tryPromise(() => lucid.wallet().getUtxos());
-  if (utxos.length === 0) {
-    return yield* Effect.fail(new Error("No UTxOs available for nonce"));
-  }
-
-  const genesisTime = BigInt(Date.now());
-
-  // Get operator PKH
   const operatorAddress = yield* Effect.promise(() => lucid.wallet().address());
   const operatorCredential = paymentCredentialOf(operatorAddress);
   const initialOperator = operatorCredential.hash;
 
-  function fromAddress(address: Address): AddressData {
-    // We do not support pointer addresses!
+  const [
+    registeredOperatorsAddr,
+    activeOperatorsAddr,
+    retiredOperatorsAddr,
+    schedulerAddr,
+    stateQueueAddr,
+    fraudProofCatalogueAddr,
+    fraudProofAddr,
+  ] = yield* Effect.all([
+    fromAddress(contracts.registeredOperatorsAuthValidator.spendScriptAddress),
+    fromAddress(contracts.activeOperatorsAuthValidator.spendScriptAddress),
+    fromAddress(contracts.retiredOperatorsAuthValidator.spendScriptAddress),
+    fromAddress(contracts.schedulerAuthValidator.spendScriptAddress),
+    fromAddress(contracts.stateQueueAuthValidator.spendScriptAddress),
+    fromAddress(contracts.fraudProofCatalogueAuthValidator.spendScriptAddress),
+    fromAddress(contracts.fraudProofAuthValidator.spendScriptAddress),
+  ]);
 
-    const { paymentCredential, stakeCredential } = getAddressDetails(address);
-
-    if (!paymentCredential) throw new Error("Not a valid payment address.");
-
-    return {
-      paymentCredential:
-        paymentCredential?.type === "Key"
-          ? {
-              PublicKeyCredential: [paymentCredential.hash],
-            }
-          : { ScriptCredential: [paymentCredential.hash] },
-      stakeCredential: stakeCredential
-        ? {
-            Inline: [
-              stakeCredential.type === "Key"
-                ? {
-                    PublicKeyCredential: [stakeCredential.hash],
-                  }
-                : { ScriptCredential: [stakeCredential.hash] },
-            ],
-          }
-        : null,
-    };
-  }
-
-  // Build hub oracle datum
   const hubOracleDatum: HubOracleDatum = {
     registeredOperators: contracts.registeredOperatorsAuthValidator.policyId,
     activeOperators: contracts.activeOperatorsAuthValidator.policyId,
@@ -78,125 +54,56 @@ export const initializeMidgard = Effect.gen(function* () {
     fraudProofCatalogue: contracts.fraudProofCatalogueAuthValidator.policyId,
     fraudProof: contracts.fraudProofAuthValidator.policyId,
 
-    registeredOperatorsAddr: fromAddress(
-      contracts.registeredOperatorsAuthValidator.spendScriptAddress,
-    ),
-    activeOperatorsAddr: fromAddress(
-      contracts.activeOperatorsAuthValidator.spendScriptAddress,
-    ),
-    retiredOperatorsAddr: fromAddress(
-      contracts.retiredOperatorsAuthValidator.spendScriptAddress,
-    ),
-    schedulerAddr: fromAddress(
-      contracts.schedulerAuthValidator.spendScriptAddress,
-    ),
-    stateQueueAddr: fromAddress(
-      contracts.stateQueueAuthValidator.spendScriptAddress,
-    ),
-    fraudProofCatalogueAddr: fromAddress(
-      contracts.fraudProofCatalogueAuthValidator.spendScriptAddress,
-    ),
-    fraudProofAddr: fromAddress(
-      contracts.fraudProofAuthValidator.spendScriptAddress,
-    ),
+    registeredOperatorsAddr,
+    activeOperatorsAddr,
+    retiredOperatorsAddr,
+    schedulerAddr,
+    stateQueueAddr,
+    fraudProofCatalogueAddr,
+    fraudProofAddr,
   };
 
-  // Build initialization params - uses SDK types!
   const initParams: InitializationParams = {
-    nonceUtxo: utxos[0],
     genesisTime,
     initialOperator,
 
     hubOracle: {
-      policyId: contracts.hubOracleAuthValidator.policyId,
-      address: contracts.hubOracleAuthValidator.spendScriptAddress,
-      mintScript: contracts.hubOracleAuthValidator.mintScript,
+      validator: contracts.hubOracleAuthValidator,
       datum: hubOracleDatum,
     },
 
     stateQueue: {
-      policyId: contracts.stateQueueAuthValidator.policyId,
-      address: contracts.stateQueueAuthValidator.spendScriptAddress,
-      mintScript: contracts.stateQueueAuthValidator.mintScript,
-      dataSchema: ConfirmedState,
-      data: {
-        headerHash: "00".repeat(28),
-        prevHeaderHash: "00".repeat(28),
-        utxoRoot: "00".repeat(32),
-        startTime: BigInt(Date.now()),
-        endTime: BigInt(Date.now()),
-        protocolVersion: 0n,
-      },
-    },
-
-    settlementQueue: {
-      policyId: contracts.settlementQueueAuthValidator.policyId,
-      address: contracts.settlementQueueAuthValidator.spendScriptAddress,
-      mintScript: contracts.settlementQueueAuthValidator.mintScript,
-      dataSchema: EmptyRootData,
-      data: [],
+      validator: contracts.stateQueueAuthValidator,
+      data: stateQueueData,
     },
 
     registeredOperators: {
-      policyId: contracts.registeredOperatorsAuthValidator.policyId,
-      address: contracts.registeredOperatorsAuthValidator.spendScriptAddress,
-      mintScript: contracts.registeredOperatorsAuthValidator.mintScript,
-      dataSchema: EmptyRootData,
+      validator: contracts.registeredOperatorsAuthValidator,
       data: [],
     },
 
     activeOperators: {
-      policyId: contracts.activeOperatorsAuthValidator.policyId,
-      address: contracts.activeOperatorsAuthValidator.spendScriptAddress,
-      mintScript: contracts.activeOperatorsAuthValidator.mintScript,
-      dataSchema: EmptyRootData,
+      validator: contracts.activeOperatorsAuthValidator,
       data: [],
     },
 
     retiredOperators: {
-      policyId: contracts.retiredOperatorsAuthValidator.policyId,
-      address: contracts.retiredOperatorsAuthValidator.spendScriptAddress,
-      mintScript: contracts.retiredOperatorsAuthValidator.mintScript,
-      dataSchema: EmptyRootData,
+      validator: contracts.retiredOperatorsAuthValidator,
       data: [],
     },
 
     scheduler: {
-      policyId: contracts.schedulerAuthValidator.policyId,
-      address: contracts.schedulerAuthValidator.spendScriptAddress,
-      mintScript: contracts.schedulerAuthValidator.mintScript,
-      dataSchema: EmptyRootData,
-      data: [],
+      validator: contracts.schedulerAuthValidator,
+      operator: initialOperator,
+      startTime: genesisTime,
     },
 
     fraudProofCatalogue: {
-      policyId: contracts.fraudProofCatalogueAuthValidator.policyId,
-      address: contracts.fraudProofCatalogueAuthValidator.spendScriptAddress,
-      mintScript: contracts.fraudProofCatalogueAuthValidator.mintScript,
-      mptRootHash: "00".repeat(32),
+      validator: contracts.fraudProofCatalogueAuthValidator,
+      mptRootHash: GENESIS_HASH_32,
     },
   };
 
-  // Use SDK function to build the transaction!
-  const unsignedTx = yield* unsignedInitializationProgram(lucid, initParams);
-
-  // Sign and submit
-  const signedTx = yield* Effect.tryPromise({
-    try: () => unsignedTx.sign.withWallet().complete(),
-    catch: (e) => new Error(`Failed to sign initialization: ${e}`),
-  });
-
-  const txHash = yield* Effect.tryPromise({
-    try: () => signedTx.submit(),
-    catch: (e) => new Error(`Failed to submit initialization: ${e}`),
-  });
-
-  console.log(`Submitting ...`);
-  yield* Effect.tryPromise({
-    try: () => lucid.awaitTx(txHash),
-    catch: (e) => new Error(`Failed to await transaction: ${e}`),
-  });
-
-  console.log(`✅ Midgard initialized! TxHash: ${txHash}`);
-  return txHash;
+  const unsignedTx = yield* unsignedInitializationTxProgram(lucid, initParams);
+  yield* handleSignSubmit(lucid, unsignedTx);
 });

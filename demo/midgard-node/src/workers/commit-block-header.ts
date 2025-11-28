@@ -13,7 +13,6 @@ import {
   AlwaysSucceedsContract,
   NodeConfig,
   DatabaseInitializationError,
-  AuthenticatedValidator,
 } from "@/services/index.js";
 import {
   BlocksDB,
@@ -45,6 +44,7 @@ import {
   retrieveTimeBoundEntries,
 } from "@/database/utils/user-events.js";
 import { DatabaseError } from "@/database/utils/common.js";
+import { AuthenticatedValidator } from "@al-ft/midgard-sdk";
 
 const BATCH_SIZE = 100;
 
