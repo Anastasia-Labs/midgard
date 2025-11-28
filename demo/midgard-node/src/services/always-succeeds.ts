@@ -4,19 +4,11 @@ import {
   applyDoubleCborEncoding,
   MintingPolicy,
   mintingPolicyToId,
-  Script,
   SpendingValidator,
   validatorToAddress,
 } from "@lucid-evolution/lucid";
 import { NodeConfig } from "@/services/config.js";
-
-export type AuthenticatedValidator = {
-  spendingCBOR: string;
-  spendScript: Script;
-  spendScriptAddress: string;
-  mintScript: Script;
-  policyId: string;
-};
+import { AuthenticatedValidator } from "@al-ft/midgard-sdk";
 
 export const makeAuthenticatedValidator = (
   spendingTitle: string,
@@ -64,7 +56,6 @@ const makeAlwaysSucceedsService: Effect.Effect<
   {
     hubOracleAuthValidator: AuthenticatedValidator;
     stateQueueAuthValidator: AuthenticatedValidator;
-    settlementQueueAuthValidator: AuthenticatedValidator;
     registeredOperatorsAuthValidator: AuthenticatedValidator;
     activeOperatorsAuthValidator: AuthenticatedValidator;
     schedulerAuthValidator: AuthenticatedValidator;
@@ -88,10 +79,6 @@ const makeAlwaysSucceedsService: Effect.Effect<
   const stateQueueAuthValidator = yield* makeAuthenticatedValidator(
     "always_succeeds.state_queue_spend.else",
     "always_succeeds.state_queue_mint.else",
-  );
-  const settlementQueueAuthValidator = yield* makeAuthenticatedValidator(
-    "always_succeeds.settlement_queue_spend.else",
-    "always_succeeds.settlement_queue_mint.else",
   );
   const registeredOperatorsAuthValidator = yield* makeAuthenticatedValidator(
     "always_succeeds.registered_operators_spend.else",
@@ -126,7 +113,6 @@ const makeAlwaysSucceedsService: Effect.Effect<
     hubOracleAuthValidator,
     schedulerAuthValidator,
     stateQueueAuthValidator,
-    settlementQueueAuthValidator,
     registeredOperatorsAuthValidator,
     activeOperatorsAuthValidator,
     retiredOperatorsAuthValidator,
