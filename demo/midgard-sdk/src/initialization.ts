@@ -1,15 +1,13 @@
 import { Effect } from "effect";
 import {
+  Data,
   LucidEvolution,
   TxBuilder,
-  UTxO,
-  Script,
   makeReturn,
   TxSignBuilder,
 } from "@lucid-evolution/lucid";
 import { LucidError } from "./common.js";
 import {
-  HubOracleDatum,
   HubOracleInitParams,
   incompleteHubOracleInitTxProgram,
 } from "./hub-oracle.js";
@@ -22,143 +20,95 @@ import {
   incompleteFraudProofInitTxProgram,
 } from "./fraud-proof/catalogue.js";
 import { ConfirmedState } from "./ledger-state.js";
-import { EmptyRootData, initLinkedListProgram } from "./linked-list.js";
+import {
+  EmptyRootData,
+  incompleteInitLinkedListTxProgram,
+} from "./linked-list.js";
+import { StateQueueInitParams } from "./state-queue.js";
+import { RegisteredOperatorInitParams } from "./registered-operators.js";
+import { ActiveOperatorInitParams } from "./active-operators.js";
+import { RetiredOperatorInitParams } from "./retired-operators.js";
 
 export type InitializationParams = {
-  nonceUtxo: UTxO;
   genesisTime: bigint;
   initialOperator: string;
-  hubOracle: HubOracleInitParams & {
-    policyId: string;
-    address: string;
-    mintScript: Script;
-    datum: HubOracleDatum;
-  };
-  scheduler: Omit<SchedulerInitParams, "operator" | "startTime"> & {
-    policyId: string;
-    address: string;
-    mintScript: Script;
-    dataSchema: EmptyRootData;
-    data: EmptyRootData;
-  };
+  hubOracle: HubOracleInitParams;
+  scheduler: SchedulerInitParams;
   fraudProofCatalogue: FraudProofCatalogueInitParams;
-  // All the linked lists
-  stateQueue: {
-    policyId: string;
-    address: string;
-    mintScript: Script;
-    dataSchema: ConfirmedState;
-    data: ConfirmedState;
-  };
-  settlementQueue: {
-    policyId: string;
-    address: string;
-    mintScript: Script;
-    dataSchema: EmptyRootData;
-    data: EmptyRootData;
-  };
-  registeredOperators: {
-    policyId: string;
-    address: string;
-    mintScript: Script;
-    dataSchema: EmptyRootData;
-    data: EmptyRootData;
-  };
-  activeOperators: {
-    policyId: string;
-    address: string;
-    mintScript: Script;
-    dataSchema: EmptyRootData;
-    data: EmptyRootData;
-  };
-  retiredOperators: {
-    policyId: string;
-    address: string;
-    mintScript: Script;
-    dataSchema: EmptyRootData;
-    data: EmptyRootData;
-  };
+  stateQueue: StateQueueInitParams;
+  registeredOperators: RegisteredOperatorInitParams;
+  activeOperators: ActiveOperatorInitParams;
+  retiredOperators: RetiredOperatorInitParams;
 };
 
-export const initializationTxProgram = (
+export const incompleteInitializationTxProgram = (
   lucid: LucidEvolution,
   params: InitializationParams,
-): Effect.Effect<TxBuilder> =>
+): Effect.Effect<TxBuilder, LucidError> =>
   Effect.gen(function* () {
-    // 1. Start with nonce UTxO
-    let tx = lucid.newTx().collectFrom([params.nonceUtxo]);
+    const utxos = yield* Effect.tryPromise({
+      try: () => lucid.wallet().getUtxos(),
+      catch: (e) =>
+        new LucidError({
+          message: "Failed to fetch UTxOs for nonce",
+          cause: e,
+        }),
+    });
 
-    // 2. Initialize hub oracle
+    if (utxos.length === 0) {
+      return yield* Effect.fail(
+        new LucidError({
+          message: "No UTxOs available for nonce",
+          cause: "Wallet has no UTxOs",
+        }),
+      );
+    }
+
+    const nonceUtxo = utxos[0];
+    let tx = lucid.newTx().collectFrom([nonceUtxo]);
+
     const hubOracleTx = incompleteHubOracleInitTxProgram(
       lucid,
       params.hubOracle,
     );
 
-    // 3. Initialize state queue (with ConfirmedState data)
-    const stateQueueTx = yield* initLinkedListProgram(lucid, {
-      policyId: params.stateQueue.policyId,
-      address: params.stateQueue.address,
-      mintScript: params.stateQueue.mintScript,
-      dataSchema: params.stateQueue.dataSchema,
-      data: params.stateQueue.data,
+    const stateQueueTx = yield* incompleteInitLinkedListTxProgram(lucid, {
+      validator: params.stateQueue.validator,
+      data: Data.castTo(params.stateQueue.data, ConfirmedState),
     });
 
-    // 4. Initialize settlement queue
-    const settlementQueueTx = yield* initLinkedListProgram(lucid, {
-      policyId: params.settlementQueue.policyId,
-      address: params.settlementQueue.address,
-      mintScript: params.settlementQueue.mintScript,
-      dataSchema: params.settlementQueue.dataSchema, // ← Add schema
-      data: [],
+    const registeredOperatorsTx = yield* incompleteInitLinkedListTxProgram(
+      lucid,
+      {
+        validator: params.registeredOperators.validator,
+        data: Data.castTo(params.registeredOperators.data, EmptyRootData),
+      },
+    );
+
+    const activeOperatorsTx = yield* incompleteInitLinkedListTxProgram(lucid, {
+      validator: params.activeOperators.validator,
+      data: Data.castTo(params.activeOperators.data, EmptyRootData),
     });
 
-    // 5. Initialize registered operators
-    const registeredOperatorsTx = yield* initLinkedListProgram(lucid, {
-      policyId: params.registeredOperators.policyId,
-      address: params.registeredOperators.address,
-      mintScript: params.registeredOperators.mintScript,
-      dataSchema: params.registeredOperators.dataSchema,
-      data: params.registeredOperators.data,
+    const retiredOperatorsTx = yield* incompleteInitLinkedListTxProgram(lucid, {
+      validator: params.retiredOperators.validator,
+      data: Data.castTo(params.retiredOperators.data, EmptyRootData),
     });
 
-    // 6. Initialize active operators
-    const activeOperatorsTx = yield* initLinkedListProgram(lucid, {
-      policyId: params.activeOperators.policyId,
-      address: params.activeOperators.address,
-      mintScript: params.activeOperators.mintScript,
-      dataSchema: params.activeOperators.dataSchema,
-      data: params.activeOperators.data,
-    });
-
-    // 7. Initialize retired operators
-    const retiredOperatorsTx = yield* initLinkedListProgram(lucid, {
-      policyId: params.retiredOperators.policyId,
-      address: params.retiredOperators.address,
-      mintScript: params.retiredOperators.mintScript,
-      dataSchema: params.retiredOperators.dataSchema,
-      data: params.retiredOperators.data,
-    });
-
-    // 8. Initialize scheduler
     const schedulerTx = incompleteSchedulerInitTxProgram(lucid, {
-      policyId: params.scheduler.policyId,
-      address: params.scheduler.address,
-      mintScript: params.scheduler.mintScript,
+      validator: params.scheduler.validator,
       operator: params.initialOperator,
       startTime: params.genesisTime,
     });
 
-    // 9. Initialize fraud proof catalogue
     const fraudProofCatalogueTx = incompleteFraudProofInitTxProgram(
       lucid,
       params.fraudProofCatalogue,
     );
 
-    // 10. Compose everything into ONE transaction
     return tx
       .compose(hubOracleTx)
       .compose(stateQueueTx)
-      .compose(settlementQueueTx)
       .compose(registeredOperatorsTx)
       .compose(activeOperatorsTx)
       .compose(retiredOperatorsTx)
@@ -166,12 +116,15 @@ export const initializationTxProgram = (
       .compose(fraudProofCatalogueTx);
   });
 
-export const unsignedInitializationProgram = (
+export const unsignedInitializationTxProgram = (
   lucid: LucidEvolution,
   initParams: InitializationParams,
 ): Effect.Effect<TxSignBuilder, LucidError> =>
   Effect.gen(function* () {
-    const commitTx = yield* initializationTxProgram(lucid, initParams);
+    const commitTx = yield* incompleteInitializationTxProgram(
+      lucid,
+      initParams,
+    );
     const completedTx: TxSignBuilder = yield* Effect.tryPromise({
       try: () => commitTx.complete({ localUPLCEval: true }),
       catch: (e) =>
@@ -185,7 +138,7 @@ export const unsignedInitializationProgram = (
 
 /**
  * Builds completed tx for initializing all Midgard contracts.
- * This includes: Hub Oracle, State Queue, Settlement Queue,
+ * This includes: Hub Oracle, State Queue,
  * Registered/Active/Retired Operators, Scheduler, Escape Hatch,
  * and Fraud Proof Catalogue.
  *
@@ -197,4 +150,4 @@ export const unsignedInitializationTx = (
   lucid: LucidEvolution,
   initParams: InitializationParams,
 ): Promise<TxSignBuilder> =>
-  makeReturn(unsignedInitializationProgram(lucid, initParams)).unsafeRun();
+  makeReturn(unsignedInitializationTxProgram(lucid, initParams)).unsafeRun();

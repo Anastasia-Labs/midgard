@@ -1,4 +1,4 @@
-import { Data } from "@lucid-evolution/lucid";
+import { Data, getAddressDetails, Script } from "@lucid-evolution/lucid";
 import { Data as EffectData } from "effect";
 import { Effect } from "effect";
 import {
@@ -175,6 +175,14 @@ export const bufferToHex = (buf: Buffer): string => {
   }
 };
 
+export type AuthenticatedValidator = {
+  spendingCBOR: string;
+  spendScript: Script;
+  spendScriptAddress: string;
+  mintScript: Script;
+  policyId: string;
+};
+
 export const OutputReferenceSchema = Data.Object({
   txHash: Data.Object({ hash: Data.Bytes({ minLength: 32, maxLength: 32 }) }),
   outputIndex: Data.Integer(),
@@ -242,6 +250,38 @@ export const AddressSchema = Data.Object({
 });
 export type AddressData = Data.Static<typeof AddressSchema>;
 export const AddressData = AddressSchema as unknown as AddressData;
+
+export const fromAddress = (
+  address: Address,
+): Effect.Effect<AddressData, DataCoercionError> =>
+  Effect.gen(function* () {
+    const { paymentCredential, stakeCredential } = getAddressDetails(address);
+
+    if (!paymentCredential) {
+      return yield* Effect.fail(
+        new DataCoercionError({
+          message: "Failed to convert Address to AddressData",
+          cause: "Not a valid payment address - missing payment credential",
+        }),
+      );
+    }
+
+    return {
+      paymentCredential:
+        paymentCredential.type === "Key"
+          ? { PublicKeyCredential: [paymentCredential.hash] }
+          : { ScriptCredential: [paymentCredential.hash] },
+      stakeCredential: stakeCredential
+        ? {
+            Inline: [
+              stakeCredential.type === "Key"
+                ? { PublicKeyCredential: [stakeCredential.hash] }
+                : { ScriptCredential: [stakeCredential.hash] },
+            ],
+          }
+        : null,
+    };
+  });
 
 export type GenericErrorFields = {
   readonly message: string;

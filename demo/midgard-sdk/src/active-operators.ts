@@ -1,6 +1,7 @@
-import { POSIXTimeSchema } from "@/common.js";
+import { AuthenticatedValidator, POSIXTimeSchema } from "@/common.js";
 import { LucidEvolution, TxBuilder } from "@lucid-evolution/lucid";
 import { Data } from "@lucid-evolution/lucid";
+import { EmptyRootData } from "./linked-list.js";
 
 export const ActiveOperatorDatumSchema = Data.Object({
   commitmentTime: Data.Nullable(POSIXTimeSchema),
@@ -64,7 +65,10 @@ export type ActiveOperatorMintRedeemer = Data.Static<
 export const MintRedeemer =
   ActiveOperatorMintRedeemerSchema as unknown as ActiveOperatorMintRedeemer;
 
-export type ActiveOperatorInitParams = {};
+export type ActiveOperatorInitParams = {
+  validator: AuthenticatedValidator;
+  data: EmptyRootData;
+};
 export type ActiveOperatorDeinitParams = {};
 export type ActiveOperatorActivateParams = {};
 export type ActiveOperatorRetireParams = {};

@@ -1,4 +1,5 @@
 import {
+  AuthenticatedValidator,
   DataCoercionError,
   GenericErrorFields,
   LucidError,
@@ -12,12 +13,12 @@ import {
   fromText,
   LucidEvolution,
   makeReturn,
-  Script,
   toUnit,
   TxBuilder,
   TxSignBuilder,
   UTxO,
 } from "@lucid-evolution/lucid";
+import { NODE_ASSET_NAME } from "./constants.js";
 
 export const NodeKeySchema = Data.Enum([
   Data.Object({ Key: Data.Object({ key: Data.Bytes() }) }),
@@ -43,7 +44,6 @@ export const CommonSchema = Data.Object({
 export type Common = Data.Static<typeof CommonSchema>;
 export const Common = CommonSchema as unknown as Common;
 
-// Add this near the top with other schemas
 export const KeyUnorderedLinkedListRedeemerSchema = Data.Enum([
   Data.Literal("Init"),
   Data.Literal("Deinit"),
@@ -73,7 +73,6 @@ export type KeyOrderedLinkedListRedeemer = Data.Static<
 export const KeyOrderedLinkedListRedeemer =
   KeyOrderedLinkedListRedeemerSchema as unknown as KeyOrderedLinkedListRedeemer;
 
-// Empty root data for lists that don't need data in root
 export const EmptyRootDataSchema = Data.Tuple([]);
 
 export type EmptyRootData = Data.Static<typeof EmptyRootDataSchema>;
@@ -110,26 +109,23 @@ export class LinkedListError extends EffectData.TaggedError(
 )<GenericErrorFields> {}
 
 export type LinkedListInitParams = {
-  policyId: string;
-  address: string;
-  mintScript: Script;
-  dataSchema: any;
-  data: any;
+  validator: AuthenticatedValidator;
+  data: Data;
 };
 
-export const initLinkedListProgram = (
+export const incompleteInitLinkedListTxProgram = (
   lucid: LucidEvolution,
   params: LinkedListInitParams,
 ): Effect.Effect<TxBuilder> =>
   Effect.gen(function* () {
     const assets: Assets = {
-      [toUnit(params.policyId, fromText("Node"))]: 1n,
+      [toUnit(params.validator.policyId, fromText(NODE_ASSET_NAME))]: 1n,
     };
 
     const nodeDatum: NodeDatum = {
       key: "Empty",
       next: "Empty",
-      data: Data.castTo(params.data, params.dataSchema),
+      data: params.data,
     };
 
     const encodedDatum = Data.to<NodeDatum>(nodeDatum, NodeDatum);
@@ -141,11 +137,11 @@ export const initLinkedListProgram = (
       .newTx()
       .mintAssets(assets, encodedRedeemer)
       .pay.ToAddressWithData(
-        params.address,
+        params.validator.spendScriptAddress,
         { kind: "inline", value: encodedDatum },
         assets,
       )
-      .attach.Script(params.mintScript);
+      .attach.Script(params.validator.mintScript);
 
     return tx;
   });
@@ -155,7 +151,10 @@ export const unsignedLinkedListTxProgram = (
   initParams: LinkedListInitParams,
 ): Effect.Effect<TxSignBuilder, LucidError> =>
   Effect.gen(function* () {
-    const commitTx = yield* initLinkedListProgram(lucid, initParams);
+    const commitTx = yield* incompleteInitLinkedListTxProgram(
+      lucid,
+      initParams,
+    );
     const completedTx: TxSignBuilder = yield* Effect.tryPromise({
       try: () => commitTx.complete({ localUPLCEval: true }),
       catch: (e) =>

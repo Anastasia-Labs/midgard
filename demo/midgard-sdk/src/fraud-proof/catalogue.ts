@@ -1,4 +1,4 @@
-import { POSIXTimeSchema } from "@/common.js";
+import { AuthenticatedValidator, POSIXTimeSchema } from "@/common.js";
 import { Data } from "@lucid-evolution/lucid";
 import { LucidEvolution, TxBuilder } from "@lucid-evolution/lucid";
 
@@ -33,7 +33,11 @@ export type FraudProofCatalogueSpendRedeemer = Data.Static<
 export const FraudProofCatalogueSpendRedeemer =
   FraudProofCatalogueSpendRedeemerSchema as unknown as FraudProofCatalogueSpendRedeemer;
 
-export type FraudProofCatalogueInitParams = {};
+export type FraudProofCatalogueInitParams = {
+  validator: AuthenticatedValidator;
+  mptRootHash: string;
+};
+
 export type FraudProofCatalogueDeinitParams = {};
 export type FraudProofCatalogueNewCategoryParams = {};
 export type FraudProofCatalogueRemoveCategoryParams = {};

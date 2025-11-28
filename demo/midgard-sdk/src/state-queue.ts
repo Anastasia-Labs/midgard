@@ -28,6 +28,7 @@ import {
   getStateToken,
   hashHexWithBlake2b224,
   utxosAtByNFTPolicyId,
+  AuthenticatedValidator,
 } from "@/common.js";
 import { LucidError, makeReturn } from "@/common.js";
 import {
@@ -38,6 +39,7 @@ import {
   LinkedListError,
 } from "@/linked-list.js";
 import { ConfirmedState, Header } from "@/ledger-state.js";
+import { NODE_ASSET_NAME } from "./constants.js";
 
 export const StateQueueConfigSchema = Data.Object({
   initUTxO: OutputReferenceSchema,
@@ -95,9 +97,8 @@ export type StateQueueMergeParams = {
 };
 
 export type StateQueueInitParams = {
-  policyId: PolicyId;
-  address: Address;
-  stateQueueMintingScript: Script;
+  validator: AuthenticatedValidator;
+  data: ConfirmedState;
 };
 
 export type StateQueueDeinitParams = {};
@@ -421,7 +422,7 @@ export const incompleteCommitBlockHeaderTxProgram = (
   Effect.gen(function* () {
     const newHeaderHash = yield* hashBlockHeader(newHeader);
     const assets: Assets = {
-      [toUnit(policyId, fromText("Node") + newHeaderHash)]: 1n,
+      [toUnit(policyId, fromText(NODE_ASSET_NAME) + newHeaderHash)]: 1n,
     };
 
     const newNodeDatum: StateQueueDatum = {
@@ -682,11 +683,11 @@ export const fetchLatestCommittedBlock = (
  */
 export const incompleteInitStateQueueTxProgram = (
   lucid: LucidEvolution,
-  { policyId, address, stateQueueMintingScript }: StateQueueInitParams,
+  params: StateQueueInitParams,
 ): Effect.Effect<TxBuilder> =>
   Effect.gen(function* () {
     const assets: Assets = {
-      [toUnit(policyId, fromText("Node"))]: 1n,
+      [toUnit(params.validator.policyId, fromText(NODE_ASSET_NAME))]: 1n,
     };
 
     const confirmedState: ConfirmedState = {
@@ -711,8 +712,12 @@ export const incompleteInitStateQueueTxProgram = (
     const tx = lucid
       .newTx()
       .mintAssets(assets, Data.void())
-      .pay.ToAddressWithData(address, outputDatum, assets)
-      .attach.Script(stateQueueMintingScript);
+      .pay.ToAddressWithData(
+        params.validator.spendScriptAddress,
+        outputDatum,
+        assets,
+      )
+      .attach.Script(params.validator.mintScript);
     return tx;
   });
 
