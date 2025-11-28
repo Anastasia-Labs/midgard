@@ -7,10 +7,12 @@ import {
   unsignedInitializationTxProgram,
   InitializationParams,
   fromAddress,
+  GENESIS_HASH_28,
   GENESIS_HASH_32,
+  INITIAL_PROTOCOL_VERSION,
+  ConfirmedState,
 } from "@al-ft/midgard-sdk";
 import { handleSignSubmit } from "./utils.js";
-import { genesisTime, stateQueueData } from "./state-queue/init.js";
 
 /**
  * Initializes all Midgard contracts in a single transaction.
@@ -22,6 +24,8 @@ export const initializeMidgard = Effect.gen(function* () {
 
   yield* lucidService.switchToOperatorsMainWallet;
   const lucid = lucidService.api;
+
+  const genesisTime = BigInt(Date.now());
 
   const operatorAddress = yield* Effect.promise(() => lucid.wallet().address());
   const operatorCredential = paymentCredentialOf(operatorAddress);
@@ -61,6 +65,15 @@ export const initializeMidgard = Effect.gen(function* () {
     stateQueueAddr,
     fraudProofCatalogueAddr,
     fraudProofAddr,
+  };
+
+  const stateQueueData: ConfirmedState = {
+    headerHash: GENESIS_HASH_28,
+    prevHeaderHash: GENESIS_HASH_28,
+    utxoRoot: GENESIS_HASH_32,
+    startTime: genesisTime,
+    endTime: genesisTime,
+    protocolVersion: INITIAL_PROTOCOL_VERSION,
   };
 
   const initParams: InitializationParams = {
