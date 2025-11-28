@@ -156,22 +156,6 @@
       "hash": "2f7e9a539f41ed0a942fdcdca48e3f4101f879deb747e88e4e45a8f0"
     },
     {
-      "title": "always_succeeds.settlement_queue_mint.else",
-      "redeemer": {
-        "schema": {}
-      },
-      "compiledCode": "58610101002332259800a998012481264d6964676172642044656d6f20e2809320536574746c656d656e74205175657565204d696e740014a3149a2a660049211856616c696461746f722072657475726e65642066616c736500136564004ae715cd01",
-      "hash": "5a94ec50161ab2bbb818e7f05ce3a3d3e78572e1e43763f95de5fea4"
-    },
-    {
-      "title": "always_succeeds.settlement_queue_spend.else",
-      "redeemer": {
-        "schema": {}
-      },
-      "compiledCode": "58620101002332259800a998012481274d6964676172642044656d6f20e2809320536574746c656d656e74205175657565205370656e640014a3149a2a660049211856616c696461746f722072657475726e65642066616c736500136564004ae715cd01",
-      "hash": "5f8f141865a28971820710ec72248da044c8bb777101f5cebde74e92"
-    },
-    {
       "title": "always_succeeds.state_queue_mint.else",
       "redeemer": {
         "schema": {}
