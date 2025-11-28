@@ -1,6 +1,15 @@
 import { LucidEvolution, TxBuilder } from "@lucid-evolution/lucid";
+import { AuthenticatedValidator } from "./common.js";
 
-export type SchedulerInitParams = {};
+/**
+ * Parameters for the init transaction.
+ */
+export type SchedulerInitParams = {
+  validator: AuthenticatedValidator;
+  operator: string;
+  startTime: bigint;
+};
+
 export type SchedulerDeinitParams = {};
 export type SchedulerAdvanceParams = {};
 export type SchedulerRewindParams = {};
