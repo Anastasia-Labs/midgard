@@ -10,7 +10,6 @@ import {
 } from "@lucid-evolution/lucid";
 import {
   AlwaysSucceedsContract,
-  AuthenticatedValidator,
   Database,
   Globals,
   Lucid,
@@ -36,6 +35,7 @@ import {
 import { deleteLedgerMpt, deleteMempoolMpt } from "@/workers/utils/mpt.js";
 import { DatabaseError } from "@/database/utils/common.js";
 import { FileSystemError } from "@/utils.js";
+import { AuthenticatedValidator } from "@al-ft/midgard-sdk";
 
 const collectAndBurnUTxOsTx = (
   lucid: LucidEvolution,
