@@ -8,6 +8,13 @@ pub type MembershipProofInputs {
   tx_to_root_proof_path: Proof,
 }
 
+pub type MembershipProofWithdrawal {
+  withdrawal_root: ByteArray,
+  withdrawal_info: ByteArray,
+  withdrawal_info_hash: ByteArray,
+  withdrawal_to_root_proof_path: Proof,
+}
+
 pub type ExclusionProofInputTx {
   tx_root: ByteArray,
   invalid_input_tx_hash: ByteArray,
