@@ -6,7 +6,7 @@ import * as SDK from "@al-ft/midgard-sdk";
 
 export class DatabaseInitializationError extends Data.TaggedError(
   "DatabaseInitializationError",
-)<SDK.Utils.GenericErrorFields> {}
+)<SDK.GenericErrorFields> {}
 
 const createPgLayerEffect = Effect.gen(function* () {
   const nodeConfig = yield* NodeConfig;
