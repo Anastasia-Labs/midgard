@@ -53,7 +53,7 @@ program.version(VERSION).description(
 );
 
 program.command("listen").action(async () => {
-  console.log("====================== A ======================");
+  console.log("🌳 Let's do this.");
   const program = pipe(
     runNode,
     Effect.provide(Services.Database.layer),
