@@ -22,13 +22,17 @@ import {
   ProcessedMempoolDB,
   DepositsDB,
   TxUtils as TxTable,
+  MempoolLedgerDB,
+  LedgerUtils as LedgerTable,
+  AddressHistoryDB,
+  UserEventsUtils,
 } from "@/database/index.js";
 import {
   handleSignSubmitNoConfirmation,
   TxSignError,
   TxSubmitError,
 } from "@/transactions/utils.js";
-import { fromHex } from "@lucid-evolution/lucid";
+import { CML, fromHex } from "@lucid-evolution/lucid";
 import {
   MidgardMpt,
   MptError,
@@ -36,15 +40,21 @@ import {
   keyValueMptRoot,
   makeMpts,
   processMpts,
+  applyDepositsToLedger,
   withTrieTransaction,
 } from "@/workers/utils/mpt.js";
-import { FileSystemError, batchProgram } from "@/utils.js";
+import {
+  FileSystemError,
+  batchProgram,
+  trivialTransactionFromCMLUnspentOutput,
+} from "@/utils.js";
 import { Columns as TxColumns } from "@/database/utils/tx.js";
 import {
   Columns as UserEventsColumns,
   retrieveTimeBoundEntries,
 } from "@/database/utils/user-events.js";
 import { DatabaseError } from "@/database/utils/common.js";
+import { RuntimeFiber } from "effect/Fiber";
 
 const BATCH_SIZE = 100;
 
@@ -94,9 +104,92 @@ const establishEndTimeFromTxRequests = (
     }
   });
 
-// TODO: Application of user events will likely affect this function as well.
+const addDepositUTxOsToDatabases = (
+  insertedDepositUTxOs: {
+    utxo: CML.TransactionUnspentOutput;
+    inclusionTime: Date;
+  }[],
+): Effect.Effect<void, DatabaseError | FileSystemError, Database> =>
+  Effect.gen(function* () {
+    yield* Effect.logInfo(
+      "🔹 Inserting included deposits into ImmutableDB, MempoolLedgerDB and AddressHistoryDB",
+    );
+
+    yield* batchProgram(
+      Math.floor(BATCH_SIZE),
+      insertedDepositUTxOs.length,
+      "inserting-deposits-to-databases",
+      (startIndex: number, endIndex: number) =>
+        Effect.gen(function* () {
+          const batchInsertedDepositUTxOs = insertedDepositUTxOs.slice(
+            startIndex,
+            endIndex,
+          );
+          const ledgerTableBatch: LedgerTable.EntryWithTimeStamp[] =
+            batchInsertedDepositUTxOs.map(({ utxo, inclusionTime }) => ({
+              [LedgerTable.Columns.TX_ID]: Buffer.from(
+                utxo.input().transaction_id().to_raw_bytes(),
+              ),
+              [LedgerTable.Columns.OUTREF]: Buffer.from(
+                utxo.input().to_cbor_bytes(),
+              ),
+              [LedgerTable.Columns.OUTPUT]: Buffer.from(
+                utxo.output().to_cbor_bytes(),
+              ),
+              [LedgerTable.Columns.ADDRESS]: utxo.output().address().to_hex(),
+              [LedgerTable.Columns.TIMESTAMPTZ]: inclusionTime,
+            }));
+
+          const txTableBatch: TxTable.EntryWithTimeStamp[] =
+            yield* Effect.forEach(
+              batchInsertedDepositUTxOs,
+              ({ utxo, inclusionTime }) =>
+                Effect.gen(function* () {
+                  const tx =
+                    yield* trivialTransactionFromCMLUnspentOutput(utxo);
+                  return {
+                    [TxTable.Columns.TX_ID]: Buffer.from(
+                      utxo.input().transaction_id().to_raw_bytes(),
+                    ),
+                    [TxTable.Columns.TX]: Buffer.from(tx.to_cbor_bytes()),
+                    [TxTable.Columns.TIMESTAMPTZ]: inclusionTime,
+                  };
+                }),
+              { concurrency: "unbounded" },
+            );
+
+          const addressTableBatch: AddressHistoryDB.Entry[] =
+            batchInsertedDepositUTxOs.map(({ utxo }) => ({
+              [LedgerTable.Columns.TX_ID]: Buffer.from(
+                utxo.input().transaction_id().to_raw_bytes(),
+              ),
+              [LedgerTable.Columns.ADDRESS]: utxo.output().address().to_hex(),
+            }));
+
+          return Effect.all(
+            [
+              MempoolLedgerDB.insert(ledgerTableBatch).pipe(
+                Effect.withSpan(`mempool-ledger-db-insert-${startIndex}`),
+              ),
+              ImmutableDB.insertTxs(txTableBatch).pipe(
+                Effect.withSpan(`immutable-db-insert-${startIndex}`),
+              ),
+              AddressHistoryDB.insertEntries(addressTableBatch).pipe(
+                Effect.withSpan(`address-history-db-insert-${startIndex}`),
+              ),
+            ],
+            { concurrency: "unbounded" },
+          );
+        }),
+    );
+  });
+
 const successfulSubmissionProgram = (
   mempoolTrie: MidgardMpt,
+  insertedDepositUTxOs: {
+    utxo: CML.TransactionUnspentOutput;
+    inclusionTime: Date;
+  }[],
   mempoolTxs: readonly TxTable.EntryWithTimeStamp[],
   mempoolTxHashes: Buffer[],
   newHeaderHash: string,
@@ -137,6 +230,7 @@ const successfulSubmissionProgram = (
 
             return Effect.all(
               [
+                addDepositUTxOsToDatabases(insertedDepositUTxOs),
                 ImmutableDB.insertTxs(batchTxs).pipe(
                   Effect.withSpan(`immutable-db-insert-${startIndex}`),
                 ),
@@ -216,14 +310,17 @@ const failedSubmissionProgram = (
 /**
  * Given the target user event table, this helper finds all the events falling
  * in the given time range and if any was found, returns an `Effect` that finds
- * the MPT root of those events.
+ * the MPT root of those events with the retrieved event entries.
  */
 const userEventsProgram = (
   tableName: string,
   startDate: Date,
   endDate: Date,
 ): Effect.Effect<
-  Option.Option<Effect.Effect<string, MptError>>,
+  Option.Option<{
+    mptRoot: Effect.Effect<string, MptError>;
+    retreivedEvents: readonly UserEventsUtils.Entry[];
+  }>,
   DatabaseError,
   Database
 > =>
@@ -245,7 +342,10 @@ const userEventsProgram = (
       );
       const eventIDs = events.map((event) => event[UserEventsColumns.ID]);
       const eventInfos = events.map((event) => event[UserEventsColumns.INFO]);
-      return Option.some(keyValueMptRoot(eventIDs, eventInfos));
+      return Option.some({
+        mptRoot: keyValueMptRoot(eventIDs, eventInfos),
+        retreivedEvents: events,
+      });
     }
   });
 
@@ -330,17 +430,17 @@ const databaseOperationsProgram = (
   | DatabaseError
   | FileSystemError
   | MptError,
-  AlwaysSucceedsContract | Database | Lucid
+  AlwaysSucceedsContract | Database | Lucid | NodeConfig
 > =>
   Effect.gen(function* () {
     const mempoolTxs = yield* MempoolDB.retrieve;
     const mempoolTxsCount = mempoolTxs.length;
 
-    const optEndTime: Option.Option<Date> =
-      yield* establishEndTimeFromTxRequests(mempoolTxs);
-
-    const { utxoRoot, txRoot, mempoolTxHashes, sizeOfProcessedTxs } =
-      yield* processMpts(ledgerTrie, mempoolTrie, mempoolTxs);
+    const { mempoolTxHashes, sizeOfProcessedTxs } = yield* processMpts(
+      ledgerTrie,
+      mempoolTrie,
+      mempoolTxs,
+    );
 
     const { stateQueueAuthValidator } = yield* AlwaysSucceedsContract;
 
@@ -371,38 +471,52 @@ const databaseOperationsProgram = (
 
       const startTime = yield* getLatestBlockDatumEndTime(latestBlock.datum);
 
+      const optEndTime: Option.Option<Date> =
+        yield* establishEndTimeFromTxRequests(mempoolTxs);
+
       if (Option.isNone(optEndTime)) {
         // No transaction requests found (neither in `ProcessedMempoolDB`, nor
         // in `MempoolDB`). We check if there are any user events slated for
         // inclusion within `startTime` and current moment.
-        const endDate = new Date();
+        const endTime = new Date();
+
         yield* Effect.logInfo(
           "🔹 Checking for user events... (no tx requests in queue)",
         );
-        const optDepositsRootProgram = yield* userEventsProgram(
+        const optUserEventsProgram = yield* userEventsProgram(
           DepositsDB.tableName,
           startTime,
-          endDate,
+          endTime,
         );
-        if (Option.isNone(optDepositsRootProgram)) {
+        if (Option.isNone(optUserEventsProgram)) {
           yield* Effect.logInfo("🔹 Nothing to commit.");
           return {
             type: "NothingToCommitOutput",
           } as WorkerOutput;
         } else {
-          const depositsRootFiber = yield* Effect.fork(
-            optDepositsRootProgram.value,
+          const insertedDepositUTxOs = yield* applyDepositsToLedger(
+            ledgerTrie,
+            optUserEventsProgram.value.retreivedEvents,
           );
+
+          const depositsRootFiber: RuntimeFiber<string, MptError> =
+            yield* Effect.fork(optUserEventsProgram.value.mptRoot);
           const depositsRoot = yield* depositsRootFiber;
-          yield* Effect.logInfo(`🔹 Deposits root is: ${depositsRoot}`);
-          const emptyRoot = yield* emptyRootHexProgram;
+          yield* Effect.logInfo(`🔹 New deposits root found: ${depositsRoot}`);
+
+          const utxoRoot = yield* ledgerTrie.getRootHex();
+          const txRoot = yield* mempoolTrie.getRootHex();
+
+          yield* Effect.logInfo(`🔹 New UTxO root found: ${utxoRoot}`);
+          yield* Effect.logInfo(`🔹 New transaction root found: ${txRoot}`);
+
           const { signAndSubmitProgram, txSize } = yield* buildUnsignedTx(
             stateQueueAuthValidator,
             latestBlock,
-            emptyRoot, // TODO: fix
-            emptyRoot,
+            utxoRoot,
+            txRoot,
             depositsRoot,
-            endDate,
+            endTime,
           );
 
           return yield* Effect.matchEffect(signAndSubmitProgram, {
@@ -419,13 +533,16 @@ const databaseOperationsProgram = (
               return Effect.succeed(failureOutput);
             },
             onSuccess: (txHash) =>
-              Effect.succeed({
-                type: "SuccessfulSubmissionOutput",
-                submittedTxHash: txHash,
-                txSize,
-                mempoolTxsCount: 0,
-                sizeOfBlocksTxs: workerInput.data.sizeOfProcessedTxsSoFar,
-              } as WorkerOutput),
+              Effect.gen(function* () {
+                yield* addDepositUTxOsToDatabases(insertedDepositUTxOs);
+                return {
+                  type: "SuccessfulSubmissionOutput",
+                  submittedTxHash: txHash,
+                  txSize,
+                  mempoolTxsCount: 0,
+                  sizeOfBlocksTxs: workerInput.data.sizeOfProcessedTxsSoFar,
+                } as WorkerOutput;
+              }),
           });
         }
       } else {
@@ -435,20 +552,35 @@ const databaseOperationsProgram = (
         const endTime = optEndTime.value;
 
         yield* Effect.logInfo("🔹 Checking for user events...");
-        const optDepositsRootProgram = yield* userEventsProgram(
+        const optUserEventsProgram = yield* userEventsProgram(
           DepositsDB.tableName,
           startTime,
           endTime,
         );
 
         let depositsRoot: string = yield* emptyRootHexProgram;
-        if (Option.isSome(optDepositsRootProgram)) {
+        let insertedDepositUTxOs: {
+          utxo: CML.TransactionUnspentOutput;
+          inclusionTime: Date;
+        }[] = [];
+        if (Option.isSome(optUserEventsProgram)) {
+          insertedDepositUTxOs = yield* applyDepositsToLedger(
+            ledgerTrie,
+            optUserEventsProgram.value.retreivedEvents,
+          );
+
           const depositsRootFiber = yield* Effect.fork(
-            optDepositsRootProgram.value,
+            optUserEventsProgram.value.mptRoot,
           );
           depositsRoot = yield* depositsRootFiber;
         }
-        yield* Effect.logInfo(`🔹 Deposits root is: ${depositsRoot}`);
+        yield* Effect.logInfo(`🔹 New deposits root found: ${depositsRoot}`);
+
+        const utxoRoot = yield* ledgerTrie.getRootHex();
+        const txRoot = yield* mempoolTrie.getRootHex();
+
+        yield* Effect.logInfo(`🔹 New UTxO root found: ${utxoRoot}`);
+        yield* Effect.logInfo(`🔹 New transaction root found: ${txRoot}`);
 
         const { newHeaderHash, signAndSubmitProgram, txSize } =
           yield* buildUnsignedTx(
@@ -490,6 +622,7 @@ const databaseOperationsProgram = (
           onSuccess: (txHash) =>
             successfulSubmissionProgram(
               mempoolTrie,
+              insertedDepositUTxOs,
               mempoolTxs,
               mempoolTxHashes,
               newHeaderHash,
