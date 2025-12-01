@@ -83,6 +83,7 @@ validator spend(hub_oracle: ScriptHash) {
                 payout_input_value,
               )
             expect input_policy_id == payout_policy_id
+            // TODO: get proper payout asset name
             expect input_asset_name == "payout"
             expect input_qty == 1
 
