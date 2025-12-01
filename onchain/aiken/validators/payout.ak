@@ -76,8 +76,7 @@ validator spend(hub_oracle: ScriptHash) {
             // 1. Verify the payout input is from our own validator address
             let own_address = utils.get_own_address(own_out_ref, inputs)
             expect payout_input_address == own_address
-            // 2. Payout input must hold exactly one payout token and it must
-            // match between them.
+            // 2. Payout input must have exactly one payout token
             let (input_policy_id, input_asset_name, input_qty) =
               utils.get_single_asset_from_value_apart_from_ada(
                 payout_input_value,
@@ -121,8 +120,7 @@ validator spend(hub_oracle: ScriptHash) {
             expect payout_output_datum: Datum = payout_output_datum_data
             expect payout_output_datum == payout_datum
 
-            // 7. The payout output must have exactly one payout token with the same
-            //    asset name.
+            // 7. Payout output must have exactly one payout token
             let (output_policy_id, output_asset_name, output_qty) =
               utils.get_single_asset_from_value_apart_from_ada(
                 payout_output_value,
