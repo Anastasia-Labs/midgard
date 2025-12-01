@@ -79,17 +79,24 @@ validator spend(hub_oracle: ScriptHash) {
             expect input_qty == 1
 
             // 2. Let reserve_input be the sole transaction input from reserve_addr
-            let reserve_input =
-              utils.get_own_input_at(inputs, own_out_ref, reserve_input_index)
-            let Output { address: supposed_reserve_address, .. } = reserve_input
+            // TODO: validate is sole input from reserve_addr
+            expect Some(reserve_input) = list.at(inputs, reserve_input_index)
+            let Input {
+              output: Output {
+                address: supposed_reserve_address,
+                value: reserve_value,
+                ..
+              },
+              ..
+            } = reserve_input
             expect supposed_reserve_address == reserve_addr
             // Let payout output be a transaction output.
             // 3. The produced payout output must not have any reference script
             //    attached.
             expect Output {
-              address: payout_output_address,
+              address: _payout_output_address,
               value: payout_output_value,
-              datum: payout_output_datum,
+              datum: _payout_output_datum,
               reference_script: None,
             } = payout_output
 
@@ -104,7 +111,7 @@ validator spend(hub_oracle: ScriptHash) {
             expect output_qty == 1
             // Total input value(payout + reserve)
             let total_input_value =
-              assets.merge(payout_input_value, reserve_input.value)
+              assets.merge(payout_input_value, reserve_value)
             let total_input_value_ada = assets.lovelace_of(total_input_value)
             let payout_output_value_ada =
               assets.lovelace_of(payout_output_value)
