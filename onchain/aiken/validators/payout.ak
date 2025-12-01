@@ -2,7 +2,9 @@ use aiken/collection/list
 use aiken/crypto.{ScriptHash}
 use aiken_design_patterns/singular_utxo_indexer
 use cardano/assets
-use cardano/transaction.{Input, Output, OutputReference, Transaction}
+use cardano/transaction.{
+  InlineDatum, Input, Output, OutputReference, Transaction,
+}
 use midgard/common/utils
 use midgard/hub_oracle as hub
 use midgard/payout.{AddFunds, ConcludeWithdrawal, Datum, SpendRedeemer}
@@ -48,7 +50,6 @@ validator spend(hub_oracle: ScriptHash) {
     let Transaction { inputs, outputs, reference_inputs, mint, .. } = tx
     expect Some(payout_datum) = datum
 
-    // let Datum { l2_value, l1_address, l1_datum } = payout_datum
     when redeemer is {
       AddFunds {
         input_index,
@@ -72,8 +73,6 @@ validator spend(hub_oracle: ScriptHash) {
               },
               ..
             } = payout_input
-            //  Let payout datum be its datum.
-            let Datum { l2_value, l1_address, l1_datum } = payout_datum
             // 1. Verify the payout input is from our own validator address
             let own_address = utils.get_own_address(own_out_ref, inputs)
             expect payout_input_address == own_address
@@ -111,13 +110,17 @@ validator spend(hub_oracle: ScriptHash) {
             expect Output {
               address: payout_output_address,
               value: payout_output_value,
-              datum: _payout_output_datum,
+              datum: InlineDatum(payout_output_datum_data),
               reference_script: None,
             } = payout_output
             // 5. Verify the payout output is from our own validator address
             expect payout_output_address == own_address
 
-            // 6. The payout output must have exactly one payout token with the same
+            // 6. Verify the datum is preserved (unchanged)
+            expect payout_output_datum: Datum = payout_output_datum_data
+            expect payout_output_datum == payout_datum
+
+            // 7. The payout output must have exactly one payout token with the same
             //    asset name.
             let (output_policy_id, output_asset_name, output_qty) =
               utils.get_single_asset_from_value_apart_from_ada(
@@ -133,12 +136,12 @@ validator spend(hub_oracle: ScriptHash) {
             let payout_output_value_ada =
               assets.lovelace_of(payout_output_value)
 
-            // 7. Check inputs >= output (no negative diff)
+            // 8. Check inputs >= output (no negative diff)
             expect total_input_value_ada >= payout_output_value_ada
             // Calculate required change (if any)
             let required_change =
               total_input_value_ada - payout_output_value_ada
-            // 8. If change > 0, must send to reserve_addr
+            // 9. If change > 0, must send to reserve_addr
             when required_change > 0 is {
               True -> {
                 let change_output_opt =
@@ -152,7 +155,7 @@ validator spend(hub_oracle: ScriptHash) {
                 expect True
               }
             }
-            // 8. The transaction must not mint or burn any tokens.
+            // 10. The transaction must not mint or burn any tokens.
             expect mint == assets.zero
             True
           },
