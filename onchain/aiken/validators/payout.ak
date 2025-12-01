@@ -82,8 +82,6 @@ validator spend(hub_oracle: ScriptHash) {
                 payout_input_value,
               )
             expect input_policy_id == payout_policy_id
-            // TODO: get proper payout asset name
-            expect input_asset_name == "payout"
             expect input_qty == 1
 
             // 3. Let reserve_input be the sole transaction input from reserve_addr
@@ -120,13 +118,14 @@ validator spend(hub_oracle: ScriptHash) {
             expect payout_output_datum: Datum = payout_output_datum_data
             expect payout_output_datum == payout_datum
 
-            // 7. Payout output must have exactly one payout token
+            // 7. Payout output must have exactly one payout token, and it's
+            // name must match input's
             let (output_policy_id, output_asset_name, output_qty) =
               utils.get_single_asset_from_value_apart_from_ada(
                 payout_output_value,
               )
             expect output_policy_id == payout_policy_id
-            expect output_asset_name == "payout"
+            expect output_asset_name == input_asset_name
             expect output_qty == 1
             // Total input value(payout + reserve)
             let total_input_value =
