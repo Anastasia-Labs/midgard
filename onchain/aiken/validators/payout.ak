@@ -79,7 +79,6 @@ validator spend(hub_oracle: ScriptHash) {
             expect input_qty == 1
 
             // 2. Let reserve_input be the sole transaction input from reserve_addr
-            // TODO: validate is sole input from reserve_addr
             expect Some(reserve_input) = list.at(inputs, reserve_input_index)
             let Input {
               output: Output {
@@ -90,6 +89,13 @@ validator spend(hub_oracle: ScriptHash) {
               ..
             } = reserve_input
             expect supposed_reserve_address == reserve_addr
+            let reserve_inputs_count =
+              list.filter(
+                inputs,
+                fn(input) { input.output.address == reserve_addr },
+              )
+                |> list.length
+            expect reserve_inputs_count == 1
             // Let payout output be a transaction output.
             // 3. The produced payout output must not have any reference script
             //    attached.
