@@ -64,11 +64,20 @@ validator spend(hub_oracle: ScriptHash) {
         singular_utxo_indexer.spend(
           fn(_in_ix, payout_input, _redeemer, _out_ix, payout_output) {
             // Let payout input be the transaction input being spent
-            let Input { output: Output { value: payout_input_value, .. }, .. } =
-              payout_input
+            let Input {
+              output: Output {
+                address: payout_input_address,
+                value: payout_input_value,
+                ..
+              },
+              ..
+            } = payout_input
             //  Let payout datum be its datum.
             let Datum { l2_value, l1_address, l1_datum } = payout_datum
-            // 1. Payout input must hold exactly one payout token and it must
+            // 1. Verify the payout input is from our own validator address
+            let own_address = utils.get_own_address(own_out_ref, inputs)
+            expect payout_input_address == own_address
+            // 2. Payout input must hold exactly one payout token and it must
             // match between them.
             let (input_policy_id, input_asset_name, input_qty) =
               utils.get_single_asset_from_value_apart_from_ada(
@@ -78,7 +87,7 @@ validator spend(hub_oracle: ScriptHash) {
             expect input_asset_name == "payout"
             expect input_qty == 1
 
-            // 2. Let reserve_input be the sole transaction input from reserve_addr
+            // 3. Let reserve_input be the sole transaction input from reserve_addr
             expect Some(reserve_input) = list.at(inputs, reserve_input_index)
             let Input {
               output: Output {
@@ -97,7 +106,7 @@ validator spend(hub_oracle: ScriptHash) {
                 |> list.length
             expect reserve_inputs_count == 1
             // Let payout output be a transaction output.
-            // 3. The produced payout output must not have any reference script
+            // 4. The produced payout output must not have any reference script
             //    attached.
             expect Output {
               address: _payout_output_address,
@@ -106,7 +115,7 @@ validator spend(hub_oracle: ScriptHash) {
               reference_script: None,
             } = payout_output
 
-            // 4. The payout output must have exactly one payout token with the same
+            // 5. The payout output must have exactly one payout token with the same
             //    asset name.
             let (output_policy_id, output_asset_name, output_qty) =
               utils.get_single_asset_from_value_apart_from_ada(
@@ -122,12 +131,12 @@ validator spend(hub_oracle: ScriptHash) {
             let payout_output_value_ada =
               assets.lovelace_of(payout_output_value)
 
-            // 5. Check inputs >= output (no negative diff)
+            // 6. Check inputs >= output (no negative diff)
             expect total_input_value_ada >= payout_output_value_ada
             // Calculate required change (if any)
             let required_change =
               total_input_value_ada - payout_output_value_ada
-            // 6. If change > 0, must send to reserve_addr
+            // 7. If change > 0, must send to reserve_addr
             when required_change > 0 is {
               True -> {
                 let change_output_opt =
@@ -141,7 +150,7 @@ validator spend(hub_oracle: ScriptHash) {
                 expect True
               }
             }
-            // 7. The transaction must not mint or burn any tokens.
+            // 8. The transaction must not mint or burn any tokens.
             expect mint == assets.zero
             True
           },
