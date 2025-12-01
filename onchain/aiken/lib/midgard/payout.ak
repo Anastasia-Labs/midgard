@@ -9,7 +9,12 @@ pub type Datum {
 }
 
 pub type SpendRedeemer {
-  AddFunds
+  AddFunds {
+    input_index: Int,
+    output_index: Int,
+    reserve_input_index: Int,
+    hub_ref_input_index: Int,
+  }
   ConcludeWithdrawal
 }
 
