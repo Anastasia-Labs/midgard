@@ -109,13 +109,15 @@ validator spend(hub_oracle: ScriptHash) {
             // 4. The produced payout output must not have any reference script
             //    attached.
             expect Output {
-              address: _payout_output_address,
+              address: payout_output_address,
               value: payout_output_value,
               datum: _payout_output_datum,
               reference_script: None,
             } = payout_output
+            // 5. Verify the payout output is from our own validator address
+            expect payout_output_address == own_address
 
-            // 5. The payout output must have exactly one payout token with the same
+            // 6. The payout output must have exactly one payout token with the same
             //    asset name.
             let (output_policy_id, output_asset_name, output_qty) =
               utils.get_single_asset_from_value_apart_from_ada(
@@ -131,12 +133,12 @@ validator spend(hub_oracle: ScriptHash) {
             let payout_output_value_ada =
               assets.lovelace_of(payout_output_value)
 
-            // 6. Check inputs >= output (no negative diff)
+            // 7. Check inputs >= output (no negative diff)
             expect total_input_value_ada >= payout_output_value_ada
             // Calculate required change (if any)
             let required_change =
               total_input_value_ada - payout_output_value_ada
-            // 7. If change > 0, must send to reserve_addr
+            // 8. If change > 0, must send to reserve_addr
             when required_change > 0 is {
               True -> {
                 let change_output_opt =
