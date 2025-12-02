@@ -1,20 +1,14 @@
-import { Effect } from "effect";
-import {
-  clearTable,
-  insertKeyValues,
-  retrieveKeyValues,
-  delMultiple,
-} from "./utils.js";
-import { Database } from "@/services/database.js";
+import * as Ledger from "@/database/utils/ledger.js";
+import { clearTable } from "@/database/utils/common.js";
 
 export const tableName = "confirmed_ledger";
 
-export const insert = (utxosCBOR: { key: Uint8Array; value: Uint8Array }[]) =>
-  insertKeyValues(tableName, utxosCBOR);
+export const insertMultiple = (entries: Ledger.Entry[]) =>
+  Ledger.insertEntries(tableName, entries);
 
-export const retrieve = (): Effect.Effect<void, Error, Database> =>
-  retrieveKeyValues(tableName);
+export const retrieve = Ledger.retrieveAllEntries(tableName);
 
-export const clearUTxOs = (refs: Uint8Array[]) => delMultiple(tableName, refs);
+export const clearUTxOs = (refs: Buffer[]) =>
+  Ledger.delEntries(tableName, refs);
 
-export const clear = () => clearTable(tableName);
+export const clear = clearTable(tableName);

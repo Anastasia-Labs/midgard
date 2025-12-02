@@ -1,6 +1,6 @@
 name = "anastasia-labs/aiken-always-succeeds"
 version = "0.0.0"
-compiler = "v1.1.9"
+compiler = "v1.1.19"
 plutus = "v3"
 license = "Apache-2.0"
 description = "Aiken contracts for project 'anastasia-labs/aiken-always-succeeds'"

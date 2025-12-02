@@ -2,18 +2,23 @@ import { Effect } from "effect";
 import { LucidEvolution } from "@lucid-evolution/lucid";
 import { makeReturn } from "../../core.js";
 import {
-  getConfirmedStateFromStateQueueUTxO,
+  getConfirmedStateFromStateQueueDatum,
   utxosToStateQueueUTxOs,
   findLinkStateQueueUTxO,
-} from "../../utils/state-queue.js";
-import { StateQueue } from "../../tx-builder/index.js";
-import { utxosAtByNFTPolicyId } from "@/utils/common.js";
+  StateQueueError,
+} from "@/utils/state-queue.js";
+import { StateQueue } from "@/tx-builder/index.js";
+import { LucidError, utxosAtByNFTPolicyId } from "@/utils/common.js";
 import { StateQueueUTxO } from "@/tx-builder/state-queue/types.js";
+import { LinkedListError } from "@/utils/linked-list.js";
 
 export const fetchConfirmedStateAndItsLinkProgram = (
   lucid: LucidEvolution,
   config: StateQueue.FetchConfig,
-): Effect.Effect<{ confirmed: StateQueueUTxO; link?: StateQueueUTxO }, Error> =>
+): Effect.Effect<
+  { confirmed: StateQueueUTxO; link?: StateQueueUTxO },
+  StateQueueError | LucidError | LinkedListError
+> =>
   Effect.gen(function* () {
     const initUTxOs = yield* utxosAtByNFTPolicyId(
       lucid,
@@ -25,7 +30,17 @@ export const fetchConfirmedStateAndItsLinkProgram = (
       config.stateQueuePolicyId,
     );
     const filteredForConfirmedState = yield* Effect.allSuccesses(
-      allUTxOs.map(getConfirmedStateFromStateQueueUTxO),
+      allUTxOs.map((u) =>
+        Effect.gen(function* () {
+          const dataAndLink = yield* getConfirmedStateFromStateQueueDatum(
+            u.datum,
+          );
+          return {
+            ...dataAndLink,
+            utxo: u,
+          };
+        }),
+      ),
     );
     if (filteredForConfirmedState.length === 1) {
       const { utxo: confirmedStateUTxO, link: confirmedStatesLink } =
@@ -39,7 +54,12 @@ export const fetchConfirmedStateAndItsLinkProgram = (
         link: linkUTxO,
       };
     } else {
-      return yield* Effect.fail(new Error("Confirmed state not found"));
+      return yield* Effect.fail(
+        new StateQueueError({
+          message: "Failed to fetch confirmed state and its link",
+          cause: "Exactly 1 authentic confirmed state UTxO was expected",
+        }),
+      );
     }
   });
 

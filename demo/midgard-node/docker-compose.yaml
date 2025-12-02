@@ -22,6 +22,7 @@ services:
       - node
       - ./dist/index.js
       - listen
+      - --with-monitoring
     ports:
       - "3000:3000" # api server
       - "9464:9464" # prometheus exporter
@@ -34,7 +35,7 @@ services:
     networks:
       midgard_net:
     # restart: always
-  
+
   postgres:
     image: postgres:15-alpine
     restart: always
@@ -46,7 +47,7 @@ services:
     volumes:
       - postgres-data:/var/lib/postgresql/data/pgdata
     ports:
-      - "5432:5432"
+      - "5433:5432"
     networks:
       midgard_net:
     healthcheck:
@@ -59,13 +60,13 @@ services:
       - "-c"
       - "max_connections=100"
       - "-c"
-      - "shared_buffers=128MB"
+      - "shared_buffers=2GB"
       - "-c"
-      - "effective_cache_size=512MB"
+      - "effective_cache_size=6GB"
       - "-c"
       - "work_mem=16MB"
       - "-c"
-      - "maintenance_work_mem=128MB"
+      - "maintenance_work_mem=512MB"
     logging:
       options:
         max-size: "10m"
@@ -89,7 +90,7 @@ services:
     logging: *default-logging
     networks:
       midgard_net:
-    
+
   loki:
     container_name: loki
     image: grafana/loki:3.4.1
@@ -102,7 +103,7 @@ services:
     logging: *default-logging
     networks:
       midgard_net:
-  
+
   promtail:
     image: grafana/promtail:2.7.1
     container_name: promtail
@@ -153,7 +154,7 @@ services:
     networks:
       midgard_net:
   tempo-init:
-    image: grafana/tempo:latest
+    image: busybox:latest
     user: root
     entrypoint:
       - "chown"
@@ -183,9 +184,29 @@ services:
     networks:
       midgard_net:
 
+  midgard-node-tests:
+    build:
+      context: .
+      additional_contexts:
+        - sdk=../midgard-sdk
+      dockerfile: ./Dockerfile
+    command: ["sh", "-c", "yes | pnpm test"]
+    profiles:
+      - test
+    volumes:
+      - ./:/app
+      - ./db:/app/db
+    depends_on:
+      - postgres
+    networks:
+      midgard_net:
+    logging: *default-logging
+    environment:
+      - COREPACK_EXPERIMENTAL_SKIP_ASK=true=
+
 networks:
   midgard_net:
-  
+
 volumes:
   postgres-data:
     driver: local

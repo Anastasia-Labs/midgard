@@ -5,17 +5,19 @@
 \section{Settlement queue}
 \label{h:settlement-queue}
 
-The settlement queue tracks confirmed deposits and withdrawal orders until they are spent.
-Each settlement node in the queue is created whenever a block merges into the confirmed state and includes any deposits or withdrawals.
-The settlement node contains the block's deposits root hash, withdrawals root hash, and event interval.
-Users must reference a settlement node to spend its confirmed deposits or withdrawal orders.
+The settlement queue tracks confirmed deposits, withdrawal orders, and transaction orders until they are spent.
+Each settlement node in the queue is created whenever a block merges into the confirmed state and includes any deposits, withdrawals, or transaction orders.
+The settlement node contains the block's deposits root hash, withdrawals root hash, transactions root hash, and event interval.
+The transactions root hash stored in the settlement node is the Merkle root of all transactions in the block, including both transaction requests (from operators' mempools) and transaction orders (from L1 events).
+This allows operators to resolve transaction order event UTxOs after merging their associated blocks into confirmed state.
+Users must reference a settlement node to spend its confirmed deposits, withdrawal orders, or transaction orders.
 
-The current operator can optimistically resolve any settlement node, claiming that its confirmed deposits and withdrawal orders have all been spent.
+The current operator can optimistically resolve any settlement node, claiming that its confirmed deposits, withdrawal orders, and transaction orders have all been spent.
 To do so, the operator attaches a resolution claim to the settlement queue for the \code{maturity\_duration} (a protocol parameter).
 During this maturity period, if the operator's resolution claim is proven fraudulent, the prover can slash the operator's bond and remove the resolution claim from the settlement node.
 After the maturity period, the settlement node can be removed from the queue if the resolution claim is intact.
 
-\tipbox{Perhaps resolving a settlement node should also release the user fees collected from the node's deposits and withdrawals to the operator.
+\tipbox{Perhaps resolving a settlement node should also release the user fees collected from the node's deposits, withdrawals, and transaction orders to the operator.
 These fees would incentivize the operator to resolve settlement nodes promptly.}
 
 The timestamp in the operator's node in the Operator Directory should be updated whenever an operator optimistically resolves a settlement node, similar to how it is updated when committing a block to the state queue.
@@ -69,7 +71,7 @@ It's responsible for appends to the \code{settlement\_queue} list's end, and als
           \begin{itemize}
             \item \code{deposits\_root}
             \item \code{withdrawals\_root}
-            \item \code{tx\_orders\_root}
+            \item \code{transactions\_root}
             \item \code{start\_time}
             \item \code{end\_time}
           \end{itemize}

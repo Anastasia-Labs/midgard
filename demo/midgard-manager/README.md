@@ -26,6 +26,9 @@ pnpm tx-generator start --test-wallet --type one-to-one --batch-size 100
 
 # For higher throughput testing
 pnpm tx-generator start --test-wallet --type mixed --batch-size 100 --interval 5 --concurrency 5
+
+# Max rate:
+pnpm tx-generator start --test-wallet --type one-to-one --batch-size 100000 --interval 1 --concurrency 20
 ```
 
 ## Configuration

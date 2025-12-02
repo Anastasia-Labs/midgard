@@ -1,27 +1,54 @@
-import { SqlClient } from "@effect/sql";
+import { SqlClient, SqlError } from "@effect/sql";
 import * as BlocksDB from "./blocks.js";
 import * as ConfirmedLedgerDB from "./confirmedLedger.js";
 import * as ImmutableDB from "./immutable.js";
 import * as LatestLedgerDB from "./latestLedger.js";
 import * as MempoolDB from "./mempool.js";
+import * as ProcessedMempoolDB from "./processedMempool.js";
 import * as MempoolLedgerDB from "./mempoolLedger.js";
-import { mkKeyValueCreateQuery } from "./utils.js";
+import * as Tx from "@/database/utils/tx.js";
+import * as Ledger from "@/database/utils/ledger.js";
+import * as AddressHistory from "@/database/addressHistory.js";
 import { Effect } from "effect";
-import { Database } from "@/services/database.js";
+import { insertGenesisUtxos } from "./genesis.js";
+import { Database, NodeConfig } from "@/services/index.js";
+import { DatabaseError } from "./utils/common.js";
 
-export const initializeDb: () => Effect.Effect<void, Error, Database> = () =>
+export const initializeDb: () => Effect.Effect<
+  void,
+  DatabaseError,
+  Database | NodeConfig
+> = () =>
   Effect.gen(function* () {
     const sql = yield* SqlClient.SqlClient;
-    // await sql`SET default_transaction_read_only TO 'off'`;
+    // yield* sql`SET default_transaction_read_only TO 'off'`;
     yield* sql`SET client_min_messages = 'error'`;
     yield* sql`SET default_transaction_isolation TO 'serializable'`;
 
-    yield* BlocksDB.createQuery;
-    yield* mkKeyValueCreateQuery(MempoolDB.tableName);
-    yield* mkKeyValueCreateQuery(MempoolLedgerDB.tableName);
-    yield* mkKeyValueCreateQuery(ImmutableDB.tableName);
-    yield* mkKeyValueCreateQuery(ConfirmedLedgerDB.tableName);
-    yield* mkKeyValueCreateQuery(LatestLedgerDB.tableName);
+    yield* AddressHistory.init;
+    yield* BlocksDB.init;
+    yield* Ledger.createTable(ConfirmedLedgerDB.tableName);
+    yield* Ledger.createTable(LatestLedgerDB.tableName);
+    yield* Ledger.createTable(MempoolLedgerDB.tableName);
+    yield* Tx.createTable(ImmutableDB.tableName);
+    yield* Tx.createTable(MempoolDB.tableName);
+    yield* Tx.createTable(ProcessedMempoolDB.tableName);
 
-    Effect.logInfo("Connected to the PostgreSQL database");
-  });
+    yield* insertGenesisUtxos;
+
+    yield* Effect.logInfo("PostgreSQL database initialized Successfully.");
+  }).pipe(
+    Effect.mapError((error: unknown) =>
+      error instanceof SqlError.SqlError
+        ? new DatabaseError({
+            message: `Failed to initialize database`,
+            cause: error,
+            table: "<n/a>",
+          })
+        : new DatabaseError({
+            message: `Unknown error during database initialization: ${error}`,
+            cause: error,
+            table: "<n/a>",
+          }),
+    ),
+  );

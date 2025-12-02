@@ -140,7 +140,7 @@ const generateOneToOneTransactions = async (
     // Use the output of initial transaction for subsequent transactions
     const firstUtxo = {
       txHash: initialTxSigned.toHash(),
-      outputIndex: 0,
+      outputIndex: initialUTxO.outputIndex,
       address: initialUTxO.address,
       assets: initialUTxO.assets,
     };

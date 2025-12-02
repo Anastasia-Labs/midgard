@@ -12,8 +12,9 @@ use midgard/hub_oracle as hub
 use midgard/ledger_state
 use midgard/settlement_queue
 use midgard/user_events
-use midgard/user_events/deposit.{Datum,
-  Refund, SpendRedeemer, TransferToReserve}
+use midgard/user_events/deposit.{
+  Datum, Refund, SpendRedeemer, TransferToReserve,
+}
 
 validator spend(hub_oracle: ScriptHash) {
   spend(

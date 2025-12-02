@@ -10,8 +10,9 @@ use aiken/merkle_patricia_forestry as mpf
 use aiken_design_patterns/merkelized_validator
 use cardano/address.{Address, Script}
 use cardano/assets.{AssetName, PolicyId, Value, tokens}
-use cardano/transaction.{Input,
-  Output, OutputReference, Redeemer, ScriptPurpose}
+use cardano/transaction.{
+  Input, Output, OutputReference, Redeemer, ScriptPurpose,
+}
 use env
 use midgard/common/constants.{posix_time_none}
 use midgard/common/types.{H28, H32, PosixTime, ValuePairs}
@@ -210,7 +211,7 @@ pub fn get_asset_name_from_value_with_policy(
 ) -> AssetName {
   expect [Pair(asset_name, _)] =
     value
-      |> assets.tokens(policy_id) //return dict of policy id to asset name and quantity
+      |> assets.tokens(policy_id)
       |> dict.to_pairs
 
   asset_name
@@ -223,7 +224,7 @@ pub fn get_singleton_asset_with_policy(
 ) -> Pair<AssetName, Int> {
   expect [p] =
     value
-      |> assets.tokens(policy_id) //return dict of policy id to asset name and quantity
+      |> assets.tokens(policy_id)
       |> dict.to_pairs
 
   p

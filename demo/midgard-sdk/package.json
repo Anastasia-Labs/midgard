@@ -41,7 +41,6 @@
     "test": "test"
   },
   "dependencies": {
-    "@aiken-lang/merkle-patricia-forestry": "^1.2.0",
     "@lucid-evolution/lucid": "^0.4.23",
     "@noble/hashes": "^1.7.1",
     "effect": "^3.14.22"

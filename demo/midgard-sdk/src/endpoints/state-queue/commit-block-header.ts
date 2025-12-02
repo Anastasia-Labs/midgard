@@ -2,13 +2,15 @@ import { makeReturn } from "@/core.js";
 import { LucidEvolution, TxSignBuilder } from "@lucid-evolution/lucid";
 import { StateQueue, ActiveOperators } from "@/tx-builder/index.js";
 import { Effect } from "effect";
+import { HashingError } from "@/utils/common.js";
+import { StateQueueError } from "@/utils/state-queue.js";
 
 export const commitBlockHeaderProgram = (
   lucid: LucidEvolution,
   fetchConfig: StateQueue.FetchConfig,
   sqCommitParams: StateQueue.CommitBlockParams,
   aoUpdateParams: ActiveOperators.UpdateCommitmentTimeParams,
-): Effect.Effect<TxSignBuilder, Error> =>
+): Effect.Effect<TxSignBuilder, StateQueueError | HashingError> =>
   Effect.gen(function* () {
     const commitTx = yield* StateQueue.commitTxBuilder(
       lucid,
@@ -22,7 +24,11 @@ export const commitBlockHeaderProgram = (
           //   ActiveOperators.updateCommitmentTimeTxBuilder(lucid, aoUpdateParams)
           // )
           .complete({ localUPLCEval: false }),
-      catch: (e) => new Error(`${e}`),
+      catch: (e) =>
+        new StateQueueError({
+          message: `Failed to build block header commitment transaction: ${e}`,
+          cause: e,
+        }),
     });
     return completedTx;
   });

@@ -1,32 +1,27 @@
 import { Effect } from "effect";
-import {
-  clearTable,
-  insertKeyValue,
-  insertKeyValues,
-  retrieveKeyValues,
-  retrieveValue,
-  retrieveValues,
-} from "./utils.js";
+import * as Tx from "@/database/utils/tx.js";
+import { clearTable, DatabaseError } from "@/database/utils/common.js";
 import { Database } from "@/services/database.js";
 
 export const tableName = "immutable";
 
-export const insert = (
-  txHash: Uint8Array,
-  txCbor: Uint8Array,
-): Effect.Effect<void, Error, Database> =>
-  insertKeyValue(tableName, txHash, txCbor);
+export const insertTx = (
+  tx: Tx.Entry,
+): Effect.Effect<void, DatabaseError, Database> =>
+  Tx.insertEntry(tableName, tx);
 
 export const insertTxs = (
-  txs: { key: Uint8Array; value: Uint8Array }[],
-): Effect.Effect<void, Error, Database> => insertKeyValues(tableName, txs);
+  txs: Tx.Entry[],
+): Effect.Effect<void, DatabaseError, Database> =>
+  Tx.insertEntries(tableName, txs);
 
-export const retrieve = () => retrieveKeyValues(tableName);
+export const retrieve = Tx.retrieveAllEntries(tableName);
 
-export const retrieveTxCborByHash = (txHash: Uint8Array) =>
-  retrieveValue(tableName, txHash);
+export const retrieveTxCborByHash = (txHash: Buffer) =>
+  Tx.retrieveValue(tableName, txHash);
 
-export const retrieveTxCborsByHashes = (txHashes: Uint8Array[]) =>
-  retrieveValues(tableName, txHashes);
+export const retrieveTxCborsByHashes = (
+  txHashes: Buffer[] | readonly Buffer[],
+) => Tx.retrieveValues(tableName, txHashes);
 
-export const clear = () => clearTable(tableName);
+export const clear = clearTable(tableName);

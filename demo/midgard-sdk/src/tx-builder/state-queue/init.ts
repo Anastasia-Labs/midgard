@@ -22,7 +22,7 @@ import { Effect } from "effect";
 export const initTxBuilder = (
   lucid: LucidEvolution,
   { policyId, address, stateQueueMintingScript }: InitParams,
-): Effect.Effect<TxBuilder, Error> =>
+): Effect.Effect<TxBuilder> =>
   Effect.gen(function* () {
     const assets: Assets = {
       [toUnit(policyId, fromText("Node"))]: 1n,

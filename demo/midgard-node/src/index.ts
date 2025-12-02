@@ -1,19 +1,15 @@
 #!/usr/bin/env node
 
 import { Command } from "commander";
-import { ENV_VARS_GUIDE, chalk } from "./utils.js";
-import { runNode } from "./commands/index.js";
+import { ENV_VARS_GUIDE, chalk } from "@/utils.js";
+import { runNode } from "@/commands/index.js";
+import * as Services from "@/services/index.js";
 import packageJson from "../package.json" with { type: "json" };
 import { Effect, pipe } from "effect";
-import { NodeConfig, User } from "./config.js";
 import dotenv from "dotenv";
-import { AlwaysSucceeds } from "./services/index.js";
 import { NodeRuntime } from "@effect/platform-node";
-
-// Initialize global flags:
-global.BLOCKS_IN_QUEUE = 0;
-global.LATEST_SYNC_OF_STATE_QUEUE_LENGTH = 0;
-global.RESET_IN_PROGRESS = false;
+import { DatabaseError } from "@/database/utils/common.js";
+import { SqlError } from "@effect/sql";
 
 dotenv.config();
 const VERSION = packageJson.version;
@@ -23,7 +19,7 @@ const program = new Command();
 program.version(VERSION).description(
   `
   ${chalk.red(
-    `                        @#
+    `                       @#
                          @@%#
                         %@@@%#
                        %%%%%%##
@@ -41,7 +37,7 @@ program.version(VERSION).description(
            %%%%%%%%%%            ##########
           ###%%%%%%%              ##########
          #########                  #########
-  
+
    ${chalk.bgGray(
      "    " +
        chalk.bold(
@@ -57,15 +53,27 @@ program.version(VERSION).description(
   ${ENV_VARS_GUIDE}`,
 );
 
-program.command("listen").action(async () => {
-  const program = pipe(
-    runNode,
-    Effect.provide(User.layer),
-    Effect.provide(AlwaysSucceeds.AlwaysSucceedsContract.layer),
-    Effect.provide(NodeConfig.layer),
-  );
+program
+  .command("listen")
+  .option(
+    "-m, --with-monitoring",
+    "Flag for enabling interactions with monitoring services",
+  )
+  .action(async (_args, options) => {
+    console.log("🌳 Midgard");
+    const program: Effect.Effect<
+      void,
+      | DatabaseError
+      | SqlError.SqlError
+      | Services.ConfigError
+      | Services.DatabaseInitializationError,
+      never
+    > = pipe(
+      runNode(options.withMonitoring),
+      Effect.provide(Services.NodeConfig.layer),
+    );
 
-  NodeRuntime.runMain(program);
-});
+    NodeRuntime.runMain(program, { teardown: undefined });
+  });
 
 program.parse(process.argv);

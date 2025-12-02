@@ -19,5 +19,6 @@ pub type StepRedeemer {
     previous_tx: MidgardTxCompact,
     previous_tx_body: MidgardTxBodyCompact,
     real_outputs: Data,
+    hub_ref_input_index: Int,
   }
 }

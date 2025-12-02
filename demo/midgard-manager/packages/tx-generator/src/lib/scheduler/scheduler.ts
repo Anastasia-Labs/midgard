@@ -1,6 +1,7 @@
 import { mkdir, writeFile } from 'node:fs/promises';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { randomBytes } from 'node:crypto';
 
 import { Network, UTxO } from '@lucid-evolution/lucid';
 import pLimit from 'p-limit';
@@ -142,13 +143,24 @@ export const startGenerator = async (
   }
   console.log();
 
+  const generateUniqueUTxOs = (baseUTxO: UTxO, count: number) =>
+    Array.from({ length: count }, () => ({
+      ...baseUTxO,
+      txHash: randomBytes(32).toString('hex').toUpperCase(),
+      outputIndex: Math.floor(Math.random() * 1001), // Random outputIndex 0 -> 1000
+    }));
+
   // Define the transaction generation function
   const generateTransactions = async () => {
     try {
+      const uniqueUTxOs = generateUniqueUTxOs(fullConfig.initialUTxO, fullConfig.batchSize);
+
       const tasks = Array(fullConfig.batchSize)
         .fill(null)
-        .map(async () => {
+        .map(async (_, index) => {
+          // ← Add index parameter
           return concurrencyLimiter(async () => {
+            const taskUTxO = uniqueUTxOs[index];
             const useOneToOne =
               fullConfig.transactionType === 'one-to-one' ||
               (fullConfig.transactionType === 'mixed' &&
@@ -157,14 +169,14 @@ export const startGenerator = async (
             const txs = useOneToOne
               ? await generateOneToOneTransactions({
                   network: fullConfig.network,
-                  initialUTxO: fullConfig.initialUTxO,
+                  initialUTxO: taskUTxO,
                   txsCount: 1,
                   walletSeedOrPrivateKey: fullConfig.walletSeedOrPrivateKey,
                   nodeClient,
                 })
               : await generateMultiOutputTransactions({
                   network: fullConfig.network,
-                  initialUTxO: fullConfig.initialUTxO,
+                  initialUTxO: taskUTxO,
                   utxosCount: TRANSACTION_CONSTANTS.OUTPUTS_PER_DISTRIBUTION,
                   finalUtxosCount: 1,
                   walletSeedOrPrivateKey: fullConfig.walletSeedOrPrivateKey,
