@@ -8,7 +8,7 @@
 Midgard partitions time in two different ways:
 \begin{description}
     \item[Operator shifts.] Predefined, non-overlapping time intervals assigned to operators by the Midgard scheduler.
-      Each operator has the exclusive privilege to commit blocks to the state queue and resolve nodes in the settlement queue during their assigned shifts.
+      Each operator has the exclusive privilege to commit blocks to the state queue and resolve settlement utxos during their assigned shifts.
       If an operator fails to commit blocks regularly in their shift, the next operator can take over.
     \item[Event intervals.] Emergent, non-overlapping time intervals claimed by operators' committed blocks.
       Each operator block is expected to include all user events with inclusion times within its event interval and to exclude all other user events.

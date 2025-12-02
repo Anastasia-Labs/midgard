@@ -50,7 +50,6 @@ pub type Header {
   transactions_root: MerkleRoot,
   deposits_root: MerkleRoot,
   withdrawals_root: MerkleRoot,
-  tx_orders_root: MerkleRoot,
   start_time: PosixTime,
   end_time: PosixTime,
   prev_header_hash: HeaderHash,
@@ -115,11 +114,31 @@ pub type DepositEvent {
 pub type WithdrawalId =
   OutputReference
 
-pub type WithdrawalInfo {
+pub type WithdrawalBody {
   l2_outref: OutputReference,
+  l2_owner: VerificationKeyHash,
   l2_value: ValuePairs,
   l1_address: Address,
   l1_datum: CardanoDatum,
+}
+
+pub type WithdrawalSignature =
+  Pair<VerificationKey, Signature>
+
+pub type WithdrawalValidity {
+  WithdrawalIsValid
+  NonExistentWithdrawalUtxo
+  SpentWithdrawalUtxo { l2_tx_hash: H32<MidgardTxCompact> }
+  IncorrectWithdrawalOwner
+  IncorrectWithdrawalValue
+  IncorrectWithdrawalSignature
+  TooManyTokensInWithdrawal
+}
+
+pub type WithdrawalInfo {
+  body: WithdrawalBody,
+  signature: WithdrawalSignature,
+  validity: WithdrawalValidity,
 }
 
 pub type WithdrawalEvent {
@@ -144,7 +163,17 @@ pub type TxOrderEvent {
 pub type MidgardTxCompact {
   body: H32<MidgardTxBodyCompact>,
   wits: H32<MidgardTxWitnessSetCompact>,
-  is_valid: Bool,
+  validity: MidgardTxValidity,
+}
+
+// TODO
+pub type MidgardTxValidity {
+  TxIsValid
+  NonExistentInputUtxo
+  InvalidSignature
+  FailedScript
+  FeeTooLow
+  UnbalancedTx
 }
 
 // ### Transaction body
