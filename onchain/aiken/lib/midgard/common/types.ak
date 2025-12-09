@@ -20,8 +20,7 @@ pub type H28<data> =
 pub type H32<data> =
   Hash<Blake2b_256, data>
 
-// TODO fix: use a more specific data type
 /// A Merkle root hash, assumed to be a 32-byte hash
 /// calculated with the Blake2b-256 algorithm.
-pub type MerkleRoot =
-  H32<ByteArray>
+pub type MerkleRoot<hash, data> =
+  Hash<data, data>

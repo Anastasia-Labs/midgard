@@ -27,6 +27,8 @@ validator main(
   plutarch_midgard_merkle_validator_inclusion: ScriptHash,
   // Computation thread token policy
   ct_token_policy_id: PolicyId,
+  // State queue token policy
+  state_queue_policy_id: PolicyId,
 ) {
   spend(
     datum: Option<StepDatum>,
@@ -71,6 +73,7 @@ validator main(
             tx,
             bad_state_queue_node_ref_input_index,
             ct_token_asset_name,
+            state_queue_policy_id,
           )
 
         // -------- Invalid signature: validation-specific logic START --------

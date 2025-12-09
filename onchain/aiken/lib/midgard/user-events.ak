@@ -67,7 +67,7 @@ pub fn validate_refund(
   refund_address: Address,
   refund_datum: CardanoDatum,
   refund_approach: RefundApproach,
-  events_root: MerkleRoot,
+  events_root: MerkleRoot<ByteArray, ByteArray>,
   event_id: Data,
   settlement_queue_policy_id: PolicyId,
   settlement_node_link: NodeKey,
