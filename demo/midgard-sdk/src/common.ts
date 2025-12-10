@@ -222,6 +222,10 @@ export const POSIXTimeSchema = Data.Integer();
 export type POSIXTime = Data.Static<typeof POSIXTimeSchema>;
 export const POSIXTime = POSIXTimeSchema as unknown as POSIXTime;
 
+export const PosixTimeDurationSchema = Data.Integer();
+export type PosixTimeDuration = Data.Static<typeof PosixTimeDurationSchema>;
+export const PosixTimeDuration = PosixTimeDurationSchema as unknown as PosixTimeDuration; 
+
 export const PubKeyHashSchema = Data.Bytes({ minLength: 28, maxLength: 28 });
 
 export const VerificationKeyHashSchema = Data.Bytes({ minLength: 28, maxLength: 28 });

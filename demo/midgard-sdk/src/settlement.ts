@@ -1,6 +1,7 @@
-import { Data, LucidEvolution, TxBuilder, UTxO, utxoToCore } from "@lucid-evolution/lucid";
+import { Data, LucidEvolution, Parameters, TxBuilder, UTxO, utxoToCore } from "@lucid-evolution/lucid";
 import { HashingError, LucidError, MerkleRootSchema, POSIXTimeSchema, ProofSchema, VerificationKeyHashSchema } from "./common.js";
 import { Effect } from "effect";
+import { getProtocolParameters} from "./protocol-parameters.js";
 
 export const ResolutionClaimSchema = Data.Object({
   resolution_time: POSIXTimeSchema,
@@ -94,8 +95,42 @@ export type SettlementMintRedeemer = Data.Static<typeof SettlementMintRedeemerSc
 export const SettlementMintRedeemer =
   SettlementMintRedeemerSchema as unknown as SettlementMintRedeemer;
 
-export type attachResolutionClaimParams ={
+export const ActiveOperatorSpendRedeemerSchema = Data.Enum([
+  Data.Literal("ListStateTransition"),
+  Data.Object({
+    UpdateBondHoldNewState: Data.Object({ 
+       active_node_output_index: Data.Integer(),
+       hub_oracle_ref_input_index: Data.Integer(),
+       state_queue_redeemer_index: Data.Integer(),
+    }),
+  }),
+  Data.Object({
+    UpdateBondHoldNewSettlement: Data.Object({
+       active_node_output_index: Data.Integer(),
+       hub_oracle_ref_input_index: Data.Integer(),
+       settlement_queue_input_index: Data.Integer(),
+       settlement_queue_redeemer_index: Data.Integer(),
+       new_bond_unlock_time: POSIXTimeSchema,
+    }),
+  }),
+]);
+export type ActiveOperatorSpendRedeemer = Data.Static<typeof ActiveOperatorSpendRedeemerSchema>;
+export const ActiveOperatorSpendRedeemer =
+  ActiveOperatorSpendRedeemerSchema as unknown as ActiveOperatorSpendRedeemer;
+
+export const ActiveOperatorSpendDatumSchema = Data.Object({
+  key: Data.Nullable(Data.Bytes()),
+  link: Data.Nullable(Data.Bytes()),
+  bond_unlock_time: Data.Nullable(POSIXTimeSchema),
+});
+export type ActiveOperatorSpendDatum = Data.Static<typeof ActiveOperatorSpendDatumSchema>;
+export const ActiveOperatorSpendDatum =
+  ActiveOperatorSpendDatumSchema as unknown as ActiveOperatorSpendDatum;
+
+export type AttachResolutionClaimParams ={
     settlementAddress: string;
+    resolutionClaimOperator: string;
+    newBondUnlockTime: bigint;
 };
 
 export type SettlementUTxO = {
@@ -103,7 +138,7 @@ export type SettlementUTxO = {
     datum: SettlementDatum;
 }; 
 
-export const findSettlementUTxOWithoutClaim = (
+export const getSettlementUTxOWithoutClaim = (
   settlementUTxOs: UTxO[]
 ): Effect.Effect<SettlementUTxO,LucidError> => {
   return Effect.gen(function* () {
@@ -137,9 +172,9 @@ export const findSettlementUTxOWithoutClaim = (
  * @param params - The parameters
  * @returns {TxBuilder} A TxBuilder instance that can be used to build the transaction.
  */
-export const attachResolutionClaimTxProgram = (
+export const incompleteAttachResolutionClaimTxProgram = (
   lucid: LucidEvolution,
-  params: attachResolutionClaimParams,
+  params: AttachResolutionClaimParams,
 ): Effect.Effect<TxBuilder, HashingError | LucidError> =>
   Effect.gen(function* () {
     const spendRedeemer: SettlementSpendRedeemer = {
@@ -149,7 +184,7 @@ export const attachResolutionClaimTxProgram = (
             hub_ref_input_index: 0n,
             active_operators_node_input_index: 0n,
             active_operators_redeemer_index: 0n,
-            operator: '',
+            operator: params.resolutionClaimOperator,
             scheduler_ref_input_index: 0n,
           },
         };
@@ -169,20 +204,25 @@ export const attachResolutionClaimTxProgram = (
         cause: "No UTxOs found in Settlement contract address",
       });
     }
-    const settlementInputUtxo = yield* findSettlementUTxOWithoutClaim(settlementUtxos);
-    
+    const settlementInputUtxo = yield* getSettlementUTxOWithoutClaim(settlementUtxos);
+
+    const txUpperBound = Date.now() + 2000;
+    // const network = lucid.config().network ?? "Mainnet";
+    // const maturity_duration = getProtocolParameters(network).maturity_duration; 
+    // const new_bond_unlock_time = maturity_duration + BigInt(txUpperBound);
+
     const spendDatum: SettlementDatum = {
       deposits_root: settlementInputUtxo.datum.deposits_root,
       withdrawals_root: settlementInputUtxo.datum.withdrawals_root,
       transactions_root: settlementInputUtxo.datum.transactions_root,
       resolution_claim: {
-        resolution_time: BigInt("TODO_fill_resolution_time"),
-        operator: 'TODO_fill_operator_vk_hash',
+        resolution_time: params.newBondUnlockTime,
+        operator: params.resolutionClaimOperator,
       },
     };
     const spendDatumCBOR = Data.to(spendDatum, SettlementDatum);
 
-    const tx = lucid
+    const buildsettlementTx = lucid
       .newTx()
       .collectFrom([settlementInputUtxo.utxo],spendRedeemerCBOR)
       .pay.ToAddressWithData(
@@ -192,14 +232,132 @@ export const attachResolutionClaimTxProgram = (
           value: spendDatumCBOR,
         },
       )
-    return tx;
-  }).pipe(
-    Effect.catchAllDefect((defect) => {
-      return Effect.fail(
+      .validTo(txUpperBound)
+    return buildsettlementTx;
+  });
+
+export type ActiveOperatorsParams ={
+  activeOperatorsAddress: string;
+  operator: string;
+  newBondUnlockTime: bigint;
+};
+
+export type ActiveOperatorNodeUTxO = {
+    utxo: UTxO;
+    datum: ActiveOperatorSpendDatum;
+}; 
+
+export const getActiveOperatorNodeUTxO = (
+  activeOperatorsUTxOs: UTxO[],
+  params: ActiveOperatorsParams
+): Effect.Effect<ActiveOperatorNodeUTxO,LucidError> => {
+  return Effect.gen(function* () {
+    for (const utxo of activeOperatorsUTxOs) {
+      const datum = utxo.datum;
+      if (!datum) {
+        continue;
+      }
+      try {
+        const parsedDatum = Data.from(datum, ActiveOperatorSpendDatum);
+        if (parsedDatum.key === params.operator) {
+          return {utxo, datum: parsedDatum};
+        }
+      } catch (error) {
+        continue;
+      }
+    }
+    return yield* Effect.fail(
+      new LucidError({
+        message: "No Active Operator UTxO with given operator found",
+        cause: "Active Operators Tx not initiated"
+      }),
+    );
+  });
+};
+  /**
+ * ActiveOperators Node
+ *
+ * @param lucid - The LucidEvolution
+ * @param params - The parameters
+ * @returns {TxBuilder} A TxBuilder instance that can be used to build the transaction.
+ */
+export const incompleteUpdateBondHoldNewSettlementTxProgram = (
+  lucid: LucidEvolution,
+  params: ActiveOperatorsParams,
+): Effect.Effect<TxBuilder, HashingError | LucidError> =>
+  Effect.gen(function* () {
+    
+    const txUpperBound = Date.now() + 2000;
+    // const network = lucid.config().network ?? "Mainnet";
+    // const maturity_duration = getProtocolParameters(network).maturity_duration; 
+    // const new_bond_unlock_time = maturity_duration + BigInt(txUpperBound);
+
+    const spendRedeemer: ActiveOperatorSpendRedeemer = {
+          UpdateBondHoldNewSettlement: {
+            active_node_output_index: 0n,
+            hub_oracle_ref_input_index: 0n,
+            settlement_queue_input_index: 0n,
+            settlement_queue_redeemer_index: 0n,
+            new_bond_unlock_time: params.newBondUnlockTime,
+          },
+        };
+    const spendRedeemerCBOR = Data.to(spendRedeemer, ActiveOperatorSpendRedeemer);
+    
+    const activeOperatorsUtxos: UTxO[] = yield* Effect.tryPromise({
+      try: () => lucid.utxosAt(params.activeOperatorsAddress),
+      catch: (err) =>
         new LucidError({
-          message: "Caught defect from attachResolutionClaimTxBuilder",
-          cause: defect,
+          message: "Failed to fetch Active Operators UTxOs",
+          cause: err,
         }),
-      );
-    }),
-  );
+    });
+    if (activeOperatorsUtxos.length === 0) {
+      yield* new LucidError({
+        message: "Failed to build the Active Operators transaction",
+        cause: "No UTxOs found in Active Operators Contract address",
+      });
+    }
+    const activeOperatorsInputUtxo = yield* getActiveOperatorNodeUTxO(activeOperatorsUtxos, params);
+    
+    const spendDatum: ActiveOperatorSpendDatum = {
+      ...activeOperatorsInputUtxo.datum,
+      bond_unlock_time: params.newBondUnlockTime,
+    };
+    const spendDatumCBOR = Data.to(spendDatum, ActiveOperatorSpendDatum);
+
+    const buildUpdateBondHoldNewSettlementTx = lucid
+      .newTx()
+      .collectFrom([activeOperatorsInputUtxo.utxo],spendRedeemerCBOR)
+      .pay.ToAddressWithData(
+        params.activeOperatorsAddress,
+        {
+          kind: "inline",
+          value: spendDatumCBOR,
+        },
+      )
+      .validTo(txUpperBound)
+    return buildUpdateBondHoldNewSettlementTx;
+  });
+  
+  
+  // .pipe(
+  //   Effect.catchAllDefect((defect) => {
+  //     return Effect.fail(
+  //       new LucidError({
+  //         message: "Caught defect from attachResolutionClaimTxBuilder",
+  //         cause: defect,
+  //       }),
+  //     );
+  //   }),
+  // );
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
