@@ -149,34 +149,6 @@ export const incompleteHubOracleInitTxProgram = (
       .attach.MintingPolicy(hubOracleValidator.mintScript);
   });
 
-// /**
-//  * Creates a init transaction builder.
-//  *
-//  * @param {LucidEvolution} lucid - The LucidEvolution instance.
-//  * @param {InitParams} params - The parameters for the init transaction.
-//  * @returns {TxBuilder} The transaction builder.
-//  */
-// export const incompleteHubOracleInitTxProgram = (
-//   lucid: LucidEvolution,
-//   params: InitializationParams,
-// ): TxBuilder => {
-//   const assets: Assets = {
-//     [toUnit(params.hubOracle.validator.policyId, fromText(HUB_ORACLE_ASSET_NAME))]: 1n,
-//   };
-
-//   const encodedDatum = Data.to<HubOracleDatum>(params.hubOracle.datum, HubOracleDatum);
-
-//   return lucid
-//     .newTx()
-//     .mintAssets(assets, Data.void())
-//     .pay.ToAddressWithData(
-//       params.hubOracle.validator.mintScriptAddress,
-//       { kind: "inline", value: encodedDatum },
-//       assets,
-//     )
-//     .attach.MintingPolicy(params.hubOracle.validator.mintScript);
-// };
-
 /**
  * Creates a burn transaction builder.
  *
