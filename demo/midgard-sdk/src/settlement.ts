@@ -1,7 +1,8 @@
-import { Data, LucidEvolution, Parameters, TxBuilder, UTxO, utxoToCore } from "@lucid-evolution/lucid";
-import { HashingError, LucidError, MerkleRootSchema, POSIXTimeSchema, ProofSchema, VerificationKeyHashSchema } from "./common.js";
-import { Effect } from "effect";
+import { Data, LucidEvolution, Parameters, TxBuilder, TxSignBuilder, UTxO, utxoToCore } from "@lucid-evolution/lucid";
+import { AuthenticatedValidator, GenericErrorFields, HashingError, LucidError, makeReturn, MerkleRootSchema, POSIXTimeSchema, ProofSchema, utxosAtByNFTPolicyId, VerificationKeyHashSchema } from "./common.js";
+import { Data as EffectData, Effect } from "effect";
 import { getProtocolParameters} from "./protocol-parameters.js";
+import { utxosToHubOracleUTxOs } from "./hub-oracle.js";
 
 export const ResolutionClaimSchema = Data.Object({
   resolution_time: POSIXTimeSchema,
@@ -131,6 +132,7 @@ export type AttachResolutionClaimParams ={
     settlementAddress: string;
     resolutionClaimOperator: string;
     newBondUnlockTime: bigint;
+    hubOracleValidator: AuthenticatedValidator;
 };
 
 export type SettlementUTxO = {
@@ -190,7 +192,7 @@ export const incompleteAttachResolutionClaimTxProgram = (
         };
     const spendRedeemerCBOR = Data.to(spendRedeemer, SettlementSpendRedeemer);
     
-    const settlementUtxos: UTxO[] = yield* Effect.tryPromise({
+    const settlementAllUtxos: UTxO[] = yield* Effect.tryPromise({
       try: () => lucid.utxosAt(params.settlementAddress),
       catch: (err) =>
         new LucidError({
@@ -198,13 +200,13 @@ export const incompleteAttachResolutionClaimTxProgram = (
           cause: err,
         }),
     });
-    if (settlementUtxos.length === 0) {
+    if (settlementAllUtxos.length === 0) {
       yield* new LucidError({
         message: "Failed to build the Settlement transaction",
         cause: "No UTxOs found in Settlement contract address",
       });
     }
-    const settlementInputUtxo = yield* getSettlementUTxOWithoutClaim(settlementUtxos);
+    const settlementInputUtxo = yield* getSettlementUTxOWithoutClaim(settlementAllUtxos);
 
     const txUpperBound = Date.now() + 2000;
     // const network = lucid.config().network ?? "Mainnet";
@@ -222,9 +224,26 @@ export const incompleteAttachResolutionClaimTxProgram = (
     };
     const spendDatumCBOR = Data.to(spendDatum, SettlementDatum);
 
+    const hubOracleAllUTxOs = yield* Effect.tryPromise({
+      try: () => lucid.utxosAt(params.hubOracleValidator.spendScriptAddress),
+      catch: (err) =>
+        new LucidError({
+          message: "Failed to fetch Hub Oracle UTxOs",
+          cause: err,
+        }),
+    });
+    if (hubOracleAllUTxOs.length === 0) {
+      yield* new LucidError({
+        message: "Failed to build the HubOracle transaction",
+        cause: "No UTxOs found in Hub Oracle contract address",
+      });
+    } 
+    const hubOracleRefUTxOs = yield* utxosToHubOracleUTxOs(hubOracleAllUTxOs, params.hubOracleValidator.policyId);
+    
     const buildsettlementTx = lucid
       .newTx()
       .collectFrom([settlementInputUtxo.utxo],spendRedeemerCBOR)
+      .readFrom([hubOracleRefUTxOs[0].utxo])
       .pay.ToAddressWithData(
         params.settlementAddress,
         {
@@ -337,25 +356,57 @@ export const incompleteUpdateBondHoldNewSettlementTxProgram = (
       )
       .validTo(txUpperBound)
     return buildUpdateBondHoldNewSettlementTx;
+  }).pipe(
+    Effect.catchAllDefect((defect) => {
+      return Effect.fail(
+        new LucidError({
+          message: "Caught defect from attachResolutionClaimTxBuilder",
+          cause: defect,
+        }),
+      );
+    }),
+  );
+  
+export const unsignedAttachResolutionClaimTxProgram = (
+  lucid: LucidEvolution,
+  attachParams: AttachResolutionClaimParams,
+  operatorParams: ActiveOperatorsParams,
+): Effect.Effect<TxSignBuilder, HashingError | LucidError | SettlementError> =>
+  Effect.gen(function* () {
+    const attachTx = yield* incompleteAttachResolutionClaimTxProgram(lucid, attachParams);
+    const activeTx = yield* incompleteUpdateBondHoldNewSettlementTxProgram(lucid, operatorParams);
+    const composedTx = attachTx.compose(activeTx);
+    const completedTx: TxSignBuilder = yield* Effect.tryPromise({
+      try: () => composedTx.complete({ localUPLCEval: false }),
+      catch: (e) =>
+        new SettlementError({
+          message: `Failed to build the transaction: ${e}`,
+          cause: e,
+        }),
+    });
+    return completedTx;
   });
   
+  /**
+   * Builds completed tx for attaching resolution claims using the provided
+   * `LucidEvolution` instance, `AttachResolutionClaimParams` and `ActiveOperatorsParams` parameters.
+   *
+   * @param lucid - The `LucidEvolution` API object.
+   * @param attachParams - Parameters required for attaching resolution claim.
+   * @param operatorParams - Parameters required for selecting active operator.
+   * @returns A promise that resolves to a `TxSignBuilder` instance.
+   */
+  export const unsignedAttachResolutionClaimTx = (
+    lucid: LucidEvolution,
+    attachParams: AttachResolutionClaimParams,
+    operatorParams: ActiveOperatorsParams,
+    
+  ): Promise<TxSignBuilder> =>
+    makeReturn(unsignedAttachResolutionClaimTxProgram(lucid, attachParams, operatorParams)).unsafeRun();
   
-  // .pipe(
-  //   Effect.catchAllDefect((defect) => {
-  //     return Effect.fail(
-  //       new LucidError({
-  //         message: "Caught defect from attachResolutionClaimTxBuilder",
-  //         cause: defect,
-  //       }),
-  //     );
-  //   }),
-  // );
-  
-  
-  
-  
-  
-  
+  export class SettlementError extends EffectData.TaggedError(
+    "SettlementError",
+  )<GenericErrorFields> {}
   
   
   

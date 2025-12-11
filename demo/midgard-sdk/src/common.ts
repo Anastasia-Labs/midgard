@@ -1,4 +1,4 @@
-import { Data, getAddressDetails } from "@lucid-evolution/lucid";
+import { Data, getAddressDetails, Script } from "@lucid-evolution/lucid";
 import { Data as EffectData } from "effect";
 import { Effect } from "effect";
 import {
@@ -196,6 +196,14 @@ export const bufferToHex = (buf: Buffer): string => {
 export const H32Schema = Data.Bytes({ minLength: 32, maxLength: 32 });
 export type H32 = Data.Static<typeof H32Schema>;
 export const H32 = H32Schema as unknown as H32;
+
+export type AuthenticatedValidator = {
+  spendingCBOR: string;
+  spendScript: Script;
+  spendScriptAddress: string;
+  mintScript: Script;
+  policyId: string;
+};
 
 export const OutputReferenceSchema = Data.Object({
   txHash: Data.Object({ hash: Data.Bytes({ minLength: 32, maxLength: 32 }) }),
