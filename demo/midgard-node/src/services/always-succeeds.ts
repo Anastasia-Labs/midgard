@@ -2,48 +2,64 @@ import { Effect, pipe } from "effect";
 import * as scripts from "../../blueprints/always-succeeds/plutus.json" with { type: "json" };
 import {
   applyDoubleCborEncoding,
+  credentialToAddress,
   MintingPolicy,
   mintingPolicyToId,
-  Script,
+  scriptHashToCredential,
   SpendingValidator,
   validatorToAddress,
 } from "@lucid-evolution/lucid";
 import { NodeConfig } from "@/services/config.js";
+import * as SDK from "@al-ft/midgard-sdk";
 
-export type AuthenticatedValidator = {
-  spendingCBOR: string;
-  spendScript: Script;
-  spendScriptAddress: string;
-  mintScript: Script;
-  policyId: string;
-};
+const makeValidatorTitle = (baseName: string, type: "spend" | "mint") =>
+  `always_succeeds.${baseName}_${type}.else`;
 
-export const makeAuthenticatedValidator = (
-  spendingTitle: string,
-  mintingTitle: string,
-): Effect.Effect<AuthenticatedValidator, never, NodeConfig> =>
+const getValidatorScript = (title: string) =>
+  pipe(
+    Effect.fromNullable(
+      scripts.default.validators.find((v) => v.title === title),
+    ),
+    Effect.andThen((script) => script.compiledCode),
+  );
+
+const makeSpendingValidator = (
+  baseName: string,
+): Effect.Effect<SDK.SpendingValidatorInfo, never, NodeConfig> =>
   Effect.gen(function* () {
     const nodeConfig = yield* NodeConfig;
-    const spendingCBOR: string = yield* pipe(
-      Effect.fromNullable(
-        scripts.default.validators.find((v) => v.title === spendingTitle),
-      ),
-      Effect.andThen((script) => script.compiledCode),
+
+    const spendingCBOR = yield* getValidatorScript(
+      makeValidatorTitle(baseName, "spend"),
     );
+
     const spendScript: SpendingValidator = {
       type: "PlutusV3",
       script: applyDoubleCborEncoding(spendingCBOR),
     };
+
     const spendScriptAddress = validatorToAddress(
       nodeConfig.NETWORK,
       spendScript,
     );
-    const mintingCBOR = yield* pipe(
-      Effect.fromNullable(
-        scripts.default.validators.find((v) => v.title === mintingTitle),
-      ),
-      Effect.andThen((script) => script.compiledCode),
+
+    return {
+      spendingCBOR,
+      spendScript,
+      spendScriptAddress,
+    };
+  }).pipe(Effect.orDie);
+
+export const makeMintingValidator = (
+  baseName: string,
+): Effect.Effect<SDK.MintingValidatorInfo, never, NodeConfig> =>
+  Effect.gen(function* () {
+    const nodeConfig = yield* NodeConfig;
+
+    const mintingCBOR = yield* getValidatorScript(
+      makeValidatorTitle(baseName, "mint"),
     );
+
     const mintScript: MintingPolicy = {
       type: "PlutusV3",
       script: applyDoubleCborEncoding(mintingCBOR),
@@ -51,40 +67,81 @@ export const makeAuthenticatedValidator = (
 
     const policyId = mintingPolicyToId(mintScript);
 
+    const mintScriptAddress = credentialToAddress(
+      nodeConfig.NETWORK,
+      scriptHashToCredential(policyId),
+    );
+
     return {
-      spendingCBOR,
-      spendScript,
-      spendScriptAddress,
+      mintingCBOR,
       mintScript,
       policyId,
+      mintScriptAddress,
+    };
+  }).pipe(Effect.orDie);
+
+export const makeAuthenticatedValidator = (
+  baseName: string,
+): Effect.Effect<SDK.AuthenticatedValidator, never, NodeConfig> =>
+  Effect.gen(function* () {
+    const spendingInfo = yield* makeSpendingValidator(baseName);
+    const mintingInfo = yield* makeMintingValidator(baseName);
+
+    return {
+      ...spendingInfo,
+      ...mintingInfo,
     };
   }).pipe(Effect.orDie);
 
 const makeAlwaysSucceedsService: Effect.Effect<
   {
-    stateQueueAuthValidator: AuthenticatedValidator;
-    depositAuthValidator: AuthenticatedValidator;
+    hubOracleMintValidator: SDK.MintingValidatorInfo;
+    stateQueueAuthValidator: SDK.AuthenticatedValidator;
+    registeredOperatorsAuthValidator: SDK.AuthenticatedValidator;
+    activeOperatorsAuthValidator: SDK.AuthenticatedValidator;
+    schedulerAuthValidator: SDK.AuthenticatedValidator;
+    retiredOperatorsAuthValidator: SDK.AuthenticatedValidator;
+    escapeHatchAuthValidator: SDK.AuthenticatedValidator;
+    fraudProofCatalogueAuthValidator: SDK.AuthenticatedValidator;
+    fraudProofAuthValidator: SDK.AuthenticatedValidator;
+    depositAuthValidator: SDK.AuthenticatedValidator;
   },
   never,
   NodeConfig
 > = Effect.gen(function* () {
-  return yield* Effect.gen(function* () {
-    const stateQueueAuthValidator = yield* makeAuthenticatedValidator(
-      "always_succeeds.state_queue_spend.else",
-      "always_succeeds.state_queue_mint.else",
-    );
+  const hubOracleMintValidator = yield* makeMintingValidator("hub_oracle");
+  const schedulerAuthValidator = yield* makeAuthenticatedValidator("scheduler");
+  const stateQueueAuthValidator =
+    yield* makeAuthenticatedValidator("state_queue");
+  const registeredOperatorsAuthValidator = yield* makeAuthenticatedValidator(
+    "registered_operators",
+  );
+  const activeOperatorsAuthValidator =
+    yield* makeAuthenticatedValidator("active_operators");
+  const retiredOperatorsAuthValidator =
+    yield* makeAuthenticatedValidator("retired_operators");
+  const escapeHatchAuthValidator =
+    yield* makeAuthenticatedValidator("escape_hatch");
+  const fraudProofCatalogueAuthValidator = yield* makeAuthenticatedValidator(
+    "fraud_proof_catalogue",
+  );
+  const fraudProofAuthValidator =
+    yield* makeAuthenticatedValidator("fraud_proof");
+  const depositAuthValidator = yield* makeAuthenticatedValidator("deposit");
 
-    const depositAuthValidator = yield* makeAuthenticatedValidator(
-      "always_succeeds.deposit_spend.else",
-      "always_succeeds.deposit_mint.else",
-    );
-
-    return {
-      stateQueueAuthValidator,
-      depositAuthValidator,
-    };
-  }).pipe(Effect.orDie);
-});
+  return {
+    hubOracleMintValidator,
+    schedulerAuthValidator,
+    stateQueueAuthValidator,
+    registeredOperatorsAuthValidator,
+    activeOperatorsAuthValidator,
+    retiredOperatorsAuthValidator,
+    escapeHatchAuthValidator,
+    fraudProofCatalogueAuthValidator,
+    fraudProofAuthValidator,
+    depositAuthValidator,
+  };
+}).pipe(Effect.orDie);
 
 export class AlwaysSucceedsContract extends Effect.Service<AlwaysSucceedsContract>()(
   "AlwaysSucceedsContract",

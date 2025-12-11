@@ -9,6 +9,7 @@ import { Effect, pipe } from "effect";
 import dotenv from "dotenv";
 import { NodeRuntime } from "@effect/platform-node";
 import { DatabaseError } from "@/database/utils/common.js";
+import { initializeMidgard } from "./transactions/initialization.js";
 
 dotenv.config();
 const VERSION = packageJson.version;
