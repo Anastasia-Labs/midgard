@@ -134,11 +134,14 @@ export const fetchDepositUTxOsProgram = (
   config: DepositFetchConfig,
 ): Effect.Effect<DepositUTxO[], LucidError> =>
   Effect.gen(function* () {
-    const allUTxOs = yield* utxosAtByNFTPolicyId(
-      lucid,
-      config.depositAddress,
-      config.depositPolicyId,
-    );
+    const allUTxOs = yield* Effect.tryPromise({
+      try: () => lucid.utxosAt(config.depositAddress),
+      catch: (err) =>
+        new LucidError({
+          message: "Failed to fetch deposit UTxOs",
+          cause: err,
+        }),
+    });
     const depositUTxOs = yield* utxosToDepositUTxOs(
       allUTxOs,
       config.depositPolicyId,
