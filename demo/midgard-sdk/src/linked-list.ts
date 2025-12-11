@@ -44,40 +44,6 @@ export const CommonSchema = Data.Object({
 export type Common = Data.Static<typeof CommonSchema>;
 export const Common = CommonSchema as unknown as Common;
 
-export const KeyUnorderedLinkedListRedeemerSchema = Data.Enum([
-  Data.Literal("Init"),
-  Data.Literal("Deinit"),
-  Data.Literal("PrependUnsafe"),
-  Data.Literal("AppendUnsafe"),
-  Data.Literal("Remove"),
-]);
-
-export type KeyUnorderedLinkedListRedeemer = Data.Static<
-  typeof KeyUnorderedLinkedListRedeemerSchema
->;
-export const KeyUnorderedLinkedListRedeemer =
-  KeyUnorderedLinkedListRedeemerSchema as unknown as KeyUnorderedLinkedListRedeemer;
-
-export const KeyOrderedLinkedListRedeemerSchema = Data.Enum([
-  Data.Literal("Init"),
-  Data.Literal("Deinit"),
-  Data.Literal("PrependSafe"),
-  Data.Literal("AppendSafe"),
-  Data.Literal("Insert"),
-  Data.Literal("Remove"),
-]);
-
-export type KeyOrderedLinkedListRedeemer = Data.Static<
-  typeof KeyOrderedLinkedListRedeemerSchema
->;
-export const KeyOrderedLinkedListRedeemer =
-  KeyOrderedLinkedListRedeemerSchema as unknown as KeyOrderedLinkedListRedeemer;
-
-export const EmptyRootDataSchema = Data.Tuple([]);
-
-export type EmptyRootData = Data.Static<typeof EmptyRootDataSchema>;
-export const EmptyRootData = EmptyRootDataSchema as unknown as EmptyRootData;
-
 export const getNodeDatumFromUTxO = (
   nodeUTxO: UTxO,
 ): Effect.Effect<NodeDatum, DataCoercionError | MissingDatumError> => {
@@ -110,7 +76,8 @@ export class LinkedListError extends EffectData.TaggedError(
 
 export type LinkedListInitParams = {
   validator: AuthenticatedValidator;
-  data: Data;
+  data?: Data;
+  redeemer: string;
 };
 
 export const incompleteInitLinkedListTxProgram = (
@@ -122,20 +89,18 @@ export const incompleteInitLinkedListTxProgram = (
       [toUnit(params.validator.policyId, fromText(NODE_ASSET_NAME))]: 1n,
     };
 
+    const rootData = params.data ?? Data.to([]);
+
     const nodeDatum: NodeDatum = {
       key: "Empty",
       next: "Empty",
-      data: params.data,
+      data: rootData,
     };
 
     const encodedDatum = Data.to<NodeDatum>(nodeDatum, NodeDatum);
-
-    const redeemer: KeyUnorderedLinkedListRedeemer = "Init";
-    const encodedRedeemer = Data.to(redeemer, KeyUnorderedLinkedListRedeemer);
-
     const tx = lucid
       .newTx()
-      .mintAssets(assets, encodedRedeemer)
+      .mintAssets(assets, params.redeemer)
       .pay.ToAddressWithData(
         params.validator.spendScriptAddress,
         { kind: "inline", value: encodedDatum },

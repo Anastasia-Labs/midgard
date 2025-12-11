@@ -2,22 +2,9 @@ import { Effect } from "effect";
 import { Lucid } from "@/services/lucid.js";
 import { AlwaysSucceedsContract } from "@/services/always-succeeds.js";
 import { paymentCredentialOf } from "@lucid-evolution/lucid";
-import {
-  HubOracleDatum,
-  unsignedInitializationTxProgram,
-  InitializationParams,
-  fromAddress,
-  GENESIS_HASH_28,
-  GENESIS_HASH_32,
-  INITIAL_PROTOCOL_VERSION,
-  ConfirmedState,
-} from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk";
 import { handleSignSubmit } from "./utils.js";
 
-/**
- * Initializes all Midgard contracts in a single transaction.
- * Uses tx-builders from midgard-sdk.
- */
 export const initializeMidgard = Effect.gen(function* () {
   const lucidService = yield* Lucid;
   const contracts = yield* AlwaysSucceedsContract;
@@ -31,92 +18,23 @@ export const initializeMidgard = Effect.gen(function* () {
   const operatorCredential = paymentCredentialOf(operatorAddress);
   const initialOperator = operatorCredential.hash;
 
-  const [
-    registeredOperatorsAddr,
-    activeOperatorsAddr,
-    retiredOperatorsAddr,
-    schedulerAddr,
-    stateQueueAddr,
-    fraudProofCatalogueAddr,
-    fraudProofAddr,
-  ] = yield* Effect.all([
-    fromAddress(contracts.registeredOperatorsAuthValidator.spendScriptAddress),
-    fromAddress(contracts.activeOperatorsAuthValidator.spendScriptAddress),
-    fromAddress(contracts.retiredOperatorsAuthValidator.spendScriptAddress),
-    fromAddress(contracts.schedulerAuthValidator.spendScriptAddress),
-    fromAddress(contracts.stateQueueAuthValidator.spendScriptAddress),
-    fromAddress(contracts.fraudProofCatalogueAuthValidator.spendScriptAddress),
-    fromAddress(contracts.fraudProofAuthValidator.spendScriptAddress),
-  ]);
-
-  const hubOracleDatum: HubOracleDatum = {
-    registeredOperators: contracts.registeredOperatorsAuthValidator.policyId,
-    activeOperators: contracts.activeOperatorsAuthValidator.policyId,
-    retiredOperators: contracts.retiredOperatorsAuthValidator.policyId,
-    scheduler: contracts.schedulerAuthValidator.policyId,
-    stateQueue: contracts.stateQueueAuthValidator.policyId,
-    fraudProofCatalogue: contracts.fraudProofCatalogueAuthValidator.policyId,
-    fraudProof: contracts.fraudProofAuthValidator.policyId,
-
-    registeredOperatorsAddr,
-    activeOperatorsAddr,
-    retiredOperatorsAddr,
-    schedulerAddr,
-    stateQueueAddr,
-    fraudProofCatalogueAddr,
-    fraudProofAddr,
-  };
-
-  const stateQueueData: ConfirmedState = {
-    headerHash: GENESIS_HASH_28,
-    prevHeaderHash: GENESIS_HASH_28,
-    utxoRoot: GENESIS_HASH_32,
-    startTime: genesisTime,
-    endTime: genesisTime,
-    protocolVersion: INITIAL_PROTOCOL_VERSION,
-  };
-
-  const initParams: InitializationParams = {
+  //TODO: Move to SDK
+  const initParams: SDK.InitializationParams = {
     genesisTime,
     initialOperator,
-
-    hubOracle: {
-      validator: contracts.hubOracleAuthValidator,
-      datum: hubOracleDatum,
-    },
-
-    stateQueue: {
-      validator: contracts.stateQueueAuthValidator,
-      data: stateQueueData,
-    },
-
-    registeredOperators: {
-      validator: contracts.registeredOperatorsAuthValidator,
-      data: [],
-    },
-
-    activeOperators: {
-      validator: contracts.activeOperatorsAuthValidator,
-      data: [],
-    },
-
-    retiredOperators: {
-      validator: contracts.retiredOperatorsAuthValidator,
-      data: [],
-    },
-
-    scheduler: {
-      validator: contracts.schedulerAuthValidator,
-      operator: initialOperator,
-      startTime: genesisTime,
-    },
-
-    fraudProofCatalogue: {
-      validator: contracts.fraudProofCatalogueAuthValidator,
-      mptRootHash: GENESIS_HASH_32,
-    },
+    hubOracle: contracts.hubOracleMintValidator,
+    stateQueue: contracts.stateQueueAuthValidator,
+    registeredOperators: contracts.registeredOperatorsAuthValidator,
+    activeOperators: contracts.activeOperatorsAuthValidator,
+    retiredOperators: contracts.retiredOperatorsAuthValidator,
+    scheduler: contracts.schedulerAuthValidator,
+    fraudProofCatalogue: contracts.fraudProofCatalogueAuthValidator,
+    fraudProof: contracts.fraudProofAuthValidator,
   };
 
-  const unsignedTx = yield* unsignedInitializationTxProgram(lucid, initParams);
+  const unsignedTx = yield* SDK.unsignedInitializationTxProgram(
+    lucid,
+    initParams,
+  );
   yield* handleSignSubmit(lucid, unsignedTx);
 });

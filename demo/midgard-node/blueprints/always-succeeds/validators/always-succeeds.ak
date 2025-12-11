@@ -5,13 +5,6 @@ validator hub_oracle_mint {
   }
 }
 
-validator hub_oracle_spend {
-  else(_) {
-    trace @"Midgard Demo – Hub Oracle Spend"
-    True
-  }
-}
-
 validator scheduler_mint {
   else(_) {
     trace @"Midgard Demo – Scheduler Mint"

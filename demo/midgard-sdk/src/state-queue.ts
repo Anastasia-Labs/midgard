@@ -53,7 +53,14 @@ export const StateQueueRedeemerSchema = Data.Enum([
   Data.Literal("Init"),
   Data.Literal("Deinit"),
   Data.Object({
-    CommitBlockHeader: Data.Object({ operator: Data.Bytes() }),
+    CommitBlockHeader: Data.Object({
+      operator: Data.Bytes(),
+      scheduler_ref_input_index: Data.Integer(),
+      active_node_input_index: Data.Integer(),
+      header_node_output_index: Data.Integer(),
+      previous_header_node_output_index: Data.Integer(),
+      active_operators_redeemer_index: Data.Integer(),
+    }),
   }),
   Data.Literal("MergeToConfirmedState"),
   Data.Object({

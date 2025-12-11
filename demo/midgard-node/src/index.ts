@@ -69,21 +69,4 @@ program.command("listen").action(async () => {
   NodeRuntime.runMain(program, { teardown: undefined });
 });
 
-program
-  .command("init")
-  .description("Initialize Midgard contracts")
-  .action(() => {
-    const initProgram = pipe(
-      initializeMidgard,
-      Effect.provide(Services.AlwaysSucceedsContract.Default),
-      Effect.provide(Services.Lucid.Default),
-      Effect.provide(Services.NodeConfig.layer),
-      Effect.tap(() =>
-        Effect.logInfo("✅ Midgard contracts initialized successfully!"),
-      ),
-    );
-
-    NodeRuntime.runMain(initProgram);
-  });
-
 program.parse(process.argv);

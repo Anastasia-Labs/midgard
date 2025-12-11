@@ -94,7 +94,7 @@ const submitGenesisDeposits: Effect.Effect<
     depositParams,
   );
   yield* handleSignSubmitNoConfirmation(lucid.api, signedTx);
-});
+}).pipe(Effect.tapError(Effect.logInfo));
 
 export const program: Effect.Effect<
   void,

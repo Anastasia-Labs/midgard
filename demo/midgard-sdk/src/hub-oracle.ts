@@ -6,6 +6,9 @@ import {
   PolicyIdSchema,
   makeReturn,
   AuthenticatedValidator,
+  MintingValidatorInfo,
+  addressDataFromBech32,
+  Bech32DeserializationError,
 } from "@/common.js";
 import {
   Address,
@@ -47,45 +50,132 @@ export const HubOracleDatumSchema = Data.Object({
 export type HubOracleDatum = Data.Static<typeof HubOracleDatumSchema>;
 export const HubOracleDatum = HubOracleDatumSchema as unknown as HubOracleDatum;
 
-/**
- * Parameters for the init transaction.
- */
-export type HubOracleInitParams = {
-  validator: AuthenticatedValidator;
-  datum: HubOracleDatum;
-};
+export type HubOracleInitParams = {};
 
-/**
- * Parameters for the burn transaction.
- */
 export type HubOracleBurnParams = {};
 
 /**
- * Creates a init transaction builder.
+ * Validators needed to construct the hub oracle datum.
+ * This is the "wiring" that connects all Midgard contracts together.
+ */
+export type HubOracleValidators = {
+  registeredOperators: AuthenticatedValidator;
+  activeOperators: AuthenticatedValidator;
+  retiredOperators: AuthenticatedValidator;
+  scheduler: AuthenticatedValidator;
+  stateQueue: AuthenticatedValidator;
+  fraudProofCatalogue: AuthenticatedValidator;
+  fraudProof: AuthenticatedValidator;
+};
+
+/**
+ * Constructs HubOracleDatum from validators.
+ * This is the "glue" that wires all Midgard contracts together.
  *
+ * @param {HubOracleValidators} validators - All validators that need to be registered in the hub oracle
+ * @returns {HubOracleDatum} Effect that produces the complete hub oracle datum
+ */
+export const makeHubOracleDatum = (
+  validators: HubOracleValidators,
+): Effect.Effect<HubOracleDatum, Bech32DeserializationError> =>
+  Effect.gen(function* () {
+    const [
+      registeredOperatorsAddr,
+      activeOperatorsAddr,
+      retiredOperatorsAddr,
+      schedulerAddr,
+      stateQueueAddr,
+      fraudProofCatalogueAddr,
+      fraudProofAddr,
+    ] = yield* Effect.all([
+      addressDataFromBech32(validators.registeredOperators.spendScriptAddress),
+      addressDataFromBech32(validators.activeOperators.spendScriptAddress),
+      addressDataFromBech32(validators.retiredOperators.spendScriptAddress),
+      addressDataFromBech32(validators.scheduler.spendScriptAddress),
+      addressDataFromBech32(validators.stateQueue.spendScriptAddress),
+      addressDataFromBech32(validators.fraudProofCatalogue.spendScriptAddress),
+      addressDataFromBech32(validators.fraudProof.mintScriptAddress),
+    ]);
+
+    return {
+      registeredOperators: validators.registeredOperators.policyId,
+      activeOperators: validators.activeOperators.policyId,
+      retiredOperators: validators.retiredOperators.policyId,
+      scheduler: validators.scheduler.policyId,
+      stateQueue: validators.stateQueue.policyId,
+      fraudProofCatalogue: validators.fraudProofCatalogue.policyId,
+      fraudProof: validators.fraudProof.policyId,
+      registeredOperatorsAddr,
+      activeOperatorsAddr,
+      retiredOperatorsAddr,
+      schedulerAddr,
+      stateQueueAddr,
+      fraudProofCatalogueAddr,
+      fraudProofAddr,
+    };
+  });
+
+/**
+ * Creates a hub oracle init transaction builder.
+ * Handles datum construction internally from validators.
  * @param {LucidEvolution} lucid - The LucidEvolution instance.
- * @param {InitParams} params - The parameters for the init transaction.
- * @returns {TxBuilder} The transaction builder.
+ * @param {MintingValidatorInfo} hubOracleValidator - The hub oracle's minting validator
+ * @param {HubOracleValidators} validators - All validators that need to be registered in the hub oracle
+ * @returns {TxBuilder} Effect that produces a transaction builder.
  */
 export const incompleteHubOracleInitTxProgram = (
   lucid: LucidEvolution,
-  params: HubOracleInitParams,
-): TxBuilder => {
-  const assets: Assets = {
-    [toUnit(params.validator.policyId, fromText(HUB_ORACLE_ASSET_NAME))]: 1n,
-  };
-  const encodedDatum = Data.to<HubOracleDatum>(params.datum, HubOracleDatum);
+  hubOracleValidator: MintingValidatorInfo,
+  validators: HubOracleValidators,
+): Effect.Effect<TxBuilder, Bech32DeserializationError> =>
+  Effect.gen(function* () {
+    // Construct the datum from validators
+    const datum = yield* makeHubOracleDatum(validators);
+    const encodedDatum = Data.to<HubOracleDatum>(datum, HubOracleDatum);
 
-  return lucid
-    .newTx()
-    .mintAssets(assets, Data.void())
-    .pay.ToAddressWithData(
-      params.validator.spendScriptAddress,
-      { kind: "inline", value: encodedDatum },
-      assets,
-    )
-    .attach.MintingPolicy(params.validator.mintScript);
-};
+    const assets: Assets = {
+      [toUnit(hubOracleValidator.policyId, fromText(HUB_ORACLE_ASSET_NAME))]:
+        1n,
+    };
+
+    return lucid
+      .newTx()
+      .mintAssets(assets, Data.void())
+      .pay.ToAddressWithData(
+        hubOracleValidator.mintScriptAddress,
+        { kind: "inline", value: encodedDatum },
+        assets,
+      )
+      .attach.MintingPolicy(hubOracleValidator.mintScript);
+  });
+
+// /**
+//  * Creates a init transaction builder.
+//  *
+//  * @param {LucidEvolution} lucid - The LucidEvolution instance.
+//  * @param {InitParams} params - The parameters for the init transaction.
+//  * @returns {TxBuilder} The transaction builder.
+//  */
+// export const incompleteHubOracleInitTxProgram = (
+//   lucid: LucidEvolution,
+//   params: InitializationParams,
+// ): TxBuilder => {
+//   const assets: Assets = {
+//     [toUnit(params.hubOracle.validator.policyId, fromText(HUB_ORACLE_ASSET_NAME))]: 1n,
+//   };
+
+//   const encodedDatum = Data.to<HubOracleDatum>(params.hubOracle.datum, HubOracleDatum);
+
+//   return lucid
+//     .newTx()
+//     .mintAssets(assets, Data.void())
+//     .pay.ToAddressWithData(
+//       params.hubOracle.validator.mintScriptAddress,
+//       { kind: "inline", value: encodedDatum },
+//       assets,
+//     )
+//     .attach.MintingPolicy(params.hubOracle.validator.mintScript);
+// };
 
 /**
  * Creates a burn transaction builder.

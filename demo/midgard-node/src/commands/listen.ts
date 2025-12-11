@@ -5,7 +5,6 @@ import {
   AlwaysSucceedsContract,
   Globals,
 } from "@/services/index.js";
-import { StateQueueTx } from "@/transactions/index.js";
 import * as SDK from "@al-ft/midgard-sdk";
 import { NodeSdk } from "@effect/opentelemetry";
 import {

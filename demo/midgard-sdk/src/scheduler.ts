@@ -1,13 +1,51 @@
-import { LucidEvolution, TxBuilder } from "@lucid-evolution/lucid";
+import { Data, LucidEvolution, TxBuilder } from "@lucid-evolution/lucid";
 import { AuthenticatedValidator } from "./common.js";
 
-/**
- * Parameters for the init transaction.
- */
+export const SchedulerDatumSchema = Data.Object({
+  operator: Data.Bytes(),
+  shiftStart: Data.Integer(),
+});
+
+export type SchedulerDatum = Data.Static<typeof SchedulerDatumSchema>;
+export const SchedulerDatum = SchedulerDatumSchema as unknown as SchedulerDatum;
+
+export const SchedulerMintRedeemerSchema = Data.Enum([
+  Data.Literal("Init"),
+  Data.Literal("Deinit"),
+]);
+
+export type SchedulerMintRedeemer = Data.Static<
+  typeof SchedulerMintRedeemerSchema
+>;
+export const SchedulerMintRedeemer =
+  SchedulerMintRedeemerSchema as unknown as SchedulerMintRedeemer;
+
+export const SchedulerSpendRedeemerSchema = Data.Enum([
+  Data.Object({
+    Advance: Data.Object({
+      scheduler_output_index: Data.Integer(),
+      active_node_ref_input_index: Data.Integer(),
+    }),
+  }),
+  Data.Object({
+    Rewind: Data.Object({
+      scheduler_output_index: Data.Integer(),
+      active_node_ref_input_index: Data.Integer(),
+      active_root_node_ref_input_index: Data.Integer(),
+      registered_node_ref_input_index: Data.Integer(),
+    }),
+  }),
+]);
+
+export type SchedulerSpendRedeemer = Data.Static<
+  typeof SchedulerSpendRedeemerSchema
+>;
+export const SchedulerSpendRedeemer =
+  SchedulerSpendRedeemerSchema as unknown as SchedulerSpendRedeemer;
+
 export type SchedulerInitParams = {
   validator: AuthenticatedValidator;
-  operator: string;
-  startTime: bigint;
+  datum: SchedulerDatum;
 };
 
 export type SchedulerDeinitParams = {};

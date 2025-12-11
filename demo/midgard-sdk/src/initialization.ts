@@ -6,45 +6,47 @@ import {
   makeReturn,
   TxSignBuilder,
 } from "@lucid-evolution/lucid";
-import { LucidError } from "./common.js";
 import {
-  HubOracleInitParams,
-  incompleteHubOracleInitTxProgram,
-} from "./hub-oracle.js";
+  AuthenticatedValidator,
+  Bech32DeserializationError,
+  LucidError,
+  MintingValidatorInfo,
+} from "./common.js";
+import { incompleteHubOracleInitTxProgram } from "./hub-oracle.js";
 import {
   incompleteSchedulerInitTxProgram,
-  SchedulerInitParams,
+  SchedulerDatum,
 } from "./scheduler.js";
-import {
-  FraudProofCatalogueInitParams,
-  incompleteFraudProofInitTxProgram,
-} from "./fraud-proof/catalogue.js";
+import { incompleteFraudProofInitTxProgram } from "./fraud-proof/catalogue.js";
 import { ConfirmedState } from "./ledger-state.js";
+import { incompleteInitLinkedListTxProgram } from "./linked-list.js";
 import {
-  EmptyRootData,
-  incompleteInitLinkedListTxProgram,
-} from "./linked-list.js";
-import { StateQueueInitParams } from "./state-queue.js";
-import { RegisteredOperatorInitParams } from "./registered-operators.js";
-import { ActiveOperatorInitParams } from "./active-operators.js";
-import { RetiredOperatorInitParams } from "./retired-operators.js";
+  GENESIS_HASH_28,
+  GENESIS_HASH_32,
+  INITIAL_PROTOCOL_VERSION,
+} from "./constants.js";
+import { StateQueueRedeemer } from "./state-queue.js";
+import { ActiveOperatorMintRedeemer } from "./active-operators.js";
+import { RegisteredOperatorMintRedeemer } from "./registered-operators.js";
+import { RetiredOperatorMintRedeemer } from "./retired-operators.js";
 
 export type InitializationParams = {
   genesisTime: bigint;
   initialOperator: string;
-  hubOracle: HubOracleInitParams;
-  scheduler: SchedulerInitParams;
-  fraudProofCatalogue: FraudProofCatalogueInitParams;
-  stateQueue: StateQueueInitParams;
-  registeredOperators: RegisteredOperatorInitParams;
-  activeOperators: ActiveOperatorInitParams;
-  retiredOperators: RetiredOperatorInitParams;
+  hubOracle: MintingValidatorInfo;
+  stateQueue: AuthenticatedValidator;
+  registeredOperators: AuthenticatedValidator;
+  activeOperators: AuthenticatedValidator;
+  retiredOperators: AuthenticatedValidator;
+  scheduler: AuthenticatedValidator;
+  fraudProofCatalogue: AuthenticatedValidator;
+  fraudProof: AuthenticatedValidator;
 };
 
 export const incompleteInitializationTxProgram = (
   lucid: LucidEvolution,
   params: InitializationParams,
-): Effect.Effect<TxBuilder, LucidError> =>
+): Effect.Effect<TxBuilder, LucidError | Bech32DeserializationError> =>
   Effect.gen(function* () {
     const utxos = yield* Effect.tryPromise({
       try: () => lucid.wallet().getUtxos(),
@@ -67,38 +69,61 @@ export const incompleteInitializationTxProgram = (
     const nonceUtxo = utxos[0];
     let tx = lucid.newTx().collectFrom([nonceUtxo]);
 
-    const hubOracleTx = incompleteHubOracleInitTxProgram(
+    const hubOracleTx = yield* incompleteHubOracleInitTxProgram(
       lucid,
       params.hubOracle,
+      {
+        registeredOperators: params.registeredOperators,
+        activeOperators: params.activeOperators,
+        retiredOperators: params.retiredOperators,
+        scheduler: params.scheduler,
+        stateQueue: params.stateQueue,
+        fraudProofCatalogue: params.fraudProofCatalogue,
+        fraudProof: params.fraudProof,
+      },
     );
 
+    const stateQueueData: ConfirmedState = {
+      headerHash: GENESIS_HASH_28,
+      prevHeaderHash: GENESIS_HASH_28,
+      utxoRoot: GENESIS_HASH_32,
+      startTime: params.genesisTime,
+      endTime: params.genesisTime,
+      protocolVersion: INITIAL_PROTOCOL_VERSION,
+    };
+
     const stateQueueTx = yield* incompleteInitLinkedListTxProgram(lucid, {
-      validator: params.stateQueue.validator,
-      data: Data.castTo(params.stateQueue.data, ConfirmedState),
+      validator: params.stateQueue,
+      data: Data.castTo(stateQueueData, ConfirmedState),
+      redeemer: Data.to("Init", StateQueueRedeemer),
     });
 
     const registeredOperatorsTx = yield* incompleteInitLinkedListTxProgram(
       lucid,
       {
-        validator: params.registeredOperators.validator,
-        data: Data.castTo(params.registeredOperators.data, EmptyRootData),
+        validator: params.registeredOperators,
+        redeemer: Data.to("Init", RegisteredOperatorMintRedeemer),
       },
     );
 
     const activeOperatorsTx = yield* incompleteInitLinkedListTxProgram(lucid, {
-      validator: params.activeOperators.validator,
-      data: Data.castTo(params.activeOperators.data, EmptyRootData),
+      validator: params.activeOperators,
+      redeemer: Data.to("Init", ActiveOperatorMintRedeemer),
     });
 
     const retiredOperatorsTx = yield* incompleteInitLinkedListTxProgram(lucid, {
-      validator: params.retiredOperators.validator,
-      data: Data.castTo(params.retiredOperators.data, EmptyRootData),
+      validator: params.retiredOperators,
+      redeemer: Data.to("Init", RetiredOperatorMintRedeemer),
     });
 
-    const schedulerTx = incompleteSchedulerInitTxProgram(lucid, {
-      validator: params.scheduler.validator,
+    const schedulerGenesisData: SchedulerDatum = {
       operator: params.initialOperator,
-      startTime: params.genesisTime,
+      shiftStart: params.genesisTime,
+    };
+
+    const schedulerTx = incompleteSchedulerInitTxProgram(lucid, {
+      validator: params.scheduler,
+      datum: schedulerGenesisData,
     });
 
     const fraudProofCatalogueTx = incompleteFraudProofInitTxProgram(
@@ -119,7 +144,7 @@ export const incompleteInitializationTxProgram = (
 export const unsignedInitializationTxProgram = (
   lucid: LucidEvolution,
   initParams: InitializationParams,
-): Effect.Effect<TxSignBuilder, LucidError> =>
+): Effect.Effect<TxSignBuilder, LucidError | Bech32DeserializationError> =>
   Effect.gen(function* () {
     const commitTx = yield* incompleteInitializationTxProgram(
       lucid,

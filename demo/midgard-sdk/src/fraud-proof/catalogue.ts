@@ -33,10 +33,7 @@ export type FraudProofCatalogueSpendRedeemer = Data.Static<
 export const FraudProofCatalogueSpendRedeemer =
   FraudProofCatalogueSpendRedeemerSchema as unknown as FraudProofCatalogueSpendRedeemer;
 
-export type FraudProofCatalogueInitParams = {
-  validator: AuthenticatedValidator;
-  mptRootHash: string;
-};
+export type FraudProofCatalogueInitParams = {};
 
 export type FraudProofCatalogueDeinitParams = {};
 export type FraudProofCatalogueNewCategoryParams = {};

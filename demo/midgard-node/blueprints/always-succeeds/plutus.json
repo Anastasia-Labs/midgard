@@ -100,14 +100,6 @@
       "hash": "8fa3cbd72224b9f5461e5fd9d31e930d5fed685773bc0f3fbf1f6354"
     },
     {
-      "title": "always_succeeds.hub_oracle_spend.else",
-      "redeemer": {
-        "schema": {}
-      },
-      "compiledCode": "585c0101002332259800a998012481214d6964676172642044656d6f20e2809320487562204f7261636c65205370656e640014a3149a2a660049211856616c696461746f722072657475726e65642066616c736500136564004ae715cd01",
-      "hash": "31898b2ddf1fee0c0873456af241f14d012c4c6d1b8d038ed7c57ea8"
-    },
-    {
       "title": "always_succeeds.registered_operators_mint.else",
       "redeemer": {
         "schema": {}

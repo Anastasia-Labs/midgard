@@ -1,6 +1,5 @@
 import { AuthenticatedValidator, POSIXTimeSchema } from "@/common.js";
 import { Data, LucidEvolution, TxBuilder } from "@lucid-evolution/lucid";
-import { EmptyRootData } from "./linked-list.js";
 
 export const RegisteredOperatorDatumSchema = Data.Object({
   registrationTime: POSIXTimeSchema,
@@ -74,10 +73,7 @@ export type RegisteredOperatorMintRedeemer = Data.Static<
 export const RegisteredOperatorMintRedeemer =
   RegisteredOperatorMintRedeemerSchema as unknown as RegisteredOperatorMintRedeemer;
 
-export type RegisteredOperatorInitParams = {
-  validator: AuthenticatedValidator;
-  data: EmptyRootData;
-};
+export type RegisteredOperatorInitParams = {};
 export type RegisteredOperatorDeinitParams = {};
 export type RegisteredOperatorRegisterParams = {};
 export type RegisteredOperatorDeregisterParams = {};

@@ -2,40 +2,64 @@ import { Effect, pipe } from "effect";
 import * as scripts from "../../blueprints/always-succeeds/plutus.json" with { type: "json" };
 import {
   applyDoubleCborEncoding,
+  credentialToAddress,
   MintingPolicy,
   mintingPolicyToId,
+  scriptHashToCredential,
   SpendingValidator,
   validatorToAddress,
 } from "@lucid-evolution/lucid";
 import { NodeConfig } from "@/services/config.js";
-import { AuthenticatedValidator } from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk";
 
-export const makeAuthenticatedValidator = (
-  spendingTitle: string,
-  mintingTitle: string,
-): Effect.Effect<AuthenticatedValidator, never, NodeConfig> =>
+const makeValidatorTitle = (baseName: string, type: "spend" | "mint") =>
+  `always_succeeds.${baseName}_${type}.else`;
+
+const getValidatorScript = (title: string) =>
+  pipe(
+    Effect.fromNullable(
+      scripts.default.validators.find((v) => v.title === title),
+    ),
+    Effect.andThen((script) => script.compiledCode),
+  );
+
+const makeSpendingValidator = (
+  baseName: string,
+): Effect.Effect<SDK.SpendingValidatorInfo, never, NodeConfig> =>
   Effect.gen(function* () {
     const nodeConfig = yield* NodeConfig;
-    const spendingCBOR: string = yield* pipe(
-      Effect.fromNullable(
-        scripts.default.validators.find((v) => v.title === spendingTitle),
-      ),
-      Effect.andThen((script) => script.compiledCode),
+
+    const spendingCBOR = yield* getValidatorScript(
+      makeValidatorTitle(baseName, "spend"),
     );
+
     const spendScript: SpendingValidator = {
       type: "PlutusV3",
       script: applyDoubleCborEncoding(spendingCBOR),
     };
+
     const spendScriptAddress = validatorToAddress(
       nodeConfig.NETWORK,
       spendScript,
     );
-    const mintingCBOR = yield* pipe(
-      Effect.fromNullable(
-        scripts.default.validators.find((v) => v.title === mintingTitle),
-      ),
-      Effect.andThen((script) => script.compiledCode),
+
+    return {
+      spendingCBOR,
+      spendScript,
+      spendScriptAddress,
+    };
+  }).pipe(Effect.orDie);
+
+export const makeMintingValidator = (
+  baseName: string,
+): Effect.Effect<SDK.MintingValidatorInfo, never, NodeConfig> =>
+  Effect.gen(function* () {
+    const nodeConfig = yield* NodeConfig;
+
+    const mintingCBOR = yield* getValidatorScript(
+      makeValidatorTitle(baseName, "mint"),
     );
+
     const mintScript: MintingPolicy = {
       type: "PlutusV3",
       script: applyDoubleCborEncoding(mintingCBOR),
@@ -43,74 +67,70 @@ export const makeAuthenticatedValidator = (
 
     const policyId = mintingPolicyToId(mintScript);
 
+    const mintScriptAddress = credentialToAddress(
+      nodeConfig.NETWORK,
+      scriptHashToCredential(policyId),
+    );
+
     return {
-      spendingCBOR,
-      spendScript,
-      spendScriptAddress,
+      mintingCBOR,
       mintScript,
       policyId,
+      mintScriptAddress,
+    };
+  }).pipe(Effect.orDie);
+
+export const makeAuthenticatedValidator = (
+  baseName: string,
+): Effect.Effect<SDK.AuthenticatedValidator, never, NodeConfig> =>
+  Effect.gen(function* () {
+    const spendingInfo = yield* makeSpendingValidator(baseName);
+    const mintingInfo = yield* makeMintingValidator(baseName);
+
+    return {
+      ...spendingInfo,
+      ...mintingInfo,
     };
   }).pipe(Effect.orDie);
 
 const makeAlwaysSucceedsService: Effect.Effect<
   {
-    hubOracleAuthValidator: AuthenticatedValidator;
-    stateQueueAuthValidator: AuthenticatedValidator;
-    registeredOperatorsAuthValidator: AuthenticatedValidator;
-    activeOperatorsAuthValidator: AuthenticatedValidator;
-    schedulerAuthValidator: AuthenticatedValidator;
-    retiredOperatorsAuthValidator: AuthenticatedValidator;
-    escapeHatchAuthValidator: AuthenticatedValidator;
-    fraudProofCatalogueAuthValidator: AuthenticatedValidator;
-    fraudProofAuthValidator: AuthenticatedValidator;
-    depositAuthValidator: AuthenticatedValidator;
+    hubOracleMintValidator: SDK.MintingValidatorInfo;
+    stateQueueAuthValidator: SDK.AuthenticatedValidator;
+    registeredOperatorsAuthValidator: SDK.AuthenticatedValidator;
+    activeOperatorsAuthValidator: SDK.AuthenticatedValidator;
+    schedulerAuthValidator: SDK.AuthenticatedValidator;
+    retiredOperatorsAuthValidator: SDK.AuthenticatedValidator;
+    escapeHatchAuthValidator: SDK.AuthenticatedValidator;
+    fraudProofCatalogueAuthValidator: SDK.AuthenticatedValidator;
+    fraudProofAuthValidator: SDK.AuthenticatedValidator;
+    depositAuthValidator: SDK.AuthenticatedValidator;
   },
   never,
   NodeConfig
 > = Effect.gen(function* () {
-  const hubOracleAuthValidator = yield* makeAuthenticatedValidator(
-    "always_succeeds.hub_oracle_spend.else",
-    "always_succeeds.hub_oracle_mint.else",
-  );
-  const schedulerAuthValidator = yield* makeAuthenticatedValidator(
-    "always_succeeds.scheduler_spend.else",
-    "always_succeeds.scheduler_mint.else",
-  );
-  const stateQueueAuthValidator = yield* makeAuthenticatedValidator(
-    "always_succeeds.state_queue_spend.else",
-    "always_succeeds.state_queue_mint.else",
-  );
+  const hubOracleMintValidator = yield* makeMintingValidator("hub_oracle");
+  const schedulerAuthValidator = yield* makeAuthenticatedValidator("scheduler");
+  const stateQueueAuthValidator =
+    yield* makeAuthenticatedValidator("state_queue");
   const registeredOperatorsAuthValidator = yield* makeAuthenticatedValidator(
-    "always_succeeds.registered_operators_spend.else",
-    "always_succeeds.registered_operators_mint.else",
+    "registered_operators",
   );
-  const activeOperatorsAuthValidator = yield* makeAuthenticatedValidator(
-    "always_succeeds.active_operators_spend.else",
-    "always_succeeds.active_operators_mint.else",
-  );
-  const retiredOperatorsAuthValidator = yield* makeAuthenticatedValidator(
-    "always_succeeds.retired_operators_spend.else",
-    "always_succeeds.retired_operators_mint.else",
-  );
-  const escapeHatchAuthValidator = yield* makeAuthenticatedValidator(
-    "always_succeeds.escape_hatch_spend.else",
-    "always_succeeds.escape_hatch_mint.else",
-  );
+  const activeOperatorsAuthValidator =
+    yield* makeAuthenticatedValidator("active_operators");
+  const retiredOperatorsAuthValidator =
+    yield* makeAuthenticatedValidator("retired_operators");
+  const escapeHatchAuthValidator =
+    yield* makeAuthenticatedValidator("escape_hatch");
   const fraudProofCatalogueAuthValidator = yield* makeAuthenticatedValidator(
-    "always_succeeds.fraud_proof_catalogue_spend.else",
-    "always_succeeds.fraud_proof_catalogue_mint.else",
+    "fraud_proof_catalogue",
   );
-  const fraudProofAuthValidator = yield* makeAuthenticatedValidator(
-    "always_succeeds.fraud_proof_spend.else",
-    "always_succeeds.fraud_proof_mint.else",
-  );
-  const depositAuthValidator = yield* makeAuthenticatedValidator(
-    "always_succeeds.deposit_spend.else",
-    "always_succeeds.deposit_mint.else",
-  );
+  const fraudProofAuthValidator =
+    yield* makeAuthenticatedValidator("fraud_proof");
+  const depositAuthValidator = yield* makeAuthenticatedValidator("deposit");
 
   return {
-    hubOracleAuthValidator,
+    hubOracleMintValidator,
     schedulerAuthValidator,
     stateQueueAuthValidator,
     registeredOperatorsAuthValidator,

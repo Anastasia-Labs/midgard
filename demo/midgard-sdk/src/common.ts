@@ -175,13 +175,21 @@ export const bufferToHex = (buf: Buffer): string => {
   }
 };
 
-export type AuthenticatedValidator = {
+export type MintingValidatorInfo = {
+  mintingCBOR: string;
+  mintScript: Script;
+  policyId: PolicyId;
+  mintScriptAddress: string;
+};
+
+export type SpendingValidatorInfo = {
   spendingCBOR: string;
   spendScript: Script;
   spendScriptAddress: string;
-  mintScript: Script;
-  policyId: string;
 };
+
+export type AuthenticatedValidator = SpendingValidatorInfo &
+  MintingValidatorInfo;
 
 export const OutputReferenceSchema = Data.Object({
   txHash: Data.Object({ hash: Data.Bytes({ minLength: 32, maxLength: 32 }) }),
@@ -251,17 +259,25 @@ export const AddressSchema = Data.Object({
 export type AddressData = Data.Static<typeof AddressSchema>;
 export const AddressData = AddressSchema as unknown as AddressData;
 
-export const fromAddress = (
+export const addressDataFromBech32 = (
   address: Address,
-): Effect.Effect<AddressData, DataCoercionError> =>
+): Effect.Effect<AddressData, Bech32DeserializationError> =>
   Effect.gen(function* () {
-    const { paymentCredential, stakeCredential } = getAddressDetails(address);
+    const addressDetails = yield* Effect.try({
+      try: () => getAddressDetails(address),
+      catch: (error) =>
+        new Bech32DeserializationError({
+          message: `Failed to parse address: ${address}`,
+          cause: error,
+        }),
+    });
+    const { paymentCredential, stakeCredential } = addressDetails;
 
     if (!paymentCredential) {
       return yield* Effect.fail(
-        new DataCoercionError({
-          message: "Failed to convert Address to AddressData",
-          cause: "Not a valid payment address - missing payment credential",
+        new Bech32DeserializationError({
+          message: "Address missing payment credential",
+          cause: `Invalid address: ${address}`,
         }),
       );
     }
@@ -302,6 +318,10 @@ export class CborSerializationError extends EffectData.TaggedError(
 
 export class CborDeserializationError extends EffectData.TaggedError(
   "CborDeserializationError",
+)<GenericErrorFields> {}
+
+export class Bech32DeserializationError extends EffectData.TaggedError(
+  "Bech32DeserializationError",
 )<GenericErrorFields> {}
 
 export class DataCoercionError extends EffectData.TaggedError(
