@@ -1,5 +1,5 @@
 use cardano/transaction.{TransactionId}
-use midgard/fraud_proof/common/types.{Proof}
+use midgard/fraud_proofs/common.{Proof}
 
 // TODO: tx2_info_hash should have a more specific type
 // We can fix this when we start using the Plutarch MPT library

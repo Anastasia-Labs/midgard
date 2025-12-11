@@ -1,29 +1,28 @@
+//// Fraud proof validator for the non-existing input violation.
+
+use aiken/builtin
 use aiken/collection/list
 use aiken/crypto.{ScriptHash}
-use aiken/interval.{Finite, Interval}
-use aiken_design_patterns/linked_list/unordered as unordered
 use cardano/assets.{PolicyId}
-use cardano/transaction.{
-  InlineDatum, Input, Output, OutputReference, Transaction,
-}
+use cardano/transaction.{Input, OutputReference, Transaction}
 use midgard/common/utils.{verify_hash_32}
 use midgard/computation_thread.{StepDatum}
-use midgard/fraud_proof/common/types.{MembershipProofInputs}
-use midgard/fraud_proof/common/utils.{
-  get_singleton_ct_token, get_tx_root_validate_block_hash, handle_cancel,
-  validate_final_step_output, validate_membership_proof,
+use midgard/fraud_proofs/common.{
+  MembershipProofInputs, get_singleton_ct_token, get_tx_root_validate_block_hash,
+  handle_cancel, validate_final_step_output, validate_membership_proof,
 } as fraud_proof_utils
-use midgard/fraud_proof/invalid_range/step.{
+use midgard/fraud_proofs/non_existing_input_no_index/step.{
   Cancel, Continue, StepRedeemer as Step1Redeemer,
 }
 use midgard/hub_oracle as hub
-use midgard/ledger_state.{Header}
 
 validator main(
   // Fraud proof token policy
   fraud_proof_token_policy: PolicyId,
   // Script hash of stake validator (forwarded merkle proof logic)
   plutarch_midgard_merkle_validator_inclusion: ScriptHash,
+  // Script hash of stake validator (forwarded merkle proof logic)
+  plutarch_midgard_merkle_validator_input_hash_inclusion: ScriptHash,
   // Computation thread token policy
   ct_token_policy_id: PolicyId,
   hub_oracle: ScriptHash,
@@ -58,8 +57,15 @@ validator main(
         bad_tx_to_root_proof_path,
         bad_tx,
         bad_tx_body,
+        bad_spend_inputs,
+        bad_input,
+        bad_input_tx_info_hash,
+        bad_input_tx_to_root_proof_path,
         index_output,
         computation_thread_redeemer_index,
+        previous_tx,
+        previous_tx_body,
+        real_outputs,
         hub_ref_input_index,
       } -> {
         //TODO get it from the oracle hub
@@ -74,14 +80,11 @@ validator main(
             ct_token_asset_name,
             state_queue,
           )
-        let (block_valid_from, block_valid_to) =
-          get_validity_range_validate_block_hash(
-            tx,
-            bad_state_queue_node_ref_input_index,
-          )
 
-        // -------- Invalid range: validation-specific logic START --------
-        // Membership proof for tx
+        // -------- Non-existent input: validation-specific logic START --------
+        // Membership proof for tx1
+        //we have a transaction that is attemping to spend utxo HASH#INDEX
+        //HASH is actually inside the current block however the INDEX is an invalid index
         expect
           validate_membership_proof(
             tx,
@@ -94,17 +97,44 @@ validator main(
             },
           )
 
+        // Membership of the bad_input among the tx1 spent inputs
+        //validation of the redeemer data
         verify_hash_32(bad_tx, bad_tx_hash)
         verify_hash_32(bad_tx_body, bad_tx.body)
+        verify_hash_32(bad_spend_inputs, bad_tx_body.spend_inputs)
 
-        expect Finite(valid_from) =
-          bad_tx_body.validity_interval.lower_bound.bound_type
-        expect Finite(valid_to) =
-          bad_tx_body.validity_interval.upper_bound.bound_type
-        //Validity range not completely contained in the block's validity range
-        expect valid_from < block_valid_from || valid_to > block_valid_to
+        //redeemer data is correct, but does it include the bad input?
+        expect list.has(builtin.un_list_data(bad_spend_inputs), bad_input)
 
-        // -------- Invalid range: validation-specific logic END --------
+        // Inclusion proof that the transaction id of the bad input is in current block txs
+        expect invalid_input: Input = bad_input
+        expect
+          validate_membership_proof(
+            tx,
+            plutarch_midgard_merkle_validator_input_hash_inclusion,
+            MembershipProofInputs {
+              tx_root: extracted_tx_root,
+              tx_hash: invalid_input.output_reference.transaction_id,
+              tx_info_hash: bad_input_tx_info_hash,
+              tx_to_root_proof_path: bad_input_tx_to_root_proof_path,
+            },
+          )
+
+        //now we know that we have an input that has a proper txHash because it's in a merkle tree
+        //Validation of the redeemer info regardin the previous transaction
+        verify_hash_32(
+          previous_tx,
+          invalid_input.output_reference.transaction_id,
+        )
+        verify_hash_32(previous_tx_body, previous_tx.body)
+        verify_hash_32(real_outputs, previous_tx_body.outputs)
+        //the previous transaction ouput size is smaller than the output index of the invalid utxo, doing -1 because size=1 means output index=0
+        expect
+          invalid_input.output_reference.output_index > list.length(
+            builtin.un_list_data(real_outputs),
+          ) - 1
+
+        // -------- Non-existent input: validation-specific logic END --------
         expect
           validate_final_step_output(
             tx,
@@ -123,20 +153,4 @@ validator main(
   else(_) {
     fail
   }
-}
-
-pub fn get_validity_range_validate_block_hash(
-  tx: Transaction,
-  state_queue_node_ref_input_index: Int,
-) -> (Int, Int) {
-  // Reference input with block_hash 
-  expect Some(state_queue_node_input) =
-    list.at(tx.reference_inputs, state_queue_node_ref_input_index)
-
-  // Extract tx_root via the state queue block hash
-  expect InlineDatum(state_queue_datum_data) =
-    state_queue_node_input.output.datum
-  expect state_queue_node_datum: unordered.NodeDatum = state_queue_datum_data
-  expect parsed_state_queue_datum: Header = state_queue_node_datum.data
-  (parsed_state_queue_datum.start_time, parsed_state_queue_datum.end_time)
 }

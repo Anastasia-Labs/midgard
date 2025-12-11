@@ -6,8 +6,8 @@ use cardano/transaction.{
 }
 use midgard/common/utils
 use midgard/computation_thread.{StepDatum}
-use midgard/fraud_proof/token.{Datum, MintRedeemer, SpendRedeemer}
-use midgard/hub_oracle
+use midgard/fraud_proof.{Datum, MintRedeemer, SpendRedeemer}
+use midgard/hub_oracle as hub
 
 /// The spending validator of a fraud proof token never allows it to be spent.
 /// Midgard fraud proof tokens last forever.
@@ -32,27 +32,24 @@ validator mint(
   hub_oracle_script_hash: PolicyId,
 ) {
   mint(redeemer: MintRedeemer, policy_id: PolicyId, self: Transaction) {
-    expect Some(hub_oracle_input) =
-      list.at(self.reference_inputs, redeemer.hub_oracle_ref_input_index)
+    let hub.Datum { fraud_proof_addr: fraud_proof_spend_addr, .. } =
+      hub.get_datum(
+        self.reference_inputs,
+        hub_oracle_script_hash,
+        redeemer.hub_oracle_ref_input_index,
+      )
+
     expect Some(fraud_proof_last_step_input) =
       list.at(self.inputs, redeemer.fraud_proof_last_step_input_index)
     expect Some(output_with_fraud_proof) =
       list.at(self.outputs, redeemer.output_with_fraud_proof_index)
 
-    expect InlineDatum(hub_oracle_datum) = hub_oracle_input.output.datum
-    expect parsed_hub_oracle_datum: hub_oracle.Datum = hub_oracle_datum
     expect InlineDatum(fraud_proof_last_step_datum) =
       fraud_proof_last_step_input.output.datum
     expect parsed_fraud_proof_last_step_datum: StepDatum =
       fraud_proof_last_step_datum
-    let fraud_proof_spend_addr = parsed_hub_oracle_datum.fraud_proof_addr
 
     and {
-      validate_hub_oracle_input(
-        hub_oracle_input,
-        hub_oracle_script_hash,
-        redeemer.hub_oracle_asset_name,
-      ),
       validate_fraud_proof_last_step_input(
         fraud_proof_last_step_input,
         computation_thread_script_hash,
@@ -82,18 +79,6 @@ validator mint(
   else(_) {
     fail
   }
-}
-
-fn validate_hub_oracle_input(
-  hub_oracle_input: Input,
-  hub_oracle_script_hash: ByteArray,
-  hub_oracle_asset_name: ByteArray,
-) {
-  quantity_of(
-    hub_oracle_input.output.value,
-    hub_oracle_script_hash,
-    hub_oracle_asset_name,
-  ) == 1
 }
 
 fn validate_fraud_proof_last_step_input(

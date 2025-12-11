@@ -6,14 +6,46 @@ use aiken_design_patterns/merkelized_validator
 use cardano/address.{Script, VerificationKey}
 use cardano/assets.{PolicyId, lovelace_of}
 use cardano/transaction.{InlineDatum, Input, Output, Transaction}
-use midgard/common/utils.{get_singleton_asset_with_policy} as get_singleton_asset_with_policy
-use midgard/common/utils.{get_authentic_input_with_policy_at} as get_authentic_input_with_policy_at
+use midgard/common/utils.{get_singleton_asset_with_policy}
 use midgard/computation_thread.{StepDatum, Success}
-use midgard/fraud_proof/common/types.{
-  ExclusionProofInputTx, ExclusionProofUtxo, FraudProofDatum,
-  MembershipProofInputs,
-}
 use midgard/ledger_state.{Header}
+use midgard/state_queue
+
+pub type Proof =
+  ByteArray
+
+pub type MembershipProofInputs {
+  tx_root: ByteArray,
+  tx_hash: ByteArray,
+  tx_info_hash: ByteArray,
+  tx_to_root_proof_path: Proof,
+}
+
+pub type ExclusionProofInputTx {
+  tx_root: ByteArray,
+  invalid_input_tx_hash: ByteArray,
+  invalid_input_info_hash: ByteArray,
+  input_to_root_proof_path: Proof,
+}
+
+pub type ExclusionProofUtxo {
+  utxo_root: ByteArray,
+  invalid_utxo: ByteArray,
+  invalid_utxo_info_hash: ByteArray,
+  utxo_to_root_proof_path: Proof,
+}
+
+pub type InclusionProofTx {
+  current_block_txs_root: ByteArray,
+  invalid_tx: ByteArray,
+  invalid_tx_info_hash: ByteArray,
+  tx_to_root_proof_path: Proof,
+}
+
+// Last step datum for fraud proofs
+pub type FraudProofDatum {
+  fraud_prover: ByteArray,
+}
 
 // ------------ ABSTRACTIONS FOR ALL FRAUD PROOF STEPS ------------
 // Each step in a computation thread must in the continue redeemer:
@@ -38,49 +70,20 @@ pub fn get_tx_root_validate_block_hash(
   state_queue_policy: ByteArray,
 ) -> ByteArray {
   // Reference input with block_hash 
-  let state_queue_datum_data =
-    get_confirmed_datum(
-      tx,
-      state_queue_policy,
-      state_queue_node_ref_input_index,
-    )
-  expect state_queue_node_datum: unordered.NodeDatum = state_queue_datum_data
-  expect parsed_state_queue_datum: Header = state_queue_node_datum.data
-  expect unordered.Key { key: block_hash } = state_queue_node_datum.key
-  let extracted_tx_root = parsed_state_queue_datum.transactions_root
-
-  // Get CT token and check match with the block hash
-  expect drop(ct_token_asset_name, n: 4) == block_hash
-
-  extracted_tx_root
-}
-
-pub fn get_confirmed_datum(
-  tx: Transaction,
-  state_queue_policy: ByteArray,
-  state_queue_node_ref_input_index: Int,
-) {
-  let state_queue_node_input =
-    get_authentic_input_with_policy_at(
+  let
+    parsed_state_queue_datum,
+    block_hash,
+  <-
+    state_queue.get_block_datum(
       tx.reference_inputs,
       state_queue_policy,
       state_queue_node_ref_input_index,
     )
 
-  // Extract tx_root via the state queue block hash
-  expect InlineDatum(state_queue_datum_data) =
-    state_queue_node_input.output.datum
-  state_queue_datum_data
-}
+  // Get CT token and check match with the block hash
+  expect drop(ct_token_asset_name, n: 4) == block_hash
 
-pub fn get_block_datum(tx: Transaction, state_queue_node_ref_input_index: Int) {
-  expect Some(state_queue_node_input) =
-    list.at(tx.reference_inputs, state_queue_node_ref_input_index)
-
-  expect InlineDatum(state_queue_datum_data) =
-    state_queue_node_input.output.datum
-
-  state_queue_datum_data
+  parsed_state_queue_datum.transactions_root
 }
 
 // Relevant to (1): tx_root provided by fraud prover in redeemer matches block_hash from the state queue block from the reference input
@@ -317,7 +320,8 @@ pub fn validate_ada_return_to_fraud_prover(
 // -------------- HELPER FUNCTIONS -----------------
 
 // Get computation thread token from input
-// This is used by all redeemers to identify the computation thread token passed in from the previous step
+// This is used by all redeemers to identify the computation thread token passed
+// in from the previous step
 pub fn get_singleton_ct_token(
   own_input: Input,
   ct_token_policy_id: PolicyId,

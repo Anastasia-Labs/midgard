@@ -7,15 +7,13 @@ use cardano/assets.{PolicyId}
 use cardano/transaction.{Input, OutputReference, Transaction}
 use midgard/common/utils.{verify_hash_32}
 use midgard/computation_thread.{StepDatum}
-use midgard/fraud_proof/common/types.{
+use midgard/fraud_proofs/common.{
   ExclusionProofInputTx, ExclusionProofUtxo, MembershipProofInputs,
-}
-use midgard/fraud_proof/common/utils.{
   get_prev_utxo_root, get_singleton_ct_token, get_tx_root_validate_block_hash,
   handle_cancel, validate_exclusion_proof, validate_exclusion_utxo_proof,
   validate_final_step_output, validate_membership_proof,
 } as fraud_proof_utils
-use midgard/fraud_proof/non_existing_input/step.{
+use midgard/fraud_proofs/non_existing_input/step.{
   Cancel, Continue, StepRedeemer as Step1Redeemer,
 }
 use midgard/hub_oracle as hub

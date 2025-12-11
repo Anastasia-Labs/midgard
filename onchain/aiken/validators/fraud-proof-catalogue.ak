@@ -6,7 +6,7 @@ use aiken_design_patterns/linked_list/ordered.{
 }
 use cardano/assets.{PolicyId, quantity_of, tokens}
 use cardano/transaction.{InlineDatum, Input, OutputReference, Transaction}
-use midgard/fraud_proof/catalogue.{
+use midgard/fraud_proof_catalogue.{
   Deinit, Init, MintRedeemer, NewFraudCategory, RemoveFraudCategory,
   SpendRedeemer,
 }
@@ -69,7 +69,7 @@ validator mint(
           list.at(self.outputs, appended_node_output_index)
         expect InlineDatum(appended_node_output_datum) =
           appended_node_output.datum
-        expect catalogue.Datum { .. } = appended_node_output_datum
+        expect fraud_proof_catalogue.Datum { .. } = appended_node_output_datum
 
         and {
           ordered.append(

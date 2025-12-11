@@ -5,11 +5,11 @@ use cardano/assets.{PolicyId}
 use cardano/transaction.{OutputReference, Transaction}
 use midgard/common/utils.{verify_hash_32}
 use midgard/computation_thread.{StepDatum}
-use midgard/fraud_proof/common/utils.{
+use midgard/fraud_proofs/common.{
   get_singleton_ct_token, handle_cancel, validate_step_output,
 } as fraud_proof_utils
-use midgard/fraud_proof/double_spend/step_02.{StepState as Step2State}
-use midgard/fraud_proof/double_spend/step_03.{
+use midgard/fraud_proofs/double_spend/step_02.{StepState as Step2State}
+use midgard/fraud_proofs/double_spend/step_03.{
   Cancel, Continue, StepRedeemer as Step3Redeemer, StepState as Step3State,
 }
 use midgard/ledger_state.{MidgardTxBodyCompact, MidgardTxCompact}
