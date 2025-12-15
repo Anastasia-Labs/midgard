@@ -12,5 +12,6 @@ pub type StepRedeemer {
     bad_tx_body: MidgardTxBodyCompact,
     index_output: Int,
     computation_thread_redeemer_index: Int,
+    hub_ref_input_index: Int,
   }
 }

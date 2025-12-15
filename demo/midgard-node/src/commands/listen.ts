@@ -570,84 +570,82 @@ const router = (
       ),
     );
 
-export const runNode = Effect.gen(function* () {
-  const nodeConfig = yield* NodeConfig;
+export const runNode = (withMonitoring?: boolean) =>
+  Effect.gen(function* () {
+    const nodeConfig = yield* NodeConfig;
 
-  const prometheusExporter = new PrometheusExporter(
-    {
-      port: nodeConfig.PROM_METRICS_PORT,
-    },
-    () => {
-      `Prometheus metrics available at http://localhost:${nodeConfig.PROM_METRICS_PORT}/metrics`;
-    },
-  );
+    const txQueue = yield* Queue.unbounded<string>();
 
-  const originalStop = prometheusExporter.stopServer;
-  prometheusExporter.stopServer = async function () {
-    Effect.runSync(Effect.logInfo("Prometheus exporter is stopping!"));
-    return originalStop();
-  };
+    yield* InitDB.program.pipe(Effect.provide(Database.layer));
 
-  const MetricsLive = NodeSdk.layer(() => ({
-    resource: { serviceName: "midgard-node" },
-    metricReader: prometheusExporter,
-    spanProcessor: new BatchSpanProcessor(
-      new OTLPTraceExporter({ url: nodeConfig.OLTP_EXPORTER_URL }),
-    ),
-  }));
+    yield* Genesis.program;
 
-  yield* InitDB.initializeDb();
+    const appThread = Layer.launch(
+      Layer.provide(
+        HttpServer.serve(router(txQueue)),
+        NodeHttpServer.layer(createServer, { port: nodeConfig.PORT }),
+      ),
+    );
 
-  yield* Genesis.program;
+    const mkSchedule = (millisBetweenRuns: number) =>
+      Schedule.spaced(Duration.millis(millisBetweenRuns));
 
-  const txQueue = yield* Queue.unbounded<string>();
-  const appThread = Layer.launch(
-    Layer.provide(
-      HttpServer.serve(router(txQueue)),
-      NodeHttpServer.layer(createServer, { port: nodeConfig.PORT }),
-    ),
-  );
-
-  const program = Effect.all(
-    [
-      appThread,
-      blockCommitmentFiber(
-        Schedule.spaced(
-          Duration.millis(nodeConfig.WAIT_BETWEEN_BLOCK_COMMITMENT),
+    const program = Effect.all(
+      [
+        appThread,
+        blockCommitmentFiber(
+          mkSchedule(nodeConfig.WAIT_BETWEEN_BLOCK_COMMITMENT),
         ),
-      ),
-      blockConfirmationFiber(
-        Schedule.spaced(
-          Duration.millis(nodeConfig.WAIT_BETWEEN_BLOCK_CONFIRMATION),
+        blockConfirmationFiber(
+          mkSchedule(nodeConfig.WAIT_BETWEEN_BLOCK_CONFIRMATION),
         ),
-      ),
-      fetchAndInsertDepositUTxOsFiber(
-        Schedule.spaced(
-          Duration.millis(nodeConfig.WAIT_BETWEEN_DEPOSIT_UTXO_FETCHES),
+        fetchAndInsertDepositUTxOsFiber(
+          mkSchedule(nodeConfig.WAIT_BETWEEN_DEPOSIT_UTXO_FETCHES),
         ),
-      ),
-      mergeFiber(
-        Schedule.spaced(Duration.millis(nodeConfig.WAIT_BETWEEN_MERGE_TXS)),
-      ),
-      monitorMempoolFiber(Schedule.spaced(Duration.millis(1000))),
-      txQueueProcessorFiber(Schedule.spaced(Duration.millis(500)), txQueue),
-    ],
-    {
-      concurrency: "unbounded",
-    },
-  ).pipe(
-    Effect.provide(Database.layer),
-    Effect.provide(AlwaysSucceedsContract.Default),
-    Effect.provide(Lucid.Default),
-    Effect.provide(NodeConfig.layer),
-    Effect.provide(Globals.Default),
-  );
+        mergeFiber(mkSchedule(nodeConfig.WAIT_BETWEEN_MERGE_TXS)),
+        withMonitoring ? monitorMempoolFiber(mkSchedule(1000)) : Effect.void,
+        txQueueProcessorFiber(mkSchedule(500), txQueue),
+      ],
+      {
+        concurrency: "unbounded",
+      },
+    );
 
-  pipe(
-    program,
-    Effect.withSpan("midgard"),
-    Effect.provide(MetricsLive),
-    Effect.catchAllCause(Effect.logError),
-    Effect.runPromise,
-  );
-});
+    if (withMonitoring) {
+      const prometheusExporter = new PrometheusExporter(
+        {
+          port: nodeConfig.PROM_METRICS_PORT,
+        },
+        () => {
+          `Prometheus metrics available at http://localhost:${nodeConfig.PROM_METRICS_PORT}/metrics`;
+        },
+      );
+
+      const originalStop = prometheusExporter.stopServer;
+      prometheusExporter.stopServer = async function () {
+        Effect.runSync(Effect.logInfo("Prometheus exporter is stopping!"));
+        return originalStop();
+      };
+
+      const MetricsLive = NodeSdk.layer(() => ({
+        resource: { serviceName: "midgard-node" },
+        metricReader: prometheusExporter,
+        spanProcessor: new BatchSpanProcessor(
+          new OTLPTraceExporter({ url: nodeConfig.OLTP_EXPORTER_URL }),
+        ),
+      }));
+
+      pipe(
+        program,
+        Effect.withSpan("midgard"),
+        Effect.provide(MetricsLive),
+        Effect.catchAllCause(Effect.logError),
+      );
+    } else {
+      pipe(
+        program,
+        Effect.withSpan("midgard"),
+        Effect.catchAllCause(Effect.logError),
+      );
+    }
+  });
