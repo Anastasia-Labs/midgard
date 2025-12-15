@@ -22,6 +22,7 @@ services:
       - node
       - ./dist/index.js
       - listen
+      - --with-monitoring
     ports:
       - "3000:3000" # api server
       - "9464:9464" # prometheus exporter
@@ -46,7 +47,7 @@ services:
     volumes:
       - postgres-data:/var/lib/postgresql/data/pgdata
     ports:
-      - "5432:5432"
+      - "5433:5432"
     networks:
       midgard_net:
     healthcheck:

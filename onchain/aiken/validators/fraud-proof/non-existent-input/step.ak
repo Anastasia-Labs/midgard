@@ -18,6 +18,7 @@ use midgard/fraud_proof/common/utils.{
 use midgard/fraud_proof/non_existing_input/step.{
   Cancel, Continue, StepRedeemer as Step1Redeemer,
 }
+use midgard/hub_oracle as hub
 
 // ----------------- DOUBLE SPEND FRAUD PROOF: DEFINITION --------------------------
 // Proves membership Merkle proofs for 2 unique txs which spends the same input UTxO
@@ -41,6 +42,7 @@ validator main(
   plutarch_midgard_merkle_validator_exclusion: ScriptHash,
   // Computation thread token policy
   ct_token_policy_id: PolicyId,
+  hub_oracle: ScriptHash,
 ) {
   spend(
     datum: Option<StepDatum>,
@@ -80,7 +82,13 @@ validator main(
         bad_input_tx_to_root_proof_path,
         index_output,
         computation_thread_redeemer_index,
+        hub_ref_input_index,
       } -> {
+        //  The transaction must include the Midgard hub oracle NFT in a reference input.
+        //  hub_oracle.{active_operators, scheduler}
+        let hub.Datum { state_queue, .. } =
+          hub.get_datum(tx.reference_inputs, hub_oracle, hub_ref_input_index)
+
         let ct_token_asset_name =
           get_singleton_ct_token(own_input, ct_token_policy_id)
         let extracted_tx_root =
@@ -88,6 +96,7 @@ validator main(
             tx,
             bad_state_queue_node_ref_input_index,
             ct_token_asset_name,
+            state_queue,
           )
 
         // -------- Non-existent input: validation-specific logic START --------
