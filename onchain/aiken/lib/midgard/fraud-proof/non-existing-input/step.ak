@@ -18,5 +18,6 @@ pub type StepRedeemer {
     bad_input_tx_to_root_proof_path: Proof,
     index_output: Int,
     computation_thread_redeemer_index: Int,
+    hub_ref_input_index: Int,
   }
 }
