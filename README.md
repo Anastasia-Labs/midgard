@@ -1,5 +1,5 @@
 <p align="center">
-  <img width="150px" src="documentation/public/midgard-icon-green.png" align="center" alt="Midgard Logo"/>
+  <img width="150px" src="technical-spec/images/midgard-icon-green.png" align="center" alt="Midgard Logo"/>
   <h1 align="center">Midgard</h1>
   <p align="center">Cardano's first optimistic rollup protocol</p>
 </p>
