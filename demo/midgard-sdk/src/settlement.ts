@@ -1,11 +1,11 @@
 import { Data, LucidEvolution, Parameters, TxBuilder, TxSignBuilder, UTxO, utxoToCore } from "@lucid-evolution/lucid";
 import { AuthenticatedValidator, GenericErrorFields, HashingError, LucidError, makeReturn, MerkleRootSchema, POSIXTimeSchema, ProofSchema, utxosAtByNFTPolicyId, VerificationKeyHashSchema } from "./common.js";
 import { Data as EffectData, Effect } from "effect";
-import { getProtocolParameters} from "./protocol-parameters.js";
 import { utxosToHubOracleUTxOs } from "./hub-oracle.js";
+import { utxosToSchedulerUTxOs } from "./scheduler.js";
 
 export const ResolutionClaimSchema = Data.Object({
-  resolution_time: POSIXTimeSchema,
+  resolutionTime: POSIXTimeSchema,
   operator: VerificationKeyHashSchema
 });
 export type ResolutionClaim = Data.Static<typeof ResolutionClaimSchema>;
@@ -13,10 +13,10 @@ export const ResolutionClaim =
   ResolutionClaimSchema as unknown as ResolutionClaim;
 
 export const SettlementDatumSchema = Data.Object({
-  deposits_root: MerkleRootSchema,
-  withdrawals_root: MerkleRootSchema,
-  transactions_root: MerkleRootSchema,
-  resolution_claim: Data.Nullable(ResolutionClaimSchema),
+  depositsRoot: MerkleRootSchema,
+  withdrawalsRoot: MerkleRootSchema,
+  transactionsRoot: MerkleRootSchema,
+  resolutionClaim: Data.Nullable(ResolutionClaimSchema),
 });
 export type SettlementDatum = Data.Static<typeof SettlementDatumSchema>;
 export const SettlementDatum =
@@ -42,32 +42,32 @@ export const EventType =
 export const SettlementSpendRedeemerSchema = Data.Enum([
   Data.Object({
     AttachResolutionClaim: Data.Object({ 
-       settlement_input_index: Data.Integer(),
-       settlement_output_index: Data.Integer(),
-       hub_ref_input_index: Data.Integer(),
-       active_operators_node_input_index: Data.Integer(),
-       active_operators_redeemer_index: Data.Integer(),
+       settlementInputIndex: Data.Integer(),
+       settlementOutputIndex: Data.Integer(),
+       hubRefInputIndex: Data.Integer(),
+       activeOperatorsNodeInputIndex: Data.Integer(),
+       activeOperatorsRedeemerIndex: Data.Integer(),
        operator: VerificationKeyHashSchema,
-       scheduler_ref_input_index: Data.Integer(), 
+       schedulerRefInputIndex: Data.Integer(), 
     }),
   }),
   Data.Object({
     DisproveResolutionClaim: Data.Object({
-       settlement_input_index: Data.Integer(),
-       settlement_output_index: Data.Integer(),
-       hub_ref_input_index: Data.Integer(),
-       operators_redeemer_index: Data.Integer(),
+       settlementInputIndex: Data.Integer(),
+       settlementOutputIndex: Data.Integer(),
+       hubRefInputIndex: Data.Integer(),
+       operatorsRedeemerIndex: Data.Integer(),
        operator: VerificationKeyHashSchema,
-       operator_status: OperatorStatusSchema,
-       unresolved_event_ref_input_index: Data.Integer(),
-       unresolved_event_asset_name: Data.Bytes(),
-       event_type: EventTypeSchema,
-       membership_proof: ProofSchema,
+       operatorStatus: OperatorStatusSchema,
+       unresolvedEventRefInputIndex: Data.Integer(),
+       unresolvedEventAssetName: Data.Bytes(),
+       eventType: EventTypeSchema,
+       membershipProof: ProofSchema,
     }),
   }),
   Data.Object({
     Resolve: Data.Object({
-       settlement_id: Data.Bytes(),
+       settlementId: Data.Bytes(),
     }),
   }),
 ]);
@@ -78,17 +78,17 @@ export const SettlementSpendRedeemer =
 export const SettlementMintRedeemerSchema = Data.Enum([
   Data.Object({
     Spawn: Data.Object({ 
-      settlement_id: Data.Bytes(),
-      output_index: Data.Integer(),
-      state_queue_merge_redeemer_index: Data.Integer(),
-      hub_ref_input_index: Data.Integer(), 
+      settlementId: Data.Bytes(),
+      outputIndex: Data.Integer(),
+      stateQueueMergeRedeemerIndex: Data.Integer(),
+      hubRefInputIndex: Data.Integer(), 
     }),
   }),
   Data.Object({
     Remove: Data.Object({
-      settlement_id: Data.Bytes(),
-      input_index: Data.Integer(),
-      spend_redeemer_index: Data.Integer(),
+      settlementId: Data.Bytes(),
+      inputIndex: Data.Integer(),
+      spendRedeemerIndex: Data.Integer(),
     }),
   }),
 ]);
@@ -100,18 +100,18 @@ export const ActiveOperatorSpendRedeemerSchema = Data.Enum([
   Data.Literal("ListStateTransition"),
   Data.Object({
     UpdateBondHoldNewState: Data.Object({ 
-       active_node_output_index: Data.Integer(),
-       hub_oracle_ref_input_index: Data.Integer(),
-       state_queue_redeemer_index: Data.Integer(),
+       activeNodeOutputIndex: Data.Integer(),
+       hubOracleRefInputIndex: Data.Integer(),
+       stateQueueRedeemerIndex: Data.Integer(),
     }),
   }),
   Data.Object({
     UpdateBondHoldNewSettlement: Data.Object({
-       active_node_output_index: Data.Integer(),
-       hub_oracle_ref_input_index: Data.Integer(),
-       settlement_queue_input_index: Data.Integer(),
-       settlement_queue_redeemer_index: Data.Integer(),
-       new_bond_unlock_time: POSIXTimeSchema,
+       activeNodeOutputIndex: Data.Integer(),
+       hubOracleRefInputIndex: Data.Integer(),
+       settlementQueueInputIndex: Data.Integer(),
+       settlementQueueRedeemerIndex: Data.Integer(),
+       newBondUnlockTime: POSIXTimeSchema,
     }),
   }),
 ]);
@@ -122,7 +122,7 @@ export const ActiveOperatorSpendRedeemer =
 export const ActiveOperatorSpendDatumSchema = Data.Object({
   key: Data.Nullable(Data.Bytes()),
   link: Data.Nullable(Data.Bytes()),
-  bond_unlock_time: Data.Nullable(POSIXTimeSchema),
+  bondUnlockTime: Data.Nullable(POSIXTimeSchema),
 });
 export type ActiveOperatorSpendDatum = Data.Static<typeof ActiveOperatorSpendDatumSchema>;
 export const ActiveOperatorSpendDatum =
@@ -133,6 +133,8 @@ export type AttachResolutionClaimParams ={
     resolutionClaimOperator: string;
     newBondUnlockTime: bigint;
     hubOracleValidator: AuthenticatedValidator;
+    schedulerScriptAddress: string;
+    schedulerPolicyId: string;
 };
 
 export type SettlementUTxO = {
@@ -151,7 +153,7 @@ export const getSettlementUTxOWithoutClaim = (
       }
       try {
         const parsedDatum = Data.from(datum, SettlementDatum);
-        if (parsedDatum.resolution_claim === null) {
+        if (parsedDatum.resolutionClaim === null) {
           return {utxo, datum: parsedDatum};
         }
       } catch (error) {
@@ -181,13 +183,13 @@ export const incompleteAttachResolutionClaimTxProgram = (
   Effect.gen(function* () {
     const spendRedeemer: SettlementSpendRedeemer = {
           AttachResolutionClaim: {
-            settlement_input_index: 0n,
-            settlement_output_index: 0n,
-            hub_ref_input_index: 0n,
-            active_operators_node_input_index: 0n,
-            active_operators_redeemer_index: 0n,
+            settlementInputIndex: 0n,
+            settlementOutputIndex: 0n,
+            hubRefInputIndex: 0n,
+            activeOperatorsNodeInputIndex: 0n,
+            activeOperatorsRedeemerIndex: 0n,
             operator: params.resolutionClaimOperator,
-            scheduler_ref_input_index: 0n,
+            schedulerRefInputIndex: 0n,
           },
         };
     const spendRedeemerCBOR = Data.to(spendRedeemer, SettlementSpendRedeemer);
@@ -214,11 +216,11 @@ export const incompleteAttachResolutionClaimTxProgram = (
     // const new_bond_unlock_time = maturity_duration + BigInt(txUpperBound);
 
     const spendDatum: SettlementDatum = {
-      deposits_root: settlementInputUtxo.datum.deposits_root,
-      withdrawals_root: settlementInputUtxo.datum.withdrawals_root,
-      transactions_root: settlementInputUtxo.datum.transactions_root,
-      resolution_claim: {
-        resolution_time: params.newBondUnlockTime,
+      depositsRoot: settlementInputUtxo.datum.depositsRoot,
+      withdrawalsRoot: settlementInputUtxo.datum.withdrawalsRoot,
+      transactionsRoot: settlementInputUtxo.datum.transactionsRoot,
+      resolutionClaim: {
+        resolutionTime: params.newBondUnlockTime,
         operator: params.resolutionClaimOperator,
       },
     };
@@ -239,11 +241,28 @@ export const incompleteAttachResolutionClaimTxProgram = (
       });
     } 
     const hubOracleRefUTxOs = yield* utxosToHubOracleUTxOs(hubOracleAllUTxOs, params.hubOracleValidator.policyId);
+
+    const schedulerAllUTxOs = yield* Effect.tryPromise({
+      try: () => lucid.utxosAt(params.schedulerScriptAddress),
+      catch: (err) =>
+        new LucidError({
+          message: "Failed to fetch Scheduler UTxOs",
+          cause: err,
+        }),
+    });
+    if (schedulerAllUTxOs.length === 0) {
+      yield* new LucidError({
+        message: "Failed to build the Scheduler transaction",
+        cause: "No UTxOs found in Scheduler contract address",
+      });
+    } 
+    const schedulerRefUTxOs = yield* utxosToSchedulerUTxOs(schedulerAllUTxOs, params.schedulerPolicyId);
     
     const buildsettlementTx = lucid
       .newTx()
       .collectFrom([settlementInputUtxo.utxo],spendRedeemerCBOR)
       .readFrom([hubOracleRefUTxOs[0].utxo])
+      .readFrom([schedulerRefUTxOs[0].utxo])
       .pay.ToAddressWithData(
         params.settlementAddress,
         {
@@ -313,11 +332,11 @@ export const incompleteUpdateBondHoldNewSettlementTxProgram = (
 
     const spendRedeemer: ActiveOperatorSpendRedeemer = {
           UpdateBondHoldNewSettlement: {
-            active_node_output_index: 0n,
-            hub_oracle_ref_input_index: 0n,
-            settlement_queue_input_index: 0n,
-            settlement_queue_redeemer_index: 0n,
-            new_bond_unlock_time: params.newBondUnlockTime,
+            activeNodeOutputIndex: 0n,
+            hubOracleRefInputIndex: 0n,
+            settlementQueueInputIndex: 0n,
+            settlementQueueRedeemerIndex: 0n,
+            newBondUnlockTime: params.newBondUnlockTime,
           },
         };
     const spendRedeemerCBOR = Data.to(spendRedeemer, ActiveOperatorSpendRedeemer);
@@ -340,7 +359,7 @@ export const incompleteUpdateBondHoldNewSettlementTxProgram = (
     
     const spendDatum: ActiveOperatorSpendDatum = {
       ...activeOperatorsInputUtxo.datum,
-      bond_unlock_time: params.newBondUnlockTime,
+      bondUnlockTime: params.newBondUnlockTime,
     };
     const spendDatumCBOR = Data.to(spendDatum, ActiveOperatorSpendDatum);
 
