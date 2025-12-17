@@ -1,6 +1,11 @@
 import { Data, LucidEvolution, TxBuilder, UTxO } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
-import { DataCoercionError, getStateToken, POSIXTimeSchema, UnauthenticUtxoError } from "./common.js";
+import {
+  DataCoercionError,
+  getStateToken,
+  POSIXTimeSchema,
+  UnauthenticUtxoError,
+} from "./common.js";
 
 export type SchedulerInitParams = {};
 export type SchedulerDeinitParams = {};
@@ -12,8 +17,7 @@ export const SchedulerDatumSchema = Data.Object({
   startTime: POSIXTimeSchema,
 });
 export type SchedulerDatum = Data.Static<typeof SchedulerDatumSchema>;
-export const SchedulerDatum =
-  SchedulerDatumSchema as unknown as SchedulerDatum;
+export const SchedulerDatum = SchedulerDatumSchema as unknown as SchedulerDatum;
 
 export type SchedulerUTxO = {
   utxo: UTxO;

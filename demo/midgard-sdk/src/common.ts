@@ -232,11 +232,15 @@ export const POSIXTime = POSIXTimeSchema as unknown as POSIXTime;
 
 export const PosixTimeDurationSchema = Data.Integer();
 export type PosixTimeDuration = Data.Static<typeof PosixTimeDurationSchema>;
-export const PosixTimeDuration = PosixTimeDurationSchema as unknown as PosixTimeDuration; 
+export const PosixTimeDuration =
+  PosixTimeDurationSchema as unknown as PosixTimeDuration;
 
 export const PubKeyHashSchema = Data.Bytes({ minLength: 28, maxLength: 28 });
 
-export const VerificationKeyHashSchema = Data.Bytes({ minLength: 28, maxLength: 28 });
+export const VerificationKeyHashSchema = Data.Bytes({
+  minLength: 28,
+  maxLength: 28,
+});
 
 export const PolicyIdSchema = Data.Bytes({ minLength: 28, maxLength: 28 });
 
@@ -279,47 +283,44 @@ export const AddressSchema = Data.Object({
 export type AddressData = Data.Static<typeof AddressSchema>;
 export const AddressData = AddressSchema as unknown as AddressData;
 
-export const NeighborSchema = Data.Object ({
-    Neighbor : Data.Object({
-        nibble: Data.Integer(),
-        prefix: Data.Bytes(),
-        root: Data.Bytes(),
-    })
+export const NeighborSchema = Data.Object({
+  Neighbor: Data.Object({
+    nibble: Data.Integer(),
+    prefix: Data.Bytes(),
+    root: Data.Bytes(),
+  }),
 });
 export type Neighbor = Data.Static<typeof NeighborSchema>;
-export const Neighbor =
-  NeighborSchema as unknown as Neighbor;
+export const Neighbor = NeighborSchema as unknown as Neighbor;
 
-export const ProofStepSchema = Data.Enum ([
-    Data.Object({
-      Branch:  Data.Object({
-         skip: Data.Integer(),
-         neighbors: Data.Bytes(),
-      })
+export const ProofStepSchema = Data.Enum([
+  Data.Object({
+    Branch: Data.Object({
+      skip: Data.Integer(),
+      neighbors: Data.Bytes(),
     }),
-    Data.Object({
-      Fork:  Data.Object({
-         skip: Data.Integer(),
-         neighbor: NeighborSchema,
-      })
+  }),
+  Data.Object({
+    Fork: Data.Object({
+      skip: Data.Integer(),
+      neighbor: NeighborSchema,
     }),
-    Data.Object({
-      Leaf: Data.Object({
-         skip: Data.Integer(),
-         key: Data.Bytes(),
-         value: Data.Bytes(),
-        })
-      })
+  }),
+  Data.Object({
+    Leaf: Data.Object({
+      skip: Data.Integer(),
+      key: Data.Bytes(),
+      value: Data.Bytes(),
+    }),
+  }),
 ]);
 export type ProofStep = Data.Static<typeof ProofStepSchema>;
-export const ProofStep =
-  ProofStepSchema as unknown as ProofStep;
+export const ProofStep = ProofStepSchema as unknown as ProofStep;
 
 export const ProofSchema = Data.Array(ProofStepSchema);
 export type Proof = Data.Static<typeof ProofSchema>;
-export const Proof =
-  ProofSchema as unknown as Proof;
-  
+export const Proof = ProofSchema as unknown as Proof;
+
 export const parseAddressDataCredentials = (
   address: string,
 ): Effect.Effect<AddressData, ParsingError> =>

@@ -147,10 +147,10 @@ export const fetchTxOrderUTxOsProgram = (
   Effect.gen(function* () {
     const allUTxOs = yield* Effect.tryPromise({
       try: () => lucid.utxosAt(config.txOrderAddress),
-      catch : (err) =>
+      catch: (err) =>
         new LucidError({
           message: "Failed to fetch tx order UTxOs",
-          cause: err, 
+          cause: err,
         }),
     });
     const txOrderUTxOs = yield* utxosToTxOrderUTxOs(
