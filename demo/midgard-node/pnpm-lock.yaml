@@ -16,7 +16,7 @@ importers:
         version: file:../midgard-sdk/al-ft-midgard-sdk-0.1.0.tgz(@harmoniclabs/bytestring@1.0.0)(@harmoniclabs/cbor@1.6.6)(@harmoniclabs/crypto@0.2.5)(@harmoniclabs/pair@1.0.0)(fast-check@3.23.2)
       '@effect/experimental':
         specifier: ^0.46.8
-        version: 0.46.8(@effect/platform@0.80.21(effect@3.19.12))(effect@3.19.12)
+        version: 0.46.8(@effect/platform@0.80.21(effect@3.19.12))(effect@3.19.12)(lmdb@3.4.1)
       '@effect/opentelemetry':
         specifier: ^0.44.12
         version: 0.44.12(@opentelemetry/api@1.9.0)(@opentelemetry/resources@1.30.1(@opentelemetry/api@1.9.0))(@opentelemetry/sdk-metrics@1.30.1(@opentelemetry/api@1.9.0))(@opentelemetry/sdk-trace-base@1.30.1(@opentelemetry/api@1.9.0))(@opentelemetry/sdk-trace-node@1.30.1(@opentelemetry/api@1.9.0))(@opentelemetry/sdk-trace-web@1.30.1(@opentelemetry/api@1.9.0))(@opentelemetry/semantic-conventions@1.38.0)(effect@3.19.12)
@@ -25,13 +25,13 @@ importers:
         version: 0.80.21(effect@3.19.12)
       '@effect/platform-node':
         specifier: ^0.80.3
-        version: 0.80.3(@effect/cluster@0.33.3(@effect/platform@0.80.21(effect@3.19.12))(@effect/rpc@0.59.9(@effect/platform@0.80.21(effect@3.19.12))(effect@3.19.12))(@effect/sql@0.34.1(@effect/experimental@0.46.8(@effect/platform@0.80.21(effect@3.19.12))(effect@3.19.12))(@effect/platform@0.80.21(effect@3.19.12))(effect@3.19.12))(effect@3.19.12))(@effect/platform@0.80.21(effect@3.19.12))(@effect/rpc@0.59.9(@effect/platform@0.80.21(effect@3.19.12))(effect@3.19.12))(@effect/sql@0.34.1(@effect/experimental@0.46.8(@effect/platform@0.80.21(effect@3.19.12))(effect@3.19.12))(@effect/platform@0.80.21(effect@3.19.12))(effect@3.19.12))(effect@3.19.12)
+        version: 0.80.3(@effect/cluster@0.31.1(@effect/platform@0.80.21(effect@3.19.12))(@effect/rpc@0.57.1(@effect/platform@0.80.21(effect@3.19.12))(effect@3.19.12))(@effect/sql@0.34.1(@effect/experimental@0.46.8(@effect/platform@0.80.21(effect@3.19.12))(effect@3.19.12)(lmdb@3.4.1))(@effect/platform@0.80.21(effect@3.19.12))(effect@3.19.12))(effect@3.19.12))(@effect/platform@0.80.21(effect@3.19.12))(@effect/rpc@0.57.1(@effect/platform@0.80.21(effect@3.19.12))(effect@3.19.12))(@effect/sql@0.34.1(@effect/experimental@0.46.8(@effect/platform@0.80.21(effect@3.19.12))(effect@3.19.12)(lmdb@3.4.1))(@effect/platform@0.80.21(effect@3.19.12))(effect@3.19.12))(effect@3.19.12)
       '@effect/sql':
         specifier: ^0.34.1
-        version: 0.34.1(@effect/experimental@0.46.8(@effect/platform@0.80.21(effect@3.19.12))(effect@3.19.12))(@effect/platform@0.80.21(effect@3.19.12))(effect@3.19.12)
+        version: 0.34.1(@effect/experimental@0.46.8(@effect/platform@0.80.21(effect@3.19.12))(effect@3.19.12)(lmdb@3.4.1))(@effect/platform@0.80.21(effect@3.19.12))(effect@3.19.12)
       '@effect/sql-pg':
         specifier: ^0.35.1
-        version: 0.35.1(@effect/experimental@0.46.8(@effect/platform@0.80.21(effect@3.19.12))(effect@3.19.12))(@effect/platform@0.80.21(effect@3.19.12))(@effect/sql@0.34.1(@effect/experimental@0.46.8(@effect/platform@0.80.21(effect@3.19.12))(effect@3.19.12))(@effect/platform@0.80.21(effect@3.19.12))(effect@3.19.12))(effect@3.19.12)
+        version: 0.35.1(@effect/experimental@0.46.8(@effect/platform@0.80.21(effect@3.19.12))(effect@3.19.12)(lmdb@3.4.1))(@effect/platform@0.80.21(effect@3.19.12))(@effect/sql@0.34.1(@effect/experimental@0.46.8(@effect/platform@0.80.21(effect@3.19.12))(effect@3.19.12)(lmdb@3.4.1))(@effect/platform@0.80.21(effect@3.19.12))(effect@3.19.12))(effect@3.19.12)
       '@ethereumjs/mpt':
         specifier: 7.0.0-alpha.1
         version: 7.0.0-alpha.1
@@ -118,7 +118,7 @@ packages:
     resolution: {integrity: sha512-vKypwCNMH7SgP8JQ/fQyXjhDC16DqTiW9x9dLK6AXe2tEWVouNy2GMKmOaS4l6ZF7pTjty5XCD+MqnsxXJBIgg==}
 
   '@al-ft/midgard-sdk@file:../midgard-sdk/al-ft-midgard-sdk-0.1.0.tgz':
-    resolution: {integrity: sha512-ph88yQXMPiK6bXbPT174n++BgL/mYMCC5ueMYo+iUy2KqXXG7PJuBeDf601GMaxROn27Y5kz+Ip0hiji+336tA==, tarball: file:../midgard-sdk/al-ft-midgard-sdk-0.1.0.tgz}
+    resolution: {integrity: sha512-SYI7PtXTJ/Tv1exM8x81AGXrmGiAG7DtEpUouzQrXEb9dxiKEMPHT3Di33UpS25frkpgYuSOeB8ZHcY7jjIDDA==, tarball: file:../midgard-sdk/al-ft-midgard-sdk-0.1.0.tgz}
     version: 0.1.0
 
   '@anastasia-labs/cardano-multiplatform-lib-browser@6.0.2-2':
@@ -225,13 +225,13 @@ packages:
     peerDependencies:
       commander: ~13.1.0
 
-  '@effect/cluster@0.33.3':
-    resolution: {integrity: sha512-jpKF0oJ1DxPaqN7W+FWmPIM4kn7cGC3aPfzDR2uHHt/LOyuXKDUCp8Nbt1X2RecAWolQM3wweHHvzNcobyJpMA==}
+  '@effect/cluster@0.31.1':
+    resolution: {integrity: sha512-FDj6WMR7zDg1PPei9qXCvIsoUoQEOuWSmM3TQEruvTouWEfMPXwoRoNiUAzQa6nrqrfXtur/T31ZvgcCL8WvYg==}
     peerDependencies:
-      '@effect/platform': ^0.82.2
-      '@effect/rpc': ^0.59.3
-      '@effect/sql': ^0.35.2
-      effect: ^3.15.1
+      '@effect/platform': ^0.81.1
+      '@effect/rpc': ^0.57.1
+      '@effect/sql': ^0.34.1
+      effect: ^3.14.22
 
   '@effect/experimental@0.46.8':
     resolution: {integrity: sha512-2XasqFLQZFy2PGybFdBjgflXFfPuorc/6DMxogeTDHknZa0RH4KoJQQlWaCngbKMsZrZcv0jV+Zi4aDZsVGl7g==}
@@ -298,11 +298,11 @@ packages:
     peerDependencies:
       effect: ^3.14.21
 
-  '@effect/rpc@0.59.9':
-    resolution: {integrity: sha512-9Nw6YRBbTgsCyVb7/AMCTML7cE6v38cN0I7tP05XAlvKdmCroifaNopDCO7w1C3EPeNBG42nYuYnwU6L0Atnhg==}
+  '@effect/rpc@0.57.1':
+    resolution: {integrity: sha512-n9SOobiP4bUjPnUVkXvQ073GHLELBlJMz0EzgjKEGh9ObSDvLU/4Erx6BEy++36u7nQGPUn3eQTWCO8NYAwTfA==}
     peerDependencies:
-      '@effect/platform': ^0.82.8
-      effect: ^3.15.4
+      '@effect/platform': ^0.81.1
+      effect: ^3.14.22
 
   '@effect/schema@0.66.16':
     resolution: {integrity: sha512-sT/k5NOgKslGPzs3DUaCFuM6g2JQoIIT8jpwEorAZooplPIMK2xIspr7ECz6pp6Dc7Wz/ppXGk7HVyGZQsIYEQ==}
@@ -763,6 +763,41 @@ packages:
 
   '@leichtgewicht/ip-codec@2.0.5':
     resolution: {integrity: sha512-Vo+PSpZG2/fmgmiNzYK9qWRh8h/CHrwD0mo1h1DzL4yzHNSfWYujGTYsWGreD000gcgmZ7K4Ys6Tx9TxtsKdDw==}
+
+  '@lmdb/lmdb-darwin-arm64@3.4.1':
+    resolution: {integrity: sha512-kKeP5PaY3bFrrF6GY5aDd96iuh1eoS+5CHJ+7hIP629KIEwzGNwbIzBmEX9TAhRJOivSRDTHCIsbu//+NsYKkg==}
+    cpu: [arm64]
+    os: [darwin]
+
+  '@lmdb/lmdb-darwin-x64@3.4.1':
+    resolution: {integrity: sha512-9CMB3seTyHs3EOVWdKiB8IIEDBJ3Gq00Tqyi0V7DS3HL90BjM/AkbZGuhzXwPrfeFazR24SKaRrUQF74f+CmWw==}
+    cpu: [x64]
+    os: [darwin]
+
+  '@lmdb/lmdb-linux-arm64@3.4.1':
+    resolution: {integrity: sha512-d0vuXOdoKjHHJYZ/CRWopnkOiUpev+bgBBW+1tXtWsYWUj8uxl9ZmTBEmsL5mjUlpQDrlYiJSrhOU1hg5QWBSw==}
+    cpu: [arm64]
+    os: [linux]
+
+  '@lmdb/lmdb-linux-arm@3.4.1':
+    resolution: {integrity: sha512-1Mi69vU0akHgCI7tF6YbimPaNEKJiBm/p5A+aM8egr0joj27cQmCCOm2mZQ+Ht2BqmCfZaIgQnMg4gFYNMlpCA==}
+    cpu: [arm]
+    os: [linux]
+
+  '@lmdb/lmdb-linux-x64@3.4.1':
+    resolution: {integrity: sha512-00RbEpvfnyPodlICiGFuiOmyvWaL9nzCRSqZz82BVFsGTiSQnnF0gpD1C8tO6OvtptELbtRuM7BS9f97LcowZw==}
+    cpu: [x64]
+    os: [linux]
+
+  '@lmdb/lmdb-win32-arm64@3.4.1':
+    resolution: {integrity: sha512-4h8tm3i1ODf+28UyqQZLP7c2jmRM26AyEEyYp994B4GiBdGvGAsYUu3oiHANYK9xFpvLuFzyGeqFm1kdNC0D1A==}
+    cpu: [arm64]
+    os: [win32]
+
+  '@lmdb/lmdb-win32-x64@3.4.1':
+    resolution: {integrity: sha512-HqqKIhTbq6piJhkJpTTf3w1m/CgrmwXRAL9R9j7Ru5xdZSeO7Mg4AWiBC9B00uXR+LvVZKtUyRMVZfhmIZztmQ==}
+    cpu: [x64]
+    os: [win32]
 
   '@lucid-evolution/core-types@0.1.22':
     resolution: {integrity: sha512-2ffw82PAjB9wdnW62zWh5J8Wkqrr+sMrdXtndejdu4UYmTdmf7rIClr+AfKO8IStCciVcNT/wQj59PyYu/Jg1Q==}
@@ -1792,6 +1827,10 @@ packages:
   lines-and-columns@1.2.4:
     resolution: {integrity: sha512-7ylylesZQ/PV29jhEDl3Ufjo6ZX7gCqJr5F7PKrqc93v7fzSymt1BpwEU8nAUXs8qzzvqhbjhK5QZg6Mt/HkBg==}
 
+  lmdb@3.4.1:
+    resolution: {integrity: sha512-hoG9RIv42kdGJiieyElgWcKCTaw5S6Jqwyd1gLSVdsJ3+8MVm8e4yLronThiRJI9DazFAAs9xfB9nWeMQ2DWKA==}
+    hasBin: true
+
   load-tsconfig@0.2.5:
     resolution: {integrity: sha512-IXO6OCs9yg8tMKzfPZ1YmheJbZCiEsnBdcB03l0OcfK9prKnJb96siuHCr5Fl37/yo9DnKU+TLpxzTUspw9shg==}
     engines: {node: ^12.20.0 || ^14.13.1 || >=16.0.0}
@@ -1884,6 +1923,9 @@ packages:
 
   napi-macros@2.2.2:
     resolution: {integrity: sha512-hmEVtAGYzVQpCKdbQea4skABsdXW4RUh5t5mJ2zzqowJS2OyXZTU1KhDVFhx+NlWZ4ap9mqR9TcDO3LTTttd+g==}
+
+  node-addon-api@6.1.0:
+    resolution: {integrity: sha512-+eawOlIgy680F0kBzPUNFhMZGtJ1YmqM6l4+Crf4IkImjYrO/mqPwRMh352g23uIaQKFItcQ64I7KMaJxHgAVA==}
 
   node-addon-api@7.1.1:
     resolution: {integrity: sha512-5m3bsyrjFWE1xf7nz7YXdN4udnVtXK6/Yfgn5qnahL6bCkf2yKt4k3nuTKAtT4r3IG8JNR2ncsIMdZuAzJjHQQ==}
@@ -1988,6 +2030,9 @@ packages:
   object-assign@4.1.1:
     resolution: {integrity: sha512-rJgTQnkUnH1sFw8yT6VSU3zD3sWmu6sZhIseY8VX+GRu3P6F7Fu+JNDoXfklElbLJSnc3FUQHVe4cU5hj+BcUg==}
     engines: {node: '>=0.10.0'}
+
+  ordered-binary@1.6.0:
+    resolution: {integrity: sha512-IQh2aMfMIDbPjI/8a3Edr+PiOpcsB7yo8NdW7aHWVaoR/pcDldunMvnnwbk/auPGqmKeAdxtZl7MHX/QmPwhvQ==}
 
   p-queue@9.0.1:
     resolution: {integrity: sha512-RhBdVhSwJb7Ocn3e8ULk4NMwBEuOxe+1zcgphUy9c2e5aR/xbEsdVXxHJ3lynw6Qiqu7OINEyHlZkiblEpaq7w==}
@@ -2386,6 +2431,9 @@ packages:
       jsdom:
         optional: true
 
+  weak-lru-cache@1.2.2:
+    resolution: {integrity: sha512-DEAoo25RfSYMuTGc9vPJzZcZullwIqRDSI9LOy+fkCJPi6hykCnfKaXTuPBDuXAUcqHXyOgFtHNp/kB2FjYHbw==}
+
   web-encoding@1.1.5:
     resolution: {integrity: sha512-HYLeVCdJ0+lBYV2FvNZmv3HJ2Nt0QYXqZojk3d9FJOLkwnuhzM9tmamh8d7HPM8QqjKH8DeHkFTx+CFlWpZZDA==}
 
@@ -2579,7 +2627,7 @@ snapshots:
     dependencies:
       commander: 13.1.0
 
-  '@effect/cluster@0.33.3(@effect/platform@0.80.21(effect@3.19.12))(@effect/rpc@0.59.9(@effect/platform@0.80.21(effect@3.19.12))(effect@3.19.12))(@effect/sql@0.34.1(@effect/experimental@0.46.8(@effect/platform@0.80.21(effect@3.19.12))(effect@3.19.12))(@effect/platform@0.80.21(effect@3.19.12))(effect@3.19.12))(effect@3.19.12)':
+  '@effect/cluster@0.31.1(@effect/platform@0.80.21(effect@3.19.12))(@effect/rpc@0.57.1(@effect/platform@0.80.21(effect@3.19.12))(effect@3.19.12))(@effect/sql@0.34.1(@effect/experimental@0.46.8(@effect/platform@0.80.21(effect@3.19.12))(effect@3.19.12)(lmdb@3.4.1))(@effect/platform@0.80.21(effect@3.19.12))(effect@3.19.12))(effect@3.19.12)':
     dependencies:
       '@effect/platform': 0.80.21(effect@3.19.12)
       '@effect/rpc': 0.59.9(@effect/platform@0.80.21(effect@3.19.12))(effect@3.19.12)
@@ -2591,6 +2639,8 @@ snapshots:
       '@effect/platform': 0.80.21(effect@3.19.12)
       effect: 3.19.12
       uuid: 11.1.0
+    optionalDependencies:
+      lmdb: 3.4.1
 
   '@effect/opentelemetry@0.44.12(@opentelemetry/api@1.9.0)(@opentelemetry/resources@1.30.1(@opentelemetry/api@1.9.0))(@opentelemetry/sdk-metrics@1.30.1(@opentelemetry/api@1.9.0))(@opentelemetry/sdk-trace-base@1.30.1(@opentelemetry/api@1.9.0))(@opentelemetry/sdk-trace-node@1.30.1(@opentelemetry/api@1.9.0))(@opentelemetry/sdk-trace-web@1.30.1(@opentelemetry/api@1.9.0))(@opentelemetry/semantic-conventions@1.38.0)(effect@3.19.12)':
     dependencies:
@@ -2604,9 +2654,9 @@ snapshots:
       '@opentelemetry/sdk-trace-node': 1.30.1(@opentelemetry/api@1.9.0)
       '@opentelemetry/sdk-trace-web': 1.30.1(@opentelemetry/api@1.9.0)
 
-  '@effect/platform-node-shared@0.34.3(@effect/cluster@0.33.3(@effect/platform@0.80.21(effect@3.19.12))(@effect/rpc@0.59.9(@effect/platform@0.80.21(effect@3.19.12))(effect@3.19.12))(@effect/sql@0.34.1(@effect/experimental@0.46.8(@effect/platform@0.80.21(effect@3.19.12))(effect@3.19.12))(@effect/platform@0.80.21(effect@3.19.12))(effect@3.19.12))(effect@3.19.12))(@effect/platform@0.80.21(effect@3.19.12))(@effect/rpc@0.59.9(@effect/platform@0.80.21(effect@3.19.12))(effect@3.19.12))(@effect/sql@0.34.1(@effect/experimental@0.46.8(@effect/platform@0.80.21(effect@3.19.12))(effect@3.19.12))(@effect/platform@0.80.21(effect@3.19.12))(effect@3.19.12))(effect@3.19.12)':
+  '@effect/platform-node-shared@0.34.3(@effect/cluster@0.31.1(@effect/platform@0.80.21(effect@3.19.12))(@effect/rpc@0.57.1(@effect/platform@0.80.21(effect@3.19.12))(effect@3.19.12))(@effect/sql@0.34.1(@effect/experimental@0.46.8(@effect/platform@0.80.21(effect@3.19.12))(effect@3.19.12)(lmdb@3.4.1))(@effect/platform@0.80.21(effect@3.19.12))(effect@3.19.12))(effect@3.19.12))(@effect/platform@0.80.21(effect@3.19.12))(@effect/rpc@0.57.1(@effect/platform@0.80.21(effect@3.19.12))(effect@3.19.12))(@effect/sql@0.34.1(@effect/experimental@0.46.8(@effect/platform@0.80.21(effect@3.19.12))(effect@3.19.12)(lmdb@3.4.1))(@effect/platform@0.80.21(effect@3.19.12))(effect@3.19.12))(effect@3.19.12)':
     dependencies:
-      '@effect/cluster': 0.33.3(@effect/platform@0.80.21(effect@3.19.12))(@effect/rpc@0.59.9(@effect/platform@0.80.21(effect@3.19.12))(effect@3.19.12))(@effect/sql@0.34.1(@effect/experimental@0.46.8(@effect/platform@0.80.21(effect@3.19.12))(effect@3.19.12))(@effect/platform@0.80.21(effect@3.19.12))(effect@3.19.12))(effect@3.19.12)
+      '@effect/cluster': 0.31.1(@effect/platform@0.80.21(effect@3.19.12))(@effect/rpc@0.57.1(@effect/platform@0.80.21(effect@3.19.12))(effect@3.19.12))(@effect/sql@0.34.1(@effect/experimental@0.46.8(@effect/platform@0.80.21(effect@3.19.12))(effect@3.19.12)(lmdb@3.4.1))(@effect/platform@0.80.21(effect@3.19.12))(effect@3.19.12))(effect@3.19.12)
       '@effect/platform': 0.80.21(effect@3.19.12)
       '@effect/rpc': 0.59.9(@effect/platform@0.80.21(effect@3.19.12))(effect@3.19.12)
       '@effect/sql': 0.34.1(@effect/experimental@0.46.8(@effect/platform@0.80.21(effect@3.19.12))(effect@3.19.12))(@effect/platform@0.80.21(effect@3.19.12))(effect@3.19.12)
@@ -2618,9 +2668,9 @@ snapshots:
       - bufferutil
       - utf-8-validate
 
-  '@effect/platform-node@0.80.3(@effect/cluster@0.33.3(@effect/platform@0.80.21(effect@3.19.12))(@effect/rpc@0.59.9(@effect/platform@0.80.21(effect@3.19.12))(effect@3.19.12))(@effect/sql@0.34.1(@effect/experimental@0.46.8(@effect/platform@0.80.21(effect@3.19.12))(effect@3.19.12))(@effect/platform@0.80.21(effect@3.19.12))(effect@3.19.12))(effect@3.19.12))(@effect/platform@0.80.21(effect@3.19.12))(@effect/rpc@0.59.9(@effect/platform@0.80.21(effect@3.19.12))(effect@3.19.12))(@effect/sql@0.34.1(@effect/experimental@0.46.8(@effect/platform@0.80.21(effect@3.19.12))(effect@3.19.12))(@effect/platform@0.80.21(effect@3.19.12))(effect@3.19.12))(effect@3.19.12)':
+  '@effect/platform-node@0.80.3(@effect/cluster@0.31.1(@effect/platform@0.80.21(effect@3.19.12))(@effect/rpc@0.57.1(@effect/platform@0.80.21(effect@3.19.12))(effect@3.19.12))(@effect/sql@0.34.1(@effect/experimental@0.46.8(@effect/platform@0.80.21(effect@3.19.12))(effect@3.19.12)(lmdb@3.4.1))(@effect/platform@0.80.21(effect@3.19.12))(effect@3.19.12))(effect@3.19.12))(@effect/platform@0.80.21(effect@3.19.12))(@effect/rpc@0.57.1(@effect/platform@0.80.21(effect@3.19.12))(effect@3.19.12))(@effect/sql@0.34.1(@effect/experimental@0.46.8(@effect/platform@0.80.21(effect@3.19.12))(effect@3.19.12)(lmdb@3.4.1))(@effect/platform@0.80.21(effect@3.19.12))(effect@3.19.12))(effect@3.19.12)':
     dependencies:
-      '@effect/cluster': 0.33.3(@effect/platform@0.80.21(effect@3.19.12))(@effect/rpc@0.59.9(@effect/platform@0.80.21(effect@3.19.12))(effect@3.19.12))(@effect/sql@0.34.1(@effect/experimental@0.46.8(@effect/platform@0.80.21(effect@3.19.12))(effect@3.19.12))(@effect/platform@0.80.21(effect@3.19.12))(effect@3.19.12))(effect@3.19.12)
+      '@effect/cluster': 0.31.1(@effect/platform@0.80.21(effect@3.19.12))(@effect/rpc@0.57.1(@effect/platform@0.80.21(effect@3.19.12))(effect@3.19.12))(@effect/sql@0.34.1(@effect/experimental@0.46.8(@effect/platform@0.80.21(effect@3.19.12))(effect@3.19.12)(lmdb@3.4.1))(@effect/platform@0.80.21(effect@3.19.12))(effect@3.19.12))(effect@3.19.12)
       '@effect/platform': 0.80.21(effect@3.19.12)
       '@effect/platform-node-shared': 0.34.3(@effect/cluster@0.33.3(@effect/platform@0.80.21(effect@3.19.12))(@effect/rpc@0.59.9(@effect/platform@0.80.21(effect@3.19.12))(effect@3.19.12))(@effect/sql@0.34.1(@effect/experimental@0.46.8(@effect/platform@0.80.21(effect@3.19.12))(effect@3.19.12))(@effect/platform@0.80.21(effect@3.19.12))(effect@3.19.12))(effect@3.19.12))(@effect/platform@0.80.21(effect@3.19.12))(@effect/rpc@0.59.9(@effect/platform@0.80.21(effect@3.19.12))(effect@3.19.12))(@effect/sql@0.34.1(@effect/experimental@0.46.8(@effect/platform@0.80.21(effect@3.19.12))(effect@3.19.12))(@effect/platform@0.80.21(effect@3.19.12))(effect@3.19.12))(effect@3.19.12)
       '@effect/rpc': 0.59.9(@effect/platform@0.80.21(effect@3.19.12))(effect@3.19.12)
@@ -2646,7 +2696,7 @@ snapshots:
       msgpackr: 1.11.6
       multipasta: 0.2.7
 
-  '@effect/rpc@0.59.9(@effect/platform@0.80.21(effect@3.19.12))(effect@3.19.12)':
+  '@effect/rpc@0.57.1(@effect/platform@0.80.21(effect@3.19.12))(effect@3.19.12)':
     dependencies:
       '@effect/platform': 0.80.21(effect@3.19.12)
       effect: 3.19.12
@@ -2958,6 +3008,27 @@ snapshots:
       '@jridgewell/sourcemap-codec': 1.5.5
 
   '@leichtgewicht/ip-codec@2.0.5': {}
+
+  '@lmdb/lmdb-darwin-arm64@3.4.1':
+    optional: true
+
+  '@lmdb/lmdb-darwin-x64@3.4.1':
+    optional: true
+
+  '@lmdb/lmdb-linux-arm64@3.4.1':
+    optional: true
+
+  '@lmdb/lmdb-linux-arm@3.4.1':
+    optional: true
+
+  '@lmdb/lmdb-linux-x64@3.4.1':
+    optional: true
+
+  '@lmdb/lmdb-win32-arm64@3.4.1':
+    optional: true
+
+  '@lmdb/lmdb-win32-x64@3.4.1':
+    optional: true
 
   '@lucid-evolution/core-types@0.1.22':
     dependencies:
@@ -4129,6 +4200,23 @@ snapshots:
 
   lines-and-columns@1.2.4: {}
 
+  lmdb@3.4.1:
+    dependencies:
+      msgpackr: 1.11.5
+      node-addon-api: 6.1.0
+      node-gyp-build-optional-packages: 5.2.2
+      ordered-binary: 1.6.0
+      weak-lru-cache: 1.2.2
+    optionalDependencies:
+      '@lmdb/lmdb-darwin-arm64': 3.4.1
+      '@lmdb/lmdb-darwin-x64': 3.4.1
+      '@lmdb/lmdb-linux-arm': 3.4.1
+      '@lmdb/lmdb-linux-arm64': 3.4.1
+      '@lmdb/lmdb-linux-x64': 3.4.1
+      '@lmdb/lmdb-win32-arm64': 3.4.1
+      '@lmdb/lmdb-win32-x64': 3.4.1
+    optional: true
+
   load-tsconfig@0.2.5: {}
 
   lodash@4.17.21: {}
@@ -4217,6 +4305,9 @@ snapshots:
 
   napi-macros@2.2.2: {}
 
+  node-addon-api@6.1.0:
+    optional: true
+
   node-addon-api@7.1.1: {}
 
   node-fetch@2.7.0:
@@ -4238,6 +4329,9 @@ snapshots:
   npm@9.9.4: {}
 
   object-assign@4.1.1: {}
+
+  ordered-binary@1.6.0:
+    optional: true
 
   p-queue@9.0.1:
     dependencies:
@@ -4645,6 +4739,9 @@ snapshots:
       - terser
       - tsx
       - yaml
+
+  weak-lru-cache@1.2.2:
+    optional: true
 
   web-encoding@1.1.5:
     dependencies:
