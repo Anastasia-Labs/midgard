@@ -84,12 +84,12 @@ export const makeAuthenticatedValidator = (
   baseName: string,
 ): Effect.Effect<SDK.AuthenticatedValidator, never, NodeConfig> =>
   Effect.gen(function* () {
-    const spendingInfo = yield* makeSpendingValidator(baseName);
-    const mintingInfo = yield* makeMintingValidator(baseName);
+    const spendingValidator = yield* makeSpendingValidator(baseName);
+    const mintingValidator = yield* makeMintingValidator(baseName);
 
     return {
-      ...spendingInfo,
-      ...mintingInfo,
+      ...spendingValidator,
+      ...mintingValidator,
     };
   }).pipe(Effect.orDie);
 
