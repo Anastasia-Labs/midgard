@@ -35,11 +35,10 @@ import {
 import { deleteLedgerMpt, deleteMempoolMpt } from "@/workers/utils/mpt.js";
 import { DatabaseError } from "@/database/utils/common.js";
 import { FileSystemError } from "@/utils.js";
-import { AuthenticatedValidator } from "@al-ft/midgard-sdk";
 
 const collectAndBurnUTxOsTx = (
   lucid: LucidEvolution,
-  authValidator: AuthenticatedValidator,
+  authValidator: SDK.AuthenticatedValidator,
   assetUTxOs: {
     utxo: UTxO;
     assetName: string;
@@ -64,7 +63,7 @@ const collectAndBurnUTxOsTx = (
   });
 
 type UTxOsQueue = {
-  authValidator: AuthenticatedValidator;
+  authValidator: SDK.AuthenticatedValidator;
   assetUTxOs: {
     utxo: UTxO;
     assetName: string;

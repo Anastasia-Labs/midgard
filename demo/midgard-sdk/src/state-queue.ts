@@ -429,7 +429,7 @@ export const incompleteCommitBlockHeaderTxProgram = (
   Effect.gen(function* () {
     const newHeaderHash = yield* hashBlockHeader(newHeader);
     const assets: Assets = {
-      [toUnit(policyId, fromText(NODE_ASSET_NAME) + newHeaderHash)]: 1n,
+      [toUnit(policyId, NODE_ASSET_NAME + newHeaderHash)]: 1n,
     };
 
     const newNodeDatum: StateQueueDatum = {
@@ -694,7 +694,7 @@ export const incompleteInitStateQueueTxProgram = (
 ): Effect.Effect<TxBuilder> =>
   Effect.gen(function* () {
     const assets: Assets = {
-      [toUnit(params.validator.policyId, fromText(NODE_ASSET_NAME))]: 1n,
+      [toUnit(params.validator.policyId, NODE_ASSET_NAME)]: 1n,
     };
 
     const confirmedState: ConfirmedState = {

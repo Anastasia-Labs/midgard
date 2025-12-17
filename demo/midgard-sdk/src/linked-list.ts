@@ -10,7 +10,6 @@ import { Data as EffectData, Effect } from "effect";
 import {
   Assets,
   Data,
-  fromText,
   LucidEvolution,
   makeReturn,
   toUnit,
@@ -86,7 +85,7 @@ export const incompleteInitLinkedListTxProgram = (
 ): Effect.Effect<TxBuilder> =>
   Effect.gen(function* () {
     const assets: Assets = {
-      [toUnit(params.validator.policyId, fromText(NODE_ASSET_NAME))]: 1n,
+      [toUnit(params.validator.policyId, NODE_ASSET_NAME)]: 1n,
     };
 
     const rootData = params.data ?? Data.to([]);

@@ -191,6 +191,19 @@ export type SpendingValidatorInfo = {
 export type AuthenticatedValidator = SpendingValidatorInfo &
   MintingValidatorInfo;
 
+export type MidgardValidators = {
+  hubOracleMintValidator: MintingValidatorInfo;
+  stateQueueAuthValidator: AuthenticatedValidator;
+  registeredOperatorsAuthValidator: AuthenticatedValidator;
+  activeOperatorsAuthValidator: AuthenticatedValidator;
+  schedulerAuthValidator: AuthenticatedValidator;
+  retiredOperatorsAuthValidator: AuthenticatedValidator;
+  escapeHatchAuthValidator: AuthenticatedValidator;
+  fraudProofCatalogueAuthValidator: AuthenticatedValidator;
+  fraudProofAuthValidator: AuthenticatedValidator;
+  depositAuthValidator: AuthenticatedValidator;
+};
+
 export const OutputReferenceSchema = Data.Object({
   txHash: Data.Object({ hash: Data.Bytes({ minLength: 32, maxLength: 32 }) }),
   outputIndex: Data.Integer(),

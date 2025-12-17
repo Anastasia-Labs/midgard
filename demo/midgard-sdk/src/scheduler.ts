@@ -1,9 +1,16 @@
-import { Data, LucidEvolution, TxBuilder } from "@lucid-evolution/lucid";
-import { AuthenticatedValidator } from "./common.js";
+import {
+  Assets,
+  Data,
+  fromText,
+  LucidEvolution,
+  toUnit,
+  TxBuilder,
+} from "@lucid-evolution/lucid";
+import { AuthenticatedValidator } from "@/common.js";
 
 export const SchedulerDatumSchema = Data.Object({
   operator: Data.Bytes(),
-  shiftStart: Data.Integer(),
+  startTime: Data.Integer(),
 });
 
 export type SchedulerDatum = Data.Static<typeof SchedulerDatumSchema>;
@@ -63,8 +70,21 @@ export const incompleteSchedulerInitTxProgram = (
   lucid: LucidEvolution,
   params: SchedulerInitParams,
 ): TxBuilder => {
-  const tx = lucid.newTx();
-  return tx;
+  const assets: Assets = {
+    [toUnit(params.validator.policyId, fromText("Scheduler"))]: 1n,
+  };
+
+  const encodedDatum = Data.to<SchedulerDatum>(params.datum, SchedulerDatum);
+
+  return lucid
+    .newTx()
+    .mintAssets(assets, Data.to("Init", SchedulerMintRedeemer))
+    .pay.ToAddressWithData(
+      params.validator.spendScriptAddress,
+      { kind: "inline", value: encodedDatum },
+      assets,
+    )
+    .attach.Script(params.validator.mintScript);
 };
 
 /**

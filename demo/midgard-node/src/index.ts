@@ -8,8 +8,6 @@ import packageJson from "../package.json" with { type: "json" };
 import { Effect, pipe } from "effect";
 import dotenv from "dotenv";
 import { NodeRuntime } from "@effect/platform-node";
-import { DatabaseError } from "@/database/utils/common.js";
-import { SqlError } from "@effect/sql";
 
 dotenv.config();
 const VERSION = packageJson.version;
@@ -63,6 +61,7 @@ program
     console.log("🌳 Midgard");
     const program = pipe(
       runNode(options.withMonitoring),
+      Effect.provide(Services.Globals.Default),
       Effect.provide(Services.Database.layer),
       Effect.provide(Services.AlwaysSucceedsContract.Default),
       Effect.provide(Services.Lucid.Default),

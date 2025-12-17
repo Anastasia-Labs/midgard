@@ -94,18 +94,7 @@ export const makeAuthenticatedValidator = (
   }).pipe(Effect.orDie);
 
 const makeAlwaysSucceedsService: Effect.Effect<
-  {
-    hubOracleMintValidator: SDK.MintingValidatorInfo;
-    stateQueueAuthValidator: SDK.AuthenticatedValidator;
-    registeredOperatorsAuthValidator: SDK.AuthenticatedValidator;
-    activeOperatorsAuthValidator: SDK.AuthenticatedValidator;
-    schedulerAuthValidator: SDK.AuthenticatedValidator;
-    retiredOperatorsAuthValidator: SDK.AuthenticatedValidator;
-    escapeHatchAuthValidator: SDK.AuthenticatedValidator;
-    fraudProofCatalogueAuthValidator: SDK.AuthenticatedValidator;
-    fraudProofAuthValidator: SDK.AuthenticatedValidator;
-    depositAuthValidator: SDK.AuthenticatedValidator;
-  },
+  SDK.MidgardValidators,
   never,
   NodeConfig
 > = Effect.gen(function* () {

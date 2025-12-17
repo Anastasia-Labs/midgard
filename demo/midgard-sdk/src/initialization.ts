@@ -7,17 +7,18 @@ import {
   TxSignBuilder,
 } from "@lucid-evolution/lucid";
 import {
-  AuthenticatedValidator,
   Bech32DeserializationError,
   LucidError,
-  MintingValidatorInfo,
+  MidgardValidators,
 } from "./common.js";
 import { incompleteHubOracleInitTxProgram } from "./hub-oracle.js";
 import {
   incompleteSchedulerInitTxProgram,
   SchedulerDatum,
 } from "./scheduler.js";
-import { incompleteFraudProofInitTxProgram } from "./fraud-proof/catalogue.js";
+import {
+  FraudProofCatalogueMintRedeemer,
+} from "./fraud-proof/catalogue.js";
 import { ConfirmedState } from "./ledger-state.js";
 import { incompleteInitLinkedListTxProgram } from "./linked-list.js";
 import {
@@ -31,16 +32,7 @@ import { RegisteredOperatorMintRedeemer } from "./registered-operators.js";
 import { RetiredOperatorMintRedeemer } from "./retired-operators.js";
 
 export type InitializationParams = {
-  genesisTime: bigint;
-  initialOperator: string;
-  hubOracle: MintingValidatorInfo;
-  stateQueue: AuthenticatedValidator;
-  registeredOperators: AuthenticatedValidator;
-  activeOperators: AuthenticatedValidator;
-  retiredOperators: AuthenticatedValidator;
-  scheduler: AuthenticatedValidator;
-  fraudProofCatalogue: AuthenticatedValidator;
-  fraudProof: AuthenticatedValidator;
+  midgardValidators: MidgardValidators;
 };
 
 export const incompleteInitializationTxProgram = (
@@ -67,33 +59,28 @@ export const incompleteInitializationTxProgram = (
     }
 
     const nonceUtxo = utxos[0];
-    let tx = lucid.newTx().collectFrom([nonceUtxo]);
+    const genesisTime = BigInt(Date.now() + 5 * 60 * 1000);
+    let tx = lucid
+      .newTx()
+      .collectFrom([nonceUtxo])
+      .validTo(Number(genesisTime));
 
     const hubOracleTx = yield* incompleteHubOracleInitTxProgram(
       lucid,
-      params.hubOracle,
-      {
-        registeredOperators: params.registeredOperators,
-        activeOperators: params.activeOperators,
-        retiredOperators: params.retiredOperators,
-        scheduler: params.scheduler,
-        stateQueue: params.stateQueue,
-        fraudProofCatalogue: params.fraudProofCatalogue,
-        fraudProof: params.fraudProof,
-      },
+      params.midgardValidators,
     );
 
     const stateQueueData: ConfirmedState = {
       headerHash: GENESIS_HASH_28,
       prevHeaderHash: GENESIS_HASH_28,
       utxoRoot: GENESIS_HASH_32,
-      startTime: params.genesisTime,
-      endTime: params.genesisTime,
+      startTime: genesisTime,
+      endTime: genesisTime,
       protocolVersion: INITIAL_PROTOCOL_VERSION,
     };
 
     const stateQueueTx = yield* incompleteInitLinkedListTxProgram(lucid, {
-      validator: params.stateQueue,
+      validator: params.midgardValidators.stateQueueAuthValidator,
       data: Data.castTo(stateQueueData, ConfirmedState),
       redeemer: Data.to("Init", StateQueueRedeemer),
     });
@@ -101,34 +88,39 @@ export const incompleteInitializationTxProgram = (
     const registeredOperatorsTx = yield* incompleteInitLinkedListTxProgram(
       lucid,
       {
-        validator: params.registeredOperators,
+        validator: params.midgardValidators.registeredOperatorsAuthValidator,
         redeemer: Data.to("Init", RegisteredOperatorMintRedeemer),
       },
     );
 
     const activeOperatorsTx = yield* incompleteInitLinkedListTxProgram(lucid, {
-      validator: params.activeOperators,
+      validator: params.midgardValidators.activeOperatorsAuthValidator,
       redeemer: Data.to("Init", ActiveOperatorMintRedeemer),
     });
 
     const retiredOperatorsTx = yield* incompleteInitLinkedListTxProgram(lucid, {
-      validator: params.retiredOperators,
+      validator: params.midgardValidators.retiredOperatorsAuthValidator,
       redeemer: Data.to("Init", RetiredOperatorMintRedeemer),
     });
 
+    const GENESIS_OPERATOR = "0".repeat(56);
+
     const schedulerGenesisData: SchedulerDatum = {
-      operator: params.initialOperator,
-      shiftStart: params.genesisTime,
+      operator: GENESIS_OPERATOR,
+      startTime: genesisTime,
     };
 
     const schedulerTx = incompleteSchedulerInitTxProgram(lucid, {
-      validator: params.scheduler,
+      validator: params.midgardValidators.schedulerAuthValidator,
       datum: schedulerGenesisData,
     });
 
-    const fraudProofCatalogueTx = incompleteFraudProofInitTxProgram(
+    const fraudProofCatalogueTx = yield* incompleteInitLinkedListTxProgram(
       lucid,
-      params.fraudProofCatalogue,
+      {
+        validator: params.midgardValidators.fraudProofCatalogueAuthValidator,
+        redeemer: Data.to("Init", FraudProofCatalogueMintRedeemer),
+      },
     );
 
     return tx

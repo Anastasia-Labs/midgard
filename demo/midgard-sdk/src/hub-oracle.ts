@@ -9,6 +9,7 @@ import {
   MintingValidatorInfo,
   addressDataFromBech32,
   Bech32DeserializationError,
+  MidgardValidators,
 } from "@/common.js";
 import {
   Address,
@@ -21,7 +22,7 @@ import {
   Assets,
   fromText,
 } from "@lucid-evolution/lucid";
-import { HUB_ORACLE_ASSET_NAME } from "./constants.js";
+import { HUB_ORACLE_ASSET_NAME } from "@/constants.js";
 
 export type HubOracleConfig = {
   hubOracleAddress: Address;
@@ -52,8 +53,6 @@ export const HubOracleDatum = HubOracleDatumSchema as unknown as HubOracleDatum;
 
 export type HubOracleInitParams = {};
 
-export type HubOracleBurnParams = {};
-
 /**
  * Validators needed to construct the hub oracle datum.
  * This is the "wiring" that connects all Midgard contracts together.
@@ -76,7 +75,7 @@ export type HubOracleValidators = {
  * @returns {HubOracleDatum} Effect that produces the complete hub oracle datum
  */
 export const makeHubOracleDatum = (
-  validators: HubOracleValidators,
+  validators: MidgardValidators,
 ): Effect.Effect<HubOracleDatum, Bech32DeserializationError> =>
   Effect.gen(function* () {
     const [
@@ -88,23 +87,37 @@ export const makeHubOracleDatum = (
       fraudProofCatalogueAddr,
       fraudProofAddr,
     ] = yield* Effect.all([
-      addressDataFromBech32(validators.registeredOperators.spendScriptAddress),
-      addressDataFromBech32(validators.activeOperators.spendScriptAddress),
-      addressDataFromBech32(validators.retiredOperators.spendScriptAddress),
-      addressDataFromBech32(validators.scheduler.spendScriptAddress),
-      addressDataFromBech32(validators.stateQueue.spendScriptAddress),
-      addressDataFromBech32(validators.fraudProofCatalogue.spendScriptAddress),
-      addressDataFromBech32(validators.fraudProof.mintScriptAddress),
+      addressDataFromBech32(
+        validators.registeredOperatorsAuthValidator.spendScriptAddress,
+      ),
+      addressDataFromBech32(
+        validators.activeOperatorsAuthValidator.spendScriptAddress,
+      ),
+      addressDataFromBech32(
+        validators.retiredOperatorsAuthValidator.spendScriptAddress,
+      ),
+      addressDataFromBech32(
+        validators.schedulerAuthValidator.spendScriptAddress,
+      ),
+      addressDataFromBech32(
+        validators.stateQueueAuthValidator.spendScriptAddress,
+      ),
+      addressDataFromBech32(
+        validators.fraudProofCatalogueAuthValidator.spendScriptAddress,
+      ),
+      addressDataFromBech32(
+        validators.fraudProofAuthValidator.mintScriptAddress,
+      ),
     ]);
 
     return {
-      registeredOperators: validators.registeredOperators.policyId,
-      activeOperators: validators.activeOperators.policyId,
-      retiredOperators: validators.retiredOperators.policyId,
-      scheduler: validators.scheduler.policyId,
-      stateQueue: validators.stateQueue.policyId,
-      fraudProofCatalogue: validators.fraudProofCatalogue.policyId,
-      fraudProof: validators.fraudProof.policyId,
+      registeredOperators: validators.registeredOperatorsAuthValidator.policyId,
+      activeOperators: validators.activeOperatorsAuthValidator.policyId,
+      retiredOperators: validators.retiredOperatorsAuthValidator.policyId,
+      scheduler: validators.schedulerAuthValidator.policyId,
+      stateQueue: validators.stateQueueAuthValidator.policyId,
+      fraudProofCatalogue: validators.fraudProofCatalogueAuthValidator.policyId,
+      fraudProof: validators.fraudProofAuthValidator.policyId,
       registeredOperatorsAddr,
       activeOperatorsAddr,
       retiredOperatorsAddr,
@@ -125,8 +138,7 @@ export const makeHubOracleDatum = (
  */
 export const incompleteHubOracleInitTxProgram = (
   lucid: LucidEvolution,
-  hubOracleValidator: MintingValidatorInfo,
-  validators: HubOracleValidators,
+  validators: MidgardValidators,
 ): Effect.Effect<TxBuilder, Bech32DeserializationError> =>
   Effect.gen(function* () {
     // Construct the datum from validators
@@ -134,35 +146,22 @@ export const incompleteHubOracleInitTxProgram = (
     const encodedDatum = Data.to<HubOracleDatum>(datum, HubOracleDatum);
 
     const assets: Assets = {
-      [toUnit(hubOracleValidator.policyId, fromText(HUB_ORACLE_ASSET_NAME))]:
-        1n,
+      [toUnit(
+        validators.hubOracleMintValidator.policyId,
+        HUB_ORACLE_ASSET_NAME,
+      )]: 1n,
     };
 
     return lucid
       .newTx()
       .mintAssets(assets, Data.void())
       .pay.ToAddressWithData(
-        hubOracleValidator.mintScriptAddress,
+        validators.hubOracleMintValidator.mintScriptAddress,
         { kind: "inline", value: encodedDatum },
         assets,
       )
-      .attach.MintingPolicy(hubOracleValidator.mintScript);
+      .attach.MintingPolicy(validators.hubOracleMintValidator.mintScript);
   });
-
-/**
- * Creates a burn transaction builder.
- *
- * @param {LucidEvolution} lucid - The LucidEvolution instance.
- * @param {BurnParams} params - The parameters for the burn transaction.
- * @returns {TxBuilder} The transaction builder.
- */
-export const incompleteHubOracleBurnTxProgram = (
-  lucid: LucidEvolution,
-  params: HubOracleBurnParams,
-): TxBuilder => {
-  const tx = lucid.newTx();
-  return tx;
-};
 
 export class HubOracleError extends EffectData.TaggedError(
   "HubOracleError",

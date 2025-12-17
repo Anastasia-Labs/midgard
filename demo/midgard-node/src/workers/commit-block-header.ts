@@ -44,7 +44,6 @@ import {
   retrieveTimeBoundEntries,
 } from "@/database/utils/user-events.js";
 import { DatabaseError } from "@/database/utils/common.js";
-import { AuthenticatedValidator } from "@al-ft/midgard-sdk";
 
 const BATCH_SIZE = 100;
 
@@ -250,7 +249,7 @@ const userEventsProgram = (
   });
 
 const buildUnsignedTx = (
-  stateQueueAuthValidator: AuthenticatedValidator,
+  stateQueueAuthValidator: SDK.AuthenticatedValidator,
   latestBlock: SDK.StateQueueUTxO,
   utxosRoot: string,
   txsRoot: string,
