@@ -1,8 +1,8 @@
 import { Data, LucidEvolution, Parameters, TxBuilder, TxSignBuilder, UTxO, utxoToCore } from "@lucid-evolution/lucid";
 import { AuthenticatedValidator, GenericErrorFields, HashingError, LucidError, makeReturn, MerkleRootSchema, POSIXTimeSchema, ProofSchema, utxosAtByNFTPolicyId, VerificationKeyHashSchema } from "./common.js";
 import { Data as EffectData, Effect } from "effect";
-import { utxosToHubOracleUTxOs } from "./hub-oracle.js";
-import { utxosToSchedulerUTxOs } from "./scheduler.js";
+import { HubOracleUTxO, utxosToHubOracleUTxOs } from "./hub-oracle.js";
+import { SchedulerUTxO, utxosToSchedulerUTxOs } from "./scheduler.js";
 
 export const ResolutionClaimSchema = Data.Object({
   resolutionTime: POSIXTimeSchema,
@@ -169,6 +169,54 @@ export const getSettlementUTxOWithoutClaim = (
   });
 };
 
+const fetchHubOracleRefUTxOs = (
+  hubOracleScriptAddress: string,
+  policyId: string,
+  lucid: LucidEvolution
+): Effect.Effect<HubOracleUTxO[], LucidError> =>
+  Effect.gen(function* (_) {
+    const hubOracleAllUTxOs = yield* Effect.tryPromise({
+      try: () => lucid.utxosAt(hubOracleScriptAddress),
+      catch: (err) =>
+        new LucidError({
+          message: "Failed to fetch Hub Oracle UTxOs",
+          cause: err,
+        }),
+    });
+    if (hubOracleAllUTxOs.length === 0) {
+      yield* new LucidError({
+        message: "Failed to build the HubOracle transaction",
+        cause: "No UTxOs found in Hub Oracle contract address",
+      });
+    }
+
+    return yield* utxosToHubOracleUTxOs(hubOracleAllUTxOs, policyId);
+  });
+
+const fetchSchedulerRefUTxOs = (
+  schedulerScriptAddress: string,
+  policyId: string,
+  lucid: LucidEvolution
+): Effect.Effect<SchedulerUTxO[], LucidError> =>
+  Effect.gen(function* (_) {
+    const schedulerAllUTxOs = yield* Effect.tryPromise({
+      try: () => lucid.utxosAt(schedulerScriptAddress),
+      catch: (err) =>
+        new LucidError({
+          message: "Failed to fetch Scheduler UTxOs",
+          cause: err,
+        }),
+    });
+    if (schedulerAllUTxOs.length === 0) {
+      yield* new LucidError({
+        message: "Failed to build the Scheduler transaction",
+        cause: "No UTxOs found in Scheduler contract address",
+      });
+    }
+
+    return yield* utxosToSchedulerUTxOs(schedulerAllUTxOs, policyId);
+  });
+
 /**
  * Settlement
  *
@@ -226,37 +274,9 @@ export const incompleteAttachResolutionClaimTxProgram = (
     };
     const spendDatumCBOR = Data.to(spendDatum, SettlementDatum);
 
-    const hubOracleAllUTxOs = yield* Effect.tryPromise({
-      try: () => lucid.utxosAt(params.hubOracleValidator.spendScriptAddress),
-      catch: (err) =>
-        new LucidError({
-          message: "Failed to fetch Hub Oracle UTxOs",
-          cause: err,
-        }),
-    });
-    if (hubOracleAllUTxOs.length === 0) {
-      yield* new LucidError({
-        message: "Failed to build the HubOracle transaction",
-        cause: "No UTxOs found in Hub Oracle contract address",
-      });
-    } 
-    const hubOracleRefUTxOs = yield* utxosToHubOracleUTxOs(hubOracleAllUTxOs, params.hubOracleValidator.policyId);
+    const hubOracleRefUTxOs = yield* fetchHubOracleRefUTxOs(params.hubOracleValidator.spendScriptAddress,params.hubOracleValidator.policyId,lucid);
 
-    const schedulerAllUTxOs = yield* Effect.tryPromise({
-      try: () => lucid.utxosAt(params.schedulerScriptAddress),
-      catch: (err) =>
-        new LucidError({
-          message: "Failed to fetch Scheduler UTxOs",
-          cause: err,
-        }),
-    });
-    if (schedulerAllUTxOs.length === 0) {
-      yield* new LucidError({
-        message: "Failed to build the Scheduler transaction",
-        cause: "No UTxOs found in Scheduler contract address",
-      });
-    } 
-    const schedulerRefUTxOs = yield* utxosToSchedulerUTxOs(schedulerAllUTxOs, params.schedulerPolicyId);
+    const schedulerRefUTxOs = yield* fetchSchedulerRefUTxOs(params.schedulerScriptAddress, params.schedulerPolicyId,lucid);
     
     const buildsettlementTx = lucid
       .newTx()
@@ -278,6 +298,9 @@ export type ActiveOperatorsParams ={
   activeOperatorsAddress: string;
   operator: string;
   newBondUnlockTime: bigint;
+  hubOracleValidator: AuthenticatedValidator;
+  schedulerScriptAddress: string;
+  schedulerPolicyId: string;
 };
 
 export type ActiveOperatorNodeUTxO = {
@@ -363,9 +386,15 @@ export const incompleteUpdateBondHoldNewSettlementTxProgram = (
     };
     const spendDatumCBOR = Data.to(spendDatum, ActiveOperatorSpendDatum);
 
+    const hubOracleRefUTxOs = yield* fetchHubOracleRefUTxOs(params.hubOracleValidator.spendScriptAddress,params.hubOracleValidator.policyId,lucid);
+
+    const schedulerRefUTxOs = yield* fetchSchedulerRefUTxOs(params.schedulerScriptAddress, params.schedulerPolicyId,lucid);
+
     const buildUpdateBondHoldNewSettlementTx = lucid
       .newTx()
       .collectFrom([activeOperatorsInputUtxo.utxo],spendRedeemerCBOR)
+      .readFrom([hubOracleRefUTxOs[0].utxo])
+      .readFrom([schedulerRefUTxOs[0].utxo])
       .pay.ToAddressWithData(
         params.activeOperatorsAddress,
         {
