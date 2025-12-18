@@ -60,6 +60,7 @@ const collectAndBurnUTxOsTx = (
     tx.mintAssets(assetsToBurn, Data.void())
       .attach.Script(authValidator.spendScript)
       .attach.Script(authValidator.mintScript);
+
     return tx;
   });
 
@@ -90,13 +91,18 @@ const constructBatchTx = (
     if (validatorUTxOs.assetUTxOs.length <= 0) {
       const skippedEmptyAssets = yield* constructBatchTx(
         lucid,
-        utxosQueue,
+        [...utxosQueue],
         batchSize,
       );
       return skippedEmptyAssets;
     }
 
     const partialBatch = validatorUTxOs.assetUTxOs.slice(0, batchSize);
+    const partialBatchTx = yield* collectAndBurnUTxOsTx(
+      lucid,
+      validatorUTxOs.authValidator,
+      partialBatch,
+    );
 
     const leftFromPartialBatch = validatorUTxOs.assetUTxOs.slice(batchSize);
     if (leftFromPartialBatch.length > 0) {
@@ -107,20 +113,15 @@ const constructBatchTx = (
       });
     }
 
-    const partialBatchTx = yield* collectAndBurnUTxOsTx(
-      lucid,
-      validatorUTxOs.authValidator,
-      partialBatch,
-    );
     const optRestBatchTx = yield* constructBatchTx(
       lucid,
-      utxosQueue,
+      [...utxosQueue],
       batchSize - partialBatch.length,
     );
 
     return Option.match(optRestBatchTx, {
       onNone: () =>
-        Option.some({ batchTx: partialBatchTx, restQueue: utxosQueue }),
+        Option.some({ batchTx: partialBatchTx, restQueue: [...utxosQueue] }),
       onSome: ({ batchTx, restQueue }) =>
         Option.some({
           batchTx: partialBatchTx.compose(batchTx),
@@ -136,7 +137,7 @@ const constructBatchTxs = (
 ): Effect.Effect<TxBuilder[]> =>
   Effect.gen(function* () {
     let accTransactions: TxBuilder[] = [];
-    let currUtxoQueue = utxosQueue;
+    let currUtxoQueue = [...utxosQueue];
 
     while (currUtxoQueue.length > 0) {
       const optBatchTx = yield* constructBatchTx(lucid, utxosQueue, batchSize);
