@@ -36,7 +36,7 @@
     "@effect/sql-pg": "^0.35.1",
     "@ethereumjs/mpt": "7.0.0-alpha.1",
     "@ethereumjs/util": "^9.1.0",
-    "@lucid-evolution/lucid": "^0.4.16",
+    "@lucid-evolution/lucid": "0.4.16",
     "@opentelemetry/api": "^1.9.0",
     "@opentelemetry/exporter-prometheus": "^0.57.2",
     "@opentelemetry/exporter-trace-otlp-http": "^0.57.2",
