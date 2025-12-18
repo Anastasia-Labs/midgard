@@ -1,4 +1,4 @@
-import { POSIXTimeSchema } from "@/common.js";
+import { AuthenticatedValidator, POSIXTimeSchema } from "@/common.js";
 import { Data, LucidEvolution, TxBuilder } from "@lucid-evolution/lucid";
 
 export const RegisteredOperatorDatumSchema = Data.Object({

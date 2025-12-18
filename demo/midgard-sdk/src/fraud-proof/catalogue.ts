@@ -1,4 +1,4 @@
-import { POSIXTimeSchema } from "@/common.js";
+import { AuthenticatedValidator, POSIXTimeSchema } from "@/common.js";
 import { Data } from "@lucid-evolution/lucid";
 import { LucidEvolution, TxBuilder } from "@lucid-evolution/lucid";
 
@@ -34,6 +34,7 @@ export const FraudProofCatalogueSpendRedeemer =
   FraudProofCatalogueSpendRedeemerSchema as unknown as FraudProofCatalogueSpendRedeemer;
 
 export type FraudProofCatalogueInitParams = {};
+
 export type FraudProofCatalogueDeinitParams = {};
 export type FraudProofCatalogueNewCategoryParams = {};
 export type FraudProofCatalogueRemoveCategoryParams = {};
