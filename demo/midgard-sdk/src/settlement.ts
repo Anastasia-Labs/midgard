@@ -194,12 +194,12 @@ export const getSettlementUTxOWithoutClaim = (
     }),
   );
 };
-
+// change to a single ref utxo instead of list
 const fetchHubOracleRefUTxOs = (
   hubOracleScriptAddress: string,
   hubOraclePolicyId: string,
   lucid: LucidEvolution,
-): Effect.Effect<HubOracleUTxO[], LucidError> =>
+): Effect.Effect<HubOracleUTxO, LucidError> =>
   Effect.gen(function* () {
     const allUTxOs = yield* Effect.tryPromise({
       try: () => lucid.utxosAt(hubOracleScriptAddress),
@@ -215,15 +215,15 @@ const fetchHubOracleRefUTxOs = (
         cause: "No UTxOs found in Hub Oracle contract address",
       });
     }
-
-    return yield* utxosToHubOracleUTxOs(allUTxOs, hubOraclePolicyId);
+    const hubOracleRefUTxOs = yield* utxosToHubOracleUTxOs(allUTxOs, hubOraclePolicyId);
+    return hubOracleRefUTxOs[0];
   });
 
 const fetchSchedulerRefUTxOs = (
   schedulerScriptAddress: string,
   schedulerPolicyId: string,
   lucid: LucidEvolution,
-): Effect.Effect<SchedulerUTxO[], LucidError> =>
+): Effect.Effect<SchedulerUTxO, LucidError> =>
   Effect.gen(function* () {
     const allUTxOs = yield* Effect.tryPromise({
       try: () => lucid.utxosAt(schedulerScriptAddress),
@@ -239,8 +239,8 @@ const fetchSchedulerRefUTxOs = (
         cause: "No UTxOs found in Scheduler contract address",
       });
     }
-
-    return yield* utxosToSchedulerUTxOs(allUTxOs, schedulerPolicyId);
+    const schedulerRefUTxO = yield* utxosToSchedulerUTxOs(allUTxOs, schedulerPolicyId);
+    return schedulerRefUTxO[0];
   });
 
 /**
@@ -296,13 +296,13 @@ export const incompleteAttachResolutionClaimTxProgram = (
     };
     const spendDatumCBOR = Data.to(spendDatum, SettlementDatum);
 
-    const hubOracleRefUTxOs = yield* fetchHubOracleRefUTxOs(
+    const hubOracleRefUTxO = yield* fetchHubOracleRefUTxOs(
       params.hubOracleValidator.spendScriptAddress,
       params.hubOracleValidator.policyId,
       lucid,
     );
 
-    const schedulerRefUTxOs = yield* fetchSchedulerRefUTxOs(
+    const schedulerRefUTxO = yield* fetchSchedulerRefUTxOs(
       params.schedulerScriptAddress,
       params.schedulerPolicyId,
       lucid,
@@ -313,8 +313,8 @@ export const incompleteAttachResolutionClaimTxProgram = (
     const buildsettlementTx = lucid
       .newTx()
       .collectFrom([settlementInputUtxo.utxo], spendRedeemerCBOR)
-      .readFrom([hubOracleRefUTxOs[0].utxo])
-      .readFrom([schedulerRefUTxOs[0].utxo])
+      .readFrom([hubOracleRefUTxO.utxo])
+      .readFrom([schedulerRefUTxO.utxo])
       .pay.ToAddressWithData(params.settlementAddress, {
         kind: "inline",
         value: spendDatumCBOR,
@@ -420,13 +420,13 @@ export const incompleteUpdateBondHoldNewSettlementTxProgram = (
     };
     const spendDatumCBOR = Data.to(spendDatum, ActiveOperatorSpendDatum);
 
-    const hubOracleRefUTxOs = yield* fetchHubOracleRefUTxOs(
+    const hubOracleRefUTxO = yield* fetchHubOracleRefUTxOs(
       params.hubOracleValidator.spendScriptAddress,
       params.hubOracleValidator.policyId,
       lucid,
     );
 
-    const schedulerRefUTxOs = yield* fetchSchedulerRefUTxOs(
+    const schedulerRefUTxO = yield* fetchSchedulerRefUTxOs(
       params.schedulerScriptAddress,
       params.schedulerPolicyId,
       lucid,
@@ -437,8 +437,8 @@ export const incompleteUpdateBondHoldNewSettlementTxProgram = (
     const buildUpdateBondHoldNewSettlementTx = lucid
       .newTx()
       .collectFrom([activeOperatorsInputUtxo.utxo], spendRedeemerCBOR)
-      .readFrom([hubOracleRefUTxOs[0].utxo])
-      .readFrom([schedulerRefUTxOs[0].utxo])
+      .readFrom([hubOracleRefUTxO.utxo])
+      .readFrom([schedulerRefUTxO.utxo])
       .pay.ToAddressWithData(params.activeOperatorsAddress, {
         kind: "inline",
         value: spendDatumCBOR,
@@ -510,3 +510,4 @@ export const unsignedAttachResolutionClaimTx = (
 export class SettlementError extends EffectData.TaggedError(
   "SettlementError",
 )<GenericErrorFields> {}
+
