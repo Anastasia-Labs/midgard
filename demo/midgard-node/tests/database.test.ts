@@ -8,7 +8,7 @@ import { SqlClient } from "@effect/sql";
 import { Database } from "../src/services/database.js";
 import { NodeConfig } from "../src/services/config.js";
 import { Lucid } from "../src/services/lucid.js";
-import { initializeDb } from "../src/database/init.js";
+import * as InitDB from "../src/database/init.js";
 import {
   // Block
   BlocksDB,
@@ -67,7 +67,7 @@ beforeAll(async () => {
         yield* sql`
           DROP SCHEMA public CASCADE;
           CREATE SCHEMA public;`;
-        yield* initializeDb();
+        yield* InitDB.program;
         yield* flushAll;
       }),
     ),

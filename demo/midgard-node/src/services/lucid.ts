@@ -12,7 +12,7 @@ const makeLucid: Effect.Effect<
   NodeConfig
 > = Effect.gen(function* () {
   const nodeConfig = yield* NodeConfig;
-  const lucid = yield* Effect.tryPromise({
+  const lucid: LE.LucidEvolution = yield* Effect.tryPromise({
     try: () => {
       switch (nodeConfig.L1_PROVIDER) {
         case "Kupmios":

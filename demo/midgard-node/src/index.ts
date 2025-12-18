@@ -61,16 +61,13 @@ program
   )
   .action(async (_args, options) => {
     console.log("🌳 Midgard");
-    const program: Effect.Effect<
-      void,
-      | DatabaseError
-      | SqlError.SqlError
-      | Services.ConfigError
-      | Services.DatabaseInitializationError,
-      never
-    > = pipe(
+    const program = pipe(
       runNode(options.withMonitoring),
+      Effect.provide(Services.Database.layer),
+      Effect.provide(Services.AlwaysSucceedsContract.Default),
+      Effect.provide(Services.Lucid.Default),
       Effect.provide(Services.NodeConfig.layer),
+      Effect.provide(Services.Globals.Default),
     );
 
     NodeRuntime.runMain(program, { teardown: undefined });
