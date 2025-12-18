@@ -16,9 +16,7 @@ import {
   incompleteSchedulerInitTxProgram,
   SchedulerDatum,
 } from "./scheduler.js";
-import {
-  FraudProofCatalogueMintRedeemer,
-} from "./fraud-proof/catalogue.js";
+import { FraudProofCatalogueMintRedeemer } from "./fraud-proof/catalogue.js";
 import { ConfirmedState } from "./ledger-state.js";
 import { incompleteInitLinkedListTxProgram } from "./linked-list.js";
 import {
