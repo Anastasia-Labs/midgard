@@ -67,6 +67,7 @@ program
       Effect.provide(Services.AlwaysSucceedsContract.Default),
       Effect.provide(Services.Lucid.Default),
       Effect.provide(Services.NodeConfig.layer),
+      Effect.provide(Services.Globals.Default),
     );
 
     NodeRuntime.runMain(program, { teardown: undefined });
