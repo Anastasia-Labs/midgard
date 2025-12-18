@@ -41,7 +41,7 @@
     "test": "test"
   },
   "dependencies": {
-    "@lucid-evolution/lucid": "^0.4.23",
+    "@lucid-evolution/lucid": "^0.4.16",
     "@noble/hashes": "^1.8.0",
     "effect": "^3.14.22"
   },

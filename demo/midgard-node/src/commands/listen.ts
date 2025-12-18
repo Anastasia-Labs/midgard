@@ -635,14 +635,14 @@ export const runNode = (withMonitoring?: boolean) =>
         ),
       }));
 
-      return pipe(
+      yield* pipe(
         program,
         Effect.withSpan("midgard"),
         Effect.provide(MetricsLive),
         Effect.catchAllCause(Effect.logError),
       );
     } else {
-      return pipe(
+      yield* pipe(
         program,
         Effect.withSpan("midgard"),
         Effect.catchAllCause(Effect.logError),
