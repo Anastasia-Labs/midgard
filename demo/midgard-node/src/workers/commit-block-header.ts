@@ -24,6 +24,7 @@ import {
   TxUtils as TxTable,
   LedgerUtils,
   AddressHistoryDB,
+  WithdrawalsDB,
 } from "@/database/index.js";
 import {
   handleSignSubmitNoConfirmation,
@@ -44,6 +45,7 @@ import {
   processDepositEvent,
   processTxOrderEvent,
   processTxRequestEvent,
+  processWithdrawalEvent,
   userEventsProgram,
 } from "./utils/user-events.js";
 
@@ -100,8 +102,8 @@ const successfulSubmissionProgram = (
   mempoolTrie: MidgardMpt,
   mempoolTxs: readonly TxTable.EntryWithTimeStamp[],
   mempoolTxHashes: Buffer[],
-  spentTxOrderUTxOs: Buffer[],
-  producedTxOrderUTxOs: LedgerUtils.Entry[],
+  spentUTxOs: Buffer[],
+  producedUTxOs: LedgerUtils.Entry[],
   newHeaderHash: string,
   workerInput: WorkerInput,
   txSize: number,
@@ -158,7 +160,7 @@ const successfulSubmissionProgram = (
         ),
         ProcessedMempoolDB.clear, // uses `TRUNCATE` so no need for batching.
         mempoolTrie.delete(),
-        AddressHistoryDB.insert(spentTxOrderUTxOs, producedTxOrderUTxOs),
+        AddressHistoryDB.insert(spentUTxOs, producedUTxOs),
       ],
       { concurrency: "unbounded" },
     );
@@ -224,6 +226,7 @@ const buildUnsignedTx = (
   latestBlock: SDK.StateQueueUTxO,
   utxosRoot: string,
   txsRoot: string,
+  withdrawalsRoot: string,
   depositsRoot: string,
   endDate: Date,
 ) =>
@@ -238,7 +241,7 @@ const buildUnsignedTx = (
         utxosRoot,
         txsRoot,
         depositsRoot,
-        "00".repeat(32),
+        withdrawalsRoot,
         BigInt(endDate.getTime()),
       );
 
@@ -310,8 +313,8 @@ const databaseOperationsProgram = (
     const optEndTime: Option.Option<Date> =
       yield* establishEndTimeFromTxRequests(mempoolTxs);
 
-    const { mempoolTxHashes, sizeOfTxRequestTxs } =
-      yield* processTxRequestEvent(ledgerTrie, mempoolTrie, mempoolTxs);
+    const { mempoolTxHashes, sizeOfTxRequestTxs, txRequestLedgerUTxOUpdate } =
+      yield* processTxRequestEvent(mempoolTrie, mempoolTxs);
 
     const { stateQueueAuthValidator } = yield* AlwaysSucceedsContract;
 
@@ -350,28 +353,62 @@ const databaseOperationsProgram = (
         yield* Effect.logInfo(
           "🔹 Checking for user events... (no tx requests in queue)",
         );
+        const optWithdrawalsRootProgram = yield* userEventsProgram(
+          WithdrawalsDB.tableName,
+          startTime,
+          endDate,
+        );
         const optDepositsRootProgram = yield* userEventsProgram(
           DepositsDB.tableName,
           startTime,
           endDate,
         );
-        const { sizeOfTxOrderTxs, spentTxOrderUTxOs, producedTxOrderUTxOs } =
-          yield* processTxOrderEvent(startTime, endDate, ledgerTrie);
-        if (Option.isNone(optDepositsRootProgram) && sizeOfTxOrderTxs === 0) {
+        const { sizeOfTxOrderTxs, txOrderLedgerUTxOUpdate } =
+          yield* processTxOrderEvent(startTime, endDate);
+        if (
+          Option.isNone(optDepositsRootProgram) &&
+          Option.isNone(optDepositsRootProgram) &&
+          sizeOfTxOrderTxs === 0
+        ) {
           yield* Effect.logInfo("🔹 Nothing to commit.");
           return {
             type: "NothingToCommitOutput",
           } as WorkerOutput;
         } else {
-          const depositsRoot = yield* processDepositEvent(
-            optDepositsRootProgram,
-          );
+          const {
+            withdrawalsRoot,
+            withdrawalLedgerUTxOUpdate,
+            sizeOfWithdrawalsTxs,
+          } = yield* processWithdrawalEvent(optWithdrawalsRootProgram);
+          const { depositsRoot, depositLedgerUTxOUpdate, sizeOfDepositTxs } =
+            yield* processDepositEvent(optDepositsRootProgram);
+
+          const withdrawalsUTxOs =
+            yield* withdrawalLedgerUTxOUpdate(ledgerTrie);
+          const txOrderUTxOs = yield* txOrderLedgerUTxOUpdate(ledgerTrie);
+          // No utxos here because address history db update from tx requests already
+          // handled in submit endpoint
+          yield* txRequestLedgerUTxOUpdate(ledgerTrie);
+          const depositUTxOs = yield* depositLedgerUTxOUpdate(ledgerTrie);
+
+          const spentUTxOs = [
+            ...withdrawalsUTxOs.spentUTxOs,
+            ...txOrderUTxOs.spentUTxOs,
+            ...depositUTxOs.spentUTxOs,
+          ];
+          const producedUTxOs = [
+            ...withdrawalsUTxOs.producedUTxOs,
+            ...txOrderUTxOs.producedUTxOs,
+            ...depositUTxOs.producedUTxOs,
+          ];
+
           const { newHeaderHash, signAndSubmitProgram, txSize } =
             yield* buildUnsignedTx(
               stateQueueAuthValidator,
               latestBlock,
               yield* ledgerTrie.getRootHex(),
               yield* mempoolTrie.getRootHex(),
+              withdrawalsRoot,
               depositsRoot,
               endDate,
             );
@@ -394,12 +431,12 @@ const databaseOperationsProgram = (
                 mempoolTrie,
                 mempoolTxs,
                 mempoolTxHashes,
-                spentTxOrderUTxOs,
-                producedTxOrderUTxOs,
+                spentUTxOs,
+                producedUTxOs,
                 newHeaderHash,
                 workerInput,
                 txSize,
-                sizeOfTxOrderTxs,
+                sizeOfTxOrderTxs + sizeOfWithdrawalsTxs + sizeOfDepositTxs,
                 txHash,
               ),
           });
@@ -411,17 +448,49 @@ const databaseOperationsProgram = (
         const endTime = optEndTime.value;
 
         yield* Effect.logInfo("🔹 Checking for user events...");
+        const optWithdrawalsRootProgram = yield* userEventsProgram(
+          WithdrawalsDB.tableName,
+          startTime,
+          endTime,
+        );
         const optDepositsRootProgram = yield* userEventsProgram(
           DepositsDB.tableName,
           startTime,
           endTime,
         );
+        const {
+          withdrawalsRoot,
+          withdrawalLedgerUTxOUpdate,
+          sizeOfWithdrawalsTxs,
+        } = yield* processWithdrawalEvent(optWithdrawalsRootProgram);
+        const { depositsRoot, depositLedgerUTxOUpdate, sizeOfDepositTxs } =
+          yield* processDepositEvent(optDepositsRootProgram);
 
-        const depositsRoot = yield* processDepositEvent(optDepositsRootProgram);
+        const { sizeOfTxOrderTxs, txOrderLedgerUTxOUpdate } =
+          yield* processTxOrderEvent(startTime, endTime);
+        const sizeOfProcessedTxs =
+          sizeOfTxRequestTxs +
+          sizeOfTxOrderTxs +
+          sizeOfWithdrawalsTxs +
+          sizeOfDepositTxs;
 
-        const { spentTxOrderUTxOs, producedTxOrderUTxOs, sizeOfTxOrderTxs } =
-          yield* processTxOrderEvent(startTime, endTime, ledgerTrie);
-        const sizeOfProcessedTxs = sizeOfTxRequestTxs + sizeOfTxOrderTxs;
+        const withdrawalsUTxOs = yield* withdrawalLedgerUTxOUpdate(ledgerTrie);
+        const txOrderUTxOs = yield* txOrderLedgerUTxOUpdate(ledgerTrie);
+        // No utxos here because address history db update from tx requests already
+        // handled in submit endpoint
+        yield* txRequestLedgerUTxOUpdate(ledgerTrie);
+        const depositUTxOs = yield* depositLedgerUTxOUpdate(ledgerTrie);
+
+        const spentUTxOs = [
+          ...withdrawalsUTxOs.spentUTxOs,
+          ...txOrderUTxOs.spentUTxOs,
+          ...depositUTxOs.spentUTxOs,
+        ];
+        const producedUTxOs = [
+          ...withdrawalsUTxOs.producedUTxOs,
+          ...txOrderUTxOs.producedUTxOs,
+          ...depositUTxOs.producedUTxOs,
+        ];
 
         const { newHeaderHash, signAndSubmitProgram, txSize } =
           yield* buildUnsignedTx(
@@ -429,6 +498,7 @@ const databaseOperationsProgram = (
             latestBlock,
             yield* ledgerTrie.getRootHex(),
             yield* mempoolTrie.getRootHex(),
+            withdrawalsRoot,
             depositsRoot,
             endTime,
           );
@@ -465,8 +535,8 @@ const databaseOperationsProgram = (
               mempoolTrie,
               mempoolTxs,
               mempoolTxHashes,
-              spentTxOrderUTxOs,
-              producedTxOrderUTxOs,
+              spentUTxOs,
+              producedUTxOs,
               newHeaderHash,
               workerInput,
               txSize,
