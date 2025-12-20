@@ -1,5 +1,6 @@
 import {
   Data,
+  fromHex,
   LucidEvolution,
   TxBuilder,
   TxSignBuilder,
@@ -9,14 +10,17 @@ import {
   AuthenticatedValidator,
   DataCoercionError,
   GenericErrorFields,
+  getStateToken,
   HashingError,
   LucidError,
   makeReturn,
   MerkleRootSchema,
+  OutputReference,
   POSIXTimeSchema,
   Proof,
   ProofSchema,
   ProofStep,
+  UnauthenticUtxoError,
   VerificationKeyHashSchema,
 } from "./common.js";
 import { Data as EffectData, Effect } from "effect";
@@ -24,6 +28,8 @@ import { HubOracleUTxO, utxosToHubOracleUTxOs } from "./hub-oracle.js";
 import { SchedulerUTxO, utxosToSchedulerUTxOs } from "./scheduler.js";
 import { DepositUTxO, utxosToDepositUTxOs } from "./user-events/deposit.js";
 import { TxOrderUTxO, utxosToTxOrderUTxOs } from "./user-events/tx-order.js";
+import { WithdrawalOrderDatum } from "./user-events/withdrawal.js";
+import { WithdrawalInfo } from "./ledger-state.js";
 
 export const ResolutionClaimSchema = Data.Object({
   resolutionTime: POSIXTimeSchema,
@@ -572,25 +578,100 @@ export type DisproveResolutionClaimParams = {
   eventAddress: string;
   eventPolicyId: string;
 }
-const fetchUserEventRefUTxOs = (
+// To be removed from here and should be merged from Preliminary-OffChain-for-Withdrawals
+export type WithdrawalUTxO = {
+  utxo: UTxO;
+  datum: WithdrawalOrderDatum;
+  assetName: string;
+  idCbor: Buffer;
+  infoCbor: Buffer;
+  inclusionTime: Date;
+};  
+
+export const getWithdrawalDatumFromUTxO = (
+  nodeUTxO: UTxO,
+): Effect.Effect<WithdrawalOrderDatum, DataCoercionError> => {
+  const datumCBOR = nodeUTxO.datum;
+  if (datumCBOR) {
+    try {
+      const withdrawalDatum = Data.from(datumCBOR, WithdrawalOrderDatum);
+      return Effect.succeed(withdrawalDatum);
+    } catch (e) {
+      return Effect.fail(
+        new DataCoercionError({
+          message: `Could not coerce UTxO's datum to a withdrawal datum`,
+          cause: e,
+        }),
+      );
+    }
+  } else {
+    return Effect.fail(
+      new DataCoercionError({
+        message: `Withdrawal datum coercion failed`,
+        cause: `No datum found`,
+      }),
+    );
+  }
+};
+
+/**
+ * Validates correctness of datum, and having a single NFT.
+ */
+export const utxoToWithdrawalUTxO = (
+  utxo: UTxO,
+  nftPolicy: string,
+): Effect.Effect<WithdrawalUTxO, DataCoercionError | UnauthenticUtxoError> =>
+  Effect.gen(function* () {
+    const datum = yield* getWithdrawalDatumFromUTxO(utxo);
+    const [sym, assetName] = yield* getStateToken(utxo.assets);
+    if (sym !== nftPolicy) {
+      yield* Effect.fail(
+        new UnauthenticUtxoError({
+          message: "Failed to convert UTxO to `WithdrawalUTxO`",
+          cause: "UTxO's NFT policy ID is not the same as the withdrawal's",
+        }),
+      );
+    }
+    return {
+      utxo,
+      datum,
+      assetName,
+      idCbor: Buffer.from(fromHex(Data.to(datum.event.id, OutputReference))),
+      infoCbor: Buffer.from(fromHex(Data.to(datum.event.info, WithdrawalInfo))),
+      inclusionTime: new Date(Number(datum.inclusionTime)),
+    };
+  });
+
+/**
+ * Silently drops invalid UTxOs.
+ */
+export const utxosToWithdrawalUTxOs = (
+  utxos: UTxO[],
+  nftPolicy: string,
+): Effect.Effect<WithdrawalUTxO[]> => {
+  const effects = utxos.map((u) => utxoToWithdrawalUTxO(u, nftPolicy));
+  return Effect.allSuccesses(effects);
+};
+
+export const fetchUserEventRefUTxOs = (
   userEventType:EventType,
   userEventAddress: string,
   userEventPolicyId: string,
   lucid: LucidEvolution,
-): Effect.Effect<DepositUTxO | TxOrderUTxO | undefined, LucidError> =>
+): Effect.Effect<DepositUTxO | TxOrderUTxO | WithdrawalUTxO, LucidError> =>
   Effect.gen(function* () {
     const allUTxOs = yield* Effect.tryPromise({
       try: () => lucid.utxosAt(userEventAddress),
       catch: (err) =>
         new LucidError({
-          message: "Failed to fetch Hub Oracle UTxOs",
+          message: "Failed to fetch User Event UTxOs",
           cause: err,
         }),
     });
     if (allUTxOs.length === 0) {
       yield* new LucidError({
-        message: "Failed to build the HubOracle transaction",
-        cause: "No UTxOs found in Hub Oracle contract address",
+        message: "Failed to build the User Event transaction",
+        cause: "No UTxOs found in User Event contract address",
       });
     }
     if(userEventType === "Deposit"){
@@ -601,9 +682,11 @@ const fetchUserEventRefUTxOs = (
     const txOrderRefUTxOs = yield* utxosToTxOrderUTxOs(allUTxOs, userEventPolicyId)
     return txOrderRefUTxOs[0]; 
     }
-    else
-      return undefined;
-  });
+    else {
+    const withdrawalRefUTxOs = yield* utxosToWithdrawalUTxOs(allUTxOs, userEventPolicyId)
+    return withdrawalRefUTxOs[0];
+  }
+});
 
 /**
  * Settlement
@@ -665,14 +748,19 @@ export const incompleteDisproveResolutionClaimTxProgram = (
     );
     // placeholder for the user event UTxO
     //const userEventRefUTxO :UTxO = yield* fetchUserEventRefUTxOs(params.eventType,params.eventAddress,params.eventPolicyId,lucid);
-
+    const userEventRefUTxO = yield* fetchUserEventRefUTxOs(
+      params.eventType,
+      params.eventAddress,
+      params.eventPolicyId,
+      lucid,
+    );
     const txUpperBound = Number(settlementInputUtxo.datum.resolutionClaim?.resolutionTime??0n - 2000n);
 
     const buildsettlementTx = lucid
       .newTx()
       .collectFrom([settlementInputUtxo.utxo], spendRedeemerCBOR)
       .readFrom([hubOracleRefUTxO.utxo])
-      //.readFrom([userEventRefUTxO])
+      .readFrom([userEventRefUTxO.utxo])
       .pay.ToAddressWithData(params.settlementAddress, {
         kind: "inline",
         value: spendDatumCBOR,
