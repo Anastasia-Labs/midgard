@@ -14,12 +14,16 @@ import {
   makeReturn,
   MerkleRootSchema,
   POSIXTimeSchema,
+  Proof,
   ProofSchema,
+  ProofStep,
   VerificationKeyHashSchema,
 } from "./common.js";
 import { Data as EffectData, Effect } from "effect";
 import { HubOracleUTxO, utxosToHubOracleUTxOs } from "./hub-oracle.js";
 import { SchedulerUTxO, utxosToSchedulerUTxOs } from "./scheduler.js";
+import { DepositUTxO, utxosToDepositUTxOs } from "./user-events/deposit.js";
+import { TxOrderUTxO, utxosToTxOrderUTxOs } from "./user-events/tx-order.js";
 
 export const ResolutionClaimSchema = Data.Object({
   resolutionTime: POSIXTimeSchema,
@@ -194,7 +198,7 @@ export const getSettlementUTxOWithoutClaim = (
     }),
   );
 };
-// change to a single ref utxo instead of list
+
 const fetchHubOracleRefUTxOs = (
   hubOracleScriptAddress: string,
   hubOraclePolicyId: string,
@@ -322,7 +326,16 @@ export const incompleteAttachResolutionClaimTxProgram = (
       .validTo(txUpperBound)
       .addSignerKey(params.resolutionClaimOperator);
     return buildsettlementTx;
-  });
+  }).pipe(
+    Effect.catchAllDefect((defect) => {
+      return Effect.fail(
+        new LucidError({
+          message: "Caught defect from attachResolutionClaimTxBuilder",
+          cause: defect,
+        }),
+      );
+    }),
+  );
 
 export type ActiveOperatorsParams = {
   activeOperatorsAddress: string;
@@ -511,3 +524,169 @@ export class SettlementError extends EffectData.TaggedError(
   "SettlementError",
 )<GenericErrorFields> {}
 
+// Disprove - steps to build the tranasction
+// 1. settlement utxo with resolution claim
+// replace that utxos' datum wit none 
+
+export const getSettlementUTxOWithClaim = (
+  settlementUTxOs: UTxO[],
+  resolutionClaimOperator: string
+): Effect.Effect<SettlementUTxO, DataCoercionError | LucidError> => {
+  for (const utxo of settlementUTxOs) {
+    const datumCBOR = utxo.datum;
+    if (!datumCBOR) {
+      continue;
+    }
+    try {
+      const parsedDatum = Data.from(datumCBOR, SettlementDatum);
+      if (parsedDatum.resolutionClaim !== null && parsedDatum.resolutionClaim.operator === resolutionClaimOperator) {
+        return Effect.succeed({ utxo, datum: parsedDatum });
+      }
+    } catch (err) {
+      return Effect.fail(
+        new DataCoercionError({
+          message: `Could not coerce UTxO's datum to a settlement datum`,
+          cause: err,
+        }),
+      );
+    }
+  }
+  return Effect.fail(
+    new LucidError({
+      message: "No settlement UTxO without resolution claim found",
+      cause: "Settlement Tx not initiated",
+    }),
+  );
+};
+
+export type DisproveResolutionClaimParams = {
+  settlementAddress: string;
+  resolutionClaimOperator: string;
+  membershipProof: Proof;
+  hubOracleValidator: AuthenticatedValidator;
+  schedulerScriptAddress: string;
+  schedulerPolicyId: string;
+  operatorStatus: OperatorStatus;
+  eventType: EventType;
+  eventAssetName: string;
+  eventAddress: string;
+  eventPolicyId: string;
+}
+const fetchUserEventRefUTxOs = (
+  userEventType:EventType,
+  userEventAddress: string,
+  userEventPolicyId: string,
+  lucid: LucidEvolution,
+): Effect.Effect<DepositUTxO | TxOrderUTxO | undefined, LucidError> =>
+  Effect.gen(function* () {
+    const allUTxOs = yield* Effect.tryPromise({
+      try: () => lucid.utxosAt(userEventAddress),
+      catch: (err) =>
+        new LucidError({
+          message: "Failed to fetch Hub Oracle UTxOs",
+          cause: err,
+        }),
+    });
+    if (allUTxOs.length === 0) {
+      yield* new LucidError({
+        message: "Failed to build the HubOracle transaction",
+        cause: "No UTxOs found in Hub Oracle contract address",
+      });
+    }
+    if(userEventType === "Deposit"){
+    const depositRefUTxOs = yield* utxosToDepositUTxOs(allUTxOs, userEventPolicyId)
+    return depositRefUTxOs[0];
+    }
+    else if(userEventType === "TxOrder"){
+    const txOrderRefUTxOs = yield* utxosToTxOrderUTxOs(allUTxOs, userEventPolicyId)
+    return txOrderRefUTxOs[0]; 
+    }
+    else
+      return undefined;
+  });
+
+/**
+ * Settlement
+ *
+ * @param lucid - The LucidEvolution
+ * @param params - The parameters
+ * @returns {TxBuilder} A TxBuilder instance that can be used to build the transaction.
+ */
+export const incompleteDisproveResolutionClaimTxProgram = (
+  lucid: LucidEvolution,
+  params: DisproveResolutionClaimParams,
+): Effect.Effect<TxBuilder, HashingError | DataCoercionError | LucidError> =>
+  Effect.gen(function* () {
+    const spendRedeemer: SettlementSpendRedeemer = {
+      DisproveResolutionClaim: {
+        settlementInputIndex: 0n,
+        settlementOutputIndex: 0n,
+        hubRefInputIndex: 0n,
+        operatorsRedeemerIndex: 0n,
+        operator: params.resolutionClaimOperator,
+        operatorStatus: params.operatorStatus,
+        unresolvedEventRefInputIndex: 0n,
+        unresolvedEventAssetName: params.eventAssetName,
+        eventType: params.eventType,
+        membershipProof: params.membershipProof,
+      },
+    };
+    const spendRedeemerCBOR = Data.to(spendRedeemer, SettlementSpendRedeemer);
+
+    const settlementAllUtxos: UTxO[] = yield* Effect.tryPromise({
+      try: () => lucid.utxosAt(params.settlementAddress),
+      catch: (err) =>
+        new LucidError({
+          message: "Failed to fetch Settlement UTxOs",
+          cause: err,
+        }),
+    });
+    if (settlementAllUtxos.length === 0) {
+      yield* new LucidError({
+        message: "Failed to build the Settlement transaction",
+        cause: "No UTxOs found in Settlement contract address",
+      });
+    }
+    const settlementInputUtxo =
+      yield* getSettlementUTxOWithClaim(settlementAllUtxos,params.resolutionClaimOperator);
+
+    const spendDatum: SettlementDatum = {
+      depositsRoot: settlementInputUtxo.datum.depositsRoot,
+      withdrawalsRoot: settlementInputUtxo.datum.withdrawalsRoot,
+      transactionsRoot: settlementInputUtxo.datum.transactionsRoot,
+      resolutionClaim: null
+    };
+    const spendDatumCBOR = Data.to(spendDatum, SettlementDatum);
+
+    const hubOracleRefUTxO = yield* fetchHubOracleRefUTxOs(
+      params.hubOracleValidator.spendScriptAddress,
+      params.hubOracleValidator.policyId,
+      lucid,
+    );
+    // placeholder for the user event UTxO
+    //const userEventRefUTxO :UTxO = yield* fetchUserEventRefUTxOs(params.eventType,params.eventAddress,params.eventPolicyId,lucid);
+
+    const txUpperBound = Number(settlementInputUtxo.datum.resolutionClaim?.resolutionTime??0n - 2000n);
+
+    const buildsettlementTx = lucid
+      .newTx()
+      .collectFrom([settlementInputUtxo.utxo], spendRedeemerCBOR)
+      .readFrom([hubOracleRefUTxO.utxo])
+      //.readFrom([userEventRefUTxO])
+      .pay.ToAddressWithData(params.settlementAddress, {
+        kind: "inline",
+        value: spendDatumCBOR,
+      })
+      .validTo(txUpperBound)
+      .addSignerKey(params.resolutionClaimOperator);
+    return buildsettlementTx;
+  }).pipe(
+    Effect.catchAllDefect((defect) => {
+      return Effect.fail(
+        new LucidError({
+          message: "Caught defect from attachResolutionClaimTxBuilder",
+          cause: defect,
+        }),
+      );
+    }),
+  );
