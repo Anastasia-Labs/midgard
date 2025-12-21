@@ -2,10 +2,10 @@ use aiken/collection/list
 use cardano/assets.{PolicyId}
 use cardano/transaction.{OutputReference, Transaction}
 use midgard/computation_thread.{StepDatum}
-use midgard/fraud_proof/common/utils.{
+use midgard/fraud_proofs/common.{
   get_singleton_ct_token, handle_cancel, validate_final_step_output,
 }
-use midgard/fraud_proof/double_spend/step_04.{
+use midgard/fraud_proofs/double_spend/step_04.{
   Cancel, Continue, StepRedeemer as Step4Redeemer,
 }
 

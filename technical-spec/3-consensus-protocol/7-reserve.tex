@@ -11,7 +11,7 @@ Midgard's payout accumulators collect funds from Midgard's reserve in order to p
 When a deposit is absorbed into Midgard's reserve, its funds (excluding the deposit ID token) are sent to a single utxo at the reserve address without a datum, without a reference script attached, and without being merged with the funds from any other deposits (see \cref{h:deposit-spending-validator}).
 In other words, the deposit utxo is reproduced one-to-one at the reserve address after removing the datum and ID token that identified the deposit.
 
-Each payout accumulator utxo is initialized by proving that its corresponding withdrawal order is confirmed (via a settlement node), burning the withdrawal order's ID token, and minting the corresponding payout ID token (see \cref{h:withdrawal-order-spending-validator}).
+Each payout accumulator utxo is initialized by proving that its corresponding withdrawal order is present in a settlement utxo's withdrawals tree (marked as valid), burning the withdrawal order's ID token, and minting the corresponding payout ID token (see \cref{h:withdrawal-order-spending-validator}).
 The payout accumulator's datum is:
 \begin{equation*}
   \T{PayoutDatum} \coloneq \left\{
