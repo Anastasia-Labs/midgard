@@ -37,9 +37,15 @@ import {
   NodeKey,
   getNodeDatumFromUTxO,
   LinkedListError,
+  incompleteInitLinkedListTxProgram,
 } from "@/linked-list.js";
 import { ConfirmedState, Header } from "@/ledger-state.js";
-import { NODE_ASSET_NAME } from "./constants.js";
+import {
+  GENESIS_HASH_28,
+  GENESIS_HASH_32,
+  INITIAL_PROTOCOL_VERSION,
+  NODE_ASSET_NAME,
+} from "./constants.js";
 
 export const StateQueueConfigSchema = Data.Object({
   initUTxO: OutputReferenceSchema,
@@ -105,7 +111,7 @@ export type StateQueueMergeParams = {
 
 export type StateQueueInitParams = {
   validator: AuthenticatedValidator;
-  data: ConfirmedState;
+  genesisTime: POSIXTime; // Just pass the time, not the full state
 };
 
 export type StateQueueDeinitParams = {};
@@ -691,41 +697,22 @@ export const fetchLatestCommittedBlock = (
 export const incompleteInitStateQueueTxProgram = (
   lucid: LucidEvolution,
   params: StateQueueInitParams,
-): Effect.Effect<TxBuilder> =>
+): Effect.Effect<TxBuilder, never> =>
   Effect.gen(function* () {
-    const assets: Assets = {
-      [toUnit(params.validator.policyId, NODE_ASSET_NAME)]: 1n,
+    const stateQueueData: ConfirmedState = {
+      headerHash: GENESIS_HASH_28,
+      prevHeaderHash: GENESIS_HASH_28,
+      utxoRoot: GENESIS_HASH_32,
+      startTime: params.genesisTime,
+      endTime: params.genesisTime,
+      protocolVersion: INITIAL_PROTOCOL_VERSION,
     };
 
-    const confirmedState: ConfirmedState = {
-      headerHash: "00".repeat(28),
-      prevHeaderHash: "00".repeat(28),
-      utxoRoot: "00".repeat(32),
-      startTime: BigInt(Date.now()),
-      endTime: BigInt(Date.now()),
-      protocolVersion: 0n,
-    };
-    const datum: NodeDatum = {
-      key: "Empty",
-      next: "Empty",
-      data: Data.castTo(confirmedState, ConfirmedState),
-    };
-
-    const outputDatum: OutputDatum = {
-      kind: "inline",
-      value: Data.to(datum, NodeDatum),
-    };
-
-    const tx = lucid
-      .newTx()
-      .mintAssets(assets, Data.void())
-      .pay.ToAddressWithData(
-        params.validator.spendScriptAddress,
-        outputDatum,
-        assets,
-      )
-      .attach.Script(params.validator.mintScript);
-    return tx;
+    return yield* incompleteInitLinkedListTxProgram(lucid, {
+      validator: params.validator,
+      data: Data.castTo(stateQueueData, ConfirmedState),
+      redeemer: Data.to("Init", StateQueueRedeemer),
+    });
   });
 
 export const unsignedInitStateQueueTxProgram = (

@@ -52,7 +52,7 @@ export const SchedulerSpendRedeemer =
 
 export type SchedulerInitParams = {
   validator: AuthenticatedValidator;
-  datum: SchedulerDatum;
+  datum?: SchedulerDatum;
 };
 
 export type SchedulerDeinitParams = {};
@@ -74,11 +74,15 @@ export const incompleteSchedulerInitTxProgram = (
     [toUnit(params.validator.policyId, fromText("Scheduler"))]: 1n,
   };
 
-  const encodedDatum = Data.to<SchedulerDatum>(params.datum, SchedulerDatum);
+  const redeemer = Data.to("Init", SchedulerMintRedeemer);
+
+  const encodedDatum = params.datum
+    ? Data.to<SchedulerDatum>(params.datum, SchedulerDatum)
+    : Data.void();
 
   return lucid
     .newTx()
-    .mintAssets(assets, Data.to("Init", SchedulerMintRedeemer))
+    .mintAssets(assets, redeemer)
     .pay.ToAddressWithData(
       params.validator.spendScriptAddress,
       { kind: "inline", value: encodedDatum },

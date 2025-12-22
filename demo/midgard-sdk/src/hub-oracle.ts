@@ -132,8 +132,7 @@ export const makeHubOracleDatum = (
  * Creates a hub oracle init transaction builder.
  * Handles datum construction internally from validators.
  * @param {LucidEvolution} lucid - The LucidEvolution instance.
- * @param {MintingValidatorInfo} hubOracleValidator - The hub oracle's minting validator
- * @param {HubOracleValidators} validators - All validators that need to be registered in the hub oracle
+ * @param {MidgardValidators} validators - All validators that need to be registered in the hub oracle
  * @returns {TxBuilder} Effect that produces a transaction builder.
  */
 export const incompleteHubOracleInitTxProgram = (
@@ -141,7 +140,6 @@ export const incompleteHubOracleInitTxProgram = (
   validators: MidgardValidators,
 ): Effect.Effect<TxBuilder, Bech32DeserializationError> =>
   Effect.gen(function* () {
-    // Construct the datum from validators
     const datum = yield* makeHubOracleDatum(validators);
     const encodedDatum = Data.to<HubOracleDatum>(datum, HubOracleDatum);
 

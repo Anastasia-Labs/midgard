@@ -1,6 +1,8 @@
 import { AuthenticatedValidator, POSIXTimeSchema } from "@/common.js";
 import { LucidEvolution, TxBuilder } from "@lucid-evolution/lucid";
 import { Data } from "@lucid-evolution/lucid";
+import { Effect } from "effect";
+import { incompleteInitLinkedListTxProgram } from "./linked-list.js";
 
 export const ActiveOperatorDatumSchema = Data.Object({
   commitmentTime: Data.Nullable(POSIXTimeSchema),
@@ -84,10 +86,18 @@ export type ActiveOperatorUpdateCommitmentTimeParams = {};
 export const incompleteActiveOperatorInitTxProgram = (
   lucid: LucidEvolution,
   params: ActiveOperatorInitParams,
-): TxBuilder => {
-  const tx = lucid.newTx();
-  return tx;
-};
+): Effect.Effect<TxBuilder, never> =>
+  Effect.gen(function* () {
+    const rootData: ActiveOperatorDatum = {
+      commitmentTime: null,
+    };
+
+    return yield* incompleteInitLinkedListTxProgram(lucid, {
+      validator: params.validator,
+      data: Data.castTo(rootData, ActiveOperatorDatum),
+      redeemer: Data.to("Init", ActiveOperatorMintRedeemer),
+    });
+  });
 
 /**
  * The program that performs the deinit of an operator.

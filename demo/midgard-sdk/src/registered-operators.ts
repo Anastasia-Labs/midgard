@@ -1,5 +1,7 @@
 import { AuthenticatedValidator, POSIXTimeSchema } from "@/common.js";
 import { Data, LucidEvolution, TxBuilder } from "@lucid-evolution/lucid";
+import { Effect } from "effect";
+import { incompleteInitLinkedListTxProgram } from "./linked-list.js";
 
 export const RegisteredOperatorDatumSchema = Data.Object({
   registrationTime: POSIXTimeSchema,
@@ -73,7 +75,10 @@ export type RegisteredOperatorMintRedeemer = Data.Static<
 export const RegisteredOperatorMintRedeemer =
   RegisteredOperatorMintRedeemerSchema as unknown as RegisteredOperatorMintRedeemer;
 
-export type RegisteredOperatorInitParams = {};
+export type RegisteredOperatorInitParams = {
+  validator: AuthenticatedValidator;
+};
+
 export type RegisteredOperatorDeinitParams = {};
 export type RegisteredOperatorRegisterParams = {};
 export type RegisteredOperatorDeregisterParams = {};
@@ -90,10 +95,18 @@ export type RegisteredOperatorRemoveDuplicateSlashBondParams = {};
 export const incompleteRegisteredOperatorInitTxProgram = (
   lucid: LucidEvolution,
   params: RegisteredOperatorInitParams,
-): TxBuilder => {
-  const tx = lucid.newTx();
-  return tx;
-};
+): Effect.Effect<TxBuilder, never> =>
+  Effect.gen(function* () {
+    const rootData: RegisteredOperatorDatum = {
+      registrationTime: 0n,
+    };
+
+    return yield* incompleteInitLinkedListTxProgram(lucid, {
+      validator: params.validator,
+      data: Data.castTo(rootData, RegisteredOperatorDatum),
+      redeemer: Data.to("Init", RegisteredOperatorMintRedeemer),
+    });
+  });
 
 /**
  * Deinit

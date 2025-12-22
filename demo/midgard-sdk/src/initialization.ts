@@ -1,6 +1,5 @@
 import { Effect } from "effect";
 import {
-  Data,
   LucidEvolution,
   TxBuilder,
   makeReturn,
@@ -12,6 +11,10 @@ import {
   MidgardValidators,
 } from "./common.js";
 import { incompleteHubOracleInitTxProgram } from "./hub-oracle.js";
+import { incompleteSchedulerInitTxProgram } from "./scheduler.js";
+import { incompleteFraudProofCatalogueInitTxProgram } from "./fraud-proof/catalogue.js";
+import { incompleteInitStateQueueTxProgram } from "./state-queue.js";
+import { incompleteActiveOperatorInitTxProgram } from "./active-operators.js";
 import {
   incompleteSchedulerInitTxProgram,
   SchedulerDatum,
@@ -26,8 +29,14 @@ import {
 } from "./constants.js";
 import { StateQueueRedeemer } from "./state-queue.js";
 import { ActiveOperatorMintRedeemer } from "./active-operators.js";
-import { RegisteredOperatorMintRedeemer } from "./registered-operators.js";
-import { RetiredOperatorMintRedeemer } from "./retired-operators.js";
+import {
+  RegisteredOperatorMintRedeemer,
+  incompleteRegisteredOperatorInitTxProgram,
+} from "./registered-operators.js";
+import {
+  RetiredOperatorMintRedeemer,
+  incompleteRetiredOperatorInitTxProgram,
+} from "./retired-operators.js";
 
 export type InitializationParams = {
   midgardValidators: MidgardValidators;
@@ -68,58 +77,40 @@ export const incompleteInitializationTxProgram = (
       params.midgardValidators,
     );
 
-    const stateQueueData: ConfirmedState = {
-      headerHash: GENESIS_HASH_28,
-      prevHeaderHash: GENESIS_HASH_28,
-      utxoRoot: GENESIS_HASH_32,
-      startTime: genesisTime,
-      endTime: genesisTime,
-      protocolVersion: INITIAL_PROTOCOL_VERSION,
-    };
-
-    const stateQueueTx = yield* incompleteInitLinkedListTxProgram(lucid, {
-      validator: params.midgardValidators.stateQueueAuthValidator,
-      data: Data.castTo(stateQueueData, ConfirmedState),
-      redeemer: Data.to("Init", StateQueueRedeemer),
-    });
-
-    const registeredOperatorsTx = yield* incompleteInitLinkedListTxProgram(
+    const stateQueueTx: TxBuilder = yield* incompleteInitStateQueueTxProgram(
       lucid,
       {
-        validator: params.midgardValidators.registeredOperatorsAuthValidator,
-        redeemer: Data.to("Init", RegisteredOperatorMintRedeemer),
+        validator: params.midgardValidators.stateQueueAuthValidator,
+        genesisTime: genesisTime,
       },
     );
 
-    const activeOperatorsTx = yield* incompleteInitLinkedListTxProgram(lucid, {
-      validator: params.midgardValidators.activeOperatorsAuthValidator,
-      redeemer: Data.to("Init", ActiveOperatorMintRedeemer),
-    });
+    const registeredOperatorsTx: TxBuilder =
+      yield* incompleteRegisteredOperatorInitTxProgram(lucid, {
+        validator: params.midgardValidators.registeredOperatorsAuthValidator,
+      });
 
-    const retiredOperatorsTx = yield* incompleteInitLinkedListTxProgram(lucid, {
-      validator: params.midgardValidators.retiredOperatorsAuthValidator,
-      redeemer: Data.to("Init", RetiredOperatorMintRedeemer),
-    });
+    const activeOperatorsTx: TxBuilder =
+      yield* incompleteActiveOperatorInitTxProgram(lucid, {
+        validator: params.midgardValidators.activeOperatorsAuthValidator,
+      });
 
-    const GENESIS_OPERATOR = "0".repeat(56);
-
-    const schedulerGenesisData: SchedulerDatum = {
-      operator: GENESIS_OPERATOR,
-      startTime: genesisTime,
-    };
+    const retiredOperatorsTx = yield* incompleteRetiredOperatorInitTxProgram(
+      lucid,
+      {
+        validator: params.midgardValidators.retiredOperatorsAuthValidator,
+      },
+    );
 
     const schedulerTx = incompleteSchedulerInitTxProgram(lucid, {
       validator: params.midgardValidators.schedulerAuthValidator,
-      datum: schedulerGenesisData,
+      datum: undefined,
     });
 
-    const fraudProofCatalogueTx = yield* incompleteInitLinkedListTxProgram(
-      lucid,
-      {
+    const fraudProofCatalogueTx: TxBuilder =
+      yield* incompleteFraudProofCatalogueInitTxProgram(lucid, {
         validator: params.midgardValidators.fraudProofCatalogueAuthValidator,
-        redeemer: Data.to("Init", FraudProofCatalogueMintRedeemer),
-      },
-    );
+      });
 
     return tx
       .compose(hubOracleTx)
