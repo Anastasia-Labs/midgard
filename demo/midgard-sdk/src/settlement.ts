@@ -2,6 +2,7 @@ import {
   Data,
   fromHex,
   LucidEvolution,
+  MintingPolicy,
   TxBuilder,
   TxSignBuilder,
   UTxO,
@@ -30,6 +31,7 @@ import { DepositUTxO, utxosToDepositUTxOs } from "./user-events/deposit.js";
 import { TxOrderUTxO, utxosToTxOrderUTxOs } from "./user-events/tx-order.js";
 import { WithdrawalOrderDatum } from "./user-events/withdrawal.js";
 import { WithdrawalInfo } from "./ledger-state.js";
+import { getProtocolParameters } from "./protocol-parameters.js";
 
 export const ResolutionClaimSchema = Data.Object({
   resolutionTime: POSIXTimeSchema,
@@ -149,6 +151,54 @@ export type ActiveOperatorSpendRedeemer = Data.Static<
 >;
 export const ActiveOperatorSpendRedeemer =
   ActiveOperatorSpendRedeemerSchema as unknown as ActiveOperatorSpendRedeemer;
+
+export const ActiveOperatorMintRedeemerSchema = Data.Enum([
+  Data.Literal("Init"),
+  Data.Literal("Deinit"),
+  Data.Object({
+    ActivateOperator: Data.Object({
+      newActiveOperatorKey: Data.Bytes(),
+      hubOracleRefInputIndex: Data.Integer(),
+      activeOperatorAppendedNodeOutputIndex: Data.Integer(),
+      activeOperatorAnchorNodeOutputIndex: Data.Integer(),
+      registeredOperatorsRedeemerIndex: Data.Integer(),
+    }),
+  }),
+  Data.Object({
+    RemoveOperatorBadState: Data.Object({
+      slashedActiveOperatorKey: Data.Bytes(),
+      hubOracleRefInputIndex: Data.Integer(),
+      activeOperatorSlashedNodeInputIndex: Data.Integer(),
+      activeOperatorAnchorNodeInputIndex: Data.Integer(),
+      stateQueueRedeemerIndex: Data.Integer(),
+    }),
+  }),
+  Data.Object({
+    RemoveOperatorBadSettlement: Data.Object({
+      slashedActiveOperatorKey: Data.Bytes(),
+      hubOracleRefInputIndex: Data.Integer(),
+      activeOperatorSlashedNodeInputIndex: Data.Integer(),
+      activeOperatorAnchorNodeInputIndex: Data.Integer(),
+      settlementInputIndex: Data.Integer(),
+      settlementRedeemerIndex: Data.Integer(),
+    }),
+  }),
+  Data.Object({
+    RetireOperator: Data.Object({
+      activeOperatorKey: Data.Bytes(),
+      hubOracleRefInputIndex: Data.Integer(),
+      activeOperatorRemovedNodeInputIndex: Data.Integer(),
+      activeOperatorAnchorNodeInputIndex: Data.Integer(),
+      retiredOperatorInsertedNodeOutputIndex: Data.Integer(),
+      retiredOperatorsRedeemerIndex: Data.Integer(),
+    }),
+  }),
+]);
+export type ActiveOperatorMintRedeemer = Data.Static<
+  typeof ActiveOperatorMintRedeemerSchema
+>;
+export const ActiveOperatorMintRedeemer =
+  ActiveOperatorMintRedeemerSchema as unknown as ActiveOperatorMintRedeemer;
 
 export const ActiveOperatorSpendDatumSchema = Data.Object({
   key: Data.Nullable(Data.Bytes()),
@@ -530,10 +580,6 @@ export class SettlementError extends EffectData.TaggedError(
   "SettlementError",
 )<GenericErrorFields> {}
 
-// Disprove - steps to build the tranasction
-// 1. settlement utxo with resolution claim
-// replace that utxos' datum wit none 
-
 export const getSettlementUTxOWithClaim = (
   settlementUTxOs: UTxO[],
   resolutionClaimOperator: string
@@ -772,9 +818,177 @@ export const incompleteDisproveResolutionClaimTxProgram = (
     Effect.catchAllDefect((defect) => {
       return Effect.fail(
         new LucidError({
-          message: "Caught defect from attachResolutionClaimTxBuilder",
+          message: "Caught defect from disproveResolutionClaimTxBuilder",
           cause: defect,
         }),
       );
     }),
   );
+
+export type RemoveOperatorBadSettlementParams={
+  operatorStatus: OperatorStatus;
+  activeOperatorAddress: string;
+  activeOperatorKey: string;
+  activeOperatorNFT: string;
+  activeOperatorMintingPolicy: MintingPolicy;
+  activeOperatorADABond: bigint;
+  fraudProverAddress: string;
+  hubOracleValidator: AuthenticatedValidator;
+}
+export const getSlashedActiveOperatorNodeUTxO = (
+  activeOperatorsUTxOs: UTxO[],
+  params: RemoveOperatorBadSettlementParams,
+): Effect.Effect<ActiveOperatorNodeUTxO, DataCoercionError | LucidError> => {
+  for (const utxo of activeOperatorsUTxOs) {
+    const datumCBOR = utxo.datum;
+    if (!datumCBOR) {
+      continue;
+    }
+    try {
+      const parsedDatum = Data.from(datumCBOR, ActiveOperatorSpendDatum);
+      if (parsedDatum.key === params.activeOperatorKey) {
+        return Effect.succeed({ utxo, datum: parsedDatum });
+      }
+    } catch (err) {
+      return Effect.fail(
+        new DataCoercionError({
+          message: `Could not coerce UTxO's datum to an active operator's node datum`,
+          cause: err,
+        }),
+      );
+    }
+  }
+  return Effect.fail(
+    new LucidError({
+      message: "No Active Operator UTxO with given operator found",
+      cause: "Active Operators Tx not initiated not initiated",
+    }),
+  );
+};
+
+export const incompleteRemoveOperatorBadSettlementTxProgram = (
+  lucid: LucidEvolution,
+  params: RemoveOperatorBadSettlementParams,
+): Effect.Effect<TxBuilder, HashingError | DataCoercionError | LucidError> =>
+  Effect.gen(function* () {
+    const mintRedeemer: ActiveOperatorMintRedeemer = {
+      RemoveOperatorBadSettlement: {
+        slashedActiveOperatorKey: params.activeOperatorKey,
+        hubOracleRefInputIndex: 0n,
+        activeOperatorSlashedNodeInputIndex: 0n,
+        activeOperatorAnchorNodeInputIndex: 0n,
+        settlementInputIndex: 0n,
+        settlementRedeemerIndex: 0n,
+      },
+    };
+    const mintRedeemerCBOR = Data.to(mintRedeemer, ActiveOperatorMintRedeemer);
+
+    const activeOperatorAllUtxos: UTxO[] = yield* Effect.tryPromise({
+      try: () => lucid.utxosAt(params.activeOperatorAddress),
+      catch: (err) =>
+        new LucidError({
+          message: "Failed to fetch Active Operator UTxOs",
+          cause: err,
+        }),
+    });
+    if (activeOperatorAllUtxos.length === 0) {
+      yield* new LucidError({
+        message: "Failed to build the Active Operator node transaction",
+        cause: "No UTxOs found in Active Operator contract address",
+      });
+    };
+
+    const activeOperatorInputUTxO = yield* getSlashedActiveOperatorNodeUTxO(
+      activeOperatorAllUtxos,
+      params,
+    );
+
+    const hubOracleRefUTxO = yield* fetchHubOracleRefUTxOs(
+      params.hubOracleValidator.spendScriptAddress,
+      params.hubOracleValidator.policyId,
+      lucid,
+    );
+
+    const network = lucid.config().network ?? "Mainnet";
+    const slashingPenalty = getProtocolParameters(network).slashing_Penalty;
+
+    const buildsettlementTx = lucid
+      .newTx()
+      .collectFrom([activeOperatorInputUTxO.utxo])
+      .readFrom([hubOracleRefUTxO.utxo])
+      .mintAssets(
+        {
+          [params.activeOperatorNFT]: -1n,
+        },
+        mintRedeemerCBOR
+      )
+      .pay.ToAddressWithData(params.fraudProverAddress,
+        { kind: "inline",
+          value: "undefined" //TODO
+        },
+        { lovelace: params.activeOperatorADABond }
+      )
+      .attach.MintingPolicy(params.activeOperatorMintingPolicy)
+      .setMinFee(slashingPenalty)
+    return buildsettlementTx;
+  }).pipe(
+    Effect.catchAllDefect((defect) => {
+      return Effect.fail(
+        new LucidError({
+          message: "Caught defect from disproveResolutionClaimTxBuilder",
+          cause: defect,
+        }),
+      );
+    }),
+  );
+
+  export const unsignedDisproveResolutionClaimTxProgram = (
+  lucid: LucidEvolution,
+  disproveResolutionClaimParams: DisproveResolutionClaimParams,
+  removeOperatorBadSettlementParams: RemoveOperatorBadSettlementParams,
+): Effect.Effect<
+  TxSignBuilder,
+  HashingError | DataCoercionError | LucidError | SettlementError
+> =>
+  Effect.gen(function* () {
+    const disproveResolutionClaimTx = yield* incompleteDisproveResolutionClaimTxProgram(
+      lucid,
+      disproveResolutionClaimParams,
+    );
+    const removeOperatorBadSettlementTx = yield* incompleteRemoveOperatorBadSettlementTxProgram(
+      lucid,
+      removeOperatorBadSettlementParams,
+    );
+    const composedTx = disproveResolutionClaimTx.compose(removeOperatorBadSettlementTx);
+    const completedTx: TxSignBuilder = yield* Effect.tryPromise({
+      try: () => composedTx.complete({ localUPLCEval: false }),
+      catch: (e) =>
+        new SettlementError({
+          message: `Failed to build the transaction: ${e}`,
+          cause: e,
+        }),
+    });
+    return completedTx;
+  });
+
+/**
+ * Builds completed tx for disproving resolution claims using the provided
+ * `LucidEvolution` instance, `DisproveResolutionClaimParams` and `RemoveOperatorBadSettlementParams` parameters.
+ *
+ * @param lucid - The `LucidEvolution` API object.
+ * @param disproveResolutionClaimParams - Parameters required for disproving resolution claim.
+ * @param removeOperatorBadSettlementParams - Parameters required for removing the slashed active operator.
+ * @returns A promise that resolves to a `TxSignBuilder` instance.
+ */
+export const unsignedDisproveResolutionClaimTx = (
+  lucid: LucidEvolution,
+  disproveResolutionClaimParams: DisproveResolutionClaimParams,
+  removeOperatorBadSettlementParams: RemoveOperatorBadSettlementParams,
+): Promise<TxSignBuilder> =>
+  makeReturn(
+    unsignedDisproveResolutionClaimTxProgram(
+      lucid,
+      disproveResolutionClaimParams,
+      removeOperatorBadSettlementParams,
+    ),
+  ).unsafeRun();

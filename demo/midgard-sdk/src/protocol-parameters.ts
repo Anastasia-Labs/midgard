@@ -5,6 +5,7 @@ import { PosixTimeDuration } from "./common.js";
 export type ProtocolParameters = {
   event_wait_duration: number;
   maturity_duration: PosixTimeDuration;
+  slashing_Penalty: bigint;
 };
 
 /**
@@ -15,11 +16,13 @@ export const getProtocolParameters = (network: Network): ProtocolParameters => {
     return {
       event_wait_duration: 60_000,
       maturity_duration: 30n,
+      slashing_Penalty: 2000000n,
     };
   } else {
     return {
       event_wait_duration: 50_000,
       maturity_duration: 1n,
+      slashing_Penalty: 1000000n,
     };
   }
 };
