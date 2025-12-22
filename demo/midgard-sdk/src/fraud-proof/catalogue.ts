@@ -1,13 +1,11 @@
 import { AuthenticatedValidator, POSIXTimeSchema } from "@/common.js";
-import { incompleteInitLinkedListTxProgram } from "@/linked-list.js";
-import { Data } from "@lucid-evolution/lucid";
+import { FRAUD_PROOF_CATALOGUE_ASSET_NAME } from "@/constants.js";
+import { Assets, Data, toUnit } from "@lucid-evolution/lucid";
 import { LucidEvolution, TxBuilder } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
-export const FraudProofCatalogueDatumSchema = Data.Object({
-  insertTime: POSIXTimeSchema,
-  initStepScriptHash: Data.Bytes(),
-});
+export const FraudProofCatalogueDatumSchema = Data.Bytes();
+
 export type FraudProofCatalogueDatum = Data.Static<
   typeof FraudProofCatalogueDatumSchema
 >;
@@ -37,6 +35,7 @@ export const FraudProofCatalogueSpendRedeemer =
 
 export type FraudProofCatalogueInitParams = {
   validator: AuthenticatedValidator;
+  mptRootHash: string;
 };
 
 export type FraudProofCatalogueDeinitParams = {};
@@ -56,12 +55,24 @@ export const incompleteFraudProofCatalogueInitTxProgram = (
 ): Effect.Effect<TxBuilder, never> =>
   Effect.gen(function* () {
 
-    return yield* incompleteInitLinkedListTxProgram(lucid, {
-      validator: params.validator,
-      redeemer: Data.to("Init", FraudProofCatalogueMintRedeemer),
-    });
-  });
+    const assets: Assets = {
+      [toUnit(params.validator.policyId, FRAUD_PROOF_CATALOGUE_ASSET_NAME)]: 1n,
+    };
 
+    const datum = Data.to(params.mptRootHash, FraudProofCatalogueDatum);
+
+    const tx = lucid
+      .newTx()
+      .mintAssets(assets, Data.to("Init", FraudProofCatalogueMintRedeemer))
+      .pay.ToAddressWithData(
+        params.validator.spendScriptAddress,
+        { kind: "inline", value: datum },
+        assets,
+      )
+      .attach.Script(params.validator.mintScript);
+
+    return tx;
+  });
 /**
  * Deinit
  *

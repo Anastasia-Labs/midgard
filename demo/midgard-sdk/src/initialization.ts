@@ -15,6 +15,7 @@ import { incompleteSchedulerInitTxProgram } from "./scheduler.js";
 import { incompleteFraudProofCatalogueInitTxProgram } from "./fraud-proof/catalogue.js";
 import { incompleteInitStateQueueTxProgram } from "./state-queue.js";
 import { incompleteActiveOperatorInitTxProgram } from "./active-operators.js";
+<<<<<<< HEAD
 import {
   incompleteSchedulerInitTxProgram,
   SchedulerDatum,
@@ -37,6 +38,11 @@ import {
   RetiredOperatorMintRedeemer,
   incompleteRetiredOperatorInitTxProgram,
 } from "./retired-operators.js";
+=======
+import { incompleteRegisteredOperatorInitTxProgram } from "./registered-operators.js";
+import { incompleteRetiredOperatorInitTxProgram } from "./retired-operators.js";
+import { GENESIS_HASH_32 } from "./constants.js";
+>>>>>>> 34fda679 (refactor(sdk): fix fraud proof catalogue initialization)
 
 export type InitializationParams = {
   midgardValidators: MidgardValidators;
@@ -110,6 +116,7 @@ export const incompleteInitializationTxProgram = (
     const fraudProofCatalogueTx: TxBuilder =
       yield* incompleteFraudProofCatalogueInitTxProgram(lucid, {
         validator: params.midgardValidators.fraudProofCatalogueAuthValidator,
+        mptRootHash: GENESIS_HASH_32,
       });
 
     return tx

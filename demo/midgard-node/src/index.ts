@@ -8,7 +8,6 @@ import packageJson from "../package.json" with { type: "json" };
 import { Effect, pipe } from "effect";
 import dotenv from "dotenv";
 import { NodeRuntime } from "@effect/platform-node";
-import { initializeMidgard } from "./transactions/initialization.js";
 
 dotenv.config();
 const VERSION = packageJson.version;
@@ -71,23 +70,6 @@ program
     );
 
     NodeRuntime.runMain(program, { teardown: undefined });
-  });
-
-  program
-  .command("init")
-  .description("Initialize Midgard contracts")
-  .action(() => {
-    const initProgram = pipe(
-      initializeMidgard,
-      Effect.provide(Services.AlwaysSucceedsContract.Default),
-      Effect.provide(Services.Lucid.Default),
-      Effect.provide(Services.NodeConfig.layer),
-      Effect.tap(() =>
-        Effect.logInfo("✅ Midgard contracts initialized successfully!"),
-      ),
-    );
-
-    NodeRuntime.runMain(initProgram);
   });
 
 program.parse(process.argv);
