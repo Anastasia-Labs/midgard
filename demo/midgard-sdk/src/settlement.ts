@@ -20,18 +20,18 @@ import {
   POSIXTimeSchema,
   Proof,
   ProofSchema,
-  ProofStep,
   UnauthenticUtxoError,
   VerificationKeyHashSchema,
-} from "./common.js";
+} from "@/common.js";
 import { Data as EffectData, Effect } from "effect";
-import { HubOracleUTxO, utxosToHubOracleUTxOs } from "./hub-oracle.js";
-import { SchedulerUTxO, utxosToSchedulerUTxOs } from "./scheduler.js";
+import { HubOracleUTxO, utxosToHubOracleUTxOs } from "@/hub-oracle.js";
+import { SchedulerUTxO, utxosToSchedulerUTxOs } from "@/scheduler.js";
 import { DepositUTxO, utxosToDepositUTxOs } from "./user-events/deposit.js";
 import { TxOrderUTxO, utxosToTxOrderUTxOs } from "./user-events/tx-order.js";
 import { WithdrawalOrderDatum } from "./user-events/withdrawal.js";
-import { WithdrawalInfo } from "./ledger-state.js";
-import { getProtocolParameters } from "./protocol-parameters.js";
+import { WithdrawalInfo } from "@/ledger-state.js";
+import { getProtocolParameters } from "@/protocol-parameters.js";
+import { ActiveOperatorMintRedeemer, ActiveOperatorSpendDatum, ActiveOperatorSpendRedeemer } from "@/active-operators.js";
 
 export const ResolutionClaimSchema = Data.Object({
   resolutionTime: POSIXTimeSchema,
@@ -127,89 +127,7 @@ export type SettlementMintRedeemer = Data.Static<
 export const SettlementMintRedeemer =
   SettlementMintRedeemerSchema as unknown as SettlementMintRedeemer;
 
-export const ActiveOperatorSpendRedeemerSchema = Data.Enum([
-  Data.Literal("ListStateTransition"),
-  Data.Object({
-    UpdateBondHoldNewState: Data.Object({
-      activeNodeOutputIndex: Data.Integer(),
-      hubOracleRefInputIndex: Data.Integer(),
-      stateQueueRedeemerIndex: Data.Integer(),
-    }),
-  }),
-  Data.Object({
-    UpdateBondHoldNewSettlement: Data.Object({
-      activeNodeOutputIndex: Data.Integer(),
-      hubOracleRefInputIndex: Data.Integer(),
-      settlementQueueInputIndex: Data.Integer(),
-      settlementQueueRedeemerIndex: Data.Integer(),
-      newBondUnlockTime: POSIXTimeSchema,
-    }),
-  }),
-]);
-export type ActiveOperatorSpendRedeemer = Data.Static<
-  typeof ActiveOperatorSpendRedeemerSchema
->;
-export const ActiveOperatorSpendRedeemer =
-  ActiveOperatorSpendRedeemerSchema as unknown as ActiveOperatorSpendRedeemer;
 
-export const ActiveOperatorMintRedeemerSchema = Data.Enum([
-  Data.Literal("Init"),
-  Data.Literal("Deinit"),
-  Data.Object({
-    ActivateOperator: Data.Object({
-      newActiveOperatorKey: Data.Bytes(),
-      hubOracleRefInputIndex: Data.Integer(),
-      activeOperatorAppendedNodeOutputIndex: Data.Integer(),
-      activeOperatorAnchorNodeOutputIndex: Data.Integer(),
-      registeredOperatorsRedeemerIndex: Data.Integer(),
-    }),
-  }),
-  Data.Object({
-    RemoveOperatorBadState: Data.Object({
-      slashedActiveOperatorKey: Data.Bytes(),
-      hubOracleRefInputIndex: Data.Integer(),
-      activeOperatorSlashedNodeInputIndex: Data.Integer(),
-      activeOperatorAnchorNodeInputIndex: Data.Integer(),
-      stateQueueRedeemerIndex: Data.Integer(),
-    }),
-  }),
-  Data.Object({
-    RemoveOperatorBadSettlement: Data.Object({
-      slashedActiveOperatorKey: Data.Bytes(),
-      hubOracleRefInputIndex: Data.Integer(),
-      activeOperatorSlashedNodeInputIndex: Data.Integer(),
-      activeOperatorAnchorNodeInputIndex: Data.Integer(),
-      settlementInputIndex: Data.Integer(),
-      settlementRedeemerIndex: Data.Integer(),
-    }),
-  }),
-  Data.Object({
-    RetireOperator: Data.Object({
-      activeOperatorKey: Data.Bytes(),
-      hubOracleRefInputIndex: Data.Integer(),
-      activeOperatorRemovedNodeInputIndex: Data.Integer(),
-      activeOperatorAnchorNodeInputIndex: Data.Integer(),
-      retiredOperatorInsertedNodeOutputIndex: Data.Integer(),
-      retiredOperatorsRedeemerIndex: Data.Integer(),
-    }),
-  }),
-]);
-export type ActiveOperatorMintRedeemer = Data.Static<
-  typeof ActiveOperatorMintRedeemerSchema
->;
-export const ActiveOperatorMintRedeemer =
-  ActiveOperatorMintRedeemerSchema as unknown as ActiveOperatorMintRedeemer;
-
-export const ActiveOperatorSpendDatumSchema = Data.Object({
-  key: Data.Nullable(Data.Bytes()),
-  link: Data.Nullable(Data.Bytes()),
-  bondUnlockTime: Data.Nullable(POSIXTimeSchema),
-});
-export type ActiveOperatorSpendDatum = Data.Static<
-  typeof ActiveOperatorSpendDatumSchema
->;
-export const ActiveOperatorSpendDatum =
-  ActiveOperatorSpendDatumSchema as unknown as ActiveOperatorSpendDatum;
 
 export type AttachResolutionClaimParams = {
   settlementAddress: string;
@@ -255,7 +173,7 @@ export const getSettlementUTxOWithoutClaim = (
   );
 };
 
-const fetchHubOracleRefUTxOs = (
+const fetchHubOracleRefUTxO = (
   hubOracleScriptAddress: string,
   hubOraclePolicyId: string,
   lucid: LucidEvolution,
@@ -269,17 +187,17 @@ const fetchHubOracleRefUTxOs = (
           cause: err,
         }),
     });
-    if (allUTxOs.length === 0) {
+    const hubOracleRefUTxOs = yield* utxosToHubOracleUTxOs(allUTxOs, hubOraclePolicyId);
+    if (hubOracleRefUTxOs.length === 0) {
       yield* new LucidError({
         message: "Failed to build the HubOracle transaction",
         cause: "No UTxOs found in Hub Oracle contract address",
       });
     }
-    const hubOracleRefUTxOs = yield* utxosToHubOracleUTxOs(allUTxOs, hubOraclePolicyId);
     return hubOracleRefUTxOs[0];
   });
 
-const fetchSchedulerRefUTxOs = (
+const fetchSchedulerRefUTxO = (
   schedulerScriptAddress: string,
   schedulerPolicyId: string,
   lucid: LucidEvolution,
@@ -293,14 +211,14 @@ const fetchSchedulerRefUTxOs = (
           cause: err,
         }),
     });
-    if (allUTxOs.length === 0) {
+    const schedulerRefUTxOs = yield* utxosToSchedulerUTxOs(allUTxOs, schedulerPolicyId);
+    if (schedulerRefUTxOs.length === 0) {
       yield* new LucidError({
         message: "Failed to build the Scheduler transaction",
         cause: "No UTxOs found in Scheduler contract address",
       });
     }
-    const schedulerRefUTxO = yield* utxosToSchedulerUTxOs(allUTxOs, schedulerPolicyId);
-    return schedulerRefUTxO[0];
+    return schedulerRefUTxOs[0];
   });
 
 /**
@@ -345,30 +263,28 @@ export const incompleteAttachResolutionClaimTxProgram = (
     const settlementInputUtxo =
       yield* getSettlementUTxOWithoutClaim(settlementAllUtxos);
 
-    const spendDatum: SettlementDatum = {
-      depositsRoot: settlementInputUtxo.datum.depositsRoot,
-      withdrawalsRoot: settlementInputUtxo.datum.withdrawalsRoot,
-      transactionsRoot: settlementInputUtxo.datum.transactionsRoot,
+    const updatedDatum: SettlementDatum = {
+      ...settlementInputUtxo.datum,
       resolutionClaim: {
         resolutionTime: params.newBondUnlockTime,
         operator: params.resolutionClaimOperator,
       },
     };
-    const spendDatumCBOR = Data.to(spendDatum, SettlementDatum);
+    const updatedDatumCBOR = Data.to(updatedDatum, SettlementDatum);
 
-    const hubOracleRefUTxO = yield* fetchHubOracleRefUTxOs(
+    const hubOracleRefUTxO = yield* fetchHubOracleRefUTxO(
       params.hubOracleValidator.spendScriptAddress,
       params.hubOracleValidator.policyId,
       lucid,
     );
 
-    const schedulerRefUTxO = yield* fetchSchedulerRefUTxOs(
+    const schedulerRefUTxO = yield* fetchSchedulerRefUTxO(
       params.schedulerScriptAddress,
       params.schedulerPolicyId,
       lucid,
     );
 
-    const txUpperBound = Date.now() + 2000;
+    const txUpperBound = Date.now() + 2 * 60_000;
 
     const buildsettlementTx = lucid
       .newTx()
@@ -377,7 +293,7 @@ export const incompleteAttachResolutionClaimTxProgram = (
       .readFrom([schedulerRefUTxO.utxo])
       .pay.ToAddressWithData(params.settlementAddress, {
         kind: "inline",
-        value: spendDatumCBOR,
+        value: updatedDatumCBOR,
       })
       .validTo(txUpperBound)
       .addSignerKey(params.resolutionClaimOperator);
@@ -483,25 +399,25 @@ export const incompleteUpdateBondHoldNewSettlementTxProgram = (
       params,
     );
 
-    const spendDatum: ActiveOperatorSpendDatum = {
+    const updatedDatum: ActiveOperatorSpendDatum = {
       ...activeOperatorsInputUtxo.datum,
       bondUnlockTime: params.newBondUnlockTime,
     };
-    const spendDatumCBOR = Data.to(spendDatum, ActiveOperatorSpendDatum);
+    const updatedDatumCBOR = Data.to(updatedDatum, ActiveOperatorSpendDatum);
 
-    const hubOracleRefUTxO = yield* fetchHubOracleRefUTxOs(
+    const hubOracleRefUTxO = yield* fetchHubOracleRefUTxO(
       params.hubOracleValidator.spendScriptAddress,
       params.hubOracleValidator.policyId,
       lucid,
     );
 
-    const schedulerRefUTxO = yield* fetchSchedulerRefUTxOs(
+    const schedulerRefUTxO = yield* fetchSchedulerRefUTxO(
       params.schedulerScriptAddress,
       params.schedulerPolicyId,
       lucid,
     );
 
-    const txUpperBound = Date.now() + 2000;
+    const txUpperBound = Date.now() + 2 * 60_000;
 
     const buildUpdateBondHoldNewSettlementTx = lucid
       .newTx()
@@ -510,7 +426,7 @@ export const incompleteUpdateBondHoldNewSettlementTxProgram = (
       .readFrom([schedulerRefUTxO.utxo])
       .pay.ToAddressWithData(params.activeOperatorsAddress, {
         kind: "inline",
-        value: spendDatumCBOR,
+        value: updatedDatumCBOR,
       })
       .validTo(txUpperBound);
     return buildUpdateBondHoldNewSettlementTx;
@@ -624,7 +540,7 @@ export type DisproveResolutionClaimParams = {
   eventAddress: string;
   eventPolicyId: string;
 }
-// To be removed from here and should be merged from Preliminary-OffChain-for-Withdrawals
+// To be removed from here and should be merged from Preliminary-OffChain-for-Withdrawals or moved to user-events/withdrawal.ts
 export type WithdrawalUTxO = {
   utxo: UTxO;
   datum: WithdrawalOrderDatum;
@@ -714,22 +630,35 @@ export const fetchUserEventRefUTxOs = (
           cause: err,
         }),
     });
-    if (allUTxOs.length === 0) {
+    
+    if(userEventType === "Deposit"){
+    const depositRefUTxOs = yield* utxosToDepositUTxOs(allUTxOs, userEventPolicyId);
+    if (depositRefUTxOs.length === 0) {
       yield* new LucidError({
         message: "Failed to build the User Event transaction",
         cause: "No UTxOs found in User Event contract address",
       });
     }
-    if(userEventType === "Deposit"){
-    const depositRefUTxOs = yield* utxosToDepositUTxOs(allUTxOs, userEventPolicyId)
     return depositRefUTxOs[0];
     }
     else if(userEventType === "TxOrder"){
-    const txOrderRefUTxOs = yield* utxosToTxOrderUTxOs(allUTxOs, userEventPolicyId)
+    const txOrderRefUTxOs = yield* utxosToTxOrderUTxOs(allUTxOs, userEventPolicyId);
+    if (txOrderRefUTxOs.length === 0) {
+      yield* new LucidError({
+        message: "Failed to build the User Event transaction",
+        cause: "No UTxOs found in User Event contract address",
+      });
+    }
     return txOrderRefUTxOs[0]; 
     }
     else {
-    const withdrawalRefUTxOs = yield* utxosToWithdrawalUTxOs(allUTxOs, userEventPolicyId)
+    const withdrawalRefUTxOs = yield* utxosToWithdrawalUTxOs(allUTxOs, userEventPolicyId);
+    if (withdrawalRefUTxOs.length === 0) {
+      yield* new LucidError({
+        message: "Failed to build the User Event transaction",
+        cause: "No UTxOs found in User Event contract address",
+      });
+    }
     return withdrawalRefUTxOs[0];
   }
 });
@@ -779,15 +708,13 @@ export const incompleteDisproveResolutionClaimTxProgram = (
     const settlementInputUtxo =
       yield* getSettlementUTxOWithClaim(settlementAllUtxos,params.resolutionClaimOperator);
 
-    const spendDatum: SettlementDatum = {
-      depositsRoot: settlementInputUtxo.datum.depositsRoot,
-      withdrawalsRoot: settlementInputUtxo.datum.withdrawalsRoot,
-      transactionsRoot: settlementInputUtxo.datum.transactionsRoot,
+    const updatedDatum: SettlementDatum = {
+      ...settlementInputUtxo.datum,
       resolutionClaim: null
     };
-    const spendDatumCBOR = Data.to(spendDatum, SettlementDatum);
+    const updatedDatumCBOR = Data.to(updatedDatum, SettlementDatum);
 
-    const hubOracleRefUTxO = yield* fetchHubOracleRefUTxOs(
+    const hubOracleRefUTxO = yield* fetchHubOracleRefUTxO(
       params.hubOracleValidator.spendScriptAddress,
       params.hubOracleValidator.policyId,
       lucid,
@@ -809,7 +736,7 @@ export const incompleteDisproveResolutionClaimTxProgram = (
       .readFrom([userEventRefUTxO.utxo])
       .pay.ToAddressWithData(params.settlementAddress, {
         kind: "inline",
-        value: spendDatumCBOR,
+        value: updatedDatumCBOR,
       })
       .validTo(txUpperBound)
       .addSignerKey(params.resolutionClaimOperator);
@@ -903,14 +830,14 @@ export const incompleteRemoveOperatorBadSettlementTxProgram = (
       params,
     );
 
-    const hubOracleRefUTxO = yield* fetchHubOracleRefUTxOs(
+    const hubOracleRefUTxO = yield* fetchHubOracleRefUTxO(
       params.hubOracleValidator.spendScriptAddress,
       params.hubOracleValidator.policyId,
       lucid,
     );
 
     const network = lucid.config().network ?? "Mainnet";
-    const slashingPenalty = getProtocolParameters(network).slashing_Penalty;
+    const slashingPenalty = getProtocolParameters(network).slashing_penalty;
 
     const buildsettlementTx = lucid
       .newTx()

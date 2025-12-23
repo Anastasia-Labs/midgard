@@ -3,7 +3,7 @@ import {
   GenericErrorFields,
   MissingDatumError,
   ValueSchema,
-} from "./common.js";
+} from "@/common.js";
 import { Data as EffectData, Effect } from "effect";
 import { Data, UTxO } from "@lucid-evolution/lucid";
 

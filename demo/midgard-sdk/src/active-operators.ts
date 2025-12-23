@@ -2,21 +2,22 @@ import { POSIXTimeSchema } from "@/common.js";
 import { LucidEvolution, TxBuilder } from "@lucid-evolution/lucid";
 import { Data } from "@lucid-evolution/lucid";
 
-export const ActiveOperatorDatumSchema = Data.Object({
-  commitmentTime: Data.Nullable(POSIXTimeSchema),
-});
-export type ActiveOperatorDatum = Data.Static<typeof ActiveOperatorDatumSchema>;
-export const ActiveOperatorDatum =
-  ActiveOperatorDatumSchema as unknown as ActiveOperatorDatum;
-
 export const ActiveOperatorSpendRedeemerSchema = Data.Enum([
   Data.Literal("ListStateTransition"),
   Data.Object({
-    UpdateCommitmentTime: Data.Object({
-      activeNodeInputIndex: Data.Integer(),
-      prevActiveNodeRefInputIndex: Data.Integer(),
+    UpdateBondHoldNewState: Data.Object({
+      activeNodeOutputIndex: Data.Integer(),
       hubOracleRefInputIndex: Data.Integer(),
       stateQueueRedeemerIndex: Data.Integer(),
+    }),
+  }),
+  Data.Object({
+    UpdateBondHoldNewSettlement: Data.Object({
+      activeNodeOutputIndex: Data.Integer(),
+      hubOracleRefInputIndex: Data.Integer(),
+      settlementQueueInputIndex: Data.Integer(),
+      settlementQueueRedeemerIndex: Data.Integer(),
+      newBondUnlockTime: POSIXTimeSchema,
     }),
   }),
 ]);
@@ -39,12 +40,22 @@ export const ActiveOperatorMintRedeemerSchema = Data.Enum([
     }),
   }),
   Data.Object({
-    RemoveOperatorSlashBond: Data.Object({
+    RemoveOperatorBadState: Data.Object({
       slashedActiveOperatorKey: Data.Bytes(),
       hubOracleRefInputIndex: Data.Integer(),
       activeOperatorSlashedNodeInputIndex: Data.Integer(),
       activeOperatorAnchorNodeInputIndex: Data.Integer(),
       stateQueueRedeemerIndex: Data.Integer(),
+    }),
+  }),
+  Data.Object({
+    RemoveOperatorBadSettlement: Data.Object({
+      slashedActiveOperatorKey: Data.Bytes(),
+      hubOracleRefInputIndex: Data.Integer(),
+      activeOperatorSlashedNodeInputIndex: Data.Integer(),
+      activeOperatorAnchorNodeInputIndex: Data.Integer(),
+      settlementInputIndex: Data.Integer(),
+      settlementRedeemerIndex: Data.Integer(),
     }),
   }),
   Data.Object({
@@ -63,6 +74,17 @@ export type ActiveOperatorMintRedeemer = Data.Static<
 >;
 export const ActiveOperatorMintRedeemer =
   ActiveOperatorMintRedeemerSchema as unknown as ActiveOperatorMintRedeemer;
+
+export const ActiveOperatorSpendDatumSchema = Data.Object({
+  key: Data.Nullable(Data.Bytes()),
+  link: Data.Nullable(Data.Bytes()),
+  bondUnlockTime: Data.Nullable(POSIXTimeSchema),
+});
+export type ActiveOperatorSpendDatum = Data.Static<
+  typeof ActiveOperatorSpendDatumSchema
+>;
+export const ActiveOperatorSpendDatum =
+  ActiveOperatorSpendDatumSchema as unknown as ActiveOperatorSpendDatum;
 
 export type ActiveOperatorInitParams = {};
 export type ActiveOperatorDeinitParams = {};

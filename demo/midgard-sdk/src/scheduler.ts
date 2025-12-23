@@ -5,7 +5,7 @@ import {
   getStateToken,
   POSIXTimeSchema,
   UnauthenticUtxoError,
-} from "./common.js";
+} from "@/common.js";
 
 export type SchedulerInitParams = {};
 export type SchedulerDeinitParams = {};
