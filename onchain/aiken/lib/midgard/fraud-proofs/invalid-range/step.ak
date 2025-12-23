@@ -1,7 +1,7 @@
-use midgard/fraud_proofs/common.{Proof}
+use midgard/common/types.{Proof}
 use midgard/ledger_state.{MidgardTxBodyCompact, MidgardTxCompact}
 
-pub type StepRedeemer {
+pub type SpendRedeemer {
   Cancel { index_output: Int }
   Continue {
     bad_state_queue_node_ref_input_index: Int,

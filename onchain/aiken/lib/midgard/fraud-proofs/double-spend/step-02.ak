@@ -1,21 +1,22 @@
-use cardano/transaction.{TransactionId}
-use midgard/fraud_proofs/common.{Proof}
+use midgard/common/types.{MerkleRoot, Proof}
+use midgard/computation_thread as ct
 
-// TODO: tx2_info_hash should have a more specific type
-// We can fix this when we start using the Plutarch MPT library
-pub type StepRedeemer {
-  Cancel { index_output: Int }
-  Continue {
-    bad_state_queue_node_ref_input_index: Int,
-    bad_tx2_hash: TransactionId,
-    bad_tx2_info_hash: ByteArray,
-    bad_tx2_to_root_proof_path: Proof,
-    index_output: Int,
-    hub_ref_input_index: Int,
-  }
+pub type State {
+  verified_tx1_inputs_root: MerkleRoot,
+  verified_tx2_inputs_root: MerkleRoot,
 }
 
-pub type StepState {
-  verified_tx1_hash: TransactionId,
-  verified_tx2_hash: TransactionId,
+pub type Datum =
+  ct.StepDatum<State>
+
+pub type Args {
+  input_index: Int,
+  output_index: Int,
+  double_spent_input_key: Data,
+  double_spent_input_value: Data,
+  input_membership_proof: Proof,
+  inclusion_proof_script_withdraw_redeemer_index: Int,
 }
+
+pub type SpendRedeemer =
+  ct.StepRedeemer<Args>

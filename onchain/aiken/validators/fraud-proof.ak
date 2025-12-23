@@ -5,7 +5,7 @@ use cardano/transaction.{
   InlineDatum, Input, Output, OutputReference, Transaction,
 }
 use midgard/common/utils
-use midgard/computation_thread.{StepDatum}
+use midgard/computation_thread as ct
 use midgard/fraud_proof.{Datum, MintRedeemer, SpendRedeemer}
 use midgard/hub_oracle as hub
 
@@ -46,7 +46,7 @@ validator mint(
 
     expect InlineDatum(fraud_proof_last_step_datum) =
       fraud_proof_last_step_input.output.datum
-    expect parsed_fraud_proof_last_step_datum: StepDatum =
+    expect parsed_fraud_proof_last_step_datum: ct.StepDatum<Datum> =
       fraud_proof_last_step_datum
 
     and {

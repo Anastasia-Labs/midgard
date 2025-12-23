@@ -1,123 +1,170 @@
-//// Double Spend Fraud Proof Validator
+//// ## Double Spend Fraud Proof
 ////
-//// This is the abstracted version of the double spend fraud proof validator that uses
-//// common utilities to reduce code duplication.
+//// Proves 2 unique transactions exist such that both spend the same UTxO.
 ////
-//// To see the original implementation that shows the raw logic of fraud proofs, you can view the diff at:
-//// https://github.com/Anastasia-Labs/midgard/pull/91
+//// First step's contract is responsible for verifying inclusion of the two
+//// transactions in a Midgard block, and passing them to the second step's
+//// contract.
+////
+//// This is meant to take place in two transactions:
+//// 1. First transaction spends the initialized fraud proof UTxO (which has no
+////    `data`) and reproduces the UTxO at own address with `data` containing
+////    the first verified bad transaction's body.
+//// 2. Second transaction spends the UTxO produced in the first transaction,
+////    and produces the UTxO at the next step's script address with `data`
+////    containing both verified bad transactions' bodies.
 
+use aiken/builtin
 use aiken/collection/list
 use aiken/crypto.{ScriptHash}
 use cardano/assets.{PolicyId}
 use cardano/transaction.{OutputReference, Transaction}
-use midgard/computation_thread.{StepDatum}
-use midgard/fraud_proofs/common.{
-  MembershipProofInputs, get_singleton_ct_token, get_tx_root_validate_block_hash,
-  handle_cancel, validate_membership_proof, validate_step_output,
-}
-use midgard/fraud_proofs/double_spend/step_01.{
-  Cancel, Continue, StepRedeemer as Step1Redeemer, StepState as Step1State,
-}
+use midgard/common/constants.{fraud_category_id_byte_count}
+use midgard/common/utils.{plutarch_phas, verify_hash_32}
+use midgard/computation_thread as ct
+use midgard/fraud_proofs/common.{cancel, continue, verify_tx_hash}
+use midgard/fraud_proofs/double_spend/step_01.{Args, Datum, SpendRedeemer}
+use midgard/fraud_proofs/double_spend/step_02
 use midgard/hub_oracle as hub
 
-// ----------------- DOUBLE SPEND FRAUD PROOF: DEFINITION --------------------------
-// Proves membership Merkle proofs for 2 unique txs which spends the same input UTxO
-
-// Transaction1 (tx1):
-//   Inputs (tx_in1): [UTxO_A]
-//   Outputs (tx_out1): [UTxO_B, UTxO_C]
-
-// Transaction2 (tx2):
-//   Inputs (tx_in2): [UTxO_A]  <- Same UTxO as tx1
-//   Outputs (tx_out2): [UTxO_D]
-
 validator main(
-  // Script hash of next step (backwards compilation order of step validators required)
-  double_spend_step_02_validator_script_hash: ScriptHash,
-  // Script hash of stake validator (forwarded merkle proof logic)
-  plutarch_midgard_merkle_validator: ScriptHash,
-  // Computation thread token policy
-  ct_token_policy_id: PolicyId,
+  step_02_validator_script_hash: ScriptHash,
+  computation_thread_token_policy_id: PolicyId,
   hub_oracle: ScriptHash,
 ) {
   spend(
-    datum: Option<StepDatum>,
-    redeemer: Step1Redeemer,
-    input: OutputReference,
+    datum: Option<Datum>,
+    redeemer: SpendRedeemer,
+    own_out_ref: OutputReference,
     tx: Transaction,
   ) {
-    expect Some(step_datum) = datum
-    expect Some(own_input) =
-      list.find(tx.inputs, fn(a_input) { a_input.output_reference == input })
-
     when redeemer is {
-      Cancel { index_output } -> {
-        expect
-          handle_cancel(
-            own_input,
-            index_output,
-            step_datum,
-            ct_token_policy_id,
-            tx,
-          )
-        True
-      }
-      // Step 1: Membership proof for tx1
-      Continue {
-        bad_state_queue_node_ref_input_index,
-        bad_tx1_hash,
-        bad_tx1_info_hash,
-        bad_tx1_to_root_proof_path,
-        index_output,
+      ct.Cancel { input_index, computation_thread_mint_redeemer_index } ->
+        cancel(
+          computation_thread_token_policy_id,
+          datum,
+          input_index,
+          own_out_ref,
+          computation_thread_mint_redeemer_index,
+          tx,
+        )
+      ct.Continue(Args {
+        input_index,
+        output_index,
         hub_ref_input_index,
-      } -> {
-        let hub.Datum { state_queue, .. } =
-          hub.get_datum(tx.reference_inputs, hub_oracle, hub_ref_input_index)
+        bad_state_queue_node_ref_input_index,
+        bad_tx_id,
+        bad_tx,
+        bad_tx_body,
+        bad_tx_membership_proof,
+        inclusion_proof_script_withdraw_redeemer_index,
+      }) -> {
+        // 1. Verify authenticity of the provided bad tx against its ID.
+        expect verify_tx_hash(bad_tx_id, bad_tx)
 
-        let ct_token_asset_name =
-          get_singleton_ct_token(own_input, ct_token_policy_id)
-        let extracted_tx_root =
-          get_tx_root_validate_block_hash(
-            tx,
-            bad_state_queue_node_ref_input_index,
-            ct_token_asset_name,
-            state_queue,
-          )
+        let Transaction { inputs, outputs, reference_inputs, redeemers, .. } =
+          tx
 
-        // -------- Double spend validation specific logic START --------
-        // Membership proof for tx1
-        expect
-          validate_membership_proof(
-            tx,
-            plutarch_midgard_merkle_validator,
-            MembershipProofInputs {
-              tx_root: extracted_tx_root,
-              tx_hash: bad_tx1_hash,
-              tx_info_hash: bad_tx1_info_hash,
-              tx_to_root_proof_path: bad_tx1_to_root_proof_path,
-            },
-          )
+        expect Some(step_datum) = datum
 
-        // -------- Double spend validation specific logic END --------
-        let step_1_state = Step1State { verified_tx1_hash: bad_tx1_hash }
-        let expected_output_datum =
-          StepDatum {
-            fraud_prover: step_datum.fraud_prover,
-            data: step_1_state,
-          }
-
-        expect
-          validate_step_output(
-            tx,
-            index_output,
-            double_spend_step_02_validator_script_hash,
-            ct_token_policy_id,
-            ct_token_asset_name,
+        let
+          own_script_hash,
+          computation_thread_token_asset_name,
+          _fraud_prover,
+          m_input_state_data,
+          output_script_hash,
+          output_state_data,
+        <-
+          continue(
+            computation_thread_token_policy_id,
             step_datum,
-            expected_output_datum,
+            input_index,
+            output_index,
+            own_out_ref,
+            inputs,
+            outputs,
           )
 
-        True
+        // 2. Hub oracle must be provided as a reference input.
+        let hub.Datum { state_queue, .. } =
+          hub.get_datum(reference_inputs, hub_oracle, hub_ref_input_index)
+
+        let
+          state_queue_datum,
+          state_queue_node_key,
+        <-
+          state_queue.get_block_datum(
+            reference_inputs,
+            state_queue_policy,
+            state_queue_node_ref_input_index,
+          )
+
+        // 3. The asset name of the computation thread token must match the
+        //    state queue node key (after dropping the fraud category ID prefix).
+        expect
+          state_queue_node_key == bytearray.drop(
+            computation_thread_token_asset_name,
+            fraud_category_id_byte_count,
+          )
+
+        // 4. Specified bad transaction must be proven to be included in the
+        //    referenced state queue node.
+        let bad_tx_data: Data = bad_tx
+        expect
+          plutarch_phas(
+            merkle_root: state_queue_datum.transactions_root,
+            key: builtin.b_data(bad_tx_id),
+            value: bad_tx_data,
+            membership_proof: bad_tx_membership_proof,
+            redeemers: redeemers,
+            withdraw_redeemer_index: inclusion_proof_script_withdraw_redeemer_index,
+          )
+
+        // 5. Provided transaction body must match the hash retrieved from
+        //    `bad_tx`.
+        let bad_tx_body_data: Data = bad_tx_body
+        let bad_tx_body_hash: Data = bad_tx.body
+        expect
+          utils.verify_hash_32(
+            data: bad_tx_body_data,
+            data_hash: builtin.un_b_data(bad_tx_body_hash),
+          )
+        when m_input_state_data is {
+          None -> {
+            // 6a. The UTxO must be produced at own script hash with the
+            //     verified first bad transaction ID and its inputs included in
+            //     the `data` field of its `StepDatum`.
+            expect output_script_hash == own_script_hash
+            let expected_output_state: Data =
+              State {
+                verified_tx1_id: bad_tx_id,
+                verified_tx1_inputs_root: bad_tx_body.spend_inputs,
+              }
+            expect output_state_data == expected_output_state
+
+            // Done.
+            True
+          }
+          Some(step_1_state) -> {
+            // 6b. The UTxO must be produced at next step's script hash with the
+            //     verified bad transactions' inputs included in its datum.
+            expect output_script_hash == step_02_validator_script_hash
+            let State { verified_tx1_id, verified_tx1_inputs_root } =
+              step_1_state
+            let expected_output_state: Data =
+              step_02.State {
+                verified_tx1_inputs_root,
+                verified_tx2_inputs_root: bad_tx_body.spend_inputs,
+              }
+            expect output_state_data == expected_output_state
+
+            // 7b. The two transactions must be different.
+            expect verified_tx1_id != bad_tx_id
+
+            // Done.
+            True
+          }
+        }
       }
     }
   }
