@@ -3,6 +3,7 @@ import {
   fromHex,
   LucidEvolution,
   MintingPolicy,
+  Parameters,
   TxBuilder,
   TxSignBuilder,
   UTxO,
@@ -142,7 +143,8 @@ export type SettlementUTxO = {
   utxo: UTxO;
   datum: SettlementDatum;
 };
-
+// it should also whether the userevent utxo does not exist that is reoslved
+// param--> let the userevent utxo
 export const getSettlementUTxOWithoutClaim = (
   settlementUTxOs: UTxO[],
 ): Effect.Effect<SettlementUTxO, DataCoercionError | LucidError> => {
@@ -615,6 +617,7 @@ export const utxosToWithdrawalUTxOs = (
   return Effect.allSuccesses(effects);
 };
 
+//EventType definition -> not to allow impossible states to be possible
 export const fetchUserEventRefUTxOs = (
   userEventType:EventType,
   userEventAddress: string,
@@ -630,7 +633,7 @@ export const fetchUserEventRefUTxOs = (
           cause: err,
         }),
     });
-    
+    // this part iso ok.... just look into the function definition, 
     if(userEventType === "Deposit"){
     const depositRefUTxOs = yield* utxosToDepositUTxOs(allUTxOs, userEventPolicyId);
     if (depositRefUTxOs.length === 0) {
@@ -727,7 +730,13 @@ export const incompleteDisproveResolutionClaimTxProgram = (
       params.eventPolicyId,
       lucid,
     );
-    const txUpperBound = Number(settlementInputUtxo.datum.resolutionClaim?.resolutionTime??0n - 2000n);
+    //Date.now+ buffer and compare with resolution time in datum
+    const resolutionTime = Number(settlementInputUtxo.datum.resolutionClaim?.resolutionTime??0n);
+    const bufferTime = Date.now() + 2 * 60_000;
+    if (resolutionTime < bufferTime )  {
+      throw new Error("Cannot disprove before resolution time");
+    }
+    const txUpperBound = resolutionTime - 1 * 60_000;
 
     const buildsettlementTx = lucid
       .newTx()
@@ -760,6 +769,7 @@ export type RemoveOperatorBadSettlementParams={
   activeOperatorMintingPolicy: MintingPolicy;
   activeOperatorADABond: bigint;
   fraudProverAddress: string;
+  fraudProverDatum: string;
   hubOracleValidator: AuthenticatedValidator;
 }
 export const getSlashedActiveOperatorNodeUTxO = (
@@ -792,7 +802,7 @@ export const getSlashedActiveOperatorNodeUTxO = (
     }),
   );
 };
-
+// to get operator PKH and check if it belongs to active or retired operator
 export const incompleteRemoveOperatorBadSettlementTxProgram = (
   lucid: LucidEvolution,
   params: RemoveOperatorBadSettlementParams,
@@ -839,6 +849,8 @@ export const incompleteRemoveOperatorBadSettlementTxProgram = (
     const network = lucid.config().network ?? "Mainnet";
     const slashingPenalty = getProtocolParameters(network).slashing_penalty;
 
+    const bondAmount = (activeOperatorInputUTxO.utxo.assets.lovelace * 60n) / 100n;
+
     const buildsettlementTx = lucid
       .newTx()
       .collectFrom([activeOperatorInputUTxO.utxo])
@@ -851,9 +863,9 @@ export const incompleteRemoveOperatorBadSettlementTxProgram = (
       )
       .pay.ToAddressWithData(params.fraudProverAddress,
         { kind: "inline",
-          value: "undefined" //TODO
+          value: params.fraudProverDatum
         },
-        { lovelace: params.activeOperatorADABond }
+        { lovelace: bondAmount } 
       )
       .attach.MintingPolicy(params.activeOperatorMintingPolicy)
       .setMinFee(slashingPenalty)
