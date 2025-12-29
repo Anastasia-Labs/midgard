@@ -23,3 +23,5 @@ pub const l2_outbox_asset_name: AssetName = #""
 pub const plutarch_phas_validator_hash: ScriptHash = #""
 
 pub const plutarch_pexcludes_validator_hash: ScriptHash = #""
+
+pub const plutarch_pdelete_validator_hash: ScriptHash = #""

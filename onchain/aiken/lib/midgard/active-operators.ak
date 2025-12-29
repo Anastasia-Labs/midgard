@@ -14,8 +14,8 @@ pub type SpendRedeemer {
   UpdateBondHoldNewSettlement {
     active_node_output_index: Int,
     hub_oracle_ref_input_index: Int,
-    settlement_queue_input_index: Int,
-    settlement_queue_redeemer_index: Int,
+    settlement_input_index: Int,
+    settlement_redeemer_index: Int,
     new_bond_unlock_time: PosixTime,
   }
 }
@@ -42,8 +42,8 @@ pub type MintRedeemer {
     hub_oracle_ref_input_index: Int,
     active_operator_slashed_node_input_index: Int,
     active_operator_anchor_node_input_index: Int,
-    settlement_queue_input_index: Int,
-    settlement_queue_redeemer_index: Int,
+    settlement_input_index: Int,
+    settlement_redeemer_index: Int,
   }
   RetireOperator {
     active_operator_key: ByteArray,

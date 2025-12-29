@@ -39,11 +39,7 @@ On the other hand, suppose a fraud proof is verified on L1 to prove that a block
 When this block header and all its descendants are removed, the state queue enforces that the next committed block header's event interval must contain all of those removed block headers' event intervals.
 Therefore, Midgard's ledger rules require this new block header to include all deposit events that should have been included in the removed block headers.
 
-The deposit's outcome is determined as follows:
-\begin{itemize}
-    \item If the deposit event is included in a settlement queue node, then the deposit utxo can be absorbed into the Midgard reserve.
-    \item If the deposit's inclusion time is within the confirmed header's event interval but not within the event interval of any settlement queue node, then the deposit utxo can be refunded to its user according to the \code{refund\_address} and \code{refund\_datum} fields.
-\end{itemize}
+The deposit can be absorbed into the Midgard reserve whenever a settlement utxo is available such that its deposits tree contains the deposit event.
 
 The deposit's \code{witness} staking credential must be deregistered when the deposit utxo is spent.
 
@@ -69,13 +65,14 @@ It oversees correctness of datums, and registration/unregistration of events' co
         \item The deposit's \code{inclusion\_time} must be equal to transaction's time-validity upper bound plus \code{event\_wait\_duration} Midgard protocol parameter.
         \item The hash of the witness script must be correctly stored in the deposit datum.
       \end{enumerate}
-    \item[Burn Deposit NFT.] Oversee conclusion of a deposit event (i.e.\ either its transfer to reserve or its refund) by requiring its NFTs to be burnt.
+    \item[Burn Deposit NFT.] Oversee transfer of a deposit utxo to reserve by requiring its NFTs to be burnt.
     Conditions:
       \begin{enumerate}
         \item Let \code{l2\_id} be the corresponding ID of the target deposit event, provided via the redeemer.
         \item An NFT with own policy ID and asset name of \code{l2\_id} must be burnt.
         \item The witness staking script, instantiated with \code{l2\_id} must be unregistered in the transaction.
-        \item The redeemer used for unregistering the witness script must be correct. Namely, it must be equal to the \code{deposit} policy ID.
+        \item The redeemer used for unregistering the witness script must be correct.
+          Namely, it must be equal to \code{MintOrBurn} carrying \code{deposit} policy ID.
       \end{enumerate}
 \end{description}
 
@@ -86,28 +83,15 @@ The \code{deposit} spending validator is statically parametrized on the \code{hu
 It's responsible for concluding deposits, whether for transfering them to Midgard reserve, or refunding stranded deposits.
 
 \begin{description}
-  \item[Transfer to Reserve.] Transaction for moving funds of finalized deposit events into Midgard reserve.
+  \item[Spend.] Transaction for moving funds of finalized deposit events into Midgard reserve.
     Conditions:
     \begin{enumerate}
-      \item Let \code{settlement\_node} be the referenced settlement node.
-      \item The deposit must be included in the deposit tree of \code{settlement\_node}.
-        This also implies the inclusion time of the deposit falls within the time interval of \code{settlement\_node}.
+      \item Let \code{settlement} be the referenced settlement utxo.
+      \item The deposit must be included in the deposit tree of \code{settlement}.
       \item Let \code{reserve\_addr} be the address of the Midgard reserve retrieved from hub oracle.
       \item The utxo produced at \code{reserve\_addr} must contain all the tokens from the deposit utxo, except for the deposit NFT.
       \item The \code{BurnEventNFT} endpoint of the deposit minting script must be invoked with the corresponding \code{l2\_id} of the deposit utxo.
       \item No datum and no reference script must be attached to the reserve utxo.
-    \end{enumerate}
-  \item[Refund.] 
-    Conditions:
-    \begin{enumerate}
-      \item The \code{BurnEventNFT} endpoint of the deposit minting script must be invoked with the corresponding \code{l2\_id} of the deposit utxo.
-      \item All the tokens included in the deposit utxo (except for the deposit NFT) must go to the \code{refund\_address} specified in the deposit datum.
-      \item The datum attached to the produced utxo must also match the one stated in deposit datum.
-      \item 
-        \begin{itemize}
-          \item If inclusion time of the stranded deposit falls within the time range of an existing settlement node, refund can only be allowed if the settlement node's corresponding tree does not contain the deposit (proven by providing a non-membership proof).
-          \item Otherwise, if the inclusion time falls in one of the time gaps of settlement queue, refund request is considered valid by referencing the immediate settlement node and showing the inclusion time falls in the gap.
-        \end{itemize}
     \end{enumerate}
 \end{description}
 

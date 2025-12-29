@@ -1,4 +1,5 @@
 use aiken/crypto.{Blake2b_224, Blake2b_256, Hash}
+use aiken/merkle_patricia_forestry as mpf
 use cardano/assets.{AssetName, PolicyId}
 
 /// A number of milliseconds since 00:00:00 UTC on 1 January 1970.
@@ -23,4 +24,11 @@ pub type H32<data> =
 /// A Merkle root hash, assumed to be a 32-byte hash
 /// calculated with the Blake2b-256 algorithm.
 pub type MerkleRoot<hash, data> =
-  Hash<data, data>
+  Hash<hash, data>
+
+pub type MerkleProofInputs {
+  mpf_root: ByteArray,
+  key: Data,
+  value: Data,
+  proof: mpf.Proof,
+}

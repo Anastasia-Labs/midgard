@@ -1,24 +1,17 @@
-use aiken/builtin
 use aiken/crypto.{ScriptHash}
-use aiken_design_patterns/linked_list/unordered
 use aiken_design_patterns/singular_utxo_indexer
-use cardano/address.{Address}
 use cardano/assets.{PolicyId}
 use cardano/transaction.{
   InlineDatum, Input, Mint, Output, OutputReference, Transaction,
 }
-use env
-use midgard/common/types.{ValuePairs}
 use midgard/common/utils.{plutarch_phas}
 use midgard/hub_oracle as hub
 use midgard/ledger_state
 use midgard/payout
-use midgard/settlement_queue
-use midgard/state_queue
+use midgard/settlement
 use midgard/user_events
 use midgard/user_events/withdrawal.{
-  AuthenticateWithdrawal, BurnWithdrawalNFT, Datum, MintRedeemer, Refund,
-  SpendRedeemer, TransferToPayout,
+  Datum, InitializePayout, Refund, SpendRedeemer,
 }
 
 validator spend(hub_oracle: ScriptHash) {
@@ -37,39 +30,28 @@ validator spend(hub_oracle: ScriptHash) {
       settlement_ref_input_index,
       burn_redeemer_index,
       payout_mint_redeemer_index,
+      membership_proof,
       purpose,
     } = redeemer
 
     let hub.Datum {
       withdrawal: withdrawal_policy_id,
-      settlement_queue: settlement_queue_policy_id,
+      settlement: settlement_policy_id,
       payout: payout_policy_id,
       payout_addr,
       ..
     } = hub.get_datum(reference_inputs, hub_oracle, hub_ref_input_index)
 
-    let parsed_settlement_node_datum =
-      settlement_queue.get_datum(
+    let settlement.Datum { withdrawals_root, .. } =
+      settlement.get_datum(
         reference_inputs,
-        settlement_queue_policy_id,
+        settlement_policy_id,
         settlement_ref_input_index,
       )
 
-    expect settlement_queue.NodeData {
-      withdrawals_root,
-      start_time: settlement_start_time,
-      end_time: settlement_end_time,
-      ..
-    } = parsed_settlement_node_datum.data
-
     expect Some(withdrawal_datum) = datum
-    let user_events.Datum {
-      event: withdrawal_event,
-      inclusion_time,
-      refund_address,
-      refund_datum,
-      ..
-    } = withdrawal_datum
+    let user_events.OptimisticDatum { event: withdrawal_event, .. } =
+      withdrawal_datum
 
     // 1. Spending a user event UTxO must also be accompanied by the burning of
     //    its NFT (and consequently deregistration of its witness staking
@@ -94,7 +76,7 @@ validator spend(hub_oracle: ScriptHash) {
         } = output
 
         when spend_purpose is {
-          TransferToPayout { membership_proof } -> {
+          InitializePayout -> {
             // 3. Output value must be the same as the input value, without the
             //    withdrawal NFT, and with the payout NFT added.
             expect
@@ -117,9 +99,16 @@ validator spend(hub_oracle: ScriptHash) {
             let Pair(withdrawal_event_id, withdrawal_event_info) =
               ledger_state.unsafe_event_to_key_value_pair(withdrawal_event)
 
-            // 5. The referenced settlement node's withdrawal tree must contain
-            //    the subject withdrawal event. No need to check for the
-            //    inclusion time of the withdrawal.
+            // 5. Initiation of a payout accumulator can only happen for valid
+            //    withdrawals.
+            expect ledger_state.WithdrawalInfo {
+              body: withdrawal_body,
+              validity: ledger_state.WithdrawalIsValid,
+              ..
+            } = withdrawal_event_info
+
+            // 6. The referenced settlement UTxO's withdrawal tree must contain
+            //    the subject withdrawal event.
             expect
               plutarch_phas(
                 withdrawals_root,
@@ -129,46 +118,66 @@ validator spend(hub_oracle: ScriptHash) {
                 redeemers,
               )
 
-            expect ledger_state.WithdrawalInfo {
+            let ledger_state.WithdrawalBody {
               l2_value,
               l1_address,
               l1_datum,
               ..
-            } = withdrawal_event_info
+            } = withdrawal_body
 
             let expected_output_datum: Data =
               payout.Datum { l2_value, l1_address, l1_datum }
 
-            and {
-              // 6. Assert proper datum is attached to the payout accumulator
-              //    UTxO.
-              output_datum == InlineDatum(expected_output_datum),
-              // 7. Withdrawal must go to the payout contract.
-              output_address == payout_addr,
-            }
+            // 7. Assert payout datum properly carries over all the required
+            //    info.
+            expect output_datum == InlineDatum(expected_output_datum)
+
+            // 8. Withdrawal must go to the payout contract.
+            expect output_address == payout_addr
+
+            // Done.
+            True
           }
-          Refund { refund_approach } ->
-            // 3. Numerous validations for the refund logic.
-            user_events.validate_refund(
-              own_value,
-              withdrawal_policy_id,
-              burn_asset_name,
-              output_address,
-              output_value,
-              output_datum,
-              refund_address,
-              refund_datum,
-              refund_approach,
-              withdrawals_root,
-              ledger_state.unsafe_event_to_id_data(withdrawal_event),
-              settlement_queue_policy_id,
-              parsed_settlement_node_datum.link,
-              settlement_start_time,
-              settlement_end_time,
-              inclusion_time,
-              reference_inputs,
-              redeemers,
-            )
+          Refund { validity_override } -> {
+            // 3. Only invalid withdrawals can be refunded.
+            //    TODO: worth defining a separate type for this?
+            expect validity_override != ledger_state.WithdrawalIsValid
+
+            // 4. Output value must be the same as the input value, without the
+            //    withdrawal NFT.
+            expect
+              output_value == (
+                own_value
+                  |> assets.add(withdrawal_policy_id, burn_asset_name, -1)
+              )
+
+            // 5. For refunding invalid withdrawal orders, they must be included
+            //    in the settlement's tree with the same invalidity provided via
+            //    the redeemer.
+            let Pair(withdrawal_event_id, withdrawal_event_info) =
+              ledger_state.unsafe_event_to_key_value_pair(withdrawal_event)
+            //
+            expect coerced_withdrawal_info: ledger_state.WithdrawalInfo =
+              withdrawal_event_info
+            //
+            let overridden_withdrawal_info: Data =
+              ledger_state.WithdrawalInfo {
+                ..coerced_withdrawal_info,
+                validity: validity_override,
+              }
+            //
+            expect
+              plutarch_phas(
+                withdrawals_root,
+                withdrawal_event_id,
+                overridden_withdrawal_info,
+                membership_proof,
+                redeemers,
+              )
+
+            // Done.
+            True
+          }
         }
       },
       purpose,
@@ -185,129 +194,54 @@ validator spend(hub_oracle: ScriptHash) {
 }
 
 validator mint(hub_oracle: ScriptHash) {
-  mint(redeemer: MintRedeemer, own_policy: PolicyId, tx: Transaction) {
-    when redeemer is {
-      AuthenticateWithdrawal {
-        nonce_input_index,
-        event_output_index,
-        hub_ref_input_index,
-        witness_registration_redeemer_index,
-        latest_block_ref_input_index,
-        l2_output_data,
-        membership_proof,
-      } -> {
-        let Transaction {
-          inputs,
-          outputs,
-          reference_inputs,
-          validity_range,
-          mint,
-          redeemers,
-          ..
-        } = tx
+  mint(
+    redeemer: user_events.MintRedeemer,
+    own_policy: PolicyId,
+    tx: Transaction,
+  ) {
+    // 1. Perform numerous validations (refer to `lib/midgard/user-events.ak`)
+    //    and grant access to:
+    //    - Serialized and hashed nonce based on the output reference of a
+    //      specified input UTxO.
+    //    - The output `Value` of the UTxO at the withdrawal address for the
+    //      minting (not burning) endpoint.
+    //    - The `WithdrawalInfo` as `Data`, which we are ignoring here (TODO:
+    //      try remodeling the types to avoid inclusion of `WithdrawalValidity`
+    //      on L1 datum).
+    let
+      l1_id,
+      output_withdrawal_order_value,
+      withdrawal_info_data,
+    <-
+      user_events.validate_mint(
+        hub_oracle,
+        fn(hub_datum) {
+          let hub.Datum { withdrawal_addr, .. } = hub_datum
+          withdrawal_addr
+        },
+        redeemer,
+        own_policy,
+        tx,
+      )
 
-        // Unsafely destructuring `l2_output_data`, assuming it is structured as
-        // an `Output`. Since further down we are validating the presence of
-        // this UTxO in the latest ledger, we don't need to worry about the
-        // correctness of its structure here.
-        expect [l2_output_address_data,
-          l2_output_value_data, ..] = builtin.unconstr_fields(l2_output_data)
+    let output_withdrawal_order_nft_triplet =
+      utils.get_single_asset_from_value_apart_from_ada(
+        output_withdrawal_order_value,
+      )
 
-        // Coerce the first data under `l2_output_data` into an `Address`.
-        expect l2_output_address: Address = l2_output_address_data
+    // 2. The output value of the UTxO at the withdrawal address must contain
+    //    only ADA and the authentication NFT.
+    expect output_withdrawal_order_nft_triplet == (own_policy, l1_id, 1)
 
-        // 1. Subject UTxO must be sitting at the outbox contract on L2.
-        expect l2_output_address == env.l2_outbox_address
+    // 3. The withdrawal event must be marked as valid. This is needed since
+    //    only valid withdrawals can initialize payout accumulators.
+    expect ledger_state.WithdrawalInfo {
+      validity: ledger_state.WithdrawalIsValid,
+      ..
+    } = withdrawal_info_data
 
-        // Grab the hub oracle datum.
-        let hub.Datum { state_queue: state_queue_policy, withdrawal_addr, .. } =
-          hub.get_datum(reference_inputs, hub_oracle, hub_ref_input_index)
-
-        // 2. Perform numerous validations and grant access to:
-        //    - Serialized and hashed nonce based on the output reference of a
-        //      specified input UTxO
-        //    - The output value of the UTxO at the withdrawal address for the
-        //      minting (not burning) endpoint
-        //    - Withdrawal info
-        let
-          l1_id,
-          output_withdrawal_order_value,
-          withdrawal_info_data,
-        <-
-          user_events.authenticate_event(
-            withdrawal_addr,
-            nonce_input_index,
-            event_output_index,
-            witness_registration_redeemer_index,
-            own_policy,
-            inputs,
-            outputs,
-            validity_range,
-            mint,
-            redeemers,
-          )
-
-        expect ledger_state.WithdrawalInfo { l2_outref, l2_value, .. } =
-          withdrawal_info_data
-
-        // Grab the state queue datum.
-        expect Input {
-          output: Output { datum: InlineDatum(latest_block_datum_data), .. },
-          ..
-        } =
-          utils.get_authentic_input_with_policy_at(
-            reference_inputs,
-            state_queue_policy,
-            latest_block_ref_input_index,
-          )
-
-        // Coerce the second data under `l2_output_data` into a `ValuePairs`.
-        // `Value` is not allowed as its an opaque type.
-        expect l2_output_value: ValuePairs = l2_output_value_data
-
-        // 3. The `l2_value` stated in `WithdrawalInfo` must be the same as the
-        //    value from the `l2_output_data` coming from the redeemer.
-        expect l2_output_value == l2_value
-
-        expect parsed_header_datum: state_queue.Datum = latest_block_datum_data
-        // 4. The provided block must be the latest in queue.
-        expect parsed_header_datum.link == unordered.Empty
-        expect ledger_state.Header { utxos_root, .. } = parsed_header_datum.data
-
-        // 5. The latest block's ledger must contain the UTxO identified by
-        //    `l2_outref` from `WithdrawalInfo`.
-        expect
-          utils.plutarch_phas(
-            mpf_root: utxos_root,
-            key: l2_outref,
-            value: l2_output_data,
-            membership_proof: membership_proof,
-            redeemers: redeemers,
-          )
-
-        let output_withdrawal_order_nft_triplet =
-          utils.get_single_asset_from_value_apart_from_ada(
-            output_withdrawal_order_value,
-          )
-
-        // 6. The output value of the UTxO at the withdrawal address must
-        //    contain only ADA and the authentication NFT.
-        output_withdrawal_order_nft_triplet == (own_policy, l1_id, 1)
-      }
-      BurnWithdrawalNFT {
-        nonce_asset_name,
-        witness_unregistration_redeemer_index,
-      } -> {
-        let Transaction { mint, redeemers, .. } = tx
-        user_events.validate_event_nft_burn(
-          nonce_asset_name,
-          witness_unregistration_redeemer_index,
-          own_policy,
-          mint,
-          redeemers,
-        )
-      }
-    }
+    // Done.
+    True
   }
 
   else(_) {

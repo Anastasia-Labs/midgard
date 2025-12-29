@@ -35,7 +35,7 @@ pub type MintRedeemer {
     header_node_input_index: Int,
     confirmed_state_node_input_index: Int,
     confirmed_state_node_output_index: Int,
-    settlement_queue_redeemer_index: Int,
+    settlement_redeemer_index: Int,
   }
   RemoveFraudulentBlockHeader {
     removed_node_input_index: Int,

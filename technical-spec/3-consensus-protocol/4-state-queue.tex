@@ -83,8 +83,8 @@ Redeemers:
             \item \code{header\_node} on \code{prev\_header\_hash}, \code{utxo\_root}, \code{end\_time}, and \code{protocol\_version}.
           \end{enumerate}
         \item The \code{header\_hash} of \code{confirmed\_state\_node\_output} must match the \code{header\_node} key.
-        \item If either the \code{deposits\_root} or \code{withdrawals\_root} of \code{header\_node} is \emph{not} the MPT root hash of the empty set, a \code{settlement\_queue} node must be appended via the New Settlement redeemer.
-          The redeemer must mention \code{header\_node} by input index.
+        \item If either the \code{deposits\_root}, \code{withdrawals\_root} or \code{transactions\_root} of \code{header\_node} is \emph{not} the MPT root hash of the empty set, a \code{settlement} utxo must be produced via the Spawn redeemer.
+          The redeemer must mention \code{header\_node} as a coupling medium.
     \end{enumerate}
 
     \item[Remove Fraudulent Block Header.] Remove a fraudulent block header from the state queue and slash its operator's ADA bond.
