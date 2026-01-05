@@ -247,29 +247,6 @@ const getBlockHandler = Effect.gen(function* () {
 
 const getInitHandler = Effect.gen(function* () {
   yield* Effect.logInfo(`✨ Initialization request received`);
-
-  const lucid = yield* Lucid;
-  const alwaysSucceeds = yield* AlwaysSucceedsContract;
-  const fetchConfig: SDK.StateQueueFetchConfig = {
-    stateQueuePolicyId: alwaysSucceeds.stateQueueAuthValidator.policyId,
-    stateQueueAddress:
-      alwaysSucceeds.stateQueueAuthValidator.spendScriptAddress,
-  };
-
-  const stateQueueUTxOs = yield* SDK.fetchUnsortedStateQueueUTxOsProgram(
-    lucid.api,
-    fetchConfig,
-  );
-
-  if (stateQueueUTxOs.length > 0) {
-    yield* Effect.logInfo(
-      `GET /${INIT_ENDPOINT} - Midgard already initialized`,
-    );
-    return yield* HttpServerResponse.json({
-      message: `Midgard already initialized`,
-    });
-  }
-
   const result = yield* initializeMidgard;
   yield* Genesis.program;
   yield* Effect.logInfo(
