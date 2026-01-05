@@ -54,7 +54,6 @@ export const incompleteFraudProofCatalogueInitTxProgram = (
   params: FraudProofCatalogueInitParams,
 ): Effect.Effect<TxBuilder, never> =>
   Effect.gen(function* () {
-
     const assets: Assets = {
       [toUnit(params.validator.policyId, FRAUD_PROOF_CATALOGUE_ASSET_NAME)]: 1n,
     };

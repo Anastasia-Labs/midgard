@@ -14,11 +14,14 @@ export const initializeMidgard = Effect.gen(function* () {
   //TODO: Move to SDK
   const initParams: SDK.InitializationParams = {
     midgardValidators: contracts,
+    mptRootHash: SDK.GENESIS_HASH_32,
   };
 
   const unsignedTx = yield* SDK.unsignedInitializationTxProgram(
     lucid,
     initParams,
   );
-  yield* handleSignSubmit(lucid, unsignedTx);
+  const txHash = yield* handleSignSubmit(lucid, unsignedTx);
+
+  return { txHash, message: "Midgard initialized successfully" };
 });

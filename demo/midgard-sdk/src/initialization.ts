@@ -15,37 +15,13 @@ import { incompleteSchedulerInitTxProgram } from "./scheduler.js";
 import { incompleteFraudProofCatalogueInitTxProgram } from "./fraud-proof/catalogue.js";
 import { incompleteInitStateQueueTxProgram } from "./state-queue.js";
 import { incompleteActiveOperatorInitTxProgram } from "./active-operators.js";
-<<<<<<< HEAD
-import {
-  incompleteSchedulerInitTxProgram,
-  SchedulerDatum,
-} from "./scheduler.js";
-import { FraudProofCatalogueMintRedeemer } from "./fraud-proof/catalogue.js";
-import { ConfirmedState } from "./ledger-state.js";
-import { incompleteInitLinkedListTxProgram } from "./linked-list.js";
-import {
-  GENESIS_HASH_28,
-  GENESIS_HASH_32,
-  INITIAL_PROTOCOL_VERSION,
-} from "./constants.js";
-import { StateQueueRedeemer } from "./state-queue.js";
-import { ActiveOperatorMintRedeemer } from "./active-operators.js";
-import {
-  RegisteredOperatorMintRedeemer,
-  incompleteRegisteredOperatorInitTxProgram,
-} from "./registered-operators.js";
-import {
-  RetiredOperatorMintRedeemer,
-  incompleteRetiredOperatorInitTxProgram,
-} from "./retired-operators.js";
-=======
 import { incompleteRegisteredOperatorInitTxProgram } from "./registered-operators.js";
 import { incompleteRetiredOperatorInitTxProgram } from "./retired-operators.js";
 import { GENESIS_HASH_32 } from "./constants.js";
->>>>>>> 34fda679 (refactor(sdk): fix fraud proof catalogue initialization)
 
 export type InitializationParams = {
   midgardValidators: MidgardValidators;
+  mptRootHash: string;
 };
 
 export const incompleteInitializationTxProgram = (
@@ -116,7 +92,7 @@ export const incompleteInitializationTxProgram = (
     const fraudProofCatalogueTx: TxBuilder =
       yield* incompleteFraudProofCatalogueInitTxProgram(lucid, {
         validator: params.midgardValidators.fraudProofCatalogueAuthValidator,
-        mptRootHash: GENESIS_HASH_32,
+        mptRootHash: params.mptRootHash,
       });
 
     return tx
