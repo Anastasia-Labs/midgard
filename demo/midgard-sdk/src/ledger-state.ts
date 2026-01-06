@@ -80,6 +80,18 @@ export type MidgardTxCompact = Data.Static<typeof MidgardTxCompactSchema>;
 export const MidgardTxCompact =
   MidgardTxCompactSchema as unknown as MidgardTxCompact;
 
+  export const MidgardTxValiditySchema = Data.Enum([
+  Data.Literal("TxIsValid"),
+  Data.Literal("NonExistentInputUtxo"),
+  Data.Literal("InvalidSignature"),
+  Data.Literal("FailedScript"),
+  Data.Literal("FeeTooLow"),
+  Data.Literal("UnbalancedTx"),
+]);
+export type MidgardTxValidity = Data.Static<typeof MidgardTxValiditySchema>;
+export const MidgardTxValidity =
+  MidgardTxValiditySchema as unknown as MidgardTxValidity;
+
 export const TxOrderEventSchema = Data.Object({
   txOrderId: OutputReferenceSchema,
   midgardTx: MidgardTxCompactSchema,

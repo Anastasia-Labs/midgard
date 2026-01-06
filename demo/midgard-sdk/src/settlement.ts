@@ -30,7 +30,7 @@ import { SchedulerUTxO, utxosToSchedulerUTxOs } from "@/scheduler.js";
 import { DepositUTxO, utxosToDepositUTxOs } from "./user-events/deposit.js";
 import { TxOrderUTxO, utxosToTxOrderUTxOs } from "./user-events/tx-order.js";
 import { WithdrawalOrderDatum } from "./user-events/withdrawal.js";
-import { WithdrawalInfo } from "@/ledger-state.js";
+import { MidgardTxValidity, MidgardTxValiditySchema, WithdrawalInfo, WithdrawalValiditySchema } from "@/ledger-state.js";
 import { getProtocolParameters } from "@/protocol-parameters.js";
 import { ActiveOperatorDatum, ActiveOperatorMintRedeemer, ActiveOperatorSpendRedeemer } from "@/active-operators.js";
 import { RetiredOperatorDatum, RetiredOperatorMintRedeemer } from "./retired-operators.js";
@@ -62,8 +62,16 @@ export const OperatorStatus = OperatorStatusSchema as unknown as OperatorStatus;
 
 export const EventTypeSchema = Data.Enum([
   Data.Literal("Deposit"),
-  Data.Literal("Withdrawal"),
-  Data.Literal("TxOrder"),
+  Data.Object({
+    Withdrawal: Data.Object({
+      validityOverride: WithdrawalValiditySchema
+    }),
+  }),
+  Data.Object({
+    TxOrder: Data.Object({
+      validityOverride: MidgardTxValiditySchema
+    }),
+  }),
 ]);
 export type EventType = Data.Static<typeof EventTypeSchema>;
 export const EventType = EventTypeSchema as unknown as EventType;
@@ -646,7 +654,8 @@ export const fetchUserEventRefUTxOs = (
     }
     return depositRefUTxOs[0];
     }
-    else if(userEventType === "TxOrder"){
+    // TODO : placeholder for TxOrder
+    else if("TxOrder" in userEventType){
     const txOrderRefUTxOs = yield* utxosToTxOrderUTxOs(allUTxOs, userEventPolicyId);
     if (txOrderRefUTxOs.length === 0) {
       yield* new LucidError({
