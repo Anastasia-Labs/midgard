@@ -69,30 +69,28 @@ export type HubOracleBurnParams = {};
 
 export const getHubOracleDatumFromUTxO = (
   nodeUTxO: UTxO,
-): Effect.Effect<HubOracleDatum, DataCoercionError> => {
-  const datumCBOR = nodeUTxO.datum;
-  if (datumCBOR) {
-    try {
-      const hubOracleDatum = Data.from(datumCBOR, HubOracleDatum);
-      return Effect.succeed(hubOracleDatum);
-    } catch (e) {
-      return Effect.fail(
+): Effect.Effect<HubOracleDatum, DataCoercionError> =>
+  Effect.gen(function* () {
+    const datumCBOR = nodeUTxO.datum;
+    if (!datumCBOR) {
+      return yield* Effect.fail(
+        new DataCoercionError({
+          message: `HubOracle datum coercion failed`,
+          cause: `No datum found`,
+        }),
+      );
+    }
+    const hubOracleDatum: HubOracleDatum = yield* Effect.try({
+      try: () => Data.from(datumCBOR, HubOracleDatum),
+      catch: (e) =>
         new DataCoercionError({
           message: `Could not coerce UTxO's datum to a hub oracle datum`,
           cause: e,
         }),
-      );
-    }
-  } else {
-    return Effect.fail(
-      new DataCoercionError({
-        message: `HubOracle datum coercion failed`,
-        cause: `No datum found`,
-      }),
-    );
-  }
-};
+    });
 
+    return hubOracleDatum;
+  });
 /**
  * Validates correctness of datum, and having a single NFT.
  */
