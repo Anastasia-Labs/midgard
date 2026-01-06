@@ -32,7 +32,8 @@ import { TxOrderUTxO, utxosToTxOrderUTxOs } from "./user-events/tx-order.js";
 import { WithdrawalOrderDatum } from "./user-events/withdrawal.js";
 import { WithdrawalInfo } from "@/ledger-state.js";
 import { getProtocolParameters } from "@/protocol-parameters.js";
-import { ActiveOperatorMintRedeemer, ActiveOperatorSpendDatum, ActiveOperatorSpendRedeemer } from "@/active-operators.js";
+import { ActiveOperatorDatum, ActiveOperatorMintRedeemer, ActiveOperatorSpendRedeemer } from "@/active-operators.js";
+import { RetiredOperatorDatum, RetiredOperatorMintRedeemer } from "./retired-operators.js";
 
 export const ResolutionClaimSchema = Data.Object({
   resolutionTime: POSIXTimeSchema,
@@ -143,7 +144,7 @@ export type SettlementUTxO = {
   utxo: UTxO;
   datum: SettlementDatum;
 };
-// it should also whether the userevent utxo does not exist that is reoslved
+// it should also check whether the userevent utxo does not exist that is resolved, ex the usereent utxo in the params should be checked against the DB for resolved utxos
 // param--> let the userevent utxo
 export const getSettlementUTxOWithoutClaim = (
   settlementUTxOs: UTxO[],
@@ -322,7 +323,8 @@ export type ActiveOperatorsParams = {
 
 export type ActiveOperatorNodeUTxO = {
   utxo: UTxO;
-  datum: ActiveOperatorSpendDatum;
+  datum: ActiveOperatorDatum;
+  //status: OperatorStatus;
 };
 
 export const getActiveOperatorNodeUTxO = (
@@ -335,7 +337,7 @@ export const getActiveOperatorNodeUTxO = (
       continue;
     }
     try {
-      const parsedDatum = Data.from(datumCBOR, ActiveOperatorSpendDatum);
+      const parsedDatum = Data.from(datumCBOR, ActiveOperatorDatum);
       if (parsedDatum.key === params.operator) {
         return Effect.succeed({ utxo, datum: parsedDatum });
       }
@@ -401,11 +403,11 @@ export const incompleteUpdateBondHoldNewSettlementTxProgram = (
       params,
     );
 
-    const updatedDatum: ActiveOperatorSpendDatum = {
+    const updatedDatum: ActiveOperatorDatum = {
       ...activeOperatorsInputUtxo.datum,
       bondUnlockTime: params.newBondUnlockTime,
     };
-    const updatedDatumCBOR = Data.to(updatedDatum, ActiveOperatorSpendDatum);
+    const updatedDatumCBOR = Data.to(updatedDatum, ActiveOperatorDatum);
 
     const hubOracleRefUTxO = yield* fetchHubOracleRefUTxO(
       params.hubOracleValidator.spendScriptAddress,
@@ -633,7 +635,7 @@ export const fetchUserEventRefUTxOs = (
           cause: err,
         }),
     });
-    // this part iso ok.... just look into the function definition, 
+    // this part is ok.... just look into the function definition, 
     if(userEventType === "Deposit"){
     const depositRefUTxOs = yield* utxosToDepositUTxOs(allUTxOs, userEventPolicyId);
     if (depositRefUTxOs.length === 0) {
@@ -730,7 +732,7 @@ export const incompleteDisproveResolutionClaimTxProgram = (
       params.eventPolicyId,
       lucid,
     );
-    //Date.now+ buffer and compare with resolution time in datum
+
     const resolutionTime = Number(settlementInputUtxo.datum.resolutionClaim?.resolutionTime??0n);
     const bufferTime = Date.now() + 2 * 60_000;
     if (resolutionTime < bufferTime )  {
@@ -762,55 +764,78 @@ export const incompleteDisproveResolutionClaimTxProgram = (
   );
 
 export type RemoveOperatorBadSettlementParams={
-  operatorStatus: OperatorStatus;
   activeOperatorAddress: string;
-  activeOperatorKey: string;
+  retiredOperatorAddress: string;
+  operatorKey: string;
   activeOperatorNFT: string;
+  retiredOperatorNFT: string;
   activeOperatorMintingPolicy: MintingPolicy;
   activeOperatorADABond: bigint;
   fraudProverAddress: string;
   fraudProverDatum: string;
   hubOracleValidator: AuthenticatedValidator;
-}
-export const getSlashedActiveOperatorNodeUTxO = (
-  activeOperatorsUTxOs: UTxO[],
-  params: RemoveOperatorBadSettlementParams,
-): Effect.Effect<ActiveOperatorNodeUTxO, DataCoercionError | LucidError> => {
-  for (const utxo of activeOperatorsUTxOs) {
-    const datumCBOR = utxo.datum;
-    if (!datumCBOR) {
-      continue;
-    }
-    try {
-      const parsedDatum = Data.from(datumCBOR, ActiveOperatorSpendDatum);
-      if (parsedDatum.key === params.activeOperatorKey) {
-        return Effect.succeed({ utxo, datum: parsedDatum });
-      }
-    } catch (err) {
-      return Effect.fail(
-        new DataCoercionError({
-          message: `Could not coerce UTxO's datum to an active operator's node datum`,
-          cause: err,
-        }),
-      );
-    }
-  }
-  return Effect.fail(
-    new LucidError({
-      message: "No Active Operator UTxO with given operator found",
-      cause: "Active Operators Tx not initiated not initiated",
-    }),
-  );
 };
-// to get operator PKH and check if it belongs to active or retired operator
-export const incompleteRemoveOperatorBadSettlementTxProgram = (
-  lucid: LucidEvolution,
-  params: RemoveOperatorBadSettlementParams,
-): Effect.Effect<TxBuilder, HashingError | DataCoercionError | LucidError> =>
+
+export type OperatorNodeUTxO = {
+  utxo: UTxO;
+  datum: ActiveOperatorDatum | RetiredOperatorDatum;
+  status: OperatorStatus;
+};
+
+export const getOperatorNodeUTxO = (
+  activeOperatorAllUtxos: UTxO[],
+  retiredOperatorAllUtxos: UTxO[],
+  operatorPKH: string,
+): Effect.Effect<OperatorNodeUTxO, DataCoercionError | LucidError> =>
   Effect.gen(function* () {
+    for (const utxo of activeOperatorAllUtxos) {
+      const datumCBOR = utxo.datum;
+      if (!datumCBOR) continue;
+      try {
+        const parsedDatum = Data.from(datumCBOR, ActiveOperatorDatum);
+        if (parsedDatum.key === operatorPKH) {
+          return {
+            utxo,
+            datum: parsedDatum,
+            status: "ActiveOperator",
+          };
+        }
+      } catch (err) {
+        continue;
+      }
+    }
+    for (const utxo of retiredOperatorAllUtxos) {
+      const datumCBOR = utxo.datum;
+      if (!datumCBOR) continue;
+      try {
+        const parsedDatum = Data.from(datumCBOR, RetiredOperatorDatum);
+        if (parsedDatum.key === operatorPKH) {
+          return {
+            utxo,
+            datum: parsedDatum,
+            status: "RetiredOperator" as const,
+          };
+        }
+      } catch (err) {
+        continue;
+      }
+    }
+    return yield* Effect.fail(
+      new LucidError({
+        message: `No Operator UTxO with key "${operatorPKH}" found`,
+        cause: "Operator not found in active or retired UTxOs",
+      }),
+    );
+  });
+
+export const createMintRedeemerCBOR = (
+  operatorInputUTxO: OperatorNodeUTxO,
+  params: RemoveOperatorBadSettlementParams,
+): Effect.Effect<string, LucidError> => {
+   if(operatorInputUTxO.status === "ActiveOperator") { 
     const mintRedeemer: ActiveOperatorMintRedeemer = {
       RemoveOperatorBadSettlement: {
-        slashedActiveOperatorKey: params.activeOperatorKey,
+        slashedActiveOperatorKey: params.operatorKey,
         hubOracleRefInputIndex: 0n,
         activeOperatorSlashedNodeInputIndex: 0n,
         activeOperatorAnchorNodeInputIndex: 0n,
@@ -819,7 +844,52 @@ export const incompleteRemoveOperatorBadSettlementTxProgram = (
       },
     };
     const mintRedeemerCBOR = Data.to(mintRedeemer, ActiveOperatorMintRedeemer);
+    return Effect.succeed(mintRedeemerCBOR);
+  } else if(operatorInputUTxO.status === "RetiredOperator"){
+    const mintRedeemer: RetiredOperatorMintRedeemer = {
+      RemoveOperatorBadSettlement: {
+        slashedRetiredOperatorKey: params.operatorKey,
+        hubOracleRefInputIndex: 0n,
+        retiredOperatorSlashedNodeInputIndex: 0n,
+        retiredOperatorAnchorNodeInputIndex: 0n,
+        settlementInputIndex: 0n,
+        settlementRedeemerIndex: 0n,
+      },
+    };
+    const mintRedeemerCBOR = Data.to(mintRedeemer, RetiredOperatorMintRedeemer);
+    return Effect.succeed(mintRedeemerCBOR);
+  } else {
+    return Effect.fail(
+      new LucidError({
+        message: `Invalid operator status: ${operatorInputUTxO.status}`,
+        cause: "Expected 'ActiveOperator' or 'RetiredOperator'",
+      })
+    );
+  }
+};
+export const getOperatorNFT = (
+  operatorInputUTxO: OperatorNodeUTxO,
+  params: RemoveOperatorBadSettlementParams,
+): Effect.Effect<string, LucidError> => {
+  if(operatorInputUTxO.status === "ActiveOperator") {
+    return Effect.succeed(params.activeOperatorNFT)
+  } else if( operatorInputUTxO.status === "RetiredOperator"){
+    return Effect.succeed(params.retiredOperatorNFT) 
+  }
+  else 
+    return Effect.fail(
+    new LucidError({
+      message: `Invalid operator status: ${operatorInputUTxO.status}`,
+      cause: "Expected 'ActiveOperator' or 'RetiredOperator'",
+    })
+  );
+  }
 
+export const incompleteRemoveOperatorBadSettlementTxProgram = (
+  lucid: LucidEvolution,
+  params: RemoveOperatorBadSettlementParams,
+): Effect.Effect<TxBuilder, HashingError | DataCoercionError | LucidError> =>
+  Effect.gen(function* () {
     const activeOperatorAllUtxos: UTxO[] = yield* Effect.tryPromise({
       try: () => lucid.utxosAt(params.activeOperatorAddress),
       catch: (err) =>
@@ -834,12 +904,26 @@ export const incompleteRemoveOperatorBadSettlementTxProgram = (
         cause: "No UTxOs found in Active Operator contract address",
       });
     };
-
-    const activeOperatorInputUTxO = yield* getSlashedActiveOperatorNodeUTxO(
-      activeOperatorAllUtxos,
-      params,
-    );
-
+    
+    const retiredOperatorAllUtxos: UTxO[] = yield* Effect.tryPromise({
+      try: () => lucid.utxosAt(params.retiredOperatorAddress),
+      catch: (err) =>
+        new LucidError({
+          message: "Failed to fetch Retired Operator UTxOs",
+          cause: err,
+        }),
+    });
+    if (retiredOperatorAllUtxos.length === 0) {
+      yield* new LucidError({
+        message: "Failed to build the Retired Operator node transaction",
+        cause: "No UTxOs found in Retired Operator contract address",
+      });
+    };
+    const operatorInputUTxO = yield* getOperatorNodeUTxO(activeOperatorAllUtxos,retiredOperatorAllUtxos,params.operatorKey);
+    const mintRedeemerCBOR = yield* createMintRedeemerCBOR(operatorInputUTxO,params);
+    const bondAmount = (operatorInputUTxO.utxo.assets.lovelace * 60n) / 100n;
+    const operatorNFT = yield* getOperatorNFT(operatorInputUTxO,params);
+    
     const hubOracleRefUTxO = yield* fetchHubOracleRefUTxO(
       params.hubOracleValidator.spendScriptAddress,
       params.hubOracleValidator.policyId,
@@ -848,16 +932,14 @@ export const incompleteRemoveOperatorBadSettlementTxProgram = (
 
     const network = lucid.config().network ?? "Mainnet";
     const slashingPenalty = getProtocolParameters(network).slashing_penalty;
-
-    const bondAmount = (activeOperatorInputUTxO.utxo.assets.lovelace * 60n) / 100n;
-
+          
     const buildsettlementTx = lucid
       .newTx()
-      .collectFrom([activeOperatorInputUTxO.utxo])
+      .collectFrom([operatorInputUTxO.utxo])
       .readFrom([hubOracleRefUTxO.utxo])
       .mintAssets(
         {
-          [params.activeOperatorNFT]: -1n,
+          [operatorNFT]: -1n,
         },
         mintRedeemerCBOR
       )

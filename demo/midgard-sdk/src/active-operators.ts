@@ -75,16 +75,16 @@ export type ActiveOperatorMintRedeemer = Data.Static<
 export const ActiveOperatorMintRedeemer =
   ActiveOperatorMintRedeemerSchema as unknown as ActiveOperatorMintRedeemer;
 
-export const ActiveOperatorSpendDatumSchema = Data.Object({
+export const ActiveOperatorDatumSchema = Data.Object({
   key: Data.Nullable(Data.Bytes()),
   link: Data.Nullable(Data.Bytes()),
   bondUnlockTime: Data.Nullable(POSIXTimeSchema),
 });
-export type ActiveOperatorSpendDatum = Data.Static<
-  typeof ActiveOperatorSpendDatumSchema
+export type ActiveOperatorDatum = Data.Static<
+  typeof ActiveOperatorDatumSchema
 >;
-export const ActiveOperatorSpendDatum =
-  ActiveOperatorSpendDatumSchema as unknown as ActiveOperatorSpendDatum;
+export const ActiveOperatorDatum =
+  ActiveOperatorDatumSchema as unknown as ActiveOperatorDatum;
 
 export type ActiveOperatorInitParams = {};
 export type ActiveOperatorDeinitParams = {};
