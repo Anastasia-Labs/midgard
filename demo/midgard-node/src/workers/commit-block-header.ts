@@ -13,7 +13,6 @@ import {
   AlwaysSucceedsContract,
   NodeConfig,
   DatabaseInitializationError,
-  AuthenticatedValidator,
 } from "@/services/index.js";
 import {
   BlocksDB,
@@ -250,7 +249,7 @@ const userEventsProgram = (
   });
 
 const buildUnsignedTx = (
-  stateQueueAuthValidator: AuthenticatedValidator,
+  stateQueueAuthValidator: SDK.AuthenticatedValidator,
   latestBlock: SDK.StateQueueUTxO,
   utxosRoot: string,
   txsRoot: string,

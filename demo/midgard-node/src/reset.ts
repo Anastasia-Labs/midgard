@@ -10,7 +10,6 @@ import {
 } from "@lucid-evolution/lucid";
 import {
   AlwaysSucceedsContract,
-  AuthenticatedValidator,
   Database,
   Globals,
   Lucid,
@@ -39,7 +38,7 @@ import { FileSystemError } from "@/utils.js";
 
 const collectAndBurnUTxOsTx = (
   lucid: LucidEvolution,
-  authValidator: AuthenticatedValidator,
+  authValidator: SDK.AuthenticatedValidator,
   assetUTxOs: {
     utxo: UTxO;
     assetName: string;
@@ -64,7 +63,7 @@ const collectAndBurnUTxOsTx = (
   });
 
 type UTxOsQueue = {
-  authValidator: AuthenticatedValidator;
+  authValidator: SDK.AuthenticatedValidator;
   assetUTxOs: {
     utxo: UTxO;
     assetName: string;

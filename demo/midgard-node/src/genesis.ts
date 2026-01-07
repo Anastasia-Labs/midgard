@@ -8,7 +8,12 @@ import {
 } from "@/services/index.js";
 import { Columns as LedgerColumns } from "@/database/utils/ledger.js";
 import * as MempoolLedgerDB from "@/database/mempoolLedger.js";
-import { TxSubmitError, UTxO, utxoToCore } from "@lucid-evolution/lucid";
+import {
+  TxSubmitError,
+  UTxO,
+  utxoToCore,
+  Script,
+} from "@lucid-evolution/lucid";
 import { DatabaseError } from "@/database/utils/common.js";
 import {
   handleSignSubmitNoConfirmation,
@@ -54,6 +59,35 @@ ${Array.from(new Set(config.GENESIS_UTXOS.map((u) => u.address))).join("\n")}`,
   Effect.andThen(Effect.succeed(Effect.void)),
 );
 
+export const getGenesisScriptInputs = (
+  contracts: SDK.MidgardValidators,
+): Effect.Effect<{ keys: Buffer[]; values: Buffer[] }, SDK.HashingError> =>
+  Effect.gen(function* () {
+    const scripts = Object.values(contracts).flatMap((v) => {
+      const s: string[] = [];
+      if ("spendScript" in v) s.push(v.spendingCBOR);
+      if ("mintScript" in v) s.push(v.mintingCBOR);
+      return s;
+    });
+
+    const uniqueHashes = yield* Effect.all(
+      [...new Set(scripts)].map((cbor) => SDK.hashHexWithBlake2b256(cbor)),
+      { concurrency: "unbounded" },
+    );
+
+    const keys: Buffer[] = [];
+    const values: Buffer[] = [];
+
+    uniqueHashes.sort().forEach((hash, index) => {
+      const key = Buffer.alloc(4);
+      key.writeUInt32BE(index);
+      keys.push(key);
+      values.push(Buffer.from(hash, "hex"));
+    });
+
+    return { keys, values };
+  });
+
 const submitGenesisDeposits: Effect.Effect<
   void,
   | SDK.LucidError
@@ -94,7 +128,7 @@ const submitGenesisDeposits: Effect.Effect<
     depositParams,
   );
   yield* handleSignSubmitNoConfirmation(lucid.api, signedTx);
-});
+}).pipe(Effect.tapError(Effect.logInfo));
 
 export const program: Effect.Effect<
   void,
