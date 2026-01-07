@@ -202,6 +202,11 @@ export type MidgardValidators = {
   fraudProofCatalogueAuthValidator: AuthenticatedValidator;
   fraudProofAuthValidator: AuthenticatedValidator;
   depositAuthValidator: AuthenticatedValidator;
+  reserveAuthValidator: AuthenticatedValidator;
+  payoutAuthValidator: AuthenticatedValidator;
+  withdrawalAuthValidator: AuthenticatedValidator;
+  txOrderAuthValidator: AuthenticatedValidator;
+  settlementAuthValidator: AuthenticatedValidator;
 };
 
 export const OutputReferenceSchema = Data.Object({

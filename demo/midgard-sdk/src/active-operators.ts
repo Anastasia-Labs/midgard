@@ -88,13 +88,11 @@ export const incompleteActiveOperatorInitTxProgram = (
   params: ActiveOperatorInitParams,
 ): Effect.Effect<TxBuilder, never> =>
   Effect.gen(function* () {
-    const rootData: ActiveOperatorDatum = {
-      commitmentTime: null,
-    };
+    const rootData = "00";
 
     return yield* incompleteInitLinkedListTxProgram(lucid, {
       validator: params.validator,
-      data: Data.castTo(rootData, ActiveOperatorDatum),
+      data: rootData,
       redeemer: Data.to("Init", ActiveOperatorMintRedeemer),
     });
   });
