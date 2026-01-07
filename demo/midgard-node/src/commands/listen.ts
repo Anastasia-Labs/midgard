@@ -247,13 +247,13 @@ const getBlockHandler = Effect.gen(function* () {
 
 const getInitHandler = Effect.gen(function* () {
   yield* Effect.logInfo(`✨ Initialization request received`);
-  const result = yield* initializeMidgard;
+  const txHash = yield* initializeMidgard;
   yield* Genesis.program;
   yield* Effect.logInfo(
-    `GET /${INIT_ENDPOINT} - Initialization successful: ${result.txHash}`,
+    `GET /${INIT_ENDPOINT} - Initialization successful: ${txHash}`,
   );
   return yield* HttpServerResponse.json({
-    message: `Initiation successful: ${result.txHash}`,
+    message: `Initiation successful: ${txHash}`,
   });
 }).pipe(
   Effect.catchTag("HttpBodyError", (e) => failWith500("GET", INIT_ENDPOINT, e)),

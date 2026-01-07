@@ -23,5 +23,5 @@ export const initializeMidgard = Effect.gen(function* () {
   );
   const txHash = yield* handleSignSubmit(lucid, unsignedTx);
 
-  return { txHash, message: "Midgard initialized successfully" };
+  return txHash;
 });
