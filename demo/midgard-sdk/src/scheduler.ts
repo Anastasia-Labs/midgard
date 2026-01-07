@@ -52,7 +52,6 @@ export const SchedulerSpendRedeemer =
 
 export type SchedulerInitParams = {
   validator: AuthenticatedValidator;
-  datum?: SchedulerDatum;
 };
 
 export type SchedulerDeinitParams = {};
@@ -76,9 +75,7 @@ export const incompleteSchedulerInitTxProgram = (
 
   const redeemer = Data.to("Init", SchedulerMintRedeemer);
 
-  const encodedDatum = params.datum
-    ? Data.to<SchedulerDatum>(params.datum, SchedulerDatum)
-    : Data.void();
+  const encodedDatum = Data.void();
 
   return lucid
     .newTx()

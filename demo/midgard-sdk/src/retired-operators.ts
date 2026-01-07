@@ -69,13 +69,11 @@ export const incompleteRetiredOperatorInitTxProgram = (
   params: RetiredOperatorInitParams,
 ): Effect.Effect<TxBuilder> =>
   Effect.gen(function* () {
-    const rootData: RetiredOperatorDatum = {
-      commitmentTime: 0n,
-    };
+    const rootData = "00";
 
     return yield* incompleteInitLinkedListTxProgram(lucid, {
       validator: params.validator,
-      data: Data.castTo(rootData, RetiredOperatorDatum),
+      data: rootData,
       redeemer: Data.to("Init", RetiredOperatorMintRedeemer),
     });
   });

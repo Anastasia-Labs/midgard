@@ -97,13 +97,11 @@ export const incompleteRegisteredOperatorInitTxProgram = (
   params: RegisteredOperatorInitParams,
 ): Effect.Effect<TxBuilder, never> =>
   Effect.gen(function* () {
-    const rootData: RegisteredOperatorDatum = {
-      registrationTime: 0n,
-    };
+    const rootData = "00";
 
     return yield* incompleteInitLinkedListTxProgram(lucid, {
       validator: params.validator,
-      data: Data.castTo(rootData, RegisteredOperatorDatum),
+      data: rootData,
       redeemer: Data.to("Init", RegisteredOperatorMintRedeemer),
     });
   });

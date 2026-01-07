@@ -54,10 +54,9 @@ export const incompleteInitializationTxProgram = (
       .collectFrom([nonceUtxo])
       .validTo(Number(genesisTime));
 
-    const hubOracleTx = yield* incompleteHubOracleInitTxProgram(
-      lucid,
-      params.midgardValidators,
-    );
+    const hubOracleTx = yield* incompleteHubOracleInitTxProgram(lucid, {
+      validators: params.midgardValidators,
+    });
 
     const stateQueueTx: TxBuilder = yield* incompleteInitStateQueueTxProgram(
       lucid,
@@ -86,7 +85,6 @@ export const incompleteInitializationTxProgram = (
 
     const schedulerTx = incompleteSchedulerInitTxProgram(lucid, {
       validator: params.midgardValidators.schedulerAuthValidator,
-      datum: undefined,
     });
 
     const fraudProofCatalogueTx: TxBuilder =

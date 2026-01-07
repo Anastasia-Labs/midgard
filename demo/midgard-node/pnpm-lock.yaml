@@ -118,7 +118,7 @@ packages:
     resolution: {integrity: sha512-vKypwCNMH7SgP8JQ/fQyXjhDC16DqTiW9x9dLK6AXe2tEWVouNy2GMKmOaS4l6ZF7pTjty5XCD+MqnsxXJBIgg==}
 
   '@al-ft/midgard-sdk@file:../midgard-sdk/al-ft-midgard-sdk-0.1.0.tgz':
-    resolution: {integrity: sha512-lvGCzaTbVUrem8Thn2l68gO+5uVuz6E2p747MzE0CIKr5hGvsr4yxfUijFiT8PmWT9xEA9raV+KN6IA+JdMlMA==, tarball: file:../midgard-sdk/al-ft-midgard-sdk-0.1.0.tgz}
+    resolution: {integrity: sha512-h0M2lzktHI/1k29pjdeqrAvML2BRARfo6maJKuWJ/pbCx0B2Gn0s0uKkW5sI4ovEXWtcdwBXzlBVrOu8xMAyQQ==, tarball: file:../midgard-sdk/al-ft-midgard-sdk-0.1.0.tgz}
     version: 0.1.0
 
   '@anastasia-labs/cardano-multiplatform-lib-browser@6.0.2-2':

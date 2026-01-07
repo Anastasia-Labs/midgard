@@ -51,21 +51,25 @@ export const HubOracleDatumSchema = Data.Object({
 export type HubOracleDatum = Data.Static<typeof HubOracleDatumSchema>;
 export const HubOracleDatum = HubOracleDatumSchema as unknown as HubOracleDatum;
 
-export type HubOracleInitParams = {};
+export type HubOracleInitParams = {
+  validators: HubOracleValidators;
+};
 
 /**
  * Validators needed to construct the hub oracle datum.
  * This is the "wiring" that connects all Midgard contracts together.
  */
-export type HubOracleValidators = {
-  registeredOperators: AuthenticatedValidator;
-  activeOperators: AuthenticatedValidator;
-  retiredOperators: AuthenticatedValidator;
-  scheduler: AuthenticatedValidator;
-  stateQueue: AuthenticatedValidator;
-  fraudProofCatalogue: AuthenticatedValidator;
-  fraudProof: AuthenticatedValidator;
-};
+export type HubOracleValidators = Pick<
+  MidgardValidators,
+  | "hubOracleMintValidator"
+  | "registeredOperatorsAuthValidator"
+  | "activeOperatorsAuthValidator"
+  | "retiredOperatorsAuthValidator"
+  | "schedulerAuthValidator"
+  | "stateQueueAuthValidator"
+  | "fraudProofCatalogueAuthValidator"
+  | "fraudProofAuthValidator"
+>;
 
 /**
  * Constructs HubOracleDatum from validators.
@@ -75,7 +79,7 @@ export type HubOracleValidators = {
  * @returns {HubOracleDatum} Effect that produces the complete hub oracle datum
  */
 export const makeHubOracleDatum = (
-  validators: MidgardValidators,
+  validators: HubOracleValidators,
 ): Effect.Effect<HubOracleDatum, Bech32DeserializationError> =>
   Effect.gen(function* () {
     const [
@@ -137,15 +141,15 @@ export const makeHubOracleDatum = (
  */
 export const incompleteHubOracleInitTxProgram = (
   lucid: LucidEvolution,
-  validators: MidgardValidators,
+  params: HubOracleInitParams,
 ): Effect.Effect<TxBuilder, Bech32DeserializationError> =>
   Effect.gen(function* () {
-    const datum = yield* makeHubOracleDatum(validators);
+    const datum = yield* makeHubOracleDatum(params.validators);
     const encodedDatum = Data.to<HubOracleDatum>(datum, HubOracleDatum);
 
     const assets: Assets = {
       [toUnit(
-        validators.hubOracleMintValidator.policyId,
+        params.validators.hubOracleMintValidator.policyId,
         HUB_ORACLE_ASSET_NAME,
       )]: 1n,
     };
@@ -154,11 +158,13 @@ export const incompleteHubOracleInitTxProgram = (
       .newTx()
       .mintAssets(assets, Data.void())
       .pay.ToAddressWithData(
-        validators.hubOracleMintValidator.mintScriptAddress,
+        params.validators.hubOracleMintValidator.mintScriptAddress,
         { kind: "inline", value: encodedDatum },
         assets,
       )
-      .attach.MintingPolicy(validators.hubOracleMintValidator.mintScript);
+      .attach.MintingPolicy(
+        params.validators.hubOracleMintValidator.mintScript,
+      );
   });
 
 export class HubOracleError extends EffectData.TaggedError(
