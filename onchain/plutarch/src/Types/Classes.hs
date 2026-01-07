@@ -4,6 +4,7 @@
 
 module Types.Classes where
 
+import Plutarch.Internal.Term (PType)
 import Plutarch.Prelude
 
 class ScottConvertible (a :: PType) where

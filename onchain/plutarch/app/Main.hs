@@ -17,17 +17,12 @@ import Data.Text (
   pack,
  )
 import Data.Text.Encoding qualified as Text
-import Plutarch (
-  Config (..),
-  TracingMode (..),
-  LogLevel (..), 
-  compile,
-  printScript,
- )
+
 import Plutarch.Evaluate (
+  applyArguments,
   evalScript,
-  applyArguments
  )
+import Plutarch.Internal.Term
 import Plutarch.Prelude
 import Plutarch.Script (Script, serialiseScript)
 import PlutusLedgerApi.V2 (
@@ -35,7 +30,6 @@ import PlutusLedgerApi.V2 (
   ExBudget,
  )
 import System.IO
-
 
 encodeSerialiseCBOR :: Script -> Text
 encodeSerialiseCBOR = Text.decodeUtf8 . Base16.encode . CBOR.serialize' . serialiseScript

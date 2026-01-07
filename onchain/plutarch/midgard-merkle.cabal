@@ -183,13 +183,6 @@ library
     ViewPatterns
 
   exposed-modules:
-    Midgard.Crypto
-    Midgard.List
-    Midgard.PlutusDataList
-    Midgard.Utils
-    MerkleTree.Helpers
-    MerkleTree.MerklePatriciaForestry
-    MerkleTree.Merkling
     Profile
     Types.Blocks
     Types.Classes
@@ -207,8 +200,8 @@ library
     , data-default
     , generics-sop
     , plutarch
-    , plutarch-extra
     , plutarch-ledger-api
+    , plutarch-onchain-lib
     , plutus-core
     , plutus-ledger-api
     , plutus-tx
@@ -229,8 +222,8 @@ common dependencies
     , data-default
     , directory
     , plutarch
-    , plutarch-extra
     , plutarch-ledger-api
+    , plutarch-onchain-lib
     , plutus-core
     , plutus-ledger-api
     , plutus-tx
@@ -262,16 +255,10 @@ test-suite helpers-tests
   main-is:          Test.hs
   hs-source-dirs:   src src/Testing
   other-modules:
-    Midgard.Crypto
-    Midgard.List
-    Midgard.Utils
-    MerkleTree.Helpers
-    MerkleTree.MerklePatriciaForestry
-    MerkleTree.Merkling
-    Testing.MidgardValidator
     Testing.Crypto
     Testing.Eval
     Testing.MerklePatriciaForestry
+    Testing.MidgardValidator
     Testing.TransactionProofs
     Types.Blocks
     Types.Classes
@@ -280,6 +267,8 @@ test-suite helpers-tests
 
   build-depends:
     , cardano-crypto-class
+    , generics-sop
+    , plutarch-onchain-lib
     , prettyprinter
     , tasty
     , tasty-hunit
