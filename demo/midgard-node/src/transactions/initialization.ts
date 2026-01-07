@@ -4,10 +4,7 @@ import { AlwaysSucceedsContract } from "@/services/always-succeeds.js";
 import * as SDK from "@al-ft/midgard-sdk";
 import { handleSignSubmit } from "./utils.js";
 
-import {
-  MptError,
-  keyValueMptRoot,
-} from "../workers/utils/mpt.js";
+import { MptError, keyValueMptRoot } from "../workers/utils/mpt.js";
 import { getGenesisScriptInputs } from "../genesis.js";
 
 const computeGenesisMptRoot = (

@@ -119,13 +119,11 @@ const makeAlwaysSucceedsService: Effect.Effect<
   const depositAuthValidator = yield* makeAuthenticatedValidator("deposit");
   const reserveAuthValidator = yield* makeAuthenticatedValidator("reserve");
   const payoutAuthValidator = yield* makeAuthenticatedValidator("payout");
-  const withdrawalAuthValidator = yield* makeAuthenticatedValidator(
-    "withdrawal",
-  );
+  const withdrawalAuthValidator =
+    yield* makeAuthenticatedValidator("withdrawal");
   const txOrderAuthValidator = yield* makeAuthenticatedValidator("tx_order");
-  const settlementAuthValidator = yield* makeAuthenticatedValidator(
-    "settlement",
-  );
+  const settlementAuthValidator =
+    yield* makeAuthenticatedValidator("settlement");
 
   return {
     hubOracleMintValidator,
