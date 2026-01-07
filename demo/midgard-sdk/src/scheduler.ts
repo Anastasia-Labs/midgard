@@ -7,6 +7,7 @@ import {
   TxBuilder,
 } from "@lucid-evolution/lucid";
 import { AuthenticatedValidator } from "@/common.js";
+import { SCHEDULER_ASSET_NAME } from "./constants.js";
 
 export const SchedulerDatumSchema = Data.Object({
   operator: Data.Bytes(),
@@ -70,7 +71,7 @@ export const incompleteSchedulerInitTxProgram = (
   params: SchedulerInitParams,
 ): TxBuilder => {
   const assets: Assets = {
-    [toUnit(params.validator.policyId, fromText("Scheduler"))]: 1n,
+    [toUnit(params.validator.policyId, fromText(SCHEDULER_ASSET_NAME))]: 1n,
   };
 
   const redeemer = Data.to("Init", SchedulerMintRedeemer);
