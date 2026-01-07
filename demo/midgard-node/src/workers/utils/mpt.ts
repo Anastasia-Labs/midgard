@@ -58,18 +58,6 @@ export const makeMpts: Effect.Effect<
   };
 });
 
-export const computeRootFromUtxos = (
-  utxos: UTxO[],
-): Effect.Effect<string, MptError | SDK.DataCoercionError> =>
-  Effect.gen(function* () {
-    const trie = yield* MidgardMpt.create("genesis");
-    const ops: ETH_UTILS.BatchDBOp[] = yield* Effect.allSuccesses(
-      utxos.map((u) => utxoToBatchOps(u)),
-    );
-    yield* trie.batch(ops);
-    return yield* trie.getRootHex();
-  });
-
 export const utxoToBatchOps = (
   utxo: UTxO,
 ): Effect.Effect<ETH_UTILS.BatchDBOp, SDK.DataCoercionError> =>

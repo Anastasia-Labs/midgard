@@ -59,49 +59,33 @@ ${Array.from(new Set(config.GENESIS_UTXOS.map((u) => u.address))).join("\n")}`,
   Effect.andThen(Effect.succeed(Effect.void)),
 );
 
-export const getGenesisUtxosFromValidators = (
+export const getGenesisScriptInputs = (
   contracts: SDK.MidgardValidators,
-): Effect.Effect<UTxO[], SDK.HashingError> =>
+): Effect.Effect<{ keys: Buffer[]; values: Buffer[] }, SDK.HashingError> =>
   Effect.gen(function* () {
-    const uniqueScripts = new Map<
-      string,
-      { script: Script; address: string }
-    >();
+    const scripts = Object.values(contracts).flatMap((v) => {
+      const s: string[] = [];
+      if ("spendScript" in v) s.push(v.spendingCBOR);
+      if ("mintScript" in v) s.push(v.mintingCBOR);
+      return s;
+    });
 
-    const validators = Object.values(contracts) as (
-      | SDK.AuthenticatedValidator
-      | SDK.MintingValidatorInfo
-    )[];
-
-    for (const validator of validators) {
-      if ("spendScript" in validator) {
-        uniqueScripts.set(validator.spendingCBOR, {
-          script: validator.spendScript,
-          address: validator.spendScriptAddress,
-        });
-      }
-      if ("mintScript" in validator) {
-        uniqueScripts.set(validator.mintingCBOR, {
-          script: validator.mintScript,
-          address: validator.mintScriptAddress,
-        });
-      }
-    }
-
-    const unsortedUtxos = yield* Effect.all(
-      Array.from(uniqueScripts.entries()).map(([cbor, { script, address }]) =>
-        Effect.map(SDK.hashHexWithBlake2b256(cbor), (txHash) => ({
-          txHash,
-          outputIndex: 0,
-          address,
-          assets: {},
-          scriptRef: script,
-        })),
-      ),
+    const uniqueHashes = yield* Effect.all(
+      [...new Set(scripts)].map((cbor) => SDK.hashHexWithBlake2b256(cbor)),
       { concurrency: "unbounded" },
     );
 
-    return unsortedUtxos.sort((a, b) => a.txHash.localeCompare(b.txHash));
+    const keys: Buffer[] = [];
+    const values: Buffer[] = [];
+
+    uniqueHashes.sort().forEach((hash, index) => {
+      const key = Buffer.alloc(4);
+      key.writeUInt32BE(index);
+      keys.push(key);
+      values.push(Buffer.from(hash, "hex"));
+    });
+
+    return { keys, values };
   });
 
 const submitGenesisDeposits: Effect.Effect<

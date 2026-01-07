@@ -5,24 +5,17 @@ import * as SDK from "@al-ft/midgard-sdk";
 import { handleSignSubmit } from "./utils.js";
 
 import {
-  MidgardMpt,
   MptError,
-  utxoToBatchOps,
-  computeRootFromUtxos,
+  keyValueMptRoot,
 } from "../workers/utils/mpt.js";
-import { getGenesisUtxosFromValidators } from "../genesis.js";
-import { UTxO, Script } from "@lucid-evolution/lucid";
-import * as ETH_UTILS from "@ethereumjs/util";
+import { getGenesisScriptInputs } from "../genesis.js";
 
 const computeGenesisMptRoot = (
   contracts: SDK.MidgardValidators,
-): Effect.Effect<
-  string,
-  MptError | SDK.HashingError | SDK.DataCoercionError
-> =>
+): Effect.Effect<string, MptError | SDK.HashingError> =>
   Effect.gen(function* () {
-    const utxos = yield* getGenesisUtxosFromValidators(contracts);
-    return yield* computeRootFromUtxos(utxos);
+    const { keys, values } = yield* getGenesisScriptInputs(contracts);
+    return yield* keyValueMptRoot(keys, values);
   });
 
 export const initializeMidgard = Effect.gen(function* () {
