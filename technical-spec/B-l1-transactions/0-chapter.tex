@@ -574,11 +574,11 @@ Correctness is enforced by the Init redeemer of the fraud proof computation thre
 Cancel the verification of a fraud proof via a transaction that (\cref{fig:tx-fraud-proof-cancel}):
 \begin{enumerate}
   \item Spends a single fraud proof computation thread utxo.
-  \item Burns the computation thread token
+  \item Burns the computation thread token.
   \item Refunds the ADA from the computation thread utxo to the fraud prover.
 \end{enumerate}
 
-Correctness is enforced by the Cancel redeemer of the fraud proof minting policy (\cref{h:fraud-proof-computation-threads-minting-policy}).
+Correctness is enforced by the BurnForCancellation redeemer of the fraud proof minting policy (\cref{h:fraud-proof-computation-threads-minting-policy}).
 
 \begin{figure}[H]
 \begin{center}
@@ -591,7 +591,7 @@ Correctness is enforced by the Cancel redeemer of the fraud proof minting policy
 Perform a single verification step of a fraud proof via a transaction that (\cref{fig:tx-fraud-proof-step}):
 \begin{enumerate}
   \item Spends a single fraud proof computation thread utxo, performing the verification step defined in the utxo's spending validator.
-  \item Reproduces the fraud proof computation thread utxo as a continuing output sent to the next step's spending validator address.
+  \item Reproduces the fraud proof computation thread utxo as a continuing output sent to the next step's spending validator address (or potentially its own for recursive steps).
   \item If required by the verification step, references the allegedly fraudulent state queue node.
   \item If required by the verification step, withdraws ADA from a designated account that triggers Midgard's Merkle proof helper script.
 \end{enumerate}

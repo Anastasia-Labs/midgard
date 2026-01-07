@@ -1,6 +1,6 @@
 use aiken_design_patterns/linked_list/unordered.{NodeDatum}
 use cardano/assets.{AssetName}
-use cardano/transaction.{InlineDatum, Input, OutputReference}
+use cardano/transaction.{Input, OutputReference}
 use midgard/common/utils
 use midgard/ledger_state.{ConfirmedState, Header}
 use midgard/registered_operators.{OperatorStatus}
@@ -50,24 +50,6 @@ pub type MintRedeemer {
   }
 }
 
-fn get_node_datum_data(
-  reference_inputs: List<Input>,
-  state_queue_policy: ByteArray,
-  state_queue_node_ref_input_index: Int,
-) {
-  let state_queue_node_input =
-    utils.get_authentic_input_with_policy_at(
-      reference_inputs,
-      state_queue_policy,
-      state_queue_node_ref_input_index,
-    )
-
-  expect InlineDatum(state_queue_datum_data) =
-    state_queue_node_input.output.datum
-
-  state_queue_datum_data
-}
-
 pub fn get_confirmed_datum(
   reference_inputs: List<Input>,
   state_queue_policy: ByteArray,
@@ -78,7 +60,7 @@ pub fn get_confirmed_datum(
     key: unordered.Empty,
     ..
   } =
-    get_node_datum_data(
+    utils.get_authentic_input_datum_with_policy_at(
       reference_inputs,
       state_queue_policy,
       state_queue_node_ref_input_index,
@@ -96,7 +78,7 @@ pub fn get_block_datum(
   return: fn(Header, ByteArray) -> result,
 ) -> result {
   expect NodeDatum { data: header_datum_data, key: unordered.Key { key }, .. } =
-    get_node_datum_data(
+    utils.get_authentic_input_datum_with_policy_at(
       reference_inputs,
       state_queue_policy,
       state_queue_node_ref_input_index,

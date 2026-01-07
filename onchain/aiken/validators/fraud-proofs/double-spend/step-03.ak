@@ -1,107 +1,87 @@
-use aiken/builtin
-use aiken/collection/list
 use aiken/crypto.{ScriptHash}
+use cardano/address.{Address}
 use cardano/assets.{PolicyId}
 use cardano/transaction.{OutputReference, Transaction}
-use midgard/common/utils.{verify_hash_32}
-use midgard/computation_thread.{StepDatum}
-use midgard/fraud_proofs/common.{
-  get_singleton_ct_token, handle_cancel, validate_step_output,
-} as fraud_proof_utils
-use midgard/fraud_proofs/double_spend/step_02.{StepState as Step2State}
+use midgard/common/utils.{plutarch_phas}
+use midgard/computation_thread as ct
+use midgard/fraud_proofs/common.{cancel, finalize}
 use midgard/fraud_proofs/double_spend/step_03.{
-  Cancel, Continue, StepRedeemer as Step3Redeemer, StepState as Step3State,
+  Args, Datum, SpendRedeemer, State,
 }
-use midgard/ledger_state.{MidgardTxBodyCompact, MidgardTxCompact}
 
 validator main(
-  double_spend_step_04_validator_script_hash: ScriptHash,
-  ct_token_policy_id: PolicyId,
+  computation_thread_token_policy_id: PolicyId,
+  fraud_proof_token_policy_id: ScriptHash,
+  fraud_proof_token_address: Address,
 ) {
   spend(
-    datum: Option<StepDatum>,
-    redeemer: Step3Redeemer,
-    input: OutputReference,
+    datum: Option<Datum>,
+    redeemer: SpendRedeemer,
+    own_out_ref: OutputReference,
     tx: Transaction,
   ) {
-    expect Some(step_datum) = datum
-    expect Some(own_input) =
-      list.find(tx.inputs, fn(a_input) { a_input.output_reference == input })
-
     when redeemer is {
-      Cancel { index_output } -> {
-        expect
-          handle_cancel(
-            own_input,
-            index_output,
+      ct.Cancel { input_index, computation_thread_mint_redeemer_index } ->
+        cancel(
+          computation_thread_token_policy_id,
+          datum,
+          input_index,
+          own_out_ref,
+          computation_thread_mint_redeemer_index,
+          tx,
+        )
+      ct.Continue(Args {
+        input_index,
+        output_index,
+        input_membership_proof,
+        fraud_proof_mint_redeemer_index,
+        inclusion_proof_script_withdraw_redeemer_index,
+      }) -> {
+        let Transaction { inputs, outputs, redeemers, .. } = tx
+
+        expect Some(step_datum) = datum
+
+        let
+          _own_script_hash,
+          _computation_thread_token_asset_name,
+          _fraud_prover,
+          m_input_state_data,
+        <-
+          finalize(
+            computation_thread_token_policy_id,
+            fraud_proof_token_policy_id,
+            fraud_proof_token_address,
             step_datum,
-            ct_token_policy_id,
-            tx,
-          )
-        True
-      }
-
-      // Step 3: Double spend validation
-      Continue {
-        fraudulent_input,
-        tx1_input_utxos,
-        tx1_body,
-        tx2_input_utxos,
-        tx2_body,
-        tx1,
-        tx2,
-        index_output,
-      } -> {
-        expect Step2State { verified_tx1_hash, verified_tx2_hash }: Step2State =
-          step_datum.data
-
-        // -------- double spend validation specific logic START --------
-        // fraud prover provides a list of output references that are known to be part of the fraudulent block as the tx1, and tx2 full transactions,
-        // once serialized and hashed match the verified_tx1_hash and verified_tx2_hash hashes we have verified to be a part of the supposedly "fraudulent" block in previous steps.
-        verify_hash_32(tx1, verified_tx1_hash)
-        verify_hash_32(tx2, verified_tx2_hash)
-
-        // tx bodies provided by fraud prover, once serialized and hashed, match the hashed body field part of the inputted transactions
-        verify_hash_32(tx1_body, tx1.body)
-        verify_hash_32(tx2_body, tx2.body)
-
-        // input lists match tx body spend_inputs
-        verify_hash_32(tx1_input_utxos, tx1_body.spend_inputs)
-        verify_hash_32(tx2_input_utxos, tx2_body.spend_inputs)
-
-        // both input lists contain the fraudulent input
-        expect list.has(builtin.un_list_data(tx1_input_utxos), fraudulent_input)
-        expect list.has(builtin.un_list_data(tx2_input_utxos), fraudulent_input)
-        expect parsed_fraudulent_input: OutputReference = fraudulent_input
-
-        // -------- double spend validation specific logic END --------
-        let step_3_state =
-          Step3State {
-            verified_tx1_hash,
-            verified_tx2_hash,
-            verified_common_input: parsed_fraudulent_input,
-          }
-        let expected_output_datum =
-          StepDatum {
-            fraud_prover: step_datum.fraud_prover,
-            data: step_3_state,
-          }
-
-        // Get CT token
-        let ct_token_asset_name =
-          get_singleton_ct_token(own_input, ct_token_policy_id)
-
-        expect
-          validate_step_output(
-            tx,
-            index_output,
-            double_spend_step_04_validator_script_hash,
-            ct_token_policy_id,
-            ct_token_asset_name,
-            step_datum,
-            expected_output_datum,
+            input_index,
+            output_index,
+            fraud_proof_mint_redeemer_index,
+            own_out_ref,
+            inputs,
+            outputs,
+            redeemers,
           )
 
+        expect Some(input_state) = m_input_state_data
+
+        let State {
+          verified_tx2_inputs_root,
+          double_spent_input_key,
+          double_spent_input_value,
+        } = input_state
+
+        // 1. Provided input must be a member of the second transaction's
+        //    inputs.
+        expect
+          plutarch_phas(
+            merkle_root: verified_tx2_inputs_root,
+            key: double_spent_input_key,
+            value: double_spent_input_value,
+            membership_proof: input_membership_proof,
+            redeemers: redeemers,
+            withdraw_redeemer_index: inclusion_proof_script_withdraw_redeemer_index,
+          )
+
+        // Done.
         True
       }
     }
