@@ -8,7 +8,12 @@ import {
 } from "@/services/index.js";
 import { Columns as LedgerColumns } from "@/database/utils/ledger.js";
 import * as MempoolLedgerDB from "@/database/mempoolLedger.js";
-import { TxSubmitError, UTxO, utxoToCore } from "@lucid-evolution/lucid";
+import {
+  TxSubmitError,
+  UTxO,
+  utxoToCore,
+  Script,
+} from "@lucid-evolution/lucid";
 import { DatabaseError } from "@/database/utils/common.js";
 import {
   handleSignSubmitNoConfirmation,
@@ -53,6 +58,51 @@ ${Array.from(new Set(config.GENESIS_UTXOS.map((u) => u.address))).join("\n")}`,
   ),
   Effect.andThen(Effect.succeed(Effect.void)),
 );
+
+export const getGenesisUtxosFromValidators = (
+  contracts: SDK.MidgardValidators,
+): Effect.Effect<UTxO[], SDK.HashingError> =>
+  Effect.gen(function* () {
+    const uniqueScripts = new Map<
+      string,
+      { script: Script; address: string }
+    >();
+
+    const validators = Object.values(contracts) as (
+      | SDK.AuthenticatedValidator
+      | SDK.MintingValidatorInfo
+    )[];
+
+    for (const validator of validators) {
+      if ("spendScript" in validator) {
+        uniqueScripts.set(validator.spendingCBOR, {
+          script: validator.spendScript,
+          address: validator.spendScriptAddress,
+        });
+      }
+      if ("mintScript" in validator) {
+        uniqueScripts.set(validator.mintingCBOR, {
+          script: validator.mintScript,
+          address: validator.mintScriptAddress,
+        });
+      }
+    }
+
+    const unsortedUtxos = yield* Effect.all(
+      Array.from(uniqueScripts.entries()).map(([cbor, { script, address }]) =>
+        Effect.map(SDK.hashHexWithBlake2b256(cbor), (txHash) => ({
+          txHash,
+          outputIndex: 0,
+          address,
+          assets: {},
+          scriptRef: script,
+        })),
+      ),
+      { concurrency: "unbounded" },
+    );
+
+    return unsortedUtxos.sort((a, b) => a.txHash.localeCompare(b.txHash));
+  });
 
 const submitGenesisDeposits: Effect.Effect<
   void,

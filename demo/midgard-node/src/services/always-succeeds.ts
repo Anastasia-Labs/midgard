@@ -117,6 +117,15 @@ const makeAlwaysSucceedsService: Effect.Effect<
   const fraudProofAuthValidator =
     yield* makeAuthenticatedValidator("fraud_proof");
   const depositAuthValidator = yield* makeAuthenticatedValidator("deposit");
+  const reserveAuthValidator = yield* makeAuthenticatedValidator("reserve");
+  const payoutAuthValidator = yield* makeAuthenticatedValidator("payout");
+  const withdrawalAuthValidator = yield* makeAuthenticatedValidator(
+    "withdrawal",
+  );
+  const txOrderAuthValidator = yield* makeAuthenticatedValidator("tx_order");
+  const settlementAuthValidator = yield* makeAuthenticatedValidator(
+    "settlement",
+  );
 
   return {
     hubOracleMintValidator,
@@ -129,6 +138,11 @@ const makeAlwaysSucceedsService: Effect.Effect<
     fraudProofCatalogueAuthValidator,
     fraudProofAuthValidator,
     depositAuthValidator,
+    reserveAuthValidator,
+    payoutAuthValidator,
+    withdrawalAuthValidator,
+    txOrderAuthValidator,
+    settlementAuthValidator,
   };
 }).pipe(Effect.orDie);
 

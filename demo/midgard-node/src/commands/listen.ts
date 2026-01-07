@@ -51,6 +51,7 @@ import * as Reset from "@/reset.js";
 import { SerializedStateQueueUTxO } from "@/workers/utils/commit-block-header.js";
 import { DatabaseError } from "@/database/utils/common.js";
 import { TxConfirmError, TxSignError } from "@/transactions/utils.js";
+import { MptError } from "@/workers/utils/mpt.js";
 import {
   fetchAndInsertDepositUTxOsFiber,
   blockConfirmationFiber,
@@ -258,6 +259,13 @@ const getInitHandler = Effect.gen(function* () {
 }).pipe(
   Effect.catchTag("HttpBodyError", (e) => failWith500("GET", INIT_ENDPOINT, e)),
   Effect.catchTag("LucidError", (e) =>
+    handleGenericGetFailure(INIT_ENDPOINT, e),
+  ),
+  Effect.catchTag("MptError", (e) => handleGenericGetFailure(INIT_ENDPOINT, e)),
+  Effect.catchTag("HashingError", (e) =>
+    handleGenericGetFailure(INIT_ENDPOINT, e),
+  ),
+  Effect.catchTag("DataCoercionError", (e) =>
     handleGenericGetFailure(INIT_ENDPOINT, e),
   ),
   Effect.catchTag("TxSubmitError", (e) => handleTxGetFailure(INIT_ENDPOINT, e)),

@@ -61,7 +61,6 @@ program
     console.log("🌳 Midgard");
     const program = pipe(
       runNode(options.withMonitoring),
-      Effect.provide(Services.Globals.Default),
       Effect.provide(Services.Database.layer),
       Effect.provide(Services.AlwaysSucceedsContract.Default),
       Effect.provide(Services.Lucid.Default),

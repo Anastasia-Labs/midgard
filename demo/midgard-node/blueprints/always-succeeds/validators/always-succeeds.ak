@@ -130,3 +130,73 @@ validator deposit_mint {
     True
   }
 }
+
+validator reserve_spend {
+  else(_) {
+    trace @"Midgard Demo – Reserve Spend"
+    True
+  }
+}
+
+validator reserve_mint {
+  else(_) {
+    trace @"Midgard Demo – Reserve Mint"
+    True
+  }
+}
+
+validator payout_spend {
+  else(_) {
+    trace @"Midgard Demo – Payout Spend"
+    True
+  }
+}
+
+validator payout_mint {
+  else(_) {
+    trace @"Midgard Demo – Payout Mint"
+    True
+  }
+}
+
+validator withdrawal_spend {
+  else(_) {
+    trace @"Midgard Demo – Withdrawal Spend"
+    True
+  }
+}
+
+validator withdrawal_mint {
+  else(_) {
+    trace @"Midgard Demo – Withdrawal Mint"
+    True
+  }
+}
+
+validator tx_order_spend {
+  else(_) {
+    trace @"Midgard Demo – Tx Order Spend"
+    True
+  }
+}
+
+validator tx_order_mint {
+  else(_) {
+    trace @"Midgard Demo – Tx Order Mint"
+    True
+  }
+}
+
+validator settlement_spend {
+  else(_) {
+    trace @"Midgard Demo – Settlement Spend"
+    True
+  }
+}
+
+validator settlement_mint {
+  else(_) {
+    trace @"Midgard Demo – Settlement Mint"
+    True
+  }
+}
