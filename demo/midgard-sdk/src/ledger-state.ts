@@ -80,7 +80,7 @@ export type MidgardTxCompact = Data.Static<typeof MidgardTxCompactSchema>;
 export const MidgardTxCompact =
   MidgardTxCompactSchema as unknown as MidgardTxCompact;
 
-  export const MidgardTxValiditySchema = Data.Enum([
+export const MidgardTxValiditySchema = Data.Enum([
   Data.Literal("TxIsValid"),
   Data.Literal("NonExistentInputUtxo"),
   Data.Literal("InvalidSignature"),

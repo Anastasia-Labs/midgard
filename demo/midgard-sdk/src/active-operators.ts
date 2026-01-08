@@ -80,9 +80,7 @@ export const ActiveOperatorDatumSchema = Data.Object({
   link: Data.Nullable(Data.Bytes()),
   bondUnlockTime: Data.Nullable(POSIXTimeSchema),
 });
-export type ActiveOperatorDatum = Data.Static<
-  typeof ActiveOperatorDatumSchema
->;
+export type ActiveOperatorDatum = Data.Static<typeof ActiveOperatorDatumSchema>;
 export const ActiveOperatorDatum =
   ActiveOperatorDatumSchema as unknown as ActiveOperatorDatum;
 
