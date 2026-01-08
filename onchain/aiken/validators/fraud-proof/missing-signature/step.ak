@@ -4,12 +4,15 @@ use aiken/collection/list
 use aiken/crypto.{ScriptHash, Signature, VerificationKey, VerificationKeyHash}
 use cardano/assets.{PolicyId}
 use cardano/transaction.{Input, OutputReference, Transaction}
-use midgard/common/types.{H32} as midgard_types
+use midgard/common/types.{H32, MerkleRoot} as midgard_types
 use midgard/common/utils.{verify_hash_32}
 use midgard/computation_thread.{StepDatum}
-use midgard/fraud_proof/common/types.{MembershipProofInputs}
+use midgard/fraud_proof/common/types.{
+  ExclusionProof, ExclusionProofUtxo, MembershipProofInputs,
+}
 use midgard/fraud_proof/common/utils.{
   get_singleton_ct_token, get_tx_root_validate_block_hash, handle_cancel,
+  validate_exclusion_proof, validate_exclusion_utxo_proof,
   validate_final_step_output, validate_membership_proof,
 } as fraud_proof_utils
 use midgard/fraud_proof/missing_signature/step.{
@@ -22,6 +25,8 @@ validator main(
   fraud_proof_token_policy: PolicyId,
   // Script hash of stake validator (forwarded merkle proof logic)
   plutarch_midgard_merkle_validator_inclusion: ScriptHash,
+  // Script hash of stake validator (forwarded merkle proof logic)
+  plutarch_midgard_merkle_validator_exclusion: ScriptHash,
   // Computation thread token policy
   ct_token_policy_id: PolicyId,
   // State queue token policy
@@ -59,8 +64,9 @@ validator main(
         bad_tx_body,
         bad_tx_required_signer_hashes,
         bad_tx_wits_as_data,
-        bad_tx_addr_tx_wits_as_data,
-        bad_required_signer_hash_index,
+        verification_key,
+        signature,
+        signature_exclusion_proof,
         index_output,
         computation_thread_redeemer_index,
       } -> {
@@ -89,30 +95,52 @@ validator main(
           )
 
         verify_hash_32(bad_tx, bad_tx_hash)
-        verify_hash_32(bad_tx_wits_as_data, bad_tx.wits)
-        verify_hash_32(
-          bad_tx_addr_tx_wits_as_data,
-          get_addr_tx_wits_hash_32(bad_tx_wits_as_data),
-        )
         verify_hash_32(bad_tx_body, bad_tx.body)
-        verify_hash_32(
-          bad_tx_required_signer_hashes,
-          bad_tx_body.required_signer_hashes,
-        )
+        verify_hash_32(bad_tx_wits_as_data, bad_tx.wits)
 
-        let bad_tx_addr_tx_wits =
-          resolve_address_tx_wits_from_data(bad_tx_addr_tx_wits_as_data)
-
-        expect Some(bad_required_signer_verification_key_hash) =
-          list.at(bad_tx_required_signer_hashes, bad_required_signer_hash_index)
-
-        //The signer key hash must not be present in the address transaction witnesses
         expect
-          dict.has_key(
-            bad_tx_addr_tx_wits,
-            bad_required_signer_verification_key_hash,
-          ) == False
+          validate_exclusion_proof(
+            tx,
+            plutarch_midgard_merkle_validator_exclusion,
+            ExclusionProof {
+              merkle_root: get_addr_tx_wits_merkle_tree_root(
+                bad_tx_wits_as_data,
+              ),
+              excluded_object: (verification_key, signature),
+              excluded_key: verification_key,
+              object_to_root_proof_path: signature_exclusion_proof,
+            },
+          )
 
+        // //Prove that (verification_key, signature) belongs to addr_tx_wits(tx)
+        // expect
+        //   utils.plutarch_phas(
+        //     get_addr_tx_wits_merkle_tree_root(bad_tx_wits_as_data),
+        //     bad_required_signer_verification_key_hash,
+        //     bad_required_signer_verification_as_data,
+        //     bad_required_signer_verification_membership_proof,
+        //     tx.redeemers,
+        //   )
+        // let (verification_key, signature): (VerificationKey, Signature) =
+        //   addr_tx_wit_coercer(bad_addr_tx_wit_as_data)
+        // verify_hash_32(
+        //   bad_tx_addr_tx_wits_as_data,
+        //   get_addr_tx_wits_hash_32(bad_tx_wits_as_data),
+        // )
+        // verify_hash_32(
+        //   bad_tx_required_signer_hashes,
+        //   bad_tx_body.required_signer_hashes,
+        // )
+        // let bad_tx_addr_tx_wits =
+        //   resolve_address_tx_wits_from_data(bad_tx_addr_tx_wits_as_data)
+        // expect Some(bad_required_signer_verification_key_hash) =
+        //   list.at(bad_tx_required_signer_hashes, bad_required_signer_hash_index)
+        // //The signer key hash must not be present in the address transaction witnesses
+        // expect
+        //   dict.has_key(
+        //     bad_tx_addr_tx_wits,
+        //     bad_required_signer_verification_key_hash,
+        //   ) == False
         // -------- Missing signature: validation-specific logic END --------
         expect
           validate_final_step_output(
@@ -134,9 +162,9 @@ validator main(
   }
 }
 
-pub fn get_addr_tx_wits_hash_32(
+pub fn get_addr_tx_wits_merkle_tree_root(
   bad_tx_wits_as_data: Data<MidgardTxWitnessSetCompact>,
-) -> H32<Dict<VerificationKeyHash, (VerificationKey, Signature)>> {
+) -> MerkleRoot<VerificationKeyHash, (VerificationKey, Signature)> {
   //It's the first field and it's a ByteArray
   bad_tx_wits_as_data
     |> builtin.unconstr_fields

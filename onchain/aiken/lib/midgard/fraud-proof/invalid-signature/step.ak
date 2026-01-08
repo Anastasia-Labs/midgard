@@ -1,5 +1,6 @@
 use aiken/collection/dict.{Dict}
 use aiken/crypto.{Signature, VerificationKey, VerificationKeyHash}
+use aiken/merkle_patricia_forestry as mpf
 use midgard/fraud_proof/common/types.{Proof}
 use midgard/ledger_state.{
   MidgardTxBodyCompact, MidgardTxCompact, MidgardTxWitnessSetCompact,
@@ -15,10 +16,9 @@ pub type StepRedeemer {
     bad_tx: MidgardTxCompact,
     bad_tx_body: MidgardTxBodyCompact,
     bad_tx_wits_as_data: Data<MidgardTxWitnessSetCompact>,
-    bad_tx_addr_tx_wits_as_data: Data<
-      Dict<VerificationKeyHash, (VerificationKey, Signature)>,
-    >,
-    bad_verification_key_hash: VerificationKeyHash,
+    bad_addr_tx_wit_as_data: Data<(VerificationKey, Signature)>,
+    bad_addr_tx_wit_verification_key_hash: VerificationKeyHash,
+    bad_addr_tx_wit_membership_proof: mpf.Proof,
     index_output: Int,
     computation_thread_redeemer_index: Int,
   }

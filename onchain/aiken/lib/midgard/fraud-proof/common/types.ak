@@ -1,3 +1,5 @@
+use aiken/merkle_patricia_forestry as mpf
+
 pub type Proof =
   ByteArray
 
@@ -6,6 +8,13 @@ pub type MembershipProofInputs {
   tx_hash: ByteArray,
   tx_info_hash: ByteArray,
   tx_to_root_proof_path: Proof,
+}
+
+pub type ExclusionProof {
+  merkle_root: ByteArray,
+  excluded_object: Data,
+  excluded_key: ByteArray,
+  object_to_root_proof_path: mpf.Proof,
 }
 
 pub type ExclusionProofInputTx {

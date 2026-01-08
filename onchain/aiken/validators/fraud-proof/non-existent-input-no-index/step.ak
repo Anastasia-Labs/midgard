@@ -59,7 +59,9 @@ validator main(
         bad_tx,
         bad_tx_body,
         bad_spend_inputs,
-        bad_input,
+        bad_input_index,
+        bad_input_as_data,
+        bad_input_membership_proof,
         bad_input_tx_info_hash,
         bad_input_tx_to_root_proof_path,
         index_output,
@@ -102,13 +104,19 @@ validator main(
         //validation of the redeemer data
         verify_hash_32(bad_tx, bad_tx_hash)
         verify_hash_32(bad_tx_body, bad_tx.body)
-        verify_hash_32(bad_spend_inputs, bad_tx_body.spend_inputs)
 
-        //redeemer data is correct, but does it include the bad input?
-        expect list.has(builtin.un_list_data(bad_spend_inputs), bad_input)
+        //Prove that bad_input belongs to inputs(tx)
+        expect
+          utils.plutarch_phas(
+            bad_tx_body.spend_inputs,
+            bad_input_index,
+            bad_input_as_data,
+            bad_input_membership_proof,
+            tx.redeemers,
+          )
 
         // Inclusion proof that the transaction id of the bad input is in current block txs
-        expect invalid_input: Input = bad_input
+        expect invalid_input: Input = bad_input_as_data
         expect
           validate_membership_proof(
             tx,

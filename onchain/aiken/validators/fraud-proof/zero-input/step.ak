@@ -5,6 +5,7 @@ use cardano/assets.{PolicyId}
 use cardano/transaction.{
   InlineDatum, Input, Output, OutputReference, Transaction,
 }
+use midgard/common/constants
 use midgard/common/utils.{verify_hash_32}
 use midgard/computation_thread.{StepDatum}
 use midgard/fraud_proof/common/types.{MembershipProofInputs}
@@ -87,8 +88,8 @@ validator main(
         verify_hash_32(bad_tx, bad_tx_hash)
         verify_hash_32(bad_tx_body, bad_tx.body)
 
-        //The list of inputs must be empty
-        verify_hash_32([], bad_tx_body.spend_inputs)
+        //The merkletree of inputs must be empty
+        expect bad_tx_body.spend_inputs == constants.empty_merkle_tree_root
 
         // -------- Zero input: validation-specific logic END --------
         expect

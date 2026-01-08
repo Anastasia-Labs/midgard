@@ -7,7 +7,7 @@ use aiken/crypto.{
 }
 use cardano/assets.{PolicyId}
 use cardano/transaction.{Input, OutputReference, Transaction}
-use midgard/common/types.{H32} as midgard_types
+use midgard/common/types.{H32, MerkleRoot} as midgard_types
 use midgard/common/utils.{verify_hash_32}
 use midgard/computation_thread.{StepDatum}
 use midgard/fraud_proof/common/types.{MembershipProofInputs}
@@ -61,8 +61,9 @@ validator main(
         bad_tx,
         bad_tx_body,
         bad_tx_wits_as_data,
-        bad_tx_addr_tx_wits_as_data,
-        bad_verification_key_hash,
+        bad_addr_tx_wit_as_data,
+        bad_addr_tx_wit_verification_key_hash,
+        bad_addr_tx_wit_membership_proof,
         index_output,
         computation_thread_redeemer_index,
       } -> {
@@ -91,22 +92,25 @@ validator main(
           )
 
         verify_hash_32(bad_tx, bad_tx_hash)
-        verify_hash_32(bad_tx_wits_as_data, bad_tx.wits)
-        verify_hash_32(
-          bad_tx_addr_tx_wits_as_data,
-          get_addr_tx_wits_hash_32(bad_tx_wits_as_data),
-        )
         verify_hash_32(bad_tx_body, bad_tx.body)
+        verify_hash_32(bad_tx_wits_as_data, bad_tx.wits)
 
-        let bad_tx_addr_tx_wits =
-          resolve_address_tx_wits_from_data(bad_tx_addr_tx_wits_as_data)
+        //Prove that (verification_key, signature) belongs to addr_tx_wits(tx)
+        expect
+          utils.plutarch_phas(
+            get_addr_tx_wits_merkle_tree_root(bad_tx_wits_as_data),
+            bad_addr_tx_wit_verification_key_hash,
+            bad_addr_tx_wit_as_data,
+            bad_addr_tx_wit_membership_proof,
+            tx.redeemers,
+          )
 
-        expect Some((verification_key, signature)) =
-          dict.get(bad_tx_addr_tx_wits, bad_verification_key_hash)
+        let (verification_key, signature): (VerificationKey, Signature) =
+          addr_tx_wit_coercer(bad_addr_tx_wit_as_data)
 
         //Verification key hash must be uncorrect OR the signature is invalid
         expect
-          blake2b_224(verification_key) != bad_verification_key_hash || verify_ed25519_signature(
+          blake2b_224(verification_key) != bad_addr_tx_wit_verification_key_hash || verify_ed25519_signature(
             verification_key,
             builtin.serialise_data(bad_tx_body),
             signature,
@@ -133,9 +137,19 @@ validator main(
   }
 }
 
-pub fn get_addr_tx_wits_hash_32(
+pub fn addr_tx_wit_coercer(
+  bad_addr_tx_wit_as_data: Data<(VerificationKey, Signature)>,
+) -> (VerificationKey, Signature) {
+  // Return the resolved hash
+  expect coerced: (VerificationKey, Signature) = bad_addr_tx_wit_as_data
+
+  // Fails if not in ascending order
+  coerced
+}
+
+pub fn get_addr_tx_wits_merkle_tree_root(
   bad_tx_wits_as_data: Data<MidgardTxWitnessSetCompact>,
-) -> H32<Dict<VerificationKeyHash, (VerificationKey, Signature)>> {
+) -> MerkleRoot<VerificationKeyHash, (VerificationKey, Signature)> {
   //It's the first field and it's a ByteArray
   bad_tx_wits_as_data
     |> builtin.unconstr_fields

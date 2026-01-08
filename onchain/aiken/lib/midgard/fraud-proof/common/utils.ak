@@ -10,7 +10,7 @@ use midgard/common/utils.{get_singleton_asset_with_policy} as get_singleton_asse
 use midgard/common/utils.{get_authentic_input_with_policy_at} as get_authentic_input_with_policy_at
 use midgard/computation_thread.{StepDatum, Success}
 use midgard/fraud_proof/common/types.{
-  ExclusionProofInputTx, ExclusionProofUtxo, FraudProofDatum,
+  ExclusionProof, ExclusionProofInputTx, ExclusionProofUtxo, FraudProofDatum,
   MembershipProofInputs,
 }
 use midgard/ledger_state.{Header}
@@ -130,8 +130,26 @@ pub fn validate_membership_proof(
   True
 }
 
-// Relevant to (2)
 pub fn validate_exclusion_proof(
+  tx: Transaction,
+  plutarch_midgard_merkle_validator: ScriptHash,
+  proof: ExclusionProof,
+) -> Bool {
+  expect
+    merkelized_validator.delegated_validation(
+      function_input: proof,
+      staking_validator: plutarch_midgard_merkle_validator,
+      input_data_coercer: fn(withdraw_redeemer: Data) {
+        expect coerced: ExclusionProof = withdraw_redeemer
+        coerced
+      },
+      redeemers: tx.redeemers,
+    )
+  True
+}
+
+// Relevant to (2)
+pub fn validate_exclusion_input_proof(
   tx: Transaction,
   plutarch_midgard_merkle_validator: ScriptHash,
   proof_input: ExclusionProofInputTx,
