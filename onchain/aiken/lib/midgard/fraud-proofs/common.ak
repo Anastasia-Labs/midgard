@@ -1,5 +1,6 @@
 use aiken/collection/list
 use aiken/crypto.{ScriptHash}
+use aiken/merkle_patricia_forestry as mpf
 use aiken/primitive/bytearray.{drop}
 use aiken_design_patterns/linked_list/unordered as unordered
 use aiken_design_patterns/merkelized_validator
@@ -14,32 +15,39 @@ use midgard/state_queue
 pub type Proof =
   ByteArray
 
+pub type ExclusionProof {
+  merkle_root: ByteArray,
+  excluded_object: Data,
+  excluded_key: ByteArray,
+  object_to_root_proof_path: mpf.Proof,
+}
+
 pub type MembershipProofInputs {
   tx_root: ByteArray,
   tx_hash: ByteArray,
   tx_info_hash: ByteArray,
-  tx_to_root_proof_path: Proof,
+  tx_to_root_proof_path: mpf.Proof,
 }
 
 pub type ExclusionProofInputTx {
   tx_root: ByteArray,
   invalid_input_tx_hash: ByteArray,
   invalid_input_info_hash: ByteArray,
-  input_to_root_proof_path: Proof,
+  input_to_root_proof_path: mpf.Proof,
 }
 
 pub type ExclusionProofUtxo {
   utxo_root: ByteArray,
   invalid_utxo: ByteArray,
   invalid_utxo_info_hash: ByteArray,
-  utxo_to_root_proof_path: Proof,
+  utxo_to_root_proof_path: mpf.Proof,
 }
 
 pub type InclusionProofTx {
   current_block_txs_root: ByteArray,
   invalid_tx: ByteArray,
   invalid_tx_info_hash: ByteArray,
-  tx_to_root_proof_path: Proof,
+  tx_to_root_proof_path: mpf.Proof,
 }
 
 // Last step datum for fraud proofs
@@ -133,8 +141,26 @@ pub fn validate_membership_proof(
   True
 }
 
-// Relevant to (2)
 pub fn validate_exclusion_proof(
+  tx: Transaction,
+  plutarch_midgard_merkle_validator: ScriptHash,
+  proof: ExclusionProof,
+) -> Bool {
+  expect
+    merkelized_validator.delegated_validation(
+      function_input: proof,
+      staking_validator: plutarch_midgard_merkle_validator,
+      input_data_coercer: fn(withdraw_redeemer: Data) {
+        expect coerced: ExclusionProof = withdraw_redeemer
+        coerced
+      },
+      redeemers: tx.redeemers,
+    )
+  True
+}
+
+// Relevant to (2)
+pub fn validate_exclusion_input_proof(
   tx: Transaction,
   plutarch_midgard_merkle_validator: ScriptHash,
   proof_input: ExclusionProofInputTx,

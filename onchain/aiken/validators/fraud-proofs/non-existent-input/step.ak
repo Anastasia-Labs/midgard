@@ -1,6 +1,5 @@
 //// Fraud proof validator for the non-existing input violation.
 
-use aiken/builtin
 use aiken/collection/list
 use aiken/crypto.{ScriptHash}
 use cardano/assets.{PolicyId}
@@ -10,7 +9,7 @@ use midgard/computation_thread.{StepDatum}
 use midgard/fraud_proofs/common.{
   ExclusionProofInputTx, ExclusionProofUtxo, MembershipProofInputs,
   get_prev_utxo_root, get_singleton_ct_token, get_tx_root_validate_block_hash,
-  handle_cancel, validate_exclusion_proof, validate_exclusion_utxo_proof,
+  handle_cancel, validate_exclusion_input_proof, validate_exclusion_utxo_proof,
   validate_final_step_output, validate_membership_proof,
 } as fraud_proof_utils
 use midgard/fraud_proofs/non_existing_input/step.{
@@ -72,8 +71,9 @@ validator main(
         bad_tx_to_root_proof_path,
         bad_tx,
         bad_tx_body,
-        bad_spend_inputs,
-        bad_input,
+        bad_input_index,
+        bad_input_as_data,
+        bad_input_membership_proof,
         bad_input_utxo_info_hash,
         bad_input_utxo_to_root_proof_path,
         bad_input_tx_info_hash,
@@ -114,15 +114,22 @@ validator main(
         // Membership of the bad_input among the tx1 spent inputs
         verify_hash_32(bad_tx, bad_tx_hash)
         verify_hash_32(bad_tx_body, bad_tx.body)
-        verify_hash_32(bad_spend_inputs, bad_tx_body.spend_inputs)
 
-        expect list.has(builtin.un_list_data(bad_spend_inputs), bad_input)
+        //Prove that bad_input belongs to inputs(tx)
+        expect
+          utils.plutarch_phas(
+            bad_tx_body.spend_inputs,
+            bad_input_index,
+            bad_input_as_data,
+            bad_input_membership_proof,
+            tx.redeemers,
+          )
 
         // Exclusion proof that bad_input is not in the block's prev_utxos_root.
         expect True
         let extracted_prev_utxo_root =
           get_prev_utxo_root(tx, bad_state_queue_node_ref_input_index)
-        expect invalid_input: ByteArray = bad_input
+        expect invalid_input: ByteArray = bad_input_as_data
         expect
           validate_exclusion_utxo_proof(
             tx,
@@ -136,9 +143,9 @@ validator main(
           )
 
         // Exclusion proof that bad_input.tx_hash is not in the block's tx_root.
-        expect invalid_input: Input = bad_input
+        expect invalid_input: Input = bad_input_as_data
         expect
-          validate_exclusion_proof(
+          validate_exclusion_input_proof(
             tx,
             plutarch_midgard_merkle_validator_exclusion,
             ExclusionProofInputTx {

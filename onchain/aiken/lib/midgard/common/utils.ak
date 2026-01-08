@@ -8,14 +8,14 @@ use aiken/crypto.{
 use aiken/interval.{Finite, Interval, NegativeInfinity, PositiveInfinity}
 use aiken/merkle_patricia_forestry as mpf
 use aiken_design_patterns/merkelized_validator
-use cardano/address.{Address, Script}
+use cardano/address.{Address, PaymentCredential, Script, StakeCredential}
 use cardano/assets.{AssetName, PolicyId, Value, tokens}
 use cardano/transaction.{
   InlineDatum, Input, Output, OutputReference, Redeemer, ScriptPurpose,
 }
 use env
 use midgard/common/constants.{posix_time_none}
-use midgard/common/types.{H28, H32, PosixTime, ValuePairs}
+use midgard/common/types.{H28, H32, MerkleProofInputs, PosixTime, ValuePairs}
 
 /// Check whether the interval starts on or after the point.
 pub fn is_hereafter(self: Interval<Int>, point: Int) -> Bool {
@@ -454,6 +454,144 @@ pub fn plutarch_pexcludes(
   )
 }
 
+/// Merkelized validator abstraction for `pdelete` function from Plutarch.
+pub fn plutarch_pdelete(
+  mpf_old_root: ByteArray,
+  key: Data,
+  value: Data,
+  deletion_proof: mpf.Proof,
+  redeemers: Pairs<ScriptPurpose, Redeemer>,
+) -> ByteArray {
+  let inputsObject =
+    MerkleProofInputs {
+      mpf_root: mpf_old_root,
+      key,
+      value,
+      proof: deletion_proof,
+    }
+  let mpf_proof_coercer =
+    fn(proof_data: Data) -> mpf.Proof {
+      expect proof_steps_as_data = builtin.un_list_data(proof_data)
+      let data_to_mpf_neighbor_coercer =
+        fn(neighbor_data: Data) -> mpf.Neighbor {
+          expect [nibble_data,
+            prefix_data, root_data] = builtin.unconstr_fields(neighbor_data)
+          mpf.Neighbor {
+            nibble: nibble_data |> builtin.un_i_data,
+            prefix: prefix_data |> builtin.un_b_data,
+            root: root_data |> builtin.un_b_data,
+          }
+        }
+      list.foldr(
+        proof_steps_as_data,
+        [],
+        fn(proof_step_as_data, result) -> List<mpf.ProofStep> {
+          let new_elem =
+            when builtin.unconstr_index(proof_step_as_data) is {
+              0 ->
+                mpf.Branch {
+                  skip: proof_step_as_data
+                    |> builtin.unconstr_fields
+                    |> builtin.head_list
+                    |> builtin.un_i_data,
+                  neighbors: proof_step_as_data
+                    |> builtin.unconstr_fields
+                    |> builtin.tail_list
+                    |> builtin.head_list
+                    |> builtin.un_b_data,
+                }
+              1 ->
+                mpf.Fork {
+                  skip: proof_step_as_data
+                    |> builtin.unconstr_fields
+                    |> builtin.head_list
+                    |> builtin.un_i_data,
+                  neighbor: proof_step_as_data
+                    |> builtin.unconstr_fields
+                    |> builtin.tail_list
+                    |> builtin.head_list
+                    |> data_to_mpf_neighbor_coercer,
+                }
+              2 ->
+                mpf.Leaf {
+                  skip: proof_step_as_data
+                    |> builtin.unconstr_fields
+                    |> builtin.head_list
+                    |> builtin.un_i_data,
+                  key: proof_step_as_data
+                    |> builtin.unconstr_fields
+                    |> builtin.tail_list
+                    |> builtin.head_list
+                    |> builtin.un_b_data,
+                  value: proof_step_as_data
+                    |> builtin.unconstr_fields
+                    |> builtin.tail_list
+                    |> builtin.tail_list
+                    |> builtin.head_list
+                    |> builtin.un_b_data,
+                }
+              _ -> fail @"Unexpected proof step constructor"
+            }
+
+          list.push(result, new_elem)
+        },
+      )
+    }
+  merkelized_validator.delegated_compute(
+    function_input: inputsObject,
+    staking_validator: env.plutarch_pdelete_validator_hash,
+    input_data_coercer: fn(input: Data) -> MerkleProofInputs {
+      let fields = builtin.unconstr_fields(input)
+      let mpf_root = fields |> builtin.head_list |> builtin.un_b_data
+      let key = fields |> builtin.tail_list |> builtin.head_list
+      let value =
+        fields |> builtin.tail_list |> builtin.tail_list |> builtin.head_list
+      let proof =
+        fields
+          |> builtin.tail_list
+          |> builtin.tail_list
+          |> builtin.tail_list
+          |> builtin.head_list
+          |> mpf_proof_coercer()
+      MerkleProofInputs { mpf_root, key, value, proof }
+    },
+    output_data_coercer: fn(output) -> ByteArray { builtin.un_b_data(output) },
+    redeemers: redeemers,
+  )
+}
+
 pub fn get_verification_key_hash(key: VerificationKey) -> VerificationKeyHash {
   blake2b_224(key)
+}
+
+pub fn address_coercer(address_as_data: Data) -> Address {
+  expect [payment_cred_data,
+    stake_cred_data] = builtin.unconstr_fields(address_as_data)
+
+  Address {
+    payment_credential: payment_credential_coercer(payment_cred_data),
+    stake_credential: optional_stake_credential_coercer(stake_cred_data),
+  }
+}
+
+pub fn payment_credential_coercer(
+  payment_cred_as_data: Data,
+) -> PaymentCredential {
+  expect result: PaymentCredential = payment_cred_as_data
+  result
+}
+
+pub fn optional_stake_credential_coercer(
+  opt_stake_cred_as_data: Data,
+) -> Option<StakeCredential> {
+  when builtin.unconstr_index(opt_stake_cred_as_data) is {
+    0 -> None
+    1 -> {
+      expect [stake_cred_as_data] =
+        builtin.unconstr_fields(opt_stake_cred_as_data)
+      expect stake_cred: StakeCredential = stake_cred_as_data
+      Some(stake_cred)
+    }
+    _ -> fail @"Unexpected optional stake credential constructor"
+  }
 }

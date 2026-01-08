@@ -1,5 +1,5 @@
+use aiken/merkle_patricia_forestry as mpf
 use cardano/transaction.{TransactionId}
-use midgard/fraud_proofs/common.{Proof}
 
 // TODO: tx2_info_hash should have a more specific type
 // We can fix this when we start using the Plutarch MPT library
@@ -9,7 +9,7 @@ pub type StepRedeemer {
     bad_state_queue_node_ref_input_index: Int,
     bad_tx2_hash: TransactionId,
     bad_tx2_info_hash: ByteArray,
-    bad_tx2_to_root_proof_path: Proof,
+    bad_tx2_to_root_proof_path: mpf.Proof,
     index_output: Int,
     hub_ref_input_index: Int,
   }
