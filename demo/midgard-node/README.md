@@ -61,6 +61,7 @@ docker-compose up -d
 
 For running the node itself, a running PostgreSQL server is also needed. The
 fields you most likely want to modify in your `.env` file are:
+
 ```sh
 POSTGRES_USER=postgres
 POSTGRES_PASSWORD=postgres
@@ -72,6 +73,7 @@ MEMPOOL_MPT_DB_PATH=midgard-mempool-mpt-db
 
 With a properly setup database, the following set of commands should start the
 most up to date `midgard-node`:
+
 ```sh
 # Optional
 nix develop

@@ -66,7 +66,7 @@ pub fn is_posix_time_none(time: PosixTime) {
 
 /// Returns the quantity of all tokens with the policyId
 pub fn quantity_of_policy_id(value: Value, policyId: PolicyId) {
-  dict.foldl(tokens(value, policyId), 0, fn(_k, v, result) { v + result })
+  dict.foldr(tokens(value, policyId), 0, fn(_k, v, result) { v + result })
 }
 
 pub fn get_own_hash(output_reference: OutputReference, txInputs: List<Input>) {

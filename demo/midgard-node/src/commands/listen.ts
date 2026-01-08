@@ -881,7 +881,7 @@ export const runNode = (withMonitoring?: boolean) =>
         ),
       }));
 
-      pipe(
+      return pipe(
         program,
         Effect.withSpan("midgard"),
         Effect.provide(MetricsLive),
@@ -889,7 +889,7 @@ export const runNode = (withMonitoring?: boolean) =>
         Effect.runPromise,
       );
     } else {
-      pipe(
+      return pipe(
         program,
         Effect.withSpan("midgard"),
         Effect.catchAllCause(Effect.logError),

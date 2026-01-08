@@ -5,10 +5,9 @@ use aiken_design_patterns/linked_list/unordered as unordered
 use cardano/assets.{PolicyId, flatten, quantity_of}
 use cardano/transaction.{InlineDatum, Input, Output, Transaction}
 use midgard/common/utils.{is_output_to_sc}
-use midgard/computation_thread as ct
-use midgard/computation_thread.{StepDatum}
-use midgard/fraud_proof/catalogue as fpc
-use midgard/hub_oracle
+use midgard/computation_thread.{StepDatum} as ct
+use midgard/fraud_proof_catalogue as fpc
+use midgard/hub_oracle as hub
 use midgard/ledger_state
 
 validator computation_thread_policy(
@@ -24,13 +23,10 @@ validator computation_thread_policy(
         output_to_init_step_index,
         fraud_prover_hash,
         fraud_proof_catalogue_asset_name,
-        hub_oracle_asset_name,
         state_queue_asset_name,
       } -> {
         expect Some(fraud_proof_catalogue_node_input) =
           list.at(self.reference_inputs, fraud_proof_set_node_ref_input_index)
-        expect Some(hub_oracle_input) =
-          list.at(self.reference_inputs, hub_oracle_ref_input_index)
         expect Some(frauded_state_queue_node_input) =
           list.at(
             self.reference_inputs,
@@ -39,9 +35,12 @@ validator computation_thread_policy(
         expect Some(output_to_init_step) =
           list.at(self.outputs, output_to_init_step_index)
 
-        expect InlineDatum(hub_oracle_datum) = hub_oracle_input.output.datum
-        expect parsed_hub_oracle_datum: hub_oracle.Datum = hub_oracle_datum
-        let state_queue_policy_id = parsed_hub_oracle_datum.state_queue
+        let hub.Datum { state_queue: state_queue_policy_id, .. } =
+          hub.get_datum(
+            self.reference_inputs,
+            hub_oracle_script_hash,
+            hub_oracle_ref_input_index,
+          )
 
         expect InlineDatum(fraud_proof_catalogue_node_datum) =
           fraud_proof_catalogue_node_input.output.datum
@@ -73,11 +72,6 @@ validator computation_thread_policy(
             fraud_proof_catalogue_node_input,
             fraud_proof_catalogue_script_hash,
             fraud_proof_catalogue_asset_name,
-          ),
-          validate_hub_oracle_input(
-            hub_oracle_input,
-            hub_oracle_script_hash,
-            hub_oracle_asset_name,
           ),
           validate_frauded_state_queue_node_input(
             frauded_state_queue_node_input,
@@ -118,18 +112,6 @@ fn validate_fraud_proof_catalogue_node_input(
     fraud_proof_catalogue_node_input.output.value,
     fraud_proof_catalogue_script_hash,
     fraud_proof_asset_name,
-  ) == 1
-}
-
-fn validate_hub_oracle_input(
-  hub_oracle_input: Input,
-  hub_oracle_script_hash: ByteArray,
-  hub_oracle_asset_name: ByteArray,
-) {
-  quantity_of(
-    hub_oracle_input.output.value,
-    hub_oracle_script_hash,
-    hub_oracle_asset_name,
   ) == 1
 }
 

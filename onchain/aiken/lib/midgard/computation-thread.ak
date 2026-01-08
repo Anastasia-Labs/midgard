@@ -11,7 +11,6 @@ pub type Redeemer {
     output_to_init_step_index: Int,
     fraud_prover_hash: ByteArray,
     fraud_proof_catalogue_asset_name: ByteArray,
-    hub_oracle_asset_name: ByteArray,
     state_queue_asset_name: ByteArray,
   }
   Success { token_to_burn_asset_name: ByteArray }
