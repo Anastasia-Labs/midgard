@@ -3,7 +3,6 @@ import {
   fromHex,
   LucidEvolution,
   MintingPolicy,
-  Parameters,
   TxBuilder,
   TxSignBuilder,
   UTxO,
@@ -28,8 +27,8 @@ import {
 import { Data as EffectData, Effect, Option, pipe } from "effect";
 import { HubOracleUTxO, utxosToHubOracleUTxOs } from "@/hub-oracle.js";
 import { SchedulerUTxO, utxosToSchedulerUTxOs } from "@/scheduler.js";
-import { DepositUTxO, utxosToDepositUTxOs } from "./user-events/deposit.js";
-import { TxOrderUTxO, utxosToTxOrderUTxOs } from "./user-events/tx-order.js";
+import { utxosToDepositUTxOs } from "./user-events/deposit.js";
+import { utxosToTxOrderUTxOs } from "./user-events/tx-order.js";
 import { WithdrawalOrderDatum } from "./user-events/withdrawal.js";
 import {
   MidgardTxValiditySchema,
@@ -166,41 +165,45 @@ export type SettlementUTxO = {
   datum: SettlementDatum;
 };
 
-//TODO : Assuming the deposits root, withdrawals root and txorder root are resolved roots
 export const getSettlementUTxOWithoutClaim = (
   settlementUTxOs: UTxO[],
   params: AttachResolutionClaimParams,
 ): Effect.Effect<SettlementUTxO, DataCoercionError | LucidError> => {
-  for (const utxo of settlementUTxOs) {
-    const datumCBOR = utxo.datum;
-    if (!datumCBOR) {
-      continue;
+  return Effect.gen(function* () {
+    const results = yield* Effect.forEach(settlementUTxOs, (utxo) =>
+      Effect.try({
+        try: () => {
+          if (!utxo.datum) throw new Error("No datum");
+          const parsedDatum = Data.from(utxo.datum, SettlementDatum);
+          return { utxo, datum: parsedDatum };
+        },
+        catch: (err) =>
+          new DataCoercionError({
+            message: "Could not coerce UTxO's datum to a settlement datum",
+            cause: err,
+          }),
+      }).pipe(Effect.either),
+    );
+    const allSuccesses = yield* Effect.allSuccesses(results);
+
+    const settlementUTxOWithoutClaim = allSuccesses.find(
+      ({ datum }) =>
+        datum.resolutionClaim === null &&
+        datum.depositsRoot === params.depositsRoot &&
+        datum.withdrawalsRoot === params.withdrawalsRoot &&
+        datum.transactionsRoot === params.transactionsRoot,
+    );
+    if (settlementUTxOWithoutClaim) {
+      return settlementUTxOWithoutClaim;
     }
-    try {
-      const parsedDatum = Data.from(datumCBOR, SettlementDatum);
-      if (
-        parsedDatum.resolutionClaim === null &&
-        parsedDatum.depositsRoot === params.depositsRoot &&
-        parsedDatum.withdrawalsRoot === params.withdrawalsRoot &&
-        parsedDatum.transactionsRoot === params.transactionsRoot
-      ) {
-        return Effect.succeed({ utxo, datum: parsedDatum });
-      }
-    } catch (err) {
-      return Effect.fail(
-        new DataCoercionError({
-          message: `Could not coerce UTxO's datum to a settlement datum`,
-          cause: err,
-        }),
-      );
-    }
-  }
-  return Effect.fail(
-    new LucidError({
-      message: "No settlement UTxO without resolution claim found",
-      cause: "Settlement Tx not initiated",
-    }),
-  );
+
+    return yield* Effect.fail(
+      new LucidError({
+        message: "No settlement UTxO without resolution claim found",
+        cause: "Settlement Tx not initiated",
+      }),
+    );
+  });
 };
 
 const fetchHubOracleRefUTxO = (
