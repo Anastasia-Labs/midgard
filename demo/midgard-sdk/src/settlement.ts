@@ -26,6 +26,7 @@ import {
   Proof,
   ProofSchema,
   UnauthenticUtxoError,
+  UnresolvedError,
   VerificationKeyHashSchema,
 } from "@/common.js";
 import { Data as EffectData, Effect } from "effect";
@@ -162,6 +163,9 @@ export type AttachResolutionClaimParams = {
   depositsRoot: MerkleRoot;
   withdrawalsRoot: MerkleRoot;
   transactionsRoot: MerkleRoot;
+  depositUTxOs: UTxO[];
+  withdrawalUTxOs: UTxO[];
+  txOrderUTxOs: UTxO[];
 };
 
 export type SettlementUTxO = {
@@ -169,12 +173,21 @@ export type SettlementUTxO = {
   datum: SettlementDatum;
 };
 
-//  assuming user events roots from params are resolved
 export const getSettlementUTxOWithoutClaim = (
   settlementUTxOs: UTxO[],
   params: AttachResolutionClaimParams,
-): Effect.Effect<SettlementUTxO, DataCoercionError | LucidError> => {
-  return Effect.gen(function* () {
+  lucid: LucidEvolution, 
+): Effect.Effect<SettlementUTxO, DataCoercionError | LucidError | UnresolvedError> => 
+    Effect.gen(function* () {
+    const allEvents = [...params.depositUTxOs, ...params.withdrawalUTxOs, ...params.txOrderUTxOs];
+    const stillUnspent = yield* Effect.promise(() => lucid.utxosByOutRef(allEvents));
+    
+    if (stillUnspent.length > 0) {
+      return yield* Effect.fail(new UnresolvedError({
+        message: "All userevent UTxOs in the settlement UTxO are not resolved",
+        cause : "Some user events are still unspent",
+      }));
+    }
     const results = yield* Effect.forEach(settlementUTxOs, (utxo) =>
       Effect.try({
         try: () => {
@@ -193,10 +206,7 @@ export const getSettlementUTxOWithoutClaim = (
 
     const settlementUTxOWithoutClaim = allSuccesses.find(
       ({ datum }) =>
-        datum.resolutionClaim === null &&
-        datum.depositsRoot === params.depositsRoot &&
-        datum.withdrawalsRoot === params.withdrawalsRoot &&
-        datum.transactionsRoot === params.transactionsRoot,
+        datum.resolutionClaim === null
     );
     if (settlementUTxOWithoutClaim) {
       return settlementUTxOWithoutClaim;
@@ -209,7 +219,7 @@ export const getSettlementUTxOWithoutClaim = (
       }),
     );
   });
-};
+
 
 const fetchHubOracleRefUTxO = (
   hubOracleScriptAddress: string,
@@ -275,7 +285,7 @@ const fetchSchedulerRefUTxO = (
 export const incompleteAttachResolutionClaimTxProgram = (
   lucid: LucidEvolution,
   params: AttachResolutionClaimParams,
-): Effect.Effect<TxBuilder, HashingError | DataCoercionError | LucidError> =>
+): Effect.Effect<TxBuilder, HashingError | DataCoercionError | LucidError | UnresolvedError> =>
   Effect.gen(function* () {
     const spendRedeemer: SettlementSpendRedeemer = {
       AttachResolutionClaim: {
@@ -307,6 +317,7 @@ export const incompleteAttachResolutionClaimTxProgram = (
     const settlementInputUtxo = yield* getSettlementUTxOWithoutClaim(
       settlementAllUtxos,
       params,
+      lucid
     );
 
     const updatedDatum: SettlementDatum = {
@@ -496,7 +507,7 @@ export const unsignedAttachResolutionClaimTxProgram = (
   params: FetchActiveOperatorParams & UpdateBondHoldNewSettlementParams,
 ): Effect.Effect<
   TxSignBuilder,
-  HashingError | DataCoercionError | LucidError | SettlementError
+  HashingError | DataCoercionError | LucidError | SettlementError | UnresolvedError
 > =>
   Effect.gen(function* () {
     const attachResolutionClaimTx =
