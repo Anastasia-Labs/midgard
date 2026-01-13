@@ -3,14 +3,18 @@ import {
   fromHex,
   LucidEvolution,
   MintingPolicy,
+  Script,
+  toUnit,
   TxBuilder,
   TxSignBuilder,
   UTxO,
 } from "@lucid-evolution/lucid";
 import {
+  AssetError,
   AuthenticatedValidator,
   DataCoercionError,
   GenericErrorFields,
+  getSingleAssetApartFromAda,
   getStateToken,
   HashingError,
   LucidError,
@@ -24,7 +28,7 @@ import {
   UnauthenticUtxoError,
   VerificationKeyHashSchema,
 } from "@/common.js";
-import { Data as EffectData, Effect, Option, pipe } from "effect";
+import { Data as EffectData, Effect } from "effect";
 import { HubOracleUTxO, utxosToHubOracleUTxOs } from "@/hub-oracle.js";
 import { SchedulerUTxO, utxosToSchedulerUTxOs } from "@/scheduler.js";
 import { utxosToDepositUTxOs } from "./user-events/deposit.js";
@@ -165,6 +169,7 @@ export type SettlementUTxO = {
   datum: SettlementDatum;
 };
 
+//  assuming user events roots from params are resolved
 export const getSettlementUTxOWithoutClaim = (
   settlementUTxOs: UTxO[],
   params: AttachResolutionClaimParams,
@@ -666,13 +671,15 @@ export type UserEventUTxO =
   | { eventType: "TxOrder"; utxo: UTxO }
   | { eventType: "Withdrawal"; utxo: UTxO };
 
+// Have to include the logic to find one userevent Utxo that is not resolved yet 
+// deposit roots is just a hash, how to check a specific utxo that is not resolved?
 export const fetchUserEventRefUTxO = (
   userEventType: EventType,
   userEventAddress: string,
   userEventPolicyId: string,
   lucid: LucidEvolution,
 ): Effect.Effect<UserEventUTxO, LucidError> =>
-  Effect.gen(function* (_) {
+  Effect.gen(function* () {
     const allUTxOs = yield* Effect.tryPromise({
       try: () => lucid.utxosAt(userEventAddress),
       catch: (err) =>
@@ -682,47 +689,41 @@ export const fetchUserEventRefUTxO = (
         }),
     });
     if (userEventType === "Deposit") {
-      const depositRefUTxOs = yield* _(
-        utxosToDepositUTxOs(allUTxOs, userEventPolicyId),
-      );
+      const depositRefUTxOs = yield*
+        utxosToDepositUTxOs(allUTxOs, userEventPolicyId);
       if (depositRefUTxOs.length === 0) {
-        yield* _(
+        yield* 
           Effect.fail(
             new LucidError({
               message: "Failed to build the User Event transaction",
               cause: "No UTxOs found in User Event contract address",
             }),
-          ),
-        );
+          );
       }
       return { eventType: "Deposit", utxo: depositRefUTxOs[0].utxo };
     } else if ("TxOrder" in userEventType) {
-      const txOrderRefUTxOs = yield* _(
-        utxosToTxOrderUTxOs(allUTxOs, userEventPolicyId),
-      );
+      const txOrderRefUTxOs = yield*
+        utxosToTxOrderUTxOs(allUTxOs, userEventPolicyId);
       if (txOrderRefUTxOs.length === 0) {
-        yield* _(
+        yield*
           Effect.fail(
             new LucidError({
               message: "Failed to build the User Event transaction",
               cause: "No UTxOs found in User Event contract address",
             }),
-          ),
         );
       }
       return { eventType: "TxOrder", utxo: txOrderRefUTxOs[0].utxo };
     } else if ("Withdrawal" in userEventType) {
-      const withdrawalRefUTxOs = yield* _(
-        utxosToWithdrawalUTxOs(allUTxOs, userEventPolicyId),
-      );
+      const withdrawalRefUTxOs = yield*
+        utxosToWithdrawalUTxOs(allUTxOs, userEventPolicyId);
       if (withdrawalRefUTxOs.length === 0) {
-        yield* _(
+        yield* 
           Effect.fail(
             new LucidError({
               message: "Failed to build the User Event transaction",
               cause: "No UTxOs found in User Event contract address",
             }),
-          ),
         );
       }
       return { eventType: "Withdrawal", utxo: withdrawalRefUTxOs[0].utxo };
@@ -730,8 +731,7 @@ export const fetchUserEventRefUTxO = (
       return yield* Effect.fail(
         new LucidError({
           message: "Invalid Event Type",
-          cause:
-            "Event Type must be either Deposit or object with TxOrder/Withdrawal",
+          cause: "Event Type must be either Deposit or object with TxOrder/Withdrawal",
         }),
       );
     }
@@ -1107,3 +1107,175 @@ export const unsignedDisproveResolutionClaimTx = (
 export class SettlementError extends EffectData.TaggedError(
   "SettlementError",
 )<GenericErrorFields> {}
+
+/*
+Resolve Settlement
+*/
+export type ResolveSettlementParams = {
+  settlementAddress: string;
+  resolutionClaimOperator: string;
+  settlementId: string;
+  changeAddress: string;
+  settlementPolicyId: string;
+  settlementMintingPolicy: Script;
+};
+
+export const getSettlementUTxOWithoutClaimResolve = (
+  settlementUTxOs: UTxO[],
+): Effect.Effect<SettlementUTxO, DataCoercionError | LucidError> => {
+  return Effect.gen(function* () {
+    const results = yield* Effect.forEach(settlementUTxOs, (utxo) =>
+      Effect.try({
+        try: () => {
+          if (!utxo.datum) throw new Error("No datum");
+          const parsedDatum = Data.from(utxo.datum, SettlementDatum);
+          return { utxo, datum: parsedDatum };
+        },
+        catch: (err) =>
+          new DataCoercionError({
+            message: "Could not coerce UTxO's datum to a settlement datum",
+            cause: err,
+          }),
+      }).pipe(Effect.either),
+    );
+    const allSuccesses = yield* Effect.allSuccesses(results);
+
+    const settlementUTxOWithoutClaim = allSuccesses.find(
+      ({ datum }) =>
+        datum.resolutionClaim !== null
+    );
+    if (settlementUTxOWithoutClaim) {
+      return settlementUTxOWithoutClaim;
+    }
+
+    return yield* Effect.fail(
+      new LucidError({
+        message: "No settlement UTxO without resolution claim found",
+        cause: "Settlement Tx not initiated",
+      }),
+    );
+  });
+};
+
+/**
+ * Settlement
+ *
+ * @param lucid - The LucidEvolution
+ * @param params - The parameters
+ * @returns {TxBuilder} A TxBuilder instance that can be used to build the transaction.
+ */
+export const incompleteResolveSettlementProgram = (
+  lucid: LucidEvolution,
+  params: ResolveSettlementParams,
+): Effect.Effect<TxBuilder, HashingError | DataCoercionError | LucidError | AssetError> =>
+  Effect.gen(function* () {
+    const spendRedeemer: SettlementSpendRedeemer = {
+      Resolve: {
+       settlementId: params.settlementId
+      },
+    };
+    const spendRedeemerCBOR = Data.to(spendRedeemer, SettlementSpendRedeemer);
+
+    const mintRedeemer: SettlementMintRedeemer = {
+      Remove: {
+       settlementId: params.settlementId,
+        inputIndex: 0n,
+        spendRedeemerIndex: 0n,
+      },
+    };
+    const mintRedeemerCBOR = Data.to(mintRedeemer, SettlementMintRedeemer);
+
+    const settlementAllUtxos: UTxO[] = yield* Effect.tryPromise({
+      try: () => lucid.utxosAt(params.settlementAddress),
+      catch: (err) =>
+        new LucidError({
+          message: "Failed to fetch Settlement UTxOs",
+          cause: err,
+        }),
+    });
+    if (settlementAllUtxos.length === 0) {
+      yield* new LucidError({
+        message: "Failed to build the Settlement transaction",
+        cause: "No UTxOs found in Settlement contract address",
+      });
+    }
+    const settlementInputUtxo = yield* getSettlementUTxOWithoutClaimResolve(
+      settlementAllUtxos
+    );
+
+    const resolutionTime = Number(
+      settlementInputUtxo.datum.resolutionClaim?.resolutionTime ?? 0n,
+    );
+    const txLowerBound = resolutionTime + 1 * 60_000;
+    const txSigner = settlementInputUtxo.datum.resolutionClaim?.operator!;
+    const changeAmount = 1_000_000n;
+
+    const [policyId, assetName] = (yield* getSingleAssetApartFromAda(settlementInputUtxo.utxo.assets));
+    const settlementNFT = toUnit(policyId,assetName);
+    const buildsettlementTx = lucid
+      .newTx()
+      .collectFrom([settlementInputUtxo.utxo], spendRedeemerCBOR)
+      .mintAssets(
+        {
+          [settlementNFT]: -1n,
+        },
+        mintRedeemerCBOR,
+      )
+      .pay.ToAddress(params.changeAddress,{lovelace: changeAmount})
+      .addSignerKey(txSigner)
+      .attach.MintingPolicy(params.settlementMintingPolicy)
+      .validFrom(txLowerBound)
+    return buildsettlementTx;
+  }).pipe(
+    Effect.catchAllDefect((defect) => {
+      return Effect.fail(
+        new LucidError({
+          message: "Caught defect from resolveSettlementTxBuilder",
+          cause: defect,
+        }),
+      );
+    }),
+  );
+
+export const unsignedResolveSettlementTxProgram = (
+  lucid: LucidEvolution,
+  params: ResolveSettlementParams
+): Effect.Effect<
+  TxSignBuilder,
+  HashingError | DataCoercionError | LucidError | SettlementError | AssetError
+> =>
+  Effect.gen(function* () {
+    const resolveSettlementTx =
+      yield* incompleteResolveSettlementProgram(
+        lucid,
+        params,
+      );
+    const completedTx: TxSignBuilder = yield* Effect.tryPromise({
+      try: () => resolveSettlementTx.complete({ localUPLCEval: false }),
+      catch: (e) =>
+        new SettlementError({
+          message: `Failed to build the transaction: ${e}`,
+          cause: e,
+        }),
+    });
+    return completedTx;
+  });
+
+/**
+ * Builds completed tx for resolving settlement using the provided
+ * `LucidEvolution` instance, `ResolveSettlementParams` parameters.
+ *
+ * @param lucid - The `LucidEvolution` API object.
+ * @param params - Parameters required for resolving settlement.
+ * @returns A promise that resolves to a `TxSignBuilder` instance.
+ */
+export const unsignedResolveSettlementTx = (
+  lucid: LucidEvolution,
+ params: ResolveSettlementParams
+): Promise<TxSignBuilder> =>
+  makeReturn(
+    unsignedResolveSettlementTxProgram(
+      lucid,
+      params,
+    ),
+  ).unsafeRun();
