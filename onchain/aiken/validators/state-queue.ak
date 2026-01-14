@@ -115,33 +115,130 @@ validator mint(
 
         // 3. Linked list de-initialization must be valid. No other validations
         //    required.
-        deinit(
-          root_input: own_input,
-          list_nft_policy_id: policy_id,
-          tx_mint: mint,
-          root_data_validator: fn(_) -> Bool { True },
-        )
-          |> linked_list.run_root_with(confirmed_state_asset_name)
+        expect
+          deinit(
+            root_input: own_input,
+            list_nft_policy_id: policy_id,
+            tx_mint: mint,
+            root_data_validator: fn(_) -> Bool { True },
+          )
+            |> linked_list.run_root_with(confirmed_state_asset_name)
+
+        // Done.
+        True
       }
       CommitBlockHeader {
+        latest_block_input_index,
+        new_block_output_index,
+        continued_latest_block_output_index,
         operator,
         scheduler_ref_input_index,
-        active_node_input_index,
-        header_node_output_index,
-        previous_header_node_output_index,
         active_operators_redeemer_index,
       } -> {
+        let Transaction {
+          inputs,
+          outputs,
+          reference_inputs,
+          extra_signatories,
+          redeemers,
+          validity_range,
+          ..
+        } = self
         // Commit the block header to the state queue, with the operator's consent:
-        // (1) Let `operator` be a redeemer argument indicating the key of the
-        //     operator committing the block header.
-        // (2) The transaction must be signed by `operator`.
-        expect list.has(self.extra_signatories, operator)
+        // 1. Let `operator` be a redeemer argument indicating the pub key hash
+        //    of the operator committing the block header.
+        // 2. The transaction must be signed by `operator`.
+        expect operator |> has_signed(extra_signatories)
 
-        // (3) The transaction must Append a node to the `state_queue`.
-        //     Among the transaction outputs, let that node be `header_node` and
-        //     its predecessor node be `previous_header_node`.
+        expect Some(anchor_element_input) =
+          inputs |> list.at(latest_block_input_index)
+        expect Some(continued_anchor_element_output) =
+          outputs |> list.at(continued_latest_block_output_index)
+        expect Some(new_block_output) =
+          inputs |> list.at(new_block_output_index)
+
+        // 3. Indicated inputs and output must properly adhere to unordered
+        //    linked list requirements.
+        let
+          m_anchor_key,
+          anchor_data,
+          output_header_key,
+          output_header_data,
+        <-
+          linked_list.append_unordered(
+            list_nft_policy_id: policy_id,
+            anchor_element_input: anchor_element_input,
+            continued_anchor_element_output: continued_anchor_element_output,
+            new_element_output: new_block_output,
+            tx_mint: mint,
+          )
+
+        // 4. The new block in state queue must have the hash of the header as
+        //    its linked list key.
+        let output_header_hash =
+          crypto.blake2b_224(builtin.un_b_data(output_header_data))
+        expect output_header_key == output_header_hash
+
+        // 5. New element's data must be `Header`.
+        expect Header {
+          prev_utxos_root: output_prev_utxos_root,
+          start_time: output_start_time,
+          end_time: output_end_time,
+          prev_header_hash: output_prev_header_hash,
+          operator_vkey: output_operator_vkey,
+          protocol_version: output_protocol_version,
+          ..
+        } = output_header_data
+
+        // 6. The `end_time` of `header_node` must match the transaction's
+        //    time-validity upper bound.
+        //
+        //    > [!NOTE]
+        //    > We are assuming inclusive lower bound and exclusive upper bound
+        //    > in the block. TODO: This needs clarification in specs.
+        expect IntervalBound {
+          bound_type: Finite(valid_to),
+          is_inclusive: False,
+        } = validity_range.upper_bound
+        expect output_end_time == valid_to
+
+        // 7. The operator pub key hash from the redeemer must match the one
+        //    in the new header.
+        expect output_operator_vkey == operator
+
+        // To validate the output header, we can take two routes depending on
+        // whether the anchor element is the root (i.e. confirmed state), or a
+        // node (i.e. latest block in the queue).
+        let anchor_end_time =
+          when m_anchor_key is {
+            None -> {
+              // 8a. New block must properly carry over data from confirmed state.
+              expect ConfirmedState {
+                header_hash,
+                utxo_root,
+                end_time,
+                protocol_version,
+                ..
+              } = anchor_data
+              expect output_prev_header_hash == header_hash
+              expect output_prev_utxos_root == utxo_root
+              expect output_start_time == end_time
+              expect output_protocol_version == protocol_version
+
+              // Done.
+              True
+            }
+            Some(_) -> {
+              expect Header { .. } = anchor_data
+              todo
+            }
+          }
+
+        // 3. The transaction must Append a node to the `state_queue`.
+        //    Among the transaction outputs, let that node be `header_node` and
+        //    its predecessor node be `previous_header_node`.
         expect Some(header_node_output) =
-          list.at(self.outputs, header_node_output_index)
+          list.at(outputs, new_block_output_index)
         expect InlineDatum(header_node_datum) = header_node_output.datum
         expect parsed_header_node_datum: NodeDatum = header_node_datum
         expect header_node_block_data: Header = parsed_header_node_datum.data
@@ -149,39 +246,20 @@ validator mint(
           parsed_header_node_datum.data
         //
         expect Some(previous_header_node_output) =
-          list.at(self.outputs, previous_header_node_output_index)
+          list.at(outputs, continued_latest_block_output_index)
         expect InlineDatum(previous_header_node_datum) =
           previous_header_node_output.datum
         expect parsed_previous_header_node_datum: NodeDatum =
           previous_header_node_datum
         expect previous_header_node_block_data: Header =
           parsed_previous_header_node_datum.data
-        //
-        expect
-          unordered.append_unsafe(
-            parsed_header_node_datum.key,
-            header_node_output_index,
-            previous_header_node_output_index,
-            node_in_outputs,
-            node_outputs,
-            node_mint,
-          )
-
-        // (4) `operator` must be the operator of `header_node`.
-        expect operator == header_node_block_data.operator_vkey
-
-        // (5) The key field of header_node must be the hash of its data field.
-        expect
-          parsed_header_node_datum.key == Key(
-            crypto.sha2_256(parsed_header_node_block_data_as_bytearray),
-          )
 
         // Verify that it is the operator's turn to commit
         // according to the scheduler:
         // (6) The transaction must include a reference input with the scheduler NFT.
         //     Let that input be the `scheduler_state`.
         expect Some(scheduler_ref_input) =
-          list.at(self.reference_inputs, scheduler_ref_input_index)
+          list.at(reference_inputs, scheduler_ref_input_index)
         expect InlineDatum(scheduler_state_datum) =
           scheduler_ref_input.output.datum
         expect parsed_scheduler_state_datum: SchedulerDatum =
@@ -195,17 +273,6 @@ validator mint(
         // (7) The `operator` field of `scheduler_state` must match `operator`.
         expect operator == parsed_scheduler_state_datum.operator
 
-        // Verify block timestamps:
-        // (8) The `start_time` of `header_node` must be equal to the
-        //     `end_time` of the `previous_header_node`.
-        expect
-          header_node_block_data.start_time == previous_header_node_block_data.end_time
-
-        // (9) The `end_time` of `header_node` must match the transaction's
-        //      time-validity upper bound.
-        expect Finite(valid_to) = self.validity_range.upper_bound.bound_type
-        expect header_node_block_data.end_time == valid_to
-
         // (10) The `end_time` of `header_node` must be within the shift interval
         //      of `scheduler_state`.
         expect
@@ -218,13 +285,13 @@ validator mint(
         //      Bond Hold New State redeemer, of an `active_operators` node with
         //      a key matching the `operator`.
         expect Some(active_operators_redeemer_pair) =
-          list.at(self.redeemers, active_operators_redeemer_index)
+          list.at(redeemers, active_operators_redeemer_index)
         expect Spend(active_node_input_output_reference) =
           active_operators_redeemer_pair.1st
         expect active_operators.UpdateBondHoldNewState { .. } =
           active_operators_redeemer_pair.2nd
         expect Some(active_node_input) =
-          list.at(self.inputs, active_node_input_index)
+          list.at(inputs, latest_block_input_index)
         expect InlineDatum(active_node_datum) = active_node_input.output.datum
         expect parsed_active_node_datum: ordered.NodeDatum = active_node_datum
         expect

@@ -88,6 +88,7 @@ validator main(
             FromNegInf { upper } -> upper >= block_valid_to
             ToPosInf { lower } -> lower < block_valid_from
             Always -> fail @"The tx does not have an invalid time range"
+            InvalidRange -> True
           }
 
         // Done.

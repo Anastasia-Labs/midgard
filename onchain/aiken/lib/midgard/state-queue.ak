@@ -27,11 +27,11 @@ pub type MintRedeemer {
   Init { output_index: Int }
   Deinit { input_index: Int }
   CommitBlockHeader {
-    operator: ByteArray,
+    latest_block_input_index: Int,
+    new_block_output_index: Int,
+    continued_latest_block_output_index: Int,
+    operator: VerificationKeyHash,
     scheduler_ref_input_index: Int,
-    active_node_input_index: Int,
-    header_node_output_index: Int,
-    previous_header_node_output_index: Int,
     active_operators_redeemer_index: Int,
   }
   MergeToConfirmedState {
