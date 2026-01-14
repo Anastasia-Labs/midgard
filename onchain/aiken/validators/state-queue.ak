@@ -2,17 +2,20 @@ use aiken/collection/list
 use aiken/crypto
 use aiken/interval.{Finite, Interval}
 use aiken/primitive/bytearray
-use aiken_design_patterns/linked_list/ordered
-use aiken_design_patterns/linked_list/unordered.{
-  Key, NodeDatum, get_node_inputs, get_node_outputs,
-}
+use aiken_design_patterns/linked_list
+use aiken_design_patterns/validity_range_normalization as vrn
 use cardano/assets.{PolicyId, quantity_of, tokens}
 use cardano/transaction.{
   InlineDatum, Input, Mint, Output, OutputReference, Spend, Transaction,
 }
 use midgard/active_operators
+use midgard/common/types.{PosixTime}
 use midgard/common/utils
-use midgard/ledger_state.{ConfirmedState, Header}
+use midgard/hub_oracle as hub
+use midgard/ledger_state.{
+  ConfirmedState, Header, genesis_header_hash, genesis_protocol_version,
+  genesis_utxo_root,
+}
 use midgard/protocol_parameters.{maturity_duration, shift_duration}
 use midgard/registered_operators
 use midgard/retired_operators
@@ -22,6 +25,8 @@ use midgard/state_queue.{
   CommitBlockHeader, Deinit, Init, MergeToConfirmedState, MintRedeemer,
   RemoveFraudulentBlockHeader,
 }
+
+const three_minutes: PosixTime = 5 * 60 * 1000
 
 validator spend(fraud_proof_catalog_mint_script_hash: ByteArray) {
   spend(
@@ -42,7 +47,6 @@ validator spend(fraud_proof_catalog_mint_script_hash: ByteArray) {
 
 validator mint(
   hub_oracle_script_hash: PolicyId,
-  hub_oracle_asset_name: ByteArray,
   active_operators_script_hash: PolicyId,
   retired_operators_script_hash: PolicyId,
   scheduler_script_hash: PolicyId,
@@ -50,16 +54,54 @@ validator mint(
   settlement_script_hash: PolicyId,
 ) {
   mint(redeemer: MintRedeemer, policy_id: PolicyId, self: Transaction) {
-    let node_in_outputs = get_node_inputs(self.inputs, policy_id)
-    let node_outputs = get_node_outputs(self.outputs, policy_id)
-    let node_mint = tokens(self.mint, policy_id)
     when redeemer is {
-      Init -> and {
-          quantity_of(self.mint, hub_oracle_script_hash, hub_oracle_asset_name) == 1,
-          unordered.init(node_in_outputs, node_mint, policy_id),
-        }
+      Init { output_index } -> {
+        let Transaction { mint, validity_range, .. } = self
+
+        expect Some(root_output) = outputs |> list.get(output_index)
+
+        expect vrn.ClosedRange {
+          lower: current_time_lower,
+          upper: current_time_upper,
+        } = vrn.normalize_time_range(validity_range)
+
+        // 1. Estimate current time by taking the average of a time range that
+        //    is shorter than 5 minutes.
+        expect current_time_upper - current_time_lower <= five_minutes
+        let current_time = ( current_time_upper + current_time_lower ) / 2
+
+        // 2. The produced root UTxO must have a `ConfirmedState` data with zero
+        //    hashes, and empty Merkle roots.
+        let expected_root_data: Data =
+          ConfirmedState {
+            header_hash: genesis_header_hash,
+            prev_header_hash: genesis_header_hash,
+            utxo_root: genesis_utxo_root,
+            start_time: current_time,
+            end_time: current_time,
+            protocol_version: genesis_protocol_version,
+          }
+
+        // 3. Linked list initiation must be valid.
+        linked_list.init(
+          nonce_validated: quantity_of(
+            mint,
+            hub_oracle_script_hash,
+            hub.asset_name,
+          ) == 1,
+          produced_element_output: root_output,
+          list_nft_policy_id: policy_id,
+          tx_mint: ming,
+          root_data_validator: fn(root_data: Data) -> Bool {
+            root_data == expected_root_data
+          },
+        )
+
+        // Done.
+        True
+      }
       Deinit -> and {
-          quantity_of(self.mint, hub_oracle_script_hash, hub_oracle_asset_name) == -1,
+          quantity_of(self.mint, hub_oracle_script_hash, hub.asset_name) == -1,
           unordered.deinit(node_outputs, node_mint, policy_id),
         }
       CommitBlockHeader {

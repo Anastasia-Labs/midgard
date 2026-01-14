@@ -80,6 +80,13 @@ pub type ConfirmedState {
   protocol_version: Int,
 }
 
+pub const genesis_header_hash: HeaderHash =
+  #"00000000000000000000000000000000000000000000000000000000"
+
+pub const genesis_utxo_root: MerkleRoot = empty_merkle_tree_root
+
+pub const genesis_protocol_version: Int = 0
+
 // ## User events
 
 pub fn unsafe_event_to_id_data(event_datum_data: Data) -> Data {

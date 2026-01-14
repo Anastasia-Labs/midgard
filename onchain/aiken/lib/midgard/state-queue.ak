@@ -1,28 +1,28 @@
-use aiken_design_patterns/linked_list/unordered.{NodeDatum}
+use aiken_design_patterns/linked_list
 use cardano/assets.{AssetName}
 use cardano/transaction.{Input, OutputReference}
 use midgard/common/utils
 use midgard/ledger_state.{ConfirmedState, Header}
 use midgard/registered_operators.{OperatorStatus}
 
-/// TODO?
-/// > [!NOTE]
-/// > Keep in mind that validators may depend on the lexicographic ordering
-/// > between `confirmed_token_name` and `block_token_name`.
-pub const confirmed_asset_name: AssetName = "CONFIRMED_STATE"
+pub const confirmed_state_asset_name: AssetName = "MIDGARD_CONFIRMED_STATE"
 
-pub const block_asset_name: AssetName = #""
+/// Short for "Midgard Block". In hex it'll be: #"4d424c43"
+///
+/// > [!NOTE]
+/// > This must be exactly 4 bytes as it is followed by header hashes which are
+/// > hashed with Blake2b-224. This makes up block asset names to occupy all
+/// > available 32 bytes.
+pub const block_asset_name_prefix: AssetName = "MBLC"
+
+pub const block_asset_name_prefix_length: Int =
+  bytearray.length(block_asset_name_prefix)
 
 pub type Datum =
-  NodeDatum
-
-pub type Config {
-  init_utxo: OutputReference,
-  refund_waiting_period: Int,
-}
+  linked_list.Element<ConfirmedState, Header>
 
 pub type MintRedeemer {
-  Init
+  Init { output_index: Int }
   Deinit
   CommitBlockHeader {
     operator: ByteArray,
