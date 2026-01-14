@@ -23,6 +23,7 @@ use cardano/transaction.{
   Datum as CardanoDatum, Output, OutputReference, Redeemer, ScriptPurpose,
   ValidityRange,
 }
+use midgard/common/constants.{empty_merkle_tree_root}
 use midgard/common/types.{H28, H32, MerkleRoot, PosixTime, ValuePairs}
 
 // # Ledger state types

@@ -1,3 +1,4 @@
+use aiken/primitive/bytearray
 use aiken_design_patterns/linked_list
 use cardano/assets.{AssetName}
 use cardano/transaction.{Input, OutputReference}
@@ -5,6 +6,7 @@ use midgard/common/utils
 use midgard/ledger_state.{ConfirmedState, Header}
 use midgard/registered_operators.{OperatorStatus}
 
+/// TODO: It might be better to be space-conscious and use an empty name.
 pub const confirmed_state_asset_name: AssetName = "MIDGARD_CONFIRMED_STATE"
 
 /// Short for "Midgard Block". In hex it'll be: #"4d424c43"
@@ -23,7 +25,7 @@ pub type Datum =
 
 pub type MintRedeemer {
   Init { output_index: Int }
-  Deinit
+  Deinit { input_index: Int }
   CommitBlockHeader {
     operator: ByteArray,
     scheduler_ref_input_index: Int,

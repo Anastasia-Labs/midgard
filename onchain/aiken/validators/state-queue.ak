@@ -26,7 +26,7 @@ use midgard/state_queue.{
   RemoveFraudulentBlockHeader,
 }
 
-const three_minutes: PosixTime = 5 * 60 * 1000
+const five_minutes: PosixTime = 5 * 60 * 1000
 
 validator spend(fraud_proof_catalog_mint_script_hash: ByteArray) {
   spend(
@@ -71,7 +71,8 @@ validator mint(
         let current_time = ( current_time_upper + current_time_lower ) / 2
 
         // 2. The produced root UTxO must have a `ConfirmedState` data with zero
-        //    hashes, and empty Merkle roots.
+        //    hashes, and an empty ledger (i.e. `utxo_root` must be that of an
+        //    empty Merkle trie).
         let expected_root_data: Data =
           ConfirmedState {
             header_hash: genesis_header_hash,
@@ -82,28 +83,46 @@ validator mint(
             protocol_version: genesis_protocol_version,
           }
 
-        // 3. Linked list initiation must be valid.
-        linked_list.init(
-          nonce_validated: quantity_of(
-            mint,
-            hub_oracle_script_hash,
-            hub.asset_name,
-          ) == 1,
-          produced_element_output: root_output,
-          list_nft_policy_id: policy_id,
-          tx_mint: ming,
-          root_data_validator: fn(root_data: Data) -> Bool {
-            root_data == expected_root_data
-          },
-        )
+        // 3. Linked list must be initiated with the expected root data, and
+        //    validation that a hub oracle NFT is getting minted.
+        expect
+          linked_list.init(
+            nonce_validated: quantity_of(
+              mint,
+              hub_oracle_script_hash,
+              hub.asset_name,
+            ) == 1,
+            produced_element_output: root_output,
+            list_nft_policy_id: policy_id,
+            tx_mint: ming,
+            root_data_validator: fn(root_data: Data) -> Bool {
+              root_data == expected_root_data
+            },
+          )
+            |> linked_list.run_root_with(confirmed_state_asset_name)
 
         // Done.
         True
       }
-      Deinit -> and {
-          quantity_of(self.mint, hub_oracle_script_hash, hub.asset_name) == -1,
-          unordered.deinit(node_outputs, node_mint, policy_id),
-        }
+      Deinit { input_index } -> {
+        let Transaction { inputs, mint, .. } = self
+
+        // 1. An input must exist at specified index.
+        expect Some(own_input) = inputs |> list.at(input_index)
+
+        // 2. Hub oracle NFT must be getting burnt.
+        expect quantity_of(mint, hub_oracle_script_hash, hub.asset_name)
+
+        // 3. Linked list de-initialization must be valid. No other validations
+        //    required.
+        deinit(
+          root_input: own_input,
+          list_nft_policy_id: policy_id,
+          tx_mint: mint,
+          root_data_validator: fn(_) -> Bool { True },
+        )
+          |> linked_list.run_root_with(confirmed_state_asset_name)
+      }
       CommitBlockHeader {
         operator,
         scheduler_ref_input_index,
