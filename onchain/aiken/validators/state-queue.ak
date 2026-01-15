@@ -225,11 +225,8 @@ validator mint(
         //    from redeemer.
         expect operator == scheduler_operator
 
-        // 10. The `end_time` of `header_node` must be proper, and within the
-        //     shift interval of `scheduler_state`.
-        //
-        //     TODO: Do we need a minimum span for blocks?
-        expect output_end_time > output_start_time
+        // 10. The `end_time` of `header_node` must be within the shift interval
+        //     of `scheduler_state`.
         expect output_end_time >= scheduler_start_time
         expect output_end_time <= scheduler.shift_end_time(scheduler_state_time)
 
@@ -237,77 +234,63 @@ validator mint(
         // 11. The transaction must include an input, spent via the Update
         //     Bond Hold New State redeemer, of an `active_operators` node with
         //     a key matching the `operator`.
-        expect Some(active_operators_redeemer_pair) =
-          list.at(redeemers, active_operators_redeemer_index)
-        expect Spend(active_node_input_output_reference) =
-          active_operators_redeemer_pair.1st
-        expect active_operators.UpdateBondHoldNewState { .. } =
-          active_operators_redeemer_pair.2nd
-        expect Some(active_node_input) =
-          list.at(inputs, active_operators_input_index)
-        expect InlineDatum(active_node_datum) = active_node_input.output.datum
-        expect parsed_active_node_datum: ordered.NodeDatum = active_node_datum
-        expect
-          active_node_input_output_reference == active_node_input.output_reference
-        expect
-          ordered.prove_is_member(
+        expect Some(Input {
+          output_reference: active_node_outref,
+          output: active_node_output,
+        }) = inputs |> list.at(active_operators_input_index)
+        let
+          _active_node_address,
+          m_active_node_key,
+          _active_node_data,
+          _active_node_link,
+        <-
+          linked_list.get_element_info(
+            active_node_output,
             active_operators_script_hash,
-            parsed_active_node_datum.key,
-            active_node_input.output,
           )
-        expect ordered.Key(operator) == parsed_active_node_datum.key
+        expect Some(operator) == m_active_node_key
+        //
+        expect active_operators.UpdateBondHoldNewState { .. } =
+          redeemers
+            |> utils.get_redeemer_at(
+                Spend(active_node_outref),
+                active_operators_redeemer_index,
+              )
 
         // To validate the output header, we must take two routes depending on
         // whether the anchor element is the root (i.e. confirmed state), or a
         // node (i.e. latest block in the queue).
-        let output_header_has_valid_fields =
-          when m_anchor_key is {
-            None -> {
-              // 8a. New block must properly carry over data from confirmed
-              //     state.
-              expect ConfirmedState {
-                header_hash,
-                utxo_root,
-                end_time,
-                protocol_version,
-                ..
-              } = anchor_data
-              expect output_prev_header_hash == header_hash
-              expect output_prev_utxos_root == utxo_root
-              expect output_start_time == end_time
-              expect output_protocol_version == protocol_version
+        when m_anchor_key is {
+          None -> {
+            // 8a. New block must properly carry over data from confirmed
+            //     state.
+            expect ConfirmedState {
+              header_hash,
+              utxo_root,
+              end_time,
+              protocol_version,
+              ..
+            } = anchor_data
+            expect output_prev_header_hash == header_hash
+            expect output_prev_utxos_root == utxo_root
+            expect output_start_time == end_time
+            expect output_protocol_version == protocol_version
 
-              // Done.
-              True
-            }
-            Some(_) -> {
-              expect Header { .. } = anchor_data
-              todo
-            }
+            // Done.
+            True
           }
+          Some(header_hash) -> {
+            expect Header { utxos_root, end_time, protocol_version, .. } =
+              anchor_data
+            expect output_prev_header_hash == header_hash
+            expect output_prev_utxos_root == utxo_root
+            expect output_start_time == end_time
+            expect output_protocol_version == protocol_version
 
-        // 3. The transaction must Append a node to the `state_queue`.
-        //    Among the transaction outputs, let that node be `header_node` and
-        //    its predecessor node be `previous_header_node`.
-        expect Some(header_node_output) =
-          list.at(outputs, new_block_output_index)
-        expect InlineDatum(header_node_datum) = header_node_output.datum
-        expect parsed_header_node_datum: NodeDatum = header_node_datum
-        expect header_node_block_data: Header = parsed_header_node_datum.data
-        expect parsed_header_node_block_data_as_bytearray: ByteArray =
-          parsed_header_node_datum.data
-        //
-        expect Some(previous_header_node_output) =
-          list.at(outputs, continued_latest_block_output_index)
-        expect InlineDatum(previous_header_node_datum) =
-          previous_header_node_output.datum
-        expect parsed_previous_header_node_datum: NodeDatum =
-          previous_header_node_datum
-        expect previous_header_node_block_data: Header =
-          parsed_previous_header_node_datum.data
-
-        // Done.
-        True
+            // Done.
+            True
+          }
+        }
       }
       MergeToConfirmedState {
         header_node_key,
