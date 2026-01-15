@@ -32,6 +32,7 @@ pub type MintRedeemer {
     continued_latest_block_output_index: Int,
     operator: VerificationKeyHash,
     scheduler_ref_input_index: Int,
+    active_operators_input_index: Int,
     active_operators_redeemer_index: Int,
   }
   MergeToConfirmedState {

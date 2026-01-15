@@ -19,7 +19,7 @@ use midgard/ledger_state.{
 use midgard/protocol_parameters.{maturity_duration, shift_duration}
 use midgard/registered_operators
 use midgard/retired_operators
-use midgard/scheduler.{Datum as SchedulerDatum, scheduler_asset_name}
+use midgard/scheduler
 use midgard/settlement
 use midgard/state_queue.{
   CommitBlockHeader, Deinit, Init, MergeToConfirmedState, MintRedeemer,
@@ -133,6 +133,7 @@ validator mint(
         continued_latest_block_output_index,
         operator,
         scheduler_ref_input_index,
+        active_operators_input_index,
         active_operators_redeemer_index,
       } -> {
         let Transaction {
@@ -206,13 +207,64 @@ validator mint(
         //    in the new header.
         expect output_operator_vkey == operator
 
-        // To validate the output header, we can take two routes depending on
+        // Verify that it is the operator's turn to commit according to the
+        // scheduler:
+        // 8. The transaction must include a reference input with the scheduler
+        //    NFT. Let that input's datum be the `scheduler_state`.
+        let scheduler.Datum {
+          operator: scheduler_operator,
+          start_time: scheduler_start_time,
+        } =
+          scheduler.get_datum(
+            reference_inputs: reference_inputs,
+            scheduler_policy_id: scheduler_script_hash,
+            scheduler_ref_input_index: scheduler_ref_input_index,
+          )
+
+        // 9. The `operator` field of `scheduler_state` must match `operator`
+        //    from redeemer.
+        expect operator == scheduler_operator
+
+        // 10. The `end_time` of `header_node` must be proper, and within the
+        //     shift interval of `scheduler_state`.
+        //
+        //     TODO: Do we need a minimum span for blocks?
+        expect output_end_time > output_start_time
+        expect output_end_time >= scheduler_start_time
+        expect output_end_time <= scheduler.shift_end_time(scheduler_state_time)
+
+        // Update the operator's timestamp in the active operators set:
+        // 11. The transaction must include an input, spent via the Update
+        //     Bond Hold New State redeemer, of an `active_operators` node with
+        //     a key matching the `operator`.
+        expect Some(active_operators_redeemer_pair) =
+          list.at(redeemers, active_operators_redeemer_index)
+        expect Spend(active_node_input_output_reference) =
+          active_operators_redeemer_pair.1st
+        expect active_operators.UpdateBondHoldNewState { .. } =
+          active_operators_redeemer_pair.2nd
+        expect Some(active_node_input) =
+          list.at(inputs, active_operators_input_index)
+        expect InlineDatum(active_node_datum) = active_node_input.output.datum
+        expect parsed_active_node_datum: ordered.NodeDatum = active_node_datum
+        expect
+          active_node_input_output_reference == active_node_input.output_reference
+        expect
+          ordered.prove_is_member(
+            active_operators_script_hash,
+            parsed_active_node_datum.key,
+            active_node_input.output,
+          )
+        expect ordered.Key(operator) == parsed_active_node_datum.key
+
+        // To validate the output header, we must take two routes depending on
         // whether the anchor element is the root (i.e. confirmed state), or a
         // node (i.e. latest block in the queue).
-        let anchor_end_time =
+        let output_header_has_valid_fields =
           when m_anchor_key is {
             None -> {
-              // 8a. New block must properly carry over data from confirmed state.
+              // 8a. New block must properly carry over data from confirmed
+              //     state.
               expect ConfirmedState {
                 header_hash,
                 utxo_root,
@@ -253,56 +305,6 @@ validator mint(
           previous_header_node_datum
         expect previous_header_node_block_data: Header =
           parsed_previous_header_node_datum.data
-
-        // Verify that it is the operator's turn to commit
-        // according to the scheduler:
-        // (6) The transaction must include a reference input with the scheduler NFT.
-        //     Let that input be the `scheduler_state`.
-        expect Some(scheduler_ref_input) =
-          list.at(reference_inputs, scheduler_ref_input_index)
-        expect InlineDatum(scheduler_state_datum) =
-          scheduler_ref_input.output.datum
-        expect parsed_scheduler_state_datum: SchedulerDatum =
-          scheduler_state_datum
-        expect
-          Pair(scheduler_asset_name, 1) == utils.get_singleton_asset_with_policy(
-            scheduler_ref_input.output.value,
-            scheduler_script_hash,
-          )
-
-        // (7) The `operator` field of `scheduler_state` must match `operator`.
-        expect operator == parsed_scheduler_state_datum.operator
-
-        // (10) The `end_time` of `header_node` must be within the shift interval
-        //      of `scheduler_state`.
-        expect
-          header_node_block_data.end_time >= parsed_scheduler_state_datum.start_time
-        expect
-          header_node_block_data.end_time <= parsed_scheduler_state_datum.start_time + shift_duration
-
-        // Update the operator's timestamp in the active operators set:
-        // (11) The transaction must include an input, spent via the Update
-        //      Bond Hold New State redeemer, of an `active_operators` node with
-        //      a key matching the `operator`.
-        expect Some(active_operators_redeemer_pair) =
-          list.at(redeemers, active_operators_redeemer_index)
-        expect Spend(active_node_input_output_reference) =
-          active_operators_redeemer_pair.1st
-        expect active_operators.UpdateBondHoldNewState { .. } =
-          active_operators_redeemer_pair.2nd
-        expect Some(active_node_input) =
-          list.at(inputs, latest_block_input_index)
-        expect InlineDatum(active_node_datum) = active_node_input.output.datum
-        expect parsed_active_node_datum: ordered.NodeDatum = active_node_datum
-        expect
-          active_node_input_output_reference == active_node_input.output_reference
-        expect
-          ordered.prove_is_member(
-            active_operators_script_hash,
-            parsed_active_node_datum.key,
-            active_node_input.output,
-          )
-        expect ordered.Key(operator) == parsed_active_node_datum.key
 
         // Done.
         True

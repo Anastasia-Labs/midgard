@@ -33,8 +33,9 @@ validator spend(
   ) {
     when redeemer is {
       ListStateTransition ->
-        ordered.list_state_transition(
-          tokens(self.mint, active_operators_mint_script_hash),
+        linked_list.spend_for_adding_or_removing_an_element(
+          active_operators_mint_script_hash,
+          self.mint,
         )
       UpdateBondHoldNewState {
         active_node_output_index,

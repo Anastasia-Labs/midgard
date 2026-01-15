@@ -1,8 +1,12 @@
+use aiken_design_patterns/linked_list
 use midgard/common/types.{PosixTime}
 
-pub type Datum {
+pub type State {
   bond_unlock_time: Option<PosixTime>,
 }
+
+pub type Datum =
+  linked_list.Element<Void, State>
 
 pub type SpendRedeemer {
   ListStateTransition
