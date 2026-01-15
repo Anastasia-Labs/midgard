@@ -3,7 +3,9 @@ import { Data } from "@lucid-evolution/lucid";
 import { LucidEvolution, TxBuilder } from "@lucid-evolution/lucid";
 
 export const RetiredOperatorDatumSchema = Data.Object({
-  commitmentTime: Data.Nullable(POSIXTimeSchema),
+  key: Data.Nullable(Data.Bytes()),
+  link: Data.Nullable(Data.Bytes()),
+  bondUnlockTime: Data.Nullable(POSIXTimeSchema),
 });
 export type RetiredOperatorDatum = Data.Static<
   typeof RetiredOperatorDatumSchema
@@ -31,12 +33,22 @@ export const RetiredOperatorMintRedeemerSchema = Data.Enum([
     }),
   }),
   Data.Object({
-    RemoveOperatorSlashBond: Data.Object({
+    RemoveOperatorBadState: Data.Object({
       slashedRetiredOperatorKey: Data.Bytes(),
       hubOracleRefInputIndex: Data.Integer(),
       retiredOperatorSlashedNodeInputIndex: Data.Integer(),
       retiredOperatorAnchorNodeInputIndex: Data.Integer(),
-      state_queueRedeemerIndex: Data.Integer(),
+      stateQueueRedeemerIndex: Data.Integer(),
+    }),
+  }),
+  Data.Object({
+    RemoveOperatorBadSettlement: Data.Object({
+      slashedRetiredOperatorKey: Data.Bytes(),
+      hubOracleRefInputIndex: Data.Integer(),
+      retiredOperatorSlashedNodeInputIndex: Data.Integer(),
+      retiredOperatorAnchorNodeInputIndex: Data.Integer(),
+      settlementInputIndex: Data.Integer(),
+      settlementRedeemerIndex: Data.Integer(),
     }),
   }),
 ]);
