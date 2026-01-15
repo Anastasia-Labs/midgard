@@ -29,7 +29,12 @@ import {
   UnresolvedError,
   VerificationKeyHashSchema,
 } from "@/common.js";
-import { Data as EffectData, Effect } from "effect";
+import {
+  Data as EffectData,
+  Array as EffectArray,
+  Effect,
+  Option,
+} from "effect";
 import { HubOracleUTxO, utxosToHubOracleUTxOs } from "@/hub-oracle.js";
 import { SchedulerUTxO, utxosToSchedulerUTxOs } from "@/scheduler.js";
 import { utxosToDepositUTxOs } from "./user-events/deposit.js";
@@ -176,17 +181,29 @@ export type SettlementUTxO = {
 export const getSettlementUTxOWithoutClaim = (
   settlementUTxOs: UTxO[],
   params: AttachResolutionClaimParams,
-  lucid: LucidEvolution, 
-): Effect.Effect<SettlementUTxO, DataCoercionError | LucidError | UnresolvedError> => 
-    Effect.gen(function* () {
-    const allEvents = [...params.depositUTxOs, ...params.withdrawalUTxOs, ...params.txOrderUTxOs];
-    const stillUnspent = yield* Effect.promise(() => lucid.utxosByOutRef(allEvents));
-    
+  lucid: LucidEvolution,
+): Effect.Effect<
+  SettlementUTxO,
+  DataCoercionError | LucidError | UnresolvedError
+> =>
+  Effect.gen(function* () {
+    const allEvents = [
+      ...params.depositUTxOs,
+      ...params.withdrawalUTxOs,
+      ...params.txOrderUTxOs,
+    ];
+    const stillUnspent = yield* Effect.promise(() =>
+      lucid.utxosByOutRef(allEvents),
+    );
+
     if (stillUnspent.length > 0) {
-      return yield* Effect.fail(new UnresolvedError({
-        message: "All userevent UTxOs in the settlement UTxO are not resolved",
-        cause : "Some user events are still unspent",
-      }));
+      return yield* Effect.fail(
+        new UnresolvedError({
+          message:
+            "All userevent UTxOs in the settlement UTxO are not resolved",
+          cause: "Some user events are still unspent",
+        }),
+      );
     }
     const results = yield* Effect.forEach(settlementUTxOs, (utxo) =>
       Effect.try({
@@ -205,8 +222,7 @@ export const getSettlementUTxOWithoutClaim = (
     const allSuccesses = yield* Effect.allSuccesses(results);
 
     const settlementUTxOWithoutClaim = allSuccesses.find(
-      ({ datum }) =>
-        datum.resolutionClaim === null
+      ({ datum }) => datum.resolutionClaim === null,
     );
     if (settlementUTxOWithoutClaim) {
       return settlementUTxOWithoutClaim;
@@ -219,7 +235,6 @@ export const getSettlementUTxOWithoutClaim = (
       }),
     );
   });
-
 
 const fetchHubOracleRefUTxO = (
   hubOracleScriptAddress: string,
@@ -285,7 +300,10 @@ const fetchSchedulerRefUTxO = (
 export const incompleteAttachResolutionClaimTxProgram = (
   lucid: LucidEvolution,
   params: AttachResolutionClaimParams,
-): Effect.Effect<TxBuilder, HashingError | DataCoercionError | LucidError | UnresolvedError> =>
+): Effect.Effect<
+  TxBuilder,
+  HashingError | DataCoercionError | LucidError | UnresolvedError
+> =>
   Effect.gen(function* () {
     const spendRedeemer: SettlementSpendRedeemer = {
       AttachResolutionClaim: {
@@ -317,7 +335,7 @@ export const incompleteAttachResolutionClaimTxProgram = (
     const settlementInputUtxo = yield* getSettlementUTxOWithoutClaim(
       settlementAllUtxos,
       params,
-      lucid
+      lucid,
     );
 
     const updatedDatum: SettlementDatum = {
@@ -386,33 +404,37 @@ export type ActiveOperatorNodeUTxO = {
 export const getActiveOperatorNodeUTxO = (
   activeOperatorsUTxOs: UTxO[],
   params: FetchActiveOperatorParams,
-): Effect.Effect<ActiveOperatorNodeUTxO, DataCoercionError | LucidError> => {
-  for (const utxo of activeOperatorsUTxOs) {
-    const datumCBOR = utxo.datum;
-    if (!datumCBOR) {
-      continue;
+): Effect.Effect<ActiveOperatorNodeUTxO, DataCoercionError | LucidError> =>
+  Effect.gen(function* () {
+    const results = yield* Effect.forEach(activeOperatorsUTxOs, (utxo) =>
+      Effect.try({
+        try: () => {
+          if (!utxo.datum) throw new Error("No datum present");
+          const parsedDatum = Data.from(utxo.datum, ActiveOperatorDatum);
+          return { utxo, datum: parsedDatum };
+        },
+        catch: (err) =>
+          new DataCoercionError({
+            message: `Could not coerce UTxO's datum to an active operator's node datum`,
+            cause: err,
+          }),
+      }).pipe(Effect.either),
+    );
+    const allSuccesses = yield* Effect.allSuccesses(results);
+    const activeOperatorNode = allSuccesses.find(
+      ({ datum }) => datum.key === params.operator,
+    );
+
+    if (activeOperatorNode) {
+      return activeOperatorNode;
     }
-    try {
-      const parsedDatum = Data.from(datumCBOR, ActiveOperatorDatum);
-      if (parsedDatum.key === params.operator) {
-        return Effect.succeed({ utxo, datum: parsedDatum });
-      }
-    } catch (err) {
-      return Effect.fail(
-        new DataCoercionError({
-          message: `Could not coerce UTxO's datum to an active operator's node datum`,
-          cause: err,
-        }),
-      );
-    }
-  }
-  return Effect.fail(
-    new LucidError({
-      message: "No Active Operator UTxO with given operator found",
-      cause: "Active Operators Tx not initiated not initiated",
-    }),
-  );
-};
+    return yield* Effect.fail(
+      new LucidError({
+        message: "No Active Operator UTxO with given operator found",
+        cause: "Active Operators Tx not initiated",
+      }),
+    );
+  });
 
 /**
  * ActiveOperators Node
@@ -507,7 +529,11 @@ export const unsignedAttachResolutionClaimTxProgram = (
   params: FetchActiveOperatorParams & UpdateBondHoldNewSettlementParams,
 ): Effect.Effect<
   TxSignBuilder,
-  HashingError | DataCoercionError | LucidError | SettlementError | UnresolvedError
+  | HashingError
+  | DataCoercionError
+  | LucidError
+  | SettlementError
+  | UnresolvedError
 > =>
   Effect.gen(function* () {
     const attachResolutionClaimTx =
@@ -558,36 +584,45 @@ export const unsignedAttachResolutionClaimTx = (
 export const getSettlementUTxOWithClaim = (
   settlementUTxOs: UTxO[],
   resolutionClaimOperator: string,
-): Effect.Effect<SettlementUTxO, DataCoercionError | LucidError> => {
-  for (const utxo of settlementUTxOs) {
-    const datumCBOR = utxo.datum;
-    if (!datumCBOR) {
-      continue;
+): Effect.Effect<SettlementUTxO, DataCoercionError | LucidError> =>
+  Effect.gen(function* () {
+    const filteredUTxOs = yield* Effect.forEach(settlementUTxOs, (utxo) =>
+      Effect.try({
+        try: () => {
+          if (!utxo.datum) throw new Error("No datum");
+          const parsedDatum = Data.from(utxo.datum, SettlementDatum);
+          if (
+            parsedDatum.resolutionClaim !== null &&
+            parsedDatum.resolutionClaim.operator === resolutionClaimOperator
+          ) {
+            return { utxo, datum: parsedDatum };
+          }
+          return null;
+        },
+        catch: (err) =>
+          new DataCoercionError({
+            message: `Could not coerce UTxO's datum to a settlement datum`,
+            cause: err,
+          }),
+      }).pipe(Effect.either),
+    );
+
+    const settlementUTxOsWithClaim = (yield* Effect.allSuccesses(
+      filteredUTxOs,
+    )).filter((item): item is SettlementUTxO => item !== null);
+    const settlementUTxOWithClaim = EffectArray.head(settlementUTxOsWithClaim);
+
+    if (Option.isSome(settlementUTxOWithClaim)) {
+      return settlementUTxOWithClaim.value;
     }
-    try {
-      const parsedDatum = Data.from(datumCBOR, SettlementDatum);
-      if (
-        parsedDatum.resolutionClaim !== null &&
-        parsedDatum.resolutionClaim.operator === resolutionClaimOperator
-      ) {
-        return Effect.succeed({ utxo, datum: parsedDatum });
-      }
-    } catch (err) {
-      return Effect.fail(
-        new DataCoercionError({
-          message: `Could not coerce UTxO's datum to a settlement datum`,
-          cause: err,
-        }),
-      );
-    }
-  }
-  return Effect.fail(
-    new LucidError({
-      message: "No settlement UTxO without resolution claim found",
-      cause: "Settlement Tx not initiated",
-    }),
-  );
-};
+
+    return yield* Effect.fail(
+      new LucidError({
+        message: "No settlement UTxO with a resolution claim found",
+        cause: "No resolution claims attached",
+      }),
+    );
+  });
 
 export type DisproveResolutionClaimParams = {
   settlementAddress: string;
@@ -682,7 +717,7 @@ export type UserEventUTxO =
   | { eventType: "TxOrder"; utxo: UTxO }
   | { eventType: "Withdrawal"; utxo: UTxO };
 
-// Have to include the logic to find one userevent Utxo that is not resolved yet 
+// Have to include the logic to find one userevent Utxo that is not resolved yet
 // deposit roots is just a hash, how to check a specific utxo that is not resolved?
 export const fetchUserEventRefUTxO = (
   userEventType: EventType,
@@ -700,41 +735,44 @@ export const fetchUserEventRefUTxO = (
         }),
     });
     if (userEventType === "Deposit") {
-      const depositRefUTxOs = yield*
-        utxosToDepositUTxOs(allUTxOs, userEventPolicyId);
+      const depositRefUTxOs = yield* utxosToDepositUTxOs(
+        allUTxOs,
+        userEventPolicyId,
+      );
       if (depositRefUTxOs.length === 0) {
-        yield* 
-          Effect.fail(
-            new LucidError({
-              message: "Failed to build the User Event transaction",
-              cause: "No UTxOs found in User Event contract address",
-            }),
-          );
+        yield* Effect.fail(
+          new LucidError({
+            message: "Failed to build the User Event transaction",
+            cause: "No UTxOs found in User Event contract address",
+          }),
+        );
       }
       return { eventType: "Deposit", utxo: depositRefUTxOs[0].utxo };
     } else if ("TxOrder" in userEventType) {
-      const txOrderRefUTxOs = yield*
-        utxosToTxOrderUTxOs(allUTxOs, userEventPolicyId);
+      const txOrderRefUTxOs = yield* utxosToTxOrderUTxOs(
+        allUTxOs,
+        userEventPolicyId,
+      );
       if (txOrderRefUTxOs.length === 0) {
-        yield*
-          Effect.fail(
-            new LucidError({
-              message: "Failed to build the User Event transaction",
-              cause: "No UTxOs found in User Event contract address",
-            }),
+        yield* Effect.fail(
+          new LucidError({
+            message: "Failed to build the User Event transaction",
+            cause: "No UTxOs found in User Event contract address",
+          }),
         );
       }
       return { eventType: "TxOrder", utxo: txOrderRefUTxOs[0].utxo };
     } else if ("Withdrawal" in userEventType) {
-      const withdrawalRefUTxOs = yield*
-        utxosToWithdrawalUTxOs(allUTxOs, userEventPolicyId);
+      const withdrawalRefUTxOs = yield* utxosToWithdrawalUTxOs(
+        allUTxOs,
+        userEventPolicyId,
+      );
       if (withdrawalRefUTxOs.length === 0) {
-        yield* 
-          Effect.fail(
-            new LucidError({
-              message: "Failed to build the User Event transaction",
-              cause: "No UTxOs found in User Event contract address",
-            }),
+        yield* Effect.fail(
+          new LucidError({
+            message: "Failed to build the User Event transaction",
+            cause: "No UTxOs found in User Event contract address",
+          }),
         );
       }
       return { eventType: "Withdrawal", utxo: withdrawalRefUTxOs[0].utxo };
@@ -742,7 +780,8 @@ export const fetchUserEventRefUTxO = (
       return yield* Effect.fail(
         new LucidError({
           message: "Invalid Event Type",
-          cause: "Event Type must be either Deposit or object with TxOrder/Withdrawal",
+          cause:
+            "Event Type must be either Deposit or object with TxOrder/Withdrawal",
         }),
       );
     }
@@ -1152,8 +1191,7 @@ export const getSettlementUTxOWithoutClaimResolve = (
     const allSuccesses = yield* Effect.allSuccesses(results);
 
     const settlementUTxOWithoutClaim = allSuccesses.find(
-      ({ datum }) =>
-        datum.resolutionClaim !== null
+      ({ datum }) => datum.resolutionClaim !== null,
     );
     if (settlementUTxOWithoutClaim) {
       return settlementUTxOWithoutClaim;
@@ -1178,18 +1216,21 @@ export const getSettlementUTxOWithoutClaimResolve = (
 export const incompleteResolveSettlementProgram = (
   lucid: LucidEvolution,
   params: ResolveSettlementParams,
-): Effect.Effect<TxBuilder, HashingError | DataCoercionError | LucidError | AssetError> =>
+): Effect.Effect<
+  TxBuilder,
+  HashingError | DataCoercionError | LucidError | AssetError
+> =>
   Effect.gen(function* () {
     const spendRedeemer: SettlementSpendRedeemer = {
       Resolve: {
-       settlementId: params.settlementId
+        settlementId: params.settlementId,
       },
     };
     const spendRedeemerCBOR = Data.to(spendRedeemer, SettlementSpendRedeemer);
 
     const mintRedeemer: SettlementMintRedeemer = {
       Remove: {
-       settlementId: params.settlementId,
+        settlementId: params.settlementId,
         inputIndex: 0n,
         spendRedeemerIndex: 0n,
       },
@@ -1210,9 +1251,8 @@ export const incompleteResolveSettlementProgram = (
         cause: "No UTxOs found in Settlement contract address",
       });
     }
-    const settlementInputUtxo = yield* getSettlementUTxOWithoutClaimResolve(
-      settlementAllUtxos
-    );
+    const settlementInputUtxo =
+      yield* getSettlementUTxOWithoutClaimResolve(settlementAllUtxos);
 
     const resolutionTime = Number(
       settlementInputUtxo.datum.resolutionClaim?.resolutionTime ?? 0n,
@@ -1221,8 +1261,10 @@ export const incompleteResolveSettlementProgram = (
     const txSigner = settlementInputUtxo.datum.resolutionClaim?.operator!;
     const changeAmount = 1_000_000n;
 
-    const [policyId, assetName] = (yield* getSingleAssetApartFromAda(settlementInputUtxo.utxo.assets));
-    const settlementNFT = toUnit(policyId,assetName);
+    const [policyId, assetName] = yield* getSingleAssetApartFromAda(
+      settlementInputUtxo.utxo.assets,
+    );
+    const settlementNFT = toUnit(policyId, assetName);
     const buildsettlementTx = lucid
       .newTx()
       .collectFrom([settlementInputUtxo.utxo], spendRedeemerCBOR)
@@ -1232,10 +1274,10 @@ export const incompleteResolveSettlementProgram = (
         },
         mintRedeemerCBOR,
       )
-      .pay.ToAddress(params.changeAddress,{lovelace: changeAmount})
+      .pay.ToAddress(params.changeAddress, { lovelace: changeAmount })
       .addSignerKey(txSigner)
       .attach.MintingPolicy(params.settlementMintingPolicy)
-      .validFrom(txLowerBound)
+      .validFrom(txLowerBound);
     return buildsettlementTx;
   }).pipe(
     Effect.catchAllDefect((defect) => {
@@ -1250,17 +1292,16 @@ export const incompleteResolveSettlementProgram = (
 
 export const unsignedResolveSettlementTxProgram = (
   lucid: LucidEvolution,
-  params: ResolveSettlementParams
+  params: ResolveSettlementParams,
 ): Effect.Effect<
   TxSignBuilder,
   HashingError | DataCoercionError | LucidError | SettlementError | AssetError
 > =>
   Effect.gen(function* () {
-    const resolveSettlementTx =
-      yield* incompleteResolveSettlementProgram(
-        lucid,
-        params,
-      );
+    const resolveSettlementTx = yield* incompleteResolveSettlementProgram(
+      lucid,
+      params,
+    );
     const completedTx: TxSignBuilder = yield* Effect.tryPromise({
       try: () => resolveSettlementTx.complete({ localUPLCEval: false }),
       catch: (e) =>
@@ -1282,11 +1323,6 @@ export const unsignedResolveSettlementTxProgram = (
  */
 export const unsignedResolveSettlementTx = (
   lucid: LucidEvolution,
- params: ResolveSettlementParams
+  params: ResolveSettlementParams,
 ): Promise<TxSignBuilder> =>
-  makeReturn(
-    unsignedResolveSettlementTxProgram(
-      lucid,
-      params,
-    ),
-  ).unsafeRun();
+  makeReturn(unsignedResolveSettlementTxProgram(lucid, params)).unsafeRun();
