@@ -21,7 +21,7 @@ All steps in a computation thread parametrize the same datum type:
     \T{StepDatum} (\T{state\_data}) \coloneq \left\{
     \begin{array}{ll}
         \T{fraud\_prover}  : & \T{PubKeyHash} \\
-        \T{data} : & \T{state\_data}
+        \T{data} : & \T{Option(state\_data)}
     \end{array} \right\}
 \end{equation*}
 
@@ -45,15 +45,25 @@ Redeemers:
               The token name must concatenate \code{fraud\_category\_id} and the 28-byte block header hash in the key of \code{fraud\_node}.
             \item The computation thread token must be sent to the spending validator address of \code{fraud\_category}.
               Let \code{output\_state} be that transaction output.
-            \item The \code{output\_state} datum type must be \code{StepDatum(Void)}.\footnote{Aiken calls it StepDatum(Void), while Plutarch calls it StepDatum(PUnit).} 
+            \item The \code{output\_state} datum type must be \code{StepDatum(Data)}, with its \code{data} being \code{None} (meaning there should be no data in the initial state).
             \item The transaction must be signed by the \code{fraud\_prover} pub-key hash of \code{output\_state}.
             \item Other than ADA, \code{output\_state} must \emph{not} hold any other tokens.
             \item The transaction must \emph{not} mint or burn any other tokens.
         \end{enumerate}
     \item[Success.] Terminate the state machine normally from the final spending validator in the computation.
-      There are no conditions because this redeemer relies on the spending validator to burn the token.
-    \item[Cancel.] Terminate the state machine exceptionally from any spending validator in the computation.
-      There are no conditions because this redeemer relies on the spending validator to burn the token.
+      Relies on fraud proofs' last steps to couple it with the fraud proof's minting.
+      Condition:
+        \begin{enumerate}
+            \item Let \code{successful\_computation\_thread\_token} be the asset name of the computation thread that has successfully completed, provided via the redeemer.
+            \item The transaction must burn exactly 1 computation thread token with asset name \code{successful\_computation\_thread\_token}.
+        \end{enumerate}
+    \item[BurnForCancellation.] Terminate the state machine exceptionally from any spending validator in the computation.
+      Conditions:
+        \begin{enumerate}
+            \item Let \code{burning\_computation\_thread\_token} be the asset name of the computation thread being canceled, provided via the redeemer.
+            \item The transaction must burn the computation thread token with asset name \code{burning\_computation\_thread\_token}.
+            \item The transaction must \emph{not} mint or burn any other tokens.
+        \end{enumerate}
 \end{description}
 
 \subsection{Spending validators}
@@ -93,7 +103,7 @@ These redeemers should be handled in the following general pattern:
                 \begin{itemize}
                     \item Mint the fraud token, which will implicitly burn the computation thread token with the Success redeemer.
                       Let \code{output\_state} be that transaction output.
-                    \item The \code{output\_state} datum type must be \code{StepDatum(Void)}.
+                    \item The \code{output\_state} datum type must be \code{StepDatum(Data)}, with its \code{data} being \code{None}.
                     \item The \code{fraud\_prover} field must match between the \code{output\_state} and the input datum.
                 \end{itemize}
             \item Otherwise:
@@ -109,8 +119,8 @@ These redeemers should be handled in the following general pattern:
     \item[Cancel.] Cancel the computation.
       Conditions:
         \begin{enumerate}
-            \item Burn the computation thread token with the Cancel redeemer.
-            \item Return the ADA from the computation thread utxo to the fraud prover pub-key defined in the input datum.
+            \item Validate the `Cancel` redeemer from the computation thread policy is invoked (this in turn validates the burning of the specified computation thread token).
+            \item The transaction must be signed by the fraud prover pub-key defined in the input datum.
             \item The transaction must \emph{not} mint or burn any other tokens.
         \end{enumerate}
 \end{description}

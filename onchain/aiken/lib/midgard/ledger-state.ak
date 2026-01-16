@@ -21,7 +21,7 @@ use cardano/address.{Address}
 use cardano/assets.{Lovelace, Value}
 use cardano/transaction.{
   Datum as CardanoDatum, Output, OutputReference, Redeemer, ScriptPurpose,
-  TransactionId, ValidityRange,
+  ValidityRange,
 }
 use midgard/common/types.{H28, H32, MerkleRoot, PosixTime, ValuePairs}
 
@@ -62,7 +62,7 @@ pub type Header {
 /// This type is not used in onchain code.
 pub type BlockBody {
   utxos: Dict<OutputReference, Output>,
-  transactions: Dict<TransactionId, MidgardTxCompact>,
+  transactions: Dict<MidgardTxId, MidgardTxCompact>,
   deposits: Dict<DepositId, DepositEvent>,
   withdrawals: Dict<WithdrawalId, WithdrawalEvent>,
 }
@@ -128,7 +128,7 @@ pub type WithdrawalSignature =
 pub type WithdrawalValidity {
   WithdrawalIsValid
   NonExistentWithdrawalUtxo
-  SpentWithdrawalUtxo { l2_tx_hash: H32<MidgardTxCompact> }
+  SpentWithdrawalUtxo { l2_tx_id: MidgardTxId }
   IncorrectWithdrawalOwner
   IncorrectWithdrawalValue
   IncorrectWithdrawalSignature
@@ -158,6 +158,9 @@ pub type TxOrderEvent {
 
 // ## Transaction
 
+pub type MidgardTxId =
+  H32<MidgardTxCompact>
+
 /// Midgard transaction.
 /// Compact representation.
 pub type MidgardTxCompact {
@@ -177,6 +180,13 @@ pub type MidgardTxValidity {
 }
 
 // ### Transaction body
+
+/// Datatype to allow inputs of a Midgard tx to be in custom order.
+pub type MidgardInputId {
+  input_index: Int,
+  transaction_id: MidgardTxId,
+  output_index: Int,
+}
 
 /// Midgard transaction body.
 /// Compact representation.

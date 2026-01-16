@@ -1,119 +1,134 @@
+//// ## Invalid Range Fraud Proof (Section 5.1.2)
+////
+//// Proves a given transaction, which has a validity range with one or both
+//// ends bounded, is included in a Midgard block whose validity range does not
+//// cover the transaction's validity range.
+
 use aiken/collection/list
 use aiken/crypto.{ScriptHash}
 use aiken/interval.{Finite, Interval}
 use aiken_design_patterns/linked_list/unordered as unordered
+use aiken_design_patterns/validity_range_normalization.{
+  Always, ClosedRange, FromNegInf, ToPosInf,
+} as vrn
+use cardano/address.{Address}
 use cardano/assets.{PolicyId}
 use cardano/transaction.{
   InlineDatum, Input, Output, OutputReference, Transaction,
 }
 use midgard/common/utils.{verify_hash_32}
-use midgard/computation_thread.{StepDatum}
+use midgard/computation_thread as ct
 use midgard/fraud_proofs/common.{
-  MembershipProofInputs, get_singleton_ct_token, get_tx_root_validate_block_hash,
-  handle_cancel, validate_final_step_output, validate_membership_proof,
-} as fraud_proof_utils
-use midgard/fraud_proofs/invalid_range/step.{
-  Cancel, Continue, StepRedeemer as Step1Redeemer,
+  cancel, finalize, verify_bad_tx_in_state_queue_node_and_get_header,
 }
+use midgard/fraud_proofs/invalid_range/step.{Args, Datum, SpendRedeemer}
 use midgard/hub_oracle as hub
 use midgard/ledger_state.{Header}
 
 validator main(
-  // Fraud proof token policy
-  fraud_proof_token_policy: PolicyId,
-  // Script hash of stake validator (forwarded merkle proof logic)
-  plutarch_midgard_merkle_validator_inclusion: ScriptHash,
-  // Computation thread token policy
-  ct_token_policy_id: PolicyId,
+  fraud_proof_token_policy_id: PolicyId,
+  fraud_proof_token_address: Address,
+  computation_thread_token_policy_id: PolicyId,
   hub_oracle: ScriptHash,
 ) {
   spend(
-    datum: Option<StepDatum>,
-    redeemer: Step1Redeemer,
-    input: OutputReference,
+    datum: Option<Datum>,
+    redeemer: SpendRedeemer,
+    own_out_ref: OutputReference,
     tx: Transaction,
   ) {
-    expect Some(step_datum) = datum
-    expect Some(own_input) =
-      list.find(tx.inputs, fn(a_input) { a_input.output_reference == input })
-
     when redeemer is {
-      Cancel { index_output } -> {
-        expect
-          handle_cancel(
-            own_input,
-            index_output,
-            step_datum,
-            ct_token_policy_id,
-            tx,
-          )
-        True
-      }
-      // Step 1: Membership proof for tx1
-      Continue {
+      ct.Cancel { input_index, computation_thread_mint_redeemer_index } ->
+        cancel(
+          computation_thread_token_policy_id,
+          datum,
+          input_index,
+          own_out_ref,
+          computation_thread_mint_redeemer_index,
+          tx,
+        )
+      ct.Continue(Args {
+        input_index,
+        output_index,
+        hub_ref_input_index,
         bad_state_queue_node_ref_input_index,
-        bad_tx_hash,
-        bad_tx_info_hash,
-        bad_tx_to_root_proof_path,
+        bad_tx_id,
         bad_tx,
         bad_tx_body,
-        index_output,
-        computation_thread_redeemer_index,
-        hub_ref_input_index,
-      } -> {
-        //TODO get it from the oracle hub
-        let hub.Datum { state_queue, .. } =
-          hub.get_datum(tx.reference_inputs, hub_oracle, hub_ref_input_index)
-        let ct_token_asset_name =
-          get_singleton_ct_token(own_input, ct_token_policy_id)
-        let extracted_tx_root =
-          get_tx_root_validate_block_hash(
-            tx,
-            bad_state_queue_node_ref_input_index,
-            ct_token_asset_name,
-            state_queue,
-          )
-        let (block_valid_from, block_valid_to) =
-          get_validity_range_validate_block_hash(
-            tx,
-            bad_state_queue_node_ref_input_index,
-          )
+        bad_tx_membership_proof,
+        fraud_proof_mint_redeemer_index,
+        inclusion_proof_script_withdraw_redeemer_index,
+      }) -> {
+        let Transaction { inputs, outputs, reference_inputs, redeemers, .. } =
+          tx
 
-        // -------- Invalid range: validation-specific logic START --------
-        // Membership proof for tx
-        expect
-          validate_membership_proof(
-            tx,
-            plutarch_midgard_merkle_validator_inclusion,
-            MembershipProofInputs {
-              tx_root: extracted_tx_root,
-              tx_hash: bad_tx_hash,
-              tx_info_hash: bad_tx_info_hash,
-              tx_to_root_proof_path: bad_tx_to_root_proof_path,
-            },
-          )
+        expect Some(step_datum) = datum
 
-        verify_hash_32(bad_tx, bad_tx_hash)
-        verify_hash_32(bad_tx_body, bad_tx.body)
-
-        expect Finite(valid_from) =
-          bad_tx_body.validity_interval.lower_bound.bound_type
-        expect Finite(valid_to) =
-          bad_tx_body.validity_interval.upper_bound.bound_type
-        //Validity range not completely contained in the block's validity range
-        expect valid_from < block_valid_from || valid_to > block_valid_to
-
-        // -------- Invalid range: validation-specific logic END --------
-        expect
-          validate_final_step_output(
-            tx,
-            index_output,
-            fraud_proof_token_policy,
-            ct_token_asset_name,
+        // 1. Specified input must be authentic and properly reproduced at the
+        //    fraud proof's spending address.
+        let
+          _own_script_hash,
+          computation_thread_token_asset_name,
+          _fraud_prover,
+          _m_input_state_data,
+        <-
+          finalize(
+            computation_thread_token_policy_id,
+            fraud_proof_token_policy_id,
+            fraud_proof_token_address,
             step_datum,
-            computation_thread_redeemer_index,
+            input_index,
+            output_index,
+            fraud_proof_mint_redeemer_index,
+            own_out_ref,
+            inputs,
+            outputs,
+            redeemers,
           )
 
+        // 2. The provided transaction must be valid, and must be included in
+        //    the specified state queue node.
+        let Header {
+          start_time: block_valid_from,
+          end_time: block_valid_to,
+          ..
+        } =
+          verify_bad_tx_in_state_queue_node_and_get_header(
+            bad_tx_id,
+            bad_tx,
+            bad_tx_body,
+            bad_tx_membership_proof,
+            computation_thread_token_asset_name,
+            hub_oracle,
+            hub_ref_input_index,
+            bad_state_queue_node_ref_input_index,
+            inclusion_proof_script_withdraw_redeemer_index,
+            reference_inputs,
+            redeemers,
+          )
+
+        let bad_tx_normalized_validity_range =
+          vrn.normalize_time_range(bad_tx_body.validity_interval)
+
+        // 3. One or more **bounds** of the bad transaction's validity interval
+        //    must fall out of the block's. Meaning unbounded ends are not
+        //    validated against the block's time range.
+        //
+        //    > [!NOTE]
+        //    > We are assuming inclusive lower bound and exclusive upper bound
+        //    > in the block. TODO: This needs clarification in specs.
+        expect
+          when bad_tx_normalized_validity_range is {
+            ClosedRange { lower, upper } -> or {
+                lower < block_valid_from,
+                upper >= block_valid_to,
+              }
+            FromNegInf { upper } -> upper >= block_valid_to
+            ToPosInf { lower } -> lower < block_valid_from
+            Always -> fail @"The tx does not have an invalid time range"
+          }
+
+        // Done.
         True
       }
     }

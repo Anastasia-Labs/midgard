@@ -5,52 +5,38 @@ use aiken/collection/list
 use aiken/crypto.{ScriptHash}
 use cardano/assets.{PolicyId}
 use cardano/transaction.{Input, OutputReference, Transaction}
-use midgard/common/utils.{verify_hash_32}
-use midgard/computation_thread.{StepDatum}
+use midgard/common/utils
+use midgard/computation_thread as ct
 use midgard/fraud_proofs/common.{
-  MembershipProofInputs, get_singleton_ct_token, get_tx_root_validate_block_hash,
-  handle_cancel, validate_final_step_output, validate_membership_proof,
-} as fraud_proof_utils
-use midgard/fraud_proofs/non_existing_input_no_index/step.{
-  Cancel, Continue, StepRedeemer as Step1Redeemer,
+  cancel, continue, verify_bad_tx_in_state_queue_node_and_get_header,
 }
-use midgard/hub_oracle as hub
+use midgard/fraud_proofs/non_existent_input_no_index/step_01.{
+  Args, Datum, SpendRedeemer,
+}
+use midgard/fraud_proofs/non_existent_input_no_index/step_02
 
 validator main(
-  // Fraud proof token policy
-  fraud_proof_token_policy: PolicyId,
-  // Script hash of stake validator (forwarded merkle proof logic)
-  plutarch_midgard_merkle_validator_inclusion: ScriptHash,
-  // Script hash of stake validator (forwarded merkle proof logic)
-  plutarch_midgard_merkle_validator_input_hash_inclusion: ScriptHash,
-  // Computation thread token policy
-  ct_token_policy_id: PolicyId,
+  step_02_validator_script_hash: ScriptHash,
+  computation_thread_token_policy_id: PolicyId,
   hub_oracle: ScriptHash,
 ) {
   spend(
-    datum: Option<StepDatum>,
-    redeemer: Step1Redeemer,
-    input: OutputReference,
+    datum: Option<Datum>,
+    redeemer: SpendRedeemer,
+    own_out_ref: OutputReference,
     tx: Transaction,
   ) {
-    expect Some(step_datum) = datum
-    expect Some(own_input) =
-      list.find(tx.inputs, fn(a_input) { a_input.output_reference == input })
-
     when redeemer is {
-      Cancel { index_output } -> {
-        expect
-          handle_cancel(
-            own_input,
-            index_output,
-            step_datum,
-            ct_token_policy_id,
-            tx,
-          )
-        True
-      }
-      // Step 1: Membership proof for tx1
-      Continue {
+      ct.Cancel { input_index, computation_thread_mint_redeemer_index } ->
+        cancel(
+          computation_thread_token_policy_id,
+          datum,
+          input_index,
+          own_out_ref,
+          computation_thread_mint_redeemer_index,
+          tx,
+        )
+      ct.Continue(Args {
         bad_state_queue_node_ref_input_index,
         bad_tx_hash,
         bad_tx_info_hash,
@@ -67,8 +53,58 @@ validator main(
         previous_tx_body,
         real_outputs,
         hub_ref_input_index,
-      } -> {
-        //TODO get it from the oracle hub
+      }) -> {
+        let Transaction { inputs, outputs, reference_inputs, redeemers, .. } =
+          tx
+
+        expect Some(step_datum) = datum
+
+        // 1. Specified input must be authentic and properly reproduced.
+        let
+          own_script_hash,
+          computation_thread_token_asset_name,
+          _fraud_prover,
+          _m_input_state_data,
+          output_script_hash,
+          output_state_data,
+        <-
+          continue(
+            computation_thread_token_policy_id,
+            step_datum,
+            input_index,
+            output_index,
+            own_out_ref,
+            inputs,
+            outputs,
+          )
+
+        // 2. The UTxO must be produced at next step's script hash with the
+        //    verified bad transactions' inputs included in its datum.
+        expect output_script_hash == step_02_validator_script_hash
+        let expected_output_state: Data =
+          step_02.State { verified_tx1_inputs_root: bad_tx_body.spend_inputs }
+        expect output_state_data == expected_output_state
+
+        // 3. The provided transaction must be valid, and must be included in
+        //    the specified state queue node.
+        expect _header =
+          verify_bad_tx_in_state_queue_node_and_get_header(
+            bad_tx_id,
+            bad_tx,
+            bad_tx_body,
+            bad_tx_membership_proof,
+            computation_thread_token_asset_name,
+            hub_oracle,
+            hub_ref_input_index,
+            bad_state_queue_node_ref_input_index,
+            inclusion_proof_script_withdraw_redeemer_index,
+            reference_inputs,
+            redeemers,
+          )
+
+        // Done.
+        True
+
         let hub.Datum { state_queue, .. } =
           hub.get_datum(tx.reference_inputs, hub_oracle, hub_ref_input_index)
         let ct_token_asset_name =
