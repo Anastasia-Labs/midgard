@@ -20,6 +20,19 @@ use midgard/retired_operators.{Datum as RetiredOperatorData}
 use midgard/settlement.{AttachResolutionClaim, DisproveResolutionClaim}
 use midgard/state_queue.{CommitBlockHeader, RemoveFraudulentBlockHeader}
 
+pub const root_asset_name: AssetName = "MIDGARD_ACTIVE_OPERATORS"
+
+/// Short for "Midgard Active". In hex it will be: #"4d414354"
+///
+/// > [!NOTE]
+/// > This must be exactly 4 bytes as it is followed by header hashes which are
+/// > hashed with Blake2b-224. This makes up block asset names to occupy all
+/// > available 32 bytes.
+pub const node_asset_name_prefix: AssetName = "MACT"
+
+pub const node_asset_name_prefix_length: Int =
+  bytearray.length(node_asset_name_prefix)
+
 validator spend(
   active_operators_mint_script_hash: ByteArray,
   hub_oracle_script_hash: PolicyId,

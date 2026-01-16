@@ -23,7 +23,8 @@ use midgard/scheduler
 use midgard/settlement
 use midgard/state_queue.{
   CommitBlockHeader, Deinit, Init, MergeToConfirmedState, MintRedeemer,
-  RemoveFraudulentBlockHeader,
+  RemoveFraudulentBlockHeader, block_asset_name_prefix,
+  block_asset_name_prefix_length, confirmed_state_asset_name,
 }
 
 const five_minutes: PosixTime = 5 * 60 * 1000
@@ -93,13 +94,12 @@ validator mint(
               hub.asset_name,
             ) == 1,
             produced_element_output: root_output,
-            list_nft_policy_id: policy_id,
             tx_mint: ming,
             root_data_validator: fn(root_data: Data) -> Bool {
               root_data == expected_root_data
             },
           )
-            |> linked_list.run_root_with(confirmed_state_asset_name)
+            |> linked_list.run_root_with(policy_id, confirmed_state_asset_name)
 
         // Done.
         True
@@ -118,11 +118,10 @@ validator mint(
         expect
           deinit(
             root_input: own_input,
-            list_nft_policy_id: policy_id,
             tx_mint: mint,
             root_data_validator: fn(_) -> Bool { True },
           )
-            |> linked_list.run_root_with(confirmed_state_asset_name)
+            |> linked_list.run_root_with(policy_id, confirmed_state_asset_name)
 
         // Done.
         True
@@ -145,7 +144,8 @@ validator mint(
           validity_range,
           ..
         } = self
-        // Commit the block header to the state queue, with the operator's consent:
+        // Commit the block header to the state queue, with the operator's
+        // content:
         // 1. Let `operator` be a redeemer argument indicating the pub key hash
         //    of the operator committing the block header.
         // 2. The transaction must be signed by `operator`.
@@ -158,153 +158,181 @@ validator mint(
         expect Some(new_block_output) =
           inputs |> list.at(new_block_output_index)
 
-        // 3. Indicated inputs and output must properly adhere to unordered
-        //    linked list requirements.
-        let
-          m_anchor_key,
-          anchor_data,
-          output_header_key,
-          output_header_data,
-        <-
-          linked_list.append_unordered(
-            list_nft_policy_id: policy_id,
-            anchor_element_input: anchor_element_input,
-            continued_anchor_element_output: continued_anchor_element_output,
-            new_element_output: new_block_output,
-            tx_mint: mint,
-          )
+        let linked_list_eval = {
+          // 3. Indicated inputs and output must properly adhere to unordered
+          //    linked list requirements.
+          let
+            m_anchor_key,
+            anchor_data,
+            output_header_key,
+            output_header_data,
+          <-
+            linked_list.append_unordered(
+              anchor_element_input,
+              continued_anchor_element_output,
+              new_block_output,
+              mint,
+            )
 
-        // 4. The new block in state queue must have the hash of the header as
-        //    its linked list key.
-        let output_header_hash =
-          crypto.blake2b_224(builtin.un_b_data(output_header_data))
-        expect output_header_key == output_header_hash
+          // 4. The new block in state queue must have the hash of the header as
+          //    its linked list key.
+          let output_header_hash =
+            crypto.blake2b_224(builtin.un_b_data(output_header_data))
+          expect output_header_key == output_header_hash
 
-        // 5. New element's data must be `Header`.
-        expect Header {
-          prev_utxos_root: output_prev_utxos_root,
-          start_time: output_start_time,
-          end_time: output_end_time,
-          prev_header_hash: output_prev_header_hash,
-          operator_vkey: output_operator_vkey,
-          protocol_version: output_protocol_version,
-          ..
-        } = output_header_data
+          // 5. New element's data must be `Header`.
+          expect Header {
+            prev_utxos_root: output_prev_utxos_root,
+            start_time: output_start_time,
+            end_time: output_end_time,
+            prev_header_hash: output_prev_header_hash,
+            operator_vkey: output_operator_vkey,
+            protocol_version: output_protocol_version,
+            ..
+          } = output_header_data
 
-        // 6. The `end_time` of `header_node` must match the transaction's
-        //    time-validity upper bound.
-        //
-        //    > [!NOTE]
-        //    > We are assuming inclusive lower bound and exclusive upper bound
-        //    > in the block. TODO: This needs clarification in specs.
-        expect IntervalBound {
-          bound_type: Finite(valid_to),
-          is_inclusive: False,
-        } = validity_range.upper_bound
-        expect output_end_time == valid_to
+          // 6. The `end_time` of `header_node` must match the transaction's
+          //    time-validity upper bound.
+          //
+          //    > [!NOTE]
+          //    > We are assuming inclusive lower bound and exclusive upper
+          //    > bound in the block. TODO: This needs clarification in specs.
+          expect IntervalBound {
+            bound_type: Finite(valid_to),
+            is_inclusive: False,
+          } = validity_range.upper_bound
+          expect output_end_time == valid_to
 
-        // 7. The operator pub key hash from the redeemer must match the one
-        //    in the new header.
-        expect output_operator_vkey == operator
+          // 7. The operator pub key hash from the redeemer must match the one
+          //    in the new header.
+          expect output_operator_vkey == operator
 
-        // Verify that it is the operator's turn to commit according to the
-        // scheduler:
-        // 8. The transaction must include a reference input with the scheduler
-        //    NFT. Let that input's datum be the `scheduler_state`.
-        let scheduler.Datum {
-          operator: scheduler_operator,
-          start_time: scheduler_start_time,
-        } =
-          scheduler.get_datum(
-            reference_inputs: reference_inputs,
-            scheduler_policy_id: scheduler_script_hash,
-            scheduler_ref_input_index: scheduler_ref_input_index,
-          )
+          // Verify that it is the operator's turn to commit according to the
+          // scheduler:
+          // 8. The transaction must include a reference input with the
+          //    scheduler NFT. Let that input's datum be the `scheduler_state`.
+          let scheduler.Datum {
+            operator: scheduler_operator,
+            start_time: scheduler_start_time,
+          } =
+            scheduler.get_datum(
+              reference_inputs: reference_inputs,
+              scheduler_policy_id: scheduler_script_hash,
+              scheduler_ref_input_index: scheduler_ref_input_index,
+            )
 
-        // 9. The `operator` field of `scheduler_state` must match `operator`
-        //    from redeemer.
-        expect operator == scheduler_operator
+          // 9. The `operator` field of `scheduler_state` must match `operator`
+          //    from redeemer.
+          expect operator == scheduler_operator
 
-        // 10. The `end_time` of `header_node` must be within the shift interval
-        //     of `scheduler_state`.
-        expect output_end_time >= scheduler_start_time
-        expect output_end_time <= scheduler.shift_end_time(scheduler_state_time)
+          // 10. The `end_time` of `header_node` must be within the shift
+          //     interval of `scheduler_state`.
+          expect output_end_time >= scheduler_start_time
+          expect
+            output_end_time <= scheduler.shift_end_time(scheduler_state_time)
 
-        // Update the operator's timestamp in the active operators set:
-        // 11. The transaction must include an input, spent via the Update
-        //     Bond Hold New State redeemer, of an `active_operators` node with
-        //     a key matching the `operator`.
-        expect Some(Input {
-          output_reference: active_node_outref,
-          output: active_node_output,
-        }) = inputs |> list.at(active_operators_input_index)
-        let
-          _active_node_address,
-          m_active_node_key,
-          _active_node_data,
-          _active_node_link,
-        <-
-          linked_list.get_element_info(
-            active_node_output,
-            active_operators_script_hash,
-          )
-        expect Some(operator) == m_active_node_key
-        //
-        expect active_operators.UpdateBondHoldNewState { .. } =
-          redeemers
-            |> utils.get_redeemer_at(
-                Spend(active_node_outref),
-                active_operators_redeemer_index,
-              )
+          // Update the operator's timestamp in the active operators set:
+          // 11. The transaction must include an input, spent via the Update
+          //     Bond Hold New State redeemer, of an `active_operators` node
+          //     with a key matching the `operator`.
+          expect Some(Input {
+            output_reference: active_node_outref,
+            output: active_node_output,
+          }) = inputs |> list.at(active_operators_input_index)
+          let active_operators_linked_list_eval =
+            linked_list.get_element_info(
+              active_node_output,
+              fn(m_active_node_key, _, _) -> Bool {
+                Some(operator) == m_active_node_key
+              },
+            )
+          expect
+            active_operators_linked_list_eval
+              |> linked_list.run_element_with(
+                  active_operators_script_hash,
+                  active_operators.root_asset_name,
+                  active_operators.node_asset_name_prefix,
+                  active_operators.node_asset_name_prefix_length,
+                )
+          //
+          expect active_operators.UpdateBondHoldNewState { .. } =
+            redeemers
+              |> utils.get_redeemer_at(
+                  Spend(active_node_outref),
+                  active_operators_redeemer_index,
+                )
 
-        // To validate the output header, we must take two routes depending on
-        // whether the anchor element is the root (i.e. confirmed state), or a
-        // node (i.e. latest block in the queue).
-        when m_anchor_key is {
-          None -> {
-            // 8a. New block must properly carry over data from confirmed
-            //     state.
-            expect ConfirmedState {
-              header_hash,
-              utxo_root,
-              end_time,
-              protocol_version,
-              ..
-            } = anchor_data
-            expect output_prev_header_hash == header_hash
-            expect output_prev_utxos_root == utxo_root
-            expect output_start_time == end_time
-            expect output_protocol_version == protocol_version
+          // To validate the output header, we must take two routes depending on
+          // whether the anchor element is the root (i.e. confirmed state), or a
+          // node (i.e. latest block in the queue).
+          when m_anchor_key is {
+            Some(header_hash) -> {
+              // 12a. New block must properly carry over data from previous
+              //      block.
+              expect Header { utxos_root, end_time, protocol_version, .. } =
+                anchor_data
+              expect output_prev_header_hash == header_hash
+              expect output_prev_utxos_root == utxo_root
+              expect output_start_time == end_time
+              expect output_protocol_version == protocol_version
 
-            // Done.
-            True
-          }
-          Some(header_hash) -> {
-            expect Header { utxos_root, end_time, protocol_version, .. } =
-              anchor_data
-            expect output_prev_header_hash == header_hash
-            expect output_prev_utxos_root == utxo_root
-            expect output_start_time == end_time
-            expect output_protocol_version == protocol_version
+              // Done.
+              True
+            }
+            None -> {
+              // 12b. New block must properly carry over data from confirmed
+              //      state.
+              expect ConfirmedState {
+                header_hash,
+                utxo_root,
+                end_time,
+                protocol_version,
+                ..
+              } = anchor_data
+              expect output_prev_header_hash == header_hash
+              expect output_prev_utxos_root == utxo_root
+              expect output_start_time == end_time
+              expect output_protocol_version == protocol_version
 
-            // Done.
-            True
+              // Done.
+              True
+            }
           }
         }
+        linked_list_eval |> finalize_linked_list(policy_id)
       }
       MergeToConfirmedState {
         header_node_key,
         header_node_input_index,
-        confirmed_state_node_input_index,
-        confirmed_state_node_output_index,
+        confirmed_state_input_index,
+        confirmed_state_output_index,
         settlement_redeemer_index,
       } -> {
+        let Transaction { inputs, outputs, mint, redeemers, validity_range, .. } =
+          self
+        expect Some(confirmed_state_input) =
+          list.at(inputs, confirmed_state_input_index)
+        expect Some(header_node_input) =
+          list.at(inputs, header_node_input_index)
+        expect Some(continued_confirmed_state_output) =
+          list.at(outputs, confirmed_state_output_index)
+        let
+          confirmed_state_input_data,
+          header_node_key,
+          header_node_data,
+          confirmed_state_output_data,
+        <-
+          fold_and_burn(
+            list_nft_policy_id: policy_id,
+            anchor_root_input: confirmed_state_input,
+            folding_node_input: header_node_input,
+            continued_anchor_root_output: confirmed_state_output,
+            tx_mint: mint,
+          )
         // (1) The transaction must Remove a node from the `state_queue`.
         //     Let `header_node` be the removed node, `confirmed_state_node` be
         //     its predecessor node before removal,
         //     and `confirmed_state_node_output` be the remaining node after removal.
-        expect Some(header_node_input) =
-          list.at(self.inputs, header_node_input_index)
         expect InlineDatum(header_node_input_datum) =
           header_node_input.output.datum
         expect parsed_header_node_input_datum: NodeDatum =
@@ -312,8 +340,6 @@ validator mint(
         expect Header { start_time, end_time, protocol_version, .. } =
           parsed_header_node_input_datum.data
         //
-        expect Some(confirmed_state_node_input) =
-          list.at(self.inputs, confirmed_state_node_input_index)
         expect InlineDatum(confirmed_state_node_input_datum) =
           confirmed_state_node_input.output.datum
         expect parsed_confirmed_state_node_input_datum: NodeDatum =
@@ -322,7 +348,7 @@ validator mint(
           parsed_confirmed_state_node_input_datum.data
         //
         expect Some(confirmed_state_node_output) =
-          list.at(self.outputs, confirmed_state_node_output_index)
+          list.at(outputs, confirmed_state_node_output_index)
         expect InlineDatum(confirmed_state_node_output_datum) =
           confirmed_state_node_output.datum
         expect parsed_confirmed_state_node_output_datum: NodeDatum =
@@ -354,7 +380,7 @@ validator mint(
         //     validity interval meets or exceeds the sum of the `end_time` field
         //     of `header_node` and the Midgard `maturity_duration` protocol
         //     parameter.
-        expect Finite(valid_from) = self.validity_range.lower_bound.bound_type
+        expect Finite(valid_from) = validity_range.lower_bound.bound_type
         expect valid_from >= end_time + maturity_duration
 
         // (4) `confirmed_state_node_output` must match:
@@ -385,7 +411,7 @@ validator mint(
         // Note: we trust the redeemer provided to settlement because we expect
         // it to check them.
         let settlement_minting_redeemer_data =
-          self.redeemers
+          redeemers
             |> utils.get_redeemer_at(
                 Mint(settlement_script_hash),
                 settlement_redeemer_index,
