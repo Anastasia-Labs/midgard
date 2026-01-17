@@ -197,11 +197,17 @@ validator mint(
           //    > [!NOTE]
           //    > We are assuming inclusive lower bound and exclusive upper
           //    > bound in the block. TODO: This needs clarification in specs.
-          expect IntervalBound {
-            bound_type: Finite(valid_to),
-            is_inclusive: False,
-          } = validity_range.upper_bound
-          expect output_end_time == valid_to
+          //
+          //    > [!NOTE]
+          //    > Normalization of the validity range includes converting any
+          //    > of the bounds to be inclusive. Hence the need for reduction by
+          //    > 1 to ensure block's upper bound is exclusive.
+          expect
+            when vrn.normalize_time_range(validity_range) is {
+              vrn.ClosedRange { upper, .. } | vrn.FromNegInf { upper } ->
+                output_end_time == valid_to - 1
+              _ -> fail @"Unexpected validity range"
+            }
 
           // 7. The operator pub key hash from the redeemer must match the one
           //    in the new header.
@@ -316,113 +322,103 @@ validator mint(
           list.at(inputs, header_node_input_index)
         expect Some(continued_confirmed_state_output) =
           list.at(outputs, confirmed_state_output_index)
-        let
-          confirmed_state_input_data,
-          header_node_key,
-          header_node_data,
-          confirmed_state_output_data,
-        <-
-          fold_and_burn(
-            list_nft_policy_id: policy_id,
-            anchor_root_input: confirmed_state_input,
-            folding_node_input: header_node_input,
-            continued_anchor_root_output: confirmed_state_output,
-            tx_mint: mint,
-          )
-        // (1) The transaction must Remove a node from the `state_queue`.
-        //     Let `header_node` be the removed node, `confirmed_state_node` be
-        //     its predecessor node before removal,
-        //     and `confirmed_state_node_output` be the remaining node after removal.
-        expect InlineDatum(header_node_input_datum) =
-          header_node_input.output.datum
-        expect parsed_header_node_input_datum: NodeDatum =
-          header_node_input_datum
-        expect Header { start_time, end_time, protocol_version, .. } =
-          parsed_header_node_input_datum.data
-        //
-        expect InlineDatum(confirmed_state_node_input_datum) =
-          confirmed_state_node_input.output.datum
-        expect parsed_confirmed_state_node_input_datum: NodeDatum =
-          confirmed_state_node_input_datum
-        expect ConfirmedState { header_hash, utxo_root, .. } =
-          parsed_confirmed_state_node_input_datum.data
-        //
-        expect Some(confirmed_state_node_output) =
-          list.at(outputs, confirmed_state_node_output_index)
-        expect InlineDatum(confirmed_state_node_output_datum) =
-          confirmed_state_node_output.datum
-        expect parsed_confirmed_state_node_output_datum: NodeDatum =
-          confirmed_state_node_output_datum
-        expect parsed_confirmed_state_node_output_datum_data: ConfirmedState =
-          parsed_confirmed_state_node_output_datum.data
-        //
-        expect
-          unordered.remove(
-            Key(header_node_key),
-            header_node_input_index,
-            confirmed_state_node_input_index,
-            node_in_outputs,
-            node_outputs,
-            node_mint,
-          )
 
-        // (2) `confirmed_state_node` and `confirmed_state_node_output` must both
-        //     be root nodes of `state_queue`.
-        expect
-          unordered.prove_is_root_node(
-            policy_id,
-            confirmed_state_node_input.output,
-          )
-        expect
-          unordered.prove_is_root_node(policy_id, confirmed_state_node_output)
+        let linked_list_eval = {
+          // 1. Specified inputs and output must properly adhere to the fold and
+          //    burn logic of the linked list.
+          let
+            input_confirmed_state_data,
+            header_node_key,
+            header_node_data,
+            output_confirmed_state_data,
+          <-
+            fold_and_burn(
+              list_nft_policy_id: policy_id,
+              anchor_root_input: confirmed_state_input,
+              folding_node_input: header_node_input,
+              continued_anchor_root_output: confirmed_state_output,
+              tx_mint: mint,
+            )
 
-        // (3) `header_node` must be mature --- the lower bound of the transaction
-        //     validity interval meets or exceeds the sum of the `end_time` field
-        //     of `header_node` and the Midgard `maturity_duration` protocol
-        //     parameter.
-        expect Finite(valid_from) = validity_range.lower_bound.bound_type
-        expect valid_from >= end_time + maturity_duration
+          // 2. `header_node` must be mature---the lower bound of the
+          //    transaction validity interval meets or exceeds the sum of the
+          //    `end_time` field of `header_node` and the Midgard
+          //    `maturity_duration` protocol parameter.
+          expect
+            when vrn.normalize_time_range(validity_range) is {
+              vrn.ClosedRange { lower, .. } | vrn.ToPosInf { lower } ->
+                lower >= header_input_end_time + maturity_duration
+              _ -> fail @"Unexpected validity range"
+            }
 
-        // (4) `confirmed_state_node_output` must match:
-        //    (a) `confirmed_state_node_input` on the `start_time`.
-        //    (b) `confirmed_state_node_output` must match `header_node` on the
-        //        `prev_header_hash`, `utxo_root`, `end_time`,
-        //         and `protocol_version`.
-        // (5) the `header_hash` of `confirmed_state_node_output` must match
-        //     the `header node` key.
-        let expected_new_confirmed_state =
-          ConfirmedState {
-            header_hash: header_node_key,
-            prev_header_hash: header_hash,
-            utxo_root,
-            start_time,
-            end_time,
-            protocol_version,
-          }
-        expect
-          parsed_confirmed_state_node_output_datum_data == expected_new_confirmed_state
+          // 3. a. `header_hash` of the input confirmed state must be preserved
+          //       under `prev_header_hash` of the updated confirmed state.
+          //    b. `start_time` of the input confirmed state must also carry
+          //       over.
+          // 4. From the merging header node, these values must be preserved in
+          //    the new confirmed state:
+          //    a. `utxos_root` must be the new confirmed ledger.
+          //    b. `end_time` must replace confirmed state's.
+          //    c. `protocol_version` should also be that of the new block's
+          //       (TODO?).
+          //    d. Key (i.e. header hash) must also be saved under
+          //       `header_hash`.
+          expect ConfirmedState {
+            start_time: input_confirmed_state_start_time,
+            header_hash: input_confirmed_state_header_hash,
+            ..
+          } = input_confirmed_state_data
+          expect Header {
+            utxos_root: input_header_utxos_root,
+            end_time: input_header_end_time,
+            protocol_version: input_header_protocol_version,
+            transactions_root: input_header_transactions_root,
+            deposits_root: input_header_deposits_root,
+            withdrawals_root: input_header_withdrawals_root,
+            ..
+          } = header_node_data
+          let expected_output_confirmed_state_data: Data =
+            ConfirmedState {
+              header_hash: header_node_key,
+              prev_header_hash: input_confirmed_state_header_hash,
+              utxo_root: input_header_utxos_root,
+              start_time: input_confirmed_state_start_time,
+              end_time: input_header_end_time,
+              protocol_version: input_header_protocol_version,
+            }
+          expect
+            output_confirmed_state_data == expected_output_confirmed_state_data
 
-        // (6) If either the `deposits_root`, or `withdrawals_root`, or
-        //     `transactions_root` of `header_node` is _not_ the MPT root hash
-        //     of the empty set, a `settlement` utxo must be produced via the
-        //     Spawn redeemer. The redeemer must mention `header_node` by input
-        //     index.
-        //
-        // Note: we trust the redeemer provided to settlement because we expect
-        // it to check them.
-        let settlement_minting_redeemer_data =
-          redeemers
-            |> utils.get_redeemer_at(
-                Mint(settlement_script_hash),
-                settlement_redeemer_index,
-              )
-        expect settlement.Spawn { settlement_id, .. }: settlement.MintRedeemer =
-          settlement_minting_redeemer_data
-        //
-        expect settlement_id == header_node_key
+          // 5. If either the `deposits_root`, or `withdrawals_root`, or
+          //    `transactions_root` of `header_node` is _not_ the MPT root hash
+          //    of the empty set, a `settlement` utxo must be produced via the
+          //    Spawn redeemer. The redeemer must mention `header_node` by input
+          //    index.
+          //
+          //    > [!NOTE]
+          //    > We trust the redeemer provided to settlement because we expect
+          //    > it to check them.
+          expect and {
+              input_header_transactions_root != empty_merkle_tree_root,
+              input_header_deposits_root != empty_merkle_tree_root,
+              input_header_withdrawals_root != empty_merkle_tree_root,
+            } || {
+              let settlement_minting_redeemer_data =
+                redeemers
+                  |> utils.get_redeemer_at(
+                      Mint(settlement_script_hash),
+                      settlement_redeemer_index,
+                    )
+              expect settlement.Spawn { settlement_id, .. }: settlement.MintRedeemer =
+                settlement_minting_redeemer_data
+              //
+              expect settlement_id == header_node_key
+            }
 
-        // Done.
-        True
+          // Done.
+          True
+        }
+        linked_list_eval |> finalize_linked_list(policy_id)
       }
       RemoveFraudulentBlockHeader {
         removed_node_input_index,
