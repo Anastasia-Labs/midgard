@@ -1,13 +1,27 @@
-validator spend {
+validator state_queue_spend {
   else(_) {
-    trace @"Midgard Demo – Spend"
+    trace @"Midgard Demo – State Queue Spend"
     True
   }
 }
 
-validator mint {
+validator state_queue_mint {
   else(_) {
-    trace @"Midgard Demo – Mint"
+    trace @"Midgard Demo – State Queue Mint"
+    True
+  }
+}
+
+validator deposit_spend {
+  else(_) {
+    trace @"Midgard Demo – Deposit Spend"
+    True
+  }
+}
+
+validator deposit_mint {
+  else(_) {
+    trace @"Midgard Demo – Deposit Mint"
     True
   }
 }

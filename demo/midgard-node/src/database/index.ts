@@ -1,6 +1,7 @@
 export * as AddressHistoryDB from "./addressHistory.js";
 export * as BlocksDB from "./blocks.js";
 export * as ConfirmedLedgerDB from "./confirmedLedger.js";
+export * as DepositsDB from "./deposits.js";
 export * as ImmutableDB from "./immutable.js";
 export * as LatestLedgerDB from "./latestLedger.js";
 export * as MempoolDB from "./mempool.js";
@@ -10,3 +11,4 @@ export * as InitDB from "./init.js";
 export * as CommonUtils from "./utils/common.js";
 export * as LedgerUtils from "./utils/ledger.js";
 export * as TxUtils from "./utils/tx.js";
+export * as UserEventsUtils from "./utils/user-events.js";
