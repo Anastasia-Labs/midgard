@@ -909,47 +909,48 @@ export const getOperatorNodeUTxO = (
   activeOperatorAllUtxos: UTxO[],
   retiredOperatorAllUtxos: UTxO[],
   operatorPKH: string,
-): Effect.Effect<OperatorNodeUTxO, DataCoercionError | LucidError> =>
-  Effect.gen(function* () {
-    for (const utxo of activeOperatorAllUtxos) {
-      const datumCBOR = utxo.datum;
-      if (!datumCBOR) continue;
-      try {
-        const parsedDatum = Data.from(datumCBOR, ActiveOperatorDatum);
-        if (parsedDatum.key === operatorPKH) {
-          return {
-            utxo,
-            datum: parsedDatum,
-            status: "ActiveOperator",
-          };
-        }
-      } catch (err) {
-        continue;
-      }
+): Effect.Effect<OperatorNodeUTxO, DataCoercionError | LucidError> => {
+  const searchOperator = (utxos: UTxO[], datum: ActiveOperatorDatum | RetiredOperatorDatum, status: "ActiveOperator" | "RetiredOperator") =>
+    Effect.gen(function* () {
+      const matchedOperator = EffectArray.findFirst(utxos, (utxo) => {
+        if (!utxo.datum) return false
+        try {
+          const parsedDatum = Data.from(utxo.datum, datum);
+          return parsedDatum.key === operatorPKH;
+        } catch { return false }
+      });
+      if (Option.isNone(matchedOperator)) {
+      return yield* Effect.fail("NotFound");
     }
-    for (const utxo of retiredOperatorAllUtxos) {
-      const datumCBOR = utxo.datum;
-      if (!datumCBOR) continue;
-      try {
-        const parsedDatum = Data.from(datumCBOR, RetiredOperatorDatum);
-        if (parsedDatum.key === operatorPKH) {
-          return {
-            utxo,
-            datum: parsedDatum,
-            status: "RetiredOperator",
-          };
-        }
-      } catch (err) {
-        continue;
-      }
-    }
-    return yield* Effect.fail(
-      new LucidError({
-        message: `No Operator UTxO with key "${operatorPKH}" found`,
-        cause: "Operator not found in active or retired UTxOs",
+
+    const utxo = matchedOperator.value;
+
+    return yield* Effect.try({
+      try: () => ({
+        utxo,
+        datum: Data.from(utxo.datum!, datum),
+        status
       }),
-    );
+      catch: (err) => new DataCoercionError({
+        message: `Could not coerce UTxO's datum to a ActiveOperator/retiredOperator datum`,
+        cause: err
+      })
+    });
   });
+  return searchOperator(activeOperatorAllUtxos, ActiveOperatorDatum, "ActiveOperator").pipe(
+    Effect.orElse(() => 
+      searchOperator(retiredOperatorAllUtxos, RetiredOperatorDatum, "RetiredOperator")
+    ),
+    Effect.mapError((err) => 
+      err instanceof DataCoercionError 
+    ? err
+    : new LucidError({
+           message: `No Operator UTxO with key "${operatorPKH}" found`,
+           cause: "Operator not found in active or retired UTxOs",
+       })
+    )
+  );
+};
 
 export const createMintRedeemerCBOR = (
   operatorInputUTxO: OperatorNodeUTxO,
