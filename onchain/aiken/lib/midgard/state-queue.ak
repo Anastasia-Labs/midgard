@@ -5,8 +5,7 @@ use aiken_design_patterns/linked_list
 use cardano/assets.{AssetName, PolicyId}
 use cardano/transaction.{Input, OutputReference}
 use midgard/common/utils
-use midgard/ledger_state.{ConfirmedState, Header}
-use midgard/registered_operators.{OperatorStatus}
+use midgard/ledger_state.{ConfirmedState, Header, HeaderHash}
 
 /// TODO: It might be better to be space-conscious and use an empty name.
 pub const confirmed_state_asset_name: AssetName = "MIDGARD_CONFIRMED_STATE"
@@ -47,11 +46,12 @@ pub type MintRedeemer {
   RemoveFraudulentBlockHeader {
     removed_node_input_index: Int,
     predecessor_node_input_index: Int,
+    predecessor_node_output_index: Int,
     operators_redeemer_index: Int,
     fraud_proof_ref_input_index: Int,
-    fraud_proof_asset_name: ByteArray,
-    fraudulent_operator: ByteArray,
-    operator_status: OperatorStatus,
+    fraudulent_blocks_header_hash: HeaderHash,
+    fraudulent_operator: VerificationKeyHash,
+    operator_is_active: Bool,
   }
 }
 

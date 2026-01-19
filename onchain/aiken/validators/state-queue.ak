@@ -54,7 +54,7 @@ validator mint(
   fraud_proof_script_hash: PolicyId,
   settlement_script_hash: PolicyId,
 ) {
-  mint(redeemer: MintRedeemer, policy_id: PolicyId, self: Transaction) {
+  mint(redeemer: MintRedeemer, own_policy_id: PolicyId, self: Transaction) {
     when redeemer is {
       Init { output_index } -> {
         let Transaction { mint, validity_range, .. } = self
@@ -99,7 +99,10 @@ validator mint(
               root_data == expected_root_data
             },
           )
-            |> linked_list.run_root_with(policy_id, confirmed_state_asset_name)
+            |> linked_list.run_root_with(
+                own_policy_id,
+                confirmed_state_asset_name,
+              )
 
         // Done.
         True
@@ -121,7 +124,10 @@ validator mint(
             tx_mint: mint,
             root_data_validator: fn(_) -> Bool { True },
           )
-            |> linked_list.run_root_with(policy_id, confirmed_state_asset_name)
+            |> linked_list.run_root_with(
+                own_policy_id,
+                confirmed_state_asset_name,
+              )
 
         // Done.
         True
@@ -305,7 +311,7 @@ validator mint(
             }
           }
         }
-        linked_list_eval |> finalize_linked_list(policy_id)
+        linked_list_eval |> finalize_linked_list(own_policy_id)
       }
       MergeToConfirmedState {
         header_node_key,
@@ -328,19 +334,23 @@ validator mint(
           //    burn logic of the linked list.
           let
             input_confirmed_state_data,
-            header_node_key,
-            header_node_data,
+            input_header_node_key,
+            input_header_node_data,
             output_confirmed_state_data,
           <-
             fold_and_burn(
-              list_nft_policy_id: policy_id,
               anchor_root_input: confirmed_state_input,
               folding_node_input: header_node_input,
               continued_anchor_root_output: confirmed_state_output,
               tx_mint: mint,
             )
 
-          // 2. `header_node` must be mature---the lower bound of the
+          // 2. The key of the header node specified in the redeemer must
+          //    properly associate with the input picked using
+          //    `header_node_input_index`.
+          expect input_header_node_key == header_node_key
+
+          // 3. `header_node` must be mature---the lower bound of the
           //    transaction validity interval meets or exceeds the sum of the
           //    `end_time` field of `header_node` and the Midgard
           //    `maturity_duration` protocol parameter.
@@ -351,11 +361,11 @@ validator mint(
               _ -> fail @"Unexpected validity range"
             }
 
-          // 3. a. `header_hash` of the input confirmed state must be preserved
+          // 4. a. `header_hash` of the input confirmed state must be preserved
           //       under `prev_header_hash` of the updated confirmed state.
           //    b. `start_time` of the input confirmed state must also carry
           //       over.
-          // 4. From the merging header node, these values must be preserved in
+          // 5. From the merging header node, these values must be preserved in
           //    the new confirmed state:
           //    a. `utxos_root` must be the new confirmed ledger.
           //    b. `end_time` must replace confirmed state's.
@@ -389,7 +399,7 @@ validator mint(
           expect
             output_confirmed_state_data == expected_output_confirmed_state_data
 
-          // 5. If either the `deposits_root`, or `withdrawals_root`, or
+          // 6. If either the `deposits_root`, or `withdrawals_root`, or
           //    `transactions_root` of `header_node` is _not_ the MPT root hash
           //    of the empty set, a `settlement` utxo must be produced via the
           //    Spawn redeemer. The redeemer must mention `header_node` by input
@@ -418,120 +428,120 @@ validator mint(
           // Done.
           True
         }
-        linked_list_eval |> finalize_linked_list(policy_id)
+        linked_list_eval |> finalize_linked_list(own_policy_id)
       }
       RemoveFraudulentBlockHeader {
         removed_node_input_index,
         predecessor_node_input_index,
+        predecessor_node_output_index,
         operators_redeemer_index,
         fraud_proof_ref_input_index,
-        fraud_proof_asset_name,
+        fraudulent_blocks_header_hash,
         fraudulent_operator,
-        operator_status,
+        operator_is_active,
       } -> {
-        // Remove the fraudulent block header:
-        // (1) Let `fraudulent_operator` be a redeemer argument indicating the
-        //     operator who committed the fraudulent block header.
-        // (2) The transaction must Remove a node from the `state_queue`.
-        //     Let `removed_node` be the removed node and `predecessor_node` be its
-        //     predecessor node before removal.
-        // (3) `fraudulent_operator` must match the key of `removed_node`.
-        expect Some(removed_node_input) =
-          list.at(self.inputs, removed_node_input_index)
-        expect Some(predecessor_node_input) =
-          list.at(self.inputs, predecessor_node_input_index)
-        let predecessor_node_key =
-          unordered.get_key(
-            unordered.get_raw_key_and_link(predecessor_node_input.output),
-          )
-        expect
-          unordered.remove(
-            Key(fraudulent_operator),
-            removed_node_input_index,
-            predecessor_node_input_index,
-            node_in_outputs,
-            node_outputs,
-            node_mint,
-          )
+        let Transaction {
+          inputs,
+          outputs,
+          reference_inputs,
+          mint,
+          redeemers,
+          ..
+        } = self
 
-        // Slash the fraudulent operator:
-        // (4) Let `operator_status` be a redeemer argument indicating whether
-        //     the fraudulent operator is active or retired.
-        expect
-          when operator_status is {
-            // (5) If `operator_status is active:
-            //     The transaction must Remove a node from the `active_operators`
-            //     set via the Remove Operator Bad State redeemer.
-            //     The `slashed_operator` argument provided to that redeemer must
-            //     match `fraudulent_operator`.
-            registered_operators.Active -> {
-              expect Some(active_operators_redeemer_pair) =
-                list.at(self.redeemers, operators_redeemer_index)
-              expect Mint(mint_script_hash) = active_operators_redeemer_pair.1st
+        // Remove the fraudulent block header:
+        // 1. Let `fraudulent_operator` be a redeemer argument indicating the
+        //    operator who committed the fraudulent block header.
+        // 2. The transaction must Remove a node from the `state_queue`.
+        //    Let `removed_node` be the removed node and `predecessor_node` be
+        //    its anchor element.
+        // 3. `fraudulent_operator` must match the operator retrieved from the
+        //    spending UTxO from either the active operators directory, or the
+        //    retired directory.
+        expect Some(removed_node_input) =
+          list.at(inputs, removed_node_input_index)
+        expect Some(predecessor_node_input) =
+          list.at(inputs, predecessor_node_input_index)
+        expect Some(predecessor_node_output) =
+          list.at(outputs, predecessor_node_output_index)
+
+        let linked_list_eval = {
+          let
+            _m_predecessor_node_key,
+            _predecessor_node_data,
+            removed_node_key,
+            removed_node_data,
+          <-
+            linked_list.remove(
+              predecessor_node_input,
+              removed_node_input,
+              predecessor_node_output,
+              mint,
+            )
+
+          // Slash the fraudulent operator:
+          // 4. Let `operator_is_active` be a redeemer argument indicating
+          //    whether the fraudulent operator is active or retired.
+          expect
+            if operator_is_active {
+              // 5a. If `operator_is_active` is true:
+              //     The transaction must Remove a node from the
+              //     `active_operators` set via the Remove Operator Bad State
+              //     redeemer. The `slashed_operator` argument provided to that
+              //     redeemer must match `fraudulent_operator`.
+              let active_operators_redeemer_data =
+                utils.get_redeemer_at(
+                  redeemers: redeemers,
+                  expected_purpose: Mint(active_operators_script_hash),
+                  redeemer_index: operators_redeemer_index,
+                )
               expect active_operators.RemoveOperatorBadState {
                 slashed_active_operator_key,
                 ..
-              } = active_operators_redeemer_pair.2nd
-              and {
-                mint_script_hash == active_operators_script_hash,
-                fraudulent_operator == slashed_active_operator_key,
-              }
-            }
-            // (6) Otherwise:
-            //     The transaction must Remove a node from the `retired_operators`
-            //     set via the Remove Operator Bad State redeemer.
-            //     The `slashed_operator` argument provided to that redeemer must
-            //     match `fraudulent_operator`.
-            registered_operators.Retired -> {
-              expect Some(retired_operators_redeemer_pair) =
-                list.at(self.redeemers, operators_redeemer_index)
-              expect Mint(mint_script_hash) =
-                retired_operators_redeemer_pair.1st
+              } = active_operators_redeemer_data
+              //
+              fraudulent_operator == slashed_active_operator_key
+            } else {
+              // 5b. Otherwise:
+              //     The transaction must Remove a node from the
+              //     `retired_operators` set via the Remove Operator Bad State
+              //     redeemer. The `slashed_operator` argument provided to that
+              //     redeemer must match `fraudulent_operator`.
+              let retired_operators_redeemer_data =
+                utils.get_redeemer_at(
+                  redeemers: redeemers,
+                  expected_purpose: Mint(active_operators_script_hash),
+                  redeemer_index: operators_redeemer_index,
+                )
               expect retired_operators.RemoveOperatorBadState {
                 slashed_retired_operator_key,
                 ..
-              } = retired_operators_redeemer_pair.2nd
-              and {
-                mint_script_hash == retired_operators_script_hash,
-                fraudulent_operator == slashed_retired_operator_key,
-              }
+              } = retired_operators_redeemer_data
+              //
+              fraudulent_operator == slashed_retired_operator_key
             }
-            _ -> False
-          }
 
-        // Verify that fraud has been proved for the removed node or its predecessor:
-        // (7) The transaction must include a reference input holding a
-        //     `fraud_proof` token.
-        expect Some(fraud_proof_ref_input) =
-          list.at(self.reference_inputs, fraud_proof_ref_input_index)
-        expect
-          quantity_of(
-            fraud_proof_ref_input.output.value,
-            fraud_proof_script_hash,
-            fraud_proof_asset_name,
-          ) == 1
+          // Verify that fraud has been proved for the removed node or its
+          // predecessor:
+          // 6. The transaction must include a reference input holding a
+          //    `fraud_proof` token.
+          let referenced_fraudulent_header_hash =
+            fraud_proof.get_proven_fraudulent_blocks_header_hash(
+              reference_inputs,
+              fraud_proof_script_hash,
+              fraud_proof_ref_input_index,
+            )
+          expect
+            referenced_fraudulent_header_hash == fraudulent_blocks_header_hash
 
-        // (8) Let `fraud_proof_block_hash` be the last 28 bytes of the 
-        //     `fraud_proof` token's asset name.
-        let fraud_proof_block_hash =
-          bytearray.drop(
-            fraud_proof_asset_name,
-            bytearray.length(fraud_proof_asset_name) - 28,
-          )
+          // 7. The removed block's key (i.e. its header hash) must match the
+          //    one retrieved from the proven fraud token.
+          expect removed_node_key == referenced_fraudulent_header_hash
 
-        // (9) One of the following must be true:
-        or {
-          // (a) `fraud_proof_block_hash` matches the `predecessor_node` key.
-          Key(fraud_proof_block_hash) == predecessor_node_key,
-          // (b) `fraud_proof_block_hash` matches the `removed_node` key, and
-          //      the last node of `state_queue` is `removed_node`.
-          //      This means that the fraudulent node is being removed
-          //      and has no more children.
-          and {
-            fraud_proof_block_hash == fraudulent_operator,
-            unordered.prove_is_last_node(policy_id, removed_node_input.output),
-          },
+          // Done
+          True
         }
+        linked_list_eval |> finalize_linked_list(policy_id)
       }
     }
   }
