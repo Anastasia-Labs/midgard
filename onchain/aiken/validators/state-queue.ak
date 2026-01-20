@@ -203,17 +203,9 @@ validator mint(
           //    > [!NOTE]
           //    > We are assuming inclusive lower bound and exclusive upper
           //    > bound in the block. TODO: This needs clarification in specs.
-          //
-          //    > [!NOTE]
-          //    > Normalization of the validity range includes converting any
-          //    > of the bounds to be inclusive. Hence the need for reduction by
-          //    > 1 to ensure block's upper bound is exclusive.
-          expect
-            when vrn.normalize_time_range(validity_range) is {
-              vrn.ClosedRange { upper, .. } | vrn.FromNegInf { upper } ->
-                output_end_time == valid_to - 1
-              _ -> fail @"Unexpected validity range"
-            }
+          let inclusive_tx_upper_bound =
+            utils.get_inclusive_upper_bound_of_interval(validity_range)
+          expect output_end_time == inclusive_tx_upper_bound - 1
 
           // 7. The operator pub key hash from the redeemer must match the one
           //    in the new header.
@@ -247,6 +239,10 @@ validator mint(
           // 11. The transaction must include an input, spent via the Update
           //     Bond Hold New State redeemer, of an `active_operators` node
           //     with a key matching the `operator`.
+          //
+          //     Here we are indirectly validating the active operators spending
+          //     script is invoked by checking the presence of the linked list
+          //     NFT.
           expect Some(Input {
             output_reference: active_node_outref,
             output: active_node_output,

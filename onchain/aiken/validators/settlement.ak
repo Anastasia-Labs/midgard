@@ -193,13 +193,13 @@ validator spend(hub_oracle: ScriptHash, settlement_policy_id: ScriptHash) {
 
         // 3. The transaction must include the Midgard hub oracle NFT in a
         //    reference input.
-        // 4. hub_oracle.{active_operators, deposit, withdrawal}
+        // 4. hub_oracle.{active_operators, retired_operators, deposit, withdrawal, tx_order}
         let hub.Datum {
           active_operators,
+          retired_operators,
           deposit: deposit_script_hash,
           withdrawal: withdrawal_script_hash,
           tx_order: tx_order_script_hash,
-          retired_operators,
           ..
         } = hub.get_datum(reference_inputs, hub_oracle, hub_ref_input_index)
 

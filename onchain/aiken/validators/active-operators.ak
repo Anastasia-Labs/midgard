@@ -1,8 +1,6 @@
 use aiken/collection/list
 use aiken/interval.{Finite, Interval}
-use aiken_design_patterns/linked_list/ordered.{
-  Key, NodeDatum, get_node_inputs, get_node_outputs,
-}
+use aiken_design_patterns/linked_list
 use cardano/assets.{PolicyId, Value, quantity_of, tokens}
 use cardano/transaction.{
   InlineDatum, Input, Mint, Output, OutputReference, Transaction,
@@ -11,32 +9,19 @@ use midgard/active_operators.{
   ActivateOperator, Datum, Deinit, Init, ListStateTransition, MintRedeemer,
   RemoveOperatorBadSettlement, RemoveOperatorBadState, RetireOperator,
   SpendRedeemer, UpdateBondHoldNewSettlement, UpdateBondHoldNewState,
+  finalize_linked_list,
 }
-use midgard/common/utils as utils
+use midgard/common/utils
 use midgard/hub_oracle as hub
 use midgard/protocol_parameters.{maturity_duration}
 use midgard/registered_operators
 use midgard/retired_operators.{Datum as RetiredOperatorData}
-use midgard/settlement.{AttachResolutionClaim, DisproveResolutionClaim}
-use midgard/state_queue.{CommitBlockHeader, RemoveFraudulentBlockHeader}
-
-pub const root_asset_name: AssetName = "MIDGARD_ACTIVE_OPERATORS"
-
-/// Short for "Midgard Active". In hex it will be: #"4d414354"
-///
-/// > [!NOTE]
-/// > This must be exactly 4 bytes as it is followed by header hashes which are
-/// > hashed with Blake2b-224. This makes up block asset names to occupy all
-/// > available 32 bytes.
-pub const node_asset_name_prefix: AssetName = "MACT"
-
-pub const node_asset_name_prefix_length: Int =
-  bytearray.length(node_asset_name_prefix)
+use midgard/settlement
+use midgard/state_queue
 
 validator spend(
   active_operators_mint_script_hash: ByteArray,
   hub_oracle_script_hash: PolicyId,
-  hub_oracle_asset_name: ByteArray,
 ) {
   spend(
     datumOpt: Option<NodeDatum>,
@@ -53,6 +38,7 @@ validator spend(
       UpdateBondHoldNewState {
         active_node_output_index,
         hub_oracle_ref_input_index,
+        state_queue_input_index,
         state_queue_redeemer_index,
       } -> {
         let Transaction {
@@ -64,49 +50,70 @@ validator spend(
           validity_range,
           ..
         } = self
-        expect Finite(valid_to) = validity_range.upper_bound.bound_type
-        expect Some(active_node_input) =
-          list.find(
-            inputs,
-            fn(input) { input.output_reference == input_out_ref },
-          )
-        expect Some(active_node_input_datum) = datumOpt
-        expect Some(hub_oracle_ref_input) =
-          list.at(reference_inputs, hub_oracle_ref_input_index)
-        expect InlineDatum(hub_oracle_datum) = hub_oracle_ref_input.output.datum
-        expect parsed_hub_oracle_datum: hub.Datum = hub_oracle_datum
-        expect Some(active_node_output) =
-          list.at(outputs, active_node_output_index)
-        expect InlineDatum(active_node_output_datum) = active_node_output.datum
-        expect parsed_active_node_output_datum: NodeDatum =
-          active_node_output_datum
-        expect active_node_operator_output_data: Datum =
-          parsed_active_node_output_datum.data
 
-        expect Some(state_queue_redeemer_pair) =
-          list.at(redeemers, state_queue_redeemer_index)
-        expect CommitBlockHeader { operator, .. } =
-          state_queue_redeemer_pair.2nd
-        and {
-          no_active_operators_minted(mint, active_operators_mint_script_hash),
-          ordered.prove_is_member(
-            active_operators_mint_script_hash,
-            parsed_active_node_output_datum.key,
-            active_node_input.output,
-          ),
-          //keys are already checked by prove_is_member()
-          parsed_active_node_output_datum.link == active_node_input_datum.link,
-          Some(valid_to + maturity_duration) == active_node_operator_output_data.bond_unlock_time,
-          quantity_of(
-            hub_oracle_ref_input.output.value,
-            hub_oracle_script_hash,
-            hub_oracle_asset_name,
-          ) == 1,
-          state_queue_redeemer_pair.1st == Mint(
-            parsed_hub_oracle_datum.state_queue,
-          ),
-          Key(operator) == parsed_active_node_output_datum.key,
+        // 1. The new bond unlock time must be equal to the transaction's
+        //    validity range upper bound plus the maturity duration.
+        //    TODO: Does inclusivity of the upper bound matter here?
+        let valid_to =
+          utils.get_inclusive_upper_bound_of_interval(validity_range)
+        let new_bond_unlock_time = valid_to + maturity_duration
+
+        let linked_list_eval = {
+          // 2. An element from the active operators directory must be spent and
+          //    reproduced without affecting the linked list structure.
+          let
+            m_operator,
+            _active_node_input_data,
+            active_node_output_data,
+          <-
+            linked_list.spend_for_updating_elements_data(
+              element_input_index: active_node_input_index,
+              continued_element_output_index: active_node_output_index,
+              element_input_outref: input_out_ref,
+              inputs: inputs,
+              outputs: outputs,
+              tx_mint: mint,
+            )
+
+          // 3. The spent element must be a node (i.e. not root).
+          expect Some(operator) = m_operator
+
+          // 4. The reproduced node must properly store the new bond unlock
+          //    time.
+          expect NodeData { bond_unlock_time: m_output_bond_unlock_time } =
+            active_node_output_data
+          expect m_output_bond_unlock_time == Some(new_bond_unlock_time)
+
+          // 5. Transaction must spend a UTxO from state queue with the Commit
+          //    Block Header redeemer. The operator's signature should be
+          //    validated there.
+          //
+          //    TODO: Potential optimization opportunities, i.e. using builtin
+          //    functions. This requires implicitly imposing the position of
+          //    `operator` field in the redeemer to be at index 0.
+          expect state_queue.CommitBlockHeader {
+            operator: state_queue_redeemer_operator,
+            ..
+          } =
+            state_queue.get_spending_redeemer_data(
+              hub_oracle_script_hash,
+              hub_oracle_ref_input_index,
+              state_queue_input_index,
+              state_queue_redeemer_index,
+              inputs,
+              reference_inputs,
+              redeemers,
+            )
+
+          // 6. The operator specified in state queue's redeemer must match the
+          //    key of the spending active operator node.
+          expect state_queue_redeemer_operator == operator
+
+          // Done.
+          True
         }
+        linked_list_eval
+          |> finalize_linked_list(active_operators_mint_script_hash)
       }
       UpdateBondHoldNewSettlement {
         active_node_input_index,
@@ -126,8 +133,15 @@ validator spend(
           ..
         } = self
 
+        // 1. The new bond unlock time must be equal to the transaction's
+        //    validity range upper bound plus the maturity duration.
+        //    TODO: Does inclusivity of the upper bound matter here?
+        let valid_to =
+          utils.get_inclusive_upper_bound_of_interval(validity_range)
+        expect valid_to + maturity_duration == new_bond_unlock_time
+
         let linked_list_eval = {
-          // 1. An element from the active operators directory must be spent and
+          // 2. An element from the active operators directory must be spent and
           //    reproduced without affecting the linked list structure.
           let
             m_operator,
@@ -143,13 +157,8 @@ validator spend(
               tx_mint: mint,
             )
 
-          // 2. The spent element must be a node (i.e. not root).
+          // 3. The spent element must be a node (i.e. not root).
           expect Some(operator) = m_operator
-
-          // 3. The new bond unlock time must be equal to the transaction's
-          //    validity range upper bound plus the maturity duration.
-          expect Finite(valid_to) = validity_range.upper_bound.bound_type
-          expect valid_to + maturity_duration == new_bond_unlock_time
 
           // 4. The reproduced node must properly store the new bond unlock
           //    time.
@@ -164,7 +173,7 @@ validator spend(
           //    TODO: Potential optimization opportunities, i.e. using builtin
           //    functions. This requires implicitly imposing the position of
           //    `operator` field in the redeemer to be at index 0.
-          expect AttachResolutionClaim {
+          expect settlement.AttachResolutionClaim {
             operator: settlement_redeemer_operator,
             ..
           } =
@@ -196,22 +205,18 @@ validator spend(
   }
 }
 
-validator mint(
-  slashing_penalty: Int,
-  hub_oracle_script_hash: PolicyId,
-  hub_oracle_asset_name: ByteArray,
-) {
+validator mint(slashing_penalty: Int, hub_oracle_script_hash: PolicyId) {
   mint(redeemer: MintRedeemer, policy_id: PolicyId, self: Transaction) {
     let node_in_outputs = get_node_inputs(self.inputs, policy_id)
     let node_outputs = get_node_outputs(self.outputs, policy_id)
     let node_mint = tokens(self.mint, policy_id)
     when redeemer is {
       Init -> and {
-          quantity_of(self.mint, hub_oracle_script_hash, hub_oracle_asset_name) == 1,
+          quantity_of(self.mint, hub_oracle_script_hash, hub.asset_name) == 1,
           ordered.init(node_outputs, node_mint, policy_id),
         }
       Deinit -> and {
-          quantity_of(self.mint, hub_oracle_script_hash, hub_oracle_asset_name) == -1,
+          quantity_of(self.mint, hub_oracle_script_hash, hub.asset_name) == -1,
           ordered.deinit(node_in_outputs, node_mint, policy_id),
         }
       ActivateOperator {
@@ -239,7 +244,7 @@ validator mint(
           quantity_of(
             hub_oracle_ref_input.output.value,
             hub_oracle_script_hash,
-            hub_oracle_asset_name,
+            hub.asset_name,
           ) == 1,
           ordered.append(
             Key(new_active_operator_key),
@@ -269,13 +274,15 @@ validator mint(
         expect parsed_hub_oracle_datum: hub.Datum = hub_oracle_datum
         expect Some(state_queue_redeemer_pair) =
           list.at(self.redeemers, state_queue_redeemer_index)
-        expect RemoveFraudulentBlockHeader { fraudulent_operator, .. } =
-          state_queue_redeemer_pair.2nd
+        expect state_queue.RemoveFraudulentBlockHeader {
+          fraudulent_operator,
+          ..
+        } = state_queue_redeemer_pair.2nd
         and {
           quantity_of(
             hub_oracle_ref_input.output.value,
             hub_oracle_script_hash,
-            hub_oracle_asset_name,
+            hub.asset_name,
           ) == 1,
           ordered.remove(
             Key(slashed_active_operator_key),
@@ -315,7 +322,7 @@ validator mint(
         // TODO: Potential optimization opportunities, i.e. using builtin
         // functions. This requires implicitly imposing the position of
         // `operator` field in the redeemer to be at index 0.
-        expect DisproveResolutionClaim { operator, .. } =
+        expect settlement.DisproveResolutionClaim { operator, .. } =
           settlement_spending_redeemer_data
         //
         and {
@@ -364,7 +371,7 @@ validator mint(
           quantity_of(
             hub_oracle_ref_input.output.value,
             hub_oracle_script_hash,
-            hub_oracle_asset_name,
+            hub.asset_name,
           ) == 1,
           ordered.remove(
             Key(active_operator_key),

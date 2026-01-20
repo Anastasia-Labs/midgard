@@ -8,6 +8,7 @@ use aiken/crypto.{
 use aiken/interval.{Finite, Interval, NegativeInfinity, PositiveInfinity}
 use aiken_design_patterns/merkelized_validator
 use aiken_design_patterns/stake_validator
+use aiken_design_patterns/validity_range_normalization as vrn
 use cardano/address.{Address, Script}
 use cardano/assets.{AssetName, PolicyId, Value, tokens}
 use cardano/transaction.{
@@ -32,6 +33,20 @@ pub fn is_herebefore(self: Interval, point: Int) -> Bool {
     Finite(hi) -> hi <= point
     PositiveInfinity -> False
     NegativeInfinity -> True
+  }
+}
+
+pub fn get_inclusive_upper_bound_of_interval(interval: Interval) -> Int {
+  when vrn.normalize_time_range(validity_range) is {
+    vrn.ClosedRange { upper, .. } | vrn.FromNegInf { upper } -> upper
+    _ -> fail @"Validity range was expected to be bound at upper end"
+  }
+}
+
+pub fn get_inclusive_lower_bound_of_interval(interval: Interval) -> Int {
+  when vrn.normalize_time_range(validity_range) is {
+    vrn.ClosedRange { lower, .. } | vrn.ToPosInf { lower } -> lower
+    _ -> fail @"Validity range was expected to be bound at lower end"
   }
 }
 
