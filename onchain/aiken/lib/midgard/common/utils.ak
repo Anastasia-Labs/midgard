@@ -85,14 +85,20 @@ pub fn get_own_address(output_reference: OutputReference, txInputs: List<Input>)
 }
 
 /// Helper function for accessing spending UTxO using its input index.
-pub fn get_own_input_at(
+pub fn get_own_authentic_input_at(
   inputs: List<Input>,
   own_out_ref: OutputReference,
+  nft_policy_id: PolicyId,
   input_index: Int,
 ) -> Output {
-  expect Some(Input { output: own_utxo, output_reference: spent_own_out_ref }) =
-    list.at(inputs, input_index)
-  expect (own_out_ref == spent_own_out_ref)?
+  expect Some(Input {
+    output: Output { value, .. } as own_utxo,
+    output_reference: spent_own_out_ref,
+  }) = list.at(inputs, input_index)
+  expect own_out_ref == spent_own_out_ref
+  expect (output_nft_symbol, _, 1) =
+    get_single_asset_from_value_apart_from_ada(value)
+  expect nft_policy_id == output_nft_symbol
   own_utxo
 }
 

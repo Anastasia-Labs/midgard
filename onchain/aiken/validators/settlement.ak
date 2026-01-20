@@ -58,7 +58,12 @@ validator spend(hub_oracle: ScriptHash, settlement_policy_id: ScriptHash) {
 
         // 2. The spent input must be reproduced with a resolution claim.
         let Output { address: input_address, value: input_value, .. } =
-          utils.get_own_input_at(inputs, own_out_ref, settlement_input_index)
+          inputs
+            |> utils.get_own_authentic_input_at(
+                own_out_ref,
+                settlement_policy_id,
+                settlement_input_index,
+              )
         //
         let cont_output_datum_data =
           outputs
@@ -169,8 +174,12 @@ validator spend(hub_oracle: ScriptHash, settlement_policy_id: ScriptHash) {
 
         // 2. The spent input must be reproduced without a resolution claim.
         let Output { address: input_address, value: input_value, .. } =
-          utils.get_own_input_at(inputs, own_out_ref, settlement_input_index)
-        //
+          inputs
+            |> utils.get_own_authentic_input_at(
+                own_out_ref,
+                settlement_policy_id,
+                settlement_input_index,
+              )
         let cont_output_datum_data =
           outputs
             |> utils.get_continued_output_datum_at(
@@ -178,11 +187,9 @@ validator spend(hub_oracle: ScriptHash, settlement_policy_id: ScriptHash) {
                 expected_value: input_value,
                 output_index: settlement_output_index,
               )
-        //
-        // TODO: Can this be done more efficiently?
-        let expected_datum: Data = Datum { ..datum, resolution_claim: None }
-        //
-        expect cont_output_datum_data == expected_datum
+        let expected_datum_data: Data =
+          Datum { ..datum, resolution_claim: None }
+        expect cont_output_datum_data == expected_datum_data
 
         // 3. The transaction must include the Midgard hub oracle NFT in a
         //    reference input.

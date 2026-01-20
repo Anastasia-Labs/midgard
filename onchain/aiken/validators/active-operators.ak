@@ -109,6 +109,7 @@ validator spend(
         }
       }
       UpdateBondHoldNewSettlement {
+        active_node_input_index,
         active_node_output_index,
         hub_oracle_ref_input_index,
         settlement_input_index,
@@ -124,55 +125,68 @@ validator spend(
           validity_range,
           ..
         } = self
-        //
-        expect Finite(valid_to) = validity_range.upper_bound.bound_type
-        //
-        expect Some(active_node_input) =
-          list.find(
-            inputs,
-            fn(input) { input.output_reference == input_out_ref },
-          )
-        expect Some(active_node_input_datum) = datumOpt
-        //
-        expect Some(active_node_output) =
-          list.at(outputs, active_node_output_index)
-        expect InlineDatum(active_node_output_datum) = active_node_output.datum
-        expect parsed_active_node_output_datum: NodeDatum =
-          active_node_output_datum
-        expect active_node_operator_output_data: Datum =
-          parsed_active_node_output_datum.data
-        //
-        let settlement_spending_redeemer_data =
-          settlement.get_spending_redeemer_data(
-            hub_oracle_script_hash,
-            hub_oracle_ref_input_index,
-            settlement_input_index,
-            settlement_redeemer_index,
-            inputs,
-            reference_inputs,
-            redeemers,
-          )
-        // TODO: Potential optimization opportunities, i.e. using builtin
-        // functions. This requires implicitly imposing the position of
-        // `operator` field in the redeemer to be at index 0.
-        expect AttachResolutionClaim { operator, .. } =
-          settlement_spending_redeemer_data
-        //
-        and {
-          no_active_operators_minted(mint, active_operators_mint_script_hash),
-          ordered.prove_is_member(
-            active_operators_mint_script_hash,
-            parsed_active_node_output_datum.key,
-            active_node_input.output,
-          ),
-          //keys are already checked by prove_is_member()
-          parsed_active_node_output_datum.link == active_node_input_datum.link,
-          valid_to + maturity_duration == new_bond_unlock_time,
-          active_node_operator_output_data.bond_unlock_time == Some(
-            new_bond_unlock_time,
-          ),
-          Key(operator) == parsed_active_node_output_datum.key,
+
+        let linked_list_eval = {
+          // 1. An element from the active operators directory must be spent and
+          //    reproduced without affecting the linked list structure.
+          let
+            m_operator,
+            _active_node_input_data,
+            active_node_output_data,
+          <-
+            linked_list.spend_for_updating_elements_data(
+              element_input_index: active_node_input_index,
+              continued_element_output_index: active_node_output_index,
+              element_input_outref: input_out_ref,
+              inputs: inputs,
+              outputs: outputs,
+              tx_mint: mint,
+            )
+
+          // 2. The spent element must be a node (i.e. not root).
+          expect Some(operator) = m_operator
+
+          // 3. The new bond unlock time must be equal to the transaction's
+          //    validity range upper bound plus the maturity duration.
+          expect Finite(valid_to) = validity_range.upper_bound.bound_type
+          expect valid_to + maturity_duration == new_bond_unlock_time
+
+          // 4. The reproduced node must properly store the new bond unlock
+          //    time.
+          expect NodeData { bond_unlock_time: m_output_bond_unlock_time } =
+            active_node_output_data
+          expect m_output_bond_unlock_time == Some(new_bond_unlock_time)
+
+          // 5. Transaction must spend a UTxO from settlement with the Attach
+          //    Resolution Claim redeemer. The operator's signature should be
+          //    validated there.
+          //
+          //    TODO: Potential optimization opportunities, i.e. using builtin
+          //    functions. This requires implicitly imposing the position of
+          //    `operator` field in the redeemer to be at index 0.
+          expect AttachResolutionClaim {
+            operator: settlement_redeemer_operator,
+            ..
+          } =
+            settlement.get_spending_redeemer_data(
+              hub_oracle_script_hash,
+              hub_oracle_ref_input_index,
+              settlement_input_index,
+              settlement_redeemer_index,
+              inputs,
+              reference_inputs,
+              redeemers,
+            )
+
+          // 6. The operator specified in settlement's redeemer must match the
+          //    key of the spending active operator node.
+          expect settlement_redeemer_operator == operator
+
+          // Done.
+          True
         }
+        linked_list_eval
+          |> finalize_linked_list(active_operators_mint_script_hash)
       }
     }
   }

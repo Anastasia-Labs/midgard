@@ -217,6 +217,9 @@ pub fn valid_event_inclusion(
   }
 }
 
+/// > [!NOTE]
+/// > No validations on the state token. Only that it comes from
+/// > `settlement_addr`'s payment credential.
 pub fn get_spending_redeemer_data(
   hub_oracle_script_hash: ScriptHash,
   hub_oracle_ref_input_index: Int,
