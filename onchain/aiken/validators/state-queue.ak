@@ -66,10 +66,9 @@ validator mint(
           upper: current_time_upper,
         } = vrn.normalize_time_range(validity_range)
 
-        // 1. Estimate current time by taking the average of a time range that
-        //    is shorter than 5 minutes.
+        // 1. Estimate current time by taking the upper bound of a time range
+        //    that is shorter than 5 minutes.
         expect current_time_upper - current_time_lower <= five_minutes
-        let current_time = ( current_time_upper + current_time_lower ) / 2
 
         // 2. The produced root UTxO must have a `ConfirmedState` data with zero
         //    hashes, and an empty ledger (i.e. `utxo_root` must be that of an
@@ -79,8 +78,8 @@ validator mint(
             header_hash: genesis_header_hash,
             prev_header_hash: genesis_header_hash,
             utxo_root: genesis_utxo_root,
-            start_time: current_time,
-            end_time: current_time,
+            start_time: current_time_upper,
+            end_time: current_time_upper,
             protocol_version: genesis_protocol_version,
           }
 
@@ -334,7 +333,7 @@ validator mint(
             input_header_node_data,
             output_confirmed_state_data,
           <-
-            fold_and_burn(
+            linked_list.fold_and_burn(
               anchor_root_input: confirmed_state_input,
               folding_node_input: header_node_input,
               continued_anchor_root_output: confirmed_state_output,
