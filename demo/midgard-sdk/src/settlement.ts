@@ -728,64 +728,111 @@ export const fetchUserEventRefUTxO = (
   Effect.gen(function* () {
     const allUTxOs = yield* Effect.tryPromise({
       try: () => lucid.utxosAt(userEventAddress),
-      catch: (err) =>
-        new LucidError({
-          message: "Failed to fetch User Event UTxOs",
-          cause: err,
-        }),
+      catch: (err) => new LucidError({
+        message: "Failed to fetch User Event UTxOs",
+        cause: err,
+      }),
     });
-    if (userEventType === "Deposit") {
-      const depositRefUTxOs = yield* utxosToDepositUTxOs(
-        allUTxOs,
-        userEventPolicyId,
-      );
-      if (depositRefUTxOs.length === 0) {
-        yield* Effect.fail(
-          new LucidError({
-            message: "Failed to build the User Event transaction",
-            cause: "No UTxOs found in User Event contract address",
-          }),
-        );
-      }
-      return { eventType: "Deposit", utxo: depositRefUTxOs[0].utxo };
-    } else if ("TxOrder" in userEventType) {
-      const txOrderRefUTxOs = yield* utxosToTxOrderUTxOs(
-        allUTxOs,
-        userEventPolicyId,
-      );
-      if (txOrderRefUTxOs.length === 0) {
-        yield* Effect.fail(
-          new LucidError({
-            message: "Failed to build the User Event transaction",
-            cause: "No UTxOs found in User Event contract address",
-          }),
-        );
-      }
-      return { eventType: "TxOrder", utxo: txOrderRefUTxOs[0].utxo };
-    } else if ("Withdrawal" in userEventType) {
-      const withdrawalRefUTxOs = yield* utxosToWithdrawalUTxOs(
-        allUTxOs,
-        userEventPolicyId,
-      );
-      if (withdrawalRefUTxOs.length === 0) {
-        yield* Effect.fail(
-          new LucidError({
-            message: "Failed to build the User Event transaction",
-            cause: "No UTxOs found in User Event contract address",
-          }),
-        );
-      }
-      return { eventType: "Withdrawal", utxo: withdrawalRefUTxOs[0].utxo };
-    } else {
-      return yield* Effect.fail(
-        new LucidError({
-          message: "Invalid Event Type",
-          cause:
-            "Event Type must be either Deposit or object with TxOrder/Withdrawal",
-        }),
-      );
+
+    const getHeadOfList = (list: { utxo: UTxO }[]) => 
+      Option.map(EffectArray.head(list), (item) => item.utxo);
+
+    const unresolvedUTxO: Option.Option<UTxO> = yield* (
+      userEventType === "Deposit"
+        ? utxosToDepositUTxOs(allUTxOs, userEventPolicyId).pipe(Effect.map(getHeadOfList))
+        : "TxOrder" in userEventType
+        ? utxosToTxOrderUTxOs(allUTxOs, userEventPolicyId).pipe(Effect.map(getHeadOfList))
+        : "Withdrawal" in userEventType
+        ? utxosToWithdrawalUTxOs(allUTxOs, userEventPolicyId).pipe(Effect.map(getHeadOfList))
+        : Effect.fail(new LucidError(
+          { message: "Invalid Event Type", 
+            cause:"Event Type must be either Deposit or object with TxOrder/Withdrawal" 
+          }))
+    );
+
+    if (Option.isSome(unresolvedUTxO)) {
+      return { 
+        eventType: userEventType, 
+        utxo: unresolvedUTxO.value 
+      } as UserEventUTxO;
     }
-  });
+    return yield* Effect.fail(
+      new LucidError({
+        message: "No Unresolved User Event UTxO found",
+        cause: `No unspent UTxOs matching the ${typeof userEventType === "string" 
+    ? userEventType 
+    : Object.keys(userEventType)[0]} event type.`,
+      })
+    );
+  }); 
+
+// export const fetchUserEventRefUTxO = (
+//   userEventType: EventType,
+//   userEventAddress: string,
+//   userEventPolicyId: string,
+//   lucid: LucidEvolution,
+// ): Effect.Effect<UserEventUTxO, LucidError> =>
+//   Effect.gen(function* () {
+//     const allUTxOs = yield* Effect.tryPromise({
+//       try: () => lucid.utxosAt(userEventAddress),
+//       catch: (err) =>
+//         new LucidError({
+//           message: "Failed to fetch User Event UTxOs",
+//           cause: err,
+//         }),
+//     });
+//     if (userEventType === "Deposit") {
+//       const depositRefUTxOs = yield* utxosToDepositUTxOs(
+//         allUTxOs,
+//         userEventPolicyId,
+//       );
+//       if (depositRefUTxOs.length === 0) {
+//         yield* Effect.fail(
+//           new LucidError({
+//             message: "Failed to build the User Event transaction",
+//             cause: "No UTxOs found in User Event contract address",
+//           }),
+//         );
+//       }
+//       return { eventType: "Deposit", utxo: depositRefUTxOs[0].utxo };
+//     } else if ("TxOrder" in userEventType) {
+//       const txOrderRefUTxOs = yield* utxosToTxOrderUTxOs(
+//         allUTxOs,
+//         userEventPolicyId,
+//       );
+//       if (txOrderRefUTxOs.length === 0) {
+//         yield* Effect.fail(
+//           new LucidError({
+//             message: "Failed to build the User Event transaction",
+//             cause: "No UTxOs found in User Event contract address",
+//           }),
+//         );
+//       }
+//       return { eventType: "TxOrder", utxo: txOrderRefUTxOs[0].utxo };
+//     } else if ("Withdrawal" in userEventType) {
+//       const withdrawalRefUTxOs = yield* utxosToWithdrawalUTxOs(
+//         allUTxOs,
+//         userEventPolicyId,
+//       );
+//       if (withdrawalRefUTxOs.length === 0) {
+//         yield* Effect.fail(
+//           new LucidError({
+//             message: "Failed to build the User Event transaction",
+//             cause: "No UTxOs found in User Event contract address",
+//           }),
+//         );
+//       }
+//       return { eventType: "Withdrawal", utxo: withdrawalRefUTxOs[0].utxo };
+//     } else {
+//       return yield* Effect.fail(
+//         new LucidError({
+//           message: "Invalid Event Type",
+//           cause:
+//             "Event Type must be either Deposit or object with TxOrder/Withdrawal",
+//         }),
+//       );
+//     }
+//   });
 
 /**
  * Settlement
