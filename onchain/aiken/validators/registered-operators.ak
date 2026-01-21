@@ -119,7 +119,7 @@ validator mint(
       }
 
       Activate {
-        node_to_activate_key,
+        operator_to_activate,
         hub_oracle_ref_input_index,
         retired_operator_ref_input_index,
         retired_operator_asset_name,
@@ -152,7 +152,7 @@ validator mint(
 
         and {
           unordered.remove(
-            Key(node_to_activate_key),
+            Key(operator_to_activate),
             removed_node_input_index,
             anchor_node_input_index,
             node_in_outputs,
@@ -166,7 +166,7 @@ validator mint(
             hub_oracle_asset_name,
           ) == 1,
           ordered.insert(
-            ordered.Key(node_to_activate_key),
+            ordered.Key(operator_to_activate),
             active_operators_inserted_node_output_index,
             active_operators_anchor_node_output_index,
             active_operators_node_in_outputs,
@@ -180,7 +180,7 @@ validator mint(
           ) == 1,
           ordered.prove_is_not_member(
             parsed_hub_oracle_datum.retired_operators,
-            ordered.Key(node_to_activate_key),
+            ordered.Key(operator_to_activate),
             retired_operator_ref_input.output,
           ),
         }

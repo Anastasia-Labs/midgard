@@ -9,7 +9,7 @@ use midgard/active_operators.{
   ActivateOperator, Datum, Deinit, Init, ListStateTransition, MintRedeemer,
   RemoveOperatorBadSettlement, RemoveOperatorBadState, RetireOperator,
   SpendRedeemer, UpdateBondHoldNewSettlement, UpdateBondHoldNewState,
-  finalize_linked_list,
+  finalize_linked_list, root_asset_name,
 }
 use midgard/common/utils
 use midgard/hub_oracle as hub
@@ -218,60 +218,120 @@ validator spend(
 }
 
 validator mint(slashing_penalty: Int, hub_oracle_script_hash: PolicyId) {
-  mint(redeemer: MintRedeemer, policy_id: PolicyId, self: Transaction) {
-    let node_in_outputs = get_node_inputs(self.inputs, policy_id)
-    let node_outputs = get_node_outputs(self.outputs, policy_id)
-    let node_mint = tokens(self.mint, policy_id)
+  mint(redeemer: MintRedeemer, own_policy_id: PolicyId, self: Transaction) {
     when redeemer is {
-      Init -> and {
-          quantity_of(self.mint, hub_oracle_script_hash, hub.asset_name) == 1,
-          ordered.init(node_outputs, node_mint, policy_id),
-        }
-      Deinit -> and {
-          quantity_of(self.mint, hub_oracle_script_hash, hub.asset_name) == -1,
-          ordered.deinit(node_in_outputs, node_mint, policy_id),
-        }
-      ActivateOperator {
-        new_active_operator_key,
-        hub_oracle_ref_input_index,
-        active_operator_appended_node_output_index,
-        active_operator_anchor_node_output_index,
-        registered_operators_redeemer_index,
-      } -> {
-        expect Some(active_node_output) =
-          list.at(node_outputs, active_operator_appended_node_output_index)
-        expect InlineDatum(active_operator_datum) = active_node_output.datum
-        expect parsed_active_operator_datum: NodeDatum = active_operator_datum
-        expect active_operator_data: Datum = parsed_active_operator_datum.data
-        expect Some(hub_oracle_ref_input) =
-          list.at(self.reference_inputs, hub_oracle_ref_input_index)
-        expect InlineDatum(hub_oracle_datum) = hub_oracle_ref_input.output.datum
-        expect parsed_hub_oracle_datum: hub.Datum = hub_oracle_datum
-        expect Some(registered_operators_redeemer_pair) =
-          list.at(self.redeemers, registered_operators_redeemer_index)
-        expect registered_operators.Activate { node_to_activate_key, .. } =
-          registered_operators_redeemer_pair.2nd
+      Init { output_index } -> {
+        let Transaction { outputs, mint, .. } = self
 
-        and {
-          quantity_of(
-            hub_oracle_ref_input.output.value,
+        // 1. An output must exist at specified index.
+        expect Some(root_output) = outputs |> list.get(output_index)
+
+        // 2. Linked list must be initiated with a void root data, and
+        //    validation that a hub oracle NFT is getting minted.
+        linked_list.init(
+          nonce_validated: quantity_of(
+            mint,
             hub_oracle_script_hash,
             hub.asset_name,
           ) == 1,
-          ordered.append(
-            Key(new_active_operator_key),
-            active_operator_appended_node_output_index,
-            active_operator_anchor_node_output_index,
-            node_in_outputs,
-            node_outputs,
-            node_mint,
-          ),
-          active_operator_data.bond_unlock_time == None,
-          registered_operators_redeemer_pair.1st == Mint(
-            parsed_hub_oracle_datum.registered_operators,
-          ),
-          node_to_activate_key == new_active_operator_key,
+          produced_element_output: root_output,
+          tx_mint: mint,
+          root_data_validator: fn(root_data: Data) -> Bool { root_data == Void },
+        )
+          |> linked_list.run_root_with(own_policy_id, root_asset_name)
+      }
+      Deinit { input_index } -> {
+        let Transaction { inputs, mint, .. } = self
+
+        // 1. An input must exist at specified index.
+        expect Some(own_input) = inputs |> list.at(input_index)
+
+        // 2. Hub oracle NFT must be getting burnt.
+        expect quantity_of(mint, hub_oracle_script_hash, hub.asset_name)
+
+        // 3. Linked list de-initialization must be valid. No other validations
+        //    required.
+        expect
+          deinit(
+            root_input: own_input,
+            tx_mint: mint,
+            root_data_validator: fn(_) -> Bool { True },
+          )
+            |> linked_list.run_root_with(
+                own_policy_id,
+                confirmed_state_asset_name,
+              )
+
+        // Done.
+        True
+      }
+      ActivateOperator {
+        new_active_operator_key,
+        hub_oracle_ref_input_index,
+        active_operator_anchor_element_input_index,
+        active_operator_anchor_element_output_index,
+        active_operator_inserted_node_output_index,
+        registered_operators_redeemer_index,
+      } -> {
+        let Transaction {
+          inputs,
+          outputs,
+          reference_inputs,
+          mint,
+          redeemers,
+          ..
+        } = self
+
+        let hub.Datum {
+          registered_operators: registered_operators_policy_id,
+          ..
+        } =
+          hub.get_datum(
+            reference_inputs,
+            hub_oracle_script_hash,
+            hub_oracle_ref_input_index,
+          )
+
+        expect registered_operators.Activate { operator_to_activate, .. } =
+          redeemers
+            |> utils.get_redeemer_at(
+                expected_purpose: Mint(registered_operators_policy_id),
+                redeemer_index: registered_operators_redeemer_index,
+              )
+
+        expect operator_to_activate == new_active_operator_key
+
+        expect Some(active_operator_anchor_element_input) =
+          inputs |> list.at(active_operator_anchor_element_input_index)
+        expect Some(active_operator_anchor_element_output) =
+          outputs |> list.at(active_operator_anchor_element_output_index)
+        expect Some(active_operator_inserted_node) =
+          outputs |> list.at(active_operator_inserted_node_output_index)
+
+        let linked_list_eval = {
+          let
+            _m_anchor_key,
+            _anchor_data,
+            inserted_node_key,
+            inserted_node_data,
+          <-
+            linked_list.insert_ordered(
+              active_operator_anchor_element_input,
+              active_operator_anchor_element_output,
+              active_operator_inserted_node,
+              mint,
+            )
+
+          expect inserted_node_key == new_active_operator_key
+
+          let expected_inserted_node_data: Data =
+            NodeData { bond_unlock_time: None }
+          expect inserted_node_data == expected_inserted_node_data
+
+          // Done.
+          True
         }
+        linked_list_eval |> finalize_linked_list(own_policy_id)
       }
       RemoveOperatorBadState {
         slashed_active_operator_key,
@@ -408,8 +468,4 @@ validator mint(slashing_penalty: Int, hub_oracle_script_hash: PolicyId) {
   else(_) {
     fail
   }
-}
-
-fn no_active_operators_minted(mint: Value, policy_id: PolicyId) {
-  utils.quantity_of_policy_id(mint, policy_id) == 0
 }

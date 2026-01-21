@@ -4,7 +4,7 @@ use cardano/assets.{AssetName, PolicyId}
 use cardano/transaction.{InlineDatum, Input, Output}
 use midgard/common/utils
 
-pub const asset_name: AssetName = #""
+pub const asset_name: AssetName = "MIDGARD_HUB_ORACLE"
 
 pub type Datum {
   registered_operators: PolicyId,

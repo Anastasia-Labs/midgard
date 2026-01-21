@@ -57,7 +57,7 @@ validator mint(
   mint(redeemer: MintRedeemer, own_policy_id: PolicyId, self: Transaction) {
     when redeemer is {
       Init { output_index } -> {
-        let Transaction { mint, validity_range, .. } = self
+        let Transaction { outputs, mint, validity_range, .. } = self
 
         expect Some(root_output) = outputs |> list.get(output_index)
 
@@ -93,7 +93,7 @@ validator mint(
               hub.asset_name,
             ) == 1,
             produced_element_output: root_output,
-            tx_mint: ming,
+            tx_mint: mint,
             root_data_validator: fn(root_data: Data) -> Bool {
               root_data == expected_root_data
             },

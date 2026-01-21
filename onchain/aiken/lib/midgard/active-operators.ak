@@ -1,3 +1,5 @@
+use aiken/crypto.{VerificationKeyHash}
+use aiken/primitive/bytearray
 use aiken_design_patterns/linked_list
 use cardano/assets.{AssetName, PolicyId}
 use midgard/common/types.{PosixTime}
@@ -41,13 +43,14 @@ pub type SpendRedeemer {
 }
 
 pub type MintRedeemer {
-  Init
-  Deinit
+  Init { output_index: Int }
+  Deinit { input_index: Int }
   ActivateOperator {
-    new_active_operator_key: ByteArray,
+    new_active_operator_key: VerificationKeyHash,
     hub_oracle_ref_input_index: Int,
-    active_operator_appended_node_output_index: Int,
-    active_operator_anchor_node_output_index: Int,
+    active_operator_anchor_element_input_index: Int,
+    active_operator_anchor_element_output_index: Int,
+    active_operator_inserted_node_output_index: Int,
     registered_operators_redeemer_index: Int,
   }
   RemoveOperatorBadState {
