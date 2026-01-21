@@ -108,40 +108,6 @@ pub fn get_block_datum(
       )
 }
 
-/// > [!NOTE]
-/// > No validations on the linked list NFT. Only that it comes from
-/// > `state_queue_addr`'s payment credential.
-pub fn get_spending_redeemer_data(
-  hub_oracle_script_hash: ScriptHash,
-  hub_oracle_ref_input_index: Int,
-  state_queue_input_index: Int,
-  state_queue_redeemer_index: Int,
-  inputs: List<Input>,
-  reference_inputs: List<Input>,
-  redeemers: Pairs<ScriptPurpose, Redeemer>,
-) -> Data {
-  let hub.Datum { state_queue_addr, .. } =
-    hub.get_datum(
-      reference_inputs,
-      hub_oracle_script_hash,
-      hub_oracle_ref_input_index,
-    )
-  //
-  expect Some(Input {
-    output_reference: settlement_input_outref,
-    output: Output { address: state_queue_input_address, .. },
-  }) = inputs |> list.at(state_queue_input_index)
-  //
-  expect
-    state_queue_input_address.payment_credential == state_queue_addr.payment_credential
-  //
-  redeemers
-    |> utils.get_redeemer_at(
-        Spend(state_queue_input_outref),
-        state_queue_redeemer_index,
-      )
-}
-
 pub fn finalize_linked_list(
   eval: linked_list.Eval,
   state_queue_policy: PolicyId,

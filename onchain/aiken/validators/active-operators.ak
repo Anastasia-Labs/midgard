@@ -84,7 +84,15 @@ validator spend(
             active_node_output_data
           expect m_output_bond_unlock_time == Some(new_bond_unlock_time)
 
-          // 5. Transaction must spend a UTxO from state queue with the Commit
+          // 5. Transaction must have the hub oracle's UTxO referenced.
+          let hub.Datum { state_queue_addr, .. } =
+            hub.get_datum(
+              reference_inputs,
+              hub_oracle_script_hash,
+              hub_oracle_ref_input_index,
+            )
+
+          // 6. Transaction must spend a UTxO from state queue with the Commit
           //    Block Header redeemer. The operator's signature should be
           //    validated there.
           //
@@ -95,17 +103,15 @@ validator spend(
             operator: state_queue_redeemer_operator,
             ..
           } =
-            state_queue.get_spending_redeemer_data(
-              hub_oracle_script_hash,
-              hub_oracle_ref_input_index,
+            utils.get_spending_redeemer_data_at(
+              state_queue_addr,
               state_queue_input_index,
               state_queue_redeemer_index,
               inputs,
-              reference_inputs,
               redeemers,
             )
 
-          // 6. The operator specified in state queue's redeemer must match the
+          // 7. The operator specified in state queue's redeemer must match the
           //    key of the spending active operator node.
           expect state_queue_redeemer_operator == operator
 
@@ -166,7 +172,15 @@ validator spend(
             active_node_output_data
           expect m_output_bond_unlock_time == Some(new_bond_unlock_time)
 
-          // 5. Transaction must spend a UTxO from settlement with the Attach
+          // 5. Transaction must have the hub oracle's UTxO referenced.
+          let hub.Datum { settlement_addr, .. } =
+            hub.get_datum(
+              reference_inputs,
+              hub_oracle_script_hash,
+              hub_oracle_ref_input_index,
+            )
+
+          // 6. Transaction must spend a UTxO from settlement with the Attach
           //    Resolution Claim redeemer. The operator's signature should be
           //    validated there.
           //
@@ -177,17 +191,15 @@ validator spend(
             operator: settlement_redeemer_operator,
             ..
           } =
-            settlement.get_spending_redeemer_data(
-              hub_oracle_script_hash,
-              hub_oracle_ref_input_index,
+            utils.get_spending_redeemer_data_at(
+              settlement_addr,
               settlement_input_index,
               settlement_redeemer_index,
               inputs,
-              reference_inputs,
               redeemers,
             )
 
-          // 6. The operator specified in settlement's redeemer must match the
+          // 7. The operator specified in settlement's redeemer must match the
           //    key of the spending active operator node.
           expect settlement_redeemer_operator == operator
 
@@ -309,21 +321,23 @@ validator mint(slashing_penalty: Int, hub_oracle_script_hash: PolicyId) {
       } -> {
         let Transaction { inputs, reference_inputs, redeemers, fee, .. } = self
         //
-        let settlement_spending_redeemer_data =
-          settlement.get_spending_redeemer_data(
+        let hub.Datum { settlement_addr, .. } =
+          hub.get_datum(
+            reference_inputs,
             hub_oracle_script_hash,
             hub_oracle_ref_input_index,
-            settlement_input_index,
-            settlement_redeemer_index,
-            inputs,
-            reference_inputs,
-            redeemers,
           )
         // TODO: Potential optimization opportunities, i.e. using builtin
         // functions. This requires implicitly imposing the position of
         // `operator` field in the redeemer to be at index 0.
         expect settlement.DisproveResolutionClaim { operator, .. } =
-          settlement_spending_redeemer_data
+          utils.get_spending_redeemer_data_at(
+            settlement_addr,
+            settlement_input_index,
+            settlement_redeemer_index,
+            inputs,
+            redeemers,
+          )
         //
         and {
           ordered.remove(

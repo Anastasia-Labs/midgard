@@ -99,24 +99,6 @@ pub fn get_own_address(output_reference: OutputReference, txInputs: List<Input>)
   input.output.address
 }
 
-/// Helper function for accessing spending UTxO using its input index.
-pub fn get_own_authentic_input_at(
-  inputs: List<Input>,
-  own_out_ref: OutputReference,
-  nft_policy_id: PolicyId,
-  input_index: Int,
-) -> Output {
-  expect Some(Input {
-    output: Output { value, .. } as own_utxo,
-    output_reference: spent_own_out_ref,
-  }) = list.at(inputs, input_index)
-  expect own_out_ref == spent_own_out_ref
-  expect (output_nft_symbol, _, 1) =
-    get_single_asset_from_value_apart_from_ada(value)
-  expect nft_policy_id == output_nft_symbol
-  own_utxo
-}
-
 pub fn is_output_to_sc(output: Output, scHash: ByteArray) -> Bool {
   when output.address.payment_credential is {
     Script(hash) -> hash == scHash
@@ -364,27 +346,6 @@ pub fn get_authentic_input_of(
   found_ref_input
 }
 
-/// Helper useful for spending validators. Also ensures no reference scripts are
-/// attached.
-pub fn get_continued_output_datum_at(
-  outputs: List<Output>,
-  expected_address: Address,
-  expected_value: Value,
-  output_index: Int,
-) -> Data {
-  expect Some(Output {
-    address: output_address,
-    value: output_value,
-    datum: InlineDatum(output_datum_data),
-    reference_script: None,
-  }) = list.at(outputs, output_index)
-
-  expect output_address == expected_address
-  expect output_value == expected_value
-
-  output_datum_data
-}
-
 /// Helper useful for minting/withdrawal validators. Also ensures no reference
 /// scripts are attached.
 pub fn get_authentic_output_datum_at_address_with_nft_at(
@@ -525,6 +486,26 @@ pub fn get_redeemer_at(
   expect Some(redeemer_pair) = redeemers |> list.at(redeemer_index)
   expect redeemer_pair.1st == expected_purpose
   redeemer_pair.2nd
+}
+
+/// > [!NOTE]
+/// > No validations on state tokens. Only that the specified input comes from
+/// > `script_address`'s payment credential.
+pub fn get_spending_redeemer_data_at(
+  script_address: Address,
+  input_index: Int,
+  redeemer_index: Int,
+  inputs: List<Input>,
+  redeemers: Pairs<ScriptPurpose, Redeemer>,
+) -> Data {
+  expect Some(Input {
+    output_reference: input_outref,
+    output: Output { address: input_address, .. },
+  }) = inputs |> list.at(input_index)
+  //
+  expect input_address.payment_credential == script_address.payment_credential
+  //
+  redeemers |> utils.get_redeemer_at(Spend(input_outref), redeemer_index)
 }
 
 /// Merkelized validator abstraction for `phas` function from Plutarch.
