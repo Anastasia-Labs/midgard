@@ -728,43 +728,54 @@ export const fetchUserEventRefUTxO = (
   Effect.gen(function* () {
     const allUTxOs = yield* Effect.tryPromise({
       try: () => lucid.utxosAt(userEventAddress),
-      catch: (err) => new LucidError({
-        message: "Failed to fetch User Event UTxOs",
-        cause: err,
-      }),
+      catch: (err) =>
+        new LucidError({
+          message: "Failed to fetch User Event UTxOs",
+          cause: err,
+        }),
     });
 
-    const getHeadOfList = (list: { utxo: UTxO }[]) => 
+    const getHeadOfList = (list: { utxo: UTxO }[]) =>
       Option.map(EffectArray.head(list), (item) => item.utxo);
 
-    const unresolvedUTxO: Option.Option<UTxO> = yield* (
-      userEventType === "Deposit"
-        ? utxosToDepositUTxOs(allUTxOs, userEventPolicyId).pipe(Effect.map(getHeadOfList))
-        : "TxOrder" in userEventType
-        ? utxosToTxOrderUTxOs(allUTxOs, userEventPolicyId).pipe(Effect.map(getHeadOfList))
+    const unresolvedUTxO: Option.Option<UTxO> = yield* userEventType ===
+    "Deposit"
+      ? utxosToDepositUTxOs(allUTxOs, userEventPolicyId).pipe(
+          Effect.map(getHeadOfList),
+        )
+      : "TxOrder" in userEventType
+        ? utxosToTxOrderUTxOs(allUTxOs, userEventPolicyId).pipe(
+            Effect.map(getHeadOfList),
+          )
         : "Withdrawal" in userEventType
-        ? utxosToWithdrawalUTxOs(allUTxOs, userEventPolicyId).pipe(Effect.map(getHeadOfList))
-        : Effect.fail(new LucidError(
-          { message: "Invalid Event Type", 
-            cause:"Event Type must be either Deposit or object with TxOrder/Withdrawal" 
-          }))
-    );
+          ? utxosToWithdrawalUTxOs(allUTxOs, userEventPolicyId).pipe(
+              Effect.map(getHeadOfList),
+            )
+          : Effect.fail(
+              new LucidError({
+                message: "Invalid Event Type",
+                cause:
+                  "Event Type must be either Deposit or object with TxOrder/Withdrawal",
+              }),
+            );
 
     if (Option.isSome(unresolvedUTxO)) {
-      return { 
-        eventType: userEventType, 
-        utxo: unresolvedUTxO.value 
+      return {
+        eventType: userEventType,
+        utxo: unresolvedUTxO.value,
       } as UserEventUTxO;
     }
     return yield* Effect.fail(
       new LucidError({
         message: "No Unresolved User Event UTxO found",
-        cause: `No unspent UTxOs matching the ${typeof userEventType === "string" 
-    ? userEventType 
-    : Object.keys(userEventType)[0]} event type.`,
-      })
+        cause: `No unspent UTxOs matching the ${
+          typeof userEventType === "string"
+            ? userEventType
+            : Object.keys(userEventType)[0]
+        } event type.`,
+      }),
     );
-  }); 
+  });
 
 // export const fetchUserEventRefUTxO = (
 //   userEventType: EventType,
@@ -957,45 +968,60 @@ export const getOperatorNodeUTxO = (
   retiredOperatorAllUtxos: UTxO[],
   operatorPKH: string,
 ): Effect.Effect<OperatorNodeUTxO, DataCoercionError | LucidError> => {
-  const searchOperator = (utxos: UTxO[], datum: ActiveOperatorDatum | RetiredOperatorDatum, status: "ActiveOperator" | "RetiredOperator") =>
+  const searchOperator = (
+    utxos: UTxO[],
+    datum: ActiveOperatorDatum | RetiredOperatorDatum,
+    status: "ActiveOperator" | "RetiredOperator",
+  ) =>
     Effect.gen(function* () {
       const matchedOperator = EffectArray.findFirst(utxos, (utxo) => {
-        if (!utxo.datum) return false
+        if (!utxo.datum) return false;
         try {
           const parsedDatum = Data.from(utxo.datum, datum);
           return parsedDatum.key === operatorPKH;
-        } catch { return false }
+        } catch {
+          return false;
+        }
       });
       if (Option.isNone(matchedOperator)) {
-      return yield* Effect.fail("NotFound");
-    }
+        return yield* Effect.fail("NotFound");
+      }
 
-    const utxo = matchedOperator.value;
+      const utxo = matchedOperator.value;
 
-    return yield* Effect.try({
-      try: () => ({
-        utxo,
-        datum: Data.from(utxo.datum!, datum),
-        status
-      }),
-      catch: (err) => new DataCoercionError({
-        message: `Could not coerce UTxO's datum to a ActiveOperator/retiredOperator datum`,
-        cause: err
-      })
+      return yield* Effect.try({
+        try: () => ({
+          utxo,
+          datum: Data.from(utxo.datum!, datum),
+          status,
+        }),
+        catch: (err) =>
+          new DataCoercionError({
+            message: `Could not coerce UTxO's datum to a ActiveOperator/retiredOperator datum`,
+            cause: err,
+          }),
+      });
     });
-  });
-  return searchOperator(activeOperatorAllUtxos, ActiveOperatorDatum, "ActiveOperator").pipe(
-    Effect.orElse(() => 
-      searchOperator(retiredOperatorAllUtxos, RetiredOperatorDatum, "RetiredOperator")
+  return searchOperator(
+    activeOperatorAllUtxos,
+    ActiveOperatorDatum,
+    "ActiveOperator",
+  ).pipe(
+    Effect.orElse(() =>
+      searchOperator(
+        retiredOperatorAllUtxos,
+        RetiredOperatorDatum,
+        "RetiredOperator",
+      ),
     ),
-    Effect.mapError((err) => 
-      err instanceof DataCoercionError 
-    ? err
-    : new LucidError({
-           message: `No Operator UTxO with key "${operatorPKH}" found`,
-           cause: "Operator not found in active or retired UTxOs",
-       })
-    )
+    Effect.mapError((err) =>
+      err instanceof DataCoercionError
+        ? err
+        : new LucidError({
+            message: `No Operator UTxO with key "${operatorPKH}" found`,
+            cause: "Operator not found in active or retired UTxOs",
+          }),
+    ),
   );
 };
 
