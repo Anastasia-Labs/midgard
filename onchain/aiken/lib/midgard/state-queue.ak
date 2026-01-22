@@ -24,6 +24,19 @@ pub const block_asset_name_prefix_length: Int =
 pub type Datum =
   linked_list.Element<ConfirmedState, Header>
 
+pub type SpendRedeemer {
+  ListStateTransition
+  CutOffFraudulentBlockHeader {
+    anchor_element_input_index: Int,
+    anchor_element_output_index: Int,
+    operators_redeemer_index: Int,
+    fraud_proof_ref_input_index: Int,
+    fraudulent_blocks_header_hash: HeaderHash,
+    fraudulent_operator: VerificationKeyHash,
+    operator_is_active: Bool,
+  }
+}
+
 pub type MintRedeemer {
   Init { output_index: Int }
   Deinit { input_index: Int }
@@ -43,15 +56,15 @@ pub type MintRedeemer {
     confirmed_state_output_index: Int,
     settlement_redeemer_index: Int,
   }
-  RemoveFraudulentBlockHeader {
-    removed_node_input_index: Int,
-    predecessor_node_input_index: Int,
-    predecessor_node_output_index: Int,
-    operators_redeemer_index: Int,
+  RemoveFraudulentBlocksLink {
+    fraudulent_node_input_index: Int,
+    fraudulent_node_output_index: Int,
+    link_input_index: Int,
     fraud_proof_ref_input_index: Int,
-    fraudulent_blocks_header_hash: HeaderHash,
-    fraudulent_operator: VerificationKeyHash,
-    operator_is_active: Bool,
+  }
+  RemoveFraudulentBlockHeader {
+    fraudulent_node_input_index: Int,
+    fraud_proof_ref_input_index: Int,
   }
 }
 
