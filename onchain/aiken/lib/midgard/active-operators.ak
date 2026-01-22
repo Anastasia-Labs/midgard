@@ -54,10 +54,11 @@ pub type MintRedeemer {
     registered_operators_redeemer_index: Int,
   }
   RemoveOperatorBadState {
-    slashed_active_operator_key: ByteArray,
+    slashed_active_operator_key: VerificationKeyHash,
     hub_oracle_ref_input_index: Int,
     active_operator_slashed_node_input_index: Int,
     active_operator_anchor_node_input_index: Int,
+    active_operator_anchor_node_output_index: Int,
     state_queue_redeemer_index: Int,
   }
   RemoveOperatorBadSettlement {

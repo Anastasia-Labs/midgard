@@ -461,6 +461,9 @@ validator mint(
           list.at(outputs, predecessor_node_output_index)
 
         let linked_list_eval = {
+          // TODO: This should be fixed. The generic element removal does not
+          //       work here as the list needs to be cut off (i.e. the tail must
+          //       be disposed).
           let
             _m_predecessor_node_key,
             _predecessor_node_data,

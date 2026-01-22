@@ -13,7 +13,7 @@ use midgard/active_operators.{
 }
 use midgard/common/utils
 use midgard/hub_oracle as hub
-use midgard/protocol_parameters.{maturity_duration}
+use midgard/protocol_parameters.{maturity_duration, slashing_penalty}
 use midgard/registered_operators
 use midgard/retired_operators.{Datum as RetiredOperatorData}
 use midgard/settlement
@@ -217,7 +217,7 @@ validator spend(
   }
 }
 
-validator mint(slashing_penalty: Int, hub_oracle_script_hash: PolicyId) {
+validator mint(hub_oracle_script_hash: PolicyId) {
   mint(redeemer: MintRedeemer, own_policy_id: PolicyId, self: Transaction) {
     when redeemer is {
       Init { output_index } -> {
@@ -282,6 +282,8 @@ validator mint(slashing_penalty: Int, hub_oracle_script_hash: PolicyId) {
           ..
         } = self
 
+        // 1. Transaction must refer to the authentic hub oracle UTxO to extract
+        //    the minting policy of the registered operators directory.
         let hub.Datum {
           registered_operators: registered_operators_policy_id,
           ..
@@ -292,6 +294,8 @@ validator mint(slashing_penalty: Int, hub_oracle_script_hash: PolicyId) {
             hub_oracle_ref_input_index,
           )
 
+        // 2. The Activate minting redeemer of the registered operators
+        //    directory must be invoked.
         expect registered_operators.Activate { operator_to_activate, .. } =
           redeemers
             |> utils.get_redeemer_at(
@@ -299,8 +303,11 @@ validator mint(slashing_penalty: Int, hub_oracle_script_hash: PolicyId) {
                 redeemer_index: registered_operators_redeemer_index,
               )
 
+        // 3. The operator indicated in the registered operators minting
+        //    redeemer must match the one specified in the redeemer here.
         expect operator_to_activate == new_active_operator_key
 
+        // 4. Specified input and outpus related to the linked list must exist.
         expect Some(active_operator_anchor_element_input) =
           inputs |> list.at(active_operator_anchor_element_input_index)
         expect Some(active_operator_anchor_element_output) =
@@ -309,6 +316,7 @@ validator mint(slashing_penalty: Int, hub_oracle_script_hash: PolicyId) {
           outputs |> list.at(active_operator_inserted_node_output_index)
 
         let linked_list_eval = {
+          // 5. Ordered insertion in the linked list must be proper.
           let
             _m_anchor_key,
             _anchor_data,
@@ -322,8 +330,12 @@ validator mint(slashing_penalty: Int, hub_oracle_script_hash: PolicyId) {
               mint,
             )
 
+          // 6. The newly inserted node must carry the same operator as the one
+          //    provided via the redeemer as its key.
           expect inserted_node_key == new_active_operator_key
 
+          // 7. Newly activated operators must not have any bond unlock times
+          //    specified.
           let expected_inserted_node_data: Data =
             NodeData { bond_unlock_time: None }
           expect inserted_node_data == expected_inserted_node_data
@@ -340,6 +352,39 @@ validator mint(slashing_penalty: Int, hub_oracle_script_hash: PolicyId) {
         active_operator_anchor_node_input_index,
         state_queue_redeemer_index,
       } -> {
+        let Transaction {
+          inputs,
+          outputs,
+          reference_inputs,
+          mint,
+          redeemers,
+          ..
+        } = self
+
+        // 1. Transaction must refer to the authentic hub oracle UTxO to extract
+        //    the minting policy of the state queue.
+        let hub.Datum { state_queue: state_queue_policy_id, .. } =
+          hub.get_datum(
+            reference_inputs,
+            hub_oracle_script_hash,
+            hub_oracle_ref_input_index,
+          )
+
+        // 2. State queue minting script must be invoked via the Remove
+        //    Fraudulent Block Header redeemer, and the operator specified there
+        //    must agree with the `slashed_active_operator_key` redeemer
+        //    argument here.
+        expect state_queue.RemoveFraudulentBlockHeader {
+          fraudulent_operator,
+          ..
+        } =
+          redeemers
+            |> utils.get_redeemer_at(
+                expected_purpose: Mint(state_queue_policy_id),
+                redeemer_index: state_queue_redeemer_index,
+              )
+        expect fraudulent_operator == slashed_active_operator_key
+
         expect Some(hub_oracle_ref_input) =
           list.at(self.reference_inputs, hub_oracle_ref_input_index)
         expect InlineDatum(hub_oracle_datum) = hub_oracle_ref_input.output.datum
