@@ -59,7 +59,7 @@ pub type MintRedeemer {
   RemoveFraudulentBlocksLink {
     fraudulent_node_input_index: Int,
     fraudulent_node_output_index: Int,
-    link_input_index: Int,
+    removed_node_input_index: Int,
     fraud_proof_ref_input_index: Int,
   }
   RemoveFraudulentBlockHeader {

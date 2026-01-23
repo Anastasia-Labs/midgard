@@ -160,11 +160,11 @@ validator spend(state_queue_mint_script_hash: ByteArray) {
         // 9. The transaction must include a reference input holding a
         //    `fraud_proof` token.
         let referenced_fraudulent_header_hash =
-          fraud_proof.get_proven_fraudulent_blocks_header_hash(
-            reference_inputs,
-            fraud_proof_script_hash,
-            fraud_proof_ref_input_index,
-          )
+          reference_inputs
+            |> fraud_proof.get_proven_fraudulent_blocks_header_hash(
+                fraud_proof_script_hash,
+                fraud_proof_ref_input_index,
+              )
         expect
           referenced_fraudulent_header_hash == fraudulent_blocks_header_hash
 
@@ -561,13 +561,113 @@ validator mint(
       RemoveFraudulentBlocksLink {
         fraudulent_node_input_index,
         fraudulent_node_output_index,
-        child_node_input_index,
+        removed_node_input_index,
         fraud_proof_ref_input_index,
-      } -> todo
+      } -> {
+        let Transaction { inputs, outputs, reference_inputs, mint, .. } = self
+
+        // 1. The transaction must include a reference input holding a
+        //    `fraud_proof` token associated with the anchor node's key.
+        let referenced_fraudulent_header_hash =
+          reference_inputs
+            |> fraud_proof.get_proven_fraudulent_blocks_header_hash(
+                fraud_proof_script_hash,
+                fraud_proof_ref_input_index,
+              )
+
+        // 2. Inputs and output must exist at specified indices.
+        expect Some(fraudulent_node_input) =
+          list.at(inputs, fraudulent_node_input_index)
+        expect Some(removed_node_input) =
+          list.at(inputs, removed_node_input_index)
+        expect Some(continued_fraudulent_node_output) =
+          list.at(outputs, fraudulent_node_output_index)
+
+        let linked_list_eval = {
+          // 3. Linked list element removal must be valid.
+          let
+            m_fraudulent_node_header_hash,
+            fraudulent_node_header,
+            removed_node_key,
+            removed_node_header,
+          <-
+            linked_list.remove(
+              fraudulent_node_input,
+              removed_node_input,
+              continued_fraudulent_node_output,
+              mint,
+            )
+
+          // 4. The anchor element has to be a node, which its key matches the
+          //    header hash stored in fraud proof token's asset name.
+          expect
+            Some(referenced_fraudulent_header_hash) == m_fraudulent_node_header_hash
+
+          // Done.
+          True
+        }
+        linked_list_eval |> finalize_linked_list(own_policy_id)
+      }
       RemoveFraudulentBlockHeader {
         fraudulent_node_input_index,
         fraud_proof_ref_input_index,
-      } -> todo
+      } -> {
+        let Transaction { inputs, reference_inputs, mint, .. } = self
+
+        // 1. The transaction must include a reference input holding a
+        //    `fraud_proof` token associated with the anchor node's key.
+        let referenced_fraudulent_header_hash =
+          reference_inputs
+            |> fraud_proof.get_proven_fraudulent_blocks_header_hash(
+                fraud_proof_script_hash,
+                fraud_proof_ref_input_index,
+              )
+
+        // 2. The fraudulent block's NFT must be burnt.
+        //
+        //    > [!NOTE]
+        //    > We are performing manual concatenation of the prefix to check
+        //    > the NFT is getting burnt because this operation is not offered
+        //    > by the linked list library. This is an unsafe operation as it
+        //    > can lead to the last element of the linked list pointing to a
+        //    > non-existent successor. Here this problem is prevented thanks to
+        //    > the requirement of the minted fraud proof token.
+        let mint_quantity_of_linked_list_nft =
+          mint
+            |> quantity_of(
+                own_policy_id,
+                block_asset_name_prefix
+                  |> bytearray.concat(referenced_fraudulent_header_hash),
+              )
+        expect mint_quantity_of_linked_list_nft == -1
+
+        // 2. The fraudulent node must exist at specified input index.
+        expect Some(fraudulent_node_input) =
+          list.at(inputs, fraudulent_node_input_index)
+
+        // 3. The appointed fraudulent node input must be an authentic element
+        //    of the linked list
+        let linked_list_element_eval = {
+          let
+            m_fraudulent_node_header_hash,
+            _fraudulent_node_header,
+            fraudulent_node_link,
+          <- linked_list.get_element_info(fraudulent_node_input.output)
+
+          // 4. The element has to be a node, with a key associated with the
+          //    fraud proof token.
+          expect
+            Some(referenced_fraudulent_header_hash) == m_fraudulent_node_header_hash
+
+          // 5. All children of the fraudulent block must have been collected
+          //    already.
+          expect None == fraudulent_node_link
+
+          // Done.
+          True
+        }
+        linked_list_element_eval |> finalize_linked_list(own_policy_id)
+      }
     }
   }
 
