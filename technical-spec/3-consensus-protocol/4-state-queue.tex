@@ -35,6 +35,11 @@ Redeemers:
         \begin{enumerate}
             \item The transaction must mint the Midgard hub oracle token.
             \item The transaction must Init the \code{state\_queue}.
+            \item The validity range of the transaction must be bounded on both ends, and must not be longer than five minutes (TODO).
+            \item The inclusive upper bound of the validity range must be used as both the \code{start\_time} and \code{end\_time} of the produced confirmed state data.
+            \item \code{header\_hash} and \code{prev\_header\_hash} must have genesis values (28 zero bytes).
+            \item \code{utxo\_root} must be set to the root of an empty Merkle tree.
+            \item \code{protocol\_version} must be set to 0 (TODO).
         \end{enumerate}
 
     \item[Commit Block Header.] An operator commits a block header to the state queue if it is the operator's turn according to the rotating schedule.
@@ -45,9 +50,9 @@ Redeemers:
                 \item Let \code{operator} be a redeemer argument indicating the key of the operator committing the block header.
                 \item The transaction must be signed by \code{operator}.
                 \item The transaction must Append a node to the \code{state\_queue}.
-                  Among the transaction outputs, let that node be \code{header\_node} and its predecessor node be \code{previous\_header\_node}.
+                  Among the transaction outputs, let that node be \code{header\_node} and its predecessor node be \code{previous\_element} (this can be either the confirmed state, or a previous block).
                 \item \code{operator} must be the operator of \code{header\_node}.
-                \item The \code{key} field of \code{header\_node} must be the hash of its \code{data} field.
+                \item The key of \code{header\_node} must be the hash of its underlying \code{Node} data.
             \end{enumerate}
 
             \item Verify that it is the operator's turn to commit according to the scheduler:
@@ -59,8 +64,8 @@ Redeemers:
 
             \item Verify block timestamps:
             \begin{enumerate}[resume]
-                \item The \code{start\_time} of \code{header\_node} must be equal to the \code{end\_time} of the \code{previous\_header\_node}.
-                \item The \code{end\_time} of \code{header\_node} must match the transaction's time-validity upper bound.
+                \item The \code{start\_time} of \code{header\_node} must be equal to the \code{end\_time} of the \code{previous\_element}.
+                \item The \code{end\_time} of \code{header\_node} must match the transaction's time-validity upper bound exclusively (TODO).
                 \item The \code{end\_time} of \code{header\_node} must be within the shift interval of \code{scheduler\_state}.
             \end{enumerate}
             
@@ -68,6 +73,12 @@ Redeemers:
             \begin{enumerate}[resume]
                 \item The transaction must include an input, spent via the Update Bond Hold New State redeemer, of an \code{active\_operators} node with a key matching the \code{operator}.
             \end{enumerate}
+            \item New block must carry over data from \code{previous\_element} properly:
+                \begin{enumerate}[resume]
+                  \item Its \code{header\_hash} must be preserved under new node's \code{prev\_header\_hash}.
+                  \item Its ledger must be preserved under new node's \code{prev\_utxos\_root}.
+                  \item Protocol version must also be preserved from \code{previous\_element} (TODO).
+                \end{enumerate}
         \end{itemize}
 
     \item[Merge To Confirmed State.] If a block header is mature, merge it to the confirmed state of the \code{state\_queue}.

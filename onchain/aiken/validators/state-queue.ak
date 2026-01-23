@@ -1,10 +1,9 @@
 use aiken/collection/list
 use aiken/crypto
-use aiken/interval.{Finite, Interval}
 use aiken/primitive/bytearray
 use aiken_design_patterns/linked_list
 use aiken_design_patterns/validity_range_normalization as vrn
-use cardano/assets.{PolicyId, quantity_of, tokens}
+use cardano/assets.{PolicyId, quantity_of}
 use cardano/transaction.{
   InlineDatum, Input, Mint, Output, OutputReference, Spend, Transaction,
 }
@@ -84,30 +83,32 @@ validator spend(state_queue_mint_script_hash: ByteArray) {
           )
 
         let input_element_eval = {
+          // 3. Specified input anchor element must be authentic.
           let
             m_input_key,
             input_data,
             input_link,
           <- linked_list.get_element_info(anchor_element_input.output)
 
-          // 3. `predecessor_element` must point to the fraudulent block.
+          // 4. `predecessor_element` must point to the fraudulent block.
           expect input_link == Some(fraudulent_blocks_header_hash)
 
           let output_element_eval = {
+            // 5. Specified continued anchor element must be authentic.
             let
               m_output_key,
               output_data,
               output_link,
             <- linked_list.get_element_info(anchor_element_output)
 
-            // 4. Continued `predecessor_element` must be the last element in
+            // 6. Continued `predecessor_element` must be the last element in
             //    the queue.
             expect output_link == None
 
-            // 5. Linked list NFT must be preserved.
+            // 7. Linked list NFT must be preserved.
             m_input_key == m_output_key
 
-            // 6. Block data must be preserved.
+            // 8. Block data must be preserved.
             input_data == output_data
           }
           output_element_eval |> finalize_linked_list(own_policy_id)
@@ -115,15 +116,15 @@ validator spend(state_queue_mint_script_hash: ByteArray) {
         expect input_element_eval |> finalize_linked_list(own_policy_id)
 
         // Slash the fraudulent operator:
-        // 7. Let `operator_is_active` be a redeemer argument indicating
+        // 9. Let `operator_is_active` be a redeemer argument indicating
         //    whether the fraudulent operator is active or retired.
         expect
           if operator_is_active {
-            // 8a. If `operator_is_active` is true:
-            //     The transaction must Remove a node from the
-            //     `active_operators` set via the `RemoveOperatorBadState`
-            //     redeemer. The `slashed_operator` argument provided to that
-            //     redeemer must match `fraudulent_operator`.
+            // 10a. If `operator_is_active` is true:
+            //      The transaction must Remove a node from the
+            //      `active_operators` set via the `RemoveOperatorBadState`
+            //      redeemer. The `slashed_operator` argument provided to that
+            //      redeemer must match `fraudulent_operator`.
             let active_operators_redeemer_data =
               utils.get_redeemer_at(
                 redeemers: redeemers,
@@ -137,11 +138,11 @@ validator spend(state_queue_mint_script_hash: ByteArray) {
             //
             fraudulent_operator == slashed_active_operator_key
           } else {
-            // 8b. Otherwise:
-            //     The transaction must Remove a node from the
-            //     `retired_operators` set via the `RemoveOperatorBadState`
-            //     redeemer. The `slashed_operator` argument provided to that
-            //     redeemer must match `fraudulent_operator`.
+            // 10b. Otherwise:
+            //      The transaction must Remove a node from the
+            //      `retired_operators` set via the `RemoveOperatorBadState`
+            //      redeemer. The `slashed_operator` argument provided to that
+            //      redeemer must match `fraudulent_operator`.
             let retired_operators_redeemer_data =
               utils.get_redeemer_at(
                 redeemers: redeemers,
@@ -157,8 +158,8 @@ validator spend(state_queue_mint_script_hash: ByteArray) {
           }
 
         // Verify that fraud has been proved for the predecessor's link:
-        // 9. The transaction must include a reference input holding a
-        //    `fraud_proof` token.
+        // 11. The transaction must include a reference input holding a
+        //     `fraud_proof` token.
         let referenced_fraudulent_header_hash =
           reference_inputs
             |> fraud_proof.get_proven_fraudulent_blocks_header_hash(
@@ -298,7 +299,7 @@ validator mint(
 
         let linked_list_eval = {
           // 3. Indicated inputs and output must properly adhere to unordered
-          //    linked list requirements.
+          //    linked list append requirements.
           let
             m_anchor_key,
             anchor_data,
