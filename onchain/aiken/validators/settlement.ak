@@ -312,13 +312,14 @@ validator mint(hub_oracle: ScriptHash) {
         let hub.Datum { state_queue, settlement_addr, .. } =
           hub.get_datum(reference_inputs, hub_oracle, hub_ref_input_index)
 
-        // 3. The transaction must Remove a `state_queue` node via the Merge To
+        // 3. The transaction must fold a `state_queue` node via the Merge To
         //    Confirmed State redeemer. Let `merged_block` be the block being
         //    merged to the confirmed state, and let `header_hash` be its
         //    header-hash key.
         //
-        // Note: we trust the redeemer arguments provided to state_queue
-        // because we expect it to check them.
+        //    > [!NOTE]
+        //    > We trust the redeemer arguments provided to state queue because
+        //    > we expect it to check them.
         let state_queue_redeemer_data =
           redeemers
             |> utils.get_redeemer_at(
@@ -329,10 +330,18 @@ validator mint(hub_oracle: ScriptHash) {
         expect state_queue.MergeToConfirmedState {
           header_node_key,
           header_node_input_index,
+          m_settlement_redeemer_index,
           ..
         }: state_queue.MintRedeemer = state_queue_redeemer_data
         // We verify this redeemer argument so that other scripts can use it:
         expect header_node_key == settlement_id
+        // Provision of redeemer index in state queue's redeemer shows that at
+        // least one of the trees is non-empty. Without this check, this mint
+        // endpoint would pass even if all trees were empty.
+        //
+        // Another solution would be checking the absence of settlement minting
+        // by the state queue policy, which would be more expensive.
+        expect Some(_) == m_settlement_redeemer_index
         //
         expect Some(merged_block) = list.at(inputs, header_node_input_index)
         expect Input {

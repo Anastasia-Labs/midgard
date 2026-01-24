@@ -447,10 +447,13 @@ validator mint(
         header_node_input_index,
         confirmed_state_input_index,
         confirmed_state_output_index,
-        settlement_redeemer_index,
+        m_settlement_redeemer_index,
       } -> {
         let Transaction { inputs, outputs, mint, redeemers, validity_range, .. } =
           self
+
+        // 1. Inputs and output of linked list must exist in the specified
+        //    indices.
         expect Some(confirmed_state_input) =
           list.at(inputs, confirmed_state_input_index)
         expect Some(header_node_input) =
@@ -459,7 +462,7 @@ validator mint(
           list.at(outputs, confirmed_state_output_index)
 
         let linked_list_eval = {
-          // 1. Specified inputs and output must properly adhere to the fold and
+          // 2. Specified inputs and output must properly adhere to the fold and
           //    burn logic of the linked list.
           let
             input_confirmed_state_data,
@@ -467,19 +470,19 @@ validator mint(
             input_header_node_data,
             output_confirmed_state_data,
           <-
-            linked_list.fold_and_burn(
-              anchor_root_input: confirmed_state_input,
-              folding_node_input: header_node_input,
-              continued_anchor_root_output: confirmed_state_output,
-              tx_mint: mint,
+            linked_list.fold_from_root(
+              confirmed_state_input,
+              header_node_input,
+              confirmed_state_output,
+              mint,
             )
 
-          // 2. The key of the header node specified in the redeemer must
+          // 3. The key of the header node specified in the redeemer must
           //    properly associate with the input picked using
           //    `header_node_input_index`.
           expect input_header_node_key == header_node_key
 
-          // 3. `header_node` must be mature---the lower bound of the
+          // 4. `header_node` must be mature---the lower bound of the
           //    transaction validity interval meets or exceeds the sum of the
           //    `end_time` field of `header_node` and the Midgard
           //    `maturity_duration` protocol parameter.
@@ -490,11 +493,11 @@ validator mint(
               _ -> fail @"Unexpected validity range"
             }
 
-          // 4. a. `header_hash` of the input confirmed state must be preserved
+          // 5. a. `header_hash` of the input confirmed state must be preserved
           //       under `prev_header_hash` of the updated confirmed state.
           //    b. `start_time` of the input confirmed state must also carry
           //       over.
-          // 5. From the merging header node, these values must be preserved in
+          // 6. From the merging header node, these values must be preserved in
           //    the new confirmed state:
           //    a. `utxos_root` must be the new confirmed ledger.
           //    b. `end_time` must replace confirmed state's.
@@ -528,7 +531,7 @@ validator mint(
           expect
             output_confirmed_state_data == expected_output_confirmed_state_data
 
-          // 6. If either the `deposits_root`, or `withdrawals_root`, or
+          // 7. If either the `deposits_root`, or `withdrawals_root`, or
           //    `transactions_root` of `header_node` is _not_ the MPT root hash
           //    of the empty set, a `settlement` utxo must be produced via the
           //    Spawn redeemer. The redeemer must mention `header_node` by input
@@ -536,26 +539,37 @@ validator mint(
           //
           //    > [!NOTE]
           //    > We trust the redeemer provided to settlement because we expect
-          //    > it to check them.
-          expect and {
-              input_header_transactions_root != empty_merkle_tree_root,
-              input_header_deposits_root != empty_merkle_tree_root,
-              input_header_withdrawals_root != empty_merkle_tree_root,
-            } || {
-              let settlement_minting_redeemer_data =
-                redeemers
-                  |> utils.get_redeemer_at(
-                      Mint(settlement_script_hash),
-                      settlement_redeemer_index,
-                    )
-              expect settlement.Spawn { settlement_id, .. }: settlement.MintRedeemer =
-                settlement_minting_redeemer_data
-              //
-              expect settlement_id == header_node_key
-            }
+          //    > it to check the equality between its `settlement_id` and
+          //    > `header_node_key` here from the redeemer here.
+          if or {
+            input_header_transactions_root != empty_merkle_tree_root,
+            input_header_deposits_root != empty_merkle_tree_root,
+            input_header_withdrawals_root != empty_merkle_tree_root,
+          } {
+            // 8a. The redeemer index for settlement minting policy must be
+            //     provided.
+            expect Some(settlement_redeemer_index) = m_settlement_redeemer_index
+            let settlement_minting_redeemer_data =
+              redeemers
+                |> utils.get_redeemer_at(
+                    Mint(settlement_script_hash),
+                    settlement_redeemer_index,
+                  )
+            expect settlement.Spawn { settlement_id, .. }: settlement.MintRedeemer =
+              settlement_minting_redeemer_data
+            //
+            expect settlement_id == header_node_key
 
-          // Done.
-          True
+            // Done.
+            True
+          } else {
+            // 8b. No mint redeemer index must be provided. Settlement contract
+            //     uses this to disallow minting empty settlement utxos.
+            expect None == m_settlement_redeemer_index
+
+            // Done.
+            True
+          }
         }
         linked_list_eval |> finalize_linked_list(own_policy_id)
       }
