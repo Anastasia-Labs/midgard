@@ -439,7 +439,7 @@ validator mint(
       RemoveFraudulentBlockHeader {
         fraudulent_operator,
         fraudulent_blocks_header_hash,
-        slashing_arguments,
+        slashing_approach,
         fraudulent_node_input_index,
         fraud_proof_ref_input_index,
         block_removal_approach,
@@ -454,10 +454,10 @@ validator mint(
         } = self
 
         // Slash the fraudulent operator:
-        // 1. Let `slashing_arguments` be a sum type indicating whether the
+        // 1. Let `slashing_approach` be a sum type indicating whether the
         //    fraudulent operator is active, retired, or already slashed.
         expect
-          when slashing_arguments is {
+          when slashing_approach is {
             SlashActiveOperator { active_operators_redeemer_index } -> {
               // 2a. If the operator is active:
               //     The transaction must Remove a node from the

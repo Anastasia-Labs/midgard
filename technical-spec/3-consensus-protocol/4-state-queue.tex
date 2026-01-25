@@ -98,43 +98,52 @@ Redeemers:
         \item Otherwise no settlement minting must be present in the transaction.
     \end{enumerate}
 
-    \item[Remove Fraudulent Block Header.] Remove a fraudulent block header from the state queue and slash its operator's ADA bond.
+    \item[Remove Fraudulent Block Header.] Remove a fraudulent block header or its link from the state queue and slash its operator's ADA bond.
       Grouped conditions:
     \begin{itemize}
-        \item Remove the fraudulent block header:
+        \item Slash the fraudulent operator.
+          Let \code{fraudulent\_operator} be a redeemer argument indicating the operator who committed the fraudulent block header:
         \begin{enumerate}
-            \item Let \code{fraudulent\_operator} be a redeemer argument indicating the operator who committed the fraudulent block header.
-            \item The transaction must Remove a node from the \code{state\_queue}.
-              Let \code{removed\_node} be the removed node and \code{predecessor\_node} be its predecessor node before removal.
-            \item \code{fraudulent\_operator} must match the key of \code{removed\_node}.
-        \end{enumerate}
-
-        \item Slash the fraudulent operator:
-        \begin{enumerate}[resume]
-            \item Let \code{operator\_status} be a redeemer argument indicating whether the fraudulent operator is active or retired.
-            \item If \code{operator\_status} is active:
+            \item If the operator is active:
                 \begin{enumerate}
                     \item The transaction must Remove a node from the \code{active\_operators} set via the Remove Operator Bad State redeemer.
                       The \code{slashed\_operator} argument provided to that redeemer must match \code{fraudulent\_operator}.
                 \end{enumerate}
-            \item Otherwise:
+            \item If the operator is retired:
                 \begin{enumerate}
                     \item The transaction must Remove a node from the \code{retired\_operators} set via the Remove Operator Bad State redeemer.
                       The \code{slashed\_operator} argument provided to that redeemer must match \code{fraudulent\_operator}.
                 \end{enumerate}
+            \item Otherwise, if the operator is already slashed:
+                \begin{enumerate}
+                    \item The transaction must refer to elements from both the \code{active\_operators} and \code{retired\_operators} sets and show that neither lists include the fraudulent operator.
+                \end{enumerate}
         \end{enumerate}
 
+        \item Let \code{fraudulent\_block\_header\_hash} be a redeemer argument specifying the header hash of the fraudulent block with a minted proof token.
+        \item Remove the fraudulent block header or its link.
+          Two routes are allowed:
+          \begin{itemize}
+            \item Fraudulent block has a link and that link node is being removed.
+              \begin{enumerate}
+                \item Let \code{fraudulent\_node} be the anchor node, and \code{removed\_node} be its child node that is being removed.
+                \item Key of \code{fraudulent\_node} must be equal to \code{fraudulent\_block\_header\_hash}.
+                \item \code{operator\_vkey} from the \code{removed\_node} must match \code{fraudulent\_operator}.
+              \end{enumerate}
+            \item Fraudulent block is the last node in state queue and is being removed.
+              \begin{enumerate}
+                \item Let \code{fraudulent\_node} be the removing node, and \code{anchor\_element} be its parent element.
+                \item Key of \code{fraudulent\_node} must be equal to \code{fraudulent\_block\_header\_hash}.
+                \item \code{operator\_vkey} from the \code{fraudulent\_node} must match \code{fraudulent\_operator}.
+                \item \code{fraudulent\_node} must not link to a child node.
+              \end{enumerate}
+          \end{itemize}
+
         \item Verify that fraud has been proved for the removed node or its predecessor:
-        \begin{enumerate}[resume]
+        \begin{enumerate}
             \item The transaction must include a reference input holding a \code{fraud\_proof} token.
             \item Let \code{fraud\_proof\_block\_hash} be the last 28 bytes of the \code{fraud\_proof} token.
-            \item One of the following must be true:
-                \begin{enumerate}
-                    \item \code{fraud\_proof\_block\_hash} matches the \code{predecessor\_node} key.
-                      This means that a child of the fraudulent node is being removed.
-                    \item \code{fraud\_proof\_block\_hash} matches the \code{removed\_node} key, and the last node of \code{state\_queue} is \code{removed\_node}.
-                      This means that the fraudulent node is being removed and has no more children.
-                \end{enumerate}
+            \item \code{fraud\_proof\_block\_hash} must match \code{fraudulent\_block\_header\_hash} from the redeemer.
         \end{enumerate}
     \end{itemize}
 \end{description}

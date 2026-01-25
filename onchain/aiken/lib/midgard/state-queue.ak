@@ -24,7 +24,7 @@ pub const block_asset_name_prefix_length: Int =
 pub type Datum =
   linked_list.Element<ConfirmedState, Header>
 
-pub type SlashingArguments {
+pub type SlashingApproach {
   SlashActiveOperator { active_operators_redeemer_index: Int }
   SlashRetiredOperator { retired_operators_redeemer_index: Int }
   OperatorAlreadySlashed {
@@ -66,7 +66,7 @@ pub type MintRedeemer {
   RemoveFraudulentBlockHeader {
     fraudulent_operator: VerificationKeyHash,
     fraudulent_blocks_header_hash: HeaderHash,
-    slashing_arguments: SlashingArguments,
+    slashing_approach: SlashingApproach,
     fraudulent_node_input_index: Int,
     fraud_proof_ref_input_index: Int,
     approach: BlockRemovalApproach,
