@@ -1,3 +1,4 @@
+use aiken/crypto.{VerificationKeyHash}
 use midgard/common/types.{PosixTime}
 
 pub type Datum {

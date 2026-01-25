@@ -128,7 +128,7 @@ validator mint(
         expect parsed_hub_oracle_datum: hub_oracle.Datum = hub_oracle_datum
         expect Some(state_queue_redeemer_pair) =
           list.at(self.redeemers, state_queue_redeemer_index)
-        expect state_queue.CutOffFraudulentBlockHeader {
+        expect state_queue.RemoveFraudulentBlockHeader {
           fraudulent_operator,
           ..
         } = state_queue_redeemer_pair.2nd

@@ -24,16 +24,23 @@ pub const block_asset_name_prefix_length: Int =
 pub type Datum =
   linked_list.Element<ConfirmedState, Header>
 
-pub type SpendRedeemer {
-  ListStateTransition
-  CutOffFraudulentBlockHeader {
+pub type SlashingArguments {
+  SlashActiveOperator { active_operators_redeemer_index: Int }
+  SlashRetiredOperator { retired_operators_redeemer_index: Int }
+  OperatorAlreadySlashed {
+    active_operators_element_ref_input_index: Int,
+    retired_operators_element_ref_input_index: Int,
+  }
+}
+
+pub type BlockRemovalApproach {
+  RemoveLastFraudulentBlock {
     anchor_element_input_index: Int,
     anchor_element_output_index: Int,
-    operators_redeemer_index: Int,
-    fraud_proof_ref_input_index: Int,
-    fraudulent_blocks_header_hash: HeaderHash,
-    fraudulent_operator: VerificationKeyHash,
-    operator_is_active: Bool,
+  }
+  RemoveFraudulentBlocksLink {
+    fraudulent_node_output_index: Int,
+    removed_block_input_index: Int,
   }
 }
 
@@ -56,15 +63,13 @@ pub type MintRedeemer {
     confirmed_state_output_index: Int,
     settlement_redeemer_index: Int,
   }
-  RemoveFraudulentBlocksLink {
-    fraudulent_node_input_index: Int,
-    fraudulent_node_output_index: Int,
-    removed_node_input_index: Int,
-    fraud_proof_ref_input_index: Int,
-  }
   RemoveFraudulentBlockHeader {
+    fraudulent_operator: VerificationKeyHash,
+    fraudulent_blocks_header_hash: HeaderHash,
+    slashing_arguments: SlashingArguments,
     fraudulent_node_input_index: Int,
     fraud_proof_ref_input_index: Int,
+    approach: BlockRemovalApproach,
   }
 }
 
@@ -98,7 +103,7 @@ pub fn get_block_datum(
   reference_inputs: List<Input>,
   state_queue_policy: ByteArray,
   state_queue_node_ref_input_index: Int,
-  return: fn(Header, ByteArray) -> result,
+  return: fn(Header, HeaderHash) -> result,
 ) -> result {
   expect Some(Input { output, .. }) =
     reference_inputs |> list.at(state_queue_node_ref_input_index)
@@ -119,6 +124,26 @@ pub fn get_block_datum(
         block_asset_name_prefix,
         block_asset_name_prefix_length,
       )
+}
+
+pub fn get_prev_header_hash_of_node(
+  reference_inputs: List<Input>,
+  state_queue_policy: ByteArray,
+  state_queue_node_ref_input_index: Int,
+  expected_state_queue_node_header_hash: HeaderHash,
+) -> HeaderHash {
+  let
+    header,
+    retrieved_state_queue_node_header_hash,
+  <-
+    get_block_datum(
+      reference_inputs,
+      state_queue_policy,
+      state_queue_node_ref_input_index,
+    )
+  expect
+    retrieved_state_queue_node_header_hash == expected_state_queue_node_header_hash
+  header.prev_header_hash
 }
 
 pub fn finalize_linked_list(

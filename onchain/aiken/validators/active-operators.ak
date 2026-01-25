@@ -322,6 +322,7 @@ validator mint(hub_oracle_script_hash: PolicyId) {
             _anchor_data,
             inserted_node_key,
             inserted_node_data,
+            _inserted_node_link,
           <-
             linked_list.insert_ordered(
               active_operator_anchor_element_input,
@@ -371,10 +372,10 @@ validator mint(hub_oracle_script_hash: PolicyId) {
           )
 
         // 2. State queue minting script must be invoked via the 
-        //    `CutOffFraudulentBlockHeader`redeemer, and the operator specified
+        //    `RemoveFraudulentBlockHeader`redeemer, and the operator specified
         //    there must agree with the `slashed_active_operator_key` redeemer
         //    argument here.
-        expect state_queue.CutOffFraudulentBlockHeader {
+        expect state_queue.RemoveFraudulentBlockHeader {
           fraudulent_operator,
           ..
         } =
@@ -391,7 +392,7 @@ validator mint(hub_oracle_script_hash: PolicyId) {
         expect parsed_hub_oracle_datum: hub.Datum = hub_oracle_datum
         expect Some(state_queue_redeemer_pair) =
           list.at(self.redeemers, state_queue_redeemer_index)
-        expect state_queue.CutOffFraudulentBlockHeader {
+        expect state_queue.RemoveFraudulentBlockHeader {
           fraudulent_operator,
           ..
         } = state_queue_redeemer_pair.2nd

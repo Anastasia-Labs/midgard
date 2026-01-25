@@ -21,158 +21,24 @@ use midgard/retired_operators
 use midgard/scheduler
 use midgard/settlement
 use midgard/state_queue.{
-  CommitBlockHeader, CutOffFraudulentBlockHeader, Deinit, Init,
-  MergeToConfirmedState, MintRedeemer, RemoveFraudulentBlockHeaderOrItsLink,
-  block_asset_name_prefix, block_asset_name_prefix_length,
-  confirmed_state_asset_name,
+  CommitBlockHeader, Deinit, Init, MergeToConfirmedState, MintRedeemer,
+  RemoveFraudulentBlockHeader, block_asset_name_prefix,
+  block_asset_name_prefix_length, confirmed_state_asset_name,
 }
 
 const five_minutes: PosixTime = 5 * 60 * 1000
 
 validator spend(state_queue_mint_script_hash: ByteArray) {
   spend(
-    datum: Option<Datum>,
-    redeemer: SpendRedeemer,
-    own_ref: OutputReference,
+    _datum: Option<Data>,
+    _redeemer: Data,
+    _own_ref: OutputReference,
     tx: Transaction,
   ) {
-    when redeemer is {
-      ListStateTransition ->
-        linked_list.spend_for_adding_or_removing_an_element(
-          state_queue_mint_script_hash,
-          tx.mint,
-        )
-      CutOffFraudulentBlockHeader {
-        anchor_element_input_index,
-        anchor_element_output_index,
-        operators_redeemer_index,
-        fraud_proof_ref_input_index,
-        fraudulent_blocks_header_hash,
-        fraudulent_operator,
-        operator_is_active,
-      } -> {
-        let Transaction {
-          inputs,
-          outputs,
-          reference_inputs,
-          mint,
-          redeemers,
-          ..
-        } = self
-
-        // Cut off the fraudulent block and its tail from the state queue:
-        // 1. Let `fraudulent_operator` be a redeemer argument indicating the
-        //    operator who committed the fraudulent block header.
-        // 2. The transaction must remove the link of an element which is anchor
-        //    to the fraudulent block from `state_queue`.
-        //    Let `predecessor_element` be this anchor element.
-        let
-          anchor_element_input,
-          anchor_element_output,
-        <-
-          singular_utxo_indexer.one_to_one(
-            anchor_element_input_index,
-            anchor_element_output_index,
-            own_ref,
-            inputs,
-            outputs,
-            // Double satisfaction prevented by requiring the same NFT present
-            // in both input and output (i.e. input and output having the same
-            // key).
-            True,
-          )
-
-        let input_element_eval = {
-          // 3. Specified input anchor element must be authentic.
-          let
-            m_input_key,
-            input_data,
-            input_link,
-          <- linked_list.get_element_info(anchor_element_input.output)
-
-          // 4. `predecessor_element` must point to the fraudulent block.
-          expect input_link == Some(fraudulent_blocks_header_hash)
-
-          let output_element_eval = {
-            // 5. Specified continued anchor element must be authentic.
-            let
-              m_output_key,
-              output_data,
-              output_link,
-            <- linked_list.get_element_info(anchor_element_output)
-
-            // 6. Continued `predecessor_element` must be the last element in
-            //    the queue.
-            expect output_link == None
-
-            // 7. Linked list NFT must be preserved.
-            m_input_key == m_output_key
-
-            // 8. Block data must be preserved.
-            input_data == output_data
-          }
-          output_element_eval |> finalize_linked_list(own_policy_id)
-        }
-        expect input_element_eval |> finalize_linked_list(own_policy_id)
-
-        // Slash the fraudulent operator:
-        // 9. Let `operator_is_active` be a redeemer argument indicating
-        //    whether the fraudulent operator is active or retired.
-        expect
-          if operator_is_active {
-            // 10a. If `operator_is_active` is true:
-            //      The transaction must Remove a node from the
-            //      `active_operators` set via the `RemoveOperatorBadState`
-            //      redeemer. The `slashed_operator` argument provided to that
-            //      redeemer must match `fraudulent_operator`.
-            let active_operators_redeemer_data =
-              utils.get_redeemer_at(
-                redeemers: redeemers,
-                expected_purpose: Mint(active_operators_script_hash),
-                redeemer_index: operators_redeemer_index,
-              )
-            expect active_operators.RemoveOperatorBadState {
-              slashed_active_operator_key,
-              ..
-            } = active_operators_redeemer_data
-            //
-            fraudulent_operator == slashed_active_operator_key
-          } else {
-            // 10b. Otherwise:
-            //      The transaction must Remove a node from the
-            //      `retired_operators` set via the `RemoveOperatorBadState`
-            //      redeemer. The `slashed_operator` argument provided to that
-            //      redeemer must match `fraudulent_operator`.
-            let retired_operators_redeemer_data =
-              utils.get_redeemer_at(
-                redeemers: redeemers,
-                expected_purpose: Mint(active_operators_script_hash),
-                redeemer_index: operators_redeemer_index,
-              )
-            expect retired_operators.RemoveOperatorBadState {
-              slashed_retired_operator_key,
-              ..
-            } = retired_operators_redeemer_data
-            //
-            fraudulent_operator == slashed_retired_operator_key
-          }
-
-        // Verify that fraud has been proved for the predecessor's link:
-        // 11. The transaction must include a reference input holding a
-        //     `fraud_proof` token.
-        let referenced_fraudulent_header_hash =
-          reference_inputs
-            |> fraud_proof.get_proven_fraudulent_blocks_header_hash(
-                fraud_proof_script_hash,
-                fraud_proof_ref_input_index,
-              )
-        expect
-          referenced_fraudulent_header_hash == fraudulent_blocks_header_hash
-
-        // Done.
-        True
-      }
-    }
+    linked_list.spend_for_adding_or_removing_an_element(
+      state_queue_mint_script_hash,
+      tx.mint,
+    )
   }
 
   else(_) {
@@ -389,12 +255,7 @@ validator mint(
             )
           expect
             active_operators_linked_list_eval
-              |> linked_list.run_element_with(
-                  active_operators_script_hash,
-                  active_operators.root_asset_name,
-                  active_operators.node_asset_name_prefix,
-                  active_operators.node_asset_name_prefix_length,
-                )
+              |> linked_list.finalize_linked_list(active_operators_script_hash)
           //
           expect active_operators.UpdateBondHoldNewState { .. } =
             redeemers
@@ -468,6 +329,7 @@ validator mint(
             input_confirmed_state_data,
             input_header_node_key,
             input_header_node_data,
+            _input_header_link,
             output_confirmed_state_data,
           <-
             linked_list.fold_from_root(
@@ -564,7 +426,8 @@ validator mint(
             True
           } else {
             // 8b. No mint redeemer index must be provided. Settlement contract
-            //     uses this to disallow minting empty settlement utxos.
+            //     uses this argument to disallow minting empty settlement
+            //     utxos.
             expect None == m_settlement_redeemer_index
 
             // Done.
@@ -573,115 +436,179 @@ validator mint(
         }
         linked_list_eval |> finalize_linked_list(own_policy_id)
       }
-      RemoveFraudulentBlocksLink {
-        fraudulent_node_input_index,
-        fraudulent_node_output_index,
-        removed_node_input_index,
-        fraud_proof_ref_input_index,
-      } -> {
-        let Transaction { inputs, outputs, reference_inputs, mint, .. } = self
-
-        // 1. The transaction must include a reference input holding a
-        //    `fraud_proof` token associated with the anchor node's key.
-        let referenced_fraudulent_header_hash =
-          reference_inputs
-            |> fraud_proof.get_proven_fraudulent_blocks_header_hash(
-                fraud_proof_script_hash,
-                fraud_proof_ref_input_index,
-              )
-
-        // 2. Inputs and output must exist at specified indices.
-        expect Some(fraudulent_node_input) =
-          list.at(inputs, fraudulent_node_input_index)
-        expect Some(removed_node_input) =
-          list.at(inputs, removed_node_input_index)
-        expect Some(continued_fraudulent_node_output) =
-          list.at(outputs, fraudulent_node_output_index)
-
-        let linked_list_eval = {
-          // 3. Linked list element removal must be valid.
-          let
-            m_fraudulent_node_header_hash,
-            fraudulent_node_header,
-            removed_node_key,
-            removed_node_header,
-          <-
-            linked_list.remove(
-              fraudulent_node_input,
-              removed_node_input,
-              continued_fraudulent_node_output,
-              mint,
-            )
-
-          // 4. The anchor element has to be a node, which its key matches the
-          //    header hash stored in fraud proof token's asset name.
-          expect
-            Some(referenced_fraudulent_header_hash) == m_fraudulent_node_header_hash
-
-          // Done.
-          True
-        }
-        linked_list_eval |> finalize_linked_list(own_policy_id)
-      }
       RemoveFraudulentBlockHeader {
+        fraudulent_operator,
+        fraudulent_blocks_header_hash,
+        slashing_arguments,
         fraudulent_node_input_index,
         fraud_proof_ref_input_index,
+        block_removal_approach,
       } -> {
-        let Transaction { inputs, reference_inputs, mint, .. } = self
+        let Transaction {
+          inputs,
+          outputs,
+          reference_inputs,
+          mint,
+          redeemers,
+          ..
+        } = self
 
-        // 1. The transaction must include a reference input holding a
-        //    `fraud_proof` token associated with the anchor node's key.
+        // Slash the fraudulent operator:
+        // 1. Let `slashing_arguments` be a sum type indicating whether the
+        //    fraudulent operator is active, retired, or already slashed.
+        expect
+          when slashing_arguments is {
+            SlashActiveOperator { active_operators_redeemer_index } -> {
+              // 2a. If the operator is active:
+              //     The transaction must Remove a node from the
+              //     `active_operators` set via the `RemoveOperatorBadState`
+              //     redeemer. The `slashed_operator` argument provided to that
+              //     redeemer must match `fraudulent_operator`.
+              let active_operators_redeemer_data =
+                utils.get_redeemer_at(
+                  redeemers: redeemers,
+                  expected_purpose: Mint(active_operators_script_hash),
+                  redeemer_index: active_operators_redeemer_index,
+                )
+              expect active_operators.RemoveOperatorBadState {
+                slashed_active_operator_key,
+                ..
+              } = active_operators_redeemer_data
+              //
+              fraudulent_operator == slashed_active_operator_key
+            }
+            SlashRetiredOperator { retired_operators_redeemer_index } -> {
+              // 2b. If the operator is retired:
+              //     The transaction must Remove a node from the
+              //     `retired_operators` set via the `RemoveOperatorBadState`
+              //     redeemer. The `slashed_operator` argument provided to that
+              //     redeemer must match `fraudulent_operator`.
+              let retired_operators_redeemer_data =
+                utils.get_redeemer_at(
+                  redeemers: redeemers,
+                  expected_purpose: Mint(active_operators_script_hash),
+                  redeemer_index: operators_redeemer_index,
+                )
+              expect retired_operators.RemoveOperatorBadState {
+                slashed_retired_operator_key,
+                ..
+              } = retired_operators_redeemer_data
+              //
+              fraudulent_operator == slashed_retired_operator_key
+            }
+            OperatorAlreadySlashed {
+              active_operators_element_ref_input_index,
+              retired_operators_element_ref_input_index,
+            } ->
+              // 2c. If the operator has already been slashed:
+              //     The transaction must refer to elements from both the active
+              //     and retired operators directories (which are ordered linked
+              //     lists), and show that neither lists include the fraudulent
+              //     operator.
+              and {
+                fraudulent_operator
+                  |> active_operators.operator_is_not_a_member(
+                      reference_inputs: reference_inputs,
+                      element_input_index: active_operators_element_ref_input_index,
+                      nft_policy_id: active_operators_script_hash,
+                    ),
+                fraudulent_operator
+                  |> retired_operators.operator_is_not_a_member(
+                      reference_inputs: reference_inputs,
+                      element_input_index: retired_operators_element_ref_input_index,
+                      nft_policy_id: retired_operators_script_hash,
+                    ),
+              }
+          }
+
+        expect Some(fraudulent_node_input) =
+          inputs |> list.at(fraudulent_node_input_index)
+
+        // Remove fraudulent block or its link from the state queue:
+        // 3. Let `block_removal_approach` be a redeemer argument that specifies
+        //    whether the fraudulent block itself can be removed:
+        when block_removal_approach is {
+          RemoveFraudulentBlocksLink {
+            fraudulent_node_output_index,
+            removed_block_input_index,
+          } -> {
+            // 4a. If the fraudulent block has a link, its successor node must
+            //     be removed first.
+            //
+            //     > [!NOTE]
+            //     > The successor node is also considered fraudulent because of
+            //     > getting appended to a fraudulent block, so it does not need
+            //     > to have an associated fraud proof token.
+            expect Some(removed_block_input) =
+              inputs |> list.at(removed_block_input_index)
+            expect Some(fraudulent_node_output) =
+              outputs |> list.at(fraudulent_node_output_index)
+            let linked_list_eval = {
+              let
+                m_fraudulent_header_hash,
+                _fraudulent_header_data,
+                removed_node_header_hash,
+                removed_node_header_data,
+                _removed_node_link,
+              <-
+                linked_list.remove(
+                  fraudulent_node_input,
+                  removed_block_input,
+                  fraudulent_node_output,
+                  mint,
+                )
+              expect
+                Some(fraudulent_blocks_header_hash) == m_fraudulent_header_hash
+              expect Header { operator_vkey, .. } = removed_node_header_data
+              operator_vkey == fraudulent_operator
+            }
+          }
+          RemoveLastFraudulentBlock {
+            anchor_element_input_index,
+            anchor_element_output_index,
+          } -> {
+            // 4b. If the fraudulent block has no links, it can be removed from
+            //     the very end of the state queue.
+            expect Some(anchor_element_input) =
+              inputs |> list.at(anchor_element_input_index)
+            expect Some(anchor_element_output) =
+              outputs |> list.at(anchor_element_output_index)
+            let linked_list_eval = {
+              let
+                _m_anchor_key,
+                _anchor_data,
+                removed_node_header_hash,
+                removed_node_header_data,
+                removed_node_link,
+              <-
+                linked_list.remove(
+                  anchor_element_input,
+                  fraudulent_node_input,
+                  anchor_element_output,
+                  mint,
+                )
+              expect fraudulent_blocks_header_hash == removed_node_header_hash
+              expect Header { operator_vkey, .. } = removed_node_header_data
+              expect operator_vkey == fraudulent_operator
+              removed_node_link == None
+            }
+          }
+        }
+
+        // Verify that fraud has been proved for the specified block header:
+        // 5. The transaction must include a reference input holding a
+        //    `fraud_proof` token.
         let referenced_fraudulent_header_hash =
           reference_inputs
             |> fraud_proof.get_proven_fraudulent_blocks_header_hash(
                 fraud_proof_script_hash,
                 fraud_proof_ref_input_index,
               )
+        expect
+          referenced_fraudulent_header_hash == fraudulent_blocks_header_hash
 
-        // 2. The fraudulent block's NFT must be burnt.
-        //
-        //    > [!NOTE]
-        //    > We are performing manual concatenation of the prefix to check
-        //    > the NFT is getting burnt because this operation is not offered
-        //    > by the linked list library. This is an unsafe operation as it
-        //    > can lead to the last element of the linked list pointing to a
-        //    > non-existent successor. Here this problem is prevented thanks to
-        //    > the requirement of the minted fraud proof token.
-        let mint_quantity_of_linked_list_nft =
-          mint
-            |> quantity_of(
-                own_policy_id,
-                block_asset_name_prefix
-                  |> bytearray.concat(referenced_fraudulent_header_hash),
-              )
-        expect mint_quantity_of_linked_list_nft == -1
-
-        // 2. The fraudulent node must exist at specified input index.
-        expect Some(fraudulent_node_input) =
-          list.at(inputs, fraudulent_node_input_index)
-
-        // 3. The appointed fraudulent node input must be an authentic element
-        //    of the linked list
-        let linked_list_element_eval = {
-          let
-            m_fraudulent_node_header_hash,
-            _fraudulent_node_header,
-            fraudulent_node_link,
-          <- linked_list.get_element_info(fraudulent_node_input.output)
-
-          // 4. The element has to be a node, with a key associated with the
-          //    fraud proof token.
-          expect
-            Some(referenced_fraudulent_header_hash) == m_fraudulent_node_header_hash
-
-          // 5. All children of the fraudulent block must have been collected
-          //    already.
-          expect None == fraudulent_node_link
-
-          // Done.
-          True
-        }
-        linked_list_element_eval |> finalize_linked_list(own_policy_id)
+        // Done.
+        True
       }
     }
   }

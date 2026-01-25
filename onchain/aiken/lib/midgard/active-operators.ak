@@ -3,16 +3,15 @@ use aiken/primitive/bytearray
 use aiken_design_patterns/linked_list
 use cardano/assets.{AssetName, PolicyId}
 use midgard/common/types.{PosixTime}
+use midgard/common/utils
 
-/// TODO: It might be better to be space-conscious and use an empty name.
+/// TODO: Refer to state queue's library module.
 pub const root_asset_name: AssetName = "MIDGARD_ACTIVE_OPERATORS"
 
 /// Short for "Midgard Active". In hex it will be: #"4d414354"
 ///
 /// > [!NOTE]
-/// > This must be exactly 4 bytes as it is followed by header hashes which are
-/// > hashed with Blake2b-224. This makes up block asset names to occupy all
-/// > available 32 bytes.
+/// > Refer to state queue's library module.
 pub const node_asset_name_prefix: AssetName = "MACT"
 
 pub const node_asset_name_prefix_length: Int =
@@ -67,7 +66,7 @@ pub type MintRedeemer {
     active_operator_slashed_node_input_index: Int,
     active_operator_anchor_node_input_index: Int,
     settlement_input_index: Int,
-    settlement_redeemer_index: Int,
+    m_settlement_redeemer_index: Option<Int>,
   }
   RetireOperator {
     active_operator_key: ByteArray,
@@ -81,13 +80,27 @@ pub type MintRedeemer {
 
 pub fn finalize_linked_list(
   eval: linked_list.Eval,
-  active_operators_policy: PolicyId,
+  nft_policy_id: PolicyId,
 ) -> Bool {
   eval
     |> linked_list.run_eval_with(
-        active_operators_policy,
+        nft_policy_id,
         root_asset_name,
         node_asset_name_prefix,
         node_asset_name_prefix_length,
       )
+}
+
+pub fn operator_is_not_a_member(
+  operator: VerificationKeyHash,
+  reference_inputs: List<Input>,
+  element_input_index: Int,
+  nft_policy_id: PolicyId,
+) -> Bool {
+  utils.key_is_not_a_member_of_ordered_linked_list(
+    operator,
+    reference_inputs,
+    element_input_index,
+  )
+    |> finalize_linked_list(nft_policy_id)
 }

@@ -1,4 +1,15 @@
+use cardano/assets.{AssetName, PolicyId}
 use midgard/common/types.{PosixTime}
+use midgard/common/utils
+
+/// TODO: Refer to state queue's library module.
+pub const root_asset_name: AssetName = "MIDGARD_RETIRED_OPERATORS"
+
+/// Short for "Midgard Retired". In hex it will be: #"4d525444"
+///
+/// > [!NOTE]
+/// > Refer to state queue's library module.
+pub const node_asset_name_prefix: AssetName = "MRTD"
 
 pub type Datum {
   bond_unlock_time: Option<PosixTime>,
@@ -34,4 +45,31 @@ pub type MintRedeemer {
     settlement_input_index: Int,
     settlement_redeemer_index: Int,
   }
+}
+
+pub fn finalize_linked_list(
+  eval: linked_list.Eval,
+  nft_policy_id: PolicyId,
+) -> Bool {
+  eval
+    |> linked_list.run_eval_with(
+        nft_policy_id,
+        root_asset_name,
+        node_asset_name_prefix,
+        node_asset_name_prefix_length,
+      )
+}
+
+pub fn operator_is_not_a_member(
+  operator: VerificationKeyHash,
+  reference_inputs: List<Input>,
+  element_input_index: Int,
+  nft_policy_id: PolicyId,
+) -> Bool {
+  utils.key_is_not_a_member_of_ordered_linked_list(
+    operator,
+    reference_inputs,
+    element_input_index,
+  )
+    |> finalize_linked_list(nft_policy_id)
 }
