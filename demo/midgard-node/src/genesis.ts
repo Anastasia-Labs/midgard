@@ -8,7 +8,12 @@ import {
 } from "@/services/index.js";
 import { Columns as LedgerColumns } from "@/database/utils/ledger.js";
 import * as MempoolLedgerDB from "@/database/mempoolLedger.js";
-import { TxSubmitError, UTxO, utxoToCore } from "@lucid-evolution/lucid";
+import {
+  TxSubmitError,
+  UTxO,
+  utxoToCore,
+  Script,
+} from "@lucid-evolution/lucid";
 import { DatabaseError } from "@/database/utils/common.js";
 import {
   handleSignSubmitNoConfirmation,
@@ -54,6 +59,41 @@ ${Array.from(new Set(config.GENESIS_UTXOS.map((u) => u.address))).join("\n")}`,
   Effect.andThen(Effect.succeed(Effect.void)),
 );
 
+const VALIDATOR_ORDER: (keyof SDK.MidgardValidators)[] = [
+  "hubOracleMintValidator",
+  "stateQueueAuthValidator",
+  "registeredOperatorsAuthValidator",
+  "activeOperatorsAuthValidator",
+  "schedulerAuthValidator",
+  "retiredOperatorsAuthValidator",
+  "escapeHatchAuthValidator",
+  "fraudProofCatalogueAuthValidator",
+  "fraudProofAuthValidator",
+  "depositAuthValidator",
+  "reserveAuthValidator",
+  "payoutAuthValidator",
+  "withdrawalAuthValidator",
+  "txOrderAuthValidator",
+  "settlementAuthValidator",
+];
+
+export const getOrderedScriptInputs = (
+  contracts: SDK.MidgardValidators,
+): string[] => {
+  return VALIDATOR_ORDER.flatMap((key) => {
+    const v = contracts[key];
+    if (!v) return [];
+    const s: string[] = [];
+    if ("spendingCBOR" in v && typeof v.spendingCBOR === "string") {
+      s.push(v.spendingCBOR);
+    }
+    if ("mintingCBOR" in v && typeof v.mintingCBOR === "string") {
+      s.push(v.mintingCBOR);
+    }
+    return s;
+  });
+};
+
 const submitGenesisDeposits: Effect.Effect<
   void,
   | SDK.LucidError
@@ -94,7 +134,7 @@ const submitGenesisDeposits: Effect.Effect<
     depositParams,
   );
   yield* handleSignSubmitNoConfirmation(lucid.api, signedTx);
-});
+}).pipe(Effect.tapError(Effect.logInfo));
 
 export const program: Effect.Effect<
   void,

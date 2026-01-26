@@ -5,7 +5,6 @@ import {
   AlwaysSucceedsContract,
   Globals,
 } from "@/services/index.js";
-import { StateQueueTx } from "@/transactions/index.js";
 import * as SDK from "@al-ft/midgard-sdk";
 import { NodeSdk } from "@effect/opentelemetry";
 import {
@@ -62,6 +61,7 @@ import {
   monitorMempoolFiber,
   txQueueProcessorFiber,
 } from "@/fibers/index.js";
+import { initializeMidgard } from "@/transactions/initialization.js";
 
 const TX_ENDPOINT: string = "tx";
 const ADDRESS_HISTORY_ENDPOINT: string = "txs";
@@ -247,17 +247,21 @@ const getBlockHandler = Effect.gen(function* () {
 
 const getInitHandler = Effect.gen(function* () {
   yield* Effect.logInfo(`✨ Initialization request received`);
-  const result = yield* StateQueueTx.stateQueueInit;
+  const txHash = yield* initializeMidgard;
   yield* Genesis.program;
   yield* Effect.logInfo(
-    `GET /${INIT_ENDPOINT} - Initialization successful: ${result}`,
+    `GET /${INIT_ENDPOINT} - Initialization successful: ${txHash}`,
   );
   return yield* HttpServerResponse.json({
-    message: `Initiation successful: ${result}`,
+    message: `Initiation successful: ${txHash}`,
   });
 }).pipe(
   Effect.catchTag("HttpBodyError", (e) => failWith500("GET", INIT_ENDPOINT, e)),
   Effect.catchTag("LucidError", (e) =>
+    handleGenericGetFailure(INIT_ENDPOINT, e),
+  ),
+  Effect.catchTag("MptError", (e) => handleGenericGetFailure(INIT_ENDPOINT, e)),
+  Effect.catchTag("HashingError", (e) =>
     handleGenericGetFailure(INIT_ENDPOINT, e),
   ),
   Effect.catchTag("TxSubmitError", (e) => handleTxGetFailure(INIT_ENDPOINT, e)),

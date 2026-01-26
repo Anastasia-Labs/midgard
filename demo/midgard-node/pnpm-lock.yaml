@@ -9,29 +9,29 @@ importers:
   .:
     dependencies:
       '@aiken-lang/merkle-patricia-forestry':
-        specifier: ^1.2.0
+        specifier: ^1.3.1
         version: 1.3.1
       '@al-ft/midgard-sdk':
         specifier: file:../midgard-sdk/al-ft-midgard-sdk-0.1.0.tgz
         version: file:../midgard-sdk/al-ft-midgard-sdk-0.1.0.tgz(@harmoniclabs/bytestring@1.0.0)(@harmoniclabs/cbor@1.6.6)(@harmoniclabs/crypto@0.2.5)(@harmoniclabs/pair@1.0.0)(fast-check@3.23.2)
       '@effect/experimental':
-        specifier: ^0.46.0
-        version: 0.46.8(@effect/platform@0.80.21(effect@3.19.12))(effect@3.19.12)(lmdb@3.4.1)
+        specifier: ^0.46.8
+        version: 0.46.8(@effect/platform@0.80.21(effect@3.19.13))(effect@3.19.13)(lmdb@3.4.1)
       '@effect/opentelemetry':
-        specifier: ^0.44.6
-        version: 0.44.12(@opentelemetry/api@1.9.0)(@opentelemetry/resources@1.30.1(@opentelemetry/api@1.9.0))(@opentelemetry/sdk-metrics@1.30.1(@opentelemetry/api@1.9.0))(@opentelemetry/sdk-trace-base@1.30.1(@opentelemetry/api@1.9.0))(@opentelemetry/sdk-trace-node@1.30.1(@opentelemetry/api@1.9.0))(@opentelemetry/sdk-trace-web@1.30.1(@opentelemetry/api@1.9.0))(@opentelemetry/semantic-conventions@1.38.0)(effect@3.19.12)
+        specifier: ^0.44.12
+        version: 0.44.12(@opentelemetry/api@1.9.0)(@opentelemetry/resources@1.30.1(@opentelemetry/api@1.9.0))(@opentelemetry/sdk-metrics@1.30.1(@opentelemetry/api@1.9.0))(@opentelemetry/sdk-trace-base@1.30.1(@opentelemetry/api@1.9.0))(@opentelemetry/sdk-trace-node@1.30.1(@opentelemetry/api@1.9.0))(@opentelemetry/sdk-trace-web@1.30.1(@opentelemetry/api@1.9.0))(@opentelemetry/semantic-conventions@1.38.0)(effect@3.19.13)
       '@effect/platform':
-        specifier: ^0.80.0
-        version: 0.80.21(effect@3.19.12)
+        specifier: ^0.80.21
+        version: 0.80.21(effect@3.19.13)
       '@effect/platform-node':
-        specifier: ^0.80.0
-        version: 0.80.3(@effect/cluster@0.31.1(@effect/platform@0.80.21(effect@3.19.12))(@effect/rpc@0.57.1(@effect/platform@0.80.21(effect@3.19.12))(effect@3.19.12))(@effect/sql@0.34.1(@effect/experimental@0.46.8(@effect/platform@0.80.21(effect@3.19.12))(effect@3.19.12)(lmdb@3.4.1))(@effect/platform@0.80.21(effect@3.19.12))(effect@3.19.12))(effect@3.19.12))(@effect/platform@0.80.21(effect@3.19.12))(@effect/rpc@0.57.1(@effect/platform@0.80.21(effect@3.19.12))(effect@3.19.12))(@effect/sql@0.34.1(@effect/experimental@0.46.8(@effect/platform@0.80.21(effect@3.19.12))(effect@3.19.12)(lmdb@3.4.1))(@effect/platform@0.80.21(effect@3.19.12))(effect@3.19.12))(effect@3.19.12)
+        specifier: ^0.80.3
+        version: 0.80.3(@effect/cluster@0.31.1(@effect/platform@0.80.21(effect@3.19.13))(@effect/rpc@0.57.1(@effect/platform@0.80.21(effect@3.19.13))(effect@3.19.13))(@effect/sql@0.34.1(@effect/experimental@0.46.8(@effect/platform@0.80.21(effect@3.19.13))(effect@3.19.13)(lmdb@3.4.1))(@effect/platform@0.80.21(effect@3.19.13))(effect@3.19.13))(effect@3.19.13))(@effect/platform@0.80.21(effect@3.19.13))(@effect/rpc@0.57.1(@effect/platform@0.80.21(effect@3.19.13))(effect@3.19.13))(@effect/sql@0.34.1(@effect/experimental@0.46.8(@effect/platform@0.80.21(effect@3.19.13))(effect@3.19.13)(lmdb@3.4.1))(@effect/platform@0.80.21(effect@3.19.13))(effect@3.19.13))(effect@3.19.13)
       '@effect/sql':
         specifier: ^0.34.1
-        version: 0.34.1(@effect/experimental@0.46.8(@effect/platform@0.80.21(effect@3.19.12))(effect@3.19.12)(lmdb@3.4.1))(@effect/platform@0.80.21(effect@3.19.12))(effect@3.19.12)
+        version: 0.34.1(@effect/experimental@0.46.8(@effect/platform@0.80.21(effect@3.19.13))(effect@3.19.13)(lmdb@3.4.1))(@effect/platform@0.80.21(effect@3.19.13))(effect@3.19.13)
       '@effect/sql-pg':
         specifier: ^0.35.1
-        version: 0.35.1(@effect/experimental@0.46.8(@effect/platform@0.80.21(effect@3.19.12))(effect@3.19.12)(lmdb@3.4.1))(@effect/platform@0.80.21(effect@3.19.12))(@effect/sql@0.34.1(@effect/experimental@0.46.8(@effect/platform@0.80.21(effect@3.19.12))(effect@3.19.12)(lmdb@3.4.1))(@effect/platform@0.80.21(effect@3.19.12))(effect@3.19.12))(effect@3.19.12)
+        version: 0.35.1(@effect/experimental@0.46.8(@effect/platform@0.80.21(effect@3.19.13))(effect@3.19.13)(lmdb@3.4.1))(@effect/platform@0.80.21(effect@3.19.13))(@effect/sql@0.34.1(@effect/experimental@0.46.8(@effect/platform@0.80.21(effect@3.19.13))(effect@3.19.13)(lmdb@3.4.1))(@effect/platform@0.80.21(effect@3.19.13))(effect@3.19.13))(effect@3.19.13)
       '@ethereumjs/mpt':
         specifier: 7.0.0-alpha.1
         version: 7.0.0-alpha.1
@@ -39,7 +39,7 @@ importers:
         specifier: ^9.1.0
         version: 9.1.0
       '@lucid-evolution/lucid':
-        specifier: ^0.4.16
+        specifier: 0.4.29
         version: 0.4.29(@harmoniclabs/bytestring@1.0.0)(@harmoniclabs/cbor@1.6.6)(@harmoniclabs/crypto@0.2.5)(@harmoniclabs/pair@1.0.0)(fast-check@3.23.2)
       '@opentelemetry/api':
         specifier: ^1.9.0
@@ -60,17 +60,17 @@ importers:
         specifier: ^1.30.1
         version: 1.30.1(@opentelemetry/api@1.9.0)
       chalk:
-        specifier: ^5.4.1
+        specifier: ^5.6.2
         version: 5.6.2
       commander:
         specifier: ^13.1.0
         version: 13.1.0
       dotenv:
-        specifier: ^16.4.7
+        specifier: ^16.6.1
         version: 16.6.1
       effect:
-        specifier: ^3.14.22
-        version: 3.19.12
+        specifier: ^3.19.4
+        version: 3.19.13
       level:
         specifier: ^10.0.0
         version: 10.0.0
@@ -78,38 +78,38 @@ importers:
         specifier: ^3.1.0
         version: 3.1.0
       rimraf:
-        specifier: ^6.0.1
+        specifier: ^6.1.0
         version: 6.1.2
       vitest:
-        specifier: ^3.0.7
+        specifier: ^3.2.4
         version: 3.2.4(@types/node@22.19.3)
     devDependencies:
       '@commander-js/extra-typings':
         specifier: ^13.1.0
         version: 13.1.0(commander@13.1.0)
       '@effect/vitest':
-        specifier: ^0.22.0
-        version: 0.22.5(effect@3.19.12)(vitest@3.2.4(@types/node@22.19.3))
+        specifier: ^0.22.5
+        version: 0.22.5(effect@3.19.13)(vitest@3.2.4(@types/node@22.19.3))
       '@types/express':
-        specifier: ^5.0.0
+        specifier: ^5.0.5
         version: 5.0.6
       '@types/jest':
         specifier: ^29.5.14
         version: 29.5.14
       '@types/node':
-        specifier: ^22.17.0
+        specifier: ^22.19.1
         version: 22.19.3
       prettier:
-        specifier: ^3.5.2
+        specifier: ^3.6.2
         version: 3.7.4
       tsup:
-        specifier: ^8.4.0
+        specifier: ^8.5.1
         version: 8.5.1(postcss@8.5.6)(typescript@5.9.3)
       typescript:
-        specifier: ^5.7.3
+        specifier: ^5.9.3
         version: 5.9.3
       vite:
-        specifier: ^6.3.5
+        specifier: ^6.4.1
         version: 6.4.1(@types/node@22.19.3)
 
 packages:
@@ -118,7 +118,7 @@ packages:
     resolution: {integrity: sha512-vKypwCNMH7SgP8JQ/fQyXjhDC16DqTiW9x9dLK6AXe2tEWVouNy2GMKmOaS4l6ZF7pTjty5XCD+MqnsxXJBIgg==}
 
   '@al-ft/midgard-sdk@file:../midgard-sdk/al-ft-midgard-sdk-0.1.0.tgz':
-    resolution: {integrity: sha512-AyXrbDO5WfbFlpIdPxyRiSg6sjsP/5JzBCL8D6A9j/cWeqKxCsSDzLRejob1b5cXGl4A8Mqrn6zAcWYS/WwOjA==, tarball: file:../midgard-sdk/al-ft-midgard-sdk-0.1.0.tgz}
+    resolution: {integrity: sha512-PIsf0fiUz+PziJmxX7PXVlUhLHdijXmSY4V7l1Ch/wvqf94lHxfWWpJwwLU04rHqCa51BRezLx1Z8ceqIynUiA==, tarball: file:../midgard-sdk/al-ft-midgard-sdk-0.1.0.tgz}
     version: 0.1.0
 
   '@anastasia-labs/cardano-multiplatform-lib-browser@6.0.2-2':
@@ -181,8 +181,8 @@ packages:
     resolution: {integrity: sha512-f0tfX8oiauqAFCyyc/o2Ouezyk83QD4zqLl4DUjZNyCtITL8gBHh25Bkw7RUCGEZ+hf6Qms1n0ui0j3wVY7zRg==}
     engines: {node: '>=16.20.2'}
 
-  '@cardanosolutions/json-bigint@1.0.2':
-    resolution: {integrity: sha512-hRgKDFRR5zW6vv6KoymE1PuhKk8hxA/F5YsH37ghIFIYnWAMbVoQ7xRKAT5AEy9HrqWM6HxNQLIZ3r3omg96/w==}
+  '@cardanosolutions/json-bigint@1.1.0':
+    resolution: {integrity: sha512-Pdgz18cSwLKKgheOqW/dqbzNI+CliNT4AdaKaKY/P++J9qLxIB8MITCurlzbaFWV3W4nmK0CRQwI1yvuArmjFg==}
 
   '@cbor-extract/cbor-extract-darwin-arm64@2.2.0':
     resolution: {integrity: sha512-P7swiOAdF7aSi0H+tHtHtr6zrpF3aAq/W9FXx5HektRvLTM2O89xCyXF3pk7pLc7QpaY7AoaE8UowVf9QBdh3w==}
@@ -350,8 +350,8 @@ packages:
     cpu: [ppc64]
     os: [aix]
 
-  '@esbuild/aix-ppc64@0.27.1':
-    resolution: {integrity: sha512-HHB50pdsBX6k47S4u5g/CaLjqS3qwaOVE5ILsq64jyzgMhLuCuZ8rGzM9yhsAjfjkbgUPMzZEPa7DAp7yz6vuA==}
+  '@esbuild/aix-ppc64@0.27.2':
+    resolution: {integrity: sha512-GZMB+a0mOMZs4MpDbj8RJp4cw+w1WV5NYD6xzgvzUJ5Ek2jerwfO2eADyI6ExDSUED+1X8aMbegahsJi+8mgpw==}
     engines: {node: '>=18'}
     cpu: [ppc64]
     os: [aix]
@@ -362,8 +362,8 @@ packages:
     cpu: [arm64]
     os: [android]
 
-  '@esbuild/android-arm64@0.27.1':
-    resolution: {integrity: sha512-45fuKmAJpxnQWixOGCrS+ro4Uvb4Re9+UTieUY2f8AEc+t7d4AaZ6eUJ3Hva7dtrxAAWHtlEFsXFMAgNnGU9uQ==}
+  '@esbuild/android-arm64@0.27.2':
+    resolution: {integrity: sha512-pvz8ZZ7ot/RBphf8fv60ljmaoydPU12VuXHImtAs0XhLLw+EXBi2BLe3OYSBslR4rryHvweW5gmkKFwTiFy6KA==}
     engines: {node: '>=18'}
     cpu: [arm64]
     os: [android]
@@ -374,8 +374,8 @@ packages:
     cpu: [arm]
     os: [android]
 
-  '@esbuild/android-arm@0.27.1':
-    resolution: {integrity: sha512-kFqa6/UcaTbGm/NncN9kzVOODjhZW8e+FRdSeypWe6j33gzclHtwlANs26JrupOntlcWmB0u8+8HZo8s7thHvg==}
+  '@esbuild/android-arm@0.27.2':
+    resolution: {integrity: sha512-DVNI8jlPa7Ujbr1yjU2PfUSRtAUZPG9I1RwW4F4xFB1Imiu2on0ADiI/c3td+KmDtVKNbi+nffGDQMfcIMkwIA==}
     engines: {node: '>=18'}
     cpu: [arm]
     os: [android]
@@ -386,8 +386,8 @@ packages:
     cpu: [x64]
     os: [android]
 
-  '@esbuild/android-x64@0.27.1':
-    resolution: {integrity: sha512-LBEpOz0BsgMEeHgenf5aqmn/lLNTFXVfoWMUox8CtWWYK9X4jmQzWjoGoNb8lmAYml/tQ/Ysvm8q7szu7BoxRQ==}
+  '@esbuild/android-x64@0.27.2':
+    resolution: {integrity: sha512-z8Ank4Byh4TJJOh4wpz8g2vDy75zFL0TlZlkUkEwYXuPSgX8yzep596n6mT7905kA9uHZsf/o2OJZubl2l3M7A==}
     engines: {node: '>=18'}
     cpu: [x64]
     os: [android]
@@ -398,8 +398,8 @@ packages:
     cpu: [arm64]
     os: [darwin]
 
-  '@esbuild/darwin-arm64@0.27.1':
-    resolution: {integrity: sha512-veg7fL8eMSCVKL7IW4pxb54QERtedFDfY/ASrumK/SbFsXnRazxY4YykN/THYqFnFwJ0aVjiUrVG2PwcdAEqQQ==}
+  '@esbuild/darwin-arm64@0.27.2':
+    resolution: {integrity: sha512-davCD2Zc80nzDVRwXTcQP/28fiJbcOwvdolL0sOiOsbwBa72kegmVU0Wrh1MYrbuCL98Omp5dVhQFWRKR2ZAlg==}
     engines: {node: '>=18'}
     cpu: [arm64]
     os: [darwin]
@@ -410,8 +410,8 @@ packages:
     cpu: [x64]
     os: [darwin]
 
-  '@esbuild/darwin-x64@0.27.1':
-    resolution: {integrity: sha512-+3ELd+nTzhfWb07Vol7EZ+5PTbJ/u74nC6iv4/lwIU99Ip5uuY6QoIf0Hn4m2HoV0qcnRivN3KSqc+FyCHjoVQ==}
+  '@esbuild/darwin-x64@0.27.2':
+    resolution: {integrity: sha512-ZxtijOmlQCBWGwbVmwOF/UCzuGIbUkqB1faQRf5akQmxRJ1ujusWsb3CVfk/9iZKr2L5SMU5wPBi1UWbvL+VQA==}
     engines: {node: '>=18'}
     cpu: [x64]
     os: [darwin]
@@ -422,8 +422,8 @@ packages:
     cpu: [arm64]
     os: [freebsd]
 
-  '@esbuild/freebsd-arm64@0.27.1':
-    resolution: {integrity: sha512-/8Rfgns4XD9XOSXlzUDepG8PX+AVWHliYlUkFI3K3GB6tqbdjYqdhcb4BKRd7C0BhZSoaCxhv8kTcBrcZWP+xg==}
+  '@esbuild/freebsd-arm64@0.27.2':
+    resolution: {integrity: sha512-lS/9CN+rgqQ9czogxlMcBMGd+l8Q3Nj1MFQwBZJyoEKI50XGxwuzznYdwcav6lpOGv5BqaZXqvBSiB/kJ5op+g==}
     engines: {node: '>=18'}
     cpu: [arm64]
     os: [freebsd]
@@ -434,8 +434,8 @@ packages:
     cpu: [x64]
     os: [freebsd]
 
-  '@esbuild/freebsd-x64@0.27.1':
-    resolution: {integrity: sha512-GITpD8dK9C+r+5yRT/UKVT36h/DQLOHdwGVwwoHidlnA168oD3uxA878XloXebK4Ul3gDBBIvEdL7go9gCUFzQ==}
+  '@esbuild/freebsd-x64@0.27.2':
+    resolution: {integrity: sha512-tAfqtNYb4YgPnJlEFu4c212HYjQWSO/w/h/lQaBK7RbwGIkBOuNKQI9tqWzx7Wtp7bTPaGC6MJvWI608P3wXYA==}
     engines: {node: '>=18'}
     cpu: [x64]
     os: [freebsd]
@@ -446,8 +446,8 @@ packages:
     cpu: [arm64]
     os: [linux]
 
-  '@esbuild/linux-arm64@0.27.1':
-    resolution: {integrity: sha512-W9//kCrh/6in9rWIBdKaMtuTTzNj6jSeG/haWBADqLLa9P8O5YSRDzgD5y9QBok4AYlzS6ARHifAb75V6G670Q==}
+  '@esbuild/linux-arm64@0.27.2':
+    resolution: {integrity: sha512-hYxN8pr66NsCCiRFkHUAsxylNOcAQaxSSkHMMjcpx0si13t1LHFphxJZUiGwojB1a/Hd5OiPIqDdXONia6bhTw==}
     engines: {node: '>=18'}
     cpu: [arm64]
     os: [linux]
@@ -458,8 +458,8 @@ packages:
     cpu: [arm]
     os: [linux]
 
-  '@esbuild/linux-arm@0.27.1':
-    resolution: {integrity: sha512-ieMID0JRZY/ZeCrsFQ3Y3NlHNCqIhTprJfDgSB3/lv5jJZ8FX3hqPyXWhe+gvS5ARMBJ242PM+VNz/ctNj//eA==}
+  '@esbuild/linux-arm@0.27.2':
+    resolution: {integrity: sha512-vWfq4GaIMP9AIe4yj1ZUW18RDhx6EPQKjwe7n8BbIecFtCQG4CfHGaHuh7fdfq+y3LIA2vGS/o9ZBGVxIDi9hw==}
     engines: {node: '>=18'}
     cpu: [arm]
     os: [linux]
@@ -470,8 +470,8 @@ packages:
     cpu: [ia32]
     os: [linux]
 
-  '@esbuild/linux-ia32@0.27.1':
-    resolution: {integrity: sha512-VIUV4z8GD8rtSVMfAj1aXFahsi/+tcoXXNYmXgzISL+KB381vbSTNdeZHHHIYqFyXcoEhu9n5cT+05tRv13rlw==}
+  '@esbuild/linux-ia32@0.27.2':
+    resolution: {integrity: sha512-MJt5BRRSScPDwG2hLelYhAAKh9imjHK5+NE/tvnRLbIqUWa+0E9N4WNMjmp/kXXPHZGqPLxggwVhz7QP8CTR8w==}
     engines: {node: '>=18'}
     cpu: [ia32]
     os: [linux]
@@ -482,8 +482,8 @@ packages:
     cpu: [loong64]
     os: [linux]
 
-  '@esbuild/linux-loong64@0.27.1':
-    resolution: {integrity: sha512-l4rfiiJRN7sTNI//ff65zJ9z8U+k6zcCg0LALU5iEWzY+a1mVZ8iWC1k5EsNKThZ7XCQ6YWtsZ8EWYm7r1UEsg==}
+  '@esbuild/linux-loong64@0.27.2':
+    resolution: {integrity: sha512-lugyF1atnAT463aO6KPshVCJK5NgRnU4yb3FUumyVz+cGvZbontBgzeGFO1nF+dPueHD367a2ZXe1NtUkAjOtg==}
     engines: {node: '>=18'}
     cpu: [loong64]
     os: [linux]
@@ -494,8 +494,8 @@ packages:
     cpu: [mips64el]
     os: [linux]
 
-  '@esbuild/linux-mips64el@0.27.1':
-    resolution: {integrity: sha512-U0bEuAOLvO/DWFdygTHWY8C067FXz+UbzKgxYhXC0fDieFa0kDIra1FAhsAARRJbvEyso8aAqvPdNxzWuStBnA==}
+  '@esbuild/linux-mips64el@0.27.2':
+    resolution: {integrity: sha512-nlP2I6ArEBewvJ2gjrrkESEZkB5mIoaTswuqNFRv/WYd+ATtUpe9Y09RnJvgvdag7he0OWgEZWhviS1OTOKixw==}
     engines: {node: '>=18'}
     cpu: [mips64el]
     os: [linux]
@@ -506,8 +506,8 @@ packages:
     cpu: [ppc64]
     os: [linux]
 
-  '@esbuild/linux-ppc64@0.27.1':
-    resolution: {integrity: sha512-NzdQ/Xwu6vPSf/GkdmRNsOfIeSGnh7muundsWItmBsVpMoNPVpM61qNzAVY3pZ1glzzAxLR40UyYM23eaDDbYQ==}
+  '@esbuild/linux-ppc64@0.27.2':
+    resolution: {integrity: sha512-C92gnpey7tUQONqg1n6dKVbx3vphKtTHJaNG2Ok9lGwbZil6DrfyecMsp9CrmXGQJmZ7iiVXvvZH6Ml5hL6XdQ==}
     engines: {node: '>=18'}
     cpu: [ppc64]
     os: [linux]
@@ -518,8 +518,8 @@ packages:
     cpu: [riscv64]
     os: [linux]
 
-  '@esbuild/linux-riscv64@0.27.1':
-    resolution: {integrity: sha512-7zlw8p3IApcsN7mFw0O1Z1PyEk6PlKMu18roImfl3iQHTnr/yAfYv6s4hXPidbDoI2Q0pW+5xeoM4eTCC0UdrQ==}
+  '@esbuild/linux-riscv64@0.27.2':
+    resolution: {integrity: sha512-B5BOmojNtUyN8AXlK0QJyvjEZkWwy/FKvakkTDCziX95AowLZKR6aCDhG7LeF7uMCXEJqwa8Bejz5LTPYm8AvA==}
     engines: {node: '>=18'}
     cpu: [riscv64]
     os: [linux]
@@ -530,8 +530,8 @@ packages:
     cpu: [s390x]
     os: [linux]
 
-  '@esbuild/linux-s390x@0.27.1':
-    resolution: {integrity: sha512-cGj5wli+G+nkVQdZo3+7FDKC25Uh4ZVwOAK6A06Hsvgr8WqBBuOy/1s+PUEd/6Je+vjfm6stX0kmib5b/O2Ykw==}
+  '@esbuild/linux-s390x@0.27.2':
+    resolution: {integrity: sha512-p4bm9+wsPwup5Z8f4EpfN63qNagQ47Ua2znaqGH6bqLlmJ4bx97Y9JdqxgGZ6Y8xVTixUnEkoKSHcpRlDnNr5w==}
     engines: {node: '>=18'}
     cpu: [s390x]
     os: [linux]
@@ -542,8 +542,8 @@ packages:
     cpu: [x64]
     os: [linux]
 
-  '@esbuild/linux-x64@0.27.1':
-    resolution: {integrity: sha512-z3H/HYI9MM0HTv3hQZ81f+AKb+yEoCRlUby1F80vbQ5XdzEMyY/9iNlAmhqiBKw4MJXwfgsh7ERGEOhrM1niMA==}
+  '@esbuild/linux-x64@0.27.2':
+    resolution: {integrity: sha512-uwp2Tip5aPmH+NRUwTcfLb+W32WXjpFejTIOWZFw/v7/KnpCDKG66u4DLcurQpiYTiYwQ9B7KOeMJvLCu/OvbA==}
     engines: {node: '>=18'}
     cpu: [x64]
     os: [linux]
@@ -554,8 +554,8 @@ packages:
     cpu: [arm64]
     os: [netbsd]
 
-  '@esbuild/netbsd-arm64@0.27.1':
-    resolution: {integrity: sha512-wzC24DxAvk8Em01YmVXyjl96Mr+ecTPyOuADAvjGg+fyBpGmxmcr2E5ttf7Im8D0sXZihpxzO1isus8MdjMCXQ==}
+  '@esbuild/netbsd-arm64@0.27.2':
+    resolution: {integrity: sha512-Kj6DiBlwXrPsCRDeRvGAUb/LNrBASrfqAIok+xB0LxK8CHqxZ037viF13ugfsIpePH93mX7xfJp97cyDuTZ3cw==}
     engines: {node: '>=18'}
     cpu: [arm64]
     os: [netbsd]
@@ -566,8 +566,8 @@ packages:
     cpu: [x64]
     os: [netbsd]
 
-  '@esbuild/netbsd-x64@0.27.1':
-    resolution: {integrity: sha512-1YQ8ybGi2yIXswu6eNzJsrYIGFpnlzEWRl6iR5gMgmsrR0FcNoV1m9k9sc3PuP5rUBLshOZylc9nqSgymI+TYg==}
+  '@esbuild/netbsd-x64@0.27.2':
+    resolution: {integrity: sha512-HwGDZ0VLVBY3Y+Nw0JexZy9o/nUAWq9MlV7cahpaXKW6TOzfVno3y3/M8Ga8u8Yr7GldLOov27xiCnqRZf0tCA==}
     engines: {node: '>=18'}
     cpu: [x64]
     os: [netbsd]
@@ -578,8 +578,8 @@ packages:
     cpu: [arm64]
     os: [openbsd]
 
-  '@esbuild/openbsd-arm64@0.27.1':
-    resolution: {integrity: sha512-5Z+DzLCrq5wmU7RDaMDe2DVXMRm2tTDvX2KU14JJVBN2CT/qov7XVix85QoJqHltpvAOZUAc3ndU56HSMWrv8g==}
+  '@esbuild/openbsd-arm64@0.27.2':
+    resolution: {integrity: sha512-DNIHH2BPQ5551A7oSHD0CKbwIA/Ox7+78/AWkbS5QoRzaqlev2uFayfSxq68EkonB+IKjiuxBFoV8ESJy8bOHA==}
     engines: {node: '>=18'}
     cpu: [arm64]
     os: [openbsd]
@@ -590,8 +590,8 @@ packages:
     cpu: [x64]
     os: [openbsd]
 
-  '@esbuild/openbsd-x64@0.27.1':
-    resolution: {integrity: sha512-Q73ENzIdPF5jap4wqLtsfh8YbYSZ8Q0wnxplOlZUOyZy7B4ZKW8DXGWgTCZmF8VWD7Tciwv5F4NsRf6vYlZtqg==}
+  '@esbuild/openbsd-x64@0.27.2':
+    resolution: {integrity: sha512-/it7w9Nb7+0KFIzjalNJVR5bOzA9Vay+yIPLVHfIQYG/j+j9VTH84aNB8ExGKPU4AzfaEvN9/V4HV+F+vo8OEg==}
     engines: {node: '>=18'}
     cpu: [x64]
     os: [openbsd]
@@ -602,8 +602,8 @@ packages:
     cpu: [arm64]
     os: [openharmony]
 
-  '@esbuild/openharmony-arm64@0.27.1':
-    resolution: {integrity: sha512-ajbHrGM/XiK+sXM0JzEbJAen+0E+JMQZ2l4RR4VFwvV9JEERx+oxtgkpoKv1SevhjavK2z2ReHk32pjzktWbGg==}
+  '@esbuild/openharmony-arm64@0.27.2':
+    resolution: {integrity: sha512-LRBbCmiU51IXfeXk59csuX/aSaToeG7w48nMwA6049Y4J4+VbWALAuXcs+qcD04rHDuSCSRKdmY63sruDS5qag==}
     engines: {node: '>=18'}
     cpu: [arm64]
     os: [openharmony]
@@ -614,8 +614,8 @@ packages:
     cpu: [x64]
     os: [sunos]
 
-  '@esbuild/sunos-x64@0.27.1':
-    resolution: {integrity: sha512-IPUW+y4VIjuDVn+OMzHc5FV4GubIwPnsz6ubkvN8cuhEqH81NovB53IUlrlBkPMEPxvNnf79MGBoz8rZ2iW8HA==}
+  '@esbuild/sunos-x64@0.27.2':
+    resolution: {integrity: sha512-kMtx1yqJHTmqaqHPAzKCAkDaKsffmXkPHThSfRwZGyuqyIeBvf08KSsYXl+abf5HDAPMJIPnbBfXvP2ZC2TfHg==}
     engines: {node: '>=18'}
     cpu: [x64]
     os: [sunos]
@@ -626,8 +626,8 @@ packages:
     cpu: [arm64]
     os: [win32]
 
-  '@esbuild/win32-arm64@0.27.1':
-    resolution: {integrity: sha512-RIVRWiljWA6CdVu8zkWcRmGP7iRRIIwvhDKem8UMBjPql2TXM5PkDVvvrzMtj1V+WFPB4K7zkIGM7VzRtFkjdg==}
+  '@esbuild/win32-arm64@0.27.2':
+    resolution: {integrity: sha512-Yaf78O/B3Kkh+nKABUF++bvJv5Ijoy9AN1ww904rOXZFLWVc5OLOfL56W+C8F9xn5JQZa3UX6m+IktJnIb1Jjg==}
     engines: {node: '>=18'}
     cpu: [arm64]
     os: [win32]
@@ -638,8 +638,8 @@ packages:
     cpu: [ia32]
     os: [win32]
 
-  '@esbuild/win32-ia32@0.27.1':
-    resolution: {integrity: sha512-2BR5M8CPbptC1AK5JbJT1fWrHLvejwZidKx3UMSF0ecHMa+smhi16drIrCEggkgviBwLYd5nwrFLSl5Kho96RQ==}
+  '@esbuild/win32-ia32@0.27.2':
+    resolution: {integrity: sha512-Iuws0kxo4yusk7sw70Xa2E2imZU5HoixzxfGCdxwBdhiDgt9vX9VUCBhqcwY7/uh//78A1hMkkROMJq9l27oLQ==}
     engines: {node: '>=18'}
     cpu: [ia32]
     os: [win32]
@@ -650,8 +650,8 @@ packages:
     cpu: [x64]
     os: [win32]
 
-  '@esbuild/win32-x64@0.27.1':
-    resolution: {integrity: sha512-d5X6RMYv6taIymSk8JBP+nxv8DQAMY6A51GPgusqLdK9wBz5wWIXy1KjTck6HnjE9hqJzJRdk+1p/t5soSbCtw==}
+  '@esbuild/win32-x64@0.27.2':
+    resolution: {integrity: sha512-sRdU18mcKf7F+YgheI/zGf5alZatMUTKj/jNS6l744f9u3WFu4v7twcUI9vu4mknF4Y9aDlblIie0IM+5xxaqQ==}
     engines: {node: '>=18'}
     cpu: [x64]
     os: [win32]
@@ -1099,113 +1099,113 @@ packages:
   '@protobufjs/utf8@1.1.0':
     resolution: {integrity: sha512-Vvn3zZrhQZkkBE8LSuW3em98c0FwgO4nxzv6OdSxPKJIEKY2bGbHn+mhGIPerzI4twdxaP8/0+06HBpwf345Lw==}
 
-  '@rollup/rollup-android-arm-eabi@4.53.3':
-    resolution: {integrity: sha512-mRSi+4cBjrRLoaal2PnqH82Wqyb+d3HsPUN/W+WslCXsZsyHa9ZeQQX/pQsZaVIWDkPcpV6jJ+3KLbTbgnwv8w==}
+  '@rollup/rollup-android-arm-eabi@4.54.0':
+    resolution: {integrity: sha512-OywsdRHrFvCdvsewAInDKCNyR3laPA2mc9bRYJ6LBp5IyvF3fvXbbNR0bSzHlZVFtn6E0xw2oZlyjg4rKCVcng==}
     cpu: [arm]
     os: [android]
 
-  '@rollup/rollup-android-arm64@4.53.3':
-    resolution: {integrity: sha512-CbDGaMpdE9sh7sCmTrTUyllhrg65t6SwhjlMJsLr+J8YjFuPmCEjbBSx4Z/e4SmDyH3aB5hGaJUP2ltV/vcs4w==}
+  '@rollup/rollup-android-arm64@4.54.0':
+    resolution: {integrity: sha512-Skx39Uv+u7H224Af+bDgNinitlmHyQX1K/atIA32JP3JQw6hVODX5tkbi2zof/E69M1qH2UoN3Xdxgs90mmNYw==}
     cpu: [arm64]
     os: [android]
 
-  '@rollup/rollup-darwin-arm64@4.53.3':
-    resolution: {integrity: sha512-Nr7SlQeqIBpOV6BHHGZgYBuSdanCXuw09hon14MGOLGmXAFYjx1wNvquVPmpZnl0tLjg25dEdr4IQ6GgyToCUA==}
+  '@rollup/rollup-darwin-arm64@4.54.0':
+    resolution: {integrity: sha512-k43D4qta/+6Fq+nCDhhv9yP2HdeKeP56QrUUTW7E6PhZP1US6NDqpJj4MY0jBHlJivVJD5P8NxrjuobZBJTCRw==}
     cpu: [arm64]
     os: [darwin]
 
-  '@rollup/rollup-darwin-x64@4.53.3':
-    resolution: {integrity: sha512-DZ8N4CSNfl965CmPktJ8oBnfYr3F8dTTNBQkRlffnUarJ2ohudQD17sZBa097J8xhQ26AwhHJ5mvUyQW8ddTsQ==}
+  '@rollup/rollup-darwin-x64@4.54.0':
+    resolution: {integrity: sha512-cOo7biqwkpawslEfox5Vs8/qj83M/aZCSSNIWpVzfU2CYHa2G3P1UN5WF01RdTHSgCkri7XOlTdtk17BezlV3A==}
     cpu: [x64]
     os: [darwin]
 
-  '@rollup/rollup-freebsd-arm64@4.53.3':
-    resolution: {integrity: sha512-yMTrCrK92aGyi7GuDNtGn2sNW+Gdb4vErx4t3Gv/Tr+1zRb8ax4z8GWVRfr3Jw8zJWvpGHNpss3vVlbF58DZ4w==}
+  '@rollup/rollup-freebsd-arm64@4.54.0':
+    resolution: {integrity: sha512-miSvuFkmvFbgJ1BevMa4CPCFt5MPGw094knM64W9I0giUIMMmRYcGW/JWZDriaw/k1kOBtsWh1z6nIFV1vPNtA==}
     cpu: [arm64]
     os: [freebsd]
 
-  '@rollup/rollup-freebsd-x64@4.53.3':
-    resolution: {integrity: sha512-lMfF8X7QhdQzseM6XaX0vbno2m3hlyZFhwcndRMw8fbAGUGL3WFMBdK0hbUBIUYcEcMhVLr1SIamDeuLBnXS+Q==}
+  '@rollup/rollup-freebsd-x64@4.54.0':
+    resolution: {integrity: sha512-KGXIs55+b/ZfZsq9aR026tmr/+7tq6VG6MsnrvF4H8VhwflTIuYh+LFUlIsRdQSgrgmtM3fVATzEAj4hBQlaqQ==}
     cpu: [x64]
     os: [freebsd]
 
-  '@rollup/rollup-linux-arm-gnueabihf@4.53.3':
-    resolution: {integrity: sha512-k9oD15soC/Ln6d2Wv/JOFPzZXIAIFLp6B+i14KhxAfnq76ajt0EhYc5YPeX6W1xJkAdItcVT+JhKl1QZh44/qw==}
+  '@rollup/rollup-linux-arm-gnueabihf@4.54.0':
+    resolution: {integrity: sha512-EHMUcDwhtdRGlXZsGSIuXSYwD5kOT9NVnx9sqzYiwAc91wfYOE1g1djOEDseZJKKqtHAHGwnGPQu3kytmfaXLQ==}
     cpu: [arm]
     os: [linux]
 
-  '@rollup/rollup-linux-arm-musleabihf@4.53.3':
-    resolution: {integrity: sha512-vTNlKq+N6CK/8UktsrFuc+/7NlEYVxgaEgRXVUVK258Z5ymho29skzW1sutgYjqNnquGwVUObAaxae8rZ6YMhg==}
+  '@rollup/rollup-linux-arm-musleabihf@4.54.0':
+    resolution: {integrity: sha512-+pBrqEjaakN2ySv5RVrj/qLytYhPKEUwk+e3SFU5jTLHIcAtqh2rLrd/OkbNuHJpsBgxsD8ccJt5ga/SeG0JmA==}
     cpu: [arm]
     os: [linux]
 
-  '@rollup/rollup-linux-arm64-gnu@4.53.3':
-    resolution: {integrity: sha512-RGrFLWgMhSxRs/EWJMIFM1O5Mzuz3Xy3/mnxJp/5cVhZ2XoCAxJnmNsEyeMJtpK+wu0FJFWz+QF4mjCA7AUQ3w==}
+  '@rollup/rollup-linux-arm64-gnu@4.54.0':
+    resolution: {integrity: sha512-NSqc7rE9wuUaRBsBp5ckQ5CVz5aIRKCwsoa6WMF7G01sX3/qHUw/z4pv+D+ahL1EIKy6Enpcnz1RY8pf7bjwng==}
     cpu: [arm64]
     os: [linux]
 
-  '@rollup/rollup-linux-arm64-musl@4.53.3':
-    resolution: {integrity: sha512-kASyvfBEWYPEwe0Qv4nfu6pNkITLTb32p4yTgzFCocHnJLAHs+9LjUu9ONIhvfT/5lv4YS5muBHyuV84epBo/A==}
+  '@rollup/rollup-linux-arm64-musl@4.54.0':
+    resolution: {integrity: sha512-gr5vDbg3Bakga5kbdpqx81m2n9IX8M6gIMlQQIXiLTNeQW6CucvuInJ91EuCJ/JYvc+rcLLsDFcfAD1K7fMofg==}
     cpu: [arm64]
     os: [linux]
 
-  '@rollup/rollup-linux-loong64-gnu@4.53.3':
-    resolution: {integrity: sha512-JiuKcp2teLJwQ7vkJ95EwESWkNRFJD7TQgYmCnrPtlu50b4XvT5MOmurWNrCj3IFdyjBQ5p9vnrX4JM6I8OE7g==}
+  '@rollup/rollup-linux-loong64-gnu@4.54.0':
+    resolution: {integrity: sha512-gsrtB1NA3ZYj2vq0Rzkylo9ylCtW/PhpLEivlgWe0bpgtX5+9j9EZa0wtZiCjgu6zmSeZWyI/e2YRX1URozpIw==}
     cpu: [loong64]
     os: [linux]
 
-  '@rollup/rollup-linux-ppc64-gnu@4.53.3':
-    resolution: {integrity: sha512-EoGSa8nd6d3T7zLuqdojxC20oBfNT8nexBbB/rkxgKj5T5vhpAQKKnD+h3UkoMuTyXkP5jTjK/ccNRmQrPNDuw==}
+  '@rollup/rollup-linux-ppc64-gnu@4.54.0':
+    resolution: {integrity: sha512-y3qNOfTBStmFNq+t4s7Tmc9hW2ENtPg8FeUD/VShI7rKxNW7O4fFeaYbMsd3tpFlIg1Q8IapFgy7Q9i2BqeBvA==}
     cpu: [ppc64]
     os: [linux]
 
-  '@rollup/rollup-linux-riscv64-gnu@4.53.3':
-    resolution: {integrity: sha512-4s+Wped2IHXHPnAEbIB0YWBv7SDohqxobiiPA1FIWZpX+w9o2i4LezzH/NkFUl8LRci/8udci6cLq+jJQlh+0g==}
+  '@rollup/rollup-linux-riscv64-gnu@4.54.0':
+    resolution: {integrity: sha512-89sepv7h2lIVPsFma8iwmccN7Yjjtgz0Rj/Ou6fEqg3HDhpCa+Et+YSufy27i6b0Wav69Qv4WBNl3Rs6pwhebQ==}
     cpu: [riscv64]
     os: [linux]
 
-  '@rollup/rollup-linux-riscv64-musl@4.53.3':
-    resolution: {integrity: sha512-68k2g7+0vs2u9CxDt5ktXTngsxOQkSEV/xBbwlqYcUrAVh6P9EgMZvFsnHy4SEiUl46Xf0IObWVbMvPrr2gw8A==}
+  '@rollup/rollup-linux-riscv64-musl@4.54.0':
+    resolution: {integrity: sha512-ZcU77ieh0M2Q8Ur7D5X7KvK+UxbXeDHwiOt/CPSBTI1fBmeDMivW0dPkdqkT4rOgDjrDDBUed9x4EgraIKoR2A==}
     cpu: [riscv64]
     os: [linux]
 
-  '@rollup/rollup-linux-s390x-gnu@4.53.3':
-    resolution: {integrity: sha512-VYsFMpULAz87ZW6BVYw3I6sWesGpsP9OPcyKe8ofdg9LHxSbRMd7zrVrr5xi/3kMZtpWL/wC+UIJWJYVX5uTKg==}
+  '@rollup/rollup-linux-s390x-gnu@4.54.0':
+    resolution: {integrity: sha512-2AdWy5RdDF5+4YfG/YesGDDtbyJlC9LHmL6rZw6FurBJ5n4vFGupsOBGfwMRjBYH7qRQowT8D/U4LoSvVwOhSQ==}
     cpu: [s390x]
     os: [linux]
 
-  '@rollup/rollup-linux-x64-gnu@4.53.3':
-    resolution: {integrity: sha512-3EhFi1FU6YL8HTUJZ51imGJWEX//ajQPfqWLI3BQq4TlvHy4X0MOr5q3D2Zof/ka0d5FNdPwZXm3Yyib/UEd+w==}
+  '@rollup/rollup-linux-x64-gnu@4.54.0':
+    resolution: {integrity: sha512-WGt5J8Ij/rvyqpFexxk3ffKqqbLf9AqrTBbWDk7ApGUzaIs6V+s2s84kAxklFwmMF/vBNGrVdYgbblCOFFezMQ==}
     cpu: [x64]
     os: [linux]
 
-  '@rollup/rollup-linux-x64-musl@4.53.3':
-    resolution: {integrity: sha512-eoROhjcc6HbZCJr+tvVT8X4fW3/5g/WkGvvmwz/88sDtSJzO7r/blvoBDgISDiCjDRZmHpwud7h+6Q9JxFwq1Q==}
+  '@rollup/rollup-linux-x64-musl@4.54.0':
+    resolution: {integrity: sha512-JzQmb38ATzHjxlPHuTH6tE7ojnMKM2kYNzt44LO/jJi8BpceEC8QuXYA908n8r3CNuG/B3BV8VR3Hi1rYtmPiw==}
     cpu: [x64]
     os: [linux]
 
-  '@rollup/rollup-openharmony-arm64@4.53.3':
-    resolution: {integrity: sha512-OueLAWgrNSPGAdUdIjSWXw+u/02BRTcnfw9PN41D2vq/JSEPnJnVuBgw18VkN8wcd4fjUs+jFHVM4t9+kBSNLw==}
+  '@rollup/rollup-openharmony-arm64@4.54.0':
+    resolution: {integrity: sha512-huT3fd0iC7jigGh7n3q/+lfPcXxBi+om/Rs3yiFxjvSxbSB6aohDFXbWvlspaqjeOh+hx7DDHS+5Es5qRkWkZg==}
     cpu: [arm64]
     os: [openharmony]
 
-  '@rollup/rollup-win32-arm64-msvc@4.53.3':
-    resolution: {integrity: sha512-GOFuKpsxR/whszbF/bzydebLiXIHSgsEUp6M0JI8dWvi+fFa1TD6YQa4aSZHtpmh2/uAlj/Dy+nmby3TJ3pkTw==}
+  '@rollup/rollup-win32-arm64-msvc@4.54.0':
+    resolution: {integrity: sha512-c2V0W1bsKIKfbLMBu/WGBz6Yci8nJ/ZJdheE0EwB73N3MvHYKiKGs3mVilX4Gs70eGeDaMqEob25Tw2Gb9Nqyw==}
     cpu: [arm64]
     os: [win32]
 
-  '@rollup/rollup-win32-ia32-msvc@4.53.3':
-    resolution: {integrity: sha512-iah+THLcBJdpfZ1TstDFbKNznlzoxa8fmnFYK4V67HvmuNYkVdAywJSoteUszvBQ9/HqN2+9AZghbajMsFT+oA==}
+  '@rollup/rollup-win32-ia32-msvc@4.54.0':
+    resolution: {integrity: sha512-woEHgqQqDCkAzrDhvDipnSirm5vxUXtSKDYTVpZG3nUdW/VVB5VdCYA2iReSj/u3yCZzXID4kuKG7OynPnB3WQ==}
     cpu: [ia32]
     os: [win32]
 
-  '@rollup/rollup-win32-x64-gnu@4.53.3':
-    resolution: {integrity: sha512-J9QDiOIZlZLdcot5NXEepDkstocktoVjkaKUtqzgzpt2yWjGlbYiKyp05rWwk4nypbYUNoFAztEgixoLaSETkg==}
+  '@rollup/rollup-win32-x64-gnu@4.54.0':
+    resolution: {integrity: sha512-dzAc53LOuFvHwbCEOS0rPbXp6SIhAf2txMP5p6mGyOXXw5mWY8NGGbPMPrs4P1WItkfApDathBj/NzMLUZ9rtQ==}
     cpu: [x64]
     os: [win32]
 
-  '@rollup/rollup-win32-x64-msvc@4.53.3':
-    resolution: {integrity: sha512-UhTd8u31dXadv0MopwGgNOBpUVROFKWVQgAg5N1ESyCz8AuBcMqm4AuTjrwgQKGDfoFuz02EuMRHQIw/frmYKQ==}
+  '@rollup/rollup-win32-x64-msvc@4.54.0':
+    resolution: {integrity: sha512-hYT5d3YNdSh3mbCU1gwQyPgQd3T2ne0A3KG8KSBdav5TiBg6eInVmV+TeR5uHufiIgSFg0XsOWGW5/RhNcSvPg==}
     cpu: [x64]
     os: [win32]
 
@@ -1233,8 +1233,8 @@ packages:
   '@sinclair/typebox@0.32.35':
     resolution: {integrity: sha512-Ul3YyOTU++to8cgNkttakC0dWvpERr6RYoHO2W47DLbFvrwBDJUY31B1sImH6JZSYc4Kt4PyHtoPNu+vL2r2dA==}
 
-  '@standard-schema/spec@1.0.0':
-    resolution: {integrity: sha512-m2bOd0f2RT9k8QJx1JN85cZYyH1RqFBdlwtkSlf4tBDYLCiiZnv1fIIwacK6cqwXavOydf0NPToMQgpKq+dVlA==}
+  '@standard-schema/spec@1.1.0':
+    resolution: {integrity: sha512-l2aFy5jALhniG5HgqrD6jXLi/rUWrKvqN/qJx6yoJsgKhblVd+iqqU4RCXavm/jPityDo5TCvKMnpjKnOriy0w==}
 
   '@types/body-parser@1.19.6':
     resolution: {integrity: sha512-HLFeCYgz89uk22N5Qg3dvGvsv46B8GLvKKo1zKG4NybA8U2DiEO3w9lqGg29t/tfLRJpJ6iQxnVw4OnB7MoM9g==}
@@ -1379,9 +1379,6 @@ packages:
 
   bech32@2.0.0:
     resolution: {integrity: sha512-LcknSilhIGatDAsY1ak2I8VtGaHNhgMSYVxFrGLXv+xLHytaKZKcaUJJUE7qmBr7h33o5YQwP55pMI0xmkpJwg==}
-
-  bignumber.js@9.3.1:
-    resolution: {integrity: sha512-Ko0uX15oIUS7wJ3Rb30Fs6SkVbLmPBAKdlm7q9+ak9bbIeFf0MwuBsQV6z7+X768/cHsfg+WlysDWJcmthjsjQ==}
 
   bip39@3.1.0:
     resolution: {integrity: sha512-c9kiwdk45Do5GL0vJMe7tS95VjCii65mYAH7DfWl3uW8AVzXKQVUm64i3hzVybBDMp9r7j9iNxR85+ul8MdN/A==}
@@ -1550,8 +1547,8 @@ packages:
     resolution: {integrity: sha512-KIN/nDJBQRcXw0MLVhZE9iQHmG68qAVIBg9CqmUYjmQIhgij9U5MFvrqkUL5FbtyyzZuOeOt0zdeRe4UY7ct+A==}
     engines: {node: '>= 0.4'}
 
-  effect@3.19.12:
-    resolution: {integrity: sha512-7F9RGTrCTC3D7nh9Zw+3VlJWwZgo5k33KA+476BAaD0rKIXKZsY/jQ+ipyhR/Avo239Fi6GqAVFs1mqM1IJ7yg==}
+  effect@3.19.13:
+    resolution: {integrity: sha512-8MZ783YuHRwHZX2Mmm+bpGxq+7XPd88sWwYAz2Ysry80sEKpftDZXs2Hg9ZyjESi1IBTNHF0oDKe0zJRkUlyew==}
 
   es-define-property@1.0.1:
     resolution: {integrity: sha512-e3nRfgfUZ4rNGL232gUgX06QNyyez04KdjFrF+LTRoOXmrOgFKDg4BCdsjW8EnT69eqdYGmRpJwiPVYNrCaW3g==}
@@ -1573,8 +1570,8 @@ packages:
     engines: {node: '>=18'}
     hasBin: true
 
-  esbuild@0.27.1:
-    resolution: {integrity: sha512-yY35KZckJJuVVPXpvjgxiCuVEJT67F6zDeVTv4rizyPrfGBUpZQsvmxnN+C371c2esD/hNMjj4tpBhuueLN7aA==}
+  esbuild@0.27.2:
+    resolution: {integrity: sha512-HyNQImnsOC7X9PMNaCIeAm4ISCQXs5a5YasTXVliKv4uuBo1dKrG0A+uQS8M5eXjVMnLg3WgXaKvprHlFJQffw==}
     engines: {node: '>=18'}
     hasBin: true
 
@@ -1901,8 +1898,8 @@ packages:
     resolution: {integrity: sha512-P0efT1C9jIdVRefqjzOQ9Xml57zpOXnIuS+csaB4MdZbTdmGDLo8XhzBG1N7aO11gKDDkJvBLULeFTo46wwreA==}
     hasBin: true
 
-  msgpackr@1.11.5:
-    resolution: {integrity: sha512-UjkUHN0yqp9RWKy0Lplhh+wlpdt9oQBYgULZOiFhV3VclSF1JnSQWZ5r9gORQlNYaUKQoR8itv7g7z1xDDuACA==}
+  msgpackr@1.11.8:
+    resolution: {integrity: sha512-bC4UGzHhVvgDNS7kn9tV8fAucIYUBuGojcaLiz7v+P63Lmtm0Xeji8B/8tYKddALXxJLpwIeBmUN3u64C4YkRA==}
 
   multiformats@13.4.2:
     resolution: {integrity: sha512-eh6eHCrRi1+POZ3dA+Dq1C6jhP1GNtr9CRINMb67OKzqW9I5DUuZM/3jLPlzhgpGeiNUlEGEbkCYChXMCc/8DQ==}
@@ -2160,8 +2157,8 @@ packages:
     resolution: {integrity: sha512-5Di9UC0+8h1L6ZD2d7awM7E/T4uA1fJRlx6zk/NvdCCVEoAnFqvHmCuNeIKoCeIixBX/q8uM+6ycDvF8woqosA==}
     engines: {node: '>= 0.8'}
 
-  rollup@4.53.3:
-    resolution: {integrity: sha512-w8GmOxZfBmKknvdXU1sdM9NHcoQejwF/4mNgj2JuEEdRaHwwF12K7e9eXn1nLZ07ad+du76mkVsyeb2rKGllsA==}
+  rollup@4.54.0:
+    resolution: {integrity: sha512-3nk8Y3a9Ea8szgKhinMlGMhGMw89mqule3KWczxhIzqudyHdCIOHw8WJlj/r329fACjKLEh13ZSk7oE22kyeIw==}
     engines: {node: '>=18.0.0', npm: '>=8.0.0'}
     hasBin: true
 
@@ -2489,7 +2486,7 @@ snapshots:
     dependencies:
       '@lucid-evolution/lucid': 0.4.29(@harmoniclabs/bytestring@1.0.0)(@harmoniclabs/cbor@1.6.6)(@harmoniclabs/crypto@0.2.5)(@harmoniclabs/pair@1.0.0)(fast-check@3.23.2)
       '@noble/hashes': 1.8.0
-      effect: 3.19.12
+      effect: 3.19.13
     transitivePeerDependencies:
       - '@dcspark/cardano-multiplatform-lib-asmjs'
       - '@dcspark/cardano-multiplatform-lib-browser'
@@ -2532,7 +2529,7 @@ snapshots:
   '@cardano-ogmios/client@6.9.0':
     dependencies:
       '@cardano-ogmios/schema': 6.9.0
-      '@cardanosolutions/json-bigint': 1.0.2
+      '@cardanosolutions/json-bigint': 1.1.0
       '@types/json-bigint': 1.0.4
       bech32: 2.0.0
       cross-fetch: 3.2.0
@@ -2595,9 +2592,7 @@ snapshots:
       ts-log: 2.2.7
       type-fest: 2.19.0
 
-  '@cardanosolutions/json-bigint@1.0.2':
-    dependencies:
-      bignumber.js: 9.3.1
+  '@cardanosolutions/json-bigint@1.1.0': {}
 
   '@cbor-extract/cbor-extract-darwin-arm64@2.2.0':
     optional: true
@@ -2627,55 +2622,55 @@ snapshots:
     dependencies:
       commander: 13.1.0
 
-  '@effect/cluster@0.31.1(@effect/platform@0.80.21(effect@3.19.12))(@effect/rpc@0.57.1(@effect/platform@0.80.21(effect@3.19.12))(effect@3.19.12))(@effect/sql@0.34.1(@effect/experimental@0.46.8(@effect/platform@0.80.21(effect@3.19.12))(effect@3.19.12)(lmdb@3.4.1))(@effect/platform@0.80.21(effect@3.19.12))(effect@3.19.12))(effect@3.19.12)':
+  '@effect/cluster@0.31.1(@effect/platform@0.80.21(effect@3.19.13))(@effect/rpc@0.57.1(@effect/platform@0.80.21(effect@3.19.13))(effect@3.19.13))(@effect/sql@0.34.1(@effect/experimental@0.46.8(@effect/platform@0.80.21(effect@3.19.13))(effect@3.19.13)(lmdb@3.4.1))(@effect/platform@0.80.21(effect@3.19.13))(effect@3.19.13))(effect@3.19.13)':
     dependencies:
-      '@effect/platform': 0.80.21(effect@3.19.12)
-      '@effect/rpc': 0.57.1(@effect/platform@0.80.21(effect@3.19.12))(effect@3.19.12)
-      '@effect/sql': 0.34.1(@effect/experimental@0.46.8(@effect/platform@0.80.21(effect@3.19.12))(effect@3.19.12)(lmdb@3.4.1))(@effect/platform@0.80.21(effect@3.19.12))(effect@3.19.12)
-      effect: 3.19.12
+      '@effect/platform': 0.80.21(effect@3.19.13)
+      '@effect/rpc': 0.57.1(@effect/platform@0.80.21(effect@3.19.13))(effect@3.19.13)
+      '@effect/sql': 0.34.1(@effect/experimental@0.46.8(@effect/platform@0.80.21(effect@3.19.13))(effect@3.19.13)(lmdb@3.4.1))(@effect/platform@0.80.21(effect@3.19.13))(effect@3.19.13)
+      effect: 3.19.13
 
-  '@effect/experimental@0.46.8(@effect/platform@0.80.21(effect@3.19.12))(effect@3.19.12)(lmdb@3.4.1)':
+  '@effect/experimental@0.46.8(@effect/platform@0.80.21(effect@3.19.13))(effect@3.19.13)(lmdb@3.4.1)':
     dependencies:
-      '@effect/platform': 0.80.21(effect@3.19.12)
-      effect: 3.19.12
+      '@effect/platform': 0.80.21(effect@3.19.13)
+      effect: 3.19.13
       uuid: 11.1.0
     optionalDependencies:
       lmdb: 3.4.1
 
-  '@effect/opentelemetry@0.44.12(@opentelemetry/api@1.9.0)(@opentelemetry/resources@1.30.1(@opentelemetry/api@1.9.0))(@opentelemetry/sdk-metrics@1.30.1(@opentelemetry/api@1.9.0))(@opentelemetry/sdk-trace-base@1.30.1(@opentelemetry/api@1.9.0))(@opentelemetry/sdk-trace-node@1.30.1(@opentelemetry/api@1.9.0))(@opentelemetry/sdk-trace-web@1.30.1(@opentelemetry/api@1.9.0))(@opentelemetry/semantic-conventions@1.38.0)(effect@3.19.12)':
+  '@effect/opentelemetry@0.44.12(@opentelemetry/api@1.9.0)(@opentelemetry/resources@1.30.1(@opentelemetry/api@1.9.0))(@opentelemetry/sdk-metrics@1.30.1(@opentelemetry/api@1.9.0))(@opentelemetry/sdk-trace-base@1.30.1(@opentelemetry/api@1.9.0))(@opentelemetry/sdk-trace-node@1.30.1(@opentelemetry/api@1.9.0))(@opentelemetry/sdk-trace-web@1.30.1(@opentelemetry/api@1.9.0))(@opentelemetry/semantic-conventions@1.38.0)(effect@3.19.13)':
     dependencies:
       '@opentelemetry/api': 1.9.0
       '@opentelemetry/resources': 1.30.1(@opentelemetry/api@1.9.0)
       '@opentelemetry/semantic-conventions': 1.38.0
-      effect: 3.19.12
+      effect: 3.19.13
     optionalDependencies:
       '@opentelemetry/sdk-metrics': 1.30.1(@opentelemetry/api@1.9.0)
       '@opentelemetry/sdk-trace-base': 1.30.1(@opentelemetry/api@1.9.0)
       '@opentelemetry/sdk-trace-node': 1.30.1(@opentelemetry/api@1.9.0)
       '@opentelemetry/sdk-trace-web': 1.30.1(@opentelemetry/api@1.9.0)
 
-  '@effect/platform-node-shared@0.34.3(@effect/cluster@0.31.1(@effect/platform@0.80.21(effect@3.19.12))(@effect/rpc@0.57.1(@effect/platform@0.80.21(effect@3.19.12))(effect@3.19.12))(@effect/sql@0.34.1(@effect/experimental@0.46.8(@effect/platform@0.80.21(effect@3.19.12))(effect@3.19.12)(lmdb@3.4.1))(@effect/platform@0.80.21(effect@3.19.12))(effect@3.19.12))(effect@3.19.12))(@effect/platform@0.80.21(effect@3.19.12))(@effect/rpc@0.57.1(@effect/platform@0.80.21(effect@3.19.12))(effect@3.19.12))(@effect/sql@0.34.1(@effect/experimental@0.46.8(@effect/platform@0.80.21(effect@3.19.12))(effect@3.19.12)(lmdb@3.4.1))(@effect/platform@0.80.21(effect@3.19.12))(effect@3.19.12))(effect@3.19.12)':
+  '@effect/platform-node-shared@0.34.3(@effect/cluster@0.31.1(@effect/platform@0.80.21(effect@3.19.13))(@effect/rpc@0.57.1(@effect/platform@0.80.21(effect@3.19.13))(effect@3.19.13))(@effect/sql@0.34.1(@effect/experimental@0.46.8(@effect/platform@0.80.21(effect@3.19.13))(effect@3.19.13)(lmdb@3.4.1))(@effect/platform@0.80.21(effect@3.19.13))(effect@3.19.13))(effect@3.19.13))(@effect/platform@0.80.21(effect@3.19.13))(@effect/rpc@0.57.1(@effect/platform@0.80.21(effect@3.19.13))(effect@3.19.13))(@effect/sql@0.34.1(@effect/experimental@0.46.8(@effect/platform@0.80.21(effect@3.19.13))(effect@3.19.13)(lmdb@3.4.1))(@effect/platform@0.80.21(effect@3.19.13))(effect@3.19.13))(effect@3.19.13)':
     dependencies:
-      '@effect/cluster': 0.31.1(@effect/platform@0.80.21(effect@3.19.12))(@effect/rpc@0.57.1(@effect/platform@0.80.21(effect@3.19.12))(effect@3.19.12))(@effect/sql@0.34.1(@effect/experimental@0.46.8(@effect/platform@0.80.21(effect@3.19.12))(effect@3.19.12)(lmdb@3.4.1))(@effect/platform@0.80.21(effect@3.19.12))(effect@3.19.12))(effect@3.19.12)
-      '@effect/platform': 0.80.21(effect@3.19.12)
-      '@effect/rpc': 0.57.1(@effect/platform@0.80.21(effect@3.19.12))(effect@3.19.12)
-      '@effect/sql': 0.34.1(@effect/experimental@0.46.8(@effect/platform@0.80.21(effect@3.19.12))(effect@3.19.12)(lmdb@3.4.1))(@effect/platform@0.80.21(effect@3.19.12))(effect@3.19.12)
+      '@effect/cluster': 0.31.1(@effect/platform@0.80.21(effect@3.19.13))(@effect/rpc@0.57.1(@effect/platform@0.80.21(effect@3.19.13))(effect@3.19.13))(@effect/sql@0.34.1(@effect/experimental@0.46.8(@effect/platform@0.80.21(effect@3.19.13))(effect@3.19.13)(lmdb@3.4.1))(@effect/platform@0.80.21(effect@3.19.13))(effect@3.19.13))(effect@3.19.13)
+      '@effect/platform': 0.80.21(effect@3.19.13)
+      '@effect/rpc': 0.57.1(@effect/platform@0.80.21(effect@3.19.13))(effect@3.19.13)
+      '@effect/sql': 0.34.1(@effect/experimental@0.46.8(@effect/platform@0.80.21(effect@3.19.13))(effect@3.19.13)(lmdb@3.4.1))(@effect/platform@0.80.21(effect@3.19.13))(effect@3.19.13)
       '@parcel/watcher': 2.5.1
-      effect: 3.19.12
+      effect: 3.19.13
       multipasta: 0.2.7
       ws: 8.18.3
     transitivePeerDependencies:
       - bufferutil
       - utf-8-validate
 
-  '@effect/platform-node@0.80.3(@effect/cluster@0.31.1(@effect/platform@0.80.21(effect@3.19.12))(@effect/rpc@0.57.1(@effect/platform@0.80.21(effect@3.19.12))(effect@3.19.12))(@effect/sql@0.34.1(@effect/experimental@0.46.8(@effect/platform@0.80.21(effect@3.19.12))(effect@3.19.12)(lmdb@3.4.1))(@effect/platform@0.80.21(effect@3.19.12))(effect@3.19.12))(effect@3.19.12))(@effect/platform@0.80.21(effect@3.19.12))(@effect/rpc@0.57.1(@effect/platform@0.80.21(effect@3.19.12))(effect@3.19.12))(@effect/sql@0.34.1(@effect/experimental@0.46.8(@effect/platform@0.80.21(effect@3.19.12))(effect@3.19.12)(lmdb@3.4.1))(@effect/platform@0.80.21(effect@3.19.12))(effect@3.19.12))(effect@3.19.12)':
+  '@effect/platform-node@0.80.3(@effect/cluster@0.31.1(@effect/platform@0.80.21(effect@3.19.13))(@effect/rpc@0.57.1(@effect/platform@0.80.21(effect@3.19.13))(effect@3.19.13))(@effect/sql@0.34.1(@effect/experimental@0.46.8(@effect/platform@0.80.21(effect@3.19.13))(effect@3.19.13)(lmdb@3.4.1))(@effect/platform@0.80.21(effect@3.19.13))(effect@3.19.13))(effect@3.19.13))(@effect/platform@0.80.21(effect@3.19.13))(@effect/rpc@0.57.1(@effect/platform@0.80.21(effect@3.19.13))(effect@3.19.13))(@effect/sql@0.34.1(@effect/experimental@0.46.8(@effect/platform@0.80.21(effect@3.19.13))(effect@3.19.13)(lmdb@3.4.1))(@effect/platform@0.80.21(effect@3.19.13))(effect@3.19.13))(effect@3.19.13)':
     dependencies:
-      '@effect/cluster': 0.31.1(@effect/platform@0.80.21(effect@3.19.12))(@effect/rpc@0.57.1(@effect/platform@0.80.21(effect@3.19.12))(effect@3.19.12))(@effect/sql@0.34.1(@effect/experimental@0.46.8(@effect/platform@0.80.21(effect@3.19.12))(effect@3.19.12)(lmdb@3.4.1))(@effect/platform@0.80.21(effect@3.19.12))(effect@3.19.12))(effect@3.19.12)
-      '@effect/platform': 0.80.21(effect@3.19.12)
-      '@effect/platform-node-shared': 0.34.3(@effect/cluster@0.31.1(@effect/platform@0.80.21(effect@3.19.12))(@effect/rpc@0.57.1(@effect/platform@0.80.21(effect@3.19.12))(effect@3.19.12))(@effect/sql@0.34.1(@effect/experimental@0.46.8(@effect/platform@0.80.21(effect@3.19.12))(effect@3.19.12)(lmdb@3.4.1))(@effect/platform@0.80.21(effect@3.19.12))(effect@3.19.12))(effect@3.19.12))(@effect/platform@0.80.21(effect@3.19.12))(@effect/rpc@0.57.1(@effect/platform@0.80.21(effect@3.19.12))(effect@3.19.12))(@effect/sql@0.34.1(@effect/experimental@0.46.8(@effect/platform@0.80.21(effect@3.19.12))(effect@3.19.12)(lmdb@3.4.1))(@effect/platform@0.80.21(effect@3.19.12))(effect@3.19.12))(effect@3.19.12)
-      '@effect/rpc': 0.57.1(@effect/platform@0.80.21(effect@3.19.12))(effect@3.19.12)
-      '@effect/sql': 0.34.1(@effect/experimental@0.46.8(@effect/platform@0.80.21(effect@3.19.12))(effect@3.19.12)(lmdb@3.4.1))(@effect/platform@0.80.21(effect@3.19.12))(effect@3.19.12)
-      effect: 3.19.12
+      '@effect/cluster': 0.31.1(@effect/platform@0.80.21(effect@3.19.13))(@effect/rpc@0.57.1(@effect/platform@0.80.21(effect@3.19.13))(effect@3.19.13))(@effect/sql@0.34.1(@effect/experimental@0.46.8(@effect/platform@0.80.21(effect@3.19.13))(effect@3.19.13)(lmdb@3.4.1))(@effect/platform@0.80.21(effect@3.19.13))(effect@3.19.13))(effect@3.19.13)
+      '@effect/platform': 0.80.21(effect@3.19.13)
+      '@effect/platform-node-shared': 0.34.3(@effect/cluster@0.31.1(@effect/platform@0.80.21(effect@3.19.13))(@effect/rpc@0.57.1(@effect/platform@0.80.21(effect@3.19.13))(effect@3.19.13))(@effect/sql@0.34.1(@effect/experimental@0.46.8(@effect/platform@0.80.21(effect@3.19.13))(effect@3.19.13)(lmdb@3.4.1))(@effect/platform@0.80.21(effect@3.19.13))(effect@3.19.13))(effect@3.19.13))(@effect/platform@0.80.21(effect@3.19.13))(@effect/rpc@0.57.1(@effect/platform@0.80.21(effect@3.19.13))(effect@3.19.13))(@effect/sql@0.34.1(@effect/experimental@0.46.8(@effect/platform@0.80.21(effect@3.19.13))(effect@3.19.13)(lmdb@3.4.1))(@effect/platform@0.80.21(effect@3.19.13))(effect@3.19.13))(effect@3.19.13)
+      '@effect/rpc': 0.57.1(@effect/platform@0.80.21(effect@3.19.13))(effect@3.19.13)
+      '@effect/sql': 0.34.1(@effect/experimental@0.46.8(@effect/platform@0.80.21(effect@3.19.13))(effect@3.19.13)(lmdb@3.4.1))(@effect/platform@0.80.21(effect@3.19.13))(effect@3.19.13)
+      effect: 3.19.13
       mime: 3.0.0
       undici: 7.16.0
       ws: 8.18.3
@@ -2683,54 +2678,54 @@ snapshots:
       - bufferutil
       - utf-8-validate
 
-  '@effect/platform@0.71.7(effect@3.19.12)':
+  '@effect/platform@0.71.7(effect@3.19.13)':
     dependencies:
-      effect: 3.19.12
+      effect: 3.19.13
       find-my-way-ts: 0.1.6
       multipasta: 0.2.7
 
-  '@effect/platform@0.80.21(effect@3.19.12)':
+  '@effect/platform@0.80.21(effect@3.19.13)':
     dependencies:
-      effect: 3.19.12
+      effect: 3.19.13
       find-my-way-ts: 0.1.6
-      msgpackr: 1.11.5
+      msgpackr: 1.11.8
       multipasta: 0.2.7
 
-  '@effect/rpc@0.57.1(@effect/platform@0.80.21(effect@3.19.12))(effect@3.19.12)':
+  '@effect/rpc@0.57.1(@effect/platform@0.80.21(effect@3.19.13))(effect@3.19.13)':
     dependencies:
-      '@effect/platform': 0.80.21(effect@3.19.12)
-      effect: 3.19.12
+      '@effect/platform': 0.80.21(effect@3.19.13)
+      effect: 3.19.13
 
-  '@effect/schema@0.66.16(effect@3.19.12)(fast-check@3.23.2)':
+  '@effect/schema@0.66.16(effect@3.19.13)(fast-check@3.23.2)':
     dependencies:
-      effect: 3.19.12
+      effect: 3.19.13
       fast-check: 3.23.2
 
-  '@effect/schema@0.68.27(effect@3.19.12)':
+  '@effect/schema@0.68.27(effect@3.19.13)':
     dependencies:
-      effect: 3.19.12
+      effect: 3.19.13
       fast-check: 3.23.2
 
-  '@effect/sql-pg@0.35.1(@effect/experimental@0.46.8(@effect/platform@0.80.21(effect@3.19.12))(effect@3.19.12)(lmdb@3.4.1))(@effect/platform@0.80.21(effect@3.19.12))(@effect/sql@0.34.1(@effect/experimental@0.46.8(@effect/platform@0.80.21(effect@3.19.12))(effect@3.19.12)(lmdb@3.4.1))(@effect/platform@0.80.21(effect@3.19.12))(effect@3.19.12))(effect@3.19.12)':
+  '@effect/sql-pg@0.35.1(@effect/experimental@0.46.8(@effect/platform@0.80.21(effect@3.19.13))(effect@3.19.13)(lmdb@3.4.1))(@effect/platform@0.80.21(effect@3.19.13))(@effect/sql@0.34.1(@effect/experimental@0.46.8(@effect/platform@0.80.21(effect@3.19.13))(effect@3.19.13)(lmdb@3.4.1))(@effect/platform@0.80.21(effect@3.19.13))(effect@3.19.13))(effect@3.19.13)':
     dependencies:
-      '@effect/experimental': 0.46.8(@effect/platform@0.80.21(effect@3.19.12))(effect@3.19.12)(lmdb@3.4.1)
-      '@effect/platform': 0.80.21(effect@3.19.12)
-      '@effect/sql': 0.34.1(@effect/experimental@0.46.8(@effect/platform@0.80.21(effect@3.19.12))(effect@3.19.12)(lmdb@3.4.1))(@effect/platform@0.80.21(effect@3.19.12))(effect@3.19.12)
+      '@effect/experimental': 0.46.8(@effect/platform@0.80.21(effect@3.19.13))(effect@3.19.13)(lmdb@3.4.1)
+      '@effect/platform': 0.80.21(effect@3.19.13)
+      '@effect/sql': 0.34.1(@effect/experimental@0.46.8(@effect/platform@0.80.21(effect@3.19.13))(effect@3.19.13)(lmdb@3.4.1))(@effect/platform@0.80.21(effect@3.19.13))(effect@3.19.13)
       '@opentelemetry/semantic-conventions': 1.38.0
-      effect: 3.19.12
+      effect: 3.19.13
       postgres: 3.4.7
 
-  '@effect/sql@0.34.1(@effect/experimental@0.46.8(@effect/platform@0.80.21(effect@3.19.12))(effect@3.19.12)(lmdb@3.4.1))(@effect/platform@0.80.21(effect@3.19.12))(effect@3.19.12)':
+  '@effect/sql@0.34.1(@effect/experimental@0.46.8(@effect/platform@0.80.21(effect@3.19.13))(effect@3.19.13)(lmdb@3.4.1))(@effect/platform@0.80.21(effect@3.19.13))(effect@3.19.13)':
     dependencies:
-      '@effect/experimental': 0.46.8(@effect/platform@0.80.21(effect@3.19.12))(effect@3.19.12)(lmdb@3.4.1)
-      '@effect/platform': 0.80.21(effect@3.19.12)
+      '@effect/experimental': 0.46.8(@effect/platform@0.80.21(effect@3.19.13))(effect@3.19.13)(lmdb@3.4.1)
+      '@effect/platform': 0.80.21(effect@3.19.13)
       '@opentelemetry/semantic-conventions': 1.38.0
-      effect: 3.19.12
+      effect: 3.19.13
       uuid: 11.1.0
 
-  '@effect/vitest@0.22.5(effect@3.19.12)(vitest@3.2.4(@types/node@22.19.3))':
+  '@effect/vitest@0.22.5(effect@3.19.13)(vitest@3.2.4(@types/node@22.19.3))':
     dependencies:
-      effect: 3.19.12
+      effect: 3.19.13
       vitest: 3.2.4(@types/node@22.19.3)
 
   '@emurgo/cardano-message-signing-browser@1.1.0': {}
@@ -2740,157 +2735,157 @@ snapshots:
   '@esbuild/aix-ppc64@0.25.12':
     optional: true
 
-  '@esbuild/aix-ppc64@0.27.1':
+  '@esbuild/aix-ppc64@0.27.2':
     optional: true
 
   '@esbuild/android-arm64@0.25.12':
     optional: true
 
-  '@esbuild/android-arm64@0.27.1':
+  '@esbuild/android-arm64@0.27.2':
     optional: true
 
   '@esbuild/android-arm@0.25.12':
     optional: true
 
-  '@esbuild/android-arm@0.27.1':
+  '@esbuild/android-arm@0.27.2':
     optional: true
 
   '@esbuild/android-x64@0.25.12':
     optional: true
 
-  '@esbuild/android-x64@0.27.1':
+  '@esbuild/android-x64@0.27.2':
     optional: true
 
   '@esbuild/darwin-arm64@0.25.12':
     optional: true
 
-  '@esbuild/darwin-arm64@0.27.1':
+  '@esbuild/darwin-arm64@0.27.2':
     optional: true
 
   '@esbuild/darwin-x64@0.25.12':
     optional: true
 
-  '@esbuild/darwin-x64@0.27.1':
+  '@esbuild/darwin-x64@0.27.2':
     optional: true
 
   '@esbuild/freebsd-arm64@0.25.12':
     optional: true
 
-  '@esbuild/freebsd-arm64@0.27.1':
+  '@esbuild/freebsd-arm64@0.27.2':
     optional: true
 
   '@esbuild/freebsd-x64@0.25.12':
     optional: true
 
-  '@esbuild/freebsd-x64@0.27.1':
+  '@esbuild/freebsd-x64@0.27.2':
     optional: true
 
   '@esbuild/linux-arm64@0.25.12':
     optional: true
 
-  '@esbuild/linux-arm64@0.27.1':
+  '@esbuild/linux-arm64@0.27.2':
     optional: true
 
   '@esbuild/linux-arm@0.25.12':
     optional: true
 
-  '@esbuild/linux-arm@0.27.1':
+  '@esbuild/linux-arm@0.27.2':
     optional: true
 
   '@esbuild/linux-ia32@0.25.12':
     optional: true
 
-  '@esbuild/linux-ia32@0.27.1':
+  '@esbuild/linux-ia32@0.27.2':
     optional: true
 
   '@esbuild/linux-loong64@0.25.12':
     optional: true
 
-  '@esbuild/linux-loong64@0.27.1':
+  '@esbuild/linux-loong64@0.27.2':
     optional: true
 
   '@esbuild/linux-mips64el@0.25.12':
     optional: true
 
-  '@esbuild/linux-mips64el@0.27.1':
+  '@esbuild/linux-mips64el@0.27.2':
     optional: true
 
   '@esbuild/linux-ppc64@0.25.12':
     optional: true
 
-  '@esbuild/linux-ppc64@0.27.1':
+  '@esbuild/linux-ppc64@0.27.2':
     optional: true
 
   '@esbuild/linux-riscv64@0.25.12':
     optional: true
 
-  '@esbuild/linux-riscv64@0.27.1':
+  '@esbuild/linux-riscv64@0.27.2':
     optional: true
 
   '@esbuild/linux-s390x@0.25.12':
     optional: true
 
-  '@esbuild/linux-s390x@0.27.1':
+  '@esbuild/linux-s390x@0.27.2':
     optional: true
 
   '@esbuild/linux-x64@0.25.12':
     optional: true
 
-  '@esbuild/linux-x64@0.27.1':
+  '@esbuild/linux-x64@0.27.2':
     optional: true
 
   '@esbuild/netbsd-arm64@0.25.12':
     optional: true
 
-  '@esbuild/netbsd-arm64@0.27.1':
+  '@esbuild/netbsd-arm64@0.27.2':
     optional: true
 
   '@esbuild/netbsd-x64@0.25.12':
     optional: true
 
-  '@esbuild/netbsd-x64@0.27.1':
+  '@esbuild/netbsd-x64@0.27.2':
     optional: true
 
   '@esbuild/openbsd-arm64@0.25.12':
     optional: true
 
-  '@esbuild/openbsd-arm64@0.27.1':
+  '@esbuild/openbsd-arm64@0.27.2':
     optional: true
 
   '@esbuild/openbsd-x64@0.25.12':
     optional: true
 
-  '@esbuild/openbsd-x64@0.27.1':
+  '@esbuild/openbsd-x64@0.27.2':
     optional: true
 
   '@esbuild/openharmony-arm64@0.25.12':
     optional: true
 
-  '@esbuild/openharmony-arm64@0.27.1':
+  '@esbuild/openharmony-arm64@0.27.2':
     optional: true
 
   '@esbuild/sunos-x64@0.25.12':
     optional: true
 
-  '@esbuild/sunos-x64@0.27.1':
+  '@esbuild/sunos-x64@0.27.2':
     optional: true
 
   '@esbuild/win32-arm64@0.25.12':
     optional: true
 
-  '@esbuild/win32-arm64@0.27.1':
+  '@esbuild/win32-arm64@0.27.2':
     optional: true
 
   '@esbuild/win32-ia32@0.25.12':
     optional: true
 
-  '@esbuild/win32-ia32@0.27.1':
+  '@esbuild/win32-ia32@0.27.2':
     optional: true
 
   '@esbuild/win32-x64@0.25.12':
     optional: true
 
-  '@esbuild/win32-x64@0.27.1':
+  '@esbuild/win32-x64@0.27.2':
     optional: true
 
   '@ethereumjs/mpt@7.0.0-alpha.1':
@@ -3046,7 +3041,7 @@ snapshots:
     dependencies:
       '@anastasia-labs/cardano-multiplatform-lib-browser': 6.0.2-3
       '@anastasia-labs/cardano-multiplatform-lib-nodejs': 6.0.2-3
-      '@effect/schema': 0.66.16(effect@3.19.12)(fast-check@3.23.2)
+      '@effect/schema': 0.66.16(effect@3.19.13)(fast-check@3.23.2)
       '@emurgo/cardano-message-signing-nodejs': 1.1.0
       '@lucid-evolution/core-types': 0.1.22
       '@lucid-evolution/core-utils': 0.1.16
@@ -3056,7 +3051,7 @@ snapshots:
       '@lucid-evolution/uplc': 0.2.20
       '@lucid-evolution/utils': 0.1.66(@harmoniclabs/bytestring@1.0.0)(@harmoniclabs/cbor@1.6.6)(@harmoniclabs/crypto@0.2.5)(@harmoniclabs/pair@1.0.0)
       '@lucid-evolution/wallet': 0.1.72(@harmoniclabs/bytestring@1.0.0)(@harmoniclabs/cbor@1.6.6)(@harmoniclabs/crypto@0.2.5)(@harmoniclabs/pair@1.0.0)
-      effect: 3.19.12
+      effect: 3.19.13
     transitivePeerDependencies:
       - '@dcspark/cardano-multiplatform-lib-asmjs'
       - '@dcspark/cardano-multiplatform-lib-browser'
@@ -3084,13 +3079,13 @@ snapshots:
     dependencies:
       '@anastasia-labs/cardano-multiplatform-lib-browser': 6.0.2-3
       '@anastasia-labs/cardano-multiplatform-lib-nodejs': 6.0.2-3
-      '@effect/platform': 0.71.7(effect@3.19.12)
-      '@effect/schema': 0.68.27(effect@3.19.12)
+      '@effect/platform': 0.71.7(effect@3.19.13)
+      '@effect/schema': 0.68.27(effect@3.19.13)
       '@lucid-evolution/core-types': 0.1.22
       '@lucid-evolution/core-utils': 0.1.16
       '@lucid-evolution/utils': 0.1.66(@harmoniclabs/bytestring@1.0.0)(@harmoniclabs/cbor@1.6.6)(@harmoniclabs/crypto@0.2.5)(@harmoniclabs/pair@1.0.0)
       '@lucid-evolution/wallet': 0.1.72(@harmoniclabs/bytestring@1.0.0)(@harmoniclabs/cbor@1.6.6)(@harmoniclabs/crypto@0.2.5)(@harmoniclabs/pair@1.0.0)
-      effect: 3.19.12
+      effect: 3.19.13
     transitivePeerDependencies:
       - '@dcspark/cardano-multiplatform-lib-asmjs'
       - '@dcspark/cardano-multiplatform-lib-browser'
@@ -3121,7 +3116,7 @@ snapshots:
       '@anastasia-labs/cardano-multiplatform-lib-browser': 6.0.2-3
       '@anastasia-labs/cardano-multiplatform-lib-nodejs': 6.0.2-3
       '@cardano-sdk/core': 0.45.10
-      '@effect/schema': 0.68.27(effect@3.19.12)
+      '@effect/schema': 0.68.27(effect@3.19.13)
       '@harmoniclabs/plutus-data': 1.2.6(@harmoniclabs/bytestring@1.0.0)(@harmoniclabs/cbor@1.6.6)
       '@harmoniclabs/uplc': 1.4.1(@harmoniclabs/bytestring@1.0.0)(@harmoniclabs/cbor@1.6.6)(@harmoniclabs/crypto@0.2.5)(@harmoniclabs/pair@1.0.0)(@harmoniclabs/plutus-data@1.2.6(@harmoniclabs/bytestring@1.0.0)(@harmoniclabs/cbor@1.6.6))
       '@lucid-evolution/core-types': 0.1.22
@@ -3131,7 +3126,7 @@ snapshots:
       '@lucid-evolution/uplc': 0.2.20
       bip39: 3.1.0
       cbor-x: 1.6.0
-      effect: 3.19.12
+      effect: 3.19.13
     transitivePeerDependencies:
       - '@dcspark/cardano-multiplatform-lib-asmjs'
       - '@dcspark/cardano-multiplatform-lib-browser'
@@ -3412,70 +3407,70 @@ snapshots:
 
   '@protobufjs/utf8@1.1.0': {}
 
-  '@rollup/rollup-android-arm-eabi@4.53.3':
+  '@rollup/rollup-android-arm-eabi@4.54.0':
     optional: true
 
-  '@rollup/rollup-android-arm64@4.53.3':
+  '@rollup/rollup-android-arm64@4.54.0':
     optional: true
 
-  '@rollup/rollup-darwin-arm64@4.53.3':
+  '@rollup/rollup-darwin-arm64@4.54.0':
     optional: true
 
-  '@rollup/rollup-darwin-x64@4.53.3':
+  '@rollup/rollup-darwin-x64@4.54.0':
     optional: true
 
-  '@rollup/rollup-freebsd-arm64@4.53.3':
+  '@rollup/rollup-freebsd-arm64@4.54.0':
     optional: true
 
-  '@rollup/rollup-freebsd-x64@4.53.3':
+  '@rollup/rollup-freebsd-x64@4.54.0':
     optional: true
 
-  '@rollup/rollup-linux-arm-gnueabihf@4.53.3':
+  '@rollup/rollup-linux-arm-gnueabihf@4.54.0':
     optional: true
 
-  '@rollup/rollup-linux-arm-musleabihf@4.53.3':
+  '@rollup/rollup-linux-arm-musleabihf@4.54.0':
     optional: true
 
-  '@rollup/rollup-linux-arm64-gnu@4.53.3':
+  '@rollup/rollup-linux-arm64-gnu@4.54.0':
     optional: true
 
-  '@rollup/rollup-linux-arm64-musl@4.53.3':
+  '@rollup/rollup-linux-arm64-musl@4.54.0':
     optional: true
 
-  '@rollup/rollup-linux-loong64-gnu@4.53.3':
+  '@rollup/rollup-linux-loong64-gnu@4.54.0':
     optional: true
 
-  '@rollup/rollup-linux-ppc64-gnu@4.53.3':
+  '@rollup/rollup-linux-ppc64-gnu@4.54.0':
     optional: true
 
-  '@rollup/rollup-linux-riscv64-gnu@4.53.3':
+  '@rollup/rollup-linux-riscv64-gnu@4.54.0':
     optional: true
 
-  '@rollup/rollup-linux-riscv64-musl@4.53.3':
+  '@rollup/rollup-linux-riscv64-musl@4.54.0':
     optional: true
 
-  '@rollup/rollup-linux-s390x-gnu@4.53.3':
+  '@rollup/rollup-linux-s390x-gnu@4.54.0':
     optional: true
 
-  '@rollup/rollup-linux-x64-gnu@4.53.3':
+  '@rollup/rollup-linux-x64-gnu@4.54.0':
     optional: true
 
-  '@rollup/rollup-linux-x64-musl@4.53.3':
+  '@rollup/rollup-linux-x64-musl@4.54.0':
     optional: true
 
-  '@rollup/rollup-openharmony-arm64@4.53.3':
+  '@rollup/rollup-openharmony-arm64@4.54.0':
     optional: true
 
-  '@rollup/rollup-win32-arm64-msvc@4.53.3':
+  '@rollup/rollup-win32-arm64-msvc@4.54.0':
     optional: true
 
-  '@rollup/rollup-win32-ia32-msvc@4.53.3':
+  '@rollup/rollup-win32-ia32-msvc@4.54.0':
     optional: true
 
-  '@rollup/rollup-win32-x64-gnu@4.53.3':
+  '@rollup/rollup-win32-x64-gnu@4.54.0':
     optional: true
 
-  '@rollup/rollup-win32-x64-msvc@4.53.3':
+  '@rollup/rollup-win32-x64-msvc@4.54.0':
     optional: true
 
   '@scure/base@1.1.9': {}
@@ -3508,7 +3503,7 @@ snapshots:
 
   '@sinclair/typebox@0.32.35': {}
 
-  '@standard-schema/spec@1.0.0': {}
+  '@standard-schema/spec@1.1.0': {}
 
   '@types/body-parser@1.19.6':
     dependencies:
@@ -3673,8 +3668,6 @@ snapshots:
 
   bech32@2.0.0: {}
 
-  bignumber.js@9.3.1: {}
-
   bip39@3.1.0:
     dependencies:
       '@noble/hashes': 1.8.0
@@ -3713,9 +3706,9 @@ snapshots:
       base64-js: 1.5.1
       ieee754: 1.2.1
 
-  bundle-require@5.1.0(esbuild@0.27.1):
+  bundle-require@5.1.0(esbuild@0.27.2):
     dependencies:
-      esbuild: 0.27.1
+      esbuild: 0.27.2
       load-tsconfig: 0.2.5
 
   cac@6.7.14: {}
@@ -3869,9 +3862,9 @@ snapshots:
       es-errors: 1.3.0
       gopd: 1.2.0
 
-  effect@3.19.12:
+  effect@3.19.13:
     dependencies:
-      '@standard-schema/spec': 1.0.0
+      '@standard-schema/spec': 1.1.0
       fast-check: 3.23.2
 
   es-define-property@1.0.1: {}
@@ -3913,34 +3906,34 @@ snapshots:
       '@esbuild/win32-ia32': 0.25.12
       '@esbuild/win32-x64': 0.25.12
 
-  esbuild@0.27.1:
+  esbuild@0.27.2:
     optionalDependencies:
-      '@esbuild/aix-ppc64': 0.27.1
-      '@esbuild/android-arm': 0.27.1
-      '@esbuild/android-arm64': 0.27.1
-      '@esbuild/android-x64': 0.27.1
-      '@esbuild/darwin-arm64': 0.27.1
-      '@esbuild/darwin-x64': 0.27.1
-      '@esbuild/freebsd-arm64': 0.27.1
-      '@esbuild/freebsd-x64': 0.27.1
-      '@esbuild/linux-arm': 0.27.1
-      '@esbuild/linux-arm64': 0.27.1
-      '@esbuild/linux-ia32': 0.27.1
-      '@esbuild/linux-loong64': 0.27.1
-      '@esbuild/linux-mips64el': 0.27.1
-      '@esbuild/linux-ppc64': 0.27.1
-      '@esbuild/linux-riscv64': 0.27.1
-      '@esbuild/linux-s390x': 0.27.1
-      '@esbuild/linux-x64': 0.27.1
-      '@esbuild/netbsd-arm64': 0.27.1
-      '@esbuild/netbsd-x64': 0.27.1
-      '@esbuild/openbsd-arm64': 0.27.1
-      '@esbuild/openbsd-x64': 0.27.1
-      '@esbuild/openharmony-arm64': 0.27.1
-      '@esbuild/sunos-x64': 0.27.1
-      '@esbuild/win32-arm64': 0.27.1
-      '@esbuild/win32-ia32': 0.27.1
-      '@esbuild/win32-x64': 0.27.1
+      '@esbuild/aix-ppc64': 0.27.2
+      '@esbuild/android-arm': 0.27.2
+      '@esbuild/android-arm64': 0.27.2
+      '@esbuild/android-x64': 0.27.2
+      '@esbuild/darwin-arm64': 0.27.2
+      '@esbuild/darwin-x64': 0.27.2
+      '@esbuild/freebsd-arm64': 0.27.2
+      '@esbuild/freebsd-x64': 0.27.2
+      '@esbuild/linux-arm': 0.27.2
+      '@esbuild/linux-arm64': 0.27.2
+      '@esbuild/linux-ia32': 0.27.2
+      '@esbuild/linux-loong64': 0.27.2
+      '@esbuild/linux-mips64el': 0.27.2
+      '@esbuild/linux-ppc64': 0.27.2
+      '@esbuild/linux-riscv64': 0.27.2
+      '@esbuild/linux-s390x': 0.27.2
+      '@esbuild/linux-x64': 0.27.2
+      '@esbuild/netbsd-arm64': 0.27.2
+      '@esbuild/netbsd-x64': 0.27.2
+      '@esbuild/openbsd-arm64': 0.27.2
+      '@esbuild/openbsd-x64': 0.27.2
+      '@esbuild/openharmony-arm64': 0.27.2
+      '@esbuild/sunos-x64': 0.27.2
+      '@esbuild/win32-arm64': 0.27.2
+      '@esbuild/win32-ia32': 0.27.2
+      '@esbuild/win32-x64': 0.27.2
 
   escape-string-regexp@2.0.0: {}
 
@@ -3997,7 +3990,7 @@ snapshots:
     dependencies:
       magic-string: 0.30.21
       mlly: 1.8.0
-      rollup: 4.53.3
+      rollup: 4.54.0
 
   for-each@0.3.5:
     dependencies:
@@ -4202,7 +4195,7 @@ snapshots:
 
   lmdb@3.4.1:
     dependencies:
-      msgpackr: 1.11.5
+      msgpackr: 1.11.8
       node-addon-api: 6.1.0
       node-gyp-build-optional-packages: 5.2.2
       ordered-binary: 1.6.0
@@ -4285,7 +4278,7 @@ snapshots:
       '@msgpackr-extract/msgpackr-extract-win32-x64': 3.0.3
     optional: true
 
-  msgpackr@1.11.5:
+  msgpackr@1.11.8:
     optionalDependencies:
       msgpackr-extract: 3.0.3
 
@@ -4449,32 +4442,32 @@ snapshots:
       hash-base: 3.1.2
       inherits: 2.0.4
 
-  rollup@4.53.3:
+  rollup@4.54.0:
     dependencies:
       '@types/estree': 1.0.8
     optionalDependencies:
-      '@rollup/rollup-android-arm-eabi': 4.53.3
-      '@rollup/rollup-android-arm64': 4.53.3
-      '@rollup/rollup-darwin-arm64': 4.53.3
-      '@rollup/rollup-darwin-x64': 4.53.3
-      '@rollup/rollup-freebsd-arm64': 4.53.3
-      '@rollup/rollup-freebsd-x64': 4.53.3
-      '@rollup/rollup-linux-arm-gnueabihf': 4.53.3
-      '@rollup/rollup-linux-arm-musleabihf': 4.53.3
-      '@rollup/rollup-linux-arm64-gnu': 4.53.3
-      '@rollup/rollup-linux-arm64-musl': 4.53.3
-      '@rollup/rollup-linux-loong64-gnu': 4.53.3
-      '@rollup/rollup-linux-ppc64-gnu': 4.53.3
-      '@rollup/rollup-linux-riscv64-gnu': 4.53.3
-      '@rollup/rollup-linux-riscv64-musl': 4.53.3
-      '@rollup/rollup-linux-s390x-gnu': 4.53.3
-      '@rollup/rollup-linux-x64-gnu': 4.53.3
-      '@rollup/rollup-linux-x64-musl': 4.53.3
-      '@rollup/rollup-openharmony-arm64': 4.53.3
-      '@rollup/rollup-win32-arm64-msvc': 4.53.3
-      '@rollup/rollup-win32-ia32-msvc': 4.53.3
-      '@rollup/rollup-win32-x64-gnu': 4.53.3
-      '@rollup/rollup-win32-x64-msvc': 4.53.3
+      '@rollup/rollup-android-arm-eabi': 4.54.0
+      '@rollup/rollup-android-arm64': 4.54.0
+      '@rollup/rollup-darwin-arm64': 4.54.0
+      '@rollup/rollup-darwin-x64': 4.54.0
+      '@rollup/rollup-freebsd-arm64': 4.54.0
+      '@rollup/rollup-freebsd-x64': 4.54.0
+      '@rollup/rollup-linux-arm-gnueabihf': 4.54.0
+      '@rollup/rollup-linux-arm-musleabihf': 4.54.0
+      '@rollup/rollup-linux-arm64-gnu': 4.54.0
+      '@rollup/rollup-linux-arm64-musl': 4.54.0
+      '@rollup/rollup-linux-loong64-gnu': 4.54.0
+      '@rollup/rollup-linux-ppc64-gnu': 4.54.0
+      '@rollup/rollup-linux-riscv64-gnu': 4.54.0
+      '@rollup/rollup-linux-riscv64-musl': 4.54.0
+      '@rollup/rollup-linux-s390x-gnu': 4.54.0
+      '@rollup/rollup-linux-x64-gnu': 4.54.0
+      '@rollup/rollup-linux-x64-musl': 4.54.0
+      '@rollup/rollup-openharmony-arm64': 4.54.0
+      '@rollup/rollup-win32-arm64-msvc': 4.54.0
+      '@rollup/rollup-win32-ia32-msvc': 4.54.0
+      '@rollup/rollup-win32-x64-gnu': 4.54.0
+      '@rollup/rollup-win32-x64-msvc': 4.54.0
       fsevents: 2.3.3
 
   run-parallel-limit@1.1.0:
@@ -4597,18 +4590,18 @@ snapshots:
 
   tsup@8.5.1(postcss@8.5.6)(typescript@5.9.3):
     dependencies:
-      bundle-require: 5.1.0(esbuild@0.27.1)
+      bundle-require: 5.1.0(esbuild@0.27.2)
       cac: 6.7.14
       chokidar: 4.0.3
       consola: 3.4.2
       debug: 4.4.3
-      esbuild: 0.27.1
+      esbuild: 0.27.2
       fix-dts-default-cjs-exports: 1.0.1
       joycon: 3.1.1
       picocolors: 1.1.1
       postcss-load-config: 6.0.1(postcss@8.5.6)
       resolve-from: 5.0.0
-      rollup: 4.53.3
+      rollup: 4.54.0
       source-map: 0.7.6
       sucrase: 3.35.1
       tinyexec: 0.3.2
@@ -4693,7 +4686,7 @@ snapshots:
       fdir: 6.5.0(picomatch@4.0.3)
       picomatch: 4.0.3
       postcss: 8.5.6
-      rollup: 4.53.3
+      rollup: 4.54.0
       tinyglobby: 0.2.15
     optionalDependencies:
       '@types/node': 22.19.3
