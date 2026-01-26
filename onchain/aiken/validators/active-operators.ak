@@ -349,8 +349,9 @@ validator mint(hub_oracle_script_hash: PolicyId) {
       RemoveOperatorBadState {
         slashed_active_operator_key,
         hub_oracle_ref_input_index,
+        active_operator_anchor_element_input_index,
         active_operator_slashed_node_input_index,
-        active_operator_anchor_node_input_index,
+        active_operator_anchor_element_output_index,
         state_queue_redeemer_index,
       } -> {
         let Transaction {
@@ -372,7 +373,7 @@ validator mint(hub_oracle_script_hash: PolicyId) {
           )
 
         // 2. State queue minting script must be invoked via the 
-        //    `RemoveFraudulentBlockHeader`redeemer, and the operator specified
+        //    `RemoveFraudulentBlockHeader` redeemer, and the operator specified
         //    there must agree with the `slashed_active_operator_key` redeemer
         //    argument here.
         expect state_queue.RemoveFraudulentBlockHeader {
@@ -385,6 +386,33 @@ validator mint(hub_oracle_script_hash: PolicyId) {
                 redeemer_index: state_queue_redeemer_index,
               )
         expect fraudulent_operator == slashed_active_operator_key
+
+        // slashed_active_operator_key,
+        // state_queue_redeemer_index,
+        //// active_operator_slashed_node_input_index,
+        //// active_operator_anchor_element_input_index,
+        expect Some(active_operator_anchor_element_input ) =
+          inputs |> list.at(active_operator_anchor_element_input_index)
+        expect Some(active_operator_slashed_node_input) =
+          inputs |> list.at(active_operator_slashed_node_input_index)
+        expect Some(active_operator_anchor_element_output) =
+          inputs |> list.at(active_operator_anchor_element_output_index)
+        expect Some() = inputs |> list.at()
+        let linked_list_eval = {
+          let
+            _m_anchor_key,
+            _anchor_data,
+            active_operator_slashed_node_key,
+            removed_node_header_data,
+            removed_node_link,
+          <-
+            linked_list.remove(
+              active_operator_anchor_element_input,
+              active_operator_slashed_node_input,
+              active_operator_anchor_element_output,
+              mint,
+            )
+        }
 
         expect Some(hub_oracle_ref_input) =
           list.at(self.reference_inputs, hub_oracle_ref_input_index)

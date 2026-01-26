@@ -55,9 +55,9 @@ pub type MintRedeemer {
   RemoveOperatorBadState {
     slashed_active_operator_key: VerificationKeyHash,
     hub_oracle_ref_input_index: Int,
+    active_operator_anchor_element_input_index: Int,
     active_operator_slashed_node_input_index: Int,
-    active_operator_anchor_node_input_index: Int,
-    active_operator_anchor_node_output_index: Int,
+    active_operator_anchor_element_output_index: Int,
     state_queue_redeemer_index: Int,
   }
   RemoveOperatorBadSettlement {
