@@ -71,7 +71,7 @@ export const incompleteSchedulerInitTxProgram = (
   params: SchedulerInitParams,
 ): TxBuilder => {
   const assets: Assets = {
-    [toUnit(params.validator.policyId, fromText(SCHEDULER_ASSET_NAME))]: 1n,
+    [toUnit(params.validator.policyId, SCHEDULER_ASSET_NAME)]: 1n,
   };
 
   const redeemer = Data.to("Init", SchedulerMintRedeemer);

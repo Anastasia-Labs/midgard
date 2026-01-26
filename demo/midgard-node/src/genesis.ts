@@ -59,34 +59,40 @@ ${Array.from(new Set(config.GENESIS_UTXOS.map((u) => u.address))).join("\n")}`,
   Effect.andThen(Effect.succeed(Effect.void)),
 );
 
-export const getGenesisScriptInputs = (
+const VALIDATOR_ORDER: (keyof SDK.MidgardValidators)[] = [
+  "hubOracleMintValidator",
+  "stateQueueAuthValidator",
+  "registeredOperatorsAuthValidator",
+  "activeOperatorsAuthValidator",
+  "schedulerAuthValidator",
+  "retiredOperatorsAuthValidator",
+  "escapeHatchAuthValidator",
+  "fraudProofCatalogueAuthValidator",
+  "fraudProofAuthValidator",
+  "depositAuthValidator",
+  "reserveAuthValidator",
+  "payoutAuthValidator",
+  "withdrawalAuthValidator",
+  "txOrderAuthValidator",
+  "settlementAuthValidator",
+];
+
+export const getOrderedScriptInputs = (
   contracts: SDK.MidgardValidators,
-): Effect.Effect<{ keys: Buffer[]; values: Buffer[] }, SDK.HashingError> =>
-  Effect.gen(function* () {
-    const scripts = Object.values(contracts).flatMap((v) => {
-      const s: string[] = [];
-      if ("spendScript" in v) s.push(v.spendingCBOR);
-      if ("mintScript" in v) s.push(v.mintingCBOR);
-      return s;
-    });
-
-    const uniqueHashes = yield* Effect.all(
-      [...new Set(scripts)].map((cbor) => SDK.hashHexWithBlake2b256(cbor)),
-      { concurrency: "unbounded" },
-    );
-
-    const keys: Buffer[] = [];
-    const values: Buffer[] = [];
-
-    uniqueHashes.sort().forEach((hash, index) => {
-      const key = Buffer.alloc(4);
-      key.writeUInt32BE(index);
-      keys.push(key);
-      values.push(Buffer.from(hash, "hex"));
-    });
-
-    return { keys, values };
+): string[] => {
+  return VALIDATOR_ORDER.flatMap((key) => {
+    const v = contracts[key];
+    if (!v) return [];
+    const s: string[] = [];
+    if ("spendingCBOR" in v && typeof v.spendingCBOR === "string") {
+      s.push(v.spendingCBOR);
+    }
+    if ("mintingCBOR" in v && typeof v.mintingCBOR === "string") {
+      s.push(v.mintingCBOR);
+    }
+    return s;
   });
+};
 
 const submitGenesisDeposits: Effect.Effect<
   void,
