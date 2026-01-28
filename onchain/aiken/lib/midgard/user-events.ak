@@ -3,7 +3,7 @@ use aiken/cbor
 use aiken/collection/list
 use aiken/crypto.{ScriptHash, blake2b_256}
 use aiken/interval.{Finite}
-use aiken_design_patterns/validity_range_normalization as vrn
+use aiken_design_patterns/parameter_validation
 use cardano/address.{Address}
 use cardano/assets.{AssetName, PolicyId, Value}
 use cardano/transaction.{
@@ -11,8 +11,8 @@ use cardano/transaction.{
   ScriptPurpose, Transaction, ValidityRange,
 }
 use env
-use midgard/common/parameter_validation
 use midgard/common/types.{PosixTime}
+use midgard/common/utils
 use midgard/hub_oracle as hub
 use midgard/ledger_state
 use midgard/user_events/witness.{
@@ -123,12 +123,7 @@ pub fn authenticate_event(
 ) -> Bool {
   // Grab validity range's inclusive upper bound.
   // TODO: Is it needed to ensure inclusivity?
-  let valid_to =
-    when vrn.normalize_time_range(validity_range) is {
-      vrn.ClosedRange { upper, .. } | vrn.FromNegInf { upper } -> upper
-      _ ->
-        fail @"Invalid validity range encountered for user event authentication"
-    }
+  let valid_to = utils.get_inclusive_upper_bound_of_interval(validity_range)
 
   // Grab output reference of the specified nonce input.
   expect Some(Input { output_reference: nonce_input_out_ref, .. }) =
