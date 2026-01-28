@@ -1,3 +1,4 @@
+use aiken/crypto.{VerificationKeyHash}
 use midgard/common/types.{PosixTime}
 
 pub type Datum {
@@ -24,7 +25,7 @@ pub type MintRedeemer {
     anchor_node_output_index: Int,
   }
   Activate {
-    node_to_activate_key: ByteArray,
+    operator_to_activate: VerificationKeyHash,
     hub_oracle_ref_input_index: Int,
     retired_operator_ref_input_index: Int,
     retired_operator_asset_name: ByteArray,

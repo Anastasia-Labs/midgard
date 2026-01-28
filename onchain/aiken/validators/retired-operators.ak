@@ -13,8 +13,8 @@ use midgard/retired_operators.{
   Datum as RetiredOperatorDatum, Deinit, Init, MintRedeemer, RecoverOperatorBond,
   RemoveOperatorBadSettlement, RemoveOperatorBadState, RetireOperator,
 }
-use midgard/settlement.{DisproveResolutionClaim}
-use midgard/state_queue.{RemoveFraudulentBlockHeader}
+use midgard/settlement
+use midgard/state_queue
 
 validator spend(retired_operators_mint_script_hash: ByteArray) {
   spend(
@@ -128,8 +128,10 @@ validator mint(
         expect parsed_hub_oracle_datum: hub_oracle.Datum = hub_oracle_datum
         expect Some(state_queue_redeemer_pair) =
           list.at(self.redeemers, state_queue_redeemer_index)
-        expect RemoveFraudulentBlockHeader { fraudulent_operator, .. } =
-          state_queue_redeemer_pair.2nd
+        expect state_queue.RemoveFraudulentBlockHeader {
+          fraudulent_operator,
+          ..
+        } = state_queue_redeemer_pair.2nd
         and {
           quantity_of(
             hub_oracle_ref_input.output.value,
@@ -160,18 +162,20 @@ validator mint(
         settlement_redeemer_index,
       } -> {
         let Transaction { inputs, reference_inputs, redeemers, fee, .. } = self
-        let settlement_spending_redeemer_data =
-          settlement.get_spending_redeemer_data(
+        let hub.Datum { settlement_addr, .. } =
+          hub.get_datum(
+            reference_inputs,
             hub_oracle_script_hash,
             hub_oracle_ref_input_index,
+          )
+        expect settlement.DisproveResolutionClaim { operator, .. } =
+          utils.get_spending_redeemer_data_at(
+            settlement_addr,
             settlement_input_index,
             settlement_redeemer_index,
             inputs,
-            reference_inputs,
             redeemers,
           )
-        expect DisproveResolutionClaim { operator, .. } =
-          settlement_spending_redeemer_data
         // TODO fix performance:
         and {
           ordered.remove(

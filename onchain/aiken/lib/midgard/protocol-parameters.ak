@@ -8,3 +8,5 @@ pub const shift_duration: PosixTimeDuration = 30
 pub const registration_duration: PosixTimeDuration = 30
 
 pub const maturity_duration: PosixTimeDuration = 30
+
+pub const slashing_penalty: Int = 0

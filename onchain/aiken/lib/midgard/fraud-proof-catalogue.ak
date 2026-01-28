@@ -1,3 +1,5 @@
+pub const id_byte_count = 4
+
 pub type Datum {
   init_step_script_hash: ByteArray,
 }

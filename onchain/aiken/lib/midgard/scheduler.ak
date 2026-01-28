@@ -1,7 +1,8 @@
 use midgard/common/types.{PosixTime}
+use midgard/common/utils
 use midgard/protocol_parameters.{shift_duration}
 
-pub const scheduler_asset_name = ""
+pub const asset_name = "MIDGARD_SCHEDULER"
 
 pub type Datum {
   operator: ByteArray,
@@ -23,8 +24,23 @@ pub type SpendRedeemer {
   }
 }
 
-/// The end of a shift is the start of the shift, shifted forward
-/// by the shift_duration parameter.
+/// The end of a shift is the start of the shift, shifted forward by the
+/// `shift_duration` parameter.
 pub fn shift_end_time(start_time: PosixTime) -> PosixTime {
   start_time + shift_duration
+}
+
+pub fn get_datum(
+  reference_inputs: List<Input>,
+  scheduler_policy_id: ScriptHash,
+  scheduler_ref_input_index: Int,
+) -> Datum {
+  expect scheduler_datum: Datum =
+    utils.get_authentic_input_datum_with_nft_at(
+      reference_inputs,
+      scheduler_policy_id,
+      asset_name,
+      scheduler_ref_input_index,
+    )
+  scheduler_datum
 }
