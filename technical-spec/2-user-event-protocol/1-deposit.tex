@@ -18,8 +18,6 @@ A user deposits funds into Midgard by submitting an L1 transaction that performs
                 \T{event} : & \T{DepositEvent}, \\
                 \T{inclusion\_time} : & \T{PosixTime}, \\
                 \T{witness} : & \T{ScriptHash}, \\
-                \T{refund\_address}: & \T{Address}, \\
-                \T{refund\_datum}: & \T{Option(Data)}
             \end{array}
             \right\}
         \end{equation*}
@@ -57,13 +55,14 @@ It oversees correctness of datums, and registration/unregistration of events' co
         \item Let \code{l2\_id} be the Blake2b256 hash of serialized \code{l1\_nonce}.
         \item An NFT with own policy ID and asset name of \code{l2\_id} must be minted and included in the deposit utxo.
         \item The witness staking script, instantiated with \code{l2\_id} must be registered in the transaction.
+          Let the hash of this script be \code{registered\_witness}.
+        \item \code{registered\_witness} must be stored in the produced deposit utxo datum under \code{witness}.
         \item The redeemer used for registering the witness script must be equal to the \code{deposit} policy ID.
         \item Let \code{deposit\_addr} be the address of the deposit contract from Midgard's hub oracle.
         \item Deposit utxo must be produced at \code{deposit\_addr}.
         \item Total number of deposited tokens (including ADA) must not exceed \code{max\_tokens\_allowed\_in\_deposits}, a protocol parameter.
         \item Recorded \code{l1\_nonce} in the deposit event must be correct.
-        \item The deposit's \code{inclusion\_time} must be equal to transaction's time-validity upper bound plus \code{event\_wait\_duration} Midgard protocol parameter.
-        \item The hash of the witness script must be correctly stored in the deposit datum.
+        \item The deposit's \code{inclusion\_time} must be equal to transaction's time-validity upper bound (inclusive) plus \code{event\_wait\_duration} Midgard protocol parameter.
       \end{enumerate}
     \item[Burn Deposit NFT.] Oversee transfer of a deposit utxo to reserve by requiring its NFTs to be burnt.
     Conditions:
@@ -80,7 +79,7 @@ It oversees correctness of datums, and registration/unregistration of events' co
 \label{h:deposit-spending-validator}
 
 The \code{deposit} spending validator is statically parametrized on the \code{hub\_oracle} minting policy.
-It's responsible for concluding deposits, whether for transfering them to Midgard reserve, or refunding stranded deposits.
+It's responsible for concluding deposits and transferring them to Midgard reserve.
 
 \begin{description}
   \item[Spend.] Transaction for moving funds of finalized deposit events into Midgard reserve.
