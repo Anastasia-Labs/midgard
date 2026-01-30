@@ -11,8 +11,9 @@ pub const root_asset_name: AssetName = "MIDGARD_ACTIVE_OPERATORS"
 /// Short for "Midgard Active". In hex it will be: #"4d414354"
 ///
 /// > [!NOTE]
-/// > This must consist of 4 bytes. Refer to state queue's library module for
-/// > more details.
+/// > This should not be longer than 4 bytes, as each node's asset name carries
+/// > this prefix, followed by its operator's public key hash, which is 28 bytes
+/// > long.
 pub const node_asset_name_prefix: AssetName = "MACT"
 
 pub const node_asset_name_prefix_length: Int =
@@ -75,8 +76,9 @@ pub type MintRedeemer {
   RetireOperator {
     active_operator_key: ByteArray,
     hub_oracle_ref_input_index: Int,
+    active_operator_anchor_element_input_index: Int,
     active_operator_removed_node_input_index: Int,
-    active_operator_anchor_node_input_index: Int,
+    active_operator_anchor_element_output_index: Int,
     retired_operator_inserted_node_output_index: Int,
     retired_operators_redeemer_index: Int,
   }

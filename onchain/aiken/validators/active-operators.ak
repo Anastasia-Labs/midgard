@@ -393,52 +393,83 @@ validator mint(hub_oracle_script_hash: PolicyId) {
       RetireOperator {
         active_operator_key,
         hub_oracle_ref_input_index,
+        active_operator_anchor_element_input_index,
         active_operator_removed_node_input_index,
-        active_operator_anchor_node_input_index,
-        retired_operator_inserted_node_output_index,
+        active_operator_anchor_element_output_index,
         retired_operators_redeemer_index,
       } -> {
-        expect Some(active_node_input) =
-          list.at(self.inputs, active_operator_removed_node_input_index)
-        expect InlineDatum(active_operator_datum) =
-          active_node_input.output.datum
-        expect parsed_active_operator_datum: NodeDatum = active_operator_datum
-        expect active_operator_data: Datum = parsed_active_operator_datum.data
-        expect Some(retired_node_output) =
-          list.at(self.outputs, retired_operator_inserted_node_output_index)
-        expect InlineDatum(retired_operator_datum) = retired_node_output.datum
-        expect parsed_retired_operator_datum: NodeDatum = retired_operator_datum
-        expect retired_operator_data: RetiredOperatorData =
-          parsed_retired_operator_datum.data
+        let Transaction {
+          inputs,
+          outputs,
+          reference_inputs,
+          mint,
+          redeemers,
+          ..
+        } = self
 
-        expect Some(hub_oracle_ref_input) =
-          list.at(self.reference_inputs, hub_oracle_ref_input_index)
-        expect InlineDatum(hub_oracle_datum) = hub_oracle_ref_input.output.datum
-        expect parsed_hub_oracle_datum: hub.Datum = hub_oracle_datum
-        expect Some(retired_operators_redeemer_pair) =
-          list.at(self.redeemers, retired_operators_redeemer_index)
-        expect retired_operators.RetireOperator { new_retired_operator_key, .. } =
-          retired_operators_redeemer_pair.2nd
-        and {
-          quantity_of(
-            hub_oracle_ref_input.output.value,
+        // 1. Transaction must reference the authentic hub oracle UTxO.
+        let hub_datum =
+          hub.get_datum(
+            reference_inputs,
             hub_oracle_script_hash,
-            hub.asset_name,
-          ) == 1,
-          ordered.remove(
-            Key(active_operator_key),
-            active_operator_removed_node_input_index,
-            active_operator_anchor_node_input_index,
-            node_in_outputs,
-            node_outputs,
-            node_mint,
-          ),
-          retired_operators_redeemer_pair.1st == Mint(
-            parsed_hub_oracle_datum.retired_operators,
-          ),
-          new_retired_operator_key == active_operator_key,
-          active_operator_data.bond_unlock_time == retired_operator_data.bond_unlock_time,
+            hub_oracle_ref_input_index,
+          )
+
+        // 2. Retired operators directory must insert a new node via the
+        //    `RetireOperator` redeemer, with a matching operator key.
+        expect retired_operators.RetireOperator {
+          new_retired_operator_key,
+          bond_unlock_time: retired_operators_redeemer_bond_unlock_time,
+          ..
+        } =
+          redeemers
+            |> utils.get_redeemer_at(
+                expected_purpose: Mint(hub_datum.retired_operators),
+                redeemer_index: retired_operators_redeemer_index,
+              )
+        expect active_operator_key == new_retired_operator_key
+
+        // 3. Specified inputs and output for removal of the active operator's
+        //    node from the linked list must exist at their indices.
+        expect Some(active_operator_anchor_element_input) =
+          inputs |> list.at(active_operator_anchor_element_input_index)
+        expect Some(active_operator_removed_node_input) =
+          inputs |> list.at(active_operator_removed_node_input_index)
+        expect Some(active_operator_anchor_element_output) =
+          outputs |> list.at(active_operator_anchor_element_output_index)
+
+        let linked_list_eval = {
+          // 4. Linked list's removal logic must be valid for the specified
+          //    inputs and output.
+          let
+            _m_anchor_key,
+            _anchor_data,
+            active_operator_node_key,
+            active_operator_node_data,
+            _active_operator_node_link,
+          <-
+            linked_list.remove(
+              active_operator_anchor_element_input,
+              active_operator_removed_node_input,
+              active_operator_anchor_element_output,
+              mint,
+            )
+
+          // 5. Key of the removing node must be that of the removing operator's
+          //    specified via the redeemer.
+          expect active_operator_key == active_operator_node_key
+
+          // 6. The `bond_unlock_time` redeemer argument from the retired
+          //    operators directory must match the removing node's datum. This
+          //    allows the minting of the retired operator's node to be able to
+          //    rely on its correctness.
+          expect NodeData { bond_unlock_time } = active_operator_node_data
+          expect bond_unlock_time == retired_operators_redeemer_bond_unlock_time
+
+          // Done.
+          True
         }
+        linked_list_eval |> finalize_linked_list(own_policy_id)
       }
     }
   }
@@ -554,7 +585,7 @@ fn burn_for_operator_removal_and_get_hub_datum(
       _m_anchor_key,
       _anchor_data,
       active_operator_slashed_node_key,
-      _active_operator_slashed_node_header_data,
+      _active_operator_slashed_node_data,
       _active_operator_slashed_node_link,
     <-
       linked_list.remove(

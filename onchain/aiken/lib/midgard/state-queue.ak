@@ -13,9 +13,9 @@ pub const confirmed_state_asset_name: AssetName = "MIDGARD_CONFIRMED_STATE"
 /// Short for "Midgard Block". In hex it will be: #"4d424c43"
 ///
 /// > [!NOTE]
-/// > This must be exactly 4 bytes as it is followed by header hashes which are
-/// > hashed with Blake2b-224. This makes up block asset names to occupy all
-/// > available 32 bytes.
+/// > This should not be longer than 4 bytes, as it is followed by header hashes
+/// > which are hashed with Blake2b-224. 4 bytes makes up block asset names to
+/// > occupy all available 32 bytes.
 pub const block_asset_name_prefix: AssetName = "MBLC"
 
 pub const block_asset_name_prefix_length: Int =
