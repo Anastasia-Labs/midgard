@@ -1,6 +1,6 @@
 {-# OPTIONS_GHC -Wno-unused-top-binds #-}
 
-module Testing.Eval (evalT, evalWithArgsT, psucceeds, passert, ptraces, toHexString, toBuiltinHexString, writeScriptBytesFile) where
+module Testing.Eval (psucceeds, passertEval) where
 
 import Cardano.Binary qualified as CBOR
 import Data.Aeson (KeyValue ((.=)), object)
@@ -8,44 +8,40 @@ import Data.Aeson.Encode.Pretty (encodePretty)
 import Data.Bifunctor (
   first,
  )
+import Data.ByteString qualified as BS
 import Data.ByteString.Base16 qualified as Base16
 import Data.ByteString.Lazy qualified as LBS
+import Data.ByteString.Short (toShort)
+import Data.Char (toLower)
 import Data.Text (
   Text,
   pack,
-  unpack
+  unpack,
  )
+import Data.Text qualified as T
 import Data.Text.Encoding qualified as Text
-import Plutarch (
-  Config (..),
-  TracingMode (..),
-  LogLevel (..), 
-  compile,
-  printScript,
-  prettyScript,
- )
+import Data.Text.IO qualified
+import Data.Word (Word8)
 import Plutarch.Evaluate (
+  applyArguments,
   evalScript,
   evalScriptHuge,
-  applyArguments,
+ )
+import Plutarch.Internal.Other (printScript)
+import Plutarch.Internal.Term (
+  Config (..),
+  LogLevel (..),
+  TracingMode (..),
+  compile,
  )
 import Plutarch.Prelude
-import Plutarch.Script (Script, serialiseScript, deserialiseScript)
-import PlutusLedgerApi.V2 (
-  Data,
-  ExBudget,
- )
-import Test.Tasty.HUnit
-import Data.Word (Word8)
-import Data.Char (toLower)
-import PlutusLedgerApi.V2 (BuiltinByteString)
+import Plutarch.Pretty (prettyScript)
+import Plutarch.Script (Script, deserialiseScript, serialiseScript)
+import PlutusLedgerApi.V2 (BuiltinByteString, Data, ExBudget)
 import PlutusTx.Prelude qualified as P
-import qualified Data.ByteString as BS
-import Data.ByteString.Short (toShort)
-import Data.Text qualified as T
 import Prettyprinter (defaultLayoutOptions, layoutPretty)
 import Prettyprinter.Render.String (renderString)
-import Data.Text.IO qualified 
+import Test.Tasty.HUnit
 
 encodeSerialiseCBOR :: Script -> Text
 encodeSerialiseCBOR = Text.decodeUtf8 . Base16.encode . CBOR.serialize' . serialiseScript
@@ -111,8 +107,8 @@ pshouldBe x y = do
 (#@?=) = pshouldBe
 
 -- | Asserts the term to be true
-passert :: ClosedTerm a -> Assertion
-passert p = p #@?= pconstant True
+passertEval :: ClosedTerm a -> Assertion
+passertEval p = p #@?= pconstant @PBool True
 
 -- | Asserts that the term evaluates successfully with the given trace sequence
 ptraces :: ClosedTerm a -> [Text] -> Assertion
@@ -122,19 +118,18 @@ ptraces p develTraces =
     (Right _, _, traceLog) ->
       assertEqual "ptraces: does not match expected" traceLog develTraces
 
-
-toBuiltinHexString :: String -> BuiltinByteString 
+toBuiltinHexString :: String -> BuiltinByteString
 toBuiltinHexString = P.toBuiltin . toHexString
 
-toHexString :: String -> BS.ByteString 
-toHexString = 
+toHexString :: String -> BS.ByteString
+toHexString =
   BS.pack . f
   where
     f "" = []
     f [_] = error "UnevenLength"
     f (x : y : rest) = (hexDigitToWord8 x * 16 + hexDigitToWord8 y) : f rest
 
-hexDigitToWord8 :: HasCallStack => Char -> Word8
+hexDigitToWord8 :: (HasCallStack) => Char -> Word8
 hexDigitToWord8 = f . toLower
   where
     f :: Char -> Word8
