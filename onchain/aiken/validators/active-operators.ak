@@ -387,17 +387,13 @@ validator mint(hub_oracle_script_hash: PolicyId) {
               )
         expect fraudulent_operator == slashed_active_operator_key
 
-        // slashed_active_operator_key,
-        // state_queue_redeemer_index,
-        //// active_operator_slashed_node_input_index,
-        //// active_operator_anchor_element_input_index,
-        expect Some(active_operator_anchor_element_input ) =
+        expect Some(active_operator_anchor_element_input) =
           inputs |> list.at(active_operator_anchor_element_input_index)
         expect Some(active_operator_slashed_node_input) =
           inputs |> list.at(active_operator_slashed_node_input_index)
         expect Some(active_operator_anchor_element_output) =
           inputs |> list.at(active_operator_anchor_element_output_index)
-        expect Some() = inputs |> list.at()
+        expect Some = inputs |> list.at()
         let linked_list_eval = {
           let
             _m_anchor_key,

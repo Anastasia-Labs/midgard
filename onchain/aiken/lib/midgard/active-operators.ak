@@ -11,7 +11,8 @@ pub const root_asset_name: AssetName = "MIDGARD_ACTIVE_OPERATORS"
 /// Short for "Midgard Active". In hex it will be: #"4d414354"
 ///
 /// > [!NOTE]
-/// > Refer to state queue's library module.
+/// > This must consist of 4 bytes. Refer to state queue's library module for
+/// > more details.
 pub const node_asset_name_prefix: AssetName = "MACT"
 
 pub const node_asset_name_prefix_length: Int =
