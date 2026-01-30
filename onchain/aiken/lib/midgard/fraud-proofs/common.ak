@@ -272,12 +272,9 @@ pub fn finalize(
   input_index: Int,
   output_index: Int,
   fraud_proof_mint_redeemer_index: Int,
-  state_queue_policy_id: PolicyId,
-  state_queue_node_ref_input_index: Int,
   own_out_ref: OutputReference,
   inputs: List<Input>,
   outputs: List<Output>,
-  reference_inputs: List<Input>,
   redeemers: Pairs<ScriptPurpose, Redeemer>,
   validation_fn: fn(
     ScriptHash,
@@ -329,21 +326,12 @@ pub fn finalize(
       1,
     )
 
-  // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-  let fraudulent_nodes_prev_header_hash =
-    state_queue.get_prev_header_hash_of_node(
-      reference_inputs: reference_inputs,
-      state_queue_policy: state_queue_policy_id,
-      state_queue_node_ref_input_index: state_queue_node_ref_input_index,
-      expected_state_queue_node_header_hash: fraud_proof.asset_name_to_header_hash(
-        computation_thread_token_asset_name,
-      ),
-    )
-
-  // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
   // 4. Fraud prover must be presreved, with no additional `data`.
   let expected_output_datum_data: Data =
-    fraud_proof.Datum { fraudulent_nodes_prev_header_hash, fraud_prover }
+    fraud_proof.Datum {
+      prev_header_hash: output_prev_header_hash,
+      fraud_prover,
+    }
   expect output_datum_data == expected_output_datum_data
 
   // 5. Fraud proof's minting script must be invoked (which also validates the

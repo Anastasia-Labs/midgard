@@ -6,7 +6,6 @@ use midgard/fraud_proof_catalogue
 use midgard/ledger_state.{HeaderHash}
 
 pub type Datum {
-  fraudulent_nodes_prev_header_hash: HeaderHash,
   fraud_prover: ByteArray,
 }
 
