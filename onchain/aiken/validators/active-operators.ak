@@ -148,7 +148,11 @@ validator spend(
   }
 }
 
-validator mint(hub_oracle_script_hash: PolicyId) {
+validator mint(
+  hub_oracle_script_hash: PolicyId,
+  registered_operators_policy_id: PolicyId,
+  retired_operators_policy_id: PolicyId,
+) {
   mint(redeemer: MintRedeemer, own_policy_id: PolicyId, self: Transaction) {
     when redeemer is {
       Init { output_index } -> {
@@ -198,7 +202,6 @@ validator mint(hub_oracle_script_hash: PolicyId) {
       }
       ActivateOperator {
         new_active_operator_key,
-        hub_oracle_ref_input_index,
         active_operator_anchor_element_input_index,
         active_operator_anchor_element_output_index,
         active_operator_inserted_node_output_index,
@@ -213,19 +216,7 @@ validator mint(hub_oracle_script_hash: PolicyId) {
           ..
         } = self
 
-        // 1. Transaction must refer to the authentic hub oracle UTxO to extract
-        //    the minting policy of the registered operators directory.
-        let hub.Datum {
-          registered_operators: registered_operators_policy_id,
-          ..
-        } =
-          hub.get_datum(
-            reference_inputs,
-            hub_oracle_script_hash,
-            hub_oracle_ref_input_index,
-          )
-
-        // 2. The `Activate` minting redeemer of the registered operators
+        // 1. The `Activate` minting redeemer of the registered operators
         //    directory must be invoked.
         expect registered_operators.Activate { operator_to_activate, .. } =
           redeemers
@@ -234,11 +225,11 @@ validator mint(hub_oracle_script_hash: PolicyId) {
                 redeemer_index: registered_operators_redeemer_index,
               )
 
-        // 3. The operator indicated in the registered operators minting
+        // 2. The operator indicated in the registered operators minting
         //    redeemer must match the one specified in the redeemer here.
         expect operator_to_activate == new_active_operator_key
 
-        // 4. Specified input and outpus related to the linked list must exist.
+        // 3. Specified input and outpus related to the linked list must exist.
         expect Some(active_operator_anchor_element_input) =
           inputs |> list.at(active_operator_anchor_element_input_index)
         expect Some(active_operator_anchor_element_output) =
@@ -247,7 +238,7 @@ validator mint(hub_oracle_script_hash: PolicyId) {
           outputs |> list.at(active_operator_inserted_node_output_index)
 
         let linked_list_eval = {
-          // 5. Ordered insertion in the linked list must be proper.
+          // 4. Ordered insertion in the linked list must be proper.
           let
             _m_anchor_key,
             _anchor_data,
@@ -262,11 +253,11 @@ validator mint(hub_oracle_script_hash: PolicyId) {
               mint,
             )
 
-          // 6. The newly inserted node must carry the same operator as the one
+          // 5. The newly inserted node must carry the same operator as the one
           //    provided via the redeemer as its key.
           expect inserted_node_key == new_active_operator_key
 
-          // 7. Newly activated operators must not have any bond unlock times
+          // 6. Newly activated operators must not have any bond unlock times
           //    specified.
           let expected_inserted_node_data: Data =
             NodeData { bond_unlock_time: None }
@@ -298,7 +289,7 @@ validator mint(hub_oracle_script_hash: PolicyId) {
         //    linked list.
         let hub_datum <-
           burn_for_operator_removal_and_get_hub_datum(
-            active_operators_mint_script_hash,
+            own_policy_id,
             hub_oracle_script_hash,
             slashed_active_operator_key,
             hub_oracle_ref_input_index,
@@ -352,7 +343,7 @@ validator mint(hub_oracle_script_hash: PolicyId) {
         //    linked list.
         let hub_datum <-
           burn_for_operator_removal_and_get_hub_datum(
-            active_operators_mint_script_hash,
+            own_policy_id,
             hub_oracle_script_hash,
             slashed_active_operator_key,
             hub_oracle_ref_input_index,
@@ -392,7 +383,6 @@ validator mint(hub_oracle_script_hash: PolicyId) {
       }
       RetireOperator {
         active_operator_key,
-        hub_oracle_ref_input_index,
         active_operator_anchor_element_input_index,
         active_operator_removed_node_input_index,
         active_operator_anchor_element_output_index,
@@ -407,15 +397,7 @@ validator mint(hub_oracle_script_hash: PolicyId) {
           ..
         } = self
 
-        // 1. Transaction must reference the authentic hub oracle UTxO.
-        let hub_datum =
-          hub.get_datum(
-            reference_inputs,
-            hub_oracle_script_hash,
-            hub_oracle_ref_input_index,
-          )
-
-        // 2. Retired operators directory must insert a new node via the
+        // 1. Retired operators directory must insert a new node via the
         //    `RetireOperator` redeemer, with a matching operator key.
         expect retired_operators.RetireOperator {
           new_retired_operator_key,
@@ -424,12 +406,12 @@ validator mint(hub_oracle_script_hash: PolicyId) {
         } =
           redeemers
             |> utils.get_redeemer_at(
-                expected_purpose: Mint(hub_datum.retired_operators),
+                expected_purpose: Mint(retired_operators_policy_id),
                 redeemer_index: retired_operators_redeemer_index,
               )
         expect active_operator_key == new_retired_operator_key
 
-        // 3. Specified inputs and output for removal of the active operator's
+        // 2. Specified inputs and output for removal of the active operator's
         //    node from the linked list must exist at their indices.
         expect Some(active_operator_anchor_element_input) =
           inputs |> list.at(active_operator_anchor_element_input_index)
@@ -439,7 +421,7 @@ validator mint(hub_oracle_script_hash: PolicyId) {
           outputs |> list.at(active_operator_anchor_element_output_index)
 
         let linked_list_eval = {
-          // 4. Linked list's removal logic must be valid for the specified
+          // 3. Linked list's removal logic must be valid for the specified
           //    inputs and output.
           let
             _m_anchor_key,
@@ -455,11 +437,11 @@ validator mint(hub_oracle_script_hash: PolicyId) {
               mint,
             )
 
-          // 5. Key of the removing node must be that of the removing operator's
-          //    specified via the redeemer.
+          // 4. Key of the removing node must match the operator key specified
+          //    via the redeemer.
           expect active_operator_key == active_operator_node_key
 
-          // 6. The `bond_unlock_time` redeemer argument from the retired
+          // 5. The `bond_unlock_time` redeemer argument from the retired
           //    operators directory must match the removing node's datum. This
           //    allows the minting of the retired operator's node to be able to
           //    rely on its correctness.

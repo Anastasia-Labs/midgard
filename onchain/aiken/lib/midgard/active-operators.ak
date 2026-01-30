@@ -50,7 +50,6 @@ pub type MintRedeemer {
   Deinit { input_index: Int }
   ActivateOperator {
     new_active_operator_key: VerificationKeyHash,
-    hub_oracle_ref_input_index: Int,
     active_operator_anchor_element_input_index: Int,
     active_operator_anchor_element_output_index: Int,
     active_operator_inserted_node_output_index: Int,
@@ -75,7 +74,6 @@ pub type MintRedeemer {
   }
   RetireOperator {
     active_operator_key: ByteArray,
-    hub_oracle_ref_input_index: Int,
     active_operator_anchor_element_input_index: Int,
     active_operator_removed_node_input_index: Int,
     active_operator_anchor_element_output_index: Int,
