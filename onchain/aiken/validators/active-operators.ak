@@ -225,7 +225,7 @@ validator mint(hub_oracle_script_hash: PolicyId) {
             hub_oracle_ref_input_index,
           )
 
-        // 2. The Activate minting redeemer of the registered operators
+        // 2. The `Activate` minting redeemer of the registered operators
         //    directory must be invoked.
         expect registered_operators.Activate { operator_to_activate, .. } =
           redeemers
@@ -318,20 +318,24 @@ validator mint(hub_oracle_script_hash: PolicyId) {
               )
         expect fraudulent_operator == slashed_active_operator_key
 
+        // 3. Specified inputs and output for removal of the active operator's
+        //    node from the linked list must exist at their indices.
         expect Some(active_operator_anchor_element_input) =
           inputs |> list.at(active_operator_anchor_element_input_index)
         expect Some(active_operator_slashed_node_input) =
           inputs |> list.at(active_operator_slashed_node_input_index)
         expect Some(active_operator_anchor_element_output) =
-          inputs |> list.at(active_operator_anchor_element_output_index)
-        expect Some = inputs |> list.at()
+          outputs |> list.at(active_operator_anchor_element_output_index)
+
         let linked_list_eval = {
+          // 4. Linked list's removal logic must be valid for the specified
+          //    inputs and output.
           let
             _m_anchor_key,
             _anchor_data,
             active_operator_slashed_node_key,
-            removed_node_header_data,
-            removed_node_link,
+            _active_operator_slashed_node_header_data,
+            _active_operator_slashed_node_link,
           <-
             linked_list.remove(
               active_operator_anchor_element_input,
@@ -339,38 +343,15 @@ validator mint(hub_oracle_script_hash: PolicyId) {
               active_operator_anchor_element_output,
               mint,
             )
-        }
 
-        expect Some(hub_oracle_ref_input) =
-          list.at(self.reference_inputs, hub_oracle_ref_input_index)
-        expect InlineDatum(hub_oracle_datum) = hub_oracle_ref_input.output.datum
-        expect parsed_hub_oracle_datum: hub.Datum = hub_oracle_datum
-        expect Some(state_queue_redeemer_pair) =
-          list.at(self.redeemers, state_queue_redeemer_index)
-        expect state_queue.RemoveFraudulentBlockHeader {
-          fraudulent_operator,
-          ..
-        } = state_queue_redeemer_pair.2nd
-        and {
-          quantity_of(
-            hub_oracle_ref_input.output.value,
-            hub_oracle_script_hash,
-            hub.asset_name,
-          ) == 1,
-          ordered.remove(
-            Key(slashed_active_operator_key),
-            active_operator_slashed_node_input_index,
-            active_operator_anchor_node_input_index,
-            node_in_outputs,
-            node_outputs,
-            node_mint,
-          ),
-          self.fee >= slashing_penalty,
-          state_queue_redeemer_pair.1st == Mint(
-            parsed_hub_oracle_datum.state_queue,
-          ),
-          fraudulent_operator == slashed_active_operator_key,
+          // 5. Key of the removing node must be that of the fraudulent
+          //    operator's.
+          expect active_operator_slashed_node_key == fraudulent_operator
+
+          // Done.
+          True
         }
+        linked_list_eval |> finalize_linked_list(own_policy_id)
       }
       RemoveOperatorBadSettlement {
         slashed_active_operator_key,
