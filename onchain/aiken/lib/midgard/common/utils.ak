@@ -38,14 +38,14 @@ pub fn is_herebefore(self: Interval, point: Int) -> Bool {
 }
 
 pub fn get_inclusive_upper_bound_of_interval(interval: Interval) -> Int {
-  when vrn.normalize_time_range(validity_range) is {
+  when vrn.normalize_time_range(interval) is {
     vrn.ClosedRange { upper, .. } | vrn.FromNegInf { upper } -> upper
     _ -> fail @"Validity range was expected to be bound at upper end"
   }
 }
 
 pub fn get_inclusive_lower_bound_of_interval(interval: Interval) -> Int {
-  when vrn.normalize_time_range(validity_range) is {
+  when vrn.normalize_time_range(interval) is {
     vrn.ClosedRange { lower, .. } | vrn.ToPosInf { lower } -> lower
     _ -> fail @"Validity range was expected to be bound at lower end"
   }
@@ -506,7 +506,7 @@ pub fn get_spending_redeemer_data_at(
   //
   expect input_address.payment_credential == script_address.payment_credential
   //
-  redeemers |> utils.get_redeemer_at(Spend(input_outref), redeemer_index)
+  redeemers |> get_redeemer_at(Spend(input_outref), redeemer_index)
 }
 
 pub fn key_is_not_a_member_of_ordered_linked_list(

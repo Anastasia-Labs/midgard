@@ -348,12 +348,10 @@ validator mint(
           //    transaction validity interval meets or exceeds the sum of the
           //    `end_time` field of `header_node` and the Midgard
           //    `maturity_duration` protocol parameter.
+          let inclusive_tx_lower_bound =
+            utils.get_inclusive_lower_bound_of_interval(validity_range)
           expect
-            when vrn.normalize_time_range(validity_range) is {
-              vrn.ClosedRange { lower, .. } | vrn.ToPosInf { lower } ->
-                lower >= header_input_end_time + maturity_duration
-              _ -> fail @"Unexpected validity range"
-            }
+            inclusive_tx_lower_bound >= header_input_end_time + maturity_duration
 
           // 5. a. `header_hash` of the input confirmed state must be preserved
           //       under `prev_header_hash` of the updated confirmed state.

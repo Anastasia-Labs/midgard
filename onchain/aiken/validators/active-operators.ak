@@ -26,7 +26,7 @@ validator spend(
   spend(
     datumOpt: Option<NodeDatum>,
     redeemer: SpendRedeemer,
-    input_out_ref: OutputReference,
+    own_out_ref: OutputReference,
     self: Transaction,
   ) {
     when redeemer is {
@@ -36,90 +36,54 @@ validator spend(
           self.mint,
         )
       UpdateBondHoldNewState {
+        active_node_input_index,
         active_node_output_index,
         hub_oracle_ref_input_index,
         state_queue_input_index,
         state_queue_redeemer_index,
       } -> {
-        let Transaction {
-          inputs,
-          outputs,
-          reference_inputs,
-          redeemers,
-          mint,
-          validity_range,
+        // 1. Common validations for spending and reproducing an active operator
+        //    node must pass.
+        let
+          _new_bond_unlock_time,
+          active_operator_key,
+          hub_datum,
+        <-
+          spend_for_updating_bond_unlock_time(
+            active_operators_mint_script_hash,
+            hub_oracle_script_hash,
+            active_node_input_index,
+            active_node_output_index,
+            hub_oracle_ref_input_index,
+            own_out_ref,
+            self,
+          )
+
+        // 2. Transaction must spend a UTxO from state queue with the Commit
+        //    Block Header redeemer. The operator's signature should be
+        //    validated there.
+        //
+        //    TODO: Potential optimization opportunities, i.e. using builtin
+        //    functions. This requires implicitly imposing the position of
+        //    `operator` field in the redeemer to be at index 0.
+        expect state_queue.CommitBlockHeader {
+          operator: state_queue_redeemer_operator,
           ..
-        } = self
+        } =
+          utils.get_spending_redeemer_data_at(
+            hub_datum.state_queue_addr,
+            state_queue_input_index,
+            state_queue_redeemer_index,
+            inputs,
+            redeemers,
+          )
 
-        // 1. The new bond unlock time must be equal to the transaction's
-        //    validity range upper bound plus the maturity duration.
-        //    TODO: Does inclusivity of the upper bound matter here?
-        let valid_to =
-          utils.get_inclusive_upper_bound_of_interval(validity_range)
-        let new_bond_unlock_time = valid_to + maturity_duration
+        // 3. The operator specified in state queue's redeemer must match the
+        //    key of the spending active operator node.
+        expect state_queue_redeemer_operator == active_operator_key
 
-        let linked_list_eval = {
-          // 2. An element from the active operators directory must be spent and
-          //    reproduced without affecting the linked list structure.
-          let
-            m_operator,
-            _active_node_input_data,
-            active_node_output_data,
-          <-
-            linked_list.spend_for_updating_elements_data(
-              element_input_index: active_node_input_index,
-              continued_element_output_index: active_node_output_index,
-              element_input_outref: input_out_ref,
-              inputs: inputs,
-              outputs: outputs,
-              tx_mint: mint,
-            )
-
-          // 3. The spent element must be a node (i.e. not root).
-          expect Some(operator) = m_operator
-
-          // 4. The reproduced node must properly store the new bond unlock
-          //    time.
-          expect NodeData { bond_unlock_time: m_output_bond_unlock_time } =
-            active_node_output_data
-          expect m_output_bond_unlock_time == Some(new_bond_unlock_time)
-
-          // 5. Transaction must have the hub oracle's UTxO referenced.
-          let hub.Datum { state_queue_addr, .. } =
-            hub.get_datum(
-              reference_inputs,
-              hub_oracle_script_hash,
-              hub_oracle_ref_input_index,
-            )
-
-          // 6. Transaction must spend a UTxO from state queue with the Commit
-          //    Block Header redeemer. The operator's signature should be
-          //    validated there.
-          //
-          //    TODO: Potential optimization opportunities, i.e. using builtin
-          //    functions. This requires implicitly imposing the position of
-          //    `operator` field in the redeemer to be at index 0.
-          expect state_queue.CommitBlockHeader {
-            operator: state_queue_redeemer_operator,
-            ..
-          } =
-            utils.get_spending_redeemer_data_at(
-              state_queue_addr,
-              state_queue_input_index,
-              state_queue_redeemer_index,
-              inputs,
-              redeemers,
-            )
-
-          // 7. The operator specified in state queue's redeemer must match the
-          //    key of the spending active operator node.
-          expect state_queue_redeemer_operator == operator
-
-          // Done.
-          True
-        }
-        linked_list_eval
-          |> finalize_linked_list(active_operators_mint_script_hash)
+        // Done.
+        True
       }
       UpdateBondHoldNewSettlement {
         active_node_input_index,
@@ -129,85 +93,52 @@ validator spend(
         settlement_redeemer_index,
         new_bond_unlock_time,
       } -> {
-        let Transaction {
-          inputs,
-          outputs,
-          reference_inputs,
-          redeemers,
-          mint,
-          validity_range,
+        // 1. Common validations for spending and reproducing an active operator
+        //    node must pass.
+        let
+          computed_new_bond_unlock_time,
+          active_operator_key,
+          hub_datum,
+        <-
+          spend_for_updating_bond_unlock_time(
+            active_operators_mint_script_hash,
+            hub_oracle_script_hash,
+            active_node_input_index,
+            active_node_output_index,
+            hub_oracle_ref_input_index,
+            own_out_ref,
+            self,
+          )
+
+        // 2. The new bond unlock time in the redeemer must be valid for other
+        //    contracts to rely on.
+        expect computed_new_bond_unlock_time == new_bond_unlock_time
+
+        // 3. Transaction must spend a UTxO from settlement with the Attach
+        //    Resolution Claim redeemer. The operator's signature should be
+        //    validated there.
+        //
+        //    TODO: Potential optimization opportunities, i.e. using builtin
+        //    functions. This requires implicitly imposing the position of
+        //    `operator` field in the redeemer to be at index 0.
+        expect settlement.AttachResolutionClaim {
+          operator: settlement_redeemer_operator,
           ..
-        } = self
+        } =
+          utils.get_spending_redeemer_data_at(
+            hub_datum.settlement_addr,
+            settlement_input_index,
+            settlement_redeemer_index,
+            inputs,
+            redeemers,
+          )
 
-        // 1. The new bond unlock time must be equal to the transaction's
-        //    validity range upper bound plus the maturity duration.
-        //    TODO: Does inclusivity of the upper bound matter here?
-        let valid_to =
-          utils.get_inclusive_upper_bound_of_interval(validity_range)
-        expect valid_to + maturity_duration == new_bond_unlock_time
+        // 4. The operator specified in settlement's redeemer must match the
+        //    key of the spending active operator node.
+        expect settlement_redeemer_operator == active_operator_key
 
-        let linked_list_eval = {
-          // 2. An element from the active operators directory must be spent and
-          //    reproduced without affecting the linked list structure.
-          let
-            m_operator,
-            _active_node_input_data,
-            active_node_output_data,
-          <-
-            linked_list.spend_for_updating_elements_data(
-              element_input_index: active_node_input_index,
-              continued_element_output_index: active_node_output_index,
-              element_input_outref: input_out_ref,
-              inputs: inputs,
-              outputs: outputs,
-              tx_mint: mint,
-            )
-
-          // 3. The spent element must be a node (i.e. not root).
-          expect Some(operator) = m_operator
-
-          // 4. The reproduced node must properly store the new bond unlock
-          //    time.
-          expect NodeData { bond_unlock_time: m_output_bond_unlock_time } =
-            active_node_output_data
-          expect m_output_bond_unlock_time == Some(new_bond_unlock_time)
-
-          // 5. Transaction must have the hub oracle's UTxO referenced.
-          let hub.Datum { settlement_addr, .. } =
-            hub.get_datum(
-              reference_inputs,
-              hub_oracle_script_hash,
-              hub_oracle_ref_input_index,
-            )
-
-          // 6. Transaction must spend a UTxO from settlement with the Attach
-          //    Resolution Claim redeemer. The operator's signature should be
-          //    validated there.
-          //
-          //    TODO: Potential optimization opportunities, i.e. using builtin
-          //    functions. This requires implicitly imposing the position of
-          //    `operator` field in the redeemer to be at index 0.
-          expect settlement.AttachResolutionClaim {
-            operator: settlement_redeemer_operator,
-            ..
-          } =
-            utils.get_spending_redeemer_data_at(
-              settlement_addr,
-              settlement_input_index,
-              settlement_redeemer_index,
-              inputs,
-              redeemers,
-            )
-
-          // 7. The operator specified in settlement's redeemer must match the
-          //    key of the spending active operator node.
-          expect settlement_redeemer_operator == operator
-
-          // Done.
-          True
-        }
-        linked_list_eval
-          |> finalize_linked_list(active_operators_mint_script_hash)
+        // Done.
+        True
       }
     }
   }
@@ -538,4 +469,70 @@ validator mint(hub_oracle_script_hash: PolicyId) {
   else(_) {
     fail
   }
+}
+
+fn spend_for_updating_bond_unlock_time(
+  active_operators_mint_script_hash: ByteArray,
+  hub_oracle_script_hash: PolicyId,
+  active_node_input_index: Int,
+  active_node_output_index: Int,
+  hub_oracle_ref_input_index: Int,
+  own_out_ref: OutputReference,
+  tx: Transaction,
+  return: fn(Int, VerificationKeyHash, hub.Datum) -> Bool,
+) -> Bool {
+  let Transaction {
+    inputs,
+    outputs,
+    reference_inputs,
+    redeemers,
+    mint,
+    validity_range,
+    ..
+  } = tx
+
+  // 1. The new bond unlock time must be equal to the transaction's
+  //    validity range upper bound plus the maturity duration.
+  //    TODO: Does inclusivity of the upper bound matter here?
+  let valid_to = utils.get_inclusive_upper_bound_of_interval(validity_range)
+  let new_bond_unlock_time = valid_to + maturity_duration
+
+  let linked_list_eval = {
+    // 2. An element from the active operators directory must be spent and
+    //    reproduced without affecting the linked list structure.
+    let
+      m_operator,
+      _active_node_input_data,
+      active_node_output_data,
+    <-
+      linked_list.spend_for_updating_elements_data(
+        element_input_index: active_node_input_index,
+        continued_element_output_index: active_node_output_index,
+        element_input_outref: own_out_ref,
+        inputs: inputs,
+        outputs: outputs,
+        tx_mint: mint,
+      )
+
+    // 3. The spent element must be a node (i.e. not root).
+    expect Some(operator) = m_operator
+
+    // 4. The reproduced node must properly store the new bond unlock
+    //    time.
+    expect NodeData { bond_unlock_time: m_output_bond_unlock_time } =
+      active_node_output_data
+    expect m_output_bond_unlock_time == Some(new_bond_unlock_time)
+
+    // 5. Transaction must have the hub oracle's UTxO referenced.
+    let hub_datum =
+      hub.get_datum(
+        reference_inputs,
+        hub_oracle_script_hash,
+        hub_oracle_ref_input_index,
+      )
+
+    return(new_bond_unlock_time, operator, hub_datum)
+  }
+  linked_list_eval
+    |> finalize_linked_list(active_operators_mint_script_hash)
 }

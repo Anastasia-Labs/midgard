@@ -28,12 +28,14 @@ pub type Datum =
 pub type SpendRedeemer {
   ListStateTransition
   UpdateBondHoldNewState {
+    active_node_input_index: Int,
     active_node_output_index: Int,
     hub_oracle_ref_input_index: Int,
     state_queue_input_index: Int,
     state_queue_redeemer_index: Int,
   }
   UpdateBondHoldNewSettlement {
+    active_node_input_index: Int,
     active_node_output_index: Int,
     hub_oracle_ref_input_index: Int,
     settlement_input_index: Int,
