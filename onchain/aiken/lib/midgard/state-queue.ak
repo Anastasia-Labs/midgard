@@ -61,7 +61,7 @@ pub type MintRedeemer {
     header_node_input_index: Int,
     confirmed_state_input_index: Int,
     confirmed_state_output_index: Int,
-    settlement_redeemer_index: Int,
+    m_settlement_redeemer_index: Option<Int>,
   }
   RemoveFraudulentBlockHeader {
     fraudulent_operator: VerificationKeyHash,

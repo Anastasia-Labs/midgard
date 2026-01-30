@@ -226,9 +226,10 @@ validator spend(hub_oracle: ScriptHash, settlement_policy_id: ScriptHash) {
             inclusion_proof_script_withdraw_redeemer_index,
           )
 
-        // 7. The transaction's time-validity upper bound must be earlier than
-        //    the resolution claim's resolution time.
-        expect Finite(valid_to) = validity_range.upper_bound.bound_type
+        // 7. The transaction's time-validity inclusive upper bound must be
+        //    earlier than the resolution claim's resolution time.
+        let valid_to =
+          utils.get_inclusive_upper_bound_of_interval(validity_range)
         expect valid_to < resolution_time
 
         // 8. Let `operator_is_active` be a redeemer argument indicating whether
