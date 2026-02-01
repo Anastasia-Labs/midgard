@@ -13,13 +13,16 @@ pub const root_asset_name: AssetName = "MIDGARD_RETIRED_OPERATORS"
 /// > long.
 pub const node_asset_name_prefix: AssetName = "MRTR"
 
-pub type Datum {
+pub type NodeData {
   bond_unlock_time: Option<PosixTime>,
 }
 
+pub type Datum =
+  linked_list.Element<Void, NodeData>
+
 pub type MintRedeemer {
-  Init
-  Deinit
+  Init { output_index: Int }
+  Deinit { input_index: Int }
   RetireOperator {
     new_retired_operator_key: ByteArray,
     bond_unlock_time: Option<PosixTime>,

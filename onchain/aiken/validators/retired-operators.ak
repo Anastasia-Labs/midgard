@@ -1,30 +1,30 @@
 use aiken/collection/list
 use aiken/interval.{Finite, Interval}
-use aiken_design_patterns/linked_list/ordered.{
-  Key, NodeDatum, get_node_inputs, get_node_outputs,
-}
+use aiken_design_patterns/linked_list
 use cardano/assets.{PolicyId, quantity_of, tokens}
 use cardano/transaction.{
   InlineDatum, Input, Mint, Output, OutputReference, Transaction,
 }
 use midgard/active_operators
-use midgard/hub_oracle
+use midgard/hub_oracle as hub
+use midgard/protocol_parameters.{slashing_penalty}
 use midgard/retired_operators.{
-  Datum as RetiredOperatorDatum, Deinit, Init, MintRedeemer, RecoverOperatorBond,
-  RemoveOperatorBadSettlement, RemoveOperatorBadState, RetireOperator,
+  Deinit, Init, MintRedeemer, RecoverOperatorBond, RemoveOperatorBadSettlement,
+  RemoveOperatorBadState, RetireOperator, finalize_linked_list, root_asset_name,
 }
 use midgard/settlement
 use midgard/state_queue
 
-validator spend(retired_operators_mint_script_hash: ByteArray) {
+validator spend(retired_operators_mint_script_hash: PolicyId) {
   spend(
-    _datumOpt: Option<Data>,
-    _redeemer: Data,
-    _input: OutputReference,
+    _m_datum: Option<Data>,
+    _redeemer: Redeemer,
+    _own_out_ref: OutputReference,
     self: Transaction,
   ) {
-    ordered.list_state_transition(
-      tokens(self.mint, retired_operators_mint_script_hash),
+    linked_list.spend_for_adding_or_removing_an_element(
+      retired_operators_mint_script_hash,
+      self.mint,
     )
   }
 
@@ -34,23 +34,56 @@ validator spend(retired_operators_mint_script_hash: ByteArray) {
 }
 
 validator mint(
-  slashing_penalty: Int,
   hub_oracle_script_hash: PolicyId,
   hub_oracle_asset_name: ByteArray,
 ) {
-  mint(redeemer: MintRedeemer, policy_id: PolicyId, self: Transaction) {
-    let node_in_outputs = get_node_inputs(self.inputs, policy_id)
-    let node_outputs = get_node_outputs(self.outputs, policy_id)
-    let node_mint = tokens(self.mint, policy_id)
+  mint(redeemer: MintRedeemer, own_policy_id: PolicyId, self: Transaction) {
     when redeemer is {
-      Init -> and {
-          quantity_of(self.mint, hub_oracle_script_hash, hub_oracle_asset_name) == 1,
-          ordered.init(node_outputs, node_mint, policy_id),
-        }
-      Deinit -> and {
-          quantity_of(self.mint, hub_oracle_script_hash, hub_oracle_asset_name) == -1,
-          ordered.deinit(node_in_outputs, node_mint, policy_id),
-        }
+      Init -> {
+        let Transaction { outputs, mint, .. } = self
+
+        // 1. An output must exist at specified index.
+        expect Some(root_output) = outputs |> list.get(output_index)
+
+        // 2. Linked list must be initiated with a void root data, and
+        //    validation that a hub oracle NFT is getting minted.
+        linked_list.init(
+          nonce_validated: quantity_of(
+            mint,
+            hub_oracle_script_hash,
+            hub.asset_name,
+          ) == 1,
+          produced_element_output: root_output,
+          tx_mint: mint,
+          root_data_validator: fn(root_data: Data) -> Bool { root_data == Void },
+        )
+          |> linked_list.run_root_with(own_policy_id, root_asset_name)
+      }
+      Deinit { input_index } -> {
+        let Transaction { inputs, mint, .. } = self
+
+        // 1. An input must exist at specified index.
+        expect Some(own_input) = inputs |> list.at(input_index)
+
+        // 2. Hub oracle NFT must be getting burnt.
+        expect quantity_of(mint, hub_oracle_script_hash, hub.asset_name)
+
+        // 3. Linked list de-initialization must be valid. No other validations
+        //    required.
+        expect
+          deinit(
+            root_input: own_input,
+            tx_mint: mint,
+            root_data_validator: fn(_) -> Bool { True },
+          )
+            |> linked_list.run_root_with(
+                own_policy_id,
+                confirmed_state_asset_name,
+              )
+
+        // Done.
+        True
+      }
       RetireOperator {
         new_retired_operator_key,
         hub_oracle_ref_input_index,
@@ -61,7 +94,7 @@ validator mint(
         expect Some(hub_oracle_ref_input) =
           list.at(self.reference_inputs, hub_oracle_ref_input_index)
         expect InlineDatum(hub_oracle_datum) = hub_oracle_ref_input.output.datum
-        expect parsed_hub_oracle_datum: hub_oracle.Datum = hub_oracle_datum
+        expect parsed_hub_oracle_datum: hub.Datum = hub_oracle_datum
         expect Some(active_operators_redeemer_pair) =
           list.at(self.redeemers, active_operators_redeemer_index)
         expect active_operators.RetireOperator { active_operator_key, .. } =
@@ -98,8 +131,7 @@ validator mint(
         expect InlineDatum(retired_operator_datum) =
           retired_node_input.output.datum
         expect parsed_retired_operator_datum: NodeDatum = retired_operator_datum
-        expect retired_operator_data: RetiredOperatorDatum =
-          parsed_retired_operator_datum.data
+        expect retired_operator_data: Datum = parsed_retired_operator_datum.data
         and {
           ordered.remove(
             Key(retired_operator_key),
@@ -125,7 +157,7 @@ validator mint(
         expect Some(hub_oracle_ref_input) =
           list.at(self.reference_inputs, hub_oracle_ref_input_index)
         expect InlineDatum(hub_oracle_datum) = hub_oracle_ref_input.output.datum
-        expect parsed_hub_oracle_datum: hub_oracle.Datum = hub_oracle_datum
+        expect parsed_hub_oracle_datum: hub.Datum = hub_oracle_datum
         expect Some(state_queue_redeemer_pair) =
           list.at(self.redeemers, state_queue_redeemer_index)
         expect state_queue.RemoveFraudulentBlockHeader {

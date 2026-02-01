@@ -15,12 +15,12 @@ use midgard/common/utils
 use midgard/hub_oracle as hub
 use midgard/protocol_parameters.{maturity_duration, slashing_penalty}
 use midgard/registered_operators
-use midgard/retired_operators.{Datum as RetiredOperatorData}
+use midgard/retired_operators
 use midgard/settlement
 use midgard/state_queue
 
 validator spend(
-  active_operators_mint_script_hash: ByteArray,
+  active_operators_mint_script_hash: PolicyId,
   hub_oracle_script_hash: PolicyId,
 ) {
   spend(
