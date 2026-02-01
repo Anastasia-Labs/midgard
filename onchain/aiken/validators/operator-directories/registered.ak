@@ -9,12 +9,12 @@ use cardano/transaction.{
   InlineDatum, Input, Output, OutputReference, Transaction,
 }
 use midgard/hub_oracle
-use midgard/protocol_parameters.{
-  registration_duration, required_bond, slashing_penalty,
-}
-use midgard/registered_operators.{
+use midgard/operator_directories/registered.{
   Activate, Active, Datum, Deinit, Deregister, Init, MintRedeemer, Register,
   Registered, RemoveDuplicateSlashBond, Retired,
+}
+use midgard/protocol_parameters.{
+  registration_duration, required_bond, slashing_penalty,
 }
 
 validator spend(registered_operators_mint_script_hash: ByteArray) {

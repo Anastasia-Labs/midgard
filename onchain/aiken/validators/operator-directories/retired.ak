@@ -7,11 +7,11 @@ use cardano/transaction.{
 }
 use midgard/active_operators
 use midgard/hub_oracle as hub
-use midgard/protocol_parameters.{slashing_penalty}
-use midgard/retired_operators.{
+use midgard/operator_directories/retired.{
   Deinit, Init, MintRedeemer, RecoverOperatorBond, RemoveOperatorBadSettlement,
   RemoveOperatorBadState, RetireOperator, finalize_linked_list, root_asset_name,
 }
+use midgard/protocol_parameters.{slashing_penalty}
 use midgard/settlement
 use midgard/state_queue
 
