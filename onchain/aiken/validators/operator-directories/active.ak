@@ -13,6 +13,7 @@ use midgard/operator_directories/active.{
   SpendRedeemer, UpdateBondHoldNewSettlement, UpdateBondHoldNewState,
   finalize_linked_list, root_asset_name,
 }
+use midgard/operator_directories/common.{deinit, init}
 use midgard/operator_directories/registered
 use midgard/operator_directories/retired
 use midgard/protocol_parameters.{maturity_duration, slashing_penalty}
@@ -155,51 +156,22 @@ validator mint(
 ) {
   mint(redeemer: MintRedeemer, own_policy_id: PolicyId, self: Transaction) {
     when redeemer is {
-      Init { output_index } -> {
-        let Transaction { outputs, mint, .. } = self
-
-        // 1. An output must exist at specified index.
-        expect Some(root_output) = outputs |> list.get(output_index)
-
-        // 2. Linked list must be initiated with a void root data, and
-        //    validation that a hub oracle NFT is getting minted.
-        linked_list.init(
-          nonce_validated: quantity_of(
-            mint,
-            hub_oracle_script_hash,
-            hub.asset_name,
-          ) == 1,
-          produced_element_output: root_output,
-          tx_mint: mint,
-          root_data_validator: fn(root_data: Data) -> Bool { root_data == Void },
+      Init { output_index } ->
+        init(
+          hub_oracle_script_hash,
+          own_policy_id,
+          root_asset_name,
+          output_index,
+          self,
         )
-          |> linked_list.run_root_with(own_policy_id, root_asset_name)
-      }
-      Deinit { input_index } -> {
-        let Transaction { inputs, mint, .. } = self
-
-        // 1. An input must exist at specified index.
-        expect Some(own_input) = inputs |> list.at(input_index)
-
-        // 2. Hub oracle NFT must be getting burnt.
-        expect quantity_of(mint, hub_oracle_script_hash, hub.asset_name)
-
-        // 3. Linked list de-initialization must be valid. No other validations
-        //    required.
-        expect
-          deinit(
-            root_input: own_input,
-            tx_mint: mint,
-            root_data_validator: fn(_) -> Bool { True },
-          )
-            |> linked_list.run_root_with(
-                own_policy_id,
-                confirmed_state_asset_name,
-              )
-
-        // Done.
-        True
-      }
+      Deinit { input_index } ->
+        deinit(
+          hub_oracle_script_hash,
+          own_policy_id,
+          root_asset_name,
+          input_index,
+          self,
+        )
       ActivateOperator {
         new_active_operator_key,
         active_operator_anchor_element_input_index,

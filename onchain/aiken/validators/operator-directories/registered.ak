@@ -1,6 +1,6 @@
 use aiken/collection/list
 use aiken/interval.{Finite, Interval}
-use aiken_design_patterns/linked_list/ordered
+use aiken_design_patterns/linked_list
 use aiken_design_patterns/linked_list/unordered.{
   Key, NodeDatum, get_node_inputs, get_node_outputs,
 }
@@ -9,6 +9,7 @@ use cardano/transaction.{
   InlineDatum, Input, Output, OutputReference, Transaction,
 }
 use midgard/hub_oracle
+use midgard/operator_directories/common.{deinit, init}
 use midgard/operator_directories/registered.{
   Activate, Active, Datum, Deinit, Deregister, Init, MintRedeemer, Register,
   Registered, RemoveDuplicateSlashBond, Retired,
@@ -43,14 +44,22 @@ validator mint(
     let node_outputs = get_node_outputs(self.outputs, policy_id)
     let node_mint = tokens(self.mint, policy_id)
     when redeemer is {
-      Init -> and {
-          quantity_of(self.mint, hub_oracle_script_hash, hub_oracle_asset_name) == 1,
-          unordered.init(node_in_outputs, node_mint, policy_id),
-        }
-      Deinit -> and {
-          quantity_of(self.mint, hub_oracle_script_hash, hub_oracle_asset_name) == -1,
-          unordered.deinit(node_outputs, node_mint, policy_id),
-        }
+      Init { output_index } ->
+        init(
+          hub_oracle_script_hash,
+          own_policy_id,
+          root_asset_name,
+          output_index,
+          self,
+        )
+      Deinit { input_index } ->
+        deinit(
+          hub_oracle_script_hash,
+          own_policy_id,
+          root_asset_name,
+          input_index,
+          self,
+        )
       Register {
         key_to_prepend,
         hub_oracle_ref_input_index,
