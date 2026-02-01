@@ -15,7 +15,7 @@ use midgard/ledger_state.{
   ConfirmedState, Header, genesis_header_hash, genesis_protocol_version,
   genesis_utxo_root,
 }
-use midgard/protocol_parameters.{maturity_duration, shift_duration}
+use midgard/protocol_parameters.{maturity_duration}
 use midgard/registered_operators
 use midgard/retired_operators
 use midgard/scheduler
