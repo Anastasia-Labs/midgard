@@ -407,7 +407,3 @@ export class HashingError extends EffectData.TaggedError(
 export class AssetError extends EffectData.TaggedError(
   "AssetError",
 )<GenericErrorFields> {}
-
-export class UnresolvedError extends EffectData.TaggedError(
-  "UnresolvedError",
-)<GenericErrorFields> {}

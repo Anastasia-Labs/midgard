@@ -18,14 +18,12 @@ import {
   HashingError,
   LucidError,
   makeReturn,
-  MerkleRoot,
   MerkleRootSchema,
   OutputReference,
   POSIXTimeSchema,
   Proof,
   ProofSchema,
   UnauthenticUtxoError,
-  UnresolvedError,
   VerificationKeyHashSchema,
 } from "@/common.js";
 import {
@@ -34,8 +32,11 @@ import {
   Effect,
   Option,
 } from "effect";
-import { HubOracleUTxO, utxosToHubOracleUTxOs } from "@/hub-oracle.js";
-import { SchedulerUTxO, utxosToSchedulerUTxOs } from "@/scheduler.js";
+import {
+  fetchHubOracleUTxOProgram,
+  HubOracleError,
+} from "@/hub-oracle.js";
+import { fetchSchedulerUTxOProgram, SchedulerError } from "@/scheduler.js";
 import { utxosToDepositUTxOs } from "./user-events/deposit.js";
 import { utxosToTxOrderUTxOs } from "./user-events/tx-order.js";
 import { WithdrawalOrderDatum } from "./user-events/withdrawal.js";
@@ -57,8 +58,7 @@ import {
   RetiredOperatorMintRedeemer,
   RetiredOperatorUTxO,
   utxosToRetiredOperatorUTxOs,
-} from "./retired-operators.js";
-import { min } from "effect/Order";
+} from "@/retired-operators.js";
 
 export const ResolutionClaimSchema = Data.Object({
   resolutionTime: POSIXTimeSchema,
@@ -163,16 +163,12 @@ export const SettlementMintRedeemer =
   SettlementMintRedeemerSchema as unknown as SettlementMintRedeemer;
 
 export type AttachResolutionClaimParams = {
-  settlementAddress: string;
+  settlementValidator: AuthenticatedValidator;
   resolutionClaimOperator: string;
   newBondUnlockTime: bigint;
   hubOracleValidator: AuthenticatedValidator;
-  settlementPolicyId: string;
-  schedulerScriptAddress: string;
-  schedulerPolicyId: string;
-  depositsRoot: MerkleRoot;
-  withdrawalsRoot: MerkleRoot;
-  transactionsRoot: MerkleRoot;
+  schedulerValidator: AuthenticatedValidator;
+  settlementUTxO: SettlementUTxO;
   depositUTxOs: UTxO[];
   withdrawalUTxOs: UTxO[];
   txOrderUTxOs: UTxO[];
@@ -284,60 +280,6 @@ export const getSettlementUTxOWithoutClaim = (
     );
   });
 
-const fetchHubOracleRefUTxO = (
-  hubOracleScriptAddress: string,
-  hubOraclePolicyId: string,
-  lucid: LucidEvolution,
-): Effect.Effect<HubOracleUTxO, LucidError> =>
-  Effect.gen(function* () {
-    const allUTxOs = yield* Effect.tryPromise({
-      try: () => lucid.utxosAt(hubOracleScriptAddress),
-      catch: (err) =>
-        new LucidError({
-          message: "Failed to fetch Hub Oracle UTxOs",
-          cause: err,
-        }),
-    });
-    const hubOracleRefUTxOs = yield* utxosToHubOracleUTxOs(
-      allUTxOs,
-      hubOraclePolicyId,
-    );
-    if (hubOracleRefUTxOs.length === 0) {
-      yield* new LucidError({
-        message: "Failed to build the HubOracle transaction",
-        cause: "No UTxOs found in Hub Oracle contract address",
-      });
-    }
-    return hubOracleRefUTxOs[0];
-  });
-
-const fetchSchedulerRefUTxO = (
-  schedulerScriptAddress: string,
-  schedulerPolicyId: string,
-  lucid: LucidEvolution,
-): Effect.Effect<SchedulerUTxO, LucidError> =>
-  Effect.gen(function* () {
-    const allUTxOs = yield* Effect.tryPromise({
-      try: () => lucid.utxosAt(schedulerScriptAddress),
-      catch: (err) =>
-        new LucidError({
-          message: "Failed to fetch Scheduler UTxOs",
-          cause: err,
-        }),
-    });
-    const schedulerRefUTxOs = yield* utxosToSchedulerUTxOs(
-      allUTxOs,
-      schedulerPolicyId,
-    );
-    if (schedulerRefUTxOs.length === 0) {
-      yield* new LucidError({
-        message: "Failed to build the Scheduler transaction",
-        cause: "No UTxOs found in Scheduler contract address",
-      });
-    }
-    return schedulerRefUTxOs[0];
-  });
-
 /**
  * Settlement
  *
@@ -350,7 +292,12 @@ export const incompleteAttachResolutionClaimTxProgram = (
   params: AttachResolutionClaimParams,
 ): Effect.Effect<
   TxBuilder,
-  HashingError | DataCoercionError | LucidError | UnresolvedError
+  | HashingError
+  | DataCoercionError
+  | LucidError
+  | UnresolvedError
+  | HubOracleError
+  | SchedulerError
 > =>
   Effect.gen(function* () {
     const spendRedeemer: SettlementSpendRedeemer = {
@@ -367,7 +314,7 @@ export const incompleteAttachResolutionClaimTxProgram = (
     const spendRedeemerCBOR = Data.to(spendRedeemer, SettlementSpendRedeemer);
 
     const allUTxOs: UTxO[] = yield* Effect.tryPromise({
-      try: () => lucid.utxosAt(params.settlementAddress),
+      try: () => lucid.utxosAt(params.settlementValidator.spendScriptAddress),
       catch: (err) =>
         new LucidError({
           message: "Failed to fetch Settlement UTxOs",
@@ -383,7 +330,7 @@ export const incompleteAttachResolutionClaimTxProgram = (
 
     const settlementUTxOs = yield* utxosToSettlementUTxOs(
       allUTxOs,
-      params.settlementPolicyId,
+      params.settlementValidator.policyId,
     );
 
     const settlementInputUtxo = yield* getSettlementUTxOWithoutClaim(
@@ -403,17 +350,15 @@ export const incompleteAttachResolutionClaimTxProgram = (
     };
     const updatedDatumCBOR = Data.to(updatedDatum, SettlementDatum);
 
-    const hubOracleRefUTxO = yield* fetchHubOracleRefUTxO(
-      params.hubOracleValidator.spendScriptAddress,
-      params.hubOracleValidator.policyId,
-      lucid,
-    );
+    const hubOracleRefUTxO = yield* fetchHubOracleUTxOProgram(lucid, {
+      hubOracleAddress: params.hubOracleValidator.spendScriptAddress,
+      hubOraclePolicyId: params.hubOracleValidator.policyId,
+    });
 
-    const schedulerRefUTxO = yield* fetchSchedulerRefUTxO(
-      params.schedulerScriptAddress,
-      params.schedulerPolicyId,
-      lucid,
-    );
+    const schedulerRefUTxO = yield* fetchSchedulerUTxOProgram(lucid, {
+      schedulerAddress: params.schedulerValidator.spendScriptAddress,
+      schedulerPolicyId: params.schedulerValidator.policyId,
+    });
 
     const txUpperBound = Date.now() + 2 * 60_000;
 
@@ -422,7 +367,7 @@ export const incompleteAttachResolutionClaimTxProgram = (
       .collectFrom([settlementInputUtxo.utxo], spendRedeemerCBOR)
       .readFrom([hubOracleRefUTxO.utxo])
       .readFrom([schedulerRefUTxO.utxo])
-      .pay.ToAddressWithData(params.settlementAddress, {
+      .pay.ToAddressWithData(params.settlementValidator.spendScriptAddress, {
         kind: "inline",
         value: updatedDatumCBOR,
       })
@@ -449,8 +394,7 @@ export type FetchActiveOperatorParams = {
 export type UpdateBondHoldNewSettlementParams = {
   newBondUnlockTime: bigint;
   hubOracleValidator: AuthenticatedValidator;
-  schedulerScriptAddress: string;
-  schedulerPolicyId: string;
+  schedulerValidator: AuthenticatedValidator;
 };
 
 /**
@@ -463,7 +407,10 @@ export type UpdateBondHoldNewSettlementParams = {
 export const incompleteUpdateBondHoldNewSettlementTxProgram = (
   lucid: LucidEvolution,
   params: UpdateBondHoldNewSettlementParams & FetchActiveOperatorParams,
-): Effect.Effect<TxBuilder, HashingError | DataCoercionError | LucidError> =>
+): Effect.Effect<
+  TxBuilder,
+  HashingError | DataCoercionError | LucidError | HubOracleError | SchedulerError
+> =>
   Effect.gen(function* () {
     const spendRedeemer: ActiveOperatorSpendRedeemer = {
       UpdateBondHoldNewSettlement: {
@@ -513,17 +460,15 @@ export const incompleteUpdateBondHoldNewSettlementTxProgram = (
     };
     const updatedDatumCBOR = Data.to(updatedDatum, ActiveOperatorDatum);
 
-    const hubOracleRefUTxO = yield* fetchHubOracleRefUTxO(
-      params.hubOracleValidator.spendScriptAddress,
-      params.hubOracleValidator.policyId,
-      lucid,
-    );
+    const hubOracleRefUTxO = yield* fetchHubOracleUTxOProgram(lucid, {
+      hubOracleAddress: params.hubOracleValidator.spendScriptAddress,
+      hubOraclePolicyId: params.hubOracleValidator.policyId,
+    });
 
-    const schedulerRefUTxO = yield* fetchSchedulerRefUTxO(
-      params.schedulerScriptAddress,
-      params.schedulerPolicyId,
-      lucid,
-    );
+    const schedulerRefUTxO = yield* fetchSchedulerUTxOProgram(lucid, {
+      schedulerAddress: params.schedulerValidator.spendScriptAddress,
+      schedulerPolicyId: params.schedulerValidator.policyId,
+    });
 
     const txUpperBound = Date.now() + 2 * 60_000;
 
@@ -560,6 +505,8 @@ export const unsignedAttachResolutionClaimTxProgram = (
   | LucidError
   | SettlementError
   | UnresolvedError
+  | HubOracleError
+  | SchedulerError
 > =>
   Effect.gen(function* () {
     const attachResolutionClaimTx =
@@ -769,7 +716,10 @@ export const fetchUserEventRefUTxO = (
 export const incompleteDisproveResolutionClaimTxProgram = (
   lucid: LucidEvolution,
   params: DisproveResolutionClaimParams,
-): Effect.Effect<TxBuilder, HashingError | DataCoercionError | LucidError> =>
+): Effect.Effect<
+  TxBuilder,
+  HashingError | DataCoercionError | LucidError | HubOracleError
+> =>
   Effect.gen(function* () {
     const spendRedeemer: SettlementSpendRedeemer = {
       DisproveResolutionClaim: {
@@ -827,11 +777,10 @@ export const incompleteDisproveResolutionClaimTxProgram = (
     };
     const updatedDatumCBOR = Data.to(updatedDatum, SettlementDatum);
 
-    const hubOracleRefUTxO = yield* fetchHubOracleRefUTxO(
-      params.hubOracleValidator.spendScriptAddress,
-      params.hubOracleValidator.policyId,
-      lucid,
-    );
+    const hubOracleRefUTxO = yield* fetchHubOracleUTxOProgram(lucid, {
+      hubOracleAddress: params.hubOracleValidator.spendScriptAddress,
+      hubOraclePolicyId: params.hubOracleValidator.policyId,
+    });
 
     const userEventRefUTxO = yield* fetchUserEventRefUTxO(
       params.eventType,
@@ -1019,7 +968,10 @@ export const getOperatorNFT = (
 export const incompleteRemoveOperatorBadSettlementTxProgram = (
   lucid: LucidEvolution,
   params: RemoveOperatorBadSettlementParams,
-): Effect.Effect<TxBuilder, HashingError | DataCoercionError | LucidError> =>
+): Effect.Effect<
+  TxBuilder,
+  HashingError | DataCoercionError | LucidError | HubOracleError
+> =>
   Effect.gen(function* () {
     const activeOperatorAllUtxos: UTxO[] = yield* Effect.tryPromise({
       try: () => lucid.utxosAt(params.activeOperatorAddress),
@@ -1077,11 +1029,10 @@ export const incompleteRemoveOperatorBadSettlementTxProgram = (
       params.retiredOperatorPolicyId,
     );
 
-    const hubOracleRefUTxO = yield* fetchHubOracleRefUTxO(
-      params.hubOracleValidator.spendScriptAddress,
-      params.hubOracleValidator.policyId,
-      lucid,
-    );
+    const hubOracleRefUTxO = yield* fetchHubOracleUTxOProgram(lucid, {
+      hubOracleAddress: params.hubOracleValidator.spendScriptAddress,
+      hubOraclePolicyId: params.hubOracleValidator.policyId,
+    });
 
     const network = lucid.config().network ?? "Mainnet";
     const slashingPenalty = getProtocolParameters(network).slashing_penalty;
@@ -1129,7 +1080,11 @@ export const unsignedDisproveResolutionClaimTxProgram = (
   removeOperatorBadSettlementParams: RemoveOperatorBadSettlementParams,
 ): Effect.Effect<
   TxSignBuilder,
-  HashingError | DataCoercionError | LucidError | SettlementError
+  | HashingError
+  | DataCoercionError
+  | LucidError
+  | SettlementError
+  | HubOracleError
 > =>
   Effect.gen(function* () {
     const disproveResolutionClaimTx =
@@ -1327,3 +1282,7 @@ export const unsignedResolveSettlementTx = (
   params: ResolveSettlementParams,
 ): Promise<TxSignBuilder> =>
   makeReturn(unsignedResolveSettlementTxProgram(lucid, params)).unsafeRun();
+
+export class UnresolvedError extends EffectData.TaggedError(
+  "UnresolvedError",
+)<GenericErrorFields> {}

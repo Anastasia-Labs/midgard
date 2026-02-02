@@ -51,7 +51,6 @@ export const HubOracleDatum = HubOracleDatumSchema as unknown as HubOracleDatum;
 export type HubOracleUTxO = {
   utxo: UTxO;
   datum: HubOracleDatum;
-  assetName: string;
 };
 
 /**
