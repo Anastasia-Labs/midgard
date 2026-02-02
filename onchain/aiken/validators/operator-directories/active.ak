@@ -188,9 +188,9 @@ validator mint(
           ..
         } = self
 
-        // 1. The `Activate` minting redeemer of the registered operators
-        //    directory must be invoked.
-        expect registered.Activate { operator_to_activate, .. } =
+        // 1. The `ActivateOperator` minting redeemer of the registered
+        //    operators directory must be invoked.
+        expect registered.ActivateOperator { activating_operator, .. } =
           redeemers
             |> utils.get_redeemer_at(
                 expected_purpose: Mint(registered_operators_policy_id),
@@ -199,7 +199,7 @@ validator mint(
 
         // 2. The operator indicated in the registered operators minting
         //    redeemer must match the one specified in the redeemer here.
-        expect operator_to_activate == new_active_operator_key
+        expect activating_operator == new_active_operator_key
 
         // 3. Specified input and outpus related to the linked list must exist.
         expect Some(active_operator_anchor_element_input) =

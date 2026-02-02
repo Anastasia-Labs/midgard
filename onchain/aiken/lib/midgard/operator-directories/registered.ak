@@ -40,19 +40,19 @@ pub type MintRedeemer {
     retired_operators_element_ref_input_index: Int,
   }
   ActivateOperator {
-    operator_to_activate: VerificationKeyHash,
-    hub_oracle_ref_input_index: Int,
-    retired_operator_ref_input_index: Int,
-    retired_operator_asset_name: ByteArray,
+    activating_operator: VerificationKeyHash,
+    anchor_element_input_index: Int,
     removed_node_input_index: Int,
-    anchor_node_input_index: Int,
-    active_operators_inserted_node_output_index: Int,
-    active_operators_anchor_node_output_index: Int,
+    anchor_element_output_index: Int,
+    hub_oracle_ref_input_index: Int,
+    retired_operators_element_ref_input_index: Int,
+    active_operators_redeemer_index: Int,
   }
   DeregisterOperator {
-    node_to_deregister_key: ByteArray,
+    deregistering_operator: VerificationKeyHash,
+    anchor_element_input_index: Int,
     removed_node_input_index: Int,
-    anchor_node_input_index: Int,
+    anchor_element_output_index: Int,
   }
   RemoveDuplicateSlashBond {
     duplicate_node_key: ByteArray,
