@@ -58,14 +58,6 @@ validator mint(
           self,
         )
       Register {
-        key_to_prepend,
-        hub_oracle_ref_input_index,
-        active_operator_ref_input_index,
-        active_operator_asset_name,
-        retired_operator_ref_input_index,
-        retired_operator_asset_name,
-        prepended_node_output_index,
-        anchor_node_output_index,
         registering_operator,
         root_input_index,
         root_output_index,
