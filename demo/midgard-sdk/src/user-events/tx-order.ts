@@ -19,7 +19,6 @@ import {
   makeReturn,
   OutputReference,
   UnauthenticUtxoError,
-  utxosAtByNFTPolicyId,
 } from "@/common.js";
 import {
   AddressData,
@@ -146,11 +145,14 @@ export const fetchTxOrderUTxOsProgram = (
   config: TxOrderFetchConfig,
 ): Effect.Effect<TxOrderUTxO[], LucidError> =>
   Effect.gen(function* () {
-    const allUTxOs = yield* utxosAtByNFTPolicyId(
-      lucid,
-      config.txOrderAddress,
-      config.txOrderPolicyId,
-    );
+    const allUTxOs = yield* Effect.tryPromise({
+      try: () => lucid.utxosAt(config.txOrderAddress),
+      catch: (err) =>
+        new LucidError({
+          message: "Failed to fetch tx order UTxOs",
+          cause: err,
+        }),
+    });
     const txOrderUTxOs = yield* utxosToTxOrderUTxOs(
       allUTxOs,
       config.txOrderPolicyId,
