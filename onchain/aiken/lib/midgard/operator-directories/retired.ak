@@ -65,17 +65,3 @@ pub fn finalize_linked_list(
         node_asset_name_prefix_length,
       )
 }
-
-pub fn operator_is_not_a_member(
-  operator: VerificationKeyHash,
-  reference_inputs: List<Input>,
-  element_input_index: Int,
-  nft_policy_id: PolicyId,
-) -> Bool {
-  utils.key_is_not_a_member_of_ordered_linked_list(
-    operator,
-    reference_inputs,
-    element_input_index,
-  )
-    |> finalize_linked_list(nft_policy_id)
-}

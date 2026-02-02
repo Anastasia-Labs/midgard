@@ -13,7 +13,7 @@ use aiken_design_patterns/validity_range_normalization as vrn
 use cardano/address.{Address, Script}
 use cardano/assets.{AssetName, PolicyId, Value, tokens}
 use cardano/transaction.{
-  InlineDatum, Input, Output, OutputReference, Redeemer, ScriptPurpose,
+  InlineDatum, Input, Output, OutputReference, Redeemer, ScriptPurpose, Spend,
 }
 use env
 use midgard/common/constants.{posix_time_none}
@@ -507,25 +507,6 @@ pub fn get_spending_redeemer_data_at(
   expect input_address.payment_credential == script_address.payment_credential
   //
   redeemers |> get_redeemer_at(Spend(input_outref), redeemer_index)
-}
-
-pub fn key_is_not_a_member_of_ordered_linked_list(
-  key: VerificationKeyHash,
-  reference_inputs: List<Input>,
-  element_input_index: Int,
-) -> linked_list.Eval {
-  let
-    m_smaller_key,
-    _element_data,
-    larger_link,
-  <- linked_list.get_element_info(element_input.output)
-  when m_smaller_key is {
-    Some(smaller_key) -> and {
-        bytearray.compare(smaller_key, key) == Less,
-        bytearray.compare(key, larger_link) == Less,
-      }
-    None -> bytearray.compare(key, larger_link) == Less
-  }
 }
 
 /// Merkelized validator abstraction for `phas` function from Plutarch.

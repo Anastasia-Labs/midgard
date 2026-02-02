@@ -51,3 +51,24 @@ pub fn deinit(
   )
     |> linked_list.run_root_with(directory_policy_id, root_asset_name)
 }
+
+pub fn operator_is_not_a_member(
+  operator: VerificationKeyHash,
+  reference_inputs: List<Input>,
+  element_ref_input_index: Int,
+) -> linked_list.Eval {
+  expect Some(element_input) =
+    reference_inputs |> list.at(element_ref_input_index)
+  let
+    m_smaller_key,
+    _element_data,
+    larger_link,
+  <- linked_list.get_element_info(element_input.output)
+  when m_smaller_key is {
+    Some(smaller_key) -> and {
+        bytearray.compare(smaller_key, operator) == Less,
+        bytearray.compare(operator, larger_link) == Less,
+      }
+    None -> bytearray.compare(operator, larger_link) == Less
+  }
+}

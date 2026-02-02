@@ -1,9 +1,6 @@
 use aiken/collection/list
 use aiken/interval.{Finite, Interval}
 use aiken_design_patterns/linked_list
-use aiken_design_patterns/linked_list/unordered.{
-  Key, NodeDatum, get_node_inputs, get_node_outputs,
-}
 use cardano/assets.{PolicyId, quantity_of, tokens}
 use cardano/transaction.{
   InlineDatum, Input, Output, OutputReference, Transaction,
@@ -20,13 +17,14 @@ use midgard/protocol_parameters.{
 
 validator spend(registered_operators_mint_script_hash: ByteArray) {
   spend(
-    _datum: Option<Data>,
-    _redeemer: Data,
-    _input: OutputReference,
+    _m_datum: Option<Data>,
+    _redeemer: Redeemer,
+    _own_out_ref: OutputReference,
     self: Transaction,
   ) {
-    unordered.list_state_transition(
-      tokens(self.mint, registered_operators_mint_script_hash),
+    linked_list.spend_for_adding_or_removing_an_element(
+      registered_operators_mint_script_hash,
+      self.mint,
     )
   }
 
@@ -37,12 +35,8 @@ validator spend(registered_operators_mint_script_hash: ByteArray) {
 
 validator mint(
   hub_oracle_script_hash: PolicyId,
-  hub_oracle_asset_name: ByteArray,
 ) {
   mint(redeemer: MintRedeemer, policy_id: PolicyId, self: Transaction) {
-    let node_in_outputs = get_node_inputs(self.inputs, policy_id)
-    let node_outputs = get_node_outputs(self.outputs, policy_id)
-    let node_mint = tokens(self.mint, policy_id)
     when redeemer is {
       Init { output_index } ->
         init(
@@ -102,7 +96,7 @@ validator mint(
           quantity_of(
             hub_oracle_ref_input.output.value,
             hub_oracle_script_hash,
-            hub_oracle_asset_name,
+            hub.asset_name,
           ) == 1,
           quantity_of(
             active_operator_ref_input.output.value,
@@ -172,7 +166,7 @@ validator mint(
           quantity_of(
             hub_oracle_ref_input.output.value,
             hub_oracle_script_hash,
-            hub_oracle_asset_name,
+            hub.asset_name,
           ) == 1,
           ordered.insert(
             ordered.Key(operator_to_activate),

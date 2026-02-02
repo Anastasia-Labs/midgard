@@ -15,9 +15,10 @@ use midgard/ledger_state.{
   ConfirmedState, Header, genesis_header_hash, genesis_protocol_version,
   genesis_utxo_root,
 }
+use midgard/operator_directories/common as operator_directory
+use midgard/operator_directories/registered
+use midgard/operator_directories/retired
 use midgard/protocol_parameters.{maturity_duration}
-use midgard/registered_operators
-use midgard/retired_operators
 use midgard/scheduler
 use midgard/settlement
 use midgard/state_queue.{
@@ -505,15 +506,19 @@ validator mint(
               //     operator.
               and {
                 fraudulent_operator
-                  |> active_operators.operator_is_not_a_member(
+                  |> operator_directory.operator_is_not_a_member(
                       reference_inputs: reference_inputs,
                       element_input_index: active_operators_element_ref_input_index,
-                      nft_policy_id: active_operators_script_hash,
+                    )
+                  |> active_operators.finalize_linked_list(
+                      active_operators_script_hash,
                     ),
                 fraudulent_operator
-                  |> retired_operators.operator_is_not_a_member(
+                  |> operator_directory.operator_is_not_a_member(
                       reference_inputs: reference_inputs,
                       element_input_index: retired_operators_element_ref_input_index,
+                    )
+                  |> retired_operators.finalize_linked_list(
                       nft_policy_id: retired_operators_script_hash,
                     ),
               }

@@ -65,3 +65,16 @@ pub type MintRedeemer {
     witness_status: OperatorStatus,
   }
 }
+
+pub fn finalize_linked_list(
+  eval: linked_list.Eval,
+  nft_policy_id: PolicyId,
+) -> Bool {
+  eval
+    |> linked_list.run_eval_with(
+        nft_policy_id,
+        root_asset_name,
+        node_asset_name_prefix,
+        node_asset_name_prefix_length,
+      )
+}
