@@ -15,9 +15,10 @@ use midgard/ledger_state.{
   ConfirmedState, Header, genesis_header_hash, genesis_protocol_version,
   genesis_utxo_root,
 }
+use midgard/operator_directories/active as active_operators
 use midgard/operator_directories/common as operator_directory
-use midgard/operator_directories/registered
-use midgard/operator_directories/retired
+use midgard/operator_directories/registered as registered_operators
+use midgard/operator_directories/retired as retired_operators
 use midgard/protocol_parameters.{maturity_duration}
 use midgard/scheduler
 use midgard/settlement

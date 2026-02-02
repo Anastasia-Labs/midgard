@@ -15,7 +15,7 @@ pub const root_asset_name: AssetName = "MIDGARD_REGISTERED_OPERATORS"
 pub const node_asset_name_prefix: AssetName = "MRGS"
 
 pub type NodeData {
-  bond_unlock_time: Option<PosixTime>,
+  activation_time: PosixTime,
 }
 
 pub type Datum =
@@ -31,14 +31,13 @@ pub type MintRedeemer {
   Init { output_index: Int }
   Deinit { input_index: Int }
   Register {
-    key_to_prepend: ByteArray,
+    registering_operator: VerificationKeyHash,
+    root_input_index: Int,
+    root_output_index: Int,
+    registered_node_output_index: Int,
     hub_oracle_ref_input_index: Int,
-    active_operator_ref_input_index: Int,
-    active_operator_asset_name: ByteArray,
-    retired_operator_ref_input_index: Int,
-    retired_operator_asset_name: ByteArray,
-    prepended_node_output_index: Int,
-    anchor_node_output_index: Int,
+    active_operators_element_ref_input_index: Int,
+    retired_operators_element_ref_input_index: Int,
   }
   Activate {
     operator_to_activate: VerificationKeyHash,

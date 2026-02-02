@@ -1,15 +1,17 @@
 use aiken/collection/list
 use aiken/interval.{Finite, Interval}
 use aiken_design_patterns/linked_list
-use cardano/assets.{PolicyId, quantity_of, tokens}
+use cardano/assets.{
+  PolicyId, ada_asset_name, ada_policy_id, quantity_of, tokens,
+}
 use cardano/transaction.{
   InlineDatum, Input, Output, OutputReference, Transaction,
 }
 use midgard/hub_oracle
-use midgard/operator_directories/common.{deinit, init}
+use midgard/operator_directories/common.{deinit, init, operator_is_not_a_member}
 use midgard/operator_directories/registered.{
   Activate, Active, Datum, Deinit, Deregister, Init, MintRedeemer, Register,
-  Registered, RemoveDuplicateSlashBond, Retired,
+  Registered, RemoveDuplicateSlashBond, Retired, finalize_linked_list,
 }
 use midgard/protocol_parameters.{
   registration_duration, required_bond, slashing_penalty,
@@ -33,8 +35,11 @@ validator spend(registered_operators_mint_script_hash: ByteArray) {
   }
 }
 
-validator mint(hub_oracle_script_hash: PolicyId) {
-  mint(redeemer: MintRedeemer, policy_id: PolicyId, self: Transaction) {
+validator mint(
+  retired_operators_mint_script_hash: PolicyId,
+  hub_oracle_script_hash: PolicyId,
+) {
+  mint(redeemer: MintRedeemer, own_policy_id: PolicyId, self: Transaction) {
     when redeemer is {
       Init { output_index } ->
         init(
@@ -61,64 +66,101 @@ validator mint(hub_oracle_script_hash: PolicyId) {
         retired_operator_asset_name,
         prepended_node_output_index,
         anchor_node_output_index,
+        registering_operator,
+        root_input_index,
+        root_output_index,
+        registered_node_output_index,
+        hub_oracle_ref_input_index,
+        active_operators_element_ref_input_index,
+        retired_operators_element_ref_input_index,
       } -> {
-        expect Finite(valid_to) = self.validity_range.upper_bound.bound_type
-        expect Some(hub_oracle_ref_input) =
-          list.at(self.reference_inputs, hub_oracle_ref_input_index)
-        expect InlineDatum(hub_oracle_datum) = hub_oracle_ref_input.output.datum
-        expect parsed_hub_oracle_datum: hub_oracle.Datum = hub_oracle_datum
-        expect Some(active_operator_ref_input) =
-          list.at(self.reference_inputs, active_operator_ref_input_index)
-        expect Some(retired_operator_ref_input) =
-          list.at(self.reference_inputs, retired_operator_ref_input_index)
-        expect Some(registered_node_output) =
-          list.at(self.outputs, prepended_node_output_index)
-        expect InlineDatum(registered_operator_datum) =
-          registered_node_output.datum
-        expect parsed_registered_operator_datum: NodeDatum =
-          registered_operator_datum
-        expect registered_operator_data: Datum =
-          parsed_registered_operator_datum.data
-        and {
-          unordered.prepend_unsafe(
-            Key(key_to_prepend),
-            prepended_node_output_index,
-            anchor_node_output_index,
-            node_in_outputs,
-            node_outputs,
-            node_mint,
-          ),
-          list.has(self.extra_signatories, key_to_prepend),
-          registered_operator_data.activation_time == valid_to + registration_duration,
-          quantity_of(registered_node_output.value, "", "") == required_bond,
-          quantity_of(
-            hub_oracle_ref_input.output.value,
-            hub_oracle_script_hash,
-            hub.asset_name,
-          ) == 1,
-          quantity_of(
-            active_operator_ref_input.output.value,
-            parsed_hub_oracle_datum.active_operators,
-            active_operator_asset_name,
-          ) == 1,
-          ordered.prove_is_not_member(
-            parsed_hub_oracle_datum.active_operators,
-            ordered.Key(key_to_prepend),
-            active_operator_ref_input.output,
-          ),
-          quantity_of(
-            retired_operator_ref_input.output.value,
-            parsed_hub_oracle_datum.retired_operators,
-            retired_operator_asset_name,
-          ) == 1,
-          ordered.prove_is_not_member(
-            parsed_hub_oracle_datum.retired_operators,
-            ordered.Key(key_to_prepend),
-            retired_operator_ref_input.output,
-          ),
-        }
-      }
+        let Transaction {
+          inputs,
+          outputs,
+          reference_inputs,
+          mint,
+          validity_range,
+          extra_signatories,
+          ..
+        } = self
 
+        // 1. Transaction must be signed by the registering operator.
+        expect registering_operator |> utils.has_signed(extra_signatories)
+
+        // 2. Transaction must refer to hub oracle's authentic UTxO.
+        let hub.Datum { retired_operators: retired_operators_script_hash, .. } =
+          hub.get_datum(
+            reference_inputs,
+            hub_oracle_script_hash,
+            hub_oracle_ref_input_index,
+          )
+
+        // 3. Registering operator must not be present in either the active
+        //    or the retired sets.
+        expect and {
+            registering_operator
+              |> operator_is_not_a_member(
+                  reference_inputs: reference_inputs,
+                  element_input_index: active_operators_element_ref_input_index,
+                )
+              |> active.finalize_linked_list(active_operators_script_hash),
+            registering_operator
+              |> operator_is_not_a_member(
+                  reference_inputs: reference_inputs,
+                  element_input_index: retired_operators_element_ref_input_index,
+                )
+              |> retired.finalize_linked_list(retired_operators_script_hash),
+          }
+
+        let valid_to =
+          utils.get_inclusive_upper_bound_of_interval(validity_range)
+
+        // 4. Linked list prepend input and outputs must exist at specified
+        //    indices.
+        expect Some(root_input) = inputs |> list.at(root_input_index)
+        expect Some(root_output) = outputs |> list.at(root_output_index)
+        expect Some(registered_node_output) =
+          outputs |> list.at(registered_node_output_index)
+
+        // 5. The Lovelace in the registered node must equal the `required_bond`
+        //    Midgard parameter.
+        expect
+          quantity_of(
+            registered_node_output.value,
+            ada_policy_id,
+            ada_asset_name,
+          ) == required_bond
+
+        let linked_list_eval = {
+          let
+            _root_data,
+            registered_node_key,
+            registered_node_data,
+            _registered_node_link,
+          <-
+            linked_list.prepend_unordered(
+              root_input,
+              root_output,
+              registered_node_output,
+              mint,
+            )
+
+          // 6. The key of registered node match the `registering_operator`
+          //    redeemer argument.
+          expect registered_node_key == registering_operator
+
+          // 7.  The `activation_time` field of registered node must equal the
+          //     sum of the Midgard `registration_duration` protocol parameter
+          //     and the inclusive upper bound of the transaction's validity
+          //     interval.
+          expect NodeData { activation_time } = registered_node_data
+          expect activation_time == valid_to + registration_duration
+
+          // Done.
+          True
+        }
+        linked_list_eval |> finalize_linked_list(own_policy_id)
+      }
       Activate {
         operator_to_activate,
         hub_oracle_ref_input_index,
