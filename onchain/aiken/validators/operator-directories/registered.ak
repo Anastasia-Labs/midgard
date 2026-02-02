@@ -33,9 +33,7 @@ validator spend(registered_operators_mint_script_hash: ByteArray) {
   }
 }
 
-validator mint(
-  hub_oracle_script_hash: PolicyId,
-) {
+validator mint(hub_oracle_script_hash: PolicyId) {
   mint(redeemer: MintRedeemer, policy_id: PolicyId, self: Transaction) {
     when redeemer is {
       Init { output_index } ->

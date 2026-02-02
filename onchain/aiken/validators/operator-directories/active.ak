@@ -366,10 +366,14 @@ validator mint(
           reference_inputs,
           mint,
           redeemers,
+          extra_signatories,
           ..
         } = self
 
-        // 1. Retired operators directory must insert a new node via the
+        // 1. The retiring operator must consent to the transaction.
+        expect active_operator_key |> utils.has_signed(extra_signatories)
+
+        // 2. Retired operators directory must insert a new node via the
         //    `RetireOperator` redeemer, with a matching operator key.
         expect retired.RetireOperator {
           new_retired_operator_key,
@@ -383,7 +387,7 @@ validator mint(
               )
         expect active_operator_key == new_retired_operator_key
 
-        // 2. Specified inputs and output for removal of the active operator's
+        // 3. Specified inputs and output for removal of the active operator's
         //    node from the linked list must exist at their indices.
         expect Some(active_operator_anchor_element_input) =
           inputs |> list.at(active_operator_anchor_element_input_index)
@@ -393,7 +397,7 @@ validator mint(
           outputs |> list.at(active_operator_anchor_element_output_index)
 
         let linked_list_eval = {
-          // 3. Linked list's removal logic must be valid for the specified
+          // 4. Linked list's removal logic must be valid for the specified
           //    inputs and output.
           let
             _m_anchor_key,
@@ -409,11 +413,11 @@ validator mint(
               mint,
             )
 
-          // 4. Key of the removing node must match the operator key specified
+          // 5. Key of the removing node must match the operator key specified
           //    via the redeemer.
           expect active_operator_key == active_operator_node_key
 
-          // 5. The `bond_unlock_time` redeemer argument from the retired
+          // 6. The `bond_unlock_time` redeemer argument from the retired
           //    operators directory must match the removing node's datum. This
           //    allows the minting of the retired operator's node to be able to
           //    rely on its correctness.
