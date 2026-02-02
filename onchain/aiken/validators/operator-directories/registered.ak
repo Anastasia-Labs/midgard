@@ -261,8 +261,17 @@ validator mint(
         // 1. Transaction must be signed by the deregistering operator.
         expect deregistering_operator |> utils.has_signed(extra_signatories)
 
+        // 2. Linked list inputs and output for removal must exist at specified
+        //    indices.
+        expect Some(anchor_element_input) =
+          inputs |> list.at(anchor_element_input_index)
+        expect Some(removed_node_input) =
+          inputs |> list.at(removed_node_input_index)
+        expect Some(anchor_element_output) =
+          outputs |> list.at(anchor_element_output_index)
+
         let linked_list_eval = {
-          // 2. Removal of the deregistering operator's node from linked list
+          // 3. Removal of the deregistering operator's node from linked list
           //    must be valid.
           let
             _m_anchor_key,
@@ -278,7 +287,7 @@ validator mint(
               mint,
             )
 
-          // 3. The key of the removed node must match the
+          // 4. The key of the removed node must match the
           //    `deregistering_operator` redeemer argument.
           expect removed_node_key == deregistering_operator
 
