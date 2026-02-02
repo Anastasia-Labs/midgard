@@ -57,7 +57,7 @@ validator mint(
           input_index,
           self,
         )
-      Register {
+      RegisterOperator {
         registering_operator,
         root_input_index,
         root_output_index,
@@ -153,7 +153,7 @@ validator mint(
         }
         linked_list_eval |> finalize_linked_list(own_policy_id)
       }
-      Activate {
+      ActivateOperator {
         operator_to_activate,
         hub_oracle_ref_input_index,
         retired_operator_ref_input_index,
@@ -220,7 +220,7 @@ validator mint(
           ),
         }
       }
-      Deregister {
+      DeregisterOperator {
         node_to_deregister_key,
         removed_node_input_index,
         anchor_node_input_index,

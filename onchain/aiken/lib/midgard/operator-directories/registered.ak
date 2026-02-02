@@ -30,7 +30,7 @@ pub type OperatorStatus {
 pub type MintRedeemer {
   Init { output_index: Int }
   Deinit { input_index: Int }
-  Register {
+  RegisterOperator {
     registering_operator: VerificationKeyHash,
     root_input_index: Int,
     root_output_index: Int,
@@ -39,7 +39,7 @@ pub type MintRedeemer {
     active_operators_element_ref_input_index: Int,
     retired_operators_element_ref_input_index: Int,
   }
-  Activate {
+  ActivateOperator {
     operator_to_activate: VerificationKeyHash,
     hub_oracle_ref_input_index: Int,
     retired_operator_ref_input_index: Int,
@@ -49,7 +49,7 @@ pub type MintRedeemer {
     active_operators_inserted_node_output_index: Int,
     active_operators_anchor_node_output_index: Int,
   }
-  Deregister {
+  DeregisterOperator {
     node_to_deregister_key: ByteArray,
     removed_node_input_index: Int,
     anchor_node_input_index: Int,

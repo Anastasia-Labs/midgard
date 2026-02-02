@@ -78,7 +78,7 @@ Redeemers:
             \begin{enumerate}
                 \item The transaction must Prepend a node into the \code{registered\_operators} queue.
                   Let that node be \code{registered\_node}.
-                \item The \code{key} of \code{registered\_node} must correspond to a public key hash that signed the transaction.
+                \item The Key of \code{registered\_node} must correspond to a public key hash that signed the transaction.
                 \item The \code{activation\_time} field of \code{registered\_node} must equal the sum of the Midgard \code{registration\_duration} protocol parameter and the inclusive upper bound of the transaction's validity interval.
                 \item The Lovelace in the \code{registered\_node} must equal the \code{required\_bond} Midgard parameter.
             \end{enumerate}
