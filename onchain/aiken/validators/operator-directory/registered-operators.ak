@@ -10,8 +10,9 @@ use cardano/transaction.{
 use midgard/hub_oracle
 use midgard/operator_directory.{deinit, init, operator_is_not_a_member}
 use midgard/operator_directory/registered_operators.{
-  Activate, Active, Datum, Deinit, Deregister, Init, MintRedeemer, Register,
-  Registered, RemoveDuplicateSlashBond, Retired, finalize_linked_list,
+  Activate, Datum, Deinit, Deregister, DuplicateIsActive, DuplicateIsRegistered,
+  DuplicateIsRetired, Init, MintRedeemer, Register, RemoveDuplicateSlashBond,
+  finalize_linked_list,
 }
 use midgard/protocol_parameters.{
   registration_duration, required_bond, slashing_penalty,
@@ -207,48 +208,29 @@ validator mint(
               )
             |> retired.finalize_linked_list(retired_operators_script_hash)
 
+        // 5. Removal of the activating node from the registered operator set
+        //    must be valid.
+        let removed_node_data <-
+          remove_operator_and_get_node_data(
+            own_policy_id,
+            activating_operator,
+            anchor_element_input_index,
+            removed_node_input_index,
+            anchor_element_output_index,
+            inputs,
+            outputs,
+            mint,
+          )
+
+        // 6.  The `activation_time` field of the removed node must lie before
+        //     the lower bound of the transaction's validity range..
         let valid_from =
           utils.get_inclusive_lower_bound_of_interval(validity_range)
+        expect NodeData { activation_time } = removed_node_data
+        expect valid_from >= activation_time
 
-        // 4. Linked list inputs and output for removal must exist at specified
-        //    indices.
-        expect Some(anchor_element_input) =
-          inputs |> list.at(anchor_element_input_index)
-        expect Some(removed_node_input) =
-          inputs |> list.at(removed_node_input_index)
-        expect Some(anchor_element_output) =
-          outputs |> list.at(anchor_element_output_index)
-
-        let linked_list_eval = {
-          // 5. Removal of the activating node from the registered operator set
-          //    must be valid.
-          let
-            _m_anchor_key,
-            _anchor_data,
-            removed_node_key,
-            removed_node_data,
-            _removed_node_link,
-          <-
-            linked_list.remove(
-              anchor_element_input,
-              removed_node_input,
-              anchor_element_output,
-              mint,
-            )
-
-          // 6. The key of removed node must match the `activating_operator`
-          //    redeemer argument.
-          expect removed_node_key == activating_operator
-
-          // 7.  The `activation_time` field of the removed node must lie before
-          //     the lower bound of the transaction's validity range..
-          expect NodeData { activation_time } = removed_node_data
-          expect valid_from >= activation_time
-
-          // Done.
-          True
-        }
-        linked_list_eval |> finalize_linked_list(own_policy_id)
+        // Done.
+        True
       }
       DeregisterOperator {
         deregistering_operator,
@@ -261,113 +243,138 @@ validator mint(
         // 1. Transaction must be signed by the deregistering operator.
         expect deregistering_operator |> utils.has_signed(extra_signatories)
 
-        // 2. Linked list inputs and output for removal must exist at specified
-        //    indices.
-        expect Some(anchor_element_input) =
-          inputs |> list.at(anchor_element_input_index)
-        expect Some(removed_node_input) =
-          inputs |> list.at(removed_node_input_index)
-        expect Some(anchor_element_output) =
-          outputs |> list.at(anchor_element_output_index)
+        // 2. Removal of the deregistering node from the registered operator set
+        //    must be valid.
+        let _removed_node_data <-
+          remove_operator_and_get_node_data(
+            own_policy_id,
+            deregistering_operator,
+            anchor_element_input_index,
+            removed_node_input_index,
+            anchor_element_output_index,
+            inputs,
+            outputs,
+            mint,
+          )
 
-        let linked_list_eval = {
-          // 3. Removal of the deregistering operator's node from linked list
-          //    must be valid.
-          let
-            _m_anchor_key,
-            _anchor_data,
-            removed_node_key,
-            _removed_node_data,
-            _removed_node_link,
-          <-
-            linked_list.remove(
-              anchor_element_input,
-              removed_node_input,
-              anchor_element_output,
-              mint,
-            )
-
-          // 4. The key of the removed node must match the
-          //    `deregistering_operator` redeemer argument.
-          expect removed_node_key == deregistering_operator
-
-          // Done.
-          True
-        }
+        // Done.
+        True
       }
       RemoveDuplicateSlashBond {
-        duplicate_node_key,
-        hub_oracle_ref_input_index,
-        duplicate_node_ref_input_index,
-        duplicate_node_ref_input_asset_name,
+        duplicate_operator,
+        anchor_element_input_index,
         removed_node_input_index,
-        anchor_node_input_index,
-        witness_status,
+        anchor_element_output_index,
+        duplicate_node_ref_input_index,
+        duplicate_operator_status,
       } -> {
-        expect Some(hub_oracle_ref_input) =
-          list.at(self.reference_inputs, hub_oracle_ref_input_index)
-        expect InlineDatum(hub_oracle_datum) = hub_oracle_ref_input.output.datum
-        expect parsed_hub_oracle_datum: hub_oracle.Datum = hub_oracle_datum
-        and {
-          unordered.remove(
-            Key(duplicate_node_key),
+        let Transaction {
+          inputs,
+          outputs,
+          reference_inputs,
+          mint,
+          validity_range,
+          fee,
+          ..
+        } = self
+
+        // 1. `slashing_penalty` must be paid via the transaction fee. The rest
+        //    of the bond is assumed to be going to the signer's desired
+        //    destination.
+        expect fee >= slashing_penalty
+
+        // 2. Removal of the duplicate operator node from the registered
+        //    operator set must be valid.
+        let _removed_node_data <-
+          remove_operator_and_get_node_data(
+            own_policy_id,
+            duplicate_operator,
+            anchor_element_input_index,
             removed_node_input_index,
-            anchor_node_input_index,
-            node_in_outputs,
-            node_outputs,
-            node_mint,
-          ),
-          self.fee >= slashing_penalty,
-          when witness_status is {
-            Registered -> {
-              expect Some(duplicate_node_ref_input) =
-                list.at(self.reference_inputs, duplicate_node_ref_input_index)
-              and {
-                quantity_of(
-                  duplicate_node_ref_input.output.value,
-                  policy_id,
-                  duplicate_node_ref_input_asset_name,
-                ) == 1,
-                unordered.prove_is_member(
-                  parsed_hub_oracle_datum.registered_operators,
-                  Key(duplicate_node_key),
-                  duplicate_node_ref_input.output,
-                ),
-              }
+            anchor_element_output_index,
+            inputs,
+            outputs,
+            mint,
+          )
+
+        // 3. A reference input must exist at the specified index.
+        expect Some(Input { output: duplicate_node_ref_utxo, .. }) =
+          reference_inputs |> list.at(duplicate_node_ref_input_index)
+
+        // Depending on where the existing duplicate operator resides, it must
+        // be shown that the referenced input is a member of an associated
+        // operator set, with a matching operator pub key hash.
+        when duplicate_operator_status is {
+          DuplicateIsRegistered -> {
+            let linked_list_eval = {
+              let
+                m_key,
+                _node_data,
+                _node_link,
+              <- linked_list.get_element_info(duplicate_node_ref_utxo)
+
+              // 5a. Referenced element must be a node in the registered
+              //     operators set with a key that matches the removed node.
+              expect Some(registered_operator) = m_key
+              expect registered_operator == duplicate_operator
+
+              // Done.
+              True
             }
-            Active -> {
-              expect Some(duplicate_node_ref_input) =
-                list.at(self.reference_inputs, duplicate_node_ref_input_index)
-              and {
-                quantity_of(
-                  duplicate_node_ref_input.output.value,
-                  parsed_hub_oracle_datum.active_operators,
-                  duplicate_node_ref_input_asset_name,
-                ) == 1,
-                unordered.prove_is_member(
-                  parsed_hub_oracle_datum.active_operators,
-                  Key(duplicate_node_key),
-                  duplicate_node_ref_input.output,
-                ),
-              }
+            linked_list_eval |> finalize_linked_list(own_policy_id)
+          }
+          DuplicateIsActive { hub_oracle_ref_input_index } -> {
+            // 5b. Transaction must refer to hub oracle's authentic UTxO.
+            let hub.Datum {
+              active_operators: active_operators_mint_script_hash,
+              ..
+            } =
+              hub.get_datum(
+                reference_inputs,
+                hub_oracle_script_hash,
+                hub_oracle_ref_input_index,
+              )
+            let linked_list_eval = {
+              let
+                m_key,
+                _node_data,
+                _node_link,
+              <- linked_list.get_element_info(duplicate_node_ref_utxo)
+
+              // 6b. Referenced element must be a node in the active operators
+              //     set with a key that matches the removed node.
+              expect Some(active_operator) = m_key
+              expect active_operator == duplicate_operator
+
+              // Done.
+              True
             }
-            Retired -> {
-              expect Some(duplicate_node_ref_input) =
-                list.at(self.reference_inputs, duplicate_node_ref_input_index)
-              and {
-                quantity_of(
-                  duplicate_node_ref_input.output.value,
-                  parsed_hub_oracle_datum.retired_operators,
-                  duplicate_node_ref_input_asset_name,
-                ) == 1,
-                unordered.prove_is_member(
-                  parsed_hub_oracle_datum.retired_operators,
-                  Key(duplicate_node_key),
-                  duplicate_node_ref_input.output,
-                ),
-              }
+            linked_list_eval
+              |> active_operators.finalize_linked_list(
+                  active_operators_mint_script_hash,
+                )
+          }
+          DuplicateIsRetired -> {
+            let linked_list_eval = {
+              let
+                m_key,
+                _node_data,
+                _node_link,
+              <- linked_list.get_element_info(duplicate_node_ref_utxo)
+
+              // 5c. Referenced element must be a node in the retired operators
+              //     set, with a key that matches the removed node.
+              expect Some(retired_operator) = m_key
+              expect registered_operator == duplicate_operator
+
+              // Done.
+              True
             }
-          },
+            linked_list_eval
+              |> retired_operators.finalize_linked_list(
+                  retired_operators_mint_script_hash,
+                )
+          }
         }
       }
     }
@@ -376,4 +383,53 @@ validator mint(
   else(_) {
     fail
   }
+}
+
+fn remove_operator_and_get_node_data(
+  own_policy_id: PolicyId,
+  removed_operator: VerificationKeyHash,
+  anchor_element_input_index: Int,
+  removed_node_input_index: Int,
+  anchor_element_output_index: Int,
+  inputs: List<Input>,
+  outputs: List<Output>,
+  mint: Value,
+  removed_node_data_validation: fn(Data) -> Bool,
+) -> Bool {
+  // 1. Linked list inputs and output for removal must exist at specified
+  //    indices.
+  expect Some(anchor_element_input) =
+    inputs |> list.at(anchor_element_input_index)
+  expect Some(removed_node_input) = inputs |> list.at(removed_node_input_index)
+  expect Some(anchor_element_output) =
+    outputs |> list.at(anchor_element_output_index)
+
+  let linked_list_eval = {
+    // 2. Removal of the operator node from the registered operator set must be
+    //    valid.
+    let
+      _m_anchor_key,
+      _anchor_data,
+      removed_node_key,
+      removed_node_data,
+      _removed_node_link,
+    <-
+      linked_list.remove(
+        anchor_element_input,
+        removed_node_input,
+        anchor_element_output,
+        mint,
+      )
+
+    // 3. The key of removed node must match the `activating_operator` redeemer
+    //    argument.
+    expect removed_node_key == removed_operator
+
+    // 4.  The custom validation must pass.
+    expect removed_node_data_validation(removed_node_data)
+
+    // Done.
+    True
+  }
+  linked_list_eval |> finalize_linked_list(own_policy_id)
 }

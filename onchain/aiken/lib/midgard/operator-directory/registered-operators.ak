@@ -22,10 +22,10 @@ pub type NodeData {
 pub type Datum =
   operator_directory.Datum<NodeData>
 
-pub type OperatorStatus {
-  Registered
-  Active
-  Retired
+pub type DuplicateOperatorStatus {
+  DuplicateIsRegistered
+  DuplicateIsActive { hub_oracle_ref_input_index: Int }
+  DuplicateIsRetired
 }
 
 pub type MintRedeemer {
@@ -56,13 +56,12 @@ pub type MintRedeemer {
     anchor_element_output_index: Int,
   }
   RemoveDuplicateSlashBond {
-    duplicate_node_key: ByteArray,
-    hub_oracle_ref_input_index: Int,
-    duplicate_node_ref_input_index: Int,
-    duplicate_node_ref_input_asset_name: ByteArray,
+    duplicate_operator: VerificationKeyHash,
+    anchor_element_input_index: Int,
     removed_node_input_index: Int,
-    anchor_node_input_index: Int,
-    witness_status: OperatorStatus,
+    anchor_element_output_index: Int,
+    duplicate_node_ref_input_index: Int,
+    duplicate_operator_status: DuplicateOperatorStatus,
   }
 }
 

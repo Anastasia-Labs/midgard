@@ -1,4 +1,5 @@
 use aiken/collection/list
+use aiken/crypto.{VerificationKeyHash}
 use aiken_design_patterns/linked_list
 use cardano/assets.{AssetName, PolicyId}
 use cardano/transaction.{Transaction}
