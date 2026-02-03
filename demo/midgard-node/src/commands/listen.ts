@@ -77,6 +77,7 @@ const INIT_ENDPOINT: string = "init";
 const COMMIT_ENDPOINT: string = "commit";
 const RESET_ENDPOINT: string = "reset";
 const SUBMIT_ENDPOINT: string = "submit";
+const STATE_QUEUE_ENDPOINT: string = "stateQueue";
 
 const txCounter = Metric.counter("tx_count", {
   description: "A counter for tracking submit transactions",
@@ -416,7 +417,7 @@ const getTxsOfAddressHandler = Effect.gen(function* () {
   ),
 );
 
-const getLogStateQueueHandler = Effect.gen(function* () {
+const getStateQueueHandler = Effect.gen(function* () {
   yield* Effect.logInfo(`✍  Drawing state queue UTxOs...`);
   const lucid = yield* Lucid;
   const alwaysSucceeds = yield* AlwaysSucceedsContract;
@@ -456,7 +457,6 @@ ${emoji} ${u.utxo.txHash}#${u.utxo.outputIndex}${info}`;
 `;
   yield* Effect.logInfo(drawn);
   return yield* HttpServerResponse.json({
-    message: `State queue drawn in server logs!`,
     headers,
   });
 }).pipe(
@@ -587,7 +587,7 @@ const router = (
       HttpRouter.get(`/${COMMIT_ENDPOINT}`, getCommitEndpoint),
       HttpRouter.get(`/${MERGE_ENDPOINT}`, getMergeHandler),
       HttpRouter.get(`/${RESET_ENDPOINT}`, getResetHandler),
-      HttpRouter.get(`/logStateQueue`, getLogStateQueueHandler),
+      HttpRouter.get(`/${STATE_QUEUE_ENDPOINT}`, getStateQueueHandler),
       HttpRouter.get(`/logBlocksDB`, getLogBlocksDBHandler),
       HttpRouter.get(`/logGlobals`, getLogGlobalsHandler),
       HttpRouter.post(`/${SUBMIT_ENDPOINT}`, postSubmitHandler(txQueue)),
