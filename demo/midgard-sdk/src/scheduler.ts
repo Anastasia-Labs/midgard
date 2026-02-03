@@ -79,10 +79,7 @@ export const incompleteSchedulerInitTxProgram = (
   return lucid
     .newTx()
     .mintAssets(assets, redeemer)
-    .pay.ToAddress(
-      params.validator.spendScriptAddress,
-      assets,
-    )
+    .pay.ToAddress(params.validator.spendScriptAddress, assets)
     .attach.Script(params.validator.mintScript);
 };
 

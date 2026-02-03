@@ -7,9 +7,9 @@ import {
   uint32ToKey,
   getFraudProofCatalogueScripts,
   FraudProofCatalogueValidators,
-} from "./utils.js";
+} from "@/transactions/utils.js";
 
-import { MidgardMpt, MptError } from "../workers/utils/mpt.js";
+import { MidgardMpt, MptError } from "@/workers/utils/mpt.js";
 import { BatchDBOp } from "@ethereumjs/util";
 
 export const createFraudProofCatalogueMpt = (
@@ -53,7 +53,8 @@ export const initializeMidgard = Effect.gen(function* () {
   yield* lucidService.switchToOperatorsMainWallet;
   const lucid = lucidService.api;
 
-  const fraudProofCatalogueMerkleRoot = yield* computeFraudProofCatalogueMptRoot(contracts);
+  const fraudProofCatalogueMerkleRoot =
+    yield* computeFraudProofCatalogueMptRoot(contracts);
 
   //TODO: Move to SDK
   const initParams: SDK.InitializationParams = {

@@ -140,24 +140,16 @@ export const makeHubOracleDatum = (
       addressDataFromBech32(
         validators.fraudProofAuthValidator.spendScriptAddress,
       ),
-      addressDataFromBech32(
-        validators.depositAuthValidator.spendScriptAddress,
-      ),
+      addressDataFromBech32(validators.depositAuthValidator.spendScriptAddress),
       addressDataFromBech32(
         validators.withdrawalAuthValidator.spendScriptAddress,
       ),
-      addressDataFromBech32(
-        validators.txOrderAuthValidator.spendScriptAddress,
-      ),
+      addressDataFromBech32(validators.txOrderAuthValidator.spendScriptAddress),
       addressDataFromBech32(
         validators.settlementAuthValidator.spendScriptAddress,
       ),
-      addressDataFromBech32(
-        validators.reserveAuthValidator.spendScriptAddress,
-      ),
-      addressDataFromBech32(
-        validators.payoutAuthValidator.spendScriptAddress,
-      ),
+      addressDataFromBech32(validators.reserveAuthValidator.spendScriptAddress),
+      addressDataFromBech32(validators.payoutAuthValidator.spendScriptAddress),
     ]);
 
     return {
@@ -186,7 +178,9 @@ export const makeHubOracleDatum = (
       settlementAddr,
       reserveAddr,
       payoutAddr,
-      reserveObserver: paymentCredentialOf(validators.reserveAuthValidator.spendScriptAddress).hash,
+      reserveObserver: paymentCredentialOf(
+        validators.reserveAuthValidator.spendScriptAddress,
+      ).hash,
     };
   });
 

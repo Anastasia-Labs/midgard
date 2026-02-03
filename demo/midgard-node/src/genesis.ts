@@ -18,7 +18,7 @@ import { DatabaseError } from "@/database/utils/common.js";
 import {
   handleSignSubmitNoConfirmation,
   TxSignError,
-} from "./transactions/utils.js";
+} from "@/transactions/utils.js";
 
 const insertGenesisUtxos: Effect.Effect<
   void,

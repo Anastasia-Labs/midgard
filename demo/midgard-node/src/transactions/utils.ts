@@ -180,14 +180,13 @@ export type FraudProofCatalogueValidators = Pick<
  * Deterministic order for the Fraud Proof Catalogue.
  * Only includes the 'first steps' of actual fraud proofs.
  */
-export const FRAUD_PROOF_CATALOGUE_ORDER: (keyof FraudProofCatalogueValidators)[] = [
-  "fraudProofAuthValidator",
-];
+export const FRAUD_PROOF_CATALOGUE_ORDER: (keyof FraudProofCatalogueValidators)[] =
+  ["fraudProofAuthValidator"];
 
 /**
  * Extracts script CBORs for fraud proof catalogue in deterministic order.
  * Spending scripts first, then minting scripts.
- * 
+ *
  * @param contracts - Fraud proof validators (first steps only).
  * @returns A flattened array of script CBOR strings.
  */
