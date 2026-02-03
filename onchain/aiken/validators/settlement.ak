@@ -5,11 +5,11 @@ use cardano/assets.{PolicyId}
 use cardano/transaction.{
   InlineDatum, Input, Mint, Output, OutputReference, Spend, Transaction,
 }
-use midgard/active_operators
 use midgard/common/utils
 use midgard/hub_oracle as hub
 use midgard/ledger_state
-use midgard/retired_operators
+use midgard/operator_directory/active_operators
+use midgard/operator_directory/retired_operators
 use midgard/scheduler.{Datum as SchedulerDatum, scheduler_asset_name}
 use midgard/settlement.{
   ActiveOperator, AttachResolutionClaim, Datum, DisproveResolutionClaim,

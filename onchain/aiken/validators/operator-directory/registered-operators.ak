@@ -8,8 +8,8 @@ use cardano/transaction.{
   InlineDatum, Input, Output, OutputReference, Transaction,
 }
 use midgard/hub_oracle
-use midgard/operator_directories/common.{deinit, init, operator_is_not_a_member}
-use midgard/operator_directories/registered.{
+use midgard/operator_directory.{deinit, init, operator_is_not_a_member}
+use midgard/operator_directory/registered_operators.{
   Activate, Active, Datum, Deinit, Deregister, Init, MintRedeemer, Register,
   Registered, RemoveDuplicateSlashBond, Retired, finalize_linked_list,
 }

@@ -7,15 +7,15 @@ use cardano/transaction.{
 }
 use midgard/common/utils
 use midgard/hub_oracle as hub
-use midgard/operator_directories/active.{
+use midgard/operator_directory.{deinit, init}
+use midgard/operator_directory/active_operators.{
   ActivateOperator, Datum, Deinit, Init, ListStateTransition, MintRedeemer,
   RemoveOperatorBadSettlement, RemoveOperatorBadState, RetireOperator,
   SpendRedeemer, UpdateBondHoldNewSettlement, UpdateBondHoldNewState,
   finalize_linked_list, root_asset_name,
 }
-use midgard/operator_directories/common.{deinit, init}
-use midgard/operator_directories/registered
-use midgard/operator_directories/retired
+use midgard/operator_directory/registered_operators
+use midgard/operator_directory/retired_operators
 use midgard/protocol_parameters.{maturity_duration, slashing_penalty}
 use midgard/settlement
 use midgard/state_queue
@@ -190,7 +190,7 @@ validator mint(
 
         // 1. The `ActivateOperator` minting redeemer of the registered
         //    operators directory must be invoked.
-        expect registered.ActivateOperator { activating_operator, .. } =
+        expect registered_operators.ActivateOperator { activating_operator, .. } =
           redeemers
             |> utils.get_redeemer_at(
                 expected_purpose: Mint(registered_operators_policy_id),
@@ -375,7 +375,7 @@ validator mint(
 
         // 2. Retired operators directory must insert a new node via the
         //    `RetireOperator` redeemer, with a matching operator key.
-        expect retired.RetireOperator {
+        expect retired_operators.RetireOperator {
           new_retired_operator_key,
           bond_unlock_time: retired_operators_redeemer_bond_unlock_time,
           ..

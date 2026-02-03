@@ -5,10 +5,10 @@ use cardano/assets.{PolicyId, quantity_of, tokens}
 use cardano/transaction.{
   InlineDatum, Input, Mint, Output, OutputReference, Transaction,
 }
-use midgard/active_operators
 use midgard/hub_oracle as hub
-use midgard/operator_directories/common.{deinit, init}
-use midgard/operator_directories/retired.{
+use midgard/operator_directory.{deinit, init}
+use midgard/operator_directory/active_operators
+use midgard/operator_directory/retired_operators.{
   Deinit, Init, MintRedeemer, RecoverOperatorBond, RemoveOperatorBadSettlement,
   RemoveOperatorBadState, RetireOperator, finalize_linked_list, root_asset_name,
 }
