@@ -1,12 +1,8 @@
-use aiken/collection/list
 use aiken/crypto.{ScriptHash, VerificationKeyHash}
 use cardano/assets.{AssetName, PolicyId}
-use cardano/transaction.{
-  InlineDatum, Input, Output, Redeemer, ScriptPurpose, Spend,
-}
+use cardano/transaction.{InlineDatum, Input, Output, Redeemer, ScriptPurpose}
 use midgard/common/types.{MerkleRoot, PosixTime, Proof}
 use midgard/common/utils
-use midgard/hub_oracle as hub
 use midgard/ledger_state
 
 pub type Datum {
