@@ -428,6 +428,9 @@ const getLogStateQueueHandler = Effect.gen(function* () {
     lucid.api,
     fetchConfig,
   );
+  const headers = sortedUTxOs.flatMap((u) =>
+    u.datum.key === "Empty" ? [] : [u.datum.key.Key.key],
+  );
   let drawn = `
 ---------------------------- STATE QUEUE ----------------------------`;
   yield* Effect.allSuccesses(
@@ -454,6 +457,7 @@ ${emoji} ${u.utxo.txHash}#${u.utxo.outputIndex}${info}`;
   yield* Effect.logInfo(drawn);
   return yield* HttpServerResponse.json({
     message: `State queue drawn in server logs!`,
+    headers,
   });
 }).pipe(
   Effect.catchTag("HttpBodyError", (e) =>
