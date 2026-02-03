@@ -187,7 +187,7 @@ validator mint(
             crypto.blake2b_224(builtin.un_b_data(output_header_data))
           expect output_header_key == output_header_hash
 
-          // 5. New element's data must be `Header`.
+          // 5. New element's data must be `Header` with a valid time range.
           expect Header {
             prev_utxos_root: output_prev_utxos_root,
             start_time: output_start_time,
@@ -197,6 +197,7 @@ validator mint(
             protocol_version: output_protocol_version,
             ..
           } = output_header_data
+          expect output_start_time < output_end_time
 
           // 6. The `end_time` of `header_node` must match the transaction's
           //    time-validity upper bound.
