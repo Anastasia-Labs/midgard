@@ -9,11 +9,13 @@ use cardano/transaction.{
 }
 use midgard/hub_oracle
 use midgard/operator_directory.{deinit, init, operator_is_not_a_member}
+use midgard/operator_directory/active_operators
 use midgard/operator_directory/registered_operators.{
   Activate, Datum, Deinit, Deregister, DuplicateIsActive, DuplicateIsRegistered,
   DuplicateIsRetired, Init, MintRedeemer, Register, RemoveDuplicateSlashBond,
   finalize_linked_list,
 }
+use midgard/operator_directory/retired_operators
 use midgard/protocol_parameters.{
   registration_duration, required_bond, slashing_penalty,
 }
@@ -208,7 +210,7 @@ validator mint(
               )
             |> retired.finalize_linked_list(retired_operators_script_hash)
 
-        // 5. Removal of the activating node from the registered operator set
+        // 4. Removal of the activating node from the registered operator set
         //    must be valid.
         let removed_node_data <-
           remove_operator_and_get_node_data(
@@ -222,7 +224,7 @@ validator mint(
             mint,
           )
 
-        // 6.  The `activation_time` field of the removed node must lie before
+        // 5.  The `activation_time` field of the removed node must lie before
         //     the lower bound of the transaction's validity range..
         let valid_from =
           utils.get_inclusive_lower_bound_of_interval(validity_range)
@@ -313,7 +315,7 @@ validator mint(
                 _node_link,
               <- linked_list.get_element_info(duplicate_node_ref_utxo)
 
-              // 5a. Referenced element must be a node in the registered
+              // 4a. Referenced element must be a node in the registered
               //     operators set with a key that matches the removed node.
               expect Some(registered_operator) = m_key
               expect registered_operator == duplicate_operator
@@ -324,7 +326,7 @@ validator mint(
             linked_list_eval |> finalize_linked_list(own_policy_id)
           }
           DuplicateIsActive { hub_oracle_ref_input_index } -> {
-            // 5b. Transaction must refer to hub oracle's authentic UTxO.
+            // 4b. Transaction must refer to hub oracle's authentic UTxO.
             let hub.Datum {
               active_operators: active_operators_mint_script_hash,
               ..
@@ -341,7 +343,7 @@ validator mint(
                 _node_link,
               <- linked_list.get_element_info(duplicate_node_ref_utxo)
 
-              // 6b. Referenced element must be a node in the active operators
+              // 5b. Referenced element must be a node in the active operators
               //     set with a key that matches the removed node.
               expect Some(active_operator) = m_key
               expect active_operator == duplicate_operator
@@ -362,7 +364,7 @@ validator mint(
                 _node_link,
               <- linked_list.get_element_info(duplicate_node_ref_utxo)
 
-              // 5c. Referenced element must be a node in the retired operators
+              // 4c. Referenced element must be a node in the retired operators
               //     set, with a key that matches the removed node.
               expect Some(retired_operator) = m_key
               expect registered_operator == duplicate_operator
