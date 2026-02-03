@@ -8,7 +8,7 @@ export const SCHEDULER_ASSET_NAME = fromText("Scheduler");
 
 export const ESCAPE_HATCH_ASSET_NAME = fromText("Escape Hatch");
 
-export const FRAUD_PROOF_CATALOGUE_ASSET_NAME = fromText("Fraud Proof");
+export const FRAUD_PROOF_CATALOGUE_ASSET_NAME = fromText("Fraud Proof Catalogue");
 
 export const GENESIS_HASH_28 = "00".repeat(28);
 export const GENESIS_HASH_32 = "00".repeat(32);

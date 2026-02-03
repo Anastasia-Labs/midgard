@@ -39,7 +39,7 @@ export const makeMpts: Effect.Effect<
     );
     const ops: ETH_UTILS.BatchDBOp[] = yield* Effect.allSuccesses(
       nodeConfig.GENESIS_UTXOS.map((u: UTxO) =>
-        utxoToBatchOps(u).pipe(
+        utxoToPutBatchOp(u).pipe(
           Effect.tapError((e) =>
             Effect.logError(`IGNORED ERROR WITH GENESIS UTXOS: ${e}`),
           ),
@@ -58,15 +58,15 @@ export const makeMpts: Effect.Effect<
   };
 });
 
-export const utxoToBatchOps = (
+export const utxoToPutBatchOp = (
   utxo: UTxO,
-): Effect.Effect<ETH_UTILS.BatchDBOp, SDK.DataCoercionError> =>
+): Effect.Effect<ETH_UTILS.BatchDBOp, SDK.CmlDeserializationError> =>
   Effect.gen(function* () {
     const core = yield* Effect.try({
       try: () => utxoToCore(utxo),
       catch: (e) =>
-        new SDK.DataCoercionError({
-          message: "Failed to convert utxo to core",
+        new SDK.CmlDeserializationError({
+          message: "Failed to convert UTxO to CML.TransactionOutput",
           cause: e,
         }),
     });

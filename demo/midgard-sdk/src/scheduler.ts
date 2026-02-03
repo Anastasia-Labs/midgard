@@ -76,14 +76,11 @@ export const incompleteSchedulerInitTxProgram = (
 
   const redeemer = Data.to("Init", SchedulerMintRedeemer);
 
-  const encodedDatum = Data.void();
-
   return lucid
     .newTx()
     .mintAssets(assets, redeemer)
-    .pay.ToAddressWithData(
+    .pay.ToAddress(
       params.validator.spendScriptAddress,
-      { kind: "inline", value: encodedDatum },
       assets,
     )
     .attach.Script(params.validator.mintScript);

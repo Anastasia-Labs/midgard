@@ -21,6 +21,10 @@ import {
   Data,
   Assets,
   fromText,
+  credentialToAddress,
+  scriptHashToCredential,
+  paymentCredentialOf,
+  Network,
 } from "@lucid-evolution/lucid";
 import { HUB_ORACLE_ASSET_NAME } from "@/constants.js";
 
@@ -40,6 +44,11 @@ export const HubOracleDatumSchema = Data.Object({
   stateQueue: PolicyIdSchema,
   fraudProofCatalogue: PolicyIdSchema,
   fraudProof: PolicyIdSchema,
+  deposit: PolicyIdSchema,
+  withdrawal: PolicyIdSchema,
+  txOrder: PolicyIdSchema,
+  settlement: PolicyIdSchema,
+  payout: PolicyIdSchema,
   registeredOperatorsAddr: AddressSchema,
   activeOperatorsAddr: AddressSchema,
   retiredOperatorsAddr: AddressSchema,
@@ -47,6 +56,13 @@ export const HubOracleDatumSchema = Data.Object({
   stateQueueAddr: AddressSchema,
   fraudProofCatalogueAddr: AddressSchema,
   fraudProofAddr: AddressSchema,
+  depositAddr: AddressSchema,
+  withdrawalAddr: AddressSchema,
+  txOrderAddr: AddressSchema,
+  settlementAddr: AddressSchema,
+  reserveAddr: AddressSchema,
+  payoutAddr: AddressSchema,
+  reserveObserver: Data.Bytes({ minLength: 28, maxLength: 28 }),
 });
 export type HubOracleDatum = Data.Static<typeof HubOracleDatumSchema>;
 export const HubOracleDatum = HubOracleDatumSchema as unknown as HubOracleDatum;
@@ -69,6 +85,12 @@ export type HubOracleValidators = Pick<
   | "stateQueueAuthValidator"
   | "fraudProofCatalogueAuthValidator"
   | "fraudProofAuthValidator"
+  | "depositAuthValidator"
+  | "withdrawalAuthValidator"
+  | "txOrderAuthValidator"
+  | "settlementAuthValidator"
+  | "payoutAuthValidator"
+  | "reserveAuthValidator"
 >;
 
 /**
@@ -90,6 +112,12 @@ export const makeHubOracleDatum = (
       stateQueueAddr,
       fraudProofCatalogueAddr,
       fraudProofAddr,
+      depositAddr,
+      withdrawalAddr,
+      txOrderAddr,
+      settlementAddr,
+      reserveAddr,
+      payoutAddr,
     ] = yield* Effect.all([
       addressDataFromBech32(
         validators.registeredOperatorsAuthValidator.spendScriptAddress,
@@ -110,7 +138,25 @@ export const makeHubOracleDatum = (
         validators.fraudProofCatalogueAuthValidator.spendScriptAddress,
       ),
       addressDataFromBech32(
-        validators.fraudProofAuthValidator.mintScriptAddress,
+        validators.fraudProofAuthValidator.spendScriptAddress,
+      ),
+      addressDataFromBech32(
+        validators.depositAuthValidator.spendScriptAddress,
+      ),
+      addressDataFromBech32(
+        validators.withdrawalAuthValidator.spendScriptAddress,
+      ),
+      addressDataFromBech32(
+        validators.txOrderAuthValidator.spendScriptAddress,
+      ),
+      addressDataFromBech32(
+        validators.settlementAuthValidator.spendScriptAddress,
+      ),
+      addressDataFromBech32(
+        validators.reserveAuthValidator.spendScriptAddress,
+      ),
+      addressDataFromBech32(
+        validators.payoutAuthValidator.spendScriptAddress,
       ),
     ]);
 
@@ -122,6 +168,11 @@ export const makeHubOracleDatum = (
       stateQueue: validators.stateQueueAuthValidator.policyId,
       fraudProofCatalogue: validators.fraudProofCatalogueAuthValidator.policyId,
       fraudProof: validators.fraudProofAuthValidator.policyId,
+      deposit: validators.depositAuthValidator.policyId,
+      withdrawal: validators.withdrawalAuthValidator.policyId,
+      txOrder: validators.txOrderAuthValidator.policyId,
+      settlement: validators.settlementAuthValidator.policyId,
+      payout: validators.payoutAuthValidator.policyId,
       registeredOperatorsAddr,
       activeOperatorsAddr,
       retiredOperatorsAddr,
@@ -129,6 +180,13 @@ export const makeHubOracleDatum = (
       stateQueueAddr,
       fraudProofCatalogueAddr,
       fraudProofAddr,
+      depositAddr,
+      withdrawalAddr,
+      txOrderAddr,
+      settlementAddr,
+      reserveAddr,
+      payoutAddr,
+      reserveObserver: paymentCredentialOf(validators.reserveAuthValidator.spendScriptAddress).hash,
     };
   });
 
@@ -136,7 +194,7 @@ export const makeHubOracleDatum = (
  * Creates a hub oracle init transaction builder.
  * Handles datum construction internally from validators.
  * @param {LucidEvolution} lucid - The LucidEvolution instance.
- * @param {MidgardValidators} validators - All validators that need to be registered in the hub oracle
+ * @param {HubOracleInitParams} params - All validators that need to be registered in the hub oracle
  * @returns {TxBuilder} Effect that produces a transaction builder.
  */
 export const incompleteHubOracleInitTxProgram = (
@@ -158,7 +216,12 @@ export const incompleteHubOracleInitTxProgram = (
       .newTx()
       .mintAssets(assets, Data.void())
       .pay.ToAddressWithData(
-        params.validators.hubOracleMintValidator.mintScriptAddress,
+        credentialToAddress(
+          lucid.config().network!,
+          scriptHashToCredential(
+            params.validators.hubOracleMintValidator.policyId,
+          ),
+        ),
         { kind: "inline", value: encodedDatum },
         assets,
       )

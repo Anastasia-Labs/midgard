@@ -50,7 +50,7 @@ const makeSpendingValidator = (
     };
   }).pipe(Effect.orDie);
 
-export const makeMintingValidator = (
+const makeMintingValidator = (
   baseName: string,
 ): Effect.Effect<SDK.MintingValidatorInfo, never, NodeConfig> =>
   Effect.gen(function* () {
@@ -67,20 +67,14 @@ export const makeMintingValidator = (
 
     const policyId = mintingPolicyToId(mintScript);
 
-    const mintScriptAddress = credentialToAddress(
-      nodeConfig.NETWORK,
-      scriptHashToCredential(policyId),
-    );
-
     return {
       mintingCBOR,
       mintScript,
       policyId,
-      mintScriptAddress,
     };
   }).pipe(Effect.orDie);
 
-export const makeAuthenticatedValidator = (
+const makeAuthenticatedValidator = (
   baseName: string,
 ): Effect.Effect<SDK.AuthenticatedValidator, never, NodeConfig> =>
   Effect.gen(function* () {

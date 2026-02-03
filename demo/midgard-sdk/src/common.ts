@@ -179,7 +179,6 @@ export type MintingValidatorInfo = {
   mintingCBOR: string;
   mintScript: Script;
   policyId: PolicyId;
-  mintScriptAddress: string;
 };
 
 export type SpendingValidatorInfo = {
@@ -277,6 +276,7 @@ export const AddressSchema = Data.Object({
 export type AddressData = Data.Static<typeof AddressSchema>;
 export const AddressData = AddressSchema as unknown as AddressData;
 
+/* TODO: Note that this function does not support pointer addresses. */
 export const addressDataFromBech32 = (
   address: Address,
 ): Effect.Effect<AddressData, Bech32DeserializationError> =>

@@ -2,8 +2,8 @@ import { describe, expect } from "vitest";
 import { it } from "@effect/vitest";
 import { Effect } from "effect";
 import * as SDK from "@al-ft/midgard-sdk";
-import { computeFraudProofCatalogueMptRoot, createFraudProofCatalogueMpt, uint32ToKey } from "../src/transactions/initialization.js";
-import { getOrderedScriptInputs } from "../src/genesis.js";
+import { computeFraudProofCatalogueMptRoot, createFraudProofCatalogueMpt } from "../src/transactions/initialization.js";
+import { uint32ToKey, getFraudProofCatalogueScripts } from "../src/transactions/utils.js";
 import { AlwaysSucceedsContract } from "../src/services/always-succeeds.js";
 import { provideValidatorTestLayers } from "./utils.js";
 
@@ -17,7 +17,7 @@ describe("Fraud Proof Catalogue Root", () => {
       const rootHash = yield* trie.getRootHex();
       
       // Verify retrieval of specific indices
-      const scripts = getOrderedScriptInputs(contracts);
+      const scripts = getFraudProofCatalogueScripts(contracts);
       const indicesToCheck = [0, 1, Math.floor(scripts.length / 2), scripts.length - 1];
       
       for (const i of indicesToCheck) {
@@ -40,16 +40,22 @@ describe("Fraud Proof Catalogue Root", () => {
     }).pipe(provideValidatorTestLayers)
   );
 
-  it.effect("produces Blake2b-224 compliant hashes (28 bytes)", () =>
+  it.effect("produces Blake2b-224 compliant hashes matching script CBORs", () =>
     Effect.gen(function* () {
       const contracts = yield* AlwaysSucceedsContract;
       const trie = yield* createFraudProofCatalogueMpt(contracts);
       
-      // Verify all stored hashes are exactly 28 bytes (Blake2b-224)
-      const scripts = getOrderedScriptInputs(contracts);
+      // Verify all stored hashes match expected Blake2b-224 hashes of script CBORs
+      const scripts = getFraudProofCatalogueScripts(contracts);
       for (let i = 0; i < scripts.length; i++) {
-        const hash = yield* Effect.tryPromise(() => trie.trie.get(uint32ToKey(i)));
-        expect(hash?.length).toBe(28);
+        const retrievedHash = yield* Effect.tryPromise(() => trie.trie.get(uint32ToKey(i)));
+        expect(retrievedHash).toBeDefined();
+        
+        const retrievedHashHex = Buffer.from(retrievedHash!).toString('hex');
+        const expectedHash = yield* SDK.hashHexWithBlake2b224(scripts[i]);
+        
+        expect(retrievedHashHex.length).toBe(56); // 28 bytes = 56 hex chars
+        expect(retrievedHashHex).toBe(expectedHash);
       }
     }).pipe(provideValidatorTestLayers)
   );

@@ -162,6 +162,52 @@ export const outRefsAreEqual = (outRef0: OutRef, outRef1: OutRef): boolean => {
   );
 };
 
+export const uint32ToKey = (index: number): Buffer => {
+  const buf = Buffer.alloc(4);
+  buf.writeUInt32BE(index);
+  return buf;
+};
+
+/**
+ * Validators for fraud proof catalogue - only first steps of fraud proof procedures.
+ */
+export type FraudProofCatalogueValidators = Pick<
+  SDK.MidgardValidators,
+  "fraudProofAuthValidator"
+>;
+
+/**
+ * Deterministic order for the Fraud Proof Catalogue.
+ * Only includes the 'first steps' of actual fraud proofs.
+ */
+export const FRAUD_PROOF_CATALOGUE_ORDER: (keyof FraudProofCatalogueValidators)[] = [
+  "fraudProofAuthValidator",
+];
+
+/**
+ * Extracts script CBORs for fraud proof catalogue in deterministic order.
+ * Spending scripts first, then minting scripts.
+ * 
+ * @param contracts - Fraud proof validators (first steps only).
+ * @returns A flattened array of script CBOR strings.
+ */
+export const getFraudProofCatalogueScripts = (
+  contracts: FraudProofCatalogueValidators,
+): string[] => {
+  return FRAUD_PROOF_CATALOGUE_ORDER.flatMap((key) => {
+    const v = contracts[key];
+    if (!v) return [];
+    const s: string[] = [];
+    if ("spendingCBOR" in v && typeof v.spendingCBOR === "string") {
+      s.push(v.spendingCBOR);
+    }
+    if ("mintingCBOR" in v && typeof v.mintingCBOR === "string") {
+      s.push(v.mintingCBOR);
+    }
+    return s;
+  });
+};
+
 export class TxSignError extends Data.TaggedError("TxSignError")<
   SDK.GenericErrorFields & {
     readonly txHash: string;

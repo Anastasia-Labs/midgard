@@ -21,7 +21,7 @@ import { GENESIS_HASH_32 } from "./constants.js";
 
 export type InitializationParams = {
   midgardValidators: MidgardValidators;
-  mptRootHash: string;
+  fraudProofCatalogueMerkleRoot: string;
 };
 
 export const incompleteInitializationTxProgram = (
@@ -90,7 +90,7 @@ export const incompleteInitializationTxProgram = (
     const fraudProofCatalogueTx: TxBuilder =
       yield* incompleteFraudProofCatalogueInitTxProgram(lucid, {
         validator: params.midgardValidators.fraudProofCatalogueAuthValidator,
-        mptRootHash: params.mptRootHash,
+        mptRootHash: params.fraudProofCatalogueMerkleRoot,
       });
 
     return tx
