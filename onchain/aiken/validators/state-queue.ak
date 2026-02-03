@@ -206,7 +206,7 @@ validator mint(
           //    > bound in the block. TODO: This needs clarification in specs.
           let inclusive_tx_upper_bound =
             utils.get_inclusive_upper_bound_of_interval(validity_range)
-          expect output_end_time == inclusive_tx_upper_bound - 1
+          expect output_end_time == inclusive_tx_upper_bound + 1
 
           // 7. The operator pub key hash from the redeemer must match the one
           //    in the new header.
