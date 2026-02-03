@@ -2,24 +2,25 @@ use aiken/crypto.{VerificationKeyHash}
 use aiken_design_patterns/linked_list
 use cardano/assets.{AssetName}
 use midgard/common/types.{PosixTime}
+use midgard/operator_directory
 
 /// TODO: Refer to state queue's library module.
 pub const root_asset_name: AssetName = "MIDGARD_REGISTERED_OPERATORS"
 
-/// Short for "Midgard Registered". In hex it will be: #"4d524753"
+/// Short for "Midgard Registered". In hex it will be: #"4d524547"
 ///
 /// > [!NOTE]
 /// > This should not be longer than 4 bytes, as each node's asset name carries
 /// > this prefix, followed by its operator's public key hash, which is 28 bytes
 /// > long.
-pub const node_asset_name_prefix: AssetName = "MRGS"
+pub const node_asset_name_prefix: AssetName = "MREG"
 
 pub type NodeData {
   activation_time: PosixTime,
 }
 
 pub type Datum =
-  linked_list.Element<Void, NodeData>
+  operator_directory.Datum<NodeData>
 
 pub type OperatorStatus {
   Registered

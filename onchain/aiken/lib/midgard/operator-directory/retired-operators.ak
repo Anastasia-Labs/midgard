@@ -5,20 +5,20 @@ use midgard/common/utils
 /// TODO: Refer to state queue's library module.
 pub const root_asset_name: AssetName = "MIDGARD_RETIRED_OPERATORS"
 
-/// Short for "Midgard Retired". In hex it will be: #"4d525452"
+/// Short for "Midgard Retired". In hex it will be: #"4d524554"
 ///
 /// > [!NOTE]
 /// > This should not be longer than 4 bytes, as each node's asset name carries
 /// > this prefix, followed by its operator's public key hash, which is 28 bytes
 /// > long.
-pub const node_asset_name_prefix: AssetName = "MRTR"
+pub const node_asset_name_prefix: AssetName = "MRET"
 
 pub type NodeData {
   bond_unlock_time: Option<PosixTime>,
 }
 
 pub type Datum =
-  linked_list.Element<Void, NodeData>
+  operator_directory.Datum<NodeData>
 
 pub type MintRedeemer {
   Init { output_index: Int }

@@ -4,6 +4,7 @@ use aiken_design_patterns/linked_list
 use cardano/assets.{AssetName, PolicyId}
 use midgard/common/types.{PosixTime}
 use midgard/common/utils
+use midgard/operator_directory
 
 /// TODO: Refer to state queue's library module.
 pub const root_asset_name: AssetName = "MIDGARD_ACTIVE_OPERATORS"
@@ -24,7 +25,7 @@ pub type NodeData {
 }
 
 pub type Datum =
-  linked_list.Element<Void, NodeData>
+  operator_directory.Datum<NodeData>
 
 pub type SpendRedeemer {
   ListStateTransition

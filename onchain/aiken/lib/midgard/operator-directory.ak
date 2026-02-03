@@ -2,7 +2,12 @@ use aiken/collection/list
 use aiken_design_patterns/linked_list
 use cardano/assets.{AssetName, PolicyId}
 use cardano/transaction.{Transaction}
+use midgard/common/constants.{empty_data}
+use midgard/common/types.{Empty}
 use midgard/hub_oracle as hub
+
+pub type Datum<node_data> =
+  linked_list.Element<Empty, node_data>
 
 pub fn init(
   hub_oracle_script_hash: PolicyId,
@@ -22,7 +27,7 @@ pub fn init(
     nonce_validated: quantity_of(mint, hub_oracle_script_hash, hub.asset_name) == 1,
     produced_element_output: root_output,
     tx_mint: mint,
-    root_data_validator: fn(root_data: Data) -> Bool { root_data == Void },
+    root_data_validator: fn(root_data: Data) -> Bool { root_data == empty_data },
   )
     |> linked_list.run_root_with(directory_policy_id, root_asset_name)
 }
