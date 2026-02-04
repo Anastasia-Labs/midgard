@@ -75,11 +75,14 @@ pub fn operator_is_not_a_member(
     _element_data,
     larger_link,
   <- linked_list.get_element_info(element_input.output)
-  when m_smaller_key is {
-    Some(smaller_key) -> and {
-        bytearray.compare(smaller_key, operator) == Less,
-        bytearray.compare(operator, larger_link) == Less,
-      }
-    None -> bytearray.compare(operator, larger_link) == Less
+  and {
+    when m_smaller_key is {
+      Some(smaller_key) -> bytearray.compare(smaller_key, operator) == Less
+      None -> True
+    },
+    when larger_link is {
+      Some(larger_key) -> bytearray.compare(operator, larger_key) == Less
+      None -> True
+    },
   }
 }
