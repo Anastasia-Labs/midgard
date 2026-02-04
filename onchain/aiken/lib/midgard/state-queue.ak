@@ -81,6 +81,7 @@ pub fn get_confirmed_state(
     reference_inputs |> list.at(state_queue_node_ref_input_index)
   let linked_list_eval = {
     let
+      _state_queue_element_lovelace,
       m_state_queue_element_key,
       state_queue_element_data,
       _state_queue_element_link,
@@ -108,6 +109,7 @@ pub fn get_block_datum(
     reference_inputs |> list.at(state_queue_node_ref_input_index)
   let linked_list_eval = {
     let
+      _state_queue_element_lovelace,
       m_state_queue_element_key,
       state_queue_element_data,
       _state_queue_element_link,

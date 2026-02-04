@@ -212,8 +212,10 @@ validator mint(
         let linked_list_eval = {
           // 4. Ordered insertion in the linked list must be proper.
           let
+            anchor_lovelace_change,
             _m_anchor_key,
             _anchor_data,
+            inserted_node_lovelace,
             inserted_node_key,
             inserted_node_data,
             _inserted_node_link,
@@ -225,11 +227,17 @@ validator mint(
               mint,
             )
 
-          // 5. The newly inserted node must carry the same operator as the one
+          // 5. ADA of anchor element must be preserved.
+          expect anchor_lovelace_change >= 0
+
+          // 6. ADA bond must be transferred from the registered operators.
+          expect inserted_node_lovelace == required_bond
+
+          // 7. The newly inserted node must carry the same operator as the one
           //    provided via the redeemer as its key.
           expect inserted_node_key == new_active_operator_key
 
-          // 6. Newly activated operators must not have any bond unlock times
+          // 8. Newly activated operators must not have any bond unlock times
           //    specified.
           let expected_inserted_node_data: Data =
             NodeData { bond_unlock_time: None }
@@ -400,8 +408,10 @@ validator mint(
           // 4. Linked list's removal logic must be valid for the specified
           //    inputs and output.
           let
+            anchor_lovelace_change,
             _m_anchor_key,
             _anchor_data,
+            _active_operator_lovelace,
             active_operator_node_key,
             active_operator_node_data,
             _active_operator_node_link,
@@ -413,11 +423,14 @@ validator mint(
               mint,
             )
 
-          // 5. Key of the removing node must match the operator key specified
+          // 5. Anchor element's ADA must be preserved.
+          expect anchor_lovelace_change >= 0
+
+          // 6. Key of the removing node must match the operator key specified
           //    via the redeemer.
           expect active_operator_key == active_operator_node_key
 
-          // 6. The `bond_unlock_time` redeemer argument from the retired
+          // 7. The `bond_unlock_time` redeemer argument from the retired
           //    operators directory must match the removing node's datum. This
           //    allows the minting of the retired operator's node to be able to
           //    rely on its correctness.
@@ -467,6 +480,7 @@ fn spend_for_updating_bond_unlock_time(
     // 2. An element from the active operators directory must be spent and
     //    reproduced without affecting the linked list structure.
     let
+      lovelace_change,
       m_operator,
       _active_node_input_data,
       active_node_output_data,
@@ -480,16 +494,19 @@ fn spend_for_updating_bond_unlock_time(
         tx_mint: mint,
       )
 
-    // 3. The spent element must be a node (i.e. not root).
+    // 3. Node's ADA bond must be preserved.
+    expect lovelace_change >= 0
+
+    // 4. The spent element must be a node (i.e. not root).
     expect Some(operator) = m_operator
 
-    // 4. The reproduced node must properly store the new bond unlock
+    // 5. The reproduced node must properly store the new bond unlock
     //    time.
     expect NodeData { bond_unlock_time: m_output_bond_unlock_time } =
       active_node_output_data
     expect m_output_bond_unlock_time == Some(new_bond_unlock_time)
 
-    // 5. Transaction must have the hub oracle's UTxO referenced.
+    // 6. Transaction must have the hub oracle's UTxO referenced.
     let hub_datum =
       hub.get_datum(
         reference_inputs,
@@ -540,8 +557,10 @@ fn burn_for_operator_removal_and_get_hub_datum(
     // 3. Linked list's removal logic must be valid for the specified inputs and
     //    output.
     let
+      anchor_lovelace_change,
       _m_anchor_key,
       _anchor_data,
+      _active_operator_slashed_node_lovelace,
       active_operator_slashed_node_key,
       _active_operator_slashed_node_data,
       _active_operator_slashed_node_link,
@@ -553,12 +572,16 @@ fn burn_for_operator_removal_and_get_hub_datum(
         mint,
       )
 
-    // 4. Key of the removing node must be that of the fraudulent operator's
+    // 4. ADA of anchor element must be preserved.
+    expect anchor_lovelace_change >= 0
+
+    // 5. Key of the removing node must be that of the fraudulent operator's
     //    specified via the redeemer.
     expect active_operator_slashed_node_key == slashed_active_operator_key
 
-    // 5. Slashing penalty must be paid to the Cardano treasury via the
-    //    transaction fee (TODO? How is fraud prover compensated?).
+    // 6. Slashing penalty must be paid to the Cardano treasury via the
+    //    transaction fee. Fraud prover is assumed to be the signer of the
+    //    transaction, and therefore will receive the remaining bond.
     expect fee >= slashing_penalty
 
     // Done.

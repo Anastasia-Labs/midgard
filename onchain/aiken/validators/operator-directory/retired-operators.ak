@@ -63,6 +63,7 @@ validator mint(
         retired_operator_anchor_node_output_index,
         active_operators_redeemer_index,
       } -> {
+        // TODO: Check required bond is transferred correctly.
         expect Some(hub_oracle_ref_input) =
           list.at(self.reference_inputs, hub_oracle_ref_input_index)
         expect InlineDatum(hub_oracle_datum) = hub_oracle_ref_input.output.datum

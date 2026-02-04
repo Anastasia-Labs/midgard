@@ -122,19 +122,12 @@ validator mint(
         expect Some(registered_node_output) =
           outputs |> list.at(registered_node_output_index)
 
-        // 5. The Lovelace in the registered node must equal the `required_bond`
-        //    Midgard parameter.
-        expect
-          quantity_of(
-            registered_node_output.value,
-            ada_policy_id,
-            ada_asset_name,
-          ) == required_bond
-
         let linked_list_eval = {
-          // 6. Prepending to the head of the linked list must be proper.
+          // 5. Prepending to the head of the linked list must be proper.
           let
+            _root_lovelace_change,
             _root_data,
+            registered_node_lovelace,
             registered_node_key,
             registered_node_data,
             _registered_node_link,
@@ -145,6 +138,10 @@ validator mint(
               registered_node_output,
               mint,
             )
+
+          // 6. The Lovelace in the registered node must equal the
+          //    `required_bond` Midgard parameter.
+          expect registered_node_lovelace == required_bond
 
           // 7. The key of registered node match the `registering_operator`
           //    redeemer argument.
@@ -310,6 +307,7 @@ validator mint(
           DuplicateIsRegistered -> {
             let linked_list_eval = {
               let
+                _node_lovelace,
                 m_key,
                 _node_data,
                 _node_link,
@@ -338,6 +336,7 @@ validator mint(
               )
             let linked_list_eval = {
               let
+                _node_lovelace,
                 m_key,
                 _node_data,
                 _node_link,
@@ -359,6 +358,7 @@ validator mint(
           DuplicateIsRetired -> {
             let linked_list_eval = {
               let
+                _node_lovelace,
                 m_key,
                 _node_data,
                 _node_link,
@@ -410,8 +410,10 @@ fn remove_operator_and_get_node_data(
     // 2. Removal of the operator node from the registered operator set must be
     //    valid.
     let
+      anchor_lovelace_change,
       _m_anchor_key,
       _anchor_data,
+      _removed_node_lovelace,
       removed_node_key,
       removed_node_data,
       _removed_node_link,
@@ -423,11 +425,15 @@ fn remove_operator_and_get_node_data(
         mint,
       )
 
-    // 3. The key of removed node must match the `activating_operator` redeemer
+    // 3. ADA bond of the anchor node (or min required ADA if anchor is root)
+    //    must be preserved.
+    expect anchor_lovelace_change >= 0
+
+    // 4. The key of removed node must match the `activating_operator` redeemer
     //    argument.
     expect removed_node_key == removed_operator
 
-    // 4.  The custom validation must pass.
+    // 5.  The custom validation must pass.
     expect removed_node_data_validation(removed_node_data)
 
     // Done.

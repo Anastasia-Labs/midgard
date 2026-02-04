@@ -95,7 +95,7 @@ validator mint(
             ) == 1,
             produced_element_output: root_output,
             tx_mint: mint,
-            root_data_validator: fn(root_data: Data) -> Bool {
+            root_validator: fn(_root_lovelace: Lovelace, root_data: Data) -> Bool {
               root_data == expected_root_data
             },
           )
@@ -122,7 +122,7 @@ validator mint(
           deinit(
             root_input: own_input,
             tx_mint: mint,
-            root_data_validator: fn(_) -> Bool { True },
+            root_validator: fn(_, _) -> Bool { True },
           )
             |> linked_list.run_root_with(
                 own_policy_id,
@@ -168,8 +168,10 @@ validator mint(
           // 3. Indicated inputs and output must properly adhere to unordered
           //    linked list append requirements.
           let
+            _anchor_lovelace_change,
             m_anchor_key,
             anchor_data,
+            _output_header_lovelace,
             output_header_key,
             output_header_data,
           <-
@@ -251,7 +253,7 @@ validator mint(
           let active_operators_linked_list_eval =
             linked_list.get_element_info(
               active_node_output,
-              fn(m_active_node_key, _, _) -> Bool {
+              fn(_, m_active_node_key, _, _) -> Bool {
                 Some(operator) == m_active_node_key
               },
             )
@@ -325,10 +327,14 @@ validator mint(
           list.at(outputs, confirmed_state_output_index)
 
         let linked_list_eval = {
-          // 2. Specified inputs and output must properly adhere to the fold and
-          //    burn logic of the linked list.
+          // 2. Specified inputs and output must properly adhere to the fold
+          //    logic of the linked list.
+          //
+          //    TODO: We are not caring about the min ADA in the folding block.
           let
+            _confirmed_state_lovelace_change,
             input_confirmed_state_data,
+            _input_header_lovelace,
             input_header_node_key,
             input_header_node_data,
             _input_header_link,
@@ -549,8 +555,10 @@ validator mint(
               outputs |> list.at(fraudulent_node_output_index)
             let linked_list_eval = {
               let
+                _fraudulent_header_lovelace_change,
                 m_fraudulent_header_hash,
                 _fraudulent_header_data,
+                _removed_node_lovelace,
                 removed_node_header_hash,
                 removed_node_header_data,
                 _removed_node_link,
@@ -579,8 +587,10 @@ validator mint(
               outputs |> list.at(anchor_element_output_index)
             let linked_list_eval = {
               let
+                _anchor_lovelace_change,
                 _m_anchor_key,
                 _anchor_data,
+                _removed_node_lovelace,
                 removed_node_header_hash,
                 removed_node_header_data,
                 removed_node_link,

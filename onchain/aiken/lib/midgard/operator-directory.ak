@@ -33,7 +33,7 @@ pub fn init(
     ) == 1,
     produced_element_output: root_output,
     tx_mint: mint,
-    root_data_validator: fn(root_data: Data) -> Bool { root_data == empty_data },
+    root_validator: fn(_, root_data: Data) -> Bool { root_data == empty_data },
   )
     |> linked_list.run_root_with(directory_policy_id, root_asset_name)
 }
@@ -58,7 +58,7 @@ pub fn deinit(
   linked_list.deinit(
     root_input: own_input,
     tx_mint: mint,
-    root_data_validator: fn(_) -> Bool { True },
+    root_validator: fn(_, _) -> Bool { True },
   )
     |> linked_list.run_root_with(directory_policy_id, root_asset_name)
 }
@@ -71,6 +71,7 @@ pub fn operator_is_not_a_member(
   expect Some(element_input) =
     reference_inputs |> list.at(element_ref_input_index)
   let
+    _element_lovelace,
     m_smaller_key,
     _element_data,
     larger_link,
