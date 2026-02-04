@@ -1,4 +1,5 @@
 use aiken/collection/list
+use aiken/crypto.{VerificationKeyHash}
 use aiken/interval.{Finite, Interval}
 use aiken_design_patterns/linked_list
 use cardano/assets.{PolicyId, Value, quantity_of, tokens}

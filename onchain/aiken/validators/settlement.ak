@@ -10,7 +10,7 @@ use midgard/hub_oracle as hub
 use midgard/ledger_state
 use midgard/operator_directory/active_operators
 use midgard/operator_directory/retired_operators
-use midgard/scheduler.{Datum as SchedulerDatum, scheduler_asset_name}
+use midgard/scheduler
 use midgard/settlement.{
   ActiveOperator, AttachResolutionClaim, Datum, DisproveResolutionClaim,
   MintRedeemer, Remove, ResolutionClaim, Resolve, RetiredOperator, Spawn,
@@ -122,11 +122,11 @@ validator spend(hub_oracle: ScriptHash, settlement_policy_id: ScriptHash) {
         // 8. The transaction must include the `scheduler` utxo as a reference
         //    input, indicating that the current operator matches the resolution
         //    claim's operator.
-        expect parsed_scheduler_state_datum: SchedulerDatum =
+        expect parsed_scheduler_state_datum: scheduler.Datum =
           utils.get_authentic_input_datum_with_nft_at(
             reference_inputs,
             scheduler,
-            scheduler_asset_name,
+            scheduler.asset_name,
             scheduler_ref_input_index,
           )
         expect operator == parsed_scheduler_state_datum.operator

@@ -51,7 +51,7 @@ validator main(nonce: Hash<Blake2b_256, ByteArray>) {
       }
       UnregisterToProveNotRegistered { registration_certificate_index } -> {
         // 1. Current certificate must be an `UnregisterCredential`.
-        expect UnregisterCredential { credential: unreg_cred, .. } = cert
+        expect UnregisterCredential { credential: unreg_cred, .. } = certificate
 
         // 2. The provided index must point to a registration certificate.
         expect [reg_cert, ..] =

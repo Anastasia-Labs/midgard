@@ -10,6 +10,7 @@ use midgard/computation_thread.{
 use midgard/fraud_proof_catalogue as catalogue
 use midgard/hub_oracle as hub
 use midgard/ledger_state
+use midgard/state_queue
 
 validator mint(
   fraud_proof_catalogue_script_hash: ByteArray,

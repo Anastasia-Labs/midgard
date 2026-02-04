@@ -60,7 +60,7 @@ validator mint(
       Init { output_index } -> {
         let Transaction { outputs, mint, validity_range, .. } = self
 
-        expect Some(root_output) = outputs |> list.get(output_index)
+        expect Some(root_output) = outputs |> list.at(output_index)
 
         expect vrn.ClosedRange {
           lower: current_time_lower,
