@@ -225,7 +225,7 @@ validator mint(
           )
 
         // 5.  The `activation_time` field of the removed node must lie before
-        //     the lower bound of the transaction's validity range..
+        //     the lower bound of the transaction's validity range.
         let valid_from =
           utils.get_inclusive_lower_bound_of_interval(validity_range)
         expect NodeData { activation_time } = removed_node_data

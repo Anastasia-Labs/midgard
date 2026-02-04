@@ -6,7 +6,6 @@ use aiken/crypto.{
   ScriptHash, VerificationKey, VerificationKeyHash, blake2b_224, blake2b_256,
 }
 use aiken/interval.{Finite, Interval, NegativeInfinity, PositiveInfinity}
-use aiken_design_patterns/linked_list
 use aiken_design_patterns/merkelized_validator
 use aiken_design_patterns/stake_validator
 use aiken_design_patterns/validity_range_normalization as vrn

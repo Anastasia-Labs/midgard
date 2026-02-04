@@ -3,8 +3,7 @@ use aiken/crypto.{VerificationKeyHash}
 use aiken/primitive/bytearray
 use aiken_design_patterns/linked_list
 use cardano/assets.{AssetName, PolicyId}
-use cardano/transaction.{Input, OutputReference}
-use midgard/common/utils
+use cardano/transaction.{Input}
 use midgard/ledger_state.{ConfirmedState, Header, HeaderHash}
 
 /// TODO: It might be better to be space-conscious and use an empty name.

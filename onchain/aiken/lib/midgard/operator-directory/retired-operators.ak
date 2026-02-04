@@ -1,6 +1,7 @@
 use cardano/assets.{AssetName, PolicyId}
 use midgard/common/types.{PosixTime}
 use midgard/common/utils
+use midgard/operator_directory
 
 /// TODO: Refer to state queue's library module.
 pub const root_asset_name: AssetName = "MIDGARD_RETIRED_OPERATORS"

@@ -1,5 +1,5 @@
 use aiken/primitive/bytearray
-use cardano/assets.{PolicyId}
+use cardano/assets.{AssetName, PolicyId}
 use cardano/transaction.{Input}
 use midgard/common/utils
 use midgard/fraud_proof_catalogue

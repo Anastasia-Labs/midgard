@@ -1,3 +1,5 @@
+use aiken/crypto.{ScriptHash}
+use cardano/transaction.{Input}
 use midgard/common/types.{PosixTime}
 use midgard/common/utils
 use midgard/protocol_parameters.{shift_duration}

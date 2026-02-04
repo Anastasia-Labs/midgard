@@ -1,8 +1,9 @@
 use aiken/collection/list
 use aiken/crypto.{VerificationKeyHash}
+use aiken/primitive/bytearray
 use aiken_design_patterns/linked_list
 use cardano/assets.{AssetName, PolicyId}
-use cardano/transaction.{Transaction}
+use cardano/transaction.{Input, Transaction}
 use midgard/common/constants.{empty_data}
 use midgard/common/types.{Empty}
 use midgard/hub_oracle as hub
@@ -25,7 +26,11 @@ pub fn init(
   // 2. Linked list must be initiated with a void root data, and
   //    validation that a hub oracle NFT is getting minted.
   linked_list.init(
-    nonce_validated: quantity_of(mint, hub_oracle_script_hash, hub.asset_name) == 1,
+    nonce_validated: assets.quantity_of(
+      mint,
+      hub_oracle_script_hash,
+      hub.asset_name,
+    ) == 1,
     produced_element_output: root_output,
     tx_mint: mint,
     root_data_validator: fn(root_data: Data) -> Bool { root_data == empty_data },
@@ -40,13 +45,13 @@ pub fn deinit(
   input_index: Int,
   tx: Transaction,
 ) -> Bool {
-  let Transaction { inputs, mint, .. } = self
+  let Transaction { inputs, mint, .. } = tx
 
   // 1. An input must exist at specified index.
   expect Some(own_input) = inputs |> list.at(input_index)
 
   // 2. Hub oracle NFT must be getting burnt.
-  expect quantity_of(mint, hub_oracle_script_hash, hub.asset_name)
+  expect assets.quantity_of(mint, hub_oracle_script_hash, hub.asset_name) == -1
 
   // 3. Linked list de-initialization must be valid. No other validations
   //    required.

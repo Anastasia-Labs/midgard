@@ -327,11 +327,7 @@ pub fn finalize(
     )
 
   // 4. Fraud prover must be presreved, with no additional `data`.
-  let expected_output_datum_data: Data =
-    fraud_proof.Datum {
-      prev_header_hash: output_prev_header_hash,
-      fraud_prover,
-    }
+  let expected_output_datum_data: Data = fraud_proof.Datum { fraud_prover }
   expect output_datum_data == expected_output_datum_data
 
   // 5. Fraud proof's minting script must be invoked (which also validates the
