@@ -1,10 +1,5 @@
-use aiken/collection/dict
-use aiken/collection/list
-use aiken/primitive/bytearray
-use cardano/assets.{PolicyId, quantity_of, tokens}
-use cardano/transaction.{
-  InlineDatum, Input, OutputReference, Redeemer, Transaction,
-}
+use cardano/assets.{PolicyId}
+use cardano/transaction.{Redeemer, Transaction}
 use midgard/common/utils.{get_singleton_asset_with_policy}
 use midgard/fraud_proof_catalogue.{asset_name}
 use midgard/hub_oracle as hub

@@ -37,7 +37,7 @@ validator main(nonce: Hash<Blake2b_256, ByteArray>) {
           tx.certificates |> list.drop(registration_certificate_index)
 
         // 2. Ensure correctness of the provided certificate index.
-        expect reg_cert == cert
+        expect reg_cert == certificate
 
         expect RegisterCredential { credential: reg_cred, .. } = reg_cert
 

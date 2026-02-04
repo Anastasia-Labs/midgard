@@ -63,7 +63,7 @@ validator mint(
         let hub.Datum { state_queue: state_queue_policy_id, .. } =
           hub.get_datum(
             reference_inputs,
-            hub_oracle,
+            hub_oracle_script_hash,
             hub_oracle_ref_input_index,
           )
 

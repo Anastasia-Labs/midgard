@@ -25,7 +25,7 @@ validator spend(
   hub_oracle_script_hash: PolicyId,
 ) {
   spend(
-    datumOpt: Option<NodeDatum>,
+    _datum: Option<Datum>,
     redeemer: SpendRedeemer,
     own_out_ref: OutputReference,
     self: Transaction,

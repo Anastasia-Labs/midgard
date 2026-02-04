@@ -3,7 +3,7 @@ use aiken/interval.{Finite, Interval}
 use aiken_design_patterns/linked_list
 use cardano/assets.{PolicyId, quantity_of, tokens}
 use cardano/transaction.{
-  InlineDatum, Input, Mint, Output, OutputReference, Transaction,
+  InlineDatum, Input, Mint, Output, OutputReference, Redeemer, Transaction,
 }
 use midgard/hub_oracle as hub
 use midgard/operator_directory.{deinit, init}

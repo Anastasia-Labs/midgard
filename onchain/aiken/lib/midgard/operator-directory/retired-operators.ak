@@ -1,6 +1,7 @@
+use aiken/primitive/bytearray
+use aiken_design_patterns/linked_list
 use cardano/assets.{AssetName, PolicyId}
 use midgard/common/types.{PosixTime}
-use midgard/common/utils
 use midgard/operator_directory
 
 /// TODO: Refer to state queue's library module.
@@ -13,6 +14,9 @@ pub const root_asset_name: AssetName = "MIDGARD_RETIRED_OPERATORS"
 /// > this prefix, followed by its operator's public key hash, which is 28 bytes
 /// > long.
 pub const node_asset_name_prefix: AssetName = "MRET"
+
+pub const node_asset_name_prefix_length: Int =
+  bytearray.length(node_asset_name_prefix)
 
 pub type NodeData {
   bond_unlock_time: Option<PosixTime>,

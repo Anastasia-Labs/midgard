@@ -11,9 +11,9 @@ use midgard/hub_oracle
 use midgard/operator_directory.{deinit, init, operator_is_not_a_member}
 use midgard/operator_directory/active_operators
 use midgard/operator_directory/registered_operators.{
-  Activate, Datum, Deinit, Deregister, DuplicateIsActive, DuplicateIsRegistered,
-  DuplicateIsRetired, Init, MintRedeemer, Register, RemoveDuplicateSlashBond,
-  finalize_linked_list,
+  ActivateOperator, Datum, Deinit, DeregisterOperator, DuplicateIsActive,
+  DuplicateIsRegistered, DuplicateIsRetired, Init, MintRedeemer,
+  RegisterOperator, RemoveDuplicateSlashBond, finalize_linked_list,
 }
 use midgard/operator_directory/retired_operators
 use midgard/protocol_parameters.{

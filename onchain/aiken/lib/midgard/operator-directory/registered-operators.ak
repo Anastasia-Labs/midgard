@@ -1,6 +1,7 @@
 use aiken/crypto.{VerificationKeyHash}
+use aiken/primitive/bytearray
 use aiken_design_patterns/linked_list
-use cardano/assets.{AssetName}
+use cardano/assets.{AssetName, PolicyId}
 use midgard/common/types.{PosixTime}
 use midgard/operator_directory
 
@@ -14,6 +15,9 @@ pub const root_asset_name: AssetName = "MIDGARD_REGISTERED_OPERATORS"
 /// > this prefix, followed by its operator's public key hash, which is 28 bytes
 /// > long.
 pub const node_asset_name_prefix: AssetName = "MREG"
+
+pub const node_asset_name_prefix_length: Int =
+  bytearray.length(node_asset_name_prefix)
 
 pub type NodeData {
   activation_time: PosixTime,
