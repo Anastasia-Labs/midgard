@@ -5,10 +5,8 @@ use cardano/assets.{PolicyId, quantity_of, tokens}
 use cardano/transaction.{
   InlineDatum, Input, OutputReference, Redeemer, Transaction,
 }
-use midgard/fraud_proof_catalogue.{
-  Deinit, Init, MintRedeemer, NewFraudCategory, RemoveFraudCategory,
-  SpendRedeemer,
-}
+use midgard/common/utils.{get_singleton_asset_with_policy}
+use midgard/fraud_proof_catalogue.{asset_name}
 use midgard/hub_oracle as hub
 
 validator spend {
@@ -19,8 +17,15 @@ validator spend {
 }
 
 validator mint(hub_oracle_script_hash: PolicyId) {
-  mint(_redeemer: Redeemer, _policy_id: PolicyId, self: Transaction) {
-    assets.quantity_of(self.mint, hub_oracle_script_hash, hub.asset_name) == 1
+  mint(_redeemer: Redeemer, own_policy_id: PolicyId, self: Transaction) {
+    let Transaction { mint, .. } = self
+    and {
+      assets.quantity_of(mint, hub_oracle_script_hash, hub.asset_name) == 1,
+      Pair(asset_name, 1) == get_singleton_asset_with_policy(
+        mint,
+        own_policy_id,
+      ),
+    }
   }
 
   else(_) {
