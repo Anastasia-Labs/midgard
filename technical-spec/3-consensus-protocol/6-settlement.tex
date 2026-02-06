@@ -32,7 +32,7 @@ It's responsible for authenticating spawned utxos at the \code{settlement\_addr}
       \begin{enumerate}
         \item The transaction must include the Midgard hub oracle NFT in a reference input.
         \item Let \code{state\_queue} be the policy ID in the corresponding field of the Midgard hub oracle.
-        \item The transaction must Remove a \code{state\_queue} node via the Merge To Confirmed State redeemer.
+        \item The transaction must Fold a \code{state\_queue} node via the Merge To Confirmed State redeemer.
           Let \code{merged\_block} be the block being merged to the confirmed state, and let \code{header\_hash} be its header-hash key.
         \item The transaction must produce a utxo at the settlement contract containing an NFT with \code{header\_hash} as its asset name.
           Let \code{new\_settlement} be the new utxo.

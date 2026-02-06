@@ -8,10 +8,11 @@ use aiken/crypto.{
 use aiken/interval.{Finite, Interval, NegativeInfinity, PositiveInfinity}
 use aiken_design_patterns/merkelized_validator
 use aiken_design_patterns/stake_validator
+use aiken_design_patterns/validity_range_normalization as vrn
 use cardano/address.{Address, Script}
 use cardano/assets.{AssetName, PolicyId, Value, tokens}
 use cardano/transaction.{
-  InlineDatum, Input, Output, OutputReference, Redeemer, ScriptPurpose,
+  InlineDatum, Input, Output, OutputReference, Redeemer, ScriptPurpose, Spend,
 }
 use env
 use midgard/common/constants.{posix_time_none}
@@ -32,6 +33,20 @@ pub fn is_herebefore(self: Interval, point: Int) -> Bool {
     Finite(hi) -> hi <= point
     PositiveInfinity -> False
     NegativeInfinity -> True
+  }
+}
+
+pub fn get_inclusive_upper_bound_of_interval(interval: Interval) -> Int {
+  when vrn.normalize_time_range(interval) is {
+    vrn.ClosedRange { upper, .. } | vrn.FromNegInf { upper } -> upper
+    _ -> fail @"Validity range was expected to be bound at upper end"
+  }
+}
+
+pub fn get_inclusive_lower_bound_of_interval(interval: Interval) -> Int {
+  when vrn.normalize_time_range(interval) is {
+    vrn.ClosedRange { lower, .. } | vrn.ToPosInf { lower } -> lower
+    _ -> fail @"Validity range was expected to be bound at lower end"
   }
 }
 
@@ -82,18 +97,6 @@ pub fn get_own_address(output_reference: OutputReference, txInputs: List<Input>)
     list.find(txInputs, fn(x) { x.output_reference == output_reference })
 
   input.output.address
-}
-
-/// Helper function for accessing spending UTxO using its input index.
-pub fn get_own_input_at(
-  inputs: List<Input>,
-  own_out_ref: OutputReference,
-  input_index: Int,
-) -> Output {
-  expect Some(Input { output: own_utxo, output_reference: spent_own_out_ref }) =
-    list.at(inputs, input_index)
-  expect (own_out_ref == spent_own_out_ref)?
-  own_utxo
 }
 
 pub fn is_output_to_sc(output: Output, scHash: ByteArray) -> Bool {
@@ -343,27 +346,6 @@ pub fn get_authentic_input_of(
   found_ref_input
 }
 
-/// Helper useful for spending validators. Also ensures no reference scripts are
-/// attached.
-pub fn get_continued_output_datum_at(
-  outputs: List<Output>,
-  expected_address: Address,
-  expected_value: Value,
-  output_index: Int,
-) -> Data {
-  expect Some(Output {
-    address: output_address,
-    value: output_value,
-    datum: InlineDatum(output_datum_data),
-    reference_script: None,
-  }) = list.at(outputs, output_index)
-
-  expect output_address == expected_address
-  expect output_value == expected_value
-
-  output_datum_data
-}
-
 /// Helper useful for minting/withdrawal validators. Also ensures no reference
 /// scripts are attached.
 pub fn get_authentic_output_datum_at_address_with_nft_at(
@@ -504,6 +486,26 @@ pub fn get_redeemer_at(
   expect Some(redeemer_pair) = redeemers |> list.at(redeemer_index)
   expect redeemer_pair.1st == expected_purpose
   redeemer_pair.2nd
+}
+
+/// > [!NOTE]
+/// > No validations on state tokens. Only that the specified input comes from
+/// > `script_address`'s payment credential.
+pub fn get_spending_redeemer_data_at(
+  script_address: Address,
+  input_index: Int,
+  redeemer_index: Int,
+  inputs: List<Input>,
+  redeemers: Pairs<ScriptPurpose, Redeemer>,
+) -> Data {
+  expect Some(Input {
+    output_reference: input_outref,
+    output: Output { address: input_address, .. },
+  }) = inputs |> list.at(input_index)
+  //
+  expect input_address.payment_credential == script_address.payment_credential
+  //
+  redeemers |> get_redeemer_at(Spend(input_outref), redeemer_index)
 }
 
 /// Merkelized validator abstraction for `phas` function from Plutarch.

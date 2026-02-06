@@ -23,6 +23,7 @@ use cardano/transaction.{
   Datum as CardanoDatum, Output, OutputReference, Redeemer, ScriptPurpose,
   ValidityRange,
 }
+use midgard/common/constants.{empty_merkle_tree_root}
 use midgard/common/types.{H28, H32, MerkleRoot, PosixTime, ValuePairs}
 
 // # Ledger state types
@@ -79,6 +80,13 @@ pub type ConfirmedState {
   end_time: PosixTime,
   protocol_version: Int,
 }
+
+pub const genesis_header_hash: HeaderHash =
+  #"00000000000000000000000000000000000000000000000000000000"
+
+pub const genesis_utxo_root: MerkleRoot = empty_merkle_tree_root
+
+pub const genesis_protocol_version: Int = 0
 
 // ## User events
 
