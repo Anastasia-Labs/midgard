@@ -6,7 +6,9 @@ use cardano/transaction.{
   InlineDatum, Input, Mint, Output, OutputReference, Redeemer, Transaction,
 }
 use midgard/hub_oracle as hub
-use midgard/operator_directory.{deinit, init}
+use midgard/operator_directory.{
+  deinit, init, validate_operator_transfer_and_get_inserted_data,
+}
 use midgard/operator_directory/active_operators
 use midgard/operator_directory/retired_operators.{
   Deinit, Init, MintRedeemer, RecoverOperatorBond, RemoveOperatorBadSettlement,
@@ -58,40 +60,65 @@ validator mint(
         )
       RetireOperator {
         new_retired_operator_key,
+        bond_unlock_time,
         hub_oracle_ref_input_index,
-        retired_operator_appended_node_output_index,
-        retired_operator_anchor_node_output_index,
+        retired_operator_anchor_element_input_index,
+        retired_operator_anchor_element_output_index,
+        retired_operator_inserted_node_output_index,
         active_operators_redeemer_index,
       } -> {
-        // TODO: Check required bond is transferred correctly.
-        expect Some(hub_oracle_ref_input) =
-          list.at(self.reference_inputs, hub_oracle_ref_input_index)
-        expect InlineDatum(hub_oracle_datum) = hub_oracle_ref_input.output.datum
-        expect parsed_hub_oracle_datum: hub.Datum = hub_oracle_datum
-        expect Some(active_operators_redeemer_pair) =
-          list.at(self.redeemers, active_operators_redeemer_index)
-        expect active_operators.RetireOperator { active_operator_key, .. } =
-          active_operators_redeemer_pair.2nd
+        let Transaction {
+          inputs,
+          outputs,
+          reference_inputs,
+          mint,
+          redeemers,
+          ..
+        } = tx
 
-        and {
-          quantity_of(
-            hub_oracle_ref_input.output.value,
+        // 1. The active operators policy ID must come from reference authentic
+        //    hub oracle UTxO.
+        let hub_datum =
+          hub.get_datum(
+            self.reference_inputs,
             hub_oracle_script_hash,
-            hub_oracle_asset_name,
-          ) == 1,
-          ordered.append(
-            Key(new_retired_operator_key),
-            retired_operator_appended_node_output_index,
-            retired_operator_anchor_node_output_index,
-            node_in_outputs,
-            node_outputs,
-            node_mint,
-          ),
-          active_operators_redeemer_pair.1st == Mint(
-            parsed_hub_oracle_datum.active_operators,
-          ),
-          active_operator_key == new_retired_operator_key,
+            hub_oracle_ref_input_index,
+          )
+
+        let linked_list_eval = {
+          // 2. Generic validations for operator transfer must pass.
+          let inserted_node_data <-
+            validate_operator_transfer_and_get_inserted_data(
+              new_retired_operator_key,
+              hub_datum.active_operators,
+              active_operators_redeemer_index,
+              fn(active_operators_redeemer_data) -> VerificationKeyHash {
+                expect active_operators.RetireOperator {
+                  active_operator_key,
+                  ..
+                } = active_operators_redeemer_data
+                active_operator_key
+              },
+              retired_operator_anchor_element_input_index,
+              retired_operator_anchor_element_output_index,
+              retired_operator_inserted_node_output_index,
+              inputs,
+              outputs,
+              mint,
+              redeemers,
+            )
+
+          // 3. Newly retired operator's bond unlock time must be preserved from
+          //    the active operators set. This equality between the redeemer
+          //    argument and active operators datum is checked by the
+          //    `active_operators.RetireOperator` redeemer.
+          let expected_inserted_node_data: Data = NodeData { bond_unlock_time }
+          expect inserted_node_data == expected_inserted_node_data
+
+          // Done.
+          True
         }
+        linked_list_eval |> finalize_linked_list(own_policy_id)
       }
       RecoverOperatorBond {
         retired_operator_key,

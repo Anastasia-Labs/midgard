@@ -8,7 +8,9 @@ use cardano/transaction.{
 }
 use midgard/common/utils
 use midgard/hub_oracle as hub
-use midgard/operator_directory.{deinit, init}
+use midgard/operator_directory.{
+  deinit, init, validate_operator_transfer_and_get_incoming_data,
+}
 use midgard/operator_directory/active_operators.{
   ActivateOperator, Datum, Deinit, Init, ListStateTransition, MintRedeemer,
   RemoveOperatorBadSettlement, RemoveOperatorBadState, RetireOperator,
@@ -180,65 +182,32 @@ validator mint(
         active_operator_inserted_node_output_index,
         registered_operators_redeemer_index,
       } -> {
-        let Transaction {
-          inputs,
-          outputs,
-          reference_inputs,
-          mint,
-          redeemers,
-          ..
-        } = self
-
-        // 1. The `ActivateOperator` minting redeemer of the registered
-        //    operators directory must be invoked.
-        expect registered_operators.ActivateOperator { activating_operator, .. } =
-          redeemers
-            |> utils.get_redeemer_at(
-                expected_purpose: Mint(registered_operators_policy_id),
-                redeemer_index: registered_operators_redeemer_index,
-              )
-
-        // 2. The operator indicated in the registered operators minting
-        //    redeemer must match the one specified in the redeemer here.
-        expect activating_operator == new_active_operator_key
-
-        // 3. Specified input and outpus related to the linked list must exist.
-        expect Some(active_operator_anchor_element_input) =
-          inputs |> list.at(active_operator_anchor_element_input_index)
-        expect Some(active_operator_anchor_element_output) =
-          outputs |> list.at(active_operator_anchor_element_output_index)
-        expect Some(active_operator_inserted_node) =
-          outputs |> list.at(active_operator_inserted_node_output_index)
+        let Transaction { inputs, outputs, mint, redeemers, .. } = tx
 
         let linked_list_eval = {
-          // 4. Ordered insertion in the linked list must be proper.
-          let
-            anchor_lovelace_change,
-            _m_anchor_key,
-            _anchor_data,
-            inserted_node_lovelace,
-            inserted_node_key,
-            inserted_node_data,
-            _inserted_node_link,
-          <-
-            linked_list.insert_ordered(
-              active_operator_anchor_element_input,
-              active_operator_anchor_element_output,
-              active_operator_inserted_node,
+          // 1. Generic validations for operator transfer must pass.
+          let inserted_node_data <-
+            validate_operator_transfer_and_get_inserted_data(
+              new_active_operator_key,
+              registered_operators_policy_id,
+              registered_operators_redeemer_index,
+              fn(registered_operators_redeemer_data) -> VerificationKeyHash {
+                expect registered_operators.ActivateOperator {
+                  activating_operator,
+                  ..
+                } = registered_operators_redeemer_data
+                activating_operator
+              },
+              active_operator_anchor_element_input_index,
+              active_operator_anchor_element_output_index,
+              active_operator_inserted_node_output_index,
+              inputs,
+              outputs,
               mint,
+              redeemers,
             )
 
-          // 5. ADA of anchor element must be preserved.
-          expect anchor_lovelace_change >= 0
-
-          // 6. ADA bond must be transferred from the registered operators.
-          expect inserted_node_lovelace == required_bond
-
-          // 7. The newly inserted node must carry the same operator as the one
-          //    provided via the redeemer as its key.
-          expect inserted_node_key == new_active_operator_key
-
-          // 8. Newly activated operators must not have any bond unlock times
+          // 2. Newly activated operator must not have any bond unlock time
           //    specified.
           let expected_inserted_node_data: Data =
             NodeData { bond_unlock_time: None }

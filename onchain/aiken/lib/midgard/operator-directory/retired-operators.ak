@@ -32,8 +32,9 @@ pub type MintRedeemer {
     new_retired_operator_key: ByteArray,
     bond_unlock_time: Option<PosixTime>,
     hub_oracle_ref_input_index: Int,
-    retired_operator_appended_node_output_index: Int,
-    retired_operator_anchor_node_output_index: Int,
+    retired_operator_anchor_element_input_index: Int,
+    retired_operator_anchor_element_output_index: Int,
+    retired_operator_inserted_node_output_index: Int,
     active_operators_redeemer_index: Int,
   }
   RecoverOperatorBond {

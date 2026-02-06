@@ -73,11 +73,10 @@ pub type MintRedeemer {
     settlement_redeemer_index: Int,
   }
   RetireOperator {
-    active_operator_key: ByteArray,
+    active_operator_key: VerificationKeyHash,
     active_operator_anchor_element_input_index: Int,
     active_operator_removed_node_input_index: Int,
     active_operator_anchor_element_output_index: Int,
-    retired_operator_inserted_node_output_index: Int,
     retired_operators_redeemer_index: Int,
   }
 }
