@@ -11,6 +11,7 @@ import {
   AuthenticatedValidator,
   ScriptHashSchema,
   MintingValidator,
+  UnspecifiedNetworkError,
 } from "@/common.js";
 import {
   Address,
@@ -156,28 +157,39 @@ export const makeHubOracleDatum = (
 export const incompleteHubOracleInitTxProgram = (
   lucid: LucidEvolution,
   params: HubOracleInitParams,
-): Effect.Effect<TxBuilder, Bech32DeserializationError> =>
+): Effect.Effect<
+  TxBuilder,
+  Bech32DeserializationError | UnspecifiedNetworkError
+> =>
   Effect.gen(function* () {
-    const datum = yield* makeHubOracleDatum(params.validators);
-    const encodedDatum = Data.to<HubOracleDatum>(datum, HubOracleDatum);
+    const network = lucid.config().network;
+    if (network) {
+      const datum = yield* makeHubOracleDatum(params.validators);
+      const encodedDatum = Data.to<HubOracleDatum>(datum, HubOracleDatum);
 
-    const assets: Assets = {
-      [toUnit(params.hubOracleMintValidator.policyId, HUB_ORACLE_ASSET_NAME)]:
-        1n,
-    };
+      const assets: Assets = {
+        [toUnit(params.hubOracleMintValidator.policyId, HUB_ORACLE_ASSET_NAME)]:
+          1n,
+      };
 
-    return lucid
-      .newTx()
-      .mintAssets(assets, Data.void())
-      .pay.ToAddressWithData(
-        credentialToAddress(
-          lucid.config().network!,
-          scriptHashToCredential(params.hubOracleMintValidator.policyId),
-        ),
-        { kind: "inline", value: encodedDatum },
-        assets,
-      )
-      .attach.MintingPolicy(params.hubOracleMintValidator.mintingScript);
+      return lucid
+        .newTx()
+        .mintAssets(assets, Data.void())
+        .pay.ToAddressWithData(
+          credentialToAddress(
+            network,
+            scriptHashToCredential(params.hubOracleMintValidator.policyId),
+          ),
+          { kind: "inline", value: encodedDatum },
+          assets,
+        )
+        .attach.MintingPolicy(params.hubOracleMintValidator.mintingScript);
+    } else {
+      return yield* new UnspecifiedNetworkError({
+        message: "",
+        cause: "Cardano network not found",
+      });
+    }
   });
 
 export class HubOracleError extends EffectData.TaggedError(
