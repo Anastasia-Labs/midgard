@@ -395,8 +395,7 @@ const getStateQueueHandler = Effect.gen(function* () {
   const alwaysSucceeds = yield* AlwaysSucceedsContract;
   const fetchConfig: SDK.StateQueueFetchConfig = {
     stateQueuePolicyId: alwaysSucceeds.stateQueue.policyId,
-    stateQueueAddress:
-      alwaysSucceeds.stateQueue.spendingScriptAddress,
+    stateQueueAddress: alwaysSucceeds.stateQueue.spendingScriptAddress,
   };
   const sortedUTxOs = yield* SDK.fetchSortedStateQueueUTxOsProgram(
     lucid.api,

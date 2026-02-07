@@ -56,7 +56,9 @@ export const program = Effect.gen(function* () {
   yield* lucidService.switchToOperatorsMainWallet;
   const lucid = lucidService.api;
 
-  const indexedFraudProofs = fraudProofsToIndexedValidators(contracts.fraudProofs);
+  const indexedFraudProofs = fraudProofsToIndexedValidators(
+    contracts.fraudProofs,
+  );
   const fpMPT = yield* createFraudProofCatalogueMpt(indexedFraudProofs);
   const fraudProofCatalogueMerkleRoot = yield* fpMPT.getRootHex();
 

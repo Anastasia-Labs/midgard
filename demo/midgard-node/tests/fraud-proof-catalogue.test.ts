@@ -6,7 +6,6 @@ import {
   createFraudProofCatalogueMpt,
   fraudProofsToIndexedValidators,
 } from "@/transactions/initialization.js";
-import {} from "@/transactions/utils.js";
 import { AlwaysSucceedsContract } from "@/services/always-succeeds.js";
 
 describe("Fraud Proof Catalogue Root", () => {
@@ -14,22 +13,17 @@ describe("Fraud Proof Catalogue Root", () => {
     "computes root and verifies pre-image retrieval for full validator set",
     () =>
       Effect.gen(function* () {
-        console.log("Z");
         const contracts = yield* AlwaysSucceedsContract;
-        console.log("A");
 
         const fraudProofs = contracts.fraudProofs;
-        console.log("B");
 
         const indexedFraudProofs = fraudProofsToIndexedValidators(fraudProofs);
-        console.log("C");
 
         const fraudProofsMPT =
           yield* createFraudProofCatalogueMpt(indexedFraudProofs);
-        console.log("D");
 
         const rootHash = yield* fraudProofsMPT.getRootHex();
-        console.log("E");
+        console.log(`Fraud Proofs Merkle Root: ${rootHash}`);
 
         const indicesToCheck = [
           0,
@@ -37,10 +31,8 @@ describe("Fraud Proof Catalogue Root", () => {
           Math.floor(indexedFraudProofs.length / 2),
           indexedFraudProofs.length - 1,
         ];
-        console.log("F");
 
         for (const i of indicesToCheck) {
-          console.log("G", i);
           const retrievedValue = yield* Effect.tryPromise(() =>
             fraudProofsMPT.trie.get(uint32ToFraudProofID(i)),
           );
