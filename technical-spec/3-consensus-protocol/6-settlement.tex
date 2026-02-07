@@ -1,0 +1,109 @@
+\documentclass[../midgard.tex]{subfiles}
+\graphicspath{{\subfix{../images/}}}
+\begin{document}
+
+\section{Settlement}
+\label{h:settlement}
+
+The settlement contract tracks deposit events, withdrawal orders, and forced L2 transaction orders until they are spent.
+Each settlement utxo is created whenever a block merges into the confirmed state and includes any deposits, withdrawals, or transaction orders.
+The settlement contains the block's deposits root hash, withdrawals root hash, and the transactions root hash (including both the requeusts and orders).
+Users must reference a settlement utxo to spend its confirmed deposits, withdrawals, or transaction orders.
+
+The current operator can optimistically resolve any settlement utxo, claiming that its confirmed user events have all been spent.
+To do so, the operator attaches a resolution claim to the settlement datum for the \code{maturity\_duration} (a protocol parameter).
+During this maturity period, if the operator's resolution claim is proven fraudulent, the prover can slash the operator's bond and remove the resolution claim from the settlement datum.
+After the maturity period, the settlement utxo can be spent if the resolution claim is intact.
+
+\tipbox{Perhaps concluding a settlement should also release the user fees collected from the utxo's user events to the operator.
+These fees would incentivize the operator to resolve settlements promptly.}
+
+The timestamp in the operator's node in the Operator Directory should be updated whenever an operator optimistically marks a settlement as resolved, similar to how it is updated when committing a block to the state queue.
+Updating this timestamp ensures that the operator cannot recover their bond until all their resolution claims have matured in the settlement queue.
+
+\subsection{Minting policy}
+\label{h:settlement-minting-policy}
+
+The \code{settlement} minting policy is statically parametrized on the \code{hub\_oracle} minting policy.
+It's responsible for authenticating spawned utxos at the \code{settlement\_addr} contract, and also conclusion of its utxos.
+\begin{description}
+  \item[Spawn.] Create a settlement utxo to store a merged block's deposits, withdrawals and transactions.
+    Conditions:
+      \begin{enumerate}
+        \item The transaction must include the Midgard hub oracle NFT in a reference input.
+        \item Let \code{state\_queue} be the policy ID in the corresponding field of the Midgard hub oracle.
+        \item The transaction must Remove a \code{state\_queue} node via the Merge To Confirmed State redeemer.
+          Let \code{merged\_block} be the block being merged to the confirmed state, and let \code{header\_hash} be its header-hash key.
+        \item The transaction must produce a utxo at the settlement contract containing an NFT with \code{header\_hash} as its asset name.
+          Let \code{new\_settlement} be the new utxo.
+        \item \code{merged\_block} and \code{new\_settlement} must match on all of these fields:
+          \begin{itemize}
+            \item \code{deposits\_root}
+            \item \code{withdrawals\_root}
+            \item \code{transactions\_root}
+          \end{itemize}
+        \item The \code{resolution\_claim} of \code{new\_settlement} must be empty.
+      \end{enumerate}
+  \item[Remove.] Remove a settlement utxo if its resolution claim has matured.
+    Conditions:
+      \begin{enumerate}
+        \item The transaction must spend a utxo from the \code{settlement\_addr} contract.
+          Let \code{removed\_settlement} be this utxo.
+        \item The redeemer used for spending \code{removed\_settlement} must carry the same \code{settlement\_id} as the one provided to this policy script.
+        \item The \code{resolution\_claim} of \code{removed\_settlement\_node} must not be empty.
+        \item The transaction must be signed by the \code{operator} of the \code{resolution\_claim}.
+        \item The transaction's time-validity lower bound must match or exceed the \code{resolution\_time} of the \code{resolution\_claim}.
+      \end{enumerate}
+\end{description}
+
+\subsection{Spending validator}
+\label{h:settlement-spending-validator}
+
+The spending validator of \code{settlement\_addr} is statically parametrized on the \code{settlement} and \code{hub\_oracle} minting policy.
+Conditions:
+\begin{description}
+  \item[Attach Resolution Claim.] The current operator attaches a resolution claim to a settlement utxo.
+    Conditions:
+      \begin{enumerate}
+        \item The spent input must not have a resolution claim.
+        \item The spent input must be reproduced with a resolution claim.
+        \item The transaction must be signed by the resolution claim's operator.
+        \item The transaction must include the Midgard hub oracle NFT in a reference input.
+        \item Let \code{active\_operators} and \code{scheduler} be the corresponding policy IDs in the Midgard hub oracle.
+        \item The transaction must include an input (\code{operator\_node}), spent via the Update Bond Hold New Settlement redeemer, of an \code{active\_operators} node with a key matching the resolution claim's operator.
+        \item The \code{bond\_unlock\_time} of the \code{operator\_node} must match the \code{resolution\_time} of the resolution claim.
+        \item The transaction must include the \code{scheduler} utxo as a reference input, indicating that the current operator matches the resolution claim's operator.
+      \end{enumerate}
+  \item[Disprove Resolution Claim.] Disprove and detach a settlement utxo's resolution claim, slashing the claimant operator.
+    Conditions:
+      \begin{enumerate}
+        \item The spent input must have a resolution claim.
+          Let \code{operator} be the operator of that claim.
+        \item The spent input must be reproduced without a resolution claim.
+        \item The transaction must include the Midgard hub oracle NFT in a reference input.
+        \item Let \code{active\_operators}, \code{deposit}, \code{withdrawal}, and \code{tx\_order} be the corresponding policy IDs in the Midgard hub oracle.
+        \item The transaction must include either a deposit, a withdrawal, or an transaction order as a reference input.
+          Let that reference input be \code{unprocessed\_event}.
+        \item A valid membership proof must be provided, proving that \code{unprocessed\_event} is a member of the corresponding tree in the settlement.
+          Note that the validity flag for optimistic events (i.e. withdrawals and transaction orders) must be provided via the redeemer.
+        \item The transaction's time-validity upper bound must be earlier than the resolution claim's \code{resolution\_time}.
+        \item Let \code{operator\_status} be a redeemer argument indicating whether \code{operator} is active or retired.
+        \item If \code{operator\_status} is active:
+            \begin{enumerate}
+                \item The transaction must Remove a node from the \code{active\_operators} set via the Remove Operator Bad Settlement redeemer.
+                  The \code{slashed\_operator} argument provided to that redeemer must match \code{operator}.
+            \end{enumerate}
+        \item Otherwise:
+            \begin{enumerate}
+                \item The transaction must Remove a node from the \code{retired\_operators} set via the Remove Operator Bad Settlement redeemer.
+                  The \code{slashed\_operator} argument provided to that redeemer must match \code{operator}.
+            \end{enumerate}
+      \end{enumerate}
+  \item[Resolve.] Allows expenditure of settlement utxos for burning their state NFTs.
+    Conditions:
+      \begin{enumerate}
+        \item An NFT with policy ID \code{settlement} and asset name \code{settlement\_id} (provided via the redeemer) must be burnt.
+      \end{enumerate}
+\end{description}
+
+\end{document}

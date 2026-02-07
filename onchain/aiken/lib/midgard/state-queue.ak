@@ -1,6 +1,8 @@
 use aiken_design_patterns/linked_list/unordered.{NodeDatum}
 use cardano/assets.{AssetName}
-use cardano/transaction.{OutputReference}
+use cardano/transaction.{Input, OutputReference}
+use midgard/common/utils
+use midgard/ledger_state.{ConfirmedState, Header}
 use midgard/registered_operators.{OperatorStatus}
 
 /// TODO?
@@ -35,7 +37,7 @@ pub type MintRedeemer {
     header_node_input_index: Int,
     confirmed_state_node_input_index: Int,
     confirmed_state_node_output_index: Int,
-    settlement_queue_redeemer_index: Int,
+    settlement_redeemer_index: Int,
   }
   RemoveFraudulentBlockHeader {
     removed_node_input_index: Int,
@@ -46,4 +48,43 @@ pub type MintRedeemer {
     fraudulent_operator: ByteArray,
     operator_status: OperatorStatus,
   }
+}
+
+pub fn get_confirmed_datum(
+  reference_inputs: List<Input>,
+  state_queue_policy: ByteArray,
+  state_queue_node_ref_input_index: Int,
+) {
+  expect NodeDatum {
+    data: confirmed_state_datum_data,
+    key: unordered.Empty,
+    ..
+  } =
+    utils.get_authentic_input_datum_with_policy_at(
+      reference_inputs,
+      state_queue_policy,
+      state_queue_node_ref_input_index,
+    )
+
+  expect coerced_confirmed_state: ConfirmedState = confirmed_state_datum_data
+
+  coerced_confirmed_state
+}
+
+pub fn get_block_datum(
+  reference_inputs: List<Input>,
+  state_queue_policy: ByteArray,
+  state_queue_node_ref_input_index: Int,
+  return: fn(Header, ByteArray) -> result,
+) -> result {
+  expect NodeDatum { data: header_datum_data, key: unordered.Key { key }, .. } =
+    utils.get_authentic_input_datum_with_policy_at(
+      reference_inputs,
+      state_queue_policy,
+      state_queue_node_ref_input_index,
+    )
+
+  expect coerced_header: Header = header_datum_data
+
+  return(coerced_header, key)
 }

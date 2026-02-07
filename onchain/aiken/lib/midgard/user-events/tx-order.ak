@@ -1,14 +1,9 @@
-use aiken/merkle_patricia_forestry as mpf
-use midgard/ledger_state
+use midgard/common/types.{Proof}
+use midgard/ledger_state.{MidgardTxValidity, TxOrderEvent}
 use midgard/user_events
 
 pub type Datum =
-  user_events.Datum<ledger_state.TxOrderEvent>
-
-pub type SpendPurpose {
-  Conclude { membership_proof: mpf.Proof }
-  Refund { refund_approach: user_events.RefundApproach }
-}
+  user_events.OptimisticDatum<TxOrderEvent>
 
 pub type SpendRedeemer {
   input_index: Int,
@@ -16,5 +11,7 @@ pub type SpendRedeemer {
   hub_ref_input_index: Int,
   settlement_ref_input_index: Int,
   burn_redeemer_index: Int,
-  purpose: SpendPurpose,
+  membership_proof: Proof,
+  inclusion_proof_script_withdraw_redeemer_index: Int,
+  validity_override: MidgardTxValidity,
 }
