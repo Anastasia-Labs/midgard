@@ -1,4 +1,9 @@
-import { Data } from "@lucid-evolution/lucid";
+import {
+  Data,
+  getAddressDetails,
+  Script,
+  ScriptHash,
+} from "@lucid-evolution/lucid";
 import { Data as EffectData } from "effect";
 import { Effect } from "effect";
 import {
@@ -175,6 +180,55 @@ export const bufferToHex = (buf: Buffer): string => {
   }
 };
 
+export type MintingValidator = {
+  mintingScriptCBOR: string;
+  mintingScript: Script;
+  policyId: PolicyId;
+};
+
+export type SpendingValidator = {
+  spendingScriptCBOR: string;
+  spendingScript: Script;
+  spendingScriptHash: ScriptHash;
+  spendingScriptAddress: Address;
+};
+
+export type WithdrawalValidator = {
+  withdrawalScriptCBOR: string;
+  withdrawalScript: Script;
+  withdrawalScriptHash: ScriptHash;
+};
+
+export type AuthenticatedValidator = SpendingValidator & MintingValidator;
+
+// TODO: We'll need a more elaborate design to allow multiple steps for each
+//       proof.
+export type FraudProofs = {
+  doubleSpend: SpendingValidator;
+  nonExistentInput: SpendingValidator;
+  nonExistentInputNoIndex: SpendingValidator;
+  invalidRange: SpendingValidator;
+};
+
+export type MidgardValidators = {
+  hubOracle: MintingValidator;
+  stateQueue: AuthenticatedValidator;
+  scheduler: AuthenticatedValidator;
+  registeredOperators: AuthenticatedValidator;
+  activeOperators: AuthenticatedValidator;
+  retiredOperators: AuthenticatedValidator;
+  escapeHatch: AuthenticatedValidator;
+  fraudProofCatalogue: AuthenticatedValidator;
+  fraudProof: AuthenticatedValidator;
+  deposit: AuthenticatedValidator;
+  withdrawal: AuthenticatedValidator;
+  txOrder: AuthenticatedValidator;
+  settlement: AuthenticatedValidator;
+  reserve: SpendingValidator & WithdrawalValidator;
+  payout: AuthenticatedValidator;
+  fraudProofs: FraudProofs;
+};
+
 export const OutputReferenceSchema = Data.Object({
   txHash: Data.Object({ hash: Data.Bytes({ minLength: 32, maxLength: 32 }) }),
   outputIndex: Data.Integer(),
@@ -202,7 +256,9 @@ export const POSIXTime = POSIXTimeSchema as unknown as POSIXTime;
 
 export const PubKeyHashSchema = Data.Bytes({ minLength: 28, maxLength: 28 });
 
-export const PolicyIdSchema = Data.Bytes({ minLength: 28, maxLength: 28 });
+export const ScriptHashSchema = Data.Bytes({ minLength: 28, maxLength: 28 });
+
+export const PolicyIdSchema = ScriptHashSchema;
 
 export const MerkleRootSchema = Data.Bytes({ minLength: 32, maxLength: 32 });
 export type MerkleRoot = Data.Static<typeof MerkleRootSchema>;
@@ -210,14 +266,10 @@ export const MerkleRoot = MerkleRootSchema as unknown as MerkleRoot;
 
 export const CredentialSchema = Data.Enum([
   Data.Object({
-    PublicKeyCredential: Data.Tuple([
-      Data.Bytes({ minLength: 28, maxLength: 28 }),
-    ]),
+    PublicKeyCredential: Data.Tuple([PubKeyHashSchema]),
   }),
   Data.Object({
-    ScriptCredential: Data.Tuple([
-      Data.Bytes({ minLength: 28, maxLength: 28 }),
-    ]),
+    ScriptCredential: Data.Tuple([ScriptHashSchema]),
   }),
 ]);
 export type CredentialD = Data.Static<typeof CredentialSchema>;
@@ -243,6 +295,49 @@ export const AddressSchema = Data.Object({
 export type AddressData = Data.Static<typeof AddressSchema>;
 export const AddressData = AddressSchema as unknown as AddressData;
 
+/**
+ * TODO: Note that this function does not support pointer addresses.
+ */
+export const addressDataFromBech32 = (
+  address: Address,
+): Effect.Effect<AddressData, Bech32DeserializationError> =>
+  Effect.gen(function* () {
+    const addressDetails = yield* Effect.try({
+      try: () => getAddressDetails(address),
+      catch: (error) =>
+        new Bech32DeserializationError({
+          message: `Failed to parse address: ${address}`,
+          cause: error,
+        }),
+    });
+    const { paymentCredential, stakeCredential } = addressDetails;
+
+    if (!paymentCredential) {
+      return yield* Effect.fail(
+        new Bech32DeserializationError({
+          message: "Address missing payment credential",
+          cause: `Invalid address: ${address}`,
+        }),
+      );
+    }
+
+    return {
+      paymentCredential:
+        paymentCredential.type === "Key"
+          ? { PublicKeyCredential: [paymentCredential.hash] }
+          : { ScriptCredential: [paymentCredential.hash] },
+      stakeCredential: stakeCredential
+        ? {
+            Inline: [
+              stakeCredential.type === "Key"
+                ? { PublicKeyCredential: [stakeCredential.hash] }
+                : { ScriptCredential: [stakeCredential.hash] },
+            ],
+          }
+        : null,
+    };
+  });
+
 export type GenericErrorFields = {
   readonly message: string;
   readonly cause: any;
@@ -262,6 +357,10 @@ export class CborSerializationError extends EffectData.TaggedError(
 
 export class CborDeserializationError extends EffectData.TaggedError(
   "CborDeserializationError",
+)<GenericErrorFields> {}
+
+export class Bech32DeserializationError extends EffectData.TaggedError(
+  "Bech32DeserializationError",
 )<GenericErrorFields> {}
 
 export class DataCoercionError extends EffectData.TaggedError(
@@ -286,4 +385,8 @@ export class HashingError extends EffectData.TaggedError(
 
 export class AssetError extends EffectData.TaggedError(
   "AssetError",
+)<GenericErrorFields> {}
+
+export class UnspecifiedNetworkError extends EffectData.TaggedError(
+  "UnspecifiedNetworkError",
 )<GenericErrorFields> {}

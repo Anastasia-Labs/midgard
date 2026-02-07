@@ -61,7 +61,7 @@ program
   )
   .action(async (_args, options) => {
     console.log("🌳 Midgard");
-    
+
     const { withMonitoring } = options.opts();
     const mainEffect: Effect.Effect<
       void,

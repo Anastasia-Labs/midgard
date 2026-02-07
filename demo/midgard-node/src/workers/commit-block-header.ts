@@ -13,7 +13,6 @@ import {
   AlwaysSucceedsContract,
   NodeConfig,
   DatabaseInitializationError,
-  AuthenticatedValidator,
 } from "@/services/index.js";
 import {
   BlocksDB,
@@ -250,7 +249,7 @@ const userEventsProgram = (
   });
 
 const buildUnsignedTx = (
-  stateQueueAuthValidator: AuthenticatedValidator,
+  stateQueueAuthValidator: SDK.AuthenticatedValidator,
   latestBlock: SDK.StateQueueUTxO,
   utxosRoot: string,
   txsRoot: string,
@@ -280,16 +279,16 @@ const buildUnsignedTx = (
       anchorUTxO: latestBlock,
       updatedAnchorDatum: updatedNodeDatum,
       newHeader: newHeader,
-      stateQueueSpendingScript: stateQueueAuthValidator.spendScript,
+      stateQueueSpendingScript: stateQueueAuthValidator.spendingScript,
       policyId: stateQueueAuthValidator.policyId,
-      stateQueueMintingScript: stateQueueAuthValidator.mintScript,
+      stateQueueMintingScript: stateQueueAuthValidator.mintingScript,
     };
 
     const aoUpdateCommitmentTimeParams = {};
 
     yield* Effect.logInfo("🔹 Building block commitment transaction...");
     const fetchConfig: SDK.StateQueueFetchConfig = {
-      stateQueueAddress: stateQueueAuthValidator.spendScriptAddress,
+      stateQueueAddress: stateQueueAuthValidator.spendingScriptAddress,
       stateQueuePolicyId: stateQueueAuthValidator.policyId,
     };
     yield* lucid.switchToOperatorsMainWallet;
@@ -342,7 +341,8 @@ const databaseOperationsProgram = (
     const { utxoRoot, txRoot, mempoolTxHashes, sizeOfProcessedTxs } =
       yield* processMpts(ledgerTrie, mempoolTrie, mempoolTxs);
 
-    const { stateQueueAuthValidator } = yield* AlwaysSucceedsContract;
+    const { stateQueue: stateQueueAuthValidator } =
+      yield* AlwaysSucceedsContract;
 
     if (workerInput.data.availableConfirmedBlock === "") {
       // The tx confirmation worker has not yet confirmed a previously

@@ -1,7 +1,5 @@
 import { describe, expect, beforeAll } from "vitest";
 import { fromHex, toHex } from "@lucid-evolution/lucid";
-import dotenv from "dotenv";
-dotenv.config({ path: ".env" });
 import { it } from "@effect/vitest";
 import { Effect } from "effect";
 import { SqlClient } from "@effect/sql";
@@ -31,13 +29,7 @@ import {
   LedgerUtils,
 } from "../src/database/index.js";
 import { breakDownTx, ProcessedTx } from "../src/utils.js";
-
-const provideLayers = <A, E, R>(eff: Effect.Effect<A, E, R>) =>
-  eff.pipe(
-    Effect.provide(Database.layer),
-    Effect.provide(Lucid.Default),
-    Effect.provide(NodeConfig.layer),
-  );
+import { provideDatabaseLayers } from "./utils.js";
 
 const flushAll = Effect.gen(function* () {
   yield* Effect.all(
@@ -60,7 +52,7 @@ const randomBytes = (n: number) =>
 
 beforeAll(async () => {
   await Effect.runPromise(
-    provideLayers(
+    provideDatabaseLayers(
       Effect.gen(function* () {
         const sql = yield* SqlClient.SqlClient;
         // Ensure a clean schema: drop tables (and thus indexes) if they exist
@@ -76,7 +68,7 @@ beforeAll(async () => {
 
 describe("Database: initialization and basic operations", () => {
   it.effect("initialize and flush", (_) =>
-    provideLayers(
+    provideDatabaseLayers(
       Effect.gen(function* () {
         yield* flushAll;
         // Smoke select to ensure connection works
@@ -92,7 +84,7 @@ describe("BlocksDB", () => {
   it.effect(
     "insert, retrieve all, retrieve by header, retrieve by tx, clear block, clear all",
     (_) =>
-      provideLayers(
+      provideDatabaseLayers(
         Effect.gen(function* () {
           yield* flushAll;
 
@@ -171,7 +163,7 @@ describe("MempoolDB", () => {
   it.effect(
     "insert, retrieve single, retrieve all, retrieve cbor by hash, retrieve cbors by hashes, retrieve count, clear txs, clear all",
     (_) =>
-      provideLayers(
+      provideDatabaseLayers(
         Effect.gen(function* () {
           yield* flushAll;
 
@@ -271,7 +263,7 @@ describe("ProcessedMempoolDB", () => {
   it.effect(
     "insert tx, insert txs, retrieve all, retrieve cbor by hash, retrieve cbors by hashes, clear all",
     (_) =>
-      provideLayers(
+      provideDatabaseLayers(
         Effect.gen(function* () {
           yield* flushAll;
 
@@ -333,7 +325,7 @@ describe("ImmutableDB", () => {
   it.effect(
     "insert tx, insert txs, retrieve all, retrieve cbor by hash, retrieve cbor by hashes, clear all",
     (_) =>
-      provideLayers(
+      provideDatabaseLayers(
         Effect.gen(function* () {
           yield* flushAll;
 
@@ -398,7 +390,7 @@ describe("ImmutableDB", () => {
 
 describe("LatestLedgerDB", () => {
   it.effect("insert multiple, retrieve, clear UTxOs, clear all", () =>
-    provideLayers(
+    provideDatabaseLayers(
       Effect.gen(function* () {
         yield* flushAll;
 
@@ -433,7 +425,7 @@ describe("MempoolLedgerDB", () => {
   it.effect(
     "insert, retrieve by address, retrieve all, clearUTxOs, clearAll",
     () =>
-      provideLayers(
+      provideDatabaseLayers(
         Effect.gen(function* () {
           yield* flushAll;
 
@@ -472,7 +464,7 @@ describe("MempoolLedgerDB", () => {
 
 describe("ConfirmedLedgerDB", () => {
   it.effect("insert multiple, retrieve", () =>
-    provideLayers(
+    provideDatabaseLayers(
       Effect.gen(function* () {
         yield* flushAll;
 
@@ -505,7 +497,7 @@ describe("ConfirmedLedgerDB", () => {
 
 describe("AddressHistoryDB", () => {
   it.effect("insert, retrieve, clears tx hash, clear all", () =>
-    provideLayers(
+    provideDatabaseLayers(
       Effect.gen(function* () {
         yield* flushAll;
 
@@ -599,7 +591,7 @@ describe("AddressHistoryDB", () => {
   );
 
   it.effect("submit tx pipeline inserts a tx id in address db history", () =>
-    provideLayers(
+    provideDatabaseLayers(
       Effect.gen(function* () {
         yield* flushAll;
         const lucid = yield* Lucid;

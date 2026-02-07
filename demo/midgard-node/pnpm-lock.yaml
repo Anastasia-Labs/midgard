@@ -39,7 +39,7 @@ importers:
         specifier: ^9.1.0
         version: 9.1.0
       '@lucid-evolution/lucid':
-        specifier: ^0.4.16
+        specifier: 0.4.29
         version: 0.4.29(@harmoniclabs/bytestring@1.0.0)(@harmoniclabs/cbor@1.6.6)(@harmoniclabs/crypto@0.2.5)(@harmoniclabs/pair@1.0.0)(fast-check@3.23.2)
       '@opentelemetry/api':
         specifier: ^1.9.0
@@ -118,7 +118,7 @@ packages:
     resolution: {integrity: sha512-vKypwCNMH7SgP8JQ/fQyXjhDC16DqTiW9x9dLK6AXe2tEWVouNy2GMKmOaS4l6ZF7pTjty5XCD+MqnsxXJBIgg==}
 
   '@al-ft/midgard-sdk@file:../midgard-sdk/al-ft-midgard-sdk-0.1.0.tgz':
-    resolution: {integrity: sha512-AyXrbDO5WfbFlpIdPxyRiSg6sjsP/5JzBCL8D6A9j/cWeqKxCsSDzLRejob1b5cXGl4A8Mqrn6zAcWYS/WwOjA==, tarball: file:../midgard-sdk/al-ft-midgard-sdk-0.1.0.tgz}
+    resolution: {integrity: sha512-4LkDbnrSE6x0Lc3w+iv15V0lD1e6fra1i7qkEkvxY4Uf85pmRXVC5COoUUZLmvBbg4xfaBDk0Rt2tEUn9CQkIw==, tarball: file:../midgard-sdk/al-ft-midgard-sdk-0.1.0.tgz}
     version: 0.1.0
 
   '@anastasia-labs/cardano-multiplatform-lib-browser@6.0.2-2':

@@ -1,6 +1,8 @@
-import { POSIXTimeSchema } from "@/common.js";
+import { AuthenticatedValidator, POSIXTimeSchema } from "@/common.js";
 import { Data } from "@lucid-evolution/lucid";
 import { LucidEvolution, TxBuilder } from "@lucid-evolution/lucid";
+import { Effect } from "effect";
+import { incompleteInitLinkedListTxProgram } from "./linked-list.js";
 
 export const RetiredOperatorDatumSchema = Data.Object({
   commitmentTime: Data.Nullable(POSIXTimeSchema),
@@ -46,7 +48,10 @@ export type RetiredOperatorMintRedeemer = Data.Static<
 export const RetiredOperatorMintRedeemer =
   RetiredOperatorMintRedeemerSchema as unknown as RetiredOperatorMintRedeemer;
 
-export type RetiredOperatorInitParams = {};
+export type RetiredOperatorInitParams = {
+  validator: AuthenticatedValidator;
+};
+
 export type RetiredOperatorDeinitParams = {};
 export type RetiredOperatorRetireParams = {};
 export type RetiredOperatorRemoveOperatorParams = {};
@@ -62,10 +67,16 @@ export type RetiredOperatorRecoverSlashBondParams = {};
 export const incompleteRetiredOperatorInitTxProgram = (
   lucid: LucidEvolution,
   params: RetiredOperatorInitParams,
-): TxBuilder => {
-  const tx = lucid.newTx();
-  return tx;
-};
+): Effect.Effect<TxBuilder> =>
+  Effect.gen(function* () {
+    const rootData = "00";
+
+    return yield* incompleteInitLinkedListTxProgram(lucid, {
+      validator: params.validator,
+      data: rootData,
+      redeemer: Data.to("Init", RetiredOperatorMintRedeemer),
+    });
+  });
 
 /**
  * Deinit
