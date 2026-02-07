@@ -21,10 +21,9 @@ These groups are used to populate the fields of two record types in Midgard's co
     \end{array} \right\} \\
     \T{Settlement} &\coloneq \left\{
     \begin{array}{ll}
-        \T{deposit\_root} : & \T{MPTR} \\
-        \T{withdraw\_root} : & \T{MPTR} \\
-        \T{start\_time}: & \T{PosixTime} \\
-        \T{end\_time}: & \T{PosixTime} \\
+        \T{deposits\_root} : & \T{MPTR} \\
+        \T{withdraws\_root} : & \T{MPTR} \\
+        \T{transactions\_root} : & \T{MPTR} \\
         \T{resolution\_claim}: & \T{Option}(\T{ResolutionClaim})
     \end{array} \right\} \\
     \T{ResolutionClaim} &\coloneq \left\{
@@ -51,10 +50,10 @@ At genesis, \code{ConfirmedState} is set as follows:
 
 Midgard only stores the latest confirmed block's \code{ConfirmedState} on L1, always overwriting the previous one.
 By contrast, its \code{Settlement} never overwrites that of the previous block.
-Instead, the \code{Settlement} spins into a separate settlement node that users and operators can reference to process deposits and withdrawal requests.
+Instead, the \code{Settlement} spins into a separate settlement utxo that users and operators can reference to process deposits, withdrawal and transaction orders.
 
-The current operator can optimistically attach a resolution claim to any settlement node, indicating that all deposits and withdrawals in the node have been processed and that the node will be removed from the settlement queue at a given resolution time.
-The resolution time is set to the claim's attachment time, shifted forward by Midgard's \code{maturity\_duration} protocol parameter, in order to provide an opportunity fraud proofs to be verified on L1 that disprove the operator's claim that the settlement node is resolved.
-The operator is slashed if their claim is disproved; otherwise, starting from the resolution time, the operator can remove the settlement node and recover its min-ADA and some fees for processing the deposits/withdrawals.
+The current operator can optimistically attach a resolution claim to any settlement utxo, indicating that all deposits, withdrawals, and transaction orders in the datum have been processed and that the utxo can be spent at the given resolution time.
+The resolution time is set to the claim's attachment time, shifted forward by Midgard's \code{maturity\_duration} protocol parameter, in order to provide an opportunity fraud proofs to be verified on L1 that disprove the operator's claim that the settlement is resolved.
+The operator is slashed if their claim is disproved; otherwise, starting from the resolution time, the operator can spend the settlement utxo and recover its min-ADA and some fees for processing the deposits/withdrawals/transactions.
 
 \end{document}

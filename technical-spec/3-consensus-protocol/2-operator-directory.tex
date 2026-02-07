@@ -189,7 +189,7 @@ Redeemers:
 
         % TODO fix
         The state queue's onchain code is responsible for disposing of the operator's ADA bond.
-    \item[Remove Operator Bad Settlement.] Remove an operator's node from the \code{active\_operators} set without returning the operator's ADA bond to the operator, as a consequence of attaching a fraudulent resolution claim to the settlement queue.
+    \item[Remove Operator Bad Settlement.] Remove an operator's node from the \code{active\_operators} set without returning the operator's ADA bond to the operator, as a consequence of attaching a fraudulent resolution claim to a settlement utxo.
       Conditions:
         \begin{enumerate}
             \item Let \code{slashed\_operator} be a redeemer argument indicating the operator being slashed.
@@ -198,13 +198,13 @@ Redeemers:
             \item \code{slashed\_operator} must match the key of \code{removed\_node}.
             \item The transaction fees must meet or exceed the \code{slashing\_penalty} protocol parameter, denominated in Lovelaces.
             \item The transaction must include the Midgard hub oracle NFT in a reference input.
-            \item Let \code{settlement\_queue\_addr} be the address in the corresponding field of the Midgard hub oracle.
-            \item The transaction must spend a node from the \code{settlement\_queue\_addr} via the Disprove Resolution Claim redeemer.
+            \item Let \code{settlement\_addr} be the address in the corresponding field of the Midgard hub oracle.
+            \item The transaction must spend a node from the \code{settlement\_addr} via the Disprove Resolution Claim redeemer.
               The \code{fraudulent\_operator} argument provided to that redeemer must match \code{slashed\_operator}.
         \end{enumerate}
 
         % TODO fix
-        The settlement queue's onchain code is responsible for disposing of the operator's ADA bond.
+        The settlement's onchain code is responsible for disposing of the operator's ADA bond.
     \item[Retire Operator.] Transfer an operator node, unchanged, from the \code{active\_operators} set to the \code{retired\_operators} set.
       Conditions:
         \begin{enumerate}
@@ -220,7 +220,7 @@ Redeemers:
 \label{h:active-operators-spending-validator}
 
 The spending validator of \code{active\_operators\_addr} forwards to its corresponding minting policy (statically parametrized) when the transaction invokes it.
-When the minting policy isn't invoked, the spending validator updates the bond unlock time of an operator that commits a new block to the state queue or attaches a resolution claim to a settlement queue node.
+When the minting policy isn't invoked, the spending validator updates the bond unlock time of an operator that commits a new block to the state queue or attaches a resolution claim to a settlement utxo.
 Redeemers:
 \begin{description}
     \item[List State Transition.] Forward to minting policy.
@@ -246,7 +246,7 @@ Redeemers:
                   The redeemer's \code{operator} field must match the \code{key} field of the \code{active\_node}.
             \end{enumerate}
         \end{itemize}
-    \item[Update Bond Hold New Settlement.] Update an operator's bond unlock time when they attach a resolution claim to a settlement node.
+    \item[Update Bond Hold New Settlement.] Update an operator's bond unlock time when they attach a resolution claim to a settlement utxo.
       Grouped conditions:
         \begin{itemize}
             \item Update the bond unlock time of a operator:
@@ -259,8 +259,8 @@ Redeemers:
             \item Verify that the operator is currently committing a block header to the state queue:
             \begin{enumerate}[resume]
                 \item The transaction must include the Midgard hub oracle NFT in a reference input.
-                \item Let \code{settlement\_queue\_addr} be the policy ID in the corresponding field of the Midgard hub oracle.
-                \item The transaction must spend a settlement queue node with the Attach Resolution Claim redeemer.
+                \item Let \code{settlement\_addr} be the policy ID in the corresponding field of the Midgard hub oracle.
+                \item The transaction must spend a settlement utxo with the Attach Resolution Claim redeemer.
                   The redeemer's \code{operator} field must match the \code{key} field of the \code{active\_node}.
             \end{enumerate}
         \end{itemize}
@@ -318,7 +318,7 @@ Redeemers:
 
         % TODO fix
         The state queue's onchain code is responsible for paying out the fraud prover's reward from the operator's forfeited ADA bond.
-    \item[Remove Operator Bad Settlement.] Remove an operator's node from the \code{retired\_operators} set without returning the operator's ADA bond to the operator, as a consequence of attaching a fraudulent resolution claim to the settlement queue.
+    \item[Remove Operator Bad Settlement.] Remove an operator's node from the \code{retired\_operators} set without returning the operator's ADA bond to the operator, as a consequence of attaching a fraudulent resolution claim to a settlement utxo.
       Conditions:
         \begin{enumerate}
             \item Let \code{slashed\_operator} be a redeemer argument indicating the operator being slashed.
@@ -327,13 +327,13 @@ Redeemers:
             \item \code{slashed\_operator} must match the key of \code{removed\_node}.
             \item The transaction fees must meet or exceed the \code{slashing\_penalty} protocol parameter, denominated in Lovelaces.
             \item The transaction must include the Midgard hub oracle NFT in a reference input.
-            \item Let \code{settlement\_queue\_addr} be the address in the corresponding field of the Midgard hub oracle.
-            \item The transaction must spend a node from the \code{settlement\_queue\_addr} via the Disprove Resolution Claim redeemer.
+            \item Let \code{settlement\_addr} be the address in the corresponding field of the Midgard hub oracle.
+            \item The transaction must spend a utxo from the \code{settlement\_addr} via the Disprove Resolution Claim redeemer.
               The \code{fraudulent\_operator} argument provided to that redeemer must match \code{slashed\_operator}.
         \end{enumerate}
 
         % TODO fix
-        The settlement queue's onchain code is responsible for disposing of the operator's ADA bond.
+        The settlement's onchain code is responsible for disposing of the operator's ADA bond.
 \end{description}
 
 \subsubsection{Spending validator}

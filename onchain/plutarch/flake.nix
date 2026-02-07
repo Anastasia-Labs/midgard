@@ -29,10 +29,6 @@
       url = "github:input-output-hk/haskell.nix";
       inputs.hackage.follows = "hackage";
     };
-
-    plutarch = {
-      url = "github:colll78/plutarch-plutus/548cb641378b4c00bc02abfdcd723821b08141f5";
-    };
   };
 
 

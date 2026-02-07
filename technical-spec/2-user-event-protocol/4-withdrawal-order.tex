@@ -5,14 +5,7 @@
 \section{Withdrawal order (L1)}
 \label{h:withdrawal-order}
 
-A user initiates a withdrawal from Midgard by first producing an authentic token at the \emph{outbox} contract on L2.
-This ensures two things:
-\begin{enumerate}
-    \item The utxo becomes unspendable on L2, until its corresponding withdrawal event removes it from ledger.
-    \item The number of tokens included for withdrawal does not exceed the \code{max\_tokens\_allowed} protocol parameter.
-\end{enumerate}
-
-To actually bring the funds to L1, users must then submit an L1 transaction that performs the following:
+A user initiates a withdrawal from Midgard by submitting an L1 transaction that performs the following:
 \begin{enumerate}
     \item Spend an input \code{l1\_nonce}, which uniquely identifies this withdrawal order.
     \item Register a staking script credential to witness the withdrawal order.
@@ -32,8 +25,6 @@ To actually bring the funds to L1, users must then submit an L1 transaction that
     \item Send min-ADA to the Midgard withdrawal order address, along with the withdrawal order token and the above datum.
 \end{enumerate}
 
-\notebox{We could adapt Midgard's incentive structure to encourage operators to perform this second step on L1 on behalf of users, relieving users from this chore during normal protocol operation.}
-
 At the time of the L1 withdrawal order, its \code{inclusion\_time} is set to the sum of the L1 transaction's validity interval upper bound and the \code{event\_wait\_duration} Midgard protocol parameter.
 According to Midgard's ledger rules:
 \begin{description}
@@ -42,8 +33,8 @@ According to Midgard's ledger rules:
 
 The withdrawal order's outcome is determined as follows:
 \begin{itemize}
-    \item If the withdrawal event is included in a settlement queue node, its utxo can be transferred to the payout contract so that it can be funded from the Midgard reserve.
-    \item If the withdrawal order's inclusion time is within the confirmed header's event interval but not within the event interval of any settlement queue node, then the withdrawal order utxo can be refunded to its user according to the \code{refund\_address} and \code{refund\_datum} fields.
+  \item If the withdrawal event is included in a settlement utxo with a \code{WithdrawalIsValid} validity, its utxo can be transferred to the payout contract so that it can be funded from the Midgard reserve.
+  \item If the withdrawal event is included in a settlement utxo with a validity other than \code{WithdrawalIsValid}, then the withdrawal order utxo can be refunded to its user according to the \code{refund\_address} and \code{refund\_datum} fields.
 \end{itemize}
 
 The withdrawal order's \code{witness} staking credential must be deregistered when the withdrawal order utxo is spent.
@@ -67,12 +58,7 @@ It oversees correctness of datums, and registration/unregistration of events' co
         \item Withdrawal order utxo must be produced at \code{withdrawal\_addr}.
         \item The withdrawal order's \code{inclusion\_time} must be equal to transaction's time-validity upper bound plus \code{event\_wait\_duration} Midgard protocol parameter.
         \item The hash of the witness script must be correctly stored in the withdrawal datum.
-        \item Let \code{utxos\_root} be the root of the latest ledger at the latest node of the state queue, and \code{l2\_outref} be the output reference of the utxo subject to withdrawal.
-        \item Let \code{l2\_output} be the utxo itself at \code{outbox} contract on L2, provided via the redeemer.
-        \item \code{utxos\_root} must contain an item with key \code{l2\_outref} and value \code{l2\_output}.
-        \item Let \code{l2\_value} be the recorded value on L2 stored in \code{WithdrawalInfo}.
-        \item \code{l2\_value} and \code{value} from \code{l2\_output} must be equal.
-        \item Address from \code{l2\_output} must be the same as outbox contract's on L2.
+        \item Validity of the withdrawal must be set to \code{WithdrawalIsValid}.
       \end{enumerate}
     \item[Burn Withdrawal NFT.] Oversee start of the funding for a withdrawal order by requiring its NFTs to be burnt, and having the utxo reproduced at the \code{payout} contract.
     Conditions:
@@ -80,8 +66,7 @@ It oversees correctness of datums, and registration/unregistration of events' co
         \item Let \code{l1\_id} be the corresponding ID of the target withdrawal order, provided via the redeemer.
         \item An NFT with own policy ID and asset name of \code{l1\_id} must be burnt.
         \item The witness staking script, instantiated with \code{l1\_id} must be unregistered in the transaction.
-        \item The redeemer used for unregistering the witness script must be correct.
-          Namely, it must be equal to the \code{withdrawal} policy ID.
+        \item The redeemer used for unregistrering the witness script must be correct. Namely, it must be equal to the \code{withdrawal} policy ID.
       \end{enumerate}
 \end{description}
 
@@ -89,34 +74,49 @@ It oversees correctness of datums, and registration/unregistration of events' co
 \label{h:withdrawal-order-spending-validator}
 
 The \code{withdrawal} spending validator is statically parametrized on the \code{hub\_oracle} minting policy.
-It's responsible for initializing the funding phase of a withdrawal order by reproducing its utxo at the \code{payout} contract, or refunding stranded withdrawal orders.
+It's responsible for initializing the funding phase of a withdrawal order by reproducing its utxo at the \code{payout} contract, or refunding invalid withdrawal orders.
 
 \begin{description}
   \item[Initialize Payout.] Transaction for reproducing the order at the payout contract to be filled up from the Midgard reserve.
     Conditions:
     \begin{enumerate}
-      \item Let \code{settlement\_node} be the referenced settlement node.
-      \item The withdrawal order must be included in the withdrawal tree of \code{settlement\_node}.
-        This also implies the inclusion time of the order falls within the time interval of \code{settlement\_node}.
+      \item Let \code{settlement} be the referenced settlement node.
+      \item The withdrawal order must be included in the withdrawals tree of \code{settlement} with a validity of \code{WithdrawalIsValid}.
       \item Let \code{payout\_addr} be the address of the intermediary payout contract retrieved from hub oracle.
       \item The utxo produced at \code{payout\_addr} must have the same \code{value} as the withdrawal order utxo, without the withdrawal NFT, and with the \code{payout} NFT (same asset name) added.
       \item The \code{BurnEventNFT} endpoint of the withdrawal minting script must be invoked with the corresponding \code{l1\_id} of the withdrawal utxo.
       \item The minting logic from \code{payout} must be invoked, minting an NFT with the same asset name as the withdrawal NFT being burnt in the transaction.
-      \item The datum attached to the payout accumulator utxo must hand over \code{l2\_value}, \code{l1\_address} and \code{l1\_datum} unchanged.
+      \item The datum attached to the payout accumulator utxo must take over \code{l2\_value}, \code{l1\_address} and \code{l1\_datum} unchanged.
       \item No reference script must be attached to the payout accumulator utxo.
     \end{enumerate}
   \item[Refund.] 
     Conditions:
     \begin{enumerate}
-      \item The \code{BurnEventNFT} endpoint of the withdrawal minting script must be invoked with the corresponding \code{l1\_id} of the withdrawal order utxo.
-      \item The min-ADA included in the withdrawal order utxo must go to the \code{refund\_address} specified in the withdrawal datum.
-      \item The datum attached to the produced utxo must also match the one stated in withdrawal datum.
-      \item 
-        \begin{itemize}
-          \item If inclusion time of the stranded withdrawal falls within the time range of an existing settlement node, refund can only be allowed if the settlement node's corresponding tree does not contain the withdrawal (proven by providing a non-membership proof).
-          \item Otherwise, if the inclusion time falls in one of the time gaps of settlement queue, refund request is considered valid by referencing the immediate settlement node and showing the inclusion time falls in the gap.
-        \end{itemize}
+      \item Let \code{settlement} be the referenced settlement node.
+      \item Let \code{validity\_override} be the expected validity of the withdrawal stored in withdrawals tree of \code{settlement}, provided via the redeemer.
+      \item The withdrawal order must be included in the withdrawals tree of \code{settlement} with a validity other than \code{WithdrawalIsValid}.
+      \item Let \code{refund\_address} be the refund address retrieved from the withdrawal order utxo.
+      \item Let \code{refund\_datum} be the datum information for the refund utxo retrieved from the withdrawal order utxo.
+      \item The utxo produced at \code{refund\_address} must have the same \code{value} as the withdrawal order utxo, without the withdrawal NFT, and with the \code{refund\_datum} attached.
+      \item The \code{BurnEventNFT} endpoint of the withdrawal minting script must be invoked with the corresponding \code{l1\_id} of the withdrawal utxo.
+      \item No reference script must be attached to the payout accumulator utxo.
     \end{enumerate}
 \end{description}
+
+\subsection{Staking script}
+\label{h:withdrawal-order-staking-script}
+The \code{witness} script is parameterized by an ID that is obtained from the output reference of a specified utxo on L1, which is serialized and then hashed with Blake2b256.
+The registration state of this script is the mechanism that allows related fraud proofs to function.
+Conditions:
+
+\begin{enumerate}
+  \item Let \code{l1\_id} be the Blake2b256 hash of withdrawal event's \code{withdrawal\_id} (L1 nonce output reference).
+  \item Let \code{withdrawal\_minting\_policy} be the policy ID of the withdrawal NFT, accessed via the redeemer.
+  \item Registration/unregsitration of this witness script is respectively tied to the \code{withdrawal\_minting\_policy}'s mint/burn logic. 
+    \begin{itemize}
+      \item Registeration is allowed if a withdrawal NFT with asset name of \code{l1\_id} is minted.
+      \item Unregistration is allowed if a withdrawal NFT with asset name of \code{l1\_id} is burnt.
+    \end{itemize}
+\end{enumerate}
 
 \end{document}

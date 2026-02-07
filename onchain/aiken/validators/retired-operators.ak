@@ -5,7 +5,7 @@ use aiken_design_patterns/linked_list/ordered.{
 }
 use cardano/assets.{PolicyId, quantity_of, tokens}
 use cardano/transaction.{
-  InlineDatum, Input, Mint, Output, OutputReference, Spend, Transaction,
+  InlineDatum, Input, Mint, Output, OutputReference, Transaction,
 }
 use midgard/active_operators
 use midgard/hub_oracle
@@ -13,7 +13,7 @@ use midgard/retired_operators.{
   Datum as RetiredOperatorDatum, Deinit, Init, MintRedeemer, RecoverOperatorBond,
   RemoveOperatorBadSettlement, RemoveOperatorBadState, RetireOperator,
 }
-use midgard/settlement_queue.{DisproveResolutionClaim}
+use midgard/settlement.{DisproveResolutionClaim}
 use midgard/state_queue.{RemoveFraudulentBlockHeader}
 
 validator spend(retired_operators_mint_script_hash: ByteArray) {
@@ -156,32 +156,24 @@ validator mint(
         hub_oracle_ref_input_index,
         retired_operator_slashed_node_input_index,
         retired_operator_anchor_node_input_index,
-        settlement_queue_input_index,
-        settlement_queue_redeemer_index,
+        settlement_input_index,
+        settlement_redeemer_index,
       } -> {
-        expect Some(hub_oracle_ref_input) =
-          list.at(self.reference_inputs, hub_oracle_ref_input_index)
-        expect InlineDatum(hub_oracle_datum) = hub_oracle_ref_input.output.datum
-        expect parsed_hub_oracle_datum: hub_oracle.Datum = hub_oracle_datum
-        expect Some(settlement_queue_redeemer_pair) =
-          list.at(self.redeemers, settlement_queue_redeemer_index)
-        expect DisproveResolutionClaim { operator, .. } =
-          settlement_queue_redeemer_pair.2nd
-        // TODO fix performance:
-        expect Some(settlement_queue_input) =
-          list.at(self.inputs, settlement_queue_input_index)
-        expect
-          settlement_queue_input.output.address.payment_credential == parsed_hub_oracle_datum.settlement_queue_addr.payment_credential
-        expect
-          settlement_queue_redeemer_pair.1st == Spend(
-            settlement_queue_input.output_reference,
-          )
-        and {
-          quantity_of(
-            hub_oracle_ref_input.output.value,
+        let Transaction { inputs, reference_inputs, redeemers, fee, .. } = self
+        let settlement_spending_redeemer_data =
+          settlement.get_spending_redeemer_data(
             hub_oracle_script_hash,
-            hub_oracle_asset_name,
-          ) == 1,
+            hub_oracle_ref_input_index,
+            settlement_input_index,
+            settlement_redeemer_index,
+            inputs,
+            reference_inputs,
+            redeemers,
+          )
+        expect DisproveResolutionClaim { operator, .. } =
+          settlement_spending_redeemer_data
+        // TODO fix performance:
+        and {
           ordered.remove(
             Key(slashed_retired_operator_key),
             retired_operator_slashed_node_input_index,
@@ -190,7 +182,7 @@ validator mint(
             node_outputs,
             node_mint,
           ),
-          self.fee >= slashing_penalty,
+          fee >= slashing_penalty,
           operator == slashed_retired_operator_key,
         }
       }
