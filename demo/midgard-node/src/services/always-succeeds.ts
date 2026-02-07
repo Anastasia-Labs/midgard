@@ -15,14 +15,18 @@ import { NoSuchElementException } from "effect/Cause";
 
 const NETWORK: Network = "Preprod";
 
-const MIDGARD_CATEGORY: string = "midgard";
-const FRAUD_PROOFS_CATEGORY: string = "fraud_proofs";
+type Category = "midgard" | "fraud_proofs";
+
+type Purpose = "spend" | "mint" | "withdraw";
 
 const makeValidatorTitle = (
-  category: string,
+  category: Category,
   baseName: string,
-  type: "spend" | "mint" | "withdraw",
-) => `${category}.${baseName}_${type}.else`;
+  type: Purpose,
+) =>
+  category === "midgard"
+    ? `${category}.${baseName}_${type}.else`
+    : `${category}.${baseName}.else`;
 
 const getValidatorScript = (title: string) =>
   pipe(
@@ -33,7 +37,7 @@ const getValidatorScript = (title: string) =>
   );
 
 const makeSpendingValidator = (
-  category: string,
+  category: Category,
   baseName: string,
   network: Network,
 ): Effect.Effect<SDK.SpendingValidator, NoSuchElementException> =>
@@ -56,10 +60,14 @@ const makeSpendingValidator = (
       spendingScriptAddress,
       spendingScriptHash,
     };
-  });
+  }).pipe(
+    Effect.tapError((_e) =>
+      Effect.logError(`Failed to load validator: ${baseName}`),
+    ),
+  );
 
 const makeMintingValidator = (
-  category: string,
+  category: Category,
   baseName: string,
 ): Effect.Effect<SDK.MintingValidator, NoSuchElementException> =>
   Effect.gen(function* () {
@@ -79,10 +87,14 @@ const makeMintingValidator = (
       mintingScript,
       policyId,
     };
-  });
+  }).pipe(
+    Effect.tapError((_e) =>
+      Effect.logError(`Failed to load validator: ${baseName}`),
+    ),
+  );
 
 const makeWithdrawalValidator = (
-  category: string,
+  category: Category,
   baseName: string,
 ): Effect.Effect<SDK.WithdrawalValidator, NoSuchElementException> =>
   Effect.gen(function* () {
@@ -102,28 +114,32 @@ const makeWithdrawalValidator = (
       withdrawalScript,
       withdrawalScriptHash,
     };
-  });
-
+  }).pipe(
+    Effect.tapError((_e) =>
+      Effect.logError(`Failed to load validator: ${baseName}`),
+    ),
+  );
 const makeAuthenticatedValidator = (
   baseName: string,
   network: Network,
 ): Effect.Effect<SDK.AuthenticatedValidator, NoSuchElementException> =>
   Effect.gen(function* () {
     const spendingValidator = yield* makeSpendingValidator(
-      MIDGARD_CATEGORY,
+      "midgard",
       baseName,
       network,
     );
-    const mintingValidator = yield* makeMintingValidator(
-      MIDGARD_CATEGORY,
-      baseName,
-    );
+    const mintingValidator = yield* makeMintingValidator("midgard", baseName);
 
     return {
       ...spendingValidator,
       ...mintingValidator,
     };
-  }).pipe(Effect.orDie);
+  }).pipe(
+    Effect.tapError((_e) =>
+      Effect.logError(`Failed to load validator: ${baseName}`),
+    ),
+  );
 
 const makeAlwaysSucceedsService: Effect.Effect<SDK.MidgardValidators> =
   Effect.gen(function* () {
@@ -131,13 +147,10 @@ const makeAlwaysSucceedsService: Effect.Effect<SDK.MidgardValidators> =
     const mkAuthVal = (contract: string) =>
       makeAuthenticatedValidator(contract, NETWORK);
     const mkFP = (fp: string) =>
-      makeSpendingValidator(FRAUD_PROOFS_CATEGORY, fp, NETWORK);
+      makeSpendingValidator("fraud_proofs", fp, NETWORK);
 
     // Midgard Contracts
-    const hubOracle = yield* makeMintingValidator(
-      MIDGARD_CATEGORY,
-      "hub_oracle",
-    );
+    const hubOracle = yield* makeMintingValidator("midgard", "hub_oracle");
     const scheduler = yield* mkAuthVal("scheduler");
     const stateQueue = yield* mkAuthVal("state_queue");
     const registeredOperators = yield* mkAuthVal("registered_operators");
@@ -155,12 +168,12 @@ const makeAlwaysSucceedsService: Effect.Effect<SDK.MidgardValidators> =
     // Reserve
     // TODO: Reserve is not entirely defined in specs. This might change.
     const reserveSpendingValidator = yield* makeSpendingValidator(
-      MIDGARD_CATEGORY,
+      "midgard",
       "reserve",
       NETWORK,
     );
     const reserveWithdawalValidator = yield* makeWithdrawalValidator(
-      MIDGARD_CATEGORY,
+      "midgard",
       "reserve",
     );
     const reserve = {

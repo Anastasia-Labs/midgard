@@ -12,7 +12,6 @@ import {
   TxSubmitError,
   UTxO,
   utxoToCore,
-  Script,
 } from "@lucid-evolution/lucid";
 import { DatabaseError } from "@/database/utils/common.js";
 import {
@@ -70,7 +69,7 @@ const submitGenesisDeposits: Effect.Effect<
 > = Effect.gen(function* () {
   yield* Effect.logInfo(`🟣 Building genesis deposit tx...`);
 
-  const { depositAuthValidator } = yield* AlwaysSucceedsContract;
+  const { deposit: depositAuthValidator } = yield* AlwaysSucceedsContract;
   const config = yield* NodeConfig;
   const lucid = yield* Lucid;
 
@@ -82,8 +81,8 @@ const submitGenesisDeposits: Effect.Effect<
 
   // Hard-coded 10 ADA deposit.
   const depositParams: SDK.DepositParams = {
-    depositScriptAddress: depositAuthValidator.spendScriptAddress,
-    mintingPolicy: depositAuthValidator.mintScript,
+    depositScriptAddress: depositAuthValidator.spendingScriptAddress,
+    mintingPolicy: depositAuthValidator.mintingScript,
     policyId: depositAuthValidator.policyId,
     depositAmount: 10_000_000n,
     depositInfo: {

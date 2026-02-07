@@ -57,8 +57,8 @@ const collectAndBurnUTxOsTx = (
       tx.collectFrom([utxo], Data.void());
     });
     tx.mintAssets(assetsToBurn, Data.void())
-      .attach.Script(authValidator.spendScript)
-      .attach.Script(authValidator.mintScript);
+      .attach.Script(authValidator.spendingScript)
+      .attach.Script(authValidator.mintingScript);
     return tx;
   });
 
@@ -191,7 +191,7 @@ export const resetUTxOs: Effect.Effect<
   AlwaysSucceedsContract | Lucid
 > = Effect.gen(function* () {
   const lucid = yield* Lucid;
-  const { stateQueueAuthValidator, depositAuthValidator } =
+  const { stateQueue: stateQueueAuthValidator, deposit: depositAuthValidator } =
     yield* AlwaysSucceedsContract;
 
   yield* Effect.logInfo("🚧 Fetching UTxOs...");
@@ -202,12 +202,12 @@ export const resetUTxOs: Effect.Effect<
     lucid.api,
     {
       stateQueuePolicyId: stateQueueAuthValidator.policyId,
-      stateQueueAddress: stateQueueAuthValidator.spendScriptAddress,
+      stateQueueAddress: stateQueueAuthValidator.spendingScriptAddress,
     },
   );
 
   const allDepositUTxOs = yield* SDK.fetchDepositUTxOsProgram(lucid.api, {
-    depositAddress: depositAuthValidator.spendScriptAddress,
+    depositAddress: depositAuthValidator.spendingScriptAddress,
     depositPolicyId: depositAuthValidator.policyId,
   });
 

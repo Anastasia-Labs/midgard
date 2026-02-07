@@ -6,8 +6,7 @@ import {
   createFraudProofCatalogueMpt,
   fraudProofsToIndexedValidators,
 } from "@/transactions/initialization.js";
-import {
-} from "@/transactions/utils.js";
+import {} from "@/transactions/utils.js";
 import { AlwaysSucceedsContract } from "@/services/always-succeeds.js";
 
 describe("Fraud Proof Catalogue Root", () => {
@@ -25,7 +24,8 @@ describe("Fraud Proof Catalogue Root", () => {
         const indexedFraudProofs = fraudProofsToIndexedValidators(fraudProofs);
         console.log("C");
 
-        const fraudProofsMPT = yield* createFraudProofCatalogueMpt(indexedFraudProofs);
+        const fraudProofsMPT =
+          yield* createFraudProofCatalogueMpt(indexedFraudProofs);
         console.log("D");
 
         const rootHash = yield* fraudProofsMPT.getRootHex();

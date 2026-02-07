@@ -7,7 +7,6 @@ import { handleSignSubmit } from "@/transactions/utils.js";
 import { MidgardMpt, MptError } from "@/workers/utils/mpt.js";
 import { BatchDBOp } from "@ethereumjs/util";
 
-
 /**
  * TODO: This function should be moved to SDK after moving our MPT module.
  */
@@ -17,16 +16,18 @@ export const uint32ToFraudProofID = (index: number): Buffer => {
   return buf;
 };
 
-
 /**
  * TODO: This function should be moved to SDK after moving our MPT module.
  */
 export const fraudProofsToIndexedValidators = (
   fraudProofs: SDK.FraudProofs,
 ): [Buffer, SDK.SpendingValidator][] => {
-  return Object
-    .entries(fraudProofs)
-    .map(([_fraudProofTitle, fraudProofValidator], i) => [uint32ToFraudProofID(i), fraudProofValidator]);
+  return Object.entries(fraudProofs).map(
+    ([_fraudProofTitle, fraudProofValidator], i) => [
+      uint32ToFraudProofID(i),
+      fraudProofValidator,
+    ],
+  );
 };
 
 /**
@@ -55,7 +56,8 @@ export const program = Effect.gen(function* () {
   yield* lucidService.switchToOperatorsMainWallet;
   const lucid = lucidService.api;
 
-  const fpMPT = yield* createFraudProofCatalogueMpt(contracts.fraudProofs)
+  const indexedFraudProofs = fraudProofsToIndexedValidators(contracts.fraudProofs);
+  const fpMPT = yield* createFraudProofCatalogueMpt(indexedFraudProofs);
   const fraudProofCatalogueMerkleRoot = yield* fpMPT.getRootHex();
 
   const initParams: SDK.InitializationParams = {
