@@ -341,7 +341,8 @@ const databaseOperationsProgram = (
     const { utxoRoot, txRoot, mempoolTxHashes, sizeOfProcessedTxs } =
       yield* processMpts(ledgerTrie, mempoolTrie, mempoolTxs);
 
-    const { stateQueue: stateQueueAuthValidator } = yield* AlwaysSucceedsContract;
+    const { stateQueue: stateQueueAuthValidator } =
+      yield* AlwaysSucceedsContract;
 
     if (workerInput.data.availableConfirmedBlock === "") {
       // The tx confirmation worker has not yet confirmed a previously

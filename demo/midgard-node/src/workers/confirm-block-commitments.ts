@@ -23,7 +23,8 @@ const fetchLatestBlock = (
   AlwaysSucceedsContract | NodeConfig
 > =>
   Effect.gen(function* () {
-    const { stateQueue: stateQueueAuthValidator } = yield* AlwaysSucceedsContract;
+    const { stateQueue: stateQueueAuthValidator } =
+      yield* AlwaysSucceedsContract;
     const fetchConfig: SDK.StateQueueFetchConfig = {
       stateQueueAddress: stateQueueAuthValidator.spendingScriptAddress,
       stateQueuePolicyId: stateQueueAuthValidator.policyId,

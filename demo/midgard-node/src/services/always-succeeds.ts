@@ -10,7 +10,6 @@ import {
   validatorToScriptHash,
   WithdrawalValidator,
 } from "@lucid-evolution/lucid";
-import { NodeConfig } from "@/services/config.js";
 import * as SDK from "@al-ft/midgard-sdk";
 import { NoSuchElementException } from "effect/Cause";
 
@@ -206,6 +205,5 @@ export class AlwaysSucceedsContract extends Effect.Service<AlwaysSucceedsContrac
   "AlwaysSucceedsContract",
   {
     effect: makeAlwaysSucceedsService,
-    dependencies: [NodeConfig.layer],
   },
 ) {}
