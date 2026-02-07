@@ -1,4 +1,4 @@
-import { AuthenticatedValidator, POSIXTimeSchema } from "@/common.js";
+import { AuthenticatedValidator } from "@/common.js";
 import { FRAUD_PROOF_CATALOGUE_ASSET_NAME } from "@/constants.js";
 import { Assets, Data, toUnit } from "@lucid-evolution/lucid";
 import { LucidEvolution, TxBuilder } from "@lucid-evolution/lucid";
@@ -64,11 +64,11 @@ export const incompleteFraudProofCatalogueInitTxProgram = (
       .newTx()
       .mintAssets(assets, Data.to("Init", FraudProofCatalogueMintRedeemer))
       .pay.ToAddressWithData(
-        params.validator.spendScriptAddress,
+        params.validator.spendingScriptAddress,
         { kind: "inline", value: datum },
         assets,
       )
-      .attach.Script(params.validator.mintScript);
+      .attach.Script(params.validator.mintingScript);
 
     return tx;
   });

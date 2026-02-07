@@ -4,8 +4,7 @@ import {
   GenericErrorFields,
   LucidError,
   MissingDatumError,
-  ValueSchema,
-} from "./common.js";
+} from "@/common.js";
 import { Data as EffectData, Effect } from "effect";
 import {
   Assets,
@@ -17,7 +16,7 @@ import {
   TxSignBuilder,
   UTxO,
 } from "@lucid-evolution/lucid";
-import { NODE_ASSET_NAME } from "./constants.js";
+import { NODE_ASSET_NAME } from "@/constants.js";
 
 export const NodeKeySchema = Data.Enum([
   Data.Object({ Key: Data.Object({ key: Data.Bytes() }) }),
@@ -34,15 +33,6 @@ export const NodeDatumSchema = Data.Object({
 export type NodeDatum = Data.Static<typeof NodeDatumSchema>;
 export const NodeDatum = NodeDatumSchema as unknown as NodeDatum;
 
-export const CommonSchema = Data.Object({
-  ownCS: Data.Bytes(),
-  mint: ValueSchema,
-  nodeInputs: Data.Array(NodeKeySchema),
-  nodeOutputs: Data.Array(NodeKeySchema),
-});
-export type Common = Data.Static<typeof CommonSchema>;
-export const Common = CommonSchema as unknown as Common;
-
 export const getNodeDatumFromUTxO = (
   nodeUTxO: UTxO,
 ): Effect.Effect<NodeDatum, DataCoercionError | MissingDatumError> => {
@@ -54,7 +44,7 @@ export const getNodeDatumFromUTxO = (
     } catch (e) {
       return Effect.fail(
         new DataCoercionError({
-          message: "Could not coerce provided UTxO's datum to a node datum",
+          message: "Could not coerce provided UTxO's datum to a `NodeDatum`",
           cause: e,
         }),
       );
@@ -62,7 +52,7 @@ export const getNodeDatumFromUTxO = (
   } else {
     return Effect.fail(
       new MissingDatumError({
-        message: "Provided UTxO was expected to carry an inlined `NodeDatum`",
+        message: "Provided UTxO was expected to carry an inline datum",
         cause: `No datum found in ${nodeUTxO.txHash}.${nodeUTxO.outputIndex}`,
       }),
     );
@@ -101,11 +91,11 @@ export const incompleteInitLinkedListTxProgram = (
       .newTx()
       .mintAssets(assets, params.redeemer)
       .pay.ToAddressWithData(
-        params.validator.spendScriptAddress,
+        params.validator.spendingScriptAddress,
         { kind: "inline", value: encodedDatum },
         assets,
       )
-      .attach.Script(params.validator.mintScript);
+      .attach.Script(params.validator.mintingScript);
 
     return tx;
   });
@@ -123,7 +113,7 @@ export const unsignedLinkedListTxProgram = (
       try: () => commitTx.complete({ localUPLCEval: true }),
       catch: (e) =>
         new LucidError({
-          message: `Failed to build the init state queue transaction: ${e}`,
+          message: `Failed to build the linked list initialization transaction: ${e}`,
           cause: e,
         }),
     });

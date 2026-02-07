@@ -1,6 +1,6 @@
 {
   "name": "midgard-node",
-  "version": "1.0.0",
+  "version": "0.1.0",
   "description": "A CLI application for submitting/receiving L2 transactions and committing/merging Midgard blocks",
   "main": "dist/index.js",
   "type": "module",
@@ -14,7 +14,6 @@
     "format": "prettier --write \"**/*.{ts,tsx,md}\"",
     "format-check": "prettier --check \"**/*.{ts,tsx,md}\"",
     "listen": "pnpm run build && node dist/index.js listen",
-    "init": "pnpm run build && node dist/index.js init",
     "test": "export NODE_ENV='emulator' && vitest run"
     },
   "keywords": [
@@ -60,8 +59,6 @@
     "@types/node": "^22.19.1",
     "prettier": "^3.6.2",
     "tsup": "^8.5.1",
-    "typescript": "^5.9.3",
-    "vite": "^6.4.1"
-  },
-  "packageManager": "pnpm@9.15.4+sha512.b2dc20e2fc72b3e18848459b37359a32064663e5627a51e4c74b2c29dd8e8e0491483c3abb40789cfd578bf362fb6ba8261b05f0387d76792ed6e23ea3b1b6a0"
+    "typescript": "^5.9.3"
+  }
 }

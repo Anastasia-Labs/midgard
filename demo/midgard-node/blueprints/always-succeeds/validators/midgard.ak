@@ -138,9 +138,9 @@ validator reserve_spend {
   }
 }
 
-validator reserve_mint {
+validator reserve_withdraw {
   else(_) {
-    trace @"Midgard Demo – Reserve Mint"
+    trace @"Midgard Demo – Reserve Withdraw"
     True
   }
 }

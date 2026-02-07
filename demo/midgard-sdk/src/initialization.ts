@@ -9,15 +9,16 @@ import {
   Bech32DeserializationError,
   LucidError,
   MidgardValidators,
-} from "./common.js";
-import { incompleteHubOracleInitTxProgram } from "./hub-oracle.js";
-import { incompleteSchedulerInitTxProgram } from "./scheduler.js";
-import { incompleteFraudProofCatalogueInitTxProgram } from "./fraud-proof/catalogue.js";
-import { incompleteInitStateQueueTxProgram } from "./state-queue.js";
-import { incompleteActiveOperatorInitTxProgram } from "./active-operators.js";
-import { incompleteRegisteredOperatorInitTxProgram } from "./registered-operators.js";
-import { incompleteRetiredOperatorInitTxProgram } from "./retired-operators.js";
-import { GENESIS_HASH_32 } from "./constants.js";
+} from "@/common.js";
+import { incompleteHubOracleInitTxProgram } from "@/hub-oracle.js";
+import { incompleteSchedulerInitTxProgram } from "@/scheduler.js";
+import { incompleteFraudProofCatalogueInitTxProgram } from "@/fraud-proof/catalogue.js";
+import { incompleteInitStateQueueTxProgram } from "@/state-queue.js";
+import { incompleteActiveOperatorInitTxProgram } from "@/active-operators.js";
+import { incompleteRegisteredOperatorInitTxProgram } from "@/registered-operators.js";
+import { incompleteRetiredOperatorInitTxProgram } from "@/retired-operators.js";
+
+export const VALIDITY_RANGE_BUFFER = 5 * 60 * 1000;
 
 export type InitializationParams = {
   midgardValidators: MidgardValidators;
@@ -33,7 +34,7 @@ export const incompleteInitializationTxProgram = (
       try: () => lucid.wallet().getUtxos(),
       catch: (e) =>
         new LucidError({
-          message: "Failed to fetch UTxOs for nonce",
+          message: "Failed to fetch UTxOs to use as nonce for initialization",
           cause: e,
         }),
     });
@@ -41,55 +42,56 @@ export const incompleteInitializationTxProgram = (
     if (utxos.length === 0) {
       return yield* Effect.fail(
         new LucidError({
-          message: "No UTxOs available for nonce",
+          message: "No UTxOs available for nonce of initialization",
           cause: "Wallet has no UTxOs",
         }),
       );
     }
 
     const nonceUtxo = utxos[0];
-    const genesisTime = BigInt(Date.now() + 5 * 60 * 1000);
+    const genesisTime = BigInt(Date.now() + VALIDITY_RANGE_BUFFER);
     let tx = lucid
       .newTx()
       .collectFrom([nonceUtxo])
       .validTo(Number(genesisTime));
 
     const hubOracleTx = yield* incompleteHubOracleInitTxProgram(lucid, {
+      hubOracleMintValidator: params.midgardValidators.hubOracle,
       validators: params.midgardValidators,
     });
 
     const stateQueueTx: TxBuilder = yield* incompleteInitStateQueueTxProgram(
       lucid,
       {
-        validator: params.midgardValidators.stateQueueAuthValidator,
+        validator: params.midgardValidators.stateQueue,
         genesisTime: genesisTime,
       },
     );
 
     const registeredOperatorsTx: TxBuilder =
       yield* incompleteRegisteredOperatorInitTxProgram(lucid, {
-        validator: params.midgardValidators.registeredOperatorsAuthValidator,
+        validator: params.midgardValidators.registeredOperators,
       });
 
     const activeOperatorsTx: TxBuilder =
       yield* incompleteActiveOperatorInitTxProgram(lucid, {
-        validator: params.midgardValidators.activeOperatorsAuthValidator,
+        validator: params.midgardValidators.activeOperators,
       });
 
     const retiredOperatorsTx = yield* incompleteRetiredOperatorInitTxProgram(
       lucid,
       {
-        validator: params.midgardValidators.retiredOperatorsAuthValidator,
+        validator: params.midgardValidators.retiredOperators,
       },
     );
 
     const schedulerTx = incompleteSchedulerInitTxProgram(lucid, {
-      validator: params.midgardValidators.schedulerAuthValidator,
+      validator: params.midgardValidators.scheduler,
     });
 
     const fraudProofCatalogueTx: TxBuilder =
       yield* incompleteFraudProofCatalogueInitTxProgram(lucid, {
-        validator: params.midgardValidators.fraudProofCatalogueAuthValidator,
+        validator: params.midgardValidators.fraudProofCatalogue,
         mptRootHash: params.fraudProofCatalogueMerkleRoot,
       });
 
@@ -125,9 +127,6 @@ export const unsignedInitializationTxProgram = (
 
 /**
  * Builds completed tx for initializing all Midgard contracts.
- * This includes: Hub Oracle, State Queue,
- * Registered/Active/Retired Operators, Scheduler, Escape Hatch,
- * and Fraud Proof Catalogue.
  *
  * @param lucid - The `LucidEvolution` API object.
  * @param initParams - Parameters for initializing all Midgard contracts.

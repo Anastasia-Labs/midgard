@@ -1,13 +1,12 @@
 import {
   Assets,
   Data,
-  fromText,
   LucidEvolution,
   toUnit,
   TxBuilder,
 } from "@lucid-evolution/lucid";
 import { AuthenticatedValidator } from "@/common.js";
-import { SCHEDULER_ASSET_NAME } from "./constants.js";
+import { SCHEDULER_ASSET_NAME } from "@/constants.js";
 
 export const SchedulerDatumSchema = Data.Object({
   operator: Data.Bytes(),
@@ -79,8 +78,8 @@ export const incompleteSchedulerInitTxProgram = (
   return lucid
     .newTx()
     .mintAssets(assets, redeemer)
-    .pay.ToAddress(params.validator.spendScriptAddress, assets)
-    .attach.Script(params.validator.mintScript);
+    .pay.ToAddress(params.validator.spendingScriptAddress, assets)
+    .attach.Script(params.validator.mintingScript);
 };
 
 /**

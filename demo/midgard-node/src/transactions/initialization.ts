@@ -2,51 +2,47 @@ import { Effect } from "effect";
 import { Lucid } from "@/services/lucid.js";
 import { AlwaysSucceedsContract } from "@/services/always-succeeds.js";
 import * as SDK from "@al-ft/midgard-sdk";
-import {
-  handleSignSubmit,
-  uint32ToKey,
-  getFraudProofCatalogueScripts,
-  FraudProofCatalogueValidators,
-} from "@/transactions/utils.js";
+import { handleSignSubmit } from "@/transactions/utils.js";
 
 import { MidgardMpt, MptError } from "@/workers/utils/mpt.js";
 import { BatchDBOp } from "@ethereumjs/util";
 
+/**
+ * TODO: This function should be moved to SDK after moving our MPT module.
+ */
 export const createFraudProofCatalogueMpt = (
-  contracts: FraudProofCatalogueValidators,
-): Effect.Effect<MidgardMpt, MptError | SDK.HashingError> =>
+  fraudProofs: SDK.FraudProofs,
+): Effect.Effect<MidgardMpt, MptError> =>
   Effect.gen(function* () {
-    const scripts = getFraudProofCatalogueScripts(contracts);
-    const trie = yield* MidgardMpt.create("fraud_proof_catalogue");
-
-    const batchOps = yield* Effect.all(
-      scripts.map((script: string, i: number) =>
-        SDK.hashHexWithBlake2b224(script).pipe(
-          Effect.map(
-            (hash): BatchDBOp => ({
-              type: "put",
-              key: uint32ToKey(i),
-              value: Buffer.from(hash, "hex"),
-            }),
-          ),
-        ),
-      ),
-      { concurrency: "unbounded" },
+    const uint32ToKey = (index: number): Buffer => {
+      const buf = Buffer.alloc(4);
+      buf.writeUInt32BE(index);
+      return buf;
+    };
+    const batchOps = Object.entries(fraudProofs).map(
+      ([_fraudProofTitle, fraudProofValidator], i): BatchDBOp => ({
+        type: "put",
+        key: uint32ToKey(i),
+        value: Buffer.from(fraudProofValidator.spendingScriptHash, "hex"),
+      }),
     );
-
+    const trie = yield* MidgardMpt.create("fraud_proof_catalogue");
     yield* trie.batch(batchOps);
     return trie;
   });
 
+/**
+ * TODO: This function should be moved to SDK after moving our MPT module.
+ */
 export const computeFraudProofCatalogueMptRoot = (
-  contracts: FraudProofCatalogueValidators,
-): Effect.Effect<string, MptError | SDK.HashingError> =>
+  fraudProofs: SDK.FraudProofs,
+): Effect.Effect<string, MptError> =>
   Effect.gen(function* () {
-    const trie = yield* createFraudProofCatalogueMpt(contracts);
+    const trie = yield* createFraudProofCatalogueMpt(fraudProofs);
     return yield* trie.getRootHex();
   });
 
-export const initializeMidgard = Effect.gen(function* () {
+export const program = Effect.gen(function* () {
   const lucidService = yield* Lucid;
   const contracts = yield* AlwaysSucceedsContract;
 
@@ -54,9 +50,8 @@ export const initializeMidgard = Effect.gen(function* () {
   const lucid = lucidService.api;
 
   const fraudProofCatalogueMerkleRoot =
-    yield* computeFraudProofCatalogueMptRoot(contracts);
+    yield* computeFraudProofCatalogueMptRoot(contracts.fraudProofs);
 
-  //TODO: Move to SDK
   const initParams: SDK.InitializationParams = {
     midgardValidators: contracts,
     fraudProofCatalogueMerkleRoot,

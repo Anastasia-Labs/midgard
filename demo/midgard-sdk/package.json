@@ -22,8 +22,16 @@
   "keywords": [],
   "author": "",
   "license": "ISC",
+  "directories": {
+    "test": "test"
+  },
+  "dependencies": {
+    "@lucid-evolution/lucid": "0.4.29",
+    "@noble/hashes": "^1.8.0",
+    "effect": "^3.14.22"
+  },
   "devDependencies": {
-    "@effect/vitest": "^0.17.8",
+    "@effect/vitest": "^0.22.5",
     "@sinclair/typebox": "^0.34.28",
     "@types/node": "^22.13.5",
     "@typescript-eslint/eslint-plugin": "^8.25.0",
@@ -35,15 +43,6 @@
     "ts-node": "^10.9.2",
     "tsup": "^8.4.0",
     "typescript": "^5.7.3",
-    "vitest": "2.1.8"
-  },
-  "directories": {
-    "test": "test"
-  },
-  "dependencies": {
-    "@lucid-evolution/lucid": "0.4.29",
-    "@noble/hashes": "^1.8.0",
-    "effect": "^3.14.22"
-  },
-  "packageManager": "pnpm@9.15.4+sha512.b2dc20e2fc72b3e18848459b37359a32064663e5627a51e4c74b2c29dd8e8e0491483c3abb40789cfd578bf362fb6ba8261b05f0387d76792ed6e23ea3b1b6a0"
+    "vitest": "^3.2.4"
+  }
 }

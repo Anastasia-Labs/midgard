@@ -1,4 +1,9 @@
-import { Data, getAddressDetails, Script } from "@lucid-evolution/lucid";
+import {
+  Data,
+  getAddressDetails,
+  Script,
+  ScriptHash,
+} from "@lucid-evolution/lucid";
 import { Data as EffectData } from "effect";
 import { Effect } from "effect";
 import {
@@ -175,37 +180,53 @@ export const bufferToHex = (buf: Buffer): string => {
   }
 };
 
-export type MintingValidatorInfo = {
-  mintingCBOR: string;
-  mintScript: Script;
+export type MintingValidator = {
+  mintingScriptCBOR: string;
+  mintingScript: Script;
   policyId: PolicyId;
 };
 
-export type SpendingValidatorInfo = {
-  spendingCBOR: string;
-  spendScript: Script;
-  spendScriptAddress: string;
+export type SpendingValidator = {
+  spendingScriptCBOR: string;
+  spendingScript: Script;
+  spendingScriptHash: ScriptHash;
+  spendingScriptAddress: Address;
 };
 
-export type AuthenticatedValidator = SpendingValidatorInfo &
-  MintingValidatorInfo;
+export type WithdrawalValidator = {
+  withdrawalScriptCBOR: string;
+  withdrawalScript: Script;
+  withdrawalScriptHash: ScriptHash;
+};
+
+export type AuthenticatedValidator = SpendingValidator & MintingValidator;
+
+// TODO: We'll need a more elaborate design to allow multiple steps for each
+//       proof.
+export type FraudProofs = {
+  doubleSpend: SpendingValidator;
+  nonExistentInput: SpendingValidator;
+  nonExistentInputNoIndex: SpendingValidator;
+  invalidRange: SpendingValidator;
+};
 
 export type MidgardValidators = {
-  hubOracleMintValidator: MintingValidatorInfo;
-  stateQueueAuthValidator: AuthenticatedValidator;
-  registeredOperatorsAuthValidator: AuthenticatedValidator;
-  activeOperatorsAuthValidator: AuthenticatedValidator;
-  schedulerAuthValidator: AuthenticatedValidator;
-  retiredOperatorsAuthValidator: AuthenticatedValidator;
-  escapeHatchAuthValidator: AuthenticatedValidator;
-  fraudProofCatalogueAuthValidator: AuthenticatedValidator;
-  fraudProofAuthValidator: AuthenticatedValidator;
-  depositAuthValidator: AuthenticatedValidator;
-  reserveAuthValidator: AuthenticatedValidator;
-  payoutAuthValidator: AuthenticatedValidator;
-  withdrawalAuthValidator: AuthenticatedValidator;
-  txOrderAuthValidator: AuthenticatedValidator;
-  settlementAuthValidator: AuthenticatedValidator;
+  hubOracle: MintingValidator;
+  stateQueue: AuthenticatedValidator;
+  scheduler: AuthenticatedValidator;
+  registeredOperators: AuthenticatedValidator;
+  activeOperators: AuthenticatedValidator;
+  retiredOperators: AuthenticatedValidator;
+  escapeHatch: AuthenticatedValidator;
+  fraudProofCatalogue: AuthenticatedValidator;
+  fraudProof: AuthenticatedValidator;
+  deposit: AuthenticatedValidator;
+  withdrawal: AuthenticatedValidator;
+  txOrder: AuthenticatedValidator;
+  settlement: AuthenticatedValidator;
+  reserve: SpendingValidator & WithdrawalValidator;
+  payout: AuthenticatedValidator;
+  fraudProofs: FraudProofs;
 };
 
 export const OutputReferenceSchema = Data.Object({
@@ -235,7 +256,9 @@ export const POSIXTime = POSIXTimeSchema as unknown as POSIXTime;
 
 export const PubKeyHashSchema = Data.Bytes({ minLength: 28, maxLength: 28 });
 
-export const PolicyIdSchema = Data.Bytes({ minLength: 28, maxLength: 28 });
+export const ScriptHashSchema = Data.Bytes({ minLength: 28, maxLength: 28 });
+
+export const PolicyIdSchema = ScriptHashSchema;
 
 export const MerkleRootSchema = Data.Bytes({ minLength: 32, maxLength: 32 });
 export type MerkleRoot = Data.Static<typeof MerkleRootSchema>;
@@ -243,14 +266,10 @@ export const MerkleRoot = MerkleRootSchema as unknown as MerkleRoot;
 
 export const CredentialSchema = Data.Enum([
   Data.Object({
-    PublicKeyCredential: Data.Tuple([
-      Data.Bytes({ minLength: 28, maxLength: 28 }),
-    ]),
+    PublicKeyCredential: Data.Tuple([PubKeyHashSchema]),
   }),
   Data.Object({
-    ScriptCredential: Data.Tuple([
-      Data.Bytes({ minLength: 28, maxLength: 28 }),
-    ]),
+    ScriptCredential: Data.Tuple([ScriptHashSchema]),
   }),
 ]);
 export type CredentialD = Data.Static<typeof CredentialSchema>;
@@ -276,7 +295,9 @@ export const AddressSchema = Data.Object({
 export type AddressData = Data.Static<typeof AddressSchema>;
 export const AddressData = AddressSchema as unknown as AddressData;
 
-/* TODO: Note that this function does not support pointer addresses. */
+/**
+ * TODO: Note that this function does not support pointer addresses.
+ */
 export const addressDataFromBech32 = (
   address: Address,
 ): Effect.Effect<AddressData, Bech32DeserializationError> =>

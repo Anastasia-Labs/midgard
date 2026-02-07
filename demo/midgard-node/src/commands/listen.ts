@@ -61,7 +61,7 @@ import {
   monitorMempoolFiber,
   txQueueProcessorFiber,
 } from "@/fibers/index.js";
-import { initializeMidgard } from "@/transactions/initialization.js";
+import * as Initialization from "@/transactions/initialization.js";
 
 const TX_ENDPOINT: string = "tx";
 const ADDRESS_HISTORY_ENDPOINT: string = "txs";
@@ -247,7 +247,7 @@ const getBlockHandler = Effect.gen(function* () {
 
 const getInitHandler = Effect.gen(function* () {
   yield* Effect.logInfo(`✨ Initialization request received`);
-  const txHash = yield* initializeMidgard;
+  const txHash = yield* Initialization.program;
   yield* Genesis.program;
   yield* Effect.logInfo(
     `GET /${INIT_ENDPOINT} - Initialization successful: ${txHash}`,
@@ -261,9 +261,6 @@ const getInitHandler = Effect.gen(function* () {
     handleGenericGetFailure(INIT_ENDPOINT, e),
   ),
   Effect.catchTag("MptError", (e) => handleGenericGetFailure(INIT_ENDPOINT, e)),
-  Effect.catchTag("HashingError", (e) =>
-    handleGenericGetFailure(INIT_ENDPOINT, e),
-  ),
   Effect.catchTag("TxSubmitError", (e) => handleTxGetFailure(INIT_ENDPOINT, e)),
   Effect.catchTag("TxSignError", (e) => handleTxGetFailure(INIT_ENDPOINT, e)),
 );

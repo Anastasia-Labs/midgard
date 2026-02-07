@@ -5,11 +5,12 @@ import {
   AddressSchema,
   PolicyIdSchema,
   makeReturn,
-  AuthenticatedValidator,
-  MintingValidatorInfo,
   addressDataFromBech32,
   Bech32DeserializationError,
   MidgardValidators,
+  AuthenticatedValidator,
+  ScriptHashSchema,
+  MintingValidator,
 } from "@/common.js";
 import {
   Address,
@@ -20,11 +21,8 @@ import {
   UTxO,
   Data,
   Assets,
-  fromText,
   credentialToAddress,
   scriptHashToCredential,
-  paymentCredentialOf,
-  Network,
 } from "@lucid-evolution/lucid";
 import { HUB_ORACLE_ASSET_NAME } from "@/constants.js";
 
@@ -60,46 +58,23 @@ export const HubOracleDatumSchema = Data.Object({
   withdrawalAddr: AddressSchema,
   txOrderAddr: AddressSchema,
   settlementAddr: AddressSchema,
-  reserveAddr: AddressSchema,
   payoutAddr: AddressSchema,
-  reserveObserver: Data.Bytes({ minLength: 28, maxLength: 28 }),
+  reserveAddr: AddressSchema,
+  reserveObserver: ScriptHashSchema,
 });
 export type HubOracleDatum = Data.Static<typeof HubOracleDatumSchema>;
 export const HubOracleDatum = HubOracleDatumSchema as unknown as HubOracleDatum;
 
 export type HubOracleInitParams = {
+  hubOracleMintValidator: MintingValidator;
   validators: HubOracleValidators;
 };
 
-/**
- * Validators needed to construct the hub oracle datum.
- * This is the "wiring" that connects all Midgard contracts together.
- */
-export type HubOracleValidators = Pick<
+export type HubOracleValidators = Omit<
   MidgardValidators,
-  | "hubOracleMintValidator"
-  | "registeredOperatorsAuthValidator"
-  | "activeOperatorsAuthValidator"
-  | "retiredOperatorsAuthValidator"
-  | "schedulerAuthValidator"
-  | "stateQueueAuthValidator"
-  | "fraudProofCatalogueAuthValidator"
-  | "fraudProofAuthValidator"
-  | "depositAuthValidator"
-  | "withdrawalAuthValidator"
-  | "txOrderAuthValidator"
-  | "settlementAuthValidator"
-  | "payoutAuthValidator"
-  | "reserveAuthValidator"
+  "hubOracle" | "fraudProofs"
 >;
 
-/**
- * Constructs HubOracleDatum from validators.
- * This is the "glue" that wires all Midgard contracts together.
- *
- * @param {HubOracleValidators} validators - All validators that need to be registered in the hub oracle
- * @returns {HubOracleDatum} Effect that produces the complete hub oracle datum
- */
 export const makeHubOracleDatum = (
   validators: HubOracleValidators,
 ): Effect.Effect<HubOracleDatum, Bech32DeserializationError> =>
@@ -116,55 +91,44 @@ export const makeHubOracleDatum = (
       withdrawalAddr,
       txOrderAddr,
       settlementAddr,
-      reserveAddr,
       payoutAddr,
-    ] = yield* Effect.all([
-      addressDataFromBech32(
-        validators.registeredOperatorsAuthValidator.spendScriptAddress,
+    ] = yield* Effect.all(
+      [
+        validators.registeredOperators,
+        validators.activeOperators,
+        validators.retiredOperators,
+        validators.scheduler,
+        validators.stateQueue,
+        validators.fraudProofCatalogue,
+        validators.fraudProof,
+        validators.deposit,
+        validators.withdrawal,
+        validators.txOrder,
+        validators.settlement,
+        validators.payout,
+      ].map((authVal: AuthenticatedValidator) =>
+        addressDataFromBech32(authVal.spendingScriptAddress),
       ),
-      addressDataFromBech32(
-        validators.activeOperatorsAuthValidator.spendScriptAddress,
-      ),
-      addressDataFromBech32(
-        validators.retiredOperatorsAuthValidator.spendScriptAddress,
-      ),
-      addressDataFromBech32(
-        validators.schedulerAuthValidator.spendScriptAddress,
-      ),
-      addressDataFromBech32(
-        validators.stateQueueAuthValidator.spendScriptAddress,
-      ),
-      addressDataFromBech32(
-        validators.fraudProofCatalogueAuthValidator.spendScriptAddress,
-      ),
-      addressDataFromBech32(
-        validators.fraudProofAuthValidator.spendScriptAddress,
-      ),
-      addressDataFromBech32(validators.depositAuthValidator.spendScriptAddress),
-      addressDataFromBech32(
-        validators.withdrawalAuthValidator.spendScriptAddress,
-      ),
-      addressDataFromBech32(validators.txOrderAuthValidator.spendScriptAddress),
-      addressDataFromBech32(
-        validators.settlementAuthValidator.spendScriptAddress,
-      ),
-      addressDataFromBech32(validators.reserveAuthValidator.spendScriptAddress),
-      addressDataFromBech32(validators.payoutAuthValidator.spendScriptAddress),
-    ]);
+      { concurrency: "unbounded" },
+    );
+
+    const reserveAddr = yield* addressDataFromBech32(
+      validators.reserve.spendingScriptAddress,
+    );
 
     return {
-      registeredOperators: validators.registeredOperatorsAuthValidator.policyId,
-      activeOperators: validators.activeOperatorsAuthValidator.policyId,
-      retiredOperators: validators.retiredOperatorsAuthValidator.policyId,
-      scheduler: validators.schedulerAuthValidator.policyId,
-      stateQueue: validators.stateQueueAuthValidator.policyId,
-      fraudProofCatalogue: validators.fraudProofCatalogueAuthValidator.policyId,
-      fraudProof: validators.fraudProofAuthValidator.policyId,
-      deposit: validators.depositAuthValidator.policyId,
-      withdrawal: validators.withdrawalAuthValidator.policyId,
-      txOrder: validators.txOrderAuthValidator.policyId,
-      settlement: validators.settlementAuthValidator.policyId,
-      payout: validators.payoutAuthValidator.policyId,
+      registeredOperators: validators.registeredOperators.policyId,
+      activeOperators: validators.activeOperators.policyId,
+      retiredOperators: validators.retiredOperators.policyId,
+      scheduler: validators.scheduler.policyId,
+      stateQueue: validators.stateQueue.policyId,
+      fraudProofCatalogue: validators.fraudProofCatalogue.policyId,
+      fraudProof: validators.fraudProof.policyId,
+      deposit: validators.deposit.policyId,
+      withdrawal: validators.withdrawal.policyId,
+      txOrder: validators.txOrder.policyId,
+      settlement: validators.settlement.policyId,
+      payout: validators.payout.policyId,
       registeredOperatorsAddr,
       activeOperatorsAddr,
       retiredOperatorsAddr,
@@ -176,11 +140,9 @@ export const makeHubOracleDatum = (
       withdrawalAddr,
       txOrderAddr,
       settlementAddr,
-      reserveAddr,
       payoutAddr,
-      reserveObserver: paymentCredentialOf(
-        validators.reserveAuthValidator.spendScriptAddress,
-      ).hash,
+      reserveAddr,
+      reserveObserver: validators.reserve.withdrawalScriptHash,
     };
   });
 
@@ -200,10 +162,8 @@ export const incompleteHubOracleInitTxProgram = (
     const encodedDatum = Data.to<HubOracleDatum>(datum, HubOracleDatum);
 
     const assets: Assets = {
-      [toUnit(
-        params.validators.hubOracleMintValidator.policyId,
-        HUB_ORACLE_ASSET_NAME,
-      )]: 1n,
+      [toUnit(params.hubOracleMintValidator.policyId, HUB_ORACLE_ASSET_NAME)]:
+        1n,
     };
 
     return lucid
@@ -212,16 +172,12 @@ export const incompleteHubOracleInitTxProgram = (
       .pay.ToAddressWithData(
         credentialToAddress(
           lucid.config().network!,
-          scriptHashToCredential(
-            params.validators.hubOracleMintValidator.policyId,
-          ),
+          scriptHashToCredential(params.hubOracleMintValidator.policyId),
         ),
         { kind: "inline", value: encodedDatum },
         assets,
       )
-      .attach.MintingPolicy(
-        params.validators.hubOracleMintValidator.mintScript,
-      );
+      .attach.MintingPolicy(params.hubOracleMintValidator.mintingScript);
   });
 
 export class HubOracleError extends EffectData.TaggedError(
