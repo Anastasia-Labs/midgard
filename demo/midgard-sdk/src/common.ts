@@ -1,6 +1,9 @@
 import {
+  AddressDetails,
+  credentialToAddress,
   Data,
   getAddressDetails,
+  Network,
   Script,
   ScriptHash,
 } from "@lucid-evolution/lucid";
@@ -180,6 +183,66 @@ export const bufferToHex = (buf: Buffer): string => {
   }
 };
 
+/**
+ * Assumes the given Bech32 string is that of a Cardano address (TODO).
+ */
+export const midgardAddressFromBech32 = (
+  bechStr: string,
+): Effect.Effect<MidgardAddress, Bech32DeserializationError> =>
+  Effect.gen(function* () {
+    const addressDetails: AddressDetails = yield* Effect.try({
+      try: () => getAddressDetails(bechStr),
+      catch: (e) =>
+        new Bech32DeserializationError({
+          message: `Failed to break down ${bechStr} to its details.`,
+          cause: e,
+        }),
+    });
+    const cred = addressDetails.paymentCredential;
+    if (cred === undefined) {
+      return yield* new Bech32DeserializationError({
+        message: `Failed extracting the payment credential from ${bechStr}.`,
+        cause: "Unknown cause.",
+      });
+    } else {
+      if (cred.type === "Key") {
+        const midgardAddress: MidgardAddress = {
+          PublicKeyCredential: [cred.hash],
+        };
+        return midgardAddress;
+      } else {
+        const midgardAddress: MidgardAddress = {
+          ScriptCredential: [cred.hash],
+        };
+        return midgardAddress;
+      }
+    }
+  });
+
+/**
+ * Taking Cardano `Network` as the first argument is temporary (TODO).
+ */
+export const midgardAddressToBech32 = (
+  network: Network,
+  addr: MidgardAddress,
+): string => {
+  if ("PublicKeyCredential" in addr) {
+    const [pubKeyHex] = addr.PublicKeyCredential;
+    const cred: Credential = {
+      type: "Key",
+      hash: pubKeyHex,
+    };
+    return credentialToAddress(network, cred);
+  } else {
+    const [scriptHashHex] = addr.ScriptCredential;
+    const cred: Credential = {
+      type: "Script",
+      hash: scriptHashHex,
+    };
+    return credentialToAddress(network, cred);
+  }
+};
+
 export type MintingValidator = {
   mintingScriptCBOR: string;
   mintingScript: Script;
@@ -295,6 +358,10 @@ export const AddressSchema = Data.Object({
 export type AddressData = Data.Static<typeof AddressSchema>;
 export const AddressData = AddressSchema as unknown as AddressData;
 
+export const MidgardAddressSchema = CredentialSchema;
+export type MidgardAddress = CredentialD;
+export const MidgardAddress = MidgardAddressSchema as unknown as MidgardAddress;
+
 /**
  * TODO: Note that this function does not support pointer addresses.
  */
@@ -343,12 +410,12 @@ export type GenericErrorFields = {
   readonly cause: any;
 };
 
-export class CmlUnexpectedError extends EffectData.TaggedError(
-  "CmlUnexpectedError",
+export class AssetError extends EffectData.TaggedError(
+  "AssetError",
 )<GenericErrorFields> {}
 
-export class CmlDeserializationError extends EffectData.TaggedError(
-  "CmlDeserializationError",
+export class Bech32DeserializationError extends EffectData.TaggedError(
+  "Bech32DeserializationError",
 )<GenericErrorFields> {}
 
 export class CborSerializationError extends EffectData.TaggedError(
@@ -359,32 +426,32 @@ export class CborDeserializationError extends EffectData.TaggedError(
   "CborDeserializationError",
 )<GenericErrorFields> {}
 
-export class Bech32DeserializationError extends EffectData.TaggedError(
-  "Bech32DeserializationError",
+export class CmlUnexpectedError extends EffectData.TaggedError(
+  "CmlUnexpectedError",
+)<GenericErrorFields> {}
+
+export class CmlDeserializationError extends EffectData.TaggedError(
+  "CmlDeserializationError",
 )<GenericErrorFields> {}
 
 export class DataCoercionError extends EffectData.TaggedError(
   "DataCoercionError",
 )<GenericErrorFields> {}
 
-export class UnauthenticUtxoError extends EffectData.TaggedError(
-  "UnauthenticUtxoError",
-)<GenericErrorFields> {}
-
-export class MissingDatumError extends EffectData.TaggedError(
-  "MissingDatumError",
+export class HashingError extends EffectData.TaggedError(
+  "HashingError",
 )<GenericErrorFields> {}
 
 export class LucidError extends EffectData.TaggedError(
   "LucidError",
 )<GenericErrorFields> {}
 
-export class HashingError extends EffectData.TaggedError(
-  "HashingError",
+export class MissingDatumError extends EffectData.TaggedError(
+  "MissingDatumError",
 )<GenericErrorFields> {}
 
-export class AssetError extends EffectData.TaggedError(
-  "AssetError",
+export class UnauthenticUtxoError extends EffectData.TaggedError(
+  "UnauthenticUtxoError",
 )<GenericErrorFields> {}
 
 export class UnspecifiedNetworkError extends EffectData.TaggedError(
