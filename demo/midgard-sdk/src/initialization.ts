@@ -9,6 +9,7 @@ import {
   Bech32DeserializationError,
   LucidError,
   MidgardValidators,
+  UnspecifiedNetworkError,
 } from "@/common.js";
 import { incompleteHubOracleInitTxProgram } from "@/hub-oracle.js";
 import { incompleteSchedulerInitTxProgram } from "@/scheduler.js";
@@ -28,7 +29,10 @@ export type InitializationParams = {
 export const incompleteInitializationTxProgram = (
   lucid: LucidEvolution,
   params: InitializationParams,
-): Effect.Effect<TxBuilder, LucidError | Bech32DeserializationError> =>
+): Effect.Effect<
+  TxBuilder,
+  LucidError | Bech32DeserializationError | UnspecifiedNetworkError
+> =>
   Effect.gen(function* () {
     const utxos = yield* Effect.tryPromise({
       try: () => lucid.wallet().getUtxos(),
@@ -108,7 +112,10 @@ export const incompleteInitializationTxProgram = (
 export const unsignedInitializationTxProgram = (
   lucid: LucidEvolution,
   initParams: InitializationParams,
-): Effect.Effect<TxSignBuilder, LucidError | Bech32DeserializationError> =>
+): Effect.Effect<
+  TxSignBuilder,
+  LucidError | Bech32DeserializationError | UnspecifiedNetworkError
+> =>
   Effect.gen(function* () {
     const commitTx = yield* incompleteInitializationTxProgram(
       lucid,

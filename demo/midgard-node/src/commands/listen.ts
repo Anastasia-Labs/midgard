@@ -47,6 +47,7 @@ import { createServer } from "node:http";
 import { NodeHttpServer } from "@effect/platform-node";
 import { HttpBodyError } from "@effect/platform/HttpBody";
 import * as Genesis from "@/genesis.js";
+import * as Initialization from "@/transactions/initialization.js";
 import * as Reset from "@/reset.js";
 import { SerializedStateQueueUTxO } from "@/workers/utils/commit-block-header.js";
 import { DatabaseError } from "@/database/utils/common.js";
@@ -61,7 +62,6 @@ import {
   monitorMempoolFiber,
   txQueueProcessorFiber,
 } from "@/fibers/index.js";
-import * as Initialization from "@/transactions/initialization.js";
 
 const TX_ENDPOINT: string = "tx";
 const ADDRESS_HISTORY_ENDPOINT: string = "txs";
@@ -264,6 +264,9 @@ const getInitHandler = Effect.gen(function* () {
   Effect.catchTag("MptError", (e) => handleGenericGetFailure(INIT_ENDPOINT, e)),
   Effect.catchTag("TxSubmitError", (e) => handleTxGetFailure(INIT_ENDPOINT, e)),
   Effect.catchTag("TxSignError", (e) => handleTxGetFailure(INIT_ENDPOINT, e)),
+  Effect.catchTag("UnspecifiedNetworkError", (e) =>
+    handleGenericGetFailure(INIT_ENDPOINT, e),
+  ),
 );
 
 const getCommitEndpoint = Effect.gen(function* () {
