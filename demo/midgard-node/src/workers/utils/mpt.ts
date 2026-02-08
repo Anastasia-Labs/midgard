@@ -3,7 +3,7 @@ import { BatchDBOp } from "@ethereumjs/util";
 import { Data, Effect } from "effect";
 import * as ETH from "@ethereumjs/mpt";
 import * as ETH_UTILS from "@ethereumjs/util";
-import { UTxO, toHex, utxoToCore } from "@lucid-evolution/lucid";
+import { UTxO, toHex, utxoToCore, Script } from "@lucid-evolution/lucid";
 import { Level } from "level";
 import { Database, NodeConfig } from "@/services/index.js";
 import * as Tx from "@/database/utils/tx.js";
@@ -39,19 +39,11 @@ export const makeMpts: Effect.Effect<
     );
     const ops: ETH_UTILS.BatchDBOp[] = yield* Effect.allSuccesses(
       nodeConfig.GENESIS_UTXOS.map((u: UTxO) =>
-        Effect.gen(function* () {
-          const core = yield* Effect.try(() => utxoToCore(u)).pipe(
-            Effect.tapError((e) =>
-              Effect.logError(`IGNORED ERROR WITH GENESIS UTXOS: ${e}`),
-            ),
-          );
-          const op: ETH_UTILS.BatchDBOp = {
-            type: "put",
-            key: Buffer.from(core.input().to_cbor_bytes()),
-            value: Buffer.from(core.output().to_cbor_bytes()),
-          };
-          return op;
-        }),
+        utxoToPutBatchOp(u).pipe(
+          Effect.tapError((e) =>
+            Effect.logError(`IGNORED ERROR WITH GENESIS UTXOS: ${e}`),
+          ),
+        ),
       ),
     );
     yield* ledgerTrie.batch(ops);
@@ -65,6 +57,26 @@ export const makeMpts: Effect.Effect<
     mempoolTrie,
   };
 });
+
+export const utxoToPutBatchOp = (
+  utxo: UTxO,
+): Effect.Effect<ETH_UTILS.BatchDBOp, SDK.CmlDeserializationError> =>
+  Effect.gen(function* () {
+    const core = yield* Effect.try({
+      try: () => utxoToCore(utxo),
+      catch: (e) =>
+        new SDK.CmlDeserializationError({
+          message: "Failed to convert UTxO to CML.TransactionOutput",
+          cause: e,
+        }),
+    });
+    const op: ETH_UTILS.BatchDBOp = {
+      type: "put",
+      key: Buffer.from(core.input().to_cbor_bytes()),
+      value: Buffer.from(core.output().to_cbor_bytes()),
+    };
+    return op;
+  });
 
 export const deleteMempoolMpt = Effect.gen(function* () {
   const config = yield* NodeConfig;
@@ -101,7 +113,7 @@ export const processMpts = (
     mempoolTxHashes: Buffer[];
     sizeOfProcessedTxs: number;
   },
-  MptError | SDK.Utils.CmlUnexpectedError,
+  MptError | SDK.CmlUnexpectedError,
   Database
 > =>
   Effect.gen(function* () {
@@ -160,6 +172,30 @@ export const processMpts = (
       mempoolTxHashes: mempoolTxHashes,
       sizeOfProcessedTxs: sizeOfProcessedTxs,
     };
+  });
+
+export const keyValueMptRoot = (
+  keys: Buffer[],
+  values: Buffer[],
+): Effect.Effect<string, MptError, never> =>
+  Effect.gen(function* () {
+    const trie = yield* MidgardMpt.create("keyValueMPT");
+
+    const ops: ETH_UTILS.BatchDBOp[] = yield* Effect.allSuccesses(
+      keys.map((key: Buffer, i: number) =>
+        Effect.gen(function* () {
+          const op: ETH_UTILS.BatchDBOp = {
+            type: "put",
+            key: key,
+            value: values[i], // Poor mans zip
+          };
+          return op;
+        }),
+      ),
+    );
+
+    yield* trie.batch(ops);
+    return yield* trie.getRootHex();
   });
 
 export const withTrieTransaction = <A, E, R>(
@@ -230,7 +266,7 @@ export class LevelDB {
 
 export class MptError extends Data.TaggedError(
   "MptError",
-)<SDK.Utils.GenericErrorFields> {
+)<SDK.GenericErrorFields> {
   static get(trie: string, cause: unknown) {
     return new MptError({
       message: `An error occurred getting an entry from ${trie} trie`,
@@ -283,6 +319,7 @@ export class MptError extends Data.TaggedError(
 
 export class MidgardMpt {
   public readonly trie: ETH.MerklePatriciaTrie;
+  public readonly EMPTY_TRIE_ROOT_HEX: string;
   public readonly trieName: string;
   public readonly databaseAndPath?: {
     database: LevelDB;
@@ -297,6 +334,7 @@ export class MidgardMpt {
     this.trie = trie;
     this.trieName = trieName;
     this.databaseAndPath = databaseAndPath;
+    this.EMPTY_TRIE_ROOT_HEX = toHex(trie.EMPTY_TRIE_ROOT);
   }
 
   /**
@@ -406,3 +444,10 @@ export class MidgardMpt {
     return this.trie.database()._stats;
   }
 }
+
+export const emptyRootHexProgram: Effect.Effect<string, MptError> = Effect.gen(
+  function* () {
+    const tempMpt = yield* MidgardMpt.create("temp");
+    return tempMpt.EMPTY_TRIE_ROOT_HEX;
+  },
+);

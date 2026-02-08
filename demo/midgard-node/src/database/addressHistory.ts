@@ -20,19 +20,18 @@ export type Entry = {
   [Ledger.Columns.ADDRESS]: Address;
 };
 
-export const init: Effect.Effect<void, DatabaseError, Database> = Effect.gen(
-  function* () {
+export const createTable: Effect.Effect<void, DatabaseError, Database> =
+  Effect.gen(function* () {
     const sql = yield* SqlClient.SqlClient;
     yield* sql`CREATE TABLE IF NOT EXISTS ${sql(tableName)} (
       ${sql(Ledger.Columns.TX_ID)} BYTEA NOT NULL,
       ${sql(Ledger.Columns.ADDRESS)} TEXT NOT NULL,
       UNIQUE (tx_id, address)
     );`;
-  },
-).pipe(
-  Effect.withLogSpan(`creating table ${tableName}`),
-  sqlErrorToDatabaseError(tableName, "Failed to create the table"),
-);
+  }).pipe(
+    Effect.withLogSpan(`creating table ${tableName}`),
+    sqlErrorToDatabaseError(tableName, "Failed to create the table"),
+  );
 
 export const insertEntries = (
   entries: Entry[],

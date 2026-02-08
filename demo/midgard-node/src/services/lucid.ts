@@ -12,7 +12,8 @@ const makeLucid: Effect.Effect<
   NodeConfig
 > = Effect.gen(function* () {
   const nodeConfig = yield* NodeConfig;
-  const lucid = yield* Effect.tryPromise({
+  yield* Effect.logInfo("Initializing Lucid...");
+  const lucid: LE.LucidEvolution = yield* Effect.tryPromise({
     try: () => {
       switch (nodeConfig.L1_PROVIDER) {
         case "Kupmios":
@@ -39,7 +40,11 @@ const makeLucid: Effect.Effect<
           ["NETWORK", nodeConfig.NETWORK],
         ],
       }),
-  }).pipe(Effect.retry(Schedule.fixed("1000 millis")));
+  }).pipe(
+    Effect.tapError(Effect.logInfo),
+    Effect.retry(Schedule.fixed("1000 millis")),
+  );
+  yield* Effect.logInfo("Lucid built successfully.");
   return {
     api: lucid,
     switchToOperatorsMainWallet: Effect.sync(() =>
