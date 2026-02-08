@@ -10,7 +10,6 @@ import {
 } from "@lucid-evolution/lucid";
 import {
   AlwaysSucceedsContract,
-  AuthenticatedValidator,
   Database,
   Globals,
   Lucid,
@@ -39,7 +38,7 @@ import { FileSystemError } from "@/utils.js";
 
 const collectAndBurnUTxOsTx = (
   lucid: LucidEvolution,
-  authValidator: AuthenticatedValidator,
+  authValidator: SDK.AuthenticatedValidator,
   assetUTxOs: {
     utxo: UTxO;
     assetName: string;
@@ -58,14 +57,13 @@ const collectAndBurnUTxOsTx = (
       tx.collectFrom([utxo], Data.void());
     });
     tx.mintAssets(assetsToBurn, Data.void())
-      .attach.Script(authValidator.spendScript)
-      .attach.Script(authValidator.mintScript);
-
+      .attach.Script(authValidator.spendingScript)
+      .attach.Script(authValidator.mintingScript);
     return tx;
   });
 
 type UTxOsQueue = {
-  authValidator: AuthenticatedValidator;
+  authValidator: SDK.AuthenticatedValidator;
   assetUTxOs: {
     utxo: UTxO;
     assetName: string;
@@ -193,7 +191,7 @@ export const resetUTxOs: Effect.Effect<
   AlwaysSucceedsContract | Lucid
 > = Effect.gen(function* () {
   const lucid = yield* Lucid;
-  const { stateQueueAuthValidator, depositAuthValidator } =
+  const { stateQueue: stateQueueAuthValidator, deposit: depositAuthValidator } =
     yield* AlwaysSucceedsContract;
 
   yield* Effect.logInfo("🚧 Fetching UTxOs...");
@@ -204,12 +202,12 @@ export const resetUTxOs: Effect.Effect<
     lucid.api,
     {
       stateQueuePolicyId: stateQueueAuthValidator.policyId,
-      stateQueueAddress: stateQueueAuthValidator.spendScriptAddress,
+      stateQueueAddress: stateQueueAuthValidator.spendingScriptAddress,
     },
   );
 
   const allDepositUTxOs = yield* SDK.fetchDepositUTxOsProgram(lucid.api, {
-    depositAddress: depositAuthValidator.spendScriptAddress,
+    depositAddress: depositAuthValidator.spendingScriptAddress,
     depositPolicyId: depositAuthValidator.policyId,
   });
 

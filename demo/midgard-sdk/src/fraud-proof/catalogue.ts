@@ -1,11 +1,11 @@
-import { POSIXTimeSchema } from "@/common.js";
-import { Data } from "@lucid-evolution/lucid";
+import { AuthenticatedValidator } from "@/common.js";
+import { FRAUD_PROOF_CATALOGUE_ASSET_NAME } from "@/constants.js";
+import { Assets, Data, toUnit } from "@lucid-evolution/lucid";
 import { LucidEvolution, TxBuilder } from "@lucid-evolution/lucid";
+import { Effect } from "effect";
 
-export const FraudProofCatalogueDatumSchema = Data.Object({
-  insertTime: POSIXTimeSchema,
-  initStepScriptHash: Data.Bytes(),
-});
+export const FraudProofCatalogueDatumSchema = Data.Bytes();
+
 export type FraudProofCatalogueDatum = Data.Static<
   typeof FraudProofCatalogueDatumSchema
 >;
@@ -33,7 +33,11 @@ export type FraudProofCatalogueSpendRedeemer = Data.Static<
 export const FraudProofCatalogueSpendRedeemer =
   FraudProofCatalogueSpendRedeemerSchema as unknown as FraudProofCatalogueSpendRedeemer;
 
-export type FraudProofCatalogueInitParams = {};
+export type FraudProofCatalogueInitParams = {
+  validator: AuthenticatedValidator;
+  mptRootHash: string;
+};
+
 export type FraudProofCatalogueDeinitParams = {};
 export type FraudProofCatalogueNewCategoryParams = {};
 export type FraudProofCatalogueRemoveCategoryParams = {};
@@ -45,14 +49,29 @@ export type FraudProofCatalogueRemoveCategoryParams = {};
  * @param params - The parameters
  * @returns {TxBuilder} A TxBuilder instance that can be used to build the transaction.
  */
-export const incompleteFraudProofInitTxProgram = (
+export const incompleteFraudProofCatalogueInitTxProgram = (
   lucid: LucidEvolution,
   params: FraudProofCatalogueInitParams,
-): TxBuilder => {
-  const tx = lucid.newTx();
-  return tx;
-};
+): Effect.Effect<TxBuilder, never> =>
+  Effect.gen(function* () {
+    const assets: Assets = {
+      [toUnit(params.validator.policyId, FRAUD_PROOF_CATALOGUE_ASSET_NAME)]: 1n,
+    };
 
+    const datum = Data.to(params.mptRootHash, FraudProofCatalogueDatum);
+
+    const tx = lucid
+      .newTx()
+      .mintAssets(assets, Data.to("Init", FraudProofCatalogueMintRedeemer))
+      .pay.ToAddressWithData(
+        params.validator.spendingScriptAddress,
+        { kind: "inline", value: datum },
+        assets,
+      )
+      .attach.Script(params.validator.mintingScript);
+
+    return tx;
+  });
 /**
  * Deinit
  *

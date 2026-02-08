@@ -20,12 +20,31 @@ import { FileSystemError, findSpentAndProducedUTxOs } from "@/utils.js";
 import * as FS from "fs";
 import * as SDK from "@al-ft/midgard-sdk";
 import { DatabaseError } from "@/database/utils/common.js";
-import { retrieveTimeBoundEntries } from "@/database/utils/user-events.js";
 
 const LEVELDB_ENCODING_OPTS = {
   keyEncoding: ETH_UTILS.KeyEncoding.Bytes,
   valueEncoding: ETH_UTILS.ValueEncoding.Bytes,
 };
+
+export const utxoToPutBatchOp = (
+  utxo: UTxO,
+): Effect.Effect<ETH_UTILS.BatchDBOp, SDK.CmlDeserializationError> =>
+  Effect.gen(function* () {
+    const core = yield* Effect.try({
+      try: () => utxoToCore(utxo),
+      catch: (e) =>
+        new SDK.CmlDeserializationError({
+          message: "Failed to convert UTxO to CML.TransactionOutput",
+          cause: e,
+        }),
+    });
+    const op: ETH_UTILS.BatchDBOp = {
+      type: "put",
+      key: Buffer.from(core.input().to_cbor_bytes()),
+      value: Buffer.from(core.output().to_cbor_bytes()),
+    };
+    return op;
+  });
 
 export const makeMpts: Effect.Effect<
   { ledgerTrie: MidgardMpt; mempoolTrie: MidgardMpt },
@@ -48,19 +67,11 @@ export const makeMpts: Effect.Effect<
     );
     const ops: ETH_UTILS.BatchDBOp[] = yield* Effect.allSuccesses(
       nodeConfig.GENESIS_UTXOS.map((u: UTxO) =>
-        Effect.gen(function* () {
-          const core = yield* Effect.try(() => utxoToCore(u)).pipe(
-            Effect.tapError((e) =>
-              Effect.logError(`IGNORED ERROR WITH GENESIS UTXOS: ${e}`),
-            ),
-          );
-          const op: ETH_UTILS.BatchDBOp = {
-            type: "put",
-            key: Buffer.from(core.input().to_cbor_bytes()),
-            value: Buffer.from(core.output().to_cbor_bytes()),
-          };
-          return op;
-        }),
+        utxoToPutBatchOp(u).pipe(
+          Effect.tapError((e) =>
+            Effect.logError(`IGNORED ERROR WITH GENESIS UTXOS: ${e}`),
+          ),
+        ),
       ),
     );
     yield* ledgerTrie.batch(ops);
@@ -118,7 +129,7 @@ export const applyDepositsToLedger = (
     yield* Effect.logInfo(
       `Applying ${deposits.length} deposit(s) to the ledgerTrie`,
     );
-    const { depositAuthValidator } = yield* AlwaysSucceedsContract;
+    const { deposit: depositAuthValidator } = yield* AlwaysSucceedsContract;
 
     let insertedUTxOsWithDates: {
       utxo: CML.TransactionUnspentOutput;

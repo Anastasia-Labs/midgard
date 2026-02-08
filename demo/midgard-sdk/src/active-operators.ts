@@ -1,6 +1,8 @@
-import { POSIXTimeSchema } from "@/common.js";
+import { AuthenticatedValidator, POSIXTimeSchema } from "@/common.js";
 import { LucidEvolution, TxBuilder } from "@lucid-evolution/lucid";
 import { Data } from "@lucid-evolution/lucid";
+import { Effect } from "effect";
+import { incompleteInitLinkedListTxProgram } from "./linked-list.js";
 
 export const ActiveOperatorDatumSchema = Data.Object({
   commitmentTime: Data.Nullable(POSIXTimeSchema),
@@ -61,10 +63,12 @@ export const ActiveOperatorMintRedeemerSchema = Data.Enum([
 export type ActiveOperatorMintRedeemer = Data.Static<
   typeof ActiveOperatorMintRedeemerSchema
 >;
-export const MintRedeemer =
+export const ActiveOperatorMintRedeemer =
   ActiveOperatorMintRedeemerSchema as unknown as ActiveOperatorMintRedeemer;
 
-export type ActiveOperatorInitParams = {};
+export type ActiveOperatorInitParams = {
+  validator: AuthenticatedValidator;
+};
 export type ActiveOperatorDeinitParams = {};
 export type ActiveOperatorActivateParams = {};
 export type ActiveOperatorRetireParams = {};
@@ -82,10 +86,16 @@ export type ActiveOperatorUpdateCommitmentTimeParams = {};
 export const incompleteActiveOperatorInitTxProgram = (
   lucid: LucidEvolution,
   params: ActiveOperatorInitParams,
-): TxBuilder => {
-  const tx = lucid.newTx();
-  return tx;
-};
+): Effect.Effect<TxBuilder, never> =>
+  Effect.gen(function* () {
+    const rootData = "00";
+
+    return yield* incompleteInitLinkedListTxProgram(lucid, {
+      validator: params.validator,
+      data: rootData,
+      redeemer: Data.to("Init", ActiveOperatorMintRedeemer),
+    });
+  });
 
 /**
  * The program that performs the deinit of an operator.

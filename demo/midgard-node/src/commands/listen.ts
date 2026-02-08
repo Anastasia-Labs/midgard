@@ -5,7 +5,6 @@ import {
   AlwaysSucceedsContract,
   Globals,
 } from "@/services/index.js";
-import { StateQueueTx } from "@/transactions/index.js";
 import * as SDK from "@al-ft/midgard-sdk";
 import { NodeSdk } from "@effect/opentelemetry";
 import {
@@ -48,6 +47,7 @@ import { createServer } from "node:http";
 import { NodeHttpServer } from "@effect/platform-node";
 import { HttpBodyError } from "@effect/platform/HttpBody";
 import * as Genesis from "@/genesis.js";
+import * as Initialization from "@/transactions/initialization.js";
 import * as Reset from "@/reset.js";
 import { SerializedStateQueueUTxO } from "@/workers/utils/commit-block-header.js";
 import { DatabaseError } from "@/database/utils/common.js";
@@ -72,6 +72,7 @@ const INIT_ENDPOINT: string = "init";
 const COMMIT_ENDPOINT: string = "commit";
 const RESET_ENDPOINT: string = "reset";
 const SUBMIT_ENDPOINT: string = "submit";
+const STATE_QUEUE_ENDPOINT: string = "stateQueue";
 
 const txCounter = Metric.counter("tx_count", {
   description: "A counter for tracking submit transactions",
@@ -247,21 +248,25 @@ const getBlockHandler = Effect.gen(function* () {
 
 const getInitHandler = Effect.gen(function* () {
   yield* Effect.logInfo(`✨ Initialization request received`);
-  const result = yield* StateQueueTx.stateQueueInit;
+  const txHash = yield* Initialization.program;
   yield* Genesis.program;
   yield* Effect.logInfo(
-    `GET /${INIT_ENDPOINT} - Initialization successful: ${result}`,
+    `GET /${INIT_ENDPOINT} - Initialization successful: ${txHash}`,
   );
   return yield* HttpServerResponse.json({
-    message: `Initiation successful: ${result}`,
+    message: `Initiation successful: ${txHash}`,
   });
 }).pipe(
   Effect.catchTag("HttpBodyError", (e) => failWith500("GET", INIT_ENDPOINT, e)),
   Effect.catchTag("LucidError", (e) =>
     handleGenericGetFailure(INIT_ENDPOINT, e),
   ),
+  Effect.catchTag("MptError", (e) => handleGenericGetFailure(INIT_ENDPOINT, e)),
   Effect.catchTag("TxSubmitError", (e) => handleTxGetFailure(INIT_ENDPOINT, e)),
   Effect.catchTag("TxSignError", (e) => handleTxGetFailure(INIT_ENDPOINT, e)),
+  Effect.catchTag("UnspecifiedNetworkError", (e) =>
+    handleGenericGetFailure(INIT_ENDPOINT, e),
+  ),
 );
 
 const getCommitEndpoint = Effect.gen(function* () {
@@ -387,18 +392,20 @@ const getTxsOfAddressHandler = Effect.gen(function* () {
   ),
 );
 
-const getLogStateQueueHandler = Effect.gen(function* () {
+const getStateQueueHandler = Effect.gen(function* () {
   yield* Effect.logInfo(`✍  Drawing state queue UTxOs...`);
   const lucid = yield* Lucid;
   const alwaysSucceeds = yield* AlwaysSucceedsContract;
   const fetchConfig: SDK.StateQueueFetchConfig = {
-    stateQueuePolicyId: alwaysSucceeds.stateQueueAuthValidator.policyId,
-    stateQueueAddress:
-      alwaysSucceeds.stateQueueAuthValidator.spendScriptAddress,
+    stateQueuePolicyId: alwaysSucceeds.stateQueue.policyId,
+    stateQueueAddress: alwaysSucceeds.stateQueue.spendingScriptAddress,
   };
   const sortedUTxOs = yield* SDK.fetchSortedStateQueueUTxOsProgram(
     lucid.api,
     fetchConfig,
+  );
+  const headers = sortedUTxOs.flatMap((u) =>
+    u.datum.key === "Empty" ? [] : [u.datum.key.Key.key],
   );
   let drawn = `
 ---------------------------- STATE QUEUE ----------------------------`;
@@ -425,7 +432,7 @@ ${emoji} ${u.utxo.txHash}#${u.utxo.outputIndex}${info}`;
 `;
   yield* Effect.logInfo(drawn);
   return yield* HttpServerResponse.json({
-    message: `State queue drawn in server logs!`,
+    headers,
   });
 }).pipe(
   Effect.catchTag("HttpBodyError", (e) =>
@@ -555,7 +562,7 @@ const router = (
       HttpRouter.get(`/${COMMIT_ENDPOINT}`, getCommitEndpoint),
       HttpRouter.get(`/${MERGE_ENDPOINT}`, getMergeHandler),
       HttpRouter.get(`/${RESET_ENDPOINT}`, getResetHandler),
-      HttpRouter.get(`/logStateQueue`, getLogStateQueueHandler),
+      HttpRouter.get(`/${STATE_QUEUE_ENDPOINT}`, getStateQueueHandler),
       HttpRouter.get(`/logBlocksDB`, getLogBlocksDBHandler),
       HttpRouter.get(`/logGlobals`, getLogGlobalsHandler),
       HttpRouter.post(`/${SUBMIT_ENDPOINT}`, postSubmitHandler(txQueue)),
@@ -617,7 +624,9 @@ export const runNode = (withMonitoring?: boolean) =>
           port: nodeConfig.PROM_METRICS_PORT,
         },
         () => {
-          `Prometheus metrics available at http://localhost:${nodeConfig.PROM_METRICS_PORT}/metrics`;
+          console.log(
+            `Prometheus metrics available at http://0.0.0.0:${nodeConfig.PROM_METRICS_PORT}/metrics`,
+          );
         },
       );
 
