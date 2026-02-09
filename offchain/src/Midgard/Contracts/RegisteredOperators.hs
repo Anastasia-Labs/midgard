@@ -18,5 +18,7 @@ initRegisteredOperators MidgardScripts {registeredOperatorsValidator, registered
   netId <- queryNetworkId
   let rootAssetName = C.UnsafeAssetName ""
   let C.PolicyId policyId = mintingPolicyId registeredOperatorsPolicy
+  -- The registered operators token should be minted.
   mintPlutus (toMintingPolicy registeredOperatorsPolicy) RegisteredOperators.Init (C.UnsafeAssetName "") 1
+  -- And sent to the registered operators validator.
   payToScriptInlineDatum netId (validatorHash registeredOperatorsValidator) () C.NoStakeAddress (assetValue policyId rootAssetName 1)
