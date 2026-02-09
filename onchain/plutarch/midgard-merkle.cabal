@@ -23,21 +23,18 @@ extra-source-files: CHANGELOG.md
 
 common lang
   ghc-options:
-    -Werror -Wall -Weverything -Wcompat -Wincomplete-uni-patterns
-    -Wno-unused-do-bind -Wno-partial-type-signatures
+    -Wall -Wcompat -Wincomplete-uni-patterns -Wno-unused-do-bind
+    -Wno-partial-type-signatures -Wno-missing-import-lists
     -Wmissing-export-lists -Wincomplete-record-updates
-    -Wno-missing-import-lists -Wunused-imports
     -Wmissing-deriving-strategies -Wno-name-shadowing -Wunused-foralls
-    -fprint-explicit-foralls -fprint-explicit-kinds -Wunused-do-bind
-    -Wno-unused-do-bind -Wno-missing-kind-signatures
-    -Wno-implicit-prelude -Wno-unsafe -Wno-missing-safe-haskell-mode
-    -Wno-missing-local-signatures -Wno-prepositive-qualified-module
-    -Wno-missing-import-lists -Wno-monomorphism-restriction
-    -Wno-missed-specialisations -Wno-all-missed-specializations
-    -Wno-unrecognised-warning-flags -Wno-unrecognised-pragmas
-    -Wno-operator-whitespace -fprint-equality-relations
-    -fprint-explicit-kinds -fprint-explicit-foralls
-    -Wno-unused-packages
+    -Wno-unused-packages -Wno-missing-local-signatures
+    -Wno-implicit-prelude -fprint-explicit-foralls
+    -fprint-explicit-kinds -Wunused-imports
+    -Wno-missing-safe-haskell-mode -Wno-missing-kind-signatures
+    -Wno-operator-whitespace -Wno-unsafe
+    -Wno-prepositive-qualified-module -Wno-partial-fields
+    -Wno-monomorphism-restriction -Wno-missed-specialisations
+    -Wno-all-missed-specializations -Wno-unused-packages
 
   default-extensions:
     BangPatterns
@@ -104,119 +101,6 @@ common lang
 
   default-language:   GHC2021
 
-library
-  -- import:         lang
-  ghc-options:
-    -Wall -Wcompat -Wincomplete-uni-patterns -Wno-unused-do-bind
-    -Wno-partial-type-signatures -Wno-missing-import-lists
-    -Wmissing-export-lists -Wincomplete-record-updates
-    -Wmissing-deriving-strategies -Wno-name-shadowing -Wunused-foralls
-    -Wno-unused-packages -Wno-missing-local-signatures
-    -Wno-implicit-prelude -fprint-explicit-foralls
-    -fprint-explicit-kinds -Wunused-imports
-    -Wno-missing-safe-haskell-mode -Wno-missing-kind-signatures
-    -Wno-operator-whitespace -Wno-unsafe
-    -Wno-prepositive-qualified-module -Wno-partial-fields
-    -Wno-monomorphism-restriction -Wno-missed-specialisations
-    -Wno-all-missed-specializations -Wno-unused-packages
-
-  default-extensions:
-    BangPatterns
-    BinaryLiterals
-    ConstrainedClassMethods
-    ConstraintKinds
-    DataKinds
-    DeriveAnyClass
-    DeriveDataTypeable
-    DeriveFoldable
-    DeriveFunctor
-    DeriveGeneric
-    DeriveLift
-    DeriveTraversable
-    DerivingStrategies
-    DerivingVia
-    DoAndIfThenElse
-    DuplicateRecordFields
-    EmptyCase
-    EmptyDataDecls
-    EmptyDataDeriving
-    ExistentialQuantification
-    ExplicitForAll
-    FlexibleContexts
-    FlexibleInstances
-    ForeignFunctionInterface
-    GADTSyntax
-    GeneralisedNewtypeDeriving
-    HexFloatLiterals
-    ImplicitPrelude
-    ImportQualifiedPost
-    InstanceSigs
-    KindSignatures
-    LambdaCase
-    MonomorphismRestriction
-    MultiParamTypeClasses
-    NamedFieldPuns
-    NamedWildCards
-    NoStarIsType
-    NumericUnderscores
-    OverloadedLabels
-    OverloadedRecordDot
-    OverloadedStrings
-    PackageImports
-    PartialTypeSignatures
-    PatternGuards
-    PolyKinds
-    PostfixOperators
-    QualifiedDo
-    RankNTypes
-    RecordWildCards
-    RelaxedPolyRec
-    ScopedTypeVariables
-    StandaloneDeriving
-    StandaloneKindSignatures
-    TupleSections
-    TypeApplications
-    TypeFamilies
-    TypeOperators
-    TypeSynonymInstances
-    UndecidableInstances
-    ViewPatterns
-
-  exposed-modules:
-    Midgard.Crypto
-    Midgard.List
-    Midgard.PlutusDataList
-    Midgard.Utils
-    MerkleTree.Helpers
-    MerkleTree.MerklePatriciaForestry
-    MerkleTree.Merkling
-    Profile
-    Types.Blocks
-    Types.Classes
-    Types.Constants
-    Types.StateCommitment
-
-  -- Compile
-
-  build-depends:
-    , aeson
-    , base
-    , base16-bytestring
-    , bytestring
-    , cardano-binary
-    , data-default
-    , generics-sop
-    , plutarch
-    , plutarch-extra
-    , plutarch-ledger-api
-    , plutus-core
-    , plutus-ledger-api
-    , plutus-tx
-    , serialise
-    , text
-
-  hs-source-dirs:     src
-
 common dependencies
   build-depends:
     , aeson
@@ -228,14 +112,28 @@ common dependencies
     , cborg
     , data-default
     , directory
+    , generics-sop
     , plutarch
-    , plutarch-extra
     , plutarch-ledger-api
+    , plutarch-onchain-lib
     , plutus-core
     , plutus-ledger-api
     , plutus-tx
     , serialise
     , text
+
+library
+  import:          lang, dependencies
+  exposed-modules:
+    Profile
+    Types.Blocks
+    Types.Classes
+    Types.Constants
+    Types.Membership
+    Types.StateCommitment
+    Validators.Membership
+
+  hs-source-dirs:  src
 
 executable midgard
   import:         lang, dependencies
@@ -257,32 +155,22 @@ executable midgard
 --   build-depends:  migdard-contracts
 
 test-suite helpers-tests
-  import:           lang, dependencies
-  type:             exitcode-stdio-1.0
-  main-is:          Test.hs
-  hs-source-dirs:   src src/Testing
+  import:         lang, dependencies
+  type:           exitcode-stdio-1.0
+  main-is:        Test.hs
+  hs-source-dirs: tests
   other-modules:
-    Midgard.Crypto
-    Midgard.List
-    Midgard.Utils
-    MerkleTree.Helpers
-    MerkleTree.MerklePatriciaForestry
-    MerkleTree.Merkling
-    Testing.MidgardValidator
     Testing.Crypto
     Testing.Eval
+    Testing.MembershipValidator
     Testing.MerklePatriciaForestry
+    Testing.ScriptContextBuilder
     Testing.TransactionProofs
-    Types.Blocks
-    Types.Classes
-    Types.Constants
-    Types.StateCommitment
 
   build-depends:
     , cardano-crypto-class
+    , midgard-merkle
     , prettyprinter
     , tasty
     , tasty-hunit
     , tasty-quickcheck
-
-  default-language: Haskell2010

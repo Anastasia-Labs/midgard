@@ -9,35 +9,53 @@ Server application with GET and POST endpoints for interacting with Midgard.
 Using Docker, you can run Midgard node on `localhost:3000` (or another port)
 quite easily.
 
-1. Run Docker deamon if it's not running already:
+0. If you don't have Docker yet or want to update, follow this [GUIDE](https://docs.docker.com/engine/install/). After installation, do not forget to execute also the [POST-INSTALLATION STEPS](https://docs.docker.com/engine/install/linux-postinstall/#manage-docker-as-a-non-root-user) to avoid using sudo with Docker.
 
-```sh
-sudo dockerd
-```
+1. Run Docker daemon if it's not running already:
+
+   ```sh
+   sudo dockerd
+   ```
 
 2. Pack the `midgard-sdk` tarball (see [here](../midgard-sdk/README.md)).
 
 3. Prepare your `.env` file. You can use `.env.example` as your starting point:
 
-```sh
-cp .env.example .env
-```
+   ```sh
+   cd ../midgard-node
+   cp .env.example .env
+   ```
 
-4. Install all the dependencies and build:
+   1. When running with `L1_PROVIDER=Kupmios`, you do not need to fill out
+      `L1_BLOCKFROST_API_URL` and `L1_BLOCKFROST_KEY`. The remaining fields need
+      to be filled out.
 
-```sh
-cd ../midgard-node
-pnpm install && pnpm build
-```
+4. Install all the dependencies:
 
-5. Run the application stack:
+   ```sh
+   pnpm install --frozen-lockfile
+   ```
 
-```sh
-docker-compose up -d
+   1. If the install fails with an incorrect SHA, that most likely means
+      `midgard-sdk` was updated recently, but `pnpm-lock.yaml` still expects the
+      old hash. Update the SHA value inside the `pnpm-lock.yaml` file with the
+      new one.
+   2. Rerun `pnpm install --frozen-lockfile`. Now it should install correctly.
 
-# or this for development:
-sudo docker-compose -f docker-compose.dev.yaml up -d
-```
+5. Build the midgard-node:
+
+   ```sh
+   pnpm build
+   ```
+
+6. Run the application stack:
+
+   ```sh
+   docker compose up -d
+
+   # or this for development:
+   docker compose -f docker-compose.dev.yaml up -d
+   ```
 
 Midgard node should be running on port `PORT` (from your `.env`).
 
@@ -45,16 +63,15 @@ You can view logs of `midgard-node` with `docker`:
 
 ```sh
 # Change container's name as needed:
-sudo docker logs -f midgard-node-midgard-node-1
+docker logs -f midgard-node-midgard-node-1
 ```
 
 If you made any changes to `midgard-node` and had an image running, restart it
 with the 3 steps:
 
 ```sh
-docker-compose down -v
-docker image rm midgard-node-midgard-node
-docker-compose up -d
+docker compose down -v
+docker compose up -d --build
 ```
 
 ### Without Docker (No Monitoring)
@@ -96,7 +113,7 @@ pnpm listen
 ### With Docker
 
 ```sh
-docker-compose run --rm midgard-node-tests
+docker compose run --rm midgard-node-tests
 ```
 
 ### Without Docker

@@ -6,8 +6,8 @@ use aiken/crypto.{
   ScriptHash, VerificationKey, VerificationKeyHash, blake2b_224, blake2b_256,
 }
 use aiken/interval.{Finite, Interval, NegativeInfinity, PositiveInfinity}
-use aiken/merkle_patricia_forestry as mpf
 use aiken_design_patterns/merkelized_validator
+use aiken_design_patterns/stake_validator
 use cardano/address.{Address, PaymentCredential, Script, StakeCredential}
 use cardano/assets.{AssetName, PolicyId, Value, tokens}
 use cardano/transaction.{
@@ -15,10 +15,10 @@ use cardano/transaction.{
 }
 use env
 use midgard/common/constants.{posix_time_none}
-use midgard/common/types.{H28, H32, MerkleProofInputs, PosixTime, ValuePairs}
+use midgard/common/types.{H28, H32, MerkleRoot, PosixTime, Proof, ValuePairs}
 
 /// Check whether the interval starts on or after the point.
-pub fn is_hereafter(self: Interval<Int>, point: Int) -> Bool {
+pub fn is_hereafter(self: Interval, point: Int) -> Bool {
   when self.lower_bound.bound_type is {
     Finite(lo) -> point <= lo
     NegativeInfinity -> False
@@ -27,7 +27,7 @@ pub fn is_hereafter(self: Interval<Int>, point: Int) -> Bool {
 }
 
 /// Check whether the interval ends on or before the point.
-pub fn is_herebefore(self: Interval<Int>, point: Int) -> Bool {
+pub fn is_herebefore(self: Interval, point: Int) -> Bool {
   when self.upper_bound.bound_type is {
     Finite(hi) -> hi <= point
     PositiveInfinity -> False
@@ -123,6 +123,32 @@ pub fn get_single_asset_from_value(v: Value) -> (PolicyId, AssetName, Int) {
   (sym, tn, qty)
 }
 
+// Used to retrieve asset name from a value with a specific policy id
+pub fn get_asset_name_from_value_with_policy(
+  value: Value,
+  policy_id: PolicyId,
+) -> AssetName {
+  expect [Pair(asset_name, _)] =
+    value
+      |> assets.tokens(policy_id)
+      |> dict.to_pairs
+
+  asset_name
+}
+
+// Used to retrieve a singleton asset from a value with a specific policy id
+pub fn get_singleton_asset_with_policy(
+  value: Value,
+  policy_id: PolicyId,
+) -> Pair<AssetName, Int> {
+  expect [p] =
+    value
+      |> assets.tokens(policy_id)
+      |> dict.to_pairs
+
+  p
+}
+
 /// Expects exactly 2 tokens in the given `Value`, one of which must be ADA, and
 /// returns the other as a triplet.
 pub fn get_single_asset_from_value_apart_from_ada(
@@ -156,6 +182,93 @@ pub fn get_authentic_input_with_policy_at(
   found_input
 }
 
+/// Similar to [`get_authentic_input_with_policy_at`](#get_authentic_input_with_policy_at),
+/// but only returns the NFT's asset name. Useful for spending validators which
+/// already have access to the datum.
+pub fn get_authentic_input_asset_name_with_policy_at(
+  inputs: List<Input>,
+  nft_policy_id: PolicyId,
+  input_index: Int,
+) -> AssetName {
+  expect Some(Input { output: Output { value: input_value, .. }, .. }) =
+    list.at(inputs, input_index)
+
+  expect (input_nft_policy_id, input_nft_asset_name, 1) =
+    get_single_asset_from_value_apart_from_ada(input_value)
+
+  expect input_nft_policy_id == nft_policy_id
+
+  input_nft_asset_name
+}
+
+pub fn get_authentic_input_and_asset_name_with_policy_at(
+  inputs: List<Input>,
+  nft_policy_id: PolicyId,
+  input_index: Int,
+  return: fn(Input, AssetName) -> result,
+) -> result {
+  expect Some(
+    Input { output: Output { value: input_value, .. }, .. } as found_input,
+  ) = list.at(inputs, input_index)
+
+  expect (input_nft_policy_id, input_nft_asset_name, 1) =
+    get_single_asset_from_value_apart_from_ada(input_value)
+
+  expect input_nft_policy_id == nft_policy_id
+
+  return(found_input, input_nft_asset_name)
+}
+
+/// Similar to [`get_authentic_input_with_policy_at`](#get_authentic_input_with_policy_at),
+/// but only returns the datum data. Useful for avoiding destructuring the
+/// input an extra time when only the datum is needed.
+pub fn get_authentic_input_datum_with_policy_at(
+  inputs: List<Input>,
+  nft_policy_id: PolicyId,
+  input_index: Int,
+) -> Data {
+  expect Some(Input {
+    output: Output {
+      value: input_value,
+      datum: InlineDatum(input_datum_data),
+      ..
+    },
+    ..
+  }) = list.at(inputs, input_index)
+
+  expect (input_nft_policy_id, _, 1) =
+    get_single_asset_from_value_apart_from_ada(input_value)
+
+  expect input_nft_policy_id == nft_policy_id
+
+  input_datum_data
+}
+
+/// Similar to [`get_authentic_input_datum_with_policy_at`](#get_authentic_input_datum_with_policy_at),
+/// with additional provision of NFT's asset name.
+pub fn get_authentic_input_datum_and_asset_name_with_policy_at(
+  inputs: List<Input>,
+  nft_policy_id: PolicyId,
+  input_index: Int,
+  return: fn(AssetName, Data) -> result,
+) -> result {
+  expect Some(Input {
+    output: Output {
+      value: input_value,
+      datum: InlineDatum(input_datum_data),
+      ..
+    },
+    ..
+  }) = list.at(inputs, input_index)
+
+  expect (input_nft_policy_id, input_nft_asset_name, 1) =
+    get_single_asset_from_value_apart_from_ada(input_value)
+
+  expect input_nft_policy_id == nft_policy_id
+
+  return(input_nft_asset_name, input_datum_data)
+}
+
 /// For state UTxOs with specific NFTs. Note that the address is not checked.
 pub fn get_authentic_input_with_nft_at(
   inputs: List<Input>,
@@ -173,6 +286,32 @@ pub fn get_authentic_input_with_nft_at(
   expect input_nft_triplet == (nft_policy_id, nft_asset_name, 1)
 
   found_input
+}
+
+/// Similar to [`get_authentic_input_with_nft_at`](#get_authentic_input_with_nft_at),
+/// but only returns the datum data. Useful for avoiding destructuring the
+/// input an extra time when only the datum is needed.
+pub fn get_authentic_input_datum_with_nft_at(
+  inputs: List<Input>,
+  nft_policy_id: PolicyId,
+  nft_asset_name: AssetName,
+  input_index: Int,
+) -> Data {
+  expect Some(Input {
+    output: Output {
+      value: input_value,
+      datum: InlineDatum(input_datum_data),
+      ..
+    },
+    ..
+  }) = list.at(inputs, input_index)
+
+  let input_nft_triplet =
+    get_single_asset_from_value_apart_from_ada(input_value)
+
+  expect input_nft_triplet == (nft_policy_id, nft_asset_name, 1)
+
+  input_datum_data
 }
 
 /// For state UTxOs of validators which their NFTs have policy IDs equal to
@@ -251,40 +390,14 @@ pub fn get_authentic_output_datum_at_address_with_nft_at(
   output_datum_data
 }
 
-// Used to retrieve asset name from a value with a specific policy id
-pub fn get_asset_name_from_value_with_policy(
-  value: Value,
-  policy_id: PolicyId,
-) -> AssetName {
-  expect [Pair(asset_name, _)] =
-    value
-      |> assets.tokens(policy_id)
-      |> dict.to_pairs
-
-  asset_name
-}
-
-// Used to retrieve a singleton asset from a value with a specific policy id
-pub fn get_singleton_asset_with_policy(
-  value: Value,
-  policy_id: PolicyId,
-) -> Pair<AssetName, Int> {
-  expect [p] =
-    value
-      |> assets.tokens(policy_id)
-      |> dict.to_pairs
-
-  p
-}
-
 // Verify a 32-byte hash (Blake2b-256)
-pub fn verify_hash_32(data: Data, data_hash: H32<Data>) {
-  expect blake2b_256(cbor.serialise(data)) == data_hash
+pub fn verify_hash_32(data: Data, data_hash: H32<Data>) -> Bool {
+  blake2b_256(cbor.serialise(data)) == data_hash
 }
 
 // Verify a 28-byte hash (Blake2b-224)
-pub fn verify_hash_28(data: Data, data_hash: H28<Data>) {
-  expect blake2b_224(cbor.serialise(data)) == data_hash
+pub fn verify_hash_28(data: Data, data_hash: H28<Data>) -> Bool {
+  blake2b_224(cbor.serialise(data)) == data_hash
 }
 
 /// Given a value, an NFT, and a `ValuePairs` (structured identical to `Value`,
@@ -394,169 +507,92 @@ pub fn get_redeemer_at(
 }
 
 /// Merkelized validator abstraction for `phas` function from Plutarch.
+///
+/// > [!WARNING]
+/// > This function can only be used **once within a given transaction**.
 pub fn plutarch_phas(
-  mpf_root: ByteArray,
+  merkle_root: MerkleRoot<key, value>,
   key: Data,
   value: Data,
-  membership_proof: mpf.Proof,
+  membership_proof: Proof,
   redeemers: Pairs<ScriptPurpose, Redeemer>,
+  withdraw_redeemer_index: Int,
 ) -> Bool {
-  merkelized_validator.generic_delegated_validation(
-    staking_validator: env.plutarch_phas_validator_hash,
-    withdraw_redeemer_validator: fn(phas_validator_redeemer: Data) -> Bool {
-      expect [
-        redeemer_root_data, redeemer_key_data, redeemer_value_data,
-        redeemer_proof_data,
-        ..
-      ] = builtin.un_list_data(phas_validator_redeemer)
+  let phas_validator_redeemer <-
+    stake_validator.validate_withdraw(
+      env.plutarch_phas_validator_hash,
+      redeemers,
+      withdraw_redeemer_index,
+    )
+  expect [
+    redeemer_root_data, redeemer_key_data, redeemer_value_data,
+    redeemer_proof_data,
+    ..
+  ] = builtin.un_list_data(phas_validator_redeemer)
 
-      let mpf_root_data: Data = mpf_root
+  let merkle_root_data: Data = merkle_root
 
-      let proof_data: Data = membership_proof
+  let proof_data: Data = membership_proof
 
-      and {
-        redeemer_root_data == mpf_root_data,
-        redeemer_key_data == key,
-        redeemer_value_data == value,
-        redeemer_proof_data == proof_data,
-      }
-    },
-    redeemers: redeemers,
-  )
+  and {
+    redeemer_root_data == merkle_root_data,
+    redeemer_key_data == key,
+    redeemer_value_data == value,
+    redeemer_proof_data == proof_data,
+  }
 }
 
 /// Merkelized validator abstraction for `pexcludes` function from Plutarch.
+///
+/// > [!WARNING]
+/// > This function can only be used **once within a given transaction**.
 pub fn plutarch_pexcludes(
-  mpf_root: ByteArray,
+  merkle_root: MerkleRoot<key, value>,
   key: Data,
-  non_membership_proof: mpf.Proof,
+  non_membership_proof: Proof,
   redeemers: Pairs<ScriptPurpose, Redeemer>,
+  withdraw_redeemer_index: Int,
 ) -> Bool {
-  merkelized_validator.generic_delegated_validation(
-    staking_validator: env.plutarch_pexcludes_validator_hash,
-    withdraw_redeemer_validator: fn(pexcludes_validator_redeemer: Data) -> Bool {
-      expect [redeemer_root_data,
-        redeemer_key_data,
-        redeemer_proof_data, ..] =
-        builtin.un_list_data(pexcludes_validator_redeemer)
+  let pexcludes_validator_redeemer <-
+    stake_validator.validate_withdraw(
+      env.plutarch_pexcludes_validator_hash,
+      redeemers,
+      withdraw_redeemer_index,
+    )
+  expect [redeemer_root_data,
+    redeemer_key_data,
+    redeemer_proof_data, ..] =
+    builtin.un_list_data(pexcludes_validator_redeemer)
 
-      let mpf_root_data: Data = mpf_root
+  let merkle_root_data: Data = merkle_root
 
-      let proof_data: Data = non_membership_proof
+  let proof_data: Data = non_membership_proof
 
-      and {
-        redeemer_root_data == mpf_root_data,
-        redeemer_key_data == key,
-        redeemer_proof_data == proof_data,
-      }
-    },
-    redeemers: redeemers,
-  )
+  and {
+    redeemer_root_data == merkle_root_data,
+    redeemer_key_data == key,
+    redeemer_proof_data == proof_data,
+  }
 }
 
-/// Merkelized validator abstraction for `pdelete` function from Plutarch.
 pub fn plutarch_pdelete(
-  mpf_old_root: ByteArray,
+  merkle_root_before_delete: MerkleRoot<key, value>,
   key: Data,
   value: Data,
-  deletion_proof: mpf.Proof,
+  membership_proof: Proof,
   redeemers: Pairs<ScriptPurpose, Redeemer>,
-) -> ByteArray {
-  let inputsObject =
-    MerkleProofInputs {
-      mpf_root: mpf_old_root,
-      key,
-      value,
-      proof: deletion_proof,
-    }
-  let mpf_proof_coercer =
-    fn(proof_data: Data) -> mpf.Proof {
-      expect proof_steps_as_data = builtin.un_list_data(proof_data)
-      let data_to_mpf_neighbor_coercer =
-        fn(neighbor_data: Data) -> mpf.Neighbor {
-          expect [nibble_data,
-            prefix_data, root_data] = builtin.unconstr_fields(neighbor_data)
-          mpf.Neighbor {
-            nibble: nibble_data |> builtin.un_i_data,
-            prefix: prefix_data |> builtin.un_b_data,
-            root: root_data |> builtin.un_b_data,
-          }
-        }
-      list.foldr(
-        proof_steps_as_data,
-        [],
-        fn(proof_step_as_data, result) -> List<mpf.ProofStep> {
-          let new_elem =
-            when builtin.unconstr_index(proof_step_as_data) is {
-              0 ->
-                mpf.Branch {
-                  skip: proof_step_as_data
-                    |> builtin.unconstr_fields
-                    |> builtin.head_list
-                    |> builtin.un_i_data,
-                  neighbors: proof_step_as_data
-                    |> builtin.unconstr_fields
-                    |> builtin.tail_list
-                    |> builtin.head_list
-                    |> builtin.un_b_data,
-                }
-              1 ->
-                mpf.Fork {
-                  skip: proof_step_as_data
-                    |> builtin.unconstr_fields
-                    |> builtin.head_list
-                    |> builtin.un_i_data,
-                  neighbor: proof_step_as_data
-                    |> builtin.unconstr_fields
-                    |> builtin.tail_list
-                    |> builtin.head_list
-                    |> data_to_mpf_neighbor_coercer,
-                }
-              2 ->
-                mpf.Leaf {
-                  skip: proof_step_as_data
-                    |> builtin.unconstr_fields
-                    |> builtin.head_list
-                    |> builtin.un_i_data,
-                  key: proof_step_as_data
-                    |> builtin.unconstr_fields
-                    |> builtin.tail_list
-                    |> builtin.head_list
-                    |> builtin.un_b_data,
-                  value: proof_step_as_data
-                    |> builtin.unconstr_fields
-                    |> builtin.tail_list
-                    |> builtin.tail_list
-                    |> builtin.head_list
-                    |> builtin.un_b_data,
-                }
-              _ -> fail @"Unexpected proof step constructor"
-            }
-
-          list.push(result, new_elem)
-        },
-      )
-    }
+  withdraw_redeemer_index: Int,
+) -> MerkleRoot<key, value> {
+  let proof_data: Data = membership_proof
+  let function_input: List<Data> =
+    [builtin.b_data(merkle_root_before_delete), key, value, proof_data]
   merkelized_validator.delegated_compute(
-    function_input: inputsObject,
+    function_input: function_input,
     staking_validator: env.plutarch_pdelete_validator_hash,
-    input_data_coercer: fn(input: Data) -> MerkleProofInputs {
-      let fields = builtin.unconstr_fields(input)
-      let mpf_root = fields |> builtin.head_list |> builtin.un_b_data
-      let key = fields |> builtin.tail_list |> builtin.head_list
-      let value =
-        fields |> builtin.tail_list |> builtin.tail_list |> builtin.head_list
-      let proof =
-        fields
-          |> builtin.tail_list
-          |> builtin.tail_list
-          |> builtin.tail_list
-          |> builtin.head_list
-          |> mpf_proof_coercer()
-      MerkleProofInputs { mpf_root, key, value, proof }
-    },
-    output_data_coercer: fn(output) -> ByteArray { builtin.un_b_data(output) },
     redeemers: redeemers,
+    redeemer_index: withdraw_redeemer_index,
+    input_data_coercer: builtin.un_list_data,
+    output_data_coercer: builtin.un_b_data,
   )
 }
 

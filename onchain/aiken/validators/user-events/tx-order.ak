@@ -16,7 +16,7 @@ validator spend(hub_oracle: ScriptHash) {
     own_out_ref: OutputReference,
     tx: Transaction,
   ) {
-    let Transaction { reference_inputs, redeemers, .. } = tx
+    let Transaction { inputs, outputs, reference_inputs, redeemers, .. } = tx
 
     let SpendRedeemer {
       input_index,
@@ -25,6 +25,7 @@ validator spend(hub_oracle: ScriptHash) {
       settlement_ref_input_index,
       burn_redeemer_index,
       membership_proof,
+      inclusion_proof_script_withdraw_redeemer_index,
       validity_override,
     } = redeemer
 
@@ -59,68 +60,73 @@ validator spend(hub_oracle: ScriptHash) {
         burn_redeemer_index,
       )
 
-    // TODO: `singular_utxo_indexer` has a flawed interface currently. Passing
-    //       `0` as the throwaway redeemer.
-    singular_utxo_indexer.spend(
-      fn(_in_ix, input, _redeemer, _out_ix, output) {
-        let Input { output: Output { value: own_value, .. }, .. } = input
+    let
+      input,
+      output,
+    <-
+      singular_utxo_indexer.one_to_one(
+        input_index,
+        output_index,
+        own_out_ref,
+        inputs,
+        outputs,
+        // Double satisfaction prevented by the requirement for unregistration of
+        // the witness staking script.
+        True,
+      )
 
-        // 2. The produced UTxO must not have any scripts attached to it.
-        //    TODO: Is this a good idea here?
-        expect Output {
-          address: output_address,
-          value: output_value,
-          datum: output_datum,
-          reference_script: None,
-        } = output
+    let Input { output: Output { value: own_value, .. }, .. } = input
 
-        // 3. Refund address must be the recipient.
-        expect output_address == refund_address
+    // 2. The produced UTxO must not have any scripts attached to it.
+    //    TODO: Is this a good idea here?
+    expect Output {
+      address: output_address,
+      value: output_value,
+      datum: output_datum,
+      reference_script: None,
+    } = output
 
-        // 4. Assert refund datum is attached to the output.
-        expect output_datum == refund_datum
+    // 3. Refund address must be the recipient.
+    expect output_address == refund_address
 
-        // 5. Output value must be the same as the input value, without the tx
-        //    order NFT.
-        expect
-          output_value == (
-            own_value
-              |> assets.add(tx_order_policy_id, burn_asset_name, -1)
-          )
+    // 4. Assert refund datum is attached to the output.
+    expect output_datum == refund_datum
 
-        // 6. For tx order UTxOs to be collectible, they must be stored in
-        //    the tree with the validity provided via the redeemer.
-        let Pair(tx_order_event_id, tx_order_event_tx) =
-          ledger_state.unsafe_event_to_key_value_pair(tx_order_event)
-        //
-        expect tx_order_tx: ledger_state.MidgardTxCompact = tx_order_event_tx
-        //
-        let overridden_tx_order_tx: Data =
-          ledger_state.MidgardTxCompact {
-            ..tx_order_tx,
-            validity: validity_override,
-          }
+    // 5. Output value must be the same as the input value, without the tx
+    //    order NFT.
+    expect
+      output_value == (
+        own_value
+          |> assets.add(tx_order_policy_id, burn_asset_name, -1)
+      )
 
-        // 7. The referenced settlement UTxO's tx_order tree must contain the
-        //    subject tx_order event.
-        expect
-          plutarch_phas(
-            transactions_root,
-            tx_order_event_id,
-            overridden_tx_order_tx,
-            membership_proof,
-            redeemers,
-          )
+    // 6. For tx order UTxOs to be collectible, they must be stored in
+    //    the tree with the validity provided via the redeemer.
+    let Pair(tx_order_event_id, tx_order_event_tx) =
+      ledger_state.unsafe_event_to_key_value_pair(tx_order_event)
+    //
+    expect tx_order_tx: ledger_state.MidgardTxCompact = tx_order_event_tx
+    //
+    let overridden_tx_order_tx: Data =
+      ledger_state.MidgardTxCompact {
+        ..tx_order_tx,
+        validity: validity_override,
+      }
 
-        // Done.
-        True
-      },
-      0,
-      input_index,
-      output_index,
-      own_out_ref,
-      tx,
-    )
+    // 7. The referenced settlement UTxO's tx_order tree must contain the
+    //    subject tx_order event.
+    expect
+      plutarch_phas(
+        transactions_root,
+        tx_order_event_id,
+        overridden_tx_order_tx,
+        membership_proof,
+        redeemers,
+        inclusion_proof_script_withdraw_redeemer_index,
+      )
+
+    // Done.
+    True
   }
 
   else(_) {

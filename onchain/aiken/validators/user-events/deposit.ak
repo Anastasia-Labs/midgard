@@ -21,7 +21,7 @@ validator spend(hub_oracle: ScriptHash) {
     own_out_ref: OutputReference,
     tx: Transaction,
   ) {
-    let Transaction { reference_inputs, redeemers, .. } = tx
+    let Transaction { inputs, outputs, reference_inputs, redeemers, .. } = tx
 
     let SpendRedeemer {
       input_index,
@@ -30,6 +30,7 @@ validator spend(hub_oracle: ScriptHash) {
       settlement_ref_input_index,
       mint_redeemer_index,
       membership_proof,
+      inclusion_proof_script_withdraw_redeemer_index,
     } = redeemer
 
     let hub.Datum {
@@ -58,55 +59,64 @@ validator spend(hub_oracle: ScriptHash) {
         mint_redeemer_index,
       )
 
-    // TODO: Throwaway `0` used for redeemer here, due to bad interface of
-    //       `singular_utxo_indexer`.
-    singular_utxo_indexer.spend(
-      fn(_in_ix, input, _spend_purpose, _out_ix, output) {
-        let Input { output: Output { value: own_value, .. }, .. } = input
+    let
+      input,
+      output,
+    <-
+      singular_utxo_indexer.one_to_one(
+        input_index,
+        output_index,
+        own_out_ref,
+        inputs,
+        outputs,
+        // Double satisfaction prevented by the requirement for unregistration of
+        // the witness staking script.
+        True,
+      )
+    //
+    let Input { output: Output { value: own_value, .. }, .. } = input
 
-        // 2. The produced UTxO must not have any scripts attached to it.
-        expect Output {
-          address: output_address,
-          value: output_value,
-          datum: output_datum,
-          reference_script: None,
-        } = output
+    // 2. The produced UTxO must not have any scripts attached to it.
+    expect Output {
+      address: output_address,
+      value: output_value,
+      datum: output_datum,
+      reference_script: None,
+    } = output
 
-        // 3. Output value must be the same as the input value, except for the
-        //    deposit NFT.
-        //    TODO: Reserve contract might end up requiring an NFT.
-        //    TODO: Fees must be deduced whenever we have a clear plan for them.
-        expect
-          output_value == (
-            own_value |> assets.add(deposit_policy_id, burn_asset_name, -1)
-          )
+    // 3. Output value must be the same as the input value, except for the
+    //    deposit NFT.
+    //    TODO: Reserve contract might end up requiring an NFT.
+    //    TODO: Fees must be deduced whenever we have a clear plan for them.
+    expect
+      output_value == (
+        own_value |> assets.add(deposit_policy_id, burn_asset_name, -1)
+      )
 
-        let Pair(deposit_event_id, deposit_event_info) =
-          ledger_state.unsafe_event_to_key_value_pair(deposit_event)
+    let Pair(deposit_event_id, deposit_event_info) =
+      ledger_state.unsafe_event_to_key_value_pair(deposit_event)
 
-        and {
-          // 4. The referenced settlement utxo's deposit tree must contain the
-          //    subject deposit event.
-          plutarch_phas(
-            deposits_root,
-            deposit_event_id,
-            deposit_event_info,
-            membership_proof,
-            redeemers,
-          ),
-          // 5. Assert no datum is attached to the produced UTxO.
-          //    TODO: This might change depending on implementation of reserve.
-          output_datum == NoDatum,
-          // 6. Deposit must go to the reserve.
-          output_address == reserve_addr,
-        }
-      },
-      0,
-      input_index,
-      output_index,
-      own_out_ref,
-      tx,
-    )
+    // 4. The referenced settlement utxo's deposit tree must contain the
+    //    subject deposit event.
+    expect
+      plutarch_phas(
+        deposits_root,
+        deposit_event_id,
+        deposit_event_info,
+        membership_proof,
+        redeemers,
+        inclusion_proof_script_withdraw_redeemer_index,
+      )
+
+    // 5. Assert no datum is attached to the produced UTxO.
+    //    TODO: This might change depending on implementation of reserve.
+    expect output_datum == NoDatum
+
+    // 6. Deposit must go to the reserve.
+    expect output_address == reserve_addr
+
+    // Done.
+    True
   }
 
   else(_) {

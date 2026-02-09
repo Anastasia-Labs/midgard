@@ -149,6 +149,7 @@ validator spend(hub_oracle: ScriptHash, settlement_policy_id: ScriptHash) {
         unresolved_event_asset_name,
         event_type,
         membership_proof,
+        inclusion_proof_script_withdraw_redeemer_index,
       } -> {
         let Transaction {
           inputs,
@@ -215,6 +216,7 @@ validator spend(hub_oracle: ScriptHash, settlement_policy_id: ScriptHash) {
             unresolved_event_ref_input_index,
             reference_inputs,
             redeemers,
+            inclusion_proof_script_withdraw_redeemer_index,
           )
 
         // 6. The transaction's time-validity upper bound must be earlier than

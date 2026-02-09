@@ -1,11 +1,10 @@
 use aiken/collection/list
 use aiken/crypto.{ScriptHash, VerificationKeyHash}
-use aiken/merkle_patricia_forestry as mpf
 use cardano/assets.{AssetName, PolicyId}
 use cardano/transaction.{
   InlineDatum, Input, Output, Redeemer, ScriptPurpose, Spend,
 }
-use midgard/common/types.{MerkleRoot, PosixTime}
+use midgard/common/types.{MerkleRoot, PosixTime, Proof}
 use midgard/common/utils
 use midgard/hub_oracle as hub
 use midgard/ledger_state
@@ -48,7 +47,8 @@ pub type SpendRedeemer {
     unresolved_event_ref_input_index: Int,
     unresolved_event_asset_name: AssetName,
     event_type: EventType,
-    membership_proof: mpf.Proof,
+    membership_proof: Proof,
+    inclusion_proof_script_withdraw_redeemer_index: Int,
   }
   Resolve { settlement_id: ByteArray }
 }
@@ -112,11 +112,12 @@ pub fn valid_event_inclusion(
     ledger_state.MidgardTxId,
     ledger_state.MidgardTx,
   >,
-  membership_proof: mpf.Proof,
+  membership_proof: Proof,
   unresolved_event_asset_name: AssetName,
   unresolved_event_ref_input_index: Int,
   reference_inputs: List<Input>,
   redeemers: Pairs<ScriptPurpose, Redeemer>,
+  inclusion_proof_script_withdraw_redeemer_index: Int,
 ) {
   when event_type is {
     Deposit -> {
@@ -141,11 +142,12 @@ pub fn valid_event_inclusion(
       //    `unprocessed_deposit` is a member of the deposits tree in the
       //    settlement utxo.
       utils.plutarch_phas(
-        mpf_root: deposits_root,
+        merkle_root: deposits_root,
         key: deposit_key,
         value: deposit_value,
         membership_proof: membership_proof,
         redeemers: redeemers,
+        withdraw_redeemer_index: inclusion_proof_script_withdraw_redeemer_index,
       )
     }
     Withdrawal { validity_override } -> {
@@ -178,11 +180,12 @@ pub fn valid_event_inclusion(
       //    `unprocessed_withdrawal` with overridden `validity` is a member of
       //    the withdrawals tree in the settlement utxo.
       utils.plutarch_phas(
-        mpf_root: withdrawals_root,
+        merkle_root: withdrawals_root,
         key: withdrawal_key,
         value: overridden_withdrawal_info,
         membership_proof: membership_proof,
         redeemers: redeemers,
+        withdraw_redeemer_index: inclusion_proof_script_withdraw_redeemer_index,
       )
     }
     TxOrder { validity_override } -> {
@@ -215,11 +218,12 @@ pub fn valid_event_inclusion(
       //    `unprocessed_tx_order` with overridden `validity` is a member of the
       //    withdrawals tree in the settlement utxo.
       utils.plutarch_phas(
-        mpf_root: transactions_root,
+        merkle_root: transactions_root,
         key: tx_order_key,
         value: overridden_tx_order_tx,
         membership_proof: membership_proof,
         redeemers: redeemers,
+        withdraw_redeemer_index: inclusion_proof_script_withdraw_redeemer_index,
       )
     }
   }

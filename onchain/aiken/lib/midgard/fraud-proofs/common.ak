@@ -1,363 +1,432 @@
+use aiken/builtin
 use aiken/collection/list
-use aiken/crypto.{ScriptHash}
-use aiken/merkle_patricia_forestry as mpf
-use aiken/primitive/bytearray.{drop}
-use aiken_design_patterns/linked_list/unordered as unordered
-use aiken_design_patterns/merkelized_validator
-use cardano/address.{Script, VerificationKey}
-use cardano/assets.{PolicyId, lovelace_of}
-use cardano/transaction.{InlineDatum, Input, Output, Transaction}
-use midgard/common/utils.{get_singleton_asset_with_policy}
-use midgard/computation_thread.{StepDatum, Success}
-use midgard/ledger_state.{Header}
+use aiken/crypto.{ScriptHash, VerificationKeyHash}
+use aiken/primitive/bytearray
+use aiken_design_patterns/singular_utxo_indexer
+use cardano/address.{Address, Script, VerificationKey}
+use cardano/assets.{AssetName, PolicyId}
+use cardano/transaction.{
+  InlineDatum, Input, Mint, Output, OutputReference, Redeemer, ScriptPurpose,
+  Transaction,
+}
+use midgard/common/constants.{fraud_category_id_byte_count}
+use midgard/common/types.{Proof}
+use midgard/common/utils.{
+  get_redeemer_at, get_single_asset_from_value_apart_from_ada, has_signed,
+  plutarch_phas, verify_hash_32,
+}
+use midgard/computation_thread as ct
+use midgard/fraud_proof
+use midgard/hub_oracle as hub
+use midgard/ledger_state.{
+  Header, MidgardTxBodyCompact, MidgardTxCompact, MidgardTxId,
+}
 use midgard/state_queue
 
-pub type Proof =
-  ByteArray
-
-pub type ExclusionProof {
-  merkle_root: ByteArray,
-  excluded_object: Data,
-  excluded_key: ByteArray,
-  object_to_root_proof_path: mpf.Proof,
-}
-
-pub type MembershipProofInputs {
-  tx_root: ByteArray,
-  tx_hash: ByteArray,
-  tx_info_hash: ByteArray,
-  tx_to_root_proof_path: mpf.Proof,
-}
-
-pub type ExclusionProofInputTx {
-  tx_root: ByteArray,
-  invalid_input_tx_hash: ByteArray,
-  invalid_input_info_hash: ByteArray,
-  input_to_root_proof_path: mpf.Proof,
-}
-
-pub type ExclusionProofUtxo {
-  utxo_root: ByteArray,
-  invalid_utxo: ByteArray,
-  invalid_utxo_info_hash: ByteArray,
-  utxo_to_root_proof_path: mpf.Proof,
-}
-
-pub type InclusionProofTx {
-  current_block_txs_root: ByteArray,
-  invalid_tx: ByteArray,
-  invalid_tx_info_hash: ByteArray,
-  tx_to_root_proof_path: mpf.Proof,
-}
-
-// Last step datum for fraud proofs
-pub type FraudProofDatum {
-  fraud_prover: ByteArray,
-}
-
-// ------------ ABSTRACTIONS FOR ALL FRAUD PROOF STEPS ------------
-// Each step in a computation thread must in the continue redeemer:
-// Parse computation state from datum (previous step's output datum)
-// Receive arguments from current steps redeemer
-// Advance the computation by step, producing a new state
-// Suspend computation by serializing new state into datum for next step and pass it on
-
-// -------------- REDEEMER: CONTINUE -----------------
-// (1) Reference a state queue block with a block hash matching the last 28 bytes of the computation thread token name
-// (2) Delegate compute to the merkleized validator to verify the inclusion of tx1 in the tx_root
-// (3) The fraud prover field must match between the output state and the input datum
-// (4) Verify the state transition from the previous state to the new state
-// (5) The computation thread token must be sent to the next step's spending validator
-// (6) Transaction must not mint or burn any other tokens
-
-// Relevant to (1): tx_root provided by fraud prover in redeemer matches block_hash from the state queue block from the reference input
-pub fn get_tx_root_validate_block_hash(
-  tx: Transaction,
+pub type TxInclusionArgs {
+  input_index: Int,
+  output_index: Int,
+  hub_ref_input_index: Int,
   state_queue_node_ref_input_index: Int,
-  ct_token_asset_name: ByteArray,
-  state_queue_policy: ByteArray,
-) -> ByteArray {
-  // Reference input with block_hash 
+  tx_id: MidgardTxId,
+  tx: MidgardTxCompact,
+  tx_body: MidgardTxBodyCompact,
+  tx_membership_proof: Proof,
+  inclusion_proof_script_withdraw_redeemer_index: Int,
+}
+
+pub fn pass_tx_to_next_step(
+  computation_thread_token_policy_id: PolicyId,
+  hub_oracle: ScriptHash,
+  datum: Option<ct.StepDatum<input_state>>,
+  tx_inclusion_args: TxInclusionArgs,
+  own_out_ref: OutputReference,
+  l1_tx: Transaction,
+  validation: fn(
+    ScriptHash,
+    AssetName,
+    VerificationKeyHash,
+    Option<input_state>,
+    ScriptHash,
+    Data<output_state>,
+    Header,
+    MidgardTxId,
+    MidgardTxCompact,
+    MidgardTxBodyCompact,
+  ) ->
+    Bool,
+) -> Bool {
+  let TxInclusionArgs {
+    input_index,
+    output_index,
+    hub_ref_input_index,
+    state_queue_node_ref_input_index,
+    tx_id,
+    tx,
+    tx_body,
+    tx_membership_proof,
+    inclusion_proof_script_withdraw_redeemer_index,
+  } = tx_inclusion_args
+
+  let Transaction { inputs, outputs, reference_inputs, redeemers, .. } = l1_tx
+
+  expect Some(step_datum) = datum
+
+  // 1. Specified input must be authentic and properly reproduced.
   let
-    parsed_state_queue_datum,
-    block_hash,
+    own_script_hash,
+    computation_thread_token_asset_name,
+    fraud_prover,
+    m_input_state_data,
+    output_script_hash,
+    output_state_data,
+  <-
+    continue(
+      computation_thread_token_policy_id,
+      step_datum,
+      input_index,
+      output_index,
+      own_out_ref,
+      inputs,
+      outputs,
+    )
+
+  // 2. The provided transaction must be valid, and must be included in
+  //    the specified state queue node.
+  let header =
+    verify_tx_in_state_queue_node_and_get_header(
+      tx_id,
+      tx,
+      tx_body,
+      tx_membership_proof,
+      computation_thread_token_asset_name,
+      hub_oracle,
+      hub_ref_input_index,
+      state_queue_node_ref_input_index,
+      inclusion_proof_script_withdraw_redeemer_index,
+      reference_inputs,
+      redeemers,
+    )
+
+  // 3. Custom validation must pass.
+  expect
+    validation(
+      own_script_hash,
+      computation_thread_token_asset_name,
+      fraud_prover,
+      m_input_state_data,
+      output_script_hash,
+      output_state_data,
+      header,
+      tx_id,
+      tx,
+      tx_body,
+    )
+
+  // Done.
+  True
+}
+
+pub fn cancel(
+  computation_thread_token_policy_id: PolicyId,
+  m_datum: Option<ct.StepDatum<a>>,
+  input_index: Int,
+  own_out_ref: OutputReference,
+  mint_redeemer_index: Int,
+  tx: Transaction,
+) -> Bool {
+  let Transaction { inputs, redeemers, extra_signatories, .. } = tx
+  // 1. Validate the `Cancel` redeemer from the computation thread policy is
+  //    invoked (this in turn validates the burning of the specified computation
+  //    thread token).
+  let mint_redeemer_data =
+    get_redeemer_at(
+      redeemers: redeemers,
+      expected_purpose: Mint(computation_thread_token_policy_id),
+      redeemer_index: mint_redeemer_index,
+    )
+  expect ct.BurnForCancellation {
+    burning_token_asset_name: redeemer_burning_asset_name,
+  } = mint_redeemer_data
+
+  // 2. Input UTxO must be authentic.
+  expect Some(Input {
+    output: Output { value: input_value, .. },
+    output_reference,
+  }) = list.at(inputs, input_index)
+  expect output_reference == own_out_ref
+  let input_nft_triplet =
+    get_single_asset_from_value_apart_from_ada(input_value)
+  expect
+    input_nft_triplet == (
+      computation_thread_token_policy_id,
+      redeemer_burning_asset_name,
+      1,
+    )
+
+  // 3. Transaction must be signed by the fraud prover.
+  expect Some(ct.StepDatum { fraud_prover, .. }) = m_datum
+  expect fraud_prover |> has_signed(extra_signatories)
+
+  // Done.
+  True
+}
+
+/// Generic helper for validating requirements specific for progressing a fraud
+/// proof. It provides:
+/// - Script hash of the spending/input UTxO (i.e. fraud proof's step script).
+/// - Asset name of the computation thread token carried by the input UTxO.
+/// - Verification key hash of the fraud prover.
+/// - The `data` field of the spending `StepDatum` (which is of type
+///   `Option<a>`).
+/// - Output's script hash (i.e. the payment part of its address).
+/// - Output's state data (of type `Data`, i.e. it is validated `data` field of
+///   `StepDatum` is `Some<Data>`).
+///
+/// The reason input state data is provided with `Option` is to allow this
+/// function to also be used in the first step of the fraud proofs (since all
+/// fraud proofs start with `None` in the `data` field).
+///
+/// On the other hand, output state data is provided as `Data` directly to
+/// disallow this function to be used for final steps. [`finalize`](#finalize)
+/// should be used instead.
+pub fn continue(
+  computation_thread_token_policy_id: PolicyId,
+  step_datum: ct.StepDatum<input_state>,
+  input_index: Int,
+  output_index: Int,
+  own_out_ref: OutputReference,
+  inputs: List<Input>,
+  outputs: List<Output>,
+  validation_fn: fn(
+    ScriptHash,
+    AssetName,
+    VerificationKeyHash,
+    Option<input_state>,
+    ScriptHash,
+    Data<output_state>,
+  ) ->
+    Bool,
+) -> Bool {
+  let
+    input_script_hash,
+    computation_thread_token_asset_name,
+    fraud_prover,
+    m_input_state_data,
+    output,
+  <-
+    validate_input_and_provide_output(
+      computation_thread_token_policy_id,
+      step_datum,
+      input_index,
+      output_index,
+      own_out_ref,
+      inputs,
+      outputs,
+    )
+
+  // 1. Output UTxO must:
+  //    - Go to an address which its payment credential is a script.
+  //    - Carry the same NFT as the input UTxO, with no other tokens
+  //      (consequently preventing double satisfaction).
+  //    - Have an inline datum attached.
+  //    - Not have a reference script attached.
+  expect Output {
+    address: Address { payment_credential: Script(output_script_hash), .. },
+    value: output_value,
+    datum: InlineDatum(output_datum_data),
+    reference_script: None,
+  } = output
+  let output_nft_triplet =
+    get_single_asset_from_value_apart_from_ada(output_value)
+  expect
+    output_nft_triplet == (
+      computation_thread_token_policy_id,
+      computation_thread_token_asset_name,
+      1,
+    )
+
+  // 2. Fraud prover must not change during the transition.
+  expect ct.StepDatum {
+    fraud_prover: output_fraud_prover,
+    data: Some(output_state_data),
+  }: ct.StepDatum<Data> = output_datum_data
+  expect output_fraud_prover == fraud_prover
+
+  // 3. Custom validation for each fraud proof must pass.
+  validation_fn(
+    input_script_hash,
+    computation_thread_token_asset_name,
+    fraud_prover,
+    m_input_state_data,
+    output_script_hash,
+    output_state_data,
+  )
+}
+
+pub fn finalize(
+  computation_thread_token_policy_id: PolicyId,
+  fraud_proof_token_policy_id: PolicyId,
+  fraud_proof_address: Address,
+  step_datum: ct.StepDatum<input_state>,
+  input_index: Int,
+  output_index: Int,
+  fraud_proof_mint_redeemer_index: Int,
+  own_out_ref: OutputReference,
+  inputs: List<Input>,
+  outputs: List<Output>,
+  redeemers: Pairs<ScriptPurpose, Redeemer>,
+  validation_fn: fn(
+    ScriptHash,
+    AssetName,
+    VerificationKeyHash,
+    Option<input_state>,
+  ) ->
+    Bool,
+) -> Bool {
+  let
+    input_script_hash,
+    computation_thread_token_asset_name,
+    fraud_prover,
+    m_input_state_data,
+    output,
+  <-
+    validate_input_and_provide_output(
+      computation_thread_token_policy_id,
+      step_datum,
+      input_index,
+      output_index,
+      own_out_ref,
+      inputs,
+      outputs,
+    )
+
+  // 1. Output UTxO must:
+  //    - Have an inline datum attached.
+  //    - Not have a reference script attached.
+  expect Output {
+    address: output_address,
+    value: output_value,
+    datum: InlineDatum(output_datum_data),
+    reference_script: None,
+  } = output
+
+  // 2. Successful fraud proofs must be reserved at fraud proof's spending
+  //    script which is an always fails script.
+  expect output_address == fraud_proof_address
+
+  // 3. Produced UTxO at `fraud_proof` must have only 1 NFT of `fraud_proof`
+  //    policy, with the same asset name as the input NFT's.
+  let output_nft_triplet =
+    get_single_asset_from_value_apart_from_ada(output_value)
+  expect
+    output_nft_triplet == (
+      fraud_proof_token_policy_id,
+      computation_thread_token_asset_name,
+      1,
+    )
+
+  // 4. Fraud prover must be presreved, with no additional `data`.
+  expect ct.StepDatum { fraud_prover: output_fraud_prover, data: None }: ct.StepDatum<
+    Data,
+  > = output_datum_data
+  expect output_fraud_prover == fraud_prover
+
+  // 5. Fraud proof's minting script must be invoked (which also validates the
+  //    burning of the computation thread token).
+  let fraud_proof_mint_redeemer_data =
+    get_redeemer_at(
+      redeemers: redeemers,
+      expected_purpose: Mint(fraud_proof_token_policy_id),
+      redeemer_index: fraud_proof_mint_redeemer_index,
+    )
+  expect fraud_proof.MintRedeemer {
+    computation_thread_token_asset_name: fraud_proof_redeemer_burning_asset_name,
+    ..
+  } = fraud_proof_mint_redeemer_data
+
+  // 6. The asset name specified in fraud proof's redeemer must match the token
+  //    included in the spending input.
+  expect
+    fraud_proof_redeemer_burning_asset_name == computation_thread_token_asset_name
+
+  // 7. Custom validation for each fraud proof must pass.
+  validation_fn(
+    input_script_hash,
+    computation_thread_token_asset_name,
+    fraud_prover,
+    m_input_state_data,
+  )
+}
+
+pub fn verify_tx_and_its_body(
+  tx_id: MidgardTxId,
+  tx: MidgardTxCompact,
+  tx_body: MidgardTxBodyCompact,
+) -> Bool {
+  let tx_data: Data = tx
+  and {
+    verify_hash_32(data: tx_data, data_hash: tx_id),
+    verify_hash_32(data: tx_body, data_hash: tx.body),
+  }
+}
+
+pub fn verify_tx_in_state_queue_node_and_get_header(
+  tx_id: MidgardTxId,
+  tx: MidgardTxCompact,
+  tx_body: MidgardTxBodyCompact,
+  tx_membership_proof: Proof,
+  computation_thread_token_asset_name: AssetName,
+  hub_oracle: PolicyId,
+  hub_ref_input_index: Int,
+  state_queue_node_ref_input_index: Int,
+  inclusion_proof_script_withdraw_redeemer_index: Int,
+  reference_inputs: List<Input>,
+  redeemers: Pairs<ScriptPurpose, Redeemer>,
+) -> Header {
+  // 1. Verify authenticity of the provided tx and its body against its ID, and
+  //    body hash.
+  expect verify_tx_and_its_body(tx_id, tx, tx_body)
+
+  // 2. Hub oracle must be provided as a reference input.
+  let hub.Datum { state_queue: state_queue_policy, .. } =
+    hub.get_datum(reference_inputs, hub_oracle, hub_ref_input_index)
+
+  let
+    state_queue_datum,
+    state_queue_node_key,
   <-
     state_queue.get_block_datum(
-      tx.reference_inputs,
+      reference_inputs,
       state_queue_policy,
       state_queue_node_ref_input_index,
     )
 
-  // Get CT token and check match with the block hash
-  expect drop(ct_token_asset_name, n: 4) == block_hash
-
-  parsed_state_queue_datum.transactions_root
-}
-
-// Relevant to (1): tx_root provided by fraud prover in redeemer matches block_hash from the state queue block from the reference input
-pub fn get_prev_utxo_root(
-  tx: Transaction,
-  state_queue_node_ref_input_index: Int,
-) -> ByteArray {
-  // Reference input with block_hash 
-  expect Some(state_queue_node_input) =
-    list.at(tx.reference_inputs, state_queue_node_ref_input_index)
-
-  // Extract tx_root via the state queue block hash
-  expect InlineDatum(state_queue_datum_data) =
-    state_queue_node_input.output.datum
-  expect state_queue_node_datum: unordered.NodeDatum = state_queue_datum_data
-  expect parsed_state_queue_datum: Header = state_queue_node_datum.data
-  let extracted_prev_utxo_root = parsed_state_queue_datum.prev_utxos_root
-
-  extracted_prev_utxo_root
-}
-
-// tx_root, merkle root of transactions in the state queue block
-// tx_hash, hash of the transaction that is being proven to be in tx_root
-// proof_path: minimum set of hashes needed to reconstruct the path from the tx to the root
-
-// Relevant to (2)
-pub fn validate_membership_proof(
-  tx: Transaction,
-  plutarch_midgard_merkle_validator: ScriptHash,
-  proof_inputs: MembershipProofInputs,
-) -> Bool {
+  // 3. The asset name of the computation thread token must match the state
+  //    queue node key (after dropping the fraud category ID prefix).
   expect
-    merkelized_validator.delegated_validation(
-      function_input: MembershipProofInputs {
-        tx_root: proof_inputs.tx_root,
-        tx_hash: proof_inputs.tx_hash,
-        tx_info_hash: proof_inputs.tx_info_hash,
-        tx_to_root_proof_path: proof_inputs.tx_to_root_proof_path,
-      },
-      staking_validator: plutarch_midgard_merkle_validator,
-      input_data_coercer: fn(withdraw_redeemer: Data) {
-        expect coerced: MembershipProofInputs = withdraw_redeemer
-        coerced
-      },
-      redeemers: tx.redeemers,
-    )
-  True
-}
-
-pub fn validate_exclusion_proof(
-  tx: Transaction,
-  plutarch_midgard_merkle_validator: ScriptHash,
-  proof: ExclusionProof,
-) -> Bool {
-  expect
-    merkelized_validator.delegated_validation(
-      function_input: proof,
-      staking_validator: plutarch_midgard_merkle_validator,
-      input_data_coercer: fn(withdraw_redeemer: Data) {
-        expect coerced: ExclusionProof = withdraw_redeemer
-        coerced
-      },
-      redeemers: tx.redeemers,
-    )
-  True
-}
-
-// Relevant to (2)
-pub fn validate_exclusion_input_proof(
-  tx: Transaction,
-  plutarch_midgard_merkle_validator: ScriptHash,
-  proof_input: ExclusionProofInputTx,
-) -> Bool {
-  expect
-    merkelized_validator.delegated_validation(
-      function_input: ExclusionProofInputTx {
-        tx_root: proof_input.tx_root,
-        invalid_input_tx_hash: proof_input.invalid_input_tx_hash,
-        invalid_input_info_hash: proof_input.invalid_input_info_hash,
-        input_to_root_proof_path: proof_input.input_to_root_proof_path,
-      },
-      staking_validator: plutarch_midgard_merkle_validator,
-      input_data_coercer: fn(withdraw_redeemer: Data) {
-        expect coerced: ExclusionProofInputTx = withdraw_redeemer
-        coerced
-      },
-      redeemers: tx.redeemers,
-    )
-  True
-}
-
-// Relevant to (2)
-pub fn validate_exclusion_utxo_proof(
-  tx: Transaction,
-  plutarch_midgard_merkle_validator: ScriptHash,
-  proof_input: ExclusionProofUtxo,
-) -> Bool {
-  expect
-    merkelized_validator.delegated_validation(
-      function_input: ExclusionProofUtxo {
-        utxo_root: proof_input.utxo_root,
-        invalid_utxo: proof_input.invalid_utxo,
-        invalid_utxo_info_hash: proof_input.invalid_utxo_info_hash,
-        utxo_to_root_proof_path: proof_input.utxo_to_root_proof_path,
-      },
-      staking_validator: plutarch_midgard_merkle_validator,
-      input_data_coercer: fn(withdraw_redeemer: Data) {
-        expect coerced: ExclusionProofUtxo = withdraw_redeemer
-        coerced
-      },
-      redeemers: tx.redeemers,
-    )
-  True
-}
-
-// Common validation for any step's output state (except final step)
-// Relevant to (3), (4), (5), (6)
-pub fn validate_step_output(
-  tx: Transaction,
-  index_output: Int,
-  next_validator_hash: ScriptHash,
-  ct_token_policy_id: PolicyId,
-  ct_token_asset_name: ByteArray,
-  step_datum: StepDatum,
-  expected_output_datum: StepDatum,
-) -> Bool {
-  expect Some(output_to_next_step) = list.at(tx.outputs, index_output)
-  // (3) Validate fraud prover field matches
-  expect InlineDatum(output_datum) = output_to_next_step.datum
-  expect parsed_output_datum: StepDatum = output_datum
-  expect parsed_output_datum.fraud_prover == step_datum.fraud_prover
-
-  // (4) Validate state transition
-  expect parsed_output_datum.data == expected_output_datum.data
-
-  // (5) Validate output goes to next validator
-  expect Script(hash) = output_to_next_step.address.payment_credential
-  expect hash == next_validator_hash
-
-  // (6) Validate CT token forwarding and no other minting/burning
-  expect
-    Pair(ct_token_asset_name, 1) == get_singleton_asset_with_policy(
-      output_to_next_step.value,
-      ct_token_policy_id,
+    state_queue_node_key == bytearray.drop(
+      computation_thread_token_asset_name,
+      fraud_category_id_byte_count,
     )
 
-  True
-}
-
-// -------------- REDEEMER: CONTINUE (FINAL STEP) -----------------
-// Validations for all final step output states
-
-// (1) Mint the fraud token
-// (2) Burn computation thread token with Success redeemer
-// (3) Output datum type must be StepDatum(Void)
-// (4) The fraud_prover field must match between output datum and input datum
-// (5) Transaction must not mint or burn any other tokens
-pub fn validate_final_step_output(
-  tx: Transaction,
-  index_output: Int,
-  fraud_proof_token_policy: PolicyId,
-  ct_token_asset_name: ByteArray,
-  step_datum: StepDatum,
-  computation_thread_redeemer_index: Int,
-) -> Bool {
-  // (3, 4) Validate output state is Void and fraud prover matches
-  expect Some(output) = list.at(tx.outputs, index_output)
-  expect InlineDatum(output_datum) = output.datum
-  expect parsed_output_datum: FraudProofDatum = output_datum
-  let expected_output_datum =
-    FraudProofDatum { fraud_prover: step_datum.fraud_prover }
-  expect expected_output_datum == parsed_output_datum
-
-  // (1, 5) Validate fraud proof token minting and no other minting
+  // 4. Specified transaction must be proven to be included in the referenced
+  //    state queue node.
+  let tx_data: Data = tx
   expect
-    Pair(ct_token_asset_name, 1) == get_singleton_asset_with_policy(
-      tx.mint,
-      fraud_proof_token_policy,
+    plutarch_phas(
+      merkle_root: state_queue_datum.transactions_root,
+      key: builtin.b_data(tx_id),
+      value: tx_data,
+      membership_proof: tx_membership_proof,
+      redeemers: redeemers,
+      withdraw_redeemer_index: inclusion_proof_script_withdraw_redeemer_index,
     )
 
-  // (2) Validate computation thread token burn with Success redeemer
-  expect Some(computation_thread_redeemer_pair) =
-    list.at(tx.redeemers, computation_thread_redeemer_index)
-  expect Success { token_to_burn_asset_name } =
-    computation_thread_redeemer_pair.2nd
-  expect token_to_burn_asset_name == ct_token_asset_name
-
-  True
+  // Done. Return the block header.
+  state_queue_datum
 }
 
-// ------------ ABSTRACTED FUNCTIONS FOR ALL CANCEL REDEEMERS ------------
-// -------------- REDEEMER: CANCEL -----------------
-// (1) Burn the computation thread token 
-// (2) Return the ADA from the double spend computation thread utxo to the fraud prover pub-key defined in the input datum
-// (3) Transaction must not mint or burn any other tokens
-
-// Umbrella Cancel Redeemer function
-pub fn handle_cancel(
-  own_input: Input,
-  index_output: Int,
-  step_datum: StepDatum,
-  ct_token_policy_id: PolicyId,
-  tx: Transaction,
-) -> Bool {
-  expect validate_ct_token_burn(own_input, ct_token_policy_id, tx)
-  expect
-    validate_ada_return_to_fraud_prover(
-      own_input,
-      index_output,
-      step_datum.fraud_prover,
-      tx,
-    )
-  True
-}
-
-// Relevant Cancel Redeemer Conditions: (1), (3)
-pub fn validate_ct_token_burn(
-  own_input: Input,
-  ct_token_policy_id: PolicyId,
-  tx: Transaction,
-) -> Bool {
-  // (1.2) Get computation thread token asset name in output
-  expect Pair(ct_token_asset_name, 1) =
-    get_singleton_asset_with_policy(own_input.output.value, ct_token_policy_id)
-  // (1.3) Burn the computation thread token, (3) Transaction must not mint or burn any other tokens
-  expect
-    Pair(ct_token_asset_name, -1) == get_singleton_asset_with_policy(
-      tx.mint,
-      ct_token_policy_id,
-    )
-  True
-}
-
-// Relevant Cancel Redeemer Conditions: (2)
-pub fn validate_ada_return_to_fraud_prover(
-  own_input: Input,
-  index_output: Int,
-  fraud_prover: ByteArray,
-  tx: Transaction,
-) -> Bool {
-  // (2.1) Get the lovelace amount from our own validator's input (ADA inside the input of the fraud proof thread)
-  let lovelace = lovelace_of(own_input.output.value)
-  // (2.2) Verify an output is going to fraud prover address
-  expect Some(output_to_fraud_prover) = list.at(tx.outputs, index_output)
-  // (2.3) Validate output address matches fraud prover address
-  expect validate_output_to_fraud_prover(output_to_fraud_prover, fraud_prover)
-  // (2.4) Lovelace amount from our own validator's input to fraud prover
-  expect lovelace == lovelace_of(output_to_fraud_prover.value)
-  True
-}
-
-// -------------- HELPER FUNCTIONS -----------------
-
-// Get computation thread token from input
-// This is used by all redeemers to identify the computation thread token passed
-// in from the previous step
-pub fn get_singleton_ct_token(
-  own_input: Input,
-  ct_token_policy_id: PolicyId,
-) -> ByteArray {
-  expect Pair(ct_token_asset_name, 1) =
-    get_singleton_asset_with_policy(own_input.output.value, ct_token_policy_id)
-  ct_token_asset_name
-}
-
-// Validate output goes to fraud prover address
 pub fn validate_output_to_fraud_prover(
   output_to_fraud_prover: Output,
   prover_hash: ByteArray,
@@ -366,4 +435,74 @@ pub fn validate_output_to_fraud_prover(
     VerificationKey(hash) -> hash == prover_hash
     _ -> False
   }
+}
+
+// Internal Helpers
+
+/// Validates authenticity of the input at `input_index` (i.e. that it comes
+/// from a script, and that it carries only a computation thread token), and
+/// provides:
+/// - Script hash of the input's address.
+/// - Asset name of the computation thread.
+/// - Verification key hash of the fraud prover.
+/// - The `data` field of the spending `StepDatum` (which is of type
+///   `Option<a>`). `Option` so that first steps can also be covered.
+/// - The output at `output_index` (no validation is performed on it).
+fn validate_input_and_provide_output(
+  computation_thread_token_policy_id: PolicyId,
+  step_datum: ct.StepDatum<a>,
+  input_index: Int,
+  output_index: Int,
+  own_out_ref: OutputReference,
+  inputs: List<Input>,
+  outputs: List<Output>,
+  validation_fn: fn(
+    ScriptHash,
+    AssetName,
+    VerificationKeyHash,
+    Option<a>,
+    Output,
+  ) ->
+    Bool,
+) -> Bool {
+  let
+    input,
+    output,
+  <-
+    singular_utxo_indexer.one_to_one(
+      input_index,
+      output_index,
+      own_out_ref,
+      inputs,
+      outputs,
+      // Double satisfaction prevented by validating the output UTxO carries the
+      // same computation thread token as the input's. This is _NOT_ carried out
+      // in this function though, hence this helper itself not being exposed.
+      True,
+    )
+
+  // 1. Input UTxO must carry exactly one computation thread token and no other
+  //    tokens.
+  expect Input {
+    output: Output {
+      address: Address { payment_credential: Script(input_script_hash), .. },
+      value: input_value,
+      ..
+    },
+    ..
+  } = input
+  let (input_nft_policy_id, computation_thread_token_asset_name, input_nft_qty) =
+    get_single_asset_from_value_apart_from_ada(input_value)
+  expect input_nft_policy_id == computation_thread_token_policy_id
+  expect input_nft_qty == 1
+
+  let ct.StepDatum { data: m_input_state_data, fraud_prover } = step_datum
+
+  validation_fn(
+    input_script_hash,
+    computation_thread_token_asset_name,
+    fraud_prover,
+    m_input_state_data,
+    output,
+  )
 }

@@ -23,12 +23,8 @@ pub type H32<data> =
 
 /// A Merkle root hash, assumed to be a 32-byte hash
 /// calculated with the Blake2b-256 algorithm.
-pub type MerkleRoot<hash, data> =
-  Hash<hash, data>
+pub type MerkleRoot<key, value> =
+  ByteArray
 
-pub type MerkleProofInputs {
-  mpf_root: ByteArray,
-  key: Data,
-  value: Data,
-  proof: mpf.Proof,
-}
+pub type Proof =
+  mpf.Proof

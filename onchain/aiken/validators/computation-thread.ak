@@ -4,19 +4,21 @@ use aiken_design_patterns/linked_list/ordered as ordered
 use aiken_design_patterns/linked_list/unordered as unordered
 use cardano/assets.{PolicyId, flatten, quantity_of}
 use cardano/transaction.{InlineDatum, Input, Output, Transaction}
-use midgard/common/utils.{is_output_to_sc}
-use midgard/computation_thread.{StepDatum} as ct
+use midgard/common/utils.{has_signed, is_output_to_sc}
+use midgard/computation_thread.{
+  BurnForCancellation, Init, MintRedeemer, StepDatum, Success,
+}
 use midgard/fraud_proof_catalogue as fpc
 use midgard/hub_oracle as hub
 use midgard/ledger_state
 
-validator computation_thread_policy(
+validator mint(
   fraud_proof_catalogue_script_hash: ByteArray,
   hub_oracle_script_hash: PolicyId,
 ) {
-  mint(redeemer: ct.Redeemer, policy_id: PolicyId, self: Transaction) {
+  mint(redeemer: MintRedeemer, policy_id: PolicyId, self: Transaction) {
     when redeemer is {
-      ct.Mint {
+      Init {
         fraud_proof_set_node_ref_input_index,
         hub_oracle_ref_input_index,
         frauded_state_queue_node_ref_input_index,
@@ -85,16 +87,28 @@ validator computation_thread_policy(
             policy_id,
             token_to_mint_asset_name,
           ),
+          fraud_prover_hash |> has_signed(self.extra_signatories),
         }
       }
-      ct.Success { token_to_burn_asset_name } -> and {
-          quantity_of(self.mint, policy_id, token_to_burn_asset_name) == -1,
-          utils.quantity_of_policy_id(self.mint, policy_id) == 1,
-        }
-      ct.Cancel { token_to_burn_asset_name } -> and {
-          quantity_of(self.mint, policy_id, token_to_burn_asset_name) == -1,
-          utils.quantity_of_policy_id(self.mint, policy_id) == 1,
-        }
+      Success { burning_token_asset_name } -> {
+        // 1. Specified token must be burned. The rest of validations
+        //    (including the coupling of this endpoint with minting of a
+        //    `fraud_proof` token) are done in each fraud proof's last step.
+        expect quantity_of(self.mint, policy_id, burning_token_asset_name) == -1
+
+        // Done.
+        True
+      }
+      BurnForCancellation { burning_token_asset_name } -> {
+        // 1. Transaction must burn the specified token, without minting or
+        //    burning any other tokens.
+        let expected_mint =
+          assets.from_asset(policy_id, burning_token_asset_name, -1)
+        expect expected_mint == self.mint
+
+        // Done.
+        True
+      }
     }
   }
 
@@ -135,7 +149,7 @@ fn validate_output_to_initial_fraud_proof_step(
   token_asset_name: ByteArray,
 ) {
   expect InlineDatum(outputDatum) = output_to_init_step.datum
-  expect parsedDatum: StepDatum = outputDatum
+  expect parsedDatum: StepDatum<Data> = outputDatum
 
   let newDatum = StepDatum { fraud_prover: fraud_prover_hash, data: None }
 

@@ -3,6 +3,7 @@ use aiken/cbor
 use aiken/collection/list
 use aiken/crypto.{ScriptHash, blake2b_256}
 use aiken/interval.{Finite}
+use aiken_design_patterns/validity_range_normalization as vrn
 use cardano/address.{Address}
 use cardano/assets.{AssetName, PolicyId, Value}
 use cardano/transaction.{
@@ -120,8 +121,14 @@ pub fn authenticate_event(
   redeemers: Pairs<ScriptPurpose, Redeemer>,
   event_validator: fn(AssetName, Value, Data) -> Bool,
 ) -> Bool {
-  // Grab validity range's upper bound.
-  expect Finite(valid_to) = validity_range.upper_bound.bound_type
+  // Grab validity range's inclusive upper bound.
+  // TODO: Is it needed to ensure inclusivity?
+  let valid_to =
+    when vrn.normalize_time_range(validity_range) is {
+      vrn.ClosedRange { upper, .. } | vrn.FromNegInf { upper } -> upper
+      _ ->
+        fail @"Invalid validity range encountered for user event authentication"
+    }
 
   // Grab output reference of the specified nonce input.
   expect Some(Input { output_reference: nonce_input_out_ref, .. }) =

@@ -21,7 +21,7 @@ validator spend(hub_oracle: ScriptHash) {
     own_out_ref: OutputReference,
     tx: Transaction,
   ) {
-    let Transaction { reference_inputs, redeemers, .. } = tx
+    let Transaction { inputs, outputs, reference_inputs, redeemers, .. } = tx
 
     let SpendRedeemer {
       input_index,
@@ -31,6 +31,7 @@ validator spend(hub_oracle: ScriptHash) {
       burn_redeemer_index,
       payout_mint_redeemer_index,
       membership_proof,
+      inclusion_proof_script_withdraw_redeemer_index,
       purpose,
     } = redeemer
 
@@ -63,129 +64,133 @@ validator spend(hub_oracle: ScriptHash) {
         burn_redeemer_index,
       )
 
-    singular_utxo_indexer.spend(
-      fn(_in_ix, input, spend_purpose, _out_ix, output) {
-        let Input { output: Output { value: own_value, .. }, .. } = input
+    let
+      input,
+      output,
+    <-
+      singular_utxo_indexer.one_to_one(
+        input_index,
+        output_index,
+        own_out_ref,
+        inputs,
+        outputs,
+        // Double satisfaction prevented by the requirement for unregistration of
+        // the witness staking script.
+        True,
+      )
 
-        // 2. The produced UTxO must not have any scripts attached to it.
-        expect Output {
-          address: output_address,
-          value: output_value,
-          datum: output_datum,
-          reference_script: None,
-        } = output
+    let Input { output: Output { value: own_value, .. }, .. } = input
 
-        when spend_purpose is {
-          InitializePayout -> {
-            // 3. Output value must be the same as the input value, without the
-            //    withdrawal NFT, and with the payout NFT added.
-            expect
-              output_value == (
-                own_value
-                  |> assets.add(withdrawal_policy_id, burn_asset_name, -1)
-                  |> assets.add(payout_policy_id, burn_asset_name, 1)
-              )
+    // 2. The produced UTxO must not have any scripts attached to it.
+    expect Output {
+      address: output_address,
+      value: output_value,
+      datum: output_datum,
+      reference_script: None,
+    } = output
 
-            // 4. TODO: Anticipating what the payout mint redeemer should look
-            //          like.
-            expect payout.MintRedeemer { withdrawal_utxo_out_ref }: payout.MintRedeemer =
-              utils.get_redeemer_at(
-                redeemers,
-                Mint(payout_policy_id),
-                payout_mint_redeemer_index,
-              )
-            expect withdrawal_utxo_out_ref == own_out_ref
+    when purpose is {
+      InitializePayout -> {
+        // 3. Output value must be the same as the input value, without the
+        //    withdrawal NFT, and with the payout NFT added.
+        expect
+          output_value == (
+            own_value
+              |> assets.add(withdrawal_policy_id, burn_asset_name, -1)
+              |> assets.add(payout_policy_id, burn_asset_name, 1)
+          )
 
-            let Pair(withdrawal_event_id, withdrawal_event_info) =
-              ledger_state.unsafe_event_to_key_value_pair(withdrawal_event)
+        // 4. TODO: Anticipating what the payout mint redeemer should look
+        //          like.
+        expect payout.MintRedeemer { withdrawal_utxo_out_ref }: payout.MintRedeemer =
+          utils.get_redeemer_at(
+            redeemers,
+            Mint(payout_policy_id),
+            payout_mint_redeemer_index,
+          )
+        expect withdrawal_utxo_out_ref == own_out_ref
 
-            // 5. Initiation of a payout accumulator can only happen for valid
-            //    withdrawals.
-            expect ledger_state.WithdrawalInfo {
-              body: withdrawal_body,
-              validity: ledger_state.WithdrawalIsValid,
-              ..
-            } = withdrawal_event_info
+        let Pair(withdrawal_event_id, withdrawal_event_info) =
+          ledger_state.unsafe_event_to_key_value_pair(withdrawal_event)
 
-            // 6. The referenced settlement UTxO's withdrawal tree must contain
-            //    the subject withdrawal event.
-            expect
-              plutarch_phas(
-                withdrawals_root,
-                withdrawal_event_id,
-                withdrawal_event_info,
-                membership_proof,
-                redeemers,
-              )
+        // 5. Initiation of a payout accumulator can only happen for valid
+        //    withdrawals.
+        expect ledger_state.WithdrawalInfo {
+          body: withdrawal_body,
+          validity: ledger_state.WithdrawalIsValid,
+          ..
+        } = withdrawal_event_info
 
-            let ledger_state.WithdrawalBody {
-              l2_value,
-              l1_address,
-              l1_datum,
-              ..
-            } = withdrawal_body
+        // 6. The referenced settlement UTxO's withdrawal tree must contain
+        //    the subject withdrawal event.
+        expect
+          plutarch_phas(
+            withdrawals_root,
+            withdrawal_event_id,
+            withdrawal_event_info,
+            membership_proof,
+            redeemers,
+            inclusion_proof_script_withdraw_redeemer_index,
+          )
 
-            let expected_output_datum: Data =
-              payout.Datum { l2_value, l1_address, l1_datum }
+        let ledger_state.WithdrawalBody { l2_value, l1_address, l1_datum, .. } =
+          withdrawal_body
 
-            // 7. Assert payout datum properly carries over all the required
-            //    info.
-            expect output_datum == InlineDatum(expected_output_datum)
+        let expected_output_datum: Data =
+          payout.Datum { l2_value, l1_address, l1_datum }
 
-            // 8. Withdrawal must go to the payout contract.
-            expect output_address == payout_addr
+        // 7. Assert payout datum properly carries over all the required
+        //    info.
+        expect output_datum == InlineDatum(expected_output_datum)
 
-            // Done.
-            True
+        // 8. Withdrawal must go to the payout contract.
+        expect output_address == payout_addr
+
+        // Done.
+        True
+      }
+      Refund { validity_override } -> {
+        // 3. Only invalid withdrawals can be refunded.
+        //    TODO: worth defining a separate type for this?
+        expect validity_override != ledger_state.WithdrawalIsValid
+
+        // 4. Output value must be the same as the input value, without the
+        //    withdrawal NFT.
+        expect
+          output_value == (
+            own_value
+              |> assets.add(withdrawal_policy_id, burn_asset_name, -1)
+          )
+
+        // 5. For refunding invalid withdrawal orders, they must be included
+        //    in the settlement's tree with the same invalidity provided via
+        //    the redeemer.
+        let Pair(withdrawal_event_id, withdrawal_event_info) =
+          ledger_state.unsafe_event_to_key_value_pair(withdrawal_event)
+        //
+        expect coerced_withdrawal_info: ledger_state.WithdrawalInfo =
+          withdrawal_event_info
+        //
+        let overridden_withdrawal_info: Data =
+          ledger_state.WithdrawalInfo {
+            ..coerced_withdrawal_info,
+            validity: validity_override,
           }
-          Refund { validity_override } -> {
-            // 3. Only invalid withdrawals can be refunded.
-            //    TODO: worth defining a separate type for this?
-            expect validity_override != ledger_state.WithdrawalIsValid
+        //
+        expect
+          plutarch_phas(
+            withdrawals_root,
+            withdrawal_event_id,
+            overridden_withdrawal_info,
+            membership_proof,
+            redeemers,
+            inclusion_proof_script_withdraw_redeemer_index,
+          )
 
-            // 4. Output value must be the same as the input value, without the
-            //    withdrawal NFT.
-            expect
-              output_value == (
-                own_value
-                  |> assets.add(withdrawal_policy_id, burn_asset_name, -1)
-              )
-
-            // 5. For refunding invalid withdrawal orders, they must be included
-            //    in the settlement's tree with the same invalidity provided via
-            //    the redeemer.
-            let Pair(withdrawal_event_id, withdrawal_event_info) =
-              ledger_state.unsafe_event_to_key_value_pair(withdrawal_event)
-            //
-            expect coerced_withdrawal_info: ledger_state.WithdrawalInfo =
-              withdrawal_event_info
-            //
-            let overridden_withdrawal_info: Data =
-              ledger_state.WithdrawalInfo {
-                ..coerced_withdrawal_info,
-                validity: validity_override,
-              }
-            //
-            expect
-              plutarch_phas(
-                withdrawals_root,
-                withdrawal_event_id,
-                overridden_withdrawal_info,
-                membership_proof,
-                redeemers,
-              )
-
-            // Done.
-            True
-          }
-        }
-      },
-      purpose,
-      input_index,
-      output_index,
-      own_out_ref,
-      tx,
-    )
+        // Done.
+        True
+      }
+    }
   }
 
   else(_) {
