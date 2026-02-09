@@ -99,11 +99,13 @@ library
   exposed-modules:
     Midgard.Constants
     Midgard.Contracts.ActiveOperators
+    Midgard.Contracts.Init
     Midgard.Contracts.RegisteredOperators
     Midgard.Contracts.RetiredOperators
     Midgard.Scripts
     Midgard.ScriptUtils
     Midgard.Types.ActiveOperators
+    Midgard.Types.HubOracle
     Midgard.Types.RegisteredOperators
     Midgard.Types.RetiredOperators
 
