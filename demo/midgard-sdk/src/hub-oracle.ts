@@ -9,6 +9,7 @@ import {
   DataCoercionError,
   UnauthenticUtxoError,
   getStateToken,
+  BaseEntityUTxO,
 } from "@/common.js";
 import {
   Address,
@@ -48,11 +49,7 @@ export const HubOracleDatumSchema = Data.Object({
 export type HubOracleDatum = Data.Static<typeof HubOracleDatumSchema>;
 export const HubOracleDatum = HubOracleDatumSchema as unknown as HubOracleDatum;
 
-export type HubOracleUTxO = {
-  utxo: UTxO;
-  datum: HubOracleDatum;
-};
-
+export type HubOracleUTxO = BaseEntityUTxO<HubOracleDatum>;
 /**
  * Parameters for the init transaction.
  */
@@ -65,66 +62,6 @@ export type HubOracleInitParams = {
  * Parameters for the burn transaction.
  */
 export type HubOracleBurnParams = {};
-
-export const getHubOracleDatumFromUTxO = (
-  nodeUTxO: UTxO,
-): Effect.Effect<HubOracleDatum, DataCoercionError> =>
-  Effect.gen(function* () {
-    const datumCBOR = nodeUTxO.datum;
-    if (!datumCBOR) {
-      return yield* Effect.fail(
-        new DataCoercionError({
-          message: `HubOracle datum coercion failed`,
-          cause: `No datum found`,
-        }),
-      );
-    }
-    const hubOracleDatum: HubOracleDatum = yield* Effect.try({
-      try: () => Data.from(datumCBOR, HubOracleDatum),
-      catch: (e) =>
-        new DataCoercionError({
-          message: `Could not coerce UTxO's datum to a hub oracle datum`,
-          cause: e,
-        }),
-    });
-
-    return hubOracleDatum;
-  });
-/**
- * Validates correctness of datum, and having a single NFT.
- */
-export const utxoToHubOracleUTxO = (
-  utxo: UTxO,
-  nftPolicy: string,
-): Effect.Effect<HubOracleUTxO, DataCoercionError | UnauthenticUtxoError> =>
-  Effect.gen(function* () {
-    const datum = yield* getHubOracleDatumFromUTxO(utxo);
-    const [sym, assetName] = yield* getStateToken(utxo.assets);
-    if (sym !== nftPolicy) {
-      yield* Effect.fail(
-        new UnauthenticUtxoError({
-          message: "Failed to convert UTxO to `HubOracleUTxO`",
-          cause: "UTxO's NFT policy ID is not the same as the hub oracle's",
-        }),
-      );
-    }
-    return {
-      utxo,
-      datum,
-      assetName,
-    };
-  });
-
-/**
- * Silently drops invalid UTxOs.
- */
-export const utxosToHubOracleUTxOs = (
-  utxos: UTxO[],
-  nftPolicy: string,
-): Effect.Effect<HubOracleUTxO[]> => {
-  const effects = utxos.map((u) => utxoToHubOracleUTxO(u, nftPolicy));
-  return Effect.allSuccesses(effects);
-};
 
 /**
  * Creates a init transaction builder.

@@ -359,6 +359,79 @@ export const parseAddressDataCredentials = (
     };
   });
 
+export type BaseEntityUTxO<TDatum, TOption = string> = {
+  utxo: UTxO;
+  datum: TDatum;
+  assetName?: string;
+  option?: TOption;
+};
+
+export const getDatumFromUTxO = <TDatum>(
+  nodeUTxO: UTxO,
+  schema: any,
+): Effect.Effect<TDatum, DataCoercionError> =>
+  Effect.gen(function* () {
+    const datumCBOR = nodeUTxO.datum;
+    if (!datumCBOR) {
+      return yield* Effect.fail(
+        new DataCoercionError({
+          message: `Datum coercion failed`,
+          cause: `No datum found`,
+        }),
+      );
+    }
+    const datum: TDatum = yield* Effect.try({
+      try: () => Data.from(datumCBOR, schema),
+      catch: (e) =>
+        new DataCoercionError({
+          message: `Could not coerce UTxO's datum to the expected datum type`,
+          cause: e,
+        }),
+    });
+    return datum;
+  });
+/**
+ * Validates correctness of datum, and having a single NFT.
+ */
+export const utxoToEntityUTxO = <TDatum, TOption = string>(
+  utxo: UTxO,
+  nftPolicy: string,
+  schema: any,
+): Effect.Effect<
+  BaseEntityUTxO<TDatum, TOption>,
+  DataCoercionError | UnauthenticUtxoError
+> =>
+  Effect.gen(function* () {
+    const datum = yield* getDatumFromUTxO<TDatum>(utxo, schema);
+    const [sym, assetName] = yield* getStateToken(utxo.assets);
+    if (sym !== nftPolicy) {
+      yield* Effect.fail(
+        new UnauthenticUtxoError({
+          message: `Failed to convert UTxO to BaseEntityUTxO`,
+          cause: `UTxO's NFT policy ID is not the same as the expected policy ID`,
+        }),
+      );
+    }
+    return {
+      utxo,
+      datum,
+      assetName,
+    };
+  });
+/**
+ * Silently drops invalid UTxOs.
+ */
+export const utxosToEntityUTxOs = <TDatum, TOption = string>(
+  utxos: UTxO[],
+  nftPolicy: string,
+  schema: any,
+): Effect.Effect<BaseEntityUTxO<TDatum, TOption>[]> => {
+  const effects = utxos.map((u) =>
+    utxoToEntityUTxO<TDatum, TOption>(u, nftPolicy, schema),
+  );
+  return Effect.allSuccesses(effects);
+};
+
 export type GenericErrorFields = {
   readonly message: string;
   readonly cause: any;

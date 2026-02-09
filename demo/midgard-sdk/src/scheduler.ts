@@ -1,12 +1,18 @@
-import { Address, Data, LucidEvolution, PolicyId, toUnit, TxBuilder, UTxO } from "@lucid-evolution/lucid";
-import { Effect,  Data as EffectData } from "effect";
 import {
-  DataCoercionError,
+  Address,
+  Data,
+  LucidEvolution,
+  PolicyId,
+  toUnit,
+  TxBuilder,
+  UTxO,
+} from "@lucid-evolution/lucid";
+import { Effect, Data as EffectData } from "effect";
+import {
+  BaseEntityUTxO,
   GenericErrorFields,
-  getStateToken,
   LucidError,
   POSIXTimeSchema,
-  UnauthenticUtxoError,
 } from "@/common.js";
 
 export type SchedulerInitParams = {};
@@ -21,10 +27,7 @@ export const SchedulerDatumSchema = Data.Object({
 export type SchedulerDatum = Data.Static<typeof SchedulerDatumSchema>;
 export const SchedulerDatum = SchedulerDatumSchema as unknown as SchedulerDatum;
 
-export type SchedulerUTxO = {
-  utxo: UTxO;
-  datum: SchedulerDatum;
-};
+export type SchedulerUTxO = BaseEntityUTxO<SchedulerDatum>;
 
 export type SchedulerConfig = {
   schedulerAddress: Address;
@@ -32,68 +35,6 @@ export type SchedulerConfig = {
 };
 
 export const schedulerAssetName = "";
-
-export const getSchedulerDatumFromUTxO = (
-  nodeUTxO: UTxO,
-): Effect.Effect<SchedulerDatum, DataCoercionError> => {
-  const datumCBOR = nodeUTxO.datum;
-  if (datumCBOR) {
-    try {
-      const schedulerDatum = Data.from(datumCBOR, SchedulerDatum);
-      return Effect.succeed(schedulerDatum);
-    } catch (e) {
-      return Effect.fail(
-        new DataCoercionError({
-          message: `Could not coerce UTxO's datum to a scheduler datum`,
-          cause: e,
-        }),
-      );
-    }
-  } else {
-    return Effect.fail(
-      new DataCoercionError({
-        message: `Scheduler datum coercion failed`,
-        cause: `No datum found`,
-      }),
-    );
-  }
-};
-
-/**
- * Validates correctness of datum, and having a single NFT.
- */
-export const utxoToSchedulerUTxO = (
-  utxo: UTxO,
-  nftPolicy: string,
-): Effect.Effect<SchedulerUTxO, DataCoercionError | UnauthenticUtxoError> =>
-  Effect.gen(function* () {
-    const datum = yield* getSchedulerDatumFromUTxO(utxo);
-    const [sym, assetName] = yield* getStateToken(utxo.assets);
-    if (sym !== nftPolicy) {
-      yield* Effect.fail(
-        new UnauthenticUtxoError({
-          message: "Failed to convert UTxO to `SchedulerUTxO`",
-          cause: "UTxO's NFT policy ID is not the same as the scheduler's",
-        }),
-      );
-    }
-    return {
-      utxo,
-      datum,
-      assetName,
-    };
-  });
-
-/**
- * Silently drops invalid UTxOs.
- */
-export const utxosToSchedulerUTxOs = (
-  utxos: UTxO[],
-  nftPolicy: string,
-): Effect.Effect<SchedulerUTxO[]> => {
-  const effects = utxos.map((u) => utxoToSchedulerUTxO(u, nftPolicy));
-  return Effect.allSuccesses(effects);
-};
 
 export class SchedulerError extends EffectData.TaggedError(
   "SchedulerError",

@@ -1,12 +1,6 @@
-import {
-  DataCoercionError,
-  getStateToken,
-  POSIXTimeSchema,
-  UnauthenticUtxoError,
-} from "@/common.js";
-import { Data, UTxO } from "@lucid-evolution/lucid";
+import { BaseEntityUTxO, POSIXTimeSchema } from "@/common.js";
+import { Data } from "@lucid-evolution/lucid";
 import { LucidEvolution, TxBuilder } from "@lucid-evolution/lucid";
-import { Effect } from "effect";
 
 export const RetiredOperatorDatumSchema = Data.Object({
   key: Data.Nullable(Data.Bytes()),
@@ -70,78 +64,7 @@ export type RetiredOperatorRetireParams = {};
 export type RetiredOperatorRemoveOperatorParams = {};
 export type RetiredOperatorRecoverSlashBondParams = {};
 
-export type RetiredOperatorUTxO = {
-  utxo: UTxO;
-  datum: RetiredOperatorDatum;
-  assetName: string;
-};
-
-export const getRetiredOperatorDatumFromUTxO = (
-  nodeUTxO: UTxO,
-): Effect.Effect<RetiredOperatorDatum, DataCoercionError> => {
-  const datumCBOR = nodeUTxO.datum;
-  if (datumCBOR) {
-    try {
-      const retiredOperatorDatum = Data.from(datumCBOR, RetiredOperatorDatum);
-      return Effect.succeed(retiredOperatorDatum);
-    } catch (e) {
-      return Effect.fail(
-        new DataCoercionError({
-          message: `Could not coerce UTxO's datum to a retired operator datum`,
-          cause: e,
-        }),
-      );
-    }
-  } else {
-    return Effect.fail(
-      new DataCoercionError({
-        message: `Retired operator datum coercion failed`,
-        cause: `No datum found`,
-      }),
-    );
-  }
-};
-
-/**
- * Validates correctness of datum, and having a single NFT.
- */
-export const utxoToRetiredOperatorUTxO = (
-  utxo: UTxO,
-  nftPolicy: string,
-): Effect.Effect<
-  RetiredOperatorUTxO,
-  DataCoercionError | UnauthenticUtxoError
-> =>
-  Effect.gen(function* () {
-    const datum = yield* getRetiredOperatorDatumFromUTxO(utxo);
-    const [sym, assetName] = yield* getStateToken(utxo.assets);
-    if (sym !== nftPolicy) {
-      yield* Effect.fail(
-        new UnauthenticUtxoError({
-          message: "Failed to convert UTxO to `RetiredOperatorNodeUTxO`",
-          cause:
-            "UTxO's NFT policy ID is not the same as the retired operator's",
-        }),
-      );
-    }
-    return {
-      utxo,
-      datum,
-      assetName,
-    };
-  });
-
-/**
- * Silently drops invalid UTxOs.
- */
-export const utxosToRetiredOperatorUTxOs = (
-  utxos: UTxO[],
-  nftPolicy: string,
-): Effect.Effect<RetiredOperatorUTxO[]> => {
-  const effects = utxos.map((u) => utxoToRetiredOperatorUTxO(u, nftPolicy));
-  return Effect.allSuccesses(effects);
-};
-
+export type RetiredOperatorUTxO = BaseEntityUTxO<RetiredOperatorDatum>;
 /**
  * Init
  *

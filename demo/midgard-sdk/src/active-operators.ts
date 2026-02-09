@@ -1,4 +1,5 @@
 import {
+  BaseEntityUTxO,
   DataCoercionError,
   getStateToken,
   POSIXTimeSchema,
@@ -98,77 +99,7 @@ export type ActiveOperatorListStateTransitionParams = {};
 export type ActiveOperatorRemoveSlashBondParams = {};
 export type ActiveOperatorUpdateCommitmentTimeParams = {};
 
-export type ActiveOperatorUTxO = {
-  utxo: UTxO;
-  datum: ActiveOperatorDatum;
-  assetName: string;
-};
-
-export const getActiveOperatorDatumFromUTxO = (
-  nodeUTxO: UTxO,
-): Effect.Effect<ActiveOperatorDatum, DataCoercionError> => {
-  const datumCBOR = nodeUTxO.datum;
-  if (datumCBOR) {
-    try {
-      const activeOperatorDatum = Data.from(datumCBOR, ActiveOperatorDatum);
-      return Effect.succeed(activeOperatorDatum);
-    } catch (e) {
-      return Effect.fail(
-        new DataCoercionError({
-          message: `Could not coerce UTxO's datum to an active operator datum`,
-          cause: e,
-        }),
-      );
-    }
-  } else {
-    return Effect.fail(
-      new DataCoercionError({
-        message: `Active operator datum coercion failed`,
-        cause: `No datum found`,
-      }),
-    );
-  }
-};
-
-/**
- * Validates correctness of datum, and having a single NFT.
- */
-export const utxoToActiveOperatorUTxO = (
-  utxo: UTxO,
-  nftPolicy: string,
-): Effect.Effect<
-  ActiveOperatorUTxO,
-  DataCoercionError | UnauthenticUtxoError
-> =>
-  Effect.gen(function* () {
-    const datum = yield* getActiveOperatorDatumFromUTxO(utxo);
-    const [sym, assetName] = yield* getStateToken(utxo.assets);
-    if (sym !== nftPolicy) {
-      yield* Effect.fail(
-        new UnauthenticUtxoError({
-          message: "Failed to convert UTxO to `ActiveOperatorNodeUTxO`",
-          cause:
-            "UTxO's NFT policy ID is not the same as the active operator's",
-        }),
-      );
-    }
-    return {
-      utxo,
-      datum,
-      assetName,
-    };
-  });
-
-/**
- * Silently drops invalid UTxOs.
- */
-export const utxosToActiveOperatorUTxOs = (
-  utxos: UTxO[],
-  nftPolicy: string,
-): Effect.Effect<ActiveOperatorUTxO[]> => {
-  const effects = utxos.map((u) => utxoToActiveOperatorUTxO(u, nftPolicy));
-  return Effect.allSuccesses(effects);
-};
+export type ActiveOperatorUTxO = BaseEntityUTxO<ActiveOperatorDatum>;
 
 /**
  * Init
