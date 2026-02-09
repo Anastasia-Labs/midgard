@@ -1,6 +1,5 @@
 use aiken/collection/list
 use aiken/crypto.{ScriptHash}
-use aiken/interval.{Finite, Interval}
 use aiken_design_patterns/singular_utxo_indexer
 use cardano/assets.{PolicyId}
 use cardano/transaction.{
@@ -431,7 +430,9 @@ validator mint(hub_oracle: ScriptHash) {
 
         // 6. The transaction's time-validity lower bound must match or exceed
         //    the `resolution_time` of the `resolution_claim`.
-        expect Finite(valid_from) = validity_range.lower_bound.bound_type
+        //    TODO: Is ensuring inclusivity of significance here?
+        let valid_from =
+          utils.get_inclusive_lower_bound_of_interval(validity_range)
         expect unwrapped_time_of_claimed_as_resolved <= valid_from
 
         // Done.

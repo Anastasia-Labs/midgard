@@ -1,5 +1,4 @@
 use aiken/crypto.{ScriptHash, VerificationKeyHash}
-use cardano/address.{Address}
 use cardano/assets.{AssetName, PolicyId}
 use cardano/transaction.{InlineDatum, Input, Output, Redeemer, ScriptPurpose}
 use midgard/common/types.{MerkleRoot, PosixTime, Proof}

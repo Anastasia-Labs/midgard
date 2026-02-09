@@ -1,5 +1,5 @@
 use aiken_design_patterns/validity_range_normalization.{
-  Always, ClosedRange, FromNegInf, ToPosInf,
+  Always, ClosedRange, FromNegInf, InvalidRange, ToPosInf,
 } as vrn
 use cardano/address.{Address}
 use cardano/assets.{PolicyId}

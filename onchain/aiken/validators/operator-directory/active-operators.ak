@@ -15,7 +15,7 @@ use midgard/operator_directory.{
 }
 use midgard/operator_directory/active_operators.{
   ActivateOperator, Datum, Deinit, Init, ListStateTransition, MintRedeemer,
-  RemoveOperatorBadSettlement, RemoveOperatorBadState, RetireOperator,
+  NodeData, RemoveOperatorBadSettlement, RemoveOperatorBadState, RetireOperator,
   SpendRedeemer, UpdateBondHoldNewSettlement, UpdateBondHoldNewState,
   finalize_linked_list, root_asset_name,
 }

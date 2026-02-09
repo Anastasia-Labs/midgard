@@ -1,4 +1,5 @@
 use aiken/collection/list
+use aiken/crypto.{VerificationKeyHash}
 use aiken_design_patterns/linked_list
 use cardano/assets.{PolicyId, quantity_of, tokens}
 use cardano/transaction.{
@@ -70,7 +71,7 @@ validator mint(hub_oracle_script_hash: PolicyId) {
           mint,
           redeemers,
           ..
-        } = tx
+        } = self
 
         // 1. The active operators policy ID must come from reference authentic
         //    hub oracle UTxO.
