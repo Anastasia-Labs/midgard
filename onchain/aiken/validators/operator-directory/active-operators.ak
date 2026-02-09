@@ -11,7 +11,7 @@ use midgard/hub_oracle as hub
 use midgard/operator_directory.{
   deinit, init, remove_operator_for_bad_settlement,
   remove_operator_for_bad_state,
-  validate_operator_transfer_and_get_incoming_data,
+  validate_operator_transfer_and_get_inserted_data,
 }
 use midgard/operator_directory/active_operators.{
   ActivateOperator, Datum, Deinit, Init, ListStateTransition, MintRedeemer,

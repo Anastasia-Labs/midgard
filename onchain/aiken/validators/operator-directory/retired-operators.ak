@@ -1,5 +1,4 @@
 use aiken/collection/list
-use aiken/interval.{Finite, Interval}
 use aiken_design_patterns/linked_list
 use cardano/assets.{PolicyId, quantity_of, tokens}
 use cardano/transaction.{

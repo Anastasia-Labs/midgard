@@ -139,41 +139,38 @@ pub fn validate_operator_transfer_and_get_inserted_data(
   expect Some(target_list_inserted_node) =
     outputs |> list.at(target_list_inserted_node_output_index)
 
-  let linked_list_eval = {
-    // 4. Ordered insertion in the linked list must be proper.
-    let
-      anchor_lovelace_change,
-      _m_anchor_key,
-      _anchor_data,
-      inserted_node_lovelace,
-      inserted_node_key,
-      inserted_node_data,
-      _inserted_node_link,
-    <-
-      linked_list.insert_ordered(
-        target_list_anchor_element_input,
-        target_list_anchor_element_output,
-        target_list_inserted_node,
-        mint,
-      )
+  // 4. Ordered insertion in the linked list must be proper.
+  let
+    anchor_lovelace_change,
+    _m_anchor_key,
+    _anchor_data,
+    inserted_node_lovelace,
+    inserted_node_key,
+    inserted_node_data,
+    _inserted_node_link,
+  <-
+    linked_list.insert_ordered(
+      target_list_anchor_element_input,
+      target_list_anchor_element_output,
+      target_list_inserted_node,
+      mint,
+    )
 
-    // 5. ADA of anchor element must be preserved.
-    expect anchor_lovelace_change >= 0
+  // 5. ADA of anchor element must be preserved.
+  expect anchor_lovelace_change >= 0
 
-    // 6. ADA bond must be transferred from the origin operator node.
-    expect inserted_node_lovelace == required_bond
+  // 6. ADA bond must be transferred from the origin operator node.
+  expect inserted_node_lovelace == required_bond
 
-    // 7. The newly inserted node must carry the same operator as the one
-    //    provided via the redeemer as its key.
-    expect inserted_node_key == operator
+  // 7. The newly inserted node must carry the same operator as the one
+  //    provided via the redeemer as its key.
+  expect inserted_node_key == operator
 
-    // 8. Inserted node's data must pass the custom validation.
-    expect validate_inserted_node_data(inserted_node_data)
+  // 8. Inserted node's data must pass the custom validation.
+  expect validate_inserted_node_data(inserted_node_data)
 
-    // Done.
-    True
-  }
-  linked_list_eval
+  // Done.
+  True
 }
 
 /// Common requirements for slashing an operator from either the active or
@@ -213,41 +210,38 @@ fn slash_operator_and_get_hub_datum(
   expect Some(slashed_operator_anchor_element_output) =
     outputs |> list.at(slashed_operator_anchor_element_output_index)
 
-  let linked_list_eval = {
-    // 3. Linked list's removal logic must be valid for the specified inputs and
-    //    output.
-    let
-      anchor_lovelace_change,
-      _m_anchor_key,
-      _anchor_data,
-      _slashed_operator_node_lovelace,
-      slashed_operator_node_key,
-      _slashed_operator_node_data,
-      _slashed_operator_node_link,
-    <-
-      linked_list.remove(
-        slashed_operator_anchor_element_input,
-        slashed_operator_node_input,
-        slashed_operator_anchor_element_output,
-        mint,
-      )
+  // 3. Linked list's removal logic must be valid for the specified inputs and
+  //    output.
+  let
+    anchor_lovelace_change,
+    _m_anchor_key,
+    _anchor_data,
+    _slashed_operator_node_lovelace,
+    slashed_operator_node_key,
+    _slashed_operator_node_data,
+    _slashed_operator_node_link,
+  <-
+    linked_list.remove(
+      slashed_operator_anchor_element_input,
+      slashed_operator_node_input,
+      slashed_operator_anchor_element_output,
+      mint,
+    )
 
-    // 4. ADA of anchor element must be preserved.
-    expect anchor_lovelace_change >= 0
+  // 4. ADA of anchor element must be preserved.
+  expect anchor_lovelace_change >= 0
 
-    // 5. Key of the removing node must be that of the fraudulent operator's
-    //    specified via the redeemer.
-    expect slashed_operator_node_key == slashed_operator_key
+  // 5. Key of the removing node must be that of the fraudulent operator's
+  //    specified via the redeemer.
+  expect slashed_operator_node_key == slashed_operator_key
 
-    // 6. Slashing penalty must be paid to the Cardano treasury via the
-    //    transaction fee. Fraud prover is assumed to be the signer of the
-    //    transaction, and therefore will receive the remaining bond.
-    expect fee >= slashing_penalty
+  // 6. Slashing penalty must be paid to the Cardano treasury via the
+  //    transaction fee. Fraud prover is assumed to be the signer of the
+  //    transaction, and therefore will receive the remaining bond.
+  expect fee >= slashing_penalty
 
-    // Done.
-    return(hub_datum)
-  }
-  linked_list_eval
+  // Done.
+  return(hub_datum)
 }
 
 pub fn remove_operator_for_bad_state(
@@ -270,39 +264,35 @@ pub fn remove_operator_for_bad_state(
     ..
   } = tx
 
-  let linked_list_eval = {
-    let hub_datum <-
-      slash_operator_and_get_hub_datum(
-        hub_oracle_script_hash,
-        slashed_operator_key,
-        hub_oracle_ref_input_index,
-        operator_anchor_element_input_index,
-        operator_slashed_node_input_index,
-        operator_anchor_element_output_index,
-        inputs,
-        outputs,
-        reference_inputs,
-        mint,
-        fee,
-      )
+  let hub_datum <-
+    slash_operator_and_get_hub_datum(
+      hub_oracle_script_hash,
+      slashed_operator_key,
+      hub_oracle_ref_input_index,
+      operator_anchor_element_input_index,
+      operator_slashed_node_input_index,
+      operator_anchor_element_output_index,
+      inputs,
+      outputs,
+      reference_inputs,
+      mint,
+      fee,
+    )
 
-    // 2. State queue minting script must be invoked via the 
-    //    `RemoveFraudulentBlockHeader` redeemer, and the operator
-    //    specified there must agree with the
-    //    `slashed_retired_operator_key` redeemer argument here.
-    let fraudulent_operator_from_state_queue_mint_redeemer =
-      state_queue.get_fraudulent_operator_of_removing_block(
-        hub_datum.state_queue,
-        state_queue_redeemer_index,
-        redeemers,
-      )
-    expect
-      fraudulent_operator_from_state_queue_mint_redeemer == slashed_operator_key
+  // 2. State queue minting script must be invoked via the 
+  //    `RemoveFraudulentBlockHeader` redeemer, and the operator
+  //    specified there must agree with the
+  //    `slashed_retired_operator_key` redeemer argument here.
+  expect state_queue.RemoveFraudulentBlockHeader { fraudulent_operator, .. } =
+    redeemers
+      |> utils.get_redeemer_at(
+          expected_purpose: Mint(hub_datum.state_queue),
+          redeemer_index: state_queue_redeemer_index,
+        )
+  expect fraudulent_operator == slashed_operator_key
 
-    // Done.
-    True
-  }
-  linked_list_eval
+  // Done.
+  True
 }
 
 pub fn remove_operator_for_bad_settlement(
@@ -326,36 +316,37 @@ pub fn remove_operator_for_bad_settlement(
     ..
   } = tx
 
-  let linked_list_eval = {
-    let hub_datum <-
-      slash_operator_and_get_hub_datum(
-        hub_oracle_script_hash,
-        slashed_operator_key,
-        hub_oracle_ref_input_index,
-        operator_anchor_element_input_index,
-        operator_slashed_node_input_index,
-        operator_anchor_element_output_index,
-        inputs,
-        outputs,
-        reference_inputs,
-        mint,
-        fee,
-      )
+  let hub_datum <-
+    slash_operator_and_get_hub_datum(
+      hub_oracle_script_hash,
+      slashed_operator_key,
+      hub_oracle_ref_input_index,
+      operator_anchor_element_input_index,
+      operator_slashed_node_input_index,
+      operator_anchor_element_output_index,
+      inputs,
+      outputs,
+      reference_inputs,
+      mint,
+      fee,
+    )
 
-    // 2. A settlement UTxO must be getting spent via the
-    //    `DisproveResolutionClaim` redeemer.
-    let fraudulent_operator_from_settlement_redeemer =
-      settlement.get_fraudulent_operator(
-        hub_datum.settlement_addr,
-        settlement_input_index,
-        settlement_redeemer_index,
-        inputs,
-        redeemers,
-      )
-    expect fraudulent_operator_from_settlement_redeemer == slashed_operator_key
+  // 2. A settlement UTxO must be getting spent via the
+  //    `DisproveResolutionClaim` redeemer.
+  //
+  // TODO: Potential optimization opportunities, i.e. using builtin functions.
+  // This requires implicitly imposing the position of `operator` field in the
+  // redeemer to be at index 0.
+  expect settlement.DisproveResolutionClaim { operator, .. } =
+    utils.get_spending_redeemer_data_at(
+      hub_datum.settlement_addr,
+      settlement_input_index,
+      settlement_redeemer_index,
+      inputs,
+      redeemers,
+    )
+  expect operator == slashed_operator_key
 
-    // Done.
-    True
-  }
-  linked_list_eval
+  // Done.
+  True
 }
