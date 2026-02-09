@@ -4,6 +4,7 @@ use aiken/primitive/bytearray
 use aiken_design_patterns/linked_list
 use cardano/assets.{AssetName, PolicyId}
 use cardano/transaction.{Input}
+use midgard/hub_oracle as hub
 use midgard/ledger_state.{ConfirmedState, Header, HeaderHash}
 
 /// TODO: It might be better to be space-conscious and use an empty name.
@@ -145,6 +146,20 @@ pub fn get_prev_header_hash_of_node(
   expect
     retrieved_state_queue_node_header_hash == expected_state_queue_node_header_hash
   header.prev_header_hash
+}
+
+pub fn get_fraudulent_operator_of_removing_block(
+  hub_datum: hub.Datum,
+  state_queue_mint_redeemer_index: Int,
+  redeemers: Pairs<ScriptPurpose, Redeemer>,
+) -> VerificationKeyHash {
+  expect state_queue.RemoveFraudulentBlockHeader { fraudulent_operator, .. } =
+    redeemers
+      |> utils.get_redeemer_at(
+          expected_purpose: Mint(hub_datum.state_queue),
+          redeemer_index: state_queue_mint_redeemer_index,
+        )
+  fraudulent_operator
 }
 
 pub fn finalize_linked_list(

@@ -10,6 +10,7 @@ use midgard/common/constants.{empty_data}
 use midgard/common/types.{Empty}
 use midgard/common/utils
 use midgard/hub_oracle as hub
+use midgard/protocol_parameters.{required_bond, slashing_penalty}
 
 pub type Datum<node_data> =
   linked_list.Element<Empty, node_data>
@@ -105,7 +106,7 @@ pub fn validate_operator_transfer_and_get_inserted_data(
   mint: Value,
   redeemers: Pairs<ScriptPurpose, Redeemer>,
   validate_inserted_node_data: fn(Data) -> Bool,
-) -> Bool {
+) -> linked_list.Eval {
   // 1. The minting redeemer of the origin operators list must be invoked.
   let origin_list_redeemer_data =
     redeemers
@@ -162,6 +163,75 @@ pub fn validate_operator_transfer_and_get_inserted_data(
 
     // Done.
     True
+  }
+  linked_list_eval
+}
+
+pub fn slash_operator_and_get_hub_datum(
+  hub_oracle_script_hash: PolicyId,
+  slashed_operator_key: VerificationKeyHash,
+  hub_oracle_ref_input_index: Int,
+  slashed_operator_anchor_element_input_index: Int,
+  slashed_operator_node_input_index: Int,
+  slashed_operator_anchor_element_output_index: Int,
+  inputs: List<Input>,
+  outputs: List<Output>,
+  reference_inputs: List<Input>,
+  mint: Value,
+  fee: Int,
+  return: fn(hub.Datum) -> Bool,
+) -> linked_list.Eval {
+  // 1. Transaction must refer to the authentic hub oracle UTxO to allow
+  //    extraction of relevant addresses or policy IDs.
+  let hub_datum =
+    hub.get_datum(
+      reference_inputs,
+      hub_oracle_script_hash,
+      hub_oracle_ref_input_index,
+    )
+
+  // 2. Specified inputs and output for removal of the slashed operator's node
+  //    from the linked list must exist at their indices.
+  expect Some(slashed_operator_anchor_element_input) =
+    inputs |> list.at(slashed_operator_anchor_element_input_index)
+  expect Some(slashed_operator_node_input) =
+    inputs |> list.at(slashed_operator_node_input_index)
+  expect Some(slashed_operator_anchor_element_output) =
+    outputs |> list.at(slashed_operator_anchor_element_output_index)
+
+  let linked_list_eval = {
+    // 3. Linked list's removal logic must be valid for the specified inputs and
+    //    output.
+    let
+      anchor_lovelace_change,
+      _m_anchor_key,
+      _anchor_data,
+      _slashed_operator_node_lovelace,
+      slashed_operator_node_key,
+      _slashed_operator_node_data,
+      _slashed_operator_node_link,
+    <-
+      linked_list.remove(
+        slashed_operator_anchor_element_input,
+        slashed_operator_node_input,
+        slashed_operator_anchor_element_output,
+        mint,
+      )
+
+    // 4. ADA of anchor element must be preserved.
+    expect anchor_lovelace_change >= 0
+
+    // 5. Key of the removing node must be that of the fraudulent operator's
+    //    specified via the redeemer.
+    expect slashed_operator_node_key == slashed_operator_key
+
+    // 6. Slashing penalty must be paid to the Cardano treasury via the
+    //    transaction fee. Fraud prover is assumed to be the signer of the
+    //    transaction, and therefore will receive the remaining bond.
+    expect fee >= slashing_penalty
+
+    // Done.
+    return(hub_datum)
   }
   linked_list_eval
 }

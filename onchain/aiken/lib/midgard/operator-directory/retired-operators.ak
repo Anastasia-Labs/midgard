@@ -1,3 +1,4 @@
+use aiken/crypto.{VerificationKeyHash}
 use aiken/primitive/bytearray
 use aiken_design_patterns/linked_list
 use cardano/assets.{AssetName, PolicyId}
@@ -29,7 +30,7 @@ pub type MintRedeemer {
   Init { output_index: Int }
   Deinit { input_index: Int }
   RetireOperator {
-    new_retired_operator_key: ByteArray,
+    new_retired_operator_key: VerificationKeyHash,
     bond_unlock_time: Option<PosixTime>,
     hub_oracle_ref_input_index: Int,
     retired_operator_anchor_element_input_index: Int,
@@ -38,15 +39,17 @@ pub type MintRedeemer {
     active_operators_redeemer_index: Int,
   }
   RecoverOperatorBond {
-    retired_operator_key: ByteArray,
-    removed_node_input_index: Int,
-    anchor_node_input_index: Int,
+    retired_operator_key: VerificationKeyHash,
+    retired_operator_anchor_element_input_index: Int,
+    retired_operator_removed_node_input_index: Int,
+    retired_operator_anchor_element_output_index: Int,
   }
   RemoveOperatorBadState {
     slashed_retired_operator_key: ByteArray,
     hub_oracle_ref_input_index: Int,
-    retired_operator_slashed_node_input_index: Int,
-    retired_operator_anchor_node_input_index: Int,
+    retired_operator_anchor_element_input_index: Int,
+    retired_operator_removed_node_input_index: Int,
+    retired_operator_anchor_element_output_index: Int,
     state_queue_redeemer_index: Int,
   }
   RemoveOperatorBadSettlement {

@@ -36,10 +36,7 @@ validator spend(retired_operators_mint_script_hash: PolicyId) {
   }
 }
 
-validator mint(
-  hub_oracle_script_hash: PolicyId,
-  hub_oracle_asset_name: ByteArray,
-) {
+validator mint(hub_oracle_script_hash: PolicyId) {
   mint(redeemer: MintRedeemer, own_policy_id: PolicyId, self: Transaction) {
     when redeemer is {
       Init { output_index } ->
@@ -122,68 +119,124 @@ validator mint(
       }
       RecoverOperatorBond {
         retired_operator_key,
-        removed_node_input_index,
-        anchor_node_input_index,
+        retired_operator_anchor_element_input_index,
+        retired_operator_removed_node_input_index,
+        retired_operator_anchor_element_output_index,
       } -> {
-        expect Finite(valid_from) = self.validity_range.lower_bound.bound_type
-        expect Some(retired_node_input) =
-          list.at(self.inputs, removed_node_input_index)
-        expect InlineDatum(retired_operator_datum) =
-          retired_node_input.output.datum
-        expect parsed_retired_operator_datum: NodeDatum = retired_operator_datum
-        expect retired_operator_data: Datum = parsed_retired_operator_datum.data
-        and {
-          ordered.remove(
-            Key(retired_operator_key),
-            removed_node_input_index,
-            anchor_node_input_index,
-            node_in_outputs,
-            node_outputs,
-            node_mint,
-          ),
-          when retired_operator_data.bond_unlock_time is {
-            None -> True
-            Some(bond_unlock_time) -> valid_from >= bond_unlock_time
-          },
+        let Transaction {
+          inputs,
+          outputs,
+          mint,
+          redeemers,
+          validity_range,
+          extra_signatories,
+          ..
+        } = self
+
+        // 1. The retired operator must give consent to the transaction to show
+        //    destination of the ADA bond is approved.
+        expect retired_operator_key |> utils.has_signed(extra_signatories)
+
+        // TODO: Is ensuring inclusivity of significance here?
+        let valid_from =
+          utils.get_inclusive_lower_bound_of_interval(validity_range)
+
+        // 2. Specified inputs and output for removal of the retired operator's
+        //    node from the linked list must exist at their indices.
+        expect Some(retired_operator_anchor_element_input) =
+          inputs |> list.at(retired_operator_anchor_element_input_index)
+        expect Some(retired_operator_removed_node_input) =
+          inputs |> list.at(retired_operator_removed_node_input_index)
+        expect Some(retired_operator_anchor_element_output) =
+          outputs |> list.at(retired_operator_anchor_element_output_index)
+
+        let linked_list_eval = {
+          // 3. Removal of the retiried operator's node from the linked list
+          //    must be valid.
+          let
+            anchor_lovelace_change,
+            _m_anchor_key,
+            _anchor_data,
+            _retired_operator_lovelace,
+            retired_operator_node_key,
+            retired_operator_node_data,
+            _retired_operator_node_link,
+          <-
+            linked_list.remove(
+              retired_operator_anchor_element_input,
+              retired_operator_removed_node_input,
+              retired_operator_anchor_element_output,
+              mint,
+            )
+          // 4. ADA of the removing node's anchor element must be preserved.
+          expect anchor_lovelace_change >= 0
+
+          // 5. The key of the removing node must match the retired operator.
+          expect retired_operator_key == retired_operator_node_key
+
+          // 6. The retirement of the operator must be mature. In other words,
+          //    lower bound of the transaction must be later than retired
+          //    operator's commitment time.
+          expect NodeData{bond_unlock_time: Some(bond_unlock_time)} =
+            retired_operator_node_data
+          expect valid_from >= bond_unlock_time
+
+          // Done.
+          True
         }
+        linked_list_eval |> finalize_linked_list(own_policy_id)
       }
       RemoveOperatorBadState {
         slashed_retired_operator_key,
         hub_oracle_ref_input_index,
+        retired_operator_anchor_element_input_index,
         retired_operator_slashed_node_input_index,
-        retired_operator_anchor_node_input_index,
+        retired_operator_anchor_element_output_index,
         state_queue_redeemer_index,
       } -> {
-        expect Some(hub_oracle_ref_input) =
-          list.at(self.reference_inputs, hub_oracle_ref_input_index)
-        expect InlineDatum(hub_oracle_datum) = hub_oracle_ref_input.output.datum
-        expect parsed_hub_oracle_datum: hub.Datum = hub_oracle_datum
-        expect Some(state_queue_redeemer_pair) =
-          list.at(self.redeemers, state_queue_redeemer_index)
-        expect state_queue.RemoveFraudulentBlockHeader {
-          fraudulent_operator,
+        let Transaction {
+          inputs,
+          outputs,
+          reference_inputs,
+          mint,
+          redeemers,
+          fee,
           ..
-        } = state_queue_redeemer_pair.2nd
-        and {
-          quantity_of(
-            hub_oracle_ref_input.output.value,
-            hub_oracle_script_hash,
-            hub_oracle_asset_name,
-          ) == 1,
-          ordered.remove(
-            Key(slashed_retired_operator_key),
-            retired_operator_slashed_node_input_index,
-            retired_operator_anchor_node_input_index,
-            node_in_outputs,
-            node_outputs,
-            node_mint,
-          ),
-          self.fee >= slashing_penalty,
-          state_queue_redeemer_pair.1st == Mint(
-            parsed_hub_oracle_datum.state_queue,
-          ),
-          fraudulent_operator == slashed_retired_operator_key,
+        } = self
+
+        let linked_list_eval = {
+          let hub_datum <-
+            slash_operator_and_get_hub_datum(
+              hub_oracle_script_hash,
+              slashed_retired_operator_key,
+              hub_oracle_ref_input_index,
+              retired_operator_anchor_element_input_index,
+              retired_operator_slashed_node_input_index,
+              retired_operator_anchor_element_output_index,
+              inputs,
+              outputs,
+              reference_inputs,
+              mint,
+              fee,
+            )
+
+          // 2. State queue minting script must be invoked via the 
+          //    `RemoveFraudulentBlockHeader` redeemer, and the operator
+          //    specified there must agree with the
+          //    `slashed_retired_operator_key` redeemer argument here.
+          let fraudulent_operator_from_state_queue_mint_redeemer =
+            state_queue.get_fraudulent_operator_of_removing_block(
+              hub_datum,
+              state_queue_redeemer_index,
+              redeemers,
+            )
+          expect
+            fraudulent_operator_from_state_queue_mint_redeemer == slashed_retired_operator_key
+
+          // Done.
+          True
         }
+        linked_list_eval |> finalize_linked_list(own_policy_id)
       }
       RemoveOperatorBadSettlement {
         slashed_retired_operator_key,

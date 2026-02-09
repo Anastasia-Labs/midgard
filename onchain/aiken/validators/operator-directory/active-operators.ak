@@ -9,7 +9,8 @@ use cardano/transaction.{
 use midgard/common/utils
 use midgard/hub_oracle as hub
 use midgard/operator_directory.{
-  deinit, init, validate_operator_transfer_and_get_incoming_data,
+  deinit, init, slash_operator_and_get_hub_datum,
+  validate_operator_transfer_and_get_incoming_data,
 }
 use midgard/operator_directory/active_operators.{
   ActivateOperator, Datum, Deinit, Init, ListStateTransition, MintRedeemer,
@@ -235,41 +236,42 @@ validator mint(
           fee,
           ..
         } = self
-        // 1. Fraudulent active operator must be properly removed from the
-        //    linked list.
-        let hub_datum <-
-          burn_for_operator_removal_and_get_hub_datum(
-            own_policy_id,
-            hub_oracle_script_hash,
-            slashed_active_operator_key,
-            hub_oracle_ref_input_index,
-            active_operator_anchor_element_input_index,
-            active_operator_slashed_node_input_index,
-            active_operator_anchor_element_output_index,
-            inputs,
-            outputs,
-            reference_inputs,
-            mint,
-            fee,
-          )
 
-        // 2. State queue minting script must be invoked via the 
-        //    `RemoveFraudulentBlockHeader` redeemer, and the operator specified
-        //    there must agree with the `slashed_active_operator_key` redeemer
-        //    argument here.
-        expect state_queue.RemoveFraudulentBlockHeader {
-          fraudulent_operator,
-          ..
-        } =
-          redeemers
-            |> utils.get_redeemer_at(
-                expected_purpose: Mint(hub_datum.state_queue),
-                redeemer_index: state_queue_redeemer_index,
-              )
-        expect fraudulent_operator == slashed_active_operator_key
+        let linked_list_eval = {
+          // 1. Fraudulent active operator must be properly removed from the
+          //    linked list.
+          let hub_datum <-
+            slash_operator_and_get_hub_datum(
+              hub_oracle_script_hash,
+              slashed_active_operator_key,
+              hub_oracle_ref_input_index,
+              active_operator_anchor_element_input_index,
+              active_operator_slashed_node_input_index,
+              active_operator_anchor_element_output_index,
+              inputs,
+              outputs,
+              reference_inputs,
+              mint,
+              fee,
+            )
 
-        // Done.
-        True
+          // 2. State queue minting script must be invoked via the 
+          //    `RemoveFraudulentBlockHeader` redeemer, and the operator
+          //    specified there must agree with the
+          //    `slashed_active_operator_key` redeemer argument here.
+          let fraudulent_operator_from_state_queue_mint_redeemer =
+            state_queue.get_fraudulent_operator_of_removing_block(
+              hub_datum,
+              state_queue_redeemer_index,
+              redeemers,
+            )
+          expect
+            fraudulent_operator_from_state_queue_mint_redeemer == slashed_active_operator_key
+
+          // Done.
+          True
+        }
+        linked_list_eval |> finalize_linked_list(own_policy_id)
       }
       RemoveOperatorBadSettlement {
         slashed_active_operator_key,
@@ -289,47 +291,49 @@ validator mint(
           fee,
           ..
         } = self
-        // 1. Fraudulent active operator must be properly removed from the
-        //    linked list.
-        let hub_datum <-
-          burn_for_operator_removal_and_get_hub_datum(
-            own_policy_id,
-            hub_oracle_script_hash,
-            slashed_active_operator_key,
-            hub_oracle_ref_input_index,
-            active_operator_anchor_element_input_index,
-            active_operator_slashed_node_input_index,
-            active_operator_anchor_element_output_index,
-            inputs,
-            outputs,
-            reference_inputs,
-            mint,
-            fee,
-          )
+        let linked_list_eval = {
+          // 1. Fraudulent active operator must be properly removed from the
+          //    linked list.
+          let hub_datum <-
+            slash_operator_and_get_hub_datum(
+              hub_oracle_script_hash,
+              slashed_active_operator_key,
+              hub_oracle_ref_input_index,
+              active_operator_anchor_element_input_index,
+              active_operator_slashed_node_input_index,
+              active_operator_anchor_element_output_index,
+              inputs,
+              outputs,
+              reference_inputs,
+              mint,
+              fee,
+            )
 
-        // 2. A settlement UTxO must be getting spent via the
-        //    `DisproveResolutionClaim` redeemer.
-        //
-        //    Let `operator` be the redeemer argument provided to the settlement
-        //    contract.
-        //
-        // TODO: Potential optimization opportunities, i.e. using builtin
-        // functions. This requires implicitly imposing the position of
-        // `operator` field in the redeemer to be at index 0.
-        expect settlement.DisproveResolutionClaim { operator, .. } =
-          utils.get_spending_redeemer_data_at(
-            hub_datum.settlement_addr,
-            settlement_input_index,
-            settlement_redeemer_index,
-            inputs,
-            redeemers,
-          )
+          // 2. A settlement UTxO must be getting spent via the
+          //    `DisproveResolutionClaim` redeemer.
+          //
+          //    Let `operator` be the redeemer argument provided to the settlement
+          //    contract.
+          //
+          // TODO: Potential optimization opportunities, i.e. using builtin
+          // functions. This requires implicitly imposing the position of
+          // `operator` field in the redeemer to be at index 0.
+          expect settlement.DisproveResolutionClaim { operator, .. } =
+            utils.get_spending_redeemer_data_at(
+              hub_datum.settlement_addr,
+              settlement_input_index,
+              settlement_redeemer_index,
+              inputs,
+              redeemers,
+            )
 
-        // 3. `operator` must match the removing active operator node's key.
-        expect operator == slashed_active_operator_key
+          // 3. `operator` must match the removing active operator node's key.
+          expect operator == slashed_active_operator_key
 
-        // Done.
-        True
+          // Done.
+          True
+        }
+        linked_list_eval |> finalize_linked_list(own_policy_id)
       }
       RetireOperator {
         active_operator_key,
@@ -488,74 +492,4 @@ fn spend_for_updating_bond_unlock_time(
   }
   linked_list_eval
     |> finalize_linked_list(active_operators_mint_script_hash)
-}
-
-fn burn_for_operator_removal_and_get_hub_datum(
-  active_operators_mint_script_hash: ByteArray,
-  hub_oracle_script_hash: PolicyId,
-  slashed_active_operator_key: VerificationKeyHash,
-  hub_oracle_ref_input_index: Int,
-  active_operator_anchor_element_input_index: Int,
-  active_operator_slashed_node_input_index: Int,
-  active_operator_anchor_element_output_index: Int,
-  inputs: List<Input>,
-  outputs: List<Output>,
-  reference_inputs: List<Input>,
-  mint: Value,
-  fee: Int,
-  return: fn(hub.Datum) -> Bool,
-) -> Bool {
-  // 1. Transaction must refer to the authentic hub oracle UTxO to extract the
-  //    minting policy of the state queue.
-  let hub_datum =
-    hub.get_datum(
-      reference_inputs,
-      hub_oracle_script_hash,
-      hub_oracle_ref_input_index,
-    )
-
-  // 2. Specified inputs and output for removal of the active operator's node
-  //    from the linked list must exist at their indices.
-  expect Some(active_operator_anchor_element_input) =
-    inputs |> list.at(active_operator_anchor_element_input_index)
-  expect Some(active_operator_slashed_node_input) =
-    inputs |> list.at(active_operator_slashed_node_input_index)
-  expect Some(active_operator_anchor_element_output) =
-    outputs |> list.at(active_operator_anchor_element_output_index)
-
-  let linked_list_eval = {
-    // 3. Linked list's removal logic must be valid for the specified inputs and
-    //    output.
-    let
-      anchor_lovelace_change,
-      _m_anchor_key,
-      _anchor_data,
-      _active_operator_slashed_node_lovelace,
-      active_operator_slashed_node_key,
-      _active_operator_slashed_node_data,
-      _active_operator_slashed_node_link,
-    <-
-      linked_list.remove(
-        active_operator_anchor_element_input,
-        active_operator_slashed_node_input,
-        active_operator_anchor_element_output,
-        mint,
-      )
-
-    // 4. ADA of anchor element must be preserved.
-    expect anchor_lovelace_change >= 0
-
-    // 5. Key of the removing node must be that of the fraudulent operator's
-    //    specified via the redeemer.
-    expect active_operator_slashed_node_key == slashed_active_operator_key
-
-    // 6. Slashing penalty must be paid to the Cardano treasury via the
-    //    transaction fee. Fraud prover is assumed to be the signer of the
-    //    transaction, and therefore will receive the remaining bond.
-    expect fee >= slashing_penalty
-
-    // Done.
-    return(hub_datum)
-  }
-  linked_list_eval |> finalize_linked_list(own_policy_id)
 }
