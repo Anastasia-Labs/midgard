@@ -98,14 +98,19 @@ library
   import:          lang, dependencies
   exposed-modules:
     Midgard.Constants
+    Midgard.Contracts.ActiveOperators
     Midgard.Contracts.RegisteredOperators
+    Midgard.Contracts.RetiredOperators
     Midgard.Scripts
     Midgard.ScriptUtils
+    Midgard.Types.ActiveOperators
     Midgard.Types.RegisteredOperators
+    Midgard.Types.RetiredOperators
 
   hs-source-dirs:  src
   build-depends:
     , cardano-ledger-core
+    , plutus-core
     , plutus-tx
 
 test-suite mockchain-tests
