@@ -67,6 +67,8 @@ pub fn deinit(
     |> linked_list.run_root_with(directory_policy_id, root_asset_name)
 }
 
+/// Shows that the given operator key is between the key and link of the
+/// specified linked list element.
 pub fn operator_is_not_a_member(
   operator: VerificationKeyHash,
   reference_inputs: List<Input>,
@@ -92,6 +94,12 @@ pub fn operator_is_not_a_member(
   }
 }
 
+/// Helper for validating transfer of operators from one set to another.
+/// Currently this only consists of:
+/// - From registered set to active
+/// - From active to retired
+///
+/// The return value is the data of the new node at destination/target list.
 pub fn validate_operator_transfer_and_get_inserted_data(
   operator: VerificationKeyHash,
   origin_list_policy_id: PolicyId,
@@ -100,7 +108,6 @@ pub fn validate_operator_transfer_and_get_inserted_data(
   target_list_anchor_element_input_index: Int,
   target_list_anchor_element_output_index: Int,
   target_list_inserted_node_output_index: Int,
-  target_list_finalizer: fn(linked_list.Eval, PolicyId) -> Bool,
   inputs: List<Input>,
   outputs: List<Output>,
   mint: Value,
@@ -167,6 +174,11 @@ pub fn validate_operator_transfer_and_get_inserted_data(
   linked_list_eval
 }
 
+/// Common requirements for slashing an operator from either the active or
+/// retired operators set. Fraud can be either because of a bad block
+/// commitment, or an invalid resolution claim on a settlement UTxO. Which is
+/// why this function returs the hub oracle datum for endpoints to lookup either
+/// the state queue or the settlement UTxO.
 pub fn slash_operator_and_get_hub_datum(
   hub_oracle_script_hash: PolicyId,
   slashed_operator_key: VerificationKeyHash,

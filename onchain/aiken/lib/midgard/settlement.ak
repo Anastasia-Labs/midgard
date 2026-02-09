@@ -97,7 +97,7 @@ pub fn valid_event_inclusion(
   reference_inputs: List<Input>,
   redeemers: Pairs<ScriptPurpose, Redeemer>,
   inclusion_proof_script_withdraw_redeemer_index: Int,
-) {
+) -> Bool {
   when event_type is {
     Deposit -> {
       // 1. The transaction must include a deposit event utxo as a reference
