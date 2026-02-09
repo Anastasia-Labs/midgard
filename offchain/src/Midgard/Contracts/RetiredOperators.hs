@@ -1,4 +1,4 @@
-module Midgard.Contracts.RegisteredOperators (initRetiredOperators) where
+module Midgard.Contracts.RetiredOperators (initRetiredOperators) where
 
 import Cardano.Api qualified as C
 import Convex.BuildTx (
