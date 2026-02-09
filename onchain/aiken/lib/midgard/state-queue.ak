@@ -3,8 +3,8 @@ use aiken/crypto.{VerificationKeyHash}
 use aiken/primitive/bytearray
 use aiken_design_patterns/linked_list
 use cardano/assets.{AssetName, PolicyId}
-use cardano/transaction.{Input}
-use midgard/hub_oracle as hub
+use cardano/transaction.{Input, Mint, Redeemer, ScriptPurpose}
+use midgard/common/utils
 use midgard/ledger_state.{ConfirmedState, Header, HeaderHash}
 
 /// TODO: It might be better to be space-conscious and use an empty name.
@@ -149,14 +149,14 @@ pub fn get_prev_header_hash_of_node(
 }
 
 pub fn get_fraudulent_operator_of_removing_block(
-  hub_datum: hub.Datum,
+  state_queue_policy_id: PolicyId,
   state_queue_mint_redeemer_index: Int,
   redeemers: Pairs<ScriptPurpose, Redeemer>,
 ) -> VerificationKeyHash {
-  expect state_queue.RemoveFraudulentBlockHeader { fraudulent_operator, .. } =
+  expect RemoveFraudulentBlockHeader { fraudulent_operator, .. } =
     redeemers
       |> utils.get_redeemer_at(
-          expected_purpose: Mint(hub_datum.state_queue),
+          expected_purpose: Mint(state_queue_policy_id),
           redeemer_index: state_queue_mint_redeemer_index,
         )
   fraudulent_operator

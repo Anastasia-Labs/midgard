@@ -1,4 +1,5 @@
 use aiken/crypto.{ScriptHash, VerificationKeyHash}
+use cardano/address.{Address}
 use cardano/assets.{AssetName, PolicyId}
 use cardano/transaction.{InlineDatum, Input, Output, Redeemer, ScriptPurpose}
 use midgard/common/types.{MerkleRoot, PosixTime, Proof}
@@ -206,4 +207,25 @@ pub fn valid_event_inclusion(
       )
     }
   }
+}
+
+pub fn get_fraudulent_operator(
+  settlement_address: Address,
+  settlement_input_index: Int,
+  settlement_redeemer_index: Int,
+  inputs: List<Input>,
+  redeemers: Pairs<ScriptPurpose, Redeemer>,
+) -> VerificationKeyHash {
+  // TODO: Potential optimization opportunities, i.e. using builtin functions.
+  // This requires implicitly imposing the position of `operator` field in the
+  // redeemer to be at index 0.
+  expect DisproveResolutionClaim { operator, .. } =
+    utils.get_spending_redeemer_data_at(
+      settlement_address,
+      settlement_input_index,
+      settlement_redeemer_index,
+      inputs,
+      redeemers,
+    )
+  operator
 }

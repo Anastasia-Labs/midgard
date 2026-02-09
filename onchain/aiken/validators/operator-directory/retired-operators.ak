@@ -7,7 +7,9 @@ use cardano/transaction.{
 }
 use midgard/hub_oracle as hub
 use midgard/operator_directory.{
-  deinit, init, validate_operator_transfer_and_get_inserted_data,
+  deinit, init, remove_operator_for_bad_settlement,
+  remove_operator_for_bad_state,
+  validate_operator_transfer_and_get_inserted_data,
 }
 use midgard/operator_directory/active_operators
 use midgard/operator_directory/retired_operators.{
@@ -15,8 +17,6 @@ use midgard/operator_directory/retired_operators.{
   RemoveOperatorBadState, RetireOperator, finalize_linked_list, root_asset_name,
 }
 use midgard/protocol_parameters.{slashing_penalty}
-use midgard/settlement
-use midgard/state_queue
 
 validator spend(retired_operators_mint_script_hash: PolicyId) {
   spend(
@@ -193,88 +193,39 @@ validator mint(hub_oracle_script_hash: PolicyId) {
         retired_operator_slashed_node_input_index,
         retired_operator_anchor_element_output_index,
         state_queue_redeemer_index,
-      } -> {
-        let Transaction {
-          inputs,
-          outputs,
-          reference_inputs,
-          mint,
-          redeemers,
-          fee,
-          ..
-        } = self
-
-        let linked_list_eval = {
-          let hub_datum <-
-            slash_operator_and_get_hub_datum(
-              hub_oracle_script_hash,
-              slashed_retired_operator_key,
-              hub_oracle_ref_input_index,
-              retired_operator_anchor_element_input_index,
-              retired_operator_slashed_node_input_index,
-              retired_operator_anchor_element_output_index,
-              inputs,
-              outputs,
-              reference_inputs,
-              mint,
-              fee,
-            )
-
-          // 2. State queue minting script must be invoked via the 
-          //    `RemoveFraudulentBlockHeader` redeemer, and the operator
-          //    specified there must agree with the
-          //    `slashed_retired_operator_key` redeemer argument here.
-          let fraudulent_operator_from_state_queue_mint_redeemer =
-            state_queue.get_fraudulent_operator_of_removing_block(
-              hub_datum,
-              state_queue_redeemer_index,
-              redeemers,
-            )
-          expect
-            fraudulent_operator_from_state_queue_mint_redeemer == slashed_retired_operator_key
-
-          // Done.
-          True
-        }
-        linked_list_eval |> finalize_linked_list(own_policy_id)
-      }
+      } ->
+        remove_operator_for_bad_state(
+          hub_oracle_script_hash,
+          slashed_retired_operator_key,
+          hub_oracle_ref_input_index,
+          retired_operator_anchor_element_input_index,
+          retired_operator_slashed_node_input_index,
+          retired_operator_anchor_element_output_index,
+          state_queue_redeemer_index,
+          self,
+        )
+          |> finalize_linked_list(own_policy_id)
       RemoveOperatorBadSettlement {
         slashed_retired_operator_key,
         hub_oracle_ref_input_index,
-        retired_operator_slashed_node_input_index,
-        retired_operator_anchor_node_input_index,
+        active_operator_anchor_element_input_index,
+        active_operator_slashed_node_input_index,
+        active_operator_anchor_element_output_index,
         settlement_input_index,
         settlement_redeemer_index,
-      } -> {
-        let Transaction { inputs, reference_inputs, redeemers, fee, .. } = self
-        let hub.Datum { settlement_addr, .. } =
-          hub.get_datum(
-            reference_inputs,
-            hub_oracle_script_hash,
-            hub_oracle_ref_input_index,
-          )
-        expect settlement.DisproveResolutionClaim { operator, .. } =
-          utils.get_spending_redeemer_data_at(
-            settlement_addr,
-            settlement_input_index,
-            settlement_redeemer_index,
-            inputs,
-            redeemers,
-          )
-        // TODO fix performance:
-        and {
-          ordered.remove(
-            Key(slashed_retired_operator_key),
-            retired_operator_slashed_node_input_index,
-            retired_operator_anchor_node_input_index,
-            node_in_outputs,
-            node_outputs,
-            node_mint,
-          ),
-          fee >= slashing_penalty,
-          operator == slashed_retired_operator_key,
-        }
-      }
+      } ->
+        remove_operator_for_bad_settlement(
+          hub_oracle_script_hash,
+          slashed_retired_operator_key,
+          hub_oracle_ref_input_index,
+          active_operator_anchor_element_input_index,
+          active_operator_slashed_node_input_index,
+          active_operator_anchor_element_output_index,
+          settlement_input_index,
+          settlement_redeemer_index,
+          self,
+        )
+          |> finalize_linked_list(own_policy_id)
     }
   }
 

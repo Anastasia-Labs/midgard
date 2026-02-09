@@ -45,18 +45,19 @@ pub type MintRedeemer {
     retired_operator_anchor_element_output_index: Int,
   }
   RemoveOperatorBadState {
-    slashed_retired_operator_key: ByteArray,
+    slashed_retired_operator_key: VerificationKeyHash,
     hub_oracle_ref_input_index: Int,
     retired_operator_anchor_element_input_index: Int,
-    retired_operator_removed_node_input_index: Int,
+    retired_operator_slashed_node_input_index: Int,
     retired_operator_anchor_element_output_index: Int,
     state_queue_redeemer_index: Int,
   }
   RemoveOperatorBadSettlement {
-    slashed_retired_operator_key: ByteArray,
+    slashed_retired_operator_key: VerificationKeyHash,
     hub_oracle_ref_input_index: Int,
+    retired_operator_anchor_element_input_index: Int,
     retired_operator_slashed_node_input_index: Int,
-    retired_operator_anchor_node_input_index: Int,
+    retired_operator_anchor_element_output_index: Int,
     settlement_input_index: Int,
     settlement_redeemer_index: Int,
   }

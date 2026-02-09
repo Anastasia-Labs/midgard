@@ -11,6 +11,8 @@ use midgard/common/types.{Empty}
 use midgard/common/utils
 use midgard/hub_oracle as hub
 use midgard/protocol_parameters.{required_bond, slashing_penalty}
+use midgard/settlement
+use midgard/state_queue
 
 pub type Datum<node_data> =
   linked_list.Element<Empty, node_data>
@@ -96,8 +98,8 @@ pub fn operator_is_not_a_member(
 
 /// Helper for validating transfer of operators from one set to another.
 /// Currently this only consists of:
-/// - From registered set to active
-/// - From active to retired
+/// - From registered to active set
+/// - From active to retired set
 ///
 /// The return value is the data of the new node at destination/target list.
 pub fn validate_operator_transfer_and_get_inserted_data(
@@ -179,7 +181,7 @@ pub fn validate_operator_transfer_and_get_inserted_data(
 /// commitment, or an invalid resolution claim on a settlement UTxO. Which is
 /// why this function returs the hub oracle datum for endpoints to lookup either
 /// the state queue or the settlement UTxO.
-pub fn slash_operator_and_get_hub_datum(
+fn slash_operator_and_get_hub_datum(
   hub_oracle_script_hash: PolicyId,
   slashed_operator_key: VerificationKeyHash,
   hub_oracle_ref_input_index: Int,
@@ -244,6 +246,116 @@ pub fn slash_operator_and_get_hub_datum(
 
     // Done.
     return(hub_datum)
+  }
+  linked_list_eval
+}
+
+pub fn remove_operator_for_bad_state(
+  hub_oracle_script_hash: PolicyId,
+  slashed_operator_key: VerificationKeyHash,
+  hub_oracle_ref_input_index: Int,
+  operator_anchor_element_input_index: Int,
+  operator_slashed_node_input_index: Int,
+  operator_anchor_element_output_index: Int,
+  state_queue_redeemer_index: Int,
+  tx: Transaction,
+) -> linked_list.Eval {
+  let Transaction {
+    inputs,
+    outputs,
+    reference_inputs,
+    mint,
+    redeemers,
+    fee,
+    ..
+  } = tx
+
+  let linked_list_eval = {
+    let hub_datum <-
+      slash_operator_and_get_hub_datum(
+        hub_oracle_script_hash,
+        slashed_operator_key,
+        hub_oracle_ref_input_index,
+        operator_anchor_element_input_index,
+        operator_slashed_node_input_index,
+        operator_anchor_element_output_index,
+        inputs,
+        outputs,
+        reference_inputs,
+        mint,
+        fee,
+      )
+
+    // 2. State queue minting script must be invoked via the 
+    //    `RemoveFraudulentBlockHeader` redeemer, and the operator
+    //    specified there must agree with the
+    //    `slashed_retired_operator_key` redeemer argument here.
+    let fraudulent_operator_from_state_queue_mint_redeemer =
+      state_queue.get_fraudulent_operator_of_removing_block(
+        hub_datum.state_queue,
+        state_queue_redeemer_index,
+        redeemers,
+      )
+    expect
+      fraudulent_operator_from_state_queue_mint_redeemer == slashed_operator_key
+
+    // Done.
+    True
+  }
+  linked_list_eval
+}
+
+pub fn remove_operator_for_bad_settlement(
+  hub_oracle_script_hash: PolicyId,
+  slashed_operator_key: VerificationKeyHash,
+  hub_oracle_ref_input_index: Int,
+  operator_anchor_element_input_index: Int,
+  operator_slashed_node_input_index: Int,
+  operator_anchor_element_output_index: Int,
+  settlement_input_index: Int,
+  settlement_redeemer_index: Int,
+  tx: Transaction,
+) -> linked_list.Eval {
+  let Transaction {
+    inputs,
+    outputs,
+    reference_inputs,
+    mint,
+    redeemers,
+    fee,
+    ..
+  } = tx
+
+  let linked_list_eval = {
+    let hub_datum <-
+      slash_operator_and_get_hub_datum(
+        hub_oracle_script_hash,
+        slashed_operator_key,
+        hub_oracle_ref_input_index,
+        operator_anchor_element_input_index,
+        operator_slashed_node_input_index,
+        operator_anchor_element_output_index,
+        inputs,
+        outputs,
+        reference_inputs,
+        mint,
+        fee,
+      )
+
+    // 2. A settlement UTxO must be getting spent via the
+    //    `DisproveResolutionClaim` redeemer.
+    let fraudulent_operator_from_settlement_redeemer =
+      settlement.get_fraudulent_operator(
+        hub_datum.settlement_addr,
+        settlement_input_index,
+        settlement_redeemer_index,
+        inputs,
+        redeemers,
+      )
+    expect fraudulent_operator_from_settlement_redeemer == slashed_operator_key
+
+    // Done.
+    True
   }
   linked_list_eval
 }

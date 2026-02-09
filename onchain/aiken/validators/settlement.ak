@@ -1,6 +1,7 @@
 use aiken/collection/list
 use aiken/crypto.{ScriptHash}
 use aiken/interval.{Finite, Interval}
+use aiken_design_patterns/singular_utxo_indexer
 use cardano/assets.{PolicyId}
 use cardano/transaction.{
   InlineDatum, Input, Mint, Output, OutputReference, Spend, Transaction,
@@ -12,9 +13,8 @@ use midgard/operator_directory/active_operators
 use midgard/operator_directory/retired_operators
 use midgard/scheduler
 use midgard/settlement.{
-  ActiveOperator, AttachResolutionClaim, Datum, DisproveResolutionClaim,
-  MintRedeemer, Remove, ResolutionClaim, Resolve, RetiredOperator, Spawn,
-  SpendRedeemer,
+  AttachResolutionClaim, Datum, DisproveResolutionClaim, MintRedeemer, Remove,
+  ResolutionClaim, Resolve, Spawn, SpendRedeemer,
 }
 use midgard/state_queue
 
