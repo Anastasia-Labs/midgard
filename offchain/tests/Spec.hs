@@ -1,5 +1,3 @@
-module Spec (main) where
-
 import Test.Tasty
 
 tests :: TestTree
