@@ -186,8 +186,8 @@ validator mint(
       } -> {
         let Transaction { inputs, outputs, mint, redeemers, .. } = tx
 
-        let linked_list_eval = {
-          // 1. Generic validations for operator transfer must pass.
+        // 1. Generic validations for operator transfer must pass.
+        {
           let inserted_node_data <-
             validate_operator_transfer_and_get_inserted_data(
               new_active_operator_key,
@@ -218,7 +218,7 @@ validator mint(
           // Done.
           True
         }
-        linked_list_eval |> finalize_linked_list(own_policy_id)
+          |> finalize_linked_list(own_policy_id)
       }
       RemoveOperatorBadState {
         slashed_active_operator_key,
@@ -303,9 +303,9 @@ validator mint(
         expect Some(active_operator_anchor_element_output) =
           outputs |> list.at(active_operator_anchor_element_output_index)
 
-        let linked_list_eval = {
-          // 4. Linked list's removal logic must be valid for the specified
-          //    inputs and output.
+        // 4. Linked list's removal logic must be valid for the specified
+        //    inputs and output.
+        {
           let
             anchor_lovelace_change,
             _m_anchor_key,
@@ -339,7 +339,7 @@ validator mint(
           // Done.
           True
         }
-        linked_list_eval |> finalize_linked_list(own_policy_id)
+          |> finalize_linked_list(own_policy_id)
       }
     }
   }
@@ -375,9 +375,9 @@ fn spend_for_updating_bond_unlock_time(
   let valid_to = utils.get_inclusive_upper_bound_of_interval(validity_range)
   let new_bond_unlock_time = valid_to + maturity_duration
 
-  let linked_list_eval = {
-    // 2. An element from the active operators directory must be spent and
-    //    reproduced without affecting the linked list structure.
+  // 2. An element from the active operators directory must be spent and
+  //    reproduced without affecting the linked list structure.
+  {
     let
       lovelace_change,
       m_operator,
@@ -415,6 +415,5 @@ fn spend_for_updating_bond_unlock_time(
 
     return(new_bond_unlock_time, operator, hub_datum)
   }
-  linked_list_eval
     |> finalize_linked_list(active_operators_mint_script_hash)
 }

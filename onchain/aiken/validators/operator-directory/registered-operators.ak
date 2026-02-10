@@ -101,13 +101,15 @@ validator mint(
                   reference_inputs: reference_inputs,
                   element_input_index: active_operators_element_ref_input_index,
                 )
-              |> active.finalize_linked_list(active_operators_mint_script_hash),
+              |> active_operators.finalize_linked_list(
+                  active_operators_mint_script_hash,
+                ),
             registering_operator
               |> operator_is_not_a_member(
                   reference_inputs: reference_inputs,
                   element_input_index: retired_operators_element_ref_input_index,
                 )
-              |> retired.finalize_linked_list(
+              |> retired_operators.finalize_linked_list(
                   retired_operators_mint_script_hash,
                 ),
           }
@@ -122,8 +124,8 @@ validator mint(
         expect Some(registered_node_output) =
           outputs |> list.at(registered_node_output_index)
 
-        let linked_list_eval = {
-          // 5. Prepending to the head of the linked list must be proper.
+        // 5. Prepending to the head of the linked list must be proper.
+        {
           let
             _root_lovelace_change,
             _root_data,
@@ -157,7 +159,7 @@ validator mint(
           // Done.
           True
         }
-        linked_list_eval |> finalize_linked_list(own_policy_id)
+          |> finalize_linked_list(own_policy_id)
       }
       ActivateOperator {
         activating_operator,
@@ -205,7 +207,9 @@ validator mint(
                 reference_inputs: reference_inputs,
                 element_input_index: retired_operators_element_ref_input_index,
               )
-            |> retired.finalize_linked_list(retired_operators_script_hash)
+            |> retired_operators.finalize_linked_list(
+                retired_operators_script_hash,
+              )
 
         // 4. Removal of the activating node from the registered operator set
         //    must be valid.
@@ -304,79 +308,69 @@ validator mint(
         // be shown that the referenced input is a member of an associated
         // operator set, with a matching operator pub key hash.
         when duplicate_operator_status is {
-          DuplicateIsRegistered -> {
-            let linked_list_eval = {
+          DuplicateIsRegistered ->
+            // 4a. Referenced element must be a node in the registered
+            //     operators set with a key that matches the removed node.
+            {
               let
                 _node_lovelace,
                 m_key,
                 _node_data,
                 _node_link,
               <- linked_list.get_element_info(duplicate_node_ref_utxo)
-
-              // 4a. Referenced element must be a node in the registered
-              //     operators set with a key that matches the removed node.
               expect Some(registered_operator) = m_key
               expect registered_operator == duplicate_operator
 
               // Done.
               True
             }
-            linked_list_eval |> finalize_linked_list(own_policy_id)
-          }
-          DuplicateIsActive { hub_oracle_ref_input_index } -> {
+              |> finalize_linked_list(own_policy_id)
+          DuplicateIsActive { hub_oracle_ref_input_index } ->
             // 4b. Transaction must refer to hub oracle's authentic UTxO.
-            let hub.Datum {
-              active_operators: active_operators_mint_script_hash,
-              ..
-            } =
-              hub.get_datum(
-                reference_inputs,
-                hub_oracle_script_hash,
-                hub_oracle_ref_input_index,
-              )
-            let linked_list_eval = {
+            {
+              let hub_Datum =
+                hub.get_datum(
+                  reference_inputs,
+                  hub_oracle_script_hash,
+                  hub_oracle_ref_input_index,
+                )
+
+              // 5b. Referenced element must be a node in the active operators
+              //     set with a key that matches the removed node.
               let
                 _node_lovelace,
                 m_key,
                 _node_data,
                 _node_link,
               <- linked_list.get_element_info(duplicate_node_ref_utxo)
-
-              // 5b. Referenced element must be a node in the active operators
-              //     set with a key that matches the removed node.
               expect Some(active_operator) = m_key
               expect active_operator == duplicate_operator
 
               // Done.
               True
             }
-            linked_list_eval
               |> active_operators.finalize_linked_list(
-                  active_operators_mint_script_hash,
+                  hub_datum.active_operators,
                 )
-          }
-          DuplicateIsRetired -> {
-            let linked_list_eval = {
+          DuplicateIsRetired ->
+            // 4c. Referenced element must be a node in the retired operators
+            //     set, with a key that matches the removed node.
+            {
               let
                 _node_lovelace,
                 m_key,
                 _node_data,
                 _node_link,
               <- linked_list.get_element_info(duplicate_node_ref_utxo)
-
-              // 4c. Referenced element must be a node in the retired operators
-              //     set, with a key that matches the removed node.
               expect Some(retired_operator) = m_key
               expect registered_operator == duplicate_operator
 
               // Done.
               True
             }
-            linked_list_eval
               |> retired_operators.finalize_linked_list(
                   retired_operators_mint_script_hash,
                 )
-          }
         }
       }
     }
@@ -406,9 +400,9 @@ fn remove_operator_and_get_node_data(
   expect Some(anchor_element_output) =
     outputs |> list.at(anchor_element_output_index)
 
-  let linked_list_eval = {
-    // 2. Removal of the operator node from the registered operator set must be
-    //    valid.
+  // 2. Removal of the operator node from the registered operator set must be
+  //    valid.
+  {
     let
       anchor_lovelace_change,
       _m_anchor_key,
@@ -439,5 +433,5 @@ fn remove_operator_and_get_node_data(
     // Done.
     True
   }
-  linked_list_eval |> finalize_linked_list(own_policy_id)
+    |> finalize_linked_list(own_policy_id)
 }

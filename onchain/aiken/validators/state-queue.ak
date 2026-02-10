@@ -164,9 +164,9 @@ validator mint(
         expect Some(new_block_output) =
           inputs |> list.at(new_block_output_index)
 
-        let linked_list_eval = {
-          // 3. Indicated inputs and output must properly adhere to unordered
-          //    linked list append requirements.
+        // 3. Indicated inputs and output must properly adhere to unordered
+        //    linked list append requirements.
+        {
           let
             _anchor_lovelace_change,
             m_anchor_key,
@@ -305,7 +305,7 @@ validator mint(
             }
           }
         }
-        linked_list_eval |> finalize_linked_list(own_policy_id)
+          |> finalize_linked_list(own_policy_id)
       }
       MergeToConfirmedState {
         header_node_key,
@@ -326,11 +326,11 @@ validator mint(
         expect Some(continued_confirmed_state_output) =
           list.at(outputs, confirmed_state_output_index)
 
-        let linked_list_eval = {
-          // 2. Specified inputs and output must properly adhere to the fold
-          //    logic of the linked list.
-          //
-          //    TODO: We are not caring about the min ADA in the folding block.
+        // 2. Specified inputs and output must properly adhere to the fold
+        //    logic of the linked list.
+        //
+        //    TODO: We are not caring about the min ADA in the folding block.
+        {
           let
             _confirmed_state_lovelace_change,
             input_confirmed_state_data,
@@ -440,7 +440,7 @@ validator mint(
             True
           }
         }
-        linked_list_eval |> finalize_linked_list(own_policy_id)
+          |> finalize_linked_list(own_policy_id)
       }
       RemoveFraudulentBlockHeader {
         fraudulent_operator,
@@ -480,7 +480,6 @@ validator mint(
                 slashed_active_operator_key,
                 ..
               } = active_operators_redeemer_data
-              //
               fraudulent_operator == slashed_active_operator_key
             }
             SlashRetiredOperator { retired_operators_redeemer_index } -> {
@@ -499,7 +498,6 @@ validator mint(
                 slashed_retired_operator_key,
                 ..
               } = retired_operators_redeemer_data
-              //
               fraudulent_operator == slashed_retired_operator_key
             }
             OperatorAlreadySlashed {
@@ -537,23 +535,23 @@ validator mint(
         // Remove fraudulent block or its link from the state queue:
         // 3. Let `block_removal_approach` be a redeemer argument that specifies
         //    whether the fraudulent block itself can be removed:
-        when block_removal_approach is {
-          RemoveFraudulentBlocksLink {
-            fraudulent_node_output_index,
-            removed_block_input_index,
-          } -> {
-            // 4a. If the fraudulent block has a link, its successor node must
-            //     be removed first.
-            //
-            //     > [!NOTE]
-            //     > The successor node is also considered fraudulent because of
-            //     > getting appended to a fraudulent block, so it does not need
-            //     > to have an associated fraud proof token.
-            expect Some(removed_block_input) =
-              inputs |> list.at(removed_block_input_index)
-            expect Some(fraudulent_node_output) =
-              outputs |> list.at(fraudulent_node_output_index)
-            let linked_list_eval = {
+        expect
+          when block_removal_approach is {
+            RemoveFraudulentBlocksLink {
+              fraudulent_node_output_index,
+              removed_block_input_index,
+            } -> {
+              // 4a. If the fraudulent block has a link, its successor node must
+              //     be removed first.
+              //
+              //     > [!NOTE]
+              //     > The successor node is also considered fraudulent because of
+              //     > getting appended to a fraudulent block, so it does not need
+              //     > to have an associated fraud proof token.
+              expect Some(removed_block_input) =
+                inputs |> list.at(removed_block_input_index)
+              expect Some(fraudulent_node_output) =
+                outputs |> list.at(fraudulent_node_output_index)
               let
                 _fraudulent_header_lovelace_change,
                 m_fraudulent_header_hash,
@@ -574,18 +572,16 @@ validator mint(
               expect Header { operator_vkey, .. } = removed_node_header_data
               operator_vkey == fraudulent_operator
             }
-          }
-          RemoveLastFraudulentBlock {
-            anchor_element_input_index,
-            anchor_element_output_index,
-          } -> {
-            // 4b. If the fraudulent block has no links, it can be removed from
-            //     the very end of the state queue.
-            expect Some(anchor_element_input) =
-              inputs |> list.at(anchor_element_input_index)
-            expect Some(anchor_element_output) =
-              outputs |> list.at(anchor_element_output_index)
-            let linked_list_eval = {
+            RemoveLastFraudulentBlock {
+              anchor_element_input_index,
+              anchor_element_output_index,
+            } -> {
+              // 4b. If the fraudulent block has no links, it can be removed from
+              //     the very end of the state queue.
+              expect Some(anchor_element_input) =
+                inputs |> list.at(anchor_element_input_index)
+              expect Some(anchor_element_output) =
+                outputs |> list.at(anchor_element_output_index)
               let
                 _anchor_lovelace_change,
                 _m_anchor_key,
@@ -607,7 +603,7 @@ validator mint(
               removed_node_link == None
             }
           }
-        }
+            |> finalize_linked_list(own_policy_id)
 
         // Verify that fraud has been proved for the specified block header:
         // 5. The transaction must include a reference input holding a

@@ -13,8 +13,9 @@ use midgard/operator_directory.{
 }
 use midgard/operator_directory/active_operators
 use midgard/operator_directory/retired_operators.{
-  Deinit, Init, MintRedeemer, RecoverOperatorBond, RemoveOperatorBadSettlement,
-  RemoveOperatorBadState, RetireOperator, finalize_linked_list, root_asset_name,
+  Deinit, Init, MintRedeemer, NodeData, RecoverOperatorBond,
+  RemoveOperatorBadSettlement, RemoveOperatorBadState, RetireOperator,
+  finalize_linked_list, root_asset_name,
 }
 use midgard/protocol_parameters.{slashing_penalty}
 
@@ -82,8 +83,8 @@ validator mint(hub_oracle_script_hash: PolicyId) {
             hub_oracle_ref_input_index,
           )
 
-        let linked_list_eval = {
-          // 2. Generic validations for operator transfer must pass.
+        // 2. Generic validations for operator transfer must pass.
+        {
           let inserted_node_data <-
             validate_operator_transfer_and_get_inserted_data(
               new_retired_operator_key,
@@ -115,7 +116,7 @@ validator mint(hub_oracle_script_hash: PolicyId) {
           // Done.
           True
         }
-        linked_list_eval |> finalize_linked_list(own_policy_id)
+          |> finalize_linked_list(own_policy_id)
       }
       RecoverOperatorBond {
         retired_operator_key,
@@ -150,9 +151,9 @@ validator mint(hub_oracle_script_hash: PolicyId) {
         expect Some(retired_operator_anchor_element_output) =
           outputs |> list.at(retired_operator_anchor_element_output_index)
 
-        let linked_list_eval = {
-          // 3. Removal of the retiried operator's node from the linked list
-          //    must be valid.
+        // 3. Removal of the retiried operator's node from the linked list
+        //    must be valid.
+        {
           let
             anchor_lovelace_change,
             _m_anchor_key,
@@ -168,6 +169,7 @@ validator mint(hub_oracle_script_hash: PolicyId) {
               retired_operator_anchor_element_output,
               mint,
             )
+
           // 4. ADA of the removing node's anchor element must be preserved.
           expect anchor_lovelace_change >= 0
 
@@ -184,7 +186,7 @@ validator mint(hub_oracle_script_hash: PolicyId) {
           // Done.
           True
         }
-        linked_list_eval |> finalize_linked_list(own_policy_id)
+          |> finalize_linked_list(own_policy_id)
       }
       RemoveOperatorBadState {
         slashed_retired_operator_key,
