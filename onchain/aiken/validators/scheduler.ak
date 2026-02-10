@@ -1,46 +1,43 @@
 use aiken/builtin
 use aiken/collection/list
 use aiken/interval.{Finite, Interval, is_entirely_after}
-use aiken_design_patterns/linked_list/ordered.{Key} as ordered
+use aiken_design_patterns/linked_list
 use cardano/assets.{PolicyId}
 use cardano/transaction.{
   InlineDatum, Input, Output, OutputReference, Transaction, ValidityRange,
 }
 use midgard/common/utils.{get_singleton_asset_with_policy}
-use midgard/registered_operators.{Datum as RegisteredOperatorDatum}
+use midgard/hub_oracle as hub
+use midgard/operator_directory/registered_operators
 use midgard/scheduler.{
-  Advance, Datum, Deinit, Init, MintRedeemer, Rewind, SpendRedeemer,
+  Advance, Datum, Deinit, Init, MintRedeemer, Rewind, SpendRedeemer, asset_name,
   scheduler_asset_name, shift_end_time,
 }
 
-validator mint(
-  hub_oracle_policy_id: PolicyId,
-  hub_oracle_asset_name: ByteArray,
-) {
-  mint(redeemer: MintRedeemer, policy_id: PolicyId, self: Transaction) {
+validator mint(hub_oracle_script_hash: PolicyId) {
+  mint(redeemer: MintRedeemer, own_policy_id: PolicyId, self: Transaction) {
+    let Transaction { mint, .. } = self
     when redeemer is {
-      Init -> {
-        expect
-          Pair(hub_oracle_asset_name, 1) == get_singleton_asset_with_policy(
-            self.mint,
-            hub_oracle_policy_id,
-          )
-        Pair(scheduler_asset_name, 1) == get_singleton_asset_with_policy(
-          self.mint,
-          policy_id,
-        )
-      }
-      Deinit -> {
-        expect
-          Pair(hub_oracle_asset_name, -1) == get_singleton_asset_with_policy(
-            self.mint,
-            hub_oracle_policy_id,
-          )
-        Pair(scheduler_asset_name, -1) == get_singleton_asset_with_policy(
-          self.mint,
-          policy_id,
-        )
-      }
+      Init -> and {
+          Pair(hub.asset_name, 1) == get_singleton_asset_with_policy(
+            mint,
+            hub_oracle_script_hash,
+          ),
+          Pair(asset_name, 1) == get_singleton_asset_with_policy(
+            mint,
+            own_policy_id,
+          ),
+        }
+      Deinit -> and {
+          Pair(hub.asset_name, -1) == get_singleton_asset_with_policy(
+            mint,
+            hub_oracle_script_hash,
+          ),
+          Pair(asset_name, -1) == get_singleton_asset_with_policy(
+            mint,
+            own_policy_id,
+          ),
+        }
     }
   }
 
