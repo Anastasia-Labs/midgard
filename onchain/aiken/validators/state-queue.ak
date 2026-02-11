@@ -7,7 +7,7 @@ use cardano/assets.{PolicyId, quantity_of}
 use cardano/transaction.{
   InlineDatum, Input, Mint, Output, OutputReference, Spend, Transaction,
 }
-use midgard/common/types.{PosixTime}
+use midgard/common/constants.{empty_merkle_tree_root}
 use midgard/common/utils
 use midgard/hub_oracle as hub
 use midgard/ledger_state.{
@@ -26,8 +26,6 @@ use midgard/state_queue.{
   RemoveFraudulentBlockHeader, block_asset_name_prefix,
   block_asset_name_prefix_length, confirmed_state_asset_name,
 }
-
-const five_minutes: PosixTime = 5 * 60 * 1000
 
 validator spend(state_queue_mint_script_hash: ByteArray) {
   spend(
@@ -62,14 +60,10 @@ validator mint(
 
         expect Some(root_output) = outputs |> list.at(output_index)
 
-        expect vrn.ClosedRange {
-          lower: current_time_lower,
-          upper: current_time_upper,
-        } = vrn.normalize_time_range(validity_range)
-
         // 1. Estimate current time by taking the upper bound of a time range
         //    that is shorter than 5 minutes.
-        expect current_time_upper - current_time_lower <= five_minutes
+        let (_current_time_lower, current_time_upper) =
+          utils.get_inclusive_bounds_of_a_short_validity_range(validity_range)
 
         // 2. The produced root UTxO must have a `ConfirmedState` data with zero
         //    hashes, and an empty ledger (i.e. `utxo_root` must be that of an
@@ -234,7 +228,14 @@ validator mint(
 
           // 10. The `end_time` of `header_node` must be within the shift
           //     interval of `scheduler_state`.
-          expect output_end_time >= scheduler_start_time
+          //
+          //     Note that scheduler's start time is inclusive, while block
+          //     header's end time is exclusive. Therefore we are using `>`,
+          //     since equality between the two wouldn't mean the block is
+          //     within the shift interval.
+          expect output_end_time > scheduler_start_time
+          // Here since both scheduler and blocks have an exclusive upper bound,
+          // we are using `<=` instead of `<`.
           expect
             output_end_time <= scheduler.shift_end_time(scheduler_state_time)
 

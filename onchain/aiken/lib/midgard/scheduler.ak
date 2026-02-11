@@ -1,4 +1,4 @@
-use aiken/crypto.{ScriptHash}
+use aiken/crypto.{ScriptHash, VerificationKeyHash}
 use cardano/transaction.{Input}
 use midgard/common/types.{PosixTime}
 use midgard/common/utils
@@ -7,7 +7,7 @@ use midgard/protocol_parameters.{shift_duration}
 pub const asset_name = "MIDGARD_SCHEDULER"
 
 pub type Datum {
-  operator: ByteArray,
+  operator: VerificationKeyHash,
   start_time: PosixTime,
 }
 
@@ -17,8 +17,13 @@ pub type MintRedeemer {
 }
 
 pub type SpendRedeemer {
-  Advance { scheduler_output_index: Int, active_node_ref_input_index: Int }
+  Advance {
+    scheduler_input_index: Int,
+    scheduler_output_index: Int,
+    active_node_ref_input_index: Int,
+  }
   Rewind {
+    scheduler_input_index: Int,
     scheduler_output_index: Int,
     active_node_ref_input_index: Int,
     active_root_node_ref_input_index: Int,

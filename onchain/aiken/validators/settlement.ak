@@ -101,7 +101,7 @@ validator spend(hub_oracle: ScriptHash, settlement_policy_id: ScriptHash) {
         //    `resolution_time` of the resolution claim, which lies in the
         //    future by `maturity_duration` milliseconds.
         let cont_output_datum_data =
-          authenticate_input_output_and_get_output_datum_data(
+          utils.authenticate_input_output_and_get_output_datum_data(
             input,
             output,
             settlement_policy_id,
@@ -121,11 +121,10 @@ validator spend(hub_oracle: ScriptHash, settlement_policy_id: ScriptHash) {
         // 8. The transaction must include the `scheduler` utxo as a reference
         //    input, indicating that the current operator matches the resolution
         //    claim's operator.
-        expect parsed_scheduler_state_datum: scheduler.Datum =
-          utils.get_authentic_input_datum_with_nft_at(
+        let parsed_scheduler_state_datum: scheduler.Datum =
+          scheduler.get_datum(
             reference_inputs,
             scheduler,
-            scheduler.asset_name,
             scheduler_ref_input_index,
           )
         expect operator == parsed_scheduler_state_datum.operator
@@ -179,7 +178,7 @@ validator spend(hub_oracle: ScriptHash, settlement_policy_id: ScriptHash) {
             double_satisfaction_prevented: True,
           )
         let cont_output_datum_data =
-          authenticate_input_output_and_get_output_datum_data(
+          utils.authenticate_input_output_and_get_output_datum_data(
             input,
             output,
             settlement_policy_id,
@@ -444,36 +443,4 @@ validator mint(hub_oracle: ScriptHash) {
   else(_) {
     fail
   }
-}
-
-fn authenticate_input_output_and_get_output_datum_data(
-  input: Input,
-  output: Output,
-  settlement_policy_id: PolicyId,
-) -> Data {
-  expect Input {
-    output: Output { address: input_address, value: input_value, .. },
-    ..
-  } = input
-
-  expect Output {
-    address: output_address,
-    value: output_value,
-    datum: InlineDatum(output_datum_data),
-    reference_script: None,
-  } = output
-
-  expect input_address == output_address
-
-  expect (input_nft_symbol, _, 1) as input_nft_triplet =
-    utils.get_single_asset_from_value_apart_from_ada(input_value)
-
-  expect input_nft_symbol == settlement_policy_id
-
-  let output_nft_triplet =
-    utils.get_single_asset_from_value_apart_from_ada(output_value)
-
-  expect input_nft_triplet == output_nft_triplet
-
-  output_datum_data
 }

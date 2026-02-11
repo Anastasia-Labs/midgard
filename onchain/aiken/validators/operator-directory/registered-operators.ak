@@ -5,7 +5,7 @@ use cardano/assets.{
   PolicyId, ada_asset_name, ada_policy_id, quantity_of, tokens,
 }
 use cardano/transaction.{
-  InlineDatum, Input, Output, OutputReference, Transaction,
+  InlineDatum, Input, Output, OutputReference, Redeemer, Transaction,
 }
 use midgard/hub_oracle
 use midgard/operator_directory.{deinit, init, operator_is_not_a_member}

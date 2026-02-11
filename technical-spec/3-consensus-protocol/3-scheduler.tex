@@ -81,8 +81,10 @@ Redeemers:
             \begin{enumerate}[resume]
                 \item Either of the following must hold:
                 \begin{enumerate}
-                    \item The transaction is signed by \code{operator}, and the \code{scheduler\_output} shift interval contains the transaction validity interval.
-                    \item The \code{scheduler\_output} shift interval occurs entirely before the transaction validity interval.
+                    \item The \code{scheduler\_output} shift interval starts entirely before the transaction validity interval, so anyone should be able to advance the scheduler for the next shift.
+                    \item The start time of \code{scheduler\_output} shift interval is contained in the transaction's validity range.
+                      This means that \code{previous\_operator} is still active, and therefore they must have signed the transaction.
+                      The validity interval of the transaction must also be short.\footnote{The length of the validity interval is essentially the max range within which no blocks can be committed to the state queue (TODO).}
                 \end{enumerate}
             \end{enumerate}
             
