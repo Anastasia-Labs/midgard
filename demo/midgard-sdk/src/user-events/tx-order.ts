@@ -12,6 +12,7 @@ import {
   UTxO,
 } from "@lucid-evolution/lucid";
 import {
+  BaseEntityUTxO,
   DataCoercionError,
   GenericErrorFields,
   getStateToken,
@@ -19,6 +20,7 @@ import {
   makeReturn,
   OutputReference,
   UnauthenticUtxoError,
+  utxosToEntityUTxOs,
 } from "@/common.js";
 import {
   AddressData,
@@ -32,6 +34,7 @@ import {
 import { MidgardTxCompact, TxOrderEventSchema } from "@/ledger-state.js";
 import {
   buildUserEventMintTransaction,
+  UserEventExtraFields,
   UserEventMintRedeemer,
 } from "./index.js";
 import { Data as EffectData, Effect } from "effect";
@@ -57,14 +60,7 @@ export const TxOrderDatumSchema = Data.Object({
 export type TxOrderDatum = Data.Static<typeof TxOrderDatumSchema>;
 export const TxOrderDatum = TxOrderDatumSchema as unknown as TxOrderDatum;
 
-export type TxOrderUTxO = {
-  utxo: UTxO;
-  datum: TxOrderDatum;
-  assetName: string;
-  idCbor: Buffer;
-  infoCbor: Buffer;
-  inclusionTime: Date;
-};
+export type TxOrderUTxO = BaseEntityUTxO<TxOrderDatum, UserEventExtraFields>;
 
 export type TxOrderFetchConfig = {
   txOrderAddress: Address;
@@ -73,71 +69,28 @@ export type TxOrderFetchConfig = {
   inclusionTimeLowerBound: POSIXTime;
 };
 
-export const getTxOrderDatumFromUTxO = (
-  nodeUTxO: UTxO,
-): Effect.Effect<TxOrderDatum, DataCoercionError> => {
-  const datumCBOR = nodeUTxO.datum;
-  if (datumCBOR) {
-    try {
-      const txOrderDatum = Data.from(datumCBOR, TxOrderDatum);
-      return Effect.succeed(txOrderDatum);
-    } catch (e) {
-      return Effect.fail(
-        new DataCoercionError({
-          message: `Could not coerce UTxO's datum to a tx order datum`,
-          cause: e,
-        }),
-      );
-    }
-  } else {
-    return Effect.fail(
-      new DataCoercionError({
-        message: `Tx order datum coercion failed`,
-        cause: `No datum found`,
-      }),
-    );
-  }
-};
-
-/**
- * Validates correctness of datum, and having a single NFT.
- */
-export const utxoToTxOrderUTxO = (
-  utxo: UTxO,
-  nftPolicy: string,
-): Effect.Effect<TxOrderUTxO, DataCoercionError | UnauthenticUtxoError> =>
-  Effect.gen(function* () {
-    const datum = yield* getTxOrderDatumFromUTxO(utxo);
-    const [sym, assetName] = yield* getStateToken(utxo.assets);
-    if (sym !== nftPolicy) {
-      yield* Effect.fail(
-        new UnauthenticUtxoError({
-          message: "Failed to convert UTxO to `TxOrderUTxO`",
-          cause: "UTxO's NFT policy ID is not the same as the tx order's",
-        }),
-      );
-    }
-    return {
-      utxo,
-      datum,
-      assetName,
-      idCbor: Buffer.from(
-        fromHex(Data.to(datum.event.txOrderId, OutputReference)),
-      ),
-      infoCbor: Buffer.from(fromHex(datum.event.midgardTx.tx)),
-      inclusionTime: new Date(Number(datum.inclusionTime)),
-    };
-  });
-
 /**
  * Silently drops invalid UTxOs.
  */
 export const utxosToTxOrderUTxOs = (
   utxos: UTxO[],
   nftPolicy: string,
+  datum: TxOrderDatum,
 ): Effect.Effect<TxOrderUTxO[]> => {
-  const effects = utxos.map((u) => utxoToTxOrderUTxO(u, nftPolicy));
-  return Effect.allSuccesses(effects);
+  const calculateExtraFields = (datum: TxOrderDatum): UserEventExtraFields => ({
+    idCbor: Buffer.from(
+      fromHex(Data.to(datum.event.txOrderId, OutputReference)),
+    ),
+    infoCbor: Buffer.from(fromHex(datum.event.midgardTx.tx)),
+    inclusionTime: new Date(Number(datum.inclusionTime)),
+  });
+
+  return utxosToEntityUTxOs<TxOrderDatum, UserEventExtraFields>(
+    utxos,
+    nftPolicy,
+    datum,
+    calculateExtraFields,
+  );
 };
 
 export const fetchTxOrderUTxOsProgram = (
@@ -156,6 +109,7 @@ export const fetchTxOrderUTxOsProgram = (
     const txOrderUTxOs = yield* utxosToTxOrderUTxOs(
       allUTxOs,
       config.txOrderPolicyId,
+      TxOrderDatum,
     );
 
     const validTxOrderUTxOs = txOrderUTxOs.filter((utxo) =>

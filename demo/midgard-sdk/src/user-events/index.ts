@@ -1,12 +1,19 @@
 import {
+  BaseEntityUTxO,
+  OutputReference,
+  utxosToEntityUTxOs,
+} from "@/common.js";
+import { DepositInfo } from "@/ledger-state.js";
+import {
   Assets,
   Data,
+  fromHex,
   LucidEvolution,
   MintingPolicy,
   TxBuilder,
   UTxO,
 } from "@lucid-evolution/lucid";
-import { Int } from "effect/Schema";
+import { Effect } from "effect";
 
 export const UserEventMintRedeemerSchema = Data.Enum([
   Data.Object({
@@ -40,6 +47,12 @@ export type UserEventMintTransactionParams = {
   extraAssets?: Assets;
   validTo: number;
   mintingPolicy: MintingPolicy;
+};
+
+export type UserEventExtraFields = {
+  idCbor: Buffer;
+  infoCbor: Buffer;
+  inclusionTime: Date;
 };
 
 export const buildUserEventMintTransaction = (

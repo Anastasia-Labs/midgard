@@ -13,6 +13,7 @@ import {
   toHex,
 } from "@lucid-evolution/lucid";
 import { blake2b } from "@noble/hashes/blake2.js";
+import { UserEventExtraFields } from "./index.js";
 
 export const makeReturn = <A, E>(program: Effect.Effect<A, E>) => {
   return {
@@ -359,11 +360,11 @@ export const parseAddressDataCredentials = (
     };
   });
 
-export type BaseEntityUTxO<TDatum, TOption = string> = {
+export type BaseEntityUTxO<TDatum, TExtra = UserEventExtraFields> = {
   utxo: UTxO;
   datum: TDatum;
   assetName?: string;
-  option?: TOption;
+  userEventExtraFields?: TExtra;
 };
 
 export const getDatumFromUTxO = <TDatum>(
@@ -393,12 +394,13 @@ export const getDatumFromUTxO = <TDatum>(
 /**
  * Validates correctness of datum, and having a single NFT.
  */
-export const utxoToEntityUTxO = <TDatum, TOption = string>(
+export const utxoToEntityUTxO = <TDatum, TExtra>(
   utxo: UTxO,
   nftPolicy: string,
   schema: any,
+  extraFields?: (datum: TDatum) => TExtra,
 ): Effect.Effect<
-  BaseEntityUTxO<TDatum, TOption>,
+  BaseEntityUTxO<TDatum, TExtra>,
   DataCoercionError | UnauthenticUtxoError
 > =>
   Effect.gen(function* () {
@@ -412,22 +414,26 @@ export const utxoToEntityUTxO = <TDatum, TOption = string>(
         }),
       );
     }
+    const extra = extraFields ? extraFields(datum) : ({} as TExtra);
+
     return {
       utxo,
       datum,
       assetName,
+      ...extra,
     };
   });
 /**
  * Silently drops invalid UTxOs.
  */
-export const utxosToEntityUTxOs = <TDatum, TOption = string>(
+export const utxosToEntityUTxOs = <TDatum, TExtra>(
   utxos: UTxO[],
   nftPolicy: string,
   schema: any,
-): Effect.Effect<BaseEntityUTxO<TDatum, TOption>[]> => {
+  extraFields?: (datum: TDatum) => TExtra,
+): Effect.Effect<BaseEntityUTxO<TDatum, TExtra>[]> => {
   const effects = utxos.map((u) =>
-    utxoToEntityUTxO<TDatum, TOption>(u, nftPolicy, schema),
+    utxoToEntityUTxO<TDatum, TExtra>(u, nftPolicy, schema, extraFields),
   );
   return Effect.allSuccesses(effects);
 };
