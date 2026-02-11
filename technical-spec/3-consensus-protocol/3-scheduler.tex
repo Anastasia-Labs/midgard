@@ -92,8 +92,8 @@ Redeemers:
             \begin{enumerate}[resume]
                 \item The transaction must include a reference input of an \code{active\_operators} node.
                   Let \code{operator\_node} be that node.
-                \item The \code{key} of \code{operator\_node} must match \code{operator}.
-                \item The \code{link} of \code{operator\_node} must match or exceed \code{previous\_operator}.\footnote{It will exceed the previous operator if they have retired.}
+                \item The Key of \code{operator\_node} must match \code{operator}.
+                \item If \code{operator\_node} has a link, it must match or exceed \code{previous\_operator}.\footnote{It will exceed the previous operator if they have retired.}
             \end{enumerate}
         \end{itemize}
 

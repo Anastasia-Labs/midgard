@@ -130,9 +130,10 @@ validator spend(
             },
           }
 
+        // 6. The authentic reference input of the new active operator node must
+        //    exist at the specified index.
         expect Some(active_node_ref_input) =
           list.at(reference_inputs, active_node_ref_input_index)
-
         {
           let
             _active_node_lovelace,
@@ -141,11 +142,18 @@ validator spend(
             active_node_link,
           <- linked_list.get_element_info(active_node_ref_input)
 
+          // 7. The referenced active operator element has to be a node, and its
+          //    key must match the new active operator.
           expect Some(output_operator) == m_active_node_key
 
-          expect Some(active_node_linked_operator) = active_node_link
-
-          bytearray.compare(input_operator, active_node_linked_operator) != Greater
+          // 8. If the new active operator node has a linked operator, the key
+          //    of the linked operator must match or exceed the previous
+          //    operator's key.
+          when active_node_link is {
+            None -> True
+            Some(active_node_linked_operator) ->
+              bytearray.compare(input_operator, active_node_linked_operator) != Greater
+          }
         }
           |> active_operators.finalize_linked_list(active_operators_policy_id)
 
