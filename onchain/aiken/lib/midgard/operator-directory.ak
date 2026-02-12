@@ -149,7 +149,7 @@ pub fn validate_operator_transfer_and_get_inserted_data(
     inserted_node_data,
     _inserted_node_link,
   <-
-    linked_list.insert_ordered(
+    linked_list.insert_ascending(
       target_list_anchor_element_input,
       target_list_anchor_element_output,
       target_list_inserted_node,

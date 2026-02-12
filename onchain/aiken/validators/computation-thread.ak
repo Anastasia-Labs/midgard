@@ -1,15 +1,15 @@
 use aiken/builtin
 use aiken/collection/list
 use aiken/primitive/bytearray
-use cardano/assets.{PolicyId, flatten, quantity_of}
-use cardano/transaction.{InlineDatum, Input, Output, Transaction}
-use midgard/common/utils.{has_signed, is_output_to_sc}
+use cardano/address.{Address, Script}
+use cardano/assets.{PolicyId}
+use cardano/transaction.{InlineDatum, Output, Transaction}
+use midgard/common/utils
 use midgard/computation_thread.{
   BurnForCancellation, Init, MintRedeemer, StepDatum, Success,
 }
 use midgard/fraud_proof_catalogue as catalogue
 use midgard/hub_oracle as hub
-use midgard/ledger_state
 use midgard/state_queue
 
 validator mint(
@@ -32,6 +32,7 @@ validator mint(
           outputs,
           reference_inputs,
           redeemers,
+          mint,
           extra_signatories,
           ..
         } = self
@@ -117,7 +118,7 @@ validator mint(
           first_step_output_datum_data
 
         // 9. Transaction must be signed by the specified fraud prover.
-        expect fraud_prover |> has_signed(extra_signatories)
+        expect fraud_prover |> utils.has_signed(extra_signatories)
 
         // 10. The NFT in `first_step_output` must be the only asset minted in
         //     the transaction.
@@ -131,7 +132,7 @@ validator mint(
         //    (including the coupling of this endpoint with minting of a
         //    `fraud_proof` token) are done in each fraud proof's last step.
         expect
-          quantity_of(self.mint, own_policy_id, burning_token_asset_name) == -1
+          assets.quantity_of(self.mint, own_policy_id, burning_token_asset_name) == -1
 
         // Done.
         True
@@ -151,52 +152,5 @@ validator mint(
 
   else(_) {
     fail
-  }
-}
-
-fn validate_fraud_proof_catalogue_node_input(
-  fraud_proof_catalogue_node_input: Input,
-  fraud_proof_catalogue_script_hash: ByteArray,
-  fraud_proof_asset_name: ByteArray,
-) {
-  quantity_of(
-    fraud_proof_catalogue_node_input.output.value,
-    fraud_proof_catalogue_script_hash,
-    fraud_proof_asset_name,
-  ) == 1
-}
-
-fn validate_frauded_state_queue_node_input(
-  frauded_state_queue_node_input: Input,
-  state_queue_script_hash: ByteArray,
-  state_queue_asset_name: ByteArray,
-) {
-  quantity_of(
-    frauded_state_queue_node_input.output.value,
-    state_queue_script_hash,
-    state_queue_asset_name,
-  ) == 1
-}
-
-fn validate_output_to_initial_fraud_proof_step(
-  output_to_init_step: Output,
-  fraud_prover_hash: ByteArray,
-  init_step_script_hash: ByteArray,
-  own_hash: ByteArray,
-  token_asset_name: ByteArray,
-) {
-  expect InlineDatum(outputDatum) = output_to_init_step.datum
-  expect parsedDatum: StepDatum<Data> = outputDatum
-
-  let newDatum = StepDatum { fraud_prover: fraud_prover_hash, data: None }
-
-  let correctValue = and {
-      quantity_of(output_to_init_step.value, own_hash, token_asset_name) == 1,
-      list.length(flatten(output_to_init_step.value)) == 2,
-    }
-  and {
-    is_output_to_sc(output_to_init_step, init_step_script_hash),
-    parsedDatum == newDatum,
-    correctValue,
   }
 }

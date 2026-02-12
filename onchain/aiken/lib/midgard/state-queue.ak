@@ -68,7 +68,7 @@ pub type MintRedeemer {
     slashing_approach: SlashingApproach,
     fraudulent_node_input_index: Int,
     fraud_proof_ref_input_index: Int,
-    approach: BlockRemovalApproach,
+    block_removal_approach: BlockRemovalApproach,
   }
 }
 

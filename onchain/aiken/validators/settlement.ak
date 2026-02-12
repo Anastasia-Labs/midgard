@@ -340,7 +340,7 @@ validator mint(hub_oracle: ScriptHash) {
         //
         // Another solution would be checking the absence of settlement minting
         // by the state queue policy, which would be more expensive.
-        expect Some(_) == m_settlement_redeemer_index
+        expect Some(_) = m_settlement_redeemer_index
         //
         expect Some(merged_block) = list.at(inputs, header_node_input_index)
         expect Input {
@@ -348,13 +348,12 @@ validator mint(hub_oracle: ScriptHash) {
           ..
         } = merged_block
         //
-        expect block_datum: state_queue.Datum = block_datum_data
         expect ledger_state.Header {
           deposits_root,
           withdrawals_root,
           transactions_root,
           ..
-        } = block_datum.data
+        } = block_datum_data
 
         // 4. The transaction must produce an authentic settlement utxo with an
         //    NFT which its asset name matches `header_hash`. Let

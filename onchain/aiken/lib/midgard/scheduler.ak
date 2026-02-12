@@ -27,7 +27,7 @@ pub type SpendRedeemer {
     scheduler_output_index: Int,
     active_node_ref_input_index: Int,
     active_root_ref_input_index: Int,
-    registered_node_ref_input_index: Int,
+    registered_element_ref_input_index: Int,
   }
 }
 

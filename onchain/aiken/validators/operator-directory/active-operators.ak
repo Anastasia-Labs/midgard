@@ -1,10 +1,9 @@
 use aiken/collection/list
 use aiken/crypto.{VerificationKeyHash}
-use aiken/interval.{Finite, Interval}
 use aiken_design_patterns/linked_list
-use cardano/assets.{PolicyId, Value, quantity_of, tokens}
+use cardano/assets.{PolicyId, Value}
 use cardano/transaction.{
-  InlineDatum, Input, Mint, Output, OutputReference, Transaction,
+  Input, Mint, Output, OutputReference, Transaction, ValidityRange,
 }
 use midgard/common/utils
 use midgard/hub_oracle as hub
@@ -21,7 +20,7 @@ use midgard/operator_directory/active_operators.{
 }
 use midgard/operator_directory/registered_operators
 use midgard/operator_directory/retired_operators
-use midgard/protocol_parameters.{maturity_duration, slashing_penalty}
+use midgard/protocol_parameters.{maturity_duration}
 use midgard/settlement
 use midgard/state_queue
 
@@ -48,6 +47,16 @@ validator spend(
         state_queue_input_index,
         state_queue_redeemer_index,
       } -> {
+        let Transaction {
+          inputs,
+          outputs,
+          reference_inputs,
+          redeemers,
+          mint,
+          validity_range,
+          ..
+        } = self
+
         // 1. Common validations for spending and reproducing an active operator
         //    node must pass.
         let
@@ -62,7 +71,11 @@ validator spend(
             active_node_output_index,
             hub_oracle_ref_input_index,
             own_out_ref,
-            self,
+            inputs,
+            outputs,
+            reference_inputs,
+            mint,
+            validity_range,
           )
 
         // 2. Transaction must spend a UTxO from state queue with the Commit
@@ -99,6 +112,16 @@ validator spend(
         settlement_redeemer_index,
         new_bond_unlock_time,
       } -> {
+        let Transaction {
+          inputs,
+          outputs,
+          reference_inputs,
+          redeemers,
+          mint,
+          validity_range,
+          ..
+        } = self
+
         // 1. Common validations for spending and reproducing an active operator
         //    node must pass.
         let
@@ -113,7 +136,11 @@ validator spend(
             active_node_output_index,
             hub_oracle_ref_input_index,
             own_out_ref,
-            self,
+            inputs,
+            outputs,
+            reference_inputs,
+            mint,
+            validity_range,
           )
 
         // 2. The new bond unlock time in the redeemer must be valid for other
@@ -184,7 +211,7 @@ validator mint(
         active_operator_inserted_node_output_index,
         registered_operators_redeemer_index,
       } -> {
-        let Transaction { inputs, outputs, mint, redeemers, .. } = tx
+        let Transaction { inputs, outputs, mint, redeemers, .. } = self
 
         // 1. Generic validations for operator transfer must pass.
         {
@@ -270,7 +297,6 @@ validator mint(
         let Transaction {
           inputs,
           outputs,
-          reference_inputs,
           mint,
           redeemers,
           extra_signatories,
@@ -356,19 +382,13 @@ fn spend_for_updating_bond_unlock_time(
   active_node_output_index: Int,
   hub_oracle_ref_input_index: Int,
   own_out_ref: OutputReference,
-  tx: Transaction,
+  inputs: List<Input>,
+  outputs: List<Output>,
+  reference_inputs: List<Input>,
+  mint: Value,
+  validity_range: ValidityRange,
   return: fn(Int, VerificationKeyHash, hub.Datum) -> Bool,
 ) -> Bool {
-  let Transaction {
-    inputs,
-    outputs,
-    reference_inputs,
-    redeemers,
-    mint,
-    validity_range,
-    ..
-  } = tx
-
   // 1. The new bond unlock time must be equal to the transaction's
   //    validity range upper bound plus the maturity duration.
   //    TODO: Does inclusivity of the upper bound matter here?

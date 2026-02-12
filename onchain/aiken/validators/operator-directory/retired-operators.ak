@@ -1,10 +1,9 @@
 use aiken/collection/list
 use aiken/crypto.{VerificationKeyHash}
 use aiken_design_patterns/linked_list
-use cardano/assets.{PolicyId, quantity_of, tokens}
-use cardano/transaction.{
-  InlineDatum, Input, Mint, Output, OutputReference, Redeemer, Transaction,
-}
+use cardano/assets.{PolicyId}
+use cardano/transaction.{OutputReference, Redeemer, Transaction}
+use midgard/common/utils
 use midgard/hub_oracle as hub
 use midgard/operator_directory.{
   deinit, init, remove_operator_for_bad_settlement,
@@ -17,7 +16,6 @@ use midgard/operator_directory/retired_operators.{
   RemoveOperatorBadSettlement, RemoveOperatorBadState, RetireOperator,
   finalize_linked_list, root_asset_name,
 }
-use midgard/protocol_parameters.{slashing_penalty}
 
 validator spend(retired_operators_mint_script_hash: PolicyId) {
   spend(
@@ -65,14 +63,7 @@ validator mint(hub_oracle_script_hash: PolicyId) {
         retired_operator_inserted_node_output_index,
         active_operators_redeemer_index,
       } -> {
-        let Transaction {
-          inputs,
-          outputs,
-          reference_inputs,
-          mint,
-          redeemers,
-          ..
-        } = self
+        let Transaction { inputs, outputs, mint, redeemers, .. } = self
 
         // 1. The active operators policy ID must come from reference authentic
         //    hub oracle UTxO.
@@ -128,7 +119,6 @@ validator mint(hub_oracle_script_hash: PolicyId) {
           inputs,
           outputs,
           mint,
-          redeemers,
           validity_range,
           extra_signatories,
           ..
@@ -210,9 +200,9 @@ validator mint(hub_oracle_script_hash: PolicyId) {
       RemoveOperatorBadSettlement {
         slashed_retired_operator_key,
         hub_oracle_ref_input_index,
-        active_operator_anchor_element_input_index,
-        active_operator_slashed_node_input_index,
-        active_operator_anchor_element_output_index,
+        retired_operator_anchor_element_input_index,
+        retired_operator_slashed_node_input_index,
+        retired_operator_anchor_element_output_index,
         settlement_input_index,
         settlement_redeemer_index,
       } ->
@@ -220,9 +210,9 @@ validator mint(hub_oracle_script_hash: PolicyId) {
           hub_oracle_script_hash,
           slashed_retired_operator_key,
           hub_oracle_ref_input_index,
-          active_operator_anchor_element_input_index,
-          active_operator_slashed_node_input_index,
-          active_operator_anchor_element_output_index,
+          retired_operator_anchor_element_input_index,
+          retired_operator_slashed_node_input_index,
+          retired_operator_anchor_element_output_index,
           settlement_input_index,
           settlement_redeemer_index,
           self,

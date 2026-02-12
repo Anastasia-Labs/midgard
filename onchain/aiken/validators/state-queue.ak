@@ -1,14 +1,12 @@
+use aiken/builtin
 use aiken/collection/list
 use aiken/crypto
-use aiken/primitive/bytearray
 use aiken_design_patterns/linked_list
-use aiken_design_patterns/validity_range_normalization as vrn
-use cardano/assets.{PolicyId, quantity_of}
-use cardano/transaction.{
-  InlineDatum, Input, Mint, Output, OutputReference, Spend, Transaction,
-}
+use cardano/assets.{Lovelace, PolicyId, quantity_of}
+use cardano/transaction.{Input, Mint, OutputReference, Spend, Transaction}
 use midgard/common/constants.{empty_merkle_tree_root}
 use midgard/common/utils
+use midgard/fraud_proof
 use midgard/hub_oracle as hub
 use midgard/ledger_state.{
   ConfirmedState, Header, genesis_header_hash, genesis_protocol_version,
@@ -16,15 +14,15 @@ use midgard/ledger_state.{
 }
 use midgard/operator_directory
 use midgard/operator_directory/active_operators
-use midgard/operator_directory/registered_operators
 use midgard/operator_directory/retired_operators
 use midgard/protocol_parameters.{maturity_duration}
 use midgard/scheduler
 use midgard/settlement
 use midgard/state_queue.{
   CommitBlockHeader, Deinit, Init, MergeToConfirmedState, MintRedeemer,
-  RemoveFraudulentBlockHeader, block_asset_name_prefix,
-  block_asset_name_prefix_length, confirmed_state_asset_name,
+  OperatorAlreadySlashed, RemoveFraudulentBlockHeader,
+  RemoveFraudulentBlocksLink, RemoveLastFraudulentBlock, SlashActiveOperator,
+  SlashRetiredOperator, confirmed_state_asset_name, finalize_linked_list,
 }
 
 validator spend(state_queue_mint_script_hash: ByteArray) {
@@ -108,12 +106,12 @@ validator mint(
         expect Some(own_input) = inputs |> list.at(input_index)
 
         // 2. Hub oracle NFT must be getting burnt.
-        expect quantity_of(mint, hub_oracle_script_hash, hub.asset_name)
+        expect quantity_of(mint, hub_oracle_script_hash, hub.asset_name) == -1
 
         // 3. Linked list de-initialization must be valid. No other validations
         //    required.
         expect
-          deinit(
+          linked_list.deinit(
             root_input: own_input,
             tx_mint: mint,
             root_validator: fn(_, _) -> Bool { True },
@@ -139,6 +137,7 @@ validator mint(
           inputs,
           outputs,
           reference_inputs,
+          mint,
           extra_signatories,
           redeemers,
           validity_range,
@@ -149,14 +148,14 @@ validator mint(
         // 1. Let `operator` be a redeemer argument indicating the pub key hash
         //    of the operator committing the block header.
         // 2. The transaction must be signed by `operator`.
-        expect operator |> has_signed(extra_signatories)
+        expect operator |> utils.has_signed(extra_signatories)
 
         expect Some(anchor_element_input) =
           inputs |> list.at(latest_block_input_index)
         expect Some(continued_anchor_element_output) =
           outputs |> list.at(continued_latest_block_output_index)
         expect Some(new_block_output) =
-          inputs |> list.at(new_block_output_index)
+          outputs |> list.at(new_block_output_index)
 
         // 3. Indicated inputs and output must properly adhere to unordered
         //    linked list append requirements.
@@ -237,7 +236,7 @@ validator mint(
           // Here since both scheduler and blocks have an exclusive upper bound,
           // we are using `<=` instead of `<`.
           expect
-            output_end_time <= scheduler.shift_end_time(scheduler_state_time)
+            output_end_time <= scheduler.shift_end_time(scheduler_start_time)
 
           // Update the operator's timestamp in the active operators set:
           // 11. The transaction must include an input, spent via the Update
@@ -260,7 +259,9 @@ validator mint(
             )
           expect
             active_operators_linked_list_eval
-              |> linked_list.finalize_linked_list(active_operators_script_hash)
+              |> active_operators.finalize_linked_list(
+                  active_operators_script_hash,
+                )
           //
           expect active_operators.UpdateBondHoldNewState { .. } =
             redeemers
@@ -279,7 +280,7 @@ validator mint(
               expect Header { utxos_root, end_time, protocol_version, .. } =
                 anchor_data
               expect output_prev_header_hash == header_hash
-              expect output_prev_utxos_root == utxo_root
+              expect output_prev_utxos_root == utxos_root
               expect output_start_time == end_time
               expect output_protocol_version == protocol_version
 
@@ -321,11 +322,11 @@ validator mint(
         // 1. Inputs and output of linked list must exist in the specified
         //    indices.
         expect Some(confirmed_state_input) =
-          list.at(inputs, confirmed_state_input_index)
+          inputs |> list.at(confirmed_state_input_index)
         expect Some(header_node_input) =
-          list.at(inputs, header_node_input_index)
+          inputs |> list.at(header_node_input_index)
         expect Some(continued_confirmed_state_output) =
-          list.at(outputs, confirmed_state_output_index)
+          outputs |> list.at(confirmed_state_output_index)
 
         // 2. Specified inputs and output must properly adhere to the fold
         //    logic of the linked list.
@@ -344,7 +345,7 @@ validator mint(
             linked_list.fold_from_root(
               confirmed_state_input,
               header_node_input,
-              confirmed_state_output,
+              continued_confirmed_state_output,
               mint,
             )
 
@@ -353,6 +354,16 @@ validator mint(
           //    `header_node_input_index`.
           expect input_header_node_key == header_node_key
 
+          expect Header {
+            utxos_root: input_header_utxos_root,
+            end_time: input_header_end_time,
+            protocol_version: input_header_protocol_version,
+            transactions_root: input_header_transactions_root,
+            deposits_root: input_header_deposits_root,
+            withdrawals_root: input_header_withdrawals_root,
+            ..
+          } = input_header_node_data
+
           // 4. `header_node` must be mature---the lower bound of the
           //    transaction validity interval meets or exceeds the sum of the
           //    `end_time` field of `header_node` and the Midgard
@@ -360,7 +371,7 @@ validator mint(
           let inclusive_tx_lower_bound =
             utils.get_inclusive_lower_bound_of_interval(validity_range)
           expect
-            inclusive_tx_lower_bound >= header_input_end_time + maturity_duration
+            inclusive_tx_lower_bound >= input_header_end_time + maturity_duration
 
           // 5. a. `header_hash` of the input confirmed state must be preserved
           //       under `prev_header_hash` of the updated confirmed state.
@@ -379,15 +390,6 @@ validator mint(
             header_hash: input_confirmed_state_header_hash,
             ..
           } = input_confirmed_state_data
-          expect Header {
-            utxos_root: input_header_utxos_root,
-            end_time: input_header_end_time,
-            protocol_version: input_header_protocol_version,
-            transactions_root: input_header_transactions_root,
-            deposits_root: input_header_deposits_root,
-            withdrawals_root: input_header_withdrawals_root,
-            ..
-          } = header_node_data
           let expected_output_confirmed_state_data: Data =
             ConfirmedState {
               header_hash: header_node_key,
@@ -493,7 +495,7 @@ validator mint(
                 utils.get_redeemer_at(
                   redeemers: redeemers,
                   expected_purpose: Mint(active_operators_script_hash),
-                  redeemer_index: operators_redeemer_index,
+                  redeemer_index: retired_operators_redeemer_index,
                 )
               expect retired_operators.RemoveOperatorBadState {
                 slashed_retired_operator_key,
@@ -514,7 +516,7 @@ validator mint(
                 fraudulent_operator
                   |> operator_directory.operator_is_not_a_member(
                       reference_inputs: reference_inputs,
-                      element_input_index: active_operators_element_ref_input_index,
+                      element_ref_input_index: active_operators_element_ref_input_index,
                     )
                   |> active_operators.finalize_linked_list(
                       active_operators_script_hash,
@@ -522,7 +524,7 @@ validator mint(
                 fraudulent_operator
                   |> operator_directory.operator_is_not_a_member(
                       reference_inputs: reference_inputs,
-                      element_input_index: retired_operators_element_ref_input_index,
+                      element_ref_input_index: retired_operators_element_ref_input_index,
                     )
                   |> retired_operators.finalize_linked_list(
                       nft_policy_id: retired_operators_script_hash,
@@ -558,7 +560,7 @@ validator mint(
                 m_fraudulent_header_hash,
                 _fraudulent_header_data,
                 _removed_node_lovelace,
-                removed_node_header_hash,
+                _removed_node_header_hash,
                 removed_node_header_data,
                 _removed_node_link,
               <-

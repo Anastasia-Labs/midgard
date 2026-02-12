@@ -1,19 +1,19 @@
 use aiken/collection/list
-use aiken/interval.{Finite, Interval}
+use aiken/crypto.{VerificationKeyHash}
 use aiken_design_patterns/linked_list
-use cardano/assets.{
-  PolicyId, ada_asset_name, ada_policy_id, quantity_of, tokens,
-}
+use cardano/assets.{PolicyId, Value}
 use cardano/transaction.{
-  InlineDatum, Input, Output, OutputReference, Redeemer, Transaction,
+  Input, Mint, Output, OutputReference, Redeemer, Transaction,
 }
-use midgard/hub_oracle
+use midgard/common/utils
+use midgard/hub_oracle as hub
 use midgard/operator_directory.{deinit, init, operator_is_not_a_member}
 use midgard/operator_directory/active_operators
 use midgard/operator_directory/registered_operators.{
   ActivateOperator, Datum, Deinit, DeregisterOperator, DuplicateIsActive,
-  DuplicateIsRegistered, DuplicateIsRetired, Init, MintRedeemer,
+  DuplicateIsRegistered, DuplicateIsRetired, Init, MintRedeemer, NodeData,
   RegisterOperator, RemoveDuplicateSlashBond, finalize_linked_list,
+  root_asset_name,
 }
 use midgard/operator_directory/retired_operators
 use midgard/protocol_parameters.{
@@ -99,7 +99,7 @@ validator mint(
             registering_operator
               |> operator_is_not_a_member(
                   reference_inputs: reference_inputs,
-                  element_input_index: active_operators_element_ref_input_index,
+                  element_ref_input_index: active_operators_element_ref_input_index,
                 )
               |> active_operators.finalize_linked_list(
                   active_operators_mint_script_hash,
@@ -107,7 +107,7 @@ validator mint(
             registering_operator
               |> operator_is_not_a_member(
                   reference_inputs: reference_inputs,
-                  element_input_index: retired_operators_element_ref_input_index,
+                  element_ref_input_index: retired_operators_element_ref_input_index,
                 )
               |> retired_operators.finalize_linked_list(
                   retired_operators_mint_script_hash,
@@ -175,6 +175,7 @@ validator mint(
           outputs,
           reference_inputs,
           mint,
+          redeemers,
           validity_range,
           ..
         } = self
@@ -192,7 +193,7 @@ validator mint(
 
         // 2. `ActivateOperator` minting redeemer of the active operators script
         //    must be invoked with a matching operator pub key hash.
-        expect active.ActivateOperator { new_active_operator_key, .. } =
+        expect active_operators.ActivateOperator { new_active_operator_key, .. } =
           redeemers
             |> utils.get_redeemer_at(
                 expected_purpose: Mint(active_operators_mint_script_hash),
@@ -205,10 +206,10 @@ validator mint(
           activating_operator
             |> operator_is_not_a_member(
                 reference_inputs: reference_inputs,
-                element_input_index: retired_operators_element_ref_input_index,
+                element_ref_input_index: retired_operators_element_ref_input_index,
               )
             |> retired_operators.finalize_linked_list(
-                retired_operators_script_hash,
+                retired_operators_mint_script_hash,
               )
 
         // 4. Removal of the activating node from the registered operator set
@@ -271,15 +272,8 @@ validator mint(
         duplicate_node_ref_input_index,
         duplicate_operator_status,
       } -> {
-        let Transaction {
-          inputs,
-          outputs,
-          reference_inputs,
-          mint,
-          validity_range,
-          fee,
-          ..
-        } = self
+        let Transaction { inputs, outputs, reference_inputs, mint, fee, .. } =
+          self
 
         // 1. `slashing_penalty` must be paid via the transaction fee. The rest
         //    of the bond is assumed to be going to the signer's desired
@@ -325,18 +319,18 @@ validator mint(
               True
             }
               |> finalize_linked_list(own_policy_id)
-          DuplicateIsActive { hub_oracle_ref_input_index } ->
+          DuplicateIsActive { hub_oracle_ref_input_index } -> {
             // 4b. Transaction must refer to hub oracle's authentic UTxO.
-            {
-              let hub_Datum =
-                hub.get_datum(
-                  reference_inputs,
-                  hub_oracle_script_hash,
-                  hub_oracle_ref_input_index,
-                )
+            let hub_datum =
+              hub.get_datum(
+                reference_inputs,
+                hub_oracle_script_hash,
+                hub_oracle_ref_input_index,
+              )
 
-              // 5b. Referenced element must be a node in the active operators
-              //     set with a key that matches the removed node.
+            // 5b. Referenced element must be a node in the active operators
+            //     set with a key that matches the removed node.
+            {
               let
                 _node_lovelace,
                 m_key,
@@ -352,6 +346,7 @@ validator mint(
               |> active_operators.finalize_linked_list(
                   hub_datum.active_operators,
                 )
+          }
           DuplicateIsRetired ->
             // 4c. Referenced element must be a node in the retired operators
             //     set, with a key that matches the removed node.
@@ -363,7 +358,7 @@ validator mint(
                 _node_link,
               <- linked_list.get_element_info(duplicate_node_ref_utxo)
               expect Some(retired_operator) = m_key
-              expect registered_operator == duplicate_operator
+              expect retired_operator == duplicate_operator
 
               // Done.
               True

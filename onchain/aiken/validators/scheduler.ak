@@ -1,12 +1,12 @@
-use aiken/builtin
 use aiken/collection/list
 use aiken/crypto.{VerificationKeyHash}
-use aiken/interval.{Finite, is_entirely_after}
+use aiken/interval
+use aiken/primitive/bytearray
 use aiken_design_patterns/linked_list
 use aiken_design_patterns/singular_utxo_indexer
 use cardano/assets.{PolicyId}
 use cardano/transaction.{
-  InlineDatum, Input, Output, OutputReference, Transaction, ValidityRange,
+  Input, Output, OutputReference, Transaction, ValidityRange,
 }
 use midgard/common/utils
 use midgard/hub_oracle as hub
@@ -70,7 +70,6 @@ validator spend(
           inputs,
           outputs,
           reference_inputs,
-          redeemers,
           extra_signatories,
           validity_range,
           ..
@@ -79,7 +78,10 @@ validator spend(
         // 1. Apart from validating proper reproduction of the authentic input,
         //    the consent of the current operator must be verified if their
         //    shift has not yet ended.
-        let (input_operator, output_operator) =
+        let
+          input_operator,
+          output_operator,
+        <-
           validate_end_of_shift_and_get_operators(
             scheduler_policy_id,
             scheduler_input_index,
@@ -102,7 +104,7 @@ validator spend(
             m_active_node_key,
             _active_node_data,
             active_node_link,
-          <- linked_list.get_element_info(active_node_ref_input)
+          <- linked_list.get_element_info(active_node_ref_input.output)
 
           // 3. The referenced active operator element has to be a node, and its
           //    key must match the new active operator.
@@ -111,16 +113,17 @@ validator spend(
           // 4. If the new active operator node has a linked operator, the key
           //    of the linked operator must match or exceed the previous
           //    operator's key.
-          when active_node_link is {
-            None -> True
-            Some(active_node_linked_operator) ->
-              bytearray.compare(input_operator, active_node_linked_operator) != Greater
-          }
+          expect
+            when active_node_link is {
+              None -> True
+              Some(active_node_linked_operator) ->
+                bytearray.compare(input_operator, active_node_linked_operator) != Greater
+            }
+
+          // Done.
+          True
         }
           |> active_operators.finalize_linked_list(active_operators_policy_id)
-
-        // Done.
-        True
       }
       Rewind {
         scheduler_input_index,
@@ -133,7 +136,6 @@ validator spend(
           inputs,
           outputs,
           reference_inputs,
-          redeemers,
           extra_signatories,
           validity_range,
           ..
@@ -142,7 +144,10 @@ validator spend(
         // 1. Apart from validating proper reproduction of the authentic input,
         //    the consent of the current operator must be verified if their
         //    shift has not yet ended.
-        let (input_operator, output_operator) =
+        let
+          input_operator,
+          output_operator,
+        <-
           validate_end_of_shift_and_get_operators(
             scheduler_policy_id,
             scheduler_input_index,
@@ -170,7 +175,7 @@ validator spend(
             m_active_node_key,
             _active_node_data,
             active_node_link,
-          <- linked_list.get_element_info(active_node_ref_input)
+          <- linked_list.get_element_info(active_node_ref_input.output)
 
           // 3. The referenced active operator element has to be a node, and its
           //    key must match the new active operator.
@@ -189,7 +194,7 @@ validator spend(
             m_active_root_key,
             _active_root_data,
             active_root_link,
-          <- linked_list.get_element_info(active_root_ref_input)
+          <- linked_list.get_element_info(active_root_ref_input.output)
 
           // 5. The referenced element has to be root.
           expect None == m_active_root_key
@@ -215,7 +220,7 @@ validator spend(
             m_registered_element_key,
             registered_element_data,
             registered_element_link,
-          <- linked_list.get_element_info(registered_element_ref_input)
+          <- linked_list.get_element_info(registered_element_ref_input.output)
 
           // 6. If the referenced registered operator element is a node, its
           //    activation time must not have reached yet.
@@ -225,7 +230,7 @@ validator spend(
               Some(_) -> {
                 expect registered_operators.NodeData { activation_time } =
                   registered_element_data
-                validity_range |> is_entirely_before(activation_time)
+                validity_range |> interval.is_entirely_before(activation_time)
               }
             }
 
@@ -260,7 +265,8 @@ fn validate_end_of_shift_and_get_operators(
   outputs: List<Output>,
   extra_signatories: List<VerificationKeyHash>,
   validity_range: ValidityRange,
-) -> (VerificationKeyHash, VerificationKeyHash) {
+  return: fn(VerificationKeyHash, VerificationKeyHash) -> Bool,
+) -> Bool {
   // 1. Proper datum must be attached to the scheduler input.
   expect Some(Datum { operator: input_operator, start_time: input_start_time }) =
     m_datum
@@ -312,5 +318,5 @@ fn validate_end_of_shift_and_get_operators(
       },
     }
 
-  (input_operator, output_operator)
+  return(input_operator, output_operator)
 }
