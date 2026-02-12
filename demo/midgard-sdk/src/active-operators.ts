@@ -1,13 +1,6 @@
-import {
-  BaseEntityUTxO,
-  DataCoercionError,
-  getStateToken,
-  POSIXTimeSchema,
-  UnauthenticUtxoError,
-} from "@/common.js";
-import { LucidEvolution, TxBuilder, UTxO } from "@lucid-evolution/lucid";
+import { AuthenticUTxO, POSIXTimeSchema } from "@/common.js";
+import { LucidEvolution, TxBuilder } from "@lucid-evolution/lucid";
 import { Data } from "@lucid-evolution/lucid";
-import { Effect } from "effect";
 
 export const ActiveOperatorSpendRedeemerSchema = Data.Enum([
   Data.Literal("ListStateTransition"),
@@ -99,7 +92,7 @@ export type ActiveOperatorListStateTransitionParams = {};
 export type ActiveOperatorRemoveSlashBondParams = {};
 export type ActiveOperatorUpdateCommitmentTimeParams = {};
 
-export type ActiveOperatorUTxO = BaseEntityUTxO<ActiveOperatorDatum>;
+export type ActiveOperatorUTxO = AuthenticUTxO<ActiveOperatorDatum, null>;
 
 /**
  * Init

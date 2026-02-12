@@ -6,14 +6,10 @@ import {
   PolicyIdSchema,
   makeReturn,
   AuthenticatedValidator,
-  DataCoercionError,
-  UnauthenticUtxoError,
-  getStateToken,
-  BaseEntityUTxO,
+  AuthenticUTxO,
 } from "@/common.js";
 import {
   Address,
-  fromHex,
   LucidEvolution,
   PolicyId,
   toUnit,
@@ -49,7 +45,7 @@ export const HubOracleDatumSchema = Data.Object({
 export type HubOracleDatum = Data.Static<typeof HubOracleDatumSchema>;
 export const HubOracleDatum = HubOracleDatumSchema as unknown as HubOracleDatum;
 
-export type HubOracleUTxO = BaseEntityUTxO<HubOracleDatum>;
+export type HubOracleUTxO = AuthenticUTxO<HubOracleDatum>;
 /**
  * Parameters for the init transaction.
  */

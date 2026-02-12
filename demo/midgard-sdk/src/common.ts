@@ -13,7 +13,6 @@ import {
   toHex,
 } from "@lucid-evolution/lucid";
 import { blake2b } from "@noble/hashes/blake2.js";
-import { UserEventExtraFields } from "./index.js";
 
 export const makeReturn = <A, E>(program: Effect.Effect<A, E>) => {
   return {
@@ -360,11 +359,11 @@ export const parseAddressDataCredentials = (
     };
   });
 
-export type BaseEntityUTxO<TDatum, TExtra = UserEventExtraFields> = {
+export type AuthenticUTxO<TDatum, TExtra = undefined> = {
   utxo: UTxO;
   datum: TDatum;
-  assetName?: string;
-  userEventExtraFields?: TExtra;
+  assetName: string;
+  extra?: TExtra;
 };
 
 export const getDatumFromUTxO = <TDatum>(
@@ -394,13 +393,13 @@ export const getDatumFromUTxO = <TDatum>(
 /**
  * Validates correctness of datum, and having a single NFT.
  */
-export const utxoToEntityUTxO = <TDatum, TExtra>(
+export const utxoToAuthenticUTxO = <TDatum, TExtra>(
   utxo: UTxO,
   nftPolicy: string,
   schema: any,
   extraFields?: (datum: TDatum) => TExtra,
 ): Effect.Effect<
-  BaseEntityUTxO<TDatum, TExtra>,
+  AuthenticUTxO<TDatum, TExtra>,
   DataCoercionError | UnauthenticUtxoError
 > =>
   Effect.gen(function* () {
@@ -409,7 +408,7 @@ export const utxoToEntityUTxO = <TDatum, TExtra>(
     if (sym !== nftPolicy) {
       yield* Effect.fail(
         new UnauthenticUtxoError({
-          message: `Failed to convert UTxO to BaseEntityUTxO`,
+          message: `Failed to convert UTxO to AuthenticUTxO`,
           cause: `UTxO's NFT policy ID is not the same as the expected policy ID`,
         }),
       );
@@ -426,14 +425,14 @@ export const utxoToEntityUTxO = <TDatum, TExtra>(
 /**
  * Silently drops invalid UTxOs.
  */
-export const utxosToEntityUTxOs = <TDatum, TExtra>(
+export const utxosToAuthenticUTxOs = <TDatum, TExtra>(
   utxos: UTxO[],
   nftPolicy: string,
   schema: any,
   extraFields?: (datum: TDatum) => TExtra,
-): Effect.Effect<BaseEntityUTxO<TDatum, TExtra>[]> => {
+): Effect.Effect<AuthenticUTxO<TDatum, TExtra>[]> => {
   const effects = utxos.map((u) =>
-    utxoToEntityUTxO<TDatum, TExtra>(u, nftPolicy, schema, extraFields),
+    utxoToAuthenticUTxO<TDatum, TExtra>(u, nftPolicy, schema, extraFields),
   );
   return Effect.allSuccesses(effects);
 };

@@ -12,7 +12,7 @@ import {
 import {
   AssetError,
   AuthenticatedValidator,
-  BaseEntityUTxO,
+  AuthenticUTxO,
   DataCoercionError,
   GenericErrorFields,
   getStateToken,
@@ -25,7 +25,7 @@ import {
   Proof,
   ProofSchema,
   UnauthenticUtxoError,
-  utxosToEntityUTxOs,
+  utxosToAuthenticUTxOs,
   VerificationKeyHashSchema,
 } from "@/common.js";
 import {
@@ -36,8 +36,8 @@ import {
 } from "effect";
 import { fetchHubOracleUTxOProgram, HubOracleError } from "@/hub-oracle.js";
 import { fetchSchedulerUTxOProgram, SchedulerError } from "@/scheduler.js";
-import { DepositDatum } from "./user-events/deposit.js";
-import { TxOrderDatum } from "./user-events/tx-order.js";
+import { DepositDatum, utxosToDepositUTxOs } from "./user-events/deposit.js";
+import { TxOrderDatum, utxosToTxOrderUTxOs } from "./user-events/tx-order.js";
 import { WithdrawalOrderDatum } from "./user-events/withdrawal.js";
 import {
   MidgardTxValiditySchema,
@@ -168,7 +168,7 @@ export type AttachResolutionClaimParams = {
   settlementUTxO: SettlementUTxO;
 };
 
-export type SettlementUTxO = BaseEntityUTxO<SettlementDatum>;
+export type SettlementUTxO = AuthenticUTxO<SettlementDatum>;
 
 /**
  * Settlement
@@ -218,12 +218,10 @@ export const incompleteAttachResolutionClaimTxProgram = (
       });
     }
 
-    const settlementUTxOs: SettlementUTxO[] =
-      yield* utxosToEntityUTxOs<SettlementDatum>(
-        allUTxOs,
-        params.settlementValidator.policyId,
-        SettlementDatum,
-      );
+    const settlementUTxOs: SettlementUTxO[] = yield* utxosToAuthenticUTxOs<
+      SettlementDatum,
+      undefined
+    >(allUTxOs, params.settlementValidator.policyId, SettlementDatum);
 
     const settlementInputUtxo =
       settlementUTxOs.find((utxo) => utxo.datum.resolutionClaim === null) ??
@@ -338,7 +336,7 @@ export const incompleteUpdateBondHoldNewSettlementTxProgram = (
       });
     }
     const activeOperatorsUTxOs: ActiveOperatorUTxO[] =
-      yield* utxosToEntityUTxOs<ActiveOperatorDatum>(
+      yield* utxosToAuthenticUTxOs<ActiveOperatorDatum, null>(
         allUtxos,
         params.activeOperatorsPolicyId,
         ActiveOperatorDatum,
@@ -467,80 +465,6 @@ export type DisproveResolutionClaimParams = {
   eventAddress: string;
   eventPolicyId: string;
 };
-// To be removed from here and should be merged from Preliminary-OffChain-for-Withdrawals or moved to user-events/withdrawal.ts
-export type WithdrawalUTxO = {
-  utxo: UTxO;
-  datum: WithdrawalOrderDatum;
-  assetName: string;
-  idCbor: Buffer;
-  infoCbor: Buffer;
-  inclusionTime: Date;
-};
-
-export const getWithdrawalDatumFromUTxO = (
-  nodeUTxO: UTxO,
-): Effect.Effect<WithdrawalOrderDatum, DataCoercionError> => {
-  const datumCBOR = nodeUTxO.datum;
-  if (datumCBOR) {
-    try {
-      const withdrawalDatum = Data.from(datumCBOR, WithdrawalOrderDatum);
-      return Effect.succeed(withdrawalDatum);
-    } catch (e) {
-      return Effect.fail(
-        new DataCoercionError({
-          message: `Could not coerce UTxO's datum to a withdrawal datum`,
-          cause: e,
-        }),
-      );
-    }
-  } else {
-    return Effect.fail(
-      new DataCoercionError({
-        message: `Withdrawal datum coercion failed`,
-        cause: `No datum found`,
-      }),
-    );
-  }
-};
-
-/**
- * Validates correctness of datum, and having a single NFT.
- */
-export const utxoToWithdrawalUTxO = (
-  utxo: UTxO,
-  nftPolicy: string,
-): Effect.Effect<WithdrawalUTxO, DataCoercionError | UnauthenticUtxoError> =>
-  Effect.gen(function* () {
-    const datum = yield* getWithdrawalDatumFromUTxO(utxo);
-    const [sym, assetName] = yield* getStateToken(utxo.assets);
-    if (sym !== nftPolicy) {
-      yield* Effect.fail(
-        new UnauthenticUtxoError({
-          message: "Failed to convert UTxO to `WithdrawalUTxO`",
-          cause: "UTxO's NFT policy ID is not the same as the withdrawal's",
-        }),
-      );
-    }
-    return {
-      utxo,
-      datum,
-      assetName,
-      idCbor: Buffer.from(fromHex(Data.to(datum.event.id, OutputReference))),
-      infoCbor: Buffer.from(fromHex(Data.to(datum.event.info, WithdrawalInfo))),
-      inclusionTime: new Date(Number(datum.inclusionTime)),
-    };
-  });
-
-/**
- * Silently drops invalid UTxOs.
- */
-export const utxosToWithdrawalUTxOs = (
-  utxos: UTxO[],
-  nftPolicy: string,
-): Effect.Effect<WithdrawalUTxO[]> => {
-  const effects = utxos.map((u) => utxoToWithdrawalUTxO(u, nftPolicy));
-  return Effect.allSuccesses(effects);
-};
 
 export type UserEventUTxO =
   | { eventType: "Deposit"; utxo: UTxO }
@@ -568,19 +492,15 @@ export const fetchUserEventRefUTxO = (
 
     const unresolvedUTxO: Option.Option<UTxO> = yield* userEventType ===
     "Deposit"
-      ? utxosToEntityUTxOs<DepositDatum>(
-          allUTxOs,
-          userEventPolicyId,
-          DepositDatum,
-        ).pipe(Effect.map(getHeadOfList))
+      ? utxosToDepositUTxOs(allUTxOs, userEventPolicyId, DepositDatum).pipe(
+          Effect.map(getHeadOfList),
+        )
       : "TxOrder" in userEventType
-        ? utxosToEntityUTxOs<TxOrderDatum>(
-            allUTxOs,
-            userEventPolicyId,
-            TxOrderDatum,
-          ).pipe(Effect.map(getHeadOfList))
+        ? utxosToTxOrderUTxOs(allUTxOs, userEventPolicyId, TxOrderDatum).pipe(
+            Effect.map(getHeadOfList),
+          )
         : "Withdrawal" in userEventType
-          ? utxosToEntityUTxOs<WithdrawalOrderDatum>(
+          ? utxosToAuthenticUTxOs<WithdrawalOrderDatum, undefined>( // TODO: change this to utxosToWithdrawalUTxOs once the withdrawal UTxO type is updated
               allUTxOs,
               userEventPolicyId,
               WithdrawalOrderDatum,
@@ -657,12 +577,10 @@ export const incompleteDisproveResolutionClaimTxProgram = (
       });
     }
 
-    const settlementUTxOs: SettlementUTxO[] =
-      yield* utxosToEntityUTxOs<SettlementDatum>(
-        allUTxOs,
-        params.settlementPolicyId,
-        SettlementDatum,
-      );
+    const settlementUTxOs: SettlementUTxO[] = yield* utxosToAuthenticUTxOs<
+      SettlementDatum,
+      never
+    >(allUTxOs, params.settlementPolicyId, SettlementDatum);
     const settlementInputUtxo =
       settlementUTxOs.find(
         (utxo) =>
@@ -895,7 +813,7 @@ export const incompleteRemoveOperatorBadSettlementTxProgram = (
       });
     }
     const activeOperatorUTxOs: ActiveOperatorUTxO[] =
-      yield* utxosToEntityUTxOs<ActiveOperatorDatum>(
+      yield* utxosToAuthenticUTxOs<ActiveOperatorDatum, undefined>(
         activeOperatorAllUtxos,
         params.activeOperatorPolicyId,
         ActiveOperatorDatum,
@@ -917,7 +835,7 @@ export const incompleteRemoveOperatorBadSettlementTxProgram = (
     }
 
     const retiredOperatorUTxOs: RetiredOperatorUTxO[] =
-      yield* utxosToEntityUTxOs<RetiredOperatorDatum>(
+      yield* utxosToAuthenticUTxOs<RetiredOperatorDatum, undefined>(
         retiredOperatorAllUtxos,
         params.retiredOperatorPolicyId,
         RetiredOperatorDatum,
@@ -1107,12 +1025,10 @@ export const incompleteResolveSettlementProgram = (
       });
     }
 
-    const settlementUTxOs: SettlementUTxO[] =
-      yield* utxosToEntityUTxOs<SettlementDatum>(
-        allUTxOs,
-        params.settlementPolicyId,
-        SettlementDatum,
-      );
+    const settlementUTxOs: SettlementUTxO[] = yield* utxosToAuthenticUTxOs<
+      SettlementDatum,
+      undefined
+    >(allUTxOs, params.settlementPolicyId, SettlementDatum);
 
     const settlementInputUtxo =
       settlementUTxOs.find((utxo) => utxo.datum.resolutionClaim !== null) ??

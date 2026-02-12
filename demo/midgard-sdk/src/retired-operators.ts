@@ -1,4 +1,4 @@
-import { BaseEntityUTxO, POSIXTimeSchema } from "@/common.js";
+import { AuthenticUTxO, POSIXTimeSchema } from "@/common.js";
 import { Data } from "@lucid-evolution/lucid";
 import { LucidEvolution, TxBuilder } from "@lucid-evolution/lucid";
 
@@ -64,7 +64,7 @@ export type RetiredOperatorRetireParams = {};
 export type RetiredOperatorRemoveOperatorParams = {};
 export type RetiredOperatorRecoverSlashBondParams = {};
 
-export type RetiredOperatorUTxO = BaseEntityUTxO<RetiredOperatorDatum>;
+export type RetiredOperatorUTxO = AuthenticUTxO<RetiredOperatorDatum>;
 /**
  * Init
  *

@@ -9,7 +9,7 @@ import {
 } from "@lucid-evolution/lucid";
 import { Effect, Data as EffectData } from "effect";
 import {
-  BaseEntityUTxO,
+  AuthenticUTxO,
   GenericErrorFields,
   LucidError,
   POSIXTimeSchema,
@@ -27,7 +27,7 @@ export const SchedulerDatumSchema = Data.Object({
 export type SchedulerDatum = Data.Static<typeof SchedulerDatumSchema>;
 export const SchedulerDatum = SchedulerDatumSchema as unknown as SchedulerDatum;
 
-export type SchedulerUTxO = BaseEntityUTxO<SchedulerDatum>;
+export type SchedulerUTxO = AuthenticUTxO<SchedulerDatum>;
 
 export type SchedulerConfig = {
   schedulerAddress: Address;

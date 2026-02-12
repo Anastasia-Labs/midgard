@@ -13,17 +13,14 @@ import {
   fromHex,
 } from "@lucid-evolution/lucid";
 import {
-  DataCoercionError,
   GenericErrorFields,
   HashingError,
   LucidError,
-  UnauthenticUtxoError,
   makeReturn,
-  getStateToken,
   hashHexWithBlake2b256,
   isEventUTxOInclusionTimeInBounds,
-  BaseEntityUTxO,
-  utxosToEntityUTxOs,
+  AuthenticUTxO,
+  utxosToAuthenticUTxOs,
 } from "@/common.js";
 import { Data as EffectData, Effect } from "effect";
 import { OutputReference, POSIXTime, POSIXTimeSchema } from "@/common.js";
@@ -50,7 +47,7 @@ export const DepositDatumSchema = Data.Object({
 export type DepositDatum = Data.Static<typeof DepositDatumSchema>;
 export const DepositDatum = DepositDatumSchema as unknown as DepositDatum;
 
-export type DepositUTxO = BaseEntityUTxO<DepositDatum, UserEventExtraFields>;
+export type DepositUTxO = AuthenticUTxO<DepositDatum, UserEventExtraFields>;
 
 export type DepositFetchConfig = {
   depositAddress: Address;
@@ -73,7 +70,7 @@ export const utxosToDepositUTxOs = (
     inclusionTime: new Date(Number(datum.inclusionTime)),
   });
 
-  return utxosToEntityUTxOs<DepositDatum, UserEventExtraFields>(
+  return utxosToAuthenticUTxOs<DepositDatum, UserEventExtraFields>(
     utxos,
     nftPolicy,
     datum,
