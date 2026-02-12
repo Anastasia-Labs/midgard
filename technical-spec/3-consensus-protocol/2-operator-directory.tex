@@ -78,7 +78,7 @@ Redeemers:
             \begin{enumerate}
                 \item The transaction must Prepend a node into the \code{registered\_operators} queue.
                   Let that node be \code{registered\_node}.
-                \item The Key of \code{registered\_node} must correspond to a public key hash that signed the transaction.
+                \item The key of \code{registered\_node} must correspond to a public key hash that signed the transaction.
                 \item The \code{activation\_time} field of \code{registered\_node} must equal the sum of the Midgard \code{registration\_duration} protocol parameter and the inclusive upper bound of the transaction's validity interval.
                 \item The Lovelace in the \code{registered\_node} must equal the \code{required\_bond} Midgard parameter.
             \end{enumerate}
@@ -108,7 +108,7 @@ Redeemers:
         \begin{enumerate}
             \item The transaction must Remove a node from the \code{registered\_operators} queue.
               Let \code{removed\_node} be that node.
-            \item The Key of \code{removed\_node} must correspond to a public key hash that signed the transaction.
+            \item The key of \code{removed\_node} must correspond to a public key hash that signed the transaction.
         \end{enumerate}
     The operator consents to the transaction, so the ADA bond is assumed to be returned to the operator's control.
     \item[Remove Duplicate Slash Bond.] Remove a node from the \code{registered\_operators} queue if its key duplicates the key of any other node among the registered, active, or retired operators.

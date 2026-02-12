@@ -8,7 +8,7 @@
 The Midgard scheduler is an L1 mechanism that indicates which operator is assigned to the current shift and controls the transitions to the next shift and next operator.
 Whenever a shift ends, the next operator in key-descending order from the \code{active\_operators} list has the exclusive privilege to advance the scheduler's state to the next shift, assigning it to themself.
 
-When the root node of \code{active\_operators} is reached, the highest-key active operator rewinds the scheduler to start a new cycle.
+When the root element of \code{active\_operators} is reached, the scheduler rewinds to start a new cycle.
 However, the scheduler requires the \code{registered\_operators} queue to be checked to see if any registered operators are eligible to activate.
 If so, all eligible registered operators must activate before the new cycle can begin.
 
@@ -92,12 +92,12 @@ Redeemers:
             \begin{enumerate}[resume]
                 \item The transaction must include a reference input of an \code{active\_operators} node.
                   Let \code{operator\_node} be that node.
-                \item The Key of \code{operator\_node} must match \code{operator}.
+                \item The key of \code{operator\_node} must match \code{operator}.
                 \item If \code{operator\_node} has a link, it must match or exceed \code{previous\_operator}.\footnote{It will exceed the previous operator if they have retired.}
             \end{enumerate}
         \end{itemize}
 
-       \item[Rewind.] The highest-key operator advances the scheduler to the next shift and assigns it to themself, provided that no registered operators are eligible to activate.
+       \item[Rewind.] The scheduler advances to the next shift and assigns the highest-key active operator, provided that no registered operators are eligible to activate.
          Grouped conditions:
         \begin{itemize}
             \item Parse scheduler input and output:
@@ -117,8 +117,10 @@ Redeemers:
             \begin{enumerate}[resume]
                 \item Either of the following must hold:
                 \begin{enumerate}
-                    \item The transaction is signed by \code{operator}, and the \code{scheduler\_output} shift interval contains the transaction validity interval.
-                    \item The \code{scheduler\_output} shift interval occurs entirely before the transaction validity interval.
+                    \item The \code{scheduler\_output} shift interval starts entirely before the transaction validity interval, so anyone should be able to advance the scheduler for the next shift.
+                    \item The start time of \code{scheduler\_output} shift interval is contained in the transaction's validity range.
+                      This means that \code{previous\_operator} is still active, and therefore they must have signed the transaction.
+                      The validity interval of the transaction must also be short.\footnote{The length of the validity interval is essentially the max range within which no blocks can be committed to the state queue (TODO).}
                 \end{enumerate}
             \end{enumerate}
             
@@ -126,21 +128,21 @@ Redeemers:
             \begin{enumerate}[resume]
                 \item The transaction must include a reference input of the last \code{active\_operators} node.
                   Let \code{operator\_node} be that node.
-                \item The transaction must include a reference input of the root \code{active\_operators} node.
-                  Let \code{root\_node} be that node.
-                \item The \code{key} of \code{operator\_node} must match \code{operator}.
-                \item The \code{link} of \code{root\_node} must match or exceed \code{previous\_operator}.%
+                \item The transaction must include a reference input of the root \code{active\_operators} element.
+                  Let \code{root} be that element.
+                \item The key of \code{operator\_node} must match \code{operator}.
+                \item The \code{link} of \code{root} must match or exceed \code{previous\_operator}.
                 \footnote{In other words, this means that there is no \codeNC{active\_operators} node with a smaller key than \codeNC{previous\_operator}.
                   If there were such a node, then we would advance the scheduler to that node instead of rewinding.}
             \end{enumerate}
             
             \item Verify that no registered operator is eligible to activate:
             \begin{enumerate}[resume]
-                \item The transaction must include a reference input of a \code{registered\_operators} node.
-                  Let \code{registered\_node} be that node.
-                \item \code{registered\_node} must be the last node of the \code{registered\_operators} queue.
-                  This means it corresponds to the \emph{earliest} registrant that hasn't yet activated because new registrants are prepended to the beginning of that queue.
-                \item \code{registered\_node} is \emph{not yet} eligible for activation --- the upper bound of the transaction validity interval is smaller than the \code{activation\_time} of the \code{registered\_node}.
+                \item The transaction must include a reference input of a \code{registered\_operators} element.
+                  Let \code{registered\_element} be that element.
+                \item \code{registered\_element} must be the last element of the \code{registered\_operators} queue.
+                  This means it either corresponds to the root of an empty queue, or the \emph{earliest} registrant that hasn't yet activated because new registrants are prepended to the beginning of that queue.
+                \item If \code{registered\_element} is a node, it must \emph{not yet} be eligible for activation---the upper bound of the transaction validity interval is smaller than the \code{activation\_time} of the \code{registered\_element}.
             \end{enumerate}
         \end{itemize}
 \end{description}
