@@ -299,7 +299,7 @@ fn validate_end_of_shift_and_get_operators(
   //    the previous operator (who is currently active) must consent to
   //    advancing the schedule.
   //
-  //    TODO: See [#416](https://github.com/anastasia-shmidova/midgard/issues/416).
+  //    TODO: See [#416](https://github.com/anastasia-labs/midgard/issues/416).
   expect or {
       validity_range |> interval.is_entirely_after(output_start_time),
       and {
