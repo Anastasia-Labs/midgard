@@ -16,9 +16,11 @@
 
 use aiken/builtin
 use aiken/collection/dict.{Dict}
-use aiken/crypto.{ScriptHash, Signature, VerificationKey, VerificationKeyHash}
+use aiken/crypto.{
+  Blake2b_256, ScriptHash, Signature, VerificationKey, VerificationKeyHash,
+}
 use cardano/address.{Address}
-use cardano/assets.{Lovelace, Value}
+use cardano/assets.{AssetName, Lovelace, PolicyId}
 use cardano/transaction.{
   Datum as CardanoDatum, Output, OutputReference, Redeemer, ScriptPurpose,
   ValidityRange,
@@ -45,11 +47,12 @@ pub type HeaderHash =
 /// Midgard block header.
 /// Compact representation.
 pub type Header {
-  prev_utxos_root: MerkleRoot,
-  utxos_root: MerkleRoot,
-  transactions_root: MerkleRoot,
-  deposits_root: MerkleRoot,
-  withdrawals_root: MerkleRoot,
+  prev_utxos_root: MerkleRoot<Blake2b_256, ByteArray>,
+  utxos_root: MerkleRoot<Blake2b_256, ByteArray>,
+  transactions_root: MerkleRoot<Blake2b_256, ByteArray>,
+  deposits_root: MerkleRoot<Blake2b_256, ByteArray>,
+  withdrawals_root: MerkleRoot<Blake2b_256, ByteArray>,
+  tx_orders_root: MerkleRoot<Blake2b_256, ByteArray>,
   start_time: PosixTime,
   end_time: PosixTime,
   prev_header_hash: HeaderHash,
@@ -74,7 +77,7 @@ pub type BlockBody {
 pub type ConfirmedState {
   header_hash: HeaderHash,
   prev_header_hash: HeaderHash,
-  utxo_root: MerkleRoot,
+  utxo_root: MerkleRoot<Blake2b_256, ByteArray>,
   start_time: PosixTime,
   end_time: PosixTime,
   protocol_version: Int,
@@ -191,14 +194,14 @@ pub type MidgardInputId {
 /// Midgard transaction body.
 /// Compact representation.
 pub type MidgardTxBodyCompact {
-  spend_inputs: H32<List<OutputReference>>,
-  reference_inputs: H32<List<OutputReference>>,
-  outputs: H32<List<Output>>,
+  spend_inputs: MerkleRoot<Int, OutputReference>,
+  reference_inputs: MerkleRoot<Int, OutputReference>,
+  outputs: MerkleRoot<Int, Output>,
   fee: Lovelace,
   validity_interval: ValidityRange,
-  required_observers: H32<List<ScriptHash>>,
-  required_signer_hashes: H32<List<VerificationKeyHash>>,
-  mint: H32<Value>,
+  required_observers: MerkleRoot<Int, ScriptHash>,
+  required_signer_hashes: MerkleRoot<Int, VerificationKeyHash>,
+  mint: MerkleRoot<Int, MidgardValueCompact>,
   script_integrity_hash: H32<Data>,
   auxiliary_data_hash: H32<Data>,
   network_id: MidgardNetworkId,
@@ -217,9 +220,9 @@ pub type MidgardNetworkId {
 /// Midgard transaction witnesses.
 /// Compact representation.
 pub type MidgardTxWitnessSetCompact {
-  addr_tx_wits: H32<Dict<VerificationKeyHash, (VerificationKey, Signature)>>,
-  script_tx_wits: H32<Dict<ScriptHash, MidgardScript>>,
-  redeemer_tx_wits: H32<Pairs<ScriptPurpose, Redeemer>>,
+  addr_tx_wits: MerkleRoot<VerificationKeyHash, (VerificationKey, Signature)>,
+  script_tx_wits: MerkleRoot<ScriptHash, MidgardScript>,
+  redeemer_tx_wits: MerkleRoot<ScriptPurpose, Redeemer>,
 }
 
 /// Midgard script -- either timelock (native) or Plutus (V3).
@@ -227,4 +230,17 @@ pub type MidgardTxWitnessSetCompact {
 pub type MidgardScript {
   Timelock { script: ByteArray }
   Plutus { script: ByteArray }
+}
+
+pub type MidgardValueCompact =
+  MerkleRoot<PolicyId, MerkleRoot<AssetName, Int>>
+
+pub type MidgardTxId =
+  H32<MidgardTxCompact>
+
+//TODO This is a stub!
+pub type MidgardTx {
+  body: MidgardTxBodyCompact,
+  wits: MidgardTxWitnessSetCompact,
+  validity: MidgardTxValidity,
 }

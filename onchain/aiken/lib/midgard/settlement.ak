@@ -10,9 +10,15 @@ use midgard/hub_oracle as hub
 use midgard/ledger_state
 
 pub type Datum {
-  deposits_root: MerkleRoot,
-  withdrawals_root: MerkleRoot,
-  transactions_root: MerkleRoot,
+  deposits_root: MerkleRoot<ledger_state.DepositId, ledger_state.DepositEvent>,
+  withdrawals_root: MerkleRoot<
+    ledger_state.WithdrawalId,
+    ledger_state.WithdrawalEvent,
+  >,
+  transactions_root: MerkleRoot<
+    ledger_state.MidgardTxId,
+    ledger_state.MidgardTx,
+  >,
   resolution_claim: Option<ResolutionClaim>,
 }
 
@@ -97,9 +103,15 @@ pub fn valid_event_inclusion(
   deposit_script_hash: ScriptHash,
   withdrawal_script_hash: ScriptHash,
   tx_order_script_hash: ScriptHash,
-  deposits_root: MerkleRoot,
-  withdrawals_root: MerkleRoot,
-  transactions_root: MerkleRoot,
+  deposits_root: MerkleRoot<ledger_state.DepositId, ledger_state.DepositEvent>,
+  withdrawals_root: MerkleRoot<
+    ledger_state.WithdrawalId,
+    ledger_state.WithdrawalEvent,
+  >,
+  transactions_root: MerkleRoot<
+    ledger_state.MidgardTxId,
+    ledger_state.MidgardTx,
+  >,
   membership_proof: Proof,
   unresolved_event_asset_name: AssetName,
   unresolved_event_ref_input_index: Int,

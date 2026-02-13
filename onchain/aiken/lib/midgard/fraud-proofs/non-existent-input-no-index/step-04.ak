@@ -2,7 +2,7 @@ use midgard/common/types.{MerkleRoot, Proof}
 use midgard/computation_thread as ct
 
 pub type State {
-  verified_outputs_root: MerkleRoot,
+  verified_outputs_root: MerkleRoot<Int, Output>,
   non_existent_input_output_index: Int,
   output_index_to_delete: Int,
 }

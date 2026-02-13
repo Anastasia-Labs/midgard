@@ -3,7 +3,7 @@ use midgard/computation_thread as ct
 use midgard/ledger_state.{MidgardInputId}
 
 pub type State {
-  verified_tx2_inputs_root: MerkleRoot,
+  verified_tx2_inputs_root: MerkleRoot<Int, OutputReference>,
   double_spent_input_key: MidgardInputId,
   double_spent_input_value: Data,
 }

@@ -5,7 +5,7 @@ use midgard/ledger_state.{MidgardTxId}
 
 pub type State {
   verified_tx1_id: MidgardTxId,
-  verified_tx1_inputs_root: MerkleRoot,
+  verified_tx1_inputs_root: MerkleRoot<Int, OutputReference>,
 }
 
 pub type Datum =
