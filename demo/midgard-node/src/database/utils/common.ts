@@ -2,6 +2,7 @@ import { Data, Effect } from "effect";
 import { Database } from "@/services/database.js";
 import { SqlClient, SqlError } from "@effect/sql";
 import * as SDK from "@al-ft/midgard-sdk";
+import { TypeIdError } from "@effect/platform/Error";
 
 export const retrieveNumberOfEntries = (
   tableName: string,
@@ -46,20 +47,34 @@ export class DatabaseError extends Data.TaggedError("DatabaseError")<
   SDK.Utils.GenericErrorFields & { readonly table: string }
 > {}
 
+export class NotFoundError extends Data.TaggedError(
+  "NotFoundError",
+)<SDK.Utils.GenericErrorFields & {
+  readonly table: string;
+  readonly txIdHex?: string;
+}> {}
+
 type SqlErrorToDatabaseError = <A, R>(
-  error: Effect.Effect<A, SqlError.SqlError | DatabaseError, R>,
+  effect: Effect.Effect<
+    A,
+    SqlError.SqlError | DatabaseError | NotFoundError,
+    R
+  >,
 ) => Effect.Effect<A, DatabaseError, R>;
 
 export const sqlErrorToDatabaseError = (
   tableName: string,
   message: string,
 ): SqlErrorToDatabaseError =>
-  Effect.mapError((error: SqlError.SqlError | DatabaseError) =>
-    error._tag === "SqlError"
-      ? new DatabaseError({
-          message,
-          table: tableName,
-          cause: error,
-        })
-      : error,
+  Effect.mapError(
+    (
+      error: SqlError.SqlError | DatabaseError | NotFoundError,
+    ): DatabaseError =>
+      error._tag === "DatabaseError"
+        ? error
+        : new DatabaseError({
+            message,
+            table: tableName,
+            cause: error,
+          }),
   );
