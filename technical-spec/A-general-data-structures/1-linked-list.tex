@@ -279,6 +279,15 @@ The provided functions are as follows:
               \end{enumerate}
           \end{itemize}
       \end{enumerate}
+    \item[Fold from root.] Remove the head node of the list and update root's data.
+      Conditions are identical to the Remove operation, with some differences:
+      \begin{enumerate}
+        \item The three elements must Continue, however there is no stipulation for \code{data} of \code{input\_anchor} to be the same as \code{output\_anchor} data.
+          This allows the root's data to be modified.
+        \item \code{data} of \code{input\_anchor} and \code{output\_anchor} must both parse as \code{Root}.
+          Let them be \code{input\_root\_data} and \code{output\_root\_data}, respectively.
+        \item Custom validation is provided with both \code{input\_root\_data} and \code{output\_root\_data} in addition.
+      \end{enumerate}
 \end{description}
 
 \subsection{Instantiate a linked list in an application}
