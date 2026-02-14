@@ -290,6 +290,57 @@ The provided functions are as follows:
       \end{enumerate}
 \end{description}
 
+\subsection{Spending helpers}
+\label{h:list-spending-helpers}
+All list state transitions involve spending at least one element utxos, which means the contract address holding the element utxos must have means of allowing them to be spent.
+Additionally, there are situations where an application may want to allow spending of element utxos without changing the list structure.
+
+The library provides two functions for spending:
+\begin{description}
+  \item[State transition.] Allows spending of element utxos for adding or removing an element from the list.
+    Conditions:
+    \begin{enumerate}
+      \item The transaction must mint/burn a non-zero quantity of tokens with policy ID that corresponds to the element NFTs.
+    \end{enumerate}
+  \item[Update data.] Update the \code{data} field of an element's datum without changing the list structure.
+    Conditions:
+    \begin{enumerate}
+      \item Let \code{input\_element} be the element that is being updated, and \code{output\_element} be its reproduction in the transaction outputs.
+      \item \code{input\_element} and \code{output\_element} must both be Authentic.
+      \item Addresses, asset names of the NFTs, and \code{link} fields of \code{input\_element} and \code{output\_element} must match.
+      \item Let \code{element\_lovelace\_change} be the change in the amount of Lovelace in \code{output\_element} compared to \code{input\_element}.
+      \item \code{data} of \code{input\_element} must parse as either \code{Root} or \code{Node}.
+        \item If \code{data} of \code{input\_element} parses as \code{Root}:
+          \begin{enumerate}[resume]
+            \item Let \code{input\_root\_data} be the data parsed from \code{input\_element}.
+            \item \code{data} of \code{output\_element} must also parse as \code{Root}.
+              Let this data be \code{output\_root\_data}.
+            \item Asset name of the NFT in \code{input\_element} must be the reserved root key.
+            \item Custom validation must pass given:
+              \begin{itemize}
+                \item \code{element\_lovelace\_change}
+                \item \code{input\_root\_data}
+                \item \code{output\_root\_data}
+              \end{itemize}
+          \end{enumerate}
+        \item Otherwise, if \code{data} of \code{input\_element} parses as \code{Node}:
+          \begin{enumerate}[resume]
+            \item Let \code{input\_node\_data} be the data parsed from \code{input\_element}.
+            \item \code{data} of \code{output\_element} must also parse as \code{Node}.
+              Let this data be \code{output\_node\_data}.
+            \item Let \code{node\_key} be the key of \code{input\_element}.
+            \item Asset name of the NFT in \code{input\_element} must be the reserved prefix concatenated with \code{node\_key}.
+            \item Custom validation must pass given:
+              \begin{itemize}
+                \item \code{element\_lovelace\_change}
+                \item \code{node\_key}
+                \item \code{input\_node\_data}
+                \item \code{output\_node\_data}
+              \end{itemize}
+          \end{enumerate}
+    \end{enumerate}
+\end{description}
+
 \subsection{Instantiate a linked list in an application}
 \label{h:instantiate-list-in-application}
 
