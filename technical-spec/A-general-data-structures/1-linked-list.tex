@@ -173,55 +173,112 @@ The provided functions are as follows:
     
     \item[Insert.] Add a new node in the list such that its key properly follows either an ascending or descending order.
       Conditions:
-    \begin{enumerate}
-      \item Let \code{new\_element} be the element that is being added to the list.
-      \item Let \code{input\_anchor} be the element that is meant to be parent of \code{new\_element}.
-      \item Let \code{output\_anchor} be the reproduction of \code{input\_anchor} in the transaction outputs.
-      \item \code{new\_element}, \code{input\_anchor}, and \code{output\_anchor} must Continue.
-      \item Let \code{new\_key} be the key of \code{new\_element}.
-      \item Transaction must mint a new node NFT with an asset name equal to concatenation of the reserved prefix with \code{new\_key}.
-      \item \code{link} of \code{output\_anchor} must point to \code{new\_key}.
-      \item Let \code{new\_link} be the \code{link} of \code{new\_element}.
-      \item \code{new\_link} must be the same as \code{anchor\_link}.
-      \item \code{new\_key} and \code{new\_link} must satisfy the key order of the list (ascending or descending).
-      \item \code{data} of \code{new\_element} must parse as \code{Node}.
-        Let this data be \code{new\_data}.
-      \item Let \code{new\_lovelace} be the amount of Lovelace in \code{new\_element}, and \code{anchor\_lovelace\_change} be the change in the amount of Lovelace in \code{output\_anchor} compared to \code{input\_anchor}.
-      \item \code{data} of \code{input\_anchor} must parse as either \code{Root} or \code{Node}.
-        \begin{itemize}
-          \item If \code{data} of \code{input\_anchor} parses as \code{Root}:
-            \begin{enumerate}[resume]
-              \item Asset name of the NFT in \code{input\_anchor} must be the reserved root key.
-              \item Let \code{root\_data} be the data parsed from \code{input\_anchor}.
-              \item Custom validation must pass given:
-                \begin{itemize}
-                  \item \code{anchor\_lovelace\_change}
-                  \item \code{root\_data}
-                  \item \code{new\_lovelace}
-                  \item \code{new\_key}
-                  \item \code{new\_data}
-                  \item \code{new\_link}
-                \end{itemize}
-            \end{enumerate}
-          \item Otherwise, if \code{data} of \code{input\_anchor} parses as \code{Node}:
-            \begin{enumerate}[resume]
-              \item Let \code{anchor\_key} be the key of \code{input\_anchor}.
-              \item Asset name of the NFT in \code{input\_anchor} must be the reserved prefix concatenated with \code{anchor\_key}.
-              \item \code{anchor\_key} and \code{new\_key} must satisfy the key order of the list (ascending or descending).
-              \item Let \code{anchor\_data} be the data parsed from \code{input\_anchor}.
-              \item Custom validation must pass given:
-                \begin{itemize}
-                  \item \code{anchor\_lovelace\_change}
-                  \item \code{anchor\_key}
-                  \item \code{anchor\_data}
-                  \item \code{new\_lovelace}
-                  \item \code{new\_key}
-                  \item \code{new\_data}
-                  \item \code{new\_link}
-                \end{itemize}
-            \end{enumerate}
-        \end{itemize}
-    \end{enumerate}
+      \begin{enumerate}
+        \item Let \code{new\_element} be the element that is being added to the list.
+        \item Let \code{input\_anchor} be the element that is meant to be parent of \code{new\_element}.
+        \item Let \code{output\_anchor} be the reproduction of \code{input\_anchor} in the transaction outputs.
+        \item \code{new\_element}, \code{input\_anchor}, and \code{output\_anchor} must Continue.
+        \item \code{data} of \code{new\_element} must parse as \code{Node}.
+          Let its key be \code{new\_key} and \code{new\_data} be its underlying data.
+        \item Transaction must mint a new node NFT with an asset name equal to concatenation of the reserved prefix with \code{new\_key}.
+        \item \code{link} of \code{output\_anchor} must point to \code{new\_key}.
+        \item Let \code{new\_link} be the \code{link} of \code{new\_element}.
+        \item \code{new\_link} must be the same as \code{anchor\_link}.
+        \item \code{new\_key} and \code{new\_link} must satisfy the key order of the list (ascending or descending).
+        \item Let \code{new\_lovelace} be the amount of Lovelace in \code{new\_element}, and \code{anchor\_lovelace\_change} be the change in the amount of Lovelace in \code{output\_anchor} compared to \code{input\_anchor}.
+        \item \code{data} of \code{input\_anchor} must parse as either \code{Root} or \code{Node}.
+          \begin{itemize}
+            \item If \code{data} of \code{input\_anchor} parses as \code{Root}:
+              \begin{enumerate}[resume]
+                \item Asset name of the NFT in \code{input\_anchor} must be the reserved root key.
+                \item Let \code{root\_data} be the data parsed from \code{input\_anchor}.
+                \item Custom validation must pass given:
+                  \begin{itemize}
+                    \item \code{anchor\_lovelace\_change}
+                    \item \code{root\_data}
+                    \item \code{new\_lovelace}
+                    \item \code{new\_key}
+                    \item \code{new\_data}
+                    \item \code{new\_link}
+                  \end{itemize}
+              \end{enumerate}
+            \item Otherwise, if \code{data} of \code{input\_anchor} parses as \code{Node}:
+              \begin{enumerate}[resume]
+                \item Let \code{anchor\_key} be the key of \code{input\_anchor}.
+                \item Asset name of the NFT in \code{input\_anchor} must be the reserved prefix concatenated with \code{anchor\_key}.
+                \item \code{anchor\_key} and \code{new\_key} must satisfy the key order of the list (ascending or descending).
+                \item Let \code{anchor\_data} be the data parsed from \code{input\_anchor}.
+                \item Custom validation must pass given:
+                  \begin{itemize}
+                    \item \code{anchor\_lovelace\_change}
+                    \item \code{anchor\_key}
+                    \item \code{anchor\_data}
+                    \item \code{new\_lovelace}
+                    \item \code{new\_key}
+                    \item \code{new\_data}
+                    \item \code{new\_link}
+                  \end{itemize}
+              \end{enumerate}
+          \end{itemize}
+      \end{enumerate}
+    \item[Append unordered.] Add a node to the end of the list.
+      Conditions are identical to the Insert operation, with only one different stipulation:
+      \begin{enumerate}
+        \item \code{input\_anchor} must have no \code{link} (i.e., it must be the last element of the list).
+      \end{enumerate}
+    \item[Prepend unordered.] Add a node in the list as the new head.
+      Conditions are identical to the Insert operation, with only one extra stipulation:
+      \begin{enumerate}
+        \item \code{data} of \code{input\_anchor} must parse as \code{Root}.
+      \end{enumerate}
+    \item[Remove.] Remove a node from the list.
+      Conditions:
+      \begin{enumerate}
+        \item Let \code{removed\_element} be the element that is being removed from the list.
+        \item Let \code{input\_anchor} be the element that is meant to be parent of \code{removed\_element}.
+        \item Let \code{output\_anchor} be the reproduction of \code{input\_anchor} in the transaction outputs.
+        \item \code{removed\_element}, \code{input\_anchor}, and \code{output\_anchor} must Continue.
+        \item \code{data} of \code{removed\_element} must parse as \code{Node}.
+          Let its key be \code{removed\_key} and \code{removed\_data} be its underlying data.
+        \item Transaction must burn the node NFT with an asset name equal to concatenation of the reserved prefix with \code{removed\_key}.
+        \item Let \code{removed\_link} be the \code{link} of \code{removed\_element}.
+        \item \code{link} of \code{input\_anchor} must point to \code{removed\_key}.
+        \item \code{link} of \code{output\_anchor} must be the same as \code{removed\_link}.
+        \item Let \code{removed\_lovelace} be the amount of Lovelace in \code{removed\_element}, and \code{anchor\_lovelace\_change} be the change in the amount of Lovelace in \code{output\_anchor} compared to \code{input\_anchor}.
+        \item \code{data} of \code{input\_anchor} must parse as either \code{Root} or \code{Node}.
+          \begin{itemize}
+            \item If \code{data} of \code{input\_anchor} parses as \code{Root}:
+              \begin{enumerate}[resume]
+                \item Asset name of the NFT in \code{input\_anchor} must be the reserved root key.
+                \item Let \code{root\_data} be the data parsed from \code{input\_anchor}.
+                \item Custom validation must pass given:
+                  \begin{itemize}
+                    \item \code{anchor\_lovelace\_change}
+                    \item \code{root\_data}
+                    \item \code{removed\_lovelace}
+                    \item \code{removed\_key}
+                    \item \code{removed\_data}
+                    \item \code{removed\_link}
+                  \end{itemize}
+              \end{enumerate}
+            \item Otherwise, if \code{data} of \code{input\_anchor} parses as \code{Node}:
+              \begin{enumerate}[resume]
+                \item Let \code{anchor\_key} be the key of \code{input\_anchor}.
+                \item Asset name of the NFT in \code{input\_anchor} must be the reserved prefix concatenated with \code{anchor\_key}.
+                \item Let \code{anchor\_data} be the data parsed from \code{input\_anchor}.
+                \item Custom validation must pass given:
+                  \begin{itemize}
+                    \item \code{anchor\_lovelace\_change}
+                    \item \code{anchor\_key}
+                    \item \code{anchor\_data}
+                    \item \code{removed\_lovelace}
+                    \item \code{removed\_key}
+                    \item \code{removed\_data}
+                    \item \code{removed\_link}
+                  \end{itemize}
+              \end{enumerate}
+          \end{itemize}
+      \end{enumerate}
 \end{description}
 
 \subsection{Instantiate a linked list in an application}
