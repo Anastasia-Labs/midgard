@@ -292,6 +292,7 @@ The provided functions are as follows:
 
 \subsection{Spending helpers}
 \label{h:list-spending-helpers}
+
 All list state transitions involve spending at least one element utxos, which means the contract address holding the element utxos must have means of allowing them to be spent.
 Additionally, there are situations where an application may want to allow spending of element utxos without changing the list structure.
 
@@ -340,6 +341,31 @@ The library provides two functions for spending:
           \end{enumerate}
     \end{enumerate}
 \end{description}
+
+\subsection{Inspection helpers}
+\label{h:list-inspection-helpers}
+
+Some contracts may need to refer to elements of other linked list contracts to e.g. prove membership of a given key in those sets.
+Relying on the information extracted consists of proving authenticity of the referred utxos.
+
+After validating the element is Authentic, users are provided with following data:
+\begin{itemize}
+  \item Lovelace count of the element.
+  \item A possible node key, since roots have reserved root keys.
+  \item Underlying data of the element.
+  \item Element's link.
+\end{itemize}
+
+\subsection{Reader monad interface}
+\label{h:list-reader-monad-interface}
+
+Linked list elements have two constants:
+\begin{itemize}
+  \item The root key
+  \item And the prefix of node keys in node NFT asset names
+\end{itemize}
+
+To allow these to be stated only once, all minting and inspection helpers return functions that require provision of these reserved values.
 
 \subsection{Instantiate a linked list in an application}
 \label{h:instantiate-list-in-application}
