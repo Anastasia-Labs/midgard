@@ -1,4 +1,4 @@
-module Midgard.Contracts.RegisteredOperators (initRegisteredOperators, registerOperator) where
+module Midgard.Contracts.RegisteredOperators (initRegisteredOperators, registerOperator, deregisterOperator) where
 
 import Control.Monad.Except
 
@@ -13,15 +13,13 @@ import Convex.BuildTx (
   spendPlutusInlineDatum,
  )
 import Convex.Class (MonadBlockchain (queryNetworkId), MonadUtxoQuery, utxosByPaymentCredential)
-
 import Convex.Utxos (toTxOut)
+
 import Midgard.Constants (hubOracleAssetName, hubOracleMintingPolicyId, hubOracleScriptHash, operatorRequiredBond)
 import Midgard.Contracts.Utils
 import Midgard.ScriptUtils (mintingPolicyId, toMintingPolicy, toValidator, validatorHash)
 import Midgard.Scripts (MidgardScripts (MidgardScripts, activeOperatorsPolicy, activeOperatorsValidator, registeredOperatorsPolicy, registeredOperatorsValidator, retiredOperatorsPolicy, retiredOperatorsValidator))
-import Midgard.Types.ActiveOperators qualified as ActiveOperators
 import Midgard.Types.RegisteredOperators qualified as RegisteredOperators
-import Midgard.Types.RetiredOperators qualified as RetiredOperators
 
 initRegisteredOperators ::
   ( MonadBlockchain era m
@@ -115,3 +113,37 @@ registerOperator
       rootRegistryTxIn
       (toValidator registeredOperatorsValidator)
       ()
+
+deregisterOperator ::
+  forall era m.
+  ( MonadError String m
+  , MonadBlockchain era m
+  , MonadUtxoQuery m
+  , C.HasScriptLanguageInEra C.PlutusScriptV3 era
+  , MonadBuildTx era m
+  , C.IsBabbageBasedEra era
+  ) =>
+  MidgardScripts -> C.Hash C.PaymentKey -> m ()
+deregisterOperator MidgardScripts {registeredOperatorsValidator, registeredOperatorsPolicy} operatorPkh = do
+  let targetNodeKey = C.UnsafeAssetName $ C.serialiseToRawBytes RegisteredOperators.nodeKeyPrefix <> C.serialiseToRawBytes operatorPkh
+  netId <- queryNetworkId
+  registryUtxos <- utxosByPaymentCredential $ C.PaymentCredentialByScript $ validatorHash registeredOperatorsValidator
+  (targetRegistryTxIn, (_rootRegistryUtxoAnyEra, _)) <-
+    maybe (throwError "No registered operator found") pure $
+      findUtxoWithAsset registryUtxos $
+        C.AssetId (mintingPolicyId registeredOperatorsPolicy) targetNodeKey
+  (anchorRegistryTxIn, anchorUtxoAnyEra) <-
+    maybe (throwError "No anchor utxo found") pure $
+      findUtxoWithLink registryUtxos (mintingPolicyId registeredOperatorsPolicy) $
+        C.serialiseToRawBytes operatorPkh
+  let C.TxOut _ anchorValue _ _ = toTxOut @era anchorUtxoAnyEra
+  -- The new anchor output should have its link changed to the link from the target registry utxo (one being removed).
+  let newAnchorLink = error "TODO: Need datum structures finalized"
+  addRequiredSignature operatorPkh
+  -- Remove the operator.
+  spendPlutusInlineDatum targetRegistryTxIn (toValidator registeredOperatorsValidator) ()
+  -- Modify the anchor. TODO: Update the datum.
+  spendPlutusInlineDatum anchorRegistryTxIn (toValidator registeredOperatorsValidator) ()
+  payToScriptInlineDatum netId (validatorHash registeredOperatorsValidator) () C.NoStakeAddress (C.txOutValueToValue anchorValue)
+  -- Burn the operator NFT
+  mintPlutus (toMintingPolicy registeredOperatorsPolicy) () targetNodeKey (-1)
