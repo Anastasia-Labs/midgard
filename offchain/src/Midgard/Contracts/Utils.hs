@@ -1,4 +1,4 @@
-module Midgard.Contracts.Utils (findUtxoWithAsset, findTxInNonMembership) where
+module Midgard.Contracts.Utils (findUtxoWithAsset, findTxInNonMembership, findUtxoWithLink) where
 
 import Data.ByteString (ByteString)
 
@@ -30,3 +30,10 @@ The selected UTxO must also contain a token with the given policy ID.
 -}
 findTxInNonMembership :: UtxoSet ctx a -> C.PolicyId -> ByteString -> Maybe C.TxIn
 findTxInNonMembership utxoSet policyId key = error "TODO: Implement once datum structures are finalized"
+
+{- | From the given UTxO set, representing a linked list structure, find the "anchor" UTxO that
+links to the given key.
+The selected UTxO must also contain a token with the given policy ID.
+-}
+findUtxoWithLink :: UtxoSet ctx a -> C.PolicyId -> ByteString -> Maybe (C.TxIn, C.InAnyCardanoEra (C.TxOut ctx))
+findUtxoWithLink utxoSet policyId key = error "TODO: Implement once datum structures are finalized"
