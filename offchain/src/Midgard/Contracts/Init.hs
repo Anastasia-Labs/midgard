@@ -18,7 +18,13 @@ import Midgard.Scripts
 import Midgard.Types.HubOracle qualified as HubOracle
 import PlutusLedgerApi.V1 (currencySymbol)
 
-initProtocol :: (C.IsBabbageBasedEra era, C.HasScriptLanguageInEra C.PlutusScriptV3 era, MonadBuildTx era m, MonadBlockchain era m) => MidgardScripts -> m ()
+initProtocol ::
+  ( C.IsBabbageBasedEra era
+  , C.HasScriptLanguageInEra C.PlutusScriptV3 era
+  , MonadBuildTx era m
+  , MonadBlockchain era m
+  ) =>
+  MidgardScripts -> m ()
 initProtocol
   scripts@MidgardScripts
     { retiredOperatorsPolicy
