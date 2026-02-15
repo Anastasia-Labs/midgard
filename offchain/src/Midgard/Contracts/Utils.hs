@@ -1,5 +1,7 @@
 module Midgard.Contracts.Utils (findUtxoWithAsset, findTxInNonMembership) where
 
+import Data.ByteString (ByteString)
+
 import Cardano.Api qualified as C
 import Control.Lens (
   view,
@@ -24,6 +26,7 @@ proves non-membership of given key.
 i.e Find the linked-list utxo who's datum contains a key that is _smaller_ than the given key,
 but its link (next utxo) contains a key that is _larger_ than the given key, thereby proving
 that no utxo with given key exists in the linked list.
+The selected UTxO must also contain a token with the given policy ID.
 -}
-findTxInNonMembership :: UtxoSet ctx a -> C.PolicyId -> Int -> Maybe C.TxIn
-findTxInNonMembership utxoSet policyId keyPrefix = error "TODO: Implement once datum structures are finalized"
+findTxInNonMembership :: UtxoSet ctx a -> C.PolicyId -> ByteString -> Maybe C.TxIn
+findTxInNonMembership utxoSet policyId key = error "TODO: Implement once datum structures are finalized"
