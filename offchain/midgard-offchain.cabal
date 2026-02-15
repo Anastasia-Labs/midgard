@@ -90,6 +90,7 @@ common dependencies
     , cardano-api        ==10.21.0.0
     , convex-base
     , convex-mockchain
+    , mtl
     , plutus-ledger-api
     , ply-core
     , text
@@ -102,6 +103,7 @@ library
     Midgard.Contracts.Init
     Midgard.Contracts.RegisteredOperators
     Midgard.Contracts.RetiredOperators
+    Midgard.Contracts.Utils
     Midgard.Scripts
     Midgard.ScriptUtils
     Midgard.Types.ActiveOperators
@@ -112,6 +114,8 @@ library
   hs-source-dirs:  src
   build-depends:
     , cardano-ledger-core
+    , convex-optics
+    , lens
     , plutus-core
     , plutus-tx
 

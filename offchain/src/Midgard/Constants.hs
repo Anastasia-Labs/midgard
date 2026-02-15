@@ -1,5 +1,6 @@
 module Midgard.Constants (
   hubOracleMintingScript,
+  hubOracleScriptHash,
   hubOracleMintingPolicyId,
   hubOracleAssetName,
   hubOracleValidator,
@@ -25,6 +26,9 @@ hubOracleMintingScript = C.PlutusScriptSerialised $ serialiseUPLC alwaysSucceeds
 -- Script to lock the hub oracle token at. Temporarily set to an "always fails" validator.s
 hubOracleValidator :: C.PlutusScript C.PlutusScriptV3
 hubOracleValidator = C.PlutusScriptSerialised $ serialiseUPLC alwaysFailsUPLC
+
+hubOracleScriptHash :: C.ScriptHash
+hubOracleScriptHash = C.hashScript $ C.PlutusScript C.plutusScriptVersion hubOracleValidator
 
 hubOracleMintingPolicyId :: C.PolicyId
 hubOracleMintingPolicyId = C.PolicyId . C.hashScript $ C.PlutusScript C.plutusScriptVersion hubOracleMintingScript

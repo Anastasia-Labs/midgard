@@ -1,13 +1,24 @@
 {-# LANGUAGE TemplateHaskell #-}
 
-module Midgard.Types.RegisteredOperators (OperatorStatus, MintRedeemer (..)) where
+module Midgard.Types.RegisteredOperators (OperatorStatus, MintRedeemer (..), rootKey, nodeKeyPrefix, nodeKeyPrefixLen) where
 
+import Data.ByteString.Char8 qualified as BS8
 import GHC.Generics
 
+import Cardano.Api qualified as C
 import PlutusLedgerApi.V3
 import PlutusTx.Blueprint (HasBlueprintDefinition, definitionRef)
 import PlutusTx.Blueprint.TH (makeIsDataSchemaIndexed)
 import Ply (PlyArg)
+
+rootKey :: C.AssetName
+rootKey = C.UnsafeAssetName $ BS8.pack "MIDGARD_REGISTERED_OPERATORS"
+
+nodeKeyPrefix :: C.AssetName
+nodeKeyPrefix = C.UnsafeAssetName $ BS8.pack "MREG"
+
+nodeKeyPrefixLen :: Int
+nodeKeyPrefixLen = BS8.length $ C.serialiseToRawBytes nodeKeyPrefix
 
 data OperatorStatus
   = Registered
