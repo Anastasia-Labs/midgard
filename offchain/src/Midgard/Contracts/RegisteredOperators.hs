@@ -1,24 +1,82 @@
-module Midgard.Contracts.RegisteredOperators (initRegisteredOperators) where
+module Midgard.Contracts.RegisteredOperators (initRegisteredOperators, registerOperator) where
+
+import Control.Monad.Except
 
 import Cardano.Api qualified as C
 import Convex.BuildTx (
   MonadBuildTx,
+  addReference,
+  addRequiredSignature,
   assetValue,
   mintPlutus,
   payToScriptInlineDatum,
+  spendPlutusInlineDatum,
  )
-import Convex.Class (MonadBlockchain (queryNetworkId))
+import Convex.Class (MonadBlockchain (queryNetworkId), MonadUtxoQuery, utxosByPaymentCredential)
 
-import Midgard.ScriptUtils (mintingPolicyId, toMintingPolicy, validatorHash)
-import Midgard.Scripts (MidgardScripts (MidgardScripts, registeredOperatorsPolicy, registeredOperatorsValidator))
+import Midgard.Constants (hubOracleAssetName, hubOracleMintingPolicyId, hubOracleScriptHash, operatorRequiredBond)
+import Midgard.Contracts.Utils
+import Midgard.ScriptUtils (mintingPolicyId, toMintingPolicy, toValidator, validatorHash)
+import Midgard.Scripts (MidgardScripts (MidgardScripts, activeOperatorsPolicy, activeOperatorsValidator, registeredOperatorsPolicy, registeredOperatorsValidator, retiredOperatorsPolicy, retiredOperatorsValidator))
+import Midgard.Types.ActiveOperators qualified as ActiveOperators
 import Midgard.Types.RegisteredOperators qualified as RegisteredOperators
+import Midgard.Types.RetiredOperators qualified as RetiredOperators
 
 initRegisteredOperators :: (MonadBlockchain era m, C.HasScriptLanguageInEra C.PlutusScriptV3 era, MonadBuildTx era m, C.IsBabbageBasedEra era) => MidgardScripts -> m ()
 initRegisteredOperators MidgardScripts {registeredOperatorsValidator, registeredOperatorsPolicy} = do
   netId <- queryNetworkId
-  let rootAssetName = C.UnsafeAssetName ""
   let C.PolicyId policyId = mintingPolicyId registeredOperatorsPolicy
   -- The registered operators token should be minted.
-  mintPlutus (toMintingPolicy registeredOperatorsPolicy) RegisteredOperators.Init (C.UnsafeAssetName "") 1
+  mintPlutus (toMintingPolicy registeredOperatorsPolicy) RegisteredOperators.Init RegisteredOperators.rootKey 1
   -- And sent to the registered operators validator.
-  payToScriptInlineDatum netId (validatorHash registeredOperatorsValidator) () C.NoStakeAddress (assetValue policyId rootAssetName 1)
+  -- TODO: Datum should contain link.
+  payToScriptInlineDatum netId (validatorHash registeredOperatorsValidator) () C.NoStakeAddress (assetValue policyId RegisteredOperators.rootKey 1)
+
+registerOperator :: (MonadError String m, MonadBlockchain era m, MonadUtxoQuery m, C.HasScriptLanguageInEra C.PlutusScriptV3 era, MonadBuildTx era m, C.IsBabbageBasedEra era) => MidgardScripts -> C.Hash C.PaymentKey -> m ()
+registerOperator MidgardScripts {registeredOperatorsValidator, registeredOperatorsPolicy, activeOperatorsPolicy, activeOperatorsValidator, retiredOperatorsValidator, retiredOperatorsPolicy} operatorPkh = do
+  let newNodeKey = C.UnsafeAssetName $ C.serialiseToRawBytes RegisteredOperators.nodeKeyPrefix <> C.serialiseToRawBytes operatorPkh
+  let C.PolicyId policyId = mintingPolicyId registeredOperatorsPolicy
+  netId <- queryNetworkId
+  hubOracleUtxos <- utxosByPaymentCredential $ C.PaymentCredentialByScript hubOracleScriptHash
+  (hubOracleTxIn, _) <-
+    maybe (throwError "No hub oracle found") pure $
+      findUtxoWithAsset hubOracleUtxos $
+        C.AssetId hubOracleMintingPolicyId hubOracleAssetName
+  registryUtxos <- utxosByPaymentCredential $ C.PaymentCredentialByScript $ validatorHash registeredOperatorsValidator
+  (rootRegistryTxIn, (_rootRegistryUtxoAnyEra, _)) <-
+    maybe (throwError "No registry root found") pure $
+      findUtxoWithAsset registryUtxos $
+        C.AssetId (mintingPolicyId registeredOperatorsPolicy) RegisteredOperators.rootKey
+  activeOperatorsUtxos <- utxosByPaymentCredential $ C.PaymentCredentialByScript $ validatorHash activeOperatorsValidator
+  activeOperatorsNonMemberWitness <-
+    maybe (throwError "Operator already exists in active operator set") pure $
+      findTxInNonMembership activeOperatorsUtxos (mintingPolicyId activeOperatorsPolicy) ActiveOperators.nodeKeyPrefixLen
+  retiredOperatorsUtxos <- utxosByPaymentCredential $ C.PaymentCredentialByScript $ validatorHash retiredOperatorsValidator
+  retiredOperatorsNonMemberWitness <-
+    maybe (throwError "Operator already exists in active operator set") pure $
+      findTxInNonMembership retiredOperatorsUtxos (mintingPolicyId retiredOperatorsPolicy) RetiredOperators.nodeKeyPrefixLen
+  addRequiredSignature operatorPkh
+  addReference hubOracleTxIn
+  addReference activeOperatorsNonMemberWitness
+  addReference retiredOperatorsNonMemberWitness
+  -- TODO: Use the proper redeemer once finalized.
+  mintPlutus
+    (toMintingPolicy registeredOperatorsPolicy)
+    ()
+    newNodeKey
+    1
+  -- TODO: Datum should contain original link from root (i.e newly added operator pkh).
+  payToScriptInlineDatum
+    netId
+    (validatorHash registeredOperatorsValidator)
+    ()
+    C.NoStakeAddress
+    (assetValue policyId newNodeKey 1 <> C.lovelaceToValue operatorRequiredBond)
+  -- TODO: Datum should contain updated link (i.e newly added operator pkh).
+  payToScriptInlineDatum netId (validatorHash registeredOperatorsValidator) () C.NoStakeAddress (assetValue policyId RegisteredOperators.rootKey 1)
+  spendPlutusInlineDatum
+    rootRegistryTxIn
+    (toValidator registeredOperatorsValidator)
+    ()
+
+-- TODO: Add activation time assertion (i.e validity range)

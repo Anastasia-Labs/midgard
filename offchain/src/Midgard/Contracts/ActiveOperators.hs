@@ -11,14 +11,13 @@ import Convex.Class (MonadBlockchain (queryNetworkId))
 
 import Midgard.ScriptUtils (mintingPolicyId, toMintingPolicy, validatorHash)
 import Midgard.Scripts (MidgardScripts (MidgardScripts, activeOperatorsPolicy, activeOperatorsValidator))
-import Midgard.Types.RegisteredOperators qualified as RegisteredOperators
+import Midgard.Types.ActiveOperators qualified as ActiveOperators
 
 initActiveOperators :: (MonadBlockchain era m, C.HasScriptLanguageInEra C.PlutusScriptV3 era, MonadBuildTx era m, C.IsBabbageBasedEra era) => MidgardScripts -> m ()
 initActiveOperators MidgardScripts {activeOperatorsValidator, activeOperatorsPolicy} = do
   netId <- queryNetworkId
-  let rootAssetName = C.UnsafeAssetName ""
   let C.PolicyId policyId = mintingPolicyId activeOperatorsPolicy
   -- The active operators token should be minted.
-  mintPlutus (toMintingPolicy activeOperatorsPolicy) RegisteredOperators.Init (C.UnsafeAssetName "") 1
+  mintPlutus (toMintingPolicy activeOperatorsPolicy) ActiveOperators.Init (C.UnsafeAssetName "") 1
   -- And sent to the active operators validator.
-  payToScriptInlineDatum netId (validatorHash activeOperatorsValidator) () C.NoStakeAddress (assetValue policyId rootAssetName 1)
+  payToScriptInlineDatum netId (validatorHash activeOperatorsValidator) () C.NoStakeAddress (assetValue policyId ActiveOperators.rootKey 1)

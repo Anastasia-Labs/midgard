@@ -1,14 +1,25 @@
 {-# LANGUAGE TemplateHaskell #-}
 
-module Midgard.Types.ActiveOperators () where
+module Midgard.Types.ActiveOperators (Datum (..), SpendRedeemer (..), MintRedeemer (..), rootKey, nodeKeyPrefix, nodeKeyPrefixLen) where
 
+import Data.ByteString.Char8 qualified as BS8
 import GHC.Generics (Generic)
 
+import Cardano.Api qualified as C
 import PlutusLedgerApi.V3 (BuiltinByteString, POSIXTime)
 import PlutusTx.Blueprint (HasBlueprintDefinition, definitionRef)
 import PlutusTx.Blueprint.TH (makeIsDataSchemaIndexed)
 
 import Ply (PlyArg)
+
+rootKey :: C.AssetName
+rootKey = C.UnsafeAssetName $ BS8.pack "MIDGARD_ACTIVE_OPERATORS"
+
+nodeKeyPrefix :: C.AssetName
+nodeKeyPrefix = C.UnsafeAssetName $ BS8.pack "MACT"
+
+nodeKeyPrefixLen :: Int
+nodeKeyPrefixLen = BS8.length $ C.serialiseToRawBytes nodeKeyPrefix
 
 newtype Datum = Datum
   { bondUnlockTime :: Maybe POSIXTime
