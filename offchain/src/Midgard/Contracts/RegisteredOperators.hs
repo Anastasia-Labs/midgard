@@ -81,7 +81,7 @@ registerOperator
           C.serialiseToRawBytes operatorPkh
     retiredOperatorsUtxos <- utxosByPaymentCredential $ C.PaymentCredentialByScript $ validatorHash retiredOperatorsValidator
     retiredOperatorsNonMemberWitness <-
-      maybe (throwError "Operator already exists in active operator set") pure $
+      maybe (throwError "Operator already exists in retired operator set") pure $
         findTxInNonMembership retiredOperatorsUtxos (mintingPolicyId retiredOperatorsPolicy) $
           C.serialiseToRawBytes operatorPkh
     addRequiredSignature operatorPkh
