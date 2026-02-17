@@ -1,90 +1,161 @@
-use aiken_design_patterns/linked_list/unordered.{NodeDatum}
-use cardano/assets.{AssetName}
-use cardano/transaction.{Input, OutputReference}
-use midgard/common/utils
-use midgard/ledger_state.{ConfirmedState, Header}
-use midgard/registered_operators.{OperatorStatus}
+use aiken/collection/list
+use aiken/crypto.{VerificationKeyHash}
+use aiken/primitive/bytearray
+use aiken_design_patterns/linked_list
+use cardano/assets.{AssetName, PolicyId}
+use cardano/transaction.{Input}
+use midgard/ledger_state.{ConfirmedState, Header, HeaderHash}
 
-/// TODO?
+/// TODO: It might be better to be space-conscious and use an empty name.
+pub const confirmed_state_asset_name: AssetName = "MIDGARD_CONFIRMED_STATE"
+
+/// Short for "Midgard Block". In hex it will be: #"4d424c43"
+///
 /// > [!NOTE]
-/// > Keep in mind that validators may depend on the lexicographic ordering
-/// > between `confirmed_token_name` and `block_token_name`.
-pub const confirmed_asset_name: AssetName = "CONFIRMED_STATE"
+/// > This should not be longer than 4 bytes, as it is followed by header hashes
+/// > which are hashed with Blake2b-224. 4 bytes makes up block asset names to
+/// > occupy all available 32 bytes.
+pub const block_asset_name_prefix: AssetName = "MBLC"
 
-pub const block_asset_name: AssetName = #""
+pub const block_asset_name_prefix_length: Int =
+  bytearray.length(block_asset_name_prefix)
 
 pub type Datum =
-  NodeDatum
+  linked_list.Element<ConfirmedState, Header>
 
-pub type Config {
-  init_utxo: OutputReference,
-  refund_waiting_period: Int,
+pub type SlashingApproach {
+  SlashActiveOperator { active_operators_redeemer_index: Int }
+  SlashRetiredOperator { retired_operators_redeemer_index: Int }
+  OperatorAlreadySlashed {
+    active_operators_element_ref_input_index: Int,
+    retired_operators_element_ref_input_index: Int,
+  }
+}
+
+pub type BlockRemovalApproach {
+  RemoveLastFraudulentBlock {
+    anchor_element_input_index: Int,
+    anchor_element_output_index: Int,
+  }
+  RemoveFraudulentBlocksLink {
+    fraudulent_node_output_index: Int,
+    removed_block_input_index: Int,
+  }
 }
 
 pub type MintRedeemer {
-  Init
-  Deinit
+  Init { output_index: Int }
+  Deinit { input_index: Int }
   CommitBlockHeader {
-    operator: ByteArray,
+    latest_block_input_index: Int,
+    new_block_output_index: Int,
+    continued_latest_block_output_index: Int,
+    operator: VerificationKeyHash,
     scheduler_ref_input_index: Int,
-    active_node_input_index: Int,
-    header_node_output_index: Int,
-    previous_header_node_output_index: Int,
+    active_operators_input_index: Int,
     active_operators_redeemer_index: Int,
   }
   MergeToConfirmedState {
     header_node_key: ByteArray,
     header_node_input_index: Int,
-    confirmed_state_node_input_index: Int,
-    confirmed_state_node_output_index: Int,
-    settlement_redeemer_index: Int,
+    confirmed_state_input_index: Int,
+    confirmed_state_output_index: Int,
+    m_settlement_redeemer_index: Option<Int>,
   }
   RemoveFraudulentBlockHeader {
-    removed_node_input_index: Int,
-    predecessor_node_input_index: Int,
-    operators_redeemer_index: Int,
+    fraudulent_operator: VerificationKeyHash,
+    fraudulent_blocks_header_hash: HeaderHash,
+    slashing_approach: SlashingApproach,
+    fraudulent_node_input_index: Int,
     fraud_proof_ref_input_index: Int,
-    fraud_proof_asset_name: ByteArray,
-    fraudulent_operator: ByteArray,
-    operator_status: OperatorStatus,
+    block_removal_approach: BlockRemovalApproach,
   }
 }
 
-pub fn get_confirmed_datum(
+pub fn get_confirmed_state(
   reference_inputs: List<Input>,
   state_queue_policy: ByteArray,
   state_queue_node_ref_input_index: Int,
-) {
-  expect NodeDatum {
-    data: confirmed_state_datum_data,
-    key: unordered.Empty,
-    ..
-  } =
-    utils.get_authentic_input_datum_with_policy_at(
-      reference_inputs,
-      state_queue_policy,
-      state_queue_node_ref_input_index,
-    )
-
-  expect coerced_confirmed_state: ConfirmedState = confirmed_state_datum_data
-
-  coerced_confirmed_state
+) -> ConfirmedState {
+  expect Some(Input { output, .. }) =
+    reference_inputs |> list.at(state_queue_node_ref_input_index)
+  let linked_list_eval = {
+    let
+      _state_queue_element_lovelace,
+      m_state_queue_element_key,
+      state_queue_element_data,
+      _state_queue_element_link,
+    <- linked_list.get_element_info(output)
+    expect None = m_state_queue_element_key
+    expect coerced_confirmed_state: ConfirmedState = state_queue_element_data
+    coerced_confirmed_state
+  }
+  linked_list_eval
+    |> linked_list.run_element_with(
+        state_queue_policy,
+        confirmed_state_asset_name,
+        block_asset_name_prefix,
+        block_asset_name_prefix_length,
+      )
 }
 
 pub fn get_block_datum(
   reference_inputs: List<Input>,
   state_queue_policy: ByteArray,
   state_queue_node_ref_input_index: Int,
-  return: fn(Header, ByteArray) -> result,
+  return: fn(Header, HeaderHash) -> result,
 ) -> result {
-  expect NodeDatum { data: header_datum_data, key: unordered.Key { key }, .. } =
-    utils.get_authentic_input_datum_with_policy_at(
+  expect Some(Input { output, .. }) =
+    reference_inputs |> list.at(state_queue_node_ref_input_index)
+  let linked_list_eval = {
+    let
+      _state_queue_element_lovelace,
+      m_state_queue_element_key,
+      state_queue_element_data,
+      _state_queue_element_link,
+    <- linked_list.get_element_info(output)
+    expect Some(header_hash) = m_state_queue_element_key
+    expect coerced_header: Header = state_queue_element_data
+    return(coerced_header, header_hash)
+  }
+  linked_list_eval
+    |> linked_list.run_element_with(
+        state_queue_policy,
+        confirmed_state_asset_name,
+        block_asset_name_prefix,
+        block_asset_name_prefix_length,
+      )
+}
+
+pub fn get_prev_header_hash_of_node(
+  reference_inputs: List<Input>,
+  state_queue_policy: ByteArray,
+  state_queue_node_ref_input_index: Int,
+  expected_state_queue_node_header_hash: HeaderHash,
+) -> HeaderHash {
+  let
+    header,
+    retrieved_state_queue_node_header_hash,
+  <-
+    get_block_datum(
       reference_inputs,
       state_queue_policy,
       state_queue_node_ref_input_index,
     )
+  expect
+    retrieved_state_queue_node_header_hash == expected_state_queue_node_header_hash
+  header.prev_header_hash
+}
 
-  expect coerced_header: Header = header_datum_data
-
-  return(coerced_header, key)
+pub fn finalize_linked_list(
+  eval: linked_list.Eval,
+  state_queue_policy: PolicyId,
+) -> Bool {
+  eval
+    |> linked_list.run_eval_with(
+        state_queue_policy,
+        confirmed_state_asset_name,
+        block_asset_name_prefix,
+        block_asset_name_prefix_length,
+      )
 }
