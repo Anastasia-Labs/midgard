@@ -6,3 +6,6 @@ build/
 docs/
 .direnv
 utils.log
+.pre-commit-config.yaml
+onchain/plutarch/dist-newstyle/*
+

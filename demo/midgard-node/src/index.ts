@@ -9,7 +9,6 @@ import { Effect, pipe } from "effect";
 import dotenv from "dotenv";
 import { NodeRuntime } from "@effect/platform-node";
 import { DatabaseError } from "@/database/utils/common.js";
-import { SqlError } from "@effect/sql";
 
 dotenv.config();
 const VERSION = packageJson.version;
@@ -63,19 +62,19 @@ program
     console.log("🌳 Midgard");
     
     const { withMonitoring } = options.opts();
-    const mainEffect: Effect.Effect<
-      void,
-      | DatabaseError
-      | SqlError.SqlError
-      | Services.ConfigError
-      | Services.DatabaseInitializationError,
-      never
-    > = pipe(
+    const mainEffect = pipe(
       runNode(withMonitoring),
       Effect.provide(Services.NodeConfig.layer),
     );
 
-    NodeRuntime.runMain(mainEffect, { teardown: undefined });
+    NodeRuntime.runMain(
+      mainEffect as Effect.Effect<
+        unknown,
+        Services.ConfigError | Services.DatabaseInitializationError | DatabaseError,
+        never
+      >,
+      { teardown: undefined },
+    );
   });
 
 program.parse(process.argv);

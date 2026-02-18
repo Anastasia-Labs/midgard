@@ -6,6 +6,7 @@ export * as LatestLedgerDB from "./latestLedger.js";
 export * as MempoolDB from "./mempool.js";
 export * as ProcessedMempoolDB from "./processedMempool.js";
 export * as MempoolLedgerDB from "./mempoolLedger.js";
+export * as TxPoolDB from "./txPool.js";
 export * as InitDB from "./init.js";
 export * as CommonUtils from "./utils/common.js";
 export * as LedgerUtils from "./utils/ledger.js";

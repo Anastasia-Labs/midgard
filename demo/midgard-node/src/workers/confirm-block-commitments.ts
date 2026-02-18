@@ -104,15 +104,25 @@ const program = pipe(
   Effect.provide(NodeConfig.layer),
 );
 
-Effect.runPromise(
-  program.pipe(
-    Effect.catchAllCause((cause) =>
-      Effect.succeed({
-        type: "FailedConfirmationOutput",
-        error: `Tx confirmation worker failure: ${Cause.pretty(cause)}`,
-      }),
-    ),
+const safeProgram = program.pipe(
+  Effect.catchAllCause((cause) =>
+    Effect.succeed({
+      type: "FailedConfirmationOutput",
+      error: `Tx confirmation worker failure: ${Cause.pretty(cause)}`,
+    }),
   ),
+) as Effect.Effect<
+  WorkerOutput | { type: string; error: string },
+  never,
+  never
+>;
+
+Effect.runPromise(
+  safeProgram as Effect.Effect<
+    WorkerOutput | { type: string; error: string },
+    never,
+    never
+  >,
 ).then((output) => {
   Effect.runSync(
     Effect.logInfo(

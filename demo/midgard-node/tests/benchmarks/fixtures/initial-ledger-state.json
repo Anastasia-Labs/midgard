@@ -1,0 +1,47 @@
+{
+  "network": "Custom",
+  "generatedAtIso": "2026-02-18T15:37:27.101Z",
+  "ledgerEntries": [
+    {
+      "txIdHex": "0000000000000000000000000000000000000000000000000000000000000000",
+      "outRefCborHex": "825820000000000000000000000000000000000000000000000000000000000000000000",
+      "outputCborHex": "825839006e4a665184e562a24414f3dbb3d62c9ef7d3c8bedf8fed1c0d0caa500653e7548338e0949b2909cd7c5ebe2d826256522a886a9f6648fd721b000001d1a94a2000",
+      "address": "addr_test1qphy5ej3snjk9gjyzneahv7k9j00057ghm0clmgup5x255qx20n4fqecuz2fk2gfe479a03dsf39v5323p4f7ejgl4eqz6vsrz"
+    },
+    {
+      "txIdHex": "0000000000000000000000000000000000000000000000000000000000000000",
+      "outRefCborHex": "825820000000000000000000000000000000000000000000000000000000000000000001",
+      "outputCborHex": "8258390068e45a4e9df0f7b912e6cfa3887cd3161bcd66d5352bd3682bf77f467a9e1478f1e97ea76edb004f7379ad6f0eefcd6a54b2cc76246771221b000001d1a94a2000",
+      "address": "addr_test1qp5wgkjwnhc00wgjum868zru6vtphntx656jh5mg90mh73n6nc283u0f06nkakcqfaehntt0pmhu66j5ktx8vfr8wy3qspln7s"
+    },
+    {
+      "txIdHex": "0000000000000000000000000000000000000000000000000000000000000000",
+      "outRefCborHex": "825820000000000000000000000000000000000000000000000000000000000000000002",
+      "outputCborHex": "825839000d3431aa425e8ce32b817c7ea2af48b651eb427505b092c84bcfea1e1fffea85feaf26289822034d6bf6642a529e1ca41c148efe2c841fff1b000001d1a94a2000",
+      "address": "addr_test1qqxngvd2gf0gecets978ag40fzm9r66zw5zmpykgf08758slll4gtl40yc5fsgsrf44lvep2220pefquzj80utyyrlls2p4v5z"
+    }
+  ],
+  "accounts": [
+    {
+      "address": "addr_test1qphy5ej3snjk9gjyzneahv7k9j00057ghm0clmgup5x255qx20n4fqecuz2fk2gfe479a03dsf39v5323p4f7ejgl4eqz6vsrz",
+      "seedPhrase": "cloth subway few depth any deny cover slim year notice artefact submit viable earn eagle auction sick result crisp example cruel sense depth coconut",
+      "assets": {
+        "lovelace": "2000000000000"
+      }
+    },
+    {
+      "address": "addr_test1qp5wgkjwnhc00wgjum868zru6vtphntx656jh5mg90mh73n6nc283u0f06nkakcqfaehntt0pmhu66j5ktx8vfr8wy3qspln7s",
+      "seedPhrase": "spoon shock car soft slender abstract cause divide divert this cage frown there hazard boring pencil oval soft donor such sniff special bullet bone",
+      "assets": {
+        "lovelace": "2000000000000"
+      }
+    },
+    {
+      "address": "addr_test1qqxngvd2gf0gecets978ag40fzm9r66zw5zmpykgf08758slll4gtl40yc5fsgsrf44lvep2220pefquzj80utyyrlls2p4v5z",
+      "seedPhrase": "series toss awkward omit choose spend spare account together festival undo away shrimp inside imitate sunset slot measure prosper weather angry level sauce immune",
+      "assets": {
+        "lovelace": "2000000000000"
+      }
+    }
+  ]
+}

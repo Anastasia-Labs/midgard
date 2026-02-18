@@ -9,6 +9,7 @@ import { StateQueueTx } from "@/transactions/index.js";
 import * as SDK from "@al-ft/midgard-sdk";
 import { NodeSdk } from "@effect/opentelemetry";
 import {
+  CML,
   TxSubmitError,
   fromHex,
   getAddressDetails,
@@ -19,13 +20,11 @@ import { OTLPTraceExporter } from "@opentelemetry/exporter-trace-otlp-http";
 import { BatchSpanProcessor } from "@opentelemetry/sdk-trace-base";
 import {
   Cause,
-  Chunk,
   Duration,
   Effect,
   Layer,
   Metric,
   pipe,
-  Queue,
   Ref,
   Schedule,
 } from "effect";
@@ -39,13 +38,9 @@ import {
   MempoolDB,
   MempoolLedgerDB,
   ProcessedMempoolDB,
+  TxPoolDB,
 } from "../database/index.js";
-import {
-  ProcessedTx,
-  breakDownTx,
-  bufferToHex,
-  isHexString,
-} from "../utils.js";
+import { bufferToHex, isHexString } from "../utils.js";
 import {
   HttpRouter,
   HttpServer,
@@ -78,6 +73,7 @@ const COMMIT_ENDPOINT: string = "commit";
 const RESET_ENDPOINT: string = "reset";
 const SUBMIT_ENDPOINT: string = "submit";
 const STATE_QUEUE_ENDPOINT: string = "stateQueue";
+const TX_STATUS_ENDPOINT: string = "tx-status";
 
 const txCounter = Metric.counter("tx_count", {
   description: "A counter for tracking submit transactions",
@@ -86,7 +82,7 @@ const txCounter = Metric.counter("tx_count", {
 });
 
 const txQueueSizeGauge = Metric.gauge("tx_queue_size", {
-  description: "A tracker for the size of the tx queue before processing",
+  description: "A tracker for the size of queued txs before validation",
   bigint: true,
 });
 
@@ -181,6 +177,52 @@ const getTxHandler = Effect.gen(function* () {
 }).pipe(
   Effect.catchTag("HttpBodyError", (e) => failWith500("GET", TX_ENDPOINT, e)),
   Effect.catchTag("DatabaseError", (e) => handleDBGetFailure(TX_ENDPOINT, e)),
+);
+
+const getTxStatusHandler = Effect.gen(function* () {
+  const params = yield* ParsedSearchParams;
+  const txHashParam = params["tx_hash"];
+  if (
+    typeof txHashParam !== "string" ||
+    !isHexString(txHashParam) ||
+    txHashParam.length !== 64
+  ) {
+    yield* Effect.logInfo(
+      `GET /${TX_STATUS_ENDPOINT} - Invalid transaction hash: ${txHashParam}`,
+    );
+    return yield* HttpServerResponse.json(
+      { error: `Invalid transaction hash: ${txHashParam}` },
+      { status: 400 },
+    );
+  }
+  const txHashBytes = Buffer.from(fromHex(txHashParam));
+  const status = yield* TxPoolDB.retrieveStatusByTxId(txHashBytes);
+  return yield* HttpServerResponse.json({
+    txId: txHashParam,
+    status: status.status,
+    reasonCode: status.reject_code ?? undefined,
+    reasonDetail: status.reject_detail ?? undefined,
+    timestamps: {
+      createdAt: status.created_at.toISOString(),
+      updatedAt: status.updated_at.toISOString(),
+    },
+  });
+}).pipe(
+  Effect.catchTag("HttpBodyError", (e) =>
+    failWith500("GET", TX_STATUS_ENDPOINT, e),
+  ),
+  Effect.catchTag("NotFoundError", () =>
+    HttpServerResponse.json(
+      { error: "Transaction not found in tx pool" },
+      { status: 404 },
+    ),
+  ),
+  Effect.catchTag("DatabaseError", (e) =>
+    handleDBGetFailure(TX_STATUS_ENDPOINT, e),
+  ),
+  Effect.catchTag("TxPoolStatusError", (e) =>
+    failWith500("GET", TX_STATUS_ENDPOINT, e.status, "Unknown tx status"),
+  ),
 );
 
 const getUtxosHandler = Effect.gen(function* () {
@@ -364,6 +406,7 @@ const getResetHandler = Effect.gen(function* () {
       LatestLedgerDB.clear,
       ConfirmedLedgerDB.clear,
       AddressHistoryDB.clear,
+      TxPoolDB.clear,
       deleteMempoolMpt,
       deleteLedgerMpt,
     ],
@@ -551,34 +594,61 @@ const getLogGlobalsHandler = Effect.gen(function* () {
   Effect.catchTag("HttpBodyError", (e) => failWith500("GET", "logGlobals", e)),
 );
 
-const postSubmitHandler = (txQueue: Queue.Enqueue<string>) =>
-  Effect.gen(function* () {
-    // yield* Effect.logInfo(`◻️  Submit request received for transaction`);
-    const params = yield* ParsedSearchParams;
-    const txStringParam = params["tx_cbor"];
-    if (typeof txStringParam !== "string" || !isHexString(txStringParam)) {
-      yield* Effect.logInfo(`▫️ Invalid CBOR provided`);
-      return yield* HttpServerResponse.json(
-        { error: `Invalid CBOR provided` },
-        { status: 400 },
-      );
-    } else {
-      const txString = txStringParam;
-      yield* txQueue.offer(txString);
-      Effect.runSync(Metric.increment(txCounter));
-      return yield* HttpServerResponse.json({
-        message: `Successfully added the transaction to the queue`,
-      });
-    }
-  }).pipe(
-    Effect.catchTag("HttpBodyError", (e) =>
-      failWith500("POST", "submit", e, "▫️ L2 transaction failed"),
-    ),
+const postSubmitHandler = Effect.gen(function* () {
+  const params = yield* ParsedSearchParams;
+  const txStringParam = params["tx_cbor"];
+  if (typeof txStringParam !== "string" || !isHexString(txStringParam)) {
+    yield* Effect.logInfo(`POST /${SUBMIT_ENDPOINT} - Invalid CBOR provided`);
+    return yield* HttpServerResponse.json(
+      { error: "Invalid CBOR provided", reasonCode: "E_CBOR_DESERIALIZATION" },
+      { status: 400 },
+    );
+  }
+
+  let txBytes: Uint8Array;
+  let txHashHex: string;
+  try {
+    txBytes = fromHex(txStringParam);
+    const tx = CML.Transaction.from_cbor_bytes(txBytes);
+    txHashHex = CML.hash_transaction(tx.body()).to_hex();
+  } catch (e) {
+    yield* Effect.logInfo(
+      `POST /${SUBMIT_ENDPOINT} - Failed to deserialize tx: ${e}`,
+    );
+    return yield* HttpServerResponse.json(
+      {
+        error: "Invalid transaction CBOR",
+        reasonCode: "E_CBOR_DESERIALIZATION",
+      },
+      { status: 400 },
+    );
+  }
+
+  const txStatus = yield* TxPoolDB.insertQueued(
+    Buffer.from(fromHex(txHashHex)),
+    Buffer.from(txBytes),
   );
 
-const router = (
-  txQueue: Queue.Queue<string>,
-): Effect.Effect<
+  Effect.runSync(Metric.increment(txCounter));
+  return yield* HttpServerResponse.json({
+    txId: txHashHex,
+    status: txStatus.status,
+    reasonCode: txStatus.reject_code ?? undefined,
+    reasonDetail: txStatus.reject_detail ?? undefined,
+  });
+}).pipe(
+  Effect.catchTag("HttpBodyError", (e) =>
+    failWith500("POST", SUBMIT_ENDPOINT, e, "L2 transaction failed"),
+  ),
+  Effect.catchTag("DatabaseError", (e) =>
+    failWith500("POST", SUBMIT_ENDPOINT, e.cause, `db failure with table ${e.table}`),
+  ),
+  Effect.catchTag("TxPoolStatusError", (e) =>
+    failWith500("POST", SUBMIT_ENDPOINT, e.status, "Unknown tx status"),
+  ),
+);
+
+const router = (): Effect.Effect<
   HttpServerResponse.HttpServerResponse,
   HttpBodyError,
   | Database
@@ -599,9 +669,10 @@ const router = (
       HttpRouter.get(`/${MERGE_ENDPOINT}`, getMergeHandler),
       HttpRouter.get(`/${RESET_ENDPOINT}`, getResetHandler),
       HttpRouter.get(`/${STATE_QUEUE_ENDPOINT}`, getStateQueueHandler),
+      HttpRouter.get(`/${TX_STATUS_ENDPOINT}`, getTxStatusHandler),
       HttpRouter.get(`/logBlocksDB`, getLogBlocksDBHandler),
       HttpRouter.get(`/logGlobals`, getLogGlobalsHandler),
-      HttpRouter.post(`/${SUBMIT_ENDPOINT}`, postSubmitHandler(txQueue)),
+      HttpRouter.post(`/${SUBMIT_ENDPOINT}`, postSubmitHandler),
     )
     .pipe(
       Effect.catchAllCause((cause) =>
@@ -742,20 +813,9 @@ const mergeAction = Effect.gen(function* () {
 const monitorMempoolAction = Effect.gen(function* () {
   const numTx = yield* MempoolDB.retrieveTxCount;
   yield* mempoolTxGauge(Effect.succeed(numTx));
+  const queuedCount = yield* TxPoolDB.retrieveCountByStatus("queued");
+  yield* txQueueSizeGauge(Effect.succeed(queuedCount));
 });
-
-const txQueueProcessorAction = (txQueue: Queue.Dequeue<string>) =>
-  Effect.gen(function* () {
-    const queueSize = yield* txQueue.size;
-    yield* txQueueSizeGauge(Effect.succeed(BigInt(queueSize)));
-
-    const txStringsChunk: Chunk.Chunk<string> = yield* Queue.takeAll(txQueue);
-    const txStrings = Chunk.toReadonlyArray(txStringsChunk);
-    const processedTxs: ProcessedTx[] = yield* Effect.forEach(txStrings, (tx) =>
-      breakDownTx(fromHex(tx)),
-    );
-    yield* MempoolDB.insertMultiple(processedTxs);
-  });
 
 const blockCommitmentFork = (rerunDelay: number) =>
   Effect.gen(function* () {
@@ -811,27 +871,15 @@ const monitorMempoolFork = pipe(
   Effect.catchAllCause(Effect.logWarning),
 );
 
-const txQueueProcessorFork = (txQueue: Queue.Dequeue<string>) =>
-  pipe(
-    Effect.gen(function* () {
-      yield* Effect.logInfo("🔶 Tx queue processor fork started.");
-      const schedule = Schedule.fixed("500 millis");
-      yield* Effect.repeat(txQueueProcessorAction(txQueue), schedule);
-    }),
-    Effect.catchAllCause(Effect.logWarning),
-  );
-
 export const runNode = (withMonitoring?: boolean) =>
   Effect.gen(function* () {
     const nodeConfig = yield* NodeConfig;
-
-    const txQueue = yield* Queue.unbounded<string>();
 
     yield* InitDB.initializeDb().pipe(Effect.provide(Database.layer));
 
     const appThread = Layer.launch(
       Layer.provide(
-        HttpServer.serve(router(txQueue)),
+        HttpServer.serve(router()),
         NodeHttpServer.layer(createServer, { port: nodeConfig.PORT }),
       ),
     );
@@ -850,8 +898,6 @@ export const runNode = (withMonitoring?: boolean) =>
       ? monitorMempoolFork
       : Effect.void;
 
-    const txQueueProcessorThread = txQueueProcessorFork(txQueue);
-
     const program = Effect.all(
       [
         appThread,
@@ -859,7 +905,6 @@ export const runNode = (withMonitoring?: boolean) =>
         blockConfirmationThread,
         mergeThread,
         monitorMempoolThread,
-        txQueueProcessorThread,
       ],
       {
         concurrency: "unbounded",
@@ -898,19 +943,17 @@ export const runNode = (withMonitoring?: boolean) =>
         ),
       }));
 
-      return pipe(
+      return yield* pipe(
         program,
         Effect.withSpan("midgard"),
         Effect.provide(MetricsLive),
         Effect.catchAllCause(Effect.logError),
-        Effect.runPromise,
       );
     } else {
-      return pipe(
+      return yield* pipe(
         program,
         Effect.withSpan("midgard"),
         Effect.catchAllCause(Effect.logError),
-        Effect.runPromise,
       );
     }
   });

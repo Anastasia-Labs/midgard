@@ -17,6 +17,12 @@ type NodeConfigDep = {
   WAIT_BETWEEN_BLOCK_COMMITMENT: number;
   WAIT_BETWEEN_BLOCK_CONFIRMATION: number;
   WAIT_BETWEEN_MERGE_TXS: number;
+  VALIDATION_BATCH_SIZE: number;
+  VALIDATION_PHASE_A_CONCURRENCY: number;
+  VALIDATION_MAX_QUEUE_AGE_MS: number;
+  VALIDATION_STRICTNESS_PROFILE: string;
+  MIN_FEE_A: bigint;
+  MIN_FEE_B: bigint;
   PROM_METRICS_PORT: number;
   OLTP_EXPORTER_URL: string;
   POSTGRES_USER: string;
@@ -57,6 +63,26 @@ const makeConfig = Effect.gen(function* () {
   const waitBetweenMergeTxs = yield* Config.integer(
     "WAIT_BETWEEN_MERGE_TXS",
   ).pipe(Config.withDefault(10000));
+  const validationBatchSize = yield* Config.integer("VALIDATION_BATCH_SIZE").pipe(
+    Config.withDefault(1000),
+  );
+  const validationPhaseAConcurrency = yield* Config.integer(
+    "VALIDATION_PHASE_A_CONCURRENCY",
+  ).pipe(Config.withDefault(32));
+  const validationMaxQueueAgeMs = yield* Config.integer(
+    "VALIDATION_MAX_QUEUE_AGE_MS",
+  ).pipe(Config.withDefault(600000));
+  const validationStrictnessProfile = yield* Config.string(
+    "VALIDATION_STRICTNESS_PROFILE",
+  ).pipe(Config.withDefault("phase1_midgard"));
+  const minFeeA = yield* Config.string("MIN_FEE_A").pipe(
+    Config.withDefault("0"),
+    Config.mapAttempt((value) => BigInt(value)),
+  );
+  const minFeeB = yield* Config.string("MIN_FEE_B").pipe(
+    Config.withDefault("0"),
+    Config.mapAttempt((value) => BigInt(value)),
+  );
   const promMetricsPort = yield* Config.integer("PROM_METRICS_PORT").pipe(
     Config.withDefault(9464),
   );
@@ -161,6 +187,12 @@ const makeConfig = Effect.gen(function* () {
     WAIT_BETWEEN_BLOCK_COMMITMENT: waitBetweenBlockCommitment,
     WAIT_BETWEEN_BLOCK_CONFIRMATION: waitBetweenBlockConfirmation,
     WAIT_BETWEEN_MERGE_TXS: waitBetweenMergeTxs,
+    VALIDATION_BATCH_SIZE: validationBatchSize,
+    VALIDATION_PHASE_A_CONCURRENCY: validationPhaseAConcurrency,
+    VALIDATION_MAX_QUEUE_AGE_MS: validationMaxQueueAgeMs,
+    VALIDATION_STRICTNESS_PROFILE: validationStrictnessProfile,
+    MIN_FEE_A: minFeeA,
+    MIN_FEE_B: minFeeB,
     PROM_METRICS_PORT: promMetricsPort,
     OLTP_EXPORTER_URL: oltpExporterUrl,
     POSTGRES_HOST: postgresHost,

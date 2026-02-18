@@ -6,6 +6,7 @@ import * as LatestLedgerDB from "./latestLedger.js";
 import * as MempoolDB from "./mempool.js";
 import * as ProcessedMempoolDB from "./processedMempool.js";
 import * as MempoolLedgerDB from "./mempoolLedger.js";
+import * as TxPoolDB from "./txPool.js";
 import * as Tx from "@/database/utils/tx.js";
 import * as Ledger from "@/database/utils/ledger.js";
 import * as AddressHistory from "@/database/addressHistory.js";
@@ -33,6 +34,7 @@ export const initializeDb: () => Effect.Effect<
     yield* Tx.createTable(ImmutableDB.tableName);
     yield* Tx.createTable(MempoolDB.tableName);
     yield* Tx.createTable(ProcessedMempoolDB.tableName);
+    yield* TxPoolDB.createTable;
 
     yield* insertGenesisUtxos;
 

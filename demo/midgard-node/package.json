@@ -15,6 +15,9 @@
     "format-check": "prettier --check \"**/*.{ts,tsx,md}\"",
     "listen": "pnpm run build && node dist/index.js listen",
     "init": "pnpm run build && node dist/index.js init",
+    "bench:fixtures:generate": "node tests/benchmarks/scripts/generate-validation-fixtures.mjs",
+    "bench:validation": "export NODE_ENV='emulator' && vitest run --config vitest.bench.config.ts tests/benchmarks/validation-benchmark.bench.ts --disable-console-intercept",
+    "bench:validation:quick": "export NODE_ENV='emulator' && export BENCH_QUICK=1 && vitest run --config vitest.bench.config.ts tests/benchmarks/validation-benchmark.bench.ts --disable-console-intercept",
     "test": "export NODE_ENV='emulator' && vitest run -- --reporter=basic --disable-console-intercept"
   },
   "keywords": [
