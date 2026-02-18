@@ -9,7 +9,6 @@ use cardano/transaction.{
   InlineDatum, Input, Mint, Output, OutputReference, Redeemer, ScriptPurpose,
   Transaction,
 }
-use midgard/common/constants.{fraud_category_id_byte_count}
 use midgard/common/types.{Proof}
 use midgard/common/utils.{
   get_redeemer_at, get_single_asset_from_value_apart_from_ada, has_signed,
@@ -17,6 +16,7 @@ use midgard/common/utils.{
 }
 use midgard/computation_thread as ct
 use midgard/fraud_proof
+use midgard/fraud_proof_catalogue
 use midgard/hub_oracle as hub
 use midgard/ledger_state.{
   Header, MidgardTxBodyCompact, MidgardTxCompact, MidgardTxId,
@@ -327,10 +327,8 @@ pub fn finalize(
     )
 
   // 4. Fraud prover must be presreved, with no additional `data`.
-  expect ct.StepDatum { fraud_prover: output_fraud_prover, data: None }: ct.StepDatum<
-    Data,
-  > = output_datum_data
-  expect output_fraud_prover == fraud_prover
+  let expected_output_datum_data: Data = fraud_proof.Datum { fraud_prover }
+  expect output_datum_data == expected_output_datum_data
 
   // 5. Fraud proof's minting script must be invoked (which also validates the
   //    burning of the computation thread token).
@@ -403,11 +401,12 @@ pub fn verify_tx_in_state_queue_node_and_get_header(
     )
 
   // 3. The asset name of the computation thread token must match the state
-  //    queue node key (after dropping the fraud category ID prefix).
+  //    queue node key (after dropping the fraud category ID prefix), which is
+  //    the block's header hash.
   expect
     state_queue_node_key == bytearray.drop(
       computation_thread_token_asset_name,
-      fraud_category_id_byte_count,
+      fraud_proof_catalogue.id_byte_count,
     )
 
   // 4. Specified transaction must be proven to be included in the referenced

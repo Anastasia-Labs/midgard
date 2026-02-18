@@ -1,5 +1,5 @@
 use aiken_design_patterns/validity_range_normalization.{
-  Always, ClosedRange, FromNegInf, ToPosInf,
+  Always, ClosedRange, FromNegInf, InvalidRange, ToPosInf,
 } as vrn
 use cardano/address.{Address}
 use cardano/assets.{PolicyId}
@@ -88,6 +88,7 @@ validator main(
             FromNegInf { upper } -> upper >= block_valid_to
             ToPosInf { lower } -> lower < block_valid_from
             Always -> fail @"The tx does not have an invalid time range"
+            InvalidRange -> True
           }
 
         // Done.

@@ -1,0 +1,132 @@
+cabal-version: 3.0
+name:          midgard-offchain
+version:       0.1.0.0
+
+common lang
+  ghc-options:
+    -Wall -Wcompat -Wincomplete-uni-patterns -Wno-unused-do-bind
+    -Wno-partial-type-signatures -Wno-missing-import-lists
+    -Wmissing-export-lists -Wincomplete-record-updates
+    -Wmissing-deriving-strategies -Wno-name-shadowing -Wunused-foralls
+    -Wno-unused-packages -Wno-missing-local-signatures
+    -Wno-implicit-prelude -fprint-explicit-foralls
+    -fprint-explicit-kinds -Wunused-imports
+    -Wno-missing-safe-haskell-mode -Wno-missing-kind-signatures
+    -Wno-operator-whitespace -Wno-unsafe
+    -Wno-prepositive-qualified-module -Wno-partial-fields
+    -Wno-monomorphism-restriction -Wno-missed-specialisations
+    -Wno-all-missed-specializations -Wno-unused-packages
+
+  default-extensions:
+    BangPatterns
+    BinaryLiterals
+    ConstrainedClassMethods
+    ConstraintKinds
+    DataKinds
+    DeriveAnyClass
+    DeriveDataTypeable
+    DeriveFoldable
+    DeriveFunctor
+    DeriveGeneric
+    DeriveLift
+    DeriveTraversable
+    DerivingStrategies
+    DerivingVia
+    DoAndIfThenElse
+    DuplicateRecordFields
+    EmptyCase
+    EmptyDataDecls
+    EmptyDataDeriving
+    ExistentialQuantification
+    ExplicitForAll
+    FlexibleContexts
+    FlexibleInstances
+    ForeignFunctionInterface
+    GADTSyntax
+    GeneralisedNewtypeDeriving
+    HexFloatLiterals
+    ImplicitPrelude
+    ImportQualifiedPost
+    InstanceSigs
+    KindSignatures
+    LambdaCase
+    MonomorphismRestriction
+    MultiParamTypeClasses
+    NamedFieldPuns
+    NamedWildCards
+    NoMonomorphismRestriction
+    NoStarIsType
+    NumericUnderscores
+    OverloadedLabels
+    OverloadedRecordDot
+    OverloadedStrings
+    PackageImports
+    PartialTypeSignatures
+    PatternGuards
+    PolyKinds
+    PostfixOperators
+    QualifiedDo
+    RankNTypes
+    RecordWildCards
+    RelaxedPolyRec
+    ScopedTypeVariables
+    StandaloneDeriving
+    StandaloneKindSignatures
+    TupleSections
+    TypeApplications
+    TypeFamilies
+    TypeOperators
+    TypeSynonymInstances
+    UndecidableInstances
+    ViewPatterns
+
+  default-language:   GHC2021
+
+common dependencies
+  build-depends:
+    , base
+    , base16-bytestring
+    , bytestring
+    , cardano-api        ==10.21.0.0
+    , convex-base
+    , convex-mockchain
+    , mtl
+    , plutus-ledger-api
+    , ply-core
+    , text
+
+library
+  import:          lang, dependencies
+  exposed-modules:
+    Midgard.Constants
+    Midgard.Contracts.ActiveOperators
+    Midgard.Contracts.Init
+    Midgard.Contracts.RegisteredOperators
+    Midgard.Contracts.RetiredOperators
+    Midgard.Contracts.Utils
+    Midgard.Scripts
+    Midgard.ScriptUtils
+    Midgard.Types.ActiveOperators
+    Midgard.Types.HubOracle
+    Midgard.Types.RegisteredOperators
+    Midgard.Types.RetiredOperators
+
+  hs-source-dirs:  src
+  build-depends:
+    , cardano-ledger-core
+    , convex-optics
+    , lens
+    , plutus-core
+    , plutus-tx
+
+test-suite mockchain-tests
+  import:         lang, dependencies
+  type:           exitcode-stdio-1.0
+  main-is:        Spec.hs
+  hs-source-dirs: tests
+  other-modules:  Spec.RegisterOperator
+  build-depends:
+    , midgard-offchain
+    , tasty
+    , tasty-hunit
+    , tasty-quickcheck
