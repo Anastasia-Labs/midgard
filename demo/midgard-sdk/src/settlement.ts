@@ -1,6 +1,5 @@
 import {
   Data,
-  fromHex,
   LucidEvolution,
   MintingPolicy,
   Script,
@@ -15,16 +14,13 @@ import {
   AuthenticUTxO,
   DataCoercionError,
   GenericErrorFields,
-  getStateToken,
   HashingError,
   LucidError,
   makeReturn,
   MerkleRootSchema,
-  OutputReference,
   POSIXTimeSchema,
   Proof,
   ProofSchema,
-  UnauthenticUtxoError,
   utxosToAuthenticUTxOs,
   VerificationKeyHashSchema,
 } from "@/common.js";
@@ -38,10 +34,12 @@ import { fetchHubOracleUTxOProgram, HubOracleError } from "@/hub-oracle.js";
 import { fetchSchedulerUTxOProgram, SchedulerError } from "@/scheduler.js";
 import { DepositDatum, utxosToDepositUTxOs } from "./user-events/deposit.js";
 import { TxOrderDatum, utxosToTxOrderUTxOs } from "./user-events/tx-order.js";
-import { WithdrawalOrderDatum } from "./user-events/withdrawal.js";
+import {
+  utxosToWithdrawalUTxOs,
+  WithdrawalOrderDatum,
+} from "./user-events/withdrawal.js";
 import {
   MidgardTxValiditySchema,
-  WithdrawalInfo,
   WithdrawalValiditySchema,
 } from "@/ledger-state.js";
 import { getProtocolParameters } from "@/protocol-parameters.js";
@@ -500,7 +498,7 @@ export const fetchUserEventRefUTxO = (
             Effect.map(getHeadOfList),
           )
         : "Withdrawal" in userEventType
-          ? utxosToAuthenticUTxOs<WithdrawalOrderDatum, undefined>( // TODO: change this to utxosToWithdrawalUTxOs once the withdrawal UTxO type is updated
+          ? utxosToWithdrawalUTxOs(
               allUTxOs,
               userEventPolicyId,
               WithdrawalOrderDatum,
@@ -579,7 +577,7 @@ export const incompleteDisproveResolutionClaimTxProgram = (
 
     const settlementUTxOs: SettlementUTxO[] = yield* utxosToAuthenticUTxOs<
       SettlementDatum,
-      never
+      undefined
     >(allUTxOs, params.settlementPolicyId, SettlementDatum);
     const settlementInputUtxo =
       settlementUTxOs.find(
