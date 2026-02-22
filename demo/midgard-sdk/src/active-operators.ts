@@ -1,6 +1,10 @@
-import { AuthenticUTxO, POSIXTimeSchema } from "@/common.js";
-import { LucidEvolution, TxBuilder } from "@lucid-evolution/lucid";
+import { AuthenticUTxO, LucidError, POSIXTimeSchema } from "@/common.js";
+import { LucidEvolution, TxBuilder, UTxO } from "@lucid-evolution/lucid";
 import { Data } from "@lucid-evolution/lucid";
+import {
+  Effect
+} from "effect";
+import {  utxosToAuthenticUTxOs } from "@/common.js";
 
 export const ActiveOperatorSpendRedeemerSchema = Data.Enum([
   Data.Literal("ListStateTransition"),
@@ -92,7 +96,72 @@ export type ActiveOperatorListStateTransitionParams = {};
 export type ActiveOperatorRemoveSlashBondParams = {};
 export type ActiveOperatorUpdateCommitmentTimeParams = {};
 
-export type ActiveOperatorUTxO = AuthenticUTxO<ActiveOperatorDatum, null>;
+export type ActiveOperatorUTxO = AuthenticUTxO<ActiveOperatorDatum,{ status: "ActiveOperator" }>;
+
+export type FetchActiveOperatorParams = {
+  activeOperatorsAddress: string;
+  operator: string;
+  activeOperatorsPolicyId: string;
+};
+
+export const getActiveOperatorUTxOs = (
+  params: FetchActiveOperatorParams,
+  lucid: LucidEvolution,
+): Effect.Effect<ActiveOperatorUTxO[], LucidError> =>
+  Effect.gen(function* () {
+    const allUtxos: UTxO[] = yield* Effect.tryPromise({
+      try: () => lucid.utxosAt(params.activeOperatorsAddress),
+      catch: (err) =>
+        new LucidError({
+          message: "Failed to fetch Active Operators UTxOs",
+          cause: err,
+        }),
+    });
+    if (allUtxos.length === 0) {
+      yield* new LucidError({
+        message: "Failed to build the Active Operators transaction",
+        cause: "No UTxOs found in Active Operators Contract address",
+      });
+    }
+    const activeOperatorsUTxOs: ActiveOperatorUTxO[] =
+      yield* utxosToAuthenticUTxOs<ActiveOperatorDatum>(
+        allUtxos,
+        params.activeOperatorsPolicyId,
+        ActiveOperatorDatum,
+      );
+    return activeOperatorsUTxOs;
+  });
+
+export const utxosToActiveOperatorUTxOs = (
+  lucid: LucidEvolution,
+  activeOperatorsAddress: string,
+  activeOperatorsPolicyId: string,
+  ): Effect.Effect<ActiveOperatorUTxO[],LucidError> => 
+  Effect.gen(function* () {
+  const activeOperatorAllUtxos: UTxO[] = yield* Effect.tryPromise({
+      try: () => lucid.utxosAt(activeOperatorsAddress),
+      catch: (err) =>
+        new LucidError({
+          message: "Failed to fetch Active Operators UTxOs",
+          cause: err,
+        }),
+    });
+    if (activeOperatorAllUtxos.length === 0) {
+      return yield* Effect.fail(
+        new LucidError({
+          message: "Failed to build the Active Operators transaction",
+          cause: "No UTxOs found in Active Operators Contract address",
+        })
+      );
+    }
+    const activeOperatorUTxOs: ActiveOperatorUTxO[] =
+      yield* utxosToAuthenticUTxOs<ActiveOperatorDatum,{ status: "ActiveOperator" }>(
+        activeOperatorAllUtxos,
+        activeOperatorsPolicyId,
+        ActiveOperatorDatum,
+      )
+      return activeOperatorUTxOs;
+    });
 
 /**
  * Init

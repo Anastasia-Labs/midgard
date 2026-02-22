@@ -1,6 +1,10 @@
 import { Data, getAddressDetails, Script } from "@lucid-evolution/lucid";
-import { Data as EffectData } from "effect";
-import { Effect } from "effect";
+import {
+  Data as EffectData,
+  Array as EffectArray,
+  Effect,
+  Option,
+} from "effect";
 import {
   Address,
   Assets as LucidAssets,
@@ -13,6 +17,8 @@ import {
   toHex,
 } from "@lucid-evolution/lucid";
 import { blake2b } from "@noble/hashes/blake2.js";
+import { ActiveOperatorDatum, ActiveOperatorUTxO } from "./active-operators.js";
+import { RetiredOperatorDatum, RetiredOperatorUTxO } from "./retired-operators.js";
 
 export const makeReturn = <A, E>(program: Effect.Effect<A, E>) => {
   return {
@@ -393,7 +399,7 @@ export const getDatumFromUTxO = <TDatum>(
 /**
  * Validates correctness of datum, and having a single NFT.
  */
-export const utxoToAuthenticUTxO = <TDatum, TExtra>(
+export const utxoToAuthenticUTxO = <TDatum, TExtra= undefined>(
   utxo: UTxO,
   nftPolicy: string,
   schema: any,
@@ -425,7 +431,7 @@ export const utxoToAuthenticUTxO = <TDatum, TExtra>(
 /**
  * Silently drops invalid UTxOs.
  */
-export const utxosToAuthenticUTxOs = <TDatum, TExtra>(
+export const utxosToAuthenticUTxOs = <TDatum, TExtra= undefined>(
   utxos: UTxO[],
   nftPolicy: string,
   schema: any,
@@ -435,6 +441,37 @@ export const utxosToAuthenticUTxOs = <TDatum, TExtra>(
     utxoToAuthenticUTxO<TDatum, TExtra>(u, nftPolicy, schema, extraFields),
   );
   return Effect.allSuccesses(effects);
+};
+
+export const findOperatorByPKH = (
+  activeOperators: ActiveOperatorUTxO[],
+  retiredOperators: RetiredOperatorUTxO[],
+  operatorPKH: string
+): Effect.Effect<ActiveOperatorUTxO | RetiredOperatorUTxO, LucidError> => {
+  const activeOperatorMatch = EffectArray.findFirst(
+    activeOperators,
+    (op) => op.datum.key === operatorPKH
+  );
+  
+  if (Option.isSome(activeOperatorMatch)) {
+    return Effect.succeed(activeOperatorMatch.value);
+  }
+
+  const retiredOperatorMatch = EffectArray.findFirst(
+    retiredOperators,
+    (op) => op.datum.key === operatorPKH
+  );
+  
+  if (Option.isSome(retiredOperatorMatch)) {
+    return Effect.succeed(retiredOperatorMatch.value);
+  }
+  
+  return Effect.fail(
+    new LucidError({
+      message: `No Operator UTxO with key "${operatorPKH}" found`,
+      cause: "Operator not found in active or retired UTxOs",
+    })
+  );
 };
 
 export type GenericErrorFields = {
