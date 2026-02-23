@@ -6,8 +6,8 @@
 \label{h:linked-list}
 
 The linked list is a versatile data structure that can implement sets, queues, key-value maps, lazy data sequences, and other interesting data structures.
-It is particularly useful in the extended UTXO model of the Cardano blockchain, where many list operations and queries can be validated onchain within minimal local contexts that do not grow with list size.
-Meanwhile, offchain queries can access any part of the list via beacon NFTs that pinpoint specific list nodes.
+It is particularly useful in the extended utxo model of the Cardano blockchain, where many list operations and queries can be validated onchain within minimal local contexts that do not grow with list size.
+Meanwhile, offchain queries can access any part of the list via beacon NFTs that pinpoint specific list elements.
 
 We describe two types of linked lists:
 
@@ -15,18 +15,31 @@ We describe two types of linked lists:
     \item The \textbf{key-unordered} linked list is a cheaper/simpler variant that only allows nodes to be appended at the end of the list and does not enforce the order of keys in the list.
       It can be used to implement queues and other sequential data structures.
       However, appending to a list is a sequential operation, which is unsuitable for applications that need multiple independent actors to grow the list simultaneously.
-    \item The \textbf{key-ordered} linked list allows nodes to be inserted anywhere in the list, but it applies additional rules to maintain the key-ascending order of nodes.
+    \item The \textbf{key-ordered} linked list allows nodes to be inserted anywhere in the list, but it applies additional rules to maintain the key-ascending (or descending) order of nodes.
       It can be used to implement sets and key-value maps.
       List insertion is increasingly parallel as the list grows, so the key-ordered linked list is well-suited to applications with multiple independent actors growing the list (see \cref{h:parallel-insertions-in-key-ordered-lists}).
+\end{itemize}
+
+\subsection{Terminology}
+\label{h:list-terminology}
+\begin{itemize}
+  \item \textbf{Elements.} Individual units that collectively constitute a linked list.
+  \item \textbf{Root.} The first element of a linked list, which serves as the anchor point for the list and is the only element that can exist in an empty list.
+  \item \textbf{Nodes.} Elements of a linked list that are not the root.
+  \item \textbf{Root Key.} The reserved asset name of the root element's NFT.
+  \item \textbf{Node Key.} The bytearray that identifies a node in the list and is stored in the node's NFT asset name after a reserved prefix.
+  \item \textbf{Link.} A potential forward pointer from an element to the next node's key in the list.
+  \item \textbf{Head.} The first node of a non-empty list, which is the node linked to by the root element.
+  \item \textbf{Anchor.} The parent element (either root or node) that points to its next node's key.
 \end{itemize}
 
 \subsection{Utxo representation}
 \label{h:list-utxo-representation}
 
-Each linked list, whether key-ordered or key-unordered, is represented in the blockchain ledger as a collection of node utxos that hold node NFTs minted by the list's minting policy and are held under the list's spending validator.
-The spending validator is parameterized by the minting policy, and the minting policy is parameterized by the utxo reference of one of the spent inputs in the transaction that initializes the list.
+Each linked list, whether key-ordered or key-unordered, is represented in the blockchain ledger as a collection of element utxos that hold some ADA, plus NFTs minted by the list's minting policy and are held under the list's spending validator.
+The spending validator is aware of the minting policy (either as a parameter or other means), and the minting policy must have a way of ensuring uniqueness of the linked list it initializes.
 
-Each node utxo of a list uniquely corresponds to some \code{ByteArray} key and holds a node NFT with a token name equal to that key's serialization.
+Each element utxo of a list uniquely corresponds to some \code{ByteArray} key and holds an NFT with an asset name equal to that key's serialization, with a potential prepended label for nodes.
 The key-ordered list's state transitions guarantee that all nodes have unique keys, but the key-unordered list's state transitions only assume that keys are unique.
 
 \newcommand{\unorderedListWarning}[0]{
@@ -37,529 +50,349 @@ Duplicate keys break the linked list data structure.
 }
 \unorderedListWarning
 
-Every node utxo has a datum of the \code{NodeDatum} type, which is parametric on the \code{app\_data} type of the non-key data that is to be stored in the list nodes:
+Every element utxo has a datum of the \code{Element} type, which is parametric on \code{root\_data} and \code{node\_data} types of the data that is to be stored in the list elements:
 \begin{equation*}
-    \T{NodeDatum} (\T{app\_data}) \coloneq \left\{
+    \T{Element} (\T{root\_data}, \T{node\_data}) \coloneq \left\{
     \begin{array}{ll}
-        \T{key}  : & \T{Option}(\T{ByteArray}) \\
         \T{link} : & \T{Option}(\T{ByteArray}) \\
-        \T{data} : & \T{app\_data}
+        \T{data} : & \T{ElementData} (\T{root\_data}, \T{node\_data})
     \end{array} \right\}
 \end{equation*}
 
-The \code{key} field indicates the node's key (or \code{None} for the root node).
-\footnote{The key field is redundant, as it is already represented in the node NFT, but we include it in the datum for convenience in onchain scripts and offchain analytics.} It must match the token name of the node's NFT when serialized:\footnote{Prefixing the key when it is serialized to the token name prevents a collision between the root node and a node with an empty key string.
-It also allows more flexibility for minting policies that use the linked list library to atomically mint additional tokens associated with the key but namespaced from the node NFTs.
-Alternatively, if this functionality is not needed, the ``Node'' prefixes can be removed from the serialization.}
+The distinction between root elements and nodes is identifiable by the NFTs' asset names.
+That is, the NFT of root element has a reserved asset name, while the NFTs of node elements must be unique bytearrays with an optional reserved prefix.\footnote{Prefixing the key when it is serialized to the asset name prevents a collision between the root and a node with an empty key string.
+It also allows more flexibility for minting policies that use the linked list library to atomically mint additional tokens associated with the key but namespaced from the node NFTs.}
+Additionally, \code{ElementData} is a sum type that provides type-level information about the data stored in root and node elements.
 \begin{align*}
-    \T{serialize\_key} (\T{None}) &\coloneq \T{``Node''} \\
-    \T{serialize\_key} (\T{Some} (\T{key})) &\coloneq \T{concat(``Node'', key)} 
+  \T{ElementData} \coloneq\;& \T{Root} (\T{root\_data}) \\
+                      \mid\;& \T{Node} (\T{node\_data})
 \end{align*}
 
-The root node of a list is the only node with a \code{key} field value of \code{None} in its \code{NodeDatum} and its NFT token name set to \code{``Node''}.
-The root node is created when a list is initialized and must continue to exist until the list is deinitialized.
-This allows an initialized but empty list to be represented by just its root node (and no other nodes).
-The non-root nodes represent the actual keys and data of interest within a non-empty list.
+There is no notion of keys in \code{Element} as the data is already present in the NFTs.
+If keys are needed to be shared between other contracts of a transaction, they can be included in the redeemer and validated by the minting policy.\footnote{Any interaction with linked list elements requires authenticating their NFTs, which consists of validating the asset names are prefixed with the hardcoded value.
+However, in transactions where other contracts are executed along list's minting policy and need access to elements' keys, provision in the mint redeemer can relieve those other contracts from re-extracting the key from asset names.}
+
+The root element is created when a list is initialized and must continue to exist until the list is deinitialized.
+This allows an initialized but empty list to be represented by just its root (and no nodes), containing a special data.
+The nodes represent the actual keys and data of interest within a non-empty list.
 
 The \code{link} field is a link to the next key that a forward traversal through the list must visit after visiting the current node.
 Alternatively, the \code{link} field can be interpreted as the previous key that a backward traversal through the list has visited before the current node.
 The last node is the only node with a \code{link} field value of \code{None} because forward traversal through the list must end after this node (backward traversal must start at this node).
 
-The \code{data} field is parametric on the \code{app\_data} type set by the application that instantiates the list.
-It is reserved for use by the application's custom onchain code.
-
 \subsection{Linked list library structure}
 \label{h:list-library-structure}
 
-The linked list library provides a collection of \emph{rules} that enforce the baseline behavior of linked lists.
-An application using the list data structure should invoke one of these rules whenever it needs a particular linked list operation to occur within the context of the application's custom state transitions.
+The linked list library is designed with a strong focus on alleviating users from the core logic of linked lists and allowing them to focus solely on their application's custom logic.
+There are three kinds of functions in the linked list library:
+\begin{itemize}
+  \item \textbf{For Minting.} Core logic of various state transition operations, namely element additions and removals.
+  \item \textbf{For Spending.} Linked list elements must be spendable to either allow state transitions or to allow modifications to the \code{data} field of element datums without changing the list structure.
+  \item \textbf{For Inspection.} Validating the presence of particular element utxos in the transaction by other contracts, and validating the contents of their datums.
+\end{itemize}
 
-Linked list rules are predicate functions that can be freely composed with any custom application rules via logical conjunction.
-In this way, while the linked list rules control which operations can be performed on a list and how they must be performed, applications can apply further constraints on the circumstances under which the operations are allowed.
+Provided functions for minting each implement a particular linked list operation, and provide users with values that are independent of the linked list's internal logic.
+These return values are designed to provide guardrails so that users can cover all edge cases.
 
-The state transition rules control how lists are initialized/deinitialized and how nodes are added/removed from the list.
-These rules should be invoked in the application's minting policy for the list because every state transition of the list changes the number of list nodes, so it must necessarily mint or burn node NFTs.
+There are only two functions for spending: one for updating element data with preservation of list's state, and one for state transitions.
 
-The state integrity rules ensure that node NFTs stay in their respective node utxos until burned and that the \code{key} and \code{link} fields remain unchanged outside of linked list state transitions.
-These rules should be invoked in the application's spending validator for the list.
-
-Neither the state transition nor the state integrity rules inspect the \code{data} field of node utxos, nor do they inspect the value held by node utxos besides node NFTs.
-Applications are free to use these as they wish.
+The inspection function validates authenticity of the referenced element and provides various information about the element.
 
 \Cref{h:instantiate-list-in-application} describes how to instantiate a linked list within an application and compose the linked list rules with custom app rules.
 
-\subsection{State integrity rules}
-\label{h:list-state-integrity-rules}
+\subsection{Common validations}
+\label{h:list-common-validations}
 
-The state integrity rules distinguish between transactions that apply linked list state transitions and transactions that merely modify the \code{data} field or non-node-NFT value of a node utxo.
+\textbf{Element authenticity.} A common requirement for all of the above operations is validating the authenticity of involved element utxos.
+The required conditions for each element are:
+\begin{itemize}
+    \item The element utxos must hold some ADA, and NFTs of the list's minting policy with correct asset names with no other tokens.
+    \item The element utxos must have inline datums that parse as \code{Element}.
+    \item No reference script must be attached to the utxo.\footnote{This is an opinionated design decision that is not strictly necessary for the linked list itself.
+      See \cref{h:list-opinionated-design-decisions}.}
+\end{itemize}
 
+Throughout this document we refer to the above conditions with the keyword \textbf{Authentic} for short.
+
+\textbf{Proper continuation.} Another common requirement for all state transition operations is validating the proper reproduction of anchor elements.
+This requirment also involves another element that is either being added to the list or removed from it.
+Conditions:
+\begin{itemize}
+  \item Let \code{input\_anchor} be the element that is getting spent.
+  \item Let \code{output\_anchor} be the reproduction of \code{input\_anchor} in the transaction outputs.
+  \item Let \code{node} be the element that is being added or removed from the list.
+  \item \code{input\_anchor}, \code{output\_anchor}, and \code{node} must all be Authentic.
+  \item \code{input\_anchor} and \code{output\_anchor} must match on address, asset names of their NFTs, and datum.
+  \item Address of \code{node} must have the same payment credential as \code{input\_anchor} and \code{output\_anchor}.\footnote{Note here that \code{node} is not being enforced to share the same staking part as its anchor.
+    This is another design decision to balance flexibility and user-friendliness of the API.}
+\end{itemize}
+
+Throughout this document we refer to the above conditions with the keyword \textbf{Continue} for short.
+
+\subsection{Minting helpers}
+\label{h:list-minting-helpers}
+
+Linked list operations that change the state of the list require minting or burning tokens of the list's minting policy.
+These operations can be grouped into four categories:
+\begin{itemize}
+  \item \textbf{Initialize.} Initialize an empty list by minting the root node NFT.
+  \item \textbf{Deinitialize.} Deinitialize an empty list by burning the root node NFT.
+  \item \textbf{Addition.} Add a new node to the list by minting a new node NFT and updating the link of an anchor element.
+  \item \textbf{Removal.} Remove a non-root node from the list by burning its node NFT and updating the link of its anchor element.
+\end{itemize}
+
+The provided functions are as follows:
 \begin{description}
-    \item[List State Transition.]
-    This rule allows a node utxo to be spent in any transaction that applies a state transition to the list.
+    \item[Init.] Mint the root NFT with a given root key, and validate the attached data.
+      Conditions:
+      \begin{enumerate}
+        \item Let \code{nonce\_validated} be a reminder argument for ensuring uniqueueness of the initialized list.
+          This condition must be satisfied.
+        \item Let \code{produced\_element} be the specified output of the transaction that's meant to represent the list's root.
+        \item \code{produced\_element} must be Authentic.
+        \item Underlying \code{data} of \code{produced\_element}'s \code{Element} must parse as \code{Root}.
+          Let this data be \code{root\_data}.
+        \item \code{produced\_element} must not have a link.
+        \item Asset name of the NFT in \code{produced\_element} must be the reserved root key.
+        \item Let \code{lovelace\_count} be the amount of lovelace in \code{produced\_element}.
+        \item Custom validation on \code{lovelace\_count} and \code{root\_data} must pass.
+      \end{enumerate}
+
+    \item[Deinit.] Burn the root NFT with a given root key, and validate the attached data.
+      Conditions:
+      \begin{enumerate}
+        \item Let \code{spent\_element} be the specified input of the transaction that's meant to represent the list's root.
+        \item \code{spent\_element} must be Authentic.
+        \item Underlying \code{data} of \code{spent\_element}'s \code{Element} must parse as \code{Root}.
+          Let this data be \code{root\_data}.
+        \item \code{spent\_element} must not have a link.
+        \item Asset name of the NFT in \code{spent\_element} must be the reserved root key.
+        \item Let \code{lovelace\_count} be the amount of lovelace in \code{spent\_element}.
+        \item Custom validation on \code{lovelace\_count} and \code{root\_data} must pass.
+      \end{enumerate}
+    
+    \item[Insert.] Add a new node in the list such that its key properly follows either an ascending or descending order.
+      Conditions:
+      \begin{enumerate}
+        \item Let \code{new\_element} be the element that is being added to the list.
+        \item Let \code{input\_anchor} be the element that is meant to be parent of \code{new\_element}.
+        \item Let \code{output\_anchor} be the reproduction of \code{input\_anchor} in the transaction outputs.
+        \item \code{new\_element}, \code{input\_anchor}, and \code{output\_anchor} must Continue.
+        \item \code{data} of \code{new\_element} must parse as \code{Node}.
+          Let its key be \code{new\_key} and \code{new\_data} be its underlying data.
+        \item Transaction must mint a new node NFT with an asset name equal to concatenation of the reserved prefix with \code{new\_key}.
+        \item \code{link} of \code{output\_anchor} must point to \code{new\_key}.
+        \item Let \code{new\_link} be the \code{link} of \code{new\_element}.
+        \item \code{new\_link} must be the same as \code{anchor\_link}.
+        \item \code{new\_key} and \code{new\_link} must satisfy the key order of the list (ascending or descending).
+        \item Let \code{new\_lovelace} be the amount of Lovelace in \code{new\_element}, and \code{anchor\_lovelace\_change} be the change in the amount of Lovelace in \code{output\_anchor} compared to \code{input\_anchor}.
+        \item \code{data} of \code{input\_anchor} must parse as either \code{Root} or \code{Node}.
+          \begin{itemize}
+            \item If \code{data} of \code{input\_anchor} parses as \code{Root}:
+              \begin{enumerate}[resume]
+                \item Asset name of the NFT in \code{input\_anchor} must be the reserved root key.
+                \item Let \code{root\_data} be the data parsed from \code{input\_anchor}.
+                \item Custom validation must pass given:
+                  \begin{itemize}
+                    \item \code{anchor\_lovelace\_change}
+                    \item \code{root\_data}
+                    \item \code{new\_lovelace}
+                    \item \code{new\_key}
+                    \item \code{new\_data}
+                    \item \code{new\_link}
+                  \end{itemize}
+              \end{enumerate}
+            \item Otherwise, if \code{data} of \code{input\_anchor} parses as \code{Node}:
+              \begin{enumerate}[resume]
+                \item Let \code{anchor\_key} be the key of \code{input\_anchor}.
+                \item Asset name of the NFT in \code{input\_anchor} must be the reserved prefix concatenated with \code{anchor\_key}.
+                \item \code{anchor\_key} and \code{new\_key} must satisfy the key order of the list (ascending or descending).
+                \item Let \code{anchor\_data} be the data parsed from \code{input\_anchor}.
+                \item Custom validation must pass given:
+                  \begin{itemize}
+                    \item \code{anchor\_lovelace\_change}
+                    \item \code{anchor\_key}
+                    \item \code{anchor\_data}
+                    \item \code{new\_lovelace}
+                    \item \code{new\_key}
+                    \item \code{new\_data}
+                    \item \code{new\_link}
+                  \end{itemize}
+              \end{enumerate}
+          \end{itemize}
+      \end{enumerate}
+    \item[Append unordered.] Add a node to the end of the list.
+      Conditions are identical to the Insert operation, with only one different stipulation:
+      \begin{enumerate}
+        \item \code{input\_anchor} must have no \code{link} (i.e., it must be the last element of the list).
+      \end{enumerate}
+    \item[Prepend unordered.] Add a node in the list as the new head.
+      Conditions are identical to the Insert operation, with only one extra stipulation:
+      \begin{enumerate}
+        \item \code{data} of \code{input\_anchor} must parse as \code{Root}.
+      \end{enumerate}
+    \item[Remove.] Remove a node from the list.
+      Conditions:
+      \begin{enumerate}
+        \item Let \code{removed\_element} be the element that is being removed from the list.
+        \item Let \code{input\_anchor} be the element that is meant to be parent of \code{removed\_element}.
+        \item Let \code{output\_anchor} be the reproduction of \code{input\_anchor} in the transaction outputs.
+        \item \code{removed\_element}, \code{input\_anchor}, and \code{output\_anchor} must Continue.
+        \item \code{data} of \code{removed\_element} must parse as \code{Node}.
+          Let its key be \code{removed\_key} and \code{removed\_data} be its underlying data.
+        \item Transaction must burn the node NFT with an asset name equal to concatenation of the reserved prefix with \code{removed\_key}.
+        \item Let \code{removed\_link} be the \code{link} of \code{removed\_element}.
+        \item \code{link} of \code{input\_anchor} must point to \code{removed\_key}.
+        \item \code{link} of \code{output\_anchor} must be the same as \code{removed\_link}.
+        \item Let \code{removed\_lovelace} be the amount of Lovelace in \code{removed\_element}, and \code{anchor\_lovelace\_change} be the change in the amount of Lovelace in \code{output\_anchor} compared to \code{input\_anchor}.
+        \item \code{data} of \code{input\_anchor} must parse as either \code{Root} or \code{Node}.
+          \begin{itemize}
+            \item If \code{data} of \code{input\_anchor} parses as \code{Root}:
+              \begin{enumerate}[resume]
+                \item Asset name of the NFT in \code{input\_anchor} must be the reserved root key.
+                \item Let \code{root\_data} be the data parsed from \code{input\_anchor}.
+                \item Custom validation must pass given:
+                  \begin{itemize}
+                    \item \code{anchor\_lovelace\_change}
+                    \item \code{root\_data}
+                    \item \code{removed\_lovelace}
+                    \item \code{removed\_key}
+                    \item \code{removed\_data}
+                    \item \code{removed\_link}
+                  \end{itemize}
+              \end{enumerate}
+            \item Otherwise, if \code{data} of \code{input\_anchor} parses as \code{Node}:
+              \begin{enumerate}[resume]
+                \item Let \code{anchor\_key} be the key of \code{input\_anchor}.
+                \item Asset name of the NFT in \code{input\_anchor} must be the reserved prefix concatenated with \code{anchor\_key}.
+                \item Let \code{anchor\_data} be the data parsed from \code{input\_anchor}.
+                \item Custom validation must pass given:
+                  \begin{itemize}
+                    \item \code{anchor\_lovelace\_change}
+                    \item \code{anchor\_key}
+                    \item \code{anchor\_data}
+                    \item \code{removed\_lovelace}
+                    \item \code{removed\_key}
+                    \item \code{removed\_data}
+                    \item \code{removed\_link}
+                  \end{itemize}
+              \end{enumerate}
+          \end{itemize}
+      \end{enumerate}
+    \item[Fold from root.] Remove the head node of the list and update root's data.
+      Conditions are identical to the Remove operation, with some differences:
+      \begin{enumerate}
+        \item The three elements must Continue, however there is no stipulation for \code{data} of \code{input\_anchor} to be the same as \code{output\_anchor} data.
+          This allows the root's data to be modified.
+        \item \code{data} of \code{input\_anchor} and \code{output\_anchor} must both parse as \code{Root}.
+          Let them be \code{input\_root\_data} and \code{output\_root\_data}, respectively.
+        \item Custom validation is provided with both \code{input\_root\_data} and \code{output\_root\_data} in addition.
+      \end{enumerate}
+\end{description}
+
+\subsection{Spending helpers}
+\label{h:list-spending-helpers}
+
+All list state transitions involve spending at least one element utxos, which means the contract address holding the element utxos must have means of allowing them to be spent.
+Additionally, there are situations where an application may want to allow spending of element utxos without changing the list structure.
+
+The library provides two functions for spending:
+\begin{description}
+  \item[State transition.] Allows spending of element utxos for adding or removing an element from the list.
     Conditions:
     \begin{enumerate}
-        \item Tokens of the list's minting policy must be minted or burned.
+      \item The transaction must mint/burn a non-zero quantity of tokens with policy ID that corresponds to the element NFTs.
     \end{enumerate}
-    
-    \item[Modify Data.]
-    This rule ensures that the node NFT, the \code{key} field, and the \code{link} field remain unchanged in any transaction that does not apply a state transition to the list.
-    It achieves it as follows:
-
+  \item[Update data.] Update the \code{data} field of an element's datum without changing the list structure.
+    Conditions:
     \begin{enumerate}
-        \item Tokens of the list's minting policy must \emph{not} be minted or burned.
-        \item Let \code{own\_input} be the node utxo input for which this rule is being evaluated.
-        \item Let \code{own\_output} be an output of the transaction indicated by a redeemer argument of the spending validator.
-        \item The node NFT of the list must be present in \code{own\_input}.
-        \item The value must match in \code{own\_input} and \code{own\_output}.
-        \item The \code{key} and \code{link} fields must match in \code{own\_input} and \code{own\_output}.
+      \item Let \code{input\_element} be the element that is being updated, and \code{output\_element} be its reproduction in the transaction outputs.
+      \item \code{input\_element} and \code{output\_element} must both be Authentic.
+      \item Addresses, asset names of the NFTs, and \code{link} fields of \code{input\_element} and \code{output\_element} must match.
+      \item Let \code{element\_lovelace\_change} be the change in the amount of Lovelace in \code{output\_element} compared to \code{input\_element}.
+      \item \code{data} of \code{input\_element} must parse as either \code{Root} or \code{Node}.
+        \item If \code{data} of \code{input\_element} parses as \code{Root}:
+          \begin{enumerate}[resume]
+            \item Let \code{input\_root\_data} be the data parsed from \code{input\_element}.
+            \item \code{data} of \code{output\_element} must also parse as \code{Root}.
+              Let this data be \code{output\_root\_data}.
+            \item Asset name of the NFT in \code{input\_element} must be the reserved root key.
+            \item Custom validation must pass given:
+              \begin{itemize}
+                \item \code{element\_lovelace\_change}
+                \item \code{input\_root\_data}
+                \item \code{output\_root\_data}
+              \end{itemize}
+          \end{enumerate}
+        \item Otherwise, if \code{data} of \code{input\_element} parses as \code{Node}:
+          \begin{enumerate}[resume]
+            \item Let \code{input\_node\_data} be the data parsed from \code{input\_element}.
+            \item \code{data} of \code{output\_element} must also parse as \code{Node}.
+              Let this data be \code{output\_node\_data}.
+            \item Let \code{node\_key} be the key of \code{input\_element}.
+            \item Asset name of the NFT in \code{input\_element} must be the reserved prefix concatenated with \code{node\_key}.
+            \item Custom validation must pass given:
+              \begin{itemize}
+                \item \code{element\_lovelace\_change}
+                \item \code{node\_key}
+                \item \code{input\_node\_data}
+                \item \code{output\_node\_data}
+              \end{itemize}
+          \end{enumerate}
     \end{enumerate}
-    
-    To keep the onchain code simple and efficient, this rule can only handle content modifications to one node utxo per list.
-    In principle, this could be generalized to handle bulk modifications of node contents, but that would require more expensive computations to match node inputs with node outputs.
 \end{description}
 
-\subsection{List subcontext for state transition rules}
-\label{h:list-subcontext}
+\subsection{Inspection helpers}
+\label{h:list-inspection-helpers}
 
-State transition rules of a linked list are only concerned with a transaction's effects on the list's node utxos.
-Consequently, they focus on the following linked list subcontext, which is a subset of the overall transaction context:
+Some contracts may need to refer to elements of other linked list contracts to e.g. prove membership of a given key in those sets.
+Relying on the information extracted consists of proving authenticity of the referred utxos.
+
+After validating the element is Authentic, users are provided with following data:
 \begin{itemize}
-    \item \code{node\_cs} is the minting policy ID of the list.
-    \item \code{node\_mint} is the map of tokens of the list's minting policy that were minted or burned.
-    \item \code{node\_inputs} are the transaction inputs that hold node NFTs of the list and datums that parse as \code{NodeDatum}.
-    \item \code{node\_outputs} are the transaction outputs that hold node NFTs of the list and datums that parse as \code{NodeDatum}.
+  \item Lovelace count of the element.
+  \item A possible node key, since roots have reserved root keys.
+  \item Underlying data of the element.
+  \item Element's link.
 \end{itemize}
 
-The state transition rules ignore the rest of the transaction context, which does not affect the state of the list.
-However, applications invoking the state transition rules are free to consider the whole transaction context to constrain the circumstances under which they allow linked list state transitions to occur.
+\subsection{Reader monad interface}
+\label{h:list-reader-monad-interface}
 
-\subsection{Node and key predicates}
-\label{h:list-node-key-predicates}
-
-The following predicate functions characterize nodes and keys in a linked list subcontext relative to the global state of the list.
-
-\begin{description}
-    \item[Root node.] The root node of the list:
-        \begin{align*}
-            \T{is\_root\_node} (\T{node}) &\coloneq
-              ( \T{node.datum.key} \equiv \T{None} )
-        \end{align*}
-        
-    \item[Last node.] The last node of the list:
-        \begin{align*}
-            \T{is\_last\_node} (\T{node}) &\coloneq
-              ( \T{node.datum.link} \equiv \T{None} )
-        \end{align*}
-
-    \item[Empty list.] The list is empty if its root node is also its last node:
-        \begin{equation*}
-            \T{is\_root\_node}(\T{node}) \land
-            \T{is\_last\_node}(\T{node})
-        \end{equation*}
-    
-    \item[Key added.] The transaction only affects the list by adding the given key:
-        \begin{align*}
-            \T{key\_added} (\T{key}, \T{node\_cs}, \T{node\_mint}) &\coloneq
-                \Bigl( \T{without\_lovelace}(\T{node\_mint}) \\ &\qquad\equiv
-                  \T{from\_asset}(\T{node\_cs}, \T{serialize\_key}(\T{key}), 1)
-                \Bigr)
-        \end{align*}
-
-    \item[Key removed.] The transaction only affects the list by removing the given key:
-        \begin{align*}
-            \T{key\_removed} (\T{key}, \T{node\_cs}, \T{node\_mint}) &\coloneq
-                \Bigl( \T{without\_lovelace}(\T{node\_mint}) \\ &\qquad\equiv
-                  \T{from\_asset}(\T{node\_cs}, \T{serialize\_key}(\T{key}), -1)
-                \Bigr)
-        \end{align*}
-    
-    \item[Key membership.] The given key is a member of the list, proved by the existence of a witness node that satisfies the following predicate for the key.
-        \begin{align*}
-            \T{is\_member} (\T{key}, \T{node}) &\coloneq
-              ( \T{key} \equiv \T{node.datum.key} )
-        \end{align*}
-        \begin{itemize}
-            \item When the above predicate is satisfied by a transaction input, it means that the key is a member of the list immediately before the transaction.
-            \item When the above predicate is satisfied by a transaction output, it means that the key is a member of the list immediately after the transaction.
-        \end{itemize}
-
-    \item[Key non-membership (ordered lists only!).] The given key is \emph{not} a member of the list, as proved by the existence of witness a node that satisfies the following predicate for the key:
-        \begin{align*}
-            &\T{is\_non\_member} (\T{None}, \T{\_node}) \coloneq \T{False} \\
-            &\T{is\_non\_member} (\T{Some}(\T{key}), \T{node}) \coloneq \\
-            &\qquad
-                \Bigl( \T{is\_root\_node} (\T{node}) 
-                    \lor (\T{node.datum.key} < \T{Some}(\T{key})) \Bigr) \\
-            &\qquad\qquad\land
-                \Bigl( \T{is\_last\_node} (\T{node}) 
-                    \lor (\T{Some}(\T{key}) < \T{node.datum.link}) \Bigr)
-        \end{align*}
-        \begin{itemize}
-            \item When the above predicate is satisfied by a transaction input, it means that the key is not a member of the list immediately before the transaction.
-            \item When the above predicate is satisfied by a transaction output, it means that the key is not a member of the list immediately after the transaction.
-        \end{itemize}
-    In human terms, the key non-membership proof describes four possible scenarios in which a key is not a member of a key-ordered list:
-    \begin{enumerate}
-        \item The list is empty.
-        \item The root node links to a node with a higher key than the given key, which precludes the given key's membership because all subsequent nodes visited after this node will have monotonically increasing keys.
-        \item The last node has a key lower than the given key, which precludes the given key's membership because all nodes visited before the last node have even smaller keys.
-        \item A non-root non-last node has a lower key but links to a higher key than the given key, which precludes the given key's membership because all nodes before this node have smaller keys, and all nodes after this node have larger keys.
-    \end{enumerate}
-    For a key-unordered list, the only way to prove the non-membership of a key is to iterate over the entire list in the transaction inputs, which quickly becomes infeasible for lists larger than the empty list.
-    The \code{is\_non\_member} predicate does \emph{not} apply to key-unordered lists.
-\end{description}
-
-\subsection{Indexing into a list}
-\label{h:indexing-into-a-list}
-
-The main way to index into a list is by key.
-Every linked list, whether key-ordered or key-unordered (if its keys are unique), has a canonical surjective mapping from its domain of all possible keys onto the nodes it contains:
+Linked list elements have two constants:
 \begin{itemize}
-    \item If a given key is a member of the list, it is mapped to the node that proves its membership.
-    \item Otherwise, the key is mapped to the node that proves its non-membership.
+  \item The root key
+  \item And the prefix of node keys in node NFT asset names
 \end{itemize}
 
-In the offchain context, indexing by key requires traversing the list to the node that proves the key's membership or non-membership.
-However, indexing by key is cheap in the onchain context because only that single node needs to be an input to the transaction.
+To allow these to be stated only once, most helpers return functions that require provisions of these reserved values.
+In addition to the root key and node asset name labels, the reader monad also requires the number of bytes the labels occupy.
+While this is a value that should be derived from the labels themselves, its provision prevents extra performance overhead.
 
-The other way to index into a list is by position, which requires traversing the list to the node at that position in both the offchain and onchain contexts.
-The root and last nodes are the cheapest to reach because they intrinsically define their positions within the list, so inspecting any other nodes is unnecessary.
+\subsection{Opinionated design decisions}
+\label{h:list-opinionated-design-decisions}
 
-The first and second-last nodes are the next cheapest to reach because they are adjacent to the root and last nodes, respectively.
-This means that the root node must be an input when indexing into the first node, while the last node must be an input when indexing into the second-last node.
-The farther a node is from the root or last node, the larger this chain of inputs grows to establish its position in the list.
-
-\subsection{Onchain traversal of a list}
-\label{h:onchain-traversal-list}
-
-In the onchain context, read-only traversal through a list is more efficient backwards than forwards when the only thing that the traversal needs to know about the previously visited node is its key.
-In that case, backward traversal only needs the current node to be a transaction input because the current node's \code{link} field matches the key of the previously visited node.
-
-By contrast, read-only forward traversal requires both nodes to be transaction inputs because it only knows which node it should be visiting by inspecting the previously visited node's \code{link} field.
-Of course, the traversal state could instead keep a copy of the \code{link} field of the previously visited node, but that copy can become stale if the list is not kept immutable during the traversal.
-
-On the other hand, forward traversal is more efficient when the list is destructively folded into an accumulator that is stored at the root node.
-In that case, the root node needs to be updated anyway, and it always points to the next node that the traversal should visit.
-
-\subsection{Key-unordered linked list}
-\label{h:key-unordered-list}
-
-The key-unordered linked list data structure does \emph{not} keep its nodes ordered by their keys.
-This means that a new node cannot be added to the list based on its key because the list does not require the key to be positioned after any particular node in the list.
-
-This leaves only adding new nodes to the list at specific absolute positions.
-We restrict these positions even further to just the beginning and end of the list because other positions would require increasingly larger chains of reference inputs to establish the new node's position.
-
-Therefore, the key-unordered linked list data structure allows new nodes to be added to the beginning or end of the list, while non-root nodes can be removed anywhere in the list.
-It enforces the following properties:
-\begin{enumerate}
-    \item The root node exists continuously until the list is initialized.
-    \item If the keys in the list are unique, then each node has only one node linking to it.
-    \item If the keys in the list are unique, then traversal through the list is deterministic.
-\end{enumerate}
-
-\subsubsection{State transition rules}
-\label{h:key-unordered-list-state-transition-rules}
-
-\newcommand{\initSpendingValidatorWarning}[0]{
-    \begin{warningblock}
-        Offchain code for the list-initialization transaction MUST send the root node to the list's spending validator.
-        Otherwise, the linked list can be corrupted.
-    \end{warningblock}
-}
-
-\begin{description}
-    \item[Init.] Initialize an empty list.
-      Conditions:
-        \begin{enumerate}
-            \item The transaction's sole effect on the list is to add the root key.
-                \begin{equation*}
-                    \T{key\_added}(\T{None}, \T{node\_cs}, \T{node\_mint})
-                \end{equation*}
-            
-            \item The list must be empty after the transaction, as proved by an output \code{root\_node} that holds the minted root node NFT.
-                \begin{equation*}
-                    \T{is\_empty\_list}(\T{root\_node})  \land
-                    \T{has\_token}(\T{root\_node}, \T{node\_cs}, \T{``Node''})
-                \end{equation*}
-            \item The \code{root\_node} must not contain any other non-ADA tokens.
-        \end{enumerate}
-        The above conditions imply the following:
-        \begin{itemize}
-            \item \code{node\_outputs} must be a singleton.
-              This is implied by the list being empty after the transaction, the root node NFT being minted, and no other node tokens being minted or burned.
-            \item \code{node\_inputs} is empty.
-              This is implied by the root node NFT of the list being minted in the transaction.
-              If list keys are unique, no other node can exist before the root node.
-              This is enforced by the other state transition rules, which (inductively) require the existence of the root node before and after any other node NFTs are created or burned.
-        \end{itemize}
-        
-        The Init rule cannot enforce that the root node utxo is sent to the spending validator that contains the state integrity rules of the list because that spending validator is parametrized on the minting policy that includes the Init rule.
-        
-        \initSpendingValidatorWarning
-    \item[Deinit.] Deinitialize an empty list.
-      Conditions:
-        \begin{enumerate}
-            \item The transaction's sole effect on the list is to remove the root key.
-                \begin{equation*}
-                    \T{key\_removed}(\T{None}, \T{node\_cs}, \T{node\_mint})
-                \end{equation*}
-            
-            \item The list must be empty before the transaction, as proved by an input \code{root\_node} that holds the minted root node NFT.
-                \begin{equation*}
-                    \T{is\_empty\_list}(\T{root\_node}) \land
-                    \T{has\_token}(\T{root\_node}, \T{node\_cs}, \T{``Node''})
-                \end{equation*}
-        \end{enumerate}
-        The above conditions imply the following:
-        \begin{itemize}
-            \item \code{node\_inputs} must be a singleton.
-              This is implied by the empty list before the transaction.
-            \item \code{node\_outputs} must be empty.
-              This is implied by the condition that the root node NFT is burned and that no other node tokens are minted or burned.
-        \end{itemize}
-
-    \item[Prepend (unsafe).] Prepend a new node to the beginning of the list.
-      Grouped conditions:
-        \begin{itemize}
-            \item Verify the mint: 
-            \begin{enumerate}
-                \item Let \code{key\_to\_prepend} be the key being prepended.
-                \item The transaction's sole effect on the list is to add \code{key\_to\_prepend}.
-                    \begin{equation*}
-                        \T{key\_added}(\T{key\_to\_prepend}, \T{node\_cs}, \T{node\_mint})
-                    \end{equation*}
-            \end{enumerate}
-            
-            \item Verify the inputs:
-            \begin{enumerate}[resume]
-                \item \code{node\_inputs} must be a singleton.
-                  Let \code{anchor\_node\_input} be its sole node.
-                \item \code{anchor\_node\_input} must be the root node of the list.
-            \end{enumerate}
-            
-            \item Verify the outputs:
-            \begin{enumerate}[resume]
-                \item \code{node\_outputs} must have exactly two nodes:
-                    \begin{itemize}
-                        \item \code{prepended\_node}
-                        \item \code{anchor\_node\_output}  
-                    \end{itemize}
-                \item \code{key\_to\_prepend} must be a member of the list after the transaction, as witnessed by \code{prepended\_node}.
-                    \begin{equation*}
-                        \T{is\_member} (\T{key\_to\_prepend}, \T{prepended\_node})
-                    \end{equation*}
-                \item \code{anchor\_node\_input} and \code{prepended\_node} must match on the \code{link} field.
-                  In other words, they must both link to the same key.
-                \item \code{anchor\_node\_output} must link to \code{key\_to\_prepend}.
-                \item \code{prepended\_node} must not contain any other non-ADA tokens.
-            \end{enumerate}
-            
-            \item Verify immutable data:
-            \begin{enumerate}[resume]
-                \item \code{anchor\_node\_input} must match \code{anchor\_node\_output} on address, value, and datum except for the \code{link} field.
-                \item \code{prepended\_node} must match \code{anchor\_node\_output} on address.
-            \end{enumerate}
-        \end{itemize}
-    
-    This rule is considered unsafe because it does \emph{not} enforce key uniqueness or key order in the list.
-    It merely assumes that the key being prepended is unique.
-
-    \unorderedListWarning 
-
-    \item[Append (unsafe).] Append a new node to the end of the list.
-      Conditions:
-        \begin{itemize}
-            \item Verify the mint:
-            \begin{enumerate}
-                \item Let \code{key\_to\_append} be the key being appended.
-                
-                \item The transaction's sole effect on the list is to add \code{key\_to\_append}.
-                    \begin{equation*}
-                        \T{key\_added}(\T{key\_to\_append}, \T{node\_cs}, \T{node\_mint})
-                    \end{equation*}
-            \end{enumerate}
-            
-            \item Verify the inputs:
-            \begin{enumerate}[resume]
-                \item \code{node\_inputs} must be a singleton.
-                  Let \code{anchor\_node\_input} be its sole node.
-                \item \code{anchor\_node\_input} must be the last node of the list before the transaction.
-            \end{enumerate}
-            
-            \item Verify the outputs:
-            \begin{enumerate}[resume]
-                \item \code{node\_outputs} must have exactly two nodes:
-                    \begin{itemize}
-                        \item \code{appended\_node}
-                        \item \code{anchor\_node\_output}  
-                    \end{itemize}
-                \item \code{key\_to\_append} must be a member of the list after the transaction, as witnessed by \code{appended\_node}.
-                    \begin{equation*}
-                        \T{is\_member} (\T{key\_to\_append}, \T{appended\_node})
-                    \end{equation*}
-                \item \code{appended\_node} must be the last node of the list after the transaction.
-                \item \code{anchor\_node\_output} must link to \code{key\_to\_append}.
-                \item \code{appended\_node} must not contain any other non-ADA tokens.
-            \end{enumerate}
-            
-            \item Verify immutable data:
-            \begin{enumerate}[resume]
-                \item \code{anchor\_node\_input} must match \code{anchor\_node\_output} on address, value, and datum except for the \code{link} field.
-                \item \code{appended\_node} must match \code{anchor\_node\_output} on address.
-            \end{enumerate}
-        \end{itemize}
-
-    This rule is considered unsafe because it does \emph{not} enforce key uniqueness or key order in the list.
-    It merely assumes that the key being appended is unique.
-
-    \unorderedListWarning 
-
-    \item[Remove.] Remove a non-root node from the list.
-      Conditions:
-        \begin{itemize}
-            \item Verify the mint:
-            \begin{enumerate}
-                \item Let \code{key\_to\_remove} be the key being removed.
-                \item The transaction's sole effect on the list is to remove \code{key\_to\_remove}.
-                    \begin{equation*}
-                        \T{key\_removed}(\T{key\_to\_remove}, \T{node\_cs}, \T{node\_mint})
-                    \end{equation*}
-            \end{enumerate}
-            
-            \item Verify inputs:
-            \begin{enumerate}[resume]
-                \item \code{node\_inputs} must have exactly two nodes:
-                    \begin{itemize}
-                        \item \code{removed\_node}
-                        \item \code{anchor\_node\_input}
-                    \end{itemize}
-                \item \code{key\_to\_remove} must be a member of the list before the transaction, as witnessed by \code{removed\_node}.
-                    \begin{equation*}
-                        \T{is\_member} (\T{key\_to\_remove}, \T{removed\_node})
-                    \end{equation*}
-                \item \code{anchor\_node\_input} must link to \code{key\_to\_remove}.
-            \end{enumerate}
-
-            \item Verify outputs:
-            \begin{enumerate}[resume]
-                \item \code{node\_outputs} must be a singleton.
-                  Let \code{anchor\_node\_output} be its sole node.
-                \item \code{anchor\_node\_output} and \code{removed\_node} must match on the \code{link} field.
-                  In other words, they must both link to the same key.
-            \end{enumerate}
-            
-            \item Verify immutable data:
-            \begin{enumerate}[resume]
-                \item \code{anchor\_node\_input} must match \code{anchor\_node\_output} on address, value, and datum except for the \code{link} field.
-            \end{enumerate}
-        \end{itemize}
-\end{description}
-
-\subsection{Key-ordered linked list}
-\label{h:key-ordered-list}
-
-The key-ordered linked list data structure replaces the unsafe Append rule of the key-unordered linked list with the safe Insert rule.
-It re-uses the rest of the key-unordered linked list rules, as these rules cannot cause a key-ordered list to become key-unordered.
-It enforces the following properties:
-\begin{enumerate}
-    \item The root node exists continuously until the list is deinitialized.
-    \item Each node has a unique key.
-    \item Each key has only one node linking to it.
-    \item Traversal through the list is deterministic and follows key-ascending order.
-\end{enumerate}
-
-\subsubsection{State transition rules}
-\label{h:key-ordered-list-state-transition-rules}
-
-\begin{description}
-    \item[Init.] Same as Init for key-unordered lists.
-        \initSpendingValidatorWarning
-    \item[Deinit.] Same as Deinit for key-unordered lists.
-    \item[Prepend (safe).] Same as Prepend for key-unordered lists, but with an additional condition:
-        \begin{itemize}
-            \item \code{key\_to\_prepend} must \emph{not} be a member of the list before the transaction, as witnessed by \code{anchor\_node\_input}.
-                \begin{equation*}
-                    \T{is\_not\_member} (\T{key\_to\_prepend}, \T{anchor\_node\_input})
-                \end{equation*}
-        \end{itemize}
-
-    The above condition enforces key uniqueness and order in the list, making this version of Prepend safe.
-    
-    \item[Append (safe).] Same as Append for key-unordered lists, but with an additional condition:
-        \begin{itemize}
-            \item \code{key\_to\_append} must \emph{not} be a member of the list before the transaction, as witnessed by \code{anchor\_node\_input}.
-                \begin{equation*}
-                    \T{is\_not\_member} (\T{key\_to\_append}, \T{anchor\_node\_input})
-                \end{equation*}
-        \end{itemize}
-
-    The above condition enforces key uniqueness and order in the list, making this version of Append safe.
-    
-    \item[Insert.] Insert a node into the list.
-      Grouped conditions:
-        \begin{itemize}
-            \item Verify mint:
-            \begin{enumerate}
-                \item Let \code{key\_to\_insert} be the key being inserted.
-                \item The transaction's sole effect on the list is to add \code{key\_to\_insert}.
-                    \begin{equation*}
-                        \T{key\_added}(\T{key\_to\_insert}, \T{node\_cs}, \T{node\_mint})
-                    \end{equation*}
-            \end{enumerate}
-            
-            \item Verify inputs:
-            \begin{enumerate}[resume]
-                \item \code{node\_inputs} must be a singleton.
-                  Let \code{anchor\_node\_input} be its sole node.
-                \item \code{key\_to\_insert} must \emph{not} be a member of the list before the transaction, as witnessed by \code{anchor\_node\_input}.
-                    \begin{equation*}
-                        \T{is\_not\_member} (\T{key\_to\_insert}, \T{anchor\_node\_input})
-                    \end{equation*}
-            \end{enumerate}
-            
-            \item Verify outputs:
-            \begin{enumerate}[resume]
-                \item \code{node\_outputs} must have exactly two nodes:
-                    \begin{itemize}
-                        \item \code{inserted\_node}
-                        \item \code{anchor\_node\_output}  
-                    \end{itemize}
-                \item \code{key\_to\_insert} must be a member of the list after the transaction, as witnessed by \code{inserted\_node}.
-                    \begin{equation*}
-                        \T{is\_member} (\T{key\_to\_insert}, \T{inserted\_node})
-                    \end{equation*}
-                \item \code{anchor\_node\_output} must link to \code{key\_to\_insert}.
-                \item \code{anchor\_node\_input} and \code{inserted\_node} must match on the \code{link} field.
-                  In other words, they must both link to the same key.
-                \item \code{inserted\_node} must not contain any other non-ADA tokens.
-            \end{enumerate}
-            
-            \item Verify immutable data:
-            \begin{enumerate}[resume]
-                \item \code{anchor\_node\_input} must match \code{anchor\_node\_output} on address, value, and datum except for the \code{link} field.
-                \item \code{inserted\_node} must match \code{anchor\_node\_output} on address.
-            \end{enumerate}
-        \end{itemize}
-        
-        Unlike the Append rule, the Insert rule is safe because it enforces key uniqueness and key order in the list:
-        \begin{itemize}
-            \item Key uniqueness is achieved by the inserted key's pre-transaction non-membership.
-            \item Key order is achieved by requiring both \code{anchor\_node\_input} and \code{inserted\_node} to link to the same key.
-              The key non-membership condition implies that this common linked key is higher than \code{key\_to\_insert}, which means that \code{inserted\_node} complies with the key order.
-        \end{itemize}
-    \item[Remove.] Same as Remove for key-unordered lists.
-\end{description}
+A few implicit behavior have been implemented by the library in order to keep the API cleaner.
+\begin{itemize}
+  \item \textbf{Addresses of utxos.} New and removing nodes are allowed to have arbitrary staking parts for their destination addresses, but their payment parts are required to be the same as their anchor elements.
+    On the other hand, anchor elements are validated to be reproduced at the same addresses (meaning neither their payment parts nor staking parts can change).
+  \item \textbf{Tokens of utxos.} All linked list utxos are validated to carry some ADA (which its quantity is exposed), plus the list NFT and no other tokens.
+    Exposing the rest of the assets would not only overwhelm the API, but it would also add extra overhead.
+  \item \textbf{Reference scripts.} List utxos are required to have no scripts attached to them.
+    This prevents users from bloating utxos and therefore increasing the min required ADA for them, without returning more values for users to handle.
+\end{itemize}
 
 \subsection{Instantiate a linked list in an application}
 \label{h:instantiate-list-in-application}
 
-An application that uses a linked list should ensure that it uses the appropriate state transition rules when creating/destroying node utxos of the list or otherwise modifying the \code{key} or \code{link} field value of any nodes.
-The application can attach additional rules that constrain the circumstances under which it allows list state transitions based on the list subcontext or the full transaction context.
-Moreover, the application has complete and exclusive control over the app-specific \code{data} field of list nodes, for which it also defines the data type.
-
-As a general good practice, applications should limit the number of different non-node tokens and the size of app-specific data placed into node utxo when new nodes are inserted and when app-specific data is modified.
-This avoids token dust and large data attacks that could result in deadlock when certain list operations cannot fit within transactions' compute, memory, or space constraints.
+Exposed functions are designed to validate anything related to the linked list itself, while providing any data required for custom validations.
+However, there are a few considerations to keep in mind when using the library.
+\begin{itemize}
+  \item \textbf{Limitations for root keys and node prefixes.} Root keys are directly stored in the asset names of root elements, which limits them to be 0 up to and including 32 bytes.
+    On the other hand, node key prefixes are stored in node element asset names along with the actual node keys.
+    This means users should be aware not to allow the total length to exceed 32 bytes.
+  \item \textbf{Datum structures.} All functions assume the linked list instantiation uses an applied version of \code{Element(root\_data, node\_data)}.
+\end{itemize}
 
 Midgard uses linked lists throughout its onchain architecture:
 \begin{itemize}
@@ -569,19 +402,7 @@ Midgard uses linked lists throughout its onchain architecture:
     \item \nameref{h:state-queue} (\cref{h:state-queue})
 \end{itemize}
 
-\subsection{Different data in root node}
-\label{h:list-different-data-in-root}
 
-An application that needs to store different data in the root node than in non-root nodes of a list can use an app-specific type with multiple constructors (i.e., a sum type) in the \code{data} field of the list's \code{NodeDatum}.
-
-\begin{align*}
-    \T{MyNodeDatum} &\coloneq \T{NodeDatum} (\T{MyAppData}) \\
-    \T{MyAppData} &\coloneq \T{Root}(\T{MyRootData}) \;|\; \T{Node}(\T{MyNodeData})
-\end{align*}
-
-The application's onchain code should ensure that root and non-root nodes always use their respective constructors.
-
-\subsection{Parallel insertions in key-ordered lists}
 \label{h:parallel-insertions-in-key-ordered-lists}
 
 For keys randomly sampled from an approximately uniform distribution (e.g., cryptographic public keys for wallets), insertion/removal from a key-ordered linked list is parallel to a degree proportional to the list's size, with parallelism increasing as the list grows.
