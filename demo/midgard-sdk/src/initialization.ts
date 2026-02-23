@@ -6,6 +6,7 @@ import {
   TxSignBuilder,
 } from "@lucid-evolution/lucid";
 import {
+  AuthenticatedValidator,
   Bech32DeserializationError,
   LucidError,
   MidgardValidators,
@@ -25,6 +26,18 @@ export type InitializationParams = {
   midgardValidators: MidgardValidators;
   fraudProofCatalogueMerkleRoot: string;
 };
+
+export const getInitializedValidatorsFromMidgardValidators = (
+  validators: MidgardValidators,
+): AuthenticatedValidator[] => [
+  validators.hubOracle,
+  validators.stateQueue,
+  validators.scheduler,
+  validators.registeredOperators,
+  validators.activeOperators,
+  validators.retiredOperators,
+  validators.fraudProofCatalogue,
+];
 
 export const incompleteInitializationTxProgram = (
   lucid: LucidEvolution,
@@ -60,7 +73,7 @@ export const incompleteInitializationTxProgram = (
       .validTo(Number(genesisTime));
 
     const hubOracleTx = yield* incompleteHubOracleInitTxProgram(lucid, {
-      hubOracleMintValidator: params.midgardValidators.hubOracle,
+      hubOracleValidator: params.midgardValidators.hubOracle,
       validators: params.midgardValidators,
     });
 

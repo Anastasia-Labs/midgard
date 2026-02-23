@@ -10,7 +10,6 @@ import {
   MidgardValidators,
   AuthenticatedValidator,
   ScriptHashSchema,
-  MintingValidator,
   UnspecifiedNetworkError,
 } from "@/common.js";
 import {
@@ -22,8 +21,6 @@ import {
   UTxO,
   Data,
   Assets,
-  credentialToAddress,
-  scriptHashToCredential,
 } from "@lucid-evolution/lucid";
 import { HUB_ORACLE_ASSET_NAME } from "@/constants.js";
 
@@ -67,7 +64,7 @@ export type HubOracleDatum = Data.Static<typeof HubOracleDatumSchema>;
 export const HubOracleDatum = HubOracleDatumSchema as unknown as HubOracleDatum;
 
 export type HubOracleInitParams = {
-  hubOracleMintValidator: MintingValidator;
+  hubOracleValidator: AuthenticatedValidator;
   validators: HubOracleValidators;
 };
 
@@ -168,7 +165,7 @@ export const incompleteHubOracleInitTxProgram = (
       const encodedDatum = Data.to<HubOracleDatum>(datum, HubOracleDatum);
 
       const assets: Assets = {
-        [toUnit(params.hubOracleMintValidator.policyId, HUB_ORACLE_ASSET_NAME)]:
+        [toUnit(params.hubOracleValidator.policyId, HUB_ORACLE_ASSET_NAME)]:
           1n,
       };
 
@@ -176,14 +173,11 @@ export const incompleteHubOracleInitTxProgram = (
         .newTx()
         .mintAssets(assets, Data.void())
         .pay.ToAddressWithData(
-          credentialToAddress(
-            network,
-            scriptHashToCredential(params.hubOracleMintValidator.policyId),
-          ),
+          params.hubOracleValidator.spendingScriptAddress,
           { kind: "inline", value: encodedDatum },
           assets,
         )
-        .attach.MintingPolicy(params.hubOracleMintValidator.mintingScript);
+        .attach.MintingPolicy(params.hubOracleValidator.mintingScript);
     } else {
       return yield* new UnspecifiedNetworkError({
         message: "",
