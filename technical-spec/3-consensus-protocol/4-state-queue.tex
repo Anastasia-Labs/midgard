@@ -35,6 +35,11 @@ Redeemers:
         \begin{enumerate}
             \item The transaction must mint the Midgard hub oracle token.
             \item The transaction must Init the \code{state\_queue}.
+            \item The validity range of the transaction must be bounded on both ends, and must not be longer than five minutes (TODO).
+            \item The inclusive upper bound of the validity range must be used as both the \code{start\_time} and \code{end\_time} of the produced confirmed state data.
+            \item \code{header\_hash} and \code{prev\_header\_hash} must have genesis values (28 zero bytes).
+            \item \code{utxo\_root} must be set to the root of an empty Merkle tree.
+            \item \code{protocol\_version} must be set to 0 (TODO).
         \end{enumerate}
 
     \item[Commit Block Header.] An operator commits a block header to the state queue if it is the operator's turn according to the rotating schedule.
@@ -45,9 +50,9 @@ Redeemers:
                 \item Let \code{operator} be a redeemer argument indicating the key of the operator committing the block header.
                 \item The transaction must be signed by \code{operator}.
                 \item The transaction must Append a node to the \code{state\_queue}.
-                  Among the transaction outputs, let that node be \code{header\_node} and its predecessor node be \code{previous\_header\_node}.
+                  Among the transaction outputs, let that node be \code{header\_node} and its predecessor node be \code{previous\_element} (this can be either the confirmed state, or a previous block).
                 \item \code{operator} must be the operator of \code{header\_node}.
-                \item The \code{key} field of \code{header\_node} must be the hash of its \code{data} field.
+                \item The key of \code{header\_node} must be the hash of its underlying \code{Node} data.
             \end{enumerate}
 
             \item Verify that it is the operator's turn to commit according to the scheduler:
@@ -59,8 +64,8 @@ Redeemers:
 
             \item Verify block timestamps:
             \begin{enumerate}[resume]
-                \item The \code{start\_time} of \code{header\_node} must be equal to the \code{end\_time} of the \code{previous\_header\_node}.
-                \item The \code{end\_time} of \code{header\_node} must match the transaction's time-validity upper bound.
+                \item The \code{start\_time} of \code{header\_node} must be equal to the \code{end\_time} of the \code{previous\_element}.
+                \item The \code{end\_time} of \code{header\_node} must match the transaction's time-validity upper bound exclusively (TODO).
                 \item The \code{end\_time} of \code{header\_node} must be within the shift interval of \code{scheduler\_state}.
             \end{enumerate}
             
@@ -68,62 +73,77 @@ Redeemers:
             \begin{enumerate}[resume]
                 \item The transaction must include an input, spent via the Update Bond Hold New State redeemer, of an \code{active\_operators} node with a key matching the \code{operator}.
             \end{enumerate}
+            \item New block must carry over data from \code{previous\_element} properly:
+                \begin{enumerate}[resume]
+                  \item Its \code{header\_hash} must be preserved under new node's \code{prev\_header\_hash}.
+                  \item Its ledger must be preserved under new node's \code{prev\_utxos\_root}.
+                  \item Protocol version must also be preserved from \code{previous\_element} (TODO).
+                \end{enumerate}
         \end{itemize}
 
     \item[Merge To Confirmed State.] If a block header is mature, merge it to the confirmed state of the \code{state\_queue}.
       Conditions:
     \begin{enumerate}
-        \item The transaction must Remove a node from the \code{state\_queue}.
-          Let \code{header\_node} be the removed node, \code{confirmed\_state\_node\_input} be its predecessor node before removal, and \code{confirmed\_state\_node\_output} be the remaining node after removal.
+      \item The transaction must Fold the first node of \code{state\_queue} into its root.
+        Let \code{header\_node} be the folded node, \code{confirmed\_state\_node\_input} be its predecessor node before removal, and \code{confirmed\_state\_node\_output} be the remaining node after removal.
         \item \code{confirmed\_state\_node\_input} and \code{confirmed\_state\_node\_output} must both be root nodes of \code{state\_queue}.
-        \item \code{header\_node} must be mature --- the lower bound of the transaction validity interval meets or exceeds the sum of the \code{end\_time} field of \code{header\_node} and the Midgard \code{maturity\_duration} protocol parameter.
+        \item \code{header\_node} must be mature---the lower bound of the transaction validity interval meets or exceeds the sum of the \code{end\_time} field of \code{header\_node} and the Midgard \code{maturity\_duration} protocol parameter.
         \item \code{confirmed\_state\_node\_output} must match:
           \begin{enumerate}
-            \item \code{confirmed\_state\_node\_input} on \code{start\_time}.
-            \item \code{header\_node} on \code{prev\_header\_hash}, \code{utxo\_root}, \code{end\_time}, and \code{protocol\_version}.
+            \item \code{start\_time} and \code{header\_hash} from \code{confirmed\_state\_node\_input} under \code{start\_time} and \code{prev\_header\_hash} respectively.
+            \item Key of \code{header\_node} under \code{header\_hash}, along with its ledger and protocol version (TODO?) under \code{utxo\_root} and \code{protocol\_version} respectively.
           \end{enumerate}
-        \item The \code{header\_hash} of \code{confirmed\_state\_node\_output} must match the \code{header\_node} key.
         \item If either the \code{deposits\_root}, \code{withdrawals\_root} or \code{transactions\_root} of \code{header\_node} is \emph{not} the MPT root hash of the empty set, a \code{settlement} utxo must be produced via the Spawn redeemer.
-          The redeemer must mention \code{header\_node} as a coupling medium.
+          The redeemer must mention \code{settlement\_id} equal to \code{header\_node} as a coupling medium.
+        \item Otherwise no settlement minting must be present in the transaction.
     \end{enumerate}
 
-    \item[Remove Fraudulent Block Header.] Remove a fraudulent block header from the state queue and slash its operator's ADA bond.
+    \item[Remove Fraudulent Block Header.] Remove a fraudulent block header or its link from the state queue and slash its operator's ADA bond.
       Grouped conditions:
     \begin{itemize}
-        \item Remove the fraudulent block header:
+        \item Slash the fraudulent operator.
+          Let \code{fraudulent\_operator} be a redeemer argument indicating the operator who committed the fraudulent block header:
         \begin{enumerate}
-            \item Let \code{fraudulent\_operator} be a redeemer argument indicating the operator who committed the fraudulent block header.
-            \item The transaction must Remove a node from the \code{state\_queue}.
-              Let \code{removed\_node} be the removed node and \code{predecessor\_node} be its predecessor node before removal.
-            \item \code{fraudulent\_operator} must match the key of \code{removed\_node}.
-        \end{enumerate}
-
-        \item Slash the fraudulent operator:
-        \begin{enumerate}[resume]
-            \item Let \code{operator\_status} be a redeemer argument indicating whether the fraudulent operator is active or retired.
-            \item If \code{operator\_status} is active:
+            \item If the operator is active:
                 \begin{enumerate}
                     \item The transaction must Remove a node from the \code{active\_operators} set via the Remove Operator Bad State redeemer.
                       The \code{slashed\_operator} argument provided to that redeemer must match \code{fraudulent\_operator}.
                 \end{enumerate}
-            \item Otherwise:
+            \item If the operator is retired:
                 \begin{enumerate}
                     \item The transaction must Remove a node from the \code{retired\_operators} set via the Remove Operator Bad State redeemer.
                       The \code{slashed\_operator} argument provided to that redeemer must match \code{fraudulent\_operator}.
                 \end{enumerate}
+            \item Otherwise, if the operator is already slashed:
+                \begin{enumerate}
+                    \item The transaction must refer to elements from both the \code{active\_operators} and \code{retired\_operators} sets and show that neither lists include the fraudulent operator.
+                \end{enumerate}
         \end{enumerate}
 
+        \item Let \code{fraudulent\_block\_header\_hash} be a redeemer argument specifying the header hash of the fraudulent block with a minted proof token.
+        \item Remove the fraudulent block header or its link.
+          Two routes are allowed:
+          \begin{itemize}
+            \item Fraudulent block has a link and that link node is being removed.
+              \begin{enumerate}
+                \item Let \code{fraudulent\_node} be the anchor node, and \code{removed\_node} be its child node that is being removed.
+                \item Key of \code{fraudulent\_node} must be equal to \code{fraudulent\_block\_header\_hash}.
+                \item \code{operator\_vkey} from the \code{removed\_node} must match \code{fraudulent\_operator}.
+              \end{enumerate}
+            \item Fraudulent block is the last node in state queue and is being removed.
+              \begin{enumerate}
+                \item Let \code{fraudulent\_node} be the removing node, and \code{anchor\_element} be its parent element.
+                \item Key of \code{fraudulent\_node} must be equal to \code{fraudulent\_block\_header\_hash}.
+                \item \code{operator\_vkey} from the \code{fraudulent\_node} must match \code{fraudulent\_operator}.
+                \item \code{fraudulent\_node} must not link to a child node.
+              \end{enumerate}
+          \end{itemize}
+
         \item Verify that fraud has been proved for the removed node or its predecessor:
-        \begin{enumerate}[resume]
+        \begin{enumerate}
             \item The transaction must include a reference input holding a \code{fraud\_proof} token.
             \item Let \code{fraud\_proof\_block\_hash} be the last 28 bytes of the \code{fraud\_proof} token.
-            \item One of the following must be true:
-                \begin{enumerate}
-                    \item \code{fraud\_proof\_block\_hash} matches the \code{predecessor\_node} key.
-                      This means that a child of the fraudulent node is being removed.
-                    \item \code{fraud\_proof\_block\_hash} matches the \code{removed\_node} key, and the last node of \code{state\_queue} is \code{removed\_node}.
-                      This means that the fraudulent node is being removed and has no more children.
-                \end{enumerate}
+            \item \code{fraud\_proof\_block\_hash} must match \code{fraudulent\_block\_header\_hash} from the redeemer.
         \end{enumerate}
     \end{itemize}
 \end{description}

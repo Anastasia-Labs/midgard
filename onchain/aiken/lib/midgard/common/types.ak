@@ -2,6 +2,9 @@ use aiken/crypto.{Blake2b_224, Blake2b_256, Hash}
 use aiken/merkle_patricia_forestry as mpf
 use cardano/assets.{AssetName, PolicyId}
 
+pub type Empty =
+  ByteArray
+
 /// A number of milliseconds since 00:00:00 UTC on 1 January 1970.
 pub type PosixTime =
   Int
