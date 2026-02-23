@@ -112,6 +112,24 @@ const handleTxGetFailure = (
 const handleGenericGetFailure = (endpoint: string, e: SDK.GenericErrorFields) =>
   failWith500("GET", endpoint, e.cause, e.message);
 
+const lookupTxCbor = (txHashBytes: Buffer, txHashParam: string) =>
+  MempoolDB.retrieveTxCborByHash(txHashBytes).pipe(
+    Effect.tap(() =>
+      Effect.logInfo(
+        `GET /${TX_ENDPOINT} - Transaction found in mempool: ${txHashParam}`,
+      ),
+    ),
+    Effect.catchTag("NotFoundError", () =>
+      ImmutableDB.retrieveTxCborByHash(txHashBytes).pipe(
+        Effect.tap(() =>
+          Effect.logInfo(
+            `GET /${TX_ENDPOINT} - Transaction found in ImmutableDB: ${txHashParam}`,
+          ),
+        ),
+      ),
+    ),
+  );
+
 const getTxHandler = Effect.gen(function* () {
   const params = yield* ParsedSearchParams;
   const txHashParam = params["tx_hash"];
@@ -125,32 +143,23 @@ const getTxHandler = Effect.gen(function* () {
     );
     return yield* HttpServerResponse.json(
       { error: `Invalid transaction hash: ${txHashParam}` },
-      { status: 404 },
+      { status: 400 },
     );
   }
+
   const txHashBytes = Buffer.from(fromHex(txHashParam));
-  yield* Effect.logInfo("txHashBytes", txHashBytes);
-  const foundCbor: Buffer = yield* MempoolDB.retrieveTxCborByHash(
-    txHashBytes,
-  ).pipe(
-    Effect.catchAll((_e) =>
-      Effect.gen(function* () {
-        const fromImmutable =
-          yield* ImmutableDB.retrieveTxCborByHash(txHashBytes);
-        yield* Effect.logInfo(
-          `GET /${TX_ENDPOINT} - Transaction found in ImmutableDB: ${txHashParam}`,
-        );
-        return fromImmutable;
-      }),
+  return yield* lookupTxCbor(txHashBytes, txHashParam).pipe(
+    Effect.tap((foundCbor) => Effect.logInfo("foundCbor", bufferToHex(foundCbor))),
+    Effect.flatMap((foundCbor) =>
+      HttpServerResponse.json({ tx: bufferToHex(foundCbor) }),
+    ),
+    Effect.catchTag("NotFoundError", () =>
+      HttpServerResponse.json(
+        { error: `Transaction not found: ${txHashParam}` },
+        { status: 404 },
+      ),
     ),
   );
-  yield* Effect.logInfo(
-    `GET /${TX_ENDPOINT} - Transaction found in mempool: ${txHashParam}`,
-  );
-  yield* Effect.logInfo("foundCbor", SDK.bufferToHex(foundCbor));
-  return yield* HttpServerResponse.json({
-    tx: SDK.bufferToHex(foundCbor),
-  });
 }).pipe(
   Effect.catchTag("HttpBodyError", (e) => failWith500("GET", TX_ENDPOINT, e)),
   Effect.catchTag("DatabaseError", (e) => handleDBGetFailure(TX_ENDPOINT, e)),

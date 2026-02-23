@@ -46,20 +46,34 @@ export class DatabaseError extends Data.TaggedError("DatabaseError")<
   SDK.GenericErrorFields & { readonly table: string }
 > {}
 
+export class NotFoundError extends Data.TaggedError(
+  "NotFoundError",
+)<SDK.GenericErrorFields & {
+  readonly table: string;
+  readonly txIdHex?: string;
+}> {}
+
 type SqlErrorToDatabaseError = <A, R>(
-  error: Effect.Effect<A, SqlError.SqlError | DatabaseError, R>,
+  effect: Effect.Effect<
+    A,
+    SqlError.SqlError | DatabaseError | NotFoundError,
+    R
+  >,
 ) => Effect.Effect<A, DatabaseError, R>;
 
 export const sqlErrorToDatabaseError = (
   tableName: string,
   message: string,
 ): SqlErrorToDatabaseError =>
-  Effect.mapError((error: SqlError.SqlError | DatabaseError) =>
-    error._tag === "SqlError"
-      ? new DatabaseError({
-          message,
-          table: tableName,
-          cause: error,
-        })
-      : error,
+  Effect.mapError(
+    (
+      error: SqlError.SqlError | DatabaseError | NotFoundError,
+    ): DatabaseError =>
+      error._tag === "DatabaseError"
+        ? error
+        : new DatabaseError({
+            message,
+            table: tableName,
+            cause: error,
+          }),
   );
