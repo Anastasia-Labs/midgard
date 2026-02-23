@@ -1,4 +1,4 @@
-import { Effect } from "effect";
+import { Effect, Schedule } from "effect";
 import { ConfigError, NodeConfig } from "./config.js";
 import * as LE from "@lucid-evolution/lucid";
 
@@ -12,6 +12,7 @@ const makeLucid: Effect.Effect<
   NodeConfig
 > = Effect.gen(function* () {
   const nodeConfig = yield* NodeConfig;
+  yield* Effect.logInfo("Initializing Lucid...");
   const lucid: LE.LucidEvolution = yield* Effect.tryPromise({
     try: () => {
       switch (nodeConfig.L1_PROVIDER) {
@@ -39,7 +40,11 @@ const makeLucid: Effect.Effect<
           ["NETWORK", nodeConfig.NETWORK],
         ],
       }),
-  });
+  }).pipe(
+    Effect.tapError(Effect.logInfo),
+    Effect.retry(Schedule.fixed("1000 millis")),
+  );
+  yield* Effect.logInfo("Lucid built successfully.");
   return {
     api: lucid,
     switchToOperatorsMainWallet: Effect.sync(() =>

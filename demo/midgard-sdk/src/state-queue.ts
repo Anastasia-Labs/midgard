@@ -28,6 +28,7 @@ import {
   getStateToken,
   hashHexWithBlake2b224,
   utxosAtByNFTPolicyId,
+  AuthenticatedValidator,
 } from "@/common.js";
 import { LucidError, makeReturn } from "@/common.js";
 import {
@@ -36,8 +37,15 @@ import {
   NodeKey,
   getNodeDatumFromUTxO,
   LinkedListError,
+  incompleteInitLinkedListTxProgram,
 } from "@/linked-list.js";
 import { ConfirmedState, Header } from "@/ledger-state.js";
+import {
+  GENESIS_HASH_28,
+  GENESIS_HASH_32,
+  INITIAL_PROTOCOL_VERSION,
+  NODE_ASSET_NAME,
+} from "./constants.js";
 
 export const StateQueueConfigSchema = Data.Object({
   initUTxO: OutputReferenceSchema,
@@ -51,7 +59,14 @@ export const StateQueueRedeemerSchema = Data.Enum([
   Data.Literal("Init"),
   Data.Literal("Deinit"),
   Data.Object({
-    CommitBlockHeader: Data.Object({ operator: Data.Bytes() }),
+    CommitBlockHeader: Data.Object({
+      operator: Data.Bytes(),
+      scheduler_ref_input_index: Data.Integer(),
+      active_node_input_index: Data.Integer(),
+      header_node_output_index: Data.Integer(),
+      previous_header_node_output_index: Data.Integer(),
+      active_operators_redeemer_index: Data.Integer(),
+    }),
   }),
   Data.Literal("MergeToConfirmedState"),
   Data.Object({
@@ -95,9 +110,8 @@ export type StateQueueMergeParams = {
 };
 
 export type StateQueueInitParams = {
-  policyId: PolicyId;
-  address: Address;
-  stateQueueMintingScript: Script;
+  validator: AuthenticatedValidator;
+  genesisTime: POSIXTime; // Just pass the time, not the full state
 };
 
 export type StateQueueDeinitParams = {};
@@ -421,7 +435,7 @@ export const incompleteCommitBlockHeaderTxProgram = (
   Effect.gen(function* () {
     const newHeaderHash = yield* hashBlockHeader(newHeader);
     const assets: Assets = {
-      [toUnit(policyId, fromText("Node") + newHeaderHash)]: 1n,
+      [toUnit(policyId, NODE_ASSET_NAME + newHeaderHash)]: 1n,
     };
 
     const newNodeDatum: StateQueueDatum = {
@@ -682,38 +696,23 @@ export const fetchLatestCommittedBlock = (
  */
 export const incompleteInitStateQueueTxProgram = (
   lucid: LucidEvolution,
-  { policyId, address, stateQueueMintingScript }: StateQueueInitParams,
-): Effect.Effect<TxBuilder> =>
+  params: StateQueueInitParams,
+): Effect.Effect<TxBuilder, never> =>
   Effect.gen(function* () {
-    const assets: Assets = {
-      [toUnit(policyId, fromText("Node"))]: 1n,
+    const stateQueueData: ConfirmedState = {
+      headerHash: GENESIS_HASH_28,
+      prevHeaderHash: GENESIS_HASH_28,
+      utxoRoot: GENESIS_HASH_32,
+      startTime: params.genesisTime,
+      endTime: params.genesisTime,
+      protocolVersion: INITIAL_PROTOCOL_VERSION,
     };
 
-    const confirmedState: ConfirmedState = {
-      headerHash: "00".repeat(28),
-      prevHeaderHash: "00".repeat(28),
-      utxoRoot: "00".repeat(32),
-      startTime: BigInt(Date.now()),
-      endTime: BigInt(Date.now()),
-      protocolVersion: 0n,
-    };
-    const datum: NodeDatum = {
-      key: "Empty",
-      next: "Empty",
-      data: Data.castTo(confirmedState, ConfirmedState),
-    };
-
-    const outputDatum: OutputDatum = {
-      kind: "inline",
-      value: Data.to(datum, NodeDatum),
-    };
-
-    const tx = lucid
-      .newTx()
-      .mintAssets(assets, Data.void())
-      .pay.ToAddressWithData(address, outputDatum, assets)
-      .attach.Script(stateQueueMintingScript);
-    return tx;
+    return yield* incompleteInitLinkedListTxProgram(lucid, {
+      validator: params.validator,
+      data: Data.castTo(stateQueueData, ConfirmedState),
+      redeemer: Data.to("Init", StateQueueRedeemer),
+    });
   });
 
 export const unsignedInitStateQueueTxProgram = (

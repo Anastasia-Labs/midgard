@@ -9,6 +9,7 @@ import { Effect, pipe } from "effect";
 import dotenv from "dotenv";
 import { NodeRuntime } from "@effect/platform-node";
 import { DatabaseError } from "@/database/utils/common.js";
+import { SqlError } from "@effect/sql";
 
 dotenv.config();
 const VERSION = packageJson.version;
@@ -52,20 +53,33 @@ program.version(VERSION).description(
   ${ENV_VARS_GUIDE}`,
 );
 
-program.command("listen").action(async () => {
-  const program: Effect.Effect<
-    void,
-    DatabaseError | Services.ConfigError | Services.DatabaseInitializationError,
-    never
-  > = pipe(
-    runNode,
-    Effect.provide(Services.Database.layer),
-    Effect.provide(Services.AlwaysSucceedsContract.Default),
-    Effect.provide(Services.Lucid.Default),
-    Effect.provide(Services.NodeConfig.layer),
-  );
+program
+  .command("listen")
+  .option(
+    "-m, --with-monitoring",
+    "Flag for enabling interactions with monitoring services",
+  )
+  .action(async (_args, options) => {
+    console.log("🌳 Midgard");
 
-  NodeRuntime.runMain(program, { teardown: undefined });
-});
+    const { withMonitoring } = options.opts();
+    const mainEffect: Effect.Effect<
+      void,
+      | DatabaseError
+      | SqlError.SqlError
+      | Services.ConfigError
+      | Services.DatabaseInitializationError,
+      never
+    > = pipe(
+      runNode(withMonitoring),
+      Effect.provide(Services.NodeConfig.layer),
+      Effect.provide(Services.Database.layer),
+      Effect.provide(Services.AlwaysSucceedsContract.Default),
+      Effect.provide(Services.Lucid.Default),
+      Effect.provide(Services.Globals.Default),
+    );
+
+    NodeRuntime.runMain(mainEffect, { teardown: undefined });
+  });
 
 program.parse(process.argv);

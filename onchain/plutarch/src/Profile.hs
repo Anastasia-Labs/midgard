@@ -1,29 +1,27 @@
 {-# LANGUAGE ImpredicativeTypes #-}
 
-module Profile where 
+module Profile where
 
-import Plutarch.Internal
-import Plutarch
-import Plutarch.Evaluate
-import Plutarch.ByteString 
 import Data.Either
+import Data.Text
+import Plutarch.Evaluate
+import Plutarch.Internal.Other (printTerm)
+import Plutarch.Internal.Term
 import PlutusCore.Evaluation.Machine.ExBudget (ExBudget)
-import Data.Text 
 
 getTracesExUnits :: ClosedTerm a -> [Text]
-getTracesExUnits term = 
+getTracesExUnits term =
   let (_, _, traces) = fromRight (error "") (evalTerm (Tracing LogInfo DoTracingAndBinds) term)
-  in traces 
+   in traces
 
 getExUnits :: ClosedTerm a -> ExBudget
-getExUnits term = 
+getExUnits term =
   let (_, budget, _) = fromRight (error "") (evalTerm NoTracing term)
-  in budget 
+   in budget
 
-getShowTerm :: ClosedTerm a -> String  
-getShowTerm term = 
+getShowTerm :: ClosedTerm a -> String
+getShowTerm term =
   let (t, _, _) = fromRight (error "") (evalTerm NoTracing term)
-  in 
-    case t of 
-      Right t' -> printTerm (Tracing LogInfo DoTracingAndBinds) t' 
-      Left err -> show err 
+   in case t of
+        Right t' -> printTerm (Tracing LogInfo DoTracingAndBinds) t'
+        Left err -> show err

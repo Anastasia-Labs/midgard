@@ -40,7 +40,7 @@ However, Midgard has safeguards in place against such abuse (see \cref{h:operato
 \subsection{Operator abuse of power}
 \label{h:operator-abuse-of-power}
 
-Each operator has the exclusive privilege to commit blocks to the state queue and resolve nodes in the settlement queue during their assigned shifts (see \cref{h:time-model}), the duration of which is controlled by the \code{shift\_duration} protocol parameter (see \cref{h:protocol-parameters}).
+Each operator has the exclusive privilege to commit blocks to the state queue and resolve settlements during their assigned shifts (see \cref{h:time-model}), the duration of which is controlled by the \code{shift\_duration} protocol parameter (see \cref{h:protocol-parameters}).
 The current operator has discretion over whether and when to commit blocks to the state queue and the contents of those blocks.
 This discretion can be abused to censor L2 transactions, but Midgard's consensus protocol has safeguards in place against such abuse.
 
@@ -69,7 +69,7 @@ However, Cardano's ledger rules do not directly see the contents corresponding t
 Nonetheless, Midgard has comprehensive ledger rules against the various ways in which utxos, L2 transactions, deposits, and withdrawals can be duplicated within a block or across blocks.
 Any operator that commits a block header to the state queue that contravenes these ledger rules forfeits his bond if the corresponding fraud proof is verified on L1 within the block's maturity period.
 
-Another form of replay attack involves reusing the same confirmed deposit or withdrawal event in the settlement queue to absorb more deposited funds than necessary into Midgard's reserve or release more funds than necessary from it for a withdrawal.
+Another form of replay attack involves reusing the same confirmed deposit or withdrawal event in settlement utxos to absorb more deposited funds than necessary into Midgard's reserve or release more funds than necessary from it for a withdrawal.
 Midgard prevents this by requiring an L1 utxo to be created on L1 for every deposit and withdrawal, which must be spent whenever the corresponding deposit is absorbed or withdrawal is paid out.
 
 \end{document}

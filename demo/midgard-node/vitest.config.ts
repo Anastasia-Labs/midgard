@@ -4,7 +4,7 @@ import path from "path";
 export default defineConfig({
   test: {
     pool: "forks",
-    reporters: "verbose",
+    reporters: [["default", { summary: false }]],
     include: ["./tests/**/*.test.{js,mjs,cjs,ts,mts,cts,jsx,tsx}"],
     testTimeout: 420_000,
     bail: 3,

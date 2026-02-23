@@ -17,9 +17,10 @@ import {
 import { DatabaseError } from "@/database/utils/common.js";
 import {
   handleSignSubmit,
+  handleSignSubmitNoConfirmation,
   TxConfirmError,
   TxSignError,
-} from "./transactions/utils.js";
+} from "@/transactions/utils.js";
 
 const insertGenesisUtxos: Effect.Effect<
   void,
@@ -65,7 +66,7 @@ const submitGenesisTxOrders: Effect.Effect<
   | SDK.HashingError
   | SDK.LucidError
   | SDK.TxOrderError
-  | SDK.ParsingError
+  | SDK.Bech32DeserializationError
   | TxSignError
   | TxSubmitError
   | TxConfirmError,
@@ -73,7 +74,7 @@ const submitGenesisTxOrders: Effect.Effect<
 > = Effect.gen(function* () {
   yield* Effect.logInfo(`🟣 Building genesis tx order tx...`);
 
-  const { txOrderAuthValidator } = yield* AlwaysSucceedsContract;
+  const { txOrder: txOrderAuthValidator } = yield* AlwaysSucceedsContract;
   const config = yield* NodeConfig;
   const lucid = yield* Lucid;
 
@@ -86,8 +87,7 @@ const submitGenesisTxOrders: Effect.Effect<
   yield* lucid.switchToOperatorsMainWallet;
 
   const l2Address = config.GENESIS_UTXOS[0].address;
-  const l2AddressData = yield* SDK.parseAddressDataCredentials(l2Address);
-  const inclusionTime = Date.now();
+  const l2AddressData = yield* SDK.addressDataFromBech32(l2Address);
 
   const txBuilder = lucid.api
     .newTx()
@@ -103,12 +103,11 @@ const submitGenesisTxOrders: Effect.Effect<
   const tx = txSignBuilder.toTransaction();
 
   const txOrderParams: SDK.TxOrderParams = {
-    txOrderAddress: txOrderAuthValidator.spendScriptAddress,
-    mintingPolicy: txOrderAuthValidator.mintScript,
+    txOrderScriptAddress: txOrderAuthValidator.spendingScriptAddress,
+    mintingPolicy: txOrderAuthValidator.mintingScript,
     policyId: txOrderAuthValidator.policyId,
     refundAddress: l2AddressData,
     refundDatum: "",
-    inclusionTime: BigInt(inclusionTime),
     midgardTxBody: "",
     midgardTxWits: "",
     cardanoTx: tx,
@@ -118,9 +117,7 @@ const submitGenesisTxOrders: Effect.Effect<
     lucid.api,
     txOrderParams,
   );
-  yield* Effect.logInfo(
-    `🟣 Submitting genesis tx order to L1 (inclusion time: ${inclusionTime})...`,
-  );
+  yield* Effect.logInfo(`🟣 Submitting genesis tx order to L1...`);
   yield* handleSignSubmit(lucid.api, signedTx);
   yield* Effect.logInfo(
     `🟣 Genesis tx order submitted successfully! Waiting for L1 confirmation...`,
@@ -139,7 +136,7 @@ const submitGenesisDeposits: Effect.Effect<
 > = Effect.gen(function* () {
   yield* Effect.logInfo(`🟣 Building genesis deposit tx...`);
 
-  const { depositAuthValidator } = yield* AlwaysSucceedsContract;
+  const { deposit: depositAuthValidator } = yield* AlwaysSucceedsContract;
   const config = yield* NodeConfig;
   const lucid = yield* Lucid;
 
@@ -151,8 +148,8 @@ const submitGenesisDeposits: Effect.Effect<
 
   // Hard-coded 10 ADA deposit.
   const depositParams: SDK.DepositParams = {
-    depositScriptAddress: depositAuthValidator.spendScriptAddress,
-    mintingPolicy: depositAuthValidator.mintScript,
+    depositScriptAddress: depositAuthValidator.spendingScriptAddress,
+    mintingPolicy: depositAuthValidator.mintingScript,
     policyId: depositAuthValidator.policyId,
     depositAmount: 10_000_000n,
     depositInfo: {
@@ -167,8 +164,8 @@ const submitGenesisDeposits: Effect.Effect<
     lucid.api,
     depositParams,
   );
-  yield* handleSignSubmit(lucid.api, signedTx);
-});
+  yield* handleSignSubmitNoConfirmation(lucid.api, signedTx);
+}).pipe(Effect.tapError(Effect.logInfo));
 
 export const program: Effect.Effect<
   void,

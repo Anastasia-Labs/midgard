@@ -17,18 +17,17 @@ Redeemers:
     \item[Mint.] Mint a new fraud proof token whenever a fraud proof computation succeeds.
       Conditions:
         \begin{enumerate}
-            \item The transaction must burn a \code{computation\_thread} token.
+            \item The transaction must burn a \code{computation\_thread} token via the Success redeemer.
             \item The transaction must mint a \code{fraud\_proof} token with the same token name as the \code{computation\_thread} token.
-            \item The transaction must include the Midgard hub oracle NFT in a reference input.
-            \item Let \code{fraud\_proof\_addr} be the policy ID in the corresponding field of the Midgard hub oracle.
-            \item The \code{fraud\_proof} token must be sent to the \code{fraud\_proof\_addr} spending validator.
+            \item The \code{fraud\_proof} token must be sent to an address which its payment part is the same script as the token's policy ID.
+            \item The transaction must \emph{not} mint or burn any other tokens.
         \end{enumerate}
 \end{description}
 
 \subsection{Spending validator}
 \label{h:fraud-proof-tokens-spending-validator}
 
-The spending validator of \code{fraud\_proof\_addr} does \emph{not} allow its utxo to be spent.
+The spending validator of \code{fraud\_proof} does \emph{not} allow its utxo to be spent.
 Midgard fraud proofs last forever.
 
 \end{document}

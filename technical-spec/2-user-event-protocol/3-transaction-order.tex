@@ -63,6 +63,7 @@ It oversees correctness of datums, and registration/unregistration of events' co
         \item Transaction order utxo must be produced at \code{tx\_order\_addr}.
         \item The transaction order's \code{inclusion\_time} must be equal to transaction's time-validity upper bound plus \code{event\_wait\_duration} Midgard protocol parameter.
         \item The hash of the witness script must be correctly stored in the datum.
+        \item Validity of the order must be set to \code{TxIsValid}.
       \end{enumerate}
     \item[Burn Transaction Order NFT.] Oversee the conclusion of transaction order by requiring its NFTs to be burnt.
     Conditions:
@@ -79,33 +80,20 @@ It oversees correctness of datums, and registration/unregistration of events' co
 \label{h:transaction-order-spending-validator}
 
 The \code{tx\_order} spending validator is statically parametrized on the \code{hub\_oracle} minting policy.
-It's responsible for validating conclusion of transaction orders, or refunding stranded ones.
+It's responsible for validating conclusion of transaction orders, and sending back included min-ADA to their specified refund addresses.
 
 \begin{description}
-  \item[Conclude.] Transaction for spending a confirmed transaction order.
+  \item[Spend.] Transaction for spending a confirmed transaction order.
     Conditions:
     \begin{enumerate}
-      \item Let \code{settlement\_node} be the referenced settlement node.
-      \item The transaction order must be included in the transactions tree of \code{settlement\_node}.
-        This also implies the inclusion time of the order falls within the time interval of \code{settlement\_node}.
+      \item Let \code{settlement} be the referenced settlement utxo.
+      \item Let \code{validity\_override} be the expected validity of the transaction order stored in transactions tree of \code{settlement}, provided via the redeemer.
+      \item The transaction order must be included in the transactions tree of \code{settlement} with its validity set to \code{validity\_override}.
       \item The \code{BurnEventNFT} endpoint of the transaction order minting script must be invoked with the corresponding \code{l1\_id} of the order utxo.
       \item Let \code{refund\_address} and \code{refund\_datum} be the refund information retrieved from the transaction order's datum.
       \item The min-ADA of the transaction order utxo must go to \code{refund\_address}.
       \item The datum attached to this output utxo must be the same as \code{refund\_datum}.
       \item \todo{} No reference script must be attached to the output utxo.
-    \end{enumerate}
-  \item[Refund.] 
-    Conditions:
-    \begin{enumerate}
-      \item The \code{BurnEventNFT} endpoint of the transaction order minting script must be invoked with the corresponding \code{l1\_id} of the order utxo.
-      \item Let \code{refund\_address} and \code{refund\_datum} be the refund information retrieved from the transaction order's datum.
-      \item The min-ADA of the transaction order utxo must go to \code{refund\_address}.
-      \item The datum attached to this output utxo must be the same as \code{refund\_datum}.
-      \item 
-        \begin{itemize}
-          \item If inclusion time of the stranded transaction order falls within the time range of an existing settlement node, refund can only be allowed if the settlement node's corresponding tree does not contain the transaction order (proven by providing a non-membership proof).
-          \item Otherwise, if the inclusion time falls in one of the time gaps of settlement queue, refund request is considered valid by referencing the immediate settlement node and showing the inclusion time falls in the gap.
-        \end{itemize}
     \end{enumerate}
 \end{description}
 
