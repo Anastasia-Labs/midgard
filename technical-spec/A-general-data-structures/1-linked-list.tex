@@ -109,7 +109,7 @@ The required conditions for each element are:
     \item The element utxos must hold some ADA, and NFTs of the list's minting policy with correct asset names with no other tokens.
     \item The element utxos must have inline datums that parse as \code{Element}.
     \item No reference script must be attached to the utxo.\footnote{This is an opinionated design decision that is not strictly necessary for the linked list itself.
-      There are two primary reasons for this decision: first, it prevents users from bloating utxos and therefore increasing the min required ADA for them, and second, it keeps the library API from getting too overwhelming by providing users with a potentially attached script.}
+      See \cref{h:list-opinionated-design-decisions}.}
 \end{itemize}
 
 Throughout this document we refer to the above conditions with the keyword \textbf{Authentic} for short.
@@ -365,17 +365,34 @@ Linked list elements have two constants:
   \item And the prefix of node keys in node NFT asset names
 \end{itemize}
 
-To allow these to be stated only once, all minting and inspection helpers return functions that require provision of these reserved values.
+To allow these to be stated only once, most helpers return functions that require provisions of these reserved values.
+In addition to the root key and node asset name labels, the reader monad also requires the number of bytes the labels occupy.
+While this is a value that should be derived from the labels themselves, its provision prevents extra performance overhead.
+
+\subsection{Opinionated design decisions}
+\label{h:list-opinionated-design-decisions}
+
+A few implicit behavior have been implemented by the library in order to keep the API cleaner.
+\begin{itemize}
+  \item \textbf{Addresses of utxos.} New and removing nodes are allowed to have arbitrary staking parts for their destination addresses, but their payment parts are required to be the same as their anchor elements.
+    On the other hand, anchor elements are validated to be reproduced at the same addresses (meaning neither their payment parts nor staking parts can change).
+  \item \textbf{Tokens of utxos.} All linked list utxos are validated to carry some ADA (which its quantity is exposed), plus the list NFT and no other tokens.
+    Exposing the rest of the assets would not only overwhelm the API, but it would also add extra overhead.
+  \item \textbf{Reference scripts.} List utxos are required to have no scripts attached to them.
+    This prevents users from bloating utxos and therefore increasing the min required ADA for them, without returning more values for users to handle.
+\end{itemize}
 
 \subsection{Instantiate a linked list in an application}
 \label{h:instantiate-list-in-application}
 
-An application that uses a linked list should ensure that it uses the appropriate state transition rules when creating/destroying node utxos of the list or otherwise modifying the \code{key} or \code{link} field value of any nodes.
-The application can attach additional rules that constrain the circumstances under which it allows list state transitions based on the list subcontext or the full transaction context.
-Moreover, the application has complete and exclusive control over the app-specific \code{data} field of list nodes, for which it also defines the data type.
-
-As a general good practice, applications should limit the number of different non-node tokens and the size of app-specific data placed into node utxo when new nodes are inserted and when app-specific data is modified.
-This avoids token dust and large data attacks that could result in deadlock when certain list operations cannot fit within transactions' compute, memory, or space constraints.
+Exposed functions are designed to validate anything related to the linked list itself, while providing any data required for custom validations.
+However, there are a few considerations to keep in mind when using the library.
+\begin{itemize}
+  \item \textbf{Limitations for root keys and node prefixes.} Root keys are directly stored in the asset names of root elements, which limits them to be 0 up to and including 32 bytes.
+    On the other hand, node key prefixes are stored in node element asset names along with the actual node keys.
+    This means users should be aware not to allow the total length to exceed 32 bytes.
+  \item \textbf{Datum structures.} All functions assume the linked list instantiation uses an applied version of \code{Element(root\_data, node\_data)}.
+\end{itemize}
 
 Midgard uses linked lists throughout its onchain architecture:
 \begin{itemize}
@@ -385,19 +402,7 @@ Midgard uses linked lists throughout its onchain architecture:
     \item \nameref{h:state-queue} (\cref{h:state-queue})
 \end{itemize}
 
-\subsection{Different data in root node}
-\label{h:list-different-data-in-root}
 
-An application that needs to store different data in the root node than in non-root nodes of a list can use an app-specific type with multiple constructors (i.e., a sum type) in the \code{data} field of the list's \code{NodeDatum}.
-
-\begin{align*}
-    \T{MyNodeDatum} &\coloneq \T{NodeDatum} (\T{MyAppData}) \\
-    \T{MyAppData} &\coloneq \T{Root}(\T{MyRootData}) \;|\; \T{Node}(\T{MyNodeData})
-\end{align*}
-
-The application's onchain code should ensure that root and non-root nodes always use their respective constructors.
-
-\subsection{Parallel insertions in key-ordered lists}
 \label{h:parallel-insertions-in-key-ordered-lists}
 
 For keys randomly sampled from an approximately uniform distribution (e.g., cryptographic public keys for wallets), insertion/removal from a key-ordered linked list is parallel to a degree proportional to the list's size, with parallelism increasing as the list grows.
