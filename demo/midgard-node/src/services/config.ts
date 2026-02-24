@@ -19,6 +19,13 @@ type NodeConfigDep = {
   WAIT_BETWEEN_BLOCK_CONFIRMATION: number;
   WAIT_BETWEEN_DEPOSIT_UTXO_FETCHES: number;
   WAIT_BETWEEN_MERGE_TXS: number;
+  VALIDATION_BATCH_SIZE: number;
+  VALIDATION_MAX_QUEUE_AGE_MS: number;
+  VALIDATION_PHASE_A_CONCURRENCY: number;
+  VALIDATION_G4_BUCKET_CONCURRENCY: number;
+  VALIDATION_STRICTNESS_PROFILE: string;
+  MIN_FEE_A: bigint;
+  MIN_FEE_B: bigint;
   PROM_METRICS_PORT: number;
   OLTP_EXPORTER_URL: string;
   POSTGRES_USER: string;
@@ -59,6 +66,29 @@ const makeConfig = Effect.gen(function* () {
   const waitBetweenMergeTxs = yield* Config.integer(
     "WAIT_BETWEEN_MERGE_TXS",
   ).pipe(Config.withDefault(10000));
+  const validationBatchSize = yield* Config.integer(
+    "VALIDATION_BATCH_SIZE",
+  ).pipe(Config.withDefault(1000));
+  const validationMaxQueueAgeMs = yield* Config.integer(
+    "VALIDATION_MAX_QUEUE_AGE_MS",
+  ).pipe(Config.withDefault(250));
+  const validationPhaseAConcurrency = yield* Config.integer(
+    "VALIDATION_PHASE_A_CONCURRENCY",
+  ).pipe(Config.withDefault(32));
+  const validationG4BucketConcurrency = yield* Config.integer(
+    "VALIDATION_G4_BUCKET_CONCURRENCY",
+  ).pipe(Config.withDefault(8));
+  const validationStrictnessProfile = yield* Config.string(
+    "VALIDATION_STRICTNESS_PROFILE",
+  ).pipe(Config.withDefault("phase1_midgard"));
+  const minFeeA = yield* Config.string("MIN_FEE_A").pipe(
+    Config.withDefault("0"),
+    Config.mapAttempt((value) => BigInt(value)),
+  );
+  const minFeeB = yield* Config.string("MIN_FEE_B").pipe(
+    Config.withDefault("0"),
+    Config.mapAttempt((value) => BigInt(value)),
+  );
   const waitBetweenDepositUTxOFetches = yield* Config.integer(
     "WAIT_BETWEEN_DEPOSIT_UTXO_FETCHES",
   ).pipe(Config.withDefault(10000));
@@ -167,6 +197,13 @@ const makeConfig = Effect.gen(function* () {
     WAIT_BETWEEN_BLOCK_COMMITMENT: waitBetweenBlockCommitment,
     WAIT_BETWEEN_BLOCK_CONFIRMATION: waitBetweenBlockConfirmation,
     WAIT_BETWEEN_MERGE_TXS: waitBetweenMergeTxs,
+    VALIDATION_BATCH_SIZE: validationBatchSize,
+    VALIDATION_MAX_QUEUE_AGE_MS: validationMaxQueueAgeMs,
+    VALIDATION_PHASE_A_CONCURRENCY: validationPhaseAConcurrency,
+    VALIDATION_G4_BUCKET_CONCURRENCY: validationG4BucketConcurrency,
+    VALIDATION_STRICTNESS_PROFILE: validationStrictnessProfile,
+    MIN_FEE_A: minFeeA,
+    MIN_FEE_B: minFeeB,
     WAIT_BETWEEN_DEPOSIT_UTXO_FETCHES: waitBetweenDepositUTxOFetches,
     PROM_METRICS_PORT: promMetricsPort,
     OLTP_EXPORTER_URL: oltpExporterUrl,

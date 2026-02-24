@@ -9,22 +9,22 @@ importers:
   .:
     dependencies:
       '@aiken-lang/merkle-patricia-forestry':
-        specifier: ^1.3.1
+        specifier: ^1.2.0
         version: 1.3.1
       '@al-ft/midgard-sdk':
         specifier: file:../midgard-sdk/al-ft-midgard-sdk-0.1.0.tgz
-        version: file:../midgard-sdk/al-ft-midgard-sdk-0.1.0.tgz(@harmoniclabs/bytestring@1.0.0)(@harmoniclabs/cbor@1.6.6)(@harmoniclabs/crypto@0.2.5)(@harmoniclabs/pair@1.0.0)(fast-check@3.23.2)
+        version: file:../midgard-sdk/al-ft-midgard-sdk-0.1.0.tgz(@harmoniclabs/bytestring@1.0.0)(@harmoniclabs/cbor@1.6.6)(@harmoniclabs/crypto@0.2.5)(@harmoniclabs/pair@1.0.0)(fast-check@4.5.3)
       '@effect/experimental':
-        specifier: ^0.46.8
+        specifier: ^0.46.0
         version: 0.46.8(@effect/platform@0.80.21(effect@3.19.16))(effect@3.19.16)(lmdb@3.4.1)
       '@effect/opentelemetry':
-        specifier: ^0.44.12
+        specifier: ^0.44.6
         version: 0.44.12(@opentelemetry/api@1.9.0)(@opentelemetry/resources@1.30.1(@opentelemetry/api@1.9.0))(@opentelemetry/sdk-metrics@1.30.1(@opentelemetry/api@1.9.0))(@opentelemetry/sdk-trace-base@1.30.1(@opentelemetry/api@1.9.0))(@opentelemetry/sdk-trace-node@1.30.1(@opentelemetry/api@1.9.0))(@opentelemetry/sdk-trace-web@1.30.1(@opentelemetry/api@1.9.0))(@opentelemetry/semantic-conventions@1.39.0)(effect@3.19.16)
       '@effect/platform':
-        specifier: ^0.80.21
+        specifier: ^0.80.0
         version: 0.80.21(effect@3.19.16)
       '@effect/platform-node':
-        specifier: ^0.80.3
+        specifier: ^0.80.0
         version: 0.80.3(@effect/cluster@0.31.1(@effect/platform@0.80.21(effect@3.19.16))(@effect/rpc@0.57.1(@effect/platform@0.80.21(effect@3.19.16))(effect@3.19.16))(@effect/sql@0.34.1(@effect/experimental@0.46.8(@effect/platform@0.80.21(effect@3.19.16))(effect@3.19.16)(lmdb@3.4.1))(@effect/platform@0.80.21(effect@3.19.16))(effect@3.19.16))(effect@3.19.16))(@effect/platform@0.80.21(effect@3.19.16))(@effect/rpc@0.57.1(@effect/platform@0.80.21(effect@3.19.16))(effect@3.19.16))(@effect/sql@0.34.1(@effect/experimental@0.46.8(@effect/platform@0.80.21(effect@3.19.16))(effect@3.19.16)(lmdb@3.4.1))(@effect/platform@0.80.21(effect@3.19.16))(effect@3.19.16))(effect@3.19.16)
       '@effect/sql':
         specifier: ^0.34.1
@@ -40,7 +40,10 @@ importers:
         version: 9.1.0
       '@lucid-evolution/lucid':
         specifier: 0.4.29
-        version: 0.4.29(@harmoniclabs/bytestring@1.0.0)(@harmoniclabs/cbor@1.6.6)(@harmoniclabs/crypto@0.2.5)(@harmoniclabs/pair@1.0.0)(fast-check@3.23.2)
+        version: 0.4.29(@harmoniclabs/bytestring@1.0.0)(@harmoniclabs/cbor@1.6.6)(@harmoniclabs/crypto@0.2.5)(@harmoniclabs/pair@1.0.0)(fast-check@4.5.3)
+      '@noble/hashes':
+        specifier: ^2.0.1
+        version: 2.0.1
       '@opentelemetry/api':
         specifier: ^1.9.0
         version: 1.9.0
@@ -59,57 +62,66 @@ importers:
       '@opentelemetry/sdk-trace-web':
         specifier: ^1.30.1
         version: 1.30.1(@opentelemetry/api@1.9.0)
+      cborg:
+        specifier: ^4.5.8
+        version: 4.5.8
       chalk:
-        specifier: ^5.6.2
+        specifier: ^5.4.1
         version: 5.6.2
       commander:
         specifier: ^13.1.0
         version: 13.1.0
       dotenv:
-        specifier: ^16.6.1
+        specifier: ^16.4.7
         version: 16.6.1
       effect:
-        specifier: ^3.19.16
+        specifier: ^3.14.22
         version: 3.19.16
       level:
         specifier: ^10.0.0
         version: 10.0.0
+      libsodium-wrappers-sumo:
+        specifier: 0.7.15
+        version: 0.7.15
       memory-level:
         specifier: ^3.1.0
         version: 3.1.0
       rimraf:
-        specifier: ^6.1.2
+        specifier: ^6.0.1
         version: 6.1.2
       vitest:
-        specifier: ^3.2.4
+        specifier: ^3.0.7
         version: 3.2.4(@types/node@22.19.10)
     devDependencies:
       '@commander-js/extra-typings':
         specifier: ^13.1.0
         version: 13.1.0(commander@13.1.0)
       '@effect/vitest':
-        specifier: ^0.22.5
+        specifier: ^0.22.0
         version: 0.22.5(effect@3.19.16)(vitest@3.2.4(@types/node@22.19.10))
       '@types/express':
-        specifier: ^5.0.6
+        specifier: ^5.0.0
         version: 5.0.6
       '@types/jest':
         specifier: ^29.5.14
         version: 29.5.14
       '@types/node':
-        specifier: ^22.19.10
+        specifier: ^22.17.0
         version: 22.19.10
+      fast-check:
+        specifier: ^4.5.3
+        version: 4.5.3
       prettier:
-        specifier: ^3.8.1
+        specifier: ^3.5.2
         version: 3.8.1
       tsup:
-        specifier: ^8.5.1
+        specifier: ^8.4.0
         version: 8.5.1(postcss@8.5.6)(typescript@5.9.3)
       typescript:
-        specifier: ^5.9.3
+        specifier: ^5.7.3
         version: 5.9.3
       vite:
-        specifier: ^6.4.1
+        specifier: ^6.3.5
         version: 6.4.1(@types/node@22.19.10)
 
 packages:
@@ -118,7 +130,7 @@ packages:
     resolution: {integrity: sha512-vKypwCNMH7SgP8JQ/fQyXjhDC16DqTiW9x9dLK6AXe2tEWVouNy2GMKmOaS4l6ZF7pTjty5XCD+MqnsxXJBIgg==}
 
   '@al-ft/midgard-sdk@file:../midgard-sdk/al-ft-midgard-sdk-0.1.0.tgz':
-    resolution: {integrity: sha512-t59y21SqZoiI0bcqmqCReBrubQgFf97G4dmx03ESZ6mgPiCWvOxR9p5ZIRVkB72mzmu5xEHFdWu7WiUIqHS8FQ==, tarball: file:../midgard-sdk/al-ft-midgard-sdk-0.1.0.tgz}
+    resolution: {integrity: sha512-fCsIGLmTHj/kzLBkE5IXh/Z8DJZAGp7au/vKdcFW94M5VXAf7Fp3Dmae+VwVBlwiqfDkfcVFG7wxOn0ddWss9g==, tarball: file:../midgard-sdk/al-ft-midgard-sdk-0.1.0.tgz}
     version: 0.1.0
 
   '@anastasia-labs/cardano-multiplatform-lib-browser@6.0.2-2':
@@ -1468,6 +1480,10 @@ packages:
   cbor-x@1.6.0:
     resolution: {integrity: sha512-0kareyRwHSkL6ws5VXHEf8uY1liitysCVJjlmhaLG+IXLqhSaOO+t63coaso7yjwEzWZzLy8fJo06gZDVQM9Qg==}
 
+  cborg@4.5.8:
+    resolution: {integrity: sha512-6/viltD51JklRhq4L7jC3zgy6gryuG5xfZ3kzpE+PravtyeQLeQmCYLREhQH7pWENg5pY4Yu/XCd6a7dKScVlw==}
+    hasBin: true
+
   chai@5.3.3:
     resolution: {integrity: sha512-4zNhdJD/iOjSH0A05ea+Ke6MU5mmpQcbQsSOkgdaUMJ9zTlDTD/GYlwohmIE2u0gaxHYiVHEn1Fw9mZ/ktJWgw==}
     engines: {node: '>=18'}
@@ -1627,6 +1643,10 @@ packages:
   fast-check@3.23.2:
     resolution: {integrity: sha512-h5+1OzzfCC3Ef7VbtKdcv7zsstUQwUDlYpUTvjeUsJAssPgLn7QzbboPtL5ro04Mq0rPOsMzl7q5hIbRs2wD1A==}
     engines: {node: '>=8.0.0'}
+
+  fast-check@4.5.3:
+    resolution: {integrity: sha512-IE9csY7lnhxBnA8g/WI5eg/hygA6MGWJMSNfFRrBlXUciADEhS1EDB0SIsMSvzubzIlOBbVITSsypCsW717poA==}
+    engines: {node: '>=12.17.0'}
 
   fastq@1.20.1:
     resolution: {integrity: sha512-GGToxJ/w1x32s/D2EKND7kTil4n8OVk/9mycTc4VDza13lOvpUZTGX3mFSCtV9ksdGBVzvsyAVLM6mHFThxXxw==}
@@ -1838,8 +1858,8 @@ packages:
   libsodium-sumo@0.7.16:
     resolution: {integrity: sha512-x6atrz2AdXCJg6G709x9W9TTJRI6/0NcL5dD0l5GGVqNE48UJmDsjO4RUWYTeyXXUpg+NXZ2SHECaZnFRYzwGA==}
 
-  libsodium-wrappers-sumo@0.7.16:
-    resolution: {integrity: sha512-gR0JEFPeN3831lB9+ogooQk0KH4K5LSMIO5Prd5Q5XYR2wHFtZfPg0eP7t1oJIWq+UIzlU4WVeBxZ97mt28tXw==}
+  libsodium-wrappers-sumo@0.7.15:
+    resolution: {integrity: sha512-aSWY8wKDZh5TC7rMvEdTHoyppVq/1dTSAeAR7H6pzd6QRT3vQWcT5pGwCotLcpPEOLXX6VvqihSPkpEhYAjANA==}
 
   lilconfig@3.1.3:
     resolution: {integrity: sha512-/vlFKAoH5Cgt3Ie+JLhRbwOsCQePABiU3tJ1egGvyQ+33R/vcwM2Zl2QR/LzjsBeItPt3oSVXapn+m4nQDvpzw==}
@@ -2153,6 +2173,9 @@ packages:
 
   pure-rand@6.1.0:
     resolution: {integrity: sha512-bVWawvoZoBYpp6yIoQtQXHZjmz35RSVHnUOTefl8Vcjr8snTPY1wnpSPMWekcFwbxI6gtmT7rSYPFvz71ldiOA==}
+
+  pure-rand@7.0.1:
+    resolution: {integrity: sha512-oTUZM/NAZS8p7ANR3SHh30kXB+zK2r2BPcEn/awJIbOvq82WoMN4p62AWWp3Hhw50G0xMsw1mhIBLqHw64EcNQ==}
 
   queue-microtask@1.2.3:
     resolution: {integrity: sha512-NuaNSa6flKT5JaSYQzJok04JzTL1CA6aGhv5rfLW3PgqA+M2ChpZQnAC8h8i4ZFkBS8X5RqkDBHA7r4hej3K9A==}
@@ -2512,9 +2535,9 @@ snapshots:
     transitivePeerDependencies:
       - react-native-b4a
 
-  '@al-ft/midgard-sdk@file:../midgard-sdk/al-ft-midgard-sdk-0.1.0.tgz(@harmoniclabs/bytestring@1.0.0)(@harmoniclabs/cbor@1.6.6)(@harmoniclabs/crypto@0.2.5)(@harmoniclabs/pair@1.0.0)(fast-check@3.23.2)':
+  '@al-ft/midgard-sdk@file:../midgard-sdk/al-ft-midgard-sdk-0.1.0.tgz(@harmoniclabs/bytestring@1.0.0)(@harmoniclabs/cbor@1.6.6)(@harmoniclabs/crypto@0.2.5)(@harmoniclabs/pair@1.0.0)(fast-check@4.5.3)':
     dependencies:
-      '@lucid-evolution/lucid': 0.4.29(@harmoniclabs/bytestring@1.0.0)(@harmoniclabs/cbor@1.6.6)(@harmoniclabs/crypto@0.2.5)(@harmoniclabs/pair@1.0.0)(fast-check@3.23.2)
+      '@lucid-evolution/lucid': 0.4.29(@harmoniclabs/bytestring@1.0.0)(@harmoniclabs/cbor@1.6.6)(@harmoniclabs/crypto@0.2.5)(@harmoniclabs/pair@1.0.0)(fast-check@4.5.3)
       '@noble/hashes': 1.8.0
       effect: 3.19.16
     transitivePeerDependencies:
@@ -2604,7 +2627,7 @@ snapshots:
       '@cardano-sdk/util': 0.16.0
       blake2b: 2.1.4
       i: 0.3.7
-      libsodium-wrappers-sumo: 0.7.16
+      libsodium-wrappers-sumo: 0.7.15
       lodash: 4.17.23
       npm: 9.9.4
       pbkdf2: 3.1.5
@@ -2731,10 +2754,10 @@ snapshots:
       '@effect/platform': 0.80.21(effect@3.19.16)
       effect: 3.19.16
 
-  '@effect/schema@0.66.16(effect@3.19.16)(fast-check@3.23.2)':
+  '@effect/schema@0.66.16(effect@3.19.16)(fast-check@4.5.3)':
     dependencies:
       effect: 3.19.16
-      fast-check: 3.23.2
+      fast-check: 4.5.3
 
   '@effect/schema@0.68.27(effect@3.19.16)':
     dependencies:
@@ -3082,11 +3105,11 @@ snapshots:
 
   '@lucid-evolution/crc8@0.1.8': {}
 
-  '@lucid-evolution/lucid@0.4.29(@harmoniclabs/bytestring@1.0.0)(@harmoniclabs/cbor@1.6.6)(@harmoniclabs/crypto@0.2.5)(@harmoniclabs/pair@1.0.0)(fast-check@3.23.2)':
+  '@lucid-evolution/lucid@0.4.29(@harmoniclabs/bytestring@1.0.0)(@harmoniclabs/cbor@1.6.6)(@harmoniclabs/crypto@0.2.5)(@harmoniclabs/pair@1.0.0)(fast-check@4.5.3)':
     dependencies:
       '@anastasia-labs/cardano-multiplatform-lib-browser': 6.0.2-3
       '@anastasia-labs/cardano-multiplatform-lib-nodejs': 6.0.2-3
-      '@effect/schema': 0.66.16(effect@3.19.16)(fast-check@3.23.2)
+      '@effect/schema': 0.66.16(effect@3.19.16)(fast-check@4.5.3)
       '@emurgo/cardano-message-signing-nodejs': 1.1.0
       '@lucid-evolution/core-types': 0.1.22
       '@lucid-evolution/core-utils': 0.1.16
@@ -3815,6 +3838,8 @@ snapshots:
     optionalDependencies:
       cbor-extract: 2.2.0
 
+  cborg@4.5.8: {}
+
   chai@5.3.3:
     dependencies:
       assertion-error: 2.0.1
@@ -4032,6 +4057,10 @@ snapshots:
     dependencies:
       pure-rand: 6.1.0
 
+  fast-check@4.5.3:
+    dependencies:
+      pure-rand: 7.0.1
+
   fastq@1.20.1:
     dependencies:
       reusify: 1.1.0
@@ -4245,7 +4274,7 @@ snapshots:
 
   libsodium-sumo@0.7.16: {}
 
-  libsodium-wrappers-sumo@0.7.16:
+  libsodium-wrappers-sumo@0.7.15:
     dependencies:
       libsodium-sumo: 0.7.16
 
@@ -4473,6 +4502,8 @@ snapshots:
       long: 5.3.2
 
   pure-rand@6.1.0: {}
+
+  pure-rand@7.0.1: {}
 
   queue-microtask@1.2.3: {}
 

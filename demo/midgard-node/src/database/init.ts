@@ -6,6 +6,7 @@ import * as LatestLedgerDB from "./latestLedger.js";
 import * as MempoolDB from "./mempool.js";
 import * as ProcessedMempoolDB from "./processedMempool.js";
 import * as MempoolLedgerDB from "./mempoolLedger.js";
+import * as TxRejectionsDB from "./txRejections.js";
 import * as Tx from "@/database/utils/tx.js";
 import * as Ledger from "@/database/utils/ledger.js";
 import * as DepositsDB from "@/database/deposits.js";
@@ -33,6 +34,7 @@ export const program: Effect.Effect<
   yield* Tx.createTable(ImmutableDB.tableName);
   yield* Tx.createTable(MempoolDB.tableName);
   yield* Tx.createTable(ProcessedMempoolDB.tableName);
+  yield* TxRejectionsDB.createTable;
   yield* UserEvents.createTable(DepositsDB.tableName);
 
   yield* Effect.logInfo("PostgreSQL database initialized Successfully.");

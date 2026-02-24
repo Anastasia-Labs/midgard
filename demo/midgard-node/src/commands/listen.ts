@@ -8,6 +8,7 @@ import {
 import * as SDK from "@al-ft/midgard-sdk";
 import { NodeSdk } from "@effect/opentelemetry";
 import {
+  CML,
   TxSubmitError,
   fromHex,
   getAddressDetails,
@@ -34,8 +35,10 @@ import {
   InitDB,
   MempoolDB,
   MempoolLedgerDB,
+  TxRejectionsDB,
 } from "@/database/index.js";
 import { isHexString } from "@/utils.js";
+import { QueuedTxPayload } from "@/validation/index.js";
 import {
   HttpRouter,
   HttpServer,
@@ -73,6 +76,7 @@ const COMMIT_ENDPOINT: string = "commit";
 const RESET_ENDPOINT: string = "reset";
 const SUBMIT_ENDPOINT: string = "submit";
 const STATE_QUEUE_ENDPOINT: string = "stateQueue";
+const TX_STATUS_ENDPOINT: string = "tx-status";
 
 const txCounter = Metric.counter("tx_count", {
   description: "A counter for tracking submit transactions",
@@ -205,6 +209,64 @@ const getUtxosHandler = Effect.gen(function* () {
   ),
   Effect.catchTag("DatabaseError", (e) =>
     handleDBGetFailure(UTXOS_ENDPOINT, e),
+  ),
+);
+
+const getTxStatusHandler = Effect.gen(function* () {
+  const params = yield* ParsedSearchParams;
+  const txHashParam = params["tx_hash"];
+  if (
+    typeof txHashParam !== "string" ||
+    !isHexString(txHashParam) ||
+    txHashParam.length !== 64
+  ) {
+    return yield* HttpServerResponse.json(
+      { error: `Invalid transaction hash: ${txHashParam}` },
+      { status: 400 },
+    );
+  }
+
+  const txHashBytes = Buffer.from(fromHex(txHashParam));
+  const rejected = yield* TxRejectionsDB.retrieveByTxId(txHashBytes);
+  if (rejected.length > 0) {
+    const latestRejection = rejected[0];
+    return yield* HttpServerResponse.json({
+      txId: txHashParam,
+      status: "rejected",
+      reasonCode: latestRejection.reject_code,
+      reasonDetail: latestRejection.reject_detail ?? undefined,
+      timestamps: {
+        createdAt: latestRejection.created_at.toISOString(),
+      },
+    });
+  }
+
+  const inImmutable = yield* ImmutableDB.retrieveTxCborsByHashes([txHashBytes]);
+  if (inImmutable.length > 0) {
+    return yield* HttpServerResponse.json({
+      txId: txHashParam,
+      status: "committed",
+    });
+  }
+
+  const inMempool = yield* MempoolDB.retrieveTxCborsByHashes([txHashBytes]);
+  if (inMempool.length > 0) {
+    return yield* HttpServerResponse.json({
+      txId: txHashParam,
+      status: "accepted",
+    });
+  }
+
+  return yield* HttpServerResponse.json(
+    { error: "Transaction not found" },
+    { status: 404 },
+  );
+}).pipe(
+  Effect.catchTag("HttpBodyError", (e) =>
+    failWith500("GET", TX_STATUS_ENDPOINT, e),
+  ),
+  Effect.catchTag("DatabaseError", (e) =>
+    handleDBGetFailure(TX_STATUS_ENDPOINT, e),
   ),
 );
 
@@ -515,9 +577,8 @@ const getLogGlobalsHandler = Effect.gen(function* () {
   Effect.catchTag("HttpBodyError", (e) => failWith500("GET", "logGlobals", e)),
 );
 
-const postSubmitHandler = (txQueue: Queue.Enqueue<string>) =>
+const postSubmitHandler = (txQueue: Queue.Enqueue<QueuedTxPayload>) =>
   Effect.gen(function* () {
-    // yield* Effect.logInfo(`◻️  Submit request received for transaction`);
     const params = yield* ParsedSearchParams;
     const txStringParam = params["tx_cbor"];
     if (typeof txStringParam !== "string" || !isHexString(txStringParam)) {
@@ -526,14 +587,47 @@ const postSubmitHandler = (txQueue: Queue.Enqueue<string>) =>
         { error: `Invalid CBOR provided` },
         { status: 400 },
       );
-    } else {
-      const txString = txStringParam;
-      yield* txQueue.offer(txString);
-      Effect.runSync(Metric.increment(txCounter));
-      return yield* HttpServerResponse.json({
-        message: `Successfully added the transaction to the queue`,
-      });
     }
+
+    const txString = txStringParam;
+
+    const decodeAndHashResult = yield* Effect.either(
+      Effect.try({
+        try: () => {
+          const txCbor = Buffer.from(fromHex(txString));
+          const tx = CML.Transaction.from_cbor_bytes(txCbor);
+          const txHash = CML.hash_transaction(tx.body());
+          const txId = Buffer.from(txHash.to_raw_bytes());
+          return {
+            txId,
+            txIdHex: txHash.to_hex(),
+            txCbor,
+          };
+        },
+        catch: (error) => error,
+      }),
+    );
+
+    if (decodeAndHashResult._tag === "Left") {
+      yield* Effect.logInfo(`▫️ Invalid transaction CBOR payload`);
+      return yield* HttpServerResponse.json(
+        { error: "Invalid transaction CBOR payload" },
+        { status: 400 },
+      );
+    }
+
+    const payload: QueuedTxPayload = {
+      txId: decodeAndHashResult.right.txId,
+      txCbor: decodeAndHashResult.right.txCbor,
+      createdAtMillis: Date.now(),
+    };
+    yield* txQueue.offer(payload);
+
+    Effect.runSync(Metric.increment(txCounter));
+    return yield* HttpServerResponse.json({
+      txId: decodeAndHashResult.right.txIdHex,
+      status: "queued",
+    });
   }).pipe(
     Effect.catchTag("HttpBodyError", (e) =>
       failWith500("POST", "submit", e, "▫️ L2 transaction failed"),
@@ -541,7 +635,7 @@ const postSubmitHandler = (txQueue: Queue.Enqueue<string>) =>
   );
 
 const router = (
-  txQueue: Queue.Queue<string>,
+  txQueue: Queue.Queue<QueuedTxPayload>,
 ): Effect.Effect<
   HttpServerResponse.HttpServerResponse,
   HttpBodyError,
@@ -555,6 +649,7 @@ const router = (
   HttpRouter.empty
     .pipe(
       HttpRouter.get(`/${TX_ENDPOINT}`, getTxHandler),
+      HttpRouter.get(`/${TX_STATUS_ENDPOINT}`, getTxStatusHandler),
       HttpRouter.get(`/${ADDRESS_HISTORY_ENDPOINT}`, getTxsOfAddressHandler),
       HttpRouter.get(`/${UTXOS_ENDPOINT}`, getUtxosHandler),
       HttpRouter.get(`/${BLOCK_ENDPOINT}`, getBlockHandler),
@@ -581,7 +676,7 @@ export const runNode = (withMonitoring?: boolean) =>
   Effect.gen(function* () {
     const nodeConfig = yield* NodeConfig;
 
-    const txQueue = yield* Queue.unbounded<string>();
+    const txQueue = yield* Queue.unbounded<QueuedTxPayload>();
 
     yield* InitDB.program.pipe(Effect.provide(Database.layer));
 

@@ -31,6 +31,7 @@ import {
   MempoolDB,
   MempoolLedgerDB,
   ProcessedMempoolDB,
+  TxRejectionsDB,
 } from "@/database/index.js";
 import { deleteLedgerMpt, deleteMempoolMpt } from "@/workers/utils/mpt.js";
 import { DatabaseError } from "@/database/utils/common.js";
@@ -257,6 +258,7 @@ export const resetDatabases: Effect.Effect<
     LatestLedgerDB.clear,
     ConfirmedLedgerDB.clear,
     AddressHistoryDB.clear,
+    TxRejectionsDB.clear,
     deleteMempoolMpt,
     deleteLedgerMpt,
   ],
