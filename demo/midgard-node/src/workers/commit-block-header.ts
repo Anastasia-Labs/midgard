@@ -53,11 +53,11 @@ import {
   retrieveTimeBoundEntries,
 } from "@/database/utils/user-events.js";
 import { DatabaseError } from "@/database/utils/common.js";
-import { RuntimeFiber } from "effect/Fiber";
 
+// Batch size for database operations.
 const BATCH_SIZE = 100;
 
-const getLatestBlockDatumEndTime = (
+const getBlocksEndDate = (
   latestBlocksDatum: SDK.StateQueueDatum,
 ): Effect.Effect<Date, SDK.DataCoercionError, never> =>
   Effect.gen(function* () {
@@ -74,7 +74,11 @@ const getLatestBlockDatumEndTime = (
     return new Date(Number(endTimeBigInt));
   });
 
-const establishEndTimeFromTxRequests = (
+/**
+ * We are assuming that it's impossible for mempool table to have an older tx
+ * than any of the txs in the processed mempool table.
+ */
+const establishEndDateFromTxRequests = (
   mempoolTxs: readonly TxTable.EntryWithTimeStamp[],
 ): Effect.Effect<Option.Option<Date>, DatabaseError, Database> =>
   Effect.gen(function* () {
@@ -82,19 +86,14 @@ const establishEndTimeFromTxRequests = (
       yield* Effect.logInfo(
         "🔹 No transactions were found in MempoolDB, checking ProcessedMempoolDB...",
       );
-
       const processedMempoolTxs = yield* ProcessedMempoolDB.retrieve;
-
       if (processedMempoolTxs.length <= 0) {
-        // No transaction requests are available for inclusion in a block. By
-        // setting `endTime` to `undefined` here, the code below can decide
-        // whether it can stop if no
+        // No transaction requests are available for inclusion in a block.
         return Option.none();
       } else {
         // No new transactions received, but there are uncommitted transactions
         // in the MPT. So its root must be used to submit a new block, and if
-        // successful, `ProcessedMempoolDB` must be cleared. Following functions
-        // should work fine with 0 mempool txs.
+        // successful, `ProcessedMempoolDB` must be cleared.
         return Option.some(processedMempoolTxs[0][TxColumns.TIMESTAMPTZ]);
       }
     } else {
@@ -208,7 +207,7 @@ const successfulSubmissionProgram = (
     yield* Effect.all(
       [
         batchProgram(
-          Math.floor(BATCH_SIZE / 2),
+          Math.floor(BATCH_SIZE),
           mempoolTxs.length,
           "successful-commit",
           (startIndex: number, endIndex: number) => {
@@ -355,7 +354,18 @@ const buildUnsignedTx = (
   txsRoot: string,
   depositsRoot: string,
   endDate: Date,
-) =>
+): Effect.Effect<
+  {
+    newHeaderHash: string;
+    signAndSubmitProgram: Effect.Effect<string, TxSubmitError | TxSignError>;
+    txSize: number;
+  },
+  | SDK.DataCoercionError
+  | SDK.HashingError
+  | SDK.LucidError
+  | SDK.StateQueueError,
+  Lucid
+> =>
   Effect.gen(function* () {
     const lucid = yield* Lucid;
     yield* Effect.logInfo("🔹 Finding updated block datum and new header...");
@@ -374,7 +384,6 @@ const buildUnsignedTx = (
     const newHeaderHash = yield* SDK.hashBlockHeader(newHeader);
     yield* Effect.logInfo(`🔹 New header hash is: ${newHeaderHash}`);
 
-    // Build commitment block
     const commitBlockParams: SDK.StateQueueCommitBlockParams = {
       anchorUTxO: latestBlock,
       updatedAnchorDatum: updatedNodeDatum,
@@ -451,6 +460,9 @@ const databaseOperationsProgram = (
       // the processed txs must be transferred to `ProcessedMempoolDB` from
       // `MempoolDB`.
       //
+      // We are ignoring user events here because we don't have a confirmed
+      // block to extract the start time of the inclusion time window for them.
+      //
       // TODO: Handle failures properly.
       yield* Effect.logInfo(
         "🔹 No confirmed blocks available. Transferring to ProcessedMempoolDB...",
@@ -469,44 +481,44 @@ const databaseOperationsProgram = (
         workerInput.data.availableConfirmedBlock,
       );
 
-      const startTime = yield* getLatestBlockDatumEndTime(latestBlock.datum);
+      const startDate = yield* getBlocksEndDate(latestBlock.datum);
 
       const optEndTime: Option.Option<Date> =
-        yield* establishEndTimeFromTxRequests(mempoolTxs);
+        yield* establishEndDateFromTxRequests(mempoolTxs);
 
       if (Option.isNone(optEndTime)) {
         // No transaction requests found (neither in `ProcessedMempoolDB`, nor
         // in `MempoolDB`). We check if there are any user events slated for
-        // inclusion within `startTime` and current moment.
-        const endTime = new Date();
-
+        // inclusion within `startDate` and current moment.
+        const endDate = new Date();
         yield* Effect.logInfo(
           "🔹 Checking for user events... (no tx requests in queue)",
         );
         const optUserEventsProgram = yield* userEventsProgram(
           DepositsDB.tableName,
-          startTime,
-          endTime,
+          startDate,
+          endDate,
         );
         if (Option.isNone(optUserEventsProgram)) {
           yield* Effect.logInfo("🔹 Nothing to commit.");
-          return {
-            type: "NothingToCommitOutput",
-          } as WorkerOutput;
+          const workerOutput: WorkerOutput = { type: "NothingToCommitOutput" };
+          return workerOutput;
         } else {
+          // Here there are no tx requests, but deposits are slated for
+          // inclusion.
+          const depositEventEntries =
+            optUserEventsProgram.value.retreivedEvents;
           const insertedDepositUTxOs = yield* applyDepositsToLedger(
+            "add",
             ledgerTrie,
-            optUserEventsProgram.value.retreivedEvents,
+            depositEventEntries,
           );
 
-          const depositsRootFiber: RuntimeFiber<string, MptError> =
-            yield* Effect.fork(optUserEventsProgram.value.mptRoot);
-          const depositsRoot = yield* depositsRootFiber;
-          yield* Effect.logInfo(`🔹 New deposits root found: ${depositsRoot}`);
-
+          const depositsRoot = yield* optUserEventsProgram.value.mptRoot;
           const utxoRoot = yield* ledgerTrie.getRootHex();
           const txRoot = yield* mempoolTrie.getRootHex();
 
+          yield* Effect.logInfo(`🔹 Deposits root found: ${depositsRoot}`);
           yield* Effect.logInfo(`🔹 New UTxO root found: ${utxoRoot}`);
           yield* Effect.logInfo(`🔹 New transaction root found: ${txRoot}`);
 
@@ -516,46 +528,75 @@ const databaseOperationsProgram = (
             utxoRoot,
             txRoot,
             depositsRoot,
-            endTime,
+            endDate,
           );
 
           return yield* Effect.matchEffect(signAndSubmitProgram, {
             onFailure: (_) => {
               // For now we'll assume the deposit events will be small in
               // number, so we won't concern ourselves with wasted work. That
-              // is, we won't do anything and just report back with failure.
+              // is, we just revert their addition to the ledger trie.
+
               const failureOutput: WorkerOutput = {
                 type: "FailureOutput",
                 error:
-                  "Something went wrong the transaction. No tx requests were present, only deposits.",
+                  "Block commitment tx failed (no tx requests, only deposits).",
               };
 
-              return Effect.succeed(failureOutput);
+              const removalProgram = applyDepositsToLedger(
+                "remove",
+                ledgerTrie,
+                depositEventEntries,
+              ).pipe(
+                Effect.catchAllCause((_cause) => {
+                  // TODO: Handle this failure properly.
+                  const ledgerFailureOutput: WorkerOutput = {
+                    type: "FailureOutput",
+                    error:
+                      "Block commitment tx failed (no tx requests, only deposits). The ledger trie reversal also failed.",
+                  };
+                  return Effect.succeed(ledgerFailureOutput);
+                }),
+                Effect.andThen((_) => Effect.succeed(failureOutput)),
+              );
+
+              return removalProgram;
             },
             onSuccess: (txHash) =>
-              Effect.gen(function* () {
-                yield* addDepositUTxOsToDatabases(insertedDepositUTxOs);
-                return {
-                  type: "SuccessfulSubmissionOutput",
-                  submittedTxHash: txHash,
-                  txSize,
-                  mempoolTxsCount: 0,
-                  sizeOfBlocksTxs: workerInput.data.sizeOfProcessedTxsSoFar,
-                } as WorkerOutput;
-              }),
+              addDepositUTxOsToDatabases(insertedDepositUTxOs).pipe(
+                Effect.catchAllCause((_cause) => {
+                  // TODO: Handle this failure properly.
+                  const failureOutput: WorkerOutput = {
+                    type: "FailureOutput",
+                    error:
+                      "Block commitment with 0 txs and only deposit events went through successfully, but addition of the deposit events to the corresponding db tables failed.",
+                  };
+                  return Effect.succeed(failureOutput);
+                }),
+                Effect.andThen((_) => {
+                  const successOutput: WorkerOutput = {
+                    type: "SuccessfulSubmissionOutput",
+                    submittedTxHash: txHash,
+                    txSize,
+                    mempoolTxsCount: 0,
+                    sizeOfBlocksTxs: workerInput.data.sizeOfProcessedTxsSoFar,
+                  };
+                  return Effect.succeed(successOutput);
+                }),
+              ),
           });
         }
       } else {
         // One or more transactions found in either `ProcessedMempoolDB` or
         // `MempoolDB`. We use the latest transaction's timestamp as the upper
         // bound of the block we are about to submit.
-        const endTime = optEndTime.value;
+        const endDate = optEndTime.value;
 
         yield* Effect.logInfo("🔹 Checking for user events...");
         const optUserEventsProgram = yield* userEventsProgram(
           DepositsDB.tableName,
-          startTime,
-          endTime,
+          startDate,
+          endDate,
         );
 
         let depositsRoot: string = yield* emptyRootHexProgram;
@@ -565,20 +606,16 @@ const databaseOperationsProgram = (
         }[] = [];
         if (Option.isSome(optUserEventsProgram)) {
           insertedDepositUTxOs = yield* applyDepositsToLedger(
+            "add",
             ledgerTrie,
             optUserEventsProgram.value.retreivedEvents,
           );
-
-          const depositsRootFiber = yield* Effect.fork(
-            optUserEventsProgram.value.mptRoot,
-          );
-          depositsRoot = yield* depositsRootFiber;
+          depositsRoot = yield* optUserEventsProgram.value.mptRoot;
         }
-        yield* Effect.logInfo(`🔹 New deposits root found: ${depositsRoot}`);
-
         const utxoRoot = yield* ledgerTrie.getRootHex();
         const txRoot = yield* mempoolTrie.getRootHex();
 
+        yield* Effect.logInfo(`🔹 Deposits root found: ${depositsRoot}`);
         yield* Effect.logInfo(`🔹 New UTxO root found: ${utxoRoot}`);
         yield* Effect.logInfo(`🔹 New transaction root found: ${txRoot}`);
 
@@ -589,7 +626,7 @@ const databaseOperationsProgram = (
             utxoRoot,
             txRoot,
             depositsRoot,
-            endTime,
+            endDate,
           );
 
         return yield* Effect.matchEffect(signAndSubmitProgram, {

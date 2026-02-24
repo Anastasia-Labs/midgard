@@ -40,18 +40,19 @@ export const depositEventToCmlTransactionUnspentOutput = (
   policyId: PolicyId,
 ): Effect.Effect<
   CML.TransactionUnspentOutput,
-  DepositConversionError,
+  SDK.CmlDeserializationError,
   NodeConfig
 > =>
   Effect.gen(function* () {
     const l1Utxo = CML.TransactionUnspentOutput.from_cbor_bytes(
       entry[UserEvents.Columns.L1_UTXO_CBOR],
     );
+
     const policyIdScriptHash: CML.ScriptHash = yield* Effect.try({
       try: () => CML.ScriptHash.from_hex(policyId),
       catch: (e) =>
-        new DepositConversionError({
-          message: `Failed to convert policyId from hex to CML.ScriptHash`,
+        new SDK.CmlDeserializationError({
+          message: `Failed to convert policyId from hex to CML.ScriptHash (deposit event to utxo)`,
           cause: e,
         }),
     });
@@ -59,29 +60,25 @@ export const depositEventToCmlTransactionUnspentOutput = (
     const assetName: CML.AssetName = yield* Effect.try({
       try: () => CML.AssetName.from_hex(entry[UserEvents.Columns.ASSET_NAME]),
       catch: (e) =>
-        new DepositConversionError({
-          message: `Failed to convert entry[ASSET_NAME] from hex to CML.AssetName`,
+        new SDK.CmlDeserializationError({
+          message: `Failed to convert entry[ASSET_NAME] from hex to CML.AssetName (deposit event to utxo)`,
           cause: e,
         }),
     });
 
-    // Insert is a wrapper of a rust insert
-    // Returns element if it exists in the dictionary already
     const assets = CML.MapAssetNameToCoin.new();
     assets.insert(assetName, 1n);
 
-    const verificationNftMultiasset = CML.MultiAsset.new();
-    verificationNftMultiasset.insert_assets(policyIdScriptHash, assets);
+    const authNftMultiasset = CML.MultiAsset.new();
+    authNftMultiasset.insert_assets(policyIdScriptHash, assets);
 
-    const verificationNft = CML.Value.new(0n, verificationNftMultiasset);
+    const authNft = CML.Value.new(0n, authNftMultiasset);
 
-    // We need to subtract the L2 midgard nft before inserting the values to L2 UTxO
-    const l2Amount: CML.Value = l1Utxo
-      .output()
-      .amount()
-      .checked_sub(verificationNft);
+    // We need to subtract the L1 deposit NFT before inserting the values to L2
+    // UTxO.
+    const l2Amount: CML.Value = l1Utxo.output().amount().checked_sub(authNft);
 
-    const depositDatum = Data.from(
+    const depositInfo = Data.from(
       SDK.bufferToHex(entry[UserEvents.Columns.INFO]),
       SDK.DepositInfo,
     );
@@ -90,12 +87,21 @@ export const depositEventToCmlTransactionUnspentOutput = (
 
     const l2AddressBech32 = SDK.midgardAddressToBech32(
       config.NETWORK,
-      depositDatum.l2Address,
+      depositInfo.l2Address,
     );
 
     let l2Datum = undefined;
-    if (depositDatum.l2Datum !== null) {
-      l2Datum = CML.DatumOption.from_cbor_hex(depositDatum.l2Datum);
+
+    if (depositInfo.l2Datum !== null) {
+      const l2DatumCBOR = depositInfo.l2Datum;
+      l2Datum = yield* Effect.try({
+        try: () => CML.DatumOption.from_cbor_hex(l2DatumCBOR),
+        catch: (e) =>
+          new SDK.CmlDeserializationError({
+            message: "Specified L2 datum was malformed.",
+            cause: e,
+          }),
+      });
     }
 
     const transactionOutput = CML.TransactionOutput.new(
@@ -104,6 +110,9 @@ export const depositEventToCmlTransactionUnspentOutput = (
       l2Datum,
     );
 
+    // Output reference of the equivalent UTxO will be the L1 NFT's asset name
+    // (which itself is the hash of the nonce used for creating the event), with
+    // output index 0.
     const transactionId = CML.TransactionHash.from_hex(
       entry[UserEvents.Columns.ASSET_NAME],
     );
@@ -115,7 +124,3 @@ export const depositEventToCmlTransactionUnspentOutput = (
     );
     return utxo;
   });
-
-export class DepositConversionError extends EffectData.TaggedError(
-  "DepositConversionError",
-)<SDK.GenericErrorFields> {}

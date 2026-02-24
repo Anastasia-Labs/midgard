@@ -1,10 +1,5 @@
 import * as SDK from "@al-ft/midgard-sdk";
-import {
-  Assets,
-  Data,
-  TxBuilder,
-  toUnit,
-} from "@lucid-evolution/lucid";
+import { Assets, Data, TxBuilder, toUnit } from "@lucid-evolution/lucid";
 import {
   AlwaysSucceedsContract,
   Database,
@@ -77,7 +72,7 @@ const spendAndBurntAllUTxOs: Effect.Effect<
   ];
   const submitIfFull = (acc: InternalAccumulator) =>
     Effect.gen(function* () {
-      // Reject transaction that are not filled.
+      // Reject transactions that are not filled.
       if (acc.count < BATCH_SIZE) {
         return acc;
       }

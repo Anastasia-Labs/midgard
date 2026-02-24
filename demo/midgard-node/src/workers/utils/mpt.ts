@@ -110,27 +110,27 @@ export const deleteMpt = (
   }).pipe(Effect.withLogSpan(`Delete ${name} MPT`));
 
 /**
- * This function pulls the deposits from the `DepositsDB` and adds them to the
- * `ledgerTrie`. Returns the added utxos.
+ * Converts given deposit events (db entries) to Cardano UTxOs and adds them to
+ * the given `ledgerTrie`. Returns the converted UTxOs and their inclusion
+ * times.
  */
 export const applyDepositsToLedger = (
+  addOrRemove: "add" | "remove",
   ledgerTrie: MidgardMpt,
   deposits: readonly UserEventsUtils.Entry[],
 ): Effect.Effect<
   { utxo: CML.TransactionUnspentOutput; inclusionTime: Date }[],
-  MptError | SDK.CmlUnexpectedError | DatabaseError,
-  NodeConfig | AlwaysSucceedsContract | Database
+  MptError | SDK.CmlUnexpectedError,
+  NodeConfig | AlwaysSucceedsContract
 > =>
   Effect.gen(function* () {
     if (deposits.length <= 0) {
       return [];
     }
-
     yield* Effect.logInfo(
-      `Applying ${deposits.length} deposit(s) to the ledgerTrie`,
+      `🔹 Applying ${deposits.length} deposit(s) to the ledgerTrie`,
     );
     const { deposit: depositAuthValidator } = yield* AlwaysSucceedsContract;
-
     let insertedUTxOsWithDates: {
       utxo: CML.TransactionUnspentOutput;
       inclusionTime: Date;
@@ -149,11 +149,14 @@ export const applyDepositsToLedger = (
             utxo,
             inclusionTime: dbDeposit[UserEventsUtils.Columns.INCLUSION_TIME],
           });
-          const putOp: ETH_UTILS.BatchDBOp = {
-            type: "put",
-            key: Buffer.from(utxo.input().to_cbor_bytes()),
-            value: Buffer.from(utxo.output().to_cbor_bytes()),
-          };
+          const putOp: ETH_UTILS.BatchDBOp =
+            addOrRemove === "add"
+              ? {
+                  type: "put",
+                  key: Buffer.from(utxo.input().to_cbor_bytes()),
+                  value: Buffer.from(utxo.output().to_cbor_bytes()),
+                }
+              : { type: "del", key: Buffer.from(utxo.input().to_cbor_bytes()) };
           return putOp;
         }).pipe(Effect.catchAllCause(Effect.logInfo)),
     );

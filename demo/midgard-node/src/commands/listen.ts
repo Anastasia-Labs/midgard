@@ -150,10 +150,10 @@ const getTxHandler = Effect.gen(function* () {
   const txHashBytes = Buffer.from(fromHex(txHashParam));
   return yield* lookupTxCbor(txHashBytes, txHashParam).pipe(
     Effect.tap((foundCbor) =>
-      Effect.logInfo("foundCbor", bufferToHex(foundCbor)),
+      Effect.logInfo("foundCbor", SDK.bufferToHex(foundCbor)),
     ),
     Effect.flatMap((foundCbor) =>
-      HttpServerResponse.json({ tx: bufferToHex(foundCbor) }),
+      HttpServerResponse.json({ tx: SDK.bufferToHex(foundCbor) }),
     ),
     Effect.catchTag("NotFoundError", () =>
       HttpServerResponse.json(
