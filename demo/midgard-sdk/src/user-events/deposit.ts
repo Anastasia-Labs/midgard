@@ -8,7 +8,6 @@ import {
   PolicyId,
   UTxO,
   Script,
-  fromText,
   TxSignBuilder,
   fromHex,
 } from "@lucid-evolution/lucid";
@@ -21,7 +20,6 @@ import {
   makeReturn,
   getStateToken,
   hashHexWithBlake2b256,
-  utxosAtByNFTPolicyId,
   OutputReference,
   OutputReferenceSchema,
   POSIXTime,
@@ -184,11 +182,15 @@ export const fetchDepositUTxOsProgram = (
   config: DepositFetchConfig,
 ): Effect.Effect<DepositUTxO[], LucidError> =>
   Effect.gen(function* () {
-    const allUTxOs = yield* utxosAtByNFTPolicyId(
-      lucid,
-      config.depositAddress,
-      config.depositPolicyId,
-    );
+    const allUTxOs = yield* Effect.tryPromise({
+      try: () => lucid.utxosAt(config.depositAddress),
+      catch: (e) => {
+        return new LucidError({
+          message: `Failed to fetch deposit UTxOs at: ${config.depositAddress}`,
+          cause: e,
+        });
+      },
+    });
     const depositUTxOs = yield* utxosToDepositUTxOs(
       allUTxOs,
       config.depositPolicyId,

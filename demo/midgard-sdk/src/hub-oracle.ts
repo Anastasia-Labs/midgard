@@ -165,8 +165,7 @@ export const incompleteHubOracleInitTxProgram = (
       const encodedDatum = Data.to<HubOracleDatum>(datum, HubOracleDatum);
 
       const assets: Assets = {
-        [toUnit(params.hubOracleValidator.policyId, HUB_ORACLE_ASSET_NAME)]:
-          1n,
+        [toUnit(params.hubOracleValidator.policyId, HUB_ORACLE_ASSET_NAME)]: 1n,
       };
 
       return lucid

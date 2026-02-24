@@ -149,7 +149,9 @@ const getTxHandler = Effect.gen(function* () {
 
   const txHashBytes = Buffer.from(fromHex(txHashParam));
   return yield* lookupTxCbor(txHashBytes, txHashParam).pipe(
-    Effect.tap((foundCbor) => Effect.logInfo("foundCbor", bufferToHex(foundCbor))),
+    Effect.tap((foundCbor) =>
+      Effect.logInfo("foundCbor", bufferToHex(foundCbor)),
+    ),
     Effect.flatMap((foundCbor) =>
       HttpServerResponse.json({ tx: bufferToHex(foundCbor) }),
     ),
@@ -354,6 +356,7 @@ const getResetHandler = Effect.gen(function* () {
     handleTxGetFailure(RESET_ENDPOINT, e),
   ),
   Effect.catchTag("TxSignError", (e) => handleTxGetFailure(RESET_ENDPOINT, e)),
+  Effect.catchTag("TxConfirmError", (e) => handleTxGetFailure(RESET_ENDPOINT, e)),
   Effect.catchTag("LucidError", (e) =>
     handleGenericGetFailure(RESET_ENDPOINT, e),
   ),

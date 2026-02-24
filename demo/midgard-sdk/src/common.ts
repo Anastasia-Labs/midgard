@@ -22,6 +22,16 @@ import {
 } from "@lucid-evolution/lucid";
 import { blake2b } from "@noble/hashes/blake2.js";
 
+/**
+ * `StateUTxO` would probably be a better name, but it'd be confusing next to
+ * our state queue UTxOs.
+ */
+export type BeaconUTxO = {
+  utxo: UTxO;
+  policyId: PolicyId;
+  assetName: string;
+};
+
 export const makeReturn = <A, E>(program: Effect.Effect<A, E>) => {
   return {
     unsafeRun: () => Effect.runPromise(program),
@@ -98,7 +108,7 @@ export const utxosAtByNFTPolicyId = (
   lucid: LucidEvolution,
   addressOrCred: Address | Credential,
   policyId: PolicyId,
-): Effect.Effect<UTxO[], LucidError> =>
+): Effect.Effect<BeaconUTxO[], LucidError> =>
   Effect.gen(function* () {
     const allUTxOs = yield* Effect.tryPromise({
       try: () => lucid.utxosAt(addressOrCred),
@@ -109,14 +119,17 @@ export const utxosAtByNFTPolicyId = (
         });
       },
     });
-    const nftEffects: Effect.Effect<UTxO, UnauthenticUtxoError>[] =
+    const nftEffects: Effect.Effect<BeaconUTxO, UnauthenticUtxoError>[] =
       allUTxOs.map((u: UTxO) => {
         const nftsEffect = getStateToken(u.assets);
         return Effect.andThen(
           nftsEffect,
-          ([sym, _tn]): Effect.Effect<UTxO, UnauthenticUtxoError> => {
+          ([sym, assetName]): Effect.Effect<
+            BeaconUTxO,
+            UnauthenticUtxoError
+          > => {
             if (sym === policyId) {
-              return Effect.succeed(u);
+              return Effect.succeed({ utxo: u, policyId, assetName });
             } else {
               return Effect.fail(
                 new UnauthenticUtxoError({
