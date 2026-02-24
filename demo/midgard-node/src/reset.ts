@@ -2,11 +2,7 @@ import * as SDK from "@al-ft/midgard-sdk";
 import {
   Assets,
   Data,
-  LucidEvolution,
-  TransactionError,
   TxBuilder,
-  TxSignBuilder,
-  UTxO,
   toUnit,
 } from "@lucid-evolution/lucid";
 import {
@@ -16,7 +12,7 @@ import {
   Lucid,
   NodeConfig,
 } from "@/services/index.js";
-import { Effect, Option, Ref, Schedule } from "effect";
+import { Effect, Ref } from "effect";
 import {
   TxConfirmError,
   handleSignSubmit,
@@ -37,7 +33,7 @@ import { deleteLedgerMpt, deleteMempoolMpt } from "@/workers/utils/mpt.js";
 import { DatabaseError } from "@/database/utils/common.js";
 import { FileSystemError } from "@/utils.js";
 
-const BATCH_SIZE = 80;
+const BATCH_SIZE = 160;
 
 /**
  * This function can only be used once per `AuthenticatedValidator` per tx.
@@ -55,7 +51,7 @@ const spendAndBurnBeaconUTxOs = (
     } else {
       assetsToBurn[assetUnit] = -1n;
     }
-    tx.collectFrom([u.utxo]);
+    tx.collectFrom([u.utxo], Data.void());
   });
   tx.mintAssets(assetsToBurn, Data.void())
     .attach.Script(authVal.spendingScript)
