@@ -2,7 +2,6 @@ use aiken/builtin
 use aiken/cbor
 use aiken/collection/list
 use aiken/crypto.{ScriptHash, blake2b_256}
-use aiken/interval.{Finite}
 use aiken_design_patterns/validity_range_normalization as vrn
 use cardano/address.{Address}
 use cardano/assets.{AssetName, PolicyId, Value}

@@ -235,9 +235,6 @@ pub type MidgardScript {
 pub type MidgardValueCompact =
   MerkleRoot<PolicyId, MerkleRoot<AssetName, Int>>
 
-pub type MidgardTxId =
-  H32<MidgardTxCompact>
-
 //TODO This is a stub!
 pub type MidgardTx {
   body: MidgardTxBodyCompact,

@@ -1,3 +1,4 @@
+use cardano/transaction.{OutputReference}
 use midgard/common/types.{MerkleRoot, Proof}
 use midgard/computation_thread as ct
 use midgard/ledger_state.{MidgardInputId}

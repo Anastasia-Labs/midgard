@@ -1,18 +1,15 @@
 use aiken/builtin
 use aiken/collection/dict.{Dict}
 use aiken/crypto.{ScriptHash, Signature, VerificationKey, VerificationKeyHash}
-use cardano/address.{Address, Script}
 use cardano/assets.{PolicyId}
-use cardano/transaction.{Output, OutputReference, Transaction}
+use cardano/transaction.{OutputReference, Transaction}
 use midgard/common/types.{MerkleRoot} as midgard_types
 use midgard/common/utils.{verify_hash_32}
 use midgard/computation_thread as ct
 use midgard/fraud_proofs/common.{cancel, pass_tx_to_next_step}
-use midgard/fraud_proofs/missing_native_script/step_01.{
-  Args, Datum, SpendRedeemer,
-}
-use midgard/fraud_proofs/missing_native_script/step_02_recursive as step_02
-use midgard/ledger_state.{MidgardScript, MidgardTxWitnessSetCompact}
+use midgard/fraud_proofs/invalid_signature/step_01.{Args, Datum, SpendRedeemer}
+use midgard/fraud_proofs/invalid_signature/step_02
+use midgard/ledger_state.{MidgardTxWitnessSetCompact}
 
 validator main(
   step_02_validator_script_hash: ScriptHash,
@@ -35,15 +32,15 @@ validator main(
           computation_thread_mint_redeemer_index,
           tx,
         )
-      ct.Continue(tx_inclusion_and_bad_output_args) -> {
+      ct.Continue(tx_inclusion_and_bad_addr_with_args) -> {
         let Args {
           tx_inclusion_args,
-          bad_output_index,
-          bad_output_as_data,
-          bad_output_membership_proof,
           bad_tx_wits,
+          bad_addr_tx_wit_verification_key_hash,
+          bad_addr_tx_wit,
+          bad_addr_tx_wit_membership_proof,
           plutarch_phas_withdraw_redeemer_index,
-        } = tx_inclusion_and_bad_output_args
+        } = tx_inclusion_and_bad_addr_with_args
         // 1. Generic validations for passing the provided bad tx to the next
         //    step must pass.
         let
@@ -70,26 +67,31 @@ validator main(
         //2. Verify that the tx_wits really belong to this tx
         expect verify_hash_32(bad_tx_wits, bad_tx.wits)
 
-        //3. Prove output u belongs to outputs(tx)
+        //3. Prove that <VerificationKeyHash, (VerificationKey, Signature)> belongs to addr_tx_wits(tx)
+        let addr_tx_wits_merkle_tree_root =
+          get_addr_tx_wits_merkle_tree_root(bad_tx_wits)
         expect
           utils.plutarch_phas(
-            bad_tx_body.outputs,
-            bad_output_index,
-            bad_output_as_data,
-            bad_output_membership_proof,
+            addr_tx_wits_merkle_tree_root,
+            bad_addr_tx_wit_verification_key_hash,
+            bad_addr_tx_wit,
+            bad_addr_tx_wit_membership_proof,
             tx.redeemers,
             plutarch_phas_withdraw_redeemer_index,
           )
 
-        let bad_tx_script_wits = get_script_tx_wits_merkle_root(bad_tx_wits)
+        let (verification_key, signature): (VerificationKey, Signature) =
+          bad_addr_tx_wit
 
         // 4. The UTxO must be produced at next step's script hash
-        let bad_output_address: Address =
-          output_address_coercer(bad_output_as_data)
-        let bad_output_script_hash = get_script_hash(bad_output_address)
         expect output_script_hash == step_02_validator_script_hash
         let expected_output_state: Data =
-          step_02.State { bad_tx_script_wits, bad_output_script_hash }
+          step_02.State {
+            bad_tx_body,
+            bad_addr_tx_wit_verification_key_hash,
+            verification_key,
+            signature,
+          }
         expect output_state_data == expected_output_state
 
         // Done.
@@ -124,32 +126,4 @@ pub fn resolve_address_tx_wits_from_data(
 
   // Fails if not in ascending order
   coerced |> dict.from_ascending_pairs
-}
-
-pub fn get_script_tx_wits_merkle_root(
-  bad_tx_wits_as_data: Data<MidgardTxWitnessSetCompact>,
-) -> MerkleRoot<ScriptHash, MidgardScript> {
-  //It's the second field and it's a ByteArray
-  bad_tx_wits_as_data
-    |> builtin.unconstr_fields
-    |> builtin.tail_list
-    |> builtin.head_list
-    |> builtin.un_b_data
-}
-
-pub fn output_address_coercer(output_as_data: Data<Output>) -> Address {
-  // Unsafely destructuring `output_as_data`, assuming it is structured as 
-  // an `Output`. Since further down we are validating the presence of 
-  // this UTxO in the latest ledger, we don't need to worry about the 
-  // correctness of its structure here. 
-  expect [output_address_data, ..] = builtin.unconstr_fields(output_as_data)
-
-  utils.address_coercer(output_address_data)
-}
-
-pub fn get_script_hash(address: Address) -> ByteArray {
-  when address.payment_credential is {
-    Script(hash) -> hash
-    _ -> fail @"Expected a script credential"
-  }
 }

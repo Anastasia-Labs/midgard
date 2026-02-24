@@ -326,7 +326,7 @@ pub fn finalize(
       1,
     )
 
-  // 4. Fraud prover must be presreved, with no additional `data`.
+  // 4. Fraud prover must be preserved, with no additional `data`.
   expect ct.StepDatum { fraud_prover: output_fraud_prover, data: None }: ct.StepDatum<
     Data,
   > = output_datum_data
@@ -358,6 +358,8 @@ pub fn finalize(
     m_input_state_data,
   )
 }
+
+// Internal Helpers
 
 pub fn verify_tx_and_its_body(
   tx_id: MidgardTxId,
@@ -436,8 +438,6 @@ pub fn validate_output_to_fraud_prover(
     _ -> False
   }
 }
-
-// Internal Helpers
 
 /// Validates authenticity of the input at `input_index` (i.e. that it comes
 /// from a script, and that it carries only a computation thread token), and

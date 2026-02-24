@@ -19,7 +19,9 @@ use cardano/assets.{PolicyId}
 use cardano/transaction.{OutputReference, Transaction}
 use midgard/computation_thread as ct
 use midgard/fraud_proofs/common.{cancel, pass_tx_to_next_step}
-use midgard/fraud_proofs/double_spend/step_01.{Datum, SpendRedeemer, State}
+use midgard/fraud_proofs/double_spend/step_01_recursive.{
+  Datum, SpendRedeemer, State,
+}
 use midgard/fraud_proofs/double_spend/step_02
 
 validator main(
