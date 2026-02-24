@@ -356,7 +356,9 @@ const getResetHandler = Effect.gen(function* () {
     handleTxGetFailure(RESET_ENDPOINT, e),
   ),
   Effect.catchTag("TxSignError", (e) => handleTxGetFailure(RESET_ENDPOINT, e)),
-  Effect.catchTag("TxConfirmError", (e) => handleTxGetFailure(RESET_ENDPOINT, e)),
+  Effect.catchTag("TxConfirmError", (e) =>
+    handleTxGetFailure(RESET_ENDPOINT, e),
+  ),
   Effect.catchTag("LucidError", (e) =>
     handleGenericGetFailure(RESET_ENDPOINT, e),
   ),

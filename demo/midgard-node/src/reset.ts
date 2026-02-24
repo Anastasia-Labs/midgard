@@ -39,6 +39,9 @@ import { FileSystemError } from "@/utils.js";
 
 const BATCH_SIZE = 80;
 
+/**
+ * This function can only be used once per `AuthenticatedValidator` per tx.
+ */
 const spendAndBurnBeaconUTxOs = (
   tx: TxBuilder,
   authVal: SDK.AuthenticatedValidator,
@@ -60,13 +63,10 @@ const spendAndBurnBeaconUTxOs = (
   return tx;
 };
 
-type InternalAccumulator =
-  | { kind: "count_so_far"; count: number }
-  | {
-      kind: "residual";
-      authVal: SDK.AuthenticatedValidator;
-      utxos: SDK.BeaconUTxO[];
-    };
+type InternalAccumulator = {
+  tx: TxBuilder;
+  count: number;
+};
 
 const spendAndBurntAllUTxOs: Effect.Effect<
   void,
@@ -79,61 +79,69 @@ const spendAndBurntAllUTxOs: Effect.Effect<
     midgardValidators.deposit,
     ...SDK.getInitializedValidatorsFromMidgardValidators(midgardValidators),
   ];
-  const tx = lucid.api.newTx();
-  const [finalAcc, txContainingLastAuthVal] = yield* Effect.reduce(
+  const submitIfFull = (acc: InternalAccumulator) =>
+    Effect.gen(function* () {
+      // Reject transaction that are not filled.
+      if (acc.count < BATCH_SIZE) {
+        return acc;
+      }
+      const completedTx = yield* acc.tx.completeProgram();
+      yield* lucid.switchToOperatorsMainWallet;
+      yield* handleSignSubmit(lucid.api, completedTx);
+      const resetAcc: InternalAccumulator = {
+        tx: lucid.api.newTx(),
+        count: 0,
+      };
+      return resetAcc;
+    });
+
+  const initialAccumulator: InternalAccumulator = {
+    tx: lucid.api.newTx(),
+    count: 0,
+  };
+  const finalAcc = yield* Effect.reduce(
     allAuthVals,
-    [{ kind: "count_so_far", count: 0 }, tx],
-    ([initAcc, txSoFar]: [InternalAccumulator, TxBuilder], authVal) =>
+    initialAccumulator,
+    (initialAcc, authVal) =>
       Effect.gen(function* () {
-        const acc: InternalAccumulator = {
-          kind: "count_so_far",
-          count: 0,
-        };
-        let tx: TxBuilder;
-        if (initAcc.kind == "residual") {
-          acc.count = initAcc.utxos.length;
-          tx = spendAndBurnBeaconUTxOs(txSoFar, initAcc.authVal, initAcc.utxos);
-        } else {
-          acc.count = initAcc.count;
-          tx = txSoFar;
-        }
         const authValUTxOs = yield* SDK.utxosAtByNFTPolicyId(
           lucid.api,
           authVal.spendingScriptAddress,
           authVal.policyId,
         );
-        const utxosToSpend = authValUTxOs.slice(0, BATCH_SIZE - acc.count);
-        const residual = authValUTxOs.slice(BATCH_SIZE - acc.count);
-        const newTx = spendAndBurnBeaconUTxOs(tx, authVal, utxosToSpend);
-        if (residual.length > 0) {
-          const completedTx = yield* newTx.completeProgram();
-          yield* lucid.switchToOperatorsMainWallet;
-          yield* handleSignSubmit(lucid.api, completedTx);
-          const newAcc: InternalAccumulator = {
-            kind: "residual",
-            authVal,
-            utxos: residual,
-          };
-          return [newAcc, lucid.api.newTx()];
-        } else {
-          const newAcc: InternalAccumulator = {
-            kind: "count_so_far",
-            count: acc.count + utxosToSpend.length,
-          };
-          return [newAcc, newTx];
-        }
+        const { acc } = yield* Effect.iterate(
+          { acc: initialAcc, offset: 0 },
+          {
+            while: ({ offset }) => offset < authValUTxOs.length,
+            body: ({ acc, offset }) =>
+              Effect.gen(function* () {
+                const txAcc = yield* submitIfFull(acc);
+                const capacity = BATCH_SIZE - txAcc.count;
+                const utxosToSpend = authValUTxOs.slice(
+                  offset,
+                  offset + capacity,
+                );
+                // For this tx segment, apply this validator exactly once.
+                const nextAcc: InternalAccumulator = {
+                  tx: spendAndBurnBeaconUTxOs(txAcc.tx, authVal, utxosToSpend),
+                  count: txAcc.count + utxosToSpend.length,
+                };
+                return {
+                  acc: nextAcc,
+                  offset: offset + utxosToSpend.length,
+                };
+              }),
+          },
+        );
+        return acc;
       }),
   );
-  const lastTx =
-    finalAcc.kind === "residual"
-      ? spendAndBurnBeaconUTxOs(
-          txContainingLastAuthVal,
-          finalAcc.authVal,
-          finalAcc.utxos,
-        )
-      : txContainingLastAuthVal;
-  const completedLastTx = yield* lastTx.completeProgram();
-  yield* handleSignSubmit(lucid.api, completedLastTx);
+
+  if (finalAcc.count > 0) {
+    const completedLastTx = yield* finalAcc.tx.completeProgram();
+    yield* lucid.switchToOperatorsMainWallet;
+    yield* handleSignSubmit(lucid.api, completedLastTx);
+  }
 }).pipe(
   Effect.mapError((e) =>
     e._tag === "TxBuilderError" || e._tag === "RunTimeError"
