@@ -2,9 +2,13 @@ import { parentPort, workerData } from "worker_threads";
 import * as SDK from "@al-ft/midgard-sdk";
 import { Cause, Effect, Match, Option, pipe } from "effect";
 import {
+  applyDepositsToLedger,
+  buildUnsignedBlockCommitmentTx,
+  deserializeStateQueueUTxO,
+  establishEndDateFromTxRequests,
+  getBlockHeadersEndDate,
   WorkerInput,
   WorkerOutput,
-  deserializeStateQueueUTxO,
 } from "@/workers/utils/commit-block-header.js";
 import {
   ConfigError,
@@ -26,11 +30,7 @@ import {
   AddressHistoryDB,
   UserEventsUtils,
 } from "@/database/index.js";
-import {
-  handleSignSubmitNoConfirmation,
-  TxSignError,
-  TxSubmitError,
-} from "@/transactions/utils.js";
+import { TxSignError, TxSubmitError } from "@/transactions/utils.js";
 import { CML, fromHex } from "@lucid-evolution/lucid";
 import {
   MidgardMpt,
@@ -39,7 +39,6 @@ import {
   keyValueMptRoot,
   makeMpts,
   processMpts,
-  applyDepositsToLedger,
   withTrieTransaction,
 } from "@/workers/utils/mpt.js";
 import {
@@ -47,7 +46,6 @@ import {
   batchProgram,
   trivialTransactionFromCMLUnspentOutput,
 } from "@/utils.js";
-import { Columns as TxColumns } from "@/database/utils/tx.js";
 import {
   Columns as UserEventsColumns,
   retrieveTimeBoundEntries,
@@ -56,51 +54,6 @@ import { DatabaseError } from "@/database/utils/common.js";
 
 // Batch size for database operations.
 const BATCH_SIZE = 100;
-
-const getBlocksEndDate = (
-  latestBlocksDatum: SDK.StateQueueDatum,
-): Effect.Effect<Date, SDK.DataCoercionError, never> =>
-  Effect.gen(function* () {
-    let endTimeBigInt: bigint;
-    if (latestBlocksDatum.key === "Empty") {
-      const { data: confirmedState } =
-        yield* SDK.getConfirmedStateFromStateQueueDatum(latestBlocksDatum);
-      endTimeBigInt = confirmedState.endTime;
-    } else {
-      const latestHeader =
-        yield* SDK.getHeaderFromStateQueueDatum(latestBlocksDatum);
-      endTimeBigInt = latestHeader.endTime;
-    }
-    return new Date(Number(endTimeBigInt));
-  });
-
-/**
- * We are assuming that it's impossible for mempool table to have an older tx
- * than any of the txs in the processed mempool table.
- */
-const establishEndDateFromTxRequests = (
-  mempoolTxs: readonly TxTable.EntryWithTimeStamp[],
-): Effect.Effect<Option.Option<Date>, DatabaseError, Database> =>
-  Effect.gen(function* () {
-    if (mempoolTxs.length <= 0) {
-      yield* Effect.logInfo(
-        "🔹 No transactions were found in MempoolDB, checking ProcessedMempoolDB...",
-      );
-      const processedMempoolTxs = yield* ProcessedMempoolDB.retrieve;
-      if (processedMempoolTxs.length <= 0) {
-        // No transaction requests are available for inclusion in a block.
-        return Option.none();
-      } else {
-        // No new transactions received, but there are uncommitted transactions
-        // in the MPT. So its root must be used to submit a new block, and if
-        // successful, `ProcessedMempoolDB` must be cleared.
-        return Option.some(processedMempoolTxs[0][TxColumns.TIMESTAMPTZ]);
-      }
-    } else {
-      yield* Effect.logInfo(`🔹 ${mempoolTxs.length} retrieved.`);
-      return Option.some(mempoolTxs[0][TxColumns.TIMESTAMPTZ]);
-    }
-  });
 
 const addDepositUTxOsToDatabases = (
   insertedDepositUTxOs: {
@@ -243,7 +196,7 @@ const successfulSubmissionProgram = (
             for (let i = 0; i < batchProcessedTxs.length; i++) {
               const txPair = batchProcessedTxs[i];
               batchTxs.push(txPair);
-              batchHashesForBlocks.push(txPair[TxColumns.TX_ID]);
+              batchHashesForBlocks.push(txPair[TxTable.Columns.TX_ID]);
             }
 
             return Effect.all(
@@ -367,82 +320,6 @@ const userEventsProgram = (
     }
   });
 
-const buildUnsignedTx = (
-  stateQueueAuthValidator: SDK.AuthenticatedValidator,
-  latestBlock: SDK.StateQueueUTxO,
-  utxosRoot: string,
-  txsRoot: string,
-  depositsRoot: string,
-  endDate: Date,
-): Effect.Effect<
-  {
-    newHeaderHash: string;
-    signAndSubmitProgram: Effect.Effect<string, TxSubmitError | TxSignError>;
-    txSize: number;
-  },
-  | SDK.DataCoercionError
-  | SDK.HashingError
-  | SDK.LucidError
-  | SDK.StateQueueError,
-  Lucid
-> =>
-  Effect.gen(function* () {
-    const lucid = yield* Lucid;
-    yield* Effect.logInfo("🔹 Finding updated block datum and new header...");
-    yield* lucid.switchToOperatorsMainWallet;
-    const { nodeDatum: updatedNodeDatum, header: newHeader } =
-      yield* SDK.updateLatestBlocksDatumAndGetTheNewHeaderProgram(
-        lucid.api,
-        latestBlock.datum,
-        utxosRoot,
-        txsRoot,
-        depositsRoot,
-        "00".repeat(32),
-        BigInt(endDate.getTime()),
-      );
-
-    const newHeaderHash = yield* SDK.hashBlockHeader(newHeader);
-    yield* Effect.logInfo(`🔹 New header hash is: ${newHeaderHash}`);
-
-    const commitBlockParams: SDK.StateQueueCommitBlockParams = {
-      anchorUTxO: latestBlock,
-      updatedAnchorDatum: updatedNodeDatum,
-      newHeader: newHeader,
-      stateQueueSpendingScript: stateQueueAuthValidator.spendingScript,
-      policyId: stateQueueAuthValidator.policyId,
-      stateQueueMintingScript: stateQueueAuthValidator.mintingScript,
-    };
-
-    const aoUpdateCommitmentTimeParams = {};
-
-    yield* Effect.logInfo("🔹 Building block commitment transaction...");
-    const fetchConfig: SDK.StateQueueFetchConfig = {
-      stateQueueAddress: stateQueueAuthValidator.spendingScriptAddress,
-      stateQueuePolicyId: stateQueueAuthValidator.policyId,
-    };
-    yield* lucid.switchToOperatorsMainWallet;
-    const txBuilder = yield* SDK.unsignedCommitBlockHeaderTxProgram(
-      lucid.api,
-      fetchConfig,
-      commitBlockParams,
-      aoUpdateCommitmentTimeParams,
-    );
-
-    const txSize = txBuilder.toCBOR().length / 2;
-    yield* Effect.logInfo(`🔹 Transaction built successfully. Size: ${txSize}`);
-
-    const signAndSubmitProgram = handleSignSubmitNoConfirmation(
-      lucid.api,
-      txBuilder,
-    ).pipe(Effect.withSpan("handleSignSubmit-commit-block"));
-
-    return {
-      newHeaderHash,
-      signAndSubmitProgram,
-      txSize,
-    };
-  });
-
 const databaseOperationsProgram = (
   workerInput: WorkerInput,
   ledgerTrie: MidgardMpt,
@@ -501,7 +378,7 @@ const databaseOperationsProgram = (
         workerInput.data.availableConfirmedBlock,
       );
 
-      const startDate = yield* getBlocksEndDate(latestBlock.datum);
+      const startDate = yield* getBlockHeadersEndDate(latestBlock.datum);
 
       const optEndTime: Option.Option<Date> =
         yield* establishEndDateFromTxRequests(mempoolTxs);
@@ -542,14 +419,15 @@ const databaseOperationsProgram = (
           yield* Effect.logInfo(`🔹 New UTxO root found: ${utxoRoot}`);
           yield* Effect.logInfo(`🔹 New transaction root found: ${txRoot}`);
 
-          const { signAndSubmitProgram, txSize } = yield* buildUnsignedTx(
-            stateQueueAuthValidator,
-            latestBlock,
-            utxoRoot,
-            txRoot,
-            depositsRoot,
-            endDate,
-          );
+          const { signAndSubmitProgram, txSize } =
+            yield* buildUnsignedBlockCommitmentTx(
+              stateQueueAuthValidator,
+              latestBlock,
+              utxoRoot,
+              txRoot,
+              depositsRoot,
+              endDate,
+            );
 
           return yield* Effect.matchEffect(signAndSubmitProgram, {
             onFailure: (_) => {
@@ -644,7 +522,7 @@ const databaseOperationsProgram = (
         yield* Effect.logInfo(`🔹 New transaction root found: ${txRoot}`);
 
         const { newHeaderHash, signAndSubmitProgram, txSize } =
-          yield* buildUnsignedTx(
+          yield* buildUnsignedBlockCommitmentTx(
             stateQueueAuthValidator,
             latestBlock,
             utxoRoot,

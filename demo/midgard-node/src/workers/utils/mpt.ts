@@ -3,19 +3,10 @@ import { BatchDBOp } from "@ethereumjs/util";
 import { Data as EffectData, Effect } from "effect";
 import * as ETH from "@ethereumjs/mpt";
 import * as ETH_UTILS from "@ethereumjs/util";
-import { CML, UTxO, toHex, utxoToCore } from "@lucid-evolution/lucid";
+import { UTxO, toHex, utxoToCore } from "@lucid-evolution/lucid";
 import { Level } from "level";
-import {
-  AlwaysSucceedsContract,
-  Database,
-  NodeConfig,
-} from "@/services/index.js";
-import {
-  TxUtils as Tx,
-  LedgerUtils as Ledger,
-  DepositsDB,
-  UserEventsUtils,
-} from "@/database/index.js";
+import { Database, NodeConfig } from "@/services/index.js";
+import { TxUtils as Tx, LedgerUtils as Ledger } from "@/database/index.js";
 import { FileSystemError, findSpentAndProducedUTxOs } from "@/utils.js";
 import * as FS from "fs";
 import * as SDK from "@al-ft/midgard-sdk";
@@ -108,64 +99,6 @@ export const deleteMpt = (
         cause: e,
       }),
   }).pipe(Effect.withLogSpan(`Delete ${name} MPT`));
-
-/**
- * Converts given deposit events (db entries) to Cardano UTxOs and adds them to
- * the given `ledgerTrie`. Returns the converted UTxOs and their inclusion
- * times.
- */
-export const applyDepositsToLedger = (
-  addOrRemove: "add" | "remove",
-  ledgerTrie: MidgardMpt,
-  deposits: readonly UserEventsUtils.Entry[],
-): Effect.Effect<
-  { utxo: CML.TransactionUnspentOutput; inclusionTime: Date }[],
-  MptError | SDK.CmlUnexpectedError,
-  NodeConfig | AlwaysSucceedsContract
-> =>
-  Effect.gen(function* () {
-    if (deposits.length <= 0) {
-      return [];
-    }
-    yield* Effect.logInfo(
-      `🔹 Applying ${deposits.length} deposit(s) to the ledgerTrie`,
-    );
-    const { deposit: depositAuthValidator } = yield* AlwaysSucceedsContract;
-    let insertedUTxOsWithDates: {
-      utxo: CML.TransactionUnspentOutput;
-      inclusionTime: Date;
-    }[] = [];
-    const putOpsRaw: (ETH_UTILS.BatchDBOp | void)[] = yield* Effect.forEach(
-      deposits,
-      (dbDeposit) =>
-        Effect.gen(function* () {
-          const utxo =
-            yield* DepositsDB.depositEventToCmlTransactionUnspentOutput(
-              dbDeposit,
-              depositAuthValidator.policyId,
-            );
-
-          insertedUTxOsWithDates.push({
-            utxo,
-            inclusionTime: dbDeposit[UserEventsUtils.Columns.INCLUSION_TIME],
-          });
-          const putOp: ETH_UTILS.BatchDBOp =
-            addOrRemove === "add"
-              ? {
-                  type: "put",
-                  key: Buffer.from(utxo.input().to_cbor_bytes()),
-                  value: Buffer.from(utxo.output().to_cbor_bytes()),
-                }
-              : { type: "del", key: Buffer.from(utxo.input().to_cbor_bytes()) };
-          return putOp;
-        }).pipe(Effect.catchAllCause(Effect.logInfo)),
-    );
-
-    const putOps = putOpsRaw.flatMap((f) => (f ? [f] : []));
-    yield* ledgerTrie.batch(putOps);
-
-    return insertedUTxOsWithDates;
-  });
 
 /**
  * Adds provided mempool transactions to `mempoolTrie`, while also applying them
