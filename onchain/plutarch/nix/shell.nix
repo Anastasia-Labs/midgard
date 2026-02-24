@@ -20,7 +20,7 @@ in
     #       (`cp .pre-commit-config.yaml .pre-commit-config.yaml.nonix`).
     #       This step is necessary because `.pre-commit-config.yaml` is ignored by git.
     cabal-fmt.enable = true;
-    stylish-haskell.enable = true;
+    stylish-haskell.enable = false;
     nixpkgs-fmt.enable = true;
   };
 }

@@ -1,4 +1,9 @@
-import { Data, getAddressDetails, Script } from "@lucid-evolution/lucid";
+import {
+  Data,
+  getAddressDetails,
+  Script,
+  ScriptHash,
+} from "@lucid-evolution/lucid";
 import {
   Data as EffectData,
   Array as EffectArray,
@@ -17,8 +22,8 @@ import {
   toHex,
 } from "@lucid-evolution/lucid";
 import { blake2b } from "@noble/hashes/blake2.js";
-import { ActiveOperatorDatum, ActiveOperatorUTxO } from "./active-operators.js";
-import { RetiredOperatorDatum, RetiredOperatorUTxO } from "./retired-operators.js";
+import { ActiveOperatorUTxO } from "./active-operators.js";
+import { RetiredOperatorUTxO } from "./retired-operators.js";
 
 export const makeReturn = <A, E>(program: Effect.Effect<A, E>) => {
   return {
@@ -202,13 +207,53 @@ export const bufferToHex = (buf: Buffer): string => {
 export const H32Schema = Data.Bytes({ minLength: 32, maxLength: 32 });
 export type H32 = Data.Static<typeof H32Schema>;
 export const H32 = H32Schema as unknown as H32;
+export type MintingValidator = {
+  mintingScriptCBOR: string;
+  mintingScript: Script;
+  policyId: PolicyId;
+};
 
-export type AuthenticatedValidator = {
-  spendingCBOR: string;
-  spendScript: Script;
-  spendScriptAddress: string;
-  mintScript: Script;
-  policyId: string;
+export type SpendingValidator = {
+  spendingScriptCBOR: string;
+  spendingScript: Script;
+  spendingScriptHash: ScriptHash;
+  spendingScriptAddress: Address;
+};
+
+export type WithdrawalValidator = {
+  withdrawalScriptCBOR: string;
+  withdrawalScript: Script;
+  withdrawalScriptHash: ScriptHash;
+};
+
+export type AuthenticatedValidator = SpendingValidator & MintingValidator;
+
+// TODO: We'll need a more elaborate design to allow multiple steps for each
+//       proof.
+export type FraudProofs = {
+  doubleSpend: SpendingValidator;
+  nonExistentInput: SpendingValidator;
+  nonExistentInputNoIndex: SpendingValidator;
+  invalidRange: SpendingValidator;
+};
+
+export type MidgardValidators = {
+  hubOracle: MintingValidator;
+  stateQueue: AuthenticatedValidator;
+  scheduler: AuthenticatedValidator;
+  registeredOperators: AuthenticatedValidator;
+  activeOperators: AuthenticatedValidator;
+  retiredOperators: AuthenticatedValidator;
+  escapeHatch: AuthenticatedValidator;
+  fraudProofCatalogue: AuthenticatedValidator;
+  fraudProof: AuthenticatedValidator;
+  deposit: AuthenticatedValidator;
+  withdrawal: AuthenticatedValidator;
+  txOrder: AuthenticatedValidator;
+  settlement: AuthenticatedValidator;
+  reserve: SpendingValidator & WithdrawalValidator;
+  payout: AuthenticatedValidator;
+  fraudProofs: FraudProofs;
 };
 
 export const OutputReferenceSchema = Data.Object({
@@ -241,14 +286,16 @@ export type PosixTimeDuration = Data.Static<typeof PosixTimeDurationSchema>;
 export const PosixTimeDuration =
   PosixTimeDurationSchema as unknown as PosixTimeDuration;
 
-export const PubKeyHashSchema = Data.Bytes({ minLength: 28, maxLength: 28 });
-
 export const VerificationKeyHashSchema = Data.Bytes({
   minLength: 28,
   maxLength: 28,
 });
 
-export const PolicyIdSchema = Data.Bytes({ minLength: 28, maxLength: 28 });
+export const PubKeyHashSchema = Data.Bytes({ minLength: 28, maxLength: 28 });
+
+export const ScriptHashSchema = Data.Bytes({ minLength: 28, maxLength: 28 });
+
+export const PolicyIdSchema = ScriptHashSchema;
 
 export const MerkleRootSchema = Data.Bytes({ minLength: 32, maxLength: 32 });
 export type MerkleRoot = Data.Static<typeof MerkleRootSchema>;
@@ -256,14 +303,10 @@ export const MerkleRoot = MerkleRootSchema as unknown as MerkleRoot;
 
 export const CredentialSchema = Data.Enum([
   Data.Object({
-    PublicKeyCredential: Data.Tuple([
-      Data.Bytes({ minLength: 28, maxLength: 28 }),
-    ]),
+    PublicKeyCredential: Data.Tuple([PubKeyHashSchema]),
   }),
   Data.Object({
-    ScriptCredential: Data.Tuple([
-      Data.Bytes({ minLength: 28, maxLength: 28 }),
-    ]),
+    ScriptCredential: Data.Tuple([ScriptHashSchema]),
   }),
 ]);
 export type CredentialD = Data.Static<typeof CredentialSchema>;
@@ -327,41 +370,46 @@ export const ProofSchema = Data.Array(ProofStepSchema);
 export type Proof = Data.Static<typeof ProofSchema>;
 export const Proof = ProofSchema as unknown as Proof;
 
-export const parseAddressDataCredentials = (
-  address: string,
-): Effect.Effect<AddressData, ParsingError> =>
+/**
+ * TODO: Note that this function does not support pointer addresses.
+ */
+export const addressDataFromBech32 = (
+  address: Address,
+): Effect.Effect<AddressData, Bech32DeserializationError> =>
   Effect.gen(function* () {
-    const { paymentCredential, stakeCredential } = getAddressDetails(address);
-    if (!paymentCredential)
+    const addressDetails = yield* Effect.try({
+      try: () => getAddressDetails(address),
+      catch: (error) =>
+        new Bech32DeserializationError({
+          message: `Failed to parse address: ${address}`,
+          cause: error,
+        }),
+    });
+    const { paymentCredential, stakeCredential } = addressDetails;
+
+    if (!paymentCredential) {
       return yield* Effect.fail(
-        new ParsingError({
-          message: "Failed to parse address data",
-          cause: "Payment key credential is undefined",
+        new Bech32DeserializationError({
+          message: "Address missing payment credential",
+          cause: `Invalid address: ${address}`,
         }),
       );
+    }
+
     return {
       paymentCredential:
         paymentCredential.type === "Key"
-          ? {
-              PublicKeyCredential: [paymentCredential.hash],
-            }
-          : {
-              ScriptCredential: [paymentCredential.hash],
-            },
-      stakeCredential:
-        stakeCredential && stakeCredential.hash
-          ? {
-              Inline: [
-                stakeCredential.type === "Key"
-                  ? {
-                      PublicKeyCredential: [stakeCredential.hash],
-                    }
-                  : {
-                      ScriptCredential: [stakeCredential.hash],
-                    },
-              ],
-            }
-          : null,
+          ? { PublicKeyCredential: [paymentCredential.hash] }
+          : { ScriptCredential: [paymentCredential.hash] },
+      stakeCredential: stakeCredential
+        ? {
+            Inline: [
+              stakeCredential.type === "Key"
+                ? { PublicKeyCredential: [stakeCredential.hash] }
+                : { ScriptCredential: [stakeCredential.hash] },
+            ],
+          }
+        : null,
     };
   });
 
@@ -399,7 +447,7 @@ export const getDatumFromUTxO = <TDatum>(
 /**
  * Validates correctness of datum, and having a single NFT.
  */
-export const utxoToAuthenticUTxO = <TDatum, TExtra= undefined>(
+export const utxoToAuthenticUTxO = <TDatum, TExtra = undefined>(
   utxo: UTxO,
   nftPolicy: string,
   schema: any,
@@ -431,7 +479,7 @@ export const utxoToAuthenticUTxO = <TDatum, TExtra= undefined>(
 /**
  * Silently drops invalid UTxOs.
  */
-export const utxosToAuthenticUTxOs = <TDatum, TExtra= undefined>(
+export const utxosToAuthenticUTxOs = <TDatum, TExtra = undefined>(
   utxos: UTxO[],
   nftPolicy: string,
   schema: any,
@@ -446,31 +494,31 @@ export const utxosToAuthenticUTxOs = <TDatum, TExtra= undefined>(
 export const findOperatorByPKH = (
   activeOperators: ActiveOperatorUTxO[],
   retiredOperators: RetiredOperatorUTxO[],
-  operatorPKH: string
+  operatorPKH: string,
 ): Effect.Effect<ActiveOperatorUTxO | RetiredOperatorUTxO, LucidError> => {
   const activeOperatorMatch = EffectArray.findFirst(
     activeOperators,
-    (op) => op.datum.key === operatorPKH
+    (op) => op.datum.key === operatorPKH,
   );
-  
+
   if (Option.isSome(activeOperatorMatch)) {
     return Effect.succeed(activeOperatorMatch.value);
   }
 
   const retiredOperatorMatch = EffectArray.findFirst(
     retiredOperators,
-    (op) => op.datum.key === operatorPKH
+    (op) => op.datum.key === operatorPKH,
   );
-  
+
   if (Option.isSome(retiredOperatorMatch)) {
     return Effect.succeed(retiredOperatorMatch.value);
   }
-  
+
   return Effect.fail(
     new LucidError({
       message: `No Operator UTxO with key "${operatorPKH}" found`,
       cause: "Operator not found in active or retired UTxOs",
-    })
+    }),
   );
 };
 
@@ -495,12 +543,12 @@ export class CborDeserializationError extends EffectData.TaggedError(
   "CborDeserializationError",
 )<GenericErrorFields> {}
 
-export class DataCoercionError extends EffectData.TaggedError(
-  "DataCoercionError",
+export class Bech32DeserializationError extends EffectData.TaggedError(
+  "Bech32DeserializationError",
 )<GenericErrorFields> {}
 
-export class ParsingError extends EffectData.TaggedError(
-  "ParsingError",
+export class DataCoercionError extends EffectData.TaggedError(
+  "DataCoercionError",
 )<GenericErrorFields> {}
 
 export class UnauthenticUtxoError extends EffectData.TaggedError(
@@ -521,4 +569,8 @@ export class HashingError extends EffectData.TaggedError(
 
 export class AssetError extends EffectData.TaggedError(
   "AssetError",
+)<GenericErrorFields> {}
+
+export class UnspecifiedNetworkError extends EffectData.TaggedError(
+  "UnspecifiedNetworkError",
 )<GenericErrorFields> {}

@@ -1,10 +1,13 @@
-import { AuthenticUTxO, LucidError, POSIXTimeSchema } from "@/common.js";
-import { LucidEvolution, TxBuilder, UTxO } from "@lucid-evolution/lucid";
-import { Data } from "@lucid-evolution/lucid";
 import {
-  Effect
-} from "effect";
-import {  utxosToAuthenticUTxOs } from "@/common.js";
+  AuthenticatedValidator,
+  AuthenticUTxO,
+  LucidError,
+  POSIXTimeSchema,
+  utxosToAuthenticUTxOs,
+} from "@/common.js";
+import { LucidEvolution, TxBuilder, UTxO, Data } from "@lucid-evolution/lucid";
+import { Effect } from "effect";
+import { incompleteInitLinkedListTxProgram } from "./linked-list.js";
 
 export const ActiveOperatorSpendRedeemerSchema = Data.Enum([
   Data.Literal("ListStateTransition"),
@@ -88,7 +91,9 @@ export type ActiveOperatorDatum = Data.Static<typeof ActiveOperatorDatumSchema>;
 export const ActiveOperatorDatum =
   ActiveOperatorDatumSchema as unknown as ActiveOperatorDatum;
 
-export type ActiveOperatorInitParams = {};
+export type ActiveOperatorInitParams = {
+  validator: AuthenticatedValidator;
+};
 export type ActiveOperatorDeinitParams = {};
 export type ActiveOperatorActivateParams = {};
 export type ActiveOperatorRetireParams = {};
@@ -96,7 +101,10 @@ export type ActiveOperatorListStateTransitionParams = {};
 export type ActiveOperatorRemoveSlashBondParams = {};
 export type ActiveOperatorUpdateCommitmentTimeParams = {};
 
-export type ActiveOperatorUTxO = AuthenticUTxO<ActiveOperatorDatum,{ status: "ActiveOperator" }>;
+export type ActiveOperatorUTxO = AuthenticUTxO<
+  ActiveOperatorDatum,
+  { status: "ActiveOperator" }
+>;
 
 export type FetchActiveOperatorParams = {
   activeOperatorsAddress: string;
@@ -136,9 +144,9 @@ export const utxosToActiveOperatorUTxOs = (
   lucid: LucidEvolution,
   activeOperatorsAddress: string,
   activeOperatorsPolicyId: string,
-  ): Effect.Effect<ActiveOperatorUTxO[],LucidError> => 
+): Effect.Effect<ActiveOperatorUTxO[], LucidError> =>
   Effect.gen(function* () {
-  const activeOperatorAllUtxos: UTxO[] = yield* Effect.tryPromise({
+    const activeOperatorAllUtxos: UTxO[] = yield* Effect.tryPromise({
       try: () => lucid.utxosAt(activeOperatorsAddress),
       catch: (err) =>
         new LucidError({
@@ -151,17 +159,16 @@ export const utxosToActiveOperatorUTxOs = (
         new LucidError({
           message: "Failed to build the Active Operators transaction",
           cause: "No UTxOs found in Active Operators Contract address",
-        })
+        }),
       );
     }
     const activeOperatorUTxOs: ActiveOperatorUTxO[] =
-      yield* utxosToAuthenticUTxOs<ActiveOperatorDatum,{ status: "ActiveOperator" }>(
-        activeOperatorAllUtxos,
-        activeOperatorsPolicyId,
+      yield* utxosToAuthenticUTxOs<
         ActiveOperatorDatum,
-      )
-      return activeOperatorUTxOs;
-    });
+        { status: "ActiveOperator" }
+      >(activeOperatorAllUtxos, activeOperatorsPolicyId, ActiveOperatorDatum);
+    return activeOperatorUTxOs;
+  });
 
 /**
  * Init
@@ -173,10 +180,16 @@ export const utxosToActiveOperatorUTxOs = (
 export const incompleteActiveOperatorInitTxProgram = (
   lucid: LucidEvolution,
   params: ActiveOperatorInitParams,
-): TxBuilder => {
-  const tx = lucid.newTx();
-  return tx;
-};
+): Effect.Effect<TxBuilder, never> =>
+  Effect.gen(function* () {
+    const rootData = "00";
+
+    return yield* incompleteInitLinkedListTxProgram(lucid, {
+      validator: params.validator,
+      data: rootData,
+      redeemer: Data.to("Init", ActiveOperatorMintRedeemer),
+    });
+  });
 
 /**
  * The program that performs the deinit of an operator.

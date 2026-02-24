@@ -23,14 +23,19 @@ import {
   VerificationKeyHashSchema,
   findOperatorByPKH,
 } from "@/common.js";
-import {
-  Data as EffectData,
-  Effect,
-} from "effect";
+import { Data as EffectData, Effect } from "effect";
 import { fetchHubOracleUTxOProgram, HubOracleError } from "@/hub-oracle.js";
 import { fetchSchedulerUTxOProgram, SchedulerError } from "@/scheduler.js";
-import { DepositDatum, DepositUTxO,utxosToDepositUTxOs } from "./user-events/deposit.js";
-import { TxOrderDatum, TxOrderUTxO, utxosToTxOrderUTxOs } from "./user-events/tx-order.js";
+import {
+  DepositDatum,
+  DepositUTxO,
+  utxosToDepositUTxOs,
+} from "./user-events/deposit.js";
+import {
+  TxOrderDatum,
+  TxOrderUTxO,
+  utxosToTxOrderUTxOs,
+} from "./user-events/tx-order.js";
 import {
   utxosToWithdrawalUTxOs,
   WithdrawalOrderDatum,
@@ -212,12 +217,12 @@ export const incompleteAttachResolutionClaimTxProgram = (
     const updatedDatumCBOR = Data.to(updatedDatum, SettlementDatum);
 
     const hubOracleRefUTxO = yield* fetchHubOracleUTxOProgram(lucid, {
-      hubOracleAddress: params.hubOracleValidator.spendScriptAddress,
+      hubOracleAddress: params.hubOracleValidator.spendingScriptAddress,
       hubOraclePolicyId: params.hubOracleValidator.policyId,
     });
 
     const schedulerRefUTxO = yield* fetchSchedulerUTxOProgram(lucid, {
-      schedulerAddress: params.schedulerValidator.spendScriptAddress,
+      schedulerAddress: params.schedulerValidator.spendingScriptAddress,
       schedulerPolicyId: params.schedulerValidator.policyId,
     });
 
@@ -228,7 +233,7 @@ export const incompleteAttachResolutionClaimTxProgram = (
       .collectFrom([params.settlementUTxO.utxo], spendRedeemerCBOR)
       .readFrom([hubOracleRefUTxO.utxo])
       .readFrom([schedulerRefUTxO.utxo])
-      .pay.ToAddressWithData(params.settlementValidator.spendScriptAddress, {
+      .pay.ToAddressWithData(params.settlementValidator.spendingScriptAddress, {
         kind: "inline",
         value: updatedDatumCBOR,
       })
@@ -251,8 +256,7 @@ export type UpdateBondHoldNewSettlementParams = {
   hubOracleValidator: AuthenticatedValidator;
   schedulerValidator: AuthenticatedValidator;
   activeOperatorParams: FetchActiveOperatorParams;
-}
-
+};
 
 /**
  * ActiveOperators Node
@@ -287,10 +291,15 @@ export const incompleteUpdateBondHoldNewSettlementTxProgram = (
       ActiveOperatorSpendRedeemer,
     );
 
-    const activeOperatorsUTxOs = yield* getActiveOperatorUTxOs(params.activeOperatorParams, lucid);
+    const activeOperatorsUTxOs = yield* getActiveOperatorUTxOs(
+      params.activeOperatorParams,
+      lucid,
+    );
 
     const activeOperatorsInputUtxo =
-      activeOperatorsUTxOs.find((utxo) => utxo.datum.key === params.activeOperatorParams.operator) ??
+      activeOperatorsUTxOs.find(
+        (utxo) => utxo.datum.key === params.activeOperatorParams.operator,
+      ) ??
       (() => {
         throw new LucidError({
           message: "No Active Operator UTxO with given operator found",
@@ -305,12 +314,12 @@ export const incompleteUpdateBondHoldNewSettlementTxProgram = (
     const updatedDatumCBOR = Data.to(updatedDatum, ActiveOperatorDatum);
 
     const hubOracleRefUTxO = yield* fetchHubOracleUTxOProgram(lucid, {
-      hubOracleAddress: params.hubOracleValidator.spendScriptAddress,
+      hubOracleAddress: params.hubOracleValidator.spendingScriptAddress,
       hubOraclePolicyId: params.hubOracleValidator.policyId,
     });
 
     const schedulerRefUTxO = yield* fetchSchedulerUTxOProgram(lucid, {
-      schedulerAddress: params.schedulerValidator.spendScriptAddress,
+      schedulerAddress: params.schedulerValidator.spendingScriptAddress,
       schedulerPolicyId: params.schedulerValidator.policyId,
     });
 
@@ -321,10 +330,13 @@ export const incompleteUpdateBondHoldNewSettlementTxProgram = (
       .collectFrom([activeOperatorsInputUtxo.utxo], spendRedeemerCBOR)
       .readFrom([hubOracleRefUTxO.utxo])
       .readFrom([schedulerRefUTxO.utxo])
-      .pay.ToAddressWithData(params.activeOperatorParams.activeOperatorsAddress, {
-        kind: "inline",
-        value: updatedDatumCBOR,
-      })
+      .pay.ToAddressWithData(
+        params.activeOperatorParams.activeOperatorsAddress,
+        {
+          kind: "inline",
+          value: updatedDatumCBOR,
+        },
+      )
       .validTo(txUpperBound);
     return buildUpdateBondHoldNewSettlementTx;
   }).pipe(
@@ -341,7 +353,7 @@ export const incompleteUpdateBondHoldNewSettlementTxProgram = (
 export const unsignedAttachResolutionClaimTxProgram = (
   lucid: LucidEvolution,
   attachResolutionParams: AttachResolutionClaimParams,
-  params:  UpdateBondHoldNewSettlementParams,
+  params: UpdateBondHoldNewSettlementParams,
 ): Effect.Effect<
   TxSignBuilder,
   | HashingError
@@ -419,7 +431,7 @@ export const fetchUserEventRefUTxO = (
   userEventPolicyId: string,
   lucid: LucidEvolution,
 ): Effect.Effect<
-  DepositUTxO | WithdrawalUTxO | TxOrderUTxO, 
+  DepositUTxO | WithdrawalUTxO | TxOrderUTxO,
   LucidError | DataCoercionError
 > =>
   Effect.gen(function* () {
@@ -432,15 +444,23 @@ export const fetchUserEventRefUTxO = (
         }),
     });
 
-    const authenticUTxOs = yield* (
-      userEventType === "Deposit"
-        ? utxosToDepositUTxOs(allUTxOs, userEventPolicyId, DepositDatum)
-        : "TxOrder" in userEventType
+    const authenticUTxOs = yield* userEventType === "Deposit"
+      ? utxosToDepositUTxOs(allUTxOs, userEventPolicyId, DepositDatum)
+      : "TxOrder" in userEventType
         ? utxosToTxOrderUTxOs(allUTxOs, userEventPolicyId, TxOrderDatum)
         : "Withdrawal" in userEventType
-        ? utxosToWithdrawalUTxOs(allUTxOs, userEventPolicyId, WithdrawalOrderDatum)
-        : Effect.fail(new LucidError({ message: "Invalid Event Type", cause: "Event Type must be either Deposit or object with TxOrder/Withdrawal" }))
-    );
+          ? utxosToWithdrawalUTxOs(
+              allUTxOs,
+              userEventPolicyId,
+              WithdrawalOrderDatum,
+            )
+          : Effect.fail(
+              new LucidError({
+                message: "Invalid Event Type",
+                cause:
+                  "Event Type must be either Deposit or object with TxOrder/Withdrawal",
+              }),
+            );
     const authenticUTxO = authenticUTxOs[0];
 
     if (authenticUTxO) {
@@ -450,7 +470,9 @@ export const fetchUserEventRefUTxO = (
       new LucidError({
         message: "No Unresolved User Event UTxO found",
         cause: `No valid authentic UTxOs found for type: ${
-          typeof userEventType === "string" ? userEventType : Object.keys(userEventType)[0]
+          typeof userEventType === "string"
+            ? userEventType
+            : Object.keys(userEventType)[0]
         }`,
       }),
     );
@@ -494,7 +516,7 @@ export const incompleteDisproveResolutionClaimTxProgram = (
     const updatedDatumCBOR = Data.to(updatedDatum, SettlementDatum);
 
     const hubOracleRefUTxO = yield* fetchHubOracleUTxOProgram(lucid, {
-      hubOracleAddress: params.hubOracleValidator.spendScriptAddress,
+      hubOracleAddress: params.hubOracleValidator.spendingScriptAddress,
       hubOraclePolicyId: params.hubOracleValidator.policyId,
     });
 
@@ -619,10 +641,12 @@ export const incompleteRemoveOperatorBadSettlementTxProgram = (
   HashingError | DataCoercionError | LucidError | HubOracleError
 > =>
   Effect.gen(function* () {
-    const activeOperatorUTxOs: ActiveOperatorUTxO[] = yield* getActiveOperatorUTxOs(params.activeOperatorParams, lucid);
+    const activeOperatorUTxOs: ActiveOperatorUTxO[] =
+      yield* getActiveOperatorUTxOs(params.activeOperatorParams, lucid);
 
-    const retiredOperatorUTxOs: RetiredOperatorUTxO[] = yield* getRetiredOperatorUTxOs(params.retiredOperatorParams, lucid);
-    
+    const retiredOperatorUTxOs: RetiredOperatorUTxO[] =
+      yield* getRetiredOperatorUTxOs(params.retiredOperatorParams, lucid);
+
     const operatorInputUTxO = yield* findOperatorByPKH(
       activeOperatorUTxOs,
       retiredOperatorUTxOs,
@@ -633,8 +657,7 @@ export const incompleteRemoveOperatorBadSettlementTxProgram = (
       operatorInputUTxO,
       params.slashedOperatorKey,
     );
-    const bondAmount =
-      (operatorInputUTxO.utxo.assets.lovelace * 60n) / 100n;
+    const bondAmount = (operatorInputUTxO.utxo.assets.lovelace * 60n) / 100n;
 
     const operatorNFT = yield* getOperatorNFT(
       operatorInputUTxO,
@@ -643,7 +666,7 @@ export const incompleteRemoveOperatorBadSettlementTxProgram = (
     );
 
     const hubOracleRefUTxO = yield* fetchHubOracleUTxOProgram(lucid, {
-      hubOracleAddress: params.hubOracleValidator.spendScriptAddress,
+      hubOracleAddress: params.hubOracleValidator.spendingScriptAddress,
       hubOraclePolicyId: params.hubOracleValidator.policyId,
     });
 

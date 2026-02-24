@@ -4,7 +4,7 @@ use cardano/assets.{AssetName, PolicyId}
 use cardano/transaction.{InlineDatum, Input, Output}
 use midgard/common/utils
 
-pub const asset_name: AssetName = #""
+pub const asset_name: AssetName = "MIDGARD_HUB_ORACLE"
 
 pub type Datum {
   registered_operators: PolicyId,
@@ -17,7 +17,7 @@ pub type Datum {
   deposit: PolicyId,
   withdrawal: PolicyId,
   tx_order: PolicyId,
-  settlement_queue: PolicyId,
+  settlement: PolicyId,
   payout: PolicyId,
   registered_operators_addr: Address,
   active_operators_addr: Address,
@@ -29,7 +29,7 @@ pub type Datum {
   deposit_addr: Address,
   withdrawal_addr: Address,
   tx_order_addr: Address,
-  settlement_queue_addr: Address,
+  settlement_addr: Address,
   reserve_addr: Address,
   payout_addr: Address,
   reserve_observer: ScriptHash,

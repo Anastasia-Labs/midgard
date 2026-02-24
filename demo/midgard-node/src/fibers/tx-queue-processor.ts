@@ -13,6 +13,7 @@ const txQueueSizeGauge = Metric.gauge("tx_queue_size", {
 
 const txQueueProcessorAction = (
   txQueue: Queue.Dequeue<string>,
+  withMonitoring?: boolean,
 ): Effect.Effect<
   void,
   DatabaseError | SDK.CmlDeserializationError,
@@ -20,7 +21,10 @@ const txQueueProcessorAction = (
 > =>
   Effect.gen(function* () {
     const queueSize = yield* txQueue.size;
-    yield* txQueueSizeGauge(Effect.succeed(BigInt(queueSize)));
+
+    if (withMonitoring) {
+      yield* txQueueSizeGauge(Effect.succeed(BigInt(queueSize)));
+    }
 
     const txStringsChunk: Chunk.Chunk<string> = yield* Queue.takeAll(txQueue);
     const txStrings = Chunk.toReadonlyArray(txStringsChunk);
@@ -35,11 +39,15 @@ const txQueueProcessorAction = (
 export const txQueueProcessorFiber = (
   schedule: Schedule.Schedule<number>,
   txQueue: Queue.Dequeue<string>,
+  withMonitoring?: boolean,
 ): Effect.Effect<void, never, SqlClient> =>
   pipe(
     Effect.gen(function* () {
       yield* Effect.logInfo("🔶 Tx queue processor fiber started.");
-      yield* Effect.repeat(txQueueProcessorAction(txQueue), schedule);
+      yield* Effect.repeat(
+        txQueueProcessorAction(txQueue, withMonitoring),
+        schedule,
+      );
     }),
     Effect.catchAllCause(Effect.logWarning),
   );

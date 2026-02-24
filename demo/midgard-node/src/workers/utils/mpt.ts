@@ -3,7 +3,7 @@ import { BatchDBOp } from "@ethereumjs/util";
 import { Data, Effect } from "effect";
 import * as ETH from "@ethereumjs/mpt";
 import * as ETH_UTILS from "@ethereumjs/util";
-import { UTxO, toHex, utxoToCore } from "@lucid-evolution/lucid";
+import { UTxO, toHex, utxoToCore, Script } from "@lucid-evolution/lucid";
 import { Level } from "level";
 import { Database, NodeConfig } from "@/services/index.js";
 import * as Tx from "@/database/utils/tx.js";
@@ -39,19 +39,11 @@ export const makeMpts: Effect.Effect<
     );
     const ops: ETH_UTILS.BatchDBOp[] = yield* Effect.allSuccesses(
       nodeConfig.GENESIS_UTXOS.map((u: UTxO) =>
-        Effect.gen(function* () {
-          const core = yield* Effect.try(() => utxoToCore(u)).pipe(
-            Effect.tapError((e) =>
-              Effect.logError(`IGNORED ERROR WITH GENESIS UTXOS: ${e}`),
-            ),
-          );
-          const op: ETH_UTILS.BatchDBOp = {
-            type: "put",
-            key: Buffer.from(core.input().to_cbor_bytes()),
-            value: Buffer.from(core.output().to_cbor_bytes()),
-          };
-          return op;
-        }),
+        utxoToPutBatchOp(u).pipe(
+          Effect.tapError((e) =>
+            Effect.logError(`IGNORED ERROR WITH GENESIS UTXOS: ${e}`),
+          ),
+        ),
       ),
     );
     yield* ledgerTrie.batch(ops);
@@ -65,6 +57,26 @@ export const makeMpts: Effect.Effect<
     mempoolTrie,
   };
 });
+
+export const utxoToPutBatchOp = (
+  utxo: UTxO,
+): Effect.Effect<ETH_UTILS.BatchDBOp, SDK.CmlDeserializationError> =>
+  Effect.gen(function* () {
+    const core = yield* Effect.try({
+      try: () => utxoToCore(utxo),
+      catch: (e) =>
+        new SDK.CmlDeserializationError({
+          message: "Failed to convert UTxO to CML.TransactionOutput",
+          cause: e,
+        }),
+    });
+    const op: ETH_UTILS.BatchDBOp = {
+      type: "put",
+      key: Buffer.from(core.input().to_cbor_bytes()),
+      value: Buffer.from(core.output().to_cbor_bytes()),
+    };
+    return op;
+  });
 
 export const deleteMempoolMpt = Effect.gen(function* () {
   const config = yield* NodeConfig;

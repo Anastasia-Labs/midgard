@@ -5,7 +5,6 @@ import {
   AlwaysSucceedsContract,
   Globals,
 } from "@/services/index.js";
-import { StateQueueTx } from "@/transactions/index.js";
 import * as SDK from "@al-ft/midgard-sdk";
 import { NodeSdk } from "@effect/opentelemetry";
 import {
@@ -48,6 +47,7 @@ import { createServer } from "node:http";
 import { NodeHttpServer } from "@effect/platform-node";
 import { HttpBodyError } from "@effect/platform/HttpBody";
 import * as Genesis from "@/genesis.js";
+import * as Initialization from "@/transactions/initialization.js";
 import * as Reset from "@/reset.js";
 import { SerializedStateQueueUTxO } from "@/workers/utils/commit-block-header.js";
 import { DatabaseError } from "@/database/utils/common.js";
@@ -73,6 +73,7 @@ const INIT_ENDPOINT: string = "init";
 const COMMIT_ENDPOINT: string = "commit";
 const RESET_ENDPOINT: string = "reset";
 const SUBMIT_ENDPOINT: string = "submit";
+const STATE_QUEUE_ENDPOINT: string = "stateQueue";
 
 const txCounter = Metric.counter("tx_count", {
   description: "A counter for tracking submit transactions",
@@ -112,6 +113,24 @@ const handleTxGetFailure = (
 const handleGenericGetFailure = (endpoint: string, e: SDK.GenericErrorFields) =>
   failWith500("GET", endpoint, e.cause, e.message);
 
+const lookupTxCbor = (txHashBytes: Buffer, txHashParam: string) =>
+  MempoolDB.retrieveTxCborByHash(txHashBytes).pipe(
+    Effect.tap(() =>
+      Effect.logInfo(
+        `GET /${TX_ENDPOINT} - Transaction found in mempool: ${txHashParam}`,
+      ),
+    ),
+    Effect.catchTag("NotFoundError", () =>
+      ImmutableDB.retrieveTxCborByHash(txHashBytes).pipe(
+        Effect.tap(() =>
+          Effect.logInfo(
+            `GET /${TX_ENDPOINT} - Transaction found in ImmutableDB: ${txHashParam}`,
+          ),
+        ),
+      ),
+    ),
+  );
+
 const getTxHandler = Effect.gen(function* () {
   const params = yield* ParsedSearchParams;
   const txHashParam = params["tx_hash"];
@@ -125,32 +144,25 @@ const getTxHandler = Effect.gen(function* () {
     );
     return yield* HttpServerResponse.json(
       { error: `Invalid transaction hash: ${txHashParam}` },
-      { status: 404 },
+      { status: 400 },
     );
   }
+
   const txHashBytes = Buffer.from(fromHex(txHashParam));
-  yield* Effect.logInfo("txHashBytes", txHashBytes);
-  const foundCbor: Buffer = yield* MempoolDB.retrieveTxCborByHash(
-    txHashBytes,
-  ).pipe(
-    Effect.catchAll((_e) =>
-      Effect.gen(function* () {
-        const fromImmutable =
-          yield* ImmutableDB.retrieveTxCborByHash(txHashBytes);
-        yield* Effect.logInfo(
-          `GET /${TX_ENDPOINT} - Transaction found in ImmutableDB: ${txHashParam}`,
-        );
-        return fromImmutable;
-      }),
+  return yield* lookupTxCbor(txHashBytes, txHashParam).pipe(
+    Effect.tap((foundCbor) =>
+      Effect.logInfo("foundCbor", SDK.bufferToHex(foundCbor)),
+    ),
+    Effect.flatMap((foundCbor) =>
+      HttpServerResponse.json({ tx: SDK.bufferToHex(foundCbor) }),
+    ),
+    Effect.catchTag("NotFoundError", () =>
+      HttpServerResponse.json(
+        { error: `Transaction not found: ${txHashParam}` },
+        { status: 404 },
+      ),
     ),
   );
-  yield* Effect.logInfo(
-    `GET /${TX_ENDPOINT} - Transaction found in mempool: ${txHashParam}`,
-  );
-  yield* Effect.logInfo("foundCbor", SDK.bufferToHex(foundCbor));
-  return yield* HttpServerResponse.json({
-    tx: SDK.bufferToHex(foundCbor),
-  });
 }).pipe(
   Effect.catchTag("HttpBodyError", (e) => failWith500("GET", TX_ENDPOINT, e)),
   Effect.catchTag("DatabaseError", (e) => handleDBGetFailure(TX_ENDPOINT, e)),
@@ -248,21 +260,25 @@ const getBlockHandler = Effect.gen(function* () {
 
 const getInitHandler = Effect.gen(function* () {
   yield* Effect.logInfo(`✨ Initialization request received`);
-  const result = yield* StateQueueTx.stateQueueInit;
+  const txHash = yield* Initialization.program;
   yield* Genesis.program;
   yield* Effect.logInfo(
-    `GET /${INIT_ENDPOINT} - Initialization successful: ${result}`,
+    `GET /${INIT_ENDPOINT} - Initialization successful: ${txHash}`,
   );
   return yield* HttpServerResponse.json({
-    message: `Initiation successful: ${result}`,
+    message: `Initiation successful: ${txHash}`,
   });
 }).pipe(
   Effect.catchTag("HttpBodyError", (e) => failWith500("GET", INIT_ENDPOINT, e)),
   Effect.catchTag("LucidError", (e) =>
     handleGenericGetFailure(INIT_ENDPOINT, e),
   ),
+  Effect.catchTag("MptError", (e) => handleGenericGetFailure(INIT_ENDPOINT, e)),
   Effect.catchTag("TxSubmitError", (e) => handleTxGetFailure(INIT_ENDPOINT, e)),
   Effect.catchTag("TxSignError", (e) => handleTxGetFailure(INIT_ENDPOINT, e)),
+  Effect.catchTag("UnspecifiedNetworkError", (e) =>
+    handleGenericGetFailure(INIT_ENDPOINT, e),
+  ),
 );
 
 const getCommitEndpoint = Effect.gen(function* () {
@@ -388,18 +404,20 @@ const getTxsOfAddressHandler = Effect.gen(function* () {
   ),
 );
 
-const getLogStateQueueHandler = Effect.gen(function* () {
+const getStateQueueHandler = Effect.gen(function* () {
   yield* Effect.logInfo(`✍  Drawing state queue UTxOs...`);
   const lucid = yield* Lucid;
   const alwaysSucceeds = yield* AlwaysSucceedsContract;
   const fetchConfig: SDK.StateQueueFetchConfig = {
-    stateQueuePolicyId: alwaysSucceeds.stateQueueAuthValidator.policyId,
-    stateQueueAddress:
-      alwaysSucceeds.stateQueueAuthValidator.spendScriptAddress,
+    stateQueuePolicyId: alwaysSucceeds.stateQueue.policyId,
+    stateQueueAddress: alwaysSucceeds.stateQueue.spendingScriptAddress,
   };
   const sortedUTxOs = yield* SDK.fetchSortedStateQueueUTxOsProgram(
     lucid.api,
     fetchConfig,
+  );
+  const headers = sortedUTxOs.flatMap((u) =>
+    u.datum.key === "Empty" ? [] : [u.datum.key.Key.key],
   );
   let drawn = `
 ---------------------------- STATE QUEUE ----------------------------`;
@@ -426,7 +444,7 @@ ${emoji} ${u.utxo.txHash}#${u.utxo.outputIndex}${info}`;
 `;
   yield* Effect.logInfo(drawn);
   return yield* HttpServerResponse.json({
-    message: `State queue drawn in server logs!`,
+    headers,
   });
 }).pipe(
   Effect.catchTag("HttpBodyError", (e) =>
@@ -556,7 +574,7 @@ const router = (
       HttpRouter.get(`/${COMMIT_ENDPOINT}`, getCommitEndpoint),
       HttpRouter.get(`/${MERGE_ENDPOINT}`, getMergeHandler),
       HttpRouter.get(`/${RESET_ENDPOINT}`, getResetHandler),
-      HttpRouter.get(`/logStateQueue`, getLogStateQueueHandler),
+      HttpRouter.get(`/${STATE_QUEUE_ENDPOINT}`, getStateQueueHandler),
       HttpRouter.get(`/logBlocksDB`, getLogBlocksDBHandler),
       HttpRouter.get(`/logGlobals`, getLogGlobalsHandler),
       HttpRouter.post(`/${SUBMIT_ENDPOINT}`, postSubmitHandler(txQueue)),
@@ -571,89 +589,89 @@ const router = (
       ),
     );
 
-export const runNode = Effect.gen(function* () {
-  const nodeConfig = yield* NodeConfig;
+export const runNode = (withMonitoring?: boolean) =>
+  Effect.gen(function* () {
+    const nodeConfig = yield* NodeConfig;
 
-  const prometheusExporter = new PrometheusExporter(
-    {
-      port: nodeConfig.PROM_METRICS_PORT,
-    },
-    () => {
-      `Prometheus metrics available at http://localhost:${nodeConfig.PROM_METRICS_PORT}/metrics`;
-    },
-  );
+    const txQueue = yield* Queue.unbounded<string>();
 
-  const originalStop = prometheusExporter.stopServer;
-  prometheusExporter.stopServer = async function () {
-    Effect.runSync(Effect.logInfo("Prometheus exporter is stopping!"));
-    return originalStop();
-  };
+    yield* InitDB.program.pipe(Effect.provide(Database.layer));
 
-  const MetricsLive = NodeSdk.layer(() => ({
-    resource: { serviceName: "midgard-node" },
-    metricReader: prometheusExporter,
-    spanProcessor: new BatchSpanProcessor(
-      new OTLPTraceExporter({ url: nodeConfig.OLTP_EXPORTER_URL }),
-    ),
-  }));
+    yield* Genesis.program;
 
-  yield* InitDB.initializeDb();
+    const appThread = Layer.launch(
+      Layer.provide(
+        HttpServer.serve(router(txQueue)),
+        NodeHttpServer.layer(createServer, { port: nodeConfig.PORT }),
+      ),
+    );
 
-  yield* Genesis.program;
+    const mkSchedule = (millisBetweenRuns: number) =>
+      Schedule.spaced(Duration.millis(millisBetweenRuns));
 
-  const txQueue = yield* Queue.unbounded<string>();
-  const appThread = Layer.launch(
-    Layer.provide(
-      HttpServer.serve(router(txQueue)),
-      NodeHttpServer.layer(createServer, { port: nodeConfig.PORT }),
-    ),
-  );
-
-  const program = Effect.all(
-    [
-      appThread,
-      blockCommitmentFiber(
-        Schedule.spaced(
-          Duration.millis(nodeConfig.WAIT_BETWEEN_BLOCK_COMMITMENT),
+    const program = Effect.all(
+      [
+        appThread,
+        blockCommitmentFiber(
+          mkSchedule(nodeConfig.WAIT_BETWEEN_BLOCK_COMMITMENT),
         ),
-      ),
-      blockConfirmationFiber(
-        Schedule.spaced(
-          Duration.millis(nodeConfig.WAIT_BETWEEN_BLOCK_CONFIRMATION),
+        blockConfirmationFiber(
+          mkSchedule(nodeConfig.WAIT_BETWEEN_BLOCK_CONFIRMATION),
         ),
-      ),
-      fetchAndInsertDepositUTxOsFiber(
-        Schedule.spaced(
-          Duration.millis(nodeConfig.WAIT_BETWEEN_DEPOSIT_UTXO_FETCHES),
+        fetchAndInsertDepositUTxOsFiber(
+          mkSchedule(nodeConfig.WAIT_BETWEEN_DEPOSIT_UTXO_FETCHES),
         ),
-      ),
-      fetchAndInsertTxOrderUTxOsFiber(
-        Schedule.spaced(
-          Duration.millis(nodeConfig.WAIT_BETWEEN_TX_ORDER_UTXO_FETCHES),
+        fetchAndInsertTxOrderUTxOsFiber(
+          Schedule.spaced(
+            Duration.millis(nodeConfig.WAIT_BETWEEN_TX_ORDER_UTXO_FETCHES),
+          ),
         ),
-      ),
-      mergeFiber(
-        Schedule.spaced(Duration.millis(nodeConfig.WAIT_BETWEEN_MERGE_TXS)),
-      ),
-      monitorMempoolFiber(Schedule.spaced(Duration.millis(1000))),
-      txQueueProcessorFiber(Schedule.spaced(Duration.millis(500)), txQueue),
-    ],
-    {
-      concurrency: "unbounded",
-    },
-  ).pipe(
-    Effect.provide(Database.layer),
-    Effect.provide(AlwaysSucceedsContract.Default),
-    Effect.provide(Lucid.Default),
-    Effect.provide(NodeConfig.layer),
-    Effect.provide(Globals.Default),
-  );
+        mergeFiber(mkSchedule(nodeConfig.WAIT_BETWEEN_MERGE_TXS)),
+        withMonitoring ? monitorMempoolFiber(mkSchedule(1000)) : Effect.void,
+        txQueueProcessorFiber(mkSchedule(500), txQueue),
+      ],
+      {
+        concurrency: "unbounded",
+      },
+    );
 
-  pipe(
-    program,
-    Effect.withSpan("midgard"),
-    Effect.provide(MetricsLive),
-    Effect.catchAllCause(Effect.logError),
-    Effect.runPromise,
-  );
-});
+    if (withMonitoring) {
+      const prometheusExporter = new PrometheusExporter(
+        {
+          port: nodeConfig.PROM_METRICS_PORT,
+        },
+        () => {
+          console.log(
+            `Prometheus metrics available at http://0.0.0.0:${nodeConfig.PROM_METRICS_PORT}/metrics`,
+          );
+        },
+      );
+
+      const originalStop = prometheusExporter.stopServer;
+      prometheusExporter.stopServer = async function () {
+        Effect.runSync(Effect.logInfo("Prometheus exporter is stopping!"));
+        return originalStop();
+      };
+
+      const MetricsLive = NodeSdk.layer(() => ({
+        resource: { serviceName: "midgard-node" },
+        metricReader: prometheusExporter,
+        spanProcessor: new BatchSpanProcessor(
+          new OTLPTraceExporter({ url: nodeConfig.OLTP_EXPORTER_URL }),
+        ),
+      }));
+
+      yield* pipe(
+        program,
+        Effect.withSpan("midgard"),
+        Effect.provide(MetricsLive),
+        Effect.catchAllCause(Effect.logError),
+      );
+    } else {
+      yield* pipe(
+        program,
+        Effect.withSpan("midgard"),
+        Effect.catchAllCause(Effect.logError),
+      );
+    }
+  });
