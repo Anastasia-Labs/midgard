@@ -10,6 +10,7 @@ import { WorkerError } from "@/workers/utils/common.js";
 const blockConfirmationAction: Effect.Effect<void, WorkerError, Globals> =
   Effect.gen(function* () {
     const globals = yield* Globals;
+    yield* Ref.set(globals.HEARTBEAT_BLOCK_CONFIRMATION, Date.now());
     const RESET_IN_PROGRESS = yield* Ref.get(globals.RESET_IN_PROGRESS);
     if (!RESET_IN_PROGRESS) {
       const UNCONFIRMED_SUBMITTED_BLOCK_TX_HASH = yield* Ref.get(

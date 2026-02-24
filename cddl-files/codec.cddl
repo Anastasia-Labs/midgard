@@ -187,106 +187,17 @@ withdrawal_info_compact =
   }
 
 ; Transaction
-; Full Representation
+; Full Representation (native only)
+transaction = midgard_tx_full_v1
 
-transaction =
-  [ transaction_body
-  , transaction_witness_set
-  , boolean ; is_valid tag (see note 1)
-  , null ; auxiliary_data (see note 2)
-  ]
+; Compact Representation (native only)
+transaction_compact = midgard_tx_compact_v1
 
-; Notes: 
-; 1. The boolean validation tag is_valid indicates the expected outcome for Plutus script validation:
-;     - If true, all Plutus scripts in the transaction are expected to validate, allowing full ledger updates.
-;     - If false, no state changes occur, except for collateral collection, which seizes collateral from inputs.
-;     - Even if a script fails validation, the UTxO rule still applies:
-;         - This rule verifies the is_valid tag and handles collateral appropriately, ensuring no unintended state changes affect the ledger.
-; 2. Auxiliary data (metadata) is forbidden:
-;     -  The auxiliary_data field is enforced to be null, as the Midgard ledger does not store metadata information.
+transaction_body = midgard_tx_body_full_v1
+transaction_body_compact = midgard_tx_body_compact_v1
 
-; Transaction
-; Compact Representation
-
-transaction_compact =
-  { transaction_body_hash : $hash32
-  , transaction_witness_set_hash : $hash32
-  , boolean ; is_valid tag (see note 1)
-  }
-
-; Transaction Body
-; Full Representation
-
-transaction_body =
-  { 0 : nonempty_oset<transaction_input>    ; inputs (see note 1)
-  , 1 : [* transaction_output]
-  , 2 : coin                                ; fee
-  , ? 3 : uint                              ; time to live (see note 2)
-  , ? 7 : auxiliary_data_hash               ; (see note 5)
-  , ? 8 : uint                              ; validity_interval_start (see note 2)
-  , ? 9 : mint
-  , ? 11 : script_data_hash
-  , ? 14 : required_signers
-  , ? 15 : network_id                       ; (see note 6)
-  , ? 18 : nonempty_oset<transaction_input> ; reference inputs (see note 1)
-  , ? 23 : required_observers               ; Script credentials
-  }
-
-; Implementation Notes
-;   1. The order of inputs is preserved according to Cardano CIP 128.
-;   2. The validity_interval_start and ttl (time to live) values are inherited from Cardano L1.
-;   5. auxiliary_data_hash represents the Merkle root hash of metadata.
-;   6. network_id indicates whether the transaction is for Midgard Mainnet (10) or Testnet (11).
-;   7. Fields certificates (4), withdrawals_hash (5), collateral_inputs (13), collateral_return(16) , total_collateral (17), voting_procedures (19),
-;      [+ proposal_procedure] (20), coin (21), and donation (22) are not relevant to the Midgard Ledger and are ignored.
-;   8. Indicates observer scripts according to Cardano CIP 112.
-
-
-; Transaction Body
-; Compact Representation
-
-transaction_body_compact =
-  { 0 : inputs_hash    ; inputs_hash
-  , 1 : outputs_hash   ; outputs_hash
-  , 2 : uint           ; fee
-  , ? 3 : uint         ; validity_interval_end (ttl)
-  , ? 7 : $hash32      ; auxiliary_data_hash
-  , ? 8 : uint         ; validity_interval_start
-  , ? 9 : $hash32      ; mint_hash
-  , ? 11 : $hash32     ; script_data_hash
-  , ? 14 : $hash32     ; required_signers_hash
-  , ? 15 : uint        ; network_id
-  , ? 18 : $hash32     ; reference_inputs_hash
-  , ? 23 : $hash32     ; required_observers_hash
-  }
-
-inputs_hash = $hash32 ; hash of inputs_set
-
-outputs_list_compact = [* transaction_output_compact]
-outputs_hash = $hash32 ; hash of outputs_list_compact
-
-
-; Implementation Notes
-; - Field bootstrap_witness (2), nonempty_set<plutus_v1_script> (3), nonempty_set<plutus_data> (4),
-;   nonempty_set<plutus_v2_script> (6), are not relevant to the Midgard Ledger and are ignored.
-
-; Transaction Witness Set
-; Full Representation
-transaction_witness_set =
-  { ? 0 : nonempty_set<vkeywitness>
-  , ? 1 : nonempty_set<native_script>
-  , ? 5 : redeemers                 ; scripts
-  , ? 7 : nonempty_set<plutus_v3_script>
-  }
-
-; Transaction Witness Set
-; Compact Representation
-transaction_witness_set_compact =
-  { ? 0 : $hash32   ; nonempty_set<vkeywitness>
-  , ? 1 : $hash32   ; nonempty_set<native_script>
-  , ? 5 : $hash32   ; redeemers
-  , ? 7 : $hash32   ; nonempty_set<plutus_v3_script>
-  }
+transaction_witness_set = midgard_tx_witness_set_full_v1
+transaction_witness_set_compact = midgard_tx_witness_set_compact_v1
 
 ; Transaction Input
 ; Full Representation (same as Compact Representation)

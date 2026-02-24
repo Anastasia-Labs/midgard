@@ -1,6 +1,6 @@
 import { parentPort, workerData } from "worker_threads";
 import * as SDK from "@al-ft/midgard-sdk";
-import { Cause, Effect, Match, Option, pipe } from "effect";
+import { Cause, Data, Effect, Match, Option, pipe } from "effect";
 import {
   WorkerInput,
   WorkerOutput,
@@ -40,12 +40,43 @@ import {
 import { FileSystemError, batchProgram } from "@/utils.js";
 import { Columns as TxColumns } from "@/database/utils/tx.js";
 import {
+  buildSuccessfulCommitBatches,
+  rootsMatchConfirmedHeader,
+  shouldAttemptLocalFinalizationRecovery,
+  shouldDeferCommitSubmission,
+  selectCommitRoots,
+} from "@/workers/utils/commit-block-planner.js";
+import {
   Columns as UserEventsColumns,
   retrieveTimeBoundEntries,
 } from "@/database/utils/user-events.js";
 import { DatabaseError } from "@/database/utils/common.js";
 
 const BATCH_SIZE = 100;
+
+class LocalFinalizationPendingError extends Data.TaggedError(
+  "LocalFinalizationPendingError",
+)<{
+  readonly submittedTxHash: string;
+  readonly txSize: number;
+  readonly mempoolTxsCount: number;
+  readonly sizeOfBlocksTxs: number;
+  readonly cause: unknown;
+}> {}
+
+const formatUnknownError = (error: unknown): string => {
+  if (error instanceof Error) {
+    return `${error.name}: ${error.message}`;
+  }
+  if (typeof error === "string") {
+    return error;
+  }
+  try {
+    return JSON.stringify(error);
+  } catch {
+    return String(error);
+  }
+};
 
 const getLatestBlockDatumEndTime = (
   latestBlocksDatum: SDK.StateQueueDatum,
@@ -62,6 +93,25 @@ const getLatestBlockDatumEndTime = (
       endTimeBigInt = latestHeader.endTime;
     }
     return new Date(Number(endTimeBigInt));
+  });
+
+const getLatestBlockHeaderRoots = (
+  latestBlocksDatum: SDK.StateQueueDatum,
+): Effect.Effect<
+  Option.Option<{ readonly utxoRoot: string; readonly txRoot: string }>,
+  SDK.DataCoercionError,
+  never
+> =>
+  Effect.gen(function* () {
+    if (latestBlocksDatum.key === "Empty") {
+      return Option.none();
+    }
+    const latestHeader =
+      yield* SDK.getHeaderFromStateQueueDatum(latestBlocksDatum);
+    return Option.some({
+      utxoRoot: latestHeader.utxosRoot,
+      txRoot: latestHeader.transactionsRoot,
+    });
   });
 
 const establishEndTimeFromTxRequests = (
@@ -94,6 +144,61 @@ const establishEndTimeFromTxRequests = (
   });
 
 // TODO: Application of user events will likely affect this function as well.
+const finalizeCommittedBlockLocally = (
+  mempoolTrie: MidgardMpt,
+  mempoolTxs: readonly TxTable.EntryWithTimeStamp[],
+  mempoolTxHashes: Buffer[],
+  newHeaderHash: string,
+): Effect.Effect<void, DatabaseError | FileSystemError, Database> =>
+  Effect.gen(function* () {
+    const newHeaderHashBuffer = Buffer.from(fromHex(newHeaderHash));
+
+    const processedMempoolTxs = yield* ProcessedMempoolDB.retrieve;
+    const batches = buildSuccessfulCommitBatches(
+      mempoolTxs,
+      mempoolTxHashes,
+      processedMempoolTxs,
+      Math.floor(BATCH_SIZE / 2),
+    );
+
+    yield* Effect.logInfo(
+      "🔹 Inserting included transactions into ImmutableDB and BlocksDB, clearing all the processed txs from MempoolDB and ProcessedMempoolDB, and deleting mempool LevelDB...",
+    );
+    yield* Effect.all(
+      [
+        Effect.forEach(
+          batches,
+          (batch, i) => {
+            const clearMempoolProgram =
+              batch.clearMempoolTxHashes.length === 0
+                ? Effect.void
+                : MempoolDB.clearTxs([...batch.clearMempoolTxHashes]).pipe(
+                    Effect.withSpan(`mempool-db-clear-txs-batch-${i}`),
+                  );
+            return Effect.all(
+              [
+                ImmutableDB.insertTxs([...batch.txsToInsertImmutable]).pipe(
+                  Effect.withSpan(`immutable-db-insert-batch-${i}`),
+                ),
+                BlocksDB.insert(newHeaderHashBuffer, [...batch.blockTxHashes]).pipe(
+                  Effect.withSpan(`blocks-db-insert-batch-${i}`),
+                ),
+                clearMempoolProgram,
+              ],
+              { concurrency: "unbounded" },
+            );
+          },
+          {
+            concurrency: "unbounded",
+          },
+        ),
+        ProcessedMempoolDB.clear, // uses `TRUNCATE` so no need for batching.
+        mempoolTrie.delete(),
+      ],
+      { concurrency: "unbounded" },
+    );
+  });
+
 const successfulSubmissionProgram = (
   mempoolTrie: MidgardMpt,
   mempoolTxs: readonly TxTable.EntryWithTimeStamp[],
@@ -105,61 +210,45 @@ const successfulSubmissionProgram = (
   txHash: string,
 ): Effect.Effect<WorkerOutput, DatabaseError | FileSystemError, Database> =>
   Effect.gen(function* () {
-    const newHeaderHashBuffer = Buffer.from(fromHex(newHeaderHash));
-
-    const processedMempoolTxs = yield* ProcessedMempoolDB.retrieve;
-
-    yield* Effect.logInfo(
-      "🔹 Inserting included transactions into ImmutableDB and BlocksDB, clearing all the processed txs from MempoolDB and ProcessedMempoolDB, and deleting mempool LevelDB...",
-    );
-    yield* Effect.all(
-      [
-        batchProgram(
-          Math.floor(BATCH_SIZE / 2),
-          mempoolTxs.length,
-          "successful-commit",
-          (startIndex: number, endIndex: number) => {
-            const batchTxs = mempoolTxs.slice(startIndex, endIndex);
-            const batchHashes = mempoolTxHashes.slice(startIndex, endIndex);
-            const batchHashesForBlocks = [...batchHashes];
-
-            const batchProcessedTxs = processedMempoolTxs.slice(
-              startIndex,
-              endIndex,
-            );
-
-            for (let i = 0; i < batchProcessedTxs.length; i++) {
-              const txPair = batchProcessedTxs[i];
-              batchTxs.push(txPair);
-              batchHashesForBlocks.push(txPair[TxColumns.TX_ID]);
-            }
-
-            return Effect.all(
-              [
-                ImmutableDB.insertTxs(batchTxs).pipe(
-                  Effect.withSpan(`immutable-db-insert-${startIndex}`),
-                ),
-                BlocksDB.insert(newHeaderHashBuffer, batchHashesForBlocks).pipe(
-                  Effect.withSpan(`blocks-db-insert-${startIndex}`),
-                ),
-                MempoolDB.clearTxs(batchHashes).pipe(
-                  Effect.withSpan(`mempool-db-clear-txs-${startIndex}`),
-                ),
-              ],
-              { concurrency: "unbounded" },
-            );
-          },
-        ),
-        ProcessedMempoolDB.clear, // uses `TRUNCATE` so no need for batching.
-        mempoolTrie.delete(),
-      ],
-      { concurrency: "unbounded" },
+    yield* finalizeCommittedBlockLocally(
+      mempoolTrie,
+      mempoolTxs,
+      mempoolTxHashes,
+      newHeaderHash,
     );
 
     return {
       type: "SuccessfulSubmissionOutput",
       submittedTxHash: txHash,
       txSize,
+      mempoolTxsCount:
+        mempoolTxs.length + workerInput.data.mempoolTxsCountSoFar,
+      sizeOfBlocksTxs:
+        sizeOfProcessedTxs + workerInput.data.sizeOfProcessedTxsSoFar,
+    };
+  });
+
+const successfulLocalFinalizationRecoveryProgram = (
+  mempoolTrie: MidgardMpt,
+  mempoolTxs: readonly TxTable.EntryWithTimeStamp[],
+  mempoolTxHashes: Buffer[],
+  confirmedHeaderHash: string,
+  workerInput: WorkerInput,
+  sizeOfProcessedTxs: number,
+): Effect.Effect<
+  WorkerOutput,
+  DatabaseError | FileSystemError,
+  Database
+> =>
+  Effect.gen(function* () {
+    yield* finalizeCommittedBlockLocally(
+      mempoolTrie,
+      mempoolTxs,
+      mempoolTxHashes,
+      confirmedHeaderHash,
+    );
+    return {
+      type: "SuccessfulLocalFinalizationRecoveryOutput",
       mempoolTxsCount:
         mempoolTxs.length + workerInput.data.mempoolTxsCountSoFar,
       sizeOfBlocksTxs:
@@ -328,6 +417,7 @@ const databaseOperationsProgram = (
   | SDK.StateQueueError
   | DatabaseError
   | FileSystemError
+  | LocalFinalizationPendingError
   | MptError,
   AlwaysSucceedsContract | Database | Lucid
 > =>
@@ -338,13 +428,29 @@ const databaseOperationsProgram = (
     const optEndTime: Option.Option<Date> =
       yield* establishEndTimeFromTxRequests(mempoolTxs);
 
+    const availableConfirmedBlock = workerInput.data.availableConfirmedBlock;
+    const hasAvailableConfirmedBlock = availableConfirmedBlock !== "";
+    if (
+      shouldDeferCommitSubmission({
+        localFinalizationPending: workerInput.data.localFinalizationPending,
+        hasAvailableConfirmedBlock,
+      })
+    ) {
+      yield* Effect.logInfo(
+        "🔹 Local finalization pending and no confirmed block available yet; deferring new submission.",
+      );
+      return {
+        type: "NothingToCommitOutput",
+      };
+    }
+
     const { utxoRoot, txRoot, mempoolTxHashes, sizeOfProcessedTxs } =
       yield* processMpts(ledgerTrie, mempoolTrie, mempoolTxs);
 
     const { stateQueue: stateQueueAuthValidator } =
       yield* AlwaysSucceedsContract;
 
-    if (workerInput.data.availableConfirmedBlock === "") {
+    if (availableConfirmedBlock === "") {
       // The tx confirmation worker has not yet confirmed a previously
       // submitted tx, so the root we have found can not be used yet.
       // However, it is stored on disk in our LevelDB mempool. Therefore,
@@ -366,8 +472,51 @@ const databaseOperationsProgram = (
         "🔹 Previous submitted block is now confirmed, deserializing...",
       );
       const latestBlock = yield* deserializeStateQueueUTxO(
-        workerInput.data.availableConfirmedBlock,
+        availableConfirmedBlock,
       );
+
+      if (
+        shouldAttemptLocalFinalizationRecovery({
+          localFinalizationPending: workerInput.data.localFinalizationPending,
+          hasAvailableConfirmedBlock: true,
+        })
+      ) {
+        yield* Effect.logInfo(
+          "🔹 Attempting local finalization recovery against confirmed block roots...",
+        );
+        const optHeaderRoots = yield* getLatestBlockHeaderRoots(latestBlock.datum);
+        if (Option.isNone(optHeaderRoots)) {
+          return {
+            type: "FailureOutput",
+            error:
+              "Confirmed block datum does not contain a recoverable header for local finalization",
+          };
+        }
+        const rootsMatch = rootsMatchConfirmedHeader({
+          computedUtxoRoot: utxoRoot,
+          computedTxRoot: txRoot,
+          confirmedUtxoRoot: optHeaderRoots.value.utxoRoot,
+          confirmedTxRoot: optHeaderRoots.value.txRoot,
+        });
+        if (!rootsMatch) {
+          return {
+            type: "FailureOutput",
+            error:
+              "Local finalization recovery aborted: computed roots do not match the confirmed block header",
+          };
+        }
+        const confirmedHeader =
+          yield* SDK.getHeaderFromStateQueueDatum(latestBlock.datum);
+        const confirmedHeaderHash = yield* SDK.hashBlockHeader(confirmedHeader);
+        return yield* successfulLocalFinalizationRecoveryProgram(
+          mempoolTrie,
+          mempoolTxs,
+          mempoolTxHashes,
+          confirmedHeaderHash,
+          workerInput,
+          sizeOfProcessedTxs,
+        );
+      }
 
       const startTime = yield* getLatestBlockDatumEndTime(latestBlock.datum);
 
@@ -396,11 +545,17 @@ const databaseOperationsProgram = (
           const depositsRoot = yield* depositsRootFiber;
           yield* Effect.logInfo(`🔹 Deposits root is: ${depositsRoot}`);
           const emptyRoot = yield* emptyRootHexProgram;
+          const roots = selectCommitRoots({
+            hasTxRequests: false,
+            computedUtxoRoot: utxoRoot,
+            computedTxRoot: txRoot,
+            emptyRoot,
+          });
           const { signAndSubmitProgram, txSize } = yield* buildUnsignedTx(
             stateQueueAuthValidator,
             latestBlock,
-            emptyRoot, // TODO: fix
-            emptyRoot,
+            roots.utxoRoot,
+            roots.txRoot,
             depositsRoot,
             endDate,
           );
@@ -497,6 +652,20 @@ const databaseOperationsProgram = (
               txSize,
               sizeOfProcessedTxs,
               txHash,
+            ).pipe(
+              Effect.mapError(
+                (cause) =>
+                  new LocalFinalizationPendingError({
+                    submittedTxHash: txHash,
+                    txSize,
+                    mempoolTxsCount:
+                      mempoolTxs.length + workerInput.data.mempoolTxsCountSoFar,
+                    sizeOfBlocksTxs:
+                      sizeOfProcessedTxs +
+                      workerInput.data.sizeOfProcessedTxsSoFar,
+                    cause,
+                  }),
+              ),
             ),
         });
       }
@@ -517,6 +686,7 @@ const wrapper = (
   | DatabaseInitializationError
   | DatabaseError
   | FileSystemError
+  | LocalFinalizationPendingError
   | TxSignError
   | MptError,
   AlwaysSucceedsContract | Lucid | Database | NodeConfig
@@ -529,6 +699,19 @@ const wrapper = (
     const result: void | WorkerOutput = yield* withTrieTransaction(
       ledgerTrie,
       databaseOperationsProgram(workerInput, ledgerTrie, mempoolTrie),
+    ).pipe(
+      Effect.catchAll((error) =>
+        error._tag === "LocalFinalizationPendingError"
+          ? Effect.succeed({
+              type: "SubmittedAwaitingLocalFinalizationOutput",
+              submittedTxHash: error.submittedTxHash,
+              txSize: error.txSize,
+              mempoolTxsCount: error.mempoolTxsCount,
+              sizeOfBlocksTxs: error.sizeOfBlocksTxs,
+              error: formatUnknownError(error.cause),
+            } as WorkerOutput)
+          : Effect.fail(error),
+      ),
     );
     if (result) {
       return result;

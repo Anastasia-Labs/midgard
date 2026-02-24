@@ -286,6 +286,13 @@ export const program: Effect.Effect<
   yield* Ref.set(globals.LATEST_SYNC_TIME_OF_STATE_QUEUE_LENGTH, Date.now());
   yield* Ref.set(globals.BLOCKS_IN_QUEUE, 0);
   yield* Ref.set(globals.AVAILABLE_CONFIRMED_BLOCK, "");
+  yield* Ref.set(globals.UNCONFIRMED_SUBMITTED_BLOCK_TX_HASH, "");
+  yield* Ref.set(globals.LOCAL_FINALIZATION_PENDING, false);
+  yield* Ref.set(globals.HEARTBEAT_BLOCK_COMMITMENT, Date.now());
+  yield* Ref.set(globals.HEARTBEAT_BLOCK_CONFIRMATION, Date.now());
+  yield* Ref.set(globals.HEARTBEAT_MERGE, Date.now());
+  yield* Ref.set(globals.HEARTBEAT_DEPOSIT_FETCH, Date.now());
+  yield* Ref.set(globals.HEARTBEAT_TX_QUEUE_PROCESSOR, Date.now());
 
   yield* Ref.set(globals.RESET_IN_PROGRESS, false);
   yield* Effect.logInfo(`🚧 Done resetting global variables...`);

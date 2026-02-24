@@ -90,4 +90,18 @@ export const retrieveByTxId = (
     sqlErrorToDatabaseError(tableName, "Failed to retrieve tx rejection"),
   );
 
+export const pruneOlderThan = (
+  cutoff: Date,
+): Effect.Effect<number, DatabaseError, Database> =>
+  Effect.gen(function* () {
+    const sql = yield* SqlClient.SqlClient;
+    const deleted = yield* sql`DELETE FROM ${sql(tableName)}
+      WHERE ${sql(Columns.CREATED_AT)} < ${cutoff}
+      RETURNING ${sql(Columns.TX_ID)}`;
+    return deleted.length;
+  }).pipe(
+    Effect.withLogSpan(`pruneOlderThan ${tableName}`),
+    sqlErrorToDatabaseError(tableName, "Failed to prune tx rejections"),
+  );
+
 export const clear = clearTable(tableName);

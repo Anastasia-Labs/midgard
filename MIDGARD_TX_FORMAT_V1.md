@@ -48,6 +48,6 @@
 - Compact payload can be decoded/hashed without decoding full preimages.
 
 ## Compatibility
-- Legacy Cardano-derived codec paths are retained as migration bridges.
-- A conversion helper is provided in node codec to map Cardano tx bytes into `MidgardTxFullV1`.
-- New integrations should treat `MidgardTx*V1` as canonical.
+- Midgard ledger validation accepts only `MidgardTx*V1` payloads.
+- Legacy Midgard full/compact codecs are removed.
+- A conversion helper remains available to map Cardano tx bytes into `MidgardTxFullV1` for ingestion/migration tooling.

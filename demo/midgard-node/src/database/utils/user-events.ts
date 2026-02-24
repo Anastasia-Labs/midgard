@@ -31,6 +31,9 @@ export const createTable = (
         ${sql(Columns.INCLUSION_TIME)} TIMESTAMPTZ NOT NULL,
         PRIMARY KEY (${sql(Columns.ID)})
       );`;
+        yield* sql`CREATE INDEX IF NOT EXISTS ${sql(
+          `idx_${tableName}_${Columns.INCLUSION_TIME}`,
+        )} ON ${sql(tableName)} (${sql(Columns.INCLUSION_TIME)});`;
       }),
     );
   }).pipe(
@@ -124,3 +127,21 @@ export const delEntries = (
       Columns.ID,
     )} IN ${sql.in(ids)}`;
   }).pipe(sqlErrorToDatabaseError(tableName, "Failed to delete given UTxOs"));
+
+export const pruneOlderThan = (
+  tableName: string,
+  cutoff: Date,
+): Effect.Effect<number, DatabaseError, Database> =>
+  Effect.gen(function* () {
+    const sql = yield* SqlClient.SqlClient;
+    const deleted = yield* sql`DELETE FROM ${sql(tableName)}
+      WHERE ${sql(Columns.INCLUSION_TIME)} < ${cutoff}
+      RETURNING ${sql(Columns.ID)}`;
+    return deleted.length;
+  }).pipe(
+    Effect.withLogSpan(`pruneOlderThan ${tableName}`),
+    Effect.tapErrorTag("SqlError", (e) =>
+      Effect.logError(`${tableName} db: pruneOlderThan: ${JSON.stringify(e)}`),
+    ),
+    sqlErrorToDatabaseError(tableName, "Failed to prune old user events"),
+  );

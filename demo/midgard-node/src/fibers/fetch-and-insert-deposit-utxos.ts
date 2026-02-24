@@ -34,6 +34,7 @@ export const fetchAndInsertDepositUTxOs: Effect.Effect<
 > = Effect.gen(function* () {
   const { api: lucid } = yield* Lucid;
   const globals = yield* Globals;
+  yield* Ref.set(globals.HEARTBEAT_DEPOSIT_FETCH, Date.now());
   const startTime: number = yield* Ref.get(globals.LATEST_DEPOSIT_FETCH_TIME);
   const endTime: number = Date.now();
 

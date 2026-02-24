@@ -31,3 +31,8 @@ export const delEntries = (
   ids: Buffer[],
 ): Effect.Effect<void, DatabaseError, Database> =>
   UserEvents.delEntries(tableName, ids);
+
+export const pruneOlderThan = (
+  cutoff: Date,
+): Effect.Effect<number, DatabaseError, Database> =>
+  UserEvents.pruneOlderThan(tableName, cutoff);

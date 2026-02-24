@@ -7,8 +7,12 @@ import {
   encodeCbor,
 } from "./cbor.js";
 import { MidgardTxCodecError, MidgardTxCodecErrorCodes } from "./errors.js";
-import { computeHash32, ensureHashMatch, ensureHash32 } from "./hash.js";
-import type { Hash32 } from "./types.js";
+import {
+  computeHash32,
+  ensureHashMatch,
+  ensureHash32,
+  type Hash32,
+} from "./hash.js";
 
 export const MIDGARD_NATIVE_TX_VERSION = 1n;
 export const MIDGARD_POSIX_TIME_NONE = -1n;
@@ -88,6 +92,34 @@ export type MidgardNativeTxFull = {
   readonly compact: MidgardNativeTxCompact;
   readonly body: MidgardNativeTxBodyFull;
   readonly witnessSet: MidgardNativeTxWitnessSetFull;
+};
+
+export type MidgardNativeTxBodyCanonical = {
+  readonly spendInputsPreimageCbor: Buffer;
+  readonly referenceInputsPreimageCbor: Buffer;
+  readonly outputsPreimageCbor: Buffer;
+  readonly fee: bigint;
+  readonly validityIntervalStart: bigint;
+  readonly validityIntervalEnd: bigint;
+  readonly requiredObserversPreimageCbor: Buffer;
+  readonly requiredSignersPreimageCbor: Buffer;
+  readonly mintPreimageCbor: Buffer;
+  readonly scriptIntegrityHash: Hash32;
+  readonly auxiliaryDataHash: Hash32;
+  readonly networkId: bigint;
+};
+
+export type MidgardNativeTxWitnessSetCanonical = {
+  readonly addrTxWitsPreimageCbor: Buffer;
+  readonly scriptTxWitsPreimageCbor: Buffer;
+  readonly redeemerTxWitsPreimageCbor: Buffer;
+};
+
+export type MidgardNativeTxCanonical = {
+  readonly version: bigint;
+  readonly validity: MidgardTxValidity;
+  readonly body: MidgardNativeTxBodyCanonical;
+  readonly witnessSet: MidgardNativeTxWitnessSetCanonical;
 };
 
 export type MidgardNativeCodecOptions = {
@@ -500,29 +532,130 @@ const decodeNativeTxWitnessSetFullValue = (
   };
 };
 
-export const deriveMidgardNativeTxBodyCompactFromFull = (
-  body: MidgardNativeTxBodyFull,
+const deriveMidgardNativeTxBodyCompactFromCanonical = (
+  body: MidgardNativeTxBodyCanonical,
 ): MidgardNativeTxBodyCompact => ({
-  spendInputsRoot: body.spendInputsRoot,
-  referenceInputsRoot: body.referenceInputsRoot,
-  outputsRoot: body.outputsRoot,
+  spendInputsRoot: computeHash32(body.spendInputsPreimageCbor),
+  referenceInputsRoot: computeHash32(body.referenceInputsPreimageCbor),
+  outputsRoot: computeHash32(body.outputsPreimageCbor),
   fee: body.fee,
   validityIntervalStart: body.validityIntervalStart,
   validityIntervalEnd: body.validityIntervalEnd,
-  requiredObserversRoot: body.requiredObserversRoot,
-  requiredSignersRoot: body.requiredSignersRoot,
-  mintRoot: body.mintRoot,
+  requiredObserversRoot: computeHash32(body.requiredObserversPreimageCbor),
+  requiredSignersRoot: computeHash32(body.requiredSignersPreimageCbor),
+  mintRoot: computeHash32(body.mintPreimageCbor),
   scriptIntegrityHash: body.scriptIntegrityHash,
   auxiliaryDataHash: body.auxiliaryDataHash,
   networkId: body.networkId,
 });
 
+const deriveMidgardNativeTxWitnessSetCompactFromCanonical = (
+  witnessSet: MidgardNativeTxWitnessSetCanonical,
+): MidgardNativeTxWitnessSetCompact => ({
+  addrTxWitsRoot: computeHash32(witnessSet.addrTxWitsPreimageCbor),
+  scriptTxWitsRoot: computeHash32(witnessSet.scriptTxWitsPreimageCbor),
+  redeemerTxWitsRoot: computeHash32(witnessSet.redeemerTxWitsPreimageCbor),
+});
+
+const toBodyCanonicalFromFull = (
+  body: MidgardNativeTxBodyFull,
+): MidgardNativeTxBodyCanonical => ({
+  spendInputsPreimageCbor: Buffer.from(body.spendInputsPreimageCbor),
+  referenceInputsPreimageCbor: Buffer.from(body.referenceInputsPreimageCbor),
+  outputsPreimageCbor: Buffer.from(body.outputsPreimageCbor),
+  fee: body.fee,
+  validityIntervalStart: body.validityIntervalStart,
+  validityIntervalEnd: body.validityIntervalEnd,
+  requiredObserversPreimageCbor: Buffer.from(body.requiredObserversPreimageCbor),
+  requiredSignersPreimageCbor: Buffer.from(body.requiredSignersPreimageCbor),
+  mintPreimageCbor: Buffer.from(body.mintPreimageCbor),
+  scriptIntegrityHash: ensureHash32(
+    body.scriptIntegrityHash,
+    "transaction_body_full.script_integrity_hash",
+  ),
+  auxiliaryDataHash: ensureHash32(
+    body.auxiliaryDataHash,
+    "transaction_body_full.auxiliary_data_hash",
+  ),
+  networkId: body.networkId,
+});
+
+const toWitnessSetCanonicalFromFull = (
+  witnessSet: MidgardNativeTxWitnessSetFull,
+): MidgardNativeTxWitnessSetCanonical => ({
+  addrTxWitsPreimageCbor: Buffer.from(witnessSet.addrTxWitsPreimageCbor),
+  scriptTxWitsPreimageCbor: Buffer.from(witnessSet.scriptTxWitsPreimageCbor),
+  redeemerTxWitsPreimageCbor: Buffer.from(witnessSet.redeemerTxWitsPreimageCbor),
+});
+
+export const deriveMidgardNativeTxBodyCompactFromFull = (
+  body: MidgardNativeTxBodyFull,
+): MidgardNativeTxBodyCompact =>
+  deriveMidgardNativeTxBodyCompactFromCanonical(toBodyCanonicalFromFull(body));
+
 export const deriveMidgardNativeTxWitnessSetCompactFromFull = (
   witnessSet: MidgardNativeTxWitnessSetFull,
-): MidgardNativeTxWitnessSetCompact => ({
-  addrTxWitsRoot: witnessSet.addrTxWitsRoot,
-  scriptTxWitsRoot: witnessSet.scriptTxWitsRoot,
-  redeemerTxWitsRoot: witnessSet.redeemerTxWitsRoot,
+): MidgardNativeTxWitnessSetCompact =>
+  deriveMidgardNativeTxWitnessSetCompactFromCanonical(
+    toWitnessSetCanonicalFromFull(witnessSet),
+  );
+
+export const materializeMidgardNativeTxBodyFull = (
+  body: MidgardNativeTxBodyCanonical,
+): MidgardNativeTxBodyFull => {
+  const compact = deriveMidgardNativeTxBodyCompactFromCanonical(body);
+  return {
+    spendInputsRoot: compact.spendInputsRoot,
+    spendInputsPreimageCbor: Buffer.from(body.spendInputsPreimageCbor),
+    referenceInputsRoot: compact.referenceInputsRoot,
+    referenceInputsPreimageCbor: Buffer.from(body.referenceInputsPreimageCbor),
+    outputsRoot: compact.outputsRoot,
+    outputsPreimageCbor: Buffer.from(body.outputsPreimageCbor),
+    fee: body.fee,
+    validityIntervalStart: body.validityIntervalStart,
+    validityIntervalEnd: body.validityIntervalEnd,
+    requiredObserversRoot: compact.requiredObserversRoot,
+    requiredObserversPreimageCbor: Buffer.from(body.requiredObserversPreimageCbor),
+    requiredSignersRoot: compact.requiredSignersRoot,
+    requiredSignersPreimageCbor: Buffer.from(body.requiredSignersPreimageCbor),
+    mintRoot: compact.mintRoot,
+    mintPreimageCbor: Buffer.from(body.mintPreimageCbor),
+    scriptIntegrityHash: ensureHash32(
+      body.scriptIntegrityHash,
+      "transaction_body_canonical.script_integrity_hash",
+    ),
+    auxiliaryDataHash: ensureHash32(
+      body.auxiliaryDataHash,
+      "transaction_body_canonical.auxiliary_data_hash",
+    ),
+    networkId: body.networkId,
+  };
+};
+
+export const materializeMidgardNativeTxWitnessSetFull = (
+  witnessSet: MidgardNativeTxWitnessSetCanonical,
+): MidgardNativeTxWitnessSetFull => {
+  const compact =
+    deriveMidgardNativeTxWitnessSetCompactFromCanonical(witnessSet);
+  return {
+    addrTxWitsRoot: compact.addrTxWitsRoot,
+    addrTxWitsPreimageCbor: Buffer.from(witnessSet.addrTxWitsPreimageCbor),
+    scriptTxWitsRoot: compact.scriptTxWitsRoot,
+    scriptTxWitsPreimageCbor: Buffer.from(witnessSet.scriptTxWitsPreimageCbor),
+    redeemerTxWitsRoot: compact.redeemerTxWitsRoot,
+    redeemerTxWitsPreimageCbor: Buffer.from(
+      witnessSet.redeemerTxWitsPreimageCbor,
+    ),
+  };
+};
+
+export const toMidgardNativeTxCanonical = (
+  tx: MidgardNativeTxFull,
+): MidgardNativeTxCanonical => ({
+  version: tx.version,
+  validity: tx.compact.validity,
+  body: toBodyCanonicalFromFull(tx.body),
+  witnessSet: toWitnessSetCanonicalFromFull(tx.witnessSet),
 });
 
 export const deriveMidgardNativeTxCompact = (
@@ -543,6 +676,27 @@ export const deriveMidgardNativeTxCompact = (
       encodeMidgardNativeTxWitnessSetCompact(witnessCompact),
     ),
     validity,
+  };
+};
+
+export const materializeMidgardNativeTxFromCanonical = (
+  canonical: MidgardNativeTxCanonical,
+): MidgardNativeTxFull => {
+  const version = decodeVersion(canonical.version, "transaction_canonical.version");
+  const body = materializeMidgardNativeTxBodyFull(canonical.body);
+  const witnessSet = materializeMidgardNativeTxWitnessSetFull(
+    canonical.witnessSet,
+  );
+  const compact = deriveMidgardNativeTxCompact(
+    body,
+    witnessSet,
+    canonical.validity,
+  );
+  return {
+    version,
+    compact,
+    body,
+    witnessSet,
   };
 };
 
@@ -984,22 +1138,19 @@ export const cardanoTxBytesToMidgardNativeTxFull = (
       ? MIDGARD_NATIVE_NETWORK_ID_NONE
       : BigInt(network.network());
 
-  const body: MidgardNativeTxBodyFull = {
-    spendInputsRoot: computeHash32(spendInputsPreimageCbor),
+  const canonical: MidgardNativeTxCanonical = {
+    version: MIDGARD_NATIVE_TX_VERSION,
+    validity: tx.is_valid() ? "TxIsValid" : "FailedScript",
+    body: {
     spendInputsPreimageCbor,
-    referenceInputsRoot: computeHash32(referenceInputsPreimageCbor),
     referenceInputsPreimageCbor,
-    outputsRoot: computeHash32(outputsPreimageCbor),
     outputsPreimageCbor,
     fee: txBody.fee(),
     validityIntervalStart:
       txBody.validity_interval_start() ?? MIDGARD_POSIX_TIME_NONE,
     validityIntervalEnd: txBody.ttl() ?? MIDGARD_POSIX_TIME_NONE,
-    requiredObserversRoot: computeHash32(requiredObserversPreimageCbor),
     requiredObserversPreimageCbor,
-    requiredSignersRoot: computeHash32(requiredSignersPreimageCbor),
     requiredSignersPreimageCbor,
-    mintRoot: computeHash32(mintPreimageCbor),
     mintPreimageCbor,
     scriptIntegrityHash:
       scriptDataHash === undefined
@@ -1016,29 +1167,15 @@ export const cardanoTxBytesToMidgardNativeTxFull = (
             "auxiliary_data_hash",
           ),
     networkId: encodedNetworkId,
+    },
+    witnessSet: {
+      addrTxWitsPreimageCbor,
+      scriptTxWitsPreimageCbor,
+      redeemerTxWitsPreimageCbor,
+    },
   };
 
-  const witnessSet: MidgardNativeTxWitnessSetFull = {
-    addrTxWitsRoot: computeHash32(addrTxWitsPreimageCbor),
-    addrTxWitsPreimageCbor,
-    scriptTxWitsRoot: computeHash32(scriptTxWitsPreimageCbor),
-    scriptTxWitsPreimageCbor,
-    redeemerTxWitsRoot: computeHash32(redeemerTxWitsPreimageCbor),
-    redeemerTxWitsPreimageCbor,
-  };
-
-  const compact = deriveMidgardNativeTxCompact(
-    body,
-    witnessSet,
-    tx.is_valid() ? "TxIsValid" : "FailedScript",
-  );
-
-  return {
-    version: MIDGARD_NATIVE_TX_VERSION,
-    compact,
-    body,
-    witnessSet,
-  };
+  return materializeMidgardNativeTxFromCanonical(canonical);
 };
 
 export const cardanoTxBytesToMidgardNativeTxFullBytes = (

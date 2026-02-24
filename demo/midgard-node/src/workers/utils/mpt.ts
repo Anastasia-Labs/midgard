@@ -8,6 +8,7 @@ import { Level } from "level";
 import { Database, NodeConfig } from "@/services/index.js";
 import * as Tx from "@/database/utils/tx.js";
 import * as Ledger from "@/database/utils/ledger.js";
+import * as MempoolTxDeltasDB from "@/database/mempoolTxDeltas.js";
 import { FileSystemError, findSpentAndProducedUTxOs } from "@/utils.js";
 import * as FS from "fs";
 import * as SDK from "@al-ft/midgard-sdk";
@@ -113,7 +114,7 @@ export const processMpts = (
     mempoolTxHashes: Buffer[];
     sizeOfProcessedTxs: number;
   },
-  MptError | SDK.CmlUnexpectedError,
+  MptError | SDK.CmlUnexpectedError | DatabaseError,
   Database
 > =>
   Effect.gen(function* () {
@@ -121,16 +122,33 @@ export const processMpts = (
     const mempoolBatchOps: ETH_UTILS.BatchDBOp[] = [];
     const batchDBOps: ETH_UTILS.BatchDBOp[] = [];
     let sizeOfProcessedTxs = 0;
+    const txDeltasByTxHash = yield* MempoolTxDeltasDB.retrieveByTxIds(
+      mempoolTxs.map((entry) => entry[Tx.Columns.TX_ID]),
+    );
     yield* Effect.logInfo("🔹 Going through mempool txs and finding roots...");
     yield* Effect.forEach(mempoolTxs, (entry: Tx.Entry) =>
       Effect.gen(function* () {
         const txHash = entry[Tx.Columns.TX_ID];
         const txCbor = entry[Tx.Columns.TX];
         mempoolTxHashes.push(txHash);
-        const { spent, produced } = yield* findSpentAndProducedUTxOs(
-          txCbor,
-          txHash,
-        ).pipe(Effect.withSpan("findSpentAndProducedUTxOs"));
+        const txHashHex = txHash.toString("hex");
+        const existingDelta = txDeltasByTxHash.get(txHashHex);
+        const { spent, produced } =
+          existingDelta === undefined
+            ? yield* findSpentAndProducedUTxOs(txCbor, txHash).pipe(
+                Effect.withSpan("findSpentAndProducedUTxOs"),
+              )
+            : {
+                spent: existingDelta.spent.map((outRef) => Buffer.from(outRef)),
+                produced: existingDelta.produced.map((entry) => ({
+                  [Ledger.Columns.OUTREF]: Buffer.from(
+                    entry[Ledger.Columns.OUTREF],
+                  ),
+                  [Ledger.Columns.OUTPUT]: Buffer.from(
+                    entry[Ledger.Columns.OUTPUT],
+                  ),
+                })),
+              };
         sizeOfProcessedTxs += txCbor.length;
         const delOps: ETH_UTILS.BatchDBOp[] = spent.map((outRef) => ({
           type: "del",

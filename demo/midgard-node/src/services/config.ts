@@ -26,6 +26,14 @@ type NodeConfigDep = {
   VALIDATION_STRICTNESS_PROFILE: string;
   MIN_FEE_A: bigint;
   MIN_FEE_B: bigint;
+  RUN_GENESIS_ON_STARTUP: boolean;
+  ADMIN_API_KEY: string;
+  MAX_SUBMIT_QUEUE_SIZE: number;
+  MAX_SUBMIT_TX_CBOR_BYTES: number;
+  READINESS_MAX_HEARTBEAT_AGE_MS: number;
+  READINESS_MAX_QUEUE_DEPTH: number;
+  RETENTION_DAYS: number;
+  WAIT_BETWEEN_RETENTION_SWEEPS: number;
   PROM_METRICS_PORT: number;
   OLTP_EXPORTER_URL: string;
   POSTGRES_USER: string;
@@ -89,6 +97,31 @@ const makeConfig = Effect.gen(function* () {
     Config.withDefault("0"),
     Config.mapAttempt((value) => BigInt(value)),
   );
+  const runGenesisOnStartup = yield* Config.string("RUN_GENESIS_ON_STARTUP").pipe(
+    Config.withDefault("false"),
+    Config.map((value) => value.trim().toLowerCase() === "true"),
+  );
+  const adminApiKey = yield* Config.string("ADMIN_API_KEY").pipe(
+    Config.withDefault(""),
+  );
+  const maxSubmitQueueSize = yield* Config.integer("MAX_SUBMIT_QUEUE_SIZE").pipe(
+    Config.withDefault(10_000),
+  );
+  const maxSubmitTxCborBytes = yield* Config.integer(
+    "MAX_SUBMIT_TX_CBOR_BYTES",
+  ).pipe(Config.withDefault(32_768));
+  const readinessMaxHeartbeatAgeMs = yield* Config.integer(
+    "READINESS_MAX_HEARTBEAT_AGE_MS",
+  ).pipe(Config.withDefault(120_000));
+  const readinessMaxQueueDepth = yield* Config.integer(
+    "READINESS_MAX_QUEUE_DEPTH",
+  ).pipe(Config.withDefault(maxSubmitQueueSize));
+  const retentionDays = yield* Config.integer("RETENTION_DAYS").pipe(
+    Config.withDefault(0),
+  );
+  const waitBetweenRetentionSweeps = yield* Config.integer(
+    "WAIT_BETWEEN_RETENTION_SWEEPS",
+  ).pipe(Config.withDefault(3_600_000));
   const waitBetweenDepositUTxOFetches = yield* Config.integer(
     "WAIT_BETWEEN_DEPOSIT_UTXO_FETCHES",
   ).pipe(Config.withDefault(10000));
@@ -204,6 +237,14 @@ const makeConfig = Effect.gen(function* () {
     VALIDATION_STRICTNESS_PROFILE: validationStrictnessProfile,
     MIN_FEE_A: minFeeA,
     MIN_FEE_B: minFeeB,
+    RUN_GENESIS_ON_STARTUP: runGenesisOnStartup,
+    ADMIN_API_KEY: adminApiKey,
+    MAX_SUBMIT_QUEUE_SIZE: maxSubmitQueueSize,
+    MAX_SUBMIT_TX_CBOR_BYTES: maxSubmitTxCborBytes,
+    READINESS_MAX_HEARTBEAT_AGE_MS: readinessMaxHeartbeatAgeMs,
+    READINESS_MAX_QUEUE_DEPTH: readinessMaxQueueDepth,
+    RETENTION_DAYS: retentionDays,
+    WAIT_BETWEEN_RETENTION_SWEEPS: waitBetweenRetentionSweeps,
     WAIT_BETWEEN_DEPOSIT_UTXO_FETCHES: waitBetweenDepositUTxOFetches,
     PROM_METRICS_PORT: promMetricsPort,
     OLTP_EXPORTER_URL: oltpExporterUrl,

@@ -45,6 +45,7 @@ const buildNativeTx = (opts?: {
   readonly requiredObserverItems?: readonly Uint8Array[];
   readonly witnessMode?: "none" | "valid" | "invalid";
   readonly networkId?: bigint;
+  readonly outputCount?: number;
 }): { tx: MidgardNativeTxFull; txId: Buffer; txCbor: Buffer; inputOutRef: Buffer; outputCbor: Buffer } => {
   const spendInput = Buffer.from(
     CML.TransactionInput.new(
@@ -62,11 +63,15 @@ const buildNativeTx = (opts?: {
     CML.Address.from_bech32(TEST_ADDRESS),
     CML.Value.from_coin(3_000_000n),
   );
-  const outputCbor = Buffer.from(output.to_cbor_bytes());
+  const outputCount = Math.max(1, opts?.outputCount ?? 1);
+  const outputCbors = Array.from({ length: outputCount }, () =>
+    Buffer.from(output.to_cbor_bytes()),
+  );
+  const outputCbor = outputCbors[0];
 
   const spendInputsPreimageCbor = encodeByteList([spendInput]);
   const referenceInputsPreimageCbor = encodeByteList([referenceInput]);
-  const outputsPreimageCbor = encodeByteList([outputCbor]);
+  const outputsPreimageCbor = encodeByteList(outputCbors);
   const requiredObserversPreimageCbor = encodeByteList(
     opts?.requiredObserverItems ?? [],
   );
@@ -320,11 +325,26 @@ describe("native transaction integration", () => {
   it("finds spent/produced sets for native tx payloads", async () => {
     const { txId, txCbor, inputOutRef, outputCbor } = buildNativeTx();
     const result = await Effect.runPromise(findSpentAndProducedUTxOs(txCbor, txId));
+    const expectedOutRef = Buffer.from(
+      CML.TransactionInput.new(CML.TransactionHash.from_raw_bytes(txId), 0n).to_cbor_bytes(),
+    );
 
     expect(result.spent).toHaveLength(1);
     expect(result.spent[0].equals(inputOutRef)).toBe(true);
     expect(result.produced).toHaveLength(1);
-    expect(result.produced[0].outref.equals(txId)).toBe(true);
+    expect(result.produced[0].outref.equals(expectedOutRef)).toBe(true);
     expect(result.produced[0].output.equals(outputCbor)).toBe(true);
+  });
+
+  it("uses indexed outrefs for multiple produced outputs", async () => {
+    const { txId, txCbor } = buildNativeTx({ outputCount: 2 });
+    const result = await Effect.runPromise(findSpentAndProducedUTxOs(txCbor, txId));
+    const txHash = CML.TransactionHash.from_raw_bytes(txId);
+    const expectedOutRef0 = Buffer.from(CML.TransactionInput.new(txHash, 0n).to_cbor_bytes());
+    const expectedOutRef1 = Buffer.from(CML.TransactionInput.new(txHash, 1n).to_cbor_bytes());
+
+    expect(result.produced).toHaveLength(2);
+    expect(result.produced[0].outref.equals(expectedOutRef0)).toBe(true);
+    expect(result.produced[1].outref.equals(expectedOutRef1)).toBe(true);
   });
 });

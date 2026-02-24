@@ -30,6 +30,20 @@ type CandidateDecision = {
   readonly rejection?: RejectedTx;
 };
 
+export type UTxOStatePatch = {
+  readonly deletedOutRefs: readonly string[];
+  readonly upsertedOutRefs: readonly (readonly [string, Buffer])[];
+};
+
+export type PhaseBResultWithPatch = PhaseBResult & {
+  readonly statePatch: UTxOStatePatch;
+};
+
+type MutableStatePatch = {
+  readonly deletedOutRefs: Set<string>;
+  readonly upsertedOutRefs: Map<string, Buffer>;
+};
+
 const buildState = (entries: PreState): UTxOState => {
   if (entries instanceof Map) {
     return entries;
@@ -39,6 +53,46 @@ const buildState = (entries: PreState): UTxOState => {
     state.set(entry[LedgerUtils.Columns.OUTREF].toString("hex"), entry.output);
   }
   return state;
+};
+
+const makeEmptyStatePatch = (): MutableStatePatch => ({
+  deletedOutRefs: new Set<string>(),
+  upsertedOutRefs: new Map<string, Buffer>(),
+});
+
+const getStateValue = (
+  baseState: UTxOState,
+  patch: MutableStatePatch,
+  outRefHex: string,
+): Buffer | undefined => {
+  const updatedValue = patch.upsertedOutRefs.get(outRefHex);
+  if (updatedValue !== undefined) {
+    return updatedValue;
+  }
+  if (patch.deletedOutRefs.has(outRefHex)) {
+    return undefined;
+  }
+  return baseState.get(outRefHex);
+};
+
+const materializeStatePatch = (patch: MutableStatePatch): UTxOStatePatch => ({
+  deletedOutRefs: Array.from(patch.deletedOutRefs),
+  upsertedOutRefs: Array.from(patch.upsertedOutRefs.entries()).map(
+    ([outRefHex, output]) =>
+      [outRefHex, Buffer.from(output)] as readonly [string, Buffer],
+  ),
+});
+
+export const applyUTxOStatePatch = (
+  state: UTxOState,
+  patch: UTxOStatePatch,
+): void => {
+  for (const outRefHex of patch.deletedOutRefs) {
+    state.delete(outRefHex);
+  }
+  for (const [outRefHex, output] of patch.upsertedOutRefs) {
+    state.set(outRefHex, Buffer.from(output));
+  }
 };
 
 const reject = (
@@ -214,7 +268,7 @@ const findCycleNodes = (nodes: readonly CandidateNode[]): Set<number> => {
 
 const validateCandidateAgainstState = (
   node: CandidateNode,
-  state: UTxOState,
+  stateValue: (outRefHex: string) => Buffer | undefined,
   spentByAccepted: Set<string>,
   nowMillis: bigint,
 ): CandidateDecision => {
@@ -254,7 +308,7 @@ const validateCandidateAgainstState = (
         `reference input is also spent by tx: ${referenceOutRefHex}`,
       );
     }
-    if (!state.has(referenceOutRefHex)) {
+    if (stateValue(referenceOutRefHex) === undefined) {
       return fail(
         RejectCodes.InputNotFound,
         `reference input not found: ${referenceOutRefHex}`,
@@ -270,7 +324,7 @@ const validateCandidateAgainstState = (
       return fail(RejectCodes.DoubleSpend, inputOutRefHex);
     }
 
-    const inputOutput = state.get(inputOutRefHex);
+    const inputOutput = stateValue(inputOutRefHex);
     if (!inputOutput) {
       return fail(RejectCodes.InputNotFound, inputOutRefHex);
     }
@@ -378,17 +432,22 @@ const cascadeRejectDescendants = (
   }
 };
 
-export const runPhaseBValidation = (
+export const runPhaseBValidationWithPatch = (
   phaseACandidates: readonly PhaseAAccepted[],
   preStateEntries: PreState,
   config: PhaseBConfig,
-): Effect.Effect<PhaseBResult> =>
+): Effect.Effect<PhaseBResultWithPatch> =>
   Effect.gen(function* () {
     const accepted: PhaseAAccepted[] = [];
     const rejected: RejectedTx[] = [];
+    const statePatch = makeEmptyStatePatch();
 
     if (phaseACandidates.length === 0) {
-      return { accepted, rejected };
+      return {
+        accepted,
+        rejected,
+        statePatch: materializeStatePatch(statePatch),
+      };
     }
 
     const nodes = buildNodes(phaseACandidates);
@@ -417,8 +476,10 @@ export const runPhaseBValidation = (
         ).length,
     );
 
-    const state = buildState(preStateEntries);
+    const baseState = buildState(preStateEntries);
     const spentByAccepted = new Set<string>();
+    const stateValue = (outRefHex: string): Buffer | undefined =>
+      getStateValue(baseState, statePatch, outRefHex);
 
     const readyQueue: number[] = nodes
       .filter(
@@ -453,7 +514,7 @@ export const runPhaseBValidation = (
             Effect.sync(() =>
               validateCandidateAgainstState(
                 node,
-                state,
+                stateValue,
                 spentByAccepted,
                 config.nowMillis,
               ),
@@ -500,13 +561,17 @@ export const runPhaseBValidation = (
           for (const inputOutRef of node.candidate.processedTx.spent) {
             const outRefHex = inputOutRef.toString("hex");
             spentByAccepted.add(outRefHex);
-            state.delete(outRefHex);
+            statePatch.deletedOutRefs.add(outRefHex);
+            statePatch.upsertedOutRefs.delete(outRefHex);
           }
           for (const produced of node.candidate.processedTx.produced) {
-            state.set(
-              produced[LedgerUtils.Columns.OUTREF].toString("hex"),
-              produced[LedgerUtils.Columns.OUTPUT],
+            const outRefHex =
+              produced[LedgerUtils.Columns.OUTREF].toString("hex");
+            statePatch.upsertedOutRefs.set(
+              outRefHex,
+              Buffer.from(produced[LedgerUtils.Columns.OUTPUT]),
             );
+            statePatch.deletedOutRefs.delete(outRefHex);
           }
 
           for (const child of node.children) {
@@ -547,5 +612,18 @@ export const runPhaseBValidation = (
           : 0,
     );
 
-    return { accepted, rejected };
+    return {
+      accepted,
+      rejected,
+      statePatch: materializeStatePatch(statePatch),
+    };
   });
+
+export const runPhaseBValidation = (
+  phaseACandidates: readonly PhaseAAccepted[],
+  preStateEntries: PreState,
+  config: PhaseBConfig,
+): Effect.Effect<PhaseBResult> =>
+  runPhaseBValidationWithPatch(phaseACandidates, preStateEntries, config).pipe(
+    Effect.map(({ accepted, rejected }) => ({ accepted, rejected })),
+  );

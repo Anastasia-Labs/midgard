@@ -3,7 +3,7 @@ import { Lucid, AlwaysSucceedsContract, Globals } from "@/services/index.js";
 import { StateQueueTx } from "@/transactions/index.js";
 import { TxSignError, TxSubmitError } from "@/transactions/utils.js";
 import * as SDK from "@al-ft/midgard-sdk";
-import { Effect, pipe, Schedule } from "effect";
+import { Effect, pipe, Ref, Schedule } from "effect";
 import { Database } from "@/services/index.js";
 export const mergeAction: Effect.Effect<
   void,
@@ -18,6 +18,8 @@ export const mergeAction: Effect.Effect<
   | TxSignError,
   Lucid | AlwaysSucceedsContract | Database | Globals
 > = Effect.gen(function* () {
+  const globals = yield* Globals;
+  yield* Ref.set(globals.HEARTBEAT_MERGE, Date.now());
   const lucid = yield* Lucid;
   const { stateQueue: stateQueueAuthValidator } = yield* AlwaysSucceedsContract;
 

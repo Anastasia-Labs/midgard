@@ -105,9 +105,13 @@ export const findSpentAndProducedUTxOs = (
     const produced: Ledger.MinimalEntry[] = [];
     const finalTxHash =
       txHash === undefined ? computeMidgardNativeTxIdFromFull(nativeTx) : txHash;
-    for (const output of nativeOutputs) {
+    const txHashObj = CML.TransactionHash.from_raw_bytes(finalTxHash);
+    for (let i = 0; i < nativeOutputs.length; i++) {
+      const output = nativeOutputs[i];
       produced.push({
-        [Ledger.Columns.OUTREF]: Buffer.from(finalTxHash),
+        [Ledger.Columns.OUTREF]: Buffer.from(
+          CML.TransactionInput.new(txHashObj, BigInt(i)).to_cbor_bytes(),
+        ),
         [Ledger.Columns.OUTPUT]: Buffer.from(output),
       });
     }

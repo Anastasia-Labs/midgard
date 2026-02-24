@@ -7,13 +7,25 @@ import {
   retrieveNumberOfEntries,
 } from "@/database/utils/common.js";
 import * as MempoolLedgerDB from "./mempoolLedger.js";
+import * as MempoolTxDeltasDB from "./mempoolTxDeltas.js";
 import { Effect } from "effect";
 import { SqlClient } from "@effect/sql";
 import * as AddressHistoryDB from "@/database/addressHistory.js";
 import { ProcessedTx } from "@/utils.js";
-import { LedgerUtils } from "./index.js";
+import * as Ledger from "@/database/utils/ledger.js";
 
 export const tableName = "mempool";
+
+const toTxDelta = (
+  processedTx: ProcessedTx,
+): MempoolTxDeltasDB.TxDelta => ({
+  txId: processedTx.txId,
+  spent: processedTx.spent.map((outRef) => Buffer.from(outRef)),
+  produced: processedTx.produced.map((entry) => ({
+    [Ledger.Columns.OUTREF]: Buffer.from(entry[Ledger.Columns.OUTREF]),
+    [Ledger.Columns.OUTPUT]: Buffer.from(entry[Ledger.Columns.OUTPUT]),
+  })),
+});
 
 export const insert = (
   processedTx: ProcessedTx,
@@ -27,6 +39,7 @@ export const insert = (
     });
     // Insert produced UTxOs in `MempoolLedgerDB`.
     yield* MempoolLedgerDB.insert(produced);
+    yield* MempoolTxDeltasDB.upsertMany([toTxDelta(processedTx)]);
     // Remove spent inputs from MempoolLedgerDB.
     yield* MempoolLedgerDB.clearUTxOs(spent);
     // Add handled addresses to the lookup table
@@ -52,7 +65,7 @@ export const insertMultiple = (
     // Insert the tx itself in `MempoolDB`.
     yield* Tx.insertEntries(tableName, txEntries);
 
-    const initAcc: { allProduced: LedgerUtils.Entry[]; allSpent: Buffer[] } = {
+    const initAcc: { allProduced: Ledger.Entry[]; allSpent: Buffer[] } = {
       allProduced: [],
       allSpent: [],
     };
@@ -64,6 +77,7 @@ export const insertMultiple = (
 
     // Insert produced UTxOs in `MempoolLedgerDB`.
     yield* MempoolLedgerDB.insert(allProduced);
+    yield* MempoolTxDeltasDB.upsertMany(processedTxs.map(toTxDelta));
     // Remove spent inputs from MempoolLedgerDB.
     yield* MempoolLedgerDB.clearUTxOs(allSpent);
     // Update AddressHistoryDB
@@ -103,6 +117,13 @@ export const retrieveTxCount: Effect.Effect<bigint, DatabaseError, Database> =
 export const clearTxs = (
   txHashes: Buffer[],
 ): Effect.Effect<void, DatabaseError, Database> =>
-  Tx.delMultiple(tableName, txHashes);
+  Effect.gen(function* () {
+    yield* Tx.delMultiple(tableName, txHashes);
+    yield* MempoolTxDeltasDB.clearTxs(txHashes);
+  });
 
-export const clear = clearTable(tableName);
+export const clear: Effect.Effect<void, DatabaseError, Database> =
+  Effect.gen(function* () {
+    yield* clearTable(tableName);
+    yield* MempoolTxDeltasDB.clear;
+  });

@@ -1,6 +1,8 @@
 import { blake2b } from "@noble/hashes/blake2.js";
 import { MidgardTxCodecError, MidgardTxCodecErrorCodes } from "./errors.js";
 
+export type Hash32 = Buffer;
+
 export const HASH32_LENGTH = 32;
 
 export const ensureHash32 = (value: Uint8Array, fieldName: string): Buffer => {

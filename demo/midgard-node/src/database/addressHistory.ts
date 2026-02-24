@@ -15,6 +15,10 @@ import { MempoolLedgerDB } from "./index.js";
 
 const tableName = "address_history";
 
+enum Columns {
+  CREATED_AT = "created_at",
+}
+
 export type Entry = {
   [Ledger.Columns.TX_ID]: Buffer;
   [Ledger.Columns.ADDRESS]: Address;
@@ -23,11 +27,22 @@ export type Entry = {
 export const createTable: Effect.Effect<void, DatabaseError, Database> =
   Effect.gen(function* () {
     const sql = yield* SqlClient.SqlClient;
-    yield* sql`CREATE TABLE IF NOT EXISTS ${sql(tableName)} (
-      ${sql(Ledger.Columns.TX_ID)} BYTEA NOT NULL,
-      ${sql(Ledger.Columns.ADDRESS)} TEXT NOT NULL,
-      UNIQUE (tx_id, address)
-    );`;
+    yield* sql.withTransaction(
+      Effect.gen(function* () {
+        yield* sql`CREATE TABLE IF NOT EXISTS ${sql(tableName)} (
+          ${sql(Ledger.Columns.TX_ID)} BYTEA NOT NULL,
+          ${sql(Ledger.Columns.ADDRESS)} TEXT NOT NULL,
+          ${sql(Columns.CREATED_AT)} TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+          UNIQUE (tx_id, address)
+        );`;
+        yield* sql`ALTER TABLE ${sql(tableName)}
+          ADD COLUMN IF NOT EXISTS ${sql(Columns.CREATED_AT)}
+          TIMESTAMPTZ NOT NULL DEFAULT NOW();`;
+        yield* sql`CREATE INDEX IF NOT EXISTS ${sql(
+          `idx_${tableName}_${Columns.CREATED_AT}`,
+        )} ON ${sql(tableName)} (${sql(Columns.CREATED_AT)});`;
+      }),
+    );
   }).pipe(
     Effect.withLogSpan(`creating table ${tableName}`),
     sqlErrorToDatabaseError(tableName, "Failed to create the table"),
@@ -138,6 +153,20 @@ export const retrieve = (
       tableName,
       "Failed to retrieve entries of the given address",
     ),
+  );
+
+export const pruneOlderThan = (
+  cutoff: Date,
+): Effect.Effect<number, DatabaseError, Database> =>
+  Effect.gen(function* () {
+    const sql = yield* SqlClient.SqlClient;
+    const deleted = yield* sql`DELETE FROM ${sql(tableName)}
+      WHERE ${sql(Columns.CREATED_AT)} < ${cutoff}
+      RETURNING ${sql(Ledger.Columns.TX_ID)}`;
+    return deleted.length;
+  }).pipe(
+    Effect.withLogSpan(`pruneOlderThan ${tableName}`),
+    sqlErrorToDatabaseError(tableName, "Failed to prune address history"),
   );
 
 export const clear = clearTable(tableName);

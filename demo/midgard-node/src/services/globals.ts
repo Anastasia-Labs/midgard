@@ -4,6 +4,8 @@ import { Effect, Ref } from "effect";
 
 export class Globals extends Effect.Service<Globals>()("Globals", {
   effect: Effect.gen(function* () {
+    const now = Date.now();
+
     // In-memory state queue length.
     const BLOCKS_IN_QUEUE: Ref.Ref<number> = yield* Ref.make(0);
 
@@ -36,6 +38,17 @@ export class Globals extends Effect.Service<Globals>()("Globals", {
 
     const LATEST_DEPOSIT_FETCH_TIME: Ref.Ref<number> = yield* Ref.make(0);
 
+    // Indicates that on-chain block submission succeeded but local persistence
+    // failed and must be retried against the confirmed block.
+    const LOCAL_FINALIZATION_PENDING: Ref.Ref<boolean> = yield* Ref.make(false);
+
+    // Worker liveness signals used by readiness checks.
+    const HEARTBEAT_BLOCK_COMMITMENT: Ref.Ref<number> = yield* Ref.make(now);
+    const HEARTBEAT_BLOCK_CONFIRMATION: Ref.Ref<number> = yield* Ref.make(now);
+    const HEARTBEAT_MERGE: Ref.Ref<number> = yield* Ref.make(now);
+    const HEARTBEAT_DEPOSIT_FETCH: Ref.Ref<number> = yield* Ref.make(now);
+    const HEARTBEAT_TX_QUEUE_PROCESSOR: Ref.Ref<number> = yield* Ref.make(now);
+
     return {
       BLOCKS_IN_QUEUE,
       LATEST_SYNC_TIME_OF_STATE_QUEUE_LENGTH,
@@ -45,6 +58,12 @@ export class Globals extends Effect.Service<Globals>()("Globals", {
       PROCESSED_UNSUBMITTED_TXS_SIZE,
       UNCONFIRMED_SUBMITTED_BLOCK_TX_HASH,
       LATEST_DEPOSIT_FETCH_TIME,
+      LOCAL_FINALIZATION_PENDING,
+      HEARTBEAT_BLOCK_COMMITMENT,
+      HEARTBEAT_BLOCK_CONFIRMATION,
+      HEARTBEAT_MERGE,
+      HEARTBEAT_DEPOSIT_FETCH,
+      HEARTBEAT_TX_QUEUE_PROCESSOR,
     };
   }),
 }) {}

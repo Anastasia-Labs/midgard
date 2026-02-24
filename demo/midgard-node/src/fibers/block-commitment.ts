@@ -40,6 +40,7 @@ export const buildAndSubmitCommitmentBlockAction = () =>
   Effect.gen(function* () {
     const globals = yield* Globals;
     const AVAILABLE_CONFIRMED_BLOCK = yield* globals.AVAILABLE_CONFIRMED_BLOCK;
+    const LOCAL_FINALIZATION_PENDING = yield* globals.LOCAL_FINALIZATION_PENDING;
     const PROCESSED_UNSUBMITTED_TXS_COUNT =
       yield* globals.PROCESSED_UNSUBMITTED_TXS_COUNT;
     const PROCESSED_UNSUBMITTED_TXS_SIZE =
@@ -53,6 +54,7 @@ export const buildAndSubmitCommitmentBlockAction = () =>
           workerData: {
             data: {
               availableConfirmedBlock: AVAILABLE_CONFIRMED_BLOCK,
+              localFinalizationPending: LOCAL_FINALIZATION_PENDING,
               mempoolTxsCountSoFar: PROCESSED_UNSUBMITTED_TXS_COUNT,
               sizeOfProcessedTxsSoFar: PROCESSED_UNSUBMITTED_TXS_SIZE,
             },
@@ -115,6 +117,7 @@ export const buildAndSubmitCommitmentBlockAction = () =>
           globals.UNCONFIRMED_SUBMITTED_BLOCK_TX_HASH,
           workerOutput.submittedTxHash,
         );
+        yield* Ref.set(globals.LOCAL_FINALIZATION_PENDING, false);
         yield* Ref.set(globals.PROCESSED_UNSUBMITTED_TXS_COUNT, 0);
         yield* Ref.set(globals.PROCESSED_UNSUBMITTED_TXS_SIZE, 0);
 
@@ -129,6 +132,28 @@ export const buildAndSubmitCommitmentBlockAction = () =>
         );
         yield* totalTxSizeGauge(Effect.succeed(workerOutput.sizeOfBlocksTxs));
         yield* Effect.logInfo("🔹 ☑️  Block submission completed.");
+        break;
+      }
+      case "SubmittedAwaitingLocalFinalizationOutput": {
+        yield* Ref.update(globals.BLOCKS_IN_QUEUE, (n) => n + 1);
+        yield* Ref.set(globals.AVAILABLE_CONFIRMED_BLOCK, "");
+        yield* Ref.set(
+          globals.UNCONFIRMED_SUBMITTED_BLOCK_TX_HASH,
+          workerOutput.submittedTxHash,
+        );
+        yield* Ref.set(globals.LOCAL_FINALIZATION_PENDING, true);
+        yield* Effect.logWarning(
+          `🔹 Block submitted but local finalization is pending recovery: ${workerOutput.error}`,
+        );
+        break;
+      }
+      case "SuccessfulLocalFinalizationRecoveryOutput": {
+        yield* Ref.set(globals.LOCAL_FINALIZATION_PENDING, false);
+        yield* Ref.set(globals.PROCESSED_UNSUBMITTED_TXS_COUNT, 0);
+        yield* Ref.set(globals.PROCESSED_UNSUBMITTED_TXS_SIZE, 0);
+        yield* Effect.logInfo(
+          "🔹 ☑️  Local finalization recovery completed for confirmed block.",
+        );
         break;
       }
       case "SkippedSubmissionOutput": {
@@ -154,6 +179,7 @@ export const buildAndSubmitCommitmentBlockAction = () =>
 export const blockCommitmentAction: Effect.Effect<void, WorkerError, Globals> =
   Effect.gen(function* () {
     const globals = yield* Globals;
+    yield* Ref.set(globals.HEARTBEAT_BLOCK_COMMITMENT, Date.now());
     const RESET_IN_PROGRESS = yield* Ref.get(globals.RESET_IN_PROGRESS);
     if (!RESET_IN_PROGRESS) {
       yield* Effect.logInfo("🔹 New block commitment process started.");

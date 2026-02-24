@@ -5,25 +5,18 @@ import os from "node:os";
 import path from "node:path";
 import { execSync } from "node:child_process";
 import {
-  cardanoTxBytesToMidgardCompactBytes,
-  cardanoTxBytesToMidgardFullBytes,
   cardanoTxBytesToMidgardNativeTxFullBytes,
   computeMidgardNativeTxIdFromFull,
-  decodeMidgardTransactionCompact,
-  decodeMidgardTransactionFull,
   decodeMidgardNativeTxBodyCompact,
   decodeMidgardNativeTxCompact,
   decodeMidgardNativeTxFull,
   decodeMidgardNativeTxWitnessSetCompact,
   deriveMidgardNativeTxBodyCompactFromFull,
   deriveMidgardNativeTxWitnessSetCompactFromFull,
-  encodeMidgardTransactionCompact,
-  encodeMidgardTransactionFull,
   encodeMidgardNativeTxBodyCompact,
   encodeMidgardNativeTxCompact,
   encodeMidgardNativeTxFull,
   encodeMidgardNativeTxWitnessSetCompact,
-  midgardFullBytesToCardanoTxBytes,
 } from "@/midgard-tx-codec/index.js";
 
 type TxFixture = {
@@ -62,7 +55,7 @@ type Report = {
   operations: OperationStats[];
 };
 
-const BENCHMARK_VERSION = "2.0.0";
+const BENCHMARK_VERSION = "3.0.0";
 const QUICK_MODE = process.env.BENCH_QUICK === "1";
 const WARMUP_RUNS = QUICK_MODE ? 1 : 2;
 const MEASURED_RUNS = QUICK_MODE ? 5 : 15;
@@ -138,8 +131,8 @@ const benchmarkOperation = (
   return summarize(name, runTimesMs, txCount);
 };
 
-describe("midgard tx codec benchmark", () => {
-  it("measures serialization, deserialization, and conversion performance", () => {
+describe("midgard native tx codec benchmark", () => {
+  it("measures native serialization, deserialization, conversion, and hashing", () => {
     const fixtures = JSON.parse(
       fs.readFileSync(fixturePath, "utf8"),
     ) as readonly TxFixture[];
@@ -147,19 +140,6 @@ describe("midgard tx codec benchmark", () => {
       .slice(0, TX_LIMIT)
       .map((tx) => Buffer.from(tx.cborHex, "hex"));
 
-    const fullBytes = txBytes.map((bytes) =>
-      cardanoTxBytesToMidgardFullBytes(bytes),
-    );
-    const fullDecoded = fullBytes.map((bytes) =>
-      decodeMidgardTransactionFull(bytes),
-    );
-
-    const compactBytes = txBytes.map((bytes) =>
-      cardanoTxBytesToMidgardCompactBytes(bytes),
-    );
-    const compactDecoded = compactBytes.map((bytes) =>
-      decodeMidgardTransactionCompact(bytes),
-    );
     const nativeFullBytes = txBytes.map((bytes) =>
       cardanoTxBytesToMidgardNativeTxFullBytes(bytes),
     );
@@ -185,24 +165,6 @@ describe("midgard tx codec benchmark", () => {
 
     const operations: OperationStats[] = [
       benchmarkOperation(
-        "serialize_full",
-        () => {
-          for (const tx of fullDecoded) {
-            encodeMidgardTransactionFull(tx);
-          }
-        },
-        txBytes.length,
-      ),
-      benchmarkOperation(
-        "deserialize_full",
-        () => {
-          for (const bytes of fullBytes) {
-            decodeMidgardTransactionFull(bytes);
-          }
-        },
-        txBytes.length,
-      ),
-      benchmarkOperation(
         "serialize_native_full",
         () => {
           for (const tx of nativeFullDecoded) {
@@ -216,24 +178,6 @@ describe("midgard tx codec benchmark", () => {
         () => {
           for (const bytes of nativeFullBytes) {
             decodeMidgardNativeTxFull(bytes);
-          }
-        },
-        txBytes.length,
-      ),
-      benchmarkOperation(
-        "serialize_compact",
-        () => {
-          for (const tx of compactDecoded) {
-            encodeMidgardTransactionCompact(tx);
-          }
-        },
-        txBytes.length,
-      ),
-      benchmarkOperation(
-        "deserialize_compact",
-        () => {
-          for (const bytes of compactBytes) {
-            decodeMidgardTransactionCompact(bytes);
           }
         },
         txBytes.length,
@@ -293,37 +237,10 @@ describe("midgard tx codec benchmark", () => {
         txBytes.length,
       ),
       benchmarkOperation(
-        "convert_cardano_to_midgard_full",
-        () => {
-          for (const bytes of txBytes) {
-            cardanoTxBytesToMidgardFullBytes(bytes);
-          }
-        },
-        txBytes.length,
-      ),
-      benchmarkOperation(
-        "convert_cardano_to_midgard_compact",
-        () => {
-          for (const bytes of txBytes) {
-            cardanoTxBytesToMidgardCompactBytes(bytes);
-          }
-        },
-        txBytes.length,
-      ),
-      benchmarkOperation(
         "convert_cardano_to_midgard_native_full",
         () => {
           for (const bytes of txBytes) {
             cardanoTxBytesToMidgardNativeTxFullBytes(bytes);
-          }
-        },
-        txBytes.length,
-      ),
-      benchmarkOperation(
-        "convert_midgard_full_to_cardano",
-        () => {
-          for (const bytes of fullBytes) {
-            midgardFullBytesToCardanoTxBytes(bytes);
           }
         },
         txBytes.length,
@@ -374,6 +291,6 @@ describe("midgard tx codec benchmark", () => {
       })),
     );
 
-    expect(operations.length).toBe(17);
+    expect(operations.length).toBe(10);
   });
 });

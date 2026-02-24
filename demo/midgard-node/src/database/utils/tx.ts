@@ -28,12 +28,19 @@ export const createTable = (
 ): Effect.Effect<void, DatabaseError, Database> =>
   Effect.gen(function* () {
     const sql = yield* SqlClient.SqlClient;
-    yield* sql`CREATE TABLE IF NOT EXISTS ${sql(tableName)} (
-      ${sql(Columns.TX_ID)} BYTEA NOT NULL,
-      ${sql(Columns.TX)} BYTEA NOT NULL,
-      ${sql(Columns.TIMESTAMPTZ)} TIMESTAMPTZ NOT NULL DEFAULT(NOW()),
-      PRIMARY KEY (${sql(Columns.TX_ID)})
-    );`;
+    yield* sql.withTransaction(
+      Effect.gen(function* () {
+        yield* sql`CREATE TABLE IF NOT EXISTS ${sql(tableName)} (
+          ${sql(Columns.TX_ID)} BYTEA NOT NULL,
+          ${sql(Columns.TX)} BYTEA NOT NULL,
+          ${sql(Columns.TIMESTAMPTZ)} TIMESTAMPTZ NOT NULL DEFAULT(NOW()),
+          PRIMARY KEY (${sql(Columns.TX_ID)})
+        );`;
+        yield* sql`CREATE INDEX IF NOT EXISTS ${sql(
+          `idx_${tableName}_${Columns.TIMESTAMPTZ}`,
+        )} ON ${sql(tableName)} (${sql(Columns.TIMESTAMPTZ)});`;
+      }),
+    );
   }).pipe(
     Effect.withLogSpan(`creating table ${tableName}`),
     sqlErrorToDatabaseError(tableName, "Failed to create the table"),
@@ -180,4 +187,22 @@ export const retrieveAllEntries = (
       Effect.logError(`${tableName} db: retrieve: ${JSON.stringify(e)}`),
     ),
     sqlErrorToDatabaseError(tableName, "Failed to retrieve the whole table"),
+  );
+
+export const pruneOlderThan = (
+  tableName: string,
+  cutoff: Date,
+): Effect.Effect<number, DatabaseError, Database> =>
+  Effect.gen(function* () {
+    const sql = yield* SqlClient.SqlClient;
+    const deleted = yield* sql`DELETE FROM ${sql(tableName)}
+      WHERE ${sql(Columns.TIMESTAMPTZ)} < ${cutoff}
+      RETURNING ${sql(Columns.TX_ID)}`;
+    return deleted.length;
+  }).pipe(
+    Effect.withLogSpan(`pruneOlderThan ${tableName}`),
+    Effect.tapErrorTag("SqlError", (e) =>
+      Effect.logError(`${tableName} db: pruneOlderThan: ${JSON.stringify(e)}`),
+    ),
+    sqlErrorToDatabaseError(tableName, "Failed to prune old transactions"),
   );

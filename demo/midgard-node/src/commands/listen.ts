@@ -35,10 +35,20 @@ import {
   InitDB,
   MempoolDB,
   MempoolLedgerDB,
+  ProcessedMempoolDB,
   TxRejectionsDB,
 } from "@/database/index.js";
 import { isHexString } from "@/utils.js";
 import { QueuedTxPayload } from "@/validation/index.js";
+import {
+  authorizeAdminRoute,
+  extractSubmitTxHex,
+  isAdminRoutePath,
+  validateSubmitTxHex,
+} from "@/commands/listen-utils.js";
+import { evaluateReadiness } from "@/commands/readiness.js";
+import { shouldRunGenesisOnStartup } from "@/commands/startup-policy.js";
+import { resolveTxStatus } from "@/commands/tx-status.js";
 import {
   HttpRouter,
   HttpServer,
@@ -46,6 +56,7 @@ import {
   HttpServerResponse,
 } from "@effect/platform";
 import { ParsedSearchParams } from "@effect/platform/HttpServerRequest";
+import { SqlClient } from "@effect/sql/SqlClient";
 import { createServer } from "node:http";
 import { NodeHttpServer } from "@effect/platform-node";
 import { HttpBodyError } from "@effect/platform/HttpBody";
@@ -67,6 +78,7 @@ import {
   mergeFiber,
   mergeAction,
   monitorMempoolFiber,
+  retentionSweeperFiber,
   txQueueProcessorFiber,
 } from "@/fibers/index.js";
 
@@ -81,6 +93,8 @@ const RESET_ENDPOINT: string = "reset";
 const SUBMIT_ENDPOINT: string = "submit";
 const STATE_QUEUE_ENDPOINT: string = "stateQueue";
 const TX_STATUS_ENDPOINT: string = "tx-status";
+const HEALTH_ENDPOINT: string = "healthz";
+const READINESS_ENDPOINT: string = "readyz";
 
 const txCounter = Metric.counter("tx_count", {
   description: "A counter for tracking submit transactions",
@@ -119,6 +133,37 @@ const handleTxGetFailure = (
 
 const handleGenericGetFailure = (endpoint: string, e: SDK.GenericErrorFields) =>
   failWith500("GET", endpoint, e.cause, e.message);
+
+const withAdminAccess = <E, R>(
+  endpoint: string,
+  handler: Effect.Effect<HttpServerResponse.HttpServerResponse, E, R>,
+): Effect.Effect<
+  HttpServerResponse.HttpServerResponse,
+  E | HttpBodyError,
+  R | NodeConfig | HttpServerRequest.HttpServerRequest
+> =>
+  Effect.gen(function* () {
+    const routePath = `/${endpoint}`;
+    if (!isAdminRoutePath(routePath)) {
+      return yield* handler;
+    }
+    const request = yield* HttpServerRequest.HttpServerRequest;
+    const nodeConfig = yield* NodeConfig;
+    const auth = authorizeAdminRoute(
+      nodeConfig.ADMIN_API_KEY,
+      request.headers["x-midgard-admin-key"],
+    );
+    if (!auth.authorized) {
+      yield* Effect.logWarning(
+        `Denied admin route ${routePath}: ${auth.error} (${auth.status})`,
+      );
+      return yield* HttpServerResponse.json(
+        { error: auth.error },
+        { status: auth.status },
+      );
+    }
+    return yield* handler;
+  });
 
 const getTxHandler = Effect.gen(function* () {
   const params = yield* ParsedSearchParams;
@@ -231,40 +276,35 @@ const getTxStatusHandler = Effect.gen(function* () {
   }
 
   const txHashBytes = Buffer.from(fromHex(txHashParam));
+  const globals = yield* Globals;
   const rejected = yield* TxRejectionsDB.retrieveByTxId(txHashBytes);
-  if (rejected.length > 0) {
-    const latestRejection = rejected[0];
-    return yield* HttpServerResponse.json({
-      txId: txHashParam,
-      status: "rejected",
-      reasonCode: latestRejection.reject_code,
-      reasonDetail: latestRejection.reject_detail ?? undefined,
-      timestamps: {
-        createdAt: latestRejection.created_at.toISOString(),
-      },
-    });
-  }
-
   const inImmutable = yield* ImmutableDB.retrieveTxCborsByHashes([txHashBytes]);
-  if (inImmutable.length > 0) {
-    return yield* HttpServerResponse.json({
-      txId: txHashParam,
-      status: "committed",
-    });
-  }
-
   const inMempool = yield* MempoolDB.retrieveTxCborsByHashes([txHashBytes]);
-  if (inMempool.length > 0) {
-    return yield* HttpServerResponse.json({
-      txId: txHashParam,
-      status: "accepted",
-    });
+  const inProcessedMempool = yield* ProcessedMempoolDB.retrieveTxCborsByHashes([
+    txHashBytes,
+  ]);
+
+  const resolved = resolveTxStatus({
+    txIdHex: txHashParam,
+    rejection:
+      rejected.length > 0
+        ? {
+            rejectCode: rejected[0].reject_code,
+            rejectDetail: rejected[0].reject_detail,
+            createdAtIso: rejected[0].created_at.toISOString(),
+          }
+        : null,
+    inImmutable: inImmutable.length > 0,
+    inMempool: inMempool.length > 0,
+    inProcessedMempool: inProcessedMempool.length > 0,
+    localFinalizationPending: yield* Ref.get(globals.LOCAL_FINALIZATION_PENDING),
+  });
+
+  if (resolved.status === "not_found") {
+    return yield* HttpServerResponse.json(resolved, { status: 404 });
   }
 
-  return yield* HttpServerResponse.json(
-    { error: "Transaction not found" },
-    { status: 404 },
-  );
+  return yield* HttpServerResponse.json(resolved);
 }).pipe(
   Effect.catchTag("HttpBodyError", (e) =>
     failWith500("GET", TX_STATUS_ENDPOINT, e),
@@ -273,6 +313,66 @@ const getTxStatusHandler = Effect.gen(function* () {
     handleDBGetFailure(TX_STATUS_ENDPOINT, e),
   ),
 );
+
+const getHealthHandler = Effect.gen(function* () {
+  return yield* HttpServerResponse.json({
+    status: "ok",
+    now: new Date().toISOString(),
+  });
+}).pipe(
+  Effect.catchTag("HttpBodyError", (e) =>
+    failWith500("GET", HEALTH_ENDPOINT, e),
+  ),
+);
+
+const getReadinessHandler = (txQueue: Queue.Dequeue<QueuedTxPayload>) =>
+  Effect.gen(function* () {
+    const globals = yield* Globals;
+    const nodeConfig = yield* NodeConfig;
+    const sql = yield* SqlClient;
+
+    const queueDepth = yield* txQueue.size;
+    const nowMillis = Date.now();
+    const blockCommitmentHeartbeat = yield* Ref.get(
+      globals.HEARTBEAT_BLOCK_COMMITMENT,
+    );
+    const blockConfirmationHeartbeat = yield* Ref.get(
+      globals.HEARTBEAT_BLOCK_CONFIRMATION,
+    );
+    const mergeHeartbeat = yield* Ref.get(globals.HEARTBEAT_MERGE);
+    const depositFetchHeartbeat = yield* Ref.get(
+      globals.HEARTBEAT_DEPOSIT_FETCH,
+    );
+    const txQueueProcessorHeartbeat = yield* Ref.get(
+      globals.HEARTBEAT_TX_QUEUE_PROCESSOR,
+    );
+    const localFinalizationPending = yield* Ref.get(
+      globals.LOCAL_FINALIZATION_PENDING,
+    );
+
+    const dbProbe = yield* Effect.either(sql`SELECT 1 AS ok`);
+    const dbHealthy = dbProbe._tag === "Right";
+
+    const readiness = evaluateReadiness({
+      nowMillis,
+      maxHeartbeatAgeMs: nodeConfig.READINESS_MAX_HEARTBEAT_AGE_MS,
+      maxQueueDepth: nodeConfig.READINESS_MAX_QUEUE_DEPTH,
+      queueDepth,
+      workerHeartbeats: {
+        blockCommitment: blockCommitmentHeartbeat,
+        blockConfirmation: blockConfirmationHeartbeat,
+        merge: mergeHeartbeat,
+        depositFetch: depositFetchHeartbeat,
+        txQueueProcessor: txQueueProcessorHeartbeat,
+      },
+      localFinalizationPending,
+      dbHealthy,
+    });
+
+    return yield* HttpServerResponse.json(readiness, {
+      status: readiness.ready ? 200 : 503,
+    });
+  });
 
 const getBlockHandler = Effect.gen(function* () {
   const params = yield* ParsedSearchParams;
@@ -564,6 +664,22 @@ const getLogGlobalsHandler = Effect.gen(function* () {
   const UNCONFIRMED_SUBMITTED_BLOCK_TX_HASH: string = yield* Ref.get(
     globals.UNCONFIRMED_SUBMITTED_BLOCK_TX_HASH,
   );
+  const LOCAL_FINALIZATION_PENDING: boolean = yield* Ref.get(
+    globals.LOCAL_FINALIZATION_PENDING,
+  );
+  const HEARTBEAT_BLOCK_COMMITMENT: number = yield* Ref.get(
+    globals.HEARTBEAT_BLOCK_COMMITMENT,
+  );
+  const HEARTBEAT_BLOCK_CONFIRMATION: number = yield* Ref.get(
+    globals.HEARTBEAT_BLOCK_CONFIRMATION,
+  );
+  const HEARTBEAT_MERGE: number = yield* Ref.get(globals.HEARTBEAT_MERGE);
+  const HEARTBEAT_DEPOSIT_FETCH: number = yield* Ref.get(
+    globals.HEARTBEAT_DEPOSIT_FETCH,
+  );
+  const HEARTBEAT_TX_QUEUE_PROCESSOR: number = yield* Ref.get(
+    globals.HEARTBEAT_TX_QUEUE_PROCESSOR,
+  );
 
   yield* Effect.logInfo(`
   BLOCKS_IN_QUEUE ⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅ ${BLOCKS_IN_QUEUE}
@@ -573,6 +689,12 @@ const getLogGlobalsHandler = Effect.gen(function* () {
   PROCESSED_UNSUBMITTED_TXS_COUNT ⋅⋅⋅ ${PROCESSED_UNSUBMITTED_TXS_COUNT}
   PROCESSED_UNSUBMITTED_TXS_SIZE ⋅⋅⋅⋅ ${PROCESSED_UNSUBMITTED_TXS_SIZE}
   UNCONFIRMED_SUBMITTED_BLOCK_TX_HASH ⋅⋅⋅⋅⋅⋅⋅ ${UNCONFIRMED_SUBMITTED_BLOCK_TX_HASH}
+  LOCAL_FINALIZATION_PENDING ⋅⋅⋅⋅⋅⋅⋅⋅ ${LOCAL_FINALIZATION_PENDING}
+  HEARTBEAT_BLOCK_COMMITMENT ⋅⋅ ${new Date(Number(HEARTBEAT_BLOCK_COMMITMENT)).toLocaleString()}
+  HEARTBEAT_BLOCK_CONFIRMATION ⋅ ${new Date(Number(HEARTBEAT_BLOCK_CONFIRMATION)).toLocaleString()}
+  HEARTBEAT_MERGE ⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅ ${new Date(Number(HEARTBEAT_MERGE)).toLocaleString()}
+  HEARTBEAT_DEPOSIT_FETCH ⋅⋅⋅⋅ ${new Date(Number(HEARTBEAT_DEPOSIT_FETCH)).toLocaleString()}
+  HEARTBEAT_TX_QUEUE_PROCESSOR ⋅ ${new Date(Number(HEARTBEAT_TX_QUEUE_PROCESSOR)).toLocaleString()}
 `);
   return yield* HttpServerResponse.json({
     message: `Global variables logged!`,
@@ -583,22 +705,35 @@ const getLogGlobalsHandler = Effect.gen(function* () {
 
 const postSubmitHandler = (txQueue: Queue.Enqueue<QueuedTxPayload>) =>
   Effect.gen(function* () {
-    const params = yield* ParsedSearchParams;
-    const txStringParam = params["tx_cbor"];
-    if (typeof txStringParam !== "string" || !isHexString(txStringParam)) {
-      yield* Effect.logInfo(`▫️ Invalid CBOR provided`);
+    const nodeConfig = yield* NodeConfig;
+    const request = yield* HttpServerRequest.HttpServerRequest;
+    const body = yield* request.json;
+    const txString = extractSubmitTxHex(body);
+
+    if (txString === undefined) {
+      yield* Effect.logInfo(`▫️ Invalid submit payload: missing tx_cbor`);
       return yield* HttpServerResponse.json(
-        { error: `Invalid CBOR provided` },
+        { error: "Request body must include `tx_cbor` as a hex string" },
         { status: 400 },
       );
     }
 
-    const txString = txStringParam;
+    const validation = validateSubmitTxHex(
+      txString,
+      nodeConfig.MAX_SUBMIT_TX_CBOR_BYTES,
+    );
+    if (!validation.ok) {
+      yield* Effect.logInfo(`▫️ Submit rejected: ${validation.error}`);
+      return yield* HttpServerResponse.json(
+        { error: validation.error },
+        { status: validation.status },
+      );
+    }
 
     const decodeAndHashResult = yield* Effect.either(
       Effect.try({
         try: () => {
-          const txCbor = Buffer.from(fromHex(txString));
+          const txCbor = Buffer.from(fromHex(validation.txHex));
           const nativeTx = decodeMidgardNativeTxFull(txCbor);
           const txId = computeMidgardNativeTxIdFromFull(nativeTx);
           return {
@@ -624,7 +759,16 @@ const postSubmitHandler = (txQueue: Queue.Enqueue<QueuedTxPayload>) =>
       txCbor: decodeAndHashResult.right.txCbor,
       createdAtMillis: Date.now(),
     };
-    yield* txQueue.offer(payload);
+    const queued = yield* txQueue.offer(payload);
+    if (!queued) {
+      return yield* HttpServerResponse.json(
+        {
+          error:
+            "Submission queue is full; retry later with exponential backoff",
+        },
+        { status: 503 },
+      );
+    }
 
     Effect.runSync(Metric.increment(txCounter));
     return yield* HttpServerResponse.json({
@@ -651,18 +795,32 @@ const router = (
 > =>
   HttpRouter.empty
     .pipe(
+      HttpRouter.get(`/${HEALTH_ENDPOINT}`, getHealthHandler),
+      HttpRouter.get(`/${READINESS_ENDPOINT}`, getReadinessHandler(txQueue)),
       HttpRouter.get(`/${TX_ENDPOINT}`, getTxHandler),
       HttpRouter.get(`/${TX_STATUS_ENDPOINT}`, getTxStatusHandler),
       HttpRouter.get(`/${ADDRESS_HISTORY_ENDPOINT}`, getTxsOfAddressHandler),
       HttpRouter.get(`/${UTXOS_ENDPOINT}`, getUtxosHandler),
       HttpRouter.get(`/${BLOCK_ENDPOINT}`, getBlockHandler),
-      HttpRouter.get(`/${INIT_ENDPOINT}`, getInitHandler),
-      HttpRouter.get(`/${COMMIT_ENDPOINT}`, getCommitEndpoint),
-      HttpRouter.get(`/${MERGE_ENDPOINT}`, getMergeHandler),
-      HttpRouter.get(`/${RESET_ENDPOINT}`, getResetHandler),
-      HttpRouter.get(`/${STATE_QUEUE_ENDPOINT}`, getStateQueueHandler),
-      HttpRouter.get(`/logBlocksDB`, getLogBlocksDBHandler),
-      HttpRouter.get(`/logGlobals`, getLogGlobalsHandler),
+      HttpRouter.get(`/${INIT_ENDPOINT}`, withAdminAccess(INIT_ENDPOINT, getInitHandler)),
+      HttpRouter.get(
+        `/${COMMIT_ENDPOINT}`,
+        withAdminAccess(COMMIT_ENDPOINT, getCommitEndpoint),
+      ),
+      HttpRouter.get(`/${MERGE_ENDPOINT}`, withAdminAccess(MERGE_ENDPOINT, getMergeHandler)),
+      HttpRouter.get(`/${RESET_ENDPOINT}`, withAdminAccess(RESET_ENDPOINT, getResetHandler)),
+      HttpRouter.get(
+        `/${STATE_QUEUE_ENDPOINT}`,
+        withAdminAccess(STATE_QUEUE_ENDPOINT, getStateQueueHandler),
+      ),
+      HttpRouter.get(
+        `/logBlocksDB`,
+        withAdminAccess("logBlocksDB", getLogBlocksDBHandler),
+      ),
+      HttpRouter.get(
+        `/logGlobals`,
+        withAdminAccess("logGlobals", getLogGlobalsHandler),
+      ),
       HttpRouter.post(`/${SUBMIT_ENDPOINT}`, postSubmitHandler(txQueue)),
     )
     .pipe(
@@ -679,11 +837,24 @@ export const runNode = (withMonitoring?: boolean) =>
   Effect.gen(function* () {
     const nodeConfig = yield* NodeConfig;
 
-    const txQueue = yield* Queue.unbounded<QueuedTxPayload>();
+    const txQueue = yield* Queue.dropping<QueuedTxPayload>(
+      Math.max(1, nodeConfig.MAX_SUBMIT_QUEUE_SIZE),
+    );
 
     yield* InitDB.program.pipe(Effect.provide(Database.layer));
 
-    yield* Genesis.program;
+    if (
+      shouldRunGenesisOnStartup({
+        network: nodeConfig.NETWORK,
+        runGenesisOnStartup: nodeConfig.RUN_GENESIS_ON_STARTUP,
+      })
+    ) {
+      yield* Genesis.program;
+    } else {
+      yield* Effect.logInfo(
+        "Skipping genesis on startup (disabled or mainnet).",
+      );
+    }
 
     const appThread = Layer.launch(
       Layer.provide(
@@ -706,6 +877,9 @@ export const runNode = (withMonitoring?: boolean) =>
         ),
         fetchAndInsertDepositUTxOsFiber(
           mkSchedule(nodeConfig.WAIT_BETWEEN_DEPOSIT_UTXO_FETCHES),
+        ),
+        retentionSweeperFiber(
+          mkSchedule(nodeConfig.WAIT_BETWEEN_RETENTION_SWEEPS),
         ),
         mergeFiber(mkSchedule(nodeConfig.WAIT_BETWEEN_MERGE_TXS)),
         withMonitoring ? monitorMempoolFiber(mkSchedule(1000)) : Effect.void,
