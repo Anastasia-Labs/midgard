@@ -1,10 +1,9 @@
 use midgard/computation_thread as ct
-use midgard/ledger_state.{
-  MidgardInputId, MidgardTxBodyCompact, MidgardTxCompact,
-}
+use midgard/ledger_state.{MidgardInputId,
+  MidgardTxBodyCompact, MidgardTxCompact}
 
 pub type State {
-  verified_non_existent_input_key: MidgardInputId,
+  verified_no_reference_input_key: MidgardInputId,
 }
 
 pub type Datum =

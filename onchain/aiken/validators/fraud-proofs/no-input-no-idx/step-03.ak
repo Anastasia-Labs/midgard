@@ -3,10 +3,10 @@ use cardano/assets.{PolicyId}
 use cardano/transaction.{OutputReference, Transaction}
 use midgard/computation_thread as ct
 use midgard/fraud_proofs/common.{cancel, continue, verify_tx_and_its_body}
-use midgard/fraud_proofs/non_existent_input_no_index/step_03.{
+use midgard/fraud_proofs/no_input_no_idx/step_03.{
   Args, Datum, SpendRedeemer, State,
 }
-use midgard/fraud_proofs/non_existent_input_no_index/step_04
+use midgard/fraud_proofs/no_input_no_idx/step_04
 use midgard/ledger_state.{MidgardInputId}
 
 validator main(
@@ -58,20 +58,16 @@ validator main(
             outputs,
           )
 
-        expect Some(State{verified_non_existent_input_key: MidgardInputId {
-          transaction_id: non_existent_input_tx_id,
-          output_index: non_existent_input_output_index,
+        expect Some(State{verified_no_input_key: MidgardInputId {
+          transaction_id: no_input_tx_id,
+          output_index: no_input_output_index,
           ..
         }}) = m_input_state_data
 
         // 2. The provided transaction must match the transaction hash of the
         //    picked input (i.e. the one that is supposedly non-existent).
         expect
-          verify_tx_and_its_body(
-            non_existent_input_tx_id,
-            previous_tx,
-            previous_tx_body,
-          )
+          verify_tx_and_its_body(no_input_tx_id, previous_tx, previous_tx_body)
 
         // 3. The UTxO must be produced at next step's script hash with the
         //    verified transaction's outputs root included in its datum, the
@@ -82,7 +78,7 @@ validator main(
         let expected_output_state: Data =
           step_04.State {
             verified_outputs_root: previous_tx_body.outputs,
-            non_existent_input_output_index,
+            no_input_output_index,
             output_index_to_delete: 0,
           }
         expect output_state_data == expected_output_state

@@ -4,7 +4,7 @@ use midgard/computation_thread as ct
 use midgard/ledger_state.{MidgardInputId}
 
 pub type State {
-  verified_tx_inputs_root: MerkleRoot<Int, OutputReference>,
+  verified_tx_reference_inputs_root: MerkleRoot<Int, OutputReference>,
 }
 
 pub type Datum =
@@ -13,9 +13,9 @@ pub type Datum =
 pub type Args {
   input_index: Int,
   output_index: Int,
-  non_existent_input_key: MidgardInputId,
-  non_existent_input_value: Data,
-  non_existent_input_membership_proof: Proof,
+  no_reference_input_key: MidgardInputId,
+  no_reference_input_value: Data,
+  no_reference_input_membership_proof: Proof,
   inclusion_proof_script_withdraw_redeemer_index: Int,
 }
 

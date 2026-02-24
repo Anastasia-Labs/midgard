@@ -4,7 +4,7 @@ use midgard/computation_thread as ct
 
 pub type State {
   verified_outputs_root: MerkleRoot<Int, Output>,
-  non_existent_input_output_index: Int,
+  no_input_output_index: Int,
   output_index_to_delete: Int,
 }
 

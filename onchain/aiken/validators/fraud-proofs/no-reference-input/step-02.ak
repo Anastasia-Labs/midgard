@@ -4,7 +4,7 @@ use cardano/transaction.{OutputReference, Transaction}
 use midgard/common/utils
 use midgard/computation_thread as ct
 use midgard/fraud_proofs/common.{cancel, finalize}
-use midgard/fraud_proofs/non_existent_input/step_02.{
+use midgard/fraud_proofs/no_reference_input/step_02.{
   Args, Datum, SpendRedeemer, State,
 }
 
@@ -32,8 +32,8 @@ validator main(
       ct.Continue(Args {
         input_index,
         output_index,
-        non_existent_input_key,
-        non_existent_input_value,
+        no_reference_input_key,
+        no_reference_input_value,
         membership_proof_in_bad_tx,
         membership_proof_script_redeemer_index,
         non_membership_proof_in_ledger,
@@ -66,17 +66,19 @@ validator main(
             redeemers,
           )
 
-        expect Some(State { bad_tx_inputs_root, blocks_prev_utxos_root }) =
-          m_input_state_data
+        expect Some(State {
+          bad_tx_reference_inputs_root,
+          blocks_prev_utxos_root,
+        }) = m_input_state_data
 
-        let non_existent_input_key_data: Data = non_existent_input_key
+        let no_reference_input_key_data: Data = no_reference_input_key
 
         // 2. Target input must be included in the verified transaction inputs.
         expect
           utils.plutarch_phas(
-            merkle_root: bad_tx_inputs_root,
-            key: non_existent_input_key_data,
-            value: non_existent_input_value,
+            merkle_root: bad_tx_reference_inputs_root,
+            key: no_reference_input_key_data,
+            value: no_reference_input_value,
             membership_proof: membership_proof_in_bad_tx,
             redeemers: redeemers,
             withdraw_redeemer_index: membership_proof_script_redeemer_index,
@@ -86,7 +88,7 @@ validator main(
         expect
           utils.plutarch_pexcludes(
             merkle_root: blocks_prev_utxos_root,
-            key: non_existent_input_key_data,
+            key: no_reference_input_key_data,
             non_membership_proof: non_membership_proof_in_ledger,
             redeemers: redeemers,
             withdraw_redeemer_index: non_membership_proof_script_redeemer_index,

@@ -4,10 +4,10 @@ use cardano/transaction.{OutputReference, Transaction}
 use midgard/common/utils.{plutarch_phas}
 use midgard/computation_thread as ct
 use midgard/fraud_proofs/common.{cancel, continue}
-use midgard/fraud_proofs/non_existent_input_no_index/step_02.{
+use midgard/fraud_proofs/no_reference_input_no_idx/step_02.{
   Args, Datum, SpendRedeemer,
 }
-use midgard/fraud_proofs/non_existent_input_no_index/step_03
+use midgard/fraud_proofs/no_reference_input_no_idx/step_03
 
 validator main(
   step_03_validator_script_hash: ScriptHash,
@@ -32,9 +32,9 @@ validator main(
       ct.Continue(Args {
         input_index,
         output_index,
-        non_existent_input_key,
-        non_existent_input_value,
-        non_existent_input_membership_proof,
+        no_reference_input_key,
+        no_reference_input_value,
+        no_reference_input_membership_proof,
         inclusion_proof_script_withdraw_redeemer_index,
       }) -> {
         let Transaction { inputs, outputs, redeemers, .. } = tx
@@ -62,24 +62,24 @@ validator main(
 
         expect Some(input_state) = m_input_state_data
 
-        // 2. Provided input must be a member of the verified transaction's
+        // 2. Provided ref input must be a member of the verified transaction's
         //    inputs.
         expect
           plutarch_phas(
-            merkle_root: input_state.verified_tx_inputs_root,
-            key: non_existent_input_key,
-            value: non_existent_input_value,
-            membership_proof: non_existent_input_membership_proof,
+            merkle_root: input_state.verified_tx_reference_inputs_root,
+            key: no_reference_input_key,
+            value: no_reference_input_value,
+            membership_proof: no_reference_input_membership_proof,
             redeemers: redeemers,
             withdraw_redeemer_index: inclusion_proof_script_withdraw_redeemer_index,
           )
 
-        // 3. The proven inputs key must be passed to the next step so that its
+        // 3. The proven ref inputs key must be passed to the next step so that its
         //    producing transaction can be verified against the included hash.
         expect output_script_hash == step_03_validator_script_hash
         let expected_output_state: Data =
           step_03.State {
-            verified_non_existent_input_key: non_existent_input_key,
+            verified_no_reference_input_key: no_reference_input_key,
           }
         expect output_state_data == expected_output_state
 

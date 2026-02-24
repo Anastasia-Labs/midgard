@@ -8,8 +8,8 @@ use cardano/assets.{PolicyId}
 use cardano/transaction.{OutputReference, Transaction}
 use midgard/computation_thread as ct
 use midgard/fraud_proofs/common.{cancel, pass_tx_to_next_step}
-use midgard/fraud_proofs/non_existent_input/step_01.{Datum, SpendRedeemer}
-use midgard/fraud_proofs/non_existent_input/step_02
+use midgard/fraud_proofs/no_reference_input/step_01.{Datum, SpendRedeemer}
+use midgard/fraud_proofs/no_reference_input/step_02
 
 validator main(
   step_02_validator_script_hash: ScriptHash,
@@ -61,7 +61,7 @@ validator main(
         expect output_script_hash == step_02_validator_script_hash
         let expected_output_state: Data =
           step_02.State {
-            bad_tx_inputs_root: bad_tx_body.spend_inputs,
+            bad_tx_reference_inputs_root: bad_tx_body.reference_inputs,
             blocks_prev_utxos_root: header.prev_utxos_root,
           }
         expect output_state_data == expected_output_state

@@ -9,10 +9,8 @@ use cardano/assets.{PolicyId}
 use cardano/transaction.{OutputReference, Transaction}
 use midgard/computation_thread as ct
 use midgard/fraud_proofs/common.{cancel, pass_tx_to_next_step}
-use midgard/fraud_proofs/non_existent_input_no_index/step_01.{
-  Datum, SpendRedeemer,
-}
-use midgard/fraud_proofs/non_existent_input_no_index/step_02
+use midgard/fraud_proofs/no_input_no_idx/step_01.{Datum, SpendRedeemer}
+use midgard/fraud_proofs/no_input_no_idx/step_02
 
 validator main(
   step_02_validator_script_hash: ScriptHash,

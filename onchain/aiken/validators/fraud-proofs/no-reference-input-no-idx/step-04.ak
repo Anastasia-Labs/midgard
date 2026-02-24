@@ -7,7 +7,7 @@ use midgard/common/constants.{empty_merkle_tree_root}
 use midgard/common/utils
 use midgard/computation_thread as ct
 use midgard/fraud_proofs/common.{cancel, continue, finalize}
-use midgard/fraud_proofs/non_existent_input_no_index/step_04.{
+use midgard/fraud_proofs/no_reference_input_no_idx/step_04.{
   Datum, Finalize, Recurse, SpendRedeemer, State,
 }
 
@@ -65,7 +65,7 @@ validator main(
         expect Some(
           State {
             verified_outputs_root,
-            non_existent_input_output_index,
+            no_reference_input_output_index,
             output_index_to_delete,
           } as input_state,
         ) = m_input_state_data
@@ -76,7 +76,7 @@ validator main(
         // 3. With `Recurse` redeemer, target input's output index cannot be
         //    equal or smaller than the output currently being removed from the
         //    tree.
-        expect non_existent_input_output_index > output_index_to_delete
+        expect no_reference_input_output_index > output_index_to_delete
 
         let updated_outputs_root =
           utils.plutarch_pdelete(
@@ -135,17 +135,17 @@ validator main(
 
         expect Some(State {
           verified_outputs_root,
-          non_existent_input_output_index,
+          no_reference_input_output_index,
           output_index_to_delete,
         }) = m_input_state_data
 
         // 2. With `Finalize` redeemer, the outputs must be empty.
         expect verified_outputs_root == empty_merkle_tree_root
 
-        // 3. With outputs exhausted, `non_existent_input_output_index` must be
+        // 3. With outputs exhausted, `no_reference_input_output_index` must be
         //    greater than or equal `output_index_to_delete` (since this value
         //    is now equal to the "length" of the outputs list).
-        expect non_existent_input_output_index >= output_index_to_delete
+        expect no_reference_input_output_index >= output_index_to_delete
 
         // Done.
         True
