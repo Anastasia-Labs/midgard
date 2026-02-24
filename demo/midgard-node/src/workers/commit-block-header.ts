@@ -182,6 +182,26 @@ const addDepositUTxOsToDatabases = (
     );
   });
 
+/**
+ * If any deposits were added to `ledgerTrie`, remove them and return the
+ * provided output. If the removal fails, return the provided failure output.
+ */
+const withDepositsReverted = (
+  ledgerTrie: MidgardMpt,
+  depositEventEntries: readonly UserEventsUtils.Entry[],
+  outputIfReversionSucceeds: WorkerOutput,
+  outputIfReversionFails: WorkerOutput,
+): Effect.Effect<WorkerOutput, never, NodeConfig | AlwaysSucceedsContract> => {
+  if (depositEventEntries.length <= 0) {
+    return Effect.succeed(outputIfReversionSucceeds);
+  }
+  // TODO: Handle this failure properly.
+  return applyDepositsToLedger("remove", ledgerTrie, depositEventEntries).pipe(
+    Effect.as(outputIfReversionSucceeds),
+    Effect.catchAllCause((_cause) => Effect.succeed(outputIfReversionFails)),
+  );
+};
+
 const successfulSubmissionProgram = (
   mempoolTrie: MidgardMpt,
   insertedDepositUTxOs: {
@@ -537,42 +557,33 @@ const databaseOperationsProgram = (
               // number, so we won't concern ourselves with wasted work. That
               // is, we just revert their addition to the ledger trie.
 
-              const failureOutput: WorkerOutput = {
+              const outputIfReversionSucceeds: WorkerOutput = {
                 type: "FailureOutput",
                 error:
                   "Block commitment tx failed (no tx requests, only deposits).",
               };
 
-              const removalProgram = applyDepositsToLedger(
-                "remove",
+              const outputIfReversionFails: WorkerOutput = {
+                type: "FailureOutput",
+                error:
+                  "Block commitment tx failed (no tx requests, only deposits). The ledger trie reversal also failed.",
+              };
+
+              // Removing the added deposits is necessary here because we are
+              // treating `ledgerTrie` as the source of truth. Hence not
+              // removing them would allow tx requests/orders in next batch that
+              // would spend the resulting UTxOs, which is invalid as deposits
+              // are the last events to be applied to the ledger (Fig. 1.1.1 in
+              // specs).
+              return withDepositsReverted(
                 ledgerTrie,
                 depositEventEntries,
-              ).pipe(
-                Effect.catchAllCause((_cause) => {
-                  // TODO: Handle this failure properly.
-                  const ledgerFailureOutput: WorkerOutput = {
-                    type: "FailureOutput",
-                    error:
-                      "Block commitment tx failed (no tx requests, only deposits). The ledger trie reversal also failed.",
-                  };
-                  return Effect.succeed(ledgerFailureOutput);
-                }),
-                Effect.andThen((_) => Effect.succeed(failureOutput)),
+                outputIfReversionSucceeds,
+                outputIfReversionFails,
               );
-
-              return removalProgram;
             },
             onSuccess: (txHash) =>
               addDepositUTxOsToDatabases(insertedDepositUTxOs).pipe(
-                Effect.catchAllCause((_cause) => {
-                  // TODO: Handle this failure properly.
-                  const failureOutput: WorkerOutput = {
-                    type: "FailureOutput",
-                    error:
-                      "Block commitment with 0 txs and only deposit events went through successfully, but addition of the deposit events to the corresponding db tables failed.",
-                  };
-                  return Effect.succeed(failureOutput);
-                }),
                 Effect.andThen((_) => {
                   const successOutput: WorkerOutput = {
                     type: "SuccessfulSubmissionOutput",
@@ -582,6 +593,15 @@ const databaseOperationsProgram = (
                     sizeOfBlocksTxs: workerInput.data.sizeOfProcessedTxsSoFar,
                   };
                   return Effect.succeed(successOutput);
+                }),
+                Effect.catchAllCause((_cause) => {
+                  // TODO: Handle this failure properly.
+                  const failureOutput: WorkerOutput = {
+                    type: "FailureOutput",
+                    error:
+                      "Block commitment with 0 txs and only deposit events went through successfully, but addition of the deposit events to the corresponding db tables failed.",
+                  };
+                  return Effect.succeed(failureOutput);
                 }),
               ),
           });
@@ -604,11 +624,15 @@ const databaseOperationsProgram = (
           utxo: CML.TransactionUnspentOutput;
           inclusionTime: Date;
         }[] = [];
+        let depositEventEntries: UserEventsUtils.Entry[] = [];
+        Option.isSome(optUserEventsProgram)
+          ? optUserEventsProgram.value.retreivedEvents
+          : [];
         if (Option.isSome(optUserEventsProgram)) {
           insertedDepositUTxOs = yield* applyDepositsToLedger(
             "add",
             ledgerTrie,
-            optUserEventsProgram.value.retreivedEvents,
+            depositEventEntries,
           );
           depositsRoot = yield* optUserEventsProgram.value.mptRoot;
         }
@@ -634,11 +658,21 @@ const databaseOperationsProgram = (
           //       unnecessary.
           onFailure: Match.valueTags({
             TxSignError: (_) => {
-              const failureOutput: WorkerOutput = {
+              const outputIfReversionSucceeds: WorkerOutput = {
                 type: "FailureOutput",
                 error: "Something went wrong at signing the transaction",
               };
-              return Effect.succeed(failureOutput);
+              const outputIfReversionFails: WorkerOutput = {
+                type: "FailureOutput",
+                error:
+                  "Block commitment tx signing failed. The ledger trie reversal of added deposits also failed.",
+              };
+              return withDepositsReverted(
+                ledgerTrie,
+                depositEventEntries,
+                outputIfReversionSucceeds,
+                outputIfReversionFails,
+              );
             },
             TxSubmitError: (e) =>
               Effect.gen(function* () {
@@ -648,11 +682,22 @@ const databaseOperationsProgram = (
                 // TODO: Handle failures properly.
                 yield* skippedSubmissionProgram(mempoolTxs, mempoolTxHashes);
 
-                return yield* failedSubmissionProgram(
+                const skippedOutput = yield* failedSubmissionProgram(
                   mempoolTrie,
                   mempoolTxsCount,
                   sizeOfProcessedTxs,
                   e,
+                );
+                const ledgerFailureOutput: WorkerOutput = {
+                  type: "FailureOutput",
+                  error:
+                    "Block commitment tx submission failed and rollback of added deposits from ledger trie also failed.",
+                };
+                return yield* withDepositsReverted(
+                  ledgerTrie,
+                  depositEventEntries,
+                  skippedOutput,
+                  ledgerFailureOutput,
                 );
               }),
           }),
