@@ -8,7 +8,6 @@ import {
   PolicyId,
   UTxO,
   Script,
-  fromText,
   TxSignBuilder,
   fromHex,
 } from "@lucid-evolution/lucid";
@@ -21,15 +20,13 @@ import {
   makeReturn,
   getStateToken,
   hashHexWithBlake2b256,
-  utxosAtByNFTPolicyId,
-} from "@/common.js";
-import { Data as EffectData, Effect } from "effect";
-import {
   OutputReference,
   OutputReferenceSchema,
   POSIXTime,
   POSIXTimeSchema,
+  MidgardAddressSchema,
 } from "@/common.js";
+import { Data as EffectData, Effect } from "effect";
 import { getProtocolParameters } from "@/protocol-parameters.js";
 
 export type DepositParams = {
@@ -41,7 +38,7 @@ export type DepositParams = {
 };
 
 export const DepositInfoSchema = Data.Object({
-  l2Address: Data.Bytes(),
+  l2Address: MidgardAddressSchema,
   l2Datum: Data.Nullable(Data.Bytes()),
 });
 export type DepositInfo = Data.Static<typeof DepositInfoSchema>;
@@ -185,11 +182,15 @@ export const fetchDepositUTxOsProgram = (
   config: DepositFetchConfig,
 ): Effect.Effect<DepositUTxO[], LucidError> =>
   Effect.gen(function* () {
-    const allUTxOs = yield* utxosAtByNFTPolicyId(
-      lucid,
-      config.depositAddress,
-      config.depositPolicyId,
-    );
+    const allUTxOs = yield* Effect.tryPromise({
+      try: () => lucid.utxosAt(config.depositAddress),
+      catch: (e) => {
+        return new LucidError({
+          message: `Failed to fetch deposit UTxOs at: ${config.depositAddress}`,
+          cause: e,
+        });
+      },
+    });
     const depositUTxOs = yield* utxosToDepositUTxOs(
       allUTxOs,
       config.depositPolicyId,
@@ -252,7 +253,7 @@ export const incompleteDepositTxProgram = (
 
     // Convert non-hex strings to hex string, since the address type doesn't enforce that
     const depositInfo = {
-      l2Address: fromText(params.depositInfo.l2Address),
+      l2Address: params.depositInfo.l2Address,
       l2Datum: params.depositInfo.l2Datum,
     };
 

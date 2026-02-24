@@ -46,12 +46,12 @@ export class DatabaseError extends Data.TaggedError("DatabaseError")<
   SDK.GenericErrorFields & { readonly table: string }
 > {}
 
-export class NotFoundError extends Data.TaggedError(
-  "NotFoundError",
-)<SDK.GenericErrorFields & {
-  readonly table: string;
-  readonly txIdHex?: string;
-}> {}
+export class NotFoundError extends Data.TaggedError("NotFoundError")<
+  SDK.GenericErrorFields & {
+    readonly table: string;
+    readonly txIdHex?: string;
+  }
+> {}
 
 type SqlErrorToDatabaseError = <A, R>(
   effect: Effect.Effect<
