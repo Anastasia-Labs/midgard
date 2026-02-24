@@ -3,6 +3,14 @@ import { CML, walletFromSeed } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 import {
+  cardanoTxBytesToMidgardNativeTxFullBytes,
+  computeHash32,
+  computeMidgardNativeTxIdFromFull,
+  decodeMidgardNativeTxFull,
+  deriveMidgardNativeTxCompact,
+  encodeMidgardNativeTxFull,
+} from "@/midgard-tx-codec/index.js";
+import {
   PhaseAAccepted,
   QueuedTx,
   RejectCodes,
@@ -61,6 +69,8 @@ const signerHash = (() => {
   }
   return signer;
 })();
+const EMPTY_CBOR_LIST = Buffer.from([0x80]);
+const EMPTY_LIST_ROOT = computeHash32(EMPTY_CBOR_LIST);
 
 const makeCandidate = ({
   txByte,
@@ -108,12 +118,45 @@ const makeCandidate = ({
 describe("validation parallelization", () => {
   it("keeps phase-A verdicts and order stable across concurrency levels", async () => {
     const fixtures = loadTxFixtures().slice(0, 64);
-    const queued: QueuedTx[] = fixtures.map((tx, index) => ({
-      txId: Buffer.from(tx.txId, "hex"),
-      txCbor: Buffer.from(tx.cborHex, "hex"),
-      arrivalSeq: BigInt(index),
-      createdAt: new Date(0),
-    }));
+    const queued: QueuedTx[] = fixtures.map((tx, index) => {
+      const converted = decodeMidgardNativeTxFull(
+        cardanoTxBytesToMidgardNativeTxFullBytes(
+          Buffer.from(tx.cborHex, "hex"),
+        ),
+      );
+      const normalized = {
+        version: converted.version,
+        body: {
+          ...converted.body,
+          requiredSignersRoot: EMPTY_LIST_ROOT,
+          requiredSignersPreimageCbor: EMPTY_CBOR_LIST,
+        },
+        witnessSet: {
+          ...converted.witnessSet,
+          addrTxWitsRoot: EMPTY_LIST_ROOT,
+          addrTxWitsPreimageCbor: EMPTY_CBOR_LIST,
+          scriptTxWitsRoot: EMPTY_LIST_ROOT,
+          scriptTxWitsPreimageCbor: EMPTY_CBOR_LIST,
+          redeemerTxWitsRoot: EMPTY_LIST_ROOT,
+          redeemerTxWitsPreimageCbor: EMPTY_CBOR_LIST,
+        },
+      };
+      const txForQueue = {
+        ...normalized,
+        compact: deriveMidgardNativeTxCompact(
+          normalized.body,
+          normalized.witnessSet,
+          "TxIsValid",
+        ),
+      };
+      const nativeTxBytes = encodeMidgardNativeTxFull(txForQueue);
+      return {
+        txId: computeMidgardNativeTxIdFromFull(txForQueue),
+        txCbor: nativeTxBytes,
+        arrivalSeq: BigInt(index),
+        createdAt: new Date(0),
+      };
+    });
     queued.push({
       txId: Buffer.alloc(32, 0xff),
       txCbor: Buffer.from("80", "hex"),

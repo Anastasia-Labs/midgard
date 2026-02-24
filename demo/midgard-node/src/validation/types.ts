@@ -8,6 +8,7 @@ export const RejectCodes = {
   EmptyInputs: "E_EMPTY_INPUTS",
   DuplicateInputInTx: "E_DUPLICATE_INPUT_IN_TX",
   InvalidOutput: "E_INVALID_OUTPUT",
+  InvalidFieldType: "E_INVALID_FIELD_TYPE",
   InputNotFound: "E_INPUT_NOT_FOUND",
   DoubleSpend: "E_DOUBLE_SPEND",
   DependencyCycle: "E_DEPENDENCY_CYCLE",

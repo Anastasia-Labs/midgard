@@ -56,6 +56,10 @@ import { SerializedStateQueueUTxO } from "@/workers/utils/commit-block-header.js
 import { DatabaseError } from "@/database/utils/common.js";
 import { TxConfirmError, TxSignError } from "@/transactions/utils.js";
 import {
+  computeMidgardNativeTxIdFromFull,
+  decodeMidgardNativeTxFull,
+} from "@/midgard-tx-codec/index.js";
+import {
   fetchAndInsertDepositUTxOsFiber,
   blockConfirmationFiber,
   blockCommitmentFiber,
@@ -595,12 +599,11 @@ const postSubmitHandler = (txQueue: Queue.Enqueue<QueuedTxPayload>) =>
       Effect.try({
         try: () => {
           const txCbor = Buffer.from(fromHex(txString));
-          const tx = CML.Transaction.from_cbor_bytes(txCbor);
-          const txHash = CML.hash_transaction(tx.body());
-          const txId = Buffer.from(txHash.to_raw_bytes());
+          const nativeTx = decodeMidgardNativeTxFull(txCbor);
+          const txId = computeMidgardNativeTxIdFromFull(nativeTx);
           return {
             txId,
-            txIdHex: txHash.to_hex(),
+            txIdHex: txId.toString("hex"),
             txCbor,
           };
         },

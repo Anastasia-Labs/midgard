@@ -1,11 +1,10 @@
 import { describe, expect, beforeAll } from "vitest";
-import { fromHex, toHex } from "@lucid-evolution/lucid";
+import { toHex } from "@lucid-evolution/lucid";
 import { it } from "@effect/vitest";
 import { Effect } from "effect";
 import { SqlClient } from "@effect/sql";
 import { Database } from "../src/services/database.js";
 import { NodeConfig } from "../src/services/config.js";
-import { Lucid } from "../src/services/lucid.js";
 import * as InitDB from "../src/database/init.js";
 import {
   // Block
@@ -28,7 +27,7 @@ import {
   TxUtils,
   LedgerUtils,
 } from "../src/database/index.js";
-import { breakDownTx, ProcessedTx } from "../src/utils.js";
+import { ProcessedTx } from "../src/utils.js";
 import { provideDatabaseLayers } from "./utils.js";
 
 const flushAll = Effect.gen(function* () {
@@ -594,23 +593,28 @@ describe("AddressHistoryDB", () => {
     provideDatabaseLayers(
       Effect.gen(function* () {
         yield* flushAll;
-        const lucid = yield* Lucid;
-        yield* lucid.switchToOperatorsMainWallet;
-        const thisWalletAddress = yield* Effect.tryPromise(() =>
-          lucid.api.wallet().address(),
-        );
-        // send funds to other wallet
-        const tx1 = yield* Effect.tryPromise(() =>
-          lucid.api
-            .newTx()
-            .pay.ToAddress(address1, { lovelace: 5000000n })
-            .complete(),
-        );
-        const signedTx1 = yield* Effect.tryPromise(() =>
-          tx1.sign.withWallet().complete(),
-        );
-        const brokenTx1 = yield* breakDownTx(fromHex(signedTx1.toCBOR()));
-        yield* MempoolDB.insertMultiple([brokenTx1]);
+        const thisWalletAddress = address2;
+        const firstTxId = randomBytes(32);
+        const firstProcessedTx: ProcessedTx = {
+          txId: firstTxId,
+          txCbor: randomBytes(64),
+          spent: [randomBytes(36)],
+          produced: [
+            {
+              [LedgerUtils.Columns.TX_ID]: firstTxId,
+              [LedgerUtils.Columns.OUTREF]: randomBytes(36),
+              [LedgerUtils.Columns.OUTPUT]: randomBytes(80),
+              [LedgerUtils.Columns.ADDRESS]: address1,
+            },
+            {
+              [LedgerUtils.Columns.TX_ID]: firstTxId,
+              [LedgerUtils.Columns.OUTREF]: randomBytes(36),
+              [LedgerUtils.Columns.OUTPUT]: randomBytes(80),
+              [LedgerUtils.Columns.ADDRESS]: thisWalletAddress,
+            },
+          ],
+        };
+        yield* MempoolDB.insertMultiple([firstProcessedTx]);
 
         const sql = yield* SqlClient.SqlClient;
         const result1 =
@@ -619,19 +623,29 @@ describe("AddressHistoryDB", () => {
           result1.map((r) => r[LedgerUtils.Columns.ADDRESS]).sort(),
         ).toStrictEqual([address1, thisWalletAddress].sort());
 
-        // send funds to same wallet
+        // two outputs for the same address should still produce one unique row
         yield* flushAll;
-        const tx2 = yield* Effect.tryPromise(() =>
-          lucid.api
-            .newTx()
-            .pay.ToAddress(thisWalletAddress, { lovelace: 5000000n })
-            .complete(),
-        );
-        const signedTx2 = yield* Effect.tryPromise(() =>
-          tx2.sign.withWallet().complete(),
-        );
-        const brokenTx2 = yield* breakDownTx(fromHex(signedTx2.toCBOR()));
-        yield* MempoolDB.insertMultiple([brokenTx2]);
+        const secondTxId = randomBytes(32);
+        const secondProcessedTx: ProcessedTx = {
+          txId: secondTxId,
+          txCbor: randomBytes(64),
+          spent: [randomBytes(36)],
+          produced: [
+            {
+              [LedgerUtils.Columns.TX_ID]: secondTxId,
+              [LedgerUtils.Columns.OUTREF]: randomBytes(36),
+              [LedgerUtils.Columns.OUTPUT]: randomBytes(80),
+              [LedgerUtils.Columns.ADDRESS]: thisWalletAddress,
+            },
+            {
+              [LedgerUtils.Columns.TX_ID]: secondTxId,
+              [LedgerUtils.Columns.OUTREF]: randomBytes(36),
+              [LedgerUtils.Columns.OUTPUT]: randomBytes(80),
+              [LedgerUtils.Columns.ADDRESS]: thisWalletAddress,
+            },
+          ],
+        };
+        yield* MempoolDB.insertMultiple([secondProcessedTx]);
 
         const result2 =
           yield* sql<AddressHistoryDB.Entry>`SELECT * FROM address_history`;

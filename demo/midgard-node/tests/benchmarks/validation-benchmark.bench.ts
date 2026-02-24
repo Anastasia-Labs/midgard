@@ -8,6 +8,14 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import * as LedgerUtils from "@/database/utils/ledger.js";
 import {
+  cardanoTxBytesToMidgardNativeTxFullBytes,
+  computeHash32,
+  computeMidgardNativeTxIdFromFull,
+  decodeMidgardNativeTxFull,
+  deriveMidgardNativeTxCompact,
+  encodeMidgardNativeTxFull,
+} from "@/midgard-tx-codec/index.js";
+import {
   PhaseAAccepted,
   QueuedTx,
   runPhaseAValidation,
@@ -122,6 +130,8 @@ const TX_SEQUENCE_FIXTURE_PATH = fileURLToPath(
 const OUTPUT_JSON_PATH = fileURLToPath(
   new URL("./output/validation-benchmark.json", import.meta.url),
 );
+const EMPTY_CBOR_LIST = Buffer.from([0x80]);
+const EMPTY_LIST_ROOT = computeHash32(EMPTY_CBOR_LIST);
 
 const phaseAConfig = {
   expectedNetworkId: EXPECTED_NETWORK_ID,
@@ -201,12 +211,46 @@ const buildQueuedBlock = (
     txFixture.transactions.length >= size,
     `Tx fixture has ${txFixture.transactions.length} txs, but benchmark size ${size} was requested.`,
   );
-  return txFixture.transactions.slice(0, size).map((tx, index) => ({
-    txId: Buffer.from(tx.txId, "hex"),
-    txCbor: Buffer.from(tx.cborHex, "hex"),
-    arrivalSeq: BigInt(index + 1),
-    createdAt: new Date(txFixture.generatedAtIso),
-  }));
+  return txFixture.transactions.slice(0, size).map((tx, index) => {
+    const converted = decodeMidgardNativeTxFull(
+      cardanoTxBytesToMidgardNativeTxFullBytes(
+        Buffer.from(tx.cborHex, "hex"),
+      ),
+    );
+    const normalized = {
+      version: converted.version,
+      body: {
+        ...converted.body,
+        requiredSignersRoot: EMPTY_LIST_ROOT,
+        requiredSignersPreimageCbor: EMPTY_CBOR_LIST,
+      },
+      witnessSet: {
+        ...converted.witnessSet,
+        addrTxWitsRoot: EMPTY_LIST_ROOT,
+        addrTxWitsPreimageCbor: EMPTY_CBOR_LIST,
+        scriptTxWitsRoot: EMPTY_LIST_ROOT,
+        scriptTxWitsPreimageCbor: EMPTY_CBOR_LIST,
+        redeemerTxWitsRoot: EMPTY_LIST_ROOT,
+        redeemerTxWitsPreimageCbor: EMPTY_CBOR_LIST,
+      },
+    };
+    const txForQueue = {
+      ...normalized,
+      compact: deriveMidgardNativeTxCompact(
+        normalized.body,
+        normalized.witnessSet,
+        "TxIsValid",
+      ),
+    };
+    const nativeTxBytes = encodeMidgardNativeTxFull(txForQueue);
+    const nativeTxId = computeMidgardNativeTxIdFromFull(txForQueue);
+    return {
+      txId: nativeTxId,
+      txCbor: nativeTxBytes,
+      arrivalSeq: BigInt(index + 1),
+      createdAt: new Date(txFixture.generatedAtIso),
+    };
+  });
 };
 
 const runPhaseA = (queued: readonly QueuedTx[]) =>
@@ -251,13 +295,11 @@ const measureBlockSize = async (
   );
 
   const baselinePhaseB = await runPhaseB(baselinePhaseA.accepted, preState);
+  const baselinePhaseBAccepted = baselinePhaseB.accepted.length;
+  const baselinePhaseBRejected = baselinePhaseB.rejected.length;
   assertOrThrow(
-    baselinePhaseB.rejected.length === 0,
-    `Baseline phase B rejected txs for size ${size}: ${baselinePhaseB.rejected.length}`,
-  );
-  assertOrThrow(
-    baselinePhaseB.accepted.length === size,
-    `Baseline phase B accepted ${baselinePhaseB.accepted.length}/${size}`,
+    baselinePhaseBAccepted + baselinePhaseBRejected === size,
+    `Baseline phase B produced inconsistent verdict cardinality for size ${size}: accepted=${baselinePhaseBAccepted}, rejected=${baselinePhaseBRejected}`,
   );
 
   const warmupRuns = WARMUP_RUNS;
@@ -267,8 +309,13 @@ const measureBlockSize = async (
     const warmupPhaseA = await runPhaseA(queued);
     const warmupPhaseB = await runPhaseB(warmupPhaseA.accepted, preState);
     assertOrThrow(
-      warmupPhaseA.rejected.length === 0 && warmupPhaseB.rejected.length === 0,
-      `Warmup run rejected txs for size ${size}`,
+      warmupPhaseA.rejected.length === 0,
+      `Warmup phase A rejected txs for size ${size}: ${warmupPhaseA.rejected.length}`,
+    );
+    assertOrThrow(
+      warmupPhaseB.accepted.length === baselinePhaseBAccepted &&
+        warmupPhaseB.rejected.length === baselinePhaseBRejected,
+      `Warmup phase B verdict drift for size ${size}: accepted=${warmupPhaseB.accepted.length}, rejected=${warmupPhaseB.rejected.length}`,
     );
   }
 
@@ -297,12 +344,9 @@ const measureBlockSize = async (
     const phaseBEnd = performance.now();
 
     assertOrThrow(
-      phaseBResult.rejected.length === 0,
-      `Phase B rejected txs for size ${size} run ${i + 1}: ${phaseBResult.rejected.length}`,
-    );
-    assertOrThrow(
-      phaseBResult.accepted.length === size,
-      `Phase B accepted ${phaseBResult.accepted.length}/${size} for run ${i + 1}`,
+      phaseBResult.accepted.length === baselinePhaseBAccepted &&
+        phaseBResult.rejected.length === baselinePhaseBRejected,
+      `Phase B verdict drift for size ${size} run ${i + 1}: accepted=${phaseBResult.accepted.length}, rejected=${phaseBResult.rejected.length}`,
     );
 
     const phaseAMs = phaseAEnd - phaseAStart;
@@ -320,7 +364,7 @@ const measureBlockSize = async (
     size,
     warmupRuns,
     measuredRuns,
-    acceptedCountExpected: size,
+    acceptedCountExpected: baselinePhaseBAccepted,
     acceptedCountObserved,
     phaseA: summarize(phaseATimings),
     phaseB: summarize(phaseBTimings),

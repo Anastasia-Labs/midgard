@@ -203,4 +203,73 @@ The data availability layer is responsible for confirming that the hashes corres
 \end{align*}
 \endgroup
 
+\subsection{Midgard-native wire format (v1)}
+\label{h:midgard-native-transaction-wire-format}
+
+Midgard's canonical transaction wire format is \emph{not} Cardano's transaction type.
+Instead, Midgard serializes transactions as versioned, fixed-order tuples designed for fast decoding and fraud-proof construction.
+Ledger validation accepts only this Midgard-native format; Cardano transaction payloads are rejected.
+
+The compact form is the commitment committed in blocks:
+\begin{equation*}
+\begin{split}
+  \T{MidgardTxCompactV1} \coloneq (&\T{version}=1,\; \T{body\_hash},\; \T{wits\_hash},\; \T{validity\_code}) \\
+  \T{body\_hash} \coloneq&\; \mathcal{H}_{\text{Blake2b-256}}(\T{MidgardTxBodyCompactV1}) \\
+  \T{wits\_hash} \coloneq&\; \mathcal{H}_{\text{Blake2b-256}}(\T{MidgardTxWitsCompactV1})
+\end{split}
+\end{equation*}
+
+The body compact contains only fixed-size commitments and scalar fields:
+\begin{equation*}
+\small
+\begin{split}
+\T{MidgardTxBodyCompactV1} \coloneq (&
+\T{spend\_inputs\_root},\;
+\T{reference\_inputs\_root},\;
+\T{outputs\_root},\;
+\T{fee},\\
+&\T{valid\_from},\;
+\T{valid\_to},\;
+\T{required\_observers\_root},\;
+\T{required\_signers\_root},\\
+&\T{mint\_root},\;
+\T{script\_integrity\_hash},\;
+\T{auxiliary\_data\_hash},\;
+\T{network\_id})
+\end{split}
+\end{equation*}
+
+where \code{valid\_from} and \code{valid\_to} use \code{-1} as the sentinel for an unbounded side of the validity interval.
+
+The full form reveals preimages needed for offchain checks and proof generation while preserving the same compact commitments:
+\begin{equation*}
+\small
+\begin{split}
+\T{MidgardTxBodyFullV1} \coloneq (&
+\T{spend\_inputs\_root},\;
+\T{spend\_inputs\_preimage},\;
+\T{reference\_inputs\_root},\;
+\T{reference\_inputs\_preimage},\\
+&\T{outputs\_root},\;
+\T{outputs\_preimage},\;
+\T{fee},\;
+\T{valid\_from},\;
+\T{valid\_to},\\
+&\T{required\_observers\_root},\;
+\T{required\_observers\_preimage},\;
+\T{required\_signers\_root},\\
+&\T{required\_signers\_preimage},\;
+\T{mint\_root},\;
+\T{mint\_preimage},\;
+\T{script\_integrity\_hash},\\
+&\T{auxiliary\_data\_hash},\;
+\T{network\_id})
+\end{split}
+\end{equation*}
+
+and analogously for witnesses with three \code{(root, preimage)} pairs:
+\code{addr\_tx\_wits}, \code{script\_tx\_wits}, and \code{redeemer\_tx\_wits}.
+
+This layout keeps fraud-proof-critical roots directly accessible, avoids map-key scanning during decoding, and cleanly separates block commitments (compact) from data-availability payloads (full).
+
 \end{document}

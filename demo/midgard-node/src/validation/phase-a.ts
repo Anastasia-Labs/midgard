@@ -2,6 +2,15 @@ import { CML } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 import { LedgerUtils } from "@/database/index.js";
 import {
+  MidgardTxCodecError,
+  MIDGARD_NATIVE_NETWORK_ID_NONE,
+  MIDGARD_POSIX_TIME_NONE,
+  computeHash32,
+  computeMidgardNativeTxIdFromFull,
+  decodeMidgardNativeByteListPreimage,
+  decodeMidgardNativeTxFull,
+} from "@/midgard-tx-codec/index.js";
+import {
   PhaseAAccepted,
   PhaseAConfig,
   PhaseAResult,
@@ -10,13 +19,6 @@ import {
   RejectedTx,
   RejectCodes,
 } from "./types.js";
-
-type ParsedTx = {
-  readonly tx: InstanceType<typeof CML.Transaction>;
-  readonly txBody: InstanceType<typeof CML.TransactionBody>;
-  readonly txHash: InstanceType<typeof CML.TransactionHash>;
-  readonly txId: Buffer;
-};
 
 const reject = (
   txId: Buffer,
@@ -28,269 +30,442 @@ const reject = (
   detail,
 });
 
-const hasAnyEntries = <T extends { len(): number }>(value: T | undefined) =>
-  value !== undefined && value.len() > 0;
+const EMPTY_CBOR_LIST = Buffer.from([0x80]);
+const EMPTY_CBOR_NULL = Buffer.from([0xf6]);
+const EMPTY_LIST_ROOT = computeHash32(EMPTY_CBOR_LIST);
+const EMPTY_NULL_ROOT = computeHash32(EMPTY_CBOR_NULL);
 
-const runGroup0ParseAndHash = (queuedTx: QueuedTx): ParsedTx | RejectedTx => {
+const toOptionalValidity = (value: bigint): bigint | undefined =>
+  value === MIDGARD_POSIX_TIME_NONE ? undefined : value;
+
+const decodeOutRefListFromPreimage = (
+  txId: Buffer,
+  preimageCbor: Uint8Array,
+  fieldName: string,
+): Buffer[] | RejectedTx => {
   try {
-    const tx = CML.Transaction.from_cbor_bytes(queuedTx.txCbor);
-    const txBody = tx.body();
-    const txHash = CML.hash_transaction(txBody);
-    const computedTxId = Buffer.from(txHash.to_raw_bytes());
-
-    if (!computedTxId.equals(queuedTx.txId)) {
-      return reject(
-        queuedTx.txId,
-        RejectCodes.TxHashMismatch,
-        `queued tx_id ${queuedTx.txId.toString("hex")} != computed ${computedTxId.toString("hex")}`,
-      );
-    }
-
-    return { tx, txBody, txHash, txId: computedTxId };
+    const raw = decodeMidgardNativeByteListPreimage(preimageCbor, fieldName);
+    return raw.map((bytes) =>
+      Buffer.from(CML.TransactionInput.from_cbor_bytes(bytes).to_cbor_bytes()),
+    );
   } catch (e) {
     return reject(
-      queuedTx.txId,
-      RejectCodes.CborDeserialization,
-      `failed to parse tx ${queuedTx.txId.toString("hex")}: ${String(e)}`,
+      txId,
+      RejectCodes.InvalidFieldType,
+      `${fieldName} decode failed: ${String(e)}`,
     );
   }
 };
 
-const runGroup1StructuralChecks = (
-  queuedTx: QueuedTx,
-  parsed: ParsedTx,
-  config: PhaseAConfig,
-):
-  | RejectedTx
-  | {
-      readonly outputSum: InstanceType<typeof CML.Value>;
-      readonly processedTx: PhaseAAccepted["processedTx"];
-    } => {
-  const tx = parsed.tx;
-  const txBody = parsed.txBody;
-  const txHash = parsed.txHash;
+type NativeWitnessVerification = {
+  readonly witnessKeyHashes: readonly string[];
+  readonly witnessSignerSet: ReadonlySet<string>;
+  readonly witnessSigners: InstanceType<typeof CML.Ed25519KeyHashList>;
+  readonly witnesses: readonly InstanceType<typeof CML.Vkeywitness>[];
+};
 
-  if (!tx.is_valid()) {
-    return reject(parsed.txId, RejectCodes.IsValidFalseForbidden);
-  }
+const decodeNativeWitnesses = (
+  txId: Buffer,
+  preimageCbor: Uint8Array,
+): NativeWitnessVerification | RejectedTx => {
+  try {
+    const witnessBytes = decodeMidgardNativeByteListPreimage(
+      preimageCbor,
+      "native.addr_tx_wits",
+    );
+    const witnessSigners = CML.Ed25519KeyHashList.new();
+    const witnessSignerSet = new Set<string>();
+    const witnessKeyHashes: string[] = [];
+    const witnesses: InstanceType<typeof CML.Vkeywitness>[] = [];
 
-  if (tx.auxiliary_data() !== undefined || txBody.auxiliary_data_hash()) {
-    return reject(parsed.txId, RejectCodes.AuxDataForbidden);
-  }
-
-  const inputs = txBody.inputs();
-  if (inputs.len() === 0) {
-    return reject(parsed.txId, RejectCodes.EmptyInputs);
-  }
-
-  const spent: Buffer[] = [];
-  const seenInputs = new Set<string>();
-  for (let i = 0; i < inputs.len(); i++) {
-    const input = inputs.get(i);
-    const outRefHex = input.to_cbor_hex();
-    if (seenInputs.has(outRefHex)) {
-      return reject(parsed.txId, RejectCodes.DuplicateInputInTx, outRefHex);
+    for (let i = 0; i < witnessBytes.length; i++) {
+      const witness = CML.Vkeywitness.from_cbor_bytes(witnessBytes[i]);
+      witnesses.push(witness);
+      const signer = witness.vkey().hash();
+      const signerHex = signer.to_hex();
+      if (!witnessSignerSet.has(signerHex)) {
+        witnessSignerSet.add(signerHex);
+        witnessSigners.add(signer);
+        witnessKeyHashes.push(signerHex);
+      }
     }
-    seenInputs.add(outRefHex);
-    spent.push(Buffer.from(input.to_cbor_bytes()));
-  }
 
-  const outputs = txBody.outputs();
-  let outputSum = CML.Value.zero();
-  const produced: LedgerUtils.Entry[] = [];
-  for (let i = 0; i < outputs.len(); i++) {
-    const output = outputs.get(i);
-    const outputCbor = Buffer.from(output.to_cbor_bytes());
-    const outputAddress = output.address().to_bech32();
-    const amount = output.amount();
-    if (amount.coin() < 0n) {
+    return {
+      witnessKeyHashes,
+      witnessSignerSet,
+      witnessSigners,
+      witnesses,
+    };
+  } catch (e) {
+    return reject(
+      txId,
+      RejectCodes.InvalidFieldType,
+      `native vkey witness decode failed: ${String(e)}`,
+    );
+  }
+};
+
+const verifyNativeWitnessSignatures = (
+  txId: Buffer,
+  txBodyHash: Uint8Array,
+  witnesses: readonly InstanceType<typeof CML.Vkeywitness>[],
+): RejectedTx | null => {
+  for (let i = 0; i < witnesses.length; i++) {
+    const witness = witnesses[i];
+    const signature = witness.ed25519_signature();
+    if (!witness.vkey().verify(txBodyHash, signature)) {
       return reject(
-        parsed.txId,
-        RejectCodes.InvalidOutput,
-        `negative coin in output ${i}`,
+        txId,
+        RejectCodes.InvalidSignature,
+        `invalid native vkey witness #${i}`,
       );
     }
-    outputSum = outputSum.checked_add(amount);
-
-    produced.push({
-      [LedgerUtils.Columns.TX_ID]: parsed.txId,
-      [LedgerUtils.Columns.OUTREF]: Buffer.from(
-        CML.TransactionInput.new(txHash, BigInt(i)).to_cbor_bytes(),
-      ),
-      [LedgerUtils.Columns.OUTPUT]: outputCbor,
-      [LedgerUtils.Columns.ADDRESS]: outputAddress,
-    });
   }
+  return null;
+};
 
-  const validityStart = txBody.validity_interval_start();
-  const validityEnd = txBody.ttl();
-  if (
-    (validityStart !== undefined && validityStart < 0n) ||
-    (validityEnd !== undefined && validityEnd < 0n)
-  ) {
-    return reject(
-      parsed.txId,
-      RejectCodes.InvalidValidityIntervalFormat,
-      "validity bounds must be non-negative",
+const decodeAndVerifyNativeScripts = (
+  txId: Buffer,
+  preimageCbor: Uint8Array,
+  validityIntervalStart: bigint | undefined,
+  validityIntervalEnd: bigint | undefined,
+  witnessSigners: InstanceType<typeof CML.Ed25519KeyHashList>,
+): string[] | RejectedTx => {
+  try {
+    const scripts = decodeMidgardNativeByteListPreimage(
+      preimageCbor,
+      "native.script_tx_wits",
     );
-  }
-
-  if (
-    validityStart !== undefined &&
-    validityEnd !== undefined &&
-    validityStart > validityEnd
-  ) {
-    return reject(
-      parsed.txId,
-      RejectCodes.InvalidValidityIntervalFormat,
-      `${validityStart} > ${validityEnd}`,
-    );
-  }
-
-  if (hasAnyEntries(txBody.certs())) {
-    return reject(parsed.txId, RejectCodes.CertificatesForbidden);
-  }
-
-  const withdrawals = txBody.withdrawals();
-  if (withdrawals !== undefined && withdrawals.len() > 0) {
-    const keys = withdrawals.keys();
-    for (let i = 0; i < keys.len(); i++) {
-      const key = keys.get(i);
-      const amount = withdrawals.get(key);
-      if (amount === undefined || amount !== 0n) {
+    const hashes: string[] = [];
+    for (let i = 0; i < scripts.length; i++) {
+      const script = CML.NativeScript.from_cbor_bytes(scripts[i]);
+      const hash = script.hash();
+      if (hash === undefined) {
+        throw new Error(`native script hash undefined at index ${i}`);
+      }
+      hashes.push(hash.to_hex());
+      if (
+        !script.verify(validityIntervalStart, validityIntervalEnd, witnessSigners)
+      ) {
         return reject(
-          parsed.txId,
-          RejectCodes.NonZeroWithdrawal,
-          amount === undefined
-            ? "withdrawal amount missing"
-            : amount.toString(),
+          txId,
+          RejectCodes.NativeScriptInvalid,
+          `native script verification failed for script index ${i}`,
         );
       }
     }
+    return hashes;
+  } catch (e) {
+    return reject(
+      txId,
+      RejectCodes.InvalidFieldType,
+      `native script witness decode failed: ${String(e)}`,
+    );
+  }
+};
+
+const decodeNativeRequiredSigners = (
+  txId: Buffer,
+  preimageCbor: Uint8Array,
+): string[] | RejectedTx => {
+  try {
+    const signerBytes = decodeMidgardNativeByteListPreimage(
+      preimageCbor,
+      "native.required_signers",
+    );
+    const signers: string[] = [];
+    for (let i = 0; i < signerBytes.length; i++) {
+      const signer = signerBytes[i];
+      if (signer.length !== 28) {
+        return reject(
+          txId,
+          RejectCodes.InvalidFieldType,
+          `required signer at index ${i} must be 28 bytes`,
+        );
+      }
+      signers.push(signer.toString("hex"));
+    }
+    return signers;
+  } catch (e) {
+    return reject(
+      txId,
+      RejectCodes.InvalidFieldType,
+      `native required signers decode failed: ${String(e)}`,
+    );
+  }
+};
+
+const validateNativeOne = (
+  queuedTx: QueuedTx,
+  config: PhaseAConfig,
+): PhaseAAccepted | RejectedTx => {
+  let nativeTx: ReturnType<typeof decodeMidgardNativeTxFull>;
+  try {
+    nativeTx = decodeMidgardNativeTxFull(queuedTx.txCbor);
+  } catch (e) {
+    if (e instanceof MidgardTxCodecError) {
+      const detail =
+        e.detail === null
+          ? `${e.code}: ${e.message}`
+          : `${e.code}: ${e.message} (${e.detail})`;
+      return reject(queuedTx.txId, RejectCodes.CborDeserialization, detail);
+    }
+    return reject(
+      queuedTx.txId,
+      RejectCodes.CborDeserialization,
+      `failed to decode native tx: ${String(e)}`,
+    );
   }
 
-  const mint = txBody.mint();
-  if (mint !== undefined && mint.policy_count() > 0) {
-    return reject(parsed.txId, RejectCodes.MintForbidden);
-  }
-
-  if (hasAnyEntries(txBody.collateral_inputs())) {
+  const computedTxId = computeMidgardNativeTxIdFromFull(nativeTx);
+  if (!computedTxId.equals(queuedTx.txId)) {
     return reject(
-      parsed.txId,
-      RejectCodes.UnsupportedFieldNonEmpty,
-      "collateral_inputs",
-    );
-  }
-  if (txBody.collateral_return() !== undefined) {
-    return reject(
-      parsed.txId,
-      RejectCodes.UnsupportedFieldNonEmpty,
-      "collateral_return",
-    );
-  }
-  if (txBody.total_collateral() !== undefined) {
-    return reject(
-      parsed.txId,
-      RejectCodes.UnsupportedFieldNonEmpty,
-      "total_collateral",
-    );
-  }
-  if (txBody.script_data_hash() !== undefined) {
-    return reject(
-      parsed.txId,
-      RejectCodes.UnsupportedFieldNonEmpty,
-      "script_data_hash",
-    );
-  }
-  if (txBody.voting_procedures() !== undefined) {
-    return reject(
-      parsed.txId,
-      RejectCodes.UnsupportedFieldNonEmpty,
-      "voting_procedures",
-    );
-  }
-  if (txBody.proposal_procedures() !== undefined) {
-    return reject(
-      parsed.txId,
-      RejectCodes.UnsupportedFieldNonEmpty,
-      "proposal_procedures",
-    );
-  }
-  if (txBody.current_treasury_value() !== undefined) {
-    return reject(
-      parsed.txId,
-      RejectCodes.UnsupportedFieldNonEmpty,
-      "current_treasury_value",
-    );
-  }
-  if (txBody.donation() !== undefined) {
-    return reject(
-      parsed.txId,
-      RejectCodes.UnsupportedFieldNonEmpty,
-      "donation",
+      queuedTx.txId,
+      RejectCodes.TxHashMismatch,
+      `queued tx_id ${queuedTx.txId.toString("hex")} != native ${computedTxId.toString("hex")}`,
     );
   }
 
-  const networkId = txBody.network_id();
+  if (nativeTx.compact.validity !== "TxIsValid") {
+    return reject(queuedTx.txId, RejectCodes.IsValidFalseForbidden);
+  }
+
+  if (!nativeTx.body.auxiliaryDataHash.equals(EMPTY_NULL_ROOT)) {
+    return reject(
+      queuedTx.txId,
+      RejectCodes.AuxDataForbidden,
+      "auxiliary_data_hash must match canonical empty hash",
+    );
+  }
+
+  if (!nativeTx.body.mintRoot.equals(EMPTY_LIST_ROOT)) {
+    return reject(queuedTx.txId, RejectCodes.MintForbidden, "mint_root");
+  }
+
+  if (!nativeTx.body.requiredObserversRoot.equals(EMPTY_LIST_ROOT)) {
+    return reject(
+      queuedTx.txId,
+      RejectCodes.UnsupportedFieldNonEmpty,
+      "required_observers",
+    );
+  }
+
+  if (!nativeTx.body.scriptIntegrityHash.equals(EMPTY_NULL_ROOT)) {
+    return reject(
+      queuedTx.txId,
+      RejectCodes.UnsupportedFieldNonEmpty,
+      "script_integrity_hash",
+    );
+  }
+
+  if (!nativeTx.witnessSet.redeemerTxWitsRoot.equals(EMPTY_LIST_ROOT)) {
+    return reject(
+      queuedTx.txId,
+      RejectCodes.UnsupportedFieldNonEmpty,
+      "redeemer_tx_wits",
+    );
+  }
+
   if (
-    networkId !== undefined &&
-    networkId.network() !== config.expectedNetworkId
+    nativeTx.body.networkId !== MIDGARD_NATIVE_NETWORK_ID_NONE &&
+    nativeTx.body.networkId !== config.expectedNetworkId
   ) {
     return reject(
-      parsed.txId,
+      queuedTx.txId,
       RejectCodes.NetworkIdMismatch,
-      `${networkId.network()} != ${config.expectedNetworkId}`,
+      `${nativeTx.body.networkId} != ${config.expectedNetworkId}`,
     );
   }
 
-  const txWitnessSet = tx.witness_set();
-  if (hasAnyEntries(txWitnessSet.bootstrap_witnesses())) {
+  const txFee = nativeTx.body.fee;
+  const minFee =
+    config.minFeeA * BigInt(queuedTx.txCbor.length) + config.minFeeB;
+  if (txFee < minFee) {
+    return reject(queuedTx.txId, RejectCodes.MinFee, `${txFee} < ${minFee}`);
+  }
+
+  const spentDecoded = decodeOutRefListFromPreimage(
+    queuedTx.txId,
+    nativeTx.body.spendInputsPreimageCbor,
+    "native.spend_inputs",
+  );
+  if ("code" in spentDecoded) {
+    return spentDecoded;
+  }
+  const spent = spentDecoded;
+  if (spent.length === 0) {
+    return reject(queuedTx.txId, RejectCodes.EmptyInputs);
+  }
+  const seenInputs = new Set<string>();
+  for (const input of spent) {
+    const outRefHex = input.toString("hex");
+    if (seenInputs.has(outRefHex)) {
+      return reject(queuedTx.txId, RejectCodes.DuplicateInputInTx, outRefHex);
+    }
+    seenInputs.add(outRefHex);
+  }
+
+  const referenceInputsDecoded = decodeOutRefListFromPreimage(
+    queuedTx.txId,
+    nativeTx.body.referenceInputsPreimageCbor,
+    "native.reference_inputs",
+  );
+  if ("code" in referenceInputsDecoded) {
+    return referenceInputsDecoded;
+  }
+  const referenceInputs = referenceInputsDecoded;
+
+  const outputBytes = (() => {
+    try {
+      return decodeMidgardNativeByteListPreimage(
+        nativeTx.body.outputsPreimageCbor,
+        "native.outputs",
+      );
+    } catch (e) {
+      return reject(
+        queuedTx.txId,
+        RejectCodes.InvalidOutput,
+        `native outputs decode failed: ${String(e)}`,
+      );
+    }
+  })();
+  if ("code" in outputBytes) {
+    return outputBytes;
+  }
+
+  const txHash = CML.TransactionHash.from_raw_bytes(queuedTx.txId);
+  let outputSum = CML.Value.zero();
+  const produced: LedgerUtils.Entry[] = [];
+  for (let i = 0; i < outputBytes.length; i++) {
+    const outputCbor = outputBytes[i];
+    try {
+      const output = CML.TransactionOutput.from_cbor_bytes(outputCbor);
+      const amount = output.amount();
+      if (amount.coin() < 0n) {
+        return reject(
+          queuedTx.txId,
+          RejectCodes.InvalidOutput,
+          `negative coin in output ${i}`,
+        );
+      }
+      outputSum = outputSum.checked_add(amount);
+      produced.push({
+        [LedgerUtils.Columns.TX_ID]: queuedTx.txId,
+        [LedgerUtils.Columns.OUTREF]: Buffer.from(
+          CML.TransactionInput.new(txHash, BigInt(i)).to_cbor_bytes(),
+        ),
+        [LedgerUtils.Columns.OUTPUT]: outputCbor,
+        [LedgerUtils.Columns.ADDRESS]: output.address().to_bech32(),
+      });
+    } catch (e) {
+      return reject(
+        queuedTx.txId,
+        RejectCodes.InvalidOutput,
+        `failed to decode output ${i}: ${String(e)}`,
+      );
+    }
+  }
+
+  const validityIntervalStart = toOptionalValidity(
+    nativeTx.body.validityIntervalStart,
+  );
+  const validityIntervalEnd = toOptionalValidity(nativeTx.body.validityIntervalEnd);
+  if (
+    (validityIntervalStart !== undefined && validityIntervalStart < 0n) ||
+    (validityIntervalEnd !== undefined && validityIntervalEnd < 0n)
+  ) {
     return reject(
-      parsed.txId,
-      RejectCodes.UnsupportedFieldNonEmpty,
-      "bootstrap_witnesses",
+      queuedTx.txId,
+      RejectCodes.InvalidValidityIntervalFormat,
+      "validity bounds must be non-negative unless unbounded sentinel",
     );
   }
-  if (hasAnyEntries(txWitnessSet.plutus_v1_scripts())) {
+  if (
+    validityIntervalStart !== undefined &&
+    validityIntervalEnd !== undefined &&
+    validityIntervalStart > validityIntervalEnd
+  ) {
     return reject(
-      parsed.txId,
-      RejectCodes.UnsupportedFieldNonEmpty,
-      "plutus_v1_scripts",
+      queuedTx.txId,
+      RejectCodes.InvalidValidityIntervalFormat,
+      `${validityIntervalStart} > ${validityIntervalEnd}`,
     );
   }
-  if (hasAnyEntries(txWitnessSet.plutus_v2_scripts())) {
+
+  const witnessVerificationResult = decodeNativeWitnesses(
+    queuedTx.txId,
+    nativeTx.witnessSet.addrTxWitsPreimageCbor,
+  );
+  if ("code" in witnessVerificationResult) {
+    return witnessVerificationResult;
+  }
+  const {
+    witnessKeyHashes,
+    witnessSignerSet,
+    witnessSigners,
+  } = witnessVerificationResult;
+
+  const requiredSignersResult = decodeNativeRequiredSigners(
+    queuedTx.txId,
+    nativeTx.body.requiredSignersPreimageCbor,
+  );
+  if ("code" in requiredSignersResult) {
+    return requiredSignersResult;
+  }
+  const requiredSigners = requiredSignersResult;
+
+  if (requiredSigners.length > 0 && witnessKeyHashes.length === 0) {
     return reject(
-      parsed.txId,
-      RejectCodes.UnsupportedFieldNonEmpty,
-      "plutus_v2_scripts",
+      queuedTx.txId,
+      RejectCodes.MissingRequiredWitness,
+      "missing vkey witnesses",
     );
   }
-  if (hasAnyEntries(txWitnessSet.plutus_v3_scripts())) {
-    return reject(
-      parsed.txId,
-      RejectCodes.UnsupportedFieldNonEmpty,
-      "plutus_v3_scripts",
-    );
+
+  for (const requiredSigner of requiredSigners) {
+    if (!witnessSignerSet.has(requiredSigner)) {
+      return reject(
+        queuedTx.txId,
+        RejectCodes.MissingRequiredWitness,
+        `missing witness for signer ${requiredSigner}`,
+      );
+    }
   }
-  if (hasAnyEntries(txWitnessSet.plutus_datums())) {
-    return reject(
-      parsed.txId,
-      RejectCodes.UnsupportedFieldNonEmpty,
-      "plutus_datums",
-    );
+
+  const signatureResult = verifyNativeWitnessSignatures(
+    queuedTx.txId,
+    nativeTx.compact.transactionBodyHash,
+    witnessVerificationResult.witnesses,
+  );
+  if (signatureResult !== null) {
+    return signatureResult;
   }
-  if (txWitnessSet.redeemers() !== undefined) {
-    return reject(
-      parsed.txId,
-      RejectCodes.UnsupportedFieldNonEmpty,
-      "redeemers",
-    );
+
+  const nativeScriptHashesResult = decodeAndVerifyNativeScripts(
+    queuedTx.txId,
+    nativeTx.witnessSet.scriptTxWitsPreimageCbor,
+    validityIntervalStart,
+    validityIntervalEnd,
+    witnessSigners,
+  );
+  if ("code" in nativeScriptHashesResult) {
+    return nativeScriptHashesResult;
   }
+  const nativeScriptHashes = nativeScriptHashesResult;
 
   return {
+    txId: queuedTx.txId,
+    txCbor: queuedTx.txCbor,
+    arrivalSeq: queuedTx.arrivalSeq,
+    fee: txFee,
+    validityIntervalStart,
+    validityIntervalEnd,
+    referenceInputs,
     outputSum,
+    witnessKeyHashes,
+    nativeScriptHashes,
     processedTx: {
-      txId: parsed.txId,
+      txId: queuedTx.txId,
       txCbor: queuedTx.txCbor,
       spent,
       produced,
@@ -298,141 +473,10 @@ const runGroup1StructuralChecks = (
   };
 };
 
-type Group2WitnessResult = {
-  readonly witnessKeyHashes: readonly string[];
-  readonly nativeScriptHashes: readonly string[];
-};
-
-const runGroup2WitnessChecks = (
-  parsed: ParsedTx,
-): Group2WitnessResult | RejectedTx => {
-  const tx = parsed.tx;
-  const txBody = parsed.txBody;
-  const txBodyHash = parsed.txHash.to_raw_bytes();
-
-  const txWitnessSet = tx.witness_set();
-  const witnessSigners = CML.Ed25519KeyHashList.new();
-  const witnessBySigner = new Map<
-    string,
-    InstanceType<typeof CML.Vkeywitness>
-  >();
-  const nativeScriptHashes: string[] = [];
-
-  const vkeyWitnesses = txWitnessSet.vkeywitnesses();
-  if (vkeyWitnesses !== undefined) {
-    for (let i = 0; i < vkeyWitnesses.len(); i++) {
-      const witness = vkeyWitnesses.get(i);
-      if (!witness.vkey().verify(txBodyHash, witness.ed25519_signature())) {
-        return reject(
-          parsed.txId,
-          RejectCodes.InvalidSignature,
-          `invalid vkey witness #${i}`,
-        );
-      }
-      const signer = witness.vkey().hash();
-      const signerHex = signer.to_hex();
-      witnessBySigner.set(signerHex, witness);
-      witnessSigners.add(signer);
-    }
-  }
-
-  const requiredSigners = txBody.required_signers();
-  if (requiredSigners !== undefined && requiredSigners.len() > 0) {
-    if (vkeyWitnesses === undefined || vkeyWitnesses.len() === 0) {
-      return reject(
-        parsed.txId,
-        RejectCodes.MissingRequiredWitness,
-        "missing vkey witnesses",
-      );
-    }
-
-    for (let i = 0; i < requiredSigners.len(); i++) {
-      const requiredSigner = requiredSigners.get(i).to_hex();
-      if (!witnessBySigner.has(requiredSigner)) {
-        return reject(
-          parsed.txId,
-          RejectCodes.MissingRequiredWitness,
-          `missing witness for signer ${requiredSigner}`,
-        );
-      }
-    }
-  }
-
-  const validityStart = txBody.validity_interval_start();
-  const validityEnd = txBody.ttl();
-  const nativeScripts = txWitnessSet.native_scripts();
-  if (nativeScripts !== undefined) {
-    for (let i = 0; i < nativeScripts.len(); i++) {
-      const nativeScript = nativeScripts.get(i);
-      nativeScriptHashes.push(nativeScript.hash().to_hex());
-      if (!nativeScript.verify(validityStart, validityEnd, witnessSigners)) {
-        return reject(
-          parsed.txId,
-          RejectCodes.NativeScriptInvalid,
-          `native script verification failed for script index ${i}`,
-        );
-      }
-    }
-  }
-
-  return {
-    witnessKeyHashes: Array.from(witnessBySigner.keys()),
-    nativeScriptHashes,
-  };
-};
-
 const validateOne = (
   queuedTx: QueuedTx,
   config: PhaseAConfig,
-): PhaseAAccepted | RejectedTx => {
-  const parsedOrRejected = runGroup0ParseAndHash(queuedTx);
-  if ("code" in parsedOrRejected) {
-    return parsedOrRejected;
-  }
-
-  const parsed = parsedOrRejected;
-
-  const structuralResult = runGroup1StructuralChecks(queuedTx, parsed, config);
-  if ("code" in structuralResult) {
-    return structuralResult;
-  }
-
-  const txFee = parsed.txBody.fee();
-  const minFee =
-    config.minFeeA * BigInt(queuedTx.txCbor.length) + config.minFeeB;
-  if (txFee < minFee) {
-    return reject(parsed.txId, RejectCodes.MinFee, `${txFee} < ${minFee}`);
-  }
-
-  const witnessResultOrRejected = runGroup2WitnessChecks(parsed);
-  if ("code" in witnessResultOrRejected) {
-    return witnessResultOrRejected;
-  }
-
-  const referenceInputs: Buffer[] = [];
-  const txReferenceInputs = parsed.txBody.reference_inputs();
-  if (txReferenceInputs !== undefined) {
-    for (let i = 0; i < txReferenceInputs.len(); i++) {
-      referenceInputs.push(
-        Buffer.from(txReferenceInputs.get(i).to_cbor_bytes()),
-      );
-    }
-  }
-
-  return {
-    txId: queuedTx.txId,
-    txCbor: queuedTx.txCbor,
-    arrivalSeq: queuedTx.arrivalSeq,
-    fee: txFee,
-    validityIntervalStart: parsed.txBody.validity_interval_start(),
-    validityIntervalEnd: parsed.txBody.ttl(),
-    referenceInputs,
-    outputSum: structuralResult.outputSum,
-    witnessKeyHashes: witnessResultOrRejected.witnessKeyHashes,
-    nativeScriptHashes: witnessResultOrRejected.nativeScriptHashes,
-    processedTx: structuralResult.processedTx,
-  };
-};
+): PhaseAAccepted | RejectedTx => validateNativeOne(queuedTx, config);
 
 export const runPhaseAValidation = (
   queuedTxs: readonly QueuedTx[],
