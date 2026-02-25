@@ -13,16 +13,14 @@ import {
   fromHex,
 } from "@lucid-evolution/lucid";
 import {
-  DataCoercionError,
   GenericErrorFields,
   HashingError,
   LucidError,
-  UnauthenticUtxoError,
   makeReturn,
-  getStateToken,
   hashHexWithBlake2b256,
-  utxosAtByNFTPolicyId,
   isEventUTxOInclusionTimeInBounds,
+  AuthenticUTxO,
+  utxosToAuthenticUTxOs,
 } from "@/common.js";
 import { Data as EffectData, Effect } from "effect";
 import { OutputReference, POSIXTime, POSIXTimeSchema } from "@/common.js";
@@ -30,6 +28,7 @@ import { getProtocolParameters } from "@/protocol-parameters.js";
 import { DepositEventSchema, DepositInfo } from "@/ledger-state.js";
 import {
   buildUserEventMintTransaction,
+  UserEventExtraFields,
   UserEventMintRedeemer,
 } from "./index.js";
 
@@ -48,14 +47,7 @@ export const DepositDatumSchema = Data.Object({
 export type DepositDatum = Data.Static<typeof DepositDatumSchema>;
 export const DepositDatum = DepositDatumSchema as unknown as DepositDatum;
 
-export type DepositUTxO = {
-  utxo: UTxO;
-  datum: DepositDatum;
-  assetName: string;
-  idCbor: Buffer;
-  infoCbor: Buffer;
-  inclusionTime: Date;
-};
+export type DepositUTxO = AuthenticUTxO<DepositDatum, UserEventExtraFields>;
 
 export type DepositFetchConfig = {
   depositAddress: Address;
@@ -64,69 +56,26 @@ export type DepositFetchConfig = {
   inclusionTimeLowerBound?: POSIXTime;
 };
 
-export const getDepositDatumFromUTxO = (
-  nodeUTxO: UTxO,
-): Effect.Effect<DepositDatum, DataCoercionError> => {
-  const datumCBOR = nodeUTxO.datum;
-  if (datumCBOR) {
-    try {
-      const depositDatum = Data.from(datumCBOR, DepositDatum);
-      return Effect.succeed(depositDatum);
-    } catch (e) {
-      return Effect.fail(
-        new DataCoercionError({
-          message: `Could not coerce UTxO's datum to a deposit datum`,
-          cause: e,
-        }),
-      );
-    }
-  } else {
-    return Effect.fail(
-      new DataCoercionError({
-        message: `Deposit datum coercion failed`,
-        cause: `No datum found`,
-      }),
-    );
-  }
-};
-
-/**
- * Validates correctness of datum, and having a single NFT.
- */
-export const utxoToDepositUTxO = (
-  utxo: UTxO,
-  nftPolicy: string,
-): Effect.Effect<DepositUTxO, DataCoercionError | UnauthenticUtxoError> =>
-  Effect.gen(function* () {
-    const datum = yield* getDepositDatumFromUTxO(utxo);
-    const [sym, assetName] = yield* getStateToken(utxo.assets);
-    if (sym !== nftPolicy) {
-      yield* Effect.fail(
-        new UnauthenticUtxoError({
-          message: "Failed to convert UTxO to `DepositUTxO`",
-          cause: "UTxO's NFT policy ID is not the same as the deposit's",
-        }),
-      );
-    }
-    return {
-      utxo,
-      datum,
-      assetName,
-      idCbor: Buffer.from(fromHex(Data.to(datum.event.id, OutputReference))),
-      infoCbor: Buffer.from(fromHex(Data.to(datum.event.info, DepositInfo))),
-      inclusionTime: new Date(Number(datum.inclusionTime)),
-    };
-  });
-
 /**
  * Silently drops invalid UTxOs.
  */
 export const utxosToDepositUTxOs = (
   utxos: UTxO[],
   nftPolicy: string,
+  datum: DepositDatum,
 ): Effect.Effect<DepositUTxO[]> => {
-  const effects = utxos.map((u) => utxoToDepositUTxO(u, nftPolicy));
-  return Effect.allSuccesses(effects);
+  const calculateExtraFields = (datum: DepositDatum): UserEventExtraFields => ({
+    idCbor: Buffer.from(fromHex(Data.to(datum.event.id, OutputReference))),
+    infoCbor: Buffer.from(fromHex(Data.to(datum.event.info, DepositInfo))),
+    inclusionTime: new Date(Number(datum.inclusionTime)),
+  });
+
+  return utxosToAuthenticUTxOs<DepositDatum, UserEventExtraFields>(
+    utxos,
+    nftPolicy,
+    datum,
+    calculateExtraFields,
+  );
 };
 
 export const fetchDepositUTxOsProgram = (
@@ -134,14 +83,18 @@ export const fetchDepositUTxOsProgram = (
   config: DepositFetchConfig,
 ): Effect.Effect<DepositUTxO[], LucidError> =>
   Effect.gen(function* () {
-    const allUTxOs = yield* utxosAtByNFTPolicyId(
-      lucid,
-      config.depositAddress,
-      config.depositPolicyId,
-    );
+    const allUTxOs = yield* Effect.tryPromise({
+      try: () => lucid.utxosAt(config.depositAddress),
+      catch: (err) =>
+        new LucidError({
+          message: "Failed to fetch deposit UTxOs",
+          cause: err,
+        }),
+    });
     const depositUTxOs = yield* utxosToDepositUTxOs(
       allUTxOs,
       config.depositPolicyId,
+      DepositDatum,
     );
 
     const validDepositUTxOs = depositUTxOs.filter((utxo) =>

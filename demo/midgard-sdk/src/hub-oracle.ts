@@ -5,6 +5,7 @@ import {
   AddressSchema,
   PolicyIdSchema,
   makeReturn,
+  AuthenticUTxO,
   addressDataFromBech32,
   Bech32DeserializationError,
   MidgardValidators,
@@ -66,6 +67,10 @@ export const HubOracleDatumSchema = Data.Object({
 export type HubOracleDatum = Data.Static<typeof HubOracleDatumSchema>;
 export const HubOracleDatum = HubOracleDatumSchema as unknown as HubOracleDatum;
 
+export type HubOracleUTxO = AuthenticUTxO<HubOracleDatum>;
+/**
+ * Parameters for the init transaction.
+ */
 export type HubOracleInitParams = {
   hubOracleMintValidator: MintingValidator;
   validators: HubOracleValidators;

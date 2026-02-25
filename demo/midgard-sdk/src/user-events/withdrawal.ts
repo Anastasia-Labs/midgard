@@ -1,26 +1,36 @@
 import {
   AddressData,
   AddressSchema,
+  AuthenticUTxO,
   GenericErrorFields,
   HashingError,
   LucidError,
+  OutputReference,
+  POSIXTime,
   POSIXTimeSchema,
   hashHexWithBlake2b256,
+  isEventUTxOInclusionTimeInBounds,
   makeReturn,
+  utxosToAuthenticUTxOs,
 } from "@/common.js";
 import {
   buildUserEventMintTransaction,
+  UserEventExtraFields,
   UserEventMintRedeemer,
 } from "@/index.js";
 import {
   WithdrawalBody,
   WithdrawalEventSchema,
+  WithdrawalInfo,
   WithdrawalSignature,
 } from "@/ledger-state.js";
 import {
+  Address,
   CML,
   Data,
+  fromHex,
   LucidEvolution,
+  PolicyId,
   Script,
   toUnit,
   TxBuilder,
@@ -52,6 +62,76 @@ export type WithdrawalOrderDatum = Data.Static<
 export const WithdrawalOrderDatum =
   WithdrawalOrderDatumSchema as unknown as WithdrawalOrderDatum;
 
+export type WithdrawalUTxO = AuthenticUTxO<
+  WithdrawalOrderDatum,
+  UserEventExtraFields
+>;
+
+export type WithdrawalFetchConfig = {
+  withdrawalAddress: Address;
+  withdrawalPolicyId: PolicyId;
+  inclusionTimeUpperBound?: POSIXTime;
+  inclusionTimeLowerBound?: POSIXTime;
+};
+
+/**
+ * Silently drops invalid UTxOs.
+ */
+export const utxosToWithdrawalUTxOs = (
+  utxos: UTxO[],
+  nftPolicy: string,
+  datum: WithdrawalOrderDatum,
+): Effect.Effect<WithdrawalUTxO[]> => {
+  const calculateExtraFields = (
+    datum: WithdrawalOrderDatum,
+  ): UserEventExtraFields => ({
+    idCbor: Buffer.from(fromHex(Data.to(datum.event.id, OutputReference))),
+    infoCbor: Buffer.from(fromHex(Data.to(datum.event.info, WithdrawalInfo))),
+    inclusionTime: new Date(Number(datum.inclusionTime)),
+  });
+
+  return utxosToAuthenticUTxOs<WithdrawalOrderDatum, UserEventExtraFields>(
+    utxos,
+    nftPolicy,
+    datum,
+    calculateExtraFields,
+  );
+};
+
+export const fetchWithdrawalUTxOsProgram = (
+  lucid: LucidEvolution,
+  config: WithdrawalFetchConfig,
+): Effect.Effect<WithdrawalUTxO[], LucidError> =>
+  Effect.gen(function* () {
+    const allUTxOs = yield* Effect.tryPromise({
+      try: () => lucid.utxosAt(config.withdrawalAddress),
+      catch: (err) =>
+        new LucidError({
+          message: "Failed to fetch withdrawal UTxOs",
+          cause: err,
+        }),
+    });
+    const withdrawalUTxOs = yield* utxosToWithdrawalUTxOs(
+      allUTxOs,
+      config.withdrawalPolicyId,
+      WithdrawalOrderDatum,
+    );
+
+    const validWithdrawalUTxOs = withdrawalUTxOs.filter((utxo) =>
+      isEventUTxOInclusionTimeInBounds(
+        utxo,
+        config.inclusionTimeLowerBound,
+        config.inclusionTimeUpperBound,
+      ),
+    );
+    return validWithdrawalUTxOs;
+  });
+
+export const fetchWithdrawalUTxOs = (
+  lucid: LucidEvolution,
+  config: WithdrawalFetchConfig,
+) => makeReturn(fetchWithdrawalUTxOsProgram(lucid, config));
+
 /**
  * WithdrawalOrder
  *
@@ -64,26 +144,22 @@ export const incompleteWithdrawalTxProgram = (
   params: WithdrawalOrderParams,
 ): Effect.Effect<TxBuilder, HashingError | LucidError> =>
   Effect.gen(function* () {
-    const mintRedeemer: UserEventMintRedeemer = {
-      AuthenticateEvent: {
-        nonceInputIndex: 0n,
-        eventOutputIndex: 0n,
-        hubRefInputIndex: 0n,
-        witnessRegistrationRedeemerIndex: 0n,
-      },
-    };
-    const mintRedeemerCBOR = Data.to(mintRedeemer, UserEventMintRedeemer);
-    const utxos: UTxO[] = yield* Effect.promise(() =>
-      lucid.wallet().getUtxos(),
-    );
-    if (utxos.length === 0) {
-      yield* Effect.fail(
+    const utxos: UTxO[] = yield* Effect.tryPromise({
+      try: () => lucid.wallet().getUtxos(),
+      catch: (err) =>
         new LucidError({
-          message: "Failed to build the withdrawal transaction",
-          cause: "No UTxOs found in wallet",
+          message: "Failed to fetch wallet UTxOs",
+          cause: err,
         }),
-      );
+    });
+
+    if (utxos.length === 0) {
+      yield* new LucidError({
+        message: "Failed to build the withdrawal transaction",
+        cause: "No UTxOs found in wallet",
+      });
     }
+
     const inputUtxo = utxos[0];
     const transactionInput = CML.TransactionInput.new(
       CML.TransactionHash.from_hex(inputUtxo.txHash),
@@ -93,6 +169,7 @@ export const incompleteWithdrawalTxProgram = (
     const assetName = yield* hashHexWithBlake2b256(
       transactionInput.to_cbor_hex(),
     );
+
     const withdrawalNFT = toUnit(params.policyId, assetName);
 
     const currTime = Date.now();
@@ -120,6 +197,17 @@ export const incompleteWithdrawalTxProgram = (
       withdrawalOrderDatum,
       WithdrawalOrderDatum,
     );
+
+    const mintRedeemer: UserEventMintRedeemer = {
+      AuthenticateEvent: {
+        nonceInputIndex: 0n,
+        eventOutputIndex: 0n,
+        hubRefInputIndex: 0n,
+        witnessRegistrationRedeemerIndex: 0n,
+      },
+    };
+    const mintRedeemerCBOR = Data.to(mintRedeemer, UserEventMintRedeemer);
+
     const tx = buildUserEventMintTransaction({
       lucid,
       inputUtxo,
@@ -131,7 +219,16 @@ export const incompleteWithdrawalTxProgram = (
       mintingPolicy: params.mintingPolicy,
     });
     return tx;
-  });
+  }).pipe(
+    Effect.catchAllDefect((defect) => {
+      return Effect.fail(
+        new LucidError({
+          message: "Caught defect from withdrawalTxBuilder",
+          cause: defect,
+        }),
+      );
+    }),
+  );
 
 export const unsignedWithdrawalTxProgram = (
   lucid: LucidEvolution,

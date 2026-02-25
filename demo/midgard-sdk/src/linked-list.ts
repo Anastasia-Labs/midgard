@@ -4,6 +4,7 @@ import {
   GenericErrorFields,
   LucidError,
   MissingDatumError,
+  ValueSchema,
 } from "@/common.js";
 import { Data as EffectData, Effect } from "effect";
 import {

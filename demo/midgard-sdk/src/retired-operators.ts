@@ -1,11 +1,19 @@
-import { AuthenticatedValidator, POSIXTimeSchema } from "@/common.js";
-import { Data } from "@lucid-evolution/lucid";
+import {
+  AuthenticatedValidator,
+  AuthenticUTxO,
+  POSIXTimeSchema,
+  utxosToAuthenticUTxOs,
+  LucidError,
+} from "@/common.js";
+import { Data, UTxO } from "@lucid-evolution/lucid";
 import { LucidEvolution, TxBuilder } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 import { incompleteInitLinkedListTxProgram } from "./linked-list.js";
 
 export const RetiredOperatorDatumSchema = Data.Object({
-  commitmentTime: Data.Nullable(POSIXTimeSchema),
+  key: Data.Nullable(Data.Bytes()),
+  link: Data.Nullable(Data.Bytes()),
+  bondUnlockTime: Data.Nullable(POSIXTimeSchema),
 });
 export type RetiredOperatorDatum = Data.Static<
   typeof RetiredOperatorDatumSchema
@@ -33,12 +41,22 @@ export const RetiredOperatorMintRedeemerSchema = Data.Enum([
     }),
   }),
   Data.Object({
-    RemoveOperatorSlashBond: Data.Object({
+    RemoveOperatorBadState: Data.Object({
       slashedRetiredOperatorKey: Data.Bytes(),
       hubOracleRefInputIndex: Data.Integer(),
       retiredOperatorSlashedNodeInputIndex: Data.Integer(),
       retiredOperatorAnchorNodeInputIndex: Data.Integer(),
-      state_queueRedeemerIndex: Data.Integer(),
+      stateQueueRedeemerIndex: Data.Integer(),
+    }),
+  }),
+  Data.Object({
+    RemoveOperatorBadSettlement: Data.Object({
+      slashedRetiredOperatorKey: Data.Bytes(),
+      hubOracleRefInputIndex: Data.Integer(),
+      retiredOperatorSlashedNodeInputIndex: Data.Integer(),
+      retiredOperatorAnchorNodeInputIndex: Data.Integer(),
+      settlementInputIndex: Data.Integer(),
+      settlementRedeemerIndex: Data.Integer(),
     }),
   }),
 ]);
@@ -56,6 +74,42 @@ export type RetiredOperatorDeinitParams = {};
 export type RetiredOperatorRetireParams = {};
 export type RetiredOperatorRemoveOperatorParams = {};
 export type RetiredOperatorRecoverSlashBondParams = {};
+
+export type RetiredOperatorUTxO = AuthenticUTxO<RetiredOperatorDatum>;
+
+export type FetchRetiredOperatorParams = {
+  retiredOperatorAddress: string;
+  operator: string;
+  retiredOperatorPolicyId: string;
+};
+
+export const fetchRetiredOperatorUTxOs = (
+  params: FetchRetiredOperatorParams,
+  lucid: LucidEvolution,
+): Effect.Effect<RetiredOperatorUTxO[], LucidError> =>
+  Effect.gen(function* () {
+    const allUtxos: UTxO[] = yield* Effect.tryPromise({
+      try: () => lucid.utxosAt(params.retiredOperatorAddress),
+      catch: (err) =>
+        new LucidError({
+          message: "Failed to fetch Retired Operators UTxOs",
+          cause: err,
+        }),
+    });
+    if (allUtxos.length === 0) {
+      yield* new LucidError({
+        message: "Failed to build the Retired Operators transaction",
+        cause: "No UTxOs found in Retired Operators Contract address",
+      });
+    }
+    const retiredOperatorUTxOs: RetiredOperatorUTxO[] =
+      yield* utxosToAuthenticUTxOs<RetiredOperatorDatum>(
+        allUtxos,
+        params.retiredOperatorPolicyId,
+        RetiredOperatorDatum,
+      );
+    return retiredOperatorUTxOs;
+  });
 
 /**
  * Init

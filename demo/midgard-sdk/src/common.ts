@@ -4,8 +4,12 @@ import {
   Script,
   ScriptHash,
 } from "@lucid-evolution/lucid";
-import { Data as EffectData } from "effect";
-import { Effect } from "effect";
+import {
+  Data as EffectData,
+  Array as EffectArray,
+  Effect,
+  Option,
+} from "effect";
 import {
   Address,
   Assets as LucidAssets,
@@ -18,6 +22,8 @@ import {
   toHex,
 } from "@lucid-evolution/lucid";
 import { blake2b } from "@noble/hashes/blake2.js";
+import { ActiveOperatorUTxO } from "./active-operators.js";
+import { RetiredOperatorUTxO } from "./retired-operators.js";
 
 export const makeReturn = <A, E>(program: Effect.Effect<A, E>) => {
   return {
@@ -275,6 +281,16 @@ export const POSIXTimeSchema = Data.Integer();
 export type POSIXTime = Data.Static<typeof POSIXTimeSchema>;
 export const POSIXTime = POSIXTimeSchema as unknown as POSIXTime;
 
+export const PosixTimeDurationSchema = Data.Integer();
+export type PosixTimeDuration = Data.Static<typeof PosixTimeDurationSchema>;
+export const PosixTimeDuration =
+  PosixTimeDurationSchema as unknown as PosixTimeDuration;
+
+export const VerificationKeyHashSchema = Data.Bytes({
+  minLength: 28,
+  maxLength: 28,
+});
+
 export const PubKeyHashSchema = Data.Bytes({ minLength: 28, maxLength: 28 });
 
 export const ScriptHashSchema = Data.Bytes({ minLength: 28, maxLength: 28 });
@@ -315,6 +331,44 @@ export const AddressSchema = Data.Object({
 });
 export type AddressData = Data.Static<typeof AddressSchema>;
 export const AddressData = AddressSchema as unknown as AddressData;
+
+export const NeighborSchema = Data.Object({
+  Neighbor: Data.Object({
+    nibble: Data.Integer(),
+    prefix: Data.Bytes(),
+    root: Data.Bytes(),
+  }),
+});
+export type Neighbor = Data.Static<typeof NeighborSchema>;
+export const Neighbor = NeighborSchema as unknown as Neighbor;
+
+export const ProofStepSchema = Data.Enum([
+  Data.Object({
+    Branch: Data.Object({
+      skip: Data.Integer(),
+      neighbors: Data.Bytes(),
+    }),
+  }),
+  Data.Object({
+    Fork: Data.Object({
+      skip: Data.Integer(),
+      neighbor: NeighborSchema,
+    }),
+  }),
+  Data.Object({
+    Leaf: Data.Object({
+      skip: Data.Integer(),
+      key: Data.Bytes(),
+      value: Data.Bytes(),
+    }),
+  }),
+]);
+export type ProofStep = Data.Static<typeof ProofStepSchema>;
+export const ProofStep = ProofStepSchema as unknown as ProofStep;
+
+export const ProofSchema = Data.Array(ProofStepSchema);
+export type Proof = Data.Static<typeof ProofSchema>;
+export const Proof = ProofSchema as unknown as Proof;
 
 /**
  * TODO: Note that this function does not support pointer addresses.
@@ -358,6 +412,119 @@ export const addressDataFromBech32 = (
         : null,
     };
   });
+
+export type AuthenticUTxO<TDatum, TExtra = undefined> = {
+  utxo: UTxO;
+  datum: TDatum;
+  assetName: string;
+  extra?: TExtra;
+};
+
+export const getDatumFromUTxO = <TDatum>(
+  nodeUTxO: UTxO,
+  schema: any,
+): Effect.Effect<TDatum, DataCoercionError> =>
+  Effect.gen(function* () {
+    const datumCBOR = nodeUTxO.datum;
+    if (!datumCBOR) {
+      return yield* Effect.fail(
+        new DataCoercionError({
+          message: `Datum coercion failed`,
+          cause: `No datum found`,
+        }),
+      );
+    }
+    const datum: TDatum = yield* Effect.try({
+      try: () => Data.from(datumCBOR, schema),
+      catch: (e) =>
+        new DataCoercionError({
+          message: `Could not coerce UTxO's datum to the expected datum type`,
+          cause: e,
+        }),
+    });
+    return datum;
+  });
+/**
+ * Validates correctness of datum, and having a single NFT.
+ */
+export const utxoToAuthenticUTxO = <TDatum, TExtra = undefined>(
+  utxo: UTxO,
+  nftPolicy: string,
+  schema: any,
+  extraFields?: (datum: TDatum) => TExtra,
+): Effect.Effect<
+  AuthenticUTxO<TDatum, TExtra>,
+  DataCoercionError | UnauthenticUtxoError
+> =>
+  Effect.gen(function* () {
+    const datum = yield* getDatumFromUTxO<TDatum>(utxo, schema);
+    const [sym, assetName] = yield* getStateToken(utxo.assets);
+    if (sym !== nftPolicy) {
+      yield* Effect.fail(
+        new UnauthenticUtxoError({
+          message: `Failed to convert UTxO to AuthenticUTxO`,
+          cause: `UTxO's NFT policy ID is not the same as the expected policy ID`,
+        }),
+      );
+    }
+    const extra = extraFields ? extraFields(datum) : ({} as TExtra);
+
+    return {
+      utxo,
+      datum,
+      assetName,
+      ...extra,
+    };
+  });
+/**
+ * Silently drops invalid UTxOs.
+ */
+export const utxosToAuthenticUTxOs = <TDatum, TExtra = undefined>(
+  utxos: UTxO[],
+  nftPolicy: string,
+  schema: any,
+  extraFields?: (datum: TDatum) => TExtra,
+): Effect.Effect<AuthenticUTxO<TDatum, TExtra>[]> => {
+  const effects = utxos.map((u) =>
+    utxoToAuthenticUTxO<TDatum, TExtra>(u, nftPolicy, schema, extraFields),
+  );
+  return Effect.allSuccesses(effects);
+};
+
+export const findOperatorByPKH = (
+  activeOperators: ActiveOperatorUTxO[],
+  retiredOperators: RetiredOperatorUTxO[],
+  operatorPKH: string,
+): Effect.Effect<
+  | (ActiveOperatorUTxO & { isActive: true })
+  | (RetiredOperatorUTxO & { isActive: false }),
+  LucidError
+> => {
+  const activeOperatorMatch = EffectArray.findFirst(
+    activeOperators,
+    (utxo) => utxo.datum.key === operatorPKH,
+  );
+
+  if (Option.isSome(activeOperatorMatch)) {
+    return Effect.succeed({ ...activeOperatorMatch.value, isActive: true });
+  }
+
+  const retiredOperatorMatch = EffectArray.findFirst(
+    retiredOperators,
+    (utxo) => utxo.datum.key === operatorPKH,
+  );
+
+  if (Option.isSome(retiredOperatorMatch)) {
+    return Effect.succeed({ ...retiredOperatorMatch.value, isActive: false });
+  }
+
+  return Effect.fail(
+    new LucidError({
+      message: `No Operator UTxO with key "${operatorPKH}" found`,
+      cause: "Operator not found in active or retired UTxOs",
+    }),
+  );
+};
 
 export type GenericErrorFields = {
   readonly message: string;

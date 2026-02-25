@@ -12,14 +12,12 @@ import {
   UTxO,
 } from "@lucid-evolution/lucid";
 import {
-  DataCoercionError,
+  AuthenticUTxO,
   GenericErrorFields,
-  getStateToken,
   isEventUTxOInclusionTimeInBounds,
   makeReturn,
   OutputReference,
-  UnauthenticUtxoError,
-  utxosAtByNFTPolicyId,
+  utxosToAuthenticUTxOs,
 } from "@/common.js";
 import {
   AddressData,
@@ -30,9 +28,10 @@ import {
   LucidError,
   hashHexWithBlake2b256,
 } from "@/common.js";
-import { MidgardTxCompact, TxOrderEventSchema } from "@/ledger-state.js";
+import { TxOrderEventSchema } from "@/ledger-state.js";
 import {
   buildUserEventMintTransaction,
+  UserEventExtraFields,
   UserEventMintRedeemer,
 } from "./index.js";
 import { Data as EffectData, Effect } from "effect";
@@ -58,14 +57,7 @@ export const TxOrderDatumSchema = Data.Object({
 export type TxOrderDatum = Data.Static<typeof TxOrderDatumSchema>;
 export const TxOrderDatum = TxOrderDatumSchema as unknown as TxOrderDatum;
 
-export type TxOrderUTxO = {
-  utxo: UTxO;
-  datum: TxOrderDatum;
-  assetName: string;
-  idCbor: Buffer;
-  infoCbor: Buffer;
-  inclusionTime: Date;
-};
+export type TxOrderUTxO = AuthenticUTxO<TxOrderDatum, UserEventExtraFields>;
 
 export type TxOrderFetchConfig = {
   txOrderAddress: Address;
@@ -74,71 +66,28 @@ export type TxOrderFetchConfig = {
   inclusionTimeLowerBound: POSIXTime;
 };
 
-export const getTxOrderDatumFromUTxO = (
-  nodeUTxO: UTxO,
-): Effect.Effect<TxOrderDatum, DataCoercionError> => {
-  const datumCBOR = nodeUTxO.datum;
-  if (datumCBOR) {
-    try {
-      const txOrderDatum = Data.from(datumCBOR, TxOrderDatum);
-      return Effect.succeed(txOrderDatum);
-    } catch (e) {
-      return Effect.fail(
-        new DataCoercionError({
-          message: `Could not coerce UTxO's datum to a tx order datum`,
-          cause: e,
-        }),
-      );
-    }
-  } else {
-    return Effect.fail(
-      new DataCoercionError({
-        message: `Tx order datum coercion failed`,
-        cause: `No datum found`,
-      }),
-    );
-  }
-};
-
-/**
- * Validates correctness of datum, and having a single NFT.
- */
-export const utxoToTxOrderUTxO = (
-  utxo: UTxO,
-  nftPolicy: string,
-): Effect.Effect<TxOrderUTxO, DataCoercionError | UnauthenticUtxoError> =>
-  Effect.gen(function* () {
-    const datum = yield* getTxOrderDatumFromUTxO(utxo);
-    const [sym, assetName] = yield* getStateToken(utxo.assets);
-    if (sym !== nftPolicy) {
-      yield* Effect.fail(
-        new UnauthenticUtxoError({
-          message: "Failed to convert UTxO to `TxOrderUTxO`",
-          cause: "UTxO's NFT policy ID is not the same as the tx order's",
-        }),
-      );
-    }
-    return {
-      utxo,
-      datum,
-      assetName,
-      idCbor: Buffer.from(
-        fromHex(Data.to(datum.event.txOrderId, OutputReference)),
-      ),
-      infoCbor: Buffer.from(fromHex(datum.event.midgardTx.tx)),
-      inclusionTime: new Date(Number(datum.inclusionTime)),
-    };
-  });
-
 /**
  * Silently drops invalid UTxOs.
  */
 export const utxosToTxOrderUTxOs = (
   utxos: UTxO[],
   nftPolicy: string,
+  datum: TxOrderDatum,
 ): Effect.Effect<TxOrderUTxO[]> => {
-  const effects = utxos.map((u) => utxoToTxOrderUTxO(u, nftPolicy));
-  return Effect.allSuccesses(effects);
+  const calculateExtraFields = (datum: TxOrderDatum): UserEventExtraFields => ({
+    idCbor: Buffer.from(
+      fromHex(Data.to(datum.event.txOrderId, OutputReference)),
+    ),
+    infoCbor: Buffer.from(fromHex(datum.event.midgardTx.tx)),
+    inclusionTime: new Date(Number(datum.inclusionTime)),
+  });
+
+  return utxosToAuthenticUTxOs<TxOrderDatum, UserEventExtraFields>(
+    utxos,
+    nftPolicy,
+    datum,
+    calculateExtraFields,
+  );
 };
 
 export const fetchTxOrderUTxOsProgram = (
@@ -146,14 +95,18 @@ export const fetchTxOrderUTxOsProgram = (
   config: TxOrderFetchConfig,
 ): Effect.Effect<TxOrderUTxO[], LucidError> =>
   Effect.gen(function* () {
-    const allUTxOs = yield* utxosAtByNFTPolicyId(
-      lucid,
-      config.txOrderAddress,
-      config.txOrderPolicyId,
-    );
+    const allUTxOs = yield* Effect.tryPromise({
+      try: () => lucid.utxosAt(config.txOrderAddress),
+      catch: (err) =>
+        new LucidError({
+          message: "Failed to fetch tx order UTxOs",
+          cause: err,
+        }),
+    });
     const txOrderUTxOs = yield* utxosToTxOrderUTxOs(
       allUTxOs,
       config.txOrderPolicyId,
+      TxOrderDatum,
     );
 
     const validTxOrderUTxOs = txOrderUTxOs.filter((utxo) =>
@@ -183,24 +136,22 @@ export const incompleteTxOrderTxProgram = (
   params: TxOrderParams,
 ): Effect.Effect<TxBuilder, HashingError | LucidError> =>
   Effect.gen(function* () {
-    const mintRedeemer: UserEventMintRedeemer = {
-      AuthenticateEvent: {
-        nonceInputIndex: 0n,
-        eventOutputIndex: 0n,
-        hubRefInputIndex: 0n,
-        witnessRegistrationRedeemerIndex: 0n,
-      },
-    };
-    const mintRedeemerCBOR = Data.to(mintRedeemer, UserEventMintRedeemer);
-    const utxos: UTxO[] = yield* Effect.promise(() =>
-      lucid.wallet().getUtxos(),
-    );
+    const utxos: UTxO[] = yield* Effect.tryPromise({
+      try: () => lucid.wallet().getUtxos(),
+      catch: (err) =>
+        new LucidError({
+          message: "Failed to fetch wallet UTxOs",
+          cause: err,
+        }),
+    });
+
     if (utxos.length === 0) {
       yield* new LucidError({
         message: "Failed to build the tx order transaction",
         cause: "No UTxOs found in wallet",
       });
     }
+
     const inputUtxo = utxos[0];
     const transactionInput = CML.TransactionInput.new(
       CML.TransactionHash.from_hex(inputUtxo.txHash),
@@ -233,6 +184,17 @@ export const incompleteTxOrderTxProgram = (
       refundDatum: params.refundDatum,
     };
     const txOrderDatumCBOR = Data.to(txOrderDatum, TxOrderDatum);
+
+    const mintRedeemer: UserEventMintRedeemer = {
+      AuthenticateEvent: {
+        nonceInputIndex: 0n,
+        eventOutputIndex: 0n,
+        hubRefInputIndex: 0n,
+        witnessRegistrationRedeemerIndex: 0n,
+      },
+    };
+    const mintRedeemerCBOR = Data.to(mintRedeemer, UserEventMintRedeemer);
+
     const tx = buildUserEventMintTransaction({
       lucid,
       inputUtxo,
@@ -244,7 +206,16 @@ export const incompleteTxOrderTxProgram = (
       mintingPolicy: params.mintingPolicy,
     });
     return tx;
-  });
+  }).pipe(
+    Effect.catchAllDefect((defect) => {
+      return Effect.fail(
+        new LucidError({
+          message: "Caught defect from txOrderTxBuilder",
+          cause: defect,
+        }),
+      );
+    }),
+  );
 
 export const unsignedTxOrderTxProgram = (
   lucid: LucidEvolution,
