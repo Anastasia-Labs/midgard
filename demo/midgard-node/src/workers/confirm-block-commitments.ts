@@ -18,30 +18,28 @@ const inputData = workerData as WorkerInput;
 const fetchLatestBlock = (
   lucid: LucidEvolution,
 ): Effect.Effect<
-  SDK.TxBuilder.StateQueue.StateQueueUTxO,
-  SDK.Utils.StateQueueError | SDK.Utils.LucidError,
+  SDK.StateQueueUTxO,
+  SDK.StateQueueError | SDK.LucidError,
   AlwaysSucceedsContract | NodeConfig
 > =>
   Effect.gen(function* () {
-    const { policyId, spendScriptAddress } = yield* AlwaysSucceedsContract;
-    const fetchConfig: SDK.TxBuilder.StateQueue.FetchConfig = {
-      stateQueueAddress: spendScriptAddress,
-      stateQueuePolicyId: policyId,
+    const { stateQueue: stateQueueAuthValidator } =
+      yield* AlwaysSucceedsContract;
+    const fetchConfig: SDK.StateQueueFetchConfig = {
+      stateQueueAddress: stateQueueAuthValidator.spendingScriptAddress,
+      stateQueuePolicyId: stateQueueAuthValidator.policyId,
     };
-    return yield* SDK.Endpoints.fetchLatestCommittedBlockProgram(
-      lucid,
-      fetchConfig,
-    );
+    return yield* SDK.fetchLatestCommittedBlockProgram(lucid, fetchConfig);
   });
 
 const wrapper = (
   workerInput: WorkerInput,
 ): Effect.Effect<
   WorkerOutput,
-  | SDK.Utils.CborSerializationError
-  | SDK.Utils.CmlUnexpectedError
-  | SDK.Utils.LucidError
-  | SDK.Utils.StateQueueError
+  | SDK.CborSerializationError
+  | SDK.CmlUnexpectedError
+  | SDK.LucidError
+  | SDK.StateQueueError
   | TxConfirmError,
   AlwaysSucceedsContract | Lucid | NodeConfig
 > =>

@@ -20,19 +20,18 @@ export type Entry = {
   [Ledger.Columns.ADDRESS]: Address;
 };
 
-export const init: Effect.Effect<void, DatabaseError, Database> = Effect.gen(
-  function* () {
+export const createTable: Effect.Effect<void, DatabaseError, Database> =
+  Effect.gen(function* () {
     const sql = yield* SqlClient.SqlClient;
     yield* sql`CREATE TABLE IF NOT EXISTS ${sql(tableName)} (
       ${sql(Ledger.Columns.TX_ID)} BYTEA NOT NULL,
       ${sql(Ledger.Columns.ADDRESS)} TEXT NOT NULL,
       UNIQUE (tx_id, address)
     );`;
-  },
-).pipe(
-  Effect.withLogSpan(`creating table ${tableName}`),
-  sqlErrorToDatabaseError(tableName, "Failed to create the table"),
-);
+  }).pipe(
+    Effect.withLogSpan(`creating table ${tableName}`),
+    sqlErrorToDatabaseError(tableName, "Failed to create the table"),
+  );
 
 export const insertEntries = (
   entries: Entry[],
@@ -63,11 +62,10 @@ export const insert = (
       FROM ${sql(MempoolLedgerDB.tableName)}
       WHERE ${sql(Ledger.Columns.TX_ID)} IN ${sql.in(spent)}`;
 
-      const inputEntries = yield* inputEntriesProgram.pipe(
+      const inputEntries: readonly Entry[] = yield* inputEntriesProgram.pipe(
         Effect.catchAllCause((_) => Effect.succeed([])),
       );
 
-      inputEntries;
       const outputEntries: Entry[] = produced.map((e) => ({
         [Ledger.Columns.TX_ID]: e[Ledger.Columns.TX_ID],
         [Ledger.Columns.ADDRESS]: e[Ledger.Columns.ADDRESS],

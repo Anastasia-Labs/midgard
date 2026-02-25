@@ -4,66 +4,219 @@ import {
   applyDoubleCborEncoding,
   MintingPolicy,
   mintingPolicyToId,
-  Script,
+  Network,
   SpendingValidator,
   validatorToAddress,
+  validatorToScriptHash,
+  WithdrawalValidator,
 } from "@lucid-evolution/lucid";
-import { NodeConfig } from "@/services/config.js";
+import * as SDK from "@al-ft/midgard-sdk";
+import { NoSuchElementException } from "effect/Cause";
 
-const makeAlwaysSucceedsService: Effect.Effect<
-  {
-    spendingCBOR: string;
-    spendScript: Script;
-    spendScriptAddress: string;
-    mintScript: Script;
-    policyId: string;
-  },
-  never,
-  NodeConfig
-> = Effect.gen(function* () {
-  const nodeConfig = yield* NodeConfig;
-  const spendingCBOR = yield* pipe(
+const NETWORK: Network = "Preprod";
+
+type Category = "midgard" | "fraud_proofs";
+
+type Purpose = "spend" | "mint" | "withdraw";
+
+const makeValidatorTitle = (
+  category: Category,
+  baseName: string,
+  type: Purpose,
+) =>
+  category === "midgard"
+    ? `${category}.${baseName}_${type}.else`
+    : `${category}.${baseName}.else`;
+
+const getValidatorScript = (title: string) =>
+  pipe(
     Effect.fromNullable(
-      scripts.default.validators.find(
-        (v) => v.title === "always_succeeds.spend.else",
-      ),
+      scripts.default.validators.find((v) => v.title === title),
     ),
     Effect.andThen((script) => script.compiledCode),
   );
-  const spendScript: SpendingValidator = {
-    type: "PlutusV3",
-    script: applyDoubleCborEncoding(spendingCBOR),
-  };
-  const spendScriptAddress = validatorToAddress(
-    nodeConfig.NETWORK,
-    spendScript,
-  );
-  const mintingCBOR = yield* pipe(
-    Effect.fromNullable(
-      scripts.default.validators.find(
-        (v) => v.title === "always_succeeds.mint.else",
-      ),
+
+const makeSpendingValidator = (
+  category: Category,
+  baseName: string,
+  network: Network,
+): Effect.Effect<SDK.SpendingValidator, NoSuchElementException> =>
+  Effect.gen(function* () {
+    const spendingScriptCBOR = yield* getValidatorScript(
+      makeValidatorTitle(category, baseName, "spend"),
+    );
+
+    const spendingScript: SpendingValidator = {
+      type: "PlutusV3",
+      script: applyDoubleCborEncoding(spendingScriptCBOR),
+    };
+
+    const spendingScriptAddress = validatorToAddress(network, spendingScript);
+    const spendingScriptHash = validatorToScriptHash(spendingScript);
+
+    return {
+      spendingScriptCBOR,
+      spendingScript,
+      spendingScriptAddress,
+      spendingScriptHash,
+    };
+  }).pipe(
+    Effect.tapError((_e) =>
+      Effect.logError(`Failed to load validator: ${baseName}`),
     ),
-    Effect.andThen((script) => script.compiledCode),
   );
-  const mintScript: MintingPolicy = {
-    type: "PlutusV3",
-    script: applyDoubleCborEncoding(mintingCBOR),
-  };
-  const policyId = mintingPolicyToId(mintScript);
-  return {
-    spendingCBOR,
-    spendScript,
-    spendScriptAddress,
-    mintScript,
-    policyId,
-  };
-}).pipe(Effect.orDie);
+
+const makeMintingValidator = (
+  category: Category,
+  baseName: string,
+): Effect.Effect<SDK.MintingValidator, NoSuchElementException> =>
+  Effect.gen(function* () {
+    const mintingScriptCBOR = yield* getValidatorScript(
+      makeValidatorTitle(category, baseName, "mint"),
+    );
+
+    const mintingScript: MintingPolicy = {
+      type: "PlutusV3",
+      script: applyDoubleCborEncoding(mintingScriptCBOR),
+    };
+
+    const policyId = mintingPolicyToId(mintingScript);
+
+    return {
+      mintingScriptCBOR,
+      mintingScript,
+      policyId,
+    };
+  }).pipe(
+    Effect.tapError((_e) =>
+      Effect.logError(`Failed to load validator: ${baseName}`),
+    ),
+  );
+
+const makeWithdrawalValidator = (
+  category: Category,
+  baseName: string,
+): Effect.Effect<SDK.WithdrawalValidator, NoSuchElementException> =>
+  Effect.gen(function* () {
+    const withdrawalScriptCBOR = yield* getValidatorScript(
+      makeValidatorTitle(category, baseName, "withdraw"),
+    );
+
+    const withdrawalScript: WithdrawalValidator = {
+      type: "PlutusV3",
+      script: applyDoubleCborEncoding(withdrawalScriptCBOR),
+    };
+
+    const withdrawalScriptHash = validatorToScriptHash(withdrawalScript);
+
+    return {
+      withdrawalScriptCBOR,
+      withdrawalScript,
+      withdrawalScriptHash,
+    };
+  }).pipe(
+    Effect.tapError((_e) =>
+      Effect.logError(`Failed to load validator: ${baseName}`),
+    ),
+  );
+const makeAuthenticatedValidator = (
+  baseName: string,
+  network: Network,
+): Effect.Effect<SDK.AuthenticatedValidator, NoSuchElementException> =>
+  Effect.gen(function* () {
+    const spendingValidator = yield* makeSpendingValidator(
+      "midgard",
+      baseName,
+      network,
+    );
+    const mintingValidator = yield* makeMintingValidator("midgard", baseName);
+
+    return {
+      ...spendingValidator,
+      ...mintingValidator,
+    };
+  }).pipe(
+    Effect.tapError((_e) =>
+      Effect.logError(`Failed to load validator: ${baseName}`),
+    ),
+  );
+
+const makeAlwaysSucceedsService: Effect.Effect<SDK.MidgardValidators> =
+  Effect.gen(function* () {
+    // Helpers
+    const mkAuthVal = (contract: string) =>
+      makeAuthenticatedValidator(contract, NETWORK);
+    const mkFP = (fp: string) =>
+      makeSpendingValidator("fraud_proofs", fp, NETWORK);
+
+    // Midgard Contracts
+    const hubOracle = yield* mkAuthVal("hub_oracle");
+    const scheduler = yield* mkAuthVal("scheduler");
+    const stateQueue = yield* mkAuthVal("state_queue");
+    const registeredOperators = yield* mkAuthVal("registered_operators");
+    const activeOperators = yield* mkAuthVal("active_operators");
+    const retiredOperators = yield* mkAuthVal("retired_operators");
+    const escapeHatch = yield* mkAuthVal("escape_hatch");
+    const fraudProofCatalogue = yield* mkAuthVal("fraud_proof_catalogue");
+    const fraudProof = yield* mkAuthVal("fraud_proof");
+    const deposit = yield* mkAuthVal("deposit");
+    const payout = yield* mkAuthVal("payout");
+    const withdrawal = yield* mkAuthVal("withdrawal");
+    const txOrder = yield* mkAuthVal("tx_order");
+    const settlement = yield* mkAuthVal("settlement");
+
+    // Reserve
+    // TODO: Reserve is not entirely defined in specs. This might change.
+    const reserveSpendingValidator = yield* makeSpendingValidator(
+      "midgard",
+      "reserve",
+      NETWORK,
+    );
+    const reserveWithdawalValidator = yield* makeWithdrawalValidator(
+      "midgard",
+      "reserve",
+    );
+    const reserve = {
+      ...reserveSpendingValidator,
+      ...reserveWithdawalValidator,
+    };
+
+    // Fraud Proofs
+    const doubleSpend = yield* mkFP("double_spend");
+    const nonExistentInput = yield* mkFP("non_existent_input");
+    const nonExistentInputNoIndex = yield* mkFP("non_existent_input_no_index");
+    const invalidRange = yield* mkFP("invalid_range");
+
+    const fraudProofs: SDK.FraudProofs = {
+      doubleSpend,
+      nonExistentInput,
+      nonExistentInputNoIndex,
+      invalidRange,
+    };
+
+    return {
+      hubOracle,
+      stateQueue,
+      scheduler,
+      registeredOperators,
+      activeOperators,
+      retiredOperators,
+      escapeHatch,
+      fraudProofCatalogue,
+      fraudProof,
+      deposit,
+      withdrawal,
+      txOrder,
+      settlement,
+      reserve,
+      payout,
+      fraudProofs,
+    };
+  }).pipe(Effect.orDie);
 
 export class AlwaysSucceedsContract extends Effect.Service<AlwaysSucceedsContract>()(
   "AlwaysSucceedsContract",
   {
     effect: makeAlwaysSucceedsService,
-    dependencies: [NodeConfig.layer],
   },
 ) {}

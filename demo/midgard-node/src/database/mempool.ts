@@ -80,15 +80,15 @@ export const retrieveTxCborsByHashes = (txHashes: Buffer[]) =>
   Tx.retrieveValues(tableName, txHashes);
 
 export const retrieve: Effect.Effect<
-  readonly Tx.Entry[],
+  readonly Tx.EntryWithTimeStamp[],
   DatabaseError,
   Database
 > = Effect.gen(function* () {
   yield* Effect.logDebug(`${tableName} db: attempt to retrieve keyValues`);
   const sql = yield* SqlClient.SqlClient;
-  return yield* sql<Tx.Entry>`SELECT ${sql(
+  return yield* sql<Tx.EntryWithTimeStamp>`SELECT ${sql(
     Tx.Columns.TX_ID,
-  )}, ${sql(Tx.Columns.TX)} FROM ${sql(tableName)} LIMIT 100000`;
+  )}, ${sql(Tx.Columns.TX)} FROM ${sql(tableName)} ORDER BY ${sql(Tx.Columns.TIMESTAMPTZ)} DESC LIMIT 100000`; // Add ordering by time
 }).pipe(
   Effect.withLogSpan(`retrieve ${tableName}`),
   Effect.tapErrorTag("SqlError", (e) =>
