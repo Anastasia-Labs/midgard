@@ -487,7 +487,11 @@ export const incompleteDisproveResolutionClaimTxProgram = (
   params: DisproveResolutionClaimParams,
 ): Effect.Effect<
   TxBuilder,
-  HashingError | DataCoercionError | LucidError | HubOracleError
+  | HashingError
+  | DataCoercionError
+  | LucidError
+  | HubOracleError
+  | SettlementError
 > =>
   Effect.gen(function* () {
     const spendRedeemer: SettlementSpendRedeemer = {
@@ -530,7 +534,7 @@ export const incompleteDisproveResolutionClaimTxProgram = (
     const bufferTime = Date.now() + 2 * 60_000;
     if (resolutionTime < bufferTime) {
       return yield* Effect.fail(
-        new LucidError({
+        new SettlementError({
           message: "Cannot disprove resolution before resolution time",
           cause:
             "Resolution time is earlier than the transaction's upper bound",
@@ -580,7 +584,7 @@ export const createSlashedOperatorMintRedeemerCBOR = (
     | (ActiveOperatorUTxO & { isActive: true })
     | (RetiredOperatorUTxO & { isActive: false }),
   slashedOperatorKey: string,
-): Effect.Effect<string, LucidError> => {
+): Effect.Effect<string> => {
   if (operatorInputUTxO.isActive === true) {
     const mintRedeemer: ActiveOperatorMintRedeemer = {
       RemoveOperatorBadSettlement: {
@@ -594,7 +598,7 @@ export const createSlashedOperatorMintRedeemerCBOR = (
     };
     const mintRedeemerCBOR = Data.to(mintRedeemer, ActiveOperatorMintRedeemer);
     return Effect.succeed(mintRedeemerCBOR);
-  } else if (operatorInputUTxO.isActive === false) {
+  } else {
     const mintRedeemer: RetiredOperatorMintRedeemer = {
       RemoveOperatorBadSettlement: {
         slashedRetiredOperatorKey: slashedOperatorKey,
@@ -607,13 +611,6 @@ export const createSlashedOperatorMintRedeemerCBOR = (
     };
     const mintRedeemerCBOR = Data.to(mintRedeemer, RetiredOperatorMintRedeemer);
     return Effect.succeed(mintRedeemerCBOR);
-  } else {
-    return Effect.fail(
-      new LucidError({
-        message: `Invalid operator status`,
-        cause: "Expected 'ActiveOperator' or 'RetiredOperator'",
-      }),
-    );
   }
 };
 
@@ -623,22 +620,16 @@ export const getOperatorNFT = (
     | (RetiredOperatorUTxO & { isActive: false }),
   activeOperatorPolicyId: string,
   retiredOperatorPolicyId: string,
-): Effect.Effect<string, LucidError> => {
+): Effect.Effect<string> => {
   if (operatorInputUTxO.isActive === true) {
     return Effect.succeed(
       toUnit(activeOperatorPolicyId, operatorInputUTxO.assetName),
     );
-  } else if (operatorInputUTxO.isActive === false) {
+  } else {
     return Effect.succeed(
       toUnit(retiredOperatorPolicyId, operatorInputUTxO.assetName),
     );
-  } else
-    return Effect.fail(
-      new LucidError({
-        message: `Invalid operator status`,
-        cause: "Expected 'ActiveOperator' or 'RetiredOperator'",
-      }),
-    );
+  }
 };
 
 export const incompleteRemoveOperatorBadSettlementTxProgram = (
