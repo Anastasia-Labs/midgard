@@ -33,7 +33,7 @@ import {
   buildUserEventMintTransaction,
   UserEventExtraFields,
   UserEventMintRedeemer,
-} from "./index.js";
+} from "./common.js";
 import { Data as EffectData, Effect } from "effect";
 import { getProtocolParameters } from "@/protocol-parameters.js";
 

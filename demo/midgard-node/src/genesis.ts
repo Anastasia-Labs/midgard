@@ -126,9 +126,10 @@ const submitGenesisTxOrders: Effect.Effect<
 
 const submitGenesisDeposits: Effect.Effect<
   void,
-  | SDK.LucidError
-  | SDK.HashingError
+  | SDK.Bech32DeserializationError
   | SDK.DepositError
+  | SDK.HashingError
+  | SDK.LucidError
   | TxSubmitError
   | TxSignError
   | TxConfirmError,
@@ -144,7 +145,9 @@ const submitGenesisDeposits: Effect.Effect<
     return;
   }
 
-  const l2Address = config.GENESIS_UTXOS[0].address;
+  const l2Address = yield* SDK.midgardAddressFromBech32(
+    config.GENESIS_UTXOS[0].address,
+  );
 
   // Hard-coded 10 ADA deposit.
   const depositParams: SDK.DepositParams = {

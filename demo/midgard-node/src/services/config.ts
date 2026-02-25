@@ -1,5 +1,5 @@
 import { Network, UTxO, walletFromSeed } from "@lucid-evolution/lucid";
-import { Config, Context, Data, Effect, Layer } from "effect";
+import { Config, Context, Data, Effect, Layer, Schedule } from "effect";
 import * as SDK from "@al-ft/midgard-sdk";
 
 type Provider = "Kupmios" | "Blockfrost";
@@ -183,7 +183,17 @@ const makeConfig = Effect.gen(function* () {
     MEMPOOL_MPT_DB_PATH: mempoolMptDbPath,
     GENESIS_UTXOS: network === "Mainnet" ? [] : genesisUtxos,
   };
-}).pipe(Effect.orDie);
+}).pipe(
+  Effect.retry(Schedule.fixed("5000 millis")),
+  Effect.mapError(
+    (e) =>
+      new ConfigError({
+        message: "Error instantiating the config service.",
+        cause: e,
+        fieldsAndValues: [["<n/a>", "<n/a>"]],
+      }),
+  ),
+);
 
 export class NodeConfig extends Context.Tag("NodeConfig")<
   NodeConfig,

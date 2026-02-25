@@ -6,7 +6,7 @@ import {
   Lucid,
   Database,
 } from "@/services/index.js";
-import { LucidEvolution } from "@lucid-evolution/lucid";
+import { LucidEvolution, utxoToCore } from "@lucid-evolution/lucid";
 import { DepositsDB, UserEventsUtils } from "@/database/index.js";
 import { DatabaseError } from "@/database/utils/common.js";
 import { Schedule } from "effect";
@@ -37,7 +37,7 @@ export const fetchAndInsertDepositUTxOs: Effect.Effect<
   const startTime: number = yield* Ref.get(globals.LATEST_DEPOSIT_FETCH_TIME);
   const endTime: number = Date.now();
 
-  yield* Effect.logDebug("🏦 fetching DepositUTxOs...");
+  yield* Effect.logDebug("🏦 Fetching DepositUTxOs...");
 
   const depositUTxOs: SDK.DepositUTxO[] = yield* fetchDepositUTxOs(
     lucid,
@@ -55,6 +55,10 @@ export const fetchAndInsertDepositUTxOs: Effect.Effect<
   const entries: UserEventsUtils.Entry[] = depositUTxOs.map((utxo) => ({
     [UserEventsUtils.Columns.ID]: utxo.idCbor,
     [UserEventsUtils.Columns.INFO]: utxo.infoCbor,
+    [UserEventsUtils.Columns.ASSET_NAME]: utxo.assetName,
+    [UserEventsUtils.Columns.L1_UTXO_CBOR]: Buffer.from(
+      utxoToCore(utxo.utxo).to_cbor_bytes(),
+    ),
     [UserEventsUtils.Columns.INCLUSION_TIME]: utxo.inclusionTime,
   }));
 

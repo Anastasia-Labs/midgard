@@ -1,6 +1,9 @@
 import {
+  AddressDetails,
+  credentialToAddress,
   Data,
   getAddressDetails,
+  Network,
   Script,
   ScriptHash,
 } from "@lucid-evolution/lucid";
@@ -24,6 +27,16 @@ import {
 import { blake2b } from "@noble/hashes/blake2.js";
 import { ActiveOperatorUTxO } from "./active-operators.js";
 import { RetiredOperatorUTxO } from "./retired-operators.js";
+
+/**
+ * `StateUTxO` would probably be a better name, but it'd be confusing next to
+ * our state queue UTxOs.
+ */
+export type BeaconUTxO = {
+  utxo: UTxO;
+  policyId: PolicyId;
+  assetName: string;
+};
 
 export const makeReturn = <A, E>(program: Effect.Effect<A, E>) => {
   return {
@@ -101,7 +114,7 @@ export const utxosAtByNFTPolicyId = (
   lucid: LucidEvolution,
   addressOrCred: Address | Credential,
   policyId: PolicyId,
-): Effect.Effect<UTxO[], LucidError> =>
+): Effect.Effect<BeaconUTxO[], LucidError> =>
   Effect.gen(function* () {
     const allUTxOs = yield* Effect.tryPromise({
       try: () => lucid.utxosAt(addressOrCred),
@@ -112,14 +125,17 @@ export const utxosAtByNFTPolicyId = (
         });
       },
     });
-    const nftEffects: Effect.Effect<UTxO, UnauthenticUtxoError>[] =
+    const nftEffects: Effect.Effect<BeaconUTxO, UnauthenticUtxoError>[] =
       allUTxOs.map((u: UTxO) => {
         const nftsEffect = getStateToken(u.assets);
         return Effect.andThen(
           nftsEffect,
-          ([sym, _tn]): Effect.Effect<UTxO, UnauthenticUtxoError> => {
+          ([sym, assetName]): Effect.Effect<
+            BeaconUTxO,
+            UnauthenticUtxoError
+          > => {
             if (sym === policyId) {
-              return Effect.succeed(u);
+              return Effect.succeed({ utxo: u, policyId, assetName });
             } else {
               return Effect.fail(
                 new UnauthenticUtxoError({
@@ -207,6 +223,67 @@ export const bufferToHex = (buf: Buffer): string => {
 export const H32Schema = Data.Bytes({ minLength: 32, maxLength: 32 });
 export type H32 = Data.Static<typeof H32Schema>;
 export const H32 = H32Schema as unknown as H32;
+
+/**
+ * Assumes the given Bech32 string is that of a Cardano address (TODO).
+ */
+export const midgardAddressFromBech32 = (
+  bechStr: string,
+): Effect.Effect<MidgardAddress, Bech32DeserializationError> =>
+  Effect.gen(function* () {
+    const addressDetails: AddressDetails = yield* Effect.try({
+      try: () => getAddressDetails(bechStr),
+      catch: (e) =>
+        new Bech32DeserializationError({
+          message: `Failed to break down ${bechStr} to its details.`,
+          cause: e,
+        }),
+    });
+    const cred = addressDetails.paymentCredential;
+    if (cred === undefined) {
+      return yield* new Bech32DeserializationError({
+        message: `Failed extracting the payment credential from ${bechStr}.`,
+        cause: "Unknown cause.",
+      });
+    } else {
+      if (cred.type === "Key") {
+        const midgardAddress: MidgardAddress = {
+          PublicKeyCredential: [cred.hash],
+        };
+        return midgardAddress;
+      } else {
+        const midgardAddress: MidgardAddress = {
+          ScriptCredential: [cred.hash],
+        };
+        return midgardAddress;
+      }
+    }
+  });
+
+/**
+ * Taking Cardano `Network` as the first argument is temporary (TODO).
+ */
+export const midgardAddressToBech32 = (
+  network: Network,
+  addr: MidgardAddress,
+): string => {
+  if ("PublicKeyCredential" in addr) {
+    const [pubKeyHex] = addr.PublicKeyCredential;
+    const cred: Credential = {
+      type: "Key",
+      hash: pubKeyHex,
+    };
+    return credentialToAddress(network, cred);
+  } else {
+    const [scriptHashHex] = addr.ScriptCredential;
+    const cred: Credential = {
+      type: "Script",
+      hash: scriptHashHex,
+    };
+    return credentialToAddress(network, cred);
+  }
+};
+
 export type MintingValidator = {
   mintingScriptCBOR: string;
   mintingScript: Script;
@@ -238,7 +315,7 @@ export type FraudProofs = {
 };
 
 export type MidgardValidators = {
-  hubOracle: MintingValidator;
+  hubOracle: AuthenticatedValidator;
   stateQueue: AuthenticatedValidator;
   scheduler: AuthenticatedValidator;
   registeredOperators: AuthenticatedValidator;
@@ -370,6 +447,10 @@ export const ProofSchema = Data.Array(ProofStepSchema);
 export type Proof = Data.Static<typeof ProofSchema>;
 export const Proof = ProofSchema as unknown as Proof;
 
+export const MidgardAddressSchema = CredentialSchema;
+export type MidgardAddress = CredentialD;
+export const MidgardAddress = MidgardAddressSchema as unknown as MidgardAddress;
+
 /**
  * TODO: Note that this function does not support pointer addresses.
  */
@@ -444,6 +525,7 @@ export const getDatumFromUTxO = <TDatum>(
     });
     return datum;
   });
+
 /**
  * Validates correctness of datum, and having a single NFT.
  */
@@ -462,7 +544,7 @@ export const utxoToAuthenticUTxO = <TDatum, TExtra = undefined>(
     if (sym !== nftPolicy) {
       yield* Effect.fail(
         new UnauthenticUtxoError({
-          message: `Failed to convert UTxO to AuthenticUTxO`,
+          message: `Failed authenticate UTxO`,
           cause: `UTxO's NFT policy ID is not the same as the expected policy ID`,
         }),
       );
@@ -476,6 +558,7 @@ export const utxoToAuthenticUTxO = <TDatum, TExtra = undefined>(
       ...extra,
     };
   });
+
 /**
  * Silently drops invalid UTxOs.
  */
@@ -491,6 +574,9 @@ export const utxosToAuthenticUTxOs = <TDatum, TExtra = undefined>(
   return Effect.allSuccesses(effects);
 };
 
+/**
+ * TODO: Move to the `operatorDirectory` module after refactoring.`
+ */
 export const findOperatorByPKH = (
   activeOperators: ActiveOperatorUTxO[],
   retiredOperators: RetiredOperatorUTxO[],
@@ -531,12 +617,12 @@ export type GenericErrorFields = {
   readonly cause: any;
 };
 
-export class CmlUnexpectedError extends EffectData.TaggedError(
-  "CmlUnexpectedError",
+export class AssetError extends EffectData.TaggedError(
+  "AssetError",
 )<GenericErrorFields> {}
 
-export class CmlDeserializationError extends EffectData.TaggedError(
-  "CmlDeserializationError",
+export class Bech32DeserializationError extends EffectData.TaggedError(
+  "Bech32DeserializationError",
 )<GenericErrorFields> {}
 
 export class CborSerializationError extends EffectData.TaggedError(
@@ -547,32 +633,32 @@ export class CborDeserializationError extends EffectData.TaggedError(
   "CborDeserializationError",
 )<GenericErrorFields> {}
 
-export class Bech32DeserializationError extends EffectData.TaggedError(
-  "Bech32DeserializationError",
+export class CmlUnexpectedError extends EffectData.TaggedError(
+  "CmlUnexpectedError",
+)<GenericErrorFields> {}
+
+export class CmlDeserializationError extends EffectData.TaggedError(
+  "CmlDeserializationError",
 )<GenericErrorFields> {}
 
 export class DataCoercionError extends EffectData.TaggedError(
   "DataCoercionError",
 )<GenericErrorFields> {}
 
-export class UnauthenticUtxoError extends EffectData.TaggedError(
-  "UnauthenticUtxoError",
-)<GenericErrorFields> {}
-
-export class MissingDatumError extends EffectData.TaggedError(
-  "MissingDatumError",
+export class HashingError extends EffectData.TaggedError(
+  "HashingError",
 )<GenericErrorFields> {}
 
 export class LucidError extends EffectData.TaggedError(
   "LucidError",
 )<GenericErrorFields> {}
 
-export class HashingError extends EffectData.TaggedError(
-  "HashingError",
+export class MissingDatumError extends EffectData.TaggedError(
+  "MissingDatumError",
 )<GenericErrorFields> {}
 
-export class AssetError extends EffectData.TaggedError(
-  "AssetError",
+export class UnauthenticUtxoError extends EffectData.TaggedError(
+  "UnauthenticUtxoError",
 )<GenericErrorFields> {}
 
 export class UnspecifiedNetworkError extends EffectData.TaggedError(

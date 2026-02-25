@@ -9,12 +9,16 @@ import {
 export enum Columns {
   ID = "event_id",
   INFO = "event_info",
+  ASSET_NAME = "asset_name",
+  L1_UTXO_CBOR = "l1_utxo_cbor",
   INCLUSION_TIME = "inclusion_time",
 }
 
 export type Entry = {
   [Columns.ID]: Buffer;
   [Columns.INFO]: Buffer;
+  [Columns.ASSET_NAME]: string;
+  [Columns.L1_UTXO_CBOR]: Buffer;
   [Columns.INCLUSION_TIME]: Date;
 };
 
@@ -28,6 +32,8 @@ export const createTable = (
         yield* sql`CREATE TABLE IF NOT EXISTS ${sql(tableName)} (
         ${sql(Columns.ID)} BYTEA NOT NULL,
         ${sql(Columns.INFO)} BYTEA NOT NULL,
+        ${sql(Columns.ASSET_NAME)} TEXT NOT NULL,
+        ${sql(Columns.L1_UTXO_CBOR)} BYTEA NOT NULL,
         ${sql(Columns.INCLUSION_TIME)} TIMESTAMPTZ NOT NULL,
         PRIMARY KEY (${sql(Columns.ID)})
       );`;
@@ -45,8 +51,10 @@ export const insertEntry = (
   Effect.gen(function* () {
     yield* Effect.logDebug(`${tableName} db: attempt to insert UTxO`);
     const sql = yield* SqlClient.SqlClient;
-    // No need to handle conflicts.
-    yield* sql`INSERT INTO ${sql(tableName)} ${sql.insert(entry)}`;
+    // The proirity goes to the oldest entry
+    yield* sql`INSERT INTO ${sql(tableName)} ${sql.insert(
+      entry,
+    )} ON CONFLICT DO NOTHING`;
   }).pipe(
     Effect.withLogSpan(`insertEntry ${tableName}`),
     Effect.tapErrorTag("SqlError", (e) =>
@@ -66,7 +74,9 @@ export const insertEntries = (
       yield* Effect.logDebug("No entries provided, skipping insertion.");
       return;
     }
-    yield* sql`INSERT INTO ${sql(tableName)} ${sql.insert(entries)}`;
+    yield* sql`INSERT INTO ${sql(tableName)} ${sql.insert(
+      entries,
+    )} ON CONFLICT DO NOTHING`;
   }).pipe(
     Effect.withLogSpan(`insertEntries ${tableName}`),
     Effect.tapErrorTag("SqlError", (e) =>
@@ -87,7 +97,7 @@ export const retrieveTimeBoundEntries = (
     const sql = yield* SqlClient.SqlClient;
     const result = yield* sql<Entry>`SELECT * FROM ${sql(
       tableName,
-    )} WHERE ${startTime} < ${sql(Columns.INCLUSION_TIME)} AND ${sql(Columns.INCLUSION_TIME)} <= ${endTime}`;
+    )} WHERE ${startTime} <= ${sql(Columns.INCLUSION_TIME)} AND ${sql(Columns.INCLUSION_TIME)} < ${endTime}`;
     return result;
   }).pipe(
     Effect.withLogSpan(`retrieveTimeBoundEntries ${tableName}`),

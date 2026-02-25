@@ -1,13 +1,5 @@
 import * as SDK from "@al-ft/midgard-sdk";
-import {
-  Assets,
-  Data,
-  LucidEvolution,
-  TxBuilder,
-  TxSignBuilder,
-  UTxO,
-  toUnit,
-} from "@lucid-evolution/lucid";
+import { Assets, Data, TxBuilder, toUnit } from "@lucid-evolution/lucid";
 import {
   AlwaysSucceedsContract,
   Database,
@@ -15,7 +7,7 @@ import {
   Lucid,
   NodeConfig,
 } from "@/services/index.js";
-import { Effect, Option, Ref, Schedule } from "effect";
+import { Effect, Ref } from "effect";
 import {
   TxConfirmError,
   handleSignSubmit,
@@ -36,212 +28,118 @@ import { deleteLedgerMpt, deleteMempoolMpt } from "@/workers/utils/mpt.js";
 import { DatabaseError } from "@/database/utils/common.js";
 import { FileSystemError } from "@/utils.js";
 
-const collectAndBurnUTxOsTx = (
-  lucid: LucidEvolution,
-  authValidator: SDK.AuthenticatedValidator,
-  assetUTxOs: {
-    utxo: UTxO;
-    assetName: string;
-  }[],
-) =>
-  Effect.gen(function* () {
-    const tx = lucid.newTx();
-    const assetsToBurn: Assets = {};
-    assetUTxOs.map(({ utxo, assetName }) => {
-      const unit = toUnit(authValidator.policyId, assetName);
-      if (assetsToBurn[unit] !== undefined) {
-        assetsToBurn[unit] -= 1n;
-      } else {
-        assetsToBurn[unit] = -1n;
-      }
-      tx.collectFrom([utxo], Data.void());
-    });
-    tx.mintAssets(assetsToBurn, Data.void())
-      .attach.Script(authValidator.spendingScript)
-      .attach.Script(authValidator.mintingScript);
-    return tx;
-  });
+const BATCH_SIZE = 200;
 
-type UTxOsQueue = {
-  authValidator: SDK.AuthenticatedValidator;
-  assetUTxOs: {
-    utxo: UTxO;
-    assetName: string;
-  }[];
+/**
+ * This function can only be used once per `AuthenticatedValidator` per tx.
+ */
+const spendAndBurnBeaconUTxOs = (
+  tx: TxBuilder,
+  authVal: SDK.AuthenticatedValidator,
+  utxos: SDK.BeaconUTxO[],
+): TxBuilder => {
+  const assetsToBurn: Assets = {};
+  utxos.map((u) => {
+    const assetUnit = toUnit(u.policyId, u.assetName);
+    if (assetsToBurn[assetUnit] !== undefined) {
+      assetsToBurn[assetUnit] -= 1n;
+    } else {
+      assetsToBurn[assetUnit] = -1n;
+    }
+    tx.collectFrom([u.utxo], Data.void());
+  });
+  tx.mintAssets(assetsToBurn, Data.void())
+    .attach.Script(authVal.spendingScript)
+    .attach.Script(authVal.mintingScript);
+  return tx;
 };
 
-const constructBatchTx = (
-  lucid: LucidEvolution,
-  utxosQueue: UTxOsQueue[],
-  batchSize: number,
-): Effect.Effect<
-  Option.Option<{ batchTx: TxBuilder; restQueue: UTxOsQueue[] }>
-> =>
-  Effect.gen(function* () {
-    if (batchSize === 0) {
-      return Option.none();
-    }
+type InternalAccumulator = {
+  tx: TxBuilder;
+  count: number;
+};
 
-    const validatorUTxOs = utxosQueue.pop();
-    if (validatorUTxOs === undefined) {
-      return Option.none();
-    }
-    if (validatorUTxOs.assetUTxOs.length <= 0) {
-      const skippedEmptyAssets = yield* constructBatchTx(
-        lucid,
-        utxosQueue,
-        batchSize,
-      );
-      return skippedEmptyAssets;
-    }
-
-    const partialBatch = validatorUTxOs.assetUTxOs.slice(0, batchSize);
-
-    const leftFromPartialBatch = validatorUTxOs.assetUTxOs.slice(batchSize);
-    if (leftFromPartialBatch.length > 0) {
-      // Put unconsumed utxos back
-      utxosQueue.push({
-        authValidator: validatorUTxOs.authValidator,
-        assetUTxOs: leftFromPartialBatch,
-      });
-    }
-
-    const partialBatchTx = yield* collectAndBurnUTxOsTx(
-      lucid,
-      validatorUTxOs.authValidator,
-      partialBatch,
-    );
-    const optRestBatchTx = yield* constructBatchTx(
-      lucid,
-      utxosQueue,
-      batchSize - partialBatch.length,
-    );
-
-    return Option.match(optRestBatchTx, {
-      onNone: () =>
-        Option.some({ batchTx: partialBatchTx, restQueue: utxosQueue }),
-      onSome: ({ batchTx, restQueue }) =>
-        Option.some({
-          batchTx: partialBatchTx.compose(batchTx),
-          restQueue,
-        }),
-    });
-  });
-
-const constructBatchTxs = (
-  lucid: LucidEvolution,
-  utxosQueue: UTxOsQueue[],
-  batchSize: number,
-): Effect.Effect<TxBuilder[]> =>
-  Effect.gen(function* () {
-    let accTransactions: TxBuilder[] = [];
-    let currUtxoQueue = utxosQueue;
-
-    while (currUtxoQueue.length > 0) {
-      const optBatchTx = yield* constructBatchTx(lucid, utxosQueue, batchSize);
-      const batchTx = Option.getOrElse(optBatchTx, () => ({
-        batchTx: lucid.newTx(),
-        restQueue: [],
-      }));
-
-      accTransactions.push(batchTx.batchTx);
-      currUtxoQueue = batchTx.restQueue;
-    }
-
-    return accTransactions;
-  });
-
-const completeResetTxProgram = (
-  lucid: LucidEvolution,
-  tx: TxBuilder,
-): Effect.Effect<void, SDK.LucidError | TxSignError | TxSubmitError> =>
-  Effect.gen(function* () {
-    const completed: TxSignBuilder = yield* tx.completeProgram().pipe(
-      Effect.mapError(
-        (e) =>
-          new SDK.LucidError({
-            message: "Failed to finalize the reset transaction",
-            cause: e,
-          }),
-      ),
-    );
-    const onSubmitFailure = (err: TxSubmitError) =>
-      Effect.gen(function* () {
-        yield* Effect.logError(`Submit tx error: ${err}`);
-        yield* Effect.fail(
-          new TxSubmitError({
-            message: "failed to submit a utxos reset tx",
-            cause: err,
-            txHash: completed.toHash(),
-          }),
-        );
-      });
-    const onConfirmFailure = (err: TxConfirmError) =>
-      Effect.logError(`Confirm tx error: ${err}`);
-    const txHash = yield* handleSignSubmit(lucid, completed).pipe(
-      Effect.catchTag("TxSubmitError", onSubmitFailure),
-      Effect.catchTag("TxConfirmError", onConfirmFailure),
-    );
-    return txHash;
-  });
-
-export const resetUTxOs: Effect.Effect<
+const spendAndBurntAllUTxOs: Effect.Effect<
   void,
-  SDK.LucidError | TxSubmitError | TxSignError,
-  AlwaysSucceedsContract | Lucid
+  SDK.LucidError | TxSignError | TxSubmitError | TxConfirmError,
+  Lucid | AlwaysSucceedsContract
 > = Effect.gen(function* () {
   const lucid = yield* Lucid;
-  const { stateQueue: stateQueueAuthValidator, deposit: depositAuthValidator } =
-    yield* AlwaysSucceedsContract;
-
-  yield* Effect.logInfo("🚧 Fetching UTxOs...");
-
-  yield* lucid.switchToOperatorsMainWallet;
-
-  const allStateQueueUTxOs = yield* SDK.fetchUnsortedStateQueueUTxOsProgram(
-    lucid.api,
-    {
-      stateQueuePolicyId: stateQueueAuthValidator.policyId,
-      stateQueueAddress: stateQueueAuthValidator.spendingScriptAddress,
-    },
-  );
-
-  const allDepositUTxOs = yield* SDK.fetchDepositUTxOsProgram(lucid.api, {
-    depositAddress: depositAuthValidator.spendingScriptAddress,
-    depositPolicyId: depositAuthValidator.policyId,
-  });
-
-  if (allStateQueueUTxOs.length <= 0 && allDepositUTxOs.length <= 0) {
-    yield* Effect.logInfo(`🚧 No UTxOs were found.`);
-  }
-
-  // The bottom UTxOs are handled first
-  const utxosQueue: UTxOsQueue[] = [
-    {
-      authValidator: depositAuthValidator,
-      assetUTxOs: allDepositUTxOs,
-    },
-    {
-      authValidator: stateQueueAuthValidator,
-      assetUTxOs: allStateQueueUTxOs,
-    },
+  const midgardValidators = yield* AlwaysSucceedsContract;
+  const allAuthVals = [
+    midgardValidators.deposit,
+    ...SDK.getInitializedValidatorsFromMidgardValidators(midgardValidators),
   ];
-
-  const batchSize = 40;
-  const batchTransactions = yield* constructBatchTxs(
-    lucid.api,
-    utxosQueue,
-    batchSize,
-  );
-  yield* Effect.forEach(batchTransactions, (tx, i) =>
+  const submitIfFull = (acc: InternalAccumulator) =>
     Effect.gen(function* () {
-      yield* Effect.logInfo(`🚧 UTxOs Batch ${i}`);
-      yield* completeResetTxProgram(lucid.api, tx);
-    }).pipe(Effect.tapError((e) => Effect.logError(e))),
+      // Reject transactions that are not filled.
+      if (acc.count < BATCH_SIZE) {
+        return acc;
+      }
+      const completedTx = yield* acc.tx.completeProgram();
+      yield* lucid.switchToOperatorsMainWallet;
+      yield* handleSignSubmit(lucid.api, completedTx);
+      const resetAcc: InternalAccumulator = {
+        tx: lucid.api.newTx(),
+        count: 0,
+      };
+      return resetAcc;
+    });
+
+  const initialAccumulator: InternalAccumulator = {
+    tx: lucid.api.newTx(),
+    count: 0,
+  };
+  const finalAcc = yield* Effect.reduce(
+    allAuthVals,
+    initialAccumulator,
+    (initialAcc, authVal) =>
+      Effect.gen(function* () {
+        const authValUTxOs = yield* SDK.utxosAtByNFTPolicyId(
+          lucid.api,
+          authVal.spendingScriptAddress,
+          authVal.policyId,
+        );
+        const { acc } = yield* Effect.iterate(
+          { acc: initialAcc, offset: 0 },
+          {
+            while: ({ offset }) => offset < authValUTxOs.length,
+            body: ({ acc, offset }) =>
+              Effect.gen(function* () {
+                const txAcc = yield* submitIfFull(acc);
+                const capacity = BATCH_SIZE - txAcc.count;
+                const utxosToSpend = authValUTxOs.slice(
+                  offset,
+                  offset + capacity,
+                );
+                // For this tx segment, apply this validator exactly once.
+                const nextAcc: InternalAccumulator = {
+                  tx: spendAndBurnBeaconUTxOs(txAcc.tx, authVal, utxosToSpend),
+                  count: txAcc.count + utxosToSpend.length,
+                };
+                return {
+                  acc: nextAcc,
+                  offset: offset + utxosToSpend.length,
+                };
+              }),
+          },
+        );
+        return acc;
+      }),
   );
 
-  yield* Effect.logInfo(`🚧 Done resetting UTxOs.`);
-});
+  if (finalAcc.count > 0) {
+    const completedLastTx = yield* finalAcc.tx.completeProgram();
+    yield* lucid.switchToOperatorsMainWallet;
+    yield* handleSignSubmit(lucid.api, completedLastTx);
+  }
+}).pipe(
+  Effect.mapError((e) =>
+    e._tag === "TxBuilderError" || e._tag === "RunTimeError"
+      ? new SDK.LucidError({ message: "", cause: e })
+      : e,
+  ),
+);
 
 export const resetDatabases: Effect.Effect<
   void,
@@ -268,6 +166,7 @@ export const program: Effect.Effect<
   | SDK.LucidError
   | TxSubmitError
   | TxSignError
+  | TxConfirmError
   | DatabaseError
   | FileSystemError,
   Lucid | NodeConfig | AlwaysSucceedsContract | Globals | Database
@@ -275,10 +174,7 @@ export const program: Effect.Effect<
   const globals = yield* Globals;
   yield* Ref.set(globals.RESET_IN_PROGRESS, true);
 
-  yield* Effect.all([
-    resetUTxOs.pipe(Effect.retry(Schedule.fixed("5000 millis"))),
-    resetDatabases,
-  ]);
+  yield* Effect.all([spendAndBurntAllUTxOs, resetDatabases]);
 
   yield* Effect.logInfo(`🚧 Resetting global variables...`);
   yield* Ref.set(globals.LATEST_SYNC_TIME_OF_STATE_QUEUE_LENGTH, Date.now());
@@ -286,5 +182,5 @@ export const program: Effect.Effect<
   yield* Ref.set(globals.AVAILABLE_CONFIRMED_BLOCK, "");
 
   yield* Ref.set(globals.RESET_IN_PROGRESS, false);
-  yield* Effect.logInfo(`🚧 Done resetting global variables...`);
+  yield* Effect.logInfo(`🚧 Reset completed.`);
 });

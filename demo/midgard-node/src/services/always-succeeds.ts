@@ -150,7 +150,7 @@ const makeAlwaysSucceedsService: Effect.Effect<SDK.MidgardValidators> =
       makeSpendingValidator("fraud_proofs", fp, NETWORK);
 
     // Midgard Contracts
-    const hubOracle = yield* makeMintingValidator("midgard", "hub_oracle");
+    const hubOracle = yield* mkAuthVal("hub_oracle");
     const scheduler = yield* mkAuthVal("scheduler");
     const stateQueue = yield* mkAuthVal("state_queue");
     const registeredOperators = yield* mkAuthVal("registered_operators");

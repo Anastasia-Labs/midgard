@@ -17,7 +17,7 @@ import {
   buildUserEventMintTransaction,
   UserEventExtraFields,
   UserEventMintRedeemer,
-} from "@/index.js";
+} from "./common.js";
 import {
   WithdrawalBody,
   WithdrawalEventSchema,

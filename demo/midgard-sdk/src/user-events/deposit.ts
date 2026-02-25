@@ -8,7 +8,6 @@ import {
   PolicyId,
   UTxO,
   Script,
-  fromText,
   TxSignBuilder,
   fromHex,
 } from "@lucid-evolution/lucid";
@@ -30,7 +29,7 @@ import {
   buildUserEventMintTransaction,
   UserEventExtraFields,
   UserEventMintRedeemer,
-} from "./index.js";
+} from "./common.js";
 
 export type DepositParams = {
   depositScriptAddress: string;
@@ -85,11 +84,12 @@ export const fetchDepositUTxOsProgram = (
   Effect.gen(function* () {
     const allUTxOs = yield* Effect.tryPromise({
       try: () => lucid.utxosAt(config.depositAddress),
-      catch: (err) =>
-        new LucidError({
-          message: "Failed to fetch deposit UTxOs",
-          cause: err,
-        }),
+      catch: (e) => {
+        return new LucidError({
+          message: `Failed to fetch deposit UTxOs at: ${config.depositAddress}`,
+          cause: e,
+        });
+      },
     });
     const depositUTxOs = yield* utxosToDepositUTxOs(
       allUTxOs,
@@ -154,7 +154,7 @@ export const incompleteDepositTxProgram = (
 
     // Convert non-hex strings to hex string, since the address type doesn't enforce that
     const depositInfo = {
-      l2Address: fromText(params.depositInfo.l2Address),
+      l2Address: params.depositInfo.l2Address,
       l2Datum: params.depositInfo.l2Datum,
     };
 

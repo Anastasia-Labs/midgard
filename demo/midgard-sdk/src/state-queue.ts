@@ -3,7 +3,6 @@ import {
   Assets,
   Data,
   LucidEvolution,
-  fromText,
   paymentCredentialOf,
   PolicyId,
   Script,
@@ -11,7 +10,6 @@ import {
   TxBuilder,
   TxSignBuilder,
   UTxO,
-  OutputDatum,
 } from "@lucid-evolution/lucid";
 import { ActiveOperatorUpdateCommitmentTimeParams } from "@/active-operators.js";
 import { Data as EffectData, Effect } from "effect";
@@ -352,6 +350,8 @@ export const updateLatestBlocksDatumAndGetTheNewHeaderProgram = (
         prevUtxosRoot: latestHeader.utxosRoot,
         utxosRoot: newUTxOsRoot,
         transactionsRoot,
+        depositsRoot,
+        withdrawalsRoot,
         startTime: latestHeader.endTime,
         endTime,
         prevHeaderHash,
@@ -520,34 +520,30 @@ export const unsignedCommitBlockHeaderTx = (
     ),
   ).unsafeRun();
 
-export const fetchSortedStateQueueUTxOsProgram = (
-  lucid: LucidEvolution,
-  config: StateQueueFetchConfig,
-): Effect.Effect<StateQueueUTxO[], LucidError | LinkedListError> =>
-  Effect.gen(function* () {
-    const allUTxOs = yield* utxosAtByNFTPolicyId(
-      lucid,
-      config.stateQueueAddress,
-      config.stateQueuePolicyId,
-    );
-    const unsorted = yield* utxosToStateQueueUTxOs(
-      allUTxOs,
-      config.stateQueuePolicyId,
-    );
-    return yield* sortStateQueueUTxOs(unsorted);
-  });
-
 export const fetchUnsortedStateQueueUTxOsProgram = (
   lucid: LucidEvolution,
   config: StateQueueFetchConfig,
 ): Effect.Effect<StateQueueUTxO[], LucidError> =>
   Effect.gen(function* () {
-    const allUTxOs = yield* utxosAtByNFTPolicyId(
-      lucid,
-      config.stateQueueAddress,
-      config.stateQueuePolicyId,
-    );
+    const allUTxOs = yield* Effect.tryPromise({
+      try: () => lucid.utxosAt(config.stateQueueAddress),
+      catch: (e) => {
+        return new LucidError({
+          message: `Failed to fetch state queue UTxOs at: ${config.stateQueueAddress}`,
+          cause: e,
+        });
+      },
+    });
     return yield* utxosToStateQueueUTxOs(allUTxOs, config.stateQueuePolicyId);
+  });
+
+export const fetchSortedStateQueueUTxOsProgram = (
+  lucid: LucidEvolution,
+  config: StateQueueFetchConfig,
+): Effect.Effect<StateQueueUTxO[], LucidError | LinkedListError> =>
+  Effect.gen(function* () {
+    const unsorted = yield* fetchUnsortedStateQueueUTxOsProgram(lucid, config);
+    return yield* sortStateQueueUTxOs(unsorted);
   });
 
 /**
@@ -575,15 +571,7 @@ export const fetchConfirmedStateAndItsLinkProgram = (
   StateQueueError | LucidError | LinkedListError
 > =>
   Effect.gen(function* () {
-    const initUTxOs = yield* utxosAtByNFTPolicyId(
-      lucid,
-      config.stateQueueAddress,
-      config.stateQueuePolicyId,
-    );
-    const allUTxOs = yield* utxosToStateQueueUTxOs(
-      initUTxOs,
-      config.stateQueuePolicyId,
-    );
+    const allUTxOs = yield* fetchUnsortedStateQueueUTxOsProgram(lucid, config);
     const filteredForConfirmedState = yield* Effect.allSuccesses(
       allUTxOs.map((u) =>
         Effect.gen(function* () {
@@ -645,7 +633,7 @@ export const fetchLatestCommittedBlockProgram = (
     );
     yield* Effect.logInfo("allBlocks", allBlocks.length);
     const filtered: StateQueueUTxO[] = yield* Effect.allSuccesses(
-      allBlocks.map((u: UTxO) => {
+      allBlocks.map(({ utxo: u }) => {
         const stateQueueUTxOEffect = utxoToStateQueueUTxO(
           u,
           config.stateQueuePolicyId,
