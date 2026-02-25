@@ -169,10 +169,10 @@ const isEventUTxOInclusionTimeInBounds = (
 
   const biggerThanLower =
     inclusionTimeLowerBound === undefined ||
-    inclusionTimeLowerBound < eventDatum.inclusionTime;
+    inclusionTimeLowerBound <= eventDatum.inclusionTime;
   const smallerThanUpper =
     inclusionTimeUpperBound === undefined ||
-    eventDatum.inclusionTime <= inclusionTimeUpperBound;
+    eventDatum.inclusionTime < inclusionTimeUpperBound;
 
   return biggerThanLower && smallerThanUpper;
 };

@@ -350,6 +350,8 @@ export const updateLatestBlocksDatumAndGetTheNewHeaderProgram = (
         prevUtxosRoot: latestHeader.utxosRoot,
         utxosRoot: newUTxOsRoot,
         transactionsRoot,
+        depositsRoot,
+        withdrawalsRoot,
         startTime: latestHeader.endTime,
         endTime,
         prevHeaderHash,
