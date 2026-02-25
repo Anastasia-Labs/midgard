@@ -502,8 +502,7 @@ const databaseOperationsProgram = (
           utxo: CML.TransactionUnspentOutput;
           inclusionTime: Date;
         }[] = [];
-        let depositEventEntries: UserEventsUtils.Entry[] = [];
-        Option.isSome(optUserEventsProgram)
+        const depositEventEntries = Option.isSome(optUserEventsProgram)
           ? optUserEventsProgram.value.retreivedEvents
           : [];
         if (Option.isSome(optUserEventsProgram)) {

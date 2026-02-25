@@ -37,7 +37,7 @@ export const fetchAndInsertDepositUTxOs: Effect.Effect<
   const startTime: number = yield* Ref.get(globals.LATEST_DEPOSIT_FETCH_TIME);
   const endTime: number = Date.now();
 
-  yield* Effect.logDebug("🏦 fetching DepositUTxOs...");
+  yield* Effect.logDebug("🏦 Fetching DepositUTxOs...");
 
   const depositUTxOs: SDK.DepositUTxO[] = yield* fetchDepositUTxOs(
     lucid,

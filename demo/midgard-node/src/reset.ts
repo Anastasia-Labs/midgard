@@ -28,7 +28,7 @@ import { deleteLedgerMpt, deleteMempoolMpt } from "@/workers/utils/mpt.js";
 import { DatabaseError } from "@/database/utils/common.js";
 import { FileSystemError } from "@/utils.js";
 
-const BATCH_SIZE = 160;
+const BATCH_SIZE = 200;
 
 /**
  * This function can only be used once per `AuthenticatedValidator` per tx.
