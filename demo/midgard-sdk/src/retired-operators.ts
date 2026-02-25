@@ -75,58 +75,21 @@ export type RetiredOperatorRetireParams = {};
 export type RetiredOperatorRemoveOperatorParams = {};
 export type RetiredOperatorRecoverSlashBondParams = {};
 
-export type RetiredOperatorUTxO = AuthenticUTxO<
-  RetiredOperatorDatum,
-  { status: "RetiredOperator" }
->;
+export type RetiredOperatorUTxO = AuthenticUTxO<RetiredOperatorDatum>;
 
 export type FetchRetiredOperatorParams = {
-  retiredOperatorsAddress: string;
+  retiredOperatorAddress: string;
   operator: string;
-  retiredOperatorsPolicyId: string;
+  retiredOperatorPolicyId: string;
 };
 
-export const utxosToRetiredOperatorUTxOs = (
-  lucid: LucidEvolution,
-  retiredOperatorsAddress: string,
-  retiredOperatorsPolicyId: string,
-): Effect.Effect<RetiredOperatorUTxO[], LucidError> =>
-  Effect.gen(function* () {
-    const retiredOperatorAllUtxos: UTxO[] = yield* Effect.tryPromise({
-      try: () => lucid.utxosAt(retiredOperatorsAddress),
-      catch: (err) =>
-        new LucidError({
-          message: "Failed to fetch Retired Operators UTxOs",
-          cause: err,
-        }),
-    });
-    if (retiredOperatorAllUtxos.length === 0) {
-      return yield* Effect.fail(
-        new LucidError({
-          message: "Failed to build the Retired Operators transaction",
-          cause: "No UTxOs found in Retired Operators Contract address",
-        }),
-      );
-    }
-    const retiredOperatorUTxOs: RetiredOperatorUTxO[] =
-      yield* utxosToAuthenticUTxOs<
-        RetiredOperatorDatum,
-        { status: "RetiredOperator" }
-      >(
-        retiredOperatorAllUtxos,
-        retiredOperatorsPolicyId,
-        RetiredOperatorDatum,
-      );
-    return retiredOperatorUTxOs;
-  });
-
-export const getRetiredOperatorUTxOs = (
+export const fetchRetiredOperatorUTxOs = (
   params: FetchRetiredOperatorParams,
   lucid: LucidEvolution,
 ): Effect.Effect<RetiredOperatorUTxO[], LucidError> =>
   Effect.gen(function* () {
     const allUtxos: UTxO[] = yield* Effect.tryPromise({
-      try: () => lucid.utxosAt(params.retiredOperatorsAddress),
+      try: () => lucid.utxosAt(params.retiredOperatorAddress),
       catch: (err) =>
         new LucidError({
           message: "Failed to fetch Retired Operators UTxOs",
@@ -139,12 +102,13 @@ export const getRetiredOperatorUTxOs = (
         cause: "No UTxOs found in Retired Operators Contract address",
       });
     }
-    const retiredOperatorsUTxOs: RetiredOperatorUTxO[] =
-      yield* utxosToAuthenticUTxOs<
+    const retiredOperatorUTxOs: RetiredOperatorUTxO[] =
+      yield* utxosToAuthenticUTxOs<RetiredOperatorDatum>(
+        allUtxos,
+        params.retiredOperatorPolicyId,
         RetiredOperatorDatum,
-        { status: "RetiredOperator" }
-      >(allUtxos, params.retiredOperatorsPolicyId, RetiredOperatorDatum);
-    return retiredOperatorsUTxOs;
+      );
+    return retiredOperatorUTxOs;
   });
 
 /**

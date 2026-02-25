@@ -495,23 +495,27 @@ export const findOperatorByPKH = (
   activeOperators: ActiveOperatorUTxO[],
   retiredOperators: RetiredOperatorUTxO[],
   operatorPKH: string,
-): Effect.Effect<ActiveOperatorUTxO | RetiredOperatorUTxO, LucidError> => {
+): Effect.Effect<
+  | (ActiveOperatorUTxO & { isActive: true })
+  | (RetiredOperatorUTxO & { isActive: false }),
+  LucidError
+> => {
   const activeOperatorMatch = EffectArray.findFirst(
     activeOperators,
-    (op) => op.datum.key === operatorPKH,
+    (utxo) => utxo.datum.key === operatorPKH,
   );
 
   if (Option.isSome(activeOperatorMatch)) {
-    return Effect.succeed(activeOperatorMatch.value);
+    return Effect.succeed({ ...activeOperatorMatch.value, isActive: true });
   }
 
   const retiredOperatorMatch = EffectArray.findFirst(
     retiredOperators,
-    (op) => op.datum.key === operatorPKH,
+    (utxo) => utxo.datum.key === operatorPKH,
   );
 
   if (Option.isSome(retiredOperatorMatch)) {
-    return Effect.succeed(retiredOperatorMatch.value);
+    return Effect.succeed({ ...retiredOperatorMatch.value, isActive: false });
   }
 
   return Effect.fail(

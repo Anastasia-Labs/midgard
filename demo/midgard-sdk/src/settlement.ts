@@ -22,6 +22,7 @@ import {
   ProofSchema,
   VerificationKeyHashSchema,
   findOperatorByPKH,
+  UnspecifiedNetworkError,
 } from "@/common.js";
 import { Data as EffectData, Effect } from "effect";
 import { fetchHubOracleUTxOProgram, HubOracleError } from "@/hub-oracle.js";
@@ -52,14 +53,15 @@ import {
   ActiveOperatorSpendRedeemer,
   ActiveOperatorUTxO,
   FetchActiveOperatorParams,
-  getActiveOperatorUTxOs,
+  fetchActiveOperatorUTxOs,
 } from "@/active-operators.js";
 import {
   RetiredOperatorMintRedeemer,
   RetiredOperatorUTxO,
   FetchRetiredOperatorParams,
-  getRetiredOperatorUTxOs,
+  fetchRetiredOperatorUTxOs,
 } from "@/retired-operators.js";
+import { isActive } from "effect/RuntimeFlagsPatch";
 
 export const ResolutionClaimSchema = Data.Object({
   resolutionTime: POSIXTimeSchema,
@@ -170,6 +172,7 @@ export type AttachResolutionClaimParams = {
   hubOracleValidator: AuthenticatedValidator;
   schedulerValidator: AuthenticatedValidator;
   settlementUTxO: SettlementUTxO;
+  updateBondHoldNewSettlementParams: UpdateBondHoldNewSettlementParams;
 };
 
 export type SettlementUTxO = AuthenticUTxO<SettlementDatum>;
@@ -291,21 +294,22 @@ export const incompleteUpdateBondHoldNewSettlementTxProgram = (
       ActiveOperatorSpendRedeemer,
     );
 
-    const activeOperatorsUTxOs = yield* getActiveOperatorUTxOs(
+    const activeOperatorsUTxOs = yield* fetchActiveOperatorUTxOs(
       params.activeOperatorParams,
       lucid,
     );
 
-    const activeOperatorsInputUtxo =
-      activeOperatorsUTxOs.find(
-        (utxo) => utxo.datum.key === params.activeOperatorParams.operator,
-      ) ??
-      (() => {
-        throw new LucidError({
+    const activeOperatorsInputUtxo = activeOperatorsUTxOs.find(
+      (utxo) => utxo.datum.key === params.activeOperatorParams.operator,
+    );
+    if (!activeOperatorsInputUtxo) {
+      return yield* Effect.fail(
+        new LucidError({
           message: "No Active Operator UTxO with given operator found",
           cause: "Active Operators Tx not initiated",
-        });
-      })();
+        }),
+      );
+    }
 
     const updatedDatum: ActiveOperatorDatum = {
       ...activeOperatorsInputUtxo.datum,
@@ -331,7 +335,7 @@ export const incompleteUpdateBondHoldNewSettlementTxProgram = (
       .readFrom([hubOracleRefUTxO.utxo])
       .readFrom([schedulerRefUTxO.utxo])
       .pay.ToAddressWithData(
-        params.activeOperatorParams.activeOperatorsAddress,
+        params.activeOperatorParams.activeOperatorAddress,
         {
           kind: "inline",
           value: updatedDatumCBOR,
@@ -352,8 +356,7 @@ export const incompleteUpdateBondHoldNewSettlementTxProgram = (
 
 export const unsignedAttachResolutionClaimTxProgram = (
   lucid: LucidEvolution,
-  attachResolutionParams: AttachResolutionClaimParams,
-  params: UpdateBondHoldNewSettlementParams,
+  params: AttachResolutionClaimParams,
 ): Effect.Effect<
   TxSignBuilder,
   | HashingError
@@ -366,12 +369,12 @@ export const unsignedAttachResolutionClaimTxProgram = (
 > =>
   Effect.gen(function* () {
     const attachResolutionClaimTx =
-      yield* incompleteAttachResolutionClaimTxProgram(
-        lucid,
-        attachResolutionParams,
-      );
+      yield* incompleteAttachResolutionClaimTxProgram(lucid, params);
     const updateBondHoldNewSettlementTx =
-      yield* incompleteUpdateBondHoldNewSettlementTxProgram(lucid, params);
+      yield* incompleteUpdateBondHoldNewSettlementTxProgram(
+        lucid,
+        params.updateBondHoldNewSettlementParams,
+      );
     const composedTx = attachResolutionClaimTx.compose(
       updateBondHoldNewSettlementTx,
     );
@@ -397,16 +400,9 @@ export const unsignedAttachResolutionClaimTxProgram = (
  */
 export const unsignedAttachResolutionClaimTx = (
   lucid: LucidEvolution,
-  attachResolutionParams: AttachResolutionClaimParams,
-  updateBondHoldNewSettlementParams: UpdateBondHoldNewSettlementParams,
+  params: AttachResolutionClaimParams,
 ): Promise<TxSignBuilder> =>
-  makeReturn(
-    unsignedAttachResolutionClaimTxProgram(
-      lucid,
-      attachResolutionParams,
-      updateBondHoldNewSettlementParams,
-    ),
-  ).unsafeRun();
+  makeReturn(unsignedAttachResolutionClaimTxProgram(lucid, params)).unsafeRun();
 
 /*Disprove Resolution Claim */
 export type DisproveResolutionClaimParams = {
@@ -423,6 +419,7 @@ export type DisproveResolutionClaimParams = {
   eventAddress: string;
   eventPolicyId: string;
   settlementUTxO: SettlementUTxO;
+  removeOperatorBadSettlementParams: RemoveOperatorBadSettlementParams;
 };
 
 export const fetchUserEventRefUTxO = (
@@ -532,8 +529,15 @@ export const incompleteDisproveResolutionClaimTxProgram = (
     );
     const bufferTime = Date.now() + 2 * 60_000;
     if (resolutionTime < bufferTime) {
-      throw new Error("Cannot disprove before resolution time");
+      return yield* Effect.fail(
+        new LucidError({
+          message: "Cannot disprove resolution before resolution time",
+          cause:
+            "Resolution time is earlier than the transaction's upper bound",
+        }),
+      );
     }
+
     const txUpperBound = resolutionTime - 1 * 60_000;
 
     const buildsettlementTx = lucid
@@ -572,10 +576,12 @@ export type RemoveOperatorBadSettlementParams = {
 };
 
 export const createSlashedOperatorMintRedeemerCBOR = (
-  operatorInputUTxO: ActiveOperatorUTxO | RetiredOperatorUTxO,
+  operatorInputUTxO:
+    | (ActiveOperatorUTxO & { isActive: true })
+    | (RetiredOperatorUTxO & { isActive: false }),
   slashedOperatorKey: string,
 ): Effect.Effect<string, LucidError> => {
-  if (operatorInputUTxO.extra?.status === "ActiveOperator") {
+  if (operatorInputUTxO.isActive === true) {
     const mintRedeemer: ActiveOperatorMintRedeemer = {
       RemoveOperatorBadSettlement: {
         slashedActiveOperatorKey: slashedOperatorKey,
@@ -588,7 +594,7 @@ export const createSlashedOperatorMintRedeemerCBOR = (
     };
     const mintRedeemerCBOR = Data.to(mintRedeemer, ActiveOperatorMintRedeemer);
     return Effect.succeed(mintRedeemerCBOR);
-  } else if (operatorInputUTxO.extra?.status === "RetiredOperator") {
+  } else if (operatorInputUTxO.isActive === false) {
     const mintRedeemer: RetiredOperatorMintRedeemer = {
       RemoveOperatorBadSettlement: {
         slashedRetiredOperatorKey: slashedOperatorKey,
@@ -604,7 +610,7 @@ export const createSlashedOperatorMintRedeemerCBOR = (
   } else {
     return Effect.fail(
       new LucidError({
-        message: `Invalid operator status: ${operatorInputUTxO.extra}`,
+        message: `Invalid operator status`,
         cause: "Expected 'ActiveOperator' or 'RetiredOperator'",
       }),
     );
@@ -612,22 +618,24 @@ export const createSlashedOperatorMintRedeemerCBOR = (
 };
 
 export const getOperatorNFT = (
-  operatorInputUTxO: ActiveOperatorUTxO | RetiredOperatorUTxO,
+  operatorInputUTxO:
+    | (ActiveOperatorUTxO & { isActive: true })
+    | (RetiredOperatorUTxO & { isActive: false }),
   activeOperatorPolicyId: string,
   retiredOperatorPolicyId: string,
 ): Effect.Effect<string, LucidError> => {
-  if (operatorInputUTxO.extra?.status === "ActiveOperator") {
+  if (operatorInputUTxO.isActive === true) {
     return Effect.succeed(
       toUnit(activeOperatorPolicyId, operatorInputUTxO.assetName),
     );
-  } else if (operatorInputUTxO.extra?.status === "RetiredOperator") {
+  } else if (operatorInputUTxO.isActive === false) {
     return Effect.succeed(
       toUnit(retiredOperatorPolicyId, operatorInputUTxO.assetName),
     );
   } else
     return Effect.fail(
       new LucidError({
-        message: `Invalid operator status: ${operatorInputUTxO.extra}`,
+        message: `Invalid operator status`,
         cause: "Expected 'ActiveOperator' or 'RetiredOperator'",
       }),
     );
@@ -638,14 +646,18 @@ export const incompleteRemoveOperatorBadSettlementTxProgram = (
   params: RemoveOperatorBadSettlementParams,
 ): Effect.Effect<
   TxBuilder,
-  HashingError | DataCoercionError | LucidError | HubOracleError
+  | HashingError
+  | DataCoercionError
+  | LucidError
+  | HubOracleError
+  | UnspecifiedNetworkError
 > =>
   Effect.gen(function* () {
     const activeOperatorUTxOs: ActiveOperatorUTxO[] =
-      yield* getActiveOperatorUTxOs(params.activeOperatorParams, lucid);
+      yield* fetchActiveOperatorUTxOs(params.activeOperatorParams, lucid);
 
     const retiredOperatorUTxOs: RetiredOperatorUTxO[] =
-      yield* getRetiredOperatorUTxOs(params.retiredOperatorParams, lucid);
+      yield* fetchRetiredOperatorUTxOs(params.retiredOperatorParams, lucid);
 
     const operatorInputUTxO = yield* findOperatorByPKH(
       activeOperatorUTxOs,
@@ -661,8 +673,8 @@ export const incompleteRemoveOperatorBadSettlementTxProgram = (
 
     const operatorNFT = yield* getOperatorNFT(
       operatorInputUTxO,
-      params.activeOperatorParams.activeOperatorsPolicyId,
-      params.retiredOperatorParams.retiredOperatorsPolicyId,
+      params.activeOperatorParams.activeOperatorPolicyId,
+      params.retiredOperatorParams.retiredOperatorPolicyId,
     );
 
     const hubOracleRefUTxO = yield* fetchHubOracleUTxOProgram(lucid, {
@@ -670,7 +682,14 @@ export const incompleteRemoveOperatorBadSettlementTxProgram = (
       hubOraclePolicyId: params.hubOracleValidator.policyId,
     });
 
-    const network = lucid.config().network ?? "Mainnet";
+    const network = lucid.config().network;
+    if (!network) {
+      return yield* new UnspecifiedNetworkError({
+        message: "",
+        cause: "Cardano network not found",
+      });
+    }
+
     const slashingPenalty = getProtocolParameters(network).slashing_penalty;
 
     const userEventRefUTxO = yield* fetchUserEventRefUTxO(
@@ -712,8 +731,7 @@ export const incompleteRemoveOperatorBadSettlementTxProgram = (
 
 export const unsignedDisproveResolutionClaimTxProgram = (
   lucid: LucidEvolution,
-  disproveResolutionClaimParams: DisproveResolutionClaimParams,
-  removeOperatorBadSettlementParams: RemoveOperatorBadSettlementParams,
+  params: DisproveResolutionClaimParams,
 ): Effect.Effect<
   TxSignBuilder,
   | HashingError
@@ -721,17 +739,15 @@ export const unsignedDisproveResolutionClaimTxProgram = (
   | LucidError
   | SettlementError
   | HubOracleError
+  | UnspecifiedNetworkError
 > =>
   Effect.gen(function* () {
     const disproveResolutionClaimTx =
-      yield* incompleteDisproveResolutionClaimTxProgram(
-        lucid,
-        disproveResolutionClaimParams,
-      );
+      yield* incompleteDisproveResolutionClaimTxProgram(lucid, params);
     const removeOperatorBadSettlementTx =
       yield* incompleteRemoveOperatorBadSettlementTxProgram(
         lucid,
-        removeOperatorBadSettlementParams,
+        params.removeOperatorBadSettlementParams,
       );
     const composedTx = disproveResolutionClaimTx.compose(
       removeOperatorBadSettlementTx,
@@ -758,15 +774,10 @@ export const unsignedDisproveResolutionClaimTxProgram = (
  */
 export const unsignedDisproveResolutionClaimTx = (
   lucid: LucidEvolution,
-  disproveResolutionClaimParams: DisproveResolutionClaimParams,
-  removeOperatorBadSettlementParams: RemoveOperatorBadSettlementParams,
+  params: DisproveResolutionClaimParams,
 ): Promise<TxSignBuilder> =>
   makeReturn(
-    unsignedDisproveResolutionClaimTxProgram(
-      lucid,
-      disproveResolutionClaimParams,
-      removeOperatorBadSettlementParams,
-    ),
+    unsignedDisproveResolutionClaimTxProgram(lucid, params),
   ).unsafeRun();
 
 export class SettlementError extends EffectData.TaggedError(
