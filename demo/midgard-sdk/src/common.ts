@@ -657,6 +657,55 @@ export const authenticateUTxOs: {
   return Effect.allSuccesses(effects);
 };
 
+export type FetchSingleAuthenticUTxOConfig<
+  TAuthenticUTxO,
+  TConversionError,
+  TError,
+> = {
+  address: Address;
+  policyId: PolicyId;
+  utxoLabel: string;
+  conversionFunction: (
+    utxos: UTxO[],
+    nftPolicy: PolicyId,
+  ) => Effect.Effect<TAuthenticUTxO[], TConversionError>;
+  onUnexpectedAuthenticUTxOCount: () => TError;
+};
+
+export const fetchSingleAuthenticUTxOProgram = <
+  TAuthenticUTxO,
+  TConversionError,
+  TError,
+>(
+  lucid: LucidEvolution,
+  config: FetchSingleAuthenticUTxOConfig<
+    TAuthenticUTxO,
+    TConversionError,
+    TError
+  >,
+): Effect.Effect<TAuthenticUTxO, LucidError | TConversionError | TError> =>
+  Effect.gen(function* () {
+    const allUTxOs = yield* Effect.tryPromise({
+      try: () => lucid.utxosAt(config.address),
+      catch: (e) =>
+        new LucidError({
+          message: `Failed to fetch the ${config.utxoLabel} UTxO at: ${config.address}`,
+          cause: e,
+        }),
+    });
+
+    const authenticUTxOs = yield* config.conversionFunction(
+      allUTxOs,
+      config.policyId,
+    );
+
+    if (authenticUTxOs.length === 1) {
+      return authenticUTxOs[0];
+    }
+
+    return yield* Effect.fail(config.onUnexpectedAuthenticUTxOCount());
+  });
+
 /**
  * TODO: Move to the `operatorDirectory` module after refactoring.`
  */

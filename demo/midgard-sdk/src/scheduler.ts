@@ -12,6 +12,7 @@ import {
   AuthenticatedValidator,
   authenticateUTxOs,
   AuthenticUTxO,
+  fetchSingleAuthenticUTxOProgram,
   GenericErrorFields,
   LucidError,
   POSIXTimeSchema,
@@ -88,34 +89,22 @@ export class SchedulerError extends EffectData.TaggedError(
 export const fetchSchedulerUTxOProgram = (
   lucid: LucidEvolution,
   config: SchedulerConfig,
-): Effect.Effect<
-  SchedulerUTxO,
-  SchedulerError | LucidError
-> =>
-  Effect.gen(function* () {
-    const errorMessage = "Failed to fetch the scheduler UTxO";
-    const allUTxOs = yield* Effect.tryPromise({
-      try: () => lucid.utxosAt(config.schedulerAddress),
-      catch: (e) => {
-        return new LucidError({
-          message: `Failed to fetch the scheduler UTxO at: ${config.schedulerAddress}`,
-          cause: e,
-        });
-      },
-    });
-    const schedulerUTxOs = yield* utxosToSchedulerUTxOs(allUTxOs, config.schedulerPolicyId);
-    if (schedulerUTxOs.length === 1) {
-      return schedulerUTxOs[0];
-    } else {
-      return yield* Effect.fail(
+): Effect.Effect<SchedulerUTxO, SchedulerError | LucidError> =>
+  fetchSingleAuthenticUTxOProgram<SchedulerUTxO, LucidError, SchedulerError>(
+    lucid,
+    {
+      address: config.schedulerAddress,
+      policyId: config.schedulerPolicyId,
+      utxoLabel: "scheduler",
+      conversionFunction: utxosToSchedulerUTxOs,
+      onUnexpectedAuthenticUTxOCount: () =>
         new SchedulerError({
-          message: errorMessage,
+          message: "Failed to fetch the scheduler UTxO",
           cause:
             "Exactly one scheduler UTxO was expected, but none or more were found",
         }),
-      );
-    }
-  });
+    },
+  );
 
 /**
  * Init
