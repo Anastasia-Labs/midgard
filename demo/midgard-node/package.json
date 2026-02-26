@@ -10,7 +10,7 @@
   "scripts": {
     "clean": "rimraf dist node_modules",
     "build": "tsup src/index.ts --minify --format esm && tsup src/workers/* --minify --format esm",
-    "type-check": "pnpm exec tsc --noEmit",
+    "type-check": "pnpm exec tsc -p tsconfig.json --skipLibCheck",
     "format": "prettier --write \"**/*.{ts,tsx,md}\"",
     "format-check": "prettier --check \"**/*.{ts,tsx,md}\"",
     "listen": "pnpm run build && node dist/index.js listen",

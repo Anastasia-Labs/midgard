@@ -8,19 +8,9 @@ import {
 } from "@/services/index.js";
 import { Columns as LedgerColumns } from "@/database/utils/ledger.js";
 import * as MempoolLedgerDB from "@/database/mempoolLedger.js";
-import {
-  CML,
-  TxSubmitError,
-  UTxO,
-  utxoToCore,
-} from "@lucid-evolution/lucid";
+import { CML, TxBuilder, UTxO, utxoToCore } from "@lucid-evolution/lucid";
 import { DatabaseError } from "@/database/utils/common.js";
-import {
-  handleSignSubmit,
-  handleSignSubmitNoConfirmation,
-  TxConfirmError,
-  TxSignError,
-} from "@/transactions/utils.js";
+import { handleSignSubmit } from "@/transactions/utils.js";
 
 const insertGenesisUtxos: Effect.Effect<
   void,
@@ -61,36 +51,66 @@ ${Array.from(new Set(config.GENESIS_UTXOS.map((u) => u.address))).join("\n")}`,
   Effect.andThen(Effect.succeed(Effect.void)),
 );
 
-const submitGenesisTxOrders = Effect.gen(function* () {
-  yield* Effect.logInfo(`🟣 Building genesis tx order tx...`);
-
+const genesisTxOrderTx = Effect.gen(function* () {
   const { txOrder } = yield* AlwaysSucceedsContract;
   const config = yield* NodeConfig;
   const lucid = yield* Lucid;
 
-  if (config.GENESIS_UTXOS.length <= 0) {
-    yield* Effect.logInfo(
-      `🟣 Skipping genesis tx order - no GENESIS_UTXOS configured`,
+  const l2UTxO = config.GENESIS_UTXOS[0];
+  if (!l2UTxO) {
+    return yield* Effect.fail(
+      new SDK.LucidError({
+        message: "Failed to build genesis tx order transaction",
+        cause: "No GENESIS_UTXOS configured",
+      }),
     );
-    return;
   }
   yield* lucid.switchToOperatorsMainWallet;
 
-  const l2UTxO = config.GENESIS_UTXOS[0];
   const l2Address = l2UTxO.address;
-  const l2AddressData = yield* SDK.midgardAddressFromBech32(l2Address);
 
   yield* lucid.switchToOperatorsMainWallet;
   const operatorWalletAddress = yield* Effect.tryPromise({
     try: lucid.api.wallet().address,
-    catch: (e) => new SDK.LucidError({
-      message: "Failed to build genesis tx order transaction, no refund address was deducible",
-      cause: e,
-    }),
+    catch: (e) =>
+      new SDK.LucidError({
+        message:
+          "Failed to build genesis tx order transaction, no refund address was deducible",
+        cause: e,
+      }),
   });
 
-  // TODO
-  const l2Tx = CML.Transaction.new()
+  const l2CoreUtxO = utxoToCore(l2UTxO);
+  const l2Fee = 100n;
+  const l2InputLovelace = l2CoreUtxO.output().amount().coin();
+  const l2OutputLovelace = l2InputLovelace - l2Fee;
+
+  if (l2OutputLovelace < 0n) {
+    return yield* Effect.fail(
+      new SDK.LucidError({
+        message: "Failed to build genesis tx order transaction",
+        cause:
+          "The first GENESIS_UTXOS entry doesn't have enough ADA to cover the L2 fee",
+      }),
+    );
+  }
+
+  const inputs = CML.TransactionInputList.new();
+  inputs.add(l2CoreUtxO.input());
+
+  const outputs = CML.TransactionOutputList.new();
+  if (l2OutputLovelace !== 0n) {
+    outputs.add(
+      CML.TransactionOutput.new(
+        CML.Address.from_bech32(l2Address),
+        CML.Value.from_coin(l2OutputLovelace),
+      ),
+    );
+  }
+
+  const txBody = CML.TransactionBody.new(inputs, outputs, l2Fee);
+  const witnessSet = CML.TransactionWitnessSet.new();
+  const l2Tx = CML.Transaction.new(txBody, witnessSet, true);
 
   const txOrderParams = {
     txOrderScriptAddress: txOrder.spendingScriptAddress,
@@ -100,42 +120,36 @@ const submitGenesisTxOrders = Effect.gen(function* () {
     refundAddress: yield* SDK.addressDataFromBech32(operatorWalletAddress),
   };
 
-  const signedTx = yield* SDK.unsignedTxOrderTxProgram(
+  const txBuilder = yield* SDK.incompleteTxOrderTxProgram(
     lucid.api,
     txOrderParams,
   );
-  yield* Effect.logInfo(`🟣 Submitting genesis tx order to L1...`);
-  yield* handleSignSubmit(lucid.api, signedTx);
-  yield* Effect.logInfo(
-    `🟣 Genesis tx order submitted successfully! Waiting for L1 confirmation...`,
-  );
+  return txBuilder;
 });
 
-const submitGenesisDeposits: Effect.Effect<
-  void,
+const genesisDepositTx: Effect.Effect<
+  TxBuilder,
   | SDK.Bech32DeserializationError
-  | SDK.DepositError
   | SDK.HashingError
   | SDK.LucidError
-  | SDK.UnspecifiedNetworkError
-  | TxSubmitError
-  | TxSignError
-  | TxConfirmError,
+  | SDK.UnspecifiedNetworkError,
   AlwaysSucceedsContract | Lucid | NodeConfig
 > = Effect.gen(function* () {
-  yield* Effect.logInfo(`🟣 Building genesis deposit tx...`);
-
   const { deposit: depositAuthValidator } = yield* AlwaysSucceedsContract;
   const config = yield* NodeConfig;
   const lucid = yield* Lucid;
 
-  if (config.GENESIS_UTXOS.length <= 0) {
-    return;
+  const genesisUtxo = config.GENESIS_UTXOS[0];
+  if (!genesisUtxo) {
+    return yield* Effect.fail(
+      new SDK.LucidError({
+        message: "Failed to build genesis deposit transaction",
+        cause: "No GENESIS_UTXOS configured",
+      }),
+    );
   }
 
-  const l2Address = yield* SDK.midgardAddressFromBech32(
-    config.GENESIS_UTXOS[0].address,
-  );
+  const l2Address = yield* SDK.midgardAddressFromBech32(genesisUtxo.address);
 
   // Hard-coded 10 ADA deposit.
   const depositParams: SDK.DepositParams = {
@@ -151,11 +165,34 @@ const submitGenesisDeposits: Effect.Effect<
 
   yield* lucid.switchToOperatorsMainWallet;
 
-  const signedTx = yield* SDK.unsignedDepositTxProgram(
+  const txBuilder = yield* SDK.incompleteDepositTxProgram(
     lucid.api,
     depositParams,
   );
-  yield* handleSignSubmitNoConfirmation(lucid.api, signedTx);
+  return txBuilder;
+});
+
+const submitComposedGenesisUserEvents = Effect.gen(function* () {
+  const config = yield* NodeConfig;
+  const lucid = yield* Lucid;
+
+  if (config.GENESIS_UTXOS.length <= 0) {
+    yield* Effect.logInfo(
+      `🟣 Skipping genesis deposits + tx order - no GENESIS_UTXOS configured`,
+    );
+    return;
+  }
+
+  yield* Effect.logInfo(`🟣 Building composed genesis deposits + tx order...`);
+  const depositBuilder = yield* genesisDepositTx;
+  const txOrderBuilder = yield* genesisTxOrderTx;
+  const composedBuilder = depositBuilder.compose(txOrderBuilder);
+
+  const signedTx = yield* composedBuilder.completeProgram({
+    localUPLCEval: false,
+  });
+  yield* handleSignSubmit(lucid.api, signedTx);
+  yield* Effect.logInfo(`🟣 Composed genesis tx submitted successfully!`);
 }).pipe(Effect.tapError(Effect.logInfo));
 
 export const program: Effect.Effect<
@@ -164,8 +201,7 @@ export const program: Effect.Effect<
   AlwaysSucceedsContract | Database | Lucid | NodeConfig
 > = Effect.gen(function* () {
   yield* insertGenesisUtxos;
-  yield* submitGenesisDeposits.pipe(
+  yield* submitComposedGenesisUserEvents.pipe(
     Effect.retry(Schedule.fixed("5000 millis")),
   );
-  yield* submitGenesisTxOrders;
 }).pipe(Effect.catchAllCause(Effect.logInfo));
