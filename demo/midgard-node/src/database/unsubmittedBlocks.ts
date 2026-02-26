@@ -6,21 +6,28 @@ import {
   DatabaseError,
   sqlErrorToDatabaseError,
 } from "@/database/utils/common.js";
+import * as SDK from "@al-ft/midgard-sdk";
+import { CML, coreToUtxo, UTxO, utxoToCore } from "@lucid-evolution/lucid";
 
 export const tableName = "unsubmitted_blocks";
 
 export enum Columns {
   SEQUENCE = "sequence",
   BLOCK = "block",
+  NEW_WALLET_UTXOS = "new_wallet_utxos",
   L1_CBOR = "l1_cbor",
+  // Corresponds to `.chain()` second tuple value (`derivedOutputs`).
   PRODUCED_UTXOS = "produced_utxos",
   TIMESTAMPTZ = "time_stamp_tz",
 }
 
 export type EntryNoMeta = {
   [Columns.BLOCK]: Buffer;
+  // Corresponds to `.chain()` first tuple value (`newWalletUTxOs`).
+  [Columns.NEW_WALLET_UTXOS]: Buffer;
+  // Corresponds to `.chain()` third tuple value (transaction CBOR).
   [Columns.L1_CBOR]: Buffer;
-  // Serialized payload for produced UTxOs of this block commit tx.
+  // Corresponds to `.chain()` second tuple value (`derivedOutputs`).
   [Columns.PRODUCED_UTXOS]: Buffer;
 };
 
@@ -32,40 +39,14 @@ export type Entry = EntryNoMeta & {
 export const createTable: Effect.Effect<void, DatabaseError, Database> =
   Effect.gen(function* () {
     const sql = yield* SqlClient.SqlClient;
-    yield* sql.withTransaction(
-      Effect.gen(function* () {
-        yield* sql`CREATE TABLE IF NOT EXISTS ${sql(tableName)} (
-          ${sql(Columns.SEQUENCE)} BIGSERIAL PRIMARY KEY,
-          ${sql(Columns.BLOCK)} BYTEA NOT NULL UNIQUE,
-          ${sql(Columns.L1_CBOR)} BYTEA NOT NULL,
-          ${sql(Columns.PRODUCED_UTXOS)} BYTEA NOT NULL,
-          ${sql(Columns.TIMESTAMPTZ)} TIMESTAMPTZ NOT NULL DEFAULT(NOW())
-        );`;
-
-        // Keep migration explicit: do not silently synthesize produced UTxOs.
-        yield* sql`ALTER TABLE ${sql(tableName)} ADD COLUMN IF NOT EXISTS ${sql(
-          Columns.PRODUCED_UTXOS,
-        )} BYTEA`;
-        const nullRows = yield* sql<{
-          count: string;
-        }>`SELECT COUNT(*)::text AS count
-          FROM ${sql(tableName)}
-          WHERE ${sql(Columns.PRODUCED_UTXOS)} IS NULL`;
-        const nullCount = BigInt(nullRows[0]?.count ?? "0");
-        if (nullCount > 0n) {
-          yield* Effect.fail(
-            new DatabaseError({
-              message:
-                "Found unsubmitted_blocks rows with missing produced_utxos. Backfill them before startup to preserve deterministic chaining.",
-              cause: `NULL produced_utxos rows: ${nullCount.toString()}`,
-              table: tableName,
-            }),
-          );
-        }
-        yield* sql`ALTER TABLE ${sql(tableName)}
-          ALTER COLUMN ${sql(Columns.PRODUCED_UTXOS)} SET NOT NULL`;
-      }),
-    );
+    yield* sql`CREATE TABLE IF NOT EXISTS ${sql(tableName)} (
+      ${sql(Columns.SEQUENCE)} BIGSERIAL PRIMARY KEY,
+      ${sql(Columns.BLOCK)} BYTEA NOT NULL UNIQUE,
+      ${sql(Columns.NEW_WALLET_UTXOS)} BYTEA NOT NULL,
+      ${sql(Columns.L1_CBOR)} BYTEA NOT NULL,
+      ${sql(Columns.PRODUCED_UTXOS)} BYTEA NOT NULL,
+      ${sql(Columns.TIMESTAMPTZ)} TIMESTAMPTZ NOT NULL DEFAULT(NOW())
+    );`;
   }).pipe(
     Effect.withLogSpan(`creating table ${tableName}`),
     sqlErrorToDatabaseError(tableName, "Failed to create the table"),
@@ -78,6 +59,7 @@ export const upsert = (
     const sql = yield* SqlClient.SqlClient;
     yield* sql`INSERT INTO ${sql(tableName)} ${sql.insert(entry)}
       ON CONFLICT (${sql(Columns.BLOCK)}) DO UPDATE SET
+        ${sql(Columns.NEW_WALLET_UTXOS)} = ${entry[Columns.NEW_WALLET_UTXOS]},
         ${sql(Columns.L1_CBOR)} = ${entry[Columns.L1_CBOR]},
         ${sql(Columns.PRODUCED_UTXOS)} = ${entry[Columns.PRODUCED_UTXOS]},
         ${sql(Columns.TIMESTAMPTZ)} = NOW()`;
@@ -147,3 +129,84 @@ export const deleteUpToAndIncludingBlock = (
   );
 
 export const clear = clearTable(tableName);
+
+/**
+ * Serializes a UTxO list by converting each UTxO to core and storing its CBOR
+ * bytes as hex inside a JSON array.
+ */
+export const serializeUTxOsForStorage = (
+  utxos: readonly UTxO[],
+): Effect.Effect<Buffer, SDK.CborSerializationError | SDK.CmlUnexpectedError> =>
+  Effect.gen(function* () {
+    const serializedEach = yield* Effect.forEach(
+      utxos,
+      (utxo) =>
+        Effect.try({
+          try: () =>
+            Buffer.from(utxoToCore(utxo).to_cbor_bytes()).toString("hex"),
+          catch: (e) =>
+            new SDK.CmlUnexpectedError({
+              message: `Failed to serialize UTxO to core CBOR`,
+              cause: e,
+            }),
+        }),
+      { concurrency: "unbounded" },
+    );
+    return yield* Effect.try({
+      try: () => Buffer.from(JSON.stringify(serializedEach), "utf8"),
+      catch: (e) =>
+        new SDK.CborSerializationError({
+          message: `Failed to serialize UTxO list payload`,
+          cause: e,
+        }),
+    });
+  });
+
+/**
+ * Deserializes UTxO list payload produced by `serializeUTxOsForStorage`.
+ */
+export const deserializeUTxOsFromStorage = (
+  serialized: Buffer,
+): Effect.Effect<
+  readonly UTxO[],
+  SDK.CborDeserializationError | SDK.CmlUnexpectedError
+> =>
+  Effect.gen(function* () {
+    const parsed = yield* Effect.try({
+      try: () => JSON.parse(serialized.toString("utf8")) as unknown,
+      catch: (e) =>
+        new SDK.CborDeserializationError({
+          message: `Failed to deserialize UTxO list payload`,
+          cause: e,
+        }),
+    });
+    if (
+      !Array.isArray(parsed) ||
+      parsed.some((entry) => typeof entry !== "string")
+    ) {
+      return yield* Effect.fail(
+        new SDK.CborDeserializationError({
+          message: `Invalid UTxO list payload`,
+          cause: parsed,
+        }),
+      );
+    }
+    return yield* Effect.forEach(
+      parsed,
+      (cborHex) =>
+        Effect.try({
+          try: () =>
+            coreToUtxo(
+              CML.TransactionUnspentOutput.from_cbor_bytes(
+                Buffer.from(cborHex, "hex"),
+              ),
+            ),
+          catch: (e) =>
+            new SDK.CmlUnexpectedError({
+              message: `Failed to deserialize UTxO from CBOR payload`,
+              cause: e,
+            }),
+        }),
+      { concurrency: "unbounded" },
+    );
+  });
