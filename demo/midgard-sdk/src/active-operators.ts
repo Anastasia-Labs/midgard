@@ -3,7 +3,7 @@ import {
   AuthenticUTxO,
   LucidError,
   POSIXTimeSchema,
-  utxosToAuthenticUTxOs,
+  authenticateUTxOs,
 } from "@/common.js";
 import { LucidEvolution, TxBuilder, UTxO, Data } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
@@ -129,7 +129,7 @@ export const fetchActiveOperatorUTxOs = (
       });
     }
     const activeOperatorUTxOs: ActiveOperatorUTxO[] =
-      yield* utxosToAuthenticUTxOs<ActiveOperatorDatum>(
+      yield* authenticateUTxOs<ActiveOperatorDatum>(
         allUtxos,
         params.activeOperatorPolicyId,
         ActiveOperatorDatum,

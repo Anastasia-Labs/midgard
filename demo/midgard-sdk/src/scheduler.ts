@@ -10,6 +10,7 @@ import {
 } from "@lucid-evolution/lucid";
 import {
   AuthenticatedValidator,
+  authenticateUTxOs,
   AuthenticUTxO,
   GenericErrorFields,
   LucidError,
@@ -69,12 +70,16 @@ export type SchedulerRewindParams = {};
 
 export type SchedulerUTxO = AuthenticUTxO<SchedulerDatum>;
 
+export const utxosToSchedulerUTxOs = (
+  utxos: UTxO[],
+  nftPolicy: PolicyId,
+): Effect.Effect<SchedulerUTxO[], LucidError> =>
+  authenticateUTxOs<SchedulerDatum>(utxos, nftPolicy, SchedulerDatum);
+
 export type SchedulerConfig = {
   schedulerAddress: Address;
   schedulerPolicyId: PolicyId;
 };
-
-export const schedulerAssetName = "";
 
 export class SchedulerError extends EffectData.TaggedError(
   "SchedulerError",
@@ -84,46 +89,23 @@ export const fetchSchedulerUTxOProgram = (
   lucid: LucidEvolution,
   config: SchedulerConfig,
 ): Effect.Effect<
-  { utxo: UTxO; datum: SchedulerDatum },
+  SchedulerUTxO,
   SchedulerError | LucidError
 > =>
   Effect.gen(function* () {
     const errorMessage = "Failed to fetch the scheduler UTxO";
-    const SchedulerUTxOs: UTxO[] = yield* Effect.tryPromise({
-      try: async () => {
-        return await lucid.utxosAtWithUnit(
-          config.schedulerAddress,
-          toUnit(config.schedulerPolicyId, schedulerAssetName),
-        );
-      },
-      catch: (e) =>
-        new LucidError({
-          message: errorMessage,
+    const allUTxOs = yield* Effect.tryPromise({
+      try: () => lucid.utxosAt(config.schedulerAddress),
+      catch: (e) => {
+        return new LucidError({
+          message: `Failed to fetch the scheduler UTxO at: ${config.schedulerAddress}`,
           cause: e,
-        }),
+        });
+      },
     });
-    if (SchedulerUTxOs.length === 1) {
-      const utxo = SchedulerUTxOs[0];
-      const datum = yield* Effect.try({
-        try: () => {
-          if (utxo.datum) {
-            const coerced = Data.from(utxo.datum, SchedulerDatum);
-            return coerced;
-          } else {
-            throw new SchedulerError({
-              message: errorMessage,
-              cause: "Scheduler UTxO datum is missing",
-            });
-          }
-        },
-        catch: (e) => {
-          return new SchedulerError({
-            message: errorMessage,
-            cause: `Failed to parse the scheduler datum: ${e}`,
-          });
-        },
-      });
-      return { utxo, datum };
+    const schedulerUTxOs = yield* utxosToSchedulerUTxOs(allUTxOs, config.schedulerPolicyId);
+    if (schedulerUTxOs.length === 1) {
+      return schedulerUTxOs[0];
     } else {
       return yield* Effect.fail(
         new SchedulerError({

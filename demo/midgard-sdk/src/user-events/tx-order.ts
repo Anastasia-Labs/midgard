@@ -14,7 +14,7 @@ import {
   GenericErrorFields,
   makeReturn,
   OutputReference,
-  utxosToAuthenticUTxOs,
+  authenticateUTxOs,
 } from "@/common.js";
 import {
   AddressData,
@@ -62,7 +62,7 @@ export const utxosToTxOrderUTxOs = (
     inclusionTime: new Date(Number(datum.inclusionTime)),
   });
 
-  return utxosToAuthenticUTxOs<TxOrderDatum, UserEventExtraFields>(
+  return authenticateUTxOs<TxOrderDatum, UserEventExtraFields>(
     utxos,
     nftPolicy,
     TxOrderDatum,

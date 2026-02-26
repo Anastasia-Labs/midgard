@@ -2,7 +2,7 @@ import {
   AuthenticatedValidator,
   AuthenticUTxO,
   POSIXTimeSchema,
-  utxosToAuthenticUTxOs,
+  authenticateUTxOs,
   LucidError,
 } from "@/common.js";
 import { Data, UTxO } from "@lucid-evolution/lucid";
@@ -103,7 +103,7 @@ export const fetchRetiredOperatorUTxOs = (
       });
     }
     const retiredOperatorUTxOs: RetiredOperatorUTxO[] =
-      yield* utxosToAuthenticUTxOs<RetiredOperatorDatum>(
+      yield* authenticateUTxOs<RetiredOperatorDatum>(
         allUtxos,
         params.retiredOperatorPolicyId,
         RetiredOperatorDatum,

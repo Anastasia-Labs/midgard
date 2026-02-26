@@ -9,7 +9,7 @@ import {
   POSIXTimeSchema,
   UnspecifiedNetworkError,
   makeReturn,
-  utxosToAuthenticUTxOs,
+  authenticateUTxOs,
 } from "@/common.js";
 import {
   buildUserEventMintTransaction,
@@ -72,7 +72,7 @@ export const utxosToWithdrawalUTxOs = (
     inclusionTime: new Date(Number(datum.inclusionTime)),
   });
 
-  return utxosToAuthenticUTxOs<WithdrawalOrderDatum, UserEventExtraFields>(
+  return authenticateUTxOs<WithdrawalOrderDatum, UserEventExtraFields>(
     utxos,
     nftPolicy,
     WithdrawalOrderDatum,

@@ -7,6 +7,7 @@ import {
   Script,
   TxSignBuilder,
   fromHex,
+  PolicyId,
 } from "@lucid-evolution/lucid";
 import {
   GenericErrorFields,
@@ -14,7 +15,7 @@ import {
   LucidError,
   makeReturn,
   AuthenticUTxO,
-  utxosToAuthenticUTxOs,
+  authenticateUTxOs,
   UnspecifiedNetworkError,
 } from "@/common.js";
 import { Data as EffectData, Effect } from "effect";
@@ -46,7 +47,7 @@ export type DepositFetchConfig = UserEventFetchConfig;
  */
 export const utxosToDepositUTxOs = (
   utxos: UTxO[],
-  nftPolicy: string,
+  nftPolicy: PolicyId,
 ): Effect.Effect<DepositUTxO[]> => {
   const calculateExtraFields = (datum: DepositDatum): UserEventExtraFields => ({
     idCbor: Buffer.from(fromHex(Data.to(datum.event.id, OutputReference))),
@@ -54,7 +55,7 @@ export const utxosToDepositUTxOs = (
     inclusionTime: new Date(Number(datum.inclusionTime)),
   });
 
-  return utxosToAuthenticUTxOs<DepositDatum, UserEventExtraFields>(
+  return authenticateUTxOs<DepositDatum, UserEventExtraFields>(
     utxos,
     nftPolicy,
     DepositDatum,

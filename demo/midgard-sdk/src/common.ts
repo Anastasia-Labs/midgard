@@ -581,7 +581,25 @@ const utxoToAuthenticUTxOWithExtra = <TDatum, TExtra>(
     },
   );
 
-export const utxoToAuthenticUTxO = <TDatum, TExtra>(
+export const authenticateUTxO: {
+  <TDatum>(
+    utxo: UTxO,
+    nftPolicy: string,
+    schema: any,
+  ): Effect.Effect<
+    AuthenticUTxO<TDatum>,
+    DataCoercionError | UnauthenticUtxoError
+  >;
+  <TDatum, TExtra>(
+    utxo: UTxO,
+    nftPolicy: string,
+    schema: any,
+    extraFields: (datum: TDatum) => TExtra,
+  ): Effect.Effect<
+    AuthenticUTxO<TDatum, TExtra>,
+    DataCoercionError | UnauthenticUtxoError
+  >;
+} = <TDatum, TExtra>(
   utxo: UTxO,
   nftPolicy: string,
   schema: any,
@@ -602,7 +620,19 @@ export const utxoToAuthenticUTxO = <TDatum, TExtra>(
 /**
  * Silently drops invalid UTxOs.
  */
-export const utxosToAuthenticUTxOs = <TDatum, TExtra>(
+export const authenticateUTxOs: {
+  <TDatum>(
+    utxos: UTxO[],
+    nftPolicy: string,
+    schema: any,
+  ): Effect.Effect<AuthenticUTxO<TDatum>[]>;
+  <TDatum, TExtra>(
+    utxos: UTxO[],
+    nftPolicy: string,
+    schema: any,
+    extraFields: (datum: TDatum) => TExtra,
+  ): Effect.Effect<AuthenticUTxO<TDatum, TExtra>[]>;
+} = <TDatum, TExtra>(
   utxos: UTxO[],
   nftPolicy: string,
   schema: any,
@@ -613,7 +643,7 @@ export const utxosToAuthenticUTxOs = <TDatum, TExtra>(
       AuthenticUTxO<TDatum>,
       DataCoercionError | UnauthenticUtxoError
     >[] = utxos.map((utxo) =>
-      utxoToAuthenticUTxO<TDatum>(utxo, nftPolicy, schema),
+      authenticateUTxO<TDatum>(utxo, nftPolicy, schema),
     );
     return Effect.allSuccesses(effects);
   }
@@ -622,7 +652,7 @@ export const utxosToAuthenticUTxOs = <TDatum, TExtra>(
     AuthenticUTxO<TDatum, TExtra>,
     DataCoercionError | UnauthenticUtxoError
   >[] = utxos.map((utxo) =>
-    utxoToAuthenticUTxO<TDatum, TExtra>(utxo, nftPolicy, schema, extraFields),
+    authenticateUTxO<TDatum, TExtra>(utxo, nftPolicy, schema, extraFields),
   );
   return Effect.allSuccesses(effects);
 };
