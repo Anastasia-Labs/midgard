@@ -82,6 +82,7 @@ export type TxOrderParams = {
   txOrderScriptAddress: string;
   mintingPolicy: Script;
   policyId: string;
+  nonceUTxO?: UTxO;
   cardanoTx: CML.Transaction; // temporary until midgard tx conversion is done
   refundAddress: AddressData;
   refundDatum?: Data;
@@ -105,6 +106,7 @@ export const incompleteTxOrderTxProgram = (
     const { inputUtxo, assetName } = yield* getNonceInputAndAssetName(
       lucid,
       "tx order",
+      params.nonceUTxO,
     );
     const txOrderNFT = toUnit(params.policyId, assetName);
 

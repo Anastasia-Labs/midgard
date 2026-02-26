@@ -166,28 +166,30 @@ export const findInclusionTimeForUserEvent = (
 export const getNonceInputAndAssetName = (
   lucid: LucidEvolution,
   eventName: "deposit" | "tx order" | "withdrawal",
+  utxo?: UTxO,
 ): Effect.Effect<
   { inputUtxo: UTxO; assetName: string },
   LucidError | HashingError
 > =>
   Effect.gen(function* () {
-    const utxos: UTxO[] = yield* Effect.tryPromise({
+    const nonceUTxOEffect: Effect.Effect<UTxO, LucidError> = Effect.tryPromise({
       try: () => lucid.wallet().getUtxos(),
       catch: (err) =>
         new LucidError({
           message: "Failed to fetch wallet UTxOs",
           cause: err,
         }),
-    });
-
-    if (utxos.length === 0) {
-      return yield* new LucidError({
-        message: `Failed to build the ${eventName} transaction`,
-        cause: "No UTxOs found in wallet",
-      });
-    }
-
-    const inputUtxo = utxos[0];
+    }).pipe(Effect.andThen((utxos) => {
+      if (utxos.length <= 0) {
+        return new LucidError({
+          message: `Failed to build the ${eventName} transaction`,
+          cause: "No UTxOs found in wallet",
+        });
+      } else {
+        return Effect.succeed(utxos[0]);
+      }
+    }));
+    const inputUtxo = utxo ?? (yield* nonceUTxOEffect);
     const transactionInput = CML.TransactionInput.new(
       CML.TransactionHash.from_hex(inputUtxo.txHash),
       BigInt(inputUtxo.outputIndex),

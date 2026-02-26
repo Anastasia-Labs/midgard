@@ -79,6 +79,7 @@ export type DepositParams = {
   depositScriptAddress: string;
   mintingPolicy: Script;
   policyId: string;
+  nonceUTxO?: UTxO;
   depositAmount: bigint;
   depositInfo: DepositInfo;
 };
@@ -101,6 +102,7 @@ export const incompleteDepositTxProgram = (
     const { inputUtxo, assetName } = yield* getNonceInputAndAssetName(
       lucid,
       "deposit",
+      params.nonceUTxO,
     );
 
     const depositNFT = toUnit(params.policyId, assetName);

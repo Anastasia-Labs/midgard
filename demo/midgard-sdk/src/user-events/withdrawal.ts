@@ -96,6 +96,7 @@ export type WithdrawalOrderParams = {
   withdrawalScriptAddress: string;
   mintingPolicy: Script;
   policyId: string;
+  nonceUTxO?: UTxO;
   withdrawalBody: WithdrawalBody;
   withdrawalSignature: WithdrawalSignature;
   refundAddress: AddressData;
@@ -120,6 +121,7 @@ export const incompleteWithdrawalTxProgram = (
     const { inputUtxo, assetName } = yield* getNonceInputAndAssetName(
       lucid,
       "withdrawal",
+      params.nonceUTxO,
     );
 
     const withdrawalNFT = toUnit(params.policyId, assetName);
