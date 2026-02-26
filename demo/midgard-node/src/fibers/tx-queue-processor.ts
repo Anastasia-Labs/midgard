@@ -75,8 +75,9 @@ const validationPhaseAConcurrencyGauge = Metric.gauge(
   },
 );
 
-const VALIDATION_BATCH_HARD_CAP = 800;
+const VALIDATION_BATCH_HARD_CAP = 1600;
 const VALIDATION_MIN_BATCH = 128;
+const VALIDATION_PHASE_A_MAX_EFFECTIVE_CONCURRENCY = 8;
 
 let nextArrivalSeq = 0n;
 let pendingPayloads: QueuedTxPayload[] = [];
@@ -178,17 +179,24 @@ const selectPhaseAConcurrency = (
   configuredConcurrency: number,
   batchLength: number,
 ): number => {
-  const configured = Math.max(1, configuredConcurrency);
+  const configured = clamp(
+    configuredConcurrency,
+    1,
+    VALIDATION_PHASE_A_MAX_EFFECTIVE_CONCURRENCY,
+  );
   if (configured === 1) {
     return 1;
   }
-  if (batchLength < 1600) {
+  if (batchLength < 256) {
     return 1;
   }
-  if (batchLength < 3200) {
+  if (batchLength < 512) {
+    return Math.min(configured, 2);
+  }
+  if (batchLength < 1024) {
     return Math.min(configured, 4);
   }
-  return Math.min(configured, 8);
+  return configured;
 };
 
 const txQueueProcessorAction = (

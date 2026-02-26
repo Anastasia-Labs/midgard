@@ -520,6 +520,16 @@ const main = async () => {
       prev = now;
       prevTs = nowTs;
 
+      const settledDelta =
+        now.accept - startCounters.accept + (now.reject - startCounters.reject);
+
+      if (
+        submitFinishedAt !== null &&
+        settledDelta >= submitted
+      ) {
+        break;
+      }
+
       if (
         submitFinishedAt !== null &&
         nowTs - submitFinishedAt >= observeAfterSubmitSec * 1000
