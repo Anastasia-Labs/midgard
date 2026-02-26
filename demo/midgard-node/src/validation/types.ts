@@ -33,6 +33,9 @@ export type RejectCode = (typeof RejectCodes)[keyof typeof RejectCodes];
 export type QueuedTx = {
   readonly txId: Buffer;
   readonly txCbor: Buffer;
+  // Optional override hash used for witness signature verification when ingress
+  // normalized a Cardano tx into Midgard-native bytes.
+  readonly txBodyHashForWitnesses?: Buffer;
   readonly arrivalSeq: bigint;
   readonly createdAt: Date;
 };
@@ -83,5 +86,6 @@ export type PhaseBConfig = {
 export type QueuedTxPayload = {
   readonly txId: Buffer;
   readonly txCbor: Buffer;
+  readonly txBodyHashForWitnesses?: Buffer;
   readonly createdAtMillis: number;
 };

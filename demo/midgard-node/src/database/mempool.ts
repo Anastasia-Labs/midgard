@@ -102,7 +102,7 @@ export const retrieve: Effect.Effect<
   const sql = yield* SqlClient.SqlClient;
   return yield* sql<Tx.EntryWithTimeStamp>`SELECT ${sql(
     Tx.Columns.TX_ID,
-  )}, ${sql(Tx.Columns.TX)} FROM ${sql(tableName)} ORDER BY ${sql(Tx.Columns.TIMESTAMPTZ)} DESC LIMIT 100000`; // Add ordering by time
+  )}, ${sql(Tx.Columns.TX)}, ${sql(Tx.Columns.TIMESTAMPTZ)} FROM ${sql(tableName)} ORDER BY ${sql(Tx.Columns.TIMESTAMPTZ)} DESC LIMIT 100000`;
 }).pipe(
   Effect.withLogSpan(`retrieve ${tableName}`),
   Effect.tapErrorTag("SqlError", (e) =>

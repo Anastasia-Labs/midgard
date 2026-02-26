@@ -434,7 +434,7 @@ const validateNativeOne = (
 
   const signatureResult = verifyNativeWitnessSignatures(
     queuedTx.txId,
-    nativeTx.compact.transactionBodyHash,
+    queuedTx.txBodyHashForWitnesses ?? nativeTx.compact.transactionBodyHash,
     witnessVerificationResult.witnesses,
   );
   if (signatureResult !== null) {

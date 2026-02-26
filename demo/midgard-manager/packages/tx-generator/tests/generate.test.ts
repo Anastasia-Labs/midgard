@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { CML } from '@lucid-evolution/lucid';
 
 import { MidgardNodeClient } from '../src/lib/client/node-client';
 import { getGeneratorStatus, startGenerator, stopGenerator } from '../src/lib/scheduler/scheduler';
@@ -7,11 +8,34 @@ import { txTest } from './setup';
 
 // Mock the node client
 vi.mock('../src/lib/client/node-client', () => {
+  const mockUtxos = [
+    {
+      txHash: '11'.repeat(32),
+      outputIndex: 0,
+      assets: { lovelace: 2_000_000n },
+      address:
+        'addr_test1qzyem8ex0v9v76q0u52x3t2xmj5rkhjd9rsd44kx3klsut4qga2669x30zsng46mhfrrk4ngylfnnlda7rkfvxq5fywqvurkrs',
+      datum: null,
+      datumHash: null,
+      scriptRef: null,
+    },
+    {
+      txHash: '22'.repeat(32),
+      outputIndex: 1,
+      assets: { lovelace: 2_500_000n },
+      address:
+        'addr_test1qzyem8ex0v9v76q0u52x3t2xmj5rkhjd9rsd44kx3klsut4qga2669x30zsng46mhfrrk4ngylfnnlda7rkfvxq5fywqvurkrs',
+      datum: null,
+      datumHash: null,
+      scriptRef: null,
+    },
+  ];
   return {
     MidgardNodeClient: vi.fn().mockImplementation(() => {
       return {
         submitTransaction: vi.fn().mockResolvedValue({ txId: 'mock_tx_id' }),
         isAvailable: vi.fn().mockResolvedValue(true),
+        getSpendableUtxos: vi.fn().mockResolvedValue(mockUtxos),
       };
     }),
   };
@@ -32,6 +56,18 @@ vi.mock('../src/lib/generators/index.js', () => {
 });
 
 describe('Transaction Generator', () => {
+  const walletKey = CML.PrivateKey.generate_ed25519().to_bech32();
+  const initialUTxO = {
+    txHash: '33'.repeat(32),
+    outputIndex: 0,
+    assets: { lovelace: 5_000_000n },
+    address:
+      'addr_test1qzyem8ex0v9v76q0u52x3t2xmj5rkhjd9rsd44kx3klsut4qga2669x30zsng46mhfrrk4ngylfnnlda7rkfvxq5fywqvurkrs',
+    datum: null,
+    datumHash: null,
+    scriptRef: null,
+  } as const;
+
   // Reset mocks before each test
   beforeEach(() => {
     vi.clearAllMocks();
@@ -45,8 +81,9 @@ describe('Transaction Generator', () => {
   it('should start and stop the generator correctly', async () => {
     // Default minimal config for testing
     const config: Partial<TransactionGeneratorConfig> = {
-      walletPrivateKey: 'test_private_key',
+      walletSeedOrPrivateKey: walletKey,
       nodeEndpoint: 'http://localhost:3000',
+      initialUTxO,
       transactionType: 'one-to-one',
       batchSize: 2,
       interval: 0.1,
@@ -71,8 +108,9 @@ describe('Transaction Generator', () => {
   it('should handle different transaction types', async () => {
     // Test with one-to-one type
     const oneToOneConfig: Partial<TransactionGeneratorConfig> = {
-      walletPrivateKey: 'test_private_key',
+      walletSeedOrPrivateKey: walletKey,
       nodeEndpoint: 'http://localhost:3000',
+      initialUTxO,
       transactionType: 'one-to-one',
       batchSize: 2,
       interval: 0.1,
@@ -91,8 +129,9 @@ describe('Transaction Generator', () => {
 
     // Test with multi-output type
     const multiOutputConfig: Partial<TransactionGeneratorConfig> = {
-      walletPrivateKey: 'test_private_key',
+      walletSeedOrPrivateKey: walletKey,
       nodeEndpoint: 'http://localhost:3000',
+      initialUTxO,
       transactionType: 'multi-output',
       batchSize: 2,
       interval: 0.1,
@@ -113,8 +152,9 @@ describe('Transaction Generator', () => {
   it('should report accurate metrics', async () => {
     // Config with a short interval for quick testing
     const config: Partial<TransactionGeneratorConfig> = {
-      walletPrivateKey: 'test_private_key',
+      walletSeedOrPrivateKey: walletKey,
       nodeEndpoint: 'http://localhost:3000',
+      initialUTxO,
       transactionType: 'one-to-one',
       batchSize: 3,
       interval: 0.1,

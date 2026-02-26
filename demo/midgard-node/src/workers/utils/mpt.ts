@@ -9,6 +9,8 @@ import { Database, NodeConfig } from "@/services/index.js";
 import * as Tx from "@/database/utils/tx.js";
 import * as Ledger from "@/database/utils/ledger.js";
 import * as MempoolTxDeltasDB from "@/database/mempoolTxDeltas.js";
+import * as TxRejectionsDB from "@/database/txRejections.js";
+import * as MempoolDB from "@/database/mempool.js";
 import { FileSystemError, findSpentAndProducedUTxOs } from "@/utils.js";
 import * as FS from "fs";
 import * as SDK from "@al-ft/midgard-sdk";
@@ -18,6 +20,59 @@ const LEVELDB_ENCODING_OPTS = {
   keyEncoding: ETH_UTILS.KeyEncoding.Bytes,
   valueEncoding: ETH_UTILS.ValueEncoding.Bytes,
 };
+
+export const COMMIT_REJECT_CODE_DECODE_FAILED = "E_COMMIT_CBOR_DESERIALIZATION";
+
+export type ResolvedTxDeltaForCommit =
+  | {
+      readonly _tag: "Decoded";
+      readonly spent: readonly Buffer[];
+      readonly produced: readonly Ledger.MinimalEntry[];
+    }
+  | {
+      readonly _tag: "Rejected";
+      readonly rejection: TxRejectionsDB.EntryNoTimestamp;
+    };
+
+export const resolveTxDeltaForCommit = (
+  entry: Tx.EntryWithTimeStamp,
+  existingDelta: MempoolTxDeltasDB.TxDelta | undefined,
+): Effect.Effect<ResolvedTxDeltaForCommit, never> =>
+  Effect.gen(function* () {
+    if (existingDelta !== undefined) {
+      return {
+        _tag: "Decoded",
+        spent: existingDelta.spent.map((outRef) => Buffer.from(outRef)),
+        produced: existingDelta.produced.map((deltaEntry) => ({
+          [Ledger.Columns.OUTREF]: Buffer.from(deltaEntry[Ledger.Columns.OUTREF]),
+          [Ledger.Columns.OUTPUT]: Buffer.from(deltaEntry[Ledger.Columns.OUTPUT]),
+        })),
+      };
+    }
+
+    const txId = entry[Tx.Columns.TX_ID];
+    const txCbor = entry[Tx.Columns.TX];
+    const decoded = yield* findSpentAndProducedUTxOs(txCbor, txId).pipe(
+      Effect.either,
+    );
+    if (decoded._tag === "Left") {
+      return {
+        _tag: "Rejected",
+        rejection: {
+          [TxRejectionsDB.Columns.TX_ID]: Buffer.from(txId),
+          [TxRejectionsDB.Columns.REJECT_CODE]:
+            COMMIT_REJECT_CODE_DECODE_FAILED,
+          [TxRejectionsDB.Columns.REJECT_DETAIL]: decoded.left.message,
+        },
+      };
+    }
+
+    return {
+      _tag: "Decoded",
+      spent: decoded.right.spent,
+      produced: decoded.right.produced,
+    };
+  });
 
 export const makeMpts: Effect.Effect<
   { ledgerTrie: MidgardMpt; mempoolTrie: MidgardMpt },
@@ -106,18 +161,23 @@ export const deleteMpt = (
 export const processMpts = (
   ledgerTrie: MidgardMpt,
   mempoolTrie: MidgardMpt,
-  mempoolTxs: readonly Tx.Entry[],
+  mempoolTxs: readonly Tx.EntryWithTimeStamp[],
 ): Effect.Effect<
   {
     utxoRoot: string;
     txRoot: string;
     mempoolTxHashes: Buffer[];
+    processedMempoolTxs: readonly Tx.EntryWithTimeStamp[];
     sizeOfProcessedTxs: number;
+    rejectedMempoolTxsCount: number;
   },
-  MptError | SDK.CmlUnexpectedError | DatabaseError,
+  MptError | DatabaseError,
   Database
 > =>
   Effect.gen(function* () {
+    const processedMempoolTxs: Tx.EntryWithTimeStamp[] = [];
+    const rejectedTxHashes: Buffer[] = [];
+    const rejectionEntries: TxRejectionsDB.EntryNoTimestamp[] = [];
     const mempoolTxHashes: Buffer[] = [];
     const mempoolBatchOps: ETH_UTILS.BatchDBOp[] = [];
     const batchDBOps: ETH_UTILS.BatchDBOp[] = [];
@@ -126,29 +186,27 @@ export const processMpts = (
       mempoolTxs.map((entry) => entry[Tx.Columns.TX_ID]),
     );
     yield* Effect.logInfo("🔹 Going through mempool txs and finding roots...");
-    yield* Effect.forEach(mempoolTxs, (entry: Tx.Entry) =>
+    yield* Effect.forEach(mempoolTxs, (entry: Tx.EntryWithTimeStamp) =>
       Effect.gen(function* () {
         const txHash = entry[Tx.Columns.TX_ID];
         const txCbor = entry[Tx.Columns.TX];
-        mempoolTxHashes.push(txHash);
         const txHashHex = txHash.toString("hex");
         const existingDelta = txDeltasByTxHash.get(txHashHex);
-        const { spent, produced } =
-          existingDelta === undefined
-            ? yield* findSpentAndProducedUTxOs(txCbor, txHash).pipe(
-                Effect.withSpan("findSpentAndProducedUTxOs"),
-              )
-            : {
-                spent: existingDelta.spent.map((outRef) => Buffer.from(outRef)),
-                produced: existingDelta.produced.map((entry) => ({
-                  [Ledger.Columns.OUTREF]: Buffer.from(
-                    entry[Ledger.Columns.OUTREF],
-                  ),
-                  [Ledger.Columns.OUTPUT]: Buffer.from(
-                    entry[Ledger.Columns.OUTPUT],
-                  ),
-                })),
-              };
+        const resolved = yield* resolveTxDeltaForCommit(
+          entry,
+          existingDelta,
+        ).pipe(Effect.withSpan("resolveTxDeltaForCommit"));
+        if (resolved._tag === "Rejected") {
+          rejectedTxHashes.push(Buffer.from(txHash));
+          rejectionEntries.push(resolved.rejection);
+          yield* Effect.logWarning(
+            `Skipping malformed mempool tx ${txHashHex}: ${resolved.rejection[TxRejectionsDB.Columns.REJECT_DETAIL]}`,
+          );
+          return;
+        }
+        const { spent, produced } = resolved;
+        mempoolTxHashes.push(txHash);
+        processedMempoolTxs.push(entry);
         sizeOfProcessedTxs += txCbor.length;
         const delOps: ETH_UTILS.BatchDBOp[] = spent.map((outRef) => ({
           type: "del",
@@ -173,6 +231,19 @@ export const processMpts = (
       }),
     );
 
+    if (rejectedTxHashes.length > 0) {
+      yield* Effect.logWarning(
+        `Dropping ${rejectedTxHashes.length} malformed transaction(s) from MempoolDB`,
+      );
+      yield* Effect.all(
+        [
+          MempoolDB.clearTxs(rejectedTxHashes),
+          TxRejectionsDB.insertMany(rejectionEntries),
+        ],
+        { concurrency: "unbounded" },
+      );
+    }
+
     yield* Effect.all(
       [mempoolTrie.batch(mempoolBatchOps), ledgerTrie.batch(batchDBOps)],
       { concurrency: "unbounded" },
@@ -188,7 +259,9 @@ export const processMpts = (
       utxoRoot,
       txRoot,
       mempoolTxHashes: mempoolTxHashes,
+      processedMempoolTxs,
       sizeOfProcessedTxs: sizeOfProcessedTxs,
+      rejectedMempoolTxsCount: rejectedTxHashes.length,
     };
   });
 

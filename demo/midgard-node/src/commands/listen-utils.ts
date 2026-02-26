@@ -1,4 +1,11 @@
 import { isHexString } from "@/utils.js";
+import { CML, fromHex } from "@lucid-evolution/lucid";
+import {
+  cardanoTxBytesToMidgardNativeTxFull,
+  computeMidgardNativeTxIdFromFull,
+  decodeMidgardNativeTxFull,
+  encodeMidgardNativeTxFull,
+} from "@/midgard-tx-codec/index.js";
 
 export const ADMIN_ROUTE_PATHS: ReadonlySet<string> = new Set([
   "/init",
@@ -69,6 +76,20 @@ export const extractSubmitTxHex = (payload: unknown): string | undefined => {
   return undefined;
 };
 
+export const extractSubmitTxHexFromQueryParams = (
+  params: Record<string, string | readonly string[] | undefined>,
+): string | undefined => {
+  const canonical = params.tx_cbor;
+  if (typeof canonical === "string") {
+    return canonical;
+  }
+  const camel = params.txCbor;
+  if (typeof camel === "string") {
+    return camel;
+  }
+  return undefined;
+};
+
 export type SubmitTxValidation =
   | {
       readonly ok: true;
@@ -108,4 +129,60 @@ export const validateSubmitTxHex = (
     txHex,
     byteLength,
   };
+};
+
+export type NormalizedSubmitTx =
+  | {
+      readonly ok: true;
+      readonly txId: Buffer;
+      readonly txIdHex: string;
+      readonly txCbor: Buffer;
+      readonly txBodyHashForWitnesses?: Buffer;
+      readonly source: "native" | "cardano-converted";
+    }
+  | {
+      readonly ok: false;
+      readonly error: string;
+      readonly detail: string;
+    };
+
+export const normalizeSubmitTxHexToNative = (
+  txHex: string,
+): NormalizedSubmitTx => {
+  const submittedTxCbor = Buffer.from(fromHex(txHex));
+  try {
+    const nativeTx = decodeMidgardNativeTxFull(submittedTxCbor);
+    const txId = computeMidgardNativeTxIdFromFull(nativeTx);
+    return {
+      ok: true,
+      txId,
+      txIdHex: txId.toString("hex"),
+      txCbor: submittedTxCbor,
+      source: "native",
+    };
+  } catch (nativeDecodeError) {
+    try {
+      const nativeTx = cardanoTxBytesToMidgardNativeTxFull(submittedTxCbor);
+      const normalizedTxCbor = encodeMidgardNativeTxFull(nativeTx);
+      const txId = computeMidgardNativeTxIdFromFull(nativeTx);
+      const cardanoTx = CML.Transaction.from_cbor_bytes(submittedTxCbor);
+      const txBodyHashForWitnesses = Buffer.from(
+        CML.hash_transaction(cardanoTx.body()).to_raw_bytes(),
+      );
+      return {
+        ok: true,
+        txId,
+        txIdHex: txId.toString("hex"),
+        txCbor: Buffer.from(normalizedTxCbor),
+        txBodyHashForWitnesses,
+        source: "cardano-converted",
+      };
+    } catch (conversionError) {
+      return {
+        ok: false,
+        error: "Invalid transaction CBOR payload",
+        detail: `native decode failed: ${String(nativeDecodeError)}; cardano conversion failed: ${String(conversionError)}`,
+      };
+    }
+  }
 };

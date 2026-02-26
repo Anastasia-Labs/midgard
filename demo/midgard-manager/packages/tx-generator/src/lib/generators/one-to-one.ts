@@ -1,7 +1,6 @@
 import { Writable } from 'node:stream';
 
 import {
-  Data,
   Emulator,
   EmulatorAccount,
   Lucid,
@@ -14,7 +13,6 @@ import {
 import { waitWritable } from '../../utils/common.js';
 import { MidgardNodeClient } from '../client/node-client.js';
 import { SerializedMidgardTransaction } from '../client/types.js';
-import { Int } from 'effect/Schema';
 
 /**
  * Configuration for generating one-to-one transactions.
@@ -39,19 +37,6 @@ const GC_PAUSE_INTERVAL = 1000; // Number of transactions before GC pause
 const MIN_LOVELACE_OUTPUT = 1_000_000n; // Minimum lovelace per output
 
 /**
- * Generates a unique hex string for transaction datum
- * Combines timestamp and random values into a valid hex string
- */
-const generateUniqueHexDatum = (counter: number): string => {
-  const timestamp = Date.now().toString(16).padStart(12, '0');
-  const random = Math.floor(Math.random() * 16777215)
-    .toString(16)
-    .padStart(6, '0');
-  const count = counter.toString(16).padStart(6, '0');
-  return timestamp + random + count;
-};
-
-/**
  * Validates the configuration parameters
  * @throws Error if configuration is invalid
  */
@@ -59,8 +44,8 @@ const validateConfig = (config: OneToOneTransactionConfig): void => {
   const { initialUTxO, walletSeedOrPrivateKey } = config;
 
   // Validate wallet key format
-  if (!walletSeedOrPrivateKey.startsWith('ed25519_sk')) {
-    throw new Error('Invalid private key format. Expected Lucid emulator account private key.');
+  if (typeof walletSeedOrPrivateKey !== 'string' || walletSeedOrPrivateKey.trim().length === 0) {
+    throw new Error('Invalid private key format. Expected a non-empty private key string.');
   }
 
   // Validate UTxO amount
@@ -100,7 +85,7 @@ const initializeLucid = async (emulator: Emulator, network: Network): Promise<Lu
 const generateOneToOneTransactions = async (
   config: OneToOneTransactionConfig
 ): Promise<SerializedMidgardTransaction[]> => {
-  const { network, initialUTxO, txsCount, writable, nodeClient, walletSeedOrPrivateKey } = config;
+  const { network, initialUTxO, txsCount, writable, walletSeedOrPrivateKey } = config;
 
   // Validate configuration
   validateConfig(config);
@@ -128,35 +113,13 @@ const generateOneToOneTransactions = async (
   const transactions: SerializedMidgardTransaction[] = [];
 
   try {
-    // First transaction to move away from genesis UTxO
-    const initialTxBuilder = lucid.newTx();
-    const [initialNewWalletUTxOs, initialDerivedOutputs, initialTxSignBuilder] =
-      await initialTxBuilder.pay.ToAddress(initialUTxO.address, initialUTxO.assets).chain();
-
-    const initialTxSigned = await initialTxSignBuilder.sign
-      .withPrivateKey(walletSeedOrPrivateKey)
-      .complete();
-
-    // Use the output of initial transaction for subsequent transactions
-    const firstUtxo = {
-      txHash: initialTxSigned.toHash(),
-      outputIndex: initialUTxO.outputIndex,
-      address: initialUTxO.address,
-      assets: initialUTxO.assets,
-    };
-
-    lucid.selectWallet.fromAddress(firstUtxo.address, [firstUtxo]);
-
-    // Generate the actual transactions with unique data
+    // Generate transactions directly from the provided initial UTxO so the
+    // first generated tx can be applied to the current node ledger state.
     for (let i = 0; i < txsCount; i++) {
       const txBuilder = lucid.newTx();
 
       const [newWalletUTxOs, derivedOutputs, txSignBuilder] = await txBuilder.pay
-        .ToAddressWithData(
-          initialUTxO.address,
-          { kind: 'inline', value: Data.to(generateUniqueHexDatum(i)) },
-          initialUTxO.assets
-        )
+        .ToAddress(initialUTxO.address, initialUTxO.assets)
         .chain();
 
       const txSigned = await txSignBuilder.sign.withPrivateKey(walletSeedOrPrivateKey).complete();
@@ -192,11 +155,6 @@ const generateOneToOneTransactions = async (
         await new Promise<void>((resolve) => setTimeout(() => resolve(), 100));
       }
     }
-
-    // Cleanup initial transaction resources
-    initialTxBuilder.rawConfig().txBuilder.free();
-    initialTxSignBuilder.toTransaction().free();
-    initialTxSigned.toTransaction().free();
   } catch (error) {
     console.error('Error generating transactions:', error);
     throw error;

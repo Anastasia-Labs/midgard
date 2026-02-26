@@ -11,7 +11,8 @@ import * as MempoolLedgerDB from "@/database/mempoolLedger.js";
 import { TxSubmitError, UTxO, utxoToCore } from "@lucid-evolution/lucid";
 import { DatabaseError } from "@/database/utils/common.js";
 import {
-  handleSignSubmitNoConfirmation,
+  handleSignSubmit,
+  TxConfirmError,
   TxSignError,
 } from "@/transactions/utils.js";
 
@@ -60,6 +61,7 @@ const submitGenesisDeposits: Effect.Effect<
   | SDK.HashingError
   | SDK.DepositError
   | TxSubmitError
+  | TxConfirmError
   | TxSignError,
   AlwaysSucceedsContract | Lucid | NodeConfig
 > = Effect.gen(function* () {
@@ -93,7 +95,7 @@ const submitGenesisDeposits: Effect.Effect<
     lucid.api,
     depositParams,
   );
-  yield* handleSignSubmitNoConfirmation(lucid.api, signedTx);
+  yield* handleSignSubmit(lucid.api, signedTx);
 }).pipe(Effect.tapError(Effect.logInfo));
 
 export const program: Effect.Effect<

@@ -1,5 +1,5 @@
-import { Effect } from 'effect';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { CML } from '@lucid-evolution/lucid';
 
 import { MidgardNodeClient } from '../src/lib/client/node-client';
 
@@ -57,6 +57,21 @@ describe('MidgardNodeClient', () => {
     expect(isAvailable).toBe(false);
   });
 
+  it('should treat non-404 http responses as reachable node', async () => {
+    mockFetch.mockResolvedValueOnce({
+      status: 500,
+    });
+
+    const client = new MidgardNodeClient({
+      baseUrl: 'http://localhost:3000',
+      retryAttempts: 1,
+      retryDelay: 10,
+    });
+
+    const isAvailable = await client.isAvailable();
+    expect(isAvailable).toBe(true);
+  });
+
   it('should submit a transaction correctly', async () => {
     // First mock the availability check (404 means node is up but tx not found)
     mockFetch
@@ -76,11 +91,7 @@ describe('MidgardNodeClient', () => {
       retryDelay: 10,
     });
 
-    // Submit the transaction - the client returns an Effect
-    const effectResult = client.submitTransaction('test_cbor_hex');
-
-    // Run the effect to get the result
-    const result = await Effect.runPromise(effectResult);
+    const result = await client.submitTransaction('test_cbor_hex');
 
     // Check the result
     expect(result).toEqual({ txId: 'test_tx_id' });
@@ -88,12 +99,13 @@ describe('MidgardNodeClient', () => {
     // Verify fetch was called with the correct arguments (second call)
     expect(mockFetch).toHaveBeenNthCalledWith(
       2,
-      'http://localhost:3000/submit?tx_cbor=test_cbor_hex',
+      'http://localhost:3000/submit',
       expect.objectContaining({
         method: 'POST',
         headers: expect.objectContaining({
-          'Content-Type': 'text/plain',
+          'Content-Type': 'application/json',
         }),
+        body: JSON.stringify({ tx_cbor: 'test_cbor_hex' }),
       })
     );
   });
@@ -113,21 +125,50 @@ describe('MidgardNodeClient', () => {
       retryDelay: 10,
     });
 
-    // Submit the transaction - this returns an Effect
-    const effectResult = client.submitTransaction('test_cbor_hex');
+    const result = await client.submitTransaction('test_cbor_hex');
+    expect(result).toEqual(
+      expect.objectContaining({
+        status: 'ERROR',
+      })
+    );
+    expect(String((result as { error?: unknown }).error)).toContain('error');
+  });
 
-    // Set up a flag to check if the error was caught
-    let errorCaught = false;
+  it('should decode spendable utxos from node response', async () => {
+    const txHash = CML.TransactionHash.from_hex('11'.repeat(32));
+    const outRef = CML.TransactionInput.new(txHash, 0n);
+    const output = CML.TransactionOutput.new(
+      CML.Address.from_bech32(
+        'addr_test1qzyem8ex0v9v76q0u52x3t2xmj5rkhjd9rsd44kx3klsut4qga2669x30zsng46mhfrrk4ngylfnnlda7rkfvxq5fywqvurkrs'
+      ),
+      CML.Value.from_coin(1_500_000n)
+    );
 
-    try {
-      // Try to run the effect - this should fail
-      await Effect.runPromise(effectResult);
-    } catch (error) {
-      // Just verify an error was thrown without checking its structure
-      errorCaught = true;
-    }
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        utxos: [
+          {
+            outref: Buffer.from(outRef.to_cbor_bytes()).toString('hex'),
+            value: Buffer.from(output.to_cbor_bytes()).toString('hex'),
+          },
+        ],
+      }),
+    });
 
-    // Assert that an error was caught
-    expect(errorCaught).toBe(true);
+    const client = new MidgardNodeClient({
+      baseUrl: 'http://localhost:3000',
+      retryAttempts: 1,
+      retryDelay: 10,
+    });
+
+    const utxos = await client.getSpendableUtxos(
+      'addr_test1qzyem8ex0v9v76q0u52x3t2xmj5rkhjd9rsd44kx3klsut4qga2669x30zsng46mhfrrk4ngylfnnlda7rkfvxq5fywqvurkrs'
+    );
+    expect(utxos).toHaveLength(1);
+    expect(utxos[0].txHash).toBe('11'.repeat(32));
+    expect(utxos[0].outputIndex).toBe(0);
+    expect(utxos[0].assets.lovelace).toBe(1_500_000n);
   });
 });

@@ -160,7 +160,9 @@ export const insertEntries = (
       yield* Effect.logDebug("No pairs provided, skipping insertion.");
       return;
     }
-    yield* sql`INSERT INTO ${sql(tableName)} ${sql.insert(pairs)}`;
+    yield* sql`INSERT INTO ${sql(tableName)} ${sql.insert(
+      pairs,
+    )} ON CONFLICT (${sql(Columns.TX_ID)}) DO NOTHING`;
   }).pipe(
     Effect.withLogSpan(`insertTXs ${tableName}`),
     Effect.tapErrorTag("SqlError", (e) =>

@@ -65,8 +65,8 @@ export const insertEntry = (
   Effect.gen(function* () {
     yield* Effect.logDebug(`${tableName} db: attempt to insert Ledger UTxO`);
     const sql = yield* SqlClient.SqlClient;
-    // No need to handle conflicts.
-    yield* sql`INSERT INTO ${sql(tableName)} ${sql.insert(entry)}`;
+    yield* sql`INSERT INTO ${sql(tableName)} ${sql.insert(entry)}
+      ON CONFLICT (${sql(Columns.OUTREF)}) DO NOTHING`;
   }).pipe(
     Effect.withLogSpan(`insertEntry ${tableName}`),
     Effect.tapErrorTag("SqlError", (e) =>
@@ -86,7 +86,8 @@ export const insertEntries = (
       yield* Effect.logDebug("No entries provided, skipping insertion.");
       return;
     }
-    yield* sql`INSERT INTO ${sql(tableName)} ${sql.insert(entries)}`;
+    yield* sql`INSERT INTO ${sql(tableName)} ${sql.insert(entries)}
+      ON CONFLICT (${sql(Columns.OUTREF)}) DO NOTHING`;
   }).pipe(
     Effect.withLogSpan(`insertEntries ${tableName}`),
     Effect.tapErrorTag("SqlError", (e) =>

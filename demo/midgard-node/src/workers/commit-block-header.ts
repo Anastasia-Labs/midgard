@@ -27,7 +27,10 @@ import {
   TxSignError,
   TxSubmitError,
 } from "@/transactions/utils.js";
-import { fromHex } from "@lucid-evolution/lucid";
+import {
+  LucidEvolution,
+  fromHex,
+} from "@lucid-evolution/lucid";
 import {
   MidgardMpt,
   MptError,
@@ -301,6 +304,41 @@ const failedSubmissionProgram = (
     };
   });
 
+const recoverSubmittedTxHashByHeaderProgram = (
+  stateQueueAuthValidator: SDK.AuthenticatedValidator,
+  expectedHeaderHash: string,
+): Effect.Effect<Option.Option<string>, never, Lucid> =>
+  Effect.gen(function* () {
+    const lucid = yield* Lucid;
+    const fetchConfig: SDK.StateQueueFetchConfig = {
+      stateQueueAddress: stateQueueAuthValidator.spendingScriptAddress,
+      stateQueuePolicyId: stateQueueAuthValidator.policyId,
+    };
+    const latestBlock = yield* SDK.fetchLatestCommittedBlockProgram(
+      lucid.api,
+      fetchConfig,
+    );
+    const latestHeader =
+      yield* SDK.getHeaderFromStateQueueDatum(latestBlock.datum);
+    const latestHeaderHash = yield* SDK.hashBlockHeader(latestHeader);
+    if (latestHeaderHash === expectedHeaderHash) {
+      yield* Effect.logWarning(
+        `🔹 Submit errored but on-chain header already advanced to ${expectedHeaderHash}; recovering submission state.`,
+      );
+      return Option.some(latestBlock.utxo.txHash);
+    }
+    return Option.none();
+  }).pipe(
+    Effect.catchAll((error) =>
+      Effect.gen(function* () {
+        yield* Effect.logWarning(
+          `🔹 Could not verify submit recovery on-chain: ${formatUnknownError(error)}`,
+        );
+        return Option.none<string>();
+      }),
+    ),
+  );
+
 /**
  * Given the target user event table, this helper finds all the events falling
  * in the given time range and if any was found, returns an `Effect` that finds
@@ -373,20 +411,28 @@ const buildUnsignedTx = (
       stateQueueMintingScript: stateQueueAuthValidator.mintingScript,
     };
 
-    const aoUpdateCommitmentTimeParams = {};
-
     yield* Effect.logInfo("🔹 Building block commitment transaction...");
     const fetchConfig: SDK.StateQueueFetchConfig = {
       stateQueueAddress: stateQueueAuthValidator.spendingScriptAddress,
       stateQueuePolicyId: stateQueueAuthValidator.policyId,
     };
     yield* lucid.switchToOperatorsMainWallet;
-    const txBuilder = yield* SDK.unsignedCommitBlockHeaderTxProgram(
+    const commitTx = yield* SDK.incompleteCommitBlockHeaderTxProgram(
       lucid.api,
       fetchConfig,
       commitBlockParams,
-      aoUpdateCommitmentTimeParams,
     );
+    const txBuilder = yield* Effect.tryPromise({
+      try: () =>
+        commitTx.complete({
+          localUPLCEval: false,
+        }),
+      catch: (e) =>
+        new SDK.StateQueueError({
+          message: `Failed to build block header commitment transaction: ${e}`,
+          cause: e,
+        }),
+    });
 
     const txSize = txBuilder.toCBOR().length / 2;
     yield* Effect.logInfo(`🔹 Transaction built successfully. Size: ${txSize}`);
@@ -423,10 +469,6 @@ const databaseOperationsProgram = (
 > =>
   Effect.gen(function* () {
     const mempoolTxs = yield* MempoolDB.retrieve;
-    const mempoolTxsCount = mempoolTxs.length;
-
-    const optEndTime: Option.Option<Date> =
-      yield* establishEndTimeFromTxRequests(mempoolTxs);
 
     const availableConfirmedBlock = workerInput.data.availableConfirmedBlock;
     const hasAvailableConfirmedBlock = availableConfirmedBlock !== "";
@@ -444,8 +486,24 @@ const databaseOperationsProgram = (
       };
     }
 
-    const { utxoRoot, txRoot, mempoolTxHashes, sizeOfProcessedTxs } =
-      yield* processMpts(ledgerTrie, mempoolTrie, mempoolTxs);
+    const {
+      utxoRoot,
+      txRoot,
+      mempoolTxHashes,
+      processedMempoolTxs,
+      sizeOfProcessedTxs,
+      rejectedMempoolTxsCount,
+    } = yield* processMpts(ledgerTrie, mempoolTrie, mempoolTxs);
+
+    if (rejectedMempoolTxsCount > 0) {
+      yield* Effect.logWarning(
+        `Rejected ${rejectedMempoolTxsCount} malformed tx(s) during commitment preprocessing.`,
+      );
+    }
+
+    const mempoolTxsCount = processedMempoolTxs.length;
+    const optEndTime: Option.Option<Date> =
+      yield* establishEndTimeFromTxRequests(processedMempoolTxs);
 
     const { stateQueue: stateQueueAuthValidator } =
       yield* AlwaysSucceedsContract;
@@ -461,7 +519,7 @@ const databaseOperationsProgram = (
       yield* Effect.logInfo(
         "🔹 No confirmed blocks available. Transferring to ProcessedMempoolDB...",
       );
-      yield* skippedSubmissionProgram(mempoolTxs, mempoolTxHashes);
+      yield* skippedSubmissionProgram(processedMempoolTxs, mempoolTxHashes);
       return {
         type: "SkippedSubmissionOutput",
         mempoolTxsCount,
@@ -510,7 +568,7 @@ const databaseOperationsProgram = (
         const confirmedHeaderHash = yield* SDK.hashBlockHeader(confirmedHeader);
         return yield* successfulLocalFinalizationRecoveryProgram(
           mempoolTrie,
-          mempoolTxs,
+          processedMempoolTxs,
           mempoolTxHashes,
           confirmedHeaderHash,
           workerInput,
@@ -628,11 +686,46 @@ const databaseOperationsProgram = (
             },
             TxSubmitError: (e) =>
               Effect.gen(function* () {
+                const recoveredTxHash = yield* recoverSubmittedTxHashByHeaderProgram(
+                  stateQueueAuthValidator,
+                  newHeaderHash,
+                );
+                if (Option.isSome(recoveredTxHash)) {
+                  return yield* successfulSubmissionProgram(
+                    mempoolTrie,
+                    processedMempoolTxs,
+                    mempoolTxHashes,
+                    newHeaderHash,
+                    workerInput,
+                    txSize,
+                    sizeOfProcessedTxs,
+                    recoveredTxHash.value,
+                  ).pipe(
+                    Effect.mapError(
+                      (cause) =>
+                        new LocalFinalizationPendingError({
+                          submittedTxHash: recoveredTxHash.value,
+                          txSize,
+                          mempoolTxsCount:
+                            processedMempoolTxs.length +
+                            workerInput.data.mempoolTxsCountSoFar,
+                          sizeOfBlocksTxs:
+                            sizeOfProcessedTxs +
+                            workerInput.data.sizeOfProcessedTxsSoFar,
+                          cause,
+                        }),
+                    ),
+                  );
+                }
+
                 // With a failed tx submission, we need to carry out the same db
                 // logic as the case where no confirmed blocks are available.
                 //
                 // TODO: Handle failures properly.
-                yield* skippedSubmissionProgram(mempoolTxs, mempoolTxHashes);
+                yield* skippedSubmissionProgram(
+                  processedMempoolTxs,
+                  mempoolTxHashes,
+                );
 
                 return yield* failedSubmissionProgram(
                   mempoolTrie,
@@ -645,7 +738,7 @@ const databaseOperationsProgram = (
           onSuccess: (txHash) =>
             successfulSubmissionProgram(
               mempoolTrie,
-              mempoolTxs,
+              processedMempoolTxs,
               mempoolTxHashes,
               newHeaderHash,
               workerInput,
@@ -659,7 +752,8 @@ const databaseOperationsProgram = (
                     submittedTxHash: txHash,
                     txSize,
                     mempoolTxsCount:
-                      mempoolTxs.length + workerInput.data.mempoolTxsCountSoFar,
+                      processedMempoolTxs.length +
+                      workerInput.data.mempoolTxsCountSoFar,
                     sizeOfBlocksTxs:
                       sizeOfProcessedTxs +
                       workerInput.data.sizeOfProcessedTxsSoFar,

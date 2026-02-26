@@ -107,10 +107,22 @@ const payloadToQueuedTx = (payload: QueuedTxPayload): QueuedTx | RejectedTx => {
       detail: "Queued payload missing binary tx fields",
     };
   }
+  if (
+    payload.txBodyHashForWitnesses !== undefined &&
+    (!Buffer.isBuffer(payload.txBodyHashForWitnesses) ||
+      payload.txBodyHashForWitnesses.length !== 32)
+  ) {
+    return {
+      txId: payload.txId,
+      code: RejectCodes.CborDeserialization,
+      detail: "Queued payload has invalid txBodyHashForWitnesses",
+    };
+  }
 
   const queuedTx: QueuedTx = {
     txId: payload.txId,
     txCbor: payload.txCbor,
+    txBodyHashForWitnesses: payload.txBodyHashForWitnesses,
     arrivalSeq: nextArrivalSeq,
     createdAt: new Date(payload.createdAtMillis),
   };

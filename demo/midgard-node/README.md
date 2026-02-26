@@ -122,3 +122,30 @@ docker compose run --rm midgard-node-tests
 cd midgard-node
 pnpm test
 ```
+
+## Valid Throughput Stress Test
+
+Run a high-throughput submitter that builds and submits **valid Midgard-native**
+transactions (parallel dependent chains), then prints submit/accept/reject rates
+from Prometheus metrics.
+
+```sh
+cd midgard-node
+pnpm stress:valid
+```
+
+Useful overrides:
+
+```sh
+STRESS_CHAIN_LENGTH=500 \
+STRESS_MAX_CHAINS=6 \
+STRESS_TARGET_ACCEPTED_TPS=600 \
+pnpm stress:valid
+```
+
+Notes:
+
+- This script reads `TESTNET_GENESIS_WALLET_SEED_PHRASE_A/B/C` from `.env`.
+- It uses `/utxos` to pick spendable UTxOs and submits to `/submit`.
+- It reports counters from `validation_accept_count_total`,
+  `validation_reject_count_total`, and `tx_count_total`.

@@ -85,10 +85,9 @@ program
       console.log(chalk.gray(`Interval: ${options.interval} seconds`));
       console.log(chalk.gray(`Concurrency: ${options.concurrency}\n`));
 
-      await startGenerator({
+      const startConfig = {
         nodeEndpoint: options.endpoint,
         network: options.network as Network,
-        initialUTxO,
         walletSeedOrPrivateKey,
         transactionType: options.type,
         oneToOneRatio: parseInt(options.ratio),
@@ -96,7 +95,12 @@ program
         interval: parseInt(options.interval),
         concurrency: parseInt(options.concurrency),
         outputDir: options.outputDir,
-      });
+      };
+      if (initialUTxO) {
+        Object.assign(startConfig, { initialUTxO });
+      }
+
+      await startGenerator(startConfig);
 
       console.log(chalk.green('\nGenerator started successfully!'));
       console.log(chalk.gray('Press Ctrl+C to stop'));

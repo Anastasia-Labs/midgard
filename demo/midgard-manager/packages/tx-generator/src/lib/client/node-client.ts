@@ -1,4 +1,5 @@
 import { Effect } from 'effect';
+import { CML, coreToUtxo, UTxO } from '@lucid-evolution/lucid';
 
 import { logFailedTransaction, logSubmittedTransaction } from '../../utils/logging.js';
 import { MidgardNodeConfig, TRANSACTION_CONSTANTS } from '../types.js';
@@ -20,6 +21,18 @@ export class MidgardNodeClient {
     this.retryAttempts = config.retryAttempts ?? TRANSACTION_CONSTANTS.NODE_DEFAULTS.RETRY_ATTEMPTS;
     this.retryDelay = config.retryDelay ?? TRANSACTION_CONSTANTS.NODE_DEFAULTS.RETRY_DELAY;
     this.enableLogs = config.enableLogs ?? true;
+  }
+
+  private decodeNodeUtxo(raw: { outref: string; value: string }): UTxO | undefined {
+    try {
+      const outRefBytes = Buffer.from(raw.outref, 'hex');
+      const outputBytes = Buffer.from(raw.value, 'hex');
+      const input = CML.TransactionInput.from_cbor_bytes(outRefBytes);
+      const output = CML.TransactionOutput.from_cbor_bytes(outputBytes);
+      return coreToUtxo(CML.TransactionUnspentOutput.new(input, output));
+    } catch {
+      return undefined;
+    }
   }
 
   /**
@@ -47,7 +60,9 @@ export class MidgardNodeClient {
         // Clear timeout
         if (timeoutId) clearTimeout(timeoutId);
 
-        return response.status === 404;
+        // Any HTTP response means the node is reachable; status code semantics
+        // can vary depending on DB/bootstrap state.
+        return response.status >= 100;
       } catch (error) {
         // Clear timeout to prevent memory leaks
         if (timeoutId) clearTimeout(timeoutId);
@@ -82,20 +97,20 @@ export class MidgardNodeClient {
         let attempts = 0;
         // while (attempts < this.retryAttempts) {
         try {
-          const response = await fetch(
-            `${this.baseUrl}/submit?tx_cbor=${encodeURIComponent(cborHex)}`,
-            {
-              method: 'POST',
-              headers: {
-                'Content-Type': 'text/plain',
-              },
-              signal,
-            }
-          );
+          const response = await fetch(`${this.baseUrl}/submit`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ tx_cbor: cborHex }),
+            signal,
+          });
 
           if (!response.ok) {
-            const error = await response.json();
-            throw new Error(error.message || `Unexpected status: ${response.status}`);
+            const error = await response
+              .json()
+              .catch(() => ({ error: `Unexpected status: ${response.status}` }));
+            throw new Error(error.error || error.message || `Unexpected status: ${response.status}`);
           }
 
           const result = await response.json();
@@ -166,5 +181,27 @@ export class MidgardNodeClient {
         return { _tag: 'UnknownError', error: String(error) };
       },
     });
+  }
+
+  /**
+   * Retrieve spendable UTxOs from the node for a specific address.
+   * Invalid/non-Cardano entries are ignored.
+   */
+  async getSpendableUtxos(address: string): Promise<UTxO[]> {
+    const response = await fetch(`${this.baseUrl}/utxos?address=${encodeURIComponent(address)}`);
+    if (!response.ok) {
+      return [];
+    }
+
+    const data = (await response.json()) as {
+      utxos?: Array<{ outref: string; value: string }>;
+    };
+    if (!Array.isArray(data.utxos)) {
+      return [];
+    }
+
+    return data.utxos
+      .map((raw) => this.decodeNodeUtxo(raw))
+      .filter((utxo): utxo is UTxO => utxo !== undefined);
   }
 }

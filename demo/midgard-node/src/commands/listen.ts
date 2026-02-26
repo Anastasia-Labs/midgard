@@ -43,7 +43,9 @@ import { QueuedTxPayload } from "@/validation/index.js";
 import {
   authorizeAdminRoute,
   extractSubmitTxHex,
+  extractSubmitTxHexFromQueryParams,
   isAdminRoutePath,
+  normalizeSubmitTxHexToNative,
   validateSubmitTxHex,
 } from "@/commands/listen-utils.js";
 import { evaluateReadiness } from "@/commands/readiness.js";
@@ -66,10 +68,6 @@ import * as Reset from "@/reset.js";
 import { SerializedStateQueueUTxO } from "@/workers/utils/commit-block-header.js";
 import { DatabaseError } from "@/database/utils/common.js";
 import { TxConfirmError, TxSignError } from "@/transactions/utils.js";
-import {
-  computeMidgardNativeTxIdFromFull,
-  decodeMidgardNativeTxFull,
-} from "@/midgard-tx-codec/index.js";
 import {
   fetchAndInsertDepositUTxOsFiber,
   blockConfirmationFiber,
@@ -707,8 +705,16 @@ const postSubmitHandler = (txQueue: Queue.Enqueue<QueuedTxPayload>) =>
   Effect.gen(function* () {
     const nodeConfig = yield* NodeConfig;
     const request = yield* HttpServerRequest.HttpServerRequest;
-    const body = yield* request.json;
-    const txString = extractSubmitTxHex(body);
+    const params = yield* ParsedSearchParams;
+    const queryTxHex = extractSubmitTxHexFromQueryParams(params);
+    let bodyTxHex: string | undefined = undefined;
+    if (queryTxHex === undefined) {
+      const parsedBody = yield* Effect.either(request.json);
+      if (parsedBody._tag === "Right") {
+        bodyTxHex = extractSubmitTxHex(parsedBody.right);
+      }
+    }
+    const txString = queryTxHex ?? bodyTxHex;
 
     if (txString === undefined) {
       yield* Effect.logInfo(`▫️ Invalid submit payload: missing tx_cbor`);
@@ -730,33 +736,35 @@ const postSubmitHandler = (txQueue: Queue.Enqueue<QueuedTxPayload>) =>
       );
     }
 
-    const decodeAndHashResult = yield* Effect.either(
-      Effect.try({
-        try: () => {
-          const txCbor = Buffer.from(fromHex(validation.txHex));
-          const nativeTx = decodeMidgardNativeTxFull(txCbor);
-          const txId = computeMidgardNativeTxIdFromFull(nativeTx);
-          return {
-            txId,
-            txIdHex: txId.toString("hex"),
-            txCbor,
-          };
-        },
-        catch: (error) => error,
-      }),
-    );
-
-    if (decodeAndHashResult._tag === "Left") {
-      yield* Effect.logInfo(`▫️ Invalid transaction CBOR payload`);
+    const normalized = normalizeSubmitTxHexToNative(validation.txHex);
+    if (!normalized.ok) {
+      yield* Effect.logInfo(`▫️ ${normalized.error}`);
+      yield* Effect.logInfo(`▫️ ${normalized.detail}`);
       return yield* HttpServerResponse.json(
         { error: "Invalid transaction CBOR payload" },
         { status: 400 },
       );
     }
 
+    if (normalized.source === "cardano-converted") {
+      yield* Effect.logInfo(
+        `▫️ Accepted Cardano tx and converted to Midgard-native format`,
+      );
+    }
+
+    if (normalized.txCbor.length > nodeConfig.MAX_SUBMIT_TX_CBOR_BYTES) {
+      return yield* HttpServerResponse.json(
+        {
+          error: `Transaction CBOR exceeds max size (${normalized.txCbor.length} > ${nodeConfig.MAX_SUBMIT_TX_CBOR_BYTES})`,
+        },
+        { status: 413 },
+      );
+    }
+
     const payload: QueuedTxPayload = {
-      txId: decodeAndHashResult.right.txId,
-      txCbor: decodeAndHashResult.right.txCbor,
+      txId: normalized.txId,
+      txCbor: normalized.txCbor,
+      txBodyHashForWitnesses: normalized.txBodyHashForWitnesses,
       createdAtMillis: Date.now(),
     };
     const queued = yield* txQueue.offer(payload);
@@ -772,7 +780,7 @@ const postSubmitHandler = (txQueue: Queue.Enqueue<QueuedTxPayload>) =>
 
     Effect.runSync(Metric.increment(txCounter));
     return yield* HttpServerResponse.json({
-      txId: decodeAndHashResult.right.txIdHex,
+      txId: normalized.txIdHex,
       status: "queued",
     });
   }).pipe(

@@ -1,11 +1,26 @@
+import fs from "node:fs";
+import path from "node:path";
 import { describe, expect, it } from "vitest";
 import {
   ADMIN_ROUTE_PATHS,
   authorizeAdminRoute,
   extractSubmitTxHex,
+  extractSubmitTxHexFromQueryParams,
   isAdminRoutePath,
+  normalizeSubmitTxHexToNative,
   validateSubmitTxHex,
 } from "@/commands/listen-utils.js";
+import { cardanoTxBytesToMidgardNativeTxFullBytes } from "@/midgard-tx-codec/index.js";
+
+type TxFixture = {
+  readonly cborHex: string;
+  readonly txId: string;
+};
+
+const fixturePath = path.resolve(__dirname, "./txs/txs_0.json");
+const txFixtures = JSON.parse(
+  fs.readFileSync(fixturePath, "utf8"),
+) as readonly TxFixture[];
 
 describe("listen admin auth helpers", () => {
   it("detects admin route paths", () => {
@@ -58,6 +73,24 @@ describe("submit admission helpers", () => {
     expect(extractSubmitTxHex(null)).toBeUndefined();
   });
 
+  it("extracts tx hex from query params", () => {
+    expect(
+      extractSubmitTxHexFromQueryParams({
+        tx_cbor: "abcd",
+      }),
+    ).toBe("abcd");
+    expect(
+      extractSubmitTxHexFromQueryParams({
+        txCbor: "1234",
+      }),
+    ).toBe("1234");
+    expect(
+      extractSubmitTxHexFromQueryParams({
+        tx_cbor: ["abcd"],
+      }),
+    ).toBeUndefined();
+  });
+
   it("rejects non-hex, odd-length, and oversized tx payloads", () => {
     const invalidHex = validateSubmitTxHex("zz", 4);
     expect(invalidHex.ok).toBe(false);
@@ -88,5 +121,40 @@ describe("submit admission helpers", () => {
       throw new Error("expected accepted result");
     }
     expect(accepted.byteLength).toBe(5);
+  });
+
+  it("normalizes Cardano tx bytes into Midgard-native bytes", () => {
+    const cardanoHex = txFixtures[0].cborHex;
+    const normalized = normalizeSubmitTxHexToNative(cardanoHex);
+    expect(normalized.ok).toBe(true);
+    if (!normalized.ok) {
+      throw new Error("expected normalized tx");
+    }
+    expect(normalized.source).toBe("cardano-converted");
+    expect(normalized.txIdHex.length).toBe(64);
+    expect(normalized.txCbor.length).toBeGreaterThan(0);
+    expect(normalized.txBodyHashForWitnesses?.length).toBe(32);
+  });
+
+  it("keeps native tx bytes unchanged when payload is already Midgard-native", () => {
+    const cardanoBytes = Buffer.from(txFixtures[0].cborHex, "hex");
+    const nativeBytes = cardanoTxBytesToMidgardNativeTxFullBytes(cardanoBytes);
+    const normalized = normalizeSubmitTxHexToNative(nativeBytes.toString("hex"));
+    expect(normalized.ok).toBe(true);
+    if (!normalized.ok) {
+      throw new Error("expected normalized tx");
+    }
+    expect(normalized.source).toBe("native");
+    expect(normalized.txCbor.equals(nativeBytes)).toBe(true);
+    expect(normalized.txBodyHashForWitnesses).toBeUndefined();
+  });
+
+  it("returns an invalid payload result for bytes that are neither native nor convertible Cardano", () => {
+    const normalized = normalizeSubmitTxHexToNative("ffff");
+    expect(normalized.ok).toBe(false);
+    if (normalized.ok) {
+      throw new Error("expected invalid payload result");
+    }
+    expect(normalized.error).toBe("Invalid transaction CBOR payload");
   });
 });

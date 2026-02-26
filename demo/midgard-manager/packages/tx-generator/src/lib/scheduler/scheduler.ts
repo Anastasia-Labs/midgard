@@ -3,7 +3,12 @@ import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { randomBytes } from 'node:crypto';
 
-import { Network, UTxO } from '@lucid-evolution/lucid';
+import {
+  CML,
+  Network,
+  UTxO,
+  walletFromSeed,
+} from '@lucid-evolution/lucid';
 import pLimit from 'p-limit';
 
 import { MidgardNodeClient } from '../client/node-client.js';
@@ -11,6 +16,7 @@ import {
   generateMultiOutputTransactions,
   generateOneToOneTransactions,
 } from '../generators/index.js';
+import { parseUnknownKeytoBech32PrivateKey } from '../../utils/common.js';
 import {
   DEFAULT_CONFIG,
   TRANSACTION_CONSTANTS,
@@ -102,10 +108,14 @@ export const startGenerator = async (
   const fullConfig: TransactionGeneratorConfig = {
     ...DEFAULT_CONFIG,
     ...config,
+    initialUTxO: config.initialUTxO ?? DEFAULT_CONFIG.initialUTxO,
   };
 
   // Validate the configuration
   validateGeneratorConfig(fullConfig);
+  const canonicalWalletPrivateKey = parseUnknownKeytoBech32PrivateKey(
+    fullConfig.walletSeedOrPrivateKey
+  );
 
   // Set up node client with the new configuration structure
   const nodeClient = new MidgardNodeClient({
@@ -150,97 +160,152 @@ export const startGenerator = async (
       outputIndex: Math.floor(Math.random() * 1001), // Random outputIndex 0 -> 1000
     }));
 
+  const resolveWalletAddress = async (): Promise<string> => {
+    if (fullConfig.initialUTxO?.address && fullConfig.initialUTxO.address.length > 0) {
+      return fullConfig.initialUTxO.address;
+    }
+
+    const rawWalletKey = fullConfig.walletSeedOrPrivateKey.trim();
+    if (rawWalletKey.includes(' ')) {
+      return walletFromSeed(rawWalletKey, { network: fullConfig.network }).address;
+    }
+
+    const networkId = fullConfig.network === 'Mainnet' ? 1 : 0;
+    return CML.EnterpriseAddress.new(
+      networkId,
+      CML.Credential.new_pub_key(CML.PrivateKey.from_bech32(canonicalWalletPrivateKey).to_public().hash())
+    )
+      .to_address()
+      .to_bech32();
+  };
+
   // Define the transaction generation function
   const generateTransactions = async () => {
     try {
-      const uniqueUTxOs = generateUniqueUTxOs(fullConfig.initialUTxO, fullConfig.batchSize);
+      const nodeAvailable = await nodeClient.isAvailable();
+      let taskUTxOs: UTxO[] = [];
+      let forceOneToOne = false;
 
-      const tasks = Array(fullConfig.batchSize)
-        .fill(null)
-        .map(async (_, index) => {
-          // ← Add index parameter
-          return concurrencyLimiter(async () => {
-            const taskUTxO = uniqueUTxOs[index];
-            const useOneToOne =
-              fullConfig.transactionType === 'one-to-one' ||
-              (fullConfig.transactionType === 'mixed' &&
-                Math.random() * 100 < (fullConfig.oneToOneRatio ?? 70));
+      if (nodeAvailable) {
+        const walletAddress = await resolveWalletAddress();
+        const spendableUtxos = (await nodeClient.getSpendableUtxos(walletAddress)).filter(
+          (utxo) => {
+            const lovelace = utxo.assets?.lovelace;
+            const lovelaceAmount =
+              typeof lovelace === 'bigint'
+                ? lovelace
+                : BigInt(typeof lovelace === 'string' ? lovelace : 0);
+            return lovelaceAmount >= TRANSACTION_CONSTANTS.MIN_LOVELACE_OUTPUT;
+          }
+        );
+        if (spendableUtxos.length === 0) {
+          console.warn(
+            `No spendable UTxOs found for ${walletAddress}. Waiting for funds in mempool_ledger...`
+          );
+          return;
+        }
 
-            const txs = useOneToOne
-              ? await generateOneToOneTransactions({
-                  network: fullConfig.network,
-                  initialUTxO: taskUTxO,
-                  txsCount: 1,
-                  walletSeedOrPrivateKey: fullConfig.walletSeedOrPrivateKey,
-                  nodeClient,
-                })
-              : await generateMultiOutputTransactions({
-                  network: fullConfig.network,
-                  initialUTxO: taskUTxO,
-                  utxosCount: TRANSACTION_CONSTANTS.OUTPUTS_PER_DISTRIBUTION,
-                  finalUtxosCount: 1,
-                  walletSeedOrPrivateKey: fullConfig.walletSeedOrPrivateKey,
-                  nodeClient,
-                });
+        taskUTxOs = spendableUtxos.slice(0, fullConfig.batchSize);
+        forceOneToOne = true;
+        if (fullConfig.transactionType !== 'one-to-one') {
+          console.log(
+            'Node-connected mode uses one-to-one spends to ensure generated txs match live ledger UTxOs.'
+          );
+        }
+      } else {
+        taskUTxOs = generateUniqueUTxOs(fullConfig.initialUTxO, fullConfig.batchSize);
+      }
 
-            if (!txs || !Array.isArray(txs)) {
-              throw new Error('Failed to generate transactions');
-            }
+      const tasks = taskUTxOs.map((taskUTxO) =>
+        concurrencyLimiter(async () => {
+          const useOneToOne =
+            forceOneToOne ||
+            fullConfig.transactionType === 'one-to-one' ||
+            (fullConfig.transactionType === 'mixed' &&
+              Math.random() * 100 < (fullConfig.oneToOneRatio ?? 70));
 
-            const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-            const nodeAvailable = await nodeClient.isAvailable();
+          const txs = useOneToOne
+            ? await generateOneToOneTransactions({
+                network: fullConfig.network,
+                initialUTxO: taskUTxO,
+                txsCount: 1,
+                walletSeedOrPrivateKey: canonicalWalletPrivateKey,
+                nodeClient,
+              })
+            : await generateMultiOutputTransactions({
+                network: fullConfig.network,
+                initialUTxO: taskUTxO,
+                utxosCount: TRANSACTION_CONSTANTS.OUTPUTS_PER_DISTRIBUTION,
+                finalUtxosCount: 1,
+                walletSeedOrPrivateKey: canonicalWalletPrivateKey,
+                nodeClient,
+              });
 
-            if (!nodeAvailable && fullConfig.outputDir) {
-              const projectRoot = join(__dirname, '../../../..');
-              const filename = `${useOneToOne ? 'one-to-one' : 'multi-output'}-${timestamp}.json`;
-              const filepath = join(projectRoot, fullConfig.outputDir, filename);
-              await writeFile(filepath, JSON.stringify(txs, null, 2));
-              console.log(`Node unavailable - transactions written to ${filepath}`);
-              state.stats.transactionsGenerated += txs.length;
-            } else {
-              try {
-                const submissionStart = Date.now();
-                for (const tx of txs) {
-                  const result = await nodeClient.submitTransaction(tx.cborHex);
+          if (!txs || !Array.isArray(txs)) {
+            throw new Error('Failed to generate transactions');
+          }
 
-                  // Handle node unavailability gracefully
-                  if (result && result.status === 'NODE_UNAVAILABLE') {
-                    if (fullConfig.outputDir) {
-                      const projectRoot = join(__dirname, '../../../..');
-                      const filename = `${useOneToOne ? 'one-to-one' : 'multi-output'}-${timestamp}.json`;
-                      const filepath = join(projectRoot, fullConfig.outputDir, filename);
-                      await writeFile(filepath, JSON.stringify(txs, null, 2));
-                      console.log(`Node unavailable - transactions written to ${filepath}`);
-                    }
-                    state.stats.transactionsGenerated += txs.length;
-                    break; // Exit the loop since node is unavailable
+          const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+
+          if (!nodeAvailable && fullConfig.outputDir) {
+            const projectRoot = join(__dirname, '../../../..');
+            const filename = `${useOneToOne ? 'one-to-one' : 'multi-output'}-${timestamp}.json`;
+            const filepath = join(projectRoot, fullConfig.outputDir, filename);
+            await writeFile(filepath, JSON.stringify(txs, null, 2));
+            console.log(`Node unavailable - transactions written to ${filepath}`);
+            state.stats.transactionsGenerated += txs.length;
+          } else {
+            try {
+              const submissionStart = Date.now();
+              let submittedCount = 0;
+              for (const tx of txs) {
+                const result = (await nodeClient.submitTransaction(tx.cborHex)) as {
+                  status?: string;
+                  error?: string;
+                };
+
+                // Handle node unavailability gracefully
+                if (result && result.status === 'NODE_UNAVAILABLE') {
+                  if (fullConfig.outputDir) {
+                    const projectRoot = join(__dirname, '../../../..');
+                    const filename = `${useOneToOne ? 'one-to-one' : 'multi-output'}-${timestamp}.json`;
+                    const filepath = join(projectRoot, fullConfig.outputDir, filename);
+                    await writeFile(filepath, JSON.stringify(txs, null, 2));
+                    console.log(`Node unavailable - transactions written to ${filepath}`);
                   }
+                  state.stats.transactionsGenerated += txs.length;
+                  break; // Exit the loop since node is unavailable
                 }
-                const submissionEnd = Date.now();
-
-                state.stats.transactionsGenerated += txs.length;
-                state.stats.transactionsSubmitted += txs.length;
-                console.log(
-                  `Submitted ${txs.length} transactions in ${submissionEnd - submissionStart}ms`
-                );
-              } catch (submitError) {
-                console.error('Failed to submit transactions:', submitError);
-
-                if (fullConfig.outputDir) {
-                  const projectRoot = join(__dirname, '../../../..');
-                  const filename = `${useOneToOne ? 'one-to-one' : 'multi-output'}-${timestamp}.json`;
-                  const filepath = join(projectRoot, fullConfig.outputDir, filename);
-                  await writeFile(filepath, JSON.stringify(txs, null, 2));
-                  console.log(`Failed submission - transactions written to ${filepath}`);
+                if (result && result.status === 'ERROR') {
+                  throw new Error(result.error ?? 'submit failed');
                 }
-
-                state.stats.transactionsGenerated += txs.length;
+                submittedCount++;
               }
-            }
+              const submissionEnd = Date.now();
 
-            return txs;
-          });
-        });
+              state.stats.transactionsGenerated += txs.length;
+              state.stats.transactionsSubmitted += submittedCount;
+              console.log(
+                `Submitted ${submittedCount}/${txs.length} transactions in ${submissionEnd - submissionStart}ms`
+              );
+            } catch (submitError) {
+              console.error('Failed to submit transactions:', submitError);
+
+              if (fullConfig.outputDir) {
+                const projectRoot = join(__dirname, '../../../..');
+                const filename = `${useOneToOne ? 'one-to-one' : 'multi-output'}-${timestamp}.json`;
+                const filepath = join(projectRoot, fullConfig.outputDir, filename);
+                await writeFile(filepath, JSON.stringify(txs, null, 2));
+                console.log(`Failed submission - transactions written to ${filepath}`);
+              }
+
+              state.stats.transactionsGenerated += txs.length;
+            }
+          }
+
+          return txs;
+        })
+      );
 
       await Promise.all(tasks);
     } catch (error) {

@@ -28,6 +28,43 @@ type Entry = EntryNoHeightAndTS & {
   [Columns.TIMESTAMPTZ]: Date;
 };
 
+const outRefHex = (txId: Buffer): string => txId.toString("hex");
+
+const assertNoConflictingHeaderHashes = (
+  headerHash: Buffer,
+  txHashes: readonly Buffer[],
+): Effect.Effect<void, SqlError.SqlError, SqlClient.SqlClient> =>
+  Effect.gen(function* () {
+    const sql = yield* SqlClient.SqlClient;
+    const uniqueTxHashes = Array.from(
+      new Set(txHashes.map((txHash) => outRefHex(txHash))),
+    ).map((hex) => Buffer.from(hex, "hex"));
+
+    if (uniqueTxHashes.length <= 0) {
+      return;
+    }
+
+    const existingRows = yield* sql<
+      Pick<Entry, Columns.TX_ID | Columns.HEADER_HASH>
+    >`SELECT ${sql(Columns.TX_ID)}, ${sql(Columns.HEADER_HASH)} FROM ${sql(
+      tableName,
+    )} WHERE ${sql.in(Columns.TX_ID, uniqueTxHashes)}`;
+
+    for (const row of existingRows) {
+      if (!row[Columns.HEADER_HASH].equals(headerHash)) {
+        yield* Effect.fail(
+          new SqlError.SqlError({
+            cause: `${tableName} integrity violation: tx_id=${outRefHex(
+              row[Columns.TX_ID],
+            )} is already linked to header=${outRefHex(
+              row[Columns.HEADER_HASH],
+            )}`,
+          }),
+        );
+      }
+    }
+  });
+
 export const createTable: Effect.Effect<void, DatabaseError, Database> =
   Effect.gen(function* () {
     const sql = yield* SqlClient.SqlClient;
@@ -59,16 +96,25 @@ export const insert = (
       yield* Effect.logDebug("No txHashes provided, skipping block insertion.");
       return;
     }
-    const rowsToInsert: EntryNoHeightAndTS[] = txHashes.map(
+    yield* assertNoConflictingHeaderHashes(headerHash, txHashes);
+
+    const uniqueTxHashes = Array.from(
+      new Set(txHashes.map((txHash) => outRefHex(txHash))),
+    ).map((hex) => Buffer.from(hex, "hex"));
+
+    const rowsToInsert: EntryNoHeightAndTS[] = uniqueTxHashes.map(
       (txHash: Buffer) => ({
         [Columns.HEADER_HASH]: headerHash,
         [Columns.TX_ID]: txHash,
       }),
     );
-    yield* sql`INSERT INTO ${sql(tableName)} ${sql.insert(rowsToInsert)}`;
+    yield* sql`INSERT INTO ${sql(tableName)} ${sql.insert(rowsToInsert)}
+      ON CONFLICT (${sql(Columns.TX_ID)}) DO NOTHING`;
   }).pipe(
     Effect.tapErrorTag("SqlError", (e) =>
-      Effect.logError(`${tableName} db: inserting error: ${e}`),
+      Effect.logError(
+        `${tableName} db: inserting error: ${JSON.stringify(e)}`,
+      ),
     ),
     Effect.withLogSpan(`insert ${tableName}`),
     sqlErrorToDatabaseError(tableName, "Failed to insert the given block"),

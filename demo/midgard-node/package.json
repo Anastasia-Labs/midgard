@@ -25,6 +25,7 @@
     "bench:validation": "export NODE_ENV='emulator' && export BENCH_QUICK=1 && vitest run --config vitest.bench.config.ts tests/benchmarks/validation-benchmark.bench.ts --disable-console-intercept",
     "bench:validation:quick": "export NODE_ENV='emulator' && export BENCH_QUICK=1 && vitest run --config vitest.bench.config.ts tests/benchmarks/validation-benchmark.bench.ts --disable-console-intercept",
     "bench:validation:full": "export NODE_ENV='emulator' && vitest run --config vitest.bench.config.ts tests/benchmarks/validation-benchmark.bench.ts --disable-console-intercept",
+    "stress:valid": "node scripts/throughput-valid-stress.mjs",
     "test": "export NODE_ENV='emulator' && vitest run -- --reporter=basic --disable-console-intercept"
   },
   "keywords": [

@@ -18,6 +18,20 @@ const INIT_RETRY_AFTER_MILLIS = 2_000;
 
 const PAUSE_DURATION = "5 seconds";
 
+const formatSubmitError = (error: unknown): string => {
+  if (error instanceof Error) {
+    return `${error.name}: ${error.message}`;
+  }
+  if (typeof error === "string") {
+    return error;
+  }
+  try {
+    return JSON.stringify(error);
+  } catch {
+    return String(error);
+  }
+};
+
 /**
  * Handle the signing and submission of a transaction.
  *
@@ -109,11 +123,15 @@ ${signed.toCBOR()}
           Schedule.recurs(RETRY_ATTEMPTS),
         ),
       ),
-      Effect.tapError((e) => Effect.logError(e)),
+      Effect.tapError((e) =>
+        Effect.logError(
+          `Tx submission provider error for ${txHash}: ${formatSubmitError(e)}`,
+        ),
+      ),
       Effect.mapError(
         (e) =>
           new TxSubmitError({
-            message: `Failed to submit transaction`,
+            message: `Failed to submit transaction: ${formatSubmitError(e)}`,
             cause: e,
             txHash,
           }),
