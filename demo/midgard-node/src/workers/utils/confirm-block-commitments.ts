@@ -1,10 +1,8 @@
-import { TxHash } from "@lucid-evolution/lucid";
 import { SerializedStateQueueUTxO } from "./commit-block-header.js";
 
 export type WorkerInput = {
   data: {
-    firstRun: boolean;
-    unconfirmedSubmittedBlock: "" | TxHash;
+    availableConfirmedBlock: "" | SerializedStateQueueUTxO;
   };
 };
 
@@ -13,8 +11,8 @@ export type SuccessfulConfirmationOutput = {
   blocksUTxO: SerializedStateQueueUTxO;
 };
 
-export type NoTxForConfirmationOutput = {
-  type: "NoTxForConfirmationOutput";
+export type NoUnsubmittedBlocksOutput = {
+  type: "NoUnsubmittedBlocksOutput";
 };
 
 export type FailedConfirmationOutput = {
@@ -22,7 +20,13 @@ export type FailedConfirmationOutput = {
   error: string;
 };
 
+export type SubmittedButUnconfirmedOutput = {
+  type: "SubmittedButUnconfirmedOutput";
+  error: string;
+};
+
 export type WorkerOutput =
   | SuccessfulConfirmationOutput
-  | NoTxForConfirmationOutput
+  | NoUnsubmittedBlocksOutput
+  | SubmittedButUnconfirmedOutput
   | FailedConfirmationOutput;

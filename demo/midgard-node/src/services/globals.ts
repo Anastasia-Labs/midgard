@@ -16,9 +16,10 @@ export class Globals extends Effect.Service<Globals>()("Globals", {
     // all UTxOs at state queue.
     const RESET_IN_PROGRESS: Ref.Ref<boolean> = yield* Ref.make(false);
 
-    // The state queue UTxO confirmed by the confirmation worker, unused for
-    // block commitment. Using `as` since it seems to be the only way to satisfy
-    // the compiler (TODO?).
+    // Latest state queue UTxO confirmed/fetched by the confirmation worker.
+    // This value is passed into workers as the current on-chain anchor.
+    // Using `as` since it seems to be the only way to satisfy the compiler
+    // (TODO?).
     const AVAILABLE_CONFIRMED_BLOCK: Ref.Ref<"" | SerializedStateQueueUTxO> =
       yield* Ref.make("" as "" | SerializedStateQueueUTxO);
 

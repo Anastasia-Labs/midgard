@@ -12,9 +12,6 @@ const blockConfirmationAction: Effect.Effect<void, WorkerError, Globals> =
     const globals = yield* Globals;
     const RESET_IN_PROGRESS = yield* Ref.get(globals.RESET_IN_PROGRESS);
     if (!RESET_IN_PROGRESS) {
-      const UNCONFIRMED_SUBMITTED_BLOCK_TX_HASH = yield* Ref.get(
-        globals.UNCONFIRMED_SUBMITTED_BLOCK_TX_HASH,
-      );
       const AVAILABLE_CONFIRMED_BLOCK = yield* Ref.get(
         globals.AVAILABLE_CONFIRMED_BLOCK,
       );
@@ -32,10 +29,7 @@ const blockConfirmationAction: Effect.Effect<void, WorkerError, Globals> =
           {
             workerData: {
               data: {
-                firstRun:
-                  UNCONFIRMED_SUBMITTED_BLOCK_TX_HASH === "" &&
-                  AVAILABLE_CONFIRMED_BLOCK === "",
-                unconfirmedSubmittedBlock: UNCONFIRMED_SUBMITTED_BLOCK_TX_HASH,
+                availableConfirmedBlock: AVAILABLE_CONFIRMED_BLOCK,
               },
             } as BlockConfirmationWorkerInput, // TODO: Consider other approaches to avoid type assertion here.
           },
@@ -93,10 +87,20 @@ const blockConfirmationAction: Effect.Effect<void, WorkerError, Globals> =
             globals.AVAILABLE_CONFIRMED_BLOCK,
             workerOutput.blocksUTxO,
           );
-          yield* Effect.logInfo("🔍 ☑️  Submitted block confirmed.");
+          yield* Effect.logInfo(
+            "🔍 ☑️  On-chain block synchronized and queued submissions (if any) confirmed.",
+          );
           break;
         }
-        case "NoTxForConfirmationOutput": {
+        case "NoUnsubmittedBlocksOutput": {
+          break;
+        }
+        case "SubmittedButUnconfirmedOutput": {
+          yield* Ref.set(globals.UNCONFIRMED_SUBMITTED_BLOCK_TX_HASH, "");
+          yield* Ref.set(globals.AVAILABLE_CONFIRMED_BLOCK, "");
+          yield* Effect.logWarning(
+            `🔍 ⚠️  Submission succeeded but confirmation failed. Clearing cached confirmed block to force re-sync on next run. (${workerOutput.error})`,
+          );
           break;
         }
         case "FailedConfirmationOutput": {
