@@ -56,7 +56,7 @@ const userEventUTxOsToEntry = (
   }));
 };
 
-export const fetchAndInsertUserEventUTxOs: Effect.Effect<
+export const syncUserEvents: Effect.Effect<
   void,
   SDK.LucidError | DatabaseError,
   AlwaysSucceedsContract | Lucid | Database | Globals
@@ -97,7 +97,7 @@ export const fetchAndInsertUserEventUTxOs: Effect.Effect<
   yield* Ref.set(globals.LATEST_USER_EVENTS_FETCH_TIME, endTime);
 });
 
-export const fetchAndInsertUserEventUTxOsFiber = (
+export const syncUserEventsFiber = (
   schedule: Schedule.Schedule<number>,
 ): Effect.Effect<
   void,
@@ -105,9 +105,9 @@ export const fetchAndInsertUserEventUTxOsFiber = (
   AlwaysSucceedsContract | Lucid | Database | Globals
 > =>
   Effect.gen(function* () {
-    yield* Effect.logInfo("🏦 Fetch user events and insert them in db");
-    const action = fetchAndInsertUserEventUTxOs.pipe(
-      Effect.withSpan("fetch-and-inser-user-event-utxos-fiber"),
+    yield* Effect.logInfo("🏦 Sync user events to db");
+    const action = syncUserEvents.pipe(
+      Effect.withSpan("sync-user-events-fiber"),
       Effect.catchAllCause(Effect.logWarning),
     );
     yield* Effect.repeat(action, schedule);
