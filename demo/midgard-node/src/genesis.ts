@@ -9,7 +9,7 @@ import {
 import { Columns as LedgerColumns } from "@/database/utils/ledger.js";
 import * as MempoolLedgerDB from "@/database/mempoolLedger.js";
 import {
-  getAddressDetails,
+  CML,
   TxSubmitError,
   UTxO,
   utxoToCore,
@@ -61,20 +61,10 @@ ${Array.from(new Set(config.GENESIS_UTXOS.map((u) => u.address))).join("\n")}`,
   Effect.andThen(Effect.succeed(Effect.void)),
 );
 
-const submitGenesisTxOrders: Effect.Effect<
-  void,
-  | SDK.HashingError
-  | SDK.LucidError
-  | SDK.TxOrderError
-  | SDK.Bech32DeserializationError
-  | TxSignError
-  | TxSubmitError
-  | TxConfirmError,
-  AlwaysSucceedsContract | Lucid | NodeConfig
-> = Effect.gen(function* () {
+const submitGenesisTxOrders = Effect.gen(function* () {
   yield* Effect.logInfo(`🟣 Building genesis tx order tx...`);
 
-  const { txOrder: txOrderAuthValidator } = yield* AlwaysSucceedsContract;
+  const { txOrder } = yield* AlwaysSucceedsContract;
   const config = yield* NodeConfig;
   const lucid = yield* Lucid;
 
@@ -86,31 +76,28 @@ const submitGenesisTxOrders: Effect.Effect<
   }
   yield* lucid.switchToOperatorsMainWallet;
 
-  const l2Address = config.GENESIS_UTXOS[0].address;
-  const l2AddressData = yield* SDK.addressDataFromBech32(l2Address);
+  const l2UTxO = config.GENESIS_UTXOS[0];
+  const l2Address = l2UTxO.address;
+  const l2AddressData = yield* SDK.midgardAddressFromBech32(l2Address);
 
-  const txBuilder = lucid.api
-    .newTx()
-    .pay.ToAddress(l2Address, { lovelace: 1_000_00n });
-  const txSignBuilder = yield* Effect.tryPromise({
-    try: () => txBuilder.complete(),
-    catch: (err) =>
-      new SDK.LucidError({
-        message: "Failed to build genesis tx order transaction",
-        cause: err,
-      }),
+  yield* lucid.switchToOperatorsMainWallet;
+  const operatorWalletAddress = yield* Effect.tryPromise({
+    try: lucid.api.wallet().address,
+    catch: (e) => new SDK.LucidError({
+      message: "Failed to build genesis tx order transaction, no refund address was deducible",
+      cause: e,
+    }),
   });
-  const tx = txSignBuilder.toTransaction();
 
-  const txOrderParams: SDK.TxOrderParams = {
-    txOrderScriptAddress: txOrderAuthValidator.spendingScriptAddress,
-    mintingPolicy: txOrderAuthValidator.mintingScript,
-    policyId: txOrderAuthValidator.policyId,
-    refundAddress: l2AddressData,
-    refundDatum: "",
-    midgardTxBody: "",
-    midgardTxWits: "",
-    cardanoTx: tx,
+  // TODO
+  const l2Tx = CML.Transaction.new()
+
+  const txOrderParams = {
+    txOrderScriptAddress: txOrder.spendingScriptAddress,
+    mintingPolicy: txOrder.mintingScript,
+    policyId: txOrder.policyId,
+    cardanoTx: l2Tx,
+    refundAddress: yield* SDK.addressDataFromBech32(operatorWalletAddress),
   };
 
   const signedTx = yield* SDK.unsignedTxOrderTxProgram(
@@ -130,6 +117,7 @@ const submitGenesisDeposits: Effect.Effect<
   | SDK.DepositError
   | SDK.HashingError
   | SDK.LucidError
+  | SDK.UnspecifiedNetworkError
   | TxSubmitError
   | TxSignError
   | TxConfirmError,
