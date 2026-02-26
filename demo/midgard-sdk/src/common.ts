@@ -159,24 +159,6 @@ export const utxosAtByNFTPolicyId = (
     ),
   );
 
-// TODO: Might be good to define an `EventUTxO` type.
-export const isEventUTxOInclusionTimeInBounds = (
-  eventUTxO: { datum: { inclusionTime: bigint } },
-  inclusionTimeLowerBound?: POSIXTime,
-  inclusionTimeUpperBound?: POSIXTime,
-): boolean => {
-  const eventDatum = eventUTxO.datum;
-
-  const biggerThanLower =
-    inclusionTimeLowerBound === undefined ||
-    inclusionTimeLowerBound < eventDatum.inclusionTime;
-  const smallerThanUpper =
-    inclusionTimeUpperBound === undefined ||
-    eventDatum.inclusionTime <= inclusionTimeUpperBound;
-
-  return biggerThanLower && smallerThanUpper;
-};
-
 const blake2bHelper = (
   msg: string,
   dkLen: number,
@@ -498,8 +480,7 @@ export type AuthenticUTxO<TDatum, TExtra = undefined> = {
   utxo: UTxO;
   datum: TDatum;
   assetName: string;
-  extra?: TExtra;
-};
+} & ([TExtra] extends [undefined] ? {} : TExtra);
 
 export const getDatumFromUTxO = <TDatum>(
   nodeUTxO: UTxO,
@@ -529,7 +510,26 @@ export const getDatumFromUTxO = <TDatum>(
 /**
  * Validates correctness of datum, and having a single NFT.
  */
-export const utxoToAuthenticUTxO = <TDatum, TExtra = undefined>(
+export function utxoToAuthenticUTxO<TDatum>(
+  utxo: UTxO,
+  nftPolicy: string,
+  schema: any,
+): Effect.Effect<
+  AuthenticUTxO<TDatum>,
+  DataCoercionError | UnauthenticUtxoError
+>;
+
+export function utxoToAuthenticUTxO<TDatum, TExtra>(
+  utxo: UTxO,
+  nftPolicy: string,
+  schema: any,
+  extraFields: (datum: TDatum) => TExtra,
+): Effect.Effect<
+  AuthenticUTxO<TDatum, TExtra>,
+  DataCoercionError | UnauthenticUtxoError
+>;
+
+export function utxoToAuthenticUTxO<TDatum, TExtra = undefined>(
   utxo: UTxO,
   nftPolicy: string,
   schema: any,
@@ -537,8 +537,8 @@ export const utxoToAuthenticUTxO = <TDatum, TExtra = undefined>(
 ): Effect.Effect<
   AuthenticUTxO<TDatum, TExtra>,
   DataCoercionError | UnauthenticUtxoError
-> =>
-  Effect.gen(function* () {
+> {
+  return Effect.gen(function* () {
     const datum = yield* getDatumFromUTxO<TDatum>(utxo, schema);
     const [sym, assetName] = yield* getStateToken(utxo.assets);
     if (sym !== nftPolicy) {
@@ -549,30 +549,61 @@ export const utxoToAuthenticUTxO = <TDatum, TExtra = undefined>(
         }),
       );
     }
-    const extra = extraFields ? extraFields(datum) : ({} as TExtra);
+
+    if (extraFields) {
+      const extra = extraFields(datum);
+      return {
+        utxo,
+        datum,
+        assetName,
+        ...extra,
+      } as AuthenticUTxO<TDatum, TExtra>;
+    }
 
     return {
       utxo,
       datum,
       assetName,
-      ...extra,
-    };
+    } as AuthenticUTxO<TDatum, TExtra>;
   });
+}
 
 /**
  * Silently drops invalid UTxOs.
  */
-export const utxosToAuthenticUTxOs = <TDatum, TExtra = undefined>(
+export function utxosToAuthenticUTxOs<TDatum>(
+  utxos: UTxO[],
+  nftPolicy: string,
+  schema: any,
+): Effect.Effect<AuthenticUTxO<TDatum>[]>;
+
+export function utxosToAuthenticUTxOs<TDatum, TExtra>(
+  utxos: UTxO[],
+  nftPolicy: string,
+  schema: any,
+  extraFields: (datum: TDatum) => TExtra,
+): Effect.Effect<AuthenticUTxO<TDatum, TExtra>[]>;
+
+export function utxosToAuthenticUTxOs<TDatum, TExtra = undefined>(
   utxos: UTxO[],
   nftPolicy: string,
   schema: any,
   extraFields?: (datum: TDatum) => TExtra,
-): Effect.Effect<AuthenticUTxO<TDatum, TExtra>[]> => {
+): Effect.Effect<AuthenticUTxO<TDatum, TExtra>[]> {
+  if (extraFields) {
+    const effects = utxos.map((u) =>
+      utxoToAuthenticUTxO<TDatum, TExtra>(u, nftPolicy, schema, extraFields),
+    );
+    return Effect.allSuccesses(effects);
+  }
+
   const effects = utxos.map((u) =>
-    utxoToAuthenticUTxO<TDatum, TExtra>(u, nftPolicy, schema, extraFields),
+    utxoToAuthenticUTxO<TDatum>(u, nftPolicy, schema),
   );
-  return Effect.allSuccesses(effects);
-};
+  return Effect.allSuccesses(effects) as Effect.Effect<
+    AuthenticUTxO<TDatum, TExtra>[]
+  >;
+}
 
 /**
  * TODO: Move to the `operatorDirectory` module after refactoring.`

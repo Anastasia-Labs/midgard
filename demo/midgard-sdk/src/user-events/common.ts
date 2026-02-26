@@ -1,11 +1,72 @@
 import {
+  HashingError,
+  hashHexWithBlake2b256,
+  LucidError,
+  POSIXTime,
+  UnspecifiedNetworkError,
+} from "@/common.js";
+import { Effect } from "effect";
+import {
+  Address,
   Assets,
+  CML,
   Data,
   LucidEvolution,
   MintingPolicy,
+  PolicyId,
   TxBuilder,
   UTxO,
 } from "@lucid-evolution/lucid";
+import { getProtocolParameters } from "@/protocol-parameters.js";
+
+const eventIInclusionTimeInBounds = (
+  inclusionTime: bigint,
+  inclusionTimeLowerBound?: POSIXTime,
+  inclusionTimeUpperBound?: POSIXTime,
+): boolean => {
+  const biggerThanLower =
+    inclusionTimeLowerBound === undefined ||
+    inclusionTimeLowerBound <= inclusionTime;
+  const smallerThanUpper =
+    inclusionTimeUpperBound === undefined ||
+    inclusionTime < inclusionTimeUpperBound;
+  return biggerThanLower && smallerThanUpper;
+};
+
+export type UserEventFetchConfig = {
+  eventAddress: Address;
+  eventPolicyId: PolicyId;
+  inclusionTimeUpperBound?: POSIXTime;
+  inclusionTimeLowerBound?: POSIXTime;
+};
+export const fetchUserEventUTxOsProgram = <
+  TEventUTxO extends { datum: { inclusionTime: bigint } },
+>(
+  lucid: LucidEvolution,
+  config: UserEventFetchConfig,
+  conversionFunction: (utxo: UTxO[]) => Effect.Effect<TEventUTxO[]>,
+): Effect.Effect<TEventUTxO[], LucidError> =>
+  Effect.gen(function* () {
+    const allUTxOs = yield* Effect.tryPromise({
+      try: () => lucid.utxosAt(config.eventAddress),
+      catch: (e) => {
+        return new LucidError({
+          message: `Failed to fetch user event UTxOs at: ${config.eventAddress}`,
+          cause: e,
+        });
+      },
+    });
+    const eventUTxOs = yield* conversionFunction(allUTxOs);
+
+    const validEventUTxOs = eventUTxOs.filter((utxo) =>
+      eventIInclusionTimeInBounds(
+        utxo.datum.inclusionTime,
+        config.inclusionTimeLowerBound,
+        config.inclusionTimeUpperBound,
+      ),
+    );
+    return validEventUTxOs;
+  });
 
 export const UserEventMintRedeemerSchema = Data.Enum([
   Data.Object({
@@ -85,3 +146,56 @@ export const buildUserEventMintTransaction = (
     .validTo(validTo)
     .attach.MintingPolicy(mintingPolicy);
 };
+
+export const findInclusionTimeForUserEvent = (
+  lucid: LucidEvolution,
+): Effect.Effect<number, UnspecifiedNetworkError> =>
+  Effect.gen(function* () {
+    const currTime = Date.now();
+    const network = lucid.config().network;
+    if (network === undefined) {
+      return yield* new UnspecifiedNetworkError({
+        message: "Failed to build the deposit transaction",
+        cause: "Unknown",
+      });
+    }
+    const waitTime = getProtocolParameters(network).event_wait_duration;
+    return currTime + waitTime;
+  });
+
+export const getNonceInputAndAssetName = (
+  lucid: LucidEvolution,
+  eventName: "deposit" | "tx order" | "withdrawal",
+): Effect.Effect<
+  { inputUtxo: UTxO; assetName: string },
+  LucidError | HashingError
+> =>
+  Effect.gen(function* () {
+    const utxos: UTxO[] = yield* Effect.tryPromise({
+      try: () => lucid.wallet().getUtxos(),
+      catch: (err) =>
+        new LucidError({
+          message: "Failed to fetch wallet UTxOs",
+          cause: err,
+        }),
+    });
+
+    if (utxos.length === 0) {
+      return yield* new LucidError({
+        message: `Failed to build the ${eventName} transaction`,
+        cause: "No UTxOs found in wallet",
+      });
+    }
+
+    const inputUtxo = utxos[0];
+    const transactionInput = CML.TransactionInput.new(
+      CML.TransactionHash.from_hex(inputUtxo.txHash),
+      BigInt(inputUtxo.outputIndex),
+    );
+
+    const assetName = yield* hashHexWithBlake2b256(
+      transactionInput.to_cbor_hex(),
+    );
+
+    return { inputUtxo, assetName };
+  });

@@ -1,11 +1,8 @@
 import {
-  Address,
-  CML,
   LucidEvolution,
   toUnit,
   TxBuilder,
   Data,
-  PolicyId,
   UTxO,
   Script,
   TxSignBuilder,
@@ -16,28 +13,22 @@ import {
   HashingError,
   LucidError,
   makeReturn,
-  hashHexWithBlake2b256,
-  isEventUTxOInclusionTimeInBounds,
   AuthenticUTxO,
   utxosToAuthenticUTxOs,
+  UnspecifiedNetworkError,
 } from "@/common.js";
 import { Data as EffectData, Effect } from "effect";
-import { OutputReference, POSIXTime, POSIXTimeSchema } from "@/common.js";
-import { getProtocolParameters } from "@/protocol-parameters.js";
+import { OutputReference, POSIXTimeSchema } from "@/common.js";
 import { DepositEventSchema, DepositInfo } from "@/ledger-state.js";
 import {
   buildUserEventMintTransaction,
+  fetchUserEventUTxOsProgram,
+  findInclusionTimeForUserEvent,
+  getNonceInputAndAssetName,
   UserEventExtraFields,
+  UserEventFetchConfig,
   UserEventMintRedeemer,
 } from "./common.js";
-
-export type DepositParams = {
-  depositScriptAddress: string;
-  mintingPolicy: Script;
-  policyId: string;
-  depositAmount: bigint;
-  depositInfo: DepositInfo;
-};
 
 export const DepositDatumSchema = Data.Object({
   event: DepositEventSchema,
@@ -48,12 +39,7 @@ export const DepositDatum = DepositDatumSchema as unknown as DepositDatum;
 
 export type DepositUTxO = AuthenticUTxO<DepositDatum, UserEventExtraFields>;
 
-export type DepositFetchConfig = {
-  depositAddress: Address;
-  depositPolicyId: PolicyId;
-  inclusionTimeUpperBound?: POSIXTime;
-  inclusionTimeLowerBound?: POSIXTime;
-};
+export type DepositFetchConfig = UserEventFetchConfig;
 
 /**
  * Silently drops invalid UTxOs.
@@ -61,7 +47,6 @@ export type DepositFetchConfig = {
 export const utxosToDepositUTxOs = (
   utxos: UTxO[],
   nftPolicy: string,
-  datum: DepositDatum,
 ): Effect.Effect<DepositUTxO[]> => {
   const calculateExtraFields = (datum: DepositDatum): UserEventExtraFields => ({
     idCbor: Buffer.from(fromHex(Data.to(datum.event.id, OutputReference))),
@@ -72,7 +57,7 @@ export const utxosToDepositUTxOs = (
   return utxosToAuthenticUTxOs<DepositDatum, UserEventExtraFields>(
     utxos,
     nftPolicy,
-    datum,
+    DepositDatum,
     calculateExtraFields,
   );
 };
@@ -81,36 +66,22 @@ export const fetchDepositUTxOsProgram = (
   lucid: LucidEvolution,
   config: DepositFetchConfig,
 ): Effect.Effect<DepositUTxO[], LucidError> =>
-  Effect.gen(function* () {
-    const allUTxOs = yield* Effect.tryPromise({
-      try: () => lucid.utxosAt(config.depositAddress),
-      catch: (e) => {
-        return new LucidError({
-          message: `Failed to fetch deposit UTxOs at: ${config.depositAddress}`,
-          cause: e,
-        });
-      },
-    });
-    const depositUTxOs = yield* utxosToDepositUTxOs(
-      allUTxOs,
-      config.depositPolicyId,
-      DepositDatum,
-    );
-
-    const validDepositUTxOs = depositUTxOs.filter((utxo) =>
-      isEventUTxOInclusionTimeInBounds(
-        utxo,
-        config.inclusionTimeLowerBound,
-        config.inclusionTimeUpperBound,
-      ),
-    );
-    return validDepositUTxOs;
-  });
+  fetchUserEventUTxOsProgram(lucid, config, (utxos: UTxO[]) =>
+    utxosToDepositUTxOs(utxos, config.eventPolicyId),
+  );
 
 export const fetchDepositUTxOs = (
   lucid: LucidEvolution,
   config: DepositFetchConfig,
 ) => makeReturn(fetchDepositUTxOsProgram(lucid, config));
+
+export type DepositParams = {
+  depositScriptAddress: string;
+  mintingPolicy: Script;
+  policyId: string;
+  depositAmount: bigint;
+  depositInfo: DepositInfo;
+};
 
 /**
  * Deposit
@@ -122,46 +93,19 @@ export const fetchDepositUTxOs = (
 export const incompleteDepositTxProgram = (
   lucid: LucidEvolution,
   params: DepositParams,
-): Effect.Effect<TxBuilder, HashingError | LucidError> =>
+): Effect.Effect<
+  TxBuilder,
+  HashingError | LucidError | UnspecifiedNetworkError
+> =>
   Effect.gen(function* () {
-    const utxos: UTxO[] = yield* Effect.tryPromise({
-      try: () => lucid.wallet().getUtxos(),
-      catch: (err) =>
-        new LucidError({
-          message: "Failed to fetch wallet UTxOs",
-          cause: err,
-        }),
-    });
-
-    if (utxos.length === 0) {
-      yield* new LucidError({
-        message: "Failed to build the deposit transaction",
-        cause: "No UTxOs found in wallet",
-      });
-    }
-
-    const inputUtxo = utxos[0];
-    const transactionInput = CML.TransactionInput.new(
-      CML.TransactionHash.from_hex(inputUtxo.txHash),
-      BigInt(inputUtxo.outputIndex),
-    );
-
-    const assetName = yield* hashHexWithBlake2b256(
-      transactionInput.to_cbor_hex(),
+    const { inputUtxo, assetName } = yield* getNonceInputAndAssetName(
+      lucid,
+      "deposit",
     );
 
     const depositNFT = toUnit(params.policyId, assetName);
 
-    // Convert non-hex strings to hex string, since the address type doesn't enforce that
-    const depositInfo = {
-      l2Address: params.depositInfo.l2Address,
-      l2Datum: params.depositInfo.l2Datum,
-    };
-
-    const currTime = Date.now();
-    const network = lucid.config().network ?? "Mainnet";
-    const waitTime = getProtocolParameters(network).event_wait_duration;
-    const inclusionTime = currTime + waitTime;
+    const inclusionTime = yield* findInclusionTimeForUserEvent(lucid);
 
     const depositDatum: DepositDatum = {
       event: {
@@ -169,7 +113,7 @@ export const incompleteDepositTxProgram = (
           txHash: { hash: inputUtxo.txHash },
           outputIndex: BigInt(inputUtxo.outputIndex),
         },
-        info: depositInfo,
+        info: params.depositInfo,
       },
       inclusionTime: BigInt(inclusionTime),
     };
@@ -215,7 +159,10 @@ export const incompleteDepositTxProgram = (
 export const unsignedDepositTxProgram = (
   lucid: LucidEvolution,
   depositParams: DepositParams,
-): Effect.Effect<TxSignBuilder, HashingError | LucidError | DepositError> =>
+): Effect.Effect<
+  TxSignBuilder,
+  HashingError | LucidError | UnspecifiedNetworkError | DepositError
+> =>
   Effect.gen(function* () {
     const commitTx = yield* incompleteDepositTxProgram(lucid, depositParams);
     const completedTx: TxSignBuilder = yield* Effect.tryPromise({

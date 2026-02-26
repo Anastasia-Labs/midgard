@@ -3,6 +3,7 @@ import {
   AddressSchema,
   H32Schema,
   MerkleRootSchema,
+  MidgardAddressSchema,
   OutputReferenceSchema,
   POSIXTimeSchema,
   PubKeyHashSchema,
@@ -56,7 +57,7 @@ export type CardanoDatum = Data.Static<typeof CardanoDatumSchema>;
 export const CardanoDatum = CardanoDatumSchema as unknown as CardanoDatum;
 
 export const DepositInfoSchema = Data.Object({
-  l2Address: Data.Bytes(),
+  l2Address: MidgardAddressSchema,
   l2Datum: Data.Nullable(Data.Bytes()),
 });
 export type DepositInfo = Data.Static<typeof DepositInfoSchema>;
@@ -80,6 +81,8 @@ export type MidgardTxCompact = Data.Static<typeof MidgardTxCompactSchema>;
 export const MidgardTxCompact =
   MidgardTxCompactSchema as unknown as MidgardTxCompact;
 
+// This is currently unused. We assume the bytes stored under `tx` of tx order
+// events can be deserialized to a `CML.Transaction`.
 export const MidgardTxValiditySchema = Data.Enum([
   Data.Literal("TxIsValid"),
   Data.Literal("NonExistentInputUtxo"),
@@ -93,8 +96,8 @@ export const MidgardTxValidity =
   MidgardTxValiditySchema as unknown as MidgardTxValidity;
 
 export const TxOrderEventSchema = Data.Object({
-  txOrderId: OutputReferenceSchema,
-  midgardTx: MidgardTxCompactSchema,
+  id: OutputReferenceSchema,
+  tx: Data.Bytes(),
 });
 export type TxOrderEvent = Data.Static<typeof TxOrderEventSchema>;
 export const TxOrderEvent = TxOrderEventSchema as unknown as TxOrderEvent;
