@@ -7,7 +7,12 @@ import {
   Database,
 } from "@/services/index.js";
 import { LucidEvolution, utxoToCore } from "@lucid-evolution/lucid";
-import { DepositsDB, TxOrdersDB, UserEventsUtils } from "@/database/index.js";
+import {
+  DepositsDB,
+  TxOrdersDB,
+  UserEventsUtils,
+  WithdrawalsDB,
+} from "@/database/index.js";
 import { DatabaseError } from "@/database/utils/common.js";
 import { Schedule } from "effect";
 
@@ -16,12 +21,16 @@ const fetchUserEventUTxOs = (
   inclusionStartTime: number,
   inclusionEndTime: number,
 ): Effect.Effect<
-  { deposits: SDK.DepositUTxO[]; txOrders: SDK.TxOrderUTxO[] },
+  {
+    deposits: SDK.DepositUTxO[];
+    txOrders: SDK.TxOrderUTxO[];
+    withdrawals: SDK.WithdrawalUTxO[];
+  },
   SDK.LucidError,
   AlwaysSucceedsContract
 > =>
   Effect.gen(function* () {
-    const { deposit, txOrder } = yield* AlwaysSucceedsContract;
+    const { deposit, txOrder, withdrawal } = yield* AlwaysSucceedsContract;
     const inclusionTimeLowerBound = BigInt(inclusionStartTime);
     const inclusionTimeUpperBound = BigInt(inclusionEndTime);
     const depositFetchConfig: SDK.DepositFetchConfig = {
@@ -36,14 +45,24 @@ const fetchUserEventUTxOs = (
       inclusionTimeLowerBound,
       inclusionTimeUpperBound,
     };
+    const withdrawalFetchConfig: SDK.WithdrawalFetchConfig = {
+      eventAddress: withdrawal.spendingScriptAddress,
+      eventPolicyId: withdrawal.policyId,
+      inclusionTimeLowerBound,
+      inclusionTimeUpperBound,
+    };
     return {
       deposits: yield* SDK.fetchDepositUTxOsProgram(lucid, depositFetchConfig),
       txOrders: yield* SDK.fetchTxOrderUTxOsProgram(lucid, txOrderFetchConfig),
+      withdrawals: yield* SDK.fetchWithdrawalUTxOsProgram(
+        lucid,
+        withdrawalFetchConfig,
+      ),
     };
   });
 
 const userEventUTxOsToEntry = (
-  eventUTxOs: (SDK.DepositUTxO | SDK.TxOrderUTxO)[],
+  eventUTxOs: (SDK.DepositUTxO | SDK.TxOrderUTxO | SDK.WithdrawalUTxO)[],
 ): UserEventsUtils.Entry[] => {
   return eventUTxOs.map((utxo) => ({
     [UserEventsUtils.Columns.ID]: utxo.idCbor,
@@ -70,13 +89,13 @@ export const syncUserEvents: Effect.Effect<
 
   yield* Effect.logDebug("🏦 Fetching user event UTxOs...");
 
-  const { deposits, txOrders } = yield* fetchUserEventUTxOs(
+  const { deposits, txOrders, withdrawals } = yield* fetchUserEventUTxOs(
     lucid,
     startTime,
     endTime,
   );
 
-  if (deposits.length <= 0 && txOrders.length <= 0) {
+  if (deposits.length <= 0 && txOrders.length <= 0 && withdrawals.length <= 0) {
     yield* Effect.logDebug(
       `🏦 No user events found within [${startTime}, ${endTime})`,
     );
@@ -85,14 +104,18 @@ export const syncUserEvents: Effect.Effect<
 
   yield* Effect.logInfo(`🏦 ${deposits.length} deposit event(s) found.`);
   yield* Effect.logInfo(`🏦 ${txOrders.length} tx order(s) found.`);
+  yield* Effect.logInfo(`🏦 ${withdrawals.length} withdrawal order(s) found.`);
 
   const depositEntries: UserEventsUtils.Entry[] =
     userEventUTxOsToEntry(deposits);
   const txOrderEntries: UserEventsUtils.Entry[] =
     userEventUTxOsToEntry(txOrders);
+  const withdrawalEntries: UserEventsUtils.Entry[] =
+    userEventUTxOsToEntry(withdrawals);
 
   yield* DepositsDB.insertEntries(depositEntries);
   yield* TxOrdersDB.insertEntries(txOrderEntries);
+  yield* WithdrawalsDB.insertEntries(withdrawalEntries);
 
   yield* Ref.set(globals.LATEST_USER_EVENTS_FETCH_TIME, endTime);
 });

@@ -10,6 +10,7 @@ import * as Tx from "@/database/utils/tx.js";
 import * as Ledger from "@/database/utils/ledger.js";
 import * as DepositsDB from "@/database/deposits.js";
 import * as TxOrdersDB from "@/database/txOrders.js";
+import * as WithdrawalsDB from "@/database/withdrawals.js";
 import * as UserEvents from "@/database/utils/user-events.js";
 import * as AddressHistory from "@/database/addressHistory.js";
 import { Effect } from "effect";
@@ -36,6 +37,7 @@ export const program: Effect.Effect<
   yield* Tx.createTable(ProcessedMempoolDB.tableName);
   yield* UserEvents.createTable(DepositsDB.tableName);
   yield* UserEvents.createTable(TxOrdersDB.tableName);
+  yield* UserEvents.createTable(WithdrawalsDB.tableName);
 
   yield* Effect.logInfo("PostgreSQL database initialized Successfully.");
 }).pipe(
