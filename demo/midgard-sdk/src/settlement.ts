@@ -10,7 +10,6 @@ import {
 import {
   AssetError,
   AuthenticatedValidator,
-  AuthenticUTxO,
   DataCoercionError,
   GenericErrorFields,
   HashingError,
@@ -24,6 +23,7 @@ import {
   findOperatorByPKH,
   UnspecifiedNetworkError,
 } from "@/common.js";
+import { AuthenticUTxO } from "@/internals.js";
 import { Data as EffectData, Effect } from "effect";
 import { fetchHubOracleUTxOProgram, HubOracleError } from "@/hub-oracle.js";
 import { fetchSchedulerUTxOProgram, SchedulerError } from "@/scheduler.js";
@@ -403,24 +403,6 @@ export const unsignedAttachResolutionClaimTx = (
 ): Promise<TxSignBuilder> =>
   makeReturn(unsignedAttachResolutionClaimTxProgram(lucid, params)).unsafeRun();
 
-/*Disprove Resolution Claim */
-export type DisproveResolutionClaimParams = {
-  settlementAddress: string;
-  resolutionClaimOperator: string;
-  membershipProof: Proof;
-  hubOracleValidator: AuthenticatedValidator;
-  schedulerScriptAddress: string;
-  schedulerPolicyId: string;
-  settlementPolicyId: string;
-  operatorStatus: OperatorStatus;
-  eventType: EventType;
-  eventAssetName: string;
-  eventAddress: string;
-  eventPolicyId: string;
-  settlementUTxO: SettlementUTxO;
-  removeOperatorBadSettlementParams: RemoveOperatorBadSettlementParams;
-};
-
 export const fetchUserEventRefUTxO = (
   userEventType: EventType,
   userEventAddress: string,
@@ -441,15 +423,11 @@ export const fetchUserEventRefUTxO = (
     });
 
     const authenticUTxOs = yield* userEventType === "Deposit"
-      ? utxosToDepositUTxOs(allUTxOs, userEventPolicyId, DepositDatum)
+      ? utxosToDepositUTxOs(allUTxOs, userEventPolicyId)
       : "TxOrder" in userEventType
-        ? utxosToTxOrderUTxOs(allUTxOs, userEventPolicyId, TxOrderDatum)
+        ? utxosToTxOrderUTxOs(allUTxOs, userEventPolicyId)
         : "Withdrawal" in userEventType
-          ? utxosToWithdrawalUTxOs(
-              allUTxOs,
-              userEventPolicyId,
-              WithdrawalOrderDatum,
-            )
+          ? utxosToWithdrawalUTxOs(allUTxOs, userEventPolicyId)
           : Effect.fail(
               new LucidError({
                 message: "Invalid Event Type",
@@ -474,8 +452,27 @@ export const fetchUserEventRefUTxO = (
     );
   });
 
+export type DisproveResolutionClaimParams = {
+  settlementAddress: string;
+  resolutionClaimOperator: string;
+  membershipProof: Proof;
+  hubOracleValidator: AuthenticatedValidator;
+  schedulerScriptAddress: string;
+  schedulerPolicyId: string;
+  settlementPolicyId: string;
+  operatorStatus: OperatorStatus;
+  eventType: EventType;
+  eventAssetName: string;
+  eventAddress: string;
+  eventPolicyId: string;
+  settlementUTxO: SettlementUTxO;
+  removeOperatorBadSettlementParams: RemoveOperatorBadSettlementParams;
+};
+
 /**
- * Settlement
+ * Build the transaction that shows invalidity of the attached resolution claim
+ * to the specified `SettlementUTxO`. Spends the UTxO and reproduces it without
+ * a resolution claim.
  *
  * @param lucid - The LucidEvolution
  * @param params - The parameters

@@ -14,10 +14,9 @@ import {
   HashingError,
   LucidError,
   makeReturn,
-  AuthenticUTxO,
-  authenticateUTxOs,
   UnspecifiedNetworkError,
 } from "@/common.js";
+import { AuthenticUTxO, authenticateUTxOs } from "@/internals.js";
 import { Data as EffectData, Effect } from "effect";
 import { OutputReference, POSIXTimeSchema } from "@/common.js";
 import { DepositEventSchema, DepositInfo } from "@/ledger-state.js";
@@ -29,7 +28,7 @@ import {
   UserEventExtraFields,
   UserEventFetchConfig,
   UserEventMintRedeemer,
-} from "./common.js";
+} from "./internals.js";
 
 export const DepositDatumSchema = Data.Object({
   event: DepositEventSchema,

@@ -23,27 +23,26 @@ import {
   OutputReferenceSchema,
   POSIXTime,
   POSIXTimeSchema,
-  getStateToken,
   hashHexWithBlake2b224,
-  utxosAtByNFTPolicyId,
   AuthenticatedValidator,
+  utxosAtByNFTPolicyId,
 } from "@/common.js";
 import { LucidError, makeReturn } from "@/common.js";
+import { getStateToken } from "@/internals.js";
 import {
   NodeDatum,
   NodeDatumSchema,
+  NODE_ASSET_NAME,
   NodeKey,
   getNodeDatumFromUTxO,
   LinkedListError,
   incompleteInitLinkedListTxProgram,
 } from "@/linked-list.js";
 import { ConfirmedState, Header } from "@/ledger-state.js";
-import {
-  GENESIS_HASH_28,
-  GENESIS_HASH_32,
-  INITIAL_PROTOCOL_VERSION,
-  NODE_ASSET_NAME,
-} from "./constants.js";
+
+export const GENESIS_HASH_28 = "00".repeat(28);
+export const GENESIS_HASH_32 = "00".repeat(32);
+export const INITIAL_PROTOCOL_VERSION = 0n;
 
 export const StateQueueConfigSchema = Data.Object({
   initUTxO: OutputReferenceSchema,

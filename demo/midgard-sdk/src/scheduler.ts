@@ -2,6 +2,7 @@ import {
   Address,
   Assets,
   Data,
+  fromText,
   LucidEvolution,
   PolicyId,
   toUnit,
@@ -10,15 +11,18 @@ import {
 } from "@lucid-evolution/lucid";
 import {
   AuthenticatedValidator,
-  authenticateUTxOs,
-  AuthenticUTxO,
-  fetchSingleAuthenticUTxOProgram,
   GenericErrorFields,
   LucidError,
   POSIXTimeSchema,
 } from "@/common.js";
-import { SCHEDULER_ASSET_NAME } from "@/constants.js";
+import {
+  authenticateUTxOs,
+  AuthenticUTxO,
+  fetchSingleAuthenticUTxOProgram,
+} from "@/internals.js";
 import { Effect, Data as EffectData } from "effect";
+
+export const SCHEDULER_ASSET_NAME = fromText("Scheduler");
 
 export const SchedulerDatumSchema = Data.Object({
   operator: Data.Bytes(),

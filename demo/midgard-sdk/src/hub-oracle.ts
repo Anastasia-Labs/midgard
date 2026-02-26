@@ -5,9 +5,6 @@ import {
   AddressSchema,
   PolicyIdSchema,
   makeReturn,
-  AuthenticUTxO,
-  authenticateUTxOs,
-  fetchSingleAuthenticUTxOProgram,
   addressDataFromBech32,
   Bech32DeserializationError,
   MidgardValidators,
@@ -16,21 +13,28 @@ import {
   UnspecifiedNetworkError,
 } from "@/common.js";
 import {
+  AuthenticUTxO,
+  authenticateUTxOs,
+  fetchSingleAuthenticUTxOProgram,
+} from "@/internals.js";
+import {
   Address,
   LucidEvolution,
   PolicyId,
+  fromText,
   toUnit,
   TxBuilder,
   UTxO,
   Data,
   Assets,
 } from "@lucid-evolution/lucid";
-import { HUB_ORACLE_ASSET_NAME } from "@/constants.js";
 
 export type HubOracleConfig = {
   hubOracleAddress: Address;
   hubOraclePolicyId: PolicyId;
 };
+
+export const HUB_ORACLE_ASSET_NAME = fromText("Hub Oracle");
 
 // TODO: This should ideally come from Aiken env directory.
 export const hubOracleAssetName = "";

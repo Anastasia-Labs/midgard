@@ -10,6 +10,7 @@ import { Data as EffectData, Effect } from "effect";
 import {
   Assets,
   Data,
+  fromText,
   LucidEvolution,
   makeReturn,
   toUnit,
@@ -17,7 +18,8 @@ import {
   TxSignBuilder,
   UTxO,
 } from "@lucid-evolution/lucid";
-import { NODE_ASSET_NAME } from "@/constants.js";
+
+export const NODE_ASSET_NAME = fromText("Node");
 
 export const NodeKeySchema = Data.Enum([
   Data.Object({ Key: Data.Object({ key: Data.Bytes() }) }),

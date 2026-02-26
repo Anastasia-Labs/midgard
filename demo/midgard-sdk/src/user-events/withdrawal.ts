@@ -1,7 +1,6 @@
 import {
   AddressData,
   AddressSchema,
-  AuthenticUTxO,
   GenericErrorFields,
   HashingError,
   LucidError,
@@ -9,8 +8,8 @@ import {
   POSIXTimeSchema,
   UnspecifiedNetworkError,
   makeReturn,
-  authenticateUTxOs,
 } from "@/common.js";
+import { AuthenticUTxO, authenticateUTxOs } from "@/internals.js";
 import {
   buildUserEventMintTransaction,
   fetchUserEventUTxOsProgram,
@@ -19,7 +18,7 @@ import {
   UserEventExtraFields,
   UserEventFetchConfig,
   UserEventMintRedeemer,
-} from "./common.js";
+} from "./internals.js";
 import {
   WithdrawalBody,
   WithdrawalEventSchema,

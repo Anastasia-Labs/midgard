@@ -1,10 +1,9 @@
 import {
   AuthenticatedValidator,
-  AuthenticUTxO,
   LucidError,
   POSIXTimeSchema,
-  authenticateUTxOs,
 } from "@/common.js";
+import { AuthenticUTxO, authenticateUTxOs } from "@/internals.js";
 import { LucidEvolution, TxBuilder, UTxO, Data } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 import { incompleteInitLinkedListTxProgram } from "./linked-list.js";

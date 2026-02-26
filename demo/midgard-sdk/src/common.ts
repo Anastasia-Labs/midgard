@@ -7,36 +7,28 @@ import {
   Script,
   ScriptHash,
 } from "@lucid-evolution/lucid";
-import {
-  Data as EffectData,
-  Array as EffectArray,
-  Effect,
-  Option,
-} from "effect";
+import { Array as EffectArray, Effect, Option } from "effect";
 import {
   Address,
-  Assets as LucidAssets,
   Credential,
   LucidEvolution,
   PolicyId,
   UTxO,
   fromHex,
-  fromUnit,
   toHex,
 } from "@lucid-evolution/lucid";
 import { blake2b } from "@noble/hashes/blake2.js";
 import { ActiveOperatorUTxO } from "./active-operators.js";
 import { RetiredOperatorUTxO } from "./retired-operators.js";
+import {
+  Bech32DeserializationError,
+  HashingError,
+  LucidError,
+  UnauthenticUtxoError,
+} from "./errors.js";
+import { getStateToken } from "./internals.js";
 
-/**
- * `StateUTxO` would probably be a better name, but it'd be confusing next to
- * our state queue UTxOs.
- */
-export type BeaconUTxO = {
-  utxo: UTxO;
-  policyId: PolicyId;
-  assetName: string;
-};
+export * from "./errors.js";
 
 export const makeReturn = <A, E>(program: Effect.Effect<A, E>) => {
   return {
@@ -51,61 +43,15 @@ export const isHexString = (str: string): boolean => {
   return hexRegex.test(str);
 };
 
-export const getSingleAssetApartFromAda = (
-  assets: LucidAssets,
-): Effect.Effect<[PolicyId, string, bigint], AssetError> =>
-  Effect.gen(function* () {
-    const flattenedAssets: [string, bigint][] = Object.entries(assets);
-    const woLovelace: [string, bigint][] = flattenedAssets.filter(
-      ([unit, _qty]) => !(unit === "" || unit === "lovelace"),
-    );
-    if (woLovelace.length === 1) {
-      const explodedUnit = fromUnit(woLovelace[0][0]);
-      return [
-        explodedUnit.policyId,
-        explodedUnit.assetName ?? "",
-        woLovelace[0][1],
-      ];
-    } else {
-      return yield* Effect.fail(
-        new AssetError({
-          message: "Failed to get single asset apart from ADA",
-          cause: "Expected exactly 1 additional asset apart from ADA",
-        }),
-      );
-    }
-  });
-
 /**
- * Similar to `getSingleAssetApartFromAda`, with the additional requirement for
- * the quantity to be exactly 1.
+ * `StateUTxO` would probably be a better name, but it'd be confusing next to
+ * our state queue UTxOs.
  */
-export const getStateToken = (
-  assets: LucidAssets,
-): Effect.Effect<[PolicyId, string], UnauthenticUtxoError> =>
-  Effect.gen(function* () {
-    const errorMessage = "Failed to get the beacon token from assets";
-    const [policyId, assetName, qty] = yield* getSingleAssetApartFromAda(
-      assets,
-    ).pipe(
-      Effect.mapError(
-        (e) =>
-          new UnauthenticUtxoError({
-            message: errorMessage,
-            cause: e,
-          }),
-      ),
-    );
-    if (qty !== 1n) {
-      yield* Effect.fail(
-        new UnauthenticUtxoError({
-          message: errorMessage,
-          cause: `The quantity of the beacon token was expected to be exactly 1, but it was ${qty.toString()}`,
-        }),
-      );
-    }
-    return [policyId, assetName];
-  });
+export type BeaconUTxO = {
+  utxo: UTxO;
+  policyId: PolicyId;
+  assetName: string;
+};
 
 /**
  * Silently drops the UTxOs without proper authentication NFTs.
@@ -125,6 +71,7 @@ export const utxosAtByNFTPolicyId = (
         });
       },
     });
+
     const nftEffects: Effect.Effect<BeaconUTxO, UnauthenticUtxoError>[] =
       allUTxOs.map((u: UTxO) => {
         const nftsEffect = getStateToken(u.assets);
@@ -136,17 +83,18 @@ export const utxosAtByNFTPolicyId = (
           > => {
             if (sym === policyId) {
               return Effect.succeed({ utxo: u, policyId, assetName });
-            } else {
-              return Effect.fail(
-                new UnauthenticUtxoError({
-                  message: "Failed to get assets from fetched UTxOs",
-                  cause: "UTxO doesn't have the expected NFT policy ID",
-                }),
-              );
             }
+
+            return Effect.fail(
+              new UnauthenticUtxoError({
+                message: "Failed to get assets from fetched UTxOs",
+                cause: "UTxO doesn't have the expected NFT policy ID",
+              }),
+            );
           },
         );
       });
+
     const authenticUTxOs = yield* Effect.allSuccesses(nftEffects);
     return authenticUTxOs;
   }).pipe(
@@ -476,236 +424,6 @@ export const addressDataFromBech32 = (
     };
   });
 
-export type AuthenticUTxO<TDatum, TExtra = undefined> = {
-  utxo: UTxO;
-  datum: TDatum;
-  assetName: string;
-} & ([TExtra] extends [undefined] ? {} : TExtra);
-
-export const getDatumFromUTxO = <TDatum>(
-  nodeUTxO: UTxO,
-  schema: any,
-): Effect.Effect<TDatum, DataCoercionError> =>
-  Effect.gen(function* () {
-    const datumCBOR = nodeUTxO.datum;
-    if (!datumCBOR) {
-      return yield* Effect.fail(
-        new DataCoercionError({
-          message: `Datum coercion failed`,
-          cause: `No datum found`,
-        }),
-      );
-    }
-    const datum: TDatum = yield* Effect.try({
-      try: () => Data.from(datumCBOR, schema),
-      catch: (e) =>
-        new DataCoercionError({
-          message: `Could not coerce UTxO's datum to the expected datum type`,
-          cause: e,
-        }),
-    });
-    return datum;
-  });
-
-/**
- * Validates correctness of datum, and having a single NFT.
- */
-type AuthenticUTxOBase<TDatum> = {
-  utxo: UTxO;
-  datum: TDatum;
-  assetName: string;
-};
-
-const utxoToAuthenticUTxOBase = <TDatum>(
-  utxo: UTxO,
-  nftPolicy: string,
-  schema: any,
-): Effect.Effect<
-  AuthenticUTxOBase<TDatum>,
-  DataCoercionError | UnauthenticUtxoError
-> =>
-  Effect.gen(function* () {
-    const datum = yield* getDatumFromUTxO<TDatum>(utxo, schema);
-    const [sym, assetName] = yield* getStateToken(utxo.assets);
-    if (sym !== nftPolicy) {
-      yield* Effect.fail(
-        new UnauthenticUtxoError({
-          message: `Failed to authenticate UTxO`,
-          cause: `UTxO's NFT policy ID is not the same as the expected policy ID`,
-        }),
-      );
-    }
-
-    const authenticUTxOBase: AuthenticUTxOBase<TDatum> = {
-      utxo,
-      datum,
-      assetName,
-    };
-    return authenticUTxOBase;
-  });
-
-const utxoToAuthenticUTxONoExtra = <TDatum>(
-  utxo: UTxO,
-  nftPolicy: string,
-  schema: any,
-): Effect.Effect<
-  AuthenticUTxO<TDatum>,
-  DataCoercionError | UnauthenticUtxoError
-> =>
-  Effect.map(
-    utxoToAuthenticUTxOBase<TDatum>(utxo, nftPolicy, schema),
-    (authenticUTxOBase) => {
-      const authenticUTxO: AuthenticUTxO<TDatum> = authenticUTxOBase;
-      return authenticUTxO;
-    },
-  );
-
-const utxoToAuthenticUTxOWithExtra = <TDatum, TExtra>(
-  utxo: UTxO,
-  nftPolicy: string,
-  schema: any,
-  extraFields: (datum: TDatum) => TExtra,
-): Effect.Effect<
-  AuthenticUTxO<TDatum, TExtra>,
-  DataCoercionError | UnauthenticUtxoError
-> =>
-  Effect.map(
-    utxoToAuthenticUTxOBase<TDatum>(utxo, nftPolicy, schema),
-    (authenticUTxOBase) => {
-      const extra: TExtra = extraFields(authenticUTxOBase.datum);
-      const authenticUTxO: AuthenticUTxO<TDatum, TExtra> = {
-        ...authenticUTxOBase,
-        ...extra,
-      };
-      return authenticUTxO;
-    },
-  );
-
-export const authenticateUTxO: {
-  <TDatum>(
-    utxo: UTxO,
-    nftPolicy: string,
-    schema: any,
-  ): Effect.Effect<
-    AuthenticUTxO<TDatum>,
-    DataCoercionError | UnauthenticUtxoError
-  >;
-  <TDatum, TExtra>(
-    utxo: UTxO,
-    nftPolicy: string,
-    schema: any,
-    extraFields: (datum: TDatum) => TExtra,
-  ): Effect.Effect<
-    AuthenticUTxO<TDatum, TExtra>,
-    DataCoercionError | UnauthenticUtxoError
-  >;
-} = <TDatum, TExtra>(
-  utxo: UTxO,
-  nftPolicy: string,
-  schema: any,
-  extraFields?: (datum: TDatum) => TExtra,
-) => {
-  if (extraFields === undefined) {
-    return utxoToAuthenticUTxONoExtra<TDatum>(utxo, nftPolicy, schema);
-  }
-
-  return utxoToAuthenticUTxOWithExtra<TDatum, TExtra>(
-    utxo,
-    nftPolicy,
-    schema,
-    extraFields,
-  );
-};
-
-/**
- * Silently drops invalid UTxOs.
- */
-export const authenticateUTxOs: {
-  <TDatum>(
-    utxos: UTxO[],
-    nftPolicy: string,
-    schema: any,
-  ): Effect.Effect<AuthenticUTxO<TDatum>[]>;
-  <TDatum, TExtra>(
-    utxos: UTxO[],
-    nftPolicy: string,
-    schema: any,
-    extraFields: (datum: TDatum) => TExtra,
-  ): Effect.Effect<AuthenticUTxO<TDatum, TExtra>[]>;
-} = <TDatum, TExtra>(
-  utxos: UTxO[],
-  nftPolicy: string,
-  schema: any,
-  extraFields?: (datum: TDatum) => TExtra,
-) => {
-  if (extraFields === undefined) {
-    const effects: Effect.Effect<
-      AuthenticUTxO<TDatum>,
-      DataCoercionError | UnauthenticUtxoError
-    >[] = utxos.map((utxo) =>
-      authenticateUTxO<TDatum>(utxo, nftPolicy, schema),
-    );
-    return Effect.allSuccesses(effects);
-  }
-
-  const effects: Effect.Effect<
-    AuthenticUTxO<TDatum, TExtra>,
-    DataCoercionError | UnauthenticUtxoError
-  >[] = utxos.map((utxo) =>
-    authenticateUTxO<TDatum, TExtra>(utxo, nftPolicy, schema, extraFields),
-  );
-  return Effect.allSuccesses(effects);
-};
-
-export type FetchSingleAuthenticUTxOConfig<
-  TAuthenticUTxO,
-  TConversionError,
-  TError,
-> = {
-  address: Address;
-  policyId: PolicyId;
-  utxoLabel: string;
-  conversionFunction: (
-    utxos: UTxO[],
-    nftPolicy: PolicyId,
-  ) => Effect.Effect<TAuthenticUTxO[], TConversionError>;
-  onUnexpectedAuthenticUTxOCount: () => TError;
-};
-
-export const fetchSingleAuthenticUTxOProgram = <
-  TAuthenticUTxO,
-  TConversionError,
-  TError,
->(
-  lucid: LucidEvolution,
-  config: FetchSingleAuthenticUTxOConfig<
-    TAuthenticUTxO,
-    TConversionError,
-    TError
-  >,
-): Effect.Effect<TAuthenticUTxO, LucidError | TConversionError | TError> =>
-  Effect.gen(function* () {
-    const allUTxOs = yield* Effect.tryPromise({
-      try: () => lucid.utxosAt(config.address),
-      catch: (e) =>
-        new LucidError({
-          message: `Failed to fetch the ${config.utxoLabel} UTxO at: ${config.address}`,
-          cause: e,
-        }),
-    });
-
-    const authenticUTxOs = yield* config.conversionFunction(
-      allUTxOs,
-      config.policyId,
-    );
-
-    if (authenticUTxOs.length === 1) {
-      return authenticUTxOs[0];
-    }
-
-    return yield* Effect.fail(config.onUnexpectedAuthenticUTxOCount());
-  });
-
 /**
  * TODO: Move to the `operatorDirectory` module after refactoring.`
  */
@@ -743,56 +461,3 @@ export const findOperatorByPKH = (
     }),
   );
 };
-
-export type GenericErrorFields = {
-  readonly message: string;
-  readonly cause: any;
-};
-
-export class AssetError extends EffectData.TaggedError(
-  "AssetError",
-)<GenericErrorFields> {}
-
-export class Bech32DeserializationError extends EffectData.TaggedError(
-  "Bech32DeserializationError",
-)<GenericErrorFields> {}
-
-export class CborSerializationError extends EffectData.TaggedError(
-  "CborSerializationError",
-)<GenericErrorFields> {}
-
-export class CborDeserializationError extends EffectData.TaggedError(
-  "CborDeserializationError",
-)<GenericErrorFields> {}
-
-export class CmlUnexpectedError extends EffectData.TaggedError(
-  "CmlUnexpectedError",
-)<GenericErrorFields> {}
-
-export class CmlDeserializationError extends EffectData.TaggedError(
-  "CmlDeserializationError",
-)<GenericErrorFields> {}
-
-export class DataCoercionError extends EffectData.TaggedError(
-  "DataCoercionError",
-)<GenericErrorFields> {}
-
-export class HashingError extends EffectData.TaggedError(
-  "HashingError",
-)<GenericErrorFields> {}
-
-export class LucidError extends EffectData.TaggedError(
-  "LucidError",
-)<GenericErrorFields> {}
-
-export class MissingDatumError extends EffectData.TaggedError(
-  "MissingDatumError",
-)<GenericErrorFields> {}
-
-export class UnauthenticUtxoError extends EffectData.TaggedError(
-  "UnauthenticUtxoError",
-)<GenericErrorFields> {}
-
-export class UnspecifiedNetworkError extends EffectData.TaggedError(
-  "UnspecifiedNetworkError",
-)<GenericErrorFields> {}

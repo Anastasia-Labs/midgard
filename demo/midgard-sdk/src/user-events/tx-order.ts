@@ -9,13 +9,8 @@ import {
   TxSignBuilder,
   UTxO,
 } from "@lucid-evolution/lucid";
-import {
-  AuthenticUTxO,
-  GenericErrorFields,
-  makeReturn,
-  OutputReference,
-  authenticateUTxOs,
-} from "@/common.js";
+import { GenericErrorFields, makeReturn, OutputReference } from "@/common.js";
+import { AuthenticUTxO, authenticateUTxOs } from "@/internals.js";
 import {
   AddressData,
   AddressSchema,
@@ -33,7 +28,7 @@ import {
   UserEventExtraFields,
   UserEventFetchConfig,
   UserEventMintRedeemer,
-} from "./common.js";
+} from "./internals.js";
 import { Data as EffectData, Effect } from "effect";
 
 export const TxOrderDatumSchema = Data.Object({
