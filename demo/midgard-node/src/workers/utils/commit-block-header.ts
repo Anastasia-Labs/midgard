@@ -8,12 +8,13 @@ import {
   utxoToCore,
 } from "@lucid-evolution/lucid";
 import * as ETH_UTILS from "@ethereumjs/util";
-import { MidgardMpt, MptError } from "./mpt.js";
+import { keyValueMptRoot, MidgardMpt, MptError } from "./mpt.js";
 import {
   DepositsDB,
   ProcessedMempoolDB,
   TxUtils as TxTable,
   UserEventsUtils,
+  LedgerUtils as Ledger,
 } from "@/database/index.js";
 import {
   AlwaysSucceedsContract,
@@ -27,6 +28,11 @@ import {
   TxSignError,
   TxSubmitError,
 } from "@/transactions/utils.js";
+import { findSpentAndProducedUTxOs } from "@/utils.js";
+import {
+  Columns as UserEventsColumns,
+  retrieveTimeBoundEntries,
+} from "@/database/utils/user-events.js";
 
 export type WorkerInput = {
   data: {
@@ -178,6 +184,234 @@ export const establishEndDateFromTxRequests = (
       yield* Effect.logInfo(`🔹 ${mempoolTxs.length} retrieved.`);
       return Option.some(mempoolTxs[0][TxTable.Columns.TIMESTAMPTZ]);
     }
+  });
+
+/**
+ * Given the target user event table, this helper finds all the events falling
+ * in the given time range and if any was found, returns an `Effect` that finds
+ * the MPT root of those events with the retrieved event entries.
+ */
+export const userEventsProgram = (
+  tableName: string,
+  startDate: Date,
+  endDate: Date,
+): Effect.Effect<
+  Option.Option<{
+    mptRoot: Effect.Effect<string, MptError>;
+    retreivedEvents: readonly UserEventsUtils.Entry[];
+  }>,
+  DatabaseError,
+  Database
+> =>
+  Effect.gen(function* () {
+    const events = yield* retrieveTimeBoundEntries(
+      tableName,
+      startDate,
+      endDate,
+    );
+
+    if (events.length <= 0) {
+      yield* Effect.logInfo(
+        `🔹 No events found in ${tableName} table between ${startDate.getTime()} and ${endDate.getTime()}.`,
+      );
+      return Option.none();
+    } else {
+      yield* Effect.logInfo(
+        `🔹 ${events.length} event(s) found in ${tableName} table between ${startDate.getTime()} and ${endDate.getTime()}.`,
+      );
+      const eventIDs = events.map((event) => event[UserEventsColumns.ID]);
+      const eventInfos = events.map((event) => event[UserEventsColumns.INFO]);
+      return Option.some({
+        mptRoot: keyValueMptRoot(eventIDs, eventInfos),
+        retreivedEvents: events,
+      });
+    }
+  });
+
+const txEntryToBatchDBOps = (
+  txHash: Buffer,
+  txCbor: Buffer,
+): Effect.Effect<
+  {
+    spent: Buffer[];
+    produced: Ledger.MinimalEntry[];
+    delOps: ETH_UTILS.BatchDBOp[];
+    putOps: ETH_UTILS.BatchDBOp[];
+  },
+  SDK.CmlUnexpectedError
+> =>
+  Effect.gen(function* () {
+    const { spent, produced } = yield* findSpentAndProducedUTxOs(
+      txCbor,
+      txHash,
+    ).pipe(Effect.withSpan("findSpentAndProducedUTxOs"));
+    const delOps: ETH_UTILS.BatchDBOp[] = spent.map((outRef) => ({
+      type: "del",
+      key: outRef,
+    }));
+    const putOps: ETH_UTILS.BatchDBOp[] = produced.map(
+      (le: Ledger.MinimalEntry) => ({
+        type: "put",
+        key: le[Ledger.Columns.OUTREF],
+        value: le[Ledger.Columns.OUTPUT],
+      }),
+    );
+    return {
+      spent,
+      produced,
+      delOps,
+      putOps,
+    };
+  });
+
+export const applyMempoolToLedger = (
+  ledgerTrie: MidgardMpt,
+  mempoolTrie: MidgardMpt,
+  mempoolTxs: readonly TxTable.Entry[],
+): Effect.Effect<
+  {
+    mempoolTxHashes: Buffer[];
+    sizeOfProcessedTxs: number;
+  },
+  SDK.CmlUnexpectedError | MptError
+> =>
+  Effect.gen(function* () {
+    if (mempoolTxs.length <= 0) {
+      return {
+        mempoolTxHashes: [],
+        sizeOfProcessedTxs: 0,
+      };
+    }
+    const mempoolTxHashes: Buffer[] = [];
+    const mempoolBatchOps: ETH_UTILS.BatchDBOp[] = [];
+    const ledgerBatchOps: ETH_UTILS.BatchDBOp[] = [];
+    let sizeOfProcessedTxs = 0;
+    yield* Effect.logInfo(
+      "🔹 Going through mempool and processings transactions...",
+    );
+    yield* Effect.forEach(mempoolTxs, (entry: TxTable.Entry) =>
+      Effect.gen(function* () {
+        const txHash = entry[TxTable.Columns.TX_ID];
+        const txCbor = entry[TxTable.Columns.TX];
+        const { delOps, putOps } = yield* txEntryToBatchDBOps(txHash, txCbor);
+        mempoolTxHashes.push(txHash);
+        sizeOfProcessedTxs += txCbor.length;
+        mempoolBatchOps.push({
+          type: "put",
+          key: txHash,
+          value: txCbor,
+        });
+        ledgerBatchOps.push(...delOps);
+        ledgerBatchOps.push(...putOps);
+      }),
+    );
+
+    yield* Effect.all(
+      [mempoolTrie.batch(mempoolBatchOps), ledgerTrie.batch(ledgerBatchOps)],
+      { concurrency: "unbounded" },
+    );
+
+    return {
+      mempoolTxHashes: mempoolTxHashes,
+      sizeOfProcessedTxs: sizeOfProcessedTxs,
+    };
+  });
+
+export const applyTxOrdersToLedger = (
+  ledgerTrie: MidgardMpt,
+  txOrderUTxOs: readonly SDK.TxOrderUTxO[],
+) =>
+  Effect.gen(function* () {
+    if (txOrderUTxOs.length <= 0) {
+      return {
+        txHashes: [],
+        spent: [],
+        produced: [],
+        sizeOfProcessedTxs: 0,
+      };
+    }
+    yield* Effect.logInfo(
+      `🔹 Applying ${txOrderUTxOs.length} tx order(s) to the ledgerTrie`,
+    );
+
+    const spentTxOrderUTxOs: Buffer[] = [];
+    const producedTxOrderUTxOs: Ledger.MinimalEntry[] = [];
+    const txOrderTxHashes: Buffer[] = [];
+    const ledgerBatchOps: ETH_UTILS.BatchDBOp[] = [];
+    let sizeOfProcessedTxs = 0;
+
+    yield* Effect.forEach(txOrderUTxOs, (txOrderUTxO: SDK.TxOrderUTxO) =>
+      Effect.gen(function* () {
+        const txHash = txOrderUTxO.idCbor;
+        const txCbor = txOrderUTxO.infoCbor;
+        const { delOps, putOps, spent, produced } = yield* txEntryToBatchDBOps(
+          txHash,
+          txCbor,
+        );
+        txOrderTxHashes.push(txHash);
+        sizeOfProcessedTxs += txCbor.length;
+        ledgerBatchOps.push(...delOps);
+        ledgerBatchOps.push(...putOps);
+        spentTxOrderUTxOs.push(...spent);
+        producedTxOrderUTxOs.push(...produced);
+      }),
+    );
+
+    yield* ledgerTrie.batch(ledgerBatchOps);
+
+    return {
+      txHashes: txOrderTxHashes,
+      spent: spentTxOrderUTxOs,
+      produced: producedTxOrderUTxOs,
+      sizeOfProcessedTxs,
+    };
+  });
+
+export const applyWithdrawalsToLedger = (
+  ledgerTrie: MidgardMpt,
+  withdrawalUTxOs: readonly SDK.WithdrawalUTxO[],
+) =>
+  Effect.gen(function* () {
+    if (withdrawalUTxOs.length <= 0) {
+      return {
+        txHashes: [],
+        spent: [],
+        produced: [],
+        sizeOfProcessedTxs: 0,
+      };
+    }
+    yield* Effect.logInfo(
+      `🔹 Applying ${withdrawalUTxOs.length} withdrawal(s) to the ledgerTrie`,
+    );
+
+    const spentWithdrawalUTxOs: Buffer[] = [];
+    const producedWithdrawalUTxOs: Ledger.MinimalEntry[] = [];
+    const withdrawalTxHashes: Buffer[] = [];
+    const ledgerBatchOps: ETH_UTILS.BatchDBOp[] = [];
+    let sizeOfProcessedTxs = 0;
+
+    yield* Effect.forEach(
+      withdrawalUTxOs,
+      (withdrawalUTxO: SDK.WithdrawalUTxO) =>
+        Effect.gen(function* () {
+          const txHash = withdrawalUTxO.idCbor;
+          const txCbor = withdrawalUTxO.infoCbor;
+          const { delOps, spent } = yield* txEntryToBatchDBOps(txHash, txCbor);
+          withdrawalTxHashes.push(txHash);
+          sizeOfProcessedTxs += txCbor.length;
+          ledgerBatchOps.push(...delOps);
+          spentWithdrawalUTxOs.push(...spent);
+        }),
+    );
+
+    yield* ledgerTrie.batch(ledgerBatchOps);
+
+    return {
+      txHashes: withdrawalTxHashes,
+      spent: spentWithdrawalUTxOs,
+      produced: producedWithdrawalUTxOs,
+      sizeOfProcessedTxs,
+    };
   });
 
 /**

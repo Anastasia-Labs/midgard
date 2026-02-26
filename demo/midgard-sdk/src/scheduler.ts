@@ -1,18 +1,33 @@
 import {
+  Address,
   Assets,
   Data,
+  fromText,
   LucidEvolution,
+  PolicyId,
   toUnit,
   TxBuilder,
+  UTxO,
 } from "@lucid-evolution/lucid";
-import { AuthenticatedValidator } from "@/common.js";
-import { SCHEDULER_ASSET_NAME } from "@/constants.js";
+import {
+  AuthenticatedValidator,
+  GenericErrorFields,
+  LucidError,
+  POSIXTimeSchema,
+} from "@/common.js";
+import {
+  authenticateUTxOs,
+  AuthenticUTxO,
+  fetchSingleAuthenticUTxOProgram,
+} from "@/internals.js";
+import { Effect, Data as EffectData } from "effect";
+
+export const SCHEDULER_ASSET_NAME = fromText("Scheduler");
 
 export const SchedulerDatumSchema = Data.Object({
   operator: Data.Bytes(),
-  startTime: Data.Integer(),
+  startTime: POSIXTimeSchema,
 });
-
 export type SchedulerDatum = Data.Static<typeof SchedulerDatumSchema>;
 export const SchedulerDatum = SchedulerDatumSchema as unknown as SchedulerDatum;
 
@@ -57,6 +72,43 @@ export type SchedulerInitParams = {
 export type SchedulerDeinitParams = {};
 export type SchedulerAdvanceParams = {};
 export type SchedulerRewindParams = {};
+
+export type SchedulerUTxO = AuthenticUTxO<SchedulerDatum>;
+
+export const utxosToSchedulerUTxOs = (
+  utxos: UTxO[],
+  nftPolicy: PolicyId,
+): Effect.Effect<SchedulerUTxO[], LucidError> =>
+  authenticateUTxOs<SchedulerDatum>(utxos, nftPolicy, SchedulerDatum);
+
+export type SchedulerConfig = {
+  schedulerAddress: Address;
+  schedulerPolicyId: PolicyId;
+};
+
+export class SchedulerError extends EffectData.TaggedError(
+  "SchedulerError",
+)<GenericErrorFields> {}
+
+export const fetchSchedulerUTxOProgram = (
+  lucid: LucidEvolution,
+  config: SchedulerConfig,
+): Effect.Effect<SchedulerUTxO, SchedulerError | LucidError> =>
+  fetchSingleAuthenticUTxOProgram<SchedulerUTxO, LucidError, SchedulerError>(
+    lucid,
+    {
+      address: config.schedulerAddress,
+      policyId: config.schedulerPolicyId,
+      utxoLabel: "scheduler",
+      conversionFunction: utxosToSchedulerUTxOs,
+      onUnexpectedAuthenticUTxOCount: () =>
+        new SchedulerError({
+          message: "Failed to fetch the scheduler UTxO",
+          cause:
+            "Exactly one scheduler UTxO was expected, but none or more were found",
+        }),
+    },
+  );
 
 /**
  * Init

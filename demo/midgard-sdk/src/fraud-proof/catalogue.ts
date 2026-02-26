@@ -1,8 +1,11 @@
 import { AuthenticatedValidator } from "@/common.js";
-import { FRAUD_PROOF_CATALOGUE_ASSET_NAME } from "@/constants.js";
-import { Assets, Data, toUnit } from "@lucid-evolution/lucid";
+import { Assets, Data, fromText, toUnit } from "@lucid-evolution/lucid";
 import { LucidEvolution, TxBuilder } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
+
+export const FRAUD_PROOF_CATALOGUE_ASSET_NAME = fromText(
+  "Fraud Proof Catalogue",
+);
 
 export const FraudProofCatalogueDatumSchema = Data.Bytes();
 

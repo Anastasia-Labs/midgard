@@ -53,7 +53,7 @@ import { SerializedStateQueueUTxO } from "@/workers/utils/commit-block-header.js
 import { DatabaseError } from "@/database/utils/common.js";
 import { TxConfirmError, TxSignError } from "@/transactions/utils.js";
 import {
-  fetchAndInsertDepositUTxOsFiber,
+  syncUserEventsFiber,
   blockConfirmationFiber,
   blockCommitmentFiber,
   blockCommitmentAction,
@@ -620,8 +620,8 @@ export const runNode = (withMonitoring?: boolean) =>
         blockConfirmationFiber(
           mkSchedule(nodeConfig.WAIT_BETWEEN_BLOCK_CONFIRMATION),
         ),
-        fetchAndInsertDepositUTxOsFiber(
-          mkSchedule(nodeConfig.WAIT_BETWEEN_DEPOSIT_UTXO_FETCHES),
+        syncUserEventsFiber(
+          mkSchedule(nodeConfig.WAIT_BETWEEN_USER_EVENT_FETCHES),
         ),
         mergeFiber(mkSchedule(nodeConfig.WAIT_BETWEEN_MERGE_TXS)),
         withMonitoring ? monitorMempoolFiber(mkSchedule(1000)) : Effect.void,

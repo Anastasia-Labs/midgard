@@ -13,21 +13,28 @@ import {
   UnspecifiedNetworkError,
 } from "@/common.js";
 import {
+  AuthenticUTxO,
+  authenticateUTxOs,
+  fetchSingleAuthenticUTxOProgram,
+} from "@/internals.js";
+import {
   Address,
   LucidEvolution,
   PolicyId,
+  fromText,
   toUnit,
   TxBuilder,
   UTxO,
   Data,
   Assets,
 } from "@lucid-evolution/lucid";
-import { HUB_ORACLE_ASSET_NAME } from "@/constants.js";
 
 export type HubOracleConfig = {
   hubOracleAddress: Address;
   hubOraclePolicyId: PolicyId;
 };
+
+export const HUB_ORACLE_ASSET_NAME = fromText("Hub Oracle");
 
 // TODO: This should ideally come from Aiken env directory.
 export const hubOracleAssetName = "";
@@ -63,6 +70,17 @@ export const HubOracleDatumSchema = Data.Object({
 export type HubOracleDatum = Data.Static<typeof HubOracleDatumSchema>;
 export const HubOracleDatum = HubOracleDatumSchema as unknown as HubOracleDatum;
 
+export type HubOracleUTxO = AuthenticUTxO<HubOracleDatum>;
+
+export const utxosToHubOracleUTxOs = (
+  utxos: UTxO[],
+  nftPolicy: PolicyId,
+): Effect.Effect<HubOracleUTxO[], LucidError> =>
+  authenticateUTxOs<HubOracleDatum>(utxos, nftPolicy, HubOracleDatum);
+
+/**
+ * Parameters for the init transaction.
+ */
 export type HubOracleInitParams = {
   hubOracleValidator: AuthenticatedValidator;
   validators: HubOracleValidators;
@@ -192,57 +210,22 @@ export class HubOracleError extends EffectData.TaggedError(
 export const fetchHubOracleUTxOProgram = (
   lucid: LucidEvolution,
   config: HubOracleConfig,
-): Effect.Effect<
-  { utxo: UTxO; datum: HubOracleDatum },
-  HubOracleError | LucidError
-> =>
-  Effect.gen(function* () {
-    const errorMessage = "Failed to fetch the hub oracle UTxO";
-    const hubOracleUTxOs: UTxO[] = yield* Effect.tryPromise({
-      try: async () => {
-        return await lucid.utxosAtWithUnit(
-          config.hubOracleAddress,
-          toUnit(config.hubOraclePolicyId, hubOracleAssetName),
-        );
-      },
-      catch: (e) =>
-        new LucidError({
-          message: errorMessage,
-          cause: e,
-        }),
-    });
-    if (hubOracleUTxOs.length === 1) {
-      const utxo = hubOracleUTxOs[0];
-      const datum = yield* Effect.try({
-        try: () => {
-          if (utxo.datum) {
-            const coerced = Data.from(utxo.datum, HubOracleDatum);
-            return coerced;
-          } else {
-            throw new HubOracleError({
-              message: errorMessage,
-              cause: "Hub oracle UTxO datum is missing",
-            });
-          }
-        },
-        catch: (e) => {
-          return new HubOracleError({
-            message: errorMessage,
-            cause: `Failed to parse the hub oracle datum: ${e}`,
-          });
-        },
-      });
-      return { utxo, datum };
-    } else {
-      return yield* Effect.fail(
+): Effect.Effect<HubOracleUTxO, HubOracleError | LucidError> =>
+  fetchSingleAuthenticUTxOProgram<HubOracleUTxO, LucidError, HubOracleError>(
+    lucid,
+    {
+      address: config.hubOracleAddress,
+      policyId: config.hubOraclePolicyId,
+      utxoLabel: "hub oracle",
+      conversionFunction: utxosToHubOracleUTxOs,
+      onUnexpectedAuthenticUTxOCount: () =>
         new HubOracleError({
-          message: errorMessage,
+          message: "Failed to fetch the hub oracle UTxO",
           cause:
             "Exactly one hub oracle UTxO was expected, but none or more were found",
         }),
-      );
-    }
-  });
+    },
+  );
 
 /**
  * Attempts fetching the hub oracle UTxO.

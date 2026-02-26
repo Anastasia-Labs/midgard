@@ -7,30 +7,28 @@ import {
   Script,
   ScriptHash,
 } from "@lucid-evolution/lucid";
-import { Data as EffectData } from "effect";
-import { Effect } from "effect";
+import { Array as EffectArray, Effect, Option } from "effect";
 import {
   Address,
-  Assets as LucidAssets,
   Credential,
   LucidEvolution,
   PolicyId,
   UTxO,
   fromHex,
-  fromUnit,
   toHex,
 } from "@lucid-evolution/lucid";
 import { blake2b } from "@noble/hashes/blake2.js";
+import { ActiveOperatorUTxO } from "./active-operators.js";
+import { RetiredOperatorUTxO } from "./retired-operators.js";
+import {
+  Bech32DeserializationError,
+  HashingError,
+  LucidError,
+  UnauthenticUtxoError,
+} from "./errors.js";
+import { getStateToken } from "./internals.js";
 
-/**
- * `StateUTxO` would probably be a better name, but it'd be confusing next to
- * our state queue UTxOs.
- */
-export type BeaconUTxO = {
-  utxo: UTxO;
-  policyId: PolicyId;
-  assetName: string;
-};
+export * from "./errors.js";
 
 export const makeReturn = <A, E>(program: Effect.Effect<A, E>) => {
   return {
@@ -45,61 +43,15 @@ export const isHexString = (str: string): boolean => {
   return hexRegex.test(str);
 };
 
-export const getSingleAssetApartFromAda = (
-  assets: LucidAssets,
-): Effect.Effect<[PolicyId, string, bigint], AssetError> =>
-  Effect.gen(function* () {
-    const flattenedAssets: [string, bigint][] = Object.entries(assets);
-    const woLovelace: [string, bigint][] = flattenedAssets.filter(
-      ([unit, _qty]) => !(unit === "" || unit === "lovelace"),
-    );
-    if (woLovelace.length === 1) {
-      const explodedUnit = fromUnit(woLovelace[0][0]);
-      return [
-        explodedUnit.policyId,
-        explodedUnit.assetName ?? "",
-        woLovelace[0][1],
-      ];
-    } else {
-      return yield* Effect.fail(
-        new AssetError({
-          message: "Failed to get single asset apart from ADA",
-          cause: "Expected exactly 1 additional asset apart from ADA",
-        }),
-      );
-    }
-  });
-
 /**
- * Similar to `getSingleAssetApartFromAda`, with the additional requirement for
- * the quantity to be exactly 1.
+ * `StateUTxO` would probably be a better name, but it'd be confusing next to
+ * our state queue UTxOs.
  */
-export const getStateToken = (
-  assets: LucidAssets,
-): Effect.Effect<[PolicyId, string], UnauthenticUtxoError> =>
-  Effect.gen(function* () {
-    const errorMessage = "Failed to get the beacon token from assets";
-    const [policyId, assetName, qty] = yield* getSingleAssetApartFromAda(
-      assets,
-    ).pipe(
-      Effect.mapError(
-        (e) =>
-          new UnauthenticUtxoError({
-            message: errorMessage,
-            cause: e,
-          }),
-      ),
-    );
-    if (qty !== 1n) {
-      yield* Effect.fail(
-        new UnauthenticUtxoError({
-          message: errorMessage,
-          cause: `The quantity of the beacon token was expected to be exactly 1, but it was ${qty.toString()}`,
-        }),
-      );
-    }
-    return [policyId, assetName];
-  });
+export type BeaconUTxO = {
+  utxo: UTxO;
+  policyId: PolicyId;
+  assetName: string;
+};
 
 /**
  * Silently drops the UTxOs without proper authentication NFTs.
@@ -119,6 +71,7 @@ export const utxosAtByNFTPolicyId = (
         });
       },
     });
+
     const nftEffects: Effect.Effect<BeaconUTxO, UnauthenticUtxoError>[] =
       allUTxOs.map((u: UTxO) => {
         const nftsEffect = getStateToken(u.assets);
@@ -130,17 +83,18 @@ export const utxosAtByNFTPolicyId = (
           > => {
             if (sym === policyId) {
               return Effect.succeed({ utxo: u, policyId, assetName });
-            } else {
-              return Effect.fail(
-                new UnauthenticUtxoError({
-                  message: "Failed to get assets from fetched UTxOs",
-                  cause: "UTxO doesn't have the expected NFT policy ID",
-                }),
-              );
             }
+
+            return Effect.fail(
+              new UnauthenticUtxoError({
+                message: "Failed to get assets from fetched UTxOs",
+                cause: "UTxO doesn't have the expected NFT policy ID",
+              }),
+            );
           },
         );
       });
+
     const authenticUTxOs = yield* Effect.allSuccesses(nftEffects);
     return authenticUTxOs;
   }).pipe(
@@ -195,6 +149,10 @@ export const bufferToHex = (buf: Buffer): string => {
     return "<no hex for undefined>";
   }
 };
+
+export const H32Schema = Data.Bytes({ minLength: 32, maxLength: 32 });
+export type H32 = Data.Static<typeof H32Schema>;
+export const H32 = H32Schema as unknown as H32;
 
 /**
  * Assumes the given Bech32 string is that of a Cardano address (TODO).
@@ -330,6 +288,16 @@ export const POSIXTimeSchema = Data.Integer();
 export type POSIXTime = Data.Static<typeof POSIXTimeSchema>;
 export const POSIXTime = POSIXTimeSchema as unknown as POSIXTime;
 
+export const PosixTimeDurationSchema = Data.Integer();
+export type PosixTimeDuration = Data.Static<typeof PosixTimeDurationSchema>;
+export const PosixTimeDuration =
+  PosixTimeDurationSchema as unknown as PosixTimeDuration;
+
+export const VerificationKeyHashSchema = Data.Bytes({
+  minLength: 28,
+  maxLength: 28,
+});
+
 export const PubKeyHashSchema = Data.Bytes({ minLength: 28, maxLength: 28 });
 
 export const ScriptHashSchema = Data.Bytes({ minLength: 28, maxLength: 28 });
@@ -370,6 +338,44 @@ export const AddressSchema = Data.Object({
 });
 export type AddressData = Data.Static<typeof AddressSchema>;
 export const AddressData = AddressSchema as unknown as AddressData;
+
+export const NeighborSchema = Data.Object({
+  Neighbor: Data.Object({
+    nibble: Data.Integer(),
+    prefix: Data.Bytes(),
+    root: Data.Bytes(),
+  }),
+});
+export type Neighbor = Data.Static<typeof NeighborSchema>;
+export const Neighbor = NeighborSchema as unknown as Neighbor;
+
+export const ProofStepSchema = Data.Enum([
+  Data.Object({
+    Branch: Data.Object({
+      skip: Data.Integer(),
+      neighbors: Data.Bytes(),
+    }),
+  }),
+  Data.Object({
+    Fork: Data.Object({
+      skip: Data.Integer(),
+      neighbor: NeighborSchema,
+    }),
+  }),
+  Data.Object({
+    Leaf: Data.Object({
+      skip: Data.Integer(),
+      key: Data.Bytes(),
+      value: Data.Bytes(),
+    }),
+  }),
+]);
+export type ProofStep = Data.Static<typeof ProofStepSchema>;
+export const ProofStep = ProofStepSchema as unknown as ProofStep;
+
+export const ProofSchema = Data.Array(ProofStepSchema);
+export type Proof = Data.Static<typeof ProofSchema>;
+export const Proof = ProofSchema as unknown as Proof;
 
 export const MidgardAddressSchema = CredentialSchema;
 export type MidgardAddress = CredentialD;
@@ -418,55 +424,40 @@ export const addressDataFromBech32 = (
     };
   });
 
-export type GenericErrorFields = {
-  readonly message: string;
-  readonly cause: any;
+/**
+ * TODO: Move to the `operatorDirectory` module after refactoring.`
+ */
+export const findOperatorByPKH = (
+  activeOperators: ActiveOperatorUTxO[],
+  retiredOperators: RetiredOperatorUTxO[],
+  operatorPKH: string,
+): Effect.Effect<
+  | (ActiveOperatorUTxO & { isActive: true })
+  | (RetiredOperatorUTxO & { isActive: false }),
+  LucidError
+> => {
+  const activeOperatorMatch = EffectArray.findFirst(
+    activeOperators,
+    (utxo) => utxo.datum.key === operatorPKH,
+  );
+
+  if (Option.isSome(activeOperatorMatch)) {
+    return Effect.succeed({ ...activeOperatorMatch.value, isActive: true });
+  }
+
+  const retiredOperatorMatch = EffectArray.findFirst(
+    retiredOperators,
+    (utxo) => utxo.datum.key === operatorPKH,
+  );
+
+  if (Option.isSome(retiredOperatorMatch)) {
+    return Effect.succeed({ ...retiredOperatorMatch.value, isActive: false });
+  }
+
+  return Effect.fail(
+    new LucidError({
+      message: `No Operator UTxO with key "${operatorPKH}" found`,
+      cause: "Operator not found in active or retired UTxOs",
+    }),
+  );
 };
-
-export class AssetError extends EffectData.TaggedError(
-  "AssetError",
-)<GenericErrorFields> {}
-
-export class Bech32DeserializationError extends EffectData.TaggedError(
-  "Bech32DeserializationError",
-)<GenericErrorFields> {}
-
-export class CborSerializationError extends EffectData.TaggedError(
-  "CborSerializationError",
-)<GenericErrorFields> {}
-
-export class CborDeserializationError extends EffectData.TaggedError(
-  "CborDeserializationError",
-)<GenericErrorFields> {}
-
-export class CmlUnexpectedError extends EffectData.TaggedError(
-  "CmlUnexpectedError",
-)<GenericErrorFields> {}
-
-export class CmlDeserializationError extends EffectData.TaggedError(
-  "CmlDeserializationError",
-)<GenericErrorFields> {}
-
-export class DataCoercionError extends EffectData.TaggedError(
-  "DataCoercionError",
-)<GenericErrorFields> {}
-
-export class HashingError extends EffectData.TaggedError(
-  "HashingError",
-)<GenericErrorFields> {}
-
-export class LucidError extends EffectData.TaggedError(
-  "LucidError",
-)<GenericErrorFields> {}
-
-export class MissingDatumError extends EffectData.TaggedError(
-  "MissingDatumError",
-)<GenericErrorFields> {}
-
-export class UnauthenticUtxoError extends EffectData.TaggedError(
-  "UnauthenticUtxoError",
-)<GenericErrorFields> {}
-
-export class UnspecifiedNetworkError extends EffectData.TaggedError(
-  "UnspecifiedNetworkError",
-)<GenericErrorFields> {}

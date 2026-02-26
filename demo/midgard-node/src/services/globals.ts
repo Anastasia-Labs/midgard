@@ -34,7 +34,9 @@ export class Globals extends Effect.Service<Globals>()("Globals", {
     const UNCONFIRMED_SUBMITTED_BLOCK_TX_HASH: Ref.Ref<"" | TxHash> =
       yield* Ref.make("" as "" | TxHash);
 
-    const LATEST_DEPOSIT_FETCH_TIME: Ref.Ref<number> = yield* Ref.make(0);
+    const LATEST_USER_EVENTS_FETCH_TIME: Ref.Ref<number> = yield* Ref.make(
+      Date.now(),
+    );
 
     return {
       BLOCKS_IN_QUEUE,
@@ -44,7 +46,7 @@ export class Globals extends Effect.Service<Globals>()("Globals", {
       PROCESSED_UNSUBMITTED_TXS_COUNT,
       PROCESSED_UNSUBMITTED_TXS_SIZE,
       UNCONFIRMED_SUBMITTED_BLOCK_TX_HASH,
-      LATEST_DEPOSIT_FETCH_TIME,
+      LATEST_USER_EVENTS_FETCH_TIME,
     };
   }),
 }) {}

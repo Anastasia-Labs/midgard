@@ -10,7 +10,7 @@
   "scripts": {
     "clean": "rimraf dist node_modules",
     "build": "tsup src/index.ts --minify --format esm && tsup src/workers/* --minify --format esm",
-    "quick-test": "pnpm run build && node dist/index.js --help",
+    "type-check": "pnpm exec tsc -p tsconfig.json --skipLibCheck",
     "format": "prettier --write \"**/*.{ts,tsx,md}\"",
     "format-check": "prettier --check \"**/*.{ts,tsx,md}\"",
     "listen": "pnpm run build && node dist/index.js listen",
@@ -71,6 +71,5 @@
       "libsodium-wrappers-sumo": "0.7.15",
       "libsodium-sumo": "0.7.15"
     }
-  },
-  "packageManager": "pnpm@9.15.4+sha512.b2dc20e2fc72b3e18848459b37359a32064663e5627a51e4c74b2c29dd8e8e0491483c3abb40789cfd578bf362fb6ba8261b05f0387d76792ed6e23ea3b1b6a0"
+  }
 }
