@@ -61,7 +61,6 @@ import {
   FetchRetiredOperatorParams,
   fetchRetiredOperatorUTxOs,
 } from "@/retired-operators.js";
-import { isActive } from "effect/RuntimeFlagsPatch";
 
 export const ResolutionClaimSchema = Data.Object({
   resolutionTime: POSIXTimeSchema,
