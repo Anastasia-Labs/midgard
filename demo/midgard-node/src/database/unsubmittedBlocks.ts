@@ -8,6 +8,9 @@ import {
 } from "@/database/utils/common.js";
 import * as SDK from "@al-ft/midgard-sdk";
 import { CML, coreToUtxo, UTxO, utxoToCore } from "@lucid-evolution/lucid";
+import * as BlocksDB from "@/database/blocks.js";
+import * as ImmutableDB from "@/database/immutable.js";
+import * as TxUtils from "@/database/utils/tx.js";
 
 export const tableName = "unsubmitted_blocks";
 
@@ -45,11 +48,11 @@ export type LatestUnsubmittedBlockWithTxs = {
 };
 
 type LatestUnsubmittedBlockJoinRow = {
-  header_hash: Buffer;
-  new_wallet_utxos: Buffer;
-  produced_utxos: Buffer;
-  tx_id: Buffer | null;
-  tx: Buffer | null;
+  [Columns.HEADER_HASH]: Buffer;
+  [Columns.NEW_WALLET_UTXOS]: Buffer;
+  [Columns.PRODUCED_UTXOS]: Buffer;
+  [BlocksDB.Columns.TX_ID]: Buffer | null;
+  [TxUtils.Columns.TX]: Buffer | null;
 };
 
 export const createTable: Effect.Effect<void, DatabaseError, Database> =
@@ -113,23 +116,26 @@ export const retrieveLatestWithBlockTxs: Effect.Effect<
   const sql = yield* SqlClient.SqlClient;
   const rows = yield* sql<LatestUnsubmittedBlockJoinRow>`
     WITH latest_unsubmitted AS (
-      SELECT header_hash, new_wallet_utxos, produced_utxos
-      FROM unsubmitted_blocks
-      ORDER BY sequence DESC
+      SELECT
+        ${sql(Columns.HEADER_HASH)},
+        ${sql(Columns.NEW_WALLET_UTXOS)},
+        ${sql(Columns.PRODUCED_UTXOS)}
+      FROM ${sql(tableName)}
+      ORDER BY ${sql(Columns.SEQUENCE)} DESC
       LIMIT 1
     )
     SELECT
-      latest_unsubmitted.header_hash,
-      latest_unsubmitted.new_wallet_utxos,
-      latest_unsubmitted.produced_utxos,
-      blocks.tx_id,
-      immutable.tx
+      latest_unsubmitted.${sql(Columns.HEADER_HASH)},
+      latest_unsubmitted.${sql(Columns.NEW_WALLET_UTXOS)},
+      latest_unsubmitted.${sql(Columns.PRODUCED_UTXOS)},
+      b.${sql(BlocksDB.Columns.TX_ID)},
+      i.${sql(TxUtils.Columns.TX)}
     FROM latest_unsubmitted
-    LEFT JOIN blocks
-      ON blocks.header_hash = latest_unsubmitted.header_hash
-    LEFT JOIN immutable
-      ON immutable.tx_id = blocks.tx_id
-    ORDER BY blocks.height ASC NULLS LAST
+    LEFT JOIN ${sql(BlocksDB.tableName)} AS b
+      ON b.${sql(BlocksDB.Columns.HEADER_HASH)} = latest_unsubmitted.${sql(Columns.HEADER_HASH)}
+    LEFT JOIN ${sql(ImmutableDB.tableName)} AS i
+      ON i.${sql(TxUtils.Columns.TX_ID)} = b.${sql(BlocksDB.Columns.TX_ID)}
+    ORDER BY b.${sql(BlocksDB.Columns.HEIGHT)} ASC NULLS LAST
   `;
   if (rows.length <= 0) {
     return Option.none();
@@ -137,10 +143,10 @@ export const retrieveLatestWithBlockTxs: Effect.Effect<
 
   const firstRow = rows[0];
   const newWalletUtxos = yield* deserializeUTxOsFromStorage(
-    firstRow.new_wallet_utxos,
+    firstRow[Columns.NEW_WALLET_UTXOS],
   );
   const producedUtxos = yield* deserializeUTxOsFromStorage(
-    firstRow.produced_utxos,
+    firstRow[Columns.PRODUCED_UTXOS],
   );
   const initialTxAcc: { txHashes: Buffer[]; txCbors: Buffer[] } = {
     txHashes: [],
@@ -150,26 +156,33 @@ export const retrieveLatestWithBlockTxs: Effect.Effect<
     rows,
     initialTxAcc,
     (acc, row) => {
-      if (row.tx_id === null && row.tx === null) {
+      if (
+        row[BlocksDB.Columns.TX_ID] === null &&
+        row[TxUtils.Columns.TX] === null
+      ) {
         return Effect.succeed(acc);
       }
-      if (row.tx_id === null || row.tx === null) {
+      if (
+        row[BlocksDB.Columns.TX_ID] === null ||
+        row[TxUtils.Columns.TX] === null
+      ) {
         return Effect.fail(
           new DatabaseError({
-            message: "Inconsistent transaction row for latest unsubmitted block",
+            message:
+              "Inconsistent transaction row for latest unsubmitted block",
             cause: row,
             table: tableName,
           }),
         );
       }
-      acc.txHashes.push(row.tx_id);
-      acc.txCbors.push(row.tx);
+      acc.txHashes.push(row[BlocksDB.Columns.TX_ID]);
+      acc.txCbors.push(row[TxUtils.Columns.TX]);
       return Effect.succeed(acc);
     },
   );
 
   return Option.some({
-    [Columns.HEADER_HASH]: firstRow.header_hash,
+    [Columns.HEADER_HASH]: firstRow[Columns.HEADER_HASH],
     [Columns.NEW_WALLET_UTXOS]: newWalletUtxos,
     [Columns.PRODUCED_UTXOS]: producedUtxos,
     txHashes,
