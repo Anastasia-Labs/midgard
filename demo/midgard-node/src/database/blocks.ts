@@ -1,6 +1,10 @@
 import { Effect } from "effect";
-import { clearTable, DatabaseError } from "@/database/utils/common.js";
-import { SqlClient, SqlError } from "@effect/sql";
+import {
+  clearTable,
+  DatabaseError,
+  NotFoundError,
+} from "@/database/utils/common.js";
+import { SqlClient } from "@effect/sql";
 import { Database } from "@/services/database.js";
 import { sqlErrorToDatabaseError } from "@/database/utils/common.js";
 
@@ -108,7 +112,7 @@ export const retrieveTxHashesByHeaderHash = (
 
 export const retrieveHeaderHashByTxHash = (
   txHash: Buffer,
-): Effect.Effect<Buffer, DatabaseError, Database> =>
+): Effect.Effect<Buffer, DatabaseError | NotFoundError, Database> =>
   Effect.gen(function* () {
     yield* Effect.logDebug(
       `${tableName} db: attempt retrieve headerHash for txHash ${txHash}`,
@@ -122,7 +126,14 @@ export const retrieveHeaderHashByTxHash = (
     if (rows.length <= 0) {
       const msg = `No headerHash found for ${txHash} txHash`;
       yield* Effect.logDebug(msg);
-      yield* Effect.fail(new SqlError.SqlError({ cause: msg }));
+      yield* Effect.fail(
+        new NotFoundError({
+          message: "No header hash found for tx hash",
+          cause: msg,
+          table: tableName,
+          txIdHex: txHash.toString("hex"),
+        }),
+      );
     }
     const result = rows[0][Columns.HEADER_HASH];
     yield* Effect.logDebug(
@@ -136,9 +147,14 @@ export const retrieveHeaderHashByTxHash = (
         `${tableName} db: retrieving headerHash error: ${JSON.stringify(e)}`,
       ),
     ),
-    sqlErrorToDatabaseError(
-      tableName,
-      "Failed to retrieve header hash of the given block",
+    Effect.mapError((error): DatabaseError | NotFoundError =>
+      error._tag === "NotFoundError"
+        ? error
+        : new DatabaseError({
+            message: "Failed to retrieve header hash of the given block",
+            table: tableName,
+            cause: error,
+          }),
     ),
   );
 
