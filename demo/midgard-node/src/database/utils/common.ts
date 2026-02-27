@@ -46,6 +46,8 @@ export class DatabaseError extends Data.TaggedError("DatabaseError")<
   SDK.GenericErrorFields & { readonly table: string }
 > {}
 
+// Use when a specific row is expected but missing. For expected empty states
+// (e.g. polling queues), prefer `Option.none` over throwing this error.
 export class NotFoundError extends Data.TaggedError("NotFoundError")<
   SDK.GenericErrorFields & {
     readonly table: string;

@@ -1,7 +1,7 @@
 import { describe, expect, beforeAll } from "vitest";
-import { fromHex, toHex } from "@lucid-evolution/lucid";
+import { fromHex, toHex, UTxO } from "@lucid-evolution/lucid";
 import { it } from "@effect/vitest";
-import { Effect } from "effect";
+import { Effect, Option } from "effect";
 import { SqlClient } from "@effect/sql";
 import { Database } from "../src/services/database.js";
 import { NodeConfig } from "../src/services/config.js";
@@ -264,6 +264,125 @@ describe("UnsubmittedBlocksDB", () => {
           yield* UnsubmittedBlocksDB.clear;
           const afterClear = yield* UnsubmittedBlocksDB.retrieve;
           expect(afterClear.length).toEqual(0);
+        }),
+      ),
+  );
+
+  it.effect(
+    "retrieve latest unsubmitted block with tx hashes and tx cbors in a single query",
+    (_) =>
+      provideDatabaseLayers(
+        Effect.gen(function* () {
+          yield* flushAll;
+
+          const headerHash1 = randomBytes(32);
+          const headerHash2 = randomBytes(32);
+          const walletUtxoA: UTxO = {
+            txHash: "11".repeat(32),
+            outputIndex: 0,
+            address: address1,
+            assets: { lovelace: 1_000_000n },
+          };
+          const walletUtxoB: UTxO = {
+            txHash: "12".repeat(32),
+            outputIndex: 1,
+            address: address2,
+            assets: { lovelace: 2_000_000n },
+          };
+          const walletUtxoC: UTxO = {
+            txHash: "13".repeat(32),
+            outputIndex: 2,
+            address: address1,
+            assets: { lovelace: 3_000_000n },
+          };
+          const producedUtxoA: UTxO = {
+            txHash: "21".repeat(32),
+            outputIndex: 0,
+            address: address2,
+            assets: { lovelace: 1_500_000n },
+          };
+          const producedUtxoB: UTxO = {
+            txHash: "22".repeat(32),
+            outputIndex: 1,
+            address: address1,
+            assets: { lovelace: 2_500_000n },
+          };
+          const producedUtxoC: UTxO = {
+            txHash: "23".repeat(32),
+            outputIndex: 2,
+            address: address2,
+            assets: { lovelace: 3_500_000n },
+          };
+
+          const walletUtxos1 =
+            yield* UnsubmittedBlocksDB.serializeUTxOsForStorage([walletUtxoA]);
+          const walletUtxos2 =
+            yield* UnsubmittedBlocksDB.serializeUTxOsForStorage([
+              walletUtxoB,
+              walletUtxoC,
+            ]);
+          const producedUtxos1 =
+            yield* UnsubmittedBlocksDB.serializeUTxOsForStorage([
+              producedUtxoA,
+            ]);
+          const producedUtxos2 =
+            yield* UnsubmittedBlocksDB.serializeUTxOsForStorage([
+              producedUtxoB,
+              producedUtxoC,
+            ]);
+          const l1Cbor1 = randomBytes(96);
+          const l1Cbor2 = randomBytes(96);
+          const txHash1 = randomBytes(32);
+          const txHash2 = randomBytes(32);
+          const txCbor1 = randomBytes(128);
+          const txCbor2 = randomBytes(128);
+
+          yield* UnsubmittedBlocksDB.upsert({
+            [UnsubmittedBlocksDB.Columns.HEADER_HASH]: headerHash1,
+            [UnsubmittedBlocksDB.Columns.NEW_WALLET_UTXOS]: walletUtxos1,
+            [UnsubmittedBlocksDB.Columns.PRODUCED_UTXOS]: producedUtxos1,
+            [UnsubmittedBlocksDB.Columns.L1_CBOR]: l1Cbor1,
+          });
+          yield* UnsubmittedBlocksDB.upsert({
+            [UnsubmittedBlocksDB.Columns.HEADER_HASH]: headerHash2,
+            [UnsubmittedBlocksDB.Columns.NEW_WALLET_UTXOS]: walletUtxos2,
+            [UnsubmittedBlocksDB.Columns.PRODUCED_UTXOS]: producedUtxos2,
+            [UnsubmittedBlocksDB.Columns.L1_CBOR]: l1Cbor2,
+          });
+
+          yield* BlocksDB.insert(headerHash2, [txHash1, txHash2]);
+          yield* ImmutableDB.insertTx({
+            [TxUtils.Columns.TX_ID]: txHash1,
+            [TxUtils.Columns.TX]: txCbor1,
+          });
+          yield* ImmutableDB.insertTx({
+            [TxUtils.Columns.TX_ID]: txHash2,
+            [TxUtils.Columns.TX]: txCbor2,
+          });
+
+          const maybeLatest =
+            yield* UnsubmittedBlocksDB.retrieveLatestWithBlockTxs;
+          expect(Option.isSome(maybeLatest)).toEqual(true);
+          if (Option.isNone(maybeLatest)) {
+            return;
+          }
+          const latest = maybeLatest.value;
+          expect(latest[UnsubmittedBlocksDB.Columns.HEADER_HASH]).toStrictEqual(
+            headerHash2,
+          );
+          expect(
+            latest[UnsubmittedBlocksDB.Columns.NEW_WALLET_UTXOS],
+          ).toStrictEqual([walletUtxoB, walletUtxoC]);
+          expect(
+            latest[UnsubmittedBlocksDB.Columns.PRODUCED_UTXOS],
+          ).toStrictEqual([producedUtxoB, producedUtxoC]);
+          expect(latest.txHashes).toStrictEqual([txHash1, txHash2]);
+          expect(latest.txCbors).toStrictEqual([txCbor1, txCbor2]);
+
+          yield* flushAll;
+          const maybeNone =
+            yield* UnsubmittedBlocksDB.retrieveLatestWithBlockTxs;
+          expect(Option.isNone(maybeNone)).toEqual(true);
         }),
       ),
   );
