@@ -15,9 +15,9 @@ export enum Columns {
   SEQUENCE = "sequence",
   HEADER_HASH = "header_hash",
   NEW_WALLET_UTXOS = "new_wallet_utxos",
-  L1_CBOR = "l1_cbor",
   // Corresponds to `.chain()` second tuple value (`derivedOutputs`).
   PRODUCED_UTXOS = "produced_utxos",
+  L1_CBOR = "l1_cbor",
   TIMESTAMPTZ = "time_stamp_tz",
 }
 
@@ -25,10 +25,10 @@ export type EntryNoMeta = {
   [Columns.HEADER_HASH]: Buffer;
   // Corresponds to `.chain()` first tuple value (`newWalletUTxOs`).
   [Columns.NEW_WALLET_UTXOS]: Buffer;
-  // Corresponds to `.chain()` third tuple value (transaction CBOR).
-  [Columns.L1_CBOR]: Buffer;
   // Corresponds to `.chain()` second tuple value (`derivedOutputs`).
   [Columns.PRODUCED_UTXOS]: Buffer;
+  // Corresponds to `.chain()` third tuple value (transaction CBOR).
+  [Columns.L1_CBOR]: Buffer;
 };
 
 export type Entry = EntryNoMeta & {
