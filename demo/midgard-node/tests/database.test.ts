@@ -1,7 +1,7 @@
 import { describe, expect, beforeAll } from "vitest";
-import { fromHex, toHex } from "@lucid-evolution/lucid";
+import { fromHex, toHex, UTxO } from "@lucid-evolution/lucid";
 import { it } from "@effect/vitest";
-import { Effect } from "effect";
+import { Effect, Option } from "effect";
 import { SqlClient } from "@effect/sql";
 import { Database } from "../src/services/database.js";
 import { NodeConfig } from "../src/services/config.js";
@@ -18,6 +18,7 @@ import {
   ImmutableDB,
   ProcessedMempoolDB,
   MempoolDB,
+  UnsubmittedBlocksDB,
 
   // Ledger
   LatestLedgerDB,
@@ -28,6 +29,7 @@ import {
   TxUtils,
   LedgerUtils,
 } from "../src/database/index.js";
+import { serializeUTxOsForStorage } from "../src/database/utils/common.js";
 import { breakDownTx, ProcessedTx } from "../src/utils.js";
 import { provideDatabaseLayers } from "./utils.js";
 
@@ -42,6 +44,7 @@ const flushAll = Effect.gen(function* () {
       MempoolDB.clear,
       AddressHistoryDB.clear,
       ProcessedMempoolDB.clear,
+      UnsubmittedBlocksDB.clear,
     ],
     { discard: true },
   );
@@ -154,6 +157,305 @@ describe("BlocksDB", () => {
           yield* BlocksDB.clear;
           const afterClearAll = yield* BlocksDB.retrieve;
           expect(afterClearAll.length).toEqual(0);
+        }),
+      ),
+  );
+});
+
+describe("UnsubmittedBlocksDB", () => {
+  it.effect(
+    "upsert, retrieve, delete up to block, delete by blocks, clear all",
+    (_) =>
+      provideDatabaseLayers(
+        Effect.gen(function* () {
+          yield* flushAll;
+
+          const unsubmittedBlock1 = randomBytes(32);
+          const unsubmittedBlock2 = randomBytes(32);
+          const unsubmittedBlock3 = randomBytes(32);
+          const l1Cbor1 = randomBytes(128);
+          const l1Cbor2 = randomBytes(96);
+          const l1Cbor3 = randomBytes(72);
+          const producedSnapshot1 = randomBytes(64);
+          const producedSnapshot2 = randomBytes(80);
+          const producedSnapshot3 = randomBytes(56);
+          const walletUtxos1 = randomBytes(64);
+          const walletUtxos2 = randomBytes(72);
+          const walletUtxos3 = randomBytes(80);
+          const eventStats1 = {
+            [UnsubmittedBlocksDB.Columns.DEPOSITS_COUNT]: 3,
+            [UnsubmittedBlocksDB.Columns.TX_REQUESTS_COUNT]: 7,
+            [UnsubmittedBlocksDB.Columns.TX_ORDERS_COUNT]: 2,
+            [UnsubmittedBlocksDB.Columns.WITHDRAWALS_COUNT]: 1,
+            [UnsubmittedBlocksDB.Columns.TOTAL_EVENTS_SIZE]: 640,
+          };
+          const eventStats2 = {
+            [UnsubmittedBlocksDB.Columns.DEPOSITS_COUNT]: 0,
+            [UnsubmittedBlocksDB.Columns.TX_REQUESTS_COUNT]: 4,
+            [UnsubmittedBlocksDB.Columns.TX_ORDERS_COUNT]: 1,
+            [UnsubmittedBlocksDB.Columns.WITHDRAWALS_COUNT]: 2,
+            [UnsubmittedBlocksDB.Columns.TOTAL_EVENTS_SIZE]: 512,
+          };
+          const eventStats3 = {
+            [UnsubmittedBlocksDB.Columns.DEPOSITS_COUNT]: 2,
+            [UnsubmittedBlocksDB.Columns.TX_REQUESTS_COUNT]: 1,
+            [UnsubmittedBlocksDB.Columns.TX_ORDERS_COUNT]: 3,
+            [UnsubmittedBlocksDB.Columns.WITHDRAWALS_COUNT]: 0,
+            [UnsubmittedBlocksDB.Columns.TOTAL_EVENTS_SIZE]: 384,
+          };
+
+          yield* UnsubmittedBlocksDB.upsert({
+            [UnsubmittedBlocksDB.Columns.HEADER_HASH]: unsubmittedBlock1,
+            [UnsubmittedBlocksDB.Columns.NEW_WALLET_UTXOS]: walletUtxos1,
+            [UnsubmittedBlocksDB.Columns.L1_CBOR]: l1Cbor1,
+            [UnsubmittedBlocksDB.Columns.PRODUCED_UTXOS]: producedSnapshot1,
+            ...eventStats1,
+          });
+          yield* UnsubmittedBlocksDB.upsert({
+            [UnsubmittedBlocksDB.Columns.HEADER_HASH]: unsubmittedBlock2,
+            [UnsubmittedBlocksDB.Columns.NEW_WALLET_UTXOS]: walletUtxos2,
+            [UnsubmittedBlocksDB.Columns.L1_CBOR]: l1Cbor2,
+            [UnsubmittedBlocksDB.Columns.PRODUCED_UTXOS]: producedSnapshot2,
+            ...eventStats2,
+          });
+          yield* UnsubmittedBlocksDB.upsert({
+            [UnsubmittedBlocksDB.Columns.HEADER_HASH]: unsubmittedBlock3,
+            [UnsubmittedBlocksDB.Columns.NEW_WALLET_UTXOS]: walletUtxos3,
+            [UnsubmittedBlocksDB.Columns.L1_CBOR]: l1Cbor3,
+            [UnsubmittedBlocksDB.Columns.PRODUCED_UTXOS]: producedSnapshot3,
+            ...eventStats3,
+          });
+
+          const updatedL1Cbor1 = randomBytes(140);
+          const updatedProducedSnapshot1 = randomBytes(88);
+          const updatedWalletUtxos1 = randomBytes(88);
+          const updatedEventStats1 = {
+            [UnsubmittedBlocksDB.Columns.DEPOSITS_COUNT]: 1,
+            [UnsubmittedBlocksDB.Columns.TX_REQUESTS_COUNT]: 8,
+            [UnsubmittedBlocksDB.Columns.TX_ORDERS_COUNT]: 4,
+            [UnsubmittedBlocksDB.Columns.WITHDRAWALS_COUNT]: 3,
+            [UnsubmittedBlocksDB.Columns.TOTAL_EVENTS_SIZE]: 1024,
+          };
+          yield* UnsubmittedBlocksDB.upsert({
+            [UnsubmittedBlocksDB.Columns.HEADER_HASH]: unsubmittedBlock1,
+            [UnsubmittedBlocksDB.Columns.NEW_WALLET_UTXOS]: updatedWalletUtxos1,
+            [UnsubmittedBlocksDB.Columns.L1_CBOR]: updatedL1Cbor1,
+            [UnsubmittedBlocksDB.Columns.PRODUCED_UTXOS]:
+              updatedProducedSnapshot1,
+            ...updatedEventStats1,
+          });
+
+          const all = yield* UnsubmittedBlocksDB.retrieve;
+          expect(all.length).toEqual(3);
+          expect(
+            all.map((e) => ({
+              [UnsubmittedBlocksDB.Columns.HEADER_HASH]:
+                e[UnsubmittedBlocksDB.Columns.HEADER_HASH],
+              [UnsubmittedBlocksDB.Columns.NEW_WALLET_UTXOS]:
+                e[UnsubmittedBlocksDB.Columns.NEW_WALLET_UTXOS],
+              [UnsubmittedBlocksDB.Columns.L1_CBOR]:
+                e[UnsubmittedBlocksDB.Columns.L1_CBOR],
+              [UnsubmittedBlocksDB.Columns.PRODUCED_UTXOS]:
+                e[UnsubmittedBlocksDB.Columns.PRODUCED_UTXOS],
+              [UnsubmittedBlocksDB.Columns.DEPOSITS_COUNT]:
+                e[UnsubmittedBlocksDB.Columns.DEPOSITS_COUNT],
+              [UnsubmittedBlocksDB.Columns.TX_REQUESTS_COUNT]:
+                e[UnsubmittedBlocksDB.Columns.TX_REQUESTS_COUNT],
+              [UnsubmittedBlocksDB.Columns.TX_ORDERS_COUNT]:
+                e[UnsubmittedBlocksDB.Columns.TX_ORDERS_COUNT],
+              [UnsubmittedBlocksDB.Columns.WITHDRAWALS_COUNT]:
+                e[UnsubmittedBlocksDB.Columns.WITHDRAWALS_COUNT],
+              [UnsubmittedBlocksDB.Columns.TOTAL_EVENTS_SIZE]:
+                e[UnsubmittedBlocksDB.Columns.TOTAL_EVENTS_SIZE],
+            })),
+          ).toStrictEqual([
+            {
+              [UnsubmittedBlocksDB.Columns.HEADER_HASH]: unsubmittedBlock1,
+              [UnsubmittedBlocksDB.Columns.NEW_WALLET_UTXOS]:
+                updatedWalletUtxos1,
+              [UnsubmittedBlocksDB.Columns.L1_CBOR]: updatedL1Cbor1,
+              [UnsubmittedBlocksDB.Columns.PRODUCED_UTXOS]:
+                updatedProducedSnapshot1,
+              ...updatedEventStats1,
+            },
+            {
+              [UnsubmittedBlocksDB.Columns.HEADER_HASH]: unsubmittedBlock2,
+              [UnsubmittedBlocksDB.Columns.NEW_WALLET_UTXOS]: walletUtxos2,
+              [UnsubmittedBlocksDB.Columns.L1_CBOR]: l1Cbor2,
+              [UnsubmittedBlocksDB.Columns.PRODUCED_UTXOS]: producedSnapshot2,
+              ...eventStats2,
+            },
+            {
+              [UnsubmittedBlocksDB.Columns.HEADER_HASH]: unsubmittedBlock3,
+              [UnsubmittedBlocksDB.Columns.NEW_WALLET_UTXOS]: walletUtxos3,
+              [UnsubmittedBlocksDB.Columns.L1_CBOR]: l1Cbor3,
+              [UnsubmittedBlocksDB.Columns.PRODUCED_UTXOS]: producedSnapshot3,
+              ...eventStats3,
+            },
+          ]);
+
+          yield* UnsubmittedBlocksDB.deleteUpToAndIncludingBlock(
+            unsubmittedBlock2,
+          );
+          const afterDelete = yield* UnsubmittedBlocksDB.retrieve;
+          expect(afterDelete.length).toEqual(1);
+          expect(
+            afterDelete[0][UnsubmittedBlocksDB.Columns.HEADER_HASH],
+          ).toStrictEqual(unsubmittedBlock3);
+
+          yield* UnsubmittedBlocksDB.deleteByBlocks([unsubmittedBlock3]);
+          const afterDeleteByBlock = yield* UnsubmittedBlocksDB.retrieve;
+          expect(afterDeleteByBlock.length).toEqual(0);
+
+          yield* UnsubmittedBlocksDB.clear;
+          const afterClear = yield* UnsubmittedBlocksDB.retrieve;
+          expect(afterClear.length).toEqual(0);
+        }),
+      ),
+  );
+
+  it.effect(
+    "retrieve latest unsubmitted block with tx hashes and tx cbors in a single query",
+    (_) =>
+      provideDatabaseLayers(
+        Effect.gen(function* () {
+          yield* flushAll;
+
+          const headerHash1 = randomBytes(32);
+          const headerHash2 = randomBytes(32);
+          const walletUtxoA: UTxO = {
+            txHash: "11".repeat(32),
+            outputIndex: 0,
+            address: address1,
+            assets: { lovelace: 1_000_000n },
+          };
+          const walletUtxoB: UTxO = {
+            txHash: "12".repeat(32),
+            outputIndex: 1,
+            address: address2,
+            assets: { lovelace: 2_000_000n },
+          };
+          const walletUtxoC: UTxO = {
+            txHash: "13".repeat(32),
+            outputIndex: 2,
+            address: address1,
+            assets: { lovelace: 3_000_000n },
+          };
+          const producedUtxoA: UTxO = {
+            txHash: "21".repeat(32),
+            outputIndex: 0,
+            address: address2,
+            assets: { lovelace: 1_500_000n },
+          };
+          const producedUtxoB: UTxO = {
+            txHash: "22".repeat(32),
+            outputIndex: 1,
+            address: address1,
+            assets: { lovelace: 2_500_000n },
+          };
+          const producedUtxoC: UTxO = {
+            txHash: "23".repeat(32),
+            outputIndex: 2,
+            address: address2,
+            assets: { lovelace: 3_500_000n },
+          };
+
+          const walletUtxos1 = yield* serializeUTxOsForStorage([walletUtxoA]);
+          const walletUtxos2 = yield* serializeUTxOsForStorage([
+            walletUtxoB,
+            walletUtxoC,
+          ]);
+          const producedUtxos1 = yield* serializeUTxOsForStorage([
+            producedUtxoA,
+          ]);
+          const producedUtxos2 = yield* serializeUTxOsForStorage([
+            producedUtxoB,
+            producedUtxoC,
+          ]);
+          const l1Cbor1 = randomBytes(96);
+          const l1Cbor2 = randomBytes(96);
+          const eventStats1 = {
+            [UnsubmittedBlocksDB.Columns.DEPOSITS_COUNT]: 1,
+            [UnsubmittedBlocksDB.Columns.TX_REQUESTS_COUNT]: 2,
+            [UnsubmittedBlocksDB.Columns.TX_ORDERS_COUNT]: 0,
+            [UnsubmittedBlocksDB.Columns.WITHDRAWALS_COUNT]: 1,
+            [UnsubmittedBlocksDB.Columns.TOTAL_EVENTS_SIZE]: 196,
+          };
+          const eventStats2 = {
+            [UnsubmittedBlocksDB.Columns.DEPOSITS_COUNT]: 2,
+            [UnsubmittedBlocksDB.Columns.TX_REQUESTS_COUNT]: 3,
+            [UnsubmittedBlocksDB.Columns.TX_ORDERS_COUNT]: 4,
+            [UnsubmittedBlocksDB.Columns.WITHDRAWALS_COUNT]: 5,
+            [UnsubmittedBlocksDB.Columns.TOTAL_EVENTS_SIZE]: 512,
+          };
+          const txHash1 = randomBytes(32);
+          const txHash2 = randomBytes(32);
+          const txCbor1 = randomBytes(128);
+          const txCbor2 = randomBytes(128);
+
+          yield* UnsubmittedBlocksDB.upsert({
+            [UnsubmittedBlocksDB.Columns.HEADER_HASH]: headerHash1,
+            [UnsubmittedBlocksDB.Columns.NEW_WALLET_UTXOS]: walletUtxos1,
+            [UnsubmittedBlocksDB.Columns.PRODUCED_UTXOS]: producedUtxos1,
+            [UnsubmittedBlocksDB.Columns.L1_CBOR]: l1Cbor1,
+            ...eventStats1,
+          });
+          yield* UnsubmittedBlocksDB.upsert({
+            [UnsubmittedBlocksDB.Columns.HEADER_HASH]: headerHash2,
+            [UnsubmittedBlocksDB.Columns.NEW_WALLET_UTXOS]: walletUtxos2,
+            [UnsubmittedBlocksDB.Columns.PRODUCED_UTXOS]: producedUtxos2,
+            [UnsubmittedBlocksDB.Columns.L1_CBOR]: l1Cbor2,
+            ...eventStats2,
+          });
+
+          yield* BlocksDB.insert(headerHash2, [txHash1, txHash2]);
+          yield* ImmutableDB.insertTx({
+            [TxUtils.Columns.TX_ID]: txHash1,
+            [TxUtils.Columns.TX]: txCbor1,
+          });
+          yield* ImmutableDB.insertTx({
+            [TxUtils.Columns.TX_ID]: txHash2,
+            [TxUtils.Columns.TX]: txCbor2,
+          });
+
+          const maybeLatest =
+            yield* UnsubmittedBlocksDB.retrieveLatestWithBlockTxs;
+          expect(Option.isSome(maybeLatest)).toEqual(true);
+          if (Option.isNone(maybeLatest)) {
+            return;
+          }
+          const latest = maybeLatest.value;
+          expect(latest[UnsubmittedBlocksDB.Columns.HEADER_HASH]).toStrictEqual(
+            headerHash2,
+          );
+          expect(
+            latest[UnsubmittedBlocksDB.Columns.NEW_WALLET_UTXOS],
+          ).toStrictEqual([walletUtxoB, walletUtxoC]);
+          expect(
+            latest[UnsubmittedBlocksDB.Columns.PRODUCED_UTXOS],
+          ).toStrictEqual([producedUtxoB, producedUtxoC]);
+          expect(latest[UnsubmittedBlocksDB.Columns.DEPOSITS_COUNT]).toEqual(
+            eventStats2[UnsubmittedBlocksDB.Columns.DEPOSITS_COUNT],
+          );
+          expect(latest[UnsubmittedBlocksDB.Columns.TX_REQUESTS_COUNT]).toEqual(
+            eventStats2[UnsubmittedBlocksDB.Columns.TX_REQUESTS_COUNT],
+          );
+          expect(latest[UnsubmittedBlocksDB.Columns.TX_ORDERS_COUNT]).toEqual(
+            eventStats2[UnsubmittedBlocksDB.Columns.TX_ORDERS_COUNT],
+          );
+          expect(latest[UnsubmittedBlocksDB.Columns.WITHDRAWALS_COUNT]).toEqual(
+            eventStats2[UnsubmittedBlocksDB.Columns.WITHDRAWALS_COUNT],
+          );
+          expect(latest[UnsubmittedBlocksDB.Columns.TOTAL_EVENTS_SIZE]).toEqual(
+            eventStats2[UnsubmittedBlocksDB.Columns.TOTAL_EVENTS_SIZE],
+          );
+          expect(latest.txHashes).toStrictEqual([txHash1, txHash2]);
+          expect(latest.txCbors).toStrictEqual([txCbor1, txCbor2]);
+
+          yield* flushAll;
+          const maybeNone =
+            yield* UnsubmittedBlocksDB.retrieveLatestWithBlockTxs;
+          expect(Option.isNone(maybeNone)).toEqual(true);
         }),
       ),
   );
