@@ -54,12 +54,12 @@ import { DatabaseError } from "@/database/utils/common.js";
 import { TxConfirmError, TxSignError } from "@/transactions/utils.js";
 import {
   syncUserEventsFiber,
-  blockConfirmationFiber,
   blockCommitmentFiber,
   blockCommitmentAction,
   mergeFiber,
   mergeAction,
   monitorMempoolFiber,
+  submitBlocksFiber,
   txQueueProcessorFiber,
 } from "@/fibers/index.js";
 
@@ -617,8 +617,8 @@ export const runNode = (withMonitoring?: boolean) =>
         blockCommitmentFiber(
           mkSchedule(nodeConfig.WAIT_BETWEEN_BLOCK_COMMITMENT),
         ),
-        blockConfirmationFiber(
-          mkSchedule(nodeConfig.WAIT_BETWEEN_BLOCK_CONFIRMATION),
+        submitBlocksFiber(
+          mkSchedule(nodeConfig.WAIT_BETWEEN_BLOCK_SUBMISSIONS),
         ),
         syncUserEventsFiber(
           mkSchedule(nodeConfig.WAIT_BETWEEN_USER_EVENT_FETCHES),

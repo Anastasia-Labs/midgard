@@ -183,19 +183,19 @@ describe("UnsubmittedBlocksDB", () => {
           const walletUtxos3 = randomBytes(80);
 
           yield* UnsubmittedBlocksDB.upsert({
-            [UnsubmittedBlocksDB.Columns.BLOCK]: unsubmittedBlock1,
+            [UnsubmittedBlocksDB.Columns.HEADER_HASH]: unsubmittedBlock1,
             [UnsubmittedBlocksDB.Columns.NEW_WALLET_UTXOS]: walletUtxos1,
             [UnsubmittedBlocksDB.Columns.L1_CBOR]: l1Cbor1,
             [UnsubmittedBlocksDB.Columns.PRODUCED_UTXOS]: producedSnapshot1,
           });
           yield* UnsubmittedBlocksDB.upsert({
-            [UnsubmittedBlocksDB.Columns.BLOCK]: unsubmittedBlock2,
+            [UnsubmittedBlocksDB.Columns.HEADER_HASH]: unsubmittedBlock2,
             [UnsubmittedBlocksDB.Columns.NEW_WALLET_UTXOS]: walletUtxos2,
             [UnsubmittedBlocksDB.Columns.L1_CBOR]: l1Cbor2,
             [UnsubmittedBlocksDB.Columns.PRODUCED_UTXOS]: producedSnapshot2,
           });
           yield* UnsubmittedBlocksDB.upsert({
-            [UnsubmittedBlocksDB.Columns.BLOCK]: unsubmittedBlock3,
+            [UnsubmittedBlocksDB.Columns.HEADER_HASH]: unsubmittedBlock3,
             [UnsubmittedBlocksDB.Columns.NEW_WALLET_UTXOS]: walletUtxos3,
             [UnsubmittedBlocksDB.Columns.L1_CBOR]: l1Cbor3,
             [UnsubmittedBlocksDB.Columns.PRODUCED_UTXOS]: producedSnapshot3,
@@ -205,7 +205,7 @@ describe("UnsubmittedBlocksDB", () => {
           const updatedProducedSnapshot1 = randomBytes(88);
           const updatedWalletUtxos1 = randomBytes(88);
           yield* UnsubmittedBlocksDB.upsert({
-            [UnsubmittedBlocksDB.Columns.BLOCK]: unsubmittedBlock1,
+            [UnsubmittedBlocksDB.Columns.HEADER_HASH]: unsubmittedBlock1,
             [UnsubmittedBlocksDB.Columns.NEW_WALLET_UTXOS]: updatedWalletUtxos1,
             [UnsubmittedBlocksDB.Columns.L1_CBOR]: updatedL1Cbor1,
             [UnsubmittedBlocksDB.Columns.PRODUCED_UTXOS]:
@@ -216,8 +216,8 @@ describe("UnsubmittedBlocksDB", () => {
           expect(all.length).toEqual(3);
           expect(
             all.map((e) => ({
-              [UnsubmittedBlocksDB.Columns.BLOCK]:
-                e[UnsubmittedBlocksDB.Columns.BLOCK],
+              [UnsubmittedBlocksDB.Columns.HEADER_HASH]:
+                e[UnsubmittedBlocksDB.Columns.HEADER_HASH],
               [UnsubmittedBlocksDB.Columns.NEW_WALLET_UTXOS]:
                 e[UnsubmittedBlocksDB.Columns.NEW_WALLET_UTXOS],
               [UnsubmittedBlocksDB.Columns.L1_CBOR]:
@@ -227,7 +227,7 @@ describe("UnsubmittedBlocksDB", () => {
             })),
           ).toStrictEqual([
             {
-              [UnsubmittedBlocksDB.Columns.BLOCK]: unsubmittedBlock1,
+              [UnsubmittedBlocksDB.Columns.HEADER_HASH]: unsubmittedBlock1,
               [UnsubmittedBlocksDB.Columns.NEW_WALLET_UTXOS]:
                 updatedWalletUtxos1,
               [UnsubmittedBlocksDB.Columns.L1_CBOR]: updatedL1Cbor1,
@@ -235,13 +235,13 @@ describe("UnsubmittedBlocksDB", () => {
                 updatedProducedSnapshot1,
             },
             {
-              [UnsubmittedBlocksDB.Columns.BLOCK]: unsubmittedBlock2,
+              [UnsubmittedBlocksDB.Columns.HEADER_HASH]: unsubmittedBlock2,
               [UnsubmittedBlocksDB.Columns.NEW_WALLET_UTXOS]: walletUtxos2,
               [UnsubmittedBlocksDB.Columns.L1_CBOR]: l1Cbor2,
               [UnsubmittedBlocksDB.Columns.PRODUCED_UTXOS]: producedSnapshot2,
             },
             {
-              [UnsubmittedBlocksDB.Columns.BLOCK]: unsubmittedBlock3,
+              [UnsubmittedBlocksDB.Columns.HEADER_HASH]: unsubmittedBlock3,
               [UnsubmittedBlocksDB.Columns.NEW_WALLET_UTXOS]: walletUtxos3,
               [UnsubmittedBlocksDB.Columns.L1_CBOR]: l1Cbor3,
               [UnsubmittedBlocksDB.Columns.PRODUCED_UTXOS]: producedSnapshot3,
@@ -254,7 +254,7 @@ describe("UnsubmittedBlocksDB", () => {
           const afterDelete = yield* UnsubmittedBlocksDB.retrieve;
           expect(afterDelete.length).toEqual(1);
           expect(
-            afterDelete[0][UnsubmittedBlocksDB.Columns.BLOCK],
+            afterDelete[0][UnsubmittedBlocksDB.Columns.HEADER_HASH],
           ).toStrictEqual(unsubmittedBlock3);
 
           yield* UnsubmittedBlocksDB.deleteByBlocks([unsubmittedBlock3]);

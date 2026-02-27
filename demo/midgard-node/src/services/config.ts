@@ -16,7 +16,7 @@ type NodeConfigDep = {
   PROTOCOL_PARAMETERS: SDK.ProtocolParameters;
   PORT: number;
   WAIT_BETWEEN_BLOCK_COMMITMENT: number;
-  WAIT_BETWEEN_BLOCK_CONFIRMATION: number;
+  WAIT_BETWEEN_BLOCK_SUBMISSIONS: number;
   WAIT_BETWEEN_USER_EVENT_FETCHES: number;
   WAIT_BETWEEN_MERGE_TXS: number;
   PROM_METRICS_PORT: number;
@@ -53,8 +53,8 @@ const makeConfig = Effect.gen(function* () {
   const waitBetweenBlockCommitment = yield* Config.integer(
     "WAIT_BETWEEN_BLOCK_COMMITMENT",
   ).pipe(Config.withDefault(1000));
-  const waitBetweenBlockConfirmation = yield* Config.integer(
-    "WAIT_BETWEEN_BLOCK_CONFIRMATION",
+  const waitBetweenBlockSubmissions = yield* Config.integer(
+    "WAIT_BETWEEN_BLOCK_SUBMISSIONS",
   ).pipe(Config.withDefault(10000));
   const waitBetweenMergeTxs = yield* Config.integer(
     "WAIT_BETWEEN_MERGE_TXS",
@@ -165,7 +165,7 @@ const makeConfig = Effect.gen(function* () {
     PROTOCOL_PARAMETERS: SDK.getProtocolParameters(network),
     PORT: port,
     WAIT_BETWEEN_BLOCK_COMMITMENT: waitBetweenBlockCommitment,
-    WAIT_BETWEEN_BLOCK_CONFIRMATION: waitBetweenBlockConfirmation,
+    WAIT_BETWEEN_BLOCK_SUBMISSIONS: waitBetweenBlockSubmissions,
     WAIT_BETWEEN_MERGE_TXS: waitBetweenMergeTxs,
     WAIT_BETWEEN_USER_EVENT_FETCHES: waitBetweenUserEventFetches,
     PROM_METRICS_PORT: promMetricsPort,
