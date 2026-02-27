@@ -437,31 +437,19 @@ describe("UnsubmittedBlocksDB", () => {
           expect(
             latest[UnsubmittedBlocksDB.Columns.PRODUCED_UTXOS],
           ).toStrictEqual([producedUtxoB, producedUtxoC]);
-          expect(
-            latest[UnsubmittedBlocksDB.Columns.DEPOSITS_COUNT],
-          ).toEqual(
+          expect(latest[UnsubmittedBlocksDB.Columns.DEPOSITS_COUNT]).toEqual(
             eventStats2[UnsubmittedBlocksDB.Columns.DEPOSITS_COUNT],
           );
-          expect(
-            latest[UnsubmittedBlocksDB.Columns.TX_REQUESTS_COUNT],
-          ).toEqual(
+          expect(latest[UnsubmittedBlocksDB.Columns.TX_REQUESTS_COUNT]).toEqual(
             eventStats2[UnsubmittedBlocksDB.Columns.TX_REQUESTS_COUNT],
           );
-          expect(
-            latest[UnsubmittedBlocksDB.Columns.TX_ORDERS_COUNT],
-          ).toEqual(
+          expect(latest[UnsubmittedBlocksDB.Columns.TX_ORDERS_COUNT]).toEqual(
             eventStats2[UnsubmittedBlocksDB.Columns.TX_ORDERS_COUNT],
           );
-          expect(
-            latest[UnsubmittedBlocksDB.Columns.WITHDRAWALS_COUNT],
-          ).toEqual(
-            eventStats2[
-              UnsubmittedBlocksDB.Columns.WITHDRAWALS_COUNT
-            ],
+          expect(latest[UnsubmittedBlocksDB.Columns.WITHDRAWALS_COUNT]).toEqual(
+            eventStats2[UnsubmittedBlocksDB.Columns.WITHDRAWALS_COUNT],
           );
-          expect(
-            latest[UnsubmittedBlocksDB.Columns.TOTAL_EVENTS_SIZE],
-          ).toEqual(
+          expect(latest[UnsubmittedBlocksDB.Columns.TOTAL_EVENTS_SIZE]).toEqual(
             eventStats2[UnsubmittedBlocksDB.Columns.TOTAL_EVENTS_SIZE],
           );
           expect(latest.txHashes).toStrictEqual([txHash1, txHash2]);
