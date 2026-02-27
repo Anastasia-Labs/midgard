@@ -29,6 +29,7 @@ import {
   TxUtils,
   LedgerUtils,
 } from "../src/database/index.js";
+import { serializeUTxOsForStorage } from "../src/database/utils/common.js";
 import { breakDownTx, ProcessedTx } from "../src/utils.js";
 import { provideDatabaseLayers } from "./utils.js";
 
@@ -359,22 +360,18 @@ describe("UnsubmittedBlocksDB", () => {
             assets: { lovelace: 3_500_000n },
           };
 
-          const walletUtxos1 =
-            yield* UnsubmittedBlocksDB.serializeUTxOsForStorage([walletUtxoA]);
-          const walletUtxos2 =
-            yield* UnsubmittedBlocksDB.serializeUTxOsForStorage([
-              walletUtxoB,
-              walletUtxoC,
-            ]);
-          const producedUtxos1 =
-            yield* UnsubmittedBlocksDB.serializeUTxOsForStorage([
-              producedUtxoA,
-            ]);
-          const producedUtxos2 =
-            yield* UnsubmittedBlocksDB.serializeUTxOsForStorage([
-              producedUtxoB,
-              producedUtxoC,
-            ]);
+          const walletUtxos1 = yield* serializeUTxOsForStorage([walletUtxoA]);
+          const walletUtxos2 = yield* serializeUTxOsForStorage([
+            walletUtxoB,
+            walletUtxoC,
+          ]);
+          const producedUtxos1 = yield* serializeUTxOsForStorage([
+            producedUtxoA,
+          ]);
+          const producedUtxos2 = yield* serializeUTxOsForStorage([
+            producedUtxoB,
+            producedUtxoC,
+          ]);
           const l1Cbor1 = randomBytes(96);
           const l1Cbor2 = randomBytes(96);
           const eventStats1 = {
