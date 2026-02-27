@@ -221,7 +221,7 @@ const successfulSubmissionProgram = (
     );
 
     return {
-      type: "SuccessfulSubmissionOutput",
+      type: "SuccessfulCommitmentOutput",
       submittedTxHash: txHash,
       txSize,
       mempoolTxsCount:
@@ -419,7 +419,7 @@ const databaseOperationsProgram = (
               addDepositUTxOsToDatabases(insertedDepositUTxOs).pipe(
                 Effect.andThen((_) => {
                   const successOutput: WorkerOutput = {
-                    type: "SuccessfulSubmissionOutput",
+                    type: "SuccessfulCommitmentOutput",
                     submittedTxHash: txHash,
                     txSize,
                     mempoolTxsCount: 0,

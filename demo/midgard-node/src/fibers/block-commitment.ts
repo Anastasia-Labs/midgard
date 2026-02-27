@@ -108,7 +108,7 @@ export const buildAndSubmitCommitmentBlockAction = () =>
     const workerOutput: WorkerOutput = yield* worker;
 
     switch (workerOutput.type) {
-      case "SuccessfulSubmissionOutput": {
+      case "SuccessfulCommitmentOutput": {
         yield* Ref.update(globals.BLOCKS_IN_QUEUE, (n) => n + 1);
         yield* Ref.set(globals.AVAILABLE_CONFIRMED_BLOCK, "");
         yield* Ref.set(

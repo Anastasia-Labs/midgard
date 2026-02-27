@@ -42,8 +42,8 @@ export type WorkerInput = {
   };
 };
 
-export type SuccessfulSubmissionOutput = {
-  type: "SuccessfulSubmissionOutput";
+export type SuccessfulCommitmentOutput = {
+  type: "SuccessfulCommitmentOutput";
   submittedTxHash: string;
   txSize: number;
   mempoolTxsCount: number;
@@ -66,7 +66,7 @@ export type FailureOutput = {
 };
 
 export type WorkerOutput =
-  | SuccessfulSubmissionOutput
+  | SuccessfulCommitmentOutput
   | SkippedSubmissionOutput
   | NothingToCommitOutput
   | FailureOutput;
