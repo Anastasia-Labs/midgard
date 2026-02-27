@@ -154,7 +154,7 @@ const withDepositsReverted = (
 };
 
 const successfulSubmissionProgram = (
-  mempoolTrie: MidgardMpt,
+  txsTrie: MidgardMpt,
   insertedDepositUTxOs: {
     utxo: CML.TransactionUnspentOutput;
     inclusionTime: Date;
@@ -215,7 +215,7 @@ const successfulSubmissionProgram = (
           },
         ),
         ProcessedMempoolDB.clear, // uses `TRUNCATE` so no need for batching.
-        mempoolTrie.delete(),
+        txsTrie.delete(),
       ],
       { concurrency: "unbounded" },
     );
@@ -257,7 +257,7 @@ const skippedSubmissionProgram = (
   );
 
 const failedSubmissionProgram = (
-  mempoolTrie: MidgardMpt,
+  txsTrie: MidgardMpt,
   mempoolTxsCount: number,
   sizeOfProcessedTxs: number,
   err: TxSubmitError,
@@ -265,10 +265,10 @@ const failedSubmissionProgram = (
   Effect.gen(function* () {
     yield* Effect.logError(`🔹 ⚠️  Tx submit failed: ${err}`);
     yield* Effect.logError(
-      "🔹 ⚠️  Mempool trie will be preserved, but db will be cleared.",
+      "🔹 ⚠️  txs trie will be preserved, but db will be cleared.",
     );
-    yield* Effect.logInfo("🔹 Mempool Trie stats:");
-    console.dir(mempoolTrie.databaseStats(), { depth: null });
+    yield* Effect.logInfo("🔹 txs trie stats:");
+    console.dir(txsTrie.databaseStats(), { depth: null });
     return {
       type: "SkippedSubmissionOutput",
       mempoolTxsCount,
@@ -279,7 +279,7 @@ const failedSubmissionProgram = (
 const databaseOperationsProgram = (
   workerInput: WorkerInput,
   ledgerTrie: MidgardMpt,
-  mempoolTrie: MidgardMpt,
+  txsTrie: MidgardMpt,
 ): Effect.Effect<
   WorkerOutput,
   | SDK.CborDeserializationError
@@ -299,7 +299,7 @@ const databaseOperationsProgram = (
 
     const { mempoolTxHashes, sizeOfProcessedTxs } = yield* applyMempoolToLedger(
       ledgerTrie,
-      mempoolTrie,
+      txsTrie,
       mempoolTxs,
     );
 
@@ -368,7 +368,7 @@ const databaseOperationsProgram = (
 
           const depositsRoot = yield* optDepositsProgram.value.mptRoot;
           const utxoRoot = yield* ledgerTrie.getRootHex();
-          const txRoot = yield* mempoolTrie.getRootHex();
+          const txRoot = yield* txsTrie.getRootHex();
 
           yield* Effect.logInfo(`🔹 Deposits root found: ${depositsRoot}`);
           yield* Effect.logInfo(`🔹 New UTxO root found: ${utxoRoot}`);
@@ -469,7 +469,7 @@ const databaseOperationsProgram = (
           depositsRoot = yield* optDepositsProgram.value.mptRoot;
         }
         const utxoRoot = yield* ledgerTrie.getRootHex();
-        const txRoot = yield* mempoolTrie.getRootHex();
+        const txRoot = yield* txsTrie.getRootHex();
 
         yield* Effect.logInfo(`🔹 Deposits root found: ${depositsRoot}`);
         yield* Effect.logInfo(`🔹 New UTxO root found: ${utxoRoot}`);
@@ -515,7 +515,7 @@ const databaseOperationsProgram = (
                 yield* skippedSubmissionProgram(mempoolTxs, mempoolTxHashes);
 
                 const skippedOutput = yield* failedSubmissionProgram(
-                  mempoolTrie,
+                  txsTrie,
                   mempoolTxsCount,
                   sizeOfProcessedTxs,
                   e,
@@ -535,7 +535,7 @@ const databaseOperationsProgram = (
           }),
           onSuccess: (txHash) =>
             successfulSubmissionProgram(
-              mempoolTrie,
+              txsTrie,
               insertedDepositUTxOs,
               mempoolTxs,
               mempoolTxHashes,
@@ -571,11 +571,11 @@ const wrapper = (
   Effect.gen(function* () {
     yield* Effect.logInfo("🔹 Retrieving all mempool transactions...");
 
-    const { ledgerTrie, mempoolTrie } = yield* makeMpts;
+    const { ledgerTrie, txsTrie } = yield* makeMpts;
 
     const result: void | WorkerOutput = yield* withTrieTransaction(
       ledgerTrie,
-      databaseOperationsProgram(workerInput, ledgerTrie, mempoolTrie),
+      databaseOperationsProgram(workerInput, ledgerTrie, txsTrie),
     );
     if (result) {
       return result;

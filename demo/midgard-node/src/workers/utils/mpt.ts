@@ -37,12 +37,12 @@ export const utxoToPutBatchOp = (
   });
 
 export const makeMpts: Effect.Effect<
-  { ledgerTrie: MidgardMpt; mempoolTrie: MidgardMpt },
+  { ledgerTrie: MidgardMpt; txsTrie: MidgardMpt },
   MptError,
   NodeConfig
 > = Effect.gen(function* () {
   const nodeConfig = yield* NodeConfig;
-  const mempoolTrie = yield* MidgardMpt.create(
+  const txsTrie = yield* MidgardMpt.create(
     "mempool",
     nodeConfig.MEMPOOL_MPT_DB_PATH,
   );
@@ -72,7 +72,7 @@ export const makeMpts: Effect.Effect<
   }
   return {
     ledgerTrie,
-    mempoolTrie,
+    txsTrie,
   };
 });
 
