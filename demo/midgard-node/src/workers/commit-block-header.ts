@@ -133,6 +133,106 @@ const addDepositUTxOsToDatabases = (
     );
   });
 
+const applyWithdrawalsToDatabases = (
+  withdrawals: {
+    spentOutrefs: Buffer;
+    inclusionTime: Date;
+  }[],
+): Effect.Effect<void, DatabaseError, Database> =>
+  Effect.gen(function* () {
+    if (withdrawals.length <= 0) {
+      return;
+    }
+    yield* Effect.logInfo(
+      "🔹 Removing spent UTxO via withdrawal events from ImmutableDB and MempoolLedgerDB, and also adding an entry to AddressHistoryDB",
+    );
+    const maybeMatchedRows = yield* Effect.forEach(
+      withdrawals,
+      (withdrawal) =>
+        MempoolLedgerDB.retrieveEntry(withdrawal.spentOutrefs).pipe(
+          Effect.map((entry) => Option.some(entry)),
+          Effect.catchTag("NotFoundError", () => Effect.succeed(Option.none())),
+        ),
+      { concurrency: "unbounded" },
+    );
+    const matchedRows = maybeMatchedRows.flatMap((row) =>
+      Option.isSome(row) ? [row.value] : [],
+    );
+    if (matchedRows.length <= 0) {
+      return;
+    }
+
+    const parsedRows = yield* Effect.forEach(
+      matchedRows,
+      (row) =>
+        Effect.try({
+          try: () => {
+            const transactionInput = CML.TransactionInput.from_cbor_bytes(
+              row[LedgerTable.Columns.OUTREF],
+            );
+            const txHash = Buffer.from(
+              transactionInput.transaction_id().to_raw_bytes(),
+            );
+            const addressHistoryEntry: AddressHistoryDB.Entry = {
+              [LedgerTable.Columns.TX_ID]: txHash,
+              [LedgerTable.Columns.ADDRESS]: row[LedgerTable.Columns.ADDRESS],
+            };
+            return {
+              outref: row[LedgerTable.Columns.OUTREF],
+              txHash,
+              addressHistoryEntry,
+            };
+          },
+          catch: (cause) =>
+            new DatabaseError({
+              message: "Failed to decode withdrawal outref from mempool ledger",
+              table: MempoolLedgerDB.tableName,
+              cause,
+            }),
+        }),
+      {
+        concurrency: "unbounded",
+      },
+    );
+
+    const initialAcc: {
+      outrefs: Buffer[];
+      txHashes: Buffer[];
+      addressHistoryEntries: AddressHistoryDB.Entry[];
+      outrefHexes: Set<string>;
+      txHashHexes: Set<string>;
+    } = {
+      outrefs: [],
+      txHashes: [],
+      addressHistoryEntries: [],
+      outrefHexes: new Set<string>(),
+      txHashHexes: new Set<string>(),
+    };
+    const deduped = parsedRows.reduce((acc, row) => {
+      const outrefHex = row.outref.toString("hex");
+      if (!acc.outrefHexes.has(outrefHex)) {
+        acc.outrefHexes.add(outrefHex);
+        acc.outrefs.push(row.outref);
+      }
+      const txHashHex = row.txHash.toString("hex");
+      if (!acc.txHashHexes.has(txHashHex)) {
+        acc.txHashHexes.add(txHashHex);
+        acc.txHashes.push(row.txHash);
+      }
+      acc.addressHistoryEntries.push(row.addressHistoryEntry);
+      return acc;
+    }, initialAcc);
+
+    yield* Effect.all(
+      [
+        AddressHistoryDB.insertEntries(deduped.addressHistoryEntries),
+        ImmutableDB.clearTxs(deduped.txHashes),
+        MempoolLedgerDB.clearUTxOs(deduped.outrefs),
+      ],
+      { concurrency: "unbounded" },
+    );
+  });
+
 /**
  * If any deposits were added to `ledgerTrie`, remove them and return the
  * provided output. If the removal fails, return the provided failure output.

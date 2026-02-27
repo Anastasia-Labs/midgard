@@ -225,16 +225,11 @@ export const retrieveLatestWithBlockTxs: Effect.Effect<
     [Columns.HEADER_HASH]: firstRow[Columns.HEADER_HASH],
     [Columns.NEW_WALLET_UTXOS]: newWalletUtxos,
     [Columns.PRODUCED_UTXOS]: producedUtxos,
-    [Columns.DEPOSITS_COUNT]:
-      firstRow[Columns.DEPOSITS_COUNT],
-    [Columns.TX_REQUESTS_COUNT]:
-      firstRow[Columns.TX_REQUESTS_COUNT],
-    [Columns.TX_ORDERS_COUNT]:
-      firstRow[Columns.TX_ORDERS_COUNT],
-    [Columns.WITHDRAWALS_COUNT]:
-      firstRow[Columns.WITHDRAWALS_COUNT],
-    [Columns.TOTAL_EVENTS_SIZE]:
-      firstRow[Columns.TOTAL_EVENTS_SIZE],
+    [Columns.DEPOSITS_COUNT]: firstRow[Columns.DEPOSITS_COUNT],
+    [Columns.TX_REQUESTS_COUNT]: firstRow[Columns.TX_REQUESTS_COUNT],
+    [Columns.TX_ORDERS_COUNT]: firstRow[Columns.TX_ORDERS_COUNT],
+    [Columns.WITHDRAWALS_COUNT]: firstRow[Columns.WITHDRAWALS_COUNT],
+    [Columns.TOTAL_EVENTS_SIZE]: firstRow[Columns.TOTAL_EVENTS_SIZE],
     txHashes,
     txCbors,
   });
