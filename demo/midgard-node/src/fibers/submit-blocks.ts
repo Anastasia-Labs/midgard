@@ -9,30 +9,13 @@ import {
 } from "@/services/index.js";
 import {
   handleSignSubmitNoConfirmation,
+  TxConfirmError,
   TxSignError,
   TxSubmitError,
 } from "@/transactions/utils.js";
 import { fromHex, LucidEvolution, TxHash } from "@lucid-evolution/lucid";
 import { Effect, Ref, Schedule } from "effect";
-import {
-  SerializedStateQueueUTxO,
-  deserializeStateQueueUTxO,
-  serializeStateQueueUTxO,
-} from "@/workers/utils/commit-block-header.js";
-
-type AwaitConfirmationOutput =
-  | {
-      type: "Confirmed";
-      latestBlock: SDK.StateQueueUTxO;
-      serializedLatestBlock: SerializedStateQueueUTxO;
-    }
-  | {
-      type: "AwaitTxFailure";
-      error: string;
-      latestBlock: SDK.StateQueueUTxO;
-      serializedLatestBlock: SerializedStateQueueUTxO;
-      latestConfirmedTxHash: string;
-    };
+import { serializeStateQueueUTxO } from "@/workers/utils/commit-block-header.js";
 
 const fetchLatestBlock = (
   lucid: LucidEvolution,
@@ -60,15 +43,16 @@ const syncUnsubmittedBlocksWithLatestOnchainBlock = (
     yield* UnsubmittedBlocksDB.deleteUpToAndIncludingBlock(latestHeaderHash);
   });
 
-const awaitConfirmation = (
+const confirmSubmittedBlock = (
   lucid: LucidEvolution,
   targetTxHash: TxHash,
 ): Effect.Effect<
-  AwaitConfirmationOutput,
+  SDK.StateQueueUTxO,
   | SDK.CborSerializationError
   | SDK.CmlUnexpectedError
   | SDK.LucidError
-  | SDK.StateQueueError,
+  | SDK.StateQueueError
+  | TxConfirmError,
   AlwaysSucceedsContract
 > =>
   Effect.gen(function* () {
@@ -83,22 +67,16 @@ const awaitConfirmation = (
     ).pipe(Effect.catchAllCause(Effect.logInfo));
 
     const latestBlock = yield* fetchLatestBlock(lucid);
-    const serializedLatestBlock = yield* serializeStateQueueUTxO(latestBlock);
 
     if (latestBlock.utxo.txHash === targetTxHash) {
-      return {
-        type: "Confirmed",
-        latestBlock,
-        serializedLatestBlock,
-      };
+      return latestBlock;
     } else {
-      return {
-        type: "AwaitTxFailure",
-        error: `Failed to confirm transaction: ${targetTxHash}`,
-        latestBlock,
-        serializedLatestBlock,
-        latestConfirmedTxHash: latestBlock.utxo.txHash,
-      };
+      return yield* new TxConfirmError({
+        message:
+          "After multiple attempts, the block available on-chain has not updated yet.",
+        cause: "Unknown",
+        txHash: targetTxHash,
+      });
     }
   });
 
@@ -134,62 +112,25 @@ const handleUnconfirmedSubmission = (
 ): Effect.Effect<
   void,
   | SDK.CborSerializationError
-  | SDK.CborDeserializationError
   | SDK.CmlUnexpectedError
   | SDK.DataCoercionError
   | SDK.LucidError
   | SDK.StateQueueError
-  | DatabaseError,
+  | DatabaseError
+  | TxConfirmError,
   AlwaysSucceedsContract | Database
 > =>
   Effect.gen(function* () {
-    const confirmationOutput = yield* awaitConfirmation(lucid, submittedTxHash);
-    switch (confirmationOutput.type) {
-      case "Confirmed": {
-        yield* syncUnsubmittedBlocksWithLatestOnchainBlock(
-          confirmationOutput.latestBlock,
-        );
-        yield* Ref.set(
-          globals.AVAILABLE_CONFIRMED_BLOCK,
-          confirmationOutput.serializedLatestBlock,
-        );
-        yield* Ref.set(globals.UNCONFIRMED_SUBMITTED_BLOCK_TX_HASH, "");
-        yield* Effect.logInfo(
-          `🔗 ☑️  Confirmed block submission tx: ${submittedTxHash}`,
-        );
-        break;
-      }
-      case "AwaitTxFailure": {
-        const cachedConfirmedBlock = yield* Ref.get(
-          globals.AVAILABLE_CONFIRMED_BLOCK,
-        );
-        if (cachedConfirmedBlock !== "") {
-          const deserializedCachedBlock =
-            yield* deserializeStateQueueUTxO(cachedConfirmedBlock);
-          if (
-            deserializedCachedBlock.utxo.txHash !==
-            confirmationOutput.latestConfirmedTxHash
-          ) {
-            yield* syncUnsubmittedBlocksWithLatestOnchainBlock(
-              confirmationOutput.latestBlock,
-            );
-            yield* Ref.set(
-              globals.AVAILABLE_CONFIRMED_BLOCK,
-              confirmationOutput.serializedLatestBlock,
-            );
-            yield* Ref.set(globals.UNCONFIRMED_SUBMITTED_BLOCK_TX_HASH, "");
-            yield* Effect.logWarning(
-              `🔗 ⚠️  Submitted tx ${submittedTxHash} did not confirm and chain advanced to ${confirmationOutput.latestConfirmedTxHash}. Cache has been resynchronized.`,
-            );
-            break;
-          }
-        }
-        yield* Effect.logWarning(
-          `🔗 ⚠️  Submitted block tx is still unconfirmed: ${submittedTxHash}. ${confirmationOutput.error}. Latest on-chain tx hash is ${confirmationOutput.latestConfirmedTxHash}.`,
-        );
-        break;
-      }
-    }
+    const confirmedBlock = yield* confirmSubmittedBlock(lucid, submittedTxHash);
+    yield* syncUnsubmittedBlocksWithLatestOnchainBlock(confirmedBlock);
+    yield* Ref.set(
+      globals.AVAILABLE_CONFIRMED_BLOCK,
+      yield* serializeStateQueueUTxO(confirmedBlock),
+    );
+    yield* Ref.set(globals.UNCONFIRMED_SUBMITTED_BLOCK_TX_HASH, "");
+    yield* Effect.logInfo(
+      `🔗 ☑️  Confirmed block submission tx: ${submittedTxHash}`,
+    );
   });
 
 export const submitBlocks: Effect.Effect<
@@ -200,6 +141,7 @@ export const submitBlocks: Effect.Effect<
   | SDK.DataCoercionError
   | SDK.LucidError
   | SDK.StateQueueError
+  | TxConfirmError
   | TxSignError
   | TxSubmitError
   | DatabaseError,
