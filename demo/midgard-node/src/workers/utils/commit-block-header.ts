@@ -266,7 +266,7 @@ const txEntryToBatchDBOps = (
 
 export const applyMempoolToLedger = (
   ledgerTrie: MidgardMpt,
-  mempoolTrie: MidgardMpt,
+  txsTrie: MidgardMpt,
   mempoolTxs: readonly TxTable.Entry[],
 ): Effect.Effect<
   {
@@ -307,7 +307,7 @@ export const applyMempoolToLedger = (
     );
 
     yield* Effect.all(
-      [mempoolTrie.batch(mempoolBatchOps), ledgerTrie.batch(ledgerBatchOps)],
+      [txsTrie.batch(mempoolBatchOps), ledgerTrie.batch(ledgerBatchOps)],
       { concurrency: "unbounded" },
     );
 
