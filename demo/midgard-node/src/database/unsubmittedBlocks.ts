@@ -13,7 +13,7 @@ export const tableName = "unsubmitted_blocks";
 
 export enum Columns {
   SEQUENCE = "sequence",
-  BLOCK = "block",
+  HEADER_HASH = "header_hash",
   NEW_WALLET_UTXOS = "new_wallet_utxos",
   L1_CBOR = "l1_cbor",
   // Corresponds to `.chain()` second tuple value (`derivedOutputs`).
@@ -22,7 +22,7 @@ export enum Columns {
 }
 
 export type EntryNoMeta = {
-  [Columns.BLOCK]: Buffer;
+  [Columns.HEADER_HASH]: Buffer;
   // Corresponds to `.chain()` first tuple value (`newWalletUTxOs`).
   [Columns.NEW_WALLET_UTXOS]: Buffer;
   // Corresponds to `.chain()` third tuple value (transaction CBOR).
@@ -41,7 +41,7 @@ export const createTable: Effect.Effect<void, DatabaseError, Database> =
     const sql = yield* SqlClient.SqlClient;
     yield* sql`CREATE TABLE IF NOT EXISTS ${sql(tableName)} (
       ${sql(Columns.SEQUENCE)} BIGSERIAL PRIMARY KEY,
-      ${sql(Columns.BLOCK)} BYTEA NOT NULL UNIQUE,
+      ${sql(Columns.HEADER_HASH)} BYTEA NOT NULL UNIQUE,
       ${sql(Columns.NEW_WALLET_UTXOS)} BYTEA NOT NULL,
       ${sql(Columns.L1_CBOR)} BYTEA NOT NULL,
       ${sql(Columns.PRODUCED_UTXOS)} BYTEA NOT NULL,
@@ -58,7 +58,7 @@ export const upsert = (
   Effect.gen(function* () {
     const sql = yield* SqlClient.SqlClient;
     yield* sql`INSERT INTO ${sql(tableName)} ${sql.insert(entry)}
-      ON CONFLICT (${sql(Columns.BLOCK)}) DO UPDATE SET
+      ON CONFLICT (${sql(Columns.HEADER_HASH)}) DO UPDATE SET
         ${sql(Columns.NEW_WALLET_UTXOS)} = ${entry[Columns.NEW_WALLET_UTXOS]},
         ${sql(Columns.L1_CBOR)} = ${entry[Columns.L1_CBOR]},
         ${sql(Columns.PRODUCED_UTXOS)} = ${entry[Columns.PRODUCED_UTXOS]},
@@ -86,16 +86,16 @@ export const retrieve: Effect.Effect<
 );
 
 export const deleteByBlocks = (
-  blocks: Buffer[] | readonly Buffer[],
+  headerHashes: Buffer[] | readonly Buffer[],
 ): Effect.Effect<void, DatabaseError, Database> =>
   Effect.gen(function* () {
-    if (blocks.length <= 0) {
+    if (headerHashes.length <= 0) {
       return;
     }
     const sql = yield* SqlClient.SqlClient;
     yield* sql`DELETE FROM ${sql(tableName)} WHERE ${sql.in(
-      Columns.BLOCK,
-      blocks,
+      Columns.HEADER_HASH,
+      headerHashes,
     )}`;
   }).pipe(
     Effect.withLogSpan(`deleteByBlocks ${tableName}`),
@@ -106,14 +106,14 @@ export const deleteByBlocks = (
   );
 
 export const deleteUpToAndIncludingBlock = (
-  block: Buffer,
+  headerHash: Buffer,
 ): Effect.Effect<void, DatabaseError, Database> =>
   Effect.gen(function* () {
     const sql = yield* SqlClient.SqlClient;
     yield* sql`WITH ${sql("target")} AS (
       SELECT ${sql(Columns.SEQUENCE)}
       FROM ${sql(tableName)}
-      WHERE ${sql(Columns.BLOCK)} = ${block}
+      WHERE ${sql(Columns.HEADER_HASH)} = ${headerHash}
       LIMIT 1
     )
     DELETE FROM ${sql(tableName)}
