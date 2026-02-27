@@ -142,24 +142,31 @@ export const retrieveLatestWithBlockTxs: Effect.Effect<
   const producedUtxos = yield* deserializeUTxOsFromStorage(
     firstRow.produced_utxos,
   );
-  const txHashes: Buffer[] = [];
-  const txCbors: Buffer[] = [];
-  for (const row of rows) {
-    if (row.tx_id === null && row.tx === null) {
-      continue;
-    }
-    if (row.tx_id === null || row.tx === null) {
-      return yield* Effect.fail(
-        new DatabaseError({
-          message: "Inconsistent transaction row for latest unsubmitted block",
-          cause: row,
-          table: tableName,
-        }),
-      );
-    }
-    txHashes.push(row.tx_id);
-    txCbors.push(row.tx);
-  }
+  const initialTxAcc: { txHashes: Buffer[]; txCbors: Buffer[] } = {
+    txHashes: [],
+    txCbors: [],
+  };
+  const { txHashes, txCbors } = yield* Effect.reduce(
+    rows,
+    initialTxAcc,
+    (acc, row) => {
+      if (row.tx_id === null && row.tx === null) {
+        return Effect.succeed(acc);
+      }
+      if (row.tx_id === null || row.tx === null) {
+        return Effect.fail(
+          new DatabaseError({
+            message: "Inconsistent transaction row for latest unsubmitted block",
+            cause: row,
+            table: tableName,
+          }),
+        );
+      }
+      acc.txHashes.push(row.tx_id);
+      acc.txCbors.push(row.tx);
+      return Effect.succeed(acc);
+    },
+  );
 
   return Option.some({
     [Columns.HEADER_HASH]: firstRow.header_hash,
