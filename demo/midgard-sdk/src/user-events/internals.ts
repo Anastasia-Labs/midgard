@@ -179,16 +179,18 @@ export const getNonceInputAndAssetName = (
           message: "Failed to fetch wallet UTxOs",
           cause: err,
         }),
-    }).pipe(Effect.andThen((utxos) => {
-      if (utxos.length <= 0) {
-        return new LucidError({
-          message: `Failed to build the ${eventName} transaction`,
-          cause: "No UTxOs found in wallet",
-        });
-      } else {
-        return Effect.succeed(utxos[0]);
-      }
-    }));
+    }).pipe(
+      Effect.andThen((utxos) => {
+        if (utxos.length <= 0) {
+          return new LucidError({
+            message: `Failed to build the ${eventName} transaction`,
+            cause: "No UTxOs found in wallet",
+          });
+        } else {
+          return Effect.succeed(utxos[0]);
+        }
+      }),
+    );
     const inputUtxo = utxo ?? (yield* nonceUTxOEffect);
     const transactionInput = CML.TransactionInput.new(
       CML.TransactionHash.from_hex(inputUtxo.txHash),

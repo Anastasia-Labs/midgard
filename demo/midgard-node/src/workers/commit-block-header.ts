@@ -2,6 +2,7 @@ import { parentPort, workerData } from "worker_threads";
 import * as SDK from "@al-ft/midgard-sdk";
 import { Cause, Effect, Match, Option, pipe } from "effect";
 import {
+  applyMempoolToLedger,
   applyDepositsToLedger,
   buildUnsignedBlockCommitmentTx,
   deserializeStateQueueUTxO,
@@ -29,6 +30,8 @@ import {
   LedgerUtils as LedgerTable,
   AddressHistoryDB,
   UserEventsUtils,
+  WithdrawalsDB,
+  TxOrdersDB,
 } from "@/database/index.js";
 import { TxSignError, TxSubmitError } from "@/transactions/utils.js";
 import { CML, fromHex } from "@lucid-evolution/lucid";
@@ -36,9 +39,7 @@ import {
   MidgardMpt,
   MptError,
   emptyRootHexProgram,
-  keyValueMptRoot,
   makeMpts,
-  processMpts,
   withTrieTransaction,
 } from "@/workers/utils/mpt.js";
 import {
@@ -46,11 +47,8 @@ import {
   batchProgram,
   trivialTransactionFromCMLUnspentOutput,
 } from "@/utils.js";
-import {
-  Columns as UserEventsColumns,
-  retrieveTimeBoundEntries,
-} from "@/database/utils/user-events.js";
 import { DatabaseError } from "@/database/utils/common.js";
+import { userEventsProgram } from "./utils/commit-block-header.js";
 
 // Batch size for database operations.
 const BATCH_SIZE = 100;
@@ -278,48 +276,6 @@ const failedSubmissionProgram = (
     };
   });
 
-/**
- * Given the target user event table, this helper finds all the events falling
- * in the given time range and if any was found, returns an `Effect` that finds
- * the MPT root of those events with the retrieved event entries.
- */
-const userEventsProgram = (
-  tableName: string,
-  startDate: Date,
-  endDate: Date,
-): Effect.Effect<
-  Option.Option<{
-    mptRoot: Effect.Effect<string, MptError>;
-    retreivedEvents: readonly UserEventsUtils.Entry[];
-  }>,
-  DatabaseError,
-  Database
-> =>
-  Effect.gen(function* () {
-    const events = yield* retrieveTimeBoundEntries(
-      tableName,
-      startDate,
-      endDate,
-    );
-
-    if (events.length <= 0) {
-      yield* Effect.logInfo(
-        `🔹 No events found in ${tableName} table between ${startDate.getTime()} and ${endDate.getTime()}.`,
-      );
-      return Option.none();
-    } else {
-      yield* Effect.logInfo(
-        `🔹 ${events.length} event(s) found in ${tableName} table between ${startDate.getTime()} and ${endDate.getTime()}.`,
-      );
-      const eventIDs = events.map((event) => event[UserEventsColumns.ID]);
-      const eventInfos = events.map((event) => event[UserEventsColumns.INFO]);
-      return Option.some({
-        mptRoot: keyValueMptRoot(eventIDs, eventInfos),
-        retreivedEvents: events,
-      });
-    }
-  });
-
 const databaseOperationsProgram = (
   workerInput: WorkerInput,
   ledgerTrie: MidgardMpt,
@@ -341,7 +297,7 @@ const databaseOperationsProgram = (
     const mempoolTxs = yield* MempoolDB.retrieve;
     const mempoolTxsCount = mempoolTxs.length;
 
-    const { mempoolTxHashes, sizeOfProcessedTxs } = yield* processMpts(
+    const { mempoolTxHashes, sizeOfProcessedTxs } = yield* applyMempoolToLedger(
       ledgerTrie,
       mempoolTrie,
       mempoolTxs,
@@ -391,27 +347,26 @@ const databaseOperationsProgram = (
         yield* Effect.logInfo(
           "🔹 Checking for user events... (no tx requests in queue)",
         );
-        const optUserEventsProgram = yield* userEventsProgram(
+        const optDepositsProgram = yield* userEventsProgram(
           DepositsDB.tableName,
           startDate,
           endDate,
         );
-        if (Option.isNone(optUserEventsProgram)) {
+        if (Option.isNone(optDepositsProgram)) {
           yield* Effect.logInfo("🔹 Nothing to commit.");
           const workerOutput: WorkerOutput = { type: "NothingToCommitOutput" };
           return workerOutput;
         } else {
           // Here there are no tx requests, but deposits are slated for
           // inclusion.
-          const depositEventEntries =
-            optUserEventsProgram.value.retreivedEvents;
+          const depositEventEntries = optDepositsProgram.value.retreivedEvents;
           const insertedDepositUTxOs = yield* applyDepositsToLedger(
             "add",
             ledgerTrie,
             depositEventEntries,
           );
 
-          const depositsRoot = yield* optUserEventsProgram.value.mptRoot;
+          const depositsRoot = yield* optDepositsProgram.value.mptRoot;
           const utxoRoot = yield* ledgerTrie.getRootHex();
           const txRoot = yield* mempoolTrie.getRootHex();
 
@@ -491,7 +446,7 @@ const databaseOperationsProgram = (
         const endDate = optEndTime.value;
 
         yield* Effect.logInfo("🔹 Checking for user events...");
-        const optUserEventsProgram = yield* userEventsProgram(
+        const optDepositsProgram = yield* userEventsProgram(
           DepositsDB.tableName,
           startDate,
           endDate,
@@ -502,16 +457,16 @@ const databaseOperationsProgram = (
           utxo: CML.TransactionUnspentOutput;
           inclusionTime: Date;
         }[] = [];
-        const depositEventEntries = Option.isSome(optUserEventsProgram)
-          ? optUserEventsProgram.value.retreivedEvents
+        const depositEventEntries = Option.isSome(optDepositsProgram)
+          ? optDepositsProgram.value.retreivedEvents
           : [];
-        if (Option.isSome(optUserEventsProgram)) {
+        if (Option.isSome(optDepositsProgram)) {
           insertedDepositUTxOs = yield* applyDepositsToLedger(
             "add",
             ledgerTrie,
             depositEventEntries,
           );
-          depositsRoot = yield* optUserEventsProgram.value.mptRoot;
+          depositsRoot = yield* optDepositsProgram.value.mptRoot;
         }
         const utxoRoot = yield* ledgerTrie.getRootHex();
         const txRoot = yield* mempoolTrie.getRootHex();
