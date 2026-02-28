@@ -7,7 +7,6 @@ import {
   DatabaseError,
   sqlErrorToDatabaseError,
 } from "@/database/utils/common.js";
-import * as SDK from "@al-ft/midgard-sdk";
 import { UTxO } from "@lucid-evolution/lucid";
 import * as BlocksDB from "@/database/blocks.js";
 import * as ImmutableDB from "@/database/immutable.js";
@@ -16,10 +15,12 @@ import * as TxUtils from "@/database/utils/tx.js";
 export const tableName = "unsubmitted_blocks";
 
 export enum Columns {
-  SEQUENCE = "sequence",
+  HEIGHT = "height",
   HEADER_HASH = "header_hash",
+  EVENT_START_TIME = "event_start_time",
+  EVENT_END_TIME = "event_end_time",
   NEW_WALLET_UTXOS = "new_wallet_utxos",
-  // Corresponds to `.chain()` second tuple value (`derivedOutputs`).
+  // Corresponds to `.chain()` second tuple value.
   PRODUCED_UTXOS = "produced_utxos",
   L1_CBOR = "l1_cbor",
   DEPOSITS_COUNT = "deposits_count",
@@ -32,11 +33,13 @@ export enum Columns {
 
 export type EntryNoMeta = {
   [Columns.HEADER_HASH]: Buffer;
-  // Corresponds to `.chain()` first tuple value (`newWalletUTxOs`).
+  [Columns.EVENT_START_TIME]: Date;
+  [Columns.EVENT_END_TIME]: Date;
+  // Corresponds to `.chain()` first tuple value.
   [Columns.NEW_WALLET_UTXOS]: Buffer;
-  // Corresponds to `.chain()` second tuple value (`derivedOutputs`).
+  // Corresponds to `.chain()` second tuple value.
   [Columns.PRODUCED_UTXOS]: Buffer;
-  // Corresponds to `.chain()` third tuple value (transaction CBOR).
+  // Corresponds to `.chain()` third tuple value.
   [Columns.L1_CBOR]: Buffer;
   [Columns.DEPOSITS_COUNT]: number;
   [Columns.TX_REQUESTS_COUNT]: number;
@@ -46,12 +49,14 @@ export type EntryNoMeta = {
 };
 
 export type Entry = EntryNoMeta & {
-  [Columns.SEQUENCE]: bigint;
+  [Columns.HEIGHT]: bigint;
   [Columns.TIMESTAMPTZ]: Date;
 };
 
 export type LatestUnsubmittedBlockWithTxs = {
   [Columns.HEADER_HASH]: Buffer;
+  [Columns.EVENT_START_TIME]: Date;
+  [Columns.EVENT_END_TIME]: Date;
   [Columns.NEW_WALLET_UTXOS]: readonly UTxO[];
   [Columns.PRODUCED_UTXOS]: readonly UTxO[];
   [Columns.DEPOSITS_COUNT]: number;
@@ -65,6 +70,8 @@ export type LatestUnsubmittedBlockWithTxs = {
 
 type LatestUnsubmittedBlockJoinRow = {
   [Columns.HEADER_HASH]: Buffer;
+  [Columns.EVENT_START_TIME]: Date;
+  [Columns.EVENT_END_TIME]: Date;
   [Columns.NEW_WALLET_UTXOS]: Buffer;
   [Columns.PRODUCED_UTXOS]: Buffer;
   [Columns.DEPOSITS_COUNT]: number;
@@ -80,8 +87,10 @@ export const createTable: Effect.Effect<void, DatabaseError, Database> =
   Effect.gen(function* () {
     const sql = yield* SqlClient.SqlClient;
     yield* sql`CREATE TABLE IF NOT EXISTS ${sql(tableName)} (
-      ${sql(Columns.SEQUENCE)} BIGSERIAL PRIMARY KEY,
+      ${sql(Columns.HEIGHT)} BIGSERIAL PRIMARY KEY,
       ${sql(Columns.HEADER_HASH)} BYTEA NOT NULL UNIQUE,
+      ${sql(Columns.EVENT_START_TIME)} TIMESTAMPTZ NOT NULL,
+      ${sql(Columns.EVENT_END_TIME)} TIMESTAMPTZ NOT NULL,
       ${sql(Columns.NEW_WALLET_UTXOS)} BYTEA NOT NULL,
       ${sql(Columns.L1_CBOR)} BYTEA NOT NULL,
       ${sql(Columns.PRODUCED_UTXOS)} BYTEA NOT NULL,
@@ -104,6 +113,8 @@ export const upsert = (
     const sql = yield* SqlClient.SqlClient;
     yield* sql`INSERT INTO ${sql(tableName)} ${sql.insert(entry)}
       ON CONFLICT (${sql(Columns.HEADER_HASH)}) DO UPDATE SET
+        ${sql(Columns.EVENT_START_TIME)} = ${entry[Columns.EVENT_START_TIME]},
+        ${sql(Columns.EVENT_END_TIME)} = ${entry[Columns.EVENT_END_TIME]},
         ${sql(Columns.NEW_WALLET_UTXOS)} = ${entry[Columns.NEW_WALLET_UTXOS]},
         ${sql(Columns.L1_CBOR)} = ${entry[Columns.L1_CBOR]},
         ${sql(Columns.PRODUCED_UTXOS)} = ${entry[Columns.PRODUCED_UTXOS]},
@@ -128,7 +139,7 @@ export const retrieve: Effect.Effect<
 > = Effect.gen(function* () {
   const sql = yield* SqlClient.SqlClient;
   return yield* sql<Entry>`SELECT * FROM ${sql(tableName)} ORDER BY ${sql(
-    Columns.SEQUENCE,
+    Columns.HEIGHT,
   )} ASC`;
 }).pipe(
   Effect.withLogSpan(`retrieve ${tableName}`),
@@ -149,6 +160,8 @@ export const retrieveLatestWithBlockTxs: Effect.Effect<
     WITH latest_unsubmitted AS (
       SELECT
         ${sql(Columns.HEADER_HASH)},
+        ${sql(Columns.EVENT_START_TIME)},
+        ${sql(Columns.EVENT_END_TIME)},
         ${sql(Columns.NEW_WALLET_UTXOS)},
         ${sql(Columns.PRODUCED_UTXOS)},
         ${sql(Columns.DEPOSITS_COUNT)},
@@ -157,11 +170,13 @@ export const retrieveLatestWithBlockTxs: Effect.Effect<
         ${sql(Columns.WITHDRAWALS_COUNT)},
         ${sql(Columns.TOTAL_EVENTS_SIZE)}
       FROM ${sql(tableName)}
-      ORDER BY ${sql(Columns.SEQUENCE)} DESC
+      ORDER BY ${sql(Columns.HEIGHT)} DESC
       LIMIT 1
     )
     SELECT
       latest_unsubmitted.${sql(Columns.HEADER_HASH)},
+      latest_unsubmitted.${sql(Columns.EVENT_START_TIME)},
+      latest_unsubmitted.${sql(Columns.EVENT_END_TIME)},
       latest_unsubmitted.${sql(Columns.NEW_WALLET_UTXOS)},
       latest_unsubmitted.${sql(Columns.PRODUCED_UTXOS)},
       latest_unsubmitted.${sql(Columns.DEPOSITS_COUNT)},
@@ -224,6 +239,8 @@ export const retrieveLatestWithBlockTxs: Effect.Effect<
 
   return Option.some({
     [Columns.HEADER_HASH]: firstRow[Columns.HEADER_HASH],
+    [Columns.EVENT_START_TIME]: firstRow[Columns.EVENT_START_TIME],
+    [Columns.EVENT_END_TIME]: firstRow[Columns.EVENT_END_TIME],
     [Columns.NEW_WALLET_UTXOS]: newWalletUtxos,
     [Columns.PRODUCED_UTXOS]: producedUtxos,
     [Columns.DEPOSITS_COUNT]: firstRow[Columns.DEPOSITS_COUNT],
@@ -287,15 +304,15 @@ export const deleteUpToAndIncludingBlock = (
 ): Effect.Effect<void, DatabaseError, Database> =>
   Effect.gen(function* () {
     const sql = yield* SqlClient.SqlClient;
-    yield* sql`WITH ${sql("target")} AS (
-      SELECT ${sql(Columns.SEQUENCE)}
+    yield* sql`WITH target AS (
+      SELECT ${sql(Columns.HEIGHT)}
       FROM ${sql(tableName)}
       WHERE ${sql(Columns.HEADER_HASH)} = ${headerHash}
       LIMIT 1
     )
     DELETE FROM ${sql(tableName)}
-    WHERE ${sql(Columns.SEQUENCE)} <= (
-      SELECT ${sql(Columns.SEQUENCE)} FROM ${sql("target")}
+    WHERE ${sql(Columns.HEIGHT)} <= (
+      SELECT ${sql(Columns.HEIGHT)} FROM target
     )`;
   }).pipe(
     Effect.withLogSpan(`deleteUpToAndIncludingBlock ${tableName}`),
