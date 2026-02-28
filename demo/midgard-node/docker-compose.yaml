@@ -193,6 +193,8 @@ services:
       additional_contexts:
         - sdk=../midgard-sdk
       dockerfile: ./Dockerfile
+    env_file:
+      - .env
     command: ["sh", "-c", "yes | pnpm test"]
     profiles:
       - test

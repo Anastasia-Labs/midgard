@@ -17,8 +17,12 @@ type NodeConfigDep = {
   PORT: number;
   WAIT_BETWEEN_BLOCK_COMMITMENT: number;
   WAIT_BETWEEN_BLOCK_CONFIRMATION: number;
+  BLOCK_CONFIRMATION_AWAIT_TIMEOUT_MS: number;
+  BLOCK_CONFIRMATION_AWAIT_RETRIES: number;
+  UNCONFIRMED_BLOCK_MAX_AGE_MS: number;
   WAIT_BETWEEN_DEPOSIT_UTXO_FETCHES: number;
   WAIT_BETWEEN_MERGE_TXS: number;
+  MIN_QUEUE_LENGTH_FOR_MERGING: number;
   VALIDATION_BATCH_SIZE: number;
   VALIDATION_MAX_QUEUE_AGE_MS: number;
   VALIDATION_PHASE_A_CONCURRENCY: number;
@@ -34,6 +38,8 @@ type NodeConfigDep = {
   READINESS_MAX_QUEUE_DEPTH: number;
   RETENTION_DAYS: number;
   WAIT_BETWEEN_RETENTION_SWEEPS: number;
+  HUB_ORACLE_ONE_SHOT_TX_HASH: string;
+  HUB_ORACLE_ONE_SHOT_OUTPUT_INDEX: number;
   PROM_METRICS_PORT: number;
   OLTP_EXPORTER_URL: string;
   POSTGRES_USER: string;
@@ -71,9 +77,21 @@ const makeConfig = Effect.gen(function* () {
   const waitBetweenBlockConfirmation = yield* Config.integer(
     "WAIT_BETWEEN_BLOCK_CONFIRMATION",
   ).pipe(Config.withDefault(10000));
+  const blockConfirmationAwaitTimeoutMs = yield* Config.integer(
+    "BLOCK_CONFIRMATION_AWAIT_TIMEOUT_MS",
+  ).pipe(Config.withDefault(12_000));
+  const blockConfirmationAwaitRetries = yield* Config.integer(
+    "BLOCK_CONFIRMATION_AWAIT_RETRIES",
+  ).pipe(Config.withDefault(1));
+  const unconfirmedBlockMaxAgeMs = yield* Config.integer(
+    "UNCONFIRMED_BLOCK_MAX_AGE_MS",
+  ).pipe(Config.withDefault(180_000));
   const waitBetweenMergeTxs = yield* Config.integer(
     "WAIT_BETWEEN_MERGE_TXS",
   ).pipe(Config.withDefault(10000));
+  const minQueueLengthForMerging = yield* Config.integer(
+    "MIN_QUEUE_LENGTH_FOR_MERGING",
+  ).pipe(Config.withDefault(8));
   const validationBatchSize = yield* Config.integer(
     "VALIDATION_BATCH_SIZE",
   ).pipe(Config.withDefault(1000));
@@ -97,16 +115,18 @@ const makeConfig = Effect.gen(function* () {
     Config.withDefault("0"),
     Config.mapAttempt((value) => BigInt(value)),
   );
-  const runGenesisOnStartup = yield* Config.string("RUN_GENESIS_ON_STARTUP").pipe(
+  const runGenesisOnStartup = yield* Config.string(
+    "RUN_GENESIS_ON_STARTUP",
+  ).pipe(
     Config.withDefault("false"),
     Config.map((value) => value.trim().toLowerCase() === "true"),
   );
   const adminApiKey = yield* Config.string("ADMIN_API_KEY").pipe(
     Config.withDefault(""),
   );
-  const maxSubmitQueueSize = yield* Config.integer("MAX_SUBMIT_QUEUE_SIZE").pipe(
-    Config.withDefault(10_000),
-  );
+  const maxSubmitQueueSize = yield* Config.integer(
+    "MAX_SUBMIT_QUEUE_SIZE",
+  ).pipe(Config.withDefault(10_000));
   const maxSubmitTxCborBytes = yield* Config.integer(
     "MAX_SUBMIT_TX_CBOR_BYTES",
   ).pipe(Config.withDefault(32_768));
@@ -122,6 +142,12 @@ const makeConfig = Effect.gen(function* () {
   const waitBetweenRetentionSweeps = yield* Config.integer(
     "WAIT_BETWEEN_RETENTION_SWEEPS",
   ).pipe(Config.withDefault(3_600_000));
+  const hubOracleOneShotTxHash = yield* Config.string(
+    "HUB_ORACLE_ONE_SHOT_TX_HASH",
+  ).pipe(Config.withDefault(""));
+  const hubOracleOneShotOutputIndex = yield* Config.integer(
+    "HUB_ORACLE_ONE_SHOT_OUTPUT_INDEX",
+  ).pipe(Config.withDefault(-1));
   const waitBetweenDepositUTxOFetches = yield* Config.integer(
     "WAIT_BETWEEN_DEPOSIT_UTXO_FETCHES",
   ).pipe(Config.withDefault(10000));
@@ -229,7 +255,11 @@ const makeConfig = Effect.gen(function* () {
     PORT: port,
     WAIT_BETWEEN_BLOCK_COMMITMENT: waitBetweenBlockCommitment,
     WAIT_BETWEEN_BLOCK_CONFIRMATION: waitBetweenBlockConfirmation,
+    BLOCK_CONFIRMATION_AWAIT_TIMEOUT_MS: blockConfirmationAwaitTimeoutMs,
+    BLOCK_CONFIRMATION_AWAIT_RETRIES: blockConfirmationAwaitRetries,
+    UNCONFIRMED_BLOCK_MAX_AGE_MS: unconfirmedBlockMaxAgeMs,
     WAIT_BETWEEN_MERGE_TXS: waitBetweenMergeTxs,
+    MIN_QUEUE_LENGTH_FOR_MERGING: minQueueLengthForMerging,
     VALIDATION_BATCH_SIZE: validationBatchSize,
     VALIDATION_MAX_QUEUE_AGE_MS: validationMaxQueueAgeMs,
     VALIDATION_PHASE_A_CONCURRENCY: validationPhaseAConcurrency,
@@ -245,6 +275,8 @@ const makeConfig = Effect.gen(function* () {
     READINESS_MAX_QUEUE_DEPTH: readinessMaxQueueDepth,
     RETENTION_DAYS: retentionDays,
     WAIT_BETWEEN_RETENTION_SWEEPS: waitBetweenRetentionSweeps,
+    HUB_ORACLE_ONE_SHOT_TX_HASH: hubOracleOneShotTxHash,
+    HUB_ORACLE_ONE_SHOT_OUTPUT_INDEX: hubOracleOneShotOutputIndex,
     WAIT_BETWEEN_DEPOSIT_UTXO_FETCHES: waitBetweenDepositUTxOFetches,
     PROM_METRICS_PORT: promMetricsPort,
     OLTP_EXPORTER_URL: oltpExporterUrl,

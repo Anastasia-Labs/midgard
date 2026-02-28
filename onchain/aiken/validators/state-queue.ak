@@ -1,3 +1,6 @@
+use aiken/cbor
+use aiken/collection/dict
+use aiken/builtin
 use aiken/collection/list
 use aiken/crypto
 use aiken/interval.{Finite, Interval}
@@ -56,11 +59,11 @@ validator mint(
     when redeemer is {
       Init -> and {
           quantity_of(self.mint, hub_oracle_script_hash, hub_oracle_asset_name) == 1,
-          unordered.init(node_in_outputs, node_mint, policy_id),
+          unordered.init(node_outputs, node_mint, policy_id),
         }
       Deinit -> and {
           quantity_of(self.mint, hub_oracle_script_hash, hub_oracle_asset_name) == -1,
-          unordered.deinit(node_outputs, node_mint, policy_id),
+          unordered.deinit(node_in_outputs, node_mint, policy_id),
         }
       CommitBlockHeader {
         operator,
@@ -84,8 +87,6 @@ validator mint(
         expect InlineDatum(header_node_datum) = header_node_output.datum
         expect parsed_header_node_datum: NodeDatum = header_node_datum
         expect header_node_block_data: Header = parsed_header_node_datum.data
-        expect parsed_header_node_block_data_as_bytearray: ByteArray =
-          parsed_header_node_datum.data
         //
         expect Some(previous_header_node_output) =
           list.at(self.outputs, previous_header_node_output_index)
@@ -93,8 +94,24 @@ validator mint(
           previous_header_node_output.datum
         expect parsed_previous_header_node_datum: NodeDatum =
           previous_header_node_datum
-        expect previous_header_node_block_data: Header =
-          parsed_previous_header_node_datum.data
+        let previous_header_node_end_time =
+          when
+            list.length(
+              builtin.unconstr_fields(parsed_previous_header_node_datum.data),
+            )
+          is {
+            10 -> {
+              expect previous_header_node_block_data: Header =
+                parsed_previous_header_node_datum.data
+              previous_header_node_block_data.end_time
+            }
+            6 -> {
+              expect previous_confirmed_state_node_data: ConfirmedState =
+                parsed_previous_header_node_datum.data
+              previous_confirmed_state_node_data.end_time
+            }
+            _ -> fail
+          }
         //
         expect
           unordered.append_unsafe(
@@ -112,7 +129,7 @@ validator mint(
         // (5) The key field of header_node must be the hash of its data field.
         expect
           parsed_header_node_datum.key == Key(
-            crypto.sha2_256(parsed_header_node_block_data_as_bytearray),
+            crypto.blake2b_224(cbor.serialise(header_node_block_data)),
           )
 
         // Verify that it is the operator's turn to commit
@@ -137,8 +154,7 @@ validator mint(
         // Verify block timestamps:
         // (8) The `start_time` of `header_node` must be equal to the
         //     `end_time` of the `previous_header_node`.
-        expect
-          header_node_block_data.start_time == previous_header_node_block_data.end_time
+        expect header_node_block_data.start_time == previous_header_node_end_time
 
         // (9) The `end_time` of `header_node` must match the transaction's
         //      time-validity upper bound.
@@ -217,15 +233,28 @@ validator mint(
         expect parsed_confirmed_state_node_output_datum_data: ConfirmedState =
           parsed_confirmed_state_node_output_datum.data
         //
+        // Verify a state_queue removal while allowing confirmed-state data
+        // transition. `unordered.remove` cannot be used here because it
+        // enforces unchanged anchor-node data.
+        expect list.length(node_in_outputs) == 2
+        expect list.length(node_outputs) == 1
+        expect dict.size(node_mint) == 1
+        expect Some(-1) =
+          dict.get(node_mint, unordered.serialize_key(Key(header_node_key)))
+        expect parsed_header_node_input_datum.key == Key(header_node_key)
+        expect parsed_confirmed_state_node_input_datum.link == Key(header_node_key)
         expect
-          unordered.remove(
-            Key(header_node_key),
-            header_node_input_index,
-            confirmed_state_node_input_index,
-            node_in_outputs,
-            node_outputs,
-            node_mint,
-          )
+          parsed_confirmed_state_node_output_datum.key ==
+            parsed_confirmed_state_node_input_datum.key
+        expect
+          parsed_confirmed_state_node_output_datum.link ==
+            parsed_header_node_input_datum.link
+        expect
+          confirmed_state_node_input.output.address ==
+            confirmed_state_node_output.address
+        expect
+          confirmed_state_node_input.output.value ==
+            confirmed_state_node_output.value
 
         // (2) `confirmed_state_node` and `confirmed_state_node_output` must both
         //     be root nodes of `state_queue`.

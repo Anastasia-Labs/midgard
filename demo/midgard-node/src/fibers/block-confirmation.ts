@@ -6,6 +6,7 @@ import {
   WorkerOutput as BlockConfirmationWorkerOutput,
 } from "@/workers/utils/confirm-block-commitments.js";
 import { WorkerError } from "@/workers/utils/common.js";
+import { emitQueueStateMetrics } from "./queue-metrics.js";
 
 const blockConfirmationAction: Effect.Effect<void, WorkerError, Globals> =
   Effect.gen(function* () {
@@ -15,6 +16,9 @@ const blockConfirmationAction: Effect.Effect<void, WorkerError, Globals> =
     if (!RESET_IN_PROGRESS) {
       const UNCONFIRMED_SUBMITTED_BLOCK_TX_HASH = yield* Ref.get(
         globals.UNCONFIRMED_SUBMITTED_BLOCK_TX_HASH,
+      );
+      const UNCONFIRMED_SUBMITTED_BLOCK_SINCE_MS = yield* Ref.get(
+        globals.UNCONFIRMED_SUBMITTED_BLOCK_SINCE_MS,
       );
       const AVAILABLE_CONFIRMED_BLOCK = yield* Ref.get(
         globals.AVAILABLE_CONFIRMED_BLOCK,
@@ -37,6 +41,8 @@ const blockConfirmationAction: Effect.Effect<void, WorkerError, Globals> =
                   UNCONFIRMED_SUBMITTED_BLOCK_TX_HASH === "" &&
                   AVAILABLE_CONFIRMED_BLOCK === "",
                 unconfirmedSubmittedBlock: UNCONFIRMED_SUBMITTED_BLOCK_TX_HASH,
+                unconfirmedSubmittedBlockSinceMs:
+                  UNCONFIRMED_SUBMITTED_BLOCK_SINCE_MS,
               },
             } as BlockConfirmationWorkerInput, // TODO: Consider other approaches to avoid type assertion here.
           },
@@ -90,11 +96,25 @@ const blockConfirmationAction: Effect.Effect<void, WorkerError, Globals> =
       switch (workerOutput.type) {
         case "SuccessfulConfirmationOutput": {
           yield* Ref.set(globals.UNCONFIRMED_SUBMITTED_BLOCK_TX_HASH, "");
+          yield* Ref.set(globals.UNCONFIRMED_SUBMITTED_BLOCK_SINCE_MS, 0);
           yield* Ref.set(
             globals.AVAILABLE_CONFIRMED_BLOCK,
             workerOutput.blocksUTxO,
           );
           yield* Effect.logInfo("🔍 ☑️  Submitted block confirmed.");
+          break;
+        }
+        case "StaleUnconfirmedRecoveryOutput": {
+          yield* Ref.set(globals.UNCONFIRMED_SUBMITTED_BLOCK_TX_HASH, "");
+          yield* Ref.set(globals.UNCONFIRMED_SUBMITTED_BLOCK_SINCE_MS, 0);
+          yield* Ref.update(globals.BLOCKS_IN_QUEUE, (n) => Math.max(0, n - 1));
+          yield* Ref.set(
+            globals.AVAILABLE_CONFIRMED_BLOCK,
+            workerOutput.blocksUTxO,
+          );
+          yield* Effect.logWarning(
+            `🔍 ⚠️  Abandoning stale unconfirmed block submission ${workerOutput.staleTxHash}; recovered chain tip and resumed commitment flow.`,
+          );
           break;
         }
         case "NoTxForConfirmationOutput": {
@@ -104,6 +124,8 @@ const blockConfirmationAction: Effect.Effect<void, WorkerError, Globals> =
           break;
         }
       }
+
+      yield* emitQueueStateMetrics;
     }
   });
 

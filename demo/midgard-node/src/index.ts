@@ -3,6 +3,7 @@
 import { Command } from "commander";
 import { ENV_VARS_GUIDE, chalk } from "@/utils.js";
 import { runNode } from "@/commands/index.js";
+import { auditBlocksImmutableProgram } from "@/commands/audit-blocks-immutable.js";
 import * as Services from "@/services/index.js";
 import packageJson from "../package.json" with { type: "json" };
 import { Effect, pipe } from "effect";
@@ -74,9 +75,43 @@ program
       runNode(withMonitoring),
       Effect.provide(Services.NodeConfig.layer),
       Effect.provide(Services.Database.layer),
-      Effect.provide(Services.AlwaysSucceedsContract.Default),
+      Effect.provide(Services.MidgardContracts.Default),
       Effect.provide(Services.Lucid.Default),
       Effect.provide(Services.Globals.Default),
+    );
+
+    NodeRuntime.runMain(mainEffect, { teardown: undefined });
+  });
+
+program
+  .command("audit-blocks-immutable")
+  .description(
+    "Audit BlocksDB -> ImmutableDB linkage and native tx payload integrity",
+  )
+  .option(
+    "--repair",
+    "Apply conservative repair by deleting affected block links and malformed immutable tx rows",
+  )
+  .option(
+    "--max-issues <n>",
+    "Maximum number of issues to print in logs",
+    (value) => Number.parseInt(value, 10),
+    20,
+  )
+  .action(async (_args, options) => {
+    const { repair, maxIssues } = options.opts();
+    const mainEffect = pipe(
+      auditBlocksImmutableProgram({
+        repair: repair === true,
+        maxIssuesToLog:
+          Number.isFinite(maxIssues) && maxIssues > 0 ? maxIssues : 20,
+      }),
+      Effect.tap((summary) =>
+        Effect.logInfo(
+          `audit-blocks-immutable summary: ${JSON.stringify(summary)}`,
+        ),
+      ),
+      Effect.provide(Services.Database.layer),
     );
 
     NodeRuntime.runMain(mainEffect, { teardown: undefined });

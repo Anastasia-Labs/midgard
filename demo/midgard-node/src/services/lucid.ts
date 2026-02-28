@@ -30,18 +30,50 @@ export const toBlockfrostAdditionalValue = (
   assets: LE.Assets,
 ): Record<string, unknown> => {
   const value: Record<string, unknown> = {
-    coins: Number(assets.lovelace ?? 0n),
+    coins: assets.lovelace ?? 0n,
   };
   for (const [unit, amount] of Object.entries(assets)) {
     if (unit === "lovelace") continue;
     const policyId = unit.slice(0, 56);
     const assetName = unit.slice(56);
     const policyAssets =
-      (value[policyId] as Record<string, number> | undefined) ?? {};
-    policyAssets[assetName] = Number(amount);
+      (value[policyId] as Record<string, bigint> | undefined) ?? {};
+    policyAssets[assetName] = amount;
     value[policyId] = policyAssets;
   }
   return value;
+};
+
+export const stringifyJsonWithBigIntNumbers = (value: unknown): string => {
+  if (value === null) {
+    return "null";
+  }
+  const valueType = typeof value;
+  if (valueType === "bigint") {
+    return (value as bigint).toString(10);
+  }
+  if (valueType === "string" || valueType === "boolean") {
+    return JSON.stringify(value);
+  }
+  if (valueType === "number") {
+    if (!Number.isFinite(value as number)) {
+      throw new Error(`Cannot stringify non-finite JSON number: ${value}`);
+    }
+    return JSON.stringify(value);
+  }
+  if (Array.isArray(value)) {
+    return `[${value.map((item) => stringifyJsonWithBigIntNumbers(item)).join(",")}]`;
+  }
+  if (valueType === "object") {
+    const entries = Object.entries(value as Record<string, unknown>)
+      .filter(([, entryValue]) => entryValue !== undefined)
+      .map(
+        ([entryKey, entryValue]) =>
+          `${JSON.stringify(entryKey)}:${stringifyJsonWithBigIntNumbers(entryValue)}`,
+      );
+    return `{${entries.join(",")}}`;
+  }
+  throw new Error(`Cannot stringify unsupported JSON value type: ${valueType}`);
 };
 
 type BlockfrostEvalRedeemerData = {
@@ -97,7 +129,7 @@ const evaluateTxViaBlockfrostUtxoEndpoint = async (
         "Content-Type": "application/json",
         project_id: blockfrostProvider.projectId,
       },
-      body: JSON.stringify(payload),
+      body: stringifyJsonWithBigIntNumbers(payload),
     },
   ).then((response) => response.json())) as BlockfrostEvalResponse;
 
@@ -136,15 +168,21 @@ const evaluateTxViaBlockfrostUtxoEndpoint = async (
   return evalRedeemers;
 };
 
-const patchBlockfrostEvaluateTx = (
-  provider: LE.Blockfrost,
-): LE.Blockfrost => {
+const patchBlockfrostEvaluateTx = (provider: LE.Blockfrost): LE.Blockfrost => {
+  const originalEvaluateTx = provider.evaluateTx.bind(provider);
   provider.evaluateTx = async (tx, additionalUTxOs) => {
-    return evaluateTxViaBlockfrostUtxoEndpoint(
-      provider,
-      tx,
-      additionalUTxOs ?? [],
-    );
+    try {
+      return await originalEvaluateTx(tx, additionalUTxOs);
+    } catch (originalError) {
+      if ((additionalUTxOs?.length ?? 0) === 0) {
+        throw originalError;
+      }
+      return evaluateTxViaBlockfrostUtxoEndpoint(
+        provider,
+        tx,
+        additionalUTxOs ?? [],
+      );
+    }
   };
   return provider;
 };

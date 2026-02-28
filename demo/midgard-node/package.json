@@ -14,6 +14,7 @@
     "format": "prettier --write \"**/*.{ts,tsx,md}\"",
     "format-check": "prettier --check \"**/*.{ts,tsx,md}\"",
     "listen": "pnpm run build && node dist/index.js listen",
+    "audit:blocks-immutable": "pnpm run build && node dist/index.js audit-blocks-immutable",
     "init": "pnpm run build && node dist/index.js init",
     "bench:fixtures:generate": "node tests/benchmarks/scripts/generate-validation-fixtures.mjs",
     "bench:codec": "export NODE_ENV='emulator' && export BENCH_QUICK=1 && vitest run --config vitest.bench.config.ts tests/benchmarks/midgard-tx-codec.bench.ts --disable-console-intercept",
@@ -26,6 +27,7 @@
     "bench:validation:quick": "export NODE_ENV='emulator' && export BENCH_QUICK=1 && vitest run --config vitest.bench.config.ts tests/benchmarks/validation-benchmark.bench.ts --disable-console-intercept",
     "bench:validation:full": "export NODE_ENV='emulator' && vitest run --config vitest.bench.config.ts tests/benchmarks/validation-benchmark.bench.ts --disable-console-intercept",
     "stress:valid": "node scripts/throughput-valid-stress.mjs",
+    "stress:nominal": "node scripts/throughput-nominal-activity.mjs",
     "test": "export NODE_ENV='emulator' && vitest run -- --reporter=basic --disable-console-intercept"
   },
   "keywords": [

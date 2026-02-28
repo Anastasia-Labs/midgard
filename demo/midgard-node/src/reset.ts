@@ -9,7 +9,7 @@ import {
   toUnit,
 } from "@lucid-evolution/lucid";
 import {
-  AlwaysSucceedsContract,
+  MidgardContracts,
   Database,
   Globals,
   Lucid,
@@ -189,60 +189,14 @@ const completeResetTxProgram = (
 export const resetUTxOs: Effect.Effect<
   void,
   SDK.LucidError | TxSubmitError | TxSignError,
-  AlwaysSucceedsContract | Lucid
-> = Effect.gen(function* () {
-  const lucid = yield* Lucid;
-  const { stateQueue: stateQueueAuthValidator, deposit: depositAuthValidator } =
-    yield* AlwaysSucceedsContract;
-
-  yield* Effect.logInfo("🚧 Fetching UTxOs...");
-
-  yield* lucid.switchToOperatorsMainWallet;
-
-  const allStateQueueUTxOs = yield* SDK.fetchUnsortedStateQueueUTxOsProgram(
-    lucid.api,
-    {
-      stateQueuePolicyId: stateQueueAuthValidator.policyId,
-      stateQueueAddress: stateQueueAuthValidator.spendingScriptAddress,
-    },
-  );
-
-  const allDepositUTxOs = yield* SDK.fetchDepositUTxOsProgram(lucid.api, {
-    depositAddress: depositAuthValidator.spendingScriptAddress,
-    depositPolicyId: depositAuthValidator.policyId,
-  });
-
-  if (allStateQueueUTxOs.length <= 0 && allDepositUTxOs.length <= 0) {
-    yield* Effect.logInfo(`🚧 No UTxOs were found.`);
-  }
-
-  // The bottom UTxOs are handled first
-  const utxosQueue: UTxOsQueue[] = [
-    {
-      authValidator: depositAuthValidator,
-      assetUTxOs: allDepositUTxOs,
-    },
-    {
-      authValidator: stateQueueAuthValidator,
-      assetUTxOs: allStateQueueUTxOs,
-    },
-  ];
-
-  const batchSize = 40;
-  const batchTransactions = yield* constructBatchTxs(
-    lucid.api,
-    utxosQueue,
-    batchSize,
-  );
-  yield* Effect.forEach(batchTransactions, (tx, i) =>
-    Effect.gen(function* () {
-      yield* Effect.logInfo(`🚧 UTxOs Batch ${i}`);
-      yield* completeResetTxProgram(lucid.api, tx);
-    }).pipe(Effect.tapError((e) => Effect.logError(e))),
-  );
-
-  yield* Effect.logInfo(`🚧 Done resetting UTxOs.`);
-});
+  MidgardContracts | Lucid
+> = Effect.fail(
+  new SDK.LucidError({
+    message:
+      "Reset endpoint is disabled: deinit path is not implemented for deployed contracts",
+    cause: "reset-disabled",
+  }),
+);
 
 export const resetDatabases: Effect.Effect<
   void,
@@ -272,28 +226,37 @@ export const program: Effect.Effect<
   | TxSignError
   | DatabaseError
   | FileSystemError,
-  Lucid | NodeConfig | AlwaysSucceedsContract | Globals | Database
+  Lucid | NodeConfig | MidgardContracts | Globals | Database
 > = Effect.gen(function* () {
   const globals = yield* Globals;
-  yield* Ref.set(globals.RESET_IN_PROGRESS, true);
+  const resetWorkflow = Effect.gen(function* () {
+    yield* Ref.set(globals.RESET_IN_PROGRESS, true);
 
-  yield* Effect.all([
-    resetUTxOs.pipe(Effect.retry(Schedule.fixed("5000 millis"))),
-    resetDatabases,
-  ]);
+    yield* Effect.all([
+      resetUTxOs.pipe(
+        Effect.retry(
+          Schedule.intersect(Schedule.fixed("5000 millis"), Schedule.recurs(2)),
+        ),
+      ),
+      resetDatabases,
+    ]);
 
-  yield* Effect.logInfo(`🚧 Resetting global variables...`);
-  yield* Ref.set(globals.LATEST_SYNC_TIME_OF_STATE_QUEUE_LENGTH, Date.now());
-  yield* Ref.set(globals.BLOCKS_IN_QUEUE, 0);
-  yield* Ref.set(globals.AVAILABLE_CONFIRMED_BLOCK, "");
-  yield* Ref.set(globals.UNCONFIRMED_SUBMITTED_BLOCK_TX_HASH, "");
-  yield* Ref.set(globals.LOCAL_FINALIZATION_PENDING, false);
-  yield* Ref.set(globals.HEARTBEAT_BLOCK_COMMITMENT, Date.now());
-  yield* Ref.set(globals.HEARTBEAT_BLOCK_CONFIRMATION, Date.now());
-  yield* Ref.set(globals.HEARTBEAT_MERGE, Date.now());
-  yield* Ref.set(globals.HEARTBEAT_DEPOSIT_FETCH, Date.now());
-  yield* Ref.set(globals.HEARTBEAT_TX_QUEUE_PROCESSOR, Date.now());
+    yield* Effect.logInfo(`🚧 Resetting global variables...`);
+    yield* Ref.set(globals.LATEST_SYNC_TIME_OF_STATE_QUEUE_LENGTH, Date.now());
+    yield* Ref.set(globals.BLOCKS_IN_QUEUE, 0);
+    yield* Ref.set(globals.AVAILABLE_CONFIRMED_BLOCK, "");
+    yield* Ref.set(globals.UNCONFIRMED_SUBMITTED_BLOCK_TX_HASH, "");
+    yield* Ref.set(globals.UNCONFIRMED_SUBMITTED_BLOCK_SINCE_MS, 0);
+    yield* Ref.set(globals.LOCAL_FINALIZATION_PENDING, false);
+    yield* Ref.set(globals.HEARTBEAT_BLOCK_COMMITMENT, Date.now());
+    yield* Ref.set(globals.HEARTBEAT_BLOCK_CONFIRMATION, Date.now());
+    yield* Ref.set(globals.HEARTBEAT_MERGE, Date.now());
+    yield* Ref.set(globals.HEARTBEAT_DEPOSIT_FETCH, Date.now());
+    yield* Ref.set(globals.HEARTBEAT_TX_QUEUE_PROCESSOR, Date.now());
+    yield* Effect.logInfo(`🚧 Done resetting global variables...`);
+  });
 
-  yield* Ref.set(globals.RESET_IN_PROGRESS, false);
-  yield* Effect.logInfo(`🚧 Done resetting global variables...`);
+  yield* resetWorkflow.pipe(
+    Effect.ensuring(Ref.set(globals.RESET_IN_PROGRESS, false)),
+  );
 });

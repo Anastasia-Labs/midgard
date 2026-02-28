@@ -1,6 +1,7 @@
 import { Effect } from "effect";
 import { Lucid } from "@/services/lucid.js";
-import { AlwaysSucceedsContract } from "@/services/always-succeeds.js";
+import { MidgardContracts } from "@/services/midgard-contracts.js";
+import { NodeConfig } from "@/services/config.js";
 import * as SDK from "@al-ft/midgard-sdk";
 import { handleSignSubmit } from "@/transactions/utils.js";
 
@@ -51,7 +52,8 @@ export const createFraudProofCatalogueMpt = (
 
 export const program = Effect.gen(function* () {
   const lucidService = yield* Lucid;
-  const contracts = yield* AlwaysSucceedsContract;
+  const contracts = yield* MidgardContracts;
+  const nodeConfig = yield* NodeConfig;
 
   yield* lucidService.switchToOperatorsMainWallet;
   const lucid = lucidService.api;
@@ -67,10 +69,57 @@ export const program = Effect.gen(function* () {
     fraudProofCatalogueMerkleRoot,
   };
 
-  const unsignedTx = yield* SDK.unsignedInitializationTxProgram(
-    lucid,
-    initParams,
+  const walletUtxos = yield* Effect.tryPromise({
+    try: () => lucid.wallet().getUtxos(),
+    catch: (cause) =>
+      new SDK.LucidError({
+        message: "Failed to fetch operator wallet UTxOs for initialization",
+        cause,
+      }),
+  });
+  const configuredNonceUtxoLabel = `${nodeConfig.HUB_ORACLE_ONE_SHOT_TX_HASH}#${nodeConfig.HUB_ORACLE_ONE_SHOT_OUTPUT_INDEX}`;
+  const nonceUtxo = walletUtxos.find(
+    (utxo) =>
+      utxo.txHash === nodeConfig.HUB_ORACLE_ONE_SHOT_TX_HASH &&
+      utxo.outputIndex === nodeConfig.HUB_ORACLE_ONE_SHOT_OUTPUT_INDEX,
   );
+  if (!nonceUtxo) {
+    const availableWalletUtxos = walletUtxos
+      .map((utxo) => `${utxo.txHash}#${utxo.outputIndex}`)
+      .join(", ");
+    return yield* Effect.fail(
+      new SDK.LucidError({
+        message:
+          "Configured one-shot hub oracle UTxO is not available in the operator wallet",
+        cause: `required=${configuredNonceUtxoLabel}, available=[${availableWalletUtxos}]`,
+      }),
+    );
+  }
+  const genesisTime = BigInt(Date.now() + SDK.VALIDITY_RANGE_BUFFER);
+  const hubOracleTx = yield* SDK.incompleteHubOracleInitTxProgram(lucid, {
+    hubOracleMintValidator: contracts.hubOracle,
+    validators: contracts,
+    oneShotNonceUTxO: nonceUtxo,
+  });
+  const stateQueueTx = yield* SDK.incompleteInitStateQueueTxProgram(lucid, {
+    validator: contracts.stateQueue,
+    genesisTime,
+  });
+
+  const incompleteTx = lucid
+    .newTx()
+    .validTo(Number(genesisTime))
+    .compose(hubOracleTx)
+    .compose(stateQueueTx);
+
+  const unsignedTx = yield* Effect.tryPromise({
+    try: () => incompleteTx.complete({ localUPLCEval: false }),
+    catch: (cause) =>
+      new SDK.LucidError({
+        message: `Failed to build initialization transaction: ${cause}`,
+        cause,
+      }),
+  });
   const txHash = yield* handleSignSubmit(lucid, unsignedTx);
 
   return txHash;

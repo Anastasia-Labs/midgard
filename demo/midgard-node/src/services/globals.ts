@@ -18,6 +18,9 @@ export class Globals extends Effect.Service<Globals>()("Globals", {
     // all UTxOs at state queue.
     const RESET_IN_PROGRESS: Ref.Ref<boolean> = yield* Ref.make(false);
 
+    // Prevents overlapping commitment workers (periodic + manual trigger).
+    const COMMIT_WORKER_ACTIVE: Ref.Ref<boolean> = yield* Ref.make(false);
+
     // The state queue UTxO confirmed by the confirmation worker, unused for
     // block commitment. Using `as` since it seems to be the only way to satisfy
     // the compiler (TODO?).
@@ -35,6 +38,8 @@ export class Globals extends Effect.Service<Globals>()("Globals", {
     // TODO?: We might be able to avoid `as` here.
     const UNCONFIRMED_SUBMITTED_BLOCK_TX_HASH: Ref.Ref<"" | TxHash> =
       yield* Ref.make("" as "" | TxHash);
+    const UNCONFIRMED_SUBMITTED_BLOCK_SINCE_MS: Ref.Ref<number> =
+      yield* Ref.make(0);
 
     const LATEST_DEPOSIT_FETCH_TIME: Ref.Ref<number> = yield* Ref.make(0);
 
@@ -53,10 +58,12 @@ export class Globals extends Effect.Service<Globals>()("Globals", {
       BLOCKS_IN_QUEUE,
       LATEST_SYNC_TIME_OF_STATE_QUEUE_LENGTH,
       RESET_IN_PROGRESS,
+      COMMIT_WORKER_ACTIVE,
       AVAILABLE_CONFIRMED_BLOCK,
       PROCESSED_UNSUBMITTED_TXS_COUNT,
       PROCESSED_UNSUBMITTED_TXS_SIZE,
       UNCONFIRMED_SUBMITTED_BLOCK_TX_HASH,
+      UNCONFIRMED_SUBMITTED_BLOCK_SINCE_MS,
       LATEST_DEPOSIT_FETCH_TIME,
       LOCAL_FINALIZATION_PENDING,
       HEARTBEAT_BLOCK_COMMITMENT,

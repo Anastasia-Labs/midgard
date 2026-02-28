@@ -7,6 +7,7 @@ import {
 } from "@/workers/utils/commit-block-header.js";
 import { Metric } from "effect";
 import { Worker } from "worker_threads";
+import { emitQueueStateMetrics } from "./queue-metrics.js";
 
 const commitBlockNumTxGauge = Metric.gauge("commit_block_num_tx_count", {
   description:
@@ -117,6 +118,7 @@ export const buildAndSubmitCommitmentBlockAction = () =>
           globals.UNCONFIRMED_SUBMITTED_BLOCK_TX_HASH,
           workerOutput.submittedTxHash,
         );
+        yield* Ref.set(globals.UNCONFIRMED_SUBMITTED_BLOCK_SINCE_MS, Date.now());
         yield* Ref.set(globals.LOCAL_FINALIZATION_PENDING, false);
         yield* Ref.set(globals.PROCESSED_UNSUBMITTED_TXS_COUNT, 0);
         yield* Ref.set(globals.PROCESSED_UNSUBMITTED_TXS_SIZE, 0);
@@ -141,6 +143,7 @@ export const buildAndSubmitCommitmentBlockAction = () =>
           globals.UNCONFIRMED_SUBMITTED_BLOCK_TX_HASH,
           workerOutput.submittedTxHash,
         );
+        yield* Ref.set(globals.UNCONFIRMED_SUBMITTED_BLOCK_SINCE_MS, Date.now());
         yield* Ref.set(globals.LOCAL_FINALIZATION_PENDING, true);
         yield* Effect.logWarning(
           `🔹 Block submitted but local finalization is pending recovery: ${workerOutput.error}`,
@@ -174,6 +177,8 @@ export const buildAndSubmitCommitmentBlockAction = () =>
         break;
       }
     }
+
+    yield* emitQueueStateMetrics;
   });
 
 export const blockCommitmentAction: Effect.Effect<void, WorkerError, Globals> =
@@ -182,9 +187,20 @@ export const blockCommitmentAction: Effect.Effect<void, WorkerError, Globals> =
     yield* Ref.set(globals.HEARTBEAT_BLOCK_COMMITMENT, Date.now());
     const RESET_IN_PROGRESS = yield* Ref.get(globals.RESET_IN_PROGRESS);
     if (!RESET_IN_PROGRESS) {
+      const acquired = yield* Ref.modify(globals.COMMIT_WORKER_ACTIVE, (active) =>
+        active ? [false, true] : [true, true],
+      );
+      if (!acquired) {
+        yield* Effect.logInfo(
+          "🔹 Skipping block commitment trigger because a worker is already active.",
+        );
+        return;
+      }
+
       yield* Effect.logInfo("🔹 New block commitment process started.");
       yield* buildAndSubmitCommitmentBlockAction().pipe(
         Effect.withSpan("buildAndSubmitCommitmentBlockAction"),
+        Effect.ensuring(Ref.set(globals.COMMIT_WORKER_ACTIVE, false)),
       );
     }
   });

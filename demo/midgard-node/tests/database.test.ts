@@ -1,4 +1,6 @@
 import { describe, expect, beforeAll } from "vitest";
+import fs from "node:fs";
+import path from "node:path";
 import { toHex } from "@lucid-evolution/lucid";
 import { it } from "@effect/vitest";
 import { Effect } from "effect";
@@ -29,6 +31,11 @@ import {
 } from "../src/database/index.js";
 import { ProcessedTx } from "../src/utils.js";
 import { provideDatabaseLayers } from "./utils.js";
+import {
+  cardanoTxBytesToMidgardNativeTxFullBytes,
+  computeMidgardNativeTxIdFromFull,
+  decodeMidgardNativeTxFull,
+} from "../src/midgard-tx-codec/index.js";
 
 const flushAll = Effect.gen(function* () {
   yield* Effect.all(
@@ -385,6 +392,66 @@ describe("ImmutableDB", () => {
         }),
       ),
   );
+
+  it.effect("insertTxsValidatedNative accepts valid native payloads", (_) =>
+    provideDatabaseLayers(
+      Effect.gen(function* () {
+        yield* flushAll;
+        const valid = makeValidNativeImmutableEntry();
+
+        yield* ImmutableDB.insertTxsValidatedNative([valid]);
+        const stored = yield* ImmutableDB.retrieve;
+        expect(stored).toHaveLength(1);
+        expect(
+          stored[0][TxUtils.Columns.TX_ID].equals(valid[TxUtils.Columns.TX_ID]),
+        ).toBe(true);
+      }),
+    ),
+  );
+
+  it.effect(
+    "insertTxsValidatedNative rejects malformed or mismatched payloads",
+    (_) =>
+      provideDatabaseLayers(
+        Effect.gen(function* () {
+          yield* flushAll;
+          const valid = makeValidNativeImmutableEntry();
+          const mismatchedTxId = Buffer.from(valid[TxUtils.Columns.TX_ID]);
+          mismatchedTxId[0] ^= 0xff;
+          const malformed: TxUtils.Entry = {
+            [TxUtils.Columns.TX_ID]: Buffer.alloc(32, 7),
+            [TxUtils.Columns.TX]: Buffer.alloc(64, 1),
+          };
+          const mismatch: TxUtils.Entry = {
+            [TxUtils.Columns.TX_ID]: mismatchedTxId,
+            [TxUtils.Columns.TX]: valid[TxUtils.Columns.TX],
+          };
+
+          const malformedResult = yield* Effect.either(
+            ImmutableDB.insertTxsValidatedNative([malformed]),
+          );
+          expect(malformedResult._tag).toBe("Left");
+          if (malformedResult._tag === "Left") {
+            expect(malformedResult.left.message).toContain(
+              "Failed native tx payload validation for immutable insertion",
+            );
+          }
+
+          const mismatchResult = yield* Effect.either(
+            ImmutableDB.insertTxsValidatedNative([mismatch]),
+          );
+          expect(mismatchResult._tag).toBe("Left");
+          if (mismatchResult._tag === "Left") {
+            expect(mismatchResult.left.message).toContain(
+              "Failed native tx payload validation for immutable insertion",
+            );
+          }
+
+          const remaining = yield* ImmutableDB.retrieve;
+          expect(remaining).toHaveLength(0);
+        }),
+      ),
+  );
 });
 
 describe("LatestLedgerDB", () => {
@@ -672,6 +739,29 @@ const outref2 = randomBytes(36);
 
 const output1 = randomBytes(80);
 const output2 = randomBytes(80);
+
+type TxFixture = {
+  readonly cborHex: string;
+  readonly txId: string;
+};
+
+const fixturePath = path.resolve(__dirname, "./txs/txs_0.json");
+const firstFixture = (
+  JSON.parse(fs.readFileSync(fixturePath, "utf8")) as readonly TxFixture[]
+)[0];
+
+const makeValidNativeImmutableEntry = (): TxUtils.Entry => {
+  const nativeTx = cardanoTxBytesToMidgardNativeTxFullBytes(
+    Buffer.from(firstFixture.cborHex, "hex"),
+  );
+  const txId = computeMidgardNativeTxIdFromFull(
+    decodeMidgardNativeTxFull(nativeTx),
+  );
+  return {
+    [TxUtils.Columns.TX_ID]: txId,
+    [TxUtils.Columns.TX]: nativeTx,
+  };
+};
 
 const address1 =
   "addr_test1wzylc3gg4h37gt69yx057gkn4egefs5t9rsycmryecpsenswtdp58";

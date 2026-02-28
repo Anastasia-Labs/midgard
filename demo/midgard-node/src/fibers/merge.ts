@@ -1,11 +1,18 @@
 import { DatabaseError } from "@/database/utils/common.js";
-import { Lucid, AlwaysSucceedsContract, Globals } from "@/services/index.js";
+import {
+  Lucid,
+  MidgardContracts,
+  Globals,
+  NodeConfig,
+} from "@/services/index.js";
 import { StateQueueTx } from "@/transactions/index.js";
 import { TxSignError, TxSubmitError } from "@/transactions/utils.js";
 import * as SDK from "@al-ft/midgard-sdk";
 import { Effect, pipe, Ref, Schedule } from "effect";
 import { Database } from "@/services/index.js";
-export const mergeAction: Effect.Effect<
+export const mergeAction = (
+  force: boolean = false,
+): Effect.Effect<
   void,
   | SDK.CmlDeserializationError
   | SDK.DataCoercionError
@@ -16,12 +23,14 @@ export const mergeAction: Effect.Effect<
   | DatabaseError
   | TxSubmitError
   | TxSignError,
-  Lucid | AlwaysSucceedsContract | Database | Globals
-> = Effect.gen(function* () {
+  Lucid | MidgardContracts | Database | Globals | NodeConfig
+> =>
+  Effect.gen(function* () {
   const globals = yield* Globals;
   yield* Ref.set(globals.HEARTBEAT_MERGE, Date.now());
   const lucid = yield* Lucid;
-  const { stateQueue: stateQueueAuthValidator } = yield* AlwaysSucceedsContract;
+  const contracts = yield* MidgardContracts;
+  const { stateQueue: stateQueueAuthValidator } = contracts;
 
   const fetchConfig: SDK.StateQueueFetchConfig = {
     stateQueueAddress: stateQueueAuthValidator.spendingScriptAddress,
@@ -31,8 +40,8 @@ export const mergeAction: Effect.Effect<
   yield* StateQueueTx.buildAndSubmitMergeTx(
     lucid.api,
     fetchConfig,
-    stateQueueAuthValidator.spendingScript,
-    stateQueueAuthValidator.mintingScript,
+    contracts,
+    { bypassQueueLengthGuard: force },
   );
 });
 
@@ -44,12 +53,12 @@ export const mergeFiber = (
 ): Effect.Effect<
   void,
   never,
-  Lucid | AlwaysSucceedsContract | Database | Globals
+  Lucid | MidgardContracts | Database | Globals | NodeConfig
 > =>
   pipe(
     Effect.gen(function* () {
       yield* Effect.logInfo("🟠 Merge fiber started.");
-      const action = mergeAction.pipe(
+      const action = mergeAction().pipe(
         Effect.withSpan("merge-confirmed-state-fiber"),
         Effect.catchAllCause(Effect.logWarning),
       );

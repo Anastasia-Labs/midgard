@@ -2,7 +2,7 @@ import {
   Database,
   NodeConfig,
   Lucid,
-  AlwaysSucceedsContract,
+  MidgardContracts,
   Globals,
 } from "@/services/index.js";
 import * as SDK from "@al-ft/midgard-sdk";
@@ -64,10 +64,15 @@ import { NodeHttpServer } from "@effect/platform-node";
 import { HttpBodyError } from "@effect/platform/HttpBody";
 import * as Genesis from "@/genesis.js";
 import * as Initialization from "@/transactions/initialization.js";
+import { ensureActiveOperatorWitnessNodeProgram } from "@/transactions/bootstrap-active-operator.js";
 import * as Reset from "@/reset.js";
 import { SerializedStateQueueUTxO } from "@/workers/utils/commit-block-header.js";
 import { DatabaseError } from "@/database/utils/common.js";
 import { TxConfirmError, TxSignError } from "@/transactions/utils.js";
+import {
+  fetchStateQueueTopologyProgram,
+  formatStateQueueTopology,
+} from "@/services/state-queue-topology.js";
 import {
   fetchAndInsertDepositUTxOsFiber,
   blockConfirmationFiber,
@@ -131,6 +136,50 @@ const handleTxGetFailure = (
 
 const handleGenericGetFailure = (endpoint: string, e: SDK.GenericErrorFields) =>
   failWith500("GET", endpoint, e.cause, e.message);
+
+const MERGE_ERROR_CODE_PATTERN = /^(E_MERGE_[A-Z0-9_]+):/;
+
+const stringifyErrorCause = (cause: unknown): string => {
+  if (typeof cause === "string") {
+    return cause;
+  }
+  try {
+    return JSON.stringify(cause);
+  } catch {
+    return `${cause}`;
+  }
+};
+
+export const extractStateQueueErrorCode = (
+  e: SDK.StateQueueError,
+): string | undefined => {
+  const cause = e.cause;
+  if (
+    typeof cause === "object" &&
+    cause !== null &&
+    "error_code" in cause &&
+    typeof (cause as { error_code?: unknown }).error_code === "string"
+  ) {
+    return (cause as { error_code: string }).error_code;
+  }
+  const match = MERGE_ERROR_CODE_PATTERN.exec(e.message);
+  return match?.[1];
+};
+
+const handleStateQueueGetFailure = (endpoint: string, e: SDK.StateQueueError) =>
+  Effect.gen(function* () {
+    const errorCode = extractStateQueueErrorCode(e);
+    const cause = stringifyErrorCause(e.cause);
+    yield* Effect.logInfo(
+      `GET /${endpoint} - state queue failure: message=${e.message},code=${errorCode ?? "unknown"},cause=${cause}`,
+    );
+    return yield* HttpServerResponse.json(
+      errorCode === undefined
+        ? { error: e.message }
+        : { error: e.message, error_code: errorCode },
+      { status: 500 },
+    );
+  });
 
 const withAdminAccess = <E, R>(
   endpoint: string,
@@ -295,7 +344,9 @@ const getTxStatusHandler = Effect.gen(function* () {
     inImmutable: inImmutable.length > 0,
     inMempool: inMempool.length > 0,
     inProcessedMempool: inProcessedMempool.length > 0,
-    localFinalizationPending: yield* Ref.get(globals.LOCAL_FINALIZATION_PENDING),
+    localFinalizationPending: yield* Ref.get(
+      globals.LOCAL_FINALIZATION_PENDING,
+    ),
   });
 
   if (resolved.status === "not_found") {
@@ -412,6 +463,37 @@ const getBlockHandler = Effect.gen(function* () {
 
 const getInitHandler = Effect.gen(function* () {
   yield* Effect.logInfo(`✨ Initialization request received`);
+  const lucid = yield* Lucid;
+  const contracts = yield* MidgardContracts;
+  const topology = yield* fetchStateQueueTopologyProgram(
+    lucid.api,
+    contracts.stateQueue,
+  );
+  if (topology.initialized) {
+    const details = formatStateQueueTopology(topology);
+    if (!topology.healthy) {
+      yield* Effect.logWarning(
+        `GET /${INIT_ENDPOINT} - Refusing to initialize over invalid state_queue topology (${details}): ${topology.reason ?? "unknown"}`,
+      );
+      return yield* HttpServerResponse.json(
+        {
+          error:
+            "Cannot initialize: configured state_queue policy already has invalid on-chain topology",
+          details,
+          reason: topology.reason ?? "unknown",
+        },
+        { status: 409 },
+      );
+    }
+    yield* Effect.logInfo(
+      `GET /${INIT_ENDPOINT} - Skipping initialization (already initialized): ${details}`,
+    );
+    return yield* HttpServerResponse.json({
+      message: "State queue already initialized",
+      details,
+    });
+  }
+
   const txHash = yield* Initialization.program;
   yield* Genesis.program;
   yield* Effect.logInfo(
@@ -455,7 +537,7 @@ const getCommitEndpoint = Effect.gen(function* () {
 
 const getMergeHandler = Effect.gen(function* () {
   yield* Effect.logInfo(`GET /${MERGE_ENDPOINT} - Manual merge order received`);
-  const result = yield* mergeAction;
+  const result = yield* mergeAction(true);
   yield* Effect.logInfo(
     `GET /${MERGE_ENDPOINT} - Merging confirmed state successful: ${result}`,
   );
@@ -489,7 +571,7 @@ const getMergeHandler = Effect.gen(function* () {
     handleGenericGetFailure(MERGE_ENDPOINT, e),
   ),
   Effect.catchTag("StateQueueError", (e) =>
-    handleGenericGetFailure(MERGE_ENDPOINT, e),
+    handleStateQueueGetFailure(MERGE_ENDPOINT, e),
   ),
 );
 
@@ -559,10 +641,10 @@ const getTxsOfAddressHandler = Effect.gen(function* () {
 const getStateQueueHandler = Effect.gen(function* () {
   yield* Effect.logInfo(`✍  Drawing state queue UTxOs...`);
   const lucid = yield* Lucid;
-  const alwaysSucceeds = yield* AlwaysSucceedsContract;
+  const contracts = yield* MidgardContracts;
   const fetchConfig: SDK.StateQueueFetchConfig = {
-    stateQueuePolicyId: alwaysSucceeds.stateQueue.policyId,
-    stateQueueAddress: alwaysSucceeds.stateQueue.spendingScriptAddress,
+    stateQueuePolicyId: contracts.stateQueue.policyId,
+    stateQueueAddress: contracts.stateQueue.spendingScriptAddress,
   };
   const sortedUTxOs = yield* SDK.fetchSortedStateQueueUTxOsProgram(
     lucid.api,
@@ -662,6 +744,14 @@ const getLogGlobalsHandler = Effect.gen(function* () {
   const UNCONFIRMED_SUBMITTED_BLOCK_TX_HASH: string = yield* Ref.get(
     globals.UNCONFIRMED_SUBMITTED_BLOCK_TX_HASH,
   );
+  const UNCONFIRMED_SUBMITTED_BLOCK_SINCE_MS: number = yield* Ref.get(
+    globals.UNCONFIRMED_SUBMITTED_BLOCK_SINCE_MS,
+  );
+  const unconfirmedSubmittedBlockAgeMs =
+    UNCONFIRMED_SUBMITTED_BLOCK_TX_HASH === "" ||
+    UNCONFIRMED_SUBMITTED_BLOCK_SINCE_MS <= 0
+      ? 0
+      : Date.now() - UNCONFIRMED_SUBMITTED_BLOCK_SINCE_MS;
   const LOCAL_FINALIZATION_PENDING: boolean = yield* Ref.get(
     globals.LOCAL_FINALIZATION_PENDING,
   );
@@ -687,6 +777,7 @@ const getLogGlobalsHandler = Effect.gen(function* () {
   PROCESSED_UNSUBMITTED_TXS_COUNT ⋅⋅⋅ ${PROCESSED_UNSUBMITTED_TXS_COUNT}
   PROCESSED_UNSUBMITTED_TXS_SIZE ⋅⋅⋅⋅ ${PROCESSED_UNSUBMITTED_TXS_SIZE}
   UNCONFIRMED_SUBMITTED_BLOCK_TX_HASH ⋅⋅⋅⋅⋅⋅⋅ ${UNCONFIRMED_SUBMITTED_BLOCK_TX_HASH}
+  UNCONFIRMED_SUBMITTED_BLOCK_SINCE ⋅⋅⋅⋅⋅⋅⋅ ${UNCONFIRMED_SUBMITTED_BLOCK_SINCE_MS > 0 ? new Date(Number(UNCONFIRMED_SUBMITTED_BLOCK_SINCE_MS)).toLocaleString() : "N/A"} (${unconfirmedSubmittedBlockAgeMs}ms)
   LOCAL_FINALIZATION_PENDING ⋅⋅⋅⋅⋅⋅⋅⋅ ${LOCAL_FINALIZATION_PENDING}
   HEARTBEAT_BLOCK_COMMITMENT ⋅⋅ ${new Date(Number(HEARTBEAT_BLOCK_COMMITMENT)).toLocaleString()}
   HEARTBEAT_BLOCK_CONFIRMATION ⋅ ${new Date(Number(HEARTBEAT_BLOCK_CONFIRMATION)).toLocaleString()}
@@ -789,6 +880,74 @@ const postSubmitHandler = (txQueue: Queue.Enqueue<QueuedTxPayload>) =>
     ),
   );
 
+const ensureProtocolInitializedOnStartup = Effect.gen(function* () {
+  const nodeConfig = yield* NodeConfig;
+  const shouldBootstrap = shouldRunGenesisOnStartup({
+    network: nodeConfig.NETWORK,
+    runGenesisOnStartup: nodeConfig.RUN_GENESIS_ON_STARTUP,
+  });
+  if (!shouldBootstrap) {
+    yield* Effect.logInfo(
+      "Skipping protocol initialization on startup (disabled or mainnet).",
+    );
+    return;
+  }
+
+  const lucid = yield* Lucid;
+  const contracts = yield* MidgardContracts;
+  const topology = yield* fetchStateQueueTopologyProgram(
+    lucid.api,
+    contracts.stateQueue,
+  );
+  const details = formatStateQueueTopology(topology);
+  if (topology.initialized) {
+    if (!topology.healthy) {
+      return yield* Effect.fail(
+        new SDK.StateQueueError({
+          message:
+            "Startup initialization check failed: configured state_queue policy has invalid topology",
+          cause: `${details}; reason=${topology.reason ?? "unknown"}`,
+        }),
+      );
+    }
+    yield* Effect.logInfo(
+      `Startup initialization check: state_queue already initialized (${details}).`,
+    );
+    return;
+  }
+
+  yield* Effect.logInfo(
+    "No state_queue anchor UTxO found for configured contracts. Running protocol initialization...",
+  );
+  const initTxHash = yield* Initialization.program;
+  yield* Effect.logInfo(
+    `Startup protocol initialization submitted successfully: ${initTxHash}`,
+  );
+}).pipe(
+  Effect.tapError((e) =>
+    Effect.logError(
+      `Startup protocol initialization failed: ${JSON.stringify(e)}`,
+    ),
+  ),
+  Effect.orDie,
+);
+
+const ensureRealStateQueueActiveOperatorWitnessOnStartup = Effect.gen(
+  function* () {
+    const lucid = yield* Lucid;
+    const contracts = yield* MidgardContracts;
+    yield* lucid.switchToOperatorsMainWallet;
+    yield* ensureActiveOperatorWitnessNodeProgram(lucid.api, contracts);
+  },
+).pipe(
+  Effect.tapError((e) =>
+    Effect.logError(
+      `Active-operator startup bootstrap failed: ${JSON.stringify(e)}`,
+    ),
+  ),
+  Effect.orDie,
+);
+
 const router = (
   txQueue: Queue.Queue<QueuedTxPayload>,
 ): Effect.Effect<
@@ -797,7 +956,7 @@ const router = (
   | Database
   | Lucid
   | NodeConfig
-  | AlwaysSucceedsContract
+  | MidgardContracts
   | HttpServerRequest.HttpServerRequest
   | Globals
 > =>
@@ -810,13 +969,22 @@ const router = (
       HttpRouter.get(`/${ADDRESS_HISTORY_ENDPOINT}`, getTxsOfAddressHandler),
       HttpRouter.get(`/${UTXOS_ENDPOINT}`, getUtxosHandler),
       HttpRouter.get(`/${BLOCK_ENDPOINT}`, getBlockHandler),
-      HttpRouter.get(`/${INIT_ENDPOINT}`, withAdminAccess(INIT_ENDPOINT, getInitHandler)),
+      HttpRouter.get(
+        `/${INIT_ENDPOINT}`,
+        withAdminAccess(INIT_ENDPOINT, getInitHandler),
+      ),
       HttpRouter.get(
         `/${COMMIT_ENDPOINT}`,
         withAdminAccess(COMMIT_ENDPOINT, getCommitEndpoint),
       ),
-      HttpRouter.get(`/${MERGE_ENDPOINT}`, withAdminAccess(MERGE_ENDPOINT, getMergeHandler)),
-      HttpRouter.get(`/${RESET_ENDPOINT}`, withAdminAccess(RESET_ENDPOINT, getResetHandler)),
+      HttpRouter.get(
+        `/${MERGE_ENDPOINT}`,
+        withAdminAccess(MERGE_ENDPOINT, getMergeHandler),
+      ),
+      HttpRouter.get(
+        `/${RESET_ENDPOINT}`,
+        withAdminAccess(RESET_ENDPOINT, getResetHandler),
+      ),
       HttpRouter.get(
         `/${STATE_QUEUE_ENDPOINT}`,
         withAdminAccess(STATE_QUEUE_ENDPOINT, getStateQueueHandler),
@@ -851,13 +1019,28 @@ export const runNode = (withMonitoring?: boolean) =>
 
     yield* InitDB.program.pipe(Effect.provide(Database.layer));
 
+    yield* ensureProtocolInitializedOnStartup;
+    yield* ensureRealStateQueueActiveOperatorWitnessOnStartup;
+
     if (
       shouldRunGenesisOnStartup({
         network: nodeConfig.NETWORK,
         runGenesisOnStartup: nodeConfig.RUN_GENESIS_ON_STARTUP,
       })
     ) {
-      yield* Genesis.program;
+      yield* Effect.logInfo(
+        "Scheduling genesis startup program in background.",
+      );
+      yield* Effect.forkDaemon(
+        Genesis.program.pipe(
+          Effect.tapErrorCause((cause) =>
+            Effect.logError(
+              `Startup genesis program failed: ${Cause.pretty(cause)}`,
+            ),
+          ),
+          Effect.catchAllCause(() => Effect.void),
+        ),
+      );
     } else {
       yield* Effect.logInfo(
         "Skipping genesis on startup (disabled or mainnet).",
@@ -891,7 +1074,7 @@ export const runNode = (withMonitoring?: boolean) =>
         ),
         mergeFiber(mkSchedule(nodeConfig.WAIT_BETWEEN_MERGE_TXS)),
         withMonitoring ? monitorMempoolFiber(mkSchedule(1000)) : Effect.void,
-        txQueueProcessorFiber(mkSchedule(500), txQueue),
+        txQueueProcessorFiber(mkSchedule(500), txQueue, withMonitoring),
       ],
       {
         concurrency: "unbounded",

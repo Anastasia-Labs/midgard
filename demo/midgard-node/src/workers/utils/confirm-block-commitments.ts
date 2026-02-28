@@ -5,6 +5,7 @@ export type WorkerInput = {
   data: {
     firstRun: boolean;
     unconfirmedSubmittedBlock: "" | TxHash;
+    unconfirmedSubmittedBlockSinceMs: number;
   };
 };
 
@@ -17,6 +18,12 @@ export type NoTxForConfirmationOutput = {
   type: "NoTxForConfirmationOutput";
 };
 
+export type StaleUnconfirmedRecoveryOutput = {
+  type: "StaleUnconfirmedRecoveryOutput";
+  staleTxHash: TxHash;
+  blocksUTxO: SerializedStateQueueUTxO;
+};
+
 export type FailedConfirmationOutput = {
   type: "FailedConfirmationOutput";
   error: string;
@@ -25,4 +32,5 @@ export type FailedConfirmationOutput = {
 export type WorkerOutput =
   | SuccessfulConfirmationOutput
   | NoTxForConfirmationOutput
+  | StaleUnconfirmedRecoveryOutput
   | FailedConfirmationOutput;

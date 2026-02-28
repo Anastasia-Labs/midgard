@@ -28,6 +28,7 @@ When making any implementation or operational decision, prefer options that maxi
 - Do not cut corners to make code "work" quickly if it weakens correctness, safety, or operability.
 - Implementations must follow the right approach for a production L2, even when it is more complex or slower to ship.
 - If a temporary workaround is unavoidable, it must be clearly isolated, explicitly documented, and never the default path.
+- Temporary/debug-only code, config, and instrumentation may be used during testing and diagnosis, but must be removed or cleaned up before finalizing work.
 
 ## Priority Order
 

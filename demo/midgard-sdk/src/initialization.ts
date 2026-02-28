@@ -54,14 +54,12 @@ export const incompleteInitializationTxProgram = (
 
     const nonceUtxo = utxos[0];
     const genesisTime = BigInt(Date.now() + VALIDITY_RANGE_BUFFER);
-    let tx = lucid
-      .newTx()
-      .collectFrom([nonceUtxo])
-      .validTo(Number(genesisTime));
+    const tx = lucid.newTx().validTo(Number(genesisTime));
 
     const hubOracleTx = yield* incompleteHubOracleInitTxProgram(lucid, {
       hubOracleMintValidator: params.midgardValidators.hubOracle,
       validators: params.midgardValidators,
+      oneShotNonceUTxO: nonceUtxo,
     });
 
     const stateQueueTx: TxBuilder = yield* incompleteInitStateQueueTxProgram(

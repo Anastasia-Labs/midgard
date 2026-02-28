@@ -32,8 +32,7 @@ export type HubOracleConfig = {
   hubOraclePolicyId: PolicyId;
 };
 
-// TODO: This should ideally come from Aiken env directory.
-export const hubOracleAssetName = "";
+export const hubOracleAssetName = HUB_ORACLE_ASSET_NAME;
 
 export const HubOracleDatumSchema = Data.Object({
   registeredOperators: PolicyIdSchema,
@@ -69,6 +68,7 @@ export const HubOracleDatum = HubOracleDatumSchema as unknown as HubOracleDatum;
 export type HubOracleInitParams = {
   hubOracleMintValidator: MintingValidator;
   validators: HubOracleValidators;
+  oneShotNonceUTxO: UTxO;
 };
 
 export type HubOracleValidators = Omit<
@@ -174,6 +174,7 @@ export const incompleteHubOracleInitTxProgram = (
 
       return lucid
         .newTx()
+        .collectFrom([params.oneShotNonceUTxO])
         .mintAssets(assets, Data.void())
         .pay.ToAddressWithData(
           credentialToAddress(

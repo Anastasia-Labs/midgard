@@ -1,6 +1,6 @@
 import { parentPort, workerData } from "worker_threads";
 import * as SDK from "@al-ft/midgard-sdk";
-import { Cause, Data, Effect, Match, Option, pipe } from "effect";
+import { Cause, Data, Effect, Match, Option, Schedule, pipe } from "effect";
 import {
   WorkerInput,
   WorkerOutput,
@@ -10,7 +10,7 @@ import {
   ConfigError,
   Database,
   Lucid,
-  AlwaysSucceedsContract,
+  MidgardContracts,
   NodeConfig,
   DatabaseInitializationError,
 } from "@/services/index.js";
@@ -28,8 +28,20 @@ import {
   TxSubmitError,
 } from "@/transactions/utils.js";
 import {
+  CML,
   LucidEvolution,
+  Network,
+  TxBuilder,
+  Data as LucidData,
+  Script,
+  UTxO,
+  credentialToAddress,
+  coreToTxOutput,
   fromHex,
+  paymentCredentialOf,
+  scriptHashToCredential,
+  slotToUnixTime,
+  toUnit,
 } from "@lucid-evolution/lucid";
 import {
   MidgardMpt,
@@ -44,11 +56,21 @@ import { FileSystemError, batchProgram } from "@/utils.js";
 import { Columns as TxColumns } from "@/database/utils/tx.js";
 import {
   buildSuccessfulCommitBatches,
+  SuccessfulCommitBatch,
   rootsMatchConfirmedHeader,
   shouldAttemptLocalFinalizationRecovery,
   shouldDeferCommitSubmission,
   selectCommitRoots,
 } from "@/workers/utils/commit-block-planner.js";
+import {
+  ActiveOperatorSpendRedeemerSchema,
+  StateQueueCommitLayout,
+  deriveStateQueueCommitLayout,
+  enumerateCommitLayoutCandidates,
+  encodeActiveOperatorCommitRedeemer,
+  encodeStateQueueCommitRedeemer,
+} from "@/workers/utils/commit-redeemers.js";
+import { resolveAlignedCommitEndTime } from "@/workers/utils/commit-end-time.js";
 import {
   Columns as UserEventsColumns,
   retrieveTimeBoundEntries,
@@ -56,6 +78,9 @@ import {
 import { DatabaseError } from "@/database/utils/common.js";
 
 const BATCH_SIZE = 100;
+const STATE_QUEUE_HEADER_NODE_LOVELACE = 5_000_000n;
+const SKIPPED_SUBMISSION_TRANSFER_RETRIES = 2;
+const SKIPPED_SUBMISSION_TRANSFER_INITIAL_BACKOFF = "250 millis";
 
 class LocalFinalizationPendingError extends Data.TaggedError(
   "LocalFinalizationPendingError",
@@ -146,7 +171,6 @@ const establishEndTimeFromTxRequests = (
     }
   });
 
-// TODO: Application of user events will likely affect this function as well.
 const finalizeCommittedBlockLocally = (
   mempoolTrie: MidgardMpt,
   mempoolTxs: readonly TxTable.EntryWithTimeStamp[],
@@ -154,6 +178,62 @@ const finalizeCommittedBlockLocally = (
   newHeaderHash: string,
 ): Effect.Effect<void, DatabaseError | FileSystemError, Database> =>
   Effect.gen(function* () {
+    const filterAlreadyCommittedTxs = (
+      candidateBatches: readonly SuccessfulCommitBatch[],
+    ): Effect.Effect<
+      readonly SuccessfulCommitBatch[],
+      DatabaseError,
+      Database
+    > =>
+      Effect.gen(function* () {
+        const candidateHashes = Array.from(
+          new Set(
+            candidateBatches
+              .flatMap((batch) => batch.blockTxHashes)
+              .map((hash) => hash.toString("hex")),
+          ),
+        ).map((hex) => Buffer.from(hex, "hex"));
+
+        if (candidateHashes.length <= 0) {
+          return candidateBatches;
+        }
+
+        const existing =
+          yield* ImmutableDB.retrieveTxEntriesByHashes(candidateHashes);
+        if (existing.length <= 0) {
+          return candidateBatches;
+        }
+
+        const alreadyCommitted = new Set(
+          existing.map((entry) => entry[TxColumns.TX_ID].toString("hex")),
+        );
+        yield* Effect.logWarning(
+          `🔹 Filtering ${alreadyCommitted.size} already-committed tx id(s) from local finalization payload before BlocksDB insertion.`,
+        );
+
+        return candidateBatches.map((batch) => {
+          const filteredTxs: TxTable.EntryWithTimeStamp[] = [];
+          const filteredHashes: Buffer[] = [];
+
+          for (let i = 0; i < batch.blockTxHashes.length; i += 1) {
+            const txHash = batch.blockTxHashes[i];
+            if (alreadyCommitted.has(txHash.toString("hex"))) {
+              continue;
+            }
+            filteredHashes.push(txHash);
+            if (i < batch.txsToInsertImmutable.length) {
+              filteredTxs.push(batch.txsToInsertImmutable[i]);
+            }
+          }
+
+          return {
+            txsToInsertImmutable: filteredTxs,
+            blockTxHashes: filteredHashes,
+            clearMempoolTxHashes: batch.clearMempoolTxHashes,
+          };
+        });
+      });
+
     const newHeaderHashBuffer = Buffer.from(fromHex(newHeaderHash));
 
     const processedMempoolTxs = yield* ProcessedMempoolDB.retrieve;
@@ -163,6 +243,7 @@ const finalizeCommittedBlockLocally = (
       processedMempoolTxs,
       Math.floor(BATCH_SIZE / 2),
     );
+    const filteredBatches = yield* filterAlreadyCommittedTxs(batches);
 
     yield* Effect.logInfo(
       "🔹 Inserting included transactions into ImmutableDB and BlocksDB, clearing all the processed txs from MempoolDB and ProcessedMempoolDB, and deleting mempool LevelDB...",
@@ -170,7 +251,7 @@ const finalizeCommittedBlockLocally = (
     yield* Effect.all(
       [
         Effect.forEach(
-          batches,
+          filteredBatches,
           (batch, i) => {
             const clearMempoolProgram =
               batch.clearMempoolTxHashes.length === 0
@@ -180,12 +261,12 @@ const finalizeCommittedBlockLocally = (
                   );
             return Effect.all(
               [
-                ImmutableDB.insertTxs([...batch.txsToInsertImmutable]).pipe(
-                  Effect.withSpan(`immutable-db-insert-batch-${i}`),
-                ),
-                BlocksDB.insert(newHeaderHashBuffer, [...batch.blockTxHashes]).pipe(
-                  Effect.withSpan(`blocks-db-insert-batch-${i}`),
-                ),
+                ImmutableDB.insertTxsValidatedNative([
+                  ...batch.txsToInsertImmutable,
+                ]).pipe(Effect.withSpan(`immutable-db-insert-batch-${i}`)),
+                BlocksDB.insert(newHeaderHashBuffer, [
+                  ...batch.blockTxHashes,
+                ]).pipe(Effect.withSpan(`blocks-db-insert-batch-${i}`)),
                 clearMempoolProgram,
               ],
               { concurrency: "unbounded" },
@@ -200,8 +281,15 @@ const finalizeCommittedBlockLocally = (
       ],
       { concurrency: "unbounded" },
     );
-  });
-
+  }).pipe(
+    Effect.tapError((error) =>
+      Effect.gen(function* () {
+        yield* Effect.logError(
+          `🔹 Local commit finalization failed (header=${newHeaderHash},error=${formatUnknownError(error)})`,
+        );
+      }),
+    ),
+  );
 const successfulSubmissionProgram = (
   mempoolTrie: MidgardMpt,
   mempoolTxs: readonly TxTable.EntryWithTimeStamp[],
@@ -238,11 +326,7 @@ const successfulLocalFinalizationRecoveryProgram = (
   confirmedHeaderHash: string,
   workerInput: WorkerInput,
   sizeOfProcessedTxs: number,
-): Effect.Effect<
-  WorkerOutput,
-  DatabaseError | FileSystemError,
-  Database
-> =>
+): Effect.Effect<WorkerOutput, DatabaseError | FileSystemError, Database> =>
   Effect.gen(function* () {
     yield* finalizeCommittedBlockLocally(
       mempoolTrie,
@@ -262,26 +346,43 @@ const successfulLocalFinalizationRecoveryProgram = (
 const skippedSubmissionProgram = (
   mempoolTxs: readonly TxTable.EntryWithTimeStamp[],
   mempoolTxHashes: Buffer[],
-) =>
-  batchProgram(
-    BATCH_SIZE,
-    mempoolTxs.length,
-    "skipped-submission-db-transfer",
-    (startIndex: number, endIndex: number) => {
-      const batchTxs = mempoolTxs.slice(startIndex, endIndex);
-      const batchHashes = mempoolTxHashes.slice(startIndex, endIndex);
-      return Effect.all(
-        [
-          ProcessedMempoolDB.insertTxs(batchTxs).pipe(
-            Effect.withSpan(`processed-mempool-db-insert-${startIndex}`),
-          ),
-          MempoolDB.clearTxs(batchHashes).pipe(
-            Effect.withSpan(`mempool-db-clear-txs-${startIndex}`),
-          ),
-        ],
-        { concurrency: "unbounded" },
+): Effect.Effect<void, DatabaseError, Database> =>
+  Effect.gen(function* () {
+    if (mempoolTxs.length !== mempoolTxHashes.length) {
+      return yield* Effect.fail(
+        new DatabaseError({
+          message:
+            "Failed to transfer deferred commit payload: tx metadata length mismatch",
+          cause: `mempool_txs=${mempoolTxs.length},mempool_tx_hashes=${mempoolTxHashes.length}`,
+          table: "mempool,processed_mempool",
+        }),
       );
-    },
+    }
+    yield* batchProgram(
+      BATCH_SIZE,
+      mempoolTxs.length,
+      "skipped-submission-db-transfer",
+      (startIndex: number, endIndex: number) =>
+        Effect.gen(function* () {
+          const batchTxs = mempoolTxs.slice(startIndex, endIndex);
+          const batchHashes = mempoolTxHashes.slice(startIndex, endIndex);
+          // Order matters: insert to processed_mempool first, then clear mempool.
+          yield* ProcessedMempoolDB.insertTxs(batchTxs).pipe(
+            Effect.withSpan(`processed-mempool-db-insert-${startIndex}`),
+          );
+          yield* MempoolDB.clearTxs(batchHashes).pipe(
+            Effect.withSpan(`mempool-db-clear-txs-${startIndex}`),
+          );
+        }),
+      1,
+    );
+  }).pipe(
+    Effect.retry(
+      Schedule.compose(
+        Schedule.exponential(SKIPPED_SUBMISSION_TRANSFER_INITIAL_BACKOFF),
+        Schedule.recurs(SKIPPED_SUBMISSION_TRANSFER_RETRIES),
+      ),
+    ),
   );
 
 const failedSubmissionProgram = (
@@ -318,8 +419,9 @@ const recoverSubmittedTxHashByHeaderProgram = (
       lucid.api,
       fetchConfig,
     );
-    const latestHeader =
-      yield* SDK.getHeaderFromStateQueueDatum(latestBlock.datum);
+    const latestHeader = yield* SDK.getHeaderFromStateQueueDatum(
+      latestBlock.datum,
+    );
     const latestHeaderHash = yield* SDK.hashBlockHeader(latestHeader);
     if (latestHeaderHash === expectedHeaderHash) {
       yield* Effect.logWarning(
@@ -375,8 +477,1243 @@ const userEventsProgram = (
     }
   });
 
+type RealStateQueueWitnessContext = {
+  readonly operatorKeyHash: string;
+  readonly schedulerRefInput: UTxO;
+  readonly hubOracleRefInput: UTxO;
+  readonly activeOperatorInput: UTxO & { datum: string };
+  readonly activeOperatorsSpendingScript: Script;
+  readonly chainedWalletOutputs: readonly UTxO[];
+  readonly consumedWalletFeeInputs: readonly UTxO[];
+};
+
+type SchedulerAlignmentResult = {
+  readonly schedulerRefInput: UTxO;
+  readonly chainedWalletOutputs: readonly UTxO[];
+  readonly consumedWalletFeeInputs: readonly UTxO[];
+};
+
+const SCHEDULER_REFRESH_POLL_INTERVAL = "2 seconds";
+const SCHEDULER_REFRESH_MAX_POLLS = 30;
+const REAL_STATE_QUEUE_SCHEDULER_ASSET_NAME = "";
+const MIN_SCHEDULER_WITNESS_LOVELACE = 5_000_000n;
+
+const compareOutRefs = (a: UTxO, b: UTxO): number => {
+  const txHashComparison = a.txHash.localeCompare(b.txHash);
+  if (txHashComparison !== 0) {
+    return txHashComparison;
+  }
+  return a.outputIndex - b.outputIndex;
+};
+
+const selectFeeInput = (
+  walletUtxos: readonly UTxO[],
+): Effect.Effect<UTxO, SDK.StateQueueError> =>
+  Effect.gen(function* () {
+    const sorted = [...walletUtxos].sort((a, b) => {
+      const lovelaceA = a.assets.lovelace ?? 0n;
+      const lovelaceB = b.assets.lovelace ?? 0n;
+      if (lovelaceA === lovelaceB) {
+        return compareOutRefs(a, b);
+      }
+      return lovelaceA > lovelaceB ? -1 : 1;
+    });
+    const feeInput = sorted[0];
+    if (feeInput === undefined) {
+      return yield* Effect.fail(
+        new SDK.StateQueueError({
+          message:
+            "No wallet UTxO available to fund real state_queue commit tx",
+          cause: "empty wallet",
+        }),
+      );
+    }
+    return feeInput;
+  });
+
+type ProviderRedeemerTag =
+  | "spend"
+  | "mint"
+  | "publish"
+  | "withdraw"
+  | "vote"
+  | "propose";
+
+type RedeemerPointer = {
+  readonly tag: number;
+  readonly index: bigint;
+};
+
+type IndexedTxOutput = ReturnType<typeof coreToTxOutput> & {
+  readonly index: number;
+};
+
+const DUMMY_REDEEMER_EX_UNITS = {
+  mem: 1_000_000,
+  steps: 1_000_000,
+} as const;
+
+const assetsEqual = (
+  left: Readonly<Record<string, bigint>>,
+  right: Readonly<Record<string, bigint>>,
+): boolean => {
+  const keys = new Set([...Object.keys(left), ...Object.keys(right)]);
+  for (const key of keys) {
+    if ((left[key] ?? 0n) !== (right[key] ?? 0n)) {
+      return false;
+    }
+  }
+  return true;
+};
+
+const outRefLabel = (utxo: UTxO): string =>
+  `${utxo.txHash}#${utxo.outputIndex}`;
+
+const dedupeUtxosByOutRef = (utxos: readonly UTxO[]): readonly UTxO[] => {
+  const byOutRef = new Map<string, UTxO>();
+  for (const utxo of utxos) {
+    const label = outRefLabel(utxo);
+    if (!byOutRef.has(label)) {
+      byOutRef.set(label, utxo);
+    }
+  }
+  return [...byOutRef.values()];
+};
+
+const extractAddressOutputsFromSubmittedTx = (
+  tx: CML.Transaction,
+  txHash: string,
+  address: string,
+): readonly UTxO[] => {
+  const outputs = tx.body().outputs();
+  const matching: UTxO[] = [];
+  for (let outputIndex = 0; outputIndex < outputs.len(); outputIndex += 1) {
+    const txOutput = coreToTxOutput(outputs.get(outputIndex));
+    if (txOutput.address !== address) {
+      continue;
+    }
+    matching.push({
+      txHash,
+      outputIndex,
+      ...txOutput,
+    });
+  }
+  return matching;
+};
+
+const findInputIndexByOutRef = (
+  inputs: CML.TransactionInputList,
+  target: UTxO,
+): number | undefined => {
+  for (let index = 0; index < inputs.len(); index += 1) {
+    const input = inputs.get(index);
+    if (
+      input.transaction_id().to_hex() === target.txHash &&
+      Number(input.index()) === target.outputIndex
+    ) {
+      return index;
+    }
+  }
+  return undefined;
+};
+
+const collectIndexedOutputs = (
+  outputs: CML.TransactionOutputList,
+): readonly IndexedTxOutput[] => {
+  const indexed: IndexedTxOutput[] = [];
+  for (let index = 0; index < outputs.len(); index += 1) {
+    indexed.push({
+      index,
+      ...coreToTxOutput(outputs.get(index)),
+    });
+  }
+  return indexed;
+};
+
+const getRedeemerPointersInContextOrder = (
+  tx: CML.Transaction,
+): readonly RedeemerPointer[] => {
+  const redeemers = tx.witness_set().redeemers();
+  if (redeemers === undefined) {
+    return [];
+  }
+
+  const legacy = redeemers.as_arr_legacy_redeemer();
+  if (legacy !== undefined) {
+    const pointers: RedeemerPointer[] = [];
+    for (let i = 0; i < legacy.len(); i += 1) {
+      const redeemer = legacy.get(i);
+      pointers.push({
+        tag: redeemer.tag(),
+        index: redeemer.index(),
+      });
+    }
+    return pointers;
+  }
+
+  const map = redeemers.as_map_redeemer_key_to_redeemer_val();
+  if (map === undefined) {
+    return [];
+  }
+  const pointers: RedeemerPointer[] = [];
+  const keys = map.keys();
+  for (let i = 0; i < keys.len(); i += 1) {
+    const key = keys.get(i);
+    pointers.push({
+      tag: key.tag(),
+      index: key.index(),
+    });
+  }
+  return pointers;
+};
+
+const toProviderRedeemerTag = (tag: number): ProviderRedeemerTag => {
+  switch (tag) {
+    case CML.RedeemerTag.Spend:
+      return "spend";
+    case CML.RedeemerTag.Mint:
+      return "mint";
+    case CML.RedeemerTag.Cert:
+      return "publish";
+    case CML.RedeemerTag.Reward:
+      return "withdraw";
+    case CML.RedeemerTag.Voting:
+      return "vote";
+    case CML.RedeemerTag.Proposing:
+      return "propose";
+    default:
+      throw new Error(`Unsupported redeemer tag: ${tag}`);
+  }
+};
+
+const withStubbedProviderEvaluation = async <A>(
+  lucid: LucidEvolution,
+  run: () => Promise<A>,
+): Promise<A> => {
+  const provider = lucid.config().provider as {
+    evaluateTx?: (
+      tx: string,
+      additionalUTxOs?: readonly UTxO[],
+    ) => Promise<
+      readonly {
+        redeemer_tag: ProviderRedeemerTag;
+        redeemer_index: number;
+        ex_units: { mem: number; steps: number };
+      }[]
+    >;
+  };
+  if (typeof provider.evaluateTx !== "function") {
+    return run();
+  }
+
+  const originalEvaluateTx = provider.evaluateTx.bind(provider);
+  provider.evaluateTx = async (txCbor) => {
+    const tx = CML.Transaction.from_cbor_hex(txCbor);
+    return getRedeemerPointersInContextOrder(tx).map((pointer) => ({
+      redeemer_tag: toProviderRedeemerTag(pointer.tag),
+      redeemer_index: Number(pointer.index),
+      ex_units: DUMMY_REDEEMER_EX_UNITS,
+    }));
+  };
+  try {
+    return await run();
+  } finally {
+    provider.evaluateTx = originalEvaluateTx;
+  }
+};
+
+const deriveCommitLayoutFromDraftTx = ({
+  tx,
+  schedulerRefInput,
+  hubOracleRefInput,
+  activeOperatorInput,
+  stateQueueAddress,
+  headerNodeUnit,
+  headerNodeDatum,
+  previousHeaderNodeDatum,
+}: {
+  readonly tx: CML.Transaction;
+  readonly schedulerRefInput: UTxO;
+  readonly hubOracleRefInput: UTxO;
+  readonly activeOperatorInput: UTxO;
+  readonly stateQueueAddress: string;
+  readonly headerNodeUnit: string;
+  readonly headerNodeDatum: string;
+  readonly previousHeaderNodeDatum: string;
+}): StateQueueCommitLayout => {
+  const txBody = tx.body();
+  const inputList = txBody.inputs();
+  const referenceInputList = txBody.reference_inputs();
+  const indexedOutputs = collectIndexedOutputs(txBody.outputs());
+
+  const activeNodeInputIndex = findInputIndexByOutRef(
+    inputList,
+    activeOperatorInput,
+  );
+  if (activeNodeInputIndex === undefined) {
+    throw new Error(
+      `Unable to find active-operator input ${outRefLabel(activeOperatorInput)} in balanced draft tx body inputs`,
+    );
+  }
+
+  if (referenceInputList === undefined) {
+    throw new Error(
+      "Balanced draft tx body did not include reference inputs for scheduler witness",
+    );
+  }
+  const schedulerRefInputIndex = findInputIndexByOutRef(
+    referenceInputList,
+    schedulerRefInput,
+  );
+  if (schedulerRefInputIndex === undefined) {
+    throw new Error(
+      `Unable to find scheduler reference input ${outRefLabel(schedulerRefInput)} in balanced draft tx reference inputs`,
+    );
+  }
+  const hubOracleRefInputIndex = findInputIndexByOutRef(
+    referenceInputList,
+    hubOracleRefInput,
+  );
+  if (hubOracleRefInputIndex === undefined) {
+    throw new Error(
+      `Unable to find hub-oracle reference input ${outRefLabel(hubOracleRefInput)} in balanced draft tx reference inputs`,
+    );
+  }
+
+  const headerNodeOutputCandidates = indexedOutputs.filter(
+    (output) =>
+      output.address === stateQueueAddress &&
+      output.datum === headerNodeDatum &&
+      (output.assets[headerNodeUnit] ?? 0n) === 1n,
+  );
+  if (headerNodeOutputCandidates.length !== 1) {
+    throw new Error(
+      `Expected exactly one header-node output at ${stateQueueAddress} with datum ${headerNodeDatum.slice(0, 24)}..., found ${headerNodeOutputCandidates.length}`,
+    );
+  }
+  const headerNodeOutputIndex = headerNodeOutputCandidates[0].index;
+
+  const previousHeaderOutputCandidates = indexedOutputs.filter(
+    (output) =>
+      output.address === stateQueueAddress &&
+      output.datum === previousHeaderNodeDatum,
+  );
+  if (previousHeaderOutputCandidates.length !== 1) {
+    throw new Error(
+      `Expected exactly one previous-header output at ${stateQueueAddress} with datum ${previousHeaderNodeDatum.slice(0, 24)}..., found ${previousHeaderOutputCandidates.length}`,
+    );
+  }
+  const previousHeaderNodeOutputIndex = previousHeaderOutputCandidates[0].index;
+
+  const activeNodeOutputCandidates = indexedOutputs.filter(
+    (output) =>
+      output.address === activeOperatorInput.address &&
+      assetsEqual(output.assets, activeOperatorInput.assets),
+  );
+  if (activeNodeOutputCandidates.length !== 1) {
+    throw new Error(
+      `Expected exactly one active-operator output at ${activeOperatorInput.address} with unchanged assets, found ${activeNodeOutputCandidates.length}`,
+    );
+  }
+  const activeNodeOutputIndex = activeNodeOutputCandidates[0].index;
+
+  const redeemerPointers = getRedeemerPointersInContextOrder(tx);
+  if (redeemerPointers.length <= 0) {
+    throw new Error("Balanced draft tx did not contain redeemers");
+  }
+  const activeOperatorSpendRedeemerIndex = redeemerPointers.findIndex(
+    (pointer) =>
+      pointer.tag === CML.RedeemerTag.Spend &&
+      pointer.index === BigInt(activeNodeInputIndex),
+  );
+  if (activeOperatorSpendRedeemerIndex < 0) {
+    throw new Error(
+      `Unable to find active-operator spend redeemer for input index ${activeNodeInputIndex}`,
+    );
+  }
+  const mintRedeemerCandidates = redeemerPointers
+    .map((pointer, index) => ({ pointer, index }))
+    .filter(({ pointer }) => pointer.tag === CML.RedeemerTag.Mint);
+  if (mintRedeemerCandidates.length !== 1) {
+    throw new Error(
+      `Expected exactly one mint redeemer pointer for state_queue commit, found ${mintRedeemerCandidates.length}`,
+    );
+  }
+  const stateQueueRedeemerIndex = mintRedeemerCandidates[0].index;
+
+  return {
+    schedulerRefInputIndex: BigInt(schedulerRefInputIndex),
+    activeNodeInputIndex: BigInt(activeNodeInputIndex),
+    headerNodeOutputIndex: BigInt(headerNodeOutputIndex),
+    previousHeaderNodeOutputIndex: BigInt(previousHeaderNodeOutputIndex),
+    activeOperatorsRedeemerIndex: BigInt(activeOperatorSpendRedeemerIndex),
+    activeNodeOutputIndex: BigInt(activeNodeOutputIndex),
+    hubOracleRefInputIndex: BigInt(hubOracleRefInputIndex),
+    stateQueueRedeemerIndex: BigInt(stateQueueRedeemerIndex),
+  };
+};
+
+const redeemerTagLabel = (tag: number): string => {
+  switch (tag) {
+    case CML.RedeemerTag.Spend:
+      return "spend";
+    case CML.RedeemerTag.Mint:
+      return "mint";
+    case CML.RedeemerTag.Cert:
+      return "cert";
+    case CML.RedeemerTag.Reward:
+      return "reward";
+    case CML.RedeemerTag.Voting:
+      return "vote";
+    case CML.RedeemerTag.Proposing:
+      return "propose";
+    default:
+      return `unknown(${tag})`;
+  }
+};
+
+const describeUtxoAssets = (
+  assets: Readonly<Record<string, bigint>>,
+): string => {
+  const nonAda = Object.entries(assets)
+    .filter(([unit, amount]) => unit !== "lovelace" && amount > 0n)
+    .map(([unit, amount]) => `${unit}:${amount.toString()}`);
+  return `lovelace=${(assets.lovelace ?? 0n).toString()},nonAda=${
+    nonAda.length > 0 ? nonAda.join("|") : "none"
+  }`;
+};
+
+const findTxInputAtIndex = (
+  inputs: CML.TransactionInputList,
+  index: bigint,
+): string | undefined => {
+  const i = Number(index);
+  if (!Number.isSafeInteger(i) || i < 0 || i >= inputs.len()) {
+    return undefined;
+  }
+  const input = inputs.get(i);
+  return `${input.transaction_id().to_hex()}#${input.index().toString()}`;
+};
+
+const findTxReferenceInputAtIndex = (
+  referenceInputs: CML.TransactionInputList | undefined,
+  index: bigint,
+): string | undefined => {
+  if (referenceInputs === undefined) {
+    return undefined;
+  }
+  const i = Number(index);
+  if (!Number.isSafeInteger(i) || i < 0 || i >= referenceInputs.len()) {
+    return undefined;
+  }
+  const input = referenceInputs.get(i);
+  return `${input.transaction_id().to_hex()}#${input.index().toString()}`;
+};
+
+const listRequiredSigners = (tx: CML.Transaction): readonly string[] => {
+  const signers = tx.body().required_signers();
+  if (signers === undefined) {
+    return [];
+  }
+  const hashes: string[] = [];
+  for (let i = 0; i < signers.len(); i += 1) {
+    hashes.push(signers.get(i).to_hex());
+  }
+  return hashes;
+};
+
+const slotToUnixTimeForLucid = (
+  lucid: LucidEvolution,
+  slot: number,
+): number | undefined => {
+  const network = lucid.config().network;
+  if (network === "Custom") {
+    const provider = lucid.config().provider as {
+      time?: number;
+      slot?: number;
+    };
+    if (
+      typeof provider.time !== "number" ||
+      typeof provider.slot !== "number"
+    ) {
+      return undefined;
+    }
+    const slotLength = 1000;
+    const zeroTime = provider.time - provider.slot * slotLength;
+    return zeroTime + slot * slotLength;
+  }
+  return slotToUnixTime(network as Exclude<Network, "Custom">, slot);
+};
+
+const findRedeemerDataCbor = (
+  tx: CML.Transaction,
+  pointer: RedeemerPointer | undefined,
+): string | undefined => {
+  if (pointer === undefined) {
+    return undefined;
+  }
+  const redeemers = tx.witness_set().redeemers();
+  if (redeemers === undefined) {
+    return undefined;
+  }
+  const legacy = redeemers.as_arr_legacy_redeemer();
+  if (legacy !== undefined) {
+    for (let i = 0; i < legacy.len(); i += 1) {
+      const redeemer = legacy.get(i);
+      if (
+        redeemer.tag() === pointer.tag &&
+        redeemer.index() === pointer.index
+      ) {
+        return redeemer.data().to_cbor_hex();
+      }
+    }
+    return undefined;
+  }
+  const map = redeemers.as_map_redeemer_key_to_redeemer_val();
+  if (map === undefined) {
+    return undefined;
+  }
+  const keys = map.keys();
+  for (let i = 0; i < keys.len(); i += 1) {
+    const key = keys.get(i);
+    if (key.tag() !== pointer.tag || key.index() !== pointer.index) {
+      continue;
+    }
+    const value = map.get(key);
+    return value?.data().to_cbor_hex();
+  }
+  return undefined;
+};
+
+const buildRealCommitDraftDiagnostics = ({
+  tx,
+  layout,
+  operatorKeyHash,
+  latestBlockInput,
+  schedulerRefInput,
+  hubOracleRefInput,
+  activeOperatorInput,
+  stateQueueAddress,
+  headerNodeUnit,
+  appendedNodeDatumCbor,
+  previousHeaderNodeDatumCbor,
+  schedulerPolicyId,
+  hubOraclePolicyId,
+  activeOperatorsPolicyId,
+  txValidityUpperBoundSlot,
+  txValidityUpperBoundUnixTime,
+}: {
+  readonly tx: CML.Transaction;
+  readonly layout: StateQueueCommitLayout;
+  readonly operatorKeyHash: string;
+  readonly latestBlockInput: UTxO;
+  readonly schedulerRefInput: UTxO;
+  readonly hubOracleRefInput: UTxO;
+  readonly activeOperatorInput: UTxO;
+  readonly stateQueueAddress: string;
+  readonly headerNodeUnit: string;
+  readonly appendedNodeDatumCbor: string;
+  readonly previousHeaderNodeDatumCbor: string;
+  readonly schedulerPolicyId: string;
+  readonly hubOraclePolicyId: string;
+  readonly activeOperatorsPolicyId: string;
+  readonly txValidityUpperBoundSlot: string | undefined;
+  readonly txValidityUpperBoundUnixTime: string | undefined;
+}): Record<string, unknown> => {
+  const txBody = tx.body();
+  const inputs = txBody.inputs();
+  const referenceInputs = txBody.reference_inputs();
+  const outputs = collectIndexedOutputs(txBody.outputs());
+  const redeemerPointers = getRedeemerPointersInContextOrder(tx);
+  const requiredSigners = listRequiredSigners(tx);
+
+  const expectedActiveUnit = toUnit(
+    activeOperatorsPolicyId,
+    SDK.NODE_ASSET_NAME + operatorKeyHash,
+  );
+  const expectedSchedulerUnit = toUnit(
+    schedulerPolicyId,
+    REAL_STATE_QUEUE_SCHEDULER_ASSET_NAME,
+  );
+  const expectedHubOracleUnit = toUnit(
+    hubOraclePolicyId,
+    SDK.HUB_ORACLE_ASSET_NAME,
+  );
+  const headerOutputIndex = Number(layout.headerNodeOutputIndex);
+  const previousHeaderOutputIndex = Number(
+    layout.previousHeaderNodeOutputIndex,
+  );
+  const activeRedeemerLayoutIndex = Number(layout.activeOperatorsRedeemerIndex);
+  const stateQueueRedeemerLayoutIndex = Number(layout.stateQueueRedeemerIndex);
+  const activeRedeemerPointer =
+    activeRedeemerLayoutIndex >= 0 &&
+    activeRedeemerLayoutIndex < redeemerPointers.length
+      ? redeemerPointers[activeRedeemerLayoutIndex]
+      : undefined;
+  const stateQueueRedeemerPointer =
+    stateQueueRedeemerLayoutIndex >= 0 &&
+    stateQueueRedeemerLayoutIndex < redeemerPointers.length
+      ? redeemerPointers[stateQueueRedeemerLayoutIndex]
+      : undefined;
+  const activeRedeemerCbor = findRedeemerDataCbor(tx, activeRedeemerPointer);
+  const stateQueueRedeemerCbor = findRedeemerDataCbor(
+    tx,
+    stateQueueRedeemerPointer,
+  );
+  const headerOutput = outputs.find(
+    (output) => output.index === headerOutputIndex,
+  );
+  const previousHeaderOutput = outputs.find(
+    (output) => output.index === previousHeaderOutputIndex,
+  );
+  const parsedHeaderDatum =
+    headerOutput === undefined || headerOutput.datum == null
+      ? undefined
+      : (() => {
+          try {
+            const nodeDatum = LucidData.from(
+              headerOutput.datum,
+              SDK.StateQueueDatum,
+            );
+            const header = LucidData.castFrom(nodeDatum.data, SDK.Header);
+            return {
+              startTime: header.startTime.toString(),
+              endTime: header.endTime.toString(),
+              operatorVkey: header.operatorVkey,
+            };
+          } catch {
+            return undefined;
+          }
+        })();
+  const parsedPreviousDatum =
+    previousHeaderOutput === undefined || previousHeaderOutput.datum == null
+      ? undefined
+      : (() => {
+          try {
+            const nodeDatum = LucidData.from(
+              previousHeaderOutput.datum,
+              SDK.StateQueueDatum,
+            );
+            try {
+              const header = LucidData.castFrom(nodeDatum.data, SDK.Header);
+              return {
+                kind: "Header" as const,
+                endTime: header.endTime.toString(),
+              };
+            } catch {
+              const confirmedState = LucidData.castFrom(
+                nodeDatum.data,
+                SDK.ConfirmedState,
+              );
+              return {
+                kind: "ConfirmedState" as const,
+                endTime: confirmedState.endTime.toString(),
+              };
+            }
+          } catch {
+            return undefined;
+          }
+        })();
+  const parsedSchedulerDatum =
+    schedulerRefInput.datum == null
+      ? undefined
+      : (() => {
+          try {
+            const schedulerDatum = LucidData.from(
+              schedulerRefInput.datum,
+              SDK.SchedulerDatum,
+            );
+            return {
+              operator: schedulerDatum.operator,
+              startTime: schedulerDatum.startTime.toString(),
+            };
+          } catch {
+            return undefined;
+          }
+        })();
+
+  return {
+    requiredSigners,
+    operatorSignerPresent: requiredSigners.includes(operatorKeyHash),
+    inputs: [...Array(inputs.len()).keys()].map((i) => {
+      const input = inputs.get(i);
+      return `${i}:${input.transaction_id().to_hex()}#${input.index().toString()}`;
+    }),
+    referenceInputs:
+      referenceInputs === undefined
+        ? []
+        : [...Array(referenceInputs.len()).keys()].map((i) => {
+            const input = referenceInputs.get(i);
+            return `${i}:${input.transaction_id().to_hex()}#${input.index().toString()}`;
+          }),
+    expectedLatestBlockInput: outRefLabel(latestBlockInput),
+    expectedSchedulerRefInput: outRefLabel(schedulerRefInput),
+    expectedHubOracleRefInput: outRefLabel(hubOracleRefInput),
+    expectedActiveOperatorInput: outRefLabel(activeOperatorInput),
+    layout: {
+      schedulerRefInputIndex: layout.schedulerRefInputIndex.toString(),
+      activeNodeInputIndex: layout.activeNodeInputIndex.toString(),
+      headerNodeOutputIndex: layout.headerNodeOutputIndex.toString(),
+      previousHeaderNodeOutputIndex:
+        layout.previousHeaderNodeOutputIndex.toString(),
+      activeOperatorsRedeemerIndex:
+        layout.activeOperatorsRedeemerIndex.toString(),
+      activeNodeOutputIndex: layout.activeNodeOutputIndex.toString(),
+      hubOracleRefInputIndex: layout.hubOracleRefInputIndex.toString(),
+      stateQueueRedeemerIndex: layout.stateQueueRedeemerIndex.toString(),
+    },
+    activeNodeInputAtLayoutIndex: findTxInputAtIndex(
+      inputs,
+      layout.activeNodeInputIndex,
+    ),
+    schedulerRefInputAtLayoutIndex: findTxReferenceInputAtIndex(
+      referenceInputs,
+      layout.schedulerRefInputIndex,
+    ),
+    hubOracleRefInputAtLayoutIndex: findTxReferenceInputAtIndex(
+      referenceInputs,
+      layout.hubOracleRefInputIndex,
+    ),
+    activeRedeemerPointer:
+      activeRedeemerPointer === undefined
+        ? "missing"
+        : `${redeemerTagLabel(activeRedeemerPointer.tag)}:${activeRedeemerPointer.index.toString()}`,
+    stateQueueRedeemerPointer:
+      stateQueueRedeemerPointer === undefined
+        ? "missing"
+        : `${redeemerTagLabel(stateQueueRedeemerPointer.tag)}:${stateQueueRedeemerPointer.index.toString()}`,
+    activeRedeemerShape:
+      activeRedeemerCbor === undefined
+        ? "missing"
+        : (() => {
+            try {
+              return LucidData.from(
+                activeRedeemerCbor,
+                ActiveOperatorSpendRedeemerSchema,
+              );
+            } catch {
+              return `decode-failed:${activeRedeemerCbor}`;
+            }
+          })(),
+    stateQueueRedeemerShape:
+      stateQueueRedeemerCbor === undefined
+        ? "missing"
+        : (() => {
+            try {
+              return LucidData.from(
+                stateQueueRedeemerCbor,
+                SDK.StateQueueRedeemer,
+              );
+            } catch {
+              return `decode-failed:${stateQueueRedeemerCbor}`;
+            }
+          })(),
+    headerTiming: {
+      header: parsedHeaderDatum,
+      previous: parsedPreviousDatum,
+      startMatchesPreviousEnd:
+        parsedHeaderDatum === undefined || parsedPreviousDatum === undefined
+          ? undefined
+          : parsedHeaderDatum.startTime === parsedPreviousDatum.endTime,
+      endMatchesTxValidityUpperBound:
+        parsedHeaderDatum === undefined ||
+        txValidityUpperBoundUnixTime === undefined
+          ? undefined
+          : parsedHeaderDatum.endTime === txValidityUpperBoundUnixTime,
+      txValidityUpperBoundSlot: txValidityUpperBoundSlot ?? "missing",
+      txValidityUpperBoundUnixTime: txValidityUpperBoundUnixTime ?? "missing",
+    },
+    schedulerDatum: parsedSchedulerDatum,
+    redeemerPointersInOrder: redeemerPointers.map(
+      (pointer, index) =>
+        `${index}:${redeemerTagLabel(pointer.tag)}:${pointer.index.toString()}`,
+    ),
+    headerOutputAtLayoutIndex:
+      headerOutput === undefined
+        ? "missing"
+        : {
+            address: headerOutput.address,
+            datumMatches: headerOutput.datum === appendedNodeDatumCbor,
+            stateQueueTokenQty: (
+              headerOutput.assets[headerNodeUnit] ?? 0n
+            ).toString(),
+            assets: describeUtxoAssets(headerOutput.assets),
+          },
+    previousHeaderOutputAtLayoutIndex:
+      previousHeaderOutput === undefined
+        ? "missing"
+        : {
+            address: previousHeaderOutput.address,
+            datumMatches:
+              previousHeaderOutput.datum === previousHeaderNodeDatumCbor,
+            assets: describeUtxoAssets(previousHeaderOutput.assets),
+            matchesLatestInputAssets: assetsEqual(
+              previousHeaderOutput.assets,
+              latestBlockInput.assets,
+            ),
+          },
+    latestBlockInputAssets: describeUtxoAssets(latestBlockInput.assets),
+    activeOperatorInputAssets: describeUtxoAssets(activeOperatorInput.assets),
+    activeOperatorExpectedTokenQty: (
+      activeOperatorInput.assets[expectedActiveUnit] ?? 0n
+    ).toString(),
+    schedulerRefInputAssets: describeUtxoAssets(schedulerRefInput.assets),
+    schedulerExpectedTokenQty: (
+      schedulerRefInput.assets[expectedSchedulerUnit] ?? 0n
+    ).toString(),
+    hubOracleRefInputAssets: describeUtxoAssets(hubOracleRefInput.assets),
+    hubOracleExpectedTokenQty: (
+      hubOracleRefInput.assets[expectedHubOracleUnit] ?? 0n
+    ).toString(),
+    stateQueueAddress,
+  };
+};
+
+const getOperatorKeyHash = (
+  lucid: LucidEvolution,
+): Effect.Effect<string, SDK.StateQueueError> =>
+  Effect.gen(function* () {
+    const operatorAddress = yield* Effect.tryPromise({
+      try: () => lucid.wallet().address(),
+      catch: (cause) =>
+        new SDK.StateQueueError({
+          message: "Failed to resolve operator wallet address",
+          cause,
+        }),
+    });
+    const paymentCredential = paymentCredentialOf(operatorAddress);
+    if (paymentCredential?.type !== "Key") {
+      return yield* Effect.fail(
+        new SDK.StateQueueError({
+          message: "Operator wallet does not have a key payment credential",
+          cause: operatorAddress,
+        }),
+      );
+    }
+    return paymentCredential.hash;
+  });
+
+const selectActiveOperatorInput = (
+  activeOperatorUtxos: readonly UTxO[],
+  operatorKeyHash: string,
+): Effect.Effect<UTxO, SDK.StateQueueError> =>
+  Effect.gen(function* () {
+    for (const utxo of activeOperatorUtxos) {
+      const nodeDatumEither = yield* Effect.either(
+        SDK.getNodeDatumFromUTxO(utxo),
+      );
+      if (nodeDatumEither._tag === "Left") {
+        continue;
+      }
+      if (
+        nodeDatumEither.right.key !== "Empty" &&
+        nodeDatumEither.right.key.Key.key === operatorKeyHash
+      ) {
+        return utxo;
+      }
+    }
+    return yield* Effect.fail(
+      new SDK.StateQueueError({
+        message:
+          "No active-operators node for current operator key hash; cannot build real state_queue commit witness",
+        cause: operatorKeyHash,
+      }),
+    );
+  });
+
+const getSchedulerDatumFromUTxO = (
+  schedulerUtxo: UTxO,
+): Effect.Effect<SDK.SchedulerDatum, SDK.StateQueueError> =>
+  Effect.gen(function* () {
+    if (schedulerUtxo.datum == null) {
+      return yield* Effect.fail(
+        new SDK.StateQueueError({
+          message: "Scheduler UTxO must include inline datum",
+          cause: `${schedulerUtxo.txHash}#${schedulerUtxo.outputIndex}`,
+        }),
+      );
+    }
+    return yield* Effect.try({
+      try: () => LucidData.from(schedulerUtxo.datum!, SDK.SchedulerDatum),
+      catch: (cause) =>
+        new SDK.StateQueueError({
+          message: "Failed to decode scheduler datum",
+          cause,
+        }),
+    });
+  });
+
+const ensureRealSchedulerWitnessUtxo = (
+  lucid: LucidEvolution,
+  contracts: SDK.MidgardValidators,
+  operatorKeyHash: string,
+  targetStartTime: bigint,
+  schedulerUtxos: readonly UTxO[],
+): Effect.Effect<UTxO, SDK.StateQueueError | TxSignError | TxSubmitError> =>
+  Effect.gen(function* () {
+    const schedulerWitnessUnit = toUnit(
+      contracts.scheduler.policyId,
+      REAL_STATE_QUEUE_SCHEDULER_ASSET_NAME,
+    );
+    const existingWitness = [...schedulerUtxos]
+      .filter((utxo) => (utxo.assets[schedulerWitnessUnit] ?? 0n) > 0n)
+      .sort(compareOutRefs)[0];
+    if (existingWitness !== undefined) {
+      return existingWitness;
+    }
+
+    yield* Effect.logInfo(
+      "🔹 Scheduler witness token with empty asset-name missing; creating one for real state_queue commits.",
+    );
+    const walletUtxos = yield* Effect.tryPromise({
+      try: () => lucid.wallet().getUtxos(),
+      catch: (cause) =>
+        new SDK.StateQueueError({
+          message:
+            "Failed to fetch wallet UTxOs for scheduler witness bootstrap",
+          cause,
+        }),
+    });
+    const feeInput = yield* selectFeeInput(walletUtxos);
+    const bootstrapDatum: SDK.SchedulerDatum = {
+      operator: operatorKeyHash,
+      startTime: targetStartTime,
+    };
+    const bootstrapTx = yield* Effect.tryPromise({
+      try: () =>
+        lucid
+          .newTx()
+          .collectFrom([feeInput])
+          .mintAssets({ [schedulerWitnessUnit]: 1n }, LucidData.void())
+          .pay.ToContract(
+            contracts.scheduler.spendingScriptAddress,
+            {
+              kind: "inline",
+              value: LucidData.to(bootstrapDatum, SDK.SchedulerDatum),
+            },
+            {
+              lovelace: MIN_SCHEDULER_WITNESS_LOVELACE,
+              [schedulerWitnessUnit]: 1n,
+            },
+          )
+          .attach.Script(contracts.scheduler.mintingScript)
+          .complete({ localUPLCEval: false }),
+      catch: (cause) =>
+        new SDK.StateQueueError({
+          message: `Failed to build scheduler witness bootstrap tx: ${cause}`,
+          cause,
+        }),
+    });
+
+    const bootstrapTxHash = yield* handleSignSubmitNoConfirmation(
+      lucid,
+      bootstrapTx,
+    );
+    yield* Effect.logInfo(
+      `🔹 Scheduler witness bootstrap submitted: ${bootstrapTxHash}`,
+    );
+
+    let pollCount = 0;
+    while (pollCount < SCHEDULER_REFRESH_MAX_POLLS) {
+      const witnessUtxos = yield* Effect.tryPromise({
+        try: () =>
+          lucid.utxosAtWithUnit(
+            contracts.scheduler.spendingScriptAddress,
+            schedulerWitnessUnit,
+          ),
+        catch: (cause) =>
+          new SDK.StateQueueError({
+            message:
+              "Failed to fetch scheduler witness UTxOs while waiting for bootstrap confirmation",
+            cause,
+          }),
+      });
+      const witness = [...witnessUtxos].sort(compareOutRefs)[0];
+      if (witness !== undefined) {
+        return witness;
+      }
+      pollCount += 1;
+      yield* Effect.sleep(SCHEDULER_REFRESH_POLL_INTERVAL);
+    }
+
+    return yield* Effect.fail(
+      new SDK.StateQueueError({
+        message:
+          "Timed out waiting for scheduler witness UTxO bootstrap confirmation",
+        cause: bootstrapTxHash,
+      }),
+    );
+  });
+
+const ensureSchedulerAlignedForCommit = (
+  lucid: LucidEvolution,
+  contracts: SDK.MidgardValidators,
+  operatorKeyHash: string,
+  schedulerRefInput: UTxO,
+  alignedEndTime: number,
+  schedulerWitnessUnit: string,
+): Effect.Effect<
+  SchedulerAlignmentResult,
+  SDK.StateQueueError | TxSignError | TxSubmitError
+> =>
+  Effect.gen(function* () {
+    const targetStartTime = BigInt(alignedEndTime);
+    const schedulerDatumEither = yield* Effect.either(
+      getSchedulerDatumFromUTxO(schedulerRefInput),
+    );
+    if (schedulerDatumEither._tag === "Right") {
+      const schedulerDatum = schedulerDatumEither.right;
+      if (
+        schedulerDatum.operator === operatorKeyHash &&
+        schedulerDatum.startTime === targetStartTime
+      ) {
+        return {
+          schedulerRefInput,
+          chainedWalletOutputs: [],
+          consumedWalletFeeInputs: [],
+        };
+      }
+      yield* Effect.logInfo(
+        `🔹 Refreshing scheduler witness datum for commit window (from operator=${schedulerDatum.operator}, startTime=${schedulerDatum.startTime.toString()} to operator=${operatorKeyHash}, startTime=${targetStartTime.toString()}).`,
+      );
+    } else {
+      yield* Effect.logInfo(
+        "🔹 Refreshing scheduler witness datum for commit window (scheduler datum missing or invalid).",
+      );
+    }
+
+    const walletUtxos = yield* Effect.tryPromise({
+      try: () => lucid.wallet().getUtxos(),
+      catch: (cause) =>
+        new SDK.StateQueueError({
+          message: "Failed to fetch wallet UTxOs for scheduler refresh tx",
+          cause,
+        }),
+    });
+    const feeInput = yield* selectFeeInput(walletUtxos);
+    const walletAddress = yield* Effect.tryPromise({
+      try: () => lucid.wallet().address(),
+      catch: (cause) =>
+        new SDK.StateQueueError({
+          message: "Failed to fetch operator wallet address for tx chaining",
+          cause,
+        }),
+    });
+
+    const refreshedSchedulerDatum: SDK.SchedulerDatum = {
+      operator: operatorKeyHash,
+      startTime: targetStartTime,
+    };
+    const refreshTx = yield* Effect.tryPromise({
+      try: () =>
+        lucid
+          .newTx()
+          .collectFrom([feeInput])
+          .collectFrom([schedulerRefInput], LucidData.void())
+          .pay.ToContract(
+            contracts.scheduler.spendingScriptAddress,
+            {
+              kind: "inline",
+              value: LucidData.to(refreshedSchedulerDatum, SDK.SchedulerDatum),
+            },
+            schedulerRefInput.assets,
+          )
+          .attach.Script(contracts.scheduler.spendingScript)
+          .complete({ localUPLCEval: false }),
+      catch: (cause) =>
+        new SDK.StateQueueError({
+          message: `Failed to build scheduler refresh tx: ${cause}`,
+          cause,
+        }),
+    });
+
+    const refreshTxHash = yield* handleSignSubmitNoConfirmation(
+      lucid,
+      refreshTx,
+    );
+    const chainedWalletOutputs = extractAddressOutputsFromSubmittedTx(
+      refreshTx.toTransaction(),
+      refreshTxHash,
+      walletAddress,
+    );
+    yield* Effect.logInfo(
+      `🔹 Scheduler refresh transaction submitted: ${refreshTxHash}`,
+    );
+    yield* Effect.logInfo(
+      `🔹 Scheduler refresh tx chaining outputs for operator wallet: ${chainedWalletOutputs.length}.`,
+    );
+
+    let pollCount = 0;
+    while (pollCount < SCHEDULER_REFRESH_MAX_POLLS) {
+      const schedulerWitnessUtxos = yield* Effect.tryPromise({
+        try: () =>
+          lucid.utxosAtWithUnit(
+            contracts.scheduler.spendingScriptAddress,
+            schedulerWitnessUnit,
+          ),
+        catch: (cause) =>
+          new SDK.StateQueueError({
+            message:
+              "Failed to fetch scheduler witness UTxOs while waiting for scheduler refresh",
+            cause,
+          }),
+      });
+      for (const utxo of [...schedulerWitnessUtxos].sort(compareOutRefs)) {
+        const utxoDatumEither = yield* Effect.either(
+          getSchedulerDatumFromUTxO(utxo),
+        );
+        if (utxoDatumEither._tag === "Left") {
+          continue;
+        }
+        if (
+          utxoDatumEither.right.operator === operatorKeyHash &&
+          utxoDatumEither.right.startTime === targetStartTime
+        ) {
+          return {
+            schedulerRefInput: utxo,
+            chainedWalletOutputs,
+            consumedWalletFeeInputs: [feeInput],
+          };
+        }
+      }
+
+      pollCount += 1;
+      yield* Effect.sleep(SCHEDULER_REFRESH_POLL_INTERVAL);
+    }
+
+    return yield* Effect.fail(
+      new SDK.StateQueueError({
+        message:
+          "Timed out waiting for refreshed scheduler UTxO to appear on-chain",
+        cause: refreshTxHash,
+      }),
+    );
+  });
+
+const fetchRealStateQueueWitnessContext = (
+  lucid: LucidEvolution,
+  contracts: SDK.MidgardValidators,
+  alignedEndTime: number,
+): Effect.Effect<
+  RealStateQueueWitnessContext,
+  SDK.StateQueueError | TxSignError | TxSubmitError
+> =>
+  Effect.gen(function* () {
+    const operatorKeyHash = yield* getOperatorKeyHash(lucid);
+    const targetStartTime = BigInt(alignedEndTime);
+    const schedulerWitnessUnit = toUnit(
+      contracts.scheduler.policyId,
+      REAL_STATE_QUEUE_SCHEDULER_ASSET_NAME,
+    );
+
+    const schedulerUtxos = yield* SDK.utxosAtByNFTPolicyId(
+      lucid,
+      contracts.scheduler.spendingScriptAddress,
+      contracts.scheduler.policyId,
+    ).pipe(
+      Effect.mapError(
+        (cause) =>
+          new SDK.StateQueueError({
+            message: "Failed to fetch scheduler UTxOs for state_queue commit",
+            cause,
+          }),
+      ),
+    );
+    const initialSchedulerRefInput = yield* ensureRealSchedulerWitnessUtxo(
+      lucid,
+      contracts,
+      operatorKeyHash,
+      targetStartTime,
+      schedulerUtxos,
+    );
+    const schedulerRefInput = yield* ensureSchedulerAlignedForCommit(
+      lucid,
+      contracts,
+      operatorKeyHash,
+      initialSchedulerRefInput,
+      alignedEndTime,
+      schedulerWitnessUnit,
+    );
+    const network = lucid.config().network;
+    if (network === undefined) {
+      return yield* Effect.fail(
+        new SDK.StateQueueError({
+          message:
+            "Failed to resolve Cardano network for hub-oracle witness lookup",
+          cause: "lucid.config().network is undefined",
+        }),
+      );
+    }
+    const hubOracleAddress = credentialToAddress(
+      network,
+      scriptHashToCredential(contracts.hubOracle.policyId),
+    );
+    const hubOracleUnit = toUnit(
+      contracts.hubOracle.policyId,
+      SDK.HUB_ORACLE_ASSET_NAME,
+    );
+    const hubOracleWitnessUtxos = yield* Effect.tryPromise({
+      try: () => lucid.utxosAtWithUnit(hubOracleAddress, hubOracleUnit),
+      catch: (cause) =>
+        new SDK.StateQueueError({
+          message:
+            "Failed to fetch hub-oracle UTxOs for state_queue commit witness",
+          cause,
+        }),
+    });
+    if (hubOracleWitnessUtxos.length !== 1) {
+      return yield* Effect.fail(
+        new SDK.StateQueueError({
+          message:
+            "Failed to resolve unique hub-oracle UTxO for state_queue commit witness",
+          cause: `expected=1,found=${hubOracleWitnessUtxos.length},address=${hubOracleAddress},unit=${hubOracleUnit}`,
+        }),
+      );
+    }
+    const hubOracleRefInput = hubOracleWitnessUtxos[0];
+
+    const activeOperatorUtxos = yield* SDK.utxosAtByNFTPolicyId(
+      lucid,
+      contracts.activeOperators.spendingScriptAddress,
+      contracts.activeOperators.policyId,
+    ).pipe(
+      Effect.mapError(
+        (cause) =>
+          new SDK.StateQueueError({
+            message:
+              "Failed to fetch active-operators UTxOs for state_queue commit",
+            cause,
+          }),
+      ),
+    );
+    const activeOperatorInput = yield* selectActiveOperatorInput(
+      activeOperatorUtxos,
+      operatorKeyHash,
+    );
+
+    if (activeOperatorInput.datum == null) {
+      return yield* Effect.fail(
+        new SDK.StateQueueError({
+          message:
+            "Active-operators UTxO must include inline datum for real state_queue commit",
+          cause: `${activeOperatorInput.txHash}#${activeOperatorInput.outputIndex}`,
+        }),
+      );
+    }
+
+    return {
+      operatorKeyHash,
+      schedulerRefInput: schedulerRefInput.schedulerRefInput,
+      hubOracleRefInput,
+      activeOperatorInput: activeOperatorInput as UTxO & { datum: string },
+      activeOperatorsSpendingScript: contracts.activeOperators.spendingScript,
+      chainedWalletOutputs: schedulerRefInput.chainedWalletOutputs,
+      consumedWalletFeeInputs: schedulerRefInput.consumedWalletFeeInputs,
+    };
+  });
+
 const buildUnsignedTx = (
-  stateQueueAuthValidator: SDK.AuthenticatedValidator,
+  contracts: SDK.MidgardValidators,
   latestBlock: SDK.StateQueueUTxO,
   utxosRoot: string,
   txsRoot: string,
@@ -385,6 +1722,24 @@ const buildUnsignedTx = (
 ) =>
   Effect.gen(function* () {
     const lucid = yield* Lucid;
+    const stateQueueAuthValidator = contracts.stateQueue;
+    const latestEndTime = Number(
+      (yield* getLatestBlockDatumEndTime(latestBlock.datum)).getTime(),
+    );
+    const {
+      alignedCandidateEndTime,
+      minimumMonotonicEndTime,
+      resolvedEndTime: alignedEndTime,
+    } = resolveAlignedCommitEndTime({
+      lucid: lucid.api,
+      latestEndTime,
+      candidateEndTime: endDate.getTime(),
+    });
+    if (alignedEndTime !== alignedCandidateEndTime) {
+      yield* Effect.logWarning(
+        `Adjusted commit end-time to maintain monotonic header timing (candidate=${alignedCandidateEndTime}, minimum=${minimumMonotonicEndTime}, selected=${alignedEndTime}, latestEnd=${latestEndTime}).`,
+      );
+    }
     yield* Effect.logInfo("🔹 Finding updated block datum and new header...");
     yield* lucid.switchToOperatorsMainWallet;
     const { nodeDatum: updatedNodeDatum, header: newHeader } =
@@ -395,43 +1750,273 @@ const buildUnsignedTx = (
         txsRoot,
         depositsRoot,
         "00".repeat(32),
-        BigInt(endDate.getTime()),
+        BigInt(alignedEndTime),
       );
 
     const newHeaderHash = yield* SDK.hashBlockHeader(newHeader);
     yield* Effect.logInfo(`🔹 New header hash is: ${newHeaderHash}`);
 
-    // Build commitment block
-    const commitBlockParams: SDK.StateQueueCommitBlockParams = {
-      anchorUTxO: latestBlock,
-      updatedAnchorDatum: updatedNodeDatum,
-      newHeader: newHeader,
-      stateQueueSpendingScript: stateQueueAuthValidator.spendingScript,
-      policyId: stateQueueAuthValidator.policyId,
-      stateQueueMintingScript: stateQueueAuthValidator.mintingScript,
-    };
+    const witnessContext = yield* fetchRealStateQueueWitnessContext(
+      lucid.api,
+      contracts,
+      alignedEndTime,
+    );
+    yield* Effect.logInfo(
+      "🔹 Building commitment with real state_queue witness context.",
+    );
 
     yield* Effect.logInfo("🔹 Building block commitment transaction...");
-    const fetchConfig: SDK.StateQueueFetchConfig = {
-      stateQueueAddress: stateQueueAuthValidator.spendingScriptAddress,
-      stateQueuePolicyId: stateQueueAuthValidator.policyId,
-    };
-    yield* lucid.switchToOperatorsMainWallet;
-    const commitTx = yield* SDK.incompleteCommitBlockHeaderTxProgram(
-      lucid.api,
-      fetchConfig,
-      commitBlockParams,
+
+    const headerNodeUnit = toUnit(
+      stateQueueAuthValidator.policyId,
+      SDK.NODE_ASSET_NAME + newHeaderHash,
     );
-    const txBuilder = yield* Effect.tryPromise({
-      try: () =>
-        commitTx.complete({
-          localUPLCEval: false,
-        }),
-      catch: (e) =>
-        new SDK.StateQueueError({
-          message: `Failed to build block header commitment transaction: ${e}`,
-          cause: e,
-        }),
+    const commitMintAssets = {
+      [headerNodeUnit]: 1n,
+    };
+    const headerNodeOutputAssets = {
+      lovelace: STATE_QUEUE_HEADER_NODE_LOVELACE,
+      ...commitMintAssets,
+    };
+    const appendedNodeDatum: SDK.StateQueueDatum = {
+      key: updatedNodeDatum.next,
+      next: "Empty",
+      data: LucidData.castTo(newHeader, SDK.Header),
+    };
+    const appendedNodeDatumCbor = LucidData.to(
+      appendedNodeDatum,
+      SDK.StateQueueDatum,
+    );
+    const updatedNodeDatumCbor = LucidData.to(
+      updatedNodeDatum,
+      SDK.StateQueueDatum,
+    );
+
+    const makeBaseCommitTx = () =>
+      lucid.api
+        .newTx()
+        .validTo(alignedEndTime)
+        .collectFrom([latestBlock.utxo], LucidData.void())
+        .pay.ToContract(
+          stateQueueAuthValidator.spendingScriptAddress,
+          {
+            kind: "inline",
+            value: LucidData.to(appendedNodeDatum, SDK.StateQueueDatum),
+          },
+          headerNodeOutputAssets,
+        )
+        .pay.ToContract(
+          stateQueueAuthValidator.spendingScriptAddress,
+          {
+            kind: "inline",
+            value: LucidData.to(updatedNodeDatum, SDK.StateQueueDatum),
+          },
+          latestBlock.utxo.assets,
+        );
+
+    const formatLayout = (layout: {
+      readonly schedulerRefInputIndex: bigint;
+      readonly activeNodeInputIndex: bigint;
+      readonly activeOperatorsRedeemerIndex: bigint;
+      readonly stateQueueRedeemerIndex: bigint;
+      readonly headerNodeOutputIndex: bigint;
+      readonly previousHeaderNodeOutputIndex: bigint;
+      readonly activeNodeOutputIndex: bigint;
+      readonly hubOracleRefInputIndex: bigint;
+    }) =>
+      `scheduler_ref_input_index=${layout.schedulerRefInputIndex.toString()},active_node_input_index=${layout.activeNodeInputIndex.toString()},active_operators_redeemer_index=${layout.activeOperatorsRedeemerIndex.toString()},state_queue_redeemer_index=${layout.stateQueueRedeemerIndex.toString()},header_node_output_index=${layout.headerNodeOutputIndex.toString()},previous_header_node_output_index=${layout.previousHeaderNodeOutputIndex.toString()},active_node_output_index=${layout.activeNodeOutputIndex.toString()},hub_oracle_ref_input_index=${layout.hubOracleRefInputIndex.toString()}`;
+
+    const txBuilder = yield* Effect.gen(function* () {
+      const witness = witnessContext;
+      const walletUtxos = yield* Effect.tryPromise({
+        try: () => lucid.api.wallet().getUtxos(),
+        catch: (cause) =>
+          new SDK.StateQueueError({
+            message:
+              "Failed to fetch operator wallet UTxOs for real state_queue commit",
+            cause,
+          }),
+      });
+      const consumedWalletFeeInputSet = new Set(
+        witness.consumedWalletFeeInputs.map((utxo) => outRefLabel(utxo)),
+      );
+      const providerWalletCandidates = walletUtxos.filter(
+        (utxo) => !consumedWalletFeeInputSet.has(outRefLabel(utxo)),
+      );
+      const feeInputCandidates = dedupeUtxosByOutRef([
+        ...witness.chainedWalletOutputs,
+        ...providerWalletCandidates,
+      ]);
+      const feeInput = yield* selectFeeInput(feeInputCandidates);
+      const feeInputNonAdaUnits = Object.entries(feeInput.assets)
+        .filter(([unit, amount]) => unit !== "lovelace" && amount > 0n)
+        .map(([unit, amount]) => `${unit}:${amount.toString()}`);
+      yield* Effect.logInfo(
+        `🔹 Selected fee input ${outRefLabel(feeInput)} from ${feeInputCandidates.length} candidate(s) (provider=${providerWalletCandidates.length}, chained=${witness.chainedWalletOutputs.length}, consumed_excluded=${witness.consumedWalletFeeInputs.length}) (non-ADA units: ${
+          feeInputNonAdaUnits.length > 0
+            ? feeInputNonAdaUnits.join(",")
+            : "none"
+        }).`,
+      );
+
+      const makeCommitTxForLayout = (commitLayout: StateQueueCommitLayout) =>
+        makeBaseCommitTx()
+          .collectFrom([feeInput])
+          .readFrom([witness.schedulerRefInput, witness.hubOracleRefInput])
+          .collectFrom(
+            [witness.activeOperatorInput],
+            encodeActiveOperatorCommitRedeemer(commitLayout),
+          )
+          .pay.ToContract(
+            witness.activeOperatorInput.address,
+            {
+              kind: "inline",
+              value: witness.activeOperatorInput.datum,
+            },
+            witness.activeOperatorInput.assets,
+          )
+          .attach.Script(witness.activeOperatorsSpendingScript)
+          .addSignerKey(witness.operatorKeyHash)
+          .mintAssets(
+            commitMintAssets,
+            encodeStateQueueCommitRedeemer(
+              witness.operatorKeyHash,
+              commitLayout,
+            ),
+          )
+          .attach.Script(stateQueueAuthValidator.spendingScript)
+          .attach.Script(stateQueueAuthValidator.mintingScript);
+
+      const seedLayout = deriveStateQueueCommitLayout({
+        latestBlockInput: latestBlock.utxo,
+        activeOperatorInput: witness.activeOperatorInput,
+        txInputs: [latestBlock.utxo, witness.activeOperatorInput, feeInput],
+      });
+      const { commitLayout, draftDiagnostics } = yield* Effect.tryPromise({
+        try: async () => {
+          const [, , draftSignBuilder] = await withStubbedProviderEvaluation(
+            lucid.api,
+            () =>
+              makeCommitTxForLayout(seedLayout).chain({
+                localUPLCEval: false,
+              }),
+          );
+          const draftTx = draftSignBuilder.toTransaction();
+          const draftTtl = draftTx.body().ttl();
+          const txValidityUpperBoundSlot =
+            draftTtl === undefined ? undefined : Number(draftTtl);
+          const txValidityUpperBoundUnixTime =
+            txValidityUpperBoundSlot === undefined
+              ? undefined
+              : slotToUnixTimeForLucid(lucid.api, txValidityUpperBoundSlot);
+          const commitLayout = deriveCommitLayoutFromDraftTx({
+            tx: draftTx,
+            schedulerRefInput: witness.schedulerRefInput,
+            hubOracleRefInput: witness.hubOracleRefInput,
+            activeOperatorInput: witness.activeOperatorInput,
+            stateQueueAddress: stateQueueAuthValidator.spendingScriptAddress,
+            headerNodeUnit,
+            headerNodeDatum: appendedNodeDatumCbor,
+            previousHeaderNodeDatum: updatedNodeDatumCbor,
+          });
+          const draftDiagnostics = buildRealCommitDraftDiagnostics({
+            tx: draftTx,
+            layout: commitLayout,
+            operatorKeyHash: witness.operatorKeyHash,
+            latestBlockInput: latestBlock.utxo,
+            schedulerRefInput: witness.schedulerRefInput,
+            hubOracleRefInput: witness.hubOracleRefInput,
+            activeOperatorInput: witness.activeOperatorInput,
+            stateQueueAddress: stateQueueAuthValidator.spendingScriptAddress,
+            headerNodeUnit,
+            appendedNodeDatumCbor,
+            previousHeaderNodeDatumCbor: updatedNodeDatumCbor,
+            schedulerPolicyId: contracts.scheduler.policyId,
+            hubOraclePolicyId: contracts.hubOracle.policyId,
+            activeOperatorsPolicyId: contracts.activeOperators.policyId,
+            txValidityUpperBoundSlot: txValidityUpperBoundSlot?.toString(),
+            txValidityUpperBoundUnixTime:
+              txValidityUpperBoundUnixTime?.toString(),
+          });
+          return {
+            commitLayout,
+            draftDiagnostics,
+          };
+        },
+        catch: (cause) =>
+          new SDK.StateQueueError({
+            message: `Failed to derive deterministic commit redeemer layout from balanced draft tx: ${formatUnknownError(
+              cause,
+            )}`,
+            cause,
+          }),
+      });
+      yield* Effect.logInfo(
+        `🔹 Using commit redeemer layout: ${formatLayout(commitLayout)}`,
+      );
+      yield* Effect.logInfo(
+        `🔹 Real commit draft diagnostics: ${JSON.stringify(
+          draftDiagnostics,
+          (_key, value) =>
+            typeof value === "bigint" ? value.toString() : value,
+        )}`,
+      );
+      const layoutCandidates = enumerateCommitLayoutCandidates(commitLayout);
+      let lastRemoteError: SDK.StateQueueError | undefined = undefined;
+      for (const candidateLayout of layoutCandidates) {
+        const remoteEvalResult = yield* Effect.either(
+          Effect.tryPromise({
+            try: () =>
+              makeCommitTxForLayout(candidateLayout).complete({
+                localUPLCEval: false,
+              }),
+            catch: (e) =>
+              new SDK.StateQueueError({
+                message: `Failed to build block header commitment transaction with derived layout (${formatLayout(candidateLayout)}): ${e}`,
+                cause: e,
+              }),
+          }),
+        );
+        if (remoteEvalResult._tag === "Right") {
+          if (candidateLayout !== commitLayout) {
+            yield* Effect.logWarning(
+              `Derived commit layout was rejected; using fallback layout (${formatLayout(candidateLayout)}).`,
+            );
+          }
+          return remoteEvalResult.right;
+        }
+
+        const localEvalDiagnostic = yield* Effect.either(
+          Effect.tryPromise({
+            try: () =>
+              makeCommitTxForLayout(candidateLayout).complete({
+                localUPLCEval: true,
+              }),
+            catch: (e) =>
+              new SDK.StateQueueError({
+                message: `Local UPLC eval diagnostic failed for derived layout (${formatLayout(candidateLayout)}): ${e}`,
+                cause: e,
+              }),
+          }),
+        );
+        const localDiagnosticMessage =
+          localEvalDiagnostic._tag === "Left"
+            ? formatUnknownError(localEvalDiagnostic.left)
+            : "local UPLC eval unexpectedly succeeded";
+        yield* Effect.logWarning(
+          `Commit layout attempt failed (${formatLayout(candidateLayout)}). Remote eval: ${formatUnknownError(remoteEvalResult.left)}. Local eval diagnostic: ${localDiagnosticMessage}`,
+        );
+        lastRemoteError = remoteEvalResult.left;
+      }
+
+      return yield* Effect.fail(
+        lastRemoteError ??
+          new SDK.StateQueueError({
+            message:
+              "Failed to build block header commitment transaction with derived layout candidates",
+            cause: "exhausted-derived-layout-candidates",
+          }),
+      );
     });
 
     const txSize = txBuilder.toCBOR().length / 2;
@@ -461,11 +2046,13 @@ const databaseOperationsProgram = (
   | SDK.HashingError
   | SDK.LucidError
   | SDK.StateQueueError
+  | TxSignError
+  | TxSubmitError
   | DatabaseError
   | FileSystemError
   | LocalFinalizationPendingError
   | MptError,
-  AlwaysSucceedsContract | Database | Lucid
+  MidgardContracts | Database | Lucid | NodeConfig
 > =>
   Effect.gen(function* () {
     const mempoolTxs = yield* MempoolDB.retrieve;
@@ -505,8 +2092,8 @@ const databaseOperationsProgram = (
     const optEndTime: Option.Option<Date> =
       yield* establishEndTimeFromTxRequests(processedMempoolTxs);
 
-    const { stateQueue: stateQueueAuthValidator } =
-      yield* AlwaysSucceedsContract;
+    const contracts = yield* MidgardContracts;
+    const { stateQueue: stateQueueAuthValidator } = contracts;
 
     if (availableConfirmedBlock === "") {
       // The tx confirmation worker has not yet confirmed a previously
@@ -514,12 +2101,22 @@ const databaseOperationsProgram = (
       // However, it is stored on disk in our LevelDB mempool. Therefore,
       // the processed txs must be transferred to `ProcessedMempoolDB` from
       // `MempoolDB`.
-      //
-      // TODO: Handle failures properly.
       yield* Effect.logInfo(
         "🔹 No confirmed blocks available. Transferring to ProcessedMempoolDB...",
       );
-      yield* skippedSubmissionProgram(processedMempoolTxs, mempoolTxHashes);
+      const transferResult = yield* Effect.either(
+        skippedSubmissionProgram(processedMempoolTxs, mempoolTxHashes),
+      );
+      if (transferResult._tag === "Left") {
+        const detail = formatUnknownError(transferResult.left);
+        yield* Effect.logError(
+          `🔹 Failed to defer processed txs while waiting for confirmation: ${detail}`,
+        );
+        return {
+          type: "FailureOutput",
+          error: `Failed to transfer deferred commit payload to ProcessedMempoolDB: ${detail}`,
+        };
+      }
       return {
         type: "SkippedSubmissionOutput",
         mempoolTxsCount,
@@ -542,7 +2139,9 @@ const databaseOperationsProgram = (
         yield* Effect.logInfo(
           "🔹 Attempting local finalization recovery against confirmed block roots...",
         );
-        const optHeaderRoots = yield* getLatestBlockHeaderRoots(latestBlock.datum);
+        const optHeaderRoots = yield* getLatestBlockHeaderRoots(
+          latestBlock.datum,
+        );
         if (Option.isNone(optHeaderRoots)) {
           return {
             type: "FailureOutput",
@@ -563,8 +2162,9 @@ const databaseOperationsProgram = (
               "Local finalization recovery aborted: computed roots do not match the confirmed block header",
           };
         }
-        const confirmedHeader =
-          yield* SDK.getHeaderFromStateQueueDatum(latestBlock.datum);
+        const confirmedHeader = yield* SDK.getHeaderFromStateQueueDatum(
+          latestBlock.datum,
+        );
         const confirmedHeaderHash = yield* SDK.hashBlockHeader(confirmedHeader);
         return yield* successfulLocalFinalizationRecoveryProgram(
           mempoolTrie,
@@ -610,7 +2210,7 @@ const databaseOperationsProgram = (
             emptyRoot,
           });
           const { signAndSubmitProgram, txSize } = yield* buildUnsignedTx(
-            stateQueueAuthValidator,
+            contracts,
             latestBlock,
             roots.utxoRoot,
             roots.txRoot,
@@ -619,18 +2219,17 @@ const databaseOperationsProgram = (
           );
 
           return yield* Effect.matchEffect(signAndSubmitProgram, {
-            onFailure: (_) => {
-              // For now we'll assume the deposit events will be small in
-              // number, so we won't concern ourselves with wasted work. That
-              // is, we won't do anything and just report back with failure.
-              const failureOutput: WorkerOutput = {
-                type: "FailureOutput",
-                error:
-                  "Something went wrong the transaction. No tx requests were present, only deposits.",
-              };
-
-              return Effect.succeed(failureOutput);
-            },
+            onFailure: (error) =>
+              Effect.gen(function* () {
+                const detail = formatUnknownError(error);
+                yield* Effect.logError(
+                  `🔹 Deposit-only commit submission failed: ${detail}`,
+                );
+                return {
+                  type: "FailureOutput",
+                  error: `Deposit-only commit submission failed: ${detail}`,
+                } satisfies WorkerOutput;
+              }),
             onSuccess: (txHash) =>
               Effect.succeed({
                 type: "SuccessfulSubmissionOutput",
@@ -665,7 +2264,7 @@ const databaseOperationsProgram = (
 
         const { newHeaderHash, signAndSubmitProgram, txSize } =
           yield* buildUnsignedTx(
-            stateQueueAuthValidator,
+            contracts,
             latestBlock,
             utxoRoot,
             txRoot,
@@ -674,22 +2273,23 @@ const databaseOperationsProgram = (
           );
 
         return yield* Effect.matchEffect(signAndSubmitProgram, {
-          // TODO: Separating the behavior between these two failures seems
-          //       unnecessary.
           onFailure: Match.valueTags({
-            TxSignError: (_) => {
-              const failureOutput: WorkerOutput = {
-                type: "FailureOutput",
-                error: "Something went wrong at signing the transaction",
-              };
-              return Effect.succeed(failureOutput);
-            },
+            TxSignError: (e) =>
+              Effect.gen(function* () {
+                const detail = formatUnknownError(e);
+                yield* Effect.logError(`🔹 Commit signing failed: ${detail}`);
+                return {
+                  type: "FailureOutput",
+                  error: `Commit signing failed: ${detail}`,
+                } satisfies WorkerOutput;
+              }),
             TxSubmitError: (e) =>
               Effect.gen(function* () {
-                const recoveredTxHash = yield* recoverSubmittedTxHashByHeaderProgram(
-                  stateQueueAuthValidator,
-                  newHeaderHash,
-                );
+                const recoveredTxHash =
+                  yield* recoverSubmittedTxHashByHeaderProgram(
+                    stateQueueAuthValidator,
+                    newHeaderHash,
+                  );
                 if (Option.isSome(recoveredTxHash)) {
                   return yield* successfulSubmissionProgram(
                     mempoolTrie,
@@ -718,14 +2318,26 @@ const databaseOperationsProgram = (
                   );
                 }
 
-                // With a failed tx submission, we need to carry out the same db
-                // logic as the case where no confirmed blocks are available.
-                //
-                // TODO: Handle failures properly.
-                yield* skippedSubmissionProgram(
-                  processedMempoolTxs,
-                  mempoolTxHashes,
+                const transferResult = yield* Effect.either(
+                  skippedSubmissionProgram(
+                    processedMempoolTxs,
+                    mempoolTxHashes,
+                  ),
                 );
+                if (transferResult._tag === "Left") {
+                  const detail = formatUnknownError(transferResult.left);
+                  yield* Effect.logError(
+                    `🔹 Commit submission failed and deferred transfer failed: submit=${formatUnknownError(
+                      e,
+                    )}; transfer=${detail}`,
+                  );
+                  return {
+                    type: "FailureOutput",
+                    error: `Commit submission failed and deferred transfer failed: submit=${formatUnknownError(
+                      e,
+                    )}; transfer=${detail}`,
+                  } satisfies WorkerOutput;
+                }
 
                 return yield* failedSubmissionProgram(
                   mempoolTrie,
@@ -782,8 +2394,9 @@ const wrapper = (
   | FileSystemError
   | LocalFinalizationPendingError
   | TxSignError
+  | TxSubmitError
   | MptError,
-  AlwaysSucceedsContract | Lucid | Database | NodeConfig
+  MidgardContracts | Lucid | Database | NodeConfig
 > =>
   Effect.gen(function* () {
     yield* Effect.logInfo("🔹 Retrieving all mempool transactions...");
@@ -818,7 +2431,7 @@ const inputData = workerData as WorkerInput;
 
 const program = pipe(
   wrapper(inputData),
-  Effect.provide(AlwaysSucceedsContract.Default),
+  Effect.provide(MidgardContracts.Default),
   Effect.provide(Database.layer),
   Effect.provide(Lucid.Default),
   Effect.provide(NodeConfig.layer),

@@ -149,3 +149,38 @@ Notes:
 - It uses `/utxos` to pick spendable UTxOs and submits to `/submit`.
 - It reports counters from `validation_accept_count_total`,
   `validation_reject_count_total`, and `tx_count_total`.
+
+## Nominal Sustained Activity Test
+
+Run a lower-rate sustained generator that:
+
+- queries current Midgard state via `/utxos`,
+- builds fresh valid Midgard-native txs on-demand (no huge prebuild),
+- submits at randomized intervals to emulate real network activity.
+
+```sh
+cd midgard-node
+pnpm stress:nominal
+```
+
+Examples:
+
+```sh
+# Run for 5 minutes, stop after 100 successful submits.
+pnpm stress:nominal -- --duration 5m --target-txs 100
+
+# Run for 10 minutes with slower sporadic traffic.
+pnpm stress:nominal -- --duration 10m --target-txs 120 --min-interval-ms 1000 --max-interval-ms 9000
+```
+
+Useful environment overrides:
+
+```sh
+ACTIVITY_DURATION=10m
+ACTIVITY_TARGET_TXS=100
+ACTIVITY_MIN_INTERVAL_MS=750
+ACTIVITY_MAX_INTERVAL_MS=7000
+ACTIVITY_WALLET_MODE=random
+ACTIVITY_SUBMIT_ENDPOINT=http://127.0.0.1:3000
+ACTIVITY_METRICS_ENDPOINT=http://127.0.0.1:9464/metrics
+```

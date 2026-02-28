@@ -321,13 +321,19 @@ export const withTrieTransaction = <A, E, R>(
 
 export class LevelDB {
   _leveldb: Level<string, Uint8Array>;
+  _location?: string;
 
-  constructor(leveldb: Level<string, Uint8Array>) {
+  constructor(leveldb: Level<string, Uint8Array>, location?: string) {
     this._leveldb = leveldb;
+    this._location = location;
   }
 
   async open() {
     await this._leveldb.open();
+  }
+
+  async close() {
+    await this._leveldb.close();
   }
 
   async get(key: string) {
@@ -347,6 +353,12 @@ export class LevelDB {
   }
 
   shallowCopy() {
+    if (typeof this._location === "string") {
+      return new LevelDB(
+        new Level<string, Uint8Array>(this._location, LEVELDB_ENCODING_OPTS),
+        this._location,
+      );
+    }
     return new LevelDB(this._leveldb);
   }
 
@@ -450,7 +462,11 @@ export class MidgardMpt {
           levelDBFilePath,
           LEVELDB_ENCODING_OPTS,
         );
-        const db = new LevelDB(level);
+        const db = new LevelDB(level, levelDBFilePath);
+        yield* Effect.tryPromise({
+          try: () => db.open(),
+          catch: (e) => MptError.trieCreate(trieName, e),
+        });
         databaseAndPath = { database: db, databaseFilePath: levelDBFilePath };
         valueEncoding = LEVELDB_ENCODING_OPTS.valueEncoding;
       }
@@ -469,7 +485,13 @@ export class MidgardMpt {
 
   public delete(): Effect.Effect<void, FileSystemError> {
     if (this.databaseAndPath) {
-      return deleteMpt(this.databaseAndPath.databaseFilePath, this.trieName);
+      return Effect.gen(this, function* () {
+        yield* Effect.tryPromise({
+          try: () => this.databaseAndPath!.database.close(),
+          catch: (_e) => _e,
+        }).pipe(Effect.catchAll(() => Effect.void));
+        yield* deleteMpt(this.databaseAndPath!.databaseFilePath, this.trieName);
+      });
     } else {
       return Effect.succeed(Effect.void);
     }

@@ -47,6 +47,9 @@ import {
   NODE_ASSET_NAME,
 } from "./constants.js";
 
+const STATE_QUEUE_INIT_LOVELACE = 5_000_000n;
+const STATE_QUEUE_HEADER_NODE_LOVELACE = 5_000_000n;
+
 export const StateQueueConfigSchema = Data.Object({
   initUTxO: OutputReferenceSchema,
   refundWaitingPeriod: POSIXTimeSchema,
@@ -68,7 +71,15 @@ export const StateQueueRedeemerSchema = Data.Enum([
       active_operators_redeemer_index: Data.Integer(),
     }),
   }),
-  Data.Literal("MergeToConfirmedState"),
+  Data.Object({
+    MergeToConfirmedState: Data.Object({
+      header_node_key: Data.Bytes(),
+      header_node_input_index: Data.Integer(),
+      confirmed_state_node_input_index: Data.Integer(),
+      confirmed_state_node_output_index: Data.Integer(),
+      settlement_redeemer_index: Data.Integer(),
+    }),
+  }),
   Data.Object({
     RemoveFraudulentBlockHeader: Data.Object({
       fraudulentOperator: Data.Bytes(),
@@ -222,7 +233,7 @@ export const sortStateQueueUTxOs = (
       yield* Effect.fail(
         new LinkedListError({
           message: `Failed to sort state queue UTxOs`,
-          cause: `Confirmed state (root node) not found among state queue UTxOs`,
+          cause: `Expected exactly one confirmed-state root node, found ${filteredForConfirmedState.length}`,
         }),
       );
       return [];
@@ -434,8 +445,12 @@ export const incompleteCommitBlockHeaderTxProgram = (
 ): Effect.Effect<TxBuilder, HashingError> =>
   Effect.gen(function* () {
     const newHeaderHash = yield* hashBlockHeader(newHeader);
-    const assets: Assets = {
+    const mintedAssets: Assets = {
       [toUnit(policyId, NODE_ASSET_NAME + newHeaderHash)]: 1n,
+    };
+    const outputAssets: Assets = {
+      lovelace: STATE_QUEUE_HEADER_NODE_LOVELACE,
+      ...mintedAssets,
     };
 
     const newNodeDatum: StateQueueDatum = {
@@ -454,14 +469,14 @@ export const incompleteCommitBlockHeaderTxProgram = (
       .pay.ToContract(
         config.stateQueueAddress,
         { kind: "inline", value: Data.to(newNodeDatum, StateQueueDatum) },
-        assets,
+        outputAssets,
       )
       .pay.ToContract(
         config.stateQueueAddress,
         { kind: "inline", value: Data.to(updatedNodeDatum, StateQueueDatum) },
         latestBlock.utxo.assets,
       )
-      .mintAssets(assets, Data.void())
+      .mintAssets(mintedAssets, Data.void())
       .attach.Script(stateQueueSpendingScript)
       .attach.Script(stateQueueMintingScript);
     return tx;
@@ -597,25 +612,30 @@ export const fetchConfirmedStateAndItsLinkProgram = (
         }),
       ),
     );
-    if (filteredForConfirmedState.length === 1) {
-      const { utxo: confirmedStateUTxO, link: confirmedStatesLink } =
-        filteredForConfirmedState[0];
-      const linkUTxO = yield* findLinkStateQueueUTxO(
-        confirmedStatesLink,
-        allUTxOs,
-      );
-      return {
-        confirmed: confirmedStateUTxO,
-        link: linkUTxO,
-      };
-    } else {
+    if (filteredForConfirmedState.length !== 1) {
       return yield* Effect.fail(
         new StateQueueError({
           message: "Failed to fetch confirmed state and its link",
-          cause: "Exactly 1 authentic confirmed state UTxO was expected",
+          cause:
+            filteredForConfirmedState.length === 0
+              ? "No authentic confirmed state UTxO was found"
+              : `Expected exactly one confirmed-state root node, found ${filteredForConfirmedState.length}`,
         }),
       );
     }
+    const selectedEntry = filteredForConfirmedState[0];
+    const confirmedStateUTxO = selectedEntry.utxo;
+    if (selectedEntry.link === "Empty") {
+      return {
+        confirmed: confirmedStateUTxO,
+        link: undefined,
+      };
+    }
+    const linkUTxO = yield* findLinkStateQueueUTxO(selectedEntry.link, allUTxOs);
+    return {
+      confirmed: confirmedStateUTxO,
+      link: linkUTxO,
+    };
   });
 
 /**
@@ -664,6 +684,13 @@ export const fetchLatestCommittedBlockProgram = (
     );
     if (filtered.length === 1) {
       return filtered[0];
+    } else if (filtered.length > 1) {
+      return yield* Effect.fail(
+        new StateQueueError({
+          message: errorMessage,
+          cause: `Expected exactly one tail node, found ${filtered.length}`,
+        }),
+      );
     } else {
       return yield* Effect.fail(
         new StateQueueError({
@@ -712,6 +739,7 @@ export const incompleteInitStateQueueTxProgram = (
       validator: params.validator,
       data: Data.castTo(stateQueueData, ConfirmedState),
       redeemer: Data.to("Init", StateQueueRedeemer),
+      lovelace: STATE_QUEUE_INIT_LOVELACE,
     });
   });
 
@@ -802,13 +830,17 @@ export const incompleteStateQueueMergeTxProgram = (
     const blockHeader: Header = yield* getHeaderFromStateQueueDatum(
       firstBlockUTxO.datum,
     );
-    const headerHash = yield* hashBlockHeader(blockHeader);
+    const headerHash =
+      firstBlockUTxO.datum.key === "Empty"
+        ? yield* hashBlockHeader(blockHeader)
+        : firstBlockUTxO.datum.key.Key.key;
     const newConfirmedState = {
       ...currentConfirmedState,
       headerHash,
       prevHeaderHash: currentConfirmedState.headerHash,
-      utxoRoot: blockHeader.utxosRoot,
-      startTime: currentConfirmedState.endTime,
+      // On-chain merge currently preserves utxoRoot from prior confirmed state.
+      utxoRoot: currentConfirmedState.utxoRoot,
+      startTime: blockHeader.startTime,
       endTime: blockHeader.endTime,
     };
     const newConfirmedNodeDatum: NodeDatum = {
@@ -821,9 +853,21 @@ export const incompleteStateQueueMergeTxProgram = (
     };
     const tx = lucid
       .newTx()
+      .validFrom(Date.now())
       .collectFrom(
         [confirmedUTxO.utxo, firstBlockUTxO.utxo],
-        Data.to("MergeToConfirmedState", StateQueueRedeemer),
+        Data.to(
+          {
+            MergeToConfirmedState: {
+              header_node_key: headerHash,
+              header_node_input_index: 1n,
+              confirmed_state_node_input_index: 0n,
+              confirmed_state_node_output_index: 0n,
+              settlement_redeemer_index: 0n,
+            },
+          },
+          StateQueueRedeemer,
+        ),
       )
       .pay.ToContract(
         fetchConfig.stateQueueAddress,

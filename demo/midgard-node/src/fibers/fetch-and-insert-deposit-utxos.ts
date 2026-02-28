@@ -1,7 +1,7 @@
 import * as SDK from "@al-ft/midgard-sdk";
 import { Effect, Ref } from "effect";
 import {
-  AlwaysSucceedsContract,
+  MidgardContracts,
   Globals,
   Lucid,
   Database,
@@ -15,9 +15,9 @@ const fetchDepositUTxOs = (
   lucid: LucidEvolution,
   inclusionStartTime: number,
   inclusionEndTime: number,
-): Effect.Effect<SDK.DepositUTxO[], SDK.LucidError, AlwaysSucceedsContract> =>
+): Effect.Effect<SDK.DepositUTxO[], SDK.LucidError, MidgardContracts> =>
   Effect.gen(function* () {
-    const { deposit: depositAuthValidator } = yield* AlwaysSucceedsContract;
+    const { deposit: depositAuthValidator } = yield* MidgardContracts;
     const fetchConfig: SDK.DepositFetchConfig = {
       depositAddress: depositAuthValidator.spendingScriptAddress,
       depositPolicyId: depositAuthValidator.policyId,
@@ -30,7 +30,7 @@ const fetchDepositUTxOs = (
 export const fetchAndInsertDepositUTxOs: Effect.Effect<
   void,
   SDK.LucidError | DatabaseError,
-  AlwaysSucceedsContract | Lucid | Database | Globals
+  MidgardContracts | Lucid | Database | Globals
 > = Effect.gen(function* () {
   const { api: lucid } = yield* Lucid;
   const globals = yield* Globals;
@@ -69,7 +69,7 @@ export const fetchAndInsertDepositUTxOsFiber = (
 ): Effect.Effect<
   void,
   SDK.LucidError | DatabaseError,
-  AlwaysSucceedsContract | Lucid | Database | Globals
+  MidgardContracts | Lucid | Database | Globals
 > =>
   Effect.gen(function* () {
     yield* Effect.logInfo("🏦 Fetch and insert DepositUTxOs to DepositsDB.");
