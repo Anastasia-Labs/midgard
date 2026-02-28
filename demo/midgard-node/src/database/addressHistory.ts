@@ -26,7 +26,7 @@ export const createTable: Effect.Effect<void, DatabaseError, Database> =
     yield* sql`CREATE TABLE IF NOT EXISTS ${sql(tableName)} (
       ${sql(Ledger.Columns.TX_ID)} BYTEA NOT NULL,
       ${sql(Ledger.Columns.ADDRESS)} TEXT NOT NULL,
-      UNIQUE (tx_id, address)
+      UNIQUE (${sql(Ledger.Columns.TX_ID)}, ${sql(Ledger.Columns.ADDRESS)})
     );`;
   }).pipe(
     Effect.withLogSpan(`creating table ${tableName}`),

@@ -190,7 +190,7 @@ export const submitBlocks: Effect.Effect<
     nextUnsubmittedBlock[UnsubmittedBlocksDB.Columns.L1_CBOR].toString("hex");
 
   yield* Effect.logInfo(
-    `🔗 Submitting next unsubmitted block transaction for block ${blockHashHex}`,
+    `🔗 Submitting block ${blockHashHex}`,
   );
   const submittedTxHash = yield* handleSignSubmitNoConfirmation(
     lucid.api,
@@ -209,7 +209,7 @@ export const submitBlocksFiber = (
   Globals | Database | Lucid | AlwaysSucceedsContract
 > =>
   Effect.gen(function* () {
-    yield* Effect.logInfo("🔗 Submit blocks fiber started.");
+    yield* Effect.logInfo("🔗 Block submission fiber started.");
     const action = submitBlocks.pipe(
       Effect.withSpan("submit-blocks-fiber"),
       Effect.catchAllCause(Effect.logWarning),
