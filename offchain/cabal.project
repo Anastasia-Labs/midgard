@@ -43,7 +43,7 @@ source-repository-package
 source-repository-package
   type: git
   location: https://github.com/mlabs-haskell/ply
-  --sha256: sha256-pqiLMOYFe/238XoGgo5H4ForV5shWFLFBCqdreJqAR0=
-  tag: f63ee2895be2d582691c9e06d70dad414ee892cf
+  --sha256: sha256-5MjDDfUIefeNmZuMkhjjbiPAqzYbIDWnb7gvnPo/UTw=
+  tag: 2b2298a2aa60b992d0a3666aa966b14e06f774a1
   subdir:
     ply-core
