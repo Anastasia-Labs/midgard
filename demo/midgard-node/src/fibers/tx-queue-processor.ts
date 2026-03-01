@@ -28,12 +28,12 @@ const txQueueProcessorAction = (
 
     const txStringsChunk: Chunk.Chunk<string> = yield* Queue.takeAll(txQueue);
     const txStrings = Chunk.toReadonlyArray(txStringsChunk);
-    const brokeDownTxs: ProcessedTx[] = yield* Effect.forEach(txStrings, (tx) =>
+    const processedTxs: ProcessedTx[] = yield* Effect.forEach(txStrings, (tx) =>
       Effect.gen(function* () {
         return yield* breakDownTx(fromHex(tx));
       }),
     );
-    yield* MempoolDB.insertMultiple(brokeDownTxs);
+    yield* MempoolDB.insertMultiple(processedTxs);
   });
 
 export const txQueueProcessorFiber = (
