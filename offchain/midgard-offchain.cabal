@@ -125,7 +125,10 @@ test-suite mockchain-tests
   type:           exitcode-stdio-1.0
   main-is:        Spec.hs
   hs-source-dirs: tests
-  other-modules:  Spec.RegisterOperator
+  other-modules:
+    Spec.RegisterOperator
+    Spec.Utils
+
   build-depends:
     , convex-coin-selection
     , convex-wallet
