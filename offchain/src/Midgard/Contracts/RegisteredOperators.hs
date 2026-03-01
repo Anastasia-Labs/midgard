@@ -9,6 +9,7 @@ import Convex.BuildTx (
   addRequiredSignature,
   assetValue,
   mintPlutus,
+  mintPlutusWithRedeemerFn,
   payToScriptInlineDatum,
   spendPlutusInlineDatum,
  )
@@ -18,29 +19,49 @@ import Convex.Utxos (toTxOut)
 import Midgard.Constants (hubOracleAssetName, hubOracleMintingPolicyId, hubOracleScriptHash, operatorRequiredBond)
 import Midgard.Contracts.Utils
 import Midgard.ScriptUtils (mintingPolicyId, toMintingPolicy, toValidator, validatorHash)
-import Midgard.Scripts (MidgardScripts (MidgardScripts, activeOperatorsPolicy, activeOperatorsValidator, registeredOperatorsPolicy, registeredOperatorsValidator, retiredOperatorsPolicy, retiredOperatorsValidator))
+import Midgard.Scripts (
+  MidgardScripts (
+    MidgardScripts,
+    activeOperatorsPolicy,
+    activeOperatorsValidator,
+    registeredOperatorsPolicy,
+    registeredOperatorsValidator,
+    retiredOperatorsPolicy,
+    retiredOperatorsValidator
+  ),
+ )
+import Midgard.Types.LinkedList qualified as LinkedList
 import Midgard.Types.RegisteredOperators qualified as RegisteredOperators
 
 initRegisteredOperators ::
-  ( MonadBlockchain era m
-  , C.HasScriptLanguageInEra C.PlutusScriptV3 era
+  ( C.HasScriptLanguageInEra C.PlutusScriptV3 era
   , MonadBuildTx era m
   , C.IsBabbageBasedEra era
   ) =>
-  MidgardScripts -> m ()
-initRegisteredOperators MidgardScripts {registeredOperatorsValidator, registeredOperatorsPolicy} = do
-  netId <- queryNetworkId
+  C.NetworkId ->
+  MidgardScripts ->
+  m ()
+initRegisteredOperators netId MidgardScripts {registeredOperatorsValidator, registeredOperatorsPolicy} = do
   let C.PolicyId policyId = mintingPolicyId registeredOperatorsPolicy
   -- The registered operators token should be minted.
-  mintPlutus (toMintingPolicy registeredOperatorsPolicy) RegisteredOperators.Init RegisteredOperators.rootKey 1
+  mintPlutusWithRedeemerFn
+    (toMintingPolicy registeredOperatorsPolicy)
+    (\txBody -> RegisteredOperators.Init {outputIndex = toInteger $ nextOutIx txBody})
+    RegisteredOperators.rootKey
+    1
   -- And sent to the registered operators validator.
-  -- TODO: Datum should contain link.
+  let datum :: RegisteredOperators.Datum =
+        LinkedList.Element
+          { elementData = LinkedList.Root mempty
+          , elementLink = Nothing
+          }
   payToScriptInlineDatum
     netId
     (validatorHash registeredOperatorsValidator)
-    ()
+    datum
     C.NoStakeAddress
-    (assetValue policyId RegisteredOperators.rootKey 1)
+    -- Must manually add min ada deposit...
+    (assetValue policyId RegisteredOperators.rootKey 1 <> C.lovelaceToValue 3_000_000)
 
 registerOperator ::
   ( MonadError String m

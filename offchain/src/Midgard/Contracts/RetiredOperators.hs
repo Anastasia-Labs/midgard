@@ -4,27 +4,44 @@ import Cardano.Api qualified as C
 import Convex.BuildTx (
   MonadBuildTx,
   assetValue,
-  mintPlutus,
+  mintPlutusWithRedeemerFn,
   payToScriptInlineDatum,
  )
-import Convex.Class (MonadBlockchain (queryNetworkId))
 
+import Midgard.Contracts.Utils (nextOutIx)
 import Midgard.ScriptUtils (mintingPolicyId, toMintingPolicy, validatorHash)
 import Midgard.Scripts (MidgardScripts (MidgardScripts, retiredOperatorsPolicy, retiredOperatorsValidator))
+import Midgard.Types.LinkedList qualified as LinkedList
 import Midgard.Types.RetiredOperators qualified as RetiredOperators
 
 initRetiredOperators ::
-  ( MonadBlockchain era m
-  , C.HasScriptLanguageInEra C.PlutusScriptV3 era
+  ( C.HasScriptLanguageInEra C.PlutusScriptV3 era
   , MonadBuildTx era m
   , C.IsBabbageBasedEra era
   ) =>
-  MidgardScripts -> m ()
+  C.NetworkId ->
+  MidgardScripts ->
+  m ()
 initRetiredOperators
+  netId
   MidgardScripts {retiredOperatorsValidator, retiredOperatorsPolicy} = do
-    netId <- queryNetworkId
     let C.PolicyId policyId = mintingPolicyId retiredOperatorsPolicy
     -- The registered operators token should be minted.
-    mintPlutus (toMintingPolicy retiredOperatorsPolicy) RetiredOperators.Init RetiredOperators.rootKey 1
+    mintPlutusWithRedeemerFn
+      (toMintingPolicy retiredOperatorsPolicy)
+      (\txBody -> RetiredOperators.Init {outputIndex = toInteger $ nextOutIx txBody})
+      RetiredOperators.rootKey
+      1
     -- And sent to the registered operators validator.
-    payToScriptInlineDatum netId (validatorHash retiredOperatorsValidator) () C.NoStakeAddress (assetValue policyId RetiredOperators.rootKey 1)
+    let datum :: RetiredOperators.Datum =
+          LinkedList.Element
+            { elementData = LinkedList.Root mempty
+            , elementLink = Nothing
+            }
+    payToScriptInlineDatum
+      netId
+      (validatorHash retiredOperatorsValidator)
+      datum
+      C.NoStakeAddress
+      -- Must manually add min ada deposit...
+      (assetValue policyId RetiredOperators.rootKey 1 <> C.lovelaceToValue 3_000_000)
