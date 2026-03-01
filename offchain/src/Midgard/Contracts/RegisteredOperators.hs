@@ -9,6 +9,7 @@ import Convex.BuildTx (
   addRequiredSignature,
   assetValue,
   mintPlutus,
+  mintPlutusWithRedeemerFn,
   payToScriptInlineDatum,
   spendPlutusInlineDatum,
  )
@@ -29,6 +30,7 @@ import Midgard.Scripts (
     retiredOperatorsValidator
   ),
  )
+import Midgard.Types.LinkedList qualified as LinkedList
 import Midgard.Types.RegisteredOperators qualified as RegisteredOperators
 
 initRegisteredOperators ::
@@ -42,19 +44,24 @@ initRegisteredOperators ::
 initRegisteredOperators netId MidgardScripts {registeredOperatorsValidator, registeredOperatorsPolicy} = do
   let C.PolicyId policyId = mintingPolicyId registeredOperatorsPolicy
   -- The registered operators token should be minted.
-  mintPlutus
+  mintPlutusWithRedeemerFn
     (toMintingPolicy registeredOperatorsPolicy)
-    RegisteredOperators.Init {outputIndex = 0}
+    (\txBody -> RegisteredOperators.Init {outputIndex = toInteger $ nextOutIx txBody})
     RegisteredOperators.rootKey
     1
   -- And sent to the registered operators validator.
-  -- TODO: Datum should contain link.
+  let datum :: RegisteredOperators.Datum =
+        LinkedList.Element
+          { elementData = LinkedList.Root mempty
+          , elementLink = Nothing
+          }
   payToScriptInlineDatum
     netId
     (validatorHash registeredOperatorsValidator)
-    ()
+    datum
     C.NoStakeAddress
-    (assetValue policyId RegisteredOperators.rootKey 1)
+    -- Must manually add min ada deposit...
+    (assetValue policyId RegisteredOperators.rootKey 1 <> C.lovelaceToValue 3_000_000)
 
 registerOperator ::
   ( MonadError String m

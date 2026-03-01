@@ -4,12 +4,14 @@ import Cardano.Api qualified as C
 import Convex.BuildTx (
   MonadBuildTx,
   assetValue,
-  mintPlutus,
+  mintPlutusWithRedeemerFn,
   payToScriptInlineDatum,
  )
 
+import Midgard.Contracts.Utils (nextOutIx)
 import Midgard.ScriptUtils (mintingPolicyId, toMintingPolicy, validatorHash)
 import Midgard.Scripts (MidgardScripts (MidgardScripts, retiredOperatorsPolicy, retiredOperatorsValidator))
+import Midgard.Types.LinkedList qualified as LinkedList
 import Midgard.Types.RetiredOperators qualified as RetiredOperators
 
 initRetiredOperators ::
@@ -25,10 +27,21 @@ initRetiredOperators
   MidgardScripts {retiredOperatorsValidator, retiredOperatorsPolicy} = do
     let C.PolicyId policyId = mintingPolicyId retiredOperatorsPolicy
     -- The registered operators token should be minted.
-    mintPlutus
+    mintPlutusWithRedeemerFn
       (toMintingPolicy retiredOperatorsPolicy)
-      RetiredOperators.Init {outputIndex = 0}
+      (\txBody -> RetiredOperators.Init {outputIndex = toInteger $ nextOutIx txBody})
       RetiredOperators.rootKey
       1
     -- And sent to the registered operators validator.
-    payToScriptInlineDatum netId (validatorHash retiredOperatorsValidator) () C.NoStakeAddress (assetValue policyId RetiredOperators.rootKey 1)
+    let datum :: RetiredOperators.Datum =
+          LinkedList.Element
+            { elementData = LinkedList.Root mempty
+            , elementLink = Nothing
+            }
+    payToScriptInlineDatum
+      netId
+      (validatorHash retiredOperatorsValidator)
+      datum
+      C.NoStakeAddress
+      -- Must manually add min ada deposit...
+      (assetValue policyId RetiredOperators.rootKey 1 <> C.lovelaceToValue 3_000_000)
