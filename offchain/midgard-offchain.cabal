@@ -108,6 +108,7 @@ library
     Midgard.ScriptUtils
     Midgard.Types.ActiveOperators
     Midgard.Types.HubOracle
+    Midgard.Types.LinkedList
     Midgard.Types.RegisteredOperators
     Midgard.Types.RetiredOperators
 
