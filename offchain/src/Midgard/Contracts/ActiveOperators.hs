@@ -44,7 +44,7 @@ initActiveOperators netId MidgardScripts {activeOperatorsValidator, activeOperat
   mintPlutus
     (toMintingPolicy activeOperatorsPolicy)
     ActiveOperators.Init {outputIndex = 0}
-    (C.UnsafeAssetName "")
+    ActiveOperators.rootKey
     1
   -- And sent to the active operators validator.
   payToScriptInlineDatum
