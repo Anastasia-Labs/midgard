@@ -7,6 +7,7 @@ import Convex.BuildTx (
   addRequiredSignature,
   assetValue,
   mintPlutus,
+  mintPlutusWithRedeemerFn,
   payToScriptInlineDatum,
   spendPlutusInlineDatum,
  )
@@ -14,7 +15,7 @@ import Convex.Class (MonadBlockchain (queryNetworkId), MonadUtxoQuery, utxosByPa
 
 import Control.Monad.Except (MonadError (throwError))
 import Convex.Utxos (toTxOut)
-import Midgard.Contracts.Utils (findTxInNonMembership, findUtxoWithAsset, findUtxoWithLink)
+import Midgard.Contracts.Utils (findTxInNonMembership, findUtxoWithAsset, findUtxoWithLink, nextOutIx)
 import Midgard.ScriptUtils (mintingPolicyId, toMintingPolicy, toValidator, validatorHash)
 import Midgard.Scripts (
   MidgardScripts (
@@ -28,6 +29,7 @@ import Midgard.Scripts (
   ),
  )
 import Midgard.Types.ActiveOperators qualified as ActiveOperators
+import Midgard.Types.LinkedList qualified as LinkedList
 import Midgard.Types.RegisteredOperators qualified as RegisteredOperators
 
 initActiveOperators ::
@@ -41,18 +43,24 @@ initActiveOperators ::
 initActiveOperators netId MidgardScripts {activeOperatorsValidator, activeOperatorsPolicy} = do
   let C.PolicyId policyId = mintingPolicyId activeOperatorsPolicy
   -- The active operators token should be minted.
-  mintPlutus
+  mintPlutusWithRedeemerFn
     (toMintingPolicy activeOperatorsPolicy)
-    ActiveOperators.Init {outputIndex = 0}
+    (\txBody -> ActiveOperators.Init {outputIndex = toInteger $ nextOutIx txBody})
     ActiveOperators.rootKey
     1
   -- And sent to the active operators validator.
+  let datum :: ActiveOperators.Datum =
+        LinkedList.Element
+          { elementData = LinkedList.Root mempty
+          , elementLink = Nothing
+          }
   payToScriptInlineDatum
     netId
     (validatorHash activeOperatorsValidator)
-    ()
+    datum
     C.NoStakeAddress
-    (assetValue policyId ActiveOperators.rootKey 1)
+    -- Must manually add min ada deposit...
+    (assetValue policyId ActiveOperators.rootKey 1 <> C.lovelaceToValue 3_000_000)
 
 activateOperator ::
   forall era m.

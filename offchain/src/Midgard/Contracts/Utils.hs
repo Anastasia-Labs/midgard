@@ -1,4 +1,4 @@
-module Midgard.Contracts.Utils (findUtxoWithAsset, findTxInNonMembership, findUtxoWithLink) where
+module Midgard.Contracts.Utils (nextOutIx, findUtxoWithAsset, findTxInNonMembership, findUtxoWithLink) where
 
 import Data.ByteString (ByteString)
 
@@ -9,6 +9,10 @@ import Control.Lens (
  )
 import Convex.CardanoApi.Lenses qualified as L
 import Convex.Utxos (UtxoSet, partition, selectUtxo)
+
+-- | Index of the next output to be added into the tx.
+nextOutIx :: C.TxBodyContent v era -> Int
+nextOutIx = length . view L.txOuts
 
 -- | Find a utxo in the utxo set that contains the given asset.
 findUtxoWithAsset :: UtxoSet ctx a -> C.AssetId -> Maybe (C.TxIn, (C.InAnyCardanoEra (C.TxOut ctx), a))
