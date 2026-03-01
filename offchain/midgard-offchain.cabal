@@ -127,6 +127,8 @@ test-suite mockchain-tests
   hs-source-dirs: tests
   other-modules:  Spec.RegisterOperator
   build-depends:
+    , convex-coin-selection
+    , convex-wallet
     , midgard-offchain
     , tasty
     , tasty-hunit
