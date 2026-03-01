@@ -45,7 +45,8 @@ initProtocol
         , registeredOperators = scriptCurrencySymbol registeredOperatorsPolicy
         }
       C.NoStakeAddress
-      (assetValue hubOracleMintingPolicyId' hubOracleAssetName 1)
+      -- For some reason, sc-tools can't balance min-ada. Even 'setMinAdaDepositAll' doesn't work.
+      (assetValue hubOracleMintingPolicyId' hubOracleAssetName 1 <> C.lovelaceToValue 2_000_000)
     initRegisteredOperators netId scripts
     initActiveOperators netId scripts
     initRetiredOperators netId scripts

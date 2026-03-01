@@ -3,19 +3,27 @@
 module Midgard.Types.RegisteredOperators (
   DuplicateOperatorStatus (..),
   MintRedeemer (..),
+  NodeData (..),
+  Datum,
   rootKey,
   nodeKeyPrefix,
   nodeKeyPrefixLen,
 ) where
 
 import Data.ByteString.Char8 qualified as BS8
-import GHC.Generics
+import GHC.Generics (Generic)
 
 import Cardano.Api qualified as C
-import PlutusLedgerApi.V3
+import PlutusLedgerApi.V3 (
+  BuiltinByteString,
+  POSIXTime,
+  PubKeyHash,
+ )
 import PlutusTx.Blueprint (HasBlueprintDefinition, definitionRef)
 import PlutusTx.Blueprint.TH (makeIsDataSchemaIndexed)
 import Ply (PlyArg)
+
+import Midgard.Types.LinkedList qualified as LinkedList
 
 rootKey :: C.AssetName
 rootKey = C.UnsafeAssetName $ BS8.pack "MIDGARD_REGISTERED_OPERATORS"
@@ -25,6 +33,20 @@ nodeKeyPrefix = C.UnsafeAssetName $ BS8.pack "MREG"
 
 nodeKeyPrefixLen :: Int
 nodeKeyPrefixLen = BS8.length $ C.serialiseToRawBytes nodeKeyPrefix
+
+newtype NodeData = NodeData
+  { activationTime :: Maybe POSIXTime
+  }
+  deriving stock (Eq, Show, Generic)
+  deriving anyclass (HasBlueprintDefinition)
+
+$( makeIsDataSchemaIndexed
+     ''NodeData
+     [ ('NodeData, 0)
+     ]
+ )
+
+type Datum = LinkedList.Element BuiltinByteString NodeData
 
 data DuplicateOperatorStatus
   = DuplicateIsRegistered
