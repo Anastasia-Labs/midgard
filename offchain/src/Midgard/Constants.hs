@@ -12,7 +12,8 @@ module Midgard.Constants (
 import Data.Coerce (coerce)
 
 import Cardano.Api qualified as C
-import Convex.Utils.String (unsafeAssetName)
+import Data.ByteString.Char8 qualified as BS8
+import PlutusCore qualified as PLC
 import PlutusCore.Core qualified as PLC
 import PlutusLedgerApi.V3 (serialiseUPLC)
 import UntypedPlutusCore qualified as UPLC
@@ -37,7 +38,7 @@ hubOracleMintingPolicyId' :: C.ScriptHash
 hubOracleMintingPolicyId' = coerce hubOracleMintingPolicyId
 
 hubOracleAssetName :: C.AssetName
-hubOracleAssetName = unsafeAssetName "cafe"
+hubOracleAssetName = C.UnsafeAssetName $ BS8.pack "MIDGARD_HUB_ORACLE"
 
 operatorRequiredBond :: C.Lovelace
 operatorRequiredBond = 5_000_000
@@ -45,11 +46,11 @@ operatorRequiredBond = 5_000_000
 operatorSlashingPenalty :: C.Lovelace
 operatorSlashingPenalty = 3_000_000
 
-alwaysSucceedsUPLC :: UPLC.Program UPLC.DeBruijn uni fun ()
+alwaysSucceedsUPLC :: UPLC.Program UPLC.DeBruijn PLC.DefaultUni fun ()
 alwaysSucceedsUPLC =
   UPLC.Program () PLC.plcVersion110 $
     UPLC.LamAbs () (UPLC.DeBruijn 0) $
-      UPLC.Var () (UPLC.DeBruijn 1)
+      UPLC.Constant () (PLC.Some (PLC.ValueOf PLC.DefaultUniUnit ()))
 
 alwaysFailsUPLC :: UPLC.Program UPLC.DeBruijn uni fun ()
 alwaysFailsUPLC =
