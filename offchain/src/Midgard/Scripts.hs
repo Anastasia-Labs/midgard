@@ -1,13 +1,14 @@
 module Midgard.Scripts (MidgardScripts (..), readAikenScripts) where
 
 import PlutusLedgerApi.Data.V3 (BuiltinData)
+import PlutusTx.Builtins qualified as PlutusTx
 import Ply
 
-import Cardano.Api qualified as C
-import Midgard.Constants (hubOracleAssetName, hubOracleMintingPolicyId, operatorRequiredBond, operatorSlashingPenalty)
+import Midgard.Constants (hubOracleMintingPolicyId)
 import Midgard.ScriptUtils (mintingPolicyId, policyIdBytes)
+import Midgard.Types.ActiveOperators qualified as ActiveOperators
 import Midgard.Types.RegisteredOperators qualified as RegisteredOperators
-import PlutusTx.Builtins qualified as PlutusTx
+import Midgard.Types.RetiredOperators qualified as RetiredOperators
 
 data MidgardScripts = MidgardScripts
   { registeredOperatorsValidator ::
@@ -24,13 +25,13 @@ data MidgardScripts = MidgardScripts
   , activeOperatorsValidator ::
       TypedScript
         PlutusV3
-        '[ AsDatum BuiltinData
-         , AsRedeemer BuiltinData
+        '[ AsDatum ActiveOperators.Datum
+         , AsRedeemer ActiveOperators.SpendRedeemer
          ]
   , activeOperatorsPolicy ::
       TypedScript
         PlutusV3
-        '[ AsRedeemer RegisteredOperators.MintRedeemer
+        '[ AsRedeemer ActiveOperators.MintRedeemer
          ]
   , retiredOperatorsValidator ::
       TypedScript
@@ -41,53 +42,48 @@ data MidgardScripts = MidgardScripts
   , retiredOperatorsPolicy ::
       TypedScript
         PlutusV3
-        '[ AsRedeemer RegisteredOperators.MintRedeemer
+        '[ AsRedeemer RetiredOperators.MintRedeemer
          ]
   }
 
 readAikenScripts :: IO MidgardScripts
 readAikenScripts = do
   aikenBp <- readBlueprint "../onchain/aiken/plutus.json"
-  registeredOperatorsValidator' <- getTypedScript aikenBp "registered_operators.spend.spend"
-  registeredOperatorsPolicy' <- getTypedScript aikenBp "registered_operators.mint.mint"
-  activeOperatorsValidator' <- getTypedScript aikenBp "active_operators.spend.spend"
-  activeOperatorsPolicy' <- getTypedScript aikenBp "active_operators.mint.mint"
-  retiredOperatorsValidator' <- getTypedScript aikenBp "retired_operators.spend.spend"
-  retiredOperatorsPolicy' <- getTypedScript aikenBp "retired_operators.mint.mint"
+  registeredOperatorsValidator' <- getTypedScript aikenBp "operator_directory/registered_operators.spend.spend"
+  registeredOperatorsPolicy' <- getTypedScript aikenBp "operator_directory/registered_operators.mint.mint"
+  activeOperatorsValidator' <- getTypedScript aikenBp "operator_directory/active_operators.spend.spend"
+  activeOperatorsPolicy' <- getTypedScript aikenBp "operator_directory/active_operators.mint.mint"
+  retiredOperatorsValidator' <- getTypedScript aikenBp "operator_directory/retired_operators.spend.spend"
+  retiredOperatorsPolicy' <- getTypedScript aikenBp "operator_directory/retired_operators.mint.mint"
+  let retiredOperatorsPolicy =
+        retiredOperatorsPolicy'
+          #! PlutusTx.toBuiltin (policyIdBytes hubOracleMintingPolicyId)
   let registeredOperatorsPolicy =
         registeredOperatorsPolicy'
-          #! toInteger operatorRequiredBond
-          #! toInteger operatorSlashingPenalty
+          #! PlutusTx.toBuiltin (policyIdBytes $ mintingPolicyId retiredOperatorsPolicy)
           #! PlutusTx.toBuiltin (policyIdBytes hubOracleMintingPolicyId)
-          #! PlutusTx.toBuiltin (C.serialiseToRawBytes hubOracleAssetName)
+  let activeOperatorsPolicy =
+        activeOperatorsPolicy'
+          #! PlutusTx.toBuiltin (policyIdBytes hubOracleMintingPolicyId)
+          #! PlutusTx.toBuiltin (policyIdBytes $ mintingPolicyId registeredOperatorsPolicy)
+          #! PlutusTx.toBuiltin (policyIdBytes $ mintingPolicyId retiredOperatorsPolicy)
   let registeredOperatorsValidator =
         registeredOperatorsValidator'
           #$! PlutusTx.toBuiltin
           . policyIdBytes
           $ mintingPolicyId registeredOperatorsPolicy
-  let activeOperatorsPolicy =
-        activeOperatorsPolicy'
-          #! toInteger operatorSlashingPenalty
-          #! PlutusTx.toBuiltin (policyIdBytes hubOracleMintingPolicyId)
-          #! PlutusTx.toBuiltin (C.serialiseToRawBytes hubOracleAssetName)
   let activeOperatorsValidator =
         activeOperatorsValidator'
           #! ( PlutusTx.toBuiltin
                  . policyIdBytes
-                 $ mintingPolicyId registeredOperatorsPolicy
+                 $ mintingPolicyId activeOperatorsPolicy
              )
           #! PlutusTx.toBuiltin (policyIdBytes hubOracleMintingPolicyId)
-          #! PlutusTx.toBuiltin (C.serialiseToRawBytes hubOracleAssetName)
-  let retiredOperatorsPolicy =
-        retiredOperatorsPolicy'
-          #! toInteger operatorSlashingPenalty
-          #! PlutusTx.toBuiltin (policyIdBytes hubOracleMintingPolicyId)
-          #! PlutusTx.toBuiltin (C.serialiseToRawBytes hubOracleAssetName)
   let retiredOperatorsValidator =
         retiredOperatorsValidator'
           #$! PlutusTx.toBuiltin
           . policyIdBytes
-          $ mintingPolicyId registeredOperatorsPolicy
+          $ mintingPolicyId retiredOperatorsPolicy
   pure
     MidgardScripts
       { registeredOperatorsValidator

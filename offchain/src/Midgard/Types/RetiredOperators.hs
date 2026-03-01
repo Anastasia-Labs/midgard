@@ -6,7 +6,7 @@ import Data.ByteString.Char8 qualified as BS8
 import GHC.Generics (Generic)
 
 import Cardano.Api qualified as C
-import PlutusLedgerApi.V3 (BuiltinByteString, POSIXTime)
+import PlutusLedgerApi.V3 (POSIXTime, PubKeyHash)
 import PlutusTx.Blueprint (HasBlueprintDefinition, definitionRef)
 import PlutusTx.Blueprint.TH (makeIsDataSchemaIndexed)
 
@@ -34,32 +34,37 @@ $( makeIsDataSchemaIndexed
  )
 
 data MintRedeemer
-  = Init
-  | Deinit
+  = Init {outputIndex :: Integer}
+  | Deinit {inputIndex :: Integer}
   | RetireOperator
-      { newRetiredOperatorKey :: BuiltinByteString
+      { newRetiredOperatorKey :: PubKeyHash
+      , bondUnlockTime :: Maybe POSIXTime
       , hubOracleRefInputIndex :: Integer
-      , retiredOperatorAppendedNodeOutputIndex :: Integer
-      , retiredOperatorAnchorNodeOutputIndex :: Integer
+      , retiredOperatorAnchorElementInputIndex :: Integer
+      , retiredOperatorAnchorElementOutputIndex :: Integer
+      , retiredOperatorInsertedNodeOutputIndex :: Integer
       , activeOperatorsRedeemerIndex :: Integer
       }
   | RecoverOperatorBond
-      { retiredOperatorKey :: BuiltinByteString
-      , removedNodeInputIndex :: Integer
-      , anchorNodeInputIndex :: Integer
+      { retiredOperatorKey :: PubKeyHash
+      , retiredOperatorAnchorElementInputIndex :: Integer
+      , retiredOperatorRemovedNodeInputIndex :: Integer
+      , retiredOperatorAnchorElementOutputIndex :: Integer
       }
   | RemoveOperatorBadState
-      { slashedRetiredOperatorKey :: BuiltinByteString
+      { slashedRetiredOperatorKey :: PubKeyHash
       , hubOracleRefInputIndex :: Integer
+      , retiredOperatorAnchorElementInputIndex :: Integer
       , retiredOperatorSlashedNodeInputIndex :: Integer
-      , retiredOperatorAnchorNodeInputIndex :: Integer
+      , retiredOperatorAnchorElementOutputIndex :: Integer
       , stateQueueRedeemerIndex :: Integer
       }
   | RemoveOperatorBadSettlement
-      { slashedRetiredOperatorKey :: BuiltinByteString
+      { slashedRetiredOperatorKey :: PubKeyHash
       , hubOracleRefInputIndex :: Integer
+      , retiredOperatorAnchorElementInputIndex :: Integer
       , retiredOperatorSlashedNodeInputIndex :: Integer
-      , retiredOperatorAnchorNodeInputIndex :: Integer
+      , retiredOperatorAnchorElementOutputIndex :: Integer
       , settlementInputIndex :: Integer
       , settlementRedeemerIndex :: Integer
       }

@@ -16,22 +16,36 @@ import Control.Monad.Except (MonadError (throwError))
 import Convex.Utxos (toTxOut)
 import Midgard.Contracts.Utils (findTxInNonMembership, findUtxoWithAsset, findUtxoWithLink)
 import Midgard.ScriptUtils (mintingPolicyId, toMintingPolicy, toValidator, validatorHash)
-import Midgard.Scripts (MidgardScripts (MidgardScripts, activeOperatorsPolicy, activeOperatorsValidator, registeredOperatorsPolicy, registeredOperatorsValidator, retiredOperatorsPolicy, retiredOperatorsValidator))
+import Midgard.Scripts (
+  MidgardScripts (
+    MidgardScripts,
+    activeOperatorsPolicy,
+    activeOperatorsValidator,
+    registeredOperatorsPolicy,
+    registeredOperatorsValidator,
+    retiredOperatorsPolicy,
+    retiredOperatorsValidator
+  ),
+ )
 import Midgard.Types.ActiveOperators qualified as ActiveOperators
 import Midgard.Types.RegisteredOperators qualified as RegisteredOperators
 
 initActiveOperators ::
-  ( MonadBlockchain era m
-  , C.HasScriptLanguageInEra C.PlutusScriptV3 era
+  ( C.HasScriptLanguageInEra C.PlutusScriptV3 era
   , MonadBuildTx era m
   , C.IsBabbageBasedEra era
   ) =>
-  MidgardScripts -> m ()
-initActiveOperators MidgardScripts {activeOperatorsValidator, activeOperatorsPolicy} = do
-  netId <- queryNetworkId
+  C.NetworkId ->
+  MidgardScripts ->
+  m ()
+initActiveOperators netId MidgardScripts {activeOperatorsValidator, activeOperatorsPolicy} = do
   let C.PolicyId policyId = mintingPolicyId activeOperatorsPolicy
   -- The active operators token should be minted.
-  mintPlutus (toMintingPolicy activeOperatorsPolicy) ActiveOperators.Init (C.UnsafeAssetName "") 1
+  mintPlutus
+    (toMintingPolicy activeOperatorsPolicy)
+    ActiveOperators.Init {outputIndex = 0}
+    (C.UnsafeAssetName "")
+    1
   -- And sent to the active operators validator.
   payToScriptInlineDatum
     netId
