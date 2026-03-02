@@ -1,5 +1,6 @@
-module Midgard.Scripts (MidgardScripts (..), readAikenScripts) where
+module Midgard.Scripts (MidgardScripts (..), MidgardRefScripts (..), readAikenScripts) where
 
+import Cardano.Api qualified as C
 import PlutusLedgerApi.Data.V3 (BuiltinData)
 import PlutusTx.Builtins qualified as PlutusTx
 import Ply
@@ -45,6 +46,14 @@ data MidgardScripts = MidgardScripts
         '[ AsRedeemer RetiredOperators.MintRedeemer
          ]
   }
+
+-- | Structure to track the published reference scripts.
+data MidgardRefScripts = MidgardRefScripts
+  { registeredOperatorsPolicyRef :: C.TxIn
+  , activeOperatorsPolicyRef :: C.TxIn
+  , retiredOperatorsPolicyRef :: C.TxIn
+  }
+  deriving stock (Show)
 
 readAikenScripts :: IO MidgardScripts
 readAikenScripts = do
