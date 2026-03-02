@@ -99,17 +99,45 @@ export const retrieveAllEntries = (
   tableName: string,
 ): Effect.Effect<readonly EntryWithTimeStamp[], DatabaseError, Database> =>
   Effect.gen(function* () {
-    yield* Effect.logDebug(`${tableName} db: attempt to retrieveEntries`);
+    yield* Effect.logDebug(`${tableName} db: attempt to retrieveAllEntries`);
     const sql = yield* SqlClient.SqlClient;
     return yield* sql<EntryWithTimeStamp>`SELECT * FROM ${sql(tableName)}`;
   }).pipe(
-    Effect.withLogSpan(`retrieveEntries ${tableName}`),
+    Effect.withLogSpan(`retrieveAllEntries ${tableName}`),
     Effect.tapErrorTag("SqlError", (double) =>
       Effect.logError(
-        `${tableName} db: retrieveEntries: ${JSON.stringify(double)}`,
+        `${tableName} db: retrieveAllEntries: ${JSON.stringify(double)}`,
       ),
     ),
     sqlErrorToDatabaseError(tableName, "Failed to retrieve the whole ledger"),
+  );
+
+export const retrieveAllEntriesNoTimeStamps = (
+  tableName: string,
+): Effect.Effect<readonly Entry[], DatabaseError, Database> =>
+  Effect.gen(function* () {
+    yield* Effect.logDebug(
+      `${tableName} db: attempt to retrieveAllEntriesNoTimeStamps`,
+    );
+    const sql = yield* SqlClient.SqlClient;
+    return yield* sql<Entry>`
+      SELECT
+        ${sql(Columns.TX_ID)},
+        ${sql(Columns.OUTREF)},
+        ${sql(Columns.OUTPUT)},
+        ${sql(Columns.ADDRESS)},
+      FROM ${sql(tableName)}`;
+  }).pipe(
+    Effect.withLogSpan(`retrieveAllEntriesNoTimeStamps ${tableName}`),
+    Effect.tapErrorTag("SqlError", (double) =>
+      Effect.logError(
+        `${tableName} db: retrieveAllEntriesNoTimeStamps: ${JSON.stringify(double)}`,
+      ),
+    ),
+    sqlErrorToDatabaseError(
+      tableName,
+      "Failed to retrieve the whole ledger without timestamps",
+    ),
   );
 
 export const retrieveEntriesWithAddress = (

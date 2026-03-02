@@ -20,7 +20,6 @@ export enum Columns {
   EVENT_START_TIME = "event_start_time",
   EVENT_END_TIME = "event_end_time",
   NEW_WALLET_UTXOS = "new_wallet_utxos",
-  // Corresponds to `.chain()` second tuple value.
   PRODUCED_UTXOS = "produced_utxos",
   L1_CBOR = "l1_cbor",
   DEPOSITS_COUNT = "deposits_count",
@@ -29,6 +28,7 @@ export enum Columns {
   WITHDRAWALS_COUNT = "withdrawals_count",
   TOTAL_EVENTS_SIZE = "total_events_size",
   TIMESTAMPTZ = "time_stamp_tz",
+  STATUS = "status",
 }
 
 export type EntryNoMeta = {
@@ -46,39 +46,32 @@ export type EntryNoMeta = {
   [Columns.TX_ORDERS_COUNT]: number;
   [Columns.WITHDRAWALS_COUNT]: number;
   [Columns.TOTAL_EVENTS_SIZE]: number;
+  [Columns.STATUS]: Status;
 };
+
+export enum Status {
+  UNSUBMITTED = 0,
+  SUBMITTED = 1,
+  CONFIRMED = 2,
+  MERGED = 3,
+}
 
 export type Entry = EntryNoMeta & {
   [Columns.HEIGHT]: bigint;
   [Columns.TIMESTAMPTZ]: Date;
 };
 
-export type LatestUnsubmittedBlockWithTxs = {
-  [Columns.HEADER_HASH]: Buffer;
-  [Columns.EVENT_START_TIME]: Date;
-  [Columns.EVENT_END_TIME]: Date;
+export type LatestUnsubmittedBlockWithTxs = Omit<
+  Entry,
+  Columns.NEW_WALLET_UTXOS | Columns.PRODUCED_UTXOS
+> & {
   [Columns.NEW_WALLET_UTXOS]: readonly UTxO[];
   [Columns.PRODUCED_UTXOS]: readonly UTxO[];
-  [Columns.DEPOSITS_COUNT]: number;
-  [Columns.TX_REQUESTS_COUNT]: number;
-  [Columns.TX_ORDERS_COUNT]: number;
-  [Columns.WITHDRAWALS_COUNT]: number;
-  [Columns.TOTAL_EVENTS_SIZE]: number;
   txHashes: readonly Buffer[];
   txCbors: readonly Buffer[];
 };
 
-type LatestUnsubmittedBlockJoinRow = {
-  [Columns.HEADER_HASH]: Buffer;
-  [Columns.EVENT_START_TIME]: Date;
-  [Columns.EVENT_END_TIME]: Date;
-  [Columns.NEW_WALLET_UTXOS]: Buffer;
-  [Columns.PRODUCED_UTXOS]: Buffer;
-  [Columns.DEPOSITS_COUNT]: number;
-  [Columns.TX_REQUESTS_COUNT]: number;
-  [Columns.TX_ORDERS_COUNT]: number;
-  [Columns.WITHDRAWALS_COUNT]: number;
-  [Columns.TOTAL_EVENTS_SIZE]: number;
+type LatestUnsubmittedBlockJoinRow = Entry & {
   [BlocksDB.Columns.TX_ID]: Buffer | null;
   [TxUtils.Columns.TX]: Buffer | null;
 };
@@ -99,6 +92,7 @@ export const createTable: Effect.Effect<void, DatabaseError, Database> =
       ${sql(Columns.TX_ORDERS_COUNT)} INTEGER NOT NULL,
       ${sql(Columns.WITHDRAWALS_COUNT)} INTEGER NOT NULL,
       ${sql(Columns.TOTAL_EVENTS_SIZE)} INTEGER NOT NULL,
+      ${sql(Columns.STATUS)} INTEGER NOT NULL DEFAULT(${Status.UNSUBMITTED}),
       ${sql(Columns.TIMESTAMPTZ)} TIMESTAMPTZ NOT NULL DEFAULT(NOW())
     );`;
   }).pipe(
@@ -159,31 +153,37 @@ export const retrieveLatestWithBlockTxs: Effect.Effect<
   const rows = yield* sql<LatestUnsubmittedBlockJoinRow>`
     WITH latest_unsubmitted AS (
       SELECT
+        ${sql(Columns.HEIGHT)},
         ${sql(Columns.HEADER_HASH)},
         ${sql(Columns.EVENT_START_TIME)},
         ${sql(Columns.EVENT_END_TIME)},
         ${sql(Columns.NEW_WALLET_UTXOS)},
         ${sql(Columns.PRODUCED_UTXOS)},
+        ${sql(Columns.L1_CBOR)},
         ${sql(Columns.DEPOSITS_COUNT)},
         ${sql(Columns.TX_REQUESTS_COUNT)},
         ${sql(Columns.TX_ORDERS_COUNT)},
         ${sql(Columns.WITHDRAWALS_COUNT)},
-        ${sql(Columns.TOTAL_EVENTS_SIZE)}
+        ${sql(Columns.TOTAL_EVENTS_SIZE)},
+        ${sql(Columns.TIMESTAMPTZ)},
       FROM ${sql(tableName)}
       ORDER BY ${sql(Columns.HEIGHT)} DESC
       LIMIT 1
     )
     SELECT
+      latest_unsubmitted.${sql(Columns.HEIGHT)},
       latest_unsubmitted.${sql(Columns.HEADER_HASH)},
       latest_unsubmitted.${sql(Columns.EVENT_START_TIME)},
       latest_unsubmitted.${sql(Columns.EVENT_END_TIME)},
       latest_unsubmitted.${sql(Columns.NEW_WALLET_UTXOS)},
       latest_unsubmitted.${sql(Columns.PRODUCED_UTXOS)},
+      latest_unsubmitted.${sql(Columns.L1_CBOR)},
       latest_unsubmitted.${sql(Columns.DEPOSITS_COUNT)},
       latest_unsubmitted.${sql(Columns.TX_REQUESTS_COUNT)},
       latest_unsubmitted.${sql(Columns.TX_ORDERS_COUNT)},
       latest_unsubmitted.${sql(Columns.WITHDRAWALS_COUNT)},
       latest_unsubmitted.${sql(Columns.TOTAL_EVENTS_SIZE)},
+      latest_unsubmitted.${sql(Columns.TIMESTAMPTZ)},
       b.${sql(BlocksDB.Columns.TX_ID)},
       i.${sql(TxUtils.Columns.TX)}
     FROM latest_unsubmitted
@@ -238,16 +238,9 @@ export const retrieveLatestWithBlockTxs: Effect.Effect<
   );
 
   return Option.some({
-    [Columns.HEADER_HASH]: firstRow[Columns.HEADER_HASH],
-    [Columns.EVENT_START_TIME]: firstRow[Columns.EVENT_START_TIME],
-    [Columns.EVENT_END_TIME]: firstRow[Columns.EVENT_END_TIME],
+    ...firstRow,
     [Columns.NEW_WALLET_UTXOS]: newWalletUtxos,
     [Columns.PRODUCED_UTXOS]: producedUtxos,
-    [Columns.DEPOSITS_COUNT]: firstRow[Columns.DEPOSITS_COUNT],
-    [Columns.TX_REQUESTS_COUNT]: firstRow[Columns.TX_REQUESTS_COUNT],
-    [Columns.TX_ORDERS_COUNT]: firstRow[Columns.TX_ORDERS_COUNT],
-    [Columns.WITHDRAWALS_COUNT]: firstRow[Columns.WITHDRAWALS_COUNT],
-    [Columns.TOTAL_EVENTS_SIZE]: firstRow[Columns.TOTAL_EVENTS_SIZE],
     txHashes,
     txCbors,
   });
@@ -276,6 +269,26 @@ export const retrieveLatestWithBlockTxs: Effect.Effect<
   sqlErrorToDatabaseError(
     tableName,
     "Failed to retrieve latest unsubmitted block with transactions",
+  ),
+);
+
+export const retrieveEariliestEntry: Effect.Effect<
+  Option.Option<Entry>,
+  DatabaseError,
+  Database
+> = Effect.gen(function* () {
+  const sql = yield* SqlClient.SqlClient;
+  const rows = yield* sql<LatestUnsubmittedBlockJoinRow>`
+    SELECT * FROM ${sql(tableName)} ORDER BY ${sql(Columns.HEIGHT)} DESC`;
+  if (rows.length <= 0) {
+    return Option.none();
+  } else {
+  }
+  return Option.some(rows[0]);
+}).pipe(
+  sqlErrorToDatabaseError(
+    tableName,
+    "Failed retrieve earliest unsubmitted block",
   ),
 );
 
