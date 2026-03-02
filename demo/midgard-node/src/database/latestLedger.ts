@@ -3,8 +3,9 @@ import { clearTable } from "@/database/utils/common.js";
 
 export const tableName = "latest_ledger";
 
-export const insertMultiple = (entries: Ledger.Entry[]) =>
-  Ledger.insertEntries(tableName, entries);
+export const insertMultiple = (
+  entries: Ledger.Entry[] | readonly Ledger.Entry[],
+) => Ledger.insertEntries(tableName, entries);
 
 export const retrieve = Ledger.retrieveAllEntries(tableName);
 

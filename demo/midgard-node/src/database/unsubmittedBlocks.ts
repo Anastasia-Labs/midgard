@@ -292,6 +292,22 @@ export const retrieveEarliestEntry: Effect.Effect<
   ),
 );
 
+export const setStatusOfEntry = (
+  entry: Entry,
+  newStatus: Status,
+): Effect.Effect<void, DatabaseError, Database> =>
+  Effect.gen(function* () {
+    const sql = yield* SqlClient.SqlClient;
+    yield* sql`UPDATE ${sql(tableName)} SET ${sql(Columns.STATUS)} = ${newStatus} WHERE
+    ${sql(Columns.HEADER_HASH)} = ${entry[Columns.HEADER_HASH]}
+  `;
+  }).pipe(
+    sqlErrorToDatabaseError(
+      tableName,
+      "Failed to update status of given block entry",
+    ),
+  );
+
 export const deleteByBlocks = (
   headerHashes: Buffer[] | readonly Buffer[],
 ): Effect.Effect<void, DatabaseError, Database> =>

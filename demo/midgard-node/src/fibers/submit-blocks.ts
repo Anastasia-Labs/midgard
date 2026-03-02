@@ -32,8 +32,12 @@ import {
   LedgerUtils as Ledger,
   TxUtils as Tx,
   UserEventsUtils as UserEvent,
+  ImmutableDB,
 } from "@/database/index.js";
-import { breakDownTx } from "@/utils.js";
+import { batchProgram, breakDownTx } from "@/utils.js";
+
+// For database operations.
+const BATCH_SIZE = 100;
 
 const submitSignedTxCBOR = (
   l1CborBytes: Buffer,
@@ -98,7 +102,10 @@ const removeSpentOutRef = (
     }),
   );
 
-const applyTxToLedger = (ledger: readonly Ledger.Entry[], txCbor: Buffer) =>
+const applyTxToLedger = <E, R>(
+  ledger: readonly Ledger.Entry[],
+  txCbor: Buffer,
+) =>
   Effect.gen(function* () {
     const { spent, produced } = yield* breakDownTx(txCbor);
     return yield* Effect.reduce(
@@ -108,20 +115,18 @@ const applyTxToLedger = (ledger: readonly Ledger.Entry[], txCbor: Buffer) =>
     );
   });
 
-const getAllEventsWithinInterval = (
+type PrevLedgerAndEvents = {
+  prevLedger: readonly Ledger.Entry[];
+  withdrawals: readonly UserEvent.Entry[];
+  txOrders: readonly UserEvent.Entry[];
+  txRequests: readonly Tx.Entry[];
+  deposits: readonly UserEvent.Entry[];
+};
+
+const getBlocksPrevLedgerAndEvents = (
   startDate: Date,
   endDate: Date,
-): Effect.Effect<
-  {
-    prevLedger: readonly Ledger.Entry[];
-    withdrawals: readonly UserEvent.Entry[];
-    txOrders: readonly UserEvent.Entry[];
-    txRequests: readonly Tx.Entry[];
-    deposits: readonly UserEvent.Entry[];
-  },
-  DatabaseError,
-  Database
-> =>
+): Effect.Effect<PrevLedgerAndEvents, DatabaseError, Database> =>
   Effect.gen(function* () {
     const [prevLedger, withdrawals, txOrders, txRequests, deposits] =
       yield* Effect.all(
@@ -170,20 +175,22 @@ const applyEventsToLedger = (
   startDate: Date,
   endDate: Date,
 ): Effect.Effect<
-  Ledger.Entry[],
+  PrevLedgerAndEvents & {
+    newLedger: readonly Ledger.Entry[];
+    mempoolTxHashes: Buffer[];
+  },
   SDK.CmlDeserializationError | DatabaseError,
   NodeConfig | Database | AlwaysSucceedsContract
 > =>
   Effect.gen(function* () {
-    const { prevLedger, withdrawals, txOrders, txRequests, deposits } =
-      yield* getAllEventsWithinInterval(startDate, endDate);
+    const blockInfo = yield* getBlocksPrevLedgerAndEvents(startDate, endDate);
     const depositUTxOs = yield* Effect.all(
-      deposits.map(depositEntryToLedgerEntry),
+      blockInfo.deposits.map(depositEntryToLedgerEntry),
     );
 
     const afterWithdrawals = yield* Effect.reduce(
-      withdrawals,
-      prevLedger,
+      blockInfo.withdrawals,
+      blockInfo.prevLedger,
       (acc, w, _i) =>
         Effect.filter(acc, (utxoEntry) =>
           Effect.gen(function* () {
@@ -204,229 +211,98 @@ const applyEventsToLedger = (
         ),
     );
     const afterTxOrders = yield* Effect.reduce(
-      txOrders,
+      blockInfo.txOrders,
       afterWithdrawals,
       (acc, txOrder, _i) =>
         applyTxToLedger(acc, txOrder[UserEvent.Columns.INFO]),
     );
+    const mempoolTxHashes: Buffer[] = [];
     const afterTxRequests = yield* Effect.reduce(
-      txRequests,
+      blockInfo.txRequests,
       afterTxOrders,
-      (acc, txRequest, _i) => applyTxToLedger(acc, txRequest[Tx.Columns.TX]),
+      (acc, txRequest, _i) =>
+        Effect.sync(() =>
+          mempoolTxHashes.push(txRequest[Tx.Columns.TX_ID]),
+        ).pipe(
+          Effect.andThen((_) => applyTxToLedger(acc, txRequest[Tx.Columns.TX])),
+        ),
     );
     const afterDeposits = [...afterTxRequests, ...depositUTxOs];
-    return afterDeposits;
+    return {
+      ...blockInfo,
+      newLedger: afterDeposits,
+      mempoolTxHashes,
+    };
   });
 
-const temp = Effect.gen(function* () {
+const submitBlock = Effect.gen(function* () {
   const optUnsubmittedBlock = yield* UnsubmittedBlocksDB.retrieveEarliestEntry;
   yield* Option.match(optUnsubmittedBlock, {
     onNone: () => Effect.logInfo("No unsubmitted blocks in queue."),
-    onSome: (entry) =>
+    onSome: (blockEntry) =>
       Effect.gen(function* () {
+        yield* Effect.logInfo("🔗 ✉️  Submitting block commitment...");
         const txHash = yield* submitSignedTxCBOR(
-          entry[UnsubmittedBlocksDB.Columns.L1_CBOR],
+          blockEntry[UnsubmittedBlocksDB.Columns.L1_CBOR],
         );
-        const newLedger = yield* applyEventsToLedger(
-          entry[UnsubmittedBlocksDB.Columns.EVENT_START_TIME],
-          entry[UnsubmittedBlocksDB.Columns.EVENT_END_TIME],
+        yield* Effect.logInfo(`🔗 🚀 Block commitment submitted: ${txHash}`);
+        const { txRequests, newLedger, mempoolTxHashes } =
+          yield* applyEventsToLedger(
+            blockEntry[UnsubmittedBlocksDB.Columns.EVENT_START_TIME],
+            blockEntry[UnsubmittedBlocksDB.Columns.EVENT_END_TIME],
+          );
+
+        yield* LatestLedgerDB.clear;
+
+        const updateLatestLedgerDB = batchProgram(
+          BATCH_SIZE,
+          newLedger.length,
+          "Insert new ledger in LatestLedgerDB",
+          (startIndex, endIndex) => {
+            const ledgerBatch = newLedger.slice(startIndex, endIndex);
+            return LatestLedgerDB.insertMultiple(ledgerBatch);
+          },
         );
+
+        const transferMempoolTxs = batchProgram(
+          BATCH_SIZE,
+          txRequests.length,
+          "Transfer of MempoolDB entries to ImmutableDB",
+          (startIndex, endIndex) => {
+            const txsBatch = txRequests.slice(startIndex, endIndex);
+            const txHashesBatch = mempoolTxHashes.slice(startIndex, endIndex);
+            return Effect.all(
+              [
+                MempoolDB.clearTxs(txHashesBatch),
+                ImmutableDB.insertTxs(txsBatch),
+              ],
+              { concurrency: "unbounded" },
+            );
+          },
+        );
+
+        yield* Effect.all([
+          updateLatestLedgerDB,
+          transferMempoolTxs,
+          UnsubmittedBlocksDB.setStatusOfEntry(
+            blockEntry,
+            UnsubmittedBlocksDB.Status.SUBMITTED,
+          ),
+        ]);
       }),
   });
 });
 
-const fetchLatestBlock = (
-  lucid: LucidEvolution,
-): Effect.Effect<
-  SDK.StateQueueUTxO,
-  SDK.StateQueueError | SDK.LucidError,
-  AlwaysSucceedsContract
-> =>
-  Effect.gen(function* () {
-    const { stateQueue: stateQueueAuthValidator } =
-      yield* AlwaysSucceedsContract;
-    const fetchConfig: SDK.StateQueueFetchConfig = {
-      stateQueueAddress: stateQueueAuthValidator.spendingScriptAddress,
-      stateQueuePolicyId: stateQueueAuthValidator.policyId,
-    };
-    return yield* SDK.fetchLatestCommittedBlockProgram(lucid, fetchConfig);
-  });
-
-const syncUnsubmittedBlocksWithLatestOnchainBlock = (
-  latestBlock: SDK.StateQueueUTxO,
-): Effect.Effect<void, SDK.DataCoercionError | DatabaseError, Database> =>
-  Effect.gen(function* () {
-    const headerHashHex = yield* SDK.headerHashFromStateQueueUTxO(latestBlock);
-    const latestHeaderHash = Buffer.from(fromHex(headerHashHex));
-    yield* UnsubmittedBlocksDB.deleteUpToAndIncludingBlock(latestHeaderHash);
-  });
-
-const confirmSubmittedBlock = (
-  lucid: LucidEvolution,
-  targetTxHash: TxHash,
-): Effect.Effect<
-  SDK.StateQueueUTxO,
-  | SDK.CborSerializationError
-  | SDK.CmlUnexpectedError
-  | SDK.LucidError
-  | SDK.StateQueueError
-  | TxConfirmError,
-  AlwaysSucceedsContract
-> =>
-  Effect.gen(function* () {
-    yield* Effect.logInfo(`🔗 Confirming tx: ${targetTxHash}`);
-
-    yield* Effect.retry(
-      Effect.tryPromise({
-        try: () => lucid.awaitTx(targetTxHash),
-        catch: (cause) => cause,
-      }),
-      Schedule.recurs(4),
-    ).pipe(Effect.catchAllCause(Effect.logInfo));
-
-    const latestBlock = yield* fetchLatestBlock(lucid);
-
-    if (latestBlock.utxo.txHash === targetTxHash) {
-      return latestBlock;
-    } else {
-      return yield* new TxConfirmError({
-        message:
-          "After multiple attempts, the block available on-chain has not updated yet.",
-        cause: "Unknown",
-        txHash: targetTxHash,
-      });
-    }
-  });
-
-const syncLatestConfirmedBlock = (
-  lucid: LucidEvolution,
-  globals: Globals,
-): Effect.Effect<
-  void,
-  | SDK.CborSerializationError
-  | SDK.CborDeserializationError
-  | SDK.CmlUnexpectedError
-  | SDK.DataCoercionError
-  | SDK.LucidError
-  | SDK.StateQueueError
-  | DatabaseError,
-  AlwaysSucceedsContract | Database | Globals
-> =>
-  Effect.gen(function* () {
-    yield* Effect.logInfo(
-      "🔗 No cached confirmed block available. Fetching latest on-chain block...",
-    );
-    const latestBlock = yield* fetchLatestBlock(lucid);
-    yield* syncUnsubmittedBlocksWithLatestOnchainBlock(latestBlock);
-    const serializedLatestBlock = yield* serializeStateQueueUTxO(latestBlock);
-    yield* Ref.set(globals.AVAILABLE_CONFIRMED_BLOCK, serializedLatestBlock);
-    yield* Effect.logInfo("🔗 Updated cached confirmed block from chain tip.");
-  });
-
-const handleUnconfirmedSubmission = (
-  lucid: LucidEvolution,
-  globals: Globals,
-  submittedTxHash: TxHash,
-): Effect.Effect<
-  void,
-  | SDK.CborSerializationError
-  | SDK.CmlUnexpectedError
-  | SDK.DataCoercionError
-  | SDK.LucidError
-  | SDK.StateQueueError
-  | DatabaseError
-  | TxConfirmError,
-  AlwaysSucceedsContract | Database
-> =>
-  Effect.gen(function* () {
-    const confirmedBlock = yield* confirmSubmittedBlock(lucid, submittedTxHash);
-    yield* syncUnsubmittedBlocksWithLatestOnchainBlock(confirmedBlock);
-    yield* Ref.set(
-      globals.AVAILABLE_CONFIRMED_BLOCK,
-      yield* serializeStateQueueUTxO(confirmedBlock),
-    );
-    yield* Ref.set(globals.UNCONFIRMED_SUBMITTED_BLOCK_TX_HASH, "");
-    yield* Effect.logInfo(
-      `🔗 ☑️  Confirmed block submission tx: ${submittedTxHash}`,
-    );
-  });
-
-export const submitBlocks: Effect.Effect<
-  void,
-  | SDK.CborSerializationError
-  | SDK.CborDeserializationError
-  | SDK.CmlUnexpectedError
-  | SDK.DataCoercionError
-  | SDK.LucidError
-  | SDK.StateQueueError
-  | TxConfirmError
-  | TxSignError
-  | TxSubmitError
-  | DatabaseError,
-  AlwaysSucceedsContract | Lucid | Database | Globals
-> = Effect.gen(function* () {
-  const globals = yield* Globals;
-  const lucid = yield* Lucid;
-
-  const resetInProgress = yield* Ref.get(globals.RESET_IN_PROGRESS);
-  if (resetInProgress) {
-    return;
-  }
-
-  const availableConfirmedBlock = yield* Ref.get(
-    globals.AVAILABLE_CONFIRMED_BLOCK,
-  );
-  const unconfirmedSubmittedBlockTxHash = yield* Ref.get(
-    globals.UNCONFIRMED_SUBMITTED_BLOCK_TX_HASH,
-  );
-
-  if (unconfirmedSubmittedBlockTxHash !== "") {
-    yield* handleUnconfirmedSubmission(
-      lucid.api,
-      globals,
-      unconfirmedSubmittedBlockTxHash,
-    );
-    return;
-  }
-
-  if (availableConfirmedBlock === "") {
-    yield* syncLatestConfirmedBlock(lucid.api, globals);
-    return;
-  }
-
-  const unsubmittedBlocks = yield* UnsubmittedBlocksDB.retrieve;
-  if (unsubmittedBlocks.length <= 0) {
-    return;
-  }
-
-  const nextUnsubmittedBlock = unsubmittedBlocks[0];
-  const blockHashHex =
-    nextUnsubmittedBlock[UnsubmittedBlocksDB.Columns.HEADER_HASH].toString(
-      "hex",
-    );
-  const txCborHex =
-    nextUnsubmittedBlock[UnsubmittedBlocksDB.Columns.L1_CBOR].toString("hex");
-
-  yield* Effect.logInfo(`🔗 Submitting block ${blockHashHex}`);
-  const submittedTxHash = yield* handleSignSubmitNoConfirmation(
-    lucid.api,
-    lucid.api.fromTx(txCborHex),
-  );
-  yield* Ref.set(globals.UNCONFIRMED_SUBMITTED_BLOCK_TX_HASH, submittedTxHash);
-
-  yield* handleUnconfirmedSubmission(lucid.api, globals, submittedTxHash);
-});
-
-export const submitBlocksFiber = (
+export const submitBlockFiber = (
   schedule: Schedule.Schedule<number>,
 ): Effect.Effect<
   void,
   never,
-  Globals | Database | Lucid | AlwaysSucceedsContract
+  NodeConfig | Database | Lucid | AlwaysSucceedsContract
 > =>
   Effect.gen(function* () {
     yield* Effect.logInfo("🔗 Block submission fiber started.");
-    const action = submitBlocks.pipe(
+    const action = submitBlock.pipe(
       Effect.withSpan("submit-blocks-fiber"),
       Effect.catchAllCause(Effect.logWarning),
     );

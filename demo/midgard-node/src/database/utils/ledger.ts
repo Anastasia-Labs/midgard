@@ -77,7 +77,7 @@ export const insertEntry = (
 
 export const insertEntries = (
   tableName: string,
-  entries: Entry[],
+  entries: Entry[] | readonly Entry[],
 ): Effect.Effect<void, DatabaseError, Database> =>
   Effect.gen(function* () {
     yield* Effect.logDebug(`${tableName} db: attempt to insert Ledger UTxOs`);
