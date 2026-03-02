@@ -5,11 +5,13 @@ import Control.Monad.Except
 import Cardano.Api qualified as C
 import Convex.BuildTx (
   MonadBuildTx,
+  TxBuilder,
   addReference,
   addRequiredSignature,
   assetValue,
+  execBuildTx,
   mintPlutus,
-  mintPlutusWithRedeemerFn,
+  mintPlutusRefWithRedeemerFn,
   payToScriptInlineDatum,
   spendPlutusInlineDatum,
  )
@@ -17,9 +19,15 @@ import Convex.Class (MonadBlockchain (queryNetworkId), MonadUtxoQuery, utxosByPa
 import Convex.Utxos (toTxOut)
 
 import Midgard.Constants (hubOracleAssetName, hubOracleMintingPolicyId, hubOracleScriptHash, operatorRequiredBond)
-import Midgard.Contracts.Utils
-import Midgard.ScriptUtils (mintingPolicyId, toMintingPolicy, toValidator, validatorHash)
+import Midgard.Contracts.Utils (
+  findTxInNonMembership,
+  findUtxoWithAsset,
+  findUtxoWithLink,
+  nextOutIx,
+ )
+import Midgard.ScriptUtils (mintingPolicyId, plutusVersion, toMintingPolicy, toValidator, validatorHash)
 import Midgard.Scripts (
+  MidgardRefScripts (MidgardRefScripts, registeredOperatorsPolicyRef),
   MidgardScripts (
     MidgardScripts,
     activeOperatorsPolicy,
@@ -40,38 +48,47 @@ initRegisteredOperators ::
   ) =>
   C.NetworkId ->
   MidgardScripts ->
+  MidgardRefScripts ->
   m ()
-initRegisteredOperators netId MidgardScripts {registeredOperatorsValidator, registeredOperatorsPolicy} = do
-  let C.PolicyId policyId = mintingPolicyId registeredOperatorsPolicy
-  -- The registered operators token should be minted.
-  mintPlutusWithRedeemerFn
-    (toMintingPolicy registeredOperatorsPolicy)
-    (\txBody -> RegisteredOperators.Init {outputIndex = toInteger $ nextOutIx txBody})
-    RegisteredOperators.rootKey
-    1
-  -- And sent to the registered operators validator.
-  let datum :: RegisteredOperators.Datum =
-        LinkedList.Element
-          { elementData = LinkedList.Root mempty
-          , elementLink = Nothing
-          }
-  payToScriptInlineDatum
-    netId
-    (validatorHash registeredOperatorsValidator)
-    datum
-    C.NoStakeAddress
-    -- Must manually add min ada deposit...
-    (assetValue policyId RegisteredOperators.rootKey 1 <> C.lovelaceToValue 3_000_000)
+initRegisteredOperators
+  netId
+  MidgardScripts
+    { registeredOperatorsValidator
+    , registeredOperatorsPolicy
+    }
+  MidgardRefScripts {registeredOperatorsPolicyRef} = do
+    let C.PolicyId policyId = mintingPolicyId registeredOperatorsPolicy
+    addReference registeredOperatorsPolicyRef
+    -- The registered operators token should be minted.
+    mintPlutusRefWithRedeemerFn
+      registeredOperatorsPolicyRef
+      (plutusVersion registeredOperatorsPolicy)
+      policyId
+      (\txBody -> RegisteredOperators.Init {outputIndex = toInteger $ nextOutIx txBody})
+      RegisteredOperators.rootKey
+      1
+    -- And sent to the registered operators validator.
+    let datum :: RegisteredOperators.Datum =
+          LinkedList.Element
+            { elementData = LinkedList.Root mempty
+            , elementLink = Nothing
+            }
+    payToScriptInlineDatum
+      netId
+      (validatorHash registeredOperatorsValidator)
+      datum
+      C.NoStakeAddress
+      (assetValue policyId RegisteredOperators.rootKey 1)
 
 registerOperator ::
+  forall era m.
   ( MonadError String m
   , MonadBlockchain era m
   , MonadUtxoQuery m
   , C.HasScriptLanguageInEra C.PlutusScriptV3 era
-  , MonadBuildTx era m
   , C.IsBabbageBasedEra era
   ) =>
-  MidgardScripts -> C.Hash C.PaymentKey -> m ()
+  MidgardScripts -> C.Hash C.PaymentKey -> m (TxBuilder era)
 registerOperator
   MidgardScripts
     { registeredOperatorsValidator
@@ -105,35 +122,36 @@ registerOperator
       maybe (throwError "Operator already exists in retired operator set") pure $
         findTxInNonMembership retiredOperatorsUtxos (mintingPolicyId retiredOperatorsPolicy) $
           C.serialiseToRawBytes operatorPkh
-    addRequiredSignature operatorPkh
-    addReference hubOracleTxIn
-    addReference activeOperatorsNonMemberWitness
-    addReference retiredOperatorsNonMemberWitness
-    -- TODO: Use the proper redeemer once finalized.
-    mintPlutus
-      (toMintingPolicy registeredOperatorsPolicy)
-      ()
-      newNodeKey
-      1
-    -- TODO: Datum should contain original link from root (i.e newly added operator pkh).
-    payToScriptInlineDatum
-      netId
-      (validatorHash registeredOperatorsValidator)
-      ()
-      C.NoStakeAddress
-      (assetValue policyId newNodeKey 1 <> C.lovelaceToValue operatorRequiredBond)
-    -- TODO: Datum should contain updated link (i.e newly added operator pkh).
-    -- TODO: Add activation time assertion (i.e validity range)
-    payToScriptInlineDatum
-      netId
-      (validatorHash registeredOperatorsValidator)
-      ()
-      C.NoStakeAddress
-      (assetValue policyId RegisteredOperators.rootKey 1)
-    spendPlutusInlineDatum
-      rootRegistryTxIn
-      (toValidator registeredOperatorsValidator)
-      ()
+    pure . execBuildTx @era $ do
+      addRequiredSignature operatorPkh
+      addReference hubOracleTxIn
+      addReference activeOperatorsNonMemberWitness
+      addReference retiredOperatorsNonMemberWitness
+      -- TODO: Use the proper redeemer once finalized.
+      mintPlutus
+        (toMintingPolicy registeredOperatorsPolicy)
+        ()
+        newNodeKey
+        1
+      -- TODO: Datum should contain original link from root (i.e newly added operator pkh).
+      payToScriptInlineDatum
+        netId
+        (validatorHash registeredOperatorsValidator)
+        ()
+        C.NoStakeAddress
+        (assetValue policyId newNodeKey 1 <> C.lovelaceToValue operatorRequiredBond)
+      -- TODO: Datum should contain updated link (i.e newly added operator pkh).
+      -- TODO: Add activation time assertion (i.e validity range)
+      payToScriptInlineDatum
+        netId
+        (validatorHash registeredOperatorsValidator)
+        ()
+        C.NoStakeAddress
+        (assetValue policyId RegisteredOperators.rootKey 1)
+      spendPlutusInlineDatum
+        rootRegistryTxIn
+        (toValidator registeredOperatorsValidator)
+        ()
 
 deregisterOperator ::
   forall era m.

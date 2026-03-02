@@ -3,14 +3,18 @@ module Midgard.Contracts.RetiredOperators (initRetiredOperators) where
 import Cardano.Api qualified as C
 import Convex.BuildTx (
   MonadBuildTx,
+  addReference,
   assetValue,
-  mintPlutusWithRedeemerFn,
+  mintPlutusRefWithRedeemerFn,
   payToScriptInlineDatum,
  )
 
 import Midgard.Contracts.Utils (nextOutIx)
-import Midgard.ScriptUtils (mintingPolicyId, toMintingPolicy, validatorHash)
-import Midgard.Scripts (MidgardScripts (MidgardScripts, retiredOperatorsPolicy, retiredOperatorsValidator))
+import Midgard.ScriptUtils (mintingPolicyId, plutusVersion, validatorHash)
+import Midgard.Scripts (
+  MidgardRefScripts (MidgardRefScripts, retiredOperatorsPolicyRef),
+  MidgardScripts (MidgardScripts, retiredOperatorsPolicy, retiredOperatorsValidator),
+ )
 import Midgard.Types.LinkedList qualified as LinkedList
 import Midgard.Types.RetiredOperators qualified as RetiredOperators
 
@@ -21,14 +25,19 @@ initRetiredOperators ::
   ) =>
   C.NetworkId ->
   MidgardScripts ->
+  MidgardRefScripts ->
   m ()
 initRetiredOperators
   netId
-  MidgardScripts {retiredOperatorsValidator, retiredOperatorsPolicy} = do
+  MidgardScripts {retiredOperatorsValidator, retiredOperatorsPolicy}
+  MidgardRefScripts {retiredOperatorsPolicyRef} = do
     let C.PolicyId policyId = mintingPolicyId retiredOperatorsPolicy
+    addReference retiredOperatorsPolicyRef
     -- The registered operators token should be minted.
-    mintPlutusWithRedeemerFn
-      (toMintingPolicy retiredOperatorsPolicy)
+    mintPlutusRefWithRedeemerFn
+      retiredOperatorsPolicyRef
+      (plutusVersion retiredOperatorsPolicy)
+      policyId
       (\txBody -> RetiredOperators.Init {outputIndex = toInteger $ nextOutIx txBody})
       RetiredOperators.rootKey
       1
@@ -43,5 +52,4 @@ initRetiredOperators
       (validatorHash retiredOperatorsValidator)
       datum
       C.NoStakeAddress
-      -- Must manually add min ada deposit...
-      (assetValue policyId RetiredOperators.rootKey 1 <> C.lovelaceToValue 3_000_000)
+      (assetValue policyId RetiredOperators.rootKey 1)

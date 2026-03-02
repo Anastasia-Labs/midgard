@@ -7,12 +7,14 @@ module Midgard.Constants (
   operatorRequiredBond,
   operatorSlashingPenalty,
   hubOracleMintingPolicyId',
+  refScriptStorage,
 ) where
 
+import Data.ByteString.Char8 qualified as BS8
 import Data.Coerce (coerce)
 
 import Cardano.Api qualified as C
-import Data.ByteString.Char8 qualified as BS8
+import Convex.Utils (scriptAddress)
 import PlutusCore qualified as PLC
 import PlutusCore.Core qualified as PLC
 import PlutusLedgerApi.V3 (serialiseUPLC)
@@ -27,6 +29,10 @@ hubOracleMintingScript = C.PlutusScriptSerialised $ serialiseUPLC alwaysSucceeds
 -- Script to lock the hub oracle token at. Temporarily set to an "always fails" validator.s
 hubOracleValidator :: C.PlutusScript C.PlutusScriptV3
 hubOracleValidator = C.PlutusScriptSerialised $ serialiseUPLC alwaysFailsUPLC
+
+-- TODO (chase): Perhaps the storage address should be elsewhere.
+refScriptStorage :: C.NetworkId -> C.AddressInEra C.ConwayEra
+refScriptStorage netId = scriptAddress netId . C.PlutusScriptSerialised $ serialiseUPLC alwaysFailsUPLC
 
 hubOracleScriptHash :: C.ScriptHash
 hubOracleScriptHash = C.hashScript $ C.PlutusScript C.plutusScriptVersion hubOracleValidator
