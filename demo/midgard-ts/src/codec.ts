@@ -13,36 +13,46 @@
  *     the dynamic section.
  */
 
+// fuel-types/src/canonical.rs:186 — pub const ALIGN: usize = 8
 export const ALIGN = 8;
 
+// fuel-types/src/canonical.rs:190 — const fn alignment_bytes(len: usize) -> usize
 export function alignmentBytes(len: number): number {
   const mod = len % ALIGN;
   return mod === 0 ? 0 : ALIGN - mod;
 }
 
+// fuel-types/src/canonical.rs:196 — pub const fn aligned_size(len: usize) -> usize
 export function alignedSize(len: number): number {
   return len + alignmentBytes(len);
 }
 
 // ---------------------------------------------------------------------------
 // Writer
+// fuel-types/src/canonical.rs:59  — pub trait Output
+// fuel-types/src/canonical.rs:491 — impl Output for Vec<u8>
 // ---------------------------------------------------------------------------
 
 export class Writer {
   private readonly chunks: Uint8Array[] = [];
 
+  // fuel-types/src/canonical.rs:61 — Output::write
   write(bytes: Uint8Array): void {
     if (bytes.length > 0) this.chunks.push(new Uint8Array(bytes));
   }
 
+  // fuel-types/src/canonical.rs:64 — Output::push_byte
   pushByte(b: number): void {
     this.chunks.push(new Uint8Array([b & 0xff]));
   }
 
+  // No direct equivalent; Fuel does `for _ in 0..n { buffer.push_byte(0)?; }` inline
+  // e.g. fuel-types/src/canonical.rs:223 (zero-padding in impl_for_primitives encode_static)
   writeZeros(n: number): void {
     if (n > 0) this.chunks.push(new Uint8Array(n));
   }
 
+  // fuel-types/src/canonical.rs:112 — Serialize::to_bytes
   toBytes(): Uint8Array {
     let size = 0;
     for (const c of this.chunks) size += c.length;
@@ -58,12 +68,15 @@ export class Writer {
 
 // ---------------------------------------------------------------------------
 // Reader
+// fuel-types/src/canonical.rs:120 — pub trait Input
+// fuel-types/src/canonical.rs:515 — impl Input for &'_ [u8]
 // ---------------------------------------------------------------------------
 
 export class Reader {
   private pos = 0;
   constructor(private readonly buf: Uint8Array) {}
 
+  // fuel-types/src/canonical.rs:128 — Input::read
   read(n: number): Uint8Array {
     if (this.pos + n > this.buf.length)
       throw new Error(
@@ -74,6 +87,7 @@ export class Reader {
     return slice;
   }
 
+  // fuel-types/src/canonical.rs:145 — Input::skip
   skip(n: number): void {
     if (this.pos + n > this.buf.length)
       throw new Error(
@@ -82,6 +96,7 @@ export class Reader {
     this.pos += n;
   }
 
+  // fuel-types/src/canonical.rs:122 — Input::remaining
   remaining(): number {
     return this.buf.length - this.pos;
   }
@@ -89,6 +104,7 @@ export class Reader {
 
 // ---------------------------------------------------------------------------
 // u64 helpers — JS numbers are safe up to 2^53; sufficient for our tests
+// fuel-types/src/canonical.rs:249 — impl_for_primitives!(u64, false)
 // ---------------------------------------------------------------------------
 
 export function writeU64(w: Writer, n: number): void {
@@ -115,6 +131,7 @@ export function readU64(r: Reader): number {
 
 // ---------------------------------------------------------------------------
 // u16 — 6 zero bytes + 2 data bytes = 8 total
+// fuel-types/src/canonical.rs:246 — impl_for_primitives!(u16, false)
 // ---------------------------------------------------------------------------
 
 export function writeU16(w: Writer, n: number): void {
@@ -132,6 +149,7 @@ export function readU16(r: Reader): number {
 
 // ---------------------------------------------------------------------------
 // u8 — 7 zero bytes + 1 data byte = 8 total (UNALIGNED_BYTES=true inside Vec<u8>)
+// fuel-types/src/canonical.rs:245 — impl_for_primitives!(u8, true)
 // ---------------------------------------------------------------------------
 
 export function writeU8(w: Writer, n: number): void {
@@ -146,6 +164,7 @@ export function readU8(r: Reader): number {
 
 // ---------------------------------------------------------------------------
 // bool — encoded as u8 (padded to 8 bytes)
+// No direct equivalent in fuel-types canonical.rs; Fuel uses #[repr(u8)] enums.
 // ---------------------------------------------------------------------------
 
 export function writeBool(w: Writer, b: boolean): void {
@@ -159,6 +178,8 @@ export function readBool(r: Reader): boolean {
 // ---------------------------------------------------------------------------
 // Fixed-size byte arrays  (Hash28/32, VKey, Signature)
 // bytes written as-is, then zero-padded to next 8-byte boundary
+// fuel-types/src/canonical.rs:374 — impl<const N, T> Serialize for [T; N]
+//   UNALIGNED_BYTES path (lines 406-413): write raw bytes then pad to ALIGN
 // ---------------------------------------------------------------------------
 
 export function writeFixedBytes(w: Writer, bytes: Uint8Array): void {
@@ -175,6 +196,11 @@ export function readFixedBytes(r: Reader, len: number): Uint8Array {
 // ---------------------------------------------------------------------------
 // Variable-length byte blobs (Address, AssetName, Vec<u8> raw fields)
 // Static section: u64 length.  Dynamic section: bytes + alignment padding.
+// fuel-types/src/canonical.rs:279 — impl<T: Serialize> Serialize for Vec<T>
+//   encode_static (line 301): writes length as u64
+//   encode_dynamic (line 309): writes bytes + tail alignment padding
+//   decode_static (line 332): reads length / allocates capacity
+//   decode_dynamic (line 352): reads bytes + skips tail padding
 // ---------------------------------------------------------------------------
 
 export function writeVarBytesStatic(w: Writer, bytes: Uint8Array): void {

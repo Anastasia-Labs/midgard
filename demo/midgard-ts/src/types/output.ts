@@ -44,6 +44,11 @@ import {
 
 // ---------------------------------------------------------------------------
 // VKeyWitness  =  [vkey, signature]   (fully static, no dynamic)
+// cddl: codec.cddl:196 — referenced as nonempty_set<vkeywitness> in transaction_witness_set
+// cddl: codec.cddl:342 — vkey = bytes .size 32
+// cddl: codec.cddl:340 — signature = bytes .size 64
+// fuel: fuel-tx/src/transaction/types/witness.rs:32 — Witness struct (Fuel's opaque witness payload)
+// fuel: fuel-types/src/canonical.rs:374 — impl Serialize for [T; N], UNALIGNED_BYTES path (fixed byte arrays)
 // ---------------------------------------------------------------------------
 
 export interface VKeyWitness {
@@ -51,11 +56,13 @@ export interface VKeyWitness {
   signature: Signature; // 64 bytes
 }
 
+// fuel: fuel-types/src/canonical.rs:101 — Serialize::encode_static (both fields fixed-size, no dynamic)
 export function writeVKeyWitness(w: Writer, ww: VKeyWitness): void {
   writeVKeyStatic(w, ww.vkey);
   writeSignatureStatic(w, ww.signature);
 }
 
+// fuel: fuel-types/src/canonical.rs:167 — Deserialize::decode_static
 export function readVKeyWitness(r: Reader): VKeyWitness {
   const vkey = readVKeyStatic(r);
   const signature = readSignatureStatic(r);
@@ -64,6 +71,11 @@ export function readVKeyWitness(r: Reader): VKeyWitness {
 
 // ===========================================================================
 // Multiasset<u64>   (Full Representation)
+// cddl: codec.cddl:256 — multiasset<a0> = { + policy_id => { + asset_name => a0 } }
+// cddl: codec.cddl:334 — hash28 = bytes .size 28  (policy_id)
+// fuel: fuel-types/src/canonical.rs:279 — impl Serialize for Vec<T> (nested: outer Vec of inner Vec)
+//   encode_static (line 301): outer_len u64 + per-policy static
+//   encode_dynamic (line 309): asset name bytes + tail pad
 //
 // Flat encoding:
 //   Static: outer_len(u64) + for each policy:
@@ -82,6 +94,7 @@ interface MultiassetPartialEntry {
   assets: Array<{ nameLen: number; amount: number }>;
 }
 
+// fuel: fuel-types/src/canonical.rs:301 — Vec<T>::encode_static (len u64 + nested element statics)
 function writeMultiassetStatic(w: Writer, ma: Multiasset): void {
   writeU64(w, ma.length);
   for (const [pid, assets] of ma) {
@@ -94,6 +107,7 @@ function writeMultiassetStatic(w: Writer, ma: Multiasset): void {
   }
 }
 
+// fuel: fuel-types/src/canonical.rs:309 — Vec<u8>::encode_dynamic (asset name bytes + tail pad)
 function writeMultiassetDynamic(w: Writer, ma: Multiasset): void {
   for (const [, assets] of ma) {
     for (const [name] of assets) {
@@ -102,6 +116,7 @@ function writeMultiassetDynamic(w: Writer, ma: Multiasset): void {
   }
 }
 
+// fuel: fuel-types/src/canonical.rs:332 — Vec<T>::decode_static (reads len, allocates capacity)
 function readMultiassetStatic(r: Reader): MultiassetPartialEntry[] {
   const outerLen = readU64(r);
   const partial: MultiassetPartialEntry[] = [];
@@ -119,6 +134,7 @@ function readMultiassetStatic(r: Reader): MultiassetPartialEntry[] {
   return partial;
 }
 
+// fuel: fuel-types/src/canonical.rs:352 — Vec<T>::decode_dynamic (reads bytes + skips tail pad)
 function readMultiassetDynamic(
   r: Reader,
   partial: MultiassetPartialEntry[],
@@ -137,11 +153,15 @@ function readMultiassetDynamic(
 
 // ===========================================================================
 // MultiassetCompact   { + policy_id => $hash32 }
+// cddl: codec.cddl:263 — multiasset_compact<a0> = { + policy_id => $hash32 }
+// fuel: fuel-types/src/canonical.rs:279 — impl Serialize for Vec<T> (static only, no dynamic)
+//   encode_static (line 301): len u64 + per-policy (hash28 + hash32), all fixed-size
 // Fully static, no dynamic.
 // ===========================================================================
 
 export type MultiassetCompact = Array<[PolicyId, Hash32]>;
 
+// fuel: fuel-types/src/canonical.rs:301 — Vec<T>::encode_static
 function writeMultiassetCompactStatic(w: Writer, mac: MultiassetCompact): void {
   writeU64(w, mac.length);
   for (const [pid, hash] of mac) {
@@ -150,6 +170,7 @@ function writeMultiassetCompactStatic(w: Writer, mac: MultiassetCompact): void {
   }
 }
 
+// fuel: fuel-types/src/canonical.rs:332 — Vec<T>::decode_static
 function readMultiassetCompactStatic(r: Reader): MultiassetCompact {
   const len = readU64(r);
   const result: MultiassetCompact = [];
@@ -163,6 +184,9 @@ function readMultiassetCompactStatic(r: Reader): MultiassetCompact {
 
 // ===========================================================================
 // Value   (Full Representation)
+// cddl: codec.cddl:240 — value = coin / [coin, multiasset<positive_coin>]
+// fuel: fuel-tx/src/transaction/types/output.rs:38 — Output enum (Fuel's enum with discriminant + fields)
+// fuel: fuel-types/src/canonical.rs:71 — trait Serialize (encode_static writes discriminant + variant statics)
 //   Coin variant:       discriminant(u64=0) + coin(u64)            static only
 //   MultiAsset variant: discriminant(u64=1) + coin(u64) + ma.static + ma.dynamic
 // ===========================================================================
@@ -175,6 +199,7 @@ type ValuePartial =
   | { type: "Coin"; coin: Coin }
   | { type: "MultiAsset"; coin: Coin; maPartial: MultiassetPartialEntry[] };
 
+// fuel: fuel-types/src/canonical.rs:101 — Serialize::encode_static (discriminant u64 + variant static fields)
 function writeValueStatic(w: Writer, v: Value): void {
   if (v.type === "Coin") {
     writeU64(w, 0);
@@ -186,12 +211,14 @@ function writeValueStatic(w: Writer, v: Value): void {
   }
 }
 
+// fuel: fuel-types/src/canonical.rs:106 — Serialize::encode_dynamic (MultiAsset variant only)
 function writeValueDynamic(w: Writer, v: Value): void {
   if (v.type === "MultiAsset") {
     writeMultiassetDynamic(w, v.assets);
   }
 }
 
+// fuel: fuel-types/src/canonical.rs:167 — Deserialize::decode_static (reads discriminant, branches on variant)
 function readValueStatic(r: Reader): ValuePartial {
   const disc = readU64(r);
   if (disc === 0) {
@@ -204,6 +231,7 @@ function readValueStatic(r: Reader): ValuePartial {
   throw new Error("UnknownDiscriminant for Value");
 }
 
+// fuel: fuel-types/src/canonical.rs:172 — Deserialize::decode_dynamic (MultiAsset variant only)
 function readValueDynamic(r: Reader, partial: ValuePartial): Value {
   if (partial.type === "Coin") return partial;
   const assets = readMultiassetDynamic(r, partial.maPartial);
@@ -212,6 +240,9 @@ function readValueDynamic(r: Reader, partial: ValuePartial): Value {
 
 // ===========================================================================
 // ValueCompact   (Compact Representation)
+// cddl: codec.cddl:248 — value_compact = coin / [coin, $hash32]
+// fuel: fuel-tx/src/transaction/types/output.rs:38 — Output enum (same discriminant pattern)
+// fuel: fuel-types/src/canonical.rs:71 — trait Serialize
 //   Coin variant:       discriminant(u64=0) + coin(u64)               static
 //   MultiAsset variant: discriminant(u64=1) + coin(u64) + hash32(32)  static
 //   No dynamic in either case.
@@ -221,6 +252,7 @@ export type ValueCompact =
   | { type: "Coin"; coin: Coin }
   | { type: "MultiAsset"; coin: Coin; hash: Hash32 };
 
+// fuel: fuel-types/src/canonical.rs:101 — Serialize::encode_static (discriminant + variant static fields only)
 function writeValueCompactStatic(w: Writer, v: ValueCompact): void {
   if (v.type === "Coin") {
     writeU64(w, 0);
@@ -232,6 +264,7 @@ function writeValueCompactStatic(w: Writer, v: ValueCompact): void {
   }
 }
 
+// fuel: fuel-types/src/canonical.rs:167 — Deserialize::decode_static (reads discriminant + variant fields)
 function readValueCompactStatic(r: Reader): ValueCompact {
   const disc = readU64(r);
   if (disc === 0) return { type: "Coin", coin: readU64(r) };
@@ -245,6 +278,10 @@ function readValueCompactStatic(r: Reader): ValueCompact {
 
 // ===========================================================================
 // TransactionOutput   (Full Representation)
+// cddl: codec.cddl:221 — transaction_output = { 0: address, 1: value, ? 2: data, ? 3: script_ref }
+// fuel: fuel-tx/src/transaction/types/output.rs:38 — Output enum (#[derive(canonical::Serialize)])
+// fuel: fuel-types/src/canonical.rs:71  — trait Serialize
+// fuel: fuel-types/src/canonical.rs:150 — trait Deserialize
 //
 // Fields: address, value, datum?, script_ref?
 //
@@ -277,6 +314,8 @@ interface TransactionOutputPartial {
   scriptRefLen: number;
 }
 
+// fuel: fuel-types/src/canonical.rs:101 — Serialize::encode_static
+// fuel: fuel-types/src/canonical.rs:301 — Vec<u8>::encode_static (address len + datum/script_ref lens)
 function writeTransactionOutputStatic(w: Writer, o: TransactionOutput): void {
   writeAddressStatic(w, o.address);
   writeValueStatic(w, o.value);
@@ -296,6 +335,8 @@ function writeTransactionOutputStatic(w: Writer, o: TransactionOutput): void {
   }
 }
 
+// fuel: fuel-types/src/canonical.rs:106 — Serialize::encode_dynamic
+// fuel: fuel-types/src/canonical.rs:309 — Vec<u8>::encode_dynamic (bytes + tail alignment pad)
 function writeTransactionOutputDynamic(w: Writer, o: TransactionOutput): void {
   writeAddressDynamic(w, o.address);
   writeValueDynamic(w, o.value);
@@ -303,6 +344,8 @@ function writeTransactionOutputDynamic(w: Writer, o: TransactionOutput): void {
   if (o.script_ref !== undefined) writeVarBytesDynamic(w, o.script_ref);
 }
 
+// fuel: fuel-types/src/canonical.rs:167 — Deserialize::decode_static
+// fuel: fuel-types/src/canonical.rs:332 — Vec<u8>::decode_static (reads lens, stores as capacity)
 function readTransactionOutputStatic(r: Reader): TransactionOutputPartial {
   const addrLen = readAddressLen(r);
   const value = readValueStatic(r);
@@ -320,6 +363,8 @@ function readTransactionOutputStatic(r: Reader): TransactionOutputPartial {
   };
 }
 
+// fuel: fuel-types/src/canonical.rs:172 — Deserialize::decode_dynamic
+// fuel: fuel-types/src/canonical.rs:352 — Vec<u8>::decode_dynamic (reads bytes + skips tail pad)
 function readTransactionOutputDynamic(
   r: Reader,
   p: TransactionOutputPartial,
@@ -333,6 +378,7 @@ function readTransactionOutputDynamic(
   return { address, value, datum, script_ref };
 }
 
+// fuel: fuel-types/src/canonical.rs:112 — Serialize::to_bytes
 export function encodeTransactionOutput(o: TransactionOutput): Uint8Array {
   const sw = new Writer();
   writeTransactionOutputStatic(sw, o);
@@ -346,6 +392,7 @@ export function encodeTransactionOutput(o: TransactionOutput): Uint8Array {
   return out;
 }
 
+// fuel: fuel-types/src/canonical.rs:180 — Deserialize::from_bytes
 export function decodeTransactionOutput(bytes: Uint8Array): TransactionOutput {
   const r = new Reader(bytes);
   const partial = readTransactionOutputStatic(r);
@@ -354,6 +401,10 @@ export function decodeTransactionOutput(bytes: Uint8Array): TransactionOutput {
 
 // ===========================================================================
 // TransactionOutputCompact   (Compact Representation)
+// cddl: codec.cddl:231 — transaction_output_compact = { 0: address, 1: value_compact, ? 2: $hash32, ? 3: $hash32 }
+// fuel: fuel-tx/src/transaction/types/output.rs:38 — Output enum
+// fuel: fuel-types/src/canonical.rs:71  — trait Serialize
+// fuel: fuel-types/src/canonical.rs:150 — trait Deserialize
 //
 // Fields: address, value (ValueCompact), datum_hash?, script_ref_hash?
 //
@@ -382,6 +433,7 @@ interface TransactionOutputCompactPartial {
   scriptRefHash: Hash32 | undefined;
 }
 
+// fuel: fuel-types/src/canonical.rs:101 — Serialize::encode_static (all fields fixed-size except address len)
 function writeTransactionOutputCompactStatic(
   w: Writer,
   o: TransactionOutputCompact,
@@ -402,6 +454,7 @@ function writeTransactionOutputCompactStatic(
   }
 }
 
+// fuel: fuel-types/src/canonical.rs:106 — Serialize::encode_dynamic (address bytes only)
 function writeTransactionOutputCompactDynamic(
   w: Writer,
   o: TransactionOutputCompact,
@@ -410,6 +463,7 @@ function writeTransactionOutputCompactDynamic(
   // datum_hash, script_ref_hash are Hash32 → no dynamic
 }
 
+// fuel: fuel-types/src/canonical.rs:167 — Deserialize::decode_static
 function readTransactionOutputCompactStatic(
   r: Reader,
 ): TransactionOutputCompactPartial {
@@ -422,6 +476,7 @@ function readTransactionOutputCompactStatic(
   return { addrLen, value, datumHash, scriptRefHash };
 }
 
+// fuel: fuel-types/src/canonical.rs:172 — Deserialize::decode_dynamic (address bytes only)
 function readTransactionOutputCompactDynamic(
   r: Reader,
   p: TransactionOutputCompactPartial,
@@ -435,6 +490,7 @@ function readTransactionOutputCompactDynamic(
   };
 }
 
+// fuel: fuel-types/src/canonical.rs:112 — Serialize::to_bytes
 export function encodeTransactionOutputCompact(
   o: TransactionOutputCompact,
 ): Uint8Array {
@@ -450,6 +506,7 @@ export function encodeTransactionOutputCompact(
   return out;
 }
 
+// fuel: fuel-types/src/canonical.rs:180 — Deserialize::from_bytes
 export function decodeTransactionOutputCompact(
   bytes: Uint8Array,
 ): TransactionOutputCompact {

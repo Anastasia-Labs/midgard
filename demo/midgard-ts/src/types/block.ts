@@ -53,6 +53,9 @@ import {
 
 // ===========================================================================
 // Header   (fully static — no dynamic part)
+// cddl: codec.cddl:53 — header = { prev_utxos_root, utxos_root, … }
+// fuel: fuel-types/src/canonical.rs:71  — trait Serialize (encode_static pattern)
+//       fuel-types/src/canonical.rs:150 — trait Deserialize (decode_static pattern)
 // ===========================================================================
 
 export interface Header {
@@ -69,6 +72,7 @@ export interface Header {
   protocol_version: number;
 }
 
+// fuel: fuel-types/src/canonical.rs:101 — Serialize::encode_static (each field written in order)
 /** Write all header fields into w (header has no dynamic section). */
 function writeHeaderFields(w: Writer, h: Header): void {
   writeHash32Static(w, h.prev_utxos_root);
@@ -89,6 +93,7 @@ function writeHeaderFields(w: Writer, h: Header): void {
   writeU64(w, h.protocol_version);
 }
 
+// fuel: fuel-types/src/canonical.rs:167 — Deserialize::decode_static (each field read in order)
 /** Read all header fields from r (sequential, no split needed). */
 function readHeaderFields(r: Reader): Header {
   const prev_utxos_root = readHash32Static(r);
@@ -118,27 +123,33 @@ function readHeaderFields(r: Reader): Header {
   };
 }
 
+// fuel: fuel-types/src/canonical.rs:112 — Serialize::to_bytes
 export function encodeHeader(h: Header): Uint8Array {
   const w = new Writer();
   writeHeaderFields(w, h);
   return w.toBytes();
 }
 
+// fuel: fuel-types/src/canonical.rs:180 — Deserialize::from_bytes
 export function decodeHeader(bytes: Uint8Array): Header {
   return readHeaderFields(new Reader(bytes));
 }
 
 // ===========================================================================
 // BlockBody
+// cddl: codec.cddl:44 — block_body = { utxos, transactions, deposits, withdrawals }
 //
 // Four maps encoded with static/dynamic split:
-//   utxos:        Vec<(OutputReference, TransactionOutput)>
-//   transactions: Vec<(TransactionId,   Transaction)>
-//   deposits:     Vec<(OutputReference, DepositInfo)>
-//   withdrawals:  Vec<(OutputReference, WithdrawalInfo)>
+//   utxos:        Vec<(OutputReference, TransactionOutput)>  cddl:45
+//   transactions: Vec<(TransactionId,   Transaction)>        cddl:46
+//   deposits:     Vec<(OutputReference, DepositInfo)>        cddl:47
+//   withdrawals:  Vec<(OutputReference, WithdrawalInfo)>     cddl:48
 //
-// Static:  for each map: len(u64) + for each (k,v): k.static + v.static
-// Dynamic: for each map: for each (k,v): k.dynamic + v.dynamic
+// Each map follows the Vec<T> pattern:
+//   fuel: fuel-types/src/canonical.rs:279 — impl Serialize for Vec<T>
+//     Static:  encode_static (line 301) — length as u64 + each element's static part
+//     Dynamic: encode_dynamic (line 309) — each element's dynamic part
+//     Decode:  decode_static (line 332) + decode_dynamic (line 352)
 // ===========================================================================
 
 export type UtxoMap = Array<[OutputReference, TransactionOutput]>;
@@ -177,6 +188,12 @@ interface WithdrawalPartial {
 }
 
 // ---- utxos ----------------------------------------------------------------
+// cddl: codec.cddl:45 — utxos : map<output_reference, transaction_output>
+// cddl: codec.cddl:215 — output_reference = [transaction_id, index : uint .size 2]
+// fuel: fuel-tx/src/transaction/types/utxo_id.rs:28 — UtxoId { tx_id: TxId, output_index: u16 }
+//       (closest Fuel equivalent to output_reference)
+// fuel: fuel-types/src/canonical.rs:301 — Vec::encode_static (len u64 + element statics)
+// fuel: fuel-types/src/canonical.rs:309 — Vec::encode_dynamic (element dynamics)
 
 function writeUtxosStatic(w: Writer, map: UtxoMap): void {
   writeU64(w, map.length);
@@ -203,6 +220,11 @@ function readUtxosDynamic(r: Reader, ps: UtxoPartial[]): UtxoMap {
 }
 
 // ---- transactions ---------------------------------------------------------
+// cddl: codec.cddl:46 — transactions : map<transaction_id, transaction>
+// cddl: codec.cddl:112 — transaction = [transaction_body, transaction_witness_set, boolean, null]
+// cddl: codec.cddl:217 — transaction_id = $hash32
+// fuel: fuel-types/src/canonical.rs:301 — Vec::encode_static
+// fuel: fuel-types/src/canonical.rs:309 — Vec::encode_dynamic
 
 function writeTransactionsStatic(w: Writer, map: TransactionMap): void {
   writeU64(w, map.length);
@@ -229,6 +251,11 @@ function readTransactionsDynamic(r: Reader, ps: TxPartial[]): TransactionMap {
 }
 
 // ---- deposits -------------------------------------------------------------
+// cddl: codec.cddl:47  — deposits : map<deposit_id, deposit_info>
+// cddl: codec.cddl:71  — deposit_id = output_reference
+// cddl: codec.cddl:73  — deposit_info = { l2_address, ? l2_datum }
+// fuel: fuel-types/src/canonical.rs:301 — Vec::encode_static
+// fuel: fuel-types/src/canonical.rs:309 — Vec::encode_dynamic
 
 function writeDepositsStatic(w: Writer, map: DepositMap): void {
   writeU64(w, map.length);
@@ -276,6 +303,11 @@ function readDepositsDynamic(r: Reader, ps: DepositPartial[]): DepositMap {
 }
 
 // ---- withdrawals ----------------------------------------------------------
+// cddl: codec.cddl:48  — withdrawals : map<withdrawal_id, withdrawal_info>
+// cddl: codec.cddl:91  — withdrawal_id = output_reference
+// cddl: codec.cddl:93  — withdrawal_info = { l2_outref, l1_address, ? l1_datum }
+// fuel: fuel-types/src/canonical.rs:301 — Vec::encode_static
+// fuel: fuel-types/src/canonical.rs:309 — Vec::encode_dynamic
 
 function writeWithdrawalsStatic(w: Writer, map: WithdrawalMap): void {
   writeU64(w, map.length);
@@ -365,6 +397,7 @@ function readBlockBodyDynamic(r: Reader, p: BlockBodyPartial): BlockBody {
   };
 }
 
+// fuel: fuel-types/src/canonical.rs:112 — Serialize::to_bytes
 export function encodeBlockBody(bb: BlockBody): Uint8Array {
   const sw = new Writer();
   writeBlockBodyStatic(sw, bb);
@@ -378,6 +411,7 @@ export function encodeBlockBody(bb: BlockBody): Uint8Array {
   return out;
 }
 
+// fuel: fuel-types/src/canonical.rs:180 — Deserialize::from_bytes
 export function decodeBlockBody(bytes: Uint8Array): BlockBody {
   const r = new Reader(bytes);
   const p = readBlockBodyStatic(r);
@@ -386,6 +420,9 @@ export function decodeBlockBody(bytes: Uint8Array): BlockBody {
 
 // ===========================================================================
 // Block
+// cddl: codec.cddl:35 — block = { header_hash, header, block_body }
+// fuel: fuel-types/src/canonical.rs:95  — Serialize::encode (encode_static then encode_dynamic)
+// fuel: fuel-types/src/canonical.rs:160 — Deserialize::decode (decode_static then decode_dynamic)
 //
 // Static: header_hash.static(32) + header.fields(all static) + block_body.static
 // Dynamic: block_body.dynamic
@@ -401,6 +438,7 @@ export interface Block {
   block_body: BlockBody;
 }
 
+// fuel: fuel-types/src/canonical.rs:112 — Serialize::to_bytes
 export function encodeBlock(b: Block): Uint8Array {
   const sw = new Writer();
   // header_hash (Hash28 → 32 bytes)
@@ -421,6 +459,7 @@ export function encodeBlock(b: Block): Uint8Array {
   return out;
 }
 
+// fuel: fuel-types/src/canonical.rs:180 — Deserialize::from_bytes
 export function decodeBlock(bytes: Uint8Array): Block {
   const r = new Reader(bytes);
   // Static phase
