@@ -22,15 +22,15 @@ payload into a `CML.Transaction` value, and "phase 2" is always true.
         the upper bound of the block.
       - Otherwise, uses the timestampt of the newest mempool entry as block's
         uppser bound.
-      At this point, previously commited block is available, and the upper bound
-      of the block about to be committed is established.
-   c) Using the previous block's upper bound and the newly established one,
-      retrieves all user events falling within the block's event window. At this
-      point, all withdrawals, transaction orders and requests, and deposits that
-      should be included in the block are available.
-   d) Retrieves the ledger MPT from disk. This _should be_ the state of Midgard
-      ledger after the latest unsubmitted block (TODO, some syncing mechanism
-      might be needed).
+      At this point, previously commited block is available as `latestBlock`,
+      and the upper bound of the block about to be committed is established.
+   c) Using `latestBlock`'s upper bound and the newly established one, retrieves
+      all user events falling within the time window. At this point, all
+      withdrawals, transaction orders and requests, and deposits that should be
+      included in the block are available.
+   d) Retrieves the ledger Merkle Patricia Trie (MPT) from disk. This _should
+      be_ the state of Midgard ledger after `latestBlock` (TODO, some syncing
+      mechanism might be needed).
    e) Applies events to the ledger in order:
           i. Withdrawals
          ii. Transaction orders
@@ -38,9 +38,9 @@ payload into a `CML.Transaction` value, and "phase 2" is always true.
          iv. Deposits
       Within each category, events are sorted by their time stamps. However,
       this should only matter for transactions.
-   f) Find the roots of withdrawal and deposits (mostly likely during their
-      application to the ledger). The ledger's root is already caculated.
-   g) Uses the 3 MPT roots, previous block, and the new event interval to build
+   f) Find the roots of withdrawals and deposits (mostly likely during their
+      application to the ledger). The ledger's root is already calculated.
+   g) Uses the 3 MPT roots, `latestBlock`, and the new event interval to build
       the new block.
    h) Switches to the operator's dedicated block commitment Cardano wallet.
    i) Retrieves latest state of wallet and contract UTxOs from the blocks table,
@@ -53,7 +53,7 @@ payload into a `CML.Transaction` value, and "phase 2" is always true.
    to reversal of any changes to the ledger MPT.
 5. Block submission fiber runs periodically:
    a) Retrieves the oldest unsubmitted block from the blocks table and submits
-      its signed Cardano transaction. Worker dies if this fails. (TODO, we
+      its signed Cardano transaction. Fiber dies if this fails. (TODO, we
       should implement a recovery mechanism in case the already built and signed
       transaction had become invalid).
    b) Retrieves all transaction requests which their timestampts fall within the
