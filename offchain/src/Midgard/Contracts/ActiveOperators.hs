@@ -7,7 +7,7 @@ import Convex.BuildTx (
   addRequiredSignature,
   assetValue,
   mintPlutus,
-  mintPlutusWithRedeemerFn,
+  mintPlutusRefWithRedeemerFn,
   payToScriptInlineDatum,
   spendPlutusInlineDatum,
  )
@@ -16,8 +16,9 @@ import Convex.Class (MonadBlockchain (queryNetworkId), MonadUtxoQuery, utxosByPa
 import Control.Monad.Except (MonadError (throwError))
 import Convex.Utxos (toTxOut)
 import Midgard.Contracts.Utils (findTxInNonMembership, findUtxoWithAsset, findUtxoWithLink, nextOutIx)
-import Midgard.ScriptUtils (mintingPolicyId, toMintingPolicy, toValidator, validatorHash)
+import Midgard.ScriptUtils (mintingPolicyId, plutusVersion, toMintingPolicy, toValidator, validatorHash)
 import Midgard.Scripts (
+  MidgardRefScripts (MidgardRefScripts, activeOperatorsPolicyRef),
   MidgardScripts (
     MidgardScripts,
     activeOperatorsPolicy,
@@ -39,28 +40,34 @@ initActiveOperators ::
   ) =>
   C.NetworkId ->
   MidgardScripts ->
+  MidgardRefScripts ->
   m ()
-initActiveOperators netId MidgardScripts {activeOperatorsValidator, activeOperatorsPolicy} = do
-  let C.PolicyId policyId = mintingPolicyId activeOperatorsPolicy
-  -- The active operators token should be minted.
-  mintPlutusWithRedeemerFn
-    (toMintingPolicy activeOperatorsPolicy)
-    (\txBody -> ActiveOperators.Init {outputIndex = toInteger $ nextOutIx txBody})
-    ActiveOperators.rootKey
-    1
-  -- And sent to the active operators validator.
-  let datum :: ActiveOperators.Datum =
-        LinkedList.Element
-          { elementData = LinkedList.Root mempty
-          , elementLink = Nothing
-          }
-  payToScriptInlineDatum
-    netId
-    (validatorHash activeOperatorsValidator)
-    datum
-    C.NoStakeAddress
-    -- Must manually add min ada deposit...
-    (assetValue policyId ActiveOperators.rootKey 1 <> C.lovelaceToValue 3_000_000)
+initActiveOperators
+  netId
+  MidgardScripts {activeOperatorsValidator, activeOperatorsPolicy}
+  MidgardRefScripts {activeOperatorsPolicyRef} = do
+    let C.PolicyId policyId = mintingPolicyId activeOperatorsPolicy
+    addReference activeOperatorsPolicyRef
+    -- The active operators token should be minted.
+    mintPlutusRefWithRedeemerFn
+      activeOperatorsPolicyRef
+      (plutusVersion activeOperatorsPolicy)
+      policyId
+      (\txBody -> ActiveOperators.Init {outputIndex = toInteger $ nextOutIx txBody})
+      ActiveOperators.rootKey
+      1
+    -- And sent to the active operators validator.
+    let datum :: ActiveOperators.Datum =
+          LinkedList.Element
+            { elementData = LinkedList.Root mempty
+            , elementLink = Nothing
+            }
+    payToScriptInlineDatum
+      netId
+      (validatorHash activeOperatorsValidator)
+      datum
+      C.NoStakeAddress
+      (assetValue policyId ActiveOperators.rootKey 1)
 
 activateOperator ::
   forall era m.
