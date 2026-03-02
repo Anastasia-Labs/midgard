@@ -127,6 +127,7 @@ test-suite mockchain-tests
   hs-source-dirs: tests
   other-modules:
     Spec.RegisterOperator
+    Spec.Types
     Spec.Utils
 
   build-depends:
