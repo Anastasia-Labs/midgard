@@ -35,7 +35,7 @@ export const delEntries = (
 ): Effect.Effect<void, DatabaseError, Database> =>
   UserEvents.delEntries(tableName, ids);
 
-export const depositEventToCmlTransactionUnspentOutput = (
+export const entryToCMLUTxO = (
   entry: UserEvents.Entry,
   policyId: PolicyId,
 ): Effect.Effect<

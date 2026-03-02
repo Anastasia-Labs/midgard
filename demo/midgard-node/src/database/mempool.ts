@@ -97,6 +97,12 @@ export const retrieve: Effect.Effect<
   sqlErrorToDatabaseError(tableName, "Failed to retrieve given transactions"),
 );
 
+export const retrieveTimeBoundEntries = (
+  startTime: Date,
+  endTime: Date,
+): Effect.Effect<readonly Tx.Entry[], DatabaseError, Database> =>
+  Tx.retrieveTimeBoundEntries(tableName, startTime, endTime);
+
 export const retrieveTxCount: Effect.Effect<bigint, DatabaseError, Database> =
   retrieveNumberOfEntries(tableName);
 

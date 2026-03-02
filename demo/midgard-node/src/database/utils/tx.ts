@@ -190,3 +190,27 @@ export const retrieveAllEntries = (
     ),
     sqlErrorToDatabaseError(tableName, "Failed to retrieve the whole table"),
   );
+
+export const retrieveTimeBoundEntries = (
+  tableName: string,
+  startTime: Date,
+  endTime: Date,
+): Effect.Effect<readonly Entry[], DatabaseError, Database> =>
+  Effect.gen(function* () {
+    yield* Effect.logDebug(
+      `${tableName} db: attempt to retrieveTimeBoundEntries`,
+    );
+    const sql = yield* SqlClient.SqlClient;
+    const result = yield* sql<Entry>`SELECT * FROM ${sql(
+      tableName,
+    )} WHERE ${startTime} <= ${sql(Columns.TIMESTAMPTZ)} AND ${sql(Columns.TIMESTAMPTZ)} < ${endTime}`;
+    return result;
+  }).pipe(
+    Effect.withLogSpan(`retrieveTimeBoundEntries ${tableName}`),
+    Effect.tapErrorTag("SqlError", (e) =>
+      Effect.logError(
+        `${tableName} db: retrieveTimeBoundEntries: ${JSON.stringify(e)}`,
+      ),
+    ),
+    sqlErrorToDatabaseError(tableName, "Failed to retrieve all UTxOs"),
+  );

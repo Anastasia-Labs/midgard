@@ -467,11 +467,10 @@ export const applyDepositsToLedger = (
       deposits,
       (dbDeposit) =>
         Effect.gen(function* () {
-          const utxo =
-            yield* DepositsDB.depositEventToCmlTransactionUnspentOutput(
-              dbDeposit,
-              depositAuthValidator.policyId,
-            );
+          const utxo = yield* DepositsDB.entryToCMLUTxO(
+            dbDeposit,
+            depositAuthValidator.policyId,
+          );
 
           sizeOfDeposits += dbDeposit[UserEventsUtils.Columns.INFO].length;
 

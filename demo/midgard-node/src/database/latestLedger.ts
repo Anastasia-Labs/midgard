@@ -8,6 +8,9 @@ export const insertMultiple = (entries: Ledger.Entry[]) =>
 
 export const retrieve = Ledger.retrieveAllEntries(tableName);
 
+export const retrieveNoTimeStamps =
+  Ledger.retrieveAllEntriesNoTimeStamps(tableName);
+
 export const clearUTxOs = (refs: Buffer[]) =>
   Ledger.delEntries(tableName, refs);
 
