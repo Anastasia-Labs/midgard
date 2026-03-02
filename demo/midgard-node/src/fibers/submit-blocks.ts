@@ -219,7 +219,7 @@ const applyEventsToLedger = (
   });
 
 const temp = Effect.gen(function* () {
-  const optUnsubmittedBlock = yield* UnsubmittedBlocksDB.retrieveEariliestEntry;
+  const optUnsubmittedBlock = yield* UnsubmittedBlocksDB.retrieveEarliestEntry;
   yield* Option.match(optUnsubmittedBlock, {
     onNone: () => Effect.logInfo("No unsubmitted blocks in queue."),
     onSome: (entry) =>

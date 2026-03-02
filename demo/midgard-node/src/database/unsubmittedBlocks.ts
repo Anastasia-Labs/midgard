@@ -272,7 +272,7 @@ export const retrieveLatestWithBlockTxs: Effect.Effect<
   ),
 );
 
-export const retrieveEariliestEntry: Effect.Effect<
+export const retrieveEarliestEntry: Effect.Effect<
   Option.Option<Entry>,
   DatabaseError,
   Database
