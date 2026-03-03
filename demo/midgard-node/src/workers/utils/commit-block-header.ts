@@ -12,9 +12,9 @@ import { keyValueMptRoot, MidgardMpt, MptError } from "./mpt.js";
 import {
   DepositsDB,
   ProcessedMempoolDB,
-  TxUtils as TxTable,
-  UserEventsUtils,
-  LedgerUtils as Ledger,
+  Tx,
+  UserEvents,
+  Ledger,
 } from "@/database/index.js";
 import {
   AlwaysSucceedsContract,
@@ -163,7 +163,7 @@ export const getBlockHeadersEndDate = (
  * than any of the txs in the processed mempool table.
  */
 export const establishEndDateFromTxRequests = (
-  mempoolTxs: readonly TxTable.EntryWithTimeStamp[],
+  mempoolTxs: readonly Tx.EntryWithTimeStamp[],
 ): Effect.Effect<Option.Option<Date>, DatabaseError, Database> =>
   Effect.gen(function* () {
     if (mempoolTxs.length <= 0) {
@@ -178,11 +178,11 @@ export const establishEndDateFromTxRequests = (
         // No new transactions received, but there are uncommitted transactions
         // in the MPT. So its root must be used to submit a new block, and if
         // successful, `ProcessedMempoolDB` must be cleared.
-        return Option.some(processedMempoolTxs[0][TxTable.Columns.TIMESTAMPTZ]);
+        return Option.some(processedMempoolTxs[0][Tx.Columns.TIMESTAMPTZ]);
       }
     } else {
       yield* Effect.logInfo(`🔹 ${mempoolTxs.length} retrieved.`);
-      return Option.some(mempoolTxs[0][TxTable.Columns.TIMESTAMPTZ]);
+      return Option.some(mempoolTxs[0][Tx.Columns.TIMESTAMPTZ]);
     }
   });
 
@@ -198,7 +198,7 @@ export const userEventsProgram = (
 ): Effect.Effect<
   Option.Option<{
     mptRoot: Effect.Effect<string, MptError>;
-    retreivedEvents: readonly UserEventsUtils.Entry[];
+    retreivedEvents: readonly UserEvents.Entry[];
   }>,
   DatabaseError,
   Database
@@ -334,7 +334,7 @@ export const applyTxOrdersToLedger = (
 export const applyMempoolToLedger = (
   ledgerTrie: MidgardMpt,
   txsTrie: MidgardMpt,
-  mempoolTxs: readonly TxTable.Entry[],
+  mempoolTxs: readonly Tx.Entry[],
 ): Effect.Effect<
   {
     mempoolTxHashes: Buffer[];
@@ -356,10 +356,10 @@ export const applyMempoolToLedger = (
     yield* Effect.logInfo(
       "🔹 Going through mempool and processings transactions...",
     );
-    yield* Effect.forEach(mempoolTxs, (entry: TxTable.Entry) =>
+    yield* Effect.forEach(mempoolTxs, (entry: Tx.Entry) =>
       Effect.gen(function* () {
-        const txHash = entry[TxTable.Columns.TX_ID];
-        const txCbor = entry[TxTable.Columns.TX];
+        const txHash = entry[Tx.Columns.TX_ID];
+        const txCbor = entry[Tx.Columns.TX];
         const { delOps, putOps } = yield* txEntryToBatchDBOps(txHash, txCbor);
         mempoolTxHashes.push(txHash);
         sizeOfTxs += txCbor.length;
@@ -435,7 +435,7 @@ export const applyWithdrawalsToLedger = (
 export const applyDepositsToLedger = (
   addOrRemove: "add" | "remove",
   ledgerTrie: MidgardMpt,
-  deposits: readonly UserEventsUtils.Entry[],
+  deposits: readonly UserEvents.Entry[],
 ): Effect.Effect<
   {
     processedDeposits: {
@@ -472,11 +472,11 @@ export const applyDepositsToLedger = (
             depositAuthValidator.policyId,
           );
 
-          sizeOfDeposits += dbDeposit[UserEventsUtils.Columns.INFO].length;
+          sizeOfDeposits += dbDeposit[UserEvents.Columns.INFO].length;
 
           insertedUTxOsWithDates.push({
             utxo,
-            inclusionTime: dbDeposit[UserEventsUtils.Columns.INCLUSION_TIME],
+            inclusionTime: dbDeposit[UserEvents.Columns.INCLUSION_TIME],
           });
           const putOp: ETH_UTILS.BatchDBOp =
             addOrRemove === "add"
