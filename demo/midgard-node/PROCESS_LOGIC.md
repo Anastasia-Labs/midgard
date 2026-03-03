@@ -20,8 +20,8 @@ payload into a `CML.Transaction` value, and "phase 2" is always true.
       `MempoolDB`:
       - If no entries existed (empty mempool), uses the stored current time as
         the upper bound of the block.
-      - Otherwise, uses the timestampt of the newest mempool entry as block's
-        uppser bound.
+      - Otherwise, uses the timestamp of the newest mempool entry as block's
+        upper bound.
       At this point, previously commited block is available as `latestBlock`,
       and the upper bound of the block about to be committed is established.
    c) Using `latestBlock`'s upper bound and the newly established one, retrieves
@@ -36,9 +36,9 @@ payload into a `CML.Transaction` value, and "phase 2" is always true.
          ii. Transaction orders
         iii. Transaction requests
          iv. Deposits
-      Within each category, events are sorted by their time stamps. However,
-      this should only matter for transactions.
-   f) Find the roots of withdrawals and deposits (mostly likely during their
+      Within each category, events are sorted by their timestamps. However, this
+      should only matter for transactions.
+   f) Find the roots of withdrawals and deposits (most likely during their
       application to the ledger). The ledger's root is already calculated.
    g) Uses the 3 MPT roots, `latestBlock`, and the new event interval to build
       the new block.
@@ -56,7 +56,7 @@ payload into a `CML.Transaction` value, and "phase 2" is always true.
       its signed Cardano transaction. Fiber dies if this fails. (TODO, we should
       implement a recovery mechanism in case the already built and signed
       transaction becomes invalid).
-   b) Retrieves all transaction requests which their timestampts fall within the
+   b) Retrieves all transaction requests which their timestamps fall within the
       submitted block's event interval from `MempoolDB`.
    c) Similarly, retrieves all user events from its 3 tables.
    d) Retrieves all entries of `LatestLedgerDB`. This _should be_ the state of

@@ -6,6 +6,7 @@ const makeLucid: Effect.Effect<
   {
     api: LE.LucidEvolution;
     switchToOperatorsMainWallet: Effect.Effect<void>;
+    switchToOperatorsBlockCommitmentWallet: Effect.Effect<void>;
     switchToOperatorsMergingWallet: Effect.Effect<void>;
   },
   ConfigError,
@@ -47,6 +48,11 @@ const makeLucid: Effect.Effect<
     api: lucid,
     switchToOperatorsMainWallet: Effect.sync(() =>
       lucid.selectWallet.fromSeed(nodeConfig.L1_OPERATOR_SEED_PHRASE),
+    ),
+    switchToOperatorsBlockCommitmentWallet: Effect.sync(() =>
+      lucid.selectWallet.fromSeed(
+        nodeConfig.L1_OPERATOR_SEED_PHRASE_FOR_BLOCK_COMMITMENT,
+      ),
     ),
     switchToOperatorsMergingWallet: Effect.sync(() =>
       lucid.selectWallet.fromSeed(
