@@ -13,16 +13,14 @@ import {
   DepositsDB,
   LatestLedgerDB,
   MempoolDB,
-  TxOrdersDB,
   BlocksDB,
-  WithdrawalsDB,
   Ledger,
   Tx,
   UserEvents,
   ImmutableDB,
   BlocksTxsDB,
 } from "@/database/index.js";
-import { batchProgram, breakDownTx } from "@/utils.js";
+import { batchProgram } from "@/utils.js";
 
 // For database operations.
 const BATCH_SIZE = 100;
@@ -61,106 +59,11 @@ const submitSignedTxCBOR = (
     }),
   );
 
-const removeSpentOutRef = (
-  ledger: Ledger.Entry[],
-  spentOutRefCBOR: Buffer,
-): Effect.Effect<Ledger.Entry[], SDK.CmlDeserializationError> =>
-  Effect.filter(ledger, (ledgerEntry: Ledger.Entry) =>
-    Effect.gen(function* () {
-      // TODO: Raising deserialization error might not be needed here.
-      const [ledgerEntryOutRef, spentOutRef] = yield* Effect.try({
-        try: () => [
-          CML.TransactionInput.from_cbor_bytes(
-            ledgerEntry[Ledger.Columns.OUTREF],
-          ),
-          CML.TransactionInput.from_cbor_bytes(spentOutRefCBOR),
-        ],
-        catch: (e) =>
-          new SDK.CmlDeserializationError({
-            message:
-              "Failed to deserialize an outref into a CML.TransactionInput",
-            cause: e,
-          }),
-      });
-      return (
-        spentOutRef.transaction_id().to_hex() !==
-          ledgerEntryOutRef.transaction_id().to_hex() &&
-        spentOutRef.index() !== ledgerEntryOutRef.index()
-      );
-    }),
-  );
-
-const applyTxToLedger = (ledger: readonly Ledger.Entry[], txCbor: Buffer) =>
-  Effect.gen(function* () {
-    const { spent, produced } = yield* breakDownTx(txCbor);
-    return yield* Effect.reduce(
-      spent,
-      [...ledger, ...produced],
-      (accLedger, s, _i) => removeSpentOutRef(accLedger, s),
-    );
-  });
-
-type PrevLedgerAndEvents = {
-  prevLedger: readonly Ledger.Entry[];
-  withdrawals: readonly UserEvents.Entry[];
-  txOrders: readonly UserEvents.Entry[];
-  txRequests: readonly Tx.Entry[];
-  deposits: readonly UserEvents.Entry[];
-};
-
-const getBlocksPrevLedgerAndEvents = (
-  startDate: Date,
-  endDate: Date,
-): Effect.Effect<PrevLedgerAndEvents, DatabaseError, Database> =>
-  Effect.gen(function* () {
-    const [prevLedger, withdrawals, txOrders, txRequests, deposits] =
-      yield* Effect.all(
-        [
-          LatestLedgerDB.retrieveNoTimeStamps,
-          WithdrawalsDB.retrieveTimeBoundEntries(startDate, endDate),
-          TxOrdersDB.retrieveTimeBoundEntries(startDate, endDate),
-          MempoolDB.retrieveTimeBoundEntries(startDate, endDate),
-          DepositsDB.retrieveTimeBoundEntries(startDate, endDate),
-        ],
-        { concurrency: "unbounded" },
-      );
-    return {
-      prevLedger,
-      withdrawals,
-      txOrders,
-      txRequests,
-      deposits,
-    };
-  });
-
-const depositEntryToLedgerEntry = (
-  deposit: UserEvents.Entry,
-): Effect.Effect<
-  Ledger.Entry,
-  SDK.CmlDeserializationError,
-  NodeConfig | AlwaysSucceedsContract
-> =>
-  Effect.gen(function* () {
-    const { deposit: depositAuthVal } = yield* AlwaysSucceedsContract;
-    const cmlUTxO = yield* DepositsDB.entryToCMLUTxO(
-      deposit,
-      depositAuthVal.policyId,
-    );
-    return {
-      [Ledger.Columns.ADDRESS]: cmlUTxO.output().address().to_bech32(),
-      [Ledger.Columns.OUTPUT]: Buffer.from(cmlUTxO.output().to_cbor_bytes()),
-      [Ledger.Columns.OUTREF]: Buffer.from(cmlUTxO.input().to_cbor_bytes()),
-      [Ledger.Columns.TX_ID]: Buffer.from(
-        cmlUTxO.input().transaction_id().to_raw_bytes(),
-      ),
-    };
-  });
-
 const applyEventsToLedger = (
   startDate: Date,
   endDate: Date,
 ): Effect.Effect<
-  PrevLedgerAndEvents & {
+  BlocksDB.PrevLedgerAndEvents & {
     newLedger: readonly Ledger.Entry[];
     mempoolTxHashes: Buffer[];
   },
@@ -168,9 +71,12 @@ const applyEventsToLedger = (
   NodeConfig | Database | AlwaysSucceedsContract
 > =>
   Effect.gen(function* () {
-    const blockInfo = yield* getBlocksPrevLedgerAndEvents(startDate, endDate);
+    const blockInfo = yield* BlocksDB.retrievePrevLedgerAndEvents(
+      startDate,
+      endDate,
+    );
     const depositUTxOs = yield* Effect.all(
-      blockInfo.deposits.map(depositEntryToLedgerEntry),
+      blockInfo.deposits.map(DepositsDB.entryToLedgerEntry),
     );
 
     const afterWithdrawals = yield* Effect.reduce(
@@ -199,7 +105,7 @@ const applyEventsToLedger = (
       blockInfo.txOrders,
       afterWithdrawals,
       (acc, txOrder, _i) =>
-        applyTxToLedger(acc, txOrder[UserEvents.Columns.INFO]),
+        Ledger.applyTx(acc, txOrder[UserEvents.Columns.INFO]),
     );
     const mempoolTxHashes: Buffer[] = [];
     const afterTxRequests = yield* Effect.reduce(
@@ -209,7 +115,7 @@ const applyEventsToLedger = (
         Effect.sync(() =>
           mempoolTxHashes.push(txRequest[Tx.Columns.TX_ID]),
         ).pipe(
-          Effect.andThen((_) => applyTxToLedger(acc, txRequest[Tx.Columns.TX])),
+          Effect.andThen((_) => Ledger.applyTx(acc, txRequest[Tx.Columns.TX])),
         ),
     );
     const afterDeposits = [...afterTxRequests, ...depositUTxOs];

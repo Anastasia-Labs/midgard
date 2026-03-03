@@ -1,11 +1,13 @@
 import { Database } from "@/services/database.js";
 import { SqlClient } from "@effect/sql";
 import { Effect } from "effect";
-import { Address } from "@lucid-evolution/lucid";
+import { Address, CML } from "@lucid-evolution/lucid";
+import * as SDK from "@al-ft/midgard-sdk";
 import {
   sqlErrorToDatabaseError,
   DatabaseError,
 } from "@/database/utils/common.js";
+import { breakDownTx } from "@/utils.js";
 
 export enum Columns {
   TX_ID = "tx_id",
@@ -173,3 +175,40 @@ export const delEntries = (
       Columns.OUTREF,
     )} IN ${sql.in(outrefs)}`;
   }).pipe(sqlErrorToDatabaseError(tableName, "Failed to delete given UTxOs"));
+
+export const removeSpentOutRef = (
+  ledger: Entry[],
+  spentOutRefCBOR: Buffer,
+): Effect.Effect<Entry[], SDK.CmlDeserializationError> =>
+  Effect.filter(ledger, (ledgerEntry: Entry) =>
+    Effect.gen(function* () {
+      // TODO: Raising deserialization error might not be needed here.
+      const [ledgerEntryOutRef, spentOutRef] = yield* Effect.try({
+        try: () => [
+          CML.TransactionInput.from_cbor_bytes(ledgerEntry[Columns.OUTREF]),
+          CML.TransactionInput.from_cbor_bytes(spentOutRefCBOR),
+        ],
+        catch: (e) =>
+          new SDK.CmlDeserializationError({
+            message:
+              "Failed to deserialize an outref into a CML.TransactionInput",
+            cause: e,
+          }),
+      });
+      return (
+        spentOutRef.transaction_id().to_hex() !==
+          ledgerEntryOutRef.transaction_id().to_hex() &&
+        spentOutRef.index() !== ledgerEntryOutRef.index()
+      );
+    }),
+  );
+
+export const applyTx = (ledger: readonly Entry[], txCbor: Buffer) =>
+  Effect.gen(function* () {
+    const { spent, produced } = yield* breakDownTx(txCbor);
+    return yield* Effect.reduce(
+      spent,
+      [...ledger, ...produced],
+      (accLedger, s, _i) => removeSpentOutRef(accLedger, s),
+    );
+  });

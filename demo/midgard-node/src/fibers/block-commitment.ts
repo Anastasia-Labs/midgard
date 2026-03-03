@@ -1,10 +1,7 @@
 import { Globals } from "@/services/index.js";
 import { Effect, Ref, Schedule } from "effect";
 import { WorkerError } from "@/workers/utils/common.js";
-import {
-  WorkerInput,
-  WorkerOutput,
-} from "@/workers/utils/block-commitment.js";
+import { WorkerInput, WorkerOutput } from "@/workers/utils/block-commitment.js";
 import { Metric } from "effect";
 import { Worker } from "worker_threads";
 
