@@ -145,7 +145,9 @@ export const buildAndSubmitMergeTx = (
         `🔸 First block found: ${firstBlockUTxO.utxo.txHash}#${firstBlockUTxO.utxo.outputIndex}`,
       );
       // Fetch transactions from the first block
-      yield* Effect.logInfo("🔸 Looking up its transactions from BlocksTxsDB...");
+      yield* Effect.logInfo(
+        "🔸 Looking up its transactions from BlocksTxsDB...",
+      );
       const { txs: firstBlockTxs, headerHash } = yield* fetchFirstBlockTxs(
         firstBlockUTxO,
       ).pipe(Effect.withSpan("fetchFirstBlockTxs"));

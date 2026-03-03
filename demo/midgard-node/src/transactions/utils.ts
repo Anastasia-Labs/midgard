@@ -146,11 +146,12 @@ export const fetchFirstBlockTxs = (
     const headerHashHex =
       yield* SDK.headerHashFromStateQueueUTxO(firstBlockUTxO);
     const headerHash: Buffer = Buffer.from(fromHex(headerHashHex));
-    const txHashes = yield* BlocksTxsDB.retrieveTxHashesByHeaderHash(headerHash);
+    const txHashes =
+      yield* BlocksTxsDB.retrieveTxHashesByHeaderHash(headerHash);
     const txs: readonly Buffer[] =
       headerHashHex === SDK.GENESIS_HEADER_HASH
-      ? []
-      : yield* ImmutableDB.retrieveTxCborsByHashes(txHashes);
+        ? []
+        : yield* ImmutableDB.retrieveTxCborsByHashes(txHashes);
     return { txs, headerHash };
   });
 

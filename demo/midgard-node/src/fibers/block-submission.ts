@@ -6,21 +6,15 @@ import {
   Lucid,
   NodeConfig,
 } from "@/services/index.js";
-import {
-  TxSignError,
-  TxSubmitError,
-} from "@/transactions/utils.js";
-import {
-  CML,
-  Data,
-} from "@lucid-evolution/lucid";
+import { TxSignError, TxSubmitError } from "@/transactions/utils.js";
+import { CML, Data } from "@lucid-evolution/lucid";
 import { Effect, Option, Schedule } from "effect";
 import {
   DepositsDB,
   LatestLedgerDB,
   MempoolDB,
   TxOrdersDB,
-  UnsubmittedBlocksDB,
+  BlocksDB,
   WithdrawalsDB,
   LedgerUtils as Ledger,
   TxUtils as Tx,
@@ -230,20 +224,20 @@ const applyEventsToLedger = (
   });
 
 const submitEarliestBlock = Effect.gen(function* () {
-  const optUnsubmittedBlock = yield* UnsubmittedBlocksDB.retrieveEarliestEntry;
+  const optUnsubmittedBlock = yield* BlocksDB.retrieveEarliestEntry;
   yield* Option.match(optUnsubmittedBlock, {
     onNone: () => Effect.logInfo("No unsubmitted blocks in queue."),
     onSome: (blockEntry) =>
       Effect.gen(function* () {
         yield* Effect.logInfo("🔗 ✉️  Submitting block commitment...");
         const txHash = yield* submitSignedTxCBOR(
-          blockEntry[UnsubmittedBlocksDB.Columns.L1_CBOR],
+          blockEntry[BlocksDB.Columns.L1_CBOR],
         );
         yield* Effect.logInfo(`🔗 🚀 Block commitment submitted: ${txHash}`);
         const { txRequests, newLedger, mempoolTxHashes } =
           yield* applyEventsToLedger(
-            blockEntry[UnsubmittedBlocksDB.Columns.EVENT_START_TIME],
-            blockEntry[UnsubmittedBlocksDB.Columns.EVENT_END_TIME],
+            blockEntry[BlocksDB.Columns.EVENT_START_TIME],
+            blockEntry[BlocksDB.Columns.EVENT_END_TIME],
           );
 
         yield* LatestLedgerDB.clear;
@@ -252,9 +246,10 @@ const submitEarliestBlock = Effect.gen(function* () {
           BATCH_SIZE,
           newLedger.length,
           "Insert new ledger in LatestLedgerDB",
-          (startIndex, endIndex) => LatestLedgerDB.insertMultiple(
-            newLedger.slice(startIndex, endIndex),
-          ),
+          (startIndex, endIndex) =>
+            LatestLedgerDB.insertMultiple(
+              newLedger.slice(startIndex, endIndex),
+            ),
         );
 
         const transferMempoolTxs = batchProgram(
@@ -269,7 +264,7 @@ const submitEarliestBlock = Effect.gen(function* () {
                 MempoolDB.clearTxs(txHashesBatch),
                 ImmutableDB.insertTxs(txsBatch),
                 BlocksTxsDB.insert(
-                  blockEntry[UnsubmittedBlocksDB.Columns.HEADER_HASH],
+                  blockEntry[BlocksDB.Columns.HEADER_HASH],
                   txHashesBatch,
                 ),
               ],
@@ -281,10 +276,7 @@ const submitEarliestBlock = Effect.gen(function* () {
         yield* Effect.all([
           updateLatestLedgerDB,
           transferMempoolTxs,
-          UnsubmittedBlocksDB.setStatusOfEntry(
-            blockEntry,
-            UnsubmittedBlocksDB.Status.SUBMITTED,
-          ),
+          BlocksDB.setStatusOfEntry(blockEntry, BlocksDB.Status.SUBMITTED),
         ]);
       }),
   });
