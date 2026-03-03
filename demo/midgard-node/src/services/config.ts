@@ -164,7 +164,8 @@ const makeConfig = Effect.gen(function* () {
     L1_OGMIOS_KEY: ogmiosKey,
     L1_KUPO_KEY: kupoKey,
     L1_OPERATOR_SEED_PHRASE: operatorSeedPhrase,
-    L1_OPERATOR_SEED_PHRASE_FOR_BLOCK_COMMITMENT: operatorSeedPhraseForBlockCommitment,
+    L1_OPERATOR_SEED_PHRASE_FOR_BLOCK_COMMITMENT:
+      operatorSeedPhraseForBlockCommitment,
     L1_OPERATOR_SEED_PHRASE_FOR_MERGE_TX: operatorSeedPhraseForMergeTx,
     NETWORK: network,
     PROTOCOL_PARAMETERS: SDK.getProtocolParameters(network),

@@ -8,9 +8,18 @@ import {
   sqlErrorToDatabaseError,
 } from "@/database/utils/common.js";
 import { UTxO } from "@lucid-evolution/lucid";
-import * as BlocksTxsDB from "@/database/blocksTxs.js";
-import * as ImmutableDB from "@/database/immutable.js";
-import * as TxUtils from "@/database/utils/tx.js";
+import {
+  BlocksTxsDB,
+  DepositsDB,
+  ImmutableDB,
+  LatestLedgerDB,
+  Ledger,
+  MempoolDB,
+  Tx,
+  TxOrdersDB,
+  UserEvents,
+  WithdrawalsDB,
+} from "./index.js";
 
 export const tableName = "unsubmitted_blocks";
 
@@ -61,6 +70,14 @@ export type Entry = EntryNoMeta & {
   [Columns.TIMESTAMPTZ]: Date;
 };
 
+export type PrevLedgerAndEvents = {
+  prevLedger: readonly Ledger.Entry[];
+  withdrawals: readonly UserEvents.Entry[];
+  txOrders: readonly UserEvents.Entry[];
+  txRequests: readonly Tx.Entry[];
+  deposits: readonly UserEvents.Entry[];
+};
+
 export type LatestUnsubmittedBlockWithTxs = Omit<
   Entry,
   Columns.NEW_WALLET_UTXOS | Columns.PRODUCED_UTXOS
@@ -73,7 +90,7 @@ export type LatestUnsubmittedBlockWithTxs = Omit<
 
 type LatestUnsubmittedBlockJoinRow = Entry & {
   [BlocksTxsDB.Columns.TX_ID]: Buffer | null;
-  [TxUtils.Columns.TX]: Buffer | null;
+  [Tx.Columns.TX]: Buffer | null;
 };
 
 export const createTable: Effect.Effect<void, DatabaseError, Database> =
@@ -140,6 +157,31 @@ export const retrieve: Effect.Effect<
   sqlErrorToDatabaseError(tableName, "Failed to retrieve unsubmitted blocks"),
 );
 
+export const retrievePrevLedgerAndEvents = (
+  startDate: Date,
+  endDate: Date,
+): Effect.Effect<PrevLedgerAndEvents, DatabaseError, Database> =>
+  Effect.gen(function* () {
+    const [prevLedger, withdrawals, txOrders, txRequests, deposits] =
+      yield* Effect.all(
+        [
+          LatestLedgerDB.retrieveNoTimeStamps,
+          WithdrawalsDB.retrieveTimeBoundEntries(startDate, endDate),
+          TxOrdersDB.retrieveTimeBoundEntries(startDate, endDate),
+          MempoolDB.retrieveTimeBoundEntries(startDate, endDate),
+          DepositsDB.retrieveTimeBoundEntries(startDate, endDate),
+        ],
+        { concurrency: "unbounded" },
+      );
+    return {
+      prevLedger,
+      withdrawals,
+      txOrders,
+      txRequests,
+      deposits,
+    };
+  });
+
 /**
  * Retrieves the latest unsubmitted block and all corresponding transaction
  * hashes and CBORs via a single SQL call.
@@ -185,12 +227,12 @@ export const retrieveLatestWithBlockTxs: Effect.Effect<
       latest_unsubmitted.${sql(Columns.TOTAL_EVENTS_SIZE)},
       latest_unsubmitted.${sql(Columns.TIMESTAMPTZ)},
       b.${sql(BlocksTxsDB.Columns.TX_ID)},
-      i.${sql(TxUtils.Columns.TX)}
+      i.${sql(Tx.Columns.TX)}
     FROM latest_unsubmitted
     LEFT JOIN ${sql(BlocksTxsDB.tableName)} AS b
       ON b.${sql(BlocksTxsDB.Columns.HEADER_HASH)} = latest_unsubmitted.${sql(Columns.HEADER_HASH)}
     LEFT JOIN ${sql(ImmutableDB.tableName)} AS i
-      ON i.${sql(TxUtils.Columns.TX_ID)} = b.${sql(BlocksTxsDB.Columns.TX_ID)}
+      ON i.${sql(Tx.Columns.TX_ID)} = b.${sql(BlocksTxsDB.Columns.TX_ID)}
     ORDER BY b.${sql(BlocksTxsDB.Columns.HEIGHT)} ASC NULLS LAST
   `;
   if (rows.length <= 0) {
@@ -214,13 +256,13 @@ export const retrieveLatestWithBlockTxs: Effect.Effect<
     (acc, row) => {
       if (
         row[BlocksTxsDB.Columns.TX_ID] === null &&
-        row[TxUtils.Columns.TX] === null
+        row[Tx.Columns.TX] === null
       ) {
         return Effect.succeed(acc);
       }
       if (
         row[BlocksTxsDB.Columns.TX_ID] === null ||
-        row[TxUtils.Columns.TX] === null
+        row[Tx.Columns.TX] === null
       ) {
         return Effect.fail(
           new DatabaseError({
@@ -232,7 +274,7 @@ export const retrieveLatestWithBlockTxs: Effect.Effect<
         );
       }
       acc.txHashes.push(row[BlocksTxsDB.Columns.TX_ID]);
-      acc.txCbors.push(row[TxUtils.Columns.TX]);
+      acc.txCbors.push(row[Tx.Columns.TX]);
       return Effect.succeed(acc);
     },
   );
