@@ -3,25 +3,18 @@ import { DatabaseError } from "@/database/utils/common.js";
 import {
   AlwaysSucceedsContract,
   Database,
-  Globals,
   Lucid,
   NodeConfig,
 } from "@/services/index.js";
 import {
-  handleSignSubmitNoConfirmation,
-  TxConfirmError,
   TxSignError,
   TxSubmitError,
 } from "@/transactions/utils.js";
 import {
   CML,
   Data,
-  fromHex,
-  LucidEvolution,
-  TxHash,
 } from "@lucid-evolution/lucid";
-import { Effect, Option, Ref, Schedule } from "effect";
-import { serializeStateQueueUTxO } from "@/workers/utils/commit-block-header.js";
+import { Effect, Option, Schedule } from "effect";
 import {
   DepositsDB,
   LatestLedgerDB,
@@ -33,7 +26,7 @@ import {
   TxUtils as Tx,
   UserEventsUtils as UserEvent,
   ImmutableDB,
-  BlocksDB,
+  BlocksTxsDB,
 } from "@/database/index.js";
 import { batchProgram, breakDownTx } from "@/utils.js";
 
@@ -267,7 +260,7 @@ const submitEarliestBlock = Effect.gen(function* () {
         const transferMempoolTxs = batchProgram(
           BATCH_SIZE,
           txRequests.length,
-          "Transfer of MempoolDB entries to ImmutableDB and BlocksDB",
+          "Transfer of MempoolDB entries to ImmutableDB and BlocksTxsDB",
           (startIndex, endIndex) => {
             const txsBatch = txRequests.slice(startIndex, endIndex);
             const txHashesBatch = mempoolTxHashes.slice(startIndex, endIndex);
@@ -275,7 +268,7 @@ const submitEarliestBlock = Effect.gen(function* () {
               [
                 MempoolDB.clearTxs(txHashesBatch),
                 ImmutableDB.insertTxs(txsBatch),
-                BlocksDB.insert(
+                BlocksTxsDB.insert(
                   blockEntry[UnsubmittedBlocksDB.Columns.HEADER_HASH],
                   txHashesBatch,
                 ),

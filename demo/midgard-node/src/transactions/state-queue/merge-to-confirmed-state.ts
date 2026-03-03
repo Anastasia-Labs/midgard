@@ -4,15 +4,15 @@
  *
  * 1. Fetches the confirmed state and the block it points to (i.e. the oldest
  *    block in the queue).
- * 2. Fetches the transactions of that block by querying BlocksDB and its
+ * 2. Fetches the transactions of that block by querying BlocksTxsDB and its
  *    associated inputs table..
  * 3. Apply those transactions to ConfirmedLedgerDB and update the table to
  *    store the updated UTxO set.
- * 4. Remove all header hashes from BlocksDB associated with the merged block.
+ * 4. Remove all header hashes from BlocksTxsDB associated with the merged block.
  * 5. Build and submit the merge transaction.
  */
 
-import { BlocksDB, ConfirmedLedgerDB } from "@/database/index.js";
+import { BlocksTxsDB, ConfirmedLedgerDB } from "@/database/index.js";
 import * as SDK from "@al-ft/midgard-sdk";
 import {
   Address,
@@ -145,13 +145,13 @@ export const buildAndSubmitMergeTx = (
         `🔸 First block found: ${firstBlockUTxO.utxo.txHash}#${firstBlockUTxO.utxo.outputIndex}`,
       );
       // Fetch transactions from the first block
-      yield* Effect.logInfo("🔸 Looking up its transactions from BlocksDB...");
+      yield* Effect.logInfo("🔸 Looking up its transactions from BlocksTxsDB...");
       const { txs: firstBlockTxs, headerHash } = yield* fetchFirstBlockTxs(
         firstBlockUTxO,
       ).pipe(Effect.withSpan("fetchFirstBlockTxs"));
       if (firstBlockTxs.length === 0) {
         yield* Effect.logInfo(
-          "🔸 ❌ Failed to find first block's transactions in BlocksDB.",
+          "🔸 ❌ Failed to find first block's transactions in BlocksTxsDB.",
         );
         return;
       }
@@ -212,7 +212,7 @@ export const buildAndSubmitMergeTx = (
 
       // - Clear all the spent UTxOs from the confirmed ledger
       // - Add all the produced UTxOs from the confirmed ledger
-      // - Remove all the tx hashes of the merged block from BlocksDB
+      // - Remove all the tx hashes of the merged block from BlocksTxsDB
       const bs = 100;
       yield* Effect.logInfo("🔸 Clear confirmed ledger db...");
       for (let i = 0; i < spentOutRefs.length; i += bs) {
@@ -226,9 +226,9 @@ export const buildAndSubmitMergeTx = (
           // .map((u) => utxoToOutRefAndCBORArray(u)),
           .pipe(Effect.withSpan(`confirmed-ledger-insert-${i}`));
       }
-      yield* Effect.logInfo("🔸 Clear block from BlocksDB...");
-      yield* BlocksDB.clearBlock(headerHash).pipe(
-        Effect.withSpan("clear-block-from-BlocksDB"),
+      yield* Effect.logInfo("🔸 Clear block from BlocksTxsDB...");
+      yield* BlocksTxsDB.clearBlock(headerHash).pipe(
+        Effect.withSpan("clear-block-from-BlocksTxsDB"),
       );
       yield* Effect.logInfo("🔸 ☑️  Merge transaction completed.");
 

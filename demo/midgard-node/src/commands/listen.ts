@@ -29,7 +29,7 @@ import {
 } from "effect";
 import {
   AddressHistoryDB,
-  BlocksDB,
+  BlocksTxsDB,
   ImmutableDB,
   InitDB,
   MempoolDB,
@@ -239,7 +239,7 @@ const getBlockHandler = Effect.gen(function* () {
       { status: 400 },
     );
   }
-  const hashes = yield* BlocksDB.retrieveTxHashesByHeaderHash(
+  const hashes = yield* BlocksTxsDB.retrieveTxHashesByHeaderHash(
     Buffer.from(fromHex(hdrHash)),
   );
   yield* Effect.logInfo(
@@ -460,9 +460,9 @@ ${emoji} ${u.utxo.txHash}#${u.utxo.outputIndex}${info}`;
   ),
 );
 
-const getLogBlocksDBHandler = Effect.gen(function* () {
-  yield* Effect.logInfo(`✍  Querying BlocksDB...`);
-  const allBlocksData = yield* BlocksDB.retrieve;
+const getLogBlocksTxsDBHandler = Effect.gen(function* () {
+  yield* Effect.logInfo(`✍  Querying BlocksTxsDB...`);
+  const allBlocksData = yield* BlocksTxsDB.retrieve;
   const keyValues: Record<string, number> = allBlocksData.reduce(
     (acc: Record<string, number>, entry) => {
       const bHex = toHex(entry.header_hash);
@@ -486,11 +486,11 @@ ${bHex} -──▶ ${keyValues[bHex]} tx(s)`;
 `;
   yield* Effect.logInfo(drawn);
   return yield* HttpServerResponse.json({
-    message: `BlocksDB drawn in server logs!`,
+    message: `BlocksTxsDB drawn in server logs!`,
   });
 }).pipe(
-  Effect.catchTag("HttpBodyError", (e) => failWith500("GET", "logBlocksDB", e)),
-  Effect.catchTag("DatabaseError", (e) => handleDBGetFailure("logBlocksDB", e)),
+  Effect.catchTag("HttpBodyError", (e) => failWith500("GET", "logBlocksTxsDB", e)),
+  Effect.catchTag("DatabaseError", (e) => handleDBGetFailure("logBlocksTxsDB", e)),
 );
 
 const getLogGlobalsHandler = Effect.gen(function* () {
@@ -577,7 +577,7 @@ const router = (
       HttpRouter.get(`/${MERGE_ENDPOINT}`, getMergeHandler),
       HttpRouter.get(`/${RESET_ENDPOINT}`, getResetHandler),
       HttpRouter.get(`/${STATE_QUEUE_ENDPOINT}`, getStateQueueHandler),
-      HttpRouter.get(`/logBlocksDB`, getLogBlocksDBHandler),
+      HttpRouter.get(`/logBlocksTxsDB`, getLogBlocksTxsDBHandler),
       HttpRouter.get(`/logGlobals`, getLogGlobalsHandler),
       HttpRouter.post(`/${SUBMIT_ENDPOINT}`, postSubmitHandler(txQueue)),
     )

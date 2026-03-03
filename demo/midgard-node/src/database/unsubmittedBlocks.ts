@@ -8,7 +8,7 @@ import {
   sqlErrorToDatabaseError,
 } from "@/database/utils/common.js";
 import { UTxO } from "@lucid-evolution/lucid";
-import * as BlocksDB from "@/database/blocks.js";
+import * as BlocksTxsDB from "@/database/blocksTxs.js";
 import * as ImmutableDB from "@/database/immutable.js";
 import * as TxUtils from "@/database/utils/tx.js";
 
@@ -72,7 +72,7 @@ export type LatestUnsubmittedBlockWithTxs = Omit<
 };
 
 type LatestUnsubmittedBlockJoinRow = Entry & {
-  [BlocksDB.Columns.TX_ID]: Buffer | null;
+  [BlocksTxsDB.Columns.TX_ID]: Buffer | null;
   [TxUtils.Columns.TX]: Buffer | null;
 };
 
@@ -184,14 +184,14 @@ export const retrieveLatestWithBlockTxs: Effect.Effect<
       latest_unsubmitted.${sql(Columns.WITHDRAWALS_COUNT)},
       latest_unsubmitted.${sql(Columns.TOTAL_EVENTS_SIZE)},
       latest_unsubmitted.${sql(Columns.TIMESTAMPTZ)},
-      b.${sql(BlocksDB.Columns.TX_ID)},
+      b.${sql(BlocksTxsDB.Columns.TX_ID)},
       i.${sql(TxUtils.Columns.TX)}
     FROM latest_unsubmitted
-    LEFT JOIN ${sql(BlocksDB.tableName)} AS b
-      ON b.${sql(BlocksDB.Columns.HEADER_HASH)} = latest_unsubmitted.${sql(Columns.HEADER_HASH)}
+    LEFT JOIN ${sql(BlocksTxsDB.tableName)} AS b
+      ON b.${sql(BlocksTxsDB.Columns.HEADER_HASH)} = latest_unsubmitted.${sql(Columns.HEADER_HASH)}
     LEFT JOIN ${sql(ImmutableDB.tableName)} AS i
-      ON i.${sql(TxUtils.Columns.TX_ID)} = b.${sql(BlocksDB.Columns.TX_ID)}
-    ORDER BY b.${sql(BlocksDB.Columns.HEIGHT)} ASC NULLS LAST
+      ON i.${sql(TxUtils.Columns.TX_ID)} = b.${sql(BlocksTxsDB.Columns.TX_ID)}
+    ORDER BY b.${sql(BlocksTxsDB.Columns.HEIGHT)} ASC NULLS LAST
   `;
   if (rows.length <= 0) {
     return Option.none();
@@ -213,13 +213,13 @@ export const retrieveLatestWithBlockTxs: Effect.Effect<
     initialTxAcc,
     (acc, row) => {
       if (
-        row[BlocksDB.Columns.TX_ID] === null &&
+        row[BlocksTxsDB.Columns.TX_ID] === null &&
         row[TxUtils.Columns.TX] === null
       ) {
         return Effect.succeed(acc);
       }
       if (
-        row[BlocksDB.Columns.TX_ID] === null ||
+        row[BlocksTxsDB.Columns.TX_ID] === null ||
         row[TxUtils.Columns.TX] === null
       ) {
         return Effect.fail(
@@ -231,7 +231,7 @@ export const retrieveLatestWithBlockTxs: Effect.Effect<
           }),
         );
       }
-      acc.txHashes.push(row[BlocksDB.Columns.TX_ID]);
+      acc.txHashes.push(row[BlocksTxsDB.Columns.TX_ID]);
       acc.txCbors.push(row[TxUtils.Columns.TX]);
       return Effect.succeed(acc);
     },

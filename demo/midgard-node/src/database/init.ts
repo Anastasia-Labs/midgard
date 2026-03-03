@@ -1,5 +1,5 @@
 import { SqlClient, SqlError } from "@effect/sql";
-import * as BlocksDB from "./blocks.js";
+import * as BlocksTxsDB from "./blocksTxs.js";
 import * as ConfirmedLedgerDB from "./confirmedLedger.js";
 import * as ImmutableDB from "./immutable.js";
 import * as LatestLedgerDB from "./latestLedger.js";
@@ -29,7 +29,7 @@ export const program: Effect.Effect<
   yield* sql`SET default_transaction_isolation TO 'serializable'`;
 
   yield* AddressHistory.createTable;
-  yield* BlocksDB.createTable;
+  yield* BlocksTxsDB.createTable;
   yield* Ledger.createTable(ConfirmedLedgerDB.tableName);
   yield* Ledger.createTable(LatestLedgerDB.tableName);
   yield* Ledger.createTable(MempoolLedgerDB.tableName);
