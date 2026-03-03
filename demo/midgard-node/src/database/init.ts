@@ -6,7 +6,7 @@ import * as LatestLedgerDB from "./latestLedger.js";
 import * as MempoolDB from "./mempool.js";
 import * as ProcessedMempoolDB from "./processedMempool.js";
 import * as MempoolLedgerDB from "./mempoolLedger.js";
-import * as UnsubmittedBlocksDB from "./unsubmittedBlocks.js";
+import * as BlocksDB from "./blocks.js";
 import * as Tx from "@/database/utils/tx.js";
 import * as Ledger from "@/database/utils/ledger.js";
 import * as DepositsDB from "@/database/deposits.js";
@@ -36,7 +36,7 @@ export const program: Effect.Effect<
   yield* Tx.createTable(ImmutableDB.tableName);
   yield* Tx.createTable(MempoolDB.tableName);
   yield* Tx.createTable(ProcessedMempoolDB.tableName);
-  yield* UnsubmittedBlocksDB.createTable;
+  yield* BlocksDB.createTable;
   yield* UserEvents.createTable(DepositsDB.tableName);
   yield* UserEvents.createTable(TxOrdersDB.tableName);
   yield* UserEvents.createTable(WithdrawalsDB.tableName);

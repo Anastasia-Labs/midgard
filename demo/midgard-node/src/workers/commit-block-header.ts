@@ -303,9 +303,10 @@ const successfulSubmissionProgram = (
                 ImmutableDB.insertTxs(batchTxs).pipe(
                   Effect.withSpan(`immutable-db-insert-${startIndex}`),
                 ),
-                BlocksTxsDB.insert(newHeaderHashBuffer, batchHashesForBlocks).pipe(
-                  Effect.withSpan(`blocks-db-insert-${startIndex}`),
-                ),
+                BlocksTxsDB.insert(
+                  newHeaderHashBuffer,
+                  batchHashesForBlocks,
+                ).pipe(Effect.withSpan(`blocks-db-insert-${startIndex}`)),
                 MempoolDB.clearTxs(batchHashes).pipe(
                   Effect.withSpan(`mempool-db-clear-txs-${startIndex}`),
                 ),
@@ -326,8 +327,7 @@ const successfulSubmissionProgram = (
       txSize,
       mempoolTxsCount:
         mempoolTxs.length + workerInput.data.mempoolTxsCountSoFar,
-      sizeOfBlocksTxs:
-        sizeOfTxs + workerInput.data.sizeOfTxsSoFar,
+      sizeOfBlocksTxs: sizeOfTxs + workerInput.data.sizeOfTxsSoFar,
     };
   });
 

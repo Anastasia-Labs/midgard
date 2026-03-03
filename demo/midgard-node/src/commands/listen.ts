@@ -489,8 +489,12 @@ ${bHex} -──▶ ${keyValues[bHex]} tx(s)`;
     message: `BlocksTxsDB drawn in server logs!`,
   });
 }).pipe(
-  Effect.catchTag("HttpBodyError", (e) => failWith500("GET", "logBlocksTxsDB", e)),
-  Effect.catchTag("DatabaseError", (e) => handleDBGetFailure("logBlocksTxsDB", e)),
+  Effect.catchTag("HttpBodyError", (e) =>
+    failWith500("GET", "logBlocksTxsDB", e),
+  ),
+  Effect.catchTag("DatabaseError", (e) =>
+    handleDBGetFailure("logBlocksTxsDB", e),
+  ),
 );
 
 const getLogGlobalsHandler = Effect.gen(function* () {

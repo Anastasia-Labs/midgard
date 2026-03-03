@@ -108,7 +108,8 @@ describe("BlocksTxsDB", () => {
           expect(
             new Set(
               all.map((a) => ({
-                [BlocksTxsDB.Columns.HEADER_HASH]: a[BlocksTxsDB.Columns.HEADER_HASH],
+                [BlocksTxsDB.Columns.HEADER_HASH]:
+                  a[BlocksTxsDB.Columns.HEADER_HASH],
                 [BlocksTxsDB.Columns.TX_ID]: a[BlocksTxsDB.Columns.TX_ID],
               })),
             ),
@@ -135,7 +136,8 @@ describe("BlocksTxsDB", () => {
           expect(
             new Set(
               afterClear.map((a) => ({
-                [BlocksTxsDB.Columns.HEADER_HASH]: a[BlocksTxsDB.Columns.HEADER_HASH],
+                [BlocksTxsDB.Columns.HEADER_HASH]:
+                  a[BlocksTxsDB.Columns.HEADER_HASH],
                 [BlocksTxsDB.Columns.TX_ID]: a[BlocksTxsDB.Columns.TX_ID],
               })),
             ),
