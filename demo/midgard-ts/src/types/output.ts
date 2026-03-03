@@ -305,7 +305,7 @@ export interface TransactionOutput {
   script_ref: Uint8Array | undefined;
 }
 
-interface TransactionOutputPartial {
+export interface TransactionOutputPartial {
   addrLen: number;
   value: ValuePartial;
   datumPresent: boolean;
@@ -316,7 +316,7 @@ interface TransactionOutputPartial {
 
 // fuel: fuel-types/src/canonical.rs:101 — Serialize::encode_static
 // fuel: fuel-types/src/canonical.rs:301 — Vec<u8>::encode_static (address len + datum/script_ref lens)
-function writeTransactionOutputStatic(w: Writer, o: TransactionOutput): void {
+export function writeTransactionOutputStatic(w: Writer, o: TransactionOutput): void {
   writeAddressStatic(w, o.address);
   writeValueStatic(w, o.value);
   // datum: Option<Vec<u8>>
@@ -337,7 +337,7 @@ function writeTransactionOutputStatic(w: Writer, o: TransactionOutput): void {
 
 // fuel: fuel-types/src/canonical.rs:106 — Serialize::encode_dynamic
 // fuel: fuel-types/src/canonical.rs:309 — Vec<u8>::encode_dynamic (bytes + tail alignment pad)
-function writeTransactionOutputDynamic(w: Writer, o: TransactionOutput): void {
+export function writeTransactionOutputDynamic(w: Writer, o: TransactionOutput): void {
   writeAddressDynamic(w, o.address);
   writeValueDynamic(w, o.value);
   if (o.datum !== undefined) writeVarBytesDynamic(w, o.datum);
@@ -346,7 +346,7 @@ function writeTransactionOutputDynamic(w: Writer, o: TransactionOutput): void {
 
 // fuel: fuel-types/src/canonical.rs:167 — Deserialize::decode_static
 // fuel: fuel-types/src/canonical.rs:332 — Vec<u8>::decode_static (reads lens, stores as capacity)
-function readTransactionOutputStatic(r: Reader): TransactionOutputPartial {
+export function readTransactionOutputStatic(r: Reader): TransactionOutputPartial {
   const addrLen = readAddressLen(r);
   const value = readValueStatic(r);
   const datumPresent = readU64(r) !== 0;
@@ -365,7 +365,7 @@ function readTransactionOutputStatic(r: Reader): TransactionOutputPartial {
 
 // fuel: fuel-types/src/canonical.rs:172 — Deserialize::decode_dynamic
 // fuel: fuel-types/src/canonical.rs:352 — Vec<u8>::decode_dynamic (reads bytes + skips tail pad)
-function readTransactionOutputDynamic(
+export function readTransactionOutputDynamic(
   r: Reader,
   p: TransactionOutputPartial,
 ): TransactionOutput {
@@ -514,12 +514,3 @@ export function decodeTransactionOutputCompact(
   const partial = readTransactionOutputCompactStatic(r);
   return readTransactionOutputCompactDynamic(r, partial);
 }
-
-// Re-export internal helpers needed by other modules (block.ts, transaction.ts).
-export {
-  writeTransactionOutputStatic,
-  writeTransactionOutputDynamic,
-  readTransactionOutputStatic,
-  readTransactionOutputDynamic,
-  TransactionOutputPartial,
-};

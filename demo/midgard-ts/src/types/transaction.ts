@@ -52,6 +52,10 @@ import {
 
 // ===========================================================================
 // TransactionWitnessSet   (Full Representation)
+// cddl: codec.cddl:195 — transaction_witness_set = { ? 0: nonempty_set<vkeywitness>, ? 1: nonempty_set<native_script>, ? 5: redeemers, ? 7: nonempty_set<plutus_v3_script> }
+// fuel: fuel-tx/src/transaction/types/witness.rs:32 — Witness (Fuel's opaque witness blob)
+// fuel: fuel-tx/src/transaction/types/chargeable_transaction.rs:86 — ChargeableTransaction.witnesses: Vec<Witness>
+// fuel: fuel-types/src/canonical.rs:279 — impl Serialize for Vec<T>
 //
 // Static:  presence_mask (u64)
 // Dynamic (for each present field):
@@ -68,6 +72,8 @@ export interface TransactionWitnessSet {
   plutus_v3_scripts: Uint8Array[] | undefined;
 }
 
+// Helper: compute the presence bitmask for all four optional fields.
+// Midgard-specific design; Fuel uses fuel-tx/src/transaction/policies.rs (Policies bitmask) instead.
 function witnessMask(ws: TransactionWitnessSet): number {
   let m = 0;
   if (ws.vkey_witnesses !== undefined) m |= 1 << 0;
@@ -77,6 +83,7 @@ function witnessMask(ws: TransactionWitnessSet): number {
   return m;
 }
 
+// fuel: fuel-types/src/canonical.rs:101 — Serialize::encode_static (presence mask u64 only)
 function writeTransactionWitnessSetStatic(
   w: Writer,
   ws: TransactionWitnessSet,
@@ -84,6 +91,9 @@ function writeTransactionWitnessSetStatic(
   writeU64(w, witnessMask(ws));
 }
 
+// fuel: fuel-types/src/canonical.rs:106 — Serialize::encode_dynamic (all field data in dynamic)
+// fuel: fuel-types/src/canonical.rs:301 — Vec<T>::encode_static (len u64 per array)
+// fuel: fuel-types/src/canonical.rs:309 — Vec<T>::encode_dynamic (bytes + tail pad per element)
 function writeTransactionWitnessSetDynamic(
   w: Writer,
   ws: TransactionWitnessSet,
@@ -112,10 +122,14 @@ function writeTransactionWitnessSetDynamic(
   }
 }
 
+// fuel: fuel-types/src/canonical.rs:167 — Deserialize::decode_static (reads mask u64)
 function readTransactionWitnessSetStatic(r: Reader): number {
   return readU64(r); // just the mask
 }
 
+// fuel: fuel-types/src/canonical.rs:172 — Deserialize::decode_dynamic (reads each present field)
+// fuel: fuel-types/src/canonical.rs:332 — Vec<T>::decode_static (reads len u64)
+// fuel: fuel-types/src/canonical.rs:352 — Vec<T>::decode_dynamic (reads bytes + skips tail pad)
 function readTransactionWitnessSetDynamic(
   r: Reader,
   mask: number,
@@ -155,6 +169,8 @@ function readTransactionWitnessSetDynamic(
 
 // ===========================================================================
 // TransactionWitnessSetCompact   (Compact Representation)
+// cddl: codec.cddl:204 — transaction_witness_set_compact = { ? 0: $hash32, ? 1: $hash32, ? 5: $hash32, ? 7: $hash32 }
+// fuel: fuel-types/src/canonical.rs:71 — trait Serialize (Option<T> encoded as presence u64 + static T)
 //
 // Fields: four optional Hash32 hashes — all encoded as Option<Hash32> (static).
 // No dynamic section.
@@ -167,6 +183,7 @@ export interface TransactionWitnessSetCompact {
   plutus_v3_scripts_hash: Hash32 | undefined;
 }
 
+// fuel: fuel-types/src/canonical.rs:101 — Serialize::encode_static (presence u64 + Hash32 per field)
 function writeTransactionWitnessSetCompactStatic(
   w: Writer,
   ws: TransactionWitnessSetCompact,
@@ -183,6 +200,7 @@ function writeTransactionWitnessSetCompactStatic(
   writeOpt(ws.plutus_v3_scripts_hash);
 }
 
+// fuel: fuel-types/src/canonical.rs:167 — Deserialize::decode_static (presence u64, then Hash32 if present)
 function readTransactionWitnessSetCompactStatic(
   r: Reader,
 ): TransactionWitnessSetCompact {
@@ -197,6 +215,7 @@ function readTransactionWitnessSetCompactStatic(
   };
 }
 
+// fuel: fuel-types/src/canonical.rs:112 — Serialize::to_bytes (static-only, no dynamic)
 export function encodeTransactionWitnessSetCompact(
   ws: TransactionWitnessSetCompact,
 ): Uint8Array {
@@ -205,6 +224,7 @@ export function encodeTransactionWitnessSetCompact(
   return w.toBytes();
 }
 
+// fuel: fuel-types/src/canonical.rs:180 — Deserialize::from_bytes
 export function decodeTransactionWitnessSetCompact(
   bytes: Uint8Array,
 ): TransactionWitnessSetCompact {
@@ -214,6 +234,10 @@ export function decodeTransactionWitnessSetCompact(
 
 // ===========================================================================
 // TransactionBody   (Full Representation)
+// cddl: codec.cddl:140 — transaction_body = { 0: inputs, 1: outputs, 2: fee, ? 3: ttl, ? 7: aux_hash, ... }
+// fuel: fuel-tx/src/transaction/types/chargeable_transaction.rs:86 — ChargeableTransaction { inputs, outputs, witnesses, ... }
+// fuel: fuel-tx/src/transaction/types/script.rs:130 — ScriptBody { script_gas_limit, receipts_root, script, script_data }
+// fuel: fuel-types/src/canonical.rs:71 — trait Serialize (#[derive(canonical::Serialize)])
 //
 // Mandatory: inputs (Vec<OutputReference>), outputs (Vec<TransactionOutput>), fee
 // Optional (bitmask):
@@ -263,6 +287,8 @@ export interface TransactionBody {
   required_observers: Uint8Array[] | undefined; // Vec<Hash28>
 }
 
+// Helper: compute the optional-field bitmask.
+// Midgard-specific design; Fuel uses fuel-tx/src/transaction/policies.rs (Policies bitmask) instead.
 function optsMask(b: TransactionBody): number {
   let m = 0;
   if (b.ttl !== undefined) m |= 1 << 0;
@@ -286,6 +312,8 @@ interface TransactionBodyPartial {
   mask: number;
 }
 
+// fuel: fuel-types/src/canonical.rs:101 — Serialize::encode_static
+// fuel: fuel-types/src/canonical.rs:301 — Vec<T>::encode_static (inputs_len + outputs_len)
 function writeTransactionBodyStatic(w: Writer, b: TransactionBody): void {
   writeU64(w, b.inputs.length);
   for (const inp of b.inputs) writeOutputReferenceStatic(w, inp);
@@ -295,6 +323,8 @@ function writeTransactionBodyStatic(w: Writer, b: TransactionBody): void {
   writeU64(w, optsMask(b));
 }
 
+// fuel: fuel-types/src/canonical.rs:106 — Serialize::encode_dynamic
+// fuel: fuel-types/src/canonical.rs:309 — Vec<T>::encode_dynamic (txout dynamic sections + optional bytes)
 function writeTransactionBodyDynamic(w: Writer, b: TransactionBody): void {
   // inputs have no dynamic part (OutputReference is fully static)
   for (const out of b.outputs) writeTransactionOutputDynamic(w, out);
@@ -327,6 +357,8 @@ function writeTransactionBodyDynamic(w: Writer, b: TransactionBody): void {
   }
 }
 
+// fuel: fuel-types/src/canonical.rs:167 — Deserialize::decode_static
+// fuel: fuel-types/src/canonical.rs:332 — Vec<T>::decode_static (reads lens, stores partials)
 function readTransactionBodyStatic(r: Reader): TransactionBodyPartial {
   const inputsLen = readU64(r);
   const inputs: OutputReference[] = [];
@@ -342,6 +374,8 @@ function readTransactionBodyStatic(r: Reader): TransactionBodyPartial {
   return { inputs, outPartials, fee, mask };
 }
 
+// fuel: fuel-types/src/canonical.rs:172 — Deserialize::decode_dynamic
+// fuel: fuel-types/src/canonical.rs:352 — Vec<T>::decode_dynamic (completes outputs, reads optional fields)
 function readTransactionBodyDynamic(
   r: Reader,
   p: TransactionBodyPartial,
@@ -398,6 +432,7 @@ function readTransactionBodyDynamic(
   };
 }
 
+// fuel: fuel-types/src/canonical.rs:112 — Serialize::to_bytes
 export function encodeTransactionBody(b: TransactionBody): Uint8Array {
   const sw = new Writer();
   writeTransactionBodyStatic(sw, b);
@@ -411,6 +446,7 @@ export function encodeTransactionBody(b: TransactionBody): Uint8Array {
   return out;
 }
 
+// fuel: fuel-types/src/canonical.rs:180 — Deserialize::from_bytes
 export function decodeTransactionBody(bytes: Uint8Array): TransactionBody {
   const r = new Reader(bytes);
   const p = readTransactionBodyStatic(r);
@@ -419,6 +455,8 @@ export function decodeTransactionBody(bytes: Uint8Array): TransactionBody {
 
 // ===========================================================================
 // TransactionBodyCompact   (Compact Representation)
+// cddl: codec.cddl:168 — transaction_body_compact = { 0: inputs_hash, 1: outputs_hash, 2: fee, ? 3: ttl, ... }
+// fuel: fuel-types/src/canonical.rs:71 — trait Serialize (same static/dynamic split, all opts as Hash32)
 //
 // Mandatory: inputs_hash(Hash32), outputs_hash(Hash32), fee(u64), opts_mask(u64)
 // Optional (bitmask — same bit layout):
@@ -451,6 +489,7 @@ export interface TransactionBodyCompact {
   required_observers_hash: Hash32 | undefined;
 }
 
+// Helper: compute bitmask for compact optional fields.
 function optsMaskCompact(b: TransactionBodyCompact): number {
   let m = 0;
   if (b.ttl !== undefined) m |= 1 << 0;
@@ -465,6 +504,7 @@ function optsMaskCompact(b: TransactionBodyCompact): number {
   return m;
 }
 
+// fuel: fuel-types/src/canonical.rs:101 — Serialize::encode_static (two Hash32 + fee u64 + mask u64)
 function writeTransactionBodyCompactStatic(
   w: Writer,
   b: TransactionBodyCompact,
@@ -475,6 +515,7 @@ function writeTransactionBodyCompactStatic(
   writeU64(w, optsMaskCompact(b));
 }
 
+// fuel: fuel-types/src/canonical.rs:106 — Serialize::encode_dynamic (optional Hash32/u64 fields in bit order)
 function writeTransactionBodyCompactDynamic(
   w: Writer,
   b: TransactionBodyCompact,
@@ -496,6 +537,9 @@ function writeTransactionBodyCompactDynamic(
     writeHash32Static(w, b.required_observers_hash);
 }
 
+// fuel: fuel-types/src/canonical.rs:167 — Deserialize::decode_static  (reads static header)
+// fuel: fuel-types/src/canonical.rs:172 — Deserialize::decode_dynamic (reads optional fields inline, mask-driven)
+// Note: compact body has no nested variable-length types so static+dynamic are merged here.
 function readTransactionBodyCompact(r: Reader): TransactionBodyCompact {
   const inputs_hash = readHash32Static(r);
   const outputs_hash = readHash32Static(r);
@@ -531,6 +575,7 @@ function readTransactionBodyCompact(r: Reader): TransactionBodyCompact {
   };
 }
 
+// fuel: fuel-types/src/canonical.rs:112 — Serialize::to_bytes
 export function encodeTransactionBodyCompact(
   b: TransactionBodyCompact,
 ): Uint8Array {
@@ -546,6 +591,7 @@ export function encodeTransactionBodyCompact(
   return out;
 }
 
+// fuel: fuel-types/src/canonical.rs:180 — Deserialize::from_bytes
 export function decodeTransactionBodyCompact(
   bytes: Uint8Array,
 ): TransactionBodyCompact {
@@ -555,6 +601,12 @@ export function decodeTransactionBodyCompact(
 
 // ===========================================================================
 // Transaction   (Full Representation)
+// cddl: codec.cddl:112 — transaction = [transaction_body, transaction_witness_set, boolean, null]
+// fuel: fuel-tx/src/transaction.rs:111 — pub enum Transaction { Script(Script), Create(Create), ... }
+// fuel: fuel-tx/src/transaction/types/chargeable_transaction.rs:86 — ChargeableTransaction { body, inputs, outputs, witnesses }
+//   The closest Fuel analog is Script = ChargeableTransaction<ScriptBody, ScriptMetadata>
+//   (fuel-tx/src/transaction/types/script.rs:46)
+// fuel: fuel-types/src/canonical.rs:71 — trait Serialize (#[derive(canonical::Serialize)])
 //
 // Fields: body, witness_set, is_valid
 //
@@ -568,36 +620,41 @@ export interface Transaction {
   is_valid: boolean;
 }
 
-interface TransactionPartial {
+export interface TransactionPartial {
   bodyPartial: TransactionBodyPartial;
   wsMask: number;
   is_valid: boolean;
 }
 
-function writeTransactionStatic(w: Writer, tx: Transaction): void {
+// fuel: fuel-types/src/canonical.rs:101 — Serialize::encode_static (body static + mask u64 + is_valid u8)
+export function writeTransactionStatic(w: Writer, tx: Transaction): void {
   writeTransactionBodyStatic(w, tx.body);
   writeTransactionWitnessSetStatic(w, tx.witness_set);
   writeBool(w, tx.is_valid);
 }
 
-function writeTransactionDynamic(w: Writer, tx: Transaction): void {
+// fuel: fuel-types/src/canonical.rs:106 — Serialize::encode_dynamic (body dynamic + witness_set dynamic)
+export function writeTransactionDynamic(w: Writer, tx: Transaction): void {
   writeTransactionBodyDynamic(w, tx.body);
   writeTransactionWitnessSetDynamic(w, tx.witness_set);
 }
 
-function readTransactionStatic(r: Reader): TransactionPartial {
+// fuel: fuel-types/src/canonical.rs:167 — Deserialize::decode_static
+export function readTransactionStatic(r: Reader): TransactionPartial {
   const bodyPartial = readTransactionBodyStatic(r);
   const wsMask = readTransactionWitnessSetStatic(r);
   const is_valid = readBool(r);
   return { bodyPartial, wsMask, is_valid };
 }
 
-function readTransactionDynamic(r: Reader, p: TransactionPartial): Transaction {
+// fuel: fuel-types/src/canonical.rs:172 — Deserialize::decode_dynamic
+export function readTransactionDynamic(r: Reader, p: TransactionPartial): Transaction {
   const body = readTransactionBodyDynamic(r, p.bodyPartial);
   const witness_set = readTransactionWitnessSetDynamic(r, p.wsMask);
   return { body, witness_set, is_valid: p.is_valid };
 }
 
+// fuel: fuel-types/src/canonical.rs:112 — Serialize::to_bytes
 export function encodeTransaction(tx: Transaction): Uint8Array {
   const sw = new Writer();
   writeTransactionStatic(sw, tx);
@@ -611,6 +668,7 @@ export function encodeTransaction(tx: Transaction): Uint8Array {
   return out;
 }
 
+// fuel: fuel-types/src/canonical.rs:180 — Deserialize::from_bytes
 export function decodeTransaction(bytes: Uint8Array): Transaction {
   const r = new Reader(bytes);
   const p = readTransactionStatic(r);
@@ -619,6 +677,9 @@ export function decodeTransaction(bytes: Uint8Array): Transaction {
 
 // ===========================================================================
 // TransactionCompact   (Compact Representation)
+// cddl: codec.cddl:131 — transaction_compact = { transaction_body_hash: $hash32, transaction_witness_set_hash: $hash32, boolean }
+// fuel: fuel-tx/src/transaction.rs:111 — Transaction enum (same concept: tx identified by its body hash)
+// fuel: fuel-types/src/canonical.rs:71 — trait Serialize
 //
 // All fields static, no dynamic.
 // Fields: transaction_body_hash(Hash32), transaction_witness_set_hash(Hash32), is_valid(bool)
@@ -630,6 +691,7 @@ export interface TransactionCompact {
   is_valid: boolean;
 }
 
+// fuel: fuel-types/src/canonical.rs:112 — Serialize::to_bytes (static-only: two Hash32 + bool)
 export function encodeTransactionCompact(tc: TransactionCompact): Uint8Array {
   const w = new Writer();
   writeHash32Static(w, tc.transaction_body_hash);
@@ -638,6 +700,7 @@ export function encodeTransactionCompact(tc: TransactionCompact): Uint8Array {
   return w.toBytes();
 }
 
+// fuel: fuel-types/src/canonical.rs:180 — Deserialize::from_bytes
 export function decodeTransactionCompact(
   bytes: Uint8Array,
 ): TransactionCompact {
@@ -647,12 +710,3 @@ export function decodeTransactionCompact(
   const is_valid = readBool(r);
   return { transaction_body_hash, transaction_witness_set_hash, is_valid };
 }
-
-// Re-export internal helpers needed by block.ts
-export {
-  writeTransactionStatic,
-  writeTransactionDynamic,
-  readTransactionStatic,
-  readTransactionDynamic,
-  TransactionPartial,
-};
