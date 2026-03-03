@@ -11,6 +11,7 @@ type NodeConfigDep = {
   L1_OGMIOS_KEY: string;
   L1_KUPO_KEY: string;
   L1_OPERATOR_SEED_PHRASE: string;
+  L1_OPERATOR_SEED_PHRASE_FOR_BLOCK_COMMITMENT: string;
   L1_OPERATOR_SEED_PHRASE_FOR_MERGE_TX: string;
   NETWORK: Network;
   PROTOCOL_PARAMETERS: SDK.ProtocolParameters;
@@ -40,6 +41,9 @@ const makeConfig = Effect.gen(function* () {
   const ogmiosKey = yield* Config.string("L1_OGMIOS_KEY");
   const kupoKey = yield* Config.string("L1_KUPO_KEY");
   const operatorSeedPhrase = yield* Config.string("L1_OPERATOR_SEED_PHRASE");
+  const operatorSeedPhraseForBlockCommitment = yield* Config.string(
+    "L1_OPERATOR_SEED_PHRASE_FOR_BLOCK_COMMITMENT",
+  );
   const operatorSeedPhraseForMergeTx = yield* Config.string(
     "L1_OPERATOR_SEED_PHRASE_FOR_MERGE_TX",
   );
@@ -160,6 +164,7 @@ const makeConfig = Effect.gen(function* () {
     L1_OGMIOS_KEY: ogmiosKey,
     L1_KUPO_KEY: kupoKey,
     L1_OPERATOR_SEED_PHRASE: operatorSeedPhrase,
+    L1_OPERATOR_SEED_PHRASE_FOR_BLOCK_COMMITMENT: operatorSeedPhraseForBlockCommitment,
     L1_OPERATOR_SEED_PHRASE_FOR_MERGE_TX: operatorSeedPhraseForMergeTx,
     NETWORK: network,
     PROTOCOL_PARAMETERS: SDK.getProtocolParameters(network),
