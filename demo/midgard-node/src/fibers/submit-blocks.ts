@@ -33,6 +33,7 @@ import {
   TxUtils as Tx,
   UserEventsUtils as UserEvent,
   ImmutableDB,
+  BlocksDB,
 } from "@/database/index.js";
 import { batchProgram, breakDownTx } from "@/utils.js";
 
@@ -275,6 +276,10 @@ const submitBlock = Effect.gen(function* () {
               [
                 MempoolDB.clearTxs(txHashesBatch),
                 ImmutableDB.insertTxs(txsBatch),
+                BlocksDB.insert(
+                  blockEntry[UnsubmittedBlocksDB.Columns.HEADER_HASH],
+                  txHashesBatch,
+                ),
               ],
               { concurrency: "unbounded" },
             );
