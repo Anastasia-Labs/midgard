@@ -438,7 +438,7 @@ export const findOperatorByPKH = (
 > => {
   const activeOperatorMatch = EffectArray.findFirst(
     activeOperators,
-    (utxo) => utxo.datum.key === operatorPKH,
+    (utxo) => utxo.datum.link === operatorPKH,
   );
 
   if (Option.isSome(activeOperatorMatch)) {
@@ -447,7 +447,7 @@ export const findOperatorByPKH = (
 
   const retiredOperatorMatch = EffectArray.findFirst(
     retiredOperators,
-    (utxo) => utxo.datum.key === operatorPKH,
+    (utxo) => utxo.datum.link === operatorPKH,
   );
 
   if (Option.isSome(retiredOperatorMatch)) {

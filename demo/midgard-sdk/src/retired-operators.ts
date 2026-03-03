@@ -7,18 +7,10 @@ import { AuthenticUTxO, authenticateUTxOs } from "@/internals.js";
 import { Data, UTxO } from "@lucid-evolution/lucid";
 import { LucidEvolution, TxBuilder } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
-import { incompleteInitLinkedListTxProgram } from "./linked-list.js";
+import { ActiveandRetiredElementSchema, incompleteInitLinkedListTxProgram } from "./linked-list.js";
 
-export const RetiredOperatorDatumSchema = Data.Object({
-  key: Data.Nullable(Data.Bytes()),
-  link: Data.Nullable(Data.Bytes()),
-  bondUnlockTime: Data.Nullable(POSIXTimeSchema),
-});
-export type RetiredOperatorDatum = Data.Static<
-  typeof RetiredOperatorDatumSchema
->;
-export const RetiredOperatorDatum =
-  RetiredOperatorDatumSchema as unknown as RetiredOperatorDatum;
+export type RetiredOperatorDatum = Data.Static<typeof ActiveandRetiredElementSchema>;
+export const RetiredOperatorDatum = ActiveandRetiredElementSchema as unknown as RetiredOperatorDatum;
 
 export const RetiredOperatorMintRedeemerSchema = Data.Enum([
   Data.Literal("Init"),

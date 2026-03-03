@@ -1,16 +1,10 @@
 import { AuthenticatedValidator, POSIXTimeSchema } from "@/common.js";
 import { Data, LucidEvolution, TxBuilder } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
-import { incompleteInitLinkedListTxProgram } from "./linked-list.js";
+import { incompleteInitLinkedListTxProgram, RegisteredElementSchema } from "./linked-list.js";
 
-export const RegisteredOperatorDatumSchema = Data.Object({
-  registrationTime: POSIXTimeSchema,
-});
-export type RegisteredOperatorDatum = Data.Static<
-  typeof RegisteredOperatorDatumSchema
->;
-export const RegisteredOperatorDatum =
-  RegisteredOperatorDatumSchema as unknown as RegisteredOperatorDatum;
+export type RegisteredOperatorDatum = Data.Static<typeof RegisteredElementSchema>;
+export const RegisteredOperatorDatum = RegisteredElementSchema as unknown as RegisteredOperatorDatum;
 
 export const RegisteredOperatorWitnessStatusSchema = Data.Enum([
   Data.Literal("Registered"),

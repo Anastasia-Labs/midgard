@@ -4,7 +4,7 @@ import {
   GenericErrorFields,
   LucidError,
   MissingDatumError,
-  ValueSchema,
+  POSIXTimeSchema,
 } from "@/common.js";
 import { Data as EffectData, Effect } from "effect";
 import {
@@ -21,25 +21,6 @@ import {
 
 export const NODE_ASSET_NAME = fromText("Node");
 
-// export const NodeKeySchema = Data.Enum([
-//   Data.Object({ Key: Data.Object({ key: Data.Bytes() }) }),
-//   Data.Literal("Empty"),
-// ]);
-// export type NodeKey = Data.Static<typeof NodeKeySchema>;
-// export const NodeKey = NodeKeySchema as unknown as NodeKey;
-
-// export const NodeDatumSchema = Data.Object({
-//   key: NodeKeySchema,
-//   next: NodeKeySchema,
-//   data: Data.Any(),
-// });
-// export type NodeDatum = Data.Static<typeof NodeDatumSchema>;
-// export const NodeDatum = NodeDatumSchema as unknown as NodeDatum;
-
-// export const ElementDataSchema= Data.Enum([
-//     Data.Object({ Root: Data.Any() }),
-//     Data.Object({ Node: Data.Any() }),
-// ]);
 export const ElementDataSchema= Data.Enum([
     Data.Object({ Root: Data.Object({ data: Data.Any() }) }),
     Data.Object({ Node: Data.Object({ data: Data.Any() }) }),
@@ -54,31 +35,46 @@ export const ElementSchema = Data.Object({
 export type Element = Data.Static<typeof ElementSchema>;
 export const Element = ElementSchema as unknown as Element;
 
-// export const getNodeDatumFromUTxO = (
-//   nodeUTxO: UTxO,
-// ): Effect.Effect<NodeDatum, DataCoercionError | MissingDatumError> => {
-//   const datumCBOR = nodeUTxO.datum;
-//   if (datumCBOR) {
-//     try {
-//       const nodeDatum = Data.from(datumCBOR, NodeDatum);
-//       return Effect.succeed(nodeDatum);
-//     } catch (e) {
-//       return Effect.fail(
-//         new DataCoercionError({
-//           message: "Could not coerce provided UTxO's datum to a `NodeDatum`",
-//           cause: e,
-//         }),
-//       );
-//     }
-//   } else {
-//     return Effect.fail(
-//       new MissingDatumError({
-//         message: "Provided UTxO was expected to carry an inline datum",
-//         cause: `No datum found in ${nodeUTxO.txHash}.${nodeUTxO.outputIndex}`,
-//       }),
-//     );
-//   }
-// };
+export const ActiveandRetiredNodeDataSchema = Data.Object({
+   bond_unlock_time: Data.Nullable(POSIXTimeSchema),
+});
+export type ActiveandRetiredNodeData = Data.Static<typeof ActiveandRetiredNodeDataSchema>;
+export const ActiveandRetiredNodeData = ActiveandRetiredNodeDataSchema as unknown as ActiveandRetiredNodeData;
+
+export const ActiveandRetiredElementDataSchema= Data.Enum([
+    Data.Object({ Root: Data.Bytes() }),
+    Data.Object({ Node: ActiveandRetiredNodeDataSchema }),
+]);
+export type ActiveandRetiredElementData = Data.Static<typeof ActiveandRetiredElementDataSchema>;
+export const ActiveandRetiredElementData = ActiveandRetiredElementDataSchema as unknown as ActiveandRetiredElementData;
+
+export const ActiveandRetiredElementSchema = Data.Object({
+  data: ActiveandRetiredElementDataSchema,
+  link: Data.Nullable(Data.Bytes()),
+});
+export type ActiveandRetiredElement = Data.Static<typeof ActiveandRetiredElementSchema>;
+export const ActiveandRetiredElement = ActiveandRetiredElementSchema as unknown as ActiveandRetiredElement;
+
+export const RegisteredNodeDataSchema = Data.Object({
+   activation_time: Data.Nullable(POSIXTimeSchema),
+});
+export type RegisteredNodeData = Data.Static<typeof RegisteredNodeDataSchema>;
+export const RegisteredNodeData = RegisteredNodeDataSchema as unknown as RegisteredNodeData;
+
+export const RegisteredElementDataSchema= Data.Enum([
+    Data.Object({ Root: Data.Bytes() }),
+    Data.Object({ Node: RegisteredNodeDataSchema }),
+]);
+export type RegisteredElementData = Data.Static<typeof RegisteredElementDataSchema>;
+export const RegisteredElementData = RegisteredElementDataSchema as unknown as RegisteredElementData;
+
+export const RegisteredElementSchema = Data.Object({
+  data: RegisteredElementDataSchema,
+  link: Data.Nullable(Data.Bytes()),
+});
+export type RegisteredElement = Data.Static<typeof RegisteredElementSchema>;
+export const RegisteredElement = RegisteredElementSchema as unknown as RegisteredElement;
+
 export const getElementDatumFromUTxO = (
   nodeUTxO: UTxO,
 ): Effect.Effect<Element, DataCoercionError | MissingDatumError> => {

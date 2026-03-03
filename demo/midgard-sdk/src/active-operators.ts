@@ -6,7 +6,7 @@ import {
 import { AuthenticUTxO, authenticateUTxOs } from "@/internals.js";
 import { LucidEvolution, TxBuilder, UTxO, Data } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
-import { incompleteInitLinkedListTxProgram } from "./linked-list.js";
+import { ActiveandRetiredElementSchema, incompleteInitLinkedListTxProgram } from "./linked-list.js";
 
 export const ActiveOperatorSpendRedeemerSchema = Data.Enum([
   Data.Literal("ListStateTransition"),
@@ -81,14 +81,8 @@ export type ActiveOperatorMintRedeemer = Data.Static<
 export const ActiveOperatorMintRedeemer =
   ActiveOperatorMintRedeemerSchema as unknown as ActiveOperatorMintRedeemer;
 
-export const ActiveOperatorDatumSchema = Data.Object({
-  key: Data.Nullable(Data.Bytes()),
-  link: Data.Nullable(Data.Bytes()),
-  bondUnlockTime: Data.Nullable(POSIXTimeSchema),
-});
-export type ActiveOperatorDatum = Data.Static<typeof ActiveOperatorDatumSchema>;
-export const ActiveOperatorDatum =
-  ActiveOperatorDatumSchema as unknown as ActiveOperatorDatum;
+export type ActiveOperatorDatum = Data.Static<typeof ActiveandRetiredElementSchema>;
+export const ActiveOperatorDatum = ActiveandRetiredElementSchema as unknown as ActiveOperatorDatum;
 
 export type ActiveOperatorInitParams = {
   validator: AuthenticatedValidator;
