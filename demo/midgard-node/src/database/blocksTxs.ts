@@ -8,7 +8,7 @@ import { SqlClient } from "@effect/sql";
 import { Database } from "@/services/database.js";
 import { sqlErrorToDatabaseError } from "@/database/utils/common.js";
 
-export const tableName = "blocks";
+export const tableName = "blocks_txs";
 
 export enum Columns {
   HEIGHT = "height",

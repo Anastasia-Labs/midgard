@@ -20,7 +20,7 @@ import {
   DatabaseInitializationError,
 } from "@/services/index.js";
 import {
-  BlocksDB,
+  BlocksTxsDB,
   ImmutableDB,
   MempoolDB,
   ProcessedMempoolDB,
@@ -273,7 +273,7 @@ const successfulSubmissionProgram = (
     const processedMempoolTxs = yield* ProcessedMempoolDB.retrieve;
 
     yield* Effect.logInfo(
-      "🔹 Inserting included transactions into ImmutableDB and BlocksDB, clearing all the processed txs from MempoolDB and ProcessedMempoolDB, and deleting mempool LevelDB...",
+      "🔹 Inserting included transactions into ImmutableDB and BlocksTxsDB, clearing all the processed txs from MempoolDB and ProcessedMempoolDB, and deleting mempool LevelDB...",
     );
     yield* Effect.all(
       [
@@ -303,7 +303,7 @@ const successfulSubmissionProgram = (
                 ImmutableDB.insertTxs(batchTxs).pipe(
                   Effect.withSpan(`immutable-db-insert-${startIndex}`),
                 ),
-                BlocksDB.insert(newHeaderHashBuffer, batchHashesForBlocks).pipe(
+                BlocksTxsDB.insert(newHeaderHashBuffer, batchHashesForBlocks).pipe(
                   Effect.withSpan(`blocks-db-insert-${startIndex}`),
                 ),
                 MempoolDB.clearTxs(batchHashes).pipe(

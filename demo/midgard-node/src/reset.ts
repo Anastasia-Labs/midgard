@@ -16,7 +16,7 @@ import {
 } from "@/transactions/utils.js";
 import {
   AddressHistoryDB,
-  BlocksDB,
+  BlocksTxsDB,
   ConfirmedLedgerDB,
   ImmutableDB,
   LatestLedgerDB,
@@ -152,7 +152,7 @@ export const resetDatabases: Effect.Effect<
     MempoolLedgerDB.clear,
     ProcessedMempoolDB.clear,
     UnsubmittedBlocksDB.clear,
-    BlocksDB.clear,
+    BlocksTxsDB.clear,
     ImmutableDB.clear,
     LatestLedgerDB.clear,
     ConfirmedLedgerDB.clear,

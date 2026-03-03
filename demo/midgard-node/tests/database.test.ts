@@ -7,7 +7,7 @@ import { Lucid } from "../src/services/lucid.js";
 import * as InitDB from "../src/database/init.js";
 import {
   // Block
-  BlocksDB,
+  BlocksTxsDB,
 
   // Address history
   AddressHistoryDB,
@@ -35,7 +35,7 @@ const flushAll = Effect.gen(function* () {
       MempoolLedgerDB.clear,
       LatestLedgerDB.clear,
       ConfirmedLedgerDB.clear,
-      BlocksDB.clear,
+      BlocksTxsDB.clear,
       ImmutableDB.clear,
       MempoolDB.clear,
       AddressHistoryDB.clear,
@@ -78,7 +78,7 @@ describe("Database: initialization and basic operations", () => {
   );
 });
 
-describe("BlocksDB", () => {
+describe("BlocksTxsDB", () => {
   it.effect(
     "insert, retrieve all, retrieve by header, retrieve by tx, clear block, clear all",
     (_) =>
@@ -87,12 +87,12 @@ describe("BlocksDB", () => {
           yield* flushAll;
 
           // insert with some txs
-          yield* BlocksDB.insert(blockHeader1, [tx1, tx2]);
-          yield* BlocksDB.insert(blockHeader2, [tx3]);
+          yield* BlocksTxsDB.insert(blockHeader1, [tx1, tx2]);
+          yield* BlocksTxsDB.insert(blockHeader2, [tx3]);
 
           // retrieve tx hashes by header
           const txs =
-            yield* BlocksDB.retrieveTxHashesByHeaderHash(blockHeader1);
+            yield* BlocksTxsDB.retrieveTxHashesByHeaderHash(blockHeader1);
           const txsHex = txs.map((row) => toHex(row));
           expect(new Set(txsHex)).toStrictEqual(
             new Set([toHex(tx1), toHex(tx2)]),
@@ -100,57 +100,57 @@ describe("BlocksDB", () => {
 
           // retrieve header by tx hash
           const retrievedHeader =
-            yield* BlocksDB.retrieveHeaderHashByTxHash(tx1);
+            yield* BlocksTxsDB.retrieveHeaderHashByTxHash(tx1);
           expect(toHex(retrievedHeader)).toEqual(toHex(blockHeader1));
 
           // retrieve all
-          const all = yield* BlocksDB.retrieve;
+          const all = yield* BlocksTxsDB.retrieve;
           expect(
             new Set(
               all.map((a) => ({
-                [BlocksDB.Columns.HEADER_HASH]: a[BlocksDB.Columns.HEADER_HASH],
-                [BlocksDB.Columns.TX_ID]: a[BlocksDB.Columns.TX_ID],
+                [BlocksTxsDB.Columns.HEADER_HASH]: a[BlocksTxsDB.Columns.HEADER_HASH],
+                [BlocksTxsDB.Columns.TX_ID]: a[BlocksTxsDB.Columns.TX_ID],
               })),
             ),
           ).toStrictEqual(
             new Set([
               {
-                [BlocksDB.Columns.HEADER_HASH]: blockHeader1,
-                [BlocksDB.Columns.TX_ID]: tx1,
+                [BlocksTxsDB.Columns.HEADER_HASH]: blockHeader1,
+                [BlocksTxsDB.Columns.TX_ID]: tx1,
               },
               {
-                [BlocksDB.Columns.HEADER_HASH]: blockHeader1,
-                [BlocksDB.Columns.TX_ID]: tx2,
+                [BlocksTxsDB.Columns.HEADER_HASH]: blockHeader1,
+                [BlocksTxsDB.Columns.TX_ID]: tx2,
               },
               {
-                [BlocksDB.Columns.HEADER_HASH]: blockHeader2,
-                [BlocksDB.Columns.TX_ID]: tx3,
+                [BlocksTxsDB.Columns.HEADER_HASH]: blockHeader2,
+                [BlocksTxsDB.Columns.TX_ID]: tx3,
               },
             ]),
           );
 
           //clear block
-          yield* BlocksDB.clearBlock(blockHeader1);
-          const afterClear = yield* BlocksDB.retrieve;
+          yield* BlocksTxsDB.clearBlock(blockHeader1);
+          const afterClear = yield* BlocksTxsDB.retrieve;
           expect(
             new Set(
               afterClear.map((a) => ({
-                [BlocksDB.Columns.HEADER_HASH]: a[BlocksDB.Columns.HEADER_HASH],
-                [BlocksDB.Columns.TX_ID]: a[BlocksDB.Columns.TX_ID],
+                [BlocksTxsDB.Columns.HEADER_HASH]: a[BlocksTxsDB.Columns.HEADER_HASH],
+                [BlocksTxsDB.Columns.TX_ID]: a[BlocksTxsDB.Columns.TX_ID],
               })),
             ),
           ).toStrictEqual(
             new Set([
               {
-                [BlocksDB.Columns.HEADER_HASH]: blockHeader2,
-                [BlocksDB.Columns.TX_ID]: tx3,
+                [BlocksTxsDB.Columns.HEADER_HASH]: blockHeader2,
+                [BlocksTxsDB.Columns.TX_ID]: tx3,
               },
             ]),
           );
 
           // clear all
-          yield* BlocksDB.clear;
-          const afterClearAll = yield* BlocksDB.retrieve;
+          yield* BlocksTxsDB.clear;
+          const afterClearAll = yield* BlocksTxsDB.retrieve;
           expect(afterClearAll.length).toEqual(0);
         }),
       ),

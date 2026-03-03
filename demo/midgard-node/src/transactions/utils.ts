@@ -7,7 +7,7 @@ import {
   fromHex,
 } from "@lucid-evolution/lucid";
 import { Data, Effect, Schedule } from "effect";
-import * as BlocksDB from "@/database/blocks.js";
+import { BlocksTxsDB } from "@/database/index.js";
 import { Database } from "@/services/index.js";
 import { ImmutableDB } from "@/database/index.js";
 import { DatabaseError } from "@/database/utils/common.js";
@@ -124,7 +124,8 @@ ${signed.toCBOR()}
   });
 
 /**
- * Fetch transactions of the first block by querying BlocksDB and ImmutableDB.
+ * Fetch transactions of the first block by querying BlocksTxsDB and
+ * ImmutableDB.
  *
  * If the given `StateQueueUTxO` is root, it'll return the transactions of the
  * latest merged block. Therefore, Genesis UTxO will return:
@@ -145,11 +146,11 @@ export const fetchFirstBlockTxs = (
     const headerHashHex =
       yield* SDK.headerHashFromStateQueueUTxO(firstBlockUTxO);
     const headerHash: Buffer = Buffer.from(fromHex(headerHashHex));
-    const txHashes = yield* BlocksDB.retrieveTxHashesByHeaderHash(headerHash);
+    const txHashes = yield* BlocksTxsDB.retrieveTxHashesByHeaderHash(headerHash);
     const txs: readonly Buffer[] =
       headerHashHex === SDK.GENESIS_HEADER_HASH
-        ? []
-        : yield* ImmutableDB.retrieveTxCborsByHashes(txHashes);
+      ? []
+      : yield* ImmutableDB.retrieveTxCborsByHashes(txHashes);
     return { txs, headerHash };
   });
 

@@ -1,5 +1,5 @@
 export * as AddressHistoryDB from "./addressHistory.js";
-export * as BlocksDB from "./blocks.js";
+export * as BlocksTxsDB from "./blocksTxs.js";
 export * as ConfirmedLedgerDB from "./confirmedLedger.js";
 export * as DepositsDB from "./deposits.js";
 export * as ImmutableDB from "./immutable.js";
