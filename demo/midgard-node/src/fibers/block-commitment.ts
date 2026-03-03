@@ -54,7 +54,7 @@ export const buildAndSubmitCommitmentBlockAction = () =>
             data: {
               availableConfirmedBlock: AVAILABLE_CONFIRMED_BLOCK,
               mempoolTxsCountSoFar: PROCESSED_UNSUBMITTED_TXS_COUNT,
-              sizeOfProcessedTxsSoFar: PROCESSED_UNSUBMITTED_TXS_SIZE,
+              sizeOfTxsSoFar: PROCESSED_UNSUBMITTED_TXS_SIZE,
             },
           } as WorkerInput, // TODO: Consider other approaches to avoid type assertion here.
         },
@@ -138,7 +138,7 @@ export const buildAndSubmitCommitmentBlockAction = () =>
         );
         yield* Ref.update(
           globals.PROCESSED_UNSUBMITTED_TXS_SIZE,
-          (n) => n + workerOutput.sizeOfProcessedTxs,
+          (n) => n + workerOutput.sizeOfTxs,
         );
         break;
       }

@@ -264,7 +264,7 @@ const successfulSubmissionProgram = (
   newHeaderHash: string,
   workerInput: WorkerInput,
   txSize: number,
-  sizeOfProcessedTxs: number,
+  sizeOfTxs: number,
   txHash: string,
 ): Effect.Effect<WorkerOutput, DatabaseError | FileSystemError, Database> =>
   Effect.gen(function* () {
@@ -327,7 +327,7 @@ const successfulSubmissionProgram = (
       mempoolTxsCount:
         mempoolTxs.length + workerInput.data.mempoolTxsCountSoFar,
       sizeOfBlocksTxs:
-        sizeOfProcessedTxs + workerInput.data.sizeOfProcessedTxsSoFar,
+        sizeOfTxs + workerInput.data.sizeOfTxsSoFar,
     };
   });
 
@@ -359,7 +359,7 @@ const skippedSubmissionProgram = (
 const failedSubmissionProgram = (
   txsTrie: MidgardMpt,
   mempoolTxsCount: number,
-  sizeOfProcessedTxs: number,
+  sizeOfTxs: number,
   err: TxSubmitError,
 ): Effect.Effect<WorkerOutput> =>
   Effect.gen(function* () {
@@ -372,7 +372,7 @@ const failedSubmissionProgram = (
     return {
       type: "SkippedSubmissionOutput",
       mempoolTxsCount,
-      sizeOfProcessedTxs,
+      sizeOfTxs,
     };
   });
 
@@ -397,7 +397,7 @@ const databaseOperationsProgram = (
     const mempoolTxs = yield* MempoolDB.retrieve;
     const mempoolTxsCount = mempoolTxs.length;
 
-    const { mempoolTxHashes, sizeOfProcessedTxs } = yield* applyMempoolToLedger(
+    const { mempoolTxHashes, sizeOfTxs } = yield* applyMempoolToLedger(
       ledgerTrie,
       txsTrie,
       mempoolTxs,
@@ -424,7 +424,7 @@ const databaseOperationsProgram = (
       return {
         type: "SkippedSubmissionOutput",
         mempoolTxsCount,
-        sizeOfProcessedTxs,
+        sizeOfTxs,
       };
     } else {
       yield* Effect.logInfo(
@@ -460,7 +460,7 @@ const databaseOperationsProgram = (
           // Here there are no tx requests, but deposits are slated for
           // inclusion.
           const depositEventEntries = optDepositsProgram.value.retreivedEvents;
-          const insertedDepositUTxOs = yield* applyDepositsToLedger(
+          const { processedDeposits } = yield* applyDepositsToLedger(
             "add",
             ledgerTrie,
             depositEventEntries,
@@ -516,14 +516,14 @@ const databaseOperationsProgram = (
               );
             },
             onSuccess: (txHash) =>
-              addDepositUTxOsToDatabases(insertedDepositUTxOs).pipe(
+              addDepositUTxOsToDatabases(processedDeposits).pipe(
                 Effect.andThen((_) => {
                   const successOutput: WorkerOutput = {
                     type: "SuccessfulCommitmentOutput",
                     submittedTxHash: txHash,
                     txSize,
                     mempoolTxsCount: 0,
-                    sizeOfBlocksTxs: workerInput.data.sizeOfProcessedTxsSoFar,
+                    sizeOfBlocksTxs: workerInput.data.sizeOfTxsSoFar,
                   };
                   return Effect.succeed(successOutput);
                 }),
@@ -561,11 +561,12 @@ const databaseOperationsProgram = (
           ? optDepositsProgram.value.retreivedEvents
           : [];
         if (Option.isSome(optDepositsProgram)) {
-          insertedDepositUTxOs = yield* applyDepositsToLedger(
+          const depositApplicationRes = yield* applyDepositsToLedger(
             "add",
             ledgerTrie,
             depositEventEntries,
           );
+          insertedDepositUTxOs = depositApplicationRes.processedDeposits;
           depositsRoot = yield* optDepositsProgram.value.mptRoot;
         }
         const utxoRoot = yield* ledgerTrie.getRootHex();
@@ -617,7 +618,7 @@ const databaseOperationsProgram = (
                 const skippedOutput = yield* failedSubmissionProgram(
                   txsTrie,
                   mempoolTxsCount,
-                  sizeOfProcessedTxs,
+                  sizeOfTxs,
                   e,
                 );
                 const ledgerFailureOutput: WorkerOutput = {
@@ -642,7 +643,7 @@ const databaseOperationsProgram = (
               newHeaderHash,
               workerInput,
               txSize,
-              sizeOfProcessedTxs,
+              sizeOfTxs,
               txHash,
             ),
         });

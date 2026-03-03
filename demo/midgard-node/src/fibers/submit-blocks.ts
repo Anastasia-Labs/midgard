@@ -236,7 +236,7 @@ const applyEventsToLedger = (
     };
   });
 
-const submitBlock = Effect.gen(function* () {
+const submitEarliestBlock = Effect.gen(function* () {
   const optUnsubmittedBlock = yield* UnsubmittedBlocksDB.retrieveEarliestEntry;
   yield* Option.match(optUnsubmittedBlock, {
     onNone: () => Effect.logInfo("No unsubmitted blocks in queue."),
@@ -259,16 +259,15 @@ const submitBlock = Effect.gen(function* () {
           BATCH_SIZE,
           newLedger.length,
           "Insert new ledger in LatestLedgerDB",
-          (startIndex, endIndex) => {
-            const ledgerBatch = newLedger.slice(startIndex, endIndex);
-            return LatestLedgerDB.insertMultiple(ledgerBatch);
-          },
+          (startIndex, endIndex) => LatestLedgerDB.insertMultiple(
+            newLedger.slice(startIndex, endIndex),
+          ),
         );
 
         const transferMempoolTxs = batchProgram(
           BATCH_SIZE,
           txRequests.length,
-          "Transfer of MempoolDB entries to ImmutableDB",
+          "Transfer of MempoolDB entries to ImmutableDB and BlocksDB",
           (startIndex, endIndex) => {
             const txsBatch = txRequests.slice(startIndex, endIndex);
             const txHashesBatch = mempoolTxHashes.slice(startIndex, endIndex);
@@ -298,7 +297,7 @@ const submitBlock = Effect.gen(function* () {
   });
 });
 
-export const submitBlockFiber = (
+export const blockSubmissionFiber = (
   schedule: Schedule.Schedule<number>,
 ): Effect.Effect<
   void,
@@ -307,7 +306,7 @@ export const submitBlockFiber = (
 > =>
   Effect.gen(function* () {
     yield* Effect.logInfo("🔗 Block submission fiber started.");
-    const action = submitBlock.pipe(
+    const action = submitEarliestBlock.pipe(
       Effect.withSpan("submit-blocks-fiber"),
       Effect.catchAllCause(Effect.logWarning),
     );

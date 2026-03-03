@@ -59,7 +59,7 @@ import {
   mergeFiber,
   mergeAction,
   monitorMempoolFiber,
-  submitBlocksFiber,
+  blockSubmissionFiber,
   txQueueProcessorFiber,
 } from "@/fibers/index.js";
 
@@ -617,7 +617,7 @@ export const runNode = (withMonitoring?: boolean) =>
         blockCommitmentFiber(
           mkSchedule(nodeConfig.WAIT_BETWEEN_BLOCK_COMMITMENT),
         ),
-        submitBlocksFiber(
+        blockSubmissionFiber(
           mkSchedule(nodeConfig.WAIT_BETWEEN_BLOCK_SUBMISSIONS),
         ),
         syncUserEventsFiber(
