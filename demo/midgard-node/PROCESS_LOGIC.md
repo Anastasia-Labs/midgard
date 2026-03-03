@@ -53,9 +53,9 @@ payload into a `CML.Transaction` value, and "phase 2" is always true.
    to reversal of any changes to the ledger MPT.
 5. Block submission fiber runs periodically:
    a) Retrieves the oldest unsubmitted block from the blocks table and submits
-      its signed Cardano transaction. Fiber dies if this fails. (TODO, we
-      should implement a recovery mechanism in case the already built and signed
-      transaction had become invalid).
+      its signed Cardano transaction. Fiber dies if this fails. (TODO, we should
+      implement a recovery mechanism in case the already built and signed
+      transaction becomes invalid).
    b) Retrieves all transaction requests which their timestampts fall within the
       submitted block's event interval from `MempoolDB`.
    c) Similarly, retrieves all user events from its 3 tables.
@@ -63,5 +63,6 @@ payload into a `CML.Transaction` value, and "phase 2" is always true.
       latest submitted block commitment.
    e) Similar to ledger MPT, applies events to `LatestLedgerDB` in the same
       order, and updates the table.
-   f) Transfers included mempool transactions to `ImmutableDB`.
+   f) Transfers included mempool transactions to `ImmutableDB` and
+      `BlocksTxsDB`.
    g) Marks submitted block as "submitted."
