@@ -182,6 +182,39 @@ export const retrievePrevLedgerAndEvents = (
     };
   });
 
+export const retrieveEarliestEntry: Effect.Effect<
+  Option.Option<Entry>,
+  DatabaseError,
+  Database
+> = Effect.gen(function* () {
+  const entries = yield* retrieve;
+  if (entries.length <= 0) {
+    return Option.none();
+  } else {
+    return Option.some(entries[0]);
+  }
+});
+
+export const retrieveLatestEntry: Effect.Effect<
+  Option.Option<Entry>,
+  DatabaseError,
+  Database
+> = Effect.gen(function* () {
+  const sql = yield* SqlClient.SqlClient;
+  const rows = yield* sql<LatestUnsubmittedBlockJoinRow>`
+    SELECT * FROM ${sql(tableName)} ORDER BY ${sql(Columns.HEIGHT)} DESC`;
+  if (rows.length <= 0) {
+    return Option.none();
+  } else {
+    return Option.some(rows[0]);
+  }
+}).pipe(
+  sqlErrorToDatabaseError(
+    tableName,
+    "Failed retrieve latest unsubmitted block",
+  ),
+);
+
 /**
  * Retrieves the latest unsubmitted block and all corresponding transaction
  * hashes and CBORs via a single SQL call.
@@ -311,26 +344,6 @@ export const retrieveLatestWithBlockTxs: Effect.Effect<
   sqlErrorToDatabaseError(
     tableName,
     "Failed to retrieve latest unsubmitted block with transactions",
-  ),
-);
-
-export const retrieveEarliestEntry: Effect.Effect<
-  Option.Option<Entry>,
-  DatabaseError,
-  Database
-> = Effect.gen(function* () {
-  const sql = yield* SqlClient.SqlClient;
-  const rows = yield* sql<LatestUnsubmittedBlockJoinRow>`
-    SELECT * FROM ${sql(tableName)} ORDER BY ${sql(Columns.HEIGHT)} DESC`;
-  if (rows.length <= 0) {
-    return Option.none();
-  } else {
-  }
-  return Option.some(rows[0]);
-}).pipe(
-  sqlErrorToDatabaseError(
-    tableName,
-    "Failed retrieve earliest unsubmitted block",
   ),
 );
 
