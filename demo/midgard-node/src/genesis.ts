@@ -6,8 +6,7 @@ import {
   Database,
   NodeConfig,
 } from "@/services/index.js";
-import { Columns as LedgerColumns } from "@/database/utils/ledger.js";
-import * as MempoolLedgerDB from "@/database/mempoolLedger.js";
+import { Ledger, MempoolLedgerDB } from "@/database/index.js";
 import { CML, TxBuilder, UTxO, utxoToCore } from "@lucid-evolution/lucid";
 import { DatabaseError } from "@/database/utils/common.js";
 import { handleSignSubmit } from "@/transactions/utils.js";
@@ -27,10 +26,10 @@ const insertGenesisUtxos: Effect.Effect<
   const ledgerEntries = config.GENESIS_UTXOS.map((utxo: UTxO) => {
     const core = utxoToCore(utxo);
     return {
-      [LedgerColumns.TX_ID]: Buffer.from(utxo.txHash, "hex"),
-      [LedgerColumns.OUTREF]: Buffer.from(core.input().to_cbor_bytes()),
-      [LedgerColumns.OUTPUT]: Buffer.from(core.output().to_cbor_bytes()),
-      [LedgerColumns.ADDRESS]: utxo.address,
+      [Ledger.Columns.TX_ID]: Buffer.from(utxo.txHash, "hex"),
+      [Ledger.Columns.OUTREF]: Buffer.from(core.input().to_cbor_bytes()),
+      [Ledger.Columns.OUTPUT]: Buffer.from(core.output().to_cbor_bytes()),
+      [Ledger.Columns.ADDRESS]: utxo.address,
     };
   });
 

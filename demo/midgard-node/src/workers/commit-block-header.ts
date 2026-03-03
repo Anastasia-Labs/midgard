@@ -25,11 +25,11 @@ import {
   MempoolDB,
   ProcessedMempoolDB,
   DepositsDB,
-  TxUtils as TxTable,
+  Tx,
   MempoolLedgerDB,
-  LedgerUtils as LedgerTable,
+  Ledger,
   AddressHistoryDB,
-  UserEventsUtils,
+  UserEvents,
   WithdrawalsDB,
   TxOrdersDB,
 } from "@/database/index.js";
@@ -74,45 +74,43 @@ const addDepositUTxOsToDatabases = (
             startIndex,
             endIndex,
           );
-          const ledgerTableBatch: LedgerTable.EntryWithTimeStamp[] =
+          const ledgerTableBatch: Ledger.EntryWithTimeStamp[] =
             batchInsertedDepositUTxOs.map(({ utxo, inclusionTime }) => ({
-              [LedgerTable.Columns.TX_ID]: Buffer.from(
+              [Ledger.Columns.TX_ID]: Buffer.from(
                 utxo.input().transaction_id().to_raw_bytes(),
               ),
-              [LedgerTable.Columns.OUTREF]: Buffer.from(
+              [Ledger.Columns.OUTREF]: Buffer.from(
                 utxo.input().to_cbor_bytes(),
               ),
-              [LedgerTable.Columns.OUTPUT]: Buffer.from(
+              [Ledger.Columns.OUTPUT]: Buffer.from(
                 utxo.output().to_cbor_bytes(),
               ),
-              [LedgerTable.Columns.ADDRESS]: utxo.output().address().to_hex(),
-              [LedgerTable.Columns.TIMESTAMPTZ]: inclusionTime,
+              [Ledger.Columns.ADDRESS]: utxo.output().address().to_hex(),
+              [Ledger.Columns.TIMESTAMPTZ]: inclusionTime,
             }));
 
-          const txTableBatch: TxTable.EntryWithTimeStamp[] =
-            yield* Effect.forEach(
-              batchInsertedDepositUTxOs,
-              ({ utxo, inclusionTime }) =>
-                Effect.gen(function* () {
-                  const tx =
-                    yield* trivialTransactionFromCMLUnspentOutput(utxo);
-                  return {
-                    [TxTable.Columns.TX_ID]: Buffer.from(
-                      utxo.input().transaction_id().to_raw_bytes(),
-                    ),
-                    [TxTable.Columns.TX]: Buffer.from(tx.to_cbor_bytes()),
-                    [TxTable.Columns.TIMESTAMPTZ]: inclusionTime,
-                  };
-                }),
-              { concurrency: "unbounded" },
-            );
+          const txTableBatch: Tx.EntryWithTimeStamp[] = yield* Effect.forEach(
+            batchInsertedDepositUTxOs,
+            ({ utxo, inclusionTime }) =>
+              Effect.gen(function* () {
+                const tx = yield* trivialTransactionFromCMLUnspentOutput(utxo);
+                return {
+                  [Tx.Columns.TX_ID]: Buffer.from(
+                    utxo.input().transaction_id().to_raw_bytes(),
+                  ),
+                  [Tx.Columns.TX]: Buffer.from(tx.to_cbor_bytes()),
+                  [Tx.Columns.TIMESTAMPTZ]: inclusionTime,
+                };
+              }),
+            { concurrency: "unbounded" },
+          );
 
           const addressTableBatch: AddressHistoryDB.Entry[] =
             batchInsertedDepositUTxOs.map(({ utxo }) => ({
-              [LedgerTable.Columns.TX_ID]: Buffer.from(
+              [Ledger.Columns.TX_ID]: Buffer.from(
                 utxo.input().transaction_id().to_raw_bytes(),
               ),
-              [LedgerTable.Columns.ADDRESS]: utxo.output().address().to_hex(),
+              [Ledger.Columns.ADDRESS]: utxo.output().address().to_hex(),
             }));
 
           return Effect.all(
@@ -168,17 +166,17 @@ const applyWithdrawalsToDatabases = (
         Effect.try({
           try: () => {
             const transactionInput = CML.TransactionInput.from_cbor_bytes(
-              row[LedgerTable.Columns.OUTREF],
+              row[Ledger.Columns.OUTREF],
             );
             const txHash = Buffer.from(
               transactionInput.transaction_id().to_raw_bytes(),
             );
             const addressHistoryEntry: AddressHistoryDB.Entry = {
-              [LedgerTable.Columns.TX_ID]: txHash,
-              [LedgerTable.Columns.ADDRESS]: row[LedgerTable.Columns.ADDRESS],
+              [Ledger.Columns.TX_ID]: txHash,
+              [Ledger.Columns.ADDRESS]: row[Ledger.Columns.ADDRESS],
             };
             return {
-              outref: row[LedgerTable.Columns.OUTREF],
+              outref: row[Ledger.Columns.OUTREF],
               txHash,
               addressHistoryEntry,
             };
@@ -239,7 +237,7 @@ const applyWithdrawalsToDatabases = (
  */
 const withDepositsReverted = (
   ledgerTrie: MidgardMpt,
-  depositEventEntries: readonly UserEventsUtils.Entry[],
+  depositEventEntries: readonly UserEvents.Entry[],
   outputIfReversionSucceeds: WorkerOutput,
   outputIfReversionFails: WorkerOutput,
 ): Effect.Effect<WorkerOutput, never, NodeConfig | AlwaysSucceedsContract> => {
@@ -259,7 +257,7 @@ const successfulSubmissionProgram = (
     utxo: CML.TransactionUnspentOutput;
     inclusionTime: Date;
   }[],
-  mempoolTxs: readonly TxTable.EntryWithTimeStamp[],
+  mempoolTxs: readonly Tx.EntryWithTimeStamp[],
   mempoolTxHashes: Buffer[],
   newHeaderHash: string,
   workerInput: WorkerInput,
@@ -294,7 +292,7 @@ const successfulSubmissionProgram = (
             for (let i = 0; i < batchProcessedTxs.length; i++) {
               const txPair = batchProcessedTxs[i];
               batchTxs.push(txPair);
-              batchHashesForBlocks.push(txPair[TxTable.Columns.TX_ID]);
+              batchHashesForBlocks.push(txPair[Tx.Columns.TX_ID]);
             }
 
             return Effect.all(
@@ -332,7 +330,7 @@ const successfulSubmissionProgram = (
   });
 
 const skippedSubmissionProgram = (
-  mempoolTxs: readonly TxTable.EntryWithTimeStamp[],
+  mempoolTxs: readonly Tx.EntryWithTimeStamp[],
   mempoolTxHashes: Buffer[],
 ) =>
   batchProgram(

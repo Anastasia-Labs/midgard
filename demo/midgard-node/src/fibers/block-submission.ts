@@ -16,9 +16,9 @@ import {
   TxOrdersDB,
   BlocksDB,
   WithdrawalsDB,
-  LedgerUtils as Ledger,
-  TxUtils as Tx,
-  UserEventsUtils as UserEvent,
+  Ledger,
+  Tx,
+  UserEvents,
   ImmutableDB,
   BlocksTxsDB,
 } from "@/database/index.js";
@@ -90,10 +90,7 @@ const removeSpentOutRef = (
     }),
   );
 
-const applyTxToLedger = <E, R>(
-  ledger: readonly Ledger.Entry[],
-  txCbor: Buffer,
-) =>
+const applyTxToLedger = (ledger: readonly Ledger.Entry[], txCbor: Buffer) =>
   Effect.gen(function* () {
     const { spent, produced } = yield* breakDownTx(txCbor);
     return yield* Effect.reduce(
@@ -105,10 +102,10 @@ const applyTxToLedger = <E, R>(
 
 type PrevLedgerAndEvents = {
   prevLedger: readonly Ledger.Entry[];
-  withdrawals: readonly UserEvent.Entry[];
-  txOrders: readonly UserEvent.Entry[];
+  withdrawals: readonly UserEvents.Entry[];
+  txOrders: readonly UserEvents.Entry[];
   txRequests: readonly Tx.Entry[];
-  deposits: readonly UserEvent.Entry[];
+  deposits: readonly UserEvents.Entry[];
 };
 
 const getBlocksPrevLedgerAndEvents = (
@@ -137,7 +134,7 @@ const getBlocksPrevLedgerAndEvents = (
   });
 
 const depositEntryToLedgerEntry = (
-  deposit: UserEvent.Entry,
+  deposit: UserEvents.Entry,
 ): Effect.Effect<
   Ledger.Entry,
   SDK.CmlDeserializationError,
@@ -183,7 +180,7 @@ const applyEventsToLedger = (
         Effect.filter(acc, (utxoEntry) =>
           Effect.gen(function* () {
             const withdrawalInfo = Data.from(
-              SDK.bufferToHex(w[UserEvent.Columns.INFO]),
+              SDK.bufferToHex(w[UserEvents.Columns.INFO]),
               SDK.WithdrawalInfo,
             );
             const spentOutRef = withdrawalInfo.body.l2_outref;
@@ -202,7 +199,7 @@ const applyEventsToLedger = (
       blockInfo.txOrders,
       afterWithdrawals,
       (acc, txOrder, _i) =>
-        applyTxToLedger(acc, txOrder[UserEvent.Columns.INFO]),
+        applyTxToLedger(acc, txOrder[UserEvents.Columns.INFO]),
     );
     const mempoolTxHashes: Buffer[] = [];
     const afterTxRequests = yield* Effect.reduce(

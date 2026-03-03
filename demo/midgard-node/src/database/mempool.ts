@@ -11,7 +11,7 @@ import { Effect } from "effect";
 import { SqlClient } from "@effect/sql";
 import * as AddressHistoryDB from "@/database/addressHistory.js";
 import { ProcessedTx } from "@/utils.js";
-import { LedgerUtils } from "./index.js";
+import { Ledger } from "./index.js";
 
 export const tableName = "mempool";
 
@@ -52,7 +52,7 @@ export const insertMultiple = (
     // Insert the tx itself in `MempoolDB`.
     yield* Tx.insertEntries(tableName, txEntries);
 
-    const initAcc: { allProduced: LedgerUtils.Entry[]; allSpent: Buffer[] } = {
+    const initAcc: { allProduced: Ledger.Entry[]; allSpent: Buffer[] } = {
       allProduced: [],
       allSpent: [],
     };

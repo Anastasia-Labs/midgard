@@ -31,7 +31,7 @@ import {
   AddressHistoryDB,
   BlocksTxsDB,
   ImmutableDB,
-  InitDB,
+  DBInitialization,
   MempoolDB,
   MempoolLedgerDB,
 } from "@/database/index.js";
@@ -601,7 +601,7 @@ export const runNode = (withMonitoring?: boolean) =>
 
     const txQueue = yield* Queue.unbounded<string>();
 
-    yield* InitDB.program.pipe(Effect.provide(Database.layer));
+    yield* DBInitialization.program.pipe(Effect.provide(Database.layer));
 
     yield* Genesis.program;
 
