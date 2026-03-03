@@ -619,7 +619,7 @@ export const runNode = (withMonitoring?: boolean) =>
       [
         appThread,
         blockCommitmentFiber(
-          mkSchedule(nodeConfig.WAIT_BETWEEN_BLOCK_COMMITMENT),
+          mkSchedule(nodeConfig.WAIT_BETWEEN_BLOCK_COMMITMENTS),
         ),
         blockSubmissionFiber(
           mkSchedule(nodeConfig.WAIT_BETWEEN_BLOCK_SUBMISSIONS),

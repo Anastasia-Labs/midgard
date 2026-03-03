@@ -16,7 +16,7 @@ type NodeConfigDep = {
   NETWORK: Network;
   PROTOCOL_PARAMETERS: SDK.ProtocolParameters;
   PORT: number;
-  WAIT_BETWEEN_BLOCK_COMMITMENT: number;
+  WAIT_BETWEEN_BLOCK_COMMITMENTS: number;
   WAIT_BETWEEN_BLOCK_SUBMISSIONS: number;
   WAIT_BETWEEN_USER_EVENT_FETCHES: number;
   WAIT_BETWEEN_MERGE_TXS: number;
@@ -54,8 +54,8 @@ const makeConfig = Effect.gen(function* () {
     "Custom",
   )("NETWORK");
   const port = yield* Config.integer("PORT").pipe(Config.withDefault(3000));
-  const waitBetweenBlockCommitment = yield* Config.integer(
-    "WAIT_BETWEEN_BLOCK_COMMITMENT",
+  const waitBetweenBlockCommitments = yield* Config.integer(
+    "WAIT_BETWEEN_BLOCK_COMMITMENTS",
   ).pipe(Config.withDefault(1000));
   const waitBetweenBlockSubmissions = yield* Config.integer(
     "WAIT_BETWEEN_BLOCK_SUBMISSIONS",
@@ -169,7 +169,7 @@ const makeConfig = Effect.gen(function* () {
     NETWORK: network,
     PROTOCOL_PARAMETERS: SDK.getProtocolParameters(network),
     PORT: port,
-    WAIT_BETWEEN_BLOCK_COMMITMENT: waitBetweenBlockCommitment,
+    WAIT_BETWEEN_BLOCK_COMMITMENTS: waitBetweenBlockCommitments,
     WAIT_BETWEEN_BLOCK_SUBMISSIONS: waitBetweenBlockSubmissions,
     WAIT_BETWEEN_MERGE_TXS: waitBetweenMergeTxs,
     WAIT_BETWEEN_USER_EVENT_FETCHES: waitBetweenUserEventFetches,
