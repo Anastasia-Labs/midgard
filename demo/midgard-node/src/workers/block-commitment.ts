@@ -8,9 +8,10 @@ import {
   deserializeStateQueueUTxO,
   establishEndDateFromTxRequests,
   getBlockHeadersEndDate,
+  userEventsProgram,
   WorkerInput,
   WorkerOutput,
-} from "@/workers/utils/commit-block-header.js";
+} from "./utils/block-commitment.js";
 import {
   ConfigError,
   Database,
@@ -48,7 +49,6 @@ import {
   trivialTransactionFromCMLUnspentOutput,
 } from "@/utils.js";
 import { DatabaseError } from "@/database/utils/common.js";
-import { userEventsProgram } from "./utils/commit-block-header.js";
 
 // Batch size for database operations.
 const BATCH_SIZE = 100;

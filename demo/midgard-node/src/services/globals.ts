@@ -1,5 +1,5 @@
 import { TxHash } from "@lucid-evolution/lucid";
-import { SerializedStateQueueUTxO } from "@/workers/utils/commit-block-header.js";
+import { SerializedStateQueueUTxO } from "@/workers/utils/block-commitment.js";
 import { Effect, Ref } from "effect";
 
 export class Globals extends Effect.Service<Globals>()("Globals", {

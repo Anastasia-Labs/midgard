@@ -4,7 +4,7 @@ import { WorkerError } from "@/workers/utils/common.js";
 import {
   WorkerInput,
   WorkerOutput,
-} from "@/workers/utils/commit-block-header.js";
+} from "@/workers/utils/block-commitment.js";
 import { Metric } from "effect";
 import { Worker } from "worker_threads";
 

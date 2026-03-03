@@ -49,7 +49,7 @@ import { HttpBodyError } from "@effect/platform/HttpBody";
 import * as Genesis from "@/genesis.js";
 import * as Initialization from "@/transactions/initialization.js";
 import * as Reset from "@/reset.js";
-import { SerializedStateQueueUTxO } from "@/workers/utils/commit-block-header.js";
+import { SerializedStateQueueUTxO } from "@/workers/utils/block-commitment.js";
 import { DatabaseError } from "@/database/utils/common.js";
 import { TxConfirmError, TxSignError } from "@/transactions/utils.js";
 import {

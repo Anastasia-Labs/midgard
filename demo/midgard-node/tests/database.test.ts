@@ -23,8 +23,8 @@ import {
   ConfirmedLedgerDB,
 
   // Utils
-  TxUtils,
-  LedgerUtils,
+  Tx,
+  Ledger,
 } from "../src/database/index.js";
 import { breakDownTx, ProcessedTx } from "../src/utils.js";
 import { provideDatabaseLayers } from "./utils.js";
@@ -209,12 +209,12 @@ describe("MempoolDB", () => {
           ).toStrictEqual(
             new Set([
               {
-                [TxUtils.Columns.TX_ID]: pTxId1,
-                [TxUtils.Columns.TX]: pTx1,
+                [Tx.Columns.TX_ID]: pTxId1,
+                [Tx.Columns.TX]: pTx1,
               },
               {
-                [TxUtils.Columns.TX_ID]: pTxId2,
-                [TxUtils.Columns.TX]: pTx2,
+                [Tx.Columns.TX_ID]: pTxId2,
+                [Tx.Columns.TX]: pTx2,
               },
             ]),
           );
@@ -231,8 +231,8 @@ describe("MempoolDB", () => {
           ).toStrictEqual(
             new Set([
               {
-                [TxUtils.Columns.TX_ID]: pTxId2,
-                [TxUtils.Columns.TX]: pTx2,
+                [Tx.Columns.TX_ID]: pTxId2,
+                [Tx.Columns.TX]: pTx2,
               },
             ]),
           );
@@ -250,8 +250,8 @@ describe("MempoolDB", () => {
             afterInsertOne.map((e) => removeTimestampFromTxEntry(e)),
           ).toStrictEqual([
             {
-              [TxUtils.Columns.TX_ID]: pTxId1,
-              [TxUtils.Columns.TX]: pTx1,
+              [Tx.Columns.TX_ID]: pTxId1,
+              [Tx.Columns.TX]: pTx1,
             },
           ]);
         }),
@@ -290,12 +290,12 @@ describe("ProcessedMempoolDB", () => {
           ).toStrictEqual(
             new Set([
               {
-                [TxUtils.Columns.TX_ID]: txId1,
-                [TxUtils.Columns.TX]: tx1,
+                [Tx.Columns.TX_ID]: txId1,
+                [Tx.Columns.TX]: tx1,
               },
               {
-                [TxUtils.Columns.TX_ID]: txId2,
-                [TxUtils.Columns.TX]: tx2,
+                [Tx.Columns.TX_ID]: txId2,
+                [Tx.Columns.TX]: tx2,
               },
             ]),
           );
@@ -312,8 +312,8 @@ describe("ProcessedMempoolDB", () => {
             afterInsertOne.map((e) => removeTimestampFromTxEntry(e)),
           ).toStrictEqual([
             {
-              [TxUtils.Columns.TX_ID]: txId1,
-              [TxUtils.Columns.TX]: tx1,
+              [Tx.Columns.TX_ID]: txId1,
+              [Tx.Columns.TX]: tx1,
             },
           ]);
         }),
@@ -346,23 +346,23 @@ describe("ImmutableDB", () => {
           );
 
           // retrieve all
-          const gotAll: readonly TxUtils.EntryWithTimeStamp[] =
+          const gotAll: readonly Tx.EntryWithTimeStamp[] =
             yield* ImmutableDB.retrieve;
           expect(
             new Set(
-              gotAll.map((e: TxUtils.EntryWithTimeStamp) =>
+              gotAll.map((e: Tx.EntryWithTimeStamp) =>
                 removeTimestampFromTxEntry(e),
               ),
             ),
           ).toStrictEqual(
             new Set([
               {
-                [TxUtils.Columns.TX_ID]: txId1,
-                [TxUtils.Columns.TX]: tx1,
+                [Tx.Columns.TX_ID]: txId1,
+                [Tx.Columns.TX]: tx1,
               },
               {
-                [TxUtils.Columns.TX_ID]: txId2,
-                [TxUtils.Columns.TX]: tx2,
+                [Tx.Columns.TX_ID]: txId2,
+                [Tx.Columns.TX]: tx2,
               },
             ]),
           );
@@ -379,8 +379,8 @@ describe("ImmutableDB", () => {
             afterInsertOne.map((e) => removeTimestampFromTxEntry(e)),
           ).toStrictEqual([
             {
-              [TxUtils.Columns.TX_ID]: txId1,
-              [TxUtils.Columns.TX]: tx1,
+              [Tx.Columns.TX_ID]: txId1,
+              [Tx.Columns.TX]: tx1,
             },
           ]);
         }),
@@ -404,9 +404,7 @@ describe("LatestLedgerDB", () => {
         ).toStrictEqual(new Set([ledgerEntry1, ledgerEntry2]));
 
         // clear UTxOs
-        yield* LatestLedgerDB.clearUTxOs([
-          ledgerEntry1[LedgerUtils.Columns.OUTREF],
-        ]);
+        yield* LatestLedgerDB.clearUTxOs([ledgerEntry1[Ledger.Columns.OUTREF]]);
         const afterClear = yield* LatestLedgerDB.retrieve;
         expect(
           new Set(afterClear.map((e) => removeTimestampFromLedgerEntry(e))),
@@ -446,7 +444,7 @@ describe("MempoolLedgerDB", () => {
 
           // clear UTxOs
           yield* MempoolLedgerDB.clearUTxOs([
-            ledgerEntry1[LedgerUtils.Columns.OUTREF],
+            ledgerEntry1[Ledger.Columns.OUTREF],
           ]);
           const afterClear = yield* MempoolLedgerDB.retrieve;
           expect(
@@ -479,7 +477,7 @@ describe("ConfirmedLedgerDB", () => {
 
         // clear UTxOs
         yield* ConfirmedLedgerDB.clearUTxOs([
-          ledgerEntry1[LedgerUtils.Columns.OUTREF],
+          ledgerEntry1[Ledger.Columns.OUTREF],
         ]);
         const afterClear = yield* ConfirmedLedgerDB.retrieve;
         expect(
@@ -511,8 +509,8 @@ describe("AddressHistoryDB", () => {
           produced: [ledgerEntry1],
         };
         const ahEntry1: AddressHistoryDB.Entry = {
-          [LedgerUtils.Columns.TX_ID]: pTxId1,
-          [LedgerUtils.Columns.ADDRESS]: address1,
+          [Ledger.Columns.TX_ID]: pTxId1,
+          [Ledger.Columns.ADDRESS]: address1,
         };
         const pTxId2 = randomBytes(32);
         const pTx2 = randomBytes(64);
@@ -524,8 +522,8 @@ describe("AddressHistoryDB", () => {
           produced: [ledgerEntry2],
         };
         const ahEntry2: AddressHistoryDB.Entry = {
-          [LedgerUtils.Columns.TX_ID]: pTxId2,
-          [LedgerUtils.Columns.ADDRESS]: address2,
+          [Ledger.Columns.TX_ID]: pTxId2,
+          [Ledger.Columns.ADDRESS]: address2,
         };
 
         // via mempool
@@ -551,13 +549,13 @@ describe("AddressHistoryDB", () => {
         expect([...afterClearAll1, ...afterClearAll2]).toStrictEqual([]);
 
         // via immutable
-        const txEntry1: TxUtils.Entry = {
-          [TxUtils.Columns.TX_ID]: pTxId1,
-          [TxUtils.Columns.TX]: pTx1,
+        const txEntry1: Tx.Entry = {
+          [Tx.Columns.TX_ID]: pTxId1,
+          [Tx.Columns.TX]: pTx1,
         };
-        const txEntry2: TxUtils.Entry = {
-          [TxUtils.Columns.TX_ID]: pTxId2,
-          [TxUtils.Columns.TX]: pTx2,
+        const txEntry2: Tx.Entry = {
+          [Tx.Columns.TX_ID]: pTxId2,
+          [Tx.Columns.TX]: pTx2,
         };
         yield* flushAll;
 
@@ -616,7 +614,7 @@ describe("AddressHistoryDB", () => {
         const result1 =
           yield* sql<AddressHistoryDB.Entry>`SELECT * FROM address_history`;
         expect(
-          result1.map((r) => r[LedgerUtils.Columns.ADDRESS]).sort(),
+          result1.map((r) => r[Ledger.Columns.ADDRESS]).sort(),
         ).toStrictEqual([address1, thisWalletAddress].sort());
 
         // send funds to same wallet
@@ -635,9 +633,9 @@ describe("AddressHistoryDB", () => {
 
         const result2 =
           yield* sql<AddressHistoryDB.Entry>`SELECT * FROM address_history`;
-        expect(
-          result2.map((r) => r[LedgerUtils.Columns.ADDRESS]),
-        ).toStrictEqual([thisWalletAddress]);
+        expect(result2.map((r) => r[Ledger.Columns.ADDRESS])).toStrictEqual([
+          thisWalletAddress,
+        ]);
       }),
     ),
   );
@@ -664,46 +662,44 @@ const address1 =
 const address2 =
   "addr_test1vzcsc5wzu3vsnjek2n80ayce53r4ha2g6wyetqddrp8z04q3yzv6k";
 
-const txEntry1: TxUtils.Entry = {
-  [TxUtils.Columns.TX_ID]: txId1,
-  [TxUtils.Columns.TX]: tx1,
+const txEntry1: Tx.Entry = {
+  [Tx.Columns.TX_ID]: txId1,
+  [Tx.Columns.TX]: tx1,
 };
 
-const txEntry2: TxUtils.Entry = {
-  [TxUtils.Columns.TX_ID]: txId2,
-  [TxUtils.Columns.TX]: tx2,
+const txEntry2: Tx.Entry = {
+  [Tx.Columns.TX_ID]: txId2,
+  [Tx.Columns.TX]: tx2,
 };
 
-const removeTimestampFromTxEntry = (
-  e: TxUtils.Entry,
-): TxUtils.EntryNoTimeStamp => {
+const removeTimestampFromTxEntry = (e: Tx.Entry): Tx.EntryNoTimeStamp => {
   return {
-    [TxUtils.Columns.TX_ID]: e[TxUtils.Columns.TX_ID],
-    [TxUtils.Columns.TX]: e[TxUtils.Columns.TX],
+    [Tx.Columns.TX_ID]: e[Tx.Columns.TX_ID],
+    [Tx.Columns.TX]: e[Tx.Columns.TX],
   };
 };
 
-const ledgerEntry1: LedgerUtils.Entry = {
-  [LedgerUtils.Columns.TX_ID]: txId1,
-  [LedgerUtils.Columns.OUTREF]: outref1,
-  [LedgerUtils.Columns.OUTPUT]: output1,
-  [LedgerUtils.Columns.ADDRESS]: address1,
+const ledgerEntry1: Ledger.Entry = {
+  [Ledger.Columns.TX_ID]: txId1,
+  [Ledger.Columns.OUTREF]: outref1,
+  [Ledger.Columns.OUTPUT]: output1,
+  [Ledger.Columns.ADDRESS]: address1,
 };
 
-const ledgerEntry2: LedgerUtils.Entry = {
-  [LedgerUtils.Columns.TX_ID]: txId2,
-  [LedgerUtils.Columns.OUTREF]: outref2,
-  [LedgerUtils.Columns.OUTPUT]: output2,
-  [LedgerUtils.Columns.ADDRESS]: address2,
+const ledgerEntry2: Ledger.Entry = {
+  [Ledger.Columns.TX_ID]: txId2,
+  [Ledger.Columns.OUTREF]: outref2,
+  [Ledger.Columns.OUTPUT]: output2,
+  [Ledger.Columns.ADDRESS]: address2,
 };
 
 const removeTimestampFromLedgerEntry = (
-  e: LedgerUtils.Entry,
-): LedgerUtils.EntryNoTimeStamp => {
+  e: Ledger.Entry,
+): Ledger.EntryNoTimeStamp => {
   return {
-    [LedgerUtils.Columns.TX_ID]: e[LedgerUtils.Columns.TX_ID],
-    [LedgerUtils.Columns.OUTREF]: e[LedgerUtils.Columns.OUTREF],
-    [LedgerUtils.Columns.OUTPUT]: e[LedgerUtils.Columns.OUTPUT],
-    [LedgerUtils.Columns.ADDRESS]: e[LedgerUtils.Columns.ADDRESS],
+    [Ledger.Columns.TX_ID]: e[Ledger.Columns.TX_ID],
+    [Ledger.Columns.OUTREF]: e[Ledger.Columns.OUTREF],
+    [Ledger.Columns.OUTPUT]: e[Ledger.Columns.OUTPUT],
+    [Ledger.Columns.ADDRESS]: e[Ledger.Columns.ADDRESS],
   };
 };
