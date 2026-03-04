@@ -1,7 +1,9 @@
-import { Database } from "@/services/database.js";
 import { Effect } from "effect";
-import { DatabaseError } from "@/database/utils/common.js";
-import * as UserEvents from "@/database/utils/user-events.js";
+import * as SDK from "@al-ft/midgard-sdk";
+import { Database } from "@/services/index.js";
+import { DatabaseError, NotFoundError } from "@/database/utils/common.js";
+import { LatestLedgerDB, Ledger, UserEvents } from "@/database/index.js";
+import { CML, Data } from "@lucid-evolution/lucid";
 
 export const tableName = "withdrawal_order_utxos";
 
@@ -15,3 +17,46 @@ export const retrieveTimeBoundEntries = (
   endTime: Date,
 ): Effect.Effect<readonly UserEvents.Entry[], DatabaseError, Database> =>
   UserEvents.retrieveTimeBoundEntries(tableName, startTime, endTime);
+
+export const entryToOutRef = (
+  withdrawal: UserEvents.Entry,
+): Effect.Effect<Buffer, SDK.CmlDeserializationError | SDK.DataCoercionError> =>
+  Effect.gen(function* () {
+    const withdrawalInfoHex = SDK.bufferToHex(
+      withdrawal[UserEvents.Columns.INFO],
+    );
+    const withdrawalInfo = yield* Effect.try({
+      try: () => Data.from(withdrawalInfoHex, SDK.WithdrawalInfo),
+      catch: (e) =>
+        new SDK.DataCoercionError({
+          message: "Malformed WithdrawalInfo encountered",
+          cause: e,
+        }),
+    });
+    const txId = yield* Effect.try({
+      try: () =>
+        CML.TransactionHash.from_hex(withdrawalInfo.body.l2_outref.txHash.hash),
+      catch: (e) =>
+        new SDK.CmlDeserializationError({
+          message:
+            "Invalid transaction hash was included in the given WithdrawalInfo",
+          cause: e,
+        }),
+    });
+    const outRef = CML.TransactionInput.new(
+      txId,
+      withdrawalInfo.body.l2_outref.outputIndex,
+    );
+    return Buffer.from(outRef.to_cbor_bytes());
+  });
+
+export const entryToLedgerEntry = (
+  entry: UserEvents.Entry,
+): Effect.Effect<
+  Ledger.Entry,
+  | DatabaseError
+  | NotFoundError
+  | SDK.CmlDeserializationError
+  | SDK.DataCoercionError,
+  Database
+> => entryToOutRef(entry).pipe(Effect.andThen(LatestLedgerDB.retrieveEntry));

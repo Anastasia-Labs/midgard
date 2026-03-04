@@ -1,5 +1,5 @@
 import * as SDK from "@al-ft/midgard-sdk";
-import { DatabaseError } from "@/database/utils/common.js";
+import { DatabaseError, NotFoundError } from "@/database/utils/common.js";
 import {
   AlwaysSucceedsContract,
   Database,
@@ -19,8 +19,9 @@ import {
   UserEvents,
   ImmutableDB,
   BlocksTxsDB,
+  WithdrawalsDB,
 } from "@/database/index.js";
-import { batchProgram } from "@/utils.js";
+import { batchProgram, breakDownTx } from "@/utils.js";
 
 // For database operations.
 const BATCH_SIZE = 100;
@@ -59,70 +60,79 @@ const submitSignedTxCBOR = (
     }),
   );
 
-const applyEventsToLedger = (
+const processEventsForLedgerApplication = (
   startDate: Date,
   endDate: Date,
 ): Effect.Effect<
-  BlocksDB.PrevLedgerAndEvents & {
-    newLedger: readonly Ledger.Entry[];
+  BlocksDB.Events & {
+    entriesProducedByL2Transactions: Ledger.Entry[];
+    outRefsSpentByL2Transactions: Buffer[];
     mempoolTxHashes: Buffer[];
+    depositedLedgerEntries: Ledger.Entry[];
+    withdrawnOutRefs: Buffer[];
   },
-  SDK.CmlDeserializationError | DatabaseError,
+  SDK.CmlDeserializationError | SDK.DataCoercionError | DatabaseError | NotFoundError,
   NodeConfig | Database | AlwaysSucceedsContract
 > =>
   Effect.gen(function* () {
-    const blockInfo = yield* BlocksDB.retrievePrevLedgerAndEvents(
-      startDate,
-      endDate,
-    );
-    const depositUTxOs = yield* Effect.all(
-      blockInfo.deposits.map(DepositsDB.entryToLedgerEntry),
+    const blockEvents = yield* BlocksDB.retrieveEvents(startDate, endDate);
+
+    const withdrawnOutRefs: Buffer[] = [];
+    const entriesProducedByL2Transactions: Ledger.Entry[] = [];
+    const outRefsSpentByL2Transactions: Buffer[] = [];
+    const mempoolTxHashes: Buffer[] = [];
+    const depositedLedgerEntries = yield* Effect.all(
+      blockEvents.deposits.map(DepositsDB.entryToLedgerEntry),
+      { concurrency: "unbounded" },
     );
 
-    const afterWithdrawals = yield* Effect.reduce(
-      blockInfo.withdrawals,
-      blockInfo.prevLedger,
-      (acc, w, _i) =>
-        Effect.filter(acc, (utxoEntry) =>
-          Effect.gen(function* () {
-            const withdrawalInfo = Data.from(
-              SDK.bufferToHex(w[UserEvents.Columns.INFO]),
-              SDK.WithdrawalInfo,
-            );
-            const spentOutRef = withdrawalInfo.body.l2_outref;
-            const ledgerEntryOutRef = CML.TransactionInput.from_cbor_bytes(
-              utxoEntry[Ledger.Columns.OUTREF],
-            );
-            return (
-              spentOutRef.txHash.hash !==
-                ledgerEntryOutRef.transaction_id().to_hex() &&
-              spentOutRef.outputIndex !== ledgerEntryOutRef.index()
-            );
+    // TODO: Allowing DataCoercionError to bubble up from here might be
+    //       incorrect. WithdrawalsDB is most likely trust-worthy at this point.
+    yield* Effect.forEach(blockEvents.withdrawals, (w) =>
+      WithdrawalsDB.entryToOutRef(w).pipe(
+        Effect.andThen(
+          (outRef) => Effect.sync(() => withdrawnOutRefs.push(outRef)),
+        ),
+      ),
+    );
+    yield* Effect.forEach(blockEvents.txOrders, (txOrder) =>
+      breakDownTx(txOrder[UserEvents.Columns.INFO]).pipe(
+        Effect.andThen(({ spent, produced }) =>
+          Effect.sync(() => {
+            outRefsSpentByL2Transactions.push(...spent);
+            entriesProducedByL2Transactions.push(...produced);
           }),
         ),
+      ),
     );
-    const afterTxOrders = yield* Effect.reduce(
-      blockInfo.txOrders,
-      afterWithdrawals,
-      (acc, txOrder, _i) =>
-        Ledger.applyTx(acc, txOrder[UserEvents.Columns.INFO]),
-    );
-    const mempoolTxHashes: Buffer[] = [];
-    const afterTxRequests = yield* Effect.reduce(
-      blockInfo.txRequests,
-      afterTxOrders,
-      (acc, txRequest, _i) =>
-        Effect.sync(() =>
-          mempoolTxHashes.push(txRequest[Tx.Columns.TX_ID]),
-        ).pipe(
-          Effect.andThen((_) => Ledger.applyTx(acc, txRequest[Tx.Columns.TX])),
+    yield* Effect.forEach(blockEvents.txRequests, (txRequest) =>
+      breakDownTx(txRequest[Tx.Columns.TX]).pipe(
+        Effect.andThen(({ spent, produced }) =>
+          Effect.sync(() => {
+            mempoolTxHashes.push(txRequest[Tx.Columns.TX_ID]);
+            outRefsSpentByL2Transactions.push(...spent);
+            entriesProducedByL2Transactions.push(...produced);
+          }),
         ),
+      ),
     );
-    const afterDeposits = [...afterTxRequests, ...depositUTxOs];
+    yield* Effect.forEach(blockEvents.deposits, (deposit) =>
+      DepositsDB.entryToLedgerEntry(deposit).pipe(
+        Effect.andThen((ledgerEntry) =>
+          Effect.sync(() => {
+            entriesProducedByL2Transactions.push(ledgerEntry);
+          }),
+        ),
+      ),
+    );
+
     return {
-      ...blockInfo,
-      newLedger: afterDeposits,
+      ...blockEvents,
+      entriesProducedByL2Transactions,
+      outRefsSpentByL2Transactions,
       mempoolTxHashes,
+      depositedLedgerEntries,
+      withdrawnOutRefs,
     };
   });
 
@@ -137,24 +147,30 @@ const submitEarliestBlock = Effect.gen(function* () {
           blockEntry[BlocksDB.Columns.L1_CBOR],
         );
         yield* Effect.logInfo(`🔗 🚀 Block commitment submitted: ${txHash}`);
-        const { txRequests, newLedger, mempoolTxHashes } =
-          yield* applyEventsToLedger(
+        const { txRequests, entriesToAdd, outRefsToRemove, mempoolTxHashes } =
+          yield* processEventsForLedgerApplication(
             blockEntry[BlocksDB.Columns.EVENT_START_TIME],
             blockEntry[BlocksDB.Columns.EVENT_END_TIME],
           );
 
-        yield* LatestLedgerDB.clear;
-
-        const updateLatestLedgerDB = batchProgram(
+        const addToLedgerProgram = batchProgram(
           BATCH_SIZE,
-          newLedger.length,
-          "Insert new ledger in LatestLedgerDB",
+          entriesToAdd.length,
+          "Insert new entries to LatestLedgerDB",
           (startIndex, endIndex) =>
             LatestLedgerDB.insertMultiple(
-              newLedger.slice(startIndex, endIndex),
+              entriesToAdd.slice(startIndex, endIndex),
             ),
         );
-
+        const removeFromLedgerProgram = batchProgram(
+          BATCH_SIZE,
+          outRefsToRemove.length,
+          "Remove spent outrefs from LatestLedgerDB",
+          (startIndex, endIndex) =>
+            LatestLedgerDB.clearUTxOs(
+              outRefsToRemove.slice(startIndex, endIndex),
+            ),
+        );
         const transferMempoolTxs = batchProgram(
           BATCH_SIZE,
           txRequests.length,
@@ -176,11 +192,16 @@ const submitEarliestBlock = Effect.gen(function* () {
           },
         );
 
-        yield* Effect.all([
-          updateLatestLedgerDB,
-          transferMempoolTxs,
-          BlocksDB.setStatusOfEntry(blockEntry, BlocksDB.Status.SUBMITTED),
-        ]);
+        // TODO: Update AddressHistoryDB as well.
+
+        yield* Effect.all(
+          [
+            updateLatestLedgerDB,
+            transferMempoolTxs,
+            BlocksDB.setStatusOfEntry(blockEntry, BlocksDB.Status.SUBMITTED),
+          ],
+          { concurrency: "unbounded" },
+        );
       }),
   });
 });

@@ -1,17 +1,14 @@
 import { Database } from "@/services/database.js";
-import * as Tx from "@/database/utils/tx.js";
+import { Effect } from "effect";
+import { SqlClient } from "@effect/sql";
 import {
   clearTable,
   sqlErrorToDatabaseError,
   DatabaseError,
   retrieveNumberOfEntries,
 } from "@/database/utils/common.js";
-import * as MempoolLedgerDB from "./mempoolLedger.js";
-import { Effect } from "effect";
-import { SqlClient } from "@effect/sql";
-import * as AddressHistoryDB from "@/database/addressHistory.js";
 import { ProcessedTx } from "@/utils.js";
-import { Ledger } from "./index.js";
+import { AddressHistoryDB, MempoolLedgerDB, Ledger, Tx } from "./index.js";
 
 export const tableName = "mempool";
 
