@@ -386,23 +386,11 @@ export const applyMempoolToLedger = (
 
 export const applyWithdrawalsToLedger = (
   ledgerTrie: MidgardMpt,
-  withdrawalUTxOs: readonly SDK.WithdrawalUTxO[],
-): Effect.Effect<
-  {
-    withdrawals: {
-      spent: Buffer;
-      inclusionTime: Date;
-    }[];
-    sizeOfWithdrawals: number;
-  },
-  SDK.CmlUnexpectedError | MptError
-> =>
+  withdrawalEntries: readonly UserEvents.Entry[],
+): Effect.Effect<number, SDK.CmlUnexpectedError | MptError> =>
   Effect.gen(function* () {
     if (withdrawalUTxOs.length <= 0) {
-      return {
-        withdrawals: [],
-        sizeOfWithdrawals: 0,
-      };
+      return 0;
     }
     yield* Effect.logInfo(
       `🔹 Applying ${withdrawalUTxOs.length} withdrawal(s) to the ledgerTrie`,
@@ -421,10 +409,7 @@ export const applyWithdrawalsToLedger = (
         }),
     );
 
-    return {
-      withdrawals: [],
-      sizeOfWithdrawals,
-    };
+    return sizeOfWithdrawals;
   });
 
 /**

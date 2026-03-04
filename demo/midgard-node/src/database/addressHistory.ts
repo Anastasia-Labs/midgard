@@ -1,31 +1,56 @@
 import { Database } from "@/services/database.js";
 import { SqlClient } from "@effect/sql";
 import { Effect } from "effect";
+import { Address } from "@lucid-evolution/lucid";
 import {
   DatabaseError,
   clearTable,
   sqlErrorToDatabaseError,
 } from "@/database/utils/common.js";
-import { Address } from "@lucid-evolution/lucid";
-import * as MempoolDB from "@/database/mempool.js";
-import * as ImmutableDB from "@/database/immutable.js";
-import * as Tx from "@/database/utils/tx.js";
-import * as Ledger from "@/database/utils/ledger.js";
-import { MempoolLedgerDB } from "./index.js";
+import {
+  ImmutableDB,
+  MempoolDB,
+  MempoolLedgerDB,
+  Ledger,
+  Tx,
+} from "./index.js";
 
 const tableName = "address_history";
 
+export enum Columns {
+  EVENT_ID = "event_id",
+  ADDRESS = "address",
+  EVENT_TYPE = "event_type",
+  STATUS = "status",
+}
+
 export type Entry = {
-  [Ledger.Columns.TX_ID]: Buffer;
-  [Ledger.Columns.ADDRESS]: Address;
+  [Columns.EVENT_ID]: Buffer;
+  [Columns.ADDRESS]: Address;
+  [Columns.EVENT_TYPE]: EventType;
+  [Columns.STATUS]: Status;
 };
+
+export enum Status {
+  SLATED = 0,
+  SUBMITTED = 1,
+  CONFIRMED = 2,
+}
+
+export enum EventType {
+  TX = 0,
+  WITHDRAWAL = 1,
+  DEPOSIT = 2,
+}
 
 export const createTable: Effect.Effect<void, DatabaseError, Database> =
   Effect.gen(function* () {
     const sql = yield* SqlClient.SqlClient;
     yield* sql`CREATE TABLE IF NOT EXISTS ${sql(tableName)} (
-      ${sql(Ledger.Columns.TX_ID)} BYTEA NOT NULL,
-      ${sql(Ledger.Columns.ADDRESS)} TEXT NOT NULL,
+      ${sql(Columns.EVENT_ID)} BYTEA NOT NULL,
+      ${sql(Columns.ADDRESS)} TEXT NOT NULL,
+      ${sql(Columns.EVENT_TYPE)} INTEGER NOT NULL,
+      ${sql(Columns.STATUS)} INTEGER NOT NULL DEFAULT(${Status.SLATED}),
       UNIQUE (${sql(Ledger.Columns.TX_ID)}, ${sql(Ledger.Columns.ADDRESS)})
     );`;
   }).pipe(
@@ -58,9 +83,10 @@ export const insert = (
     if (spent.length > 0 || produced.length > 0) {
       const sql = yield* SqlClient.SqlClient;
 
-      const inputEntriesProgram = sql<Entry>`SELECT ${sql(Ledger.Columns.TX_ID)}, ${sql(Ledger.Columns.ADDRESS)}
-      FROM ${sql(MempoolLedgerDB.tableName)}
-      WHERE ${sql(Ledger.Columns.TX_ID)} IN ${sql.in(spent)}`;
+      const inputEntriesProgram = sql<Entry>`
+        SELECT ${sql(Ledger.Columns.TX_ID)}, ${sql(Ledger.Columns.ADDRESS)}
+        FROM ${sql(MempoolLedgerDB.tableName)}
+        WHERE ${sql(Ledger.Columns.TX_ID)} IN ${sql.in(spent)}`;
 
       const inputEntries: readonly Entry[] = yield* inputEntriesProgram.pipe(
         Effect.catchAllCause((_) => Effect.succeed([])),

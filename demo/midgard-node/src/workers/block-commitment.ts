@@ -11,6 +11,7 @@ import {
   userEventsProgram,
   WorkerInput,
   WorkerOutput,
+  applyWithdrawalsToLedger,
 } from "./utils/block-commitment.js";
 import {
   ConfigError,
@@ -33,6 +34,7 @@ import {
   UserEvents,
   WithdrawalsDB,
   TxOrdersDB,
+  BlocksDB,
 } from "@/database/index.js";
 import { TxSignError, TxSubmitError } from "@/transactions/utils.js";
 import { CML, fromHex } from "@lucid-evolution/lucid";
@@ -52,6 +54,31 @@ import { DatabaseError } from "@/database/utils/common.js";
 
 // Batch size for database operations.
 const BATCH_SIZE = 100;
+
+const temp = Effect.gen(function* () {
+  const optLatestBlock = yield* BlocksDB.retrieveLatestEntry;
+  yield* Option.match(optLatestBlock, {
+    onNone: () =>
+      Effect.logInfo(
+        "No blocks available in database to use as block commitment anchor",
+      ),
+    onSome: (latestBlock) =>
+      Effect.gen(function* () {
+        const nodeConfig = yield* NodeConfig;
+        const currentDate = new Date();
+        const { withdrawals, txOrders, txRequests, deposits } =
+          yield* BlocksDB.retrieveEvents(
+            latestBlock[BlocksDB.Columns.EVENT_END_TIME],
+            currentDate,
+          );
+        const ledgerTrie = yield* MidgardMpt.create(
+          "ledger",
+          nodeConfig.LEDGER_MPT_DB_PATH,
+        );
+        const x = yield* applyWithdrawalsToLedger(ledgerTrie, []);
+      }),
+  });
+});
 
 const addDepositUTxOsToDatabases = (
   insertedDepositUTxOs: {

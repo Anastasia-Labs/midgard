@@ -6,6 +6,7 @@ import * as SDK from "@al-ft/midgard-sdk";
 import {
   sqlErrorToDatabaseError,
   DatabaseError,
+  NotFoundError,
 } from "@/database/utils/common.js";
 import { breakDownTx } from "@/utils.js";
 
@@ -97,6 +98,36 @@ export const insertEntries = (
     sqlErrorToDatabaseError(tableName, "Failed to insert given UTxOs"),
   );
 
+export const retrieveEntry = (
+  tableName: string,
+  outRef: Buffer,
+): Effect.Effect<Entry, DatabaseError | NotFoundError, Database> =>
+  Effect.gen(function* () {
+    const sql = yield* SqlClient.SqlClient;
+    const result = yield* sql<EntryWithTimeStamp>`SELECT * FROM ${sql(
+      tableName,
+    )} WHERE ${sql(Columns.OUTREF)} = ${outRef} LIMIT 1`;
+    if (result.length <= 0) {
+      return yield* new NotFoundError({
+        message: `No ledger entry found for outref ${outRef.toString("hex")}`,
+        cause: "",
+        table: tableName,
+      });
+    }
+    return result[0];
+  }).pipe(
+    Effect.withLogSpan(`retrieveEntry ${tableName}`),
+    Effect.mapError((error): DatabaseError | NotFoundError =>
+      error._tag === "SqlError"
+        ? new DatabaseError({
+            message: `Failed to retrieve ledger entry by outref`,
+            table: tableName,
+            cause: error,
+          })
+        : error,
+    ),
+  );
+
 export const retrieveAllEntries = (
   tableName: string,
 ): Effect.Effect<readonly EntryWithTimeStamp[], DatabaseError, Database> =>
@@ -139,6 +170,32 @@ export const retrieveAllEntriesNoTimeStamps = (
     sqlErrorToDatabaseError(
       tableName,
       "Failed to retrieve the whole ledger without timestamps",
+    ),
+  );
+
+export const retrieveByOutRefs = (
+  tableName: string,
+  outRefs: Buffer[] | readonly Buffer[],
+): Effect.Effect<readonly Entry[], DatabaseError, Database> =>
+  Effect.gen(function* () {
+    const sql = yield* SqlClient.SqlClient;
+    yield* Effect.logDebug(`${tableName} db: attempt to retrieve entries`);
+
+    const rows = yield* sql<Entry>`SELECT * FROM ${sql(
+      tableName,
+    )} WHERE ${sql.in(Columns.OUTREF, outRefs)}`;
+
+    return rows;
+  }).pipe(
+    Effect.withLogSpan(`retrieve entries from ${tableName}`),
+    Effect.tapErrorTag("SqlError", (e) =>
+      Effect.logError(
+        `${tableName} db: retrieving entries error: ${JSON.stringify(e)}`,
+      ),
+    ),
+    sqlErrorToDatabaseError(
+      tableName,
+      "Failed to retrieve the given ledger entries",
     ),
   );
 

@@ -12,8 +12,6 @@ import {
   BlocksTxsDB,
   DepositsDB,
   ImmutableDB,
-  LatestLedgerDB,
-  Ledger,
   MempoolDB,
   Tx,
   TxOrdersDB,
@@ -70,8 +68,7 @@ export type Entry = EntryNoMeta & {
   [Columns.TIMESTAMPTZ]: Date;
 };
 
-export type PrevLedgerAndEvents = {
-  prevLedger: readonly Ledger.Entry[];
+export type Events = {
   withdrawals: readonly UserEvents.Entry[];
   txOrders: readonly UserEvents.Entry[];
   txRequests: readonly Tx.Entry[];
@@ -157,24 +154,21 @@ export const retrieve: Effect.Effect<
   sqlErrorToDatabaseError(tableName, "Failed to retrieve unsubmitted blocks"),
 );
 
-export const retrievePrevLedgerAndEvents = (
+export const retrieveEvents = (
   startDate: Date,
   endDate: Date,
-): Effect.Effect<PrevLedgerAndEvents, DatabaseError, Database> =>
+): Effect.Effect<Events, DatabaseError, Database> =>
   Effect.gen(function* () {
-    const [prevLedger, withdrawals, txOrders, txRequests, deposits] =
-      yield* Effect.all(
-        [
-          LatestLedgerDB.retrieveNoTimeStamps,
-          WithdrawalsDB.retrieveTimeBoundEntries(startDate, endDate),
-          TxOrdersDB.retrieveTimeBoundEntries(startDate, endDate),
-          MempoolDB.retrieveTimeBoundEntries(startDate, endDate),
-          DepositsDB.retrieveTimeBoundEntries(startDate, endDate),
-        ],
-        { concurrency: "unbounded" },
-      );
+    const [withdrawals, txOrders, txRequests, deposits] = yield* Effect.all(
+      [
+        WithdrawalsDB.retrieveTimeBoundEntries(startDate, endDate),
+        TxOrdersDB.retrieveTimeBoundEntries(startDate, endDate),
+        MempoolDB.retrieveTimeBoundEntries(startDate, endDate),
+        DepositsDB.retrieveTimeBoundEntries(startDate, endDate),
+      ],
+      { concurrency: "unbounded" },
+    );
     return {
-      prevLedger,
       withdrawals,
       txOrders,
       txRequests,
