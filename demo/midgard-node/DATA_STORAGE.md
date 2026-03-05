@@ -127,6 +127,7 @@ They all record a few values:
 - Events' inclusion times.
 
 Insertions occur at the time of discovery, along with corresponding entries in
-`AddressHistoryDB`. However, if either a transaction or withdrawal orders' spend
-UTxOs that are not yet present in `MempoolLedgerDB`, no entry will be added to
-`AddressHistoryDB`. This simple omission _should_ suffice (TODO?).
+`AddressHistoryDB`. However, for transaction orders and withdrawal events, if
+corresponding ledger entries from `MempoolLedgerDB` cannot be retrieved, those
+specific `AddressHistoryDB` entries will be simply skipped. This silent omission
+_should be_ sufficient (TODO?).
