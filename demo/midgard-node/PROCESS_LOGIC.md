@@ -6,8 +6,9 @@ payload into a `CML.Transaction` value, and "phase 2" is always true.
 1. Received transactions go through phase 1 validation and if they pass, they'll
    be put in the queue for further processing.
 2. The transaction queue is processed in batches, and any transaction that
-   passes phase 2 validation will be added to `MempoolDB`, `MempoolLedgerDB` and
-   `AddressHistoryDB`.
+   passes phase 2 validation will be added to `MempoolDB`, while also updating
+   `MempoolLedgerDB` and `AddressHistoryDB` accordingly (added entries to
+   `AddressHistoryDB` will be marked as "slated").
 3. Concurrently the user events tables (i.e. withdrawal, transaction orders, and
    deposits) are populated periodically by querying their addresses on Cardano.
    Withdrawals and transaction orders will only be added to their respective
@@ -17,18 +18,12 @@ payload into a `CML.Transaction` value, and "phase 2" is always true.
 4. Commitment worker runs periodically:
    a) Reads the latest unsubmitted block from `BlocksDB` and stores it in
       memory as `latestBlock`.
-   b) Stores the current time and only then retrieves all entries from
-      `MempoolDB`:
-      - If no entries existed (empty mempool), uses the stored current time as
-        the upper bound of the block.
-      - Otherwise, uses the timestamp of the newest mempool entry as block's
-        upper bound.
-      At this point, previously commited block is available as `latestBlock`,
-      and the upper bound of the block about to be committed is established.
-   c) Using `latestBlock`'s upper bound and the newly established one, retrieves
-      all user events falling within the time window. At this point, all
-      withdrawals, transaction orders and requests, and deposits that should be
-      included in the block are available.
+   b) Stores the current time to use as the upper bound of the block's event
+      interval.
+   c) Retrieves all user events and transaction requests that fall within the
+      established event interval. At this point, all withdrawals, transaction
+      orders and requests, and deposits that should be included in the block are
+      available.
    d) Retrieves the ledger Merkle Patricia Trie (MPT) from disk. This _should
       be_ the state of Midgard ledger after `latestBlock` (TODO, some syncing
       mechanism might be needed).

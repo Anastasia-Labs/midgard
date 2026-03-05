@@ -60,3 +60,17 @@ export const entryToLedgerEntry = (
   | SDK.DataCoercionError,
   Database
 > => entryToOutRef(entry).pipe(Effect.andThen(LatestLedgerDB.retrieveEntry));
+
+export const entriesToLedgerEntries = (
+  entries: UserEvents.Entry[],
+): Effect.Effect<
+  readonly Ledger.Entry[],
+  | DatabaseError
+  | NotFoundError
+  | SDK.CmlDeserializationError
+  | SDK.DataCoercionError,
+  Database
+> =>
+  Effect.all(entries.map(entryToOutRef)).pipe(
+    Effect.andThen(LatestLedgerDB.retrieveEntries),
+  );

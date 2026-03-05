@@ -10,6 +10,9 @@ export const insertMultiple = (
 export const retrieveEntry = (outRef: Buffer) =>
   Ledger.retrieveEntry(tableName, outRef);
 
+export const retrieveEntries = (outRefs: Buffer[]) =>
+  Ledger.retrieveByOutRefs(tableName, outRefs);
+
 export const retrieve = Ledger.retrieveAllEntries(tableName);
 
 export const retrieveNoTimeStamps =

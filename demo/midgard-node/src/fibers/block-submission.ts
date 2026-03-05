@@ -150,28 +150,34 @@ const submitEarliestBlock = Effect.gen(function* () {
           blockEntry[BlocksDB.Columns.L1_CBOR],
         );
         yield* Effect.logInfo(`🔗 🚀 Block commitment submitted: ${txHash}`);
-        const { txRequests, entriesToAdd, outRefsToRemove, mempoolTxHashes } =
-          yield* processEventsForLedgerApplication(
-            blockEntry[BlocksDB.Columns.EVENT_START_TIME],
-            blockEntry[BlocksDB.Columns.EVENT_END_TIME],
-          );
+        const {
+          txRequests,
+          entriesProducedByL2Transactions,
+          outRefsSpentByL2Transactions,
+          mempoolTxHashes,
+          depositedLedgerEntries,
+          withdrawnOutRefs,
+        } = yield* processEventsForLedgerApplication(
+          blockEntry[BlocksDB.Columns.EVENT_START_TIME],
+          blockEntry[BlocksDB.Columns.EVENT_END_TIME],
+        );
 
         const addToLedgerProgram = batchProgram(
           BATCH_SIZE,
-          entriesToAdd.length,
+          entriesProducedByL2Transactions.length,
           "Insert new entries to LatestLedgerDB",
           (startIndex, endIndex) =>
             LatestLedgerDB.insertMultiple(
-              entriesToAdd.slice(startIndex, endIndex),
+              entriesProducedByL2Transactions.slice(startIndex, endIndex),
             ),
         );
         const removeFromLedgerProgram = batchProgram(
           BATCH_SIZE,
-          outRefsToRemove.length,
+          outRefsSpentByL2Transactions.length,
           "Remove spent outrefs from LatestLedgerDB",
           (startIndex, endIndex) =>
             LatestLedgerDB.clearUTxOs(
-              outRefsToRemove.slice(startIndex, endIndex),
+              outRefsSpentByL2Transactions.slice(startIndex, endIndex),
             ),
         );
         const transferMempoolTxs = batchProgram(

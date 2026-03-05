@@ -13,6 +13,7 @@ import {
   MempoolLedgerDB,
   Ledger,
   Tx,
+  UserEvents,
 } from "./index.js";
 import { ProcessedTx } from "@/utils.js";
 
@@ -34,8 +35,9 @@ export type Entry = {
 
 export enum Status {
   SLATED = 0,
-  SUBMITTED = 1,
-  CONFIRMED = 2,
+  COMMITTED = 1,
+  SUBMITTED = 2,
+  MERGED = 3,
 }
 
 export enum EventType {
@@ -65,6 +67,7 @@ export const insertEntries = (
   Effect.gen(function* () {
     if (entries.length > 0) {
       const sql = yield* SqlClient.SqlClient;
+      // TODO: Make it so that on conflict that status column is updated.
       yield* sql`
         INSERT INTO ${sql(tableName)} ${sql.insert(entries)}
         ON CONFLICT (${sql(Columns.EVENT_ID)}, ${sql(Columns.ADDRESS)}) DO NOTHING`;
@@ -102,7 +105,7 @@ export const processedTxsToEntries = (
     );
     const allProduced: Ledger.Entry[] = [];
     // Retrieve addresses of spent UTxOs from MempoolLedgerDB.
-    // TODO: A fallback mechanism to either LatestLedgerDB or ConfirmeLedgerDB
+    // TODO: A fallback mechanism to either LatestLedgerDB or ConfirmedLedgerDB
     //       might make sense. However, if insertions to MempoolDB (and
     //       consequently MempoolLedgerDB) are validated by phase 1 and phase 2
     //       validations, looking up MempoolLedgerDB here might be sufficient.
@@ -160,6 +163,13 @@ export const insertTxs = (
       yield* insertEntries(allEntries);
     }
   }).pipe(Effect.withLogSpan(`entries ${tableName}`));
+
+export const insertWithdrwals = (
+  withdrawals: UserEvents.Entry[],
+): Effect.Effect<void> =>
+  Effect.gen(function* () {
+    return;
+  });
 
 export const delTxHash = (
   tx_hash: Buffer,
