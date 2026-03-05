@@ -127,6 +127,6 @@ They all record a few values:
 - Events' inclusion times.
 
 Insertions occur at the time of discovery, along with corresponding entries in
-`AddressHistoryDB`. However, if either a transaction or withdrawal order spend
+`AddressHistoryDB`. However, if either a transaction or withdrawal orders' spend
 UTxOs that are not yet present in `MempoolLedgerDB`, no entry will be added to
 `AddressHistoryDB`. This simple omission _should_ suffice (TODO?).
