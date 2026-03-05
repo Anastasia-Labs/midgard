@@ -8,6 +8,8 @@ import { LucidEvolution, TxBuilder, UTxO, Data } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 import { ActiveandRetiredElementSchema, incompleteInitLinkedListTxProgram } from "./linked-list.js";
 
+export const ACTIVE_ROOT_KEY: string = "MIDGARD_ACTIVE_OPERATORS";
+
 export const ActiveOperatorSpendRedeemerSchema = Data.Enum([
   Data.Literal("ListStateTransition"),
   Data.Object({
@@ -148,6 +150,8 @@ export const incompleteActiveOperatorInitTxProgram = (
       validator: params.validator,
       data: rootData,
       redeemer: Data.to("Init", ActiveOperatorMintRedeemer),
+      rootKey: ACTIVE_ROOT_KEY,
+
     });
   });
 

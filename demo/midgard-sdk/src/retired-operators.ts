@@ -9,6 +9,8 @@ import { LucidEvolution, TxBuilder } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 import { ActiveandRetiredElementSchema, incompleteInitLinkedListTxProgram } from "./linked-list.js";
 
+export const RETIRED_ROOT_KEY: string = "MIDGARD_RETIRED_OPERATORS";
+
 export type RetiredOperatorDatum = Data.Static<typeof ActiveandRetiredElementSchema>;
 export const RetiredOperatorDatum = ActiveandRetiredElementSchema as unknown as RetiredOperatorDatum;
 
@@ -120,6 +122,7 @@ export const incompleteRetiredOperatorInitTxProgram = (
       validator: params.validator,
       data: rootData,
       redeemer: Data.to("Init", RetiredOperatorMintRedeemer),
+      rootKey: RETIRED_ROOT_KEY,
     });
   });
 

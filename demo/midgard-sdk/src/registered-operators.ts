@@ -3,6 +3,8 @@ import { Data, LucidEvolution, TxBuilder } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 import { incompleteInitLinkedListTxProgram, RegisteredElementSchema } from "./linked-list.js";
 
+export const REGISTERED_ROOT_KEY: string = "MIDGARD_REGISTERED_OPERATORS";
+
 export type RegisteredOperatorDatum = Data.Static<typeof RegisteredElementSchema>;
 export const RegisteredOperatorDatum = RegisteredElementSchema as unknown as RegisteredOperatorDatum;
 
@@ -97,6 +99,7 @@ export const incompleteRegisteredOperatorInitTxProgram = (
       validator: params.validator,
       data: rootData,
       redeemer: Data.to("Init", RegisteredOperatorMintRedeemer),
+      rootKey: REGISTERED_ROOT_KEY,  
     });
   });
 

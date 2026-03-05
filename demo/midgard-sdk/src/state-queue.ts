@@ -42,6 +42,8 @@ import { ConfirmedState, Header } from "@/ledger-state.js";
 export const GENESIS_HASH_28 = "00".repeat(28);
 export const GENESIS_HASH_32 = "00".repeat(32);
 export const INITIAL_PROTOCOL_VERSION = 0n;
+export const ROOT_KEY: string = "MIDGARD_CONFIRMED_STATE";
+
 
 export const StateQueueConfigSchema = Data.Object({
   initUTxO: OutputReferenceSchema,
@@ -113,6 +115,7 @@ export type StateQueueMergeParams = {
 export type StateQueueInitParams = {
   validator: AuthenticatedValidator;
   genesisTime: POSIXTime; // Just pass the time, not the full state
+  rootKey: string;
 };
 
 export type StateQueueDeinitParams = {};
@@ -732,6 +735,7 @@ export const incompleteInitStateQueueTxProgram = (
       validator: params.validator,
       data: Data.castTo(stateQueueData, ConfirmedState),
       redeemer: Data.to("Init", StateQueueRedeemer),
+      rootKey: ROOT_KEY,
     });
   });
 

@@ -109,6 +109,7 @@ export type LinkedListInitParams = {
   validator: AuthenticatedValidator;
   data?: Data;
   redeemer: string;
+  rootKey: string;
 };
 
 export const incompleteInitLinkedListTxProgram = (
@@ -117,7 +118,7 @@ export const incompleteInitLinkedListTxProgram = (
 ): Effect.Effect<TxBuilder> =>
   Effect.gen(function* () {
     const assets: Assets = {
-      [toUnit(params.validator.policyId, NODE_ASSET_NAME)]: 1n,
+      [toUnit(params.validator.policyId, params.rootKey)]: 1n,
     };
 
     const rootData = params.data ?? Data.to([]);

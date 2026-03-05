@@ -299,7 +299,7 @@ export const incompleteUpdateBondHoldNewSettlementTxProgram = (
     );
 
     const activeOperatorsInputUtxo = activeOperatorsUTxOs.find(
-      (utxo) => utxo.datum.key === params.activeOperatorParams.operator,
+      (utxo) => utxo.datum.link === params.activeOperatorParams.operator,
     );
     if (!activeOperatorsInputUtxo) {
       return yield* Effect.fail(
@@ -312,8 +312,13 @@ export const incompleteUpdateBondHoldNewSettlementTxProgram = (
 
     const updatedDatum: ActiveOperatorDatum = {
       ...activeOperatorsInputUtxo.datum,
-      bondUnlockTime: params.newBondUnlockTime,
+      data: {
+        Node: {
+          bond_unlock_time: params.newBondUnlockTime,
+        }
+      }
     };
+
     const updatedDatumCBOR = Data.to(updatedDatum, ActiveOperatorDatum);
 
     const hubOracleRefUTxO = yield* fetchHubOracleUTxOProgram(lucid, {
