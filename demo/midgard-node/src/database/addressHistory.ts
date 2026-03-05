@@ -14,6 +14,7 @@ import {
   Ledger,
   Tx,
 } from "./index.js";
+import { ProcessedTx } from "@/utils.js";
 
 const tableName = "address_history";
 
@@ -64,8 +65,9 @@ export const insertEntries = (
   Effect.gen(function* () {
     if (entries.length > 0) {
       const sql = yield* SqlClient.SqlClient;
-      yield* sql`INSERT INTO ${sql(tableName)} ${sql.insert(entries)}
-        ON CONFLICT (${sql(Ledger.Columns.TX_ID)}, ${sql(Ledger.Columns.ADDRESS)}) DO NOTHING`;
+      yield* sql`
+        INSERT INTO ${sql(tableName)} ${sql.insert(entries)}
+        ON CONFLICT (${sql(Columns.EVENT_ID)}, ${sql(Columns.ADDRESS)}) DO NOTHING`;
     }
   }).pipe(
     Effect.withLogSpan(`entries ${tableName}`),
@@ -75,29 +77,87 @@ export const insertEntries = (
     sqlErrorToDatabaseError(tableName, "Failed to insert given entries"),
   );
 
-export const insert = (
-  spent: Buffer[],
-  produced: Ledger.Entry[],
+/**
+ * Returns collective spent outrefs and produced ledger entries to allow fewer
+ * traversals of the given `processedTxs` when used along with other database
+ * operations.
+ */
+export const processedTxsToEntries = (
+  processedTxs: ProcessedTx[],
+): Effect.Effect<
+  {
+    allEntries: Entry[];
+    allSpent: Buffer[];
+    allProduced: Ledger.Entry[];
+  },
+  DatabaseError,
+  Database
+> =>
+  Effect.gen(function* () {
+    const sql = yield* SqlClient.SqlClient;
+    // Collect all spent UTxOs so that we can make a single SQL query to
+    // retrieve their addresses.
+    const allSpent: Buffer[] = processedTxs.flatMap(
+      (processedTxs) => processedTxs.spent,
+    );
+    const allProduced: Ledger.Entry[] = [];
+    // Retrieve addresses of spent UTxOs from MempoolLedgerDB.
+    // TODO: A fallback mechanism to either LatestLedgerDB or ConfirmeLedgerDB
+    //       might make sense. However, if insertions to MempoolDB (and
+    //       consequently MempoolLedgerDB) are validated by phase 1 and phase 2
+    //       validations, looking up MempoolLedgerDB here might be sufficient.
+    const inputLedgerEntries = yield* sql<Ledger.Entry>`
+      SELECT * FROM ${sql(MempoolLedgerDB.tableName)}
+      WHERE ${sql(Ledger.Columns.TX_ID)} IN ${sql.in(allSpent)}`;
+    const allEntries: Entry[] = [];
+    // Goes through each ProcessedTx value while also exhausting the retrieved
+    // ledger entries from MempoolLedgerDB. Therefore the final acc is an empty
+    // list, which we are dicarding here.
+    yield* Effect.reduce(
+      processedTxs,
+      inputLedgerEntries,
+      (acc, processedTx, _i) =>
+        Effect.gen(function* () {
+          const relevantLedgerEntries = acc.slice(0, processedTx.spent.length);
+          const inputEntries: Entry[] = relevantLedgerEntries.map(
+            (ledgerEntry) => ({
+              [Columns.ADDRESS]: ledgerEntry[Ledger.Columns.ADDRESS],
+              [Columns.EVENT_ID]: processedTx.txId,
+              [Columns.EVENT_TYPE]: EventType.TX,
+              [Columns.STATUS]: Status.SLATED,
+            }),
+          );
+          const outputEntries: Entry[] = processedTx.produced.map((e) => ({
+            [Columns.EVENT_ID]: processedTx.txId,
+            [Columns.ADDRESS]: e[Ledger.Columns.ADDRESS],
+            [Columns.EVENT_TYPE]: EventType.TX,
+            [Columns.STATUS]: Status.SLATED,
+          }));
+          allProduced.push(...processedTx.produced);
+          allEntries.push(...inputEntries);
+          allEntries.push(...outputEntries);
+          return acc.slice(processedTx.spent.length);
+        }),
+    );
+    return {
+      allEntries,
+      allSpent,
+      allProduced,
+    };
+  }).pipe(
+    sqlErrorToDatabaseError(tableName, "processedTxsToAddressHistoryEntries"),
+  );
+
+export const insertTxs = (
+  processedTxs: ProcessedTx[],
 ): Effect.Effect<void, DatabaseError, Database> =>
   Effect.gen(function* () {
-    if (spent.length > 0 || produced.length > 0) {
-      const sql = yield* SqlClient.SqlClient;
-
-      const inputEntriesProgram = sql<Entry>`
-        SELECT ${sql(Ledger.Columns.TX_ID)}, ${sql(Ledger.Columns.ADDRESS)}
-        FROM ${sql(MempoolLedgerDB.tableName)}
-        WHERE ${sql(Ledger.Columns.TX_ID)} IN ${sql.in(spent)}`;
-
-      const inputEntries: readonly Entry[] = yield* inputEntriesProgram.pipe(
-        Effect.catchAllCause((_) => Effect.succeed([])),
-      );
-
-      const outputEntries: Entry[] = produced.map((e) => ({
-        [Ledger.Columns.TX_ID]: e[Ledger.Columns.TX_ID],
-        [Ledger.Columns.ADDRESS]: e[Ledger.Columns.ADDRESS],
-      }));
-
-      yield* insertEntries([...inputEntries, ...outputEntries]);
+    if (processedTxs.length <= 0) {
+      yield* Effect.logDebug("No transactions to insert in address history db");
+      return;
+    } else {
+      const { allEntries } = yield* processedTxsToEntries(processedTxs);
+      yield* insertEntries(allEntries);
     }
   }).pipe(Effect.withLogSpan(`entries ${tableName}`));
 

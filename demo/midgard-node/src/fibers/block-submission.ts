@@ -71,7 +71,10 @@ const processEventsForLedgerApplication = (
     depositedLedgerEntries: Ledger.Entry[];
     withdrawnOutRefs: Buffer[];
   },
-  SDK.CmlDeserializationError | SDK.DataCoercionError | DatabaseError | NotFoundError,
+  | SDK.CmlDeserializationError
+  | SDK.DataCoercionError
+  | DatabaseError
+  | NotFoundError,
   NodeConfig | Database | AlwaysSucceedsContract
 > =>
   Effect.gen(function* () {
@@ -90,8 +93,8 @@ const processEventsForLedgerApplication = (
     //       incorrect. WithdrawalsDB is most likely trust-worthy at this point.
     yield* Effect.forEach(blockEvents.withdrawals, (w) =>
       WithdrawalsDB.entryToOutRef(w).pipe(
-        Effect.andThen(
-          (outRef) => Effect.sync(() => withdrawnOutRefs.push(outRef)),
+        Effect.andThen((outRef) =>
+          Effect.sync(() => withdrawnOutRefs.push(outRef)),
         ),
       ),
     );

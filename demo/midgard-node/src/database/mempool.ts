@@ -49,22 +49,18 @@ export const insertMultiple = (
     // Insert the tx itself in `MempoolDB`.
     yield* Tx.insertEntries(tableName, txEntries);
 
-    const initAcc: { allProduced: Ledger.Entry[]; allSpent: Buffer[] } = {
-      allProduced: [],
-      allSpent: [],
-    };
-    const { allProduced, allSpent } = processedTxs.reduce((acc, v) => {
-      acc.allProduced.push(...v.produced);
-      acc.allSpent.push(...v.spent);
-      return acc;
-    }, initAcc);
+    const {
+      allEntries: allAddressHistoryEntries,
+      allProduced,
+      allSpent,
+    } = yield* AddressHistoryDB.processedTxsToEntries(processedTxs);
 
     // Insert produced UTxOs in `MempoolLedgerDB`.
     yield* MempoolLedgerDB.insert(allProduced);
     // Remove spent inputs from MempoolLedgerDB.
     yield* MempoolLedgerDB.clearUTxOs(allSpent);
     // Update AddressHistoryDB
-    yield* AddressHistoryDB.insert(allSpent, allProduced);
+    yield* AddressHistoryDB.insertEntries(allAddressHistoryEntries);
   }).pipe(
     Effect.withLogSpan(`insert ${tableName}`),
     Effect.tapError((e) => Effect.logError(`${tableName} db: insert: ${e}`)),

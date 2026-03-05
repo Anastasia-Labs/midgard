@@ -6,7 +6,8 @@ payload into a `CML.Transaction` value, and "phase 2" is always true.
 1. Received transactions go through phase 1 validation and if they pass, they'll
    be put in the queue for further processing.
 2. The transaction queue is processed in batches, and any transaction that
-   passes phase 2 validation will be added to `MempoolDB`.
+   passes phase 2 validation will be added to `MempoolDB`, `MempoolLedgerDB` and
+   `AddressHistoryDB`.
 3. Concurrently the user events tables (i.e. withdrawal, transaction orders, and
    deposits) are populated periodically by querying their addresses on Cardano.
    Withdrawals and transaction orders will only be added to their respective
