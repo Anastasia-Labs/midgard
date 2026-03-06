@@ -8,6 +8,8 @@ import {
   Reader,
   writeU64,
   readU64,
+  writeI64,
+  readI64,
   writeFixedBytes,
   readFixedBytes,
   writeVarBytesStatic,
@@ -140,6 +142,83 @@ function readMultiassetDynamic(
   partial: MultiassetPartialEntry[],
 ): Multiasset {
   const result: Multiasset = [];
+  for (const { pid, assets } of partial) {
+    const assetEntries: Array<[Uint8Array, number]> = [];
+    for (const { nameLen, amount } of assets) {
+      const name = readAssetNameDynamic(r, nameLen);
+      assetEntries.push([name, amount]);
+    }
+    result.push([pid, assetEntries]);
+  }
+  return result;
+}
+
+// ===========================================================================
+// Mint<nonZeroInt64>   (Full Representation)
+// cddl: codec.cddl:260 — mint = multiasset<nonZeroInt64>  (same map structure as multiasset)
+// cddl: codec.cddl:334 — hash28 = bytes .size 28  (policy_id)
+// fuel: fuel-types/src/canonical.rs:279 — impl Serialize for Vec<T> (nested Vec of Vec)
+//   Same structure as Multiasset but amounts are signed i64 (positive=mint, negative=burn).
+//
+// Flat encoding (identical to Multiasset except amount uses writeI64/readI64):
+//   Static: outer_len(u64) + for each policy:
+//             policyId(32) + inner_len(u64) + for each asset:
+//               assetName_len(u64) + amount(i64)
+//   Dynamic: for each policy: for each asset:
+//               assetName_bytes+pad
+// ===========================================================================
+
+export type MintEntry = [PolicyId, Array<[Uint8Array, number]>]; // [policyId, [[assetName, signedAmount]]]
+export type Mint = MintEntry[];
+
+interface MintPartialEntry {
+  pid: Hash28;
+  assets: Array<{ nameLen: number; amount: number }>;
+}
+
+// fuel: fuel-types/src/canonical.rs:301 — Vec<T>::encode_static (len u64 + nested element statics)
+export function writeMintStatic(w: Writer, mint: Mint): void {
+  writeU64(w, mint.length);
+  for (const [pid, assets] of mint) {
+    writeHash28Static(w, pid);
+    writeU64(w, assets.length);
+    for (const [name, amount] of assets) {
+      writeAssetNameStatic(w, name); // length u64
+      writeI64(w, amount);
+    }
+  }
+}
+
+// fuel: fuel-types/src/canonical.rs:309 — Vec<u8>::encode_dynamic (asset name bytes + tail pad)
+export function writeMintDynamic(w: Writer, mint: Mint): void {
+  for (const [, assets] of mint) {
+    for (const [name] of assets) {
+      writeAssetNameDynamic(w, name); // actual bytes + pad
+    }
+  }
+}
+
+// fuel: fuel-types/src/canonical.rs:332 — Vec<T>::decode_static (reads len, allocates capacity)
+export function readMintStatic(r: Reader): MintPartialEntry[] {
+  const outerLen = readU64(r);
+  const partial: MintPartialEntry[] = [];
+  for (let i = 0; i < outerLen; i++) {
+    const pid = readHash28Static(r);
+    const innerLen = readU64(r);
+    const assets: Array<{ nameLen: number; amount: number }> = [];
+    for (let j = 0; j < innerLen; j++) {
+      const nameLen = readAssetNameLen(r);
+      const amount = readI64(r);
+      assets.push({ nameLen, amount });
+    }
+    partial.push({ pid, assets });
+  }
+  return partial;
+}
+
+// fuel: fuel-types/src/canonical.rs:352 — Vec<T>::decode_dynamic (reads bytes + skips tail pad)
+export function readMintDynamic(r: Reader, partial: MintPartialEntry[]): Mint {
+  const result: Mint = [];
   for (const { pid, assets } of partial) {
     const assetEntries: Array<[Uint8Array, number]> = [];
     for (const { nameLen, amount } of assets) {

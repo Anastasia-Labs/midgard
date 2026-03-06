@@ -39,11 +39,16 @@ import {
 } from "./primitives";
 
 import {
+  Mint,
   VKeyWitness,
   TransactionOutput,
   TransactionOutputPartial,
   writeVKeyWitness,
   readVKeyWitness,
+  writeMintStatic,
+  writeMintDynamic,
+  readMintStatic,
+  readMintDynamic,
   writeTransactionOutputStatic,
   writeTransactionOutputDynamic,
   readTransactionOutputStatic,
@@ -279,7 +284,7 @@ export interface TransactionBody {
   ttl: number | undefined;
   auxiliary_data_hash: Hash32 | undefined;
   validity_interval_start: number | undefined;
-  mint: Uint8Array | undefined;
+  mint: Mint | undefined;
   script_data_hash: Hash32 | undefined;
   required_signers: Uint8Array[] | undefined; // Vec<Hash28>
   network_id: number | undefined;
@@ -337,8 +342,8 @@ function writeTransactionBodyDynamic(w: Writer, b: TransactionBody): void {
   if (b.validity_interval_start !== undefined)
     writeU64(w, b.validity_interval_start);
   if (b.mint !== undefined) {
-    writeU64(w, b.mint.length);
-    writeVarBytesDynamic(w, b.mint);
+    writeMintStatic(w, b.mint);
+    writeMintDynamic(w, b.mint);
   }
   if (b.script_data_hash !== undefined)
     writeHash32Static(w, b.script_data_hash);
@@ -389,10 +394,10 @@ function readTransactionBodyDynamic(
   const ttl = mask & (1 << 0) ? readU64(r) : undefined;
   const auxiliary_data_hash = mask & (1 << 1) ? readHash32Static(r) : undefined;
   const validity_interval_start = mask & (1 << 2) ? readU64(r) : undefined;
-  let mint: Uint8Array | undefined;
+  let mint: Mint | undefined;
   if (mask & (1 << 3)) {
-    const blen = readU64(r);
-    mint = readVarBytesDynamic(r, blen);
+    const mintPartial = readMintStatic(r);
+    mint = readMintDynamic(r, mintPartial);
   }
   const script_data_hash = mask & (1 << 4) ? readHash32Static(r) : undefined;
   let required_signers: Uint8Array[] | undefined;

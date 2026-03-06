@@ -551,10 +551,14 @@ describe("TransactionBody", () => {
     });
   });
 
-  test("with mint bytes", () => {
+  test("with mint", () => {
     assertRoundTrip(encodeTransactionBody, decodeTransactionBody, {
       ...baseBody(),
-      mint: bytesSeq(24),
+      // Two policies: one minting, one burning
+      mint: [
+        [bytes(28, 0xaa), [[bytesSeq(4), 100]]],   // mint 100
+        [bytes(28, 0xbb), [[bytesSeq(3), -50]]],    // burn 50
+      ],
     });
   });
 

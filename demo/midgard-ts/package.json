@@ -7,6 +7,9 @@
     "test": "jest",
     "build": "tsc"
   },
+  "dependencies": {
+    "@dcspark/cardano-multiplatform-lib-nodejs": "^6.2.0"
+  },
   "devDependencies": {
     "@types/jest": "^29.5.14",
     "jest": "^29.7.0",
