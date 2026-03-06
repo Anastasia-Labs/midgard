@@ -192,35 +192,29 @@ export const insertWithdrwals = (
   withdrawals: UserEvents.Entry[],
 ): Effect.Effect<
   void,
-  DatabaseError | NotFoundError | SDK.CmlDeserializationError | SDK.DataCoercionError,
+  | DatabaseError
+  | NotFoundError
+  | SDK.CmlDeserializationError
+  | SDK.DataCoercionError,
   Database
 > =>
   Effect.gen(function* () {
-    const withdrawnOutRefs = yield* Effect.all(
+    const withdrawnEntries: Entry[] = yield* Effect.all(
       withdrawals.map((w) =>
         WithdrawalsDB.entryToOutRef(w).pipe(
-          Effect.map((outRef) => ({
-            withdrawalID: w[UserEvents.Columns.ID],
-            outRef,
+          Effect.andThen((outRef) => Effect.gen(function* () {
+            const ledgerEntry = yield* MempoolLedgerDB.retrieveByOutRef(outRef);
+            return {
+              [Columns.EVENT_ID]: w[UserEvents.Columns.ID],
+              [Columns.ADDRESS]: ledgerEntry[Ledger.Columns.ADDRESS],
+              [Columns.EVENT_TYPE]: EventType.WITHDRAWAL,
+              [Columns.STATUS]: Status.SLATED,
+            };
           })),
         ),
       ),
     );
-    yield* Effect.all(
-      withdrawnOutRefs.map(({ withdrawalID, outRef }) =>
-        Effect.gen(function* () {
-          const ledgerEntry = yield* MempoolLedgerDB.retrieveByOutRef(
-            outRef,
-          );
-          return {
-            [Columns.EVENT_ID]: withdrawalID,
-            [Columns.ADDRESS]: ledgerEntry[Ledger.Columns.ADDRESS],
-            [Columns.EVENT_TYPE]: EventType.WITHDRAWAL,
-            [Columns.STATUS]: Status.SLATED,
-          };
-        }),
-      ),
-    );
+    yield* insertEntries(withdrawnEntries);
   });
 
 export const delTxHash = (
