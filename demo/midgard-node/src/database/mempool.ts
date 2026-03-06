@@ -34,7 +34,10 @@ export const insertMultiple = (
     yield* Tx.insertEntries(tableName, txEntries);
 
     const { collectiveProduced, collectiveSpent } =
-      yield* AddressHistoryDB.insertProcessedTxs(processedTxs);
+      yield* AddressHistoryDB.insertProcessedTxs(
+        processedTxs,
+        AddressHistoryDB.Status.SLATED,
+      );
 
     // Insert produced UTxOs in `MempoolLedgerDB`.
     yield* MempoolLedgerDB.insert(collectiveProduced);
