@@ -5,6 +5,7 @@ import { Address } from "@lucid-evolution/lucid";
 import * as SDK from "@al-ft/midgard-sdk";
 import {
   DatabaseError,
+  NotFoundError,
   clearTable,
   sqlErrorToDatabaseError,
 } from "@/database/utils/common.js";
@@ -84,10 +85,10 @@ export const insertEntries = (
 
 /**
  * Returns collective spent outrefs and produced ledger entries to allow fewer
- * traversals of the given `processedTxs` when used along with other database
+ * traversals of the given `processedTxs` when used along other database
  * operations.
  */
-export const processedTxsToEntries = (
+const processedTxsToEntries = (
   processedTxs: ProcessedTx[],
 ): Effect.Effect<
   {
@@ -99,7 +100,6 @@ export const processedTxsToEntries = (
   Database
 > =>
   Effect.gen(function* () {
-    const sql = yield* SqlClient.SqlClient;
     // Collect all spent UTxOs so that we can make a single SQL query to
     // retrieve their addresses.
     const allSpent: Buffer[] = processedTxs.flatMap(
@@ -152,38 +152,50 @@ export const processedTxsToEntries = (
     sqlErrorToDatabaseError(tableName, "processedTxsToAddressHistoryEntries"),
   );
 
-export const insertTxs = (
+export const insertProcessedTxs = (
   processedTxs: ProcessedTx[],
 ): Effect.Effect<
-  void,
+  {
+    insertedEntries: Entry[];
+    collectiveSpent: Buffer[];
+    collectiveProduced: Ledger.Entry[];
+  },
   DatabaseError | SDK.CmlDeserializationError | SDK.DataCoercionError,
   Database
 > =>
   Effect.gen(function* () {
     if (processedTxs.length <= 0) {
       yield* Effect.logDebug("No transactions to insert in address history db");
-      return;
+      return {
+        insertedEntries: [],
+        collectiveSpent: [],
+        collectiveProduced: [],
+      };
     } else {
-      const { allEntries } = yield* processedTxsToEntries(processedTxs);
+      const { allEntries, allSpent, allProduced } =
+        yield* processedTxsToEntries(processedTxs);
       yield* insertEntries(allEntries);
+      return {
+        insertedEntries: allEntries,
+        collectiveSpent: allSpent,
+        collectiveProduced: allProduced,
+      };
     }
   }).pipe(Effect.withLogSpan(`entries ${tableName}`));
 
 /**
  * Given a list of withdrawal event entries, this function tries to find their
- * spent UTxOs in `MempoolLedgerDB`. For any entry that such a UTxO is
- * successfully found, a corresponding input in `AddressHistoryDB` will be
- * inserted. The failed ones are silently dropped.
+ * spent UTxOs in `MempoolLedgerDB`. Any missing withdrawn output reference
+ * leads to failure.
  */
 export const insertWithdrwals = (
   withdrawals: UserEvents.Entry[],
 ): Effect.Effect<
   void,
-  DatabaseError | SDK.CmlDeserializationError | SDK.DataCoercionError,
+  DatabaseError | NotFoundError | SDK.CmlDeserializationError | SDK.DataCoercionError,
   Database
 > =>
   Effect.gen(function* () {
-    // Using `Effect.all` to ensure all withdrawal events are properly formed.
     const withdrawnOutRefs = yield* Effect.all(
       withdrawals.map((w) =>
         WithdrawalsDB.entryToOutRef(w).pipe(
@@ -194,22 +206,11 @@ export const insertWithdrwals = (
         ),
       ),
     );
-    let databaseError: undefined | DatabaseError;
-    // Using `Effect.allSuccesses` to silently drop withdrawal events that don't
-    // have corresponding unspent output references in `MempoolLedgerDB`. Note
-    // that `DatabaseError`s are reported back into `databaseError` so that only
-    // `NotFoundErrors` are ignored.
-    yield* Effect.allSuccesses(
+    yield* Effect.all(
       withdrawnOutRefs.map(({ withdrawalID, outRef }) =>
         Effect.gen(function* () {
           const ledgerEntry = yield* MempoolLedgerDB.retrieveByOutRef(
             outRef,
-          ).pipe(
-            Effect.tapErrorTag("DatabaseError", (e) =>
-              Effect.sync(() => {
-                databaseError = e;
-              }),
-            ),
           );
           return {
             [Columns.EVENT_ID]: withdrawalID,
@@ -220,9 +221,6 @@ export const insertWithdrwals = (
         }),
       ),
     );
-    if (databaseError) {
-      yield* databaseError;
-    }
   });
 
 export const delTxHash = (

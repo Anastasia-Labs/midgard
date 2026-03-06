@@ -1,6 +1,7 @@
 import { Database } from "@/services/database.js";
 import { Effect } from "effect";
 import { SqlClient } from "@effect/sql";
+import * as SDK from "@al-ft/midgard-sdk";
 import {
   clearTable,
   sqlErrorToDatabaseError,
@@ -8,59 +9,36 @@ import {
   retrieveNumberOfEntries,
 } from "@/database/utils/common.js";
 import { ProcessedTx } from "@/utils.js";
-import { AddressHistoryDB, MempoolLedgerDB, Ledger, Tx } from "./index.js";
+import { AddressHistoryDB, MempoolLedgerDB, Tx } from "./index.js";
 
 export const tableName = "mempool";
 
-export const insert = (
-  processedTx: ProcessedTx,
-): Effect.Effect<void, DatabaseError, Database> =>
-  Effect.gen(function* () {
-    const { txId, txCbor, spent, produced } = processedTx;
-    // Insert the tx itself in `MempoolDB`.
-    yield* Tx.insertEntry(tableName, {
-      tx_id: txId,
-      tx: txCbor,
-    });
-    // Insert produced UTxOs in `MempoolLedgerDB`.
-    yield* MempoolLedgerDB.insert(produced);
-    // Remove spent inputs from MempoolLedgerDB.
-    yield* MempoolLedgerDB.clearUTxOs(spent);
-    // Add handled addresses to the lookup table
-    yield* AddressHistoryDB.insert(spent, produced);
-  }).pipe(
-    Effect.withLogSpan(`insert ${tableName}`),
-    Effect.tapError((e) =>
-      Effect.logError(`${tableName} db: insert: ${JSON.stringify(e)}`),
-    ),
-  );
-
 export const insertMultiple = (
   processedTxs: ProcessedTx[],
-): Effect.Effect<void, DatabaseError, Database> =>
+): Effect.Effect<void, SDK.CmlDeserializationError | SDK.DataCoercionError | DatabaseError, Database> =>
   Effect.gen(function* () {
     if (processedTxs.length === 0) {
       return;
     }
+
     const txEntries = processedTxs.map((v) => ({
-      tx_id: v.txId,
-      tx: v.txCbor,
+      [Tx.Columns.TX_ID]: v.txId,
+      [Tx.Columns.TX]: v.txCbor,
     }));
+
     // Insert the tx itself in `MempoolDB`.
     yield* Tx.insertEntries(tableName, txEntries);
 
     const {
-      allEntries: allAddressHistoryEntries,
-      allProduced,
-      allSpent,
-    } = yield* AddressHistoryDB.processedTxsToEntries(processedTxs);
+      collectiveProduced,
+      collectiveSpent,
+    } = yield* AddressHistoryDB.insertProcessedTxs(processedTxs);
 
     // Insert produced UTxOs in `MempoolLedgerDB`.
-    yield* MempoolLedgerDB.insert(allProduced);
+    yield* MempoolLedgerDB.insert(collectiveProduced);
+
     // Remove spent inputs from MempoolLedgerDB.
-    yield* MempoolLedgerDB.clearUTxOs(allSpent);
-    // Update AddressHistoryDB
-    yield* AddressHistoryDB.insertEntries(allAddressHistoryEntries);
+    yield* MempoolLedgerDB.clearUTxOs(collectiveSpent);
   }).pipe(
     Effect.withLogSpan(`insert ${tableName}`),
     Effect.tapError((e) => Effect.logError(`${tableName} db: insert: ${e}`)),
