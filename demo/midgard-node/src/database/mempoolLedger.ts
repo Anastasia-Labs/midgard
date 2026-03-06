@@ -23,10 +23,17 @@ export const retrieveByAddress = (
 ): Effect.Effect<readonly Ledger.Entry[], DatabaseError, Database> =>
   Ledger.retrieveEntriesWithAddress(tableName, address);
 
-export const retrieveEntry = (
+export const retrieveByOutRefs = (
+  outRefs: Buffer[] | readonly Buffer[],
+): Effect.Effect<readonly Ledger.Entry[], DatabaseError, Database> =>
+  Ledger.retrieveByOutRefs(tableName, outRefs);
+
+retrieve;
+
+export const retrieveByOutRef = (
   spentOutRef: Buffer,
 ): Effect.Effect<Ledger.Entry, DatabaseError | NotFoundError, Database> =>
-  Ledger.retrieveEntry(tableName, spentOutRef);
+  Ledger.retrieveByOutRef(tableName, spentOutRef);
 
 export const clearUTxOs = (refs: Buffer[]) =>
   Ledger.delEntries(tableName, refs);

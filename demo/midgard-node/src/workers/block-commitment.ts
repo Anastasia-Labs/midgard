@@ -174,7 +174,7 @@ const applyWithdrawalsToDatabases = (
     const maybeMatchedRows = yield* Effect.forEach(
       withdrawals,
       (withdrawal) =>
-        MempoolLedgerDB.retrieveEntry(withdrawal.spentOutrefs).pipe(
+        MempoolLedgerDB.retrieveByOutRef(withdrawal.spentOutrefs).pipe(
           Effect.map((entry) => Option.some(entry)),
           Effect.catchTag("NotFoundError", () => Effect.succeed(Option.none())),
         ),

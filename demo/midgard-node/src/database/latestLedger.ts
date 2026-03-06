@@ -7,8 +7,8 @@ export const insertMultiple = (
   entries: Ledger.Entry[] | readonly Ledger.Entry[],
 ) => Ledger.insertEntries(tableName, entries);
 
-export const retrieveEntry = (outRef: Buffer) =>
-  Ledger.retrieveEntry(tableName, outRef);
+export const retrieveByOutRef = (outRef: Buffer) =>
+  Ledger.retrieveByOutRef(tableName, outRef);
 
 export const retrieveEntries = (outRefs: Buffer[]) =>
   Ledger.retrieveByOutRefs(tableName, outRefs);
