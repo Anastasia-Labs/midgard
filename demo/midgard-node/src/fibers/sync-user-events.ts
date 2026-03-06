@@ -96,7 +96,7 @@ export const syncUserEvents: Effect.Effect<
   );
 
   if (deposits.length <= 0 && txOrders.length <= 0 && withdrawals.length <= 0) {
-    yield* Effect.logDebug(
+    yield* Effect.logInfo(
       `🏦 No user events found within [${startTime}, ${endTime})`,
     );
     return;
@@ -111,9 +111,11 @@ export const syncUserEvents: Effect.Effect<
   const withdrawalEntries: UserEvents.Entry[] =
     userEventUTxOsToEntry(withdrawals);
 
-  yield* DepositsDB.insertEntries(depositEntries);
-  yield* TxOrdersDB.insertEntries(txOrderEntries);
-  yield* WithdrawalsDB.insertEntries(withdrawalEntries);
+  yield* Effect.all([
+    DepositsDB.insertEntries(depositEntries),
+    TxOrdersDB.insertEntries(txOrderEntries),
+    WithdrawalsDB.insertEntries(withdrawalEntries),
+  ]);
 
   yield* Ref.set(globals.LATEST_USER_EVENTS_FETCH_TIME, endTime);
 });

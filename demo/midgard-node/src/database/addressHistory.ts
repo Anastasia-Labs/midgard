@@ -2,6 +2,7 @@ import { Database } from "@/services/database.js";
 import { SqlClient } from "@effect/sql";
 import { Effect } from "effect";
 import { Address } from "@lucid-evolution/lucid";
+import * as SDK from "@al-ft/midgard-sdk";
 import {
   DatabaseError,
   clearTable,
@@ -14,6 +15,7 @@ import {
   Ledger,
   Tx,
   UserEvents,
+  WithdrawalsDB,
 } from "./index.js";
 import { ProcessedTx } from "@/utils.js";
 
@@ -109,9 +111,8 @@ export const processedTxsToEntries = (
     //       might make sense. However, if insertions to MempoolDB (and
     //       consequently MempoolLedgerDB) are validated by phase 1 and phase 2
     //       validations, looking up MempoolLedgerDB here might be sufficient.
-    const inputLedgerEntries = yield* sql<Ledger.Entry>`
-      SELECT * FROM ${sql(MempoolLedgerDB.tableName)}
-      WHERE ${sql(Ledger.Columns.TX_ID)} IN ${sql.in(allSpent)}`;
+    const inputLedgerEntries =
+      yield* MempoolLedgerDB.retrieveByOutRefs(allSpent);
     const allEntries: Entry[] = [];
     // Goes through each ProcessedTx value while also exhausting the retrieved
     // ledger entries from MempoolLedgerDB. Therefore the final acc is an empty
@@ -153,7 +154,11 @@ export const processedTxsToEntries = (
 
 export const insertTxs = (
   processedTxs: ProcessedTx[],
-): Effect.Effect<void, DatabaseError, Database> =>
+): Effect.Effect<
+  void,
+  DatabaseError | SDK.CmlDeserializationError | SDK.DataCoercionError,
+  Database
+> =>
   Effect.gen(function* () {
     if (processedTxs.length <= 0) {
       yield* Effect.logDebug("No transactions to insert in address history db");
@@ -164,11 +169,60 @@ export const insertTxs = (
     }
   }).pipe(Effect.withLogSpan(`entries ${tableName}`));
 
+/**
+ * Given a list of withdrawal event entries, this function tries to find their
+ * spent UTxOs in `MempoolLedgerDB`. For any entry that such a UTxO is
+ * successfully found, a corresponding input in `AddressHistoryDB` will be
+ * inserted. The failed ones are silently dropped.
+ */
 export const insertWithdrwals = (
   withdrawals: UserEvents.Entry[],
-): Effect.Effect<void> =>
+): Effect.Effect<
+  void,
+  DatabaseError | SDK.CmlDeserializationError | SDK.DataCoercionError,
+  Database
+> =>
   Effect.gen(function* () {
-    return;
+    // Using `Effect.all` to ensure all withdrawal events are properly formed.
+    const withdrawnOutRefs = yield* Effect.all(
+      withdrawals.map((w) =>
+        WithdrawalsDB.entryToOutRef(w).pipe(
+          Effect.map((outRef) => ({
+            withdrawalID: w[UserEvents.Columns.ID],
+            outRef,
+          })),
+        ),
+      ),
+    );
+    let databaseError: undefined | DatabaseError;
+    // Using `Effect.allSuccesses` to silently drop withdrawal events that don't
+    // have corresponding unspent output references in `MempoolLedgerDB`. Note
+    // that `DatabaseError`s are reported back into `databaseError` so that only
+    // `NotFoundErrors` are ignored.
+    yield* Effect.allSuccesses(
+      withdrawnOutRefs.map(({ withdrawalID, outRef }) =>
+        Effect.gen(function* () {
+          const ledgerEntry = yield* MempoolLedgerDB.retrieveByOutRef(
+            outRef,
+          ).pipe(
+            Effect.tapErrorTag("DatabaseError", (e) =>
+              Effect.sync(() => {
+                databaseError = e;
+              }),
+            ),
+          );
+          return {
+            [Columns.EVENT_ID]: withdrawalID,
+            [Columns.ADDRESS]: ledgerEntry[Ledger.Columns.ADDRESS],
+            [Columns.EVENT_TYPE]: EventType.WITHDRAWAL,
+            [Columns.STATUS]: Status.SLATED,
+          };
+        }),
+      ),
+    );
+    if (databaseError) {
+      yield* databaseError;
+    }
   });
 
 export const delTxHash = (

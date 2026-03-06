@@ -59,7 +59,7 @@ export const entryToLedgerEntry = (
   | SDK.CmlDeserializationError
   | SDK.DataCoercionError,
   Database
-> => entryToOutRef(entry).pipe(Effect.andThen(LatestLedgerDB.retrieveEntry));
+> => entryToOutRef(entry).pipe(Effect.andThen(LatestLedgerDB.retrieveByOutRef));
 
 export const entriesToLedgerEntries = (
   entries: UserEvents.Entry[],
