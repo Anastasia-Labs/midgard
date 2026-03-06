@@ -17,8 +17,11 @@ import {
   Tx,
   UserEvents,
   WithdrawalsDB,
+  DepositsDB,
 } from "./index.js";
 import { ProcessedTx } from "@/utils.js";
+import { AlwaysSucceedsContract } from "@/services/always-succeeds.js";
+import { NodeConfig } from "@/services/config.js";
 
 const tableName = "address_history";
 
@@ -183,6 +186,28 @@ export const insertProcessedTxs = (
     }
   }).pipe(Effect.withLogSpan(`entries ${tableName}`));
 
+const withdrawalEntryToEntry = (
+  withdrawal: UserEvents.Entry,
+  status: Status,
+): Effect.Effect<
+  Entry,
+  | DatabaseError
+  | NotFoundError
+  | SDK.CmlDeserializationError
+  | SDK.DataCoercionError,
+  Database
+> =>
+  Effect.gen(function* () {
+    const outRef = yield* WithdrawalsDB.entryToOutRef(withdrawal);
+    const ledgerEntry = yield* MempoolLedgerDB.retrieveByOutRef(outRef);
+    return {
+      [Columns.EVENT_ID]: withdrawal[UserEvents.Columns.ID],
+      [Columns.ADDRESS]: ledgerEntry[Ledger.Columns.ADDRESS],
+      [Columns.EVENT_TYPE]: EventType.WITHDRAWAL,
+      [Columns.STATUS]: status,
+    };
+  });
+
 /**
  * Given a list of withdrawal event entries, this function tries to find their
  * spent UTxOs in `MempoolLedgerDB`. Any missing withdrawn output reference
@@ -190,6 +215,7 @@ export const insertProcessedTxs = (
  */
 export const insertWithdrwals = (
   withdrawals: UserEvents.Entry[],
+  status: Status,
 ): Effect.Effect<
   void,
   | DatabaseError
@@ -198,24 +224,39 @@ export const insertWithdrwals = (
   | SDK.DataCoercionError,
   Database
 > =>
+  Effect.all(withdrawals.map((w) => withdrawalEntryToEntry(w, status))).pipe(
+    Effect.andThen(insertEntries),
+  );
+
+const depositEntryToEntry = (
+  deposit: UserEvents.Entry,
+  status: Status,
+): Effect.Effect<
+  Entry,
+  SDK.CmlDeserializationError,
+  NodeConfig | AlwaysSucceedsContract
+> =>
   Effect.gen(function* () {
-    const withdrawnEntries: Entry[] = yield* Effect.all(
-      withdrawals.map((w) =>
-        WithdrawalsDB.entryToOutRef(w).pipe(
-          Effect.andThen((outRef) => Effect.gen(function* () {
-            const ledgerEntry = yield* MempoolLedgerDB.retrieveByOutRef(outRef);
-            return {
-              [Columns.EVENT_ID]: w[UserEvents.Columns.ID],
-              [Columns.ADDRESS]: ledgerEntry[Ledger.Columns.ADDRESS],
-              [Columns.EVENT_TYPE]: EventType.WITHDRAWAL,
-              [Columns.STATUS]: Status.SLATED,
-            };
-          })),
-        ),
-      ),
-    );
-    yield* insertEntries(withdrawnEntries);
+    const ledgerEntry = yield* DepositsDB.entryToLedgerEntry(deposit);
+    return {
+      [Columns.EVENT_ID]: deposit[UserEvents.Columns.ID],
+      [Columns.ADDRESS]: ledgerEntry[Ledger.Columns.ADDRESS],
+      [Columns.EVENT_TYPE]: EventType.DEPOSIT,
+      [Columns.STATUS]: status,
+    };
   });
+
+export const insertDeposits = (
+  deposits: UserEvents.Entry[],
+  status: Status,
+): Effect.Effect<
+  void,
+  SDK.CmlDeserializationError | DatabaseError,
+  NodeConfig | Database | AlwaysSucceedsContract
+> =>
+  Effect.all(deposits.map((d) => depositEntryToEntry(d, status))).pipe(
+    Effect.andThen(insertEntries),
+  );
 
 export const delTxHash = (
   tx_hash: Buffer,
