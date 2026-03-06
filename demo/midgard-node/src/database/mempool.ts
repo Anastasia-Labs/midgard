@@ -15,7 +15,11 @@ export const tableName = "mempool";
 
 export const insertMultiple = (
   processedTxs: ProcessedTx[],
-): Effect.Effect<void, SDK.CmlDeserializationError | SDK.DataCoercionError | DatabaseError, Database> =>
+): Effect.Effect<
+  void,
+  SDK.CmlDeserializationError | SDK.DataCoercionError | DatabaseError,
+  Database
+> =>
   Effect.gen(function* () {
     if (processedTxs.length === 0) {
       return;
@@ -29,10 +33,8 @@ export const insertMultiple = (
     // Insert the tx itself in `MempoolDB`.
     yield* Tx.insertEntries(tableName, txEntries);
 
-    const {
-      collectiveProduced,
-      collectiveSpent,
-    } = yield* AddressHistoryDB.insertProcessedTxs(processedTxs);
+    const { collectiveProduced, collectiveSpent } =
+      yield* AddressHistoryDB.insertProcessedTxs(processedTxs);
 
     // Insert produced UTxOs in `MempoolLedgerDB`.
     yield* MempoolLedgerDB.insert(collectiveProduced);
