@@ -50,9 +50,7 @@ transaction.
 
 For withdrawals, similar to transactions, first their spent input must be
 resolved to extract the involved address. For "event ID," the withdrawal ID is
-used. The primary difference in resolution is that while it too looks up
-`MempoolLedgerDB`, the entry must not be recorded if the spent UTxO is still
-non-existent.
+used.
 
 Deposits are simpler as they don't need resolving. Their involved addresses are
 extracted from their "event info" field.
@@ -80,7 +78,7 @@ Namely:
 - **Merged**: Block commitments that are merged into the confirmed state.
 
 Each entry insertion is accompanied by updating relevant `AddressHistoryDB`
-entries' statuses.
+entries' statuses (or inserting new entries for user events).
 
 ### Blocks Transactions
 
@@ -126,8 +124,6 @@ They all record a few values:
 - CBOR encoded L1 UTxOs.
 - Events' inclusion times.
 
-Insertions occur at the time of discovery, along with corresponding entries in
-`AddressHistoryDB`. However, for transaction orders and withdrawal events, if
-corresponding ledger entries from `MempoolLedgerDB` cannot be retrieved, those
-specific `AddressHistoryDB` entries will be simply skipped. This silent omission
-_should be_ sufficient (TODO?).
+Insertions occur at the time of discovery. However, `AddressHistoryDB` won't be
+updated as it'd complicate handling cases where currently non-existent UTxOs are
+spent (TODO?).
