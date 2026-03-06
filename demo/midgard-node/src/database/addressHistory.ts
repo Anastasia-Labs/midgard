@@ -18,8 +18,9 @@ import {
   UserEvents,
   WithdrawalsDB,
   DepositsDB,
+  TxOrdersDB,
 } from "./index.js";
-import { ProcessedTx } from "@/utils.js";
+import { breakDownTx, ProcessedTx } from "@/utils.js";
 import { AlwaysSucceedsContract } from "@/services/always-succeeds.js";
 import { NodeConfig } from "@/services/config.js";
 
@@ -67,13 +68,16 @@ export const createTable: Effect.Effect<void, DatabaseError, Database> =
     sqlErrorToDatabaseError(tableName, "Failed to create the table"),
   );
 
+/**
+ * TODO: Make it so that on conflict status column is updated, and rename to
+ *       "upsert."
+ */
 export const insertEntries = (
   entries: Entry[],
 ): Effect.Effect<void, DatabaseError, Database> =>
   Effect.gen(function* () {
     if (entries.length > 0) {
       const sql = yield* SqlClient.SqlClient;
-      // TODO: Make it so that on conflict that status column is updated.
       yield* sql`
         INSERT INTO ${sql(tableName)} ${sql.insert(entries)}
         ON CONFLICT (${sql(Columns.EVENT_ID)}, ${sql(Columns.ADDRESS)}) DO NOTHING`;
@@ -93,6 +97,7 @@ export const insertEntries = (
  */
 const processedTxsToEntries = (
   processedTxs: ProcessedTx[],
+  status: Status,
 ): Effect.Effect<
   {
     allEntries: Entry[];
@@ -131,14 +136,14 @@ const processedTxsToEntries = (
               [Columns.ADDRESS]: ledgerEntry[Ledger.Columns.ADDRESS],
               [Columns.EVENT_ID]: processedTx.txId,
               [Columns.EVENT_TYPE]: EventType.TX,
-              [Columns.STATUS]: Status.SLATED,
+              [Columns.STATUS]: status,
             }),
           );
           const outputEntries: Entry[] = processedTx.produced.map((e) => ({
             [Columns.EVENT_ID]: processedTx.txId,
             [Columns.ADDRESS]: e[Ledger.Columns.ADDRESS],
             [Columns.EVENT_TYPE]: EventType.TX,
-            [Columns.STATUS]: Status.SLATED,
+            [Columns.STATUS]: status,
           }));
           allProduced.push(...processedTx.produced);
           allEntries.push(...inputEntries);
@@ -157,6 +162,7 @@ const processedTxsToEntries = (
 
 export const insertProcessedTxs = (
   processedTxs: ProcessedTx[],
+  status: Status,
 ): Effect.Effect<
   {
     insertedEntries: Entry[];
@@ -176,7 +182,7 @@ export const insertProcessedTxs = (
       };
     } else {
       const { allEntries, allSpent, allProduced } =
-        yield* processedTxsToEntries(processedTxs);
+        yield* processedTxsToEntries(processedTxs, status);
       yield* insertEntries(allEntries);
       return {
         insertedEntries: allEntries,
@@ -257,6 +263,21 @@ export const insertDeposits = (
   Effect.all(deposits.map((d) => depositEntryToEntry(d, status))).pipe(
     Effect.andThen(insertEntries),
   );
+
+export const insertTxOrders = (
+  txOrders: UserEvents.Entry[],
+  status: Status,
+): Effect.Effect<
+  void,
+  SDK.CmlDeserializationError | SDK.DataCoercionError | DatabaseError,
+  Database
+> =>
+  Effect.gen(function* () {
+    const processedTxs = yield* Effect.all(
+      txOrders.map((txOrder) => breakDownTx(txOrder[UserEvents.Columns.INFO])),
+    );
+    yield* insertProcessedTxs(processedTxs, status);
+  });
 
 export const delTxHash = (
   tx_hash: Buffer,
