@@ -48,8 +48,8 @@ payload into a `CML.Transaction` value, and "phase 2" is always true.
    All these steps are to be performed in such a way that any failure would lead
    to reversal of any changes to the ledger MPT.
 5. Block submission fiber runs periodically:
-   a) Retrieves the oldest unsubmitted block from the blocks table and submits
-      its signed Cardano transaction. Fiber dies if this fails. (TODO, we should
+   a) Retrieves the oldest unsubmitted block from `BlocksDB` and submits its
+      signed Cardano transaction. Fiber dies if this fails. (TODO, we should
       implement a recovery mechanism in case the already built and signed
       transaction becomes invalid).
    b) Retrieves all transaction requests which their timestamps fall within the

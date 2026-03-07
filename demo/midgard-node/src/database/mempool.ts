@@ -13,6 +13,10 @@ import { AddressHistoryDB, MempoolLedgerDB, Tx } from "./index.js";
 
 export const tableName = "mempool";
 
+/**
+ * Along with insertions to MempoolDB, applies transactions to MempoolLedgerDB,
+ * updating it. Also adds corresponding entries to AddressHistoryDB.
+ */
 export const insertMultiple = (
   processedTxs: ProcessedTx[],
 ): Effect.Effect<
@@ -25,25 +29,30 @@ export const insertMultiple = (
       return;
     }
 
-    const txEntries = processedTxs.map((v) => ({
-      [Tx.Columns.TX_ID]: v.txId,
-      [Tx.Columns.TX]: v.txCbor,
-    }));
+    const {
+      allTxEntries,
+      allAddressHistoryEntries,
+      collectiveProduced,
+      collectiveSpent,
+    } = yield* AddressHistoryDB.aggregateProcessedTxs(
+      MempoolLedgerDB.tableName,
+      processedTxs,
+      AddressHistoryDB.Status.SLATED,
+    );
 
-    // Insert the tx itself in `MempoolDB`.
-    yield* Tx.insertEntries(tableName, txEntries);
-
-    const { collectiveProduced, collectiveSpent } =
-      yield* AddressHistoryDB.insertProcessedTxs(
-        processedTxs,
-        AddressHistoryDB.Status.SLATED,
-      );
-
-    // Insert produced UTxOs in `MempoolLedgerDB`.
-    yield* MempoolLedgerDB.insert(collectiveProduced);
-
-    // Remove spent inputs from MempoolLedgerDB.
-    yield* MempoolLedgerDB.clearUTxOs(collectiveSpent);
+    // TODO: Batching might be needed.
+    yield* Effect.all([
+      // Insert the transactions themselves in `MempoolDB`.
+      Tx.insertEntries(tableName, allTxEntries),
+      // Insert transactions corresponding entries to `AddressHistoryDB`.
+      AddressHistoryDB.insertEntries(allAddressHistoryEntries),
+      // Insertion to `MempoolLedgerDB` followed by removal of spent outrefs in
+      // sequence.
+      Effect.all([
+        MempoolLedgerDB.insert(collectiveProduced),
+        MempoolLedgerDB.clearUTxOs(collectiveSpent),
+      ]),
+    ], {concurrency: "unbounded"});
   }).pipe(
     Effect.withLogSpan(`insert ${tableName}`),
     Effect.tapError((e) => Effect.logError(`${tableName} db: insert: ${e}`)),

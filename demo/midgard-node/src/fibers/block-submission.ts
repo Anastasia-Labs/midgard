@@ -20,8 +20,9 @@ import {
   ImmutableDB,
   BlocksTxsDB,
   WithdrawalsDB,
+  AddressHistoryDB,
 } from "@/database/index.js";
-import { batchProgram, breakDownTx } from "@/utils.js";
+import { batchProgram, breakDownTx, ProcessedTx } from "@/utils.js";
 
 // For database operations.
 const BATCH_SIZE = 100;
@@ -81,8 +82,8 @@ const processEventsForLedgerApplication = (
     const blockEvents = yield* BlocksDB.retrieveEvents(startDate, endDate);
 
     const withdrawnOutRefs: Buffer[] = [];
-    const entriesProducedByL2Transactions: Ledger.Entry[] = [];
-    const outRefsSpentByL2Transactions: Buffer[] = [];
+    const resolvedWithdrawals: WithdrawalsDB.ResolvedWithdrawal[] = [];
+    const l2ProcessedTxs: ProcessedTx[] = [];
     const mempoolTxHashes: Buffer[] = [];
     const depositedLedgerEntries = yield* Effect.all(
       blockEvents.deposits.map(DepositsDB.entryToLedgerEntry),
@@ -92,33 +93,43 @@ const processEventsForLedgerApplication = (
     // TODO: Allowing DataCoercionError to bubble up from here might be
     //       incorrect. WithdrawalsDB is most likely trust-worthy at this point.
     yield* Effect.forEach(blockEvents.withdrawals, (w) =>
-      WithdrawalsDB.entryToOutRef(w).pipe(
-        Effect.andThen((outRef) =>
-          Effect.sync(() => withdrawnOutRefs.push(outRef)),
+      WithdrawalsDB.resolveEntry("", w).pipe(
+        Effect.andThen((resolvedWithdrawal) =>
+          Effect.sync(() => {
+            withdrawnOutRefs.push(resolvedWithdrawal.ledgerEntry[Ledger.Columns.OUTREF]);
+            resolvedWithdrawals.push(resolvedWithdrawal);
+          }),
         ),
       ),
     );
     yield* Effect.forEach(blockEvents.txOrders, (txOrder) =>
       breakDownTx(txOrder[UserEvents.Columns.INFO]).pipe(
-        Effect.andThen(({ spent, produced }) =>
+        Effect.andThen((processedTx) =>
           Effect.sync(() => {
-            outRefsSpentByL2Transactions.push(...spent);
-            entriesProducedByL2Transactions.push(...produced);
+            l2ProcessedTxs.push(processedTx);
           }),
         ),
       ),
     );
     yield* Effect.forEach(blockEvents.txRequests, (txRequest) =>
       breakDownTx(txRequest[Tx.Columns.TX]).pipe(
-        Effect.andThen(({ spent, produced }) =>
+        Effect.andThen((processedTx) =>
           Effect.sync(() => {
             mempoolTxHashes.push(txRequest[Tx.Columns.TX_ID]);
-            outRefsSpentByL2Transactions.push(...spent);
-            entriesProducedByL2Transactions.push(...produced);
+            l2ProcessedTxs.push(processedTx);
           }),
         ),
       ),
     );
+    const aggregatedTxRequests =
+      yield* AddressHistoryDB.aggregateProcessedTxs(
+        l2ProcessedTxs,
+        AddressHistoryDB.Status.SUBMITTED,
+      );
+    const entriesProducedByL2Transactions: Ledger.Entry[] =
+      [...aggregatedTxRequests.collectiveProduced];
+    const outRefsSpentByL2Transactions: Buffer[] =
+      [...aggregatedTxRequests.collectiveSpent];
     yield* Effect.forEach(blockEvents.deposits, (deposit) =>
       DepositsDB.entryToLedgerEntry(deposit).pipe(
         Effect.andThen((ledgerEntry) =>
@@ -180,6 +191,15 @@ const submitEarliestBlock = Effect.gen(function* () {
               outRefsSpentByL2Transactions.slice(startIndex, endIndex),
             ),
         );
+
+        // Note that this does NOT have unbounded concurrency. We first want to
+        // add any new UTxOs before deleting the spent ones, as some
+        // transactions could have spent UTxO produced by other transactions.
+        const updateLatestLedgerDB = Effect.all([
+          addToLedgerProgram,
+          removeFromLedgerProgram
+        ]);
+
         const transferMempoolTxs = batchProgram(
           BATCH_SIZE,
           txRequests.length,

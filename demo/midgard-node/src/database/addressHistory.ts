@@ -18,7 +18,6 @@ import {
   UserEvents,
   WithdrawalsDB,
   DepositsDB,
-  TxOrdersDB,
 } from "./index.js";
 import { breakDownTx, ProcessedTx } from "@/utils.js";
 import { AlwaysSucceedsContract } from "@/services/always-succeeds.js";
@@ -91,37 +90,39 @@ export const insertEntries = (
   );
 
 /**
- * Returns collective spent outrefs and produced ledger entries to allow fewer
- * traversals of the given `processedTxs` when used along other database
- * operations.
+ * Returns collective spent outrefs and produced ledger entries, plus Tx.Entry
+ * values to allow fewer traversals of the given `processedTxs` when used along
+ * other database operations.
  */
-const processedTxsToEntries = (
+export const aggregateProcessedTxs = (
+  referenceLedgerTableName: string,
   processedTxs: ProcessedTx[],
   status: Status,
 ): Effect.Effect<
   {
-    allEntries: Entry[];
-    allSpent: Buffer[];
-    allProduced: Ledger.Entry[];
+    allTxEntries: Tx.Entry[]
+    allAddressHistoryEntries: Entry[];
+    collectiveSpent: Buffer[];
+    collectiveProduced: Ledger.Entry[];
   },
   DatabaseError,
   Database
 > =>
   Effect.gen(function* () {
+    // To reduce traversals, we'll also collect `Tx.Entry` equivalents.
+    const allTxEntries: Tx.Entry[] = [];
     // Collect all spent UTxOs so that we can make a single SQL query to
     // retrieve their addresses.
-    const allSpent: Buffer[] = processedTxs.flatMap(
+    const collectiveSpent: Buffer[] = processedTxs.flatMap(
       (processedTxs) => processedTxs.spent,
     );
-    const allProduced: Ledger.Entry[] = [];
-    // Retrieve addresses of spent UTxOs from MempoolLedgerDB.
-    // TODO: A fallback mechanism to either LatestLedgerDB or ConfirmedLedgerDB
-    //       might make sense. However, if insertions to MempoolDB (and
-    //       consequently MempoolLedgerDB) are validated by phase 1 and phase 2
-    //       validations, looking up MempoolLedgerDB here might be sufficient.
-    const inputLedgerEntries =
-      yield* MempoolLedgerDB.retrieveByOutRefs(allSpent);
-    const allEntries: Entry[] = [];
+    const collectiveProduced: Ledger.Entry[] = [];
+    // Retrieve addresses of spent UTxOs from the given ledger table.
+    const inputLedgerEntries = yield* Ledger.retrieveByOutRefs(
+      referenceLedgerTableName,
+      collectiveSpent,
+    );
+    const allAddressHistoryEntries: Entry[] = [];
     // Goes through each ProcessedTx value while also exhausting the retrieved
     // ledger entries from MempoolLedgerDB. Therefore the final acc is an empty
     // list, which we are dicarding here.
@@ -130,6 +131,10 @@ const processedTxsToEntries = (
       inputLedgerEntries,
       (acc, processedTx, _i) =>
         Effect.gen(function* () {
+          allTxEntries.push({
+            [Tx.Columns.TX_ID]: processedTx.txId,
+            [Tx.Columns.TX]: processedTx.txCbor,
+          });
           const relevantLedgerEntries = acc.slice(0, processedTx.spent.length);
           const inputEntries: Entry[] = relevantLedgerEntries.map(
             (ledgerEntry) => ({
@@ -145,94 +150,43 @@ const processedTxsToEntries = (
             [Columns.EVENT_TYPE]: EventType.TX,
             [Columns.STATUS]: status,
           }));
-          allProduced.push(...processedTx.produced);
-          allEntries.push(...inputEntries);
-          allEntries.push(...outputEntries);
+          collectiveProduced.push(...processedTx.produced);
+          allAddressHistoryEntries.push(...inputEntries);
+          allAddressHistoryEntries.push(...outputEntries);
           return acc.slice(processedTx.spent.length);
         }),
     );
     return {
-      allEntries,
-      allSpent,
-      allProduced,
+      allTxEntries,
+      allAddressHistoryEntries,
+      collectiveSpent,
+      collectiveProduced,
     };
   }).pipe(
     sqlErrorToDatabaseError(tableName, "processedTxsToAddressHistoryEntries"),
   );
 
-export const insertProcessedTxs = (
-  processedTxs: ProcessedTx[],
+const resolvedWithdrawalToEntry = (
+  withdrawal: WithdrawalsDB.ResolvedWithdrawal,
   status: Status,
-): Effect.Effect<
-  {
-    insertedEntries: Entry[];
-    collectiveSpent: Buffer[];
-    collectiveProduced: Ledger.Entry[];
-  },
-  DatabaseError | SDK.CmlDeserializationError | SDK.DataCoercionError,
-  Database
-> =>
-  Effect.gen(function* () {
-    if (processedTxs.length <= 0) {
-      yield* Effect.logDebug("No transactions to insert in address history db");
-      return {
-        insertedEntries: [],
-        collectiveSpent: [],
-        collectiveProduced: [],
-      };
-    } else {
-      const { allEntries, allSpent, allProduced } =
-        yield* processedTxsToEntries(processedTxs, status);
-      yield* insertEntries(allEntries);
-      return {
-        insertedEntries: allEntries,
-        collectiveSpent: allSpent,
-        collectiveProduced: allProduced,
-      };
-    }
-  }).pipe(Effect.withLogSpan(`entries ${tableName}`));
-
-const withdrawalEntryToEntry = (
-  withdrawal: UserEvents.Entry,
-  status: Status,
-): Effect.Effect<
-  Entry,
-  | DatabaseError
-  | NotFoundError
-  | SDK.CmlDeserializationError
-  | SDK.DataCoercionError,
-  Database
-> =>
-  Effect.gen(function* () {
-    const outRef = yield* WithdrawalsDB.entryToOutRef(withdrawal);
-    const ledgerEntry = yield* MempoolLedgerDB.retrieveByOutRef(outRef);
-    return {
-      [Columns.EVENT_ID]: withdrawal[UserEvents.Columns.ID],
-      [Columns.ADDRESS]: ledgerEntry[Ledger.Columns.ADDRESS],
-      [Columns.EVENT_TYPE]: EventType.WITHDRAWAL,
-      [Columns.STATUS]: status,
-    };
-  });
+): Entry => ({
+  [Columns.EVENT_ID]: withdrawal.withdrawalEntry[UserEvents.Columns.ID],
+  [Columns.ADDRESS]: withdrawal.ledgerEntry[Ledger.Columns.ADDRESS],
+  [Columns.EVENT_TYPE]: EventType.WITHDRAWAL,
+  [Columns.STATUS]: status,
+});
 
 /**
  * Given a list of withdrawal event entries, this function tries to find their
  * spent UTxOs in `MempoolLedgerDB`. Any missing withdrawn output reference
- * leads to failure.
+ * leads to failure, since this function is meant to be used at the time of
+ * block commitment and not earlier.
  */
 export const insertWithdrwals = (
-  withdrawals: UserEvents.Entry[],
+  withdrawals: WithdrawalsDB.ResolvedWithdrawal[],
   status: Status,
-): Effect.Effect<
-  void,
-  | DatabaseError
-  | NotFoundError
-  | SDK.CmlDeserializationError
-  | SDK.DataCoercionError,
-  Database
-> =>
-  Effect.all(withdrawals.map((w) => withdrawalEntryToEntry(w, status))).pipe(
-    Effect.andThen(insertEntries),
-  );
+): Effect.Effect<void, DatabaseError, Database> =>
+  insertEntries(withdrawals.map((w) => resolvedWithdrawalToEntry(w, status)));
 
 const depositEntryToEntry = (
   deposit: UserEvents.Entry,
