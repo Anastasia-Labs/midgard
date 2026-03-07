@@ -50,16 +50,30 @@ export const entryToOutRef = (
     return Buffer.from(outRef.to_cbor_bytes());
   });
 
-export const entryToLedgerEntry = (
+export type ResolvedWithdrawal = {
+  withdrawalEntry: UserEvents.Entry;
+  ledgerEntry: Ledger.Entry;
+}
+
+export const resolveEntry = (
+  ledgerTableName: string,
   entry: UserEvents.Entry,
 ): Effect.Effect<
-  Ledger.Entry,
+  ResolvedWithdrawal,
   | DatabaseError
   | NotFoundError
   | SDK.CmlDeserializationError
   | SDK.DataCoercionError,
   Database
-> => entryToOutRef(entry).pipe(Effect.andThen(LatestLedgerDB.retrieveByOutRef));
+> =>
+  Effect.gen(function* () {
+    const outRef = yield* entryToOutRef(entry);
+    const ledgerEntry = yield* Ledger.retrieveByOutRef(ledgerTableName, outRef)
+    return {
+      withdrawalEntry: entry,
+      ledgerEntry,
+    };
+  });
 
 export const entriesToLedgerEntries = (
   entries: UserEvents.Entry[],

@@ -1,4 +1,4 @@
-## Relational Tables
+## Database Tables
 
 We currently have the following tables:
 - AddressHistoryDB
@@ -19,6 +19,9 @@ instances of three abstract tables:
 - Transactions
 - User events
 
+Additionally, a LevelDB on disk stores the Midgard ledger after the latest block
+commitment (detailed furhter [below](#ledger)).
+
 ### Address History
 
 For storing events and their corresponding addresses involved. Without this
@@ -33,9 +36,8 @@ Addresses can send/receive funds via 3 different interactions:
 3. Withdrawals
 
 Each entry can also have 4 different states:
-1. **Slated**: For events that are not included in a block commitment. This
-   applies to transactions in the mempool, and user events with inclusion times
-   in future.
+1. **Slated**: For events that are not included in a block commitment. This is
+   currently only used for transactions in `MempoolDB`.
 2. **Committed**: For events that are included in a committed block. Committed
    blocks are the ones stored in `BlocksDB` which are not yet submitted.
 3. **Submitted**: For events that are included in a submitted block commitment.
@@ -45,7 +47,7 @@ Each entry can also have 4 different states:
 To add an entry based on a given transaction, first the inputs and outputs of
 the transaction must be extracted. Next, the spent inputs must be resolved using
 the most up-to-date ledger (which is `MempoolLedgerDB`) so that involved
-addresses can be specified. The "event ID" will be the hash of the given
+addresses can be determined. The "event ID" will be the hash of the given
 transaction.
 
 For withdrawals, similar to transactions, first their spent input must be
@@ -89,8 +91,8 @@ header hashes to transaction hashes. This happens along with block commitments
 ### Ledger
 
 We have four ledgers, 3 of which are instances of the `Ledger` abstraction:
-- **`MempoolLedgerDB`**: The most up-to-date ledger, which is populated along with
-  `MempoolDB`.
+- **`MempoolLedgerDB`**: The most up-to-date ledger, which is populated along
+  with `MempoolDB`.
 - **`LatestLedgerDB`**: Ledger after the latest submitted block.
 - **`ConfirmedLedgerDB`**: Ledger of the confirmed state (root element of the
   state queue).
