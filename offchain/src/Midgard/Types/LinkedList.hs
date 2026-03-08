@@ -49,7 +49,7 @@ data ElementData rootData nodeData = Root rootData | Node nodeData
 $( makeIsDataIndexed
      ''ElementData
      [ ('Root, 0)
-     , ('Node, 0)
+     , ('Node, 1)
      ]
  )
 
