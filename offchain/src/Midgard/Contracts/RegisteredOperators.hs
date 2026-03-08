@@ -2,6 +2,8 @@ module Midgard.Contracts.RegisteredOperators (initRegisteredOperators, registerO
 
 import Control.Monad.Except (MonadError (throwError))
 import Control.Monad.Reader (runReaderT)
+import Data.Coerce (coerce)
+import Data.Time (addUTCTime)
 
 import Cardano.Api qualified as C
 import Convex.BuildTx (
@@ -17,9 +19,15 @@ import Convex.BuildTx (
   mintPlutus,
   mintPlutusRefWithRedeemerFn,
   payToScriptInlineDatum,
+  setMinAdaDepositAll,
   spendPlutusInlineDatum,
  )
-import Convex.Class (MonadBlockchain (queryNetworkId, querySlotNo), MonadUtxoQuery, utxosByPaymentCredential)
+import Convex.Class (
+  MonadBlockchain (queryNetworkId, queryProtocolParameters, querySlotNo),
+  MonadUtxoQuery,
+  utxosByPaymentCredential,
+ )
+import Convex.Utils (utcTimeToPosixTime)
 import Convex.Utxos (toTxOut)
 import PlutusLedgerApi.V3 (PubKeyHash (PubKeyHash))
 
@@ -39,6 +47,7 @@ import Midgard.Contracts.Utils (
   inlineDatumFromUTxO,
   nextOutIx,
   pubKeyHashFromCardano,
+  slotToEndUTCTime,
  )
 import Midgard.ScriptUtils (mintingPolicyId, plutusVersion, toMintingPolicy, toValidator, validatorHash)
 import Midgard.Scripts (
@@ -121,10 +130,15 @@ registerOperator
           C.UnsafeAssetName $
             C.serialiseToRawBytes RegisteredOperators.nodeAssetNamePrefix <> C.serialiseToRawBytes operatorPkh
     let C.PolicyId policyId = mintingPolicyId registeredOperatorsPolicy
+    params <- queryProtocolParameters
     netId <- queryNetworkId
     (currentSlot, _, _) <- querySlotNo
     -- 5 minute grace period.
-    let validityUpperBound = C.SlotNo $ C.unSlotNo currentSlot + 300
+    -- Note: The upper bound ends _before_ the beginning of this slot. i.e end time of last slot.
+    let validityUpperBoundExclusive = C.SlotNo $ C.unSlotNo currentSlot + 300
+    validityUpperBoundPosixExclusive <- slotToEndUTCTime $ validityUpperBoundExclusive - 1
+    -- Validity upper bound is exclusive in script context. On-chain normalizes it to inclusive with `-1`.
+    let activationTime = utcTimeToPosixTime $ addUTCTime registrationDuration validityUpperBoundPosixExclusive
     -- Find the hub oracle utxo.
     hubOracleUtxos <- utxosByPaymentCredential $ C.PaymentCredentialByScript hubOracleScriptHash
     (hubOracleTxIn, _) <-
@@ -186,6 +200,41 @@ registerOperator
       addReference retiredOperatorsNonMemberWitness
       -- Use a reference script for minting.
       addReference registeredOperatorsPolicyRef
+      -- Update the root node's link.
+      spendPlutusInlineDatum
+        rootRegistryTxIn
+        (toValidator registeredOperatorsValidator)
+        ()
+      let updatedRootDatum :: RegisteredOperators.Datum
+          updatedRootDatum =
+            LinkedList.Element
+              { elementData = LinkedList.Root mempty
+              , elementLink = Just . coerce $ pubKeyHashFromCardano operatorPkh
+              }
+      payToScriptInlineDatum
+        netId
+        (validatorHash registeredOperatorsValidator)
+        updatedRootDatum
+        C.NoStakeAddress
+        (assetValue policyId RegisteredOperators.rootAssetName 1)
+      -- The new node's datum should contain the original root link and proper activation time.
+      let registeredOperatorDatum :: RegisteredOperators.Datum
+          registeredOperatorDatum =
+            LinkedList.Element
+              { elementData =
+                  LinkedList.Node
+                    RegisteredOperators.NodeData
+                      { activationTime
+                      }
+              , elementLink = rootOriginalLink
+              }
+      -- Prepend the new node.
+      payToScriptInlineDatum
+        netId
+        (validatorHash registeredOperatorsValidator)
+        registeredOperatorDatum
+        C.NoStakeAddress
+        (assetValue policyId newNodeAsset 1 <> C.lovelaceToValue operatorRequiredBond)
       -- Mint the token for the new registering node.
       mintPlutusRefWithRedeemerFn
         registeredOperatorsPolicyRef
@@ -217,50 +266,12 @@ registerOperator
         )
         newNodeAsset
         1
-      -- The new node's datum should contain the original root link and proper activation time.
-      let registeredOperatorDatum :: RegisteredOperators.Datum
-          registeredOperatorDatum =
-            LinkedList.Element
-              { elementData =
-                  LinkedList.Node
-                    RegisteredOperators.NodeData
-                      { activationTime =
-                          fromInteger $
-                            registrationDuration + toInteger (C.unSlotNo validityUpperBound)
-                      }
-              , elementLink = rootOriginalLink
-              }
-      -- Prepend the new node.
-      payToScriptInlineDatum
-        netId
-        (validatorHash registeredOperatorsValidator)
-        registeredOperatorDatum
-        C.NoStakeAddress
-        (assetValue policyId newNodeAsset 1 <> C.lovelaceToValue operatorRequiredBond)
-      -- Update the root node's link.
-      spendPlutusInlineDatum
-        rootRegistryTxIn
-        (toValidator registeredOperatorsValidator)
-        ()
-      let updatedRootDatum :: RegisteredOperators.Datum
-          updatedRootDatum =
-            LinkedList.Element
-              { elementData = LinkedList.Root mempty
-              , elementLink = Just $
-                  case pubKeyHashFromCardano operatorPkh of
-                    PubKeyHash pkh -> LinkedList.NodeKey pkh
-              }
-      payToScriptInlineDatum
-        netId
-        (validatorHash registeredOperatorsValidator)
-        updatedRootDatum
-        C.NoStakeAddress
-        (assetValue policyId RegisteredOperators.rootAssetName 1)
       addBtx $ \txBody ->
         txBody
           { C.txValidityLowerBound = C.TxValidityLowerBound (C.allegraBasedEra @era) currentSlot
-          , C.txValidityUpperBound = C.TxValidityUpperBound (C.shelleyBasedEra @era) $ Just validityUpperBound
+          , C.txValidityUpperBound = C.TxValidityUpperBound (C.shelleyBasedEra @era) $ Just validityUpperBoundExclusive
           }
+      setMinAdaDepositAll params
 
 deregisterOperator ::
   forall era m.
