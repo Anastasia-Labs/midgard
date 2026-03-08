@@ -1,7 +1,8 @@
 {-# LANGUAGE TemplateHaskell #-}
 
-module Midgard.Types.RetiredOperators (Datum, NodeData (..), MintRedeemer (..), rootKey, nodeKeyPrefix, nodeKeyPrefixLen) where
+module Midgard.Types.RetiredOperators (Datum, NodeData (..), MintRedeemer (..), rootAssetName, nodeAssetNamePrefix, nodeAssetNamePrefixLen) where
 
+import Data.ByteString (ByteString)
 import Data.ByteString.Char8 qualified as BS8
 import GHC.Generics (Generic)
 
@@ -14,14 +15,14 @@ import Midgard.Types.LinkedList qualified as LinkedList
 import PlutusLedgerApi.Common
 import Ply (PlyArg)
 
-rootKey :: C.AssetName
-rootKey = C.UnsafeAssetName $ BS8.pack "MIDGARD_RETIRED_OPERATORS"
+rootAssetName :: C.AssetName
+rootAssetName = C.UnsafeAssetName $ BS8.pack "MIDGARD_RETIRED_OPERATORS"
 
-nodeKeyPrefix :: C.AssetName
-nodeKeyPrefix = C.UnsafeAssetName $ BS8.pack "MRET"
+nodeAssetNamePrefix :: ByteString
+nodeAssetNamePrefix = BS8.pack "MRET"
 
-nodeKeyPrefixLen :: Int
-nodeKeyPrefixLen = BS8.length $ C.serialiseToRawBytes nodeKeyPrefix
+nodeAssetNamePrefixLen :: Int
+nodeAssetNamePrefixLen = BS8.length nodeAssetNamePrefix
 
 newtype NodeData = NodeData
   { bondUnlockTime :: Maybe POSIXTime

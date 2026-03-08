@@ -39,7 +39,7 @@ initRetiredOperators
       (plutusVersion retiredOperatorsPolicy)
       policyId
       (\txBody -> RetiredOperators.Init {outputIndex = toInteger $ nextOutIx txBody})
-      RetiredOperators.rootKey
+      RetiredOperators.rootAssetName
       1
     -- And sent to the registered operators validator.
     let datum :: RetiredOperators.Datum =
@@ -52,4 +52,4 @@ initRetiredOperators
       (validatorHash retiredOperatorsValidator)
       datum
       C.NoStakeAddress
-      (assetValue policyId RetiredOperators.rootKey 1)
+      (assetValue policyId RetiredOperators.rootAssetName 1)

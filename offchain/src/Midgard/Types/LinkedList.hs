@@ -1,15 +1,18 @@
 {-# LANGUAGE TemplateHaskell #-}
 
-module Midgard.Types.LinkedList (NodeKey (..), Element (..), ElementData (..)) where
+module Midgard.Types.LinkedList (NodeKey (..), Element (..), ElementData (..), nodeKeyToAssetName) where
 
+import Data.ByteString (ByteString)
 import Data.Typeable (Typeable)
 import GHC.Generics (Generic)
 
+import Cardano.Api qualified as C
 import PlutusLedgerApi.Common (
   BuiltinByteString,
   FromData,
   ToData,
   UnsafeFromData,
+  fromBuiltin,
  )
 import PlutusTx (makeIsDataIndexed)
 import PlutusTx.Blueprint (
@@ -27,6 +30,10 @@ import Ply (PlyArg)
 
 newtype NodeKey = NodeKey BuiltinByteString
   deriving newtype (ToData, FromData, UnsafeFromData)
+
+-- | Produce a linked list asset name by prepending the prefix.
+nodeKeyToAssetName :: ByteString -> NodeKey -> C.AssetName
+nodeKeyToAssetName prefix (NodeKey plutusBs) = C.UnsafeAssetName $ prefix <> fromBuiltin plutusBs
 
 instance HasBlueprintSchema NodeKey referenedTypes where
   schema = SchemaBytes emptySchemaInfo {title = Just "NodeKey"} emptyBytesSchema

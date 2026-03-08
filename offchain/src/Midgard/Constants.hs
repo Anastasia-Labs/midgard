@@ -4,6 +4,7 @@ module Midgard.Constants (
   hubOracleMintingPolicyId,
   hubOracleAssetName,
   hubOracleValidator,
+  registrationDuration,
   operatorRequiredBond,
   operatorSlashingPenalty,
   hubOracleMintingPolicyId',
@@ -48,6 +49,10 @@ hubOracleAssetName = C.UnsafeAssetName $ BS8.pack "MIDGARD_HUB_ORACLE"
 
 operatorRequiredBond :: C.Lovelace
 operatorRequiredBond = 5_000_000
+
+-- TODO (chase): Source from midgard protocol params when finalized.
+registrationDuration :: Integer
+registrationDuration = 0
 
 operatorSlashingPenalty :: C.Lovelace
 operatorSlashingPenalty = 3_000_000
