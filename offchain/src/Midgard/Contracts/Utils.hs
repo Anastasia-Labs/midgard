@@ -1,6 +1,9 @@
 module Midgard.Contracts.Utils (
   LinkedListInfo (..),
   nextOutIx,
+  slotToBeginUTCTime,
+  slotToEndUTCTime,
+  utcTimeToSlotUnsafe,
   findOutputIndexWithAsset,
   findUtxoWithAsset,
   inlineDatumFromUTxO,
@@ -9,20 +12,23 @@ module Midgard.Contracts.Utils (
   pubKeyHashFromCardano,
 ) where
 
+import Control.Monad.Except (MonadError (throwError))
 import Control.Monad.Reader (MonadReader (ask), MonadTrans (lift), ReaderT)
 import Data.ByteString (ByteString)
 import Data.List (find, findIndex)
 import Data.Map.Strict qualified as Map
+import Data.Time.Clock (NominalDiffTime, UTCTime, addUTCTime)
 import GHC.IsList (toList)
 
 import Cardano.Api qualified as C
 import Control.Lens (
   view,
-  _2,
  )
 import Convex.CardanoApi.Lenses qualified as L
+import Convex.Class (MonadBlockchain (queryEraHistory, querySystemStart))
 import Convex.Scripts (fromHashableScriptData)
-import Convex.Utxos (UtxoSet (UtxoSet), partition, selectUtxo)
+import Convex.Utils qualified as Convex
+import Convex.Utxos (UtxoSet (UtxoSet))
 import PlutusLedgerApi.Common (BuiltinData, FromData, toBuiltin)
 import PlutusLedgerApi.Data.V3 (PubKeyHash (PubKeyHash))
 
@@ -32,6 +38,27 @@ import Midgard.Types.LinkedList qualified as LinkedList
 -- | Index of the next output to be added into the tx.
 nextOutIx :: C.TxBodyContent v era -> Int
 nextOutIx = length . view L.txOuts
+
+-- | Convert slot to its beginning UTC time.
+slotToBeginUTCTime :: (MonadError String m, MonadBlockchain era m) => C.SlotNo -> m UTCTime
+slotToBeginUTCTime slotNo = do
+  eraHistory <- queryEraHistory
+  systemStart <- querySystemStart
+  either throwError pure $ Convex.slotToUtcTime eraHistory systemStart slotNo
+
+-- | Convert slot to its very last UTC time millisecond.
+slotToEndUTCTime :: (MonadError String f, MonadBlockchain era f) => C.SlotNo -> f UTCTime
+slotToEndUTCTime slotNo = addUTCTime (-oneMs) <$> slotToBeginUTCTime (slotNo + 1)
+  where
+    oneMs :: NominalDiffTime
+    oneMs = 0.001
+
+-- | Convert UTC to slot (unsafe horizon extension), returning only the slot number.
+utcTimeToSlotUnsafe :: (MonadError String m, MonadBlockchain era m) => UTCTime -> m C.SlotNo
+utcTimeToSlotUnsafe time = do
+  eraHistory <- queryEraHistory
+  systemStart <- querySystemStart
+  (\(slotNo, _, _) -> slotNo) <$> either throwError pure (Convex.utcTimeToSlotUnsafe eraHistory systemStart time)
 
 -- | Find the index of the first tx output that contains the given asset.
 findOutputIndexWithAsset :: C.PolicyId -> C.AssetName -> C.TxBodyContent C.BuildTx era -> Int
@@ -45,14 +72,15 @@ findOutputIndexWithAsset policyId assetName txBody =
 
 -- | Find a utxo in the utxo set that contains the given asset.
 findUtxoWithAsset :: UtxoSet ctx a -> C.AssetId -> Maybe (C.TxIn, (C.InAnyCardanoEra (C.TxOut ctx), a))
-findUtxoWithAsset utxoSet asset =
-  let txOutHasToken :: (C.InAnyCardanoEra (C.TxOut ctx), a) -> Bool
-      txOutHasToken (C.InAnyCardanoEra _ txOut, _) =
-        (> 1) $
-          flip C.selectAsset asset $
-            C.txOutValueToValue $
-              view (L._TxOut . _2) txOut
-   in selectUtxo . fst $ partition txOutHasToken utxoSet
+findUtxoWithAsset (UtxoSet utxos) asset =
+  find
+    ( \(_, (C.InAnyCardanoEra _ (C.TxOut _ val _ _), _)) ->
+        C.selectAsset
+          (C.txOutValueToValue val)
+          asset
+          >= 1
+    )
+    $ Map.toList utxos
 
 -- | Parse a linked list datum from an inline datum field.
 inlineDatumFromUTxO :: (FromData a) => C.TxOut ctx era -> Maybe a
