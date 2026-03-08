@@ -5,11 +5,12 @@ module Midgard.Types.ActiveOperators (
   Datum,
   SpendRedeemer (..),
   MintRedeemer (..),
-  rootKey,
-  nodeKeyPrefix,
-  nodeKeyPrefixLen,
+  rootAssetName,
+  nodeAssetNamePrefix,
+  nodeAssetNamePrefixLen,
 ) where
 
+import Data.ByteString (ByteString)
 import Data.ByteString.Char8 qualified as BS8
 import GHC.Generics (Generic)
 
@@ -22,14 +23,14 @@ import Ply (PlyArg)
 
 import Midgard.Types.LinkedList qualified as LinkedList
 
-rootKey :: C.AssetName
-rootKey = C.UnsafeAssetName $ BS8.pack "MIDGARD_ACTIVE_OPERATORS"
+rootAssetName :: C.AssetName
+rootAssetName = C.UnsafeAssetName $ BS8.pack "MIDGARD_ACTIVE_OPERATORS"
 
-nodeKeyPrefix :: C.AssetName
-nodeKeyPrefix = C.UnsafeAssetName $ BS8.pack "MACT"
+nodeAssetNamePrefix :: ByteString
+nodeAssetNamePrefix = BS8.pack "MACT"
 
-nodeKeyPrefixLen :: Int
-nodeKeyPrefixLen = BS8.length $ C.serialiseToRawBytes nodeKeyPrefix
+nodeAssetNamePrefixLen :: Int
+nodeAssetNamePrefixLen = BS8.length nodeAssetNamePrefix
 
 newtype NodeData = NodeData
   { bondUnlockTime :: Maybe POSIXTime

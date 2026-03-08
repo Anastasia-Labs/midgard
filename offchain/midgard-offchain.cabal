@@ -115,6 +115,7 @@ library
   hs-source-dirs:  src
   build-depends:
     , cardano-ledger-core
+    , containers
     , convex-optics
     , lens
     , plutus-core
