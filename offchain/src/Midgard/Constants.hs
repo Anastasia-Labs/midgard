@@ -3,16 +3,14 @@ module Midgard.Constants (
   hubOracleScriptHash,
   hubOracleMintingPolicyId,
   hubOracleAssetName,
-  hubOracleValidator,
   registrationDuration,
   operatorRequiredBond,
   operatorSlashingPenalty,
-  hubOracleMintingPolicyId',
   refScriptStorage,
 ) where
 
 import Data.ByteString.Char8 qualified as BS8
-import Data.Coerce (coerce)
+import Data.Time.Clock (NominalDiffTime)
 
 import Cardano.Api qualified as C
 import Convex.Utils (scriptAddress)
@@ -27,32 +25,26 @@ that is meant to be consumed by the same transaction.
 hubOracleMintingScript :: C.PlutusScript C.PlutusScriptV3
 hubOracleMintingScript = C.PlutusScriptSerialised $ serialiseUPLC alwaysSucceedsUPLC
 
--- Script to lock the hub oracle token at. Temporarily set to an "always fails" validator.s
-hubOracleValidator :: C.PlutusScript C.PlutusScriptV3
-hubOracleValidator = C.PlutusScriptSerialised $ serialiseUPLC alwaysFailsUPLC
-
 -- TODO (chase): Perhaps the storage address should be elsewhere.
 refScriptStorage :: C.NetworkId -> C.AddressInEra C.ConwayEra
 refScriptStorage netId = scriptAddress netId . C.PlutusScriptSerialised $ serialiseUPLC alwaysFailsUPLC
 
 hubOracleScriptHash :: C.ScriptHash
-hubOracleScriptHash = C.hashScript $ C.PlutusScript C.plutusScriptVersion hubOracleValidator
+hubOracleScriptHash = C.hashScript $ C.PlutusScript C.plutusScriptVersion hubOracleMintingScript
 
 hubOracleMintingPolicyId :: C.PolicyId
 hubOracleMintingPolicyId = C.PolicyId . C.hashScript $ C.PlutusScript C.plutusScriptVersion hubOracleMintingScript
 
-hubOracleMintingPolicyId' :: C.ScriptHash
-hubOracleMintingPolicyId' = coerce hubOracleMintingPolicyId
-
 hubOracleAssetName :: C.AssetName
 hubOracleAssetName = C.UnsafeAssetName $ BS8.pack "MIDGARD_HUB_ORACLE"
 
+-- | Mimicking aiken.
 operatorRequiredBond :: C.Lovelace
-operatorRequiredBond = 5_000_000
+operatorRequiredBond = 0
 
--- TODO (chase): Source from midgard protocol params when finalized.
-registrationDuration :: Integer
-registrationDuration = 0
+-- | Mimicking aiken. 30 milliseconds.
+registrationDuration :: NominalDiffTime
+registrationDuration = 0.030
 
 operatorSlashingPenalty :: C.Lovelace
 operatorSlashingPenalty = 3_000_000
