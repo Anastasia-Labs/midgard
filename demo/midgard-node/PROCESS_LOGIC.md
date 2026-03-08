@@ -16,14 +16,16 @@ payload into a `CML.Transaction` value, and "phase 2" is always true.
    will be phase 1 and phase 2 validations, but withdrawals will need to have
    their own dedicated checks).
 4. Commitment worker runs periodically:
-   a) Reads the latest unsubmitted block from `BlocksDB` and stores it in
-      memory as `latestBlock`.
+   a) Reads the latest block from `BlocksDB` and stores it in memory as
+      `latestBlock`.
    b) Stores the current time to use as the upper bound of the block's event
       interval.
    c) Retrieves all user events and transaction requests that fall within the
       established event interval. At this point, all withdrawals, transaction
       orders and requests, and deposits that should be included in the block are
-      available.
+      available (Note that transaction requests don't have formally recognized
+      "inclusion times" as user events do. Their timestamps in `MempoolDB`
+      should be used instead).
    d) Retrieves the ledger Merkle Patricia Trie (MPT) from disk. This _should
       be_ the state of Midgard ledger after `latestBlock` (TODO, some syncing
       mechanism might be needed).
@@ -33,13 +35,13 @@ payload into a `CML.Transaction` value, and "phase 2" is always true.
         iii. Transaction requests
          iv. Deposits
       Within each category, events are sorted by their timestamps. However, this
-      should only matter for transactions.
+      should only matter for transactions and withdrawals.
    f) Find the roots of withdrawals and deposits (most likely during their
       application to the ledger). The ledger's root is already calculated.
    g) Uses the 3 MPT roots, `latestBlock`, and the new event interval to build
       the new block.
    h) Switches to the operator's dedicated block commitment Cardano wallet.
-   i) Retrieves latest state of wallet and contract UTxOs from the blocks table,
+   i) Retrieves latest state of wallet and contract UTxOs from `BlocksDB`,
       overrides the wallet's UTxO in LE's interface, builds the block commitment
       transaction and signs it.
    j) Adds another entry to the blocks table, with the status flag set to

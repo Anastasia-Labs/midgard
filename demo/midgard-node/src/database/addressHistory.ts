@@ -5,14 +5,12 @@ import { Address } from "@lucid-evolution/lucid";
 import * as SDK from "@al-ft/midgard-sdk";
 import {
   DatabaseError,
-  NotFoundError,
   clearTable,
   sqlErrorToDatabaseError,
 } from "@/database/utils/common.js";
 import {
   ImmutableDB,
   MempoolDB,
-  MempoolLedgerDB,
   Ledger,
   Tx,
   UserEvents,
@@ -41,9 +39,8 @@ export type Entry = {
 
 export enum Status {
   SLATED = 0,
-  COMMITTED = 1,
-  SUBMITTED = 2,
-  MERGED = 3,
+  SUBMITTED = 1,
+  MERGED = 2,
 }
 
 export enum EventType {

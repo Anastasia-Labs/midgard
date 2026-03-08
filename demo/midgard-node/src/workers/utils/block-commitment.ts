@@ -15,6 +15,8 @@ import {
   Tx,
   UserEvents,
   Ledger,
+  AddressHistoryDB,
+  MempoolLedgerDB,
 } from "@/database/index.js";
 import {
   AlwaysSucceedsContract,
@@ -28,7 +30,7 @@ import {
   TxSignError,
   TxSubmitError,
 } from "@/transactions/utils.js";
-import { findSpentAndProducedUTxOs } from "@/utils.js";
+import { breakDownTxMinimally } from "@/utils.js";
 import {
   Columns as UserEventsColumns,
   retrieveTimeBoundEntries,
@@ -241,10 +243,10 @@ const txEntryToBatchDBOps = (
   SDK.CmlUnexpectedError
 > =>
   Effect.gen(function* () {
-    const { spent, produced } = yield* findSpentAndProducedUTxOs(
+    const { spent, produced } = yield* breakDownTxMinimally(
       txCbor,
       txHash,
-    ).pipe(Effect.withSpan("findSpentAndProducedUTxOs"));
+    ).pipe(Effect.withSpan("breakDownTxMinimally"));
     const delOps: ETH_UTILS.BatchDBOp[] = spent.map((outRef) => ({
       type: "del",
       key: outRef,
@@ -275,7 +277,8 @@ export const applyTxOrdersToLedger = (
     produced: Ledger.MinimalEntry[];
     sizeOfTxs: number;
   },
-  SDK.CmlUnexpectedError | MptError
+  SDK.CmlUnexpectedError | MptError | DatabaseError,
+  Database
 > =>
   Effect.gen(function* () {
     if (txOrderUTxOs.length <= 0) {
@@ -291,12 +294,12 @@ export const applyTxOrdersToLedger = (
       `🔹 Applying ${txOrderUTxOs.length} tx order(s) to the ledgerTrie`,
     );
 
-    const spentTxOrderUTxOs: Buffer[] = [];
-    const producedTxOrderUTxOs: Ledger.MinimalEntry[] = [];
+    let sizeOfTxs = 0;
     const txOrderTxHashes: Buffer[] = [];
     const ledgerBatchOps: ETH_UTILS.BatchDBOp[] = [];
+    const spentTxOrderUTxOs: Buffer[] = [];
+    const producedTxOrderUTxOs: Ledger.MinimalEntry[] = [];
     const txsBatchOps: ETH_UTILS.BatchDBOp[] = [];
-    let sizeOfTxs = 0;
 
     yield* Effect.forEach(txOrderUTxOs, (txOrderUTxO: SDK.TxOrderUTxO) =>
       Effect.gen(function* () {
@@ -306,8 +309,8 @@ export const applyTxOrdersToLedger = (
           txHash,
           txCbor,
         );
-        txOrderTxHashes.push(txHash);
         sizeOfTxs += txCbor.length;
+        txOrderTxHashes.push(txHash);
         ledgerBatchOps.push(...delOps);
         ledgerBatchOps.push(...putOps);
         spentTxOrderUTxOs.push(...spent);
@@ -389,11 +392,11 @@ export const applyWithdrawalsToLedger = (
   withdrawalEntries: readonly UserEvents.Entry[],
 ): Effect.Effect<number, SDK.CmlUnexpectedError | MptError> =>
   Effect.gen(function* () {
-    if (withdrawalUTxOs.length <= 0) {
+    if (withdrawalEntries.length <= 0) {
       return 0;
     }
     yield* Effect.logInfo(
-      `🔹 Applying ${withdrawalUTxOs.length} withdrawal(s) to the ledgerTrie`,
+      `🔹 Applying ${withdrawalEntries.length} withdrawal(s) to the ledgerTrie`,
     );
 
     const spentUTxOs: Buffer[] = [];
