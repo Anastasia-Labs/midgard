@@ -75,7 +75,7 @@ const temp = Effect.gen(function* () {
           "ledger",
           nodeConfig.LEDGER_MPT_DB_PATH,
         );
-        const x = yield* applyWithdrawalsToLedger(ledgerTrie, []);
+        const x = yield* applyWithdrawalsToLedger(ledgerTrie, withdrawals);
       }),
   });
 });
