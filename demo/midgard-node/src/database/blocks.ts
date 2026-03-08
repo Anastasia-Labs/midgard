@@ -176,18 +176,22 @@ export const retrieveEvents = (
     };
   });
 
-export const retrieveEarliestEntry: Effect.Effect<
+export const retrieveEarliestUnsubmittedEntry: Effect.Effect<
   Option.Option<Entry>,
   DatabaseError,
   Database
 > = Effect.gen(function* () {
-  const entries = yield* retrieve;
-  if (entries.length <= 0) {
+  const sql = yield* SqlClient.SqlClient;
+  const rows = yield* sql<Entry>`
+    SELECT * FROM ${sql(tableName)}
+    WHERE ${sql(Columns.STATUS)} = ${Status.UNSUBMITTED}
+    ORDER BY ${sql(Columns.HEIGHT)} ASC`;
+  if (rows.length <= 0) {
     return Option.none();
   } else {
-    return Option.some(entries[0]);
+    return Option.some(rows[0]);
   }
-});
+}).pipe(sqlErrorToDatabaseError(tableName, "retrieveEarliestUnsubmittedEntry"));
 
 export const retrieveLatestEntry: Effect.Effect<
   Option.Option<Entry>,
