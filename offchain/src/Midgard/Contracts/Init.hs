@@ -11,26 +11,21 @@ import Convex.BuildTx (
   setMinAdaDepositAll,
  )
 import Convex.Class (MonadBlockchain (queryNetworkId, queryProtocolParameters))
-import PlutusLedgerApi.V1 (currencySymbol)
+import PlutusLedgerApi.V1 (ScriptHash (ScriptHash), currencySymbol, scriptHashAddress, toBuiltin)
 import Ply (
   PlutusVersion (PlutusV3),
   ScriptParameter (AsRedeemer),
   TypedScript,
  )
 
-import Midgard.Constants (hubOracleAssetName, hubOracleMintingPolicyId', hubOracleMintingScript, hubOracleValidator, refScriptStorage)
+import Midgard.Constants (hubOracleAssetName, hubOracleMintingScript, hubOracleScriptHash, refScriptStorage)
 import Midgard.Contracts.ActiveOperators (initActiveOperators)
 import Midgard.Contracts.RegisteredOperators (initRegisteredOperators)
 import Midgard.Contracts.RetiredOperators (initRetiredOperators)
-import Midgard.ScriptUtils (mintingPolicyId, policyIdBytes, toMintingPolicy)
+import Midgard.ScriptUtils (mintingPolicyId, policyIdBytes, scriptHashBytes, toMintingPolicy, validatorHash)
 import Midgard.Scripts (
   MidgardRefScripts (..),
-  MidgardScripts (
-    MidgardScripts,
-    activeOperatorsPolicy,
-    registeredOperatorsPolicy,
-    retiredOperatorsPolicy
-  ),
+  MidgardScripts (..),
  )
 import Midgard.Types.HubOracle qualified as HubOracle
 
@@ -45,6 +40,9 @@ initProtocol
     { retiredOperatorsPolicy
     , registeredOperatorsPolicy
     , activeOperatorsPolicy
+    , registeredOperatorsValidator
+    , activeOperatorsValidator
+    , retiredOperatorsValidator
     }
   refScripts =
     do
@@ -56,21 +54,47 @@ initProtocol
         mintPlutus hubOracleMintingScript () hubOracleAssetName 1
         payToScriptInlineDatum
           netId
-          (C.hashScript $ C.PlutusScript C.plutusScriptVersion hubOracleValidator)
+          hubOracleScriptHash
           HubOracle.Datum
             { retiredOperators = scriptCurrencySymbol retiredOperatorsPolicy
             , activeOperators = scriptCurrencySymbol activeOperatorsPolicy
             , registeredOperators = scriptCurrencySymbol registeredOperatorsPolicy
+            , -- TODO (chase): Fill in these dummy values.
+              scheduler = scriptCurrencySymbol registeredOperatorsPolicy
+            , stateQueue = scriptCurrencySymbol registeredOperatorsPolicy
+            , fraudProofCatalogue = scriptCurrencySymbol registeredOperatorsPolicy
+            , fraudProof = scriptCurrencySymbol registeredOperatorsPolicy
+            , deposit = scriptCurrencySymbol registeredOperatorsPolicy
+            , withdrawal = scriptCurrencySymbol registeredOperatorsPolicy
+            , txOrder = scriptCurrencySymbol registeredOperatorsPolicy
+            , settlement = scriptCurrencySymbol registeredOperatorsPolicy
+            , payout = scriptCurrencySymbol registeredOperatorsPolicy
+            , registeredOperatorsAddr = scriptHashAddress (scriptHash registeredOperatorsValidator)
+            , activeOperatorsAddr = scriptHashAddress (scriptHash activeOperatorsValidator)
+            , retiredOperatorsAddr = scriptHashAddress (scriptHash retiredOperatorsValidator)
+            , -- TODO (chase): Fill in these dummy values.
+              schedulerAddr = scriptHashAddress (scriptHash registeredOperatorsValidator)
+            , stateQueueAddr = scriptHashAddress (scriptHash registeredOperatorsValidator)
+            , fraudProofCatalogueAddr = scriptHashAddress (scriptHash registeredOperatorsValidator)
+            , fraudProofAddr = scriptHashAddress (scriptHash registeredOperatorsValidator)
+            , depositAddr = scriptHashAddress (scriptHash registeredOperatorsValidator)
+            , withdrawalAddr = scriptHashAddress (scriptHash registeredOperatorsValidator)
+            , txOrderAddr = scriptHashAddress (scriptHash registeredOperatorsValidator)
+            , settlementAddr = scriptHashAddress (scriptHash registeredOperatorsValidator)
+            , reserveAddr = scriptHashAddress (scriptHash registeredOperatorsValidator)
+            , payoutAddr = scriptHashAddress (scriptHash registeredOperatorsValidator)
+            , reserveObserver = scriptHash registeredOperatorsValidator
             }
           C.NoStakeAddress
           -- For some reason, sc-tools can't balance min-ada. Even 'setMinAdaDepositAll' doesn't work.
-          (assetValue hubOracleMintingPolicyId' hubOracleAssetName 1)
+          (assetValue hubOracleScriptHash hubOracleAssetName 1)
         initRegisteredOperators netId scripts refScripts
         initActiveOperators netId scripts refScripts
         initRetiredOperators netId scripts refScripts
         setMinAdaDepositAll params
     where
       scriptCurrencySymbol = currencySymbol . policyIdBytes . mintingPolicyId
+      scriptHash = ScriptHash . toBuiltin . scriptHashBytes . validatorHash
 
 publishMidgardMintingPolicy ::
   (MonadBlockchain C.ConwayEra m) =>
