@@ -31,7 +31,7 @@ export const insertMultiple = (
 
     const {
       allTxEntries,
-      allAddressHistoryEntries,
+      addressHistoryEntries,
       collectiveProduced,
       collectiveSpent,
     } = yield* AddressHistoryDB.aggregateProcessedTxs(
@@ -41,18 +41,21 @@ export const insertMultiple = (
     );
 
     // TODO: Batching might be needed.
-    yield* Effect.all([
-      // Insert the transactions themselves in `MempoolDB`.
-      Tx.insertEntries(tableName, allTxEntries),
-      // Insert transactions corresponding entries to `AddressHistoryDB`.
-      AddressHistoryDB.insertEntries(allAddressHistoryEntries),
-      // Insertion to `MempoolLedgerDB` followed by removal of spent outrefs in
-      // sequence.
-      Effect.all([
-        MempoolLedgerDB.insert(collectiveProduced),
-        MempoolLedgerDB.clearUTxOs(collectiveSpent),
-      ]),
-    ], {concurrency: "unbounded"});
+    yield* Effect.all(
+      [
+        // Insert the transactions themselves in `MempoolDB`.
+        Tx.insertEntries(tableName, allTxEntries),
+        // Insert transactions corresponding entries to `AddressHistoryDB`.
+        AddressHistoryDB.insertEntries(addressHistoryEntries),
+        // Insertion to `MempoolLedgerDB` followed by removal of spent outrefs in
+        // sequence.
+        Effect.all([
+          MempoolLedgerDB.insert(collectiveProduced),
+          MempoolLedgerDB.clearUTxOs(collectiveSpent),
+        ]),
+      ],
+      { concurrency: "unbounded" },
+    );
   }).pipe(
     Effect.withLogSpan(`insert ${tableName}`),
     Effect.tapError((e) => Effect.logError(`${tableName} db: insert: ${e}`)),

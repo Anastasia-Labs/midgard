@@ -100,8 +100,8 @@ export const aggregateProcessedTxs = (
   status: Status,
 ): Effect.Effect<
   {
-    allTxEntries: Tx.Entry[]
-    allAddressHistoryEntries: Entry[];
+    allTxEntries: Tx.Entry[];
+    addressHistoryEntries: Entry[];
     collectiveSpent: Buffer[];
     collectiveProduced: Ledger.Entry[];
   },
@@ -122,7 +122,7 @@ export const aggregateProcessedTxs = (
       referenceLedgerTableName,
       collectiveSpent,
     );
-    const allAddressHistoryEntries: Entry[] = [];
+    const addressHistoryEntries: Entry[] = [];
     // Goes through each ProcessedTx value while also exhausting the retrieved
     // ledger entries from MempoolLedgerDB. Therefore the final acc is an empty
     // list, which we are dicarding here.
@@ -151,14 +151,14 @@ export const aggregateProcessedTxs = (
             [Columns.STATUS]: status,
           }));
           collectiveProduced.push(...processedTx.produced);
-          allAddressHistoryEntries.push(...inputEntries);
-          allAddressHistoryEntries.push(...outputEntries);
+          addressHistoryEntries.push(...inputEntries);
+          addressHistoryEntries.push(...outputEntries);
           return acc.slice(processedTx.spent.length);
         }),
     );
     return {
       allTxEntries,
-      allAddressHistoryEntries,
+      addressHistoryEntries,
       collectiveSpent,
       collectiveProduced,
     };
@@ -166,7 +166,7 @@ export const aggregateProcessedTxs = (
     sqlErrorToDatabaseError(tableName, "processedTxsToAddressHistoryEntries"),
   );
 
-const resolvedWithdrawalToEntry = (
+export const resolvedWithdrawalToEntry = (
   withdrawal: WithdrawalsDB.ResolvedWithdrawal,
   status: Status,
 ): Entry => ({
@@ -188,7 +188,7 @@ export const insertWithdrwals = (
 ): Effect.Effect<void, DatabaseError, Database> =>
   insertEntries(withdrawals.map((w) => resolvedWithdrawalToEntry(w, status)));
 
-const depositEntryToEntry = (
+export const depositEntryToEntry = (
   deposit: UserEvents.Entry,
   status: Status,
 ): Effect.Effect<
