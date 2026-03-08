@@ -120,6 +120,7 @@ library
     , lens
     , plutus-core
     , plutus-tx
+    , time
 
 test-suite mockchain-tests
   import:         lang, dependencies
