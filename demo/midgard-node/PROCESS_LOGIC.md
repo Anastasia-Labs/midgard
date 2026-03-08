@@ -55,10 +55,9 @@ payload into a `CML.Transaction` value, and "phase 2" is always true.
    b) Retrieves all transaction requests which their timestamps fall within the
       submitted block's event interval from `MempoolDB`.
    c) Similarly, retrieves all user events from its 3 tables.
-   d) Retrieves all entries of `LatestLedgerDB`. This _should be_ the state of
-      latest submitted block commitment.
-   e) Similar to ledger MPT, applies events to `LatestLedgerDB` in the same
-      order, and updates the table.
-   f) Transfers included mempool transactions to `ImmutableDB` and
+   d) Processes all the retrieved events to find the ledger entries to be
+      removed/added from/to `LatestLedgerDB`, and also entries to be added to
+      `AddressHistoryDB`.
+   e) Transfers included mempool transactions to `ImmutableDB` and
       `BlocksTxsDB`.
    g) Marks submitted block as "submitted."
