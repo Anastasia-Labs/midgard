@@ -53,8 +53,13 @@ export const entryToOutRef = (
 export type ResolvedWithdrawal = {
   withdrawalEntry: UserEvents.Entry;
   ledgerEntry: Ledger.Entry;
-}
+};
 
+/**
+ * Grabs corresponding spent ledger entry from the given ledger table. Returns
+ * the input entry along with the result for easier conversion to
+ * `AddressHistoryDB` entry.
+ */
 export const resolveEntry = (
   ledgerTableName: string,
   entry: UserEvents.Entry,
@@ -68,7 +73,7 @@ export const resolveEntry = (
 > =>
   Effect.gen(function* () {
     const outRef = yield* entryToOutRef(entry);
-    const ledgerEntry = yield* Ledger.retrieveByOutRef(ledgerTableName, outRef)
+    const ledgerEntry = yield* Ledger.retrieveByOutRef(ledgerTableName, outRef);
     return {
       withdrawalEntry: entry,
       ledgerEntry,
