@@ -232,7 +232,7 @@ const processEventsForLedgerApplication = (
   });
 
 const submitEarliestBlock = Effect.gen(function* () {
-  const optUnsubmittedBlock = yield* BlocksDB.retrieveEarliestEntry;
+  const optUnsubmittedBlock = yield* BlocksDB.retrieveEarliestUnsubmittedEntry;
   yield* Option.match(optUnsubmittedBlock, {
     onNone: () => Effect.logInfo("No unsubmitted blocks in queue."),
     onSome: (blockEntry) =>
