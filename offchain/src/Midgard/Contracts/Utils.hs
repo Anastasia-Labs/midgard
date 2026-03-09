@@ -77,11 +77,18 @@ findOutputIndexWithAsset policyId assetName txBody =
 This requires knowledge of _all_ policies that will be minted in the transaction.
 The given target policyId must exist in the _all_ policies list.
 -}
-findMintRedeemerIndex :: [C.PolicyId] -> C.PolicyId -> Integer
-findMintRedeemerIndex allPolicies policyId =
-  case elemIndex policyId (sort allPolicies) of
-    Just ix -> toInteger ix
-    Nothing -> error "target policy id missing from policy list"
+findMintRedeemerIndex :: [C.PolicyId] -> C.TxBodyContent C.BuildTx era -> C.PolicyId -> Int
+findMintRedeemerIndex allPolicies txBody policyId = scriptSpendingRedeemers + mintRedeemerIx
+  where
+    mintRedeemerIx =
+      case elemIndex policyId (sort allPolicies) of
+        Just ix -> ix
+        Nothing -> error "target policy id missing from policy list"
+    scriptSpendingRedeemers =
+      length . filter hasScriptSpendingWitness $ C.txIns txBody
+    hasScriptSpendingWitness :: (C.TxIn, C.BuildTxWith C.BuildTx (C.Witness C.WitCtxTxIn era)) -> Bool
+    hasScriptSpendingWitness (_, C.BuildTxWith (C.ScriptWitness _ _)) = True
+    hasScriptSpendingWitness _ = False
 
 -- | Find a utxo in the utxo set that contains the given asset.
 findUtxoWithAsset :: UtxoSet ctx a -> C.AssetId -> Maybe (C.TxIn, (C.InAnyCardanoEra (C.TxOut ctx), a))
