@@ -17,6 +17,7 @@ import {
   Ledger,
   AddressHistoryDB,
   MempoolLedgerDB,
+  WithdrawalsDB,
 } from "@/database/index.js";
 import {
   AlwaysSucceedsContract,
@@ -266,56 +267,109 @@ const txEntryToBatchDBOps = (
     };
   });
 
-export const applyTxOrdersToLedger = (
+export const applyWithdrawalsToLedger = (
   ledgerTrie: MidgardMpt,
-  txOrderUTxOs: readonly SDK.TxOrderUTxO[],
+  withdrawalEntries: readonly UserEvents.Entry[],
 ): Effect.Effect<
   {
-    txsBatchOps: ETH_UTILS.BatchDBOp[];
-    txHashes: Buffer[];
-    spent: Buffer[];
-    produced: Ledger.MinimalEntry[];
-    sizeOfTxs: number;
+    withdrawnOutRefs: Buffer[];
+    withdrawalsRoot: string;
+    sizeOfWithdrawals: number;
+  },
+  SDK.CmlDeserializationError | SDK.DataCoercionError | MptError
+> =>
+  Effect.gen(function* () {
+    yield* Effect.logInfo(
+      `🔹 Applying ${withdrawalEntries.length} withdrawal(s) to the ledgerTrie`,
+    );
+
+    const withdrawalsTrie: MidgardMpt = yield* MidgardMpt.create("withdrawals");
+    const withdrawnOutRefs: Buffer[] = [];
+    const ledgerBatchOps: ETH_UTILS.BatchDBOp[] = [];
+    const withdrawalsBatchOps: ETH_UTILS.BatchDBOp[] = [];
+    let sizeOfWithdrawals = 0;
+
+    yield* Effect.forEach(
+      withdrawalEntries,
+      (withdrawalEntry: UserEvents.Entry) =>
+        Effect.gen(function* () {
+          const withdrawalInfo = withdrawalEntry[UserEvents.Columns.INFO];
+          const spentOutRef =
+            yield* WithdrawalsDB.entryToOutRef(withdrawalEntry);
+          ledgerBatchOps.push({
+            type: "del",
+            key: spentOutRef,
+          });
+          withdrawalsBatchOps.push({
+            type: "put",
+            key: withdrawalEntry[UserEvents.Columns.ID],
+            value: withdrawalInfo,
+          });
+          sizeOfWithdrawals += withdrawalInfo.length;
+          withdrawnOutRefs.push(spentOutRef);
+        }),
+    );
+
+    yield* Effect.all(
+      [
+        ledgerTrie.batch(ledgerBatchOps),
+        withdrawalsTrie.batch(withdrawalsBatchOps),
+      ],
+      { concurrency: "unbounded" },
+    );
+
+    const withdrawalsRoot = yield* withdrawalsTrie.getRootHex();
+
+    return {
+      withdrawnOutRefs,
+      ledgerBatchOps,
+      withdrawalsRoot,
+      sizeOfWithdrawals,
+    };
+  });
+
+export const applyTxOrdersToLedger = (
+  ledgerTrie: MidgardMpt,
+  txOrders: readonly UserEvents.Entry[],
+): Effect.Effect<
+  {
+    txOrdersHashes: Buffer[];
+    spentByTxOrders: Buffer[];
+    producedByTxOrders: Ledger.MinimalEntry[];
+    txsTrie: MidgardMpt;
+    sizeOfTxOrders: number;
   },
   SDK.CmlUnexpectedError | MptError | DatabaseError,
   Database
 > =>
   Effect.gen(function* () {
-    if (txOrderUTxOs.length <= 0) {
-      return {
-        txsBatchOps: [],
-        txHashes: [],
-        spent: [],
-        produced: [],
-        sizeOfTxs: 0,
-      };
-    }
     yield* Effect.logInfo(
-      `🔹 Applying ${txOrderUTxOs.length} tx order(s) to the ledgerTrie`,
+      `🔹 Applying ${txOrders.length} tx order(s) to the ledgerTrie`,
     );
 
-    let sizeOfTxs = 0;
-    const txOrderTxHashes: Buffer[] = [];
+    let sizeOfTxOrders = 0;
+    const txOrdersHashes: Buffer[] = [];
     const ledgerBatchOps: ETH_UTILS.BatchDBOp[] = [];
-    const spentTxOrderUTxOs: Buffer[] = [];
-    const producedTxOrderUTxOs: Ledger.MinimalEntry[] = [];
-    const txsBatchOps: ETH_UTILS.BatchDBOp[] = [];
+    const spentByTxOrders: Buffer[] = [];
+    const producedByTxOrders: Ledger.MinimalEntry[] = [];
+    const txOrdersLedgerBatchOps: ETH_UTILS.BatchDBOp[] = [];
+    const txsTrie: MidgardMpt = yield* MidgardMpt.create("txs");
 
-    yield* Effect.forEach(txOrderUTxOs, (txOrderUTxO: SDK.TxOrderUTxO) =>
+    yield* Effect.forEach(txOrders, (txOrder: UserEvents.Entry) =>
       Effect.gen(function* () {
-        const txHash = txOrderUTxO.idCbor;
-        const txCbor = txOrderUTxO.infoCbor;
+        const txHash = txOrder[UserEvents.Columns.ID];
+        const txCbor = txOrder[UserEvents.Columns.INFO];
         const { delOps, putOps, spent, produced } = yield* txEntryToBatchDBOps(
           txHash,
           txCbor,
         );
-        sizeOfTxs += txCbor.length;
-        txOrderTxHashes.push(txHash);
+        sizeOfTxOrders += txCbor.length;
+        txOrdersHashes.push(txHash);
         ledgerBatchOps.push(...delOps);
         ledgerBatchOps.push(...putOps);
-        spentTxOrderUTxOs.push(...spent);
-        producedTxOrderUTxOs.push(...produced);
-        txsBatchOps.push({
+        spentByTxOrders.push(...spent);
+        producedByTxOrders.push(...produced);
+        txOrdersLedgerBatchOps.push({
           type: "put",
           key: txHash,
           value: txCbor,
@@ -326,36 +380,31 @@ export const applyTxOrdersToLedger = (
     yield* ledgerTrie.batch(ledgerBatchOps);
 
     return {
-      txsBatchOps,
-      txHashes: txOrderTxHashes,
-      spent: spentTxOrderUTxOs,
-      produced: producedTxOrderUTxOs,
-      sizeOfTxs,
+      txOrdersHashes,
+      spentByTxOrders,
+      producedByTxOrders,
+      txsTrie,
+      sizeOfTxOrders,
     };
   });
 
-export const applyMempoolToLedger = (
+export const applyTxRequestsToLedger = (
   ledgerTrie: MidgardMpt,
   txsTrie: MidgardMpt,
   mempoolTxs: readonly Tx.Entry[],
 ): Effect.Effect<
   {
-    mempoolTxHashes: Buffer[];
-    sizeOfTxs: number;
+    txRequestsHashes: Buffer[];
+    txsRoot: string;
+    sizeOfTxRequests: number;
   },
   SDK.CmlUnexpectedError | MptError
 > =>
   Effect.gen(function* () {
-    if (mempoolTxs.length <= 0) {
-      return {
-        mempoolTxHashes: [],
-        sizeOfTxs: 0,
-      };
-    }
     const mempoolTxHashes: Buffer[] = [];
     const mempoolBatchOps: ETH_UTILS.BatchDBOp[] = [];
     const ledgerBatchOps: ETH_UTILS.BatchDBOp[] = [];
-    let sizeOfTxs = 0;
+    let sizeOfTxRequests = 0;
     yield* Effect.logInfo(
       "🔹 Going through mempool and processings transactions...",
     );
@@ -365,7 +414,7 @@ export const applyMempoolToLedger = (
         const txCbor = entry[Tx.Columns.TX];
         const { delOps, putOps } = yield* txEntryToBatchDBOps(txHash, txCbor);
         mempoolTxHashes.push(txHash);
-        sizeOfTxs += txCbor.length;
+        sizeOfTxRequests += txCbor.length;
         mempoolBatchOps.push({
           type: "put",
           key: txHash,
@@ -381,109 +430,65 @@ export const applyMempoolToLedger = (
       { concurrency: "unbounded" },
     );
 
+    const txsRoot = yield* txsTrie.getRootHex();
+
     return {
-      mempoolTxHashes: mempoolTxHashes,
-      sizeOfTxs,
+      txRequestsHashes: mempoolTxHashes,
+      txsRoot,
+      sizeOfTxRequests,
     };
   });
 
-export const applyWithdrawalsToLedger = (
-  ledgerTrie: MidgardMpt,
-  withdrawalEntries: readonly UserEvents.Entry[],
-): Effect.Effect<number, SDK.CmlUnexpectedError | MptError> =>
-  Effect.gen(function* () {
-    if (withdrawalEntries.length <= 0) {
-      return 0;
-    }
-    yield* Effect.logInfo(
-      `🔹 Applying ${withdrawalEntries.length} withdrawal(s) to the ledgerTrie`,
-    );
-
-    const spentUTxOs: Buffer[] = [];
-    const ledgerBatchOps: ETH_UTILS.BatchDBOp[] = [];
-    let sizeOfWithdrawals = 0;
-
-    yield* Effect.forEach(
-      withdrawalUTxOs,
-      (withdrawalUTxO: SDK.WithdrawalUTxO) =>
-        Effect.gen(function* () {
-          const withdrawalInfo = withdrawalUTxO.infoCbor;
-          sizeOfWithdrawals += withdrawalInfo.length;
-        }),
-    );
-
-    return sizeOfWithdrawals;
-  });
-
-/**
- * Converts given deposit events (db entries) to Cardano UTxOs and adds them to
- * the given `ledgerTrie`. Returns the converted UTxOs and their inclusion
- * times.
- */
 export const applyDepositsToLedger = (
-  addOrRemove: "add" | "remove",
   ledgerTrie: MidgardMpt,
   deposits: readonly UserEvents.Entry[],
 ): Effect.Effect<
   {
-    processedDeposits: {
-      utxo: CML.TransactionUnspentOutput;
-      inclusionTime: Date;
-    }[];
+    depositLedgerEntries: Ledger.Entry[];
+    depositsRoot: string;
     sizeOfDeposits: number;
   },
-  MptError | SDK.CmlUnexpectedError,
+  MptError | SDK.CmlDeserializationError,
   NodeConfig | AlwaysSucceedsContract
 > =>
   Effect.gen(function* () {
-    if (deposits.length <= 0) {
-      return {
-        processedDeposits: [],
-        sizeOfDeposits: 0,
-      };
-    }
     yield* Effect.logInfo(
       `🔹 Applying ${deposits.length} deposit(s) to the ledgerTrie`,
     );
-    const { deposit: depositAuthValidator } = yield* AlwaysSucceedsContract;
-    let insertedUTxOsWithDates: {
-      utxo: CML.TransactionUnspentOutput;
-      inclusionTime: Date;
-    }[] = [];
+    const depositLedgerEntries: Ledger.Entry[] = [];
+    const depositsTrie: MidgardMpt = yield* MidgardMpt.create("deposits");
+    const depositsBatchOps: ETH_UTILS.BatchDBOp[] = [];
+    const ledgerBatchOps: ETH_UTILS.BatchDBOp[] = [];
     let sizeOfDeposits = 0;
-    const putOpsRaw: (ETH_UTILS.BatchDBOp | void)[] = yield* Effect.forEach(
-      deposits,
-      (dbDeposit) =>
-        Effect.gen(function* () {
-          const utxo = yield* DepositsDB.entryToCMLUTxO(
-            dbDeposit,
-            depositAuthValidator.policyId,
-          );
-
-          sizeOfDeposits += dbDeposit[UserEvents.Columns.INFO].length;
-
-          insertedUTxOsWithDates.push({
-            utxo,
-            inclusionTime: dbDeposit[UserEvents.Columns.INCLUSION_TIME],
-          });
-          const putOp: ETH_UTILS.BatchDBOp =
-            addOrRemove === "add"
-              ? {
-                  type: "put",
-                  key: Buffer.from(utxo.input().to_cbor_bytes()),
-                  value: Buffer.from(utxo.output().to_cbor_bytes()),
-                }
-              : { type: "del", key: Buffer.from(utxo.input().to_cbor_bytes()) };
-          return putOp;
-        }).pipe(Effect.catchAllCause(Effect.logInfo)),
+    yield* Effect.forEach(deposits, (depositEntry) =>
+      Effect.gen(function* () {
+        const ledgerEntry = yield* DepositsDB.entryToLedgerEntry(depositEntry);
+        depositLedgerEntries.push(ledgerEntry);
+        sizeOfDeposits += depositEntry[UserEvents.Columns.INFO].length;
+        ledgerBatchOps.push({
+          type: "put",
+          key: ledgerEntry[Ledger.Columns.OUTREF],
+          value: ledgerEntry[Ledger.Columns.OUTPUT],
+        });
+        depositsBatchOps.push({
+          type: "put",
+          key: depositEntry[UserEvents.Columns.ID],
+          value: depositEntry[UserEvents.Columns.INFO],
+        });
+      }),
     );
 
-    const putOps = putOpsRaw.flatMap((f) => (f ? [f] : []));
-    yield* ledgerTrie.batch(putOps);
+    yield* Effect.all(
+      [ledgerTrie.batch(ledgerBatchOps), depositsTrie.batch(depositsBatchOps)],
+      { concurrency: "unbounded" },
+    );
+
+    const depositsRoot = yield* depositsTrie.getRootHex();
 
     return {
-      processedDeposits: insertedUTxOsWithDates,
-      sizeOfDeposits: 0,
+      depositLedgerEntries,
+      depositsRoot,
+      sizeOfDeposits,
     };
   });
 

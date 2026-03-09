@@ -2,7 +2,7 @@ import { parentPort, workerData } from "worker_threads";
 import * as SDK from "@al-ft/midgard-sdk";
 import { Cause, Effect, Match, Option, pipe } from "effect";
 import {
-  applyMempoolToLedger,
+  applyTxRequestsToLedger,
   applyDepositsToLedger,
   buildUnsignedBlockCommitmentTx,
   deserializeStateQueueUTxO,
@@ -12,6 +12,7 @@ import {
   WorkerInput,
   WorkerOutput,
   applyWithdrawalsToLedger,
+  applyTxOrdersToLedger,
 } from "./utils/block-commitment.js";
 import {
   ConfigError,
@@ -75,7 +76,27 @@ const temp = Effect.gen(function* () {
           "ledger",
           nodeConfig.LEDGER_MPT_DB_PATH,
         );
-        const x = yield* applyWithdrawalsToLedger(ledgerTrie, withdrawals);
+        yield* ledgerTrie.checkpoint();
+
+        const newLedgerRoot = yield* Effect.gen(function* () {
+          const { withdrawnOutRefs, withdrawalsRoot, sizeOfWithdrawals } =
+            yield* applyWithdrawalsToLedger(ledgerTrie, withdrawals);
+          const {
+            txOrdersHashes,
+            spentByTxOrders,
+            producedByTxOrders,
+            txsTrie,
+            sizeOfTxOrders,
+          } = yield* applyTxOrdersToLedger(ledgerTrie, txOrders);
+          const { txRequestsHashes, txsRoot, sizeOfTxRequests } =
+            yield* applyTxRequestsToLedger(ledgerTrie, txsTrie, txRequests);
+          const { depositLedgerEntries, depositsRoot, sizeOfDeposits } =
+            yield* applyDepositsToLedger(ledgerTrie, deposits);
+
+          const ledgerRoot = yield* ledgerTrie.getRootHex();
+
+          return ledgerRoot;
+        }).pipe(Effect.tapError((_) => ledgerTrie.revert()));
       }),
   });
 });
@@ -160,7 +181,7 @@ const addDepositUTxOsToDatabases = (
 
 const applyWithdrawalsToDatabases = (
   withdrawals: {
-    spentOutrefs: Buffer;
+    spentOutRefs: Buffer;
     inclusionTime: Date;
   }[],
 ): Effect.Effect<void, DatabaseError, Database> =>
@@ -174,7 +195,7 @@ const applyWithdrawalsToDatabases = (
     const maybeMatchedRows = yield* Effect.forEach(
       withdrawals,
       (withdrawal) =>
-        MempoolLedgerDB.retrieveByOutRef(withdrawal.spentOutrefs).pipe(
+        MempoolLedgerDB.retrieveByOutRef(withdrawal.spentOutRefs).pipe(
           Effect.map((entry) => Option.some(entry)),
           Effect.catchTag("NotFoundError", () => Effect.succeed(Option.none())),
         ),
@@ -422,7 +443,7 @@ const databaseOperationsProgram = (
     const mempoolTxs = yield* MempoolDB.retrieve;
     const mempoolTxsCount = mempoolTxs.length;
 
-    const { mempoolTxHashes, sizeOfTxs } = yield* applyMempoolToLedger(
+    const { mempoolTxHashes, sizeOfTxs } = yield* applyTxRequestsToLedger(
       ledgerTrie,
       txsTrie,
       mempoolTxs,
