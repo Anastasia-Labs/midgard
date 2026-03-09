@@ -498,6 +498,7 @@ export const buildUnsignedBlockCommitmentTx = (
   utxosRoot: string,
   txsRoot: string,
   depositsRoot: string,
+  withdrawalsRoot: string,
   endDate: Date,
 ): Effect.Effect<
   {
@@ -522,7 +523,7 @@ export const buildUnsignedBlockCommitmentTx = (
         utxosRoot,
         txsRoot,
         depositsRoot,
-        "00".repeat(32),
+        withdrawalsRoot,
         BigInt(endDate.getTime()),
       );
 
