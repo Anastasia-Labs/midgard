@@ -41,7 +41,7 @@ import Midgard.Constants (
 import Midgard.Contracts.Utils (
   LinkedListInfo (..),
   findOutputIndexWithAsset,
-  findTxInNonMembership,
+  findUTxONonMembership,
   findUtxoWithAsset,
   findUtxoWithLink,
   inlineDatumFromUTxO,
@@ -49,7 +49,7 @@ import Midgard.Contracts.Utils (
   pubKeyHashFromCardano,
   slotToEndUTCTime,
  )
-import Midgard.ScriptUtils (mintingPolicyId, plutusVersion, toMintingPolicy, toValidator, validatorHash)
+import Midgard.ScriptUtils (mintingPolicyId, mintingPolicyId', plutusVersion, toMintingPolicy, toValidator, validatorHash)
 import Midgard.Scripts (
   MidgardRefScripts (MidgardRefScripts, registeredOperatorsPolicyRef),
   MidgardScripts (
@@ -129,7 +129,7 @@ registerOperator
     let newNodeAsset =
           C.UnsafeAssetName $
             C.serialiseToRawBytes RegisteredOperators.nodeAssetNamePrefix <> C.serialiseToRawBytes operatorPkh
-    let C.PolicyId policyId = mintingPolicyId registeredOperatorsPolicy
+        policyId = mintingPolicyId' registeredOperatorsPolicy
     params <- queryProtocolParameters
     netId <- queryNetworkId
     (currentSlot, _, _) <- querySlotNo
@@ -164,7 +164,7 @@ registerOperator
       utxosByPaymentCredential $
         C.PaymentCredentialByScript $
           validatorHash activeOperatorsValidator
-    activeOperatorsNonMemberWitness <-
+    (activeOperatorsNonMemberWitness, _) <-
       maybe (throwError "Operator already exists in active operator set") pure
         $ flip
           runReaderT
@@ -173,13 +173,13 @@ registerOperator
             , rootAssetName = ActiveOperators.rootAssetName
             , nodeAssetNamePrefix = ActiveOperators.nodeAssetNamePrefix
             }
-        $ findTxInNonMembership activeOperatorsUtxos newNodeAsset
+        $ findUTxONonMembership activeOperatorsUtxos newNodeAsset
     -- Find the retired operators utxo witness to prove that the operator does not exist there.
     retiredOperatorsUtxos <-
       utxosByPaymentCredential $
         C.PaymentCredentialByScript $
           validatorHash retiredOperatorsValidator
-    retiredOperatorsNonMemberWitness <-
+    (retiredOperatorsNonMemberWitness, _) <-
       maybe (throwError "Operator already exists in retired operator set") pure
         $ flip
           runReaderT
@@ -188,7 +188,7 @@ registerOperator
             , rootAssetName = RetiredOperators.rootAssetName
             , nodeAssetNamePrefix = RetiredOperators.nodeAssetNamePrefix
             }
-        $ findTxInNonMembership retiredOperatorsUtxos newNodeAsset
+        $ findUTxONonMembership retiredOperatorsUtxos newNodeAsset
     pure . execBuildTx @era $ do
       -- Must be signed by registering operator.
       addRequiredSignature operatorPkh
@@ -198,8 +198,6 @@ registerOperator
       addReference activeOperatorsNonMemberWitness
       -- Must witness a proof of non-membership in retired operators set.
       addReference retiredOperatorsNonMemberWitness
-      -- Use a reference script for minting.
-      addReference registeredOperatorsPolicyRef
       -- Update the root node's link.
       spendPlutusInlineDatum
         rootRegistryTxIn

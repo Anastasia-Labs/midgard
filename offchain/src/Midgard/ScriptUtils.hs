@@ -3,6 +3,7 @@
 module Midgard.ScriptUtils (
   plutusVersion,
   mintingPolicyId,
+  mintingPolicyId',
   validatorHash,
   policyIdBytes,
   scriptHashBytes,
@@ -23,6 +24,12 @@ mintingPolicyId ::
   (C.IsPlutusScriptLanguage (TransPlutusVersion version)) =>
   TypedScript version '[AsRedeemer any] -> C.PolicyId
 mintingPolicyId = C.scriptPolicyId . C.PlutusScript C.plutusScriptVersion . toMintingPolicy
+
+mintingPolicyId' ::
+  forall version any.
+  (C.IsPlutusScriptLanguage (TransPlutusVersion version)) =>
+  TypedScript version '[AsRedeemer any] -> C.ScriptHash
+mintingPolicyId' = C.hashScript . C.PlutusScript C.plutusScriptVersion . toMintingPolicy
 
 validatorHash ::
   forall version any0 any.

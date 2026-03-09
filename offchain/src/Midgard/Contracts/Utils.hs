@@ -5,17 +5,19 @@ module Midgard.Contracts.Utils (
   slotToEndUTCTime,
   utcTimeToSlotUnsafe,
   findOutputIndexWithAsset,
+  findMintRedeemerIndex,
   findUtxoWithAsset,
   inlineDatumFromUTxO,
-  findTxInNonMembership,
+  findUTxONonMembership,
   findUtxoWithLink,
+  listAssetNameFromUTxO,
   pubKeyHashFromCardano,
 ) where
 
 import Control.Monad.Except (MonadError (throwError))
 import Control.Monad.Reader (MonadReader (ask), MonadTrans (lift), ReaderT)
 import Data.ByteString (ByteString)
-import Data.List (find, findIndex)
+import Data.List (elemIndex, find, findIndex, sort)
 import Data.Map.Strict qualified as Map
 import Data.Time.Clock (NominalDiffTime, UTCTime, addUTCTime)
 import GHC.IsList (toList)
@@ -70,6 +72,16 @@ findOutputIndexWithAsset policyId assetName txBody =
     txOutHasAsset (C.TxOut _ txOutValue _ _) =
       C.selectAsset (C.txOutValueToValue txOutValue) (C.AssetId policyId assetName) > 0
 
+{- | Find the index for minting a policy in the plutus-ledger-api txInfo redeemers assoc list.
+This requires knowledge of _all_ policies that will be minted in the transaction.
+The given target policyId must exist in the _all_ policies list.
+-}
+findMintRedeemerIndex :: [C.PolicyId] -> C.PolicyId -> Integer
+findMintRedeemerIndex allPolicies policyId =
+  case elemIndex policyId (sort allPolicies) of
+    Just ix -> toInteger ix
+    Nothing -> error "target policy id missing from policy list"
+
 -- | Find a utxo in the utxo set that contains the given asset.
 findUtxoWithAsset :: UtxoSet ctx a -> C.AssetId -> Maybe (C.TxIn, (C.InAnyCardanoEra (C.TxOut ctx), a))
 findUtxoWithAsset (UtxoSet utxos) asset =
@@ -103,16 +115,16 @@ but its link (next utxo) contains a key that is _larger_ than the given key, the
 that no utxo with given key exists in the linked list.
 The selected UTxO must also contain a token with the given policy ID.
 -}
-findTxInNonMembership :: UtxoSet ctx a -> C.AssetName -> ReaderT LinkedListInfo Maybe C.TxIn
-findTxInNonMembership (UtxoSet utxoMap) assetToAdd = do
+findUTxONonMembership :: UtxoSet ctx a -> C.AssetName -> ReaderT LinkedListInfo Maybe (C.TxIn, (C.InAnyCardanoEra (C.TxOut ctx), a))
+findUTxONonMembership (UtxoSet utxoMap) assetToAdd = do
   LinkedListInfo {ownerPolicyId, rootAssetName, nodeAssetNamePrefix} <- ask
   let targetUtxos = Map.toList utxoMap
-  fmap fst . lift . flip find targetUtxos $ \(_, (C.InAnyCardanoEra _ utxo, _)) ->
+  lift . flip find targetUtxos $ \(_, (C.InAnyCardanoEra _ utxo, _)) ->
     case inlineDatumFromUTxO @(LinkedList.Element BuiltinData BuiltinData) utxo of
       -- Not a valid UTxO
       Nothing -> False
       Just LinkedList.Element {elementLink} ->
-        let thisAssetNameM = listAssetFromUTxO ownerPolicyId utxo
+        let thisAssetNameM = listAssetNameFromUTxO ownerPolicyId utxo
             linkAssetNameM = nodeKeyToAssetName nodeAssetNamePrefix <$> elementLink
          in case (thisAssetNameM, linkAssetNameM) of
               -- Not a valid UTxO if it doesn't have its own key.
@@ -121,19 +133,9 @@ findTxInNonMembership (UtxoSet utxoMap) assetToAdd = do
                 | thisAssetName == rootAssetName -> isLarger linkAssetNameM
                 | otherwise -> thisAssetName < assetToAdd && isLarger linkAssetNameM
   where
-    -- \| Whether or not the link is "larger" (i.e beyond)
+    -- Whether or not the link is "larger" (i.e beyond)
     isLarger Nothing = True
     isLarger (Just linkKey) = linkKey > assetToAdd
-
-    -- \| Find the linked list node asset name contained within the value.
-    listAssetFromUTxO :: C.PolicyId -> C.TxOut ctx era -> Maybe C.AssetName
-    listAssetFromUTxO policyId (C.TxOut _ txOutValue _ _) = do
-      -- Lookup any asset(s) for the owner policy.
-      nodeAssets <- Map.lookup policyId . C.valueToPolicyAssets $ C.txOutValueToValue txOutValue
-      -- There should be only one asset, yield its name.
-      case toList nodeAssets of
-        [(nodeAssets, _)] -> pure nodeAssets
-        _ -> error "absurd: UTxO contains multiple assets under owner policy"
 
 {- | From the given UTxO set, representing an ordered linked list structure, find the "anchor" UTxO that
 links to the given key.
@@ -144,3 +146,13 @@ findUtxoWithLink utxoSet policyId key = error "TODO: Implement once datum struct
 
 pubKeyHashFromCardano :: C.Hash C.PaymentKey -> PubKeyHash
 pubKeyHashFromCardano = PubKeyHash . toBuiltin . C.serialiseToRawBytes
+
+-- Find the linked list node asset name contained within the value.
+listAssetNameFromUTxO :: C.PolicyId -> C.TxOut ctx era -> Maybe C.AssetName
+listAssetNameFromUTxO policyId (C.TxOut _ txOutValue _ _) = do
+  -- Lookup any asset(s) for the owner policy.
+  nodeAssets <- Map.lookup policyId . C.valueToPolicyAssets $ C.txOutValueToValue txOutValue
+  -- There should be only one asset, yield its name.
+  case toList nodeAssets of
+    [(nodeAssets, _)] -> pure nodeAssets
+    _ -> error "absurd: UTxO contains multiple assets under owner policy"
