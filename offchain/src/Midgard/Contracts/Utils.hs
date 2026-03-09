@@ -19,6 +19,7 @@ import Control.Monad.Reader (MonadReader (ask), MonadTrans (lift), ReaderT)
 import Data.ByteString (ByteString)
 import Data.List (elemIndex, find, findIndex, sort)
 import Data.Map.Strict qualified as Map
+import Data.Maybe (isJust)
 import Data.Time.Clock (NominalDiffTime, UTCTime, addUTCTime)
 import GHC.IsList (toList)
 
@@ -138,11 +139,24 @@ findUTxONonMembership (UtxoSet utxoMap) assetToAdd = do
     isLarger (Just linkKey) = linkKey > assetToAdd
 
 {- | From the given UTxO set, representing an ordered linked list structure, find the "anchor" UTxO that
-links to the given key.
+links to the given key (in asset name form).
 The selected UTxO must also contain a token with the given policy ID.
 -}
-findUtxoWithLink :: UtxoSet ctx a -> C.PolicyId -> ByteString -> Maybe (C.TxIn, C.InAnyCardanoEra (C.TxOut ctx))
-findUtxoWithLink utxoSet policyId key = error "TODO: Implement once datum structures are finalized"
+findUtxoWithLink :: UtxoSet ctx a -> C.AssetName -> ReaderT LinkedListInfo Maybe (C.TxIn, (C.InAnyCardanoEra (C.TxOut ctx), a))
+findUtxoWithLink (UtxoSet utxoMap) targetAsset = do
+  LinkedListInfo {ownerPolicyId, nodeAssetNamePrefix} <- ask
+  let targetUtxos = Map.toList utxoMap
+  lift . flip find targetUtxos $ \(_, (C.InAnyCardanoEra _ utxo, _)) ->
+    case inlineDatumFromUTxO @(LinkedList.Element BuiltinData BuiltinData) utxo of
+      -- Not a valid UTxO
+      Nothing -> False
+      Just LinkedList.Element {elementLink} ->
+        -- Must have a corresponding list asset.
+        let isAuthentic = isJust $ listAssetNameFromUTxO ownerPolicyId utxo
+            linkAssetNameM = nodeKeyToAssetName nodeAssetNamePrefix <$> elementLink
+         in isAuthentic && case linkAssetNameM of
+              Nothing -> False
+              Just assetName -> assetName == targetAsset
 
 pubKeyHashFromCardano :: C.Hash C.PaymentKey -> PubKeyHash
 pubKeyHashFromCardano = PubKeyHash . toBuiltin . C.serialiseToRawBytes
