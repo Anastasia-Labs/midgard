@@ -37,7 +37,7 @@ payload into a `CML.Transaction` value, and "phase 2" is always true.
       Within each category, events are sorted by their timestamps. However, this
       should only matter for transactions and withdrawals.
    f) Find the roots of withdrawals and deposits (most likely during their
-      application to the ledger). The ledger's root is already calculated.
+      application to the ledger). The ledger's root is found at this point.
    g) Uses the 3 MPT roots, `latestBlock`, and the new event interval to build
       the new block.
    h) Switches to the operator's dedicated block commitment Cardano wallet.

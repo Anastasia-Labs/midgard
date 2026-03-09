@@ -66,6 +66,7 @@ const temp = Effect.gen(function* () {
     onSome: (latestBlock) =>
       Effect.gen(function* () {
         const nodeConfig = yield* NodeConfig;
+        const { stateQueue } = yield* AlwaysSucceedsContract;
         const currentDate = new Date();
         const { withdrawals, txOrders, txRequests, deposits } =
           yield* BlocksDB.retrieveEvents(
@@ -78,7 +79,7 @@ const temp = Effect.gen(function* () {
         );
         yield* ledgerTrie.checkpoint();
 
-        const newLedgerRoot = yield* Effect.gen(function* () {
+        yield* Effect.gen(function* () {
           const { withdrawnOutRefs, withdrawalsRoot, sizeOfWithdrawals } =
             yield* applyWithdrawalsToLedger(ledgerTrie, withdrawals);
           const {
@@ -95,7 +96,18 @@ const temp = Effect.gen(function* () {
 
           const ledgerRoot = yield* ledgerTrie.getRootHex();
 
-          return ledgerRoot;
+          const appendedUTxO =
+            yield* BlocksDB.getAppendedStateQueueUTxOFromEntry(latestBlock);
+
+          const { newHeaderHash } = yield* buildUnsignedBlockCommitmentTx(
+            stateQueue,
+            appendedUTxO,
+            ledgerRoot,
+            txsRoot,
+            depositsRoot,
+            withdrawalsRoot,
+            currentDate,
+          );
         }).pipe(Effect.tapError((_) => ledgerTrie.revert()));
       }),
   });
