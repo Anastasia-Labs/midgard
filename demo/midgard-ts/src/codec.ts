@@ -130,22 +130,45 @@ export function readU64(r: Reader): number {
 }
 
 // ---------------------------------------------------------------------------
-// i64 — signed 64-bit big-endian integer. Used for Mint amounts (can be negative).
-// fuel-types/src/canonical.rs:249 — impl_for_primitives!(i64, false)  (same size as u64)
+// BigInt u64 — unsigned 64-bit big-endian integer as bigint.
+// Used for Coin (lovelace) and token amounts which can exceed MAX_SAFE_INTEGER.
+// fuel-types/src/canonical.rs:249 — impl_for_primitives!(u64, false)
 // ---------------------------------------------------------------------------
 
-export function writeI64(w: Writer, n: number): void {
+export function writeBigU64(w: Writer, n: bigint): void {
   const buf = new ArrayBuffer(8);
   const dv = new DataView(buf);
-  dv.setInt32(0, Math.floor(n / 0x100000000), false);
-  dv.setUint32(4, n >>> 0, false);
+  dv.setUint32(0, Number(n >> 32n), false);
+  dv.setUint32(4, Number(n & 0xffffffffn), false);
   w.write(new Uint8Array(buf));
 }
 
-export function readI64(r: Reader): number {
+export function readBigU64(r: Reader): bigint {
   const b = r.read(8);
   const dv = new DataView(b.buffer, b.byteOffset, 8);
-  return dv.getInt32(0, false) * 0x100000000 + dv.getUint32(4, false);
+  return (BigInt(dv.getUint32(0, false)) << 32n) | BigInt(dv.getUint32(4, false));
+}
+
+// ---------------------------------------------------------------------------
+// BigInt i64 — signed 64-bit big-endian integer as bigint.
+// Used for Mint amounts (can be negative and can exceed MAX_SAFE_INTEGER).
+// fuel-types/src/canonical.rs:249 — impl_for_primitives!(i64, false)
+// ---------------------------------------------------------------------------
+
+export function writeBigI64(w: Writer, n: bigint): void {
+  const buf = new ArrayBuffer(8);
+  const dv = new DataView(buf);
+  const twos = n < 0n ? n + (1n << 64n) : n;
+  dv.setUint32(0, Number(twos >> 32n), false);
+  dv.setUint32(4, Number(twos & 0xffffffffn), false);
+  w.write(new Uint8Array(buf));
+}
+
+export function readBigI64(r: Reader): bigint {
+  const b = r.read(8);
+  const dv = new DataView(b.buffer, b.byteOffset, 8);
+  const raw = (BigInt(dv.getUint32(0, false)) << 32n) | BigInt(dv.getUint32(4, false));
+  return raw >= (1n << 63n) ? raw - (1n << 64n) : raw;
 }
 
 // ---------------------------------------------------------------------------

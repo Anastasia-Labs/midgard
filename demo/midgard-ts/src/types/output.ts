@@ -8,8 +8,10 @@ import {
   Reader,
   writeU64,
   readU64,
-  writeI64,
-  readI64,
+  writeBigU64,
+  readBigU64,
+  writeBigI64,
+  readBigI64,
   writeFixedBytes,
   readFixedBytes,
   writeVarBytesStatic,
@@ -87,13 +89,13 @@ export function readVKeyWitness(r: Reader): VKeyWitness {
 //               assetName_bytes+pad
 // ===========================================================================
 
-export type MultiassetEntry = [PolicyId, Array<[Uint8Array, number]>]; // [policyId, [[assetName, amount]]]
+export type MultiassetEntry = [PolicyId, Array<[Uint8Array, bigint]>]; // [policyId, [[assetName, amount]]]
 export type Multiasset = MultiassetEntry[];
 
 // Intermediate type used between the two decode phases.
 interface MultiassetPartialEntry {
   pid: Hash28;
-  assets: Array<{ nameLen: number; amount: number }>;
+  assets: Array<{ nameLen: number; amount: bigint }>;
 }
 
 // fuel: fuel-types/src/canonical.rs:301 — Vec<T>::encode_static (len u64 + nested element statics)
@@ -104,7 +106,7 @@ function writeMultiassetStatic(w: Writer, ma: Multiasset): void {
     writeU64(w, assets.length);
     for (const [name, amount] of assets) {
       writeAssetNameStatic(w, name); // length u64
-      writeU64(w, amount);
+      writeBigU64(w, amount);
     }
   }
 }
@@ -125,10 +127,10 @@ function readMultiassetStatic(r: Reader): MultiassetPartialEntry[] {
   for (let i = 0; i < outerLen; i++) {
     const pid = readHash28Static(r);
     const innerLen = readU64(r);
-    const assets: Array<{ nameLen: number; amount: number }> = [];
+    const assets: Array<{ nameLen: number; amount: bigint }> = [];
     for (let j = 0; j < innerLen; j++) {
       const nameLen = readAssetNameLen(r);
-      const amount = readU64(r);
+      const amount = readBigU64(r);
       assets.push({ nameLen, amount });
     }
     partial.push({ pid, assets });
@@ -143,7 +145,7 @@ function readMultiassetDynamic(
 ): Multiasset {
   const result: Multiasset = [];
   for (const { pid, assets } of partial) {
-    const assetEntries: Array<[Uint8Array, number]> = [];
+    const assetEntries: Array<[Uint8Array, bigint]> = [];
     for (const { nameLen, amount } of assets) {
       const name = readAssetNameDynamic(r, nameLen);
       assetEntries.push([name, amount]);
@@ -168,12 +170,12 @@ function readMultiassetDynamic(
 //               assetName_bytes+pad
 // ===========================================================================
 
-export type MintEntry = [PolicyId, Array<[Uint8Array, number]>]; // [policyId, [[assetName, signedAmount]]]
+export type MintEntry = [PolicyId, Array<[Uint8Array, bigint]>]; // [policyId, [[assetName, signedAmount]]]
 export type Mint = MintEntry[];
 
 interface MintPartialEntry {
   pid: Hash28;
-  assets: Array<{ nameLen: number; amount: number }>;
+  assets: Array<{ nameLen: number; amount: bigint }>;
 }
 
 // fuel: fuel-types/src/canonical.rs:301 — Vec<T>::encode_static (len u64 + nested element statics)
@@ -184,7 +186,7 @@ export function writeMintStatic(w: Writer, mint: Mint): void {
     writeU64(w, assets.length);
     for (const [name, amount] of assets) {
       writeAssetNameStatic(w, name); // length u64
-      writeI64(w, amount);
+      writeBigI64(w, amount);
     }
   }
 }
@@ -205,10 +207,10 @@ export function readMintStatic(r: Reader): MintPartialEntry[] {
   for (let i = 0; i < outerLen; i++) {
     const pid = readHash28Static(r);
     const innerLen = readU64(r);
-    const assets: Array<{ nameLen: number; amount: number }> = [];
+    const assets: Array<{ nameLen: number; amount: bigint }> = [];
     for (let j = 0; j < innerLen; j++) {
       const nameLen = readAssetNameLen(r);
-      const amount = readI64(r);
+      const amount = readBigI64(r);
       assets.push({ nameLen, amount });
     }
     partial.push({ pid, assets });
@@ -220,7 +222,7 @@ export function readMintStatic(r: Reader): MintPartialEntry[] {
 export function readMintDynamic(r: Reader, partial: MintPartialEntry[]): Mint {
   const result: Mint = [];
   for (const { pid, assets } of partial) {
-    const assetEntries: Array<[Uint8Array, number]> = [];
+    const assetEntries: Array<[Uint8Array, bigint]> = [];
     for (const { nameLen, amount } of assets) {
       const name = readAssetNameDynamic(r, nameLen);
       assetEntries.push([name, amount]);
@@ -282,10 +284,10 @@ type ValuePartial =
 function writeValueStatic(w: Writer, v: Value): void {
   if (v.type === "Coin") {
     writeU64(w, 0);
-    writeU64(w, v.coin);
+    writeBigU64(w, v.coin);
   } else {
     writeU64(w, 1);
-    writeU64(w, v.coin);
+    writeBigU64(w, v.coin);
     writeMultiassetStatic(w, v.assets);
   }
 }
@@ -301,9 +303,9 @@ function writeValueDynamic(w: Writer, v: Value): void {
 function readValueStatic(r: Reader): ValuePartial {
   const disc = readU64(r);
   if (disc === 0) {
-    return { type: "Coin", coin: readU64(r) };
+    return { type: "Coin", coin: readBigU64(r) };
   } else if (disc === 1) {
-    const coin = readU64(r);
+    const coin = readBigU64(r);
     const maPartial = readMultiassetStatic(r);
     return { type: "MultiAsset", coin, maPartial };
   }
@@ -335,10 +337,10 @@ export type ValueCompact =
 function writeValueCompactStatic(w: Writer, v: ValueCompact): void {
   if (v.type === "Coin") {
     writeU64(w, 0);
-    writeU64(w, v.coin);
+    writeBigU64(w, v.coin);
   } else {
     writeU64(w, 1);
-    writeU64(w, v.coin);
+    writeBigU64(w, v.coin);
     writeHash32Static(w, v.hash);
   }
 }
@@ -346,9 +348,9 @@ function writeValueCompactStatic(w: Writer, v: ValueCompact): void {
 // fuel: fuel-types/src/canonical.rs:167 — Deserialize::decode_static (reads discriminant + variant fields)
 function readValueCompactStatic(r: Reader): ValueCompact {
   const disc = readU64(r);
-  if (disc === 0) return { type: "Coin", coin: readU64(r) };
+  if (disc === 0) return { type: "Coin", coin: readBigU64(r) };
   if (disc === 1) {
-    const coin = readU64(r);
+    const coin = readBigU64(r);
     const hash = readHash32Static(r);
     return { type: "MultiAsset", coin, hash };
   }

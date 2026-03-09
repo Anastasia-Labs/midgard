@@ -109,7 +109,7 @@ export function cmlToMidgard(cmlTx: CML.Transaction): Transaction {
   }
 
   // --- Mandatory fields ---
-  const fee = Number(body.fee());
+  const fee = body.fee(); // bigint (Coin)
 
   // --- Optional fields ---
   const cmlTtl = body.ttl();
@@ -202,7 +202,7 @@ export function midgardToCml(
   const cmlBody = CML.TransactionBody.new(
     cmlInputs,
     cmlOutputs,
-    BigInt(b.fee),
+    b.fee,
   );
 
   if (b.ttl !== undefined) cmlBody.set_ttl(BigInt(b.ttl));
@@ -335,18 +335,18 @@ function midgardOutputToCml(o: TransactionOutput): CML.TransactionOutput {
 
 function cmlValueToMidgard(v: CML.Value): Value {
   if (!v.has_multiassets()) {
-    return { type: "Coin", coin: Number(v.coin()) };
+    return { type: "Coin", coin: v.coin() };
   }
   return {
     type: "MultiAsset",
-    coin: Number(v.coin()),
+    coin: v.coin(),
     assets: cmlMultiassetToMidgard(v.multi_asset()),
   };
 }
 
 function midgardValueToCml(v: Value): CML.Value {
-  if (v.type === "Coin") return CML.Value.from_coin(BigInt(v.coin));
-  return CML.Value.new(BigInt(v.coin), midgardMultiassetToCml(v.assets));
+  if (v.type === "Coin") return CML.Value.from_coin(v.coin);
+  return CML.Value.new(v.coin, midgardMultiassetToCml(v.assets));
 }
 
 function cmlMultiassetToMidgard(ma: CML.MultiAsset): Multiasset {
@@ -356,10 +356,10 @@ function cmlMultiassetToMidgard(ma: CML.MultiAsset): Multiasset {
     const pid = policyIds.get(i);
     const assets = ma.get_assets(pid)!;
     const assetNames = assets.keys();
-    const assetEntries: Array<[Uint8Array, number]> = [];
+    const assetEntries: Array<[Uint8Array, bigint]> = [];
     for (let j = 0; j < assetNames.len(); j++) {
       const name = assetNames.get(j);
-      assetEntries.push([name.to_raw_bytes(), Number(assets.get(name)!)]);
+      assetEntries.push([name.to_raw_bytes(), assets.get(name)!]);
     }
     result.push([pid.to_raw_bytes(), assetEntries]);
   }
@@ -374,7 +374,7 @@ function midgardMultiassetToCml(ma: Multiasset): CML.MultiAsset {
     for (const [nameBytes, amount] of assetList) {
       assets.insert(
         CML.AssetName.from_raw_bytes(nameBytes),
-        BigInt(amount),
+        amount,
       );
     }
     cmlMa.insert_assets(pid, assets);
@@ -398,10 +398,10 @@ function cmlMintToMidgard(cmlMint: CML.Mint): Mint {
     const pid = policyIds.get(i);
     const assets = cmlMint.get_assets(pid)!;
     const assetNames = assets.keys();
-    const assetEntries: Array<[Uint8Array, number]> = [];
+    const assetEntries: Array<[Uint8Array, bigint]> = [];
     for (let j = 0; j < assetNames.len(); j++) {
       const name = assetNames.get(j);
-      assetEntries.push([name.to_raw_bytes(), Number(assets.get(name)!)]);
+      assetEntries.push([name.to_raw_bytes(), assets.get(name)!]);
     }
     result.push([pid.to_raw_bytes(), assetEntries]);
   }
@@ -414,7 +414,7 @@ function midgardMintToCml(mint: Mint): CML.Mint {
     const pid = CML.ScriptHash.from_raw_bytes(pidBytes);
     const assetMap = CML.MapAssetNameToNonZeroInt64.new();
     for (const [nameBytes, amount] of assetList)
-      assetMap.insert(CML.AssetName.from_raw_bytes(nameBytes), BigInt(amount));
+      assetMap.insert(CML.AssetName.from_raw_bytes(nameBytes), amount);
     cmlMint.insert_assets(pid, assetMap);
   }
   return cmlMint;

@@ -14,6 +14,8 @@ import {
   Reader,
   writeU64,
   readU64,
+  writeBigU64,
+  readBigU64,
   writeBool,
   readBool,
   writeVarBytesStatic,
@@ -26,6 +28,7 @@ import {
 } from "../codec";
 
 import {
+  Coin,
   Hash32,
   AddrKeyHash,
   ScriptHash,
@@ -280,7 +283,7 @@ export function decodeTransactionWitnessSetCompact(
 export interface TransactionBody {
   inputs: OutputReference[];
   outputs: TransactionOutput[];
-  fee: number;
+  fee: Coin;
   ttl: number | undefined;
   auxiliary_data_hash: Hash32 | undefined;
   validity_interval_start: number | undefined;
@@ -313,7 +316,7 @@ function optsMask(b: TransactionBody): number {
 interface TransactionBodyPartial {
   inputs: OutputReference[];
   outPartials: TransactionOutputPartial[];
-  fee: number;
+  fee: Coin;
   mask: number;
 }
 
@@ -324,7 +327,7 @@ function writeTransactionBodyStatic(w: Writer, b: TransactionBody): void {
   for (const inp of b.inputs) writeOutputReferenceStatic(w, inp);
   writeU64(w, b.outputs.length);
   for (const out of b.outputs) writeTransactionOutputStatic(w, out);
-  writeU64(w, b.fee);
+  writeBigU64(w, b.fee);
   writeU64(w, optsMask(b));
 }
 
@@ -374,7 +377,7 @@ function readTransactionBodyStatic(r: Reader): TransactionBodyPartial {
   for (let i = 0; i < outputsLen; i++)
     outPartials.push(readTransactionOutputStatic(r));
 
-  const fee = readU64(r);
+  const fee = readBigU64(r);
   const mask = readU64(r);
   return { inputs, outPartials, fee, mask };
 }
@@ -482,7 +485,7 @@ export function decodeTransactionBody(bytes: Uint8Array): TransactionBody {
 export interface TransactionBodyCompact {
   inputs_hash: Hash32;
   outputs_hash: Hash32;
-  fee: number;
+  fee: Coin;
   ttl: number | undefined;
   auxiliary_data_hash: Hash32 | undefined;
   validity_interval_start: number | undefined;
@@ -516,7 +519,7 @@ function writeTransactionBodyCompactStatic(
 ): void {
   writeHash32Static(w, b.inputs_hash);
   writeHash32Static(w, b.outputs_hash);
-  writeU64(w, b.fee);
+  writeBigU64(w, b.fee);
   writeU64(w, optsMaskCompact(b));
 }
 
@@ -548,7 +551,7 @@ function writeTransactionBodyCompactDynamic(
 function readTransactionBodyCompact(r: Reader): TransactionBodyCompact {
   const inputs_hash = readHash32Static(r);
   const outputs_hash = readHash32Static(r);
-  const fee = readU64(r);
+  const fee = readBigU64(r);
   const mask = readU64(r);
 
   const ttl = mask & (1 << 0) ? readU64(r) : undefined;

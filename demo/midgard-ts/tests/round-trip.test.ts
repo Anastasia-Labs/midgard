@@ -175,7 +175,7 @@ describe("TransactionBodyCompact", () => {
   const base: TransactionBodyCompact = {
     inputs_hash: bytes(32, 1),
     outputs_hash: bytes(32, 2),
-    fee: 1_000_000,
+    fee: 1_000_000n,
     ttl: undefined,
     auxiliary_data_hash: undefined,
     validity_interval_start: undefined,
@@ -350,7 +350,7 @@ describe("WithdrawalInfoCompact", () => {
 // ===========================================================================
 
 describe("TransactionOutput", () => {
-  const coinOutput = (addr: Uint8Array, coin: number): TransactionOutput => ({
+  const coinOutput = (addr: Uint8Array, coin: bigint): TransactionOutput => ({
     address: addr,
     value: { type: "Coin", coin },
     datum: undefined,
@@ -361,14 +361,14 @@ describe("TransactionOutput", () => {
     assertRoundTrip(
       encodeTransactionOutput,
       decodeTransactionOutput,
-      coinOutput(bytesSeq(29), 2_000_000),
+      coinOutput(bytesSeq(29), 2_000_000n),
     );
   });
 
   test("Coin value with datum", () => {
     assertRoundTrip(encodeTransactionOutput, decodeTransactionOutput, {
       address: bytesSeq(29),
-      value: { type: "Coin", coin: 500_000 },
+      value: { type: "Coin", coin: 500_000n },
       datum: bytesSeq(12),
       script_ref: undefined,
     });
@@ -377,7 +377,7 @@ describe("TransactionOutput", () => {
   test("Coin value with datum and script_ref", () => {
     assertRoundTrip(encodeTransactionOutput, decodeTransactionOutput, {
       address: bytesSeq(29),
-      value: { type: "Coin", coin: 1 },
+      value: { type: "Coin", coin: 1n },
       datum: bytesSeq(8),
       script_ref: bytesSeq(16),
     });
@@ -390,8 +390,8 @@ describe("TransactionOutput", () => {
       address: bytesSeq(29),
       value: {
         type: "MultiAsset",
-        coin: 1_000_000,
-        assets: [[policy, [[name, 500]]]],
+        coin: 1_000_000n,
+        assets: [[policy, [[name, 500n]]]],
       },
       datum: undefined,
       script_ref: undefined,
@@ -406,8 +406,8 @@ describe("TransactionOutput", () => {
       address: bytesSeq(29),
       value: {
         type: "MultiAsset",
-        coin: 1_000_000,
-        assets: [[policy, [[name, 500]]]],
+        coin: 1_000_000n,
+        assets: [[policy, [[name, 500n]]]],
       },
       datum: undefined,
       script_ref: undefined,
@@ -416,14 +416,14 @@ describe("TransactionOutput", () => {
     expect(decoded.value.type).toBe("MultiAsset");
     if (decoded.value.type === "MultiAsset") {
       expect(decoded.value.assets[0][1][0][0]).toEqual(name);
-      expect(decoded.value.assets[0][1][0][1]).toBe(500);
+      expect(decoded.value.assets[0][1][0][1]).toBe(500n);
     }
   });
 
   test("address bytes preserved exactly", () => {
     const addr = bytesSeq(29);
     const decoded = decodeTransactionOutput(
-      encodeTransactionOutput(coinOutput(addr, 0)),
+      encodeTransactionOutput(coinOutput(addr, 0n)),
     );
     expect(decoded.address).toEqual(addr);
   });
@@ -440,7 +440,7 @@ describe("TransactionOutputCompact", () => {
       decodeTransactionOutputCompact,
       {
         address: bytesSeq(29),
-        value: { type: "Coin", coin: 1_000_000 },
+        value: { type: "Coin", coin: 1_000_000n },
         datum_hash: undefined,
         script_ref_hash: undefined,
       },
@@ -453,7 +453,7 @@ describe("TransactionOutputCompact", () => {
       decodeTransactionOutputCompact,
       {
         address: bytesSeq(29),
-        value: { type: "MultiAsset", coin: 500_000, hash: bytes(32, 0xde) },
+        value: { type: "MultiAsset", coin: 500_000n, hash: bytes(32, 0xde) },
         datum_hash: bytes(32, 0x01),
         script_ref_hash: bytes(32, 0x02),
       },
@@ -516,12 +516,12 @@ describe("TransactionBody", () => {
     outputs: [
       {
         address: bytesSeq(29),
-        value: { type: "Coin", coin: 2_000_000 },
+        value: { type: "Coin", coin: 2_000_000n },
         datum: undefined,
         script_ref: undefined,
       },
     ],
-    fee: 170_000,
+    fee: 170_000n,
     ttl: undefined,
     auxiliary_data_hash: undefined,
     validity_interval_start: undefined,
@@ -556,8 +556,8 @@ describe("TransactionBody", () => {
       ...baseBody(),
       // Two policies: one minting, one burning
       mint: [
-        [bytes(28, 0xaa), [[bytesSeq(4), 100]]],   // mint 100
-        [bytes(28, 0xbb), [[bytesSeq(3), -50]]],    // burn 50
+        [bytes(28, 0xaa), [[bytesSeq(4), 100n]]],   // mint 100
+        [bytes(28, 0xbb), [[bytesSeq(3), -50n]]],    // burn 50
       ],
     });
   });
@@ -586,13 +586,13 @@ describe("TransactionBody", () => {
       outputs: [
         {
           address: bytesSeq(29),
-          value: { type: "Coin", coin: 1_000_000 },
+          value: { type: "Coin", coin: 1_000_000n },
           datum: undefined,
           script_ref: undefined,
         },
         {
           address: bytesSeq(32),
-          value: { type: "Coin", coin: 500_000 },
+          value: { type: "Coin", coin: 500_000n },
           datum: bytesSeq(8),
           script_ref: undefined,
         },
@@ -612,12 +612,12 @@ describe("Transaction", () => {
       outputs: [
         {
           address: bytesSeq(29),
-          value: { type: "Coin", coin: 2_000_000 },
+          value: { type: "Coin", coin: 2_000_000n },
           datum: undefined,
           script_ref: undefined,
         },
       ],
-      fee: 170_000,
+      fee: 170_000n,
       ttl: undefined,
       auxiliary_data_hash: undefined,
       validity_interval_start: undefined,
@@ -730,7 +730,7 @@ describe("Block", () => {
             { tx_id: bytes(32, 0x11), index: 0 },
             {
               address: bytesSeq(29),
-              value: { type: "Coin", coin: 1_000_000 },
+              value: { type: "Coin", coin: 1_000_000n },
               datum: undefined,
               script_ref: undefined,
             },

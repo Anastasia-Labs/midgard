@@ -48,7 +48,7 @@ export type VKey = Uint8Array;
  */
 export type Signature = Uint8Array;
 
-export type Coin = number;
+export type Coin = bigint;
 export type PosixTime = number;
 
 // Semantic aliases
