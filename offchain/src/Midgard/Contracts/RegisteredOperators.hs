@@ -1,4 +1,8 @@
-module Midgard.Contracts.RegisteredOperators (initRegisteredOperators, registerOperator, deregisterOperator) where
+module Midgard.Contracts.RegisteredOperators (
+  initRegisteredOperators,
+  registerOperator,
+  deregisterOperator,
+) where
 
 import Control.Monad.Except (MonadError (throwError))
 import Control.Monad.Reader (runReaderT)
@@ -49,7 +53,14 @@ import Midgard.Contracts.Utils (
   pubKeyHashFromCardano,
   slotToEndUTCTime,
  )
-import Midgard.ScriptUtils (mintingPolicyId, mintingPolicyId', plutusVersion, toMintingPolicy, toValidator, validatorHash)
+import Midgard.ScriptUtils (
+  mintingPolicyId,
+  mintingPolicyId',
+  plutusVersion,
+  toMintingPolicy,
+  toValidator,
+  validatorHash,
+ )
 import Midgard.Scripts (
   MidgardRefScripts (MidgardRefScripts, registeredOperatorsPolicyRef),
   MidgardScripts (
@@ -289,10 +300,16 @@ deregisterOperator MidgardScripts {registeredOperatorsValidator, registeredOpera
     maybe (throwError "No registered operator found") pure $
       findUtxoWithAsset registryUtxos $
         C.AssetId (mintingPolicyId registeredOperatorsPolicy) targetNodeAsset
-  (anchorRegistryTxIn, anchorUtxoAnyEra) <-
-    maybe (throwError "No anchor utxo found") pure $
-      findUtxoWithLink registryUtxos (mintingPolicyId registeredOperatorsPolicy) $
-        C.serialiseToRawBytes operatorPkh
+  (anchorRegistryTxIn, (anchorUtxoAnyEra, _)) <-
+    maybe (throwError "No anchor utxo found") pure
+      . flip
+        runReaderT
+        LinkedListInfo
+          { ownerPolicyId = mintingPolicyId registeredOperatorsPolicy
+          , rootAssetName = RegisteredOperators.rootAssetName
+          , nodeAssetNamePrefix = RegisteredOperators.nodeAssetNamePrefix
+          }
+      $ findUtxoWithLink registryUtxos targetNodeAsset
   let C.TxOut _ anchorValue _ _ = toTxOut @era anchorUtxoAnyEra
   -- The new anchor output should have its link changed to the link from the target registry utxo (one being removed).
   let newAnchorLink = error "TODO: Need datum structures finalized"
