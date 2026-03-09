@@ -144,5 +144,6 @@ export const entryToLedgerEntry = (
       [Ledger.Columns.TX_ID]: Buffer.from(
         cmlUTxO.input().transaction_id().to_raw_bytes(),
       ),
+      [Ledger.Columns.TIMESTAMPTZ]: deposit[UserEvents.Columns.INCLUSION_TIME],
     };
   });
