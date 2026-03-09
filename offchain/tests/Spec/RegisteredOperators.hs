@@ -1,4 +1,4 @@
-module Spec.RegisterOperator (tests) where
+module Spec.RegisteredOperators (tests) where
 
 import Control.Monad.Except (withExceptT)
 import Data.Functor (void)
@@ -17,8 +17,8 @@ import Spec.Utils (balanceAndSubmit', midgardTestCase)
 tests :: MidgardScripts -> TestTree
 tests ms =
   testGroup
-    "register-operator"
-    [ midgardTestCase ms "register-operator" $ \refScripts -> do
+    "registered-operators"
+    [ midgardTestCase ms "register an operator" $ \refScripts -> do
         let operatorWallet = Wallet.w1
             operatorPkh = Wallet.verificationKeyHash operatorWallet
         txBody <- withExceptT TxBuildingError $ registerOperator ms refScripts operatorPkh

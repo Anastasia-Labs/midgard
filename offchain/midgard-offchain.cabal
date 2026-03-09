@@ -128,7 +128,7 @@ test-suite mockchain-tests
   main-is:        Spec.hs
   hs-source-dirs: tests
   other-modules:
-    Spec.RegisterOperator
+    Spec.RegisteredOperators
     Spec.Types
     Spec.Utils
 
