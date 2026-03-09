@@ -1,10 +1,11 @@
 import Test.Tasty
 
 import Midgard.Scripts (MidgardScripts, readAikenScripts)
-import Spec.RegisterOperator qualified as RegisterOperator
+
+import Spec.RegisteredOperators qualified as RegisteredOperators
 
 tests :: MidgardScripts -> TestTree
-tests ms = testGroup "tests" [RegisterOperator.tests ms]
+tests ms = testGroup "tests" [RegisteredOperators.tests ms]
 
 main :: IO ()
 main = do
