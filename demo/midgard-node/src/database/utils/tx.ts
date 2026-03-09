@@ -203,7 +203,9 @@ export const retrieveTimeBoundEntries = (
     const sql = yield* SqlClient.SqlClient;
     const result = yield* sql<Entry>`SELECT * FROM ${sql(
       tableName,
-    )} WHERE ${startTime} <= ${sql(Columns.TIMESTAMPTZ)} AND ${sql(Columns.TIMESTAMPTZ)} < ${endTime}`;
+    )} WHERE ${startTime} <= ${sql(Columns.TIMESTAMPTZ)}
+    AND ${sql(Columns.TIMESTAMPTZ)} < ${endTime}
+    ORDER BY ${sql(Columns.TIMESTAMPTZ)} ASC`;
     return result;
   }).pipe(
     Effect.withLogSpan(`retrieveTimeBoundEntries ${tableName}`),
