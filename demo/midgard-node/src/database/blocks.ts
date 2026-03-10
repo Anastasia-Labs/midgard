@@ -19,7 +19,7 @@ import {
   UserEvents,
   WithdrawalsDB,
 } from "./index.js";
-import {AlwaysSucceedsContract} from "@/services/always-succeeds.js";
+import { AlwaysSucceedsContract } from "@/services/always-succeeds.js";
 
 export const tableName = "unsubmitted_blocks";
 
@@ -363,37 +363,48 @@ export const getAppendedStateQueueUTxOFromEntry = (
   SDK.StateQueueUTxO,
   SDK.CborDeserializationError | SDK.CmlUnexpectedError | SDK.StateQueueError,
   AlwaysSucceedsContract
-> => Effect.gen(function* () {
-  const { stateQueue } = yield* AlwaysSucceedsContract;
-  const producedUTxOs = yield* deserializeUTxOsFromStorage(entry[Columns.PRODUCED_UTXOS]);
-  // Keeps only UTxOs that successfully map to a StateQueueUTxO with no links
-  // (last element in linked list).
-  const foundMatches: SDK.StateQueueUTxO[] = yield* Effect.allSuccesses(
-    producedUTxOs.map((utxo) => Effect.gen(function* () {
-      const stateQueueUTxO = yield* SDK.utxoToStateQueueUTxO(utxo, stateQueue.policyId);
-      if (stateQueueUTxO.datum.next === "Empty") {
-        const headerHash = yield* SDK.headerHashFromStateQueueUTxO(stateQueueUTxO);
-        if (SDK.bufferToHex(entry[Columns.HEADER_HASH]) === headerHash) {
-          return stateQueueUTxO;
-        } else {
-          // Doesn't matter what error is raised here (or below) as errors are
-          // ignored.
-          return yield* new SDK.StateQueueError({message: "", cause: ""});
-        }
-      } else {
-        return yield* new SDK.StateQueueError({message: "", cause: ""});
-      }
-    })),
-  );
-  if (foundMatches.length === 1) {
-    return foundMatches[0];
-  } else {
-    return yield* new SDK.StateQueueError({
-      message: "Failed to get the appended StateQueueUTxO from the given BlocksDB entry",
-      cause: "The list of produced UTxOs stored in the entry did not contain exactly one UTxO such that it could be mapped to a StateQueueUTxO with no links",
-    });
-  }
-});
+> =>
+  Effect.gen(function* () {
+    const { stateQueue } = yield* AlwaysSucceedsContract;
+    const producedUTxOs = yield* deserializeUTxOsFromStorage(
+      entry[Columns.PRODUCED_UTXOS],
+    );
+    // Keeps only UTxOs that successfully map to a StateQueueUTxO with no links
+    // (i.e. last element in the linked list).
+    const foundMatches: SDK.StateQueueUTxO[] = yield* Effect.allSuccesses(
+      producedUTxOs.map((utxo) =>
+        Effect.gen(function* () {
+          const stateQueueUTxO = yield* SDK.utxoToStateQueueUTxO(
+            utxo,
+            stateQueue.policyId,
+          );
+          if (stateQueueUTxO.datum.next === "Empty") {
+            const headerHash =
+              yield* SDK.headerHashFromStateQueueUTxO(stateQueueUTxO);
+            if (SDK.bufferToHex(entry[Columns.HEADER_HASH]) === headerHash) {
+              return stateQueueUTxO;
+            } else {
+              // Doesn't matter what error is raised here (or below) as errors are
+              // ignored in `allSuccesses`.
+              return yield* new SDK.StateQueueError({ message: "", cause: "" });
+            }
+          } else {
+            return yield* new SDK.StateQueueError({ message: "", cause: "" });
+          }
+        }),
+      ),
+    );
+    if (foundMatches.length === 1) {
+      return foundMatches[0];
+    } else {
+      return yield* new SDK.StateQueueError({
+        message:
+          "Failed to get the appended StateQueueUTxO from the given BlocksDB entry",
+        cause:
+          "The list of produced UTxOs stored in the entry did not contain exactly one UTxO such that it could be mapped to a StateQueueUTxO with no links",
+      });
+    }
+  });
 
 export const setStatusOfEntry = (
   entry: Entry,

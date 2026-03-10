@@ -13,6 +13,7 @@ import {
   WorkerOutput,
   applyWithdrawalsToLedger,
   applyTxOrdersToLedger,
+  buildNewBlockEntry,
 } from "./utils/block-commitment.js";
 import {
   ConfigError,
@@ -96,18 +97,26 @@ const temp = Effect.gen(function* () {
 
           const ledgerRoot = yield* ledgerTrie.getRootHex();
 
-          const appendedUTxO =
-            yield* BlocksDB.getAppendedStateQueueUTxOFromEntry(latestBlock);
-
-          const { newHeaderHash } = yield* buildUnsignedBlockCommitmentTx(
-            stateQueue,
-            appendedUTxO,
+          const newBlockEntry = yield buildNewBlockEntry(
+            latestBlock,
             ledgerRoot,
             txsRoot,
             depositsRoot,
             withdrawalsRoot,
             currentDate,
+            {
+              depositsCount: depositLedgerEntries.length,
+              txRequestsCount: txRequestsHashes.length,
+              txOrdersCount: txOrdersHashes.length,
+              withdrawalsCount: withdrawnOutRefs.length,
+              totalEventsSize:
+                sizeOfWithdrawals +
+                sizeOfTxOrders +
+                sizeOfTxRequests +
+                sizeOfDeposits,
+            },
           );
+          yield* BlocksDB.upsert(newBlockEntry);
         }).pipe(Effect.tapError((_) => ledgerTrie.revert()));
       }),
   });
