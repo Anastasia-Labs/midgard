@@ -40,7 +40,15 @@ export enum Columns {
   STATUS = "status",
 }
 
-export type EntryNoMeta = {
+export type Stats = {
+  [Columns.DEPOSITS_COUNT]: number;
+  [Columns.TX_REQUESTS_COUNT]: number;
+  [Columns.TX_ORDERS_COUNT]: number;
+  [Columns.WITHDRAWALS_COUNT]: number;
+  [Columns.TOTAL_EVENTS_SIZE]: number;
+};
+
+export type EntryNoMeta = Stats & {
   [Columns.HEADER_HASH]: Buffer;
   [Columns.EVENT_START_TIME]: Date;
   [Columns.EVENT_END_TIME]: Date;
@@ -50,11 +58,6 @@ export type EntryNoMeta = {
   [Columns.PRODUCED_UTXOS]: Buffer;
   // Corresponds to `.chain()` third tuple value.
   [Columns.L1_CBOR]: Buffer;
-  [Columns.DEPOSITS_COUNT]: number;
-  [Columns.TX_REQUESTS_COUNT]: number;
-  [Columns.TX_ORDERS_COUNT]: number;
-  [Columns.WITHDRAWALS_COUNT]: number;
-  [Columns.TOTAL_EVENTS_SIZE]: number;
   [Columns.STATUS]: Status;
 };
 
