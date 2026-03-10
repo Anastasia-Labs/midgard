@@ -3,8 +3,10 @@ import * as SDK from "@al-ft/midgard-sdk";
 import {
   CML,
   Data,
+  LucidEvolution,
   UTxO,
   coreToUtxo,
+  fromHex,
   utxoToCore,
 } from "@lucid-evolution/lucid";
 import * as ETH_UTILS from "@ethereumjs/util";
@@ -18,6 +20,7 @@ import {
   AddressHistoryDB,
   MempoolLedgerDB,
   WithdrawalsDB,
+  BlocksDB,
 } from "@/database/index.js";
 import {
   AlwaysSucceedsContract,
@@ -25,7 +28,11 @@ import {
   Lucid,
   NodeConfig,
 } from "@/services/index.js";
-import { DatabaseError } from "@/database/utils/common.js";
+import {
+  DatabaseError,
+  deserializeUTxOsFromStorage,
+  serializeUTxOsForStorage,
+} from "@/database/utils/common.js";
 import {
   handleSignSubmitNoConfirmation,
   TxSignError,
@@ -492,79 +499,142 @@ export const applyDepositsToLedger = (
     };
   });
 
-export const buildUnsignedBlockCommitmentTx = (
-  stateQueueAuthValidator: SDK.AuthenticatedValidator,
-  latestBlock: SDK.StateQueueUTxO,
+const prepareLucidForBlockCommitment = (
+  entry: BlocksDB.Entry,
+): Effect.Effect<
+  {
+    lucidPreparation: Effect.Effect<LucidEvolution>;
+    appendedUTxO: SDK.StateQueueUTxO;
+  },
+  SDK.CborDeserializationError | SDK.CmlUnexpectedError | SDK.StateQueueError,
+  AlwaysSucceedsContract | Lucid
+> =>
+  Effect.gen(function* () {
+    const newWalletUTxOs = yield* deserializeUTxOsFromStorage(
+      entry[BlocksDB.Columns.NEW_WALLET_UTXOS],
+    );
+    const appendedUTxO =
+      yield* BlocksDB.getAppendedStateQueueUTxOFromEntry(entry);
+    const lucid = yield* Lucid;
+    const lucidPreparation = Effect.gen(function* () {
+      yield* lucid.switchToOperatorsBlockCommitmentWallet;
+      yield* Effect.sync(() => lucid.api.overrideUTxOs(newWalletUTxOs));
+      return lucid.api;
+    });
+    return {
+      lucidPreparation,
+      appendedUTxO,
+    };
+  });
+
+export const buildNewBlockEntry = (
+  entry: BlocksDB.Entry,
   utxosRoot: string,
   txsRoot: string,
   depositsRoot: string,
   withdrawalsRoot: string,
   endDate: Date,
-): Effect.Effect<
-  {
-    newHeaderHash: string;
-    signAndSubmitProgram: Effect.Effect<string, TxSubmitError | TxSignError>;
-    txSize: number;
+  stats: {
+    depositsCount: number;
+    txRequestsCount: number;
+    txOrdersCount: number;
+    withdrawalsCount: number;
+    totalEventsSize: number;
   },
+): Effect.Effect<
+  BlocksDB.EntryNoMeta,
+  | SDK.CmlUnexpectedError
+  | SDK.CborDeserializationError
+  | SDK.CborSerializationError
   | SDK.DataCoercionError
   | SDK.HashingError
   | SDK.LucidError
-  | SDK.StateQueueError,
-  Lucid
+  | SDK.StateQueueError
+  | TxSignError,
+  AlwaysSucceedsContract | Lucid
 > =>
   Effect.gen(function* () {
-    const lucid = yield* Lucid;
-    yield* Effect.logInfo("🔹 Finding updated block datum and new header...");
-    yield* lucid.switchToOperatorsMainWallet;
+    const { lucidPreparation, appendedUTxO } =
+      yield* prepareLucidForBlockCommitment(entry);
+    const initLucidAPI = yield* lucidPreparation;
     const { nodeDatum: updatedNodeDatum, header: newHeader } =
       yield* SDK.updateLatestBlocksDatumAndGetTheNewHeaderProgram(
-        lucid.api,
-        latestBlock.datum,
+        initLucidAPI,
+        appendedUTxO.datum,
         utxosRoot,
         txsRoot,
         depositsRoot,
         withdrawalsRoot,
         BigInt(endDate.getTime()),
       );
-
     const newHeaderHash = yield* SDK.hashBlockHeader(newHeader);
     yield* Effect.logInfo(`🔹 New header hash is: ${newHeaderHash}`);
-
+    const { stateQueue } = yield* AlwaysSucceedsContract;
     const commitBlockParams: SDK.StateQueueCommitBlockParams = {
-      anchorUTxO: latestBlock,
+      anchorUTxO: appendedUTxO,
       updatedAnchorDatum: updatedNodeDatum,
       newHeader: newHeader,
-      stateQueueSpendingScript: stateQueueAuthValidator.spendingScript,
-      policyId: stateQueueAuthValidator.policyId,
-      stateQueueMintingScript: stateQueueAuthValidator.mintingScript,
+      stateQueueSpendingScript: stateQueue.spendingScript,
+      policyId: stateQueue.policyId,
+      stateQueueMintingScript: stateQueue.mintingScript,
     };
-
-    const aoUpdateCommitmentTimeParams = {};
 
     yield* Effect.logInfo("🔹 Building block commitment transaction...");
     const fetchConfig: SDK.StateQueueFetchConfig = {
-      stateQueueAddress: stateQueueAuthValidator.spendingScriptAddress,
-      stateQueuePolicyId: stateQueueAuthValidator.policyId,
+      stateQueueAddress: stateQueue.spendingScriptAddress,
+      stateQueuePolicyId: stateQueue.policyId,
     };
-    yield* lucid.switchToOperatorsMainWallet;
-    const txBuilder = yield* SDK.unsignedCommitBlockHeaderTxProgram(
-      lucid.api,
+    // Rerunning `lucidPreparation` to ensure Lucid API object is in proper state.
+    const lucidAPI = yield* lucidPreparation;
+    const txBuilder = yield* SDK.incompleteCommitBlockHeaderTxProgram(
+      lucidAPI,
       fetchConfig,
       commitBlockParams,
-      aoUpdateCommitmentTimeParams,
     );
-
-    const txSize = txBuilder.toCBOR().length / 2;
-    yield* Effect.logInfo(`🔹 Transaction built successfully. Size: ${txSize}`);
-
-    const signAndSubmitProgram = handleSignSubmitNoConfirmation(
-      lucid.api,
-      txBuilder,
-    ).pipe(Effect.withSpan("handleSignSubmit-commit-block"));
-
-    return {
-      newHeaderHash,
-      signAndSubmitProgram,
-      txSize,
+    const [newWalletUTxOs, producedUTxOs, txSignBuilder] = yield* txBuilder
+      .chainProgram()
+      .pipe(
+        Effect.mapError(
+          (e) =>
+            new SDK.LucidError({
+              message:
+                "Failed to complete (chain method) built block commitment transaction",
+              cause: e,
+            }),
+        ),
+      );
+    const signedTx = yield* txSignBuilder.sign
+      .withWallet()
+      .completeProgram()
+      .pipe(
+        Effect.mapError(
+          (e) =>
+            new TxSignError({
+              message: "Failed to sign block commitment transaction",
+              cause: e,
+              txHash: txSignBuilder.toHash(),
+            }),
+        ),
+      );
+    const serializedNewWalletUTxOs =
+      yield* serializeUTxOsForStorage(newWalletUTxOs);
+    const serializedProducedUTxOs =
+      yield* serializeUTxOsForStorage(producedUTxOs);
+    const l1CBOR = Buffer.from(signedTx.toTransaction().to_cbor_bytes());
+    const newBlockEntry: BlocksDB.EntryNoMeta = {
+      [BlocksDB.Columns.HEADER_HASH]: Buffer.from(fromHex(newHeaderHash)),
+      [BlocksDB.Columns.EVENT_START_TIME]:
+        entry[BlocksDB.Columns.EVENT_END_TIME],
+      [BlocksDB.Columns.EVENT_END_TIME]: endDate,
+      [BlocksDB.Columns.NEW_WALLET_UTXOS]: serializedNewWalletUTxOs,
+      [BlocksDB.Columns.PRODUCED_UTXOS]: serializedProducedUTxOs,
+      [BlocksDB.Columns.L1_CBOR]: l1CBOR,
+      [BlocksDB.Columns.DEPOSITS_COUNT]: stats.depositsCount,
+      [BlocksDB.Columns.TX_REQUESTS_COUNT]: stats.txRequestsCount,
+      [BlocksDB.Columns.TX_ORDERS_COUNT]: stats.txOrdersCount,
+      [BlocksDB.Columns.WITHDRAWALS_COUNT]: stats.withdrawalsCount,
+      [BlocksDB.Columns.TOTAL_EVENTS_SIZE]: stats.totalEventsSize,
+      [BlocksDB.Columns.STATUS]: BlocksDB.Status.UNSUBMITTED,
     };
+    return newBlockEntry;
   });

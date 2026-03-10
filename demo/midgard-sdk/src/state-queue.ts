@@ -460,12 +460,9 @@ export const incompleteCommitBlockHeaderTxProgram = (
       data: Data.castTo(newHeader, Header),
     };
 
-    // Add 1 minute
-    const endTime = Date.now();
-    const endTimePlusOneMinute = endTime + 60000;
+    // Note that we are not specifying a validity range (TODO?).
     const tx = lucid
       .newTx()
-      .validTo(endTimePlusOneMinute)
       .collectFrom([latestBlock.utxo], Data.void())
       .pay.ToContract(
         config.stateQueueAddress,

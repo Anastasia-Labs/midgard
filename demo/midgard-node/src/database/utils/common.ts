@@ -119,7 +119,7 @@ export const serializeUTxOsForStorage = (
 export const deserializeUTxOsFromStorage = (
   serialized: Buffer,
 ): Effect.Effect<
-  readonly UTxO[],
+  UTxO[],
   SDK.CborDeserializationError | SDK.CmlUnexpectedError
 > =>
   Effect.gen(function* () {
