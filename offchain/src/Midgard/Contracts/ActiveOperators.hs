@@ -28,15 +28,14 @@ import Convex.Class (
 import Convex.Utxos (toTxOut)
 import PlutusLedgerApi.V3 (PubKeyHash (PubKeyHash))
 
-import Debug.Trace (traceShowId)
 import Midgard.Constants (hubOracleAssetName, hubOracleMintingPolicyId, hubOracleScriptHash, operatorRequiredBond)
 import Midgard.Contracts.Utils (
   LinkedListInfo (..),
   findMintRedeemerIndex,
   findOutputIndexWithAsset,
   findUTxONonMembership,
-  findUtxoWithAsset,
-  findUtxoWithLink,
+  findUTxOWithAsset,
+  findUTxOWithLink,
   inlineDatumFromUTxO,
   listAssetNameFromUTxO,
   nextOutIx,
@@ -116,8 +115,9 @@ activateOperator
     }
   MidgardRefScripts {activeOperatorsPolicyRef, registeredOperatorsPolicyRef}
   operatorPkh = do
-    let registryNodeAsset = C.UnsafeAssetName $ RegisteredOperators.nodeAssetNamePrefix <> C.serialiseToRawBytes operatorPkh
-        targetNodeAsset = C.UnsafeAssetName $ ActiveOperators.nodeAssetNamePrefix <> C.serialiseToRawBytes operatorPkh
+    let operatorPkhBytes = C.serialiseToRawBytes operatorPkh
+        registryNodeAsset = C.UnsafeAssetName $ RegisteredOperators.nodeAssetNamePrefix <> operatorPkhBytes
+        targetNodeAsset = C.UnsafeAssetName $ ActiveOperators.nodeAssetNamePrefix <> operatorPkhBytes
         policyId = mintingPolicyId activeOperatorsPolicy
         policyId' = mintingPolicyId' activeOperatorsPolicy
         -- Need to know all the policies that will be invoked beforehand.
@@ -129,13 +129,13 @@ activateOperator
     hubOracleUtxos <- utxosByPaymentCredential $ C.PaymentCredentialByScript hubOracleScriptHash
     (hubOracleTxIn, _) <-
       maybe (throwError "No hub oracle found") pure $
-        findUtxoWithAsset hubOracleUtxos $
+        findUTxOWithAsset hubOracleUtxos $
           C.AssetId hubOracleMintingPolicyId hubOracleAssetName
     -- Find the registered operator node and its anchor (node linking to it) to remove it from the list.
     registryUtxos <- utxosByPaymentCredential $ C.PaymentCredentialByScript $ validatorHash registeredOperatorsValidator
     (removalRegistryTxIn, (removalUtxoAnyEra, _)) <-
       maybe (throwError "No registered operator found") pure $
-        findUtxoWithAsset registryUtxos $
+        findUTxOWithAsset registryUtxos $
           C.AssetId (mintingPolicyId registeredOperatorsPolicy) registryNodeAsset
     (anchorRegistryTxIn, (anchorRegistryUtxoAnyEra, _)) <-
       maybe (throwError "No anchor utxo found") pure
@@ -146,7 +146,7 @@ activateOperator
             , rootAssetName = RegisteredOperators.rootAssetName
             , nodeAssetNamePrefix = RegisteredOperators.nodeAssetNamePrefix
             }
-        $ findUtxoWithLink registryUtxos registryNodeAsset
+        $ findUTxOWithLink registryUtxos operatorPkhBytes
     -- Find insertion point in active operators for ordered insertion.
     activeOperatorsUtxos <- utxosByPaymentCredential $ C.PaymentCredentialByScript $ validatorHash activeOperatorsValidator
     (activeOperatorsAnchorTxIn, (activeOperatorsAnchorUtxoAnyEra, _)) <-
@@ -158,7 +158,7 @@ activateOperator
             , rootAssetName = ActiveOperators.rootAssetName
             , nodeAssetNamePrefix = ActiveOperators.nodeAssetNamePrefix
             }
-        $ findUTxONonMembership activeOperatorsUtxos targetNodeAsset
+        $ findUTxONonMembership activeOperatorsUtxos operatorPkhBytes
     -- Witness non-membership in retired operators.
     retiredOperatorsUtxos <- utxosByPaymentCredential $ C.PaymentCredentialByScript $ validatorHash retiredOperatorsValidator
     (retiredOperatorsNonMemberWitness, _) <-
@@ -170,7 +170,7 @@ activateOperator
             , rootAssetName = RetiredOperators.rootAssetName
             , nodeAssetNamePrefix = RetiredOperators.nodeAssetNamePrefix
             }
-        $ findUTxONonMembership retiredOperatorsUtxos targetNodeAsset
+        $ findUTxONonMembership retiredOperatorsUtxos operatorPkhBytes
     let registeredOperatorsAnchorTxOut = toTxOut @era anchorRegistryUtxoAnyEra
         removalRegistryTxOut = toTxOut @era removalUtxoAnyEra
         activeOperatorsAnchorTxOut = toTxOut @era activeOperatorsAnchorUtxoAnyEra

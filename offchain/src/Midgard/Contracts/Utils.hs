@@ -6,10 +6,10 @@ module Midgard.Contracts.Utils (
   utcTimeToSlotUnsafe,
   findOutputIndexWithAsset,
   findMintRedeemerIndex,
-  findUtxoWithAsset,
+  findUTxOWithAsset,
   inlineDatumFromUTxO,
   findUTxONonMembership,
-  findUtxoWithLink,
+  findUTxOWithLink,
   listAssetNameFromUTxO,
   pubKeyHashFromCardano,
 ) where
@@ -32,10 +32,10 @@ import Convex.Class (MonadBlockchain (queryEraHistory, querySystemStart))
 import Convex.Scripts (fromHashableScriptData)
 import Convex.Utils qualified as Convex
 import Convex.Utxos (UtxoSet (UtxoSet))
-import PlutusLedgerApi.Common (BuiltinData, FromData, toBuiltin)
+import PlutusLedgerApi.Common (BuiltinData, FromData, fromBuiltin, toBuiltin)
 import PlutusLedgerApi.Data.V3 (PubKeyHash (PubKeyHash))
 
-import Midgard.Types.LinkedList (nodeKeyToAssetName)
+import Midgard.Types.LinkedList (NodeKey (NodeKey), nodeKey, nodeKeyToAssetName)
 import Midgard.Types.LinkedList qualified as LinkedList
 
 -- | Index of the next output to be added into the tx.
@@ -91,8 +91,8 @@ findMintRedeemerIndex allPolicies txBody policyId = scriptSpendingRedeemers + mi
     hasScriptSpendingWitness _ = False
 
 -- | Find a utxo in the utxo set that contains the given asset.
-findUtxoWithAsset :: UtxoSet ctx a -> C.AssetId -> Maybe (C.TxIn, (C.InAnyCardanoEra (C.TxOut ctx), a))
-findUtxoWithAsset (UtxoSet utxos) asset =
+findUTxOWithAsset :: UtxoSet ctx a -> C.AssetId -> Maybe (C.TxIn, (C.InAnyCardanoEra (C.TxOut ctx), a))
+findUTxOWithAsset (UtxoSet utxos) asset =
   find
     ( \(_, (C.InAnyCardanoEra _ (C.TxOut _ val _ _), _)) ->
         C.selectAsset
@@ -123,9 +123,13 @@ but its link (next utxo) contains a key that is _larger_ than the given key, the
 that no utxo with given key exists in the linked list.
 The selected UTxO must also contain a token with the given policy ID.
 -}
-findUTxONonMembership :: UtxoSet ctx a -> C.AssetName -> ReaderT LinkedListInfo Maybe (C.TxIn, (C.InAnyCardanoEra (C.TxOut ctx), a))
-findUTxONonMembership (UtxoSet utxoMap) assetToAdd = do
+findUTxONonMembership ::
+  UtxoSet ctx a ->
+  ByteString ->
+  ReaderT LinkedListInfo Maybe (C.TxIn, (C.InAnyCardanoEra (C.TxOut ctx), a))
+findUTxONonMembership (UtxoSet utxoMap) keyToAdd = do
   LinkedListInfo {ownerPolicyId, rootAssetName, nodeAssetNamePrefix} <- ask
+  let assetToAdd = nodeKeyToAssetName nodeAssetNamePrefix $ nodeKey keyToAdd
   let targetUtxos = Map.toList utxoMap
   lift . flip find targetUtxos $ \(_, (C.InAnyCardanoEra _ utxo, _)) ->
     case inlineDatumFromUTxO @(LinkedList.Element BuiltinData BuiltinData) utxo of
@@ -138,20 +142,20 @@ findUTxONonMembership (UtxoSet utxoMap) assetToAdd = do
               -- Not a valid UTxO if it doesn't have its own key.
               (Nothing, _) -> False
               (Just thisAssetName, linkAssetNameM)
-                | thisAssetName == rootAssetName -> isLarger linkAssetNameM
-                | otherwise -> thisAssetName < assetToAdd && isLarger linkAssetNameM
+                | thisAssetName == rootAssetName -> isLarger assetToAdd linkAssetNameM
+                | otherwise -> thisAssetName < assetToAdd && isLarger assetToAdd linkAssetNameM
   where
     -- Whether or not the link is "larger" (i.e beyond)
-    isLarger Nothing = True
-    isLarger (Just linkKey) = linkKey > assetToAdd
+    isLarger _ Nothing = True
+    isLarger assetToAdd (Just linkKey) = linkKey > assetToAdd
 
 {- | From the given UTxO set, representing an ordered linked list structure, find the "anchor" UTxO that
 links to the given key (in asset name form).
 The selected UTxO must also contain a token with the given policy ID.
 -}
-findUtxoWithLink :: UtxoSet ctx a -> C.AssetName -> ReaderT LinkedListInfo Maybe (C.TxIn, (C.InAnyCardanoEra (C.TxOut ctx), a))
-findUtxoWithLink (UtxoSet utxoMap) targetAsset = do
-  LinkedListInfo {ownerPolicyId, nodeAssetNamePrefix} <- ask
+findUTxOWithLink :: UtxoSet ctx a -> ByteString -> ReaderT LinkedListInfo Maybe (C.TxIn, (C.InAnyCardanoEra (C.TxOut ctx), a))
+findUTxOWithLink (UtxoSet utxoMap) targetKey = do
+  LinkedListInfo {ownerPolicyId} <- ask
   let targetUtxos = Map.toList utxoMap
   lift . flip find targetUtxos $ \(_, (C.InAnyCardanoEra _ utxo, _)) ->
     case inlineDatumFromUTxO @(LinkedList.Element BuiltinData BuiltinData) utxo of
@@ -160,10 +164,9 @@ findUtxoWithLink (UtxoSet utxoMap) targetAsset = do
       Just LinkedList.Element {elementLink} ->
         -- Must have a corresponding list asset.
         let isAuthentic = isJust $ listAssetNameFromUTxO ownerPolicyId utxo
-            linkAssetNameM = nodeKeyToAssetName nodeAssetNamePrefix <$> elementLink
-         in isAuthentic && case linkAssetNameM of
+         in isAuthentic && case elementLink of
               Nothing -> False
-              Just assetName -> assetName == targetAsset
+              Just (NodeKey linkKey) -> fromBuiltin linkKey == targetKey
 
 pubKeyHashFromCardano :: C.Hash C.PaymentKey -> PubKeyHash
 pubKeyHashFromCardano = PubKeyHash . toBuiltin . C.serialiseToRawBytes

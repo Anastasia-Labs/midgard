@@ -46,8 +46,8 @@ import Midgard.Contracts.Utils (
   LinkedListInfo (..),
   findOutputIndexWithAsset,
   findUTxONonMembership,
-  findUtxoWithAsset,
-  findUtxoWithLink,
+  findUTxOWithAsset,
+  findUTxOWithLink,
   inlineDatumFromUTxO,
   nextOutIx,
   pubKeyHashFromCardano,
@@ -137,9 +137,10 @@ registerOperator
     }
   MidgardRefScripts {registeredOperatorsPolicyRef}
   operatorPkh = do
-    let newNodeAsset =
+    let operatorPkhBytes = C.serialiseToRawBytes operatorPkh
+        newNodeAsset =
           C.UnsafeAssetName $
-            C.serialiseToRawBytes RegisteredOperators.nodeAssetNamePrefix <> C.serialiseToRawBytes operatorPkh
+            C.serialiseToRawBytes RegisteredOperators.nodeAssetNamePrefix <> operatorPkhBytes
         policyId = mintingPolicyId' registeredOperatorsPolicy
     params <- queryProtocolParameters
     netId <- queryNetworkId
@@ -154,7 +155,7 @@ registerOperator
     hubOracleUtxos <- utxosByPaymentCredential $ C.PaymentCredentialByScript hubOracleScriptHash
     (hubOracleTxIn, _) <-
       maybe (throwError "No hub oracle found") pure $
-        findUtxoWithAsset hubOracleUtxos $
+        findUTxOWithAsset hubOracleUtxos $
           C.AssetId hubOracleMintingPolicyId hubOracleAssetName
     -- Find the root registry utxo.
     registryUtxos <-
@@ -163,7 +164,7 @@ registerOperator
           validatorHash registeredOperatorsValidator
     (rootRegistryTxIn, (rootRegistryUtxoAnyEra, _)) <-
       maybe (throwError "No registry root found") pure $
-        findUtxoWithAsset registryUtxos $
+        findUTxOWithAsset registryUtxos $
           C.AssetId (mintingPolicyId registeredOperatorsPolicy) RegisteredOperators.rootAssetName
     -- Note the existing root link so it can be put in the new node (prepend).
     rootOriginalLink <- do
@@ -184,7 +185,7 @@ registerOperator
             , rootAssetName = ActiveOperators.rootAssetName
             , nodeAssetNamePrefix = ActiveOperators.nodeAssetNamePrefix
             }
-        $ findUTxONonMembership activeOperatorsUtxos newNodeAsset
+        $ findUTxONonMembership activeOperatorsUtxos operatorPkhBytes
     -- Find the retired operators utxo witness to prove that the operator does not exist there.
     retiredOperatorsUtxos <-
       utxosByPaymentCredential $
@@ -199,7 +200,7 @@ registerOperator
             , rootAssetName = RetiredOperators.rootAssetName
             , nodeAssetNamePrefix = RetiredOperators.nodeAssetNamePrefix
             }
-        $ findUTxONonMembership retiredOperatorsUtxos newNodeAsset
+        $ findUTxONonMembership retiredOperatorsUtxos operatorPkhBytes
     pure . execBuildTx @era $ do
       -- Must be signed by registering operator.
       addRequiredSignature operatorPkh
@@ -209,6 +210,8 @@ registerOperator
       addReference activeOperatorsNonMemberWitness
       -- Must witness a proof of non-membership in retired operators set.
       addReference retiredOperatorsNonMemberWitness
+      -- Use reference script to mint.
+      addReference registeredOperatorsPolicyRef
       -- Update the root node's link.
       spendPlutusInlineDatum
         rootRegistryTxIn
@@ -293,12 +296,13 @@ deregisterOperator ::
   ) =>
   MidgardScripts -> C.Hash C.PaymentKey -> m ()
 deregisterOperator MidgardScripts {registeredOperatorsValidator, registeredOperatorsPolicy} operatorPkh = do
-  let targetNodeAsset = C.UnsafeAssetName $ RegisteredOperators.nodeAssetNamePrefix <> C.serialiseToRawBytes operatorPkh
+  let operatorPkhBytes = C.serialiseToRawBytes operatorPkh
+      targetNodeAsset = C.UnsafeAssetName $ RegisteredOperators.nodeAssetNamePrefix <> operatorPkhBytes
   netId <- queryNetworkId
   registryUtxos <- utxosByPaymentCredential $ C.PaymentCredentialByScript $ validatorHash registeredOperatorsValidator
   (targetRegistryTxIn, (_rootRegistryUtxoAnyEra, _)) <-
     maybe (throwError "No registered operator found") pure $
-      findUtxoWithAsset registryUtxos $
+      findUTxOWithAsset registryUtxos $
         C.AssetId (mintingPolicyId registeredOperatorsPolicy) targetNodeAsset
   (anchorRegistryTxIn, (anchorUtxoAnyEra, _)) <-
     maybe (throwError "No anchor utxo found") pure
@@ -309,7 +313,7 @@ deregisterOperator MidgardScripts {registeredOperatorsValidator, registeredOpera
           , rootAssetName = RegisteredOperators.rootAssetName
           , nodeAssetNamePrefix = RegisteredOperators.nodeAssetNamePrefix
           }
-      $ findUtxoWithLink registryUtxos targetNodeAsset
+      $ findUTxOWithLink registryUtxos operatorPkhBytes
   let C.TxOut _ anchorValue _ _ = toTxOut @era anchorUtxoAnyEra
   -- The new anchor output should have its link changed to the link from the target registry utxo (one being removed).
   let newAnchorLink = error "TODO: Need datum structures finalized"
