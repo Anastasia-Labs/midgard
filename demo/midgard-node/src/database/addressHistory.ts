@@ -17,7 +17,7 @@ import {
   WithdrawalsDB,
   DepositsDB,
 } from "./index.js";
-import { breakDownTx, ProcessedTx } from "@/utils.js";
+import { ProcessedTx } from "@/utils.js";
 import { AlwaysSucceedsContract } from "@/services/always-succeeds.js";
 import { NodeConfig } from "@/services/config.js";
 
@@ -214,21 +214,6 @@ export const insertDeposits = (
   Effect.all(deposits.map((d) => depositEntryToEntry(d, status))).pipe(
     Effect.andThen(insertEntries),
   );
-
-export const insertTxOrders = (
-  txOrders: UserEvents.Entry[],
-  status: Status,
-): Effect.Effect<
-  void,
-  SDK.CmlDeserializationError | SDK.DataCoercionError | DatabaseError,
-  Database
-> =>
-  Effect.gen(function* () {
-    const processedTxs = yield* Effect.all(
-      txOrders.map((txOrder) => breakDownTx(txOrder[UserEvents.Columns.INFO])),
-    );
-    yield* insertProcessedTxs(processedTxs, status);
-  });
 
 export const delTxHash = (
   tx_hash: Buffer,

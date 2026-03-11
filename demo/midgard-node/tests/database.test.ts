@@ -1,9 +1,8 @@
 import { describe, expect, beforeAll } from "vitest";
-import { fromHex, toHex } from "@lucid-evolution/lucid";
+import { toHex } from "@lucid-evolution/lucid";
 import { it } from "@effect/vitest";
 import { Effect } from "effect";
 import { SqlClient } from "@effect/sql";
-import { Lucid } from "../src/services/lucid.js";
 import * as InitDB from "../src/database/init.js";
 import {
   // Block
@@ -14,7 +13,6 @@ import {
 
   // Tx
   ImmutableDB,
-  ProcessedMempoolDB,
   MempoolDB,
 
   // Ledger
@@ -26,7 +24,6 @@ import {
   Tx,
   Ledger,
 } from "../src/database/index.js";
-import { breakDownTx, ProcessedTx } from "../src/utils.js";
 import { provideDatabaseLayers } from "./utils.js";
 
 const flushAll = Effect.gen(function* () {
@@ -39,7 +36,6 @@ const flushAll = Effect.gen(function* () {
       ImmutableDB.clear,
       MempoolDB.clear,
       AddressHistoryDB.clear,
-      ProcessedMempoolDB.clear,
     ],
     { discard: true },
   );
@@ -154,168 +150,6 @@ describe("BlocksTxsDB", () => {
           yield* BlocksTxsDB.clear;
           const afterClearAll = yield* BlocksTxsDB.retrieve;
           expect(afterClearAll.length).toEqual(0);
-        }),
-      ),
-  );
-});
-
-describe("MempoolDB", () => {
-  it.effect(
-    "insert, retrieve single, retrieve all, retrieve cbor by hash, retrieve cbors by hashes, retrieve count, clear txs, clear all",
-    (_) =>
-      provideDatabaseLayers(
-        Effect.gen(function* () {
-          yield* flushAll;
-
-          const pTxId1 = randomBytes(32);
-          const pTx1 = randomBytes(64);
-          const pSpent1 = randomBytes(32);
-          const processedTx1: ProcessedTx = {
-            txId: pTxId1,
-            txCbor: pTx1,
-            spent: [pSpent1],
-            produced: [ledgerEntry1],
-          };
-          const pTxId2 = randomBytes(32);
-          const pTx2 = randomBytes(64);
-          const pSpent2 = randomBytes(32);
-          const processedTx2: ProcessedTx = {
-            txId: pTxId2,
-            txCbor: pTx2,
-            spent: [pSpent2],
-            produced: [ledgerEntry2],
-          };
-
-          // insert multiple
-          yield* MempoolDB.insertMultiple([processedTx1, processedTx2]);
-
-          // retrieve tx cbor by hash
-          const gotOne = yield* MempoolDB.retrieveTxCborByHash(pTxId1);
-          expect(toHex(gotOne)).toEqual(toHex(pTx1));
-
-          // retrieve tx cbor by hashes
-          const gotMany = yield* MempoolDB.retrieveTxCborsByHashes([
-            pTxId1,
-            pTxId2,
-          ]);
-          expect(new Set(gotMany.map((r) => toHex(r)))).toStrictEqual(
-            new Set([toHex(pTx1), toHex(pTx2)]),
-          );
-
-          // retrieve all
-          const gotAll = yield* MempoolDB.retrieve;
-          expect(
-            new Set(gotAll.map((e) => removeTimestampFromTxEntry(e))),
-          ).toStrictEqual(
-            new Set([
-              {
-                [Tx.Columns.TX_ID]: pTxId1,
-                [Tx.Columns.TX]: pTx1,
-              },
-              {
-                [Tx.Columns.TX_ID]: pTxId2,
-                [Tx.Columns.TX]: pTx2,
-              },
-            ]),
-          );
-
-          // retrieve count
-          const gotCount: bigint = yield* MempoolDB.retrieveTxCount;
-          expect(gotCount).toEqual(2n);
-
-          // clearTxs
-          yield* MempoolDB.clearTxs([pTxId1]);
-          const afterClear = yield* MempoolDB.retrieve;
-          expect(
-            new Set(afterClear.map((e) => removeTimestampFromTxEntry(e))),
-          ).toStrictEqual(
-            new Set([
-              {
-                [Tx.Columns.TX_ID]: pTxId2,
-                [Tx.Columns.TX]: pTx2,
-              },
-            ]),
-          );
-
-          // clearAll
-          yield* MempoolDB.clear;
-          const afterClearAll = yield* MempoolDB.retrieve;
-          expect(afterClearAll.length).toEqual(0);
-
-          // insert single
-          yield* flushAll;
-          yield* MempoolDB.insert(processedTx1);
-          const afterInsertOne = yield* MempoolDB.retrieve;
-          expect(
-            afterInsertOne.map((e) => removeTimestampFromTxEntry(e)),
-          ).toStrictEqual([
-            {
-              [Tx.Columns.TX_ID]: pTxId1,
-              [Tx.Columns.TX]: pTx1,
-            },
-          ]);
-        }),
-      ),
-  );
-});
-
-describe("ProcessedMempoolDB", () => {
-  it.effect(
-    "insert tx, insert txs, retrieve all, retrieve cbor by hash, retrieve cbors by hashes, clear all",
-    (_) =>
-      provideDatabaseLayers(
-        Effect.gen(function* () {
-          yield* flushAll;
-
-          // insert txs
-          yield* ProcessedMempoolDB.insertTxs([txEntry1, txEntry2]);
-
-          // retrieve tx cbor by hash
-          const gotOne = yield* ProcessedMempoolDB.retrieveTxCborByHash(txId1);
-          expect(toHex(gotOne)).toEqual(toHex(tx1));
-
-          // retrieve tx cbors by hashes
-          const gotMany = yield* ProcessedMempoolDB.retrieveTxCborsByHashes([
-            txId1,
-            txId2,
-          ]);
-          expect(new Set(gotMany.map((r) => toHex(r)))).toStrictEqual(
-            new Set([toHex(tx1), toHex(tx2)]),
-          );
-
-          // retrieve all
-          const gotAll = yield* ProcessedMempoolDB.retrieve;
-          expect(
-            new Set(gotAll.map((e) => removeTimestampFromTxEntry(e))),
-          ).toStrictEqual(
-            new Set([
-              {
-                [Tx.Columns.TX_ID]: txId1,
-                [Tx.Columns.TX]: tx1,
-              },
-              {
-                [Tx.Columns.TX_ID]: txId2,
-                [Tx.Columns.TX]: tx2,
-              },
-            ]),
-          );
-
-          // clear all
-          yield* ProcessedMempoolDB.clear;
-          const afterClearAll = yield* ProcessedMempoolDB.retrieve;
-          expect(afterClearAll.length).toEqual(0);
-
-          // insert single
-          yield* ProcessedMempoolDB.insertTx(txEntry1);
-          const afterInsertOne = yield* ProcessedMempoolDB.retrieve;
-          expect(
-            afterInsertOne.map((e) => removeTimestampFromTxEntry(e)),
-          ).toStrictEqual([
-            {
-              [Tx.Columns.TX_ID]: txId1,
-              [Tx.Columns.TX]: tx1,
-            },
-          ]);
         }),
       ),
   );
@@ -488,154 +322,6 @@ describe("ConfirmedLedgerDB", () => {
         yield* ConfirmedLedgerDB.clear;
         const afterClearAll = yield* ConfirmedLedgerDB.retrieve;
         expect(afterClearAll.length).toEqual(0);
-      }),
-    ),
-  );
-});
-
-describe("AddressHistoryDB", () => {
-  it.effect("insert, retrieve, clears tx hash, clear all", () =>
-    provideDatabaseLayers(
-      Effect.gen(function* () {
-        yield* flushAll;
-
-        const pTxId1 = randomBytes(32);
-        const pTx1 = randomBytes(64);
-        const pSpent1 = randomBytes(32);
-        const processedTx1: ProcessedTx = {
-          txId: pTxId1,
-          txCbor: pTx1,
-          spent: [pSpent1],
-          produced: [ledgerEntry1],
-        };
-        const ahEntry1: AddressHistoryDB.Entry = {
-          [Ledger.Columns.TX_ID]: pTxId1,
-          [Ledger.Columns.ADDRESS]: address1,
-        };
-        const pTxId2 = randomBytes(32);
-        const pTx2 = randomBytes(64);
-        const pSpent2 = randomBytes(32);
-        const processedTx2: ProcessedTx = {
-          txId: pTxId2,
-          txCbor: pTx2,
-          spent: [pSpent2],
-          produced: [ledgerEntry2],
-        };
-        const ahEntry2: AddressHistoryDB.Entry = {
-          [Ledger.Columns.TX_ID]: pTxId2,
-          [Ledger.Columns.ADDRESS]: address2,
-        };
-
-        // via mempool
-        // insert
-        yield* MempoolDB.insertMultiple([processedTx1, processedTx2]);
-        yield* AddressHistoryDB.insertEntries([ahEntry1, ahEntry2]);
-
-        // retrieve
-        const expectedViaMempool = yield* AddressHistoryDB.retrieve(address1);
-        expect(expectedViaMempool.map((t) => toHex(t))).toStrictEqual([
-          toHex(pTx1),
-        ]);
-
-        // clears tx hash
-        yield* AddressHistoryDB.delTxHash(pTxId1);
-        const afterClear = yield* AddressHistoryDB.retrieve(address1);
-        expect(afterClear).toStrictEqual([]);
-
-        //clears all
-        yield* AddressHistoryDB.clear;
-        const afterClearAll1 = yield* AddressHistoryDB.retrieve(address1);
-        const afterClearAll2 = yield* AddressHistoryDB.retrieve(address2);
-        expect([...afterClearAll1, ...afterClearAll2]).toStrictEqual([]);
-
-        // via immutable
-        const txEntry1: Tx.Entry = {
-          [Tx.Columns.TX_ID]: pTxId1,
-          [Tx.Columns.TX]: pTx1,
-        };
-        const txEntry2: Tx.Entry = {
-          [Tx.Columns.TX_ID]: pTxId2,
-          [Tx.Columns.TX]: pTx2,
-        };
-        yield* flushAll;
-
-        // insert
-        yield* ImmutableDB.insertTxs([txEntry1, txEntry2]);
-        yield* AddressHistoryDB.insertEntries([ahEntry1, ahEntry2]);
-
-        // retrieve
-        const expectedViaImmutable = yield* AddressHistoryDB.retrieve(address1);
-        expect(expectedViaImmutable.map((t) => toHex(t))).toStrictEqual([
-          toHex(pTx1),
-        ]);
-
-        // clears tx hash
-        yield* AddressHistoryDB.delTxHash(pTxId1);
-        const afterClearImmutable = yield* AddressHistoryDB.retrieve(address1);
-        expect(afterClearImmutable).toStrictEqual([]);
-
-        //clears all
-        yield* AddressHistoryDB.clear;
-        const afterClearAllImmutable1 =
-          yield* AddressHistoryDB.retrieve(address1);
-        const afterClearAllImmutable2 =
-          yield* AddressHistoryDB.retrieve(address2);
-        expect([
-          ...afterClearAllImmutable1,
-          ...afterClearAllImmutable2,
-        ]).toStrictEqual([]);
-      }),
-    ),
-  );
-
-  it.effect("submit tx pipeline inserts a tx id in address db history", () =>
-    provideDatabaseLayers(
-      Effect.gen(function* () {
-        yield* flushAll;
-        const lucid = yield* Lucid;
-        yield* lucid.switchToOperatorsMainWallet;
-        const thisWalletAddress = yield* Effect.tryPromise(() =>
-          lucid.api.wallet().address(),
-        );
-        // send funds to other wallet
-        const tx1 = yield* Effect.tryPromise(() =>
-          lucid.api
-            .newTx()
-            .pay.ToAddress(address1, { lovelace: 5000000n })
-            .complete(),
-        );
-        const signedTx1 = yield* Effect.tryPromise(() =>
-          tx1.sign.withWallet().complete(),
-        );
-        const brokenTx1 = yield* breakDownTx(fromHex(signedTx1.toCBOR()));
-        yield* MempoolDB.insertMultiple([brokenTx1]);
-
-        const sql = yield* SqlClient.SqlClient;
-        const result1 =
-          yield* sql<AddressHistoryDB.Entry>`SELECT * FROM address_history`;
-        expect(
-          result1.map((r) => r[Ledger.Columns.ADDRESS]).sort(),
-        ).toStrictEqual([address1, thisWalletAddress].sort());
-
-        // send funds to same wallet
-        yield* flushAll;
-        const tx2 = yield* Effect.tryPromise(() =>
-          lucid.api
-            .newTx()
-            .pay.ToAddress(thisWalletAddress, { lovelace: 5000000n })
-            .complete(),
-        );
-        const signedTx2 = yield* Effect.tryPromise(() =>
-          tx2.sign.withWallet().complete(),
-        );
-        const brokenTx2 = yield* breakDownTx(fromHex(signedTx2.toCBOR()));
-        yield* MempoolDB.insertMultiple([brokenTx2]);
-
-        const result2 =
-          yield* sql<AddressHistoryDB.Entry>`SELECT * FROM address_history`;
-        expect(result2.map((r) => r[Ledger.Columns.ADDRESS])).toStrictEqual([
-          thisWalletAddress,
-        ]);
       }),
     ),
   );

@@ -4,6 +4,7 @@ import { WorkerError } from "@/workers/utils/common.js";
 import { WorkerInput, WorkerOutput } from "@/workers/utils/block-commitment.js";
 import { Metric } from "effect";
 import { Worker } from "worker_threads";
+import { BlocksDB } from "@/database/index.js";
 
 const commitBlockNumTxGauge = Metric.gauge("commit_block_num_tx_count", {
   description:
@@ -13,7 +14,7 @@ const commitBlockNumTxGauge = Metric.gauge("commit_block_num_tx_count", {
 
 const totalTxSizeGauge = Metric.gauge("total_tx_size", {
   description:
-    "A gauge for tracking the total size of transactions in the commit block",
+    "A gauge for tracking the total size of transactions in committed blocks",
 });
 
 const commitBlockCounter = Metric.counter("commit_block_count", {
@@ -24,37 +25,29 @@ const commitBlockCounter = Metric.counter("commit_block_count", {
 
 const commitBlockTxCounter = Metric.counter("commit_block_tx_count", {
   description:
-    "A counter for tracking the number of transactions in the commit block",
+    "A counter for tracking the number of transactions in committed blocks",
   bigint: true,
   incremental: true,
 });
 
-const commitBlockTxSizeGauge = Metric.gauge("commit_block_tx_size", {
-  description: "A gauge for tracking the size of the commit block transaction",
-});
+const blockCommitmentUserEventsCountGauge = Metric.gauge(
+  "block_total_user_events_count",
+  {
+    description:
+      "A gauge for tracking the number of user events (deposits, withdrawals and tx orders) in committed blocks",
+  },
+);
 
 export const buildAndSubmitCommitmentBlockAction = () =>
   Effect.gen(function* () {
     const globals = yield* Globals;
-    const AVAILABLE_CONFIRMED_BLOCK = yield* globals.AVAILABLE_CONFIRMED_BLOCK;
-    const PROCESSED_UNSUBMITTED_TXS_COUNT =
-      yield* globals.PROCESSED_UNSUBMITTED_TXS_COUNT;
-    const PROCESSED_UNSUBMITTED_TXS_SIZE =
-      yield* globals.PROCESSED_UNSUBMITTED_TXS_SIZE;
 
     const worker = Effect.async<WorkerOutput, WorkerError, never>((resume) => {
       Effect.runSync(Effect.logInfo(`👷 Starting block commitment worker...`));
+      const workerInputData: WorkerInput = { data: {} };
       const worker = new Worker(
         new URL("./commit-block-header.js", import.meta.url),
-        {
-          workerData: {
-            data: {
-              availableConfirmedBlock: AVAILABLE_CONFIRMED_BLOCK,
-              mempoolTxsCountSoFar: PROCESSED_UNSUBMITTED_TXS_COUNT,
-              sizeOfTxsSoFar: PROCESSED_UNSUBMITTED_TXS_SIZE,
-            },
-          } as WorkerInput, // TODO: Consider other approaches to avoid type assertion here.
-        },
+        { workerData: workerInputData },
       );
       worker.on("message", (output: WorkerOutput) => {
         if (output.type === "FailureOutput") {
@@ -107,39 +100,30 @@ export const buildAndSubmitCommitmentBlockAction = () =>
     switch (workerOutput.type) {
       case "SuccessfulCommitmentOutput": {
         yield* Ref.update(globals.BLOCKS_IN_QUEUE, (n) => n + 1);
-        yield* Ref.set(globals.AVAILABLE_CONFIRMED_BLOCK, "");
-        yield* Ref.set(
-          globals.UNCONFIRMED_SUBMITTED_BLOCK_TX_HASH,
-          workerOutput.submittedTxHash,
-        );
-        yield* Ref.set(globals.PROCESSED_UNSUBMITTED_TXS_COUNT, 0);
-        yield* Ref.set(globals.PROCESSED_UNSUBMITTED_TXS_SIZE, 0);
 
-        yield* commitBlockTxSizeGauge(Effect.succeed(workerOutput.txSize));
+        yield* blockCommitmentUserEventsCountGauge(
+          Effect.succeed(
+            workerOutput.stats[BlocksDB.Columns.DEPOSITS_COUNT] +
+              workerOutput.stats[BlocksDB.Columns.WITHDRAWALS_COUNT] +
+              workerOutput.stats[BlocksDB.Columns.TX_ORDERS_COUNT],
+          ),
+        );
         yield* commitBlockNumTxGauge(
-          Effect.succeed(BigInt(workerOutput.mempoolTxsCount)),
+          Effect.succeed(
+            BigInt(workerOutput.stats[BlocksDB.Columns.TX_REQUESTS_COUNT]),
+          ),
         );
         yield* Metric.increment(commitBlockCounter);
         yield* Metric.incrementBy(
           commitBlockTxCounter,
-          BigInt(workerOutput.mempoolTxsCount),
+          BigInt(workerOutput.stats[BlocksDB.Columns.TX_REQUESTS_COUNT]),
         );
-        yield* totalTxSizeGauge(Effect.succeed(workerOutput.sizeOfBlocksTxs));
+        yield* totalTxSizeGauge(
+          Effect.succeed(
+            workerOutput.stats[BlocksDB.Columns.TOTAL_EVENTS_SIZE],
+          ),
+        );
         yield* Effect.logInfo("🔹 ☑️  Block submission completed.");
-        break;
-      }
-      case "SkippedSubmissionOutput": {
-        yield* Ref.update(
-          globals.PROCESSED_UNSUBMITTED_TXS_COUNT,
-          (n) => n + workerOutput.mempoolTxsCount,
-        );
-        yield* Ref.update(
-          globals.PROCESSED_UNSUBMITTED_TXS_SIZE,
-          (n) => n + workerOutput.sizeOfTxs,
-        );
-        break;
-      }
-      case "NothingToCommitOutput": {
         break;
       }
       case "FailureOutput": {
