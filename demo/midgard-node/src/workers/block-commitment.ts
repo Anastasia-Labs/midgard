@@ -11,22 +11,14 @@ import {
   buildNewBlockEntry,
 } from "./utils/block-commitment.js";
 import {
-  ConfigError,
   Database,
   Lucid,
   AlwaysSucceedsContract,
   NodeConfig,
-  DatabaseInitializationError,
 } from "@/services/index.js";
 import { MempoolLedgerDB, BlocksDB } from "@/database/index.js";
 import { TxSignError } from "@/transactions/utils.js";
-import {
-  MidgardMpt,
-  MptError,
-  makeMpts,
-  withTrieTransaction,
-} from "@/workers/utils/mpt.js";
-import { FileSystemError } from "@/utils.js";
+import { MidgardMpt, MptError } from "@/workers/utils/mpt.js";
 import {
   DatabaseError,
   sqlErrorToDatabaseError,

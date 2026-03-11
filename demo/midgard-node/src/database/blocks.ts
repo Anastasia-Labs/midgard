@@ -25,19 +25,19 @@ export const tableName = "unsubmitted_blocks";
 
 export enum Columns {
   HEIGHT = "height",
+  TIMESTAMPTZ = "time_stamp_tz",
   HEADER_HASH = "header_hash",
   EVENT_START_TIME = "event_start_time",
   EVENT_END_TIME = "event_end_time",
   NEW_WALLET_UTXOS = "new_wallet_utxos",
   PRODUCED_UTXOS = "produced_utxos",
   L1_CBOR = "l1_cbor",
+  STATUS = "status",
   DEPOSITS_COUNT = "deposits_count",
   TX_REQUESTS_COUNT = "tx_requests_count",
   TX_ORDERS_COUNT = "tx_orders_count",
   WITHDRAWALS_COUNT = "withdrawals_count",
   TOTAL_EVENTS_SIZE = "total_events_size",
-  TIMESTAMPTZ = "time_stamp_tz",
-  STATUS = "status",
 }
 
 export type Stats = {

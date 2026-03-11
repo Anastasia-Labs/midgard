@@ -8,7 +8,6 @@ import {
   ImmutableDB,
   LatestLedgerDB,
   MempoolDB,
-  ProcessedMempoolDB,
   MempoolLedgerDB,
   DepositsDB,
   TxOrdersDB,
@@ -38,7 +37,6 @@ export const program: Effect.Effect<
   yield* Ledger.createTable(MempoolLedgerDB.tableName);
   yield* Tx.createTable(ImmutableDB.tableName);
   yield* Tx.createTable(MempoolDB.tableName);
-  yield* Tx.createTable(ProcessedMempoolDB.tableName);
   yield* UserEvents.createTable(DepositsDB.tableName);
   yield* UserEvents.createTable(TxOrdersDB.tableName);
   yield* UserEvents.createTable(WithdrawalsDB.tableName);
