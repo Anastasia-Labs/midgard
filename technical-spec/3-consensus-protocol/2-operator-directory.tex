@@ -71,15 +71,17 @@ Redeemers:
             \item The transaction must mint the Midgard hub oracle NFT.
             \item The transaction must Init the \code{registered\_operators} queue.
         \end{enumerate}
-    \item[Register Operator.] Prepend a node into the \code{registered\_operators} queue with the operator's ADA bond at the operator's key, noting the registration time.
+    \item[Register Operator.] Insert a key-descending node into the \code{registered\_operators} queue with the operator's ADA bond, the registration time as key, and storing the operator's pub key hash.
       Grouped conditions:
         \begin{itemize}
-            \item Verify the registration and prepend the registrant to the registered operators:
+            \item Verify the registration and key-descending insertion of the registrant to the registered operators:
             \begin{enumerate}
-                \item The transaction must Prepend a node into the \code{registered\_operators} queue.
+                \item The transaction must Insert a node into the \code{registered\_operators} queue.
                   Let that node be \code{registered\_node}.
-                \item The key of \code{registered\_node} must correspond to a public key hash that signed the transaction.
-                \item The \code{activation\_time} field of \code{registered\_node} must equal the sum of the Midgard \code{registration\_duration} protocol parameter and the inclusive upper bound of the transaction's validity interval.
+                \item Anchor element of \code{registered\_node} must be root.
+                \item Let \code{activation\_time} be equal to the sum of the Midgard \code{registration\_duration} protocol parameter and the inclusive upper bound of the transaction's validity interval.
+                \item The key of \code{registered\_node} must be the big-endian encoding of \code{activation\_time} in as few bytes as possible.
+                \item The \code{operator} field of \code{registered\_node} must correspond to a public key hash that has signed the transaction.
                 \item The Lovelace in the \code{registered\_node} must equal the \code{required\_bond} Midgard parameter.
             \end{enumerate}
         \end{itemize}
@@ -90,13 +92,14 @@ Redeemers:
             \begin{enumerate}
                 \item The transaction must Remove a node from the \code{registered\_operators} queue.
                   Let that node be \code{registered\_node}.
-                \item The lower bound of the transaction validity interval must meet or exceed the \code{activation\_time}.
+                \item Let \code{activation\_time} be the big-endian decoding of \code{registered\_node}'s key.
+                \item The inclusive lower bound of the transaction validity interval must meet or exceed the \code{activation\_time}.
             \end{enumerate}
             \item Verify that the registrant is being added to active operators:
             \begin{enumerate}[resume]
                 \item The transaction must include the Midgard hub oracle NFT in a reference input.
                 \item Let \code{active\_operators} be the policy ID in the corresponding field of the Midgard hub oracle.
-                \item The transaction must Insert a node into the \code{active\_operators} set, as evidenced by minting a \code{active\_operators} node NFT for the \code{registered\_node} key.
+                \item The transaction must Insert a node into the \code{active\_operators} set, as evidenced by minting a \code{active\_operators} node NFT for the \code{registered\_node} key via the Activate Operator redeemer.
             \end{enumerate}
             \item Verify that the registrant is not already retired:
             \begin{enumerate}[resume]
@@ -108,30 +111,30 @@ Redeemers:
         \begin{enumerate}
             \item The transaction must Remove a node from the \code{registered\_operators} queue.
               Let \code{removed\_node} be that node.
-            \item The key of \code{removed\_node} must correspond to a public key hash that signed the transaction.
+            \item The operator key of \code{removed\_node} must correspond to a public key hash that signed the transaction.
         \end{enumerate}
     The operator consents to the transaction, so the ADA bond is assumed to be returned to the operator's control.
-    \item[Remove Duplicate Slash Bond.] Remove a node from the \code{registered\_operators} queue if its key duplicates the key of any other node among the registered, active, or retired operators.
+    \item[Remove Duplicate Slash Bond.] Remove a node from the \code{registered\_operators} queue if its operator key duplicates the key of any other node among the registered, active, or retired operators.
       Do \emph{not} return the duplicate node's ADA bond to its operator.
       Conditions:
         \begin{enumerate}
             \item The transaction must Remove a node from the \code{registered\_operators} queue.
-              Let that node be \code{duplicate\_node}.
+              Let that node be \code{duplicate\_node}, and its operator key be \code{duplicate\_operator}.
             \item The transaction fees must meet or exceed the \code{slashing\_penalty} protocol parameter, denominated in Lovelaces.
             \item Let \code{witness\_status} be one of: \code{Registered}, \code{Active}, or \code{Retired}.
             \item If \code{witness\_status} is \code{Registered}:
                 \begin{enumerate}
-                    \item The transaction must include a reference input of a \code{registered\_operators} node that proves the \code{duplicate\_node} key's membership in that list.
+                    \item The transaction must include a reference input of a \code{registered\_operators} node such that its operator key matches \code{duplicate\_operator}.
                 \end{enumerate}
             \item If \code{witness\_status} is \code{Active}:
                 \begin{enumerate}
                     \item The transaction must include the Midgard hub oracle NFT in a reference input.
                     \item Let \code{active\_operators} be the policy ID in the corresponding field of the Midgard hub oracle.
-                    \item The transaction must include a reference input of a \code{active\_operators} node that proves the \code{duplicate\_node} key's membership in that list.
+                    \item The transaction must include a reference input of an \code{active\_operators} node which its key matches \code{duplicate\_operator}.
                 \end{enumerate}
             \item If \code{witness\_status} is \code{Retired}:
                 \begin{enumerate}
-                    \item The transaction must include a reference input of a \code{retired\_operators} node that proves the \code{duplicate\_node} key's membership in that list.
+                    \item The transaction must include a reference input of a \code{retired\_operators} node which its key matches \code{duplicate\_operator}.
                 \end{enumerate}
         \end{enumerate}
     The submitter of the Remove Duplicate Slash Bond transaction is considered to be the fraud prover, so the conditions for that redeemer do not need to explicitly enforce that the \code{fraud\_prover\_reward} is paid out because the submitter consents to the transaction.

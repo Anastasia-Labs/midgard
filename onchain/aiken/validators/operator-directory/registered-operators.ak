@@ -235,12 +235,12 @@ validator mint(
           )
 
         // 5.  The `activation_time` of the removed node (retrieved from its
-        //     key) must lie before the lower bound of the transaction's
-        //     validity range.
+        //     key) must match or lie before the lower bound of the
+        //     transaction's validity range.
         let valid_from =
           utils.get_inclusive_lower_bound_of_interval(validity_range)
         let activation_time = node_key_to_activation_time(removed_node_key)
-        expect valid_from > activation_time
+        expect valid_from >= activation_time
 
         // Done.
         True
