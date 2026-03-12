@@ -1,3 +1,4 @@
+use aiken/builtin
 use aiken/crypto.{VerificationKeyHash}
 use aiken/primitive/bytearray
 use aiken_design_patterns/linked_list
@@ -20,7 +21,7 @@ pub const node_asset_name_prefix_length: Int =
   bytearray.length(node_asset_name_prefix)
 
 pub type NodeData {
-  activation_time: PosixTime,
+  operator: VerificationKeyHash,
 }
 
 pub type Datum =
@@ -37,6 +38,7 @@ pub type MintRedeemer {
   Deinit { input_index: Int }
   RegisterOperator {
     registering_operator: VerificationKeyHash,
+    activation_time: PosixTime,
     root_input_index: Int,
     root_output_index: Int,
     registered_node_output_index: Int,
@@ -67,6 +69,12 @@ pub type MintRedeemer {
     duplicate_node_ref_input_index: Int,
     duplicate_operator_status: DuplicateOperatorStatus,
   }
+}
+
+/// Converts the given integer to a big endian byte array, in as few bytes as
+/// possible (TODO?).
+pub fn activation_time_to_node_key(posix_time: PosixTime) -> ByteArray {
+  builtin.integer_to_bytearray(True, 0, posix_time)
 }
 
 pub fn finalize_linked_list(

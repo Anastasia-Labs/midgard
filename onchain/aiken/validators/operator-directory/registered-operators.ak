@@ -12,8 +12,8 @@ use midgard/operator_directory/active_operators
 use midgard/operator_directory/registered_operators.{
   ActivateOperator, Datum, Deinit, DeregisterOperator, DuplicateIsActive,
   DuplicateIsRegistered, DuplicateIsRetired, Init, MintRedeemer, NodeData,
-  RegisterOperator, RemoveDuplicateSlashBond, finalize_linked_list,
-  root_asset_name,
+  RegisterOperator, RemoveDuplicateSlashBond, activation_time_to_node_key,
+  finalize_linked_list, root_asset_name,
 }
 use midgard/operator_directory/retired_operators
 use midgard/protocol_parameters.{
@@ -62,6 +62,7 @@ validator mint(
         )
       RegisterOperator {
         registering_operator,
+        activation_time,
         root_input_index,
         root_output_index,
         registered_node_output_index,
@@ -127,34 +128,42 @@ validator mint(
         // 5. Prepending to the head of the linked list must be proper.
         {
           let
-            _root_lovelace_change,
-            _root_data,
+            _anchor_lovelace_change,
+            m_anchor_key,
+            _anchor_data,
             registered_node_lovelace,
             registered_node_key,
             registered_node_data,
             _registered_node_link,
           <-
-            linked_list.prepend_unordered(
+            linked_list.insert_descending(
               root_input,
               root_output,
               registered_node_output,
               mint,
             )
 
-          // 6. The Lovelace in the registered node must equal the
+          // 6. Anchor element must be root.
+          expect m_anchor_key == None
+
+          // 7. The Lovelace in the registered node must equal the
           //    `required_bond` Midgard parameter.
           expect registered_node_lovelace == required_bond
 
-          // 7. The key of registered node match the `registering_operator`
-          //    redeemer argument.
-          expect registered_node_key == registering_operator
+          // 8. The key of registered node must match the `activation_time`
+          //    redeemer argument (big-endian bytearray).
+          expect
+            registered_node_key == activation_time_to_node_key(activation_time)
 
-          // 8.  The `activation_time` field of registered node must equal the
-          //     sum of the Midgard `registration_duration` protocol parameter
-          //     and the inclusive upper bound of the transaction's validity
-          //     interval.
-          expect NodeData { activation_time } = registered_node_data
+          // 9. `activation_time` must equal the sum of the Midgard
+          //    `registration_duration` protocol parameter and the inclusive
+          //    upper bound of the transaction's validity interval.
           expect activation_time == valid_to + registration_duration
+
+          // 10. Registered node's data must carry the registering operator.
+          let expected_node_data: Data =
+            NodeData { operator: registering_operator }
+          expect registered_node_data == expected_node_data
 
           // Done.
           True
