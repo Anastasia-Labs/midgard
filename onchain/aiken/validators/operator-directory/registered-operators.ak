@@ -13,7 +13,7 @@ use midgard/operator_directory/registered_operators.{
   ActivateOperator, Datum, Deinit, DeregisterOperator, DuplicateIsActive,
   DuplicateIsRegistered, DuplicateIsRetired, Init, MintRedeemer, NodeData,
   RegisterOperator, RemoveDuplicateSlashBond, activation_time_to_node_key,
-  finalize_linked_list, root_asset_name,
+  finalize_linked_list, node_key_to_activation_time, root_asset_name,
 }
 use midgard/operator_directory/retired_operators
 use midgard/protocol_parameters.{
@@ -62,7 +62,6 @@ validator mint(
         )
       RegisterOperator {
         registering_operator,
-        activation_time,
         root_input_index,
         root_output_index,
         registered_node_output_index,
@@ -115,9 +114,6 @@ validator mint(
                 ),
           }
 
-        let valid_to =
-          utils.get_inclusive_upper_bound_of_interval(validity_range)
-
         // 4. Linked list prepend input and outputs must exist at specified
         //    indices.
         expect Some(root_input) = inputs |> list.at(root_input_index)
@@ -150,15 +146,18 @@ validator mint(
           //    `required_bond` Midgard parameter.
           expect registered_node_lovelace == required_bond
 
-          // 8. The key of registered node must match the `activation_time`
-          //    redeemer argument (big-endian bytearray).
-          expect
-            registered_node_key == activation_time_to_node_key(activation_time)
-
-          // 9. `activation_time` must equal the sum of the Midgard
+          // 8. Let `activation_time` be equal to the sum of the Midgard
           //    `registration_duration` protocol parameter and the inclusive
           //    upper bound of the transaction's validity interval.
-          expect activation_time == valid_to + registration_duration
+          let activation_time =
+            registration_duration + utils.get_inclusive_upper_bound_of_interval(
+              validity_range,
+            )
+
+          // 9. The key of registered node must match the big-endian encoding of
+          //    `activation_time`
+          expect
+            registered_node_key == activation_time_to_node_key(activation_time)
 
           // 10. Registered node's data must carry the registering operator.
           let expected_node_data: Data =
@@ -223,8 +222,8 @@ validator mint(
 
         // 4. Removal of the activating node from the registered operator set
         //    must be valid.
-        let removed_node_data <-
-          remove_operator_and_get_node_data(
+        let removed_node_key <-
+          remove_operator_and_get_node_key(
             own_policy_id,
             activating_operator,
             anchor_element_input_index,
@@ -235,12 +234,13 @@ validator mint(
             mint,
           )
 
-        // 5.  The `activation_time` field of the removed node must lie before
-        //     the lower bound of the transaction's validity range.
+        // 5.  The `activation_time` of the removed node (retrieved from its
+        //     key) must lie before the lower bound of the transaction's
+        //     validity range.
         let valid_from =
           utils.get_inclusive_lower_bound_of_interval(validity_range)
-        expect NodeData { activation_time } = removed_node_data
-        expect valid_from >= activation_time
+        let activation_time = node_key_to_activation_time(removed_node_key)
+        expect valid_from > activation_time
 
         // Done.
         True
@@ -256,10 +256,10 @@ validator mint(
         // 1. Transaction must be signed by the deregistering operator.
         expect deregistering_operator |> utils.has_signed(extra_signatories)
 
-        // 2. Removal of the deregistering node from the registered operator set
-        //    must be valid.
-        let _removed_node_data <-
-          remove_operator_and_get_node_data(
+        // 2. Removal of the deregistering operator's node from the registered
+        //    operator set must be valid.
+        let _removed_node_key <-
+          remove_operator_and_get_node_key(
             own_policy_id,
             deregistering_operator,
             anchor_element_input_index,
@@ -289,10 +289,10 @@ validator mint(
         //    destination.
         expect fee >= slashing_penalty
 
-        // 2. Removal of the duplicate operator node from the registered
+        // 2. Removal of the duplicate operator's node from the registered
         //    operator set must be valid.
-        let _removed_node_data <-
-          remove_operator_and_get_node_data(
+        let _removed_node_key <-
+          remove_operator_and_get_node_key(
             own_policy_id,
             duplicate_operator,
             anchor_element_input_index,
@@ -313,16 +313,18 @@ validator mint(
         when duplicate_operator_status is {
           DuplicateIsRegistered ->
             // 4a. Referenced element must be a node in the registered
-            //     operators set with a key that matches the removed node.
+            //     operators set with an operator key that matches the removed
+            //     operator.
             {
               let
                 _node_lovelace,
-                m_key,
-                _node_data,
+                _m_key,
+                node_data,
                 _node_link,
               <- linked_list.get_element_info(duplicate_node_ref_utxo)
-              expect Some(registered_operator) = m_key
-              expect registered_operator == duplicate_operator
+              let expected_node_data: Data =
+                NodeData { operator: duplicate_operator }
+              expect node_data == expected_node_data
 
               // Done.
               True
@@ -385,7 +387,7 @@ validator mint(
   }
 }
 
-fn remove_operator_and_get_node_data(
+fn remove_operator_and_get_node_key(
   own_policy_id: PolicyId,
   removed_operator: VerificationKeyHash,
   anchor_element_input_index: Int,
@@ -394,7 +396,7 @@ fn remove_operator_and_get_node_data(
   inputs: List<Input>,
   outputs: List<Output>,
   mint: Value,
-  removed_node_data_validation: fn(Data) -> Bool,
+  removed_node_key_validator: fn(linked_list.NodeKey) -> Bool,
 ) -> Bool {
   // 1. Linked list inputs and output for removal must exist at specified
   //    indices.
@@ -427,12 +429,13 @@ fn remove_operator_and_get_node_data(
     //    must be preserved.
     expect anchor_lovelace_change >= 0
 
-    // 4. The key of removed node must match the `activating_operator` redeemer
-    //    argument.
-    expect removed_node_key == removed_operator
+    // 4. The operator of removed node must match the provided
+    //    `removed_operator`.
+    let expected_node_data: Data = NodeData { operator: removed_operator }
+    expect removed_node_data == expected_node_data
 
     // 5.  The custom validation must pass.
-    expect removed_node_data_validation(removed_node_data)
+    expect removed_node_key_validator(removed_node_key)
 
     // Done.
     True

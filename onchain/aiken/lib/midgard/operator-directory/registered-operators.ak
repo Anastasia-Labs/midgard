@@ -38,7 +38,6 @@ pub type MintRedeemer {
   Deinit { input_index: Int }
   RegisterOperator {
     registering_operator: VerificationKeyHash,
-    activation_time: PosixTime,
     root_input_index: Int,
     root_output_index: Int,
     registered_node_output_index: Int,
