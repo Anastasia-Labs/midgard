@@ -372,7 +372,7 @@ While this is a value that should be derived from the labels themselves, its pro
 \subsection{Opinionated design decisions}
 \label{h:list-opinionated-design-decisions}
 
-A few implicit behavior have been implemented by the library in order to keep the API cleaner.
+A few implicit behaviors have been implemented by the library in order to keep the API cleaner.
 \begin{itemize}
   \item \textbf{Addresses of utxos.} New and removing nodes are allowed to have arbitrary staking parts for their destination addresses, but their payment parts are required to be the same as their anchor elements.
     On the other hand, anchor elements are validated to be reproduced at the same addresses (meaning neither their payment parts nor staking parts can change).
@@ -402,6 +402,9 @@ Midgard uses linked lists throughout its onchain architecture:
     \item \nameref{h:state-queue} (\cref{h:state-queue})
 \end{itemize}
 
+Where registered operators are key-descending ordered with activation times as node keys.
+Active and retired operators are key-ascending ordered with operator keys as node keys.
+And state queue is an unordered list with header hashes as node keys.
 
 \label{h:parallel-insertions-in-key-ordered-lists}
 
@@ -412,14 +415,13 @@ This can be alleviated by using ``separator'' nodes in the list, which boost the
 Ideally, separators should be evenly spaced throughout the key space of the list.
 
 \begin{align*}
-    \T{MyNodeDatum} &\coloneq \T{NodeDatum} (\T{MyAppDataWithSeps}) \\
-    \T{MyAppDataWithSeps} &\coloneq \T{Root}(\T{MyRootData}) \;|\;
-        \T{Node}(\T{MyNodeData}) \;|\;
+  \T{MyDatum} &\coloneq \T{Element} (\T{MyRoot}, \T{MyAppDataWithSeps}) \\
+    \T{MyAppDataWithSeps} &\coloneq \T{Node}(\T{MyNodeData}) \;|\;
         \T{Separator}
 \end{align*}
 
 Suppose the application needs to insert a node at a key occupied by a separator node.
-In that case, it will instead modify the node contents (see \cref{h:list-state-integrity-rules}) of the separator node to the intended \code{data} field value of the inserted node.
+In that case, it will instead modify the node contents of the separator node to the intended \code{data} field value of the inserted node.
 Otherwise, node insertion works as usual.
 
 The application can insert or remove separators as needed during the lifecycle of the list to regulate its parallelism.
