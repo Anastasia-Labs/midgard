@@ -16,13 +16,13 @@ import {
 } from "@/transactions/utils.js";
 import {
   AddressHistoryDB,
-  BlocksDB,
+  BlocksTxsDB,
   ConfirmedLedgerDB,
   ImmutableDB,
   LatestLedgerDB,
   MempoolDB,
   MempoolLedgerDB,
-  ProcessedMempoolDB,
+  BlocksDB,
 } from "@/database/index.js";
 import { deleteLedgerMpt, deleteMempoolMpt } from "@/workers/utils/mpt.js";
 import { DatabaseError } from "@/database/utils/common.js";
@@ -149,8 +149,8 @@ export const resetDatabases: Effect.Effect<
   [
     MempoolDB.clear,
     MempoolLedgerDB.clear,
-    ProcessedMempoolDB.clear,
     BlocksDB.clear,
+    BlocksTxsDB.clear,
     ImmutableDB.clear,
     LatestLedgerDB.clear,
     ConfirmedLedgerDB.clear,
@@ -179,7 +179,6 @@ export const program: Effect.Effect<
   yield* Effect.logInfo(`🚧 Resetting global variables...`);
   yield* Ref.set(globals.LATEST_SYNC_TIME_OF_STATE_QUEUE_LENGTH, Date.now());
   yield* Ref.set(globals.BLOCKS_IN_QUEUE, 0);
-  yield* Ref.set(globals.AVAILABLE_CONFIRMED_BLOCK, "");
 
   yield* Ref.set(globals.RESET_IN_PROGRESS, false);
   yield* Effect.logInfo(`🚧 Reset completed.`);

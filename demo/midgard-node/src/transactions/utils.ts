@@ -7,7 +7,7 @@ import {
   fromHex,
 } from "@lucid-evolution/lucid";
 import { Data, Effect, Schedule } from "effect";
-import * as BlocksDB from "@/database/blocks.js";
+import { BlocksTxsDB } from "@/database/index.js";
 import { Database } from "@/services/index.js";
 import { ImmutableDB } from "@/database/index.js";
 import { DatabaseError } from "@/database/utils/common.js";
@@ -124,7 +124,12 @@ ${signed.toCBOR()}
   });
 
 /**
- * Fetch transactions of the first block by querying BlocksDB and ImmutableDB.
+ * Fetch transactions of the first block by querying BlocksTxsDB and
+ * ImmutableDB.
+ *
+ * If the given `StateQueueUTxO` is root, it'll return the transactions of the
+ * latest merged block. Therefore, Genesis UTxO will return:
+ *   { txs: [], headerHash: GENESIS_HEADER_HASH }
  *
  * @param firstBlockUTxO - UTxO of the first block in queue.
  * @returns An Effect that resolves to an array of transactions, and block's
@@ -134,19 +139,19 @@ export const fetchFirstBlockTxs = (
   firstBlockUTxO: SDK.StateQueueUTxO,
 ): Effect.Effect<
   { txs: readonly Buffer[]; headerHash: Buffer },
-  SDK.HashingError | SDK.DataCoercionError | DatabaseError,
+  SDK.DataCoercionError | DatabaseError,
   Database
 > =>
   Effect.gen(function* () {
-    const blockHeader = yield* SDK.getHeaderFromStateQueueDatum(
-      firstBlockUTxO.datum,
-    );
-    const headerHash: Buffer = yield* SDK.hashBlockHeader(blockHeader).pipe(
-      Effect.map((hh) => Buffer.from(fromHex(hh))),
-    );
-    const txHashes = yield* BlocksDB.retrieveTxHashesByHeaderHash(headerHash);
+    const headerHashHex =
+      yield* SDK.headerHashFromStateQueueUTxO(firstBlockUTxO);
+    const headerHash: Buffer = Buffer.from(fromHex(headerHashHex));
+    const txHashes =
+      yield* BlocksTxsDB.retrieveTxHashesByHeaderHash(headerHash);
     const txs: readonly Buffer[] =
-      yield* ImmutableDB.retrieveTxCborsByHashes(txHashes);
+      headerHashHex === SDK.GENESIS_HEADER_HASH
+        ? []
+        : yield* ImmutableDB.retrieveTxCborsByHashes(txHashes);
     return { txs, headerHash };
   });
 

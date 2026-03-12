@@ -1,73 +1,61 @@
 import { Database } from "@/services/database.js";
-import * as Tx from "@/database/utils/tx.js";
+import { Effect } from "effect";
+import { SqlClient } from "@effect/sql";
+import * as SDK from "@al-ft/midgard-sdk";
 import {
   clearTable,
   sqlErrorToDatabaseError,
   DatabaseError,
   retrieveNumberOfEntries,
 } from "@/database/utils/common.js";
-import * as MempoolLedgerDB from "./mempoolLedger.js";
-import { Effect } from "effect";
-import { SqlClient } from "@effect/sql";
-import * as AddressHistoryDB from "@/database/addressHistory.js";
 import { ProcessedTx } from "@/utils.js";
-import { LedgerUtils } from "./index.js";
+import { AddressHistoryDB, MempoolLedgerDB, Tx } from "./index.js";
 
 export const tableName = "mempool";
 
-export const insert = (
-  processedTx: ProcessedTx,
-): Effect.Effect<void, DatabaseError, Database> =>
-  Effect.gen(function* () {
-    const { txId, txCbor, spent, produced } = processedTx;
-    // Insert the tx itself in `MempoolDB`.
-    yield* Tx.insertEntry(tableName, {
-      tx_id: txId,
-      tx: txCbor,
-    });
-    // Insert produced UTxOs in `MempoolLedgerDB`.
-    yield* MempoolLedgerDB.insert(produced);
-    // Remove spent inputs from MempoolLedgerDB.
-    yield* MempoolLedgerDB.clearUTxOs(spent);
-    // Add handled addresses to the lookup table
-    yield* AddressHistoryDB.insert(spent, produced);
-  }).pipe(
-    Effect.withLogSpan(`insert ${tableName}`),
-    Effect.tapError((e) =>
-      Effect.logError(`${tableName} db: insert: ${JSON.stringify(e)}`),
-    ),
-  );
-
+/**
+ * Along with insertions to MempoolDB, applies transactions to MempoolLedgerDB,
+ * updating it. Also adds corresponding entries to AddressHistoryDB.
+ */
 export const insertMultiple = (
   processedTxs: ProcessedTx[],
-): Effect.Effect<void, DatabaseError, Database> =>
+): Effect.Effect<
+  void,
+  SDK.CmlDeserializationError | SDK.DataCoercionError | DatabaseError,
+  Database
+> =>
   Effect.gen(function* () {
     if (processedTxs.length === 0) {
       return;
     }
-    const txEntries = processedTxs.map((v) => ({
-      tx_id: v.txId,
-      tx: v.txCbor,
-    }));
-    // Insert the tx itself in `MempoolDB`.
-    yield* Tx.insertEntries(tableName, txEntries);
 
-    const initAcc: { allProduced: LedgerUtils.Entry[]; allSpent: Buffer[] } = {
-      allProduced: [],
-      allSpent: [],
-    };
-    const { allProduced, allSpent } = processedTxs.reduce((acc, v) => {
-      acc.allProduced.push(...v.produced);
-      acc.allSpent.push(...v.spent);
-      return acc;
-    }, initAcc);
+    const {
+      allTxEntries,
+      addressHistoryEntries,
+      collectiveProduced,
+      collectiveSpent,
+    } = yield* AddressHistoryDB.aggregateProcessedTxs(
+      MempoolLedgerDB.tableName,
+      processedTxs,
+      AddressHistoryDB.Status.SLATED,
+    );
 
-    // Insert produced UTxOs in `MempoolLedgerDB`.
-    yield* MempoolLedgerDB.insert(allProduced);
-    // Remove spent inputs from MempoolLedgerDB.
-    yield* MempoolLedgerDB.clearUTxOs(allSpent);
-    // Update AddressHistoryDB
-    yield* AddressHistoryDB.insert(allSpent, allProduced);
+    // TODO: Batching might be needed.
+    yield* Effect.all(
+      [
+        // Insert the transactions themselves in `MempoolDB`.
+        Tx.insertEntries(tableName, allTxEntries),
+        // Insert transactions corresponding entries to `AddressHistoryDB`.
+        AddressHistoryDB.insertEntries(addressHistoryEntries),
+        // Insertion to `MempoolLedgerDB` followed by removal of spent outrefs in
+        // sequence.
+        Effect.all([
+          MempoolLedgerDB.insert(collectiveProduced),
+          MempoolLedgerDB.clearUTxOs(collectiveSpent),
+        ]),
+      ],
+      { concurrency: "unbounded" },
+    );
   }).pipe(
     Effect.withLogSpan(`insert ${tableName}`),
     Effect.tapError((e) => Effect.logError(`${tableName} db: insert: ${e}`)),
@@ -96,6 +84,12 @@ export const retrieve: Effect.Effect<
   ),
   sqlErrorToDatabaseError(tableName, "Failed to retrieve given transactions"),
 );
+
+export const retrieveTimeBoundEntries = (
+  startTime: Date,
+  endTime: Date,
+): Effect.Effect<readonly Tx.Entry[], DatabaseError, Database> =>
+  Tx.retrieveTimeBoundEntries(tableName, startTime, endTime);
 
 export const retrieveTxCount: Effect.Effect<bigint, DatabaseError, Database> =
   retrieveNumberOfEntries(tableName);

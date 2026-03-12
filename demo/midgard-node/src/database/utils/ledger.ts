@@ -1,11 +1,14 @@
 import { Database } from "@/services/database.js";
 import { SqlClient } from "@effect/sql";
 import { Effect } from "effect";
-import { Address } from "@lucid-evolution/lucid";
+import { Address, CML } from "@lucid-evolution/lucid";
+import * as SDK from "@al-ft/midgard-sdk";
 import {
   sqlErrorToDatabaseError,
   DatabaseError,
+  NotFoundError,
 } from "@/database/utils/common.js";
+import { breakDownTx } from "@/utils.js";
 
 export enum Columns {
   TX_ID = "tx_id",
@@ -77,7 +80,7 @@ export const insertEntry = (
 
 export const insertEntries = (
   tableName: string,
-  entries: Entry[],
+  entries: Entry[] | readonly Entry[],
 ): Effect.Effect<void, DatabaseError, Database> =>
   Effect.gen(function* () {
     yield* Effect.logDebug(`${tableName} db: attempt to insert Ledger UTxOs`);
@@ -95,21 +98,105 @@ export const insertEntries = (
     sqlErrorToDatabaseError(tableName, "Failed to insert given UTxOs"),
   );
 
+export const retrieveByOutRef = (
+  tableName: string,
+  outRef: Buffer,
+): Effect.Effect<Entry, DatabaseError | NotFoundError, Database> =>
+  Effect.gen(function* () {
+    const sql = yield* SqlClient.SqlClient;
+    const result = yield* sql<EntryWithTimeStamp>`SELECT * FROM ${sql(
+      tableName,
+    )} WHERE ${sql(Columns.OUTREF)} = ${outRef} LIMIT 1`;
+    if (result.length <= 0) {
+      return yield* new NotFoundError({
+        message: `No ledger entry found for outref ${outRef.toString("hex")}`,
+        cause: "",
+        table: tableName,
+      });
+    }
+    return result[0];
+  }).pipe(
+    Effect.withLogSpan(`retrieveByOutRef ${tableName}`),
+    Effect.mapError((error): DatabaseError | NotFoundError =>
+      error._tag === "SqlError"
+        ? new DatabaseError({
+            message: `Failed to retrieve ledger entry by outref`,
+            table: tableName,
+            cause: error,
+          })
+        : error,
+    ),
+  );
+
+export const retrieveByOutRefs = (
+  tableName: string,
+  outRefs: Buffer[] | readonly Buffer[],
+): Effect.Effect<readonly Entry[], DatabaseError, Database> =>
+  Effect.gen(function* () {
+    const sql = yield* SqlClient.SqlClient;
+    yield* Effect.logDebug(`${tableName} db: attempt to retrieve entries`);
+
+    const rows = yield* sql<Entry>`SELECT * FROM ${sql(
+      tableName,
+    )} WHERE ${sql.in(Columns.OUTREF, outRefs)}`;
+
+    return rows;
+  }).pipe(
+    Effect.withLogSpan(`retrieve entries from ${tableName}`),
+    Effect.tapErrorTag("SqlError", (e) =>
+      Effect.logError(
+        `${tableName} db: retrieving entries error: ${JSON.stringify(e)}`,
+      ),
+    ),
+    sqlErrorToDatabaseError(
+      tableName,
+      "Failed to retrieve the given ledger entries",
+    ),
+  );
+
 export const retrieveAllEntries = (
   tableName: string,
 ): Effect.Effect<readonly EntryWithTimeStamp[], DatabaseError, Database> =>
   Effect.gen(function* () {
-    yield* Effect.logDebug(`${tableName} db: attempt to retrieveEntries`);
+    yield* Effect.logDebug(`${tableName} db: attempt to retrieveAllEntries`);
     const sql = yield* SqlClient.SqlClient;
     return yield* sql<EntryWithTimeStamp>`SELECT * FROM ${sql(tableName)}`;
   }).pipe(
-    Effect.withLogSpan(`retrieveEntries ${tableName}`),
+    Effect.withLogSpan(`retrieveAllEntries ${tableName}`),
     Effect.tapErrorTag("SqlError", (double) =>
       Effect.logError(
-        `${tableName} db: retrieveEntries: ${JSON.stringify(double)}`,
+        `${tableName} db: retrieveAllEntries: ${JSON.stringify(double)}`,
       ),
     ),
     sqlErrorToDatabaseError(tableName, "Failed to retrieve the whole ledger"),
+  );
+
+export const retrieveAllEntriesNoTimeStamps = (
+  tableName: string,
+): Effect.Effect<readonly Entry[], DatabaseError, Database> =>
+  Effect.gen(function* () {
+    yield* Effect.logDebug(
+      `${tableName} db: attempt to retrieveAllEntriesNoTimeStamps`,
+    );
+    const sql = yield* SqlClient.SqlClient;
+    return yield* sql<Entry>`
+      SELECT
+        ${sql(Columns.TX_ID)},
+        ${sql(Columns.OUTREF)},
+        ${sql(Columns.OUTPUT)},
+        ${sql(Columns.ADDRESS)},
+      FROM ${sql(tableName)}`;
+  }).pipe(
+    Effect.withLogSpan(`retrieveAllEntriesNoTimeStamps ${tableName}`),
+    Effect.tapErrorTag("SqlError", (double) =>
+      Effect.logError(
+        `${tableName} db: retrieveAllEntriesNoTimeStamps: ${JSON.stringify(double)}`,
+      ),
+    ),
+    sqlErrorToDatabaseError(
+      tableName,
+      "Failed to retrieve the whole ledger without timestamps",
+    ),
   );
 
 export const retrieveEntriesWithAddress = (
@@ -145,3 +232,40 @@ export const delEntries = (
       Columns.OUTREF,
     )} IN ${sql.in(outrefs)}`;
   }).pipe(sqlErrorToDatabaseError(tableName, "Failed to delete given UTxOs"));
+
+export const removeSpentOutRef = (
+  ledger: Entry[],
+  spentOutRefCBOR: Buffer,
+): Effect.Effect<Entry[], SDK.CmlDeserializationError> =>
+  Effect.filter(ledger, (ledgerEntry: Entry) =>
+    Effect.gen(function* () {
+      // TODO: Raising deserialization error might not be needed here.
+      const [ledgerEntryOutRef, spentOutRef] = yield* Effect.try({
+        try: () => [
+          CML.TransactionInput.from_cbor_bytes(ledgerEntry[Columns.OUTREF]),
+          CML.TransactionInput.from_cbor_bytes(spentOutRefCBOR),
+        ],
+        catch: (e) =>
+          new SDK.CmlDeserializationError({
+            message:
+              "Failed to deserialize an outref into a CML.TransactionInput",
+            cause: e,
+          }),
+      });
+      return (
+        spentOutRef.transaction_id().to_hex() !==
+          ledgerEntryOutRef.transaction_id().to_hex() &&
+        spentOutRef.index() !== ledgerEntryOutRef.index()
+      );
+    }),
+  );
+
+export const applyTx = (ledger: readonly Entry[], txCbor: Buffer) =>
+  Effect.gen(function* () {
+    const { spent, produced } = yield* breakDownTx(txCbor);
+    return yield* Effect.reduce(
+      spent,
+      [...ledger, ...produced],
+      (accLedger, s, _i) => removeSpentOutRef(accLedger, s),
+    );
+  });

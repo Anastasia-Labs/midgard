@@ -1,46 +1,82 @@
 import { Database } from "@/services/database.js";
 import { SqlClient } from "@effect/sql";
 import { Effect } from "effect";
+import { Address } from "@lucid-evolution/lucid";
+import * as SDK from "@al-ft/midgard-sdk";
 import {
   DatabaseError,
   clearTable,
   sqlErrorToDatabaseError,
 } from "@/database/utils/common.js";
-import { Address } from "@lucid-evolution/lucid";
-import * as MempoolDB from "@/database/mempool.js";
-import * as ImmutableDB from "@/database/immutable.js";
-import * as Tx from "@/database/utils/tx.js";
-import * as Ledger from "@/database/utils/ledger.js";
-import { MempoolLedgerDB } from "./index.js";
+import {
+  ImmutableDB,
+  MempoolDB,
+  Ledger,
+  Tx,
+  UserEvents,
+  WithdrawalsDB,
+  DepositsDB,
+} from "./index.js";
+import { ProcessedTx } from "@/utils.js";
+import { AlwaysSucceedsContract } from "@/services/always-succeeds.js";
+import { NodeConfig } from "@/services/config.js";
 
 const tableName = "address_history";
 
+export enum Columns {
+  EVENT_ID = "event_id",
+  ADDRESS = "address",
+  EVENT_TYPE = "event_type",
+  STATUS = "status",
+}
+
 export type Entry = {
-  [Ledger.Columns.TX_ID]: Buffer;
-  [Ledger.Columns.ADDRESS]: Address;
+  [Columns.EVENT_ID]: Buffer;
+  [Columns.ADDRESS]: Address;
+  [Columns.EVENT_TYPE]: EventType;
+  [Columns.STATUS]: Status;
 };
+
+export enum Status {
+  SLATED = 0,
+  SUBMITTED = 1,
+  MERGED = 2,
+}
+
+export enum EventType {
+  TX = 0,
+  WITHDRAWAL = 1,
+  DEPOSIT = 2,
+}
 
 export const createTable: Effect.Effect<void, DatabaseError, Database> =
   Effect.gen(function* () {
     const sql = yield* SqlClient.SqlClient;
     yield* sql`CREATE TABLE IF NOT EXISTS ${sql(tableName)} (
-      ${sql(Ledger.Columns.TX_ID)} BYTEA NOT NULL,
-      ${sql(Ledger.Columns.ADDRESS)} TEXT NOT NULL,
-      UNIQUE (tx_id, address)
+      ${sql(Columns.EVENT_ID)} BYTEA NOT NULL,
+      ${sql(Columns.ADDRESS)} TEXT NOT NULL,
+      ${sql(Columns.EVENT_TYPE)} INTEGER NOT NULL,
+      ${sql(Columns.STATUS)} INTEGER NOT NULL DEFAULT(${Status.SLATED}),
+      UNIQUE (${sql(Ledger.Columns.TX_ID)}, ${sql(Ledger.Columns.ADDRESS)})
     );`;
   }).pipe(
     Effect.withLogSpan(`creating table ${tableName}`),
     sqlErrorToDatabaseError(tableName, "Failed to create the table"),
   );
 
+/**
+ * TODO: Make it so that on conflict status column is updated, and rename to
+ *       "upsert."
+ */
 export const insertEntries = (
   entries: Entry[],
 ): Effect.Effect<void, DatabaseError, Database> =>
   Effect.gen(function* () {
     if (entries.length > 0) {
       const sql = yield* SqlClient.SqlClient;
-      yield* sql`INSERT INTO ${sql(tableName)} ${sql.insert(entries)}
-        ON CONFLICT (${sql(Ledger.Columns.TX_ID)}, ${sql(Ledger.Columns.ADDRESS)}) DO NOTHING`;
+      yield* sql`
+        INSERT INTO ${sql(tableName)} ${sql.insert(entries)}
+        ON CONFLICT (${sql(Columns.EVENT_ID)}, ${sql(Columns.ADDRESS)}) DO NOTHING`;
     }
   }).pipe(
     Effect.withLogSpan(`entries ${tableName}`),
@@ -50,30 +86,134 @@ export const insertEntries = (
     sqlErrorToDatabaseError(tableName, "Failed to insert given entries"),
   );
 
-export const insert = (
-  spent: Buffer[],
-  produced: Ledger.Entry[],
-): Effect.Effect<void, DatabaseError, Database> =>
+/**
+ * Returns collective spent outrefs and produced ledger entries, plus Tx.Entry
+ * values to allow fewer traversals of the given `processedTxs` when used along
+ * other database operations.
+ */
+export const aggregateProcessedTxs = (
+  referenceLedgerTableName: string,
+  processedTxs: ProcessedTx[],
+  status: Status,
+): Effect.Effect<
+  {
+    allTxEntries: Tx.Entry[];
+    addressHistoryEntries: Entry[];
+    collectiveSpent: Buffer[];
+    collectiveProduced: Ledger.Entry[];
+  },
+  DatabaseError,
+  Database
+> =>
   Effect.gen(function* () {
-    if (spent.length > 0 || produced.length > 0) {
-      const sql = yield* SqlClient.SqlClient;
+    // To reduce traversals, we'll also collect `Tx.Entry` equivalents.
+    const allTxEntries: Tx.Entry[] = [];
+    // Collect all spent UTxOs so that we can make a single SQL query to
+    // retrieve their addresses.
+    const collectiveSpent: Buffer[] = processedTxs.flatMap(
+      (processedTxs) => processedTxs.spent,
+    );
+    const collectiveProduced: Ledger.Entry[] = [];
+    // Retrieve addresses of spent UTxOs from the given ledger table.
+    const inputLedgerEntries = yield* Ledger.retrieveByOutRefs(
+      referenceLedgerTableName,
+      collectiveSpent,
+    );
+    const addressHistoryEntries: Entry[] = [];
+    // Goes through each ProcessedTx value while also exhausting the retrieved
+    // ledger entries from MempoolLedgerDB. Therefore the final acc is an empty
+    // list, which we are dicarding here.
+    yield* Effect.reduce(
+      processedTxs,
+      inputLedgerEntries,
+      (acc, processedTx, _i) =>
+        Effect.gen(function* () {
+          allTxEntries.push({
+            [Tx.Columns.TX_ID]: processedTx.txId,
+            [Tx.Columns.TX]: processedTx.txCbor,
+          });
+          const relevantLedgerEntries = acc.slice(0, processedTx.spent.length);
+          const inputEntries: Entry[] = relevantLedgerEntries.map(
+            (ledgerEntry) => ({
+              [Columns.ADDRESS]: ledgerEntry[Ledger.Columns.ADDRESS],
+              [Columns.EVENT_ID]: processedTx.txId,
+              [Columns.EVENT_TYPE]: EventType.TX,
+              [Columns.STATUS]: status,
+            }),
+          );
+          const outputEntries: Entry[] = processedTx.produced.map((e) => ({
+            [Columns.EVENT_ID]: processedTx.txId,
+            [Columns.ADDRESS]: e[Ledger.Columns.ADDRESS],
+            [Columns.EVENT_TYPE]: EventType.TX,
+            [Columns.STATUS]: status,
+          }));
+          collectiveProduced.push(...processedTx.produced);
+          addressHistoryEntries.push(...inputEntries);
+          addressHistoryEntries.push(...outputEntries);
+          return acc.slice(processedTx.spent.length);
+        }),
+    );
+    return {
+      allTxEntries,
+      addressHistoryEntries,
+      collectiveSpent,
+      collectiveProduced,
+    };
+  }).pipe(
+    sqlErrorToDatabaseError(tableName, "processedTxsToAddressHistoryEntries"),
+  );
 
-      const inputEntriesProgram = sql<Entry>`SELECT ${sql(Ledger.Columns.TX_ID)}, ${sql(Ledger.Columns.ADDRESS)}
-      FROM ${sql(MempoolLedgerDB.tableName)}
-      WHERE ${sql(Ledger.Columns.TX_ID)} IN ${sql.in(spent)}`;
+export const resolvedWithdrawalToEntry = (
+  withdrawal: WithdrawalsDB.ResolvedWithdrawal,
+  status: Status,
+): Entry => ({
+  [Columns.EVENT_ID]: withdrawal.withdrawalEntry[UserEvents.Columns.ID],
+  [Columns.ADDRESS]: withdrawal.ledgerEntry[Ledger.Columns.ADDRESS],
+  [Columns.EVENT_TYPE]: EventType.WITHDRAWAL,
+  [Columns.STATUS]: status,
+});
 
-      const inputEntries: readonly Entry[] = yield* inputEntriesProgram.pipe(
-        Effect.catchAllCause((_) => Effect.succeed([])),
-      );
+/**
+ * Given a list of withdrawal event entries, this function tries to find their
+ * spent UTxOs in `MempoolLedgerDB`. Any missing withdrawn output reference
+ * leads to failure, since this function is meant to be used at the time of
+ * block commitment and not earlier.
+ */
+export const insertWithdrwals = (
+  withdrawals: WithdrawalsDB.ResolvedWithdrawal[],
+  status: Status,
+): Effect.Effect<void, DatabaseError, Database> =>
+  insertEntries(withdrawals.map((w) => resolvedWithdrawalToEntry(w, status)));
 
-      const outputEntries: Entry[] = produced.map((e) => ({
-        [Ledger.Columns.TX_ID]: e[Ledger.Columns.TX_ID],
-        [Ledger.Columns.ADDRESS]: e[Ledger.Columns.ADDRESS],
-      }));
+export const depositEntryToEntry = (
+  deposit: UserEvents.Entry,
+  status: Status,
+): Effect.Effect<
+  Entry,
+  SDK.CmlDeserializationError,
+  NodeConfig | AlwaysSucceedsContract
+> =>
+  Effect.gen(function* () {
+    const ledgerEntry = yield* DepositsDB.entryToLedgerEntry(deposit);
+    return {
+      [Columns.EVENT_ID]: deposit[UserEvents.Columns.ID],
+      [Columns.ADDRESS]: ledgerEntry[Ledger.Columns.ADDRESS],
+      [Columns.EVENT_TYPE]: EventType.DEPOSIT,
+      [Columns.STATUS]: status,
+    };
+  });
 
-      yield* insertEntries([...inputEntries, ...outputEntries]);
-    }
-  }).pipe(Effect.withLogSpan(`entries ${tableName}`));
+export const insertDeposits = (
+  deposits: UserEvents.Entry[],
+  status: Status,
+): Effect.Effect<
+  void,
+  SDK.CmlDeserializationError | DatabaseError,
+  NodeConfig | Database | AlwaysSucceedsContract
+> =>
+  Effect.all(deposits.map((d) => depositEntryToEntry(d, status))).pipe(
+    Effect.andThen(insertEntries),
+  );
 
 export const delTxHash = (
   tx_hash: Buffer,

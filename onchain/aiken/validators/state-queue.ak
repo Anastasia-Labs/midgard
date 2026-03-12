@@ -140,7 +140,6 @@ validator mint(
           mint,
           extra_signatories,
           redeemers,
-          validity_range,
           ..
         } = self
         // Commit the block header to the state queue, with the operator's
@@ -192,16 +191,6 @@ validator mint(
             ..
           } = output_header_data
           expect output_start_time < output_end_time
-
-          // 6. The `end_time` of `header_node` must match the transaction's
-          //    time-validity upper bound.
-          //
-          //    > [!NOTE]
-          //    > We are assuming inclusive lower bound and exclusive upper
-          //    > bound in the block. TODO: This needs clarification in specs.
-          let inclusive_tx_upper_bound =
-            utils.get_inclusive_upper_bound_of_interval(validity_range)
-          expect output_end_time == inclusive_tx_upper_bound + 1
 
           // 7. The operator pub key hash from the redeemer must match the one
           //    in the new header.
