@@ -77,6 +77,10 @@ pub fn activation_time_to_node_key(posix_time: PosixTime) -> ByteArray {
   builtin.integer_to_bytearray(True, 0, posix_time)
 }
 
+pub fn node_key_to_activation_time(node_key: ByteArray) -> PosixTime {
+  builtin.bytearray_to_integer(True, node_key)
+}
+
 pub fn finalize_linked_list(
   eval: linked_list.Eval,
   nft_policy_id: PolicyId,
