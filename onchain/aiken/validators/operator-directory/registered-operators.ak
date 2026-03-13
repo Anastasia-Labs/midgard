@@ -143,7 +143,7 @@ validator mint(
 
           // 6. The Lovelace in the registered node must equal the
           //    `required_bond` Midgard parameter.
-          expect registered_node_lovelace == required_bond
+          expect registered_node_lovelace >= required_bond
 
           // 7. The key of registered node match the `registering_operator`
           //    redeemer argument.

@@ -160,7 +160,7 @@ pub fn validate_operator_transfer_and_get_inserted_data(
   expect anchor_lovelace_change >= 0
 
   // 6. ADA bond must be transferred from the origin operator node.
-  expect inserted_node_lovelace == required_bond
+  expect inserted_node_lovelace >= required_bond
 
   // 7. The newly inserted node must carry the same operator as the one
   //    provided via the redeemer as its key.
@@ -279,7 +279,7 @@ pub fn remove_operator_for_bad_state(
       fee,
     )
 
-  // 2. State queue minting script must be invoked via the 
+  // 2. State queue minting script must be invoked via the
   //    `RemoveFraudulentBlockHeader` redeemer, and the operator
   //    specified there must agree with the
   //    `slashed_retired_operator_key` redeemer argument here.
