@@ -144,7 +144,7 @@ validator mint(
 
           // 7. The Lovelace in the registered node must equal the
           //    `required_bond` Midgard parameter.
-          expect registered_node_lovelace == required_bond
+          expect registered_node_lovelace >= required_bond
 
           // 8. Let `activation_time` be equal to the sum of the Midgard
           //    `registration_duration` protocol parameter and the inclusive
