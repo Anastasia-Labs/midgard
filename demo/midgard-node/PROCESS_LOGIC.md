@@ -23,9 +23,9 @@ payload into a `CML.Transaction` value, and "phase 2" is always true.
    c) Retrieves all user events and transaction requests that fall within the
       established event interval. At this point, all withdrawals, transaction
       orders and requests, and deposits that should be included in the block are
-      available (Note that transaction requests don't have formally recognized
-      "inclusion times" as user events do. Their timestamps in `MempoolDB`
-      should be used instead).
+      available (note that transaction requests don't have formally recognized
+      "inclusion times" as user events do—their timestamps in `MempoolDB` should
+      be used instead).
    d) Retrieves the ledger Merkle Patricia Trie (MPT) from disk. This _should
       be_ the state of Midgard ledger after `latestBlock` (TODO, some syncing
       mechanism might be needed).
@@ -41,7 +41,7 @@ payload into a `CML.Transaction` value, and "phase 2" is always true.
    g) Uses the 3 MPT roots, `latestBlock`, and the new event interval to build
       the new block.
    h) Switches to the operator's dedicated block commitment Cardano wallet.
-   i) Retrieves latest state of wallet and contract UTxOs from `BlocksDB`,
+   i) Retrieves latest state of wallet and contract UTxOs from `latestBlock`,
       overrides the wallet's UTxO in LE's interface, builds the block commitment
       transaction and signs it.
    j) Adds another entry to the blocks table, with the status flag set to
