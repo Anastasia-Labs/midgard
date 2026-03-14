@@ -30,20 +30,24 @@ import {
 import { LucidError, makeReturn } from "@/common.js";
 import { getStateToken } from "@/internals.js";
 import {
-  NODE_ASSET_NAME,
   LinkedListError,
   incompleteInitLinkedListTxProgram,
   ElementSchema,
   Element,
   getElementDatumFromUTxO,
 } from "@/linked-list.js";
-import { ConfirmedState, Header } from "@/ledger-state.js";
+import {
+  ConfirmedState,
+  ConfirmedStateSchema,
+  Header,
+  HeaderSchema,
+} from "@/ledger-state.js";
 
 export const GENESIS_HASH_28 = "00".repeat(28);
 export const GENESIS_HASH_32 = "00".repeat(32);
 export const INITIAL_PROTOCOL_VERSION = 0n;
 export const ROOT_KEY: string = "MIDGARD_CONFIRMED_STATE";
-
+export const BLOCK_ASSET_NAME_PREFIX: string = "MBLC";
 
 export const StateQueueConfigSchema = Data.Object({
   initUTxO: OutputReferenceSchema,
@@ -53,37 +57,105 @@ export type StateQueueConfig = Data.Static<typeof StateQueueConfigSchema>;
 export const StateQueueConfig =
   StateQueueConfigSchema as unknown as StateQueueConfig;
 
-export const StateQueueRedeemerSchema = Data.Enum([
-  Data.Literal("Init"),
-  Data.Literal("Deinit"),
+export const SlashingApproachSchema = Data.Enum([
   Data.Object({
-    CommitBlockHeader: Data.Object({
-      operator: Data.Bytes(),
-      scheduler_ref_input_index: Data.Integer(),
-      active_node_input_index: Data.Integer(),
-      header_node_output_index: Data.Integer(),
-      previous_header_node_output_index: Data.Integer(),
-      active_operators_redeemer_index: Data.Integer(),
+    SlashActiveOperator: Data.Object({
+      activeOperatorsRedeemerIndex: Data.Integer(),
     }),
   }),
-  Data.Literal("MergeToConfirmedState"),
   Data.Object({
-    RemoveFraudulentBlockHeader: Data.Object({
-      fraudulentOperator: Data.Bytes(),
+    SlashRetiredOperator: Data.Object({
+      retiredOperatorsRedeemerIndex: Data.Integer(),
+    }),
+  }),
+  Data.Object({
+    OperatorAlreadySlashed: Data.Object({
+      activeOperatorsElementRefInputIndex: Data.Integer(),
+      retiredOperatorsElementRefInputIndex: Data.Integer(),
     }),
   }),
 ]);
-export type StateQueueRedeemer = Data.Static<typeof StateQueueRedeemerSchema>;
-export const StateQueueRedeemer =
-  StateQueueRedeemerSchema as unknown as StateQueueRedeemer;
+export type SlashingApproach = Data.Static<typeof SlashingApproachSchema>;
+export const SlashingApproach =
+  SlashingApproachSchema as unknown as SlashingApproach;
 
-// export type StateQueueDatum = Data.Static<typeof NodeDatumSchema>;
-// export const StateQueueDatum = NodeDatumSchema as unknown as StateQueueDatum;
+export const BlockRemovalApproachSchema = Data.Enum([
+  Data.Object({
+    RemoveLastFraudulentBlock: Data.Object({
+      anchorElementInputIndex: Data.Integer(),
+      anchorElementOutputIndex: Data.Integer(),
+    }),
+  }),
+  Data.Object({
+    RemoveFraudulentBlocksLink: Data.Object({
+      fraudulentNodeOutputIndex: Data.Integer(),
+      removedBlockInputIndex: Data.Integer(),
+    }),
+  }),
+]);
+export type BlockRemovalApproach = Data.Static<
+  typeof BlockRemovalApproachSchema
+>;
+export const BlockRemovalApproach =
+  BlockRemovalApproachSchema as unknown as BlockRemovalApproach;
 
-export type StateQueueDatum = Data.Static<typeof ElementSchema>;
-export const StateQueueDatum = ElementSchema as unknown as StateQueueDatum;
+export const StateQueueMintRedeemerSchema = Data.Enum([
+  Data.Object({ Init: Data.Object({ outputIndex: Data.Integer() }) }),
+  Data.Object({ Deinit: Data.Object({ inputIndex: Data.Integer() }) }),
+  Data.Object({
+    CommitBlockHeader: Data.Object({
+      latestBlockInputIndex: Data.Integer(),
+      newBlockOutputIndex: Data.Integer(),
+      continuedLatestBlockOutputIndex: Data.Integer(),
+      operator: Data.Bytes(),
+      schedulerRefInputIndex: Data.Integer(),
+      activeOperatorsInputIndex: Data.Integer(),
+      activeOperatorsRedeemerIndex: Data.Integer(),
+    }),
+  }),
+  Data.Object({
+    MergeToConfirmedState: Data.Object({
+      headerNodeKey: Data.Bytes(),
+      headerNodeInputIndex: Data.Integer(),
+      confirmedStateInputIndex: Data.Integer(),
+      confirmedStateOutputIndex: Data.Integer(),
+      mSettlementRedeemerIndex: Data.Nullable(Data.Integer()),
+    }),
+  }),
+  Data.Object({
+    RemoveFraudulentBlockHeader: Data.Object({
+      fraudulentOperator: Data.Bytes(),
+      fraudulentblocksHeaderHash: Data.Bytes(),
+      slashingApproach: SlashingApproachSchema,
+      fraudulentNodeInputIndex: Data.Integer(),
+      fraudProofRefInputIndex: Data.Integer(),
+      blockRemovalApproach: BlockRemovalApproachSchema,
+    }),
+  }),
+]);
+export type StateQueueMintRedeemer = Data.Static<
+  typeof StateQueueMintRedeemerSchema
+>;
+export const StateQueueMintRedeemer =
+  StateQueueMintRedeemerSchema as unknown as StateQueueMintRedeemer;
 
-// export type StateQueueDatum = Element;
+export const StateQueueElementDataSchema = Data.Enum([
+  Data.Object({ Root: ConfirmedStateSchema }),
+  Data.Object({ Node: HeaderSchema }),
+]);
+export type StateQueueElementData = Data.Static<
+  typeof StateQueueElementDataSchema
+>;
+export const StateQueueElementData =
+  StateQueueElementDataSchema as unknown as StateQueueElementData;
+
+export const StateQueueDatumSchema = Data.Object({
+  data: StateQueueElementDataSchema,
+  link: Data.Nullable(Data.Bytes()),
+});
+export type StateQueueDatum = Data.Static<typeof StateQueueDatumSchema>;
+export const StateQueueDatum =
+  StateQueueDatumSchema as unknown as StateQueueDatum;
 
 export type StateQueueUTxO = {
   utxo: UTxO;
@@ -170,10 +242,7 @@ export const findLinkStateQueueUTxO = (
       }),
     );
   } else {
-    const foundLink = utxos.find(
-      (u: StateQueueUTxO) =>
-        u.datum.link !== null,
-    );
+    const foundLink = utxos.find((u: StateQueueUTxO) => u.assetName === link);
     if (foundLink) {
       return Effect.succeed(foundLink);
     } else {
@@ -216,7 +285,7 @@ export const sortStateQueueUTxOs = (
         filteredForConfirmedState[0];
       const sorted: StateQueueUTxO[] = [confirmedStateUTxO];
       let link = linkToOldestBlock;
-      while (link !== "Empty") {
+      while (link !== null) {
         const linkUTxO = yield* findLinkStateQueueUTxO(link, stateQueueUTxOs);
         sorted.push(linkUTxO);
         link = linkUTxO.datum.link;
@@ -245,8 +314,8 @@ export const getConfirmedStateFromStateQueueDatum = (
   DataCoercionError
 > => {
   try {
-    if (nodeDatum.link === null && 'Root' in nodeDatum.data) {
-      const confirmedState = Data.castFrom(nodeDatum.data.Root.data, ConfirmedState);
+    if (nodeDatum.link === null && "Root" in nodeDatum.data) {
+      const confirmedState = nodeDatum.data.Root;
       return Effect.succeed({
         data: confirmedState,
         link: nodeDatum.link,
@@ -288,17 +357,16 @@ export const getHeaderFromStateQueueDatum = (
   nodeDatum: StateQueueDatum,
 ): Effect.Effect<{ data: Header }, DataCoercionError> => {
   try {
-    if ('Node' in nodeDatum.data) {
-      const header = Data.castFrom(nodeDatum.data.Node.data, Header);
+    if ("Node" in nodeDatum.data) {
+      const header = nodeDatum.data.Node;
       return Effect.succeed({
-        data: header
+        data: header,
       });
     } else {
       return Effect.fail(
         new DataCoercionError({
           message: `Could not coerce to a node datum`,
           cause: `Given UTxO is not node`,
-
         }),
       );
     }
@@ -374,7 +442,7 @@ export const updateLatestBlocksDatumAndGetTheNewHeaderProgram = (
         header: newHeader,
       };
     } else {
-      const { data: latestHeader } = yield* getHeaderFromStateQueueDatum(latestBlocksDatum);
+      const { data: latestHeader } =
         yield* getHeaderFromStateQueueDatum(latestBlocksDatum);
       const prevHeaderHash = yield* hashBlockHeader(latestHeader);
       const newHeader = {
@@ -467,7 +535,7 @@ export const incompleteCommitBlockHeaderTxProgram = (
   Effect.gen(function* () {
     const newHeaderHash = yield* hashBlockHeader(newHeader);
     const assets: Assets = {
-      [toUnit(policyId, NODE_ASSET_NAME + newHeaderHash)]: 1n,
+      [toUnit(policyId, BLOCK_ASSET_NAME_PREFIX + newHeaderHash)]: 1n,
     };
 
     // const newNodeDatum: StateQueueDatum = {
@@ -731,10 +799,15 @@ export const incompleteInitStateQueueTxProgram = (
       protocolVersion: INITIAL_PROTOCOL_VERSION,
     };
 
+    const mintRedeemer = Data.to(
+      { Init: { outputIndex: 0n } },
+      StateQueueMintRedeemer,
+    );
+
     return yield* incompleteInitLinkedListTxProgram(lucid, {
       validator: params.validator,
       data: Data.castTo(stateQueueData, ConfirmedState),
-      redeemer: Data.to("Init", StateQueueRedeemer),
+      redeemer: mintRedeemer,
       rootKey: ROOT_KEY,
     });
   });
@@ -823,7 +896,7 @@ export const incompleteStateQueueMergeTxProgram = (
   Effect.gen(function* () {
     const { data: currentConfirmedState } =
       yield* getConfirmedStateFromStateQueueDatum(confirmedUTxO.datum);
-    const {data: blockHeader} = yield* getHeaderFromStateQueueDatum(
+    const { data: blockHeader } = yield* getHeaderFromStateQueueDatum(
       firstBlockUTxO.datum,
     );
     const headerHash = yield* hashBlockHeader(blockHeader);
@@ -842,20 +915,29 @@ export const incompleteStateQueueMergeTxProgram = (
     // };
     const newConfirmedElementDatum: Element = {
       ...confirmedUTxO.datum,
-      data: { 
-          Node: {data: Data.castTo(newConfirmedState, ConfirmedState)}
+      data: {
+        Node: { data: Data.castTo(newConfirmedState, ConfirmedState) },
       },
       link: firstBlockUTxO.datum.link,
     };
     const assetsToBurn: Assets = {
       [toUnit(fetchConfig.stateQueuePolicyId, firstBlockUTxO.assetName)]: -1n,
     };
+
+    const redeemer: StateQueueMintRedeemer = {
+      MergeToConfirmedState: {
+        headerNodeKey: "",
+        headerNodeInputIndex: 0n,
+        confirmedStateInputIndex: 0n,
+        confirmedStateOutputIndex: 0n,
+        mSettlementRedeemerIndex: 0n,
+      },
+    };
+    const redeemerCBOR = Data.to(redeemer, StateQueueMintRedeemer);
+
     const tx = lucid
       .newTx()
-      .collectFrom(
-        [confirmedUTxO.utxo, firstBlockUTxO.utxo],
-        Data.to("MergeToConfirmedState", StateQueueRedeemer),
-      )
+      .collectFrom([confirmedUTxO.utxo, firstBlockUTxO.utxo], redeemerCBOR)
       .pay.ToContract(
         fetchConfig.stateQueueAddress,
         {

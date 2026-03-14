@@ -82,7 +82,7 @@ export const incompleteInitializationTxProgram = (
       {
         validator: params.midgardValidators.stateQueue,
         genesisTime: genesisTime,
-        rootKey: ROOT_KEY
+        rootKey: ROOT_KEY,
       },
     );
 

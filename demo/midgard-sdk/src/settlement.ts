@@ -281,10 +281,11 @@ export const incompleteUpdateBondHoldNewSettlementTxProgram = (
   Effect.gen(function* () {
     const spendRedeemer: ActiveOperatorSpendRedeemer = {
       UpdateBondHoldNewSettlement: {
+        activeNodeInputIndex: 0n,
         activeNodeOutputIndex: 0n,
         hubOracleRefInputIndex: 0n,
-        settlementQueueInputIndex: 0n,
-        settlementQueueRedeemerIndex: 0n,
+        settlementInputIndex: 0n,
+        settlementRedeemerIndex: 0n,
         newBondUnlockTime: params.newBondUnlockTime,
       },
     };
@@ -315,8 +316,8 @@ export const incompleteUpdateBondHoldNewSettlementTxProgram = (
       data: {
         Node: {
           bond_unlock_time: params.newBondUnlockTime,
-        }
-      }
+        },
+      },
     };
 
     const updatedDatumCBOR = Data.to(updatedDatum, ActiveOperatorDatum);
@@ -591,8 +592,9 @@ export const createSlashedOperatorMintRedeemerCBOR = (
       RemoveOperatorBadSettlement: {
         slashedActiveOperatorKey: slashedOperatorKey,
         hubOracleRefInputIndex: 0n,
+        activeOperatorAnchorElementInputIndex: 0n,
         activeOperatorSlashedNodeInputIndex: 0n,
-        activeOperatorAnchorNodeInputIndex: 0n,
+        activeOperatorAnchorElementOutputIndex: 0n,
         settlementInputIndex: 0n,
         settlementRedeemerIndex: 0n,
       },
@@ -604,8 +606,9 @@ export const createSlashedOperatorMintRedeemerCBOR = (
       RemoveOperatorBadSettlement: {
         slashedRetiredOperatorKey: slashedOperatorKey,
         hubOracleRefInputIndex: 0n,
+        retiredOperatorAnchorElementInputIndex: 0n,
         retiredOperatorSlashedNodeInputIndex: 0n,
-        retiredOperatorAnchorNodeInputIndex: 0n,
+        retiredOperatorAnchorElementOutputIndex: 0n,
         settlementInputIndex: 0n,
         settlementRedeemerIndex: 0n,
       },
