@@ -40,6 +40,7 @@ import PlutusTx.Blueprint (
 import Ply (PlyArg)
 
 newtype NodeKey = NodeKey BuiltinByteString
+  deriving stock (Show)
   deriving newtype (ToData, FromData, UnsafeFromData)
 
 nodeKey :: ByteString -> NodeKey
@@ -95,7 +96,7 @@ data Element rootData nodeData = Element
   { elementData :: ElementData rootData nodeData
   , elementLink :: Maybe NodeKey
   }
-  deriving stock (Generic)
+  deriving stock (Generic, Show)
 
 $(makeIsDataIndexed ''Element [('Element, 0)])
 
