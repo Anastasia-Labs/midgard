@@ -98,7 +98,7 @@ There are only two functions for spending: one for updating element data with pr
 
 The inspection function validates authenticity of the referenced element and provides various information about the element.
 
-\Cref{h:instantiate-list-in-application} describes how to instantiate a linked list within an application and compose the linked list rules with custom app rules.
+\Cref{h:instantiate-list-in-application} describes the required considerations for instantiating a linked list within an application.
 
 \subsection{Common validations}
 \label{h:list-common-validations}
@@ -175,7 +175,7 @@ The provided functions are as follows:
       Conditions:
       \begin{enumerate}
         \item Let \code{new\_element} be the element that is being added to the list.
-        \item Let \code{input\_anchor} be the element that is meant to be parent of \code{new\_element}.
+        \item Let \code{input\_anchor} be the element that is meant to be parent of \code{new\_element}, and \code{anchor\_link} be its \code{link}.
         \item Let \code{output\_anchor} be the reproduction of \code{input\_anchor} in the transaction outputs.
         \item \code{new\_element}, \code{input\_anchor}, and \code{output\_anchor} must Continue.
         \item \code{data} of \code{new\_element} must parse as \code{Node}.
@@ -282,7 +282,7 @@ The provided functions are as follows:
     \item[Fold from root.] Remove the head node of the list and update root's data.
       Conditions are identical to the Remove operation, with some differences:
       \begin{enumerate}
-        \item The three elements must Continue, however there is no stipulation for \code{data} of \code{input\_anchor} to be the same as \code{output\_anchor} data.
+        \item The three elements must Continue, however there is no stipulation for underlying data of \code{input\_anchor} to be the same as \code{output\_anchor} data.
           This allows the root's data to be modified.
         \item \code{data} of \code{input\_anchor} and \code{output\_anchor} must both parse as \code{Root}.
           Let them be \code{input\_root\_data} and \code{output\_root\_data}, respectively.
