@@ -3,28 +3,53 @@ module Midgard.Contracts.RetiredOperators (initRetiredOperators) where
 import Cardano.Api qualified as C
 import Convex.BuildTx (
   MonadBuildTx,
+  addReference,
   assetValue,
-  mintPlutus,
+  mintPlutusRefWithRedeemerFn,
   payToScriptInlineDatum,
  )
-import Convex.Class (MonadBlockchain (queryNetworkId))
 
-import Midgard.ScriptUtils (mintingPolicyId, toMintingPolicy, validatorHash)
-import Midgard.Scripts (MidgardScripts (MidgardScripts, retiredOperatorsPolicy, retiredOperatorsValidator))
+import Midgard.Contracts.Utils (nextOutIx)
+import Midgard.ScriptUtils (mintingPolicyId, plutusVersion, validatorHash)
+import Midgard.Scripts (
+  MidgardRefScripts (MidgardRefScripts, retiredOperatorsPolicyRef),
+  MidgardScripts (MidgardScripts, retiredOperatorsPolicy, retiredOperatorsValidator),
+ )
+import Midgard.Types.LinkedList qualified as LinkedList
 import Midgard.Types.RetiredOperators qualified as RetiredOperators
 
 initRetiredOperators ::
-  ( MonadBlockchain era m
-  , C.HasScriptLanguageInEra C.PlutusScriptV3 era
+  ( C.HasScriptLanguageInEra C.PlutusScriptV3 era
   , MonadBuildTx era m
   , C.IsBabbageBasedEra era
   ) =>
-  MidgardScripts -> m ()
+  C.NetworkId ->
+  MidgardScripts ->
+  MidgardRefScripts ->
+  m ()
 initRetiredOperators
-  MidgardScripts {retiredOperatorsValidator, retiredOperatorsPolicy} = do
-    netId <- queryNetworkId
+  netId
+  MidgardScripts {retiredOperatorsValidator, retiredOperatorsPolicy}
+  MidgardRefScripts {retiredOperatorsPolicyRef} = do
     let C.PolicyId policyId = mintingPolicyId retiredOperatorsPolicy
+    addReference retiredOperatorsPolicyRef
     -- The registered operators token should be minted.
-    mintPlutus (toMintingPolicy retiredOperatorsPolicy) RetiredOperators.Init RetiredOperators.rootKey 1
+    mintPlutusRefWithRedeemerFn
+      retiredOperatorsPolicyRef
+      (plutusVersion retiredOperatorsPolicy)
+      policyId
+      (\txBody -> RetiredOperators.Init {outputIndex = toInteger $ nextOutIx txBody})
+      RetiredOperators.rootAssetName
+      1
     -- And sent to the registered operators validator.
-    payToScriptInlineDatum netId (validatorHash retiredOperatorsValidator) () C.NoStakeAddress (assetValue policyId RetiredOperators.rootKey 1)
+    let datum :: RetiredOperators.Datum =
+          LinkedList.Element
+            { elementData = LinkedList.Root mempty
+            , elementLink = Nothing
+            }
+    payToScriptInlineDatum
+      netId
+      (validatorHash retiredOperatorsValidator)
+      datum
+      C.NoStakeAddress
+      (assetValue policyId RetiredOperators.rootAssetName 1)

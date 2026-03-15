@@ -108,24 +108,33 @@ library
     Midgard.ScriptUtils
     Midgard.Types.ActiveOperators
     Midgard.Types.HubOracle
+    Midgard.Types.LinkedList
     Midgard.Types.RegisteredOperators
     Midgard.Types.RetiredOperators
 
   hs-source-dirs:  src
   build-depends:
     , cardano-ledger-core
+    , containers
     , convex-optics
     , lens
     , plutus-core
     , plutus-tx
+    , time
 
 test-suite mockchain-tests
   import:         lang, dependencies
   type:           exitcode-stdio-1.0
   main-is:        Spec.hs
   hs-source-dirs: tests
-  other-modules:  Spec.RegisterOperator
+  other-modules:
+    Spec.RegisterOperator
+    Spec.Types
+    Spec.Utils
+
   build-depends:
+    , convex-coin-selection
+    , convex-wallet
     , midgard-offchain
     , tasty
     , tasty-hunit

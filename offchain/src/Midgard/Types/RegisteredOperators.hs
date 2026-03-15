@@ -1,82 +1,110 @@
 {-# LANGUAGE TemplateHaskell #-}
 
-module Midgard.Types.RegisteredOperators (OperatorStatus, MintRedeemer (..), rootKey, nodeKeyPrefix, nodeKeyPrefixLen) where
+module Midgard.Types.RegisteredOperators (
+  DuplicateOperatorStatus (..),
+  MintRedeemer (..),
+  NodeData (..),
+  Datum,
+  rootAssetName,
+  nodeAssetNamePrefix,
+) where
 
+import Data.ByteString (ByteString)
 import Data.ByteString.Char8 qualified as BS8
-import GHC.Generics
+import GHC.Generics (Generic)
 
 import Cardano.Api qualified as C
-import PlutusLedgerApi.V3
+import PlutusLedgerApi.V3 (
+  BuiltinByteString,
+  POSIXTime,
+  PubKeyHash,
+ )
 import PlutusTx.Blueprint (HasBlueprintDefinition, definitionRef)
 import PlutusTx.Blueprint.TH (makeIsDataSchemaIndexed)
 import Ply (PlyArg)
 
-rootKey :: C.AssetName
-rootKey = C.UnsafeAssetName $ BS8.pack "MIDGARD_REGISTERED_OPERATORS"
+import Midgard.Types.LinkedList qualified as LinkedList
 
-nodeKeyPrefix :: C.AssetName
-nodeKeyPrefix = C.UnsafeAssetName $ BS8.pack "MREG"
+rootAssetName :: C.AssetName
+rootAssetName = C.UnsafeAssetName $ BS8.pack "MIDGARD_REGISTERED_OPERATORS"
 
-nodeKeyPrefixLen :: Int
-nodeKeyPrefixLen = BS8.length $ C.serialiseToRawBytes nodeKeyPrefix
+nodeAssetNamePrefix :: ByteString
+nodeAssetNamePrefix = BS8.pack "MREG"
 
-data OperatorStatus
-  = Registered
-  | Active
-  | Retired
+newtype NodeData = NodeData
+  { activationTime :: POSIXTime
+  }
   deriving stock (Eq, Show, Generic)
   deriving anyclass (HasBlueprintDefinition)
 
-$(makeIsDataSchemaIndexed ''OperatorStatus [('Registered, 0), ('Active, 1), ('Retired, 2)])
+$( makeIsDataSchemaIndexed
+     ''NodeData
+     [ ('NodeData, 0)
+     ]
+ )
+
+type Datum = LinkedList.Element BuiltinByteString NodeData
+
+data DuplicateOperatorStatus
+  = DuplicateIsRegistered
+  | DuplicateIsActive {hubOracleRefInputIndex :: Integer}
+  | DuplicateIsRetired
+  deriving stock (Eq, Show, Generic)
+  deriving anyclass (HasBlueprintDefinition)
+
+$( makeIsDataSchemaIndexed
+     ''DuplicateOperatorStatus
+     [ ('DuplicateIsRegistered, 0)
+     , ('DuplicateIsActive, 1)
+     , ('DuplicateIsRetired, 2)
+     ]
+ )
 
 data MintRedeemer
-  = Init
-  | Deinit
-  | Register
-      { keyToPrepend :: BuiltinByteString
+  = Init {outputIndex :: Integer}
+  | Deinit {inputIndex :: Integer}
+  | RegisterOperator
+      { registeringOperator :: PubKeyHash
+      , rootInputIndex :: Integer
+      , rootOutputIndex :: Integer
+      , registeredNodeOutputIndex :: Integer
       , hubOracleRefInputIndex :: Integer
-      , activeOperatorRefInputIndex :: Integer
-      , activeOperatorAssetName :: BuiltinByteString
-      , retiredOperatorRefInputIndex :: Integer
-      , retiredOperatorAssetName :: BuiltinByteString
-      , prependedNodeOutputIndex :: Integer
-      , anchorNodeOutputIndex :: Integer
+      , activeOperatorsElementRefInputIndex :: Integer
+      , retiredOperatorsElementRefInputIndex :: Integer
       }
-  | Activate
-      { nodeToActivateKey :: BuiltinByteString
+  | ActivateOperator
+      { activatingOperator :: PubKeyHash
+      , anchorElementInputIndex :: Integer
+      , removedNodeInputIndex :: Integer
+      , anchorElementOutputIndex :: Integer
       , hubOracleRefInputIndex :: Integer
-      , retiredOperatorRefInputIndex :: Integer
-      , retiredOperatorAssetName :: BuiltinByteString
-      , removedNodeInputIndex :: Integer
-      , anchorNodeInputIndex :: Integer
-      , activeOperatorsInsertedNodeOutputIndex :: Integer
-      , activeOperatorsAnchorNodeOutputIndex :: Integer
+      , retiredOperatorsElementRefInputIndex :: Integer
+      , activeOperatorsRedeemerIndex :: Integer
       }
-  | Deregister
-      { nodeToDeregisterKey :: BuiltinByteString
+  | DeregisterOperator
+      { deregisteringOperator :: PubKeyHash
+      , anchorElementInputIndex :: Integer
       , removedNodeInputIndex :: Integer
-      , anchorNodeInputIndex :: Integer
+      , anchorElementOutputIndex :: Integer
       }
   | RemoveDuplicateSlashBond
-      { duplicateNodeKey :: BuiltinByteString
-      , hubOracleRefInputIndex :: Integer
-      , duplicateNodeRefInputIndex :: Integer
-      , duplicateNodeRefInputAssetName :: BuiltinByteString
+      { duplicateOperator :: PubKeyHash
+      , anchorElementInputIndex :: Integer
       , removedNodeInputIndex :: Integer
-      , anchorNodeInputIndex :: Integer
-      , witnessStatus :: OperatorStatus
+      , anchorElementOutputIndex :: Integer
+      , duplicateNodeRefInputIndex :: Integer
+      , duplicateOperatorStatus :: DuplicateOperatorStatus
       }
   deriving stock (Eq, Show, Generic)
   deriving anyclass (HasBlueprintDefinition)
 
--- Make sure to use PlutusTx's tools for implementing data and blueprint instances for our custom type!
 $( makeIsDataSchemaIndexed
      ''MintRedeemer
      [ ('Init, 0)
      , ('Deinit, 1)
-     , ('Register, 2)
-     , ('Activate, 3)
-     , ('Deregister, 4)
+     , ('RegisterOperator, 2)
+     , ('ActivateOperator, 3)
+     , ('DeregisterOperator, 4)
      , ('RemoveDuplicateSlashBond, 5)
      ]
  )
