@@ -21,6 +21,6 @@ tests ms =
     [ midgardTestCase ms "register an operator" $ \refScripts -> do
         let operatorWallet = Wallet.w1
             operatorPkh = Wallet.verificationKeyHash operatorWallet
-        txBody <- withExceptT TxBuildingError $ registerOperator ms refScripts operatorPkh
+        (txBody, _) <- withExceptT TxBuildingError $ registerOperator ms refScripts operatorPkh
         void $ balanceAndSubmit' operatorWallet txBody TrailingChange []
     ]

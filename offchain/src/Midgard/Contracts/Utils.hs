@@ -12,6 +12,7 @@ module Midgard.Contracts.Utils (
   findUTxOWithLink,
   listAssetNameFromUTxO,
   pubKeyHashFromCardano,
+  mintPlutusRefWithRedeemerFinal,
 ) where
 
 import Control.Monad.Except (MonadError (throwError))
@@ -27,12 +28,13 @@ import Cardano.Api qualified as C
 import Control.Lens (
   view,
  )
+import Convex.BuildTx (MonadBuildTx, addMintWithTxBody, buildRefScriptWitness)
 import Convex.CardanoApi.Lenses qualified as L
 import Convex.Class (MonadBlockchain (queryEraHistory, querySystemStart))
 import Convex.Scripts (fromHashableScriptData)
 import Convex.Utils qualified as Convex
 import Convex.Utxos (UtxoSet (UtxoSet))
-import PlutusLedgerApi.Common (BuiltinData, FromData, fromBuiltin, toBuiltin)
+import PlutusLedgerApi.Common (BuiltinData, FromData, ToData, fromBuiltin, toBuiltin)
 import PlutusLedgerApi.Data.V3 (PubKeyHash (PubKeyHash))
 
 import Midgard.Types.LinkedList (NodeKey (NodeKey), nodeKey, nodeKeyToAssetName)
@@ -180,3 +182,17 @@ listAssetNameFromUTxO policyId (C.TxOut _ txOutValue _ _) = do
   case toList nodeAssets of
     [(nodeAssets, _)] -> pure nodeAssets
     _ -> error "absurd: UTxO contains multiple assets under owner policy"
+
+-- | Like 'addMintWithTxBody' but tailored towards easy usage with ref minting.
+mintPlutusRefWithRedeemerFinal ::
+  (ToData redeemer, C.HasScriptLanguageInEra lang era, C.IsPlutusScriptLanguage lang, MonadBuildTx era m, C.IsMaryBasedEra era) =>
+  C.TxIn ->
+  C.PlutusScriptVersion lang ->
+  C.PolicyId ->
+  C.AssetName ->
+  C.Quantity ->
+  (C.TxBodyContent C.BuildTx era -> redeemer) ->
+  m ()
+mintPlutusRefWithRedeemerFinal refIn scriptVersion policyId assetName quantity redeemerF =
+  addMintWithTxBody policyId assetName quantity $
+    buildRefScriptWitness refIn scriptVersion C.NoScriptDatumForMint . redeemerF

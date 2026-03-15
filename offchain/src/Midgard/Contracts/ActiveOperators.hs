@@ -38,6 +38,7 @@ import Midgard.Contracts.Utils (
   findUTxOWithLink,
   inlineDatumFromUTxO,
   listAssetNameFromUTxO,
+  mintPlutusRefWithRedeemerFinal,
   nextOutIx,
   pubKeyHashFromCardano,
  )
@@ -132,7 +133,10 @@ activateOperator
         findUTxOWithAsset hubOracleUtxos $
           C.AssetId hubOracleMintingPolicyId hubOracleAssetName
     -- Find the registered operator node and its anchor (node linking to it) to remove it from the list.
-    registryUtxos <- utxosByPaymentCredential $ C.PaymentCredentialByScript $ validatorHash registeredOperatorsValidator
+    registryUtxos <-
+      utxosByPaymentCredential $
+        C.PaymentCredentialByScript $
+          validatorHash registeredOperatorsValidator
     (removalRegistryTxIn, (removalUtxoAnyEra, _)) <-
       maybe (throwError "No registered operator found") pure $
         findUTxOWithAsset registryUtxos $
@@ -251,48 +255,46 @@ activateOperator
         C.NoStakeAddress
         (assetValue policyId' targetNodeAsset 1 <> C.lovelaceToValue operatorRequiredBond)
       -- Burn the removed registered operator NFT.
-      mintPlutusRefWithRedeemerFn
+      mintPlutusRefWithRedeemerFinal
         registeredOperatorsPolicyRef
         (plutusVersion registeredOperatorsPolicy)
-        (mintingPolicyId' registeredOperatorsPolicy)
-        ( \txBody ->
-            RegisteredOperators.ActivateOperator
-              { activatingOperator = pubKeyHashFromCardano operatorPkh
-              , anchorElementInputIndex = toInteger $ findIndexSpending anchorRegistryTxIn txBody
-              , removedNodeInputIndex = toInteger $ findIndexSpending removalRegistryTxIn txBody
-              , anchorElementOutputIndex =
-                  toInteger $ findOutputIndexWithAsset (mintingPolicyId registeredOperatorsPolicy) registeredOperatorsAnchorAssetName txBody
-              , hubOracleRefInputIndex = toInteger $ findIndexReference hubOracleTxIn txBody
-              , retiredOperatorsElementRefInputIndex =
-                  toInteger $ findIndexReference retiredOperatorsNonMemberWitness txBody
-              , activeOperatorsRedeemerIndex =
-                  toInteger $
-                    findMintRedeemerIndex allPolicies txBody (mintingPolicyId activeOperatorsPolicy)
-              }
-        )
+        (mintingPolicyId registeredOperatorsPolicy)
         registryNodeAsset
         (-1)
+        $ \txBody ->
+          RegisteredOperators.ActivateOperator
+            { activatingOperator = pubKeyHashFromCardano operatorPkh
+            , anchorElementInputIndex = toInteger $ findIndexSpending anchorRegistryTxIn txBody
+            , removedNodeInputIndex = toInteger $ findIndexSpending removalRegistryTxIn txBody
+            , anchorElementOutputIndex =
+                toInteger $ findOutputIndexWithAsset (mintingPolicyId registeredOperatorsPolicy) registeredOperatorsAnchorAssetName txBody
+            , hubOracleRefInputIndex = toInteger $ findIndexReference hubOracleTxIn txBody
+            , retiredOperatorsElementRefInputIndex =
+                toInteger $ findIndexReference retiredOperatorsNonMemberWitness txBody
+            , activeOperatorsRedeemerIndex =
+                toInteger $
+                  findMintRedeemerIndex allPolicies txBody (mintingPolicyId activeOperatorsPolicy)
+            }
       -- Mint the NFT for the new active operator node.
-      mintPlutusRefWithRedeemerFn
+      mintPlutusRefWithRedeemerFinal
         activeOperatorsPolicyRef
         (plutusVersion activeOperatorsPolicy)
-        policyId'
-        ( \txBody ->
-            ActiveOperators.ActivateOperator
-              { newActiveOperatorKey = pubKeyHashFromCardano operatorPkh
-              , activeOperatorAnchorElementInputIndex =
-                  toInteger $ findIndexSpending activeOperatorsAnchorTxIn txBody
-              , activeOperatorAnchorElementOutputIndex =
-                  toInteger $ findOutputIndexWithAsset policyId activeOperatorsAnchorAssetName txBody
-              , activeOperatorInsertedNodeOutputIndex =
-                  toInteger $ findOutputIndexWithAsset policyId targetNodeAsset txBody
-              , registeredOperatorsRedeemerIndex =
-                  toInteger $
-                    findMintRedeemerIndex allPolicies txBody (mintingPolicyId registeredOperatorsPolicy)
-              }
-        )
+        policyId
         targetNodeAsset
         1
+        $ \txBody ->
+          ActiveOperators.ActivateOperator
+            { newActiveOperatorKey = pubKeyHashFromCardano operatorPkh
+            , activeOperatorAnchorElementInputIndex =
+                toInteger $ findIndexSpending activeOperatorsAnchorTxIn txBody
+            , activeOperatorAnchorElementOutputIndex =
+                toInteger $ findOutputIndexWithAsset policyId activeOperatorsAnchorAssetName txBody
+            , activeOperatorInsertedNodeOutputIndex =
+                toInteger $ findOutputIndexWithAsset policyId targetNodeAsset txBody
+            , registeredOperatorsRedeemerIndex =
+                toInteger $
+                  findMintRedeemerIndex allPolicies txBody (mintingPolicyId registeredOperatorsPolicy)
+            }
       -- Enforce activation to happen at/after validity lower bound.
       addBtx $ \txBody ->
         txBody

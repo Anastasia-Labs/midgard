@@ -39,7 +39,12 @@ midgardTestCase ms str act = testCase str . mockchainSucceeds . failOnError $ do
   txBody <- publishMidgardMintingPolicy $ retiredOperatorsPolicy ms
   tx <- balanceAndSubmit' Wallet.w1 txBody TrailingChange []
   let retiredOperatorsPolicyRef = firstTxIn tx
-  let refScripts = MidgardRefScripts {retiredOperatorsPolicyRef, activeOperatorsPolicyRef, registeredOperatorsPolicyRef}
+  let refScripts =
+        MidgardRefScripts
+          { retiredOperatorsPolicyRef
+          , activeOperatorsPolicyRef
+          , registeredOperatorsPolicyRef
+          }
   -- Initialize protocol.
   txBody <- initProtocol ms refScripts
   void $ balanceAndSubmit' Wallet.w1 txBody TrailingChange []
