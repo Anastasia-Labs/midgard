@@ -33,7 +33,7 @@ import Convex.Class (
  )
 import Convex.Utils (utcTimeToPosixTime)
 import Convex.Utxos (toTxOut)
-import PlutusLedgerApi.V3 (PubKeyHash (PubKeyHash))
+import PlutusLedgerApi.V3 (POSIXTime, PubKeyHash (PubKeyHash))
 
 import Midgard.Constants (
   hubOracleAssetName,
@@ -117,6 +117,9 @@ initRegisteredOperators
       C.NoStakeAddress
       (assetValue policyId RegisteredOperators.rootAssetName 1)
 
+{- | Register an operator.
+Returns the transaction as well as the earliest possible activation time for said operator.
+-}
 registerOperator ::
   forall era m.
   ( MonadError String m
@@ -125,7 +128,7 @@ registerOperator ::
   , C.HasScriptLanguageInEra C.PlutusScriptV3 era
   , C.IsBabbageBasedEra era
   ) =>
-  MidgardScripts -> MidgardRefScripts -> C.Hash C.PaymentKey -> m (TxBuilder era)
+  MidgardScripts -> MidgardRefScripts -> C.Hash C.PaymentKey -> m (TxBuilder era, POSIXTime)
 registerOperator
   MidgardScripts
     { registeredOperatorsValidator
@@ -149,7 +152,6 @@ registerOperator
     -- Note: The upper bound ends _before_ the beginning of this slot. i.e end time of last slot.
     let validityUpperBoundExclusive = C.SlotNo $ C.unSlotNo currentSlot + 300
     validityUpperBoundPosixExclusive <- slotToEndUTCTime $ validityUpperBoundExclusive - 1
-    -- Validity upper bound is exclusive in script context. On-chain normalizes it to inclusive with `-1`.
     let activationTime = utcTimeToPosixTime $ addUTCTime registrationDuration validityUpperBoundPosixExclusive
     -- Find the hub oracle utxo.
     hubOracleUtxos <- utxosByPaymentCredential $ C.PaymentCredentialByScript hubOracleScriptHash
@@ -201,7 +203,7 @@ registerOperator
             , nodeAssetNamePrefix = RetiredOperators.nodeAssetNamePrefix
             }
         $ findUTxONonMembership retiredOperatorsUtxos operatorPkhBytes
-    pure . execBuildTx @era $ do
+    pure . (,activationTime) . execBuildTx @era $ do
       -- Must be signed by registering operator.
       addRequiredSignature operatorPkh
       -- Must witness the hub oracle.

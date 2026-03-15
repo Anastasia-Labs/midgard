@@ -3,6 +3,7 @@ module Spec.ActiveOperators (tests) where
 import Control.Monad.Except (withExceptT)
 import Data.Functor (void)
 
+import Convex.Class (nextSlot, setPOSIXTime)
 import Convex.CoinSelection (ChangeOutputPosition (TrailingChange))
 import Convex.Wallet qualified as Wallet
 import Convex.Wallet.MockWallet qualified as Wallet
@@ -22,8 +23,11 @@ tests ms =
     [ midgardTestCase ms "activate a registered operator" $ \refScripts -> do
         let operatorWallet = Wallet.w1
             operatorPkh = Wallet.verificationKeyHash operatorWallet
-        txBody <- withExceptT TxBuildingError $ registerOperator ms refScripts operatorPkh
+        (txBody, activationTime) <- withExceptT TxBuildingError $ registerOperator ms refScripts operatorPkh
         void $ balanceAndSubmit' operatorWallet txBody TrailingChange []
+        -- Progress to a time when activation is possible.
+        setPOSIXTime activationTime
+        nextSlot
         txBody <- withExceptT TxBuildingError $ activateOperator ms refScripts operatorPkh
         void $ balanceAndSubmit' operatorWallet txBody TrailingChange []
     ]

@@ -88,6 +88,7 @@ common dependencies
     , base16-bytestring
     , bytestring
     , cardano-api        ==10.21.0.0
+    , containers
     , convex-base
     , convex-mockchain
     , mtl
@@ -115,7 +116,6 @@ library
   hs-source-dirs:  src
   build-depends:
     , cardano-ledger-core
-    , containers
     , convex-optics
     , lens
     , plutus-core
