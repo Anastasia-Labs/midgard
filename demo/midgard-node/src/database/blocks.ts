@@ -12,7 +12,6 @@ import { UTxO } from "@lucid-evolution/lucid";
 import {
   BlocksTxsDB,
   DepositsDB,
-  ImmutableDB,
   MempoolDB,
   Tx,
   TxOrdersDB,
@@ -219,138 +218,6 @@ export const retrieveLatestEntry: Effect.Effect<
 );
 
 /**
- * Retrieves the latest unsubmitted block and all corresponding transaction
- * hashes and CBORs via a single SQL call.
- */
-export const retrieveLatestWithBlockTxs: Effect.Effect<
-  Option.Option<LatestUnsubmittedBlockWithTxs>,
-  DatabaseError,
-  Database
-> = Effect.gen(function* () {
-  const sql = yield* SqlClient.SqlClient;
-  const rows = yield* sql<LatestUnsubmittedBlockJoinRow>`
-    WITH latest_unsubmitted AS (
-      SELECT
-        ${sql(Columns.HEIGHT)},
-        ${sql(Columns.HEADER_HASH)},
-        ${sql(Columns.EVENT_START_TIME)},
-        ${sql(Columns.EVENT_END_TIME)},
-        ${sql(Columns.NEW_WALLET_UTXOS)},
-        ${sql(Columns.PRODUCED_UTXOS)},
-        ${sql(Columns.L1_CBOR)},
-        ${sql(Columns.DEPOSITS_COUNT)},
-        ${sql(Columns.TX_REQUESTS_COUNT)},
-        ${sql(Columns.TX_ORDERS_COUNT)},
-        ${sql(Columns.WITHDRAWALS_COUNT)},
-        ${sql(Columns.TOTAL_EVENTS_SIZE)},
-        ${sql(Columns.TIMESTAMPTZ)},
-      FROM ${sql(tableName)}
-      ORDER BY ${sql(Columns.HEIGHT)} DESC
-      LIMIT 1
-    )
-    SELECT
-      latest_unsubmitted.${sql(Columns.HEIGHT)},
-      latest_unsubmitted.${sql(Columns.HEADER_HASH)},
-      latest_unsubmitted.${sql(Columns.EVENT_START_TIME)},
-      latest_unsubmitted.${sql(Columns.EVENT_END_TIME)},
-      latest_unsubmitted.${sql(Columns.NEW_WALLET_UTXOS)},
-      latest_unsubmitted.${sql(Columns.PRODUCED_UTXOS)},
-      latest_unsubmitted.${sql(Columns.L1_CBOR)},
-      latest_unsubmitted.${sql(Columns.DEPOSITS_COUNT)},
-      latest_unsubmitted.${sql(Columns.TX_REQUESTS_COUNT)},
-      latest_unsubmitted.${sql(Columns.TX_ORDERS_COUNT)},
-      latest_unsubmitted.${sql(Columns.WITHDRAWALS_COUNT)},
-      latest_unsubmitted.${sql(Columns.TOTAL_EVENTS_SIZE)},
-      latest_unsubmitted.${sql(Columns.TIMESTAMPTZ)},
-      b.${sql(BlocksTxsDB.Columns.TX_ID)},
-      i.${sql(Tx.Columns.TX)}
-    FROM latest_unsubmitted
-    LEFT JOIN ${sql(BlocksTxsDB.tableName)} AS b
-      ON b.${sql(BlocksTxsDB.Columns.HEADER_HASH)} = latest_unsubmitted.${sql(Columns.HEADER_HASH)}
-    LEFT JOIN ${sql(ImmutableDB.tableName)} AS i
-      ON i.${sql(Tx.Columns.TX_ID)} = b.${sql(BlocksTxsDB.Columns.TX_ID)}
-    ORDER BY b.${sql(BlocksTxsDB.Columns.HEIGHT)} ASC NULLS LAST
-  `;
-  if (rows.length <= 0) {
-    return Option.none();
-  }
-
-  const firstRow = rows[0];
-  const newWalletUtxos = yield* deserializeUTxOsFromStorage(
-    firstRow[Columns.NEW_WALLET_UTXOS],
-  );
-  const producedUtxos = yield* deserializeUTxOsFromStorage(
-    firstRow[Columns.PRODUCED_UTXOS],
-  );
-  const initialTxAcc: { txHashes: Buffer[]; txCbors: Buffer[] } = {
-    txHashes: [],
-    txCbors: [],
-  };
-  const { txHashes, txCbors } = yield* Effect.reduce(
-    rows,
-    initialTxAcc,
-    (acc, row) => {
-      if (
-        row[BlocksTxsDB.Columns.TX_ID] === null &&
-        row[Tx.Columns.TX] === null
-      ) {
-        return Effect.succeed(acc);
-      }
-      if (
-        row[BlocksTxsDB.Columns.TX_ID] === null ||
-        row[Tx.Columns.TX] === null
-      ) {
-        return Effect.fail(
-          new DatabaseError({
-            message:
-              "Inconsistent transaction row for latest unsubmitted block",
-            cause: row,
-            table: tableName,
-          }),
-        );
-      }
-      acc.txHashes.push(row[BlocksTxsDB.Columns.TX_ID]);
-      acc.txCbors.push(row[Tx.Columns.TX]);
-      return Effect.succeed(acc);
-    },
-  );
-
-  return Option.some({
-    ...firstRow,
-    [Columns.NEW_WALLET_UTXOS]: newWalletUtxos,
-    [Columns.PRODUCED_UTXOS]: producedUtxos,
-    txHashes,
-    txCbors,
-  });
-}).pipe(
-  Effect.withLogSpan(`retrieveLatestWithBlockTxs ${tableName}`),
-  Effect.catchTags({
-    CborDeserializationError: (error) =>
-      Effect.fail(
-        new DatabaseError({
-          message:
-            "Failed to retrieve latest unsubmitted block with transactions",
-          cause: error,
-          table: tableName,
-        }),
-      ),
-    CmlUnexpectedError: (error) =>
-      Effect.fail(
-        new DatabaseError({
-          message:
-            "Failed to retrieve latest unsubmitted block with transactions",
-          cause: error,
-          table: tableName,
-        }),
-      ),
-  }),
-  sqlErrorToDatabaseError(
-    tableName,
-    "Failed to retrieve latest unsubmitted block with transactions",
-  ),
-);
-
-/**
  * A `BlocksDB` entry contains the list of produced UTxOs from its signed
  * transaction. Since this transaciton is a linked list append operation, one of
  * the elements is the appended node (i.e. block header).
@@ -387,8 +254,8 @@ export const getAppendedStateQueueUTxOFromEntry = (
             if (SDK.bufferToHex(entry[Columns.HEADER_HASH]) === headerHash) {
               return stateQueueUTxO;
             } else {
-              // Doesn't matter what error is raised here (or below) as errors are
-              // ignored in `allSuccesses`.
+              // Doesn't matter what error is raised here (or below) as errors
+              // are ignored in `allSuccesses`.
               return yield* new SDK.StateQueueError({ message: "", cause: "" });
             }
           } else {
