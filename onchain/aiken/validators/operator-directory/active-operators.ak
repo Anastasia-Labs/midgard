@@ -359,8 +359,11 @@ validator mint(
           //    operators directory must match the removing node's datum. This
           //    allows the minting of the retired operator's node to be able to
           //    rely on its correctness.
-          expect NodeData { bond_unlock_time } = active_operator_node_data
-          expect bond_unlock_time == retired_operators_redeemer_bond_unlock_time
+          let expected_removing_node_data: Data =
+            NodeData {
+              bond_unlock_time: retired_operators_redeemer_bond_unlock_time,
+            }
+          expect active_operator_node_data == expected_removing_node_data
 
           // Done.
           True

@@ -7,8 +7,11 @@ use midgard/protocol_parameters.{shift_duration}
 pub const asset_name = "MIDGARD_SCHEDULER"
 
 pub type Datum {
-  operator: VerificationKeyHash,
-  start_time: PosixTime,
+  NoActiveOperators
+  ActiveOperator {
+    operator: VerificationKeyHash,
+    start_time: PosixTime,
+  }
 }
 
 pub type MintRedeemer {

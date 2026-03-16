@@ -160,8 +160,8 @@ validator spend(
             validity_range,
           )
 
-        // 2. Active and registered operatorelements must exist at the specified
-        //    indices.
+        // 2. Active and registered operator elements must exist at the
+        //    specified indices.
         expect Some(active_node_ref_input) =
           reference_inputs |> list.at(active_node_ref_input_index)
         expect Some(active_root_ref_input) =
