@@ -8,10 +8,7 @@ pub const asset_name = "MIDGARD_SCHEDULER"
 
 pub type Datum {
   NoActiveOperators
-  ActiveOperator {
-    operator: VerificationKeyHash,
-    start_time: PosixTime,
-  }
+  ActiveOperator { operator: VerificationKeyHash, start_time: PosixTime }
 }
 
 pub type MintRedeemer {

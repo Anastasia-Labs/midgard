@@ -13,8 +13,8 @@ use midgard/hub_oracle as hub
 use midgard/operator_directory/active_operators
 use midgard/operator_directory/registered_operators
 use midgard/scheduler.{
-  Advance, Datum, Deinit, Init, MintRedeemer, Rewind, SpendRedeemer, asset_name,
-  shift_end_time,
+  ActiveOperator, Advance, Datum, Deinit, Init, MintRedeemer, NoActiveOperators,
+  Rewind, SpendRedeemer, asset_name, shift_end_time,
 }
 
 validator mint(hub_oracle_script_hash: PolicyId) {
@@ -270,55 +270,64 @@ fn validate_end_of_shift_and_get_operators(
   return: fn(VerificationKeyHash, VerificationKeyHash) -> Bool,
 ) -> Bool {
   // 1. Proper datum must be attached to the scheduler input.
-  expect Some(Datum { operator: input_operator, start_time: input_start_time }) =
-    m_datum
+  expect Some(datum) = m_datum
 
-  // 2. Output and the correct input must exist at the specified indices.
-  let
-    input,
-    output,
-  <-
-    singular_utxo_indexer.one_to_one(
-      input_index: scheduler_input_index,
-      output_index: scheduler_output_index,
-      own_ref: own_out_ref,
-      inputs: inputs,
-      outputs: outputs,
-      // Double satisfaction is prevented by requiring the same NFT present in
-      // both the input and the output.
-      double_satisfaction_prevented: True,
-    )
+  when datum is {
+    ActiveOperator { operator: input_operator, start_time: input_start_time } -> {
+      // 2. Output and the correct input must exist at the specified indices.
+      let
+        input,
+        output,
+      <-
+        singular_utxo_indexer.one_to_one(
+          input_index: scheduler_input_index,
+          output_index: scheduler_output_index,
+          own_ref: own_out_ref,
+          inputs: inputs,
+          outputs: outputs,
+          // Double satisfaction is prevented by requiring the same NFT present
+          // in both the input and the output.
+          double_satisfaction_prevented: True,
+        )
 
-  // 3. Both input and output must have the scheduler NFT, and the output
-  //    datum must be properly formed.
-  expect Datum { operator: output_operator, start_time: output_start_time } =
-    utils.authenticate_input_output_and_get_output_datum_data(
-      input,
-      output,
-      scheduler_policy_id,
-    )
+      // 3. Both input and output must have the scheduler NFT, and the output
+      //    datum must be properly formed.
+      expect ActiveOperator {
+        operator: output_operator,
+        start_time: output_start_time,
+      } =
+        utils.authenticate_input_output_and_get_output_datum_data(
+          input,
+          output,
+          scheduler_policy_id,
+        )
 
-  // 4. The start time of the new shift must be the end time of the
-  //    previous shift.
-  expect output_start_time == shift_end_time(input_start_time)
+      // 4. The start time of the new shift must be the end time of the previous
+      //    shift.
+      expect output_start_time == shift_end_time(input_start_time)
 
-  // 5. Either the start time of the new shift is in the past, or it's
-  //    contained within the transaction's validity range, in which case
-  //    the previous operator (who is currently active) must consent to
-  //    advancing the schedule.
-  //
-  //    TODO: See [#416](https://github.com/anastasia-labs/midgard/issues/416).
-  expect or {
-      validity_range |> interval.is_entirely_after(output_start_time),
-      and {
-        input_operator |> utils.has_signed(extra_signatories),
-        {
-          let (_inclusive_lower_bound, inclusive_upper_bound) =
-            utils.get_inclusive_bounds_of_a_short_validity_range(validity_range)
-          output_start_time < inclusive_upper_bound
-        },
-      },
+      // 5. Either the start time of the new shift is in the past, or it's
+      //    contained within the transaction's validity range, in which case
+      //    the previous operator (who is currently active) must consent to
+      //    advancing the schedule.
+      //
+      //    TODO: See [#416](https://github.com/anastasia-labs/midgard/issues/416).
+      expect or {
+          validity_range |> interval.is_entirely_after(output_start_time),
+          and {
+            input_operator |> utils.has_signed(extra_signatories),
+            {
+              let (_inclusive_lower_bound, inclusive_upper_bound) =
+                utils.get_inclusive_bounds_of_a_short_validity_range(
+                  validity_range,
+                )
+              output_start_time < inclusive_upper_bound
+            },
+          },
+        }
+
+      return(input_operator, output_operator)
     }
-
-  return(input_operator, output_operator)
+    NoActiveOperators -> todo
+  }
 }

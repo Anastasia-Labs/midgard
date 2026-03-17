@@ -389,7 +389,7 @@ pub fn get_authentic_output_datum_at_address_with_nft_at(
 ///
 /// > [!NOTE]
 /// > This does NOT check the output's value contains the same amount of ADA
-/// > as the input, since change in data can fluctuate the min required ADA.
+/// > as the input's, since change in data can fluctuate the min required ADA.
 ///
 /// Useful for contracts with singular authentic UTxOs (which their data is the
 /// only thing that matters), at endpoints for updating their datums.
