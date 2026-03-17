@@ -8,3 +8,5 @@ dist
 *mpt-db/*
 test-mpt-db*/
 tests/benchmarks/output/
+logs/
+tmp-*

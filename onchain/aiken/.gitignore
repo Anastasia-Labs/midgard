@@ -6,3 +6,4 @@ build/
 docs/
 #
 plutus.json
+lib/tmp-*
