@@ -2,6 +2,7 @@ use aiken/crypto.{VerificationKeyHash}
 use aiken/primitive/bytearray
 use aiken_design_patterns/linked_list
 use cardano/assets.{AssetName, PolicyId}
+use cardano/transaction.{OutputReference}
 use midgard/common/types.{PosixTime}
 use midgard/operator_directory
 
@@ -21,6 +22,7 @@ pub const node_asset_name_prefix_length: Int =
 
 pub type NodeData {
   bond_unlock_time: Option<PosixTime>,
+  inactivity_strikes: Int,
 }
 
 pub type Datum =
@@ -42,6 +44,12 @@ pub type SpendRedeemer {
     settlement_input_index: Int,
     settlement_redeemer_index: Int,
     new_bond_unlock_time: PosixTime,
+  }
+  StrikeForInactivity {
+    active_node_input_index: Int,
+    active_node_output_index: Int,
+    hub_oracle_ref_input_index: Int,
+    scheduler_redeemer_index: Int,
   }
 }
 

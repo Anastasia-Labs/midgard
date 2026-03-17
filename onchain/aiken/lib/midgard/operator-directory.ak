@@ -176,8 +176,8 @@ pub fn validate_operator_transfer_and_get_inserted_data(
 /// Common requirements for slashing an operator from either the active or
 /// retired operators set. Fraud can be either because of a bad block
 /// commitment, or an invalid resolution claim on a settlement UTxO. Which is
-/// why this function returs the hub oracle datum for endpoints to lookup either
-/// the state queue or the settlement UTxO.
+/// why this function returns the hub oracle datum for endpoints to lookup
+/// either the state queue or the settlement UTxO.
 fn slash_operator_and_get_hub_datum(
   hub_oracle_script_hash: PolicyId,
   slashed_operator_key: VerificationKeyHash,

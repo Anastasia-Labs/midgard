@@ -15,8 +15,8 @@ use midgard/operator_directory.{
 use midgard/operator_directory/active_operators.{
   ActivateOperator, Datum, Deinit, Init, ListStateTransition, MintRedeemer,
   NodeData, RemoveOperatorBadSettlement, RemoveOperatorBadState, RetireOperator,
-  SpendRedeemer, UpdateBondHoldNewSettlement, UpdateBondHoldNewState,
-  finalize_linked_list, root_asset_name,
+  SpendRedeemer, StrikeForInactivity, UpdateBondHoldNewSettlement,
+  UpdateBondHoldNewState, finalize_linked_list, root_asset_name,
 }
 use midgard/operator_directory/registered_operators
 use midgard/operator_directory/retired_operators
@@ -172,6 +172,41 @@ validator spend(
 
         // Done.
         True
+      }
+      StrikeForInactivity {
+        active_node_input_index,
+        active_node_output_index,
+        hub_oracle_ref_input_index,
+        scheduler_redeemer_index,
+      } -> {
+        let Transaction {
+          inputs,
+          outputs,
+          mint,
+          ..
+        } = self
+
+        let linked_list_eval = {
+          let
+            lovelace_change,
+            m_operator,
+            active_node_input_data,
+            active_node_output_data,
+          <-
+            linked_list.spend_for_updating_elements_data(
+              element_input_index: active_node_input_index,
+              continued_element_output_index: active_node_output_index,
+              element_input_outref: own_out_ref,
+              inputs: inputs,
+              outputs: outputs,
+              tx_mint: mint,
+            )
+          expect NodeData { inactivity_strikes: input_strikes, .. } =
+            active_node_input_data
+          expect NodeData { inactivity_strikes: output_strikes, .. } =
+            active_node_output_data
+          expect output_strikes == input_strikes + 1
+        }
       }
     }
   }
