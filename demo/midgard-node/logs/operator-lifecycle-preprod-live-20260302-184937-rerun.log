@@ -1,0 +1,53 @@
+
+> midgard-node@1.0.0 test:operator-lifecycle:preprod /home/gumbo/midgard-hub/midgard/demo/midgard-node
+> export MIDGARD_RUN_PREPROD_OPERATOR_LIFECYCLE_TESTS=1 && vitest run tests/operator-lifecycle-preprod.test.ts --reporter=basic --disable-console-intercept
+
+
+ RUN  v3.2.4 /home/gumbo/midgard-hub/midgard/demo/midgard-node
+
+ DEPRECATED  'basic' reporter is deprecated and will be removed in Vitest v3.
+Remove 'basic' from 'reporters' option. To match 'basic' reporter 100%, use configuration:
+{
+  "test": {
+    "reporters": [
+      [
+        "default",
+        {
+          "summary": false
+        }
+      ]
+    ]
+  }
+}
+timestamp=2026-03-03T02:49:40.288Z level=INFO fiber=#0 message="Initializing Lucid..."
+timestamp=2026-03-03T02:49:40.583Z level=INFO fiber=#0 message="Lucid built successfully."
+timestamp=2026-03-03T02:49:40.785Z level=INFO fiber=#0 message="🔐 Contract source selected: state_queue=real, hub_oracle=real, registered_operators=real, active_operators=real, retired_operators=real"
+ ❯ tests/operator-lifecycle-preprod.test.ts (2 tests | 2 failed) 1203ms
+   × operator lifecycle preprod blockfrost > runs register-only then activate-only with the main operator wallet 344ms
+     → Expected exactly one hub-oracle witness UTxO
+   × operator lifecycle preprod blockfrost > runs register-only then deregister-only with the merge operator wallet 178ms
+     → Expected exactly one hub-oracle witness UTxO
+
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 2 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/operator-lifecycle-preprod.test.ts > operator lifecycle preprod blockfrost > runs register-only then activate-only with the main operator wallet
+ FAIL  tests/operator-lifecycle-preprod.test.ts > operator lifecycle preprod blockfrost > runs register-only then deregister-only with the merge operator wallet
+(FiberFailure) StateQueueError: Expected exactly one hub-oracle witness UTxO
+ ❯ next src/transactions/register-active-operator.ts:1536:9
+    1534|     if (hubOracleUtxos.length !== 1) {
+    1535|       return yield* Effect.fail(
+    1536|         new SDK.StateQueueError({
+       |         ^
+    1537|           message: "Expected exactly one hub-oracle witness UTxO",
+    1538|           cause: `found=${hubOracleUtxos.length},address=${hubOracleAd…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/2]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  2 failed (2)
+   Start at  18:49:38
+   Duration  3.02s (transform 209ms, setup 0ms, collect 1.60s, tests 1.20s, environment 0ms, prepare 59ms)
+
+ ELIFECYCLE  Command failed with exit code 1.

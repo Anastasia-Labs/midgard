@@ -66,7 +66,6 @@ import {
   ActiveOperatorSpendRedeemerSchema,
   StateQueueCommitLayout,
   deriveStateQueueCommitLayout,
-  enumerateCommitLayoutCandidates,
   encodeActiveOperatorCommitRedeemer,
   encodeStateQueueCommitRedeemer,
 } from "@/workers/utils/commit-redeemers.js";
@@ -79,8 +78,85 @@ import { DatabaseError } from "@/database/utils/common.js";
 
 const BATCH_SIZE = 100;
 const STATE_QUEUE_HEADER_NODE_LOVELACE = 5_000_000n;
+const ACTIVE_OPERATOR_MATURITY_DURATION_MS = 30n;
 const SKIPPED_SUBMISSION_TRANSFER_RETRIES = 2;
 const SKIPPED_SUBMISSION_TRANSFER_INITIAL_BACKOFF = "250 millis";
+const ACTIVE_OPERATOR_DATUM_AIKEN_OPTION_SCHEMA = LucidData.Enum([
+  LucidData.Object({
+    Some: LucidData.Tuple([LucidData.Integer()]),
+  }),
+  LucidData.Literal("None"),
+]);
+const ACTIVE_OPERATOR_DATUM_AIKEN_SCHEMA = LucidData.Object({
+  bond_unlock_time: ACTIVE_OPERATOR_DATUM_AIKEN_OPTION_SCHEMA,
+});
+const ACTIVE_OPERATOR_DATUM_OPTION_SCHEMA = LucidData.Nullable(
+  LucidData.Integer(),
+);
+
+type ActiveOperatorDatumEncoding = "aiken" | "record" | "option";
+
+const decodeActiveOperatorDatum = (
+  data: SDK.NodeDatum["data"],
+): {
+  readonly encoding: ActiveOperatorDatumEncoding;
+  readonly commitmentTime: bigint | null;
+} => {
+  try {
+    const parsedAiken = LucidData.castFrom(
+      data as never,
+      ACTIVE_OPERATOR_DATUM_AIKEN_SCHEMA as never,
+    ) as { bond_unlock_time: bigint | null };
+    return {
+      encoding: "aiken",
+      commitmentTime:
+        parsedAiken.bond_unlock_time === null
+          ? null
+          : BigInt(parsedAiken.bond_unlock_time),
+    };
+  } catch {
+    // Fall through to legacy encodings.
+  }
+  try {
+    const parsedRecord = LucidData.castFrom(data, SDK.ActiveOperatorDatum);
+    return {
+      encoding: "record",
+      commitmentTime:
+        parsedRecord.commitmentTime === null
+          ? null
+          : BigInt(parsedRecord.commitmentTime),
+    };
+  } catch {
+    const parsedOption = LucidData.castFrom(
+      data as never,
+      ACTIVE_OPERATOR_DATUM_OPTION_SCHEMA as never,
+    ) as bigint | null;
+    return {
+      encoding: "option",
+      commitmentTime: parsedOption,
+    };
+  }
+};
+
+const encodeActiveOperatorDatum = (
+  encoding: ActiveOperatorDatumEncoding,
+  commitmentTime: bigint | null,
+) => {
+  switch (encoding) {
+    case "aiken":
+      return LucidData.castTo(
+        { bond_unlock_time: commitmentTime } as never,
+        ACTIVE_OPERATOR_DATUM_AIKEN_SCHEMA as never,
+      );
+    case "record":
+      return LucidData.castTo({ commitmentTime }, SDK.ActiveOperatorDatum);
+    case "option":
+      return LucidData.castTo(
+        commitmentTime as never,
+        ACTIVE_OPERATOR_DATUM_OPTION_SCHEMA as never,
+      );
+  }
+};
 
 class LocalFinalizationPendingError extends Data.TaggedError(
   "LocalFinalizationPendingError",
@@ -1791,6 +1867,31 @@ const buildUnsignedTx = (
       updatedNodeDatum,
       SDK.StateQueueDatum,
     );
+    const updatedActiveOperatorDatumCbor = yield* Effect.try({
+      try: () => {
+        const activeOperatorNodeDatum = LucidData.from(
+          witnessContext.activeOperatorInput.datum,
+          SDK.NodeDatum,
+        );
+        const activeOperatorDatum = decodeActiveOperatorDatum(
+          activeOperatorNodeDatum.data,
+        );
+        const updatedActiveOperatorNodeDatum: SDK.NodeDatum = {
+          ...activeOperatorNodeDatum,
+          data: encodeActiveOperatorDatum(
+            activeOperatorDatum.encoding,
+            BigInt(alignedEndTime) + ACTIVE_OPERATOR_MATURITY_DURATION_MS,
+          ),
+        };
+        return LucidData.to(updatedActiveOperatorNodeDatum, SDK.NodeDatum);
+      },
+      catch: (cause) =>
+        new SDK.StateQueueError({
+          message:
+            "Failed to update active-operator bond-hold datum for commit tx",
+          cause,
+        }),
+    });
 
     const makeBaseCommitTx = () =>
       lucid.api
@@ -1825,6 +1926,19 @@ const buildUnsignedTx = (
       readonly hubOracleRefInputIndex: bigint;
     }) =>
       `scheduler_ref_input_index=${layout.schedulerRefInputIndex.toString()},active_node_input_index=${layout.activeNodeInputIndex.toString()},active_operators_redeemer_index=${layout.activeOperatorsRedeemerIndex.toString()},state_queue_redeemer_index=${layout.stateQueueRedeemerIndex.toString()},header_node_output_index=${layout.headerNodeOutputIndex.toString()},previous_header_node_output_index=${layout.previousHeaderNodeOutputIndex.toString()},active_node_output_index=${layout.activeNodeOutputIndex.toString()},hub_oracle_ref_input_index=${layout.hubOracleRefInputIndex.toString()}`;
+    const commitLayoutsEqual = (
+      left: StateQueueCommitLayout,
+      right: StateQueueCommitLayout,
+    ): boolean =>
+      left.schedulerRefInputIndex === right.schedulerRefInputIndex &&
+      left.activeNodeInputIndex === right.activeNodeInputIndex &&
+      left.headerNodeOutputIndex === right.headerNodeOutputIndex &&
+      left.previousHeaderNodeOutputIndex ===
+        right.previousHeaderNodeOutputIndex &&
+      left.activeOperatorsRedeemerIndex === right.activeOperatorsRedeemerIndex &&
+      left.activeNodeOutputIndex === right.activeNodeOutputIndex &&
+      left.hubOracleRefInputIndex === right.hubOracleRefInputIndex &&
+      left.stateQueueRedeemerIndex === right.stateQueueRedeemerIndex;
 
     const txBuilder = yield* Effect.gen(function* () {
       const witness = witnessContext;
@@ -1871,7 +1985,7 @@ const buildUnsignedTx = (
             witness.activeOperatorInput.address,
             {
               kind: "inline",
-              value: witness.activeOperatorInput.datum,
+              value: updatedActiveOperatorDatumCbor,
             },
             witness.activeOperatorInput.assets,
           )
@@ -1961,62 +2075,131 @@ const buildUnsignedTx = (
             typeof value === "bigint" ? value.toString() : value,
         )}`,
       );
-      const layoutCandidates = enumerateCommitLayoutCandidates(commitLayout);
-      let lastRemoteError: SDK.StateQueueError | undefined = undefined;
-      for (const candidateLayout of layoutCandidates) {
-        const remoteEvalResult = yield* Effect.either(
-          Effect.tryPromise({
-            try: () =>
-              makeCommitTxForLayout(candidateLayout).complete({
-                localUPLCEval: false,
-              }),
-            catch: (e) =>
-              new SDK.StateQueueError({
-                message: `Failed to build block header commitment transaction with derived layout (${formatLayout(candidateLayout)}): ${e}`,
-                cause: e,
-              }),
+      let stableCommitLayout = commitLayout;
+      let builtCommitTx = yield* Effect.tryPromise({
+        try: () =>
+          makeCommitTxForLayout(stableCommitLayout).complete({
+            localUPLCEval: false,
           }),
-        );
-        if (remoteEvalResult._tag === "Right") {
-          if (candidateLayout !== commitLayout) {
-            yield* Effect.logWarning(
-              `Derived commit layout was rejected; using fallback layout (${formatLayout(candidateLayout)}).`,
+        catch: (e) =>
+          new SDK.StateQueueError({
+            message: `Failed to build block header commitment transaction with derived layout (${formatLayout(
+              stableCommitLayout,
+            )}): ${e}`,
+            cause: e,
+          }),
+      }).pipe(
+        Effect.catchAll((remoteError) =>
+          Effect.gen(function* () {
+            const localEvalDiagnostic = yield* Effect.either(
+              Effect.tryPromise({
+                try: () =>
+                  makeCommitTxForLayout(stableCommitLayout).complete({
+                    localUPLCEval: true,
+                  }),
+                catch: (e) =>
+                  new SDK.StateQueueError({
+                    message: `Local UPLC eval diagnostic failed for derived layout (${formatLayout(
+                      stableCommitLayout,
+                    )}): ${e}`,
+                    cause: e,
+                  }),
+              }),
             );
-          }
-          return remoteEvalResult.right;
-        }
-
-        const localEvalDiagnostic = yield* Effect.either(
-          Effect.tryPromise({
-            try: () =>
-              makeCommitTxForLayout(candidateLayout).complete({
-                localUPLCEval: true,
-              }),
-            catch: (e) =>
+            const localDiagnosticMessage =
+              localEvalDiagnostic._tag === "Left"
+                ? formatUnknownError(localEvalDiagnostic.left)
+                : "local UPLC eval unexpectedly succeeded";
+            return yield* Effect.fail(
               new SDK.StateQueueError({
-                message: `Local UPLC eval diagnostic failed for derived layout (${formatLayout(candidateLayout)}): ${e}`,
-                cause: e,
+                message:
+                  "Failed to build block header commitment transaction with deterministic layout",
+                cause: `layout=${formatLayout(stableCommitLayout)}; remote=${formatUnknownError(
+                  remoteError,
+                )}; local_diagnostic=${localDiagnosticMessage}`,
               }),
+            );
           }),
-        );
-        const localDiagnosticMessage =
-          localEvalDiagnostic._tag === "Left"
-            ? formatUnknownError(localEvalDiagnostic.left)
-            : "local UPLC eval unexpectedly succeeded";
+        ),
+      );
+      for (let iteration = 0; iteration < 2; iteration += 1) {
+        const derivedSubmitLayout = deriveCommitLayoutFromDraftTx({
+          tx: builtCommitTx.toTransaction(),
+          schedulerRefInput: witness.schedulerRefInput,
+          hubOracleRefInput: witness.hubOracleRefInput,
+          activeOperatorInput: witness.activeOperatorInput,
+          stateQueueAddress: stateQueueAuthValidator.spendingScriptAddress,
+          headerNodeUnit,
+          headerNodeDatum: appendedNodeDatumCbor,
+          previousHeaderNodeDatum: updatedNodeDatumCbor,
+        });
+        if (commitLayoutsEqual(stableCommitLayout, derivedSubmitLayout)) {
+          return builtCommitTx;
+        }
+        if (iteration === 1) {
+          return yield* Effect.fail(
+            new SDK.StateQueueError({
+              message:
+                "Commit transaction layout did not converge after deterministic rebuild",
+              cause: `authored=${formatLayout(stableCommitLayout)}; derived=${formatLayout(
+                derivedSubmitLayout,
+              )}`,
+            }),
+          );
+        }
         yield* Effect.logWarning(
-          `Commit layout attempt failed (${formatLayout(candidateLayout)}). Remote eval: ${formatUnknownError(remoteEvalResult.left)}. Local eval diagnostic: ${localDiagnosticMessage}`,
+          `Commit layout drift detected after balancing; rebuilding with tx-derived indexes. authored=${formatLayout(stableCommitLayout)} derived=${formatLayout(derivedSubmitLayout)}`,
         );
-        lastRemoteError = remoteEvalResult.left;
+        stableCommitLayout = derivedSubmitLayout;
+        builtCommitTx = yield* Effect.tryPromise({
+          try: () =>
+            makeCommitTxForLayout(stableCommitLayout).complete({
+              localUPLCEval: false,
+            }),
+          catch: (e) =>
+            new SDK.StateQueueError({
+              message: `Failed to rebuild block header commitment transaction with tx-derived layout (${formatLayout(
+                stableCommitLayout,
+              )}): ${e}`,
+              cause: e,
+            }),
+        }).pipe(
+          Effect.catchAll((remoteError) =>
+            Effect.gen(function* () {
+              const localEvalDiagnostic = yield* Effect.either(
+                Effect.tryPromise({
+                  try: () =>
+                    makeCommitTxForLayout(stableCommitLayout).complete({
+                      localUPLCEval: true,
+                    }),
+                  catch: (e) =>
+                    new SDK.StateQueueError({
+                      message: `Local UPLC eval diagnostic failed for tx-derived layout (${formatLayout(
+                        stableCommitLayout,
+                      )}): ${e}`,
+                      cause: e,
+                    }),
+                }),
+              );
+              const localDiagnosticMessage =
+                localEvalDiagnostic._tag === "Left"
+                  ? formatUnknownError(localEvalDiagnostic.left)
+                  : "local UPLC eval unexpectedly succeeded";
+              return yield* Effect.fail(
+                new SDK.StateQueueError({
+                  message:
+                    "Failed to rebuild block header commitment transaction with deterministic layout",
+                  cause: `layout=${formatLayout(stableCommitLayout)}; remote=${formatUnknownError(
+                    remoteError,
+                  )}; local_diagnostic=${localDiagnosticMessage}`,
+                }),
+              );
+            }),
+          ),
+        );
       }
 
-      return yield* Effect.fail(
-        lastRemoteError ??
-          new SDK.StateQueueError({
-            message:
-              "Failed to build block header commitment transaction with derived layout candidates",
-            cause: "exhausted-derived-layout-candidates",
-          }),
-      );
+      return builtCommitTx;
     });
 
     const txSize = txBuilder.toCBOR().length / 2;

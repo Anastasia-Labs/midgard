@@ -32,9 +32,29 @@ export const REAL_HUB_ORACLE_SCRIPT_TITLES = {
   mint: "hub_oracle.mint.mint",
 } as const;
 
+export const REAL_REGISTERED_OPERATORS_SCRIPT_TITLES = {
+  mint: "registered_operators.mint.mint",
+  spend: "registered_operators.spend.spend",
+} as const;
+
+export const REAL_ACTIVE_OPERATORS_SCRIPT_TITLES = {
+  mint: "active_operators.mint.mint",
+  spend: "active_operators.spend.spend",
+} as const;
+
+export const REAL_RETIRED_OPERATORS_SCRIPT_TITLES = {
+  mint: "retired_operators.mint.mint",
+  spend: "retired_operators.spend.spend",
+} as const;
+
 export type HubOracleOneShotOutRef = {
   readonly txHash: string;
   readonly outputIndex: number;
+};
+
+export type OperatorContractParams = {
+  readonly requiredBondLovelace: bigint;
+  readonly slashingPenaltyLovelace: bigint;
 };
 
 const TX_HASH_PATTERN = /^[0-9a-fA-F]{64}$/;
@@ -150,6 +170,140 @@ const buildRealStateQueueValidator = (
     };
   });
 
+const buildRealRegisteredOperatorsValidator = (
+  network: Network,
+  contracts: SDK.MidgardValidators,
+  operatorParams: OperatorContractParams,
+): Effect.Effect<SDK.AuthenticatedValidator, Error> =>
+  Effect.gen(function* () {
+    const blueprint = realScripts.default as Blueprint;
+    const mintBase = yield* getCompiledScript(
+      blueprint,
+      REAL_REGISTERED_OPERATORS_SCRIPT_TITLES.mint,
+    );
+    const spendBase = yield* getCompiledScript(
+      blueprint,
+      REAL_REGISTERED_OPERATORS_SCRIPT_TITLES.spend,
+    );
+
+    const mintingScriptCBOR = applyParamsToScript(mintBase, [
+      operatorParams.requiredBondLovelace,
+      operatorParams.slashingPenaltyLovelace,
+      contracts.hubOracle.policyId,
+      SDK.HUB_ORACLE_ASSET_NAME,
+    ]);
+    const mintingScript: MintingPolicy = {
+      type: "PlutusV3",
+      script: mintingScriptCBOR,
+    };
+    const policyId = mintingPolicyToId(mintingScript);
+    const spendingScriptCBOR = applyParamsToScript(spendBase, [policyId]);
+    const spendingScript: SpendingValidator = {
+      type: "PlutusV3",
+      script: spendingScriptCBOR,
+    };
+
+    return {
+      spendingScriptCBOR,
+      spendingScript,
+      spendingScriptAddress: validatorToAddress(network, spendingScript),
+      spendingScriptHash: validatorToScriptHash(spendingScript),
+      mintingScriptCBOR,
+      mintingScript,
+      policyId,
+    };
+  });
+
+const buildRealActiveOperatorsValidator = (
+  network: Network,
+  contracts: SDK.MidgardValidators,
+  operatorParams: OperatorContractParams,
+): Effect.Effect<SDK.AuthenticatedValidator, Error> =>
+  Effect.gen(function* () {
+    const blueprint = realScripts.default as Blueprint;
+    const mintBase = yield* getCompiledScript(
+      blueprint,
+      REAL_ACTIVE_OPERATORS_SCRIPT_TITLES.mint,
+    );
+    const spendBase = yield* getCompiledScript(
+      blueprint,
+      REAL_ACTIVE_OPERATORS_SCRIPT_TITLES.spend,
+    );
+
+    const mintingScriptCBOR = applyParamsToScript(mintBase, [
+      operatorParams.slashingPenaltyLovelace,
+      contracts.hubOracle.policyId,
+      SDK.HUB_ORACLE_ASSET_NAME,
+    ]);
+    const mintingScript: MintingPolicy = {
+      type: "PlutusV3",
+      script: mintingScriptCBOR,
+    };
+    const policyId = mintingPolicyToId(mintingScript);
+    const spendingScriptCBOR = applyParamsToScript(spendBase, [
+      policyId,
+      contracts.hubOracle.policyId,
+      SDK.HUB_ORACLE_ASSET_NAME,
+    ]);
+    const spendingScript: SpendingValidator = {
+      type: "PlutusV3",
+      script: spendingScriptCBOR,
+    };
+
+    return {
+      spendingScriptCBOR,
+      spendingScript,
+      spendingScriptAddress: validatorToAddress(network, spendingScript),
+      spendingScriptHash: validatorToScriptHash(spendingScript),
+      mintingScriptCBOR,
+      mintingScript,
+      policyId,
+    };
+  });
+
+const buildRealRetiredOperatorsValidator = (
+  network: Network,
+  contracts: SDK.MidgardValidators,
+  operatorParams: OperatorContractParams,
+): Effect.Effect<SDK.AuthenticatedValidator, Error> =>
+  Effect.gen(function* () {
+    const blueprint = realScripts.default as Blueprint;
+    const mintBase = yield* getCompiledScript(
+      blueprint,
+      REAL_RETIRED_OPERATORS_SCRIPT_TITLES.mint,
+    );
+    const spendBase = yield* getCompiledScript(
+      blueprint,
+      REAL_RETIRED_OPERATORS_SCRIPT_TITLES.spend,
+    );
+
+    const mintingScriptCBOR = applyParamsToScript(mintBase, [
+      operatorParams.slashingPenaltyLovelace,
+      contracts.hubOracle.policyId,
+      SDK.HUB_ORACLE_ASSET_NAME,
+    ]);
+    const mintingScript: MintingPolicy = {
+      type: "PlutusV3",
+      script: mintingScriptCBOR,
+    };
+    const policyId = mintingPolicyToId(mintingScript);
+    const spendingScriptCBOR = applyParamsToScript(spendBase, [policyId]);
+    const spendingScript: SpendingValidator = {
+      type: "PlutusV3",
+      script: spendingScriptCBOR,
+    };
+
+    return {
+      spendingScriptCBOR,
+      spendingScript,
+      spendingScriptAddress: validatorToAddress(network, spendingScript),
+      spendingScriptHash: validatorToScriptHash(spendingScript),
+      mintingScriptCBOR,
+      mintingScript,
+      policyId,
+    };
+  });
+
 export const withRealStateQueueContracts = (
   network: Network,
   baseContracts: SDK.MidgardValidators,
@@ -176,6 +330,66 @@ export const withRealStateQueueContracts = (
     };
   });
 
+export const withRealStateQueueAndOperatorContracts = (
+  network: Network,
+  baseContracts: SDK.MidgardValidators,
+  hubOracleOneShotOutRef: HubOracleOneShotOutRef,
+  operatorParams: OperatorContractParams = {
+    requiredBondLovelace: 5_000_000n,
+    slashingPenaltyLovelace: 200_000n,
+  },
+): Effect.Effect<SDK.MidgardValidators, Error> =>
+  Effect.gen(function* () {
+    yield* validateHubOracleOneShotOutRef(hubOracleOneShotOutRef);
+
+    const realHubOracle = yield* buildRealHubOracleValidator(
+      hubOracleOneShotOutRef,
+    );
+    const withRealHubOracle: SDK.MidgardValidators = {
+      ...baseContracts,
+      hubOracle: realHubOracle,
+    };
+
+    const realRegisteredOperators = yield* buildRealRegisteredOperatorsValidator(
+      network,
+      withRealHubOracle,
+      operatorParams,
+    );
+    const withRealRegisteredOperators: SDK.MidgardValidators = {
+      ...withRealHubOracle,
+      registeredOperators: realRegisteredOperators,
+    };
+
+    const realActiveOperators = yield* buildRealActiveOperatorsValidator(
+      network,
+      withRealRegisteredOperators,
+      operatorParams,
+    );
+    const withRealActiveOperators: SDK.MidgardValidators = {
+      ...withRealRegisteredOperators,
+      activeOperators: realActiveOperators,
+    };
+
+    const realRetiredOperators = yield* buildRealRetiredOperatorsValidator(
+      network,
+      withRealActiveOperators,
+      operatorParams,
+    );
+    const withRealOperatorSets: SDK.MidgardValidators = {
+      ...withRealActiveOperators,
+      retiredOperators: realRetiredOperators,
+    };
+
+    const realStateQueue = yield* buildRealStateQueueValidator(
+      network,
+      withRealOperatorSets,
+    );
+    return {
+      ...withRealOperatorSets,
+      stateQueue: realStateQueue,
+    };
+  });
+
 const makeMidgardContracts = Effect.gen(function* () {
   const nodeConfig = yield* NodeConfig;
   const baseContracts = yield* AlwaysSucceedsContract;
@@ -194,13 +408,17 @@ const makeMidgardContracts = Effect.gen(function* () {
     txHash: oneShotTxHash,
     outputIndex: nodeConfig.HUB_ORACLE_ONE_SHOT_OUTPUT_INDEX,
   };
-  const resolvedContracts = yield* withRealStateQueueContracts(
+  const resolvedContracts = yield* withRealStateQueueAndOperatorContracts(
     nodeConfig.NETWORK,
     baseContracts,
     oneShotOutRef,
+    {
+      requiredBondLovelace: nodeConfig.OPERATOR_REQUIRED_BOND_LOVELACE,
+      slashingPenaltyLovelace: nodeConfig.OPERATOR_SLASHING_PENALTY_LOVELACE,
+    },
   );
   yield* Effect.logInfo(
-    "🔐 Contract source selected: state_queue=real, hub_oracle=real",
+    "🔐 Contract source selected: state_queue=real, hub_oracle=real, registered_operators=real, active_operators=real, retired_operators=real",
   );
   return resolvedContracts;
 }).pipe(Effect.orDie);

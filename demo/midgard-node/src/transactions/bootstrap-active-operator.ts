@@ -13,6 +13,21 @@ const MIN_ACTIVE_OPERATOR_NODE_LOVELACE = 5_000_000n;
 const BOOTSTRAP_CONFIRMATION_POLL_INTERVAL = "3 seconds";
 const BOOTSTRAP_CONFIRMATION_MAX_POLLS = 40;
 const BOOTSTRAP_AWAIT_TX_TIMEOUT_MS = 20_000;
+const ACTIVE_OPERATOR_DATUM_AIKEN_OPTION_SCHEMA = LucidData.Enum([
+  LucidData.Object({
+    Some: LucidData.Tuple([LucidData.Integer()]),
+  }),
+  LucidData.Literal("None"),
+]);
+const ACTIVE_OPERATOR_DATUM_AIKEN_SCHEMA = LucidData.Object({
+  bond_unlock_time: ACTIVE_OPERATOR_DATUM_AIKEN_OPTION_SCHEMA,
+});
+
+const encodeActiveOperatorDatum = (bondUnlockTime: bigint | null): string =>
+  LucidData.castTo(
+    { bond_unlock_time: bondUnlockTime } as never,
+    ACTIVE_OPERATOR_DATUM_AIKEN_SCHEMA as never,
+  ) as string;
 
 const selectLargestWalletUtxo = (
   utxos: readonly UTxO[],
@@ -165,7 +180,7 @@ export const ensureActiveOperatorWitnessNodeProgram = (
     const bootstrapDatum: SDK.StateQueueDatum = {
       key: { Key: { key: operatorKeyHash } },
       next: "Empty",
-      data: "00",
+      data: encodeActiveOperatorDatum(null),
     };
     const bootstrapAssets = {
       lovelace: MIN_ACTIVE_OPERATOR_NODE_LOVELACE,

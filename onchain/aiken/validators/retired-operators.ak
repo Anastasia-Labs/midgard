@@ -42,9 +42,25 @@ validator mint(
     let node_in_outputs = get_node_inputs(self.inputs, policy_id)
     let node_outputs = get_node_outputs(self.outputs, policy_id)
     let node_mint = tokens(self.mint, policy_id)
+    let has_hub_oracle_mint =
+      quantity_of(self.mint, hub_oracle_script_hash, hub_oracle_asset_name) == 1
+    let has_hub_oracle_ref_input =
+      list.any(
+        self.reference_inputs,
+        fn(ref_input) {
+          quantity_of(
+            ref_input.output.value,
+            hub_oracle_script_hash,
+            hub_oracle_asset_name,
+          ) == 1
+        },
+      )
     when redeemer is {
       Init -> and {
-          quantity_of(self.mint, hub_oracle_script_hash, hub_oracle_asset_name) == 1,
+          or {
+            has_hub_oracle_mint,
+            has_hub_oracle_ref_input,
+          },
           ordered.init(node_outputs, node_mint, policy_id),
         }
       Deinit -> and {
@@ -94,9 +110,8 @@ validator mint(
       } -> {
         expect Finite(valid_from) = self.validity_range.lower_bound.bound_type
         expect Some(retired_node_input) =
-          list.at(self.inputs, removed_node_input_index)
-        expect InlineDatum(retired_operator_datum) =
-          retired_node_input.output.datum
+          list.at(node_in_outputs, removed_node_input_index)
+        expect InlineDatum(retired_operator_datum) = retired_node_input.datum
         expect parsed_retired_operator_datum: NodeDatum = retired_operator_datum
         expect retired_operator_data: RetiredOperatorDatum =
           parsed_retired_operator_datum.data

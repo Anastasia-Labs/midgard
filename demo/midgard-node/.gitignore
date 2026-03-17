@@ -6,4 +6,5 @@ dist
 *.tgz
 .direnv
 *mpt-db/*
+test-mpt-db*/
 tests/benchmarks/output/

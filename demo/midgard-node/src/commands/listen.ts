@@ -64,7 +64,6 @@ import { NodeHttpServer } from "@effect/platform-node";
 import { HttpBodyError } from "@effect/platform/HttpBody";
 import * as Genesis from "@/genesis.js";
 import * as Initialization from "@/transactions/initialization.js";
-import { ensureActiveOperatorWitnessNodeProgram } from "@/transactions/bootstrap-active-operator.js";
 import * as Reset from "@/reset.js";
 import { SerializedStateQueueUTxO } from "@/workers/utils/commit-block-header.js";
 import { DatabaseError } from "@/database/utils/common.js";
@@ -932,22 +931,6 @@ const ensureProtocolInitializedOnStartup = Effect.gen(function* () {
   Effect.orDie,
 );
 
-const ensureRealStateQueueActiveOperatorWitnessOnStartup = Effect.gen(
-  function* () {
-    const lucid = yield* Lucid;
-    const contracts = yield* MidgardContracts;
-    yield* lucid.switchToOperatorsMainWallet;
-    yield* ensureActiveOperatorWitnessNodeProgram(lucid.api, contracts);
-  },
-).pipe(
-  Effect.tapError((e) =>
-    Effect.logError(
-      `Active-operator startup bootstrap failed: ${JSON.stringify(e)}`,
-    ),
-  ),
-  Effect.orDie,
-);
-
 const router = (
   txQueue: Queue.Queue<QueuedTxPayload>,
 ): Effect.Effect<
@@ -1020,7 +1003,6 @@ export const runNode = (withMonitoring?: boolean) =>
     yield* InitDB.program.pipe(Effect.provide(Database.layer));
 
     yield* ensureProtocolInitializedOnStartup;
-    yield* ensureRealStateQueueActiveOperatorWitnessOnStartup;
 
     if (
       shouldRunGenesisOnStartup({

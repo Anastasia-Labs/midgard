@@ -8,10 +8,13 @@ type NodeConfigDep = {
   L1_PROVIDER: Provider;
   L1_BLOCKFROST_API_URL: string;
   L1_BLOCKFROST_KEY: string;
+  L1_BLOCKFROST_KEY_FALLBACK: string;
   L1_OGMIOS_KEY: string;
   L1_KUPO_KEY: string;
   L1_OPERATOR_SEED_PHRASE: string;
   L1_OPERATOR_SEED_PHRASE_FOR_MERGE_TX: string;
+  L1_REFERENCE_SCRIPT_SEED_PHRASE: string;
+  L1_REFERENCE_SCRIPT_ADDRESS: string;
   NETWORK: Network;
   PROTOCOL_PARAMETERS: SDK.ProtocolParameters;
   PORT: number;
@@ -40,6 +43,8 @@ type NodeConfigDep = {
   WAIT_BETWEEN_RETENTION_SWEEPS: number;
   HUB_ORACLE_ONE_SHOT_TX_HASH: string;
   HUB_ORACLE_ONE_SHOT_OUTPUT_INDEX: number;
+  OPERATOR_REQUIRED_BOND_LOVELACE: bigint;
+  OPERATOR_SLASHING_PENALTY_LOVELACE: bigint;
   PROM_METRICS_PORT: number;
   OLTP_EXPORTER_URL: string;
   POSTGRES_USER: string;
@@ -58,6 +63,9 @@ const makeConfig = Effect.gen(function* () {
   )("L1_PROVIDER");
   const blockfrostApiUrl = yield* Config.string("L1_BLOCKFROST_API_URL");
   const blockfrostKey = yield* Config.string("L1_BLOCKFROST_KEY");
+  const blockfrostFallbackKey = yield* Config.string(
+    "L1_BLOCKFROST_KEY_FALLBACK",
+  ).pipe(Config.withDefault(""));
   const ogmiosKey = yield* Config.string("L1_OGMIOS_KEY");
   const kupoKey = yield* Config.string("L1_KUPO_KEY");
   const operatorSeedPhrase = yield* Config.string("L1_OPERATOR_SEED_PHRASE");
@@ -70,6 +78,19 @@ const makeConfig = Effect.gen(function* () {
     "Preview",
     "Custom",
   )("NETWORK");
+  const referenceScriptSeedPhrase = yield* Config.string(
+    "L1_REFERENCE_SCRIPT_SEED_PHRASE",
+  ).pipe(Config.withDefault(operatorSeedPhrase));
+  const configuredReferenceScriptAddress = yield* Config.string(
+    "L1_REFERENCE_SCRIPT_ADDRESS",
+  ).pipe(Config.withDefault(""));
+  const derivedReferenceScriptAddress = walletFromSeed(referenceScriptSeedPhrase, {
+    network,
+  }).address;
+  const referenceScriptAddress =
+    configuredReferenceScriptAddress.trim().length > 0
+      ? configuredReferenceScriptAddress.trim()
+      : derivedReferenceScriptAddress;
   const port = yield* Config.integer("PORT").pipe(Config.withDefault(3000));
   const waitBetweenBlockCommitment = yield* Config.integer(
     "WAIT_BETWEEN_BLOCK_COMMITMENT",
@@ -148,6 +169,18 @@ const makeConfig = Effect.gen(function* () {
   const hubOracleOneShotOutputIndex = yield* Config.integer(
     "HUB_ORACLE_ONE_SHOT_OUTPUT_INDEX",
   ).pipe(Config.withDefault(-1));
+  const operatorRequiredBondLovelace = yield* Config.string(
+    "OPERATOR_REQUIRED_BOND_LOVELACE",
+  ).pipe(
+    Config.withDefault("5000000"),
+    Config.mapAttempt((value) => BigInt(value)),
+  );
+  const operatorSlashingPenaltyLovelace = yield* Config.string(
+    "OPERATOR_SLASHING_PENALTY_LOVELACE",
+  ).pipe(
+    Config.withDefault("200000"),
+    Config.mapAttempt((value) => BigInt(value)),
+  );
   const waitBetweenDepositUTxOFetches = yield* Config.integer(
     "WAIT_BETWEEN_DEPOSIT_UTXO_FETCHES",
   ).pipe(Config.withDefault(10000));
@@ -246,10 +279,13 @@ const makeConfig = Effect.gen(function* () {
     L1_PROVIDER: provider,
     L1_BLOCKFROST_API_URL: blockfrostApiUrl,
     L1_BLOCKFROST_KEY: blockfrostKey,
+    L1_BLOCKFROST_KEY_FALLBACK: blockfrostFallbackKey,
     L1_OGMIOS_KEY: ogmiosKey,
     L1_KUPO_KEY: kupoKey,
     L1_OPERATOR_SEED_PHRASE: operatorSeedPhrase,
     L1_OPERATOR_SEED_PHRASE_FOR_MERGE_TX: operatorSeedPhraseForMergeTx,
+    L1_REFERENCE_SCRIPT_SEED_PHRASE: referenceScriptSeedPhrase,
+    L1_REFERENCE_SCRIPT_ADDRESS: referenceScriptAddress,
     NETWORK: network,
     PROTOCOL_PARAMETERS: SDK.getProtocolParameters(network),
     PORT: port,
@@ -277,6 +313,8 @@ const makeConfig = Effect.gen(function* () {
     WAIT_BETWEEN_RETENTION_SWEEPS: waitBetweenRetentionSweeps,
     HUB_ORACLE_ONE_SHOT_TX_HASH: hubOracleOneShotTxHash,
     HUB_ORACLE_ONE_SHOT_OUTPUT_INDEX: hubOracleOneShotOutputIndex,
+    OPERATOR_REQUIRED_BOND_LOVELACE: operatorRequiredBondLovelace,
+    OPERATOR_SLASHING_PENALTY_LOVELACE: operatorSlashingPenaltyLovelace,
     WAIT_BETWEEN_DEPOSIT_UTXO_FETCHES: waitBetweenDepositUTxOFetches,
     PROM_METRICS_PORT: promMetricsPort,
     OLTP_EXPORTER_URL: oltpExporterUrl,

@@ -2,6 +2,54 @@ import { Effect, Schedule } from "effect";
 import { ConfigError, NodeConfig } from "./config.js";
 import * as LE from "@lucid-evolution/lucid";
 
+const KOIOS_BASE_URL_BY_NETWORK: Partial<Record<LE.Network, string>> = {
+  Mainnet: "https://api.koios.rest/api/v1",
+  Preprod: "https://preprod.koios.rest/api/v1",
+  Preview: "https://preview.koios.rest/api/v1",
+};
+
+const resolveKoiosBaseUrl = (network: LE.Network): string | undefined =>
+  KOIOS_BASE_URL_BY_NETWORK[network];
+
+const formatUnknownError = (error: unknown): string => {
+  if (error instanceof Error) {
+    return error.stack ?? error.message;
+  }
+  return String(error);
+};
+
+const isBlockfrostFallbackEligibleError = (error: unknown): boolean => {
+  const message = formatUnknownError(error).toLowerCase();
+  return (
+    message.includes("blockfrost") ||
+    message.includes("project over limit") ||
+    message.includes("usage is over limit") ||
+    message.includes("\"status_code\":402") ||
+    message.includes("status_code: 402") ||
+    message.includes("\"status_code\":429") ||
+    message.includes("status_code: 429") ||
+    message.includes("too many requests") ||
+    message.includes("rate limit") ||
+    message.includes("could not fetch utxos from blockfrost") ||
+    message.includes("cannot convert undefined to a bigint") ||
+    message.includes("fetch failed")
+  );
+};
+
+const isBlockfrostRateLimitError = (error: unknown): boolean => {
+  const message = formatUnknownError(error).toLowerCase();
+  return (
+    message.includes("project over limit") ||
+    message.includes("usage is over limit") ||
+    message.includes("\"status_code\":402") ||
+    message.includes("status_code: 402") ||
+    message.includes("\"status_code\":429") ||
+    message.includes("status_code: 429") ||
+    message.includes("too many requests") ||
+    message.includes("rate limit")
+  );
+};
+
 const toAdditionalScript = (
   scriptRef: LE.Script | null | undefined,
 ): Record<string, unknown> | undefined => {
@@ -168,30 +216,356 @@ const evaluateTxViaBlockfrostUtxoEndpoint = async (
   return evalRedeemers;
 };
 
+const outRefLabel = (outRef: LE.OutRef): string =>
+  `${outRef.txHash}#${outRef.outputIndex}`;
+
+const utxoToOutRef = (utxo: LE.UTxO): LE.OutRef => ({
+  txHash: utxo.txHash,
+  outputIndex: utxo.outputIndex,
+});
+
+const deriveOutRefsFromTx = (tx: string): LE.OutRef[] => {
+  const parsed = LE.CML.Transaction.from_cbor_hex(tx);
+  const body = parsed.body();
+  const outRefs: LE.OutRef[] = [];
+  const push = (input: LE.CML.TransactionInput) => {
+    outRefs.push({
+      txHash: input.transaction_id().to_hex(),
+      outputIndex: Number(input.index()),
+    });
+  };
+
+  const inputs = body.inputs();
+  for (let index = 0; index < inputs.len(); index += 1) {
+    push(inputs.get(index));
+  }
+  const referenceInputs = body.reference_inputs();
+  if (referenceInputs !== undefined) {
+    for (let index = 0; index < referenceInputs.len(); index += 1) {
+      push(referenceInputs.get(index));
+    }
+  }
+  const deduped = new Map<string, LE.OutRef>();
+  for (const outRef of outRefs) {
+    deduped.set(outRefLabel(outRef), outRef);
+  }
+  return Array.from(deduped.values());
+};
+
+const mergeAdditionalUtxos = (
+  preferred: LE.UTxO[],
+  fallback: LE.UTxO[],
+): LE.UTxO[] => {
+  const merged = new Map<string, LE.UTxO>();
+  for (const utxo of fallback) {
+    merged.set(outRefLabel(utxoToOutRef(utxo)), utxo);
+  }
+  for (const utxo of preferred) {
+    merged.set(outRefLabel(utxoToOutRef(utxo)), utxo);
+  }
+  return Array.from(merged.values());
+};
+
+const resolveTxUtxoContext = async (
+  provider: LE.Blockfrost,
+  tx: string,
+): Promise<LE.UTxO[]> => {
+  const outRefs = deriveOutRefsFromTx(tx);
+  if (outRefs.length === 0) {
+    return [];
+  }
+  const fetched = await provider.getUtxosByOutRef(outRefs);
+  return fetched.filter((utxo) => (utxo.assets.lovelace ?? 0n) >= 0n);
+};
+
 const patchBlockfrostEvaluateTx = (provider: LE.Blockfrost): LE.Blockfrost => {
   const originalEvaluateTx = provider.evaluateTx.bind(provider);
   provider.evaluateTx = async (tx, additionalUTxOs) => {
     try {
       return await originalEvaluateTx(tx, additionalUTxOs);
     } catch (originalError) {
-      if ((additionalUTxOs?.length ?? 0) === 0) {
+      let resolvedAdditionalUTxOs = additionalUTxOs ?? [];
+      if (resolvedAdditionalUTxOs.length === 0) {
+        try {
+          resolvedAdditionalUTxOs = await resolveTxUtxoContext(provider, tx);
+        } catch {
+          // keep empty list and rethrow original below if fallback cannot run
+        }
+      }
+      if (resolvedAdditionalUTxOs.length === 0) {
         throw originalError;
       }
-      return evaluateTxViaBlockfrostUtxoEndpoint(
-        provider,
-        tx,
-        additionalUTxOs ?? [],
-      );
+      try {
+        const txContextUtxos = await resolveTxUtxoContext(provider, tx);
+        return evaluateTxViaBlockfrostUtxoEndpoint(
+          provider,
+          tx,
+          mergeAdditionalUtxos(resolvedAdditionalUTxOs, txContextUtxos),
+        );
+      } catch {
+        throw originalError;
+      }
     }
   };
+  return provider;
+};
+
+const patchBlockfrostAwaitTx = (provider: LE.Blockfrost): LE.Blockfrost => {
+  const blockfrostProvider = provider as unknown as {
+    url: string;
+    projectId: string;
+  };
+  provider.awaitTx = async (txHash, checkInterval = 3_000) => {
+    while (true) {
+      const isConfirmed = await fetch(
+        `${blockfrostProvider.url}/txs/${txHash}/cbor`,
+        {
+          headers: {
+            project_id: blockfrostProvider.projectId,
+            lucid: "Lucid",
+          },
+        },
+      ).then((res) => res.json());
+      const confirmationPayload = isConfirmed as
+        | { readonly error?: unknown }
+        | { readonly error?: unknown; readonly status_code?: number; readonly message?: string }
+        | null
+        | undefined;
+      if (
+        confirmationPayload !== undefined &&
+        confirmationPayload !== null &&
+        typeof confirmationPayload === "object" &&
+        !("error" in confirmationPayload)
+      ) {
+        await new Promise<void>((resolve) => {
+          setTimeout(() => resolve(), 1_000);
+        });
+        return true;
+      }
+      if (
+        confirmationPayload !== undefined &&
+        confirmationPayload !== null &&
+        typeof confirmationPayload === "object" &&
+        "error" in confirmationPayload
+      ) {
+        const statusCode =
+          "status_code" in confirmationPayload &&
+          typeof confirmationPayload.status_code === "number"
+            ? confirmationPayload.status_code
+            : undefined;
+        const message =
+          "message" in confirmationPayload &&
+          typeof confirmationPayload.message === "string"
+            ? confirmationPayload.message
+            : "";
+        const normalizedMessage = message.toLowerCase();
+        if (
+          statusCode === 402 ||
+          statusCode === 429 ||
+          statusCode === 500 ||
+          normalizedMessage.includes("usage is over limit") ||
+          normalizedMessage.includes("project over limit")
+        ) {
+          throw new Error(JSON.stringify(confirmationPayload));
+        }
+      }
+      await new Promise<void>((resolve) => {
+        setTimeout(() => resolve(), checkInterval);
+      });
+    }
+  };
+  return provider;
+};
+
+type BlockfrostProviderMethodName =
+  | "getProtocolParameters"
+  | "getUtxos"
+  | "getUtxosWithUnit"
+  | "getUtxoByUnit"
+  | "getUtxosByOutRef"
+  | "getDelegation"
+  | "getDatum"
+  | "awaitTx"
+  | "submitTx"
+  | "evaluateTx";
+
+const BLOCKFROST_PROVIDER_METHODS: readonly BlockfrostProviderMethodName[] = [
+  "getProtocolParameters",
+  "getUtxos",
+  "getUtxosWithUnit",
+  "getUtxoByUnit",
+  "getUtxosByOutRef",
+  "getDelegation",
+  "getDatum",
+  "awaitTx",
+  "submitTx",
+  "evaluateTx",
+];
+
+const patchBlockfrostWithApiKeyFallback = (
+  primaryProvider: LE.Blockfrost,
+  fallbackProvider: LE.Blockfrost,
+): LE.Blockfrost => {
+  const warnedMethods = new Set<BlockfrostProviderMethodName>();
+  const primaryDynamic = primaryProvider as unknown as Record<string, unknown>;
+  const fallbackDynamic = fallbackProvider as unknown as Record<string, unknown>;
+
+  const wrap = (methodName: BlockfrostProviderMethodName): void => {
+    const primaryMethod = primaryDynamic[methodName];
+    const fallbackMethod = fallbackDynamic[methodName];
+    if (
+      typeof primaryMethod !== "function" ||
+      typeof fallbackMethod !== "function"
+    ) {
+      return;
+    }
+
+    primaryDynamic[methodName] = async (...args: unknown[]) => {
+      try {
+        return await primaryMethod.apply(primaryProvider, args);
+      } catch (primaryError) {
+        if (!isBlockfrostRateLimitError(primaryError)) {
+          throw primaryError;
+        }
+        if (!warnedMethods.has(methodName)) {
+          warnedMethods.add(methodName);
+          console.warn(
+            [
+              `[lucid] Blockfrost primary key ${methodName} hit quota/rate limit;`,
+              "retrying with fallback Blockfrost key.",
+              `cause=${formatUnknownError(primaryError)}`,
+            ].join(" "),
+          );
+        }
+        try {
+          return await fallbackMethod.apply(fallbackProvider, args);
+        } catch (fallbackError) {
+          throw new Error(
+            [
+              `Blockfrost primary key ${methodName} failed: ${formatUnknownError(primaryError)}`,
+              `Blockfrost fallback key ${methodName} failed: ${formatUnknownError(fallbackError)}`,
+            ].join(" | "),
+          );
+        }
+      }
+    };
+  };
+
+  for (const methodName of BLOCKFROST_PROVIDER_METHODS) {
+    wrap(methodName);
+  }
+
+  return primaryProvider;
+};
+
+const awaitTxViaKoios = async (
+  koiosBaseUrl: string,
+  txHash: string,
+  checkInterval: number,
+): Promise<boolean> => {
+  const startedAt = Date.now();
+  const timeoutMs = 160_000;
+  while (Date.now() - startedAt < timeoutMs) {
+    const response = await fetch(`${koiosBaseUrl}/tx_info`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({
+        _tx_hashes: [txHash],
+      }),
+    });
+    const body = (await response.json()) as unknown;
+    if (Array.isArray(body) && body.length > 0) {
+      return true;
+    }
+    await new Promise<void>((resolve) => {
+      setTimeout(() => resolve(), checkInterval);
+    });
+  }
+  return false;
+};
+
+const patchBlockfrostWithKoiosFallback = (
+  provider: LE.Blockfrost,
+  network: LE.Network,
+): LE.Blockfrost => {
+  const koiosBaseUrl = resolveKoiosBaseUrl(network);
+  if (koiosBaseUrl === undefined) {
+    return provider;
+  }
+  const koios = new LE.Koios(koiosBaseUrl);
+  const warnedMethods = new Set<BlockfrostProviderMethodName>();
+  const blockfrostDynamic = provider as unknown as Record<string, unknown>;
+  const koiosDynamic = koios as unknown as Record<string, unknown>;
+
+  const wrap = (methodName: BlockfrostProviderMethodName): void => {
+    const blockfrostMethod = blockfrostDynamic[methodName];
+    const koiosMethod = koiosDynamic[methodName];
+    if (
+      typeof blockfrostMethod !== "function" ||
+      typeof koiosMethod !== "function"
+    ) {
+      return;
+    }
+    blockfrostDynamic[methodName] = async (...args: unknown[]) => {
+      try {
+        return await blockfrostMethod.apply(provider, args);
+      } catch (blockfrostError) {
+        if (!isBlockfrostFallbackEligibleError(blockfrostError)) {
+          throw blockfrostError;
+        }
+        if (!warnedMethods.has(methodName)) {
+          warnedMethods.add(methodName);
+          console.warn(
+            [
+              `[lucid] Blockfrost ${methodName} failed;`,
+              `falling back to Koios (${koiosBaseUrl}).`,
+              `cause=${formatUnknownError(blockfrostError)}`,
+            ].join(" "),
+          );
+        }
+        try {
+          if (methodName === "awaitTx") {
+            const txHash = args[0];
+            const checkInterval = args[1];
+            if (typeof txHash !== "string") {
+              throw new Error("Koios awaitTx fallback requires tx hash");
+            }
+            return await awaitTxViaKoios(
+              koiosBaseUrl,
+              txHash,
+              typeof checkInterval === "number" ? checkInterval : 20_000,
+            );
+          }
+          return await koiosMethod.apply(koios, args);
+        } catch (koiosError) {
+          throw new Error(
+            [
+              `Blockfrost ${methodName} failed: ${formatUnknownError(blockfrostError)}`,
+              `Koios fallback failed: ${formatUnknownError(koiosError)}`,
+            ].join(" | "),
+          );
+        }
+      }
+    };
+  };
+
+  for (const methodName of BLOCKFROST_PROVIDER_METHODS) {
+    wrap(methodName);
+  }
+
   return provider;
 };
 
 const makeLucid: Effect.Effect<
   {
     api: LE.LucidEvolution;
+    referenceScriptsApi: LE.LucidEvolution;
+    referenceScriptsAddress: string;
     switchToOperatorsMainWallet: Effect.Effect<void>;
     switchToOperatorsMergingWallet: Effect.Effect<void>;
+    switchToReferenceScriptWallet: Effect.Effect<void>;
   },
   ConfigError,
   NodeConfig
@@ -207,13 +581,37 @@ const makeLucid: Effect.Effect<
             nodeConfig.NETWORK,
           );
         case "Blockfrost":
-          return LE.Lucid(
-            patchBlockfrostEvaluateTx(
+          const primaryBlockfrostProvider = patchBlockfrostEvaluateTx(
+            patchBlockfrostAwaitTx(
               new LE.Blockfrost(
                 nodeConfig.L1_BLOCKFROST_API_URL,
                 nodeConfig.L1_BLOCKFROST_KEY,
               ),
             ),
+          );
+          const fallbackBlockfrostKey =
+            nodeConfig.L1_BLOCKFROST_KEY_FALLBACK.trim();
+          const withFallbackBlockfrostKey =
+            fallbackBlockfrostKey.length > 0 &&
+            fallbackBlockfrostKey !== nodeConfig.L1_BLOCKFROST_KEY
+              ? patchBlockfrostWithApiKeyFallback(
+                  primaryBlockfrostProvider,
+                  patchBlockfrostEvaluateTx(
+                    patchBlockfrostAwaitTx(
+                      new LE.Blockfrost(
+                        nodeConfig.L1_BLOCKFROST_API_URL,
+                        fallbackBlockfrostKey,
+                      ),
+                    ),
+                  ),
+                )
+              : primaryBlockfrostProvider;
+          const blockfrostProvider = patchBlockfrostWithKoiosFallback(
+            withFallbackBlockfrostKey,
+            nodeConfig.NETWORK,
+          );
+          return LE.Lucid(
+            blockfrostProvider,
             nodeConfig.NETWORK,
           );
       }
@@ -231,9 +629,50 @@ const makeLucid: Effect.Effect<
     Effect.tapError(Effect.logInfo),
     Effect.retry(Schedule.fixed("1000 millis")),
   );
+  const referenceScriptsApi: LE.LucidEvolution = yield* Effect.tryPromise({
+    try: () => LE.Lucid(lucid.config().provider, nodeConfig.NETWORK),
+    catch: (e) =>
+      new ConfigError({
+        message: "An error occurred while initializing reference-scripts Lucid",
+        cause: e,
+        fieldsAndValues: [["NETWORK", nodeConfig.NETWORK]],
+      }),
+  });
+  const switchToReferenceScriptWallet = Effect.sync(() =>
+    referenceScriptsApi.selectWallet.fromSeed(
+      nodeConfig.L1_REFERENCE_SCRIPT_SEED_PHRASE,
+    ),
+  );
+  yield* switchToReferenceScriptWallet;
+  const referenceScriptsAddress = yield* Effect.tryPromise({
+    try: () => referenceScriptsApi.wallet().address(),
+    catch: (e) =>
+      new ConfigError({
+        message: "Failed to derive reference-scripts wallet address",
+        cause: e,
+        fieldsAndValues: [["NETWORK", nodeConfig.NETWORK]],
+      }),
+  });
+  if (
+    nodeConfig.L1_REFERENCE_SCRIPT_ADDRESS.trim() !== referenceScriptsAddress
+  ) {
+    return yield* Effect.fail(
+      new ConfigError({
+        message:
+          "Configured L1_REFERENCE_SCRIPT_ADDRESS does not match the address derived from L1_REFERENCE_SCRIPT_SEED_PHRASE",
+        cause: "reference-script-address-seed-mismatch",
+        fieldsAndValues: [
+          ["L1_REFERENCE_SCRIPT_ADDRESS", nodeConfig.L1_REFERENCE_SCRIPT_ADDRESS],
+          ["derived_address", referenceScriptsAddress],
+        ],
+      }),
+    );
+  }
   yield* Effect.logInfo("Lucid built successfully.");
   return {
     api: lucid,
+    referenceScriptsApi,
+    referenceScriptsAddress,
     switchToOperatorsMainWallet: Effect.sync(() =>
       lucid.selectWallet.fromSeed(nodeConfig.L1_OPERATOR_SEED_PHRASE),
     ),
@@ -242,6 +681,7 @@ const makeLucid: Effect.Effect<
         nodeConfig.L1_OPERATOR_SEED_PHRASE_FOR_MERGE_TX,
       ),
     ),
+    switchToReferenceScriptWallet,
   };
 });
 

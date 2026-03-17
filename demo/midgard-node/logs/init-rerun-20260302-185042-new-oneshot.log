@@ -1,0 +1,116 @@
+
+> midgard-node@1.0.0 init /home/gumbo/midgard-hub/midgard/demo/midgard-node
+> pnpm run build && node dist/index.js init
+
+
+> midgard-node@1.0.0 build /home/gumbo/midgard-hub/midgard/demo/midgard-node
+> tsup src/index.ts --minify --format esm && tsup src/workers/* --minify --format esm
+
+CLI Building entry: src/index.ts
+CLI Using tsconfig: tsconfig.json
+CLI tsup v8.5.1
+CLI Using tsup config: /home/gumbo/midgard-hub/midgard/demo/midgard-node/tsup.config.ts
+CLI Target: es2020
+ESM Build start
+ESM dist/index.js     693.11 KB
+ESM dist/index.js.map 1.39 MB
+ESM ⚡️ Build success in 56ms
+DTS Build start
+DTS ⚡️ Build success in 2183ms
+DTS dist/index.d.ts 20.00 B
+CLI Building entry: src/workers/commit-block-header.ts, src/workers/confirm-block-commitments.ts, src/workers/utils/commit-block-header.ts, src/workers/utils/commit-block-planner.ts, src/workers/utils/commit-end-time.ts, src/workers/utils/commit-redeemers.ts, src/workers/utils/common.ts, src/workers/utils/confirm-block-commitments.ts, src/workers/utils/mpt.ts
+CLI Using tsconfig: tsconfig.json
+CLI tsup v8.5.1
+CLI Using tsup config: /home/gumbo/midgard-hub/midgard/demo/midgard-node/tsup.config.ts
+CLI Target: es2020
+ESM Build start
+ESM dist/commit-block-header.js                 32.68 KB
+ESM dist/utils/mpt.js                           481.00 B
+ESM dist/chunk-O5KZ6NFK.js                      6.87 KB
+ESM dist/confirm-block-commitments.js           2.79 KB
+ESM dist/utils/commit-block-header.js           183.00 B
+ESM dist/chunk-B2WWN3CH.js                      980.00 B
+ESM dist/utils/commit-block-planner.js          324.00 B
+ESM dist/chunk-HT2OPVUT.js                      773.00 B
+ESM dist/chunk-XB22MFMI.js                      3.96 KB
+ESM dist/utils/commit-end-time.js               221.00 B
+ESM dist/chunk-6MYV5HKJ.js                      806.00 B
+ESM dist/utils/commit-redeemers.js              464.00 B
+ESM dist/chunk-5CEDD63N.js                      2.93 KB
+ESM dist/utils/common.js                        170.00 B
+ESM dist/chunk-4C666HHU.js                      148.00 B
+ESM dist/utils/confirm-block-commitments.js     53.00 B
+ESM dist/chunk-WHQUVZ4H.js                      3.16 KB
+ESM dist/chunk-JTH7HDWG.js                      537.03 KB
+ESM dist/utils/mpt.js.map                       71.00 B
+ESM dist/chunk-O5KZ6NFK.js.map                  26.98 KB
+ESM dist/confirm-block-commitments.js.map       9.26 KB
+ESM dist/chunk-B2WWN3CH.js.map                  4.72 KB
+ESM dist/commit-block-header.js.map             125.06 KB
+ESM dist/utils/commit-block-header.js.map       71.00 B
+ESM dist/utils/commit-block-planner.js.map      71.00 B
+ESM dist/chunk-HT2OPVUT.js.map                  4.32 KB
+ESM dist/utils/commit-end-time.js.map           71.00 B
+ESM dist/utils/commit-redeemers.js.map          71.00 B
+ESM dist/chunk-XB22MFMI.js.map                  13.43 KB
+ESM dist/chunk-5CEDD63N.js.map                  12.05 KB
+ESM dist/chunk-4C666HHU.js.map                  71.00 B
+ESM dist/chunk-6MYV5HKJ.js.map                  4.29 KB
+ESM dist/utils/common.js.map                    420.00 B
+ESM dist/utils/confirm-block-commitments.js.map 71.00 B
+ESM dist/chunk-WHQUVZ4H.js.map                  19.60 KB
+ESM dist/chunk-JTH7HDWG.js.map                  845.52 KB
+ESM ⚡️ Build success in 51ms
+DTS Build start
+DTS ⚡️ Build success in 3983ms
+DTS dist/commit-block-header.d.ts             13.00 B
+DTS dist/utils/commit-block-planner.d.ts      1.63 KB
+DTS dist/utils/commit-end-time.d.ts           703.00 B
+DTS dist/utils/commit-redeemers.d.ts          2.94 KB
+DTS dist/utils/common.d.ts                    557.00 B
+DTS dist/utils/confirm-block-commitments.d.ts 1.05 KB
+DTS dist/utils/commit-block-header.d.ts       2.12 KB
+DTS dist/utils/mpt.d.ts                       9.54 KB
+DTS dist/confirm-block-commitments.d.ts       13.00 B
+DTS dist/tx-SST1GrUc.d.ts                     304.00 B
+[18:50:50.400] INFO (#1): Initializing Lucid...
+[18:50:50.597] INFO (#1): Lucid built successfully.
+[18:50:50.770] INFO (#1): 🔐 Contract source selected: state_queue=real, hub_oracle=real, registered_operators=real, active_operators=real, retired_operators=real
+[18:50:50.871] INFO (#1): Fraud proof catalogue root prepared for initialization: 094e9128bdf6677401439fb0b6b509740411b0293f669305292b6439543d8554
+[18:50:57.670] INFO (#1): ✍  Signing tx with addr_test1qzvn6zx9fdv4x65jwqapr4ugavjuu4dd3dycvmfs8ky5xejzm7zfvw9sm2etf065jnnxf0ssz20knfppfux2qde9j9fqwqs986
+[18:51:00.465] INFO (#1): ✍  Signed tx prepared: txHash=1ffb55fa5823d9d42974ae37e782386f162c45a4b1c659123903f5800109037d, cborBytes=8684
+[18:51:00.465] INFO (#1): ✉️  Submitting transaction...
+[18:51:00.557] INFO (#1): 🚀 Transaction submitted: 1ffb55fa5823d9d42974ae37e782386f162c45a4b1c659123903f5800109037d
+[18:51:00.557] INFO (#1): ⏳ Confirming Transaction...
+[18:51:49.285] INFO (#1): 🎉 Transaction confirmed: 1ffb55fa5823d9d42974ae37e782386f162c45a4b1c659123903f5800109037d
+[18:51:49.285] INFO (#1): ⌛ Pausing for 5 seconds...
+[18:51:54.300] INFO (#1): ✅ Pause ended.
+[18:51:54.301] INFO (#1): Initialization phase-1 submitted: txHash=1ffb55fa5823d9d42974ae37e782386f162c45a4b1c659123903f5800109037d
+[18:51:57.320] INFO (#1): ✍  Signing tx with addr_test1qzvn6zx9fdv4x65jwqapr4ugavjuu4dd3dycvmfs8ky5xejzm7zfvw9sm2etf065jnnxf0ssz20knfppfux2qde9j9fqwqs986
+[18:51:57.321] INFO (#1): ✍  Signed tx prepared: txHash=7fc200329b1c2fb2591f0ac588157f041a70e5c90052bd3c7843cf17b454f329, cborBytes=6886
+[18:51:57.321] INFO (#1): ✉️  Submitting transaction...
+[18:51:57.420] INFO (#1): 🚀 Transaction submitted: 7fc200329b1c2fb2591f0ac588157f041a70e5c90052bd3c7843cf17b454f329
+[18:51:57.420] INFO (#1): ⏳ Confirming Transaction...
+[18:52:18.115] INFO (#1): 🎉 Transaction confirmed: 7fc200329b1c2fb2591f0ac588157f041a70e5c90052bd3c7843cf17b454f329
+[18:52:18.116] INFO (#1): ⌛ Pausing for 5 seconds...
+[18:52:23.121] INFO (#1): ✅ Pause ended.
+[18:52:23.121] INFO (#1): Initialization phase-2 submitted for registered-operators: txHash=7fc200329b1c2fb2591f0ac588157f041a70e5c90052bd3c7843cf17b454f329
+[18:52:24.252] INFO (#1): ✍  Signing tx with addr_test1qzvn6zx9fdv4x65jwqapr4ugavjuu4dd3dycvmfs8ky5xejzm7zfvw9sm2etf065jnnxf0ssz20knfppfux2qde9j9fqwqs986
+[18:52:24.254] INFO (#1): ✍  Signed tx prepared: txHash=112c6a06c9f40f4bf3dffdccc516189a47767370c3c9e732ce6b534710dc3f1e, cborBytes=7189
+[18:52:24.254] INFO (#1): ✉️  Submitting transaction...
+[18:52:24.347] INFO (#1): 🚀 Transaction submitted: 112c6a06c9f40f4bf3dffdccc516189a47767370c3c9e732ce6b534710dc3f1e
+[18:52:24.348] INFO (#1): ⏳ Confirming Transaction...
+[18:53:40.881] INFO (#1): 🎉 Transaction confirmed: 112c6a06c9f40f4bf3dffdccc516189a47767370c3c9e732ce6b534710dc3f1e
+[18:53:40.882] INFO (#1): ⌛ Pausing for 5 seconds...
+[18:53:45.923] INFO (#1): ✅ Pause ended.
+[18:53:45.924] INFO (#1): Initialization phase-2 submitted for active-operators: txHash=112c6a06c9f40f4bf3dffdccc516189a47767370c3c9e732ce6b534710dc3f1e
+[18:53:47.026] INFO (#1): ✍  Signing tx with addr_test1qzvn6zx9fdv4x65jwqapr4ugavjuu4dd3dycvmfs8ky5xejzm7zfvw9sm2etf065jnnxf0ssz20knfppfux2qde9j9fqwqs986
+[18:53:47.027] INFO (#1): ✍  Signed tx prepared: txHash=cf0e724c8fff3784ff2d6a1448d647d3dc4426ab25aa3a6dcf7914aadf5aad9e, cborBytes=6723
+[18:53:47.027] INFO (#1): ✉️  Submitting transaction...
+[18:53:47.145] INFO (#1): 🚀 Transaction submitted: cf0e724c8fff3784ff2d6a1448d647d3dc4426ab25aa3a6dcf7914aadf5aad9e
+[18:53:47.145] INFO (#1): ⏳ Confirming Transaction...
+[18:54:13.010] INFO (#1): 🎉 Transaction confirmed: cf0e724c8fff3784ff2d6a1448d647d3dc4426ab25aa3a6dcf7914aadf5aad9e
+[18:54:13.010] INFO (#1): ⌛ Pausing for 5 seconds...
+[18:54:18.014] INFO (#1): ✅ Pause ended.
+[18:54:18.014] INFO (#1): Initialization phase-2 submitted for retired-operators: txHash=cf0e724c8fff3784ff2d6a1448d647d3dc4426ab25aa3a6dcf7914aadf5aad9e
+[18:54:18.017] INFO (#1): init completed: txHash=cf0e724c8fff3784ff2d6a1448d647d3dc4426ab25aa3a6dcf7914aadf5aad9e

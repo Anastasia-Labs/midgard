@@ -1,6 +1,6 @@
+use aiken/builtin
 use aiken/cbor
 use aiken/collection/dict
-use aiken/builtin
 use aiken/collection/list
 use aiken/crypto
 use aiken/interval.{Finite, Interval}
@@ -56,9 +56,25 @@ validator mint(
     let node_in_outputs = get_node_inputs(self.inputs, policy_id)
     let node_outputs = get_node_outputs(self.outputs, policy_id)
     let node_mint = tokens(self.mint, policy_id)
+    let has_hub_oracle_mint =
+      quantity_of(self.mint, hub_oracle_script_hash, hub_oracle_asset_name) == 1
+    let has_hub_oracle_ref_input =
+      list.any(
+        self.reference_inputs,
+        fn(ref_input) {
+          quantity_of(
+            ref_input.output.value,
+            hub_oracle_script_hash,
+            hub_oracle_asset_name,
+          ) == 1
+        },
+      )
     when redeemer is {
       Init -> and {
-          quantity_of(self.mint, hub_oracle_script_hash, hub_oracle_asset_name) == 1,
+          or {
+            has_hub_oracle_mint,
+            has_hub_oracle_ref_input,
+          },
           unordered.init(node_outputs, node_mint, policy_id),
         }
       Deinit -> and {
@@ -154,7 +170,8 @@ validator mint(
         // Verify block timestamps:
         // (8) The `start_time` of `header_node` must be equal to the
         //     `end_time` of the `previous_header_node`.
-        expect header_node_block_data.start_time == previous_header_node_end_time
+        expect
+          header_node_block_data.start_time == previous_header_node_end_time
 
         // (9) The `end_time` of `header_node` must match the transaction's
         //      time-validity upper bound.
@@ -242,19 +259,16 @@ validator mint(
         expect Some(-1) =
           dict.get(node_mint, unordered.serialize_key(Key(header_node_key)))
         expect parsed_header_node_input_datum.key == Key(header_node_key)
-        expect parsed_confirmed_state_node_input_datum.link == Key(header_node_key)
         expect
-          parsed_confirmed_state_node_output_datum.key ==
-            parsed_confirmed_state_node_input_datum.key
+          parsed_confirmed_state_node_input_datum.link == Key(header_node_key)
         expect
-          parsed_confirmed_state_node_output_datum.link ==
-            parsed_header_node_input_datum.link
+          parsed_confirmed_state_node_output_datum.key == parsed_confirmed_state_node_input_datum.key
         expect
-          confirmed_state_node_input.output.address ==
-            confirmed_state_node_output.address
+          parsed_confirmed_state_node_output_datum.link == parsed_header_node_input_datum.link
         expect
-          confirmed_state_node_input.output.value ==
-            confirmed_state_node_output.value
+          confirmed_state_node_input.output.address == confirmed_state_node_output.address
+        expect
+          confirmed_state_node_input.output.value == confirmed_state_node_output.value
 
         // (2) `confirmed_state_node` and `confirmed_state_node_output` must both
         //     be root nodes of `state_queue`.

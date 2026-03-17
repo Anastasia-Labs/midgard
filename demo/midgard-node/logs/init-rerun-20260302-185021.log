@@ -1,0 +1,85 @@
+
+> midgard-node@1.0.0 init /home/gumbo/midgard-hub/midgard/demo/midgard-node
+> pnpm run build && node dist/index.js init
+
+
+> midgard-node@1.0.0 build /home/gumbo/midgard-hub/midgard/demo/midgard-node
+> tsup src/index.ts --minify --format esm && tsup src/workers/* --minify --format esm
+
+CLI Building entry: src/index.ts
+CLI Using tsconfig: tsconfig.json
+CLI tsup v8.5.1
+CLI Using tsup config: /home/gumbo/midgard-hub/midgard/demo/midgard-node/tsup.config.ts
+CLI Target: es2020
+ESM Build start
+ESM dist/index.js     693.11 KB
+ESM dist/index.js.map 1.39 MB
+ESM ⚡️ Build success in 57ms
+DTS Build start
+DTS ⚡️ Build success in 2757ms
+DTS dist/index.d.ts 20.00 B
+CLI Building entry: src/workers/commit-block-header.ts, src/workers/confirm-block-commitments.ts, src/workers/utils/commit-block-header.ts, src/workers/utils/commit-block-planner.ts, src/workers/utils/commit-end-time.ts, src/workers/utils/commit-redeemers.ts, src/workers/utils/common.ts, src/workers/utils/confirm-block-commitments.ts, src/workers/utils/mpt.ts
+CLI Using tsconfig: tsconfig.json
+CLI tsup v8.5.1
+CLI Using tsup config: /home/gumbo/midgard-hub/midgard/demo/midgard-node/tsup.config.ts
+CLI Target: es2020
+ESM Build start
+ESM dist/confirm-block-commitments.js           2.79 KB
+ESM dist/commit-block-header.js                 32.68 KB
+ESM dist/chunk-O5KZ6NFK.js                      6.87 KB
+ESM dist/chunk-WHQUVZ4H.js                      3.16 KB
+ESM dist/utils/commit-end-time.js               221.00 B
+ESM dist/utils/mpt.js                           481.00 B
+ESM dist/utils/commit-block-header.js           183.00 B
+ESM dist/chunk-6MYV5HKJ.js                      806.00 B
+ESM dist/chunk-B2WWN3CH.js                      980.00 B
+ESM dist/utils/common.js                        170.00 B
+ESM dist/chunk-4C666HHU.js                      148.00 B
+ESM dist/chunk-XB22MFMI.js                      3.96 KB
+ESM dist/utils/confirm-block-commitments.js     53.00 B
+ESM dist/chunk-HT2OPVUT.js                      773.00 B
+ESM dist/utils/commit-block-planner.js          324.00 B
+ESM dist/utils/commit-redeemers.js              464.00 B
+ESM dist/chunk-5CEDD63N.js                      2.93 KB
+ESM dist/chunk-JTH7HDWG.js                      537.03 KB
+ESM dist/confirm-block-commitments.js.map       9.26 KB
+ESM dist/chunk-O5KZ6NFK.js.map                  26.98 KB
+ESM dist/commit-block-header.js.map             125.06 KB
+ESM dist/utils/mpt.js.map                       71.00 B
+ESM dist/chunk-6MYV5HKJ.js.map                  4.29 KB
+ESM dist/utils/commit-block-header.js.map       71.00 B
+ESM dist/chunk-B2WWN3CH.js.map                  4.72 KB
+ESM dist/chunk-WHQUVZ4H.js.map                  19.60 KB
+ESM dist/chunk-4C666HHU.js.map                  71.00 B
+ESM dist/utils/common.js.map                    420.00 B
+ESM dist/utils/commit-end-time.js.map           71.00 B
+ESM dist/chunk-XB22MFMI.js.map                  13.43 KB
+ESM dist/utils/confirm-block-commitments.js.map 71.00 B
+ESM dist/chunk-HT2OPVUT.js.map                  4.32 KB
+ESM dist/utils/commit-block-planner.js.map      71.00 B
+ESM dist/utils/commit-redeemers.js.map          71.00 B
+ESM dist/chunk-5CEDD63N.js.map                  12.05 KB
+ESM dist/chunk-JTH7HDWG.js.map                  845.52 KB
+ESM ⚡️ Build success in 55ms
+DTS Build start
+DTS ⚡️ Build success in 4041ms
+DTS dist/commit-block-header.d.ts             13.00 B
+DTS dist/utils/commit-block-planner.d.ts      1.63 KB
+DTS dist/utils/commit-end-time.d.ts           703.00 B
+DTS dist/utils/commit-redeemers.d.ts          2.94 KB
+DTS dist/utils/common.d.ts                    557.00 B
+DTS dist/utils/confirm-block-commitments.d.ts 1.05 KB
+DTS dist/utils/commit-block-header.d.ts       2.12 KB
+DTS dist/utils/mpt.d.ts                       9.54 KB
+DTS dist/confirm-block-commitments.d.ts       13.00 B
+DTS dist/tx-SST1GrUc.d.ts                     304.00 B
+[18:50:31.336] INFO (#1): Initializing Lucid...
+[18:50:31.536] INFO (#1): Lucid built successfully.
+[18:50:31.714] INFO (#1): 🔐 Contract source selected: state_queue=real, hub_oracle=real, registered_operators=real, active_operators=real, retired_operators=real
+[18:50:30.786] INFO (#1): Fraud proof catalogue root prepared for initialization: 094e9128bdf6677401439fb0b6b509740411b0293f669305292b6439543d8554
+[18:50:34.612] ERROR (#1):
+  LucidError: Configured one-shot hub oracle UTxO is not available in the operator wallet
+      at file:///home/gumbo/midgard-hub/midgard/demo/midgard-node/dist/index.js:138:7326 {
+    [cause]: Error: required=51f08ea3d839f008f4de67f2f6e42d20f9995bd5337814828712a15bbf49116f#2, available=[0349a59ec08efc128a9ff88cbed7339d53c05b46bc5ab87977d48cb279e4debe#0, de544a725c753e035870eb652f9bcf3d3ea35f51484a7e3f940af16b94ab364b#0, 234a9be20baffc6bd9e6f85c1b1f868b282ae131762c17f3c73ef279f41c7a5d#0, e315efc07efb465d756746154c9f5741aa4d2e5ca88260f5dc2fabf9921eb9a2#0, 6321f0bbb9b0ee5a2be3dd7b4ea857ee8d678301d6aa12cdc997a30b9d5ab684#0, 1b9f6bfc97c7f6ceace59ec92ee5792b84c2ecc10db1b764735bd249b333520d#0, a627de327bfccce57c4dfd5bf1d051ef0286fbcaeb62e59067c4ec656cd93bd0#0, df22cbe4ca17a320a8e95f505afa5168a76ab4f9344398952df553511de7b3e0#0, dc53c05e26f9bf116bbac8c43cd0ff84956489d5e0bd3e44024193977e058bbb#0, 7e32ba4e79cc12c53c3765fe3aa26de7a6f90f3fbf69dfe1f7325fe846acbce5#1, c2ba642c5d618defca3fc3ff2db4f65867b5ee1a24a6ea244c7093f193af8c88#1, 41e720fc31696a234f51568787813d9d39ce10f390cfe8aae6782c07a8c6dacf#1, f532ad1f69a75c58f61d53de246de929ca1b43c922af0968651ff92085fbdb16#1, 55db02dbf8602bb8341594416feb0910f0f062fc0d2c2504c9d26dae64c342bd#1, 9e33b80ca81751a46721e6c5a6269f5db1c384e8982105031e69b0057f421dcc#1, fc5c89f9048f5ad28baef73d00b71fc01538f68b59a9a631c417263c5a012c01#1, 0fe426981b358dcf3f3c367c64be843573e9ae35f585985eeaf432bf31a11789#1, 80045be4c27233ba50dba7303dc1984f54e81254dde6cde5e3dd368c13c8fc42#1, 4b5f24784b820f482967f097015f75b3e8a7b49b4d9d9aded43c7ff138dc82a6#1, 9b28e78b406403f31740b0d87e0b59e5bf9b7e6b21866d198c28e3b7cbbd053c#1, 1fa09076a08b74857b0bfc6fccb1590a06020f62e98279016e3bc6b8fab67245#1, b8ecf9b0a211449d874a1bd1c3d05a4826cfb3633ba5573f933b41fe254593e1#1, 960afc6abc709e5de91abe0624d5e14cdc1a7203ec75a0cddea0ff0c97b178c2#1, a203ab3662a15c10af9bd6b7eab36a4c869c7e301d19fcb5c52b68c36643c336#1, 6e1e6fc058b1dbb27db8ae1ddabf0801ddee3f3284dec879d17a7dffa2ec5241#1, f5dfc7330dcef1aec3899f784f72cce44160b28bebe1b811011dbe3df9453e60#1, a8b50dd567c5cea2dedf4238d8c2c3ca2f2c793f1d693852514ea09c80a4bba4#1, cdadba66b9848c91d6026432987493b8031471d0db970ef067037ebbcff70da8#1, d85eb67ca8e69ffce2be0188ed10758502e0fc852d42ab8386f8cc6153ec141b#1, 5ebd993adc0a777d78c3125c7e0fd5b3d7fb0813f2d6d37920e715b97f7954ef#1, 64519e8e6a6e2e16f4cc4443a578b7d8453cc1769773de96bf0a21a8ed1a6856#1, 18cc7981a558a6747d2a38c11de487f3eea0dc08665f82f4effc5386a45b3200#0, 6b02400f4fde1728c1517809f389ca0257f5b76b1b4e949151fe0f9dd37c3b7d#0, 0e52d9383682db3da7f663f891de206cb8d6ee8d00eaaa18f1b4df9b67000769#0, 851112619d31fcd83a81a7fbc30d2f68bb2c304fe99cbb885b4a63b5dadff07d#0, 51170fbe793ab1593a53546c912fb7b30200c0094ddf2fcfa94c5fc9d2e6c0d1#0, 10c1feed23df557f131475332ef1c4b2a6f857a5148ce11f22040285a667e977#0, 63a0a07473e98faea8809076a997d19e5115f19f52ea887df59dae05bb926a01#0, 9912c495eec065b4505571de22bafb179aaddbbb04d25f5328eb9c4804576e08#0, 202b27527d6755a898cd6ad70b762fbcef992379e97a57431260a039250b6876#2]
+  }
+ ELIFECYCLE  Command failed with exit code 1.

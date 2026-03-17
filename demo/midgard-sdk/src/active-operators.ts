@@ -8,8 +8,18 @@ export const ActiveOperatorDatumSchema = Data.Object({
   commitmentTime: Data.Nullable(POSIXTimeSchema),
 });
 export type ActiveOperatorDatum = Data.Static<typeof ActiveOperatorDatumSchema>;
-export const ActiveOperatorDatum =
+export const ActiveOperatorDatum = 
   ActiveOperatorDatumSchema as unknown as ActiveOperatorDatum;
+
+const ActiveOperatorDatumAikenOptionSchema = Data.Enum([
+  Data.Object({
+    Some: Data.Tuple([Data.Integer()]),
+  }),
+  Data.Literal("None"),
+]);
+const ActiveOperatorDatumAikenSchema = Data.Object({
+  bond_unlock_time: ActiveOperatorDatumAikenOptionSchema,
+});
 
 export const ActiveOperatorSpendRedeemerSchema = Data.Enum([
   Data.Literal("ListStateTransition"),
@@ -88,7 +98,10 @@ export const incompleteActiveOperatorInitTxProgram = (
   params: ActiveOperatorInitParams,
 ): Effect.Effect<TxBuilder, never> =>
   Effect.gen(function* () {
-    const rootData = "00";
+    const rootData = Data.castTo(
+      { bond_unlock_time: null } as never,
+      ActiveOperatorDatumAikenSchema as never,
+    );
 
     return yield* incompleteInitLinkedListTxProgram(lucid, {
       validator: params.validator,

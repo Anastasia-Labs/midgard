@@ -1,0 +1,124 @@
+
+> midgard-node@1.0.0 register-active-operator /home/gumbo/midgard-hub/midgard/demo/midgard-node
+> pnpm run build && node dist/index.js register-active-operator
+
+
+> midgard-node@1.0.0 build /home/gumbo/midgard-hub/midgard/demo/midgard-node
+> tsup src/index.ts --minify --format esm && tsup src/workers/* --minify --format esm
+
+CLI Building entry: src/index.ts
+CLI Using tsconfig: tsconfig.json
+CLI tsup v8.5.1
+CLI Using tsup config: /home/gumbo/midgard-hub/midgard/demo/midgard-node/tsup.config.ts
+CLI Target: es2020
+ESM Build start
+ESM dist/index.js     678.49 KB
+ESM dist/index.js.map 1.33 MB
+ESM ⚡️ Build success in 56ms
+DTS Build start
+DTS ⚡️ Build success in 2290ms
+DTS dist/index.d.ts 20.00 B
+CLI Building entry: src/workers/commit-block-header.ts, src/workers/confirm-block-commitments.ts, src/workers/utils/commit-block-header.ts, src/workers/utils/commit-block-planner.ts, src/workers/utils/commit-end-time.ts, src/workers/utils/commit-redeemers.ts, src/workers/utils/common.ts, src/workers/utils/confirm-block-commitments.ts, src/workers/utils/mpt.ts
+CLI Using tsconfig: tsconfig.json
+CLI tsup v8.5.1
+CLI Using tsup config: /home/gumbo/midgard-hub/midgard/demo/midgard-node/tsup.config.ts
+CLI Target: es2020
+ESM Build start
+ESM dist/utils/mpt.js                           481.00 B
+ESM dist/commit-block-header.js                 32.69 KB
+ESM dist/chunk-ECD65S43.js                      6.87 KB
+ESM dist/confirm-block-commitments.js           2.79 KB
+ESM dist/chunk-WHQUVZ4H.js                      3.16 KB
+ESM dist/chunk-B2WWN3CH.js                      980.00 B
+ESM dist/utils/commit-block-header.js           183.00 B
+ESM dist/chunk-HT2OPVUT.js                      773.00 B
+ESM dist/chunk-XB22MFMI.js                      3.96 KB
+ESM dist/utils/commit-block-planner.js          324.00 B
+ESM dist/chunk-6MYV5HKJ.js                      806.00 B
+ESM dist/utils/commit-redeemers.js              464.00 B
+ESM dist/chunk-5CEDD63N.js                      2.93 KB
+ESM dist/chunk-4C666HHU.js                      148.00 B
+ESM dist/utils/common.js                        170.00 B
+ESM dist/utils/confirm-block-commitments.js     53.00 B
+ESM dist/utils/commit-end-time.js               221.00 B
+ESM dist/chunk-VTVG2GNR.js                      535.90 KB
+ESM dist/chunk-ECD65S43.js.map                  26.98 KB
+ESM dist/commit-block-header.js.map             125.08 KB
+ESM dist/chunk-WHQUVZ4H.js.map                  19.60 KB
+ESM dist/utils/mpt.js.map                       71.00 B
+ESM dist/chunk-B2WWN3CH.js.map                  4.72 KB
+ESM dist/utils/commit-block-header.js.map       71.00 B
+ESM dist/confirm-block-commitments.js.map       9.26 KB
+ESM dist/chunk-HT2OPVUT.js.map                  4.32 KB
+ESM dist/chunk-XB22MFMI.js.map                  13.43 KB
+ESM dist/utils/commit-block-planner.js.map      71.00 B
+ESM dist/chunk-6MYV5HKJ.js.map                  4.29 KB
+ESM dist/utils/commit-redeemers.js.map          71.00 B
+ESM dist/chunk-5CEDD63N.js.map                  12.05 KB
+ESM dist/chunk-4C666HHU.js.map                  71.00 B
+ESM dist/utils/confirm-block-commitments.js.map 71.00 B
+ESM dist/utils/commit-end-time.js.map           71.00 B
+ESM dist/utils/common.js.map                    420.00 B
+ESM dist/chunk-VTVG2GNR.js.map                  840.31 KB
+ESM ⚡️ Build success in 56ms
+DTS Build start
+DTS ⚡️ Build success in 4255ms
+DTS dist/commit-block-header.d.ts             13.00 B
+DTS dist/utils/commit-block-planner.d.ts      1.63 KB
+DTS dist/utils/commit-end-time.d.ts           703.00 B
+DTS dist/utils/commit-redeemers.d.ts          2.94 KB
+DTS dist/utils/common.d.ts                    557.00 B
+DTS dist/utils/confirm-block-commitments.d.ts 1.05 KB
+DTS dist/utils/commit-block-header.d.ts       2.12 KB
+DTS dist/utils/mpt.d.ts                       9.50 KB
+DTS dist/confirm-block-commitments.d.ts       13.00 B
+DTS dist/tx-SST1GrUc.d.ts                     304.00 B
+[06:34:48.538] INFO (#1): Initializing Lucid...
+[lucid] Blockfrost getProtocolParameters failed; falling back to Koios (https://preprod.koios.rest/api/v1). cause=TypeError: Cannot convert undefined to a BigInt
+    at BigInt (<anonymous>)
+    at Blockfrost.getProtocolParameters (file:///home/gumbo/midgard-hub/midgard/demo/midgard-node/node_modules/.pnpm/@lucid-evolution+provider@0.1.90_@harmoniclabs+bytestring@1.0.0_@harmoniclabs+cbor@1.6.6_@har_6asgqdbn5hukxxqwgqmnig7qam/node_modules/@lucid-evolution/provider/dist/index.js:131:19)
+    at process.processTicksAndRejections (node:internal/process/task_queues:103:5)
+    at async r.<computed> [as getProtocolParameters] (file:///home/gumbo/midgard-hub/midgard/demo/midgard-node/dist/index.js:77:29164)
+    at async Module.Lucid (file:///home/gumbo/midgard-hub/midgard/demo/midgard-node/node_modules/.pnpm/@lucid-evolution+lucid@0.4.29_@harmoniclabs+bytestring@1.0.0_@harmoniclabs+cbor@1.6.6_@harmon_nyxtefmg3gosbfu2qanzptyakm/node_modules/@lucid-evolution/lucid/dist/index.js:2228:66)
+[06:34:49.611] INFO (#1): Lucid built successfully.
+[06:34:49.794] INFO (#1): 🔐 Contract source selected: state_queue=real, hub_oracle=real, registered_operators=real, active_operators=real, retired_operators=real
+[lucid] Blockfrost getUtxosWithUnit failed; falling back to Koios (https://preprod.koios.rest/api/v1). cause=Error: Could not fetch UTxOs from Blockfrost. Try again.
+    at Blockfrost.getUtxosWithUnit (file:///home/gumbo/midgard-hub/midgard/demo/midgard-node/node_modules/.pnpm/@lucid-evolution+provider@0.1.90_@harmoniclabs+bytestring@1.0.0_@harmoniclabs+cbor@1.6.6_@har_6asgqdbn5hukxxqwgqmnig7qam/node_modules/@lucid-evolution/provider/dist/index.js:199:17)
+    at process.processTicksAndRejections (node:internal/process/task_queues:103:5)
+    at async r.<computed> [as getUtxosWithUnit] (file:///home/gumbo/midgard-hub/midgard/demo/midgard-node/dist/index.js:77:29164)
+[06:34:51.607] INFO (#1): Hub oracle policies: registered=4ee15d377a7c4deb3d9f1dd842f85909aaab28971737f165763f47a3,active=308e36a17b87ea45ec28c22fe9b4cee9e65ad8025aca800f77aa67a7,retired=1058d40b8073851b0e6a7a96400a87035c1b61310dd36a727550b375
+[lucid] Blockfrost getUtxos failed; falling back to Koios (https://preprod.koios.rest/api/v1). cause=Error: Could not fetch UTxOs from Blockfrost. Try again.
+    at Blockfrost.getUtxos (file:///home/gumbo/midgard-hub/midgard/demo/midgard-node/node_modules/.pnpm/@lucid-evolution+provider@0.1.90_@harmoniclabs+bytestring@1.0.0_@harmoniclabs+cbor@1.6.6_@har_6asgqdbn5hukxxqwgqmnig7qam/node_modules/@lucid-evolution/provider/dist/index.js:169:17)
+    at process.processTicksAndRejections (node:internal/process/task_queues:103:5)
+    at async r.<computed> [as getUtxos] (file:///home/gumbo/midgard-hub/midgard/demo/midgard-node/dist/index.js:77:29164)
+[06:35:01.229] INFO (#1): Operator set snapshot: registered(policy=4ee15d377a7c4deb3d9f1dd842f85909aaab28971737f165763f47a3,address=addr_test1wq22kc2nw5nraq52s9prxvl4dw46wqm7g3m2dfdvqr896xqrh6gjx,count=2),active(policy=308e36a17b87ea45ec28c22fe9b4cee9e65ad8025aca800f77aa67a7,address=addr_test1wrk5a8zynnvhyp9nhgeskq2tzjndkwufts4mahycmxmrdmqfpqc37,count=1),retired(policy=1058d40b8073851b0e6a7a96400a87035c1b61310dd36a727550b375,address=addr_test1wzg3xj6hkymr52edgl63srwg8jk2kmhx7yvqjuhr7myr0hq2eltyy,count=1)
+[06:35:01.229] INFO (#1): Retired set keys: Empty
+[06:35:01.230] WARN (#1): Operator 993d08c54b59536a92703a11d788eb25ce55ad8b49866d303d894366 is already registered but not active; refreshing the registration node before activation.
+[06:35:03.238] INFO (#1): ✍  Signing tx with addr_test1qzvn6zx9fdv4x65jwqapr4ugavjuu4dd3dycvmfs8ky5xejzm7zfvw9sm2etf065jnnxf0ssz20knfppfux2qde9j9fqwqs986
+[06:35:03.802] INFO (#1): ✍  Signed tx prepared: txHash=64519e8e6a6e2e16f4cc4443a578b7d8453cc1769773de96bf0a21a8ed1a6856, cborBytes=7260
+[06:35:03.802] INFO (#1): ✉️  Submitting transaction...
+[lucid] Blockfrost submitTx failed; falling back to Koios (https://preprod.koios.rest/api/v1). cause=Error: Could not submit transaction.
+    at Blockfrost.submitTx (file:///home/gumbo/midgard-hub/midgard/demo/midgard-node/node_modules/.pnpm/@lucid-evolution+provider@0.1.90_@harmoniclabs+bytestring@1.0.0_@harmoniclabs+cbor@1.6.6_@har_6asgqdbn5hukxxqwgqmnig7qam/node_modules/@lucid-evolution/provider/dist/index.js:298:18)
+    at process.processTicksAndRejections (node:internal/process/task_queues:103:5)
+    at async r.<computed> [as submitTx] (file:///home/gumbo/midgard-hub/midgard/demo/midgard-node/dist/index.js:77:29164)
+[06:35:04.224] INFO (#1): 🚀 Transaction submitted: 64519e8e6a6e2e16f4cc4443a578b7d8453cc1769773de96bf0a21a8ed1a6856
+[06:35:04.224] INFO (#1): ⏳ Confirming Transaction...
+[lucid] Blockfrost awaitTx failed; falling back to Koios (https://preprod.koios.rest/api/v1). cause=Error: {"error":"Project Over Limit","message":"Usage is over limit.","status_code":402}
+    at K4.e.awaitTx (file:///home/gumbo/midgard-hub/midgard/demo/midgard-node/dist/index.js:77:28592)
+    at process.processTicksAndRejections (node:internal/process/task_queues:103:5)
+    at async r.<computed> [as awaitTx] (file:///home/gumbo/midgard-hub/midgard/demo/midgard-node/dist/index.js:77:29164)
+[06:35:14.785] INFO (#1): 🎉 Transaction confirmed: 64519e8e6a6e2e16f4cc4443a578b7d8453cc1769773de96bf0a21a8ed1a6856
+[06:35:14.785] INFO (#1): ⌛ Pausing for 5 seconds...
+[06:35:19.865] INFO (#1): ✅ Pause ended.
+[06:35:22.170] INFO (#1): Resolved register redeemer layout: hub_ref=1,active_ref=0,retired_ref=2,prepended_out=0,anchor_out=1
+[06:35:23.131] INFO (#1): Selected register redeemer layout: hub_ref=1,active_ref=0,retired_ref=2,prepended_out=0,anchor_out=1
+[06:35:23.901] INFO (#1): ✍  Signing tx with addr_test1qzvn6zx9fdv4x65jwqapr4ugavjuu4dd3dycvmfs8ky5xejzm7zfvw9sm2etf065jnnxf0ssz20knfppfux2qde9j9fqwqs986
+[06:35:23.903] INFO (#1): ✍  Signed tx prepared: txHash=fd5cc8083db26a1b35c19b7972ee0e06b8e7c17c3192a0c726316a34dcf99a80, cborBytes=7577
+[06:35:23.903] INFO (#1): ✉️  Submitting transaction...
+[06:35:24.295] INFO (#1): 🚀 Transaction submitted: fd5cc8083db26a1b35c19b7972ee0e06b8e7c17c3192a0c726316a34dcf99a80
+[06:35:24.295] INFO (#1): ⏳ Confirming Transaction...
+[06:35:56.888] INFO (#1): 🎉 Transaction confirmed: fd5cc8083db26a1b35c19b7972ee0e06b8e7c17c3192a0c726316a34dcf99a80
+[06:35:56.888] INFO (#1): ⌛ Pausing for 5 seconds...
+[06:36:01.893] INFO (#1): ✅ Pause ended.
+[06:36:04.162] INFO (#1): Waiting 79030ms until operator activation time (ledger_now=1772462164000,activation_time=1772462242030)
+ ELIFECYCLE  Command failed.

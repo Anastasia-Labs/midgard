@@ -177,9 +177,25 @@ validator mint(
     let node_in_outputs = get_node_inputs(self.inputs, policy_id)
     let node_outputs = get_node_outputs(self.outputs, policy_id)
     let node_mint = tokens(self.mint, policy_id)
+    let has_hub_oracle_mint =
+      quantity_of(self.mint, hub_oracle_script_hash, hub_oracle_asset_name) == 1
+    let has_hub_oracle_ref_input =
+      list.any(
+        self.reference_inputs,
+        fn(ref_input) {
+          quantity_of(
+            ref_input.output.value,
+            hub_oracle_script_hash,
+            hub_oracle_asset_name,
+          ) == 1
+        },
+      )
     when redeemer is {
       Init -> and {
-          quantity_of(self.mint, hub_oracle_script_hash, hub_oracle_asset_name) == 1,
+          or {
+            has_hub_oracle_mint,
+            has_hub_oracle_ref_input,
+          },
           ordered.init(node_outputs, node_mint, policy_id),
         }
       Deinit -> and {
@@ -193,26 +209,36 @@ validator mint(
         active_operator_anchor_node_output_index,
         registered_operators_redeemer_index,
       } -> {
+        trace @"AO.activate.entry"
+        trace @"AO.activate.expect.appended_output.start"
         expect Some(active_node_output) =
           list.at(node_outputs, active_operator_appended_node_output_index)
         expect InlineDatum(active_operator_datum) = active_node_output.datum
         expect parsed_active_operator_datum: NodeDatum = active_operator_datum
         expect active_operator_data: Datum = parsed_active_operator_datum.data
+        trace @"AO.activate.expect.appended_output.ok"
+        trace @"AO.activate.expect.anchor_output.start"
+        expect Some(active_anchor_output) =
+          list.at(node_outputs, active_operator_anchor_node_output_index)
+        expect InlineDatum(active_anchor_output_datum) = active_anchor_output.datum
+        expect parsed_active_anchor_output_datum: NodeDatum =
+          active_anchor_output_datum
+        expect _: Datum = parsed_active_anchor_output_datum.data
+        trace @"AO.activate.expect.anchor_output.ok"
+        trace @"AO.activate.expect.hub_oracle_ref_input.start"
         expect Some(hub_oracle_ref_input) =
           list.at(self.reference_inputs, hub_oracle_ref_input_index)
         expect InlineDatum(hub_oracle_datum) = hub_oracle_ref_input.output.datum
         expect parsed_hub_oracle_datum: hub.Datum = hub_oracle_datum
+        trace @"AO.activate.expect.hub_oracle_ref_input.ok"
+        trace @"AO.activate.expect.registered_redeemer.start"
         expect Some(registered_operators_redeemer_pair) =
           list.at(self.redeemers, registered_operators_redeemer_index)
         expect registered_operators.Activate { node_to_activate_key, .. } =
           registered_operators_redeemer_pair.2nd
-
-        and {
-          quantity_of(
-            hub_oracle_ref_input.output.value,
-            hub_oracle_script_hash,
-            hub_oracle_asset_name,
-          ) == 1,
+        trace @"AO.activate.expect.registered_redeemer.ok"
+        trace @"AO.activate.check.ordered_append.start"
+        let check_ordered_append =
           ordered.append(
             Key(new_active_operator_key),
             active_operator_appended_node_output_index,
@@ -220,7 +246,16 @@ validator mint(
             node_in_outputs,
             node_outputs,
             node_mint,
-          ),
+          )
+        trace @"AO.activate.check.ordered_append.end"
+
+        and {
+          quantity_of(
+            hub_oracle_ref_input.output.value,
+            hub_oracle_script_hash,
+            hub_oracle_asset_name,
+          ) == 1,
+          check_ordered_append,
           active_operator_data.bond_unlock_time == None,
           registered_operators_redeemer_pair.1st == Mint(
             parsed_hub_oracle_datum.registered_operators,
@@ -312,9 +347,8 @@ validator mint(
         retired_operators_redeemer_index,
       } -> {
         expect Some(active_node_input) =
-          list.at(self.inputs, active_operator_removed_node_input_index)
-        expect InlineDatum(active_operator_datum) =
-          active_node_input.output.datum
+          list.at(node_in_outputs, active_operator_removed_node_input_index)
+        expect InlineDatum(active_operator_datum) = active_node_input.datum
         expect parsed_active_operator_datum: NodeDatum = active_operator_datum
         expect active_operator_data: Datum = parsed_active_operator_datum.data
         expect Some(retired_node_output) =

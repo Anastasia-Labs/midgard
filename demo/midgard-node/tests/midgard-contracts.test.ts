@@ -6,7 +6,7 @@ import { AlwaysSucceedsContract } from "@/services/always-succeeds.js";
 import {
   REAL_HUB_ORACLE_SCRIPT_TITLES,
   REAL_STATE_QUEUE_SCRIPT_TITLES,
-  withRealStateQueueContracts,
+  withRealStateQueueAndOperatorContracts,
 } from "@/services/midgard-contracts.js";
 
 describe("midgard contracts registry", () => {
@@ -18,7 +18,7 @@ describe("midgard contracts registry", () => {
   it.effect("resolves real state_queue and hub_oracle scripts", () =>
     Effect.gen(function* () {
       const placeholderContracts = yield* AlwaysSucceedsContract;
-      const resolved = yield* withRealStateQueueContracts(
+      const resolved = yield* withRealStateQueueAndOperatorContracts(
         "Preprod",
         placeholderContracts,
         { ...oneShotOutRef },
@@ -47,6 +47,16 @@ describe("midgard contracts registry", () => {
         mintingPolicyToId(resolved.stateQueue.mintingScript),
       );
 
+      expect(resolved.registeredOperators.policyId).not.toEqual(
+        placeholderContracts.registeredOperators.policyId,
+      );
+      expect(resolved.activeOperators.policyId).not.toEqual(
+        placeholderContracts.activeOperators.policyId,
+      );
+      expect(resolved.retiredOperators.policyId).not.toEqual(
+        placeholderContracts.retiredOperators.policyId,
+      );
+
       expect(resolved.deposit.policyId).toEqual(
         placeholderContracts.deposit.policyId,
       );
@@ -60,7 +70,7 @@ describe("midgard contracts registry", () => {
     Effect.gen(function* () {
       const placeholderContracts = yield* AlwaysSucceedsContract;
       const result = yield* Effect.either(
-        withRealStateQueueContracts("Preprod", placeholderContracts, {
+        withRealStateQueueAndOperatorContracts("Preprod", placeholderContracts, {
           txHash: "zz",
           outputIndex: -1,
         }),

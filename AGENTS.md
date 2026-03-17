@@ -43,3 +43,12 @@ When tradeoffs are required, prioritize:
 ## Practical Rule
 
 If a change improves benchmarks but weakens production-grade guarantees, do not make it the default. Keep strict behavior as default and isolate non-production behavior behind explicit, clearly named controls.
+
+## Cardano Script Context Ordering (SDK / Tx Building)
+
+For Plutus/Aiken redeemer indexing and script-context alignment, follow ledger ordering semantics exactly:
+
+- Transaction `inputs` in script context are ordered lexicographically by `TxOutRef` (`txHash`, then `outputIndex`).
+- Transaction `reference_inputs` in script context are ordered lexicographically by `TxOutRef` (`txHash`, then `outputIndex`).
+- Redeemer indices for spending/reference-input driven logic must be derived from those lexicographic orders.
+- Transaction `outputs` in script context are **not** re-ordered lexicographically by the ledger; output order is preserved exactly as authored in the transaction body.
