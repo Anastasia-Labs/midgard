@@ -29,6 +29,14 @@ pub type SpendRedeemer {
     active_root_ref_input_index: Int,
     registered_element_ref_input_index: Int,
   }
+  SkipInactiveOperator {
+    scheduler_input_index: Int,
+    scheduler_output_index: Int,
+    active_node_input_index: Int,
+    active_operators_redeemer_index: Int,
+    state_queue_ref_input_index: Int,
+    hub_oracle_ref_input_index: Int,
+  }
 }
 
 /// The end of a shift is the start of the shift, shifted forward by the

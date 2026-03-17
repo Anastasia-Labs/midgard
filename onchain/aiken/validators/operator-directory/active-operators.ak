@@ -20,7 +20,7 @@ use midgard/operator_directory/active_operators.{
 }
 use midgard/operator_directory/registered_operators
 use midgard/operator_directory/retired_operators
-use midgard/protocol_parameters.{maturity_duration}
+use midgard/protocol_parameters.{maturity_duration, max_inactivity_strikes}
 use midgard/settlement
 use midgard/state_queue
 
@@ -179,12 +179,7 @@ validator spend(
         hub_oracle_ref_input_index,
         scheduler_redeemer_index,
       } -> {
-        let Transaction {
-          inputs,
-          outputs,
-          mint,
-          ..
-        } = self
+        let Transaction { inputs, outputs, mint, .. } = self
 
         let linked_list_eval = {
           let
@@ -201,11 +196,18 @@ validator spend(
               outputs: outputs,
               tx_mint: mint,
             )
-          expect NodeData { inactivity_strikes: input_strikes, .. } =
-            active_node_input_data
-          expect NodeData { inactivity_strikes: output_strikes, .. } =
-            active_node_output_data
-          expect output_strikes == input_strikes + 1
+          expect NodeData {
+            inactivity_strikes: input_strikes,
+            bond_unlock_time: input_bond_unlock_time,
+          } = active_node_input_data
+          let output_inactivity_strikes = input_strikes + 1
+          expect output_inactivity_strikes < max_inactivity_strikes
+          let expected_output_node_data: Data =
+            NodeData {
+              inactivity_strikes: output_inactivity_strikes,
+              bond_unlock_time: input_bond_unlock_time,
+            }
+          expect active_node_output_data == expected_output_node_data
         }
       }
     }

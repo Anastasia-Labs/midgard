@@ -17,3 +17,5 @@ pub const required_bond: Int = slashing_penalty + fraud_prover_reward
 
 /// 5 minutes in milliseconds.
 pub const operator_inactivity_timeout: PosixTimeDuration = 5 * 60 * 1000
+
+pub const max_inactivity_strikes: Int = 5

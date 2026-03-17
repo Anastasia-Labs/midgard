@@ -14,8 +14,9 @@ use midgard/operator_directory/active_operators
 use midgard/operator_directory/registered_operators
 use midgard/scheduler.{
   ActiveOperator, Advance, Datum, Deinit, Init, MintRedeemer, NoActiveOperators,
-  Rewind, SpendRedeemer, asset_name, shift_end_time,
+  Rewind, SkipInactiveOperator, SpendRedeemer, asset_name, shift_end_time,
 }
+use midgard/state_queue
 
 validator mint(hub_oracle_script_hash: PolicyId) {
   mint(redeemer: MintRedeemer, own_policy_id: PolicyId, self: Transaction) {
@@ -51,8 +52,10 @@ validator mint(hub_oracle_script_hash: PolicyId) {
 
 validator spend(
   registered_operators_policy_id: PolicyId,
+  active_operators_address: Address,
   active_operators_policy_id: PolicyId,
   scheduler_policy_id: PolicyId,
+  hub_oracle_script_hash: PolicyId,
 ) {
   spend(
     m_datum: Option<Datum>,
@@ -248,6 +251,89 @@ validator spend(
 
         // Done.
         True
+      }
+      SkipInactiveOperator {
+        scheduler_input_index,
+        scheduler_output_index,
+        active_node_input_index,
+        active_operators_redeemer_index,
+        state_queue_ref_input_index,
+        hub_oracle_ref_input_index,
+      } -> {
+        let Transaction {
+          inputs,
+          outputs,
+          redeemers,
+          reference_inputs,
+          validity_range,
+          ..
+        } = self
+
+        // 1. A matching spending redeemer of the active operators set must
+        //    exist.
+        expect active_operators.StrikeForInactivity {
+          active_node_input_index: active_node_input_index_from_active_operators_redeemer,
+          ..
+        } =
+          utils.get_spending_redeemer_data_at(
+            active_operators_address,
+            active_node_input_index,
+            active_operators_redeemer_index,
+            inputs,
+            redeemers,
+          )
+        expect
+          active_node_input_index == active_node_input_index_from_active_operators_redeemer
+
+        // 2. Authentic hub oracle UTxO must be referred to.
+        let hub_datum =
+          hub.get_datum(
+            reference_inputs,
+            hub_oracle_script_hash,
+            hub_oracle_ref_input_index,
+          )
+
+        // 3. Specified state queue element UTxO must exist in reference inputs.
+        expect Some(state_queue_ref_input) =
+          reference_inputs |> list.at(state_queue_ref_input_index)
+
+        // 4. The referred state queue UTxO must be authentic.
+        {
+          let
+            _state_queue_lovelace,
+            m_header_hash,
+            confirmed_state_or_header_data,
+            state_queue_link,
+          <- linked_list.get_element_info(state_queue_ref_input)
+
+          // 5. The element must be the last in the state queue.
+          expect None == state_queue_link
+
+          // 6. The validity range of the transaction must be entirely after the
+          //    last element's end time, plus the inactivity time out parameter.
+          let last_elements_end_time =
+            when m_header_hash is {
+              None -> {
+                expect ledger_state.ConfirmedState { end_time, .. } =
+                  confirmed_state_or_header_data
+                end_time
+              }
+              Some(_) -> {
+                expect ledger_state.Header { end_time, .. } =
+                  confirmed_state_or_header_data
+                end_time
+              }
+            }
+          expect
+            validity_range
+              |> interval.is_entirely_after(
+                  end_time + operator_inactivity_timeout,
+                )
+
+          // Done.
+          True
+        }
+          |> state_queue.finalize_linked_list(hub_datum.state_queue)
       }
     }
   }
