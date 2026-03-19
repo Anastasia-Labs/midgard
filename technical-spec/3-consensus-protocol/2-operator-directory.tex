@@ -2,8 +2,6 @@
 \graphicspath{{\subfix{../images/}}}
 \begin{document}
 
-% TODO: Ensure that bonds can't be stolen during transfers.
-% TODO: Ensure that slashing penalties and rewards are paid.
 % TODO: Add interactions with escape hatch mechanism.
 
 \section{Operator directory}
@@ -24,21 +22,30 @@ Similarly, an operator that submits duplicate registrations forfeits the bonds p
 Every forfeited bond is split into a reward paid to the fraud prover and a slashing penalty paid (via transaction fees) to the Cardano treasury.
 Among the Midgard protocol parameters, the \code{fraud\_prover\_reward} and \code{slashing\_penalty} parameters must sum up to the \code{required\_bond} parameter.
 
+To ensure liveness, a penalty mechanism gives strikes to inactive operators.
+After enough strikes, violating operator's bond can be partially slashed and transferred to the penalty box set.
+
+Operators in penalty box can either recover the remainder of their bond, or deposit the slashed portion in order to get back in the registered operators set.
+
+% TODO: Should DDoS attacks be considered here?
+
 \subsection{Utxo representation}
 \label{h:operator-directory-utxo-representation}
 
 The Operator Directory keeps track of all Midgard operators and stores their bond deposits.
-It separates operators into three groups based on their status, with every group using operators' public key hashes (PKHs) as keys:
+It separates operators into four groups based on their status, primarily using operators' public key hashes (PKHs) as identifiers:
 \begin{itemize}
     \item \code{registered\_operators} is a first-in-first-out (FIFO) queue that tracks operators who have posted their ADA bonds and are waiting to activate.
-      It is implemented as a key-descending linked list, where each new registrant is prepended to the beginning of the list.
+      It is implemented as a key-descending linked list with operators' activation times as keys, where each new registrant is prepended to the beginning of the list.
       This means that the earliest registrant to become eligible for activation is always at the last node of the list.
-    \item \code{active\_operators} is a set that tracks active operators participating in the rotating schedule, implemented as a key-ordered linked list (see \cref{h:key-ordered-list}).
-    \item \code{retired\_operators} is a set that tracks retired operators waiting to recover their ADA bonds, implemented as a key-ordered linked list.
+    \item \code{active\_operators} is a set that tracks active operators participating in the rotating schedule, implemented as a key-ascending linked list with operator PKHs as node keys.
+    \item \code{retired\_operators} is a set that tracks retired operators waiting to recover their ADA bonds, implemented as a key-ascending linked list with operator PKHs as node keys.
+    \item \code{penalty\_box} is a set that tracks penalized operators for violating liveness of Midgard by taking too long to submit block commitments multiple times.
+      This set is also implemented as a key-ascending linked list with operator PKHs as node keys.
 \end{itemize}
 
-The Operator Directory keeps track of the activation time of every registered operator, which indicates when the operator will become eligible for activation.
-It also keeps track of any holds on the ADA bonds of active and retired operators, which prevent those operators from recovering their bonds until their latest committed blocks and latest settlement resolution claims mature.
+The Operator Directory keeps track of the activation time of every registered operator in their node keys, which indicates when the operator will become eligible for activation.
+It also keeps track of any holds on the ADA bonds of active, retired and penalized operators, which prevent those operators from recovering their bonds until their latest committed blocks and latest settlement resolution claims mature.
 \begin{align*}
     \T{RegisteredOperator} &\coloneq \Bigl( \T{operator}: \T{PubKeyHash} \Bigr) \\
     \T{ActiveOperator}     &\coloneq{} \left\{
@@ -47,13 +54,16 @@ It also keeps track of any holds on the ADA bonds of active and retired operator
         \T{inactivity\_strikes} : & \T{Integer}
       \end{array} \right\} \\
     \T{RetiredOperator}    &\coloneq \Bigl( \T{bond\_unlock\_time}:
+        \T{Option}(\T{PosixTime}) \Bigr) \\
+    \T{PenalizedOperator}  &\coloneq \Bigl( \T{bond\_unlock\_time}:
         \T{Option}(\T{PosixTime}) \Bigr)
 \end{align*}
 
-The above are app-specific types for the \code{data} field of their respective lists' \code{NodeDatum}.
-For example, the \code{NodeDatum} of \code{registered\_operators} is:
+The above are app-specific types for the \code{node\_data} of their respective lists' \code{Element}s.
+All operator lists have null \code{root\_data}, i.e.\ \code{Empty}.\footnote{We're using \code{Empty} to represent a bytearray of length zero.}
+For example, the \code{Element} of \code{registered\_operators} is:
 \begin{equation*}
-    \T{RegisteredOperatorDatum} \coloneq \T{NodeDatum} (\T{RegisteredOperator})
+  \T{RegisteredOperatorDatum} \coloneq \T{Element} (\T{Empty}, \T{RegisteredOperator})
 \end{equation*}
 
 \subsection{Registered operators}
@@ -64,7 +74,7 @@ The \code{registered\_operators} queue keeps track of operators after registerin
 \subsubsection{Minting policy}
 \label{h:registered-operators-minting-policy}
 
-The \code{registered\_operators} minting policy implements state transitions for its key-unordered linked list.
+The \code{registered\_operators} minting policy implements state transitions for its key-descending linked list.
 It is statically parametrized on the \code{hub\_oracle} and \code{retired\_operators} minting policies.
 Redeemers:
 \begin{description}
@@ -84,7 +94,7 @@ Redeemers:
                 \item Anchor element of \code{registered\_node} must be root.
                 \item Let \code{activation\_time} be equal to the sum of the Midgard \code{registration\_duration} protocol parameter and the inclusive upper bound of the transaction's validity interval.
                 \item The key of \code{registered\_node} must be the big-endian encoding of \code{activation\_time} in as few bytes as possible.
-                \item The \code{operator} field of \code{registered\_node} must correspond to a public key hash that has signed the transaction.
+                \item The \code{operator} field of \code{registered\_node} must correspond to a PKH that has signed the transaction.
                 \item The Lovelace in the \code{registered\_node} must equal the \code{required\_bond} Midgard parameter.
             \end{enumerate}
         \end{itemize}
@@ -114,7 +124,7 @@ Redeemers:
         \begin{enumerate}
             \item The transaction must Remove a node from the \code{registered\_operators} queue.
               Let \code{removed\_node} be that node.
-            \item The operator key of \code{removed\_node} must correspond to a public key hash that signed the transaction.
+            \item The operator key of \code{removed\_node} must correspond to a PKH that signed the transaction.
         \end{enumerate}
     The operator consents to the transaction, so the ADA bond is assumed to be returned to the operator's control.
     \item[Remove Duplicate Slash Bond.] Remove a node from the \code{registered\_operators} queue if its operator key duplicates the key of any other node among the registered, active, or retired operators.
@@ -353,5 +363,29 @@ Conditions:
 \begin{enumerate}
     \item The transaction must mint or burn tokens of the \code{retired\_operators} minting policy.
 \end{enumerate}
+
+\subsection{Penalty box}
+\label{h:penalty-box}
+
+The \code{penalty\_box} keeps track of paritally slashed operators, penalized for violating liveness of Midgard multiple times.
+
+\subsubsection{Minting policy}
+\label{h:penalty-box-minting-policy}
+
+The \code{penalty\_box} minting policy implements structural operations for its key-ordered linked list.
+It is statically parametrized on the \code{hub\_oracle} minting policy.
+Redeemers:
+\begin{description}
+    \item[Init.] Initialize the \code{retired\_operators} set via the Midgard hub oracle.
+      Conditions:
+        \begin{enumerate}
+            \item The transaction must mint the Midgard hub oracle NFT.
+            \item The transaction must Init the \code{penalty\_box} set.
+        \end{enumerate}
+    \item[Penalize Operator.] Transfer an operator node from either the \code{active\_operators} set to the \code{penalty\_box} with only a portion of its ADA brought over.
+      Conditions:
+        \begin{enumerate}
+            \item 
+        \end{enumerate}
 
 \end{document}
