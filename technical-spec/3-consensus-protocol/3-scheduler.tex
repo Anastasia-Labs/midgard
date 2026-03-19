@@ -6,7 +6,7 @@
 \label{h:scheduler}
 
 The Midgard scheduler is an L1 mechanism that indicates which operator is assigned to the current shift and controls the transitions to the next shift and next operator.
-Whenever a shift ends, the next operator in key-descending order from the \code{active\_operators} list has the exclusive privilege to advance the scheduler's state to the next shift, assigning it to themself.
+Whenever a shift ends, or the current shift's operator fails to submit a block commitment within an acceptable inactivity period, the next operator in key-descending order from the \code{active\_operators} list can be picked to take over the next shift.
 
 When the root element of \code{active\_operators} is reached, the scheduler rewinds to start a new cycle.
 However, the scheduler requires the \code{registered\_operators} queue to be checked to see if any registered operators are eligible to activate.
@@ -16,26 +16,48 @@ Active operators can retire anytime without waiting for the end of the scheduler
 The scheduler automatically adjusts to retirement because the next operator is always selected among active operators.
 However, to minimize disruption, an operator should complete their shift before retiring.
 
-\notebox{We should allow operators to take over for negligent operators.
-
-If a shift's assigned operator neglects their duty to commit blocks regularly to the state queue, the next active operator can take over the shift (without starting the next shift).
-Similarly, the next operator can advance the scheduler and take over if their predecessor neglects to do so.
-Midgard's \code{operator\_inactivity\_timeout} protocol parameter controls when this unscheduled takeover can happen.}\todo
-
 \subsection{Utxo representation}
 \label{h:scheduler-utxo-representation}
 
 The scheduler state consists of a single utxo that holds the scheduler NFT, minted when Midgard is initialized via the hub oracle.
 That utxo's datum type is as follows:
-\begin{equation*}
-    \T{SchedulerDatum} \coloneq \left\{
-    \begin{array}{ll}
-        \T{operator}  : & \T{PubKeyHash} \\
-        \T{shift\_start} : & \T{PosixTime}
-    \end{array} \right\}
-\end{equation*}
+\begin{align*}
+    \T{SchedulerDatum} \coloneq\;& \T{NoActiveOperators} \\
+                           \mid\;& \T{ActiveOperator} \\
+    \T{ActiveOperator} &\coloneq{} \left\{
+        \begin{array}{ll}
+            \T{operator} : & \T{PubKeyHash} \\
+            \T{start\_time} : & \T{PosixTime}
+        \end{array} \right\}
+\end{align*}
 
-The shift's inclusive lower bound is \code{shift\_start}, and its exclusive upper bound is the sum of \code{shift\_start} and the \code{shift\_duration} Midgard protocol parameter.
+When an active operator is appointed, the shift's inclusive lower bound is \code{shift\_start}, and its exclusive upper bound is the sum of \code{shift\_start} and the \code{shift\_duration} Midgard protocol parameter.
+
+\subsection{State discrepency}
+\label{h:scheduler-state-discrepency}
+
+The scheduler is essentially a cursor for the active operators set, which means it has to have a local minimal representation of the set's state.
+
+On the other hand, block commitments require referrals to the scheduler utxo in order to show they are submitted by the currently active operator.
+This demands a high level of availability for this utxo, and therefore must be spent as few times as possible.
+
+Considering operators can be added/removed to/from the active operators set during shifts, there can be deviation of states between the scheduler and the set.
+
+The relative states can be summarized as the following.
+First states are for the scheduler, while the second states are for the active operators set:
+\begin{enumerate}
+  \item \textbf{Empty---Empty}: No actions can be taken.
+  \item \textbf{Empty---Non-empty}: There is at least one operator available to appoint.
+  \item \textbf{Appointed---Empty}: While retirement of active operators is not allowed, this can happen if the appointed operator is slashed during their shift.
+  \item \textbf{Appointed---One operator}: It is possible that they point to different operators.
+  \item \textbf{Appointed---Two or more operators}: The scheduler can advance to the next operator in queue.
+\end{enumerate}
+
+\notebox{We should allow operators to take over for negligent operators.
+
+If a shift's assigned operator neglects their duty to commit blocks regularly to the state queue, the next active operator can take over the shift (without starting the next shift).
+Similarly, the next operator can advance the scheduler and take over if their predecessor neglects to do so.
+Midgard's \code{operator\_inactivity\_timeout} protocol parameter controls when this unscheduled takeover can happen.}\todo
 
 \subsection{Minting policy}
 \label{h:scheduler-minting-policy}
