@@ -176,8 +176,9 @@ validator spend(
       StrikeForInactivity {
         active_node_input_index,
         active_node_output_index,
-        hub_oracle_ref_input_index,
+        scheduler_input_index,
         scheduler_redeemer_index,
+        hub_oracle_ref_input_index,
       } -> {
         let Transaction { inputs, outputs, mint, .. } = self
 
@@ -201,7 +202,7 @@ validator spend(
             bond_unlock_time: input_bond_unlock_time,
           } = active_node_input_data
           let output_inactivity_strikes = input_strikes + 1
-          expect output_inactivity_strikes < max_inactivity_strikes
+          expect output_inactivity_strikes <= max_inactivity_strikes
           let expected_output_node_data: Data =
             NodeData {
               inactivity_strikes: output_inactivity_strikes,

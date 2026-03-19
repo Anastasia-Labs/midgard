@@ -31,7 +31,7 @@ The Operator Directory keeps track of all Midgard operators and stores their bon
 It separates operators into three groups based on their status, with every group using operators' public key hashes (PKHs) as keys:
 \begin{itemize}
     \item \code{registered\_operators} is a first-in-first-out (FIFO) queue that tracks operators who have posted their ADA bonds and are waiting to activate.
-      It is implemented as a key-unordered linked list (see \cref{h:key-unordered-list}), where each new registrant is prepended to the beginning of the list.
+      It is implemented as a key-descending linked list, where each new registrant is prepended to the beginning of the list.
       This means that the earliest registrant to become eligible for activation is always at the last node of the list.
     \item \code{active\_operators} is a set that tracks active operators participating in the rotating schedule, implemented as a key-ordered linked list (see \cref{h:key-ordered-list}).
     \item \code{retired\_operators} is a set that tracks retired operators waiting to recover their ADA bonds, implemented as a key-ordered linked list.

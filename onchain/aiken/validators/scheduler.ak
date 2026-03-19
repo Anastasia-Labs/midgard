@@ -269,8 +269,50 @@ validator spend(
           ..
         } = self
 
+        expect Some(
+          ActiveOperator {
+            operator: input_operator,
+            start_time: input_start_time,
+          }
+        ) = m_datum
+
+        let
+          input,
+          output,
+        <-
+          singular_utxo_indexer.one_to_one(
+            input_index: scheduler_input_index,
+            output_index: scheduler_output_index,
+            own_ref: own_out_ref,
+            inputs: inputs,
+            outputs: outputs,
+            // Double satisfaction is prevented by requiring the same NFT present
+            // in both the input and the output.
+            double_satisfaction_prevented: True,
+          )
+
+        // 3. Both input and output must have the scheduler NFT, and the output
+        //    datum must be properly formed.
+        expect ActiveOperator {
+          operator: output_operator,
+          start_time: output_start_time,
+        } =
+          utils.authenticate_input_output_and_get_output_datum_data(
+            input,
+            output,
+            scheduler_policy_id,
+          )
+
+        let input_end_time = input_start_time |> shift_end_time()
+        let inclusive_lower_bound = utils.get_inclusive_lower_bound_of_interval(validity_range)
+        expect validity_range |> interval.is_entirely_before(input_end_time)
+        expect output_start_time >= inclusive_lower_bound
+        expect output_start_time < inclusive_lower_bound + operator_inactivity_timeout
+        
+        // =====================================================================
+
         // 1. A matching spending redeemer of the active operators set must
-        //    exist.
+        //    exist for incrementing the strike counter.
         expect active_operators.StrikeForInactivity {
           active_node_input_index: active_node_input_index_from_active_operators_redeemer,
           ..
