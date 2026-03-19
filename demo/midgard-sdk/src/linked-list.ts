@@ -4,7 +4,6 @@ import {
   GenericErrorFields,
   LucidError,
   MissingDatumError,
-  POSIXTimeSchema,
 } from "@/common.js";
 import { Data as EffectData, Effect } from "effect";
 import {
@@ -18,13 +17,10 @@ import {
   TxSignBuilder,
   UTxO,
 } from "@lucid-evolution/lucid";
-import { SettlementDatum } from "./settlement.js";
-import { StateQueueDatum } from "./state-queue.js";
-
-export const NODE_ASSET_NAME = fromText("Node");
+import { StateQueueDatum } from "@/state-queue.js";
 
 export const ElementDataSchema = Data.Enum([
-  Data.Object({ Root: Data.Object({ data: Data.Any() }) }),
+  Data.Object({ Root: Data.Object({ data: Data.Any() }) }), // TODO: replace Data.any() for Root and Node instead of wrapping
   Data.Object({ Node: Data.Object({ data: Data.Any() }) }),
 ]);
 export type ElementData = Data.Static<typeof ElementDataSchema>;
@@ -36,60 +32,6 @@ export const ElementSchema = Data.Object({
 });
 export type Element = Data.Static<typeof ElementSchema>;
 export const Element = ElementSchema as unknown as Element;
-
-export const ActiveandRetiredNodeDataSchema = Data.Object({
-  bond_unlock_time: Data.Nullable(POSIXTimeSchema),
-});
-export type ActiveandRetiredNodeData = Data.Static<
-  typeof ActiveandRetiredNodeDataSchema
->;
-export const ActiveandRetiredNodeData =
-  ActiveandRetiredNodeDataSchema as unknown as ActiveandRetiredNodeData;
-
-export const ActiveandRetiredElementDataSchema = Data.Enum([
-  Data.Object({ Root: Data.Bytes() }),
-  Data.Object({ Node: ActiveandRetiredNodeDataSchema }),
-]);
-export type ActiveandRetiredElementData = Data.Static<
-  typeof ActiveandRetiredElementDataSchema
->;
-export const ActiveandRetiredElementData =
-  ActiveandRetiredElementDataSchema as unknown as ActiveandRetiredElementData;
-
-export const ActiveandRetiredElementSchema = Data.Object({
-  data: ActiveandRetiredElementDataSchema,
-  link: Data.Nullable(Data.Bytes()),
-});
-export type ActiveandRetiredElement = Data.Static<
-  typeof ActiveandRetiredElementSchema
->;
-export const ActiveandRetiredElement =
-  ActiveandRetiredElementSchema as unknown as ActiveandRetiredElement;
-
-export const RegisteredNodeDataSchema = Data.Object({
-  activation_time: POSIXTimeSchema,
-});
-export type RegisteredNodeData = Data.Static<typeof RegisteredNodeDataSchema>;
-export const RegisteredNodeData =
-  RegisteredNodeDataSchema as unknown as RegisteredNodeData;
-
-export const RegisteredElementDataSchema = Data.Enum([
-  Data.Object({ Root: Data.Bytes() }),
-  Data.Object({ Node: RegisteredNodeDataSchema }),
-]);
-export type RegisteredElementData = Data.Static<
-  typeof RegisteredElementDataSchema
->;
-export const RegisteredElementData =
-  RegisteredElementDataSchema as unknown as RegisteredElementData;
-
-export const RegisteredElementSchema = Data.Object({
-  data: RegisteredElementDataSchema,
-  link: Data.Nullable(Data.Bytes()),
-});
-export type RegisteredElement = Data.Static<typeof RegisteredElementSchema>;
-export const RegisteredElement =
-  RegisteredElementSchema as unknown as RegisteredElement;
 
 export const getElementDatumFromUTxO = (
   nodeUTxO: UTxO,
@@ -134,7 +76,7 @@ export const incompleteInitLinkedListTxProgram = (
 ): Effect.Effect<TxBuilder> =>
   Effect.gen(function* () {
     const assets: Assets = {
-      [toUnit(params.validator.policyId, params.rootKey)]: 1n,
+      [toUnit(params.validator.policyId, fromText(params.rootKey))]: 1n,
     };
 
     const rootData = params.data ?? Data.to([]);

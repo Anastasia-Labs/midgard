@@ -2,25 +2,20 @@ import {
   AuthenticatedValidator,
   POSIXTimeSchema,
   LucidError,
+  OperatorElementSchema,
 } from "@/common.js";
 import { AuthenticUTxO, authenticateUTxOs } from "@/internals.js";
-import { Data, UTxO } from "@lucid-evolution/lucid";
+import { Data, fromText, UTxO } from "@lucid-evolution/lucid";
 import { LucidEvolution, TxBuilder } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
-import {
-  ActiveandRetiredElementSchema,
-  incompleteInitLinkedListTxProgram,
-} from "./linked-list.js";
-import { Int } from "effect/Schema";
+import { incompleteInitLinkedListTxProgram } from "@/linked-list.js";
 
 export const RETIRED_ROOT_KEY: string = "MIDGARD_RETIRED_OPERATORS";
 export const RETIRED_NODE_ASSET_NAME_PREFIX: string = "MRET";
 
-export type RetiredOperatorDatum = Data.Static<
-  typeof ActiveandRetiredElementSchema
->;
+export type RetiredOperatorDatum = Data.Static<typeof OperatorElementSchema>;
 export const RetiredOperatorDatum =
-  ActiveandRetiredElementSchema as unknown as RetiredOperatorDatum;
+  OperatorElementSchema as unknown as RetiredOperatorDatum;
 
 export const RetiredOperatorMintRedeemerSchema = Data.Enum([
   Data.Object({ Init: Data.Object({ outputIndex: Data.Integer() }) }),
@@ -140,7 +135,7 @@ export const incompleteRetiredOperatorInitTxProgram = (
       validator: params.validator,
       data: rootData,
       redeemer: mintRedeemer,
-      rootKey: RETIRED_ROOT_KEY,
+      rootKey: fromText(RETIRED_ROOT_KEY),
     });
   });
 

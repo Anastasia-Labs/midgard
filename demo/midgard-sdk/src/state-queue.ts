@@ -2,6 +2,7 @@ import {
   Address,
   Assets,
   Data,
+  fromText,
   LucidEvolution,
   paymentCredentialOf,
   PolicyId,
@@ -11,7 +12,7 @@ import {
   TxSignBuilder,
   UTxO,
 } from "@lucid-evolution/lucid";
-import { ActiveOperatorUpdateCommitmentTimeParams } from "@/active-operators.js";
+import { ActiveOperatorUpdateCommitmentTimeParams } from "@/operator-directory/active-operators.js";
 import { Data as EffectData, Effect } from "effect";
 import {
   DataCoercionError,
@@ -32,8 +33,6 @@ import { getStateToken } from "@/internals.js";
 import {
   LinkedListError,
   incompleteInitLinkedListTxProgram,
-  ElementSchema,
-  Element,
   getElementDatumFromUTxO,
 } from "@/linked-list.js";
 import {
@@ -314,7 +313,7 @@ export const getConfirmedStateFromStateQueueDatum = (
   DataCoercionError
 > => {
   try {
-    if (nodeDatum.link === null && "Root" in nodeDatum.data) {
+    if ("Root" in nodeDatum.data) {
       const confirmedState = nodeDatum.data.Root;
       return Effect.succeed({
         data: confirmedState,
@@ -339,20 +338,6 @@ export const getConfirmedStateFromStateQueueDatum = (
 };
 
 // TODO: this function is from ledger-state, mb it should be moved from here
-// export const getHeaderFromStateQueueDatum = (
-//   nodeDatum: StateQueueDatum,
-// ): Effect.Effect<Header, DataCoercionError> =>
-//   Effect.gen(function* () {
-//     const header: Header = yield* Effect.try({
-//       try: () => Data.castFrom(nodeDatum.data, Header),
-//       catch: (e) =>
-//         new DataCoercionError({
-//           message: "Failed coercing block's datum data to `Header`",
-//           cause: e,
-//         }),
-//     });
-//     return header;
-//   });
 export const getHeaderFromStateQueueDatum = (
   nodeDatum: StateQueueDatum,
 ): Effect.Effect<{ data: Header }, DataCoercionError> => {
@@ -433,11 +418,11 @@ export const updateLatestBlocksDatumAndGetTheNewHeaderProgram = (
         operatorVkey: pubKeyHash,
         protocolVersion: confirmedState.protocolVersion,
       };
-      const newHeaderHash = yield* hashBlockHeader(newHeader);
+      //const newHeaderHash = yield* hashBlockHeader(newHeader);
       return {
         nodeDatum: {
           ...latestBlocksDatum,
-          next: { Key: { key: newHeaderHash } },
+          data: { Node: newHeader },
         },
         header: newHeader,
       };
@@ -461,7 +446,7 @@ export const updateLatestBlocksDatumAndGetTheNewHeaderProgram = (
       return {
         nodeDatum: {
           ...latestBlocksDatum,
-          next: { Key: { key: newHeaderHash } },
+          data: { Node: newHeader },
         },
         header: {
           ...latestHeader,
@@ -535,16 +520,13 @@ export const incompleteCommitBlockHeaderTxProgram = (
   Effect.gen(function* () {
     const newHeaderHash = yield* hashBlockHeader(newHeader);
     const assets: Assets = {
-      [toUnit(policyId, BLOCK_ASSET_NAME_PREFIX + newHeaderHash)]: 1n,
+      [toUnit(policyId, fromText(BLOCK_ASSET_NAME_PREFIX) + newHeaderHash)]: 1n,
     };
 
-    // const newNodeDatum: StateQueueDatum = {
-    //   key: updatedNodeDatum.next,
-    //   next: "Empty",
-    //   data: Data.castTo(newHeader, Header),
-    // };
     const newNodeDatum: StateQueueDatum = {
-      data: updatedNodeDatum.data,
+      data: {
+        Node: newHeader,
+      },
       link: null,
     };
     // Add 1 minute
@@ -742,7 +724,7 @@ export const fetchLatestCommittedBlockProgram = (
           config.stateQueuePolicyId,
         );
         return Effect.andThen(stateQueueUTxOEffect, (squ: StateQueueUTxO) =>
-          squ.datum.link === null
+          squ.datum.link === null && "Node" in squ.datum.data
             ? Effect.succeed(squ)
             : Effect.fail(
                 new StateQueueError({
@@ -907,16 +889,13 @@ export const incompleteStateQueueMergeTxProgram = (
       utxoRoot: blockHeader.utxosRoot,
       startTime: currentConfirmedState.endTime,
       endTime: blockHeader.endTime,
+      protocolVersion: blockHeader.protocolVersion,
     };
-    // const newConfirmedNodeDatum: NodeDatum = {
-    //   ...confirmedUTxO.datum,
-    //   data: Data.castTo(newConfirmedState, ConfirmedState),
-    //   next: firstBlockUTxO.datum.next,
-    // };
-    const newConfirmedElementDatum: Element = {
+
+    const newConfirmedElementDatum: StateQueueDatum = {
       ...confirmedUTxO.datum,
       data: {
-        Node: { data: Data.castTo(newConfirmedState, ConfirmedState) },
+        Root: newConfirmedState,
       },
       link: firstBlockUTxO.datum.link,
     };
@@ -926,7 +905,7 @@ export const incompleteStateQueueMergeTxProgram = (
 
     const redeemer: StateQueueMintRedeemer = {
       MergeToConfirmedState: {
-        headerNodeKey: "",
+        headerNodeKey: firstBlockUTxO.assetName, // TODO: is the confirmedUTxO or firstBlockUTxO
         headerNodeInputIndex: 0n,
         confirmedStateInputIndex: 0n,
         confirmedStateOutputIndex: 0n,
@@ -942,7 +921,7 @@ export const incompleteStateQueueMergeTxProgram = (
         fetchConfig.stateQueueAddress,
         {
           kind: "inline",
-          value: Data.to(newConfirmedElementDatum, Element),
+          value: Data.to(newConfirmedElementDatum, StateQueueDatum),
         },
         confirmedUTxO.utxo.assets,
       )

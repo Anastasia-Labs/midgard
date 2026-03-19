@@ -1,15 +1,19 @@
 import {
   AuthenticatedValidator,
   LucidError,
+  OperatorElementSchema,
   POSIXTimeSchema,
 } from "@/common.js";
 import { AuthenticUTxO, authenticateUTxOs } from "@/internals.js";
-import { LucidEvolution, TxBuilder, UTxO, Data } from "@lucid-evolution/lucid";
-import { Effect } from "effect";
 import {
-  ActiveandRetiredElementSchema,
-  incompleteInitLinkedListTxProgram,
-} from "./linked-list.js";
+  LucidEvolution,
+  TxBuilder,
+  UTxO,
+  Data,
+  fromText,
+} from "@lucid-evolution/lucid";
+import { Effect } from "effect";
+import { incompleteInitLinkedListTxProgram } from "@/linked-list.js";
 
 export const ACTIVE_ROOT_KEY: string = "MIDGARD_ACTIVE_OPERATORS";
 export const ACTIVE_NODE_ASSET_NAME_PREFIX: string = "MACT";
@@ -91,11 +95,9 @@ export type ActiveOperatorMintRedeemer = Data.Static<
 export const ActiveOperatorMintRedeemer =
   ActiveOperatorMintRedeemerSchema as unknown as ActiveOperatorMintRedeemer;
 
-export type ActiveOperatorDatum = Data.Static<
-  typeof ActiveandRetiredElementSchema
->;
+export type ActiveOperatorDatum = Data.Static<typeof OperatorElementSchema>;
 export const ActiveOperatorDatum =
-  ActiveandRetiredElementSchema as unknown as ActiveOperatorDatum;
+  OperatorElementSchema as unknown as ActiveOperatorDatum;
 
 export type ActiveOperatorInitParams = {
   validator: AuthenticatedValidator;
@@ -166,7 +168,7 @@ export const incompleteActiveOperatorInitTxProgram = (
       validator: params.validator,
       data: rootData,
       redeemer: mintRedeemer,
-      rootKey: ACTIVE_ROOT_KEY,
+      rootKey: fromText(ACTIVE_ROOT_KEY),
     });
   });
 

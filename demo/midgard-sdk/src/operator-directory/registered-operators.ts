@@ -1,14 +1,40 @@
 import { AuthenticatedValidator, POSIXTimeSchema } from "@/common.js";
-import { Data, LucidEvolution, TxBuilder } from "@lucid-evolution/lucid";
-import { Effect } from "effect";
 import {
-  incompleteInitLinkedListTxProgram,
-  RegisteredElementSchema,
-} from "./linked-list.js";
-import { Int } from "effect/Schema";
+  Data,
+  fromText,
+  LucidEvolution,
+  TxBuilder,
+} from "@lucid-evolution/lucid";
+import { Effect } from "effect";
+import { incompleteInitLinkedListTxProgram } from "@/linked-list.js";
 
 export const REGISTERED_ROOT_KEY: string = "MIDGARD_REGISTERED_OPERATORS";
 export const REGISTERED_NODE_ASSET_NAME_PREFIX: string = "MREG";
+
+export const RegisteredNodeDataSchema = Data.Object({
+  activation_time: POSIXTimeSchema,
+});
+export type RegisteredNodeData = Data.Static<typeof RegisteredNodeDataSchema>;
+export const RegisteredNodeData =
+  RegisteredNodeDataSchema as unknown as RegisteredNodeData;
+
+export const RegisteredElementDataSchema = Data.Enum([
+  Data.Object({ Root: Data.Bytes() }),
+  Data.Object({ Node: RegisteredNodeDataSchema }),
+]);
+export type RegisteredElementData = Data.Static<
+  typeof RegisteredElementDataSchema
+>;
+export const RegisteredElementData =
+  RegisteredElementDataSchema as unknown as RegisteredElementData;
+
+export const RegisteredElementSchema = Data.Object({
+  data: RegisteredElementDataSchema,
+  link: Data.Nullable(Data.Bytes()),
+});
+export type RegisteredElement = Data.Static<typeof RegisteredElementSchema>;
+export const RegisteredElement =
+  RegisteredElementSchema as unknown as RegisteredElement;
 
 export type RegisteredOperatorDatum = Data.Static<
   typeof RegisteredElementSchema
@@ -51,7 +77,7 @@ export const RegisteredOperatorMintRedeemerSchema = Data.Enum([
       anchorElementOutputIndex: Data.Integer(),
       hubOracleRefInputIndex: Data.Integer(),
       retiredOperatorsElementRefInputIndex: Data.Integer(),
-      activeOperatorsRedeemerIndex: Data.Bytes(),
+      activeOperatorsRedeemerIndex: Data.Integer(),
     }),
   }),
   Data.Object({
@@ -112,7 +138,7 @@ export const incompleteRegisteredOperatorInitTxProgram = (
       validator: params.validator,
       data: rootData,
       redeemer: mintRedeemer,
-      rootKey: REGISTERED_ROOT_KEY,
+      rootKey: fromText(REGISTERED_ROOT_KEY),
     });
   });
 
