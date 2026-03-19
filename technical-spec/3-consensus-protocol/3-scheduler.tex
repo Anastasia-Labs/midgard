@@ -14,7 +14,6 @@ If so, all eligible registered operators must activate before the new cycle can 
 
 Active operators can retire anytime without waiting for the end of the scheduler cycle.
 The scheduler automatically adjusts to retirement because the next operator is always selected among active operators.
-However, to minimize disruption, an operator should complete their shift before retiring.
 
 \subsection{Utxo representation}
 \label{h:scheduler-utxo-representation}
@@ -33,25 +32,25 @@ That utxo's datum type is as follows:
 
 When an active operator is appointed, the shift's inclusive lower bound is \code{shift\_start}, and its exclusive upper bound is the sum of \code{shift\_start} and the \code{shift\_duration} Midgard protocol parameter.
 
-\subsection{State discrepency}
-\label{h:scheduler-state-discrepency}
+\subsection{State consistency}
+\label{h:scheduler-state-consistency}
 
-The scheduler is essentially a cursor for the active operators set, which means it has to have a local minimal representation of the set's state.
+The scheduler is essentially a cursor for the active operators set, which means it has to have a local representation of the set's state.
 
 On the other hand, block commitments require referrals to the scheduler utxo in order to show they are submitted by the currently active operator.
 This demands a high level of availability for this utxo, and therefore must be spent as few times as possible.
 
-Considering operators can be added/removed to/from the active operators set during shifts, there can be deviation of states between the scheduler and the set.
-
-The relative states can be summarized as the following.
-First states are for the scheduler, while the second states are for the active operators set:
+That is, it should only be spent for actions that change the appointed operator.
+Namely:
 \begin{enumerate}
-  \item \textbf{Empty---Empty}: No actions can be taken.
-  \item \textbf{Empty---Non-empty}: There is at least one operator available to appoint.
-  \item \textbf{Appointed---Empty}: While retirement of active operators is not allowed, this can happen if the appointed operator is slashed during their shift.
-  \item \textbf{Appointed---One operator}: It is possible that they point to different operators.
-  \item \textbf{Appointed---Two or more operators}: The scheduler can advance to the next operator in queue.
+  \item \textbf{Advancing.} Picking the next operator in set, or updating the shift start time of the current one if no other operators are available.
+  \item \textbf{Retirement.} If the retiring operator is currently active, the scheduler needs to be updated as well.
+  \item \textbf{Skipping.} For operators who fail to submit block commitments in determined intervals.
+  \item \textbf{Slashing.} Forfeiting bond of the appointed operator would remove them from the set, and therefore would require advancing the scheduler.
 \end{enumerate}
+
+\subsection{Inactivity penalty}
+\label{h:scheduler-inactivity-penalty}
 
 \notebox{We should allow operators to take over for negligent operators.
 

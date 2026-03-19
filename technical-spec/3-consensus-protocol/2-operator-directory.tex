@@ -40,9 +40,12 @@ It separates operators into three groups based on their status, with every group
 The Operator Directory keeps track of the activation time of every registered operator, which indicates when the operator will become eligible for activation.
 It also keeps track of any holds on the ADA bonds of active and retired operators, which prevent those operators from recovering their bonds until their latest committed blocks and latest settlement resolution claims mature.
 \begin{align*}
-    \T{RegisteredOperator} &\coloneq \Bigl( \T{activation\_time}: \T{PosixTime} \Bigr) \\
-    \T{ActiveOperator}     &\coloneq \Bigl( \T{bond\_unlock\_time}:
-        \T{Option}(\T{PosixTime}) \Bigr) \\
+    \T{RegisteredOperator} &\coloneq \Bigl( \T{operator}: \T{PubKeyHash} \Bigr) \\
+    \T{ActiveOperator}     &\coloneq{} \left\{
+      \begin{array}{ll}
+        \T{bond\_unlock\_time} : & \T{Option}(\T{PosixTime}) \\
+        \T{inactivity\_strikes} : & \T{Integer}
+      \end{array} \right\} \\
     \T{RetiredOperator}    &\coloneq \Bigl( \T{bond\_unlock\_time}:
         \T{Option}(\T{PosixTime}) \Bigr)
 \end{align*}
