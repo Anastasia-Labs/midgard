@@ -269,12 +269,10 @@ validator spend(
           ..
         } = self
 
-        expect Some(
-          ActiveOperator {
-            operator: input_operator,
-            start_time: input_start_time,
-          }
-        ) = m_datum
+        expect Some(ActiveOperator {
+          operator: input_operator,
+          start_time: input_start_time,
+        }) = m_datum
 
         let
           input,
@@ -304,13 +302,14 @@ validator spend(
           )
 
         let input_end_time = input_start_time |> shift_end_time()
-        let inclusive_lower_bound = utils.get_inclusive_lower_bound_of_interval(validity_range)
+        let inclusive_lower_bound =
+          utils.get_inclusive_lower_bound_of_interval(validity_range)
         expect validity_range |> interval.is_entirely_before(input_end_time)
         expect output_start_time >= inclusive_lower_bound
-        expect output_start_time < inclusive_lower_bound + operator_inactivity_timeout
-        
-        // =====================================================================
+        expect
+          output_start_time < inclusive_lower_bound + operator_inactivity_timeout
 
+        // =====================================================================
         // 1. A matching spending redeemer of the active operators set must
         //    exist for incrementing the strike counter.
         expect active_operators.StrikeForInactivity {

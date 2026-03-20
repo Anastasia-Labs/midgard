@@ -67,8 +67,9 @@ validator mint(
         registered_node_output_index,
         hub_oracle_ref_input_index,
         active_operators_element_ref_input_index,
-        retired_operators_element_ref_input_index,
+        operator_origin,
       } -> {
+        // retired_operators_element_ref_input_index,
         let Transaction {
           inputs,
           outputs,
@@ -93,26 +94,17 @@ validator mint(
             hub_oracle_ref_input_index,
           )
 
-        // 3. Registering operator must not be present in either the active
-        //    or the retired sets.
-        expect and {
-            registering_operator
-              |> operator_is_not_a_member(
-                  reference_inputs: reference_inputs,
-                  element_ref_input_index: active_operators_element_ref_input_index,
-                )
-              |> active_operators.finalize_linked_list(
-                  active_operators_mint_script_hash,
-                ),
-            registering_operator
-              |> operator_is_not_a_member(
-                  reference_inputs: reference_inputs,
-                  element_ref_input_index: retired_operators_element_ref_input_index,
-                )
-              |> retired_operators.finalize_linked_list(
-                  retired_operators_mint_script_hash,
-                ),
-          }
+        // 3. Registering operator must not be present in the active operators
+        //    set.
+        expect
+          registering_operator
+            |> operator_is_not_a_member(
+                reference_inputs: reference_inputs,
+                element_ref_input_index: active_operators_element_ref_input_index,
+              )
+            |> active_operators.finalize_linked_list(
+                active_operators_mint_script_hash,
+              )
 
         // 4. Linked list prepend input and outputs must exist at specified
         //    indices.
@@ -159,13 +151,59 @@ validator mint(
           expect
             registered_node_key == activation_time_to_node_key(activation_time)
 
-          // 10. Registered node's data must carry the registering operator.
-          let expected_node_data: Data =
-            NodeData { operator: registering_operator }
-          expect registered_node_data == expected_node_data
+          when operator_origin is {
+            ReturningOperator { retired_operators_redeemer_index } -> {
+              // 10a. `ReregisterOperator` redeemer of the retired operators set
+              //      must be invoked with a matching operator key.
+              expect retired_operators.ReregisterOperator {
+                retired_operator_key,
+                retired_operator_bond_unlock_time,
+                ..
+              } =
+                redeemers
+                  |> utils.get_redeemer_at(
+                      expected_purpose: Mint(retired_operators_mint_script_hash),
+                      redeemer_index: retired_operators_redeemer_index,
+                    )
+              expect registered_node_key == retired_operator_key
 
-          // Done.
-          True
+              // 11a. The returning operators bond unlock time must carry over.
+              let expected_node_data: Data =
+                NodeData {
+                  operator: retired_operator_key,
+                  bond_unlock_time: retired_operator_bond_unlock_time,
+                }
+              expect registered_node_data == expected_node_data
+
+              // Done.
+              True
+            }
+            NewOperator { retired_operators_element_ref_input_index } -> {
+              // 10b. Registering operator must not be present in the retired
+              //      operators set.
+              expect
+                registering_operator
+                  |> operator_is_not_a_member(
+                      reference_inputs: reference_inputs,
+                      element_ref_input_index: retired_operators_element_ref_input_index,
+                    )
+                  |> retired_operators.finalize_linked_list(
+                      retired_operators_mint_script_hash,
+                    )
+
+              // 11b. Registered node's data must carry the registering
+              //      operator, with no bond unlock time.
+              let expected_node_data: Data =
+                NodeData {
+                  operator: registering_operator,
+                  bond_unlock_time: None,
+                }
+              expect registered_node_data == expected_node_data
+
+              // Done.
+              True
+            }
+          }
         }
           |> finalize_linked_list(own_policy_id)
       }
@@ -222,7 +260,10 @@ validator mint(
 
         // 4. Removal of the activating node from the registered operator set
         //    must be valid.
-        let removed_node_key <-
+        let
+          removed_node_key,
+          bond_unlock_time,
+        <-
           remove_operator_and_get_node_key(
             own_policy_id,
             activating_operator,
@@ -258,7 +299,10 @@ validator mint(
 
         // 2. Removal of the deregistering operator's node from the registered
         //    operator set must be valid.
-        let _removed_node_key <-
+        let
+          _removed_node_key,
+          m_bond_unlock_time,
+        <-
           remove_operator_and_get_node_key(
             own_policy_id,
             deregistering_operator,
@@ -269,6 +313,14 @@ validator mint(
             outputs,
             mint,
           )
+
+        expect
+          when m_bond_unlock_time is {
+            Some(bond_unlock_time) ->
+              self.validity_range
+                |> interval.is_entirely_after(bond_unlock_time)
+            None -> True
+          }
 
         // Done.
         True
@@ -291,8 +343,11 @@ validator mint(
 
         // 2. Removal of the duplicate operator's node from the registered
         //    operator set must be valid.
-        let _removed_node_key <-
-          remove_operator_and_get_node_key(
+        let
+          _removed_node_key,
+          _bond_unlock_time,
+        <-
+          remove_operator_and_get_node_key_and_bond_unlock_time(
             own_policy_id,
             duplicate_operator,
             anchor_element_input_index,
@@ -387,7 +442,7 @@ validator mint(
   }
 }
 
-fn remove_operator_and_get_node_key(
+fn remove_operator_and_get_node_key_and_bond_unlock_time(
   own_policy_id: PolicyId,
   removed_operator: VerificationKeyHash,
   anchor_element_input_index: Int,
@@ -396,7 +451,7 @@ fn remove_operator_and_get_node_key(
   inputs: List<Input>,
   outputs: List<Output>,
   mint: Value,
-  removed_node_key_validator: fn(linked_list.NodeKey) -> Bool,
+  custom_validator: fn(linked_list.NodeKey, Option<PosixTime>) -> Bool,
 ) -> Bool {
   // 1. Linked list inputs and output for removal must exist at specified
   //    indices.
@@ -431,11 +486,11 @@ fn remove_operator_and_get_node_key(
 
     // 4. The operator of removed node must match the provided
     //    `removed_operator`.
-    let expected_node_data: Data = NodeData { operator: removed_operator }
-    expect removed_node_data == expected_node_data
+    expect NodeData { operator, bond_unlock_time } = removed_node_data
+    expect removed_operator == operator
 
     // 5.  The custom validation must pass.
-    expect removed_node_key_validator(removed_node_key)
+    expect custom_validator(removed_node_key, bond_unlock_time)
 
     // Done.
     True

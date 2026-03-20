@@ -109,6 +109,14 @@ validator mint(hub_oracle_script_hash: PolicyId) {
         }
           |> finalize_linked_list(own_policy_id)
       }
+      ReregisterOperator {
+        retired_operator_key,
+        retired_operator_bond_unlock_time,
+        retired_operator_anchor_element_input_index,
+        retired_operator_removed_node_input_index,
+        retired_operator_anchor_element_output_index,
+        registered_operators_redeemer_index,
+      } -> todo
       RecoverOperatorBond {
         retired_operator_key,
         retired_operator_anchor_element_input_index,
