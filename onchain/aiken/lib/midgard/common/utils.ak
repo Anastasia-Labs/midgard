@@ -561,6 +561,32 @@ pub fn get_spending_redeemer_data_at(
   redeemers |> get_redeemer_at(Spend(input_outref), redeemer_index)
 }
 
+/// Similar to [`get_spending_redeemer_data_at`](#get_spending_redeemer_data_at),
+/// but also returns the inline datum's data.
+pub fn get_inline_datum_spending_redeemer_and_data_at(
+  script_address: Address,
+  input_index: Int,
+  redeemer_index: Int,
+  inputs: List<Input>,
+  redeemers: Pairs<ScriptPurpose, Redeemer>,
+) -> (Data, Data) {
+  expect Some(Input {
+    output_reference: input_outref,
+    output: Output {
+      address: input_address,
+      datum: InlineDatum(datum_data),
+      ..
+    },
+  }) = inputs |> list.at(input_index)
+  //
+  expect input_address.payment_credential == script_address.payment_credential
+  //
+  (
+    datum_data,
+    redeemers |> get_redeemer_at(Spend(input_outref), redeemer_index),
+  )
+}
+
 /// Merkelized validator abstraction for `phas` function from Plutarch.
 ///
 /// > [!WARNING]

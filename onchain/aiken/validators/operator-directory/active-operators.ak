@@ -336,6 +336,7 @@ validator mint(
         active_operator_removed_node_input_index,
         active_operator_anchor_element_output_index,
         retired_operators_redeemer_index,
+        operator_status,
       } -> {
         let Transaction {
           inputs,

@@ -247,36 +247,60 @@ fn slash_operator_and_get_hub_datum(
   //    transaction, and therefore will receive the remaining bond.
   expect fee >= slashing_penalty
 
+  // 7. If operator is currently active, validate scheduler datum is getting
+  //    updated. Otherwise show the currently appointed operator is different
+  //    than the slashing operator.
   expect
-    when operator_status is {
-      CurrentlyInactive { scheduler_ref_input_index } -> {
-        let scheduler_datum =
-          reference_inputs
-            |> scheduler.get_datum(
-                hub_datum.scheduler,
-                scheduler_ref_input_index,
-              )
-        when scheduler_datum is {
-          scheduler.NoActiveOperators -> True
-          scheduler.ActiveOperator { operator, .. } ->
-            operator != slashed_operator_key
-        }
-      }
-      CurrentlyActive { scheduler_input_index, scheduler_redeemer_index } -> {
-        expect scheduler.ActiveOperator { operator, .. } =
-          utils.get_spending_redeemer_data_at(
-            hub_datum.scheduler_addr,
-            scheduler_input_index,
-            scheduler_redeemer_index,
-            inputs,
-            redeemers,
-          )
-        operator == slashed_operator_key
-      }
-    }
+    operator_status
+      |> validate_operator_status_against_scheduler(
+          slashed_operator_key,
+          hub_datum,
+          inputs,
+          reference_inputs,
+          redeemers,
+        )
 
   // Done.
   return(hub_datum)
+}
+
+/// Given an operator status (appointed active or not), this functions retrieves
+/// the scheduler policy ID and if the operator is currently active, validates
+/// scheduler UTxO is spent with the "advance" redeemer. Otherwise shows the
+/// currently appointed operator is different than the subject operator.
+pub fn validate_operator_status_against_scheduler(
+  operator_status: OperatorStatus,
+  subject_operator: VerificationKeyHash,
+  hub_datum: hub.Datum,
+  inputs: List<Input>,
+  reference_inputs: List<Input>,
+  redeemers: Pairs<ScriptPurpose, Redeemer>,
+) -> Bool {
+  when operator_status is {
+    CurrentlyInactive { scheduler_ref_input_index } -> {
+      let scheduler_datum =
+        reference_inputs
+          |> scheduler.get_datum(hub_datum.scheduler, scheduler_ref_input_index)
+      when scheduler_datum is {
+        scheduler.NoActiveOperators -> True
+        scheduler.ActiveOperator { operator, .. } ->
+          operator != subject_operator
+      }
+    }
+    CurrentlyActive { scheduler_input_index, scheduler_redeemer_index } -> {
+      let (scheduler_datum_data, scheduler_redeemer_data) =
+        utils.get_inline_datum_spending_redeemer_and_data_at(
+          hub_datum.scheduler_addr,
+          scheduler_input_index,
+          scheduler_redeemer_index,
+          inputs,
+          redeemers,
+        )
+      expect scheduler.ActiveOperator { operator, .. } = scheduler_datum_data
+      expect scheduler.Advance { .. } = scheduler_redeemer_data
+      operator == subject_operator
+    }
+  }
 }
 
 pub fn remove_operator_for_bad_state(
