@@ -14,6 +14,11 @@ use midgard/protocol_parameters.{required_bond, slashing_penalty}
 use midgard/settlement
 use midgard/state_queue
 
+pub type OperatorStatus {
+  CurrentlyInactive { scheduler_ref_input_index: Int }
+  CurrentlyActive { scheduler_input_index: Int, scheduler_redeemer_index: Int }
+}
+
 pub type Datum<node_data> =
   linked_list.Element<Empty, node_data>
 
@@ -185,11 +190,13 @@ fn slash_operator_and_get_hub_datum(
   slashed_operator_anchor_element_input_index: Int,
   slashed_operator_node_input_index: Int,
   slashed_operator_anchor_element_output_index: Int,
+  operator_status: OperatorStatus,
   inputs: List<Input>,
   outputs: List<Output>,
   reference_inputs: List<Input>,
   mint: Value,
   fee: Int,
+  redeemers: Pairs<ScriptPurpose, Redeemer>,
   return: fn(hub.Datum) -> Bool,
 ) -> linked_list.Eval {
   // 1. Transaction must refer to the authentic hub oracle UTxO to allow
@@ -240,6 +247,34 @@ fn slash_operator_and_get_hub_datum(
   //    transaction, and therefore will receive the remaining bond.
   expect fee >= slashing_penalty
 
+  expect
+    when operator_status is {
+      CurrentlyInactive { scheduler_ref_input_index } -> {
+        let scheduler_datum =
+          reference_inputs
+            |> scheduler.get_datum(
+                hub_datum.scheduler,
+                scheduler_ref_input_index,
+              )
+        when scheduler_datum is {
+          scheduler.NoActiveOperators -> True
+          scheduler.ActiveOperator { operator, .. } ->
+            operator != slashed_operator_key
+        }
+      }
+      CurrentlyActive { scheduler_input_index, scheduler_redeemer_index } -> {
+        expect scheduler.ActiveOperator { operator, .. } =
+          utils.get_spending_redeemer_data_at(
+            hub_datum.scheduler_addr,
+            scheduler_input_index,
+            scheduler_redeemer_index,
+            inputs,
+            redeemers,
+          )
+        operator == slashed_operator_key
+      }
+    }
+
   // Done.
   return(hub_datum)
 }
@@ -252,6 +287,7 @@ pub fn remove_operator_for_bad_state(
   operator_slashed_node_input_index: Int,
   operator_anchor_element_output_index: Int,
   state_queue_redeemer_index: Int,
+  operator_status: OperatorStatus,
   tx: Transaction,
 ) -> linked_list.Eval {
   let Transaction {
@@ -272,11 +308,13 @@ pub fn remove_operator_for_bad_state(
       operator_anchor_element_input_index,
       operator_slashed_node_input_index,
       operator_anchor_element_output_index,
+      operator_status,
       inputs,
       outputs,
       reference_inputs,
       mint,
       fee,
+      redeemers,
     )
 
   // 2. State queue minting script must be invoked via the
@@ -304,6 +342,7 @@ pub fn remove_operator_for_bad_settlement(
   operator_anchor_element_output_index: Int,
   settlement_input_index: Int,
   settlement_redeemer_index: Int,
+  operator_status: OperatorStatus,
   tx: Transaction,
 ) -> linked_list.Eval {
   let Transaction {
@@ -324,11 +363,13 @@ pub fn remove_operator_for_bad_settlement(
       operator_anchor_element_input_index,
       operator_slashed_node_input_index,
       operator_anchor_element_output_index,
+      operator_status,
       inputs,
       outputs,
       reference_inputs,
       mint,
       fee,
+      redeemers,
     )
 
   // 2. A settlement UTxO must be getting spent via the

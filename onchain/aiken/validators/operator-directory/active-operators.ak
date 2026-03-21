@@ -293,6 +293,7 @@ validator mint(
         active_operator_slashed_node_input_index,
         active_operator_anchor_element_output_index,
         state_queue_redeemer_index,
+        operator_status,
       } ->
         remove_operator_for_bad_state(
           hub_oracle_script_hash,
@@ -302,6 +303,7 @@ validator mint(
           active_operator_slashed_node_input_index,
           active_operator_anchor_element_output_index,
           state_queue_redeemer_index,
+          operator_status,
           self,
         )
           |> finalize_linked_list(own_policy_id)
@@ -313,6 +315,7 @@ validator mint(
         active_operator_anchor_element_output_index,
         settlement_input_index,
         settlement_redeemer_index,
+        operator_status,
       } ->
         remove_operator_for_bad_settlement(
           hub_oracle_script_hash,
@@ -323,6 +326,7 @@ validator mint(
           active_operator_anchor_element_output_index,
           settlement_input_index,
           settlement_redeemer_index,
+          operator_status,
           self,
         )
           |> finalize_linked_list(own_policy_id)
