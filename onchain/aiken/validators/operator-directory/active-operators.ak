@@ -244,6 +244,7 @@ validator mint(
         )
       ActivateOperator {
         new_active_operator_key,
+        new_active_operator_bond_unlock_time,
         active_operator_anchor_element_input_index,
         active_operator_anchor_element_output_index,
         active_operator_inserted_node_output_index,
@@ -274,10 +275,10 @@ validator mint(
               redeemers,
             )
 
-          // 2. Newly activated operator must not have any bond unlock time
-          //    specified.
+          // 2. Newly activated operator must have the bond unlock time which
+          //    comes from the registered operators node.
           let expected_inserted_node_data: Data =
-            NodeData { bond_unlock_time: None }
+            NodeData { bond_unlock_time: new_active_operator_bond_unlock_time }
           expect inserted_node_data == expected_inserted_node_data
 
           // Done.

@@ -165,12 +165,13 @@ validator mint(
                       expected_purpose: Mint(retired_operators_mint_script_hash),
                       redeemer_index: retired_operators_redeemer_index,
                     )
-              expect registered_node_key == retired_operator_key
+              expect registering_operator == retired_operator_key
 
-              // 11a. The returning operators bond unlock time must carry over.
+              // 11a. The returning operators bond unlock time must be carried
+              //      over.
               let expected_node_data: Data =
                 NodeData {
-                  operator: retired_operator_key,
+                  operator: registering_operator,
                   bond_unlock_time: retired_operator_bond_unlock_time,
                 }
               expect registered_node_data == expected_node_data
@@ -239,7 +240,11 @@ validator mint(
 
         // 2. `ActivateOperator` minting redeemer of the active operators script
         //    must be invoked with a matching operator pub key hash.
-        expect active_operators.ActivateOperator { new_active_operator_key, .. } =
+        expect active_operators.ActivateOperator {
+          new_active_operator_key,
+          new_active_operator_bond_unlock_time,
+          ..
+        } =
           redeemers
             |> utils.get_redeemer_at(
                 expected_purpose: Mint(active_operators_mint_script_hash),
@@ -264,7 +269,7 @@ validator mint(
           removed_node_key,
           bond_unlock_time,
         <-
-          remove_operator_and_get_node_key(
+          remove_operator_and_get_node_key_and_bond_unlock_time(
             own_policy_id,
             activating_operator,
             anchor_element_input_index,
@@ -275,13 +280,14 @@ validator mint(
             mint,
           )
 
-        // 5.  The `activation_time` of the removed node (retrieved from its
-        //     key) must match or lie before the lower bound of the
-        //     transaction's validity range.
-        let valid_from =
-          utils.get_inclusive_lower_bound_of_interval(validity_range)
+        // 5. The bond unlock time retrieved from the removed registered node
+        //    must be carried over to the active operators set.
+        expect new_active_operator_bond_unlock_time == bond_unlock_time
+
+        // 6.  The `activation_time` of the removed node (retrieved from its
+        //     key) must be in the past.
         let activation_time = node_key_to_activation_time(removed_node_key)
-        expect valid_from >= activation_time
+        expect validity_range |> interval.is_entirely_after(activation_time)
 
         // Done.
         True
@@ -303,7 +309,7 @@ validator mint(
           _removed_node_key,
           m_bond_unlock_time,
         <-
-          remove_operator_and_get_node_key(
+          remove_operator_and_get_node_key_and_bond_unlock_time(
             own_policy_id,
             deregistering_operator,
             anchor_element_input_index,
@@ -314,6 +320,7 @@ validator mint(
             mint,
           )
 
+        // 3. If the operator has prior obligations, they all must be matured.
         expect
           when m_bond_unlock_time is {
             Some(bond_unlock_time) ->
@@ -377,9 +384,8 @@ validator mint(
                 node_data,
                 _node_link,
               <- linked_list.get_element_info(duplicate_node_ref_utxo)
-              let expected_node_data: Data =
-                NodeData { operator: duplicate_operator }
-              expect node_data == expected_node_data
+              expect NodeData { operator: node_operator, .. } = node_data
+              expect node_operator == duplicate_operator
 
               // Done.
               True
@@ -395,7 +401,7 @@ validator mint(
               )
 
             // 5b. Referenced element must be a node in the active operators
-            //     set with a key that matches the removed node.
+            //     set, with a key that matches the removed node.
             {
               let
                 _node_lovelace,

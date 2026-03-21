@@ -59,6 +59,7 @@ pub type MintRedeemer {
   Deinit { input_index: Int }
   ActivateOperator {
     new_active_operator_key: VerificationKeyHash,
+    new_active_operator_bond_unlock_time: Option<PosixTime>,
     active_operator_anchor_element_input_index: Int,
     active_operator_anchor_element_output_index: Int,
     active_operator_inserted_node_output_index: Int,
