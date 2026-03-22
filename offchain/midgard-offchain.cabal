@@ -113,6 +113,7 @@ library
     Midgard.Types.OperatorDirectory
     Midgard.Types.RegisteredOperators
     Midgard.Types.RetiredOperators
+    Midgard.Types.Scheduler
 
   hs-source-dirs:  src
   build-depends:
