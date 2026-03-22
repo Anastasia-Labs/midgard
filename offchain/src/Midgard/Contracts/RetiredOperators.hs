@@ -18,6 +18,7 @@ import Convex.BuildTx (
   spendPlutusInlineDatum,
  )
 import Convex.Class (MonadBlockchain (queryNetworkId, queryProtocolParameters), MonadUtxoQuery, utxosByPaymentCredential)
+import Convex.PlutusLedger.V1 (transPubKeyHash)
 import Convex.Utxos (toTxOut)
 import Data.Coerce (coerce)
 import PlutusLedgerApi.V3 (PubKeyHash (PubKeyHash))
@@ -34,7 +35,6 @@ import Midgard.Contracts.Utils (
   listAssetNameFromUTxO,
   mintPlutusRefWithRedeemerFinal,
   nextOutIx,
-  pubKeyHashFromCardano,
  )
 import Midgard.ScriptUtils (mintingPolicyId, mintingPolicyId', plutusVersion, toValidator, validatorHash)
 import Midgard.Scripts (
@@ -164,7 +164,7 @@ retireOperator
     let updatedActiveAnchorDatum =
           anchorActiveDatum {LinkedList.elementLink = LinkedList.elementLink removalActiveDatum}
         updatedRetiredAnchorDatum =
-          retiredAnchorDatum {LinkedList.elementLink = Just . coerce $ pubKeyHashFromCardano operatorPkh}
+          retiredAnchorDatum {LinkedList.elementLink = Just . coerce $ transPubKeyHash operatorPkh}
         retiredOperatorDatum :: RetiredOperators.Datum
         retiredOperatorDatum =
           LinkedList.Element
@@ -234,7 +234,7 @@ retireOperator
         (-1)
         $ \txBody ->
           ActiveOperators.RetireOperator
-            { activeOperatorKey = pubKeyHashFromCardano operatorPkh
+            { activeOperatorKey = transPubKeyHash operatorPkh
             , activeOperatorAnchorElementInputIndex =
                 toInteger $ findIndexSpending anchorActiveTxIn txBody
             , activeOperatorRemovedNodeInputIndex =
@@ -253,7 +253,7 @@ retireOperator
         1
         $ \txBody ->
           RetiredOperators.RetireOperator
-            { newRetiredOperatorKey = pubKeyHashFromCardano operatorPkh
+            { newRetiredOperatorKey = transPubKeyHash operatorPkh
             , bondUnlockTime
             , hubOracleRefInputIndex = toInteger $ findIndexReference hubOracleTxIn txBody
             , retiredOperatorAnchorElementInputIndex =
