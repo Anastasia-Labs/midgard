@@ -23,7 +23,7 @@ import Control.Monad.Reader (MonadReader (ask), MonadTrans (lift), ReaderT)
 import Data.ByteString (ByteString)
 import Data.List (elemIndex, find, findIndex, sort)
 import Data.Map.Strict qualified as Map
-import Data.Maybe (isJust)
+import Data.Maybe (isJust, isNothing)
 import Data.Time.Clock (NominalDiffTime, UTCTime, addUTCTime)
 import GHC.IsList (toList)
 
@@ -192,15 +192,13 @@ findUTxOWithLink (UtxoSet utxoMap) targetKey = do
 -- | From the given UTxO set, find the authentic linked-list node with no outgoing link.
 findFinalUTxONode :: UtxoSet ctx a -> ReaderT LinkedListInfo Maybe (C.TxIn, (C.InAnyCardanoEra (C.TxOut ctx), a))
 findFinalUTxONode (UtxoSet utxoMap) = do
-  LinkedListInfo {ownerPolicyId, rootAssetName} <- ask
+  LinkedListInfo {ownerPolicyId} <- ask
   let targetUtxos = Map.toList utxoMap
   lift . flip find targetUtxos $ \(_, (C.InAnyCardanoEra _ utxo, _)) ->
-    case inlineDatumFromUTxO @(LinkedList.Element BuiltinData BuiltinData) utxo of
-      Nothing -> False
-      Just LinkedList.Element {elementLink} ->
-        case (listAssetNameFromUTxO ownerPolicyId utxo, elementLink) of
-          (Just thisAssetName, Nothing) -> thisAssetName /= rootAssetName
-          _ -> False
+    let isAuthentic = isJust $ listAssetNameFromUTxO ownerPolicyId utxo
+     in case inlineDatumFromUTxO @(LinkedList.Element BuiltinData BuiltinData) utxo of
+          Nothing -> False
+          Just LinkedList.Element {elementLink} -> isAuthentic && isNothing elementLink
 
 -- Find the linked list node asset name contained within the value.
 listAssetNameFromUTxO :: C.PolicyId -> C.TxOut ctx era -> Maybe C.AssetName
