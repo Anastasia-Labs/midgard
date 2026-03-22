@@ -5,7 +5,7 @@ import Control.Monad.Except (MonadError (throwError))
 import Control.Monad.Reader (runReaderT)
 import Data.ByteString qualified as BS
 import Data.Foldable (traverse_)
-import Data.Time.Clock.POSIX (POSIXTime, posixSecondsToUTCTime)
+import Data.Time.Clock.POSIX (posixSecondsToUTCTime)
 
 import Cardano.Api qualified as C
 import Convex.BuildTx (
@@ -30,7 +30,7 @@ import Convex.Class (
 import Convex.PlutusLedger.V1 (transPOSIXTime, unTransPOSIXTime, unTransPubKeyHash)
 import Convex.Utxos (toTxOut)
 import PlutusLedgerApi.Common (BuiltinByteString, fromBuiltin, toBuiltin)
-import PlutusLedgerApi.V3 (PubKeyHash (PubKeyHash, getPubKeyHash))
+import PlutusLedgerApi.V3 (POSIXTime, PubKeyHash (PubKeyHash, getPubKeyHash))
 import PlutusTx.Builtins qualified as PlutusTx
 
 import Midgard.Constants (shiftDuration)
@@ -83,7 +83,7 @@ initScheduler
           Scheduler.Datum
             { -- Starts with an invalid pub key hash. The aim is to replace it after the shift end time.
               operator = PubKeyHash $ PlutusTx.toBuiltin BS.empty
-            , startTime = transPOSIXTime startTime
+            , startTime = startTime
             }
     payToScriptInlineDatum
       netId
@@ -106,7 +106,7 @@ scheduleNextOperator ::
   ) =>
   Bool ->
   MidgardScripts ->
-  m (TxBuilder era)
+  m (TxBuilder era, POSIXTime)
 scheduleNextOperator
   isBeforeShiftEnd
   ms@MidgardScripts
@@ -133,7 +133,6 @@ scheduleNextOperator
       maybe (throwError "Invalid scheduler datum") pure $
         inlineDatumFromUTxO @Scheduler.Datum schedulerTxOut
     let Scheduler.Datum {operator = currentOperator, startTime = currentStartTime} = schedulerDatum
-    currentOperatorC <- either (throwError . show) pure $ unTransPubKeyHash currentOperator
     -- Find the next operator in schedule. This should be the previous node in the active operators linked list.
     activeOperatorsUtxos <-
       utxosByPaymentCredential $
@@ -158,7 +157,7 @@ scheduleNextOperator
     let predecessorActiveNodeTxOut = toTxOut @era predecessorActiveNodeUtxoAnyEra
     -- Figure out the next shift starting slot so it can be set in the validity range.
     let nextShiftStartTime = unTransPOSIXTime currentStartTime + shiftDuration
-    nextShiftStartSlot <- utcTimeToEnclosingSlot $ posixSecondsToUTCTime nextShiftStartTime
+    nextShiftStartSlot <- utcTimeToEnclosingSlot . posixSecondsToUTCTime $ nextShiftStartTime
     -- Decide whether to advance or rewind and obtain the information necessary for the chosen path.
     (nextOperator, additionalRefs, mkRedeemer) <-
       constructAdvanceOrRewind ms schedulerTxIn predecessorActiveNodeTxIn predecessorActiveNodeTxOut
@@ -167,7 +166,7 @@ scheduleNextOperator
             { operator = PubKeyHash nextOperator
             , startTime = transPOSIXTime nextShiftStartTime
             }
-    pure . execBuildTx $ do
+    pure . (,transPOSIXTime nextShiftStartTime) . execBuildTx $ do
       -- Witness the next operator being added and any other requirements.
       addReference predecessorActiveNodeTxIn
       traverse_ addReference additionalRefs
@@ -184,6 +183,8 @@ scheduleNextOperator
         (txOutValue schedulerTxOut)
       -- If a shift is ending prematurely, the existing operator must sign off.
       when isBeforeShiftEnd $ do
+        -- Assumption: Current operator is valid if we're passed isBeforeShiftEnd = rue.
+        currentOperatorC <- either (error . show) pure $ unTransPubKeyHash currentOperator
         addRequiredSignature currentOperatorC
       addBtx $ setValidity currentSlot nextShiftStartSlot
       setMinAdaDepositAll params
