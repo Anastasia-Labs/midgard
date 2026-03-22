@@ -118,6 +118,7 @@ scheduleNextOperator
     params <- queryProtocolParameters
     netId <- queryNetworkId
     (currentSlot, _, _) <- querySlotNo
+    -- Find the scheduler UTxO. There should be only one.
     schedulerUtxos <-
       utxosByPaymentCredential $
         C.PaymentCredentialByScript $
@@ -127,11 +128,13 @@ scheduleNextOperator
         findUTxOWithAsset schedulerUtxos $
           C.AssetId (mintingPolicyId schedulerPolicy) Scheduler.assetName
     let schedulerTxOut = toTxOut @era schedulerUtxoAnyEra
+    -- Obtain the current operator and shift info.
     schedulerDatum <-
       maybe (throwError "Invalid scheduler datum") pure $
         inlineDatumFromUTxO @Scheduler.Datum schedulerTxOut
     let Scheduler.Datum {operator = currentOperator, startTime = currentStartTime} = schedulerDatum
     currentOperatorC <- either (throwError . show) pure $ unTransPubKeyHash currentOperator
+    -- Find the next operator in schedule. This should be the previous node in the active operators linked list.
     activeOperatorsUtxos <-
       utxosByPaymentCredential $
         C.PaymentCredentialByScript $
@@ -146,25 +149,29 @@ scheduleNextOperator
     -- If currentOperator is empty bytestring, it's a placeholder. Find the last node and set it as operator.
     -- Otherwise, find the _previous_ node of the current operator.
     let finderF = if BS.null currentOperatorBytes then findFinalUTxONode else flip findUTxOWithLink currentOperatorBytes
-    (nextOperatorActiveNodeTxIn, (nextOperatorActiveNodeUtxoAnyEra, _)) <-
+    (predecessorActiveNodeTxIn, (predecessorActiveNodeUtxoAnyEra, _)) <-
       maybe
         (throwError "Previous active operator node not found")
         pure
         . flip runReaderT activeOperatorsListInfo
         $ finderF activeOperatorsUtxos
-    let nextOperatorActiveNodeTxOut = toTxOut @era nextOperatorActiveNodeUtxoAnyEra
+    let predecessorActiveNodeTxOut = toTxOut @era predecessorActiveNodeUtxoAnyEra
+    -- Figure out the next shift starting slot so it can be set in the validity range.
     let nextShiftStartTime = unTransPOSIXTime currentStartTime + shiftDuration
     nextShiftStartSlot <- utcTimeToEnclosingSlot $ posixSecondsToUTCTime nextShiftStartTime
+    -- Decide whether to advance or rewind and obtain the information necessary for the chosen path.
     (nextOperator, additionalRefs, mkRedeemer) <-
-      constructAdvanceOrRewind ms schedulerTxIn nextOperatorActiveNodeTxIn nextOperatorActiveNodeTxOut
+      constructAdvanceOrRewind ms schedulerTxIn predecessorActiveNodeTxIn predecessorActiveNodeTxOut
     let nextSchedulerDatum =
           Scheduler.Datum
             { operator = PubKeyHash nextOperator
             , startTime = transPOSIXTime nextShiftStartTime
             }
     pure . execBuildTx $ do
-      addReference nextOperatorActiveNodeTxIn
+      -- Witness the next operator being added and any other requirements.
+      addReference predecessorActiveNodeTxIn
       traverse_ addReference additionalRefs
+      -- Update the datum to reflect the next operator's shift.
       spendPlutusInlineDatumWithRedeemerFinal
         (toValidator schedulerValidator)
         schedulerTxIn
@@ -175,6 +182,7 @@ scheduleNextOperator
         nextSchedulerDatum
         C.NoStakeAddress
         (txOutValue schedulerTxOut)
+      -- If a shift is ending prematurely, the existing operator must sign off.
       when isBeforeShiftEnd $ do
         addRequiredSignature currentOperatorC
       addBtx $ setValidity currentSlot nextShiftStartSlot
@@ -227,11 +235,11 @@ constructAdvanceOrRewind
     , registeredOperatorsPolicy
     }
   schedulerTxIn
-  nextOperatorActiveNodeTxIn
-  nextOperatorActiveNodeTxOut = do
+  predecessorActiveNodeTxIn
+  predecessorActiveNodeTxOut = do
     activeNodeAssetName <-
       maybe (throwError "Previous active operator node missing operator NFT") pure $
-        listAssetNameFromUTxO (mintingPolicyId activeOperatorsPolicy) nextOperatorActiveNodeTxOut
+        listAssetNameFromUTxO (mintingPolicyId activeOperatorsPolicy) predecessorActiveNodeTxOut
     -- It may be that we're at the head of the list and the previous node is root. At this point, we must rewind back.
     if activeNodeAssetName == ActiveOperators.rootAssetName
       then do
@@ -292,7 +300,7 @@ constructAdvanceOrRewind
                         Scheduler.assetName
                         txBody
                 , activeNodeRefInputIndex = toInteger $ findIndexReference finalActiveOperatorTxIn txBody
-                , activeRootRefInputIndex = toInteger $ findIndexReference nextOperatorActiveNodeTxIn txBody
+                , activeRootRefInputIndex = toInteger $ findIndexReference predecessorActiveNodeTxIn txBody
                 , registeredElementRefInputIndex = toInteger $ findIndexReference finalRegisteredOperatorTxIn txBody
                 }
         pure (nextOperator, [finalActiveOperatorTxIn, finalRegisteredOperatorTxIn], mkRedeemer)
@@ -306,7 +314,7 @@ constructAdvanceOrRewind
                         (mintingPolicyId schedulerPolicy)
                         Scheduler.assetName
                         txBody
-                , activeNodeRefInputIndex = toInteger $ findIndexReference nextOperatorActiveNodeTxIn txBody
+                , activeNodeRefInputIndex = toInteger $ findIndexReference predecessorActiveNodeTxIn txBody
                 }
         pure (assetNameToActiveOperatorKey activeNodeAssetName, [], mkRedeemer)
 
