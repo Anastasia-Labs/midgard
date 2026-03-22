@@ -111,7 +111,8 @@ pub fn validate_operator_transfer_and_get_inserted_data(
   operator: VerificationKeyHash,
   origin_list_policy_id: PolicyId,
   origin_list_redeemer_index: Int,
-  origin_list_redeemer_to_operator: fn(Data) -> VerificationKeyHash,
+  origin_list_redeemer_to_operator_and_penalty_flag: fn(Data) ->
+    (VerificationKeyHash, Bool),
   target_list_anchor_element_input_index: Int,
   target_list_anchor_element_output_index: Int,
   target_list_inserted_node_output_index: Int,
@@ -129,7 +130,7 @@ pub fn validate_operator_transfer_and_get_inserted_data(
           redeemer_index: origin_list_redeemer_index,
         )
 
-  let operator_from_origin_list_redeemer =
+  let (operator_from_origin_list_redeemer, must_partially_slash) =
     origin_list_redeemer_to_operator(origin_list_redeemer_data)
 
   // 2. The operator from target list's redeemer must agree with the one
@@ -164,8 +165,15 @@ pub fn validate_operator_transfer_and_get_inserted_data(
   // 5. ADA of anchor element must be preserved.
   expect anchor_lovelace_change >= 0
 
-  // 6. ADA bond must be transferred from the origin operator node.
-  expect inserted_node_lovelace >= required_bond
+  expect
+    if must_partially_slash {
+      // 6a. ADA bond must be transferred from the origin operator node, without
+      //     the slashing penalty paid as transaction fees.
+      inserted_node_lovelace >= required_bond - slashing_penalty
+    } else {
+      // 6b. ADA bond must be transferred from the origin operator node.
+      inserted_node_lovelace >= required_bond
+    }
 
   // 7. The newly inserted node must carry the same operator as the one
   //    provided via the redeemer as its key.
@@ -248,8 +256,8 @@ fn slash_operator_and_get_hub_datum(
   expect fee >= slashing_penalty
 
   // 7. If operator is currently active, validate scheduler datum is getting
-  //    updated. Otherwise show the currently appointed operator is different
-  //    than the slashing operator.
+  //    updated. Otherwise, show the currently appointed operator is different
+  //    from the slashing operator.
   expect
     operator_status
       |> validate_operator_status_against_scheduler(
@@ -264,10 +272,11 @@ fn slash_operator_and_get_hub_datum(
   return(hub_datum)
 }
 
-/// Given an operator status (appointed active or not), this functions retrieves
-/// the scheduler policy ID and if the operator is currently active, validates
-/// scheduler UTxO is spent with the "advance" redeemer. Otherwise shows the
-/// currently appointed operator is different than the subject operator.
+/// Given an operator status (appointed active or not), this function retrieves
+/// the scheduler policy ID from the oracle hub datum, and if the operator is
+/// currently active, validates scheduler UTxO is spent with the "advance"
+/// redeemer. Otherwise, shows that the currently appointed operator is
+/// different from the subject operator.
 pub fn validate_operator_status_against_scheduler(
   operator_status: OperatorStatus,
   subject_operator: VerificationKeyHash,

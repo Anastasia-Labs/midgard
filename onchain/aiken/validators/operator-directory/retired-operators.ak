@@ -81,12 +81,13 @@ validator mint(hub_oracle_script_hash: PolicyId) {
               new_retired_operator_key,
               hub_datum.active_operators,
               active_operators_redeemer_index,
-              fn(active_operators_redeemer_data) -> VerificationKeyHash {
+              fn(active_operators_redeemer_data) -> (VerificationKeyHash, Bool) {
                 expect active_operators.RetireOperator {
                   active_operator_key,
+                  penalize_for_inactivity,
                   ..
                 } = active_operators_redeemer_data
-                active_operator_key
+                (active_operator_key, penalize_for_inactivity)
               },
               retired_operator_anchor_element_input_index,
               retired_operator_anchor_element_output_index,

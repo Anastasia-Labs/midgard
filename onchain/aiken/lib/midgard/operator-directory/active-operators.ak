@@ -91,6 +91,7 @@ pub type MintRedeemer {
     active_operator_anchor_element_output_index: Int,
     retired_operators_redeemer_index: Int,
     operator_status: OperatorStatus,
+    penalize_for_inactivity: Bool,
   }
 }
 

@@ -9,7 +9,7 @@ use midgard/common/utils
 use midgard/hub_oracle as hub
 use midgard/operator_directory.{
   deinit, init, remove_operator_for_bad_settlement,
-  remove_operator_for_bad_state,
+  remove_operator_for_bad_state, validate_operator_status_against_scheduler,
   validate_operator_transfer_and_get_inserted_data,
 }
 use midgard/operator_directory/active_operators.{
@@ -183,9 +183,10 @@ validator spend(
         let Transaction { inputs, outputs, mint, .. } = self
 
         let linked_list_eval = {
+          // 1. Spending and reproducing the linked list node must be proper.
           let
             lovelace_change,
-            m_operator,
+            _m_operator,
             active_node_input_data,
             active_node_output_data,
           <-
@@ -197,15 +198,19 @@ validator spend(
               outputs: outputs,
               tx_mint: mint,
             )
+
+          // 2. ADA of the node must be preserved.
+          expect lovelace_change >= 0
+
+          // 3. The underlying data must only have its strike counts incremented
+          //    by 1.
           expect NodeData {
             inactivity_strikes: input_strikes,
             bond_unlock_time: input_bond_unlock_time,
           } = active_node_input_data
-          let output_inactivity_strikes = input_strikes + 1
-          expect output_inactivity_strikes <= max_inactivity_strikes
           let expected_output_node_data: Data =
             NodeData {
-              inactivity_strikes: output_inactivity_strikes,
+              inactivity_strikes: input_strikes + 1,
               bond_unlock_time: input_bond_unlock_time,
             }
           expect active_node_output_data == expected_output_node_data
@@ -259,12 +264,15 @@ validator mint(
               new_active_operator_key,
               registered_operators_policy_id,
               registered_operators_redeemer_index,
-              fn(registered_operators_redeemer_data) -> VerificationKeyHash {
+              fn(registered_operators_redeemer_data) -> (
+                VerificationKeyHash,
+                Bool,
+              ) {
                 expect registered_operators.ActivateOperator {
                   activating_operator,
                   ..
                 } = registered_operators_redeemer_data
-                activating_operator
+                (activating_operator, False)
               },
               active_operator_anchor_element_input_index,
               active_operator_anchor_element_output_index,
@@ -336,21 +344,21 @@ validator mint(
         active_operator_removed_node_input_index,
         active_operator_anchor_element_output_index,
         retired_operators_redeemer_index,
+        hub_oracle_ref_input_index,
         operator_status,
+        penalize_for_inactivity,
       } -> {
         let Transaction {
           inputs,
           outputs,
           mint,
+          reference_inputs,
           redeemers,
           extra_signatories,
           ..
         } = self
 
-        // 1. The retiring operator must consent to the transaction.
-        expect active_operator_key |> utils.has_signed(extra_signatories)
-
-        // 2. Retired operators directory must insert a new node via the
+        // 1. Retired operators directory must insert a new node via the
         //    `RetireOperator` redeemer, with a matching operator key.
         expect retired_operators.RetireOperator {
           new_retired_operator_key,
@@ -364,7 +372,27 @@ validator mint(
               )
         expect active_operator_key == new_retired_operator_key
 
-        // 3. Specified inputs and output for removal of the active operator's
+        // 2. Transaction must refer to the authentic hub oracle UTxO.
+        let hub_datum =
+          hub.get_datum(
+            reference_inputs,
+            hub_oracle_script_hash,
+            hub_oracle_ref_input_index,
+          )
+
+        // 3. Ensure scheduler datum is getting updated if needed, or show that
+        //    it doesn't need to.
+        expect
+          operator_status
+            |> validate_operator_status_against_scheduler(
+                active_operator_key,
+                hub_datum,
+                inputs,
+                reference_inputs,
+                redeemers,
+              )
+
+        // 4. Specified inputs and output for removal of the active operator's
         //    node from the linked list must exist at their indices.
         expect Some(active_operator_anchor_element_input) =
           inputs |> list.at(active_operator_anchor_element_input_index)
@@ -373,7 +401,7 @@ validator mint(
         expect Some(active_operator_anchor_element_output) =
           outputs |> list.at(active_operator_anchor_element_output_index)
 
-        // 4. Linked list's removal logic must be valid for the specified
+        // 5. Linked list's removal logic must be valid for the specified
         //    inputs and output.
         {
           let
@@ -392,25 +420,45 @@ validator mint(
               mint,
             )
 
-          // 5. Anchor element's ADA must be preserved.
+          // 6. Anchor element's ADA must be preserved.
           expect anchor_lovelace_change >= 0
 
-          // 6. Key of the removing node must match the operator key specified
+          // 7. Key of the removing node must match the operator key specified
           //    via the redeemer.
           expect active_operator_key == active_operator_node_key
 
-          // 7. The `bond_unlock_time` redeemer argument from the retired
+          expect NodeData {
+            inactivity_strikes,
+            bond_unlock_time: removing_nodes_bond_unlock_time,
+          } = active_operator_node_data
+
+          // 8. The `bond_unlock_time` redeemer argument from the retired
           //    operators directory must match the removing node's datum. This
           //    allows the minting of the retired operator's node to be able to
           //    rely on its correctness.
-          let expected_removing_node_data: Data =
-            NodeData {
-              bond_unlock_time: retired_operators_redeemer_bond_unlock_time,
-            }
-          expect active_operator_node_data == expected_removing_node_data
+          expect
+            removing_nodes_bond_unlock_time == retired_operators_redeemer_bond_unlock_time
 
-          // Done.
-          True
+          if penalize_for_inactivity {
+            // 9a. Since retired operators minting script relies on the penalty
+            //     flag here, its correctness must be verified.
+            expect inactivity_strikes >= max_inactivity_strikes
+
+            // 10a. With enough strikes, 
+            expect self.fee >= slashing_penalty
+
+            // Done.
+            True
+          } else {
+            // 9a. The penalty flag must be valid.
+            expect inactivity_strikes < max_inactivity_strikes
+
+            // 10a. The retiring operator must consent to the transaction.
+            expect active_operator_key |> utils.has_signed(extra_signatories)
+
+            // Done.
+            True
+          }
         }
           |> finalize_linked_list(own_policy_id)
       }
