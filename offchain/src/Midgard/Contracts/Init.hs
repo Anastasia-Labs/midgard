@@ -14,6 +14,7 @@ import Convex.BuildTx (
   setMinAdaDepositAll,
  )
 import Convex.Class (MonadBlockchain (queryNetworkId, queryProtocolParameters, querySlotNo))
+import Convex.PlutusLedger.V1 (transPOSIXTime)
 import PlutusLedgerApi.V1 (ScriptHash (ScriptHash), currencySymbol, scriptHashAddress, toBuiltin)
 import Ply (
   PlutusVersion (PlutusV3),
@@ -99,7 +100,7 @@ initProtocol
         initRegisteredOperators netId scripts refScripts
         initActiveOperators netId scripts refScripts
         initRetiredOperators netId scripts refScripts
-        initScheduler netId currentTime scripts
+        initScheduler netId (transPOSIXTime currentTime) scripts
         setMinAdaDepositAll params
     where
       scriptCurrencySymbol = currencySymbol . policyIdBytes . mintingPolicyId
