@@ -104,6 +104,7 @@ library
     Midgard.Contracts.Init
     Midgard.Contracts.RegisteredOperators
     Midgard.Contracts.RetiredOperators
+    Midgard.Contracts.Scheduler
     Midgard.Contracts.Utils
     Midgard.Scripts
     Midgard.ScriptUtils
