@@ -30,6 +30,7 @@ import Convex.Class (
   MonadUtxoQuery,
   utxosByPaymentCredential,
  )
+import Convex.PlutusLedger.V1 (transPubKeyHash)
 import Convex.Utils (utcTimeToPosixTime)
 import Convex.Utxos (toTxOut)
 import PlutusLedgerApi.V3 (POSIXTime)
@@ -49,7 +50,6 @@ import Midgard.Contracts.Utils (
   findUTxOWithLink,
   inlineDatumFromUTxO,
   nextOutIx,
-  pubKeyHashFromCardano,
   slotToEndUTCTime,
  )
 import Midgard.ScriptUtils (
@@ -147,7 +147,7 @@ registerOperator
     (currentSlot, _, _) <- querySlotNo
     -- 5 minute grace period.
     -- Note: The upper bound ends _before_ the beginning of this slot. i.e end time of last slot.
-    let validityUpperBoundExclusive = C.SlotNo $ C.unSlotNo currentSlot + 300
+    let validityUpperBoundExclusive = currentSlot + 300
     validityUpperBoundPosixExclusive <- slotToEndUTCTime $ validityUpperBoundExclusive - 1
     let activationTime = utcTimeToPosixTime $ addUTCTime registrationDuration validityUpperBoundPosixExclusive
     let newNodeAsset =
@@ -260,7 +260,7 @@ registerOperator
         policyId
         ( \txBody ->
             RegisteredOperators.RegisterOperator
-              { registeringOperator = pubKeyHashFromCardano operatorPkh
+              { registeringOperator = transPubKeyHash operatorPkh
               , rootInputIndex =
                   toInteger $
                     findIndexSpending rootRegistryTxIn txBody
