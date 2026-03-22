@@ -20,7 +20,7 @@ import Midgard.Contracts.Init
 
 import Midgard.Scripts (MidgardRefScripts (..), MidgardScripts (..))
 
-import Spec.Types (TestTxError (SubmissionError, TxBalancingError))
+import Spec.Types (TestTxError (SubmissionError, TxBalancingError, TxBuildingError))
 
 -- | Similar to 'testCase' but initializes the midgard protocol as setup.
 midgardTestCase ::
@@ -46,7 +46,7 @@ midgardTestCase ms str act = testCase str . mockchainSucceeds . failOnError $ do
           , registeredOperatorsPolicyRef
           }
   -- Initialize protocol.
-  txBody <- initProtocol ms refScripts
+  txBody <- withExceptT TxBuildingError $ initProtocol ms refScripts
   void $ balanceAndSubmit' Wallet.w1 txBody TrailingChange []
   -- Run the user action.
   act refScripts
