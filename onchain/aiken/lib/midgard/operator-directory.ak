@@ -14,9 +14,12 @@ use midgard/protocol_parameters.{required_bond, slashing_penalty}
 use midgard/settlement
 use midgard/state_queue
 
-pub type OperatorStatus {
-  CurrentlyInactive { scheduler_ref_input_index: Int }
-  CurrentlyActive { scheduler_input_index: Int, scheduler_redeemer_index: Int }
+pub type OperatorStatusRedeemer {
+  ShowOperatorIsInactive { scheduler_ref_input_index: Int }
+  ShowRedeemerIsAdvancing {
+    scheduler_input_index: Int,
+    scheduler_redeemer_index: Int,
+  }
 }
 
 pub type Datum<node_data> =
@@ -198,7 +201,7 @@ fn slash_operator_and_get_hub_datum(
   slashed_operator_anchor_element_input_index: Int,
   slashed_operator_node_input_index: Int,
   slashed_operator_anchor_element_output_index: Int,
-  operator_status: OperatorStatus,
+  operator_status: OperatorStatusRedeemer,
   inputs: List<Input>,
   outputs: List<Output>,
   reference_inputs: List<Input>,
@@ -260,7 +263,7 @@ fn slash_operator_and_get_hub_datum(
   //    from the slashing operator.
   expect
     operator_status
-      |> validate_operator_status_against_scheduler(
+      |> redeem_operator_status_against_scheduler(
           slashed_operator_key,
           hub_datum,
           inputs,
@@ -272,21 +275,20 @@ fn slash_operator_and_get_hub_datum(
   return(hub_datum)
 }
 
-/// Given an operator status (appointed active or not), this function retrieves
-/// the scheduler policy ID from the oracle hub datum, and if the operator is
-/// currently active, validates scheduler UTxO is spent with the "advance"
-/// redeemer. Otherwise, shows that the currently appointed operator is
-/// different from the subject operator.
-pub fn validate_operator_status_against_scheduler(
-  operator_status: OperatorStatus,
+/// If the subject operator is currently appointed active, this function
+/// validates scheduler UTxO is spent with the "advance" redeemer. Otherwise,
+/// shows that the currently appointed operator is different from the subject
+/// operator.
+pub fn redeem_operator_status_against_scheduler(
+  operator_status_redeemer: OperatorStatusRedeemer,
   subject_operator: VerificationKeyHash,
   hub_datum: hub.Datum,
   inputs: List<Input>,
   reference_inputs: List<Input>,
   redeemers: Pairs<ScriptPurpose, Redeemer>,
 ) -> Bool {
-  when operator_status is {
-    CurrentlyInactive { scheduler_ref_input_index } -> {
+  when operator_status_redeemer is {
+    ShowOperatorIsInactive { scheduler_ref_input_index } -> {
       let scheduler_datum =
         reference_inputs
           |> scheduler.get_datum(hub_datum.scheduler, scheduler_ref_input_index)
@@ -296,9 +298,9 @@ pub fn validate_operator_status_against_scheduler(
           operator != subject_operator
       }
     }
-    CurrentlyActive { scheduler_input_index, scheduler_redeemer_index } -> {
+    ShowRedeemerIsAdvancing { scheduler_input_index, scheduler_redeemer_index } -> {
       let (scheduler_datum_data, scheduler_redeemer_data) =
-        utils.get_inline_datum_spending_redeemer_and_data_at(
+        utils.get_inline_datum_and_spending_redeemer_data_at(
           hub_datum.scheduler_addr,
           scheduler_input_index,
           scheduler_redeemer_index,
@@ -312,7 +314,7 @@ pub fn validate_operator_status_against_scheduler(
   }
 }
 
-pub fn remove_operator_for_bad_state(
+pub fn slash_operator_for_bad_state(
   hub_oracle_script_hash: PolicyId,
   slashed_operator_key: VerificationKeyHash,
   hub_oracle_ref_input_index: Int,
@@ -366,7 +368,7 @@ pub fn remove_operator_for_bad_state(
   True
 }
 
-pub fn remove_operator_for_bad_settlement(
+pub fn slash_operator_for_bad_settlement(
   hub_oracle_script_hash: PolicyId,
   slashed_operator_key: VerificationKeyHash,
   hub_oracle_ref_input_index: Int,

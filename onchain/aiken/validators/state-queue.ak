@@ -46,6 +46,7 @@ validator spend(state_queue_mint_script_hash: ByteArray) {
 validator mint(
   hub_oracle_script_hash: PolicyId,
   active_operators_script_hash: PolicyId,
+  active_operators_addr: Address,
   retired_operators_script_hash: PolicyId,
   scheduler_script_hash: PolicyId,
   fraud_proof_script_hash: PolicyId,
@@ -228,36 +229,18 @@ validator mint(
             output_end_time <= scheduler.shift_end_time(scheduler_start_time)
 
           // Update the operator's timestamp in the active operators set:
-          // 11. The transaction must include an input, spent via the Update
-          //     Bond Hold New State redeemer, of an `active_operators` node
-          //     with a key matching the `operator`.
-          //
-          //     Here we are indirectly validating the active operators spending
-          //     script is invoked by checking the presence of the linked list
-          //     NFT.
-          expect Some(Input {
-            output_reference: active_node_outref,
-            output: active_node_output,
-          }) = inputs |> list.at(active_operators_input_index)
-          let active_operators_linked_list_eval =
-            linked_list.get_element_info(
-              active_node_output,
-              fn(_, m_active_node_key, _, _) -> Bool {
-                Some(operator) == m_active_node_key
-              },
+          // 11. The transaction must include an input, spent via the
+          //     `UpdateBondHoldNewState` redeemer, of an `active_operators`
+          //     node with a key matching the `operator`.
+          expect active_operators.UpdateBondHoldNewState { active_operator, .. } =
+            utils.get_spending_redeemer_data_at(
+              active_operators_addr,
+              active_operators_input_index,
+              active_operators_redeemer_index,
+              inputs,
+              redeemers,
             )
-          expect
-            active_operators_linked_list_eval
-              |> active_operators.finalize_linked_list(
-                  active_operators_script_hash,
-                )
-          //
-          expect active_operators.UpdateBondHoldNewState { .. } =
-            redeemers
-              |> utils.get_redeemer_at(
-                  Spend(active_node_outref),
-                  active_operators_redeemer_index,
-                )
+          expect operator == active_operator
 
           // To validate the output header, we must take two routes depending on
           // whether the anchor element is the root (i.e. confirmed state), or a
@@ -459,7 +442,7 @@ validator mint(
             SlashActiveOperator { active_operators_redeemer_index } -> {
               // 2a. If the operator is active:
               //     The transaction must Remove a node from the
-              //     `active_operators` set via the `RemoveOperatorBadState`
+              //     `active_operators` set via the `SlashOperatorBadState`
               //     redeemer. The `slashed_operator` argument provided to that
               //     redeemer must match `fraudulent_operator`.
               let active_operators_redeemer_data =
@@ -468,7 +451,7 @@ validator mint(
                   expected_purpose: Mint(active_operators_script_hash),
                   redeemer_index: active_operators_redeemer_index,
                 )
-              expect active_operators.RemoveOperatorBadState {
+              expect active_operators.SlashOperatorBadState {
                 slashed_active_operator_key,
                 ..
               } = active_operators_redeemer_data
@@ -477,7 +460,7 @@ validator mint(
             SlashRetiredOperator { retired_operators_redeemer_index } -> {
               // 2b. If the operator is retired:
               //     The transaction must Remove a node from the
-              //     `retired_operators` set via the `RemoveOperatorBadState`
+              //     `retired_operators` set via the `SlashOperatorBadState`
               //     redeemer. The `slashed_operator` argument provided to that
               //     redeemer must match `fraudulent_operator`.
               let retired_operators_redeemer_data =
@@ -486,7 +469,7 @@ validator mint(
                   expected_purpose: Mint(active_operators_script_hash),
                   redeemer_index: retired_operators_redeemer_index,
                 )
-              expect retired_operators.RemoveOperatorBadState {
+              expect retired_operators.SlashOperatorBadState {
                 slashed_retired_operator_key,
                 ..
               } = retired_operators_redeemer_data
@@ -537,9 +520,9 @@ validator mint(
               //     be removed first.
               //
               //     > [!NOTE]
-              //     > The successor node is also considered fraudulent because of
-              //     > getting appended to a fraudulent block, so it does not need
-              //     > to have an associated fraud proof token.
+              //     > The successor node is also considered fraudulent because
+              //     > of getting appended to a fraudulent block, so it does not
+              //     > need to have an associated fraud proof token.
               expect Some(removed_block_input) =
                 inputs |> list.at(removed_block_input_index)
               expect Some(fraudulent_node_output) =
@@ -568,8 +551,8 @@ validator mint(
               anchor_element_input_index,
               anchor_element_output_index,
             } -> {
-              // 4b. If the fraudulent block has no links, it can be removed from
-              //     the very end of the state queue.
+              // 4b. If the fraudulent block has no links, it can be removed
+              //     from the very end of the state queue.
               expect Some(anchor_element_input) =
                 inputs |> list.at(anchor_element_input_index)
               expect Some(anchor_element_output) =

@@ -4,7 +4,7 @@ use aiken_design_patterns/linked_list
 use cardano/assets.{AssetName, PolicyId}
 use cardano/transaction.{OutputReference}
 use midgard/common/types.{PosixTime}
-use midgard/operator_directory.{OperatorStatus}
+use midgard/operator_directory.{OperatorStatusRedeemer}
 
 /// TODO: Refer to state queue's library module.
 pub const root_asset_name: AssetName = "MIDGARD_ACTIVE_OPERATORS"
@@ -31,6 +31,7 @@ pub type Datum =
 pub type SpendRedeemer {
   ListStateTransition
   UpdateBondHoldNewState {
+    active_operator: VerificationKeyHash,
     active_node_input_index: Int,
     active_node_output_index: Int,
     hub_oracle_ref_input_index: Int,
@@ -38,6 +39,7 @@ pub type SpendRedeemer {
     state_queue_redeemer_index: Int,
   }
   UpdateBondHoldNewSettlement {
+    active_operator: VerificationKeyHash,
     active_node_input_index: Int,
     active_node_output_index: Int,
     hub_oracle_ref_input_index: Int,
@@ -65,16 +67,16 @@ pub type MintRedeemer {
     active_operator_inserted_node_output_index: Int,
     registered_operators_redeemer_index: Int,
   }
-  RemoveOperatorBadState {
+  SlashOperatorBadState {
     slashed_active_operator_key: VerificationKeyHash,
     hub_oracle_ref_input_index: Int,
     active_operator_anchor_element_input_index: Int,
     active_operator_slashed_node_input_index: Int,
     active_operator_anchor_element_output_index: Int,
     state_queue_redeemer_index: Int,
-    operator_status: OperatorStatus,
+    operator_status_redeemer: OperatorStatusRedeemer,
   }
-  RemoveOperatorBadSettlement {
+  SlashOperatorBadSettlement {
     slashed_active_operator_key: VerificationKeyHash,
     hub_oracle_ref_input_index: Int,
     active_operator_anchor_element_input_index: Int,
@@ -82,16 +84,17 @@ pub type MintRedeemer {
     active_operator_anchor_element_output_index: Int,
     settlement_input_index: Int,
     settlement_redeemer_index: Int,
-    operator_status: OperatorStatus,
+    operator_status_redeemer: OperatorStatusRedeemer,
   }
   RetireOperator {
     active_operator_key: VerificationKeyHash,
+    hub_oracle_ref_input_index: Int,
     active_operator_anchor_element_input_index: Int,
     active_operator_removed_node_input_index: Int,
     active_operator_anchor_element_output_index: Int,
     retired_operators_redeemer_index: Int,
-    operator_status: OperatorStatus,
     penalize_for_inactivity: Bool,
+    operator_status_redeemer: OperatorStatusRedeemer,
   }
 }
 

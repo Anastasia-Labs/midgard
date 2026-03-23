@@ -82,10 +82,11 @@ validator spend(hub_oracle: ScriptHash, settlement_policy_id: ScriptHash) {
           hub.get_datum(reference_inputs, hub_oracle, hub_ref_input_index)
 
         // 6. The transaction must include an input (`operator_node`), spent via
-        //    the Update Bond Hold New Settlement redeemer, of an
+        //    `the UpdateBondHoldNewSettlement` redeemer, of an
         //    `active_operators` node with a key matching the resolution claim's
         //    operator.
         expect active_operators.UpdateBondHoldNewSettlement {
+          active_operator,
           new_bond_unlock_time,
           ..
         } =
@@ -96,6 +97,7 @@ validator spend(hub_oracle: ScriptHash, settlement_policy_id: ScriptHash) {
             inputs: inputs,
             redeemers: redeemers,
           )
+        expect operator == active_operator
 
         // 7. The `bond_unlock_time` of the `operator_node` must match the
         //    `resolution_time` of the resolution claim, which lies in the
@@ -231,17 +233,17 @@ validator spend(hub_oracle: ScriptHash, settlement_policy_id: ScriptHash) {
         expect valid_to < resolution_time
 
         // 8. Let `operator_is_active` be a redeemer argument indicating whether
-        //    `operator` is active or retired.
+        //    `operator` is in the active operators set or retired set.
         if operator_is_active {
           // 9a. The transaction must remove a node from the active operators
-          //     list via the Remove Operator Bad Settlement redeemer.
+          //     list via the `SlashOperatorBadSettlement` redeemer.
           let active_operators_mint_redeemer_data =
             redeemers
               |> utils.get_redeemer_at(
                   Mint(active_operators),
                   operators_redeemer_index,
                 )
-          expect active_operators.RemoveOperatorBadSettlement {
+          expect active_operators.SlashOperatorBadSettlement {
             slashed_active_operator_key,
             ..
           }: active_operators.MintRedeemer = active_operators_mint_redeemer_data
@@ -251,14 +253,14 @@ validator spend(hub_oracle: ScriptHash, settlement_policy_id: ScriptHash) {
           True
         } else {
           // 9b. The transaction must remove a node from the retired operators
-          //     list via the Remove Operator Bad Settlement redeemer.
+          //     list via the `SlashOperatorBadSettlement` redeemer.
           let retired_operators_mint_redeemer_data =
             redeemers
               |> utils.get_redeemer_at(
                   Mint(retired_operators),
                   operators_redeemer_index,
                 )
-          expect retired_operators.RemoveOperatorBadSettlement {
+          expect retired_operators.SlashOperatorBadSettlement {
             slashed_retired_operator_key,
             ..
           }: retired_operators.MintRedeemer =
@@ -387,8 +389,8 @@ validator mint(hub_oracle: ScriptHash) {
         True
       }
       Remove { settlement_id, input_index, spend_redeemer_index } -> {
-        // 1. The transaction must spend the specified settlement utxo. Let
-        //    `removed_settlement` be that utxo.
+        // 1. The transaction must spend the specified settlement UTxO. Let
+        //    `removed_settlement` be that UTxO.
         expect Input {
           output: Output { datum: InlineDatum(input_datum_data), .. },
           output_reference: input_outref,
@@ -400,14 +402,11 @@ validator mint(hub_oracle: ScriptHash) {
                 input_index,
               )
 
-        let settlement_spending_redeemer_data =
-          redeemers
-            |> utils.get_redeemer_at(Spend(input_outref), spend_redeemer_index)
-
         // 2. The redeemer used for spending the `removed_settlement` must be
         //    `Resolve`. This also validates the specified NFT is getting burnt.
         expect Resolve { settlement_id: settlement_id_from_spend_redeemer }: SpendRedeemer =
-          settlement_spending_redeemer_data
+          redeemers
+            |> utils.get_redeemer_at(Spend(input_outref), spend_redeemer_index)
 
         // 3. The `settlement_id` included in the spending redeemer must match
         //    the ID provided in the burning redeemer.

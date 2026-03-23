@@ -12,7 +12,7 @@ use midgard/operator_directory/active_operators
 use midgard/operator_directory/registered_operators.{
   ActivateOperator, Datum, Deinit, DeregisterOperator, DuplicateIsActive,
   DuplicateIsRegistered, DuplicateIsRetired, Init, MintRedeemer, NodeData,
-  RegisterOperator, RemoveDuplicateSlashBond, activation_time_to_node_key,
+  RegisterOperator, SlashDuplicateOperator, activation_time_to_node_key,
   finalize_linked_list, node_key_to_activation_time, root_asset_name,
 }
 use midgard/operator_directory/retired_operators
@@ -332,7 +332,7 @@ validator mint(
         // Done.
         True
       }
-      RemoveDuplicateSlashBond {
+      SlashDuplicateOperator {
         duplicate_operator,
         anchor_element_input_index,
         removed_node_input_index,

@@ -8,13 +8,13 @@ use cardano/transaction.{
 use midgard/common/utils
 use midgard/hub_oracle as hub
 use midgard/operator_directory.{
-  deinit, init, remove_operator_for_bad_settlement,
-  remove_operator_for_bad_state, validate_operator_status_against_scheduler,
+  deinit, init, redeem_operator_status_against_scheduler,
+  remove_operator_for_bad_state, slash_operator_for_bad_settlement,
   validate_operator_transfer_and_get_inserted_data,
 }
 use midgard/operator_directory/active_operators.{
   ActivateOperator, Datum, Deinit, Init, ListStateTransition, MintRedeemer,
-  NodeData, RemoveOperatorBadSettlement, RemoveOperatorBadState, RetireOperator,
+  NodeData, RetireOperator, SlashOperatorBadSettlement, SlashOperatorBadState,
   SpendRedeemer, StrikeForInactivity, UpdateBondHoldNewSettlement,
   UpdateBondHoldNewState, finalize_linked_list, root_asset_name,
 }
@@ -41,6 +41,7 @@ validator spend(
           self.mint,
         )
       UpdateBondHoldNewState {
+        active_operator,
         active_node_input_index,
         active_node_output_index,
         hub_oracle_ref_input_index,
@@ -61,10 +62,10 @@ validator spend(
         //    node must pass.
         let
           _new_bond_unlock_time,
-          active_operator_key,
           hub_datum,
         <-
           spend_for_updating_bond_unlock_time(
+            active_operator,
             active_operators_mint_script_hash,
             hub_oracle_script_hash,
             active_node_input_index,
@@ -99,12 +100,13 @@ validator spend(
 
         // 3. The operator specified in state queue's redeemer must match the
         //    key of the spending active operator node.
-        expect state_queue_redeemer_operator == active_operator_key
+        expect state_queue_redeemer_operator == active_operator
 
         // Done.
         True
       }
       UpdateBondHoldNewSettlement {
+        active_operator,
         active_node_input_index,
         active_node_output_index,
         hub_oracle_ref_input_index,
@@ -126,10 +128,10 @@ validator spend(
         //    node must pass.
         let
           computed_new_bond_unlock_time,
-          active_operator_key,
           hub_datum,
         <-
           spend_for_updating_bond_unlock_time(
+            active_operator,
             active_operators_mint_script_hash,
             hub_oracle_script_hash,
             active_node_input_index,
@@ -166,9 +168,9 @@ validator spend(
             redeemers,
           )
 
-        // 4. The operator specified in settlement's redeemer must match the
+        // 5. The operator specified in settlement's redeemer must match the
         //    key of the spending active operator node.
-        expect settlement_redeemer_operator == active_operator_key
+        expect settlement_redeemer_operator == active_operator
 
         // Done.
         True
@@ -294,14 +296,14 @@ validator mint(
         }
           |> finalize_linked_list(own_policy_id)
       }
-      RemoveOperatorBadState {
+      SlashOperatorBadState {
         slashed_active_operator_key,
         hub_oracle_ref_input_index,
         active_operator_anchor_element_input_index,
         active_operator_slashed_node_input_index,
         active_operator_anchor_element_output_index,
         state_queue_redeemer_index,
-        operator_status,
+        operator_status_redeemer,
       } ->
         remove_operator_for_bad_state(
           hub_oracle_script_hash,
@@ -311,11 +313,11 @@ validator mint(
           active_operator_slashed_node_input_index,
           active_operator_anchor_element_output_index,
           state_queue_redeemer_index,
-          operator_status,
+          operator_status_redeemer,
           self,
         )
           |> finalize_linked_list(own_policy_id)
-      RemoveOperatorBadSettlement {
+      SlashOperatorBadSettlement {
         slashed_active_operator_key,
         hub_oracle_ref_input_index,
         active_operator_anchor_element_input_index,
@@ -323,9 +325,9 @@ validator mint(
         active_operator_anchor_element_output_index,
         settlement_input_index,
         settlement_redeemer_index,
-        operator_status,
+        operator_status_redeemer,
       } ->
-        remove_operator_for_bad_settlement(
+        slash_operator_for_bad_settlement(
           hub_oracle_script_hash,
           slashed_active_operator_key,
           hub_oracle_ref_input_index,
@@ -334,19 +336,19 @@ validator mint(
           active_operator_anchor_element_output_index,
           settlement_input_index,
           settlement_redeemer_index,
-          operator_status,
+          operator_status_redeemer,
           self,
         )
           |> finalize_linked_list(own_policy_id)
       RetireOperator {
         active_operator_key,
+        hub_oracle_ref_input_index,
         active_operator_anchor_element_input_index,
         active_operator_removed_node_input_index,
         active_operator_anchor_element_output_index,
         retired_operators_redeemer_index,
-        hub_oracle_ref_input_index,
-        operator_status,
         penalize_for_inactivity,
+        operator_status_redeemer,
       } -> {
         let Transaction {
           inputs,
@@ -383,8 +385,8 @@ validator mint(
         // 3. Ensure scheduler datum is getting updated if needed, or show that
         //    it doesn't need to.
         expect
-          operator_status
-            |> validate_operator_status_against_scheduler(
+          operator_status_redeemer
+            |> redeem_operator_status_against_scheduler(
                 active_operator_key,
                 hub_datum,
                 inputs,
@@ -450,10 +452,10 @@ validator mint(
             // Done.
             True
           } else {
-            // 9a. The penalty flag must be valid.
+            // 9b. The penalty flag must be valid.
             expect inactivity_strikes < max_inactivity_strikes
 
-            // 10a. The retiring operator must consent to the transaction.
+            // 10b. The retiring operator must consent to the transaction.
             expect active_operator_key |> utils.has_signed(extra_signatories)
 
             // Done.
@@ -471,6 +473,7 @@ validator mint(
 }
 
 fn spend_for_updating_bond_unlock_time(
+  active_operator: VerificationKeyHash,
   active_operators_mint_script_hash: ByteArray,
   hub_oracle_script_hash: PolicyId,
   active_node_input_index: Int,
@@ -482,7 +485,7 @@ fn spend_for_updating_bond_unlock_time(
   reference_inputs: List<Input>,
   mint: Value,
   validity_range: ValidityRange,
-  return: fn(Int, VerificationKeyHash, hub.Datum) -> Bool,
+  return: fn(Int, hub.Datum) -> Bool,
 ) -> Bool {
   // 1. The new bond unlock time must be equal to the transaction's
   //    validity range upper bound plus the maturity duration.
@@ -511,8 +514,10 @@ fn spend_for_updating_bond_unlock_time(
     // 3. Node's ADA bond must be preserved.
     expect lovelace_change >= 0
 
-    // 4. The spent element must be a node (i.e. not root).
-    expect Some(operator) = m_operator
+    // 4. The spent element must be a node (i.e. not root) such that its key
+    //    matches the operator pub key hash specified in the redeemer. This
+    //    allows other contracts to rely on the key in the spending redeemer.
+    expect Some(active_operator) == m_operator
 
     // 5. The reproduced node must properly store the new bond unlock
     //    time.
@@ -528,7 +533,7 @@ fn spend_for_updating_bond_unlock_time(
         hub_oracle_ref_input_index,
       )
 
-    return(new_bond_unlock_time, operator, hub_datum)
+    return(new_bond_unlock_time, hub_datum)
   }
     |> finalize_linked_list(active_operators_mint_script_hash)
 }

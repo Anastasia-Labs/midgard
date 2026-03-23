@@ -66,7 +66,7 @@ pub type MintRedeemer {
     removed_node_input_index: Int,
     anchor_element_output_index: Int,
   }
-  RemoveDuplicateSlashBond {
+  SlashDuplicateOperator {
     duplicate_operator: VerificationKeyHash,
     anchor_element_input_index: Int,
     removed_node_input_index: Int,

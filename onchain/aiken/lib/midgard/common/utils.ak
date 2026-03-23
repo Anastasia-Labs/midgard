@@ -563,7 +563,7 @@ pub fn get_spending_redeemer_data_at(
 
 /// Similar to [`get_spending_redeemer_data_at`](#get_spending_redeemer_data_at),
 /// but also returns the inline datum's data.
-pub fn get_inline_datum_spending_redeemer_and_data_at(
+pub fn get_inline_datum_and_spending_redeemer_data_at(
   script_address: Address,
   input_index: Int,
   redeemer_index: Int,

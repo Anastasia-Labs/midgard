@@ -6,15 +6,14 @@ use cardano/transaction.{OutputReference, Redeemer, Transaction}
 use midgard/common/utils
 use midgard/hub_oracle as hub
 use midgard/operator_directory.{
-  deinit, init, remove_operator_for_bad_settlement,
-  remove_operator_for_bad_state,
+  deinit, init, slash_operator_for_bad_settlement, slash_operator_for_bad_state,
   validate_operator_transfer_and_get_inserted_data,
 }
 use midgard/operator_directory/active_operators
 use midgard/operator_directory/retired_operators.{
-  Deinit, Init, MintRedeemer, NodeData, RecoverOperatorBond,
-  RemoveOperatorBadSettlement, RemoveOperatorBadState, RetireOperator,
-  finalize_linked_list, root_asset_name,
+  Deinit, Init, MintRedeemer, NodeData, RecoverOperatorBond, RetireOperator,
+  SlashOperatorBadSettlement, SlashOperatorBadState, finalize_linked_list,
+  root_asset_name,
 }
 
 validator spend(retired_operators_mint_script_hash: PolicyId) {
@@ -187,7 +186,7 @@ validator mint(hub_oracle_script_hash: PolicyId) {
         }
           |> finalize_linked_list(own_policy_id)
       }
-      RemoveOperatorBadState {
+      SlashOperatorBadState {
         slashed_retired_operator_key,
         hub_oracle_ref_input_index,
         retired_operator_anchor_element_input_index,
@@ -195,7 +194,7 @@ validator mint(hub_oracle_script_hash: PolicyId) {
         retired_operator_anchor_element_output_index,
         state_queue_redeemer_index,
       } ->
-        remove_operator_for_bad_state(
+        slash_operator_for_bad_state(
           hub_oracle_script_hash,
           slashed_retired_operator_key,
           hub_oracle_ref_input_index,
@@ -206,7 +205,7 @@ validator mint(hub_oracle_script_hash: PolicyId) {
           self,
         )
           |> finalize_linked_list(own_policy_id)
-      RemoveOperatorBadSettlement {
+      SlashOperatorBadSettlement {
         slashed_retired_operator_key,
         hub_oracle_ref_input_index,
         retired_operator_anchor_element_input_index,
@@ -215,7 +214,7 @@ validator mint(hub_oracle_script_hash: PolicyId) {
         settlement_input_index,
         settlement_redeemer_index,
       } ->
-        remove_operator_for_bad_settlement(
+        slash_operator_for_bad_settlement(
           hub_oracle_script_hash,
           slashed_retired_operator_key,
           hub_oracle_ref_input_index,
