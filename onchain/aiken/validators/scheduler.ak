@@ -4,14 +4,17 @@ use aiken/interval
 use aiken/primitive/bytearray
 use aiken_design_patterns/linked_list
 use aiken_design_patterns/singular_utxo_indexer
+use cardano/address.{Address}
 use cardano/assets.{PolicyId}
 use cardano/transaction.{
   Input, Output, OutputReference, Transaction, ValidityRange,
 }
 use midgard/common/utils
 use midgard/hub_oracle as hub
+use midgard/ledger_state
 use midgard/operator_directory/active_operators
 use midgard/operator_directory/registered_operators
+use midgard/protocol_parameters.{operator_inactivity_timeout}
 use midgard/scheduler.{
   ActiveOperator, Advance, Datum, Deinit, Init, MintRedeemer, NoActiveOperators,
   Rewind, SkipInactiveOperator, SpendRedeemer, asset_name, shift_end_time,
@@ -345,7 +348,7 @@ validator spend(
             m_header_hash,
             confirmed_state_or_header_data,
             state_queue_link,
-          <- linked_list.get_element_info(state_queue_ref_input)
+          <- linked_list.get_element_info(state_queue_ref_input.output)
 
           // 5. The element must be the last in the state queue.
           expect None == state_queue_link
@@ -368,7 +371,7 @@ validator spend(
           expect
             validity_range
               |> interval.is_entirely_after(
-                  end_time + operator_inactivity_timeout,
+                  last_elements_end_time + operator_inactivity_timeout,
                 )
 
           // Done.

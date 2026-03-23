@@ -8,6 +8,7 @@ use cardano/transaction.{
 use midgard/common/utils
 use midgard/hub_oracle as hub
 use midgard/ledger_state
+use midgard/operator_directory.{SlashOperatorForBadSettlement}
 use midgard/operator_directory/active_operators
 use midgard/operator_directory/retired_operators
 use midgard/scheduler
@@ -120,16 +121,16 @@ validator spend(hub_oracle: ScriptHash, settlement_policy_id: ScriptHash) {
           }
         expect cont_output_datum_data == expected_output_datum_data
 
-        // 8. The transaction must include the `scheduler` utxo as a reference
+        // 8. The transaction must include the `scheduler` UTxO as a reference
         //    input, indicating that the current operator matches the resolution
         //    claim's operator.
-        let parsed_scheduler_state_datum: scheduler.Datum =
+        expect scheduler.ActiveOperator { operator: schedulers_operator, .. } =
           scheduler.get_datum(
             reference_inputs,
             scheduler,
             scheduler_ref_input_index,
           )
-        expect operator == parsed_scheduler_state_datum.operator
+        expect operator == schedulers_operator
 
         // Done. 
         True
@@ -232,44 +233,43 @@ validator spend(hub_oracle: ScriptHash, settlement_policy_id: ScriptHash) {
           utils.get_inclusive_upper_bound_of_interval(validity_range)
         expect valid_to < resolution_time
 
-        // 8. Let `operator_is_active` be a redeemer argument indicating whether
-        //    `operator` is in the active operators set or retired set.
-        if operator_is_active {
-          // 9a. The transaction must remove a node from the active operators
-          //     list via the `SlashOperatorBadSettlement` redeemer.
-          let active_operators_mint_redeemer_data =
-            redeemers
-              |> utils.get_redeemer_at(
-                  Mint(active_operators),
-                  operators_redeemer_index,
-                )
-          expect active_operators.SlashOperatorBadSettlement {
-            slashed_active_operator_key,
-            ..
-          }: active_operators.MintRedeemer = active_operators_mint_redeemer_data
-          expect slashed_active_operator_key == operator
+        // 8. Depending on whether the fraudulent operator is in the active set
+        //    or retired, retrieve the slashing reason from the set's burn
+        //    redeemer.
+        let slashing_reason_from_operators_set =
+          if operator_is_active {
+            operator_directory.cross_validate_slashing_reason(
+              operator,
+              active_operators,
+              operators_redeemer_index,
+              fn(redeemer_data: Data) {
+                expect active_operators.SlashOperator { slashing_arguments } =
+                  redeemer_data
+                slashing_arguments
+              },
+              redeemers,
+            )
+          } else {
+            operator_directory.cross_validate_slashing_reason(
+              operator,
+              retired_operators,
+              operators_redeemer_index,
+              fn(redeemer_data: Data) {
+                expect retired_operators.SlashOperator { slashing_arguments } =
+                  redeemer_data
+                slashing_arguments
+              },
+              redeemers,
+            )
+          }
 
-          // Done.
-          True
-        } else {
-          // 9b. The transaction must remove a node from the retired operators
-          //     list via the `SlashOperatorBadSettlement` redeemer.
-          let retired_operators_mint_redeemer_data =
-            redeemers
-              |> utils.get_redeemer_at(
-                  Mint(retired_operators),
-                  operators_redeemer_index,
-                )
-          expect retired_operators.SlashOperatorBadSettlement {
-            slashed_retired_operator_key,
-            ..
-          }: retired_operators.MintRedeemer =
-            retired_operators_mint_redeemer_data
-          expect slashed_retired_operator_key == operator
+        // 9. The reason for slashing the operator in either case must be due to
+        //    a bad settlement resolution claim.
+        expect SlashOperatorForBadSettlement { .. } =
+          slashing_reason_from_operators_set
 
-          // Done.
-          True
-        }
+        // Done.
+        True
       }
       Resolve { settlement_id } -> {
         // 1. The specified settlement NFT must be burnt.

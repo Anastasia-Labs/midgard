@@ -183,10 +183,18 @@ validator spend(
         scheduler_redeemer_index,
         hub_oracle_ref_input_index,
       } -> {
-        let Transaction { inputs, outputs, mint, .. } = self
+        let Transaction { inputs, outputs, mint, reference_inputs, .. } = self
 
-        let linked_list_eval = {
-          // 1. Spending and reproducing the linked list node must be proper.
+        // TODO: Validate scheduler UTxO is spent.
+        let hub_datum =
+          hub.get_datum(
+            reference_inputs,
+            hub_oracle_script_hash,
+            hub_oracle_ref_input_index,
+          )
+
+        // 1. Spending and reproducing the linked list node must be proper.
+        {
           let
             lovelace_change,
             _m_operator,
@@ -221,6 +229,7 @@ validator spend(
           // Done.
           True
         }
+          |> finalize_linked_list(active_operators_mint_script_hash)
       }
     }
   }
@@ -292,7 +301,10 @@ validator mint(
           // 2. Newly activated operator must have the bond unlock time which
           //    comes from the registered operators node.
           let expected_inserted_node_data: Data =
-            NodeData { bond_unlock_time: new_active_operator_bond_unlock_time }
+            NodeData {
+              bond_unlock_time: new_active_operator_bond_unlock_time,
+              inactivity_strikes: 0,
+            }
           expect inserted_node_data == expected_inserted_node_data
 
           // Done.

@@ -4,7 +4,7 @@ use aiken/crypto
 use aiken_design_patterns/linked_list
 use cardano/address.{Address}
 use cardano/assets.{Lovelace, PolicyId, quantity_of}
-use cardano/transaction.{Input, Mint, OutputReference, Spend, Transaction}
+use cardano/transaction.{Mint, OutputReference, Transaction}
 use midgard/common/constants.{empty_merkle_tree_root}
 use midgard/common/utils
 use midgard/fraud_proof
@@ -13,7 +13,7 @@ use midgard/ledger_state.{
   ConfirmedState, Header, genesis_header_hash, genesis_protocol_version,
   genesis_utxo_root,
 }
-use midgard/operator_directory
+use midgard/operator_directory.{SlashOperatorForBadState}
 use midgard/operator_directory/active_operators
 use midgard/operator_directory/retired_operators
 use midgard/protocol_parameters.{maturity_duration}
@@ -202,7 +202,7 @@ validator mint(
           // scheduler:
           // 8. The transaction must include a reference input with the
           //    scheduler NFT. Let that input's datum be the `scheduler_state`.
-          let scheduler.Datum {
+          expect scheduler.ActiveOperator {
             operator: scheduler_operator,
             start_time: scheduler_start_time,
           } =
@@ -446,17 +446,21 @@ validator mint(
               //     `active_operators` set via the `SlashOperatorBadState`
               //     redeemer. The `slashed_operator` argument provided to that
               //     redeemer must match `fraudulent_operator`.
-              let active_operators_redeemer_data =
-                utils.get_redeemer_at(
-                  redeemers: redeemers,
-                  expected_purpose: Mint(active_operators_script_hash),
-                  redeemer_index: active_operators_redeemer_index,
+              let slashing_reason_from_active_operators =
+                operator_directory.cross_validate_slashing_reason(
+                  fraudulent_operator,
+                  active_operators_script_hash,
+                  active_operators_redeemer_index,
+                  fn(redeemer_data: Data) {
+                    expect active_operators.SlashOperator { slashing_arguments } =
+                      redeemer_data
+                    slashing_arguments
+                  },
+                  redeemers,
                 )
-              expect active_operators.SlashOperatorBadState {
-                slashed_active_operator_key,
-                ..
-              } = active_operators_redeemer_data
-              fraudulent_operator == slashed_active_operator_key
+              expect SlashOperatorForBadState { .. } =
+                slashing_reason_from_active_operators
+              True
             }
             SlashRetiredOperator { retired_operators_redeemer_index } -> {
               // 2b. If the operator is retired:
@@ -464,17 +468,22 @@ validator mint(
               //     `retired_operators` set via the `SlashOperatorBadState`
               //     redeemer. The `slashed_operator` argument provided to that
               //     redeemer must match `fraudulent_operator`.
-              let retired_operators_redeemer_data =
-                utils.get_redeemer_at(
-                  redeemers: redeemers,
-                  expected_purpose: Mint(active_operators_script_hash),
-                  redeemer_index: retired_operators_redeemer_index,
+              let slashing_reason_from_retired_operators =
+                operator_directory.cross_validate_slashing_reason(
+                  fraudulent_operator,
+                  retired_operators_script_hash,
+                  retired_operators_redeemer_index,
+                  fn(redeemer_data: Data) {
+                    expect retired_operators.SlashOperator {
+                      slashing_arguments,
+                    } = redeemer_data
+                    slashing_arguments
+                  },
+                  redeemers,
                 )
-              expect retired_operators.SlashOperatorBadState {
-                slashed_retired_operator_key,
-                ..
-              } = retired_operators_redeemer_data
-              fraudulent_operator == slashed_retired_operator_key
+              expect SlashOperatorForBadState { .. } =
+                slashing_reason_from_retired_operators
+              True
             }
             OperatorAlreadySlashed {
               active_operators_element_ref_input_index,

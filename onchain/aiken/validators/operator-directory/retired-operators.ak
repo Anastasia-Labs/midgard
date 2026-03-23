@@ -1,5 +1,6 @@
 use aiken/collection/list
 use aiken/crypto.{VerificationKeyHash}
+use aiken/interval
 use aiken_design_patterns/linked_list
 use cardano/assets.{PolicyId}
 use cardano/transaction.{OutputReference, Redeemer, Transaction}
@@ -10,9 +11,8 @@ use midgard/operator_directory.{
 }
 use midgard/operator_directory/active_operators
 use midgard/operator_directory/retired_operators.{
-  Deinit, Init, MintRedeemer, NodeData, RecoverOperatorBond, RetireOperator,
-  SlashOperatorBadSettlement, SlashOperatorBadState, finalize_linked_list,
-  root_asset_name,
+  Deinit, Init, MintRedeemer, NodeData, RecoverOperatorBond, ReregisterOperator,
+  RetireOperator, SlashOperator, finalize_linked_list, root_asset_name,
 }
 
 validator spend(retired_operators_mint_script_hash: PolicyId) {

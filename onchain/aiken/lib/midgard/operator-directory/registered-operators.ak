@@ -1,6 +1,5 @@
 use aiken/builtin
 use aiken/crypto.{VerificationKeyHash}
-use aiken/interval
 use aiken/primitive/bytearray
 use aiken_design_patterns/linked_list
 use cardano/assets.{AssetName, PolicyId}

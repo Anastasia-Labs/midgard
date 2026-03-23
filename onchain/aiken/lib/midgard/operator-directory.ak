@@ -380,3 +380,22 @@ pub fn slash_operator(
     }
   }
 }
+
+pub fn cross_validate_slashing_reason(
+  fraudulent_operator: VerificationKeyHash,
+  target_operators_set_policy_id: PolicyId,
+  target_operators_set_redeemer_index: Int,
+  redeemer_to_slashing_arguments: fn(Redeemer) -> SlashingArguments,
+  redeemers: Pairs<ScriptPurpose, Redeemer>,
+) -> SlashingReason {
+  let target_operators_set_redeemer_data =
+    utils.get_redeemer_at(
+      redeemers: redeemers,
+      expected_purpose: Mint(target_operators_set_policy_id),
+      redeemer_index: target_operators_set_redeemer_index,
+    )
+  let SlashingArguments { slashed_operator, slashing_reason, .. } =
+    redeemer_to_slashing_arguments(target_operators_set_redeemer_data)
+  expect fraudulent_operator == slashed_operator
+  slashing_reason
+}
