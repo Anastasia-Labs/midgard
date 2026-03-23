@@ -12,7 +12,6 @@ module Midgard.Contracts.Utils (
   findFinalUTxONode,
   findUTxOWithLink,
   listAssetNameFromUTxO,
-  pubKeyHashFromCardano,
   findUTxOWithNodeData,
   mintPlutusRefWithRedeemerFinal,
   spendPlutusInlineDatumWithRedeemerFinal,
