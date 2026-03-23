@@ -8,19 +8,20 @@ use cardano/transaction.{
 use midgard/common/utils
 use midgard/hub_oracle as hub
 use midgard/operator_directory.{
-  deinit, init, redeem_operator_status_against_scheduler,
-  remove_operator_for_bad_state, slash_operator_for_bad_settlement,
+  deinit, init, redeem_operator_status_against_scheduler, slash_operator,
   validate_operator_transfer_and_get_inserted_data,
 }
 use midgard/operator_directory/active_operators.{
   ActivateOperator, Datum, Deinit, Init, ListStateTransition, MintRedeemer,
-  NodeData, RetireOperator, SlashOperatorBadSettlement, SlashOperatorBadState,
-  SpendRedeemer, StrikeForInactivity, UpdateBondHoldNewSettlement,
-  UpdateBondHoldNewState, finalize_linked_list, root_asset_name,
+  NodeData, RetireOperator, SlashOperator, SpendRedeemer, StrikeForInactivity,
+  UpdateBondHoldNewSettlement, UpdateBondHoldNewState, finalize_linked_list,
+  root_asset_name,
 }
 use midgard/operator_directory/registered_operators
 use midgard/operator_directory/retired_operators
-use midgard/protocol_parameters.{maturity_duration, max_inactivity_strikes}
+use midgard/protocol_parameters.{
+  inactivity_slashing_penalty, maturity_duration, max_inactivity_strikes,
+}
 use midgard/settlement
 use midgard/state_queue
 
@@ -296,50 +297,6 @@ validator mint(
         }
           |> finalize_linked_list(own_policy_id)
       }
-      SlashOperatorBadState {
-        slashed_active_operator_key,
-        hub_oracle_ref_input_index,
-        active_operator_anchor_element_input_index,
-        active_operator_slashed_node_input_index,
-        active_operator_anchor_element_output_index,
-        state_queue_redeemer_index,
-        operator_status_redeemer,
-      } ->
-        remove_operator_for_bad_state(
-          hub_oracle_script_hash,
-          slashed_active_operator_key,
-          hub_oracle_ref_input_index,
-          active_operator_anchor_element_input_index,
-          active_operator_slashed_node_input_index,
-          active_operator_anchor_element_output_index,
-          state_queue_redeemer_index,
-          operator_status_redeemer,
-          self,
-        )
-          |> finalize_linked_list(own_policy_id)
-      SlashOperatorBadSettlement {
-        slashed_active_operator_key,
-        hub_oracle_ref_input_index,
-        active_operator_anchor_element_input_index,
-        active_operator_slashed_node_input_index,
-        active_operator_anchor_element_output_index,
-        settlement_input_index,
-        settlement_redeemer_index,
-        operator_status_redeemer,
-      } ->
-        slash_operator_for_bad_settlement(
-          hub_oracle_script_hash,
-          slashed_active_operator_key,
-          hub_oracle_ref_input_index,
-          active_operator_anchor_element_input_index,
-          active_operator_slashed_node_input_index,
-          active_operator_anchor_element_output_index,
-          settlement_input_index,
-          settlement_redeemer_index,
-          operator_status_redeemer,
-          self,
-        )
-          |> finalize_linked_list(own_policy_id)
       RetireOperator {
         active_operator_key,
         hub_oracle_ref_input_index,
@@ -446,8 +403,9 @@ validator mint(
             //     flag here, its correctness must be verified.
             expect inactivity_strikes >= max_inactivity_strikes
 
-            // 10a. With enough strikes, 
-            expect self.fee >= slashing_penalty
+            // 10a. With enough strikes, anyone can partially slash the
+            //      operator,
+            expect self.fee >= inactivity_slashing_penalty
 
             // Done.
             True
@@ -464,6 +422,9 @@ validator mint(
         }
           |> finalize_linked_list(own_policy_id)
       }
+      SlashOperator { slashing_arguments } ->
+        slash_operator(hub_oracle_script_hash, slashing_arguments, self)
+          |> finalize_linked_list(own_policy_id)
     }
   }
 

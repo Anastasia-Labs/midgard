@@ -136,10 +136,6 @@ validator mint(hub_oracle_script_hash: PolicyId) {
         //    destination of the ADA bond is approved.
         expect retired_operator_key |> utils.has_signed(extra_signatories)
 
-        // TODO: Is ensuring inclusivity of significance here?
-        let valid_from =
-          utils.get_inclusive_lower_bound_of_interval(validity_range)
-
         // 2. Specified inputs and output for removal of the retired operator's
         //    node from the linked list must exist at their indices.
         expect Some(retired_operator_anchor_element_input) =
@@ -179,52 +175,15 @@ validator mint(hub_oracle_script_hash: PolicyId) {
           //    operator's commitment time.
           expect NodeData{bond_unlock_time: Some(bond_unlock_time)} =
             retired_operator_node_data
-          expect valid_from >= bond_unlock_time
+          expect validity_range |> interval.is_entirely_after(bond_unlock_time)
 
           // Done.
           True
         }
           |> finalize_linked_list(own_policy_id)
       }
-      SlashOperatorBadState {
-        slashed_retired_operator_key,
-        hub_oracle_ref_input_index,
-        retired_operator_anchor_element_input_index,
-        retired_operator_slashed_node_input_index,
-        retired_operator_anchor_element_output_index,
-        state_queue_redeemer_index,
-      } ->
-        slash_operator_for_bad_state(
-          hub_oracle_script_hash,
-          slashed_retired_operator_key,
-          hub_oracle_ref_input_index,
-          retired_operator_anchor_element_input_index,
-          retired_operator_slashed_node_input_index,
-          retired_operator_anchor_element_output_index,
-          state_queue_redeemer_index,
-          self,
-        )
-          |> finalize_linked_list(own_policy_id)
-      SlashOperatorBadSettlement {
-        slashed_retired_operator_key,
-        hub_oracle_ref_input_index,
-        retired_operator_anchor_element_input_index,
-        retired_operator_slashed_node_input_index,
-        retired_operator_anchor_element_output_index,
-        settlement_input_index,
-        settlement_redeemer_index,
-      } ->
-        slash_operator_for_bad_settlement(
-          hub_oracle_script_hash,
-          slashed_retired_operator_key,
-          hub_oracle_ref_input_index,
-          retired_operator_anchor_element_input_index,
-          retired_operator_slashed_node_input_index,
-          retired_operator_anchor_element_output_index,
-          settlement_input_index,
-          settlement_redeemer_index,
-          self,
-        )
+      SlashOperator { slashing_arguments } ->
+        slash_operator(hub_oracle_script_hash, slashing_arguments, self)
           |> finalize_linked_list(own_policy_id)
     }
   }

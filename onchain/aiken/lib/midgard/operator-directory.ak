@@ -10,16 +10,36 @@ use midgard/common/constants.{empty_data}
 use midgard/common/types.{Empty}
 use midgard/common/utils
 use midgard/hub_oracle as hub
-use midgard/protocol_parameters.{required_bond, slashing_penalty}
+use midgard/protocol_parameters.{
+  inactivity_slashing_penalty, required_bond, slashing_penalty,
+}
 use midgard/settlement
 use midgard/state_queue
 
 pub type OperatorStatusRedeemer {
   ShowOperatorIsInactive { scheduler_ref_input_index: Int }
-  ShowRedeemerIsAdvancing {
+  ShowSchedulerIsAdvancing {
     scheduler_input_index: Int,
     scheduler_redeemer_index: Int,
   }
+}
+
+pub type SlashingReason {
+  SlashOperatorForBadState { state_queue_redeemer_index: Int }
+  SlashOperatorForBadSettlement {
+    settlement_input_index: Int,
+    settlement_redeemer_index: Int,
+  }
+}
+
+pub type SlashingArguments {
+  slashed_operator: VerificationKeyHash,
+  hub_oracle_ref_input_index: Int,
+  slashed_operator_anchor_element_input_index: Int,
+  slashed_operator_node_input_index: Int,
+  slashed_operator_anchor_element_output_index: Int,
+  operator_status_redeemer: OperatorStatusRedeemer,
+  slashing_reason: SlashingReason,
 }
 
 pub type Datum<node_data> =
@@ -171,8 +191,9 @@ pub fn validate_operator_transfer_and_get_inserted_data(
   expect
     if must_partially_slash {
       // 6a. ADA bond must be transferred from the origin operator node, without
-      //     the slashing penalty paid as transaction fees.
-      inserted_node_lovelace >= required_bond - slashing_penalty
+      //     the inactivity slashing penalty (paid as transaction fees only,
+      //     TODO?).
+      inserted_node_lovelace >= required_bond - inactivity_slashing_penalty
     } else {
       // 6b. ADA bond must be transferred from the origin operator node.
       inserted_node_lovelace >= required_bond
@@ -189,27 +210,65 @@ pub fn validate_operator_transfer_and_get_inserted_data(
   True
 }
 
-/// Common requirements for slashing an operator from either the active or
-/// retired operators set. Fraud can be either because of a bad block
-/// commitment, or an invalid resolution claim on a settlement UTxO. Which is
-/// why this function returns the hub oracle datum for endpoints to lookup
-/// either the state queue or the settlement UTxO.
-fn slash_operator_and_get_hub_datum(
-  hub_oracle_script_hash: PolicyId,
-  slashed_operator_key: VerificationKeyHash,
-  hub_oracle_ref_input_index: Int,
-  slashed_operator_anchor_element_input_index: Int,
-  slashed_operator_node_input_index: Int,
-  slashed_operator_anchor_element_output_index: Int,
-  operator_status: OperatorStatusRedeemer,
+/// If the subject operator is currently appointed active, this function
+/// validates scheduler UTxO is spent with the "advance" redeemer. Otherwise,
+/// shows that the currently appointed operator is different from the subject
+/// operator.
+pub fn redeem_operator_status_against_scheduler(
+  operator_status_redeemer: OperatorStatusRedeemer,
+  subject_operator: VerificationKeyHash,
+  hub_datum: hub.Datum,
   inputs: List<Input>,
-  outputs: List<Output>,
   reference_inputs: List<Input>,
-  mint: Value,
-  fee: Int,
   redeemers: Pairs<ScriptPurpose, Redeemer>,
-  return: fn(hub.Datum) -> Bool,
+) -> Bool {
+  when operator_status_redeemer is {
+    ShowOperatorIsInactive { scheduler_ref_input_index } -> {
+      let scheduler_datum =
+        reference_inputs
+          |> scheduler.get_datum(hub_datum.scheduler, scheduler_ref_input_index)
+      when scheduler_datum is {
+        scheduler.NoActiveOperators -> True
+        scheduler.ActiveOperator { operator, .. } ->
+          operator != subject_operator
+      }
+    }
+    ShowSchedulerIsAdvancing { scheduler_input_index, scheduler_redeemer_index } -> {
+      let (scheduler_datum_data, scheduler_redeemer_data) =
+        utils.get_inline_datum_and_spending_redeemer_data_at(
+          hub_datum.scheduler_addr,
+          scheduler_input_index,
+          scheduler_redeemer_index,
+          inputs,
+          redeemers,
+        )
+      expect scheduler.ActiveOperator { operator, .. } = scheduler_datum_data
+      expect scheduler.Advance { .. } = scheduler_redeemer_data
+      operator == subject_operator
+    }
+  }
+}
+
+/// Validations for slashing an operator from either the active or retired
+/// operators set.
+pub fn slash_operator(
+  hub_oracle_script_hash: PolicyId,
+  slashing_arguments: SlashingArguments,
+  tx: Transaction,
 ) -> linked_list.Eval {
+  let SlashingArguments {
+    slashed_operator,
+    hub_oracle_ref_input_index,
+    slashed_operator_anchor_element_input_index,
+    slashed_operator_node_input_index,
+    slashed_operator_anchor_element_output_index,
+    operator_status_redeemer,
+    slashing_reason,
+  } = slashing_arguments
+
+  let Transaction { inputs, outputs, reference_inputs, mint, fee, redeemers } =
+    tx
+
   // 1. Transaction must refer to the authentic hub oracle UTxO to allow
   //    extraction of relevant addresses or policy IDs.
   let hub_datum =
@@ -251,7 +310,7 @@ fn slash_operator_and_get_hub_datum(
 
   // 5. Key of the removing node must be that of the fraudulent operator's
   //    specified via the redeemer.
-  expect slashed_operator_node_key == slashed_operator_key
+  expect slashed_operator_node_key == slashed_operator
 
   // 6. Slashing penalty must be paid to the Cardano treasury via the
   //    transaction fee. Fraud prover is assumed to be the signer of the
@@ -262,167 +321,54 @@ fn slash_operator_and_get_hub_datum(
   //    updated. Otherwise, show the currently appointed operator is different
   //    from the slashing operator.
   expect
-    operator_status
+    operator_status_redeemer
       |> redeem_operator_status_against_scheduler(
-          slashed_operator_key,
+          slashed_operator,
           hub_datum,
           inputs,
           reference_inputs,
           redeemers,
         )
 
-  // Done.
-  return(hub_datum)
-}
+  when slashing_reason is {
+    SlashOperatorForBadState { state_queue_redeemer_index } -> {
+      // 8a. State queue minting script must be invoked via the
+      //     `RemoveFraudulentBlockHeader` redeemer, and the operator specified
+      //     there must agree with the `slashed_retired_operator_key` redeemer
+      //     argument here.
+      expect state_queue.RemoveFraudulentBlockHeader { fraudulent_operator, .. } =
+        redeemers
+          |> utils.get_redeemer_at(
+              expected_purpose: Mint(hub_datum.state_queue),
+              redeemer_index: state_queue_redeemer_index,
+            )
+      expect fraudulent_operator == slashed_operator
 
-/// If the subject operator is currently appointed active, this function
-/// validates scheduler UTxO is spent with the "advance" redeemer. Otherwise,
-/// shows that the currently appointed operator is different from the subject
-/// operator.
-pub fn redeem_operator_status_against_scheduler(
-  operator_status_redeemer: OperatorStatusRedeemer,
-  subject_operator: VerificationKeyHash,
-  hub_datum: hub.Datum,
-  inputs: List<Input>,
-  reference_inputs: List<Input>,
-  redeemers: Pairs<ScriptPurpose, Redeemer>,
-) -> Bool {
-  when operator_status_redeemer is {
-    ShowOperatorIsInactive { scheduler_ref_input_index } -> {
-      let scheduler_datum =
-        reference_inputs
-          |> scheduler.get_datum(hub_datum.scheduler, scheduler_ref_input_index)
-      when scheduler_datum is {
-        scheduler.NoActiveOperators -> True
-        scheduler.ActiveOperator { operator, .. } ->
-          operator != subject_operator
-      }
+      // Done.
+      True
     }
-    ShowRedeemerIsAdvancing { scheduler_input_index, scheduler_redeemer_index } -> {
-      let (scheduler_datum_data, scheduler_redeemer_data) =
-        utils.get_inline_datum_and_spending_redeemer_data_at(
-          hub_datum.scheduler_addr,
-          scheduler_input_index,
-          scheduler_redeemer_index,
+    SlashOperatorForBadSettlement {
+      settlement_input_index,
+      settlement_redeemer_index,
+    } -> {
+      // 8b. A settlement UTxO must be getting spent via the
+      //     `DisproveResolutionClaim` redeemer.
+      //
+      // TODO: Potential optimization opportunities, i.e. using builtin
+      // functions. This requires implicitly imposing the position of `operator`
+      // field in the redeemer to be at index 0.
+      expect settlement.DisproveResolutionClaim { operator, .. } =
+        utils.get_spending_redeemer_data_at(
+          hub_datum.settlement_addr,
+          settlement_input_index,
+          settlement_redeemer_index,
           inputs,
           redeemers,
         )
-      expect scheduler.ActiveOperator { operator, .. } = scheduler_datum_data
-      expect scheduler.Advance { .. } = scheduler_redeemer_data
-      operator == subject_operator
+      expect operator == slashed_operator
+
+      // Done.
+      True
     }
   }
-}
-
-pub fn slash_operator_for_bad_state(
-  hub_oracle_script_hash: PolicyId,
-  slashed_operator_key: VerificationKeyHash,
-  hub_oracle_ref_input_index: Int,
-  operator_anchor_element_input_index: Int,
-  operator_slashed_node_input_index: Int,
-  operator_anchor_element_output_index: Int,
-  state_queue_redeemer_index: Int,
-  operator_status: OperatorStatus,
-  tx: Transaction,
-) -> linked_list.Eval {
-  let Transaction {
-    inputs,
-    outputs,
-    reference_inputs,
-    mint,
-    redeemers,
-    fee,
-    ..
-  } = tx
-
-  let hub_datum <-
-    slash_operator_and_get_hub_datum(
-      hub_oracle_script_hash,
-      slashed_operator_key,
-      hub_oracle_ref_input_index,
-      operator_anchor_element_input_index,
-      operator_slashed_node_input_index,
-      operator_anchor_element_output_index,
-      operator_status,
-      inputs,
-      outputs,
-      reference_inputs,
-      mint,
-      fee,
-      redeemers,
-    )
-
-  // 2. State queue minting script must be invoked via the
-  //    `RemoveFraudulentBlockHeader` redeemer, and the operator
-  //    specified there must agree with the
-  //    `slashed_retired_operator_key` redeemer argument here.
-  expect state_queue.RemoveFraudulentBlockHeader { fraudulent_operator, .. } =
-    redeemers
-      |> utils.get_redeemer_at(
-          expected_purpose: Mint(hub_datum.state_queue),
-          redeemer_index: state_queue_redeemer_index,
-        )
-  expect fraudulent_operator == slashed_operator_key
-
-  // Done.
-  True
-}
-
-pub fn slash_operator_for_bad_settlement(
-  hub_oracle_script_hash: PolicyId,
-  slashed_operator_key: VerificationKeyHash,
-  hub_oracle_ref_input_index: Int,
-  operator_anchor_element_input_index: Int,
-  operator_slashed_node_input_index: Int,
-  operator_anchor_element_output_index: Int,
-  settlement_input_index: Int,
-  settlement_redeemer_index: Int,
-  operator_status: OperatorStatus,
-  tx: Transaction,
-) -> linked_list.Eval {
-  let Transaction {
-    inputs,
-    outputs,
-    reference_inputs,
-    mint,
-    redeemers,
-    fee,
-    ..
-  } = tx
-
-  let hub_datum <-
-    slash_operator_and_get_hub_datum(
-      hub_oracle_script_hash,
-      slashed_operator_key,
-      hub_oracle_ref_input_index,
-      operator_anchor_element_input_index,
-      operator_slashed_node_input_index,
-      operator_anchor_element_output_index,
-      operator_status,
-      inputs,
-      outputs,
-      reference_inputs,
-      mint,
-      fee,
-      redeemers,
-    )
-
-  // 2. A settlement UTxO must be getting spent via the
-  //    `DisproveResolutionClaim` redeemer.
-  //
-  // TODO: Potential optimization opportunities, i.e. using builtin functions.
-  // This requires implicitly imposing the position of `operator` field in the
-  // redeemer to be at index 0.
-  expect settlement.DisproveResolutionClaim { operator, .. } =
-    utils.get_spending_redeemer_data_at(
-      hub_datum.settlement_addr,
-      settlement_input_index,
-      settlement_redeemer_index,
-      inputs,
-      redeemers,
-    )
-  expect operator == slashed_operator_key
-
-  // Done.
-  True
 }

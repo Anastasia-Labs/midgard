@@ -4,7 +4,7 @@ use aiken_design_patterns/linked_list
 use cardano/assets.{AssetName, PolicyId}
 use cardano/transaction.{OutputReference}
 use midgard/common/types.{PosixTime}
-use midgard/operator_directory.{OperatorStatusRedeemer}
+use midgard/operator_directory.{OperatorStatusRedeemer, SlashingArguments}
 
 /// TODO: Refer to state queue's library module.
 pub const root_asset_name: AssetName = "MIDGARD_ACTIVE_OPERATORS"
@@ -67,25 +67,6 @@ pub type MintRedeemer {
     active_operator_inserted_node_output_index: Int,
     registered_operators_redeemer_index: Int,
   }
-  SlashOperatorBadState {
-    slashed_active_operator_key: VerificationKeyHash,
-    hub_oracle_ref_input_index: Int,
-    active_operator_anchor_element_input_index: Int,
-    active_operator_slashed_node_input_index: Int,
-    active_operator_anchor_element_output_index: Int,
-    state_queue_redeemer_index: Int,
-    operator_status_redeemer: OperatorStatusRedeemer,
-  }
-  SlashOperatorBadSettlement {
-    slashed_active_operator_key: VerificationKeyHash,
-    hub_oracle_ref_input_index: Int,
-    active_operator_anchor_element_input_index: Int,
-    active_operator_slashed_node_input_index: Int,
-    active_operator_anchor_element_output_index: Int,
-    settlement_input_index: Int,
-    settlement_redeemer_index: Int,
-    operator_status_redeemer: OperatorStatusRedeemer,
-  }
   RetireOperator {
     active_operator_key: VerificationKeyHash,
     hub_oracle_ref_input_index: Int,
@@ -96,6 +77,7 @@ pub type MintRedeemer {
     penalize_for_inactivity: Bool,
     operator_status_redeemer: OperatorStatusRedeemer,
   }
+  SlashOperator { slashing_arguments: SlashingArguments }
 }
 
 pub fn finalize_linked_list(
