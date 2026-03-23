@@ -13,6 +13,7 @@ use midgard/hub_oracle as hub
 use midgard/protocol_parameters.{
   inactivity_slashing_penalty, required_bond, slashing_penalty,
 }
+use midgard/scheduler
 use midgard/settlement
 use midgard/state_queue
 
@@ -154,7 +155,7 @@ pub fn validate_operator_transfer_and_get_inserted_data(
         )
 
   let (operator_from_origin_list_redeemer, must_partially_slash) =
-    origin_list_redeemer_to_operator(origin_list_redeemer_data)
+    origin_list_redeemer_to_operator_and_penalty_flag(origin_list_redeemer_data)
 
   // 2. The operator from target list's redeemer must agree with the one
   //    extracted from the origin list's redeemer.
@@ -266,8 +267,15 @@ pub fn slash_operator(
     slashing_reason,
   } = slashing_arguments
 
-  let Transaction { inputs, outputs, reference_inputs, mint, fee, redeemers } =
-    tx
+  let Transaction {
+    inputs,
+    outputs,
+    reference_inputs,
+    mint,
+    fee,
+    redeemers,
+    ..
+  } = tx
 
   // 1. Transaction must refer to the authentic hub oracle UTxO to allow
   //    extraction of relevant addresses or policy IDs.

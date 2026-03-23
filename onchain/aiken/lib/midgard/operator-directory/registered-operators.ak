@@ -1,5 +1,6 @@
 use aiken/builtin
 use aiken/crypto.{VerificationKeyHash}
+use aiken/interval
 use aiken/primitive/bytearray
 use aiken_design_patterns/linked_list
 use cardano/assets.{AssetName, PolicyId}
@@ -35,7 +36,7 @@ pub type DuplicateOperatorStatus {
 }
 
 pub type OperatorOrigin {
-  ReturningOperator { retired_operators_element_input_index: Int }
+  ReturningOperator { retired_operators_redeemer_index: Int }
   NewOperator { retired_operators_element_ref_input_index: Int }
 }
 

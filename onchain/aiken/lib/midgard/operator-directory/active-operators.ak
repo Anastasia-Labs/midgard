@@ -2,7 +2,6 @@ use aiken/crypto.{VerificationKeyHash}
 use aiken/primitive/bytearray
 use aiken_design_patterns/linked_list
 use cardano/assets.{AssetName, PolicyId}
-use cardano/transaction.{OutputReference}
 use midgard/common/types.{PosixTime}
 use midgard/operator_directory.{OperatorStatusRedeemer, SlashingArguments}
 

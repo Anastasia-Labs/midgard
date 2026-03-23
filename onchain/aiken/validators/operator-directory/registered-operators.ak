@@ -5,15 +5,17 @@ use cardano/assets.{PolicyId, Value}
 use cardano/transaction.{
   Input, Mint, Output, OutputReference, Redeemer, Transaction,
 }
+use midgard/common/types.{PosixTime}
 use midgard/common/utils
 use midgard/hub_oracle as hub
 use midgard/operator_directory.{deinit, init, operator_is_not_a_member}
 use midgard/operator_directory/active_operators
 use midgard/operator_directory/registered_operators.{
   ActivateOperator, Datum, Deinit, DeregisterOperator, DuplicateIsActive,
-  DuplicateIsRegistered, DuplicateIsRetired, Init, MintRedeemer, NodeData,
-  RegisterOperator, SlashDuplicateOperator, activation_time_to_node_key,
-  finalize_linked_list, node_key_to_activation_time, root_asset_name,
+  DuplicateIsRegistered, DuplicateIsRetired, Init, MintRedeemer, NewOperator,
+  NodeData, RegisterOperator, ReturningOperator, SlashDuplicateOperator,
+  activation_time_to_node_key, finalize_linked_list, node_key_to_activation_time,
+  root_asset_name,
 }
 use midgard/operator_directory/retired_operators
 use midgard/protocol_parameters.{
@@ -160,7 +162,7 @@ validator mint(
                 retired_operator_bond_unlock_time,
                 ..
               } =
-                redeemers
+                self.redeemers
                   |> utils.get_redeemer_at(
                       expected_purpose: Mint(retired_operators_mint_script_hash),
                       redeemer_index: retired_operators_redeemer_index,

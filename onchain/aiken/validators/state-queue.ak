@@ -2,6 +2,7 @@ use aiken/builtin
 use aiken/collection/list
 use aiken/crypto
 use aiken_design_patterns/linked_list
+use cardano/address.{Address}
 use cardano/assets.{Lovelace, PolicyId, quantity_of}
 use cardano/transaction.{Input, Mint, OutputReference, Spend, Transaction}
 use midgard/common/constants.{empty_merkle_tree_root}

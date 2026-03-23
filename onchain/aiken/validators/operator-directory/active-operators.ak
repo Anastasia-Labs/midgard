@@ -217,6 +217,9 @@ validator spend(
               bond_unlock_time: input_bond_unlock_time,
             }
           expect active_node_output_data == expected_output_node_data
+
+          // Done.
+          True
         }
       }
     }
@@ -460,7 +463,7 @@ fn spend_for_updating_bond_unlock_time(
     let
       lovelace_change,
       m_operator,
-      _active_node_input_data,
+      active_node_input_data,
       active_node_output_data,
     <-
       linked_list.spend_for_updating_elements_data(
@@ -480,11 +483,15 @@ fn spend_for_updating_bond_unlock_time(
     //    allows other contracts to rely on the key in the spending redeemer.
     expect Some(active_operator) == m_operator
 
-    // 5. The reproduced node must properly store the new bond unlock
-    //    time.
-    expect NodeData { bond_unlock_time: m_output_bond_unlock_time } =
-      active_node_output_data
-    expect m_output_bond_unlock_time == Some(new_bond_unlock_time)
+    // 5. The reproduced node must preserve inactivity strike count and
+    //    properly store the new bond unlock time.
+    expect NodeData { inactivity_strikes, .. } = active_node_input_data
+    let expected_active_node_output_data: Data =
+      NodeData {
+        bond_unlock_time: Some(new_bond_unlock_time),
+        inactivity_strikes,
+      }
+    expect active_node_output_data == expected_active_node_output_data
 
     // 6. Transaction must have the hub oracle's UTxO referenced.
     let hub_datum =

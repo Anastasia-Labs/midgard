@@ -6,8 +6,7 @@ use cardano/transaction.{OutputReference, Redeemer, Transaction}
 use midgard/common/utils
 use midgard/hub_oracle as hub
 use midgard/operator_directory.{
-  deinit, init, slash_operator_for_bad_settlement, slash_operator_for_bad_state,
-  validate_operator_transfer_and_get_inserted_data,
+  deinit, init, slash_operator, validate_operator_transfer_and_get_inserted_data,
 }
 use midgard/operator_directory/active_operators
 use midgard/operator_directory/retired_operators.{
