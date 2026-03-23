@@ -131,6 +131,7 @@ test-suite mockchain-tests
   hs-source-dirs: tests
   other-modules:
     Spec.Operators
+    Spec.Scheduler
     Spec.Types
     Spec.Utils
 
