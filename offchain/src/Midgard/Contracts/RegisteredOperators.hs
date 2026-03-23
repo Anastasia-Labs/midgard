@@ -246,7 +246,7 @@ registerOperator
               { elementData =
                   LinkedList.Node
                     RegisteredOperators.NodeData
-                      { operator = pubKeyHashFromCardano operatorPkh
+                      { operator = transPubKeyHash operatorPkh
                       }
               , elementLink = rootOriginalLink
               }
