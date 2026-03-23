@@ -14,7 +14,6 @@ module Midgard.ScriptUtils (
 import Data.ByteString (ByteString)
 import Data.Kind (Type)
 
-import Cardano.Api (IsPlutusScriptLanguage)
 import Cardano.Api qualified as C
 import PlutusLedgerApi.Common (serialiseUPLC)
 import Ply
@@ -45,7 +44,7 @@ scriptHashBytes = C.serialiseToRawBytes
 
 plutusVersion ::
   forall ver xs.
-  (IsPlutusScriptLanguage (TransPlutusVersion ver)) =>
+  (C.IsPlutusScriptLanguage (TransPlutusVersion ver)) =>
   TypedScript ver xs -> C.PlutusScriptVersion (TransPlutusVersion ver)
 plutusVersion _ = C.plutusScriptVersion @(TransPlutusVersion ver)
 
