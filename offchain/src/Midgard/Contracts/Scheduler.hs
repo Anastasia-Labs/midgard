@@ -186,6 +186,8 @@ scheduleNextOperator
         -- Assumption: Current operator is valid if we're passed isBeforeShiftEnd = rue.
         currentOperatorC <- either (error . show) pure $ unTransPubKeyHash currentOperator
         addRequiredSignature currentOperatorC
+      -- TODO(chase): Set validity accordingly for rewinding in case final node in
+      -- registered operators having an activation time.
       addBtx $ setValidity currentSlot nextShiftStartSlot
       setMinAdaDepositAll params
     where
@@ -200,6 +202,8 @@ scheduleNextOperator
                   -- Either 5 minutes into the future, or just before next shift start, whichever is earlier.
                   $
                     min (currentSlot + 300) (nextShiftStartSlot - 1)
+              , -- Must have a lower bound too since it needs to be a closed range.
+                C.txValidityLowerBound = C.TxValidityLowerBound (C.allegraBasedEra @era) currentSlot
               }
         | otherwise =
             txBody
