@@ -199,11 +199,7 @@ export function midgardToCml(
     cmlOutputs.add(midgardOutputToCml(o));
   }
 
-  const cmlBody = CML.TransactionBody.new(
-    cmlInputs,
-    cmlOutputs,
-    b.fee,
-  );
+  const cmlBody = CML.TransactionBody.new(cmlInputs, cmlOutputs, b.fee);
 
   if (b.ttl !== undefined) cmlBody.set_ttl(BigInt(b.ttl));
 
@@ -215,9 +211,7 @@ export function midgardToCml(
   if (b.validity_interval_start !== undefined)
     cmlBody.set_validity_interval_start(BigInt(b.validity_interval_start));
 
-  if (b.mint !== undefined)
-    cmlBody.set_mint(midgardMintToCml(b.mint));
-
+  if (b.mint !== undefined) cmlBody.set_mint(midgardMintToCml(b.mint));
 
   if (b.script_data_hash !== undefined)
     cmlBody.set_script_data_hash(
@@ -344,7 +338,7 @@ function cmlValueToMidgard(v: CML.Value): Value {
   };
 }
 
-function midgardValueToCml(v: Value): CML.Value {
+export function midgardValueToCml(v: Value): CML.Value {
   if (v.type === "Coin") return CML.Value.from_coin(v.coin);
   return CML.Value.new(v.coin, midgardMultiassetToCml(v.assets));
 }
@@ -372,10 +366,7 @@ function midgardMultiassetToCml(ma: Multiasset): CML.MultiAsset {
     const pid = CML.ScriptHash.from_raw_bytes(pidBytes);
     const assets = CML.MapAssetNameToCoin.new();
     for (const [nameBytes, amount] of assetList) {
-      assets.insert(
-        CML.AssetName.from_raw_bytes(nameBytes),
-        amount,
-      );
+      assets.insert(CML.AssetName.from_raw_bytes(nameBytes), amount);
     }
     cmlMa.insert_assets(pid, assets);
   }
