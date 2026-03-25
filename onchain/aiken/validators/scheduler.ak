@@ -475,3 +475,84 @@ fn validate_end_of_shift_and_get_operators(
 
   (previous_shifts_operator, new_shifts_operator)
 }
+
+pub fn operator_has_been_inactive(
+  active_operators_address: Address,
+  hub_oracle_script_hash: ScriptHash,
+  //
+  active_operators_input_index: Int,
+  active_operators_redeemer_index: Int,
+  state_queue_ref_input_index: Int,
+  hub_oracle_ref_input_index: Int,
+  //
+  reference_inputs: List<Input>,
+  redeemers: Pairs<ScriptPurpose, Redeemer>,
+  validity_range: ValidityRange,
+) {
+  // 1. A matching spending redeemer of the active operators set must
+  //    exist for incrementing the strike counter.
+  expect active_operators.StrikeForInactivity {
+    active_node_input_index: active_node_input_index_from_active_operators_redeemer,
+    ..
+  } =
+    utils.get_spending_redeemer_data_at(
+      active_operators_address,
+      active_operators_input_index,
+      active_operators_redeemer_index,
+      inputs,
+      redeemers,
+    )
+  expect
+    active_operators_input_index == active_node_input_index_from_active_operators_redeemer
+
+  // 2. Authentic hub oracle UTxO must be referred to.
+  let hub_datum =
+    hub.get_datum(
+      reference_inputs,
+      hub_oracle_script_hash,
+      hub_oracle_ref_input_index,
+    )
+
+  // 3. Specified state queue element UTxO must exist in reference inputs.
+  expect Some(state_queue_ref_input) =
+    reference_inputs |> list.at(state_queue_ref_input_index)
+
+  // 4. The referred state queue UTxO must be authentic.
+  {
+    let
+      _state_queue_lovelace,
+      m_header_hash,
+      confirmed_state_or_header_data,
+      state_queue_link,
+    <- linked_list.get_element_info(state_queue_ref_input.output)
+
+    // 5. The element must be the last in the state queue.
+    expect None == state_queue_link
+
+    // 6. The validity range of the transaction must be entirely after the
+    //    last state queue element's end time, plus the inactivity timeout
+    //    parameter.
+    let last_elements_end_time =
+      when m_header_hash is {
+        None -> {
+          expect ledger_state.ConfirmedState { end_time, .. } =
+            confirmed_state_or_header_data
+          end_time
+        }
+        Some(_) -> {
+          expect ledger_state.Header { end_time, .. } =
+            confirmed_state_or_header_data
+          end_time
+        }
+      }
+    expect
+      validity_range
+        |> interval.is_entirely_after(
+            last_elements_end_time + operator_inactivity_timeout,
+          )
+
+    // Done.
+    True
+  }
+    |> state_queue.finalize_linked_list(hub_datum.state_queue)
+}

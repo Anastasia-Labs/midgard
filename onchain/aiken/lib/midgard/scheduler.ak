@@ -31,7 +31,7 @@ pub type AdvancingApproach {
   RewindDueToSkippedOperator {
     active_root_ref_input_index: Int,
     active_node_input_index: Int,
-    active_operators_redeemer_index: Int,
+    active_operators_spend_redeemer_index: Int,
   }
   GoToNextDueToSkippedOperator {
     active_node_input_index: Int,

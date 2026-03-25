@@ -183,9 +183,18 @@ validator spend(
         scheduler_redeemer_index,
         hub_oracle_ref_input_index,
       } -> {
-        let Transaction { inputs, outputs, mint, reference_inputs, .. } = self
+        let Transaction {
+          inputs,
+          outputs,
+          mint,
+          reference_inputs,
+          redeemers,
+          ..
+        } = self
 
-        // TODO: Validate scheduler UTxO is spent.
+        // Validate the scheduler UTxO is updated accordingly.
+        // 1. The authentic hub oracle UTxO must be provided as a reference
+        //    input.
         let hub_datum =
           hub.get_datum(
             reference_inputs,
@@ -193,7 +202,42 @@ validator spend(
             hub_oracle_ref_input_index,
           )
 
-        // 1. Spending and reproducing the linked list node must be proper.
+        // 2. The indices specified in the spending redeemer of the scheduler
+        //    script must match with the indices in the redeemer here.
+        expect scheduler.SpendRedeemer {
+          scheduler_input_index: scheduler_input_index_from_scheduler_redeemer,
+          advancing_approach: scheduler_advancing_approach,
+          active_node_input_index: active_node_input_index_from_scheduler_redeemer,
+          ..
+        } =
+          utils.get_spending_redeemer_data_at(
+            hub_datum.scheduler_addr,
+            scheduler_input_index,
+            scheduler_redeemer_index,
+            inputs,
+            redeemers,
+          )
+        expect
+          when scheduler_advancing_approach is {
+            scheduler.RewindDueToSkippedOperator {
+              active_node_input_index: active_node_input_index_from_scheduler_redeemer,
+              ..
+            } |
+            scheduler.GoToNextDueToSkippedOperator {
+              active_node_input_index: active_node_input_index_from_scheduler_redeemer,
+              ..
+            } ->
+              // TODO: One of these two might suffice.
+              and {
+                scheduler_input_index == scheduler_input_index_from_scheduler_redeemer,
+                active_node_input_index == active_node_input_index_from_scheduler_redeemer,
+              }
+            _ ->
+              fail @"Giving inactivity strikes requires scheduler UTxO to be spent for skipping the active operator"
+          }
+
+        // Validate inactive operator's strike count is incremented properly.
+        // 3. Spending and reproducing the linked list node must be proper.
         {
           let
             lovelace_change,
@@ -210,11 +254,11 @@ validator spend(
               tx_mint: mint,
             )
 
-          // 2. ADA of the node must be preserved.
+          // 4. ADA of the node must be preserved.
           expect lovelace_change >= 0
 
-          // 3. The underlying data must only have its strike counts incremented
-          //    by 1.
+          // 5. The underlying data must only have its strike counts
+          //    incremented.
           expect NodeData {
             inactivity_strikes: input_strikes,
             bond_unlock_time: input_bond_unlock_time,
