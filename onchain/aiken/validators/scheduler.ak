@@ -255,129 +255,195 @@ validator spend(
         // Done.
         True
       }
-      SkipInactiveOperator {
-        scheduler_input_index,
-        scheduler_output_index,
-        active_node_input_index,
-        active_operators_redeemer_index,
-        state_queue_ref_input_index,
-        hub_oracle_ref_input_index,
+    }
+  }
+
+  else(_) {
+    fail
+  }
+}
+
+validator spend_new(
+  registered_operators_policy_id: PolicyId,
+  active_operators_address: Address,
+  active_operators_policy_id: PolicyId,
+  scheduler_policy_id: PolicyId,
+  hub_oracle_script_hash: PolicyId,
+) {
+  spend(
+    m_datum: Option<Datum>,
+    redeemer: SpendRedeemer,
+    own_out_ref: OutputReference,
+    self: Transaction,
+  ) {
+    let SpendRedeemer {
+      scheduler_input_index,
+      scheduler_output_index,
+      advancing_approach,
+    } = redeemer
+
+    let Transaction {
+      inputs,
+      outputs,
+      reference_inputs,
+      extra_signatories,
+      validity_range,
+      ..
+    } = self
+
+    expect Some(datum) = m_datum
+
+    // 2. Output and the correct input must exist at the specified indices.
+    let
+      input,
+      output,
+    <-
+      singular_utxo_indexer.one_to_one(
+        input_index: scheduler_input_index,
+        output_index: scheduler_output_index,
+        own_ref: own_out_ref,
+        inputs: inputs,
+        outputs: outputs,
+        // Double satisfaction is prevented by requiring the same NFT present
+        // in both the input and the output.
+        double_satisfaction_prevented: True,
+      )
+
+    // 3. Both input and output must have the scheduler NFT, and the output must
+    //    have an inline datum.
+    let output_datum_data =
+      utils.authenticate_input_output_and_get_output_datum_data(
+        input,
+        output,
+        scheduler_policy_id,
+      )
+
+    when advancing_approach is {
+      RewindDueToEndOfShift {
+        active_root_ref_input_index,
+        active_node_ref_input_index,
+        registered_element_ref_input_indexk,
       } -> {
-        let Transaction {
-          inputs,
-          outputs,
-          redeemers,
-          reference_inputs,
-          validity_range,
-          ..
-        } = self
+        // 4a. Input and output datums must be valid.
+        let (previous_shifts_operator, new_shifts_operator) =
+          validate_end_of_shift_and_get_operators(datum, output_datum_data)
 
-        expect Some(ActiveOperator {
-          operator: input_operator,
-          start_time: input_start_time,
-        }) = m_datum
+        // Show the root of the active operators set is reached, the new active
+        // operator is at the very end of the list, and that there are no
+        // registered operators slated for activation at the moment.
+        // 5a. Active and registered operator elements must exist at the
+        //     specified indices.
+        expect Some(active_node_ref_input) =
+          reference_inputs |> list.at(active_node_ref_input_index)
+        expect Some(active_root_ref_input) =
+          reference_inputs |> list.at(active_root_ref_input_index)
+        expect Some(registered_element_ref_input) =
+          reference_inputs |> list.at(registered_element_ref_input_index)
 
-        let
-          input,
-          output,
-        <-
-          singular_utxo_indexer.one_to_one(
-            input_index: scheduler_input_index,
-            output_index: scheduler_output_index,
-            own_ref: own_out_ref,
-            inputs: inputs,
-            outputs: outputs,
-            // Double satisfaction is prevented by requiring the same NFT present
-            // in both the input and the output.
-            double_satisfaction_prevented: True,
-          )
-
-        // 3. Both input and output must have the scheduler NFT, and the output
-        //    datum must be properly formed.
-        expect ActiveOperator {
-          operator: output_operator,
-          start_time: output_start_time,
-        } =
-          utils.authenticate_input_output_and_get_output_datum_data(
-            input,
-            output,
-            scheduler_policy_id,
-          )
-
-        let input_end_time = input_start_time |> shift_end_time()
-        let inclusive_lower_bound =
-          utils.get_inclusive_lower_bound_of_interval(validity_range)
-        expect validity_range |> interval.is_entirely_before(input_end_time)
-        expect output_start_time >= inclusive_lower_bound
+        // The last node in the active operators set must have a key that
+        // matches the new shift's operator.
         expect
-          output_start_time < inclusive_lower_bound + operator_inactivity_timeout
+          {
+            let
+              _active_node_lovelace,
+              m_active_node_key,
+              _active_node_data,
+              active_node_link,
+            <- linked_list.get_element_info(active_node_ref_input.output)
 
-        // =====================================================================
-        // 1. A matching spending redeemer of the active operators set must
-        //    exist for incrementing the strike counter.
-        expect active_operators.StrikeForInactivity {
-          active_node_input_index: active_node_input_index_from_active_operators_redeemer,
-          ..
-        } =
-          utils.get_spending_redeemer_data_at(
-            active_operators_address,
-            active_node_input_index,
-            active_operators_redeemer_index,
-            inputs,
-            redeemers,
-          )
+            // 6a. The referenced element must be a node with a key that matches
+            //     the next shift's operator.
+            expect Some(new_shifts_operator) == m_active_node_key
+
+            // 7a. The node must be the last in the list.
+            None == active_node_link
+          }
+            |> active_operators.finalize_linked_list(active_operators_policy_id)
+
+        // The active operator set's root must point to the previous shift's
+        // operator.
         expect
-          active_node_input_index == active_node_input_index_from_active_operators_redeemer
+          {
+            let
+              _active_root_lovelace,
+              m_active_root_key,
+              _active_root_data,
+              active_root_link,
+            <- linked_list.get_element_info(active_root_ref_input.output)
 
-        // 2. Authentic hub oracle UTxO must be referred to.
-        let hub_datum =
-          hub.get_datum(
-            reference_inputs,
-            hub_oracle_script_hash,
-            hub_oracle_ref_input_index,
-          )
+            // 8a. The referenced element must be root.
+            expect None == m_active_root_key
 
-        // 3. Specified state queue element UTxO must exist in reference inputs.
-        expect Some(state_queue_ref_input) =
-          reference_inputs |> list.at(state_queue_ref_input_index)
+            // 9a. The root must point to a node with a key that matches the
+            //     previous operator.
+            Some(previous_shifts_operator) == active_root_link
+          }
+            |> active_operators.finalize_linked_list(active_operators_policy_id)
 
-        // 4. The referred state queue UTxO must be authentic.
-        {
-          let
-            _state_queue_lovelace,
-            m_header_hash,
-            confirmed_state_or_header_data,
-            state_queue_link,
-          <- linked_list.get_element_info(state_queue_ref_input.output)
+        // The last node of the registered operators set must correspond to an
+        // activation time in the future.
+        expect
+          {
+            let
+              _registered_element_lovelace,
+              m_registered_element_key,
+              _registered_element_data,
+              registered_element_link,
+            <- linked_list.get_element_info(registered_element_ref_input.output)
 
-          // 5. The element must be the last in the state queue.
-          expect None == state_queue_link
-
-          // 6. The validity range of the transaction must be entirely after the
-          //    last element's end time, plus the inactivity time out parameter.
-          let last_elements_end_time =
-            when m_header_hash is {
-              None -> {
-                expect ledger_state.ConfirmedState { end_time, .. } =
-                  confirmed_state_or_header_data
-                end_time
+            // 10a. If the referenced registered operator element is a node, its
+            //      activation time must not have reached yet.
+            expect
+              when m_registered_element_key is {
+                None -> True
+                Some(registered_node_key) -> {
+                  let activation_time =
+                    registered_operators.node_key_to_activation_time(
+                      registered_node_key,
+                    )
+                  validity_range |> interval.is_entirely_before(activation_time)
+                }
               }
-              Some(_) -> {
-                expect ledger_state.Header { end_time, .. } =
-                  confirmed_state_or_header_data
-                end_time
-              }
-            }
-          expect
-            validity_range
-              |> interval.is_entirely_after(
-                  last_elements_end_time + operator_inactivity_timeout,
-                )
 
-          // Done.
-          True
-        }
-          |> state_queue.finalize_linked_list(hub_datum.state_queue)
+            // 11a. The referenced registered operator element has to be at the
+            //      very end of the list.
+            None == registered_element_link
+          }
+            |> registered_operators.finalize_linked_list(
+                registered_operators_policy_id,
+              )
+
+        // Done.
+        True
+      }
+      GoToNextDueToEndOfShift { active_node_ref_input_index } -> {
+        // 4b. Input and output datums must be valid.
+        let (previous_shifts_operator, new_shifts_operator) =
+          validate_end_of_shift_and_get_operators(datum, output_datum_data)
+
+        // 5b. Active operator element must exist at the specified index.
+        expect Some(active_node_ref_input) =
+          reference_inputs |> list.at(active_node_ref_input_index)
+
+        // The referenced node in the active operators set must have a key that
+        // matches the new shift's operator.
+        expect
+          {
+            let
+              _active_node_lovelace,
+              m_active_node_key,
+              _active_node_data,
+              active_node_link,
+            <- linked_list.get_element_info(active_node_ref_input.output)
+
+            // 6b. The referenced element must be a node with a key that matches
+            //     the next shift's operator.
+            Some(new_shifts_operator) == m_active_node_key
+          }
+            |> active_operators.finalize_linked_list(active_operators_policy_id)
+
+        // Done.
+        True
       }
     }
   }
@@ -388,76 +454,24 @@ validator spend(
 }
 
 fn validate_end_of_shift_and_get_operators(
-  scheduler_policy_id: PolicyId,
-  scheduler_input_index: Int,
-  scheduler_output_index: Int,
-  m_datum: Option<Datum>,
-  own_out_ref: OutputReference,
-  inputs: List<Input>,
-  outputs: List<Output>,
-  extra_signatories: List<VerificationKeyHash>,
-  validity_range: ValidityRange,
-  return: fn(VerificationKeyHash, VerificationKeyHash) -> Bool,
-) -> Bool {
-  // 1. Proper datum must be attached to the scheduler input.
-  expect Some(datum) = m_datum
+  input_datum: Datum,
+  output_datum_data: Data,
+) -> (VerificationKeyHash, VerificationKeyHash) {
+  // 1. An operator must already be appointed active.
+  expect ActiveOperator {
+    operator: previous_shifts_operator,
+    start_time: previous_shifts_start_time,
+  } = input_datum
 
-  when datum is {
-    ActiveOperator { operator: input_operator, start_time: input_start_time } -> {
-      // 2. Output and the correct input must exist at the specified indices.
-      let
-        input,
-        output,
-      <-
-        singular_utxo_indexer.one_to_one(
-          input_index: scheduler_input_index,
-          output_index: scheduler_output_index,
-          own_ref: own_out_ref,
-          inputs: inputs,
-          outputs: outputs,
-          // Double satisfaction is prevented by requiring the same NFT present
-          // in both the input and the output.
-          double_satisfaction_prevented: True,
-        )
+  // 2. Output datum must specify an appointed operator.
+  expect ActiveOperator {
+    operator: new_shifts_operator,
+    start_time: new_shifts_start_time,
+  } = output_datum_data
 
-      // 3. Both input and output must have the scheduler NFT, and the output
-      //    datum must be properly formed.
-      expect ActiveOperator {
-        operator: output_operator,
-        start_time: output_start_time,
-      } =
-        utils.authenticate_input_output_and_get_output_datum_data(
-          input,
-          output,
-          scheduler_policy_id,
-        )
+  // 3. The start time of the new shift must be the end time of the previous
+  //    shift.
+  expect new_shifts_start_time == shift_end_time(previous_shifts_start_time)
 
-      // 4. The start time of the new shift must be the end time of the previous
-      //    shift.
-      expect output_start_time == shift_end_time(input_start_time)
-
-      // 5. Either the start time of the new shift is in the past, or it's
-      //    contained within the transaction's validity range, in which case
-      //    the previous operator (who is currently active) must consent to
-      //    advancing the schedule.
-      //
-      //    TODO: See [#416](https://github.com/anastasia-labs/midgard/issues/416).
-      expect or {
-          validity_range |> interval.is_entirely_after(output_start_time),
-          and {
-            input_operator |> utils.has_signed(extra_signatories),
-            {
-              let (_inclusive_lower_bound, inclusive_upper_bound) =
-                utils.get_inclusive_bounds_of_a_short_validity_range(
-                  validity_range,
-                )
-              output_start_time < inclusive_upper_bound
-            },
-          },
-        }
-
-      return(input_operator, output_operator)
-    }
-    NoActiveOperators -> todo
-  }
+  (previous_shifts_operator, new_shifts_operator)
 }

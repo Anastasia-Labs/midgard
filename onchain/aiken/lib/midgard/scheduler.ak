@@ -16,27 +16,43 @@ pub type MintRedeemer {
   Deinit
 }
 
-pub type SpendRedeemer {
-  Advance {
-    scheduler_input_index: Int,
-    scheduler_output_index: Int,
-    active_node_ref_input_index: Int,
-  }
-  Rewind {
-    scheduler_input_index: Int,
-    scheduler_output_index: Int,
-    active_node_ref_input_index: Int,
+pub type OperatorRemovalReason {
+  OperatorRetirement
+  OperatorSlashing
+}
+
+pub type AdvancingApproach {
+  RewindDueToEndOfShift {
     active_root_ref_input_index: Int,
+    active_node_ref_input_index: Int,
     registered_element_ref_input_index: Int,
   }
-  SkipInactiveOperator {
-    scheduler_input_index: Int,
-    scheduler_output_index: Int,
+  GoToNextDueToEndOfShift { active_node_ref_input_index: Int }
+  RewindDueToSkippedOperator {
+    active_root_ref_input_index: Int,
     active_node_input_index: Int,
     active_operators_redeemer_index: Int,
-    state_queue_ref_input_index: Int,
-    hub_oracle_ref_input_index: Int,
   }
+  GoToNextDueToSkippedOperator {
+    active_node_input_index: Int,
+    active_operators_spend_redeemer_index: Int,
+  }
+  RewindDueToOperatorRemoval {
+    active_root_input_index: Int,
+    active_node_ref_input_index: Int,
+    removal_reason: OperatorRemovalReason,
+  }
+  GoToNextDueToOperatorRemoval {
+    active_node_ref_input_index: Int,
+    active_operators_mint_redeemer_index: Int,
+    removal_reason: OperatorRemovalReason,
+  }
+}
+
+pub type SpendRedeemer {
+  scheduler_input_index: Int,
+  scheduler_output_index: Int,
+  advancing_approach: AdvancingApproach,
 }
 
 /// The end of a shift is the start of the shift, shifted forward by the

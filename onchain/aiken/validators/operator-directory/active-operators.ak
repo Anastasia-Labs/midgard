@@ -8,8 +8,8 @@ use cardano/transaction.{
 use midgard/common/utils
 use midgard/hub_oracle as hub
 use midgard/operator_directory.{
-  deinit, init, redeem_operator_status_against_scheduler, slash_operator,
-  validate_operator_transfer_and_get_inserted_data,
+  deinit, init, redeem_operator_status_against_scheduler,
+  slash_fraudulent_operator, validate_operator_transfer_and_get_inserted_data,
 }
 use midgard/operator_directory/active_operators.{
   ActivateOperator, Datum, Deinit, Init, ListStateTransition, MintRedeemer,
@@ -438,7 +438,11 @@ validator mint(
           |> finalize_linked_list(own_policy_id)
       }
       SlashOperator { slashing_arguments } ->
-        slash_operator(hub_oracle_script_hash, slashing_arguments, self)
+        slash_fraudulent_operator(
+          hub_oracle_script_hash,
+          slashing_arguments,
+          self,
+        )
           |> finalize_linked_list(own_policy_id)
     }
   }

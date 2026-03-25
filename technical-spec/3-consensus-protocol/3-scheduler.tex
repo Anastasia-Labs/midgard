@@ -36,16 +36,13 @@ When an active operator is appointed, the shift's inclusive lower bound is \code
 \label{h:scheduler-state-consistency}
 
 The scheduler is essentially a cursor for the active operators set, which means it has to have a local representation of the set's state.
+In order to keep this local state in sync with the active operators set, the scheduler must advance for any actions that affect the appointed operator.
 
-On the other hand, block commitments require referrals to the scheduler utxo in order to show they are submitted by the currently active operator.
-This demands a high level of availability for this utxo, and therefore must be spent as few times as possible.
-
-That is, it should only be spent for actions that change the appointed operator.
-Namely:
+We can define four reasons for advancing the scheduler:
 \begin{enumerate}
-  \item \textbf{Advancing.} Picking the next operator in set, or updating the shift start time of the current one if no other operators are available.
-  \item \textbf{Retirement.} If the retiring operator is currently active, the scheduler needs to be updated as well.
+  \item \textbf{End of shift.} Picking the next operator in set, or updating the shift start time of the current one if no other operators are available.
   \item \textbf{Skipping.} For operators who fail to submit block commitments in determined intervals.
+  \item \textbf{Retirement.} If the retiring operator is currently active, the scheduler needs to be updated as well.
   \item \textbf{Slashing.} Forfeiting bond of the appointed operator would remove them from the set, and therefore would require advancing the scheduler.
 \end{enumerate}
 

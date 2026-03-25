@@ -377,9 +377,8 @@ validator mint(
         // operator set, with a matching operator pub key hash.
         when duplicate_operator_status is {
           DuplicateIsRegistered ->
-            // 4a. Referenced element must be a node in the registered
-            //     operators set with an operator key that matches the removed
-            //     operator.
+            // 4a. Referenced element must be a node in the registered operators
+            //     set with an operator key that matches the removed operator.
             {
               let
                 _node_lovelace,
@@ -395,7 +394,9 @@ validator mint(
             }
               |> finalize_linked_list(own_policy_id)
           DuplicateIsActive { hub_oracle_ref_input_index } -> {
-            // 4b. Transaction must refer to hub oracle's authentic UTxO.
+            // 4b. Since the active operators policy ID is not a parameter here,
+            //     the transaction must refer to hub oracle's authentic UTxO for
+            //     retrieval of the policy ID.
             let hub_datum =
               hub.get_datum(
                 reference_inputs,

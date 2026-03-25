@@ -154,7 +154,7 @@ pub fn validate_operator_transfer_and_get_inserted_data(
           redeemer_index: origin_list_redeemer_index,
         )
 
-  let (operator_from_origin_list_redeemer, must_partially_slash) =
+  let (operator_from_origin_list_redeemer, must_penalize) =
     origin_list_redeemer_to_operator_and_penalty_flag(origin_list_redeemer_data)
 
   // 2. The operator from target list's redeemer must agree with the one
@@ -190,7 +190,7 @@ pub fn validate_operator_transfer_and_get_inserted_data(
   expect anchor_lovelace_change >= 0
 
   expect
-    if must_partially_slash {
+    if must_penalize {
       // 6a. ADA bond must be transferred from the origin operator node, without
       //     the inactivity slashing penalty (paid as transaction fees only,
       //     TODO?).
@@ -212,9 +212,8 @@ pub fn validate_operator_transfer_and_get_inserted_data(
 }
 
 /// If the subject operator is currently appointed active, this function
-/// validates scheduler UTxO is spent with the "advance" redeemer. Otherwise,
-/// shows that the currently appointed operator is different from the subject
-/// operator.
+/// validates scheduler UTxO is spent. Otherwise, shows that the currently
+/// appointed operator is different from the subject operator.
 pub fn redeem_operator_status_against_scheduler(
   operator_status_redeemer: OperatorStatusRedeemer,
   subject_operator: VerificationKeyHash,
@@ -244,15 +243,19 @@ pub fn redeem_operator_status_against_scheduler(
           redeemers,
         )
       expect scheduler.ActiveOperator { operator, .. } = scheduler_datum_data
-      expect scheduler.Advance { .. } = scheduler_redeemer_data
-      operator == subject_operator
+      expect scheduler.SpendRedeemer {
+        scheduler_input_index: input_index_from_scheduler_redeemer,
+        ..
+      } = scheduler_redeemer_data
+      expect operator == subject_operator
+      scheduler_input_index == input_index_from_scheduler_redeemer
     }
   }
 }
 
 /// Validations for slashing an operator from either the active or retired
 /// operators set.
-pub fn slash_operator(
+pub fn slash_fraudulent_operator(
   hub_oracle_script_hash: PolicyId,
   slashing_arguments: SlashingArguments,
   tx: Transaction,
