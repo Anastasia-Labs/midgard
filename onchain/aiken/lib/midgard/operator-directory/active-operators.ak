@@ -49,6 +49,7 @@ pub type SpendRedeemer {
   StrikeForInactivity {
     active_node_input_index: Int,
     active_node_output_index: Int,
+    operator: VerificationKeyHash,
     scheduler_input_index: Int,
     scheduler_redeemer_index: Int,
     hub_oracle_ref_input_index: Int,

@@ -179,6 +179,7 @@ validator spend(
       StrikeForInactivity {
         active_node_input_index,
         active_node_output_index,
+        operator,
         scheduler_input_index,
         scheduler_redeemer_index,
         hub_oracle_ref_input_index,
@@ -240,7 +241,7 @@ validator spend(
         {
           let
             lovelace_change,
-            _m_operator,
+            m_operator,
             active_node_input_data,
             active_node_output_data,
           <-
@@ -256,7 +257,25 @@ validator spend(
           // 4. ADA of the node must be preserved.
           expect lovelace_change >= 0
 
-          // 5. The underlying data must only have its strike counts
+          // 5. The indicated operator in redeemer must match the key of the
+          //    spent node.
+          expect Some(operator) == m_operator
+
+          // 6. The new strikes count must not exceed the maximum allowed. This
+          //    is there to cover one specific edger case: If the appointed
+          //    operator is the only member of the active operators set,
+          //    inactivity causes the scheduler to rewind back to the same
+          //    operator. Allowing this to happen indefinitely, gives an
+          //    attacker the opportunity to constantly spend the operator's node
+          //    UTxO and prevent the retirement transaction to go through.
+          //
+          //    With this check in place, the operator's UTxO cannot be spent
+          //    for strikes any further, and the node will be free for transfer
+          //    to the retired set.
+          let new_inactivity_strikes = input_strikes + 1
+          expect new_inactivity_strikes <= max_inactivity_strikes
+
+          // 7. The underlying data must only have its strike counts
           //    incremented.
           expect NodeData {
             inactivity_strikes: input_strikes,
@@ -264,7 +283,7 @@ validator spend(
           } = active_node_input_data
           let expected_output_node_data: Data =
             NodeData {
-              inactivity_strikes: input_strikes + 1,
+              inactivity_strikes: new_inactivity_strikes,
               bond_unlock_time: input_bond_unlock_time,
             }
           expect active_node_output_data == expected_output_node_data
