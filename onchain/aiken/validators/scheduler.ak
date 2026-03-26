@@ -503,6 +503,9 @@ validator spend_new(
         // Done.
         True
       }
+      GoToNextDueToSkippedOperator { .. } -> todo
+      RewindDueToOperatorRemoval { .. } -> todo
+      GoToNextDueToOperatorRemoval { .. } -> todo
     }
   }
 
