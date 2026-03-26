@@ -392,7 +392,7 @@ validator spend_new(
               registered_operators_policy_id,
             )
       }
-      GoToNextDueToEndOfShift { active_operators_node_ref_input_index } -> {
+      GoToNextDueToEndOfShift { new_shifts_operator_node_ref_input_index } -> {
         // 4b. Input and output datums must be valid, and time conditions and
         //     potentially next operator's consent must be met.
         let (previous_shifts_operator, new_shifts_operator) =
@@ -403,38 +403,27 @@ validator spend_new(
             extra_signatories,
           )
 
-        // 5b. Active operator element must exist at the specified index.
-        expect Some(active_node_ref_input) =
-          reference_inputs |> list.at(active_operators_node_ref_input_index)
+        // 5b. The referenced node in the active operators set must have a key
+        //     that matches the new shift's operator, and a link that points to
+        //     the previous operator.
+        expect
+          validate_new_shifts_node_is_next(
+            active_operators_policy_id,
+            new_shifts_operator_node_ref_input_index,
+            previous_shifts_operator,
+            new_shifts_operator,
+            reference_inputs,
+          )
 
-        // The referenced node in the active operators set must have a key that
-        // matches the new shift's operator, and a link that points to the
-        // previous operator.
-        {
-          let
-            _active_node_lovelace,
-            m_active_node_key,
-            _active_node_data,
-            active_node_link,
-          <- linked_list.get_element_info(active_node_ref_input.output)
-
-          // 6b. The referenced element must be a node with a key that matches
-          //     the next shift's operator.
-          expect Some(new_shifts_operator) == m_active_node_key
-
-          // 7b. The node must be anchor to the previous operator's node.
-          expect Some(previous_shifts_operator) == active_node_link
-
-          // Done.
-          True
-        }
-          |> active_operators.finalize_linked_list(active_operators_policy_id)
+        // Done.
+        True
       }
       RewindDueToSkippedOperator {
         active_operators_root_ref_input_index,
         skipped_operator_node_input_index,
         active_operators_spend_redeemer_index,
-        active_operators_last_node_ref_input_index,
+        state_queue_ref_input_index,
+        m_active_operators_last_node_ref_input_index,
       } -> {
         // 4c. Input and output datums must both have an appointed operator, and
         //     the new shift's start time must follow the previous one
@@ -503,7 +492,54 @@ validator spend_new(
         // Done.
         True
       }
-      GoToNextDueToSkippedOperator { .. } -> todo
+      GoToNextDueToSkippedOperator {
+        new_shifts_operator_node_ref_input_index,
+        skipped_operator_node_input_index,
+        active_operators_spend_redeemer_index,
+      } -> {
+        // 4d. Input and output datums must both have an appointed operator, and
+        //     the new shift's start time must follow the previous one
+        //     correctly.
+        let
+          previous_shifts_operator,
+          new_shifts_operator,
+          previous_shifts_start_time,
+          new_shifts_start_time,
+        <- validate_active_datums_and_get_info(input_datum, output_datum_data)
+
+        // 5d. Inactive operator (i.e. previous shift's operator) must be
+        //     receiving a strike, and the last element in the state queue must
+        //     be old enough for the operator to be considered inactive.
+        expect _inactive_operators_link =
+          validate_operator_inactivity_and_get_its_link(
+            active_operators_address,
+            hub_oracle_script_hash,
+            scheduler_input_index,
+            skipped_operator_node_input_index,
+            active_operators_spend_redeemer_index,
+            state_queue_ref_input_index,
+            hub_oracle_ref_input_index,
+            previous_shifts_operator,
+            reference_inputs,
+            redeemers,
+            validity_range,
+          )
+
+        // 6d. The referenced new shift's operator's node in the active set must
+        //     have a key that matches the new shift's operator, and a link that
+        //     points to the previous operator.
+        expect
+          validate_new_shifts_node_is_next(
+            active_operators_policy_id,
+            new_shifts_operator_node_ref_input_index,
+            previous_shifts_operator,
+            new_shifts_operator,
+            reference_inputs,
+          )
+
+        // Done.
+        True
+      }
       RewindDueToOperatorRemoval { .. } -> todo
       GoToNextDueToOperatorRemoval { .. } -> todo
     }
@@ -717,6 +753,38 @@ fn validate_operator_is_the_last_active_node(
 
     // 3. The node must be the last in the list.
     None == active_node_link
+  }
+    |> active_operators.finalize_linked_list(active_operators_policy_id)
+}
+
+fn validate_new_shifts_node_is_next(
+  active_operators_policy_id: PolicyId,
+  new_shifts_operator_node_ref_input_index: Int,
+  previous_shifts_operator: VerificationKeyHash,
+  new_shifts_operator: VerificationKeyHash,
+  reference_inputs: List<Input>,
+) -> Bool {
+  // 1. Active operator element must exist at the specified index.
+  expect Some(active_node_ref_input) =
+    reference_inputs |> list.at(new_shifts_operator_node_ref_input_index)
+
+  // The referenced node in the active operators set must have a key that
+  // matches the new shift's operator, and a link that points to the
+  // previous operator.
+  {
+    let
+      _active_node_lovelace,
+      m_active_node_key,
+      _active_node_data,
+      active_node_link,
+    <- linked_list.get_element_info(active_node_ref_input.output)
+
+    // 2. The referenced element must be a node with a key that matches
+    //    the next shift's operator.
+    expect Some(new_shifts_operator) == m_active_node_key
+
+    // 3. The node must be anchor to the previous operator's node.
+    expect Some(previous_shifts_operator) == active_node_link
   }
     |> active_operators.finalize_linked_list(active_operators_policy_id)
 }

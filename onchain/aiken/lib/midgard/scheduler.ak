@@ -27,27 +27,32 @@ pub type AdvancingApproach {
     active_operators_last_node_ref_input_index: Int,
     registered_element_ref_input_index: Int,
   }
-  GoToNextDueToEndOfShift { active_operators_node_ref_input_index: Int }
+  GoToNextDueToEndOfShift { new_shifts_operator_node_ref_input_index: Int }
   RewindDueToSkippedOperator {
     active_operators_root_ref_input_index: Int,
     skipped_operator_node_input_index: Int,
     active_operators_spend_redeemer_index: Int,
+    state_queue_ref_input_index: Int,
+    hub_oracle_ref_input_index: Int,
     // If only one operator exists in the active set, we won't want to refer to
     // the new shift's operator UTxO. TODO? I'm assuming we can't refer to a
     // UTxO that's getting spent in the same transaction.
     m_active_operators_last_node_ref_input_index: Option<Int>,
   }
   GoToNextDueToSkippedOperator {
-    active_operators_node_input_index: Int,
+    new_shifts_operator_node_ref_input_index: Int,
+    skipped_operator_node_input_index: Int,
     active_operators_spend_redeemer_index: Int,
+    state_queue_ref_input_index: Int,
+    hub_oracle_ref_input_index: Int,
   }
   RewindDueToOperatorRemoval {
     active_root_input_index: Int,
-    active_operators_node_ref_input_index: Int,
+    new_shifts_operator_node_ref_input_index: Int,
     removal_reason: OperatorRemovalReason,
   }
   GoToNextDueToOperatorRemoval {
-    active_operators_node_ref_input_index: Int,
+    new_shifts_operator_node_ref_input_index: Int,
     active_operators_mint_redeemer_index: Int,
     removal_reason: OperatorRemovalReason,
   }
