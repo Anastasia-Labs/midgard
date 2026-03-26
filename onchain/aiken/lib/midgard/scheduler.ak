@@ -23,27 +23,27 @@ pub type OperatorRemovalReason {
 
 pub type AdvancingApproach {
   RewindDueToEndOfShift {
-    active_root_ref_input_index: Int,
-    active_node_ref_input_index: Int,
+    active_operators_root_ref_input_index: Int,
+    active_operators_last_node_ref_input_index: Int,
     registered_element_ref_input_index: Int,
   }
-  GoToNextDueToEndOfShift { active_node_ref_input_index: Int }
+  GoToNextDueToEndOfShift { active_operators_node_ref_input_index: Int }
   RewindDueToSkippedOperator {
-    active_root_ref_input_index: Int,
-    active_node_input_index: Int,
+    active_operators_root_ref_input_index: Int,
+    active_operators_node_input_index: Int,
     active_operators_spend_redeemer_index: Int,
   }
   GoToNextDueToSkippedOperator {
-    active_node_input_index: Int,
+    active_operators_node_input_index: Int,
     active_operators_spend_redeemer_index: Int,
   }
   RewindDueToOperatorRemoval {
     active_root_input_index: Int,
-    active_node_ref_input_index: Int,
+    active_operators_node_ref_input_index: Int,
     removal_reason: OperatorRemovalReason,
   }
   GoToNextDueToOperatorRemoval {
-    active_node_ref_input_index: Int,
+    active_operators_node_ref_input_index: Int,
     active_operators_mint_redeemer_index: Int,
     removal_reason: OperatorRemovalReason,
   }

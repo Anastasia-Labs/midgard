@@ -207,7 +207,6 @@ validator spend(
         expect scheduler.SpendRedeemer {
           scheduler_input_index: scheduler_input_index_from_scheduler_redeemer,
           advancing_approach: scheduler_advancing_approach,
-          active_node_input_index: active_node_input_index_from_scheduler_redeemer,
           ..
         } =
           utils.get_spending_redeemer_data_at(
@@ -220,11 +219,11 @@ validator spend(
         expect
           when scheduler_advancing_approach is {
             scheduler.RewindDueToSkippedOperator {
-              active_node_input_index: active_node_input_index_from_scheduler_redeemer,
+              active_operators_node_input_index: active_node_input_index_from_scheduler_redeemer,
               ..
             } |
             scheduler.GoToNextDueToSkippedOperator {
-              active_node_input_index: active_node_input_index_from_scheduler_redeemer,
+              active_operators_node_input_index: active_node_input_index_from_scheduler_redeemer,
               ..
             } ->
               // TODO: One of these two might suffice.

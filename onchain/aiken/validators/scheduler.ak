@@ -320,13 +320,19 @@ validator spend_new(
 
     when advancing_approach is {
       RewindDueToEndOfShift {
-        active_root_ref_input_index,
-        active_node_ref_input_index,
-        registered_element_ref_input_indexk,
+        active_operators_root_ref_input_index,
+        active_operators_last_node_ref_input_index,
+        registered_element_ref_input_index,
       } -> {
-        // 4a. Input and output datums must be valid.
+        // 4a. Input and output datums must be valid, and time conditions and
+        //     potentially next operator's consent must be met.
         let (previous_shifts_operator, new_shifts_operator) =
-          validate_end_of_shift_and_get_operators(datum, output_datum_data)
+          end_of_shift__validate_datums_and_get_operators(
+            datum,
+            output_datum_data,
+            validity_range,
+            extra_signatories,
+          )
 
         // Show the root of the active operators set is reached, the new active
         // operator is at the very end of the list, and that there are no
@@ -334,11 +340,20 @@ validator spend_new(
         // 5a. Active and registered operator elements must exist at the
         //     specified indices.
         expect Some(active_node_ref_input) =
-          reference_inputs |> list.at(active_node_ref_input_index)
-        expect Some(active_root_ref_input) =
-          reference_inputs |> list.at(active_root_ref_input_index)
+          reference_inputs
+            |> list.at(active_operators_last_node_ref_input_index)
         expect Some(registered_element_ref_input) =
           reference_inputs |> list.at(registered_element_ref_input_index)
+
+        // 6a. The referenced active operators root UTxO must point to the
+        //     previous operator.
+        expect
+          validate_root_is_reached(
+            active_operators_policy_id,
+            previous_shifts_operator,
+            active_operators_root_ref_input_index,
+            reference_inputs,
+          )
 
         // The last node in the active operators set must have a key that
         // matches the new shift's operator.
@@ -351,32 +366,12 @@ validator spend_new(
               active_node_link,
             <- linked_list.get_element_info(active_node_ref_input.output)
 
-            // 6a. The referenced element must be a node with a key that matches
+            // 7a. The referenced element must be a node with a key that matches
             //     the next shift's operator.
             expect Some(new_shifts_operator) == m_active_node_key
 
-            // 7a. The node must be the last in the list.
+            // 8a. The node must be the last in the list.
             None == active_node_link
-          }
-            |> active_operators.finalize_linked_list(active_operators_policy_id)
-
-        // The active operator set's root must point to the previous shift's
-        // operator.
-        expect
-          {
-            let
-              _active_root_lovelace,
-              m_active_root_key,
-              _active_root_data,
-              active_root_link,
-            <- linked_list.get_element_info(active_root_ref_input.output)
-
-            // 8a. The referenced element must be root.
-            expect None == m_active_root_key
-
-            // 9a. The root must point to a node with a key that matches the
-            //     previous operator.
-            Some(previous_shifts_operator) == active_root_link
           }
             |> active_operators.finalize_linked_list(active_operators_policy_id)
 
@@ -391,8 +386,8 @@ validator spend_new(
               registered_element_link,
             <- linked_list.get_element_info(registered_element_ref_input.output)
 
-            // 10a. If the referenced registered operator element is a node, its
-            //      activation time must not have reached yet.
+            // 9a. If the referenced registered operator element is a node, its
+            //     activation time must not have been reached yet.
             expect
               when m_registered_element_key is {
                 None -> True
@@ -405,7 +400,7 @@ validator spend_new(
                 }
               }
 
-            // 11a. The referenced registered operator element has to be at the
+            // 10a. The referenced registered operator element has to be at the
             //      very end of the list.
             None == registered_element_link
           }
@@ -416,34 +411,77 @@ validator spend_new(
         // Done.
         True
       }
-      GoToNextDueToEndOfShift { active_node_ref_input_index } -> {
-        // 4b. Input and output datums must be valid.
+      GoToNextDueToEndOfShift { active_operators_node_ref_input_index } -> {
+        // 4b. Input and output datums must be valid, and time conditions and
+        //     potentially next operator's consent must be met.
         let (previous_shifts_operator, new_shifts_operator) =
-          validate_end_of_shift_and_get_operators(datum, output_datum_data)
+          end_of_shift__validate_datums_and_get_operators(
+            datum,
+            output_datum_data,
+            validity_range,
+            extra_signatories,
+          )
 
         // 5b. Active operator element must exist at the specified index.
         expect Some(active_node_ref_input) =
-          reference_inputs |> list.at(active_node_ref_input_index)
+          reference_inputs |> list.at(active_operators_node_ref_input_index)
 
         // The referenced node in the active operators set must have a key that
-        // matches the new shift's operator.
+        // matches the new shift's operator, and a link that points to the
+        // previous operator.
+        {
+          let
+            _active_node_lovelace,
+            m_active_node_key,
+            _active_node_data,
+            active_node_link,
+          <- linked_list.get_element_info(active_node_ref_input.output)
+
+          // 6b. The referenced element must be a node with a key that matches
+          //     the next shift's operator.
+          expect Some(new_shifts_operator) == m_active_node_key
+
+          // 7b. The node must be anchor to the previous operator's node.
+          expect Some(previous_shifts_operator) == active_node_link
+
+          // Done.
+          True
+        }
+          |> active_operators.finalize_linked_list(active_operators_policy_id)
+      }
+      RewindDueToSkippedOperator {
+        active_operators_root_ref_input_index,
+        skipped_operator_node_input_index,
+        active_operators_spend_redeemer_index,
+      } -> {
+        // 4c. An operator must already be appointed active.
+        expect ActiveOperator {
+          operator: previous_shifts_operator,
+          start_time: previous_shifts_start_time,
+        } = input_datum
+
+        // 4c. The referenced active operators root UTxO must point to the
+        //     previous operator.
         expect
-          {
-            let
-              _active_node_lovelace,
-              m_active_node_key,
-              _active_node_data,
-              active_node_link,
-            <- linked_list.get_element_info(active_node_ref_input.output)
-
-            // 6b. The referenced element must be a node with a key that matches
-            //     the next shift's operator.
-            Some(new_shifts_operator) == m_active_node_key
-          }
-            |> active_operators.finalize_linked_list(active_operators_policy_id)
-
-        // Done.
-        True
+          validate_root_is_reached(
+            active_operators_policy_id,
+            previous_shifts_operator,
+            active_operators_root_ref_input_index,
+            reference_inputs,
+          )
+        expect
+          operator_has_been_inactive(
+            active_operators_address,
+            hub_oracle_script_hash,
+            scheduler_input_index,
+            skipped_operator_node_input_index,
+            active_operators_spend_redeemer_index,
+            state_queue_ref_input_index,
+            hub_oracle_ref_input_index,
+            reference_inputs,
+            redeemers,
+            validity_range,
+          )
       }
     }
   }
@@ -453,9 +491,28 @@ validator spend_new(
   }
 }
 
-fn validate_end_of_shift_and_get_operators(
+fn validate_end_of_shift(
+  input_datum: Datum,
+  validity_range: ValidityRange,
+) -> VerificationKeyHash {
+  // 1. An operator must already be appointed active.
+  expect ActiveOperator {
+    operator: previous_shifts_operator,
+    start_time: previous_shifts_start_time,
+  } = input_datum
+
+  // 2. The start time of the new shift must be the end time of the previous
+  //    shift.
+  let new_shifts_start_time = shift_end_time(previous_shifts_start_time)
+
+  previous_shifts_operator
+}
+
+fn end_of_shift__validate_datums_and_get_operators(
   input_datum: Datum,
   output_datum_data: Data,
+  validity_range: ValidityRange,
+  extra_signatories: List<VerificationKeyHash>,
 ) -> (VerificationKeyHash, VerificationKeyHash) {
   // 1. An operator must already be appointed active.
   expect ActiveOperator {
@@ -473,6 +530,25 @@ fn validate_end_of_shift_and_get_operators(
   //    shift.
   expect new_shifts_start_time == shift_end_time(previous_shifts_start_time)
 
+  // 4. If the next shift's start time is in the past, it most likely means the
+  //    next operator is inactive, so anyone can first advance the scheduler,
+  //    and immediately give an inactivity strike while advancing to the next
+  //    operator. Otherwise, the transaction's (short) validity range contains
+  //    the next shift's start time, and requires consent of the next operator
+  //    to advance. This ensures readiness/liveness of the next operator to take
+  //    over.
+  expect or {
+      validity_range |> interval.is_entirely_after(new_shifts_start_time),
+      and {
+        next_shifts_operator |> utils.has_signed(extra_signatories),
+        {
+          let (_inclusive_lower_bound, inclusive_upper_bound) =
+            utils.get_inclusive_bounds_of_a_short_validity_range(validity_range)
+          output_start_time < inclusive_upper_bound
+        },
+      },
+    }
+
   (previous_shifts_operator, new_shifts_operator)
 }
 
@@ -480,6 +556,7 @@ pub fn operator_has_been_inactive(
   active_operators_address: Address,
   hub_oracle_script_hash: ScriptHash,
   //
+  scheduler_input_index: Int,
   active_operators_input_index: Int,
   active_operators_redeemer_index: Int,
   state_queue_ref_input_index: Int,
@@ -493,6 +570,7 @@ pub fn operator_has_been_inactive(
   //    exist for incrementing the strike counter.
   expect active_operators.StrikeForInactivity {
     active_node_input_index: active_node_input_index_from_active_operators_redeemer,
+    scheduler_input_index: scheduler_input_index_from_active_operators_redeemer,
     ..
   } =
     utils.get_spending_redeemer_data_at(
@@ -504,6 +582,8 @@ pub fn operator_has_been_inactive(
     )
   expect
     active_operators_input_index == active_node_input_index_from_active_operators_redeemer
+  expect
+    scheduler_input_index == scheduler_input_index_from_active_operators_redeemer
 
   // 2. Authentic hub oracle UTxO must be referred to.
   let hub_datum =
@@ -555,4 +635,32 @@ pub fn operator_has_been_inactive(
     True
   }
     |> state_queue.finalize_linked_list(hub_datum.state_queue)
+}
+
+pub fn validate_root_is_reached(
+  active_operators_policy_id: PolicyId,
+  previous_shifts_operator: VerificationKeyHash,
+  active_operators_root_ref_input_index: Int,
+  reference_inputs: List<Input>,
+) {
+  // 1. Element UTxO of active operators set must exist at the specified index.
+  expect Some(active_root_ref_input) =
+    reference_inputs |> list.at(active_operators_root_ref_input_index)
+
+  {
+    let
+      _active_root_lovelace,
+      m_active_root_key,
+      _active_root_data,
+      active_root_link,
+    <- linked_list.get_element_info(active_root_ref_input.output)
+
+    // 2. The referenced element must be root.
+    expect None == m_active_root_key
+
+    // 3. The root must point to a node with a key that matches the
+    //    previous operator.
+    Some(previous_shifts_operator) == active_root_link
+  }
+    |> active_operators.finalize_linked_list(active_operators_policy_id)
 }
