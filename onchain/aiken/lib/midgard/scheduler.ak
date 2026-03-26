@@ -30,8 +30,11 @@ pub type AdvancingApproach {
   GoToNextDueToEndOfShift { active_operators_node_ref_input_index: Int }
   RewindDueToSkippedOperator {
     active_operators_root_ref_input_index: Int,
-    active_operators_node_input_index: Int,
+    skipped_operator_node_input_index: Int,
     active_operators_spend_redeemer_index: Int,
+    // If only one operator exists in the active set, we won't want to refer to
+    // the new shift's operator UTxO.
+    m_active_operators_last_node_ref_input_index: Option<Int>,
   }
   GoToNextDueToSkippedOperator {
     active_operators_node_input_index: Int,

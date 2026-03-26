@@ -180,6 +180,7 @@ validator spend(
         active_node_input_index,
         active_node_output_index,
         operator,
+        active_node_link: active_node_link_from_redeemer,
         scheduler_input_index,
         scheduler_redeemer_index,
         hub_oracle_ref_input_index,
@@ -244,6 +245,7 @@ validator spend(
             m_operator,
             active_node_input_data,
             active_node_output_data,
+            correct_active_node_link,
           <-
             linked_list.spend_for_updating_elements_data(
               element_input_index: active_node_input_index,
@@ -261,7 +263,11 @@ validator spend(
           //    spent node.
           expect Some(operator) == m_operator
 
-          // 6. The new strikes count must not exceed the maximum allowed. This
+          // 6. The active node's link specified in the redeemer must be
+          //    correct for other contracts to use.
+          expect active_node_link_from_redeemer == correct_active_node_link
+
+          // 7. The new strikes count must not exceed the maximum allowed. This
           //    is there to cover one specific edger case: If the appointed
           //    operator is the only member of the active operators set,
           //    inactivity causes the scheduler to rewind back to the same
@@ -275,7 +281,7 @@ validator spend(
           let new_inactivity_strikes = input_strikes + 1
           expect new_inactivity_strikes <= max_inactivity_strikes
 
-          // 7. The underlying data must only have its strike counts
+          // 8. The underlying data must only have its strike counts
           //    incremented.
           expect NodeData {
             inactivity_strikes: input_strikes,

@@ -50,6 +50,7 @@ pub type SpendRedeemer {
     active_node_input_index: Int,
     active_node_output_index: Int,
     operator: VerificationKeyHash,
+    active_node_link: linked_list.Link,
     scheduler_input_index: Int,
     scheduler_redeemer_index: Int,
     hub_oracle_ref_input_index: Int,
