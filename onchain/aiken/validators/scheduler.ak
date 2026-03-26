@@ -478,7 +478,8 @@ validator spend_new(
           when m_active_operators_last_node_ref_input_index is {
             Some(active_operators_last_node_ref_input_index) -> {
               // 7c. Input and output operators must not be identical.
-              //     TODO: Is this check needed?
+              //     TODO: Is this check needed? I.e., is it possible to refer
+              //           to a UTxO that is spent in the same transaction?
               expect previous_shifts_operator != new_shifts_operator
 
               // 8c. The last node in the active operators set must have a key
@@ -492,8 +493,8 @@ validator spend_new(
             }
             None -> {
               // 7c'. Without an additional reference input index for the last
-              //      operator in the active set, it is expected that the inactive
-              //      operator is the only member of the set.
+              //      operator in the active set, it is expected that the
+              //      inactive operator is the only member of the set.
               expect previous_shifts_operator == new_shifts_operator
               None == inactive_operators_link
             }

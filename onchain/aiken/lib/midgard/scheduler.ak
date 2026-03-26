@@ -33,7 +33,8 @@ pub type AdvancingApproach {
     skipped_operator_node_input_index: Int,
     active_operators_spend_redeemer_index: Int,
     // If only one operator exists in the active set, we won't want to refer to
-    // the new shift's operator UTxO.
+    // the new shift's operator UTxO. TODO? I'm assuming we can't refer to a
+    // UTxO that's getting spent in the same transaction.
     m_active_operators_last_node_ref_input_index: Option<Int>,
   }
   GoToNextDueToSkippedOperator {
