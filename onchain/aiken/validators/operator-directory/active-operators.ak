@@ -8,8 +8,9 @@ use cardano/transaction.{
 use midgard/common/utils
 use midgard/hub_oracle as hub
 use midgard/operator_directory.{
-  deinit, init, redeem_operator_status_against_scheduler,
-  slash_fraudulent_operator, validate_operator_transfer_and_get_inserted_data,
+  deinit, init, slash_fraudulent_operator,
+  validate_operator_transfer_and_get_inserted_data,
+  validate_scheduler_syncs_with_operator_removal,
 }
 use midgard/operator_directory/active_operators.{
   ActivateOperator, Datum, Deinit, Init, ListStateTransition, MintRedeemer,
@@ -388,7 +389,7 @@ validator mint(
         active_operator_anchor_element_output_index,
         retired_operators_redeemer_index,
         penalize_for_inactivity,
-        operator_status_redeemer,
+        operator_removal_scheduler_sync,
       } -> {
         let Transaction {
           inputs,
@@ -422,19 +423,7 @@ validator mint(
             hub_oracle_ref_input_index,
           )
 
-        // 3. Ensure scheduler datum is getting updated if needed, or show that
-        //    it doesn't need to.
-        expect
-          operator_status_redeemer
-            |> redeem_operator_status_against_scheduler(
-                active_operator_key,
-                hub_datum,
-                inputs,
-                reference_inputs,
-                redeemers,
-              )
-
-        // 4. Specified inputs and output for removal of the active operator's
+        // 3. Specified inputs and output for removal of the active operator's
         //    node from the linked list must exist at their indices.
         expect Some(active_operator_anchor_element_input) =
           inputs |> list.at(active_operator_anchor_element_input_index)
@@ -443,17 +432,17 @@ validator mint(
         expect Some(active_operator_anchor_element_output) =
           outputs |> list.at(active_operator_anchor_element_output_index)
 
-        // 5. Linked list's removal logic must be valid for the specified
+        // 4. Linked list's removal logic must be valid for the specified
         //    inputs and output.
         {
           let
             anchor_lovelace_change,
-            _m_anchor_key,
+            m_anchor_key,
             _anchor_data,
             _active_operator_lovelace,
             active_operator_node_key,
             active_operator_node_data,
-            _active_operator_node_link,
+            active_operator_node_link,
           <-
             linked_list.remove(
               active_operator_anchor_element_input,
@@ -462,12 +451,26 @@ validator mint(
               mint,
             )
 
-          // 6. Anchor element's ADA must be preserved.
+          // 5. Anchor element's ADA must be preserved.
           expect anchor_lovelace_change >= 0
 
-          // 7. Key of the removing node must match the operator key specified
+          // 6. Key of the removing node must match the operator key specified
           //    via the redeemer.
           expect active_operator_key == active_operator_node_key
+
+          // 7. Ensure scheduler datum is getting updated if needed, or show
+          //    that it doesn't need to.
+          expect
+            operator_removal_scheduler_sync
+              |> validate_scheduler_syncs_with_operator_removal(
+                  active_operator_key,
+                  m_anchor_key,
+                  active_operator_node_link,
+                  hub_datum,
+                  inputs,
+                  reference_inputs,
+                  redeemers,
+                )
 
           expect NodeData {
             inactivity_strikes,

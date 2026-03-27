@@ -327,7 +327,7 @@ validator spend_new(
         // 4a. Input and output datums must be valid, and time conditions and
         //     potentially next operator's consent must be met.
         let (previous_shifts_operator, new_shifts_operator) =
-          end_of_shift__validate_datums_and_get_operators(
+          validate_end_of_shift_and_get_operators(
             datum,
             output_datum_data,
             validity_range,
@@ -396,7 +396,7 @@ validator spend_new(
         // 4b. Input and output datums must be valid, and time conditions and
         //     potentially next operator's consent must be met.
         let (previous_shifts_operator, new_shifts_operator) =
-          end_of_shift__validate_datums_and_get_operators(
+          validate_end_of_shift_and_get_operators(
             datum,
             output_datum_data,
             validity_range,
@@ -540,8 +540,110 @@ validator spend_new(
         // Done.
         True
       }
-      RewindDueToOperatorRemoval { .. } -> todo
+      RewindDueToOperatorRemoval {
+        active_operators_last_node_ref_input_index,
+        active_operators_mint_redeemer_index,
+        m_active_operators_last_node_ref_input_index,
+        removal_reason,
+      } -> {
+        // 4e. An active operator must be appointed.
+        expect ActiveOperator {
+          operator: previous_shifts_operator,
+          start_time: previous_shifts_start_time,
+        } = datum
+
+        // 5e. Minting script of active operators set must be invoked.
+        let active_operators_mint_redeemer_data =
+          redeemers
+            |> utils.get_redeemer_at(
+                expected_purpose: Mint(active_operators_policy_id),
+                redeemer_index: active_operators_mint_redeemer_index,
+              )
+
+        // 6e. Retrieve flag from active operators redeemer which indicates
+        //     whether the removed node linked to another node. If not, it means
+        //     after removal, only the root element remains in the active set.
+        let last_operator_is_removed =
+          when removal_reason is {
+            OperatorRetirement -> {
+              expect active_operators.RetireOperator {
+                active_operator_key,
+                operator_removal_scheduler_sync: operator_directory.ShowSchedulerIsAdvancing {
+                  scheduler_input_index: scheduler_input_index_from_active_ops_redeemer,
+                  removing_operators_anchor_element_key,
+                  removing_operator_is_the_last_member,
+                  ..
+                },
+                ..
+              } = active_operators_mint_redeemer_data
+              // 7e. Operator in the spent scheduler UTxO must match the retiring
+              //     operator from active operators redeemer.
+              expect previous_shifts_operator == active_operator_key
+
+              // 8e. For rewinding, the anchor of the removing node must be root.
+              expect None == removing_operators_anchor_element_key
+
+              removing_operator_is_the_last_member
+            }
+            OperatorSlashing -> {
+              expect active_operators.SlashOperator{slashing_arguments: operator_directory.SlashingArguments {
+                slashed_operator,
+                operator_removal_scheduler_sync: operator_directory.ShowSchedulerIsAdvancing {
+                  scheduler_input_index: scheduler_input_index_from_active_ops_redeemer,
+                  removing_operators_anchor_element_key,
+                  removing_operator_is_the_last_member,
+                  ..
+                },
+                ..
+              }} = active_operators_mint_redeemer_data
+
+              // 7e'. Operator in the spent scheduler UTxO must match the retiring
+              //      operator from active operators redeemer.
+              expect previous_shifts_operator == slashed_operator
+
+              // 8e'. For rewinding, the anchor of the removing node must be root.
+              expect None == removing_operators_anchor_element_key
+
+              removing_operator_is_the_last_member
+            }
+          }
+        if last_operator_is_removed {
+          // 9e. Output scheduler datum must declare unavailability of any
+          //     active operators.
+          expect NoActiveOperators = output_datum_data
+
+          // Done.
+          True
+        } else {
+          expect ActiveOperator {
+            operator: new_shifts_operator,
+            start_time: new_shifts_start_time,
+          } = output_datum_data
+
+          // TODO: This might not be needed.
+          expect new_shifts_operator != previous_shifts_operator
+
+          // 9e'. Reference input for last node in the active operators set must
+          //      exist at specified index.
+          expect Some(active_operators_last_node_ref_input_index) =
+            m_active_operators_last_node_ref_input_index
+
+          // 10e'. The last node in the active operators set must have a key
+          //       that matches the new shift's operator.
+          expect
+            validate_operator_is_the_last_active_node(
+              active_operators_policy_id,
+              active_operators_last_node_ref_input_index,
+              new_shifts_operator,
+              reference_inputs,
+            )
+
+          // Done.
+          True
+        }
+      }
       GoToNextDueToOperatorRemoval { .. } -> todo
+      AppointFirstOperator { new_shifts_operator_node_ref_input_index } -> todo
     }
   }
 
@@ -580,7 +682,7 @@ fn validate_active_datums_and_get_info(
   )
 }
 
-fn end_of_shift__validate_datums_and_get_operators(
+fn validate_end_of_shift_and_get_operators(
   input_datum: Datum,
   output_datum_data: Data,
   validity_range: ValidityRange,

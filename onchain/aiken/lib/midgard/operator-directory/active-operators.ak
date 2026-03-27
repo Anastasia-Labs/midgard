@@ -3,7 +3,7 @@ use aiken/primitive/bytearray
 use aiken_design_patterns/linked_list
 use cardano/assets.{AssetName, PolicyId}
 use midgard/common/types.{PosixTime}
-use midgard/operator_directory.{OperatorStatusRedeemer, SlashingArguments}
+use midgard/operator_directory.{OperatorRemovalSchedulerSync, SlashingArguments}
 
 /// TODO: Refer to state queue's library module.
 pub const root_asset_name: AssetName = "MIDGARD_ACTIVE_OPERATORS"
@@ -76,7 +76,7 @@ pub type MintRedeemer {
     active_operator_anchor_element_output_index: Int,
     retired_operators_redeemer_index: Int,
     penalize_for_inactivity: Bool,
-    operator_status_redeemer: OperatorStatusRedeemer,
+    operator_removal_scheduler_sync: OperatorRemovalSchedulerSync,
   }
   SlashOperator { slashing_arguments: SlashingArguments }
 }

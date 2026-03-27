@@ -47,8 +47,9 @@ pub type AdvancingApproach {
     hub_oracle_ref_input_index: Int,
   }
   RewindDueToOperatorRemoval {
-    active_root_input_index: Int,
-    new_shifts_operator_node_ref_input_index: Int,
+    active_operators_last_node_ref_input_index: Int,
+    active_operators_mint_redeemer_index: Int,
+    m_active_operators_last_node_ref_input_index: Option<Int>,
     removal_reason: OperatorRemovalReason,
   }
   GoToNextDueToOperatorRemoval {
@@ -56,6 +57,7 @@ pub type AdvancingApproach {
     active_operators_mint_redeemer_index: Int,
     removal_reason: OperatorRemovalReason,
   }
+  AppointFirstOperator { new_shifts_operator_node_ref_input_index: Int }
 }
 
 pub type SpendRedeemer {

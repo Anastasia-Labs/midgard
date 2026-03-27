@@ -17,11 +17,13 @@ use midgard/scheduler
 use midgard/settlement
 use midgard/state_queue
 
-pub type OperatorStatusRedeemer {
+pub type OperatorRemovalSchedulerSync {
   ShowOperatorIsInactive { scheduler_ref_input_index: Int }
   ShowSchedulerIsAdvancing {
     scheduler_input_index: Int,
     scheduler_redeemer_index: Int,
+    removing_operators_anchor_element_key: Option<linked_list.NodeKey>,
+    removing_operator_is_the_last_member: Bool,
   }
 }
 
@@ -39,7 +41,7 @@ pub type SlashingArguments {
   slashed_operator_anchor_element_input_index: Int,
   slashed_operator_node_input_index: Int,
   slashed_operator_anchor_element_output_index: Int,
-  operator_status_redeemer: OperatorStatusRedeemer,
+  operator_removal_scheduler_sync: OperatorRemovalSchedulerSync,
   slashing_reason: SlashingReason,
 }
 
@@ -214,15 +216,17 @@ pub fn validate_operator_transfer_and_get_inserted_data(
 /// If the subject operator is currently appointed active, this function
 /// validates scheduler UTxO is spent. Otherwise, shows that the currently
 /// appointed operator is different from the subject operator.
-pub fn redeem_operator_status_against_scheduler(
-  operator_status_redeemer: OperatorStatusRedeemer,
+pub fn validate_scheduler_syncs_with_operator_removal(
+  operator_removal_scheduler_sync: OperatorRemovalSchedulerSync,
   subject_operator: VerificationKeyHash,
+  subject_operators_anchor_key: Option<linked_list.NodeKey>,
+  subject_operators_link: linked_list.Link,
   hub_datum: hub.Datum,
   inputs: List<Input>,
   reference_inputs: List<Input>,
   redeemers: Pairs<ScriptPurpose, Redeemer>,
 ) -> Bool {
-  when operator_status_redeemer is {
+  when operator_removal_scheduler_sync is {
     ShowOperatorIsInactive { scheduler_ref_input_index } -> {
       let scheduler_datum =
         reference_inputs
@@ -233,7 +237,16 @@ pub fn redeem_operator_status_against_scheduler(
           operator != subject_operator
       }
     }
-    ShowSchedulerIsAdvancing { scheduler_input_index, scheduler_redeemer_index } -> {
+    ShowSchedulerIsAdvancing {
+      scheduler_input_index,
+      scheduler_redeemer_index,
+      removing_operators_anchor_element_key,
+      removing_operator_is_the_last_member,
+    } -> {
+      // Redeemer arguments must be validated for scheduler to use.
+      expect
+        removing_operators_anchor_element_key == subject_operators_anchor_key
+
       let (scheduler_datum_data, scheduler_redeemer_data) =
         utils.get_inline_datum_and_spending_redeemer_data_at(
           hub_datum.scheduler_addr,
@@ -248,7 +261,11 @@ pub fn redeem_operator_status_against_scheduler(
         ..
       } = scheduler_redeemer_data
       expect operator == subject_operator
-      scheduler_input_index == input_index_from_scheduler_redeemer
+      expect scheduler_input_index == input_index_from_scheduler_redeemer
+      when subject_operators_link is {
+        None -> removing_operator_is_the_last_member == True
+        Some(_) -> removing_operator_is_the_last_member == False
+      }
     }
   }
 }
@@ -266,7 +283,7 @@ pub fn slash_fraudulent_operator(
     slashed_operator_anchor_element_input_index,
     slashed_operator_node_input_index,
     slashed_operator_anchor_element_output_index,
-    operator_status_redeemer,
+    operator_removal_scheduler_sync,
     slashing_reason,
   } = slashing_arguments
 
@@ -302,12 +319,12 @@ pub fn slash_fraudulent_operator(
   //    output.
   let
     anchor_lovelace_change,
-    _m_anchor_key,
+    m_anchor_key,
     _anchor_data,
     _slashed_operator_node_lovelace,
     slashed_operator_node_key,
     _slashed_operator_node_data,
-    _slashed_operator_node_link,
+    slashed_operator_node_link,
   <-
     linked_list.remove(
       slashed_operator_anchor_element_input,
@@ -332,9 +349,11 @@ pub fn slash_fraudulent_operator(
   //    updated. Otherwise, show the currently appointed operator is different
   //    from the slashing operator.
   expect
-    operator_status_redeemer
-      |> redeem_operator_status_against_scheduler(
+    operator_removal_scheduler_sync
+      |> validate_scheduler_syncs_with_operator_removal(
           slashed_operator,
+          m_anchor_key,
+          slashed_operator_node_link,
           hub_datum,
           inputs,
           reference_inputs,
