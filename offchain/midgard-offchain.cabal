@@ -106,15 +106,18 @@ library
     Midgard.Contracts.RegisteredOperators
     Midgard.Contracts.RetiredOperators
     Midgard.Contracts.Scheduler
+    Midgard.Contracts.StateQueue
     Midgard.Contracts.Utils
     Midgard.Scripts
     Midgard.ScriptUtils
     Midgard.Types.ActiveOperators
     Midgard.Types.HubOracle
+    Midgard.Types.LedgerState
     Midgard.Types.LinkedList
     Midgard.Types.RegisteredOperators
     Midgard.Types.RetiredOperators
     Midgard.Types.Scheduler
+    Midgard.Types.StateQueue
 
   hs-source-dirs:  src
   build-depends:

@@ -6,6 +6,7 @@ import Data.Time.Clock.POSIX (utcTimeToPOSIXSeconds)
 import Cardano.Api qualified as C
 import Convex.BuildTx (
   TxBuilder,
+  addBtx,
   assetValue,
   createRefScriptNoDatum,
   execBuildTx,
@@ -27,7 +28,8 @@ import Midgard.Contracts.ActiveOperators (initActiveOperators)
 import Midgard.Contracts.RegisteredOperators (initRegisteredOperators)
 import Midgard.Contracts.RetiredOperators (initRetiredOperators)
 import Midgard.Contracts.Scheduler (initScheduler)
-import Midgard.Contracts.Utils (slotToBeginUTCTime)
+import Midgard.Contracts.StateQueue (initStateQueue)
+import Midgard.Contracts.Utils (slotToEndUTCTime)
 import Midgard.ScriptUtils (mintingPolicyId, policyIdBytes, scriptHashBytes, toMintingPolicy, validatorHash)
 import Midgard.Scripts (
   MidgardRefScripts (..),
@@ -51,13 +53,16 @@ initProtocol
     , activeOperatorsValidator
     , retiredOperatorsValidator
     , schedulerValidator
+    , stateQueuePolicy
+    , stateQueueValidator
     }
   refScripts =
     do
       netId <- queryNetworkId
       params <- queryProtocolParameters
       (currentSlot, _, _) <- querySlotNo
-      currentTime <- utcTimeToPOSIXSeconds <$> slotToBeginUTCTime currentSlot
+      let validityUpperBoundExclusive = currentSlot + 300
+      currentTime <- utcTimeToPOSIXSeconds <$> slotToEndUTCTime (validityUpperBoundExclusive - 1)
       pure . execBuildTx $ do
         -- The hub oracle is required for all initializations.
         -- TODO (chase): The real hub oracle must be parameterized by a nonce UTxO.
@@ -71,7 +76,7 @@ initProtocol
             , activeOperators = scriptCurrencySymbol activeOperatorsPolicy
             , registeredOperators = scriptCurrencySymbol registeredOperatorsPolicy
             , scheduler = scriptCurrencySymbol schedulerPolicy
-            , stateQueue = scriptCurrencySymbol registeredOperatorsPolicy
+            , stateQueue = scriptCurrencySymbol stateQueuePolicy
             , fraudProofCatalogue = scriptCurrencySymbol registeredOperatorsPolicy
             , fraudProof = scriptCurrencySymbol registeredOperatorsPolicy
             , deposit = scriptCurrencySymbol registeredOperatorsPolicy
@@ -83,7 +88,7 @@ initProtocol
             , activeOperatorsAddr = scriptHashAddress (scriptHash activeOperatorsValidator)
             , retiredOperatorsAddr = scriptHashAddress (scriptHash retiredOperatorsValidator)
             , schedulerAddr = scriptHashAddress (scriptHash schedulerValidator)
-            , stateQueueAddr = scriptHashAddress (scriptHash registeredOperatorsValidator)
+            , stateQueueAddr = scriptHashAddress (scriptHash stateQueueValidator)
             , fraudProofCatalogueAddr = scriptHashAddress (scriptHash registeredOperatorsValidator)
             , fraudProofAddr = scriptHashAddress (scriptHash registeredOperatorsValidator)
             , depositAddr = scriptHashAddress (scriptHash registeredOperatorsValidator)
@@ -101,6 +106,13 @@ initProtocol
         initActiveOperators netId scripts refScripts
         initRetiredOperators netId scripts refScripts
         initScheduler netId (transPOSIXTime currentTime) scripts
+        initStateQueue netId (currentSlot, transPOSIXTime currentTime) scripts
+        addBtx $ \txBody ->
+          txBody
+            { C.txValidityLowerBound = C.TxValidityLowerBound (C.allegraBasedEra @C.ConwayEra) currentSlot
+            , C.txValidityUpperBound =
+                C.TxValidityUpperBound (C.shelleyBasedEra @C.ConwayEra) $ Just validityUpperBoundExclusive
+            }
         setMinAdaDepositAll params
     where
       scriptCurrencySymbol = currencySymbol . policyIdBytes . mintingPolicyId
