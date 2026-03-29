@@ -2,7 +2,7 @@ name: Latex CI
 
 on:
   push:
-    branches: [ main ]
+    branches: [ "main", "staging" ]
     paths: [ 'technical-spec/**' ]
   workflow_dispatch:  # For manual testing
   # TODO: Change to release trigger later
