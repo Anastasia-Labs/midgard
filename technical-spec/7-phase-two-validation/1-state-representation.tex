@@ -13,13 +13,16 @@ The UPLC Term representation uses progressive hashing to maintain compact state 
 
 \begin{align*}
     \text{Term} \coloneq&\;
-        \text{Variable} (\text{Name}) \\\mid&\;
-        \text{Lambda} (\text{Name}, \text{Hash}) \\\mid&\;
+        \text{Var} (\text{DeBruijnIndex}) \\\mid&\;
+        \text{Lambda} (\text{DeBruijnIndex}, \text{Hash}) \\\mid&\;
         \text{Apply} (\text{Hash}, \text{Hash}) \\\mid&\;
         \text{Constant} (\text{Hash}) \\\mid&\;
         \text{Force} (\text{Hash}) \\\mid&\;
         \text{Delay} (\text{Hash}) \\\mid&\;
-        \text{Builtin} (\text{BuiltinFunction})
+        \text{Builtin} (\text{BuiltinFunction}) \\\mid&\;
+        \text{Error} \\\mid&\;
+        \text{Constr}(\text{ConstructorTag}, [\text{Hash}]) \\\mid&\;
+        \text{Case}(\text{Hash}, [\text{Hash}])
 \end{align*}
 
 Each \text{Hash} in the Term representation refers to another Term that has been previously processed and hashed. This creates a directed acyclic graph (DAG) of Term components where larger structures are decomposed into their constituent parts.
