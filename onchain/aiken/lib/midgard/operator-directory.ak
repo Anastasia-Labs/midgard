@@ -258,10 +258,17 @@ pub fn validate_scheduler_syncs_with_operator_removal(
       expect scheduler.ActiveOperator { operator, .. } = scheduler_datum_data
       expect scheduler.SpendRedeemer {
         scheduler_input_index: input_index_from_scheduler_redeemer,
+        advancing_approach,
         ..
       } = scheduler_redeemer_data
       expect operator == subject_operator
       expect scheduler_input_index == input_index_from_scheduler_redeemer
+      expect
+        when advancing_approach is {
+          scheduler.GoToNextDueToOperatorRemoval { .. } |
+          scheduler.RewindDueToOperatorRemoval { .. } -> True
+          _ -> False
+        }
       when subject_operators_link is {
         None -> removing_operator_is_the_last_member == True
         Some(_) -> removing_operator_is_the_last_member == False

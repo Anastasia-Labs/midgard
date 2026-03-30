@@ -16,8 +16,12 @@ use midgard/operator_directory/active_operators
 use midgard/operator_directory/registered_operators
 use midgard/protocol_parameters.{operator_inactivity_timeout}
 use midgard/scheduler.{
-  ActiveOperator, Advance, Datum, Deinit, Init, MintRedeemer, NoActiveOperators,
-  Rewind, SkipInactiveOperator, SpendRedeemer, asset_name, shift_end_time,
+  ActiveOperator, AdvancingApproach, AppointFirstOperator, Datum, Deinit,
+  GoToNextDueToEndOfShift, GoToNextDueToOperatorRemoval,
+  GoToNextDueToSkippedOperator, Init, MintRedeemer, NoActiveOperators,
+  OperatorRetirement, OperatorSlashing, RewindDueToEndOfShift,
+  RewindDueToOperatorRemoval, RewindDueToSkippedOperator, SpendRedeemer,
+  asset_name, shift_end_time,
 }
 use midgard/state_queue
 
@@ -54,216 +58,6 @@ validator mint(hub_oracle_script_hash: PolicyId) {
 }
 
 validator spend(
-  registered_operators_policy_id: PolicyId,
-  active_operators_address: Address,
-  active_operators_policy_id: PolicyId,
-  scheduler_policy_id: PolicyId,
-  hub_oracle_script_hash: PolicyId,
-) {
-  spend(
-    m_datum: Option<Datum>,
-    redeemer: SpendRedeemer,
-    own_out_ref: OutputReference,
-    self: Transaction,
-  ) {
-    when redeemer is {
-      Advance {
-        scheduler_input_index,
-        scheduler_output_index,
-        active_node_ref_input_index,
-      } -> {
-        let Transaction {
-          inputs,
-          outputs,
-          reference_inputs,
-          extra_signatories,
-          validity_range,
-          ..
-        } = self
-
-        // 1. Apart from validating proper reproduction of the authentic input,
-        //    the consent of the current operator must be verified if their
-        //    shift has not yet ended.
-        let
-          input_operator,
-          output_operator,
-        <-
-          validate_end_of_shift_and_get_operators(
-            scheduler_policy_id,
-            scheduler_input_index,
-            scheduler_output_index,
-            m_datum,
-            own_out_ref,
-            inputs,
-            outputs,
-            extra_signatories,
-            validity_range,
-          )
-
-        // 2. The authentic reference input of the new active operator node must
-        //    exist at the specified index.
-        expect Some(active_node_ref_input) =
-          list.at(reference_inputs, active_node_ref_input_index)
-        {
-          let
-            _active_node_lovelace,
-            m_active_node_key,
-            _active_node_data,
-            active_node_link,
-          <- linked_list.get_element_info(active_node_ref_input.output)
-
-          // 3. The referenced active operator element has to be a node, and its
-          //    key must match the new active operator.
-          expect Some(output_operator) == m_active_node_key
-
-          // 4. If the new active operator node has a linked operator, the key
-          //    of the linked operator must match or exceed the previous
-          //    operator's key.
-          expect
-            when active_node_link is {
-              None -> True
-              Some(active_node_linked_operator) ->
-                bytearray.compare(input_operator, active_node_linked_operator) != Greater
-            }
-
-          // Done.
-          True
-        }
-          |> active_operators.finalize_linked_list(active_operators_policy_id)
-      }
-      Rewind {
-        scheduler_input_index,
-        scheduler_output_index,
-        active_node_ref_input_index,
-        active_root_ref_input_index,
-        registered_element_ref_input_index,
-      } -> {
-        let Transaction {
-          inputs,
-          outputs,
-          reference_inputs,
-          extra_signatories,
-          validity_range,
-          ..
-        } = self
-
-        // 1. Apart from validating proper reproduction of the authentic input,
-        //    the consent of the current operator must be verified if their
-        //    shift has not yet ended.
-        let
-          input_operator,
-          output_operator,
-        <-
-          validate_end_of_shift_and_get_operators(
-            scheduler_policy_id,
-            scheduler_input_index,
-            scheduler_output_index,
-            m_datum,
-            own_out_ref,
-            inputs,
-            outputs,
-            extra_signatories,
-            validity_range,
-          )
-
-        // 2. Active and registered operator elements must exist at the
-        //    specified indices.
-        expect Some(active_node_ref_input) =
-          reference_inputs |> list.at(active_node_ref_input_index)
-        expect Some(active_root_ref_input) =
-          reference_inputs |> list.at(active_root_ref_input_index)
-        expect Some(registered_element_ref_input) =
-          reference_inputs |> list.at(registered_element_ref_input_index)
-
-        let last_operator_node_linked_list_eval = {
-          let
-            _active_node_lovelace,
-            m_active_node_key,
-            _active_node_data,
-            active_node_link,
-          <- linked_list.get_element_info(active_node_ref_input.output)
-
-          // 3. The referenced active operator element has to be a node, and its
-          //    key must match the new active operator.
-          expect Some(output_operator) == m_active_node_key
-
-          // 4. The node has to be the last in the list.
-          None == active_node_link
-        }
-        expect
-          last_operator_node_linked_list_eval
-            |> active_operators.finalize_linked_list(active_operators_policy_id)
-
-        let active_operators_root_linked_list_eval = {
-          let
-            _active_root_lovelace,
-            m_active_root_key,
-            _active_root_data,
-            active_root_link,
-          <- linked_list.get_element_info(active_root_ref_input.output)
-
-          // 5. The referenced element has to be root.
-          expect None == m_active_root_key
-
-          // TODO: Handle the case of empty active operators linked list
-          //       properly. Related to
-          //       [#296](https://github.com/anastasia-labs/midgard/issues/296)
-          //       and
-          //       [#391](https://github.com/anastasia-labs/midgard/issues/391).
-          when active_root_link is {
-            None -> False
-            Some(active_root_linked_operator) ->
-              bytearray.compare(input_operator, active_root_linked_operator) != Greater
-          }
-        }
-        expect
-          active_operators_root_linked_list_eval
-            |> active_operators.finalize_linked_list(active_operators_policy_id)
-
-        let registered_operators_linked_list_eval = {
-          let
-            _registered_element_lovelace,
-            m_registered_element_key,
-            _registered_element_data,
-            registered_element_link,
-          <- linked_list.get_element_info(registered_element_ref_input.output)
-
-          // 6. If the referenced registered operator element is a node, its
-          //    activation time must not have reached yet.
-          expect
-            when m_registered_element_key is {
-              None -> True
-              Some(registered_node_key) -> {
-                let activation_time =
-                  registered_operators.node_key_to_activation_time(
-                    registered_node_key,
-                  )
-                validity_range |> interval.is_entirely_before(activation_time)
-              }
-            }
-
-          // 7. The referenced registered operator element has to be at the very
-          //    end of the list.
-          None == registered_element_link
-        }
-        expect
-          registered_operators_linked_list_eval
-            |> registered_operators.finalize_linked_list(
-                registered_operators_policy_id,
-              )
-
-        // Done.
-        True
-      }
-    }
-  }
-
-  else(_) {
-    fail
-  }
-}
-
-validator spend_new(
   registered_operators_policy_id: PolicyId,
   active_operators_address: Address,
   active_operators_policy_id: PolicyId,
@@ -607,6 +401,7 @@ validator spend_new(
               removing_operator_is_the_last_member
             }
           }
+
         if last_operator_is_removed {
           // 9e. Output scheduler datum must declare unavailability of any
           //     active operators.
