@@ -5,7 +5,6 @@ import {
   AlwaysSucceedsContract,
   Globals,
 } from "@/services/index.js";
-import { StateQueueTx } from "@/transactions/index.js";
 import * as SDK from "@al-ft/midgard-sdk";
 import { NodeSdk } from "@effect/opentelemetry";
 import {
@@ -19,7 +18,6 @@ import { OTLPTraceExporter } from "@opentelemetry/exporter-trace-otlp-http";
 import { BatchSpanProcessor } from "@opentelemetry/sdk-trace-base";
 import {
   Cause,
-  Chunk,
   Duration,
   Effect,
   Layer,
@@ -32,20 +30,12 @@ import {
 import {
   AddressHistoryDB,
   BlocksDB,
-  ConfirmedLedgerDB,
   ImmutableDB,
   InitDB,
-  LatestLedgerDB,
   MempoolDB,
   MempoolLedgerDB,
-  ProcessedMempoolDB,
-} from "../database/index.js";
-import {
-  ProcessedTx,
-  breakDownTx,
-  bufferToHex,
-  isHexString,
-} from "../utils.js";
+} from "@/database/index.js";
+import { isHexString } from "@/utils.js";
 import {
   HttpRouter,
   HttpServer,
@@ -56,17 +46,22 @@ import { ParsedSearchParams } from "@effect/platform/HttpServerRequest";
 import { createServer } from "node:http";
 import { NodeHttpServer } from "@effect/platform-node";
 import { HttpBodyError } from "@effect/platform/HttpBody";
-import { insertGenesisUtxos } from "@/database/genesis.js";
-import { deleteLedgerMpt, deleteMempoolMpt } from "@/workers/utils/mpt.js";
-import { Worker } from "worker_threads";
-import {
-  WorkerInput as BlockConfirmationWorkerInput,
-  WorkerOutput as BlockConfirmationWorkerOutput,
-} from "@/workers/utils/confirm-block-commitments.js";
-import { WorkerError } from "@/workers/utils/common.js";
+import * as Genesis from "@/genesis.js";
+import * as Initialization from "@/transactions/initialization.js";
+import * as Reset from "@/reset.js";
 import { SerializedStateQueueUTxO } from "@/workers/utils/commit-block-header.js";
 import { DatabaseError } from "@/database/utils/common.js";
 import { TxConfirmError, TxSignError } from "@/transactions/utils.js";
+import {
+  fetchAndInsertDepositUTxOsFiber,
+  blockConfirmationFiber,
+  blockCommitmentFiber,
+  blockCommitmentAction,
+  mergeFiber,
+  mergeAction,
+  monitorMempoolFiber,
+  txQueueProcessorFiber,
+} from "@/fibers/index.js";
 
 const TX_ENDPOINT: string = "tx";
 const ADDRESS_HISTORY_ENDPOINT: string = "txs";
@@ -83,17 +78,6 @@ const txCounter = Metric.counter("tx_count", {
   description: "A counter for tracking submit transactions",
   bigint: true,
   incremental: true,
-});
-
-const txQueueSizeGauge = Metric.gauge("tx_queue_size", {
-  description: "A tracker for the size of the tx queue before processing",
-  bigint: true,
-});
-
-const mempoolTxGauge = Metric.gauge("mempool_tx_count", {
-  description:
-    "A gauge for tracking the current number of transactions in the mempool",
-  bigint: true,
 });
 
 const failWith500Helper = (
@@ -125,10 +109,8 @@ const handleTxGetFailure = (
   e: TxSignError | TxConfirmError | TxSubmitError,
 ) => failWith500("GET", endpoint, e.cause, `${e._tag}: ${e.message}`);
 
-const handleGenericGetFailure = (
-  endpoint: string,
-  e: SDK.Utils.GenericErrorFields,
-) => failWith500("GET", endpoint, e.cause, e.message);
+const handleGenericGetFailure = (endpoint: string, e: SDK.GenericErrorFields) =>
+  failWith500("GET", endpoint, e.cause, e.message);
 
 const lookupTxCbor = (txHashBytes: Buffer, txHashParam: string) =>
   MempoolDB.retrieveTxCborByHash(txHashBytes).pipe(
@@ -167,9 +149,11 @@ const getTxHandler = Effect.gen(function* () {
 
   const txHashBytes = Buffer.from(fromHex(txHashParam));
   return yield* lookupTxCbor(txHashBytes, txHashParam).pipe(
-    Effect.tap((foundCbor) => Effect.logInfo("foundCbor", bufferToHex(foundCbor))),
+    Effect.tap((foundCbor) =>
+      Effect.logInfo("foundCbor", SDK.bufferToHex(foundCbor)),
+    ),
     Effect.flatMap((foundCbor) =>
-      HttpServerResponse.json({ tx: bufferToHex(foundCbor) }),
+      HttpServerResponse.json({ tx: SDK.bufferToHex(foundCbor) }),
     ),
     Effect.catchTag("NotFoundError", () =>
       HttpServerResponse.json(
@@ -211,8 +195,8 @@ const getUtxosHandler = Effect.gen(function* () {
     );
 
     const response = utxosWithAddress.map((entry) => ({
-      outref: bufferToHex(entry.outref),
-      value: bufferToHex(entry.output),
+      outref: SDK.bufferToHex(entry.outref),
+      value: SDK.bufferToHex(entry.output),
     }));
 
     yield* Effect.logInfo(`Found ${response.length} UTxOs for ${addr}`);
@@ -261,7 +245,9 @@ const getBlockHandler = Effect.gen(function* () {
   yield* Effect.logInfo(
     `GET /${BLOCK_ENDPOINT} - Found ${hashes.length} txs for block: ${hdrHash}`,
   );
-  return yield* HttpServerResponse.json({ hashes: hashes.map(bufferToHex) });
+  return yield* HttpServerResponse.json({
+    hashes: hashes.map(SDK.bufferToHex),
+  });
 }).pipe(
   Effect.catchTag("HttpBodyError", (e) =>
     failWith500("GET", BLOCK_ENDPOINT, e),
@@ -273,22 +259,25 @@ const getBlockHandler = Effect.gen(function* () {
 
 const getInitHandler = Effect.gen(function* () {
   yield* Effect.logInfo(`✨ Initialization request received`);
-  const result = yield* StateQueueTx.stateQueueInit;
-  yield* insertGenesisUtxos;
+  const txHash = yield* Initialization.program;
+  yield* Genesis.program;
   yield* Effect.logInfo(
-    `GET /${INIT_ENDPOINT} - Initialization successful: ${result}`,
+    `GET /${INIT_ENDPOINT} - Initialization successful: ${txHash}`,
   );
   return yield* HttpServerResponse.json({
-    message: `Initiation successful: ${result}`,
+    message: `Initiation successful: ${txHash}`,
   });
 }).pipe(
   Effect.catchTag("HttpBodyError", (e) => failWith500("GET", INIT_ENDPOINT, e)),
   Effect.catchTag("LucidError", (e) =>
     handleGenericGetFailure(INIT_ENDPOINT, e),
   ),
-  Effect.catchTag("DatabaseError", (e) => handleDBGetFailure(INIT_ENDPOINT, e)),
+  Effect.catchTag("MptError", (e) => handleGenericGetFailure(INIT_ENDPOINT, e)),
   Effect.catchTag("TxSubmitError", (e) => handleTxGetFailure(INIT_ENDPOINT, e)),
   Effect.catchTag("TxSignError", (e) => handleTxGetFailure(INIT_ENDPOINT, e)),
+  Effect.catchTag("UnspecifiedNetworkError", (e) =>
+    handleGenericGetFailure(INIT_ENDPOINT, e),
+  ),
 );
 
 const getCommitEndpoint = Effect.gen(function* () {
@@ -353,22 +342,8 @@ const getMergeHandler = Effect.gen(function* () {
 
 const getResetHandler = Effect.gen(function* () {
   yield* Effect.logInfo(`🚧 Reset request received`);
-  yield* StateQueueTx.resetStateQueue;
-  yield* Effect.all(
-    [
-      MempoolDB.clear,
-      MempoolLedgerDB.clear,
-      ProcessedMempoolDB.clear,
-      BlocksDB.clear,
-      ImmutableDB.clear,
-      LatestLedgerDB.clear,
-      ConfirmedLedgerDB.clear,
-      AddressHistoryDB.clear,
-      deleteMempoolMpt,
-      deleteLedgerMpt,
-    ],
-    { discard: true },
-  );
+  yield* Reset.program;
+
   return yield* HttpServerResponse.json({
     message: `Collected all UTxOs successfully!`,
   });
@@ -381,6 +356,9 @@ const getResetHandler = Effect.gen(function* () {
     handleTxGetFailure(RESET_ENDPOINT, e),
   ),
   Effect.catchTag("TxSignError", (e) => handleTxGetFailure(RESET_ENDPOINT, e)),
+  Effect.catchTag("TxConfirmError", (e) =>
+    handleTxGetFailure(RESET_ENDPOINT, e),
+  ),
   Effect.catchTag("LucidError", (e) =>
     handleGenericGetFailure(RESET_ENDPOINT, e),
   ),
@@ -412,7 +390,7 @@ const getTxsOfAddressHandler = Effect.gen(function* () {
     const cbors = yield* AddressHistoryDB.retrieve(addrDetails.address.bech32);
     yield* Effect.logInfo(`Found ${cbors.length} CBORs with ${addr}`);
     return yield* HttpServerResponse.json({
-      txs: cbors.map(bufferToHex),
+      txs: cbors.map(SDK.bufferToHex),
     });
   } catch (error) {
     yield* Effect.logInfo(`Invalid address: ${addr}`);
@@ -432,11 +410,11 @@ const getStateQueueHandler = Effect.gen(function* () {
   yield* Effect.logInfo(`✍  Drawing state queue UTxOs...`);
   const lucid = yield* Lucid;
   const alwaysSucceeds = yield* AlwaysSucceedsContract;
-  const fetchConfig: SDK.TxBuilder.StateQueue.FetchConfig = {
-    stateQueuePolicyId: alwaysSucceeds.policyId,
-    stateQueueAddress: alwaysSucceeds.spendScriptAddress,
+  const fetchConfig: SDK.StateQueueFetchConfig = {
+    stateQueuePolicyId: alwaysSucceeds.stateQueue.policyId,
+    stateQueueAddress: alwaysSucceeds.stateQueue.spendingScriptAddress,
   };
-  const sortedUTxOs = yield* SDK.Endpoints.fetchSortedStateQueueUTxOsProgram(
+  const sortedUTxOs = yield* SDK.fetchSortedStateQueueUTxOsProgram(
     lucid.api,
     fetchConfig,
   );
@@ -519,8 +497,8 @@ const getLogGlobalsHandler = Effect.gen(function* () {
   yield* Effect.logInfo(`✍  Logging global variables...`);
   const globals = yield* Globals;
   const BLOCKS_IN_QUEUE: number = yield* Ref.get(globals.BLOCKS_IN_QUEUE);
-  const LATEST_SYNC_OF_STATE_QUEUE_LENGTH: number = yield* Ref.get(
-    globals.LATEST_SYNC_OF_STATE_QUEUE_LENGTH,
+  const LATEST_SYNC_TIME_OF_STATE_QUEUE_LENGTH: number = yield* Ref.get(
+    globals.LATEST_SYNC_TIME_OF_STATE_QUEUE_LENGTH,
   );
   const RESET_IN_PROGRESS: boolean = yield* Ref.get(globals.RESET_IN_PROGRESS);
   const AVAILABLE_CONFIRMED_BLOCK: "" | SerializedStateQueueUTxO =
@@ -531,18 +509,18 @@ const getLogGlobalsHandler = Effect.gen(function* () {
   const PROCESSED_UNSUBMITTED_TXS_SIZE: number = yield* Ref.get(
     globals.PROCESSED_UNSUBMITTED_TXS_SIZE,
   );
-  const UNCONFIRMED_SUBMITTED_BLOCK: string = yield* Ref.get(
-    globals.UNCONFIRMED_SUBMITTED_BLOCK,
+  const UNCONFIRMED_SUBMITTED_BLOCK_TX_HASH: string = yield* Ref.get(
+    globals.UNCONFIRMED_SUBMITTED_BLOCK_TX_HASH,
   );
 
   yield* Effect.logInfo(`
   BLOCKS_IN_QUEUE ⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅ ${BLOCKS_IN_QUEUE}
-  LATEST_SYNC ⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅ ${new Date(LATEST_SYNC_OF_STATE_QUEUE_LENGTH).toLocaleString()}
+  LATEST_SYNC ⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅ ${new Date(Number(LATEST_SYNC_TIME_OF_STATE_QUEUE_LENGTH)).toLocaleString()}
   RESET_IN_PROGRESS ⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅ ${RESET_IN_PROGRESS}
   AVAILABLE_CONFIRMED_BLOCK ⋅⋅⋅⋅⋅⋅⋅⋅⋅ ${JSON.stringify(AVAILABLE_CONFIRMED_BLOCK)}
   PROCESSED_UNSUBMITTED_TXS_COUNT ⋅⋅⋅ ${PROCESSED_UNSUBMITTED_TXS_COUNT}
   PROCESSED_UNSUBMITTED_TXS_SIZE ⋅⋅⋅⋅ ${PROCESSED_UNSUBMITTED_TXS_SIZE}
-  UNCONFIRMED_SUBMITTED_BLOCK ⋅⋅⋅⋅⋅⋅⋅ ${UNCONFIRMED_SUBMITTED_BLOCK}
+  UNCONFIRMED_SUBMITTED_BLOCK_TX_HASH ⋅⋅⋅⋅⋅⋅⋅ ${UNCONFIRMED_SUBMITTED_BLOCK_TX_HASH}
 `);
   return yield* HttpServerResponse.json({
     message: `Global variables logged!`,
@@ -613,221 +591,15 @@ const router = (
       ),
     );
 
-const blockCommitmentAction = Effect.gen(function* () {
-  const globals = yield* Globals;
-  const RESET_IN_PROGRESS = yield* Ref.get(globals.RESET_IN_PROGRESS);
-  if (!RESET_IN_PROGRESS) {
-    yield* Effect.logInfo("🔹 New block commitment process started.");
-    yield* StateQueueTx.buildAndSubmitCommitmentBlock().pipe(
-      Effect.withSpan("buildAndSubmitCommitmentBlock"),
-    );
-  }
-});
-
-const blockConfirmationAction = Effect.gen(function* () {
-  const globals = yield* Globals;
-  const RESET_IN_PROGRESS = yield* Ref.get(globals.RESET_IN_PROGRESS);
-  if (!RESET_IN_PROGRESS) {
-    const UNCONFIRMED_SUBMITTED_BLOCK = yield* Ref.get(
-      globals.UNCONFIRMED_SUBMITTED_BLOCK,
-    );
-    const AVAILABLE_CONFIRMED_BLOCK = yield* Ref.get(
-      globals.AVAILABLE_CONFIRMED_BLOCK,
-    );
-    yield* Effect.logInfo("🔍 New block confirmation process started.");
-    const worker = Effect.async<
-      BlockConfirmationWorkerOutput,
-      WorkerError,
-      never
-    >((resume) => {
-      Effect.runSync(
-        Effect.logInfo(`🔍 Starting block confirmation worker...`),
-      );
-      const worker = new Worker(
-        new URL("./confirm-block-commitments.js", import.meta.url),
-        {
-          workerData: {
-            data: {
-              firstRun:
-                UNCONFIRMED_SUBMITTED_BLOCK === "" &&
-                AVAILABLE_CONFIRMED_BLOCK === "",
-              unconfirmedSubmittedBlock: UNCONFIRMED_SUBMITTED_BLOCK,
-            },
-          } as BlockConfirmationWorkerInput, // TODO: Consider other approaches to avoid type assertion here.
-        },
-      );
-      worker.on("message", (output: BlockConfirmationWorkerOutput) => {
-        if (output.type === "FailedConfirmationOutput") {
-          resume(
-            Effect.fail(
-              new WorkerError({
-                worker: "confirm-block-commitments",
-                message: `Confirmation worker failed.`,
-                cause: output.error,
-              }),
-            ),
-          );
-        } else {
-          resume(Effect.succeed(output));
-        }
-        worker.terminate();
-      });
-      worker.on("error", (e: Error) => {
-        resume(
-          Effect.fail(
-            new WorkerError({
-              worker: "confirm-block-commitments",
-              message: `Error in confirmation worker: ${e}`,
-              cause: e,
-            }),
-          ),
-        );
-        worker.terminate();
-      });
-      worker.on("exit", (code: number) => {
-        if (code !== 0) {
-          resume(
-            Effect.fail(
-              new WorkerError({
-                worker: "confirm-block-commitments",
-                message: `Confirmation worker exited with code: ${code}`,
-                cause: `exit code ${code}`,
-              }),
-            ),
-          );
-        }
-      });
-      return Effect.sync(() => {
-        worker.terminate();
-      });
-    });
-    const workerOutput: BlockConfirmationWorkerOutput = yield* worker;
-    switch (workerOutput.type) {
-      case "SuccessfulConfirmationOutput": {
-        yield* Ref.set(globals.UNCONFIRMED_SUBMITTED_BLOCK, "");
-        yield* Ref.set(
-          globals.AVAILABLE_CONFIRMED_BLOCK,
-          workerOutput.blocksUTxO,
-        );
-        yield* Effect.logInfo("🔍 ☑️  Submitted block confirmed.");
-        break;
-      }
-      case "NoTxForConfirmationOutput": {
-        break;
-      }
-      case "FailedConfirmationOutput": {
-        break;
-      }
-    }
-  }
-});
-
-const mergeAction = Effect.gen(function* () {
-  const lucid = yield* Lucid;
-  const { spendScriptAddress, policyId, spendScript, mintScript } =
-    yield* AlwaysSucceedsContract;
-  const fetchConfig: SDK.TxBuilder.StateQueue.FetchConfig = {
-    stateQueueAddress: spendScriptAddress,
-    stateQueuePolicyId: policyId,
-  };
-  yield* lucid.switchToOperatorsMergingWallet;
-  yield* StateQueueTx.buildAndSubmitMergeTx(
-    lucid.api,
-    fetchConfig,
-    spendScript,
-    mintScript,
-  );
-});
-
-const monitorMempoolAction = Effect.gen(function* () {
-  const numTx = yield* MempoolDB.retrieveTxCount;
-  yield* mempoolTxGauge(Effect.succeed(numTx));
-});
-
-const txQueueProcessorAction = (txQueue: Queue.Dequeue<string>) =>
-  Effect.gen(function* () {
-    const queueSize = yield* txQueue.size;
-    yield* txQueueSizeGauge(Effect.succeed(BigInt(queueSize)));
-
-    const txStringsChunk: Chunk.Chunk<string> = yield* Queue.takeAll(txQueue);
-    const txStrings = Chunk.toReadonlyArray(txStringsChunk);
-    const processedTxs: ProcessedTx[] = yield* Effect.forEach(txStrings, (tx) =>
-      breakDownTx(fromHex(tx)),
-    );
-    yield* MempoolDB.insertMultiple(processedTxs);
-  });
-
-const blockCommitmentFork = (rerunDelay: number) =>
-  Effect.gen(function* () {
-    yield* Effect.logInfo("🔵 Block commitment fork started.");
-    const action = blockCommitmentAction.pipe(
-      Effect.withSpan("block-commitment-fork"),
-      Effect.catchAllCause(Effect.logWarning),
-    );
-    const schedule = Schedule.addDelay(Schedule.forever, () =>
-      Duration.millis(rerunDelay),
-    );
-    yield* Effect.repeat(action, schedule);
-  });
-
-const blockConfirmationFork = (rerunDelay: number) =>
-  Effect.gen(function* () {
-    yield* Effect.logInfo("🟤 Block confirmation fork started.");
-    const action = blockConfirmationAction.pipe(
-      Effect.withSpan("block-confirmation-fork"),
-      Effect.catchAllCause(Effect.logWarning),
-    );
-    const schedule = Schedule.addDelay(Schedule.forever, () =>
-      Duration.millis(rerunDelay),
-    );
-    yield* Effect.repeat(action, schedule);
-  });
-
-// possible issues:
-// 1. tx-generator: large batch size & high concurrency
-// 2. after initing node, can't commit the block
-const mergeFork = (rerunDelay: number) =>
-  pipe(
-    Effect.gen(function* () {
-      yield* Effect.logInfo("🟠 Merge fork started.");
-      const schedule = Schedule.addDelay(Schedule.forever, () =>
-        Duration.millis(rerunDelay),
-      );
-      const action = mergeAction.pipe(
-        Effect.withSpan("merge-confirmed-state-fork"),
-        Effect.catchAllCause(Effect.logWarning),
-      );
-      yield* Effect.repeat(action, schedule);
-    }),
-    // Effect.fork, // Forking ensures the effect keeps running
-  );
-
-const monitorMempoolFork = pipe(
-  Effect.gen(function* () {
-    yield* Effect.logInfo("🟢 Mempool monitor fork started.");
-    const schedule = Schedule.fixed("1000 millis");
-    yield* Effect.repeat(monitorMempoolAction, schedule);
-  }),
-  Effect.catchAllCause(Effect.logWarning),
-);
-
-const txQueueProcessorFork = (txQueue: Queue.Dequeue<string>) =>
-  pipe(
-    Effect.gen(function* () {
-      yield* Effect.logInfo("🔶 Tx queue processor fork started.");
-      const schedule = Schedule.fixed("500 millis");
-      yield* Effect.repeat(txQueueProcessorAction(txQueue), schedule);
-    }),
-    Effect.catchAllCause(Effect.logWarning),
-  );
-
 export const runNode = (withMonitoring?: boolean) =>
   Effect.gen(function* () {
     const nodeConfig = yield* NodeConfig;
 
     const txQueue = yield* Queue.unbounded<string>();
 
-    yield* InitDB.initializeDb().pipe(Effect.provide(Database.layer));
+    yield* InitDB.program.pipe(Effect.provide(Database.layer));
+
+    yield* Genesis.program;
 
     const appThread = Layer.launch(
       Layer.provide(
@@ -836,40 +608,28 @@ export const runNode = (withMonitoring?: boolean) =>
       ),
     );
 
-    const blockCommitmentThread = blockCommitmentFork(
-      nodeConfig.WAIT_BETWEEN_BLOCK_COMMITMENT,
-    );
-
-    const blockConfirmationThread = blockConfirmationFork(
-      nodeConfig.WAIT_BETWEEN_BLOCK_CONFIRMATION,
-    );
-
-    const mergeThread = mergeFork(nodeConfig.WAIT_BETWEEN_MERGE_TXS);
-
-    const monitorMempoolThread = withMonitoring
-      ? monitorMempoolFork
-      : Effect.void;
-
-    const txQueueProcessorThread = txQueueProcessorFork(txQueue);
+    const mkSchedule = (millisBetweenRuns: number) =>
+      Schedule.spaced(Duration.millis(millisBetweenRuns));
 
     const program = Effect.all(
       [
         appThread,
-        blockCommitmentThread,
-        blockConfirmationThread,
-        mergeThread,
-        monitorMempoolThread,
-        txQueueProcessorThread,
+        blockCommitmentFiber(
+          mkSchedule(nodeConfig.WAIT_BETWEEN_BLOCK_COMMITMENT),
+        ),
+        blockConfirmationFiber(
+          mkSchedule(nodeConfig.WAIT_BETWEEN_BLOCK_CONFIRMATION),
+        ),
+        fetchAndInsertDepositUTxOsFiber(
+          mkSchedule(nodeConfig.WAIT_BETWEEN_DEPOSIT_UTXO_FETCHES),
+        ),
+        mergeFiber(mkSchedule(nodeConfig.WAIT_BETWEEN_MERGE_TXS)),
+        withMonitoring ? monitorMempoolFiber(mkSchedule(1000)) : Effect.void,
+        txQueueProcessorFiber(mkSchedule(500), txQueue),
       ],
       {
         concurrency: "unbounded",
       },
-    ).pipe(
-      Effect.provide(Database.layer),
-      Effect.provide(AlwaysSucceedsContract.Default),
-      Effect.provide(Lucid.Default),
-      Effect.provide(NodeConfig.layer),
-      Effect.provide(Globals.Default),
     );
 
     if (withMonitoring) {
@@ -898,19 +658,17 @@ export const runNode = (withMonitoring?: boolean) =>
         ),
       }));
 
-      return pipe(
+      yield* pipe(
         program,
         Effect.withSpan("midgard"),
         Effect.provide(MetricsLive),
         Effect.catchAllCause(Effect.logError),
-        Effect.runPromise,
       );
     } else {
-      return pipe(
+      yield* pipe(
         program,
         Effect.withSpan("midgard"),
         Effect.catchAllCause(Effect.logError),
-        Effect.runPromise,
       );
     }
   });
