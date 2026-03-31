@@ -1,6 +1,7 @@
 use aiken/collection/list
 use aiken/crypto.{ScriptHash, VerificationKeyHash}
 use aiken/interval
+use aiken/math.{max}
 use aiken/primitive/bytearray
 use aiken_design_patterns/linked_list
 use aiken_design_patterns/singular_utxo_indexer
@@ -254,6 +255,7 @@ validator spend(
             state_queue_ref_input_index,
             hub_oracle_ref_input_index,
             previous_shifts_operator,
+            previous_shifts_start_time,
             reference_inputs,
             redeemers,
             validity_range,
@@ -323,6 +325,7 @@ validator spend(
             state_queue_ref_input_index,
             hub_oracle_ref_input_index,
             previous_shifts_operator,
+            previous_shifts_start_time,
             reference_inputs,
             redeemers,
             validity_range,
@@ -512,6 +515,7 @@ fn validate_operator_inactivity_and_get_its_link(
   hub_oracle_ref_input_index: Int,
   //
   inactive_operator: VerificationKeyHash,
+  inactive_operators_shift_start_time: PosixTime,
   //
   reference_inputs: List<Input>,
   redeemers: Pairs<ScriptPurpose, Redeemer>,
@@ -554,9 +558,15 @@ fn validate_operator_inactivity_and_get_its_link(
       // 5. The element must be last in the state queue.
       expect None == state_queue_link
 
-      // 6. The validity range of the transaction must be entirely after the
-      //    last state queue element's end time, plus the inactivity timeout
-      //    parameter.
+      // 6. Let `inactivity_threshold` be the sum of either the upper bound of
+      //    the latest block commitment, or inactive operator's shift start time
+      //    (whichever is biggest), and `operator_inactivity_timeout` protocol
+      //    parameter. The reason for considering inactive operator's shift
+      //    start time here is to allow a grace period for the case of a
+      //    singular operator becoming inactive. Without this in place, the
+      //    operator could be striked multiple times to the point of slashing
+      //    for one instance of inactivity, as skipping rewinds the scheduler
+      //    back to the same operator.
       let last_state_queue_elements_end_time =
         when m_header_hash is {
           None -> {
@@ -570,10 +580,21 @@ fn validate_operator_inactivity_and_get_its_link(
             end_time
           }
         }
+      let inactivity_threshold =
+        max(
+          last_state_queue_elements_end_time,
+          inactive_operators_shift_start_time,
+        ) + operator_inactivity_timeout
+
+      // 7. The validity range of the transaction must be entirely after
+      //    `inactivity_threshold`.
       expect
         validity_range
           |> interval.is_entirely_after(
-              last_state_queue_elements_end_time + operator_inactivity_timeout,
+              max(
+                last_state_queue_elements_end_time,
+                previous_shifts_start_time,
+              ) + operator_inactivity_timeout,
             )
 
       // Done.
