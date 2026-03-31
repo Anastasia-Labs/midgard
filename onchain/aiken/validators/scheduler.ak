@@ -22,9 +22,9 @@ use midgard/scheduler.{
   ActiveOperator, AdvancingApproach, AppointFirstOperator, Datum, Deinit,
   GoToNextDueToEndOfShift, GoToNextDueToOperatorRemoval,
   GoToNextDueToSkippedOperator, Init, MintRedeemer, NoActiveOperators,
-  OperatorRetirement, OperatorSlashing, RewindDueToEndOfShift,
-  RewindDueToOperatorRemoval, RewindDueToSkippedOperator, SpendRedeemer,
-  asset_name, shift_end_time,
+  OperatorRemovalReason, OperatorRetirement, OperatorSlashing,
+  RewindDueToEndOfShift, RewindDueToOperatorRemoval, RewindDueToSkippedOperator,
+  SpendRedeemer, asset_name, shift_end_time,
 }
 use midgard/state_queue
 
@@ -600,6 +600,9 @@ fn validate_operator_inactivity_and_get_its_link(
   active_node_link
 }
 
+/// Given the index of the input in reference inputs, this function validates
+/// that said input is the root element of the active operators set, and that it
+/// points to the previous shift's operator node.
 fn validate_root_is_reached(
   active_operators_policy_id: PolicyId,
   previous_shifts_operator: VerificationKeyHash,
@@ -628,6 +631,9 @@ fn validate_root_is_reached(
     |> active_operators.finalize_linked_list(active_operators_policy_id)
 }
 
+/// Given the index of the input in reference inputs, this function validates
+/// that said input is the last node in the active operators set (i.e. has no
+/// link), such that its key is the same as the provided new shift's operator.
 fn validate_operator_is_the_last_active_node(
   active_operators_policy_id: PolicyId,
   active_operators_last_node_ref_input_index: Int,
@@ -657,6 +663,9 @@ fn validate_operator_is_the_last_active_node(
     |> active_operators.finalize_linked_list(active_operators_policy_id)
 }
 
+/// Given the index of the input in reference inputs, this function validates
+/// that said input is the anchor node to the previous shift's operator node in
+/// the active operators set, and that its key matches the new shift's operator.
 fn validate_new_shifts_node_is_next(
   active_operators_policy_id: PolicyId,
   new_shifts_operator_node_ref_input_index: Int,
@@ -690,10 +699,10 @@ fn validate_new_shifts_node_is_next(
 }
 
 /// Validates active operators mint script is invoked, and from its redeemer
-/// retrieves the removing operator's anchor key (or `None` if its anchor is a
-/// root element), and a flag that indicates whether the removing node has a
-/// link to another node (that is, if it's `False`, it means after removal only
-/// the root element remains in the active set).
+/// retrieves the removing operator's anchor node's key (or `None` if the anchor
+/// is a root element), and a flag that indicates whether the removing node has
+/// a link to another node (that is, if it's `False`, it means after removal
+/// only the root element remains in the active set).
 fn validate_active_operator_removal(
   active_operators_policy_id: PolicyId,
   active_operators_mint_redeemer_index: Int,
