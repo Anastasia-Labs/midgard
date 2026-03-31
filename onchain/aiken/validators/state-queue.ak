@@ -194,13 +194,13 @@ validator mint(
           } = output_header_data
           expect output_start_time < output_end_time
 
-          // 7. The operator pub key hash from the redeemer must match the one
+          // 6. The operator pub key hash from the redeemer must match the one
           //    in the new header.
           expect output_operator_vkey == operator
 
           // Verify that it is the operator's turn to commit according to the
           // scheduler:
-          // 8. The transaction must include a reference input with the
+          // 7. The transaction must include a reference input with the
           //    scheduler NFT. Let that input's datum be the `scheduler_state`.
           expect scheduler.ActiveOperator {
             operator: scheduler_operator,
@@ -212,17 +212,17 @@ validator mint(
               scheduler_ref_input_index: scheduler_ref_input_index,
             )
 
-          // 9. The `operator` field of `scheduler_state` must match `operator`
+          // 8. The `operator` field of `scheduler_state` must match `operator`
           //    from redeemer.
           expect operator == scheduler_operator
 
-          // 10. The `end_time` of `header_node` must be within the shift
-          //     interval of `scheduler_state`.
+          // 9. The `end_time` of `header_node` must be within the shift
+          //    interval of `scheduler_state`.
           //
-          //     Note that scheduler's start time is inclusive, while block
-          //     header's end time is exclusive. Therefore we are using `>`,
-          //     since equality between the two wouldn't mean the block is
-          //     within the shift interval.
+          //    Note that scheduler's start time is inclusive, while block
+          //    header's end time is exclusive. Therefore we are using `>`,
+          //    since equality between the two wouldn't mean the block is
+          //    within the shift interval.
           expect output_end_time > scheduler_start_time
           // Here since both scheduler and blocks have an exclusive upper bound,
           // we are using `<=` instead of `<`.
@@ -230,7 +230,7 @@ validator mint(
             output_end_time <= scheduler.shift_end_time(scheduler_start_time)
 
           // Update the operator's timestamp in the active operators set:
-          // 11. The transaction must include an input, spent via the
+          // 10. The transaction must include an input, spent via the
           //     `UpdateBondHoldNewState` redeemer, of an `active_operators`
           //     node with a key matching the `operator`.
           expect active_operators.UpdateBondHoldNewState { active_operator, .. } =
@@ -248,7 +248,7 @@ validator mint(
           // node (i.e. latest block in the queue).
           when m_anchor_key is {
             Some(header_hash) -> {
-              // 12a. New block must properly carry over data from previous
+              // 11a. New block must properly carry over data from previous
               //      block.
               expect Header { utxos_root, end_time, protocol_version, .. } =
                 anchor_data
@@ -261,7 +261,7 @@ validator mint(
               True
             }
             None -> {
-              // 12b. New block must properly carry over data from confirmed
+              // 11b. New block must properly carry over data from confirmed
               //      state.
               expect ConfirmedState {
                 header_hash,
