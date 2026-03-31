@@ -53,7 +53,6 @@ pub type AdvancingApproach {
     removal_reason: OperatorRemovalReason,
   }
   GoToNextDueToOperatorRemoval {
-    new_shifts_operator_node_ref_input_index: Int,
     active_operators_mint_redeemer_index: Int,
     removal_reason: OperatorRemovalReason,
   }

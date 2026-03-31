@@ -263,7 +263,7 @@ validator spend(
 
         // 7c. The new shift must start some time in a close future.
         expect
-          validate_new_shifts_start_time_after_skipping(
+          validate_unscheduled_new_shifts_start_time(
             new_shifts_start_time,
             validity_range,
           )
@@ -333,7 +333,7 @@ validator spend(
 
         // 6d. The new shift must start some time in a close future.
         expect
-          validate_new_shifts_start_time_after_skipping(
+          validate_unscheduled_new_shifts_start_time(
             new_shifts_start_time,
             validity_range,
           )
@@ -380,11 +380,15 @@ validator spend(
             redeemers,
           )
 
+        // 6e. For rewinding, the anchor element of the removing node must be
+        //     root.
+        expect None == removing_operators_anchor_element_key
+
         if last_operator_is_removed {
-          // 6e. Ensure correctness of redeemer (TODO: might not be needed).
+          // 7e. Ensure correctness of redeemer (TODO: might not be needed).
           expect None == m_active_operators_last_node_ref_input_index
 
-          // 7e. Output scheduler datum must declare unavailability of any
+          // 8e. Output scheduler datum must declare unavailability of any
           //    active operators.
           expect NoActiveOperators = output_datum_data
 
@@ -399,12 +403,19 @@ validator spend(
           // TODO: This might not be needed.
           expect new_shifts_operator != previous_shifts_operator
 
-          // 6e'. Reference input index for last node in the active operators
+          // 7e'. The new shift must start some time in a close future.
+          expect
+            validate_unscheduled_new_shifts_start_time(
+              new_shifts_start_time,
+              validity_range,
+            )
+
+          // 8e'. Reference input index for last node in the active operators
           //      set must be provided in redeemer.
           expect Some(active_operators_last_node_ref_input_index) =
             m_active_operators_last_node_ref_input_index
 
-          // 7e'. The last node in the active operators set must have a key
+          // 9e'. The last node in the active operators set must have a key
           //      that matches the new shift's operator.
           expect
             validate_operator_is_the_last_active_node(
@@ -418,7 +429,52 @@ validator spend(
           True
         }
       }
-      GoToNextDueToOperatorRemoval { .. } -> todo
+      GoToNextDueToOperatorRemoval {
+        active_operators_mint_redeemer_index,
+        removal_reason,
+      } -> {
+        // 4f. An active operator must be appointed.
+        expect ActiveOperator {
+          operator: previous_shifts_operator,
+          start_time: previous_shifts_start_time,
+        } = datum
+
+        // 5f. An active operator must also be appointed at output.
+        expect ActiveOperator {
+          operator: new_shifts_operator,
+          start_time: new_shifts_start_time,
+        } = output_datum_data
+
+        // 6f. The new shift must start some time in a close future.
+        expect
+          validate_unscheduled_new_shifts_start_time(
+            new_shifts_start_time,
+            validity_range,
+          )
+
+        // 7f. The previous shift's operator must be getting removed from the
+        //     active operators set, where its mint redeemer provides some info
+        //     for this endpoint to use.
+        let
+          removing_operators_anchor_element_key,
+          _last_operator_is_removed,
+        <-
+          validate_active_operator_removal(
+            active_operators_policy_id,
+            active_operators_mint_redeemer_index,
+            removal_reason,
+            previous_shifts_operator,
+            redeemers,
+          )
+
+        // 8f. The anchor node of the removed operator must have a key matching
+        //     the new shift's operator from scheduler's output datum.
+        expect
+          Some(new_shifts_operator) == removing_operators_anchor_element_key
+
+        // Done.
+        True
+      }
       AppointFirstOperator { new_shifts_operator_node_ref_input_index } -> todo
     }
   }
@@ -495,7 +551,7 @@ fn validate_end_of_shift_and_get_operators(
   (previous_shifts_operator, new_shifts_operator)
 }
 
-fn validate_new_shifts_start_time_after_skipping(
+fn validate_unscheduled_new_shifts_start_time(
   new_shifts_start_time: PosixTime,
   validity_range: ValidityRange,
 ) -> Bool {
@@ -731,6 +787,7 @@ fn validate_active_operator_removal(
         },
         ..
       } = active_operators_mint_redeemer_data
+
       // 2a. Operator in the spent scheduler UTxO must match the retiring
       //     operator from active operators redeemer.
       expect previous_shifts_operator == active_operator_key
