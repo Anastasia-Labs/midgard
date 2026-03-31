@@ -141,7 +141,15 @@ validator spend(
             reference_inputs,
           )
 
-        // 6a. The last node in the active operators set must have a key that
+        // 6a. There must be no registered operators eligible for activation.
+        expect
+          validate_no_registered_operators_can_activate(
+            registered_operators_policy_id,
+            registered_element_ref_input_index,
+            reference_inputs,
+          )
+
+        // 7a. The last node in the active operators set must have a key that
         //     matches the new shift's operator.
         expect
           validate_operator_is_the_last_active_node(
@@ -151,43 +159,8 @@ validator spend(
             reference_inputs,
           )
 
-        // 7a. Registered operator element must exist at the specified index.
-        expect Some(registered_element_ref_input) =
-          reference_inputs |> list.at(registered_element_ref_input_index)
-
-        {
-          let
-            _registered_element_lovelace,
-            m_registered_element_key,
-            _registered_element_data,
-            registered_element_link,
-          <- linked_list.get_element_info(registered_element_ref_input.output)
-
-          // 8a. If the referenced registered operator element is a node, its
-          //     activation time must not have been reached yet.
-          expect
-            when m_registered_element_key is {
-              None -> True
-              Some(registered_node_key) -> {
-                let activation_time =
-                  registered_operators.node_key_to_activation_time(
-                    registered_node_key,
-                  )
-                validity_range |> interval.is_entirely_before(activation_time)
-              }
-            }
-
-          // 9a. The referenced registered operator element has to be at the
-          //     very end of the list to ensure it has the earliest activation
-          //     time.
-          expect None == registered_element_link
-
-          // Done.
-          True
-        }
-          |> registered_operators.finalize_linked_list(
-              registered_operators_policy_id,
-            )
+        // Done.
+        True
       }
       GoToNextDueToEndOfShift { new_shifts_operator_node_ref_input_index } -> {
         // 4b. Input and output datums must be valid, and time conditions and
@@ -221,6 +194,7 @@ validator spend(
         active_operators_spend_redeemer_index,
         state_queue_ref_input_index,
         m_active_operators_last_node_ref_input_index,
+        registered_element_ref_input_index,
       } -> {
         // 4c. Input and output datums must both have an appointed operator, and
         //     the new shift's start time must follow the previous one
@@ -242,7 +216,15 @@ validator spend(
             reference_inputs,
           )
 
-        // 6c. Inactive operator (i.e. previous shift's operator) must be
+        // 6c. There must be no registered operators eligible for activation.
+        expect
+          validate_no_registered_operators_can_activate(
+            registered_operators_policy_id,
+            registered_element_ref_input_index,
+            reference_inputs,
+          )
+
+        // 7c. Inactive operator (i.e. previous shift's operator) must be
         //     receiving a strike, and the last element in the state queue must
         //     be old enough for the operator to be considered inactive.
         let inactive_operators_link =
@@ -261,7 +243,7 @@ validator spend(
             validity_range,
           )
 
-        // 7c. The new shift must start some time in a close future.
+        // 8c. The new shift must start some time in a close future.
         expect
           validate_unscheduled_new_shifts_start_time(
             new_shifts_start_time,
@@ -271,13 +253,13 @@ validator spend(
         expect
           when m_active_operators_last_node_ref_input_index is {
             Some(active_operators_last_node_ref_input_index) -> {
-              // 8c. Input and output operators must not be identical.
+              // 9c. Input and output operators must not be identical.
               //     TODO: Is this check needed? I.e., is it possible to refer
               //           to a UTxO that is spent in the same transaction?
               expect previous_shifts_operator != new_shifts_operator
 
-              // 9c. The last node in the active operators set must have a key
-              //     that matches the new shift's operator from output datum.
+              // 10c. The last node in the active operators set must have a key
+              //      that matches the new shift's operator from output datum.
               validate_operator_is_the_last_active_node(
                 active_operators_policy_id,
                 active_operators_last_node_ref_input_index,
@@ -286,7 +268,7 @@ validator spend(
               )
             }
             None -> {
-              // 8c'. Without an additional reference input index for the last
+              // 9c'. Without an additional reference input index for the last
               //      operator in the active set, it is expected that the
               //      inactive operator is the only member of the set.
               expect previous_shifts_operator == new_shifts_operator
@@ -358,6 +340,7 @@ validator spend(
         active_operators_mint_redeemer_index,
         m_active_operators_last_node_ref_input_index,
         removal_reason,
+        registered_element_ref_input_index,
       } -> {
         // 4e. An active operator must be appointed.
         expect ActiveOperator {
@@ -384,11 +367,19 @@ validator spend(
         //     root.
         expect None == removing_operators_anchor_element_key
 
+        // 7e. There must be no registered operators eligible for activation.
+        expect
+          validate_no_registered_operators_can_activate(
+            registered_operators_policy_id,
+            registered_element_ref_input_index,
+            reference_inputs,
+          )
+
         if last_operator_is_removed {
-          // 7e. Ensure correctness of redeemer (TODO: might not be needed).
+          // 8e. Ensure correctness of redeemer (TODO: might not be needed).
           expect None == m_active_operators_last_node_ref_input_index
 
-          // 8e. Output scheduler datum must declare unavailability of any
+          // 9e. Output scheduler datum must declare unavailability of any
           //    active operators.
           expect NoActiveOperators = output_datum_data
 
@@ -403,20 +394,20 @@ validator spend(
           // TODO: This might not be needed.
           expect new_shifts_operator != previous_shifts_operator
 
-          // 7e'. The new shift must start some time in a close future.
+          // 8e'. The new shift must start some time in a close future.
           expect
             validate_unscheduled_new_shifts_start_time(
               new_shifts_start_time,
               validity_range,
             )
 
-          // 8e'. Reference input index for last node in the active operators
+          // 9e'. Reference input index for last node in the active operators
           //      set must be provided in redeemer.
           expect Some(active_operators_last_node_ref_input_index) =
             m_active_operators_last_node_ref_input_index
 
-          // 9e'. The last node in the active operators set must have a key
-          //      that matches the new shift's operator.
+          // 10e'. The last node in the active operators set must have a key
+          //       that matches the new shift's operator.
           expect
             validate_operator_is_the_last_active_node(
               active_operators_policy_id,
@@ -475,7 +466,47 @@ validator spend(
         // Done.
         True
       }
-      AppointFirstOperator { new_shifts_operator_node_ref_input_index } -> todo
+      AppointFirstOperator {
+        new_shifts_operator_node_ref_input_index,
+        registered_element_ref_input_index,
+      } -> {
+        // 4g. There must be no operators appointed active.
+        expect NoActiveOperators = output_datum_data
+
+        // 5g. An active operator must be appointed at output.
+        expect ActiveOperator {
+          operator: new_shifts_operator,
+          start_time: new_shifts_start_time,
+        } = output_datum_data
+
+        // 6g. The new shift must start some time in a close future.
+        expect
+          validate_unscheduled_new_shifts_start_time(
+            new_shifts_start_time,
+            validity_range,
+          )
+
+        // 7g. The last node in the active operators set must have a key that
+        //     matches the new shift's operator.
+        expect
+          validate_operator_is_the_last_active_node(
+            active_operators_policy_id,
+            new_shifts_operator_node_ref_input_index,
+            new_shifts_operator,
+            reference_inputs,
+          )
+
+        // 8g. There must be no registered operators eligible for activation.
+        expect
+          validate_no_registered_operators_can_activate(
+            registered_operators_policy_id,
+            registered_element_ref_input_index,
+            reference_inputs,
+          )
+
+        // Done.
+        True
+      }
     }
   }
 
@@ -819,4 +850,45 @@ fn validate_active_operator_removal(
       )
     }
   }
+}
+
+fn validate_no_registered_operators_can_activate(
+  registered_operators_policy_id: PolicyId,
+  registered_element_ref_input: Int,
+  reference_inputs: List<Input>,
+) -> Bool {
+  // 1. Registered operator element must exist at the specified index.
+  expect Some(registered_element_ref_input) =
+    reference_inputs |> list.at(registered_element_ref_input_index)
+
+  {
+    let
+      _registered_element_lovelace,
+      m_registered_element_key,
+      _registered_element_data,
+      registered_element_link,
+    <- linked_list.get_element_info(registered_element_ref_input.output)
+
+    // 2. If the referenced registered operator element is a node, its
+    //    activation time must not have been reached yet.
+    expect
+      when m_registered_element_key is {
+        None -> True
+        Some(registered_node_key) -> {
+          let activation_time =
+            registered_operators.node_key_to_activation_time(
+              registered_node_key,
+            )
+          validity_range |> interval.is_entirely_before(activation_time)
+        }
+      }
+
+    // 3. The referenced registered operator element has to be at the very end
+    //    of the list to ensure it has the earliest activation time.
+    expect None == registered_element_link
+
+    // Done.
+    True
+  }
+    |> registered_operators.finalize_linked_list(registered_operators_policy_id)
 }

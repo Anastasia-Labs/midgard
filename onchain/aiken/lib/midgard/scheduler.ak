@@ -38,6 +38,7 @@ pub type AdvancingApproach {
     // the new shift's operator UTxO. TODO? I'm assuming we can't refer to a
     // UTxO that's getting spent in the same transaction.
     m_active_operators_last_node_ref_input_index: Option<Int>,
+    registered_element_ref_input_index: Int,
   }
   GoToNextDueToSkippedOperator {
     new_shifts_operator_node_ref_input_index: Int,
@@ -51,12 +52,16 @@ pub type AdvancingApproach {
     active_operators_mint_redeemer_index: Int,
     m_active_operators_last_node_ref_input_index: Option<Int>,
     removal_reason: OperatorRemovalReason,
+    registered_element_ref_input_index: Int,
   }
   GoToNextDueToOperatorRemoval {
     active_operators_mint_redeemer_index: Int,
     removal_reason: OperatorRemovalReason,
   }
-  AppointFirstOperator { new_shifts_operator_node_ref_input_index: Int }
+  AppointFirstOperator {
+    new_shifts_operator_node_ref_input_index: Int,
+    registered_element_ref_input_index: Int,
+  }
 }
 
 pub type SpendRedeemer {
