@@ -590,12 +590,7 @@ fn validate_operator_inactivity_and_get_its_link(
       //    `inactivity_threshold`.
       expect
         validity_range
-          |> interval.is_entirely_after(
-              max(
-                last_state_queue_elements_end_time,
-                previous_shifts_start_time,
-              ) + operator_inactivity_timeout,
-            )
+          |> interval.is_entirely_after(inactivity_threshold)
 
       // Done.
       True
