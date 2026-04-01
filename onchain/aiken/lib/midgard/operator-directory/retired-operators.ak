@@ -41,6 +41,7 @@ pub type MintRedeemer {
   ReregisterOperator {
     retired_operator_key: VerificationKeyHash,
     retired_operator_bond_unlock_time: Option<PosixTime>,
+    hub_oracle_ref_input_index: Int,
     retired_operator_anchor_element_input_index: Int,
     retired_operator_removed_node_input_index: Int,
     retired_operator_anchor_element_output_index: Int,

@@ -3,7 +3,7 @@ use aiken/crypto.{VerificationKeyHash}
 use aiken/interval
 use aiken_design_patterns/linked_list
 use cardano/assets.{PolicyId}
-use cardano/transaction.{OutputReference, Redeemer, Transaction}
+use cardano/transaction.{Mint, OutputReference, Redeemer, Transaction}
 use midgard/common/utils
 use midgard/hub_oracle as hub
 use midgard/operator_directory.{
@@ -11,6 +11,7 @@ use midgard/operator_directory.{
   validate_operator_transfer_and_get_inserted_data,
 }
 use midgard/operator_directory/active_operators
+use midgard/operator_directory/registered_operators
 use midgard/operator_directory/retired_operators.{
   Deinit, Init, MintRedeemer, NodeData, RecoverOperatorBond, ReregisterOperator,
   RetireOperator, SlashOperator, finalize_linked_list, root_asset_name,
@@ -112,11 +113,87 @@ validator mint(hub_oracle_script_hash: PolicyId) {
       ReregisterOperator {
         retired_operator_key,
         retired_operator_bond_unlock_time,
+        hub_oracle_ref_input_index,
         retired_operator_anchor_element_input_index,
         retired_operator_removed_node_input_index,
         retired_operator_anchor_element_output_index,
         registered_operators_redeemer_index,
-      } -> todo
+      } -> {
+        let Transaction {
+          inputs,
+          outputs,
+          reference_inputs,
+          mint,
+          redeemers,
+          ..
+        } = self
+
+        // 1. Transaction must refer to hub oracle's authentic UTxO.
+        let hub.Datum {
+          registered_operators: registered_operators_mint_script_hash,
+          ..
+        } =
+          hub.get_datum(
+            reference_inputs,
+            hub_oracle_script_hash,
+            hub_oracle_ref_input_index,
+          )
+
+        // 2. `RegisterOperator` redeemer of the registered operators set must
+        //    be invoked with the `ReturningOperator` flag. Let
+        //    `registering_operator` be PKH of the operator node key retrieved
+        //    from the redeemer.
+        expect registered_operators.RegisterOperator {
+          registering_operator,
+          operator_origin: registered_operators.ReturningOperator { .. },
+          ..
+        } =
+          redeemers
+            |> utils.get_redeemer_at(
+                expected_purpose: Mint(registered_operators_mint_script_hash),
+                redeemer_index: registered_operators_redeemer_index,
+              )
+
+        // 3. `registering_operator` key must match the `retired_operator_key`
+        //    redeemer argument here.
+        expect registering_operator == retired_operator_key
+
+        // 4. The re-registering operator node must be removed from the retired
+        //    operators set.
+        {
+          let
+            anchor_lovelace_change,
+            _m_anchor_key,
+            _anchor_data,
+            _retired_operator_lovelace,
+            retired_operator_node_key,
+            retired_operator_node_data,
+            _retired_operator_node_link,
+          <-
+            linked_list.remove(
+              retired_operator_anchor_element_input_index,
+              retired_operator_removed_node_input_index,
+              retired_operator_anchor_element_output_index,
+              mint,
+            )
+
+          // 5. ADA bond of the anchor element must be preserved.
+          expect anchor_lovelace_change >= 0
+
+          // 6. The removing node's key must match the re-registering operator's
+          //    key.
+          expect Some(retired_operator_key) == retired_operator_node_key
+
+          // 7. Correctness of the redeemer argument must be validated for the
+          //    registered operators script to use.
+          expect NodeData { bond_unlock_time } = retired_operator_node_data
+          expect retired_operator_bond_unlock_time == bond_unlock_time
+
+          // Done.
+          True
+        }
+          |> finalize_linked_list(own_policy_id)
+      }
       RecoverOperatorBond {
         retired_operator_key,
         retired_operator_anchor_element_input_index,
