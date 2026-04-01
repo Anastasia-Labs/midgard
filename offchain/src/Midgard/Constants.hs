@@ -3,16 +3,18 @@ module Midgard.Constants (
   hubOracleScriptHash,
   hubOracleMintingPolicyId,
   hubOracleAssetName,
-  hubOracleValidator,
+  registrationDuration,
   operatorRequiredBond,
   operatorSlashingPenalty,
-  hubOracleMintingPolicyId',
+  refScriptStorage,
 ) where
 
-import Data.Coerce (coerce)
+import Data.ByteString.Char8 qualified as BS8
+import Data.Time.Clock (NominalDiffTime)
 
 import Cardano.Api qualified as C
-import Convex.Utils.String (unsafeAssetName)
+import Convex.Utils (scriptAddress)
+import PlutusCore qualified as PLC
 import PlutusCore.Core qualified as PLC
 import PlutusLedgerApi.V3 (serialiseUPLC)
 import UntypedPlutusCore qualified as UPLC
@@ -23,33 +25,35 @@ that is meant to be consumed by the same transaction.
 hubOracleMintingScript :: C.PlutusScript C.PlutusScriptV3
 hubOracleMintingScript = C.PlutusScriptSerialised $ serialiseUPLC alwaysSucceedsUPLC
 
--- Script to lock the hub oracle token at. Temporarily set to an "always fails" validator.s
-hubOracleValidator :: C.PlutusScript C.PlutusScriptV3
-hubOracleValidator = C.PlutusScriptSerialised $ serialiseUPLC alwaysFailsUPLC
+-- TODO (chase): Perhaps the storage address should be elsewhere.
+refScriptStorage :: C.NetworkId -> C.AddressInEra C.ConwayEra
+refScriptStorage netId = scriptAddress netId . C.PlutusScriptSerialised $ serialiseUPLC alwaysFailsUPLC
 
 hubOracleScriptHash :: C.ScriptHash
-hubOracleScriptHash = C.hashScript $ C.PlutusScript C.plutusScriptVersion hubOracleValidator
+hubOracleScriptHash = C.hashScript $ C.PlutusScript C.plutusScriptVersion hubOracleMintingScript
 
 hubOracleMintingPolicyId :: C.PolicyId
 hubOracleMintingPolicyId = C.PolicyId . C.hashScript $ C.PlutusScript C.plutusScriptVersion hubOracleMintingScript
 
-hubOracleMintingPolicyId' :: C.ScriptHash
-hubOracleMintingPolicyId' = coerce hubOracleMintingPolicyId
-
 hubOracleAssetName :: C.AssetName
-hubOracleAssetName = unsafeAssetName "cafe"
+hubOracleAssetName = C.UnsafeAssetName $ BS8.pack "MIDGARD_HUB_ORACLE"
 
+-- | Mimicking aiken.
 operatorRequiredBond :: C.Lovelace
-operatorRequiredBond = 5_000_000
+operatorRequiredBond = 0
+
+-- | Mimicking aiken. 30 milliseconds.
+registrationDuration :: NominalDiffTime
+registrationDuration = 0.030
 
 operatorSlashingPenalty :: C.Lovelace
 operatorSlashingPenalty = 3_000_000
 
-alwaysSucceedsUPLC :: UPLC.Program UPLC.DeBruijn uni fun ()
+alwaysSucceedsUPLC :: UPLC.Program UPLC.DeBruijn PLC.DefaultUni fun ()
 alwaysSucceedsUPLC =
   UPLC.Program () PLC.plcVersion110 $
     UPLC.LamAbs () (UPLC.DeBruijn 0) $
-      UPLC.Var () (UPLC.DeBruijn 1)
+      UPLC.Constant () (PLC.Some (PLC.ValueOf PLC.DefaultUniUnit ()))
 
 alwaysFailsUPLC :: UPLC.Program UPLC.DeBruijn uni fun ()
 alwaysFailsUPLC =

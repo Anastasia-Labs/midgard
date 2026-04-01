@@ -1,47 +1,63 @@
 {-# LANGUAGE TemplateHaskell #-}
 
-module Midgard.Types.ActiveOperators (Datum (..), SpendRedeemer (..), MintRedeemer (..), rootKey, nodeKeyPrefix, nodeKeyPrefixLen) where
+module Midgard.Types.ActiveOperators (
+  NodeData (..),
+  Datum,
+  SpendRedeemer (..),
+  MintRedeemer (..),
+  rootAssetName,
+  nodeAssetNamePrefix,
+  nodeAssetNamePrefixLen,
+) where
 
+import Data.ByteString (ByteString)
 import Data.ByteString.Char8 qualified as BS8
 import GHC.Generics (Generic)
 
 import Cardano.Api qualified as C
-import PlutusLedgerApi.V3 (BuiltinByteString, POSIXTime)
+import PlutusLedgerApi.V3 (BuiltinByteString, POSIXTime, PubKeyHash)
 import PlutusTx.Blueprint (HasBlueprintDefinition, definitionRef)
 import PlutusTx.Blueprint.TH (makeIsDataSchemaIndexed)
 
 import Ply (PlyArg)
 
-rootKey :: C.AssetName
-rootKey = C.UnsafeAssetName $ BS8.pack "MIDGARD_ACTIVE_OPERATORS"
+import Midgard.Types.LinkedList qualified as LinkedList
 
-nodeKeyPrefix :: C.AssetName
-nodeKeyPrefix = C.UnsafeAssetName $ BS8.pack "MACT"
+rootAssetName :: C.AssetName
+rootAssetName = C.UnsafeAssetName $ BS8.pack "MIDGARD_ACTIVE_OPERATORS"
 
-nodeKeyPrefixLen :: Int
-nodeKeyPrefixLen = BS8.length $ C.serialiseToRawBytes nodeKeyPrefix
+nodeAssetNamePrefix :: ByteString
+nodeAssetNamePrefix = BS8.pack "MACT"
 
-newtype Datum = Datum
+nodeAssetNamePrefixLen :: Int
+nodeAssetNamePrefixLen = BS8.length nodeAssetNamePrefix
+
+newtype NodeData = NodeData
   { bondUnlockTime :: Maybe POSIXTime
   }
   deriving stock (Eq, Show, Generic)
   deriving anyclass (HasBlueprintDefinition)
 
 $( makeIsDataSchemaIndexed
-     ''Datum
-     [ ('Datum, 0)
+     ''NodeData
+     [ ('NodeData, 0)
      ]
  )
+
+type Datum = LinkedList.Element BuiltinByteString NodeData
 
 data SpendRedeemer
   = ListStateTransition
   | UpdateBondHoldNewState
-      { activeNodeOutputIndex :: Integer
+      { activeNodeInputIndex :: Integer
+      , activeNodeOutputIndex :: Integer
       , hubOracleRefInputIndex :: Integer
+      , stateQueueInputIndex :: Integer
       , stateQueueRedeemerIndex :: Integer
       }
   | UpdateBondHoldNewSettlement
-      { activeNodeOutputIndex :: Integer
+      { activeNodeInputIndex :: Integer
+      , activeNodeOutputIndex :: Integer
       , hubOracleRefInputIndex :: Integer
       , settlementInputIndex :: Integer
       , settlementRedeemerIndex :: Integer
@@ -63,36 +79,37 @@ instance PlyArg SpendRedeemer
 -- Mint redeemer
 
 data MintRedeemer
-  = Init
-  | Deinit
+  = Init {outputIndex :: Integer}
+  | Deinit {inputIndex :: Integer}
   | ActivateOperator
-      { newActiveOperatorKey :: BuiltinByteString
-      , hubOracleRefInputIndex :: Integer
-      , activeOperatorAppendedNodeOutputIndex :: Integer
-      , activeOperatorAnchorNodeOutputIndex :: Integer
+      { newActiveOperatorKey :: PubKeyHash
+      , activeOperatorAnchorElementInputIndex :: Integer
+      , activeOperatorAnchorElementOutputIndex :: Integer
+      , activeOperatorInsertedNodeOutputIndex :: Integer
       , registeredOperatorsRedeemerIndex :: Integer
       }
   | RemoveOperatorBadState
-      { slashedActiveOperatorKey :: BuiltinByteString
+      { slashedActiveOperatorKey :: PubKeyHash
       , hubOracleRefInputIndex :: Integer
+      , activeOperatorAnchorElementInputIndex :: Integer
       , activeOperatorSlashedNodeInputIndex :: Integer
-      , activeOperatorAnchorNodeInputIndex :: Integer
+      , activeOperatorAnchorElementOutputIndex :: Integer
       , stateQueueRedeemerIndex :: Integer
       }
   | RemoveOperatorBadSettlement
-      { slashedActiveOperatorKey :: BuiltinByteString
+      { slashedActiveOperatorKey :: PubKeyHash
       , hubOracleRefInputIndex :: Integer
+      , activeOperatorAnchorElementInputIndex :: Integer
       , activeOperatorSlashedNodeInputIndex :: Integer
-      , activeOperatorAnchorNodeInputIndex :: Integer
+      , activeOperatorAnchorElementOutputIndex :: Integer
       , settlementInputIndex :: Integer
       , settlementRedeemerIndex :: Integer
       }
   | RetireOperator
-      { activeOperatorKey :: BuiltinByteString
-      , hubOracleRefInputIndex :: Integer
+      { activeOperatorKey :: PubKeyHash
+      , activeOperatorAnchorElementInputIndex :: Integer
       , activeOperatorRemovedNodeInputIndex :: Integer
-      , activeOperatorAnchorNodeInputIndex :: Integer
-      , retiredOperatorInsertedNodeOutputIndex :: Integer
+      , activeOperatorAnchorElementOutputIndex :: Integer
       , retiredOperatorsRedeemerIndex :: Integer
       }
   deriving stock (Eq, Show, Generic)

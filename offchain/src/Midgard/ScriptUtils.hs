@@ -1,10 +1,20 @@
 {-# LANGUAGE TypeFamilyDependencies #-}
 
-module Midgard.ScriptUtils (mintingPolicyId, validatorHash, policyIdBytes, scriptHashBytes, toMintingPolicy, toValidator) where
+module Midgard.ScriptUtils (
+  plutusVersion,
+  mintingPolicyId,
+  mintingPolicyId',
+  validatorHash,
+  policyIdBytes,
+  scriptHashBytes,
+  toMintingPolicy,
+  toValidator,
+) where
 
 import Data.ByteString (ByteString)
 import Data.Kind (Type)
 
+import Cardano.Api (IsPlutusScriptLanguage)
 import Cardano.Api qualified as C
 import PlutusLedgerApi.Common (serialiseUPLC)
 import Ply
@@ -14,6 +24,12 @@ mintingPolicyId ::
   (C.IsPlutusScriptLanguage (TransPlutusVersion version)) =>
   TypedScript version '[AsRedeemer any] -> C.PolicyId
 mintingPolicyId = C.scriptPolicyId . C.PlutusScript C.plutusScriptVersion . toMintingPolicy
+
+mintingPolicyId' ::
+  forall version any.
+  (C.IsPlutusScriptLanguage (TransPlutusVersion version)) =>
+  TypedScript version '[AsRedeemer any] -> C.ScriptHash
+mintingPolicyId' = C.hashScript . C.PlutusScript C.plutusScriptVersion . toMintingPolicy
 
 validatorHash ::
   forall version any0 any.
@@ -26,6 +42,12 @@ policyIdBytes = C.serialiseToRawBytes
 
 scriptHashBytes :: C.ScriptHash -> ByteString
 scriptHashBytes = C.serialiseToRawBytes
+
+plutusVersion ::
+  forall ver xs.
+  (IsPlutusScriptLanguage (TransPlutusVersion ver)) =>
+  TypedScript ver xs -> C.PlutusScriptVersion (TransPlutusVersion ver)
+plutusVersion _ = C.plutusScriptVersion @(TransPlutusVersion ver)
 
 toMintingPolicy ::
   forall version any.
