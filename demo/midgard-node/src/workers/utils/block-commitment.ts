@@ -39,7 +39,14 @@ export type FailureOutput = {
   error: string;
 };
 
-export type WorkerOutput = SuccessfulCommitmentOutput | FailureOutput;
+export type SeededOutput = {
+  type: "SeededOutput";
+};
+
+export type WorkerOutput =
+  | SuccessfulCommitmentOutput
+  | FailureOutput
+  | SeededOutput;
 
 const txEntryToBatchDBOps = (
   txCbor: Buffer,

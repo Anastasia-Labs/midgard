@@ -9,6 +9,7 @@ import {
   applyWithdrawalsToLedger,
   applyTxOrdersToLedger,
   buildNewBlockEntry,
+  SeededOutput,
 } from "./utils/block-commitment.js";
 import {
   Database,
@@ -21,12 +22,74 @@ import { TxSignError } from "@/transactions/utils.js";
 import { MidgardMpt, MptError } from "@/workers/utils/mpt.js";
 import {
   DatabaseError,
+  serializeUTxOsForStorage,
   sqlErrorToDatabaseError,
 } from "@/database/utils/common.js";
 import { SqlClient } from "@effect/sql";
+import { fromHex } from "@lucid-evolution/lucid";
+
+const seedBlocksDBFromChain: Effect.Effect<
+  SeededOutput | string,
+  never,
+  AlwaysSucceedsContract | Database | Lucid
+> = Effect.gen(function* () {
+  yield* Effect.logInfo(
+    "🔹 BlocksDB is empty - attempting to seed from chain...",
+  );
+  const lucid = yield* Lucid;
+  const { stateQueue } = yield* AlwaysSucceedsContract;
+  const fetchConfig: SDK.StateQueueFetchConfig = {
+    stateQueueAddress: stateQueue.spendingScriptAddress,
+    stateQueuePolicyId: stateQueue.policyId,
+  };
+  yield* lucid.switchToOperatorsBlockCommitmentWallet;
+  const genesisStateQueueUTxO = yield* SDK.fetchLatestCommittedBlockProgram(
+    lucid.api,
+    fetchConfig,
+  );
+  const headerHashHex = yield* SDK.headerHashFromStateQueueUTxO(
+    genesisStateQueueUTxO,
+  );
+  const walletUTxOs = yield* Effect.tryPromise({
+    try: () => lucid.api.wallet().getUtxos(),
+    catch: (e) =>
+      new SDK.LucidError({
+        message: "Failed to fetch wallet UTxOs for BlocksDB seeding",
+        cause: e,
+      }),
+  });
+  const serializedWalletUTxOs = yield* serializeUTxOsForStorage(walletUTxOs);
+  const serializedProducedUTxOs = yield* serializeUTxOsForStorage([
+    genesisStateQueueUTxO.utxo,
+  ]);
+  const now = new Date();
+  const seedEntry: BlocksDB.EntryNoMeta = {
+    [BlocksDB.Columns.HEADER_HASH]: Buffer.from(fromHex(headerHashHex)),
+    [BlocksDB.Columns.EVENT_START_TIME]: now,
+    [BlocksDB.Columns.EVENT_END_TIME]: now,
+    [BlocksDB.Columns.NEW_WALLET_UTXOS]: serializedWalletUTxOs,
+    [BlocksDB.Columns.PRODUCED_UTXOS]: serializedProducedUTxOs,
+    [BlocksDB.Columns.L1_CBOR]: Buffer.alloc(0),
+    [BlocksDB.Columns.STATUS]: BlocksDB.Status.SUBMITTED,
+    [BlocksDB.Columns.DEPOSITS_COUNT]: 0,
+    [BlocksDB.Columns.TX_REQUESTS_COUNT]: 0,
+    [BlocksDB.Columns.TX_ORDERS_COUNT]: 0,
+    [BlocksDB.Columns.WITHDRAWALS_COUNT]: 0,
+    [BlocksDB.Columns.TOTAL_EVENTS_SIZE]: 0,
+  };
+  yield* BlocksDB.upsert(seedEntry);
+  yield* Effect.logInfo("🔹 ✅ BlocksDB seeded from chain successfully.");
+  return { type: "SeededOutput" } as SeededOutput;
+}).pipe(
+  Effect.catchAllCause((cause) =>
+    Effect.succeed(
+      `Chain not yet initialized, will retry: ${Cause.pretty(cause)}`,
+    ),
+  ),
+);
 
 const mainProgram: Effect.Effect<
-  string | BlocksDB.Stats,
+  SeededOutput | string | BlocksDB.Stats,
   | SDK.CborDeserializationError
   | SDK.CborSerializationError
   | SDK.CmlDeserializationError
@@ -42,10 +105,7 @@ const mainProgram: Effect.Effect<
 > = Effect.gen(function* () {
   const optLatestBlock = yield* BlocksDB.retrieveLatestEntry;
   return yield* Option.match(optLatestBlock, {
-    onNone: () =>
-      Effect.succeed(
-        "No blocks available in database to use as block commitment anchor",
-      ),
+    onNone: () => seedBlocksDBFromChain,
     onSome: (latestBlock) =>
       Effect.gen(function* () {
         const nodeConfig = yield* NodeConfig;
@@ -140,6 +200,8 @@ const wrapper = (_workerInput: WorkerInput) =>
         error: result,
       };
       return output;
+    } else if ("type" in result) {
+      return result satisfies WorkerOutput;
     } else {
       const output: WorkerOutput = {
         type: "SuccessfulCommitmentOutput",

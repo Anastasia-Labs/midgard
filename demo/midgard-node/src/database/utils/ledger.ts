@@ -227,6 +227,7 @@ export const delEntries = (
   outrefs: Buffer[],
 ): Effect.Effect<void, DatabaseError, Database> =>
   Effect.gen(function* () {
+    if (outrefs.length <= 0) return;
     const sql = yield* SqlClient.SqlClient;
     yield* sql`DELETE FROM ${sql(tableName)} WHERE ${sql(
       Columns.OUTREF,

@@ -110,7 +110,7 @@ export const createTable: Effect.Effect<void, DatabaseError, Database> =
       ${sql(Columns.TX_ORDERS_COUNT)} INTEGER NOT NULL,
       ${sql(Columns.WITHDRAWALS_COUNT)} INTEGER NOT NULL,
       ${sql(Columns.TOTAL_EVENTS_SIZE)} INTEGER NOT NULL,
-      ${sql(Columns.STATUS)} INTEGER NOT NULL DEFAULT(${Status.UNSUBMITTED}),
+      ${sql(Columns.STATUS)} INTEGER NOT NULL DEFAULT(${sql.literal(String(Status.UNSUBMITTED))}),
       ${sql(Columns.TIMESTAMPTZ)} TIMESTAMPTZ NOT NULL DEFAULT(NOW())
     );`;
   }).pipe(

@@ -56,8 +56,8 @@ export const createTable: Effect.Effect<void, DatabaseError, Database> =
       ${sql(Columns.EVENT_ID)} BYTEA NOT NULL,
       ${sql(Columns.ADDRESS)} TEXT NOT NULL,
       ${sql(Columns.EVENT_TYPE)} INTEGER NOT NULL,
-      ${sql(Columns.STATUS)} INTEGER NOT NULL DEFAULT(${Status.SLATED}),
-      UNIQUE (${sql(Ledger.Columns.TX_ID)}, ${sql(Ledger.Columns.ADDRESS)})
+      ${sql(Columns.STATUS)} INTEGER NOT NULL DEFAULT(${sql.literal(String(Status.SLATED))}),
+      UNIQUE (${sql(Columns.EVENT_ID)}, ${sql(Columns.ADDRESS)})
     );`;
   }).pipe(
     Effect.withLogSpan(`creating table ${tableName}`),

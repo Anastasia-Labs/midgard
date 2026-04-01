@@ -46,7 +46,7 @@ export const buildAndSubmitCommitmentBlockAction = () =>
       Effect.runSync(Effect.logInfo(`👷 Starting block commitment worker...`));
       const workerInputData: WorkerInput = { data: {} };
       const worker = new Worker(
-        new URL("./commit-block-header.js", import.meta.url),
+        new URL("./block-commitment.js", import.meta.url),
         { workerData: workerInputData },
       );
       worker.on("message", (output: WorkerOutput) => {
@@ -124,6 +124,12 @@ export const buildAndSubmitCommitmentBlockAction = () =>
           ),
         );
         yield* Effect.logInfo("🔹 ☑️  Block submission completed.");
+        break;
+      }
+      case "SeededOutput": {
+        yield* Effect.logInfo(
+          "🔹 ✅ BlocksDB seeded from chain. Will commit on next cycle.",
+        );
         break;
       }
       case "FailureOutput": {
