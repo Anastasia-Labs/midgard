@@ -234,8 +234,7 @@ validator spend(
                 scheduler_input_index == scheduler_input_index_from_scheduler_redeemer,
                 active_node_input_index == active_node_input_index_from_scheduler_redeemer,
               }
-            _ ->
-              fail @"Giving inactivity strikes requires scheduler UTxO to be spent for skipping the active operator"
+            _ -> False
           }
 
         // Validate inactive operator's strike count is incremented properly.

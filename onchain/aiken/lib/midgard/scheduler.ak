@@ -21,6 +21,13 @@ pub type OperatorRemovalReason {
   OperatorSlashing
 }
 
+pub type IgnoredUserEvent {
+  NoIgnoredUserEvent
+  IgnoredDeposit { deposit_ref_input_index: Int }
+  IgnoredWithdrawal { withdrawal_ref_input_index: Int }
+  IgnoredTxOrder { tx_order_ref_input_index: Int }
+}
+
 pub type AdvancingApproach {
   RewindDueToEndOfShift {
     active_operators_root_ref_input_index: Int,
@@ -39,6 +46,7 @@ pub type AdvancingApproach {
     // UTxO that's getting spent in the same transaction.
     m_active_operators_last_node_ref_input_index: Option<Int>,
     registered_element_ref_input_index: Int,
+    ignored_user_event: IgnoredUserEvent,
   }
   GoToNextDueToSkippedOperator {
     new_shifts_operator_node_ref_input_index: Int,

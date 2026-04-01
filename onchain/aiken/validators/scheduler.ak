@@ -131,7 +131,7 @@ validator spend(
             extra_signatories,
           )
 
-        // 5a. The active operators root UTxO must point to the previous
+        // 5a. The active operators root UTxO must point to the previous shift's
         //     operator.
         expect
           validate_root_is_reached(
@@ -147,6 +147,7 @@ validator spend(
             registered_operators_policy_id,
             registered_element_ref_input_index,
             reference_inputs,
+            validity_range,
           )
 
         // 7a. The last node in the active operators set must have a key that
@@ -222,6 +223,7 @@ validator spend(
             registered_operators_policy_id,
             registered_element_ref_input_index,
             reference_inputs,
+            validity_range,
           )
 
         // 7c. Inactive operator (i.e. previous shift's operator) must be
@@ -373,6 +375,7 @@ validator spend(
             registered_operators_policy_id,
             registered_element_ref_input_index,
             reference_inputs,
+            validity_range,
           )
 
         if last_operator_is_removed {
@@ -502,6 +505,7 @@ validator spend(
             registered_operators_policy_id,
             registered_element_ref_input_index,
             reference_inputs,
+            validity_range,
           )
 
         // Done.
@@ -856,6 +860,7 @@ fn validate_no_registered_operators_can_activate(
   registered_operators_policy_id: PolicyId,
   registered_element_ref_input: Int,
   reference_inputs: List<Input>,
+  validity_range: ValidityRange,
 ) -> Bool {
   // 1. Registered operator element must exist at the specified index.
   expect Some(registered_element_ref_input) =
