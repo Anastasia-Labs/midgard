@@ -14,12 +14,13 @@ import { AlwaysSucceedsContract } from "@/services/always-succeeds.js";
 import { withRealStateQueueAndOperatorContracts } from "@/services/midgard-contracts.js";
 import {
   activateOperatorProgram,
+  deployReferenceScriptCommandProgram,
   deregisterOperatorProgram,
   registerAndActivateOperatorProgram,
   registerOperatorProgram,
 } from "@/transactions/register-active-operator.js";
 
-const LARGE_TX_PROTOCOL_PARAMETERS = {
+const EMULATOR_PROTOCOL_PARAMETERS = {
   ...PROTOCOL_PARAMETERS_DEFAULT,
   maxTxSize: 65_536,
   maxCollateralInputs: 3,
@@ -93,7 +94,7 @@ const initOperatorLifecycleFixture = async () => {
   const operator = generateEmulatorAccount({
     lovelace: 30_000_000_000n,
   });
-  const emulator = new Emulator([operator], LARGE_TX_PROTOCOL_PARAMETERS);
+  const emulator = new Emulator([operator], EMULATOR_PROTOCOL_PARAMETERS);
   const lucid = await Lucid(emulator, "Custom");
   lucid.selectWallet.fromSeed(operator.seedPhrase);
 
@@ -182,7 +183,7 @@ const fragmentOperatorWalletUtxos = async (
   const liveWalletInputs = await reconcileLiveWalletUtxos(
     lucid,
     await lucid.wallet().getUtxos(),
-  );
+  ).then((utxos) => utxos.filter((utxo) => utxo.scriptRef === undefined));
   let tx = lucid.newTx();
   for (let index = 0; index < outputs; index += 1) {
     tx = tx.pay.ToAddress(operatorAddress, {
@@ -265,6 +266,69 @@ const assertOperatorActivatedState = async ({
 };
 
 describe("operator lifecycle emulator", () => {
+  it(
+    "refreshes the dedicated reference-script wallet from provider state after external replenishment",
+    async () => {
+      const operator = generateEmulatorAccount({
+        lovelace: 200_000_000n,
+      });
+      const referenceScripts = generateEmulatorAccount({
+        lovelace: 0n,
+      });
+      const emulator = new Emulator(
+        [operator, referenceScripts],
+        EMULATOR_PROTOCOL_PARAMETERS,
+      );
+      const fundingLucid = await Lucid(emulator, "Custom");
+      fundingLucid.selectWallet.fromSeed(operator.seedPhrase);
+      const referenceScriptsLucid = await Lucid(emulator, "Custom");
+      referenceScriptsLucid.selectWallet.fromSeed(referenceScripts.seedPhrase);
+
+      const oneShotNonce = (await fundingLucid.wallet().getUtxos())[0];
+      if (!oneShotNonce) {
+        throw new Error("Expected at least one operator wallet UTxO in emulator");
+      }
+      const contracts = await loadOperatorContracts({
+        txHash: oneShotNonce.txHash,
+        outputIndex: oneShotNonce.outputIndex,
+      });
+
+      referenceScriptsLucid.overrideUTxOs([]);
+      const staleReferenceWalletUtxos =
+        await referenceScriptsLucid.wallet().getUtxos();
+      const stalePlainBalance = staleReferenceWalletUtxos
+        .filter((utxo) => utxo.scriptRef === undefined)
+        .reduce((total, utxo) => total + (utxo.assets.lovelace ?? 0n), 0n);
+      expect(stalePlainBalance).toEqual(0n);
+
+      const published = await Effect.runPromise(
+        deployReferenceScriptCommandProgram(
+          referenceScriptsLucid,
+          contracts,
+          "active-operators",
+          fundingLucid,
+        ),
+      );
+      expect(published).toHaveLength(2);
+
+      const referenceScriptAddress =
+        await referenceScriptsLucid.wallet().address();
+      const liveReferenceWalletUtxos =
+        await referenceScriptsLucid.utxosAt(referenceScriptAddress);
+      const liveReferenceScriptCount = liveReferenceWalletUtxos.filter(
+        (utxo) => utxo.scriptRef !== undefined,
+      ).length;
+      const livePlainBalance = liveReferenceWalletUtxos
+        .filter((utxo) => utxo.scriptRef === undefined)
+        .reduce((total, utxo) => total + (utxo.assets.lovelace ?? 0n), 0n);
+
+      expect(liveReferenceScriptCount).toBeGreaterThanOrEqual(2);
+      expect(livePlainBalance).toBeGreaterThan(0n);
+      expect(await referenceScriptsLucid.wallet().getUtxos()).not.toEqual([]);
+    },
+    240_000,
+  );
+
   it("runs register-only then activate-only using offchain lifecycle programs", async () => {
     const {
       lucid,

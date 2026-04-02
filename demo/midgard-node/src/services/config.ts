@@ -51,6 +51,7 @@ type NodeConfigDep = {
   POSTGRES_PASSWORD: string;
   POSTGRES_DB: string;
   POSTGRES_HOST: string;
+  POSTGRES_PORT: number;
   LEDGER_MPT_DB_PATH: string;
   MEMPOOL_MPT_DB_PATH: string;
   GENESIS_UTXOS: UTxO[];
@@ -193,6 +194,9 @@ const makeConfig = Effect.gen(function* () {
   const postgresHost = yield* Config.string("POSTGRES_HOST").pipe(
     Config.withDefault("postgres"),
   ); // service name
+  const postgresPort = yield* Config.integer("POSTGRES_PORT").pipe(
+    Config.withDefault(5432),
+  );
   const postgresPassword = yield* Config.string("POSTGRES_PASSWORD").pipe(
     Config.withDefault("postgres"),
   );
@@ -319,6 +323,7 @@ const makeConfig = Effect.gen(function* () {
     PROM_METRICS_PORT: promMetricsPort,
     OLTP_EXPORTER_URL: oltpExporterUrl,
     POSTGRES_HOST: postgresHost,
+    POSTGRES_PORT: postgresPort,
     POSTGRES_PASSWORD: postgresPassword,
     POSTGRES_DB: postgresDb,
     POSTGRES_USER: postgresUser,

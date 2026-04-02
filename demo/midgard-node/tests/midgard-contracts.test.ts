@@ -4,6 +4,7 @@ import { Effect } from "effect";
 import { mintingPolicyToId } from "@lucid-evolution/lucid";
 import { AlwaysSucceedsContract } from "@/services/always-succeeds.js";
 import {
+  REAL_DEPOSIT_SCRIPT_TITLES,
   REAL_HUB_ORACLE_SCRIPT_TITLES,
   REAL_STATE_QUEUE_SCRIPT_TITLES,
   withRealStateQueueAndOperatorContracts,
@@ -29,6 +30,9 @@ describe("midgard contracts registry", () => {
         "state_queue.spend.spend",
       );
       expect(REAL_STATE_QUEUE_SCRIPT_TITLES.mint).toBe("state_queue.mint.mint");
+      expect(REAL_DEPOSIT_SCRIPT_TITLES.mint).toBe(
+        "user_events/deposit.mint.mint",
+      );
 
       expect(resolved.hubOracle.mintingScriptCBOR).not.toEqual(
         placeholderContracts.hubOracle.mintingScriptCBOR,
@@ -57,10 +61,10 @@ describe("midgard contracts registry", () => {
         placeholderContracts.retiredOperators.policyId,
       );
 
-      expect(resolved.deposit.policyId).toEqual(
+      expect(resolved.deposit.policyId).not.toEqual(
         placeholderContracts.deposit.policyId,
       );
-      expect(resolved.scheduler.policyId).toEqual(
+      expect(resolved.scheduler.policyId).not.toEqual(
         placeholderContracts.scheduler.policyId,
       );
     }).pipe(Effect.provide(AlwaysSucceedsContract.Default)),

@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { Effect } from "effect";
 import * as SDK from "@al-ft/midgard-sdk";
 import {
+  Data,
   Emulator,
   Lucid,
   PROTOCOL_PARAMETERS_DEFAULT,
@@ -15,6 +16,11 @@ import {
   withRealStateQueueAndOperatorContracts,
   withRealStateQueueContracts,
 } from "@/services/midgard-contracts.js";
+import {
+  deploySchedulerAndHubProgram,
+  fetchHubOracleWitness,
+  isSchedulerInitialized,
+} from "@/transactions/initialization.js";
 import { registerAndActivateOperatorProgram } from "@/transactions/register-active-operator.js";
 
 const loadContracts = (oneShotOutRef: {
@@ -32,7 +38,7 @@ const loadContracts = (oneShotOutRef: {
     }).pipe(Effect.provide(AlwaysSucceedsContract.Default)),
   );
 
-const LARGE_TX_PROTOCOL_PARAMETERS = {
+const EMULATOR_PROTOCOL_PARAMETERS = {
   ...PROTOCOL_PARAMETERS_DEFAULT,
   maxTxSize: 65_536,
   maxCollateralInputs: 3,
@@ -111,18 +117,131 @@ const buildOperatorAwareInitializationTx = async (
     .compose(retiredOperatorsTx);
 };
 
+const initEmulatorLucid = async () => {
+  const operator = generateEmulatorAccount({
+    lovelace: 30_000_000_000n,
+  });
+  const emulator = new Emulator([operator], EMULATOR_PROTOCOL_PARAMETERS);
+  const lucid = await Lucid(emulator, "Custom");
+  lucid.selectWallet.fromSeed(operator.seedPhrase);
+  const nonceUtxo = (await lucid.wallet().getUtxos())[0];
+  if (!nonceUtxo) {
+    throw new Error("Expected at least one wallet UTxO in emulator");
+  }
+  return { lucid, nonceUtxo };
+};
+
 describe("initialization emulator", () => {
-  it("initializes protocol when state_queue and hub_oracle use real onchain scripts", async () => {
-    const operator = generateEmulatorAccount({
-      lovelace: 30_000_000_000n,
+  it("deploys hub-oracle and scheduler together with the real scripts", async () => {
+    const { lucid, nonceUtxo } = await initEmulatorLucid();
+    const contracts = await loadContracts({
+      txHash: nonceUtxo.txHash,
+      outputIndex: nonceUtxo.outputIndex,
     });
-    const emulator = new Emulator([operator], LARGE_TX_PROTOCOL_PARAMETERS);
-    const lucid = await Lucid(emulator, "Custom");
-    lucid.selectWallet.fromSeed(operator.seedPhrase);
-    const nonceUtxo = (await lucid.wallet().getUtxos())[0];
-    if (!nonceUtxo) {
-      throw new Error("Expected at least one wallet UTxO in emulator");
-    }
+
+    const txHash = await Effect.runPromise(
+      deploySchedulerAndHubProgram(lucid, contracts, {
+        HUB_ORACLE_ONE_SHOT_TX_HASH: nonceUtxo.txHash,
+        HUB_ORACLE_ONE_SHOT_OUTPUT_INDEX: nonceUtxo.outputIndex,
+      }),
+    );
+
+    const hubOracleWitness = await Effect.runPromise(
+      fetchHubOracleWitness(lucid, contracts),
+    );
+    const schedulerInitialized = await Effect.runPromise(
+      isSchedulerInitialized(lucid, contracts.scheduler),
+    );
+    const schedulerUtxos = await lucid.utxosAtWithUnit(
+      contracts.scheduler.spendingScriptAddress,
+      toUnit(contracts.scheduler.policyId, SDK.SCHEDULER_ASSET_NAME),
+    );
+    const schedulerDatum = Data.from(
+      schedulerUtxos[0]!.datum!,
+      SDK.SchedulerDatum,
+    );
+
+    expect(txHash).toHaveLength(64);
+    expect(hubOracleWitness).not.toBeNull();
+    expect(schedulerInitialized).toBe(true);
+    expect(schedulerDatum).toEqual({
+      operator: "",
+      startTime: 0n,
+    });
+  });
+
+  it("rejects deploy-scheduler-and-hub once a partial hub-oracle-only deployment exists", async () => {
+    const { lucid, nonceUtxo } = await initEmulatorLucid();
+    const contracts = await loadContracts({
+      txHash: nonceUtxo.txHash,
+      outputIndex: nonceUtxo.outputIndex,
+    });
+
+    const hubOracleOnlyTx = await Effect.runPromise(
+      SDK.incompleteHubOracleInitTxProgram(lucid, {
+        hubOracleMintValidator: contracts.hubOracle,
+        validators: contracts,
+        oneShotNonceUTxO: nonceUtxo,
+      }),
+    );
+    const signed = await (
+      await lucid
+        .newTx()
+        .validTo(Number(BigInt(Date.now() + SDK.VALIDITY_RANGE_BUFFER)))
+        .compose(hubOracleOnlyTx)
+        .complete({ localUPLCEval: true })
+    ).sign
+      .withWallet()
+      .complete();
+    const hubOracleOnlyTxHash = await signed.submit();
+    await lucid.awaitTx(hubOracleOnlyTxHash);
+
+    await expect(
+      Effect.runPromise(
+        deploySchedulerAndHubProgram(lucid, contracts, {
+          HUB_ORACLE_ONE_SHOT_TX_HASH: nonceUtxo.txHash,
+          HUB_ORACLE_ONE_SHOT_OUTPUT_INDEX: nonceUtxo.outputIndex,
+        }),
+      ),
+    ).rejects.toThrow(
+      "Hub-oracle and scheduler deployment is partial and cannot be completed in-place",
+    );
+  });
+
+  it("rejects scheduler initialization that does not use the canonical empty datum", async () => {
+    const { lucid, nonceUtxo } = await initEmulatorLucid();
+    const contracts = await loadContracts({
+      txHash: nonceUtxo.txHash,
+      outputIndex: nonceUtxo.outputIndex,
+    });
+
+    const hubOracleTx = await Effect.runPromise(
+      SDK.incompleteHubOracleInitTxProgram(lucid, {
+        hubOracleMintValidator: contracts.hubOracle,
+        validators: contracts,
+        oneShotNonceUTxO: nonceUtxo,
+      }),
+    );
+    const schedulerTx = SDK.incompleteSchedulerInitTxProgram(lucid, {
+      validator: contracts.scheduler,
+      datum: {
+        operator: "11".repeat(28),
+        startTime: 1n,
+      },
+    });
+
+    await expect(
+      lucid
+        .newTx()
+        .validTo(Number(BigInt(Date.now() + SDK.VALIDITY_RANGE_BUFFER)))
+        .compose(hubOracleTx)
+        .compose(schedulerTx)
+        .complete({ localUPLCEval: true }),
+    ).rejects.toThrow();
+  });
+
+  it("initializes protocol when state_queue and hub_oracle use real onchain scripts", async () => {
+    const { lucid, nonceUtxo } = await initEmulatorLucid();
     const contracts = await loadContracts({
       txHash: nonceUtxo.txHash,
       outputIndex: nonceUtxo.outputIndex,
@@ -154,16 +273,7 @@ describe("initialization emulator", () => {
   });
 
   it("rejects re-initialization when the hub_oracle one-shot nonce is already consumed", async () => {
-    const operator = generateEmulatorAccount({
-      lovelace: 30_000_000_000n,
-    });
-    const emulator = new Emulator([operator], LARGE_TX_PROTOCOL_PARAMETERS);
-    const lucid = await Lucid(emulator, "Custom");
-    lucid.selectWallet.fromSeed(operator.seedPhrase);
-    const nonceUtxo = (await lucid.wallet().getUtxos())[0];
-    if (!nonceUtxo) {
-      throw new Error("Expected at least one wallet UTxO in emulator");
-    }
+    const { lucid, nonceUtxo } = await initEmulatorLucid();
     const contracts = await loadContracts({
       txHash: nonceUtxo.txHash,
       outputIndex: nonceUtxo.outputIndex,
@@ -209,16 +319,7 @@ describe("initialization emulator", () => {
   });
 
   it("registers and activates the operator with real operator contracts", async () => {
-    const operator = generateEmulatorAccount({
-      lovelace: 30_000_000_000n,
-    });
-    const emulator = new Emulator([operator], LARGE_TX_PROTOCOL_PARAMETERS);
-    const lucid = await Lucid(emulator, "Custom");
-    lucid.selectWallet.fromSeed(operator.seedPhrase);
-    const nonceUtxo = (await lucid.wallet().getUtxos())[0];
-    if (!nonceUtxo) {
-      throw new Error("Expected at least one wallet UTxO in emulator");
-    }
+    const { lucid, nonceUtxo } = await initEmulatorLucid();
     const contracts = await loadOperatorContracts({
       txHash: nonceUtxo.txHash,
       outputIndex: nonceUtxo.outputIndex,

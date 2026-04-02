@@ -15,6 +15,10 @@ import {
   TxConfirmError,
   TxSignError,
 } from "@/transactions/utils.js";
+import {
+  buildUnsignedDepositTxProgram,
+  type SubmitDepositError,
+} from "@/transactions/submit-deposit.js";
 
 const insertGenesisUtxos: Effect.Effect<
   void,
@@ -59,7 +63,9 @@ const submitGenesisDeposits: Effect.Effect<
   void,
   | SDK.LucidError
   | SDK.HashingError
-  | SDK.DepositError
+  | SDK.HubOracleError
+  | SDK.Bech32DeserializationError
+  | SubmitDepositError
   | TxSubmitError
   | TxConfirmError
   | TxSignError,
@@ -67,7 +73,7 @@ const submitGenesisDeposits: Effect.Effect<
 > = Effect.gen(function* () {
   yield* Effect.logInfo(`🟣 Building genesis deposit tx...`);
 
-  const { deposit: depositAuthValidator } = yield* MidgardContracts;
+  const contracts = yield* MidgardContracts;
   const config = yield* NodeConfig;
   const lucid = yield* Lucid;
 
@@ -78,22 +84,19 @@ const submitGenesisDeposits: Effect.Effect<
   const l2Address = config.GENESIS_UTXOS[0].address;
 
   // Hard-coded 10 ADA deposit.
-  const depositParams: SDK.DepositParams = {
-    depositScriptAddress: depositAuthValidator.spendingScriptAddress,
-    mintingPolicy: depositAuthValidator.mintingScript,
-    policyId: depositAuthValidator.policyId,
-    depositAmount: 10_000_000n,
-    depositInfo: {
-      l2Address: l2Address,
-      l2Datum: null,
-    },
+  const depositConfig = {
+    l2Address,
+    l2Datum: null,
+    lovelace: 10_000_000n,
+    additionalAssets: {},
   };
 
   yield* lucid.switchToOperatorsMainWallet;
 
-  const signedTx = yield* SDK.unsignedDepositTxProgram(
+  const signedTx = yield* buildUnsignedDepositTxProgram(
     lucid.api,
-    depositParams,
+    contracts,
+    depositConfig,
   );
   yield* handleSignSubmit(lucid.api, signedTx);
 }).pipe(Effect.tapError(Effect.logInfo));

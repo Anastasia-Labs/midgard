@@ -44,7 +44,7 @@
   "license": "ISC",
   "dependencies": {
     "@aiken-lang/merkle-patricia-forestry": "^1.2.0",
-    "@al-ft/midgard-sdk": "file:../midgard-sdk/al-ft-midgard-sdk-0.1.0.tgz",
+    "@al-ft/midgard-sdk": "file:../midgard-sdk",
     "@effect/experimental": "^0.46.0",
     "@effect/opentelemetry": "^0.44.6",
     "@effect/platform": "^0.80.0",

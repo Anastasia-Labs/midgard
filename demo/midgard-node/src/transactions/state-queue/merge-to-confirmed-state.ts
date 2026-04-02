@@ -403,16 +403,16 @@ const toProviderRedeemerTag = (tag: number): ProviderRedeemerTag => {
 
 // Aiken exposes `self.redeemers` in ScriptPurpose order that matches
 // redeemer-tag canonical ordering:
-// Spend < Mint < Withdraw < Publish < Vote < Propose.
+// Spend < Mint < Publish < Withdraw < Vote < Propose.
 const txInfoRedeemerPurposeRank = (tag: number): number => {
   switch (tag) {
     case CML.RedeemerTag.Spend:
       return 0;
     case CML.RedeemerTag.Mint:
       return 1;
-    case CML.RedeemerTag.Reward:
-      return 2;
     case CML.RedeemerTag.Cert:
+      return 2;
+    case CML.RedeemerTag.Reward:
       return 3;
     case CML.RedeemerTag.Voting:
       return 4;
@@ -1028,7 +1028,7 @@ export const buildAndSubmitMergeTx = (
                 makeMergeTx(
                   initialEncodedRedeemers.encodedStateQueueMergeRedeemer,
                   initialEncodedRedeemers.encodedSettlementSpawnRedeemer,
-                ).complete({ localUPLCEval: false }),
+                ).complete({ localUPLCEval: true }),
             );
             const draftTx = draftTxBuilder.toTransaction();
             const txBody = draftTx.body();
@@ -1365,7 +1365,7 @@ export const buildAndSubmitMergeTx = (
               finalEncodedRedeemers.encodedStateQueueMergeRedeemer,
               finalEncodedRedeemers.encodedSettlementSpawnRedeemer,
             ).complete({
-              localUPLCEval: false,
+              localUPLCEval: true,
             }),
           catch: (cause) =>
             new SDK.StateQueueError({

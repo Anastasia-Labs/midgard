@@ -202,7 +202,7 @@ export const ensureActiveOperatorWitnessNodeProgram = (
             bootstrapAssets,
           )
           .attach.Script(contracts.activeOperators.mintingScript)
-          .complete({ localUPLCEval: false }),
+          .complete({ localUPLCEval: true }),
       catch: (cause) =>
         new SDK.LucidError({
           message: `Failed to build active-operator bootstrap tx: ${cause}`,

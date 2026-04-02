@@ -13,6 +13,7 @@ const createPgLayerEffect = Effect.gen(function* () {
   yield* Effect.logInfo("📚 Opening connection to db...");
   const pgClientLayer = PgClient.layer({
     host: nodeConfig.POSTGRES_HOST,
+    port: nodeConfig.POSTGRES_PORT,
     username: nodeConfig.POSTGRES_USER,
     password: Redacted.make(nodeConfig.POSTGRES_PASSWORD),
     database: nodeConfig.POSTGRES_DB,
@@ -28,6 +29,7 @@ const createPgLayerEffect = Effect.gen(function* () {
           cause: e,
           fieldsAndValues: [
             ["POSTGRES_HOST", nodeConfig.POSTGRES_HOST],
+            ["POSTGRES_PORT", nodeConfig.POSTGRES_PORT.toString()],
             ["POSTGRES_USER", nodeConfig.POSTGRES_USER],
             ["POSTGRES_DB", nodeConfig.POSTGRES_DB],
           ],

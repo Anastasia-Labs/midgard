@@ -885,6 +885,39 @@ const ensureProtocolInitializedOnStartup = Effect.gen(function* () {
     network: nodeConfig.NETWORK,
     runGenesisOnStartup: nodeConfig.RUN_GENESIS_ON_STARTUP,
   });
+  const lucid = yield* Lucid;
+  const contracts = yield* MidgardContracts;
+  const deploymentStatus = yield* Initialization.fetchProtocolDeploymentStatus(
+    lucid.api,
+    contracts,
+  );
+  const details = formatStateQueueTopology(deploymentStatus.stateQueueTopology);
+  if (!deploymentStatus.stateQueueTopology.healthy) {
+    if (deploymentStatus.stateQueueTopology.initialized) {
+      return yield* Effect.fail(
+        new SDK.StateQueueError({
+          message:
+            "Startup initialization check failed: configured state_queue policy has invalid topology",
+          cause: `${details}; reason=${deploymentStatus.stateQueueTopology.reason ?? "unknown"}`,
+        }),
+      );
+    }
+  }
+  if (deploymentStatus.complete) {
+    yield* Effect.logInfo(
+      `Startup initialization check: protocol deployment already present (state_queue=${details}).`,
+    );
+    return;
+  }
+  if (!deploymentStatus.empty) {
+    return yield* Effect.fail(
+      new SDK.StateQueueError({
+        message:
+          "Startup initialization check found a partial deployment; refusing to auto-initialize over externally provisioned state",
+        cause: `state_queue=${details}; missing=[${deploymentStatus.missingComponents.join(",")}]; hub_oracle_present=${deploymentStatus.hubOracleWitness !== null}; scheduler_initialized=${deploymentStatus.schedulerInitialized}; registered_initialized=${deploymentStatus.registeredOperatorsInitialized}; active_initialized=${deploymentStatus.activeOperatorsInitialized}; retired_initialized=${deploymentStatus.retiredOperatorsInitialized}`,
+      }),
+    );
+  }
   if (!shouldBootstrap) {
     yield* Effect.logInfo(
       "Skipping protocol initialization on startup (disabled or mainnet).",
@@ -892,31 +925,8 @@ const ensureProtocolInitializedOnStartup = Effect.gen(function* () {
     return;
   }
 
-  const lucid = yield* Lucid;
-  const contracts = yield* MidgardContracts;
-  const topology = yield* fetchStateQueueTopologyProgram(
-    lucid.api,
-    contracts.stateQueue,
-  );
-  const details = formatStateQueueTopology(topology);
-  if (topology.initialized) {
-    if (!topology.healthy) {
-      return yield* Effect.fail(
-        new SDK.StateQueueError({
-          message:
-            "Startup initialization check failed: configured state_queue policy has invalid topology",
-          cause: `${details}; reason=${topology.reason ?? "unknown"}`,
-        }),
-      );
-    }
-    yield* Effect.logInfo(
-      `Startup initialization check: state_queue already initialized (${details}).`,
-    );
-    return;
-  }
-
   yield* Effect.logInfo(
-    "No state_queue anchor UTxO found for configured contracts. Running protocol initialization...",
+    "No existing protocol deployment found for configured contracts. Running protocol initialization...",
   );
   const initTxHash = yield* Initialization.program;
   yield* Effect.logInfo(

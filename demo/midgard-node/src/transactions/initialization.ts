@@ -1,7 +1,11 @@
-import { Effect } from "effect";
+import { Effect, Schedule } from "effect";
 import { Lucid } from "@/services/lucid.js";
 import { MidgardContracts } from "@/services/midgard-contracts.js";
 import { NodeConfig } from "@/services/config.js";
+import {
+  fetchStateQueueTopologyProgram,
+  type StateQueueTopology,
+} from "@/services/state-queue-topology.js";
 import * as SDK from "@al-ft/midgard-sdk";
 import {
   Data as LucidData,
@@ -62,8 +66,12 @@ export const createFraudProofCatalogueMpt = (
     return trie;
   });
 
-const outRefLabel = (utxo: UTxO): string => `${utxo.txHash}#${utxo.outputIndex}`;
-const OPERATOR_SET_ROOT_LOVELACE = 2_000_000n;
+export const outRefLabel = (utxo: UTxO): string =>
+  `${utxo.txHash}#${utxo.outputIndex}`;
+export const OPERATOR_SET_ROOT_LOVELACE = 2_000_000n;
+const DEFAULT_DEPLOYMENT_VALIDITY_WINDOW_MS = 30_000n;
+const DEPLOYMENT_VISIBILITY_REFRESH_MAX_RETRIES = 12;
+const DEPLOYMENT_VISIBILITY_REFRESH_DELAY = "2 seconds";
 const ACTIVE_OPERATOR_DATUM_AIKEN_OPTION_SCHEMA = LucidData.Enum([
   LucidData.Object({
     Some: LucidData.Tuple([LucidData.Integer()]),
@@ -74,13 +82,15 @@ const ACTIVE_OPERATOR_DATUM_AIKEN_SCHEMA = LucidData.Object({
   bond_unlock_time: ACTIVE_OPERATOR_DATUM_AIKEN_OPTION_SCHEMA,
 });
 
-const encodeActiveOperatorDatum = (bondUnlockTime: bigint | null): string =>
+export const encodeActiveOperatorDatum = (
+  bondUnlockTime: bigint | null,
+): string =>
   LucidData.castTo(
     { bond_unlock_time: bondUnlockTime } as never,
     ACTIVE_OPERATOR_DATUM_AIKEN_SCHEMA as never,
   ) as string;
 
-const fetchHubOracleWitness = (
+export const fetchHubOracleWitness = (
   lucid: LucidEvolution,
   contracts: SDK.MidgardValidators,
 ): Effect.Effect<UTxO | null, SDK.LucidError> =>
@@ -121,7 +131,7 @@ const fetchHubOracleWitness = (
     return utxos[0] ?? null;
   });
 
-const isNodeSetInitialized = (
+export const isNodeSetInitialized = (
   lucid: LucidEvolution,
   validator: SDK.AuthenticatedValidator,
 ): Effect.Effect<boolean, SDK.LucidError> =>
@@ -140,7 +150,7 @@ const isNodeSetInitialized = (
     ),
   );
 
-const isSchedulerInitialized = (
+export const isSchedulerInitialized = (
   lucid: LucidEvolution,
   scheduler: SDK.AuthenticatedValidator,
 ): Effect.Effect<boolean, SDK.LucidError> =>
@@ -160,7 +170,7 @@ const isSchedulerInitialized = (
       }),
   });
 
-const fetchConfiguredNonceUtxo = (
+export const fetchConfiguredNonceUtxo = (
   lucid: LucidEvolution,
   nodeConfig: {
     HUB_ORACLE_ONE_SHOT_TX_HASH: string;
@@ -195,14 +205,14 @@ const fetchConfiguredNonceUtxo = (
     return nonceUtxo;
   });
 
-const completeAndSubmit = (
+export const completeAndSubmit = (
   lucid: LucidEvolution,
   txBuilder: any,
   failureMessage: string,
 ): Effect.Effect<string, SDK.LucidError | TxSignError | TxSubmitError> =>
   Effect.gen(function* () {
     const unsignedTx = yield* Effect.tryPromise({
-      try: () => txBuilder.complete({ localUPLCEval: false }),
+      try: () => txBuilder.complete({ localUPLCEval: true }),
       catch: (cause) =>
         new SDK.LucidError({
           message: `${failureMessage}: ${cause}`,
@@ -210,6 +220,337 @@ const completeAndSubmit = (
         }),
     });
     return yield* handleSignSubmit(lucid, unsignedTx);
+  });
+
+const resolveDefaultDeploymentDeadline = (): bigint =>
+  BigInt(
+    Date.now() + SDK.VALIDITY_RANGE_BUFFER + Number(DEFAULT_DEPLOYMENT_VALIDITY_WINDOW_MS),
+  );
+
+const requireHubOracleWitness = (
+  lucid: LucidEvolution,
+  contracts: SDK.MidgardValidators,
+): Effect.Effect<UTxO, SDK.LucidError> =>
+  Effect.gen(function* () {
+    const witness = yield* fetchHubOracleWitness(lucid, contracts);
+    if (witness !== null) {
+      return witness;
+    }
+    return yield* Effect.fail(
+      new SDK.LucidError({
+        message:
+          "Hub-oracle witness UTxO is required before deploying dependent protocol contracts",
+        cause: contracts.hubOracle.policyId,
+      }),
+    );
+  });
+
+const makePartialHubAndSchedulerDeploymentError = (
+  hubOraclePresent: boolean,
+  schedulerInitialized: boolean,
+): SDK.LucidError =>
+  new SDK.LucidError({
+    message:
+      "Hub-oracle and scheduler deployment is partial and cannot be completed in-place",
+    cause: `hub_oracle_present=${hubOraclePresent}; scheduler_initialized=${schedulerInitialized}; the real scheduler init requires hub-oracle and scheduler mints in the same transaction; use a fresh one-shot hub-oracle outref for a clean redeployment`,
+  });
+
+export type ProtocolDeploymentStatus = {
+  readonly hubOracleWitness: UTxO | null;
+  readonly stateQueueTopology: StateQueueTopology;
+  readonly schedulerInitialized: boolean;
+  readonly registeredOperatorsInitialized: boolean;
+  readonly activeOperatorsInitialized: boolean;
+  readonly retiredOperatorsInitialized: boolean;
+  readonly complete: boolean;
+  readonly empty: boolean;
+  readonly missingComponents: readonly string[];
+};
+
+export const fetchProtocolDeploymentStatus = (
+  lucid: LucidEvolution,
+  contracts: SDK.MidgardValidators,
+): Effect.Effect<ProtocolDeploymentStatus, SDK.LucidError> =>
+  Effect.gen(function* () {
+    const hubOracleWitness = yield* fetchHubOracleWitness(lucid, contracts);
+    const stateQueueTopology = yield* fetchStateQueueTopologyProgram(
+      lucid,
+      contracts.stateQueue,
+    );
+    const schedulerInitialized = yield* isSchedulerInitialized(
+      lucid,
+      contracts.scheduler,
+    );
+    const registeredOperatorsInitialized = yield* isNodeSetInitialized(
+      lucid,
+      contracts.registeredOperators,
+    );
+    const activeOperatorsInitialized = yield* isNodeSetInitialized(
+      lucid,
+      contracts.activeOperators,
+    );
+    const retiredOperatorsInitialized = yield* isNodeSetInitialized(
+      lucid,
+      contracts.retiredOperators,
+    );
+    const missingComponents = [
+      ...(hubOracleWitness === null ? ["hub-oracle"] : []),
+      ...(!stateQueueTopology.initialized ? ["state-queue"] : []),
+      ...(!schedulerInitialized ? ["scheduler"] : []),
+      ...(!registeredOperatorsInitialized ? ["registered-operators"] : []),
+      ...(!activeOperatorsInitialized ? ["active-operators"] : []),
+      ...(!retiredOperatorsInitialized ? ["retired-operators"] : []),
+    ] as const;
+    const complete =
+      hubOracleWitness !== null &&
+      stateQueueTopology.initialized &&
+      stateQueueTopology.healthy &&
+      schedulerInitialized &&
+      registeredOperatorsInitialized &&
+      activeOperatorsInitialized &&
+      retiredOperatorsInitialized;
+    const empty =
+      hubOracleWitness === null &&
+      !stateQueueTopology.initialized &&
+      !schedulerInitialized &&
+      !registeredOperatorsInitialized &&
+      !activeOperatorsInitialized &&
+      !retiredOperatorsInitialized;
+
+    return {
+      hubOracleWitness,
+      stateQueueTopology,
+      schedulerInitialized,
+      registeredOperatorsInitialized,
+      activeOperatorsInitialized,
+      retiredOperatorsInitialized,
+      complete,
+      empty,
+      missingComponents,
+    };
+  });
+
+const waitForPhase1InitializationVisibility = (
+  lucid: LucidEvolution,
+  contracts: SDK.MidgardValidators,
+): Effect.Effect<
+  {
+    readonly hubOracleWitness: UTxO;
+    readonly stateQueueInitialized: true;
+    readonly schedulerInitialized: true;
+  },
+  SDK.LucidError
+> =>
+  Effect.gen(function* () {
+    const hubOracleWitness = yield* fetchHubOracleWitness(lucid, contracts);
+    const stateQueueInitialized = yield* isNodeSetInitialized(
+      lucid,
+      contracts.stateQueue,
+    );
+    const schedulerInitialized = yield* isSchedulerInitialized(
+      lucid,
+      contracts.scheduler,
+    );
+
+    if (
+      hubOracleWitness === null ||
+      !stateQueueInitialized ||
+      !schedulerInitialized
+    ) {
+      return yield* Effect.fail(
+        new SDK.LucidError({
+          message:
+            "Phase-1 initialization transaction is confirmed but not yet fully visible through the provider",
+          cause: `hub_oracle_present=${hubOracleWitness !== null}; state_queue_initialized=${stateQueueInitialized}; scheduler_initialized=${schedulerInitialized}`,
+        }),
+      );
+    }
+
+    return {
+      hubOracleWitness,
+      stateQueueInitialized: true,
+      schedulerInitialized: true,
+    } as const;
+  }).pipe(
+    Effect.retry(
+      Schedule.intersect(
+        Schedule.fixed(DEPLOYMENT_VISIBILITY_REFRESH_DELAY),
+        Schedule.recurs(DEPLOYMENT_VISIBILITY_REFRESH_MAX_RETRIES),
+      ),
+    ),
+  );
+
+export const deploySchedulerAndHubProgram = (
+  lucid: LucidEvolution,
+  contracts: SDK.MidgardValidators,
+  nodeConfig: {
+    HUB_ORACLE_ONE_SHOT_TX_HASH: string;
+    HUB_ORACLE_ONE_SHOT_OUTPUT_INDEX: number;
+  },
+  validTo: bigint = resolveDefaultDeploymentDeadline(),
+): Effect.Effect<string, SDK.LucidError | TxSignError | TxSubmitError> =>
+  Effect.gen(function* () {
+    const existingWitness = yield* fetchHubOracleWitness(lucid, contracts);
+    const schedulerInitialized = yield* isSchedulerInitialized(
+      lucid,
+      contracts.scheduler,
+    );
+
+    if (existingWitness !== null && schedulerInitialized) {
+      return "already-deployed";
+    }
+
+    if (existingWitness !== null || schedulerInitialized) {
+      return yield* Effect.fail(
+        makePartialHubAndSchedulerDeploymentError(
+          existingWitness !== null,
+          schedulerInitialized,
+        ),
+      );
+    }
+
+    const nonceUtxo = yield* fetchConfiguredNonceUtxo(lucid, nodeConfig);
+    const hubOracleTx = yield* SDK.incompleteHubOracleInitTxProgram(lucid, {
+      hubOracleMintValidator: contracts.hubOracle,
+      validators: contracts,
+      oneShotNonceUTxO: nonceUtxo,
+    });
+    const schedulerTx = SDK.incompleteSchedulerInitTxProgram(lucid, {
+      validator: contracts.scheduler,
+      datum: SDK.INITIAL_SCHEDULER_DATUM,
+    });
+
+    return yield* completeAndSubmit(
+      lucid,
+      lucid
+        .newTx()
+        .validTo(Number(validTo))
+        .compose(hubOracleTx)
+        .compose(schedulerTx),
+      "Failed to build hub-oracle + scheduler deployment transaction",
+    );
+  });
+
+export const deployStateQueueProgram = (
+  lucid: LucidEvolution,
+  contracts: SDK.MidgardValidators,
+  genesisTime: bigint = resolveDefaultDeploymentDeadline(),
+): Effect.Effect<string, SDK.LucidError | TxSignError | TxSubmitError> =>
+  Effect.gen(function* () {
+    const topology = yield* fetchStateQueueTopologyProgram(
+      lucid,
+      contracts.stateQueue,
+    );
+    if (topology.initialized) {
+      if (!topology.healthy) {
+        return yield* Effect.fail(
+          new SDK.LucidError({
+            message:
+              "Cannot deploy state_queue over an invalid existing on-chain topology",
+            cause: JSON.stringify(topology),
+          }),
+        );
+      }
+      return "already-deployed";
+    }
+    const hubOracleWitness = yield* requireHubOracleWitness(lucid, contracts);
+    const stateQueueTx = yield* SDK.incompleteInitStateQueueTxProgram(lucid, {
+      validator: contracts.stateQueue,
+      genesisTime,
+    });
+    return yield* completeAndSubmit(
+      lucid,
+      lucid
+        .newTx()
+        .validTo(Number(genesisTime))
+        .readFrom([hubOracleWitness])
+        .compose(stateQueueTx),
+      "Failed to build state_queue deployment transaction",
+    );
+  });
+
+const deployNodeSetProgram = (
+  lucid: LucidEvolution,
+  validator: SDK.AuthenticatedValidator,
+  hubOracleWitness: UTxO,
+  validTo: bigint,
+  build: () => Effect.Effect<any, never>,
+  failureMessage: string,
+): Effect.Effect<string, SDK.LucidError | TxSignError | TxSubmitError> =>
+  Effect.gen(function* () {
+    const initialized = yield* isNodeSetInitialized(lucid, validator);
+    if (initialized) {
+      return "already-deployed";
+    }
+    return yield* completeAndSubmit(
+      lucid,
+      lucid
+        .newTx()
+        .validTo(Number(validTo))
+        .readFrom([hubOracleWitness])
+        .compose(yield* build()),
+      failureMessage,
+    );
+  });
+
+export const deployRegisteredOperatorsProgram = (
+  lucid: LucidEvolution,
+  contracts: SDK.MidgardValidators,
+  validTo: bigint = resolveDefaultDeploymentDeadline(),
+): Effect.Effect<string, SDK.LucidError | TxSignError | TxSubmitError> =>
+  Effect.gen(function* () {
+    const hubOracleWitness = yield* requireHubOracleWitness(lucid, contracts);
+    return yield* deployNodeSetProgram(
+      lucid,
+      contracts.registeredOperators,
+      hubOracleWitness,
+      validTo,
+      () =>
+        SDK.incompleteRegisteredOperatorInitTxProgram(lucid, {
+          validator: contracts.registeredOperators,
+        }),
+      "Failed to build registered-operators deployment transaction",
+    );
+  });
+
+export const deployActiveOperatorsProgram = (
+  lucid: LucidEvolution,
+  contracts: SDK.MidgardValidators,
+  validTo: bigint = resolveDefaultDeploymentDeadline(),
+): Effect.Effect<string, SDK.LucidError | TxSignError | TxSubmitError> =>
+  Effect.gen(function* () {
+    const hubOracleWitness = yield* requireHubOracleWitness(lucid, contracts);
+    return yield* deployNodeSetProgram(
+      lucid,
+      contracts.activeOperators,
+      hubOracleWitness,
+      validTo,
+      () =>
+        SDK.incompleteActiveOperatorInitTxProgram(lucid, {
+          validator: contracts.activeOperators,
+        }),
+      "Failed to build active-operators deployment transaction",
+    );
+  });
+
+export const deployRetiredOperatorsProgram = (
+  lucid: LucidEvolution,
+  contracts: SDK.MidgardValidators,
+  validTo: bigint = resolveDefaultDeploymentDeadline(),
+): Effect.Effect<string, SDK.LucidError | TxSignError | TxSubmitError> =>
+  Effect.gen(function* () {
+    const hubOracleWitness = yield* requireHubOracleWitness(lucid, contracts);
+    return yield* deployNodeSetProgram(
+      lucid,
+      contracts.retiredOperators,
+      hubOracleWitness,
+      validTo,
+      () =>
+        SDK.incompleteRetiredOperatorInitTxProgram(lucid, {
+          validator: contracts.retiredOperators,
+        }),
+      "Failed to build retired-operators deployment transaction",
+    );
   });
 
 export const program = Effect.gen(function* () {
@@ -247,6 +588,15 @@ export const program = Effect.gen(function* () {
     );
   }
 
+  if ((hubOracleWitness !== null) !== schedulerInitialized) {
+    return yield* Effect.fail(
+      makePartialHubAndSchedulerDeploymentError(
+        hubOracleWitness !== null,
+        schedulerInitialized,
+      ),
+    );
+  }
+
   if (
     hubOracleWitness === null ||
     !stateQueueInitialized ||
@@ -278,6 +628,7 @@ export const program = Effect.gen(function* () {
     if (!schedulerInitialized) {
       const schedulerTx = SDK.incompleteSchedulerInitTxProgram(lucid, {
         validator: contracts.scheduler,
+        datum: SDK.INITIAL_SCHEDULER_DATUM,
       });
       phase1Builder = phase1Builder.compose(schedulerTx);
     }
@@ -291,9 +642,13 @@ export const program = Effect.gen(function* () {
       `Initialization phase-1 submitted: txHash=${lastSubmittedTxHash}`,
     );
 
-    hubOracleWitness = yield* fetchHubOracleWitness(lucid, contracts);
-    stateQueueInitialized = yield* isNodeSetInitialized(lucid, contracts.stateQueue);
-    schedulerInitialized = yield* isSchedulerInitialized(lucid, contracts.scheduler);
+    const phase1Visibility = yield* waitForPhase1InitializationVisibility(
+      lucid,
+      contracts,
+    );
+    hubOracleWitness = phase1Visibility.hubOracleWitness;
+    stateQueueInitialized = phase1Visibility.stateQueueInitialized;
+    schedulerInitialized = phase1Visibility.schedulerInitialized;
   }
 
   if (hubOracleWitness === null) {

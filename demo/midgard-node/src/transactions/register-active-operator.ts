@@ -37,6 +37,16 @@ const DRAFT_REDEEMER_EX_UNITS = {
 const SCRIPT_REF_OUTPUT_LOVELACE = 4_000_000n;
 const SCRIPT_REF_PUBLICATION_MAX_RETRIES = 12;
 const SCRIPT_REF_PUBLICATION_RETRY_DELAY = "2 seconds";
+const SCRIPT_REF_PUBLICATION_FUNDING_BUFFER_LOVELACE = 10_000_000n;
+const REFERENCE_SCRIPT_WALLET_WORKING_CAPITAL_LOVELACE = 50_000_000n;
+const REFERENCE_SCRIPT_PUBLICATION_BALANCE_INSUFFICIENT_PATTERN =
+  /UTxO Balance Insufficient/i;
+const REFERENCE_SCRIPT_PUBLICATION_TX_SIZE_EXCEEDED_PATTERN =
+  /Max transaction size of \d+ exceeded\. Found: \d+/i;
+const REFERENCE_SCRIPT_PUBLICATION_BALANCE_GAP_PATTERN =
+  /Inputs:\s*Value\s*\{\s*coin:\s*(\d+)[\s\S]*?Outputs:\s*Value\s*\{\s*coin:\s*(\d+)/i;
+const WALLET_OWN_ADDRESS_REFRESH_MAX_RETRIES = 6;
+const WALLET_OWN_ADDRESS_REFRESH_RETRY_DELAY = "1 second";
 const REGISTERED_SET_REFRESH_MAX_RETRIES = 12;
 const REGISTERED_SET_REFRESH_RETRY_DELAY = "2 seconds";
 const NODE_SET_FETCH_MAX_RETRIES = 8;
@@ -50,9 +60,6 @@ const ACTIVE_OPERATOR_LIST_STATE_TRANSITION_REDEEMER = LucidData.to(
   "ListStateTransition",
   ActiveOperatorSpendRedeemerSchema,
 );
-const ACTIVATION_DEBUG_REDEEMERS_ENV =
-  "MIDGARD_DEBUG_ACTIVATION_REDEEMERS";
-const ACTIVATION_DEBUG_INPUTS_ENV = "MIDGARD_DEBUG_ACTIVATION_INPUTS";
 const ACTIVE_OPERATOR_DATUM_AIKEN_OPTION_SCHEMA = LucidData.Enum([
   LucidData.Object({
     Some: LucidData.Tuple([LucidData.Integer()]),
@@ -65,6 +72,9 @@ const ACTIVE_OPERATOR_DATUM_AIKEN_SCHEMA = LucidData.Object({
 const ACTIVE_OPERATOR_DATUM_OPTION_SCHEMA = LucidData.Nullable(
   LucidData.Integer(),
 );
+const REGISTERED_OPERATOR_DATUM_AIKEN_SCHEMA = LucidData.Object({
+  activation_time: LucidData.Integer(),
+});
 const ACTIVATION_SELECTED_REGISTERED_INPUTS_COUNT = 2;
 
 type ProviderRedeemerTag =
@@ -129,13 +139,69 @@ type OperatorLifecycleMode =
   | "activate-only"
   | "deregister-only";
 
-type ActivationScriptRef = {
+export type ReferenceScriptPublication = {
   readonly name: string;
   readonly utxo: UTxO;
 };
 
+export const REFERENCE_SCRIPT_COMMAND_NAMES = [
+  "hub-oracle",
+  "state-queue",
+  "scheduler",
+  "registered-operators",
+  "active-operators",
+  "retired-operators",
+] as const;
+
+export type ReferenceScriptCommandName =
+  (typeof REFERENCE_SCRIPT_COMMAND_NAMES)[number];
+
 type StubEvaluationMode = "draft" | "submission";
 type ActiveOperatorDatumEncoding = "aiken" | "record" | "option";
+
+const formatUnknownCause = (cause: unknown): string => {
+  if (cause instanceof Error) {
+    return `${cause.name}: ${cause.message}`;
+  }
+  if (typeof cause === "string") {
+    return cause;
+  }
+  try {
+    return JSON.stringify(cause);
+  } catch {
+    return String(cause);
+  }
+};
+
+const isReferenceScriptPublicationTxTooLarge = (cause: unknown): boolean =>
+  REFERENCE_SCRIPT_PUBLICATION_TX_SIZE_EXCEEDED_PATTERN.test(
+    formatUnknownCause(cause),
+  );
+
+const isReferenceScriptPublicationBalanceInsufficient = (
+  cause: unknown,
+): boolean =>
+  REFERENCE_SCRIPT_PUBLICATION_BALANCE_INSUFFICIENT_PATTERN.test(
+    formatUnknownCause(cause),
+  );
+
+const resolveReferenceScriptPublicationAdditionalFunding = (
+  cause: unknown,
+): bigint | undefined => {
+  const match =
+    REFERENCE_SCRIPT_PUBLICATION_BALANCE_GAP_PATTERN.exec(
+      formatUnknownCause(cause),
+    );
+  if (match === null) {
+    return undefined;
+  }
+  const inputs = BigInt(match[1]);
+  const outputs = BigInt(match[2]);
+  if (outputs <= inputs) {
+    return undefined;
+  }
+  return outputs - inputs + SCRIPT_REF_PUBLICATION_FUNDING_BUFFER_LOVELACE;
+};
 
 const slotToUnixTimeForLucid = (
   lucid: LucidEvolution,
@@ -170,15 +236,6 @@ const alignUnixTimeMsToSlotBoundary = (
   lucid: LucidEvolution,
   unixTimeMs: bigint,
 ): bigint => BigInt(alignUnixTimeToSlotBoundary(lucid, Number(unixTimeMs)));
-
-const isRemoteEvaluationFailure = (cause: unknown): boolean => {
-  const message = String(cause);
-  return (
-    message.includes("EvaluateTransaction fails") ||
-    message.includes("EvaluationFailure") ||
-    message.includes("TxBuilderError")
-  );
-};
 
 const summarizeOnChainScriptFailure = (cause: unknown): string | null => {
   const message = String(cause);
@@ -393,6 +450,66 @@ const decodeActiveOperatorDatumCommitmentTime = (
   return null;
 };
 
+const encodeRegisteredOperatorDatumValue = (activationTime: bigint) =>
+  LucidData.castTo(
+    { activation_time: activationTime } as never,
+    REGISTERED_OPERATOR_DATUM_AIKEN_SCHEMA as never,
+  );
+
+const decodeRegisteredOperatorActivationTime = (
+  value: unknown,
+): bigint | undefined => {
+  if (typeof value === "object" && value !== null) {
+    if (
+      "registrationTime" in value &&
+      typeof value.registrationTime === "bigint"
+    ) {
+      return value.registrationTime;
+    }
+    if (
+      "registrationTime" in value &&
+      typeof value.registrationTime === "number" &&
+      Number.isInteger(value.registrationTime)
+    ) {
+      return BigInt(value.registrationTime);
+    }
+    if (
+      "activation_time" in value &&
+      typeof value.activation_time === "bigint"
+    ) {
+      return value.activation_time;
+    }
+    if (
+      "activation_time" in value &&
+      typeof value.activation_time === "number" &&
+      Number.isInteger(value.activation_time)
+    ) {
+      return BigInt(value.activation_time);
+    }
+  }
+  try {
+    const parsed = LucidData.castFrom(
+      value as never,
+      SDK.RegisteredOperatorDatum as never,
+    ) as SDK.RegisteredOperatorDatum;
+    return BigInt(parsed.registrationTime);
+  } catch {
+    try {
+      const parsed = LucidData.castFrom(
+        value as never,
+        REGISTERED_OPERATOR_DATUM_AIKEN_SCHEMA as never,
+      ) as {
+        readonly activation_time: bigint | number;
+      };
+      return typeof parsed.activation_time === "bigint"
+        ? parsed.activation_time
+        : BigInt(parsed.activation_time);
+    } catch {
+      return undefined;
+    }
+  }
+};
+
 const mkRegisteredActivateRedeemer = ({
   operatorKeyHash,
   layout,
@@ -452,32 +569,10 @@ const mkRegisteredActivateRedeemerBuilder = ({
   },
 });
 
-const completeWithLocalEvaluationFallback = async <A>(
-  lucid: LucidEvolution,
+const completeWithLocalEvaluation = async <A>(
   build: (options: { localUPLCEval: boolean }) => Promise<A>,
 ): Promise<A> => {
-  try {
-    return await build({ localUPLCEval: false });
-  } catch (remoteCause) {
-    if (!isRemoteEvaluationFailure(remoteCause)) {
-      throw remoteCause;
-    }
-    try {
-      return await build({ localUPLCEval: true });
-    } catch (localCause) {
-      try {
-        return await withStubbedProviderEvaluation(
-          lucid,
-          () => build({ localUPLCEval: false }),
-          "submission",
-        );
-      } catch (stubCause) {
-        throw new Error(
-          `remote_evaluation_error=${String(remoteCause)}; local_evaluation_error=${String(localCause)}; stubbed_submission_evaluation_error=${String(stubCause)}`,
-        );
-      }
-    }
-  }
+  return await build({ localUPLCEval: true });
 };
 
 const compareOutRefs = (a: UTxO, b: UTxO): number => {
@@ -488,17 +583,78 @@ const compareOutRefs = (a: UTxO, b: UTxO): number => {
   return a.outputIndex - b.outputIndex;
 };
 
+const comparePolicyIds = (left: string, right: string): number =>
+  compareHex(left, right);
+
+const resolveOrderedIndex = (
+  target: UTxO | string,
+  ordered: readonly (UTxO | string)[],
+): bigint => {
+  const index = ordered.findIndex((candidate) =>
+    typeof target === "string" && typeof candidate === "string"
+      ? candidate === target
+      : typeof target !== "string" &&
+          typeof candidate !== "string" &&
+          candidate.txHash === target.txHash &&
+          candidate.outputIndex === target.outputIndex,
+  );
+  if (index < 0) {
+    throw new Error(
+      `Failed to resolve ordered index for target=${typeof target === "string" ? target : `${target.txHash}#${target.outputIndex.toString()}`}`,
+    );
+  }
+  return BigInt(index);
+};
+
+const resolveReferenceInputIndexFromSet = (
+  target: UTxO,
+  referenceInputs: readonly UTxO[],
+): bigint =>
+  resolveOrderedIndex(target, [...referenceInputs].sort(compareOutRefs));
+
+const resolveMintContextIndexFromPolicies = (
+  targetPolicyId: string,
+  policyIds: readonly string[],
+): bigint =>
+  resolveOrderedIndex(
+    targetPolicyId,
+    [...policyIds].sort(comparePolicyIds),
+  );
+
+const resolveMintRedeemerTxInfoIndex = ({
+  targetPolicyId,
+  policyIds,
+  spendRedeemerCount,
+}: {
+  readonly targetPolicyId: string;
+  readonly policyIds: readonly string[];
+  readonly spendRedeemerCount: number;
+}): bigint =>
+  BigInt(spendRedeemerCount) +
+  resolveMintContextIndexFromPolicies(targetPolicyId, policyIds);
+
 const lovelaceOf = (utxo: UTxO): bigint => utxo.assets.lovelace ?? 0n;
 const utxoOutRefKey = (utxo: UTxO): string =>
   `${utxo.txHash}#${utxo.outputIndex.toString()}`;
 const WALLET_OUTREF_RECONCILE_MAX_RETRIES = 4;
 const WALLET_OUTREF_RECONCILE_RETRY_DELAY = "750 millis";
+const filterPlainWalletUtxos = (utxos: readonly UTxO[]): readonly UTxO[] =>
+  utxos.filter((utxo) => utxo.scriptRef === undefined);
+const sumWalletLovelace = (utxos: readonly UTxO[]): bigint =>
+  utxos.reduce((total, utxo) => total + lovelaceOf(utxo), 0n);
+const resolveReferenceScriptPublicationFundingTarget = (
+  missingTargetCount: number,
+): bigint =>
+  SCRIPT_REF_OUTPUT_LOVELACE * (BigInt(missingTargetCount) + 1n) +
+  SCRIPT_REF_PUBLICATION_FUNDING_BUFFER_LOVELACE;
 
-const selectWalletFundingUtxos = (
-  utxos: readonly UTxO[],
-  targetLovelace: bigint,
-): readonly UTxO[] => {
-  const sorted = [...utxos].sort((left, right) => {
+const orderWalletFundingUtxos = (utxos: readonly UTxO[]): readonly UTxO[] =>
+  [...utxos].sort((left, right) => {
+    const leftIsPlain = left.scriptRef === undefined;
+    const rightIsPlain = right.scriptRef === undefined;
+    if (leftIsPlain !== rightIsPlain) {
+      return leftIsPlain ? -1 : 1;
+    }
     const leftLovelace = lovelaceOf(left);
     const rightLovelace = lovelaceOf(right);
     if (leftLovelace === rightLovelace) {
@@ -506,6 +662,12 @@ const selectWalletFundingUtxos = (
     }
     return leftLovelace > rightLovelace ? -1 : 1;
   });
+
+const selectWalletFundingUtxos = (
+  utxos: readonly UTxO[],
+  targetLovelace: bigint,
+): readonly UTxO[] => {
+  const sorted = orderWalletFundingUtxos(utxos);
   const selected: UTxO[] = [];
   let covered = 0n;
   for (const utxo of sorted) {
@@ -516,6 +678,28 @@ const selectWalletFundingUtxos = (
     }
   }
   return selected;
+};
+
+const mergeWalletUtxosPreservingScriptRefs = (
+  liveUtxos: readonly UTxO[],
+  cachedUtxos: readonly UTxO[],
+): readonly UTxO[] => {
+  const cachedByOutRef = new Map(
+    cachedUtxos.map((utxo) => [utxoOutRefKey(utxo), utxo]),
+  );
+  return liveUtxos.map((utxo) => {
+    if (utxo.scriptRef !== undefined) {
+      return utxo;
+    }
+    const cached = cachedByOutRef.get(utxoOutRefKey(utxo));
+    if (cached?.scriptRef === undefined) {
+      return utxo;
+    }
+    return {
+      ...utxo,
+      scriptRef: cached.scriptRef,
+    };
+  });
 };
 
 const reconcileLiveWalletUtxos = (
@@ -574,27 +758,102 @@ const reconcileLiveWalletUtxos = (
       );
       return utxos;
     }
-    const cachedByOutRef = new Map(
-      utxos.map((utxo) => [
-        `${utxo.txHash}#${utxo.outputIndex.toString()}`,
-        utxo,
-      ]),
-    );
-    return live.map((utxo) => {
-      if (utxo.scriptRef !== undefined) {
-        return utxo;
-      }
-      const cached = cachedByOutRef.get(
-        `${utxo.txHash}#${utxo.outputIndex.toString()}`,
-      );
-      if (cached?.scriptRef === undefined) {
-        return utxo;
-      }
-      return {
-        ...utxo,
-        scriptRef: cached.scriptRef,
-      };
+    return mergeWalletUtxosPreservingScriptRefs(live, utxos);
+  });
+
+const fetchReconciledWalletUtxos = (
+  lucid: LucidEvolution,
+  failureMessage: string,
+): Effect.Effect<readonly UTxO[], SDK.StateQueueError> =>
+  Effect.gen(function* () {
+    const walletUtxosRaw = yield* Effect.tryPromise({
+      try: () => lucid.wallet().getUtxos(),
+      catch: (cause) =>
+        new SDK.StateQueueError({
+          message: failureMessage,
+          cause,
+        }),
     });
+    return yield* reconcileLiveWalletUtxos(lucid, walletUtxosRaw);
+  });
+
+const refreshWalletUtxosFromOwnAddress = (
+  lucid: LucidEvolution,
+  {
+    scopeName,
+    failureMessage,
+    minimumPlainBalance,
+  }: {
+    readonly scopeName: string;
+    readonly failureMessage: string;
+    readonly minimumPlainBalance?: bigint;
+  },
+): Effect.Effect<readonly UTxO[], SDK.StateQueueError> =>
+  Effect.gen(function* () {
+    const walletAddress = yield* Effect.tryPromise({
+      try: () => lucid.wallet().address(),
+      catch: (cause) =>
+        new SDK.StateQueueError({
+          message: `Failed to resolve wallet address while refreshing ${scopeName}`,
+          cause,
+        }),
+    });
+    const cachedWalletUtxos = yield* Effect.tryPromise({
+      try: () => lucid.wallet().getUtxos(),
+      catch: () => [] as readonly UTxO[],
+    }).pipe(Effect.catchAll(() => Effect.succeed([] as readonly UTxO[])));
+
+    let refreshedWalletUtxos: readonly UTxO[] | null = null;
+    let lastCause: unknown = null;
+    for (
+      let attempt = 0;
+      attempt < WALLET_OWN_ADDRESS_REFRESH_MAX_RETRIES;
+      attempt += 1
+    ) {
+      const atAddressAttempt = yield* Effect.either(
+        Effect.tryPromise({
+          try: () => lucid.utxosAt(walletAddress),
+          catch: (cause) => cause,
+        }),
+      );
+      if (atAddressAttempt._tag === "Right") {
+        const mergedWalletUtxos = mergeWalletUtxosPreservingScriptRefs(
+          atAddressAttempt.right,
+          cachedWalletUtxos,
+        );
+        yield* Effect.sync(() => lucid.overrideUTxOs([...mergedWalletUtxos]));
+        const plainBalance = sumWalletLovelace(
+          filterPlainWalletUtxos(mergedWalletUtxos),
+        );
+        if (
+          minimumPlainBalance === undefined ||
+          plainBalance >= minimumPlainBalance
+        ) {
+          refreshedWalletUtxos = mergedWalletUtxos;
+          break;
+        }
+        lastCause = `wallet_address=${walletAddress},plain_balance=${plainBalance.toString()},required_plain_balance=${minimumPlainBalance.toString()}`;
+      } else {
+        lastCause = atAddressAttempt.left;
+      }
+
+      if (attempt + 1 < WALLET_OWN_ADDRESS_REFRESH_MAX_RETRIES) {
+        yield* Effect.logWarning(
+          `Wallet own-address refresh for ${scopeName} did not reach the required state (attempt ${(attempt + 1).toString()}/${WALLET_OWN_ADDRESS_REFRESH_MAX_RETRIES.toString()}); retrying in ${WALLET_OWN_ADDRESS_REFRESH_RETRY_DELAY}. cause=${String(lastCause)}`,
+        );
+        yield* Effect.sleep(WALLET_OWN_ADDRESS_REFRESH_RETRY_DELAY);
+      }
+    }
+
+    if (refreshedWalletUtxos !== null) {
+      return refreshedWalletUtxos;
+    }
+    return yield* Effect.fail(
+      new SDK.StateQueueError({
+        message: failureMessage,
+        cause: lastCause ?? `wallet_address=${walletAddress}`,
+      }),
+    );
   });
 
 const resolveSpendableWalletUtxos = (
@@ -602,130 +861,17 @@ const resolveSpendableWalletUtxos = (
   excludedOutRefKeys: ReadonlySet<string>,
 ): Effect.Effect<readonly UTxO[], SDK.StateQueueError> =>
   Effect.gen(function* () {
-    const walletUtxosRaw = yield* Effect.tryPromise({
-      try: () => lucid.wallet().getUtxos(),
-      catch: (cause) =>
-        new SDK.StateQueueError({
-          message: "Failed to fetch wallet UTxOs for transaction input preset",
-          cause,
-        }),
-    });
-    const walletUtxos = yield* reconcileLiveWalletUtxos(lucid, walletUtxosRaw);
-    return walletUtxos.filter(
-      (utxo) => !excludedOutRefKeys.has(utxoOutRefKey(utxo)),
+    const walletUtxos = yield* fetchReconciledWalletUtxos(
+      lucid,
+      "Failed to fetch wallet UTxOs for transaction input preset",
+    );
+    // Reference-script publications must remain available for `.readFrom(...)`.
+    // Treat them as reserved infrastructure UTxOs, not generic funding inputs.
+    return filterPlainWalletUtxos(walletUtxos).filter(
+      (utxo) =>
+        !excludedOutRefKeys.has(utxoOutRefKey(utxo)),
     );
   });
-
-const referenceInputsFromTx = (tx: CML.Transaction): readonly UTxO[] => {
-  const referenceInputs = tx.body().reference_inputs();
-  if (referenceInputs === undefined) {
-    return [];
-  }
-  return Array.from({ length: referenceInputs.len() }, (_, index) => {
-    const referenceInput = referenceInputs.get(index);
-    return {
-      txHash: referenceInput.transaction_id().to_hex(),
-      outputIndex: Number(referenceInput.index()),
-      address: "",
-      assets: { lovelace: 0n },
-    };
-  });
-};
-
-const spendingInputsFromTx = (tx: CML.Transaction): readonly UTxO[] => {
-  const spendingInputs = tx.body().inputs();
-  return Array.from({ length: spendingInputs.len() }, (_, index) => {
-    const spendingInput = spendingInputs.get(index);
-    return {
-      txHash: spendingInput.transaction_id().to_hex(),
-      outputIndex: Number(spendingInput.index()),
-      address: "",
-      assets: { lovelace: 0n },
-    };
-  });
-};
-
-const collateralInputsFromTx = (tx: CML.Transaction): readonly UTxO[] => {
-  const collateralInputs = tx.body().collateral_inputs();
-  if (collateralInputs === undefined) {
-    return [];
-  }
-  return Array.from({ length: collateralInputs.len() }, (_, index) => {
-    const collateralInput = collateralInputs.get(index);
-    return {
-      txHash: collateralInput.transaction_id().to_hex(),
-      outputIndex: Number(collateralInput.index()),
-      address: "",
-      assets: { lovelace: 0n },
-    };
-  });
-};
-
-const resolveMissingOutRefs = (
-  lucid: LucidEvolution,
-  refs: readonly UTxO[],
-  message: string,
-): Effect.Effect<readonly string[], SDK.StateQueueError> =>
-  Effect.gen(function* () {
-    if (refs.length === 0) {
-      return [];
-    }
-    const uniqueOutRefs = Array.from(
-      new Map(
-        refs.map((ref) => [
-          `${ref.txHash}#${ref.outputIndex.toString()}`,
-          {
-            txHash: ref.txHash,
-            outputIndex: ref.outputIndex,
-          },
-        ]),
-      ).values(),
-    );
-    const resolved = yield* Effect.tryPromise({
-      try: () => lucid.utxosByOutRef(uniqueOutRefs),
-      catch: (cause) =>
-        new SDK.StateQueueError({
-          message,
-          cause,
-        }),
-    });
-    const resolvedSet = new Set(
-      resolved.map((utxo) => `${utxo.txHash}#${utxo.outputIndex.toString()}`),
-    );
-    return uniqueOutRefs
-      .map((ref) => `${ref.txHash}#${ref.outputIndex.toString()}`)
-      .filter((refKey) => !resolvedSet.has(refKey));
-  });
-
-const resolveMissingReferenceInputs = (
-  lucid: LucidEvolution,
-  tx: CML.Transaction,
-): Effect.Effect<readonly string[], SDK.StateQueueError> =>
-  resolveMissingOutRefs(
-    lucid,
-    referenceInputsFromTx(tx),
-    "Failed to resolve activation transaction reference inputs by out-ref",
-  );
-
-const resolveMissingSpendingInputs = (
-  lucid: LucidEvolution,
-  tx: CML.Transaction,
-): Effect.Effect<readonly string[], SDK.StateQueueError> =>
-  resolveMissingOutRefs(
-    lucid,
-    spendingInputsFromTx(tx),
-    "Failed to resolve activation transaction spending inputs by out-ref",
-  );
-
-const resolveMissingCollateralInputs = (
-  lucid: LucidEvolution,
-  tx: CML.Transaction,
-): Effect.Effect<readonly string[], SDK.StateQueueError> =>
-  resolveMissingOutRefs(
-    lucid,
-    collateralInputsFromTx(tx),
-    "Failed to resolve activation transaction collateral inputs by out-ref",
-  );
 
 const findReferenceInputIndex = (
   tx: CML.Transaction,
@@ -872,6 +1018,101 @@ const activateLayoutToLogString = (layout: ActivateRedeemerLayout): string =>
     `active_anchor_out=${layout.activeOperatorsAnchorNodeOutputIndex.toString()}`,
   ].join(",");
 
+const resolveInitialRegisterRedeemerLayout = ({
+  registeredOperatorScriptRefs,
+  hubOracleRefInput,
+  activeNotMemberWitness,
+  retiredNotMemberWitness,
+}: {
+  readonly registeredOperatorScriptRefs: readonly ReferenceScriptPublication[];
+  readonly hubOracleRefInput: UTxO;
+  readonly activeNotMemberWitness: NodeWithDatum;
+  readonly retiredNotMemberWitness: NodeWithDatum;
+}): RegisterRedeemerLayout => {
+  const referenceInputs = [
+    ...registeredOperatorScriptRefs.map(({ utxo }) => utxo),
+    hubOracleRefInput,
+    activeNotMemberWitness.utxo,
+    retiredNotMemberWitness.utxo,
+  ] as const;
+  return {
+    hubOracleRefInputIndex: resolveReferenceInputIndexFromSet(
+      hubOracleRefInput,
+      referenceInputs,
+    ),
+    activeOperatorRefInputIndex: resolveReferenceInputIndexFromSet(
+      activeNotMemberWitness.utxo,
+      referenceInputs,
+    ),
+    retiredOperatorRefInputIndex: resolveReferenceInputIndexFromSet(
+      retiredNotMemberWitness.utxo,
+      referenceInputs,
+    ),
+    // The register tx only emits the prepended node and the updated anchor
+    // under the registered-operators policy, in authored order.
+    prependedNodeOutputIndex: 0n,
+    anchorNodeOutputIndex: 1n,
+  };
+};
+
+const resolveInitialActivateRedeemerLayout = ({
+  registeredOperatorScriptRefs,
+  activeOperatorScriptRefs,
+  hubOracleRefInput,
+  retiredNotMemberWitnessForActivate,
+  registeredNode,
+  registeredAnchor,
+  activeAppendAnchor,
+  contracts,
+}: {
+  readonly registeredOperatorScriptRefs: readonly ReferenceScriptPublication[];
+  readonly activeOperatorScriptRefs: readonly ReferenceScriptPublication[];
+  readonly hubOracleRefInput: UTxO;
+  readonly retiredNotMemberWitnessForActivate: NodeWithDatum;
+  readonly registeredNode: NodeWithDatum;
+  readonly registeredAnchor: NodeWithDatum;
+  readonly activeAppendAnchor: NodeWithDatum;
+  readonly contracts: SDK.MidgardValidators;
+}): ActivateRedeemerLayout => {
+  const referenceInputs = [
+    ...registeredOperatorScriptRefs.map(({ utxo }) => utxo),
+    ...activeOperatorScriptRefs.map(({ utxo }) => utxo),
+    hubOracleRefInput,
+    retiredNotMemberWitnessForActivate.utxo,
+  ] as const;
+  const removedNodeInputIndex =
+    compareOutRefs(registeredNode.utxo, registeredAnchor.utxo) < 0 ? 0n : 1n;
+  const activationScriptSpendCount = [
+    registeredNode.utxo,
+    registeredAnchor.utxo,
+    activeAppendAnchor.utxo,
+  ].length;
+  return {
+    hubOracleRefInputIndex: resolveReferenceInputIndexFromSet(
+      hubOracleRefInput,
+      referenceInputs,
+    ),
+    retiredOperatorRefInputIndex: resolveReferenceInputIndexFromSet(
+      retiredNotMemberWitnessForActivate.utxo,
+      referenceInputs,
+    ),
+    registeredOperatorsRedeemerIndex: resolveMintRedeemerTxInfoIndex({
+      targetPolicyId: contracts.registeredOperators.policyId,
+      policyIds: [
+        contracts.registeredOperators.policyId,
+        contracts.activeOperators.policyId,
+      ],
+      spendRedeemerCount: activationScriptSpendCount,
+    }),
+    removedNodeInputIndex,
+    anchorNodeInputIndex: removedNodeInputIndex === 0n ? 1n : 0n,
+    // The activation tx emits the inserted node then the updated active anchor
+    // under the active-operators policy, in authored order.
+    activeOperatorsInsertedNodeOutputIndex: 0n,
+    activeOperatorsAnchorNodeOutputIndex: 1n,
+  };
+};
+
 const toProviderRedeemerTag = (tag: number): ProviderRedeemerTag => {
   switch (tag) {
     case CML.RedeemerTag.Spend:
@@ -892,7 +1133,7 @@ const toProviderRedeemerTag = (tag: number): ProviderRedeemerTag => {
 };
 
 // Aiken exposes `self.redeemers` in ScriptPurpose order:
-// Spend < Mint < Withdraw < Publish < Vote < Propose.
+// Spend < Mint < Publish < Withdraw < Vote < Propose.
 // CML redeemer pointers are emitted in context order, so cross-redeemer
 // references must map context positions into this tx-info order.
 const txInfoRedeemerPurposeRank = (tag: number): number => {
@@ -901,9 +1142,9 @@ const txInfoRedeemerPurposeRank = (tag: number): number => {
       return 0;
     case CML.RedeemerTag.Mint:
       return 1;
-    case CML.RedeemerTag.Reward:
-      return 2;
     case CML.RedeemerTag.Cert:
+      return 2;
+    case CML.RedeemerTag.Reward:
       return 3;
     case CML.RedeemerTag.Voting:
       return 4;
@@ -980,77 +1221,6 @@ const getRedeemerPointersInContextOrder = (
     });
   }
   return pointers;
-};
-
-const redeemerTagLabel = (tag: number): string => {
-  switch (tag) {
-    case CML.RedeemerTag.Spend:
-      return "spend";
-    case CML.RedeemerTag.Mint:
-      return "mint";
-    case CML.RedeemerTag.Cert:
-      return "cert";
-    case CML.RedeemerTag.Reward:
-      return "reward";
-    case CML.RedeemerTag.Voting:
-      return "vote";
-    case CML.RedeemerTag.Proposing:
-      return "propose";
-    default:
-      return `unknown(${tag})`;
-  }
-};
-
-const describeRedeemerData = (value: CML.RedeemerVal | undefined): string => {
-  if (value === undefined) {
-    return "missing";
-  }
-  try {
-    return value.data().to_json();
-  } catch {
-    return "<unprintable>";
-  }
-};
-
-const describePlutusData = (data: CML.PlutusData): string => {
-  try {
-    return data.to_json();
-  } catch {
-    return "<unprintable>";
-  }
-};
-
-const describeDraftRedeemers = (tx: CML.Transaction): string => {
-  const redeemers = tx.witness_set().redeemers();
-  if (redeemers === undefined) {
-    return "none";
-  }
-
-  const legacy = redeemers.as_arr_legacy_redeemer();
-  if (legacy !== undefined) {
-    const entries: string[] = [];
-    for (let index = 0; index < legacy.len(); index += 1) {
-      const redeemer = legacy.get(index);
-      entries.push(
-        `#${index.toString()}:${redeemerTagLabel(redeemer.tag())}:${redeemer.index().toString()}:${describePlutusData(redeemer.data())}`,
-      );
-    }
-    return entries.join(" | ");
-  }
-
-  const map = redeemers.as_map_redeemer_key_to_redeemer_val();
-  if (map === undefined) {
-    return "unknown";
-  }
-  const keys = map.keys();
-  const entries: string[] = [];
-  for (let index = 0; index < keys.len(); index += 1) {
-    const key = keys.get(index);
-    entries.push(
-      `#${index.toString()}:${redeemerTagLabel(key.tag())}:${key.index().toString()}:${describeRedeemerData(map.get(key))}`,
-    );
-  }
-  return entries.join(" | ");
 };
 
 const describePolicyOutputDatumAtIndex = (
@@ -1456,225 +1626,597 @@ const resolveLiveWalletUtxo = (
     return live;
   });
 
-const ensureScriptReferenceUTxO = (
+const resolveExistingReferenceScriptPublication = (
   lucid: LucidEvolution,
-  name: string,
-  script: Script,
-): Effect.Effect<UTxO, SDK.StateQueueError | SDK.LucidError | TxSignError | TxSubmitError> =>
+  walletUtxos: readonly UTxO[],
+  target: { readonly name: string; readonly script: Script },
+): Effect.Effect<ReferenceScriptPublication | undefined, SDK.StateQueueError> =>
   Effect.gen(function* () {
-    const walletUtxosRaw = yield* Effect.tryPromise({
-      try: () => lucid.wallet().getUtxos(),
-      catch: (cause) =>
-        new SDK.StateQueueError({
-          message: `Failed to fetch wallet UTxOs while resolving ${name} reference script`,
-          cause,
-        }),
-    });
-    const walletUtxos = yield* reconcileLiveWalletUtxos(lucid, walletUtxosRaw);
     const existingCandidates = walletUtxos
-      .filter((utxo) => isSameScriptRef(utxo.scriptRef, script))
+      .filter((utxo) => isSameScriptRef(utxo.scriptRef, target.script))
       .sort(compareOutRefs)
       .reverse();
     for (const existingCandidate of existingCandidates) {
       const existing = yield* resolveLiveWalletUtxo(lucid, existingCandidate);
-      if (existing !== undefined && isSameScriptRef(existing.scriptRef, script)) {
-        return existing;
+      if (existing !== undefined && isSameScriptRef(existing.scriptRef, target.script)) {
+        return {
+          name: target.name,
+          utxo: existing,
+        };
       }
     }
+    return undefined;
+  });
 
-    const operatorAddress = yield* Effect.tryPromise({
-      try: () => lucid.wallet().address(),
+const ensureReferenceScriptWalletWorkingCapital = (
+  fundingLucid: LucidEvolution,
+  referenceScriptsLucid: LucidEvolution,
+  scopeName: string,
+  requiredPlainBalance: bigint,
+): Effect.Effect<
+  void,
+  SDK.StateQueueError | SDK.LucidError | TxSignError | TxSubmitError
+> =>
+  Effect.gen(function* () {
+    const referenceScriptWalletUtxos = yield* refreshWalletUtxosFromOwnAddress(
+      referenceScriptsLucid,
+      {
+        scopeName: `${scopeName} reference scripts`,
+        failureMessage:
+          `Failed to fetch wallet UTxOs while preparing ${scopeName} reference scripts`,
+      },
+    );
+    const currentPlainBalance = sumWalletLovelace(
+      filterPlainWalletUtxos(referenceScriptWalletUtxos),
+    );
+    const targetPlainBalance =
+      requiredPlainBalance > REFERENCE_SCRIPT_WALLET_WORKING_CAPITAL_LOVELACE
+        ? requiredPlainBalance
+        : REFERENCE_SCRIPT_WALLET_WORKING_CAPITAL_LOVELACE;
+    if (currentPlainBalance >= targetPlainBalance) {
+      return;
+    }
+
+    const referenceScriptAddress = yield* Effect.tryPromise({
+      try: () => referenceScriptsLucid.wallet().address(),
       catch: (cause) =>
         new SDK.StateQueueError({
-          message: `Failed to resolve wallet address while creating ${name} reference script`,
+          message: `Failed to resolve reference-script wallet address while preparing ${scopeName} reference scripts`,
           cause,
         }),
     });
-    const fundingWalletUtxos = walletUtxos;
-    if (fundingWalletUtxos.length === 0) {
+    const fundingAddress = yield* Effect.tryPromise({
+      try: () => fundingLucid.wallet().address(),
+      catch: (cause) =>
+        new SDK.StateQueueError({
+          message: `Failed to resolve funding wallet address while preparing ${scopeName} reference scripts`,
+          cause,
+        }),
+    });
+    if (fundingAddress === referenceScriptAddress) {
       return yield* Effect.fail(
         new SDK.StateQueueError({
-          message: `No wallet UTxOs available while publishing ${name} reference script`,
-          cause: "wallet-has-no-live-utxos",
+          message:
+            `Reference-script wallet plain balance is below the required working-capital floor while preparing ${scopeName} reference scripts`,
+          cause: `plain_balance=${currentPlainBalance.toString()},required=${targetPlainBalance.toString()},wallet_address=${referenceScriptAddress},reason=same-wallet-funding-would-risk-scriptref-spend`,
         }),
       );
     }
+
+    const topUpAmount = targetPlainBalance - currentPlainBalance;
+    const fundingInputs = yield* resolveSpendableWalletUtxos(
+      fundingLucid,
+      new Set<string>(),
+    );
+    if (fundingInputs.length === 0) {
+      return yield* Effect.fail(
+        new SDK.StateQueueError({
+          message:
+            `No operator wallet funding UTxOs available to replenish ${scopeName} reference scripts`,
+          cause: `reference_script_wallet=${referenceScriptAddress},required_top_up=${topUpAmount.toString()}`,
+        }),
+      );
+    }
+    const selectedFundingInputs = selectWalletFundingUtxos(
+      fundingInputs,
+      topUpAmount + SCRIPT_REF_PUBLICATION_FUNDING_BUFFER_LOVELACE,
+    );
+    if (selectedFundingInputs.length === 0) {
+      return yield* Effect.fail(
+        new SDK.StateQueueError({
+          message:
+            `Failed to select operator wallet funding UTxOs to replenish ${scopeName} reference scripts`,
+          cause: `reference_script_wallet=${referenceScriptAddress},required_top_up=${topUpAmount.toString()}`,
+        }),
+      );
+    }
+
+    yield* Effect.logInfo(
+      `Replenishing reference-script wallet for ${scopeName}: current_plain_balance=${currentPlainBalance.toString()},target_plain_balance=${targetPlainBalance.toString()},top_up_amount=${topUpAmount.toString()},reference_script_wallet=${referenceScriptAddress}`,
+    );
     const unsigned = yield* Effect.tryPromise({
       try: () =>
-        lucid
+        fundingLucid
           .newTx()
-          .pay.ToAddressWithData(
-            operatorAddress,
-            undefined,
-            { lovelace: SCRIPT_REF_OUTPUT_LOVELACE },
-            script,
-          )
+          .collectFrom([...selectedFundingInputs])
+          .pay.ToAddress(referenceScriptAddress, {
+            lovelace: topUpAmount,
+          })
           .complete({
-            localUPLCEval: false,
-            presetWalletInputs: [...fundingWalletUtxos],
+            coinSelection: false,
+            localUPLCEval: true,
+            presetWalletInputs: [...selectedFundingInputs],
           }),
       catch: (cause) =>
         new SDK.LucidError({
-          message: `Failed to build ${name} reference-script publication transaction`,
+          message: `Failed to build reference-script wallet replenishment transaction for ${scopeName}: ${String(cause)}`,
           cause,
         }),
     });
-    const publicationTx = unsigned.toTransaction();
-    const publicationOutputs = publicationTx.body().outputs();
-    let locallyBuiltReferenceOutput:
-      | Omit<UTxO, "txHash">
-      | undefined = undefined;
-    for (
-      let outputIndex = 0;
-      outputIndex < publicationOutputs.len();
-      outputIndex += 1
-    ) {
-      const output = coreToTxOutput(publicationOutputs.get(outputIndex));
-      if (
-        output.address === operatorAddress &&
-        output.scriptRef !== undefined &&
-        isSameScriptRef(output.scriptRef, script)
-      ) {
-        locallyBuiltReferenceOutput = {
-          outputIndex,
-          address: output.address,
-          assets: output.assets,
-          datum: output.datum ?? undefined,
-          datumHash: output.datumHash ?? undefined,
-          scriptRef: output.scriptRef,
-        };
-        break;
-      }
-    }
-    const txHash = yield* handleSignSubmit(lucid, unsigned);
-    if (locallyBuiltReferenceOutput !== undefined) {
-      const localReferenceUtxo: UTxO = {
-        txHash,
-        ...locallyBuiltReferenceOutput,
-      };
-      const liveReference = yield* Effect.either(
-        resolveLiveWalletUtxo(lucid, localReferenceUtxo),
-      );
-      if (
-        liveReference._tag === "Right" &&
-        liveReference.right !== undefined &&
-        isSameScriptRef(liveReference.right.scriptRef, script)
-      ) {
-        return liveReference.right;
-      }
-      if (
-        liveReference._tag === "Right" &&
-        liveReference.right !== undefined
-      ) {
-        return {
-          ...liveReference.right,
-          scriptRef: script,
-        };
-      }
-      yield* Effect.logWarning(
-        `Published ${name} reference script tx output could not be resolved immediately by out-ref; using locally-built output reference.`,
-      );
-      return {
-        ...localReferenceUtxo,
-        scriptRef: script,
-      };
-    }
+    const txHash = yield* handleSignSubmit(fundingLucid, unsigned);
+    yield* refreshWalletUtxosFromOwnAddress(referenceScriptsLucid, {
+      scopeName: `${scopeName} reference scripts after replenishment`,
+      failureMessage:
+        `Failed to refresh reference-script wallet after replenishing ${scopeName} reference scripts`,
+      minimumPlainBalance: targetPlainBalance,
+    });
+    yield* Effect.logInfo(
+      `Reference-script wallet replenishment confirmed for ${scopeName}: txHash=${txHash},top_up_amount=${topUpAmount.toString()}`,
+    );
+  });
 
-    for (
-      let attempt = 0;
-      attempt < SCRIPT_REF_PUBLICATION_MAX_RETRIES;
-      attempt += 1
-    ) {
-      const refreshed = yield* Effect.tryPromise({
-        try: () => lucid.wallet().getUtxos(),
-        catch: (cause) =>
-          new SDK.StateQueueError({
-            message: `Failed to refresh wallet UTxOs after publishing ${name} reference script`,
-            cause,
-          }),
-      });
-      const createdMatchingScript = refreshed.find(
-        (utxo) =>
-          utxo.txHash === txHash && isSameScriptRef(utxo.scriptRef, script),
+const publishMissingReferenceScriptTargets = (
+  lucid: LucidEvolution,
+  operatorAddress: string,
+  walletUtxos: readonly UTxO[],
+  fundingCandidateUtxos: readonly UTxO[],
+  missingTargets: readonly { readonly name: string; readonly script: Script }[],
+): Effect.Effect<
+  readonly ReferenceScriptPublication[],
+  SDK.StateQueueError | SDK.LucidError | TxSignError | TxSubmitError
+> =>
+  Effect.gen(function* () {
+    const orderedFundingCandidates = orderWalletFundingUtxos(
+      fundingCandidateUtxos,
+    );
+    let selectedFundingInputs = selectWalletFundingUtxos(
+      fundingCandidateUtxos,
+      resolveReferenceScriptPublicationFundingTarget(missingTargets.length),
+    );
+    if (selectedFundingInputs.length === 0) {
+      return yield* Effect.fail(
+        new SDK.StateQueueError({
+          message:
+            "Failed to select non-reference wallet UTxOs for reference-script publication",
+          cause: missingTargets.map(({ name }) => name).join(","),
+        }),
       );
-      if (createdMatchingScript !== undefined) {
-        const liveCreated = yield* resolveLiveWalletUtxo(lucid, createdMatchingScript);
-        if (
-          liveCreated !== undefined &&
-          isSameScriptRef(liveCreated.scriptRef, script)
-        ) {
-          return liveCreated;
-        }
-      }
-      const createdWithAnyScriptRef = refreshed
-        .filter((utxo) => utxo.txHash === txHash && utxo.scriptRef !== undefined)
-        .sort(compareOutRefs)
-        .reverse();
-      if (createdWithAnyScriptRef.length > 0) {
-        const candidate = createdWithAnyScriptRef[0];
-        const liveCandidate = yield* resolveLiveWalletUtxo(lucid, candidate);
-        if (liveCandidate !== undefined) {
-          if (!isSameScriptRef(liveCandidate.scriptRef, script)) {
-            yield* Effect.logWarning(
-              `Published ${name} reference script tx output scriptRef did not hash-match expected script; accepting tx-matched scriptRef output as fallback.`,
-            );
+    }
+    let nextFundingCandidateIndex = selectedFundingInputs.length;
+    const [txHash, localReferenceOutputs, walletOutputs] = yield* Effect.gen(
+      function* () {
+        while (true) {
+          yield* Effect.sync(() => lucid.overrideUTxOs([...selectedFundingInputs]));
+          const buildAttempt = yield* Effect.either(
+            Effect.gen(function* () {
+              let tx = lucid.newTx().collectFrom([...selectedFundingInputs]);
+              tx = tx.pay.ToAddressWithData(operatorAddress, undefined, {
+                lovelace: SCRIPT_REF_OUTPUT_LOVELACE,
+              });
+              for (const target of missingTargets) {
+                tx = tx.pay.ToAddressWithData(
+                  operatorAddress,
+                  undefined,
+                  { lovelace: SCRIPT_REF_OUTPUT_LOVELACE },
+                  target.script,
+                );
+              }
+              const unsigned = yield* Effect.tryPromise({
+                try: () =>
+                  tx.complete({
+                    coinSelection: false,
+                    localUPLCEval: true,
+                    presetWalletInputs: [...selectedFundingInputs],
+                  }),
+                catch: (cause) =>
+                  new SDK.LucidError({
+                    message: `Failed to build reference-script publication transaction for ${missingTargets
+                      .map(({ name }) => name)
+                      .join(", ")}: ${String(cause)}`,
+                    cause,
+                  }),
+              });
+              const publicationTx = unsigned.toTransaction();
+              const publicationOutputs = publicationTx.body().outputs();
+              const localReferenceOutputs = new Map<
+                string,
+                Omit<UTxO, "txHash">
+              >();
+              const walletOutputs: Omit<UTxO, "txHash">[] = [];
+              for (
+                let outputIndex = 0;
+                outputIndex < publicationOutputs.len();
+                outputIndex += 1
+              ) {
+                const output = coreToTxOutput(publicationOutputs.get(outputIndex));
+                if (output.address !== operatorAddress) {
+                  continue;
+                }
+                walletOutputs.push({
+                  outputIndex,
+                  address: output.address,
+                  assets: output.assets,
+                  datum: output.datum ?? undefined,
+                  datumHash: output.datumHash ?? undefined,
+                  scriptRef: output.scriptRef ?? undefined,
+                });
+                if (output.scriptRef === undefined) {
+                  continue;
+                }
+                const matchingTarget = missingTargets.find(
+                  (target) =>
+                    !localReferenceOutputs.has(target.name) &&
+                    isSameScriptRef(output.scriptRef, target.script),
+                );
+                if (matchingTarget === undefined) {
+                  continue;
+                }
+                localReferenceOutputs.set(matchingTarget.name, {
+                  outputIndex,
+                  address: output.address,
+                  assets: output.assets,
+                  datum: output.datum ?? undefined,
+                  datumHash: output.datumHash ?? undefined,
+                  scriptRef: output.scriptRef,
+                });
+              }
+              const txHash = yield* handleSignSubmit(lucid, unsigned);
+              return [txHash, localReferenceOutputs, walletOutputs] as const;
+            }),
+          ).pipe(
+            Effect.ensuring(
+              Effect.sync(() => lucid.overrideUTxOs([...walletUtxos])),
+            ),
+          );
+
+          if (buildAttempt._tag === "Right") {
+            return buildAttempt.right;
           }
+          if (
+            !isReferenceScriptPublicationBalanceInsufficient(buildAttempt.left) ||
+            nextFundingCandidateIndex >= orderedFundingCandidates.length
+          ) {
+            return yield* Effect.fail(buildAttempt.left);
+          }
+
+          const nextFundingInput =
+            orderedFundingCandidates[nextFundingCandidateIndex];
+          nextFundingCandidateIndex += 1;
+          selectedFundingInputs = [
+            ...selectedFundingInputs,
+            nextFundingInput,
+          ];
+          yield* Effect.logWarning(
+            `Reference-script publication for ${missingTargets
+              .map(({ name }) => name)
+              .join(", ")} needed more wallet funding than the seed estimate; retrying with ${selectedFundingInputs.length.toString()} funding input(s).`,
+          );
+        }
+      },
+    );
+    const restoredWalletUtxos = [
+      ...walletUtxos.filter(
+        (utxo) =>
+          !selectedFundingInputs.some(
+            (selected) =>
+              selected.txHash === utxo.txHash &&
+              selected.outputIndex === utxo.outputIndex,
+          ),
+      ),
+      ...walletOutputs.map((output) => ({
+        txHash,
+        ...output,
+      })),
+    ];
+    yield* Effect.sync(() => lucid.overrideUTxOs(restoredWalletUtxos));
+    return yield* Effect.forEach(missingTargets, (target) =>
+      Effect.gen(function* () {
+        const localReferenceOutput = localReferenceOutputs.get(target.name);
+        if (localReferenceOutput === undefined) {
+          return yield* Effect.fail(
+            new SDK.StateQueueError({
+              message:
+                "Reference-script publication transaction did not contain the expected script-ref output",
+              cause: `${target.name},txHash=${txHash}`,
+            }),
+          );
+        }
+        const localReferenceUtxo: UTxO = {
+          txHash,
+          ...localReferenceOutput,
+        };
+        const liveReference = yield* Effect.either(
+          resolveLiveWalletUtxo(lucid, localReferenceUtxo),
+        );
+        if (
+          liveReference._tag === "Right" &&
+          liveReference.right !== undefined &&
+          isSameScriptRef(liveReference.right.scriptRef, target.script)
+        ) {
           return {
-            ...liveCandidate,
-            scriptRef: script,
+            name: target.name,
+            utxo: liveReference.right,
           };
         }
-      }
-      if (attempt + 1 < SCRIPT_REF_PUBLICATION_MAX_RETRIES) {
-        yield* Effect.sleep(SCRIPT_REF_PUBLICATION_RETRY_DELAY);
-      }
-    }
-
-    return yield* Effect.fail(
-      new SDK.StateQueueError({
-        message: `Published ${name} reference script transaction but did not find resulting reference UTxO`,
-        cause: txHash,
+        if (
+          liveReference._tag === "Right" &&
+          liveReference.right !== undefined
+        ) {
+          return {
+            name: target.name,
+            utxo: {
+              ...liveReference.right,
+              scriptRef: target.script,
+            },
+          };
+        }
+        return {
+          name: target.name,
+          utxo: {
+            ...localReferenceUtxo,
+            scriptRef: target.script,
+          },
+        };
       }),
     );
   });
 
-const ensureActivationScriptRefs = (
-  referenceScriptsLucid: LucidEvolution,
+const referenceScriptTargetsByCommand = (
   contracts: SDK.MidgardValidators,
+): Readonly<Record<ReferenceScriptCommandName, readonly { readonly name: string; readonly script: Script }[]>> => ({
+  "hub-oracle": [
+    {
+      name: "hub-oracle minting",
+      script: contracts.hubOracle.mintingScript,
+    },
+  ],
+  "state-queue": [
+    {
+      name: "state-queue spending",
+      script: contracts.stateQueue.spendingScript,
+    },
+    {
+      name: "state-queue minting",
+      script: contracts.stateQueue.mintingScript,
+    },
+  ],
+  scheduler: [
+    {
+      name: "scheduler spending",
+      script: contracts.scheduler.spendingScript,
+    },
+    {
+      name: "scheduler minting",
+      script: contracts.scheduler.mintingScript,
+    },
+  ],
+  "registered-operators": [
+    {
+      name: "registered-operators spending",
+      script: contracts.registeredOperators.spendingScript,
+    },
+    {
+      name: "registered-operators minting",
+      script: contracts.registeredOperators.mintingScript,
+    },
+  ],
+  "active-operators": [
+    {
+      name: "active-operators spending",
+      script: contracts.activeOperators.spendingScript,
+    },
+    {
+      name: "active-operators minting",
+      script: contracts.activeOperators.mintingScript,
+    },
+  ],
+  "retired-operators": [
+    {
+      name: "retired-operators spending",
+      script: contracts.retiredOperators.spendingScript,
+    },
+    {
+      name: "retired-operators minting",
+      script: contracts.retiredOperators.mintingScript,
+    },
+  ],
+});
+
+const ensureReferenceScriptTargetsProgram = (
+  referenceScriptsLucid: LucidEvolution,
+  scopeName: string,
+  targets: readonly { readonly name: string; readonly script: Script }[],
+  fundingLucid: LucidEvolution = referenceScriptsLucid,
 ): Effect.Effect<
-  readonly ActivationScriptRef[],
+  readonly ReferenceScriptPublication[],
   SDK.StateQueueError | SDK.LucidError | TxSignError | TxSubmitError
 > =>
   Effect.gen(function* () {
-    const targets: readonly { readonly name: string; readonly script: Script }[] = [
-      {
-        name: "registered-operators spending",
-        script: contracts.registeredOperators.spendingScript,
-      },
-      {
-        name: "active-operators spending",
-        script: contracts.activeOperators.spendingScript,
-      },
-      {
-        name: "registered-operators minting",
-        script: contracts.registeredOperators.mintingScript,
-      },
-      {
-        name: "active-operators minting",
-        script: contracts.activeOperators.mintingScript,
-      },
-    ];
-
-    return yield* Effect.forEach(targets, (target) =>
-      ensureScriptReferenceUTxO(
+    const fetchReferenceScriptWalletUtxos = (): Effect.Effect<
+      readonly UTxO[],
+      SDK.StateQueueError
+    > =>
+      refreshWalletUtxosFromOwnAddress(
         referenceScriptsLucid,
-        target.name,
-        target.script,
-      ).pipe(
-        Effect.map((utxo) => ({ name: target.name, utxo })),
+        {
+          scopeName: `${scopeName} reference scripts`,
+          failureMessage:
+            `Failed to fetch wallet UTxOs while resolving ${scopeName} reference scripts`,
+        },
+      );
+
+    const publishMissingTargetsInBatches = (
+      missingTargets: readonly { readonly name: string; readonly script: Script }[],
+    ): Effect.Effect<
+      readonly ReferenceScriptPublication[],
+      SDK.StateQueueError | SDK.LucidError | TxSignError | TxSubmitError
+    > =>
+      Effect.gen(function* () {
+        if (missingTargets.length === 0) {
+          return [];
+        }
+        let requiredPlainBalance =
+          resolveReferenceScriptPublicationFundingTarget(missingTargets.length);
+        while (true) {
+          yield* ensureReferenceScriptWalletWorkingCapital(
+            fundingLucid,
+            referenceScriptsLucid,
+            scopeName,
+            requiredPlainBalance,
+          );
+          const walletUtxos = yield* fetchReferenceScriptWalletUtxos();
+          const operatorAddress = yield* Effect.tryPromise({
+            try: () => referenceScriptsLucid.wallet().address(),
+            catch: (cause) =>
+              new SDK.StateQueueError({
+                message: `Failed to resolve wallet address while creating ${scopeName} reference scripts`,
+                cause,
+              }),
+          });
+          if (walletUtxos.length === 0) {
+            return yield* Effect.fail(
+              new SDK.StateQueueError({
+                message:
+                  `No wallet UTxOs available while publishing ${scopeName} reference scripts`,
+                cause: "wallet-has-no-live-utxos",
+              }),
+            );
+          }
+          const plainFundingCandidateUtxos = filterPlainWalletUtxos(walletUtxos);
+          if (plainFundingCandidateUtxos.length === 0) {
+            return yield* Effect.fail(
+              new SDK.StateQueueError({
+                message:
+                  `No plain wallet UTxOs available while publishing ${scopeName} reference scripts`,
+                cause: "wallet-has-no-plain-utxos",
+              }),
+            );
+          }
+          const publishAttempt = yield* Effect.either(
+            publishMissingReferenceScriptTargets(
+              referenceScriptsLucid,
+              operatorAddress,
+              walletUtxos,
+              plainFundingCandidateUtxos,
+              missingTargets,
+            ),
+          );
+          if (publishAttempt._tag === "Right") {
+            return publishAttempt.right;
+          }
+          if (
+            isReferenceScriptPublicationBalanceInsufficient(publishAttempt.left)
+          ) {
+            const additionalFunding =
+              resolveReferenceScriptPublicationAdditionalFunding(
+                publishAttempt.left,
+              );
+            if (additionalFunding !== undefined) {
+              requiredPlainBalance =
+                sumWalletLovelace(plainFundingCandidateUtxos) +
+                additionalFunding;
+              yield* Effect.logWarning(
+                `Reference-script publication for ${scopeName} needed more dedicated-wallet funding than the current working-capital floor; retrying after replenishing an additional ${additionalFunding.toString()} lovelace.`,
+              );
+              continue;
+            }
+          }
+          if (
+            missingTargets.length === 1 ||
+            !isReferenceScriptPublicationTxTooLarge(publishAttempt.left)
+          ) {
+            return yield* Effect.fail(publishAttempt.left);
+          }
+          const splitIndex = Math.ceil(missingTargets.length / 2);
+          const leftTargets = missingTargets.slice(0, splitIndex);
+          const rightTargets = missingTargets.slice(splitIndex);
+          yield* Effect.logWarning(
+            `Reference-script publication for ${scopeName} exceeded max tx size; retrying in smaller batches: left=[${leftTargets
+              .map(({ name }) => name)
+              .join(", ")}], right=[${rightTargets
+              .map(({ name }) => name)
+              .join(", ")}]`,
+          );
+          const leftPublications = yield* publishMissingTargetsInBatches(
+            leftTargets,
+          );
+          const rightPublications = yield* publishMissingTargetsInBatches(
+            rightTargets,
+          );
+          return [...leftPublications, ...rightPublications];
+        }
+      });
+
+    const walletUtxos = yield* fetchReferenceScriptWalletUtxos();
+    const existingPublications = yield* Effect.forEach(targets, (target) =>
+      resolveExistingReferenceScriptPublication(
+        referenceScriptsLucid,
+        walletUtxos,
+        target,
       ),
     );
+    const existingByName = new Map(
+      existingPublications
+        .filter(
+          (
+            publication,
+          ): publication is ReferenceScriptPublication => publication !== undefined,
+        )
+        .map((publication) => [publication.name, publication]),
+    );
+    const missingTargets = targets.filter(
+      (target) => !existingByName.has(target.name),
+    );
+    let createdByName = new Map<string, ReferenceScriptPublication>();
+    if (missingTargets.length > 0) {
+      createdByName = new Map(
+        (
+          yield* publishMissingTargetsInBatches(missingTargets)
+        ).map((publication) => [publication.name, publication]),
+      );
+    }
+    const resolvedPublications: ReferenceScriptPublication[] = [];
+    for (const target of targets) {
+      const publication =
+        existingByName.get(target.name) ?? createdByName.get(target.name);
+      if (publication === undefined) {
+        return yield* Effect.fail(
+          new SDK.StateQueueError({
+            message: "Missing resolved reference script publication",
+            cause: `${scopeName}:${target.name}`,
+          }),
+        );
+      }
+      resolvedPublications.push(publication);
+    }
+    return resolvedPublications;
   });
+
+export const deployReferenceScriptCommandProgram = (
+  referenceScriptsLucid: LucidEvolution,
+  contracts: SDK.MidgardValidators,
+  commandName: ReferenceScriptCommandName,
+  fundingLucid: LucidEvolution = referenceScriptsLucid,
+): Effect.Effect<
+  readonly ReferenceScriptPublication[],
+  SDK.StateQueueError | SDK.LucidError | TxSignError | TxSubmitError
+> =>
+  ensureReferenceScriptTargetsProgram(
+    referenceScriptsLucid,
+    commandName,
+    referenceScriptTargetsByCommand(contracts)[commandName],
+    fundingLucid,
+  );
 
 const resolveRegisteredMintRedeemerIndex = (
   draftTx: CML.Transaction,
@@ -1686,7 +2228,7 @@ const resolveRegisteredMintRedeemerIndex = (
     const mintPolicyIds = [
       contracts.registeredOperators.policyId,
       contracts.activeOperators.policyId,
-    ].sort();
+    ].sort(comparePolicyIds);
     const registeredMintContextIndex = BigInt(
       mintPolicyIds.indexOf(contracts.registeredOperators.policyId),
     );
@@ -1746,11 +2288,6 @@ const deriveActivateRedeemerLayout = (
   },
 ): Effect.Effect<ActivateRedeemerLayout, SDK.StateQueueError> =>
   Effect.gen(function* () {
-    if (process.env[ACTIVATION_DEBUG_REDEEMERS_ENV] === "1") {
-      yield* Effect.logInfo(
-        `Activation draft redeemers: ${describeDraftRedeemers(tx)}`,
-      );
-    }
     const hubOracleRefInputIndex = findReferenceInputIndex(
       tx,
       params.hubOracleRefInput,
@@ -1902,11 +2439,6 @@ const deriveActivateRedeemerLayout = (
         }),
       );
     }
-    if (process.env[ACTIVATION_DEBUG_REDEEMERS_ENV] === "1") {
-      yield* Effect.logInfo(
-        `Activation draft active output datums: inserted=${describePolicyOutputDatumAtIndex(tx, params.activeOperatorsPolicyId, resolvedInsertedNodeOutputIndex)}, anchor=${describePolicyOutputDatumAtIndex(tx, params.activeOperatorsPolicyId, resolvedAnchorNodeOutputIndex)}`,
-      );
-    }
     const removedNodeInputIndex =
       registeredNodeInputPosition < registeredAnchorInputPosition ? 0n : 1n;
     const anchorNodeInputIndex =
@@ -2028,7 +2560,6 @@ const operatorLifecycleProgram = (
   Effect.gen(function* () {
     const operatorKeyHash = yield* getOperatorKeyHash(lucid);
     const usesWallClockTime = lucid.config().network === "Custom";
-    const useActivationReferenceScripts = lucid.config().network !== "Custom";
     const hubOracleRefInput = yield* fetchHubOracleRefInput(lucid, contracts);
     const hubOracleDatum = yield* decodeHubOracleDatum(hubOracleRefInput);
     yield* Effect.logInfo(
@@ -2059,11 +2590,39 @@ const operatorLifecycleProgram = (
         }),
       );
     }
-    const activationScriptRefs = useActivationReferenceScripts
-      ? yield* ensureActivationScriptRefs(referenceScriptsLucid, contracts)
-      : [];
+    // `activate-only` must reuse the same published active/registered reference
+    // scripts that `register-only` established, otherwise later balancing can
+    // introduce a different reference-input layout than the draft indexed.
+    const operatorReferenceTargets = [
+      ...referenceScriptTargetsByCommand(contracts)["registered-operators"],
+      ...referenceScriptTargetsByCommand(contracts)["active-operators"],
+    ] as const;
+    const operatorReferenceScriptRefs =
+      mode === "deregister-only"
+        ? yield* ensureReferenceScriptTargetsProgram(
+            referenceScriptsLucid,
+            "registered-operators",
+            referenceScriptTargetsByCommand(contracts)["registered-operators"],
+            lucid,
+          )
+        : yield* ensureReferenceScriptTargetsProgram(
+            referenceScriptsLucid,
+            "operator lifecycle",
+            operatorReferenceTargets,
+            lucid,
+          );
+    const registeredOperatorScriptRefs = operatorReferenceScriptRefs.filter(
+      ({ name }) => name.startsWith("registered-operators "),
+    );
+    const activeOperatorScriptRefs = operatorReferenceScriptRefs.filter(
+      ({ name }) => name.startsWith("active-operators "),
+    );
+    const lifecycleScriptRefs = [
+      ...registeredOperatorScriptRefs,
+      ...activeOperatorScriptRefs,
+    ];
     const lifecycleScriptRefOutRefs = new Set(
-      activationScriptRefs.map(({ utxo }) => utxoOutRefKey(utxo)),
+      lifecycleScriptRefs.map(({ utxo }) => utxoOutRefKey(utxo)),
     );
 
     const registeredNodes = yield* fetchNodeSet(
@@ -2203,12 +2762,15 @@ const operatorLifecycleProgram = (
           const deregisterUnsignedTxResult = yield* Effect.either(
             Effect.tryPromise({
               try: () =>
-                completeWithLocalEvaluationFallback(lucid, (options) =>
+                completeWithLocalEvaluation((options) =>
                   lucid
                     .newTx()
                     .collectFrom(
                       [existingRegisteredNode.utxo, existingRegisteredAnchor.utxo],
                       LucidData.void(),
+                    )
+                    .readFrom(
+                      registeredOperatorScriptRefs.map(({ utxo }) => utxo),
                     )
                     .mintAssets({ [registeredNodeUnit]: -1n }, deregisterRedeemer)
                     .pay.ToContract(
@@ -2222,8 +2784,6 @@ const operatorLifecycleProgram = (
                       },
                       existingRegisteredAnchor.utxo.assets,
                     )
-                    .attach.Script(contracts.registeredOperators.spendingScript)
-                    .attach.Script(contracts.registeredOperators.mintingScript)
                     .addSignerKey(operatorKeyHash)
                     .complete({
                       ...options,
@@ -2403,19 +2963,12 @@ const operatorLifecycleProgram = (
         lucid,
         registerBuildTime + ACTIVATION_VALIDITY_WINDOW_MS,
       );
-      const registrationTime = usesWallClockTime
-        ? alignUnixTimeMsToSlotBoundary(
-            lucid,
-            registerBuildTime + REGISTERED_ACTIVATION_DELAY_MS,
-          )
-        : registerValidTo + REGISTERED_ACTIVATION_DELAY_MS;
-      const registerDatum: SDK.RegisteredOperatorDatum = {
-        registrationTime,
-      };
+      const registrationTime =
+        registerValidTo + REGISTERED_ACTIVATION_DELAY_MS;
       const prependedNodeDatum: SDK.NodeDatum = {
         key: { Key: { key: operatorKeyHash } },
         next: registeredRootNode.datum.next,
-        data: LucidData.castTo(registerDatum, SDK.RegisteredOperatorDatum),
+        data: encodeRegisteredOperatorDatumValue(registrationTime),
       };
       const updatedRegisteredRootDatum: SDK.NodeDatum = {
         ...registeredRootNode.datum,
@@ -2447,6 +3000,19 @@ const operatorLifecycleProgram = (
             }),
           );
       }
+      const registerFundingInputs = selectWalletFundingUtxos(
+        spendableWalletUtxosForRegister,
+        requiredBondLovelace + ACTIVATION_WALLET_FUNDING_TARGET_LOVELACE,
+      );
+      if (registerFundingInputs.length === 0) {
+        return yield* Effect.fail(
+          new SDK.StateQueueError({
+            message:
+              "Failed to select wallet funding UTxOs for registration transaction",
+            cause: operatorKeyHash,
+          }),
+        );
+      }
       const prependedNodeAssets = {
         lovelace: requiredBondLovelace,
         [registeredNodeUnit]: 1n,
@@ -2471,6 +3037,7 @@ const operatorLifecycleProgram = (
           .newTx()
           .collectFrom([registeredRootNode.utxo], LucidData.void())
           .readFrom([
+            ...registeredOperatorScriptRefs.map(({ utxo }) => utxo),
             hubOracleRefInput,
             activeNotMemberWitness.utxo,
             retiredNotMemberWitness.utxo,
@@ -2492,37 +3059,11 @@ const operatorLifecycleProgram = (
             },
             registeredRootNode.utxo.assets,
           )
-          .attach.Script(contracts.registeredOperators.spendingScript)
-          .attach.Script(contracts.registeredOperators.mintingScript)
           .addSignerKey(operatorKeyHash);
-        if (!usesWallClockTime) {
-          tx = tx.validTo(Number(registerValidTo));
-        }
+        tx = tx.validTo(Number(registerValidTo));
         return tx;
       };
 
-      const draftRegisterUnsignedTx = yield* Effect.tryPromise({
-        try: () =>
-          withStubbedProviderEvaluation(lucid, () =>
-            mkRegisterTx({
-              hubOracleRefInputIndex: 0n,
-              activeOperatorRefInputIndex: 1n,
-              retiredOperatorRefInputIndex: 2n,
-              prependedNodeOutputIndex: 0n,
-              anchorNodeOutputIndex: 1n,
-            }).complete({
-              localUPLCEval: false,
-              presetWalletInputs: [...spendableWalletUtxosForRegister],
-            }),
-          ),
-        catch: (cause) =>
-          new SDK.LucidError({
-            message: `Failed to build draft operator registration transaction: ${cause}`,
-            cause,
-          }),
-      });
-
-      const draftRegisterTx = draftRegisterUnsignedTx.toTransaction();
       const layoutDerivationParams = {
         hubOracleRefInput,
         activeNotMemberWitness,
@@ -2533,50 +3074,60 @@ const operatorLifecycleProgram = (
         registeredNodeUnit,
         registeredRootNodeUnit,
       } as const;
-      let registerLayout = yield* deriveRegisterRedeemerLayout(
-        draftRegisterTx,
-        layoutDerivationParams,
-      );
-      for (let iteration = 0; iteration < 2; iteration += 1) {
-        const rebalanceDraftUnsignedTx = yield* Effect.tryPromise({
-          try: () =>
-            withStubbedProviderEvaluation(lucid, () =>
-              mkRegisterTx(registerLayout).complete({
-                localUPLCEval: false,
-                presetWalletInputs: [...spendableWalletUtxosForRegister],
-              }),
-            ),
-          catch: (cause) =>
-            new SDK.LucidError({
-              message:
-                "Failed to build register-layout stabilization draft transaction",
-              cause,
-            }),
-        });
-        const nextLayout = yield* deriveRegisterRedeemerLayout(
-          rebalanceDraftUnsignedTx.toTransaction(),
-          layoutDerivationParams,
-        );
-        if (registerLayoutsEqual(registerLayout, nextLayout)) {
-          break;
-        }
-        registerLayout = nextLayout;
-      }
-      yield* Effect.logInfo(
-        `Resolved register redeemer layout: ${registerLayoutToLogString(registerLayout)}`,
-      );
-      let registerUnsignedTx = yield* Effect.tryPromise({
+      const draftRegisterLayout = resolveInitialRegisterRedeemerLayout({
+        registeredOperatorScriptRefs,
+        hubOracleRefInput,
+        activeNotMemberWitness,
+        retiredNotMemberWitness,
+      });
+      const draftRegisterUnsignedTx = yield* Effect.tryPromise({
         try: () =>
-          completeWithLocalEvaluationFallback(lucid, (options) =>
-            mkRegisterTx(registerLayout).complete({
-              ...options,
-              presetWalletInputs: [...spendableWalletUtxosForRegister],
+          withStubbedProviderEvaluation(lucid, () =>
+            mkRegisterTx(draftRegisterLayout).complete({
+              localUPLCEval: false,
+              presetWalletInputs: [...registerFundingInputs],
             }),
           ),
         catch: (cause) =>
           new SDK.LucidError({
-            message:
-              "Failed to build operator registration transaction with resolved redeemer layout",
+            message: `Failed to build draft operator registration transaction: ${String(cause)}`,
+            cause,
+          }),
+      });
+      const registerDraftTx = draftRegisterUnsignedTx.toTransaction();
+      let registerLayout = yield* deriveRegisterRedeemerLayout(
+        registerDraftTx,
+        layoutDerivationParams,
+      );
+      yield* Effect.logInfo(
+        `Resolved register redeemer layout: ${registerLayoutToLogString(registerLayout)}`,
+      );
+      yield* Effect.logInfo(
+        [
+          "Register witnesses:",
+          `hub=${hubOracleRefInput.txHash}#${hubOracleRefInput.outputIndex.toString()}`,
+          `active=${activeNotMemberWitness.utxo.txHash}#${activeNotMemberWitness.utxo.outputIndex.toString()}:${activeNotMemberWitness.assetName}`,
+          `retired=${retiredNotMemberWitness.utxo.txHash}#${retiredNotMemberWitness.utxo.outputIndex.toString()}:${retiredNotMemberWitness.assetName}`,
+          `valid_to=${registerValidTo.toString()}`,
+          `registration_time=${registrationTime.toString()}`,
+          `prepended_node_datum=${LucidData.to(prependedNodeDatum, SDK.NodeDatum)}`,
+        ].join(" "),
+      );
+      let registerUnsignedTx = yield* Effect.tryPromise({
+        try: () =>
+          completeWithLocalEvaluation((options) =>
+            mkRegisterTx(registerLayout).complete({
+              ...options,
+              presetWalletInputs: [...registerFundingInputs],
+            }),
+          ),
+        catch: (cause) =>
+          new SDK.LucidError({
+            message: [
+              "Failed to build operator registration transaction with resolved redeemer layout.",
+              `cause=${String(cause)}`,
+              `layout=${registerLayoutToLogString(registerLayout)}`,
+            ].join(" "),
             cause,
           }),
       });
@@ -2610,16 +3161,15 @@ const operatorLifecycleProgram = (
         registerLayout = derivedSubmitLayout;
         registerUnsignedTx = yield* Effect.tryPromise({
           try: () =>
-            completeWithLocalEvaluationFallback(lucid, (options) =>
+            completeWithLocalEvaluation((options) =>
               mkRegisterTx(registerLayout).complete({
                 ...options,
-                presetWalletInputs: [...spendableWalletUtxosForRegister],
+                presetWalletInputs: [...registerFundingInputs],
               }),
             ),
           catch: (cause) =>
             new SDK.LucidError({
-              message:
-                "Failed to rebuild operator registration transaction with tx-derived redeemer layout",
+              message: `Failed to rebuild operator registration transaction with tx-derived redeemer layout: ${String(cause)}`,
               cause,
             }),
         });
@@ -2720,11 +3270,18 @@ const operatorLifecycleProgram = (
       );
     }
 
-    const registeredOperatorData = LucidData.castFrom(
+    const activationTime = decodeRegisteredOperatorActivationTime(
       registeredNode.datum.data,
-      SDK.RegisteredOperatorDatum,
     );
-    const activationTime = BigInt(registeredOperatorData.registrationTime);
+    if (activationTime === undefined) {
+      return yield* Effect.fail(
+        new SDK.StateQueueError({
+          message:
+            "Failed to decode registered-operator activation time from registration node datum",
+          cause: describeUnknownValue(registeredNode.datum.data),
+        }),
+      );
+    }
     const activeListIsEmpty =
       activeNodes.length === 1 &&
       activeNodes[0].datum.key === "Empty" &&
@@ -2834,8 +3391,7 @@ const operatorLifecycleProgram = (
       ...options,
       presetWalletInputs: [...spendableWalletUtxosForActivation],
     });
-    const activationCompleteWithoutLocalEval = {
-      localUPLCEval: false,
+    const activationDraftCompleteOptions = {
       presetWalletInputs: [...spendableWalletUtxosForActivation],
     } as const;
 
@@ -2895,26 +3451,18 @@ const operatorLifecycleProgram = (
           ACTIVE_OPERATOR_LIST_STATE_TRANSITION_REDEEMER,
         )
         .readFrom(
-          useActivationReferenceScripts
-            ? [
-                ...activationScriptRefs.map(({ utxo }) => utxo),
-                hubOracleRefInput,
-                retiredNotMemberWitnessForActivate.utxo,
-              ]
-            : [hubOracleRefInput, retiredNotMemberWitnessForActivate.utxo],
+          [
+            ...registeredOperatorScriptRefs.map(({ utxo }) => utxo),
+            ...activeOperatorScriptRefs.map(({ utxo }) => utxo),
+            hubOracleRefInput,
+            retiredNotMemberWitnessForActivate.utxo,
+          ],
         )
         .mintAssets(
           { [registeredNodeUnit]: -1n },
           registeredActivateRedeemerBuilder,
         )
         .mintAssets({ [activeNodeUnit]: 1n }, activeActivateRedeemer);
-      if (!useActivationReferenceScripts) {
-        tx = tx
-          .attach.Script(contracts.registeredOperators.spendingScript)
-          .attach.Script(contracts.activeOperators.spendingScript)
-          .attach.Script(contracts.registeredOperators.mintingScript)
-          .attach.Script(contracts.activeOperators.mintingScript);
-      }
       if (validTo !== undefined) {
         tx = tx.validTo(Number(validTo));
       }
@@ -2947,27 +3495,6 @@ const operatorLifecycleProgram = (
         .addSignerKey(operatorKeyHash);
     };
 
-    const draftUnsignedTx = yield* Effect.tryPromise({
-      try: () =>
-        withStubbedProviderEvaluation(lucid, () =>
-          mkActivateTx({
-            hubOracleRefInputIndex: 0n,
-            retiredOperatorRefInputIndex: 1n,
-            registeredOperatorsRedeemerIndex: 0n,
-            removedNodeInputIndex: 0n,
-            anchorNodeInputIndex: 1n,
-            activeOperatorsInsertedNodeOutputIndex: 0n,
-            activeOperatorsAnchorNodeOutputIndex: 1n,
-          }).complete(activationCompleteWithoutLocalEval),
-        ),
-      catch: (cause) =>
-        new SDK.LucidError({
-          message: `Failed to build draft activation transaction: ${cause}`,
-          cause,
-        }),
-    });
-    let activateLayoutDraftTx = draftUnsignedTx.toTransaction();
-
     const activateLayoutParams = {
       hubOracleRefInput,
       retiredNotMemberWitnessForActivate,
@@ -2979,32 +3506,44 @@ const operatorLifecycleProgram = (
       activeAnchorNodeUnit,
       contracts,
     } as const;
-    let activateLayout = yield* deriveActivateRedeemerLayout(
-      activateLayoutDraftTx,
+    let activateLayout = resolveInitialActivateRedeemerLayout({
+      registeredOperatorScriptRefs,
+      activeOperatorScriptRefs,
+      hubOracleRefInput,
+      retiredNotMemberWitnessForActivate,
+      registeredNode,
+      registeredAnchor,
+      activeAppendAnchor,
+      contracts,
+    });
+    const activationDraft = yield* Effect.tryPromise({
+      try: () =>
+        withStubbedProviderEvaluation(lucid, () =>
+          mkActivateTx(activateLayout).complete({
+            localUPLCEval: false,
+            ...activationDraftCompleteOptions,
+          }),
+        ),
+      catch: (cause) =>
+        new SDK.LucidError({
+          message: `Failed to build activation draft transaction: ${String(cause)}`,
+          cause,
+        }),
+    });
+    const activationDraftTx = activationDraft.toTransaction();
+    const derivedDraftLayout = yield* deriveActivateRedeemerLayout(
+      activationDraftTx,
       activateLayoutParams,
     );
-    for (let iteration = 0; iteration < 2; iteration += 1) {
-      const rebalanceDraftUnsignedTx = yield* Effect.tryPromise({
-        try: () =>
-          withStubbedProviderEvaluation(lucid, () =>
-            mkActivateTx(activateLayout).complete(activationCompleteWithoutLocalEval),
-          ),
-        catch: (cause) =>
-          new SDK.LucidError({
-            message:
-              "Failed to build activate-layout stabilization draft transaction",
-            cause,
-          }),
-      });
-      activateLayoutDraftTx = rebalanceDraftUnsignedTx.toTransaction();
-      const nextLayout = yield* deriveActivateRedeemerLayout(
-        activateLayoutDraftTx,
-        activateLayoutParams,
+    if (!activateLayoutsEqual(activateLayout, derivedDraftLayout)) {
+      yield* Effect.logWarning(
+        [
+          "Activation draft layout differed from initial indexes; using tx-derived activation layout.",
+          `initial=${activateLayoutToLogString(activateLayout)}`,
+          `derived=${activateLayoutToLogString(derivedDraftLayout)}`,
+        ].join(" "),
       );
-      if (activateLayoutsEqual(activateLayout, nextLayout)) {
-        break;
-      }
-      activateLayout = nextLayout;
+      activateLayout = derivedDraftLayout;
     }
     yield* Effect.logInfo(
       `Resolved activate redeemer layout: ${activateLayoutToLogString(activateLayout)}`,
@@ -3012,15 +3551,14 @@ const operatorLifecycleProgram = (
     yield* Effect.logInfo(
       `Using active-operator datum encoding for activation: ${activeOperatorDatumEncoding}`,
     );
-
     let activationUnsignedTx = yield* Effect.tryPromise({
       try: () =>
-        completeWithLocalEvaluationFallback(lucid, (options) =>
+        completeWithLocalEvaluation((options) =>
           mkActivateTx(activateLayout).complete(activationCompleteOptions(options)),
         ),
       catch: (cause) =>
         new SDK.LucidError({
-          message: `Failed to build activation transaction: ${cause}`,
+          message: `Failed to build activation transaction: ${String(cause)}`,
           cause,
         }),
     });
@@ -3054,59 +3592,15 @@ const operatorLifecycleProgram = (
       activateLayout = derivedSubmitLayout;
       activationUnsignedTx = yield* Effect.tryPromise({
         try: () =>
-          completeWithLocalEvaluationFallback(lucid, (options) =>
+          completeWithLocalEvaluation((options) =>
             mkActivateTx(activateLayout).complete(activationCompleteOptions(options)),
           ),
         catch: (cause) =>
           new SDK.LucidError({
-            message:
-              "Failed to rebuild activation transaction with tx-derived layout",
+            message: `Failed to rebuild activation transaction with tx-derived layout: ${String(cause)}`,
             cause,
-          }),
+        }),
       });
-    }
-    const activateUnsignedDraftTx = activationUnsignedTx.toTransaction();
-    if (process.env[ACTIVATION_DEBUG_REDEEMERS_ENV] === "1") {
-      yield* Effect.logInfo(
-        `Activation submit tx redeemers: ${describeDraftRedeemers(activateUnsignedDraftTx)}`,
-      );
-      yield* Effect.logInfo(
-        `Activation submit tx active output datums: inserted=${describePolicyOutputDatumAtIndex(
-          activateUnsignedDraftTx,
-          contracts.activeOperators.policyId,
-          activateLayout.activeOperatorsInsertedNodeOutputIndex,
-        )}, anchor=${describePolicyOutputDatumAtIndex(
-          activateUnsignedDraftTx,
-          contracts.activeOperators.policyId,
-          activateLayout.activeOperatorsAnchorNodeOutputIndex,
-        )}`,
-      );
-    }
-    if (process.env[ACTIVATION_DEBUG_INPUTS_ENV] === "1") {
-      const [
-        missingSpendingInputs,
-        missingReferenceInputs,
-        missingCollateralInputs,
-      ] = yield* Effect.all([
-        resolveMissingSpendingInputs(lucid, activateUnsignedDraftTx),
-        resolveMissingReferenceInputs(lucid, activateUnsignedDraftTx),
-        resolveMissingCollateralInputs(lucid, activateUnsignedDraftTx),
-      ]);
-      if (missingSpendingInputs.length > 0) {
-        yield* Effect.logWarning(
-          `Activation submit tx has missing spending inputs before submission: ${missingSpendingInputs.join(",")}`,
-        );
-      }
-      if (missingReferenceInputs.length > 0) {
-        yield* Effect.logWarning(
-          `Activation submit tx has missing reference inputs before submission: ${missingReferenceInputs.join(",")}`,
-        );
-      }
-      if (missingCollateralInputs.length > 0) {
-        yield* Effect.logWarning(
-          `Activation submit tx has missing collateral inputs before submission: ${missingCollateralInputs.join(",")}`,
-        );
-      }
     }
     const activateSubmitResult = yield* Effect.either(
       handleSignSubmit(lucid, activationUnsignedTx),
