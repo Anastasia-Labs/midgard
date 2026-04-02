@@ -5,8 +5,8 @@ use aiken/collection/list
 use aiken/crypto
 use aiken/interval.{Finite, Interval}
 use aiken/primitive/bytearray
-use aiken_design_patterns/linked_list/ordered
-use aiken_design_patterns/linked_list/unordered.{
+use midgard/linked_list/ordered
+use midgard/linked_list/unordered.{
   Key, NodeDatum, get_node_inputs, get_node_outputs,
 }
 use cardano/assets.{PolicyId, quantity_of, tokens}

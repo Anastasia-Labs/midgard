@@ -1,7 +1,7 @@
 use aiken/collection/dict
 use aiken/collection/list
 use aiken/primitive/bytearray
-use aiken_design_patterns/linked_list/ordered.{
+use midgard/linked_list/ordered.{
   Key, get_node_inputs, get_node_outputs,
 }
 use cardano/assets.{PolicyId, quantity_of, tokens}

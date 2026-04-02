@@ -1,7 +1,16 @@
+use aiken/builtin
+use aiken/collection/list
 use midgard/common/types.{PosixTime}
 
 pub type Datum {
   activation_time: PosixTime,
+}
+
+pub fn activation_time_from_data(data: Data) -> PosixTime {
+  let datum_fields = builtin.un_constr_data(data).2nd
+  expect Some(activation_time_data) = list.at(datum_fields, 0)
+  expect activation_time: PosixTime = activation_time_data
+  activation_time
 }
 
 pub type OperatorStatus {

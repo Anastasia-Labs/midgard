@@ -44,6 +44,14 @@ When tradeoffs are required, prioritize:
 
 If a change improves benchmarks but weakens production-grade guarantees, do not make it the default. Keep strict behavior as default and isolate non-production behavior behind explicit, clearly named controls.
 
+## Transaction Finalization Rule
+
+For transaction finalization in this repository:
+
+- Never set `.complete({ localUPLCEval: false })`.
+- Always set local UPLC evaluation to `true`.
+- Treat `.complete({ localUPLCEval: true })` as the required default for correctness, determinism, and production-grade validation behavior.
+
 ## Cardano Script Context Ordering (SDK / Tx Building)
 
 For Plutus/Aiken redeemer indexing and script-context alignment, follow ledger ordering semantics exactly:

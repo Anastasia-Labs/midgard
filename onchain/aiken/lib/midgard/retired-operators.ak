@@ -1,7 +1,16 @@
+use aiken/builtin
+use aiken/collection/list
 use midgard/common/types.{PosixTime}
 
 pub type Datum {
   bond_unlock_time: Option<PosixTime>,
+}
+
+pub fn bond_unlock_time_from_data(data: Data) -> Option<PosixTime> {
+  let datum_fields = builtin.un_constr_data(data).2nd
+  expect Some(bond_unlock_time_data) = list.at(datum_fields, 0)
+  expect bond_unlock_time: Option<PosixTime> = bond_unlock_time_data
+  bond_unlock_time
 }
 
 pub type MintRedeemer {

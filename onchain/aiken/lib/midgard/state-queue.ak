@@ -1,4 +1,4 @@
-use aiken_design_patterns/linked_list/unordered.{NodeDatum}
+use midgard/linked_list/unordered.{NodeDatum}
 use cardano/assets.{AssetName}
 use cardano/transaction.{Input, OutputReference}
 use midgard/common/utils

@@ -1,6 +1,6 @@
 use aiken/collection/list
 use aiken/interval.{Finite, Interval}
-use aiken_design_patterns/linked_list/ordered.{
+use midgard/linked_list/ordered.{
   Key, NodeDatum, get_node_inputs, get_node_outputs,
 }
 use cardano/assets.{PolicyId, Value, quantity_of, tokens}
@@ -11,12 +11,13 @@ use midgard/active_operators.{
   ActivateOperator, Datum, Deinit, Init, ListStateTransition, MintRedeemer,
   RemoveOperatorBadSettlement, RemoveOperatorBadState, RetireOperator,
   SpendRedeemer, UpdateBondHoldNewSettlement, UpdateBondHoldNewState,
+  bond_unlock_time_from_data,
 }
 use midgard/common/utils as utils
 use midgard/hub_oracle as hub
 use midgard/protocol_parameters.{maturity_duration}
 use midgard/registered_operators
-use midgard/retired_operators.{Datum as RetiredOperatorData}
+use midgard/retired_operators.{bond_unlock_time_from_data as retired_bond_unlock_time_from_data}
 use midgard/settlement.{AttachResolutionClaim, DisproveResolutionClaim}
 use midgard/state_queue.{CommitBlockHeader, RemoveFraudulentBlockHeader}
 
@@ -66,8 +67,8 @@ validator spend(
         expect InlineDatum(active_node_output_datum) = active_node_output.datum
         expect parsed_active_node_output_datum: NodeDatum =
           active_node_output_datum
-        expect active_node_operator_output_data: Datum =
-          parsed_active_node_output_datum.data
+        let active_node_output_bond_unlock_time =
+          bond_unlock_time_from_data(parsed_active_node_output_datum.data)
 
         expect Some(state_queue_redeemer_pair) =
           list.at(redeemers, state_queue_redeemer_index)
@@ -82,7 +83,7 @@ validator spend(
           ),
           //keys are already checked by prove_is_member()
           parsed_active_node_output_datum.link == active_node_input_datum.link,
-          Some(valid_to + maturity_duration) == active_node_operator_output_data.bond_unlock_time,
+          Some(valid_to + maturity_duration) == active_node_output_bond_unlock_time,
           quantity_of(
             hub_oracle_ref_input.output.value,
             hub_oracle_script_hash,
@@ -125,8 +126,8 @@ validator spend(
         expect InlineDatum(active_node_output_datum) = active_node_output.datum
         expect parsed_active_node_output_datum: NodeDatum =
           active_node_output_datum
-        expect active_node_operator_output_data: Datum =
-          parsed_active_node_output_datum.data
+        let active_node_output_bond_unlock_time =
+          bond_unlock_time_from_data(parsed_active_node_output_datum.data)
         //
         let settlement_spending_redeemer_data =
           settlement.get_spending_redeemer_data(
@@ -154,9 +155,7 @@ validator spend(
           //keys are already checked by prove_is_member()
           parsed_active_node_output_datum.link == active_node_input_datum.link,
           valid_to + maturity_duration == new_bond_unlock_time,
-          active_node_operator_output_data.bond_unlock_time == Some(
-            new_bond_unlock_time,
-          ),
+          active_node_output_bond_unlock_time == Some(new_bond_unlock_time),
           Key(operator) == parsed_active_node_output_datum.key,
         }
       }
@@ -209,35 +208,27 @@ validator mint(
         active_operator_anchor_node_output_index,
         registered_operators_redeemer_index,
       } -> {
-        trace @"AO.activate.entry"
-        trace @"AO.activate.expect.appended_output.start"
         expect Some(active_node_output) =
           list.at(node_outputs, active_operator_appended_node_output_index)
         expect InlineDatum(active_operator_datum) = active_node_output.datum
         expect parsed_active_operator_datum: NodeDatum = active_operator_datum
-        expect active_operator_data: Datum = parsed_active_operator_datum.data
-        trace @"AO.activate.expect.appended_output.ok"
-        trace @"AO.activate.expect.anchor_output.start"
+        let active_operator_bond_unlock_time =
+          bond_unlock_time_from_data(parsed_active_operator_datum.data)
         expect Some(active_anchor_output) =
           list.at(node_outputs, active_operator_anchor_node_output_index)
         expect InlineDatum(active_anchor_output_datum) = active_anchor_output.datum
         expect parsed_active_anchor_output_datum: NodeDatum =
           active_anchor_output_datum
-        expect _: Datum = parsed_active_anchor_output_datum.data
-        trace @"AO.activate.expect.anchor_output.ok"
-        trace @"AO.activate.expect.hub_oracle_ref_input.start"
+        let active_anchor_bond_unlock_time =
+          bond_unlock_time_from_data(parsed_active_anchor_output_datum.data)
         expect Some(hub_oracle_ref_input) =
           list.at(self.reference_inputs, hub_oracle_ref_input_index)
         expect InlineDatum(hub_oracle_datum) = hub_oracle_ref_input.output.datum
         expect parsed_hub_oracle_datum: hub.Datum = hub_oracle_datum
-        trace @"AO.activate.expect.hub_oracle_ref_input.ok"
-        trace @"AO.activate.expect.registered_redeemer.start"
         expect Some(registered_operators_redeemer_pair) =
           list.at(self.redeemers, registered_operators_redeemer_index)
         expect registered_operators.Activate { node_to_activate_key, .. } =
           registered_operators_redeemer_pair.2nd
-        trace @"AO.activate.expect.registered_redeemer.ok"
-        trace @"AO.activate.check.ordered_append.start"
         let check_ordered_append =
           ordered.append(
             Key(new_active_operator_key),
@@ -247,7 +238,6 @@ validator mint(
             node_outputs,
             node_mint,
           )
-        trace @"AO.activate.check.ordered_append.end"
 
         and {
           quantity_of(
@@ -256,7 +246,8 @@ validator mint(
             hub_oracle_asset_name,
           ) == 1,
           check_ordered_append,
-          active_operator_data.bond_unlock_time == None,
+          active_operator_bond_unlock_time == None,
+          active_anchor_bond_unlock_time == None,
           registered_operators_redeemer_pair.1st == Mint(
             parsed_hub_oracle_datum.registered_operators,
           ),
@@ -350,13 +341,14 @@ validator mint(
           list.at(node_in_outputs, active_operator_removed_node_input_index)
         expect InlineDatum(active_operator_datum) = active_node_input.datum
         expect parsed_active_operator_datum: NodeDatum = active_operator_datum
-        expect active_operator_data: Datum = parsed_active_operator_datum.data
+        let active_operator_bond_unlock_time =
+          bond_unlock_time_from_data(parsed_active_operator_datum.data)
         expect Some(retired_node_output) =
           list.at(self.outputs, retired_operator_inserted_node_output_index)
         expect InlineDatum(retired_operator_datum) = retired_node_output.datum
         expect parsed_retired_operator_datum: NodeDatum = retired_operator_datum
-        expect retired_operator_data: RetiredOperatorData =
-          parsed_retired_operator_datum.data
+        let retired_operator_bond_unlock_time =
+          retired_bond_unlock_time_from_data(parsed_retired_operator_datum.data)
 
         expect Some(hub_oracle_ref_input) =
           list.at(self.reference_inputs, hub_oracle_ref_input_index)
@@ -384,7 +376,7 @@ validator mint(
             parsed_hub_oracle_datum.retired_operators,
           ),
           new_retired_operator_key == active_operator_key,
-          active_operator_data.bond_unlock_time == retired_operator_data.bond_unlock_time,
+          active_operator_bond_unlock_time == retired_operator_bond_unlock_time,
         }
       }
     }

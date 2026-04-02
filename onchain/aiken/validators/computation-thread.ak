@@ -1,7 +1,7 @@
 use aiken/collection/list
 use aiken/primitive/bytearray
-use aiken_design_patterns/linked_list/ordered as ordered
-use aiken_design_patterns/linked_list/unordered as unordered
+use midgard/linked_list/ordered as ordered
+use midgard/linked_list/unordered as unordered
 use cardano/assets.{PolicyId, flatten, quantity_of}
 use cardano/transaction.{InlineDatum, Input, Output, Transaction}
 use midgard/common/utils.{has_signed, is_output_to_sc}

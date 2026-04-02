@@ -1,6 +1,6 @@
 use aiken/collection/list
 use aiken/interval.{Finite, Interval}
-use aiken_design_patterns/linked_list/ordered.{
+use midgard/linked_list/ordered.{
   Key, NodeDatum, get_node_inputs, get_node_outputs,
 }
 use cardano/assets.{PolicyId, quantity_of, tokens}
@@ -10,8 +10,9 @@ use cardano/transaction.{
 use midgard/active_operators
 use midgard/hub_oracle
 use midgard/retired_operators.{
-  Datum as RetiredOperatorDatum, Deinit, Init, MintRedeemer, RecoverOperatorBond,
+  Deinit, Init, MintRedeemer, RecoverOperatorBond,
   RemoveOperatorBadSettlement, RemoveOperatorBadState, RetireOperator,
+  bond_unlock_time_from_data,
 }
 use midgard/settlement.{DisproveResolutionClaim}
 use midgard/state_queue.{RemoveFraudulentBlockHeader}
@@ -113,8 +114,8 @@ validator mint(
           list.at(node_in_outputs, removed_node_input_index)
         expect InlineDatum(retired_operator_datum) = retired_node_input.datum
         expect parsed_retired_operator_datum: NodeDatum = retired_operator_datum
-        expect retired_operator_data: RetiredOperatorDatum =
-          parsed_retired_operator_datum.data
+        let retired_operator_bond_unlock_time =
+          bond_unlock_time_from_data(parsed_retired_operator_datum.data)
         and {
           ordered.remove(
             Key(retired_operator_key),
@@ -124,7 +125,7 @@ validator mint(
             node_outputs,
             node_mint,
           ),
-          when retired_operator_data.bond_unlock_time is {
+          when retired_operator_bond_unlock_time is {
             None -> True
             Some(bond_unlock_time) -> valid_from >= bond_unlock_time
           },

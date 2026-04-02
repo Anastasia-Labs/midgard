@@ -1,6 +1,5 @@
 import {
   Address,
-  CML,
   LucidEvolution,
   toUnit,
   TxBuilder,
@@ -13,7 +12,10 @@ import {
   fromHex,
 } from "@lucid-evolution/lucid";
 import {
+  Bech32DeserializationError,
   DataCoercionError,
+  AddressSchema,
+  addressDataFromBech32,
   GenericErrorFields,
   HashingError,
   LucidError,
@@ -30,19 +32,25 @@ import {
   POSIXTime,
   POSIXTimeSchema,
 } from "@/common.js";
-import { getProtocolParameters } from "@/protocol-parameters.js";
+import {
+  getProtocolParameters,
+  resolveEventInclusionTime,
+} from "@/protocol-parameters.js";
 
 export type DepositParams = {
   depositScriptAddress: string;
   mintingPolicy: Script;
   policyId: string;
   depositAmount: bigint;
-  depositInfo: DepositInfo;
+  depositInfo: {
+    l2Address: Address;
+    l2Datum: unknown | null;
+  };
 };
 
 export const DepositInfoSchema = Data.Object({
-  l2Address: Data.Bytes(),
-  l2Datum: Data.Nullable(Data.Bytes()),
+  l2Address: AddressSchema,
+  l2Datum: Data.Nullable(Data.Any()),
 });
 export type DepositInfo = Data.Static<typeof DepositInfoSchema>;
 export const DepositInfo = DepositInfoSchema as unknown as DepositInfo;
@@ -60,6 +68,23 @@ export const DepositDatumSchema = Data.Object({
 });
 export type DepositDatum = Data.Static<typeof DepositDatumSchema>;
 export const DepositDatum = DepositDatumSchema as unknown as DepositDatum;
+
+const DepositDatumWithWitnessSchema = Data.Object({
+  event: DepositEventSchema,
+  inclusionTime: POSIXTimeSchema,
+  witness: Data.Bytes(),
+});
+
+const outputReferenceToPlutusDataCbor = (
+  utxo: Pick<UTxO, "txHash" | "outputIndex">,
+): string =>
+  Data.to(
+    {
+      transactionId: utxo.txHash,
+      outputIndex: BigInt(utxo.outputIndex),
+    },
+    OutputReference,
+  );
 
 export type DepositUTxO = {
   utxo: UTxO;
@@ -106,12 +131,20 @@ export const getDepositDatumFromUTxO = (
       const depositDatum = Data.from(datumCBOR, DepositDatum);
       return Effect.succeed(depositDatum);
     } catch (e) {
-      return Effect.fail(
-        new DataCoercionError({
-          message: `Could not coerce UTxO's datum to a deposit datum`,
-          cause: e,
-        }),
-      );
+      try {
+        const depositDatum = Data.from(datumCBOR, DepositDatumWithWitnessSchema);
+        return Effect.succeed({
+          event: depositDatum.event,
+          inclusionTime: depositDatum.inclusionTime,
+        });
+      } catch (fallbackCause) {
+        return Effect.fail(
+          new DataCoercionError({
+            message: `Could not coerce UTxO's datum to a deposit datum`,
+            cause: fallbackCause ?? e,
+          }),
+        );
+      }
     }
   } else {
     return Effect.fail(
@@ -220,7 +253,10 @@ export const fetchDepositUTxOs = (
 export const incompleteDepositTxProgram = (
   lucid: LucidEvolution,
   params: DepositParams,
-): Effect.Effect<TxBuilder, HashingError | LucidError> =>
+): Effect.Effect<
+  TxBuilder,
+  HashingError | LucidError | Bech32DeserializationError
+> =>
   Effect.gen(function* () {
     const utxos: UTxO[] = yield* Effect.tryPromise({
       try: () => lucid.wallet().getUtxos(),
@@ -239,32 +275,27 @@ export const incompleteDepositTxProgram = (
     }
 
     const inputUtxo = utxos[0];
-    const transactionInput = CML.TransactionInput.new(
-      CML.TransactionHash.from_hex(inputUtxo.txHash),
-      BigInt(inputUtxo.outputIndex),
-    );
-
     const assetName = yield* hashHexWithBlake2b256(
-      transactionInput.to_cbor_hex(),
+      outputReferenceToPlutusDataCbor(inputUtxo),
     );
 
     const depositNFT = toUnit(params.policyId, assetName);
 
-    // Convert non-hex strings to hex string, since the address type doesn't enforce that
     const depositInfo = {
-      l2Address: fromText(params.depositInfo.l2Address),
+      l2Address: yield* addressDataFromBech32(params.depositInfo.l2Address),
       l2Datum: params.depositInfo.l2Datum,
-    };
+    } as DepositInfo;
 
     const currTime = Date.now();
     const network = lucid.config().network ?? "Mainnet";
     const waitTime = getProtocolParameters(network).event_wait_duration;
-    const inclusionTime = currTime + waitTime;
+    const validTo = currTime + waitTime;
+    const inclusionTime = resolveEventInclusionTime(validTo, network);
 
     const depositDatum: DepositDatum = {
       event: {
         id: {
-          txHash: { hash: inputUtxo.txHash },
+          transactionId: inputUtxo.txHash,
           outputIndex: BigInt(inputUtxo.outputIndex),
         },
         info: depositInfo,
@@ -301,7 +332,7 @@ export const incompleteDepositTxProgram = (
         },
         { lovelace: params.depositAmount, [depositNFT]: 1n },
       )
-      .validTo(inclusionTime)
+      .validTo(validTo)
       .attach.MintingPolicy(params.mintingPolicy);
     return tx;
   }).pipe(
@@ -318,11 +349,14 @@ export const incompleteDepositTxProgram = (
 export const unsignedDepositTxProgram = (
   lucid: LucidEvolution,
   depositParams: DepositParams,
-): Effect.Effect<TxSignBuilder, HashingError | LucidError | DepositError> =>
+): Effect.Effect<
+  TxSignBuilder,
+  HashingError | LucidError | Bech32DeserializationError | DepositError
+> =>
   Effect.gen(function* () {
     const commitTx = yield* incompleteDepositTxProgram(lucid, depositParams);
     const completedTx: TxSignBuilder = yield* Effect.tryPromise({
-      try: () => commitTx.complete({ localUPLCEval: false }),
+      try: () => commitTx.complete({ localUPLCEval: true }),
       catch: (e) =>
         new DepositError({
           message: `Failed to build the transaction: ${e}`,

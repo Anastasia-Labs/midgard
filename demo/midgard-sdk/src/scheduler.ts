@@ -52,11 +52,19 @@ export const SchedulerSpendRedeemer =
 
 export type SchedulerInitParams = {
   validator: AuthenticatedValidator;
+  datum?: SchedulerDatum;
+  lovelace?: bigint;
 };
 
 export type SchedulerDeinitParams = {};
 export type SchedulerAdvanceParams = {};
 export type SchedulerRewindParams = {};
+
+const DEFAULT_SCHEDULER_INIT_LOVELACE = 5_000_000n;
+export const INITIAL_SCHEDULER_DATUM: SchedulerDatum = {
+  operator: "",
+  startTime: 0n,
+};
 
 /**
  * Init
@@ -72,13 +80,25 @@ export const incompleteSchedulerInitTxProgram = (
   const assets: Assets = {
     [toUnit(params.validator.policyId, SCHEDULER_ASSET_NAME)]: 1n,
   };
+  const outputAssets: Assets = {
+    lovelace: params.lovelace ?? DEFAULT_SCHEDULER_INIT_LOVELACE,
+    ...assets,
+  };
+  const initialDatum: SchedulerDatum = params.datum ?? INITIAL_SCHEDULER_DATUM;
 
   const redeemer = Data.to("Init", SchedulerMintRedeemer);
 
   return lucid
     .newTx()
     .mintAssets(assets, redeemer)
-    .pay.ToAddress(params.validator.spendingScriptAddress, assets)
+    .pay.ToContract(
+      params.validator.spendingScriptAddress,
+      {
+        kind: "inline",
+        value: Data.to(initialDatum, SchedulerDatum),
+      },
+      outputAssets,
+    )
     .attach.Script(params.validator.mintingScript);
 };
 

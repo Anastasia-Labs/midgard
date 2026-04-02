@@ -500,7 +500,7 @@ export const unsignedCommitBlockHeaderTxProgram = (
           // .compose(
           //   ActiveOperators.updateCommitmentTimeTxBuilder(lucid, aoUpdateParams)
           // )
-          .complete({ localUPLCEval: false }),
+          .complete({ localUPLCEval: true }),
       catch: (e) =>
         new StateQueueError({
           message: `Failed to build block header commitment transaction: ${e}`,
@@ -753,7 +753,7 @@ export const unsignedInitStateQueueTxProgram = (
       initParams,
     );
     const completedTx: TxSignBuilder = yield* Effect.tryPromise({
-      try: () => commitTx.complete({ localUPLCEval: false }),
+      try: () => commitTx.complete({ localUPLCEval: true }),
       catch: (e) =>
         new LucidError({
           message: `Failed to build the init state queue transaction: ${e}`,

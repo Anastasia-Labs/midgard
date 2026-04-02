@@ -12,7 +12,10 @@ import {
   UnspecifiedNetworkError,
 } from "@/common.js";
 import { incompleteHubOracleInitTxProgram } from "@/hub-oracle.js";
-import { incompleteSchedulerInitTxProgram } from "@/scheduler.js";
+import {
+  INITIAL_SCHEDULER_DATUM,
+  incompleteSchedulerInitTxProgram,
+} from "@/scheduler.js";
 import { incompleteFraudProofCatalogueInitTxProgram } from "@/fraud-proof/catalogue.js";
 import { incompleteInitStateQueueTxProgram } from "@/state-queue.js";
 import { incompleteActiveOperatorInitTxProgram } from "@/active-operators.js";
@@ -89,6 +92,7 @@ export const incompleteInitializationTxProgram = (
 
     const schedulerTx = incompleteSchedulerInitTxProgram(lucid, {
       validator: params.midgardValidators.scheduler,
+      datum: INITIAL_SCHEDULER_DATUM,
     });
 
     const fraudProofCatalogueTx: TxBuilder =
