@@ -16,11 +16,7 @@ use midgard/user_events/withdrawal as withdrawal_lib
 // ── Minting policy ──────────────────────────────────────────────────────────
 
 validator mint(_hub_oracle: ScriptHash) {
-  mint(
-    redeemer: payout.MintRedeemer,
-    own_policy: PolicyId,
-    tx: Transaction,
-  ) {
+  mint(redeemer: payout.MintRedeemer, own_policy: PolicyId, tx: Transaction) {
     let Transaction { inputs, redeemers, mint, .. } = tx
 
     when redeemer is {
@@ -54,8 +50,7 @@ validator mint(_hub_oracle: ScriptHash) {
         // 3. Exactly one payout NFT minted with quantity 1.
         //    The withdrawal validator ensures the asset name matches the
         //    burnt withdrawal NFT.
-        expect [Pair(_, 1)] =
-          assets.tokens(mint, own_policy) |> dict.to_pairs
+        expect [Pair(_, 1)] = assets.tokens(mint, own_policy) |> dict.to_pairs
 
         True
       }
@@ -73,7 +68,10 @@ validator mint(_hub_oracle: ScriptHash) {
 
         // 2. The payout UTxO must be spent with the ConcludeWithdrawal
         //    redeemer, preventing burns outside of the conclusion endpoint.
-        let payout_input, _ <-
+        let
+          payout_input,
+          _,
+        <-
           utils.get_authentic_input_and_asset_name_with_policy_at(
             inputs,
             own_policy,
@@ -107,8 +105,7 @@ validator spend(hub_oracle: ScriptHash) {
     own_out_ref: OutputReference,
     tx: Transaction,
   ) {
-    let Transaction { inputs, outputs, reference_inputs, redeemers, .. } =
-      tx
+    let Transaction { inputs, outputs, reference_inputs, redeemers, .. } = tx
 
     // Invariant: payout UTxOs must never carry a datum.
     // Enforced at creation (withdrawal.ak) and at continuation (AddFunds).
@@ -130,7 +127,10 @@ validator spend(hub_oracle: ScriptHash) {
           hub.get_datum(reference_inputs, hub_oracle, hub_ref_input_index)
 
         // 1. Authenticate payout input and bind its asset name.
-        let payout_input, payout_asset_name <-
+        let
+          payout_input,
+          payout_asset_name,
+        <-
           utils.get_authentic_input_and_asset_name_with_policy_at(
             inputs,
             payout_policy_id,
@@ -247,7 +247,10 @@ validator spend(hub_oracle: ScriptHash) {
         } = hub.get_datum(reference_inputs, hub_oracle, hub_ref_input_index)
 
         // 1. Authenticate payout input and get its asset name.
-        let payout_input, payout_asset_name <-
+        let
+          payout_input,
+          payout_asset_name,
+        <-
           utils.get_authentic_input_and_asset_name_with_policy_at(
             inputs,
             payout_policy_id,
@@ -293,7 +296,12 @@ validator spend(hub_oracle: ScriptHash) {
         //    Also verify the withdrawal was marked valid — only valid
         //    withdrawals can have had their payout NFT minted.
         expect ledger_state.WithdrawalInfo {
-          body: ledger_state.WithdrawalBody { l2_value, l1_address, l1_datum, .. },
+          body: ledger_state.WithdrawalBody {
+            l2_value,
+            l1_address,
+            l1_datum,
+            ..
+          },
           validity: ledger_state.WithdrawalIsValid,
           ..
         }: ledger_state.WithdrawalInfo = withdrawal_event_info
@@ -322,7 +330,12 @@ validator spend(hub_oracle: ScriptHash) {
         expect l1_out_datum == l1_datum
 
         // l1 output must carry exactly l2_value — no extra tokens, no NFT.
-        expect assets.match(l1_out_value, l2_value, fn(_, lovelace) { lovelace == 0 })
+        expect
+          assets.match(
+            l1_out_value,
+            l2_value,
+            fn(_, lovelace) { lovelace == 0 },
+          )
 
         // 8. Payout NFT must be burned via the BurnPayout mint redeemer,
         //    which itself is coupled back to this ConcludeWithdrawal redeemer.
