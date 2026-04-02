@@ -1,11 +1,13 @@
-use midgard/computation_thread as ct
-use midgard/fraud_proofs/common.{TxInclusionArgs}
+//TO REDO AFTER DEFINING SPECS FOR THIS FRAUD PROOF
 
-pub type Datum =
-  ct.StepDatum<Data>
+// use midgard/computation_thread as ct
+// use midgard/fraud_proofs/common.{TxInclusionArgs}
 
-pub type Args =
-  TxInclusionArgs
+// pub type Datum =
+//   ct.StepDatum<Data>
 
-pub type SpendRedeemer =
-  ct.StepRedeemer<Args>
+// pub type Args =
+//   TxInclusionArgs
+
+// pub type SpendRedeemer =
+//   ct.StepRedeemer<Args>
