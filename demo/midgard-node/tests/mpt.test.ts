@@ -6,20 +6,12 @@ import { deleteMpt, MidgardMpt, MptError } from "../src/workers/utils/mpt.js";
 import { NodeConfig } from "@/services/config.js";
 import { Lucid } from "@/services/lucid.js";
 import { fromHex } from "@lucid-evolution/lucid";
-import dotenv from "dotenv";
 import * as ETH_UTILS from "@ethereumjs/util";
-dotenv.config({ path: ".env" });
-
-const provideLayers = <A, E, R>(eff: Effect.Effect<A, E, R>) =>
-  eff.pipe(
-    Effect.provide(Database.layer),
-    Effect.provide(Lucid.Default),
-    Effect.provide(NodeConfig.layer),
-  );
+import { provideDatabaseLayers } from "./utils.js";
 
 beforeAll(async () => {
   await Effect.runPromise(
-    provideLayers(
+    provideDatabaseLayers(
       Effect.gen(function* () {
         yield* deleteMpt("test-mpt-db", "test-mpt");
       }),

@@ -13,7 +13,7 @@ source = "github"
 
 [[requirements]]
 name = "anastasia-labs/aiken-design-patterns"
-version = "v1.3.0"
+version = "v1.5.0"
 source = "github"
 
 [[requirements]]
@@ -40,7 +40,7 @@ source = "github"
 
 [[packages]]
 name = "anastasia-labs/aiken-design-patterns"
-version = "v1.3.0"
+version = "v1.5.0"
 requirements = []
 source = "github"
 

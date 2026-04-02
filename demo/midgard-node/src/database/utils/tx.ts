@@ -1,8 +1,9 @@
 import { Database } from "@/services/database.js";
-import { SqlClient, SqlError } from "@effect/sql";
+import { SqlClient } from "@effect/sql";
 import { Effect } from "effect";
 import {
   DatabaseError,
+  NotFoundError,
   sqlErrorToDatabaseError,
 } from "@/database/utils/common.js";
 
@@ -63,7 +64,7 @@ export const delMultiple = (
 export const retrieveValue = (
   tableName: string,
   tx_id: Buffer,
-): Effect.Effect<Buffer, DatabaseError, Database> =>
+): Effect.Effect<Buffer, DatabaseError | NotFoundError, Database> =>
   Effect.gen(function* () {
     const sql = yield* SqlClient.SqlClient;
     yield* Effect.logDebug(`${tableName} db: attempt to retrieve value`);
@@ -75,8 +76,11 @@ export const retrieveValue = (
     )} WHERE ${sql(Columns.TX_ID)} = ${tx_id}`;
 
     if (result.length === 0)
-      yield* new SqlError.SqlError({
+      yield* new NotFoundError({
+        message: "No value found for tx_id",
         cause: `No value found for tx_id ${tx_id.toString("hex")}`,
+        table: tableName,
+        txIdHex: tx_id.toString("hex"),
       });
 
     return result[0][Columns.TX];
@@ -87,9 +91,14 @@ export const retrieveValue = (
         `${tableName} db: retrieving value error: ${JSON.stringify(e)}`,
       ),
     ),
-    sqlErrorToDatabaseError(
-      tableName,
-      "Failed to retrieve the given transaction",
+    Effect.mapError((error): DatabaseError | NotFoundError =>
+      error._tag === "SqlError"
+        ? new DatabaseError({
+            message: "Failed to retrieve the given transaction",
+            table: tableName,
+            cause: error,
+          })
+        : error,
     ),
   );
 
@@ -149,6 +158,10 @@ export const insertEntries = (
   Effect.gen(function* () {
     yield* Effect.logDebug(`${tableName} db: attempt to insertTXs`);
     const sql = yield* SqlClient.SqlClient;
+    if (pairs.length <= 0) {
+      yield* Effect.logDebug("No pairs provided, skipping insertion.");
+      return;
+    }
     yield* sql`INSERT INTO ${sql(tableName)} ${sql.insert(pairs)}`;
   }).pipe(
     Effect.withLogSpan(`insertTXs ${tableName}`),
@@ -169,7 +182,7 @@ export const retrieveAllEntries = (
       `${tableName} db: attempt to retrieve all tx entries`,
     );
     const sql = yield* SqlClient.SqlClient;
-    return yield* sql<EntryWithTimeStamp>`SELECT * FROM ${sql(tableName)}`;
+    return yield* sql<EntryWithTimeStamp>`SELECT * FROM ${sql(tableName)} ORDER BY ${Columns.TIMESTAMPTZ} DESC; `;
   }).pipe(
     Effect.withLogSpan(`retrieve ${tableName}`),
     Effect.tapErrorTag("SqlError", (e) =>

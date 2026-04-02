@@ -30,14 +30,15 @@ services:
     volumes:
       - ./db:/app/db
     depends_on:
-      - postgres
+      postgres:
+        condition: service_healthy
     logging: *default-logging
+    restart: always
     networks:
       midgard_net:
-    # restart: always
-
+  
   postgres:
-    image: postgres:15-alpine
+    image: postgres:15.15-alpine
     restart: always
     environment:
       POSTGRES_USER: ${POSTGRES_USER}
@@ -51,10 +52,10 @@ services:
     networks:
       midgard_net:
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres"]
-      interval: 5s
-      timeout: 5s
-      retries: 5
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB -h 127.0.0.1 -p 5432"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
     command:
       - "postgres"
       - "-c"
@@ -73,7 +74,7 @@ services:
         max-file: "3"
 
   prometheus:
-    image: prom/prometheus:latest
+    image: prom/prometheus:v3.5.1
     container_name: prometheus
     ports:
       - "9090:9090"
@@ -93,7 +94,7 @@ services:
 
   loki:
     container_name: loki
-    image: grafana/loki:3.4.1
+    image: grafana/loki:3.6.4
     ports:
       - "3100:3100"
     command:
@@ -105,7 +106,7 @@ services:
       midgard_net:
 
   promtail:
-    image: grafana/promtail:2.7.1
+    image: grafana/promtail:3.6.4
     container_name: promtail
     volumes:
       - /var/log:/var/log
@@ -119,7 +120,7 @@ services:
       midgard_net:
 
   cadvisor:
-    image: gcr.io/cadvisor/cadvisor:v0.49.1
+    image: ghcr.io/google/cadvisor:0.56.2
     hostname: cadvisor
     volumes:
       - "/:/rootfs:ro"
@@ -128,12 +129,14 @@ services:
       - "/var/lib/docker/:/var/lib/docker:ro"
       - "/dev/disk/:/dev/disk:ro"
     logging: *default-logging
+    ports:
+      - "8080:8080"
     networks:
       midgard_net:
 
   grafana:
     container_name: grafana
-    image: grafana/grafana:latest
+    image: grafana/grafana:12.3.2
     ports:
       - "3001:3000"
     environment:
@@ -154,7 +157,7 @@ services:
     networks:
       midgard_net:
   tempo-init:
-    image: busybox:latest
+    image: busybox:1.37.0
     user: root
     entrypoint:
       - "chown"
@@ -166,13 +169,13 @@ services:
       midgard_net:
 
   tempo:
-    image: grafana/tempo:latest
+    image: grafana/tempo:2.10.0
     command: [-config.file=/etc/tempo.yaml]
     volumes:
       - ./tempo.yaml:/etc/tempo.yaml
       - tempo-data:/var/tempo
     ports:
-      - "14268:14268"    # jaeger ingest
+      - "14268:14268"  # jaeger ingest
       - "3200:3200"    # tempo
       - "9095:9095"    # tempo grpc
       - "4317:4317"    # otlp grpc

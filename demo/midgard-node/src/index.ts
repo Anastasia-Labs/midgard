@@ -61,7 +61,9 @@ program
   )
   .action(async (_args, options) => {
     console.log("🌳 Midgard");
-    const program: Effect.Effect<
+
+    const { withMonitoring } = options.opts();
+    const mainEffect: Effect.Effect<
       void,
       | DatabaseError
       | SqlError.SqlError
@@ -69,11 +71,15 @@ program
       | Services.DatabaseInitializationError,
       never
     > = pipe(
-      runNode(options.withMonitoring),
+      runNode(withMonitoring),
       Effect.provide(Services.NodeConfig.layer),
+      Effect.provide(Services.Database.layer),
+      Effect.provide(Services.AlwaysSucceedsContract.Default),
+      Effect.provide(Services.Lucid.Default),
+      Effect.provide(Services.Globals.Default),
     );
 
-    NodeRuntime.runMain(program, { teardown: undefined });
+    NodeRuntime.runMain(mainEffect, { teardown: undefined });
   });
 
 program.parse(process.argv);

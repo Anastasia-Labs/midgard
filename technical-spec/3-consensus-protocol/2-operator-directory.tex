@@ -78,8 +78,8 @@ Redeemers:
             \begin{enumerate}
                 \item The transaction must Prepend a node into the \code{registered\_operators} queue.
                   Let that node be \code{registered\_node}.
-                \item The \code{key} field of \code{registered\_node} must correspond to a public key hash that signed the transaction.
-                \item The \code{activation\_time} field of \code{registered\_node} must equal the sum of the Midgard \code{registration\_duration} protocol parameter and the upper bound of the transaction's validity interval.
+                \item The key of \code{registered\_node} must correspond to a public key hash that signed the transaction.
+                \item The \code{activation\_time} field of \code{registered\_node} must equal the sum of the Midgard \code{registration\_duration} protocol parameter and the inclusive upper bound of the transaction's validity interval.
                 \item The Lovelace in the \code{registered\_node} must equal the \code{required\_bond} Midgard parameter.
             \end{enumerate}
         \end{itemize}
@@ -107,8 +107,8 @@ Redeemers:
       Conditions:
         \begin{enumerate}
             \item The transaction must Remove a node from the \code{registered\_operators} queue.
-              Let \code{registered\_node} be that node.
-            \item The \code{key} field of \code{registered\_node} must correspond to a public key hash that signed the transaction.
+              Let \code{removed\_node} be that node.
+            \item The key of \code{removed\_node} must correspond to a public key hash that signed the transaction.
         \end{enumerate}
     The operator consents to the transaction, so the ADA bond is assumed to be returned to the operator's control.
     \item[Remove Duplicate Slash Bond.] Remove a node from the \code{registered\_operators} queue if its key duplicates the key of any other node among the registered, active, or retired operators.
@@ -210,6 +210,8 @@ Redeemers:
         \begin{enumerate}
             \item The transaction must Remove a node from the \code{active\_operators} set.
               Let that node be \code{active\_node}.
+            \item Let \code{retiring\_operator} be a redeemer argument equal to the key of \code{active\_node}.
+            \item The transaction must be signed by \code{retiring\_operator}.
             \item The transaction must Insert a node into the \code{retired\_operators} set, as evidenced by minting a \code{retired\_operators} node NFT corresponding to the \code{active\_node} key.
             \item Let \code{retired\_node} be the node inserted into the \code{retired\_operators} set.
             \item The \code{bond\_unlock\_time} must match between \code{active\_node} and \code{retired\_node}.
