@@ -14,3 +14,5 @@ pub const empty_merkle_tree_root =
 /// TODO?
 pub const max_validity_range_length: PosixTimeDuration =
   operator_inactivity_timeout
+
+pub const plutus_version: Int = 3

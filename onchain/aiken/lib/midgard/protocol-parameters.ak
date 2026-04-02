@@ -17,7 +17,13 @@ pub const required_bond: Int = slashing_penalty + fraud_prover_reward
 
 pub const inactivity_slashing_penalty: Int = 0
 
-/// 5 minutes in milliseconds.
+/// 5 minutes in milliseconds. Max inactivity of operators after the earliest
+/// user event slated for inclusion.
 pub const operator_inactivity_timeout: PosixTimeDuration = 5 * 60 * 1000
+
+/// Max inactivity of operators regardless of having any transactions and/or
+/// user events to include.
+pub const max_inactivity_between_block_commitments: PosixTimeDuration =
+  10 * 6 * 1000
 
 pub const max_inactivity_strikes: Int = 5
