@@ -194,8 +194,8 @@ pub type MidgardInputId {
 /// Midgard transaction body.
 /// Compact representation.
 pub type MidgardTxBodyCompact {
-  spend_inputs: MerkleRoot<Int, OutputReference>,
-  reference_inputs: MerkleRoot<Int, OutputReference>,
+  spend_inputs: MerkleRoot<MidgardInputId, Output>,
+  reference_inputs: MerkleRoot<MidgardInputId, Output>,
   outputs: MerkleRoot<Int, Output>,
   fee: Lovelace,
   validity_interval: ValidityRange,
