@@ -217,7 +217,7 @@ export const applyTxRequestsToLedger = (
     const ledgerBatchOps: ETH_UTILS.BatchDBOp[] = [];
     let sizeOfTxRequests = 0;
     yield* Effect.logInfo(
-      "🔹 Going through mempool and processings transactions...",
+      `🔹 Going through mempool and processing (${mempoolTxs.length}) transactions...`,
     );
     yield* Effect.forEach(mempoolTxs, (entry: Tx.Entry) =>
       Effect.gen(function* () {
