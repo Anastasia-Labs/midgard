@@ -196,6 +196,7 @@ validator spend(
         state_queue_ref_input_index,
         m_active_operators_last_node_ref_input_index,
         registered_element_ref_input_index,
+        ignored_user_event,
       } -> {
         // 4c. Input and output datums must both have an appointed operator, and
         //     the new shift's start time must follow the previous one
@@ -238,6 +239,7 @@ validator spend(
             active_operators_spend_redeemer_index,
             state_queue_ref_input_index,
             hub_oracle_ref_input_index,
+            ignored_user_event,
             previous_shifts_operator,
             previous_shifts_start_time,
             reference_inputs,
@@ -310,6 +312,7 @@ validator spend(
             hub_oracle_ref_input_index,
             previous_shifts_operator,
             previous_shifts_start_time,
+            new_shifts_start_time,
             reference_inputs,
             redeemers,
             validity_range,
@@ -604,9 +607,11 @@ fn validate_operator_inactivity_and_get_its_link(
   active_operators_redeemer_index: Int,
   state_queue_ref_input_index: Int,
   hub_oracle_ref_input_index: Int,
+  ignored_user_event: IgnoredUserEvent,
   //
   inactive_operator: VerificationKeyHash,
   inactive_operators_shift_start_time: PosixTime,
+  inactive_operators_shift_end_time: PosixTime,
   //
   reference_inputs: List<Input>,
   redeemers: Pairs<ScriptPurpose, Redeemer>,
@@ -672,10 +677,54 @@ fn validate_operator_inactivity_and_get_its_link(
           }
         }
       let inactivity_threshold =
-        max(
-          last_state_queue_elements_end_time,
-          inactive_operators_shift_start_time,
-        ) + operator_inactivity_timeout
+        when ignored_user_event is {
+          NoIgnoredUserEvent ->
+            max(
+              last_state_queue_elements_end_time,
+              inactive_operators_shift_start_time,
+            ) + max_inactivity_between_block_commitments
+          IgnoredDeposit { deposit_ref_input_index } -> {
+            let deposit.Datum { inclusion_time, .. } =
+              reference_inputs
+                |> deposit.get_datum(hub_datum.deposit, deposit_ref_input_index)
+
+            inclusion_time
+              |> inactivity_threshold_from_user_event_inclusion_time(
+                  last_state_queue_elements_end_time,
+                  inactive_operators_shift_start_time,
+                )
+          }
+          IgnoredWithdrawal { withdrawal_ref_input_index } -> {
+            let withdrawal.Datum { inclusion_time, .. } =
+              reference_inputs
+                |> withdrawal.get_datum(
+                    hub_datum.withdrawal,
+                    withdrawal_ref_input_index,
+                  )
+
+            inclusion_time
+              |> inactivity_threshold_from_user_event_inclusion_time(
+                  last_state_queue_elements_end_time,
+                  inactive_operators_shift_start_time,
+                )
+          }
+          IgnoredTxOrder { tx_order_ref_input_index } -> {
+            let tx_order.Datum { inclusion_time, .. } =
+              reference_inputs
+                |> tx_order.get_datum(
+                    hub_datum.tx_order,
+                    tx_order_ref_input_index,
+                  )
+
+            inclusion_time
+              |> inactivity_threshold_from_user_event_inclusion_time(
+                  last_state_queue_elements_end_time,
+                  inactive_operators_shift_start_time,
+                )
+          }
+        }
+
+      expect inactivity_threshold < inactive_operators_shift_end_time
 
       // 7. The validity range of the transaction must be entirely after
       //    `inactivity_threshold`.
@@ -689,6 +738,19 @@ fn validate_operator_inactivity_and_get_its_link(
       |> state_queue.finalize_linked_list(hub_datum.state_queue)
 
   active_node_link
+}
+
+fn inactivity_threshold_from_user_event_inclusion_time(
+  inclusion_time: PosixTime,
+  last_state_queue_elements_end_time: PosixTime,
+  inactive_operators_shift_start_time: PosixTime,
+) -> PosixTime {
+  expect
+    inclusion_time >= max(
+      last_state_queue_elements_end_time,
+      inactive_operators_shift_start_time,
+    )
+  inclusion_time + operator_inactivity_timeout
 }
 
 /// Given the index of the input in reference inputs, this function validates
