@@ -218,7 +218,7 @@ validator spend(
           let
             _registered_element_lovelace,
             m_registered_element_key,
-            registered_element_data,
+            _registered_element_data,
             registered_element_link,
           <- linked_list.get_element_info(registered_element_ref_input.output)
 
@@ -227,9 +227,11 @@ validator spend(
           expect
             when m_registered_element_key is {
               None -> True
-              Some(_) -> {
-                expect registered_operators.NodeData { activation_time } =
-                  registered_element_data
+              Some(registered_node_key) -> {
+                let activation_time =
+                  registered_operators.node_key_to_activation_time(
+                    registered_node_key,
+                  )
                 validity_range |> interval.is_entirely_before(activation_time)
               }
             }
