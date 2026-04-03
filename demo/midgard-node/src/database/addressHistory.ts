@@ -64,11 +64,7 @@ export const createTable: Effect.Effect<void, DatabaseError, Database> =
     sqlErrorToDatabaseError(tableName, "Failed to create the table"),
   );
 
-/**
- * TODO: Make it so that on conflict status column is updated, and rename to
- *       "upsert."
- */
-export const insertEntries = (
+export const upsertEntries = (
   entries: Entry[],
 ): Effect.Effect<void, DatabaseError, Database> =>
   Effect.gen(function* () {
@@ -76,14 +72,15 @@ export const insertEntries = (
       const sql = yield* SqlClient.SqlClient;
       yield* sql`
         INSERT INTO ${sql(tableName)} ${sql.insert(entries)}
-        ON CONFLICT (${sql(Columns.EVENT_ID)}, ${sql(Columns.ADDRESS)}) DO NOTHING`;
+        ON CONFLICT (${sql(Columns.EVENT_ID)}, ${sql(Columns.ADDRESS)})
+        DO UPDATE SET ${sql(Columns.STATUS)} = EXCLUDED.${sql(Columns.STATUS)}`;
     }
   }).pipe(
     Effect.withLogSpan(`entries ${tableName}`),
     Effect.tapErrorTag("SqlError", (e) =>
-      Effect.logError(`${tableName} db: insert entries: ${JSON.stringify(e)}`),
+      Effect.logError(`${tableName} db: upsert entries: ${JSON.stringify(e)}`),
     ),
-    sqlErrorToDatabaseError(tableName, "Failed to insert given entries"),
+    sqlErrorToDatabaseError(tableName, "Failed to upsert given entries"),
   );
 
 /**
@@ -183,7 +180,7 @@ export const insertWithdrwals = (
   withdrawals: WithdrawalsDB.ResolvedWithdrawal[],
   status: Status,
 ): Effect.Effect<void, DatabaseError, Database> =>
-  insertEntries(withdrawals.map((w) => resolvedWithdrawalToEntry(w, status)));
+  upsertEntries(withdrawals.map((w) => resolvedWithdrawalToEntry(w, status)));
 
 export const depositEntryToEntry = (
   deposit: UserEvents.Entry,
@@ -212,7 +209,7 @@ export const insertDeposits = (
   NodeConfig | Database | AlwaysSucceedsContract
 > =>
   Effect.all(deposits.map((d) => depositEntryToEntry(d, status))).pipe(
-    Effect.andThen(insertEntries),
+    Effect.andThen(upsertEntries),
   );
 
 export const delTxHash = (

@@ -46,7 +46,7 @@ export const insertMultiple = (
         // Insert the transactions themselves in `MempoolDB`.
         Tx.insertEntries(tableName, allTxEntries),
         // Insert transactions corresponding entries to `AddressHistoryDB`.
-        AddressHistoryDB.insertEntries(addressHistoryEntries),
+        AddressHistoryDB.upsertEntries(addressHistoryEntries),
         // Insertion to `MempoolLedgerDB` followed by removal of spent outrefs in
         // sequence.
         Effect.all([

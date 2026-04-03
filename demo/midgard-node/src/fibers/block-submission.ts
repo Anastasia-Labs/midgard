@@ -308,7 +308,7 @@ const submitEarliestBlock = Effect.gen(function* () {
           allAddressHistoryEntries.length,
           "Insert AddressHistoryDB entries for all events",
           (startIndex, endIndex) =>
-            AddressHistoryDB.insertEntries(
+            AddressHistoryDB.upsertEntries(
               allAddressHistoryEntries.slice(startIndex, endIndex),
             ),
         );
