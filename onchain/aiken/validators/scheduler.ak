@@ -17,7 +17,10 @@ use midgard/hub_oracle as hub
 use midgard/ledger_state
 use midgard/operator_directory/active_operators
 use midgard/operator_directory/registered_operators
-use midgard/protocol_parameters.{operator_inactivity_timeout}
+use midgard/protocol_parameters.{
+  max_inactivity_between_block_commitments, new_shift_inactivity_grace_period,
+  user_events_negligence_timeout,
+}
 use midgard/scheduler.{
   ActiveOperator, AdvancingApproach, AppointFirstOperator, Datum, Deinit,
   GoToNextDueToEndOfShift, GoToNextDueToOperatorRemoval,
@@ -607,7 +610,7 @@ fn validate_operator_inactivity_and_get_its_link(
   active_operators_redeemer_index: Int,
   state_queue_ref_input_index: Int,
   hub_oracle_ref_input_index: Int,
-  ignored_user_event: IgnoredUserEvent,
+  neglected_user_event: NeglectedUserEvent,
   //
   inactive_operator: VerificationKeyHash,
   inactive_operators_shift_start_time: PosixTime,
@@ -656,13 +659,15 @@ fn validate_operator_inactivity_and_get_its_link(
 
       // 6. Let `inactivity_threshold` be the sum of either the upper bound of
       //    the latest block commitment, or inactive operator's shift start time
-      //    (whichever is biggest), and `operator_inactivity_timeout` protocol
+      //    (whichever is biggest), and `user_events_negligence_timeout` protocol
       //    parameter. The reason for considering inactive operator's shift
       //    start time here is to allow a grace period for the case of a
       //    singular operator becoming inactive. Without this in place, the
       //    operator could be striked multiple times to the point of slashing
       //    for one instance of inactivity, as skipping rewinds the scheduler
       //    back to the same operator.
+      // 6. Let `last_state_queue_elements_end_time` be the upper bound of the
+      //    latest element of the state queue's event interval.
       let last_state_queue_elements_end_time =
         when m_header_hash is {
           None -> {
@@ -676,53 +681,64 @@ fn validate_operator_inactivity_and_get_its_link(
             end_time
           }
         }
+
+      // 7. Let `inactivity_threshold` be a point in time that can be attained
+      //    from three values:
+      //    - The active operator's shift start time, plus the
+      //      `new_shift_inactivity_grace_period` protocol parameter.
+      //    - The upper bound of the latest element's event interval in state
+      //      queue, plus the `max_inactivity_between_block_commitments`
+      //      protocol parameter.
+      //    - A given user event's inclusion time, plus the
+      //      `user_events_negligence_timeout` protocol parameter.
       let inactivity_threshold =
-        when ignored_user_event is {
-          NoIgnoredUserEvent ->
-            max(
-              last_state_queue_elements_end_time,
-              inactive_operators_shift_start_time,
-            ) + max_inactivity_between_block_commitments
-          IgnoredDeposit { deposit_ref_input_index } -> {
-            let deposit.Datum { inclusion_time, .. } =
-              reference_inputs
-                |> deposit.get_datum(hub_datum.deposit, deposit_ref_input_index)
+        max(
+          inactive_operators_shift_start_time + new_shift_inactivity_grace_period,
+          when neglected_user_event is {
+            NoNeglectedUserEvent ->
+              last_state_queue_elements_end_time
+                + max_inactivity_between_block_commitments
+            NeglectedDeposit { deposit_ref_input_index } -> {
+              let deposit.Datum { inclusion_time, .. } =
+                reference_inputs
+                  |> deposit.get_datum(hub_datum.deposit, deposit_ref_input_index)
 
-            inclusion_time
-              |> inactivity_threshold_from_user_event_inclusion_time(
-                  last_state_queue_elements_end_time,
-                  inactive_operators_shift_start_time,
-                )
-          }
-          IgnoredWithdrawal { withdrawal_ref_input_index } -> {
-            let withdrawal.Datum { inclusion_time, .. } =
-              reference_inputs
-                |> withdrawal.get_datum(
-                    hub_datum.withdrawal,
-                    withdrawal_ref_input_index,
+              inclusion_time
+                |> inactivity_threshold_from_user_event_inclusion_time(
+                    last_state_queue_elements_end_time,
+                    inactive_operators_shift_start_time,
                   )
+            }
+            NeglectedWithdrawal { withdrawal_ref_input_index } -> {
+              let withdrawal.Datum { inclusion_time, .. } =
+                reference_inputs
+                  |> withdrawal.get_datum(
+                      hub_datum.withdrawal,
+                      withdrawal_ref_input_index,
+                    )
 
-            inclusion_time
-              |> inactivity_threshold_from_user_event_inclusion_time(
-                  last_state_queue_elements_end_time,
-                  inactive_operators_shift_start_time,
-                )
-          }
-          IgnoredTxOrder { tx_order_ref_input_index } -> {
-            let tx_order.Datum { inclusion_time, .. } =
-              reference_inputs
-                |> tx_order.get_datum(
-                    hub_datum.tx_order,
-                    tx_order_ref_input_index,
+              inclusion_time
+                |> inactivity_threshold_from_user_event_inclusion_time(
+                    last_state_queue_elements_end_time,
+                    inactive_operators_shift_start_time,
                   )
+            }
+            NeglectedTxOrder { tx_order_ref_input_index } -> {
+              let tx_order.Datum { inclusion_time, .. } =
+                reference_inputs
+                  |> tx_order.get_datum(
+                      hub_datum.tx_order,
+                      tx_order_ref_input_index,
+                    )
 
-            inclusion_time
-              |> inactivity_threshold_from_user_event_inclusion_time(
-                  last_state_queue_elements_end_time,
-                  inactive_operators_shift_start_time,
-                )
-          }
-        }
+              inclusion_time
+                |> inactivity_threshold_from_user_event_inclusion_time(
+                    last_state_queue_elements_end_time,
+                    inactive_operators_shift_start_time,
+                  )
+            }
+          },
+        )
 
       expect inactivity_threshold < inactive_operators_shift_end_time
 
@@ -743,14 +759,9 @@ fn validate_operator_inactivity_and_get_its_link(
 fn inactivity_threshold_from_user_event_inclusion_time(
   inclusion_time: PosixTime,
   last_state_queue_elements_end_time: PosixTime,
-  inactive_operators_shift_start_time: PosixTime,
 ) -> PosixTime {
-  expect
-    inclusion_time >= max(
-      last_state_queue_elements_end_time,
-      inactive_operators_shift_start_time,
-    )
-  inclusion_time + operator_inactivity_timeout
+  expect inclusion_time >= last_state_queue_elements_end_time
+  inclusion_time + user_events_negligence_timeout
 }
 
 /// Given the index of the input in reference inputs, this function validates
