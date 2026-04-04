@@ -410,23 +410,17 @@ export const deploySchedulerAndHubProgram = (
     }
 
     const nonceUtxo = yield* fetchConfiguredNonceUtxo(lucid, nodeConfig);
-    const hubOracleTx = yield* SDK.incompleteHubOracleInitTxProgram(lucid, {
-      hubOracleMintValidator: contracts.hubOracle,
-      validators: contracts,
-      oneShotNonceUTxO: nonceUtxo,
-    });
-    const schedulerTx = SDK.incompleteSchedulerInitTxProgram(lucid, {
-      validator: contracts.scheduler,
-      datum: SDK.INITIAL_SCHEDULER_DATUM,
-    });
+    const hubAndSchedulerTx = yield* SDK.incompleteHubAndSchedulerInitTxProgram(
+      lucid,
+      {
+        validators: contracts,
+        oneShotNonceUTxO: nonceUtxo,
+      },
+    );
 
     return yield* completeAndSubmit(
       lucid,
-      lucid
-        .newTx()
-        .validTo(Number(validTo))
-        .compose(hubOracleTx)
-        .compose(schedulerTx),
+      lucid.newTx().validTo(Number(validTo)).compose(hubAndSchedulerTx),
       "Failed to build hub-oracle + scheduler deployment transaction",
     );
   });
@@ -597,25 +591,18 @@ export const program = Effect.gen(function* () {
     );
   }
 
-  if (
-    hubOracleWitness === null ||
-    !stateQueueInitialized ||
-    !schedulerInitialized
-  ) {
+  if (hubOracleWitness === null || !schedulerInitialized) {
     const phase1Deadline = nextPhaseDeadline();
-    let phase1Builder = lucid.newTx().validTo(Number(phase1Deadline));
-
-    if (hubOracleWitness === null) {
-      const nonceUtxo = yield* fetchConfiguredNonceUtxo(lucid, nodeConfig);
-      const hubOracleTx = yield* SDK.incompleteHubOracleInitTxProgram(lucid, {
-        hubOracleMintValidator: contracts.hubOracle,
-        validators: contracts,
-        oneShotNonceUTxO: nonceUtxo,
-      });
-      phase1Builder = phase1Builder.compose(hubOracleTx);
-    } else {
-      phase1Builder = phase1Builder.readFrom([hubOracleWitness]);
-    }
+    const nonceUtxo = yield* fetchConfiguredNonceUtxo(lucid, nodeConfig);
+    let phase1Builder = lucid
+      .newTx()
+      .validTo(Number(phase1Deadline))
+      .compose(
+        yield* SDK.incompleteHubAndSchedulerInitTxProgram(lucid, {
+          validators: contracts,
+          oneShotNonceUTxO: nonceUtxo,
+        }),
+      );
 
     if (!stateQueueInitialized) {
       const stateQueueTx = yield* SDK.incompleteInitStateQueueTxProgram(lucid, {
@@ -623,14 +610,6 @@ export const program = Effect.gen(function* () {
         genesisTime: phase1Deadline,
       });
       phase1Builder = phase1Builder.compose(stateQueueTx);
-    }
-
-    if (!schedulerInitialized) {
-      const schedulerTx = SDK.incompleteSchedulerInitTxProgram(lucid, {
-        validator: contracts.scheduler,
-        datum: SDK.INITIAL_SCHEDULER_DATUM,
-      });
-      phase1Builder = phase1Builder.compose(schedulerTx);
     }
 
     lastSubmittedTxHash = yield* completeAndSubmit(
@@ -649,6 +628,13 @@ export const program = Effect.gen(function* () {
     hubOracleWitness = phase1Visibility.hubOracleWitness;
     stateQueueInitialized = phase1Visibility.stateQueueInitialized;
     schedulerInitialized = phase1Visibility.schedulerInitialized;
+  } else if (!stateQueueInitialized) {
+    lastSubmittedTxHash = yield* deployStateQueueProgram(
+      lucid,
+      contracts,
+      nextPhaseDeadline(),
+    );
+    stateQueueInitialized = true;
   }
 
   if (hubOracleWitness === null) {

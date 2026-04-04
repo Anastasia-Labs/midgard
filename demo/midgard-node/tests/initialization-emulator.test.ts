@@ -59,15 +59,14 @@ const loadOperatorContracts = (oneShotOutRef: {
     }).pipe(Effect.provide(AlwaysSucceedsContract.Default)),
   );
 
-const buildHubAndStateInitializationTx = async (
+const buildPhase1AndStateQueueInitializationTx = async (
   lucid: Awaited<ReturnType<typeof Lucid>>,
   contracts: SDK.MidgardValidators,
   nonceUtxo: UTxO,
 ) => {
   const genesisTime = BigInt(Date.now() + SDK.VALIDITY_RANGE_BUFFER);
-  const hubOracleTx = await Effect.runPromise(
-    SDK.incompleteHubOracleInitTxProgram(lucid, {
-      hubOracleMintValidator: contracts.hubOracle,
+  const hubAndSchedulerTx = await Effect.runPromise(
+    SDK.incompleteHubAndSchedulerInitTxProgram(lucid, {
       validators: contracts,
       oneShotNonceUTxO: nonceUtxo,
     }),
@@ -82,7 +81,7 @@ const buildHubAndStateInitializationTx = async (
   return lucid
     .newTx()
     .validTo(Number(genesisTime))
-    .compose(hubOracleTx)
+    .compose(hubAndSchedulerTx)
     .compose(stateQueueTx);
 };
 
@@ -91,7 +90,7 @@ const buildOperatorAwareInitializationTx = async (
   contracts: SDK.MidgardValidators,
   nonceUtxo: UTxO,
 ) => {
-  const tx = await buildHubAndStateInitializationTx(
+  const tx = await buildPhase1AndStateQueueInitializationTx(
     lucid,
     contracts,
     nonceUtxo,
@@ -170,31 +169,20 @@ describe("initialization emulator", () => {
     });
   });
 
-  it("rejects deploy-scheduler-and-hub once a partial hub-oracle-only deployment exists", async () => {
+  it("returns already-deployed when hub-oracle and scheduler are already initialized", async () => {
     const { lucid, nonceUtxo } = await initEmulatorLucid();
     const contracts = await loadContracts({
       txHash: nonceUtxo.txHash,
       outputIndex: nonceUtxo.outputIndex,
     });
 
-    const hubOracleOnlyTx = await Effect.runPromise(
-      SDK.incompleteHubOracleInitTxProgram(lucid, {
-        hubOracleMintValidator: contracts.hubOracle,
-        validators: contracts,
-        oneShotNonceUTxO: nonceUtxo,
+    const firstDeployment = await Effect.runPromise(
+      deploySchedulerAndHubProgram(lucid, contracts, {
+        HUB_ORACLE_ONE_SHOT_TX_HASH: nonceUtxo.txHash,
+        HUB_ORACLE_ONE_SHOT_OUTPUT_INDEX: nonceUtxo.outputIndex,
       }),
     );
-    const signed = await (
-      await lucid
-        .newTx()
-        .validTo(Number(BigInt(Date.now() + SDK.VALIDITY_RANGE_BUFFER)))
-        .compose(hubOracleOnlyTx)
-        .complete({ localUPLCEval: true })
-    ).sign
-      .withWallet()
-      .complete();
-    const hubOracleOnlyTxHash = await signed.submit();
-    await lucid.awaitTx(hubOracleOnlyTxHash);
+    expect(firstDeployment).toHaveLength(64);
 
     await expect(
       Effect.runPromise(
@@ -203,9 +191,7 @@ describe("initialization emulator", () => {
           HUB_ORACLE_ONE_SHOT_OUTPUT_INDEX: nonceUtxo.outputIndex,
         }),
       ),
-    ).rejects.toThrow(
-      "Hub-oracle and scheduler deployment is partial and cannot be completed in-place",
-    );
+    ).resolves.toEqual("already-deployed");
   });
 
   it("rejects scheduler initialization that does not use the canonical empty datum", async () => {
@@ -215,39 +201,34 @@ describe("initialization emulator", () => {
       outputIndex: nonceUtxo.outputIndex,
     });
 
-    const hubOracleTx = await Effect.runPromise(
-      SDK.incompleteHubOracleInitTxProgram(lucid, {
-        hubOracleMintValidator: contracts.hubOracle,
+    const hubAndSchedulerTx = await Effect.runPromise(
+      SDK.incompleteHubAndSchedulerInitTxProgram(lucid, {
         validators: contracts,
         oneShotNonceUTxO: nonceUtxo,
+        schedulerDatum: {
+          operator: "11".repeat(28),
+          startTime: 1n,
+        },
       }),
     );
-    const schedulerTx = SDK.incompleteSchedulerInitTxProgram(lucid, {
-      validator: contracts.scheduler,
-      datum: {
-        operator: "11".repeat(28),
-        startTime: 1n,
-      },
-    });
 
     await expect(
       lucid
         .newTx()
         .validTo(Number(BigInt(Date.now() + SDK.VALIDITY_RANGE_BUFFER)))
-        .compose(hubOracleTx)
-        .compose(schedulerTx)
+        .compose(hubAndSchedulerTx)
         .complete({ localUPLCEval: true }),
     ).rejects.toThrow();
   });
 
-  it("initializes protocol when state_queue and hub_oracle use real onchain scripts", async () => {
+  it("initializes protocol when phase-1 and state_queue use real onchain scripts", async () => {
     const { lucid, nonceUtxo } = await initEmulatorLucid();
     const contracts = await loadContracts({
       txHash: nonceUtxo.txHash,
       outputIndex: nonceUtxo.outputIndex,
     });
 
-    const initTx = await buildHubAndStateInitializationTx(
+    const initTx = await buildPhase1AndStateQueueInitializationTx(
       lucid,
       contracts,
       nonceUtxo,
@@ -279,7 +260,7 @@ describe("initialization emulator", () => {
       outputIndex: nonceUtxo.outputIndex,
     });
 
-    const firstInit = await buildHubAndStateInitializationTx(
+    const firstInit = await buildPhase1AndStateQueueInitializationTx(
       lucid,
       contracts,
       nonceUtxo,
@@ -302,7 +283,7 @@ describe("initialization emulator", () => {
 
     await expect(
       (async () => {
-        const secondInit = await buildHubAndStateInitializationTx(
+        const secondInit = await buildPhase1AndStateQueueInitializationTx(
           lucid,
           contracts,
           nonceUtxo,

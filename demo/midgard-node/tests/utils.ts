@@ -20,7 +20,7 @@ const TEST_ENV_DEFAULTS: Record<string, string> = {
     "addr_test1qrtuk9vwzuyj2ly4fp2e0fdc36xzk7j2n34jeygl9n38yce7qqpmjursw62tm3acwl6z2kw38cxau355ukc9cxqyhk0sjy7d2s",
   NETWORK: "Preprod",
   POSTGRES_HOST: "127.0.0.1",
-  POSTGRES_PORT: "5432",
+  POSTGRES_PORT: "5433",
   POSTGRES_USER: "postgres",
   POSTGRES_PASSWORD: "postgres",
   POSTGRES_DB: "midgard",

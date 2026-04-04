@@ -11,6 +11,7 @@ import * as Ledger from "@/database/utils/ledger.js";
 import * as MempoolTxDeltasDB from "@/database/mempoolTxDeltas.js";
 import * as TxRejectionsDB from "@/database/txRejections.js";
 import * as MempoolDB from "@/database/mempool.js";
+import * as DepositsDB from "@/database/deposits.js";
 import { FileSystemError, findSpentAndProducedUTxOs } from "@/utils.js";
 import * as FS from "fs";
 import * as SDK from "@al-ft/midgard-sdk";
@@ -158,10 +159,17 @@ export const deleteMpt = (
   }).pipe(Effect.withLogSpan(`Delete ${name} MPT`));
 
 // Make mempool trie, and fill it with ledger trie with processed mempool txs
+export type ProcessMptsConfig = {
+  readonly currentBlockStartTime?: Date;
+  readonly processedOnlyEndTime?: Date;
+  readonly depositOnlyEndTime?: Date;
+};
+
 export const processMpts = (
   ledgerTrie: MidgardMpt,
   mempoolTrie: MidgardMpt,
   mempoolTxs: readonly Tx.EntryWithTimeStamp[],
+  config?: ProcessMptsConfig,
 ): Effect.Effect<
   {
     utxoRoot: string;
@@ -170,6 +178,7 @@ export const processMpts = (
     processedMempoolTxs: readonly Tx.EntryWithTimeStamp[];
     sizeOfProcessedTxs: number;
     rejectedMempoolTxsCount: number;
+    includedDepositEntriesCount: number;
   },
   MptError | DatabaseError,
   Database
@@ -231,6 +240,37 @@ export const processMpts = (
       }),
     );
 
+    let includedDepositEntriesCount = 0;
+    const effectiveEndTime =
+      processedMempoolTxs[0]?.[Tx.Columns.TIMESTAMPTZ] ??
+      config?.processedOnlyEndTime ??
+      config?.depositOnlyEndTime;
+
+    if (
+      config?.currentBlockStartTime !== undefined &&
+      effectiveEndTime !== undefined
+    ) {
+      const depositLedgerEntries = yield* DepositsDB.retrieveTimeBoundLedgerEntries(
+        config.currentBlockStartTime,
+        effectiveEndTime,
+      );
+      includedDepositEntriesCount = depositLedgerEntries.length;
+      if (depositLedgerEntries.length > 0) {
+        yield* Effect.logInfo(
+          `🔹 Applying ${depositLedgerEntries.length} deposit UTxO(s) to the block pre-state between ${config.currentBlockStartTime.getTime()} and ${effectiveEndTime.getTime()}.`,
+        );
+        yield* Effect.sync(() =>
+          batchDBOps.unshift(
+            ...depositLedgerEntries.map((entry) => ({
+              type: "put" as const,
+              key: entry[Ledger.Columns.OUTREF],
+              value: entry[Ledger.Columns.OUTPUT],
+            })),
+          ),
+        );
+      }
+    }
+
     if (rejectedTxHashes.length > 0) {
       yield* Effect.logWarning(
         `Dropping ${rejectedTxHashes.length} malformed transaction(s) from MempoolDB`,
@@ -262,6 +302,7 @@ export const processMpts = (
       processedMempoolTxs,
       sizeOfProcessedTxs: sizeOfProcessedTxs,
       rejectedMempoolTxsCount: rejectedTxHashes.length,
+      includedDepositEntriesCount,
     };
   });
 

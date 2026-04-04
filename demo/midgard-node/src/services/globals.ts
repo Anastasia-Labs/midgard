@@ -43,6 +43,16 @@ export class Globals extends Effect.Service<Globals>()("Globals", {
 
     const LATEST_DEPOSIT_FETCH_TIME: Ref.Ref<number> = yield* Ref.make(0);
 
+    // The end time of the latest block the node has locally accepted as the
+    // pre-state boundary for the next block (confirmed on startup, then
+    // advanced optimistically on successful submissions).
+    const LATEST_LOCAL_BLOCK_END_TIME_MS: Ref.Ref<number> =
+      yield* Ref.make(0);
+
+    // Monotonic version used to invalidate the tx-queue processor's cached
+    // UTxO state whenever another fiber mutates mempool_ledger directly.
+    const MEMPOOL_LEDGER_VERSION: Ref.Ref<number> = yield* Ref.make(0);
+
     // Indicates that on-chain block submission succeeded but local persistence
     // failed and must be retried against the confirmed block.
     const LOCAL_FINALIZATION_PENDING: Ref.Ref<boolean> = yield* Ref.make(false);
@@ -65,6 +75,8 @@ export class Globals extends Effect.Service<Globals>()("Globals", {
       UNCONFIRMED_SUBMITTED_BLOCK_TX_HASH,
       UNCONFIRMED_SUBMITTED_BLOCK_SINCE_MS,
       LATEST_DEPOSIT_FETCH_TIME,
+      LATEST_LOCAL_BLOCK_END_TIME_MS,
+      MEMPOOL_LEDGER_VERSION,
       LOCAL_FINALIZATION_PENDING,
       HEARTBEAT_BLOCK_COMMITMENT,
       HEARTBEAT_BLOCK_CONFIRMATION,

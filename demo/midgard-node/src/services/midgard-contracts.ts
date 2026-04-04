@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { Effect } from "effect";
 import * as SDK from "@al-ft/midgard-sdk";
 import {
@@ -12,7 +13,7 @@ import {
 } from "@lucid-evolution/lucid";
 import { AlwaysSucceedsContract } from "./always-succeeds.js";
 import { NodeConfig } from "./config.js";
-import * as realScripts from "../../blueprints/real/plutus.json" with { type: "json" };
+import * as bundledRealScripts from "../../blueprints/real/plutus.json" with { type: "json" };
 
 type BlueprintValidator = {
   title: string;
@@ -22,6 +23,53 @@ type BlueprintValidator = {
 type Blueprint = {
   validators: BlueprintValidator[];
 };
+
+const bundledRealBlueprint = bundledRealScripts.default as Blueprint;
+
+let cachedOverriddenRealBlueprint:
+  | {
+      readonly path: string;
+      readonly blueprint: Blueprint;
+    }
+  | undefined;
+
+const loadRealBlueprint = (): Effect.Effect<Blueprint, Error> =>
+  Effect.try({
+    try: () => {
+      const overridePath = process.env.MIDGARD_REAL_BLUEPRINT_PATH?.trim();
+      if (!overridePath) {
+        return bundledRealBlueprint;
+      }
+      if (cachedOverriddenRealBlueprint?.path === overridePath) {
+        return cachedOverriddenRealBlueprint.blueprint;
+      }
+      const parsed = JSON.parse(readFileSync(overridePath, "utf8")) as unknown;
+      if (
+        typeof parsed !== "object" ||
+        parsed === null ||
+        !("validators" in parsed) ||
+        !Array.isArray((parsed as { validators?: unknown }).validators)
+      ) {
+        throw new Error(
+          `Blueprint at "${overridePath}" does not have a validators array`,
+        );
+      }
+      const blueprint = parsed as Blueprint;
+      cachedOverriddenRealBlueprint = {
+        path: overridePath,
+        blueprint,
+      };
+      return blueprint;
+    },
+    catch: (cause) =>
+      new Error(
+        `Failed to load real blueprint${
+          process.env.MIDGARD_REAL_BLUEPRINT_PATH
+            ? ` from "${process.env.MIDGARD_REAL_BLUEPRINT_PATH}"`
+            : ""
+        }: ${cause instanceof Error ? cause.message : String(cause)}`,
+      ),
+  });
 
 export const REAL_STATE_QUEUE_SCRIPT_TITLES = {
   mint: "state_queue.mint.mint",
@@ -109,7 +157,7 @@ const buildRealHubOracleValidator = (
   oneShotOutRef: HubOracleOneShotOutRef,
 ): Effect.Effect<SDK.MintingValidator, Error> =>
   Effect.gen(function* () {
-    const blueprint = realScripts.default as Blueprint;
+    const blueprint = yield* loadRealBlueprint();
     const mintBase = yield* getCompiledScript(
       blueprint,
       REAL_HUB_ORACLE_SCRIPT_TITLES.mint,
@@ -138,7 +186,7 @@ const buildRealStateQueueValidator = (
   contracts: SDK.MidgardValidators,
 ): Effect.Effect<SDK.AuthenticatedValidator, Error> =>
   Effect.gen(function* () {
-    const blueprint = realScripts.default as Blueprint;
+    const blueprint = yield* loadRealBlueprint();
     const mintBase = yield* getCompiledScript(
       blueprint,
       REAL_STATE_QUEUE_SCRIPT_TITLES.mint,
@@ -186,7 +234,7 @@ const buildRealRegisteredOperatorsValidator = (
   operatorParams: OperatorContractParams,
 ): Effect.Effect<SDK.AuthenticatedValidator, Error> =>
   Effect.gen(function* () {
-    const blueprint = realScripts.default as Blueprint;
+    const blueprint = yield* loadRealBlueprint();
     const mintBase = yield* getCompiledScript(
       blueprint,
       REAL_REGISTERED_OPERATORS_SCRIPT_TITLES.mint,
@@ -230,7 +278,7 @@ const buildRealActiveOperatorsValidator = (
   operatorParams: OperatorContractParams,
 ): Effect.Effect<SDK.AuthenticatedValidator, Error> =>
   Effect.gen(function* () {
-    const blueprint = realScripts.default as Blueprint;
+    const blueprint = yield* loadRealBlueprint();
     const mintBase = yield* getCompiledScript(
       blueprint,
       REAL_ACTIVE_OPERATORS_SCRIPT_TITLES.mint,
@@ -277,7 +325,7 @@ const buildRealRetiredOperatorsValidator = (
   operatorParams: OperatorContractParams,
 ): Effect.Effect<SDK.AuthenticatedValidator, Error> =>
   Effect.gen(function* () {
-    const blueprint = realScripts.default as Blueprint;
+    const blueprint = yield* loadRealBlueprint();
     const mintBase = yield* getCompiledScript(
       blueprint,
       REAL_RETIRED_OPERATORS_SCRIPT_TITLES.mint,
@@ -319,7 +367,7 @@ const buildRealSchedulerValidator = (
   contracts: SDK.MidgardValidators,
 ): Effect.Effect<SDK.AuthenticatedValidator, Error> =>
   Effect.gen(function* () {
-    const blueprint = realScripts.default as Blueprint;
+    const blueprint = yield* loadRealBlueprint();
     const mintBase = yield* getCompiledScript(
       blueprint,
       REAL_SCHEDULER_SCRIPT_TITLES.mint,
@@ -364,7 +412,7 @@ const buildRealDepositValidator = (
   contracts: SDK.MidgardValidators,
 ): Effect.Effect<SDK.AuthenticatedValidator, Error> =>
   Effect.gen(function* () {
-    const blueprint = realScripts.default as Blueprint;
+    const blueprint = yield* loadRealBlueprint();
     const mintBase = yield* getCompiledScript(
       blueprint,
       REAL_DEPOSIT_SCRIPT_TITLES.mint,

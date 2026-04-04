@@ -41,6 +41,8 @@ export const buildAndSubmitCommitmentBlockAction = () =>
   Effect.gen(function* () {
     const globals = yield* Globals;
     const AVAILABLE_CONFIRMED_BLOCK = yield* globals.AVAILABLE_CONFIRMED_BLOCK;
+    const CURRENT_BLOCK_START_TIME_MS =
+      yield* globals.LATEST_LOCAL_BLOCK_END_TIME_MS;
     const LOCAL_FINALIZATION_PENDING = yield* globals.LOCAL_FINALIZATION_PENDING;
     const PROCESSED_UNSUBMITTED_TXS_COUNT =
       yield* globals.PROCESSED_UNSUBMITTED_TXS_COUNT;
@@ -55,6 +57,7 @@ export const buildAndSubmitCommitmentBlockAction = () =>
           workerData: {
             data: {
               availableConfirmedBlock: AVAILABLE_CONFIRMED_BLOCK,
+              currentBlockStartTimeMs: CURRENT_BLOCK_START_TIME_MS,
               localFinalizationPending: LOCAL_FINALIZATION_PENDING,
               mempoolTxsCountSoFar: PROCESSED_UNSUBMITTED_TXS_COUNT,
               sizeOfProcessedTxsSoFar: PROCESSED_UNSUBMITTED_TXS_SIZE,
@@ -119,6 +122,10 @@ export const buildAndSubmitCommitmentBlockAction = () =>
           workerOutput.submittedTxHash,
         );
         yield* Ref.set(globals.UNCONFIRMED_SUBMITTED_BLOCK_SINCE_MS, Date.now());
+        yield* Ref.set(
+          globals.LATEST_LOCAL_BLOCK_END_TIME_MS,
+          workerOutput.blockEndTimeMs,
+        );
         yield* Ref.set(globals.LOCAL_FINALIZATION_PENDING, false);
         yield* Ref.set(globals.PROCESSED_UNSUBMITTED_TXS_COUNT, 0);
         yield* Ref.set(globals.PROCESSED_UNSUBMITTED_TXS_SIZE, 0);
@@ -144,6 +151,10 @@ export const buildAndSubmitCommitmentBlockAction = () =>
           workerOutput.submittedTxHash,
         );
         yield* Ref.set(globals.UNCONFIRMED_SUBMITTED_BLOCK_SINCE_MS, Date.now());
+        yield* Ref.set(
+          globals.LATEST_LOCAL_BLOCK_END_TIME_MS,
+          workerOutput.blockEndTimeMs,
+        );
         yield* Ref.set(globals.LOCAL_FINALIZATION_PENDING, true);
         yield* Effect.logWarning(
           `🔹 Block submitted but local finalization is pending recovery: ${workerOutput.error}`,

@@ -16,6 +16,7 @@ import {
   toUnit,
   type LucidEvolution,
 } from "@lucid-evolution/lucid";
+import { utxosProgram } from "@/commands/utxos.js";
 import {
   AddressHistoryDB,
   BlocksDB,
@@ -68,13 +69,9 @@ const SLASHING_PENALTY_LOVELACE = BigInt(
   process.env.OPERATOR_SLASHING_PENALTY_LOVELACE ?? "200000",
 );
 // This harness exercises the real initialization, deposit submission, deposit
-// ingestion, and live commit-worker path. Keep it opt-in because it is slower
-// than the default emulator suite and depends on an external Postgres instance.
-const runRealisticDepositFlow =
-  process.env.MIDGARD_RUN_REALISTIC_DEPOSIT_FLOW === "1";
-const describeRealisticDepositFlow = runRealisticDepositFlow
-  ? describe.sequential
-  : describe.skip;
+// ingestion, and live commit-worker path against the bundled real blueprint.
+// Keep it sequential because it mutates shared emulator/database state.
+const describeRealisticDepositFlow = describe.sequential;
 
 const DepositDraftDatumWithWitnessSchema = Data.Object({
   event: Data.Any(),
@@ -462,17 +459,21 @@ const runDepositFetch = (
     ),
   );
 
-const runCommitWorker = (
+const runCommitWorker = async (
   contracts: SDK.MidgardValidators,
   lucidService: Awaited<ReturnType<typeof makeLucidRuntimeService>>,
   latestBlock: SDK.StateQueueUTxO,
-) =>
-  Effect.runPromise(
+) => {
+  const currentBlockStartTimeMs = await getStateQueueDatumEndTime(
+    latestBlock.datum,
+  );
+  return Effect.runPromise(
     serializeStateQueueUTxO(latestBlock).pipe(
       Effect.andThen((serializedLatestBlock) =>
         runCommitBlockHeaderWorkerProgram({
           data: {
             availableConfirmedBlock: serializedLatestBlock,
+            currentBlockStartTimeMs,
             localFinalizationPending: false,
             mempoolTxsCountSoFar: 0,
             sizeOfProcessedTxsSoFar: 0,
@@ -485,6 +486,7 @@ const runCommitWorker = (
       Effect.provide(NodeConfig.layer),
     ),
   );
+};
 
 const stateQueueFetchConfig = (contracts: SDK.MidgardValidators) => ({
   stateQueueAddress: contracts.stateQueue.spendingScriptAddress,
@@ -623,6 +625,14 @@ describeRealisticDepositFlow("deposit flow emulator", () => {
         DepositsDB.retrieveAllEntries(),
       );
       expect(depositEntries).toHaveLength(1);
+
+      const projectedUtxos = await Effect.runPromise(
+        utxosProgram(l2Address).pipe(Effect.provide(Database.layer)),
+      );
+      expect(projectedUtxos.utxoCount).toEqual(1);
+      expect(projectedUtxos.totals.lovelace).toEqual(12_000_000n);
+      expect(projectedUtxos.utxos[0]?.address).toEqual(l2Address);
+      expect(projectedUtxos.utxos[0]?.datum).toBeUndefined();
 
       const expectedDepositsRoot = await Effect.runPromise(
         keyValueMptRoot(

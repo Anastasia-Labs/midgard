@@ -42,10 +42,14 @@ const outRefId = ({ txHash, outputIndex }: OutRefLike): string =>
 export const deriveStateQueueCommitLayout = ({
   latestBlockInput,
   activeOperatorInput,
+  schedulerRefInput,
+  hubOracleRefInput,
   txInputs,
 }: {
   readonly latestBlockInput: OutRefLike;
   readonly activeOperatorInput: OutRefLike;
+  readonly schedulerRefInput?: OutRefLike;
+  readonly hubOracleRefInput?: OutRefLike;
   readonly txInputs: readonly OutRefLike[];
 }): StateQueueCommitLayout => {
   const sortedInputs = [...txInputs].sort(compareOutRefs);
@@ -60,9 +64,47 @@ export const deriveStateQueueCommitLayout = ({
   }
   const activeOperatorsRedeemerIndex =
     compareOutRefs(activeOperatorInput, latestBlockInput) < 0 ? 0n : 1n;
+
+  if (schedulerRefInput === undefined && hubOracleRefInput === undefined) {
+    return {
+      ...DEFAULT_STATE_QUEUE_COMMIT_LAYOUT,
+      activeNodeInputIndex: BigInt(activeNodeInputIndex),
+      activeOperatorsRedeemerIndex,
+    };
+  }
+
+  if (schedulerRefInput === undefined || hubOracleRefInput === undefined) {
+    throw new Error(
+      "State queue commit layout requires both scheduler and hub-oracle reference inputs when deriving non-default reference indices",
+    );
+  }
+
+  const sortedReferenceInputs = [schedulerRefInput, hubOracleRefInput].sort(
+    compareOutRefs,
+  );
+  const schedulerRefOutRef = outRefId(schedulerRefInput);
+  const hubOracleRefOutRef = outRefId(hubOracleRefInput);
+  const schedulerRefInputIndex = sortedReferenceInputs.findIndex(
+    (input) => outRefId(input) === schedulerRefOutRef,
+  );
+  if (schedulerRefInputIndex < 0) {
+    throw new Error(
+      `Scheduler reference input ${schedulerRefOutRef} missing from tx reference input set`,
+    );
+  }
+  const hubOracleRefInputIndex = sortedReferenceInputs.findIndex(
+    (input) => outRefId(input) === hubOracleRefOutRef,
+  );
+  if (hubOracleRefInputIndex < 0) {
+    throw new Error(
+      `Hub-oracle reference input ${hubOracleRefOutRef} missing from tx reference input set`,
+    );
+  }
   return {
     ...DEFAULT_STATE_QUEUE_COMMIT_LAYOUT,
+    schedulerRefInputIndex: BigInt(schedulerRefInputIndex),
     activeNodeInputIndex: BigInt(activeNodeInputIndex),
+    hubOracleRefInputIndex: BigInt(hubOracleRefInputIndex),
     activeOperatorsRedeemerIndex,
   };
 };

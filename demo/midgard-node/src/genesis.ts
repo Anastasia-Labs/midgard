@@ -1,10 +1,11 @@
-import { Effect } from "effect";
+import { Effect, Ref } from "effect";
 import * as SDK from "@al-ft/midgard-sdk";
 import {
   MidgardContracts,
   Lucid,
   Database,
   NodeConfig,
+  Globals,
 } from "@/services/index.js";
 import { Columns as LedgerColumns } from "@/database/utils/ledger.js";
 import * as MempoolLedgerDB from "@/database/mempoolLedger.js";
@@ -23,9 +24,10 @@ import {
 const insertGenesisUtxos: Effect.Effect<
   void,
   DatabaseError,
-  NodeConfig | Database
+  NodeConfig | Database | Globals
 > = Effect.gen(function* () {
   const config = yield* NodeConfig;
+  const globals = yield* Globals;
 
   if (config.NETWORK === "Mainnet") {
     yield* Effect.logInfo(`🟣 On mainnet—No genesis UTxOs will be inserted.`);
@@ -47,6 +49,7 @@ const insertGenesisUtxos: Effect.Effect<
   );
 
   yield* MempoolLedgerDB.insert(ledgerEntries);
+  yield* Ref.update(globals.MEMPOOL_LEDGER_VERSION, (version) => version + 1);
 
   yield* Effect.logInfo(
     `🟣 Successfully inserted ${ledgerEntries.length} genesis UTxOs. Funded addresses are:
@@ -104,7 +107,7 @@ const submitGenesisDeposits: Effect.Effect<
 export const program: Effect.Effect<
   void,
   never,
-  MidgardContracts | Database | Lucid | NodeConfig
+  MidgardContracts | Database | Lucid | NodeConfig | Globals
 > = Effect.all(
   [insertGenesisUtxos, submitGenesisDeposits],
   { concurrency: "unbounded" },

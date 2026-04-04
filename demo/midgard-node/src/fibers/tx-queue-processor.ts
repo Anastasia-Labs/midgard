@@ -83,6 +83,7 @@ let nextArrivalSeq = 0n;
 let pendingPayloads: QueuedTxPayload[] = [];
 let pendingSinceMillis: number | undefined;
 let cachedUtxoState: Map<string, Buffer> | undefined;
+let cachedUtxoStateVersion = -1;
 
 const summarizeRejections = (rejected: readonly RejectedTx[]): string => {
   if (rejected.length === 0) {
@@ -134,10 +135,16 @@ const payloadToQueuedTx = (payload: QueuedTxPayload): QueuedTx | RejectedTx => {
 const ensureCachedUtxoState = (): Effect.Effect<
   Map<string, Buffer>,
   DatabaseError,
-  SqlClient
+  SqlClient | Globals
 > =>
   Effect.gen(function* () {
-    if (cachedUtxoState !== undefined) {
+    const globals = yield* Globals;
+    const currentVersion = yield* Ref.get(globals.MEMPOOL_LEDGER_VERSION);
+
+    if (
+      cachedUtxoState !== undefined &&
+      cachedUtxoStateVersion === currentVersion
+    ) {
       return cachedUtxoState;
     }
 
@@ -147,6 +154,7 @@ const ensureCachedUtxoState = (): Effect.Effect<
       state.set(entry.outref.toString("hex"), entry.output);
     }
     cachedUtxoState = state;
+    cachedUtxoStateVersion = currentVersion;
     return state;
   });
 
@@ -352,6 +360,7 @@ const txQueueProcessorAction = (
     }
     applyUTxOStatePatch(cachedState, phaseB.statePatch);
     cachedUtxoState = cachedState;
+    cachedUtxoStateVersion = yield* Ref.get(globals.MEMPOOL_LEDGER_VERSION);
 
     yield* Effect.logInfo(
       `tx-queue validation batch done: queued=${txPayloads.length}, accepted=${phaseB.accepted.length}, rejected=${allRejected.length}, rejected_by_code=[${summarizeRejections(allRejected)}]`,

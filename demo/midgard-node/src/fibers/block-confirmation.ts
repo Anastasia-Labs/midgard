@@ -1,12 +1,32 @@
 import { Globals } from "@/services/index.js";
 import { Effect, Ref, Schedule } from "effect";
 import { Worker } from "worker_threads";
+import * as SDK from "@al-ft/midgard-sdk";
 import {
   WorkerInput as BlockConfirmationWorkerInput,
   WorkerOutput as BlockConfirmationWorkerOutput,
 } from "@/workers/utils/confirm-block-commitments.js";
 import { WorkerError } from "@/workers/utils/common.js";
+import { deserializeStateQueueUTxO } from "@/workers/utils/commit-block-header.js";
 import { emitQueueStateMetrics } from "./queue-metrics.js";
+
+const stateQueueTipEndTimeMs = (
+  blocksUTxO: Parameters<typeof deserializeStateQueueUTxO>[0],
+): Effect.Effect<
+  number,
+  SDK.CborDeserializationError | SDK.CmlUnexpectedError | SDK.DataCoercionError,
+  never
+> =>
+  Effect.gen(function* () {
+    const latestBlock = yield* deserializeStateQueueUTxO(blocksUTxO);
+    if (latestBlock.datum.key === "Empty") {
+      const { data } =
+        yield* SDK.getConfirmedStateFromStateQueueDatum(latestBlock.datum);
+      return Number(data.endTime);
+    }
+    const header = yield* SDK.getHeaderFromStateQueueDatum(latestBlock.datum);
+    return Number(header.endTime);
+  });
 
 const blockConfirmationAction: Effect.Effect<void, WorkerError, Globals> =
   Effect.gen(function* () {
@@ -95,8 +115,15 @@ const blockConfirmationAction: Effect.Effect<void, WorkerError, Globals> =
       const workerOutput: BlockConfirmationWorkerOutput = yield* worker;
       switch (workerOutput.type) {
         case "SuccessfulConfirmationOutput": {
+          const confirmedEndTimeMs = yield* stateQueueTipEndTimeMs(
+            workerOutput.blocksUTxO,
+          ).pipe(Effect.orDie);
           yield* Ref.set(globals.UNCONFIRMED_SUBMITTED_BLOCK_TX_HASH, "");
           yield* Ref.set(globals.UNCONFIRMED_SUBMITTED_BLOCK_SINCE_MS, 0);
+          yield* Ref.set(
+            globals.LATEST_LOCAL_BLOCK_END_TIME_MS,
+            confirmedEndTimeMs,
+          );
           yield* Ref.set(
             globals.AVAILABLE_CONFIRMED_BLOCK,
             workerOutput.blocksUTxO,
@@ -105,8 +132,15 @@ const blockConfirmationAction: Effect.Effect<void, WorkerError, Globals> =
           break;
         }
         case "StaleUnconfirmedRecoveryOutput": {
+          const recoveredEndTimeMs = yield* stateQueueTipEndTimeMs(
+            workerOutput.blocksUTxO,
+          ).pipe(Effect.orDie);
           yield* Ref.set(globals.UNCONFIRMED_SUBMITTED_BLOCK_TX_HASH, "");
           yield* Ref.set(globals.UNCONFIRMED_SUBMITTED_BLOCK_SINCE_MS, 0);
+          yield* Ref.set(
+            globals.LATEST_LOCAL_BLOCK_END_TIME_MS,
+            recoveredEndTimeMs,
+          );
           yield* Ref.update(globals.BLOCKS_IN_QUEUE, (n) => Math.max(0, n - 1));
           yield* Ref.set(
             globals.AVAILABLE_CONFIRMED_BLOCK,

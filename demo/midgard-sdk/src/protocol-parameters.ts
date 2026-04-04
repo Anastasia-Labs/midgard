@@ -10,7 +10,7 @@ export type ProtocolParameters = {
 // network.
 const ONCHAIN_EVENT_WAIT_DURATION_MS = 60_000;
 // This must stay aligned with `onchain/aiken/lib/midgard/protocol-parameters.ak`.
-export const ONCHAIN_SHIFT_DURATION_MS = 30;
+export const ONCHAIN_SHIFT_DURATION_MS = 300_000;
 // This must stay aligned with `onchain/aiken/validators/scheduler.ak`.
 export const SCHEDULER_TRANSITION_MAX_VALIDITY_WINDOW_MS = 10 * 60 * 1000;
 

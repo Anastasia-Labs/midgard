@@ -70,13 +70,25 @@ describe("commit redeemer shapes", () => {
       txHash: "aa".repeat(32),
       outputIndex: 0,
     };
+    const schedulerRef = {
+      txHash: "cc".repeat(32),
+      outputIndex: 1,
+    };
+    const hubOracleRef = {
+      txHash: "aa".repeat(32),
+      outputIndex: 9,
+    };
     const layout = deriveStateQueueCommitLayout({
       latestBlockInput: latest,
       activeOperatorInput: active,
+      schedulerRefInput: schedulerRef,
+      hubOracleRefInput: hubOracleRef,
       txInputs: [latest, active, fee],
     });
     expect(layout.activeNodeInputIndex).toEqual(2n);
     expect(layout.activeOperatorsRedeemerIndex).toEqual(1n);
+    expect(layout.schedulerRefInputIndex).toEqual(1n);
+    expect(layout.hubOracleRefInputIndex).toEqual(0n);
   });
 
   it("derives active-operators redeemer index as 0 when active input sorts before latest block input", () => {
@@ -92,15 +104,27 @@ describe("commit redeemer shapes", () => {
       txHash: "aa".repeat(32),
       outputIndex: 0,
     };
+    const schedulerRef = {
+      txHash: "aa".repeat(32),
+      outputIndex: 4,
+    };
+    const hubOracleRef = {
+      txHash: "ff".repeat(32),
+      outputIndex: 0,
+    };
 
     const layout = deriveStateQueueCommitLayout({
       latestBlockInput: latest,
       activeOperatorInput: active,
+      schedulerRefInput: schedulerRef,
+      hubOracleRefInput: hubOracleRef,
       txInputs: [latest, fee, active],
     });
 
     expect(layout.activeNodeInputIndex).toEqual(1n);
     expect(layout.activeOperatorsRedeemerIndex).toEqual(0n);
+    expect(layout.schedulerRefInputIndex).toEqual(0n);
+    expect(layout.hubOracleRefInputIndex).toEqual(1n);
 
     const operator = "33".repeat(28);
     const stateQueueRedeemer = makeStateQueueCommitRedeemer(operator, layout);
@@ -132,15 +156,27 @@ describe("commit redeemer shapes", () => {
       txHash: "bb".repeat(32),
       outputIndex: 0,
     };
+    const schedulerRef = {
+      txHash: "cc".repeat(32),
+      outputIndex: 5,
+    };
+    const hubOracleRef = {
+      txHash: "cc".repeat(32),
+      outputIndex: 4,
+    };
 
     const layout = deriveStateQueueCommitLayout({
       latestBlockInput: latest,
       activeOperatorInput: active,
+      schedulerRefInput: schedulerRef,
+      hubOracleRefInput: hubOracleRef,
       txInputs: [latest, active, fee],
     });
 
     expect(layout.activeNodeInputIndex).toEqual(1n);
     expect(layout.activeOperatorsRedeemerIndex).toEqual(0n);
+    expect(layout.schedulerRefInputIndex).toEqual(1n);
+    expect(layout.hubOracleRefInputIndex).toEqual(0n);
   });
 
   it("throws when active operator input is missing from tx inputs", () => {
@@ -156,11 +192,21 @@ describe("commit redeemer shapes", () => {
       txHash: "ff".repeat(32),
       outputIndex: 2,
     };
+    const schedulerRef = {
+      txHash: "11".repeat(32),
+      outputIndex: 0,
+    };
+    const hubOracleRef = {
+      txHash: "22".repeat(32),
+      outputIndex: 0,
+    };
 
     expect(() =>
       deriveStateQueueCommitLayout({
         latestBlockInput: latest,
         activeOperatorInput: active,
+        schedulerRefInput: schedulerRef,
+        hubOracleRefInput: hubOracleRef,
         txInputs: [latest, fee],
       }),
     ).toThrow(

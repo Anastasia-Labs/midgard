@@ -51,9 +51,8 @@ const buildOperatorAwareInitializationTx = async (
   nonceUtxo: UTxO,
 ) => {
   const genesisTime = BigInt(Date.now() + SDK.VALIDITY_RANGE_BUFFER);
-  const hubOracleTx = await Effect.runPromise(
-    SDK.incompleteHubOracleInitTxProgram(lucid, {
-      hubOracleMintValidator: contracts.hubOracle,
+  const hubAndSchedulerTx = await Effect.runPromise(
+    SDK.incompleteHubAndSchedulerInitTxProgram(lucid, {
       validators: contracts,
       oneShotNonceUTxO: nonceUtxo,
     }),
@@ -83,7 +82,7 @@ const buildOperatorAwareInitializationTx = async (
   return lucid
     .newTx()
     .validTo(Number(genesisTime))
-    .compose(hubOracleTx)
+    .compose(hubAndSchedulerTx)
     .compose(stateQueueTx)
     .compose(registeredOperatorsTx)
     .compose(activeOperatorsTx)

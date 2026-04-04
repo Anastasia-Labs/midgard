@@ -73,6 +73,7 @@ import {
   formatStateQueueTopology,
 } from "@/services/state-queue-topology.js";
 import {
+  fetchAndInsertDepositUTxOs,
   fetchAndInsertDepositUTxOsFiber,
   blockConfirmationFiber,
   blockCommitmentFiber,
@@ -941,6 +942,41 @@ const ensureProtocolInitializedOnStartup = Effect.gen(function* () {
   Effect.orDie,
 );
 
+const resolveStateQueueTipEndTimeMs = (
+  datum: SDK.StateQueueDatum,
+): Effect.Effect<number, SDK.DataCoercionError, never> =>
+  Effect.gen(function* () {
+    if (datum.key === "Empty") {
+      const { data } = yield* SDK.getConfirmedStateFromStateQueueDatum(datum);
+      return Number(data.endTime);
+    }
+    const header = yield* SDK.getHeaderFromStateQueueDatum(datum);
+    return Number(header.endTime);
+  });
+
+const seedLatestLocalBlockBoundaryOnStartup = Effect.gen(function* () {
+  const lucid = yield* Lucid;
+  const contracts = yield* MidgardContracts;
+  const globals = yield* Globals;
+
+  const latestBlock = yield* SDK.fetchLatestCommittedBlockProgram(lucid.api, {
+    stateQueueAddress: contracts.stateQueue.spendingScriptAddress,
+    stateQueuePolicyId: contracts.stateQueue.policyId,
+  });
+  const latestEndTimeMs = yield* resolveStateQueueTipEndTimeMs(latestBlock.datum);
+  yield* Ref.set(globals.LATEST_LOCAL_BLOCK_END_TIME_MS, latestEndTimeMs);
+  yield* Effect.logInfo(
+    `Seeded latest local block boundary from state-queue tip: ${new Date(latestEndTimeMs).toISOString()}`,
+  );
+}).pipe(
+  Effect.tapError((e) =>
+    Effect.logError(
+      `Failed to seed latest local block boundary on startup: ${JSON.stringify(e)}`,
+    ),
+  ),
+  Effect.orDie,
+);
+
 const router = (
   txQueue: Queue.Queue<QueuedTxPayload>,
 ): Effect.Effect<
@@ -1013,6 +1049,15 @@ export const runNode = (withMonitoring?: boolean) =>
     yield* InitDB.program.pipe(Effect.provide(Database.layer));
 
     yield* ensureProtocolInitializedOnStartup;
+    yield* seedLatestLocalBlockBoundaryOnStartup;
+    yield* fetchAndInsertDepositUTxOs.pipe(
+      Effect.tapError((e) =>
+        Effect.logWarning(
+          `Startup deposit catch-up failed: ${JSON.stringify(e)}`,
+        ),
+      ),
+      Effect.catchAll(() => Effect.void),
+    );
 
     if (
       shouldRunGenesisOnStartup({

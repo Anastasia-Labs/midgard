@@ -1,4 +1,5 @@
 export * from "./common.js";
+export * from "./cbor.js";
 export * from "./constants.js";
 export * from "./protocol-parameters.js";
 export * from "./ledger-state.js";

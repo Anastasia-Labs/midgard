@@ -179,6 +179,7 @@ class LocalFinalizationPendingError extends Data.TaggedError(
   readonly txSize: number;
   readonly mempoolTxsCount: number;
   readonly sizeOfBlocksTxs: number;
+  readonly blockEndTimeMs: number;
   readonly cause: unknown;
 }> {}
 
@@ -389,6 +390,7 @@ const successfulSubmissionProgram = (
   txSize: number,
   sizeOfProcessedTxs: number,
   txHash: string,
+  blockEndTimeMs: number,
 ): Effect.Effect<WorkerOutput, DatabaseError | FileSystemError, Database> =>
   Effect.gen(function* () {
     yield* finalizeCommittedBlockLocally(
@@ -406,6 +408,7 @@ const successfulSubmissionProgram = (
         mempoolTxs.length + workerInput.data.mempoolTxsCountSoFar,
       sizeOfBlocksTxs:
         sizeOfProcessedTxs + workerInput.data.sizeOfProcessedTxsSoFar,
+      blockEndTimeMs,
     };
   });
 
@@ -586,6 +589,9 @@ type SchedulerAlignmentResult = {
 const SCHEDULER_REFRESH_POLL_INTERVAL = "2 seconds";
 const SCHEDULER_REFRESH_MAX_POLLS = 30;
 const MIN_SCHEDULER_WITNESS_LOVELACE = 5_000_000n;
+const SCHEDULER_SUBMISSION_CONFIRMATION_TIMEOUT_MS = 90_000;
+const SCHEDULER_SUBMISSION_CONFIRMATION_POLL_INTERVAL_MS = 5_000;
+const COMMIT_WINDOW_STABILIZATION_MAX_ATTEMPTS = 4;
 
 const compareOutRefs = (a: UTxO, b: UTxO): number => {
   const txHashComparison = a.txHash.localeCompare(b.txHash);
@@ -647,6 +653,12 @@ type ProviderRedeemerTag =
   | "withdraw"
   | "vote"
   | "propose";
+
+type ProviderEvaluationResult = {
+  readonly redeemer_tag: ProviderRedeemerTag;
+  readonly redeemer_index: number;
+  readonly ex_units: { readonly mem: number; readonly steps: number };
+};
 
 type RedeemerPointer = {
   readonly tag: number;
@@ -789,6 +801,50 @@ const dedupeUtxosByOutRef = (utxos: readonly UTxO[]): readonly UTxO[] => {
   return [...byOutRef.values()];
 };
 
+const awaitSubmittedSchedulerTx = (
+  lucid: LucidEvolution,
+  txHash: string,
+  purpose: "bootstrap" | "refresh",
+): Effect.Effect<void, SDK.StateQueueError> =>
+  Effect.gen(function* () {
+    const confirmed = yield* Effect.tryPromise({
+      try: () =>
+        new Promise<boolean>((resolve, reject) => {
+          const timeoutId = setTimeout(() => {
+            reject(
+              new Error(
+                `Timed out waiting for scheduler ${purpose} tx confirmation after ${SCHEDULER_SUBMISSION_CONFIRMATION_TIMEOUT_MS}ms`,
+              ),
+            );
+          }, SCHEDULER_SUBMISSION_CONFIRMATION_TIMEOUT_MS);
+
+          lucid
+            .awaitTx(txHash, SCHEDULER_SUBMISSION_CONFIRMATION_POLL_INTERVAL_MS)
+            .then((result) => {
+              clearTimeout(timeoutId);
+              resolve(result);
+            })
+            .catch((error) => {
+              clearTimeout(timeoutId);
+              reject(error);
+            });
+        }),
+      catch: (cause) =>
+        new SDK.StateQueueError({
+          message: `Failed waiting for scheduler ${purpose} tx confirmation`,
+          cause,
+        }),
+    });
+    if (!confirmed) {
+      return yield* Effect.fail(
+        new SDK.StateQueueError({
+          message: `Scheduler ${purpose} tx did not confirm`,
+          cause: txHash,
+        }),
+      );
+    }
+  });
+
 const extractAddressOutputsFromSubmittedTx = (
   tx: CML.Transaction,
   txHash: string,
@@ -811,20 +867,39 @@ const extractAddressOutputsFromSubmittedTx = (
 };
 
 const findInputIndexByOutRef = (
-  inputs: CML.TransactionInputList,
+  inputs: readonly {
+    readonly txHash: string;
+    readonly outputIndex: number;
+  }[],
   target: UTxO,
 ): number | undefined => {
-  for (let index = 0; index < inputs.len(); index += 1) {
-    const input = inputs.get(index);
+  for (let index = 0; index < inputs.length; index += 1) {
+    const input = inputs[index]!;
     if (
-      input.transaction_id().to_hex() === target.txHash &&
-      Number(input.index()) === target.outputIndex
+      input.txHash === target.txHash &&
+      input.outputIndex === target.outputIndex
     ) {
       return index;
     }
   }
   return undefined;
 };
+
+const collectSortedInputOutRefs = (
+  inputs: CML.TransactionInputList,
+): readonly {
+  readonly txHash: string;
+  readonly outputIndex: number;
+}[] =>
+  [...Array(inputs.len()).keys()]
+    .map((index) => {
+      const input = inputs.get(index);
+      return {
+        txHash: input.transaction_id().to_hex(),
+        outputIndex: Number(input.index()),
+      };
+    })
+    .sort(compareOutRefs);
 
 const collectIndexedOutputs = (
   outputs: CML.TransactionOutputList,
@@ -903,13 +978,7 @@ const withStubbedProviderEvaluation = async <A>(
     evaluateTx?: (
       tx: string,
       additionalUTxOs?: readonly UTxO[],
-    ) => Promise<
-      readonly {
-        redeemer_tag: ProviderRedeemerTag;
-        redeemer_index: number;
-        ex_units: { mem: number; steps: number };
-      }[]
-    >;
+    ) => Promise<readonly ProviderEvaluationResult[]>;
   };
   if (typeof provider.evaluateTx !== "function") {
     return run();
@@ -951,8 +1020,8 @@ const deriveCommitLayoutFromDraftTx = ({
   readonly previousHeaderNodeDatum: string;
 }): StateQueueCommitLayout => {
   const txBody = tx.body();
-  const inputList = txBody.inputs();
-  const referenceInputList = txBody.reference_inputs();
+  const inputList = collectSortedInputOutRefs(txBody.inputs());
+  const referenceInputListRaw = txBody.reference_inputs();
   const indexedOutputs = collectIndexedOutputs(txBody.outputs());
 
   const activeNodeInputIndex = findInputIndexByOutRef(
@@ -965,11 +1034,12 @@ const deriveCommitLayoutFromDraftTx = ({
     );
   }
 
-  if (referenceInputList === undefined) {
+  if (referenceInputListRaw === undefined) {
     throw new Error(
       "Balanced draft tx body did not include reference inputs for scheduler witness",
     );
   }
+  const referenceInputList = collectSortedInputOutRefs(referenceInputListRaw);
   const schedulerRefInputIndex = findInputIndexByOutRef(
     referenceInputList,
     schedulerRefInput,
@@ -1616,6 +1686,7 @@ const ensureRealSchedulerWitnessUtxo = (
     yield* Effect.logInfo(
       `🔹 Scheduler witness bootstrap submitted: ${bootstrapTxHash}`,
     );
+    yield* awaitSubmittedSchedulerTx(lucid, bootstrapTxHash, "bootstrap");
 
     let pollCount = 0;
     while (pollCount < SCHEDULER_REFRESH_MAX_POLLS) {
@@ -1721,6 +1792,10 @@ const ensureSchedulerAlignedForCommit = (
       operator: operatorKeyHash,
       startTime: validFrom,
     };
+    const refreshedSchedulerDatumCbor = LucidData.to(
+      refreshedSchedulerDatum,
+      SDK.SchedulerDatum,
+    );
     const referenceInputs =
       selection.kind === "Advance"
         ? [selection.activeNode.utxo]
@@ -1805,29 +1880,30 @@ const ensureSchedulerAlignedForCommit = (
         }),
     });
 
+    const mkSchedulerRefreshTx = () =>
+      lucid
+        .newTx()
+        .validFrom(Number(validFrom))
+        .validTo(Number(validTo))
+        .collectFrom([feeInput])
+        .readFrom(referenceInputs)
+        .collectFrom(
+          [schedulerRefInput],
+          LucidData.to(schedulerSpendRedeemer, SDK.SchedulerSpendRedeemer),
+        )
+        .pay.ToContract(
+          contracts.scheduler.spendingScriptAddress,
+          {
+            kind: "inline",
+            value: refreshedSchedulerDatumCbor,
+          },
+          schedulerRefInput.assets,
+        )
+        .addSignerKey(operatorKeyHash)
+        .attach.Script(contracts.scheduler.spendingScript);
+
     const refreshTx = yield* Effect.tryPromise({
-      try: () =>
-        lucid
-          .newTx()
-          .validFrom(Number(validFrom))
-          .validTo(Number(validTo))
-          .collectFrom([feeInput])
-          .readFrom(referenceInputs)
-          .collectFrom(
-            [schedulerRefInput],
-            LucidData.to(schedulerSpendRedeemer, SDK.SchedulerSpendRedeemer),
-          )
-          .pay.ToContract(
-            contracts.scheduler.spendingScriptAddress,
-            {
-              kind: "inline",
-              value: LucidData.to(refreshedSchedulerDatum, SDK.SchedulerDatum),
-            },
-            schedulerRefInput.assets,
-          )
-          .addSignerKey(operatorKeyHash)
-          .attach.Script(contracts.scheduler.spendingScript)
-          .complete({ localUPLCEval: true }),
+      try: () => mkSchedulerRefreshTx().complete({ localUPLCEval: true }),
       catch: (cause) =>
         new SDK.StateQueueError({
           message: `Failed to build scheduler refresh tx: ${cause}`,
@@ -1850,6 +1926,7 @@ const ensureSchedulerAlignedForCommit = (
     yield* Effect.logInfo(
       `🔹 Scheduler refresh tx chaining outputs for operator wallet: ${chainedWalletOutputs.length}.`,
     );
+    yield* awaitSubmittedSchedulerTx(lucid, refreshTxHash, "refresh");
 
     let pollCount = 0;
     while (pollCount < SCHEDULER_REFRESH_MAX_POLLS) {
@@ -2061,15 +2138,46 @@ const buildUnsignedTx = (
     const latestEndTime = Number(
       (yield* getLatestBlockDatumEndTime(latestBlock.datum)).getTime(),
     );
+    const resolveCommitWindow = () =>
+      resolveAlignedCommitEndTime({
+        lucid: lucid.api,
+        latestEndTime,
+        candidateEndTime: endDate.getTime(),
+      });
+    let commitWindow = resolveCommitWindow();
+    let witnessContext: RealStateQueueWitnessContext | undefined;
+    let stabilizationAttempts = 0;
+    while (stabilizationAttempts < COMMIT_WINDOW_STABILIZATION_MAX_ATTEMPTS) {
+      witnessContext = yield* fetchRealStateQueueWitnessContext(
+        lucid.api,
+        contracts,
+        commitWindow.resolvedEndTime,
+      );
+      const refreshedCommitWindow = resolveCommitWindow();
+      if (refreshedCommitWindow.resolvedEndTime === commitWindow.resolvedEndTime) {
+        commitWindow = refreshedCommitWindow;
+        break;
+      }
+      stabilizationAttempts += 1;
+      yield* Effect.logWarning(
+        `Commit end-time advanced while preparing scheduler-aligned witness context; rebuilding with refreshed window (previous=${commitWindow.resolvedEndTime}, next=${refreshedCommitWindow.resolvedEndTime}, candidate=${refreshedCommitWindow.alignedCandidateEndTime}, latestEnd=${latestEndTime}, attempt=${stabilizationAttempts}/${COMMIT_WINDOW_STABILIZATION_MAX_ATTEMPTS}).`,
+      );
+      commitWindow = refreshedCommitWindow;
+    }
+    if (witnessContext === undefined) {
+      return yield* Effect.fail(
+        new SDK.StateQueueError({
+          message:
+            "Failed to stabilize the commit window before building the block commitment transaction",
+          cause: `attempts=${COMMIT_WINDOW_STABILIZATION_MAX_ATTEMPTS}`,
+        }),
+      );
+    }
     const {
       alignedCandidateEndTime,
       minimumMonotonicEndTime,
       resolvedEndTime: alignedEndTime,
-    } = resolveAlignedCommitEndTime({
-      lucid: lucid.api,
-      latestEndTime,
-      candidateEndTime: endDate.getTime(),
-    });
+    } = commitWindow;
     if (alignedEndTime !== alignedCandidateEndTime) {
       yield* Effect.logWarning(
         `Adjusted commit end-time to maintain monotonic header timing (candidate=${alignedCandidateEndTime}, minimum=${minimumMonotonicEndTime}, selected=${alignedEndTime}, latestEnd=${latestEndTime}).`,
@@ -2090,12 +2198,6 @@ const buildUnsignedTx = (
 
     const newHeaderHash = yield* SDK.hashBlockHeader(newHeader);
     yield* Effect.logInfo(`🔹 New header hash is: ${newHeaderHash}`);
-
-    const witnessContext = yield* fetchRealStateQueueWitnessContext(
-      lucid.api,
-      contracts,
-      alignedEndTime,
-    );
     yield* Effect.logInfo(
       "🔹 Building commitment with real state_queue witness context.",
     );
@@ -2263,6 +2365,8 @@ const buildUnsignedTx = (
       const seedLayout = deriveStateQueueCommitLayout({
         latestBlockInput: latestBlock.utxo,
         activeOperatorInput: witness.activeOperatorInput,
+        schedulerRefInput: witness.schedulerRefInput,
+        hubOracleRefInput: witness.hubOracleRefInput,
         txInputs: [latestBlock.utxo, witness.activeOperatorInput, feeInput],
       });
       const { commitLayout, draftDiagnostics } = yield* Effect.tryPromise({
@@ -2369,6 +2473,11 @@ const buildUnsignedTx = (
               localEvalDiagnostic._tag === "Left"
                 ? formatUnknownError(localEvalDiagnostic.left)
                 : "local UPLC eval unexpectedly succeeded";
+            yield* Effect.logError(
+              `Commit build failed for derived layout ${formatLayout(stableCommitLayout)}; remote=${formatUnknownError(
+                remoteError,
+              )}; local_diagnostic=${localDiagnosticMessage}`,
+            );
             return yield* Effect.fail(
               new SDK.StateQueueError({
                 message:
@@ -2444,6 +2553,11 @@ const buildUnsignedTx = (
                 localEvalDiagnostic._tag === "Left"
                   ? formatUnknownError(localEvalDiagnostic.left)
                   : "local UPLC eval unexpectedly succeeded";
+              yield* Effect.logError(
+                `Commit rebuild failed for tx-derived layout ${formatLayout(stableCommitLayout)}; remote=${formatUnknownError(
+                  remoteError,
+                )}; local_diagnostic=${localDiagnosticMessage}`,
+              );
               return yield* Effect.fail(
                 new SDK.StateQueueError({
                   message:
@@ -2498,6 +2612,10 @@ const databaseOperationsProgram = (
 > =>
   Effect.gen(function* () {
     const mempoolTxs = yield* MempoolDB.retrieve;
+    const currentBlockStartTime = new Date(workerInput.data.currentBlockStartTimeMs);
+    const processedPendingTxs =
+      mempoolTxs.length > 0 ? [] : yield* ProcessedMempoolDB.retrieve;
+    const depositOnlyEndTime = new Date();
 
     const availableConfirmedBlock = workerInput.data.availableConfirmedBlock;
     const hasAvailableConfirmedBlock = availableConfirmedBlock !== "";
@@ -2522,11 +2640,21 @@ const databaseOperationsProgram = (
       processedMempoolTxs,
       sizeOfProcessedTxs,
       rejectedMempoolTxsCount,
-    } = yield* processMpts(ledgerTrie, mempoolTrie, mempoolTxs);
+      includedDepositEntriesCount,
+    } = yield* processMpts(ledgerTrie, mempoolTrie, mempoolTxs, {
+      currentBlockStartTime,
+      processedOnlyEndTime: processedPendingTxs[0]?.[TxColumns.TIMESTAMPTZ],
+      depositOnlyEndTime,
+    });
 
     if (rejectedMempoolTxsCount > 0) {
       yield* Effect.logWarning(
         `Rejected ${rejectedMempoolTxsCount} malformed tx(s) during commitment preprocessing.`,
+      );
+    }
+    if (includedDepositEntriesCount > 0) {
+      yield* Effect.logInfo(
+        `🔹 Commitment pre-state includes ${includedDepositEntriesCount} projected deposit UTxO(s).`,
       );
     }
 
@@ -2618,13 +2746,13 @@ const databaseOperationsProgram = (
         );
       }
 
-      const startTime = yield* getLatestBlockDatumEndTime(latestBlock.datum);
+      const startTime = currentBlockStartTime;
 
       if (Option.isNone(optEndTime)) {
         // No transaction requests found (neither in `ProcessedMempoolDB`, nor
         // in `MempoolDB`). We check if there are any user events slated for
         // inclusion within `startTime` and current moment.
-        const endDate = new Date();
+        const endDate = depositOnlyEndTime;
         yield* Effect.logInfo(
           "🔹 Checking for user events... (no tx requests in queue)",
         );
@@ -2679,6 +2807,7 @@ const databaseOperationsProgram = (
                 txSize,
                 mempoolTxsCount: 0,
                 sizeOfBlocksTxs: workerInput.data.sizeOfProcessedTxsSoFar,
+                blockEndTimeMs: endDate.getTime(),
               } as WorkerOutput),
           });
         }
@@ -2742,6 +2871,7 @@ const databaseOperationsProgram = (
                     txSize,
                     sizeOfProcessedTxs,
                     recoveredTxHash.value,
+                    endTime.getTime(),
                   ).pipe(
                     Effect.mapError(
                       (cause) =>
@@ -2754,6 +2884,7 @@ const databaseOperationsProgram = (
                           sizeOfBlocksTxs:
                             sizeOfProcessedTxs +
                             workerInput.data.sizeOfProcessedTxsSoFar,
+                          blockEndTimeMs: endTime.getTime(),
                           cause,
                         }),
                     ),
@@ -2799,6 +2930,7 @@ const databaseOperationsProgram = (
               txSize,
               sizeOfProcessedTxs,
               txHash,
+              endTime.getTime(),
             ).pipe(
               Effect.mapError(
                 (cause) =>
@@ -2811,6 +2943,7 @@ const databaseOperationsProgram = (
                     sizeOfBlocksTxs:
                       sizeOfProcessedTxs +
                       workerInput.data.sizeOfProcessedTxsSoFar,
+                    blockEndTimeMs: endTime.getTime(),
                     cause,
                   }),
               ),
@@ -2859,6 +2992,7 @@ export const runCommitBlockHeaderWorkerProgram = (
               txSize: error.txSize,
               mempoolTxsCount: error.mempoolTxsCount,
               sizeOfBlocksTxs: error.sizeOfBlocksTxs,
+              blockEndTimeMs: error.blockEndTimeMs,
               error: formatUnknownError(error.cause),
             } as WorkerOutput)
           : Effect.fail(error),

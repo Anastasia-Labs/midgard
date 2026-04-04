@@ -11,7 +11,7 @@ use midgard/common/utils.{get_singleton_asset_with_policy}
 use midgard/registered_operators.{Datum as RegisteredOperatorDatum}
 use midgard/scheduler.{
   Advance, Datum, Deinit, Init, MintRedeemer, Rewind, SpendRedeemer,
-  scheduler_asset_name, shift_end_time,
+  parse_scheduler_datum, scheduler_asset_name, shift_end_time,
 }
 
 const max_scheduler_transition_validity_window = 600_000
@@ -58,7 +58,8 @@ validator mint(
             fn(output) { quantity_of(output.value, policy_id, scheduler_asset_name) == 1 },
           )
         expect InlineDatum(scheduler_output_datum) = scheduler_output.datum
-        expect parsed_scheduler_output_datum: Datum = scheduler_output_datum
+        let parsed_scheduler_output_datum =
+          parse_scheduler_datum(scheduler_output_datum)
         expect parsed_scheduler_output_datum.operator == ""
         expect parsed_scheduler_output_datum.start_time == 0
         True
@@ -119,7 +120,8 @@ validator spend(
         expect Some(scheduler_output) =
           list.at(self.outputs, scheduler_output_index)
         expect InlineDatum(scheduler_output_datum) = scheduler_output.datum
-        expect parsed_scheduler_output_datum: Datum = scheduler_output_datum
+        let parsed_scheduler_output_datum =
+          parse_scheduler_datum(scheduler_output_datum)
         //1.
         //2.
         expect peek_only(input.output) == scheduler_policy_id
@@ -202,7 +204,8 @@ validator spend(
         expect Some(scheduler_output) =
           list.at(self.outputs, scheduler_output_index)
         expect InlineDatum(scheduler_output_datum) = scheduler_output.datum
-        expect parsed_scheduler_output_datum: Datum = scheduler_output_datum
+        let parsed_scheduler_output_datum =
+          parse_scheduler_datum(scheduler_output_datum)
         //1.
         //2.
         expect peek_only(input.output) == scheduler_policy_id

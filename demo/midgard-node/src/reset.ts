@@ -247,6 +247,8 @@ export const program: Effect.Effect<
     yield* Ref.set(globals.AVAILABLE_CONFIRMED_BLOCK, "");
     yield* Ref.set(globals.UNCONFIRMED_SUBMITTED_BLOCK_TX_HASH, "");
     yield* Ref.set(globals.UNCONFIRMED_SUBMITTED_BLOCK_SINCE_MS, 0);
+    yield* Ref.set(globals.LATEST_LOCAL_BLOCK_END_TIME_MS, 0);
+    yield* Ref.set(globals.MEMPOOL_LEDGER_VERSION, 0);
     yield* Ref.set(globals.LOCAL_FINALIZATION_PENDING, false);
     yield* Ref.set(globals.HEARTBEAT_BLOCK_COMMITMENT, Date.now());
     yield* Ref.set(globals.HEARTBEAT_BLOCK_CONFIRMATION, Date.now());

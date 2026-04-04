@@ -11,6 +11,7 @@ import {
 export type WorkerInput = {
   data: {
     availableConfirmedBlock: "" | SerializedStateQueueUTxO;
+    currentBlockStartTimeMs: number;
     localFinalizationPending: boolean;
     mempoolTxsCountSoFar: number;
     sizeOfProcessedTxsSoFar: number;
@@ -23,6 +24,7 @@ export type SuccessfulSubmissionOutput = {
   txSize: number;
   mempoolTxsCount: number;
   sizeOfBlocksTxs: number;
+  blockEndTimeMs: number;
 };
 
 export type SkippedSubmissionOutput = {
@@ -46,6 +48,7 @@ export type SubmittedAwaitingLocalFinalizationOutput = {
   txSize: number;
   mempoolTxsCount: number;
   sizeOfBlocksTxs: number;
+  blockEndTimeMs: number;
   error: string;
 };
 
