@@ -68,7 +68,7 @@ data MidgardScripts = MidgardScripts
   , stateQueueValidator ::
       TypedScript
         PlutusV3
-        '[ AsDatum StateQueue.Datum
+        '[ AsDatum BuiltinData
          , AsRedeemer BuiltinData
          ]
   }
