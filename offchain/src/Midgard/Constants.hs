@@ -9,8 +9,10 @@ module Midgard.Constants (
   operatorRequiredBond,
   operatorSlashingPenalty,
   refScriptStorage,
+  emptyMerkleTreeRoot,
 ) where
 
+import Data.ByteString (ByteString)
 import Data.ByteString.Char8 qualified as BS8
 import Data.Time.Clock (NominalDiffTime)
 
@@ -18,7 +20,9 @@ import Cardano.Api qualified as C
 import Convex.Utils (scriptAddress)
 import PlutusCore qualified as PLC
 import PlutusCore.Core qualified as PLC
-import PlutusLedgerApi.V3 (serialiseUPLC)
+import PlutusLedgerApi.V1 (fromHex)
+import PlutusLedgerApi.V3 (LedgerBytes (getLedgerBytes), serialiseUPLC)
+import PlutusTx.Builtins qualified as PlutusTx
 import UntypedPlutusCore qualified as UPLC
 
 {- | A dummy script at the moment. The real hub oracle must be parameterized by a nonce UTxO
@@ -58,6 +62,12 @@ registrationDuration = 0.030
 
 operatorSlashingPenalty :: C.Lovelace
 operatorSlashingPenalty = 3_000_000
+
+-- | Mimicking aiken.
+emptyMerkleTreeRoot :: ByteString
+emptyMerkleTreeRoot = unsafeFromHex "0e5751c026e543b2e8ab2eb06099daa1d1e5df47778f7787faab45cdf12fe3a8"
+  where
+    unsafeFromHex = PlutusTx.fromBuiltin . getLedgerBytes . either (error . show) id . fromHex
 
 alwaysSucceedsUPLC :: UPLC.Program UPLC.DeBruijn PLC.DefaultUni fun ()
 alwaysSucceedsUPLC =
