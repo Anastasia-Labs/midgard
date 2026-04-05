@@ -18,6 +18,8 @@ import PlutusTx.Blueprint (HasBlueprintDefinition, definitionRef)
 import PlutusTx.Blueprint.TH (makeIsDataSchemaIndexed)
 import PlutusTx.Builtins qualified as PlutusTx
 
+import Midgard.Constants (emptyMerkleTreeRoot)
+
 type HeaderHash = BuiltinByteString
 
 type MerkleRoot = BuiltinByteString
@@ -64,7 +66,7 @@ genesisHeaderHash :: HeaderHash
 genesisHeaderHash = PlutusTx.toBuiltin $ BS.replicate 28 0
 
 genesisUtxoRoot :: MerkleRoot
-genesisUtxoRoot = PlutusTx.toBuiltin $ BS.replicate 32 0
+genesisUtxoRoot = PlutusTx.toBuiltin emptyMerkleTreeRoot
 
 genesisProtocolVersion :: Integer
 genesisProtocolVersion = 0
