@@ -6,7 +6,6 @@ import Data.Time.Clock.POSIX (utcTimeToPOSIXSeconds)
 import Cardano.Api qualified as C
 import Convex.BuildTx (
   TxBuilder,
-  addBtx,
   assetValue,
   createRefScriptNoDatum,
   execBuildTx,
@@ -14,7 +13,15 @@ import Convex.BuildTx (
   payToScriptInlineDatum,
   setMinAdaDepositAll,
  )
-import Convex.Class (MonadBlockchain (queryNetworkId, queryProtocolParameters, querySlotNo))
+import Convex.Class (
+  MonadBlockchain (
+    queryEraHistory,
+    queryNetworkId,
+    queryProtocolParameters,
+    querySlotNo,
+    querySystemStart
+  ),
+ )
 import Convex.PlutusLedger.V1 (transPOSIXTime)
 import PlutusLedgerApi.V1 (ScriptHash (ScriptHash), currencySymbol, scriptHashAddress, toBuiltin)
 import Ply (
@@ -29,7 +36,7 @@ import Midgard.Contracts.RegisteredOperators (initRegisteredOperators)
 import Midgard.Contracts.RetiredOperators (initRetiredOperators)
 import Midgard.Contracts.Scheduler (initScheduler)
 import Midgard.Contracts.StateQueue (initStateQueue)
-import Midgard.Contracts.Utils (slotToBeginUTCTime, slotToEndUTCTime)
+import Midgard.Contracts.Utils (slotToBeginUTCTime)
 import Midgard.ScriptUtils (mintingPolicyId, policyIdBytes, scriptHashBytes, toMintingPolicy, validatorHash)
 import Midgard.Scripts (
   MidgardRefScripts (..),
@@ -60,6 +67,8 @@ initProtocol
     do
       netId <- queryNetworkId
       params <- queryProtocolParameters
+      eraHistory <- queryEraHistory
+      systemStart <- querySystemStart
       (currentSlot, _, _) <- querySlotNo
       currentTime <- utcTimeToPOSIXSeconds <$> slotToBeginUTCTime currentSlot
       pure . execBuildTx $ do
@@ -105,7 +114,7 @@ initProtocol
         initActiveOperators netId scripts refScripts
         initRetiredOperators netId scripts refScripts
         initScheduler netId (transPOSIXTime currentTime) scripts
-        initStateQueue netId (currentSlot, transPOSIXTime currentTime) scripts
+        initStateQueue netId eraHistory systemStart currentSlot scripts
         setMinAdaDepositAll params
     where
       scriptCurrencySymbol = currencySymbol . policyIdBytes . mintingPolicyId

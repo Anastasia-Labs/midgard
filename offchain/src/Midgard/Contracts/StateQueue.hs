@@ -8,6 +8,7 @@ module Midgard.Contracts.StateQueue (
 import Control.Monad.Except (MonadError (throwError))
 import Control.Monad.Reader (runReaderT)
 import Data.Time (addUTCTime)
+import Data.Time.Clock.POSIX (utcTimeToPOSIXSeconds)
 
 import Cardano.Api qualified as C
 import Convex.BuildTx (
@@ -29,7 +30,7 @@ import Convex.Class (
   MonadUtxoQuery,
   utxosByPaymentCredential,
  )
-import Convex.PlutusLedger.V1 (unTransPubKeyHash)
+import Convex.PlutusLedger.V1 (transPOSIXTime, unTransPubKeyHash)
 import Convex.Utils (utcTimeToPosixTime)
 import Convex.Utxos (toTxOut)
 import PlutusLedgerApi.Common (fromBuiltin, toBuiltin)
@@ -49,6 +50,7 @@ import Midgard.Contracts.Utils (
   listAssetNameFromUTxO,
   mintPlutusWithRedeemerFinal,
   slotToEndUTCTime,
+  slotToEndUTCTimePure,
   spendPlutusInlineDatumWithRedeemerFinal,
  )
 import Midgard.ScriptUtils (mintingPolicyId, toMintingPolicy, toValidator, validatorHash)
@@ -80,17 +82,26 @@ initStateQueue ::
   , C.IsBabbageBasedEra era
   ) =>
   C.NetworkId ->
-  (C.SlotNo, POSIXTime) ->
+  C.EraHistory ->
+  C.SystemStart ->
+  C.SlotNo ->
   MidgardScripts ->
   m ()
 initStateQueue
   netId
-  (currentSlot, currentTime)
+  eraHistory
+  systemStart
+  currentSlot
   MidgardScripts {stateQueueValidator, stateQueuePolicy} = do
     let C.PolicyId policyId = mintingPolicyId stateQueuePolicy
         -- In 5 minutes.
-        validityUpperBound = currentSlot + 300
-        validityUpperBoundTime = currentTime + 300
+        validityUpperBoundExclusive = currentSlot + 300
+        validityUpperBoundTime =
+          transPOSIXTime
+            . utcTimeToPOSIXSeconds
+            . either error id
+            $ slotToEndUTCTimePure eraHistory systemStart
+            $ validityUpperBoundExclusive - 1
         datum :: StateQueue.Datum
         datum =
           LinkedList.Element
@@ -136,7 +147,7 @@ initStateQueue
       txBody
         { C.txValidityLowerBound = C.TxValidityLowerBound (C.allegraBasedEra @era) currentSlot
         , C.txValidityUpperBound =
-            C.TxValidityUpperBound (C.shelleyBasedEra @era) $ Just validityUpperBound
+            C.TxValidityUpperBound (C.shelleyBasedEra @era) $ Just validityUpperBoundExclusive
         }
 
 commitBlockHeader ::

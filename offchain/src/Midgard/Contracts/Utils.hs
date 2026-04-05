@@ -5,6 +5,7 @@ module Midgard.Contracts.Utils (
   nextOutIx,
   slotToBeginUTCTime,
   slotToEndUTCTime,
+  slotToEndUTCTimePure,
   utcTimeToEnclosingSlot,
   findOutputIndexWithAsset,
   findMintRedeemerIndex,
@@ -76,6 +77,14 @@ slotToBeginUTCTime slotNo = do
 -- | Convert slot to its very last UTC time millisecond.
 slotToEndUTCTime :: (MonadError String f, MonadBlockchain era f) => C.SlotNo -> f UTCTime
 slotToEndUTCTime slotNo = addUTCTime (-oneMs) <$> slotToBeginUTCTime (slotNo + 1)
+  where
+    oneMs :: NominalDiffTime
+    oneMs = 0.001
+
+slotToEndUTCTimePure :: C.EraHistory -> C.SystemStart -> C.SlotNo -> Either String UTCTime
+slotToEndUTCTimePure eraHistory systemStart slotNo =
+  addUTCTime (-oneMs)
+    <$> Convex.slotToUtcTime eraHistory systemStart (slotNo + 1)
   where
     oneMs :: NominalDiffTime
     oneMs = 0.001
