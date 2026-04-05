@@ -29,7 +29,7 @@ import Midgard.Contracts.RegisteredOperators (initRegisteredOperators)
 import Midgard.Contracts.RetiredOperators (initRetiredOperators)
 import Midgard.Contracts.Scheduler (initScheduler)
 import Midgard.Contracts.StateQueue (initStateQueue)
-import Midgard.Contracts.Utils (slotToEndUTCTime)
+import Midgard.Contracts.Utils (slotToBeginUTCTime, slotToEndUTCTime)
 import Midgard.ScriptUtils (mintingPolicyId, policyIdBytes, scriptHashBytes, toMintingPolicy, validatorHash)
 import Midgard.Scripts (
   MidgardRefScripts (..),
@@ -61,8 +61,7 @@ initProtocol
       netId <- queryNetworkId
       params <- queryProtocolParameters
       (currentSlot, _, _) <- querySlotNo
-      let validityUpperBoundExclusive = currentSlot + 300
-      currentTime <- utcTimeToPOSIXSeconds <$> slotToEndUTCTime (validityUpperBoundExclusive - 1)
+      currentTime <- utcTimeToPOSIXSeconds <$> slotToBeginUTCTime currentSlot
       pure . execBuildTx $ do
         -- The hub oracle is required for all initializations.
         -- TODO (chase): The real hub oracle must be parameterized by a nonce UTxO.
@@ -107,12 +106,6 @@ initProtocol
         initRetiredOperators netId scripts refScripts
         initScheduler netId (transPOSIXTime currentTime) scripts
         initStateQueue netId (currentSlot, transPOSIXTime currentTime) scripts
-        addBtx $ \txBody ->
-          txBody
-            { C.txValidityLowerBound = C.TxValidityLowerBound (C.allegraBasedEra @C.ConwayEra) currentSlot
-            , C.txValidityUpperBound =
-                C.TxValidityUpperBound (C.shelleyBasedEra @C.ConwayEra) $ Just validityUpperBoundExclusive
-            }
         setMinAdaDepositAll params
     where
       scriptCurrencySymbol = currencySymbol . policyIdBytes . mintingPolicyId
