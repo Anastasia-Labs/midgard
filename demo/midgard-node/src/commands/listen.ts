@@ -8,6 +8,7 @@ import {
 import * as SDK from "@al-ft/midgard-sdk";
 import { NodeSdk } from "@effect/opentelemetry";
 import {
+  CML,
   TxSubmitError,
   fromHex,
   getAddressDetails,
@@ -33,10 +34,12 @@ import {
   ImmutableDB,
   InitDB,
   MempoolDB,
+  ProcessedMempoolDB,
   MempoolLedgerDB,
 } from "@/database/index.js";
 import { isHexString } from "@/utils.js";
 import {
+  HttpMiddleware,
   HttpRouter,
   HttpServer,
   HttpServerRequest,
@@ -117,6 +120,15 @@ const lookupTxCbor = (txHashBytes: Buffer, txHashParam: string) =>
     Effect.tap(() =>
       Effect.logInfo(
         `GET /${TX_ENDPOINT} - Transaction found in mempool: ${txHashParam}`,
+      ),
+    ),
+    Effect.catchTag("NotFoundError", () =>
+      ProcessedMempoolDB.retrieveTxCborByHash(txHashBytes).pipe(
+        Effect.tap(() =>
+          Effect.logInfo(
+            `GET /${TX_ENDPOINT} - Transaction found in processed mempool: ${txHashParam}`,
+          ),
+        ),
       ),
     ),
     Effect.catchTag("NotFoundError", () =>
@@ -389,9 +401,83 @@ const getTxsOfAddressHandler = Effect.gen(function* () {
 
     const cbors = yield* AddressHistoryDB.retrieve(addrDetails.address.bech32);
     yield* Effect.logInfo(`Found ${cbors.length} CBORs with ${addr}`);
-    return yield* HttpServerResponse.json({
-      txs: cbors.map(SDK.bufferToHex),
-    });
+
+    const enrichedTxs = yield* Effect.all(
+      cbors.map((cbor) =>
+        Effect.gen(function* () {
+          const hexCbor = SDK.bufferToHex(cbor);
+
+          const coreTx: CML.Transaction | null = yield* Effect.sync(() => {
+            try {
+              return CML.Transaction.from_cbor_bytes(cbor);
+            } catch {
+              return null;
+            }
+          });
+          if (coreTx === null) return { cbor: hexCbor, resolvedInputs: [] };
+
+          // All CML objects are WASM heap allocations — free them explicitly
+          // to prevent memory leaks under sustained load.
+          const txBody = coreTx.body();
+          const inputs = txBody.inputs();
+          const txHash = CML.hash_transaction(txBody);
+          const spendingTxId = Buffer.from(txHash.to_raw_bytes());
+          txHash.free();
+
+          try {
+            // Queried once per tx. This correctly resolves inputs without
+            // requiring parent CBOR fetches.
+            const resolvedInputAddrs =
+              yield* AddressHistoryDB.retrieveResolvedInputs(spendingTxId).pipe(
+                Effect.catchAll(() => Effect.succeed([])),
+              );
+
+            const resolvedInputsMap = new Map<string, string>();
+            for (const res of resolvedInputAddrs) {
+              resolvedInputsMap.set(SDK.bufferToHex(res.outref), res.address);
+            }
+
+            const resolvedInputs: Array<{
+              txHash: string;
+              index: number;
+              address: string | null;
+            }> = [];
+
+            for (let i = 0; i < inputs.len(); i++) {
+              const input = inputs.get(i);
+              try {
+                const txId = input.transaction_id();
+                const producingTxId = Buffer.from(txId.to_raw_bytes());
+                txId.free();
+
+                const outputIndex = Number(input.index());
+                const outrefHex = SDK.bufferToHex(
+                  Buffer.from(input.to_cbor_bytes()),
+                );
+                const resolvedAddress = resolvedInputsMap.get(outrefHex) ?? null;
+
+                resolvedInputs.push({
+                  txHash: SDK.bufferToHex(producingTxId),
+                  index: outputIndex,
+                  address: resolvedAddress,
+                });
+              } finally {
+                input.free();
+              }
+            }
+
+            return { cbor: hexCbor, resolvedInputs };
+          } finally {
+            inputs.free();
+            txBody.free();
+            coreTx.free();
+          }
+        }),
+      ),
+      { concurrency: 20 },
+    );
+
+    return yield* HttpServerResponse.json({ txs: enrichedTxs });
   } catch (error) {
     yield* Effect.logInfo(`Invalid address: ${addr}`);
     return yield* HttpServerResponse.json(
@@ -599,11 +685,11 @@ export const runNode = (withMonitoring?: boolean) =>
 
     yield* InitDB.program.pipe(Effect.provide(Database.layer));
 
-    yield* Genesis.program;
+    yield* Effect.fork(Genesis.program);
 
     const appThread = Layer.launch(
       Layer.provide(
-        HttpServer.serve(router(txQueue)),
+        HttpServer.serve(HttpMiddleware.cors()(router(txQueue))),
         NodeHttpServer.layer(createServer, { port: nodeConfig.PORT }),
       ),
     );

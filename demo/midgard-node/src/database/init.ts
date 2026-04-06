@@ -26,6 +26,7 @@ export const program: Effect.Effect<
   yield* sql`SET default_transaction_isolation TO 'serializable'`;
 
   yield* AddressHistory.createTable;
+  yield* AddressHistory.migrate;
   yield* BlocksDB.createTable;
   yield* Ledger.createTable(ConfirmedLedgerDB.tableName);
   yield* Ledger.createTable(LatestLedgerDB.tableName);

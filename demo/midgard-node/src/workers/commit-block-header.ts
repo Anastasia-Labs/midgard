@@ -87,7 +87,10 @@ const addDepositUTxOsToDatabases = (
               [LedgerTable.Columns.OUTPUT]: Buffer.from(
                 utxo.output().to_cbor_bytes(),
               ),
-              [LedgerTable.Columns.ADDRESS]: utxo.output().address().to_hex(),
+              [LedgerTable.Columns.ADDRESS]: utxo
+                .output()
+                .address()
+                .to_bech32(),
               [LedgerTable.Columns.TIMESTAMPTZ]: inclusionTime,
             }));
 
@@ -114,7 +117,14 @@ const addDepositUTxOsToDatabases = (
               [LedgerTable.Columns.TX_ID]: Buffer.from(
                 utxo.input().transaction_id().to_raw_bytes(),
               ),
-              [LedgerTable.Columns.ADDRESS]: utxo.output().address().to_hex(),
+              [LedgerTable.Columns.OUTREF]: Buffer.from(
+                utxo.input().to_cbor_bytes(),
+              ),
+              [LedgerTable.Columns.ADDRESS]: utxo
+                .output()
+                .address()
+                .to_bech32(),
+              direction: "output" as AddressHistoryDB.Direction,
             }));
 
           return Effect.all(
