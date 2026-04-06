@@ -191,9 +191,6 @@ pub type TxOrderEvent {
 pub type MidgardTxs =
   Dict<MidgardTxId, MidgardTx>
 
-pub type MidgardTxsCompact =
-  Dict<MidgardTxId, MidgardTxCompact>
-
 pub type MidgardTxsRoot =
   MerkleRoot<MidgardTxId, MidgardTxCompact>
 
