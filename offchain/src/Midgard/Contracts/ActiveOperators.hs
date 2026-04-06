@@ -3,6 +3,7 @@ module Midgard.Contracts.ActiveOperators (initActiveOperators, activateOperator)
 import Control.Monad.Except (MonadError (throwError))
 import Control.Monad.Reader (runReaderT)
 import Data.Coerce (coerce)
+import Data.Maybe (fromJust)
 
 import Cardano.Api qualified as C
 import Convex.BuildTx (
@@ -25,6 +26,7 @@ import Convex.Class (
   MonadUtxoQuery,
   utxosByPaymentCredential,
  )
+import Convex.PlutusLedger.V1 (transPubKeyHash)
 import Convex.Utxos (toTxOut)
 import PlutusLedgerApi.V3 (PubKeyHash (PubKeyHash))
 
@@ -36,6 +38,7 @@ import Midgard.Contracts.Utils (
   findUTxONonMembership,
   findUTxOWithAsset,
   findUTxOWithLink,
+  findUTxOWithNodeData,
   inlineDatumFromUTxO,
   listAssetNameFromUTxO,
   mintPlutusRefWithRedeemerFinal,
@@ -56,6 +59,7 @@ import Midgard.Scripts (
   ),
  )
 import Midgard.Types.ActiveOperators qualified as ActiveOperators
+import Midgard.Types.LinkedList (nodeKeyFromAssetName')
 import Midgard.Types.LinkedList qualified as LinkedList
 import Midgard.Types.RegisteredOperators qualified as RegisteredOperators
 import Midgard.Types.RetiredOperators qualified as RetiredOperators
@@ -117,8 +121,7 @@ activateOperator
   MidgardRefScripts {activeOperatorsPolicyRef, registeredOperatorsPolicyRef}
   operatorPkh = do
     let operatorPkhBytes = C.serialiseToRawBytes operatorPkh
-        registryNodeAsset = C.UnsafeAssetName $ RegisteredOperators.nodeAssetNamePrefix <> operatorPkhBytes
-        targetNodeAsset = C.UnsafeAssetName $ ActiveOperators.nodeAssetNamePrefix <> operatorPkhBytes
+        newNodeAsset = C.UnsafeAssetName $ ActiveOperators.nodeAssetNamePrefix <> operatorPkhBytes
         policyId = mintingPolicyId activeOperatorsPolicy
         policyId' = mintingPolicyId' activeOperatorsPolicy
         -- Need to know all the policies that will be invoked beforehand.
@@ -138,9 +141,21 @@ activateOperator
         C.PaymentCredentialByScript $
           validatorHash registeredOperatorsValidator
     (removalRegistryTxIn, (removalUtxoAnyEra, _)) <-
-      maybe (throwError "No registered operator found") pure $
-        findUTxOWithAsset registryUtxos $
-          C.AssetId (mintingPolicyId registeredOperatorsPolicy) registryNodeAsset
+      maybe (throwError "No registered operator found") pure
+        . flip
+          runReaderT
+          LinkedListInfo
+            { ownerPolicyId = mintingPolicyId registeredOperatorsPolicy
+            , rootAssetName = RegisteredOperators.rootAssetName
+            , nodeAssetNamePrefix = RegisteredOperators.nodeAssetNamePrefix
+            }
+        $ findUTxOWithNodeData
+          registryUtxos
+          RegisteredOperators.NodeData {operator = transPubKeyHash operatorPkh}
+    let removalRegistryTxOut = toTxOut @era removalUtxoAnyEra
+        removalRegistryAsset =
+          fromJust $ listAssetNameFromUTxO (mintingPolicyId registeredOperatorsPolicy) removalRegistryTxOut
+        removalRegistryKey = nodeKeyFromAssetName' RegisteredOperators.nodeAssetNamePrefixLen removalRegistryAsset
     (anchorRegistryTxIn, (anchorRegistryUtxoAnyEra, _)) <-
       maybe (throwError "No anchor utxo found") pure
         . flip
@@ -150,7 +165,7 @@ activateOperator
             , rootAssetName = RegisteredOperators.rootAssetName
             , nodeAssetNamePrefix = RegisteredOperators.nodeAssetNamePrefix
             }
-        $ findUTxOWithLink registryUtxos operatorPkhBytes
+        $ findUTxOWithLink registryUtxos removalRegistryKey
     -- Find insertion point in active operators for ordered insertion.
     activeOperatorsUtxos <- utxosByPaymentCredential $ C.PaymentCredentialByScript $ validatorHash activeOperatorsValidator
     (activeOperatorsAnchorTxIn, (activeOperatorsAnchorUtxoAnyEra, _)) <-
@@ -176,7 +191,6 @@ activateOperator
             }
         $ findUTxONonMembership retiredOperatorsUtxos operatorPkhBytes
     let registeredOperatorsAnchorTxOut = toTxOut @era anchorRegistryUtxoAnyEra
-        removalRegistryTxOut = toTxOut @era removalUtxoAnyEra
         activeOperatorsAnchorTxOut = toTxOut @era activeOperatorsAnchorUtxoAnyEra
     -- Extract datums required to patch links and build the new active node.
     removalRegistryDatum <-
@@ -253,13 +267,13 @@ activateOperator
         (validatorHash activeOperatorsValidator)
         activeOperatorDatum
         C.NoStakeAddress
-        (assetValue policyId' targetNodeAsset 1 <> C.lovelaceToValue operatorRequiredBond)
+        (assetValue policyId' newNodeAsset 1 <> C.lovelaceToValue operatorRequiredBond)
       -- Burn the removed registered operator NFT.
       mintPlutusRefWithRedeemerFinal
         registeredOperatorsPolicyRef
         (plutusVersion registeredOperatorsPolicy)
         (mintingPolicyId registeredOperatorsPolicy)
-        registryNodeAsset
+        removalRegistryAsset
         (-1)
         $ \txBody ->
           RegisteredOperators.ActivateOperator
@@ -280,7 +294,7 @@ activateOperator
         activeOperatorsPolicyRef
         (plutusVersion activeOperatorsPolicy)
         policyId
-        targetNodeAsset
+        newNodeAsset
         1
         $ \txBody ->
           ActiveOperators.ActivateOperator
@@ -290,7 +304,7 @@ activateOperator
             , activeOperatorAnchorElementOutputIndex =
                 toInteger $ findOutputIndexWithAsset policyId activeOperatorsAnchorAssetName txBody
             , activeOperatorInsertedNodeOutputIndex =
-                toInteger $ findOutputIndexWithAsset policyId targetNodeAsset txBody
+                toInteger $ findOutputIndexWithAsset policyId newNodeAsset txBody
             , registeredOperatorsRedeemerIndex =
                 toInteger $
                   findMintRedeemerIndex allPolicies txBody (mintingPolicyId registeredOperatorsPolicy)
