@@ -45,15 +45,21 @@ pub type Block {
 pub type HeaderHash =
   H28<Header>
 
+pub type MidgardLedger =
+  Dict<OutputReference, MidgardOutput>
+
+pub type MidgardLedgerRoot =
+  MerkleRoot<OutputReference, MidgardOutput>
+
 /// Midgard block header.
 /// Compact representation.
 pub type Header {
-  prev_utxos_root: MerkleRoot<Blake2b_256, ByteArray>,
-  utxos_root: MerkleRoot<Blake2b_256, ByteArray>,
-  transactions_root: MerkleRoot<Blake2b_256, ByteArray>,
-  deposits_root: MerkleRoot<Blake2b_256, ByteArray>,
-  withdrawals_root: MerkleRoot<Blake2b_256, ByteArray>,
-  tx_orders_root: MerkleRoot<Blake2b_256, ByteArray>,
+  prev_utxos_root: MidgardLedgerRoot,
+  utxos_root: MidgardLedgerRoot,
+  transactions_root: MidgardTxsRoot,
+  deposits_root: DepositsRoot,
+  withdrawals_root: WithdrawalsRoot,
+  tx_orders_root: MidgardTxsRoot,
   start_time: PosixTime,
   end_time: PosixTime,
   prev_header_hash: HeaderHash,
@@ -65,10 +71,10 @@ pub type Header {
 /// Full representation.
 /// This type is not used in onchain code.
 pub type BlockBody {
-  utxos: Dict<OutputReference, Output>,
-  transactions: Dict<MidgardTxId, MidgardTxCompact>,
-  deposits: Dict<DepositId, DepositEvent>,
-  withdrawals: Dict<WithdrawalId, WithdrawalEvent>,
+  utxos: MidgardLedger,
+  transactions: MidgardTxs,
+  deposits: Deposits,
+  withdrawals: Withdrawals,
 }
 
 // ## Confirmed state
@@ -78,7 +84,7 @@ pub type BlockBody {
 pub type ConfirmedState {
   header_hash: HeaderHash,
   prev_header_hash: HeaderHash,
-  utxo_root: MerkleRoot<Blake2b_256, ByteArray>,
+  utxo_root: MidgardLedgerRoot,
   start_time: PosixTime,
   end_time: PosixTime,
   protocol_version: Int,
@@ -108,6 +114,12 @@ pub fn unsafe_event_to_key_value_pair(
 
 // ### Deposit event
 
+pub type Deposits =
+  Dict<DepositId, DepositInfo>
+
+pub type DepositsRoot =
+  MerkleRoot<DepositId, DepositInfo>
+
 pub type DepositId =
   OutputReference
 
@@ -122,6 +134,12 @@ pub type DepositEvent {
 }
 
 // ### Withdrawal event
+
+pub type Withdrawals =
+  Dict<WithdrawalId, WithdrawalInfo>
+
+pub type WithdrawalsRoot =
+  MerkleRoot<WithdrawalId, WithdrawalInfo>
 
 pub type WithdrawalId =
   OutputReference
@@ -170,10 +188,25 @@ pub type TxOrderEvent {
 
 // ## Transaction
 
+pub type MidgardTxs =
+  Dict<MidgardTxId, MidgardTx>
+
+pub type MidgardTxsCompact =
+  Dict<MidgardTxId, MidgardTxCompact>
+
+pub type MidgardTxsRoot =
+  MerkleRoot<MidgardTxId, MidgardTxCompact>
+
 pub type MidgardTxId =
   H32<MidgardTxCompact>
 
-/// Midgard transaction.
+/// Midgard transaction. TODO: This is a stub!
+pub type MidgardTx {
+  body: MidgardTxBodyCompact,
+  wits: MidgardTxWitnessSetCompact,
+  validity: MidgardTxValidity,
+}
+
 /// Compact representation.
 pub type MidgardTxCompact {
   body: H32<MidgardTxBodyCompact>,
@@ -193,6 +226,25 @@ pub type MidgardTxValidity {
 
 // ### Transaction body
 
+/// TODO
+pub type MidgardAddress =
+  Address
+
+/// TODO
+pub type MidgardValue =
+  ValuePairs
+
+pub type MidgardValueCompact =
+  H32<MidgardValue>
+
+/// TODO
+pub type MidgardOutput {
+  address: MidgardAddress,
+  value: MidgardValue,
+  datum: Option<Data>,
+  reference_script: Option<ScriptHash>,
+}
+
 /// Datatype to allow inputs of a Midgard tx to be in custom order.
 pub type MidgardInputId {
   input_index: Int,
@@ -200,17 +252,29 @@ pub type MidgardInputId {
   output_index: Int,
 }
 
+pub type MidgardInputsRoot =
+  MerkleRoot<MidgardInputId, MidgardOutput>
+
+pub type MidgardOutputsRoot =
+  MerkleRoot<Int, MidgardOutput>
+
+pub type ObserversRoot =
+  MerkleRoot<Int, ScriptHash>
+
+pub type SignersRoot =
+  MerkleRoot<Int, VerificationKeyHash>
+
 /// Midgard transaction body.
 /// Compact representation.
 pub type MidgardTxBodyCompact {
-  spend_inputs: MerkleRoot<MidgardInputId, Output>,
-  reference_inputs: MerkleRoot<MidgardInputId, Output>,
-  outputs: MerkleRoot<Int, Output>,
+  spend_inputs: MidgardInputsRoot,
+  reference_inputs: MidgardInputsRoot,
+  outputs: MidgardOutputsRoot,
   fee: Lovelace,
   validity_interval: ValidityRange,
-  required_observers: MerkleRoot<Int, ScriptHash>,
-  required_signer_hashes: MerkleRoot<Int, VerificationKeyHash>,
-  mint: MerkleRoot<Int, MidgardValueCompact>,
+  required_observers: ObserversRoot,
+  required_signer_hashes: SignersRoot,
+  mint: MidgardValueCompact,
   script_integrity_hash: H32<Data>,
   auxiliary_data_hash: H32<Data>,
   network_id: MidgardNetworkId,
@@ -226,12 +290,21 @@ pub type MidgardNetworkId {
 
 // ### Transaction witnesses
 
+pub type AddressWitsRoot =
+  MerkleRoot<VerificationKeyHash, Signature>
+
+pub type MidgardScriptWitsRoot =
+  MerkleRoot<ScriptHash, MidgardScript>
+
+pub type RedeemersRoot =
+  MerkleRoot<ScriptPurpose, Redeemer>
+
 /// Midgard transaction witnesses.
 /// Compact representation.
 pub type MidgardTxWitnessSetCompact {
-  addr_tx_wits: MerkleRoot<VerificationKeyHash, (VerificationKey, Signature)>,
-  script_tx_wits: MerkleRoot<ScriptHash, MidgardScript>,
-  redeemer_tx_wits: MerkleRoot<ScriptPurpose, Redeemer>,
+  addr_tx_wits: AddressWitsRoot,
+  script_tx_wits: MidgardScriptWitsRoot,
+  redeemer_tx_wits: RedeemersRoot,
 }
 
 /// Midgard script -- either timelock (native) or Plutus (V3).
@@ -239,14 +312,4 @@ pub type MidgardTxWitnessSetCompact {
 pub type MidgardScript {
   Timelock { script: ByteArray }
   Plutus { script: ByteArray }
-}
-
-pub type MidgardValueCompact =
-  MerkleRoot<PolicyId, MerkleRoot<AssetName, Int>>
-
-//TODO This is a stub!
-pub type MidgardTx {
-  body: MidgardTxBodyCompact,
-  wits: MidgardTxWitnessSetCompact,
-  validity: MidgardTxValidity,
 }

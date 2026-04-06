@@ -6,15 +6,9 @@ use midgard/common/utils
 use midgard/ledger_state
 
 pub type Datum {
-  deposits_root: MerkleRoot<ledger_state.DepositId, ledger_state.DepositEvent>,
-  withdrawals_root: MerkleRoot<
-    ledger_state.WithdrawalId,
-    ledger_state.WithdrawalEvent,
-  >,
-  transactions_root: MerkleRoot<
-    ledger_state.MidgardTxId,
-    ledger_state.MidgardTx,
-  >,
+  deposits_root: ledger_state.DepositsRoot,
+  withdrawals_root: ledger_state.WithdrawalsRoot,
+  transactions_root: ledger_state.MidgardTxsRoot,
   resolution_claim: Option<ResolutionClaim>,
 }
 
