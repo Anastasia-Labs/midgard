@@ -86,7 +86,7 @@ export const insertEntries = (
       yield* Effect.logDebug("No entries provided, skipping insertion.");
       return;
     }
-    yield* sql`INSERT INTO ${sql(tableName)} ${sql.insert(entries)}`;
+    yield* sql`INSERT INTO ${sql(tableName)} ${sql.insert(entries)} ON CONFLICT (${sql(Columns.OUTREF)}) DO NOTHING`;
   }).pipe(
     Effect.withLogSpan(`insertEntries ${tableName}`),
     Effect.tapErrorTag("SqlError", (e) =>
