@@ -512,7 +512,9 @@ describe("AddressHistoryDB", () => {
         };
         const ahEntry1: AddressHistoryDB.Entry = {
           [LedgerUtils.Columns.TX_ID]: pTxId1,
+          [LedgerUtils.Columns.OUTREF]: pTxId1, // mock outref
           [LedgerUtils.Columns.ADDRESS]: address1,
+          direction: "output" as AddressHistoryDB.Direction,
         };
         const pTxId2 = randomBytes(32);
         const pTx2 = randomBytes(64);
@@ -525,7 +527,9 @@ describe("AddressHistoryDB", () => {
         };
         const ahEntry2: AddressHistoryDB.Entry = {
           [LedgerUtils.Columns.TX_ID]: pTxId2,
+          [LedgerUtils.Columns.OUTREF]: pTxId2, // mock outref
           [LedgerUtils.Columns.ADDRESS]: address2,
+          direction: "output" as AddressHistoryDB.Direction,
         };
 
         // via mempool
@@ -635,9 +639,11 @@ describe("AddressHistoryDB", () => {
 
         const result2 =
           yield* sql<AddressHistoryDB.Entry>`SELECT * FROM address_history`;
+        // With the new schema (unique per outref), a self-transfer produces
+        // multiple rows — one per output — all with the same address.
         expect(
-          result2.map((r) => r[LedgerUtils.Columns.ADDRESS]),
-        ).toStrictEqual([thisWalletAddress]);
+          new Set(result2.map((r) => r[LedgerUtils.Columns.ADDRESS])),
+        ).toStrictEqual(new Set([thisWalletAddress]));
       }),
     ),
   );

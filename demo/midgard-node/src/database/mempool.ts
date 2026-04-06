@@ -27,10 +27,11 @@ export const insert = (
     });
     // Insert produced UTxOs in `MempoolLedgerDB`.
     yield* MempoolLedgerDB.insert(produced);
+    // Capture input addresses BEFORE clearing so genesis UTxOs are still
+    // present in mempool_ledger when the address lookup runs.
+    yield* AddressHistoryDB.insert(txId, spent, produced);
     // Remove spent inputs from MempoolLedgerDB.
     yield* MempoolLedgerDB.clearUTxOs(spent);
-    // Add handled addresses to the lookup table
-    yield* AddressHistoryDB.insert(spent, produced);
   }).pipe(
     Effect.withLogSpan(`insert ${tableName}`),
     Effect.tapError((e) =>
@@ -64,10 +65,16 @@ export const insertMultiple = (
 
     // Insert produced UTxOs in `MempoolLedgerDB`.
     yield* MempoolLedgerDB.insert(allProduced);
+    // Capture input addresses per-tx BEFORE any UTxOs are cleared.
+    // All produced UTxOs are already in mempool_ledger at this point, so
+    // intra-batch chains (tx[n] spends tx[n-1]'s output) resolve correctly.
+    yield* Effect.forEach(
+      processedTxs,
+      (tx) => AddressHistoryDB.insert(tx.txId, tx.spent, tx.produced),
+      { concurrency: "unbounded" },
+    );
     // Remove spent inputs from MempoolLedgerDB.
     yield* MempoolLedgerDB.clearUTxOs(allSpent);
-    // Update AddressHistoryDB
-    yield* AddressHistoryDB.insert(allSpent, allProduced);
   }).pipe(
     Effect.withLogSpan(`insert ${tableName}`),
     Effect.tapError((e) => Effect.logError(`${tableName} db: insert: ${e}`)),
