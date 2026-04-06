@@ -6,7 +6,6 @@ module Midgard.Contracts.RegisteredOperators (
 
 import Control.Monad.Except (MonadError (throwError))
 import Control.Monad.Reader (runReaderT)
-import Data.Coerce (coerce)
 import Data.Time (addUTCTime)
 
 import Cardano.Api qualified as C
@@ -33,7 +32,7 @@ import Convex.Class (
  )
 import Convex.Utils (utcTimeToPosixTime)
 import Convex.Utxos (toTxOut)
-import PlutusLedgerApi.V3 (POSIXTime, PubKeyHash (PubKeyHash))
+import PlutusLedgerApi.V3 (POSIXTime)
 
 import Midgard.Constants (
   hubOracleAssetName,
@@ -74,6 +73,7 @@ import Midgard.Scripts (
   ),
  )
 import Midgard.Types.ActiveOperators qualified as ActiveOperators
+import Midgard.Types.LinkedList (nodeKeyFromPOSIXTime, nodeKeyFromPOSIXTime')
 import Midgard.Types.LinkedList qualified as LinkedList
 import Midgard.Types.RegisteredOperators qualified as RegisteredOperators
 import Midgard.Types.RetiredOperators qualified as RetiredOperators
@@ -141,9 +141,6 @@ registerOperator
   MidgardRefScripts {registeredOperatorsPolicyRef}
   operatorPkh = do
     let operatorPkhBytes = C.serialiseToRawBytes operatorPkh
-        newNodeAsset =
-          C.UnsafeAssetName $
-            C.serialiseToRawBytes RegisteredOperators.nodeAssetNamePrefix <> operatorPkhBytes
         policyId = mintingPolicyId' registeredOperatorsPolicy
     params <- queryProtocolParameters
     netId <- queryNetworkId
@@ -153,6 +150,9 @@ registerOperator
     let validityUpperBoundExclusive = C.SlotNo $ C.unSlotNo currentSlot + 300
     validityUpperBoundPosixExclusive <- slotToEndUTCTime $ validityUpperBoundExclusive - 1
     let activationTime = utcTimeToPosixTime $ addUTCTime registrationDuration validityUpperBoundPosixExclusive
+    let newNodeAsset =
+          C.UnsafeAssetName $
+            C.serialiseToRawBytes RegisteredOperators.nodeAssetNamePrefix <> nodeKeyFromPOSIXTime' activationTime
     -- Find the hub oracle utxo.
     hubOracleUtxos <- utxosByPaymentCredential $ C.PaymentCredentialByScript hubOracleScriptHash
     (hubOracleTxIn, _) <-
@@ -164,6 +164,10 @@ registerOperator
       utxosByPaymentCredential $
         C.PaymentCredentialByScript $
           validatorHash registeredOperatorsValidator
+    -- Note: Technically, this is meant to be inserted by descending activation time order.
+    -- In many cases, that is the same as prepending because the newest node should have the latest
+    -- activation time. So we prepend here.
+    -- But for a more robust method, we should explicitly find the node with the highest activation time.
     (rootRegistryTxIn, (rootRegistryUtxoAnyEra, _)) <-
       maybe (throwError "No registry root found") pure $
         findUTxOWithAsset registryUtxos $
@@ -223,7 +227,7 @@ registerOperator
           updatedRootDatum =
             LinkedList.Element
               { elementData = LinkedList.Root mempty
-              , elementLink = Just . coerce $ pubKeyHashFromCardano operatorPkh
+              , elementLink = Just $ nodeKeyFromPOSIXTime activationTime
               }
       payToScriptInlineDatum
         netId
@@ -231,14 +235,14 @@ registerOperator
         updatedRootDatum
         C.NoStakeAddress
         (assetValue policyId RegisteredOperators.rootAssetName 1)
-      -- The new node's datum should contain the original root link and proper activation time.
+      -- The new node's datum should contain the original root link and proper operator.
       let registeredOperatorDatum :: RegisteredOperators.Datum
           registeredOperatorDatum =
             LinkedList.Element
               { elementData =
                   LinkedList.Node
                     RegisteredOperators.NodeData
-                      { activationTime
+                      { operator = pubKeyHashFromCardano operatorPkh
                       }
               , elementLink = rootOriginalLink
               }
