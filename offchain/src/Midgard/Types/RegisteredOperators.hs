@@ -7,6 +7,7 @@ module Midgard.Types.RegisteredOperators (
   Datum,
   rootAssetName,
   nodeAssetNamePrefix,
+  nodeAssetNamePrefixLen,
 ) where
 
 import Data.ByteString (ByteString)
@@ -16,7 +17,6 @@ import GHC.Generics (Generic)
 import Cardano.Api qualified as C
 import PlutusLedgerApi.V3 (
   BuiltinByteString,
-  POSIXTime,
   PubKeyHash,
  )
 import PlutusTx.Blueprint (HasBlueprintDefinition, definitionRef)
@@ -31,8 +31,11 @@ rootAssetName = C.UnsafeAssetName $ BS8.pack "MIDGARD_REGISTERED_OPERATORS"
 nodeAssetNamePrefix :: ByteString
 nodeAssetNamePrefix = BS8.pack "MREG"
 
+nodeAssetNamePrefixLen :: Int
+nodeAssetNamePrefixLen = BS8.length nodeAssetNamePrefix
+
 newtype NodeData = NodeData
-  { activationTime :: POSIXTime
+  { operator :: PubKeyHash
   }
   deriving stock (Eq, Show, Generic)
   deriving anyclass (HasBlueprintDefinition)

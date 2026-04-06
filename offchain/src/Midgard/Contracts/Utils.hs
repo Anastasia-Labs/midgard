@@ -12,6 +12,7 @@ module Midgard.Contracts.Utils (
   findUTxOWithLink,
   listAssetNameFromUTxO,
   pubKeyHashFromCardano,
+  findUTxOWithNodeData,
   mintPlutusRefWithRedeemerFinal,
 ) where
 
@@ -150,6 +151,23 @@ findUTxONonMembership (UtxoSet utxoMap) keyToAdd = do
     -- Whether or not the link is "larger" (i.e beyond)
     isLarger _ Nothing = True
     isLarger assetToAdd (Just linkKey) = linkKey > assetToAdd
+
+-- | Find a utxo in the utxo set that contains the given node data.
+findUTxOWithNodeData ::
+  forall nodeData ctx a.
+  (Eq nodeData, FromData nodeData) =>
+  UtxoSet ctx a -> nodeData -> ReaderT LinkedListInfo Maybe (C.TxIn, (C.InAnyCardanoEra (C.TxOut ctx), a))
+findUTxOWithNodeData (UtxoSet utxoMap) expectedNodeData = do
+  LinkedListInfo {ownerPolicyId} <- ask
+  let targetUtxos = Map.toList utxoMap
+  lift . flip find targetUtxos $ \(_, (C.InAnyCardanoEra _ utxo, _)) ->
+    case inlineDatumFromUTxO @(LinkedList.Element BuiltinData nodeData) utxo of
+      -- Not a valid UTxO
+      Just LinkedList.Element {elementData = LinkedList.Node actualNodeData} ->
+        -- Must have a corresponding list asset.
+        let isAuthentic = isJust $ listAssetNameFromUTxO ownerPolicyId utxo
+         in isAuthentic && actualNodeData == expectedNodeData
+      _ -> False
 
 {- | From the given UTxO set, representing an ordered linked list structure, find the "anchor" UTxO that
 links to the given key (in asset name form).
