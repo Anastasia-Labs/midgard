@@ -11,12 +11,13 @@ type NodeConfigDep = {
   L1_OGMIOS_KEY: string;
   L1_KUPO_KEY: string;
   L1_OPERATOR_SEED_PHRASE: string;
+  L1_OPERATOR_SEED_PHRASE_FOR_BLOCK_COMMITMENT: string;
   L1_OPERATOR_SEED_PHRASE_FOR_MERGE_TX: string;
   NETWORK: Network;
   PROTOCOL_PARAMETERS: SDK.ProtocolParameters;
   PORT: number;
-  WAIT_BETWEEN_BLOCK_COMMITMENT: number;
-  WAIT_BETWEEN_BLOCK_CONFIRMATION: number;
+  WAIT_BETWEEN_BLOCK_COMMITMENTS: number;
+  WAIT_BETWEEN_BLOCK_SUBMISSIONS: number;
   WAIT_BETWEEN_USER_EVENT_FETCHES: number;
   WAIT_BETWEEN_MERGE_TXS: number;
   PROM_METRICS_PORT: number;
@@ -40,6 +41,9 @@ const makeConfig = Effect.gen(function* () {
   const ogmiosKey = yield* Config.string("L1_OGMIOS_KEY");
   const kupoKey = yield* Config.string("L1_KUPO_KEY");
   const operatorSeedPhrase = yield* Config.string("L1_OPERATOR_SEED_PHRASE");
+  const operatorSeedPhraseForBlockCommitment = yield* Config.string(
+    "L1_OPERATOR_SEED_PHRASE_FOR_BLOCK_COMMITMENT",
+  );
   const operatorSeedPhraseForMergeTx = yield* Config.string(
     "L1_OPERATOR_SEED_PHRASE_FOR_MERGE_TX",
   );
@@ -50,11 +54,11 @@ const makeConfig = Effect.gen(function* () {
     "Custom",
   )("NETWORK");
   const port = yield* Config.integer("PORT").pipe(Config.withDefault(3000));
-  const waitBetweenBlockCommitment = yield* Config.integer(
-    "WAIT_BETWEEN_BLOCK_COMMITMENT",
+  const waitBetweenBlockCommitments = yield* Config.integer(
+    "WAIT_BETWEEN_BLOCK_COMMITMENTS",
   ).pipe(Config.withDefault(1000));
-  const waitBetweenBlockConfirmation = yield* Config.integer(
-    "WAIT_BETWEEN_BLOCK_CONFIRMATION",
+  const waitBetweenBlockSubmissions = yield* Config.integer(
+    "WAIT_BETWEEN_BLOCK_SUBMISSIONS",
   ).pipe(Config.withDefault(10000));
   const waitBetweenMergeTxs = yield* Config.integer(
     "WAIT_BETWEEN_MERGE_TXS",
@@ -160,12 +164,14 @@ const makeConfig = Effect.gen(function* () {
     L1_OGMIOS_KEY: ogmiosKey,
     L1_KUPO_KEY: kupoKey,
     L1_OPERATOR_SEED_PHRASE: operatorSeedPhrase,
+    L1_OPERATOR_SEED_PHRASE_FOR_BLOCK_COMMITMENT:
+      operatorSeedPhraseForBlockCommitment,
     L1_OPERATOR_SEED_PHRASE_FOR_MERGE_TX: operatorSeedPhraseForMergeTx,
     NETWORK: network,
     PROTOCOL_PARAMETERS: SDK.getProtocolParameters(network),
     PORT: port,
-    WAIT_BETWEEN_BLOCK_COMMITMENT: waitBetweenBlockCommitment,
-    WAIT_BETWEEN_BLOCK_CONFIRMATION: waitBetweenBlockConfirmation,
+    WAIT_BETWEEN_BLOCK_COMMITMENTS: waitBetweenBlockCommitments,
+    WAIT_BETWEEN_BLOCK_SUBMISSIONS: waitBetweenBlockSubmissions,
     WAIT_BETWEEN_MERGE_TXS: waitBetweenMergeTxs,
     WAIT_BETWEEN_USER_EVENT_FETCHES: waitBetweenUserEventFetches,
     PROM_METRICS_PORT: promMetricsPort,

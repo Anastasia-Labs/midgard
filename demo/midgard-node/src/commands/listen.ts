@@ -29,9 +29,9 @@ import {
 } from "effect";
 import {
   AddressHistoryDB,
-  BlocksDB,
+  BlocksTxsDB,
   ImmutableDB,
-  InitDB,
+  DBInitialization,
   MempoolDB,
   MempoolLedgerDB,
 } from "@/database/index.js";
@@ -49,17 +49,16 @@ import { HttpBodyError } from "@effect/platform/HttpBody";
 import * as Genesis from "@/genesis.js";
 import * as Initialization from "@/transactions/initialization.js";
 import * as Reset from "@/reset.js";
-import { SerializedStateQueueUTxO } from "@/workers/utils/commit-block-header.js";
 import { DatabaseError } from "@/database/utils/common.js";
 import { TxConfirmError, TxSignError } from "@/transactions/utils.js";
 import {
   syncUserEventsFiber,
-  blockConfirmationFiber,
   blockCommitmentFiber,
   blockCommitmentAction,
   mergeFiber,
   mergeAction,
   monitorMempoolFiber,
+  blockSubmissionFiber,
   txQueueProcessorFiber,
 } from "@/fibers/index.js";
 
@@ -239,7 +238,7 @@ const getBlockHandler = Effect.gen(function* () {
       { status: 400 },
     );
   }
-  const hashes = yield* BlocksDB.retrieveTxHashesByHeaderHash(
+  const hashes = yield* BlocksTxsDB.retrieveTxHashesByHeaderHash(
     Buffer.from(fromHex(hdrHash)),
   );
   yield* Effect.logInfo(
@@ -460,9 +459,9 @@ ${emoji} ${u.utxo.txHash}#${u.utxo.outputIndex}${info}`;
   ),
 );
 
-const getLogBlocksDBHandler = Effect.gen(function* () {
-  yield* Effect.logInfo(`✍  Querying BlocksDB...`);
-  const allBlocksData = yield* BlocksDB.retrieve;
+const getLogBlocksTxsDBHandler = Effect.gen(function* () {
+  yield* Effect.logInfo(`✍  Querying BlocksTxsDB...`);
+  const allBlocksData = yield* BlocksTxsDB.retrieve;
   const keyValues: Record<string, number> = allBlocksData.reduce(
     (acc: Record<string, number>, entry) => {
       const bHex = toHex(entry.header_hash);
@@ -486,11 +485,15 @@ ${bHex} -──▶ ${keyValues[bHex]} tx(s)`;
 `;
   yield* Effect.logInfo(drawn);
   return yield* HttpServerResponse.json({
-    message: `BlocksDB drawn in server logs!`,
+    message: `BlocksTxsDB drawn in server logs!`,
   });
 }).pipe(
-  Effect.catchTag("HttpBodyError", (e) => failWith500("GET", "logBlocksDB", e)),
-  Effect.catchTag("DatabaseError", (e) => handleDBGetFailure("logBlocksDB", e)),
+  Effect.catchTag("HttpBodyError", (e) =>
+    failWith500("GET", "logBlocksTxsDB", e),
+  ),
+  Effect.catchTag("DatabaseError", (e) =>
+    handleDBGetFailure("logBlocksTxsDB", e),
+  ),
 );
 
 const getLogGlobalsHandler = Effect.gen(function* () {
@@ -501,26 +504,11 @@ const getLogGlobalsHandler = Effect.gen(function* () {
     globals.LATEST_SYNC_TIME_OF_STATE_QUEUE_LENGTH,
   );
   const RESET_IN_PROGRESS: boolean = yield* Ref.get(globals.RESET_IN_PROGRESS);
-  const AVAILABLE_CONFIRMED_BLOCK: "" | SerializedStateQueueUTxO =
-    yield* Ref.get(globals.AVAILABLE_CONFIRMED_BLOCK);
-  const PROCESSED_UNSUBMITTED_TXS_COUNT: number = yield* Ref.get(
-    globals.PROCESSED_UNSUBMITTED_TXS_COUNT,
-  );
-  const PROCESSED_UNSUBMITTED_TXS_SIZE: number = yield* Ref.get(
-    globals.PROCESSED_UNSUBMITTED_TXS_SIZE,
-  );
-  const UNCONFIRMED_SUBMITTED_BLOCK_TX_HASH: string = yield* Ref.get(
-    globals.UNCONFIRMED_SUBMITTED_BLOCK_TX_HASH,
-  );
 
   yield* Effect.logInfo(`
   BLOCKS_IN_QUEUE ⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅ ${BLOCKS_IN_QUEUE}
   LATEST_SYNC ⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅ ${new Date(Number(LATEST_SYNC_TIME_OF_STATE_QUEUE_LENGTH)).toLocaleString()}
   RESET_IN_PROGRESS ⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅ ${RESET_IN_PROGRESS}
-  AVAILABLE_CONFIRMED_BLOCK ⋅⋅⋅⋅⋅⋅⋅⋅⋅ ${JSON.stringify(AVAILABLE_CONFIRMED_BLOCK)}
-  PROCESSED_UNSUBMITTED_TXS_COUNT ⋅⋅⋅ ${PROCESSED_UNSUBMITTED_TXS_COUNT}
-  PROCESSED_UNSUBMITTED_TXS_SIZE ⋅⋅⋅⋅ ${PROCESSED_UNSUBMITTED_TXS_SIZE}
-  UNCONFIRMED_SUBMITTED_BLOCK_TX_HASH ⋅⋅⋅⋅⋅⋅⋅ ${UNCONFIRMED_SUBMITTED_BLOCK_TX_HASH}
 `);
   return yield* HttpServerResponse.json({
     message: `Global variables logged!`,
@@ -577,7 +565,7 @@ const router = (
       HttpRouter.get(`/${MERGE_ENDPOINT}`, getMergeHandler),
       HttpRouter.get(`/${RESET_ENDPOINT}`, getResetHandler),
       HttpRouter.get(`/${STATE_QUEUE_ENDPOINT}`, getStateQueueHandler),
-      HttpRouter.get(`/logBlocksDB`, getLogBlocksDBHandler),
+      HttpRouter.get(`/logBlocksTxsDB`, getLogBlocksTxsDBHandler),
       HttpRouter.get(`/logGlobals`, getLogGlobalsHandler),
       HttpRouter.post(`/${SUBMIT_ENDPOINT}`, postSubmitHandler(txQueue)),
     )
@@ -597,7 +585,7 @@ export const runNode = (withMonitoring?: boolean) =>
 
     const txQueue = yield* Queue.unbounded<string>();
 
-    yield* InitDB.program.pipe(Effect.provide(Database.layer));
+    yield* DBInitialization.program.pipe(Effect.provide(Database.layer));
 
     yield* Genesis.program;
 
@@ -615,10 +603,10 @@ export const runNode = (withMonitoring?: boolean) =>
       [
         appThread,
         blockCommitmentFiber(
-          mkSchedule(nodeConfig.WAIT_BETWEEN_BLOCK_COMMITMENT),
+          mkSchedule(nodeConfig.WAIT_BETWEEN_BLOCK_COMMITMENTS),
         ),
-        blockConfirmationFiber(
-          mkSchedule(nodeConfig.WAIT_BETWEEN_BLOCK_CONFIRMATION),
+        blockSubmissionFiber(
+          mkSchedule(nodeConfig.WAIT_BETWEEN_BLOCK_SUBMISSIONS),
         ),
         syncUserEventsFiber(
           mkSchedule(nodeConfig.WAIT_BETWEEN_USER_EVENT_FETCHES),
