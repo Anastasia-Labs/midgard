@@ -268,7 +268,7 @@ validator spend(
           expect active_node_link_from_redeemer == correct_active_node_link
 
           // 7. The new strikes count must not exceed the maximum allowed. This
-          //    is there to cover one specific edger case: If the appointed
+          //    is there to cover one specific edge case: If the appointed
           //    operator is the only member of the active operators set,
           //    inactivity causes the scheduler to rewind back to the same
           //    operator. Allowing this to happen indefinitely, gives an

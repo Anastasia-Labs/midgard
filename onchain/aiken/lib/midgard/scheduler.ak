@@ -29,24 +29,11 @@ pub type NeglectedUserEvent {
 }
 
 pub type AdvancingApproach {
+  GoToNextDueToEndOfShift { new_shifts_operator_node_ref_input_index: Int }
   RewindDueToEndOfShift {
     active_operators_root_ref_input_index: Int,
     active_operators_last_node_ref_input_index: Int,
     registered_element_ref_input_index: Int,
-  }
-  GoToNextDueToEndOfShift { new_shifts_operator_node_ref_input_index: Int }
-  RewindDueToSkippedOperator {
-    active_operators_root_ref_input_index: Int,
-    skipped_operator_node_input_index: Int,
-    active_operators_spend_redeemer_index: Int,
-    state_queue_ref_input_index: Int,
-    hub_oracle_ref_input_index: Int,
-    // If only one operator exists in the active set, we won't want to refer to
-    // the new shift's operator UTxO. TODO? I'm assuming we can't refer to a
-    // UTxO that's getting spent in the same transaction.
-    m_active_operators_last_node_ref_input_index: Option<Int>,
-    registered_element_ref_input_index: Int,
-    neglected_user_event: NeglectedUserEvent,
   }
   GoToNextDueToSkippedOperator {
     new_shifts_operator_node_ref_input_index: Int,
@@ -55,16 +42,28 @@ pub type AdvancingApproach {
     state_queue_ref_input_index: Int,
     hub_oracle_ref_input_index: Int,
   }
+  RewindDueToSkippedOperator {
+    active_operators_root_ref_input_index: Int,
+    skipped_operator_node_input_index: Int,
+    active_operators_spend_redeemer_index: Int,
+    state_queue_ref_input_index: Int,
+    hub_oracle_ref_input_index: Int,
+    // If only one operator exists in the active set, we won't want to refer to
+    // the new shift's operator UTxO.
+    m_active_operators_last_node_ref_input_index: Option<Int>,
+    registered_element_ref_input_index: Int,
+    neglected_user_event: NeglectedUserEvent,
+  }
+  GoToNextDueToOperatorRemoval {
+    active_operators_mint_redeemer_index: Int,
+    removal_reason: OperatorRemovalReason,
+  }
   RewindDueToOperatorRemoval {
     active_operators_last_node_ref_input_index: Int,
     active_operators_mint_redeemer_index: Int,
     m_active_operators_last_node_ref_input_index: Option<Int>,
     removal_reason: OperatorRemovalReason,
     registered_element_ref_input_index: Int,
-  }
-  GoToNextDueToOperatorRemoval {
-    active_operators_mint_redeemer_index: Int,
-    removal_reason: OperatorRemovalReason,
   }
   AppointFirstOperator {
     new_shifts_operator_node_ref_input_index: Int,

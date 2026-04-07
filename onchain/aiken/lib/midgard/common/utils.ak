@@ -15,8 +15,9 @@ use cardano/transaction.{
   InlineDatum, Input, Output, OutputReference, Redeemer, ScriptPurpose, Spend,
 }
 use env
-use midgard/common/constants.{max_validity_range_length, posix_time_none}
+use midgard/common/constants.{posix_time_none}
 use midgard/common/types.{H28, H32, MerkleRoot, PosixTime, Proof, ValuePairs}
+use midgard/protocol_parameters.{max_validity_range_length}
 
 /// Check whether the interval starts on or after the point.
 pub fn is_hereafter(self: Interval, point: Int) -> Bool {

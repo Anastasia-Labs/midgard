@@ -30,3 +30,5 @@ pub const max_inactivity_between_block_commitments: PosixTimeDuration =
 pub const new_shift_inactivity_grace_period: PosixTimeDuration = 5 * 60 * 1000
 
 pub const max_inactivity_strikes: Int = 5
+
+pub const max_validity_range_length: PosixTimeDuration = 5 * 60 * 1000
