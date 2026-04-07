@@ -1,5 +1,5 @@
 import { Database } from "@/services/database.js";
-import { Effect, Data as EffectData } from "effect";
+import { Effect } from "effect";
 import { DatabaseError } from "@/database/utils/common.js";
 import * as UserEvents from "@/database/utils/user-events.js";
 import { CML, Data, PolicyId } from "@lucid-evolution/lucid";
