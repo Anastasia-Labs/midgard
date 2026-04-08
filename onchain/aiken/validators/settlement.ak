@@ -83,7 +83,7 @@ validator spend(hub_oracle: ScriptHash, settlement_policy_id: ScriptHash) {
           hub.get_datum(reference_inputs, hub_oracle, hub_ref_input_index)
 
         // 6. The transaction must include an input (`operator_node`), spent via
-        //    `the UpdateBondHoldNewSettlement` redeemer, of an
+        //    the `UpdateBondHoldNewSettlement` redeemer, of an
         //    `active_operators` node with a key matching the resolution claim's
         //    operator.
         expect active_operators.UpdateBondHoldNewSettlement {

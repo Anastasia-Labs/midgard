@@ -74,7 +74,6 @@ validator mint(
         active_operators_element_ref_input_index,
         operator_origin,
       } -> {
-        // retired_operators_element_ref_input_index,
         let Transaction {
           inputs,
           outputs,
@@ -119,10 +118,19 @@ validator mint(
           outputs |> list.at(registered_node_output_index)
 
         // 5. Prepending to the head of the linked list must be proper.
+        //
+        //    NOTE: "Prepending" is the *intended* scenario. However, since the
+        //          upper bound of the transaction's validity range determines
+        //          the operator's activation time (which is also the new node's
+        //          key), it is possible for it to be much larger than what it
+        //          should be. Requiring the new nodes to be prepended (i.e.
+        //          expecting their anchors to be root elements) would cause
+        //          registered operators after such badly formed nodes to wait
+        //          unnecessarily longer.
         {
           let
             _anchor_lovelace_change,
-            m_anchor_key,
+            _m_anchor_key,
             _anchor_data,
             registered_node_lovelace,
             registered_node_key,
@@ -136,14 +144,11 @@ validator mint(
               mint,
             )
 
-          // 6. Anchor element must be root.
-          expect m_anchor_key == None
-
-          // 7. The Lovelace in the registered node must equal the
+          // 6. The Lovelace in the registered node must equal the
           //    `required_bond` Midgard parameter.
           expect registered_node_lovelace >= required_bond
 
-          // 8. Let `activation_time` be equal to the sum of the Midgard
+          // 7. Let `activation_time` be equal to the sum of the Midgard
           //    `registration_duration` protocol parameter and the inclusive
           //    upper bound of the transaction's validity interval.
           let activation_time =
@@ -151,15 +156,15 @@ validator mint(
               validity_range,
             )
 
-          // 9. The key of registered node must match the big-endian encoding of
+          // 8. The key of registered node must match the big-endian encoding of
           //    `activation_time`
           expect
             registered_node_key == activation_time_to_node_key(activation_time)
 
           when operator_origin is {
             ReturningOperator { retired_operators_redeemer_index } -> {
-              // 10a. `ReregisterOperator` redeemer of the retired operators set
-              //      must be invoked with a matching operator key.
+              // 9a. `ReregisterOperator` redeemer of the retired operators set
+              //     must be invoked with a matching operator key.
               expect retired_operators.ReregisterOperator {
                 retired_operator_key,
                 retired_operator_bond_unlock_time,
@@ -172,7 +177,7 @@ validator mint(
                     )
               expect registering_operator == retired_operator_key
 
-              // 11a. The returning operators bond unlock time must be carried
+              // 10a. The returning operators bond unlock time must be carried
               //      over.
               let expected_node_data: Data =
                 NodeData {
@@ -185,8 +190,8 @@ validator mint(
               True
             }
             NewOperator { retired_operators_element_ref_input_index } -> {
-              // 10b. Registering operator must not be present in the retired
-              //      operators set.
+              // 9b. Registering operator must not be present in the retired
+              //     operators set.
               expect
                 registering_operator
                   |> operator_is_not_a_member(
@@ -197,7 +202,7 @@ validator mint(
                       retired_operators_mint_script_hash,
                     )
 
-              // 11b. Registered node's data must carry the registering
+              // 10b. Registered node's data must carry the registering
               //      operator, with no bond unlock time.
               let expected_node_data: Data =
                 NodeData {
