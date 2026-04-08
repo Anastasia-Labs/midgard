@@ -8,7 +8,7 @@
 \label{h:operator-directory}
 
 Midgard operators receive and process L2 events from users, collate them into blocks, publish the full block contents on the data availability layer, and commit the block headers to Midgard's state queue on L1.
-This responsibility is shared among the operators on a rotating schedule, with each operator getting a turn to exclusively process L2 events and then commit their block of events at the end of their turn.
+This responsibility is shared among the operators on a rotating schedule, with each operator getting a turn to exclusively process L2 events and then commit their blocks of events until the end of their turn.
 
 Anyone can register to become a Midgard operator if they post the required ADA bond.
 Registrants must wait a prescribed period of time before they activate as an operator.
@@ -23,9 +23,9 @@ Every forfeited bond is split into a reward paid to the fraud prover and a slash
 Among the Midgard protocol parameters, the \code{fraud\_prover\_reward} and \code{slashing\_penalty} parameters must sum up to the \code{required\_bond} parameter.
 
 To ensure liveness, a penalty mechanism gives strikes to inactive operators.
-After enough strikes, violating operator's bond can be partially slashed and transferred to the penalty box set.
+After enough strikes, violating operator's bond can be partially slashed and their remaining bond transferred to the retired operators set.
 
-Operators in penalty box can either recover the remainder of their bond, or deposit the slashed portion in order to get back in the registered operators set.
+Partially slashed operators can either recover the remainder of their bond (after maturity of their latest commitment), or deposit the slashed portion in order to get back in the registered operators set, or get slashed if their latest commitment is proven fraudulent.
 
 % TODO: Should DDoS attacks be considered here?
 
@@ -39,23 +39,25 @@ It separates operators into four groups based on their status, primarily using o
       It is implemented as a key-descending linked list with operators' activation times as keys, where each new registrant is prepended to the beginning of the list.
       This means that the earliest registrant to become eligible for activation is always at the last node of the list.
     \item \code{active\_operators} is a set that tracks active operators participating in the rotating schedule, implemented as a key-ascending linked list with operator PKHs as node keys.
+      Each node stores the time after which operators can recover their bonds, along with the strikes given to inactive operators.
     \item \code{retired\_operators} is a set that tracks retired operators waiting to recover their ADA bonds, implemented as a key-ascending linked list with operator PKHs as node keys.
-    \item \code{penalty\_box} is a set that tracks penalized operators for violating liveness of Midgard by taking too long to submit block commitments multiple times.
-      This set is also implemented as a key-ascending linked list with operator PKHs as node keys.
+      Operators that are partially slashed due to inactivity are also stored in this set.
 \end{itemize}
 
 The Operator Directory keeps track of the activation time of every registered operator in their node keys, which indicates when the operator will become eligible for activation.
-It also keeps track of any holds on the ADA bonds of active, retired and penalized operators, which prevent those operators from recovering their bonds until their latest committed blocks and latest settlement resolution claims mature.
+It also keeps track of any holds on the ADA bonds of operators, which prevent those operators from recovering their bonds until their latest committed blocks and latest settlement resolution claims mature.
 \begin{align*}
-    \T{RegisteredOperator} &\coloneq \Bigl( \T{operator}: \T{PubKeyHash} \Bigr) \\
+    \T{RegisteredOperator} &\coloneq{} \left\{
+      \begin{array}{ll}
+        \T{operator} : & \T{PubKeyHash} \\
+        \T{bond\_unlock\_time} : & \T{Option}(\T{PosixTime})
+      \end{array} \right\} \\
     \T{ActiveOperator}     &\coloneq{} \left\{
       \begin{array}{ll}
         \T{bond\_unlock\_time} : & \T{Option}(\T{PosixTime}) \\
         \T{inactivity\_strikes} : & \T{Integer}
       \end{array} \right\} \\
     \T{RetiredOperator}    &\coloneq \Bigl( \T{bond\_unlock\_time}:
-        \T{Option}(\T{PosixTime}) \Bigr) \\
-    \T{PenalizedOperator}  &\coloneq \Bigl( \T{bond\_unlock\_time}:
         \T{Option}(\T{PosixTime}) \Bigr)
 \end{align*}
 
@@ -87,32 +89,50 @@ Redeemers:
     \item[Register Operator.] Insert a key-descending node into the \code{registered\_operators} queue with the operator's ADA bond, the registration time as key, and storing the operator's pub key hash.
       Grouped conditions:
         \begin{itemize}
-            \item Verify the registration and key-descending insertion of the registrant to the registered operators:
-            \begin{enumerate}
-                \item The transaction must Insert a node into the \code{registered\_operators} queue.
-                  Let that node be \code{registered\_node}.
-                \item Anchor element of \code{registered\_node} must be root.
-                \item Let \code{activation\_time} be equal to the sum of the Midgard \code{registration\_duration} protocol parameter and the inclusive upper bound of the transaction's validity interval.
-                \item The key of \code{registered\_node} must be the big-endian encoding of \code{activation\_time} in as few bytes as possible.
-                \item The \code{operator} field of \code{registered\_node} must correspond to a PKH that has signed the transaction.
-                \item The Lovelace in the \code{registered\_node} must equal the \code{required\_bond} Midgard parameter.
-            \end{enumerate}
+            \item Verify operator consent:
+                \begin{enumerate}
+                    \item Let \code{registering\_operator} be a redeemer argument, indicating the operator being added to the list.
+                    \item \code{registering\_operator} must sign the transaction.
+                \end{enumerate}
+            \item Verify operator's non-membership in the active operators set:
+                \begin{enumerate}[resume]
+                    \item The transaction must include the Midgard hub oracle NFT in a reference input to retrieve the policy ID of the active operators set.
+                    \item The transaction must reference an element utxo from the active operators set.
+                      Let that element be \code{active\_element}.
+                    \item If \code{active\_element} is a node, its key must be smaller than \code{registering\_operator}.
+                    \item If \code{active\_element} has a link, it must be larger than \code{registering\_operator}.
+                \end{enumerate}
+            \item Verify descending insertion of a new node in the registered operators set (see \cref{h:list-minting-helpers}):
+                \begin{enumerate}[resume]
+                    \item Let \code{registering\_lovelace}, \code{registering\_key} and \code{registering\_data} be corresponding values of the inserted node.
+                    \item \code{registering\_lovelace} must be greater than or equal to the \code{required\_bond} protocol parameter.
+                    \item Let \code{activation\_time} be equal to the sum of the Midgard \code{registration\_duration} protocol parameter and the inclusive upper bound of the transaction's validity interval.
+                    \item \code{registering\_key} must equal the big-endian encoding of \code{activation\_time} in as few bytes as possible.
+                    \item Let \code{operator\_origin} be a redeemer argument that indicates whether the operator is being transferred from the retired set or not:
+                      \begin{enumerate}
+                        \item If the operator is new, verify its non-membership in the retired set.
+                          Let \code{registering\_bond\_unlock\_time} be \code{None}.
+                        \item Otherwise, verify the retired set burns its node NFT with a matching Register Operator redeemer.
+                          Let \code{registering\_bond\_unlock\_time} be the value retrieved from the removed node shared via this redeemer.
+                      \end{enumerate}
+                    \item \code{registering\_data} must carry \code{registering\_operator} as its \code{operator}, and \code{registering\_bond\_unlock\_time} as its \code{bond\_unlock\_time}.
+                \end{enumerate}
         \end{itemize}
     \item[Activate Operator.] Transfer an operator node from the \code{registered\_operators} queue to the \code{active\_operators} set.
       Grouped conditions:
         \begin{itemize}
+            \item Verify that the registrant is being added to active operators:
+                \begin{enumerate}[resume]
+                    \item The transaction must include the Midgard hub oracle NFT in a reference input.
+                    \item Let \code{active\_operators} be the policy ID in the corresponding field of the Midgard hub oracle.
+                    \item The transaction must Insert a node into the \code{active\_operators} set, as evidenced by minting a \code{active\_operators} node NFT for the \code{registered\_node} key via the Activate Operator redeemer.
+                \end{enumerate}
             \item Remove the registrant from the registered operators if it is eligible to activate:
             \begin{enumerate}
                 \item The transaction must Remove a node from the \code{registered\_operators} queue.
                   Let that node be \code{registered\_node}.
                 \item Let \code{activation\_time} be the big-endian decoding of \code{registered\_node}'s key.
-                \item The inclusive lower bound of the transaction validity interval must meet or exceed the \code{activation\_time}.
-            \end{enumerate}
-            \item Verify that the registrant is being added to active operators:
-            \begin{enumerate}[resume]
-                \item The transaction must include the Midgard hub oracle NFT in a reference input.
-                \item Let \code{active\_operators} be the policy ID in the corresponding field of the Midgard hub oracle.
-                \item The transaction must Insert a node into the \code{active\_operators} set, as evidenced by minting a \code{active\_operators} node NFT for the \code{registered\_node} key via the Activate Operator redeemer.
+                \item The transaction's validity interval must be entirely after \code{activation\_time}.
             \end{enumerate}
             \item Verify that the registrant is not already retired:
             \begin{enumerate}[resume]
