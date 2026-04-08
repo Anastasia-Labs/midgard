@@ -18,7 +18,7 @@ import {
   UserEvents,
   WithdrawalsDB,
 } from "./index.js";
-import { AlwaysSucceedsContract } from "@/services/always-succeeds.js";
+import { MidgardContracts } from "@/services/midgard-contracts.js";
 
 export const tableName = "unsubmitted_blocks";
 
@@ -232,10 +232,10 @@ export const getAppendedStateQueueUTxOFromEntry = (
 ): Effect.Effect<
   SDK.StateQueueUTxO,
   SDK.CborDeserializationError | SDK.CmlUnexpectedError | SDK.StateQueueError,
-  AlwaysSucceedsContract
+  MidgardContracts
 > =>
   Effect.gen(function* () {
-    const { stateQueue } = yield* AlwaysSucceedsContract;
+    const { stateQueue } = yield* MidgardContracts;
     const producedUTxOs = yield* deserializeUTxOsFromStorage(
       entry[Columns.PRODUCED_UTXOS],
     );

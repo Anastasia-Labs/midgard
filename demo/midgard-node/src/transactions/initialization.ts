@@ -1,6 +1,6 @@
 import { Effect } from "effect";
 import { Lucid } from "@/services/lucid.js";
-import { AlwaysSucceedsContract } from "@/services/always-succeeds.js";
+import { MidgardContracts } from "@/services/midgard-contracts.js";
 import * as SDK from "@al-ft/midgard-sdk";
 import { handleSignSubmit } from "@/transactions/utils.js";
 
@@ -51,7 +51,7 @@ export const createFraudProofCatalogueMpt = (
 
 export const program = Effect.gen(function* () {
   const lucidService = yield* Lucid;
-  const contracts = yield* AlwaysSucceedsContract;
+  const contracts = yield* MidgardContracts;
 
   yield* lucidService.switchToOperatorsMainWallet;
   const lucid = lucidService.api;

@@ -74,7 +74,7 @@ program
       runNode(withMonitoring),
       Effect.provide(Services.NodeConfig.layer),
       Effect.provide(Services.Database.layer),
-      Effect.provide(Services.AlwaysSucceedsContract.Default),
+      Effect.provide(Services.MidgardContracts.Default),
       Effect.provide(Services.Lucid.Default),
       Effect.provide(Services.Globals.Default),
     );

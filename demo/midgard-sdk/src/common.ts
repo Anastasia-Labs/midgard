@@ -245,7 +245,7 @@ export type FraudProofs = {
 };
 
 export type MidgardValidators = {
-  hubOracle: AuthenticatedValidator;
+  hubOracle: MintingValidator;
   stateQueue: AuthenticatedValidator;
   scheduler: AuthenticatedValidator;
   registeredOperators: AuthenticatedValidator;

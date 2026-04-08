@@ -1,7 +1,7 @@
 import * as SDK from "@al-ft/midgard-sdk";
 import { Effect, Ref } from "effect";
 import {
-  AlwaysSucceedsContract,
+  MidgardContracts,
   Globals,
   Lucid,
   Database,
@@ -27,10 +27,10 @@ const fetchUserEventUTxOs = (
     withdrawals: SDK.WithdrawalUTxO[];
   },
   SDK.LucidError,
-  AlwaysSucceedsContract
+  MidgardContracts
 > =>
   Effect.gen(function* () {
-    const { deposit, txOrder, withdrawal } = yield* AlwaysSucceedsContract;
+    const { deposit, txOrder, withdrawal } = yield* MidgardContracts;
     const inclusionTimeLowerBound = BigInt(inclusionStartTime);
     const inclusionTimeUpperBound = BigInt(inclusionEndTime);
     const depositFetchConfig: SDK.DepositFetchConfig = {
@@ -78,7 +78,7 @@ const userEventUTxOsToEntry = (
 export const syncUserEvents: Effect.Effect<
   void,
   SDK.LucidError | DatabaseError,
-  AlwaysSucceedsContract | Lucid | Database | Globals
+  MidgardContracts | Lucid | Database | Globals
 > = Effect.gen(function* () {
   const { api: lucid } = yield* Lucid;
   const globals = yield* Globals;
@@ -125,7 +125,7 @@ export const syncUserEventsFiber = (
 ): Effect.Effect<
   void,
   SDK.LucidError | DatabaseError,
-  AlwaysSucceedsContract | Lucid | Database | Globals
+  MidgardContracts | Lucid | Database | Globals
 > =>
   Effect.gen(function* () {
     yield* Effect.logInfo("🏦 Sync user events to db");

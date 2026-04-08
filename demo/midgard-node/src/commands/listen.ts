@@ -2,7 +2,7 @@ import {
   Database,
   NodeConfig,
   Lucid,
-  AlwaysSucceedsContract,
+  MidgardContracts,
   Globals,
 } from "@/services/index.js";
 import * as SDK from "@al-ft/midgard-sdk";
@@ -408,7 +408,7 @@ const getTxsOfAddressHandler = Effect.gen(function* () {
 const getStateQueueHandler = Effect.gen(function* () {
   yield* Effect.logInfo(`✍  Drawing state queue UTxOs...`);
   const lucid = yield* Lucid;
-  const alwaysSucceeds = yield* AlwaysSucceedsContract;
+  const alwaysSucceeds = yield* MidgardContracts;
   const fetchConfig: SDK.StateQueueFetchConfig = {
     stateQueuePolicyId: alwaysSucceeds.stateQueue.policyId,
     stateQueueAddress: alwaysSucceeds.stateQueue.spendingScriptAddress,
@@ -550,7 +550,7 @@ const router = (
   | Database
   | Lucid
   | NodeConfig
-  | AlwaysSucceedsContract
+  | MidgardContracts
   | HttpServerRequest.HttpServerRequest
   | Globals
 > =>

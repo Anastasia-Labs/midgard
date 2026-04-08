@@ -14,7 +14,7 @@ import {
 import {
   Database,
   Lucid,
-  AlwaysSucceedsContract,
+  MidgardContracts,
   NodeConfig,
 } from "@/services/index.js";
 import { MempoolLedgerDB, BlocksDB } from "@/database/index.js";
@@ -31,13 +31,13 @@ import { fromHex } from "@lucid-evolution/lucid";
 const seedBlocksDBFromChain: Effect.Effect<
   SeededOutput | string,
   never,
-  AlwaysSucceedsContract | Database | Lucid
+  MidgardContracts | Database | Lucid
 > = Effect.gen(function* () {
   yield* Effect.logInfo(
     "🔹 BlocksDB is empty - attempting to seed from chain...",
   );
   const lucid = yield* Lucid;
-  const { stateQueue } = yield* AlwaysSucceedsContract;
+  const { stateQueue } = yield* MidgardContracts;
   const fetchConfig: SDK.StateQueueFetchConfig = {
     stateQueueAddress: stateQueue.spendingScriptAddress,
     stateQueuePolicyId: stateQueue.policyId,
@@ -101,7 +101,7 @@ const mainProgram: Effect.Effect<
   | DatabaseError
   | MptError
   | TxSignError,
-  AlwaysSucceedsContract | Database | Lucid | NodeConfig
+  MidgardContracts | Database | Lucid | NodeConfig
 > = Effect.gen(function* () {
   const optLatestBlock = yield* BlocksDB.retrieveLatestEntry;
   return yield* Option.match(optLatestBlock, {
@@ -215,7 +215,7 @@ const inputData = workerData as WorkerInput;
 
 const program = pipe(
   wrapper(inputData),
-  Effect.provide(AlwaysSucceedsContract.Default),
+  Effect.provide(MidgardContracts.Default),
   Effect.provide(Database.layer),
   Effect.provide(Lucid.Default),
   Effect.provide(NodeConfig.layer),

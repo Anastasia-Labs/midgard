@@ -6,7 +6,7 @@ import { CML, Data, PolicyId } from "@lucid-evolution/lucid";
 import * as SDK from "@al-ft/midgard-sdk";
 import { NodeConfig } from "@/services/config.js";
 import { Ledger } from "./index.js";
-import { AlwaysSucceedsContract } from "@/services/always-succeeds.js";
+import { MidgardContracts } from "@/services/midgard-contracts.js";
 
 export const tableName = "deposits_utxos";
 
@@ -132,10 +132,10 @@ export const entryToLedgerEntry = (
 ): Effect.Effect<
   Ledger.Entry,
   SDK.CmlDeserializationError,
-  NodeConfig | AlwaysSucceedsContract
+  NodeConfig | MidgardContracts
 > =>
   Effect.gen(function* () {
-    const { deposit: depositAuthVal } = yield* AlwaysSucceedsContract;
+    const { deposit: depositAuthVal } = yield* MidgardContracts;
     const cmlUTxO = yield* entryToCMLUTxO(deposit, depositAuthVal.policyId);
     return {
       [Ledger.Columns.ADDRESS]: cmlUTxO.output().address().to_bech32(),

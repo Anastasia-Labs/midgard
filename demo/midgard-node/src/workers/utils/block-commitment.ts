@@ -17,7 +17,7 @@ import {
   serializeUTxOsForStorage,
 } from "@/database/utils/common.js";
 import {
-  AlwaysSucceedsContract,
+  MidgardContracts,
   Database,
   Lucid,
   NodeConfig,
@@ -260,7 +260,7 @@ export const applyDepositsToLedger = (
     sizeOfDeposits: number;
   },
   MptError | SDK.CmlDeserializationError,
-  NodeConfig | AlwaysSucceedsContract
+  NodeConfig | MidgardContracts
 > =>
   Effect.gen(function* () {
     yield* Effect.logInfo(
@@ -311,7 +311,7 @@ const prepareLucidForBlockCommitment = (
     appendedUTxO: SDK.StateQueueUTxO;
   },
   SDK.CborDeserializationError | SDK.CmlUnexpectedError | SDK.StateQueueError,
-  AlwaysSucceedsContract | Lucid
+  MidgardContracts | Lucid
 > =>
   Effect.gen(function* () {
     const newWalletUTxOs = yield* deserializeUTxOsFromStorage(
@@ -349,7 +349,7 @@ export const buildNewBlockEntry = (
   | SDK.LucidError
   | SDK.StateQueueError
   | TxSignError,
-  AlwaysSucceedsContract | Lucid
+  MidgardContracts | Lucid
 > =>
   Effect.gen(function* () {
     const { lucidPreparation, appendedUTxO } =
@@ -367,7 +367,7 @@ export const buildNewBlockEntry = (
       );
     const newHeaderHash = yield* SDK.hashBlockHeader(newHeader);
     yield* Effect.logInfo(`🔹 New header hash is: ${newHeaderHash}`);
-    const { stateQueue } = yield* AlwaysSucceedsContract;
+    const { stateQueue } = yield* MidgardContracts;
     const commitBlockParams: SDK.StateQueueCommitBlockParams = {
       anchorUTxO: appendedUTxO,
       updatedAnchorDatum: updatedNodeDatum,

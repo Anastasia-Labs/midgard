@@ -1,7 +1,7 @@
 import * as SDK from "@al-ft/midgard-sdk";
 import { DatabaseError, NotFoundError } from "@/database/utils/common.js";
 import {
-  AlwaysSucceedsContract,
+  MidgardContracts,
   Database,
   Lucid,
   NodeConfig,
@@ -180,7 +180,7 @@ const processEventsForLedgerApplication = (
   | SDK.DataCoercionError
   | DatabaseError
   | NotFoundError,
-  NodeConfig | Database | AlwaysSucceedsContract
+  NodeConfig | Database | MidgardContracts
 > =>
   Effect.gen(function* () {
     const blockEvents = yield* BlocksDB.retrieveEvents(startDate, endDate);
@@ -331,7 +331,7 @@ export const blockSubmissionFiber = (
 ): Effect.Effect<
   void,
   never,
-  NodeConfig | Database | Lucid | AlwaysSucceedsContract
+  NodeConfig | Database | Lucid | MidgardContracts
 > =>
   Effect.gen(function* () {
     yield* Effect.logInfo("🔗 Block submission fiber started.");

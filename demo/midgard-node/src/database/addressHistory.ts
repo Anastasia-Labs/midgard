@@ -18,7 +18,7 @@ import {
   DepositsDB,
 } from "./index.js";
 import { ProcessedTx } from "@/utils.js";
-import { AlwaysSucceedsContract } from "@/services/always-succeeds.js";
+import { MidgardContracts } from "@/services/midgard-contracts.js";
 import { NodeConfig } from "@/services/config.js";
 
 const tableName = "address_history";
@@ -188,7 +188,7 @@ export const depositEntryToEntry = (
 ): Effect.Effect<
   Entry,
   SDK.CmlDeserializationError,
-  NodeConfig | AlwaysSucceedsContract
+  NodeConfig | MidgardContracts
 > =>
   Effect.gen(function* () {
     const ledgerEntry = yield* DepositsDB.entryToLedgerEntry(deposit);
@@ -206,7 +206,7 @@ export const insertDeposits = (
 ): Effect.Effect<
   void,
   SDK.CmlDeserializationError | DatabaseError,
-  NodeConfig | Database | AlwaysSucceedsContract
+  NodeConfig | Database | MidgardContracts
 > =>
   Effect.all(deposits.map((d) => depositEntryToEntry(d, status))).pipe(
     Effect.andThen(upsertEntries),

@@ -8,7 +8,7 @@ import {
   addressDataFromBech32,
   Bech32DeserializationError,
   MidgardValidators,
-  AuthenticatedValidator,
+  MintingValidator,
   ScriptHashSchema,
   UnspecifiedNetworkError,
 } from "@/common.js";
@@ -27,6 +27,8 @@ import {
   UTxO,
   Data,
   Assets,
+  credentialToAddress,
+  scriptHashToCredential,
 } from "@lucid-evolution/lucid";
 
 export type HubOracleConfig = {
@@ -82,8 +84,9 @@ export const utxosToHubOracleUTxOs = (
  * Parameters for the init transaction.
  */
 export type HubOracleInitParams = {
-  hubOracleValidator: AuthenticatedValidator;
+  hubOracleMintValidator: MintingValidator;
   validators: HubOracleValidators;
+  oneShotNonceUTxO: UTxO;
 };
 
 export type HubOracleValidators = Omit<
@@ -122,7 +125,7 @@ export const makeHubOracleDatum = (
         validators.txOrder,
         validators.settlement,
         validators.payout,
-      ].map((authVal: AuthenticatedValidator) =>
+      ].map((authVal) =>
         addressDataFromBech32(authVal.spendingScriptAddress),
       ),
       { concurrency: "unbounded" },
@@ -183,18 +186,23 @@ export const incompleteHubOracleInitTxProgram = (
       const encodedDatum = Data.to<HubOracleDatum>(datum, HubOracleDatum);
 
       const assets: Assets = {
-        [toUnit(params.hubOracleValidator.policyId, HUB_ORACLE_ASSET_NAME)]: 1n,
+        [toUnit(params.hubOracleMintValidator.policyId, HUB_ORACLE_ASSET_NAME)]:
+          1n,
       };
 
       return lucid
         .newTx()
+        .collectFrom([params.oneShotNonceUTxO])
         .mintAssets(assets, Data.void())
         .pay.ToAddressWithData(
-          params.hubOracleValidator.spendingScriptAddress,
+          credentialToAddress(
+            network,
+            scriptHashToCredential(params.hubOracleMintValidator.policyId),
+          ),
           { kind: "inline", value: encodedDatum },
           assets,
         )
-        .attach.MintingPolicy(params.hubOracleValidator.mintingScript);
+        .attach.MintingPolicy(params.hubOracleMintValidator.mintingScript);
     } else {
       return yield* new UnspecifiedNetworkError({
         message: "",

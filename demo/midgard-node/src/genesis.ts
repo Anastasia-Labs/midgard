@@ -1,7 +1,7 @@
 import { Effect, Schedule } from "effect";
 import * as SDK from "@al-ft/midgard-sdk";
 import {
-  AlwaysSucceedsContract,
+  MidgardContracts,
   Lucid,
   Database,
   NodeConfig,
@@ -52,7 +52,7 @@ ${Array.from(new Set(config.GENESIS_UTXOS.map((u) => u.address))).join("\n")}`,
 
 const genesisTxOrderTx = (nonceUTxO: UTxO) =>
   Effect.gen(function* () {
-    const { txOrder } = yield* AlwaysSucceedsContract;
+    const { txOrder } = yield* MidgardContracts;
     const config = yield* NodeConfig;
     const lucid = yield* Lucid;
 
@@ -136,10 +136,10 @@ const genesisDepositTx = (
   | SDK.HashingError
   | SDK.LucidError
   | SDK.UnspecifiedNetworkError,
-  AlwaysSucceedsContract | Lucid | NodeConfig
+  MidgardContracts | Lucid | NodeConfig
 > =>
   Effect.gen(function* () {
-    const { deposit: depositAuthValidator } = yield* AlwaysSucceedsContract;
+    const { deposit: depositAuthValidator } = yield* MidgardContracts;
     const config = yield* NodeConfig;
     const lucid = yield* Lucid;
 
@@ -224,7 +224,7 @@ const submitComposedGenesisUserEvents = Effect.gen(function* () {
 export const program: Effect.Effect<
   void,
   never,
-  AlwaysSucceedsContract | Database | Lucid | NodeConfig
+  MidgardContracts | Database | Lucid | NodeConfig
 > = Effect.gen(function* () {
   yield* insertGenesisUtxos;
   yield* submitComposedGenesisUserEvents.pipe(
