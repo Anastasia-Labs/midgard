@@ -15,6 +15,14 @@ pub const fraud_prover_reward: Int = 0
 
 pub const required_bond: Int = slashing_penalty + fraud_prover_reward
 
+/// TODO: This value is currently designed to be paid as tx fee. This means if a
+///       partially slashed operator is also proven to be fraudulent, the
+///       portion paid as fee must be at least:
+///       ```
+///       slashing_penalty - inactivity_slashing_penalty
+///       ```
+///       Note that if `inactivity_slashing_penalty` is larger than
+///       `slashing_penalty`, fraud provers will be rewarded a smaller amount.
 pub const inactivity_slashing_penalty: Int = 0
 
 /// Max inactivity of operators after the earliest user event slated for

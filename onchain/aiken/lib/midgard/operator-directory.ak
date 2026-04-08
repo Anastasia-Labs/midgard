@@ -328,7 +328,7 @@ pub fn slash_fraudulent_operator(
     anchor_lovelace_change,
     m_anchor_key,
     _anchor_data,
-    _slashed_operator_node_lovelace,
+    slashed_operator_node_lovelace,
     slashed_operator_node_key,
     _slashed_operator_node_data,
     slashed_operator_node_link,
@@ -347,10 +347,18 @@ pub fn slash_fraudulent_operator(
   //    specified via the redeemer.
   expect slashed_operator_node_key == slashed_operator
 
-  // 6. Slashing penalty must be paid to the Cardano treasury via the
-  //    transaction fee. Fraud prover is assumed to be the signer of the
-  //    transaction, and therefore will receive the remaining bond.
-  expect fee >= slashing_penalty
+  expect
+    if slashed_operator_node_lovelace < required_bond {
+      // 6a. If the operator is partially slashed, the portion already sent to the
+      //     Cardano treasury doesn't need to be deposited again (since partial
+      //     slashing is entirely paid as tx fee).
+      fee >= slashing_penalty - inactivity_slashing_penalty
+    } else {
+      // 6b. Slashing penalty must be paid to the Cardano treasury via the
+      //     transaction fee. Fraud prover is assumed to be the signer of the
+      //     transaction, and therefore will receive the remaining bond.
+      fee >= slashing_penalty
+    }
 
   // 7. If operator is currently active, validate scheduler datum is getting
   //    updated. Otherwise, show the currently appointed operator is different
