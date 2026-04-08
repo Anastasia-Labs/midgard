@@ -179,7 +179,7 @@ validator mint(
           // 4. The new block in state queue must have the hash of the header as
           //    its linked list key.
           let output_header_hash =
-            crypto.blake2b_224(builtin.un_b_data(output_header_data))
+            crypto.blake2b_224(builtin.serialise_data(output_header_data))
           expect output_header_key == output_header_hash
 
           // 5. New element's data must be `Header` with a valid time range.

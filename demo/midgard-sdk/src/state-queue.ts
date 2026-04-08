@@ -23,27 +23,26 @@ import {
   OutputReferenceSchema,
   POSIXTime,
   POSIXTimeSchema,
-  getStateToken,
   hashHexWithBlake2b224,
-  utxosAtByNFTPolicyId,
   AuthenticatedValidator,
+  utxosAtByNFTPolicyId,
 } from "@/common.js";
 import { LucidError, makeReturn } from "@/common.js";
+import { getStateToken } from "@/internals.js";
 import {
   NodeDatum,
   NodeDatumSchema,
+  NODE_ASSET_NAME,
   NodeKey,
   getNodeDatumFromUTxO,
   LinkedListError,
   incompleteInitLinkedListTxProgram,
 } from "@/linked-list.js";
 import { ConfirmedState, Header } from "@/ledger-state.js";
-import {
-  GENESIS_HASH_28,
-  GENESIS_HASH_32,
-  INITIAL_PROTOCOL_VERSION,
-  NODE_ASSET_NAME,
-} from "./constants.js";
+
+export const GENESIS_HEADER_HASH = "00".repeat(28);
+export const GENESIS_UTXO_ROOT = "00".repeat(32);
+export const GENESIS_PROTOCOL_VERSION = 0n;
 
 export const StateQueueConfigSchema = Data.Object({
   initUTxO: OutputReferenceSchema,
@@ -85,6 +84,23 @@ export type StateQueueUTxO = {
   datum: StateQueueDatum;
   assetName: string;
 };
+
+/**
+ * Extracts the block header hash from a state queue UTxO.
+ *
+ * If the UTxO is the confirmed state node (`datum.key === "Empty"`), it
+ * returns `confirmedState.headerHash` extracted from datum.
+ * Otherwise, it unsafely drops the first 4 bytes from `assetName` and returns
+ * the suffix as the header hash.
+ */
+export const headerHashFromStateQueueUTxO = (
+  stateQueueUTxO: StateQueueUTxO,
+): Effect.Effect<string, DataCoercionError> =>
+  stateQueueUTxO.datum.key === "Empty"
+    ? getConfirmedStateFromStateQueueDatum(stateQueueUTxO.datum).pipe(
+        Effect.andThen(({ data }) => data.headerHash),
+      )
+    : Effect.succeed(stateQueueUTxO.assetName.slice(NODE_ASSET_NAME.length));
 
 export type StateQueueFetchConfig = {
   stateQueueAddress: Address;
@@ -444,12 +460,9 @@ export const incompleteCommitBlockHeaderTxProgram = (
       data: Data.castTo(newHeader, Header),
     };
 
-    // Add 1 minute
-    const endTime = Date.now();
-    const endTimePlusOneMinute = endTime + 60000;
+    // Note that we are not specifying a validity range (TODO?).
     const tx = lucid
       .newTx()
-      .validTo(endTimePlusOneMinute)
       .collectFrom([latestBlock.utxo], Data.void())
       .pay.ToContract(
         config.stateQueueAddress,
@@ -688,12 +701,12 @@ export const incompleteInitStateQueueTxProgram = (
 ): Effect.Effect<TxBuilder, never> =>
   Effect.gen(function* () {
     const stateQueueData: ConfirmedState = {
-      headerHash: GENESIS_HASH_28,
-      prevHeaderHash: GENESIS_HASH_28,
-      utxoRoot: GENESIS_HASH_32,
+      headerHash: GENESIS_HEADER_HASH,
+      prevHeaderHash: GENESIS_HEADER_HASH,
+      utxoRoot: GENESIS_UTXO_ROOT,
       startTime: params.genesisTime,
       endTime: params.genesisTime,
-      protocolVersion: INITIAL_PROTOCOL_VERSION,
+      protocolVersion: GENESIS_PROTOCOL_VERSION,
     };
 
     return yield* incompleteInitLinkedListTxProgram(lucid, {
