@@ -4,7 +4,7 @@ use aiken/primitive/bytearray
 use aiken_design_patterns/linked_list
 use cardano/assets.{AssetName, PolicyId}
 use midgard/common/types.{PosixTime}
-use midgard/operator_directory
+use midgard/operator_directory.{SlashingArguments}
 
 /// TODO: Refer to state queue's library module.
 pub const root_asset_name: AssetName = "MIDGARD_REGISTERED_OPERATORS"
@@ -74,6 +74,7 @@ pub type MintRedeemer {
     duplicate_node_ref_input_index: Int,
     duplicate_operator_status: DuplicateOperatorStatus,
   }
+  SlashFraudulentOperator { slashing_arguments: SlashingArguments }
 }
 
 /// Converts the given integer to a big endian byte array, in as few bytes as

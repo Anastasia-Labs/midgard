@@ -13,19 +13,8 @@ use midgard/hub_oracle as hub
 use midgard/protocol_parameters.{
   inactivity_slashing_penalty, required_bond, slashing_penalty,
 }
-use midgard/scheduler
 use midgard/settlement
 use midgard/state_queue
-
-pub type OperatorRemovalSchedulerSync {
-  ShowOperatorIsInactive { scheduler_ref_input_index: Int }
-  ShowSchedulerIsAdvancing {
-    scheduler_input_index: Int,
-    scheduler_redeemer_index: Int,
-    removing_operators_anchor_element_key: Option<linked_list.NodeKey>,
-    removing_operator_is_the_last_member: Bool,
-  }
-}
 
 pub type SlashingReason {
   SlashOperatorForBadState { state_queue_redeemer_index: Int }
@@ -41,7 +30,6 @@ pub type SlashingArguments {
   slashed_operator_anchor_element_input_index: Int,
   slashed_operator_node_input_index: Int,
   slashed_operator_anchor_element_output_index: Int,
-  operator_removal_scheduler_sync: OperatorRemovalSchedulerSync,
   slashing_reason: SlashingReason,
 }
 
@@ -213,76 +201,22 @@ pub fn validate_operator_transfer_and_get_inserted_data(
   True
 }
 
-/// If the subject operator is currently appointed active, this function
-/// validates scheduler UTxO is spent. Otherwise, shows that the currently
-/// appointed operator is different from the subject operator.
-pub fn validate_scheduler_syncs_with_operator_removal(
-  operator_removal_scheduler_sync: OperatorRemovalSchedulerSync,
-  subject_operator: VerificationKeyHash,
-  subject_operators_anchor_key: Option<linked_list.NodeKey>,
-  subject_operators_link: linked_list.Link,
-  hub_datum: hub.Datum,
-  inputs: List<Input>,
-  reference_inputs: List<Input>,
-  redeemers: Pairs<ScriptPurpose, Redeemer>,
-) -> Bool {
-  when operator_removal_scheduler_sync is {
-    ShowOperatorIsInactive { scheduler_ref_input_index } -> {
-      let scheduler_datum =
-        reference_inputs
-          |> scheduler.get_datum(hub_datum.scheduler, scheduler_ref_input_index)
-      when scheduler_datum is {
-        scheduler.NoActiveOperators -> True
-        scheduler.ActiveOperator { operator, .. } ->
-          operator != subject_operator
-      }
-    }
-    ShowSchedulerIsAdvancing {
-      scheduler_input_index,
-      scheduler_redeemer_index,
-      removing_operators_anchor_element_key,
-      removing_operator_is_the_last_member,
-    } -> {
-      // Redeemer arguments must be validated for scheduler to use.
-      expect
-        removing_operators_anchor_element_key == subject_operators_anchor_key
-
-      let (scheduler_datum_data, scheduler_redeemer_data) =
-        utils.get_inline_datum_and_spending_redeemer_data_at(
-          hub_datum.scheduler_addr,
-          scheduler_input_index,
-          scheduler_redeemer_index,
-          inputs,
-          redeemers,
-        )
-      expect scheduler.ActiveOperator { operator, .. } = scheduler_datum_data
-      expect scheduler.SpendRedeemer {
-        scheduler_input_index: input_index_from_scheduler_redeemer,
-        advancing_approach,
-        ..
-      } = scheduler_redeemer_data
-      expect operator == subject_operator
-      expect scheduler_input_index == input_index_from_scheduler_redeemer
-      expect
-        when advancing_approach is {
-          scheduler.GoToNextDueToOperatorRemoval { .. } |
-          scheduler.RewindDueToOperatorRemoval { .. } -> True
-          _ -> False
-        }
-      when subject_operators_link is {
-        None -> removing_operator_is_the_last_member == True
-        Some(_) -> removing_operator_is_the_last_member == False
-      }
-    }
-  }
-}
-
-/// Validations for slashing an operator from either the active or retired
-/// operators set.
-pub fn slash_fraudulent_operator(
+/// Validations for slashing a fraudulent operator from either the active,
+/// retired or registered operators set.
+pub fn slash_fraudulent_operator_and_get_info(
   hub_oracle_script_hash: PolicyId,
   slashing_arguments: SlashingArguments,
   tx: Transaction,
+  further_validations: fn(
+    VerificationKeyHash,
+    Option<linked_list.NodeKey>,
+    linked_list.Link,
+    hub.Datum,
+    List<Input>,
+    List<Input>,
+    Pairs<ScriptPurpose, Redeemer>,
+  ) ->
+    Bool,
 ) -> linked_list.Eval {
   let SlashingArguments {
     slashed_operator,
@@ -290,7 +224,6 @@ pub fn slash_fraudulent_operator(
     slashed_operator_anchor_element_input_index,
     slashed_operator_node_input_index,
     slashed_operator_anchor_element_output_index,
-    operator_removal_scheduler_sync,
     slashing_reason,
   } = slashing_arguments
 
@@ -360,20 +293,17 @@ pub fn slash_fraudulent_operator(
       fee >= slashing_penalty
     }
 
-  // 7. If operator is currently active, validate scheduler datum is getting
-  //    updated. Otherwise, show the currently appointed operator is different
-  //    from the slashing operator.
+  // 7. Given custom validations must pass.
   expect
-    operator_removal_scheduler_sync
-      |> validate_scheduler_syncs_with_operator_removal(
-          slashed_operator,
-          m_anchor_key,
-          slashed_operator_node_link,
-          hub_datum,
-          inputs,
-          reference_inputs,
-          redeemers,
-        )
+    further_validations(
+      slashed_operator,
+      m_anchor_key,
+      slashed_operator_node_link,
+      hub_datum,
+      inputs,
+      reference_inputs,
+      redeemers,
+    )
 
   when slashing_reason is {
     SlashOperatorForBadState { state_queue_redeemer_index } -> {
@@ -416,6 +346,19 @@ pub fn slash_fraudulent_operator(
       True
     }
   }
+}
+
+pub fn slash_non_active_fraudulent_operator(
+  hub_oracle_script_hash: PolicyId,
+  slashing_arguments: SlashingArguments,
+  tx: Transaction,
+) -> linked_list.Eval {
+  slash_fraudulent_operator_and_get_info(
+    hub_oracle_script_hash,
+    slashing_arguments,
+    tx,
+    fn(_, _, _, _, _, _, _) -> Bool { True },
+  )
 }
 
 pub fn cross_validate_slashing_reason(

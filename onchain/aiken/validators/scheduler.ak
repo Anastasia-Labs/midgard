@@ -897,7 +897,7 @@ fn validate_active_operator_removal(
     OperatorRetirement -> {
       expect active_operators.RetireOperator {
         active_operator_key,
-        operator_removal_scheduler_sync: operator_directory.ShowSchedulerIsAdvancing {
+        operator_removal_scheduler_sync: active_operators.ShowSchedulerIsAdvancing {
           scheduler_input_index: scheduler_input_index_from_active_ops_redeemer,
           removing_operators_anchor_element_key,
           removing_operator_is_the_last_member,
@@ -921,16 +921,18 @@ fn validate_active_operator_removal(
       )
     }
     OperatorSlashing -> {
-      expect active_operators.SlashOperator{slashing_arguments: operator_directory.SlashingArguments {
-        slashed_operator,
-        operator_removal_scheduler_sync: operator_directory.ShowSchedulerIsAdvancing {
+      expect active_operators.SlashOperator {
+        slashing_arguments: operator_directory.SlashingArguments {
+          slashed_operator,
+          ..
+        },
+        operator_removal_scheduler_sync: active_operators.ShowSchedulerIsAdvancing {
           scheduler_input_index: scheduler_input_index_from_active_ops_redeemer,
           removing_operators_anchor_element_key,
           removing_operator_is_the_last_member,
           ..
         },
-        ..
-      }} = active_operators_mint_redeemer_data
+      } = active_operators_mint_redeemer_data
 
       // 2b. Operator in the spent scheduler UTxO must match the slashed
       //     operator from active operators redeemer.

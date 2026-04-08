@@ -243,7 +243,7 @@ validator spend(hub_oracle: ScriptHash, settlement_policy_id: ScriptHash) {
               active_operators,
               operators_redeemer_index,
               fn(redeemer_data: Data) {
-                expect active_operators.SlashOperator { slashing_arguments } =
+                expect active_operators.SlashOperator { slashing_arguments, .. } =
                   redeemer_data
                 slashing_arguments
               },

@@ -7,7 +7,7 @@ use cardano/transaction.{Mint, OutputReference, Redeemer, Transaction}
 use midgard/common/utils
 use midgard/hub_oracle as hub
 use midgard/operator_directory.{
-  deinit, init, slash_fraudulent_operator,
+  deinit, init, slash_non_active_fraudulent_operator,
   validate_operator_transfer_and_get_inserted_data,
 }
 use midgard/operator_directory/active_operators
@@ -267,7 +267,7 @@ validator mint(hub_oracle_script_hash: PolicyId) {
           |> finalize_linked_list(own_policy_id)
       }
       SlashOperator { slashing_arguments } ->
-        slash_fraudulent_operator(
+        slash_non_active_fraudulent_operator(
           hub_oracle_script_hash,
           slashing_arguments,
           self,

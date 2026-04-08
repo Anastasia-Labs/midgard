@@ -452,8 +452,10 @@ validator mint(
                   active_operators_script_hash,
                   active_operators_redeemer_index,
                   fn(redeemer_data: Data) {
-                    expect active_operators.SlashOperator { slashing_arguments } =
-                      redeemer_data
+                    expect active_operators.SlashOperator {
+                      slashing_arguments,
+                      ..
+                    } = redeemer_data
                     slashing_arguments
                   },
                   redeemers,

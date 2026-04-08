@@ -9,14 +9,16 @@ use cardano/transaction.{
 use midgard/common/types.{PosixTime}
 use midgard/common/utils
 use midgard/hub_oracle as hub
-use midgard/operator_directory.{deinit, init, operator_is_not_a_member}
+use midgard/operator_directory.{
+  deinit, init, operator_is_not_a_member, slash_non_active_fraudulent_operator,
+}
 use midgard/operator_directory/active_operators
 use midgard/operator_directory/registered_operators.{
   ActivateOperator, Datum, Deinit, DeregisterOperator, DuplicateIsActive,
   DuplicateIsRegistered, DuplicateIsRetired, Init, MintRedeemer, NewOperator,
   NodeData, RegisterOperator, ReturningOperator, SlashDuplicateOperator,
-  activation_time_to_node_key, finalize_linked_list, node_key_to_activation_time,
-  root_asset_name,
+  SlashFraudulentOperator, activation_time_to_node_key, finalize_linked_list,
+  node_key_to_activation_time, root_asset_name,
 }
 use midgard/operator_directory/retired_operators
 use midgard/protocol_parameters.{
@@ -444,6 +446,13 @@ validator mint(
                 )
         }
       }
+      SlashFraudulentOperator { slashing_arguments } ->
+        slash_non_active_fraudulent_operator(
+          hub_oracle_script_hash,
+          slashing_arguments,
+          self,
+        )
+          |> finalize_linked_list(own_policy_id)
     }
   }
 

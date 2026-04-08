@@ -8,15 +8,14 @@ use cardano/transaction.{
 use midgard/common/utils
 use midgard/hub_oracle as hub
 use midgard/operator_directory.{
-  deinit, init, slash_fraudulent_operator,
+  deinit, init, slash_fraudulent_operator_and_get_info,
   validate_operator_transfer_and_get_inserted_data,
-  validate_scheduler_syncs_with_operator_removal,
 }
 use midgard/operator_directory/active_operators.{
   ActivateOperator, Datum, Deinit, Init, ListStateTransition, MintRedeemer,
   NodeData, RetireOperator, SlashOperator, SpendRedeemer, StrikeForInactivity,
   UpdateBondHoldNewSettlement, UpdateBondHoldNewState, finalize_linked_list,
-  root_asset_name,
+  root_asset_name, validate_scheduler_syncs_with_operator_removal,
 }
 use midgard/operator_directory/registered_operators
 use midgard/operator_directory/retired_operators
@@ -508,12 +507,41 @@ validator mint(
         }
           |> finalize_linked_list(own_policy_id)
       }
-      SlashOperator { slashing_arguments } ->
-        slash_fraudulent_operator(
-          hub_oracle_script_hash,
-          slashing_arguments,
-          self,
-        )
+      SlashOperator { slashing_arguments, operator_removal_scheduler_sync } ->
+        {
+          let
+            slashed_operator,
+            m_anchor_key,
+            slashed_operator_node_link,
+            hub_datum,
+            inputs,
+            reference_inputs,
+            redeemers,
+          <-
+            slash_fraudulent_operator_and_get_info(
+              hub_oracle_script_hash,
+              slashing_arguments,
+              self,
+            )
+
+          // 2. If operator is currently active, validate scheduler datum is
+          //    getting updated. Otherwise, show the currently appointed
+          //    operator is different from the slashing operator.
+          expect
+            operator_removal_scheduler_sync
+              |> validate_scheduler_syncs_with_operator_removal(
+                  slashed_operator,
+                  m_anchor_key,
+                  slashed_operator_node_link,
+                  hub_datum,
+                  inputs,
+                  reference_inputs,
+                  redeemers,
+                )
+
+          // Done.
+          True
+        }
           |> finalize_linked_list(own_policy_id)
     }
   }
