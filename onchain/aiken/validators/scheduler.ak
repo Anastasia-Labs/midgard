@@ -341,26 +341,22 @@ validator spend(
         active_operators_mint_redeemer_index,
         removal_reason,
       } -> {
-        // 4e. An active operator must be appointed.
-        expect ActiveOperator {
-          operator: previous_shifts_operator,
-          start_time: previous_shifts_start_time,
-        } = datum
+        // 4e. Input and output datums must both have an appointed operators.
+        let
+          previous_shifts_operator,
+          new_shifts_operator,
+          previous_shifts_start_time,
+          new_shifts_start_time,
+        <- validate_active_datums_and_get_info(input_datum, output_datum_data)
 
-        // 5e. An active operator must also be appointed at output.
-        expect ActiveOperator {
-          operator: new_shifts_operator,
-          start_time: new_shifts_start_time,
-        } = output_datum_data
-
-        // 6e. The new shift must start some time in a close future.
+        // 5e. The new shift must start some time in a close future.
         expect
           validate_unscheduled_new_shifts_start_time(
             new_shifts_start_time,
             validity_range,
           )
 
-        // 7e. The previous shift's operator must be getting removed from the
+        // 6e. The previous shift's operator must be getting removed from the
         //     active operators set, where its mint redeemer provides some info
         //     for this endpoint to use.
         let
@@ -375,7 +371,7 @@ validator spend(
             redeemers,
           )
 
-        // 8e. The anchor node of the removed operator must have a key matching
+        // 7e. The anchor node of the removed operator must have a key matching
         //     the new shift's operator from scheduler's output datum.
         expect
           Some(new_shifts_operator) == removing_operators_anchor_element_key
@@ -440,22 +436,26 @@ validator spend(
             start_time: new_shifts_start_time,
           } = output_datum_data
 
-          // TODO: This might not be needed.
+          // 8f'. Ensure the referenced operator is not the same as the removed
+          //      node's.
+          //
+          // TODO: If it's not possible to reference a spending input in the
+          //       same transaction, this won't be needed.
           expect new_shifts_operator != previous_shifts_operator
 
-          // 8f'. The new shift must start some time in a close future.
+          // 9f'. The new shift must start some time in a close future.
           expect
             validate_unscheduled_new_shifts_start_time(
               new_shifts_start_time,
               validity_range,
             )
 
-          // 9f'. Reference input index for last node in the active operators
-          //      set must be provided in redeemer.
+          // 10f'. Reference input index for last node in the active operators
+          //       set must be provided in redeemer.
           expect Some(active_operators_last_node_ref_input_index) =
             m_active_operators_last_node_ref_input_index
 
-          // 10f'. The last node in the active operators set must have a key
+          // 11f'. The last node in the active operators set must have a key
           //       that matches the new shift's operator.
           expect
             validate_operator_is_the_last_active_node(
