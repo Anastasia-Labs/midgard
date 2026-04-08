@@ -4,6 +4,14 @@ import { LucidEvolution, TxBuilder } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 import { incompleteInitLinkedListTxProgram } from "./linked-list.js";
 
+/**
+ * SDK data shapes and transaction builders for the retired-operators state
+ * machine.
+ *
+ * Retired operators stay in protocol state until their bond is either recovered
+ * or slashed, so the redeemers here model both normal retirement and punitive
+ * cleanup paths.
+ */
 export const RetiredOperatorDatumSchema = Data.Object({
   commitmentTime: Data.Nullable(POSIXTimeSchema),
 });
@@ -13,6 +21,9 @@ export type RetiredOperatorDatum = Data.Static<
 export const RetiredOperatorDatum =
   RetiredOperatorDatumSchema as unknown as RetiredOperatorDatum;
 
+/**
+ * Mint redeemers accepted by the retired-operators policy.
+ */
 export const RetiredOperatorMintRedeemerSchema = Data.Enum([
   Data.Literal("Init"),
   Data.Literal("Deinit"),
@@ -58,11 +69,7 @@ export type RetiredOperatorRemoveOperatorParams = {};
 export type RetiredOperatorRecoverSlashBondParams = {};
 
 /**
- * Init
- *
- * @param lucid - The LucidEvolution
- * @param params - The parameters
- * @returns {TxBuilder} A TxBuilder instance that can be used to build the transaction.
+ * Builds the linked-list initialization fragment for retired operators.
  */
 export const incompleteRetiredOperatorInitTxProgram = (
   lucid: LucidEvolution,
@@ -79,61 +86,49 @@ export const incompleteRetiredOperatorInitTxProgram = (
   });
 
 /**
- * Deinit
- *
- * @param lucid - The LucidEvolution
- * @param params - The parameters
- * @returns {TxBuilder} A TxBuilder instance that can be used to build the transaction.
+ * Stub entry point for tearing down the retired-operators state machine.
  */
 export const incompleteRetiredOperatorDeinitTxProgram = (
   lucid: LucidEvolution,
   params: RetiredOperatorDeinitParams,
 ): TxBuilder => {
+  void params;
   const tx = lucid.newTx();
   return tx;
 };
 
 /**
- * Retire
- *
- * @param lucid - The LucidEvolution
- * @param params - The parameters
- * @returns {TxBuilder} A TxBuilder instance that can be used to build the transaction.
+ * Stub entry point for appending an operator to the retired list.
  */
 export const incompleteRetiredOperatorRetireTxProgram = (
   lucid: LucidEvolution,
   params: RetiredOperatorRetireParams,
 ): TxBuilder => {
+  void params;
   const tx = lucid.newTx();
   return tx;
 };
 
 /**
- * RemoveOperator
- *
- * @param lucid - The LucidEvolution
- * @param params - The parameters
- * @returns {TxBuilder} A TxBuilder instance that can be used to build the transaction.
+ * Stub entry point for removing a retired operator from the list.
  */
 export const incompleteRetiredOperatorRemoveOperatorTxProgram = (
   lucid: LucidEvolution,
   params: RetiredOperatorRemoveOperatorParams,
 ): TxBuilder => {
+  void params;
   const tx = lucid.newTx();
   return tx;
 };
 
 /**
- * Recover
- *
- * @param lucid - The LucidEvolution
- * @param params - The parameters
- * @returns {TxBuilder} A TxBuilder instance that can be used to build the transaction.
+ * Stub entry point for recovering the bond of a retired operator.
  */
 export const incompleteRetiredOperatorRecoverSlashBondTxProgram = (
   lucid: LucidEvolution,
   params: RetiredOperatorRecoverSlashBondParams,
 ): TxBuilder => {
+  void params;
   const tx = lucid.newTx();
   return tx;
 };

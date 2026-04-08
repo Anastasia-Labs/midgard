@@ -1,9 +1,10 @@
 import ora from 'ora-classic';
 
 /**
- * Creates and returns a spinner with the given message
- * @param message Message to display with the spinner
- * @returns The ora spinner instance
+ * Creates the shared CLI spinner configuration.
+ *
+ * Keeping this wrapper centralized avoids diverging spinner styles across the
+ * interactive manager.
  */
 export function createSpinner(message: string) {
   return ora({

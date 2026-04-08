@@ -1,6 +1,16 @@
 import { fromHex, toHex } from "@lucid-evolution/lucid";
 import { CborDeserializationError } from "./common.js";
 
+/**
+ * Utilities for walking CBOR without fully decoding it into a typed
+ * representation.
+ *
+ * Midgard uses this to normalize only one specific encoding quirk: some
+ * upstream encoders emit the root array with indefinite-length encoding while
+ * the rest of the payload is already canonical enough for our use. The helpers
+ * below operate as a structural cursor so the original bytes stay untouched
+ * except for the root array header.
+ */
 type CborHeader = {
   readonly majorType: number;
   readonly additionalInfo: number;
@@ -9,6 +19,10 @@ type CborHeader = {
   readonly nextOffset: number;
 };
 
+/**
+ * Reads a single byte and converts an out-of-range access into a stable
+ * deserialization error instead of leaking `undefined` into later offset math.
+ */
 const readByte = (bytes: Uint8Array, offset: number): number => {
   if (offset >= bytes.length) {
     throw new CborDeserializationError({
@@ -19,6 +33,13 @@ const readByte = (bytes: Uint8Array, offset: number): number => {
   return bytes[offset];
 };
 
+/**
+ * Decodes the integer payload attached to a CBOR header.
+ *
+ * Offsets in this file are tracked as JavaScript numbers, so lengths larger
+ * than `Number.MAX_SAFE_INTEGER` are rejected early rather than silently
+ * truncating cursor calculations.
+ */
 const readUint = (
   bytes: Uint8Array,
   offset: number,
@@ -46,6 +67,10 @@ const readUint = (
   return { value: Number(value), nextOffset: offset + width };
 };
 
+/**
+ * Parses one CBOR initial byte plus any additional integer payload needed to
+ * describe its length/value.
+ */
 const readHeader = (bytes: Uint8Array, offset: number): CborHeader => {
   const initialByte = readByte(bytes, offset);
   const majorType = initialByte >> 5;
@@ -119,6 +144,9 @@ const readHeader = (bytes: Uint8Array, offset: number): CborHeader => {
   }
 };
 
+/**
+ * Advances across the payload of a definite-length byte or text string.
+ */
 const skipDefiniteByteOrTextString = (
   bytes: Uint8Array,
   offset: number,
@@ -134,6 +162,10 @@ const skipDefiniteByteOrTextString = (
   return nextOffset;
 };
 
+/**
+ * Walks an indefinite-length byte or text string chunk-by-chunk until the
+ * terminating break byte is reached.
+ */
 const skipIndefiniteByteOrTextString = (
   bytes: Uint8Array,
   offset: number,
@@ -162,6 +194,10 @@ const skipIndefiniteByteOrTextString = (
   }
 };
 
+/**
+ * Skips one complete CBOR item starting at `offset`, recursively traversing
+ * nested arrays, maps, and semantic tags.
+ */
 const skipItem = (bytes: Uint8Array, offset: number): number => {
   const header = readHeader(bytes, offset);
 
@@ -224,6 +260,10 @@ const skipItem = (bytes: Uint8Array, offset: number): number => {
   }
 };
 
+/**
+ * Encodes a definite-length CBOR array header using the smallest legal width
+ * for the provided item count.
+ */
 const encodeDefiniteArrayHeader = (length: number): Uint8Array => {
   if (length < 24) {
     return Uint8Array.from([0x80 | length]);
@@ -258,6 +298,9 @@ const encodeDefiniteArrayHeader = (length: number): Uint8Array => {
   ]);
 };
 
+/**
+ * Concatenates byte slices without re-encoding any inner CBOR items.
+ */
 const concatBytes = (...parts: Uint8Array[]): Uint8Array => {
   const totalLength = parts.reduce((sum, part) => sum + part.length, 0);
   const result = new Uint8Array(totalLength);
@@ -269,6 +312,15 @@ const concatBytes = (...parts: Uint8Array[]): Uint8Array => {
   return result;
 };
 
+/**
+ * Rewrites only the root indefinite-length array header into a definite-length
+ * header.
+ *
+ * Tagged wrappers preceding the root array are preserved exactly. If the input
+ * is already definite, the original hex is returned unchanged. Any trailing
+ * bytes after the root value are rejected because they would make the payload
+ * ambiguous for downstream hashing and decoding.
+ */
 export const normalizeRootIndefiniteArrayEncoding = (
   cborHex: string,
 ): string => {

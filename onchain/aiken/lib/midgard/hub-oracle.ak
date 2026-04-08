@@ -68,6 +68,8 @@ fn get_authenticated_input(
   found_ref_input
 }
 
+/// Returns the decoded inline datum for the authenticated state UTxO.
+/// Returns the datum carried by an authenticated hub oracle input.
 pub fn get_datum(
   reference_inputs: List<Input>,
   hub_oracle_script_hash: ScriptHash,

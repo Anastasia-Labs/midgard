@@ -141,6 +141,9 @@ const phaseAConfig = {
   strictnessProfile: STRICTNESS_PROFILE,
 } as const;
 
+/**
+ * Throws when a benchmark precondition is not satisfied.
+ */
 const assertOrThrow = (condition: boolean, message: string) => {
   if (!condition) {
     throw new Error(message);
@@ -253,6 +256,9 @@ const buildQueuedBlock = (
   });
 };
 
+/**
+ * Runs Phase A validation for the benchmark fixture.
+ */
 const runPhaseA = (queued: readonly QueuedTx[]) =>
   Effect.runPromise(runPhaseAValidation(queued, phaseAConfig));
 
@@ -378,14 +384,26 @@ const measureBlockSize = async (
   };
 };
 
+/**
+ * Formats a duration in milliseconds for benchmark output.
+ */
 const formatMs = (value: number) => `${value.toFixed(2)} ms`;
+/**
+ * Formats a transactions-per-second metric for benchmark output.
+ */
 const formatTps = (value: number) => `${value.toFixed(2)} tx/s`;
 
+/**
+ * Writes the benchmark report to disk.
+ */
 const writeReport = (report: BenchmarkReport) => {
   fs.mkdirSync(path.dirname(OUTPUT_JSON_PATH), { recursive: true });
   fs.writeFileSync(OUTPUT_JSON_PATH, `${JSON.stringify(report, null, 2)}\n`);
 };
 
+/**
+ * Prints the benchmark summary to stdout.
+ */
 const printSummary = (report: BenchmarkReport) => {
   console.log(
     `\nValidation benchmark written to ${report.config.resultPath}\n`,

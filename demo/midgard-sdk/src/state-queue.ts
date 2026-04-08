@@ -47,9 +47,20 @@ import {
   NODE_ASSET_NAME,
 } from "./constants.js";
 
+/**
+ * SDK helpers for the state-queue linked list.
+ *
+ * The state queue is the protocol's ordered backlog of committed block headers
+ * rooted at the confirmed state. This file therefore mixes three concerns:
+ * authentication of queue UTxOs, linked-list traversal helpers, and
+ * transaction builders for queue mutations.
+ */
 const STATE_QUEUE_INIT_LOVELACE = 5_000_000n;
 const STATE_QUEUE_HEADER_NODE_LOVELACE = 5_000_000n;
 
+/**
+ * Static configuration stored alongside the state queue.
+ */
 export const StateQueueConfigSchema = Data.Object({
   initUTxO: OutputReferenceSchema,
   refundWaitingPeriod: POSIXTimeSchema,
@@ -58,6 +69,9 @@ export type StateQueueConfig = Data.Static<typeof StateQueueConfigSchema>;
 export const StateQueueConfig =
   StateQueueConfigSchema as unknown as StateQueueConfig;
 
+/**
+ * Redeemers accepted by the state-queue validator/policy pair.
+ */
 export const StateQueueRedeemerSchema = Data.Enum([
   Data.Literal("Init"),
   Data.Literal("Deinit"),
@@ -90,15 +104,25 @@ export type StateQueueRedeemer = Data.Static<typeof StateQueueRedeemerSchema>;
 export const StateQueueRedeemer =
   StateQueueRedeemerSchema as unknown as StateQueueRedeemer;
 
+/**
+ * Datum stored at each state-queue node.
+ */
 export type StateQueueDatum = Data.Static<typeof NodeDatumSchema>;
 export const StateQueueDatum = NodeDatumSchema as unknown as StateQueueDatum;
 
+/**
+ * Authenticated state-queue UTxO paired with its decoded datum and node asset
+ * name.
+ */
 export type StateQueueUTxO = {
   utxo: UTxO;
   datum: StateQueueDatum;
   assetName: string;
 };
 
+/**
+ * Location of the state-queue state machine on chain.
+ */
 export type StateQueueFetchConfig = {
   stateQueueAddress: Address;
   stateQueuePolicyId: PolicyId;
@@ -130,7 +154,7 @@ export type StateQueueDeinitParams = {};
 export type StateQueueRemoveBlockParams = {};
 
 /**
- * Validates correctness of datum, and having a single NFT.
+ * Authenticates one raw UTxO as a state-queue node and decodes its datum.
  */
 export const utxoToStateQueueUTxO = (
   utxo: UTxO,
@@ -154,7 +178,8 @@ export const utxoToStateQueueUTxO = (
   });
 
 /**
- * Silently drops invalid UTxOs.
+ * Converts raw UTxOs into authenticated state-queue nodes, silently dropping
+ * malformed or unauthenticated entries.
  */
 export const utxosToStateQueueUTxOs = (
   utxos: UTxO[],
@@ -164,6 +189,9 @@ export const utxosToStateQueueUTxOs = (
   return Effect.allSuccesses(effects);
 };
 
+/**
+ * Resolves a linked-list key to the corresponding authenticated queue node.
+ */
 export const findLinkStateQueueUTxO = (
   link: NodeKey,
   utxos: StateQueueUTxO[],
@@ -241,8 +269,7 @@ export const sortStateQueueUTxOs = (
   });
 
 /**
- * Given a StateQueue datum, this function confirms the node is root
- * (i.e. no keys in its datum), and attempts to coerce its underlying data into
+ * Confirms that a state-queue node is the root node and decodes its payload as
  * a `ConfirmedState`.
  */
 export const getConfirmedStateFromStateQueueDatum = (
@@ -276,7 +303,12 @@ export const getConfirmedStateFromStateQueueDatum = (
   }
 };
 
-// TODO: this function is from ledger-state, mb it should be moved from here
+/**
+ * Decodes a non-root state-queue node as a committed block header.
+ *
+ * TODO: This concept belongs more naturally in `ledger-state.ts`; keep it here
+ * until the queue helpers are reorganized.
+ */
 export const getHeaderFromStateQueueDatum = (
   nodeDatum: StateQueueDatum,
 ): Effect.Effect<Header, DataCoercionError> =>
@@ -292,7 +324,12 @@ export const getHeaderFromStateQueueDatum = (
     return header;
   });
 
-// TODO: this function is from ledger-state, mb it should be moved from here
+/**
+ * Computes the canonical hash of a committed block header.
+ *
+ * TODO: This concept belongs more naturally in `ledger-state.ts`; keep it here
+ * until the queue helpers are reorganized.
+ */
 export const hashBlockHeader = (
   header: Header,
 ): Effect.Effect<string, HashingError> =>
@@ -301,15 +338,7 @@ export const hashBlockHeader = (
 /**
  * Given the latest block in state queue, along with the required tree roots,
  * this function returns the updated datum of the latest block, along with the
- * new `Header` that should be included in the new block's datum.
- *
- * @param lucid - The `LucidEvolution` API object.
- * @param latestBlocksDatum - Datum of the UTxO of the latest block in queue.
- * @param newUTxOsRoot - MPF root of the updated ledger.
- * @param transactionsRoot - MPF root of the transactions included in the new block.
- * @param depositsRoot - MPF root of the deposit transactions included in the new block.
- * @param withdrawalsRoot - MPF root of the withdrawal transactions included in the new block.
- * @param endTime - POSIX time of the new block's closing range.
+ * new `Header` that should be stored in the newly appended tail node.
  */
 export const updateLatestBlocksDatumAndGetTheNewHeaderProgram = (
   lucid: LucidEvolution,
@@ -389,17 +418,8 @@ export const updateLatestBlocksDatumAndGetTheNewHeaderProgram = (
   });
 
 /**
- * Given the latest block in state queue, along with the required tree roots,
- * this function returns the updated datum of the latest block, along with the
- * new `Header` that should be included in the new block's datum.
- *
- * @param lucid - The `LucidEvolution` API object.
- * @param latestBlocksDatum - Datum of the UTxO of the latest block in queue.
- * @param newUTxOsRoot - MPF root of the updated ledger.
- * @param transactionsRoot - MPF root of the transactions included in the new block.
- * @param depositsRoot - MPF root of the deposit transactions included in the new block.
- * @param withdrawalsRoot - MPF root of the withdrawal transactions included in the new block.
- * @param endTime - POSIX time of the new block's closing range.
+ * Promise-style wrapper around
+ * `updateLatestBlocksDatumAndGetTheNewHeaderProgram`.
  */
 export const updateLatestBlocksDatumAndGetTheNewHeader = (
   lucid: LucidEvolution,
@@ -426,10 +446,8 @@ export const updateLatestBlocksDatumAndGetTheNewHeader = (
  * Builds portions of a tx required for submitting a new block, using the
  * provided `LucidEvolution` instance, fetch config, and required parameters.
  *
- * @param lucid - The `LucidEvolution` API object.
- * @param fetchConfig - Configuration values required to know where to look for which NFT.
- * @param commitParams - Parameters required for committing to state queue.
- * @returns {TxBuilder} A TxBuilder instance that can be used to build the transaction.
+ * The transaction both appends a new tail node and rewrites the previous tail
+ * so its `next` pointer links to the new block header.
  */
 export const incompleteCommitBlockHeaderTxProgram = (
   lucid: LucidEvolution,
@@ -482,6 +500,10 @@ export const incompleteCommitBlockHeaderTxProgram = (
     return tx;
   });
 
+/**
+ * Completes the block-header commit transaction with local UPLC evaluation
+ * enabled.
+ */
 export const unsignedCommitBlockHeaderTxProgram = (
   lucid: LucidEvolution,
   fetchConfig: StateQueueFetchConfig,
@@ -508,17 +530,10 @@ export const unsignedCommitBlockHeaderTxProgram = (
         }),
     });
     return completedTx;
-  });
+    });
 
 /**
- * Builds completed tx for submitting a new block using the provided
- * `LucidEvolution` instance, fetch config, and required parameters.
- *
- * @param lucid - The `LucidEvolution` API object.
- * @param fetchConfig - Configuration values required to know where to look for which NFT.
- * @param sqCommitParams - Parameters required for committing to state queue.
- * @param aoUpdateParams - Parameters required for updating the active operator's commitment time.
- * @returns A promise that resolves to a `TxSignBuilder` instance.
+ * Promise-style wrapper for block-header commit transactions.
  */
 export const unsignedCommitBlockHeaderTx = (
   lucid: LucidEvolution,
@@ -535,6 +550,9 @@ export const unsignedCommitBlockHeaderTx = (
     ),
   ).unsafeRun();
 
+/**
+ * Fetches, authenticates, and topologically sorts the entire state queue.
+ */
 export const fetchSortedStateQueueUTxOsProgram = (
   lucid: LucidEvolution,
   config: StateQueueFetchConfig,
@@ -552,6 +570,9 @@ export const fetchSortedStateQueueUTxOsProgram = (
     return yield* sortStateQueueUTxOs(unsorted);
   });
 
+/**
+ * Fetches and authenticates the state queue without attempting to sort it.
+ */
 export const fetchUnsortedStateQueueUTxOsProgram = (
   lucid: LucidEvolution,
   config: StateQueueFetchConfig,
@@ -566,22 +587,26 @@ export const fetchUnsortedStateQueueUTxOsProgram = (
   });
 
 /**
- * Attempts fetching the whole state queue linked list.
- *
- * @param lucid - The `LucidEvolution` API object.
- * @param config - Configuration values required to know where to look for which NFT.
- * @returns {UTxO[]} - All the authentic node UTxOs.
+ * Promise-style wrapper for fetching the sorted state queue.
  */
 export const fetchSortedStateQueueUTxOs = (
   lucid: LucidEvolution,
   config: StateQueueFetchConfig,
 ) => makeReturn(fetchSortedStateQueueUTxOsProgram(lucid, config)).unsafeRun();
 
+/**
+ * Promise-style wrapper for fetching authenticated but unsorted state-queue
+ * nodes.
+ */
 export const fetchUnsortedStateQueueUTxOs = (
   lucid: LucidEvolution,
   config: StateQueueFetchConfig,
 ) => makeReturn(fetchUnsortedStateQueueUTxOsProgram(lucid, config)).unsafeRun();
 
+/**
+ * Fetches the confirmed-state root node and, when present, the first queued
+ * block linked from it.
+ */
 export const fetchConfirmedStateAndItsLinkProgram = (
   lucid: LucidEvolution,
   config: StateQueueFetchConfig,
@@ -639,12 +664,8 @@ export const fetchConfirmedStateAndItsLinkProgram = (
   });
 
 /**
- * Attempts fetching the confirmed state, i.e. the root node of the state queue
- * linked list, along with its link (i.e. first non-root node in the list).
- *
- * @param lucid - The `LucidEvolution` API object.
- * @param config - Configuration values required to know where to look for which NFT.
- * @returns {UTxO} - The authentic UTxO which is the root node.
+ * Promise-style wrapper for fetching the confirmed-state root and its first
+ * link.
  */
 export const fetchConfirmedStateAndItsLink = (
   lucid: LucidEvolution,
@@ -652,6 +673,9 @@ export const fetchConfirmedStateAndItsLink = (
 ) =>
   makeReturn(fetchConfirmedStateAndItsLinkProgram(lucid, config)).unsafeRun();
 
+/**
+ * Fetches the unique tail node, i.e. the most recently committed block header.
+ */
 export const fetchLatestCommittedBlockProgram = (
   lucid: LucidEvolution,
   config: StateQueueFetchConfig,
@@ -702,12 +726,7 @@ export const fetchLatestCommittedBlockProgram = (
   });
 
 /**
- * Attempts fetching the committed block at the very end of the state queue
- * linked list.
- *
- * @param lucid - The `LucidEvolution` API object.
- * @param config - Configuration values required to know where to look for which NFT.
- * @returns {UTxO} - The authentic UTxO which links to no other nodes.
+ * Promise-style wrapper for fetching the latest committed block.
  */
 export const fetchLatestCommittedBlock = (
   lucid: LucidEvolution,
@@ -715,11 +734,10 @@ export const fetchLatestCommittedBlock = (
 ) => makeReturn(fetchLatestCommittedBlockProgram(lucid, config)).unsafeRun();
 
 /**
- * Init
+ * Builds the initialization fragment for the state queue.
  *
- * @param lucid - The LucidEvolution
- * @param params - The parameters
- * @returns {TxBuilder} A TxBuilder instance that can be used to build the transaction.
+ * Genesis state is represented as a root linked-list node whose payload is the
+ * initial `ConfirmedState`.
  */
 export const incompleteInitStateQueueTxProgram = (
   lucid: LucidEvolution,
@@ -743,6 +761,10 @@ export const incompleteInitStateQueueTxProgram = (
     });
   });
 
+/**
+ * Completes the state-queue initialization transaction with local UPLC
+ * evaluation enabled.
+ */
 export const unsignedInitStateQueueTxProgram = (
   lucid: LucidEvolution,
   initParams: StateQueueInitParams,
@@ -764,11 +786,7 @@ export const unsignedInitStateQueueTxProgram = (
   });
 
 /**
- * Builds completed tx for initializing the state queue.
- *
- * @param lucid - The `LucidEvolution` API object.
- * @param initParams - Parameters for minting the initialization NFT.
- * @returns A promise that resolves to a `TxSignBuilder` instance.
+ * Promise-style wrapper for state-queue initialization transactions.
  */
 export const unsignedInitStateQueueTx = (
   lucid: LucidEvolution,
@@ -777,42 +795,32 @@ export const unsignedInitStateQueueTx = (
   makeReturn(unsignedInitStateQueueTxProgram(lucid, initParams)).unsafeRun();
 
 /**
- * Deinit
- *
- * @param lucid - The LucidEvolution
- * @param params - The parameters
- * @returns {TxBuilder} A TxBuilder instance that can be used to build the transaction.
+ * Stub entry point for tearing down the state queue.
  */
 export const incompleteDeinitStateQueueTxProgram = (
   lucid: LucidEvolution,
   params: StateQueueDeinitParams,
 ): TxBuilder => {
+  void params;
   const tx = lucid.newTx();
   return tx;
 };
 
 /**
- * Remove a block
- *
- * @param lucid - The LucidEvolution
- * @param params - The parameters
- * @returns {TxBuilder} A TxBuilder instance that can be used to build the transaction.
+ * Stub entry point for removing a fraudulent or invalid block from the queue.
  */
 export const incompleteRemoveBlockStateQueueTxProgram = (
   lucid: LucidEvolution,
   params: StateQueueRemoveBlockParams,
 ): TxBuilder => {
+  void params;
   const tx = lucid.newTx();
   return tx;
 };
 
 /**
- * Merge
- *
- * @param lucid - The `LucidEvolution` API object.
- * @param fetchConfig - Configuration values required to know where to look for which NFT.
- * @param mergeParams - Parameters needed for building the merge transaction.
- * @returns {TxBuilder} A TxBuilder instance that can be used to build the transaction.
+ * Builds the transaction fragment that merges the oldest queued block into the
+ * confirmed state and burns the consumed header-node NFT.
  */
 export const incompleteStateQueueMergeTxProgram = (
   lucid: LucidEvolution,
@@ -883,6 +891,9 @@ export const incompleteStateQueueMergeTxProgram = (
     return tx;
   });
 
+/**
+ * Completes the merge transaction that advances confirmed state.
+ */
 export const mergeToConfirmedStateProgram = (
   lucid: LucidEvolution,
   fetchConfig: StateQueueFetchConfig,
@@ -910,13 +921,8 @@ export const mergeToConfirmedStateProgram = (
   });
 
 /**
- * Builds completed tx for merging the first block in queue to be merged into
- * the confirmed state.
- *
- * @param lucid - The `LucidEvolution` API object.
- * @param fetchConfig - Configuration values required to know where to look for which NFT.
- * @param mergeParams - Parameters needed for building the merge transaction.
- * @returns A promise that resolves to a `TxSignBuilder` instance.
+ * Promise-style wrapper for merging the oldest queued block into confirmed
+ * state.
  */
 export const mergeToConfirmedState = (
   lucid: LucidEvolution,
@@ -927,6 +933,9 @@ export const mergeToConfirmedState = (
     mergeToConfirmedStateProgram(lucid, fetchConfig, mergeParams),
   ).unsafeRun();
 
+/**
+ * State-queue-specific tagged error used by the higher-level queue helpers.
+ */
 export class StateQueueError extends EffectData.TaggedError(
   "StateQueueError",
 )<GenericErrorFields> {}

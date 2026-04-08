@@ -26,18 +26,30 @@ export const chalk = new chalk_.Chalk();
 
 export type ProviderName = "Blockfrost" | "Koios" | "Kupmios" | "Maestro";
 
+/**
+ * Logs a success message to the console.
+ */
 export const logSuccess = (msg: string) => {
   Effect.runSync(Effect.logInfo(`🎉 ${msg}`));
 };
 
+/**
+ * Logs a warning message to the console.
+ */
 export const logWarning = (msg: string) => {
   Effect.runSync(Effect.logWarning(`⚠️  ${msg}`));
 };
 
+/**
+ * Logs an abort message to the console.
+ */
 export const logAbort = (msg: string) => {
   Effect.runSync(Effect.logError(msg));
 };
 
+/**
+ * Logs an informational message to the console.
+ */
 export const logInfo = (msg: string) => {
   Effect.runSync(Effect.logInfo(`ℹ️  ${msg}`));
 };

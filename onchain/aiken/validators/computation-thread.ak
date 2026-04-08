@@ -117,6 +117,8 @@ validator mint(
   }
 }
 
+/// Validates the fraud-proof catalogue node reference input.
+/// Validates the fraud-proof catalogue reference input used by the computation thread.
 fn validate_fraud_proof_catalogue_node_input(
   fraud_proof_catalogue_node_input: Input,
   fraud_proof_catalogue_script_hash: ByteArray,
@@ -128,7 +130,9 @@ fn validate_fraud_proof_catalogue_node_input(
     fraud_proof_asset_name,
   ) == 1
 }
+/// Validates the frauded state-queue node reference input.
 
+/// Validates the fraudent state-queue node reference input.
 fn validate_frauded_state_queue_node_input(
   frauded_state_queue_node_input: Input,
   state_queue_script_hash: ByteArray,
@@ -139,8 +143,10 @@ fn validate_frauded_state_queue_node_input(
     state_queue_script_hash,
     state_queue_asset_name,
   ) == 1
+/// Validates the transition output to the first fraud-proof step.
 }
 
+/// Validates the output that initializes the first fraud-proof step.
 fn validate_output_to_initial_fraud_proof_step(
   output_to_init_step: Output,
   fraud_prover_hash: ByteArray,

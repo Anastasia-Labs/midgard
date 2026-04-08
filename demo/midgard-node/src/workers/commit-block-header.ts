@@ -1,6 +1,11 @@
+/**
+ * Production block-commit worker entrypoint.
+ * This module orchestrates mempool trie processing, commit transaction
+ * assembly, submission, and recovery by composing the smaller worker helpers.
+ */
 import { parentPort, workerData } from "worker_threads";
 import * as SDK from "@al-ft/midgard-sdk";
-import { Cause, Data, Effect, Match, Option, Schedule, pipe } from "effect";
+import { Cause, Data, Effect, Option, pipe } from "effect";
 import {
   WorkerInput,
   WorkerOutput,
@@ -15,8 +20,6 @@ import {
   DatabaseInitializationError,
 } from "@/services/index.js";
 import {
-  BlocksDB,
-  ImmutableDB,
   MempoolDB,
   ProcessedMempoolDB,
   DepositsDB,
@@ -29,18 +32,9 @@ import {
 } from "@/transactions/utils.js";
 import {
   CML,
-  LucidEvolution,
-  Network,
   TxBuilder,
   Data as LucidData,
-  Script,
   UTxO,
-  credentialToAddress,
-  coreToTxOutput,
-  fromHex,
-  paymentCredentialOf,
-  scriptHashToCredential,
-  slotToUnixTime,
   toUnit,
 } from "@lucid-evolution/lucid";
 import {
@@ -52,42 +46,42 @@ import {
   processMpts,
   withTrieTransaction,
 } from "@/workers/utils/mpt.js";
-import { FileSystemError, batchProgram } from "@/utils.js";
+import { FileSystemError } from "@/utils.js";
 import { Columns as TxColumns } from "@/database/utils/tx.js";
 import {
-  buildSuccessfulCommitBatches,
-  SuccessfulCommitBatch,
   rootsMatchConfirmedHeader,
   shouldAttemptLocalFinalizationRecovery,
   shouldDeferCommitSubmission,
   selectCommitRoots,
 } from "@/workers/utils/commit-block-planner.js";
+import { buildDeterministicCommitTxBuilder } from "@/workers/utils/commit-tx-builder.js";
 import {
-  ActiveOperatorSpendRedeemerSchema,
-  StateQueueCommitLayout,
-  deriveStateQueueCommitLayout,
-  encodeActiveOperatorCommitRedeemer,
-  encodeStateQueueCommitRedeemer,
-} from "@/workers/utils/commit-redeemers.js";
+  failedSubmissionProgram,
+  recoverSubmittedTxHashByHeaderProgram,
+  skippedSubmissionProgram,
+  successfulLocalFinalizationRecoveryProgram,
+  successfulSubmissionProgram,
+} from "@/workers/utils/commit-submission.js";
+import { resolveAlignedCommitEndTime } from "@/workers/utils/commit-end-time.js";
 import {
-  alignUnixTimeToSlotBoundary,
-  resolveAlignedCommitEndTime,
-} from "@/workers/utils/commit-end-time.js";
-import {
-  NodeUtxoWithDatum,
-  resolveSchedulerRefreshWitnessSelection,
+  fetchRealStateQueueWitnessContext,
+  type RealStateQueueWitnessContext,
 } from "@/workers/utils/scheduler-refresh.js";
+import {
+  isPotentiallyStaleOperatorWalletViewError,
+  reloadOperatorWalletView,
+  type OperatorWalletView,
+} from "@/operator-wallet-view.js";
 import {
   Columns as UserEventsColumns,
   retrieveTimeBoundEntries,
 } from "@/database/utils/user-events.js";
 import { DatabaseError } from "@/database/utils/common.js";
+import { formatUnknownError } from "@/error-format.js";
 
-const BATCH_SIZE = 100;
 const STATE_QUEUE_HEADER_NODE_LOVELACE = 5_000_000n;
 const ACTIVE_OPERATOR_MATURITY_DURATION_MS = 30n;
-const SKIPPED_SUBMISSION_TRANSFER_RETRIES = 2;
-const SKIPPED_SUBMISSION_TRANSFER_INITIAL_BACKOFF = "250 millis";
+const COMMIT_STALE_OPERATOR_WALLET_VIEW_RETRIES = 1;
 const ACTIVE_OPERATOR_DATUM_AIKEN_OPTION_SCHEMA = LucidData.Enum([
   LucidData.Object({
     Some: LucidData.Tuple([LucidData.Integer()]),
@@ -99,13 +93,6 @@ const ACTIVE_OPERATOR_DATUM_AIKEN_SCHEMA = LucidData.Object({
 });
 const ACTIVE_OPERATOR_DATUM_OPTION_SCHEMA = LucidData.Nullable(
   LucidData.Integer(),
-);
-const REGISTERED_OPERATOR_DATUM_AIKEN_SCHEMA = LucidData.Object({
-  activation_time: LucidData.Integer(),
-});
-const SCHEDULER_SHIFT_DURATION_MS = BigInt(SDK.ONCHAIN_SHIFT_DURATION_MS);
-const SCHEDULER_TRANSITION_VALIDITY_WINDOW_MS = BigInt(
-  SDK.SCHEDULER_TRANSITION_MAX_VALIDITY_WINDOW_MS,
 );
 
 type ActiveOperatorDatumEncoding = "aiken" | "record" | "option";
@@ -183,55 +170,115 @@ class LocalFinalizationPendingError extends Data.TaggedError(
   readonly cause: unknown;
 }> {}
 
-const formatUnknownError = (error: unknown): string => {
-  if (error instanceof Error) {
-    return `${error.name}: ${error.message}`;
-  }
-  if (typeof error === "string") {
-    return error;
-  }
-  try {
-    return JSON.stringify(error);
-  } catch {
-    return String(error);
-  }
-};
+class CommitWorkerInvariantError extends Data.TaggedError(
+  "CommitWorkerInvariantError",
+)<{
+  readonly message: string;
+}> {}
+
+const provideCommitBlockWorkerServices = <A, E>(
+  effect: Effect.Effect<
+    A,
+    E,
+    MidgardContracts | Database | Lucid | NodeConfig
+  >,
+): Effect.Effect<
+  A,
+  E | ConfigError | DatabaseInitializationError,
+  never
+> =>
+  pipe(
+    effect,
+    Effect.provide(MidgardContracts.Default),
+    Effect.provide(Database.layer),
+    Effect.provide(Lucid.Default),
+    Effect.provide(NodeConfig.layer),
+  );
+
+// The sibling SDK is built in its own TypeScript program, so its exported
+// `Effect` values carry a distinct branded generator identity during DTS emit.
+// Normalize the few SDK helpers we yield from inside this worker onto the local
+// `effect` type graph once at the boundary.
+const localizeSdkEffect = <A, E, R = never>(
+  effect: unknown,
+): Effect.Effect<A, E, R> => effect as Effect.Effect<A, E, R>;
+
+const getConfirmedStateFromStateQueueDatumLocal = (
+  nodeDatum: SDK.StateQueueDatum,
+): Effect.Effect<
+  { readonly data: SDK.ConfirmedState; readonly link: unknown },
+  SDK.DataCoercionError
+> =>
+  localizeSdkEffect(
+    SDK.getConfirmedStateFromStateQueueDatum(nodeDatum),
+  );
+
+const getHeaderFromStateQueueDatumLocal = (
+  nodeDatum: SDK.StateQueueDatum,
+): Effect.Effect<SDK.Header, SDK.DataCoercionError> =>
+  localizeSdkEffect(SDK.getHeaderFromStateQueueDatum(nodeDatum));
+
+const hashBlockHeaderLocal = (
+  header: SDK.Header,
+): Effect.Effect<string, SDK.HashingError> =>
+  localizeSdkEffect(SDK.hashBlockHeader(header));
+
+const updateLatestBlocksDatumAndGetTheNewHeaderLocal = (
+  lucid: Parameters<typeof SDK.updateLatestBlocksDatumAndGetTheNewHeaderProgram>[0],
+  latestBlocksDatum: SDK.StateQueueDatum,
+  newUTxOsRoot: string,
+  transactionsRoot: string,
+  depositsRoot: string,
+  withdrawalsRoot: string,
+  endTime: bigint,
+): Effect.Effect<
+  { readonly nodeDatum: SDK.StateQueueDatum; readonly header: SDK.Header },
+  SDK.DataCoercionError | SDK.LucidError | SDK.HashingError
+> =>
+  localizeSdkEffect(
+    SDK.updateLatestBlocksDatumAndGetTheNewHeaderProgram(
+      lucid,
+      latestBlocksDatum,
+      newUTxOsRoot,
+      transactionsRoot,
+      depositsRoot,
+      withdrawalsRoot,
+      endTime,
+    ),
+  );
 
 const getLatestBlockDatumEndTime = (
   latestBlocksDatum: SDK.StateQueueDatum,
-): Effect.Effect<Date, SDK.DataCoercionError, never> =>
-  Effect.gen(function* () {
-    let endTimeBigInt: bigint;
-    if (latestBlocksDatum.key === "Empty") {
-      const { data: confirmedState } =
-        yield* SDK.getConfirmedStateFromStateQueueDatum(latestBlocksDatum);
-      endTimeBigInt = confirmedState.endTime;
-    } else {
-      const latestHeader =
-        yield* SDK.getHeaderFromStateQueueDatum(latestBlocksDatum);
-      endTimeBigInt = latestHeader.endTime;
-    }
-    return new Date(Number(endTimeBigInt));
-  });
+): Effect.Effect<Date, SDK.DataCoercionError> =>
+  latestBlocksDatum.key === "Empty"
+    ? getConfirmedStateFromStateQueueDatumLocal(latestBlocksDatum).pipe(
+        Effect.map(({ data: confirmedState }) =>
+          new Date(Number(confirmedState.endTime)),
+        ),
+      )
+    : getHeaderFromStateQueueDatumLocal(latestBlocksDatum).pipe(
+        Effect.map((latestHeader) => new Date(Number(latestHeader.endTime))),
+      );
 
 const getLatestBlockHeaderRoots = (
   latestBlocksDatum: SDK.StateQueueDatum,
 ): Effect.Effect<
-  Option.Option<{ readonly utxoRoot: string; readonly txRoot: string }>,
-  SDK.DataCoercionError,
-  never
+  Option.Option<{
+    readonly utxoRoot: string;
+    readonly txRoot: string;
+  }>,
+  SDK.DataCoercionError
 > =>
-  Effect.gen(function* () {
-    if (latestBlocksDatum.key === "Empty") {
-      return Option.none();
-    }
-    const latestHeader =
-      yield* SDK.getHeaderFromStateQueueDatum(latestBlocksDatum);
-    return Option.some({
-      utxoRoot: latestHeader.utxosRoot,
-      txRoot: latestHeader.transactionsRoot,
-    });
-  });
+  latestBlocksDatum.key === "Empty"
+    ? Effect.succeed(Option.none())
+    : getHeaderFromStateQueueDatumLocal(latestBlocksDatum).pipe(
+        Effect.map((latestHeader) =>
+          Option.some({
+            utxoRoot: latestHeader.utxosRoot,
+            txRoot: latestHeader.transactionsRoot,
+          }),
+        ),
+      );
 
 const establishEndTimeFromTxRequests = (
   mempoolTxs: readonly TxTable.EntryWithTimeStamp[],
@@ -261,278 +308,6 @@ const establishEndTimeFromTxRequests = (
       return Option.some(mempoolTxs[0][TxColumns.TIMESTAMPTZ]);
     }
   });
-
-const finalizeCommittedBlockLocally = (
-  mempoolTrie: MidgardMpt,
-  mempoolTxs: readonly TxTable.EntryWithTimeStamp[],
-  mempoolTxHashes: Buffer[],
-  newHeaderHash: string,
-): Effect.Effect<void, DatabaseError | FileSystemError, Database> =>
-  Effect.gen(function* () {
-    const filterAlreadyCommittedTxs = (
-      candidateBatches: readonly SuccessfulCommitBatch[],
-    ): Effect.Effect<
-      readonly SuccessfulCommitBatch[],
-      DatabaseError,
-      Database
-    > =>
-      Effect.gen(function* () {
-        const candidateHashes = Array.from(
-          new Set(
-            candidateBatches
-              .flatMap((batch) => batch.blockTxHashes)
-              .map((hash) => hash.toString("hex")),
-          ),
-        ).map((hex) => Buffer.from(hex, "hex"));
-
-        if (candidateHashes.length <= 0) {
-          return candidateBatches;
-        }
-
-        const existing =
-          yield* ImmutableDB.retrieveTxEntriesByHashes(candidateHashes);
-        if (existing.length <= 0) {
-          return candidateBatches;
-        }
-
-        const alreadyCommitted = new Set(
-          existing.map((entry) => entry[TxColumns.TX_ID].toString("hex")),
-        );
-        yield* Effect.logWarning(
-          `🔹 Filtering ${alreadyCommitted.size} already-committed tx id(s) from local finalization payload before BlocksDB insertion.`,
-        );
-
-        return candidateBatches.map((batch) => {
-          const filteredTxs: TxTable.EntryWithTimeStamp[] = [];
-          const filteredHashes: Buffer[] = [];
-
-          for (let i = 0; i < batch.blockTxHashes.length; i += 1) {
-            const txHash = batch.blockTxHashes[i];
-            if (alreadyCommitted.has(txHash.toString("hex"))) {
-              continue;
-            }
-            filteredHashes.push(txHash);
-            if (i < batch.txsToInsertImmutable.length) {
-              filteredTxs.push(batch.txsToInsertImmutable[i]);
-            }
-          }
-
-          return {
-            txsToInsertImmutable: filteredTxs,
-            blockTxHashes: filteredHashes,
-            clearMempoolTxHashes: batch.clearMempoolTxHashes,
-          };
-        });
-      });
-
-    const newHeaderHashBuffer = Buffer.from(fromHex(newHeaderHash));
-
-    const processedMempoolTxs = yield* ProcessedMempoolDB.retrieve;
-    const batches = buildSuccessfulCommitBatches(
-      mempoolTxs,
-      mempoolTxHashes,
-      processedMempoolTxs,
-      Math.floor(BATCH_SIZE / 2),
-    );
-    const filteredBatches = yield* filterAlreadyCommittedTxs(batches);
-
-    yield* Effect.logInfo(
-      "🔹 Inserting included transactions into ImmutableDB and BlocksDB, clearing all the processed txs from MempoolDB and ProcessedMempoolDB, and deleting mempool LevelDB...",
-    );
-    yield* Effect.all(
-      [
-        Effect.forEach(
-          filteredBatches,
-          (batch, i) => {
-            const clearMempoolProgram =
-              batch.clearMempoolTxHashes.length === 0
-                ? Effect.void
-                : MempoolDB.clearTxs([...batch.clearMempoolTxHashes]).pipe(
-                    Effect.withSpan(`mempool-db-clear-txs-batch-${i}`),
-                  );
-            return Effect.all(
-              [
-                ImmutableDB.insertTxsValidatedNative([
-                  ...batch.txsToInsertImmutable,
-                ]).pipe(Effect.withSpan(`immutable-db-insert-batch-${i}`)),
-                BlocksDB.insert(newHeaderHashBuffer, [
-                  ...batch.blockTxHashes,
-                ]).pipe(Effect.withSpan(`blocks-db-insert-batch-${i}`)),
-                clearMempoolProgram,
-              ],
-              { concurrency: "unbounded" },
-            );
-          },
-          {
-            concurrency: "unbounded",
-          },
-        ),
-        ProcessedMempoolDB.clear, // uses `TRUNCATE` so no need for batching.
-        mempoolTrie.delete(),
-      ],
-      { concurrency: "unbounded" },
-    );
-  }).pipe(
-    Effect.tapError((error) =>
-      Effect.gen(function* () {
-        yield* Effect.logError(
-          `🔹 Local commit finalization failed (header=${newHeaderHash},error=${formatUnknownError(error)})`,
-        );
-      }),
-    ),
-  );
-const successfulSubmissionProgram = (
-  mempoolTrie: MidgardMpt,
-  mempoolTxs: readonly TxTable.EntryWithTimeStamp[],
-  mempoolTxHashes: Buffer[],
-  newHeaderHash: string,
-  workerInput: WorkerInput,
-  txSize: number,
-  sizeOfProcessedTxs: number,
-  txHash: string,
-  blockEndTimeMs: number,
-): Effect.Effect<WorkerOutput, DatabaseError | FileSystemError, Database> =>
-  Effect.gen(function* () {
-    yield* finalizeCommittedBlockLocally(
-      mempoolTrie,
-      mempoolTxs,
-      mempoolTxHashes,
-      newHeaderHash,
-    );
-
-    return {
-      type: "SuccessfulSubmissionOutput",
-      submittedTxHash: txHash,
-      txSize,
-      mempoolTxsCount:
-        mempoolTxs.length + workerInput.data.mempoolTxsCountSoFar,
-      sizeOfBlocksTxs:
-        sizeOfProcessedTxs + workerInput.data.sizeOfProcessedTxsSoFar,
-      blockEndTimeMs,
-    };
-  });
-
-const successfulLocalFinalizationRecoveryProgram = (
-  mempoolTrie: MidgardMpt,
-  mempoolTxs: readonly TxTable.EntryWithTimeStamp[],
-  mempoolTxHashes: Buffer[],
-  confirmedHeaderHash: string,
-  workerInput: WorkerInput,
-  sizeOfProcessedTxs: number,
-): Effect.Effect<WorkerOutput, DatabaseError | FileSystemError, Database> =>
-  Effect.gen(function* () {
-    yield* finalizeCommittedBlockLocally(
-      mempoolTrie,
-      mempoolTxs,
-      mempoolTxHashes,
-      confirmedHeaderHash,
-    );
-    return {
-      type: "SuccessfulLocalFinalizationRecoveryOutput",
-      mempoolTxsCount:
-        mempoolTxs.length + workerInput.data.mempoolTxsCountSoFar,
-      sizeOfBlocksTxs:
-        sizeOfProcessedTxs + workerInput.data.sizeOfProcessedTxsSoFar,
-    };
-  });
-
-const skippedSubmissionProgram = (
-  mempoolTxs: readonly TxTable.EntryWithTimeStamp[],
-  mempoolTxHashes: Buffer[],
-): Effect.Effect<void, DatabaseError, Database> =>
-  Effect.gen(function* () {
-    if (mempoolTxs.length !== mempoolTxHashes.length) {
-      return yield* Effect.fail(
-        new DatabaseError({
-          message:
-            "Failed to transfer deferred commit payload: tx metadata length mismatch",
-          cause: `mempool_txs=${mempoolTxs.length},mempool_tx_hashes=${mempoolTxHashes.length}`,
-          table: "mempool,processed_mempool",
-        }),
-      );
-    }
-    yield* batchProgram(
-      BATCH_SIZE,
-      mempoolTxs.length,
-      "skipped-submission-db-transfer",
-      (startIndex: number, endIndex: number) =>
-        Effect.gen(function* () {
-          const batchTxs = mempoolTxs.slice(startIndex, endIndex);
-          const batchHashes = mempoolTxHashes.slice(startIndex, endIndex);
-          // Order matters: insert to processed_mempool first, then clear mempool.
-          yield* ProcessedMempoolDB.insertTxs(batchTxs).pipe(
-            Effect.withSpan(`processed-mempool-db-insert-${startIndex}`),
-          );
-          yield* MempoolDB.clearTxs(batchHashes).pipe(
-            Effect.withSpan(`mempool-db-clear-txs-${startIndex}`),
-          );
-        }),
-      1,
-    );
-  }).pipe(
-    Effect.retry(
-      Schedule.compose(
-        Schedule.exponential(SKIPPED_SUBMISSION_TRANSFER_INITIAL_BACKOFF),
-        Schedule.recurs(SKIPPED_SUBMISSION_TRANSFER_RETRIES),
-      ),
-    ),
-  );
-
-const failedSubmissionProgram = (
-  mempoolTrie: MidgardMpt,
-  mempoolTxsCount: number,
-  sizeOfProcessedTxs: number,
-  err: TxSubmitError,
-): Effect.Effect<WorkerOutput> =>
-  Effect.gen(function* () {
-    yield* Effect.logError(`🔹 ⚠️  Tx submit failed: ${err}`);
-    yield* Effect.logError(
-      "🔹 ⚠️  Mempool trie will be preserved, but db will be cleared.",
-    );
-    yield* Effect.logInfo("🔹 Mempool Trie stats:");
-    console.dir(mempoolTrie.databaseStats(), { depth: null });
-    return {
-      type: "SkippedSubmissionOutput",
-      mempoolTxsCount,
-      sizeOfProcessedTxs,
-    };
-  });
-
-const recoverSubmittedTxHashByHeaderProgram = (
-  stateQueueAuthValidator: SDK.AuthenticatedValidator,
-  expectedHeaderHash: string,
-): Effect.Effect<Option.Option<string>, never, Lucid> =>
-  Effect.gen(function* () {
-    const lucid = yield* Lucid;
-    const fetchConfig: SDK.StateQueueFetchConfig = {
-      stateQueueAddress: stateQueueAuthValidator.spendingScriptAddress,
-      stateQueuePolicyId: stateQueueAuthValidator.policyId,
-    };
-    const latestBlock = yield* SDK.fetchLatestCommittedBlockProgram(
-      lucid.api,
-      fetchConfig,
-    );
-    const latestHeader = yield* SDK.getHeaderFromStateQueueDatum(
-      latestBlock.datum,
-    );
-    const latestHeaderHash = yield* SDK.hashBlockHeader(latestHeader);
-    if (latestHeaderHash === expectedHeaderHash) {
-      yield* Effect.logWarning(
-        `🔹 Submit errored but on-chain header already advanced to ${expectedHeaderHash}; recovering submission state.`,
-      );
-      return Option.some(latestBlock.utxo.txHash);
-    }
-    return Option.none();
-  }).pipe(
-    Effect.catchAll((error) =>
-      Effect.gen(function* () {
-        yield* Effect.logWarning(
-          `🔹 Could not verify submit recovery on-chain: ${formatUnknownError(error)}`,
-        );
-        return Option.none<string>();
-      }),
-    ),
-  );
 
 /**
  * Given the target user event table, this helper finds all the events falling
@@ -570,1559 +345,7 @@ const userEventsProgram = (
     }
   });
 
-type RealStateQueueWitnessContext = {
-  readonly operatorKeyHash: string;
-  readonly schedulerRefInput: UTxO;
-  readonly hubOracleRefInput: UTxO;
-  readonly activeOperatorInput: UTxO & { datum: string };
-  readonly activeOperatorsSpendingScript: Script;
-  readonly chainedWalletOutputs: readonly UTxO[];
-  readonly consumedWalletFeeInputs: readonly UTxO[];
-};
-
-type SchedulerAlignmentResult = {
-  readonly schedulerRefInput: UTxO;
-  readonly chainedWalletOutputs: readonly UTxO[];
-  readonly consumedWalletFeeInputs: readonly UTxO[];
-};
-
-const SCHEDULER_REFRESH_POLL_INTERVAL = "2 seconds";
-const SCHEDULER_REFRESH_MAX_POLLS = 30;
-const MIN_SCHEDULER_WITNESS_LOVELACE = 5_000_000n;
-const SCHEDULER_SUBMISSION_CONFIRMATION_TIMEOUT_MS = 90_000;
-const SCHEDULER_SUBMISSION_CONFIRMATION_POLL_INTERVAL_MS = 5_000;
 const COMMIT_WINDOW_STABILIZATION_MAX_ATTEMPTS = 4;
-
-const compareOutRefs = (a: UTxO, b: UTxO): number => {
-  const txHashComparison = a.txHash.localeCompare(b.txHash);
-  if (txHashComparison !== 0) {
-    return txHashComparison;
-  }
-  return a.outputIndex - b.outputIndex;
-};
-
-const resolveOrderedIndex = (
-  target: UTxO,
-  ordered: readonly UTxO[],
-): bigint => {
-  const index = ordered.findIndex(
-    (candidate) =>
-      candidate.txHash === target.txHash &&
-      candidate.outputIndex === target.outputIndex,
-  );
-  if (index < 0) {
-    throw new Error(`Failed to resolve ordered index for ${outRefLabel(target)}`);
-  }
-  return BigInt(index);
-};
-
-const resolveReferenceInputIndexFromSet = (
-  target: UTxO,
-  referenceInputs: readonly UTxO[],
-): bigint => resolveOrderedIndex(target, [...referenceInputs].sort(compareOutRefs));
-
-const selectFeeInput = (
-  walletUtxos: readonly UTxO[],
-): Effect.Effect<UTxO, SDK.StateQueueError> =>
-  Effect.gen(function* () {
-    const sorted = [...walletUtxos].sort((a, b) => {
-      const lovelaceA = a.assets.lovelace ?? 0n;
-      const lovelaceB = b.assets.lovelace ?? 0n;
-      if (lovelaceA === lovelaceB) {
-        return compareOutRefs(a, b);
-      }
-      return lovelaceA > lovelaceB ? -1 : 1;
-    });
-    const feeInput = sorted[0];
-    if (feeInput === undefined) {
-      return yield* Effect.fail(
-        new SDK.StateQueueError({
-          message:
-            "No wallet UTxO available to fund real state_queue commit tx",
-          cause: "empty wallet",
-        }),
-      );
-    }
-    return feeInput;
-  });
-
-type ProviderRedeemerTag =
-  | "spend"
-  | "mint"
-  | "publish"
-  | "withdraw"
-  | "vote"
-  | "propose";
-
-type ProviderEvaluationResult = {
-  readonly redeemer_tag: ProviderRedeemerTag;
-  readonly redeemer_index: number;
-  readonly ex_units: { readonly mem: number; readonly steps: number };
-};
-
-type RedeemerPointer = {
-  readonly tag: number;
-  readonly index: bigint;
-};
-
-type IndexedTxOutput = ReturnType<typeof coreToTxOutput> & {
-  readonly index: number;
-};
-
-const DUMMY_REDEEMER_EX_UNITS = {
-  mem: 1_000_000,
-  steps: 1_000_000,
-} as const;
-
-const assetsEqual = (
-  left: Readonly<Record<string, bigint>>,
-  right: Readonly<Record<string, bigint>>,
-): boolean => {
-  const keys = new Set([...Object.keys(left), ...Object.keys(right)]);
-  for (const key of keys) {
-    if ((left[key] ?? 0n) !== (right[key] ?? 0n)) {
-      return false;
-    }
-  }
-  return true;
-};
-
-const outRefLabel = (utxo: UTxO): string =>
-  `${utxo.txHash}#${utxo.outputIndex}`;
-
-const parseNodeSetUtxos = (
-  utxos: readonly UTxO[],
-  label: string,
-): Effect.Effect<readonly NodeUtxoWithDatum[], SDK.StateQueueError> =>
-  Effect.forEach(utxos, (utxo) =>
-    SDK.getNodeDatumFromUTxO(utxo).pipe(
-      Effect.map((datum) => ({
-        utxo,
-        datum,
-      })),
-      Effect.mapError(
-        (cause) =>
-          new SDK.StateQueueError({
-            message: `Failed to decode ${label} node datum`,
-            cause: `${outRefLabel(utxo)}: ${formatUnknownError(cause)}`,
-          }),
-      ),
-    ),
-  );
-
-const decodeRegisteredOperatorActivationTime = (
-  value: unknown,
-): bigint | undefined => {
-  if (typeof value === "object" && value !== null) {
-    if (
-      "registrationTime" in value &&
-      typeof value.registrationTime === "bigint"
-    ) {
-      return value.registrationTime;
-    }
-    if (
-      "registrationTime" in value &&
-      typeof value.registrationTime === "number" &&
-      Number.isInteger(value.registrationTime)
-    ) {
-      return BigInt(value.registrationTime);
-    }
-    if (
-      "activation_time" in value &&
-      typeof value.activation_time === "bigint"
-    ) {
-      return value.activation_time;
-    }
-    if (
-      "activation_time" in value &&
-      typeof value.activation_time === "number" &&
-      Number.isInteger(value.activation_time)
-    ) {
-      return BigInt(value.activation_time);
-    }
-  }
-  try {
-    const parsed = LucidData.castFrom(
-      value as never,
-      SDK.RegisteredOperatorDatum as never,
-    ) as SDK.RegisteredOperatorDatum;
-    return BigInt(parsed.registrationTime);
-  } catch {
-    try {
-      const parsed = LucidData.castFrom(
-        value as never,
-        REGISTERED_OPERATOR_DATUM_AIKEN_SCHEMA as never,
-      ) as {
-        readonly activation_time: bigint | number;
-      };
-      return typeof parsed.activation_time === "bigint"
-        ? parsed.activation_time
-        : BigInt(parsed.activation_time);
-    } catch {
-      return undefined;
-    }
-  }
-};
-
-const resolveSchedulerRefreshValidityWindow = (
-  lucid: LucidEvolution,
-  currentSchedulerStartTime: bigint,
-): {
-  readonly validFrom: bigint;
-  readonly validTo: bigint;
-} => {
-  const currentSlot = lucid.currentSlot();
-  const currentSlotStart =
-    slotToUnixTimeForLucid(lucid, currentSlot) ?? Date.now();
-  const minimumShiftStart = Number(
-    currentSchedulerStartTime + SCHEDULER_SHIFT_DURATION_MS,
-  );
-  let validFrom = alignUnixTimeToSlotBoundary(
-    lucid,
-    Math.max(currentSlotStart, minimumShiftStart),
-  );
-  if (validFrom < minimumShiftStart) {
-    validFrom = alignUnixTimeToSlotBoundary(lucid, minimumShiftStart + 999);
-  }
-  return {
-    validFrom: BigInt(validFrom),
-    validTo: BigInt(validFrom) + SCHEDULER_TRANSITION_VALIDITY_WINDOW_MS,
-  };
-};
-
-const dedupeUtxosByOutRef = (utxos: readonly UTxO[]): readonly UTxO[] => {
-  const byOutRef = new Map<string, UTxO>();
-  for (const utxo of utxos) {
-    const label = outRefLabel(utxo);
-    if (!byOutRef.has(label)) {
-      byOutRef.set(label, utxo);
-    }
-  }
-  return [...byOutRef.values()];
-};
-
-const awaitSubmittedSchedulerTx = (
-  lucid: LucidEvolution,
-  txHash: string,
-  purpose: "bootstrap" | "refresh",
-): Effect.Effect<void, SDK.StateQueueError> =>
-  Effect.gen(function* () {
-    const confirmed = yield* Effect.tryPromise({
-      try: () =>
-        new Promise<boolean>((resolve, reject) => {
-          const timeoutId = setTimeout(() => {
-            reject(
-              new Error(
-                `Timed out waiting for scheduler ${purpose} tx confirmation after ${SCHEDULER_SUBMISSION_CONFIRMATION_TIMEOUT_MS}ms`,
-              ),
-            );
-          }, SCHEDULER_SUBMISSION_CONFIRMATION_TIMEOUT_MS);
-
-          lucid
-            .awaitTx(txHash, SCHEDULER_SUBMISSION_CONFIRMATION_POLL_INTERVAL_MS)
-            .then((result) => {
-              clearTimeout(timeoutId);
-              resolve(result);
-            })
-            .catch((error) => {
-              clearTimeout(timeoutId);
-              reject(error);
-            });
-        }),
-      catch: (cause) =>
-        new SDK.StateQueueError({
-          message: `Failed waiting for scheduler ${purpose} tx confirmation`,
-          cause,
-        }),
-    });
-    if (!confirmed) {
-      return yield* Effect.fail(
-        new SDK.StateQueueError({
-          message: `Scheduler ${purpose} tx did not confirm`,
-          cause: txHash,
-        }),
-      );
-    }
-  });
-
-const extractAddressOutputsFromSubmittedTx = (
-  tx: CML.Transaction,
-  txHash: string,
-  address: string,
-): readonly UTxO[] => {
-  const outputs = tx.body().outputs();
-  const matching: UTxO[] = [];
-  for (let outputIndex = 0; outputIndex < outputs.len(); outputIndex += 1) {
-    const txOutput = coreToTxOutput(outputs.get(outputIndex));
-    if (txOutput.address !== address) {
-      continue;
-    }
-    matching.push({
-      txHash,
-      outputIndex,
-      ...txOutput,
-    });
-  }
-  return matching;
-};
-
-const findInputIndexByOutRef = (
-  inputs: readonly {
-    readonly txHash: string;
-    readonly outputIndex: number;
-  }[],
-  target: UTxO,
-): number | undefined => {
-  for (let index = 0; index < inputs.length; index += 1) {
-    const input = inputs[index]!;
-    if (
-      input.txHash === target.txHash &&
-      input.outputIndex === target.outputIndex
-    ) {
-      return index;
-    }
-  }
-  return undefined;
-};
-
-const collectSortedInputOutRefs = (
-  inputs: CML.TransactionInputList,
-): readonly {
-  readonly txHash: string;
-  readonly outputIndex: number;
-}[] =>
-  [...Array(inputs.len()).keys()]
-    .map((index) => {
-      const input = inputs.get(index);
-      return {
-        txHash: input.transaction_id().to_hex(),
-        outputIndex: Number(input.index()),
-      };
-    })
-    .sort(compareOutRefs);
-
-const collectIndexedOutputs = (
-  outputs: CML.TransactionOutputList,
-): readonly IndexedTxOutput[] => {
-  const indexed: IndexedTxOutput[] = [];
-  for (let index = 0; index < outputs.len(); index += 1) {
-    indexed.push({
-      index,
-      ...coreToTxOutput(outputs.get(index)),
-    });
-  }
-  return indexed;
-};
-
-const getRedeemerPointersInContextOrder = (
-  tx: CML.Transaction,
-): readonly RedeemerPointer[] => {
-  const redeemers = tx.witness_set().redeemers();
-  if (redeemers === undefined) {
-    return [];
-  }
-
-  const legacy = redeemers.as_arr_legacy_redeemer();
-  if (legacy !== undefined) {
-    const pointers: RedeemerPointer[] = [];
-    for (let i = 0; i < legacy.len(); i += 1) {
-      const redeemer = legacy.get(i);
-      pointers.push({
-        tag: redeemer.tag(),
-        index: redeemer.index(),
-      });
-    }
-    return pointers;
-  }
-
-  const map = redeemers.as_map_redeemer_key_to_redeemer_val();
-  if (map === undefined) {
-    return [];
-  }
-  const pointers: RedeemerPointer[] = [];
-  const keys = map.keys();
-  for (let i = 0; i < keys.len(); i += 1) {
-    const key = keys.get(i);
-    pointers.push({
-      tag: key.tag(),
-      index: key.index(),
-    });
-  }
-  return pointers;
-};
-
-const toProviderRedeemerTag = (tag: number): ProviderRedeemerTag => {
-  switch (tag) {
-    case CML.RedeemerTag.Spend:
-      return "spend";
-    case CML.RedeemerTag.Mint:
-      return "mint";
-    case CML.RedeemerTag.Cert:
-      return "publish";
-    case CML.RedeemerTag.Reward:
-      return "withdraw";
-    case CML.RedeemerTag.Voting:
-      return "vote";
-    case CML.RedeemerTag.Proposing:
-      return "propose";
-    default:
-      throw new Error(`Unsupported redeemer tag: ${tag}`);
-  }
-};
-
-const withStubbedProviderEvaluation = async <A>(
-  lucid: LucidEvolution,
-  run: () => Promise<A>,
-): Promise<A> => {
-  const provider = lucid.config().provider as {
-    evaluateTx?: (
-      tx: string,
-      additionalUTxOs?: readonly UTxO[],
-    ) => Promise<readonly ProviderEvaluationResult[]>;
-  };
-  if (typeof provider.evaluateTx !== "function") {
-    return run();
-  }
-
-  const originalEvaluateTx = provider.evaluateTx.bind(provider);
-  provider.evaluateTx = async (txCbor) => {
-    const tx = CML.Transaction.from_cbor_hex(txCbor);
-    return getRedeemerPointersInContextOrder(tx).map((pointer) => ({
-      redeemer_tag: toProviderRedeemerTag(pointer.tag),
-      redeemer_index: Number(pointer.index),
-      ex_units: DUMMY_REDEEMER_EX_UNITS,
-    }));
-  };
-  try {
-    return await run();
-  } finally {
-    provider.evaluateTx = originalEvaluateTx;
-  }
-};
-
-const deriveCommitLayoutFromDraftTx = ({
-  tx,
-  schedulerRefInput,
-  hubOracleRefInput,
-  activeOperatorInput,
-  stateQueueAddress,
-  headerNodeUnit,
-  headerNodeDatum,
-  previousHeaderNodeDatum,
-}: {
-  readonly tx: CML.Transaction;
-  readonly schedulerRefInput: UTxO;
-  readonly hubOracleRefInput: UTxO;
-  readonly activeOperatorInput: UTxO;
-  readonly stateQueueAddress: string;
-  readonly headerNodeUnit: string;
-  readonly headerNodeDatum: string;
-  readonly previousHeaderNodeDatum: string;
-}): StateQueueCommitLayout => {
-  const txBody = tx.body();
-  const inputList = collectSortedInputOutRefs(txBody.inputs());
-  const referenceInputListRaw = txBody.reference_inputs();
-  const indexedOutputs = collectIndexedOutputs(txBody.outputs());
-
-  const activeNodeInputIndex = findInputIndexByOutRef(
-    inputList,
-    activeOperatorInput,
-  );
-  if (activeNodeInputIndex === undefined) {
-    throw new Error(
-      `Unable to find active-operator input ${outRefLabel(activeOperatorInput)} in balanced draft tx body inputs`,
-    );
-  }
-
-  if (referenceInputListRaw === undefined) {
-    throw new Error(
-      "Balanced draft tx body did not include reference inputs for scheduler witness",
-    );
-  }
-  const referenceInputList = collectSortedInputOutRefs(referenceInputListRaw);
-  const schedulerRefInputIndex = findInputIndexByOutRef(
-    referenceInputList,
-    schedulerRefInput,
-  );
-  if (schedulerRefInputIndex === undefined) {
-    throw new Error(
-      `Unable to find scheduler reference input ${outRefLabel(schedulerRefInput)} in balanced draft tx reference inputs`,
-    );
-  }
-  const hubOracleRefInputIndex = findInputIndexByOutRef(
-    referenceInputList,
-    hubOracleRefInput,
-  );
-  if (hubOracleRefInputIndex === undefined) {
-    throw new Error(
-      `Unable to find hub-oracle reference input ${outRefLabel(hubOracleRefInput)} in balanced draft tx reference inputs`,
-    );
-  }
-
-  const headerNodeOutputCandidates = indexedOutputs.filter(
-    (output) =>
-      output.address === stateQueueAddress &&
-      output.datum === headerNodeDatum &&
-      (output.assets[headerNodeUnit] ?? 0n) === 1n,
-  );
-  if (headerNodeOutputCandidates.length !== 1) {
-    throw new Error(
-      `Expected exactly one header-node output at ${stateQueueAddress} with datum ${headerNodeDatum.slice(0, 24)}..., found ${headerNodeOutputCandidates.length}`,
-    );
-  }
-  const headerNodeOutputIndex = headerNodeOutputCandidates[0].index;
-
-  const previousHeaderOutputCandidates = indexedOutputs.filter(
-    (output) =>
-      output.address === stateQueueAddress &&
-      output.datum === previousHeaderNodeDatum,
-  );
-  if (previousHeaderOutputCandidates.length !== 1) {
-    throw new Error(
-      `Expected exactly one previous-header output at ${stateQueueAddress} with datum ${previousHeaderNodeDatum.slice(0, 24)}..., found ${previousHeaderOutputCandidates.length}`,
-    );
-  }
-  const previousHeaderNodeOutputIndex = previousHeaderOutputCandidates[0].index;
-
-  const activeNodeOutputCandidates = indexedOutputs.filter(
-    (output) =>
-      output.address === activeOperatorInput.address &&
-      assetsEqual(output.assets, activeOperatorInput.assets),
-  );
-  if (activeNodeOutputCandidates.length !== 1) {
-    throw new Error(
-      `Expected exactly one active-operator output at ${activeOperatorInput.address} with unchanged assets, found ${activeNodeOutputCandidates.length}`,
-    );
-  }
-  const activeNodeOutputIndex = activeNodeOutputCandidates[0].index;
-
-  const redeemerPointers = getRedeemerPointersInContextOrder(tx);
-  if (redeemerPointers.length <= 0) {
-    throw new Error("Balanced draft tx did not contain redeemers");
-  }
-  const activeOperatorSpendRedeemerIndex = redeemerPointers.findIndex(
-    (pointer) =>
-      pointer.tag === CML.RedeemerTag.Spend &&
-      pointer.index === BigInt(activeNodeInputIndex),
-  );
-  if (activeOperatorSpendRedeemerIndex < 0) {
-    throw new Error(
-      `Unable to find active-operator spend redeemer for input index ${activeNodeInputIndex}`,
-    );
-  }
-  const mintRedeemerCandidates = redeemerPointers
-    .map((pointer, index) => ({ pointer, index }))
-    .filter(({ pointer }) => pointer.tag === CML.RedeemerTag.Mint);
-  if (mintRedeemerCandidates.length !== 1) {
-    throw new Error(
-      `Expected exactly one mint redeemer pointer for state_queue commit, found ${mintRedeemerCandidates.length}`,
-    );
-  }
-  const stateQueueRedeemerIndex = mintRedeemerCandidates[0].index;
-
-  return {
-    schedulerRefInputIndex: BigInt(schedulerRefInputIndex),
-    activeNodeInputIndex: BigInt(activeNodeInputIndex),
-    headerNodeOutputIndex: BigInt(headerNodeOutputIndex),
-    previousHeaderNodeOutputIndex: BigInt(previousHeaderNodeOutputIndex),
-    activeOperatorsRedeemerIndex: BigInt(activeOperatorSpendRedeemerIndex),
-    activeNodeOutputIndex: BigInt(activeNodeOutputIndex),
-    hubOracleRefInputIndex: BigInt(hubOracleRefInputIndex),
-    stateQueueRedeemerIndex: BigInt(stateQueueRedeemerIndex),
-  };
-};
-
-const redeemerTagLabel = (tag: number): string => {
-  switch (tag) {
-    case CML.RedeemerTag.Spend:
-      return "spend";
-    case CML.RedeemerTag.Mint:
-      return "mint";
-    case CML.RedeemerTag.Cert:
-      return "cert";
-    case CML.RedeemerTag.Reward:
-      return "reward";
-    case CML.RedeemerTag.Voting:
-      return "vote";
-    case CML.RedeemerTag.Proposing:
-      return "propose";
-    default:
-      return `unknown(${tag})`;
-  }
-};
-
-const describeUtxoAssets = (
-  assets: Readonly<Record<string, bigint>>,
-): string => {
-  const nonAda = Object.entries(assets)
-    .filter(([unit, amount]) => unit !== "lovelace" && amount > 0n)
-    .map(([unit, amount]) => `${unit}:${amount.toString()}`);
-  return `lovelace=${(assets.lovelace ?? 0n).toString()},nonAda=${
-    nonAda.length > 0 ? nonAda.join("|") : "none"
-  }`;
-};
-
-const findTxInputAtIndex = (
-  inputs: CML.TransactionInputList,
-  index: bigint,
-): string | undefined => {
-  const i = Number(index);
-  if (!Number.isSafeInteger(i) || i < 0 || i >= inputs.len()) {
-    return undefined;
-  }
-  const input = inputs.get(i);
-  return `${input.transaction_id().to_hex()}#${input.index().toString()}`;
-};
-
-const findTxReferenceInputAtIndex = (
-  referenceInputs: CML.TransactionInputList | undefined,
-  index: bigint,
-): string | undefined => {
-  if (referenceInputs === undefined) {
-    return undefined;
-  }
-  const i = Number(index);
-  if (!Number.isSafeInteger(i) || i < 0 || i >= referenceInputs.len()) {
-    return undefined;
-  }
-  const input = referenceInputs.get(i);
-  return `${input.transaction_id().to_hex()}#${input.index().toString()}`;
-};
-
-const listRequiredSigners = (tx: CML.Transaction): readonly string[] => {
-  const signers = tx.body().required_signers();
-  if (signers === undefined) {
-    return [];
-  }
-  const hashes: string[] = [];
-  for (let i = 0; i < signers.len(); i += 1) {
-    hashes.push(signers.get(i).to_hex());
-  }
-  return hashes;
-};
-
-const slotToUnixTimeForLucid = (
-  lucid: LucidEvolution,
-  slot: number,
-): number | undefined => {
-  const network = lucid.config().network;
-  if (network === "Custom") {
-    const provider = lucid.config().provider as {
-      time?: number;
-      slot?: number;
-    };
-    if (
-      typeof provider.time !== "number" ||
-      typeof provider.slot !== "number"
-    ) {
-      return undefined;
-    }
-    const slotLength = 1000;
-    const zeroTime = provider.time - provider.slot * slotLength;
-    return zeroTime + slot * slotLength;
-  }
-  return slotToUnixTime(network as Exclude<Network, "Custom">, slot);
-};
-
-const findRedeemerDataCbor = (
-  tx: CML.Transaction,
-  pointer: RedeemerPointer | undefined,
-): string | undefined => {
-  if (pointer === undefined) {
-    return undefined;
-  }
-  const redeemers = tx.witness_set().redeemers();
-  if (redeemers === undefined) {
-    return undefined;
-  }
-  const legacy = redeemers.as_arr_legacy_redeemer();
-  if (legacy !== undefined) {
-    for (let i = 0; i < legacy.len(); i += 1) {
-      const redeemer = legacy.get(i);
-      if (
-        redeemer.tag() === pointer.tag &&
-        redeemer.index() === pointer.index
-      ) {
-        return redeemer.data().to_cbor_hex();
-      }
-    }
-    return undefined;
-  }
-  const map = redeemers.as_map_redeemer_key_to_redeemer_val();
-  if (map === undefined) {
-    return undefined;
-  }
-  const keys = map.keys();
-  for (let i = 0; i < keys.len(); i += 1) {
-    const key = keys.get(i);
-    if (key.tag() !== pointer.tag || key.index() !== pointer.index) {
-      continue;
-    }
-    const value = map.get(key);
-    return value?.data().to_cbor_hex();
-  }
-  return undefined;
-};
-
-const buildRealCommitDraftDiagnostics = ({
-  tx,
-  layout,
-  operatorKeyHash,
-  latestBlockInput,
-  schedulerRefInput,
-  hubOracleRefInput,
-  activeOperatorInput,
-  stateQueueAddress,
-  headerNodeUnit,
-  appendedNodeDatumCbor,
-  previousHeaderNodeDatumCbor,
-  schedulerPolicyId,
-  hubOraclePolicyId,
-  activeOperatorsPolicyId,
-  txValidityUpperBoundSlot,
-  txValidityUpperBoundUnixTime,
-}: {
-  readonly tx: CML.Transaction;
-  readonly layout: StateQueueCommitLayout;
-  readonly operatorKeyHash: string;
-  readonly latestBlockInput: UTxO;
-  readonly schedulerRefInput: UTxO;
-  readonly hubOracleRefInput: UTxO;
-  readonly activeOperatorInput: UTxO;
-  readonly stateQueueAddress: string;
-  readonly headerNodeUnit: string;
-  readonly appendedNodeDatumCbor: string;
-  readonly previousHeaderNodeDatumCbor: string;
-  readonly schedulerPolicyId: string;
-  readonly hubOraclePolicyId: string;
-  readonly activeOperatorsPolicyId: string;
-  readonly txValidityUpperBoundSlot: string | undefined;
-  readonly txValidityUpperBoundUnixTime: string | undefined;
-}): Record<string, unknown> => {
-  const txBody = tx.body();
-  const inputs = txBody.inputs();
-  const referenceInputs = txBody.reference_inputs();
-  const outputs = collectIndexedOutputs(txBody.outputs());
-  const redeemerPointers = getRedeemerPointersInContextOrder(tx);
-  const requiredSigners = listRequiredSigners(tx);
-
-  const expectedActiveUnit = toUnit(
-    activeOperatorsPolicyId,
-    SDK.NODE_ASSET_NAME + operatorKeyHash,
-  );
-  const expectedSchedulerUnit = toUnit(
-    schedulerPolicyId,
-    SDK.SCHEDULER_ASSET_NAME,
-  );
-  const expectedHubOracleUnit = toUnit(
-    hubOraclePolicyId,
-    SDK.HUB_ORACLE_ASSET_NAME,
-  );
-  const headerOutputIndex = Number(layout.headerNodeOutputIndex);
-  const previousHeaderOutputIndex = Number(
-    layout.previousHeaderNodeOutputIndex,
-  );
-  const activeRedeemerLayoutIndex = Number(layout.activeOperatorsRedeemerIndex);
-  const stateQueueRedeemerLayoutIndex = Number(layout.stateQueueRedeemerIndex);
-  const activeRedeemerPointer =
-    activeRedeemerLayoutIndex >= 0 &&
-    activeRedeemerLayoutIndex < redeemerPointers.length
-      ? redeemerPointers[activeRedeemerLayoutIndex]
-      : undefined;
-  const stateQueueRedeemerPointer =
-    stateQueueRedeemerLayoutIndex >= 0 &&
-    stateQueueRedeemerLayoutIndex < redeemerPointers.length
-      ? redeemerPointers[stateQueueRedeemerLayoutIndex]
-      : undefined;
-  const activeRedeemerCbor = findRedeemerDataCbor(tx, activeRedeemerPointer);
-  const stateQueueRedeemerCbor = findRedeemerDataCbor(
-    tx,
-    stateQueueRedeemerPointer,
-  );
-  const headerOutput = outputs.find(
-    (output) => output.index === headerOutputIndex,
-  );
-  const previousHeaderOutput = outputs.find(
-    (output) => output.index === previousHeaderOutputIndex,
-  );
-  const parsedHeaderDatum =
-    headerOutput === undefined || headerOutput.datum == null
-      ? undefined
-      : (() => {
-          try {
-            const nodeDatum = LucidData.from(
-              headerOutput.datum,
-              SDK.StateQueueDatum,
-            );
-            const header = LucidData.castFrom(nodeDatum.data, SDK.Header);
-            return {
-              startTime: header.startTime.toString(),
-              endTime: header.endTime.toString(),
-              operatorVkey: header.operatorVkey,
-            };
-          } catch {
-            return undefined;
-          }
-        })();
-  const parsedPreviousDatum =
-    previousHeaderOutput === undefined || previousHeaderOutput.datum == null
-      ? undefined
-      : (() => {
-          try {
-            const nodeDatum = LucidData.from(
-              previousHeaderOutput.datum,
-              SDK.StateQueueDatum,
-            );
-            try {
-              const header = LucidData.castFrom(nodeDatum.data, SDK.Header);
-              return {
-                kind: "Header" as const,
-                endTime: header.endTime.toString(),
-              };
-            } catch {
-              const confirmedState = LucidData.castFrom(
-                nodeDatum.data,
-                SDK.ConfirmedState,
-              );
-              return {
-                kind: "ConfirmedState" as const,
-                endTime: confirmedState.endTime.toString(),
-              };
-            }
-          } catch {
-            return undefined;
-          }
-        })();
-  const parsedSchedulerDatum =
-    schedulerRefInput.datum == null
-      ? undefined
-      : (() => {
-          try {
-            const schedulerDatum = LucidData.from(
-              schedulerRefInput.datum,
-              SDK.SchedulerDatum,
-            );
-            return {
-              operator: schedulerDatum.operator,
-              startTime: schedulerDatum.startTime.toString(),
-            };
-          } catch {
-            return undefined;
-          }
-        })();
-
-  return {
-    requiredSigners,
-    operatorSignerPresent: requiredSigners.includes(operatorKeyHash),
-    inputs: [...Array(inputs.len()).keys()].map((i) => {
-      const input = inputs.get(i);
-      return `${i}:${input.transaction_id().to_hex()}#${input.index().toString()}`;
-    }),
-    referenceInputs:
-      referenceInputs === undefined
-        ? []
-        : [...Array(referenceInputs.len()).keys()].map((i) => {
-            const input = referenceInputs.get(i);
-            return `${i}:${input.transaction_id().to_hex()}#${input.index().toString()}`;
-          }),
-    expectedLatestBlockInput: outRefLabel(latestBlockInput),
-    expectedSchedulerRefInput: outRefLabel(schedulerRefInput),
-    expectedHubOracleRefInput: outRefLabel(hubOracleRefInput),
-    expectedActiveOperatorInput: outRefLabel(activeOperatorInput),
-    layout: {
-      schedulerRefInputIndex: layout.schedulerRefInputIndex.toString(),
-      activeNodeInputIndex: layout.activeNodeInputIndex.toString(),
-      headerNodeOutputIndex: layout.headerNodeOutputIndex.toString(),
-      previousHeaderNodeOutputIndex:
-        layout.previousHeaderNodeOutputIndex.toString(),
-      activeOperatorsRedeemerIndex:
-        layout.activeOperatorsRedeemerIndex.toString(),
-      activeNodeOutputIndex: layout.activeNodeOutputIndex.toString(),
-      hubOracleRefInputIndex: layout.hubOracleRefInputIndex.toString(),
-      stateQueueRedeemerIndex: layout.stateQueueRedeemerIndex.toString(),
-    },
-    activeNodeInputAtLayoutIndex: findTxInputAtIndex(
-      inputs,
-      layout.activeNodeInputIndex,
-    ),
-    schedulerRefInputAtLayoutIndex: findTxReferenceInputAtIndex(
-      referenceInputs,
-      layout.schedulerRefInputIndex,
-    ),
-    hubOracleRefInputAtLayoutIndex: findTxReferenceInputAtIndex(
-      referenceInputs,
-      layout.hubOracleRefInputIndex,
-    ),
-    activeRedeemerPointer:
-      activeRedeemerPointer === undefined
-        ? "missing"
-        : `${redeemerTagLabel(activeRedeemerPointer.tag)}:${activeRedeemerPointer.index.toString()}`,
-    stateQueueRedeemerPointer:
-      stateQueueRedeemerPointer === undefined
-        ? "missing"
-        : `${redeemerTagLabel(stateQueueRedeemerPointer.tag)}:${stateQueueRedeemerPointer.index.toString()}`,
-    activeRedeemerShape:
-      activeRedeemerCbor === undefined
-        ? "missing"
-        : (() => {
-            try {
-              return LucidData.from(
-                activeRedeemerCbor,
-                ActiveOperatorSpendRedeemerSchema,
-              );
-            } catch {
-              return `decode-failed:${activeRedeemerCbor}`;
-            }
-          })(),
-    stateQueueRedeemerShape:
-      stateQueueRedeemerCbor === undefined
-        ? "missing"
-        : (() => {
-            try {
-              return LucidData.from(
-                stateQueueRedeemerCbor,
-                SDK.StateQueueRedeemer,
-              );
-            } catch {
-              return `decode-failed:${stateQueueRedeemerCbor}`;
-            }
-          })(),
-    headerTiming: {
-      header: parsedHeaderDatum,
-      previous: parsedPreviousDatum,
-      startMatchesPreviousEnd:
-        parsedHeaderDatum === undefined || parsedPreviousDatum === undefined
-          ? undefined
-          : parsedHeaderDatum.startTime === parsedPreviousDatum.endTime,
-      endMatchesTxValidityUpperBound:
-        parsedHeaderDatum === undefined ||
-        txValidityUpperBoundUnixTime === undefined
-          ? undefined
-          : parsedHeaderDatum.endTime === txValidityUpperBoundUnixTime,
-      txValidityUpperBoundSlot: txValidityUpperBoundSlot ?? "missing",
-      txValidityUpperBoundUnixTime: txValidityUpperBoundUnixTime ?? "missing",
-    },
-    schedulerDatum: parsedSchedulerDatum,
-    redeemerPointersInOrder: redeemerPointers.map(
-      (pointer, index) =>
-        `${index}:${redeemerTagLabel(pointer.tag)}:${pointer.index.toString()}`,
-    ),
-    headerOutputAtLayoutIndex:
-      headerOutput === undefined
-        ? "missing"
-        : {
-            address: headerOutput.address,
-            datumMatches: headerOutput.datum === appendedNodeDatumCbor,
-            stateQueueTokenQty: (
-              headerOutput.assets[headerNodeUnit] ?? 0n
-            ).toString(),
-            assets: describeUtxoAssets(headerOutput.assets),
-          },
-    previousHeaderOutputAtLayoutIndex:
-      previousHeaderOutput === undefined
-        ? "missing"
-        : {
-            address: previousHeaderOutput.address,
-            datumMatches:
-              previousHeaderOutput.datum === previousHeaderNodeDatumCbor,
-            assets: describeUtxoAssets(previousHeaderOutput.assets),
-            matchesLatestInputAssets: assetsEqual(
-              previousHeaderOutput.assets,
-              latestBlockInput.assets,
-            ),
-          },
-    latestBlockInputAssets: describeUtxoAssets(latestBlockInput.assets),
-    activeOperatorInputAssets: describeUtxoAssets(activeOperatorInput.assets),
-    activeOperatorExpectedTokenQty: (
-      activeOperatorInput.assets[expectedActiveUnit] ?? 0n
-    ).toString(),
-    schedulerRefInputAssets: describeUtxoAssets(schedulerRefInput.assets),
-    schedulerExpectedTokenQty: (
-      schedulerRefInput.assets[expectedSchedulerUnit] ?? 0n
-    ).toString(),
-    hubOracleRefInputAssets: describeUtxoAssets(hubOracleRefInput.assets),
-    hubOracleExpectedTokenQty: (
-      hubOracleRefInput.assets[expectedHubOracleUnit] ?? 0n
-    ).toString(),
-    stateQueueAddress,
-  };
-};
-
-const getOperatorKeyHash = (
-  lucid: LucidEvolution,
-): Effect.Effect<string, SDK.StateQueueError> =>
-  Effect.gen(function* () {
-    const operatorAddress = yield* Effect.tryPromise({
-      try: () => lucid.wallet().address(),
-      catch: (cause) =>
-        new SDK.StateQueueError({
-          message: "Failed to resolve operator wallet address",
-          cause,
-        }),
-    });
-    const paymentCredential = paymentCredentialOf(operatorAddress);
-    if (paymentCredential?.type !== "Key") {
-      return yield* Effect.fail(
-        new SDK.StateQueueError({
-          message: "Operator wallet does not have a key payment credential",
-          cause: operatorAddress,
-        }),
-      );
-    }
-    return paymentCredential.hash;
-  });
-
-const selectActiveOperatorInput = (
-  activeOperatorUtxos: readonly UTxO[],
-  operatorKeyHash: string,
-): Effect.Effect<UTxO, SDK.StateQueueError> =>
-  Effect.gen(function* () {
-    for (const utxo of activeOperatorUtxos) {
-      const nodeDatumEither = yield* Effect.either(
-        SDK.getNodeDatumFromUTxO(utxo),
-      );
-      if (nodeDatumEither._tag === "Left") {
-        continue;
-      }
-      if (
-        nodeDatumEither.right.key !== "Empty" &&
-        nodeDatumEither.right.key.Key.key === operatorKeyHash
-      ) {
-        return utxo;
-      }
-    }
-    return yield* Effect.fail(
-      new SDK.StateQueueError({
-        message:
-          "No active-operators node for current operator key hash; cannot build real state_queue commit witness",
-        cause: operatorKeyHash,
-      }),
-    );
-  });
-
-const getSchedulerDatumFromUTxO = (
-  schedulerUtxo: UTxO,
-): Effect.Effect<SDK.SchedulerDatum, SDK.StateQueueError> =>
-  Effect.gen(function* () {
-    if (schedulerUtxo.datum == null) {
-      return yield* Effect.fail(
-        new SDK.StateQueueError({
-          message: "Scheduler UTxO must include inline datum",
-          cause: `${schedulerUtxo.txHash}#${schedulerUtxo.outputIndex}`,
-        }),
-      );
-    }
-    return yield* Effect.try({
-      try: () => LucidData.from(schedulerUtxo.datum!, SDK.SchedulerDatum),
-      catch: (cause) =>
-        new SDK.StateQueueError({
-          message: "Failed to decode scheduler datum",
-          cause,
-        }),
-    });
-  });
-
-const ensureRealSchedulerWitnessUtxo = (
-  lucid: LucidEvolution,
-  contracts: SDK.MidgardValidators,
-  schedulerUtxos: readonly UTxO[],
-): Effect.Effect<UTxO, SDK.StateQueueError | TxSignError | TxSubmitError> =>
-  Effect.gen(function* () {
-    const schedulerWitnessUnit = toUnit(
-      contracts.scheduler.policyId,
-      SDK.SCHEDULER_ASSET_NAME,
-    );
-    const existingWitness = [...schedulerUtxos]
-      .filter((utxo) => (utxo.assets[schedulerWitnessUnit] ?? 0n) > 0n)
-      .sort(compareOutRefs)[0];
-    if (existingWitness !== undefined) {
-      return existingWitness;
-    }
-
-    yield* Effect.logInfo(
-      "🔹 Scheduler witness token with empty asset-name missing; creating one for real state_queue commits.",
-    );
-    const walletUtxos = yield* Effect.tryPromise({
-      try: () => lucid.wallet().getUtxos(),
-      catch: (cause) =>
-        new SDK.StateQueueError({
-          message:
-            "Failed to fetch wallet UTxOs for scheduler witness bootstrap",
-          cause,
-        }),
-    });
-    const feeInput = yield* selectFeeInput(walletUtxos);
-    const bootstrapDatum: SDK.SchedulerDatum = SDK.INITIAL_SCHEDULER_DATUM;
-    const bootstrapTx = yield* Effect.tryPromise({
-      try: () =>
-        lucid
-          .newTx()
-          .collectFrom([feeInput])
-          .mintAssets({ [schedulerWitnessUnit]: 1n }, LucidData.void())
-          .pay.ToContract(
-            contracts.scheduler.spendingScriptAddress,
-            {
-              kind: "inline",
-              value: LucidData.to(bootstrapDatum, SDK.SchedulerDatum),
-            },
-            {
-              lovelace: MIN_SCHEDULER_WITNESS_LOVELACE,
-              [schedulerWitnessUnit]: 1n,
-            },
-          )
-          .attach.Script(contracts.scheduler.mintingScript)
-          .complete({ localUPLCEval: true }),
-      catch: (cause) =>
-        new SDK.StateQueueError({
-          message: `Failed to build scheduler witness bootstrap tx: ${cause}`,
-          cause,
-        }),
-    });
-
-    const bootstrapTxHash = yield* handleSignSubmitNoConfirmation(
-      lucid,
-      bootstrapTx,
-    );
-    yield* Effect.logInfo(
-      `🔹 Scheduler witness bootstrap submitted: ${bootstrapTxHash}`,
-    );
-    yield* awaitSubmittedSchedulerTx(lucid, bootstrapTxHash, "bootstrap");
-
-    let pollCount = 0;
-    while (pollCount < SCHEDULER_REFRESH_MAX_POLLS) {
-      const witnessUtxos = yield* Effect.tryPromise({
-        try: () =>
-          lucid.utxosAtWithUnit(
-            contracts.scheduler.spendingScriptAddress,
-            schedulerWitnessUnit,
-          ),
-        catch: (cause) =>
-          new SDK.StateQueueError({
-            message:
-              "Failed to fetch scheduler witness UTxOs while waiting for bootstrap confirmation",
-            cause,
-          }),
-      });
-      const witness = [...witnessUtxos].sort(compareOutRefs)[0];
-      if (witness !== undefined) {
-        return witness;
-      }
-      pollCount += 1;
-      yield* Effect.sleep(SCHEDULER_REFRESH_POLL_INTERVAL);
-    }
-
-    return yield* Effect.fail(
-      new SDK.StateQueueError({
-        message:
-          "Timed out waiting for scheduler witness UTxO bootstrap confirmation",
-        cause: bootstrapTxHash,
-      }),
-    );
-  });
-
-const ensureSchedulerAlignedForCommit = (
-  lucid: LucidEvolution,
-  contracts: SDK.MidgardValidators,
-  operatorKeyHash: string,
-  schedulerRefInput: UTxO,
-  activeOperatorUtxos: readonly UTxO[],
-  registeredOperatorUtxos: readonly UTxO[],
-  alignedEndTime: number,
-  schedulerWitnessUnit: string,
-): Effect.Effect<
-  SchedulerAlignmentResult,
-  SDK.StateQueueError | TxSignError | TxSubmitError
-> =>
-  Effect.gen(function* () {
-    const targetStartTime = BigInt(alignedEndTime);
-    const schedulerDatum = yield* getSchedulerDatumFromUTxO(schedulerRefInput);
-    const currentShiftEndTime =
-      schedulerDatum.startTime + SCHEDULER_SHIFT_DURATION_MS;
-    if (
-      schedulerDatum.operator === operatorKeyHash &&
-      schedulerDatum.startTime <= targetStartTime &&
-      targetStartTime <= currentShiftEndTime
-    ) {
-      return {
-        schedulerRefInput,
-        chainedWalletOutputs: [],
-        consumedWalletFeeInputs: [],
-      };
-    }
-    const activeNodes = yield* parseNodeSetUtxos(
-      activeOperatorUtxos,
-      "active-operators",
-    );
-    const registeredNodes = yield* parseNodeSetUtxos(
-      registeredOperatorUtxos,
-      "registered-operators",
-    );
-    const allowGenesisRewind =
-      schedulerDatum.operator === "" && schedulerDatum.startTime === 0n;
-    const selection = yield* Effect.try({
-      try: () =>
-        resolveSchedulerRefreshWitnessSelection({
-          currentOperator: schedulerDatum.operator,
-          targetOperator: operatorKeyHash,
-          activeNodes,
-          registeredNodes,
-          allowGenesisRewind,
-        }),
-      catch: (cause) =>
-        new SDK.StateQueueError({
-          message:
-            "Current operator is not eligible to advance or rewind the scheduler for this commit window",
-          cause,
-        }),
-    });
-    const { validFrom, validTo } = resolveSchedulerRefreshValidityWindow(
-      lucid,
-      schedulerDatum.startTime,
-    );
-    if (targetStartTime < validFrom) {
-      return yield* Effect.fail(
-        new SDK.StateQueueError({
-          message:
-            "Resolved commit end-time falls before the scheduler refresh window",
-          cause: `commit_end=${targetStartTime.toString()},scheduler_valid_from=${validFrom.toString()}`,
-        }),
-      );
-    }
-    const refreshedSchedulerDatum: SDK.SchedulerDatum = {
-      operator: operatorKeyHash,
-      startTime: validFrom,
-    };
-    const refreshedSchedulerDatumCbor = LucidData.to(
-      refreshedSchedulerDatum,
-      SDK.SchedulerDatum,
-    );
-    const referenceInputs =
-      selection.kind === "Advance"
-        ? [selection.activeNode.utxo]
-        : [
-            selection.activeNode.utxo,
-            selection.activeRootNode.utxo,
-            selection.registeredWitnessNode.utxo,
-          ];
-    if (selection.kind === "Rewind") {
-      const registeredWitness = selection.registeredWitnessNode;
-      if (registeredWitness.datum.key !== "Empty") {
-        const activationTime = decodeRegisteredOperatorActivationTime(
-          registeredWitness.datum.data,
-        );
-        if (activationTime === undefined) {
-          return yield* Effect.fail(
-            new SDK.StateQueueError({
-              message:
-                "Failed to decode registered-operators witness activation time for scheduler rewind",
-              cause: outRefLabel(registeredWitness.utxo),
-            }),
-          );
-        }
-        if (validTo >= activationTime) {
-          return yield* Effect.fail(
-            new SDK.StateQueueError({
-              message:
-                "Scheduler rewind window overlaps the next registered operator activation time",
-              cause: `valid_to=${validTo.toString()},activation_time=${activationTime.toString()},registered_witness=${outRefLabel(registeredWitness.utxo)}`,
-            }),
-          );
-        }
-      }
-    }
-    const schedulerSpendRedeemer: SDK.SchedulerSpendRedeemer =
-      selection.kind === "Advance"
-        ? {
-            Advance: {
-              scheduler_output_index: 0n,
-              active_node_ref_input_index: resolveReferenceInputIndexFromSet(
-                selection.activeNode.utxo,
-                referenceInputs,
-              ),
-            },
-          }
-        : {
-            Rewind: {
-              scheduler_output_index: 0n,
-              active_node_ref_input_index: resolveReferenceInputIndexFromSet(
-                selection.activeNode.utxo,
-                referenceInputs,
-              ),
-              active_root_node_ref_input_index: resolveReferenceInputIndexFromSet(
-                selection.activeRootNode.utxo,
-                referenceInputs,
-              ),
-              registered_node_ref_input_index: resolveReferenceInputIndexFromSet(
-                selection.registeredWitnessNode.utxo,
-                referenceInputs,
-              ),
-            },
-          };
-    yield* Effect.logInfo(
-      `🔹 Refreshing scheduler witness datum for commit window via ${selection.kind} (from operator=${schedulerDatum.operator}, startTime=${schedulerDatum.startTime.toString()} to operator=${operatorKeyHash}, startTime=${validFrom.toString()}, validTo=${validTo.toString()}).`,
-    );
-
-    const walletUtxos = yield* Effect.tryPromise({
-      try: () => lucid.wallet().getUtxos(),
-      catch: (cause) =>
-        new SDK.StateQueueError({
-          message: "Failed to fetch wallet UTxOs for scheduler refresh tx",
-          cause,
-        }),
-    });
-    const feeInput = yield* selectFeeInput(walletUtxos);
-    const walletAddress = yield* Effect.tryPromise({
-      try: () => lucid.wallet().address(),
-      catch: (cause) =>
-        new SDK.StateQueueError({
-          message: "Failed to fetch operator wallet address for tx chaining",
-          cause,
-        }),
-    });
-
-    const mkSchedulerRefreshTx = () =>
-      lucid
-        .newTx()
-        .validFrom(Number(validFrom))
-        .validTo(Number(validTo))
-        .collectFrom([feeInput])
-        .readFrom(referenceInputs)
-        .collectFrom(
-          [schedulerRefInput],
-          LucidData.to(schedulerSpendRedeemer, SDK.SchedulerSpendRedeemer),
-        )
-        .pay.ToContract(
-          contracts.scheduler.spendingScriptAddress,
-          {
-            kind: "inline",
-            value: refreshedSchedulerDatumCbor,
-          },
-          schedulerRefInput.assets,
-        )
-        .addSignerKey(operatorKeyHash)
-        .attach.Script(contracts.scheduler.spendingScript);
-
-    const refreshTx = yield* Effect.tryPromise({
-      try: () => mkSchedulerRefreshTx().complete({ localUPLCEval: true }),
-      catch: (cause) =>
-        new SDK.StateQueueError({
-          message: `Failed to build scheduler refresh tx: ${cause}`,
-          cause,
-        }),
-    });
-
-    const refreshTxHash = yield* handleSignSubmitNoConfirmation(
-      lucid,
-      refreshTx,
-    );
-    const chainedWalletOutputs = extractAddressOutputsFromSubmittedTx(
-      refreshTx.toTransaction(),
-      refreshTxHash,
-      walletAddress,
-    );
-    yield* Effect.logInfo(
-      `🔹 Scheduler refresh transaction submitted: ${refreshTxHash}`,
-    );
-    yield* Effect.logInfo(
-      `🔹 Scheduler refresh tx chaining outputs for operator wallet: ${chainedWalletOutputs.length}.`,
-    );
-    yield* awaitSubmittedSchedulerTx(lucid, refreshTxHash, "refresh");
-
-    let pollCount = 0;
-    while (pollCount < SCHEDULER_REFRESH_MAX_POLLS) {
-      const schedulerWitnessUtxos = yield* Effect.tryPromise({
-        try: () =>
-          lucid.utxosAtWithUnit(
-            contracts.scheduler.spendingScriptAddress,
-            schedulerWitnessUnit,
-          ),
-        catch: (cause) =>
-          new SDK.StateQueueError({
-            message:
-              "Failed to fetch scheduler witness UTxOs while waiting for scheduler refresh",
-            cause,
-          }),
-      });
-      for (const utxo of [...schedulerWitnessUtxos].sort(compareOutRefs)) {
-        const utxoDatumEither = yield* Effect.either(
-          getSchedulerDatumFromUTxO(utxo),
-        );
-        if (utxoDatumEither._tag === "Left") {
-          continue;
-        }
-        if (
-          utxoDatumEither.right.operator === operatorKeyHash &&
-          utxoDatumEither.right.startTime === validFrom
-        ) {
-          return {
-            schedulerRefInput: utxo,
-            chainedWalletOutputs,
-            consumedWalletFeeInputs: [feeInput],
-          };
-        }
-      }
-
-      pollCount += 1;
-      yield* Effect.sleep(SCHEDULER_REFRESH_POLL_INTERVAL);
-    }
-
-    return yield* Effect.fail(
-      new SDK.StateQueueError({
-        message:
-          "Timed out waiting for refreshed scheduler UTxO to appear on-chain",
-        cause: refreshTxHash,
-      }),
-    );
-  });
-
-const fetchRealStateQueueWitnessContext = (
-  lucid: LucidEvolution,
-  contracts: SDK.MidgardValidators,
-  alignedEndTime: number,
-): Effect.Effect<
-  RealStateQueueWitnessContext,
-  SDK.StateQueueError | TxSignError | TxSubmitError
-> =>
-  Effect.gen(function* () {
-    const operatorKeyHash = yield* getOperatorKeyHash(lucid);
-    const schedulerWitnessUnit = toUnit(
-      contracts.scheduler.policyId,
-      SDK.SCHEDULER_ASSET_NAME,
-    );
-    const activeOperatorUtxosForRefresh = yield* SDK.utxosAtByNFTPolicyId(
-      lucid,
-      contracts.activeOperators.spendingScriptAddress,
-      contracts.activeOperators.policyId,
-    ).pipe(
-      Effect.mapError(
-        (cause) =>
-          new SDK.StateQueueError({
-            message:
-              "Failed to fetch active-operators UTxOs for state_queue commit",
-            cause,
-          }),
-      ),
-    );
-    const registeredOperatorUtxos = yield* SDK.utxosAtByNFTPolicyId(
-      lucid,
-      contracts.registeredOperators.spendingScriptAddress,
-      contracts.registeredOperators.policyId,
-    ).pipe(
-      Effect.mapError(
-        (cause) =>
-          new SDK.StateQueueError({
-            message:
-              "Failed to fetch registered-operators UTxOs for scheduler refresh",
-            cause,
-          }),
-      ),
-    );
-
-    const schedulerUtxos = yield* SDK.utxosAtByNFTPolicyId(
-      lucid,
-      contracts.scheduler.spendingScriptAddress,
-      contracts.scheduler.policyId,
-    ).pipe(
-      Effect.mapError(
-        (cause) =>
-          new SDK.StateQueueError({
-            message: "Failed to fetch scheduler UTxOs for state_queue commit",
-            cause,
-          }),
-      ),
-    );
-    const initialSchedulerRefInput = yield* ensureRealSchedulerWitnessUtxo(
-      lucid,
-      contracts,
-      schedulerUtxos,
-    );
-    const schedulerRefInput = yield* ensureSchedulerAlignedForCommit(
-      lucid,
-      contracts,
-      operatorKeyHash,
-      initialSchedulerRefInput,
-      activeOperatorUtxosForRefresh,
-      registeredOperatorUtxos,
-      alignedEndTime,
-      schedulerWitnessUnit,
-    );
-    const network = lucid.config().network;
-    if (network === undefined) {
-      return yield* Effect.fail(
-        new SDK.StateQueueError({
-          message:
-            "Failed to resolve Cardano network for hub-oracle witness lookup",
-          cause: "lucid.config().network is undefined",
-        }),
-      );
-    }
-    const hubOracleAddress = credentialToAddress(
-      network,
-      scriptHashToCredential(contracts.hubOracle.policyId),
-    );
-    const hubOracleUnit = toUnit(
-      contracts.hubOracle.policyId,
-      SDK.HUB_ORACLE_ASSET_NAME,
-    );
-    const hubOracleWitnessUtxos = yield* Effect.tryPromise({
-      try: () => lucid.utxosAtWithUnit(hubOracleAddress, hubOracleUnit),
-      catch: (cause) =>
-        new SDK.StateQueueError({
-          message:
-            "Failed to fetch hub-oracle UTxOs for state_queue commit witness",
-          cause,
-        }),
-    });
-    if (hubOracleWitnessUtxos.length !== 1) {
-      return yield* Effect.fail(
-        new SDK.StateQueueError({
-          message:
-            "Failed to resolve unique hub-oracle UTxO for state_queue commit witness",
-          cause: `expected=1,found=${hubOracleWitnessUtxos.length},address=${hubOracleAddress},unit=${hubOracleUnit}`,
-        }),
-      );
-    }
-    const hubOracleRefInput = hubOracleWitnessUtxos[0];
-
-    const activeOperatorUtxos = yield* SDK.utxosAtByNFTPolicyId(
-      lucid,
-      contracts.activeOperators.spendingScriptAddress,
-      contracts.activeOperators.policyId,
-    ).pipe(
-      Effect.mapError(
-        (cause) =>
-          new SDK.StateQueueError({
-            message:
-              "Failed to refresh active-operators UTxOs for state_queue commit",
-            cause,
-          }),
-      ),
-    );
-    const activeOperatorInput = yield* selectActiveOperatorInput(
-      activeOperatorUtxos,
-      operatorKeyHash,
-    );
-
-    if (activeOperatorInput.datum == null) {
-      return yield* Effect.fail(
-        new SDK.StateQueueError({
-          message:
-            "Active-operators UTxO must include inline datum for real state_queue commit",
-          cause: `${activeOperatorInput.txHash}#${activeOperatorInput.outputIndex}`,
-        }),
-      );
-    }
-
-    return {
-      operatorKeyHash,
-      schedulerRefInput: schedulerRefInput.schedulerRefInput,
-      hubOracleRefInput,
-      activeOperatorInput: activeOperatorInput as UTxO & { datum: string },
-      activeOperatorsSpendingScript: contracts.activeOperators.spendingScript,
-      chainedWalletOutputs: schedulerRefInput.chainedWalletOutputs,
-      consumedWalletFeeInputs: schedulerRefInput.consumedWalletFeeInputs,
-    };
-  });
 
 const buildUnsignedTx = (
   contracts: SDK.MidgardValidators,
@@ -2131,6 +354,7 @@ const buildUnsignedTx = (
   txsRoot: string,
   depositsRoot: string,
   endDate: Date,
+  initialOperatorWalletView?: OperatorWalletView,
 ) =>
   Effect.gen(function* () {
     const lucid = yield* Lucid;
@@ -2138,6 +362,13 @@ const buildUnsignedTx = (
     const latestEndTime = Number(
       (yield* getLatestBlockDatumEndTime(latestBlock.datum)).getTime(),
     );
+    // The worker's Lucid service starts without a selected wallet. Select the
+    // operator wallet before any scheduler refresh or witness lookup that
+    // depends on wallet address or spendable operator inputs.
+    yield* lucid.switchToOperatorsMainWallet;
+    /**
+     * Resolves the commit window that should be used for the current block-header attempt.
+     */
     const resolveCommitWindow = () =>
       resolveAlignedCommitEndTime({
         lucid: lucid.api,
@@ -2152,6 +383,7 @@ const buildUnsignedTx = (
         lucid.api,
         contracts,
         commitWindow.resolvedEndTime,
+        witnessContext?.operatorWalletView ?? initialOperatorWalletView,
       );
       const refreshedCommitWindow = resolveCommitWindow();
       if (refreshedCommitWindow.resolvedEndTime === commitWindow.resolvedEndTime) {
@@ -2184,9 +416,8 @@ const buildUnsignedTx = (
       );
     }
     yield* Effect.logInfo("🔹 Finding updated block datum and new header...");
-    yield* lucid.switchToOperatorsMainWallet;
     const { nodeDatum: updatedNodeDatum, header: newHeader } =
-      yield* SDK.updateLatestBlocksDatumAndGetTheNewHeaderProgram(
+      yield* updateLatestBlocksDatumAndGetTheNewHeaderLocal(
         lucid.api,
         latestBlock.datum,
         utxosRoot,
@@ -2196,7 +427,7 @@ const buildUnsignedTx = (
         BigInt(alignedEndTime),
       );
 
-    const newHeaderHash = yield* SDK.hashBlockHeader(newHeader);
+    const newHeaderHash = yield* hashBlockHeaderLocal(newHeader);
     yield* Effect.logInfo(`🔹 New header hash is: ${newHeaderHash}`);
     yield* Effect.logInfo(
       "🔹 Building commitment with real state_queue witness context.",
@@ -2254,6 +485,9 @@ const buildUnsignedTx = (
         }),
     });
 
+    /**
+     * Builds the shared transaction skeleton for a block-header commit attempt.
+     */
     const makeBaseCommitTx = () =>
       lucid.api
         .newTx()
@@ -2276,303 +510,17 @@ const buildUnsignedTx = (
           latestBlock.utxo.assets,
         );
 
-    const formatLayout = (layout: {
-      readonly schedulerRefInputIndex: bigint;
-      readonly activeNodeInputIndex: bigint;
-      readonly activeOperatorsRedeemerIndex: bigint;
-      readonly stateQueueRedeemerIndex: bigint;
-      readonly headerNodeOutputIndex: bigint;
-      readonly previousHeaderNodeOutputIndex: bigint;
-      readonly activeNodeOutputIndex: bigint;
-      readonly hubOracleRefInputIndex: bigint;
-    }) =>
-      `scheduler_ref_input_index=${layout.schedulerRefInputIndex.toString()},active_node_input_index=${layout.activeNodeInputIndex.toString()},active_operators_redeemer_index=${layout.activeOperatorsRedeemerIndex.toString()},state_queue_redeemer_index=${layout.stateQueueRedeemerIndex.toString()},header_node_output_index=${layout.headerNodeOutputIndex.toString()},previous_header_node_output_index=${layout.previousHeaderNodeOutputIndex.toString()},active_node_output_index=${layout.activeNodeOutputIndex.toString()},hub_oracle_ref_input_index=${layout.hubOracleRefInputIndex.toString()}`;
-    const commitLayoutsEqual = (
-      left: StateQueueCommitLayout,
-      right: StateQueueCommitLayout,
-    ): boolean =>
-      left.schedulerRefInputIndex === right.schedulerRefInputIndex &&
-      left.activeNodeInputIndex === right.activeNodeInputIndex &&
-      left.headerNodeOutputIndex === right.headerNodeOutputIndex &&
-      left.previousHeaderNodeOutputIndex ===
-        right.previousHeaderNodeOutputIndex &&
-      left.activeOperatorsRedeemerIndex === right.activeOperatorsRedeemerIndex &&
-      left.activeNodeOutputIndex === right.activeNodeOutputIndex &&
-      left.hubOracleRefInputIndex === right.hubOracleRefInputIndex &&
-      left.stateQueueRedeemerIndex === right.stateQueueRedeemerIndex;
-
-    const txBuilder = yield* Effect.gen(function* () {
-      const witness = witnessContext;
-      const walletUtxos = yield* Effect.tryPromise({
-        try: () => lucid.api.wallet().getUtxos(),
-        catch: (cause) =>
-          new SDK.StateQueueError({
-            message:
-              "Failed to fetch operator wallet UTxOs for real state_queue commit",
-            cause,
-          }),
-      });
-      const consumedWalletFeeInputSet = new Set(
-        witness.consumedWalletFeeInputs.map((utxo) => outRefLabel(utxo)),
-      );
-      const providerWalletCandidates = walletUtxos.filter(
-        (utxo) => !consumedWalletFeeInputSet.has(outRefLabel(utxo)),
-      );
-      const feeInputCandidates = dedupeUtxosByOutRef([
-        ...witness.chainedWalletOutputs,
-        ...providerWalletCandidates,
-      ]);
-      const feeInput = yield* selectFeeInput(feeInputCandidates);
-      const feeInputNonAdaUnits = Object.entries(feeInput.assets)
-        .filter(([unit, amount]) => unit !== "lovelace" && amount > 0n)
-        .map(([unit, amount]) => `${unit}:${amount.toString()}`);
-      yield* Effect.logInfo(
-        `🔹 Selected fee input ${outRefLabel(feeInput)} from ${feeInputCandidates.length} candidate(s) (provider=${providerWalletCandidates.length}, chained=${witness.chainedWalletOutputs.length}, consumed_excluded=${witness.consumedWalletFeeInputs.length}) (non-ADA units: ${
-          feeInputNonAdaUnits.length > 0
-            ? feeInputNonAdaUnits.join(",")
-            : "none"
-        }).`,
-      );
-
-      const makeCommitTxForLayout = (commitLayout: StateQueueCommitLayout) =>
-        makeBaseCommitTx()
-          .collectFrom([feeInput])
-          .readFrom([witness.schedulerRefInput, witness.hubOracleRefInput])
-          .collectFrom(
-            [witness.activeOperatorInput],
-            encodeActiveOperatorCommitRedeemer(commitLayout),
-          )
-          .pay.ToContract(
-            witness.activeOperatorInput.address,
-            {
-              kind: "inline",
-              value: updatedActiveOperatorDatumCbor,
-            },
-            witness.activeOperatorInput.assets,
-          )
-          .attach.Script(witness.activeOperatorsSpendingScript)
-          .addSignerKey(witness.operatorKeyHash)
-          .mintAssets(
-            commitMintAssets,
-            encodeStateQueueCommitRedeemer(
-              witness.operatorKeyHash,
-              commitLayout,
-            ),
-          )
-          .attach.Script(stateQueueAuthValidator.spendingScript)
-          .attach.Script(stateQueueAuthValidator.mintingScript);
-
-      const seedLayout = deriveStateQueueCommitLayout({
-        latestBlockInput: latestBlock.utxo,
-        activeOperatorInput: witness.activeOperatorInput,
-        schedulerRefInput: witness.schedulerRefInput,
-        hubOracleRefInput: witness.hubOracleRefInput,
-        txInputs: [latestBlock.utxo, witness.activeOperatorInput, feeInput],
-      });
-      const { commitLayout, draftDiagnostics } = yield* Effect.tryPromise({
-        try: async () => {
-          const [, , draftSignBuilder] = await withStubbedProviderEvaluation(
-            lucid.api,
-            () =>
-              makeCommitTxForLayout(seedLayout).chain({
-                localUPLCEval: true,
-              }),
-          );
-          const draftTx = draftSignBuilder.toTransaction();
-          const draftTtl = draftTx.body().ttl();
-          const txValidityUpperBoundSlot =
-            draftTtl === undefined ? undefined : Number(draftTtl);
-          const txValidityUpperBoundUnixTime =
-            txValidityUpperBoundSlot === undefined
-              ? undefined
-              : slotToUnixTimeForLucid(lucid.api, txValidityUpperBoundSlot);
-          const commitLayout = deriveCommitLayoutFromDraftTx({
-            tx: draftTx,
-            schedulerRefInput: witness.schedulerRefInput,
-            hubOracleRefInput: witness.hubOracleRefInput,
-            activeOperatorInput: witness.activeOperatorInput,
-            stateQueueAddress: stateQueueAuthValidator.spendingScriptAddress,
-            headerNodeUnit,
-            headerNodeDatum: appendedNodeDatumCbor,
-            previousHeaderNodeDatum: updatedNodeDatumCbor,
-          });
-          const draftDiagnostics = buildRealCommitDraftDiagnostics({
-            tx: draftTx,
-            layout: commitLayout,
-            operatorKeyHash: witness.operatorKeyHash,
-            latestBlockInput: latestBlock.utxo,
-            schedulerRefInput: witness.schedulerRefInput,
-            hubOracleRefInput: witness.hubOracleRefInput,
-            activeOperatorInput: witness.activeOperatorInput,
-            stateQueueAddress: stateQueueAuthValidator.spendingScriptAddress,
-            headerNodeUnit,
-            appendedNodeDatumCbor,
-            previousHeaderNodeDatumCbor: updatedNodeDatumCbor,
-            schedulerPolicyId: contracts.scheduler.policyId,
-            hubOraclePolicyId: contracts.hubOracle.policyId,
-            activeOperatorsPolicyId: contracts.activeOperators.policyId,
-            txValidityUpperBoundSlot: txValidityUpperBoundSlot?.toString(),
-            txValidityUpperBoundUnixTime:
-              txValidityUpperBoundUnixTime?.toString(),
-          });
-          return {
-            commitLayout,
-            draftDiagnostics,
-          };
-        },
-        catch: (cause) =>
-          new SDK.StateQueueError({
-            message: `Failed to derive deterministic commit redeemer layout from balanced draft tx: ${formatUnknownError(
-              cause,
-            )}`,
-            cause,
-          }),
-      });
-      yield* Effect.logInfo(
-        `🔹 Using commit redeemer layout: ${formatLayout(commitLayout)}`,
-      );
-      yield* Effect.logInfo(
-        `🔹 Real commit draft diagnostics: ${JSON.stringify(
-          draftDiagnostics,
-          (_key, value) =>
-            typeof value === "bigint" ? value.toString() : value,
-        )}`,
-      );
-      let stableCommitLayout = commitLayout;
-      let builtCommitTx = yield* Effect.tryPromise({
-        try: () =>
-          makeCommitTxForLayout(stableCommitLayout).complete({
-            localUPLCEval: true,
-          }),
-        catch: (e) =>
-          new SDK.StateQueueError({
-            message: `Failed to build block header commitment transaction with derived layout (${formatLayout(
-              stableCommitLayout,
-            )}): ${e}`,
-            cause: e,
-          }),
-      }).pipe(
-        Effect.catchAll((remoteError) =>
-          Effect.gen(function* () {
-            const localEvalDiagnostic = yield* Effect.either(
-              Effect.tryPromise({
-                try: () =>
-                  makeCommitTxForLayout(stableCommitLayout).complete({
-                    localUPLCEval: true,
-                  }),
-                catch: (e) =>
-                  new SDK.StateQueueError({
-                    message: `Local UPLC eval diagnostic failed for derived layout (${formatLayout(
-                      stableCommitLayout,
-                    )}): ${e}`,
-                    cause: e,
-                  }),
-              }),
-            );
-            const localDiagnosticMessage =
-              localEvalDiagnostic._tag === "Left"
-                ? formatUnknownError(localEvalDiagnostic.left)
-                : "local UPLC eval unexpectedly succeeded";
-            yield* Effect.logError(
-              `Commit build failed for derived layout ${formatLayout(stableCommitLayout)}; remote=${formatUnknownError(
-                remoteError,
-              )}; local_diagnostic=${localDiagnosticMessage}`,
-            );
-            return yield* Effect.fail(
-              new SDK.StateQueueError({
-                message:
-                  "Failed to build block header commitment transaction with deterministic layout",
-                cause: `layout=${formatLayout(stableCommitLayout)}; remote=${formatUnknownError(
-                  remoteError,
-                )}; local_diagnostic=${localDiagnosticMessage}`,
-              }),
-            );
-          }),
-        ),
-      );
-      for (let iteration = 0; iteration < 2; iteration += 1) {
-        const derivedSubmitLayout = deriveCommitLayoutFromDraftTx({
-          tx: builtCommitTx.toTransaction(),
-          schedulerRefInput: witness.schedulerRefInput,
-          hubOracleRefInput: witness.hubOracleRefInput,
-          activeOperatorInput: witness.activeOperatorInput,
-          stateQueueAddress: stateQueueAuthValidator.spendingScriptAddress,
-          headerNodeUnit,
-          headerNodeDatum: appendedNodeDatumCbor,
-          previousHeaderNodeDatum: updatedNodeDatumCbor,
-        });
-        if (commitLayoutsEqual(stableCommitLayout, derivedSubmitLayout)) {
-          return builtCommitTx;
-        }
-        if (iteration === 1) {
-          return yield* Effect.fail(
-            new SDK.StateQueueError({
-              message:
-                "Commit transaction layout did not converge after deterministic rebuild",
-              cause: `authored=${formatLayout(stableCommitLayout)}; derived=${formatLayout(
-                derivedSubmitLayout,
-              )}`,
-            }),
-          );
-        }
-        yield* Effect.logWarning(
-          `Commit layout drift detected after balancing; rebuilding with tx-derived indexes. authored=${formatLayout(stableCommitLayout)} derived=${formatLayout(derivedSubmitLayout)}`,
-        );
-        stableCommitLayout = derivedSubmitLayout;
-        builtCommitTx = yield* Effect.tryPromise({
-          try: () =>
-            makeCommitTxForLayout(stableCommitLayout).complete({
-              localUPLCEval: true,
-            }),
-          catch: (e) =>
-            new SDK.StateQueueError({
-              message: `Failed to rebuild block header commitment transaction with tx-derived layout (${formatLayout(
-                stableCommitLayout,
-              )}): ${e}`,
-              cause: e,
-            }),
-        }).pipe(
-          Effect.catchAll((remoteError) =>
-            Effect.gen(function* () {
-              const localEvalDiagnostic = yield* Effect.either(
-                Effect.tryPromise({
-                  try: () =>
-                    makeCommitTxForLayout(stableCommitLayout).complete({
-                      localUPLCEval: true,
-                    }),
-                  catch: (e) =>
-                    new SDK.StateQueueError({
-                      message: `Local UPLC eval diagnostic failed for tx-derived layout (${formatLayout(
-                        stableCommitLayout,
-                      )}): ${e}`,
-                      cause: e,
-                    }),
-                }),
-              );
-              const localDiagnosticMessage =
-                localEvalDiagnostic._tag === "Left"
-                  ? formatUnknownError(localEvalDiagnostic.left)
-                  : "local UPLC eval unexpectedly succeeded";
-              yield* Effect.logError(
-                `Commit rebuild failed for tx-derived layout ${formatLayout(stableCommitLayout)}; remote=${formatUnknownError(
-                  remoteError,
-                )}; local_diagnostic=${localDiagnosticMessage}`,
-              );
-              return yield* Effect.fail(
-                new SDK.StateQueueError({
-                  message:
-                    "Failed to rebuild block header commitment transaction with deterministic layout",
-                  cause: `layout=${formatLayout(stableCommitLayout)}; remote=${formatUnknownError(
-                    remoteError,
-                  )}; local_diagnostic=${localDiagnosticMessage}`,
-                }),
-              );
-            }),
-          ),
-        );
-      }
-
-      return builtCommitTx;
+    const txBuilder = yield* buildDeterministicCommitTxBuilder({
+      lucid: lucid.api,
+      contracts,
+      latestBlockInput: latestBlock.utxo,
+      witness: witnessContext,
+      headerNodeUnit,
+      appendedNodeDatumCbor,
+      previousHeaderNodeDatumCbor: updatedNodeDatumCbor,
+      updatedActiveOperatorDatumCbor,
+      commitMintAssets,
+      makeBaseCommitTx,
     });
 
     const txSize = txBuilder.toCBOR().length / 2;
@@ -2590,24 +538,400 @@ const buildUnsignedTx = (
     };
   });
 
+const resolveOptionalUserEventsRoot = (
+  tableName: string,
+  startDate: Date,
+  endDate: Date,
+): Effect.Effect<Option.Option<string>, DatabaseError | MptError, Database> =>
+  userEventsProgram(tableName, startDate, endDate).pipe(
+    Effect.flatMap((optUserEventsRootProgram) =>
+      Option.isNone(optUserEventsRootProgram)
+        ? Effect.succeed(Option.none())
+        : optUserEventsRootProgram.value.pipe(
+            Effect.map((userEventsRoot) => Option.some(userEventsRoot)),
+          ),
+    ),
+  );
+
+const toLocalFinalizationPendingError = ({
+  submittedTxHash,
+  txSize,
+  currentBlockMempoolTxsCount,
+  sizeOfProcessedTxs,
+  blockEndTimeMs,
+  workerInput,
+  cause,
+}: {
+  readonly submittedTxHash: string;
+  readonly txSize: number;
+  readonly currentBlockMempoolTxsCount: number;
+  readonly sizeOfProcessedTxs: number;
+  readonly blockEndTimeMs: number;
+  readonly workerInput: WorkerInput;
+  readonly cause: unknown;
+}) =>
+  new LocalFinalizationPendingError({
+    submittedTxHash,
+    txSize,
+    mempoolTxsCount:
+      currentBlockMempoolTxsCount + workerInput.data.mempoolTxsCountSoFar,
+    sizeOfBlocksTxs:
+      sizeOfProcessedTxs + workerInput.data.sizeOfProcessedTxsSoFar,
+    blockEndTimeMs,
+    cause,
+  });
+
+const submitDepositOnlyCommit = ({
+  contracts,
+  latestBlock,
+  startTime,
+  endTime,
+  utxoRoot,
+  txRoot,
+  sizeOfBlocksTxsSoFar,
+}: {
+  readonly contracts: SDK.MidgardValidators;
+  readonly latestBlock: SDK.StateQueueUTxO;
+  readonly startTime: Date;
+  readonly endTime: Date;
+  readonly utxoRoot: string;
+  readonly txRoot: string;
+  readonly sizeOfBlocksTxsSoFar: number;
+}) =>
+  Effect.gen(function* () {
+    const optDepositsRoot = yield* resolveOptionalUserEventsRoot(
+      DepositsDB.tableName,
+      startTime,
+      endTime,
+    );
+    if (Option.isNone(optDepositsRoot)) {
+      yield* Effect.logInfo("🔹 Nothing to commit.");
+      return {
+        type: "NothingToCommitOutput",
+      } as WorkerOutput;
+    }
+
+    const depositsRoot = optDepositsRoot.value;
+    yield* Effect.logInfo(`🔹 Deposits root is: ${depositsRoot}`);
+    const emptyRoot = yield* emptyRootHexProgram;
+    const roots = selectCommitRoots({
+      hasTxRequests: false,
+      computedUtxoRoot: utxoRoot,
+      computedTxRoot: txRoot,
+      emptyRoot,
+    });
+    const { signAndSubmitProgram, txSize } = yield* buildUnsignedTx(
+      contracts,
+      latestBlock,
+      roots.utxoRoot,
+      roots.txRoot,
+      depositsRoot,
+      endTime,
+    );
+
+    return yield* Effect.matchEffect(signAndSubmitProgram, {
+      onFailure: (error) =>
+        Effect.gen(function* () {
+          const detail = formatUnknownError(error);
+          yield* Effect.logError(
+            `🔹 Deposit-only commit submission failed: ${detail}`,
+          );
+          return {
+            type: "FailureOutput",
+            error: `Deposit-only commit submission failed: ${detail}`,
+          } satisfies WorkerOutput;
+        }),
+      onSuccess: (txHash) =>
+        Effect.succeed({
+          type: "SuccessfulSubmissionOutput",
+          submittedTxHash: txHash,
+          txSize,
+          mempoolTxsCount: 0,
+          sizeOfBlocksTxs: sizeOfBlocksTxsSoFar,
+          blockEndTimeMs: endTime.getTime(),
+        } as WorkerOutput),
+    });
+  });
+
+const submitTxBackedCommit = ({
+  contracts,
+  latestBlock,
+  startTime,
+  endTime,
+  utxoRoot,
+  txRoot,
+  mempoolTrie,
+  processedMempoolTxs,
+  mempoolTxHashes,
+  workerInput,
+  sizeOfProcessedTxs,
+}: {
+  readonly contracts: SDK.MidgardValidators;
+  readonly latestBlock: SDK.StateQueueUTxO;
+  readonly startTime: Date;
+  readonly endTime: Date;
+  readonly utxoRoot: string;
+  readonly txRoot: string;
+  readonly mempoolTrie: MidgardMpt;
+  readonly processedMempoolTxs: readonly TxTable.EntryWithTimeStamp[];
+  readonly mempoolTxHashes: Buffer[];
+  readonly workerInput: WorkerInput;
+  readonly sizeOfProcessedTxs: number;
+}) =>
+  Effect.gen(function* () {
+    const lucid = yield* Lucid;
+    const optDepositsRoot = yield* resolveOptionalUserEventsRoot(
+      DepositsDB.tableName,
+      startTime,
+      endTime,
+    );
+    const depositsRoot = Option.isSome(optDepositsRoot)
+      ? optDepositsRoot.value
+      : yield* emptyRootHexProgram;
+    const currentBlockMempoolTxsCount = processedMempoolTxs.length;
+    const blockEndTimeMs = endTime.getTime();
+    const mapLocalFinalizationPending = (
+      submittedTxHash: string,
+      txSize: number,
+    ) =>
+      Effect.mapError((cause: unknown) =>
+        toLocalFinalizationPendingError({
+          submittedTxHash,
+          txSize,
+          currentBlockMempoolTxsCount,
+          sizeOfProcessedTxs,
+          blockEndTimeMs,
+          workerInput,
+          cause,
+        }),
+      );
+
+    yield* Effect.logInfo(`🔹 Deposits root is: ${depositsRoot}`);
+
+    /**
+     * Submits a prepared block-header commit transaction and waits for the resulting status.
+     */
+    const submitCommitAttempt = (initialOperatorWalletView?: OperatorWalletView) =>
+      buildUnsignedTx(
+        contracts,
+        latestBlock,
+        utxoRoot,
+        txRoot,
+        depositsRoot,
+        endTime,
+        initialOperatorWalletView,
+      ).pipe(
+        Effect.flatMap(({ newHeaderHash, signAndSubmitProgram, txSize }) =>
+          Effect.matchEffect(signAndSubmitProgram, {
+            onFailure: (error) => {
+              if (error instanceof TxSignError) {
+                return Effect.gen(function* () {
+                  const detail = formatUnknownError(error);
+                  yield* Effect.logError(`🔹 Commit signing failed: ${detail}`);
+                  return {
+                    type: "FailureOutput",
+                    error: `Commit signing failed: ${detail}`,
+                  } satisfies WorkerOutput;
+                });
+              }
+
+              return Effect.gen(function* () {
+                const recoveredTxHash =
+                  yield* recoverSubmittedTxHashByHeaderProgram(
+                    contracts.stateQueue,
+                    newHeaderHash,
+                  );
+                if (Option.isSome(recoveredTxHash)) {
+                  return yield* successfulSubmissionProgram(
+                    mempoolTrie,
+                    processedMempoolTxs,
+                    mempoolTxHashes,
+                    newHeaderHash,
+                    workerInput,
+                    txSize,
+                    sizeOfProcessedTxs,
+                    recoveredTxHash.value,
+                    blockEndTimeMs,
+                  ).pipe(
+                    mapLocalFinalizationPending(recoveredTxHash.value, txSize),
+                  );
+                }
+
+                const transferResult = yield* Effect.either(
+                  skippedSubmissionProgram(processedMempoolTxs, mempoolTxHashes),
+                );
+                if (transferResult._tag === "Left") {
+                  const detail = formatUnknownError(transferResult.left);
+                  yield* Effect.logError(
+                    `🔹 Commit submission failed and deferred transfer failed: submit=${formatUnknownError(
+                      error,
+                    )}; transfer=${detail}`,
+                  );
+                  return {
+                    type: "FailureOutput",
+                    error: `Commit submission failed and deferred transfer failed: submit=${formatUnknownError(
+                      error,
+                    )}; transfer=${detail}`,
+                  } satisfies WorkerOutput;
+                }
+
+                return yield* failedSubmissionProgram(
+                  mempoolTrie,
+                  currentBlockMempoolTxsCount,
+                  sizeOfProcessedTxs,
+                  error,
+                );
+              });
+            },
+            onSuccess: (txHash) =>
+              successfulSubmissionProgram(
+                mempoolTrie,
+                processedMempoolTxs,
+                mempoolTxHashes,
+                newHeaderHash,
+                workerInput,
+                txSize,
+                sizeOfProcessedTxs,
+                txHash,
+                blockEndTimeMs,
+              ).pipe(mapLocalFinalizationPending(txHash, txSize)),
+          }),
+        ),
+      );
+
+    let lastResult = yield* Effect.either(submitCommitAttempt());
+    let retryCount = 0;
+    while (
+      lastResult._tag === "Left" &&
+      lastResult.left instanceof TxSubmitError &&
+      isPotentiallyStaleOperatorWalletViewError(lastResult.left) &&
+      retryCount < COMMIT_STALE_OPERATOR_WALLET_VIEW_RETRIES
+    ) {
+      retryCount += 1;
+      yield* lucid.switchToOperatorsMainWallet;
+      const reloadedOperatorWalletView = yield* Effect.tryPromise({
+        try: () => reloadOperatorWalletView(lucid.api),
+        catch: (cause) =>
+          new SDK.StateQueueError({
+            message:
+              "Failed to reload operator wallet view after stale commit submission",
+            cause,
+          }),
+      });
+      yield* Effect.logWarning(
+        `Commit submission hit a stale operator-wallet input class error; reloading wallet view and rebuilding (attempt=${retryCount}/${COMMIT_STALE_OPERATOR_WALLET_VIEW_RETRIES}).`,
+      );
+      lastResult = yield* Effect.either(
+        submitCommitAttempt(reloadedOperatorWalletView),
+      );
+    }
+
+    if (lastResult._tag === "Left") {
+      return yield* Effect.fail(lastResult.left);
+    }
+    return lastResult.right;
+  });
+
+const deferProcessedCommitPayloadUntilConfirmation = ({
+  processedMempoolTxs,
+  mempoolTxHashes,
+  mempoolTxsCount,
+  sizeOfProcessedTxs,
+}: {
+  readonly processedMempoolTxs: readonly TxTable.EntryWithTimeStamp[];
+  readonly mempoolTxHashes: Buffer[];
+  readonly mempoolTxsCount: number;
+  readonly sizeOfProcessedTxs: number;
+}) =>
+  Effect.gen(function* () {
+    yield* Effect.logInfo(
+      "🔹 No confirmed blocks available. Transferring to ProcessedMempoolDB...",
+    );
+    const transferResult = yield* Effect.either(
+      skippedSubmissionProgram(processedMempoolTxs, mempoolTxHashes),
+    );
+    if (transferResult._tag === "Left") {
+      const detail = formatUnknownError(transferResult.left);
+      yield* Effect.logError(
+        `🔹 Failed to defer processed txs while waiting for confirmation: ${detail}`,
+      );
+      return {
+        type: "FailureOutput",
+        error: `Failed to transfer deferred commit payload to ProcessedMempoolDB: ${detail}`,
+      } satisfies WorkerOutput;
+    }
+    return {
+      type: "SkippedSubmissionOutput",
+      mempoolTxsCount,
+      sizeOfProcessedTxs,
+    } satisfies WorkerOutput;
+  });
+
+const recoverLocalFinalizationAgainstConfirmedBlock = ({
+  latestBlock,
+  utxoRoot,
+  txRoot,
+  mempoolTrie,
+  processedMempoolTxs,
+  mempoolTxHashes,
+  workerInput,
+  sizeOfProcessedTxs,
+}: {
+  readonly latestBlock: SDK.StateQueueUTxO;
+  readonly utxoRoot: string;
+  readonly txRoot: string;
+  readonly mempoolTrie: MidgardMpt;
+  readonly processedMempoolTxs: readonly TxTable.EntryWithTimeStamp[];
+  readonly mempoolTxHashes: Buffer[];
+  readonly workerInput: WorkerInput;
+  readonly sizeOfProcessedTxs: number;
+}) =>
+  Effect.gen(function* () {
+    yield* Effect.logInfo(
+      "🔹 Attempting local finalization recovery against confirmed block roots...",
+    );
+    const optHeaderRoots = yield* getLatestBlockHeaderRoots(latestBlock.datum);
+    if (Option.isNone(optHeaderRoots)) {
+      return {
+        type: "FailureOutput",
+        error:
+          "Confirmed block datum does not contain a recoverable header for local finalization",
+      } satisfies WorkerOutput;
+    }
+    const rootsMatch = rootsMatchConfirmedHeader({
+      computedUtxoRoot: utxoRoot,
+      computedTxRoot: txRoot,
+      confirmedUtxoRoot: optHeaderRoots.value.utxoRoot,
+      confirmedTxRoot: optHeaderRoots.value.txRoot,
+    });
+    if (!rootsMatch) {
+      return {
+        type: "FailureOutput",
+        error:
+          "Local finalization recovery aborted: computed roots do not match the confirmed block header",
+      } satisfies WorkerOutput;
+    }
+    const confirmedHeader = yield* getHeaderFromStateQueueDatumLocal(
+      latestBlock.datum,
+    );
+    const confirmedHeaderHash = yield* hashBlockHeaderLocal(confirmedHeader);
+    return yield* successfulLocalFinalizationRecoveryProgram(
+      mempoolTrie,
+      processedMempoolTxs,
+      mempoolTxHashes,
+      confirmedHeaderHash,
+      workerInput,
+      sizeOfProcessedTxs,
+    );
+  });
+
 const databaseOperationsProgram = (
   workerInput: WorkerInput,
   ledgerTrie: MidgardMpt,
   mempoolTrie: MidgardMpt,
 ): Effect.Effect<
   WorkerOutput,
-  | SDK.CborDeserializationError
-  | SDK.CmlUnexpectedError
-  | SDK.DataCoercionError
-  | SDK.HashingError
-  | SDK.LucidError
-  | SDK.StateQueueError
-  | TxSignError
-  | TxSubmitError
-  | DatabaseError
-  | FileSystemError
-  | LocalFinalizationPendingError
-  | MptError,
+  unknown,
   MidgardContracts | Database | Lucid | NodeConfig
 > =>
   Effect.gen(function* () {
@@ -2630,7 +954,7 @@ const databaseOperationsProgram = (
       );
       return {
         type: "NothingToCommitOutput",
-      };
+      } satisfies WorkerOutput;
     }
 
     const {
@@ -2663,7 +987,6 @@ const databaseOperationsProgram = (
       yield* establishEndTimeFromTxRequests(processedMempoolTxs);
 
     const contracts = yield* MidgardContracts;
-    const { stateQueue: stateQueueAuthValidator } = contracts;
 
     if (availableConfirmedBlock === "") {
       // The tx confirmation worker has not yet confirmed a previously
@@ -2671,27 +994,12 @@ const databaseOperationsProgram = (
       // However, it is stored on disk in our LevelDB mempool. Therefore,
       // the processed txs must be transferred to `ProcessedMempoolDB` from
       // `MempoolDB`.
-      yield* Effect.logInfo(
-        "🔹 No confirmed blocks available. Transferring to ProcessedMempoolDB...",
-      );
-      const transferResult = yield* Effect.either(
-        skippedSubmissionProgram(processedMempoolTxs, mempoolTxHashes),
-      );
-      if (transferResult._tag === "Left") {
-        const detail = formatUnknownError(transferResult.left);
-        yield* Effect.logError(
-          `🔹 Failed to defer processed txs while waiting for confirmation: ${detail}`,
-        );
-        return {
-          type: "FailureOutput",
-          error: `Failed to transfer deferred commit payload to ProcessedMempoolDB: ${detail}`,
-        };
-      }
-      return {
-        type: "SkippedSubmissionOutput",
+      return yield* deferProcessedCommitPayloadUntilConfirmation({
+        processedMempoolTxs,
+        mempoolTxHashes,
         mempoolTxsCount,
         sizeOfProcessedTxs,
-      };
+      });
     } else {
       yield* Effect.logInfo(
         "🔹 Previous submitted block is now confirmed, deserializing...",
@@ -2706,44 +1014,16 @@ const databaseOperationsProgram = (
           hasAvailableConfirmedBlock: true,
         })
       ) {
-        yield* Effect.logInfo(
-          "🔹 Attempting local finalization recovery against confirmed block roots...",
-        );
-        const optHeaderRoots = yield* getLatestBlockHeaderRoots(
-          latestBlock.datum,
-        );
-        if (Option.isNone(optHeaderRoots)) {
-          return {
-            type: "FailureOutput",
-            error:
-              "Confirmed block datum does not contain a recoverable header for local finalization",
-          };
-        }
-        const rootsMatch = rootsMatchConfirmedHeader({
-          computedUtxoRoot: utxoRoot,
-          computedTxRoot: txRoot,
-          confirmedUtxoRoot: optHeaderRoots.value.utxoRoot,
-          confirmedTxRoot: optHeaderRoots.value.txRoot,
-        });
-        if (!rootsMatch) {
-          return {
-            type: "FailureOutput",
-            error:
-              "Local finalization recovery aborted: computed roots do not match the confirmed block header",
-          };
-        }
-        const confirmedHeader = yield* SDK.getHeaderFromStateQueueDatum(
-          latestBlock.datum,
-        );
-        const confirmedHeaderHash = yield* SDK.hashBlockHeader(confirmedHeader);
-        return yield* successfulLocalFinalizationRecoveryProgram(
+        return yield* recoverLocalFinalizationAgainstConfirmedBlock({
+          latestBlock,
+          utxoRoot,
+          txRoot,
           mempoolTrie,
           processedMempoolTxs,
           mempoolTxHashes,
-          confirmedHeaderHash,
           workerInput,
           sizeOfProcessedTxs,
-        );
+        });
       }
 
       const startTime = currentBlockStartTime;
@@ -2752,65 +1032,18 @@ const databaseOperationsProgram = (
         // No transaction requests found (neither in `ProcessedMempoolDB`, nor
         // in `MempoolDB`). We check if there are any user events slated for
         // inclusion within `startTime` and current moment.
-        const endDate = depositOnlyEndTime;
         yield* Effect.logInfo(
           "🔹 Checking for user events... (no tx requests in queue)",
         );
-        const optDepositsRootProgram = yield* userEventsProgram(
-          DepositsDB.tableName,
+        return yield* submitDepositOnlyCommit({
+          contracts,
+          latestBlock,
           startTime,
-          endDate,
-        );
-        if (Option.isNone(optDepositsRootProgram)) {
-          yield* Effect.logInfo("🔹 Nothing to commit.");
-          return {
-            type: "NothingToCommitOutput",
-          } as WorkerOutput;
-        } else {
-          const depositsRootFiber = yield* Effect.fork(
-            optDepositsRootProgram.value,
-          );
-          const depositsRoot = yield* depositsRootFiber;
-          yield* Effect.logInfo(`🔹 Deposits root is: ${depositsRoot}`);
-          const emptyRoot = yield* emptyRootHexProgram;
-          const roots = selectCommitRoots({
-            hasTxRequests: false,
-            computedUtxoRoot: utxoRoot,
-            computedTxRoot: txRoot,
-            emptyRoot,
-          });
-          const { signAndSubmitProgram, txSize } = yield* buildUnsignedTx(
-            contracts,
-            latestBlock,
-            roots.utxoRoot,
-            roots.txRoot,
-            depositsRoot,
-            endDate,
-          );
-
-          return yield* Effect.matchEffect(signAndSubmitProgram, {
-            onFailure: (error) =>
-              Effect.gen(function* () {
-                const detail = formatUnknownError(error);
-                yield* Effect.logError(
-                  `🔹 Deposit-only commit submission failed: ${detail}`,
-                );
-                return {
-                  type: "FailureOutput",
-                  error: `Deposit-only commit submission failed: ${detail}`,
-                } satisfies WorkerOutput;
-              }),
-            onSuccess: (txHash) =>
-              Effect.succeed({
-                type: "SuccessfulSubmissionOutput",
-                submittedTxHash: txHash,
-                txSize,
-                mempoolTxsCount: 0,
-                sizeOfBlocksTxs: workerInput.data.sizeOfProcessedTxsSoFar,
-                blockEndTimeMs: endDate.getTime(),
-              } as WorkerOutput),
-          });
-        }
+          endTime: depositOnlyEndTime,
+          utxoRoot,
+          txRoot,
+          sizeOfBlocksTxsSoFar: workerInput.data.sizeOfProcessedTxsSoFar,
+        });
       } else {
         // One or more transactions found in either `ProcessedMempoolDB` or
         // `MempoolDB`. We use the latest transaction's timestamp as the upper
@@ -2818,136 +1051,18 @@ const databaseOperationsProgram = (
         const endTime = optEndTime.value;
 
         yield* Effect.logInfo("🔹 Checking for user events...");
-        const optDepositsRootProgram = yield* userEventsProgram(
-          DepositsDB.tableName,
+        return yield* submitTxBackedCommit({
+          contracts,
+          latestBlock,
           startTime,
           endTime,
-        );
-
-        let depositsRoot: string = yield* emptyRootHexProgram;
-        if (Option.isSome(optDepositsRootProgram)) {
-          const depositsRootFiber = yield* Effect.fork(
-            optDepositsRootProgram.value,
-          );
-          depositsRoot = yield* depositsRootFiber;
-        }
-        yield* Effect.logInfo(`🔹 Deposits root is: ${depositsRoot}`);
-
-        const { newHeaderHash, signAndSubmitProgram, txSize } =
-          yield* buildUnsignedTx(
-            contracts,
-            latestBlock,
-            utxoRoot,
-            txRoot,
-            depositsRoot,
-            endTime,
-          );
-
-        return yield* Effect.matchEffect(signAndSubmitProgram, {
-          onFailure: Match.valueTags({
-            TxSignError: (e) =>
-              Effect.gen(function* () {
-                const detail = formatUnknownError(e);
-                yield* Effect.logError(`🔹 Commit signing failed: ${detail}`);
-                return {
-                  type: "FailureOutput",
-                  error: `Commit signing failed: ${detail}`,
-                } satisfies WorkerOutput;
-              }),
-            TxSubmitError: (e) =>
-              Effect.gen(function* () {
-                const recoveredTxHash =
-                  yield* recoverSubmittedTxHashByHeaderProgram(
-                    stateQueueAuthValidator,
-                    newHeaderHash,
-                  );
-                if (Option.isSome(recoveredTxHash)) {
-                  return yield* successfulSubmissionProgram(
-                    mempoolTrie,
-                    processedMempoolTxs,
-                    mempoolTxHashes,
-                    newHeaderHash,
-                    workerInput,
-                    txSize,
-                    sizeOfProcessedTxs,
-                    recoveredTxHash.value,
-                    endTime.getTime(),
-                  ).pipe(
-                    Effect.mapError(
-                      (cause) =>
-                        new LocalFinalizationPendingError({
-                          submittedTxHash: recoveredTxHash.value,
-                          txSize,
-                          mempoolTxsCount:
-                            processedMempoolTxs.length +
-                            workerInput.data.mempoolTxsCountSoFar,
-                          sizeOfBlocksTxs:
-                            sizeOfProcessedTxs +
-                            workerInput.data.sizeOfProcessedTxsSoFar,
-                          blockEndTimeMs: endTime.getTime(),
-                          cause,
-                        }),
-                    ),
-                  );
-                }
-
-                const transferResult = yield* Effect.either(
-                  skippedSubmissionProgram(
-                    processedMempoolTxs,
-                    mempoolTxHashes,
-                  ),
-                );
-                if (transferResult._tag === "Left") {
-                  const detail = formatUnknownError(transferResult.left);
-                  yield* Effect.logError(
-                    `🔹 Commit submission failed and deferred transfer failed: submit=${formatUnknownError(
-                      e,
-                    )}; transfer=${detail}`,
-                  );
-                  return {
-                    type: "FailureOutput",
-                    error: `Commit submission failed and deferred transfer failed: submit=${formatUnknownError(
-                      e,
-                    )}; transfer=${detail}`,
-                  } satisfies WorkerOutput;
-                }
-
-                return yield* failedSubmissionProgram(
-                  mempoolTrie,
-                  mempoolTxsCount,
-                  sizeOfProcessedTxs,
-                  e,
-                );
-              }),
-          }),
-          onSuccess: (txHash) =>
-            successfulSubmissionProgram(
-              mempoolTrie,
-              processedMempoolTxs,
-              mempoolTxHashes,
-              newHeaderHash,
-              workerInput,
-              txSize,
-              sizeOfProcessedTxs,
-              txHash,
-              endTime.getTime(),
-            ).pipe(
-              Effect.mapError(
-                (cause) =>
-                  new LocalFinalizationPendingError({
-                    submittedTxHash: txHash,
-                    txSize,
-                    mempoolTxsCount:
-                      processedMempoolTxs.length +
-                      workerInput.data.mempoolTxsCountSoFar,
-                    sizeOfBlocksTxs:
-                      sizeOfProcessedTxs +
-                      workerInput.data.sizeOfProcessedTxsSoFar,
-                    blockEndTimeMs: endTime.getTime(),
-                    cause,
-                  }),
-              ),
-            ),
+          utxoRoot,
+          txRoot,
+          mempoolTrie,
+          processedMempoolTxs,
+          mempoolTxHashes,
+          workerInput,
+          sizeOfProcessedTxs,
         });
       }
     }
@@ -2958,34 +1073,21 @@ const databaseOperationsProgram = (
 export const runCommitBlockHeaderWorkerProgram = (
   workerInput: WorkerInput,
 ): Effect.Effect<
-  WorkerOutput | undefined,
-  | SDK.CborDeserializationError
-  | SDK.CmlUnexpectedError
-  | SDK.DataCoercionError
-  | SDK.HashingError
-  | SDK.LucidError
-  | SDK.StateQueueError
-  | ConfigError
-  | DatabaseInitializationError
-  | DatabaseError
-  | FileSystemError
-  | LocalFinalizationPendingError
-  | TxSignError
-  | TxSubmitError
-  | MptError,
-  MidgardContracts | Lucid | Database | NodeConfig
+  WorkerOutput,
+  unknown,
+  MidgardContracts | Database | Lucid | NodeConfig
 > =>
   Effect.gen(function* () {
     yield* Effect.logInfo("🔹 Retrieving all mempool transactions...");
 
     const { ledgerTrie, mempoolTrie } = yield* makeMpts;
 
-    const result: void | WorkerOutput = yield* withTrieTransaction(
+    const result = yield* withTrieTransaction(
       ledgerTrie,
       databaseOperationsProgram(workerInput, ledgerTrie, mempoolTrie),
     ).pipe(
       Effect.catchAll((error) =>
-        error._tag === "LocalFinalizationPendingError"
+        error instanceof LocalFinalizationPendingError
           ? Effect.succeed({
               type: "SubmittedAwaitingLocalFinalizationOutput",
               submittedTxHash: error.submittedTxHash,
@@ -2998,22 +1100,22 @@ export const runCommitBlockHeaderWorkerProgram = (
           : Effect.fail(error),
       ),
     );
-    if (result) {
-      return result;
-    } else {
-      return undefined;
+    if (result === undefined) {
+      return yield* Effect.fail(
+        new CommitWorkerInvariantError({
+          message:
+            "Block commitment worker completed without producing a worker output",
+        }),
+      );
     }
+    return result;
   });
 
 if (parentPort !== null) {
   const inputData = workerData as WorkerInput;
 
-  const program = pipe(
+  const program = provideCommitBlockWorkerServices(
     runCommitBlockHeaderWorkerProgram(inputData),
-    Effect.provide(MidgardContracts.Default),
-    Effect.provide(Database.layer),
-    Effect.provide(Lucid.Default),
-    Effect.provide(NodeConfig.layer),
   );
 
   Effect.runPromise(

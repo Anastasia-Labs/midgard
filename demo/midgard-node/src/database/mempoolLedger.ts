@@ -5,6 +5,9 @@ import { Database } from "@/services/database.js";
 
 export const tableName = "mempool_ledger";
 
+/**
+ * Inserts a mempool-ledger entry.
+ */
 export const insert = (entries: Ledger.Entry[]) =>
   Ledger.insertEntries(tableName, entries);
 
@@ -19,6 +22,9 @@ export const retrieveByAddress = (
 ): Effect.Effect<readonly Ledger.Entry[], DatabaseError, Database> =>
   Ledger.retrieveEntriesWithAddress(tableName, address);
 
+/**
+ * Deletes mempool-ledger entries for the supplied UTxO references.
+ */
 export const clearUTxOs = (refs: Buffer[]) =>
   Ledger.delEntries(tableName, refs);
 

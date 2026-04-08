@@ -21,6 +21,10 @@ import {
   type SubmitDepositError,
 } from "@/transactions/submit-deposit.js";
 
+/**
+ * Seeds the local mempool ledger with configured genesis UTxOs on non-mainnet
+ * networks.
+ */
 const insertGenesisUtxos: Effect.Effect<
   void,
   DatabaseError,
@@ -62,6 +66,10 @@ ${Array.from(new Set(config.GENESIS_UTXOS.map((u) => u.address))).join("\n")}`,
   Effect.andThen(Effect.succeed(Effect.void)),
 );
 
+/**
+ * Submits an initial deposit transaction for the configured genesis wallet
+ * funds when genesis UTxOs are present.
+ */
 const submitGenesisDeposits: Effect.Effect<
   void,
   | SDK.LucidError
@@ -104,6 +112,10 @@ const submitGenesisDeposits: Effect.Effect<
   yield* handleSignSubmit(lucid.api, signedTx);
 }).pipe(Effect.tapError(Effect.logInfo));
 
+/**
+ * Full genesis workflow: seed local ledger state and submit initial deposits in
+ * parallel.
+ */
 export const program: Effect.Effect<
   void,
   never,

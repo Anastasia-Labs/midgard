@@ -6,6 +6,13 @@ import {
   sqlErrorToDatabaseError,
 } from "@/database/utils/common.js";
 
+/**
+ * Table adapter for transaction-by-id storage.
+ *
+ * Unlike ledger tables, these rows are keyed by transaction id and store the
+ * serialized transaction bytes so later pipeline stages can replay, inspect, or
+ * prune them deterministically.
+ */
 export enum Columns {
   TX_ID = "tx_id",
   TX = "tx",
@@ -23,6 +30,9 @@ export type EntryWithTimeStamp = EntryNoTimeStamp & {
 
 export type Entry = EntryNoTimeStamp | EntryWithTimeStamp;
 
+/**
+ * Creates the transaction table and a timestamp index used by retention jobs.
+ */
 export const createTable = (
   tableName: string,
 ): Effect.Effect<void, DatabaseError, Database> =>
@@ -46,6 +56,10 @@ export const createTable = (
     sqlErrorToDatabaseError(tableName, "Failed to create the table"),
   );
 
+/**
+ * Deletes multiple transactions by id and logs how many rows were actually
+ * removed.
+ */
 export const delMultiple = (
   tableName: string,
   tx_ids: Buffer[],
@@ -67,6 +81,9 @@ export const delMultiple = (
     ),
   );
 
+/**
+ * Retrieves the serialized transaction bytes for one transaction id.
+ */
 export const retrieveValue = (
   tableName: string,
   tx_id: Buffer,
@@ -100,6 +117,9 @@ export const retrieveValue = (
     ),
   );
 
+/**
+ * Retrieves serialized transaction bytes for a set of transaction ids.
+ */
 export const retrieveValues = (
   tableName: string,
   tx_ids: Buffer[] | readonly Buffer[],
@@ -128,6 +148,10 @@ export const retrieveValues = (
     ),
   );
 
+/**
+ * Upserts one transaction row so the latest serialized body wins for a given
+ * transaction id.
+ */
 export const insertEntry = (
   tableName: string,
   txPair: Entry,
@@ -149,6 +173,9 @@ export const insertEntry = (
     ),
   );
 
+/**
+ * Bulk-inserts transactions while leaving already-present rows unchanged.
+ */
 export const insertEntries = (
   tableName: string,
   pairs: Entry[],
@@ -174,6 +201,9 @@ export const insertEntries = (
     ),
   );
 
+/**
+ * Returns the full transaction table ordered from newest to oldest.
+ */
 export const retrieveAllEntries = (
   tableName: string,
 ): Effect.Effect<readonly EntryWithTimeStamp[], DatabaseError, Database> =>
@@ -191,6 +221,10 @@ export const retrieveAllEntries = (
     sqlErrorToDatabaseError(tableName, "Failed to retrieve the whole table"),
   );
 
+/**
+ * Removes transactions older than the given cutoff and returns the number of
+ * deleted rows.
+ */
 export const pruneOlderThan = (
   tableName: string,
   cutoff: Date,

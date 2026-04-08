@@ -10,16 +10,24 @@ import {
 } from '../lib/generators/index.js';
 import { generateTestWallet } from '../utils/test-utils.js';
 
-// Get the directory path for ES modules
+/**
+ * ESM-compatible location helpers used for writing output fixtures.
+ */
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
+/**
+ * Default configuration for the standalone tx-generator demo CLI.
+ */
 const DEFAULT_CONFIG = {
   network: 'Preview' as Network,
   txCount: 100,
   outputDir: 'test-output',
 };
 
+/**
+ * Generates sample one-to-one and multi-output transaction fixtures.
+ */
 async function main() {
   // Create test wallet
   const { privateKey, testUTxO } = await generateTestWallet();
@@ -69,6 +77,9 @@ async function main() {
   console.log(`- ${multiOutputPath}`);
 }
 
+/**
+ * Top-level CLI error handler for the standalone tx-generator script.
+ */
 main().catch((error) => {
   console.error('Error generating transactions:', error);
   process.exit(1);

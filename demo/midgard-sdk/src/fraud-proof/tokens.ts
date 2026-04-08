@@ -1,6 +1,12 @@
 import { Data } from "@lucid-evolution/lucid";
 import { LucidEvolution, TxBuilder } from "@lucid-evolution/lucid";
 
+/**
+ * SDK types and builders for the terminal fraud-proof token.
+ *
+ * This token represents the finalized output of a successful fraud-proof flow,
+ * separate from the stepwise computation-thread tokens used during execution.
+ */
 export const FraudProofTokenDatumSchema = Data.Object({
   fraudProver: Data.Bytes(),
 });
@@ -10,6 +16,9 @@ export type FraudProofTokenDatum = Data.Static<
 export const FraudProofTokenDatum =
   FraudProofTokenDatumSchema as unknown as FraudProofTokenDatum;
 
+/**
+ * Spend redeemer for the terminal fraud-proof token.
+ */
 export const FraudProofTokenSpendRedeemerSchema = Data.Enum([
   Data.Literal("Never"),
 ]);
@@ -19,6 +28,10 @@ export type FraudProofTokenSpendRedeemer = Data.Static<
 export const FraudProofTokenSpendRedeemer =
   FraudProofTokenSpendRedeemerSchema as unknown as FraudProofTokenSpendRedeemer;
 
+/**
+ * Mint redeemer describing the transition from the final computation-thread
+ * step into the terminal fraud-proof token.
+ */
 export const FraudProofTokenMintRedeemerSchema = Data.Object({
   hubOracleRefInputIndex: Data.Integer(),
   fraudProofLastStepInputIndex: Data.Integer(),
@@ -36,31 +49,25 @@ export type FraudProofTokenMintParams = {};
 export type FraudProofTokenBurnParams = {};
 
 /**
- * Mint
- *
- * @param lucid - The LucidEvolution
- * @param params - The parameters
- * @returns {TxBuilder} A TxBuilder instance that can be used to build the transaction.
+ * Stub entry point for minting the terminal fraud-proof token.
  */
 export const incompleteFraudProofTokenMintTxProgram = (
   lucid: LucidEvolution,
   params: FraudProofTokenMintParams,
 ): TxBuilder => {
+  void params;
   const tx = lucid.newTx();
   return tx;
 };
 
 /**
- * Burn
- *
- * @param lucid - The LucidEvolution
- * @param params - The parameters
- * @returns {TxBuilder} A TxBuilder instance that can be used to build the transaction.
+ * Stub entry point for burning the terminal fraud-proof token.
  */
 export const incompleteFraudProofTokenBurnTxProgram = (
   lucid: LucidEvolution,
   params: FraudProofTokenBurnParams,
 ): TxBuilder => {
+  void params;
   const tx = lucid.newTx();
   return tx;
 };

@@ -25,7 +25,16 @@ import { MidgardMpt, MptError } from "@/workers/utils/mpt.js";
 import { BatchDBOp } from "@ethereumjs/util";
 
 /**
- * TODO: This function should be moved to SDK after moving our MPT module.
+ * Deployment helpers for the protocol's initial on-chain contract state.
+ *
+ * These effects orchestrate the phased deployment of hub-oracle, scheduler,
+ * state-queue, and operator-set contracts while enforcing visibility and
+ * consistency checks between phases.
+ */
+
+/**
+ * Converts a fraud-proof catalogue index into the fixed-width key used by the
+ * catalogue MPT.
  */
 export const uint32ToFraudProofID = (index: number): Buffer => {
   const buf = Buffer.alloc(4);
@@ -34,7 +43,7 @@ export const uint32ToFraudProofID = (index: number): Buffer => {
 };
 
 /**
- * TODO: This function should be moved to SDK after moving our MPT module.
+ * Assigns deterministic integer keys to the fraud-proof validator set.
  */
 export const fraudProofsToIndexedValidators = (
   fraudProofs: SDK.FraudProofs,
@@ -48,7 +57,7 @@ export const fraudProofsToIndexedValidators = (
 };
 
 /**
- * TODO: This function should be moved to SDK after moving our MPT module.
+ * Builds the Merkle Patricia Trie used as the fraud-proof catalogue root.
  */
 export const createFraudProofCatalogueMpt = (
   indexedFraudProofs: [Buffer, SDK.SpendingValidator][],
@@ -66,6 +75,9 @@ export const createFraudProofCatalogueMpt = (
     return trie;
   });
 
+/**
+ * Formats a UTxO as `txHash#outputIndex` for diagnostics.
+ */
 export const outRefLabel = (utxo: UTxO): string =>
   `${utxo.txHash}#${utxo.outputIndex}`;
 export const OPERATOR_SET_ROOT_LOVELACE = 2_000_000n;
@@ -82,6 +94,10 @@ const ACTIVE_OPERATOR_DATUM_AIKEN_SCHEMA = LucidData.Object({
   bond_unlock_time: ACTIVE_OPERATOR_DATUM_AIKEN_OPTION_SCHEMA,
 });
 
+/**
+ * Encodes the active-operator datum in the Aiken-compatible shape expected by
+ * initialization and bootstrap flows.
+ */
 export const encodeActiveOperatorDatum = (
   bondUnlockTime: bigint | null,
 ): string =>
@@ -90,6 +106,9 @@ export const encodeActiveOperatorDatum = (
     ACTIVE_OPERATOR_DATUM_AIKEN_SCHEMA as never,
   ) as string;
 
+/**
+ * Fetches the hub-oracle witness UTxO if it exists.
+ */
 export const fetchHubOracleWitness = (
   lucid: LucidEvolution,
   contracts: SDK.MidgardValidators,
@@ -131,6 +150,10 @@ export const fetchHubOracleWitness = (
     return utxos[0] ?? null;
   });
 
+/**
+ * Returns whether a node-set validator already has at least one initialized
+ * on-chain UTxO.
+ */
 export const isNodeSetInitialized = (
   lucid: LucidEvolution,
   validator: SDK.AuthenticatedValidator,
@@ -150,6 +173,9 @@ export const isNodeSetInitialized = (
     ),
   );
 
+/**
+ * Returns whether the scheduler witness UTxO is already present on-chain.
+ */
 export const isSchedulerInitialized = (
   lucid: LucidEvolution,
   scheduler: SDK.AuthenticatedValidator,
@@ -170,6 +196,10 @@ export const isSchedulerInitialized = (
       }),
   });
 
+/**
+ * Resolves the configured one-shot hub-oracle nonce UTxO from the operator
+ * wallet.
+ */
 export const fetchConfiguredNonceUtxo = (
   lucid: LucidEvolution,
   nodeConfig: {
@@ -205,6 +235,10 @@ export const fetchConfiguredNonceUtxo = (
     return nonceUtxo;
   });
 
+/**
+ * Completes, signs, and submits a transaction builder with local UPLC
+ * evaluation enforced.
+ */
 export const completeAndSubmit = (
   lucid: LucidEvolution,
   txBuilder: any,
@@ -222,11 +256,19 @@ export const completeAndSubmit = (
     return yield* handleSignSubmit(lucid, unsignedTx);
   });
 
+/**
+ * Produces a conservative default validity deadline for deployment
+ * transactions.
+ */
 const resolveDefaultDeploymentDeadline = (): bigint =>
   BigInt(
     Date.now() + SDK.VALIDITY_RANGE_BUFFER + Number(DEFAULT_DEPLOYMENT_VALIDITY_WINDOW_MS),
   );
 
+/**
+ * Requires the hub-oracle witness UTxO to exist before dependent deployments
+ * proceed.
+ */
 const requireHubOracleWitness = (
   lucid: LucidEvolution,
   contracts: SDK.MidgardValidators,
@@ -245,6 +287,10 @@ const requireHubOracleWitness = (
     );
   });
 
+/**
+ * Constructs a stable error describing an unsafe partially deployed
+ * hub-oracle/scheduler state.
+ */
 const makePartialHubAndSchedulerDeploymentError = (
   hubOraclePresent: boolean,
   schedulerInitialized: boolean,
@@ -267,6 +313,9 @@ export type ProtocolDeploymentStatus = {
   readonly missingComponents: readonly string[];
 };
 
+/**
+ * Queries the current deployment state of the protocol contracts.
+ */
 export const fetchProtocolDeploymentStatus = (
   lucid: LucidEvolution,
   contracts: SDK.MidgardValidators,
@@ -330,6 +379,10 @@ export const fetchProtocolDeploymentStatus = (
     };
   });
 
+/**
+ * Waits for the provider to expose the phase-1 deployment outputs after the
+ * deployment transaction has confirmed.
+ */
 const waitForPhase1InitializationVisibility = (
   lucid: LucidEvolution,
   contracts: SDK.MidgardValidators,
@@ -380,6 +433,10 @@ const waitForPhase1InitializationVisibility = (
     ),
   );
 
+/**
+ * Deploys hub-oracle and scheduler in the shared phase-1 transaction expected
+ * by the real contract parameterization.
+ */
 export const deploySchedulerAndHubProgram = (
   lucid: LucidEvolution,
   contracts: SDK.MidgardValidators,
@@ -425,6 +482,9 @@ export const deploySchedulerAndHubProgram = (
     );
   });
 
+/**
+ * Deploys the state-queue validator after the hub-oracle witness is available.
+ */
 export const deployStateQueueProgram = (
   lucid: LucidEvolution,
   contracts: SDK.MidgardValidators,
@@ -463,6 +523,9 @@ export const deployStateQueueProgram = (
     );
   });
 
+/**
+ * Shared helper for deploying one of the operator-list validators.
+ */
 const deployNodeSetProgram = (
   lucid: LucidEvolution,
   validator: SDK.AuthenticatedValidator,
@@ -487,6 +550,9 @@ const deployNodeSetProgram = (
     );
   });
 
+/**
+ * Deploys the registered-operators validator if it is not already present.
+ */
 export const deployRegisteredOperatorsProgram = (
   lucid: LucidEvolution,
   contracts: SDK.MidgardValidators,
@@ -507,6 +573,9 @@ export const deployRegisteredOperatorsProgram = (
     );
   });
 
+/**
+ * Deploys the active-operators validator if it is not already present.
+ */
 export const deployActiveOperatorsProgram = (
   lucid: LucidEvolution,
   contracts: SDK.MidgardValidators,
@@ -527,6 +596,9 @@ export const deployActiveOperatorsProgram = (
     );
   });
 
+/**
+ * Deploys the retired-operators validator if it is not already present.
+ */
 export const deployRetiredOperatorsProgram = (
   lucid: LucidEvolution,
   contracts: SDK.MidgardValidators,
@@ -547,7 +619,17 @@ export const deployRetiredOperatorsProgram = (
     );
   });
 
-export const program = Effect.gen(function* () {
+/**
+ * End-to-end protocol initialization program.
+ *
+ * The flow handles phase-1 deployment of hub-oracle, scheduler, and optionally
+ * state-queue, then initializes any missing operator-set roots.
+ */
+export const program: Effect.Effect<
+  string,
+  unknown,
+  Lucid | MidgardContracts | NodeConfig
+> = Effect.gen(function* () {
   const lucidService = yield* Lucid;
   const contracts = yield* MidgardContracts;
   const nodeConfig = yield* NodeConfig;
@@ -565,6 +647,11 @@ export const program = Effect.gen(function* () {
   );
 
   let lastSubmittedTxHash: string | null = null;
+
+  /**
+   * Produces a fresh validity deadline for each deployment phase so later
+   * transactions do not reuse an aging validity window.
+   */
   const nextPhaseDeadline = () =>
     BigInt(Date.now() + SDK.VALIDITY_RANGE_BUFFER + 30_000);
 
@@ -647,6 +734,10 @@ export const program = Effect.gen(function* () {
     );
   }
 
+  /**
+   * These targets share the same linked-list initialization pattern but differ
+   * in validator and datum/redeemer payload.
+   */
   const operatorInitTargets = [
     {
       name: "registered-operators",

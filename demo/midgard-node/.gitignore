@@ -10,3 +10,8 @@ test-mpt-db*/
 tests/benchmarks/output/
 logs/
 tmp-*
+.flow-ledger-*/
+.flow-mempool-*/
+.local-pg/
+contract-deployment-info.prototype.json
+src/generated/

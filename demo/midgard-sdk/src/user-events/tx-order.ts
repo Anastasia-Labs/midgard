@@ -1,18 +1,24 @@
 import { LucidEvolution, TxBuilder } from "@lucid-evolution/lucid";
 
+/**
+ * Placeholder parameters for transaction-order requests.
+ *
+ * The type stays explicit so future additions do not silently widen the API.
+ */
 export type TransactionOrderParams = {};
 
 /**
- * TransactionOrder
+ * Starts building a transaction-order user event.
  *
- * @param lucid - The LucidEvolution
- * @param params - The parameters
- * @returns {TxBuilder} A TxBuilder instance that can be used to build the transaction.
+ * The current implementation is a stub that only returns a fresh builder; the
+ * explicit wrapper keeps the public SDK surface stable while the order payload
+ * format evolves.
  */
 export const transactionOrderTxBuilder = (
   lucid: LucidEvolution,
   params: TransactionOrderParams,
 ): TxBuilder => {
+  void params;
   const tx = lucid.newTx();
   return tx;
 };

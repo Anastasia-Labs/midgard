@@ -7,6 +7,9 @@ import {
   encodeMidgardNativeTxFull,
 } from "@/midgard-tx-codec/index.js";
 
+/**
+ * Paths that require explicit admin-key authorization.
+ */
 export const ADMIN_ROUTE_PATHS: ReadonlySet<string> = new Set([
   "/init",
   "/commit",
@@ -17,12 +20,22 @@ export const ADMIN_ROUTE_PATHS: ReadonlySet<string> = new Set([
   "/logGlobals",
 ]);
 
+/**
+ * Normalizes an HTTP path into the canonical route-path form used for access
+ * checks.
+ */
 const normalizePath = (path: string): string =>
   path.startsWith("/") ? path.replace(/\/+$/, "") || "/" : `/${path}`;
 
+/**
+ * Returns whether a path belongs to the admin-only route set.
+ */
 export const isAdminRoutePath = (path: string): boolean =>
   ADMIN_ROUTE_PATHS.has(normalizePath(path));
 
+/**
+ * Result of evaluating admin-route authorization.
+ */
 export type AdminRouteAuthorization =
   | { readonly authorized: true }
   | {
@@ -31,6 +44,9 @@ export type AdminRouteAuthorization =
       readonly error: string;
     };
 
+/**
+ * Validates the provided admin key against the configured one.
+ */
 export const authorizeAdminRoute = (
   configuredAdminKey: string,
   providedAdminKey: string | undefined,
@@ -53,6 +69,9 @@ export const authorizeAdminRoute = (
   return { authorized: true };
 };
 
+/**
+ * Narrows an unknown JSON payload into a generic record when possible.
+ */
 const asRecord = (value: unknown): Record<string, unknown> | undefined => {
   if (typeof value !== "object" || value === null) {
     return undefined;
@@ -60,6 +79,10 @@ const asRecord = (value: unknown): Record<string, unknown> | undefined => {
   return value as Record<string, unknown>;
 };
 
+/**
+ * Extracts transaction CBOR from the canonical or camel-case request-body field
+ * names.
+ */
 export const extractSubmitTxHex = (payload: unknown): string | undefined => {
   const body = asRecord(payload);
   if (body === undefined) {
@@ -76,6 +99,9 @@ export const extractSubmitTxHex = (payload: unknown): string | undefined => {
   return undefined;
 };
 
+/**
+ * Extracts transaction CBOR from canonical or camel-case query parameters.
+ */
 export const extractSubmitTxHexFromQueryParams = (
   params: Record<string, string | readonly string[] | undefined>,
 ): string | undefined => {
@@ -90,6 +116,9 @@ export const extractSubmitTxHexFromQueryParams = (
   return undefined;
 };
 
+/**
+ * Validation result for a submitted transaction CBOR payload.
+ */
 export type SubmitTxValidation =
   | {
       readonly ok: true;
@@ -102,6 +131,9 @@ export type SubmitTxValidation =
       readonly error: string;
     };
 
+/**
+ * Validates hex formatting and maximum size for a submitted tx payload.
+ */
 export const validateSubmitTxHex = (
   txHex: string,
   maxTxBytes: number,
@@ -131,6 +163,10 @@ export const validateSubmitTxHex = (
   };
 };
 
+/**
+ * Normalized result of accepting either native Midgard CBOR or Cardano tx CBOR
+ * converted into Midgard-native form.
+ */
 export type NormalizedSubmitTx =
   | {
       readonly ok: true;
@@ -146,6 +182,10 @@ export type NormalizedSubmitTx =
       readonly detail: string;
     };
 
+/**
+ * Normalizes a submitted tx payload into Midgard-native bytes and derives the
+ * canonical tx id.
+ */
 export const normalizeSubmitTxHexToNative = (
   txHex: string,
 ): NormalizedSubmitTx => {

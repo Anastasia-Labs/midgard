@@ -4,12 +4,17 @@ import { CML, coreToUtxo, UTxO } from '@lucid-evolution/lucid';
 import { logFailedTransaction, logSubmittedTransaction } from '../../utils/logging.js';
 import { MidgardNodeConfig, TRANSACTION_CONSTANTS } from '../types.js';
 
-// Simple error types for better error handling
+/**
+ * Normalized error variants returned by node-client read paths.
+ */
 export type SubmitTxError =
   | { _tag: 'NetworkError'; error: string }
   | { _tag: 'ValidationError'; error: string }
   | { _tag: 'UnknownError'; error: string };
 
+/**
+ * Thin HTTP client for Midgard node endpoints used by the tx generator.
+ */
 export class MidgardNodeClient {
   private readonly baseUrl: string;
   private readonly retryAttempts: number;
@@ -23,6 +28,10 @@ export class MidgardNodeClient {
     this.enableLogs = config.enableLogs ?? true;
   }
 
+  /**
+   * Decodes one raw UTxO payload returned by the node into Lucid's core UTxO
+   * shape.
+   */
   private decodeNodeUtxo(raw: { outref: string; value: string }): UTxO | undefined {
     try {
       const outRefBytes = Buffer.from(raw.outref, 'hex');
@@ -36,7 +45,10 @@ export class MidgardNodeClient {
   }
 
   /**
-   * Check node availability by making a dummy request
+   * Checks whether the node endpoint is reachable within the provided timeout.
+   *
+   * Any HTTP response counts as "available" because bootstrap state may change
+   * the exact status code even when the node is healthy.
    */
   async isAvailable(
     timeoutMs: number = TRANSACTION_CONSTANTS.NODE_DEFAULTS.AVAILABILITY_TIMEOUT
@@ -80,7 +92,8 @@ export class MidgardNodeClient {
   }
 
   /**
-   * Submit a transaction to the node with retries
+   * Submits a transaction to the node and falls back to a structured status
+   * result when the node is unavailable.
    */
   submitTransaction(cborHex: string, txType: string = 'Transaction') {
     return Effect.tryPromise((signal: AbortSignal) =>
@@ -159,7 +172,7 @@ export class MidgardNodeClient {
   }
 
   /**
-   * Get transaction status from the node
+   * Retrieves the node's status for a previously submitted transaction.
    */
   getTransactionStatus(txHash: string) {
     return Effect.tryPromise({

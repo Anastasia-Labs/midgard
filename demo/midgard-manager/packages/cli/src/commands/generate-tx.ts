@@ -11,12 +11,21 @@ import { getWallet } from '../config/wallets.js';
 import { listWallets } from '../config/wallets.js';
 import { displayStatus } from '../utils/display.js';
 
-// Transaction types supported by the generator
+/**
+ * Transaction-generator commands for the manager CLI.
+ *
+ * This module provides the non-interactive operational surface for starting,
+ * stopping, and inspecting the background generator.
+ */
+
+/**
+ * Transaction types accepted by the generator package and surfaced by the CLI.
+ */
 const transactionTypes = ['one-to-one', 'multi-output', 'mixed'];
 
 /**
- * Command to generate transactions
- * Usage: midgard-manager generate-tx [options]
+ * CLI command that starts the transaction generator using explicit flags or an
+ * interactive configuration flow.
  */
 export const generateTxCommand = Command.make(
   'generate-tx',
@@ -392,8 +401,7 @@ export const generateTxCommand = Command.make(
 ).pipe(Command.withDescription('Generate and submit transactions to the Midgard node'));
 
 /**
- * Command to stop the transaction generator
- * Usage: midgard-manager stop-tx
+ * CLI command that stops a running transaction generator instance.
  */
 export const stopTxCommand = Command.make('stop-tx', {}, () => {
   return pipe(
@@ -414,8 +422,8 @@ export const stopTxCommand = Command.make('stop-tx', {}, () => {
 }).pipe(Command.withDescription('Stop the running transaction generator'));
 
 /**
- * Command to get the status of the transaction generator
- * Usage: midgard-manager tx-status
+ * CLI command that reconstructs enough persisted configuration to display the
+ * generator's current status in a consistent format.
  */
 export const txStatusCommand = Command.make('tx-status', {}, () => {
   return pipe(
@@ -515,7 +523,7 @@ export const txStatusCommand = Command.make('tx-status', {}, () => {
 }).pipe(Command.withDescription('Show the status of the transaction generator'));
 
 /**
- * Helper function to get a description for each transaction type
+ * Maps generator transaction types to short operator-facing descriptions.
  */
 function getTypeDescription(type: string): string {
   switch (type) {

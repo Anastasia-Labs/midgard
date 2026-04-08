@@ -18,6 +18,13 @@ import {
   runPhaseBValidationWithPatch,
 } from "@/validation/index.js";
 
+/**
+ * Background validation loop for queued L2 transactions.
+ *
+ * The processor batches queued payloads, runs phase-A and phase-B validation,
+ * applies accepted state patches to the mempool ledger, and records rejections
+ * for later inspection.
+ */
 const txQueueSizeGauge = Metric.gauge("tx_queue_size", {
   description: "A tracker for the size of the tx queue before processing",
   bigint: true,
@@ -85,6 +92,10 @@ let pendingSinceMillis: number | undefined;
 let cachedUtxoState: Map<string, Buffer> | undefined;
 let cachedUtxoStateVersion = -1;
 
+/**
+ * Summarizes a rejection batch into a compact per-code counter string for
+ * logs.
+ */
 const summarizeRejections = (rejected: readonly RejectedTx[]): string => {
   if (rejected.length === 0) {
     return "none";
@@ -101,6 +112,10 @@ const summarizeRejections = (rejected: readonly RejectedTx[]): string => {
     .join(", ");
 };
 
+/**
+ * Normalizes one queued payload into either a validated queue entry or an
+ * immediate rejection describing malformed binary fields.
+ */
 const payloadToQueuedTx = (payload: QueuedTxPayload): QueuedTx | RejectedTx => {
   if (!Buffer.isBuffer(payload.txId) || !Buffer.isBuffer(payload.txCbor)) {
     return {
@@ -132,6 +147,10 @@ const payloadToQueuedTx = (payload: QueuedTxPayload): QueuedTx | RejectedTx => {
   return queuedTx;
 };
 
+/**
+ * Loads and caches the current mempool-ledger pre-state until the version ref
+ * changes.
+ */
 const ensureCachedUtxoState = (): Effect.Effect<
   Map<string, Buffer>,
   DatabaseError,
@@ -158,9 +177,16 @@ const ensureCachedUtxoState = (): Effect.Effect<
     return state;
   });
 
+/**
+ * Clamps a numeric value into an inclusive range.
+ */
 const clamp = (value: number, min: number, max: number): number =>
   Math.min(max, Math.max(min, value));
 
+/**
+ * Chooses an effective validation batch size based on configured limits and
+ * current queue depth.
+ */
 const selectValidationBatchSize = (
   configuredBatchSize: number,
   queueDepth: number,
@@ -183,6 +209,9 @@ const selectValidationBatchSize = (
   return maxBatchSize;
 };
 
+/**
+ * Chooses the phase-A concurrency level for the current batch size.
+ */
 const selectPhaseAConcurrency = (
   configuredConcurrency: number,
   batchLength: number,
@@ -207,6 +236,10 @@ const selectPhaseAConcurrency = (
   return configured;
 };
 
+/**
+ * Runs one queue-processing tick, draining queued payloads and validating an
+ * effective batch against the current mempool-ledger pre-state.
+ */
 const txQueueProcessorAction = (
   txQueue: Queue.Dequeue<QueuedTxPayload>,
   withMonitoring?: boolean,
@@ -367,6 +400,10 @@ const txQueueProcessorAction = (
     );
   });
 
+/**
+ * Fiber wrapper that repeats queue-drain and validation work on the provided
+ * schedule.
+ */
 export const txQueueProcessorFiber = (
   schedule: Schedule.Schedule<number>,
   txQueue: Queue.Dequeue<QueuedTxPayload>,

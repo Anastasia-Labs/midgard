@@ -12,9 +12,7 @@ RUN pnpm repack
 
 FROM base AS build
 WORKDIR /app
-COPY --from=sdk-build /midgard-sdk/package.json /midgard-sdk/package.json
-COPY --from=sdk-build /midgard-sdk/README.md /midgard-sdk/README.md
-COPY --from=sdk-build /midgard-sdk/dist /midgard-sdk/dist
+COPY --from=sdk-build /midgard-sdk /midgard-sdk
 COPY . .
 RUN pnpm install --no-frozen-lockfile
 RUN pnpm build

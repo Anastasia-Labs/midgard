@@ -82,11 +82,15 @@ pub type ConfirmedState {
 
 // ## User events
 
+/// Converts an event into its identifier datum representation.
+/// Builds the identifier datum payload for an event without extra validation.
 pub fn unsafe_event_to_id_data(event_datum_data: Data) -> Data {
   expect [id_data, ..] = builtin.unconstr_fields(event_datum_data)
   id_data
 }
+/// Converts an event into the key-value pair stored in the ledger map.
 
+/// Builds the ledger-state key/value pair for an event without extra validation.
 pub fn unsafe_event_to_key_value_pair(
   event_datum_data: Data,
 ) -> Pair<Data, Data> {

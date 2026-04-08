@@ -1,3 +1,6 @@
+/**
+ * Public Midgard SDK surface.
+ */
 export * from "./common.js";
 export * from "./cbor.js";
 export * from "./constants.js";

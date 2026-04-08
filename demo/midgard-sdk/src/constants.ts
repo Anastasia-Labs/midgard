@@ -1,5 +1,11 @@
 import { fromText } from "@lucid-evolution/lucid";
 
+/**
+ * Shared token names and genesis constants used across the SDK.
+ *
+ * These values must remain aligned with the on-chain contracts because many of
+ * the transaction builders derive asset units directly from them.
+ */
 export const NODE_ASSET_NAME = fromText("Node");
 
 export const HUB_ORACLE_ASSET_NAME = fromText("Hub Oracle");

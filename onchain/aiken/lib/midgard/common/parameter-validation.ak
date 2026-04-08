@@ -8,6 +8,8 @@ use cardano/transaction.{Transaction}
 
 const postfix: ByteArray = #"0001"
 
+/// Applies a pre-hashed validator parameter to the wrapped handler.
+/// Applies a prehashed parameter to a single-argument validator.
 pub fn apply_prehashed_param(
   version: Int,
   prefix: ByteArray,
@@ -19,7 +21,9 @@ pub fn apply_prehashed_param(
     |> bytearray.concat(postfix)
     |> blake2b_224
 }
+/// Builds a no-datum wrapper for a pre-hashed validator parameter.
 
+/// Wraps a prehashed-parameter validator that does not consume a datum.
 pub fn prehashed_param_no_datum_wrapper(
   validator_function: fn(
     Hash<Blake2b_256, a>,

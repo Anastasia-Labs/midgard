@@ -1,6 +1,10 @@
 /**
- * This script performs the following tasks to merge the first block into the
- * confirmed state:
+ * State-queue merge transaction for advancing committed blocks into confirmed
+ * state.
+ * This module owns the off-chain merge flow that replays the oldest queued
+ * block into the confirmed ledger and then submits the corresponding merge tx.
+ *
+ * It performs the following tasks:
  *
  * 1. Fetches the confirmed state and the block it points to (i.e. the oldest
  *    block in the queue).
@@ -22,7 +26,6 @@ import {
   TxSignBuilder,
   UTxO,
   credentialToAddress,
-  coreToTxOutput,
   scriptHashToCredential,
   toUnit,
 } from "@lucid-evolution/lucid";
@@ -41,6 +44,24 @@ import { DatabaseError } from "@/database/utils/common.js";
 import { breakDownTx } from "@/utils.js";
 import { Database, Globals, NodeConfig } from "@/services/index.js";
 import { emitQueueStateMetrics } from "@/fibers/queue-metrics.js";
+import {
+  findRedeemerDataCbor,
+  getRedeemerPointersInContextOrder,
+  getTxInfoRedeemerIndexes,
+  withStubbedProviderEvaluation,
+} from "@/cml-redeemers.js";
+import {
+  availableOperatorWalletUtxos,
+  fetchOperatorWalletView,
+} from "@/operator-wallet-view.js";
+import {
+  collectIndexedOutputs,
+  collectSortedInputOutRefs,
+  compareOutRefs,
+  findOutRefIndex,
+  outRefLabel,
+  type OutRefLike,
+} from "@/tx-context.js";
 
 const mergeBlockCounter = Metric.counter("merge_block_count", {
   description: "A counter for tracking merged blocks",
@@ -101,9 +122,7 @@ type MergeErrorCode =
   | "E_MERGE_UPLC_EVAL_FAILED";
 
 type MissingBlockTxsDiagnosis = {
-  readonly reason:
-    | "NO_BLOCKS_DB_TX_HASHES"
-    | "IMMUTABLE_DB_TX_LOOKUP_INCOMPLETE";
+  readonly reason: "IMMUTABLE_DB_TX_LOOKUP_INCOMPLETE";
   readonly txHashesFound: number;
   readonly txsResolved: number;
 };
@@ -112,13 +131,6 @@ export const diagnoseMissingBlockTxs = (
   txHashesFound: number,
   txsResolved: number,
 ): MissingBlockTxsDiagnosis | undefined => {
-  if (txHashesFound === 0) {
-    return {
-      reason: "NO_BLOCKS_DB_TX_HASHES",
-      txHashesFound,
-      txsResolved,
-    };
-  }
   if (txsResolved !== txHashesFound) {
     return {
       reason: "IMMUTABLE_DB_TX_LOOKUP_INCOMPLETE",
@@ -132,22 +144,6 @@ export const diagnoseMissingBlockTxs = (
 type MergeOptions = {
   readonly bypassQueueLengthGuard?: boolean;
 };
-
-type OutRefLike = {
-  readonly txHash: string;
-  readonly outputIndex: number;
-};
-
-const compareOutRefs = (a: OutRefLike, b: OutRefLike): number => {
-  const txHashComparison = a.txHash.localeCompare(b.txHash);
-  if (txHashComparison !== 0) {
-    return txHashComparison;
-  }
-  return a.outputIndex - b.outputIndex;
-};
-
-const outRefLabel = (outRef: OutRefLike): string =>
-  `${outRef.txHash}#${outRef.outputIndex}`;
 
 const formatUnknownError = (error: unknown): string => {
   if (error instanceof Error) {
@@ -254,239 +250,44 @@ export const preflightDecodeBlockTxs = (
     { concurrency: "unbounded" },
   );
 
-type ProviderRedeemerTag =
-  | "spend"
-  | "mint"
-  | "publish"
-  | "withdraw"
-  | "vote"
-  | "propose";
-
-type RedeemerPointer = {
-  readonly tag: number;
-  readonly index: bigint;
+type InitialMergeRedeemerSeedIndexes = {
+  readonly stateQueueMintPointerIndex: number;
+  readonly settlementMintPointerIndex: number;
+  readonly stateQueueRedeemerIndex: number;
+  readonly settlementRedeemerIndex: number;
 };
 
-type IndexedTxOutput = ReturnType<typeof coreToTxOutput> & {
-  readonly index: number;
-};
-
-const DUMMY_REDEEMER_EX_UNITS = {
-  mem: 1_000_000,
-  steps: 1_000_000,
-} as const;
-
-const findInputIndexByOutRef = (
-  inputs: CML.TransactionInputList,
-  target: UTxO,
-): number | undefined => {
-  for (let index = 0; index < inputs.len(); index += 1) {
-    const input = inputs.get(index);
-    if (
-      input.transaction_id().to_hex() === target.txHash &&
-      Number(input.index()) === target.outputIndex
-    ) {
-      return index;
-    }
+// The merge validators cross-reference redeemers by tx-info redeemer index, not
+// by mint-policy ordinal alone. Spend redeemers always precede mint redeemers
+// in tx-info order, so the draft must seed mint cross-references after the
+// known script-spend redeemers to let local UPLC evaluation succeed.
+export const deriveInitialMergeRedeemerSeedIndexes = ({
+  scriptSpendRedeemerCount,
+  stateQueuePolicyId,
+  settlementPolicyId,
+}: {
+  readonly scriptSpendRedeemerCount: number;
+  readonly stateQueuePolicyId: string;
+  readonly settlementPolicyId: string;
+}): InitialMergeRedeemerSeedIndexes => {
+  const mintPolicyOrder = [stateQueuePolicyId, settlementPolicyId].sort(
+    (a, b) => a.localeCompare(b),
+  );
+  const stateQueueMintPointerIndex = mintPolicyOrder.indexOf(stateQueuePolicyId);
+  const settlementMintPointerIndex = mintPolicyOrder.indexOf(settlementPolicyId);
+  if (stateQueueMintPointerIndex < 0 || settlementMintPointerIndex < 0) {
+    throw new Error(
+      `Failed to derive merge mint-pointer indexes (stateQueue=${stateQueueMintPointerIndex}, settlement=${settlementMintPointerIndex})`,
+    );
   }
-  return undefined;
-};
-
-const collectIndexedOutputs = (
-  outputs: CML.TransactionOutputList,
-): readonly IndexedTxOutput[] => {
-  const indexed: IndexedTxOutput[] = [];
-  for (let index = 0; index < outputs.len(); index += 1) {
-    indexed.push({
-      index,
-      ...coreToTxOutput(outputs.get(index)),
-    });
-  }
-  return indexed;
-};
-
-const getRedeemerPointersInContextOrder = (
-  tx: CML.Transaction,
-): readonly RedeemerPointer[] => {
-  const redeemers = tx.witness_set().redeemers();
-  if (redeemers === undefined) {
-    return [];
-  }
-
-  const legacy = redeemers.as_arr_legacy_redeemer();
-  if (legacy !== undefined) {
-    const pointers: RedeemerPointer[] = [];
-    for (let i = 0; i < legacy.len(); i += 1) {
-      const redeemer = legacy.get(i);
-      pointers.push({
-        tag: redeemer.tag(),
-        index: redeemer.index(),
-      });
-    }
-    return pointers;
-  }
-
-  const map = redeemers.as_map_redeemer_key_to_redeemer_val();
-  if (map === undefined) {
-    return [];
-  }
-  const pointers: RedeemerPointer[] = [];
-  const keys = map.keys();
-  for (let i = 0; i < keys.len(); i += 1) {
-    const key = keys.get(i);
-    pointers.push({
-      tag: key.tag(),
-      index: key.index(),
-    });
-  }
-  return pointers;
-};
-
-const findRedeemerDataCbor = (
-  tx: CML.Transaction,
-  pointer: RedeemerPointer | undefined,
-): string | undefined => {
-  if (pointer === undefined) {
-    return undefined;
-  }
-  const redeemers = tx.witness_set().redeemers();
-  if (redeemers === undefined) {
-    return undefined;
-  }
-  const legacy = redeemers.as_arr_legacy_redeemer();
-  if (legacy !== undefined) {
-    for (let i = 0; i < legacy.len(); i += 1) {
-      const redeemer = legacy.get(i);
-      if (
-        redeemer.tag() === pointer.tag &&
-        redeemer.index() === pointer.index
-      ) {
-        return redeemer.data().to_cbor_hex();
-      }
-    }
-    return undefined;
-  }
-  const map = redeemers.as_map_redeemer_key_to_redeemer_val();
-  if (map === undefined) {
-    return undefined;
-  }
-  const keys = map.keys();
-  for (let i = 0; i < keys.len(); i += 1) {
-    const key = keys.get(i);
-    if (key.tag() !== pointer.tag || key.index() !== pointer.index) {
-      continue;
-    }
-    const value = map.get(key);
-    return value?.data().to_cbor_hex();
-  }
-  return undefined;
-};
-
-const toProviderRedeemerTag = (tag: number): ProviderRedeemerTag => {
-  switch (tag) {
-    case CML.RedeemerTag.Spend:
-      return "spend";
-    case CML.RedeemerTag.Mint:
-      return "mint";
-    case CML.RedeemerTag.Cert:
-      return "publish";
-    case CML.RedeemerTag.Reward:
-      return "withdraw";
-    case CML.RedeemerTag.Voting:
-      return "vote";
-    case CML.RedeemerTag.Proposing:
-      return "propose";
-    default:
-      throw new Error(`Unsupported redeemer tag: ${tag}`);
-  }
-};
-
-// Aiken exposes `self.redeemers` in ScriptPurpose order that matches
-// redeemer-tag canonical ordering:
-// Spend < Mint < Publish < Withdraw < Vote < Propose.
-const txInfoRedeemerPurposeRank = (tag: number): number => {
-  switch (tag) {
-    case CML.RedeemerTag.Spend:
-      return 0;
-    case CML.RedeemerTag.Mint:
-      return 1;
-    case CML.RedeemerTag.Cert:
-      return 2;
-    case CML.RedeemerTag.Reward:
-      return 3;
-    case CML.RedeemerTag.Voting:
-      return 4;
-    case CML.RedeemerTag.Proposing:
-      return 5;
-    default:
-      return Number.MAX_SAFE_INTEGER;
-  }
-};
-
-const getTxInfoRedeemerIndexes = (
-  pointers: readonly RedeemerPointer[],
-): readonly number[] => {
-  const inContextOrder = pointers.map((pointer, contextIndex) => ({
-    pointer,
-    contextIndex,
-  }));
-  const inTxInfoOrder = [...inContextOrder].sort((a, b) => {
-    const rankA = txInfoRedeemerPurposeRank(a.pointer.tag);
-    const rankB = txInfoRedeemerPurposeRank(b.pointer.tag);
-    if (rankA !== rankB) {
-      return rankA - rankB;
-    }
-    if (a.pointer.index !== b.pointer.index) {
-      return a.pointer.index < b.pointer.index ? -1 : 1;
-    }
-    return a.contextIndex - b.contextIndex;
-  });
-  const txInfoIndexes = Array<number>(pointers.length).fill(-1);
-  for (
-    let txInfoIndex = 0;
-    txInfoIndex < inTxInfoOrder.length;
-    txInfoIndex += 1
-  ) {
-    const { contextIndex } = inTxInfoOrder[txInfoIndex];
-    txInfoIndexes[contextIndex] = txInfoIndex;
-  }
-  return txInfoIndexes;
-};
-
-const withStubbedProviderEvaluation = async <A>(
-  lucid: LucidEvolution,
-  run: () => Promise<A>,
-): Promise<A> => {
-  const provider = lucid.config().provider as {
-    evaluateTx?: (
-      tx: string,
-      additionalUTxOs?: readonly UTxO[],
-    ) => Promise<
-      readonly {
-        redeemer_tag: ProviderRedeemerTag;
-        redeemer_index: number;
-        ex_units: { mem: number; steps: number };
-      }[]
-    >;
+  return {
+    stateQueueMintPointerIndex,
+    settlementMintPointerIndex,
+    stateQueueRedeemerIndex:
+      scriptSpendRedeemerCount + stateQueueMintPointerIndex,
+    settlementRedeemerIndex:
+      scriptSpendRedeemerCount + settlementMintPointerIndex,
   };
-  if (typeof provider.evaluateTx !== "function") {
-    return run();
-  }
-
-  const originalEvaluateTx = provider.evaluateTx.bind(provider);
-  provider.evaluateTx = async (txCbor) => {
-    const tx = CML.Transaction.from_cbor_hex(txCbor);
-    return getRedeemerPointersInContextOrder(tx).map((pointer) => ({
-      redeemer_tag: toProviderRedeemerTag(pointer.tag),
-      redeemer_index: Number(pointer.index),
-      ex_units: DUMMY_REDEEMER_EX_UNITS,
-    }));
-  };
-  try {
-    return await run();
-  } finally {
-    provider.evaluateTx = originalEvaluateTx;
-  }
 };
 
 const findInputIndex = (
@@ -696,6 +497,11 @@ export const buildAndSubmitMergeTx = (
           { missingBlockTxs: true },
         );
       }
+      if (firstBlockTxHashes.length === 0) {
+        yield* Effect.logInfo(
+          `🔸 No native block tx payloads indexed for header=${headerHash.toString("hex")}; treating merge replay as a no-op for immutable txs.`,
+        );
+      }
       const preflightDecodedBlockTxsResult = yield* Effect.either(
         preflightDecodeBlockTxs(firstBlockTxs),
       );
@@ -837,37 +643,20 @@ export const buildAndSubmitMergeTx = (
       }
       const hubOracleRefInput = hubOracleWitnessUtxos[0];
 
-      const walletUtxos = yield* Effect.tryPromise({
-        try: () => lucid.wallet().getUtxos(),
+      const operatorWalletView = yield* Effect.tryPromise({
+        try: () => fetchOperatorWalletView(lucid),
         catch: (cause) =>
           new SDK.StateQueueError({
-            message: "Failed to fetch operator wallet UTxOs for merge tx",
+            message: "Failed to initialize merge wallet view",
             cause,
           }),
       });
-      const feeInput = yield* selectFeeInput(walletUtxos);
+      const feeInput = yield* selectFeeInput(
+        availableOperatorWalletUtxos(operatorWalletView),
+      );
       yield* Effect.logInfo(
-        `🔸 Using fee input ${outRefLabel(feeInput)} (lovelace=${(feeInput.assets.lovelace ?? 0n).toString()}) for merge tx.`,
+        `🔸 Using fee input ${outRefLabel(feeInput)} (lovelace=${(feeInput.assets.lovelace ?? 0n).toString()}, known_wallet_utxos=${operatorWalletView.knownUtxos.length.toString()}) for merge tx.`,
       );
-
-      const mintPolicyOrder = [
-        fetchConfig.stateQueuePolicyId,
-        contracts.settlement.policyId,
-      ].sort((a, b) => a.localeCompare(b));
-      const stateQueueMintPointerIndex = mintPolicyOrder.indexOf(
-        fetchConfig.stateQueuePolicyId,
-      );
-      const settlementMintPointerIndex = mintPolicyOrder.indexOf(
-        contracts.settlement.policyId,
-      );
-      if (stateQueueMintPointerIndex < 0 || settlementMintPointerIndex < 0) {
-        return yield* Effect.fail(
-          new SDK.StateQueueError({
-            message: "Failed to derive merge mint-pointer indexes",
-            cause: `stateQueue=${stateQueueMintPointerIndex},settlement=${settlementMintPointerIndex}`,
-          }),
-        );
-      }
 
       const encodedConfirmedNodeDatum = yield* Effect.try({
         try: () => Data.to(updatedConfirmedNodeDatum, SDK.StateQueueDatum),
@@ -991,6 +780,25 @@ export const buildAndSubmitMergeTx = (
         firstBlockUTxO.utxo,
         feeInput,
       ].sort(compareOutRefs);
+      const initialRedeemerSeedIndexes = yield* Effect.try({
+        try: () =>
+          deriveInitialMergeRedeemerSeedIndexes({
+            scriptSpendRedeemerCount: 2,
+            stateQueuePolicyId: fetchConfig.stateQueuePolicyId,
+            settlementPolicyId: contracts.settlement.policyId,
+          }),
+        catch: (cause) =>
+          new SDK.StateQueueError({
+            message: "Failed to derive initial merge redeemer seed indexes",
+            cause,
+          }),
+      });
+      const {
+        stateQueueMintPointerIndex,
+        settlementMintPointerIndex,
+        stateQueueRedeemerIndex: initialStateQueueRedeemerIndex,
+        settlementRedeemerIndex: initialSettlementRedeemerIndex,
+      } = initialRedeemerSeedIndexes;
       const confirmedStateInputIndex = findInputIndex(
         orderedInputs,
         confirmedUTxO.utxo,
@@ -1012,8 +820,8 @@ export const buildAndSubmitMergeTx = (
         confirmedStateInputIndex,
         confirmedStateOutputIndex: 0,
         settlementOutputIndex: 1,
-        stateQueueRedeemerIndex: stateQueueMintPointerIndex,
-        settlementRedeemerIndex: settlementMintPointerIndex,
+        stateQueueRedeemerIndex: initialStateQueueRedeemerIndex,
+        settlementRedeemerIndex: initialSettlementRedeemerIndex,
         hubOracleRefInputIndex: 0,
       };
       const initialEncodedRedeemers =
@@ -1032,23 +840,25 @@ export const buildAndSubmitMergeTx = (
             );
             const draftTx = draftTxBuilder.toTransaction();
             const txBody = draftTx.body();
-            const inputList = txBody.inputs();
+            const inputList = collectSortedInputOutRefs(txBody.inputs());
             const referenceInputList = txBody.reference_inputs();
             if (referenceInputList === undefined) {
               throw new Error(
                 "Draft merge tx did not include reference inputs",
               );
             }
-            const headerInput = findInputIndexByOutRef(
+            const sortedReferenceInputList =
+              collectSortedInputOutRefs(referenceInputList);
+            const headerInput = findOutRefIndex(
               inputList,
               firstBlockUTxO.utxo,
             );
-            const confirmedInput = findInputIndexByOutRef(
+            const confirmedInput = findOutRefIndex(
               inputList,
               confirmedUTxO.utxo,
             );
-            const hubOracleRefInputIndex = findInputIndexByOutRef(
-              referenceInputList,
+            const hubOracleRefInputIndex = findOutRefIndex(
+              sortedReferenceInputList,
               hubOracleRefInput,
             );
             if (
@@ -1410,6 +1220,9 @@ export const buildAndSubmitMergeTx = (
       const txBuilder: TxSignBuilder = remoteEvalResult.right;
 
       // Submit the transaction
+      /**
+       * Normalizes transaction-submission failures during confirmed-state merging.
+       */
       const onSubmitFailure = (err: TxSubmitError) =>
         Effect.gen(function* () {
           yield* Effect.logError(`Submit tx error: ${err}`);
@@ -1421,6 +1234,9 @@ export const buildAndSubmitMergeTx = (
             }),
           );
         });
+      /**
+       * Normalizes transaction-confirmation failures during confirmed-state merging.
+       */
       const onConfirmFailure = (err: TxConfirmError) =>
         Effect.logError(`Confirm tx error: ${err}`);
       yield* handleSignSubmit(lucid, txBuilder).pipe(

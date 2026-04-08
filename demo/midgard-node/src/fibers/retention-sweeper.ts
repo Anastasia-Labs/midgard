@@ -7,6 +7,12 @@ import { DatabaseError } from "@/database/utils/common.js";
 import { Database, NodeConfig } from "@/services/index.js";
 import { Effect, pipe, Schedule } from "effect";
 
+/**
+ * Periodic pruning for retention-controlled database tables.
+ *
+ * The sweeper only acts when retention pruning is enabled in config, keeping
+ * the default path explicit and audit-friendly.
+ */
 export const retentionSweepAction: Effect.Effect<
   void,
   DatabaseError,
@@ -33,6 +39,9 @@ export const retentionSweepAction: Effect.Effect<
   );
 });
 
+/**
+ * Fiber wrapper that repeats the retention sweep on the provided schedule.
+ */
 export const retentionSweeperFiber = (
   schedule: Schedule.Schedule<number>,
 ): Effect.Effect<void, never, Database | NodeConfig> =>

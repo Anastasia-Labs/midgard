@@ -2,7 +2,9 @@ import { Effect, Logger, LogLevel } from 'effect';
 
 import type { MidgardConfig } from './config/schema.js';
 
-// Convert log level to Effect's LogLevel
+/**
+ * Converts the CLI's config-level log setting into Effect's log-level enum.
+ */
 const toEffectLogLevel = (level: MidgardConfig['logging']['level']): LogLevel => {
   switch (level) {
     case 'debug':
@@ -16,7 +18,9 @@ const toEffectLogLevel = (level: MidgardConfig['logging']['level']): LogLevel =>
   }
 };
 
-// Initialize logger with given configuration
+/**
+ * Creates a logger instance honoring the configured level and output format.
+ */
 export const createLogger = (config: MidgardConfig) => {
   const logLevel = toEffectLogLevel(config.logging.level);
 
@@ -43,7 +47,9 @@ export const createLogger = (config: MidgardConfig) => {
   return logger;
 };
 
-// Logging utility functions
+/**
+ * Convenience wrappers around Effect's global logging helpers.
+ */
 export const log = {
   debug: (message: string) => Logger.debug(message),
   info: (message: string) => Logger.info(message),

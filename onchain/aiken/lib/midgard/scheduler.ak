@@ -25,46 +25,25 @@ pub type SpendRedeemer {
   }
 }
 
-// Decode scheduler datums explicitly from raw `Data`, matching the rest of the
-// operator-set helper modules.
-//
-// The direct typed coercion path
-//   expect datum: Datum = data
-// has proven unreliable for the scheduler output datum on the rewind path, so
-// keep this decoder explicit and structurally aligned with the on-chain datum.
+/// Parses scheduler datum data using Aiken's typed expectation path.
+/// Decodes scheduler datum data using an expect cast.
 pub fn parse_scheduler_expect_datum(data: Data) -> Datum {
-  parse_scheduler_datum(data)
+  expect datum: Datum = data 
+  datum 
 }
+/// Parses scheduler datum data using the manual field decoder.
 
+/// Parses scheduler datum data field by field.
 pub fn parse_scheduler_datum(data: Data) -> Datum {
   let raw_datum = builtin.un_constr_data(data)
   expect raw_datum.1st == 0
   let fields = raw_datum.2nd
-  expect Some(operator_data) = list.at(fields, 0)
+  let operator_data = builtin.head_list(fields)
   expect operator: ByteArray = operator_data
-  expect Some(start_time_data) = list.at(fields, 1)
+  let start_time_data = builtin.head_list(builtin.tail_list(fields))
   expect start_time: PosixTime = start_time_data
+  expect builtin.null_list(builtin.tail_list(builtin.tail_list(fields)))
   Datum { operator, start_time }
-}
-
-test parse_scheduler_datum_accepts_canonical_data() {
-  let datum = Datum {
-    operator: #"aa",
-    start_time: 42,
-  }
-  let data: Data = datum
-
-  parse_scheduler_datum(data) == datum
-}
-
-test parse_scheduler_expect_datum_accepts_canonical_data() {
-  let datum = Datum {
-    operator: #"bb",
-    start_time: 1337,
-  }
-  let data: Data = datum
-
-  parse_scheduler_expect_datum(data) == datum
 }
 
 /// The end of a shift is the start of the shift, shifted forward

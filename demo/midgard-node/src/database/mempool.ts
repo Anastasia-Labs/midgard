@@ -87,9 +87,15 @@ export const insertMultiple = (
     Effect.tapError((e) => Effect.logError(`${tableName} db: insert: ${e}`)),
   );
 
+/**
+ * Retrieves mempool transaction CBOR by transaction hash.
+ */
 export const retrieveTxCborByHash = (txHash: Buffer) =>
   Tx.retrieveValue(tableName, txHash);
 
+/**
+ * Retrieves mempool transaction CBOR blobs for a batch of hashes.
+ */
 export const retrieveTxCborsByHashes = (txHashes: Buffer[]) =>
   Tx.retrieveValues(tableName, txHashes);
 

@@ -10,6 +10,19 @@ import { TxSignError, TxSubmitError } from "@/transactions/utils.js";
 import * as SDK from "@al-ft/midgard-sdk";
 import { Effect, pipe, Ref, Schedule } from "effect";
 import { Database } from "@/services/index.js";
+
+/**
+ * Background merge flow for confirmed state-queue blocks.
+ *
+ * The merge fiber switches to the dedicated merge wallet and submits the
+ * on-chain merge transaction that folds confirmed queue state into the next
+ * durable checkpoint.
+ */
+
+/**
+ * Runs one merge attempt, optionally bypassing the queue-length guard for
+ * explicit recovery/administrative flows.
+ */
 export const mergeAction = (
   force: boolean = false,
 ): Effect.Effect<
@@ -26,28 +39,28 @@ export const mergeAction = (
   Lucid | MidgardContracts | Database | Globals | NodeConfig
 > =>
   Effect.gen(function* () {
-  const globals = yield* Globals;
-  yield* Ref.set(globals.HEARTBEAT_MERGE, Date.now());
-  const lucid = yield* Lucid;
-  const contracts = yield* MidgardContracts;
-  const { stateQueue: stateQueueAuthValidator } = contracts;
+    const globals = yield* Globals;
+    yield* Ref.set(globals.HEARTBEAT_MERGE, Date.now());
+    const lucid = yield* Lucid;
+    const contracts = yield* MidgardContracts;
+    const { stateQueue: stateQueueAuthValidator } = contracts;
 
-  const fetchConfig: SDK.StateQueueFetchConfig = {
-    stateQueueAddress: stateQueueAuthValidator.spendingScriptAddress,
-    stateQueuePolicyId: stateQueueAuthValidator.policyId,
-  };
-  yield* lucid.switchToOperatorsMergingWallet;
-  yield* StateQueueTx.buildAndSubmitMergeTx(
-    lucid.api,
-    fetchConfig,
-    contracts,
-    { bypassQueueLengthGuard: force },
-  );
-});
+    const fetchConfig: SDK.StateQueueFetchConfig = {
+      stateQueueAddress: stateQueueAuthValidator.spendingScriptAddress,
+      stateQueuePolicyId: stateQueueAuthValidator.policyId,
+    };
+    yield* lucid.switchToOperatorsMergingWallet;
+    yield* StateQueueTx.buildAndSubmitMergeTx(
+      lucid.api,
+      fetchConfig,
+      contracts,
+      { bypassQueueLengthGuard: force },
+    );
+  });
 
-// possible issues:
-// 1. tx-generator: large batch size & high concurrency
-// 2. after initing node, can't commit the block
+/**
+ * Fiber wrapper that repeats merge attempts on the provided schedule.
+ */
 export const mergeFiber = (
   schedule: Schedule.Schedule<number>,
 ): Effect.Effect<

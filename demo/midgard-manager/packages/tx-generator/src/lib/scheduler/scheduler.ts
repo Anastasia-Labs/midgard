@@ -24,13 +24,15 @@ import {
   validateGeneratorConfig,
 } from '../types.js';
 
-// Get the directory path for ES modules
+/**
+ * ESM-compatible location helpers used to resolve output paths relative to the
+ * package root.
+ */
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
 /**
- * Generator State Manager
- * Encapsulates all state for the transaction generator
+ * Singleton state container for the long-running transaction generator.
  */
 class TxGeneratorState {
   private static instance: TxGeneratorState;
@@ -46,6 +48,9 @@ class TxGeneratorState {
 
   private constructor() {}
 
+  /**
+   * Returns the shared generator-state instance.
+   */
   static getInstance(): TxGeneratorState {
     if (!TxGeneratorState.instance) {
       TxGeneratorState.instance = new TxGeneratorState();
@@ -53,26 +58,44 @@ class TxGeneratorState {
     return TxGeneratorState.instance;
   }
 
+  /**
+   * Returns the cancellation flag observed by the generator loop.
+   */
   get shouldStop(): boolean {
     return this._shouldStop;
   }
 
+  /**
+   * Updates the cancellation flag observed by the generator loop.
+   */
   set shouldStop(value: boolean) {
     this._shouldStop = value;
   }
 
+  /**
+   * Returns the promise for the active generator run, if one exists.
+   */
   get currentPromise(): Promise<void> | null {
     return this._currentPromise;
   }
 
+  /**
+   * Records the promise for the active generator run.
+   */
   set currentPromise(value: Promise<void> | null) {
     this._currentPromise = value;
   }
 
+  /**
+   * Returns the mutable runtime counters exposed by the status command.
+   */
   get stats() {
     return this._stats;
   }
 
+  /**
+   * Resets runtime counters at generator startup.
+   */
   resetStats() {
     this._stats = {
       transactionsGenerated: 0,
@@ -82,16 +105,24 @@ class TxGeneratorState {
     };
   }
 
+  /**
+   * Reports whether the generator loop is currently active.
+   */
   isRunning(): boolean {
     return !this._shouldStop && this._currentPromise !== null;
   }
 }
 
-// Get the shared instance
+/**
+ * Shared generator-state singleton used across CLI commands.
+ */
 const state = TxGeneratorState.getInstance();
 
 /**
- * Starts a transaction generator with the given configuration
+ * Starts the transaction generator using the supplied configuration override.
+ *
+ * The scheduler validates configuration, derives a canonical wallet key, then
+ * repeatedly generates and optionally submits transaction batches until stopped.
  */
 export const startGenerator = async (
   config: Partial<TransactionGeneratorConfig> = {}
@@ -153,6 +184,9 @@ export const startGenerator = async (
   }
   console.log();
 
+  /**
+   * Clones a base UTxO into unique pseudo-inputs for offline generation mode.
+   */
   const generateUniqueUTxOs = (baseUTxO: UTxO, count: number) =>
     Array.from({ length: count }, () => ({
       ...baseUTxO,
@@ -160,6 +194,9 @@ export const startGenerator = async (
       outputIndex: Math.floor(Math.random() * 1001), // Random outputIndex 0 -> 1000
     }));
 
+  /**
+   * Resolves the wallet address that should own the generated transactions.
+   */
   const resolveWalletAddress = async (): Promise<string> => {
     if (fullConfig.initialUTxO?.address && fullConfig.initialUTxO.address.length > 0) {
       return fullConfig.initialUTxO.address;
@@ -179,7 +216,10 @@ export const startGenerator = async (
       .to_bech32();
   };
 
-  // Define the transaction generation function
+  /**
+   * Generates, optionally submits, and records one batch of transactions for
+   * the current scheduler configuration.
+   */
   const generateTransactions = async () => {
     try {
       const nodeAvailable = await nodeClient.isAvailable();
@@ -316,7 +356,9 @@ export const startGenerator = async (
     }
   };
 
-  // Create a function to run the generator loop
+  /**
+   * Runs the generator loop until a stop request is observed.
+   */
   const runGenerator = async () => {
     // Generate at least one batch
     await generateTransactions();
@@ -351,7 +393,7 @@ export const startGenerator = async (
 };
 
 /**
- * Stops the currently running transaction generator
+ * Requests the currently running generator loop to stop.
  */
 export const stopGenerator = (): Promise<void> => {
   state.shouldStop = true;
@@ -359,7 +401,7 @@ export const stopGenerator = (): Promise<void> => {
 };
 
 /**
- * Gets the current status of the transaction generator
+ * Returns a snapshot of the generator's current runtime status.
  */
 export const getGeneratorStatus = (): {
   running: boolean;

@@ -35,6 +35,8 @@ pub fn is_herebefore(self: Interval, point: Int) -> Bool {
   }
 }
 
+/// Validates that the minted value matches the expected token bundle.
+/// Validates that a value contains exactly the expected minted asset delta.
 pub fn validate_mint(
   mints: Value,
   expected_minting_policy: ByteArray,
@@ -44,39 +46,51 @@ pub fn validate_mint(
   let mints_policy = dict.to_pairs(tokens(mints, expected_minting_policy))
   mints_policy == [Pair(expected_minting_name, expected_minting_amt)]
 }
+/// Returns the last element of a non-empty list.
 
+/// Returns the last element of a non-empty list.
 pub fn safe_list_last(elems: List<a>) -> a {
   expect Some(last_elem) = list.last(elems)
   last_elem
+/// Returns the first element of a non-empty list.
 }
 
+/// Returns the first element of a non-empty list.
 pub fn safe_list_head(elems: List<a>) -> a {
   expect Some(last_elem) = list.head(elems)
+/// Returns every element of a non-empty list except the last.
   last_elem
 }
 
+/// Returns every element except the last from a non-empty list.
 pub fn safe_list_init(elems: List<a>) {
+/// Returns whether the timestamp matches the sentinel none value.
   expect Some(elems_except_last) = list.init(elems)
   elems_except_last
 }
 
+/// Checks whether a timestamp matches the sentinel none value.
 pub fn is_posix_time_none(time: PosixTime) {
   time == posix_time_none
 }
 
+/// Returns the spending script hash for the current output reference.
 /// Returns the quantity of all tokens with the policyId
 pub fn quantity_of_policy_id(value: Value, policyId: PolicyId) {
   dict.foldr(tokens(value, policyId), 0, fn(_k, v, result) { v + result })
 }
 
+/// Finds the spending script hash for the given output reference.
 pub fn get_own_hash(output_reference: OutputReference, txInputs: List<Input>) {
   expect Some(input) =
+/// Returns the spending address for the current output reference.
     list.find(txInputs, fn(x) { x.output_reference == output_reference })
 
   expect Script(hash) = input.output.address.payment_credential
   hash
 }
 
+/// Finds the address for the given output reference.
 pub fn get_own_address(output_reference: OutputReference, txInputs: List<Input>) {
   expect Some(input) =
     list.find(txInputs, fn(x) { x.output_reference == output_reference })
@@ -89,6 +103,7 @@ pub fn get_own_input_at(
   inputs: List<Input>,
   own_out_ref: OutputReference,
   input_index: Int,
+/// Returns whether the output pays to the expected script credential.
 ) -> Output {
   expect Some(Input { output: own_utxo, output_reference: spent_own_out_ref }) =
     list.at(inputs, input_index)
@@ -96,6 +111,7 @@ pub fn get_own_input_at(
   own_utxo
 }
 
+/// Checks whether an output pays to the given script hash.
 pub fn is_output_to_sc(output: Output, scHash: ByteArray) -> Bool {
   when output.address.payment_credential is {
     Script(hash) -> hash == scHash
@@ -116,6 +132,7 @@ pub fn has_signed(
 /// a triplet.
 pub fn get_single_asset_from_value(v: Value) -> (PolicyId, AssetName, Int) {
   expect [Pair(sym, tn_qty_pairs)] =
+/// Returns the unique asset name carried under the given policy.
     v
       |> assets.to_dict
       |> dict.to_pairs
@@ -124,10 +141,12 @@ pub fn get_single_asset_from_value(v: Value) -> (PolicyId, AssetName, Int) {
 }
 
 // Used to retrieve asset name from a value with a specific policy id
+/// Returns the single asset name stored under a policy.
 pub fn get_asset_name_from_value_with_policy(
   value: Value,
   policy_id: PolicyId,
 ) -> AssetName {
+/// Returns the singleton asset stored under the given policy.
   expect [Pair(asset_name, _)] =
     value
       |> assets.tokens(policy_id)
@@ -137,6 +156,7 @@ pub fn get_asset_name_from_value_with_policy(
 }
 
 // Used to retrieve a singleton asset from a value with a specific policy id
+/// Returns the single asset entry stored under a policy.
 pub fn get_singleton_asset_with_policy(
   value: Value,
   policy_id: PolicyId,
@@ -191,6 +211,7 @@ pub fn get_authentic_input_asset_name_with_policy_at(
   input_index: Int,
 ) -> AssetName {
   expect Some(Input { output: Output { value: input_value, .. }, .. }) =
+/// Returns the authentic input and NFT asset name at the requested index.
     list.at(inputs, input_index)
 
   expect (input_nft_policy_id, input_nft_asset_name, 1) =
@@ -201,6 +222,7 @@ pub fn get_authentic_input_asset_name_with_policy_at(
   input_nft_asset_name
 }
 
+/// Returns the authentic input and asset name for the policy at the requested index.
 pub fn get_authentic_input_and_asset_name_with_policy_at(
   inputs: List<Input>,
   nft_policy_id: PolicyId,
@@ -380,22 +402,26 @@ pub fn get_authentic_output_datum_at_address_with_nft_at(
     reference_script: None,
   }) = list.at(outputs, output_index)
 
+/// Verifies a 32-byte hash against the expected digest.
   expect expected_address == output_address
 
   let output_nft_triplet =
     get_single_asset_from_value_apart_from_ada(output_value)
 
+/// Verifies a 28-byte hash against the expected digest.
   expect output_nft_triplet == (nft_policy_id, nft_asset_name, 1)
 
   output_datum_data
 }
 
 // Verify a 32-byte hash (Blake2b-256)
+/// Checks that bytes hash to the expected 32-byte Blake2b digest.
 pub fn verify_hash_32(data: Data, data_hash: H32<Data>) -> Bool {
   blake2b_256(cbor.serialise(data)) == data_hash
 }
 
 // Verify a 28-byte hash (Blake2b-224)
+/// Checks that bytes hash to the expected 28-byte Blake2b digest.
 pub fn verify_hash_28(data: Data, data_hash: H28<Data>) -> Bool {
   blake2b_224(cbor.serialise(data)) == data_hash
 }
@@ -562,6 +588,7 @@ pub fn plutarch_pexcludes(
   expect [redeemer_root_data,
     redeemer_key_data,
     redeemer_proof_data, ..] =
+/// Deletes the given key from a list of key-value pairs.
     builtin.un_list_data(pexcludes_validator_redeemer)
 
   let merkle_root_data: Data = merkle_root
@@ -575,6 +602,7 @@ pub fn plutarch_pexcludes(
   }
 }
 
+/// Deletes a key from a dictionary using Plutarch-compatible semantics.
 pub fn plutarch_pdelete(
   merkle_root_before_delete: MerkleRoot,
   key: Data,
@@ -582,6 +610,7 @@ pub fn plutarch_pdelete(
   membership_proof: Proof,
   redeemers: Pairs<ScriptPurpose, Redeemer>,
   withdraw_redeemer_index: Int,
+/// Returns the hash of the supplied verification key.
 ) -> MerkleRoot {
   let proof_data: Data = membership_proof
   let function_input: List<Data> =
@@ -596,6 +625,7 @@ pub fn plutarch_pdelete(
   )
 }
 
+/// Derives the verification key hash for a verification key.
 pub fn get_verification_key_hash(key: VerificationKey) -> VerificationKeyHash {
   blake2b_224(key)
 }

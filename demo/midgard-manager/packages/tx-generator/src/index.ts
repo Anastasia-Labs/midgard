@@ -1,7 +1,6 @@
 /* eslint-disable simple-import-sort/exports */
 /**
- * Midgard Transaction Generator
- * Generates and submits test transactions to the Midgard L2 network
+ * Public surface for the Midgard transaction-generator package.
  */
 
 // Re-export transaction generator functions

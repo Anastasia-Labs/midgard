@@ -24,8 +24,14 @@ import { incompleteActiveOperatorInitTxProgram } from "@/active-operators.js";
 import { incompleteRegisteredOperatorInitTxProgram } from "@/registered-operators.js";
 import { incompleteRetiredOperatorInitTxProgram } from "@/retired-operators.js";
 
+/**
+ * Extra validity headroom applied to the initialization transaction.
+ */
 export const VALIDITY_RANGE_BUFFER = 5 * 60 * 1000;
 
+/**
+ * Parameters for bootstrapping the hub oracle and scheduler together.
+ */
 export type HubAndSchedulerInitializationParams = {
   validators: MidgardValidators;
   oneShotNonceUTxO: UTxO;
@@ -33,11 +39,17 @@ export type HubAndSchedulerInitializationParams = {
   schedulerLovelace?: bigint;
 };
 
+/**
+ * Parameters for full Midgard initialization.
+ */
 export type InitializationParams = {
   midgardValidators: MidgardValidators;
   fraudProofCatalogueMerkleRoot: string;
 };
 
+/**
+ * Composes the initialization fragments for the hub oracle and scheduler.
+ */
 export const incompleteHubAndSchedulerInitTxProgram = (
   lucid: LucidEvolution,
   params: HubAndSchedulerInitializationParams,
@@ -60,6 +72,9 @@ export const incompleteHubAndSchedulerInitTxProgram = (
     return lucid.newTx().compose(hubOracleTx).compose(schedulerTx);
   });
 
+/**
+ * Builds the full initialization transaction prior to `.complete(...)`.
+ */
 export const incompleteInitializationTxProgram = (
   lucid: LucidEvolution,
   params: InitializationParams,
@@ -138,6 +153,9 @@ export const incompleteInitializationTxProgram = (
       .compose(fraudProofCatalogueTx);
   });
 
+/**
+ * Completes the initialization transaction with local UPLC evaluation enabled.
+ */
 export const unsignedInitializationTxProgram = (
   lucid: LucidEvolution,
   initParams: InitializationParams,
@@ -162,11 +180,7 @@ export const unsignedInitializationTxProgram = (
   });
 
 /**
- * Builds completed tx for initializing all Midgard contracts.
- *
- * @param lucid - The `LucidEvolution` API object.
- * @param initParams - Parameters for initializing all Midgard contracts.
- * @returns A promise that resolves to a `TxSignBuilder` instance.
+ * Promise-style wrapper for building the completed initialization transaction.
  */
 export const unsignedInitializationTx = (
   lucid: LucidEvolution,

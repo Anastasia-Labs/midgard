@@ -11,7 +11,16 @@ import { MidgardError } from '../../../utils/errors.js';
 import type { Action } from '../types.js';
 
 /**
- * Helper function to get a description for each transaction type
+ * Interactive actions that configure and start the transaction generator.
+ *
+ * These flows expose the generator's higher-level knobs in operator language so
+ * maintainers can reason about traffic shape, submission rate, and wallet
+ * selection without having to inspect the generator package directly.
+ */
+
+/**
+ * Maps the generator's transaction-type discriminator to operator-facing help
+ * text used in summaries and menus.
  */
 function getTypeDescription(type: string): string {
   switch (type) {
@@ -26,6 +35,14 @@ function getTypeDescription(type: string): string {
   }
 }
 
+/**
+ * Interactive action that walks the user through a full generator
+ * configuration flow and starts the generator immediately.
+ *
+ * The action mirrors the saved config shape where practical, but it also
+ * creates a disposable signing wallet and initial UTxO so a fresh local test
+ * session can be started from the menu without additional setup.
+ */
 export const configureTxGenerator: Action = {
   name: 'Configure Transaction Generator',
   description: 'Configure and start transaction generator',
@@ -37,6 +54,10 @@ export const configureTxGenerator: Action = {
       const abortController = new AbortController();
 
       // Listen for the parent abort signal to propagate it
+      /**
+       * Aborts the active prompt chain when the enclosing interactive session
+       * is interrupted.
+       */
       const parentAbortHandler = () => {
         abortController.abort();
         throw new Error('AbortPromptError');
@@ -303,7 +324,8 @@ export const configureTxGenerator: Action = {
           spinner.start();
 
           try {
-            // Start the generator
+            // Start the generator with the interactive selections and the
+            // disposable wallet context we just created.
             await startGenerator({
               transactionType: txConfig.transactionType,
               oneToOneRatio: txConfig.oneToOneRatio,
@@ -364,6 +386,14 @@ export const configureTxGenerator: Action = {
   },
 };
 
+/**
+ * Interactive action that toggles generator execution using either the saved
+ * configuration or the full configuration flow above.
+ *
+ * This is the operational entrypoint used most often after the generator has
+ * already been configured once, so the quick-start branch keeps the previously
+ * persisted settings visible before the operator commits to starting traffic.
+ */
 export const toggleTxGenerator: Action = {
   name: 'Toggle Transaction Generator',
   description: 'Turn transaction generator on or off',
@@ -375,6 +405,10 @@ export const toggleTxGenerator: Action = {
       const abortController = new AbortController();
 
       // Listen for the parent abort signal to propagate it
+      /**
+       * Aborts the active prompt chain when the enclosing interactive session
+       * is interrupted.
+       */
       const parentAbortHandler = () => {
         abortController.abort();
         throw new Error('AbortPromptError');
@@ -479,8 +513,8 @@ export const toggleTxGenerator: Action = {
             return configureTxGenerator.execute(context);
           }
 
-          // Quick start with current saved configuration
-          // First, check if we have wallets
+          // Quick start reuses the persisted runtime knobs, but still requires
+          // an explicit wallet choice so signing intent stays visible.
           const wallets = await listWallets();
           if (wallets.length === 0) {
             console.log(chalk.red('❌ No wallets configured. Please add a wallet first.'));
@@ -556,7 +590,8 @@ export const toggleTxGenerator: Action = {
           const spinner = ora('Starting transaction generator...').start();
 
           try {
-            // Start the generator with saved configuration but mixed type
+            // Quick start intentionally locks in the default mixed workload so
+            // repeated local test runs behave consistently.
             await startGenerator({
               transactionType: 'mixed',
               oneToOneRatio: 70,

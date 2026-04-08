@@ -1,4 +1,6 @@
-import { TxHash } from "@lucid-evolution/lucid";
+import * as SDK from "@al-ft/midgard-sdk";
+import { type LucidEvolution, TxHash } from "@lucid-evolution/lucid";
+import { Effect } from "effect";
 import { SerializedStateQueueUTxO } from "./commit-block-header.js";
 
 export type WorkerInput = {
@@ -34,3 +36,12 @@ export type WorkerOutput =
   | NoTxForConfirmationOutput
   | StaleUnconfirmedRecoveryOutput
   | FailedConfirmationOutput;
+
+export const fetchLatestCommittedStateQueueBlock = (
+  lucid: LucidEvolution,
+  stateQueueAuthValidator: SDK.AuthenticatedValidator,
+): Effect.Effect<SDK.StateQueueUTxO, SDK.StateQueueError | SDK.LucidError> =>
+  SDK.fetchLatestCommittedBlockProgram(lucid, {
+    stateQueueAddress: stateQueueAuthValidator.spendingScriptAddress,
+    stateQueuePolicyId: stateQueueAuthValidator.policyId,
+  });

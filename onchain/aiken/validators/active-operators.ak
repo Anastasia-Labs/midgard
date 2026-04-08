@@ -387,6 +387,8 @@ validator mint(
   }
 }
 
+/// Ensures that no active-operator tokens are minted in the transaction.
+/// Checks that no active-operator node tokens were minted.
 fn no_active_operators_minted(mint: Value, policy_id: PolicyId) {
   utils.quantity_of_policy_id(mint, policy_id) == 0
 }

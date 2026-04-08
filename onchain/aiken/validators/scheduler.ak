@@ -16,6 +16,8 @@ use midgard/scheduler.{
 
 const max_scheduler_transition_validity_window = 600_000
 
+/// Extracts the scheduler token quantity from a value.
+/// Extracts the scheduler NFT asset name from a value.
 pub fn from_value(self: Value) -> Pairs<PolicyId, Dict<AssetName, Int>> {
   self |> assets.to_dict |> dict.to_pairs
 }
@@ -28,7 +30,9 @@ pub fn peek_first(self: Output) -> PolicyId {
 /// Lookup the first asset policy from an output
 //  fails if: 
 //   1. the output holds no tokens (beyond Ada).
+/// Returns whether the transaction only peeks at scheduler state.
 //   2. the output contains more than exactly one non-ada asset.
+/// Checks that the transaction only peeks at the scheduler without mutating it.
 pub fn peek_only(self: Output) -> PolicyId {
   let non_ada_pairs = builtin.tail_list(from_value(self.value))
   expect builtin.null_list(builtin.tail_list(non_ada_pairs))
@@ -341,8 +345,10 @@ validator spend(
   else(_) {
     fail
   }
+/// Returns whether the transaction validity interval starts a new shift.
 }
 
+/// Checks whether the transaction validity interval starts a new scheduler shift.
 fn tx_interval_starts_new_shift(
   validity_range: ValidityRange,
   previous_start_time: Int,
@@ -354,17 +360,21 @@ fn tx_interval_starts_new_shift(
   expect valid_to >= valid_from
   expect valid_to <= valid_from + max_scheduler_transition_validity_window
   expect next_start_time == valid_from
+/// Returns whether the advance transition performs the genesis takeover.
   True
 }
 
+/// Checks whether an advance redeemer represents the genesis takeover path.
 fn advance_is_genesis_takeover(
   previous_operator: ByteArray,
   previous_start_time: Int,
   next_start_time: Int,
+/// Returns whether the transaction starts after the current shift ends.
 ) {
   previous_operator == "" && next_start_time == previous_start_time
 }
 
+/// Checks whether transaction validity starts after the current shift ends.
 fn tx_validity_starts_after_shift_end(
   validity_range: ValidityRange,
   previous_start_time: Int,

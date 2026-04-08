@@ -1,5 +1,8 @@
 import { generateEmulatorAccountFromPrivateKey, UTxO } from '@lucid-evolution/lucid';
 
+/**
+ * Test-only wallet bundle returned by {@link generateTestWallet}.
+ */
 export interface TestWallet {
   privateKey: string;
   seedPhrase: string;
@@ -7,8 +10,11 @@ export interface TestWallet {
 }
 
 /**
- * Generates a test wallet with initial UTxO for transaction generation
- * Uses Lucid Evolution's emulator account for testing
+ * Generates a disposable emulator wallet and bootstrap UTxO for transaction
+ * generation tests.
+ *
+ * The zero-hash outref intentionally behaves like a predictable local fixture
+ * rather than a real chain-derived output reference.
  */
 export async function generateTestWallet(): Promise<TestWallet> {
   const account = await generateEmulatorAccountFromPrivateKey({});

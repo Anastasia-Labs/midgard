@@ -7,6 +7,13 @@ import { saveConfig } from '../../../config/index.js';
 import { MidgardError } from '../../../utils/errors.js';
 import type { Action } from '../types.js';
 
+/**
+ * Interactive action that updates the configured Midgard node endpoint.
+ *
+ * Persisting the endpoint through a dedicated action keeps the rest of the CLI
+ * on a validated configuration path instead of accepting arbitrary strings at
+ * each call site.
+ */
 export const configureNodeEndpoint: Action = {
   name: 'Configure Node Endpoint',
   description: 'Set the Midgard node endpoint URL',
@@ -18,6 +25,10 @@ export const configureNodeEndpoint: Action = {
       const abortController = new AbortController();
 
       // Listen for the parent abort signal to propagate it
+      /**
+       * Aborts the active prompt when the enclosing interactive session is
+       * interrupted.
+       */
       const parentAbortHandler = () => {
         abortController.abort();
         throw new Error('AbortPromptError');
@@ -94,6 +105,12 @@ export const configureNodeEndpoint: Action = {
   },
 };
 
+/**
+ * Placeholder interactive action for clearing node mempool state.
+ *
+ * The placeholder is intentionally explicit so operators do not mistake it for
+ * a real administrative control on a production node.
+ */
 export const clearNodeDatabase: Action = {
   name: 'Clear Mempool (Not Implemented)',
   description: "Placeholder for clearing the node's mempool (not yet available)",
@@ -105,6 +122,10 @@ export const clearNodeDatabase: Action = {
       const abortController = new AbortController();
 
       // Listen for the parent abort signal to propagate it
+      /**
+       * Aborts the active prompt when the enclosing interactive session is
+       * interrupted.
+       */
       const parentAbortHandler = () => {
         abortController.abort();
         throw new Error('AbortPromptError');

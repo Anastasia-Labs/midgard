@@ -142,6 +142,9 @@ export const insertTxsValidatedNative = (
 
 export const retrieve = Tx.retrieveAllEntries(tableName);
 
+/**
+ * Retrieves immutable transaction CBOR by transaction hash.
+ */
 export const retrieveTxCborByHash = (txHash: Buffer) =>
   Tx.retrieveValue(tableName, txHash);
 

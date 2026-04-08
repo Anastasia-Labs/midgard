@@ -8,6 +8,9 @@ import {
   resolveAlignedCommitEndTime,
 } from "@/workers/utils/commit-end-time.js";
 
+/**
+ * Builds a Lucid instance for commit-end-time tests.
+ */
 const makeLucid = async () => {
   const operator = generateEmulatorAccount({ lovelace: 50_000_000n });
   const emulator = new Emulator([operator]);

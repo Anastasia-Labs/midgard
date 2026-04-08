@@ -1,3 +1,6 @@
+/**
+ * Public surface for the node's long-running worker fibers.
+ */
 export * from "./block-commitment.js";
 export * from "./block-confirmation.js";
 export * from "./fetch-and-insert-deposit-utxos.js";

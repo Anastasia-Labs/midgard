@@ -8,6 +8,13 @@ import {
 import { AuthenticatedValidator } from "@/common.js";
 import { SCHEDULER_ASSET_NAME } from "@/constants.js";
 
+/**
+ * Scheduler SDK helpers and redeemer/data schemas.
+ *
+ * The scheduler coordinates operator turns and time windows, so even the simple
+ * initialization helpers here are part of the protocol's state-machine
+ * bootstrap path.
+ */
 export const SchedulerDatumSchema = Data.Object({
   operator: Data.Bytes(),
   startTime: Data.Integer(),
@@ -16,6 +23,9 @@ export const SchedulerDatumSchema = Data.Object({
 export type SchedulerDatum = Data.Static<typeof SchedulerDatumSchema>;
 export const SchedulerDatum = SchedulerDatumSchema as unknown as SchedulerDatum;
 
+/**
+ * Mint redeemers understood by the scheduler policy.
+ */
 export const SchedulerMintRedeemerSchema = Data.Enum([
   Data.Literal("Init"),
   Data.Literal("Deinit"),
@@ -50,6 +60,9 @@ export type SchedulerSpendRedeemer = Data.Static<
 export const SchedulerSpendRedeemer =
   SchedulerSpendRedeemerSchema as unknown as SchedulerSpendRedeemer;
 
+/**
+ * Parameters for creating the initial scheduler UTxO.
+ */
 export type SchedulerInitParams = {
   validator: AuthenticatedValidator;
   datum?: SchedulerDatum;
@@ -67,11 +80,10 @@ export const INITIAL_SCHEDULER_DATUM: SchedulerDatum = {
 };
 
 /**
- * Init
+ * Builds the scheduler initialization transaction fragment.
  *
- * @param lucid - The LucidEvolution
- * @param params - The parameters
- * @returns {TxBuilder} A TxBuilder instance that can be used to build the transaction.
+ * This mints the scheduler witness NFT and creates the first scheduler output
+ * with either the provided datum/lovelace or the protocol defaults.
  */
 export const incompleteSchedulerInitTxProgram = (
   lucid: LucidEvolution,
@@ -103,46 +115,37 @@ export const incompleteSchedulerInitTxProgram = (
 };
 
 /**
- * Deinit
- *
- * @param lucid - The LucidEvolution
- * @param params - The parameters
- * @returns {TxBuilder} A TxBuilder instance that can be used to build the transaction.
+ * Stub entry point for scheduler de-initialization flows.
  */
 export const incompleteSchedulerDeinitTxProgram = (
   lucid: LucidEvolution,
   params: SchedulerDeinitParams,
 ): TxBuilder => {
+  void params;
   const tx = lucid.newTx();
   return tx;
 };
 
 /**
- * Advance
- *
- * @param lucid - The LucidEvolution
- * @param params - The parameters
- * @returns {TxBuilder} A TxBuilder instance that can be used to build the transaction.
+ * Stub entry point for advancing the scheduler state machine.
  */
 export const incompleteSchedulerAdvanceTxProgram = (
   lucid: LucidEvolution,
   params: SchedulerAdvanceParams,
 ): TxBuilder => {
+  void params;
   const tx = lucid.newTx();
   return tx;
 };
 
 /**
- * Rewind
- *
- * @param lucid - The LucidEvolution
- * @param params - The parameters
- * @returns {TxBuilder} A TxBuilder instance that can be used to build the transaction.
+ * Stub entry point for rewinding the scheduler state machine.
  */
 export const incompleteSchedulerRewindTxProgram = (
   lucid: LucidEvolution,
   params: SchedulerRewindParams,
 ): TxBuilder => {
+  void params;
   const tx = lucid.newTx();
   return tx;
 };

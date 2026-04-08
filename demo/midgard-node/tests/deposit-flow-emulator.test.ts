@@ -51,7 +51,10 @@ import {
   deployStateQueueProgram,
 } from "@/transactions/initialization.js";
 import { registerAndActivateOperatorProgram } from "@/transactions/register-active-operator.js";
-import { buildUnsignedDepositTxProgram } from "@/transactions/submit-deposit.js";
+import {
+  buildUnsignedDepositTxFromFundingContextProgram,
+  buildUnsignedDepositTxProgram,
+} from "@/transactions/submit-deposit.js";
 import { runCommitBlockHeaderWorkerProgram } from "@/workers/commit-block-header.js";
 import { serializeStateQueueUTxO } from "@/workers/utils/commit-block-header.js";
 import { deleteMpt, keyValueMptRoot } from "@/workers/utils/mpt.js";
@@ -137,7 +140,9 @@ const makeFixture = async (): Promise<EmulatorFixture> => {
   const referenceScriptsLucid = await makeLucid(emulator, "Custom");
   operatorLucid.selectWallet.fromSeed(operatorAccount.seedPhrase);
   depositorLucid.selectWallet.fromSeed(depositorAccount.seedPhrase);
-  referenceScriptsLucid.selectWallet.fromSeed(referenceScriptsAccount.seedPhrase);
+  referenceScriptsLucid.selectWallet.fromSeed(
+    referenceScriptsAccount.seedPhrase,
+  );
 
   const nonceUtxo = (await operatorLucid.wallet().getUtxos())[0];
   if (nonceUtxo === undefined) {
@@ -185,7 +190,9 @@ const initializeProtocol = async ({
   await Effect.runPromise(
     deployRegisteredOperatorsProgram(operatorLucid, contracts),
   );
-  await Effect.runPromise(deployActiveOperatorsProgram(operatorLucid, contracts));
+  await Effect.runPromise(
+    deployActiveOperatorsProgram(operatorLucid, contracts),
+  );
   await Effect.runPromise(
     deployRetiredOperatorsProgram(operatorLucid, contracts),
   );
@@ -220,14 +227,23 @@ const runNodeDatabaseEffect = <A, E>(
   effect: Effect.Effect<A, E, Database | NodeConfig>,
 ) =>
   Effect.runPromise(
-    effect.pipe(Effect.provide(Database.layer), Effect.provide(NodeConfig.layer)),
+    effect.pipe(
+      Effect.provide(Database.layer),
+      Effect.provide(NodeConfig.layer),
+    ),
   );
 
+/**
+ * Initializes the runtime used by the deposit-flow emulator tests.
+ */
 const initializeNodeRuntime = async () => {
   await runNodeDatabaseEffect(InitDB.program);
   await runNodeDatabaseEffect(clearNodeTables);
 };
 
+/**
+ * Builds the filesystem paths used by the emulator runtime.
+ */
 const makeRuntimePaths = () => {
   const suffix = randomUUID();
   const ledgerMptPath = `/tmp/midgard-deposit-flow-${suffix}-ledger`;
@@ -247,7 +263,9 @@ const cleanupRuntimePaths = async ({
   await Effect.runPromise(
     Effect.all(
       [
-        deleteMpt(ledgerMptPath, "ledger").pipe(Effect.catchAll(() => Effect.void)),
+        deleteMpt(ledgerMptPath, "ledger").pipe(
+          Effect.catchAll(() => Effect.void),
+        ),
         deleteMpt(mempoolMptPath, "mempool").pipe(
           Effect.catchAll(() => Effect.void),
         ),
@@ -284,6 +302,48 @@ const extractDraftDepositWitnessHash = ({
 
   throw new Error(
     `Failed to locate deposit output at address=${depositAddress} in deposit draft`,
+  );
+};
+
+const extractDraftDepositOutput = ({
+  tx,
+  depositAddress,
+  depositPolicyId,
+}: {
+  readonly tx: InstanceType<typeof CML.Transaction>;
+  readonly depositAddress: string;
+  readonly depositPolicyId: string;
+}) => {
+  const outputs = tx.body().outputs();
+  for (let index = 0; index < outputs.len(); index += 1) {
+    const output = coreToTxOutput(outputs.get(index));
+    if (
+      output.address !== depositAddress ||
+      output.datum === undefined ||
+      output.datum === null
+    ) {
+      continue;
+    }
+
+    const depositAuthUnit = Object.entries(output.assets).find(
+      ([unit, amount]) =>
+        unit !== "lovelace" &&
+        unit.startsWith(depositPolicyId) &&
+        amount === 1n,
+    )?.[0];
+    if (depositAuthUnit === undefined) {
+      continue;
+    }
+
+    return {
+      output,
+      depositAuthUnit,
+      datum: Data.from(output.datum, DepositDraftDatumWithWitnessSchema),
+    };
+  }
+
+  throw new Error(
+    `Failed to locate deposit output at address=${depositAddress} for policy=${depositPolicyId}`,
   );
 };
 
@@ -366,7 +426,10 @@ const submitSignedDepositTxWithHarnessWorkaround = async ({
   const provider = lucid.config().provider;
   const providerError = initialSubmitResult.left.message;
   const expectedExtraneousMessage = `Extraneous plutus script. Script hash: ${expectedWitnessHash}`;
-  if (!providerError.includes(expectedExtraneousMessage) || !isEmulatorProvider(provider)) {
+  if (
+    !providerError.includes(expectedExtraneousMessage) ||
+    !isEmulatorProvider(provider)
+  ) {
     throw new Error(
       [
         `Deposit submission failed for tx=${signedTx.toHash()}`,
@@ -441,7 +504,9 @@ const makeLucidRuntimeService = async ({
     operatorLucid.selectWallet.fromSeed(operatorAccount.seedPhrase),
   ),
   switchToReferenceScriptWallet: Effect.sync(() =>
-    referenceScriptsLucid.selectWallet.fromSeed(referenceScriptsAccount.seedPhrase),
+    referenceScriptsLucid.selectWallet.fromSeed(
+      referenceScriptsAccount.seedPhrase,
+    ),
   ),
 });
 
@@ -488,6 +553,9 @@ const runCommitWorker = async (
   );
 };
 
+/**
+ * Builds the state-queue fetch configuration for the emulator tests.
+ */
 const stateQueueFetchConfig = (contracts: SDK.MidgardValidators) => ({
   stateQueueAddress: contracts.stateQueue.spendingScriptAddress,
   stateQueuePolicyId: contracts.stateQueue.policyId,
@@ -498,9 +566,15 @@ const fetchLatestCommittedBlock = (
   contracts: SDK.MidgardValidators,
 ) =>
   Effect.runPromise(
-    SDK.fetchLatestCommittedBlockProgram(lucid, stateQueueFetchConfig(contracts)),
+    SDK.fetchLatestCommittedBlockProgram(
+      lucid,
+      stateQueueFetchConfig(contracts),
+    ),
   );
 
+/**
+ * Extracts the end time from a state-queue datum fixture.
+ */
 const getStateQueueDatumEndTime = (datum: SDK.StateQueueDatum) =>
   Effect.runPromise(
     Effect.gen(function* () {
@@ -552,12 +626,10 @@ const fetchSchedulerDatum = async ({
   return Data.from(schedulerUtxos[0]!.datum!, SDK.SchedulerDatum);
 };
 
-let activeRuntimePaths:
-  | {
-      readonly ledgerMptPath: string;
-      readonly mempoolMptPath: string;
-    }
-  | null = null;
+let activeRuntimePaths: {
+  readonly ledgerMptPath: string;
+  readonly mempoolMptPath: string;
+} | null = null;
 
 afterEach(async () => {
   vi.useRealTimers();
@@ -573,111 +645,174 @@ afterEach(async () => {
 });
 
 describeRealisticDepositFlow("deposit flow emulator", () => {
-  it(
-    "commits a realistic deposit-only block through the live worker core and real scheduler refresh path",
-    async () => {
-      activeRuntimePaths = makeRuntimePaths();
-      await cleanupRuntimePaths(activeRuntimePaths);
-      await initializeNodeRuntime();
+  it("builds an unsigned deposit tx from explicit external wallet context that the user wallet can sign and submit", async () => {
+    const fixture = await makeFixture();
+    await initializeProtocol(fixture);
 
-      const fixture = await makeFixture();
-      await initializeProtocol(fixture);
+    const fundingAddress = await fixture.depositorLucid.wallet().address();
+    const depositAddress = fixture.contracts.deposit.spendingScriptAddress;
+    const fundingUtxos = await fixture.depositorLucid.wallet().getUtxos();
+    const config = {
+      l2Address: fundingAddress,
+      l2Datum: null,
+      lovelace: 12_000_000n,
+      additionalAssets: {},
+    } as const;
 
-      const lucidService = await makeLucidRuntimeService(fixture);
-
-      const schedulerBeforeCommit = await fetchSchedulerDatum(fixture);
-      expect(schedulerBeforeCommit).toEqual(SDK.INITIAL_SCHEDULER_DATUM);
-
-      await advanceEmulatorPastLatestBlockEndTime(fixture);
-
-      vi.useFakeTimers({ toFake: ["Date"] });
-      vi.setSystemTime(new Date(fixture.emulator.now()));
-
-      const l2Address = await fixture.depositorLucid.wallet().address();
-      const depositTxHash = await submitDepositWithDiagnostics(fixture, {
-          l2Address,
-          l2Datum: null,
-          lovelace: 12_000_000n,
-          additionalAssets: {},
-        });
-      expect(depositTxHash).toHaveLength(64);
-
-      const fetchedDepositUtxos = await Effect.runPromise(
-        SDK.fetchDepositUTxOsProgram(fixture.depositorLucid, {
-          depositAddress: fixture.contracts.deposit.spendingScriptAddress,
-          depositPolicyId: fixture.contracts.deposit.policyId,
-        }),
-      );
-      expect(fetchedDepositUtxos).toHaveLength(1);
-
-      const depositUtxo = fetchedDepositUtxos[0]!;
-      const inclusionSlot =
-        fixture.operatorLucid.unixTimeToSlot(
-          Number(depositUtxo.datum.inclusionTime),
-        ) + 1;
-      await fixture.emulator.awaitSlot(inclusionSlot);
-
-      vi.setSystemTime(new Date(fixture.emulator.now()));
-
-      await runDepositFetch(fixture.contracts, lucidService);
-
-      const depositEntries = await runNodeDatabaseEffect(
-        DepositsDB.retrieveAllEntries(),
-      );
-      expect(depositEntries).toHaveLength(1);
-
-      const projectedUtxos = await Effect.runPromise(
-        utxosProgram(l2Address).pipe(Effect.provide(Database.layer)),
-      );
-      expect(projectedUtxos.utxoCount).toEqual(1);
-      expect(projectedUtxos.totals.lovelace).toEqual(12_000_000n);
-      expect(projectedUtxos.utxos[0]?.address).toEqual(l2Address);
-      expect(projectedUtxos.utxos[0]?.datum).toBeUndefined();
-
-      const expectedDepositsRoot = await Effect.runPromise(
-        keyValueMptRoot(
-          depositEntries.map((entry) => entry[UserEventsUtils.Columns.ID]),
-          depositEntries.map((entry) => entry[UserEventsUtils.Columns.INFO]),
-        ),
-      );
-
-      const latestBlockBeforeCommit = await fetchLatestCommittedBlock(
-        fixture.operatorLucid,
+    const built = await Effect.runPromise(
+      buildUnsignedDepositTxFromFundingContextProgram(
+        fixture.depositorLucid,
         fixture.contracts,
-      );
-      const commitOutput = await runCommitWorker(
-        fixture.contracts,
-        lucidService,
-        latestBlockBeforeCommit,
-      );
+        {
+          ...config,
+          fundingAddress,
+          fundingUtxos,
+        },
+      ),
+    );
+    const builtTx = CML.Transaction.from_cbor_hex(built.unsignedTxCbor);
+    const builtDepositOutput = extractDraftDepositOutput({
+      tx: builtTx,
+      depositAddress,
+      depositPolicyId: fixture.contracts.deposit.policyId,
+    });
+    const expectedWitnessHash = builtDepositOutput.datum.witness;
+    const signed = await Effect.runPromise(
+      fixture.depositorLucid
+        .fromTx(built.unsignedTxCbor)
+        .sign.withWallet()
+        .completeProgram(),
+    );
+    const txHash = await submitSignedDepositTxWithHarnessWorkaround({
+      lucid: fixture.depositorLucid,
+      signedTx: signed,
+      expectedWitnessHash,
+    });
+    const depositUtxos = await fixture.depositorLucid.utxosAt(depositAddress);
+    const deposited = depositUtxos.find(
+      (utxo) => (utxo.assets[builtDepositOutput.depositAuthUnit] ?? 0n) === 1n,
+    );
 
-      expect(commitOutput).toBeDefined();
-      expect(commitOutput?.type).toBe("SuccessfulSubmissionOutput");
-      if (
-        commitOutput === undefined ||
-        commitOutput.type !== "SuccessfulSubmissionOutput"
-      ) {
-        throw new Error(`Unexpected commit output: ${JSON.stringify(commitOutput)}`);
-      }
-      expect(commitOutput.mempoolTxsCount).toEqual(0);
+    expect(built.unsignedTxCbor).toMatch(/^[0-9a-f]+$/);
+    expect(txHash).toEqual(signed.toHash());
+    expect(deposited).toBeDefined();
+    expect(deposited!.address).toEqual(depositAddress);
+    expect(deposited!.assets.lovelace).toEqual(config.lovelace);
+    expect(deposited!.assets[builtDepositOutput.depositAuthUnit]).toEqual(1n);
 
-      await fixture.operatorLucid.awaitTx(commitOutput.submittedTxHash);
+    const depositedDatum = Data.from(
+      deposited!.datum,
+      DepositDraftDatumWithWitnessSchema,
+    );
+    expect(depositedDatum.witness).toEqual(expectedWitnessHash);
+    expect(depositedDatum.inclusionTime).toEqual(
+      builtDepositOutput.datum.inclusionTime,
+    );
+  });
 
-      const latestBlockAfterCommit = await fetchLatestCommittedBlock(
-        fixture.operatorLucid,
-        fixture.contracts,
-      );
-      const latestHeader = await Effect.runPromise(
-        SDK.getHeaderFromStateQueueDatum(latestBlockAfterCommit.datum),
-      );
-      const schedulerAfterCommit = await fetchSchedulerDatum(fixture);
+  it("commits a realistic deposit-only block through the live worker core and real scheduler refresh path", async () => {
+    activeRuntimePaths = makeRuntimePaths();
+    await cleanupRuntimePaths(activeRuntimePaths);
+    await initializeNodeRuntime();
 
-      expect(latestBlockAfterCommit.utxo.txHash).toEqual(
-        commitOutput.submittedTxHash,
+    const fixture = await makeFixture();
+    await initializeProtocol(fixture);
+
+    const lucidService = await makeLucidRuntimeService(fixture);
+
+    const schedulerBeforeCommit = await fetchSchedulerDatum(fixture);
+    expect(schedulerBeforeCommit).toEqual(SDK.INITIAL_SCHEDULER_DATUM);
+
+    await advanceEmulatorPastLatestBlockEndTime(fixture);
+
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date(fixture.emulator.now()));
+
+    const l2Address = await fixture.depositorLucid.wallet().address();
+    const depositTxHash = await submitDepositWithDiagnostics(fixture, {
+      l2Address,
+      l2Datum: null,
+      lovelace: 12_000_000n,
+      additionalAssets: {},
+    });
+    expect(depositTxHash).toHaveLength(64);
+
+    const fetchedDepositUtxos = await Effect.runPromise(
+      SDK.fetchDepositUTxOsProgram(fixture.depositorLucid, {
+        depositAddress: fixture.contracts.deposit.spendingScriptAddress,
+        depositPolicyId: fixture.contracts.deposit.policyId,
+      }),
+    );
+    expect(fetchedDepositUtxos).toHaveLength(1);
+
+    const depositUtxo = fetchedDepositUtxos[0]!;
+    const inclusionSlot =
+      fixture.operatorLucid.unixTimeToSlot(
+        Number(depositUtxo.datum.inclusionTime),
+      ) + 1;
+    await fixture.emulator.awaitSlot(inclusionSlot);
+
+    vi.setSystemTime(new Date(fixture.emulator.now()));
+
+    await runDepositFetch(fixture.contracts, lucidService);
+
+    const depositEntries = await runNodeDatabaseEffect(
+      DepositsDB.retrieveAllEntries(),
+    );
+    expect(depositEntries).toHaveLength(1);
+
+    const projectedUtxos = await Effect.runPromise(
+      utxosProgram(l2Address).pipe(Effect.provide(Database.layer)),
+    );
+    expect(projectedUtxos.utxoCount).toEqual(1);
+    expect(projectedUtxos.totals.lovelace).toEqual(12_000_000n);
+    expect(projectedUtxos.utxos[0]?.address).toEqual(l2Address);
+    expect(projectedUtxos.utxos[0]?.datum).toBeUndefined();
+
+    const expectedDepositsRoot = await Effect.runPromise(
+      keyValueMptRoot(
+        depositEntries.map((entry) => entry[UserEventsUtils.Columns.ID]),
+        depositEntries.map((entry) => entry[UserEventsUtils.Columns.INFO]),
+      ),
+    );
+
+    const latestBlockBeforeCommit = await fetchLatestCommittedBlock(
+      fixture.operatorLucid,
+      fixture.contracts,
+    );
+    const commitOutput = await runCommitWorker(
+      fixture.contracts,
+      lucidService,
+      latestBlockBeforeCommit,
+    );
+
+    expect(commitOutput).toBeDefined();
+    expect(commitOutput?.type).toBe("SuccessfulSubmissionOutput");
+    if (
+      commitOutput === undefined ||
+      commitOutput.type !== "SuccessfulSubmissionOutput"
+    ) {
+      throw new Error(
+        `Unexpected commit output: ${JSON.stringify(commitOutput)}`,
       );
-      expect(latestHeader.depositsRoot).toEqual(expectedDepositsRoot);
-      expect(schedulerAfterCommit.operator).toEqual(fixture.operatorKeyHash);
-    },
-    180_000,
-  );
+    }
+    expect(commitOutput.mempoolTxsCount).toEqual(0);
+
+    await fixture.operatorLucid.awaitTx(commitOutput.submittedTxHash);
+
+    const latestBlockAfterCommit = await fetchLatestCommittedBlock(
+      fixture.operatorLucid,
+      fixture.contracts,
+    );
+    const latestHeader = await Effect.runPromise(
+      SDK.getHeaderFromStateQueueDatum(latestBlockAfterCommit.datum),
+    );
+    const schedulerAfterCommit = await fetchSchedulerDatum(fixture);
+
+    expect(latestBlockAfterCommit.utxo.txHash).toEqual(
+      commitOutput.submittedTxHash,
+    );
+    expect(latestHeader.depositsRoot).toEqual(expectedDepositsRoot);
+    expect(schedulerAfterCommit.operator).toEqual(fixture.operatorKeyHash);
+  }, 180_000);
 });

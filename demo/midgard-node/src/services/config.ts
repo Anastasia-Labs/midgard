@@ -2,8 +2,18 @@ import { Network, UTxO, walletFromSeed } from "@lucid-evolution/lucid";
 import { Config, Context, Data, Effect, Layer } from "effect";
 import * as SDK from "@al-ft/midgard-sdk";
 
+/**
+ * Configuration loading for the Midgard node process.
+ *
+ * This module centralizes environment-variable decoding, defaulting, and the
+ * derived values that other services depend on. Keeping it in one place makes
+ * production configuration easier to audit.
+ */
 type Provider = "Kupmios" | "Blockfrost";
 
+/**
+ * Fully-decoded runtime configuration required by the node.
+ */
 type NodeConfigDep = {
   L1_PROVIDER: Provider;
   L1_BLOCKFROST_API_URL: string;
@@ -57,6 +67,10 @@ type NodeConfigDep = {
   GENESIS_UTXOS: UTxO[];
 };
 
+/**
+ * Loads and normalizes the node's runtime configuration from environment
+ * variables.
+ */
 const makeConfig = Effect.gen(function* () {
   const provider = yield* Config.literal(
     "Kupmios",
@@ -333,6 +347,9 @@ const makeConfig = Effect.gen(function* () {
   };
 }).pipe(Effect.orDie);
 
+/**
+ * Effect service carrying the decoded node configuration.
+ */
 export class NodeConfig extends Context.Tag("NodeConfig")<
   NodeConfig,
   NodeConfigDep
@@ -340,6 +357,9 @@ export class NodeConfig extends Context.Tag("NodeConfig")<
   static readonly layer = Layer.effect(NodeConfig, makeConfig);
 }
 
+/**
+ * Tagged configuration error enriched with the relevant field/value pairs.
+ */
 export class ConfigError extends Data.TaggedError("ConfigError")<
   SDK.GenericErrorFields & {
     readonly fieldsAndValues: [string, string][];

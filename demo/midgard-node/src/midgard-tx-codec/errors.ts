@@ -1,3 +1,10 @@
+/**
+ * Stable error codes emitted by the Midgard transaction codec.
+ *
+ * The goal is to make decode/encode failures machine-readable so the validation
+ * pipeline can record precise rejection reasons instead of collapsing
+ * everything into generic parse errors.
+ */
 export const MidgardTxCodecErrorCodes = {
   CborDecode: "E_CBOR_DECODE",
   CborEncode: "E_CBOR_ENCODE",
@@ -14,6 +21,9 @@ export const MidgardTxCodecErrorCodes = {
 export type MidgardTxCodecErrorCode =
   (typeof MidgardTxCodecErrorCodes)[keyof typeof MidgardTxCodecErrorCodes];
 
+/**
+ * Rich codec error carrying both a stable code and optional low-level detail.
+ */
 export class MidgardTxCodecError extends Error {
   readonly code: MidgardTxCodecErrorCode;
   readonly detail: string | null;

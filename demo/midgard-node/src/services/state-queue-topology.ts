@@ -2,6 +2,9 @@ import * as SDK from "@al-ft/midgard-sdk";
 import { LucidEvolution } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
+/**
+ * Summary of the current on-chain state-queue topology.
+ */
 export type StateQueueTopology = {
   readonly policyUtxoCount: number;
   readonly parsedNodeCount: number;
@@ -13,6 +16,9 @@ export type StateQueueTopology = {
   readonly reason: string | undefined;
 };
 
+/**
+ * Derives a human-readable unhealthy reason for the observed topology.
+ */
 const deriveReason = (
   policyUtxoCount: number,
   invalidNodeCount: number,
@@ -34,6 +40,9 @@ const deriveReason = (
   return undefined;
 };
 
+/**
+ * Summarizes the topology health of the authenticated state-queue nodes.
+ */
 export const summarizeStateQueueTopology = (
   policyUtxoCount: number,
   nodes: readonly SDK.StateQueueUTxO[],
@@ -61,11 +70,17 @@ export const summarizeStateQueueTopology = (
   };
 };
 
+/**
+ * Formats a topology summary into a compact log/metric string.
+ */
 export const formatStateQueueTopology = (
   topology: StateQueueTopology,
 ): string =>
   `policy_utxos=${topology.policyUtxoCount},parsed_nodes=${topology.parsedNodeCount},invalid_nodes=${topology.invalidNodeCount},roots=${topology.rootCount},tails=${topology.tailCount},healthy=${topology.healthy}`;
 
+/**
+ * Fetches live state-queue UTxOs and derives a topology summary from them.
+ */
 export const fetchStateQueueTopologyProgram = (
   lucid: LucidEvolution,
   stateQueue: SDK.AuthenticatedValidator,

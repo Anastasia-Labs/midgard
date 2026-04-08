@@ -315,6 +315,9 @@ const validateNativeOne = (
   }
   const referenceInputs = referenceInputsDecoded;
 
+  /**
+   * Normalizes an output into the byte representation used by Phase A validation.
+   */
   const outputBytes = (() => {
     try {
       return decodeMidgardNativeByteListPreimage(

@@ -44,12 +44,16 @@ pub type MintRedeemer {
 
 // ## Utilities & Helpers
 
+/// Converts an output reference into the event nonce asset name.
+/// Derives the user-event nonce asset name from an output reference.
 pub fn out_ref_to_nonce(out_ref: OutputReference) -> AssetName {
   cbor.serialise(out_ref) |> blake2b_256
 }
 
 // ## Validation Abstractions
+/// Validates that the minted value matches the expected token bundle.
 
+/// Validates the minting pattern for a user-event NFT.
 pub fn validate_mint(
   hub_oracle: ScriptHash,
   event_address_getter: fn(hub.Datum) -> Address,
@@ -106,8 +110,10 @@ pub fn validate_mint(
       )
     }
   }
+/// Authenticates an event input and returns its decoded datum context.
 }
 
+/// Authenticates a user-event input and returns its decoded state.
 pub fn authenticate_event(
   event_address: Address,
   nonce_input_index: Int,
@@ -199,9 +205,11 @@ pub fn authenticate_event(
     output_event_witness == expected_witness_script_hash,
     // 8. The provided validation function must pass.
     event_validator(nonce, output_event_value, event_info),
+/// Validates the burn of the event authentication NFT.
   }
 }
 
+/// Validates burning the event NFT from the supplied input.
 pub fn validate_event_nft_burn(
   nonce_asset_name: AssetName,
   witness_unregistration_redeemer_index: Int,

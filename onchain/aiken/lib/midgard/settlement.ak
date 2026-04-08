@@ -72,6 +72,8 @@ pub type MintRedeemer {
   }
 }
 
+/// Returns the decoded inline datum for the authenticated state UTxO.
+/// Returns the datum carried by an authenticated settlement input.
 pub fn get_datum(
   reference_inputs: List<Input>,
   settlement_policy_id: PolicyId,
@@ -91,7 +93,9 @@ pub fn get_datum(
 
   parsed_settlement_datum
 }
+/// Validates that the settlement references the expected event inclusion proof.
 
+/// Checks that an event is included in a block before the settlement deadline.
 pub fn valid_event_inclusion(
   event_type: EventType,
   deposit_script_hash: ScriptHash,
@@ -215,8 +219,10 @@ pub fn valid_event_inclusion(
       )
     }
   }
+/// Returns the decoded spending redeemer data for the settlement input.
 }
 
+/// Returns the raw redeemer data for the settlement spending input.
 pub fn get_spending_redeemer_data(
   hub_oracle_script_hash: ScriptHash,
   hub_oracle_ref_input_index: Int,

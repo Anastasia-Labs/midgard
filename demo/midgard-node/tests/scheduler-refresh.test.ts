@@ -2,7 +2,9 @@ import { describe, expect, it } from "vitest";
 import type { UTxO } from "@lucid-evolution/lucid";
 import type * as SDK from "@al-ft/midgard-sdk";
 import {
+  encodeSchedulerDatumForChain,
   type NodeUtxoWithDatum,
+  resolveReferenceInputIndexFromAuthoredOrder,
   resolveSchedulerRefreshWitnessSelection,
 } from "@/workers/utils/scheduler-refresh.js";
 
@@ -121,5 +123,42 @@ describe("scheduler refresh witness selection", () => {
         allowGenesisRewind: false,
       }),
     ).toThrow("cannot rewind scheduler");
+  });
+
+  it("derives reference indices from authored refresh witness order", () => {
+    const referenceInputs = [activeTail.utxo, activeRoot.utxo];
+
+    expect(
+      resolveReferenceInputIndexFromAuthoredOrder(activeTail.utxo, referenceInputs),
+    ).toBe(0n);
+    expect(
+      resolveReferenceInputIndexFromAuthoredOrder(activeRoot.utxo, referenceInputs),
+    ).toBe(1n);
+  });
+
+  it("keeps the registered witness index at the authored tail position for rewind", () => {
+    const registeredRoot = mkNode("33".repeat(32), 0, {
+      key: "Empty",
+      next: "Empty",
+      data: "00",
+    });
+    const referenceInputs = [
+      activeTail.utxo,
+      activeRoot.utxo,
+      registeredRoot.utxo,
+    ];
+
+    expect(
+      resolveReferenceInputIndexFromAuthoredOrder(registeredRoot.utxo, referenceInputs),
+    ).toBe(2n);
+  });
+
+  it("encodes scheduler datums with a definite root array for deployed validators", () => {
+    expect(
+      encodeSchedulerDatumForChain({
+        operator: "aa",
+        startTime: 42n,
+      } satisfies SDK.SchedulerDatum),
+    ).toBe("d8798241aa182a");
   });
 });

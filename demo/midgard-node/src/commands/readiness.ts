@@ -1,3 +1,6 @@
+/**
+ * Latest heartbeat timestamps reported by each long-running worker.
+ */
 export type WorkerHeartbeats = {
   readonly blockCommitment: number;
   readonly blockConfirmation: number;
@@ -6,6 +9,9 @@ export type WorkerHeartbeats = {
   readonly txQueueProcessor: number;
 };
 
+/**
+ * Inputs required to evaluate node readiness.
+ */
 export type ReadinessInput = {
   readonly nowMillis: number;
   readonly maxHeartbeatAgeMs: number;
@@ -16,11 +22,18 @@ export type ReadinessInput = {
   readonly dbHealthy: boolean;
 };
 
+/**
+ * Readiness outcome returned by the readiness endpoint/command.
+ */
 export type ReadinessResult = {
   readonly ready: boolean;
   readonly reasons: readonly string[];
 };
 
+/**
+ * Evaluates whether the node is ready to serve traffic based on database
+ * health, worker liveness, queue depth, and local recovery state.
+ */
 export const evaluateReadiness = (input: ReadinessInput): ReadinessResult => {
   const reasons: string[] = [];
 

@@ -6,6 +6,8 @@ pub type Datum {
   activation_time: PosixTime,
 }
 
+/// Returns the activation time encoded in raw data.
+/// Extracts the activation time from serialized datum data.
 pub fn activation_time_from_data(data: Data) -> PosixTime {
   let datum_fields = builtin.un_constr_data(data).2nd
   expect Some(activation_time_data) = list.at(datum_fields, 0)

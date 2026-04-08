@@ -89,6 +89,9 @@ const buildOperatorAwareInitializationTx = async (
     .compose(retiredOperatorsTx);
 };
 
+/**
+ * Initializes the shared fixture used by operator-lifecycle emulator tests.
+ */
 const initOperatorLifecycleFixture = async () => {
   const operator = generateEmulatorAccount({
     lovelace: 30_000_000_000n,
@@ -199,6 +202,9 @@ const fragmentOperatorWalletUtxos = async (
   return txHash;
 };
 
+/**
+ * Builds a deterministic random-number generator for repeatable tests.
+ */
 const mkDeterministicRng = (seed: number) => {
   let state = seed >>> 0;
   return () => {

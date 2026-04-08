@@ -18,12 +18,18 @@ import { waitForKeypress } from '../../utils/input.js';
 import { sleep } from '../../utils/sleep.js';
 import { menu } from './menu.js';
 
+/**
+ * Synthetic "back" option inserted into each action menu.
+ */
 const BACK_OPTION = {
   name: `${chalk.dim('←')} ${chalk.green('Back to main menu')}`,
   value: '__back',
   description: '',
 };
 
+/**
+ * Interactive command entrypoint for the manager CLI.
+ */
 export const interactiveCommand = Command.make('interactive', {}, () => {
   return pipe(
     Effect.tryPromise(async () => {
@@ -61,6 +67,9 @@ export const interactiveCommand = Command.make('interactive', {}, () => {
   );
 });
 
+/**
+ * Stateful controller for the interactive menu loop.
+ */
 class ManualCommandImpl {
   private _config: MidgardConfig;
   private _abortController: AbortController;
@@ -109,6 +118,9 @@ class ManualCommandImpl {
     }
   }
 
+  /**
+   * Runs the top-level interactive loop until the process exits.
+   */
   async loop() {
     while (true) {
       try {

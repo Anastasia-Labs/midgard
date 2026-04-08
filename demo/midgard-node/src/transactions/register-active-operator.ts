@@ -1,9 +1,13 @@
+/**
+ * Operator lifecycle transaction orchestration for register/activate flows.
+ * This module is the main off-chain entrypoint for operator-set updates and
+ * composes the shared layout and clock helpers extracted from the monolith.
+ */
 import * as SDK from "@al-ft/midgard-sdk";
 import {
   CML,
   Data as LucidData,
   LucidEvolution,
-  Network,
   type RedeemerBuilder,
   Script,
   UTxO,
@@ -11,11 +15,11 @@ import {
   credentialToAddress,
   paymentCredentialOf,
   scriptHashToCredential,
-  slotToUnixTime,
   toUnit,
   validatorToScriptHash,
 } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
+import { formatUnknownError } from "@/error-format.js";
 import { Lucid, MidgardContracts, NodeConfig } from "@/services/index.js";
 import { ActiveOperatorSpendRedeemerSchema } from "@/workers/utils/commit-redeemers.js";
 import {
@@ -27,6 +31,37 @@ import {
   alignUnixTimeToSlotBoundary,
   alignedUnixTimeStrictlyAfter,
 } from "@/workers/utils/commit-end-time.js";
+import {
+  alignUnixTimeMsToSlotBoundary,
+  currentTimeMsForLucidOrEmulatorFallback,
+  resolveCurrentTimeMs,
+} from "@/transactions/register-active-operator/clock.js";
+import {
+  type ActivateRedeemerLayout,
+  activeAppendAnchorWitness,
+  type NodeWithDatum,
+  type ReferenceScriptPublication,
+  activateLayoutToLogString,
+  activateLayoutsEqual,
+  describePolicyOutputDatumAtIndex,
+  deriveActivateRedeemerLayout,
+  deriveRegisterRedeemerLayout,
+  findNodeOutputIndexByUnit,
+  findReferenceInputIndex,
+  getAssetNameByPolicy,
+  getNodeDatumAtPolicyOutputIndex,
+  linkPointsTo,
+  nodeKeyEquals,
+  orderedNotMemberWitness,
+  registerLayoutToLogString,
+  registerLayoutsEqual,
+  resolveInitialActivateRedeemerLayout,
+  resolveInitialRegisterRedeemerLayout,
+} from "@/transactions/register-active-operator/lifecycle-layout.js";
+import {
+  withStubbedProviderEvaluation as withSharedStubbedProviderEvaluation,
+} from "@/cml-redeemers.js";
+import { compareOutRefs } from "@/tx-context.js";
 
 const REGISTERED_ACTIVATION_DELAY_MS = 30n;
 const ACTIVATION_VALIDITY_WINDOW_MS = 120_000n;
@@ -77,43 +112,6 @@ const REGISTERED_OPERATOR_DATUM_AIKEN_SCHEMA = LucidData.Object({
 });
 const ACTIVATION_SELECTED_REGISTERED_INPUTS_COUNT = 2;
 
-type ProviderRedeemerTag =
-  | "spend"
-  | "mint"
-  | "publish"
-  | "withdraw"
-  | "vote"
-  | "propose";
-
-type RedeemerPointer = {
-  readonly tag: number;
-  readonly index: bigint;
-};
-
-type NodeWithDatum = {
-  readonly utxo: UTxO;
-  readonly datum: SDK.NodeDatum;
-  readonly assetName: string;
-};
-
-type RegisterRedeemerLayout = {
-  readonly hubOracleRefInputIndex: bigint;
-  readonly activeOperatorRefInputIndex: bigint;
-  readonly retiredOperatorRefInputIndex: bigint;
-  readonly prependedNodeOutputIndex: bigint;
-  readonly anchorNodeOutputIndex: bigint;
-};
-
-type ActivateRedeemerLayout = {
-  readonly hubOracleRefInputIndex: bigint;
-  readonly retiredOperatorRefInputIndex: bigint;
-  readonly registeredOperatorsRedeemerIndex: bigint;
-  readonly removedNodeInputIndex: bigint;
-  readonly anchorNodeInputIndex: bigint;
-  readonly activeOperatorsInsertedNodeOutputIndex: bigint;
-  readonly activeOperatorsAnchorNodeOutputIndex: bigint;
-};
-
 type ActivationTxHashes = {
   readonly registerTxHash: string | null;
   readonly activateTxHash: string | null;
@@ -139,11 +137,6 @@ type OperatorLifecycleMode =
   | "activate-only"
   | "deregister-only";
 
-export type ReferenceScriptPublication = {
-  readonly name: string;
-  readonly utxo: UTxO;
-};
-
 export const REFERENCE_SCRIPT_COMMAND_NAMES = [
   "hub-oracle",
   "state-queue",
@@ -159,30 +152,16 @@ export type ReferenceScriptCommandName =
 type StubEvaluationMode = "draft" | "submission";
 type ActiveOperatorDatumEncoding = "aiken" | "record" | "option";
 
-const formatUnknownCause = (cause: unknown): string => {
-  if (cause instanceof Error) {
-    return `${cause.name}: ${cause.message}`;
-  }
-  if (typeof cause === "string") {
-    return cause;
-  }
-  try {
-    return JSON.stringify(cause);
-  } catch {
-    return String(cause);
-  }
-};
-
 const isReferenceScriptPublicationTxTooLarge = (cause: unknown): boolean =>
   REFERENCE_SCRIPT_PUBLICATION_TX_SIZE_EXCEEDED_PATTERN.test(
-    formatUnknownCause(cause),
+    formatUnknownError(cause),
   );
 
 const isReferenceScriptPublicationBalanceInsufficient = (
   cause: unknown,
 ): boolean =>
   REFERENCE_SCRIPT_PUBLICATION_BALANCE_INSUFFICIENT_PATTERN.test(
-    formatUnknownCause(cause),
+    formatUnknownError(cause),
   );
 
 const resolveReferenceScriptPublicationAdditionalFunding = (
@@ -190,7 +169,7 @@ const resolveReferenceScriptPublicationAdditionalFunding = (
 ): bigint | undefined => {
   const match =
     REFERENCE_SCRIPT_PUBLICATION_BALANCE_GAP_PATTERN.exec(
-      formatUnknownCause(cause),
+      formatUnknownError(cause),
     );
   if (match === null) {
     return undefined;
@@ -202,40 +181,6 @@ const resolveReferenceScriptPublicationAdditionalFunding = (
   }
   return outputs - inputs + SCRIPT_REF_PUBLICATION_FUNDING_BUFFER_LOVELACE;
 };
-
-const slotToUnixTimeForLucid = (
-  lucid: LucidEvolution,
-  slot: number,
-): number => {
-  const network = lucid.config().network;
-  if (network === "Custom") {
-    const provider = lucid.config().provider as {
-      time?: number;
-      slot?: number;
-    };
-    if (typeof provider.time === "number" && typeof provider.slot === "number") {
-      const slotLength = 1000;
-      const zeroTime = provider.time - provider.slot * slotLength;
-      return zeroTime + slot * slotLength;
-    }
-    // Deterministic emulator fallback: derive unix-ish time purely from slot.
-    return slot * 1000;
-  }
-  return slotToUnixTime(network as Exclude<Network, "Custom">, slot);
-};
-
-const resolveCurrentTimeMs = (
-  lucid: LucidEvolution,
-): Effect.Effect<bigint, never> =>
-  Effect.sync(() => {
-    const currentSlot = lucid.currentSlot();
-    return BigInt(slotToUnixTimeForLucid(lucid, currentSlot));
-  });
-
-const alignUnixTimeMsToSlotBoundary = (
-  lucid: LucidEvolution,
-  unixTimeMs: bigint,
-): bigint => BigInt(alignUnixTimeToSlotBoundary(lucid, Number(unixTimeMs)));
 
 const summarizeOnChainScriptFailure = (cause: unknown): string | null => {
   const message = String(cause);
@@ -450,6 +395,9 @@ const decodeActiveOperatorDatumCommitmentTime = (
   return null;
 };
 
+/**
+ * Encodes a registered-operator datum into the value shape expected by the transaction builder.
+ */
 const encodeRegisteredOperatorDatumValue = (activationTime: bigint) =>
   LucidData.castTo(
     { activation_time: activationTime } as never,
@@ -574,64 +522,6 @@ const completeWithLocalEvaluation = async <A>(
 ): Promise<A> => {
   return await build({ localUPLCEval: true });
 };
-
-const compareOutRefs = (a: UTxO, b: UTxO): number => {
-  const txHashCompare = a.txHash.localeCompare(b.txHash);
-  if (txHashCompare !== 0) {
-    return txHashCompare;
-  }
-  return a.outputIndex - b.outputIndex;
-};
-
-const comparePolicyIds = (left: string, right: string): number =>
-  compareHex(left, right);
-
-const resolveOrderedIndex = (
-  target: UTxO | string,
-  ordered: readonly (UTxO | string)[],
-): bigint => {
-  const index = ordered.findIndex((candidate) =>
-    typeof target === "string" && typeof candidate === "string"
-      ? candidate === target
-      : typeof target !== "string" &&
-          typeof candidate !== "string" &&
-          candidate.txHash === target.txHash &&
-          candidate.outputIndex === target.outputIndex,
-  );
-  if (index < 0) {
-    throw new Error(
-      `Failed to resolve ordered index for target=${typeof target === "string" ? target : `${target.txHash}#${target.outputIndex.toString()}`}`,
-    );
-  }
-  return BigInt(index);
-};
-
-const resolveReferenceInputIndexFromSet = (
-  target: UTxO,
-  referenceInputs: readonly UTxO[],
-): bigint =>
-  resolveOrderedIndex(target, [...referenceInputs].sort(compareOutRefs));
-
-const resolveMintContextIndexFromPolicies = (
-  targetPolicyId: string,
-  policyIds: readonly string[],
-): bigint =>
-  resolveOrderedIndex(
-    targetPolicyId,
-    [...policyIds].sort(comparePolicyIds),
-  );
-
-const resolveMintRedeemerTxInfoIndex = ({
-  targetPolicyId,
-  policyIds,
-  spendRedeemerCount,
-}: {
-  readonly targetPolicyId: string;
-  readonly policyIds: readonly string[];
-  readonly spendRedeemerCount: number;
-}): bigint =>
-  BigInt(spendRedeemerCount) +
-  resolveMintContextIndexFromPolicies(targetPolicyId, policyIds);
 
 const lovelaceOf = (utxo: UTxO): bigint => utxo.assets.lovelace ?? 0n;
 const utxoOutRefKey = (utxo: UTxO): string =>
@@ -873,435 +763,24 @@ const resolveSpendableWalletUtxos = (
     );
   });
 
-const findReferenceInputIndex = (
-  tx: CML.Transaction,
-  target: UTxO,
-): bigint | undefined => {
-  const referenceInputs = tx.body().reference_inputs();
-  if (referenceInputs === undefined) {
-    return undefined;
-  }
-  const sortedReferenceInputs = Array.from(
-    { length: referenceInputs.len() },
-    (_, index) => {
-      const input = referenceInputs.get(index);
-      return {
-        txHash: input.transaction_id().to_hex(),
-        outputIndex: Number(input.index()),
-      };
-    },
-  ).sort((left, right) => {
-    const txHashCompare = left.txHash.localeCompare(right.txHash);
-    if (txHashCompare !== 0) {
-      return txHashCompare;
-    }
-    return left.outputIndex - right.outputIndex;
-  });
-  const position = sortedReferenceInputs.findIndex(
-    (input) =>
-      input.txHash === target.txHash && input.outputIndex === target.outputIndex,
-  );
-  return position >= 0 ? BigInt(position) : undefined;
-};
-
-const findInputIndex = (tx: CML.Transaction, target: UTxO): bigint | undefined => {
-  const inputs = tx.body().inputs();
-  const sortedInputs = Array.from({ length: inputs.len() }, (_, index) => {
-    const input = inputs.get(index);
-    return {
-      txHash: input.transaction_id().to_hex(),
-      outputIndex: Number(input.index()),
-    };
-  }).sort((left, right) => {
-    const txHashCompare = left.txHash.localeCompare(right.txHash);
-    if (txHashCompare !== 0) {
-      return txHashCompare;
-    }
-    return left.outputIndex - right.outputIndex;
-  });
-  const position = sortedInputs.findIndex(
-    (input) =>
-      input.txHash === target.txHash && input.outputIndex === target.outputIndex,
-  );
-  return position >= 0 ? BigInt(position) : undefined;
-};
-
-const findNodeOutputIndexByUnit = (
-  tx: CML.Transaction,
-  policyId: string,
-  address: string,
-  unit: string,
-): bigint | undefined => {
-  const outputs = tx.body().outputs();
-  let nodeOutputIndex = 0n;
-  for (let index = 0; index < outputs.len(); index += 1) {
-    const output = coreToTxOutput(outputs.get(index));
-    const containsPolicyAsset = Object.entries(output.assets).some(
-      ([assetUnit, quantity]) =>
-        assetUnit !== "lovelace" &&
-        quantity > 0n &&
-        assetUnit.startsWith(policyId),
-    );
-    if (!containsPolicyAsset) {
-      continue;
-    }
-    if (output.address !== address) {
-      nodeOutputIndex += 1n;
-      continue;
-    }
-    if ((output.assets[unit] ?? 0n) === 1n) {
-      return nodeOutputIndex;
-    }
-    nodeOutputIndex += 1n;
-  }
-  return undefined;
-};
-
-const getPolicyOutputsFromTx = (
-  tx: CML.Transaction,
-  policyId: string,
-): readonly ReturnType<typeof coreToTxOutput>[] => {
-  const outputs = tx.body().outputs();
-  const policyOutputs: ReturnType<typeof coreToTxOutput>[] = [];
-  for (let index = 0; index < outputs.len(); index += 1) {
-    const output = coreToTxOutput(outputs.get(index));
-    const hasPolicyAsset = Object.entries(output.assets).some(
-      ([assetUnit, quantity]) =>
-        assetUnit !== "lovelace" &&
-        quantity > 0n &&
-        assetUnit.startsWith(policyId),
-    );
-    if (!hasPolicyAsset) {
-      continue;
-    }
-    policyOutputs.push(output);
-  }
-  return policyOutputs;
-};
-
-const registerLayoutsEqual = (
-  left: RegisterRedeemerLayout,
-  right: RegisterRedeemerLayout,
-): boolean =>
-  left.hubOracleRefInputIndex === right.hubOracleRefInputIndex &&
-  left.activeOperatorRefInputIndex === right.activeOperatorRefInputIndex &&
-  left.retiredOperatorRefInputIndex === right.retiredOperatorRefInputIndex &&
-  left.prependedNodeOutputIndex === right.prependedNodeOutputIndex &&
-  left.anchorNodeOutputIndex === right.anchorNodeOutputIndex;
-
-const registerLayoutToLogString = (layout: RegisterRedeemerLayout): string =>
-  `hub_ref=${layout.hubOracleRefInputIndex.toString()},active_ref=${layout.activeOperatorRefInputIndex.toString()},retired_ref=${layout.retiredOperatorRefInputIndex.toString()},prepended_out=${layout.prependedNodeOutputIndex.toString()},anchor_out=${layout.anchorNodeOutputIndex.toString()}`;
-
-const activateLayoutsEqual = (
-  left: ActivateRedeemerLayout,
-  right: ActivateRedeemerLayout,
-): boolean =>
-  left.hubOracleRefInputIndex === right.hubOracleRefInputIndex &&
-  left.retiredOperatorRefInputIndex === right.retiredOperatorRefInputIndex &&
-  left.registeredOperatorsRedeemerIndex ===
-    right.registeredOperatorsRedeemerIndex &&
-  left.removedNodeInputIndex === right.removedNodeInputIndex &&
-  left.anchorNodeInputIndex === right.anchorNodeInputIndex &&
-  left.activeOperatorsInsertedNodeOutputIndex ===
-    right.activeOperatorsInsertedNodeOutputIndex &&
-  left.activeOperatorsAnchorNodeOutputIndex ===
-    right.activeOperatorsAnchorNodeOutputIndex;
-
-const activateLayoutToLogString = (layout: ActivateRedeemerLayout): string =>
-  [
-    `hub_ref=${layout.hubOracleRefInputIndex.toString()}`,
-    `retired_ref=${layout.retiredOperatorRefInputIndex.toString()}`,
-    `registered_redeemer=${layout.registeredOperatorsRedeemerIndex.toString()}`,
-    `removed_in=${layout.removedNodeInputIndex.toString()}`,
-    `anchor_in=${layout.anchorNodeInputIndex.toString()}`,
-    `active_inserted_out=${layout.activeOperatorsInsertedNodeOutputIndex.toString()}`,
-    `active_anchor_out=${layout.activeOperatorsAnchorNodeOutputIndex.toString()}`,
-  ].join(",");
-
-const resolveInitialRegisterRedeemerLayout = ({
-  registeredOperatorScriptRefs,
-  hubOracleRefInput,
-  activeNotMemberWitness,
-  retiredNotMemberWitness,
-}: {
-  readonly registeredOperatorScriptRefs: readonly ReferenceScriptPublication[];
-  readonly hubOracleRefInput: UTxO;
-  readonly activeNotMemberWitness: NodeWithDatum;
-  readonly retiredNotMemberWitness: NodeWithDatum;
-}): RegisterRedeemerLayout => {
-  const referenceInputs = [
-    ...registeredOperatorScriptRefs.map(({ utxo }) => utxo),
-    hubOracleRefInput,
-    activeNotMemberWitness.utxo,
-    retiredNotMemberWitness.utxo,
-  ] as const;
-  return {
-    hubOracleRefInputIndex: resolveReferenceInputIndexFromSet(
-      hubOracleRefInput,
-      referenceInputs,
-    ),
-    activeOperatorRefInputIndex: resolveReferenceInputIndexFromSet(
-      activeNotMemberWitness.utxo,
-      referenceInputs,
-    ),
-    retiredOperatorRefInputIndex: resolveReferenceInputIndexFromSet(
-      retiredNotMemberWitness.utxo,
-      referenceInputs,
-    ),
-    // The register tx only emits the prepended node and the updated anchor
-    // under the registered-operators policy, in authored order.
-    prependedNodeOutputIndex: 0n,
-    anchorNodeOutputIndex: 1n,
-  };
-};
-
-const resolveInitialActivateRedeemerLayout = ({
-  registeredOperatorScriptRefs,
-  activeOperatorScriptRefs,
-  hubOracleRefInput,
-  retiredNotMemberWitnessForActivate,
-  registeredNode,
-  registeredAnchor,
-  activeAppendAnchor,
-  contracts,
-}: {
-  readonly registeredOperatorScriptRefs: readonly ReferenceScriptPublication[];
-  readonly activeOperatorScriptRefs: readonly ReferenceScriptPublication[];
-  readonly hubOracleRefInput: UTxO;
-  readonly retiredNotMemberWitnessForActivate: NodeWithDatum;
-  readonly registeredNode: NodeWithDatum;
-  readonly registeredAnchor: NodeWithDatum;
-  readonly activeAppendAnchor: NodeWithDatum;
-  readonly contracts: SDK.MidgardValidators;
-}): ActivateRedeemerLayout => {
-  const referenceInputs = [
-    ...registeredOperatorScriptRefs.map(({ utxo }) => utxo),
-    ...activeOperatorScriptRefs.map(({ utxo }) => utxo),
-    hubOracleRefInput,
-    retiredNotMemberWitnessForActivate.utxo,
-  ] as const;
-  const removedNodeInputIndex =
-    compareOutRefs(registeredNode.utxo, registeredAnchor.utxo) < 0 ? 0n : 1n;
-  const activationScriptSpendCount = [
-    registeredNode.utxo,
-    registeredAnchor.utxo,
-    activeAppendAnchor.utxo,
-  ].length;
-  return {
-    hubOracleRefInputIndex: resolveReferenceInputIndexFromSet(
-      hubOracleRefInput,
-      referenceInputs,
-    ),
-    retiredOperatorRefInputIndex: resolveReferenceInputIndexFromSet(
-      retiredNotMemberWitnessForActivate.utxo,
-      referenceInputs,
-    ),
-    registeredOperatorsRedeemerIndex: resolveMintRedeemerTxInfoIndex({
-      targetPolicyId: contracts.registeredOperators.policyId,
-      policyIds: [
-        contracts.registeredOperators.policyId,
-        contracts.activeOperators.policyId,
-      ],
-      spendRedeemerCount: activationScriptSpendCount,
-    }),
-    removedNodeInputIndex,
-    anchorNodeInputIndex: removedNodeInputIndex === 0n ? 1n : 0n,
-    // The activation tx emits the inserted node then the updated active anchor
-    // under the active-operators policy, in authored order.
-    activeOperatorsInsertedNodeOutputIndex: 0n,
-    activeOperatorsAnchorNodeOutputIndex: 1n,
-  };
-};
-
-const toProviderRedeemerTag = (tag: number): ProviderRedeemerTag => {
-  switch (tag) {
-    case CML.RedeemerTag.Spend:
-      return "spend";
-    case CML.RedeemerTag.Mint:
-      return "mint";
-    case CML.RedeemerTag.Cert:
-      return "publish";
-    case CML.RedeemerTag.Reward:
-      return "withdraw";
-    case CML.RedeemerTag.Voting:
-      return "vote";
-    case CML.RedeemerTag.Proposing:
-      return "propose";
-    default:
-      throw new Error(`Unsupported redeemer tag: ${tag}`);
-  }
-};
-
-// Aiken exposes `self.redeemers` in ScriptPurpose order:
-// Spend < Mint < Publish < Withdraw < Vote < Propose.
-// CML redeemer pointers are emitted in context order, so cross-redeemer
-// references must map context positions into this tx-info order.
-const txInfoRedeemerPurposeRank = (tag: number): number => {
-  switch (tag) {
-    case CML.RedeemerTag.Spend:
-      return 0;
-    case CML.RedeemerTag.Mint:
-      return 1;
-    case CML.RedeemerTag.Cert:
-      return 2;
-    case CML.RedeemerTag.Reward:
-      return 3;
-    case CML.RedeemerTag.Voting:
-      return 4;
-    case CML.RedeemerTag.Proposing:
-      return 5;
-    default:
-      return Number.MAX_SAFE_INTEGER;
-  }
-};
-
-const getTxInfoRedeemerIndexes = (
-  pointers: readonly RedeemerPointer[],
-): readonly number[] => {
-  const inContextOrder = pointers.map((pointer, contextIndex) => ({
-    pointer,
-    contextIndex,
-  }));
-  const inTxInfoOrder = [...inContextOrder].sort((a, b) => {
-    const rankA = txInfoRedeemerPurposeRank(a.pointer.tag);
-    const rankB = txInfoRedeemerPurposeRank(b.pointer.tag);
-    if (rankA !== rankB) {
-      return rankA - rankB;
-    }
-    if (a.pointer.index !== b.pointer.index) {
-      return a.pointer.index < b.pointer.index ? -1 : 1;
-    }
-    return a.contextIndex - b.contextIndex;
-  });
-
-  const txInfoIndexes = Array<number>(pointers.length).fill(-1);
-  for (
-    let txInfoIndex = 0;
-    txInfoIndex < inTxInfoOrder.length;
-    txInfoIndex += 1
-  ) {
-    const { contextIndex } = inTxInfoOrder[txInfoIndex];
-    txInfoIndexes[contextIndex] = txInfoIndex;
-  }
-  return txInfoIndexes;
-};
-
-const getRedeemerPointersInContextOrder = (
-  tx: CML.Transaction,
-): readonly RedeemerPointer[] => {
-  const redeemers = tx.witness_set().redeemers();
-  if (redeemers === undefined) {
-    return [];
-  }
-
-  const legacy = redeemers.as_arr_legacy_redeemer();
-  if (legacy !== undefined) {
-    const pointers: RedeemerPointer[] = [];
-    for (let i = 0; i < legacy.len(); i += 1) {
-      const redeemer = legacy.get(i);
-      pointers.push({
-        tag: redeemer.tag(),
-        index: redeemer.index(),
-      });
-    }
-    return pointers;
-  }
-
-  const map = redeemers.as_map_redeemer_key_to_redeemer_val();
-  if (map === undefined) {
-    return [];
-  }
-  const pointers: RedeemerPointer[] = [];
-  const keys = map.keys();
-  for (let i = 0; i < keys.len(); i += 1) {
-    const key = keys.get(i);
-    pointers.push({
-      tag: key.tag(),
-      index: key.index(),
-    });
-  }
-  return pointers;
-};
-
-const describePolicyOutputDatumAtIndex = (
-  tx: CML.Transaction,
-  policyId: string,
-  outputIndex: bigint,
-): string => {
-  const outputs = getPolicyOutputsFromTx(tx, policyId);
-  const index = Number(outputIndex);
-  if (
-    !Number.isSafeInteger(index) ||
-    index < 0 ||
-    index >= outputs.length
-  ) {
-    return `<missing:${outputIndex.toString()}>`;
-  }
-  const output = outputs[index];
-  if (output.datum === undefined) {
-    return "<no-datum>";
-  }
-  try {
-    const nodeDatum = LucidData.from(output.datum, SDK.NodeDatum);
-    return `cbor=${output.datum},decoded=${JSON.stringify(nodeDatum)}`;
-  } catch (cause) {
-    return `<datum-decode-error:${String(cause)},cbor=${output.datum}>`;
-  }
-};
-
-const getNodeDatumAtPolicyOutputIndex = (
-  tx: CML.Transaction,
-  policyId: string,
-  outputIndex: bigint,
-): SDK.NodeDatum | undefined => {
-  const outputs = getPolicyOutputsFromTx(tx, policyId);
-  const index = Number(outputIndex);
-  if (
-    !Number.isSafeInteger(index) ||
-    index < 0 ||
-    index >= outputs.length
-  ) {
-    return undefined;
-  }
-  const output = outputs[index];
-  if (output.datum === undefined) {
-    return undefined;
-  }
-  try {
-    return LucidData.from(output.datum, SDK.NodeDatum);
-  } catch {
-    return undefined;
-  }
-};
-
-const withStubbedProviderEvaluation = async <A>(
+const withRegisteredOperatorStubbedProviderEvaluation = async <A>(
   lucid: LucidEvolution,
   run: () => Promise<A>,
   mode: StubEvaluationMode = "draft",
 ): Promise<A> => {
   const provider = lucid.config().provider as {
-    evaluateTx?: (
-      tx: string,
-      additionalUTxOs?: readonly UTxO[],
-    ) => Promise<
-      readonly {
-        redeemer_tag: ProviderRedeemerTag;
-        redeemer_index: number;
-        ex_units: { mem: number; steps: number };
-      }[]
-    >;
     getProtocolParameters?: () => Promise<{
       maxTxExMem: bigint;
       maxTxExSteps: bigint;
     }>;
   };
-  if (typeof provider.evaluateTx !== "function") {
-    return run();
-  }
-
   const resolveStubExUnits = async (
-    redeemerCount: number,
+    redeemerPointers: readonly {
+      readonly tag: number;
+      readonly index: bigint;
+    }[],
   ): Promise<{ mem: number; steps: number }> => {
+    const redeemerCount = redeemerPointers.length;
     if (mode === "draft") {
       return DRAFT_REDEEMER_EX_UNITS;
     }
@@ -1328,65 +807,12 @@ const withStubbedProviderEvaluation = async <A>(
     }
     return { mem, steps };
   };
-
-  const originalEvaluateTx = provider.evaluateTx.bind(provider);
-  provider.evaluateTx = async (txCbor) => {
-    const tx = CML.Transaction.from_cbor_hex(txCbor);
-    const pointers = getRedeemerPointersInContextOrder(tx);
-    const exUnits = await resolveStubExUnits(pointers.length);
-    return pointers.map((pointer) => ({
-      redeemer_tag: toProviderRedeemerTag(pointer.tag),
-      redeemer_index: Number(pointer.index),
-      ex_units: exUnits,
-    }));
-  };
-  try {
-    return await run();
-  } finally {
-    provider.evaluateTx = originalEvaluateTx;
-  }
-};
-
-const compareHex = (left: string, right: string): number =>
-  Buffer.from(left, "hex").compare(Buffer.from(right, "hex"));
-
-const getAssetNameByPolicy = (
-  assets: Readonly<Record<string, bigint>>,
-  policyId: string,
-): string | null => {
-  const entries = Object.entries(assets).filter(
-    ([unit, quantity]) =>
-      unit !== "lovelace" && quantity > 0n && unit.startsWith(policyId),
+  return withSharedStubbedProviderEvaluation(
+    lucid,
+    run,
+    resolveStubExUnits,
   );
-  if (entries.length !== 1) {
-    return null;
-  }
-  return entries[0][0].slice(56);
 };
-
-const nodeKeyEquals = (node: SDK.NodeDatum, keyHash: string): boolean =>
-  node.key !== "Empty" && node.key.Key.key === keyHash;
-
-const linkPointsTo = (node: SDK.NodeDatum, keyHash: string): boolean =>
-  node.next !== "Empty" && node.next.Key.key === keyHash;
-
-const orderedNotMemberWitness = (
-  node: SDK.NodeDatum,
-  keyHash: string,
-): boolean => {
-  const lowerBoundSatisfied =
-    node.key === "Empty" || compareHex(node.key.Key.key, keyHash) < 0;
-  const upperBoundSatisfied =
-    node.next === "Empty" || compareHex(keyHash, node.next.Key.key) < 0;
-  return lowerBoundSatisfied && upperBoundSatisfied;
-};
-
-const activeAppendAnchorWitness = (
-  node: SDK.NodeDatum,
-  keyHash: string,
-): boolean =>
-  node.next === "Empty" &&
-  (node.key === "Empty" || compareHex(node.key.Key.key, keyHash) < 0);
 
 const getOperatorKeyHash = (
   lucid: LucidEvolution,
@@ -2218,315 +1644,6 @@ export const deployReferenceScriptCommandProgram = (
     fundingLucid,
   );
 
-const resolveRegisteredMintRedeemerIndex = (
-  draftTx: CML.Transaction,
-  contracts: SDK.MidgardValidators,
-): Effect.Effect<number, SDK.StateQueueError> =>
-  Effect.gen(function* () {
-    const pointers = getRedeemerPointersInContextOrder(draftTx);
-    const txInfoRedeemerIndexes = getTxInfoRedeemerIndexes(pointers);
-    const mintPolicyIds = [
-      contracts.registeredOperators.policyId,
-      contracts.activeOperators.policyId,
-    ].sort(comparePolicyIds);
-    const registeredMintContextIndex = BigInt(
-      mintPolicyIds.indexOf(contracts.registeredOperators.policyId),
-    );
-    const registeredMintRedeemerContextIndex = pointers.findIndex(
-      (pointer) =>
-        pointer.tag === CML.RedeemerTag.Mint &&
-        pointer.index === registeredMintContextIndex,
-    );
-    if (registeredMintRedeemerContextIndex < 0) {
-      return yield* Effect.fail(
-        new SDK.StateQueueError({
-          message:
-            "Failed to locate registered-operators mint redeemer index in balanced draft tx",
-          cause: JSON.stringify(
-            pointers.map((pointer) => ({
-              tag: pointer.tag,
-              index: pointer.index.toString(),
-            })),
-          ),
-        }),
-      );
-    }
-    const registeredMintRedeemerTxInfoIndex =
-      txInfoRedeemerIndexes[registeredMintRedeemerContextIndex] ?? -1;
-    if (registeredMintRedeemerTxInfoIndex < 0) {
-      return yield* Effect.fail(
-        new SDK.StateQueueError({
-          message:
-            "Failed to map registered-operators mint redeemer from context order to tx-info order",
-          cause: JSON.stringify({
-            registeredMintRedeemerContextIndex,
-            txInfoRedeemerIndexes,
-            pointers: pointers.map((pointer, contextIndex) => ({
-              contextIndex,
-              tag: pointer.tag,
-              index: pointer.index.toString(),
-            })),
-          }),
-        }),
-      );
-    }
-    return registeredMintRedeemerTxInfoIndex;
-  });
-
-const deriveActivateRedeemerLayout = (
-  tx: CML.Transaction,
-  params: {
-    readonly hubOracleRefInput: UTxO;
-    readonly retiredNotMemberWitnessForActivate: NodeWithDatum;
-    readonly registeredNode: NodeWithDatum;
-    readonly registeredAnchor: NodeWithDatum;
-    readonly activeOperatorsPolicyId: string;
-    readonly activeOperatorsAddress: string;
-    readonly activeNodeUnit: string;
-    readonly activeAnchorNodeUnit: string;
-    readonly contracts: SDK.MidgardValidators;
-  },
-): Effect.Effect<ActivateRedeemerLayout, SDK.StateQueueError> =>
-  Effect.gen(function* () {
-    const hubOracleRefInputIndex = findReferenceInputIndex(
-      tx,
-      params.hubOracleRefInput,
-    );
-    const retiredOperatorRefInputIndex = findReferenceInputIndex(
-      tx,
-      params.retiredNotMemberWitnessForActivate.utxo,
-    );
-    const registeredOperatorsRedeemerIndex = yield* resolveRegisteredMintRedeemerIndex(
-      tx,
-      params.contracts,
-    );
-    const registeredNodeInputPosition = findInputIndex(
-      tx,
-      params.registeredNode.utxo,
-    );
-    const registeredAnchorInputPosition = findInputIndex(
-      tx,
-      params.registeredAnchor.utxo,
-    );
-    const activeOperatorsInsertedNodeOutputIndex = findNodeOutputIndexByUnit(
-      tx,
-      params.activeOperatorsPolicyId,
-      params.activeOperatorsAddress,
-      params.activeNodeUnit,
-    );
-    const activeOperatorsAnchorNodeOutputIndex = findNodeOutputIndexByUnit(
-      tx,
-      params.activeOperatorsPolicyId,
-      params.activeOperatorsAddress,
-      params.activeAnchorNodeUnit,
-    );
-    if (
-      hubOracleRefInputIndex === undefined ||
-      retiredOperatorRefInputIndex === undefined ||
-      registeredNodeInputPosition === undefined ||
-      registeredAnchorInputPosition === undefined ||
-      registeredNodeInputPosition === registeredAnchorInputPosition ||
-      activeOperatorsInsertedNodeOutputIndex === undefined ||
-      activeOperatorsAnchorNodeOutputIndex === undefined
-    ) {
-      return yield* Effect.fail(
-        new SDK.StateQueueError({
-          message:
-            "Failed to derive activate redeemer layout from balanced draft transaction",
-          cause: JSON.stringify({
-            hubOracleRefInputIndex:
-              hubOracleRefInputIndex?.toString() ?? "missing",
-            retiredOperatorRefInputIndex:
-              retiredOperatorRefInputIndex?.toString() ?? "missing",
-            registeredOperatorsRedeemerIndex:
-              registeredOperatorsRedeemerIndex.toString(),
-            registeredNodeInputPosition:
-              registeredNodeInputPosition?.toString() ?? "missing",
-            registeredAnchorInputPosition:
-              registeredAnchorInputPosition?.toString() ?? "missing",
-            activeOperatorsInsertedNodeOutputIndex:
-              activeOperatorsInsertedNodeOutputIndex?.toString() ?? "missing",
-            activeOperatorsAnchorNodeOutputIndex:
-              activeOperatorsAnchorNodeOutputIndex?.toString() ?? "missing",
-          }),
-        }),
-      );
-    }
-    if (params.registeredNode.datum.key === "Empty") {
-      return yield* Effect.fail(
-        new SDK.StateQueueError({
-          message: "Registered node key is unexpectedly Empty during activation",
-          cause: JSON.stringify({
-            registeredNodeOutRef: `${params.registeredNode.utxo.txHash}#${params.registeredNode.utxo.outputIndex.toString()}`,
-          }),
-        }),
-      );
-    }
-    const operatorKeyHash = params.registeredNode.datum.key.Key.key;
-    const insertedOutputDatum = getNodeDatumAtPolicyOutputIndex(
-      tx,
-      params.activeOperatorsPolicyId,
-      activeOperatorsInsertedNodeOutputIndex,
-    );
-    const anchorOutputDatum = getNodeDatumAtPolicyOutputIndex(
-      tx,
-      params.activeOperatorsPolicyId,
-      activeOperatorsAnchorNodeOutputIndex,
-    );
-    if (insertedOutputDatum === undefined || anchorOutputDatum === undefined) {
-      return yield* Effect.fail(
-        new SDK.StateQueueError({
-          message:
-            "Failed to decode active policy output datum(s) while deriving activation layout",
-          cause: JSON.stringify({
-            insertedIndex: activeOperatorsInsertedNodeOutputIndex.toString(),
-            anchorIndex: activeOperatorsAnchorNodeOutputIndex.toString(),
-            insertedDatum: describePolicyOutputDatumAtIndex(
-              tx,
-              params.activeOperatorsPolicyId,
-              activeOperatorsInsertedNodeOutputIndex,
-            ),
-            anchorDatum: describePolicyOutputDatumAtIndex(
-              tx,
-              params.activeOperatorsPolicyId,
-              activeOperatorsAnchorNodeOutputIndex,
-            ),
-          }),
-        }),
-      );
-    }
-    const insertedMatchesOperator = nodeKeyEquals(
-      insertedOutputDatum,
-      operatorKeyHash,
-    );
-    const anchorMatchesOperator = nodeKeyEquals(anchorOutputDatum, operatorKeyHash);
-    let resolvedInsertedNodeOutputIndex = activeOperatorsInsertedNodeOutputIndex;
-    let resolvedAnchorNodeOutputIndex = activeOperatorsAnchorNodeOutputIndex;
-    if (!insertedMatchesOperator && anchorMatchesOperator) {
-      resolvedInsertedNodeOutputIndex = activeOperatorsAnchorNodeOutputIndex;
-      resolvedAnchorNodeOutputIndex = activeOperatorsInsertedNodeOutputIndex;
-      yield* Effect.logWarning(
-        [
-          "Detected swapped active output indexes while deriving activation layout;",
-          " correcting inserted/anchor indexes from policy output datums.",
-          `operator=${operatorKeyHash}`,
-          `inserted_out=${activeOperatorsInsertedNodeOutputIndex.toString()}`,
-          `anchor_out=${activeOperatorsAnchorNodeOutputIndex.toString()}`,
-          `corrected_inserted_out=${resolvedInsertedNodeOutputIndex.toString()}`,
-          `corrected_anchor_out=${resolvedAnchorNodeOutputIndex.toString()}`,
-        ].join(" "),
-      );
-    } else if (!insertedMatchesOperator) {
-      return yield* Effect.fail(
-        new SDK.StateQueueError({
-          message:
-            "Derived inserted active output index does not point to the operator node",
-          cause: JSON.stringify({
-            operatorKeyHash,
-            insertedIndex: activeOperatorsInsertedNodeOutputIndex.toString(),
-            anchorIndex: activeOperatorsAnchorNodeOutputIndex.toString(),
-            insertedDatum: describePolicyOutputDatumAtIndex(
-              tx,
-              params.activeOperatorsPolicyId,
-              activeOperatorsInsertedNodeOutputIndex,
-            ),
-            anchorDatum: describePolicyOutputDatumAtIndex(
-              tx,
-              params.activeOperatorsPolicyId,
-              activeOperatorsAnchorNodeOutputIndex,
-            ),
-          }),
-        }),
-      );
-    }
-    const removedNodeInputIndex =
-      registeredNodeInputPosition < registeredAnchorInputPosition ? 0n : 1n;
-    const anchorNodeInputIndex =
-      removedNodeInputIndex === 0n ? 1n : 0n;
-    return {
-      hubOracleRefInputIndex,
-      retiredOperatorRefInputIndex,
-      registeredOperatorsRedeemerIndex: BigInt(registeredOperatorsRedeemerIndex),
-      removedNodeInputIndex,
-      anchorNodeInputIndex,
-      activeOperatorsInsertedNodeOutputIndex: resolvedInsertedNodeOutputIndex,
-      activeOperatorsAnchorNodeOutputIndex: resolvedAnchorNodeOutputIndex,
-    };
-  });
-
-const deriveRegisterRedeemerLayout = (
-  tx: CML.Transaction,
-  params: {
-    readonly hubOracleRefInput: UTxO;
-    readonly activeNotMemberWitness: NodeWithDatum;
-    readonly retiredNotMemberWitness: NodeWithDatum;
-    readonly registeredOperatorsPolicyId: string;
-    readonly registeredOperatorsAddress: string;
-    readonly registeredNodeUnit: string;
-    readonly registeredRootNodeUnit: string;
-  },
-): Effect.Effect<RegisterRedeemerLayout, SDK.StateQueueError> =>
-  Effect.gen(function* () {
-    const hubOracleRefInputIndex = findReferenceInputIndex(
-      tx,
-      params.hubOracleRefInput,
-    );
-    const activeOperatorRefInputIndex = findReferenceInputIndex(
-      tx,
-      params.activeNotMemberWitness.utxo,
-    );
-    const retiredOperatorRefInputIndex = findReferenceInputIndex(
-      tx,
-      params.retiredNotMemberWitness.utxo,
-    );
-    const prependedNodeOutputIndex = findNodeOutputIndexByUnit(
-      tx,
-      params.registeredOperatorsPolicyId,
-      params.registeredOperatorsAddress,
-      params.registeredNodeUnit,
-    );
-    const anchorNodeOutputIndex = findNodeOutputIndexByUnit(
-      tx,
-      params.registeredOperatorsPolicyId,
-      params.registeredOperatorsAddress,
-      params.registeredRootNodeUnit,
-    );
-
-    if (
-      hubOracleRefInputIndex === undefined ||
-      activeOperatorRefInputIndex === undefined ||
-      retiredOperatorRefInputIndex === undefined ||
-      prependedNodeOutputIndex === undefined ||
-      anchorNodeOutputIndex === undefined
-    ) {
-      return yield* Effect.fail(
-        new SDK.StateQueueError({
-          message:
-            "Failed to derive register redeemer layout from balanced draft transaction",
-          cause: JSON.stringify({
-            hubOracleRefInputIndex:
-              hubOracleRefInputIndex?.toString() ?? "missing",
-            activeOperatorRefInputIndex:
-              activeOperatorRefInputIndex?.toString() ?? "missing",
-            retiredOperatorRefInputIndex:
-              retiredOperatorRefInputIndex?.toString() ?? "missing",
-            prependedNodeOutputIndex:
-              prependedNodeOutputIndex?.toString() ?? "missing",
-            anchorNodeOutputIndex: anchorNodeOutputIndex?.toString() ?? "missing",
-          }),
-        }),
-      );
-    }
-
-    return {
-      hubOracleRefInputIndex,
-      activeOperatorRefInputIndex,
-      retiredOperatorRefInputIndex,
-      prependedNodeOutputIndex,
-      anchorNodeOutputIndex,
-    };
-  });
-
 const toActivationResult = (
   txHashes: ActivationTxHashes,
 ): Effect.Effect<ActivationTxHashes, never> =>
@@ -3017,6 +2134,9 @@ const operatorLifecycleProgram = (
         lovelace: requiredBondLovelace,
         [registeredNodeUnit]: 1n,
       };
+      /**
+       * Builds the registration transaction for an active operator.
+       */
       const mkRegisterTx = (layout: RegisterRedeemerLayout) => {
         const registerRedeemer = LucidData.to(
           {
@@ -3082,7 +2202,7 @@ const operatorLifecycleProgram = (
       });
       const draftRegisterUnsignedTx = yield* Effect.tryPromise({
         try: () =>
-          withStubbedProviderEvaluation(lucid, () =>
+          withRegisteredOperatorStubbedProviderEvaluation(lucid, () =>
             mkRegisterTx(draftRegisterLayout).complete({
               localUPLCEval: false,
               presetWalletInputs: [...registerFundingInputs],
@@ -3305,7 +2425,7 @@ const operatorLifecycleProgram = (
       readonly validFrom: bigint;
       readonly validTo?: bigint;
     } => {
-      const currentTime = BigInt(slotToUnixTimeForLucid(lucid, lucid.currentSlot()));
+      const currentTime = currentTimeMsForLucidOrEmulatorFallback(lucid);
       const lowerBoundTarget = activeListIsEmpty ? currentTime : activationTime;
       // Keep a finite lower bound at/after the required activation lower-bound:
       // - empty active list: current time (registration delay waived),
@@ -3399,6 +2519,9 @@ const operatorLifecycleProgram = (
       ...registeredAnchor.datum,
       next: registeredNode.datum.next,
     };
+    /**
+     * Builds the activation transaction for a registered operator.
+     */
     const mkActivateTx = (layout: ActivateRedeemerLayout) => {
       const { validFrom, validTo } = resolveActivationValidityWindow();
       const activatedNodeDatum: SDK.NodeDatum = {
@@ -3518,7 +2641,7 @@ const operatorLifecycleProgram = (
     });
     const activationDraft = yield* Effect.tryPromise({
       try: () =>
-        withStubbedProviderEvaluation(lucid, () =>
+        withRegisteredOperatorStubbedProviderEvaluation(lucid, () =>
           mkActivateTx(activateLayout).complete({
             localUPLCEval: false,
             ...activationDraftCompleteOptions,

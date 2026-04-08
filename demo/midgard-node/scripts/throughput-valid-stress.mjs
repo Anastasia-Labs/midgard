@@ -63,12 +63,24 @@ if (!Number.isFinite(metricsPollMs) || metricsPollMs <= 0) {
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
+/**
+ * Encodes a value into hexadecimal CBOR text.
+ */
 const encodeCbor = (value) => Buffer.from(cborEncode(value));
+/**
+ * Computes a 32-byte Blake2b hash.
+ */
 const hash32 = (value) => Buffer.from(blake2b(value, { dkLen: HASH32_LEN }));
 
+/**
+ * Encodes a byte-list preimage used by the native transaction fixtures.
+ */
 const encodeByteListPreimage = (items) =>
   encodeCbor(items.map((item) => Buffer.from(item)));
 
+/**
+ * Encodes a transaction output reference into CBOR.
+ */
 const toOutRefCbor = (txId, outputIndex) =>
   Buffer.from(
     CML.TransactionInput.new(
@@ -77,11 +89,17 @@ const toOutRefCbor = (txId, outputIndex) =>
     ).to_cbor_bytes(),
   );
 
+/**
+ * Parses environment configuration for the valid-stress workload.
+ */
 const parseEnv = (filename) => {
   const raw = fs.readFileSync(filename, 'utf8');
   return dotenv.parse(raw);
 };
 
+/**
+ * Builds wallet descriptors from environment configuration.
+ */
 const makeWalletsFromEnv = (env) => {
   const keys = [
     'TESTNET_GENESIS_WALLET_SEED_PHRASE_A',
@@ -106,6 +124,9 @@ const makeWalletsFromEnv = (env) => {
     .filter((wallet) => wallet !== null);
 };
 
+/**
+ * Fetches raw Prometheus metrics text from the node.
+ */
 const fetchMetricsText = async () => {
   const resp = await fetch(metricsEndpoint);
   if (!resp.ok) {
@@ -114,8 +135,14 @@ const fetchMetricsText = async () => {
   return resp.text();
 };
 
+/**
+ * Escapes a string for literal use in a regular expression.
+ */
 const escapeRegex = (value) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
+/**
+ * Extracts a Prometheus counter value from metrics text.
+ */
 const extractCounter = (text, names) => {
   for (const name of names) {
     const pattern = `^${escapeRegex(name)}(?:\\{[^}]*\\})?\\s+([0-9]+(?:\\.[0-9]+)?)$`;
@@ -127,6 +154,9 @@ const extractCounter = (text, names) => {
   return 0;
 };
 
+/**
+ * Fetches and parses the counters used by the workload monitor.
+ */
 const readCounters = async () => {
   const text = await fetchMetricsText();
   return {
@@ -142,6 +172,9 @@ const readCounters = async () => {
   };
 };
 
+/**
+ * Fetches spendable UTxOs for a wallet address.
+ */
 const fetchUtxos = async (address) => {
   const resp = await fetch(
     `${submitEndpoint}/utxos?address=${encodeURIComponent(address)}`,
@@ -156,6 +189,9 @@ const fetchUtxos = async (address) => {
   return /** @type {NodeUtxo[]} */ (body.utxos);
 };
 
+/**
+ * Fetches transaction status information from the node.
+ */
 const fetchTxStatus = async (txIdHex) => {
   let attempt = 0;
   while (attempt <= txStatusRetries) {
@@ -192,11 +228,17 @@ const fetchTxStatus = async (txIdHex) => {
   return 'unknown';
 };
 
+/**
+ * Decodes a lovelace quantity from a UTxO payload.
+ */
 const decodeCoin = (outputHex) => {
   const output = CML.TransactionOutput.from_cbor_bytes(Buffer.from(outputHex, 'hex'));
   return output.amount().coin();
 };
 
+/**
+ * Builds and signs a native one-to-one transfer transaction.
+ */
 const buildNativeSignedOneToOne = ({ spendOutRefCbor, outputCbor, signer }) => {
   const spendInputsPreimageCbor = encodeByteListPreimage([spendOutRefCbor]);
   const referenceInputsPreimageCbor = EMPTY_CBOR_LIST;
@@ -296,6 +338,9 @@ const buildNativeSignedOneToOne = ({ spendOutRefCbor, outputCbor, signer }) => {
   };
 };
 
+/**
+ * Prebuilds a dependent transaction chain for the stress workload.
+ */
 const prebuildChain = (chain, length) => {
   /** @type {PrebuiltTx[]} */
   const txs = [];
@@ -315,6 +360,9 @@ const prebuildChain = (chain, length) => {
   return txs;
 };
 
+/**
+ * Submits a CBOR transaction hex payload to the node.
+ */
 const submitTxHex = async (txHex) => {
   let attempt = 0;
   while (attempt <= retry503) {
@@ -345,6 +393,9 @@ const submitTxHex = async (txHex) => {
   return { ok: false, status: 0, body: 'retry loop exhausted' };
 };
 
+/**
+ * Runs the valid-stress throughput workload.
+ */
 const main = async () => {
   const env = parseEnv(envPath);
   const wallets = makeWalletsFromEnv(env);
@@ -486,6 +537,9 @@ const main = async () => {
 
   let submitFinishedAt = null;
 
+  /**
+   * Monitors workload progress and emits periodic metrics.
+   */
   const monitorPromise = (async () => {
     let prev = await readCounters();
     let prevTs = Date.now();

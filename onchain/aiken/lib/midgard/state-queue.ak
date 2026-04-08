@@ -50,6 +50,8 @@ pub type MintRedeemer {
   }
 }
 
+/// Returns the decoded confirmed-state datum from a state-queue output.
+/// Returns the confirmed-state datum from a state-queue output.
 pub fn get_confirmed_datum(
   reference_inputs: List<Input>,
   state_queue_policy: ByteArray,
@@ -70,7 +72,9 @@ pub fn get_confirmed_datum(
 
   coerced_confirmed_state
 }
+/// Returns the decoded block datum from a state-queue output.
 
+/// Returns the block datum from a state-queue output.
 pub fn get_block_datum(
   reference_inputs: List<Input>,
   state_queue_policy: ByteArray,

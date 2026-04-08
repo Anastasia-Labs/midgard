@@ -7,6 +7,13 @@ import {
   DatabaseError,
 } from "@/database/utils/common.js";
 
+/**
+ * Table adapter for ledger-style UTxO sets.
+ *
+ * The same shape is reused for confirmed, latest, and mempool-derived ledgers,
+ * so the functions here operate on a caller-provided table name while enforcing
+ * one row per outref.
+ */
 export enum Columns {
   TX_ID = "tx_id",
   OUTREF = "outref",
@@ -33,6 +40,9 @@ export type MinimalEntry = {
   [Columns.OUTPUT]: Buffer;
 };
 
+/**
+ * Creates the ledger table and its address lookup index if they are missing.
+ */
 export const createTable = (
   tableName: string,
 ): Effect.Effect<void, DatabaseError, Database> =>
@@ -58,6 +68,9 @@ export const createTable = (
     sqlErrorToDatabaseError(tableName, "Failed to create the table"),
   );
 
+/**
+ * Inserts one ledger entry, ignoring duplicates keyed by outref.
+ */
 export const insertEntry = (
   tableName: string,
   entry: Entry,
@@ -75,6 +88,9 @@ export const insertEntry = (
     sqlErrorToDatabaseError(tableName, "Failed to insert the given UTxO"),
   );
 
+/**
+ * Bulk-inserts ledger entries and skips rows that already exist.
+ */
 export const insertEntries = (
   tableName: string,
   entries: Entry[],
@@ -96,6 +112,9 @@ export const insertEntries = (
     sqlErrorToDatabaseError(tableName, "Failed to insert given UTxOs"),
   );
 
+/**
+ * Returns every ledger entry currently stored in the table.
+ */
 export const retrieveAllEntries = (
   tableName: string,
 ): Effect.Effect<readonly EntryWithTimeStamp[], DatabaseError, Database> =>
@@ -113,6 +132,9 @@ export const retrieveAllEntries = (
     sqlErrorToDatabaseError(tableName, "Failed to retrieve the whole ledger"),
   );
 
+/**
+ * Looks up all ledger entries controlled by a specific Cardano address.
+ */
 export const retrieveEntriesWithAddress = (
   tableName: string,
   address: Address,
@@ -136,6 +158,9 @@ export const retrieveEntriesWithAddress = (
     ),
   );
 
+/**
+ * Deletes the rows identified by the provided outrefs.
+ */
 export const delEntries = (
   tableName: string,
   outrefs: Buffer[],

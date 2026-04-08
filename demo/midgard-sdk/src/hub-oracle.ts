@@ -27,6 +27,14 @@ import {
 } from "@lucid-evolution/lucid";
 import { HUB_ORACLE_ASSET_NAME } from "@/constants.js";
 
+/**
+ * Hub-oracle helpers for bootstrapping and reading the Midgard validator
+ * registry.
+ *
+ * The hub oracle anchors the policy ids and script addresses for the rest of
+ * the protocol. Off-chain code therefore treats its datum as the canonical
+ * source of validator wiring.
+ */
 export type HubOracleConfig = {
   hubOracleAddress: Address;
   hubOraclePolicyId: PolicyId;
@@ -34,6 +42,9 @@ export type HubOracleConfig = {
 
 export const hubOracleAssetName = HUB_ORACLE_ASSET_NAME;
 
+/**
+ * Datum stored at the unique hub-oracle UTxO.
+ */
 export const HubOracleDatumSchema = Data.Object({
   registeredOperators: PolicyIdSchema,
   activeOperators: PolicyIdSchema,
@@ -65,17 +76,26 @@ export const HubOracleDatumSchema = Data.Object({
 export type HubOracleDatum = Data.Static<typeof HubOracleDatumSchema>;
 export const HubOracleDatum = HubOracleDatumSchema as unknown as HubOracleDatum;
 
+/**
+ * Parameters required to mint and initialize the hub oracle.
+ */
 export type HubOracleInitParams = {
   hubOracleMintValidator: MintingValidator;
   validators: HubOracleValidators;
   oneShotNonceUTxO: UTxO;
 };
 
+/**
+ * Validators recorded in the hub oracle datum.
+ */
 export type HubOracleValidators = Omit<
   MidgardValidators,
   "hubOracle" | "fraudProofs"
 >;
 
+/**
+ * Builds the hub-oracle datum from the active validator bundle.
+ */
 export const makeHubOracleDatum = (
   validators: HubOracleValidators,
 ): Effect.Effect<HubOracleDatum, Bech32DeserializationError> =>
@@ -148,11 +168,10 @@ export const makeHubOracleDatum = (
   });
 
 /**
- * Creates a hub oracle init transaction builder.
- * Handles datum construction internally from validators.
- * @param {LucidEvolution} lucid - The LucidEvolution instance.
- * @param {HubOracleInitParams} params - All validators that need to be registered in the hub oracle
- * @returns {TxBuilder} Effect that produces a transaction builder.
+ * Creates the transaction fragment that mints and places the hub-oracle UTxO.
+ *
+ * Datum construction is handled internally so callers only need to supply the
+ * validator bundle and one-shot nonce input.
  */
 export const incompleteHubOracleInitTxProgram = (
   lucid: LucidEvolution,
@@ -197,6 +216,10 @@ export class HubOracleError extends EffectData.TaggedError(
   "HubOracleError",
 )<GenericErrorFields> {}
 
+/**
+ * Fetches and decodes the unique hub-oracle UTxO authenticated by the hub
+ * oracle NFT.
+ */
 export const fetchHubOracleUTxOProgram = (
   lucid: LucidEvolution,
   config: HubOracleConfig,
@@ -253,11 +276,7 @@ export const fetchHubOracleUTxOProgram = (
   });
 
 /**
- * Attempts fetching the hub oracle UTxO.
- *
- * @param lucid - The `LucidEvolution` API object.
- * @param config - Configuration values required to know where to look for which NFT.
- * @returns {UTxO} - The authentic hub oracle UTxO.
+ * Promise-style wrapper around `fetchHubOracleUTxOProgram`.
  */
 export const fetchHubOracleUTxO = (
   lucid: LucidEvolution,

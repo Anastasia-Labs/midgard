@@ -19,6 +19,15 @@ import {
 } from "@lucid-evolution/lucid";
 import { blake2b } from "@noble/hashes/blake2.js";
 
+/**
+ * Shared SDK primitives used across Midgard client modules.
+ *
+ * This file intentionally mixes three kinds of helpers:
+ * 1. Runtime adapters around Effect programs.
+ * 2. Validation/authentication helpers for Lucid-facing values.
+ * 3. Data schemas and typed errors shared by multiple validators and
+ *    transaction builders.
+ */
 export const makeReturn = <A, E>(program: Effect.Effect<A, E>) => {
   return {
     unsafeRun: () => Effect.runPromise(program),
@@ -27,11 +36,21 @@ export const makeReturn = <A, E>(program: Effect.Effect<A, E>) => {
   };
 };
 
+/**
+ * Returns `true` only for non-empty hexadecimal strings.
+ */
 export const isHexString = (str: string): boolean => {
   const hexRegex = /^[0-9A-Fa-f]+$/;
   return hexRegex.test(str);
 };
 
+/**
+ * Extracts the single non-ADA asset from a value map.
+ *
+ * Many Midgard UTxOs are authenticated by exactly one NFT or beacon token. The
+ * helper enforces that invariant up-front so downstream code can treat the
+ * returned policy id / asset name pair as unambiguous.
+ */
 export const getSingleAssetApartFromAda = (
   assets: LucidAssets,
 ): Effect.Effect<[PolicyId, string, bigint], AssetError> =>
@@ -58,8 +77,8 @@ export const getSingleAssetApartFromAda = (
   });
 
 /**
- * Similar to `getSingleAssetApartFromAda`, with the additional requirement for
- * the quantity to be exactly 1.
+ * Narrows `getSingleAssetApartFromAda` to the common "exactly one beacon NFT"
+ * case used by Midgard authenticated state UTxOs.
  */
 export const getStateToken = (
   assets: LucidAssets,
@@ -89,7 +108,12 @@ export const getStateToken = (
   });
 
 /**
- * Silently drops the UTxOs without proper authentication NFTs.
+ * Fetches UTxOs at an address/credential and keeps only those authenticated by
+ * the expected NFT policy id.
+ *
+ * Non-matching or malformed UTxOs are intentionally discarded instead of
+ * failing the whole query. This lets callers work against noisy addresses while
+ * still rejecting provider-level fetch failures.
  */
 export const utxosAtByNFTPolicyId = (
   lucid: LucidEvolution,
@@ -137,6 +161,10 @@ export const utxosAtByNFTPolicyId = (
     ),
   );
 
+/**
+ * Shared Blake2b wrapper that validates the input shape once and normalizes the
+ * emitted hashing error structure.
+ */
 const blake2bHelper = (
   msg: string,
   dkLen: number,
@@ -164,14 +192,23 @@ const blake2bHelper = (
   }
 };
 
+/**
+ * Hashes a hex-encoded payload into a 28-byte Blake2b digest.
+ */
 export const hashHexWithBlake2b224 = (
   msg: string,
 ): Effect.Effect<string, HashingError> => blake2bHelper(msg, 28, "Blake2b224");
 
+/**
+ * Hashes a hex-encoded payload into a 32-byte Blake2b digest.
+ */
 export const hashHexWithBlake2b256 = (
   msg: string,
 ): Effect.Effect<string, HashingError> => blake2bHelper(msg, 32, "Blake2b256");
 
+/**
+ * Best-effort buffer-to-hex conversion used in logs and debug paths.
+ */
 export const bufferToHex = (buf: Buffer): string => {
   try {
     return buf.toString("hex");
@@ -296,7 +333,11 @@ export type AddressData = Data.Static<typeof AddressSchema>;
 export const AddressData = AddressSchema as unknown as AddressData;
 
 /**
- * TODO: Note that this function does not support pointer addresses.
+ * Converts a bech32 Cardano address into the on-chain data shape used by
+ * Midgard validators.
+ *
+ * Pointer addresses are still unsupported, so the conversion only emits either
+ * an inline stake credential or `null`.
  */
 export const addressDataFromBech32 = (
   address: Address,
@@ -343,6 +384,10 @@ export type GenericErrorFields = {
   readonly cause: any;
 };
 
+/**
+ * Error family shared across SDK modules so callers can pattern-match on a
+ * stable `_tag` while still preserving the original cause.
+ */
 export class CmlUnexpectedError extends EffectData.TaggedError(
   "CmlUnexpectedError",
 )<GenericErrorFields> {}

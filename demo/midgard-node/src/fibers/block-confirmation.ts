@@ -10,6 +10,13 @@ import { WorkerError } from "@/workers/utils/common.js";
 import { deserializeStateQueueUTxO } from "@/workers/utils/commit-block-header.js";
 import { emitQueueStateMetrics } from "./queue-metrics.js";
 
+/**
+ * Background block-confirmation loop for submitted L1 commitment transactions.
+ *
+ * The fiber delegates chain inspection to a worker thread, then reconciles the
+ * node's in-memory state depending on whether the submission confirmed, went
+ * stale, or still has nothing to check.
+ */
 const stateQueueTipEndTimeMs = (
   blocksUTxO: Parameters<typeof deserializeStateQueueUTxO>[0],
 ): Effect.Effect<
@@ -28,6 +35,10 @@ const stateQueueTipEndTimeMs = (
     return Number(header.endTime);
   });
 
+/**
+ * Runs one iteration of block-confirmation work and updates the shared globals
+ * with the result.
+ */
 const blockConfirmationAction: Effect.Effect<void, WorkerError, Globals> =
   Effect.gen(function* () {
     const globals = yield* Globals;
@@ -163,6 +174,9 @@ const blockConfirmationAction: Effect.Effect<void, WorkerError, Globals> =
     }
   });
 
+/**
+ * Fiber wrapper that repeats block-confirmation work on the provided schedule.
+ */
 export const blockConfirmationFiber = (
   schedule: Schedule.Schedule<number>,
 ): Effect.Effect<void, never, Globals> =>

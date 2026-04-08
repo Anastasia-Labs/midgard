@@ -3,6 +3,9 @@ import chalk from 'chalk';
 import { MidgardError } from '../../../utils/errors.js';
 import type { Action } from '../types.js';
 
+/**
+ * Interactive action that prints the extended help/usage guide.
+ */
 export const viewHelp: Action = {
   name: 'View Help',
   description: 'Display help information and usage tips',

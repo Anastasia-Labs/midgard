@@ -21,6 +21,18 @@ import { DatabaseError } from "@/database/utils/common.js";
 import { Schedule } from "effect";
 import { computeHash32 } from "@/midgard-tx-codec/hash.js";
 
+/**
+ * Background ingestion for deposit UTxOs and their projection into the
+ * off-chain ledger views.
+ *
+ * The fiber fetches deposit events from the on-chain deposit validator,
+ * persists them in the deposits table, and projects newly visible entries into
+ * the mempool ledger when they affect the current block pre-state.
+ */
+
+/**
+ * Converts the SDK's credential representation into Lucid's credential shape.
+ */
 const credentialFromAddressData = (
   credential: SDK.CredentialD,
 ): Credential =>
@@ -34,6 +46,9 @@ const credentialFromAddressData = (
         hash: credential.ScriptCredential[0],
       };
 
+/**
+ * Reconstructs a bech32 L2 address from deposit-event address data.
+ */
 const addressFromDepositInfo = (
   network: Network,
   addressData: SDK.AddressData,
@@ -52,6 +67,10 @@ const addressFromDepositInfo = (
   );
 };
 
+/**
+ * Projects one deposit UTxO into the database row shape used by the off-chain
+ * deposits ledger.
+ */
 const depositUTxOToEntry = (
   depositUTxO: SDK.DepositUTxO,
   network: Network,
@@ -93,6 +112,10 @@ const depositUTxOToEntry = (
       }),
   });
 
+/**
+ * Fetches deposit UTxOs whose inclusion times fall within the requested
+ * window.
+ */
 const fetchDepositUTxOs = (
   lucid: LucidEvolution,
   inclusionStartTime: number,
@@ -109,6 +132,10 @@ const fetchDepositUTxOs = (
     return yield* SDK.fetchDepositUTxOsProgram(lucid, fetchConfig);
   });
 
+/**
+ * Runs one deposit-fetch pass, persisting new deposits and projecting
+ * block-relevant ones into the mempool ledger.
+ */
 export const fetchAndInsertDepositUTxOs: Effect.Effect<
   void,
   SDK.LucidError | DatabaseError,
@@ -165,6 +192,9 @@ export const fetchAndInsertDepositUTxOs: Effect.Effect<
   yield* Ref.set(globals.LATEST_DEPOSIT_FETCH_TIME, endTime);
 });
 
+/**
+ * Fiber wrapper that repeats deposit fetching on the provided schedule.
+ */
 export const fetchAndInsertDepositUTxOsFiber = (
   schedule: Schedule.Schedule<number>,
 ): Effect.Effect<

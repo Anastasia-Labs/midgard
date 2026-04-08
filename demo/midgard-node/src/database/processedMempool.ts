@@ -17,6 +17,9 @@ export const insertTxs = (
 
 export const retrieve = Tx.retrieveAllEntries(tableName);
 
+/**
+ * Retrieves processed-mempool transaction CBOR by transaction hash.
+ */
 export const retrieveTxCborByHash = (txHash: Buffer) =>
   Tx.retrieveValue(tableName, txHash);
 

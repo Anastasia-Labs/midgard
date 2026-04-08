@@ -1,6 +1,13 @@
 import { decodeFirst, encode, rfc8949EncodeOptions } from "cborg";
 import { MidgardTxCodecError, MidgardTxCodecErrorCodes } from "./errors.js";
 
+/**
+ * Strict CBOR configuration used by the Midgard tx codec.
+ *
+ * The codec intentionally rejects indefinite values, undefined, duplicate map
+ * keys, and trailing bytes so the serialized transaction form remains
+ * deterministic and audit-friendly.
+ */
 const DECODER_OPTIONS = {
   strict: true,
   allowIndefinite: false,
@@ -9,6 +16,9 @@ const DECODER_OPTIONS = {
   rejectDuplicateMapKeys: true,
 };
 
+/**
+ * Decodes exactly one CBOR value and rejects any leftover bytes.
+ */
 export const decodeSingleCbor = (bytes: Uint8Array): unknown => {
   try {
     const [value, remainder] = decodeFirst(bytes, DECODER_OPTIONS);
@@ -31,6 +41,9 @@ export const decodeSingleCbor = (bytes: Uint8Array): unknown => {
   }
 };
 
+/**
+ * Encodes a JavaScript value using RFC 8949 canonical options.
+ */
 export const encodeCbor = (value: unknown): Buffer => {
   try {
     return Buffer.from(encode(value, rfc8949EncodeOptions));
@@ -43,6 +56,9 @@ export const encodeCbor = (value: unknown): Buffer => {
   }
 };
 
+/**
+ * Narrows a decoded CBOR value to a map.
+ */
 export const asMap = (
   value: unknown,
   fieldName: string,
@@ -56,6 +72,9 @@ export const asMap = (
   return value;
 };
 
+/**
+ * Narrows a decoded CBOR value to an array.
+ */
 export const asArray = (value: unknown, fieldName: string): unknown[] => {
   if (!Array.isArray(value)) {
     throw new MidgardTxCodecError(
@@ -66,6 +85,9 @@ export const asArray = (value: unknown, fieldName: string): unknown[] => {
   return value;
 };
 
+/**
+ * Narrows a decoded CBOR value to a boolean.
+ */
 export const asBoolean = (value: unknown, fieldName: string): boolean => {
   if (typeof value !== "boolean") {
     throw new MidgardTxCodecError(
@@ -76,6 +98,12 @@ export const asBoolean = (value: unknown, fieldName: string): boolean => {
   return value;
 };
 
+/**
+ * Narrows a decoded CBOR value to an unsigned integer represented as `bigint`.
+ *
+ * Small non-negative JavaScript numbers are accepted and normalized into
+ * `bigint` so callers can use a single integer representation.
+ */
 export const asBigInt = (value: unknown, fieldName: string): bigint => {
   if (typeof value === "bigint") {
     return value;
@@ -89,6 +117,9 @@ export const asBigInt = (value: unknown, fieldName: string): bigint => {
   );
 };
 
+/**
+ * Narrows a decoded CBOR value to a byte string and returns it as a `Buffer`.
+ */
 export const asBytes = (value: unknown, fieldName: string): Buffer => {
   if (value instanceof Uint8Array) {
     return Buffer.from(value);

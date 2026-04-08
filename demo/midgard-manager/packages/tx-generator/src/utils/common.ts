@@ -3,13 +3,13 @@ import { Writable } from 'node:stream';
 import { Assets, CML, Data, walletFromSeed } from '@lucid-evolution/lucid';
 
 /**
- * Core utility functions for Midgard transaction generation
+ * Core utility helpers shared across tx-generator modules.
  */
 
 type SerializedAssets = Record<string, string>;
 
 /**
- * Serializes assets to string format
+ * Serializes bigint asset quantities into JSON-safe string values.
  */
 export const serializeAssets = (assets: Assets): SerializedAssets => {
   return Object.fromEntries(
@@ -18,7 +18,8 @@ export const serializeAssets = (assets: Assets): SerializedAssets => {
 };
 
 /**
- * Parses a key into bech32 private key format
+ * Normalizes either a mnemonic phrase or an already-encoded key into a bech32
+ * private key.
  */
 export const parseUnknownKeytoBech32PrivateKey = (unknownKey: unknown): string => {
   if (typeof unknownKey !== 'string')
@@ -44,14 +45,14 @@ export const parseUnknownKeytoBech32PrivateKey = (unknownKey: unknown): string =
 };
 
 /**
- * Gets public key hash from private key
+ * Derives the payment public-key hash from a bech32 private key.
  */
 export const getPublicKeyHashFromPrivateKey = (privateKey: string): string => {
   return CML.PrivateKey.from_bech32(privateKey).to_public().hash().to_hex();
 };
 
 /**
- * Gets CBOR hex representation of private key
+ * Encodes a private key as the CBOR hex format expected by some test tooling.
  */
 export const getPrivateKeyCborHex = (privateKey: string): string => {
   return Data.to(
@@ -60,7 +61,7 @@ export const getPrivateKeyCborHex = (privateKey: string): string => {
 };
 
 /**
- * Wait for writable stream to be ready
+ * Resolves once a writable stream can accept more data.
  */
 export const waitWritable = (writable: NodeJS.WritableStream): Promise<void> => {
   return new Promise((resolve) => {

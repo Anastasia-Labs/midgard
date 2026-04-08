@@ -116,6 +116,9 @@ const buildOperatorAwareInitializationTx = async (
     .compose(retiredOperatorsTx);
 };
 
+/**
+ * Builds a Lucid emulator instance for initialization tests.
+ */
 const initEmulatorLucid = async () => {
   const operator = generateEmulatorAccount({
     lovelace: 30_000_000_000n,

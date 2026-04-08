@@ -10,6 +10,9 @@ import {
 } from "@lucid-evolution/lucid";
 import { Data as EffectData, Effect } from "effect";
 
+/**
+ * Tagged error for the `utxos` command path.
+ */
 export class UtxosCommandError extends EffectData.TaggedError(
   "UtxosCommandError",
 )<{
@@ -17,11 +20,17 @@ export class UtxosCommandError extends EffectData.TaggedError(
   cause: unknown;
 }> {}
 
+/**
+ * Raw UTxO record shape read from the database.
+ */
 export type StoredUtxoRecord = {
   readonly outref: Buffer;
   readonly output: Buffer;
 };
 
+/**
+ * Structured result returned by the `utxos` command.
+ */
 export type UtxosCommandResult = {
   readonly address: string;
   readonly utxoCount: number;
@@ -29,6 +38,9 @@ export type UtxosCommandResult = {
   readonly utxos: readonly UTxO[];
 };
 
+/**
+ * Canonical lexicographic ordering for Cardano UTxOs.
+ */
 export const canonicalUtxoOrder = (a: UTxO, b: UTxO): number => {
   const hashOrder = a.txHash.localeCompare(b.txHash);
   if (hashOrder !== 0) {
@@ -37,6 +49,9 @@ export const canonicalUtxoOrder = (a: UTxO, b: UTxO): number => {
   return a.outputIndex - b.outputIndex;
 };
 
+/**
+ * Validates and normalizes a bech32 address passed to the command.
+ */
 export const parseAddressArgument = (address: string): string => {
   const normalized = address.trim();
   if (normalized.length === 0) {
@@ -54,6 +69,9 @@ export const parseAddressArgument = (address: string): string => {
   }
 };
 
+/**
+ * Decodes one stored outref/output pair into a Lucid `UTxO`.
+ */
 export const decodeStoredUtxo = (
   entry: StoredUtxoRecord,
 ): Effect.Effect<UTxO, UtxosCommandError> =>
@@ -70,6 +88,9 @@ export const decodeStoredUtxo = (
       }),
   });
 
+/**
+ * Sums assets across a collection of UTxOs.
+ */
 export const sumAssets = (utxos: readonly UTxO[]): Readonly<Assets> => {
   const totals: Assets = { lovelace: 0n };
   for (const utxo of utxos) {
@@ -80,6 +101,9 @@ export const sumAssets = (utxos: readonly UTxO[]): Readonly<Assets> => {
   return totals;
 };
 
+/**
+ * Formats the command result as stable JSON, stringifying bigint values.
+ */
 export const formatUtxosResult = (result: UtxosCommandResult): string =>
   JSON.stringify(
     result,
@@ -87,6 +111,9 @@ export const formatUtxosResult = (result: UtxosCommandResult): string =>
     2,
   );
 
+/**
+ * Reads, decodes, orders, and summarizes mempool-ledger UTxOs for an address.
+ */
 export const utxosProgram = (
   address: string,
 ): Effect.Effect<UtxosCommandResult, DatabaseError | UtxosCommandError, Database> =>

@@ -20,6 +20,14 @@ import { MidgardNodeClient } from '../client/node-client.js';
 import { SerializedMidgardTransaction } from '../client/types.js';
 
 /**
+ * Multi-output transaction generator for more adversarial or operationally
+ * realistic local workloads.
+ *
+ * The generator first fans funds out into many datum-bearing outputs and then
+ * consolidates them again, exercising both distribution and collection paths.
+ */
+
+/**
  * Configuration for generating multi-output transactions.
  * These transactions simulate complex transfers with multiple outputs.
  */
@@ -32,16 +40,37 @@ export interface MultiOutputTransactionConfig {
   nodeClient?: MidgardNodeClient;
 }
 
-// Constants
+/**
+ * Pool of emulator accounts used as pseudo-random recipients during the fan-out
+ * phase.
+ */
 const TOTAL_ACCOUNT_COUNT = 100;
+
+/**
+ * Number of outputs created per distribution transaction.
+ */
 const OUTPUT_UTXOS_CHUNK = 20;
+
+/**
+ * Number of generated transactions between short GC-friendly pauses.
+ */
 const GC_PAUSE_INTERVAL = 250; // number of transactions before GC pause
+
+/**
+ * Maximum number of concurrent account-generation tasks.
+ */
 const ACCOUNT_GENERATION_CONCURRENCY = 10;
+
+/**
+ * Minimum lovelace value the generator is willing to place in an output.
+ */
 const MIN_LOVELACE_OUTPUT = 1_000_000n; // Minimum lovelace per output
 
 /**
- * Validates the configuration parameters
- * @throws Error if configuration is invalid
+ * Validates the generator configuration before any emulator state is derived.
+ *
+ * Validation covers spending authority, minimum output value, and the bounds
+ * that keep the later fan-out and collection loops internally consistent.
  */
 const validateConfig = (config: MultiOutputTransactionConfig): void => {
   const { initialUTxO, walletSeedOrPrivateKey, utxosCount, finalUtxosCount } = config;
@@ -81,6 +110,9 @@ const validateConfig = (config: MultiOutputTransactionConfig): void => {
   }
 };
 
+/**
+ * Builds a zero-fee Lucid instance for deterministic local generation.
+ */
 const initializeLucid = async (emulator: Emulator, network: Network): Promise<LucidEvolution> => {
   return await Lucid(emulator, network, {
     presetProtocolParameters: {
@@ -94,6 +126,12 @@ const initializeLucid = async (emulator: Emulator, network: Network): Promise<Lu
   });
 };
 
+/**
+ * Generates the pool of recipient accounts used during the distribution phase.
+ *
+ * Concurrency is capped so account derivation does not create avoidable startup
+ * spikes before transaction generation even begins.
+ */
 const generateTestAccounts = async (count: number): Promise<EmulatorAccount[]> => {
   const limit = pLimit(ACCOUNT_GENERATION_CONCURRENCY);
   return Promise.all(
@@ -101,6 +139,12 @@ const generateTestAccounts = async (count: number): Promise<EmulatorAccount[]> =
   );
 };
 
+/**
+ * Computes the lovelace value assigned to each distributed output.
+ *
+ * One minimum-sized output is effectively reserved so the originating wallet
+ * can keep cycling through transactions without exhausting all value.
+ */
 const calculateOutputLovelace = (totalLovelace: bigint, utxosCount: number): bigint => {
   return (totalLovelace - MIN_LOVELACE_OUTPUT) / BigInt(utxosCount);
 };
@@ -108,6 +152,10 @@ const calculateOutputLovelace = (totalLovelace: bigint, utxosCount: number): big
 /**
  * Generate complex multi-output transactions for testing.
  * Each transaction has one input and multiple outputs.
+ *
+ * The function runs in two phases: a distribution phase that creates many
+ * outputs and a collection phase that consolidates them back to the main
+ * account to complete the traffic pattern.
  */
 export const generateMultiOutputTransactions = async (
   config: MultiOutputTransactionConfig

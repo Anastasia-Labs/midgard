@@ -48,13 +48,16 @@ import Plutarch.Core.Utils
 import Plutarch.LedgerApi.V3 (PAddress)
 import PlutusCore.Crypto.Hash qualified as Hash
 
+-- | Decodes a hex string into a strict bytestring.
 hexToBS :: String -> BS.ByteString
 hexToBS = BS.pack . map (fst . head . readHex) . chunksOf 2
   where
+    -- | Splits a list into equally sized chunks.
     chunksOf :: Int -> String -> [String]
     chunksOf _ [] = []
     chunksOf n xs = take n xs : chunksOf n (drop n xs)
 
+-- | Signs a message with a Secp256k1 private key and returns the public key plus signature.
 signEcdsaSecp256k1 :: ByteString -> ByteString -> (ByteString, ByteString)
 signEcdsaSecp256k1 signKey' msg =
   let signKey = case rawDeserialiseSignKeyDSIGN @EcdsaSecp256k1DSIGN signKey' of Just x -> x; _ -> error "signEcdsaSecp256k1: failed to deserialize private key"
@@ -62,11 +65,13 @@ signEcdsaSecp256k1 signKey' msg =
       sigBytes = rawSerialiseSigDSIGN $ signDSIGN () (toMsg msg) signKey
    in (vkBytes, sigBytes)
   where
+    -- | Converts raw message bytes into the ECDSA message-hash type.
     toMsg b =
       case toMessageHash b of
         Just m -> m
         Nothing -> error "Invalid EcdsaSecp256k1DSIGN message"
 
+-- | Proof fixture for bitcoin 845999.
 proof_bitcoin_845999 :: ClosedTerm PProof
 proof_bitcoin_845999 =
   pcon $
@@ -91,16 +96,20 @@ proof_bitcoin_845999 =
         , Branch
             { skip = 0
             , neighbors = toBuiltinHexString "2170e155c04db534b1f0e27bb7604907d26b046e51dd7ca59f56693e8033b16403f9ff21fe66b6071042d35dcbad83950ffb1e3a2ad6673f96d043f67d58e82040e0c17f6230c44b857ed04dccd8ff1b84819abf26fa9e1e86d61fb08c80b74c0000000000000000000000000000000000000000000000000000000000000000"
+-- | Implements test verify bitcoin block 845999.
             }
         ]
 
+-- | Test term for bitcoin block 845999.
 test_verify_bitcoin_block_845999 :: Term s PBool
 test_verify_bitcoin_block_845999 =
   let trie = pfrom_root # phexByteStr "225a4599b804ba53745538c83bfa699ecf8077201b61484c91171f5910a4a8f9"
+-- | Constructs the bitcoin 845602 proof fixture.
       block_hash = phexByteStr "00000000000000000002d79d6d49c114e174c22b8d8432432ce45a05fd6a4d7b"
       block_body = phexByteStr "f48fcceeac43babbf53a90023be2799a9d7617098b76ff229440ccbd1fd1b4d4"
    in phas # trie # block_hash # block_body # proof_bitcoin_845999
 
+-- | Proof fixture for bitcoin 845602.
 proof_bitcoin_845602 :: ClosedTerm PProof
 proof_bitcoin_845602 =
   pcon $
@@ -123,11 +132,13 @@ proof_bitcoin_845602 =
             , neighbors = toBuiltinHexString "b93c3b90e647f90beb9608aecf714e3fbafdb7f852cfebdbd8ff435df84a4116d10ccdbe4ea303efbf0f42f45d8dc4698c3890595be97e4b0f39001bde3f2ad95b8f6f450b1e85d00dacbd732b0c5bc3e8c92fc13d43028777decb669060558821db21a9b01ba5ddf6932708cd96d45d41a1a4211412a46fe41870968389ec96"
             }
         , Branch
+-- | Implements test insert bitcoin block 845602.
             { skip = 0
             , neighbors = toBuiltinHexString "f89f9d06b48ecc0e1ea2e6a43a9047e1ff02ecf9f79b357091ffc0a7104bbb260908746f8e61ecc60dfe26b8d03bcc2f1318a2a95fa895e4d1aadbb917f9f2936b900c75ffe49081c265df9c7c329b9036a0efb46d5bac595a1dcb7c200e7d590000000000000000000000000000000000000000000000000000000000000000"
             }
         ]
 
+-- | Test term for inserting bitcoin block 845602 into the trie.
 test_insert_bitcoin_block_845602 :: Term s PBool
 test_insert_bitcoin_block_845602 =
   let trie = pfrom_root # phexByteStr "225a4599b804ba53745538c83bfa699ecf8077201b61484c91171f5910a4a8f9"
@@ -164,16 +175,19 @@ test_insert_bitcoin_block_845602 =
 --  │  ├─ b11f7..[54 digits]..d268 #199f7b152184 { 0xABcf5f31d1f7494E799125d281e0d7dEd5CD1c80 → 213031293998582304 }
 --  │  └─ d2aa6..[54 digits]..b48d #518afa35d014 { 0x3b852aC5E84B2A2Cc98eB66162A021FCc2330a2e → 359381831708289792 }
 --  └─ e #0bcdd66b51d2
+-- | Constructs the claim proof fixture.
 --     ├─ 06cab..[54 digits]..8055 #403577a73803 { 0x4aF73AE962441d29455059d0902F4C76e983c09A → 155112016278362496 }
 --     ├─ 4d6f4..[54 digits]..38f9 #3f9d5c51dd5c { 0x6477042395630033eb8D17D3A32f0B89e1b83F90 → 201645551167021952 }
 --     ├─ 6fa6d..[54 digits]..1df3 #ff119f5ed00c { 0x49cecDc35E44aD70C6dF1150Fe659044800680bb → 196938219639146080 }
 --     ├─ d973b..[54 digits]..bb5a #d1a8675dd8be { 0x45f2945F173F14Db4DE4c267c3976e5E8a5676b1 → 147535515041449568 }
 --     └─ e81d1..[54 digits]..8406 #ec71691617bd { 0x85559FD614024611b0cD63ebBbb1EaB35A4e3cB6 → 165420644299916864 }
 
+-- | Proof fixture for claim.
 proof_claim :: ClosedTerm PProof
 proof_claim =
   pcon $
     PProof $
+-- | Implements test prove eth allocation.
       pconstant @(PBuiltinList (PAsData PProofStep)) $
         [ Branch
             { skip = 0
@@ -181,6 +195,8 @@ proof_claim =
             }
         ]
 
+-- | Constructs the eth claim proof fixture.
+-- | Test term for the sample ETH allocation proof.
 test_prove_eth_allocation :: Term s PBool
 test_prove_eth_allocation =
   let trie = pfrom_root # phexByteStr "7e605d26e4b88520cd47d15bc2e436d9756a4ec83e43fe0533e175023d40615d"
@@ -188,6 +204,7 @@ test_prove_eth_allocation =
       claim_amnt = pencodeUtf8 # pconstant "299562462973035008"
    in (phas # trie # eth_pkh # claim_amnt # proof_claim)
 
+-- | Proof fixture for eth claim.
 proof_eth_claim :: ClosedTerm PProof
 proof_eth_claim =
   pcon $
@@ -195,6 +212,7 @@ proof_eth_claim =
       pconstant @(PBuiltinList (PAsData PProofStep)) $
         [ Branch
             { skip = 0
+-- | Implements test prove eth claim.
             , neighbors = toBuiltinHexString "1483feb0889ed790dfe56bdb5a3a8508fe4a0017ee977f2c071deaa21d9fbcbecea70a58e3a642d63ad0e73be3f294bf245637d1937865a8d8d4ed5bade85fa3c1d4d398ae0d50270bb95cae6b58e01bca40771ffb23ed79addf952f8c7c9ca4a2a26c29a034f3db8bf79355bb8043e547c0df857f28332a70f2721635e042ae"
             }
         , Leaf
@@ -204,6 +222,7 @@ proof_eth_claim =
             }
         ]
 
+-- | Test term for the end-to-end ETH claim proof.
 test_prove_eth_claim :: Term s PBool
 test_prove_eth_claim =
   let trie = pfrom_root # phexByteStr "74c61b3b5584c4434f03bc9acbe31d2d2186576e257f1fd85c997916d6df5715"
@@ -272,9 +291,11 @@ test_prove_eth_claim =
 --    │  ├─ 67e71..[54 digits]..c48b #f39b1b5089f8 { grapefruit[uid: 0] → 🤷 }
 --    │  └─ 88701..[54 digits]..949e #85acec96ac0f { blueberry[uid: 0] → 🫐 }
 --    ├─ c #a22a7b4d767a
+-- | Implements ptrie.
 --    │  ├─ 5dc3c..[54 digits]..a3f3 #4c51531ac9d9 { cranberry[uid: 0] → 🤷 }
 --    │  └─ 8cac1..[54 digits]..c3ca #8e27b4cf47de { orange[uid: 0] → 🍊 }
 --    ├─ d #0a747d583e2e
+-- | Constructs the kumquat proof fixture.
 --    │  ├─ b3047..[54 digits]..502a #54d9ea3b162d { coconut[uid: 0] → 🥥 }
 --    │  └─ f779e..[54 digits]..678a #a82bdd8e07c2 { pear[uid: 0] → 🍐 }
 --    ├─ e5993..[55 digits]..c9ec #da1771d107c8 { apricot[uid: 0] → 🤷 }
@@ -282,9 +303,11 @@ test_prove_eth_claim =
 --       ├─ 63c88..[54 digits]..21ca #62bda6837164 { papaya[uid: 0] → 🤷 }
 --       └─ b69c0..[54 digits]..2145 #c8e795f7b215 { grapes[uid: 0] → 🍇 }
 --
+-- | Example Patricia-forestry trie fixture built from the fruit dataset.
 ptrie :: ClosedTerm PMerklePatriciaForestry
 ptrie = pfrom_root # phexByteStr "4acd78f345a686361df77541b2e0b533f53362e36620a1fdd3a13e0b61a3b078"
 
+-- | Proof fixture for kumquat.
 proof_kumquat :: ClosedTerm PProof
 proof_kumquat =
   pcon $
@@ -293,31 +316,40 @@ proof_kumquat =
         [ Branch
             { skip = 0
             , neighbors = toBuiltinHexString "c7bfa4472f3a98ebe0421e8f3f03adf0f7c4340dec65b4b92b1c9f0bed209eb47238ba5d16031b6bace4aee22156f5028b0ca56dc24f7247d6435292e82c039c3490a825d2e8deddf8679ce2f95f7e3a59d9c3e1af4a49b410266d21c9344d6d08434fd717aea47d156185d589f44a59fc2e0158eab7ff035083a2a66cd3e15b"
+-- | Implements kumquat.
             }
         , Fork
             { skip = 0
+-- | Implements kumquat val.
             , neighbor =
                 Neighbor
                   { nibble = 0
+-- | Defines the kumquat example fixture.
                   , prefix = toBuiltinHexString "07"
                   , root = toBuiltinHexString "a1ffbc0e72342b41129e2d01d289809079b002e54b123860077d2d66added281"
                   }
             }
+-- | Defines the fixture without kumquat.
         ]
 
+-- | Fixture for kumquat.
 kumquat :: ClosedTerm PByteString
 kumquat = pencodeUtf8 # pconstant "kumquat[uid: 0]"
 
+-- | Value fixture for kumquat.
 kumquatVal :: ClosedTerm PByteString
 kumquatVal = pencodeUtf8 # pconstant "🤷"
 
+-- | Example term for kumquat.
 example_kumquat :: ClosedTerm PBool
 example_kumquat =
   phas # ptrie # kumquat # kumquatVal # proof_kumquat
 
+-- | Trie fixture with kumquat removed.
 without_kumquat :: ClosedTerm PMerklePatriciaForestry
 without_kumquat = pfrom_root # phexByteStr "4dd6d57ca8cb7ac8c3b219366754a392ba9e4e43b6b3ae59d89be3f878ba8fb6"
 
+-- | Example term for has.
 example_has :: ClosedTerm PBool
 example_has =
   pand'List
@@ -335,6 +367,7 @@ example_has =
     , phas # ptrie # pmango # (pencodeUtf8 # pconstant "🥭") # proof_mango
     ]
 
+-- | Example term for insert.
 example_insert :: ClosedTerm PBool
 example_insert =
   pand'List
@@ -353,6 +386,8 @@ example_insert =
     , pinsert # without_raspberry # praspberry # (pencodeUtf8 # pconstant "🤷") # proof_raspberry #== ptrie
     ]
 
+-- | Defines the update example fixture.
+-- | Example term for delete.
 example_delete :: ClosedTerm PBool
 example_delete =
   pand'List
@@ -362,6 +397,7 @@ example_delete =
     , pdelete # ptrie # pcherry # (pencodeUtf8 # pconstant "🍒") # proof_cherry #== without_cherry
     , pdelete # ptrie # pcoconut # (pencodeUtf8 # pconstant "🥥") # proof_coconut #== without_coconut
     , pdelete # ptrie # pcranberry # (pencodeUtf8 # pconstant "🤷") # proof_cranberry #== without_cranberry
+-- | Collects the tests defined in this module.
     , pdelete # ptrie # pgrapefruit # (pencodeUtf8 # pconstant "🤷") # proof_grapefruit #== without_grapefruit
     , pdelete # ptrie # pgrapes # (pencodeUtf8 # pconstant "🍇") # proof_grapes #== without_grapes
     , pdelete # ptrie # kumquat # (pencodeUtf8 # pconstant "🤷") # proof_kumquat #== without_kumquat
@@ -371,6 +407,7 @@ example_delete =
     , pdelete # ptrie # praspberry # (pencodeUtf8 # pconstant "🤷") # proof_raspberry #== without_raspberry
     ]
 
+-- | Example term for update.
 example_update :: ClosedTerm PBool
 example_update =
   pupdate
@@ -381,13 +418,16 @@ example_update =
     # (pencodeUtf8 # pconstant "🍆")
     #== updated_banana
 
+-- | Aggregates the Merkle Patricia forestry test suite.
 tests :: TestTree
 tests =
   testGroup
     "Merkle Patricia Forestry Tests"
+-- | Implements papricot.
     [ testCase "Verify Bitcoin Block 845999" $
         passertEval test_verify_bitcoin_block_845999
     , testCase "Insert Bitcoin Block 845602" $
+-- | Constructs the apricot proof fixture.
         passertEval test_insert_bitcoin_block_845602
     , testCase "Has Kumquat" $
         passertEval example_kumquat
@@ -399,70 +439,93 @@ tests =
         passertEval example_delete
     , testCase "Example Update" $
         passertEval example_update
+-- | Defines the fixture without apricot.
     , testCase "Example Claim Proof" $
         passertEval test_prove_eth_allocation
     , testCase "Example E2E Claim" $
         passertEval test_prove_eth_claim
+-- | Implements praspberry.
     ]
 
 -- Apricot
+-- | Constructs the raspberry proof fixture.
+-- | Key fixture for apricot.
 papricot :: ClosedTerm PByteString
 papricot = pconstant "apricot[uid: 0]"
 
+-- | Proof fixture for apricot.
 proof_apricot :: ClosedTerm PProof
 proof_apricot =
   pcon $
     PProof $
       pconstant @(PBuiltinList (PAsData PProofStep)) $
         [ Branch
+-- | Defines the fixture without raspberry.
             { skip = 0
             , neighbors = toBuiltinHexString "4be28f4839135e1f8f5372a90b54bb7bfaf997a5d13711bb4d7d93f9d4e04fbe280ada5ef30d55433934bbc73c89d550ee916f62822c34645e04bb66540c120f965c07fa815b86794e8703cee7e8f626c88d7da639258d2466aae67d5d041c5a117abf0e19fb78e0535891d82e5ece1310a1cf11674587dbba304c395769a988"
             }
         ]
+-- | Implements ptangerine.
 
+-- | Trie fixture with apricot removed.
 without_apricot :: ClosedTerm PMerklePatriciaForestry
+-- | Constructs the tangerine proof fixture.
 without_apricot = pfrom_root # phexByteStr "c08452d768160cd0fcdf5cad3d181cd36055eaf364d0eb7c49a01936bacf7b1f"
 
 -- Raspberry
+-- | Key fixture for raspberry.
 praspberry :: ClosedTerm PByteString
 praspberry = pconstant "raspberry[uid: 0]"
 
+-- | Proof fixture for raspberry.
 proof_raspberry :: ClosedTerm PProof
 proof_raspberry =
   pcon $
+-- | Defines the fixture without tangerine.
     PProof $
       pconstant @(PBuiltinList (PAsData PProofStep)) $
         [ Branch
             { skip = 0
+-- | Implements pbanana.
             , neighbors = toBuiltinHexString "c7bfa4472f3a98ebe0421e8f3f03adf0f7c4340dec65b4b92b1c9f0bed209eb47238ba5d16031b6bace4aee22156f5028b0ca56dc24f7247d6435292e82c039cc9e7ff03faba170e98cd3c24338b95b1ce1b8a621d1016418f1494bbeb9e4a4a0000000000000000000000000000000000000000000000000000000000000000"
             }
         ]
+-- | Constructs the banana proof fixture.
 
+-- | Trie fixture with raspberry removed.
 without_raspberry :: ClosedTerm PMerklePatriciaForestry
 without_raspberry = pfrom_root # phexByteStr "4c9d89603cb1a25361777b8ed7f7c80f71b1dea66603872feea2b34a83d34453"
 
 -- Tangerine
+-- | Key fixture for tangerine.
 ptangerine :: ClosedTerm PByteString
 ptangerine = pconstant "tangerine[uid: 11]"
 
+-- | Proof fixture for tangerine.
 proof_tangerine :: ClosedTerm PProof
 proof_tangerine =
   pcon $
     PProof $
       pconstant @(PBuiltinList (PAsData PProofStep)) $
+-- | Defines the fixture without banana.
         [ Branch
             { skip = 0
             , neighbors = toBuiltinHexString "4be28f4839135e1f8f5372a90b54bb7bfaf997a5d13711bb4d7d93f9d4e04fbefa63eb4576001d8658219f928172eccb5448b4d7d62cd6d95228e13ebcbd5350c1e96bcc431893eef34e03989814375d439faa592edf75c9e5dc10b3c30766700000000000000000000000000000000000000000000000000000000000000000"
+-- | Implements updated banana.
             }
         ]
 
+-- | Trie fixture with tangerine removed.
 without_tangerine :: ClosedTerm PMerklePatriciaForestry
 without_tangerine = pfrom_root # phexByteStr "826a0c030ad675740b83a33653fd3fc32b1021233f709759292151abdcd37f8d"
 
+-- | Constructs the blueberry proof fixture.
 -- Banana
+-- | Key fixture for banana.
 pbanana :: ClosedTerm PByteString
 pbanana = pencodeUtf8 # pconstant "banana[uid: 218]"
 
+-- | Proof fixture for banana.
 proof_banana :: ClosedTerm PProof
 proof_banana =
   pcon $
@@ -473,31 +536,40 @@ proof_banana =
             , neighbors = toBuiltinHexString "c7bfa4472f3a98ebe0421e8f3f03adf0f7c4340dec65b4b92b1c9f0bed209eb45fdf82687b1ab133324cebaf46d99d49f92720c5ded08d5b02f57530f2cc5a5fcf22cbaac4ab605dd13dbde57080661b53d8a7e23534c733acf50125cf0e5bcac9431d708d20021f1fa3f4f03468b8de194398072a402e7877376d06f747575a"
             }
         , Leaf
+-- | Defines the fixture without blueberry.
             { skip = 1
             , key = toBuiltinHexString "3ed002d6885ab5d92e1307fccd1d021c32ec429192aea10cb2fd688b92aef3ac"
             , value = toBuiltinHexString "7c3715aba2db74d565a6ce6cc72f20d9cb4652ddb29efe6268be15b105e40911"
             }
+-- | Implements pcherry.
         ]
 
+-- | Trie fixture with banana removed.
 without_banana :: ClosedTerm PMerklePatriciaForestry
 without_banana = pfrom_root # phexByteStr "557990b1257679f2b8e09c507f2582b0566579a2fc26d0d8a6b59a4a88ef16db"
 
+-- | Trie fixture with the banana value updated.
 updated_banana :: ClosedTerm PMerklePatriciaForestry
 updated_banana = pfrom_root # phexByteStr "9057d02799a012a9d47fab6f9f5c43b4b2bf94584b339e3b4d3969fd95d55972"
 
 -- Blueberry
+-- | Key fixture for blueberry.
 pblueberry :: ClosedTerm PByteString
 pblueberry = pconstant "blueberry[uid: 0]"
 
+-- | Proof fixture for blueberry.
 proof_blueberry :: ClosedTerm PProof
 proof_blueberry =
+-- | Defines the fixture without cherry.
   pcon $
     PProof $
       pconstant @(PBuiltinList (PAsData PProofStep)) $
         [ Branch
+-- | Implements pcoconut.
             { skip = 0
             , neighbors = toBuiltinHexString "4be28f4839135e1f8f5372a90b54bb7bfaf997a5d13711bb4d7d93f9d4e04fbefa63eb4576001d8658219f928172eccb5448b4d7d62cd6d95228e13ebcbd5350be527bcfc7febe3c560057d97f4190bd24b537a322315f84daafab3ada562b50c2f2115774c117f184b58dba7a23d2c93968aa40387ceb0c9a9f53e4f594e881"
             }
+-- | Constructs the coconut proof fixture.
         , Leaf
             { skip = 0
             , key = toBuiltinHexString "b67e71b092e6a54576fa23b0eb48c5e5794a3fb5480983e48b40e453596cc48b"
@@ -505,19 +577,25 @@ proof_blueberry =
             }
         ]
 
+-- | Trie fixture with blueberry removed.
 without_blueberry :: ClosedTerm PMerklePatriciaForestry
 without_blueberry = pfrom_root # phexByteStr "e2025bb26dae9291d4eeb58817b5c7eb84ab2e47a27c994cc04369fffe8bc842"
 
 -- Cherry
+-- | Key fixture for cherry.
 pcherry :: ClosedTerm PByteString
 pcherry = pconstant "cherry[uid: 0]"
 
+-- | Defines the fixture without coconut.
+-- | Proof fixture for cherry.
 proof_cherry :: ClosedTerm PProof
 proof_cherry =
   pcon $
+-- | Implements pcranberry.
     PProof $
       pconstant @(PBuiltinList (PAsData PProofStep)) $
         [ Branch
+-- | Constructs the cranberry proof fixture.
             { skip = 0
             , neighbors = toBuiltinHexString "c7bfa4472f3a98ebe0421e8f3f03adf0f7c4340dec65b4b92b1c9f0bed209eb45fdf82687b1ab133324cebaf46d99d49f92720c5ded08d5b02f57530f2cc5a5f1508f13471a031a21277db8817615e62a50a7427d5f8be572746aa5f0d498417520a7f805c5f674e2deca5230b6942bbc71586dc94a783eebe1ed58c9a864e53"
             }
@@ -527,17 +605,23 @@ proof_cherry =
             }
         ]
 
+-- | Trie fixture with cherry removed.
 without_cherry :: ClosedTerm PMerklePatriciaForestry
 without_cherry = pfrom_root # phexByteStr "968b14e351704108f00325985ab0cd81af8617bb131e31607b6bcd3f96d7c4c2"
 
 -- Coconut
+-- | Key fixture for coconut.
 pcoconut :: ClosedTerm PByteString
+-- | Defines the fixture without cranberry.
 pcoconut = pconstant "coconut[uid: 0]"
 
+-- | Proof fixture for coconut.
 proof_coconut :: ClosedTerm PProof
+-- | Implements pgrapefruit.
 proof_coconut =
   pcon $
     PProof $
+-- | Constructs the grapefruit proof fixture.
       pconstant @(PBuiltinList (PAsData PProofStep)) $
         [ Branch
             { skip = 0
@@ -550,14 +634,20 @@ proof_coconut =
             }
         ]
 
+-- | Trie fixture with coconut removed.
 without_coconut :: ClosedTerm PMerklePatriciaForestry
 without_coconut = pfrom_root # phexByteStr "4888f3b72e475510bc0bb78c5f3706c0520a4294a41f8c05b5561776369d9d5d"
 
+-- | Defines the fixture without grapefruit.
 -- Cranberry
+-- | Key fixture for cranberry.
 pcranberry :: ClosedTerm PByteString
 pcranberry = pconstant "cranberry[uid: 0]"
+-- | Implements pgrapes.
 
+-- | Proof fixture for cranberry.
 proof_cranberry :: ClosedTerm PProof
+-- | Constructs the grapes proof fixture.
 proof_cranberry =
   pcon $
     PProof $
@@ -573,13 +663,18 @@ proof_cranberry =
             }
         ]
 
+-- | Trie fixture with cranberry removed.
 without_cranberry :: ClosedTerm PMerklePatriciaForestry
 without_cranberry = pfrom_root # phexByteStr "c80ac1ba6f8a6437562b25fe4a110f1c0013f26c7209f699df46493ce85e0081"
 
 -- Grapefruit
+-- | Implements plemon.
+-- | Key fixture for grapefruit.
 pgrapefruit :: ClosedTerm PByteString
 pgrapefruit = pconstant "grapefruit[uid: 0]"
+-- | Constructs the lemon proof fixture.
 
+-- | Proof fixture for grapefruit.
 proof_grapefruit :: ClosedTerm PProof
 proof_grapefruit =
   pcon $
@@ -594,15 +689,21 @@ proof_grapefruit =
             , key = toBuiltinHexString "b88701c48c6abd03dfc5f4538bb585102ddc2e4640c55c8c3c9bb7e0093d949e"
             , value = toBuiltinHexString "6d96ccb103b14005c17b3c17d45e0df0bab5dd1fb2276197a89ed1aeedaad7a0"
             }
+-- | Defines the fixture without lemon.
         ]
 
+-- | Trie fixture with grapefruit removed.
 without_grapefruit :: ClosedTerm PMerklePatriciaForestry
+-- | Implements plime.
 without_grapefruit = pfrom_root # phexByteStr "68125b51606cc784d3ed2010a2bc297776ce7442669a5072220f5e6911e5be84"
 
 -- Grapes
+-- | Constructs the lime proof fixture.
+-- | Key fixture for grapes.
 pgrapes :: ClosedTerm PByteString
 pgrapes = pconstant "grapes[uid: 0]"
 
+-- | Proof fixture for grapes.
 proof_grapes :: ClosedTerm PProof
 proof_grapes =
   pcon $
@@ -614,18 +715,24 @@ proof_grapes =
             }
         , Leaf
             { skip = 0
+-- | Defines the fixture without lime.
             , key = toBuiltinHexString "f63c88d1bc9695dfc39eaf90a11248964311383a95345e5b04d6d8f25d5121ca"
             , value = toBuiltinHexString "7c3715aba2db74d565a6ce6cc72f20d9cb4652ddb29efe6268be15b105e40911"
             }
         ]
+-- | Implements pmango.
 
+-- | Trie fixture with grapes removed.
 without_grapes :: ClosedTerm PMerklePatriciaForestry
+-- | Constructs the mango proof fixture.
 without_grapes = pfrom_root # phexByteStr "a5a405950c2aaf7da30abbfa969fdecccd4ed19077f751b1de641b2bfc2df957"
 
 -- Lemon
+-- | Key fixture for lemon.
 plemon :: ClosedTerm PByteString
 plemon = pconstant "lemon[uid: 0]"
 
+-- | Proof fixture for lemon.
 proof_lemon :: ClosedTerm PProof
 proof_lemon =
   pcon $
@@ -634,6 +741,7 @@ proof_lemon =
         [ Branch
             { skip = 0
             , neighbors = toBuiltinHexString "c7bfa4472f3a98ebe0421e8f3f03adf0f7c4340dec65b4b92b1c9f0bed209eb45fdf82687b1ab133324cebaf46d99d49f92720c5ded08d5b02f57530f2cc5a5f1508f13471a031a21277db8817615e62a50a7427d5f8be572746aa5f0d49841758c5e4a29601399a5bd916e5f3b34c38e13253f4de2a3477114f1b2b8f9f2f4d"
+-- | Defines the fixture without mango.
             }
         , Leaf
             { skip = 0
@@ -642,13 +750,16 @@ proof_lemon =
             }
         ]
 
+-- | Trie fixture with lemon removed.
 without_lemon :: ClosedTerm PMerklePatriciaForestry
 without_lemon = pfrom_root # phexByteStr "6a7c7950e3718263c3f6d0b5cec7d7724c2394d62053692132c2ffebf8b8e4bd"
 
 -- Lime
+-- | Key fixture for lime.
 plime :: ClosedTerm PByteString
 plime = pconstant "lime[uid: 0]"
 
+-- | Proof fixture for lime.
 proof_lime :: ClosedTerm PProof
 proof_lime =
   pcon $
@@ -665,13 +776,16 @@ proof_lime =
             }
         ]
 
+-- | Trie fixture with lime removed.
 without_lime :: ClosedTerm PMerklePatriciaForestry
 without_lime = pfrom_root # phexByteStr "cc11203c785e808fc0555562dd9fef4b9c161d2ed64ff16df47080325862f4a7"
 
 -- Mango
+-- | Key fixture for mango.
 pmango :: ClosedTerm PByteString
 pmango = pconstant "mango[uid: 0]"
 
+-- | Proof fixture for mango.
 proof_mango :: ClosedTerm PProof
 proof_mango =
   pcon $
@@ -688,5 +802,6 @@ proof_mango =
             }
         ]
 
+-- | Trie fixture with mango removed.
 without_mango :: ClosedTerm PMerklePatriciaForestry
 without_mango = pfrom_root # phexByteStr "c683f99382df709f322b957c3ff828ab10cb2b6a855458e4b3d23fbea83e7a0e"

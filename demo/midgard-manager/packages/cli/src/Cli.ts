@@ -5,7 +5,7 @@ import { generateTxCommand, stopTxCommand, txStatusCommand } from './commands/ge
 import { configureNodeCommand, nodeStatusCommand } from './commands/node.js';
 
 /**
- * Main CLI help text
+ * Top-level help text shown for the Midgard manager CLI.
  */
 const helpText = `Midgard Manager - CLI tool for Cardano development
 
@@ -48,21 +48,21 @@ For more detailed transaction generator options:
 $ pnpm tx-generator --help`;
 
 /**
- * Group transaction commands
+ * Command group for transaction-generator operations.
  */
 const txCommands = Command.make('tx')
   .pipe(Command.withDescription('Transaction generator operations'))
   .pipe(Command.withSubcommands([generateTxCommand, stopTxCommand, txStatusCommand]));
 
 /**
- * Group node commands
+ * Command group for node-management operations.
  */
 const nodeCommands = Command.make('node')
   .pipe(Command.withDescription('Midgard node operations'))
   .pipe(Command.withSubcommands([nodeStatusCommand, configureNodeCommand]));
 
 /**
- * Create the main command with subcommands
+ * Root command definition for the Midgard manager CLI.
  */
 const mainCommand = Command.make('midgard-manager')
   .pipe(Command.withDescription(helpText))
@@ -78,7 +78,7 @@ const mainCommand = Command.make('midgard-manager')
   );
 
 /**
- * Export the run function
+ * CLI runner used by the package entrypoint.
  */
 export const run = Command.run(mainCommand, {
   name: 'Midgard Manager',

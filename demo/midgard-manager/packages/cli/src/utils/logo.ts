@@ -1,7 +1,7 @@
 import chalk from 'chalk';
 
 /**
- * Logo display options
+ * Options controlling how the shared CLI logo/header is rendered.
  */
 export interface LogoOptions {
   /** Show header text after the logo */
@@ -9,7 +9,7 @@ export interface LogoOptions {
 }
 
 /**
- * Displays the Midgard logo
+ * Displays the Midgard manager logo and optional section heading.
  */
 export function displayLogo(options: LogoOptions = {}): void {
   const { headerText } = options;

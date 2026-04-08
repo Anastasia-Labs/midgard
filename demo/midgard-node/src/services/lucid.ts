@@ -2,15 +2,28 @@ import { Effect, Schedule } from "effect";
 import { ConfigError, NodeConfig } from "./config.js";
 import * as LE from "@lucid-evolution/lucid";
 
+/**
+ * Lucid-provider construction and fallback behavior for the Midgard node.
+ *
+ * This module centralizes provider patching because Blockfrost/Kupmios
+ * limitations, rate limits, and evaluation quirks directly affect transaction
+ * correctness and operational reliability.
+ */
 const KOIOS_BASE_URL_BY_NETWORK: Partial<Record<LE.Network, string>> = {
   Mainnet: "https://api.koios.rest/api/v1",
   Preprod: "https://preprod.koios.rest/api/v1",
   Preview: "https://preview.koios.rest/api/v1",
 };
 
+/**
+ * Resolves the Koios base URL for a network when a fallback exists.
+ */
 const resolveKoiosBaseUrl = (network: LE.Network): string | undefined =>
   KOIOS_BASE_URL_BY_NETWORK[network];
 
+/**
+ * Converts an unknown error into a stable diagnostic string.
+ */
 const formatUnknownError = (error: unknown): string => {
   if (error instanceof Error) {
     return error.stack ?? error.message;
@@ -18,6 +31,10 @@ const formatUnknownError = (error: unknown): string => {
   return String(error);
 };
 
+/**
+ * Returns whether a Blockfrost failure is worth retrying through a fallback
+ * provider.
+ */
 const isBlockfrostFallbackEligibleError = (error: unknown): boolean => {
   const message = formatUnknownError(error).toLowerCase();
   return (
@@ -36,6 +53,10 @@ const isBlockfrostFallbackEligibleError = (error: unknown): boolean => {
   );
 };
 
+/**
+ * Returns whether a Blockfrost failure specifically looks like quota/rate-limit
+ * exhaustion.
+ */
 const isBlockfrostRateLimitError = (error: unknown): boolean => {
   const message = formatUnknownError(error).toLowerCase();
   return (
@@ -50,6 +71,10 @@ const isBlockfrostRateLimitError = (error: unknown): boolean => {
   );
 };
 
+/**
+ * Converts an optional script reference into Blockfrost's `additionalUtxoSet`
+ * script shape.
+ */
 const toAdditionalScript = (
   scriptRef: LE.Script | null | undefined,
 ): Record<string, unknown> | undefined => {
@@ -74,6 +99,10 @@ const toAdditionalScript = (
   }
 };
 
+/**
+ * Converts Lucid assets into the nested value format expected by Blockfrost's
+ * evaluate-UTxOs endpoint.
+ */
 export const toBlockfrostAdditionalValue = (
   assets: LE.Assets,
 ): Record<string, unknown> => {
@@ -92,6 +121,9 @@ export const toBlockfrostAdditionalValue = (
   return value;
 };
 
+/**
+ * JSON-stringifies a value while preserving bigint fields as bare JSON numbers.
+ */
 export const stringifyJsonWithBigIntNumbers = (value: unknown): string => {
   if (value === null) {
     return "null";
@@ -144,6 +176,9 @@ type BlockfrostEvalResponse =
       fault: unknown;
     };
 
+/**
+ * Calls Blockfrost's evaluate-with-UTxO-context endpoint directly.
+ */
 const evaluateTxViaBlockfrostUtxoEndpoint = async (
   provider: LE.Blockfrost,
   tx: string,
@@ -216,18 +251,30 @@ const evaluateTxViaBlockfrostUtxoEndpoint = async (
   return evalRedeemers;
 };
 
+/**
+ * Formats an outref as `txHash#outputIndex`.
+ */
 const outRefLabel = (outRef: LE.OutRef): string =>
   `${outRef.txHash}#${outRef.outputIndex}`;
 
+/**
+ * Converts a UTxO into its outref-only view.
+ */
 const utxoToOutRef = (utxo: LE.UTxO): LE.OutRef => ({
   txHash: utxo.txHash,
   outputIndex: utxo.outputIndex,
 });
 
+/**
+ * Derives the distinct input/reference-input outrefs referenced by a tx body.
+ */
 const deriveOutRefsFromTx = (tx: string): LE.OutRef[] => {
   const parsed = LE.CML.Transaction.from_cbor_hex(tx);
   const body = parsed.body();
   const outRefs: LE.OutRef[] = [];
+  /**
+   * Appends a transaction input to the ordered list of selected inputs.
+   */
   const push = (input: LE.CML.TransactionInput) => {
     outRefs.push({
       txHash: input.transaction_id().to_hex(),
@@ -252,6 +299,10 @@ const deriveOutRefsFromTx = (tx: string): LE.OutRef[] => {
   return Array.from(deduped.values());
 };
 
+/**
+ * Merges two UTxO context sets, preferring entries from the first list on
+ * outref collisions.
+ */
 const mergeAdditionalUtxos = (
   preferred: LE.UTxO[],
   fallback: LE.UTxO[],
@@ -266,6 +317,9 @@ const mergeAdditionalUtxos = (
   return Array.from(merged.values());
 };
 
+/**
+ * Fetches the UTxO context required by a transaction from Blockfrost.
+ */
 const resolveTxUtxoContext = async (
   provider: LE.Blockfrost,
   tx: string,
@@ -278,6 +332,10 @@ const resolveTxUtxoContext = async (
   return fetched.filter((utxo) => (utxo.assets.lovelace ?? 0n) >= 0n);
 };
 
+/**
+ * Patches Blockfrost evaluation to retry with explicit UTxO context when the
+ * default evaluation path fails.
+ */
 const patchBlockfrostEvaluateTx = (provider: LE.Blockfrost): LE.Blockfrost => {
   const originalEvaluateTx = provider.evaluateTx.bind(provider);
   provider.evaluateTx = async (tx, additionalUTxOs) => {
@@ -310,6 +368,10 @@ const patchBlockfrostEvaluateTx = (provider: LE.Blockfrost): LE.Blockfrost => {
   return provider;
 };
 
+/**
+ * Replaces Blockfrost's `awaitTx` with a polling implementation that handles
+ * quota/rate-limit responses explicitly.
+ */
 const patchBlockfrostAwaitTx = (provider: LE.Blockfrost): LE.Blockfrost => {
   const blockfrostProvider = provider as unknown as {
     url: string;
@@ -402,6 +464,13 @@ const BLOCKFROST_PROVIDER_METHODS: readonly BlockfrostProviderMethodName[] = [
   "evaluateTx",
 ];
 
+/**
+ * Wraps a primary Blockfrost provider with a fallback API key that is only
+ * used after an explicit quota/rate-limit failure.
+ *
+ * This preserves the primary key as the normal path while still giving
+ * operators a deterministic second chance during sustained traffic spikes.
+ */
 const patchBlockfrostWithApiKeyFallback = (
   primaryProvider: LE.Blockfrost,
   fallbackProvider: LE.Blockfrost,
@@ -458,6 +527,13 @@ const patchBlockfrostWithApiKeyFallback = (
   return primaryProvider;
 };
 
+/**
+ * Polls Koios for transaction confirmation when Blockfrost's await endpoint is
+ * unavailable or rate limited.
+ *
+ * The timeout is bounded so higher-level submission logic can surface a
+ * concrete degraded-provider failure instead of hanging indefinitely.
+ */
 const awaitTxViaKoios = async (
   koiosBaseUrl: string,
   txHash: string,
@@ -486,6 +562,10 @@ const awaitTxViaKoios = async (
   return false;
 };
 
+/**
+ * Wraps Blockfrost methods with Koios fallbacks when the failure looks like a
+ * Blockfrost quota/availability issue.
+ */
 const patchBlockfrostWithKoiosFallback = (
   provider: LE.Blockfrost,
   network: LE.Network,
@@ -558,10 +638,16 @@ const patchBlockfrostWithKoiosFallback = (
   return provider;
 };
 
+/**
+ * Builds the Lucid service bundle used by the node, including reference-script
+ * and operator-wallet specializations.
+ */
 const makeLucid: Effect.Effect<
   {
     api: LE.LucidEvolution;
     referenceScriptsApi: LE.LucidEvolution;
+    operatorMainAddress: string;
+    operatorMergeAddress: string;
     referenceScriptsAddress: string;
     switchToOperatorsMainWallet: Effect.Effect<void>;
     switchToOperatorsMergingWallet: Effect.Effect<void>;
@@ -571,6 +657,18 @@ const makeLucid: Effect.Effect<
   NodeConfig
 > = Effect.gen(function* () {
   const nodeConfig = yield* NodeConfig;
+  const operatorMainAddress = LE.walletFromSeed(
+    nodeConfig.L1_OPERATOR_SEED_PHRASE,
+    {
+      network: nodeConfig.NETWORK,
+    },
+  ).address;
+  const operatorMergeAddress = LE.walletFromSeed(
+    nodeConfig.L1_OPERATOR_SEED_PHRASE_FOR_MERGE_TX,
+    {
+      network: nodeConfig.NETWORK,
+    },
+  ).address;
   yield* Effect.logInfo("Initializing Lucid...");
   const lucid: LE.LucidEvolution = yield* Effect.tryPromise({
     try: () => {
@@ -668,10 +766,38 @@ const makeLucid: Effect.Effect<
       }),
     );
   }
+  const distinctOperationalWallets = new Map<string, string[]>();
+  for (const [role, address] of [
+    ["operator-main", operatorMainAddress],
+    ["operator-merge", operatorMergeAddress],
+    ["reference-scripts", referenceScriptsAddress],
+  ] as const) {
+    const existingRoles = distinctOperationalWallets.get(address) ?? [];
+    distinctOperationalWallets.set(address, [...existingRoles, role]);
+  }
+  const overlappingOperationalWalletRoles = [...distinctOperationalWallets]
+    .filter(([, roles]) => roles.length > 1)
+    .map(([address, roles]) => `${roles.join("+")}=${address}`);
+  if (overlappingOperationalWalletRoles.length > 0) {
+    return yield* Effect.fail(
+      new ConfigError({
+        message:
+          "Operational wallet roles must use distinct L1 addresses for production-safe local wallet views",
+        cause: overlappingOperationalWalletRoles.join(","),
+        fieldsAndValues: [
+          ["L1_OPERATOR_ADDRESS", operatorMainAddress],
+          ["L1_OPERATOR_MERGE_ADDRESS", operatorMergeAddress],
+          ["L1_REFERENCE_SCRIPT_ADDRESS", referenceScriptsAddress],
+        ],
+      }),
+    );
+  }
   yield* Effect.logInfo("Lucid built successfully.");
   return {
     api: lucid,
     referenceScriptsApi,
+    operatorMainAddress,
+    operatorMergeAddress,
     referenceScriptsAddress,
     switchToOperatorsMainWallet: Effect.sync(() =>
       lucid.selectWallet.fromSeed(nodeConfig.L1_OPERATOR_SEED_PHRASE),
@@ -685,6 +811,10 @@ const makeLucid: Effect.Effect<
   };
 });
 
+/**
+ * Service exposing the fully-initialized Lucid clients and wallet-switching
+ * helpers used by the node.
+ */
 export class Lucid extends Effect.Service<Lucid>()("Lucid", {
   effect: makeLucid,
   dependencies: [NodeConfig.layer],

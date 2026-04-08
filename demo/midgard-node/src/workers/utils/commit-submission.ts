@@ -1,0 +1,310 @@
+/**
+ * Commit submission and local-finalization side effects for the block worker.
+ * This module owns the database and trie transitions that happen after a
+ * commit transaction is submitted, recovered, deferred, or finalized locally.
+ */
+import * as SDK from "@al-ft/midgard-sdk";
+import { Effect, Option, Schedule } from "effect";
+import {
+  BlocksDB,
+  ImmutableDB,
+  MempoolDB,
+  ProcessedMempoolDB,
+  TxUtils as TxTable,
+} from "@/database/index.js";
+import { Columns as TxColumns } from "@/database/utils/tx.js";
+import { DatabaseError } from "@/database/utils/common.js";
+import { formatUnknownError } from "@/error-format.js";
+import { Lucid, type Database } from "@/services/index.js";
+import type { TxSubmitError } from "@/transactions/utils.js";
+import { batchProgram, type FileSystemError } from "@/utils.js";
+import {
+  buildSuccessfulCommitBatches,
+  type SuccessfulCommitBatch,
+} from "@/workers/utils/commit-block-planner.js";
+import type {
+  WorkerInput,
+  WorkerOutput,
+} from "@/workers/utils/commit-block-header.js";
+import type { MidgardMpt } from "@/workers/utils/mpt.js";
+import { fromHex } from "@lucid-evolution/lucid";
+
+const BATCH_SIZE = 100;
+const SKIPPED_SUBMISSION_TRANSFER_RETRIES = 2;
+const SKIPPED_SUBMISSION_TRANSFER_INITIAL_BACKOFF = "250 millis";
+
+export const finalizeCommittedBlockLocally = (
+  mempoolTrie: MidgardMpt,
+  mempoolTxs: readonly TxTable.EntryWithTimeStamp[],
+  mempoolTxHashes: Buffer[],
+  newHeaderHash: string,
+): Effect.Effect<
+  void,
+  DatabaseError | FileSystemError,
+  Database
+> =>
+  Effect.gen(function* () {
+    const filterAlreadyCommittedTxs = (
+      candidateBatches: readonly SuccessfulCommitBatch[],
+    ): Effect.Effect<
+      readonly SuccessfulCommitBatch[],
+      DatabaseError,
+      Database
+    > =>
+      Effect.gen(function* () {
+        const candidateHashes = Array.from(
+          new Set(
+            candidateBatches
+              .flatMap((batch) => batch.blockTxHashes)
+              .map((hash) => hash.toString("hex")),
+          ),
+        ).map((hex) => Buffer.from(hex, "hex"));
+
+        if (candidateHashes.length <= 0) {
+          return candidateBatches;
+        }
+
+        const existing =
+          yield* ImmutableDB.retrieveTxEntriesByHashes(candidateHashes);
+        if (existing.length <= 0) {
+          return candidateBatches;
+        }
+
+        const alreadyCommitted = new Set(
+          existing.map((entry) => entry[TxColumns.TX_ID].toString("hex")),
+        );
+        yield* Effect.logWarning(
+          `🔹 Filtering ${alreadyCommitted.size} already-committed tx id(s) from local finalization payload before BlocksDB insertion.`,
+        );
+
+        return candidateBatches.map((batch) => {
+          const filteredTxs: TxTable.EntryWithTimeStamp[] = [];
+          const filteredHashes: Buffer[] = [];
+
+          for (let i = 0; i < batch.blockTxHashes.length; i += 1) {
+            const txHash = batch.blockTxHashes[i];
+            if (alreadyCommitted.has(txHash.toString("hex"))) {
+              continue;
+            }
+            filteredHashes.push(txHash);
+            if (i < batch.txsToInsertImmutable.length) {
+              filteredTxs.push(batch.txsToInsertImmutable[i]);
+            }
+          }
+
+          return {
+            txsToInsertImmutable: filteredTxs,
+            blockTxHashes: filteredHashes,
+            clearMempoolTxHashes: batch.clearMempoolTxHashes,
+          };
+        });
+      });
+
+    const newHeaderHashBuffer = Buffer.from(fromHex(newHeaderHash));
+
+    const processedMempoolTxs = yield* ProcessedMempoolDB.retrieve;
+    const batches = buildSuccessfulCommitBatches(
+      mempoolTxs,
+      mempoolTxHashes,
+      processedMempoolTxs,
+      Math.floor(BATCH_SIZE / 2),
+    );
+    const filteredBatches = yield* filterAlreadyCommittedTxs(batches);
+
+    yield* Effect.logInfo(
+      "🔹 Inserting included transactions into ImmutableDB and BlocksDB, clearing all the processed txs from MempoolDB and ProcessedMempoolDB, and deleting mempool LevelDB...",
+    );
+    yield* Effect.all(
+      [
+        Effect.forEach(
+          filteredBatches,
+          (batch, i) => {
+            const clearMempoolProgram =
+              batch.clearMempoolTxHashes.length === 0
+                ? Effect.void
+                : MempoolDB.clearTxs([...batch.clearMempoolTxHashes]).pipe(
+                    Effect.withSpan(`mempool-db-clear-txs-batch-${i}`),
+                  );
+            return Effect.all(
+              [
+                ImmutableDB.insertTxsValidatedNative([
+                  ...batch.txsToInsertImmutable,
+                ]).pipe(Effect.withSpan(`immutable-db-insert-batch-${i}`)),
+                BlocksDB.insert(newHeaderHashBuffer, [
+                  ...batch.blockTxHashes,
+                ]).pipe(Effect.withSpan(`blocks-db-insert-batch-${i}`)),
+                clearMempoolProgram,
+              ],
+              { concurrency: "unbounded" },
+            );
+          },
+          {
+            concurrency: "unbounded",
+          },
+        ),
+        ProcessedMempoolDB.clear,
+        mempoolTrie.delete(),
+      ],
+      { concurrency: "unbounded" },
+    );
+  }).pipe(
+    Effect.tapError((error) =>
+      Effect.gen(function* () {
+        yield* Effect.logError(
+          `🔹 Local commit finalization failed (header=${newHeaderHash},error=${formatUnknownError(error)})`,
+        );
+      }),
+    ),
+  );
+
+export const successfulSubmissionProgram = (
+  mempoolTrie: MidgardMpt,
+  mempoolTxs: readonly TxTable.EntryWithTimeStamp[],
+  mempoolTxHashes: Buffer[],
+  newHeaderHash: string,
+  workerInput: WorkerInput,
+  txSize: number,
+  sizeOfProcessedTxs: number,
+  txHash: string,
+  blockEndTimeMs: number,
+): Effect.Effect<WorkerOutput, DatabaseError | FileSystemError, Database> =>
+  Effect.gen(function* () {
+    yield* finalizeCommittedBlockLocally(
+      mempoolTrie,
+      mempoolTxs,
+      mempoolTxHashes,
+      newHeaderHash,
+    );
+
+    return {
+      type: "SuccessfulSubmissionOutput",
+      submittedTxHash: txHash,
+      txSize,
+      mempoolTxsCount:
+        mempoolTxs.length + workerInput.data.mempoolTxsCountSoFar,
+      sizeOfBlocksTxs:
+        sizeOfProcessedTxs + workerInput.data.sizeOfProcessedTxsSoFar,
+      blockEndTimeMs,
+    };
+  });
+
+export const successfulLocalFinalizationRecoveryProgram = (
+  mempoolTrie: MidgardMpt,
+  mempoolTxs: readonly TxTable.EntryWithTimeStamp[],
+  mempoolTxHashes: Buffer[],
+  confirmedHeaderHash: string,
+  workerInput: WorkerInput,
+  sizeOfProcessedTxs: number,
+): Effect.Effect<WorkerOutput, DatabaseError | FileSystemError, Database> =>
+  Effect.gen(function* () {
+    yield* finalizeCommittedBlockLocally(
+      mempoolTrie,
+      mempoolTxs,
+      mempoolTxHashes,
+      confirmedHeaderHash,
+    );
+    return {
+      type: "SuccessfulLocalFinalizationRecoveryOutput",
+      mempoolTxsCount:
+        mempoolTxs.length + workerInput.data.mempoolTxsCountSoFar,
+      sizeOfBlocksTxs:
+        sizeOfProcessedTxs + workerInput.data.sizeOfProcessedTxsSoFar,
+    };
+  });
+
+export const skippedSubmissionProgram = (
+  mempoolTxs: readonly TxTable.EntryWithTimeStamp[],
+  mempoolTxHashes: Buffer[],
+): Effect.Effect<void, DatabaseError, Database> =>
+  Effect.gen(function* () {
+    if (mempoolTxs.length !== mempoolTxHashes.length) {
+      return yield* Effect.fail(
+        new DatabaseError({
+          message:
+            "Failed to transfer deferred commit payload: tx metadata length mismatch",
+          cause: `mempool_txs=${mempoolTxs.length},mempool_tx_hashes=${mempoolTxHashes.length}`,
+          table: "mempool,processed_mempool",
+        }),
+      );
+    }
+    yield* batchProgram(
+      BATCH_SIZE,
+      mempoolTxs.length,
+      "skipped-submission-db-transfer",
+      (startIndex: number, endIndex: number) =>
+        Effect.gen(function* () {
+          const batchTxs = mempoolTxs.slice(startIndex, endIndex);
+          const batchHashes = mempoolTxHashes.slice(startIndex, endIndex);
+          yield* ProcessedMempoolDB.insertTxs(batchTxs).pipe(
+            Effect.withSpan(`processed-mempool-db-insert-${startIndex}`),
+          );
+          yield* MempoolDB.clearTxs(batchHashes).pipe(
+            Effect.withSpan(`mempool-db-clear-txs-${startIndex}`),
+          );
+        }),
+      1,
+    );
+  }).pipe(
+    Effect.retry(
+      Schedule.compose(
+        Schedule.exponential(SKIPPED_SUBMISSION_TRANSFER_INITIAL_BACKOFF),
+        Schedule.recurs(SKIPPED_SUBMISSION_TRANSFER_RETRIES),
+      ),
+    ),
+  );
+
+export const failedSubmissionProgram = (
+  mempoolTrie: MidgardMpt,
+  mempoolTxsCount: number,
+  sizeOfProcessedTxs: number,
+  err: TxSubmitError,
+): Effect.Effect<WorkerOutput> =>
+  Effect.gen(function* () {
+    yield* Effect.logError(`🔹 ⚠️  Tx submit failed: ${err}`);
+    yield* Effect.logError(
+      "🔹 ⚠️  Mempool trie will be preserved, but db will be cleared.",
+    );
+    yield* Effect.logInfo("🔹 Mempool Trie stats:");
+    console.dir(mempoolTrie.databaseStats(), { depth: null });
+    return {
+      type: "SkippedSubmissionOutput",
+      mempoolTxsCount,
+      sizeOfProcessedTxs,
+    };
+  });
+
+export const recoverSubmittedTxHashByHeaderProgram = (
+  stateQueueAuthValidator: SDK.AuthenticatedValidator,
+  expectedHeaderHash: string,
+): Effect.Effect<Option.Option<string>, never, Lucid> =>
+  Effect.gen(function* () {
+    const lucid = yield* Lucid;
+    const fetchConfig: SDK.StateQueueFetchConfig = {
+      stateQueueAddress: stateQueueAuthValidator.spendingScriptAddress,
+      stateQueuePolicyId: stateQueueAuthValidator.policyId,
+    };
+    const latestBlock = yield* SDK.fetchLatestCommittedBlockProgram(
+      lucid.api,
+      fetchConfig,
+    );
+    const latestHeader = yield* SDK.getHeaderFromStateQueueDatum(
+      latestBlock.datum,
+    );
+    const latestHeaderHash = yield* SDK.hashBlockHeader(latestHeader);
+    if (latestHeaderHash === expectedHeaderHash) {
+      yield* Effect.logWarning(
+        `🔹 Submit errored but on-chain header already advanced to ${expectedHeaderHash}; recovering submission state.`,
+      );
+      return Option.some(latestBlock.utxo.txHash);
+    }
+    return Option.none();
+  }).pipe(
+    Effect.catchAll((error) =>
+      Effect.gen(function* () {
+        yield* Effect.logWarning(
+          `🔹 Could not verify submit recovery on-chain: ${formatUnknownError(error)}`,
+        );
+        return Option.none<string>();
+      }),
+    ),
+  );

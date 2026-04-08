@@ -21,14 +21,29 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const pkgRoot = path.resolve(__dirname, "..");
 
+/**
+ * Waits for the requested number of milliseconds.
+ */
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
+/**
+ * Encodes a value into hexadecimal CBOR text.
+ */
 const encodeCbor = (value) => Buffer.from(cborEncode(value));
+/**
+ * Computes a 32-byte Blake2b hash.
+ */
 const hash32 = (value) => Buffer.from(blake2b(value, { dkLen: HASH32_LEN }));
 
+/**
+ * Encodes a byte-list preimage used by the native transaction fixtures.
+ */
 const encodeByteListPreimage = (items) =>
   encodeCbor(items.map((item) => Buffer.from(item)));
 
+/**
+ * Encodes a transaction output reference into CBOR.
+ */
 const toOutRefCbor = (txId, outputIndex) =>
   Buffer.from(
     CML.TransactionInput.new(
@@ -37,6 +52,9 @@ const toOutRefCbor = (txId, outputIndex) =>
     ).to_cbor_bytes(),
   );
 
+/**
+ * Parses a duration flag into milliseconds.
+ */
 const parseDurationMs = (value) => {
   if (typeof value !== "string" || value.trim().length === 0) {
     throw new Error("duration must be a non-empty string");
@@ -65,6 +83,9 @@ const parseDurationMs = (value) => {
   }
 };
 
+/**
+ * Parses CLI arguments for the nominal-activity workload.
+ */
 const parseArgs = (argv) => {
   const out = {};
   for (let i = 0; i < argv.length; i += 1) {
@@ -95,12 +116,18 @@ const parseArgs = (argv) => {
   return out;
 };
 
+/**
+ * Parses a boolean environment or CLI value.
+ */
 const boolFrom = (value, defaultValue) => {
   if (value === undefined) return defaultValue;
   const normalized = String(value).trim().toLowerCase();
   return normalized !== "false" && normalized !== "0" && normalized !== "no";
 };
 
+/**
+ * Parses a numeric environment or CLI value.
+ */
 const numberFrom = (value, fallback, name) => {
   if (value === undefined) return fallback;
   const parsed = Number.parseInt(String(value), 10);
@@ -110,6 +137,9 @@ const numberFrom = (value, fallback, name) => {
   return parsed;
 };
 
+/**
+ * Prints the script usage message.
+ */
 const usage = () => {
   console.log(`Nominal Midgard activity generator
 
@@ -226,6 +256,9 @@ const parseEnv = (filename) => {
   return dotenv.parse(raw);
 };
 
+/**
+ * Builds wallet descriptors from environment configuration.
+ */
 const makeWalletsFromEnv = (env) => {
   const keys = [
     "TESTNET_GENESIS_WALLET_SEED_PHRASE_A",
@@ -249,8 +282,14 @@ const makeWalletsFromEnv = (env) => {
     .filter((wallet) => wallet !== null);
 };
 
+/**
+ * Escapes a string for literal use in a regular expression.
+ */
 const escapeRegex = (value) => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
+/**
+ * Extracts a Prometheus counter value from metrics text.
+ */
 const extractCounter = (text, names) => {
   for (const name of names) {
     const pattern = `^${escapeRegex(name)}(?:\\{[^}]*\\})?\\s+([0-9]+(?:\\.[0-9]+)?)$`;
@@ -262,6 +301,9 @@ const extractCounter = (text, names) => {
   return 0;
 };
 
+/**
+ * Fetches raw Prometheus metrics text from the node.
+ */
 const fetchMetricsText = async () => {
   const resp = await fetch(metricsEndpoint);
   if (!resp.ok) {
@@ -270,6 +312,9 @@ const fetchMetricsText = async () => {
   return resp.text();
 };
 
+/**
+ * Fetches and parses the counters used by the workload monitor.
+ */
 const readCounters = async () => {
   const text = await fetchMetricsText();
   return {
@@ -285,6 +330,9 @@ const readCounters = async () => {
   };
 };
 
+/**
+ * Fetches spendable UTxOs for a wallet address.
+ */
 const fetchUtxos = async (address) => {
   const resp = await fetch(
     `${submitEndpoint}/utxos?address=${encodeURIComponent(address)}`,
@@ -299,6 +347,9 @@ const fetchUtxos = async (address) => {
   return /** @type {NodeUtxo[]} */ (body.utxos);
 };
 
+/**
+ * Decodes a lovelace quantity from a UTxO payload.
+ */
 const decodeCoin = (outputHex) => {
   const output = CML.TransactionOutput.from_cbor_bytes(
     Buffer.from(outputHex, "hex"),
@@ -306,6 +357,9 @@ const decodeCoin = (outputHex) => {
   return output.amount().coin();
 };
 
+/**
+ * Builds and signs a native one-to-one transfer transaction.
+ */
 const buildNativeSignedOneToOne = ({ spendOutRefCbor, outputCbor, signer }) => {
   const spendInputsPreimageCbor = encodeByteListPreimage([spendOutRefCbor]);
   const referenceInputsPreimageCbor = EMPTY_CBOR_LIST;
@@ -405,6 +459,9 @@ const buildNativeSignedOneToOne = ({ spendOutRefCbor, outputCbor, signer }) => {
   };
 };
 
+/**
+ * Submits a CBOR transaction hex payload to the node.
+ */
 const submitTxHex = async (txHex) => {
   let attempt = 0;
   while (attempt <= retry503) {
@@ -435,6 +492,9 @@ const submitTxHex = async (txHex) => {
   return { ok: false, status: 0, body: "retry loop exhausted" };
 };
 
+/**
+ * Returns a randomized interval within the configured bounds.
+ */
 const randomIntervalMs = () => {
   if (minIntervalMs === maxIntervalMs) {
     return minIntervalMs;
@@ -443,6 +503,9 @@ const randomIntervalMs = () => {
   return minIntervalMs + Math.floor(Math.random() * (span + 1));
 };
 
+/**
+ * Selects the next wallet to use for a workload iteration.
+ */
 const chooseWallet = (wallets, sequence) => {
   if (walletMode === "round_robin") {
     return wallets[sequence % wallets.length];
@@ -450,6 +513,9 @@ const chooseWallet = (wallets, sequence) => {
   return wallets[Math.floor(Math.random() * wallets.length)];
 };
 
+/**
+ * Runs the nominal-activity throughput workload.
+ */
 const main = async () => {
   const env = parseEnv(envPath);
   const wallets = makeWalletsFromEnv(env);
@@ -500,6 +566,9 @@ const main = async () => {
   let maxSubmitRate1s = 0;
   let doneProducing = false;
 
+  /**
+   * Monitors workload progress and emits periodic metrics.
+   */
   const monitorPromise = (async () => {
     let prev = await readCounters();
     let prevTs = Date.now();

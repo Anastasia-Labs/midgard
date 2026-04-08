@@ -38,6 +38,9 @@ const loadTxFixtures = (): readonly TxFixture[] => {
   return parsed.transactions;
 };
 
+/**
+ * Builds a fixed-width 32-byte hex string for validation tests.
+ */
 const hex32 = (byte: number) => byte.toString(16).padStart(2, "0").repeat(32);
 
 const outRefFromHash = (txHashHex: string, index: bigint): Buffer =>
@@ -61,6 +64,9 @@ const testAddress = walletFromSeed(
   { network: "Preprod" },
 ).address;
 
+/**
+ * Builds a signer hash fixture for validation tests.
+ */
 const signerHash = (() => {
   const paymentCred = CML.Address.from_bech32(testAddress).payment_cred();
   const signer = paymentCred?.as_pub_key()?.to_hex();

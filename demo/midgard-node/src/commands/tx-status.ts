@@ -1,9 +1,16 @@
+/**
+ * Rejection metadata recorded for a transaction that failed validation.
+ */
 export type TxRejectionDetails = {
   readonly rejectCode: string;
   readonly rejectDetail: string | null;
   readonly createdAtIso: string;
 };
 
+/**
+ * Inputs used to resolve a user-facing transaction status from local node
+ * state.
+ */
 export type ResolveTxStatusInput = {
   readonly txIdHex: string;
   readonly rejection: TxRejectionDetails | null;
@@ -13,6 +20,9 @@ export type ResolveTxStatusInput = {
   readonly localFinalizationPending: boolean;
 };
 
+/**
+ * Canonical transaction-status response exposed by the node.
+ */
 export type ResolvedTxStatus =
   | {
       readonly txId: string;
@@ -33,6 +43,9 @@ export type ResolvedTxStatus =
         | "not_found";
     };
 
+/**
+ * Resolves the highest-priority status that applies to a transaction id.
+ */
 export const resolveTxStatus = (input: ResolveTxStatusInput): ResolvedTxStatus => {
   if (input.rejection !== null) {
     return {

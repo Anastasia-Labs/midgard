@@ -6,12 +6,27 @@ import ora from 'ora-classic';
 import { addWallet, getWallet, listWallets, removeWallet } from '../../../config/wallets.js';
 import type { Action } from '../types.js';
 
-// Validate ed25519 private key format
+/**
+ * Interactive wallet-management actions used by the manager CLI.
+ *
+ * These flows deliberately trade brevity for explicit prompts and confirmation
+ * steps because they mutate local signing material that operators depend on for
+ * transaction submission and testing.
+ */
+
+/**
+ * Minimal shape check for private keys accepted by the wallet config layer.
+ *
+ * This does not prove the key is valid for signing, but it rejects obvious
+ * input mistakes before the secret is persisted.
+ */
 const PRIVATE_KEY_REGEX = /^ed25519_sk[a-zA-Z0-9]+$/;
 
 /**
- * Add Wallet Action
- * Adds a new wallet to the configuration
+ * Interactive action that adds or overwrites a named wallet entry.
+ *
+ * The flow checks for duplicate names first so operators do not accidentally
+ * replace an existing signing key without an explicit confirmation step.
  */
 export const addWalletAction: Action = {
   name: 'Add Wallet',
@@ -77,8 +92,10 @@ export const addWalletAction: Action = {
 };
 
 /**
- * Remove Wallet Action
- * Removes a wallet from the configuration
+ * Interactive action that deletes a wallet entry from the local configuration.
+ *
+ * The default test wallet is intentionally excluded because other local flows
+ * assume it exists as a fallback signing identity.
  */
 export const removeWalletAction: Action = {
   name: 'Remove Wallet',
@@ -155,8 +172,10 @@ export const removeWalletAction: Action = {
 };
 
 /**
- * List Wallets Action
- * Lists all available wallets
+ * Interactive action that renders the currently configured wallet names.
+ *
+ * The output stays intentionally lightweight: operators usually need a quick
+ * presence check here rather than full secret material or address derivation.
  */
 export const listWalletsAction: Action = {
   name: 'List Wallets',
@@ -197,8 +216,10 @@ export const listWalletsAction: Action = {
 };
 
 /**
- * Wallet Details Action
- * Shows details for a specific wallet
+ * Interactive action that displays a masked view of one wallet entry.
+ *
+ * The private key is partially redacted so operators can verify they selected
+ * the expected wallet without dumping the full secret back to the terminal.
  */
 export const walletDetailsAction: Action = {
   name: 'Wallet Details',

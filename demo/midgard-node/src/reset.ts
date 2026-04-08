@@ -37,6 +37,10 @@ import { deleteLedgerMpt, deleteMempoolMpt } from "@/workers/utils/mpt.js";
 import { DatabaseError } from "@/database/utils/common.js";
 import { FileSystemError } from "@/utils.js";
 
+/**
+ * Builds a transaction fragment that collects authenticated state-machine UTxOs
+ * and burns their witness tokens.
+ */
 const collectAndBurnUTxOsTx = (
   lucid: LucidEvolution,
   authValidator: SDK.AuthenticatedValidator,
@@ -63,6 +67,9 @@ const collectAndBurnUTxOsTx = (
     return tx;
   });
 
+/**
+ * Queue item describing one validator-specific batch of UTxOs to reset.
+ */
 type UTxOsQueue = {
   authValidator: SDK.AuthenticatedValidator;
   assetUTxOs: {
@@ -71,6 +78,10 @@ type UTxOsQueue = {
   }[];
 };
 
+/**
+ * Builds one reset batch transaction, recursively filling the batch from the
+ * queued validator UTxOs.
+ */
 const constructBatchTx = (
   lucid: LucidEvolution,
   utxosQueue: UTxOsQueue[],
@@ -129,6 +140,9 @@ const constructBatchTx = (
     });
   });
 
+/**
+ * Builds all reset batch transactions needed to consume a full reset queue.
+ */
 const constructBatchTxs = (
   lucid: LucidEvolution,
   utxosQueue: UTxOsQueue[],
@@ -152,6 +166,9 @@ const constructBatchTxs = (
     return accTransactions;
   });
 
+/**
+ * Completes, signs, and submits one reset transaction.
+ */
 const completeResetTxProgram = (
   lucid: LucidEvolution,
   tx: TxBuilder,
@@ -166,6 +183,9 @@ const completeResetTxProgram = (
           }),
       ),
     );
+    /**
+     * Normalizes transaction-submission failures during reset.
+     */
     const onSubmitFailure = (err: TxSubmitError) =>
       Effect.gen(function* () {
         yield* Effect.logError(`Submit tx error: ${err}`);
@@ -177,6 +197,9 @@ const completeResetTxProgram = (
           }),
         );
       });
+    /**
+     * Normalizes transaction-confirmation failures during reset.
+     */
     const onConfirmFailure = (err: TxConfirmError) =>
       Effect.logError(`Confirm tx error: ${err}`);
     const txHash = yield* handleSignSubmit(lucid, completed).pipe(
@@ -186,6 +209,9 @@ const completeResetTxProgram = (
     return txHash;
   });
 
+/**
+ * Disabled reset-UTxO workflow placeholder.
+ */
 export const resetUTxOs: Effect.Effect<
   void,
   SDK.LucidError | TxSubmitError | TxSignError,
@@ -198,6 +224,9 @@ export const resetUTxOs: Effect.Effect<
   }),
 );
 
+/**
+ * Clears local database state and deletes persisted MPT stores.
+ */
 export const resetDatabases: Effect.Effect<
   void,
   DatabaseError | FileSystemError,
@@ -219,6 +248,10 @@ export const resetDatabases: Effect.Effect<
   { discard: true },
 );
 
+/**
+ * Full reset workflow: mark reset in progress, clear local state, and then
+ * restore process-global runtime variables to their initial values.
+ */
 export const program: Effect.Effect<
   void,
   | SDK.LucidError

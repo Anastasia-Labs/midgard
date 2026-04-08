@@ -3,6 +3,13 @@ import { Database } from "@/services/database.js";
 import { SqlClient, SqlError } from "@effect/sql";
 import * as SDK from "@al-ft/midgard-sdk";
 
+/**
+ * Shared building blocks for the Midgard node's SQL table adapters.
+ *
+ * The rest of the database utility modules stay deliberately thin and reuse
+ * these helpers so they surface a consistent tagged error type and logging
+ * shape no matter which table fails underneath.
+ */
 export const retrieveNumberOfEntries = (
   tableName: string,
 ): Effect.Effect<bigint, DatabaseError, Database> =>
@@ -24,6 +31,10 @@ export const retrieveNumberOfEntries = (
     sqlErrorToDatabaseError(tableName, "Failed to retrieve row count"),
   );
 
+/**
+ * Removes every row from a table while preserving the table definition and
+ * letting PostgreSQL cascade to dependent relations.
+ */
 export const clearTable = (
   tableName: string,
 ): Effect.Effect<void, DatabaseError, Database> =>
@@ -42,6 +53,9 @@ export const clearTable = (
     sqlErrorToDatabaseError(tableName, "Failed at truncating table"),
   );
 
+/**
+ * Midgard-specific wrapper around lower-level SQL failures.
+ */
 export class DatabaseError extends Data.TaggedError("DatabaseError")<
   SDK.GenericErrorFields & { readonly table: string }
 > {}
@@ -50,6 +64,10 @@ type SqlErrorToDatabaseError = <A, R>(
   error: Effect.Effect<A, SqlError.SqlError | DatabaseError, R>,
 ) => Effect.Effect<A, DatabaseError, R>;
 
+/**
+ * Promotes raw `SqlError`s into `DatabaseError`s annotated with the logical
+ * table name, while leaving already-normalized database errors untouched.
+ */
 export const sqlErrorToDatabaseError = (
   tableName: string,
   message: string,

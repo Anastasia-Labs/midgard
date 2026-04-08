@@ -15,6 +15,13 @@ import { MidgardNodeClient } from '../client/node-client.js';
 import { SerializedMidgardTransaction } from '../client/types.js';
 
 /**
+ * One-to-one transaction generator for local test workloads.
+ *
+ * The generator repeatedly self-spends a single wallet so callers can exercise
+ * straightforward transaction submission paths with minimal ledger complexity.
+ */
+
+/**
  * Configuration for generating one-to-one transactions.
  * These transactions simulate simple transfers between addresses.
  */
@@ -32,13 +39,20 @@ export interface OneToOneTransactionConfig {
   };
 }
 
-// Constants for transaction generation
+/**
+ * Number of generated transactions between short pauses that give the runtime a
+ * chance to release native resources.
+ */
 const GC_PAUSE_INTERVAL = 1000; // Number of transactions before GC pause
+
+/**
+ * Minimum lovelace value the generator is willing to place in an output.
+ */
 const MIN_LOVELACE_OUTPUT = 1_000_000n; // Minimum lovelace per output
 
 /**
- * Validates the configuration parameters
- * @throws Error if configuration is invalid
+ * Validates the user-supplied generator configuration before any emulator state
+ * or Lucid instances are created.
  */
 const validateConfig = (config: OneToOneTransactionConfig): void => {
   const { initialUTxO, walletSeedOrPrivateKey } = config;
@@ -60,10 +74,11 @@ const validateConfig = (config: OneToOneTransactionConfig): void => {
 };
 
 /**
- * Initializes the Lucid instance with test configuration
- * @param emulator - Emulator instance
- * @param network - Network configuration
- * @returns Configured Lucid instance
+ * Builds a Lucid instance configured for deterministic local transaction
+ * generation.
+ *
+ * Fees and protocol-cost coefficients are zeroed so the generator can focus on
+ * shape and sequencing rather than realistic fee accounting.
  */
 const initializeLucid = async (emulator: Emulator, network: Network): Promise<LucidEvolution> => {
   return await Lucid(emulator, network, {
@@ -81,6 +96,9 @@ const initializeLucid = async (emulator: Emulator, network: Network): Promise<Lu
 /**
  * Generate simple one-to-one transactions for testing.
  * Each transaction has one input and one output with the same value.
+ *
+ * The produced transactions are serialized in Midgard's expected wire format so
+ * higher-level tools can write them to disk or submit them directly.
  */
 const generateOneToOneTransactions = async (
   config: OneToOneTransactionConfig

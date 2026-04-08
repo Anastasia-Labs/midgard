@@ -9,17 +9,20 @@ import { fileURLToPath } from 'url';
 import { MidgardError } from '../utils/errors.js';
 import { configSchema, defaultConfig, type MidgardConfig } from './schema.js';
 
-// Get the directory path relative to the monorepo
+/**
+ * Monorepo-relative configuration paths for the manager CLI.
+ */
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 const MONOREPO_ROOT = join(__dirname, '../../../../../..');
 const PROJECT_ROOT = join(MONOREPO_ROOT, 'demo/midgard-manager');
 
-// Store all configuration in the project's config directory
 const CONFIG_DIR = join(PROJECT_ROOT, 'config');
 const CONFIG_PATH = join(CONFIG_DIR, 'settings.json');
 
-// Ensure config directory exists
+/**
+ * Ensures the configuration directory exists before any read or write.
+ */
 const ensureConfigDir = Effect.try({
   try: () => {
     if (!existsSync(CONFIG_DIR)) {
@@ -31,7 +34,10 @@ const ensureConfigDir = Effect.try({
   },
 });
 
-// Load configuration
+/**
+ * Loads the CLI configuration from disk, creating the default file when
+ * missing.
+ */
 export const loadConfig = Effect.gen(function* (_) {
   yield* _(ensureConfigDir);
 
@@ -54,7 +60,9 @@ export const loadConfig = Effect.gen(function* (_) {
   );
 });
 
-// Save configuration
+/**
+ * Persists the full CLI configuration to disk.
+ */
 export const saveConfig = (config: MidgardConfig) =>
   Effect.gen(function* (_) {
     yield* _(ensureConfigDir);

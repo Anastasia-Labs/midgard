@@ -1,12 +1,18 @@
+/**
+ * Deposit submission flow for projecting deposit observations into Midgard
+ * state.
+ * This module owns the off-chain deposit transaction builder and reuses the
+ * shared time and ledger-order helpers extracted during cleanup.
+ */
 import { Effect, Data as EffectData } from "effect";
 import * as SDK from "@al-ft/midgard-sdk";
 import {
   CML,
+  Lucid as makeLucid,
   type Assets,
   type CertificateValidator,
   Data as LucidData,
   type LucidEvolution,
-  type Network,
   type RedeemerBuilder,
   type TxBuilder,
   type TxSignBuilder,
@@ -14,20 +20,27 @@ import {
   applyDoubleCborEncoding,
   coreToTxOutput,
   credentialToAddress,
-  fromText,
   getAddressDetails,
   scriptHashToCredential,
-  slotToUnixTime,
   toUnit,
   validatorToScriptHash,
 } from "@lucid-evolution/lucid";
-import { REAL_DEPOSIT_SCRIPT_TITLES } from "@/services/midgard-contracts.js";
+import {
+  parseAdditionalAssetSpec as parseAdditionalAssetSpecShared,
+  parseAdditionalAssetSpecs as parseAdditionalAssetSpecsShared,
+  parseLovelaceAmount,
+} from "@/asset-specs.js";
+import { slotToUnixTimeForLucidOrEmulatorFallback } from "@/lucid-time.js";
 import {
   handleSignSubmit,
   TxConfirmError,
   TxSignError,
   TxSubmitError,
 } from "@/transactions/utils.js";
+import {
+  getRedeemerPointersInContextOrder,
+  getTxInfoRedeemerIndexes,
+} from "@/cml-redeemers.js";
 
 type TxBuilderInternals = {
   txBuilder: {
@@ -46,19 +59,6 @@ type DepositTxProvider = {
   }>;
 };
 
-type ProviderRedeemerTag =
-  | "spend"
-  | "mint"
-  | "publish"
-  | "withdraw"
-  | "vote"
-  | "propose";
-
-type RedeemerPointer = {
-  readonly tag: number;
-  readonly index: bigint;
-};
-
 type DepositDraftLayout = {
   readonly eventOutputIndex: bigint;
   readonly witnessRegistrationRedeemerIndex: bigint;
@@ -71,6 +71,23 @@ export type SubmitDepositConfig = {
   readonly additionalAssets: Readonly<Assets>;
 };
 
+export type BuildDepositRequest = SubmitDepositConfig & {
+  readonly fundingAddress: string;
+  readonly fundingUtxos: readonly UTxO[];
+};
+
+export type BuiltUnsignedDepositTx = {
+  readonly unsignedTxCbor: string;
+};
+
+type DepositBuildMetadata = {
+  readonly depositAddress: string;
+  readonly depositAuthUnit: string;
+  readonly nonceInput: Pick<UTxO, "txHash" | "outputIndex">;
+  readonly validTo: number;
+  readonly inclusionTime: number;
+};
+
 export class SubmitDepositError extends EffectData.TaggedError(
   "SubmitDepositError",
 )<{
@@ -80,13 +97,15 @@ export class SubmitDepositError extends EffectData.TaggedError(
 
 const DEPOSIT_TX_TTL_MS = 60_000;
 const HUB_REFERENCE_INPUT_INDEX = 0n;
-const LOVELACE_INTEGER_PATTERN = /^(?:0|[1-9]\d*)$/;
 const HEX_PATTERN = /^[0-9a-fA-F]*$/;
-const POLICY_ID_PATTERN = /^[0-9a-fA-F]{56}$/;
-const DUMMY_REDEEMER_EX_UNITS = {
-  mem: 1_000_000,
-  steps: 1_000_000,
-} as const;
+const TX_HASH_PATTERN = /^[0-9a-fA-F]{64}$/;
+const DATUM_HASH_PATTERN = /^[0-9a-fA-F]{64}$/;
+const ASSET_UNIT_PATTERN = /^[0-9a-fA-F]{56}(?:[0-9a-fA-F]{0,64})$/;
+const MAX_DEPOSIT_BUILD_FUNDING_UTXOS = 128;
+const MAX_DEPOSIT_BUILD_UTXO_ASSET_ENTRIES = 64;
+const MAX_DEPOSIT_BUILD_ADDITIONAL_ASSETS = 64;
+const DEPOSIT_EVENT_OUTPUT_INDEX = 0n;
+const WITNESS_REGISTRATION_REDEEMER_TX_INFO_INDEX = 1n;
 const WITNESS_SCRIPT_POSTFIX = "0001";
 // Mirror the on-chain `witness_script_prefix` from
 // `onchain/aiken/lib/midgard/user-events/witness.ak`. This witness uses the
@@ -165,7 +184,9 @@ const DepositDatumWithWitnessSchema = LucidData.Object({
   witness: LucidData.Bytes(),
 });
 
-const outputReferenceToPlutusDataCbor = (utxo: Pick<UTxO, "txHash" | "outputIndex">): string =>
+const outputReferenceToPlutusDataCbor = (
+  utxo: Pick<UTxO, "txHash" | "outputIndex">,
+): string =>
   LucidData.to(
     {
       transactionId: utxo.txHash,
@@ -173,149 +194,6 @@ const outputReferenceToPlutusDataCbor = (utxo: Pick<UTxO, "txHash" | "outputInde
     },
     DepositOutputReferenceSchema,
   );
-
-const toProviderRedeemerTag = (tag: number): ProviderRedeemerTag => {
-  switch (tag) {
-    case CML.RedeemerTag.Spend:
-      return "spend";
-    case CML.RedeemerTag.Mint:
-      return "mint";
-    case CML.RedeemerTag.Cert:
-      return "publish";
-    case CML.RedeemerTag.Reward:
-      return "withdraw";
-    case CML.RedeemerTag.Voting:
-      return "vote";
-    case CML.RedeemerTag.Proposing:
-      return "propose";
-    default:
-      throw new Error(`Unsupported redeemer tag: ${tag}`);
-  }
-};
-
-// Aiken exposes `self.redeemers` in ScriptPurpose order:
-// Spend < Mint < Publish < Withdraw < Vote < Propose.
-const txInfoRedeemerPurposeRank = (tag: number): number => {
-  switch (tag) {
-    case CML.RedeemerTag.Spend:
-      return 0;
-    case CML.RedeemerTag.Mint:
-      return 1;
-    case CML.RedeemerTag.Cert:
-      return 2;
-    case CML.RedeemerTag.Reward:
-      return 3;
-    case CML.RedeemerTag.Voting:
-      return 4;
-    case CML.RedeemerTag.Proposing:
-      return 5;
-    default:
-      return Number.MAX_SAFE_INTEGER;
-  }
-};
-
-const getRedeemerPointersInContextOrder = (
-  tx: CML.Transaction,
-): readonly RedeemerPointer[] => {
-  const redeemers = tx.witness_set().redeemers();
-  if (redeemers === undefined) {
-    return [];
-  }
-
-  const legacy = redeemers.as_arr_legacy_redeemer();
-  if (legacy !== undefined) {
-    const pointers: RedeemerPointer[] = [];
-    for (let i = 0; i < legacy.len(); i += 1) {
-      const redeemer = legacy.get(i);
-      pointers.push({
-        tag: redeemer.tag(),
-        index: redeemer.index(),
-      });
-    }
-    return pointers;
-  }
-
-  const map = redeemers.as_map_redeemer_key_to_redeemer_val();
-  if (map === undefined) {
-    return [];
-  }
-  const pointers: RedeemerPointer[] = [];
-  const keys = map.keys();
-  for (let i = 0; i < keys.len(); i += 1) {
-    const key = keys.get(i);
-    pointers.push({
-      tag: key.tag(),
-      index: key.index(),
-    });
-  }
-  return pointers;
-};
-
-const getTxInfoRedeemerIndexes = (
-  pointers: readonly RedeemerPointer[],
-): readonly number[] => {
-  const inContextOrder = pointers.map((pointer, contextIndex) => ({
-    pointer,
-    contextIndex,
-  }));
-  const inTxInfoOrder = [...inContextOrder].sort((a, b) => {
-    const rankA = txInfoRedeemerPurposeRank(a.pointer.tag);
-    const rankB = txInfoRedeemerPurposeRank(b.pointer.tag);
-    if (rankA !== rankB) {
-      return rankA - rankB;
-    }
-    if (a.pointer.index !== b.pointer.index) {
-      return a.pointer.index < b.pointer.index ? -1 : 1;
-    }
-    return a.contextIndex - b.contextIndex;
-  });
-
-  const txInfoIndexes = Array<number>(pointers.length).fill(-1);
-  for (
-    let txInfoIndex = 0;
-    txInfoIndex < inTxInfoOrder.length;
-    txInfoIndex += 1
-  ) {
-    txInfoIndexes[inTxInfoOrder[txInfoIndex].contextIndex] = txInfoIndex;
-  }
-  return txInfoIndexes;
-};
-
-const withStubbedProviderEvaluation = async <A>(
-  lucid: LucidEvolution,
-  run: () => Promise<A>,
-): Promise<A> => {
-  const provider = lucid.config().provider as {
-    evaluateTx?: (
-      tx: string,
-      additionalUTxOs?: readonly UTxO[],
-    ) => Promise<
-      readonly {
-        redeemer_tag: ProviderRedeemerTag;
-        redeemer_index: number;
-        ex_units: { mem: number; steps: number };
-      }[]
-    >;
-  };
-  if (typeof provider.evaluateTx !== "function") {
-    return run();
-  }
-
-  const originalEvaluateTx = provider.evaluateTx.bind(provider);
-  provider.evaluateTx = async (txCbor) => {
-    const tx = CML.Transaction.from_cbor_hex(txCbor);
-    return getRedeemerPointersInContextOrder(tx).map((pointer) => ({
-      redeemer_tag: toProviderRedeemerTag(pointer.tag),
-      redeemer_index: Number(pointer.index),
-      ex_units: DUMMY_REDEEMER_EX_UNITS,
-    }));
-  };
-  try {
-    return await run();
-  } finally {
-    provider.evaluateTx = originalEvaluateTx;
-  }
-};
 
 const deriveDepositDraftLayout = ({
   tx,
@@ -353,7 +231,10 @@ const deriveDepositDraftLayout = ({
   }
   const txInfoIndexes = getTxInfoRedeemerIndexes(pointers);
   const witnessRegistrationRedeemerIndex = txInfoIndexes[certContextIndex];
-  if (witnessRegistrationRedeemerIndex === undefined || witnessRegistrationRedeemerIndex < 0) {
+  if (
+    witnessRegistrationRedeemerIndex === undefined ||
+    witnessRegistrationRedeemerIndex < 0
+  ) {
     throw new Error(
       "Failed to derive tx-info redeemer index for witness registration",
     );
@@ -377,34 +258,14 @@ const buildWitnessCertificateValidator = (
     ),
   });
 
-const slotToUnixTimeForLucid = (
-  lucid: LucidEvolution,
-  slot: number,
-): number => {
-  const network = lucid.config().network;
-  if (network === "Custom") {
-    const provider = lucid.config().provider as {
-      time?: number;
-      slot?: number;
-    };
-    if (typeof provider.time === "number" && typeof provider.slot === "number") {
-      const slotLength = 1000;
-      const zeroTime = provider.time - provider.slot * slotLength;
-      return zeroTime + slot * slotLength;
-    }
-    return slot * 1000;
-  }
-  return slotToUnixTime(network as Exclude<Network, "Custom">, slot);
-};
-
 const resolveDepositValidTo = (lucid: LucidEvolution): number => {
   const targetUnixTime = Date.now() + DEPOSIT_TX_TTL_MS;
   const slot = lucid.unixTimeToSlot(targetUnixTime);
-  const alignedUnixTime = slotToUnixTimeForLucid(lucid, slot);
+  const alignedUnixTime = slotToUnixTimeForLucidOrEmulatorFallback(lucid, slot);
   if (alignedUnixTime > targetUnixTime) {
     return alignedUnixTime;
   }
-  return slotToUnixTimeForLucid(lucid, slot + 1);
+  return slotToUnixTimeForLucidOrEmulatorFallback(lucid, slot + 1);
 };
 
 const fetchStakeCredentialDeposit = (
@@ -421,14 +282,17 @@ const fetchStakeCredentialDeposit = (
 
       const protocolParameters = await provider.getProtocolParameters();
       if (typeof protocolParameters.keyDeposit !== "bigint") {
-        throw new Error("Provider protocol parameters did not include keyDeposit");
+        throw new Error(
+          "Provider protocol parameters did not include keyDeposit",
+        );
       }
 
       return protocolParameters.keyDeposit;
     },
     catch: (cause) =>
       new SubmitDepositError({
-        message: "Failed to resolve stake credential deposit for deposit transaction",
+        message:
+          "Failed to resolve stake credential deposit for deposit transaction",
         cause,
       }),
   });
@@ -477,13 +341,20 @@ const canonicalUtxoOrder = (a: UTxO, b: UTxO): number => {
 const fetchHubOracleReferenceProgram = (
   lucid: LucidEvolution,
   contracts: SDK.MidgardValidators,
-): Effect.Effect<UTxO, SDK.HubOracleError | SDK.LucidError | SDK.Bech32DeserializationError | SubmitDepositError> =>
+): Effect.Effect<
+  UTxO,
+  | SDK.HubOracleError
+  | SDK.LucidError
+  | SDK.Bech32DeserializationError
+  | SubmitDepositError
+> =>
   Effect.gen(function* () {
     const network = lucid.config().network;
     if (network === undefined) {
       return yield* Effect.fail(
         new SubmitDepositError({
-          message: "Cardano network not found while preparing deposit transaction",
+          message:
+            "Cardano network not found while preparing deposit transaction",
           cause: "Lucid network configuration is undefined",
         }),
       );
@@ -520,12 +391,25 @@ const fetchHubOracleReferenceProgram = (
     return actual.utxo;
   });
 
-export const buildUnsignedDepositTxProgram = (
+const serializeBuiltUnsignedDepositTx = ({
+  tx,
+}: {
+  readonly tx: TxSignBuilder;
+}): BuiltUnsignedDepositTx => {
+  return {
+    unsignedTxCbor: tx.toCBOR(),
+  };
+};
+
+const buildUnsignedDepositTxWithMetadataProgram = (
   lucid: LucidEvolution,
   contracts: SDK.MidgardValidators,
   config: SubmitDepositConfig,
 ): Effect.Effect<
-  TxSignBuilder,
+  {
+    readonly tx: TxSignBuilder;
+    readonly metadata: DepositBuildMetadata;
+  },
   | SDK.HubOracleError
   | SDK.LucidError
   | SDK.Bech32DeserializationError
@@ -537,7 +421,8 @@ export const buildUnsignedDepositTxProgram = (
     if (network === undefined) {
       return yield* Effect.fail(
         new SubmitDepositError({
-          message: "Cardano network not found while preparing deposit transaction",
+          message:
+            "Cardano network not found while preparing deposit transaction",
           cause: "Lucid network configuration is undefined",
         }),
       );
@@ -581,7 +466,8 @@ export const buildUnsignedDepositTxProgram = (
       );
     }
 
-    const witnessScript = yield* buildWitnessCertificateValidator(nonceAssetName);
+    const witnessScript =
+      yield* buildWitnessCertificateValidator(nonceAssetName);
     const witnessScriptHash = validatorToScriptHash(witnessScript);
     const stakeCredentialDeposit = yield* fetchStakeCredentialDeposit(lucid);
     const validTo = resolveDepositValidTo(lucid);
@@ -661,13 +547,22 @@ export const buildUnsignedDepositTxProgram = (
       [depositUnit]: 1n,
     };
 
-    const mkDepositTx = (layout: DepositDraftLayout) =>
+    /**
+     * Builds the deposit submission transaction.
+     */
+    const mkDepositTx = (
+      builderLucid: LucidEvolution,
+      layout: DepositDraftLayout,
+    ) =>
       addScriptStakeRegistrationCertificate(
-        lucid
+        builderLucid
           .newTx()
           .collectFrom([nonceInput])
           .readFrom([hubOracleRefInput])
-          .mintAssets({ [depositUnit]: 1n }, mkDepositMintRedeemerBuilder(layout))
+          .mintAssets(
+            { [depositUnit]: 1n },
+            mkDepositMintRedeemerBuilder(layout),
+          )
           .pay.ToAddressWithData(
             contracts.deposit.spendingScriptAddress,
             {
@@ -683,34 +578,126 @@ export const buildUnsignedDepositTxProgram = (
         stakeCredentialDeposit,
       );
 
-    const initialLayout: DepositDraftLayout = {
-      eventOutputIndex: 0n,
-      witnessRegistrationRedeemerIndex: 0n,
+    const assumedLayout: DepositDraftLayout = {
+      eventOutputIndex: DEPOSIT_EVENT_OUTPUT_INDEX,
+      witnessRegistrationRedeemerIndex:
+        WITNESS_REGISTRATION_REDEEMER_TX_INFO_INDEX,
     };
-    const draftUnsigned = yield* Effect.tryPromise({
-      try: () =>
-        withStubbedProviderEvaluation(lucid, () =>
-          mkDepositTx(initialLayout).complete({ localUPLCEval: false }),
-        ),
-      catch: (cause) =>
-        new SubmitDepositError({
-          message: "Failed to build deposit draft transaction",
-          cause,
-        }),
-    });
-    const resolvedLayout = deriveDepositDraftLayout({
-      tx: draftUnsigned.toTransaction(),
-      depositAddress: contracts.deposit.spendingScriptAddress,
-      depositUnit,
-    });
 
-    return yield* Effect.tryPromise({
-      try: () => mkDepositTx(resolvedLayout).complete({ localUPLCEval: true }),
+    const tx = yield* Effect.tryPromise({
+      try: () =>
+        mkDepositTx(lucid, assumedLayout).complete({ localUPLCEval: true }),
       catch: (cause) =>
         new SubmitDepositError({
           message: "Failed to build deposit transaction",
           cause,
         }),
+    });
+
+    const resolvedLayout = yield* Effect.try({
+      try: () =>
+        deriveDepositDraftLayout({
+          tx: tx.toTransaction(),
+          depositAddress: contracts.deposit.spendingScriptAddress,
+          depositUnit,
+        }),
+      catch: (cause) =>
+        new SubmitDepositError({
+          message: "Failed to verify deposit transaction layout",
+          cause,
+        }),
+    });
+
+    if (
+      resolvedLayout.eventOutputIndex !== assumedLayout.eventOutputIndex ||
+      resolvedLayout.witnessRegistrationRedeemerIndex !==
+        assumedLayout.witnessRegistrationRedeemerIndex
+    ) {
+      return yield* Effect.fail(
+        new SubmitDepositError({
+          message:
+            "Built deposit transaction layout drifted from expected form",
+          cause: {
+            assumedLayout,
+            resolvedLayout,
+          },
+        }),
+      );
+    }
+
+    return {
+      tx,
+      metadata: {
+        depositAddress: contracts.deposit.spendingScriptAddress,
+        depositAuthUnit: depositUnit,
+        nonceInput,
+        validTo,
+        inclusionTime,
+      },
+    };
+  });
+
+export const buildUnsignedDepositTxProgram = (
+  lucid: LucidEvolution,
+  contracts: SDK.MidgardValidators,
+  config: SubmitDepositConfig,
+): Effect.Effect<
+  TxSignBuilder,
+  | SDK.HubOracleError
+  | SDK.LucidError
+  | SDK.Bech32DeserializationError
+  | SDK.HashingError
+  | SubmitDepositError
+> =>
+  buildUnsignedDepositTxWithMetadataProgram(lucid, contracts, config).pipe(
+    Effect.map(({ tx }) => tx),
+  );
+
+export const buildUnsignedDepositTxFromFundingContextProgram = (
+  lucid: LucidEvolution,
+  contracts: SDK.MidgardValidators,
+  request: BuildDepositRequest,
+): Effect.Effect<
+  BuiltUnsignedDepositTx,
+  | SDK.HubOracleError
+  | SDK.LucidError
+  | SDK.Bech32DeserializationError
+  | SDK.HashingError
+  | SubmitDepositError
+> =>
+  Effect.gen(function* () {
+    const network = lucid.config().network;
+    if (network === undefined) {
+      return yield* Effect.fail(
+        new SubmitDepositError({
+          message:
+            "Cardano network not found while preparing deposit transaction",
+          cause: "Lucid network configuration is undefined",
+        }),
+      );
+    }
+
+    const externalLucid = yield* Effect.tryPromise({
+      try: () => makeLucid(lucid.config().provider, network),
+      catch: (cause) =>
+        new SDK.LucidError({
+          message: "Failed to initialize external-wallet deposit builder",
+          cause,
+        }),
+    });
+    yield* Effect.sync(() =>
+      externalLucid.selectWallet.fromAddress(request.fundingAddress, [
+        ...request.fundingUtxos,
+      ]),
+    );
+
+    const { tx } = yield* buildUnsignedDepositTxWithMetadataProgram(
+      externalLucid,
+      contracts,
+      request,
+    );
+    return serializeBuiltUnsignedDepositTx({
+      tx,
     });
   });
 
@@ -735,26 +722,18 @@ export const submitDepositProgram = (
   });
 
 export const parseLovelace = (value: string): bigint => {
-  const normalized = value.trim();
-  if (!LOVELACE_INTEGER_PATTERN.test(normalized)) {
-    throw new Error(
-      `Invalid lovelace amount "${value}". Use a positive integer number of lovelace.`,
-    );
-  }
-
-  const lovelace = BigInt(normalized);
-
-  if (lovelace <= 0n) {
-    throw new Error("Deposit lovelace amount must be greater than zero.");
-  }
-
-  return lovelace;
+  return parseLovelaceAmount(
+    value,
+    "Deposit lovelace amount must be greater than zero.",
+  );
 };
 
 const normalizeHex = (value: string, field: string): string => {
   const normalized = value.trim();
   if (!HEX_PATTERN.test(normalized) || normalized.length % 2 !== 0) {
-    throw new Error(`Invalid ${field}: expected even-length hex, got "${value}".`);
+    throw new Error(
+      `Invalid ${field}: expected even-length hex, got "${value}".`,
+    );
   }
   return normalized.toLowerCase();
 };
@@ -764,71 +743,318 @@ export const parseAdditionalAssetSpec = (
 ): {
   readonly unit: string;
   readonly amount: bigint;
-} => {
-  const trimmed = spec.trim();
-  const colonIndex = trimmed.lastIndexOf(":");
-  if (colonIndex <= 0 || colonIndex === trimmed.length - 1) {
-    throw new Error(
-      `Invalid asset spec "${spec}". Expected policyId.assetName:amount.`,
-    );
-  }
-
-  const assetId = trimmed.slice(0, colonIndex);
-  const amountString = trimmed.slice(colonIndex + 1).trim();
-  const dotIndex = assetId.indexOf(".");
-  if (dotIndex <= 0) {
-    throw new Error(
-      `Invalid asset spec "${spec}". Expected policyId.assetName:amount.`,
-    );
-  }
-
-  const policyId = assetId.slice(0, dotIndex).trim();
-  const assetName = assetId.slice(dotIndex + 1).trim();
-  if (!POLICY_ID_PATTERN.test(policyId)) {
-    throw new Error(
-      `Invalid policy ID in asset spec "${spec}". Expected 56 hex characters.`,
-    );
-  }
-
-  const normalizedAssetName = normalizeHex(assetName, "asset name");
-  if (normalizedAssetName.length > 64) {
-    throw new Error(
-      `Invalid asset name in asset spec "${spec}". Cardano asset names must be at most 32 bytes.`,
-    );
-  }
-
-  if (!/^\d+$/.test(amountString)) {
-    throw new Error(
-      `Invalid asset amount in "${spec}". Expected a positive integer quantity.`,
-    );
-  }
-  const amount = BigInt(amountString);
-  if (amount <= 0n) {
-    throw new Error(
-      `Invalid asset amount in "${spec}". Quantity must be greater than zero.`,
-    );
-  }
-
-  return {
-    unit: `${policyId.toLowerCase()}${normalizedAssetName}`,
-    amount,
-  };
-};
+} => parseAdditionalAssetSpecShared(spec);
 
 export const parseAdditionalAssetSpecs = (
   specs: readonly string[],
-): Readonly<Assets> => {
-  const assets: Assets = {};
-  for (const spec of specs) {
-    const { unit, amount } = parseAdditionalAssetSpec(spec);
-    if (assets[unit] !== undefined) {
-      throw new Error(
-        `Duplicate additional asset "${unit}" provided. Combine quantities before submitting the command.`,
-      );
+): Readonly<Assets> => parseAdditionalAssetSpecsShared(specs);
+
+type UnknownRecord = Record<string, unknown>;
+
+const asObject = (value: unknown, field: string): UnknownRecord => {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    throw new Error(`${field} must be an object.`);
+  }
+  return value as UnknownRecord;
+};
+
+const parseRequiredString = (value: unknown, field: string): string => {
+  if (typeof value !== "string") {
+    throw new Error(`${field} must be a string.`);
+  }
+  const normalized = value.trim();
+  if (normalized.length === 0) {
+    throw new Error(`${field} must not be empty.`);
+  }
+  return normalized;
+};
+
+const parseOptionalString = (
+  value: unknown,
+  field: string,
+): string | null | undefined => {
+  if (value === undefined || value === null) {
+    return value;
+  }
+  if (typeof value !== "string") {
+    throw new Error(`${field} must be a string when provided.`);
+  }
+  const normalized = value.trim();
+  return normalized.length === 0 ? null : normalized;
+};
+
+const parsePositiveIntegerString = (value: string, field: string): bigint => {
+  const normalized = value.trim();
+  if (!/^(?:0|[1-9]\d*)$/.test(normalized)) {
+    throw new Error(`${field} must be a positive integer string.`);
+  }
+  const amount = BigInt(normalized);
+  if (amount <= 0n) {
+    throw new Error(`${field} must be greater than zero.`);
+  }
+  return amount;
+};
+
+const parseNonNegativeInteger = (value: unknown, field: string): number => {
+  if (typeof value !== "number" || !Number.isSafeInteger(value) || value < 0) {
+    throw new Error(`${field} must be a non-negative integer.`);
+  }
+  return value;
+};
+
+const expectedNetworkIdForAddressValidation = (
+  network: string | undefined,
+): number | undefined => {
+  if (network === undefined || network === "Custom") {
+    return undefined;
+  }
+  return network === "Mainnet" ? 1 : 0;
+};
+
+const parseAddressString = ({
+  value,
+  field,
+  expectedNetwork,
+}: {
+  readonly value: unknown;
+  readonly field: string;
+  readonly expectedNetwork?: string;
+}): string => {
+  const normalized = parseRequiredString(value, field);
+  let details: ReturnType<typeof getAddressDetails>;
+  try {
+    details = getAddressDetails(normalized);
+  } catch (cause) {
+    throw new Error(`Invalid ${field} "${normalized}": ${String(cause)}`);
+  }
+  const expectedNetworkId =
+    expectedNetworkIdForAddressValidation(expectedNetwork);
+  if (
+    expectedNetworkId !== undefined &&
+    details.networkId !== expectedNetworkId
+  ) {
+    throw new Error(
+      `${field} must target the configured ${expectedNetwork} network.`,
+    );
+  }
+  return details.address.bech32;
+};
+
+const normalizeAssetUnit = (value: string, field: string): string => {
+  const normalized = value.trim();
+  if (!ASSET_UNIT_PATTERN.test(normalized)) {
+    throw new Error(
+      `${field} must be a Cardano unit string (56 hex policy id plus optional asset-name hex).`,
+    );
+  }
+  return normalized.toLowerCase();
+};
+
+const normalizeOptionalHexField = (
+  value: unknown,
+  field: string,
+  pattern?: RegExp,
+): string | null | undefined => {
+  if (value === undefined || value === null) {
+    return value;
+  }
+  if (typeof value !== "string") {
+    throw new Error(`${field} must be a hex string when provided.`);
+  }
+  const normalized = value.trim();
+  if (normalized.length === 0) {
+    return null;
+  }
+  if (pattern !== undefined) {
+    if (!pattern.test(normalized)) {
+      throw new Error(`Invalid ${field}: expected hex, got "${value}".`);
     }
-    assets[unit] = amount;
+    return normalized.toLowerCase();
+  }
+  return normalizeHex(normalized, field);
+};
+
+const parseFundingAssets = (value: unknown, field: string): Assets => {
+  const rawAssets = asObject(value, field);
+  const entries = Object.entries(rawAssets);
+  if (entries.length === 0) {
+    throw new Error(`${field} must include at least lovelace.`);
+  }
+  if (entries.length > MAX_DEPOSIT_BUILD_UTXO_ASSET_ENTRIES) {
+    throw new Error(
+      `${field} exceeds the maximum asset entry count (${entries.length} > ${MAX_DEPOSIT_BUILD_UTXO_ASSET_ENTRIES}).`,
+    );
+  }
+
+  const assets: Assets = {};
+  for (const [unitKey, amountValue] of entries) {
+    const unit =
+      unitKey === "lovelace"
+        ? "lovelace"
+        : normalizeAssetUnit(unitKey, `${field}.${unitKey}`);
+    if (assets[unit] !== undefined) {
+      throw new Error(`Duplicate asset unit "${unit}" in ${field}.`);
+    }
+    assets[unit] = parsePositiveIntegerString(
+      parseRequiredString(amountValue, `${field}.${unit}`),
+      `${field}.${unit}`,
+    );
+  }
+  if (assets.lovelace === undefined) {
+    throw new Error(`${field} must include lovelace.`);
   }
   return assets;
+};
+
+const parseAdditionalAssetsFromRequest = (value: unknown): Readonly<Assets> => {
+  if (value === undefined || value === null) {
+    return {};
+  }
+  if (!Array.isArray(value)) {
+    throw new Error("additionalAssets must be an array when provided.");
+  }
+  if (value.length > MAX_DEPOSIT_BUILD_ADDITIONAL_ASSETS) {
+    throw new Error(
+      `additionalAssets exceeds the maximum entry count (${value.length} > ${MAX_DEPOSIT_BUILD_ADDITIONAL_ASSETS}).`,
+    );
+  }
+
+  const assets: Assets = {};
+  for (const [index, entry] of value.entries()) {
+    const raw = asObject(entry, `additionalAssets[${index.toString()}]`);
+    const unit = normalizeAssetUnit(
+      parseRequiredString(
+        raw.unit,
+        `additionalAssets[${index.toString()}].unit`,
+      ),
+      `additionalAssets[${index.toString()}].unit`,
+    );
+    if (assets[unit] !== undefined) {
+      throw new Error(`Duplicate additional asset "${unit}" provided.`);
+    }
+    assets[unit] = parsePositiveIntegerString(
+      parseRequiredString(
+        raw.amount,
+        `additionalAssets[${index.toString()}].amount`,
+      ),
+      `additionalAssets[${index.toString()}].amount`,
+    );
+  }
+  return assets;
+};
+
+const parseFundingUtxos = ({
+  value,
+  fundingAddress,
+  expectedNetwork,
+}: {
+  readonly value: unknown;
+  readonly fundingAddress: string;
+  readonly expectedNetwork?: string;
+}): readonly UTxO[] => {
+  if (!Array.isArray(value)) {
+    throw new Error("fundingUtxos must be an array.");
+  }
+  if (value.length === 0) {
+    throw new Error("fundingUtxos must not be empty.");
+  }
+  if (value.length > MAX_DEPOSIT_BUILD_FUNDING_UTXOS) {
+    throw new Error(
+      `fundingUtxos exceeds the maximum count (${value.length} > ${MAX_DEPOSIT_BUILD_FUNDING_UTXOS}).`,
+    );
+  }
+
+  const seenOutRefs = new Set<string>();
+  return value.map((entry, index) => {
+    const raw = asObject(entry, `fundingUtxos[${index.toString()}]`);
+    const txHash = parseRequiredString(
+      raw.txHash,
+      `fundingUtxos[${index.toString()}].txHash`,
+    ).toLowerCase();
+    if (!TX_HASH_PATTERN.test(txHash)) {
+      throw new Error(
+        `fundingUtxos[${index.toString()}].txHash must be a 32-byte transaction hash.`,
+      );
+    }
+    const outputIndex = parseNonNegativeInteger(
+      raw.outputIndex,
+      `fundingUtxos[${index.toString()}].outputIndex`,
+    );
+    const outRefKey = `${txHash}#${outputIndex.toString()}`;
+    if (seenOutRefs.has(outRefKey)) {
+      throw new Error(`Duplicate funding UTxO "${outRefKey}" provided.`);
+    }
+    seenOutRefs.add(outRefKey);
+
+    const utxoAddress = parseAddressString({
+      value: raw.address,
+      field: `fundingUtxos[${index.toString()}].address`,
+      expectedNetwork,
+    });
+    if (utxoAddress !== fundingAddress) {
+      throw new Error(
+        `fundingUtxos[${index.toString()}].address must match fundingAddress.`,
+      );
+    }
+
+    const datumHash = normalizeOptionalHexField(
+      raw.datumHash,
+      `fundingUtxos[${index.toString()}].datumHash`,
+      DATUM_HASH_PATTERN,
+    );
+    const datum = normalizeOptionalHexField(
+      raw.datum,
+      `fundingUtxos[${index.toString()}].datum`,
+    );
+    const scriptRef = normalizeOptionalHexField(
+      raw.scriptRef,
+      `fundingUtxos[${index.toString()}].scriptRef`,
+    );
+
+    return {
+      txHash,
+      outputIndex,
+      address: utxoAddress,
+      assets: parseFundingAssets(
+        raw.assets,
+        `fundingUtxos[${index.toString()}].assets`,
+      ),
+      datumHash: datumHash ?? undefined,
+      datum: datum ?? undefined,
+      scriptRef: scriptRef ?? undefined,
+    };
+  });
+};
+
+const buildSubmitDepositConfig = ({
+  l2Address,
+  l2Datum,
+  lovelace,
+  additionalAssets,
+  expectedNetwork,
+}: {
+  readonly l2Address: string;
+  readonly l2Datum?: string | null;
+  readonly lovelace: string;
+  readonly additionalAssets: Readonly<Assets>;
+  readonly expectedNetwork?: string;
+}): SubmitDepositConfig => {
+  const normalizedL2Address = parseAddressString({
+    value: l2Address,
+    field: "l2Address",
+    expectedNetwork,
+  });
+  const normalizedDatum =
+    l2Datum === undefined || l2Datum === null || l2Datum.trim().length === 0
+      ? null
+      : normalizeHex(l2Datum, "L2 datum");
+
+  return {
+    l2Address: normalizedL2Address,
+    l2Datum: normalizedDatum,
+    lovelace: parseLovelace(lovelace),
+    additionalAssets,
+  };
 };
 
 export const parseSubmitDepositConfig = ({
@@ -841,28 +1067,41 @@ export const parseSubmitDepositConfig = ({
   readonly l2Datum?: string;
   readonly lovelace: string;
   readonly assetSpecs: readonly string[];
-}): SubmitDepositConfig => {
-  const normalizedL2Address = l2Address.trim();
-  if (normalizedL2Address.length === 0) {
-    throw new Error("L2 address must not be empty.");
-  }
-  try {
-    getAddressDetails(normalizedL2Address);
-  } catch (cause) {
-    throw new Error(
-      `Invalid L2 address "${normalizedL2Address}": ${String(cause)}`,
-    );
-  }
+}): SubmitDepositConfig =>
+  buildSubmitDepositConfig({
+    l2Address,
+    l2Datum,
+    lovelace,
+    additionalAssets: parseAdditionalAssetSpecs(assetSpecs),
+  });
 
-  const normalizedDatum =
-    l2Datum === undefined || l2Datum.trim().length === 0
-      ? null
-      : normalizeHex(l2Datum, "L2 datum");
+export const parseBuildDepositRequest = (
+  payload: unknown,
+  options?: {
+    readonly expectedNetwork?: string;
+  },
+): BuildDepositRequest => {
+  const body = asObject(payload, "Deposit build request");
+  const fundingAddress = parseAddressString({
+    value: body.fundingAddress,
+    field: "fundingAddress",
+    expectedNetwork: options?.expectedNetwork,
+  });
+  const fundingUtxos = parseFundingUtxos({
+    value: body.fundingUtxos,
+    fundingAddress,
+    expectedNetwork: options?.expectedNetwork,
+  });
 
   return {
-    l2Address: normalizedL2Address,
-    l2Datum: normalizedDatum,
-    lovelace: parseLovelace(lovelace),
-    additionalAssets: parseAdditionalAssetSpecs(assetSpecs),
+    ...buildSubmitDepositConfig({
+      l2Address: parseRequiredString(body.l2Address, "l2Address"),
+      l2Datum: parseOptionalString(body.l2Datum, "l2Datum"),
+      lovelace: parseRequiredString(body.lovelace, "lovelace"),
+      additionalAssets: parseAdditionalAssetsFromRequest(body.additionalAssets),
+      expectedNetwork: options?.expectedNetwork,
+    }),
+    fundingAddress,
+    fundingUtxos,
   };
 };

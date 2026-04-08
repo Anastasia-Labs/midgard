@@ -6,19 +6,20 @@ import ora from 'ora-classic';
 import { dirname, join } from 'path';
 import { fileURLToPath } from 'url';
 
-// Get the directory path relative to the monorepo
+/**
+ * Monorepo-relative paths for the CLI's persisted node configuration.
+ */
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 const MONOREPO_ROOT = join(__dirname, '../../../../../..');
 const PROJECT_ROOT = join(MONOREPO_ROOT, 'demo/midgard-manager');
 
-// Store node configuration in the project's config directory
 const CONFIG_DIR = join(PROJECT_ROOT, 'config');
 const NODE_CONFIG_PATH = join(CONFIG_DIR, 'node.json');
 
 /**
- * Check the status of the Midgard node
- * Usage: midgard-manager node-status
+ * CLI command that probes the configured Midgard node and prints a status
+ * summary.
  */
 export const nodeStatusCommand = Command.make(
   'node-status',
@@ -97,8 +98,8 @@ export const nodeStatusCommand = Command.make(
 ).pipe(Command.withDescription('Check the status of the Midgard node'));
 
 /**
- * Command to configure node settings
- * Usage: midgard-manager configure-node
+ * CLI command that writes the node endpoint configuration, optionally through
+ * an interactive prompt flow.
  */
 export const configureNodeCommand = Command.make(
   'configure-node',

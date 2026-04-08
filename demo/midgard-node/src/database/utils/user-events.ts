@@ -6,6 +6,12 @@ import {
   DatabaseError,
 } from "@/database/utils/common.js";
 
+/**
+ * Table adapter for time-indexed user events such as deposits and withdrawals.
+ *
+ * Event ids stay unique, while the inclusion timestamp lets callers query the
+ * exact event slice relevant to a block or settlement window.
+ */
 export enum Columns {
   ID = "event_id",
   INFO = "event_info",
@@ -18,6 +24,9 @@ export type Entry = {
   [Columns.INCLUSION_TIME]: Date;
 };
 
+/**
+ * Creates the user-event table and its inclusion-time index.
+ */
 export const createTable = (
   tableName: string,
 ): Effect.Effect<void, DatabaseError, Database> =>
@@ -41,6 +50,9 @@ export const createTable = (
     sqlErrorToDatabaseError(tableName, "Failed to create the table"),
   );
 
+/**
+ * Inserts one user event and ignores duplicate event ids.
+ */
 export const insertEntry = (
   tableName: string,
   entry: Entry,
@@ -58,6 +70,9 @@ export const insertEntry = (
     sqlErrorToDatabaseError(tableName, "Failed to insert the given UTxO"),
   );
 
+/**
+ * Bulk-inserts user events, returning early when the batch is empty.
+ */
 export const insertEntries = (
   tableName: string,
   entries: Entry[],
@@ -79,6 +94,12 @@ export const insertEntries = (
     sqlErrorToDatabaseError(tableName, "Failed to insert given UTxOs"),
   );
 
+/**
+ * Returns every event with `startTime < inclusion_time <= endTime`.
+ *
+ * The half-open interval matches the usual block-window handling in the node
+ * so adjacent windows do not double-count a boundary event.
+ */
 export const retrieveTimeBoundEntries = (
   tableName: string,
   startTime: Date,
@@ -103,6 +124,9 @@ export const retrieveTimeBoundEntries = (
     sqlErrorToDatabaseError(tableName, "Failed to retrieve all UTxOs"),
   );
 
+/**
+ * Returns the entire user-event table without applying any time filtering.
+ */
 export const retrieveAllEntries = (
   tableName: string,
 ): Effect.Effect<readonly Entry[], DatabaseError, Database> =>
@@ -118,6 +142,9 @@ export const retrieveAllEntries = (
     sqlErrorToDatabaseError(tableName, "Failed to retrieve all UTxOs"),
   );
 
+/**
+ * Deletes the user events identified by the given event ids.
+ */
 export const delEntries = (
   tableName: string,
   ids: Buffer[],
@@ -129,6 +156,9 @@ export const delEntries = (
     )} IN ${sql.in(ids)}`;
   }).pipe(sqlErrorToDatabaseError(tableName, "Failed to delete given UTxOs"));
 
+/**
+ * Deletes events older than `cutoff` and returns how many rows were pruned.
+ */
 export const pruneOlderThan = (
   tableName: string,
   cutoff: Date,

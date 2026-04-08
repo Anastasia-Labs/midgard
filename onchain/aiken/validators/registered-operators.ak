@@ -380,6 +380,8 @@ validator mint(
   }
 }
 
+/// Validates the registration transition that prepends a new operator node.
+/// Validates the prepend transition used when registering a new operator.
 fn register_prepend_transition(
   key_to_prepend: NodeKey,
   prepended_node_output_index: Int,

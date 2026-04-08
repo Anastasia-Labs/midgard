@@ -1,3 +1,8 @@
+/**
+ * Canonical redeemer layout helpers for commit transactions.
+ * This module derives ledger-aligned indices for the state-queue and
+ * active-operator redeemers used by the block-commit worker.
+ */
 import * as SDK from "@al-ft/midgard-sdk";
 import { Data } from "@lucid-evolution/lucid";
 
@@ -109,6 +114,9 @@ export const deriveStateQueueCommitLayout = ({
   };
 };
 
+// The production validator and checked-in blueprint still use the
+// UpdateBondHoldNewState constructor even though the SDK typings currently
+// expose a renamed UpdateCommitmentTime variant.
 export const ActiveOperatorSpendRedeemerSchema = Data.Enum([
   Data.Literal("ListStateTransition"),
   Data.Object({
@@ -116,15 +124,6 @@ export const ActiveOperatorSpendRedeemerSchema = Data.Enum([
       active_node_output_index: Data.Integer(),
       hub_oracle_ref_input_index: Data.Integer(),
       state_queue_redeemer_index: Data.Integer(),
-    }),
-  }),
-  Data.Object({
-    UpdateBondHoldNewSettlement: Data.Object({
-      active_node_output_index: Data.Integer(),
-      hub_oracle_ref_input_index: Data.Integer(),
-      settlement_input_index: Data.Integer(),
-      settlement_redeemer_index: Data.Integer(),
-      new_bond_unlock_time: Data.Integer(),
     }),
   }),
 ]);
@@ -171,4 +170,7 @@ export const encodeStateQueueCommitRedeemer = (
 export const encodeActiveOperatorCommitRedeemer = (
   layout: StateQueueCommitLayout = DEFAULT_STATE_QUEUE_COMMIT_LAYOUT,
 ): string =>
-  Data.to(makeActiveOperatorCommitRedeemer(layout), ActiveOperatorSpendRedeemer);
+  Data.to(
+    makeActiveOperatorCommitRedeemer(layout) as never,
+    ActiveOperatorSpendRedeemerSchema as never,
+  );

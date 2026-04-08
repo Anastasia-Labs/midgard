@@ -9,6 +9,12 @@ import {
 import { Effect } from "effect";
 import { handleSignSubmitNoConfirmation } from "@/transactions/utils.js";
 
+/**
+ * Startup-time bootstrap flow for the active-operators witness node.
+ *
+ * The node uses this helper to ensure an operator-specific witness UTxO exists
+ * before later lifecycle transactions rely on it.
+ */
 const MIN_ACTIVE_OPERATOR_NODE_LOVELACE = 5_000_000n;
 const BOOTSTRAP_CONFIRMATION_POLL_INTERVAL = "3 seconds";
 const BOOTSTRAP_CONFIRMATION_MAX_POLLS = 40;
@@ -23,12 +29,22 @@ const ACTIVE_OPERATOR_DATUM_AIKEN_SCHEMA = LucidData.Object({
   bond_unlock_time: ACTIVE_OPERATOR_DATUM_AIKEN_OPTION_SCHEMA,
 });
 
+/**
+ * Encodes the active-operator datum in the Aiken-compatible shape expected by
+ * the on-chain validator.
+ */
 const encodeActiveOperatorDatum = (bondUnlockTime: bigint | null): string =>
   LucidData.castTo(
     { bond_unlock_time: bondUnlockTime } as never,
     ACTIVE_OPERATOR_DATUM_AIKEN_SCHEMA as never,
   ) as string;
 
+/**
+ * Picks the largest wallet UTxO, breaking ties deterministically by outref.
+ *
+ * Bootstrap transactions only need one funding input, so choosing the largest
+ * candidate reduces the odds of accidental insufficiency.
+ */
 const selectLargestWalletUtxo = (
   utxos: readonly UTxO[],
 ): UTxO | undefined =>
@@ -45,6 +61,10 @@ const selectLargestWalletUtxo = (
     return lovelaceA > lovelaceB ? -1 : 1;
   })[0];
 
+/**
+ * Resolves the operator wallet's key hash from the currently selected Lucid
+ * wallet.
+ */
 const getOperatorKeyHash = (
   lucid: LucidEvolution,
 ): Effect.Effect<string, SDK.StateQueueError> =>
@@ -69,6 +89,10 @@ const getOperatorKeyHash = (
     return paymentCredential.hash;
   });
 
+/**
+ * Checks whether the active-operators set already contains this operator's
+ * witness node.
+ */
 const hasOperatorNode = (
   activeOperatorUtxos: readonly UTxO[],
   operatorKeyHash: string,
@@ -88,6 +112,12 @@ const hasOperatorNode = (
     return false;
   });
 
+/**
+ * Ensures the operator-specific active-operators witness node exists on-chain.
+ *
+ * The effect is idempotent: it first checks for the existing witness node and
+ * only submits the bootstrap transaction when the node is missing.
+ */
 export const ensureActiveOperatorWitnessNodeProgram = (
   lucid: LucidEvolution,
   contracts: SDK.MidgardValidators,

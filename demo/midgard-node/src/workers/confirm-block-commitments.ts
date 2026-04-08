@@ -2,48 +2,44 @@ import {
   reexportedParentPort as parentPort,
   reexportedWorkerData as workerData,
 } from "@/utils.js";
-import * as SDK from "@al-ft/midgard-sdk";
-import { Cause, Effect, Schedule, pipe } from "effect";
-import { MidgardContracts, Lucid, NodeConfig } from "@/services/index.js";
+import { Cause, Data, Effect, Schedule, pipe } from "effect";
+import { MidgardContracts } from "@/services/midgard-contracts.js";
+import { Lucid } from "@/services/lucid.js";
+import { ConfigError, NodeConfig } from "@/services/config.js";
 import {
+  fetchLatestCommittedStateQueueBlock,
   WorkerInput,
   WorkerOutput,
 } from "@/workers/utils/confirm-block-commitments.js";
 import { serializeStateQueueUTxO } from "@/workers/utils/commit-block-header.js";
 import { LucidEvolution } from "@lucid-evolution/lucid";
-import { TxConfirmError } from "@/transactions/utils.js";
+import type * as SDK from "@al-ft/midgard-sdk";
 
 const inputData = workerData as WorkerInput;
 
-const fetchLatestBlock = (
-  lucid: LucidEvolution,
-): Effect.Effect<
-  SDK.StateQueueUTxO,
-  SDK.StateQueueError | SDK.LucidError,
-  MidgardContracts | NodeConfig
-> =>
-  Effect.gen(function* () {
-    const { stateQueue: stateQueueAuthValidator } =
-      yield* MidgardContracts;
-    const fetchConfig: SDK.StateQueueFetchConfig = {
-      stateQueueAddress: stateQueueAuthValidator.spendingScriptAddress,
-      stateQueuePolicyId: stateQueueAuthValidator.policyId,
-    };
-    return yield* SDK.fetchLatestCommittedBlockProgram(lucid, fetchConfig);
-  });
+type StateQueueAuthValidator = SDK.MidgardValidators["stateQueue"];
+
+class TxConfirmAwaitError extends Data.TaggedError("TxConfirmAwaitError")<{
+  readonly message: string;
+  readonly txHash: string;
+  readonly cause: string;
+}> {}
 
 const awaitSubmittedBlockConfirmation = (
   lucid: LucidEvolution,
+  stateQueueAuthValidator: StateQueueAuthValidator,
   txHash: string,
   timeoutMs: number,
   retries: number,
-): Effect.Effect<void, TxConfirmError, MidgardContracts | NodeConfig> =>
+) =>
   Effect.retry(
     Effect.gen(function* () {
       const startedAt = Date.now();
       const pollIntervalMs = 2_000;
       while (Date.now() - startedAt < timeoutMs) {
-        const latest = yield* Effect.either(fetchLatestBlock(lucid));
+        const latest = yield* Effect.either(
+          fetchLatestCommittedStateQueueBlock(lucid, stateQueueAuthValidator),
+        );
         if (
           latest._tag === "Right" &&
           latest.right.utxo.txHash === txHash
@@ -52,9 +48,10 @@ const awaitSubmittedBlockConfirmation = (
         }
         yield* Effect.sleep(`${pollIntervalMs} millis`);
       }
-      return yield* Effect.fail(
-        new TxConfirmError({
-          message: `Timed out waiting for state-queue tip to confirm submitted transaction`,
+      yield* Effect.fail(
+        new TxConfirmAwaitError({
+          message:
+            "Timed out waiting for state-queue tip to confirm submitted transaction",
           txHash,
           cause: `timeout_ms=${timeoutMs}`,
         }),
@@ -63,59 +60,77 @@ const awaitSubmittedBlockConfirmation = (
     Schedule.recurs(Math.max(0, retries)),
   );
 
+const resolveStateQueueAuthValidator = (): Effect.Effect<
+  StateQueueAuthValidator,
+  never,
+  MidgardContracts
+> =>
+  Effect.gen(function* () {
+    const contracts = yield* MidgardContracts;
+    // Effect.Service DTS generation currently widens this worker entry; keep
+    // the runtime contract shape explicit at the boundary we actually need.
+    return (contracts as unknown as {
+      readonly stateQueue: StateQueueAuthValidator;
+    }).stateQueue;
+  });
+
+const provideConfirmationWorkerServices = <A, E>(
+  effect: Effect.Effect<A, E, MidgardContracts | Lucid | NodeConfig>,
+): Effect.Effect<A, E | ConfigError, never> =>
+  pipe(
+    effect,
+    Effect.provide(MidgardContracts.Default),
+    Effect.provide(Lucid.Default),
+    Effect.provide(NodeConfig.layer),
+  );
+
 const wrapper = (
   workerInput: WorkerInput,
-): Effect.Effect<
-  WorkerOutput,
-  | SDK.CborSerializationError
-  | SDK.CmlUnexpectedError
-  | SDK.LucidError
-  | SDK.StateQueueError
-  | TxConfirmError,
-  MidgardContracts | Lucid | NodeConfig
-> =>
+): Effect.Effect<WorkerOutput, unknown, MidgardContracts | Lucid | NodeConfig> =>
   Effect.gen(function* () {
     const lucid = yield* Lucid;
     const nodeConfig = yield* NodeConfig;
+    const stateQueueAuthValidator = yield* resolveStateQueueAuthValidator();
 
-    const recoverWithLatestBlock = (
-      staleTxHash: string,
-    ): Effect.Effect<
-      WorkerOutput,
-      | SDK.CborSerializationError
-      | SDK.CmlUnexpectedError
-      | SDK.LucidError
-      | SDK.StateQueueError,
-      MidgardContracts | NodeConfig
-    > =>
+    /**
+     * Recovers confirmation processing by replaying from the latest known block.
+     */
+    const recoverWithLatestBlock = (staleTxHash: string) =>
       Effect.gen(function* () {
-        const latestBlock = yield* fetchLatestBlock(lucid.api);
+        const latestBlock = yield* fetchLatestCommittedStateQueueBlock(
+          lucid.api,
+          stateQueueAuthValidator,
+        );
         const serializedUTxO = yield* serializeStateQueueUTxO(latestBlock);
         return {
           type: "StaleUnconfirmedRecoveryOutput",
           staleTxHash,
           blocksUTxO: serializedUTxO,
-        };
+        } satisfies WorkerOutput;
       });
 
     if (workerInput.data.firstRun) {
       yield* Effect.logInfo("🔍 First run. Fetching the latest block...");
-      const latestBlock = yield* fetchLatestBlock(lucid.api);
+      const latestBlock = yield* fetchLatestCommittedStateQueueBlock(
+        lucid.api,
+        stateQueueAuthValidator,
+      );
       const serializedUTxO = yield* serializeStateQueueUTxO(latestBlock);
       return {
         type: "SuccessfulConfirmationOutput",
         blocksUTxO: serializedUTxO,
-      };
+      } satisfies WorkerOutput;
     } else if (workerInput.data.unconfirmedSubmittedBlock === "") {
       return {
         type: "NoTxForConfirmationOutput",
-      };
+      } satisfies WorkerOutput;
     } else {
       const targetTxHash = workerInput.data.unconfirmedSubmittedBlock;
       yield* Effect.logInfo(`🔍 Confirming tx: ${targetTxHash}`);
       const confirmationResult = yield* Effect.either(
         awaitSubmittedBlockConfirmation(
           lucid.api,
+          stateQueueAuthValidator,
           targetTxHash,
           nodeConfig.BLOCK_CONFIRMATION_AWAIT_TIMEOUT_MS,
           nodeConfig.BLOCK_CONFIRMATION_AWAIT_RETRIES,
@@ -140,11 +155,14 @@ const wrapper = (
 
         return {
           type: "NoTxForConfirmationOutput",
-        };
+        } satisfies WorkerOutput;
       }
 
       yield* Effect.logInfo("🔍 Tx confirmed. Fetching the block...");
-      const latestBlock = yield* fetchLatestBlock(lucid.api);
+      const latestBlock = yield* fetchLatestCommittedStateQueueBlock(
+        lucid.api,
+        stateQueueAuthValidator,
+      );
       if (latestBlock.utxo.txHash === targetTxHash) {
         yield* Effect.logInfo("🔍 Serializing state queue UTxO...");
         const serializedUTxO = yield* serializeStateQueueUTxO(latestBlock);
@@ -152,7 +170,7 @@ const wrapper = (
         return {
           type: "SuccessfulConfirmationOutput",
           blocksUTxO: serializedUTxO,
-        };
+        } satisfies WorkerOutput;
       }
 
       yield* Effect.logWarning(
@@ -164,9 +182,7 @@ const wrapper = (
 
 const program = pipe(
   wrapper(inputData),
-  Effect.provide(MidgardContracts.Default),
-  Effect.provide(Lucid.Default),
-  Effect.provide(NodeConfig.layer),
+  provideConfirmationWorkerServices,
 );
 
 Effect.runPromise(

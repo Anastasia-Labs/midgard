@@ -369,30 +369,51 @@ export class LevelDB {
     this._location = location;
   }
 
+  /**
+   * Opens the underlying LevelDB database.
+   */
   async open() {
     await this._leveldb.open();
   }
 
+  /**
+   * Closes the underlying LevelDB database.
+   */
   async close() {
     await this._leveldb.close();
   }
 
+  /**
+   * Reads a value from the underlying LevelDB database.
+   */
   async get(key: string) {
     return this._leveldb.get(key, LEVELDB_ENCODING_OPTS);
   }
 
+  /**
+   * Writes a value into the underlying LevelDB database.
+   */
   async put(key: string, val: Uint8Array) {
     await this._leveldb.put(key, val, LEVELDB_ENCODING_OPTS);
   }
 
+  /**
+   * Deletes a value from the underlying LevelDB database.
+   */
   async del(key: string) {
     await this._leveldb.del(key, LEVELDB_ENCODING_OPTS);
   }
 
+  /**
+   * Executes a batch of LevelDB operations.
+   */
   async batch(opStack: BatchDBOp<string, Uint8Array>[]) {
     await this._leveldb.batch(opStack, LEVELDB_ENCODING_OPTS);
   }
 
+  /**
+   * Builds a lightweight copy of the LevelDB wrapper.
+   */
   shallowCopy() {
     if (typeof this._location === "string") {
       return new LevelDB(
@@ -403,6 +424,9 @@ export class LevelDB {
     return new LevelDB(this._leveldb);
   }
 
+  /**
+   * Returns the underlying LevelDB instance.
+   */
   getDatabase() {
     return this._leveldb;
   }
@@ -411,48 +435,79 @@ export class LevelDB {
 export class MptError extends Data.TaggedError(
   "MptError",
 )<SDK.GenericErrorFields> {
+  /**
+   * Builds an error for trie read failures.
+   */
   static get(trie: string, cause: unknown) {
     return new MptError({
       message: `An error occurred getting an entry from ${trie} trie`,
       cause,
     });
   }
+
+  /**
+   * Builds an error for trie insert/update failures.
+   */
   static put(trie: string, cause: unknown) {
     return new MptError({
       message: `An error occurred inserting a new entry in ${trie} trie`,
       cause,
     });
   }
+
+  /**
+   * Builds an error for trie batch-update failures.
+   */
   static batch(trie: string, cause: unknown) {
     return new MptError({
       message: `An error occurred during a batch operation on ${trie} trie`,
       cause,
     });
   }
+
+  /**
+   * Builds an error for trie deletion failures.
+   */
   static del(trie: string, cause: unknown) {
     return new MptError({
       message: `An error occurred deleting an entry from ${trie} trie`,
       cause,
     });
   }
+
+  /**
+   * Builds an error for trie initialization failures.
+   */
   static trieCreate(trie: string, cause: unknown) {
     return new MptError({
       message: `An error occurred creating ${trie} trie: ${cause}`,
       cause,
     });
   }
+
+  /**
+   * Builds an error for trie commit failures.
+   */
   static trieCommit(trie: string, cause: unknown) {
     return new MptError({
       message: `An error occurred committing ${trie} trie`,
       cause,
     });
   }
+
+  /**
+   * Builds an error for trie rollback failures.
+   */
   static trieRevert(trie: string, cause: unknown) {
     return new MptError({
       message: `An error occurred reverting ${trie} trie`,
       cause,
     });
   }
+
+  /**
+   * Builds an error for missing trie-root state.
+   */
   static rootNotSet(trie: string, cause: unknown) {
     return new MptError({
       message: `An error occurred getting ${trie} trie root, the root is ${typeof cause}`,
@@ -524,6 +579,9 @@ export class MidgardMpt {
     });
   }
 
+  /**
+   * Deletes the trie backing store when one exists.
+   */
   public delete(): Effect.Effect<void, FileSystemError> {
     if (this.databaseAndPath) {
       return Effect.gen(this, function* () {
@@ -538,6 +596,9 @@ export class MidgardMpt {
     }
   }
 
+  /**
+   * Executes a batch of LevelDB operations.
+   */
   public batch(arg: ETH_UTILS.BatchDBOp[]): Effect.Effect<void, MptError> {
     const trieName = this.trieName;
     const trieBatch = this.trie.batch(arg);
@@ -547,6 +608,9 @@ export class MidgardMpt {
     });
   }
 
+  /**
+   * Returns the current trie root as a normalized byte array.
+   */
   public getRoot(): Effect.Effect<Uint8Array, MptError> {
     const trieName = this.trieName;
     const root = this.trie.root();
@@ -563,10 +627,16 @@ export class MidgardMpt {
     });
   }
 
+  /**
+   * Returns the current trie root as hexadecimal text.
+   */
   public getRootHex(): Effect.Effect<string, MptError> {
     return this.getRoot().pipe(Effect.map(toHex));
   }
 
+  /**
+   * Checks whether the trie root matches the empty-root constant.
+   */
   public rootIsEmpty(): Effect.Effect<boolean, MptError> {
     const getRootHex = this.getRootHex();
     const emptyRootHex = toHex(this.trie.EMPTY_TRIE_ROOT);
@@ -576,10 +646,16 @@ export class MidgardMpt {
     });
   }
 
+  /**
+   * Creates a checkpoint on the trie stack.
+   */
   public checkpoint(): Effect.Effect<void> {
     return Effect.sync(() => this.trie.checkpoint());
   }
 
+  /**
+   * Commits the latest trie checkpoint.
+   */
   public commit(): Effect.Effect<void, MptError> {
     return Effect.tryPromise({
       try: () => this.trie.commit(),
@@ -587,6 +663,9 @@ export class MidgardMpt {
     });
   }
 
+  /**
+   * Reverts the latest trie checkpoint.
+   */
   public revert(): Effect.Effect<void, MptError> {
     return Effect.tryPromise({
       try: () => this.trie.revert(),
@@ -594,6 +673,9 @@ export class MidgardMpt {
     });
   }
 
+  /**
+   * Returns the internal database statistics exposed by the trie backend.
+   */
   public databaseStats() {
     return this.trie.database()._stats;
   }

@@ -11,7 +11,15 @@ import {
 } from '../utils/wallet.js';
 
 /**
- * Command to generate a new wallet
+ * Wallet-management commands for the non-interactive CLI surface.
+ *
+ * These commands are intentionally narrow wrappers around the wallet utility
+ * layer so operators can script wallet setup and inspection without entering
+ * the interactive menu.
+ */
+
+/**
+ * CLI command that generates and persists a new wallet under a given name.
  */
 const generateCommand = Command.make(
   'generate',
@@ -37,7 +45,7 @@ const generateCommand = Command.make(
 );
 
 /**
- * Command to show wallet details
+ * CLI command that prints the details for one named wallet.
  */
 const detailsCommand = Command.make(
   'details',
@@ -66,7 +74,8 @@ const detailsCommand = Command.make(
 );
 
 /**
- * Command to list all wallets
+ * CLI command that lists all known wallet names, initializing the default
+ * wallet first when needed.
  */
 const listCommand = Command.make('list', {}, () => {
   return pipe(
@@ -98,7 +107,7 @@ const listCommand = Command.make('list', {}, () => {
 });
 
 /**
- * Command to remove a wallet
+ * CLI command that removes one named wallet from local storage.
  */
 const removeCommand = Command.make(
   'remove',
@@ -120,7 +129,7 @@ const removeCommand = Command.make(
 );
 
 /**
- * Main wallet command group
+ * Top-level wallet command group exposed by the manager CLI.
  */
 export const walletCommand = Command.make('wallet')
   .pipe(Command.withDescription('Manage wallets for transaction signing'))

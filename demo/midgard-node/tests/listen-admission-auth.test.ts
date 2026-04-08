@@ -30,6 +30,7 @@ describe("listen admin auth helpers", () => {
     expect(isAdminRoutePath("/logBlocksDB")).toBe(true);
     expect(isAdminRoutePath("/logGlobals")).toBe(true);
     expect(isAdminRoutePath("/tx")).toBe(false);
+    expect(isAdminRoutePath("/deposit/build")).toBe(false);
     expect(isAdminRoutePath("/submit")).toBe(false);
     expect(ADMIN_ROUTE_PATHS.size).toBeGreaterThan(0);
   });
@@ -139,7 +140,9 @@ describe("submit admission helpers", () => {
   it("keeps native tx bytes unchanged when payload is already Midgard-native", () => {
     const cardanoBytes = Buffer.from(txFixtures[0].cborHex, "hex");
     const nativeBytes = cardanoTxBytesToMidgardNativeTxFullBytes(cardanoBytes);
-    const normalized = normalizeSubmitTxHexToNative(nativeBytes.toString("hex"));
+    const normalized = normalizeSubmitTxHexToNative(
+      nativeBytes.toString("hex"),
+    );
     expect(normalized.ok).toBe(true);
     if (!normalized.ok) {
       throw new Error("expected normalized tx");

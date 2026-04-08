@@ -4,10 +4,16 @@ import { SqlClient } from "@effect/sql";
 import { ConfigError, NodeConfig } from "@/services/config.js";
 import * as SDK from "@al-ft/midgard-sdk";
 
+/**
+ * Database service wiring for the Midgard node.
+ */
 export class DatabaseInitializationError extends Data.TaggedError(
   "DatabaseInitializationError",
 )<SDK.GenericErrorFields> {}
 
+/**
+ * Builds the PostgreSQL client layer from the decoded node configuration.
+ */
 const createPgLayerEffect = Effect.gen(function* () {
   const nodeConfig = yield* NodeConfig;
   yield* Effect.logInfo("📚 Opening connection to db...");
@@ -43,14 +49,23 @@ const createPgLayerEffect = Effect.gen(function* () {
   });
 }).pipe(Effect.orDie);
 
+/**
+ * Live SQL client layer backed by PostgreSQL.
+ */
 const SqlClientLive: Layer.Layer<
   SqlClient.SqlClient,
   DatabaseInitializationError | ConfigError,
   NodeConfig
 > = Layer.unwrapEffect(createPgLayerEffect);
 
+/**
+ * Public database service bundle used throughout the node.
+ */
 export const Database = {
   layer: Layer.provide(SqlClientLive, NodeConfig.layer),
 };
 
+/**
+ * Convenience alias for the SQL client service type.
+ */
 export type Database = SqlClient.SqlClient;

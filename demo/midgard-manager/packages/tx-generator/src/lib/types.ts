@@ -1,9 +1,13 @@
 import { Network, UTxO } from '@lucid-evolution/lucid';
 
-// Transaction Types
+/**
+ * Supported transaction-mix modes for the tx generator.
+ */
 export type TransactionType = 'one-to-one' | 'multi-output' | 'mixed';
 
-// Node Client Configuration
+/**
+ * Configuration for the HTTP client used to talk to a Midgard node.
+ */
 export interface MidgardNodeConfig {
   baseUrl: string;
   retryAttempts?: number;
@@ -11,7 +15,9 @@ export interface MidgardNodeConfig {
   enableLogs?: boolean;
 }
 
-// Transaction Generator Configuration
+/**
+ * Full runtime configuration for the tx generator scheduler.
+ */
 export interface TransactionGeneratorConfig {
   // Node settings
   nodeEndpoint: string;
@@ -40,7 +46,9 @@ export interface TransactionGeneratorConfig {
   outputDir?: string;
 }
 
-// Serialized Transaction Format
+/**
+ * JSON-serializable transaction record emitted by the generator.
+ */
 export interface SerializedMidgardTransaction {
   cborHex: string;
   description: string;
@@ -48,7 +56,9 @@ export interface SerializedMidgardTransaction {
   type: string;
 }
 
-// Default configuration values
+/**
+ * Default tx-generator configuration used when callers omit optional fields.
+ */
 export const DEFAULT_CONFIG: TransactionGeneratorConfig = {
   // Node defaults
   nodeEndpoint: 'http://localhost:3000',
@@ -85,7 +95,9 @@ export const DEFAULT_CONFIG: TransactionGeneratorConfig = {
   outputDir: 'generated-transactions',
 };
 
-// Constants
+/**
+ * Shared constants used by tx generation and submission flows.
+ */
 export const TRANSACTION_CONSTANTS = {
   MIN_LOVELACE_OUTPUT: 1_000_000n,
   OUTPUTS_PER_DISTRIBUTION: 20,

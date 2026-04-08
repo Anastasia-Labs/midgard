@@ -6,8 +6,10 @@ import type { MidgardConfig } from '../types/config.js';
 import { displayLogo } from './logo.js';
 
 /**
- * Clears the terminal screen and displays a header
- * @param title Optional title to display in the header
+ * Re-renders the CLI header from a clean terminal state.
+ *
+ * The interactive manager treats every major screen as a fresh frame, so this
+ * helper clears prior output before drawing the shared logo/header chrome.
  */
 export function displayHeader(title?: string) {
   // Clear the terminal screen
@@ -21,7 +23,10 @@ export function displayHeader(title?: string) {
 }
 
 /**
- * Displays status information in a minimalist, left-aligned format
+ * Prints a compact status panel for the Midgard node and tx generator.
+ *
+ * The node availability probe intentionally uses a short timeout to keep the
+ * TUI responsive even when the configured endpoint is down or slow.
  */
 export async function displayStatus(config: MidgardConfig) {
   // Get the actual running status of the transaction generator
@@ -88,7 +93,7 @@ export async function displayStatus(config: MidgardConfig) {
 }
 
 /**
- * Displays keyboard navigation hints in a minimalist format
+ * Displays the keyboard controls expected by the interactive menu.
  */
 export function displayKeyboardHints() {
   console.log('┌─ CONTROLS');
@@ -101,7 +106,7 @@ export function displayKeyboardHints() {
 }
 
 /**
- * Displays a success message with simple styling
+ * Displays a success message using the shared CLI success style.
  */
 export function displaySuccess(message: string) {
   console.log(`\n${chalk.green('✓')} ${chalk.bold(message)}`);
@@ -109,7 +114,7 @@ export function displaySuccess(message: string) {
 }
 
 /**
- * Displays an error message with stable styling
+ * Displays an error block and, when possible, a lightweight recovery hint.
  */
 export function displayError(message: string | Error, details?: unknown) {
   const errorMessage = typeof message === 'string' ? message : message.message;
@@ -135,7 +140,7 @@ export function displayError(message: string | Error, details?: unknown) {
 }
 
 /**
- * Displays a "Press Enter to continue" message
+ * Prompts the user to acknowledge a screen before returning to the menu flow.
  */
 export function displayContinuePrompt() {
   console.log(`\nPress ${chalk.bold('Enter')} to continue...`);

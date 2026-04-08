@@ -3,19 +3,25 @@ import { Effect, pipe } from 'effect';
 
 import type { Config, GeneratorConfig } from '../config/schema.js';
 
-// Error types
+/**
+ * Error type used by the CLI's generator service adapter.
+ */
 export class GeneratorError {
   readonly _tag = 'GeneratorError';
   constructor(readonly message: string) {}
 }
 
-// Service interface
+/**
+ * Service contract exposed to CLI actions that need tx generation.
+ */
 export interface GeneratorService {
   generateBatch: (config: GeneratorConfig) => Effect.Effect<never, GeneratorError, void>;
   startScheduled: (config: GeneratorConfig) => Effect.Effect<never, GeneratorError, void>;
 }
 
-// Service implementation
+/**
+ * Builds a generator service bound to the current CLI configuration.
+ */
 export const makeGeneratorService = (
   config: Config
 ): Effect.Effect<never, never, GeneratorService> =>

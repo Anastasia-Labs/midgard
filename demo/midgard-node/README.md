@@ -2,6 +2,47 @@
 
 Server application with GET and POST endpoints for interacting with Midgard.
 
+## What This Package Does
+
+`midgard-node` is the demo off-chain runtime that ties the protocol together.
+It is responsible for:
+
+- serving the HTTP API used by wallets, tests, and local tooling,
+- validating and enqueuing submitted Midgard-native transactions,
+- maintaining PostgreSQL-backed views of mempool, latest-ledger, immutable
+  history, and auxiliary indexes,
+- maintaining LevelDB-backed Merkle Patricia Trie state for ledger and mempool
+  roots,
+- running background fibers that monitor mempool state, commit blocks, confirm
+  block commitments, merge confirmed state, fetch deposit UTxOs, and sweep old
+  retention data.
+
+## Runtime Layout
+
+- `src/commands`: HTTP handlers, CLI entrypoints, readiness logic, and response
+  shaping.
+- `src/fibers`: long-running background loops started by `listen`.
+- `src/workers`: transaction-building and commitment helpers used by the
+  background fibers.
+- `src/database`: SQL access layers and persistence utilities.
+- `src/services`: Effect services for config, contracts, Lucid, database, and
+  global runtime state.
+- `src/transactions`: one-shot transaction programs for initialization,
+  operator lifecycle, and deposit flows.
+- `scripts`: standalone stress and maintenance scripts used outside the main
+  server loop.
+
+## Operational State
+
+- PostgreSQL stores durable relational views such as mempool entries, latest
+  ledger entries, immutable transactions, address history, and rejection logs.
+- `LEDGER_MPT_DB_PATH` and `MEMPOOL_MPT_DB_PATH` point at the LevelDB
+  directories used to persist trie-backed state roots across restarts.
+- `pnpm build` regenerates `src/generated/midgard-sdk-types.d.ts` by syncing
+  the built SDK declarations before bundling the node.
+- `ADMIN_API_KEY` gates the admin-only HTTP surface; keep it set in any shared
+  or remotely reachable environment.
+
 ## How to Run
 
 ### With Docker
@@ -103,10 +144,44 @@ pnpm repack
 # Go back to `midgard-node` and force reinstallation of the SDK (faster than
 # `pnpm install --force`)
 cd ../midgard-node
-rm -rf node_module
+rm -rf node_modules
 pnpm install
 pnpm listen
 ```
+
+## Key Entry Points
+
+- `pnpm listen`: build and start the HTTP server plus background fibers.
+- `pnpm init`: initialize hub-oracle, state-queue, operator roots, and
+  scheduler state.
+- `node dist/index.js export-contract-deployment-info --out <path>`: write a
+  JSON manifest describing the currently configured validator bundle and any
+  published reference-script UTxOs visible in the reference-script wallet.
+- `node dist/index.js submit-deposit`: build and submit an L1 deposit into the
+  Midgard deposit contract for a target L2 address.
+- `pnpm submit:l2-transfer`: build and submit a Midgard-native user transfer.
+- `node dist/index.js project-deposits-once`: fetch L1 deposit events once and
+  project newly visible deposits into the local Midgard ledger view.
+- `pnpm audit:blocks-immutable`: inspect immutable block state and related
+  persistence.
+- `pnpm stress:valid`: run the high-throughput valid-transaction submitter.
+- `pnpm stress:nominal`: run the lower-rate sustained activity generator.
+
+## HTTP Surface
+
+The main listener exposes a small operator-facing API. Common routes include:
+
+- `/deposit/build` for building unsigned L1 deposit transactions from a
+  caller-supplied wallet view,
+- `/submit` for submitting Midgard-native transactions,
+- `/utxos` for querying spendable Midgard mempool-ledger UTxOs,
+- `/tx-status` for resolving the node's canonical status for a transaction,
+- `/healthz` and `/readyz` for health and readiness checks.
+
+The listener also exposes admin/operator routes for initialization, state
+inspection, and operational control. See
+[`src/commands/listen-router.ts`](./src/commands/listen-router.ts) for the
+authoritative route graph.
 
 ## Testing
 
@@ -121,6 +196,123 @@ docker compose run --rm midgard-node-tests
 ```sh
 cd midgard-node
 pnpm test
+```
+
+## Submit A Midgard L2 Transfer
+
+Build and submit a key-signed Midgard-native transfer directly against the
+running node.
+
+```sh
+cd midgard-node
+pnpm build
+node dist/index.js submit-l2-transfer \
+  --l2-address <destination-l2-address> \
+  --lovelace 5000000
+```
+
+Useful options:
+
+```sh
+# Override the default USER_WALLET seed source.
+node dist/index.js submit-l2-transfer \
+  --l2-address <destination-l2-address> \
+  --lovelace 5000000 \
+  --wallet-seed-phrase-env USER_WALLET
+
+# Provide the seed phrase directly and send additional assets.
+node dist/index.js submit-l2-transfer \
+  --l2-address <destination-l2-address> \
+  --lovelace 5000000 \
+  --wallet-seed-phrase "<seed phrase>" \
+  --endpoint http://127.0.0.1:3000 \
+  0123456789abcdef0123456789abcdef0123456789abcdef01234567.4d4944:3
+```
+
+Notes:
+
+- The command derives the sender address from `USER_WALLET` by default.
+- If `USER_WALLET` is unset, it falls back to `USER_SEED_PHRASE` for
+  compatibility with older local env files.
+- The CLI now rejects wallets that collide with the node's operational
+  operator, merge, or reference-script wallets. Use a distinct user wallet for
+  deposit and L2 transfer flows.
+- The command queries `/utxos`, builds a balanced Midgard-native transaction
+  with explicit change, and submits it to `/submit`.
+
+## Build An Unsigned L1 Deposit
+
+Build a Cardano deposit transaction without giving the node any signing key.
+The caller provides the funding address plus the exact wallet UTxOs that may be
+spent, and the node returns unsigned transaction CBOR for the caller to sign
+externally.
+
+```sh
+curl -X POST http://127.0.0.1:3000/deposit/build \
+  -H 'content-type: application/json' \
+  -d '{
+    "l2Address": "addr_test1...",
+    "lovelace": "12000000",
+    "fundingAddress": "addr_test1...",
+    "fundingUtxos": [
+      {
+        "txHash": "11...11",
+        "outputIndex": 0,
+        "address": "addr_test1...",
+        "assets": {
+          "lovelace": "30000000"
+        }
+      }
+    ]
+  }'
+```
+
+Optional fields:
+
+- `l2Datum`: even-length hex inline datum for the projected Midgard UTxO.
+- `additionalAssets`: array of `{ unit, amount }` entries to deposit alongside
+  lovelace.
+- `fundingUtxos[].datumHash`, `fundingUtxos[].datum`, `fundingUtxos[].scriptRef`:
+  optional hex fields preserved in the external wallet view when present.
+
+The response includes:
+
+- `unsignedTxCbor`: unsigned Cardano transaction CBOR hex.
+
+## Export Contract Deployment Info
+
+Write a manifest of the currently configured validator bundle, keyed by explicit
+script names such as `depositMint` and `depositSpend`.
+
+```sh
+cd midgard-node
+pnpm build
+node dist/index.js export-contract-deployment-info \
+  --out contract-deployment-info.json
+```
+
+Each entry has the shape:
+
+```json
+{
+  "depositMint": {
+    "refScriptUTxO": null,
+    "contract": {
+      "type": "PlutusV3",
+      "cborHex": "..."
+    },
+    "scriptHash": "..."
+  }
+}
+```
+
+`init` now always writes the manifest. By default it goes to the repository root
+at `deploymentInfo/contract-deployment-info.json`. If you want to override that
+path, pass:
+
+```sh
+node dist/index.js init \
+  --contract-deployment-info-output contract-deployment-info.json
 ```
 
 ## Valid Throughput Stress Test
@@ -184,3 +376,10 @@ ACTIVITY_WALLET_MODE=random
 ACTIVITY_SUBMIT_ENDPOINT=http://127.0.0.1:3000
 ACTIVITY_METRICS_ENDPOINT=http://127.0.0.1:9464/metrics
 ```
+
+## Related Documentation
+
+- [Root repository guide](../../README.md)
+- [Midgard SDK guide](../midgard-sdk/README.md)
+- [Preprod deposit and send-tx runbook](./PREPROD_DEPOSIT_AND_SEND_TX.md)
+- [Technical specification guide](../../technical-spec/README.md)

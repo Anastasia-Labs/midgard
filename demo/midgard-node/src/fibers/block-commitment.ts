@@ -9,6 +9,14 @@ import { Metric } from "effect";
 import { Worker } from "worker_threads";
 import { emitQueueStateMetrics } from "./queue-metrics.js";
 
+/**
+ * Background block-commitment loop that packages processed L2 transactions into
+ * L1 commitment transactions.
+ *
+ * The fiber relies on a worker thread for the heavy lifting, then translates
+ * the worker's outcome into updates of the node's shared global state and
+ * operational metrics.
+ */
 const commitBlockNumTxGauge = Metric.gauge("commit_block_num_tx_count", {
   description:
     "A gauge for tracking the current number of transactions in the commit block",
@@ -37,6 +45,10 @@ const commitBlockTxSizeGauge = Metric.gauge("commit_block_tx_size", {
   description: "A gauge for tracking the size of the commit block transaction",
 });
 
+/**
+ * Launches one commitment worker, applies its result to global node state, and
+ * updates the block-commitment metrics.
+ */
 export const buildAndSubmitCommitmentBlockAction = () =>
   Effect.gen(function* () {
     const globals = yield* Globals;
@@ -192,6 +204,10 @@ export const buildAndSubmitCommitmentBlockAction = () =>
     yield* emitQueueStateMetrics;
   });
 
+/**
+ * Single scheduled commitment tick with a guard that prevents overlapping
+ * commitment workers.
+ */
 export const blockCommitmentAction: Effect.Effect<void, WorkerError, Globals> =
   Effect.gen(function* () {
     const globals = yield* Globals;
@@ -216,6 +232,9 @@ export const blockCommitmentAction: Effect.Effect<void, WorkerError, Globals> =
     }
   });
 
+/**
+ * Fiber wrapper that repeats block-commitment work on the provided schedule.
+ */
 export const blockCommitmentFiber = (
   schedule: Schedule.Schedule<number>,
 ): Effect.Effect<void, never, Globals> =>

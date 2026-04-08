@@ -5,10 +5,20 @@ import {
   PubKeyHashSchema,
 } from "./common.js";
 
+/**
+ * Ledger-state data schemas shared between the SDK and on-chain code.
+ *
+ * These definitions mirror the serialized structures consumed by Midgard
+ * validators, so their field names and byte widths should stay aligned with the
+ * on-chain counterparts.
+ */
 export const HeaderHashSchema = Data.Bytes({ minLength: 28, maxLength: 28 });
 export type HeaderHash = Data.Static<typeof HeaderHashSchema>;
 export const HeaderHash = HeaderHashSchema as unknown as HeaderHash;
 
+/**
+ * Header committed for each Midgard block.
+ */
 export const HeaderSchema = Data.Object({
   prevUtxosRoot: MerkleRootSchema,
   utxosRoot: MerkleRootSchema,
@@ -24,6 +34,9 @@ export const HeaderSchema = Data.Object({
 export type Header = Data.Static<typeof HeaderSchema>;
 export const Header = HeaderSchema as unknown as Header;
 
+/**
+ * Minimal confirmed-state view carried forward after block commitment.
+ */
 export const ConfirmedStateSchema = Data.Object({
   headerHash: HeaderHashSchema,
   prevHeaderHash: HeaderHashSchema,

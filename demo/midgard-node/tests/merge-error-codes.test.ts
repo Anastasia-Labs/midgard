@@ -5,6 +5,7 @@ import path from "node:path";
 import { Effect } from "effect";
 import { extractStateQueueErrorCode } from "@/commands/listen.js";
 import {
+  deriveInitialMergeRedeemerSeedIndexes,
   diagnoseMissingBlockTxs,
   preflightDecodeBlockTxs,
 } from "@/transactions/state-queue/merge-to-confirmed-state.js";
@@ -59,12 +60,8 @@ describe("merge error code extraction", () => {
 });
 
 describe("diagnoseMissingBlockTxs", () => {
-  it("flags missing BlocksDB links", () => {
-    expect(diagnoseMissingBlockTxs(0, 0)).toEqual({
-      reason: "NO_BLOCKS_DB_TX_HASHES",
-      txHashesFound: 0,
-      txsResolved: 0,
-    });
+  it("accepts blocks with no indexed native tx payloads", () => {
+    expect(diagnoseMissingBlockTxs(0, 0)).toBeUndefined();
   });
 
   it("flags partial ImmutableDB resolution", () => {
@@ -80,7 +77,46 @@ describe("diagnoseMissingBlockTxs", () => {
   });
 });
 
+describe("deriveInitialMergeRedeemerSeedIndexes", () => {
+  it("seeds mint cross-references after the known merge spend redeemers", () => {
+    expect(
+      deriveInitialMergeRedeemerSeedIndexes({
+        scriptSpendRedeemerCount: 2,
+        stateQueuePolicyId:
+          "16c3c3dafc78c76d61685b0cc0696d6f22d164c9b5f8c7f0ddcdf91f",
+        settlementPolicyId:
+          "c886bf04eeaac04dd5aa28cc3865b0b94cc44fc49e7fa486fd795c8d",
+      }),
+    ).toEqual({
+      stateQueueMintPointerIndex: 0,
+      settlementMintPointerIndex: 1,
+      stateQueueRedeemerIndex: 2,
+      settlementRedeemerIndex: 3,
+    });
+  });
+
+  it("tracks the reversed mint-policy order without changing spend prefix count", () => {
+    expect(
+      deriveInitialMergeRedeemerSeedIndexes({
+        scriptSpendRedeemerCount: 2,
+        stateQueuePolicyId:
+          "ff86bf04eeaac04dd5aa28cc3865b0b94cc44fc49e7fa486fd795c8d",
+        settlementPolicyId:
+          "01c3c3dafc78c76d61685b0cc0696d6f22d164c9b5f8c7f0ddcdf91f",
+      }),
+    ).toEqual({
+      stateQueueMintPointerIndex: 1,
+      settlementMintPointerIndex: 0,
+      stateQueueRedeemerIndex: 3,
+      settlementRedeemerIndex: 2,
+    });
+  });
+});
+
 describe("preflightDecodeBlockTxs", () => {
+  /**
+   * Converts a transaction fixture into a native transaction accepted by the merge tests.
+   */
   const toValidNativeTx = () => {
     const nativeTxCbor = cardanoTxBytesToMidgardNativeTxFullBytes(
       Buffer.from(txFixture.cborHex, "hex"),

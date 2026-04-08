@@ -7,11 +7,17 @@ import {
   decodeMidgardNativeTxFull,
 } from "@/midgard-tx-codec/index.js";
 
+/**
+ * Types of linkage/data-integrity issues the immutable audit can report.
+ */
 type AuditIssueKind =
   | "MISSING_IMMUTABLE"
   | "MALFORMED_NATIVE_TX"
   | "TX_ID_MISMATCH";
 
+/**
+ * One concrete inconsistency discovered during the immutable audit.
+ */
 type AuditIssue = {
   readonly kind: AuditIssueKind;
   readonly headerHashHex: string;
@@ -19,11 +25,17 @@ type AuditIssue = {
   readonly details: string;
 };
 
+/**
+ * Options controlling audit verbosity and optional repair behavior.
+ */
 export type AuditBlocksImmutableOptions = {
   readonly repair?: boolean;
   readonly maxIssuesToLog?: number;
 };
 
+/**
+ * Aggregate audit result returned to callers.
+ */
 export type AuditBlocksImmutableSummary = {
   readonly scannedBlockLinks: number;
   readonly uniqueTxIds: number;
@@ -35,6 +47,9 @@ export type AuditBlocksImmutableSummary = {
   readonly repaired: boolean;
 };
 
+/**
+ * Counts how many issues of one kind were discovered.
+ */
 const countByKind = (
   issues: readonly AuditIssue[],
   kind: AuditIssueKind,

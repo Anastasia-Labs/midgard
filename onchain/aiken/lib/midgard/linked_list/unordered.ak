@@ -21,6 +21,8 @@ pub type NodeKey {
   Empty
 }
 
+/// Returns raw key and link.
+/// Extracts the raw key and link fields from a node output datum.
 pub fn get_raw_key_and_link(node_output: Output) -> (Data, Data) {
   expect InlineDatum(node_output_datum) = node_output.datum
   let constr = builtin.un_constr_data(node_output_datum).2nd
@@ -28,40 +30,52 @@ pub fn get_raw_key_and_link(node_output: Output) -> (Data, Data) {
   let link = builtin.head_list(builtin.tail_list(constr))
   (key, link)
 }
+/// Returns key.
 
+/// Decodes the key component from a raw key/link pair.
 pub fn get_key(raw_key_and_link: (Data, Data)) -> NodeKey {
   expect key: NodeKey = raw_key_and_link.1st
   key
+/// Returns link.
 }
 
+/// Decodes the link component from a raw key/link pair.
 pub fn get_link(raw_key_and_link: (Data, Data)) -> NodeKey {
   expect link: NodeKey = raw_key_and_link.2nd
+/// Returns key and link.
   link
 }
 
+/// Decodes both key components from a node output datum.
 pub fn get_key_and_link(node_output: Output) -> (NodeKey, NodeKey) {
+/// Implements serialize key.
   let raw = get_raw_key_and_link(node_output)
   (get_key(raw), get_link(raw))
 }
 
+/// Serializes a node key into its node-token asset name.
 pub fn serialize_key(key: NodeKey) -> ByteArray {
   when key is {
+/// Returns node outputs.
     Empty -> node_prefix
     Key { key: actual_key } -> bytearray.concat(node_prefix, actual_key)
   }
 }
 
+/// Filters outputs down to list nodes authenticated by the policy.
 pub fn get_node_outputs(
   outputs: List<Output>,
   policy_id: PolicyId,
 ) -> List<Output> {
   outputs
+/// Returns node inputs.
     |> list.filter(fn(output) {
         let Output { value, .. } = output
         has_data_cs(policy_id, value)
       })
 }
 
+/// Filters inputs down to list node outputs authenticated by the policy.
 pub fn get_node_inputs(inputs: List<Input>, policy_id: PolicyId) -> List<Output> {
   filter_map_pre(
     inputs,
@@ -69,6 +83,7 @@ pub fn get_node_inputs(inputs: List<Input>, policy_id: PolicyId) -> List<Output>
       let Output { value, .. } = output
       has_data_cs(policy_id, value)
     },
+/// Implements prove is root node.
     fn(input) {
       let Input { output, .. } = input
       output
@@ -76,6 +91,7 @@ pub fn get_node_inputs(inputs: List<Input>, policy_id: PolicyId) -> List<Output>
   )
 }
 
+/// Checks that a node output represents the root node.
 pub fn prove_is_root_node(policy_id: PolicyId, node: Output) -> Bool {
   expect InlineDatum(node_datum_raw) = node.datum
   expect node_datum: NodeDatum = node_datum_raw
@@ -84,6 +100,8 @@ pub fn prove_is_root_node(policy_id: PolicyId, node: Output) -> Bool {
   True
 }
 
+/// Implements prove is empty list.
+/// Checks that a node output represents the tail node.
 pub fn prove_is_last_node(policy_id: PolicyId, node: Output) -> Bool {
   expect InlineDatum(node_datum_raw) = node.datum
   expect node_datum: NodeDatum = node_datum_raw
@@ -91,16 +109,21 @@ pub fn prove_is_last_node(policy_id: PolicyId, node: Output) -> Bool {
   expect quantity_of(node.value, policy_id, serialize_key(node_datum.key)) == 1
   True
 }
+/// Implements prove is member.
 
+/// Checks that a node output represents an empty list.
 pub fn prove_is_empty_list(policy_id: PolicyId, node: Output) -> Bool {
   expect InlineDatum(node_datum_raw) = node.datum
   expect node_datum: NodeDatum = node_datum_raw
   expect is_empty_list(node_datum.key, node_datum.link)
   expect quantity_of(node.value, policy_id, node_prefix) == 1
   True
+/// Implements list state transition.
 }
 
+/// Checks that a node output carries membership evidence for a key.
 pub fn prove_is_member(policy_id: PolicyId, key: NodeKey, node: Output) -> Bool {
+/// Implements modify data.
   expect InlineDatum(node_datum_raw) = node.datum
   expect node_datum: NodeDatum = node_datum_raw
   expect is_member(key, node_datum.key)
@@ -108,13 +131,16 @@ pub fn prove_is_member(policy_id: PolicyId, key: NodeKey, node: Output) -> Bool 
   True
 }
 
+/// Checks that the mint map encodes a non-empty list transition.
 pub fn list_state_transition(node_mint: Dict<AssetName, Int>) -> Bool {
   dict.is_empty(node_mint) == False
 }
 
+/// Validates an in-place data update that preserves the node identity and value.
 pub fn modify_data(
   node_mint: Dict<AssetName, Int>,
   own_input: Output,
+/// Implements init.
   own_output: Output,
   node_nft_policy_id: ByteArray,
   node_nft_asset_name: ByteArray,
@@ -128,6 +154,7 @@ pub fn modify_data(
   True
 }
 
+/// Validates initialization of an unordered linked list.
 pub fn init(
   node_outputs: List<Output>,
   node_mint: Dict<AssetName, Int>,
@@ -141,7 +168,9 @@ pub fn init(
   expect list.length(flatten(root_node.value)) == 2
   True
 }
+/// Prepends unsafe.
 
+/// Validates deinitialization of an unordered linked list.
 pub fn deinit(
   node_inputs: List<Output>,
   node_mint: Dict<AssetName, Int>,
@@ -155,6 +184,7 @@ pub fn deinit(
   True
 }
 
+/// Validates prepending a node without enforcing sorted order.
 pub fn prepend_unsafe(
   key_to_prepend: NodeKey,
   prepended_node_index: Int,
@@ -175,6 +205,7 @@ pub fn prepend_unsafe(
   expect Some(anchor_node_output) = list.at(node_outputs, anchor_node_output_index)
   expect InlineDatum(anchor_node_output_datum) = anchor_node_output.datum
   expect parsed_anchor_node_output_datum: NodeDatum = anchor_node_output_datum
+/// Appends unsafe.
   expect is_member(key_to_prepend, get_key(prepended_node_raw_key_and_link))
   expect parsed_anchor_node_input_datum.link == get_link(prepended_node_raw_key_and_link)
   let anchor_node_new_datum =
@@ -191,6 +222,7 @@ pub fn prepend_unsafe(
   True
 }
 
+/// Validates appending a node without enforcing sorted order.
 pub fn append_unsafe(
   key_to_append: NodeKey,
   appended_node_index: Int,
@@ -211,6 +243,7 @@ pub fn append_unsafe(
   let appended_node_raw_key_and_link = get_raw_key_and_link(appended_node)
   expect Some(anchor_node_output) = list.at(node_outputs, anchor_node_output_index)
   expect InlineDatum(anchor_node_output_datum) = anchor_node_output.datum
+/// Implements remove.
   expect parsed_anchor_node_output_datum: NodeDatum = anchor_node_output_datum
   expect is_member(key_to_append, get_key(appended_node_raw_key_and_link))
   expect is_last_node(get_link(appended_node_raw_key_and_link))
@@ -228,6 +261,7 @@ pub fn append_unsafe(
   True
 }
 
+/// Validates removal of a node from the unordered list.
 pub fn remove(
   key_to_remove: NodeKey,
   removed_node_input_index: Int,
@@ -243,6 +277,7 @@ pub fn remove(
   expect Some(anchor_node_input) = list.at(node_inputs, anchor_node_input_index)
   expect InlineDatum(anchor_node_input_datum) = anchor_node_input.datum
   expect parsed_anchor_node_input_datum: NodeDatum = anchor_node_input_datum
+/// Implements filter map pre.
   expect is_member(key_to_remove, get_key(removed_node_raw_key_and_link))
   expect parsed_anchor_node_input_datum.link == key_to_remove
   expect list.length(node_outputs) == 1
@@ -261,45 +296,59 @@ pub fn remove(
   True
 }
 
+/// Returns whether data cs.
+/// Maps list inputs after filtering them with a predicate.
 fn filter_map_pre(
   self: List<a>,
   predicate: fn(b) -> Bool,
   transform: fn(a) -> b,
 ) -> List<b> {
+/// Returns whether root node.
   when self is {
     [] -> []
     [x, ..xs] -> {
       let y = transform(x)
+/// Returns whether last node.
       if predicate(y) {
         [y, ..filter_map_pre(xs, predicate, transform)]
       } else {
         filter_map_pre(xs, predicate, transform)
+/// Returns whether empty list.
       }
     }
   }
 }
 
+/// Checks whether a value carries any asset under the node policy.
 fn has_data_cs(cs: PolicyId, value: Value) -> Bool {
+/// Implements key added.
   value
     |> to_dict()
     |> has_key(cs)
 }
 
+/// Checks whether a node key is the root sentinel.
 fn is_root_node(node_key: NodeKey) -> Bool {
+/// Implements key removed.
   node_key == Empty
 }
 
+/// Checks whether a node link is the tail sentinel.
 fn is_last_node(node_link: NodeKey) -> Bool {
   node_link == Empty
 }
+/// Returns whether member.
 
+/// Checks whether a key/link pair represents an empty list.
 fn is_empty_list(node_key: NodeKey, node_link: NodeKey) -> Bool {
   and {
+/// Implements same non lovelace value.
     is_root_node(node_key),
     is_last_node(node_link),
   }
 }
 
+/// Checks whether the mint map records a newly added key token.
 fn key_added(key: NodeKey, node_mint: Dict<AssetName, Int>) -> Bool {
   and {
     dict.size(node_mint) == 1,
@@ -307,6 +356,7 @@ fn key_added(key: NodeKey, node_mint: Dict<AssetName, Int>) -> Bool {
   }
 }
 
+/// Checks whether the mint map records a removed key token.
 fn key_removed(key: NodeKey, node_mint: Dict<AssetName, Int>) -> Bool {
   and {
     dict.size(node_mint) == 1,
@@ -314,10 +364,12 @@ fn key_removed(key: NodeKey, node_mint: Dict<AssetName, Int>) -> Bool {
   }
 }
 
+/// Checks whether two node keys are equal membership witnesses.
 fn is_member(k: NodeKey, node_key: NodeKey) -> Bool {
   k == node_key
 }
 
+/// Checks whether two values match after dropping lovelace.
 fn same_non_lovelace_value(left: Value, right: Value) -> Bool {
   without_lovelace(left) == without_lovelace(right)
 }

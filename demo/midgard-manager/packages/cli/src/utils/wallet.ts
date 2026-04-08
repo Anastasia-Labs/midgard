@@ -3,7 +3,9 @@ import { join } from 'node:path';
 
 import { generateEmulatorAccountFromPrivateKey, LucidEvolution } from '@lucid-evolution/lucid';
 
-// Simple wallet storage
+/**
+ * Wallet metadata persisted by the manager CLI.
+ */
 interface WalletInfo {
   name: string;
   privateKey: string;
@@ -14,7 +16,10 @@ interface WalletInfo {
 const WALLET_DIR = './wallets';
 const WALLET_FILE = join(WALLET_DIR, 'wallets.json');
 
-// Initialize wallet storage
+/**
+ * Ensures the wallet storage directory and JSON file exist before any read or
+ * write operation.
+ */
 function initializeStorage(): void {
   try {
     mkdirSync(WALLET_DIR, { recursive: true });
@@ -27,7 +32,12 @@ function initializeStorage(): void {
   }
 }
 
-// Load wallets from storage
+/**
+ * Loads the persisted wallet map from disk.
+ *
+ * The CLI falls back to an empty map on parse or read failure so wallet setup
+ * flows can recover by re-creating the file.
+ */
 function loadWallets(): Record<string, WalletInfo> {
   try {
     initializeStorage();
@@ -39,7 +49,9 @@ function loadWallets(): Record<string, WalletInfo> {
   }
 }
 
-// Save wallets to storage
+/**
+ * Persists the full wallet map to disk.
+ */
 function saveWallets(wallets: Record<string, WalletInfo>): void {
   try {
     initializeStorage();
@@ -51,7 +63,7 @@ function saveWallets(wallets: Record<string, WalletInfo>): void {
 }
 
 /**
- * Gets a wallet's address
+ * Returns the bech32 address for a named wallet.
  */
 export function getWalletAddress(walletName: string): string {
   const wallets = loadWallets();
@@ -63,7 +75,7 @@ export function getWalletAddress(walletName: string): string {
 }
 
 /**
- * Gets a wallet's private key in bech32 format
+ * Returns the stored private key for a named wallet.
  */
 export function getWalletPrivateKey(walletName: string): string {
   const wallets = loadWallets();
@@ -75,7 +87,7 @@ export function getWalletPrivateKey(walletName: string): string {
 }
 
 /**
- * Lists all available wallets
+ * Lists every wallet key currently present in local storage.
  */
 export function listWallets(): string[] {
   const wallets = loadWallets();
@@ -83,7 +95,7 @@ export function listWallets(): string[] {
 }
 
 /**
- * Generates a new wallet
+ * Generates and persists a new emulator wallet under the provided name.
  */
 export async function generateWallet(name: string): Promise<WalletInfo> {
   const wallets = loadWallets();
@@ -108,7 +120,7 @@ export async function generateWallet(name: string): Promise<WalletInfo> {
 }
 
 /**
- * Initializes the default test wallet if not already initialized
+ * Ensures the default `test` wallet exists for local/demo flows.
  */
 export async function initializeDefaultWallet(): Promise<void> {
   const wallets = loadWallets();
@@ -129,7 +141,7 @@ export async function initializeDefaultWallet(): Promise<void> {
 }
 
 /**
- * Removes a wallet
+ * Removes a non-default wallet from local storage.
  */
 export function removeWallet(name: string): void {
   const wallets = loadWallets();
@@ -149,7 +161,7 @@ export function removeWallet(name: string): void {
 }
 
 /**
- * Gets wallet details
+ * Returns the full stored record for a named wallet, if present.
  */
 export function getWalletDetails(name: string): WalletInfo | undefined {
   const wallets = loadWallets();
@@ -157,7 +169,7 @@ export function getWalletDetails(name: string): WalletInfo | undefined {
 }
 
 /**
- * Selects a wallet for use with Lucid
+ * Selects the named wallet inside a Lucid client instance.
  */
 export async function selectWallet(walletName: string, lucid: LucidEvolution): Promise<void> {
   const wallet = getWalletDetails(walletName);

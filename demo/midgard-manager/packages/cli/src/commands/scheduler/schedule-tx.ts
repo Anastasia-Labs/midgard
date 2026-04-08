@@ -10,20 +10,36 @@ import { fileURLToPath } from 'url';
 
 import { getWallet, listWallets } from '../../config/wallets.js';
 
-// Get the directory path relative to the monorepo
+/**
+ * Scheduler commands for recurring transaction-generation workloads.
+ *
+ * This module owns both persisted schedule configuration and the in-memory
+ * CRON jobs derived from that configuration.
+ */
+
+/**
+ * Resolve the manager project root from the compiled command location so the
+ * schedule store is stable regardless of the caller's working directory.
+ */
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 const MONOREPO_ROOT = join(__dirname, '../../../../../../..');
 const PROJECT_ROOT = join(MONOREPO_ROOT, 'demo/midgard-manager');
 
-// Store schedule configuration in the project's config directory
+/**
+ * Schedule configuration lives alongside the rest of the manager config files.
+ */
 const CONFIG_DIR = join(PROJECT_ROOT, 'config');
 const SCHEDULE_CONFIG_PATH = join(CONFIG_DIR, 'schedules.json');
 
-// Available transaction types
+/**
+ * Transaction types a scheduled job may request from the generator.
+ */
 const transactionTypes = ['one-to-one', 'multi-output', 'mixed'];
 
-// Available schedule presets
+/**
+ * Human-friendly CRON presets offered by the CLI.
+ */
 const schedulePresets = {
   hourly: '0 * * * *',
   daily: '0 0 * * *',
@@ -34,10 +50,16 @@ const schedulePresets = {
   'every-30-minutes': '*/30 * * * *',
 };
 
+/**
+ * Serialized schedule-file shape.
+ */
 interface ScheduleConfig {
   schedules: Schedule[];
 }
 
+/**
+ * One persisted recurring transaction-generation schedule.
+ */
 interface Schedule {
   id: string;
   name: string;
@@ -54,11 +76,14 @@ interface Schedule {
   };
 }
 
-// Active schedules (in-memory)
+/**
+ * In-memory registry of active CRON jobs keyed by schedule id.
+ */
 const activeJobs: Map<string, cron.ScheduledTask> = new Map();
 
 /**
- * Load schedule configuration
+ * Loads the persisted schedule list from disk, creating an empty file on first
+ * use when needed.
  */
 const loadSchedules = async (): Promise<ScheduleConfig> => {
   try {
@@ -81,7 +106,7 @@ const loadSchedules = async (): Promise<ScheduleConfig> => {
 };
 
 /**
- * Save schedule configuration
+ * Persists the full schedule list back to disk.
  */
 const saveSchedules = async (config: ScheduleConfig): Promise<void> => {
   try {
@@ -94,14 +119,17 @@ const saveSchedules = async (config: ScheduleConfig): Promise<void> => {
 };
 
 /**
- * Generate a unique ID
+ * Generates a lightweight identifier for a schedule entry.
  */
 const generateId = (): string => {
   return Math.random().toString(36).substring(2, 10);
 };
 
 /**
- * Start a scheduled job
+ * Starts or restarts one schedule in the in-memory CRON registry.
+ *
+ * The function validates the CRON expression, resolves the configured wallet,
+ * and ensures only one active task exists per schedule id.
  */
 const startScheduledJob = async (schedule: Schedule): Promise<void> => {
   if (activeJobs.has(schedule.id)) {
@@ -153,7 +181,7 @@ const startScheduledJob = async (schedule: Schedule): Promise<void> => {
 };
 
 /**
- * Initialize all schedules on startup
+ * Restores all enabled schedules from disk during module initialization.
  */
 const initSchedules = async (): Promise<void> => {
   const config = await loadSchedules();
@@ -166,7 +194,8 @@ const initSchedules = async (): Promise<void> => {
 };
 
 /**
- * Command to add a new transaction schedule
+ * CLI command that creates, persists, and activates a new recurring
+ * transaction-generation schedule.
  */
 const addScheduleCommand = Command.make(
   'add',
@@ -460,7 +489,7 @@ const addScheduleCommand = Command.make(
 );
 
 /**
- * Command to list all transaction schedules
+ * CLI command that lists all persisted schedules and their next run time.
  */
 const listSchedulesCommand = Command.make('list', {}, () => {
   return pipe(
@@ -518,7 +547,8 @@ const listSchedulesCommand = Command.make('list', {}, () => {
 });
 
 /**
- * Command to toggle a schedule on/off
+ * CLI command that toggles one schedule and reconciles the in-memory CRON job
+ * registry to match the persisted enabled state.
  */
 const toggleScheduleCommand = Command.make(
   'toggle',
@@ -572,7 +602,8 @@ const toggleScheduleCommand = Command.make(
 );
 
 /**
- * Command to remove a schedule
+ * CLI command that removes a schedule from disk and stops any active CRON job
+ * for the same schedule id.
  */
 const removeScheduleCommand = Command.make(
   'remove',
@@ -623,7 +654,7 @@ const removeScheduleCommand = Command.make(
 );
 
 /**
- * Main schedule-tx command
+ * Top-level schedule-management command group.
  */
 export const scheduleTxCommand = Command.make('schedule-tx')
   .pipe(Command.withDescription('Schedule transaction generation using CRON syntax'))
@@ -638,5 +669,7 @@ export const scheduleTxCommand = Command.make('schedule-tx')
     ])
   );
 
-// Initialize schedules at startup
+/**
+ * Restore persisted schedules as soon as this command module is loaded.
+ */
 initSchedules();

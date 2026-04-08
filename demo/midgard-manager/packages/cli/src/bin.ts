@@ -7,7 +7,12 @@ import * as Effect from 'effect/Effect';
 import { run } from './Cli.js';
 import { displayLogo } from './utils/logo.js';
 
-// Display the Midgard logo when the CLI starts
+/**
+ * CLI process entrypoint.
+ *
+ * It renders the shared logo/header, wires the Effect Node runtime, and then
+ * hands off control to the root CLI command.
+ */
 displayLogo({ variant: 'full' });
 
 run(process.argv).pipe(

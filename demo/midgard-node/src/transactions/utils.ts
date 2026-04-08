@@ -14,6 +14,13 @@ import { Database } from "@/services/index.js";
 import { ImmutableDB } from "@/database/index.js";
 import { DatabaseError } from "@/database/utils/common.js";
 
+/**
+ * Shared transaction signing, submission, confirmation, and recovery helpers.
+ *
+ * These utilities centralize the messy provider-facing parts of transaction
+ * handling so higher-level transaction builders can stay focused on protocol
+ * logic.
+ */
 const RETRY_ATTEMPTS = 1;
 
 const INIT_RETRY_AFTER_MILLIS = 2_000;
@@ -34,6 +41,10 @@ const ALREADY_INCLUDED_ERROR_PATTERNS = [
   "BadInputsUTxO",
 ] as const;
 
+/**
+ * Returns whether a provider error looks like a transaction that may already
+ * have landed on-chain despite the submit call failing.
+ */
 const isPotentiallyAlreadyIncludedError = (message: string): boolean =>
   ALREADY_INCLUDED_ERROR_PATTERNS.some((pattern) => message.includes(pattern));
 
@@ -46,6 +57,9 @@ type OutsideValidityIntervalDetails = {
   readonly currentSlot: number;
 };
 
+/**
+ * Extracts slot-boundary details from an `OutsideValidityIntervalUTxO` error.
+ */
 const parseOutsideValidityIntervalDetails = (
   message: string,
 ): OutsideValidityIntervalDetails | null => {
@@ -76,17 +90,27 @@ type SignSubmitContext = {
   readonly walletAddress: string;
 };
 
+/**
+ * Formats an outref into a stable map key.
+ */
 const outRefToKey = (txHash: string, outputIndex: number): string =>
   `${txHash}#${outputIndex.toString()}`;
 
+/**
+ * Reconciles Lucid's local wallet view after a confirmed transaction.
+ *
+ * This is mainly relevant for local wallets/providers that expose
+ * `overrideUTxOs`, allowing later transactions to reuse the updated wallet view
+ * without waiting for an external provider refresh.
+ */
 const reconcileWalletUtxosFromSignedTx = (
   lucid: LucidEvolution,
   submission: SignSubmitContext,
 ): Effect.Effect<void, never> =>
   Effect.gen(function* () {
     const wallet = lucid.wallet() as {
-      getUtxos: () => Promise<readonly UTxO[]>;
-      overrideUTxOs?: (utxos: readonly UTxO[]) => void;
+      getUtxos: () => Promise<UTxO[]>;
+      overrideUTxOs?: (utxos: UTxO[]) => void;
     };
     if (typeof wallet.overrideUTxOs !== "function") {
       return;
@@ -103,7 +127,7 @@ const reconcileWalletUtxosFromSignedTx = (
 
     const walletUtxos = yield* Effect.tryPromise({
       try: () => wallet.getUtxos(),
-      catch: () => [] as readonly UTxO[],
+      catch: () => [] as UTxO[],
     });
     const filteredWalletUtxos = walletUtxos.filter(
       (utxo) => !spentOutRefs.has(outRefToKey(utxo.txHash, utxo.outputIndex)),
@@ -140,6 +164,9 @@ export type BlockTxPayload = {
   readonly txCbor: Buffer;
 };
 
+/**
+ * Converts an unknown submit failure into a stable log/error string.
+ */
 const formatSubmitError = (error: unknown): string => {
   if (error instanceof Error) {
     return `${error.name}: ${error.message}`;
@@ -154,6 +181,10 @@ const formatSubmitError = (error: unknown): string => {
   }
 };
 
+/**
+ * Submits a signed transaction with recovery logic for provider races and
+ * early-validity-window failures.
+ */
 const submitSignedTxWithRecovery = (
   lucid: LucidEvolution,
   signed: Awaited<ReturnType<TxSignBuilder["complete"]>>,
@@ -320,6 +351,10 @@ export const handleSignSubmitNoConfirmation = (
     ),
   );
 
+/**
+ * Shared implementation used by the confirmation and no-confirmation sign/
+ * submit entrypoints.
+ */
 const signSubmitHelper = (
   lucid: LucidEvolution,
   signBuilder: TxSignBuilder,
@@ -423,11 +458,17 @@ export const fetchFirstBlockTxs = (
     return { txs, txHashes, headerHash };
   });
 
+/**
+ * Projects a full UTxO into its outref-only form.
+ */
 export const utxoToOutRef = (utxo: UTxO): OutRef => ({
   txHash: utxo.txHash,
   outputIndex: utxo.outputIndex,
 });
 
+/**
+ * Returns whether two outrefs point to the same transaction output.
+ */
 export const outRefsAreEqual = (outRef0: OutRef, outRef1: OutRef): boolean => {
   return (
     outRef0.txHash === outRef1.txHash &&

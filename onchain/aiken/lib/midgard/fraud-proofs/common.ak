@@ -35,6 +35,8 @@ pub type TxInclusionArgs {
   inclusion_proof_script_withdraw_redeemer_index: Int,
 }
 
+/// Carries the verified transaction body into the next fraud-proof step.
+/// Validates and forwards the current fraud-proof state into the next step output.
 pub fn pass_tx_to_next_step(
   computation_thread_token_policy_id: PolicyId,
   hub_oracle: ScriptHash,
@@ -126,7 +128,9 @@ pub fn pass_tx_to_next_step(
   // Done.
   True
 }
+/// Validates the cancellation path for an in-flight fraud proof.
 
+/// Cancels a fraud-proof progression and refunds the prover.
 pub fn cancel(
   computation_thread_token_policy_id: PolicyId,
   m_datum: Option<ct.StepDatum<a>>,
@@ -262,8 +266,10 @@ pub fn continue(
     output_script_hash,
     output_state_data,
   )
+/// Validates the final fraud-proof transition into its terminal step.
 }
 
+/// Validates the final fraud-proof step and releases the resulting output.
 pub fn finalize(
   computation_thread_token_policy_id: PolicyId,
   fraud_proof_token_policy_id: PolicyId,
@@ -356,9 +362,11 @@ pub fn finalize(
     computation_thread_token_asset_name,
     fraud_prover,
     m_input_state_data,
+/// Verifies a transaction witness and returns the decoded body.
   )
 }
 
+/// Verifies a transaction and returns its decoded body.
 pub fn verify_tx_and_its_body(
   tx_id: MidgardTxId,
   tx: MidgardTxCompact,
@@ -367,10 +375,12 @@ pub fn verify_tx_and_its_body(
   let tx_data: Data = tx
   and {
     verify_hash_32(data: tx_data, data_hash: tx_id),
+/// Verifies a transaction inside a state-queue node and returns its header.
     verify_hash_32(data: tx_body, data_hash: tx.body),
   }
 }
 
+/// Verifies a transaction inside a state-queue node and returns the block header.
 pub fn verify_tx_in_state_queue_node_and_get_header(
   tx_id: MidgardTxId,
   tx: MidgardTxCompact,
@@ -422,11 +432,13 @@ pub fn verify_tx_in_state_queue_node_and_get_header(
       redeemers: redeemers,
       withdraw_redeemer_index: inclusion_proof_script_withdraw_redeemer_index,
     )
+/// Validates the payout output directed to the fraud prover.
 
   // Done. Return the block header.
   state_queue_datum
 }
 
+/// Checks that an output pays the expected value to the fraud prover.
 pub fn validate_output_to_fraud_prover(
   output_to_fraud_prover: Output,
   prover_hash: ByteArray,

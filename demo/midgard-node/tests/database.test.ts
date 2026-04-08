@@ -53,6 +53,9 @@ const flushAll = Effect.gen(function* () {
   );
 });
 
+/**
+ * Generates random bytes for database test fixtures.
+ */
 const randomBytes = (n: number) =>
   Buffer.from(Array.from({ length: n }, () => Math.floor(Math.random() * 255)));
 

@@ -2,6 +2,13 @@ import { TxHash } from "@lucid-evolution/lucid";
 import { SerializedStateQueueUTxO } from "@/workers/utils/commit-block-header.js";
 import { Effect, Ref } from "effect";
 
+/**
+ * Process-wide mutable references shared between long-running fibers.
+ *
+ * These refs hold operational state that does not belong in durable storage but
+ * still needs coordination across workers, readiness checks, and recovery
+ * paths.
+ */
 export class Globals extends Effect.Service<Globals>()("Globals", {
   effect: Effect.gen(function* () {
     const now = Date.now();
