@@ -1,5 +1,5 @@
 use aiken/builtin
-use midgard/common/types.{Empty, PosixTime, PosixTimeDuration}
+use midgard/common/types.{Empty, PosixTime}
 
 pub const posix_time_none: PosixTime = -1
 

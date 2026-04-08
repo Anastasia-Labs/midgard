@@ -158,6 +158,13 @@ validator mint(hub_oracle_script_hash: PolicyId) {
         //    redeemer argument here.
         expect registering_operator == retired_operator_key
 
+        expect Some(retired_operator_anchor_element_input) =
+          inputs |> list.at(retired_operator_anchor_element_input_index)
+        expect Some(retired_operator_removed_node_input) =
+          inputs |> list.at(retired_operator_removed_node_input_index)
+        expect Some(retired_operator_anchor_element_output) =
+          outputs |> list.at(retired_operator_anchor_element_output_index)
+
         // 4. The re-registering operator node must be removed from the retired
         //    operators set.
         {
@@ -171,9 +178,9 @@ validator mint(hub_oracle_script_hash: PolicyId) {
             _retired_operator_node_link,
           <-
             linked_list.remove(
-              retired_operator_anchor_element_input_index,
-              retired_operator_removed_node_input_index,
-              retired_operator_anchor_element_output_index,
+              retired_operator_anchor_element_input,
+              retired_operator_removed_node_input,
+              retired_operator_anchor_element_output,
               mint,
             )
 
@@ -182,7 +189,7 @@ validator mint(hub_oracle_script_hash: PolicyId) {
 
           // 6. The removing node's key must match the re-registering operator's
           //    key.
-          expect Some(retired_operator_key) == retired_operator_node_key
+          expect retired_operator_key == retired_operator_node_key
 
           // 7. Correctness of the redeemer argument must be validated for the
           //    registered operators script to use.

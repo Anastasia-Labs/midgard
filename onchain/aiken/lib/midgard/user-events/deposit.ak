@@ -1,5 +1,6 @@
 use aiken/crypto.{ScriptHash}
 use cardano/assets.{PolicyId}
+use cardano/transaction.{InlineDatum, Input, Output}
 use midgard/common/types.{PosixTime, Proof}
 use midgard/common/utils
 use midgard/ledger_state

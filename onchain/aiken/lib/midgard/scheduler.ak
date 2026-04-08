@@ -22,7 +22,7 @@ pub type OperatorRemovalReason {
 }
 
 pub type NeglectedUserEvent {
-  NoNeglecteddUserEvent
+  NoNeglectedUserEvent
   NeglectedDeposit { deposit_ref_input_index: Int }
   NeglectedWithdrawal { withdrawal_ref_input_index: Int }
   NeglectedTxOrder { tx_order_ref_input_index: Int }
@@ -41,6 +41,7 @@ pub type AdvancingApproach {
     active_operators_spend_redeemer_index: Int,
     state_queue_ref_input_index: Int,
     hub_oracle_ref_input_index: Int,
+    neglected_user_event: NeglectedUserEvent,
   }
   RewindDueToSkippedOperator {
     active_operators_root_ref_input_index: Int,
@@ -59,7 +60,6 @@ pub type AdvancingApproach {
     removal_reason: OperatorRemovalReason,
   }
   RewindDueToOperatorRemoval {
-    active_operators_last_node_ref_input_index: Int,
     active_operators_mint_redeemer_index: Int,
     m_active_operators_last_node_ref_input_index: Option<Int>,
     removal_reason: OperatorRemovalReason,

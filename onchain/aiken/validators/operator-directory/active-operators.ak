@@ -23,6 +23,7 @@ use midgard/operator_directory/retired_operators
 use midgard/protocol_parameters.{
   inactivity_slashing_penalty, maturity_duration, max_inactivity_strikes,
 }
+use midgard/scheduler
 use midgard/settlement
 use midgard/state_queue
 
@@ -222,17 +223,17 @@ validator spend(
         expect
           when scheduler_advancing_approach is {
             scheduler.RewindDueToSkippedOperator {
-              active_operators_node_input_index: active_node_input_index_from_scheduler_redeemer,
+              skipped_operator_node_input_index: skipped_operator_node_input_index_from_scheduler_redeemer,
               ..
             } |
             scheduler.GoToNextDueToSkippedOperator {
-              active_operators_node_input_index: active_node_input_index_from_scheduler_redeemer,
+              skipped_operator_node_input_index: skipped_operator_node_input_index_from_scheduler_redeemer,
               ..
             } ->
               // TODO: One of these two might suffice.
               and {
                 scheduler_input_index == scheduler_input_index_from_scheduler_redeemer,
-                active_node_input_index == active_node_input_index_from_scheduler_redeemer,
+                active_node_input_index == skipped_operator_node_input_index_from_scheduler_redeemer,
               }
             _ -> False
           }
@@ -267,7 +268,21 @@ validator spend(
           //    correct for other contracts to use.
           expect active_node_link_from_redeemer == correct_active_node_link
 
-          // 7. The new strikes count must not exceed the maximum allowed. This
+          // 7. The underlying data must only have its strike counts
+          //    incremented.
+          expect NodeData {
+            inactivity_strikes: input_strikes,
+            bond_unlock_time: input_bond_unlock_time,
+          } = active_node_input_data
+          let new_inactivity_strikes = input_strikes + 1
+          let expected_output_node_data: Data =
+            NodeData {
+              inactivity_strikes: new_inactivity_strikes,
+              bond_unlock_time: input_bond_unlock_time,
+            }
+          expect active_node_output_data == expected_output_node_data
+
+          // 8. The new strikes count must not exceed the maximum allowed. This
           //    is there to cover one specific edge case: If the appointed
           //    operator is the only member of the active operators set,
           //    inactivity causes the scheduler to rewind back to the same
@@ -278,21 +293,7 @@ validator spend(
           //    With this check in place, the operator's UTxO cannot be spent
           //    for strikes any further, and the node will be free for transfer
           //    to the retired set.
-          let new_inactivity_strikes = input_strikes + 1
           expect new_inactivity_strikes <= max_inactivity_strikes
-
-          // 8. The underlying data must only have its strike counts
-          //    incremented.
-          expect NodeData {
-            inactivity_strikes: input_strikes,
-            bond_unlock_time: input_bond_unlock_time,
-          } = active_node_input_data
-          let expected_output_node_data: Data =
-            NodeData {
-              inactivity_strikes: new_inactivity_strikes,
-              bond_unlock_time: input_bond_unlock_time,
-            }
-          expect active_node_output_data == expected_output_node_data
 
           // Done.
           True
@@ -551,6 +552,7 @@ fn spend_for_updating_bond_unlock_time(
       m_operator,
       active_node_input_data,
       active_node_output_data,
+      _active_node_link,
     <-
       linked_list.spend_for_updating_elements_data(
         element_input_index: active_node_input_index,
