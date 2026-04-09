@@ -140,45 +140,11 @@ export const StateQueueMintRedeemer =
 export type StateQueueDatum = Element;
 export const StateQueueDatum = Element;
 
-export type StateQueueUTxO1 = {
-  utxo: UTxO;
-  datum: StateQueueDatum;
-  assetName: string;
-};
-
 type ElementExtra = {
   key: string;
 };
 export type ElementUTxO<TDatum = Element> = AuthenticUTxO<TDatum, ElementExtra>;
-
 export type StateQueueUTxO = ElementUTxO<StateQueueDatum>;
-
-export const getStateQueueDatumFromUTxO = (
-  nodeUTxO: UTxO,
-): Effect.Effect<StateQueueDatum, DataCoercionError | MissingDatumError> => {
-  const datumCBOR = nodeUTxO.datum;
-  if (datumCBOR) {
-    try {
-      const elementDatum = Data.from(datumCBOR, StateQueueDatum);
-      return Effect.succeed(elementDatum);
-    } catch (e) {
-      return Effect.fail(
-        new DataCoercionError({
-          message:
-            "Could not coerce provided UTxO's datum to a `StateQueueDatum`",
-          cause: e,
-        }),
-      );
-    }
-  } else {
-    return Effect.fail(
-      new MissingDatumError({
-        message: "Provided UTxO was expected to carry an inline datum",
-        cause: `No datum found in ${nodeUTxO.txHash}.${nodeUTxO.outputIndex}`,
-      }),
-    );
-  }
-};
 
 export type StateQueueFetchConfig = {
   stateQueueAddress: Address;
@@ -224,7 +190,7 @@ export const findLinkStateQueueUTxO = (
       }),
     );
   } else {
-    const foundLink = utxos.find((u: StateQueueUTxO) => u.assetName === link);
+    const foundLink = utxos.find((u: StateQueueUTxO) => u.key === link);
     if (foundLink) {
       return Effect.succeed(foundLink);
     } else {
@@ -591,19 +557,25 @@ export const fetchUnsortedStateQueueUTxOsProgram = (
         });
       },
     });
-    return yield* authenticateUTxOs<StateQueueDatum, ElementExtra>(
-      allUTxOs,
-      config.stateQueuePolicyId,
-      StateQueueDatum,
-      (_datum) => ({
+
+    const authenticatedStateQueueUTxOs =
+      yield* authenticateUTxOs<StateQueueDatum>(
+        allUTxOs,
+        config.stateQueuePolicyId,
+        StateQueueDatum,
+      );
+
+    const stateQueueUTxOs: StateQueueUTxO[] = authenticatedStateQueueUTxOs.map(
+      (item) => ({
+        ...item,
         key:
-          "Node" in _datum.data
-            ? Object.keys(allUTxOs[0].assets)[0].slice(
-                BLOCK_ASSET_NAME_PREFIX.length,
-              )
+          "Node" in item.datum.data
+            ? item.assetName.slice(BLOCK_ASSET_NAME_PREFIX.length)
             : "",
       }),
     );
+
+    return stateQueueUTxOs;
   });
 
 export const fetchSortedStateQueueUTxOsProgram = (
@@ -702,28 +674,36 @@ export const fetchLatestCommittedBlockProgram = (
     );
     yield* Effect.logInfo("allBlocks", allBlocks.length);
     const filtered: StateQueueUTxO[] = yield* Effect.allSuccesses(
-      allBlocks.map(({ utxo: u }) => {
-        const stateQueueUTxOEffect = authenticateUTxO<
-          StateQueueDatum,
-          ElementExtra
-        >(u, config.stateQueuePolicyId, StateQueueDatum, (_datum) => ({
-          key:
-            "Node" in _datum.data
-              ? Object.keys(u.assets)[0].slice(BLOCK_ASSET_NAME_PREFIX.length)
-              : "",
-        }));
-        return Effect.andThen(stateQueueUTxOEffect, (squ: StateQueueUTxO) =>
-          squ.datum.link === null && "Node" in squ.datum.data
-            ? Effect.succeed(squ)
-            : Effect.fail(
-                new StateQueueError({
-                  message: errorMessage,
-                  cause: "Not a tail node",
-                }),
+      allBlocks.map(({ utxo: u }) =>
+        Effect.gen(function* () {
+          const stateQueueUTxO = yield* authenticateUTxO<StateQueueDatum>(
+            u,
+            config.stateQueuePolicyId,
+            StateQueueDatum,
+          );
+
+          if (
+            stateQueueUTxO.datum.link === null &&
+            "Node" in stateQueueUTxO.datum.data
+          ) {
+            return {
+              ...stateQueueUTxO,
+              key: stateQueueUTxO.assetName.slice(
+                BLOCK_ASSET_NAME_PREFIX.length,
               ),
-        );
-      }),
+            } as StateQueueUTxO;
+          }
+
+          return yield* Effect.fail(
+            new StateQueueError({
+              message: errorMessage,
+              cause: "Not a tail node",
+            }),
+          );
+        }),
+      ),
     );
+
     if (filtered.length === 1) {
       return filtered[0];
     } else {
