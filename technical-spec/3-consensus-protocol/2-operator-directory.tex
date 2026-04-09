@@ -68,6 +68,77 @@ For example, the \code{Element} of \code{registered\_operators} is:
   \T{RegisteredOperatorDatum} \coloneq \T{Element} (\T{Empty}, \T{RegisteredOperator})
 \end{equation*}
 
+\subsection{Operator inactivity}
+\label{h:operator-inactivity}
+
+If a shift's assigned operator neglects their duty to commit blocks regularly to the state queue, they can be given an inactivity strike.
+Enough strikes renders the operator eligible for partial slashing, where they are transferred to the retired operators set, and have a portion of their bond sent to the Cardano treasury as penalty.\footnote{The reason for sending all the slashed portion to the Cardano treasury is to avoid potential incentivization of DDoS attacks against active operators.}
+
+Three protocol parameters govern how operators can be considered inactive.
+\begin{enumerate}
+  \item \code{max\_inactivity\_between\_block\_commitments} dictates a minimum frequency in block commitments.
+    Operators are required to submit block commitments at this rate, regardless of the block containing any transactions or user events.
+  \item \code{user\_events\_negligence\_timeout} determines how long operators can ignore user events slated for inclusion within their shifts.
+    By referring to a user event utxo that's been awaiting inclusion in a block commitment long enough, an operator can be proven inactive.
+  \item \code{new\_shift\_inactivity\_grace\_period} protects newly appointed operators who take over from inactive operators.
+\end{enumerate}
+
+\code{max\_inactivity\_between\_block\_commitments} is the largest of the three.
+Therefore, it's the value that determines the longest period in which the chain can remain inactive without consequences for operators.
+
+The point of time after which an operator can be given an inactivity strike can be found as below:
+\begin{equation*}
+  t_a = max(t_0 + T_0, min(t_b + T_b, t_u + T_u))
+\end{equation*}
+
+Where:
+\begin{itemize}
+  \item \(t_0\) is the shift start time
+  \item \(T_0\) is the \code{new\_shift\_inactivity\_grace\_period} parameter
+  \item \(t_b\) is the end time of latest block commitment
+  \item \(T_b\) is the \code{max\_inactivity\_between\_block\_commitments} parameter
+  \item \(t_u\) is the inclusion time of the earliest user event larger than \(t_b\)
+  \item \(T_u\) is the \code{user\_events\_negligence\_timeout} parameter
+\end{itemize}
+
+As long as it can be shown that \(t_a\) falls within the current operator's shift interval (\(t_a < t_0 + T\), where \(T\) is the shift duration), the operator can be considered inactive.
+
+Inactivity strikes are accumulated in active operators set nodes, and are cleared for each operator on retirement.
+Partially slashed operators can re-register by depositing their lost portion and have thier node utxo transferred to the registered operators set.
+
+\subsection{Operator slashing}
+\label{h:operator-slashing}
+
+There are four ways for operators to get slashed of their ADA bonds, either fully or partially:
+\begin{enumerate}
+  \item Committing a bad block.
+  \item Incorrectly claiming a settlement utxo as fully resolved.
+  \item Registering while already present in any of the operator directory sets.
+  \item Be proven inactive multiple times.
+\end{enumerate}
+
+Operators can be slashed from any of the sets for bad blocks or settlement resolution claims.
+This is enforced through each set's minting policy with a dedicated endpoint.
+Conditions:
+\begin{enumerate}
+  \item Let \code{slashed\_operator} be a redeemer argument indicating the operator being slashed.
+  \item The transaction must Remove a node from the source operator directory set.
+    Let that node be \code{removed\_node}.
+  \item \code{slashed\_operator} must match the operator of \code{removed\_node} (which is obtained either through node's key or its underlying data).
+  \item Lovelaces of the anchor element of \code{removed\_node} must be preserved.
+  \item Slashing penalty must be paid through transaction fees.
+    For paritally slashed operators, this penalty is attained by \code{slashing\_penalty} minus \code{inactivity\_slashing\_penalty}, as the latter is already deduced from their bonds.
+    For operators with their bonds fully intact, this penalty is \code{slashing\_penalty}.
+  \item The transaction must include the Midgard hub oracle NFT in a reference input.
+  \item Depending on the slashing reason (bad block or bad resolution claim), hub oracle's datum must be used to retrieve corresponding script hashes:
+    \begin{itemize}
+      \item If the operator is getting slashed for a bad block commitment, the transaction must verify the state queue's mint script is invoked via the \code{RemoveFraudulentBlockHeader} redeemer, with a matching operator key.
+      \item If the reason is a bad settlement resolution claim, verify the expenditure of a settlement utxo via the \code{DisproveResolutionClaim} with a matching operator key.
+    \end{itemize}
+\end{enumerate}
+
+Throughout this section we refer to the above conditions as \textbf{Slashed} for short.
+
 \subsection{Registered operators}
 \label{h:registered-operators}
 
@@ -126,17 +197,18 @@ Redeemers:
                     \item The transaction must include the Midgard hub oracle NFT in a reference input.
                     \item Let \code{active\_operators} be the policy ID in the corresponding field of the Midgard hub oracle.
                     \item The transaction must Insert a node into the \code{active\_operators} set, as evidenced by minting a \code{active\_operators} node NFT for the \code{registered\_node} key via the Activate Operator redeemer.
+                    \item Let \code{new\_bond\_unlock\_time} be a value retrieved from the \code{active\_operators} mint redeemer.
+                      It is assumed to be the same value as the inserted node's.
                 \end{enumerate}
+            \item Verify that the registrant is not already retired (non-membership in \code{retired\_operators} set, similar to above).
             \item Remove the registrant from the registered operators if it is eligible to activate:
             \begin{enumerate}
                 \item The transaction must Remove a node from the \code{registered\_operators} queue.
                   Let that node be \code{registered\_node}.
                 \item Let \code{activation\_time} be the big-endian decoding of \code{registered\_node}'s key.
                 \item The transaction's validity interval must be entirely after \code{activation\_time}.
-            \end{enumerate}
-            \item Verify that the registrant is not already retired:
-            \begin{enumerate}[resume]
-                \item The transaction must include a reference input of a \code{retired\_operators} node that proves the \code{registered\_node} key's non-membership in that list.
+                \item Let \code{old\_bond\_unlock\_time} be a value retrieved from the underlying data of \code{registered\_node}.
+                \item \code{old\_bond\_unlock\_time} and \code{new\_bond\_unlock\_time} must be equal to ensure proper transafer of operators' bond unlock times.
             \end{enumerate}
         \end{itemize}
     \item[Deregister Operator.] Remove a node from the \code{registered\_operators} queue, with the operator's consent, and return the ADA bond to the operator.
@@ -145,10 +217,12 @@ Redeemers:
             \item The transaction must Remove a node from the \code{registered\_operators} queue.
               Let \code{removed\_node} be that node.
             \item The operator key of \code{removed\_node} must correspond to a PKH that signed the transaction.
+              This is needed so the ADA bond can be assumed to return to the operator's control.
+            \item Let \code{bond\_unlock\_time} be the value retrieved from the underlying data of \code{removed\_node}.
+            \item If \code{bond\_unlock\_time} carries a value, transaction's validity range must be entirely after this designated unlock time.
         \end{enumerate}
-    The operator consents to the transaction, so the ADA bond is assumed to be returned to the operator's control.
-    \item[Remove Duplicate Slash Bond.] Remove a node from the \code{registered\_operators} queue if its operator key duplicates the key of any other node among the registered, active, or retired operators.
-      Do \emph{not} return the duplicate node's ADA bond to its operator.
+    \item[Slash Duplicate Operator.] Remove a node from the \code{registered\_operators} queue if its operator key duplicates the key of any other node among the registered, active, or retired operators.
+      Does \emph{not} return the duplicate node's ADA bond to its operator.
       Conditions:
         \begin{enumerate}
             \item The transaction must Remove a node from the \code{registered\_operators} queue.
@@ -170,7 +244,8 @@ Redeemers:
                     \item The transaction must include a reference input of a \code{retired\_operators} node which its key matches \code{duplicate\_operator}.
                 \end{enumerate}
         \end{enumerate}
-    The submitter of the Remove Duplicate Slash Bond transaction is considered to be the fraud prover, so the conditions for that redeemer do not need to explicitly enforce that the \code{fraud\_prover\_reward} is paid out because the submitter consents to the transaction.
+    The submitter of the Slash Duplicate Operator transaction is considered to be the fraud prover, so the conditions for that redeemer do not need to explicitly enforce that the \code{fraud\_prover\_reward} is paid out because the submitter consents to the transaction.
+    \item[Slash Fraudulent Operator.] Remove a node from the \code{registered\_operators} queue if its operator had returned from retirement, and had committed fraud during activity.
 \end{description}
 
 \subsubsection{Spending validator}

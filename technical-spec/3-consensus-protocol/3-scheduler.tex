@@ -41,47 +41,9 @@ In order to keep this local state in sync with the active operators set, the sch
 We can define three reasons for advancing the scheduler:
 \begin{enumerate}
   \item \textbf{End of shift.} Picking the next operator in set, or updating the shift start time of the current one if no other operators are available.
-  \item \textbf{Skipping.} Operators who can be deemed inactive can be skipped to preserve liveness of the network.
+  \item \textbf{Skipping.} Operators who can be deemed inactive (see \cref{h:operator-inactivity}) can be skipped to preserve liveness of the network.
   \item \textbf{Removal from active set.} If the operator is currently active and is being removed from the active operators set, either for retiring or slashing, the scheduler must advance.
 \end{enumerate}
-
-\subsection{Inactivity penalty}
-\label{h:scheduler-inactivity-penalty}
-
-If a shift's assigned operator neglects their duty to commit blocks regularly to the state queue, they can be given an inactivity strike.
-Enough strikes renders the operator eligible for partial slashing, where they are transferred to the retired operators set, and have a portion of their bond sent to the Cardano treasury as penalty.\footnote{The reason for sending all the slashed portion to the Cardano treasury is to avoid potential incentivization of DDoS attacks against active operators.}
-
-Three protocol parameters govern how operators can be considered inactive.
-\begin{enumerate}
-  \item \code{max\_inactivity\_between\_block\_commitments} guarantees a minimum frequency in block commitments.
-    Operators are required to submit block commitments at this rate, regardless of the block containing any transactions or user events.
-  \item \code{user\_events\_negligence\_timeout} determines how long operators can ignore user events slated for inclusion within their shifts.
-    By referring to a user event utxo that's been awaiting inclusion in a block commitment long enough, an operator can be proven inactive.
-  \item \code{new\_shift\_inactivity\_grace\_period} protects newly appointed operators who take over from inactive operators.
-\end{enumerate}
-
-\code{max\_inactivity\_between\_block\_commitments} is the largest of the three.
-Therefore, it's the value that determines the longest period in which the chain can remain inactive without consequences for operators.
-
-The point of time after which an operator can be given an inactivity strike can be found as below:
-\begin{equation*}
-  t_a = max(t_0 + T_0, min(t_b + T_b, t_u + T_u))
-\end{equation*}
-
-Where:
-\begin{itemize}
-  \item \(t_0\) is the shift start time
-  \item \(T_0\) is the \code{new\_shift\_inactivity\_grace\_period} parameter
-  \item \(t_b\) is the end time of latest block commitment
-  \item \(T_b\) is the \code{max\_inactivity\_between\_block\_commitments} parameter
-  \item \(t_u\) is the inclusion time of the earliest user event larger than \(t_b\)
-  \item \(T_u\) is the \code{user\_events\_negligence\_timeout} parameter
-\end{itemize}
-
-As long as it can be shown that \(t_a\) falls within the current operator's shift interval (\(t_a < t_0 + T\), where \(T\) is the shift duration), the operator can be considered inactive.
-
-Inactivity strikes are accumulated in active operators set nodes, and are cleared for each operator on retirement.
-Partially slashed operators can re-register by depositing their lost portion and have thier node utxo transferred to the registered operators set.
 
 \subsection{Minting policy}
 \label{h:scheduler-minting-policy}
@@ -105,7 +67,7 @@ Redeemers:
 The spending validator of \code{scheduler\_addr} controls the evolution of the scheduler state.
 It is statically parametrized on the \code{active\_operators}, \code{registered\_operators} and \code{hub\_oracle} minting policies, along with \code{active\_operators\_addr} for cross validation of node expenditures.
 
-As described above, there are three reasons for the scheduler to advance.
+As mentioned above, there are three reasons for the scheduler to advance.
 Additionally, depending on the position of the cursor, advancement can either be traversal towards the root (key-descending), or rewinding to the end of the list.
 This results in 6 different paths for advancing the scheduler.
 
