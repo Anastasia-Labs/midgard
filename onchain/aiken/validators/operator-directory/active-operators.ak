@@ -224,17 +224,17 @@ validator spend(
         expect
           when scheduler_advancing_approach is {
             scheduler.RewindDueToSkippedOperator {
-              skipped_operator_node_input_index: skipped_operator_node_input_index_from_scheduler_redeemer,
+              skipped_operator_node_input_index,
               ..
             } |
             scheduler.GoToNextDueToSkippedOperator {
-              skipped_operator_node_input_index: skipped_operator_node_input_index_from_scheduler_redeemer,
+              skipped_operator_node_input_index,
               ..
             } ->
               // TODO: One of these two might suffice.
               and {
                 scheduler_input_index == scheduler_input_index_from_scheduler_redeemer,
-                active_node_input_index == skipped_operator_node_input_index_from_scheduler_redeemer,
+                active_node_input_index == skipped_operator_node_input_index,
               }
             _ -> False
           }
