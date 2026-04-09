@@ -2,12 +2,8 @@ use aiken/crypto.{VerificationKeyHash}
 use aiken/primitive/bytearray
 use aiken_design_patterns/linked_list
 use cardano/assets.{AssetName, PolicyId}
-use cardano/transaction.{Input, Redeemer, ScriptPurpose}
 use midgard/common/types.{PosixTime}
-use midgard/common/utils
-use midgard/hub_oracle as hub
 use midgard/operator_directory.{SlashingArguments}
-use midgard/scheduler
 
 /// TODO: Refer to state queue's library module.
 pub const root_asset_name: AssetName = "MIDGARD_ACTIVE_OPERATORS"
@@ -114,70 +110,6 @@ pub type MintRedeemer {
   SlashOperator {
     slashing_arguments: SlashingArguments,
     operator_removal_scheduler_sync: OperatorRemovalSchedulerSync,
-  }
-}
-
-/// If the subject operator is currently appointed active, this function
-/// validates scheduler UTxO is spent. Otherwise, shows that the currently
-/// appointed operator is different from the subject operator.
-pub fn validate_scheduler_syncs_with_operator_removal(
-  operator_removal_scheduler_sync: OperatorRemovalSchedulerSync,
-  subject_operator: VerificationKeyHash,
-  subject_operators_anchor_key: Option<linked_list.NodeKey>,
-  subject_operators_link: linked_list.Link,
-  hub_datum: hub.Datum,
-  inputs: List<Input>,
-  reference_inputs: List<Input>,
-  redeemers: Pairs<ScriptPurpose, Redeemer>,
-) -> Bool {
-  when operator_removal_scheduler_sync is {
-    ShowOperatorIsInactive { scheduler_ref_input_index } -> {
-      let scheduler_datum =
-        reference_inputs
-          |> scheduler.get_datum(hub_datum.scheduler, scheduler_ref_input_index)
-      when scheduler_datum is {
-        scheduler.NoActiveOperators -> True
-        scheduler.ActiveOperator { operator, .. } ->
-          operator != subject_operator
-      }
-    }
-    ShowSchedulerIsAdvancing {
-      scheduler_input_index,
-      scheduler_redeemer_index,
-      removing_operators_anchor_element_key,
-      removing_operator_is_the_last_member,
-    } -> {
-      // Redeemer arguments must be validated for scheduler to use.
-      expect
-        removing_operators_anchor_element_key == subject_operators_anchor_key
-
-      let (scheduler_datum_data, scheduler_redeemer_data) =
-        utils.get_inline_datum_and_spending_redeemer_data_at(
-          hub_datum.scheduler_addr,
-          scheduler_input_index,
-          scheduler_redeemer_index,
-          inputs,
-          redeemers,
-        )
-      expect scheduler.ActiveOperator { operator, .. } = scheduler_datum_data
-      expect scheduler.SpendRedeemer {
-        scheduler_input_index: input_index_from_scheduler_redeemer,
-        advancing_approach,
-        ..
-      } = scheduler_redeemer_data
-      expect operator == subject_operator
-      expect scheduler_input_index == input_index_from_scheduler_redeemer
-      expect
-        when advancing_approach is {
-          scheduler.GoToNextDueToOperatorRemoval { .. } |
-          scheduler.RewindDueToOperatorRemoval { .. } -> True
-          _ -> False
-        }
-      when subject_operators_link is {
-        None -> removing_operator_is_the_last_member == True
-        Some(_) -> removing_operator_is_the_last_member == False
-      }
-    }
   }
 }
 
