@@ -71,6 +71,22 @@ pub type OperatorRemovalSchedulerSync {
   }
 }
 
+/// TODO: Add a "slash duplicate operator" constructor as well. Currently only
+///       the registered operators set has this endpoint, where it can slash
+///       operators who are on the registered set, and also on any of the other
+///       sets (including registered set itself, as its node keys are not PKHs).
+///       However, since this slashing is not _mandatory_, it is _possible_ (but
+///       highly unlikely) for a duplicate operator to end up in the active set
+///       and the retired set (e.g. an active operator retires, registers again
+///       and doesn't get slashed for duplication, and finally activates). This
+///       can lock the scheduler for the duration of an entire shift: if the
+///       duplicate operator neglects their duties, they will receive inactivity
+///       strikes until its max is reached, which renders them eligible for
+///       partial slashing and transfer to the retired set. But since there
+///       exists a duplicate node there, the transfer transaction cannot go
+///       through. When the scheduler rewinds and appoints the duplicate
+///       operator again, the operator cannot be skipped as its strike count
+///       can't be incremented further.
 pub type MintRedeemer {
   Init { output_index: Int }
   Deinit { input_index: Int }

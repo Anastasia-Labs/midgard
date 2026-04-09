@@ -309,8 +309,8 @@ pub fn slash_fraudulent_operator_and_get_info(
     SlashOperatorForBadState { state_queue_redeemer_index } -> {
       // 8a. State queue minting script must be invoked via the
       //     `RemoveFraudulentBlockHeader` redeemer, and the operator specified
-      //     there must agree with the `slashed_retired_operator_key` redeemer
-      //     argument here.
+      //     there must agree with the `slashed_operator` redeemer argument
+      //     here.
       expect state_queue.RemoveFraudulentBlockHeader { fraudulent_operator, .. } =
         redeemers
           |> utils.get_redeemer_at(
@@ -328,10 +328,6 @@ pub fn slash_fraudulent_operator_and_get_info(
     } -> {
       // 8b. A settlement UTxO must be getting spent via the
       //     `DisproveResolutionClaim` redeemer.
-      //
-      // TODO: Potential optimization opportunities, i.e. using builtin
-      // functions. This requires implicitly imposing the position of `operator`
-      // field in the redeemer to be at index 0.
       expect settlement.DisproveResolutionClaim { operator, .. } =
         utils.get_spending_redeemer_data_at(
           hub_datum.settlement_addr,
