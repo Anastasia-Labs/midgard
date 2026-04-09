@@ -87,6 +87,9 @@ pub type OperatorRemovalSchedulerSync {
 ///       through. When the scheduler rewinds and appoints the duplicate
 ///       operator again, the operator cannot be skipped as its strike count
 ///       can't be incremented further.
+///
+///       Adding this constructor to the retired operators set might be better
+///       as it won't require involvement of the scheduler UTxO.
 pub type MintRedeemer {
   Init { output_index: Int }
   Deinit { input_index: Int }

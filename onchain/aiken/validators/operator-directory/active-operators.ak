@@ -510,8 +510,10 @@ validator mint(
       SlashOperator { slashing_arguments, operator_removal_scheduler_sync } ->
         {
           let
-            slashed_operator,
+            slashed_operator_from_redeemer,
             m_anchor_key,
+            slashed_operator_node_key,
+            _slashed_operator_node_data,
             slashed_operator_node_link,
             hub_datum,
             inputs,
@@ -524,13 +526,17 @@ validator mint(
               self,
             )
 
+          // 1. The operator key indicated in the redeemer must match the key of
+          //    the removed node from the active operators set.
+          expect slashed_operator_node_key == slashed_operator_from_redeemer
+
           // 2. If operator is currently active, validate scheduler datum is
           //    getting updated. Otherwise, show the currently appointed
           //    operator is different from the slashing operator.
           expect
             operator_removal_scheduler_sync
               |> validate_scheduler_syncs_with_operator_removal(
-                  slashed_operator,
+                  slashed_operator_from_redeemer,
                   m_anchor_key,
                   slashed_operator_node_link,
                   hub_datum,

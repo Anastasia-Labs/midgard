@@ -202,7 +202,19 @@ pub fn validate_operator_transfer_and_get_inserted_data(
 }
 
 /// Validations for slashing a fraudulent operator from either the active,
-/// retired or registered operators set.
+/// retired or registered operators set. Verifies:
+/// - Proper penalties are paid through transaction fees.
+/// - Removal of the list node.
+/// - Depending on slashing reason, cross validates with state queue or
+///   settlement contract.
+///
+/// Returns various info extracted from the slashing arguments, list node
+/// removal, and script context (`tx`).
+///
+/// > [!NOTE]
+/// > Correctness of the slashed operator key indicated in the redeemer is not
+/// > validated here. This is because of the registered operators set, where
+/// > node keys are not operator PKHs, unlike the other two lists.
 pub fn slash_fraudulent_operator_and_get_info(
   hub_oracle_script_hash: PolicyId,
   slashing_arguments: SlashingArguments,
@@ -210,6 +222,8 @@ pub fn slash_fraudulent_operator_and_get_info(
   further_validations: fn(
     VerificationKeyHash,
     Option<linked_list.NodeKey>,
+    linked_list.NodeKey,
+    Data,
     linked_list.Link,
     hub.Datum,
     List<Input>,
@@ -263,7 +277,7 @@ pub fn slash_fraudulent_operator_and_get_info(
     _anchor_data,
     slashed_operator_node_lovelace,
     slashed_operator_node_key,
-    _slashed_operator_node_data,
+    slashed_operator_node_data,
     slashed_operator_node_link,
   <-
     linked_list.remove(
@@ -276,28 +290,26 @@ pub fn slash_fraudulent_operator_and_get_info(
   // 4. ADA of anchor element must be preserved.
   expect anchor_lovelace_change >= 0
 
-  // 5. Key of the removing node must be that of the fraudulent operator's
-  //    specified via the redeemer.
-  expect slashed_operator_node_key == slashed_operator
-
   expect
     if slashed_operator_node_lovelace < required_bond {
-      // 6a. If the operator is partially slashed, the portion already sent to the
+      // 5a. If the operator is partially slashed, the portion already sent to the
       //     Cardano treasury doesn't need to be deposited again (since partial
       //     slashing is entirely paid as tx fee).
       fee >= slashing_penalty - inactivity_slashing_penalty
     } else {
-      // 6b. Slashing penalty must be paid to the Cardano treasury via the
+      // 5b. Slashing penalty must be paid to the Cardano treasury via the
       //     transaction fee. Fraud prover is assumed to be the signer of the
       //     transaction, and therefore will receive the remaining bond.
       fee >= slashing_penalty
     }
 
-  // 7. Given custom validations must pass.
+  // 6. Given custom validations must pass.
   expect
     further_validations(
       slashed_operator,
       m_anchor_key,
+      slashed_operator_node_key,
+      slashed_operator_node_data,
       slashed_operator_node_link,
       hub_datum,
       inputs,
@@ -307,7 +319,7 @@ pub fn slash_fraudulent_operator_and_get_info(
 
   when slashing_reason is {
     SlashOperatorForBadState { state_queue_redeemer_index } -> {
-      // 8a. State queue minting script must be invoked via the
+      // 7a. State queue minting script must be invoked via the
       //     `RemoveFraudulentBlockHeader` redeemer, and the operator specified
       //     there must agree with the `slashed_operator` redeemer argument
       //     here.
@@ -326,7 +338,7 @@ pub fn slash_fraudulent_operator_and_get_info(
       settlement_input_index,
       settlement_redeemer_index,
     } -> {
-      // 8b. A settlement UTxO must be getting spent via the
+      // 7b. A settlement UTxO must be getting spent via the
       //     `DisproveResolutionClaim` redeemer.
       expect settlement.DisproveResolutionClaim { operator, .. } =
         utils.get_spending_redeemer_data_at(
@@ -342,19 +354,6 @@ pub fn slash_fraudulent_operator_and_get_info(
       True
     }
   }
-}
-
-pub fn slash_non_active_fraudulent_operator(
-  hub_oracle_script_hash: PolicyId,
-  slashing_arguments: SlashingArguments,
-  tx: Transaction,
-) -> linked_list.Eval {
-  slash_fraudulent_operator_and_get_info(
-    hub_oracle_script_hash,
-    slashing_arguments,
-    tx,
-    fn(_, _, _, _, _, _, _) -> Bool { True },
-  )
 }
 
 pub fn cross_validate_slashing_reason(

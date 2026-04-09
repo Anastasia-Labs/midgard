@@ -10,7 +10,7 @@ use midgard/common/types.{PosixTime}
 use midgard/common/utils
 use midgard/hub_oracle as hub
 use midgard/operator_directory.{
-  deinit, init, operator_is_not_a_member, slash_non_active_fraudulent_operator,
+  deinit, init, operator_is_not_a_member, slash_fraudulent_operator_and_get_info,
 }
 use midgard/operator_directory/active_operators
 use midgard/operator_directory/registered_operators.{
@@ -452,11 +452,32 @@ validator mint(
         }
       }
       SlashFraudulentOperator { slashing_arguments } ->
-        slash_non_active_fraudulent_operator(
-          hub_oracle_script_hash,
-          slashing_arguments,
-          self,
-        )
+        {
+          let
+            slashed_operator_from_redeemer,
+            _m_anchor_key,
+            _slashed_operator_node_key,
+            slashed_operator_node_data,
+            _slashed_operator_node_link,
+            _hub_datum,
+            _inputs,
+            _reference_inputs,
+            _redeemers,
+          <-
+            slash_fraudulent_operator_and_get_info(
+              hub_oracle_script_hash,
+              slashing_arguments,
+              self,
+            )
+
+          // 1. The operator key specified in the redeemer must match the
+          //    operator key stored in the data field of the removed node.
+          expect NodeData { operator, .. } = slashed_operator_node_data
+          expect operator == slashed_operator_from_redeemer
+
+          // Done.
+          True
+        }
           |> finalize_linked_list(own_policy_id)
     }
   }

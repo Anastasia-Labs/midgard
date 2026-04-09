@@ -7,7 +7,7 @@ use cardano/transaction.{Mint, OutputReference, Redeemer, Transaction}
 use midgard/common/utils
 use midgard/hub_oracle as hub
 use midgard/operator_directory.{
-  deinit, init, slash_non_active_fraudulent_operator,
+  deinit, init, slash_fraudulent_operator_and_get_info,
   validate_operator_transfer_and_get_inserted_data,
 }
 use midgard/operator_directory/active_operators
@@ -267,11 +267,31 @@ validator mint(hub_oracle_script_hash: PolicyId) {
           |> finalize_linked_list(own_policy_id)
       }
       SlashOperator { slashing_arguments } ->
-        slash_non_active_fraudulent_operator(
-          hub_oracle_script_hash,
-          slashing_arguments,
-          self,
-        )
+        {
+          let
+            slashed_operator_from_redeemer,
+            _m_anchor_key,
+            slashed_operator_node_key,
+            _slashed_operator_node_data,
+            _slashed_operator_node_link,
+            _hub_datum,
+            _inputs,
+            _reference_inputs,
+            _redeemers,
+          <-
+            slash_fraudulent_operator_and_get_info(
+              hub_oracle_script_hash,
+              slashing_arguments,
+              self,
+            )
+
+          // 1. The operator key specified in the redeemer must match the node
+          //    key of the removed node.
+          expect slashed_operator_node_key == slashed_operator_from_redeemer
+
+          // Done.
+          True
+        }
           |> finalize_linked_list(own_policy_id)
     }
   }
