@@ -1,7 +1,6 @@
 import {
   AuthenticatedValidator,
   LucidError,
-  OperatorElementSchema,
   POSIXTimeSchema,
 } from "@/common.js";
 import { AuthenticUTxO, authenticateUTxOs } from "@/internals.js";
@@ -14,9 +13,10 @@ import {
 } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 import { incompleteInitLinkedListTxProgram } from "@/linked-list.js";
+import { Element } from "@/linked-list.js";
 
-export const ACTIVE_ROOT_KEY: string = "MIDGARD_ACTIVE_OPERATORS";
-export const ACTIVE_NODE_ASSET_NAME_PREFIX: string = "MACT";
+export const ACTIVE_ROOT_KEY: string = fromText("MIDGARD_ACTIVE_OPERATORS");
+export const ACTIVE_NODE_ASSET_NAME_PREFIX: string = fromText("MACT");
 
 export const ActiveOperatorSpendRedeemerSchema = Data.Enum([
   Data.Literal("ListStateTransition"),
@@ -95,9 +95,8 @@ export type ActiveOperatorMintRedeemer = Data.Static<
 export const ActiveOperatorMintRedeemer =
   ActiveOperatorMintRedeemerSchema as unknown as ActiveOperatorMintRedeemer;
 
-export type ActiveOperatorDatum = Data.Static<typeof OperatorElementSchema>;
-export const ActiveOperatorDatum =
-  OperatorElementSchema as unknown as ActiveOperatorDatum;
+export type ActiveOperatorDatum = Element;
+export const ActiveOperatorDatum = Element;
 
 export type ActiveOperatorInitParams = {
   validator: AuthenticatedValidator;
@@ -157,7 +156,7 @@ export const incompleteActiveOperatorInitTxProgram = (
   params: ActiveOperatorInitParams,
 ): Effect.Effect<TxBuilder, never> =>
   Effect.gen(function* () {
-    const rootData = "00";
+    const rootData = "";
 
     const mintRedeemer = Data.to(
       { Init: { outputIndex: 0n } },
@@ -168,7 +167,7 @@ export const incompleteActiveOperatorInitTxProgram = (
       validator: params.validator,
       data: rootData,
       redeemer: mintRedeemer,
-      rootKey: fromText(ACTIVE_ROOT_KEY),
+      rootKey: ACTIVE_ROOT_KEY,
     });
   });
 

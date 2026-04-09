@@ -381,29 +381,6 @@ export const MidgardAddressSchema = CredentialSchema;
 export type MidgardAddress = CredentialD;
 export const MidgardAddress = MidgardAddressSchema as unknown as MidgardAddress;
 
-export const OperatorNodeDataSchema = Data.Object({
-  bond_unlock_time: Data.Nullable(POSIXTimeSchema),
-});
-export type OperatorNodeData = Data.Static<typeof OperatorNodeDataSchema>;
-export const OperatorNodeData =
-  OperatorNodeDataSchema as unknown as OperatorNodeData;
-
-export const OperatorElementDataSchema = Data.Enum([
-  Data.Object({ Root: Data.Bytes() }),
-  Data.Object({ Node: OperatorNodeDataSchema }),
-]);
-export type OperatorElementData = Data.Static<typeof OperatorElementDataSchema>;
-export const OperatorElementData =
-  OperatorElementDataSchema as unknown as OperatorElementData;
-
-export const OperatorElementSchema = Data.Object({
-  data: OperatorElementDataSchema,
-  link: Data.Nullable(Data.Bytes()),
-});
-export type OperatorElement = Data.Static<typeof OperatorElementSchema>;
-export const OperatorElement =
-  OperatorElementSchema as unknown as OperatorElement;
-
 /**
  * TODO: Note that this function does not support pointer addresses.
  */

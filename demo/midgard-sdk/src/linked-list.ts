@@ -1,9 +1,7 @@
 import {
   AuthenticatedValidator,
-  DataCoercionError,
   GenericErrorFields,
   LucidError,
-  MissingDatumError,
 } from "@/common.js";
 import { Data as EffectData, Effect } from "effect";
 import {
@@ -15,13 +13,11 @@ import {
   toUnit,
   TxBuilder,
   TxSignBuilder,
-  UTxO,
 } from "@lucid-evolution/lucid";
-import { StateQueueDatum } from "@/state-queue.js";
 
 export const ElementDataSchema = Data.Enum([
-  Data.Object({ Root: Data.Object({ data: Data.Any() }) }), // TODO: replace Data.any() for Root and Node instead of wrapping
-  Data.Object({ Node: Data.Object({ data: Data.Any() }) }),
+  Data.Object({ Root: Data.Any() }),
+  Data.Object({ Node: Data.Any() }),
 ]);
 export type ElementData = Data.Static<typeof ElementDataSchema>;
 export const ElementData = ElementDataSchema as unknown as ElementData;
@@ -32,32 +28,6 @@ export const ElementSchema = Data.Object({
 });
 export type Element = Data.Static<typeof ElementSchema>;
 export const Element = ElementSchema as unknown as Element;
-
-export const getElementDatumFromUTxO = (
-  nodeUTxO: UTxO,
-): Effect.Effect<StateQueueDatum, DataCoercionError | MissingDatumError> => {
-  const datumCBOR = nodeUTxO.datum;
-  if (datumCBOR) {
-    try {
-      const elementDatum = Data.from(datumCBOR, StateQueueDatum);
-      return Effect.succeed(elementDatum);
-    } catch (e) {
-      return Effect.fail(
-        new DataCoercionError({
-          message: "Could not coerce provided UTxO's datum to a `Element`",
-          cause: e,
-        }),
-      );
-    }
-  } else {
-    return Effect.fail(
-      new MissingDatumError({
-        message: "Provided UTxO was expected to carry an inline datum",
-        cause: `No datum found in ${nodeUTxO.txHash}.${nodeUTxO.outputIndex}`,
-      }),
-    );
-  }
-};
 
 export class LinkedListError extends EffectData.TaggedError(
   "LinkedListError",
@@ -82,7 +52,7 @@ export const incompleteInitLinkedListTxProgram = (
     const rootData = params.data ?? Data.to([]);
 
     const elementDatum: Element = {
-      data: { Root: { data: rootData } },
+      data: { Root: rootData },
       link: null,
     };
 

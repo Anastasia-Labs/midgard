@@ -54,13 +54,13 @@ import {
   ActiveOperatorUTxO,
   FetchActiveOperatorParams,
   fetchActiveOperatorUTxOs,
-} from "@/active-operators.js";
+} from "@/operator-directory/active-operators.js";
 import {
   RetiredOperatorMintRedeemer,
   RetiredOperatorUTxO,
   FetchRetiredOperatorParams,
   fetchRetiredOperatorUTxOs,
-} from "@/retired-operators.js";
+} from "@/operator-directory/retired-operators.js";
 
 export const ResolutionClaimSchema = Data.Object({
   resolutionTime: POSIXTimeSchema,
@@ -311,12 +311,12 @@ export const incompleteUpdateBondHoldNewSettlementTxProgram = (
       );
     }
 
+    const bondUnlockTime = params.newBondUnlockTime;
+
     const updatedDatum: ActiveOperatorDatum = {
       ...activeOperatorsInputUtxo.datum,
       data: {
-        Node: {
-          bond_unlock_time: params.newBondUnlockTime,
-        },
+        Node: bondUnlockTime,
       },
     };
 

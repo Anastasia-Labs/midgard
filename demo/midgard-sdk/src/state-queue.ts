@@ -29,24 +29,23 @@ import {
   utxosAtByNFTPolicyId,
 } from "@/common.js";
 import { LucidError, makeReturn } from "@/common.js";
-import { getStateToken } from "@/internals.js";
+import {
+  authenticateUTxO,
+  authenticateUTxOs,
+  AuthenticUTxO,
+} from "@/internals.js";
 import {
   LinkedListError,
   incompleteInitLinkedListTxProgram,
-  getElementDatumFromUTxO,
 } from "@/linked-list.js";
-import {
-  ConfirmedState,
-  ConfirmedStateSchema,
-  Header,
-  HeaderSchema,
-} from "@/ledger-state.js";
+import { ConfirmedState, Header } from "@/ledger-state.js";
+import { Element } from "@/linked-list.js";
 
 export const GENESIS_HASH_28 = "00".repeat(28);
 export const GENESIS_HASH_32 = "00".repeat(32);
 export const INITIAL_PROTOCOL_VERSION = 0n;
-export const ROOT_KEY: string = "MIDGARD_CONFIRMED_STATE";
-export const BLOCK_ASSET_NAME_PREFIX: string = "MBLC";
+export const ROOT_KEY: string = fromText("MIDGARD_CONFIRMED_STATE");
+export const BLOCK_ASSET_NAME_PREFIX: string = fromText("MBLC");
 
 export const StateQueueConfigSchema = Data.Object({
   initUTxO: OutputReferenceSchema,
@@ -138,28 +137,47 @@ export type StateQueueMintRedeemer = Data.Static<
 export const StateQueueMintRedeemer =
   StateQueueMintRedeemerSchema as unknown as StateQueueMintRedeemer;
 
-export const StateQueueElementDataSchema = Data.Enum([
-  Data.Object({ Root: ConfirmedStateSchema }),
-  Data.Object({ Node: HeaderSchema }),
-]);
-export type StateQueueElementData = Data.Static<
-  typeof StateQueueElementDataSchema
->;
-export const StateQueueElementData =
-  StateQueueElementDataSchema as unknown as StateQueueElementData;
+export type StateQueueDatum = Element;
+export const StateQueueDatum = Element;
 
-export const StateQueueDatumSchema = Data.Object({
-  data: StateQueueElementDataSchema,
-  link: Data.Nullable(Data.Bytes()),
-});
-export type StateQueueDatum = Data.Static<typeof StateQueueDatumSchema>;
-export const StateQueueDatum =
-  StateQueueDatumSchema as unknown as StateQueueDatum;
-
-export type StateQueueUTxO = {
+export type StateQueueUTxO1 = {
   utxo: UTxO;
   datum: StateQueueDatum;
   assetName: string;
+};
+
+type ElementExtra = {
+  key: string;
+};
+export type ElementUTxO<TDatum = Element> = AuthenticUTxO<TDatum, ElementExtra>;
+
+export type StateQueueUTxO = ElementUTxO<StateQueueDatum>;
+
+export const getStateQueueDatumFromUTxO = (
+  nodeUTxO: UTxO,
+): Effect.Effect<StateQueueDatum, DataCoercionError | MissingDatumError> => {
+  const datumCBOR = nodeUTxO.datum;
+  if (datumCBOR) {
+    try {
+      const elementDatum = Data.from(datumCBOR, StateQueueDatum);
+      return Effect.succeed(elementDatum);
+    } catch (e) {
+      return Effect.fail(
+        new DataCoercionError({
+          message:
+            "Could not coerce provided UTxO's datum to a `StateQueueDatum`",
+          cause: e,
+        }),
+      );
+    }
+  } else {
+    return Effect.fail(
+      new MissingDatumError({
+        message: "Provided UTxO was expected to carry an inline datum",
+        cause: `No datum found in ${nodeUTxO.txHash}.${nodeUTxO.outputIndex}`,
+      }),
+    );
+  }
 };
 
 export type StateQueueFetchConfig = {
@@ -192,41 +210,6 @@ export type StateQueueInitParams = {
 export type StateQueueDeinitParams = {};
 
 export type StateQueueRemoveBlockParams = {};
-
-/**
- * Validates correctness of datum, and having a single NFT.
- */
-export const utxoToStateQueueUTxO = (
-  utxo: UTxO,
-  nftPolicy: string,
-): Effect.Effect<
-  StateQueueUTxO,
-  DataCoercionError | MissingDatumError | UnauthenticUtxoError
-> =>
-  Effect.gen(function* () {
-    const datum = yield* getElementDatumFromUTxO(utxo);
-    const [sym, assetName] = yield* getStateToken(utxo.assets);
-    if (sym !== nftPolicy) {
-      yield* Effect.fail(
-        new UnauthenticUtxoError({
-          message: "Failed to convert UTxO to `StateQueueUTxO`",
-          cause: "UTxO's NFT policy ID is not the same as the state queue's",
-        }),
-      );
-    }
-    return { utxo, datum, assetName };
-  });
-
-/**
- * Silently drops invalid UTxOs.
- */
-export const utxosToStateQueueUTxOs = (
-  utxos: UTxO[],
-  nftPolicy: string,
-): Effect.Effect<StateQueueUTxO[]> => {
-  const effects = utxos.map((u) => utxoToStateQueueUTxO(u, nftPolicy));
-  return Effect.allSuccesses(effects);
-};
 
 export const findLinkStateQueueUTxO = (
   link: string | null,
@@ -314,7 +297,7 @@ export const getConfirmedStateFromStateQueueDatum = (
 > => {
   try {
     if ("Root" in nodeDatum.data) {
-      const confirmedState = nodeDatum.data.Root;
+      const confirmedState = Data.castFrom(nodeDatum.data.Root, ConfirmedState);
       return Effect.succeed({
         data: confirmedState,
         link: nodeDatum.link,
@@ -343,7 +326,7 @@ export const getHeaderFromStateQueueDatum = (
 ): Effect.Effect<{ data: Header }, DataCoercionError> => {
   try {
     if ("Node" in nodeDatum.data) {
-      const header = nodeDatum.data.Node;
+      const header = Data.castFrom(nodeDatum.data.Node, Header);
       return Effect.succeed({
         data: header,
       });
@@ -418,11 +401,10 @@ export const updateLatestBlocksDatumAndGetTheNewHeaderProgram = (
         operatorVkey: pubKeyHash,
         protocolVersion: confirmedState.protocolVersion,
       };
-      //const newHeaderHash = yield* hashBlockHeader(newHeader);
       return {
         nodeDatum: {
           ...latestBlocksDatum,
-          data: { Node: newHeader },
+          data: { Node: Data.to(newHeader, Header) },
         },
         header: newHeader,
       };
@@ -442,22 +424,12 @@ export const updateLatestBlocksDatumAndGetTheNewHeaderProgram = (
         prevHeaderHash,
         operatorVkey: pubKeyHash,
       };
-      const newHeaderHash = yield* hashBlockHeader(newHeader);
       return {
         nodeDatum: {
           ...latestBlocksDatum,
-          data: { Node: newHeader },
+          data: { Node: Data.to(newHeader, Header) },
         },
-        header: {
-          ...latestHeader,
-          prevUtxosRoot: latestHeader.utxosRoot,
-          utxosRoot: newUTxOsRoot,
-          transactionsRoot,
-          startTime: latestHeader.endTime,
-          endTime,
-          prevHeaderHash,
-          operatorVkey: pubKeyHash,
-        },
+        header: newHeader,
       };
     }
   });
@@ -520,12 +492,12 @@ export const incompleteCommitBlockHeaderTxProgram = (
   Effect.gen(function* () {
     const newHeaderHash = yield* hashBlockHeader(newHeader);
     const assets: Assets = {
-      [toUnit(policyId, fromText(BLOCK_ASSET_NAME_PREFIX) + newHeaderHash)]: 1n,
+      [toUnit(policyId, BLOCK_ASSET_NAME_PREFIX + newHeaderHash)]: 1n,
     };
 
     const newNodeDatum: StateQueueDatum = {
       data: {
-        Node: newHeader,
+        Node: Data.to(newHeader, Header),
       },
       link: null,
     };
@@ -619,7 +591,19 @@ export const fetchUnsortedStateQueueUTxOsProgram = (
         });
       },
     });
-    return yield* utxosToStateQueueUTxOs(allUTxOs, config.stateQueuePolicyId);
+    return yield* authenticateUTxOs<StateQueueDatum, ElementExtra>(
+      allUTxOs,
+      config.stateQueuePolicyId,
+      StateQueueDatum,
+      (_datum) => ({
+        key:
+          "Node" in _datum.data
+            ? Object.keys(allUTxOs[0].assets)[0].slice(
+                BLOCK_ASSET_NAME_PREFIX.length,
+              )
+            : "",
+      }),
+    );
   });
 
 export const fetchSortedStateQueueUTxOsProgram = (
@@ -719,10 +703,15 @@ export const fetchLatestCommittedBlockProgram = (
     yield* Effect.logInfo("allBlocks", allBlocks.length);
     const filtered: StateQueueUTxO[] = yield* Effect.allSuccesses(
       allBlocks.map(({ utxo: u }) => {
-        const stateQueueUTxOEffect = utxoToStateQueueUTxO(
-          u,
-          config.stateQueuePolicyId,
-        );
+        const stateQueueUTxOEffect = authenticateUTxO<
+          StateQueueDatum,
+          ElementExtra
+        >(u, config.stateQueuePolicyId, StateQueueDatum, (_datum) => ({
+          key:
+            "Node" in _datum.data
+              ? Object.keys(u.assets)[0].slice(BLOCK_ASSET_NAME_PREFIX.length)
+              : "",
+        }));
         return Effect.andThen(stateQueueUTxOEffect, (squ: StateQueueUTxO) =>
           squ.datum.link === null && "Node" in squ.datum.data
             ? Effect.succeed(squ)
@@ -895,7 +884,7 @@ export const incompleteStateQueueMergeTxProgram = (
     const newConfirmedElementDatum: StateQueueDatum = {
       ...confirmedUTxO.datum,
       data: {
-        Root: newConfirmedState,
+        Root: Data.to(newConfirmedState, ConfirmedState),
       },
       link: firstBlockUTxO.datum.link,
     };
@@ -905,7 +894,7 @@ export const incompleteStateQueueMergeTxProgram = (
 
     const redeemer: StateQueueMintRedeemer = {
       MergeToConfirmedState: {
-        headerNodeKey: firstBlockUTxO.assetName, // TODO: is the confirmedUTxO or firstBlockUTxO
+        headerNodeKey: firstBlockUTxO.key,
         headerNodeInputIndex: 0n,
         confirmedStateInputIndex: 0n,
         confirmedStateOutputIndex: 0n,

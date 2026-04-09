@@ -7,40 +7,15 @@ import {
 } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 import { incompleteInitLinkedListTxProgram } from "@/linked-list.js";
+import { Element } from "@/linked-list.js";
 
-export const REGISTERED_ROOT_KEY: string = "MIDGARD_REGISTERED_OPERATORS";
-export const REGISTERED_NODE_ASSET_NAME_PREFIX: string = "MREG";
+export const REGISTERED_ROOT_KEY: string = fromText(
+  "MIDGARD_REGISTERED_OPERATORS",
+);
+export const REGISTERED_NODE_ASSET_NAME_PREFIX: string = fromText("MREG");
 
-export const RegisteredNodeDataSchema = Data.Object({
-  activation_time: POSIXTimeSchema,
-});
-export type RegisteredNodeData = Data.Static<typeof RegisteredNodeDataSchema>;
-export const RegisteredNodeData =
-  RegisteredNodeDataSchema as unknown as RegisteredNodeData;
-
-export const RegisteredElementDataSchema = Data.Enum([
-  Data.Object({ Root: Data.Bytes() }),
-  Data.Object({ Node: RegisteredNodeDataSchema }),
-]);
-export type RegisteredElementData = Data.Static<
-  typeof RegisteredElementDataSchema
->;
-export const RegisteredElementData =
-  RegisteredElementDataSchema as unknown as RegisteredElementData;
-
-export const RegisteredElementSchema = Data.Object({
-  data: RegisteredElementDataSchema,
-  link: Data.Nullable(Data.Bytes()),
-});
-export type RegisteredElement = Data.Static<typeof RegisteredElementSchema>;
-export const RegisteredElement =
-  RegisteredElementSchema as unknown as RegisteredElement;
-
-export type RegisteredOperatorDatum = Data.Static<
-  typeof RegisteredElementSchema
->;
-export const RegisteredOperatorDatum =
-  RegisteredElementSchema as unknown as RegisteredOperatorDatum;
+export type RegisteredOperatorDatum = Element;
+export const RegisteredOperatorDatum = Element;
 
 export const DuplicateOperatorStatusSchema = Data.Enum([
   Data.Literal("DuplicateIsRegistered"),
@@ -127,7 +102,7 @@ export const incompleteRegisteredOperatorInitTxProgram = (
   params: RegisteredOperatorInitParams,
 ): Effect.Effect<TxBuilder, never> =>
   Effect.gen(function* () {
-    const rootData = "00";
+    const rootData = "";
 
     const mintRedeemer = Data.to(
       { Init: { outputIndex: 0n } },
@@ -138,7 +113,7 @@ export const incompleteRegisteredOperatorInitTxProgram = (
       validator: params.validator,
       data: rootData,
       redeemer: mintRedeemer,
-      rootKey: fromText(REGISTERED_ROOT_KEY),
+      rootKey: REGISTERED_ROOT_KEY,
     });
   });
 
