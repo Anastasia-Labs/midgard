@@ -274,6 +274,12 @@ const getInitHandler = Effect.gen(function* () {
   Effect.catchTag("MptError", (e) => handleGenericGetFailure(INIT_ENDPOINT, e)),
   Effect.catchTag("TxSubmitError", (e) => handleTxGetFailure(INIT_ENDPOINT, e)),
   Effect.catchTag("TxSignError", (e) => handleTxGetFailure(INIT_ENDPOINT, e)),
+  Effect.catchTag("TxConfirmError", (e) =>
+    handleTxGetFailure(INIT_ENDPOINT, e),
+  ),
+  Effect.catchTag("Bech32DeserializationError", (e) =>
+    handleGenericGetFailure(INIT_ENDPOINT, e),
+  ),
   Effect.catchTag("UnspecifiedNetworkError", (e) =>
     handleGenericGetFailure(INIT_ENDPOINT, e),
   ),

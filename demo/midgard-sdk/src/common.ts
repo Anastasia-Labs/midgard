@@ -60,7 +60,7 @@ export const utxosAtByNFTPolicyId = (
   lucid: LucidEvolution,
   addressOrCred: Address | Credential,
   policyId: PolicyId,
-): Effect.Effect<BeaconUTxO[], LucidError> =>
+): Effect.Effect<UTxO[], LucidError> =>
   Effect.gen(function* () {
     const allUTxOs = yield* Effect.tryPromise({
       try: () => lucid.utxosAt(addressOrCred),
@@ -71,30 +71,25 @@ export const utxosAtByNFTPolicyId = (
         });
       },
     });
-
-    const nftEffects: Effect.Effect<BeaconUTxO, UnauthenticUtxoError>[] =
+    const nftEffects: Effect.Effect<UTxO, UnauthenticUtxoError>[] =
       allUTxOs.map((u: UTxO) => {
         const nftsEffect = getStateToken(u.assets);
         return Effect.andThen(
           nftsEffect,
-          ([sym, assetName]): Effect.Effect<
-            BeaconUTxO,
-            UnauthenticUtxoError
-          > => {
+          ([sym, _tn]): Effect.Effect<UTxO, UnauthenticUtxoError> => {
             if (sym === policyId) {
-              return Effect.succeed({ utxo: u, policyId, assetName });
+              return Effect.succeed(u);
+            } else {
+              return Effect.fail(
+                new UnauthenticUtxoError({
+                  message: "Failed to get assets from fetched UTxOs",
+                  cause: "UTxO doesn't have the expected NFT policy ID",
+                }),
+              );
             }
-
-            return Effect.fail(
-              new UnauthenticUtxoError({
-                message: "Failed to get assets from fetched UTxOs",
-                cause: "UTxO doesn't have the expected NFT policy ID",
-              }),
-            );
           },
         );
       });
-
     const authenticUTxOs = yield* Effect.allSuccesses(nftEffects);
     return authenticUTxOs;
   }).pipe(

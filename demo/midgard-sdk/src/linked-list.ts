@@ -70,6 +70,7 @@ export type LinkedListInitParams = {
   validator: AuthenticatedValidator;
   data?: Data;
   redeemer: string;
+  lovelace?: bigint;
 };
 
 export const incompleteInitLinkedListTxProgram = (
@@ -77,9 +78,16 @@ export const incompleteInitLinkedListTxProgram = (
   params: LinkedListInitParams,
 ): Effect.Effect<TxBuilder> =>
   Effect.gen(function* () {
-    const assets: Assets = {
+    const mintedAssets: Assets = {
       [toUnit(params.validator.policyId, NODE_ASSET_NAME)]: 1n,
     };
+    const outputAssets: Assets =
+      params.lovelace === undefined
+        ? mintedAssets
+        : {
+            ...mintedAssets,
+            lovelace: params.lovelace,
+          };
 
     const rootData = params.data ?? Data.to([]);
 
@@ -92,11 +100,11 @@ export const incompleteInitLinkedListTxProgram = (
     const encodedDatum = Data.to<NodeDatum>(nodeDatum, NodeDatum);
     const tx = lucid
       .newTx()
-      .mintAssets(assets, params.redeemer)
+      .mintAssets(mintedAssets, params.redeemer)
       .pay.ToAddressWithData(
         params.validator.spendingScriptAddress,
         { kind: "inline", value: encodedDatum },
-        assets,
+        outputAssets,
       )
       .attach.Script(params.validator.mintingScript);
 
