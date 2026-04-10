@@ -33,7 +33,7 @@ Partially slashed operators can either recover the remainder of their bond (afte
 \label{h:operator-directory-utxo-representation}
 
 The Operator Directory keeps track of all Midgard operators and stores their bond deposits.
-It separates operators into four groups based on their status, primarily using operators' public key hashes (PKHs) as identifiers:
+It separates operators into three groups based on their status, primarily using operators' public key hashes (PKHs) as identifiers:
 \begin{itemize}
     \item \code{registered\_operators} is a first-in-first-out (FIFO) queue that tracks operators who have posted their ADA bonds and are waiting to activate.
       It is implemented as a key-descending linked list with operators' activation times as keys, where each new registrant is prepended to the beginning of the list.
