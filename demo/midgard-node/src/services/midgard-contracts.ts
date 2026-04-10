@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { Effect } from "effect";
 import * as SDK from "@al-ft/midgard-sdk";
 import {
@@ -12,8 +13,15 @@ import {
 } from "@lucid-evolution/lucid";
 import { AlwaysSucceedsContract } from "./always-succeeds.js";
 import { NodeConfig } from "./config.js";
-import * as realScripts from "../../blueprints/real/plutus.json" with { type: "json" };
+import * as bundledRealScripts from "../../blueprints/real/plutus.json" with { type: "json" };
 
+/**
+ * Contract-loading service for Midgard validators.
+ *
+ * This module can either expose the always-succeeds bundle for test flows or
+ * derive the real script set from a blueprint, applying protocol parameters
+ * where required.
+ */
 type BlueprintValidator = {
   title: string;
   compiledCode: string;
@@ -23,40 +31,126 @@ type Blueprint = {
   validators: BlueprintValidator[];
 };
 
+const bundledRealBlueprint = bundledRealScripts.default as Blueprint;
+
+/**
+ * Cached override blueprint loaded from `MIDGARD_REAL_BLUEPRINT_PATH`.
+ */
+let cachedOverriddenRealBlueprint:
+  | {
+      readonly path: string;
+      readonly blueprint: Blueprint;
+    }
+  | undefined;
+
+/**
+ * Loads the real-contract blueprint, optionally honoring an override path from
+ * the environment.
+ */
+const loadRealBlueprint = (): Effect.Effect<Blueprint, Error> =>
+  Effect.try({
+    try: () => {
+      const overridePath = process.env.MIDGARD_REAL_BLUEPRINT_PATH?.trim();
+      if (!overridePath) {
+        return bundledRealBlueprint;
+      }
+      if (cachedOverriddenRealBlueprint?.path === overridePath) {
+        return cachedOverriddenRealBlueprint.blueprint;
+      }
+      const parsed = JSON.parse(readFileSync(overridePath, "utf8")) as unknown;
+      if (
+        typeof parsed !== "object" ||
+        parsed === null ||
+        !("validators" in parsed) ||
+        !Array.isArray((parsed as { validators?: unknown }).validators)
+      ) {
+        throw new Error(
+          `Blueprint at "${overridePath}" does not have a validators array`,
+        );
+      }
+      const blueprint = parsed as Blueprint;
+      cachedOverriddenRealBlueprint = {
+        path: overridePath,
+        blueprint,
+      };
+      return blueprint;
+    },
+    catch: (cause) =>
+      new Error(
+        `Failed to load real blueprint${
+          process.env.MIDGARD_REAL_BLUEPRINT_PATH
+            ? ` from "${process.env.MIDGARD_REAL_BLUEPRINT_PATH}"`
+            : ""
+        }: ${cause instanceof Error ? cause.message : String(cause)}`,
+      ),
+  });
+
+/**
+ * Blueprint titles for the real state-queue scripts.
+ */
 export const REAL_STATE_QUEUE_SCRIPT_TITLES = {
   mint: "state_queue.mint.mint",
   spend: "state_queue.spend.spend",
 } as const;
 
+/**
+ * Blueprint titles for the real hub-oracle scripts.
+ */
 export const REAL_HUB_ORACLE_SCRIPT_TITLES = {
   mint: "hub_oracle.mint.mint",
 } as const;
 
+/**
+ * Blueprint titles for the real registered-operators scripts.
+ */
 export const REAL_REGISTERED_OPERATORS_SCRIPT_TITLES = {
   mint: "registered_operators.mint.mint",
   spend: "registered_operators.spend.spend",
 } as const;
 
+/**
+ * Blueprint titles for the real active-operators scripts.
+ */
 export const REAL_ACTIVE_OPERATORS_SCRIPT_TITLES = {
   mint: "active_operators.mint.mint",
   spend: "active_operators.spend.spend",
 } as const;
 
+/**
+ * Blueprint titles for the real retired-operators scripts.
+ */
 export const REAL_RETIRED_OPERATORS_SCRIPT_TITLES = {
   mint: "retired_operators.mint.mint",
   spend: "retired_operators.spend.spend",
 } as const;
 
+/**
+ * Blueprint titles for the real scheduler scripts.
+ */
+export const REAL_SCHEDULER_SCRIPT_TITLES = {
+  mint: "scheduler.mint.mint",
+  spend: "scheduler.spend.spend",
+} as const;
+
+/**
+ * Blueprint titles for the real deposit scripts.
+ */
 export const REAL_DEPOSIT_SCRIPT_TITLES = {
   mint: "user_events/deposit.mint.mint",
   spend: "user_events/deposit.spend.spend",
 } as const;
 
+/**
+ * One-shot outref used to parameterize the real hub-oracle policy.
+ */
 export type HubOracleOneShotOutRef = {
   readonly txHash: string;
   readonly outputIndex: number;
 };
 
+/**
+ * Shared economic parameters threaded through the operator-set validators.
+ */
 export type OperatorContractParams = {
   readonly requiredBondLovelace: bigint;
   readonly slashingPenaltyLovelace: bigint;
@@ -64,6 +158,10 @@ export type OperatorContractParams = {
 
 const TX_HASH_PATTERN = /^[0-9a-fA-F]{64}$/;
 
+/**
+ * Validates the configured one-shot outref used to parameterize the real
+ * hub-oracle policy.
+ */
 const validateHubOracleOneShotOutRef = (
   outRef: HubOracleOneShotOutRef,
 ): Effect.Effect<void, Error> =>
@@ -84,6 +182,9 @@ const validateHubOracleOneShotOutRef = (
     }
   });
 
+/**
+ * Looks up a compiled script by title inside the resolved blueprint.
+ */
 const getCompiledScript = (
   blueprint: Blueprint,
   title: string,
@@ -100,11 +201,15 @@ const getCompiledScript = (
     return found.compiledCode;
   });
 
+/**
+ * Builds the real hub-oracle minting validator parameterized by the configured
+ * one-shot outref.
+ */
 const buildRealHubOracleValidator = (
   oneShotOutRef: HubOracleOneShotOutRef,
 ): Effect.Effect<SDK.MintingValidator, Error> =>
   Effect.gen(function* () {
-    const blueprint = realScripts.default as Blueprint;
+    const blueprint = yield* loadRealBlueprint();
     const mintBase = yield* getCompiledScript(
       blueprint,
       REAL_HUB_ORACLE_SCRIPT_TITLES.mint,
@@ -128,12 +233,15 @@ const buildRealHubOracleValidator = (
     };
   });
 
+/**
+ * Builds the real state-queue authenticated validator.
+ */
 const buildRealStateQueueValidator = (
   network: Network,
   contracts: SDK.MidgardValidators,
 ): Effect.Effect<SDK.AuthenticatedValidator, Error> =>
   Effect.gen(function* () {
-    const blueprint = realScripts.default as Blueprint;
+    const blueprint = yield* loadRealBlueprint();
     const mintBase = yield* getCompiledScript(
       blueprint,
       REAL_STATE_QUEUE_SCRIPT_TITLES.mint,
@@ -175,13 +283,16 @@ const buildRealStateQueueValidator = (
     };
   });
 
+/**
+ * Builds the real registered-operators authenticated validator.
+ */
 const buildRealRegisteredOperatorsValidator = (
   network: Network,
   contracts: SDK.MidgardValidators,
   operatorParams: OperatorContractParams,
 ): Effect.Effect<SDK.AuthenticatedValidator, Error> =>
   Effect.gen(function* () {
-    const blueprint = realScripts.default as Blueprint;
+    const blueprint = yield* loadRealBlueprint();
     const mintBase = yield* getCompiledScript(
       blueprint,
       REAL_REGISTERED_OPERATORS_SCRIPT_TITLES.mint,
@@ -219,13 +330,16 @@ const buildRealRegisteredOperatorsValidator = (
     };
   });
 
+/**
+ * Builds the real active-operators authenticated validator.
+ */
 const buildRealActiveOperatorsValidator = (
   network: Network,
   contracts: SDK.MidgardValidators,
   operatorParams: OperatorContractParams,
 ): Effect.Effect<SDK.AuthenticatedValidator, Error> =>
   Effect.gen(function* () {
-    const blueprint = realScripts.default as Blueprint;
+    const blueprint = yield* loadRealBlueprint();
     const mintBase = yield* getCompiledScript(
       blueprint,
       REAL_ACTIVE_OPERATORS_SCRIPT_TITLES.mint,
@@ -266,13 +380,16 @@ const buildRealActiveOperatorsValidator = (
     };
   });
 
+/**
+ * Builds the real retired-operators authenticated validator.
+ */
 const buildRealRetiredOperatorsValidator = (
   network: Network,
   contracts: SDK.MidgardValidators,
   operatorParams: OperatorContractParams,
 ): Effect.Effect<SDK.AuthenticatedValidator, Error> =>
   Effect.gen(function* () {
-    const blueprint = realScripts.default as Blueprint;
+    const blueprint = yield* loadRealBlueprint();
     const mintBase = yield* getCompiledScript(
       blueprint,
       REAL_RETIRED_OPERATORS_SCRIPT_TITLES.mint,
@@ -309,12 +426,63 @@ const buildRealRetiredOperatorsValidator = (
     };
   });
 
+/**
+ * Builds the real scheduler authenticated validator.
+ */
+const buildRealSchedulerValidator = (
+  network: Network,
+  contracts: SDK.MidgardValidators,
+): Effect.Effect<SDK.AuthenticatedValidator, Error> =>
+  Effect.gen(function* () {
+    const blueprint = yield* loadRealBlueprint();
+    const mintBase = yield* getCompiledScript(
+      blueprint,
+      REAL_SCHEDULER_SCRIPT_TITLES.mint,
+    );
+    const spendBase = yield* getCompiledScript(
+      blueprint,
+      REAL_SCHEDULER_SCRIPT_TITLES.spend,
+    );
+
+    const mintingScriptCBOR = applyParamsToScript(mintBase, [
+      contracts.hubOracle.policyId,
+      SDK.HUB_ORACLE_ASSET_NAME,
+    ]);
+    const mintingScript: MintingPolicy = {
+      type: "PlutusV3",
+      script: mintingScriptCBOR,
+    };
+    const policyId = mintingPolicyToId(mintingScript);
+    const spendingScriptCBOR = applyParamsToScript(spendBase, [
+      contracts.registeredOperators.policyId,
+      contracts.activeOperators.policyId,
+      policyId,
+    ]);
+    const spendingScript: SpendingValidator = {
+      type: "PlutusV3",
+      script: spendingScriptCBOR,
+    };
+
+    return {
+      spendingScriptCBOR,
+      spendingScript,
+      spendingScriptAddress: validatorToAddress(network, spendingScript),
+      spendingScriptHash: validatorToScriptHash(spendingScript),
+      mintingScriptCBOR,
+      mintingScript,
+      policyId,
+    };
+  });
+
+/**
+ * Builds the real deposit authenticated validator.
+ */
 const buildRealDepositValidator = (
   network: Network,
   contracts: SDK.MidgardValidators,
 ): Effect.Effect<SDK.AuthenticatedValidator, Error> =>
   Effect.gen(function* () {
-    const blueprint = realScripts.default as Blueprint;
+    const blueprint = yield* loadRealBlueprint();
     const mintBase = yield* getCompiledScript(
       blueprint,
       REAL_DEPOSIT_SCRIPT_TITLES.mint,
@@ -332,7 +500,6 @@ const buildRealDepositValidator = (
       script: mintingScriptCBOR,
     };
     const policyId = mintingPolicyToId(mintingScript);
-
     const spendingScriptCBOR = applyParamsToScript(spendBase, [
       contracts.hubOracle.policyId,
     ]);
@@ -352,6 +519,49 @@ const buildRealDepositValidator = (
     };
   });
 
+/**
+ * Replaces the base hub-oracle/scheduler/state-queue contracts with their real
+ * blueprint-derived counterparts.
+ */
+export const withRealStateQueueContracts = (
+  network: Network,
+  baseContracts: SDK.MidgardValidators,
+  hubOracleOneShotOutRef: HubOracleOneShotOutRef,
+): Effect.Effect<SDK.MidgardValidators, Error> =>
+  Effect.gen(function* () {
+    yield* validateHubOracleOneShotOutRef(hubOracleOneShotOutRef);
+
+    const realHubOracle = yield* buildRealHubOracleValidator(
+      hubOracleOneShotOutRef,
+    );
+    const withRealHubOracle: SDK.MidgardValidators = {
+      ...baseContracts,
+      hubOracle: realHubOracle,
+    };
+
+    const realScheduler = yield* buildRealSchedulerValidator(
+      network,
+      withRealHubOracle,
+    );
+    const withRealHubOracleAndScheduler: SDK.MidgardValidators = {
+      ...withRealHubOracle,
+      scheduler: realScheduler,
+    };
+
+    const realStateQueue = yield* buildRealStateQueueValidator(
+      network,
+      withRealHubOracleAndScheduler,
+    );
+    return {
+      ...withRealHubOracleAndScheduler,
+      stateQueue: realStateQueue,
+    };
+  });
+
+/**
+ * Replaces hub-oracle, deposit, operator-list, scheduler, and state-queue
+ * contracts with their real blueprint-derived counterparts.
+ */
 export const withRealStateQueueAndOperatorContracts = (
   network: Network,
   baseContracts: SDK.MidgardValidators,
@@ -372,13 +582,22 @@ export const withRealStateQueueAndOperatorContracts = (
       hubOracle: realHubOracle,
     };
 
-    const realRegisteredOperators = yield* buildRealRegisteredOperatorsValidator(
+    const realDeposit = yield* buildRealDepositValidator(
       network,
       withRealHubOracle,
+    );
+    const withRealHubOracleAndDeposit: SDK.MidgardValidators = {
+      ...withRealHubOracle,
+      deposit: realDeposit,
+    };
+
+    const realRegisteredOperators = yield* buildRealRegisteredOperatorsValidator(
+      network,
+      withRealHubOracleAndDeposit,
       operatorParams,
     );
     const withRealRegisteredOperators: SDK.MidgardValidators = {
-      ...withRealHubOracle,
+      ...withRealHubOracleAndDeposit,
       registeredOperators: realRegisteredOperators,
     };
 
@@ -402,25 +621,31 @@ export const withRealStateQueueAndOperatorContracts = (
       retiredOperators: realRetiredOperators,
     };
 
-    const realStateQueue = yield* buildRealStateQueueValidator(
+    const realScheduler = yield* buildRealSchedulerValidator(
       network,
       withRealOperatorSets,
     );
-    const withRealStateQueue: SDK.MidgardValidators = {
+    const withRealScheduler: SDK.MidgardValidators = {
       ...withRealOperatorSets,
-      stateQueue: realStateQueue,
+      scheduler: realScheduler,
     };
 
-    const realDeposit = yield* buildRealDepositValidator(
+    const realStateQueue = yield* buildRealStateQueueValidator(
       network,
-      withRealStateQueue,
+      withRealScheduler,
     );
     return {
-      ...withRealStateQueue,
-      deposit: realDeposit,
+      ...withRealScheduler,
+      stateQueue: realStateQueue,
     };
   });
 
+/**
+ * Resolves the production validator bundle from node configuration.
+ *
+ * The effect fails fast if the one-shot hub-oracle parameters are missing so a
+ * node cannot boot into an ambiguous real-contract configuration.
+ */
 const makeMidgardContracts = Effect.gen(function* () {
   const nodeConfig = yield* NodeConfig;
   const baseContracts = yield* AlwaysSucceedsContract;
@@ -449,11 +674,14 @@ const makeMidgardContracts = Effect.gen(function* () {
     },
   );
   yield* Effect.logInfo(
-    "🔐 Contract source: hub_oracle=real, registered_operators=real, active_operators=real, retired_operators=real, state_queue=real, deposit=real",
+    "🔐 Contract source selected: state_queue=real, hub_oracle=real, deposit=real, registered_operators=real, active_operators=real, retired_operators=real, scheduler=real",
   );
   return resolvedContracts;
 }).pipe(Effect.orDie);
 
+/**
+ * Service providing the validator bundle used by the node.
+ */
 export class MidgardContracts extends Effect.Service<MidgardContracts>()(
   "MidgardContracts",
   {

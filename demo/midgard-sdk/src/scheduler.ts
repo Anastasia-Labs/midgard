@@ -2,7 +2,6 @@ import {
   Address,
   Assets,
   Data,
-  fromText,
   LucidEvolution,
   PolicyId,
   toUnit,
@@ -22,7 +21,8 @@ import {
 } from "@/internals.js";
 import { Effect, Data as EffectData } from "effect";
 
-export const SCHEDULER_ASSET_NAME = fromText("Scheduler");
+// The real scheduler witness token uses the empty asset name on-chain.
+export const SCHEDULER_ASSET_NAME = "";
 
 export const SchedulerDatumSchema = Data.Object({
   operator: Data.Bytes(),
