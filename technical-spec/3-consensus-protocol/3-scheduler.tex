@@ -213,20 +213,21 @@ Redeemers:
             \item Let \code{anchor} be the parent element to the removed node element.
             \item \code{anchor} must be root.
           \end{enumerate}
-        \item Check \code{last\_node\_is\_removed}:
+        \item Let \code{last\_node\_index} be an index of the reference inputs for the last node of the active operators set that may or may not be provided:
           \begin{itemize}
-            \item If it's true:
+            \item If it is provided:
               \begin{enumerate}[resume]
-                \item Scheduler's output datum for scheduler must be \code{NoActiveOperators}.
-              \end{enumerate}
-            \item Otherwise:
-              \begin{enumerate}[resume]
+                \item \code{last\_node\_is\_removed} must be false, showing that active operators redeemer has verified \code{remove\_operator} did have a link.
                 \item Scheduler's output datum must carry the new operator.
-                  Let its key be \code{next\_op} and its shift start time be \code{next\_shift}.
-                \item \code{prev\_op} and \code{next\_op} must be different (TODO).
-                \item Verify new shift's start time for an unscheduled advancement (same as above).
-                \item Scheduler's redeemer must carry an index for referral to the last node of the active operators set.
+                  Let its shift start time be \code{next\_shift}.
+                \item Verify \code{next\_shift} for an unscheduled advancement (same as above).
                 \item Verify the new operator is also the last node of the active operators set (same as \textbf{Rewind -- End Of Shift} above).
+              \end{enumerate}
+            \item If an index is not provided:
+              \begin{enumerate}[resume]
+                \item \code{last\_node\_is\_removed} must be true.
+                  This shows the active operatos set has verified that \code{removed\_operator} linked to no other operator.
+                \item Scheduler's output datum for scheduler must be \code{NoActiveOperators}.
               \end{enumerate}
           \end{itemize}
       \end{itemize}
