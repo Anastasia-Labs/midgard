@@ -89,6 +89,46 @@ tests ms =
         unless (firstOperator == thirdOperator) $
           throwError $
             TxBuildingError "Must rewind back to the first operator"
+    , schedulerTestCase ms "rewind with a not yet active operator" [Wallet.w1, Wallet.w2] $ \refScripts operatorWallets -> do
+        let (operatorWallet1, operatorWallet2) = case operatorWallets of
+              [operatorWallet1, operatorWallet2] -> (operatorWallet1, operatorWallet2)
+              _ -> error "absurd: operatorWallets should match structure of the wallets passed"
+
+        (txBody, nextShiftStartTime) <- withExceptT TxBuildingError $ scheduleNextOperator False ms
+        -- Note: It doesn't matter who submits the transaction as long as the shift has ended
+        -- for the existing one.
+        void $ balanceAndSubmit' operatorWallet1 txBody TrailingChange []
+        Scheduler.Datum {operator = firstOperator} <- currentSchedulerDatum ms
+        -- Advance to the next shift.
+        setPOSIXTime nextShiftStartTime
+        nextSlot
+
+        (txBody, nextShiftStartTime) <- withExceptT TxBuildingError $ scheduleNextOperator False ms
+        void $ balanceAndSubmit' operatorWallet2 txBody TrailingChange []
+        Scheduler.Datum {operator = secondOperator} <- currentSchedulerDatum ms
+
+        unless (firstOperator /= secondOperator) $
+          throwError $
+            TxBuildingError "Must schedule a different operators"
+        -- Advance to the next shift.
+        setPOSIXTime nextShiftStartTime
+        nextSlot
+
+        -- Register a new operator that won't be part of the schedule since the activation time is in the future!
+        (txBody, _) <-
+          withExceptT TxBuildingError
+            . registerOperator ms refScripts
+            $ Wallet.verificationKeyHash Wallet.w3
+        void $ balanceAndSubmit' Wallet.w3 txBody TrailingChange []
+
+        (txBody, _) <- withExceptT TxBuildingError $ scheduleNextOperator False ms
+        void $ balanceAndSubmit' operatorWallet1 txBody TrailingChange []
+        Scheduler.Datum {operator = thirdOperator} <- currentSchedulerDatum ms
+
+        -- This time we should have rewinded back to the first operator since there's only two operators.
+        unless (firstOperator == thirdOperator) $
+          throwError $
+            TxBuildingError "Must rewind back to the first operator"
     ]
 
 -- | Set up a scheduler test case by registering the given wallets as operators and activating them.
