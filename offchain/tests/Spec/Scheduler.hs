@@ -106,6 +106,8 @@ schedulerTestCase ms msg wallets act = midgardTestCase ms msg $ \refScripts -> d
         . registerOperator ms refScripts
         $ Wallet.verificationKeyHash wallet
     void $ balanceAndSubmit' wallet txBody TrailingChange []
+    -- Must proceed to next slot to register another operator.
+    nextSlot
     pure activationTime
 
   -- Advance to a slot when we can activate all operators.
