@@ -73,8 +73,8 @@ pub type OperatorRemovalSchedulerSync {
 ///       sets (including registered set itself, as its node keys are not PKHs).
 ///       However, since this slashing is not _mandatory_, it is _possible_ (but
 ///       highly unlikely) for a duplicate operator to end up in the active set
-///       and the retired set (e.g. an active operator retires, registers again
-///       and doesn't get slashed for duplication, and finally activates). This
+///       and the retired set (e.g. an active operator retires, registers anew,
+///       doesn't get slashed for duplication, and finally activates). This
 ///       can lock the scheduler for the duration of an entire shift: if the
 ///       duplicate operator neglects their duties, they will receive inactivity
 ///       strikes until its max is reached, which renders them eligible for
