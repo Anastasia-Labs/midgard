@@ -123,6 +123,8 @@ initRegisteredOperators
 
 {- | Register an operator.
 Returns the transaction as well as the earliest possible activation time for said operator.
+Note: Two operators cannot be registered in the same slot, otherwise it will violate the linked list's strictly
+descending activation time constraint.
 -}
 registerOperator ::
   forall era m.
@@ -169,9 +171,8 @@ registerOperator
         C.PaymentCredentialByScript $
           validatorHash registeredOperatorsValidator
     -- Note: Technically, this is meant to be inserted by descending activation time order.
-    -- In many cases, that is the same as prepending because the newest node should have the latest
-    -- activation time. So we prepend here.
-    -- But for a more robust method, we should explicitly find the node with the highest activation time.
+    -- The anchor element will always be root as root points to the highest activation time node.
+    -- Said node position will be replaced with the new node (effectively a prepend).
     (rootRegistryTxIn, (rootRegistryUtxoAnyEra, _)) <-
       maybe (throwError "No registry root found") pure $
         findUTxOWithAsset registryUtxos $
