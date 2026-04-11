@@ -1,8 +1,10 @@
 module Midgard.Contracts.Scheduler (initScheduler, scheduleNextOperator) where
 
-import Control.Monad (when)
+import Control.Monad (guard, when)
 import Control.Monad.Except (MonadError (throwError))
 import Control.Monad.Reader (runReaderT)
+import Control.Monad.Trans (MonadTrans (lift))
+import Control.Monad.Trans.Maybe (MaybeT (runMaybeT))
 import Data.ByteString qualified as BS
 import Data.Foldable (traverse_)
 import Data.Time.Clock.POSIX (posixSecondsToUTCTime)
@@ -58,6 +60,7 @@ import Midgard.Scripts (
   ),
  )
 import Midgard.Types.ActiveOperators qualified as ActiveOperators
+import Midgard.Types.LinkedList (nodeKeyFromAssetName, nodeKeyToPOSIXTime)
 import Midgard.Types.RegisteredOperators qualified as RegisteredOperators
 import Midgard.Types.Scheduler qualified as Scheduler
 
@@ -159,7 +162,7 @@ scheduleNextOperator
     let nextShiftStartTime = unTransPOSIXTime currentStartTime + shiftDuration
     nextShiftStartSlot <- utcTimeToEnclosingSlot . posixSecondsToUTCTime $ nextShiftStartTime
     -- Decide whether to advance or rewind and obtain the information necessary for the chosen path.
-    (nextOperator, additionalRefs, mkRedeemer) <-
+    (nextOperator, additionalRefs, mkRedeemer, validityUpperBoundM) <-
       constructAdvanceOrRewind ms schedulerTxIn predecessorActiveNodeTxIn predecessorActiveNodeTxOut
     let nextSchedulerDatum =
           Scheduler.Datum
@@ -186,15 +189,25 @@ scheduleNextOperator
         -- Assumption: Current operator is valid if we're passed isBeforeShiftEnd = rue.
         currentOperatorC <- either (error . show) pure $ unTransPubKeyHash currentOperator
         addRequiredSignature currentOperatorC
-      -- TODO(chase): Set validity accordingly for rewinding in case final node in
-      -- registered operators having an activation time.
-      addBtx $ setValidity currentSlot nextShiftStartSlot
+      addBtx $ setValidityBasedOnShift currentSlot nextShiftStartSlot
+      addBtx $ updateValidityUpperBoundIfNeeded validityUpperBoundM
       setMinAdaDepositAll params
     where
       txOutValue (C.TxOut _ val _ _) = C.txOutValueToValue val
 
+      -- Update the validity upper bound if needed (decided by constructAdvanceOrRewind).
+      updateValidityUpperBoundIfNeeded Nothing txBody = txBody
+      updateValidityUpperBoundIfNeeded
+        (Just upperSlot)
+        txBody@(C.TxBodyContent {C.txValidityUpperBound = C.TxValidityUpperBound era (Just existingUpperSlot)}) =
+          txBody {C.txValidityUpperBound = C.TxValidityUpperBound era . Just $ min upperSlot existingUpperSlot}
+      updateValidityUpperBoundIfNeeded
+        (Just upperSlot)
+        txBody@(C.TxBodyContent {C.txValidityUpperBound = C.TxValidityUpperBound era Nothing}) =
+          txBody {C.txValidityUpperBound = C.TxValidityUpperBound era $ Just upperSlot}
+
       -- Set the validity based on whether or nor we're advancing after a shift end or before.
-      setValidity currentSlot nextShiftStartSlot txBody
+      setValidityBasedOnShift currentSlot nextShiftStartSlot txBody
         | isBeforeShiftEnd =
             txBody
               { C.txValidityUpperBound =
@@ -230,6 +243,7 @@ constructAdvanceOrRewind ::
     ( BuiltinByteString
     , [C.TxIn]
     , C.TxBodyContent C.BuildTx era -> Scheduler.SpendRedeemer
+    , Maybe C.SlotNo
     )
 constructAdvanceOrRewind
   MidgardScripts
@@ -248,6 +262,7 @@ constructAdvanceOrRewind
     -- It may be that we're at the head of the list and the previous node is root. At this point, we must rewind back.
     if activeNodeAssetName == ActiveOperators.rootAssetName
       then do
+        -- Rewind case.
         activeOperatorsUtxos <-
           utxosByPaymentCredential $
             C.PaymentCredentialByScript $
@@ -274,7 +289,7 @@ constructAdvanceOrRewind
           utxosByPaymentCredential $
             C.PaymentCredentialByScript $
               validatorHash registeredOperatorsValidator
-        (finalRegisteredOperatorTxIn, _) <-
+        (finalRegisteredOperatorTxIn, (finalRegisteredOperatorUtxoAnyEra, _)) <-
           maybe
             (throwError "Final registered operator node not found")
             pure
@@ -286,15 +301,21 @@ constructAdvanceOrRewind
                 , nodeAssetNamePrefix = RegisteredOperators.nodeAssetNamePrefix
                 }
             $ findFinalUTxONode registeredOperatorsUtxos
-        -- TODO: Make validity upper bound based on finalRegisteredOperatorUtxoAnyEra datum activation time.
-        -- let registeredTailTxOut = toTxOut @era registeredTailUtxoAnyEra
-        --   registeredTailDatum <-
-        --     maybe (throwError "Invalid registered operators tail datum") pure $
-        --       inlineDatumFromUTxO @RegisteredOperators.Datum registeredTailTxOut
-        --   validityUpperBound <- case LinkedList.elementData registeredTailDatum of
-        --     LinkedList.Root _ -> pure Nothing
-        --     LinkedList.Node RegisteredOperators.NodeData {activationTime} ->
-        --       Just <$> utcTimeToEnclosingSlot (posixSecondsToUTCTime $ unTransPOSIXTime activationTime)
+        -- In case there is an operator in the registered operators list, ensure this scheduler transaction completes
+        -- _before_ they can be activated.
+        let finalRegisteredOperatorTxOut = toTxOut @era finalRegisteredOperatorUtxoAnyEra
+        finalRegisteredOperatorAssetName <-
+          maybe (throwError "Final registered operators node missing list asset") pure $
+            listAssetNameFromUTxO
+              (mintingPolicyId registeredOperatorsPolicy)
+              finalRegisteredOperatorTxOut
+        validityUpperBound <- runMaybeT $ do
+          -- If the final node is just the root node, there are no pending operators to activate.
+          guard $ finalRegisteredOperatorAssetName /= RegisteredOperators.rootAssetName
+          let earliestOperatorActivationTime =
+                nodeKeyToPOSIXTime $
+                  nodeKeyFromAssetName RegisteredOperators.nodeAssetNamePrefixLen finalRegisteredOperatorAssetName
+          lift $ utcTimeToEnclosingSlot (posixSecondsToUTCTime $ unTransPOSIXTime earliestOperatorActivationTime)
         let mkRedeemer txBody =
               Scheduler.Rewind
                 { schedulerInputIndex = toInteger $ findIndexSpending schedulerTxIn txBody
@@ -308,8 +329,9 @@ constructAdvanceOrRewind
                 , activeRootRefInputIndex = toInteger $ findIndexReference predecessorActiveNodeTxIn txBody
                 , registeredElementRefInputIndex = toInteger $ findIndexReference finalRegisteredOperatorTxIn txBody
                 }
-        pure (nextOperator, [finalActiveOperatorTxIn, finalRegisteredOperatorTxIn], mkRedeemer)
+        pure (nextOperator, [finalActiveOperatorTxIn, finalRegisteredOperatorTxIn], mkRedeemer, validityUpperBound)
       else do
+        -- Advance case.
         let mkRedeemer txBody =
               Scheduler.Advance
                 { schedulerInputIndex = toInteger $ findIndexSpending schedulerTxIn txBody
@@ -321,7 +343,7 @@ constructAdvanceOrRewind
                         txBody
                 , activeNodeRefInputIndex = toInteger $ findIndexReference predecessorActiveNodeTxIn txBody
                 }
-        pure (assetNameToActiveOperatorKey activeNodeAssetName, [], mkRedeemer)
+        pure (assetNameToActiveOperatorKey activeNodeAssetName, [], mkRedeemer, Nothing)
 
 assetNameToActiveOperatorKey :: C.AssetName -> BuiltinByteString
 assetNameToActiveOperatorKey =
