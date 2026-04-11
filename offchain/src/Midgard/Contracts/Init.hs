@@ -1,5 +1,8 @@
 module Midgard.Contracts.Init (publishMidgardMintingPolicy, initProtocol) where
 
+import Control.Monad.Except (MonadError)
+import Data.Time.Clock.POSIX (utcTimeToPOSIXSeconds)
+
 import Cardano.Api qualified as C
 import Convex.BuildTx (
   TxBuilder,
@@ -10,7 +13,8 @@ import Convex.BuildTx (
   payToScriptInlineDatum,
   setMinAdaDepositAll,
  )
-import Convex.Class (MonadBlockchain (queryNetworkId, queryProtocolParameters))
+import Convex.Class (MonadBlockchain (queryNetworkId, queryProtocolParameters, querySlotNo))
+import Convex.PlutusLedger.V1 (transPOSIXTime)
 import PlutusLedgerApi.V1 (ScriptHash (ScriptHash), currencySymbol, scriptHashAddress, toBuiltin)
 import Ply (
   PlutusVersion (PlutusV3),
@@ -22,6 +26,8 @@ import Midgard.Constants (hubOracleAssetName, hubOracleMintingScript, hubOracleS
 import Midgard.Contracts.ActiveOperators (initActiveOperators)
 import Midgard.Contracts.RegisteredOperators (initRegisteredOperators)
 import Midgard.Contracts.RetiredOperators (initRetiredOperators)
+import Midgard.Contracts.Scheduler (initScheduler)
+import Midgard.Contracts.Utils (slotToBeginUTCTime)
 import Midgard.ScriptUtils (mintingPolicyId, policyIdBytes, scriptHashBytes, toMintingPolicy, validatorHash)
 import Midgard.Scripts (
   MidgardRefScripts (..),
@@ -31,7 +37,7 @@ import Midgard.Types.HubOracle qualified as HubOracle
 
 initProtocol ::
   forall m.
-  (MonadBlockchain C.ConwayEra m) =>
+  (MonadError String m, MonadBlockchain C.ConwayEra m) =>
   MidgardScripts ->
   MidgardRefScripts ->
   m (TxBuilder C.ConwayEra)
@@ -40,14 +46,18 @@ initProtocol
     { retiredOperatorsPolicy
     , registeredOperatorsPolicy
     , activeOperatorsPolicy
+    , schedulerPolicy
     , registeredOperatorsValidator
     , activeOperatorsValidator
     , retiredOperatorsValidator
+    , schedulerValidator
     }
   refScripts =
     do
       netId <- queryNetworkId
       params <- queryProtocolParameters
+      (currentSlot, _, _) <- querySlotNo
+      currentTime <- utcTimeToPOSIXSeconds <$> slotToBeginUTCTime currentSlot
       pure . execBuildTx $ do
         -- The hub oracle is required for all initializations.
         -- TODO (chase): The real hub oracle must be parameterized by a nonce UTxO.
@@ -55,12 +65,12 @@ initProtocol
         payToScriptInlineDatum
           netId
           hubOracleScriptHash
+          -- TODO (chase): Update some of the dummy values as needed.
           HubOracle.Datum
             { retiredOperators = scriptCurrencySymbol retiredOperatorsPolicy
             , activeOperators = scriptCurrencySymbol activeOperatorsPolicy
             , registeredOperators = scriptCurrencySymbol registeredOperatorsPolicy
-            , -- TODO (chase): Fill in these dummy values.
-              scheduler = scriptCurrencySymbol registeredOperatorsPolicy
+            , scheduler = scriptCurrencySymbol schedulerPolicy
             , stateQueue = scriptCurrencySymbol registeredOperatorsPolicy
             , fraudProofCatalogue = scriptCurrencySymbol registeredOperatorsPolicy
             , fraudProof = scriptCurrencySymbol registeredOperatorsPolicy
@@ -72,8 +82,7 @@ initProtocol
             , registeredOperatorsAddr = scriptHashAddress (scriptHash registeredOperatorsValidator)
             , activeOperatorsAddr = scriptHashAddress (scriptHash activeOperatorsValidator)
             , retiredOperatorsAddr = scriptHashAddress (scriptHash retiredOperatorsValidator)
-            , -- TODO (chase): Fill in these dummy values.
-              schedulerAddr = scriptHashAddress (scriptHash registeredOperatorsValidator)
+            , schedulerAddr = scriptHashAddress (scriptHash schedulerValidator)
             , stateQueueAddr = scriptHashAddress (scriptHash registeredOperatorsValidator)
             , fraudProofCatalogueAddr = scriptHashAddress (scriptHash registeredOperatorsValidator)
             , fraudProofAddr = scriptHashAddress (scriptHash registeredOperatorsValidator)
@@ -91,6 +100,7 @@ initProtocol
         initRegisteredOperators netId scripts refScripts
         initActiveOperators netId scripts refScripts
         initRetiredOperators netId scripts refScripts
+        initScheduler netId (transPOSIXTime currentTime) scripts
         setMinAdaDepositAll params
     where
       scriptCurrencySymbol = currencySymbol . policyIdBytes . mintingPolicyId

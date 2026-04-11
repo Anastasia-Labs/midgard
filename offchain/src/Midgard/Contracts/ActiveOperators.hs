@@ -43,7 +43,6 @@ import Midgard.Contracts.Utils (
   listAssetNameFromUTxO,
   mintPlutusRefWithRedeemerFinal,
   nextOutIx,
-  pubKeyHashFromCardano,
  )
 import Midgard.ScriptUtils (mintingPolicyId, mintingPolicyId', plutusVersion, toValidator, validatorHash)
 import Midgard.Scripts (
@@ -213,7 +212,7 @@ activateOperator
         -- Active operators anchor node should link to the newly added operator node.
         updatedActiveOperatorsAnchorDatum =
           activeOperatorsAnchorDatum
-            { LinkedList.elementLink = Just . coerce $ pubKeyHashFromCardano operatorPkh
+            { LinkedList.elementLink = Just . coerce $ transPubKeyHash operatorPkh
             }
         -- New active operator node should link to the anchor.
         activeOperatorDatum :: ActiveOperators.Datum
@@ -277,7 +276,7 @@ activateOperator
         (-1)
         $ \txBody ->
           RegisteredOperators.ActivateOperator
-            { activatingOperator = pubKeyHashFromCardano operatorPkh
+            { activatingOperator = transPubKeyHash operatorPkh
             , anchorElementInputIndex = toInteger $ findIndexSpending anchorRegistryTxIn txBody
             , removedNodeInputIndex = toInteger $ findIndexSpending removalRegistryTxIn txBody
             , anchorElementOutputIndex =
@@ -298,7 +297,7 @@ activateOperator
         1
         $ \txBody ->
           ActiveOperators.ActivateOperator
-            { newActiveOperatorKey = pubKeyHashFromCardano operatorPkh
+            { newActiveOperatorKey = transPubKeyHash operatorPkh
             , activeOperatorAnchorElementInputIndex =
                 toInteger $ findIndexSpending activeOperatorsAnchorTxIn txBody
             , activeOperatorAnchorElementOutputIndex =

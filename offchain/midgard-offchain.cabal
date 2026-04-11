@@ -95,6 +95,7 @@ common dependencies
     , plutus-ledger-api
     , ply-core
     , text
+    , transformers
 
 library
   import:          lang, dependencies
@@ -104,6 +105,7 @@ library
     Midgard.Contracts.Init
     Midgard.Contracts.RegisteredOperators
     Midgard.Contracts.RetiredOperators
+    Midgard.Contracts.Scheduler
     Midgard.Contracts.Utils
     Midgard.Scripts
     Midgard.ScriptUtils
@@ -112,6 +114,7 @@ library
     Midgard.Types.LinkedList
     Midgard.Types.RegisteredOperators
     Midgard.Types.RetiredOperators
+    Midgard.Types.Scheduler
 
   hs-source-dirs:  src
   build-depends:
@@ -129,6 +132,7 @@ test-suite mockchain-tests
   hs-source-dirs: tests
   other-modules:
     Spec.Operators
+    Spec.Scheduler
     Spec.Types
     Spec.Utils
 
