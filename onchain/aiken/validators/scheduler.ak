@@ -327,11 +327,6 @@ validator spend(
             Some(active_operators_last_node_ref_input_index) ->
               // 9d. The last node in the active operators set must have a key
               //     that matches the new shift's operator from output datum.
-              //     TODO: This currently allows the two operators be
-              //           indentical, IF it's possible to also reference a
-              //           spending input. However, this shouldn't be an issue,
-              //           since it'll simply be a more expensive version of the
-              //           other case below.
               validate_operator_is_the_last_active_node(
                 active_operators_policy_id,
                 active_operators_last_node_ref_input_index,
@@ -434,53 +429,49 @@ validator spend(
             validity_range,
           )
 
-        if last_operator_is_removed {
-          // 8f. Ensure correctness of redeemer (TODO: might not be needed).
-          expect None == m_active_operators_last_node_ref_input_index
+        when m_active_operators_last_node_ref_input_index is {
+          None -> {
+            // 8f. Active operators set's redeemer must verify that removing
+            //     node's link is `None`.
+            expect last_operator_is_removed
 
-          // 9f. Output scheduler datum must declare unavailability of any
-          //    active operators.
-          expect NoActiveOperators = output_datum_data
+            // 9f. Output scheduler datum must declare unavailability of any
+            //    active operators.
+            expect NoActiveOperators = output_datum_data
 
-          // Done.
-          True
-        } else {
-          expect ActiveOperator {
-            operator: new_shifts_operator,
-            start_time: new_shifts_start_time,
-          } = output_datum_data
+            // Done.
+            True
+          }
+          Some(active_operators_last_node_ref_input_index) -> {
+            // 8f'. Active operators set's redeemer must verify that removing
+            //      node points to another node as its link.
+            expect !last_operator_is_removed
 
-          // 8f'. Ensure the referenced operator is not the same as the removed
-          //      node's.
-          //
-          // TODO: If it's not possible to reference a spending input in the
-          //       same transaction, this won't be needed.
-          expect new_shifts_operator != previous_shifts_operator
+            expect ActiveOperator {
+              operator: new_shifts_operator,
+              start_time: new_shifts_start_time,
+            } = output_datum_data
 
-          // 9f'. The new shift must start some time in a close future.
-          expect
-            validate_unscheduled_new_shifts_start_time(
-              new_shifts_start_time,
-              validity_range,
-            )
+            // 9f'. The new shift must start some time in a close future.
+            expect
+              validate_unscheduled_new_shifts_start_time(
+                new_shifts_start_time,
+                validity_range,
+              )
 
-          // 10f'. Reference input index for last node in the active operators
-          //       set must be provided in redeemer.
-          expect Some(active_operators_last_node_ref_input_index) =
-            m_active_operators_last_node_ref_input_index
+            // 10f'. The last node in the active operators set must have a key
+            //       that matches the new shift's operator.
+            expect
+              validate_operator_is_the_last_active_node(
+                active_operators_policy_id,
+                active_operators_last_node_ref_input_index,
+                new_shifts_operator,
+                reference_inputs,
+              )
 
-          // 11f'. The last node in the active operators set must have a key
-          //       that matches the new shift's operator.
-          expect
-            validate_operator_is_the_last_active_node(
-              active_operators_policy_id,
-              active_operators_last_node_ref_input_index,
-              new_shifts_operator,
-              reference_inputs,
-            )
-
-          // Done.
-          True
+            // Done.
+            True
+          }
         }
       }
       AppointFirstOperator {

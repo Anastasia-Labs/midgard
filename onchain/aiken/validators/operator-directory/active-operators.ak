@@ -86,10 +86,6 @@ validator spend(
         // 2. Transaction must spend a UTxO from state queue with the Commit
         //    Block Header redeemer. The operator's signature should be
         //    validated there.
-        //
-        //    TODO: Potential optimization opportunities, i.e. using builtin
-        //    functions. This requires implicitly imposing the position of
-        //    `operator` field in the redeemer to be at index 0.
         expect state_queue.CommitBlockHeader {
           operator: state_queue_redeemer_operator,
           ..
@@ -156,10 +152,6 @@ validator spend(
         // 3. Transaction must spend a UTxO from settlement with the Attach
         //    Resolution Claim redeemer. The operator's signature should be
         //    validated there.
-        //
-        //    TODO: Potential optimization opportunities, i.e. using builtin
-        //    functions. This requires implicitly imposing the position of
-        //    `operator` field in the redeemer to be at index 0.
         expect settlement.AttachResolutionClaim {
           operator: settlement_redeemer_operator,
           ..

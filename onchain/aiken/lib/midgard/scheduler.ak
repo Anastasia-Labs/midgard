@@ -49,8 +49,9 @@ pub type AdvancingApproach {
     active_operators_spend_redeemer_index: Int,
     state_queue_ref_input_index: Int,
     hub_oracle_ref_input_index: Int,
-    // If only one operator exists in the active set, we won't want to refer to
-    // the new shift's operator UTxO.
+    // If only one operator exists in the active set, we won't be able to refer
+    // to the operator's UTxO as the next shift's, since it's being spent in the
+    // transaction.
     m_active_operators_last_node_ref_input_index: Option<Int>,
     registered_element_ref_input_index: Int,
     neglected_user_event: NeglectedUserEvent,
