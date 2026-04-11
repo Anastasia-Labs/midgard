@@ -95,6 +95,7 @@ common dependencies
     , plutus-ledger-api
     , ply-core
     , text
+    , transformers
 
 library
   import:          lang, dependencies
