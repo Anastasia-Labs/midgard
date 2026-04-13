@@ -37,9 +37,10 @@ export const program: Effect.Effect<
   yield* Ledger.createTable(MempoolLedgerDB.tableName);
   yield* Tx.createTable(ImmutableDB.tableName);
   yield* Tx.createTable(MempoolDB.tableName);
-  yield* UserEvents.createTable(DepositsDB.tableName);
+  //yield* UserEvents.createTable(DepositsDB.tableName);
   yield* UserEvents.createTable(TxOrdersDB.tableName);
   yield* UserEvents.createTable(WithdrawalsDB.tableName);
+  yield* DepositsDB.createTable;
 
   yield* Effect.logInfo("PostgreSQL database initialized Successfully.");
 }).pipe(

@@ -115,7 +115,7 @@ export const incompleteTxOrderTxProgram = (
     const txOrderDatum: TxOrderDatum = {
       event: {
         id: {
-          txHash: { hash: inputUtxo.txHash },
+          transactionId: inputUtxo.txHash,
           outputIndex: BigInt(inputUtxo.outputIndex),
         },
         tx: params.cardanoTx.to_cbor_hex(),

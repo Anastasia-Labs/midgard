@@ -76,7 +76,7 @@ export type Events = {
   withdrawals: readonly UserEvents.Entry[];
   txOrders: readonly UserEvents.Entry[];
   txRequests: readonly Tx.Entry[];
-  deposits: readonly UserEvents.Entry[];
+  deposits: readonly DepositsDB.Entry[];
 };
 
 export type LatestUnsubmittedBlockWithTxs = Omit<

@@ -131,7 +131,7 @@ export const incompleteWithdrawalTxProgram = (
     const withdrawalOrderDatum: WithdrawalOrderDatum = {
       event: {
         id: {
-          txHash: { hash: inputUtxo.txHash },
+          transactionId: inputUtxo.txHash,
           outputIndex: BigInt(inputUtxo.outputIndex),
         },
         info: {

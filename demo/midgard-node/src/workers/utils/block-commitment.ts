@@ -20,7 +20,6 @@ import {
   MidgardContracts,
   Database,
   Lucid,
-  NodeConfig,
 } from "@/services/index.js";
 import { TxSignError } from "@/transactions/utils.js";
 import { breakDownTx } from "@/utils.js";
@@ -252,15 +251,14 @@ export const applyTxRequestsToLedger = (
 
 export const applyDepositsToLedger = (
   ledgerTrie: MidgardMpt,
-  deposits: readonly UserEvents.Entry[],
+  deposits: readonly DepositsDB.Entry[],
 ): Effect.Effect<
   {
     depositLedgerEntries: Ledger.Entry[];
     depositsRoot: string;
     sizeOfDeposits: number;
   },
-  MptError | SDK.CmlDeserializationError,
-  NodeConfig | MidgardContracts
+  MptError | DatabaseError
 > =>
   Effect.gen(function* () {
     yield* Effect.logInfo(
@@ -273,7 +271,7 @@ export const applyDepositsToLedger = (
     let sizeOfDeposits = 0;
     yield* Effect.forEach(deposits, (depositEntry) =>
       Effect.gen(function* () {
-        const ledgerEntry = yield* DepositsDB.entryToLedgerEntry(depositEntry);
+        const ledgerEntry = yield* DepositsDB.toLedgerEntry(depositEntry);
         depositLedgerEntries.push(ledgerEntry);
         sizeOfDeposits += depositEntry[UserEvents.Columns.INFO].length;
         ledgerBatchOps.push({

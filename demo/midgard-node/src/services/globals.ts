@@ -18,11 +18,16 @@ export class Globals extends Effect.Service<Globals>()("Globals", {
       Date.now(),
     );
 
+    // Monotonic version used to invalidate the tx-queue processor's cached
+    // UTxO state whenever another fiber mutates mempool_ledger directly.
+    const MEMPOOL_LEDGER_VERSION: Ref.Ref<number> = yield* Ref.make(0);
+
     return {
       BLOCKS_IN_QUEUE,
       LATEST_SYNC_TIME_OF_STATE_QUEUE_LENGTH,
       RESET_IN_PROGRESS,
       LATEST_USER_EVENTS_FETCH_TIME,
+      MEMPOOL_LEDGER_VERSION,
     };
   }),
 }) {}

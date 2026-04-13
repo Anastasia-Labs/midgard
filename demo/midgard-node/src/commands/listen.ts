@@ -259,7 +259,15 @@ const getBlockHandler = Effect.gen(function* () {
 const getInitHandler = Effect.gen(function* () {
   yield* Effect.logInfo(`✨ Initialization request received`);
   const txHash = yield* Initialization.program;
-  yield* Genesis.program;
+  yield* Effect.forkDaemon(
+    Genesis.program.pipe(
+      Effect.catchAllCause((cause) =>
+        Effect.logError(
+          `Post-init genesis program failed: ${Cause.pretty(cause)}`,
+        ),
+      ),
+    ),
+  );
   yield* Effect.logInfo(
     `GET /${INIT_ENDPOINT} - Initialization successful: ${txHash}`,
   );
@@ -593,7 +601,15 @@ export const runNode = (withMonitoring?: boolean) =>
 
     yield* DBInitialization.program.pipe(Effect.provide(Database.layer));
 
-    yield* Genesis.program;
+    yield* Effect.forkDaemon(
+      Genesis.program.pipe(
+        Effect.catchAllCause((cause) =>
+          Effect.logError(
+            `Startup genesis program failed: ${Cause.pretty(cause)}`,
+          ),
+        ),
+      ),
+    );
 
     const appThread = Layer.launch(
       Layer.provide(
@@ -608,9 +624,10 @@ export const runNode = (withMonitoring?: boolean) =>
     const program = Effect.all(
       [
         appThread,
-        blockCommitmentFiber(
-          mkSchedule(nodeConfig.WAIT_BETWEEN_BLOCK_COMMITMENTS),
-        ),
+        // blockCommitmentFiber(
+        //   mkSchedule(nodeConfig.WAIT_BETWEEN_BLOCK_COMMITMENTS),
+        // ),
+        Effect.void,
         blockSubmissionFiber(
           mkSchedule(nodeConfig.WAIT_BETWEEN_BLOCK_SUBMISSIONS),
         ),
