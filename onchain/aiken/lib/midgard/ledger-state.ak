@@ -188,12 +188,8 @@ pub type TxOrderEvent {
 
 // ## Transaction
 
-pub type MidgardTxs =
-  Dict<MidgardTxId, MidgardTx>
-
-pub type MidgardTxsRoot =
-  MerkleRoot<MidgardTxId, MidgardTxCompact>
-
+/// > [!NOTE]
+/// > This is the hash of the compact representation.
 pub type MidgardTxId =
   H32<MidgardTxCompact>
 
@@ -203,6 +199,12 @@ pub type MidgardTx {
   wits: MidgardTxWitnessSetCompact,
   validity: MidgardTxValidity,
 }
+
+pub type MidgardTxs =
+  Dict<MidgardTxId, MidgardTx>
+
+pub type MidgardTxsRoot =
+  MerkleRoot<MidgardTxId, MidgardTxCompact>
 
 /// Compact representation.
 pub type MidgardTxCompact {
