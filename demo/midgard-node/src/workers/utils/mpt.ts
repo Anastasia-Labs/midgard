@@ -1,8 +1,8 @@
-import { SqlClient } from "@effect/sql";
 import { BatchDBOp } from "@ethereumjs/util";
 import { Data, Effect } from "effect";
 import * as ETH from "@ethereumjs/mpt";
 import * as ETH_UTILS from "@ethereumjs/util";
+import { SqlClient } from "@effect/sql";
 import { UTxO, toHex, utxoToCore, Script } from "@lucid-evolution/lucid";
 import { Level } from "level";
 import { Database, NodeConfig } from "@/services/index.js";
@@ -11,11 +11,15 @@ import * as Ledger from "@/database/utils/ledger.js";
 import * as MempoolTxDeltasDB from "@/database/mempoolTxDeltas.js";
 import * as TxRejectionsDB from "@/database/txRejections.js";
 import * as MempoolDB from "@/database/mempool.js";
+import * as MempoolLedgerDB from "@/database/mempoolLedger.js";
 import * as DepositsDB from "@/database/deposits.js";
 import { FileSystemError, findSpentAndProducedUTxOs } from "@/utils.js";
 import * as FS from "fs";
 import * as SDK from "@al-ft/midgard-sdk";
-import { DatabaseError } from "@/database/utils/common.js";
+import {
+  DatabaseError,
+  sqlErrorToDatabaseError,
+} from "@/database/utils/common.js";
 
 const LEVELDB_ENCODING_OPTS = {
   keyEncoding: ETH_UTILS.KeyEncoding.Bytes,
@@ -45,8 +49,12 @@ export const resolveTxDeltaForCommit = (
         _tag: "Decoded",
         spent: existingDelta.spent.map((outRef) => Buffer.from(outRef)),
         produced: existingDelta.produced.map((deltaEntry) => ({
-          [Ledger.Columns.OUTREF]: Buffer.from(deltaEntry[Ledger.Columns.OUTREF]),
-          [Ledger.Columns.OUTPUT]: Buffer.from(deltaEntry[Ledger.Columns.OUTPUT]),
+          [Ledger.Columns.OUTREF]: Buffer.from(
+            deltaEntry[Ledger.Columns.OUTREF],
+          ),
+          [Ledger.Columns.OUTPUT]: Buffer.from(
+            deltaEntry[Ledger.Columns.OUTPUT],
+          ),
         })),
       };
     }
@@ -163,7 +171,99 @@ export type ProcessMptsConfig = {
   readonly currentBlockStartTime?: Date;
   readonly processedOnlyEndTime?: Date;
   readonly depositOnlyEndTime?: Date;
+  readonly depositVisibilityBarrierTime?: Date;
 };
+
+export const resolveIncludedDepositEntriesForWindow = ({
+  currentBlockStartTime,
+  effectiveEndTime,
+}: {
+  readonly currentBlockStartTime: Date;
+  readonly effectiveEndTime: Date;
+}): Effect.Effect<readonly DepositsDB.Entry[], DatabaseError, Database> =>
+  Effect.gen(function* () {
+    const sql = yield* SqlClient.SqlClient;
+    return yield* sql.withTransaction(
+      Effect.gen(function* () {
+        const pendingEntries =
+          yield* DepositsDB.retrievePendingHeaderEntriesUpTo(effectiveEndTime);
+        if (pendingEntries.length <= 0) {
+          return [];
+        }
+
+        const overdueEntries = pendingEntries.filter(
+          (entry) =>
+            entry[DepositsDB.Columns.INCLUSION_TIME].getTime() <=
+            currentBlockStartTime.getTime(),
+        );
+        const skippedAwaitingEntries = overdueEntries.filter(
+          (entry) =>
+            entry[DepositsDB.Columns.STATUS] === DepositsDB.Status.Awaiting,
+        );
+        if (skippedAwaitingEntries.length > 0) {
+          return yield* Effect.fail(
+            new DatabaseError({
+              table: DepositsDB.tableName,
+              message:
+                "Refusing to build a block because one or more deposits due for an earlier block were never assigned to a header",
+              cause: skippedAwaitingEntries
+                .map((entry) => entry[DepositsDB.Columns.ID].toString("hex"))
+                .join(","),
+            }),
+          );
+        }
+
+        const replayableOverdueEntries = overdueEntries.filter(
+          (entry) =>
+            entry[DepositsDB.Columns.STATUS] !== DepositsDB.Status.Awaiting,
+        );
+        if (replayableOverdueEntries.length > 0) {
+          yield* Effect.logWarning(
+            `Re-including ${replayableOverdueEntries.length} previously projected deposit UTxO(s) whose prior header assignment was abandoned before confirmation.`,
+          );
+        }
+
+        const currentWindowEntries = pendingEntries.filter(
+          (entry) =>
+            currentBlockStartTime.getTime() <
+            entry[DepositsDB.Columns.INCLUSION_TIME].getTime(),
+        );
+        let normalizedCurrentWindowEntries: readonly DepositsDB.Entry[] = [];
+        if (currentWindowEntries.length > 0) {
+          const awaitingEntries = currentWindowEntries.filter(
+            (entry) =>
+              entry[DepositsDB.Columns.STATUS] === DepositsDB.Status.Awaiting,
+          );
+          if (awaitingEntries.length > 0) {
+            const mempoolEntries = yield* Effect.forEach(
+              awaitingEntries,
+              DepositsDB.toMempoolLedgerEntry,
+            );
+            yield* MempoolLedgerDB.reconcileDepositEntries(mempoolEntries);
+            yield* DepositsDB.markAwaitingAsProjected(
+              awaitingEntries.map((entry) => entry[DepositsDB.Columns.ID]),
+            );
+          }
+
+          normalizedCurrentWindowEntries = currentWindowEntries.map((entry) =>
+            entry[DepositsDB.Columns.STATUS] === DepositsDB.Status.Awaiting
+              ? {
+                  ...entry,
+                  [DepositsDB.Columns.STATUS]: DepositsDB.Status.Projected,
+                }
+              : entry,
+          );
+        }
+
+        return [...replayableOverdueEntries, ...normalizedCurrentWindowEntries];
+      }),
+    );
+  }).pipe(
+    sqlErrorToDatabaseError(
+      DepositsDB.tableName,
+      "Failed to resolve deposits for the current block window",
+    ),
+  );
 
 export const processMpts = (
   ledgerTrie: MidgardMpt,
@@ -179,6 +279,8 @@ export const processMpts = (
     sizeOfProcessedTxs: number;
     rejectedMempoolTxsCount: number;
     includedDepositEntriesCount: number;
+    includedDepositEntries: readonly DepositsDB.Entry[];
+    includedDepositEventIds: readonly Buffer[];
   },
   MptError | DatabaseError,
   Database
@@ -240,35 +342,57 @@ export const processMpts = (
       }),
     );
 
-    let includedDepositEntriesCount = 0;
     const effectiveEndTime =
       processedMempoolTxs[0]?.[Tx.Columns.TIMESTAMPTZ] ??
       config?.processedOnlyEndTime ??
       config?.depositOnlyEndTime;
 
     if (
+      effectiveEndTime !== undefined &&
+      config?.depositVisibilityBarrierTime !== undefined &&
+      effectiveEndTime.getTime() > config.depositVisibilityBarrierTime.getTime()
+    ) {
+      return yield* Effect.fail(
+        new DatabaseError({
+          table: DepositsDB.tableName,
+          message:
+            "Refusing to build a block because deposit ingestion is not confirmed up to the selected block end time",
+          cause: `effective_end_time=${effectiveEndTime.toISOString()},deposit_visibility_barrier_time=${config.depositVisibilityBarrierTime.toISOString()}`,
+        }),
+      );
+    }
+
+    let includedDepositEntries: readonly DepositsDB.Entry[] = [];
+    if (
       config?.currentBlockStartTime !== undefined &&
       effectiveEndTime !== undefined
     ) {
-      const depositLedgerEntries = yield* DepositsDB.retrieveTimeBoundLedgerEntries(
-        config.currentBlockStartTime,
+      includedDepositEntries = yield* resolveIncludedDepositEntriesForWindow({
+        currentBlockStartTime: config.currentBlockStartTime,
         effectiveEndTime,
+      });
+    }
+    const includedDepositEntriesCount = includedDepositEntries.length;
+    const includedDepositEventIds = includedDepositEntries.map((entry) =>
+      Buffer.from(entry[DepositsDB.Columns.ID]),
+    );
+    const depositLedgerEntries = yield* Effect.forEach(
+      includedDepositEntries,
+      DepositsDB.toLedgerEntry,
+    );
+    if (depositLedgerEntries.length > 0) {
+      yield* Effect.logInfo(
+        `🔹 Applying ${depositLedgerEntries.length} projected deposit UTxO(s) to the block pre-state.`,
       );
-      includedDepositEntriesCount = depositLedgerEntries.length;
-      if (depositLedgerEntries.length > 0) {
-        yield* Effect.logInfo(
-          `🔹 Applying ${depositLedgerEntries.length} deposit UTxO(s) to the block pre-state between ${config.currentBlockStartTime.getTime()} and ${effectiveEndTime.getTime()}.`,
-        );
-        yield* Effect.sync(() =>
-          batchDBOps.unshift(
-            ...depositLedgerEntries.map((entry) => ({
-              type: "put" as const,
-              key: entry[Ledger.Columns.OUTREF],
-              value: entry[Ledger.Columns.OUTPUT],
-            })),
-          ),
-        );
-      }
+      yield* Effect.sync(() =>
+        batchDBOps.unshift(
+          ...depositLedgerEntries.map((entry) => ({
+            type: "put" as const,
+            key: entry[Ledger.Columns.OUTREF],
+            value: entry[Ledger.Columns.OUTPUT],
+          })),
+        ),
+      );
     }
 
     if (rejectedTxHashes.length > 0) {
@@ -303,6 +427,8 @@ export const processMpts = (
       sizeOfProcessedTxs: sizeOfProcessedTxs,
       rejectedMempoolTxsCount: rejectedTxHashes.length,
       includedDepositEntriesCount,
+      includedDepositEntries,
+      includedDepositEventIds,
     };
   });
 
@@ -333,22 +459,10 @@ export const keyValueMptRoot = (
 export const withTrieTransaction = <A, E, R>(
   trie: MidgardMpt,
   eff: Effect.Effect<A, E, R>,
-): Effect.Effect<void | A, E | DatabaseError | MptError, Database | R> =>
+): Effect.Effect<void | A, E | MptError, R> =>
   Effect.gen(function* () {
     yield* trie.checkpoint();
-    const sql = yield* SqlClient.SqlClient;
-    const tx = sql.withTransaction(eff).pipe(
-      Effect.catchTag("SqlError", (e) =>
-        Effect.fail(
-          new DatabaseError({
-            message: "The effect executed within an SQL transaction failed",
-            table: "<unknown>",
-            cause: e,
-          }),
-        ),
-      ),
-    );
-    const res = yield* tx;
+    const res = yield* eff;
     yield* trie.commit();
     return res;
   }).pipe(
@@ -496,6 +610,16 @@ export class MptError extends Data.TaggedError(
   }
 
   /**
+   * Builds an error for trie close failures.
+   */
+  static trieClose(trie: string, cause: unknown) {
+    return new MptError({
+      message: `An error occurred closing ${trie} trie`,
+      cause,
+    });
+  }
+
+  /**
    * Builds an error for trie rollback failures.
    */
   static trieRevert(trie: string, cause: unknown) {
@@ -594,6 +718,19 @@ export class MidgardMpt {
     } else {
       return Effect.succeed(Effect.void);
     }
+  }
+
+  /**
+   * Closes the trie backing store when one exists.
+   */
+  public close(): Effect.Effect<void, MptError> {
+    if (this.databaseAndPath) {
+      return Effect.tryPromise({
+        try: () => this.databaseAndPath!.database.close(),
+        catch: (e) => MptError.trieClose(this.trieName, e),
+      });
+    }
+    return Effect.void;
   }
 
   /**

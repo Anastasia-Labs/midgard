@@ -7,8 +7,10 @@ import * as SDK from "@al-ft/midgard-sdk";
 import { Effect, Option, Schedule } from "effect";
 import {
   BlocksDB,
+  DepositsDB,
   ImmutableDB,
   MempoolDB,
+  PendingBlockFinalizationsDB,
   ProcessedMempoolDB,
   TxUtils as TxTable,
 } from "@/database/index.js";
@@ -37,6 +39,7 @@ export const finalizeCommittedBlockLocally = (
   mempoolTrie: MidgardMpt,
   mempoolTxs: readonly TxTable.EntryWithTimeStamp[],
   mempoolTxHashes: Buffer[],
+  includedDepositEventIds: readonly Buffer[],
   newHeaderHash: string,
 ): Effect.Effect<
   void,
@@ -161,6 +164,7 @@ export const successfulSubmissionProgram = (
   mempoolTrie: MidgardMpt,
   mempoolTxs: readonly TxTable.EntryWithTimeStamp[],
   mempoolTxHashes: Buffer[],
+  includedDepositEventIds: readonly Buffer[],
   newHeaderHash: string,
   workerInput: WorkerInput,
   txSize: number,
@@ -173,7 +177,15 @@ export const successfulSubmissionProgram = (
       mempoolTrie,
       mempoolTxs,
       mempoolTxHashes,
+      includedDepositEventIds,
       newHeaderHash,
+    );
+    yield* DepositsDB.markProjectedByEventIds(
+      includedDepositEventIds,
+      Buffer.from(fromHex(newHeaderHash)),
+    );
+    yield* PendingBlockFinalizationsDB.markLocalFinalizationComplete(
+      Buffer.from(fromHex(newHeaderHash)),
     );
 
     return {
@@ -192,6 +204,7 @@ export const successfulLocalFinalizationRecoveryProgram = (
   mempoolTrie: MidgardMpt,
   mempoolTxs: readonly TxTable.EntryWithTimeStamp[],
   mempoolTxHashes: Buffer[],
+  includedDepositEventIds: readonly Buffer[],
   confirmedHeaderHash: string,
   workerInput: WorkerInput,
   sizeOfProcessedTxs: number,
@@ -201,7 +214,11 @@ export const successfulLocalFinalizationRecoveryProgram = (
       mempoolTrie,
       mempoolTxs,
       mempoolTxHashes,
+      includedDepositEventIds,
       confirmedHeaderHash,
+    );
+    yield* PendingBlockFinalizationsDB.markFinalized(
+      Buffer.from(fromHex(confirmedHeaderHash)),
     );
     return {
       type: "SuccessfulLocalFinalizationRecoveryOutput",
@@ -283,19 +300,22 @@ export const recoverSubmittedTxHashByHeaderProgram = (
       stateQueueAddress: stateQueueAuthValidator.spendingScriptAddress,
       stateQueuePolicyId: stateQueueAuthValidator.policyId,
     };
-    const latestBlock = yield* SDK.fetchLatestCommittedBlockProgram(
+    const sortedBlocks = yield* SDK.fetchSortedStateQueueUTxOsProgram(
       lucid.api,
       fetchConfig,
     );
-    const latestHeader = yield* SDK.getHeaderFromStateQueueDatum(
-      latestBlock.datum,
-    );
-    const latestHeaderHash = yield* SDK.hashBlockHeader(latestHeader);
-    if (latestHeaderHash === expectedHeaderHash) {
-      yield* Effect.logWarning(
-        `🔹 Submit errored but on-chain header already advanced to ${expectedHeaderHash}; recovering submission state.`,
-      );
-      return Option.some(latestBlock.utxo.txHash);
+    for (const block of sortedBlocks) {
+      if (block.datum.key === "Empty") {
+        continue;
+      }
+      const header = yield* SDK.getHeaderFromStateQueueDatum(block.datum);
+      const headerHash = yield* SDK.hashBlockHeader(header);
+      if (headerHash === expectedHeaderHash) {
+        yield* Effect.logWarning(
+          `🔹 Submit errored but on-chain header ${expectedHeaderHash} is already present in canonical state_queue; recovering submission state.`,
+        );
+        return Option.some(block.utxo.txHash);
+      }
     }
     return Option.none();
   }).pipe(

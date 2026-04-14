@@ -84,12 +84,16 @@ const makeCandidate = ({
   spent,
   referenceInputs = [],
   inputLovelace = 10n,
+  validityIntervalStart,
+  validityIntervalEnd,
 }: {
   readonly txByte: number;
   readonly arrivalSeq: bigint;
   readonly spent: readonly Buffer[];
   readonly referenceInputs?: readonly Buffer[];
   readonly inputLovelace?: bigint;
+  readonly validityIntervalStart?: bigint;
+  readonly validityIntervalEnd?: bigint;
 }): PhaseAAccepted => {
   const txId = Buffer.from(hex32(txByte), "hex");
   const producedOutRef = outRefFromHash(txId.toString("hex"), 0n);
@@ -99,12 +103,18 @@ const makeCandidate = ({
     txCbor: Buffer.alloc(0),
     arrivalSeq,
     fee: 0n,
-    validityIntervalStart: undefined,
-    validityIntervalEnd: undefined,
+    validityIntervalStart,
+    validityIntervalEnd,
     referenceInputs,
     outputSum: CML.Value.from_coin(inputLovelace),
     witnessKeyHashes: [signerHash],
+    requiredObserverHashes: [],
+    mintPolicyHashes: [],
+    mintedValue: CML.Value.zero(),
+    burnedValue: CML.Value.zero(),
     nativeScriptHashes: [],
+    plutusScriptHashes: [],
+    requiresPlutusEvaluation: false,
     processedTx: {
       txId,
       txCbor: Buffer.alloc(0),
@@ -145,6 +155,8 @@ describe("validation parallelization", () => {
           scriptTxWitsPreimageCbor: EMPTY_CBOR_LIST,
           redeemerTxWitsRoot: EMPTY_LIST_ROOT,
           redeemerTxWitsPreimageCbor: EMPTY_CBOR_LIST,
+          datumTxWitsRoot: EMPTY_LIST_ROOT,
+          datumTxWitsPreimageCbor: EMPTY_CBOR_LIST,
         },
       };
       const txForQueue = {
@@ -225,7 +237,7 @@ describe("validation parallelization", () => {
 
     const phaseB = await Effect.runPromise(
       runPhaseBValidation([txA, txB, txC], preState, {
-        nowMillis: 0n,
+        nowCardanoSlotNo: 0n,
         bucketConcurrency: 8,
       }),
     );
@@ -241,5 +253,50 @@ describe("validation parallelization", () => {
     expect([RejectCodes.DoubleSpend, RejectCodes.InputNotFound]).toContain(
       phaseB.rejected[0].code,
     );
+  });
+
+  it("evaluates validity intervals against the current Cardano slot number", async () => {
+    const spent = outRefFromHash(hex32(0x03), 0n);
+    const preState = new Map<string, Buffer>([
+      [spent.toString("hex"), makeOutput(testAddress, 10n)],
+    ]);
+
+    const expired = makeCandidate({
+      txByte: 0xd1,
+      arrivalSeq: 0n,
+      spent: [spent],
+      validityIntervalEnd: 119n,
+    });
+    const active = makeCandidate({
+      txByte: 0xd2,
+      arrivalSeq: 1n,
+      spent: [spent],
+      validityIntervalStart: 120n,
+      validityIntervalEnd: 121n,
+    });
+
+    const expiredPhaseB = await Effect.runPromise(
+      runPhaseBValidation([expired], preState, {
+        nowCardanoSlotNo: 120n,
+        bucketConcurrency: 1,
+      }),
+    );
+    expect(expiredPhaseB.accepted).toHaveLength(0);
+    expect(expiredPhaseB.rejected).toHaveLength(1);
+    expect(expiredPhaseB.rejected[0].code).toBe(
+      RejectCodes.ValidityIntervalMismatch,
+    );
+    expect(expiredPhaseB.rejected[0].detail).toBe("120 > 119");
+
+    const activePhaseB = await Effect.runPromise(
+      runPhaseBValidation([active], preState, {
+        nowCardanoSlotNo: 120n,
+        bucketConcurrency: 1,
+      }),
+    );
+    expect(activePhaseB.accepted.map((tx) => tx.txId.toString("hex"))).toStrictEqual([
+      active.txId.toString("hex"),
+    ]);
+    expect(activePhaseB.rejected).toHaveLength(0);
   });
 });

@@ -40,6 +40,7 @@ import {
 } from "@/validation/index.js";
 import {
   Database as DatabaseService,
+  Lucid,
   NodeConfig as NodeConfigService,
 } from "@/services/index.js";
 import { compareOutRefs, outRefLabel, type OutRefLike } from "@/tx-context.js";
@@ -637,6 +638,8 @@ export const buildTransferTx = ({
       scriptTxWitsPreimageCbor: EMPTY_CBOR_LIST,
       redeemerTxWitsRoot: computeHash32(EMPTY_CBOR_LIST),
       redeemerTxWitsPreimageCbor: EMPTY_CBOR_LIST,
+      datumTxWitsRoot: computeHash32(EMPTY_CBOR_LIST),
+      datumTxWitsPreimageCbor: EMPTY_CBOR_LIST,
     },
     "TxIsValid",
   ).transactionBodyHash;
@@ -655,6 +658,8 @@ export const buildTransferTx = ({
     scriptTxWitsPreimageCbor: EMPTY_CBOR_LIST,
     redeemerTxWitsRoot: computeHash32(EMPTY_CBOR_LIST),
     redeemerTxWitsPreimageCbor: EMPTY_CBOR_LIST,
+    datumTxWitsRoot: computeHash32(EMPTY_CBOR_LIST),
+    datumTxWitsPreimageCbor: EMPTY_CBOR_LIST,
   };
 
   const tx: MidgardNativeTxFull = {
@@ -857,10 +862,11 @@ export const submitNativeTransferLocally = (
 ): Effect.Effect<
   { readonly txId: string; readonly status: string },
   Error,
-  DatabaseService | NodeConfigService
+  DatabaseService | NodeConfigService | Lucid
 > =>
   Effect.gen(function* () {
     const nodeConfig = yield* NodeConfigService;
+    const { api: lucid } = yield* Lucid;
     const phaseA = yield* runPhaseAValidation([toQueuedTx(built)], {
       expectedNetworkId: nodeConfig.NETWORK === "Mainnet" ? 1n : 0n,
       minFeeA: nodeConfig.MIN_FEE_A,
@@ -876,7 +882,7 @@ export const submitNativeTransferLocally = (
     }
 
     const phaseB = yield* runPhaseBValidationWithPatch(phaseA.accepted, preState, {
-      nowMillis: BigInt(Date.now()),
+      nowCardanoSlotNo: BigInt(lucid.currentSlot()),
       bucketConcurrency: nodeConfig.VALIDATION_G4_BUCKET_CONCURRENCY,
     });
     const rejected = [...phaseA.rejected, ...phaseB.rejected];
@@ -931,7 +937,7 @@ export const submitL2TransferProgram = ({
 }): Effect.Effect<
   SubmitL2TransferResult,
   Error,
-  DatabaseService | NodeConfigService
+  DatabaseService | NodeConfigService | Lucid
 > =>
   Effect.gen(function* () {
     const nodeConfig = yield* NodeConfigService;

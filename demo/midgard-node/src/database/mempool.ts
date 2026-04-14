@@ -8,6 +8,7 @@ import {
 } from "@/database/utils/common.js";
 import * as MempoolLedgerDB from "./mempoolLedger.js";
 import * as MempoolTxDeltasDB from "./mempoolTxDeltas.js";
+import * as DepositsDB from "./deposits.js";
 import { Effect } from "effect";
 import { SqlClient } from "@effect/sql";
 import * as AddressHistoryDB from "@/database/addressHistory.js";
@@ -41,7 +42,8 @@ export const insert = (
     yield* MempoolLedgerDB.insert(produced);
     yield* MempoolTxDeltasDB.upsertMany([toTxDelta(processedTx)]);
     // Remove spent inputs from MempoolLedgerDB.
-    yield* MempoolLedgerDB.clearUTxOs(spent);
+    const consumedDepositEventIds = yield* MempoolLedgerDB.clearUTxOs(spent);
+    yield* DepositsDB.markConsumedByEventIds(consumedDepositEventIds);
     // Add handled addresses to the lookup table
     yield* AddressHistoryDB.insert(spent, produced);
   }).pipe(
@@ -79,7 +81,8 @@ export const insertMultiple = (
     yield* MempoolLedgerDB.insert(allProduced);
     yield* MempoolTxDeltasDB.upsertMany(processedTxs.map(toTxDelta));
     // Remove spent inputs from MempoolLedgerDB.
-    yield* MempoolLedgerDB.clearUTxOs(allSpent);
+    const consumedDepositEventIds = yield* MempoolLedgerDB.clearUTxOs(allSpent);
+    yield* DepositsDB.markConsumedByEventIds(consumedDepositEventIds);
     // Update AddressHistoryDB
     yield* AddressHistoryDB.insert(allSpent, allProduced);
   }).pipe(

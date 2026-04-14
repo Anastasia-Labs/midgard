@@ -1,6 +1,9 @@
 import fs from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
+import { CML } from "@lucid-evolution/lucid";
+import { Effect, Queue } from "effect";
+import { buildListenRouter } from "@/commands/listen-router.js";
 import {
   ADMIN_ROUTE_PATHS,
   authorizeAdminRoute,
@@ -10,7 +13,11 @@ import {
   normalizeSubmitTxHexToNative,
   validateSubmitTxHex,
 } from "@/commands/listen-utils.js";
-import { cardanoTxBytesToMidgardNativeTxFullBytes } from "@/midgard-tx-codec/index.js";
+import {
+  cardanoTxBytesToMidgardNativeTxFullBytes,
+  decodeMidgardNativeMint,
+  decodeMidgardNativeTxFull,
+} from "@/midgard-tx-codec/index.js";
 
 type TxFixture = {
   readonly cborHex: string;
@@ -134,7 +141,61 @@ describe("submit admission helpers", () => {
     expect(normalized.source).toBe("cardano-converted");
     expect(normalized.txIdHex.length).toBe(64);
     expect(normalized.txCbor.length).toBeGreaterThan(0);
-    expect(normalized.txBodyHashForWitnesses?.length).toBe(32);
+    expect(normalized).not.toHaveProperty("txBodyHashForWitnesses");
+  });
+
+  it("preserves native-script mint intent when normalizing Cardano tx bytes", () => {
+    const signerKey = CML.PrivateKey.generate_ed25519();
+    const mintScript = CML.NativeScript.new_script_pubkey(
+      signerKey.to_public().hash(),
+    );
+    const policyId = mintScript.hash();
+
+    const inputs = CML.TransactionInputList.new();
+    inputs.add(
+      CML.TransactionInput.new(
+        CML.TransactionHash.from_hex("11".repeat(32)),
+        0n,
+      ),
+    );
+    const outputs = CML.TransactionOutputList.new();
+    outputs.add(
+      CML.TransactionOutput.new(
+        CML.Address.from_bech32(
+          "addr_test1wzylc3gg4h37gt69yx057gkn4egefs5t9rsycmryecpsenswtdp58",
+        ),
+        CML.Value.from_coin(3_000_000n),
+      ),
+    );
+    const body = CML.TransactionBody.new(inputs, outputs, 0n);
+    const mintAssets = CML.MapAssetNameToNonZeroInt64.new();
+    mintAssets.insert(CML.AssetName.from_raw_bytes(Buffer.from("01", "hex")), 1n);
+    const mint = CML.Mint.new();
+    mint.insert_assets(policyId, mintAssets);
+    body.set_mint(mint);
+
+    const nativeScripts = CML.NativeScriptList.new();
+    nativeScripts.add(mintScript);
+    const witnessSet = CML.TransactionWitnessSet.new();
+    witnessSet.set_native_scripts(nativeScripts);
+
+    const cardanoTx = CML.Transaction.new(body, witnessSet, true, undefined);
+    const normalized = normalizeSubmitTxHexToNative(
+      Buffer.from(cardanoTx.to_cbor_bytes()).toString("hex"),
+    );
+
+    expect(normalized.ok).toBe(true);
+    if (!normalized.ok) {
+      throw new Error("expected normalized tx");
+    }
+    expect(normalized.source).toBe("cardano-converted");
+    expect(normalized).not.toHaveProperty("txBodyHashForWitnesses");
+
+    const nativeTx = decodeMidgardNativeTxFull(normalized.txCbor);
+    const decodedMint = decodeMidgardNativeMint(nativeTx.body.mintPreimageCbor);
+    expect(decodedMint).toBeDefined();
+    expect(decodedMint?.policyIds).toStrictEqual([policyId.to_hex()]);
+    expect(nativeTx.witnessSet.scriptTxWitsRoot.equals(nativeTx.witnessSet.addrTxWitsRoot)).toBe(false);
   });
 
   it("keeps native tx bytes unchanged when payload is already Midgard-native", () => {
@@ -149,7 +210,7 @@ describe("submit admission helpers", () => {
     }
     expect(normalized.source).toBe("native");
     expect(normalized.txCbor.equals(nativeBytes)).toBe(true);
-    expect(normalized.txBodyHashForWitnesses).toBeUndefined();
+    expect(normalized).not.toHaveProperty("txBodyHashForWitnesses");
   });
 
   it("returns an invalid payload result for bytes that are neither native nor convertible Cardano", () => {
@@ -159,5 +220,10 @@ describe("submit admission helpers", () => {
       throw new Error("expected invalid payload result");
     }
     expect(normalized.error).toBe("Invalid transaction CBOR payload");
+  });
+
+  it("constructs the listen router with the extended utxo routes", async () => {
+    const txQueue = await Effect.runPromise(Queue.unbounded());
+    expect(buildListenRouter(txQueue)).toBeDefined();
   });
 });

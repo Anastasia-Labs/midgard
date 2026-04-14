@@ -1,7 +1,8 @@
 import { describe, expect } from "vitest";
 import { it } from "@effect/vitest";
 import { Effect } from "effect";
-import { sep } from "node:path";
+import { dirname, resolve as resolvePath } from "node:path";
+import { fileURLToPath } from "node:url";
 import { AlwaysSucceedsContract } from "@/services/always-succeeds.js";
 import {
   buildContractDeploymentInfoFromContracts,
@@ -30,9 +31,10 @@ describe("contract deployment info", () => {
     }).pipe(Effect.provide(AlwaysSucceedsContract.Default)),
   );
 
-  it("defaults init manifest output to repo-root deploymentInfo", () => {
-    expect(defaultContractDeploymentInfoOutputPath().endsWith(
-      `${sep}deploymentInfo${sep}contract-deployment-info.json`,
-    )).toBe(true);
+  it("defaults init manifest output to the package-root deploymentInfo", () => {
+    const packageRoot = resolvePath(dirname(fileURLToPath(import.meta.url)), "..");
+    expect(defaultContractDeploymentInfoOutputPath()).toEqual(
+      resolvePath(packageRoot, "deploymentInfo", "contract-deployment-info.json"),
+    );
   });
 });

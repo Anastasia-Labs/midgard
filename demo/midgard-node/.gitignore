@@ -13,5 +13,15 @@ tmp-*
 .flow-ledger-*/
 .flow-mempool-*/
 .local-pg/
+cardano/.midgard-kupmios/
+cardano/.mithril-restore/
+cardano/.kupo-restore/
+cardano/db/*
+!cardano/db/.gitkeep
+cardano/ipc/*
+!cardano/ipc/.gitkeep
+cardano/kupo/*
+!cardano/kupo/.gitkeep
 contract-deployment-info.prototype.json
+deploymentInfo/
 src/generated/

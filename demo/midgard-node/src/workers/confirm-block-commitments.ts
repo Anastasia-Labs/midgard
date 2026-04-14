@@ -2,12 +2,16 @@ import {
   reexportedParentPort as parentPort,
   reexportedWorkerData as workerData,
 } from "@/utils.js";
-import { Cause, Data, Effect, Schedule, pipe } from "effect";
+import { Cause, Data, Effect, Option, pipe } from "effect";
 import { MidgardContracts } from "@/services/midgard-contracts.js";
 import { Lucid } from "@/services/lucid.js";
 import { ConfigError, NodeConfig } from "@/services/config.js";
 import {
   fetchLatestCommittedStateQueueBlock,
+  fetchSortedCommittedStateQueueBlocks,
+  findCommittedStateQueueBlockByHeaderHash,
+  latestCommittedStateQueueBlockFromSorted,
+  resolveStateQueueBlockEndTimeMs,
   WorkerInput,
   WorkerOutput,
 } from "@/workers/utils/confirm-block-commitments.js";
@@ -15,50 +19,60 @@ import { serializeStateQueueUTxO } from "@/workers/utils/commit-block-header.js"
 import { LucidEvolution } from "@lucid-evolution/lucid";
 import type * as SDK from "@al-ft/midgard-sdk";
 
-const inputData = workerData as WorkerInput;
-
 type StateQueueAuthValidator = SDK.MidgardValidators["stateQueue"];
 
 class TxConfirmAwaitError extends Data.TaggedError("TxConfirmAwaitError")<{
   readonly message: string;
-  readonly txHash: string;
+  readonly headerHash: string;
   readonly cause: string;
 }> {}
 
-const awaitSubmittedBlockConfirmation = (
+const awaitPendingBlockResolution = (
   lucid: LucidEvolution,
   stateQueueAuthValidator: StateQueueAuthValidator,
-  txHash: string,
+  pendingBlock: NonNullable<WorkerInput["data"]["pendingBlock"]>,
   timeoutMs: number,
-  retries: number,
 ) =>
-  Effect.retry(
-    Effect.gen(function* () {
-      const startedAt = Date.now();
-      const pollIntervalMs = 2_000;
-      while (Date.now() - startedAt < timeoutMs) {
-        const latest = yield* Effect.either(
-          fetchLatestCommittedStateQueueBlock(lucid, stateQueueAuthValidator),
-        );
-        if (
-          latest._tag === "Right" &&
-          latest.right.utxo.txHash === txHash
-        ) {
-          return;
-        }
-        yield* Effect.sleep(`${pollIntervalMs} millis`);
-      }
-      yield* Effect.fail(
-        new TxConfirmAwaitError({
-          message:
-            "Timed out waiting for state-queue tip to confirm submitted transaction",
-          txHash,
-          cause: `timeout_ms=${timeoutMs}`,
-        }),
+  Effect.gen(function* () {
+    const startedAt = Date.now();
+    const pollIntervalMs = 2_000;
+    while (Date.now() - startedAt < timeoutMs) {
+      const sortedBlocks = yield* fetchSortedCommittedStateQueueBlocks(
+        lucid,
+        stateQueueAuthValidator,
       );
-    }),
-    Schedule.recurs(Math.max(0, retries)),
-  );
+      const latestBlock =
+        yield* latestCommittedStateQueueBlockFromSorted(sortedBlocks);
+      const latestEndTimeMs =
+        yield* resolveStateQueueBlockEndTimeMs(latestBlock);
+      const matchedPendingBlock =
+        yield* findCommittedStateQueueBlockByHeaderHash(
+          sortedBlocks,
+          pendingBlock.expectedHeaderHash,
+        );
+      if (Option.isSome(matchedPendingBlock)) {
+        return {
+          latestBlock,
+          matchedPendingBlock: matchedPendingBlock.value,
+        };
+      }
+      if (latestEndTimeMs >= pendingBlock.blockEndTimeMs) {
+        return {
+          latestBlock,
+          matchedPendingBlock: null,
+        };
+      }
+      yield* Effect.sleep(`${pollIntervalMs} millis`);
+    }
+    return yield* Effect.fail(
+      new TxConfirmAwaitError({
+        message:
+          "Timed out waiting for canonical state_queue resolution of pending block header",
+        headerHash: pendingBlock.expectedHeaderHash,
+        cause: `timeout_ms=${timeoutMs}`,
+      }),
+    );
+  });
 
 const resolveStateQueueAuthValidator = (): Effect.Effect<
   StateQueueAuthValidator,
@@ -69,9 +83,11 @@ const resolveStateQueueAuthValidator = (): Effect.Effect<
     const contracts = yield* MidgardContracts;
     // Effect.Service DTS generation currently widens this worker entry; keep
     // the runtime contract shape explicit at the boundary we actually need.
-    return (contracts as unknown as {
-      readonly stateQueue: StateQueueAuthValidator;
-    }).stateQueue;
+    return (
+      contracts as unknown as {
+        readonly stateQueue: StateQueueAuthValidator;
+      }
+    ).stateQueue;
   });
 
 const provideConfirmationWorkerServices = <A, E>(
@@ -84,9 +100,13 @@ const provideConfirmationWorkerServices = <A, E>(
     Effect.provide(NodeConfig.layer),
   );
 
-const wrapper = (
+export const runConfirmBlockCommitmentsWorkerProgram = (
   workerInput: WorkerInput,
-): Effect.Effect<WorkerOutput, unknown, MidgardContracts | Lucid | NodeConfig> =>
+): Effect.Effect<
+  WorkerOutput,
+  unknown,
+  MidgardContracts | Lucid | NodeConfig
+> =>
   Effect.gen(function* () {
     const lucid = yield* Lucid;
     const nodeConfig = yield* NodeConfig;
@@ -95,7 +115,10 @@ const wrapper = (
     /**
      * Recovers confirmation processing by replaying from the latest known block.
      */
-    const recoverWithLatestBlock = (staleTxHash: string) =>
+    const recoverWithLatestBlock = (
+      stalePendingHeaderHash: string,
+      staleSubmittedTxHash: "" | string,
+    ) =>
       Effect.gen(function* () {
         const latestBlock = yield* fetchLatestCommittedStateQueueBlock(
           lucid.api,
@@ -104,8 +127,9 @@ const wrapper = (
         const serializedUTxO = yield* serializeStateQueueUTxO(latestBlock);
         return {
           type: "StaleUnconfirmedRecoveryOutput",
-          staleTxHash,
-          blocksUTxO: serializedUTxO,
+          stalePendingHeaderHash,
+          staleSubmittedTxHash,
+          latestBlocksUTxO: serializedUTxO,
         } satisfies WorkerOutput;
       });
 
@@ -118,87 +142,93 @@ const wrapper = (
       const serializedUTxO = yield* serializeStateQueueUTxO(latestBlock);
       return {
         type: "SuccessfulConfirmationOutput",
-        blocksUTxO: serializedUTxO,
+        latestBlocksUTxO: serializedUTxO,
+        matchedPendingBlocksUTxO: null,
       } satisfies WorkerOutput;
-    } else if (workerInput.data.unconfirmedSubmittedBlock === "") {
+    } else if (workerInput.data.pendingBlock === null) {
       return {
         type: "NoTxForConfirmationOutput",
       } satisfies WorkerOutput;
     } else {
-      const targetTxHash = workerInput.data.unconfirmedSubmittedBlock;
-      yield* Effect.logInfo(`🔍 Confirming tx: ${targetTxHash}`);
+      const pendingBlock = workerInput.data.pendingBlock;
+      const pendingAgeMs = Math.max(0, Date.now() - pendingBlock.updatedAtMs);
+      yield* Effect.logInfo(
+        `🔍 Resolving pending block header ${pendingBlock.expectedHeaderHash} (submitted_tx=${pendingBlock.submittedTxHash || "unknown"}, age_ms=${pendingAgeMs}).`,
+      );
       const confirmationResult = yield* Effect.either(
-        awaitSubmittedBlockConfirmation(
+        awaitPendingBlockResolution(
           lucid.api,
           stateQueueAuthValidator,
-          targetTxHash,
+          pendingBlock,
           nodeConfig.BLOCK_CONFIRMATION_AWAIT_TIMEOUT_MS,
-          nodeConfig.BLOCK_CONFIRMATION_AWAIT_RETRIES,
         ),
       );
 
       if (confirmationResult._tag === "Left") {
-        const pendingAgeMs =
-          workerInput.data.unconfirmedSubmittedBlockSinceMs > 0
-            ? Date.now() - workerInput.data.unconfirmedSubmittedBlockSinceMs
-            : 0;
         yield* Effect.logWarning(
-          `🔍 Pending submitted block ${targetTxHash} not confirmed yet (age_ms=${pendingAgeMs}, timeout_ms=${nodeConfig.BLOCK_CONFIRMATION_AWAIT_TIMEOUT_MS}, retries=${nodeConfig.BLOCK_CONFIRMATION_AWAIT_RETRIES}).`,
+          `🔍 Pending block header ${pendingBlock.expectedHeaderHash} not resolved yet (submitted_tx=${pendingBlock.submittedTxHash || "unknown"}, age_ms=${pendingAgeMs}, timeout_ms=${nodeConfig.BLOCK_CONFIRMATION_AWAIT_TIMEOUT_MS}).`,
         );
-
         if (pendingAgeMs >= nodeConfig.UNCONFIRMED_BLOCK_MAX_AGE_MS) {
           yield* Effect.logWarning(
-            `🔍 Pending submitted block ${targetTxHash} exceeded max age (${nodeConfig.UNCONFIRMED_BLOCK_MAX_AGE_MS}ms); recovering from latest chain tip.`,
+            `🔍 Pending block header ${pendingBlock.expectedHeaderHash} exceeded warning age (${nodeConfig.UNCONFIRMED_BLOCK_MAX_AGE_MS}ms) without deterministic chain resolution.`,
           );
-          return yield* recoverWithLatestBlock(targetTxHash);
         }
-
         return {
           type: "NoTxForConfirmationOutput",
         } satisfies WorkerOutput;
       }
 
-      yield* Effect.logInfo("🔍 Tx confirmed. Fetching the block...");
-      const latestBlock = yield* fetchLatestCommittedStateQueueBlock(
-        lucid.api,
-        stateQueueAuthValidator,
-      );
-      if (latestBlock.utxo.txHash === targetTxHash) {
-        yield* Effect.logInfo("🔍 Serializing state queue UTxO...");
-        const serializedUTxO = yield* serializeStateQueueUTxO(latestBlock);
+      const resolved = confirmationResult.right;
+      if (resolved.matchedPendingBlock !== null) {
+        yield* Effect.logInfo(
+          `🔍 Pending block header ${pendingBlock.expectedHeaderHash} is present in canonical state_queue.`,
+        );
+        const latestSerializedUTxO = yield* serializeStateQueueUTxO(
+          resolved.latestBlock,
+        );
+        const matchedSerializedUTxO = yield* serializeStateQueueUTxO(
+          resolved.matchedPendingBlock,
+        );
         yield* Effect.logInfo("🔍 Done.");
         return {
           type: "SuccessfulConfirmationOutput",
-          blocksUTxO: serializedUTxO,
+          latestBlocksUTxO: latestSerializedUTxO,
+          matchedPendingBlocksUTxO: matchedSerializedUTxO,
         } satisfies WorkerOutput;
       }
 
       yield* Effect.logWarning(
-        `🔍 Confirmed tx ${targetTxHash}, but latest state-queue tip is ${latestBlock.utxo.txHash}; recovering from latest chain tip.`,
+        `🔍 Canonical state_queue advanced past pending block header ${pendingBlock.expectedHeaderHash} without including it; abandoning that pending submission.`,
       );
-      return yield* recoverWithLatestBlock(targetTxHash);
+      return yield* recoverWithLatestBlock(
+        pendingBlock.expectedHeaderHash,
+        pendingBlock.submittedTxHash,
+      );
     }
   });
 
-const program = pipe(
-  wrapper(inputData),
-  provideConfirmationWorkerServices,
-);
-
-Effect.runPromise(
-  program.pipe(
-    Effect.catchAllCause((cause) =>
-      Effect.succeed({
-        type: "FailedConfirmationOutput",
-        error: `Tx confirmation worker failure: ${Cause.pretty(cause)}`,
-      }),
-    ),
-  ),
-).then((output) => {
-  Effect.runSync(
-    Effect.logInfo(
-      `🔍 Confirmation work completed (${JSON.stringify(output)}).`,
-    ),
+if (parentPort !== null) {
+  const inputData = workerData as WorkerInput;
+  const program = pipe(
+    runConfirmBlockCommitmentsWorkerProgram(inputData),
+    provideConfirmationWorkerServices,
   );
-  parentPort?.postMessage(output);
-});
+
+  Effect.runPromise(
+    program.pipe(
+      Effect.catchAllCause((cause) =>
+        Effect.succeed({
+          type: "FailedConfirmationOutput",
+          error: `Tx confirmation worker failure: ${Cause.pretty(cause)}`,
+        }),
+      ),
+    ),
+  ).then((output) => {
+    Effect.runSync(
+      Effect.logInfo(
+        `🔍 Confirmation work completed (${JSON.stringify(output)}).`,
+      ),
+    );
+    parentPort?.postMessage(output);
+  });
+}

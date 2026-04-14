@@ -8,6 +8,8 @@ import * as ProcessedMempoolDB from "./processedMempool.js";
 import * as MempoolLedgerDB from "./mempoolLedger.js";
 import * as MempoolTxDeltasDB from "./mempoolTxDeltas.js";
 import * as TxRejectionsDB from "./txRejections.js";
+import * as DepositIngestionCursorDB from "./depositIngestionCursor.js";
+import * as PendingBlockFinalizationsDB from "./pendingBlockFinalizations.js";
 import * as Tx from "@/database/utils/tx.js";
 import * as Ledger from "@/database/utils/ledger.js";
 import * as DepositsDB from "@/database/deposits.js";
@@ -30,13 +32,15 @@ export const program: Effect.Effect<
   yield* BlocksDB.createTable;
   yield* Ledger.createTable(ConfirmedLedgerDB.tableName);
   yield* Ledger.createTable(LatestLedgerDB.tableName);
-  yield* Ledger.createTable(MempoolLedgerDB.tableName);
+  yield* DepositsDB.createTable;
   yield* Tx.createTable(ImmutableDB.tableName);
   yield* Tx.createTable(MempoolDB.tableName);
   yield* Tx.createTable(ProcessedMempoolDB.tableName);
+  yield* MempoolLedgerDB.createTable;
   yield* MempoolTxDeltasDB.createTable;
   yield* TxRejectionsDB.createTable;
-  yield* DepositsDB.createTable;
+  yield* DepositIngestionCursorDB.createTable;
+  yield* PendingBlockFinalizationsDB.createTables;
 
   yield* Effect.logInfo("PostgreSQL database initialized Successfully.");
 }).pipe(

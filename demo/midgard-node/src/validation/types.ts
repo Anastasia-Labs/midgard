@@ -1,5 +1,5 @@
 import { ProcessedTx } from "@/utils.js";
-import { CML } from "@lucid-evolution/lucid";
+import { CML, type UTxO } from "@lucid-evolution/lucid";
 
 /**
  * Stable rejection codes used by Midgard phase-A and phase-B validation.
@@ -26,11 +26,12 @@ export const RejectCodes = {
   MissingRequiredWitness: "E_MISSING_REQUIRED_WITNESS",
   InvalidSignature: "E_INVALID_SIGNATURE",
   NativeScriptInvalid: "E_NATIVE_SCRIPT_INVALID",
+  PlutusScriptInvalid: "E_PLUTUS_SCRIPT_INVALID",
+  PlutusEvaluationUnavailable: "E_PLUTUS_EVALUATION_UNAVAILABLE",
   IsValidFalseForbidden: "E_IS_VALID_FALSE_FORBIDDEN",
   AuxDataForbidden: "E_AUX_DATA_FORBIDDEN",
   CertificatesForbidden: "E_CERTIFICATES_FORBIDDEN",
   NonZeroWithdrawal: "E_NONZERO_WITHDRAWAL",
-  MintForbidden: "E_MINT_FORBIDDEN",
   NetworkIdMismatch: "E_NETWORK_ID_MISMATCH",
 } as const;
 
@@ -43,9 +44,6 @@ export type RejectCode = (typeof RejectCodes)[keyof typeof RejectCodes];
 export type QueuedTx = {
   readonly txId: Buffer;
   readonly txCbor: Buffer;
-  // Optional override hash used for witness signature verification when ingress
-  // normalized a Cardano tx into Midgard-native bytes.
-  readonly txBodyHashForWitnesses?: Buffer;
   readonly arrivalSeq: bigint;
   readonly createdAt: Date;
 };
@@ -64,7 +62,13 @@ export type PhaseAAccepted = {
   readonly referenceInputs: readonly Buffer[];
   readonly outputSum: InstanceType<typeof CML.Value>;
   readonly witnessKeyHashes: readonly string[];
+  readonly requiredObserverHashes: readonly string[];
+  readonly mintPolicyHashes: readonly string[];
+  readonly mintedValue: InstanceType<typeof CML.Value>;
+  readonly burnedValue: InstanceType<typeof CML.Value>;
   readonly nativeScriptHashes: readonly string[];
+  readonly plutusScriptHashes: readonly string[];
+  readonly requiresPlutusEvaluation: boolean;
   readonly processedTx: ProcessedTx;
 };
 
@@ -94,6 +98,24 @@ export type PhaseBResult = {
 };
 
 /**
+ * Result of Plutus witness evaluation once the transaction has been
+ * reconstructed into Cardano shape.
+ *
+ * Script-invalid outcomes are part of normal transaction validation. Anything
+ * that prevents the evaluator from reaching a trustworthy answer must be raised
+ * as an exception instead so the caller can retry or surface infrastructure
+ * failure without permanently rejecting the tx.
+ */
+export type PlutusEvaluationResult =
+  | {
+      readonly kind: "accepted";
+    }
+  | {
+      readonly kind: "script_invalid";
+      readonly detail: string;
+    };
+
+/**
  * Configuration knobs for phase-A validation.
  */
 export type PhaseAConfig = {
@@ -108,8 +130,13 @@ export type PhaseAConfig = {
  * Configuration knobs for phase-B validation.
  */
 export type PhaseBConfig = {
-  readonly nowMillis: bigint;
+  readonly nowCardanoSlotNo: bigint;
   readonly bucketConcurrency: number;
+  readonly evaluatePlutusTx?: (args: {
+    readonly txId: Buffer;
+    readonly txCborHex: string;
+    readonly additionalUtxos: readonly UTxO[];
+  }) => Promise<PlutusEvaluationResult>;
 };
 
 /**
@@ -119,6 +146,5 @@ export type PhaseBConfig = {
 export type QueuedTxPayload = {
   readonly txId: Buffer;
   readonly txCbor: Buffer;
-  readonly txBodyHashForWitnesses?: Buffer;
   readonly createdAtMillis: number;
 };

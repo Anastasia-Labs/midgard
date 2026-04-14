@@ -1,4 +1,4 @@
-import { Chunk, Effect, Metric, pipe, Queue, Ref, Schedule } from "effect";
+import { Chunk, Effect, Metric, Queue, Ref, Schedule } from "effect";
 import {
   MempoolDB,
   MempoolLedgerDB,
@@ -6,8 +6,9 @@ import {
 } from "@/database/index.js";
 import { SqlClient } from "@effect/sql/SqlClient";
 import { DatabaseError } from "@/database/utils/common.js";
-import { Globals, NodeConfig } from "@/services/index.js";
+import { Globals, Lucid, NodeConfig } from "@/services/index.js";
 import {
+  type PlutusEvaluationResult,
   QueuedTx,
   QueuedTxPayload,
   RejectCode,
@@ -17,6 +18,7 @@ import {
   runPhaseAValidation,
   runPhaseBValidationWithPatch,
 } from "@/validation/index.js";
+import { evaluatePlutusTxLocally } from "@/validation/local-plutus-eval.js";
 
 /**
  * Background validation loop for queued L2 transactions.
@@ -113,6 +115,93 @@ const summarizeRejections = (rejected: readonly RejectedTx[]): string => {
 };
 
 /**
+ * Detects provider/runtime failures where no trustworthy validation result was
+ * obtained and the batch should be retried rather than rejected.
+ */
+const isPlutusEvaluationInfrastructureFailure = (cause: unknown): boolean => {
+  const message = String(cause);
+  const infrastructurePatterns = [
+    /configured lucid provider does not support evaluatetx/i,
+    /\bfetch failed\b/i,
+    /\bnetworkerror\b/i,
+    /\btimeout\b/i,
+    /\btimed out\b/i,
+    /\babort(?:ed|error)?\b/i,
+    /\beconn(?:reset|refused)\b/i,
+    /\benotfound\b/i,
+    /\b429\b/,
+    /\b5\d\d\b/,
+    /\brate limit/i,
+    /\bservice unavailable\b/i,
+    /\btemporar(?:y|ily)\b/i,
+  ];
+  return infrastructurePatterns.some((pattern) => pattern.test(message));
+};
+
+/**
+ * Normalizes provider-side Plutus validation failures into persisted rejection
+ * details. Explicit infrastructure/runtime faults return `null` so the batch is
+ * retried instead of poisoning the tx.
+ */
+export const classifyPlutusEvaluationFailure = (
+  cause: unknown,
+): string | null => {
+  const message = String(cause);
+  if (isPlutusEvaluationInfrastructureFailure(cause)) {
+    return null;
+  }
+
+  const scriptHashMatch = message.match(/ScriptHash[^0-9a-f]*([0-9a-f]{56})/i);
+  const scriptInfoMatch = message.match(/ScriptInfo:\s*([^\n"]+)/i);
+  const reasonMatch = message.match(/Caused by:\s*([^\n"]+)/i);
+  const txIdMatch = message.match(/TxId:\s*([0-9a-f]{64})/i);
+  if (
+    scriptHashMatch !== null ||
+    scriptInfoMatch !== null ||
+    reasonMatch !== null ||
+    txIdMatch !== null
+  ) {
+    return [
+      txIdMatch !== null ? `tx_id=${txIdMatch[1]}` : null,
+      scriptHashMatch !== null ? `script_hash=${scriptHashMatch[1]}` : null,
+      scriptInfoMatch !== null ? `script_info=${scriptInfoMatch[1]}` : null,
+      reasonMatch !== null ? `reason=${reasonMatch[1]}` : null,
+    ]
+      .filter((value): value is string => value !== null)
+      .join(",");
+  }
+
+  const scriptFailurePatterns = [
+    /\bscriptwitnessnotvalidatingutxow\b/i,
+    /\bmissingscriptwitnessesutxow\b/i,
+    /\bextraneousscriptwitnessesutxow\b/i,
+    /\bnonoutputsupplimentarydatums\b/i,
+    /\bppviewhashesdontmatch\b/i,
+    /\bmalformedscriptwitnesses\b/i,
+    /\bvalidationtagmismatch\b/i,
+    /\bphase-2 script execution failed\b/i,
+    /\bthe provided plutus code called\b/i,
+    /\bthe machine terminated because of an error\b/i,
+    /\bcekerror\b/i,
+  ];
+  if (scriptFailurePatterns.some((pattern) => pattern.test(message))) {
+    return message;
+  }
+
+  return message;
+};
+
+/**
+ * Repeats a scheduled background action while logging and swallowing per-iteration
+ * failures so the loop survives transient outages.
+ */
+export const repeatScheduledWithCauseLogging = <R>(
+  action: Effect.Effect<void, unknown, R>,
+  schedule: Schedule.Schedule<number>,
+): Effect.Effect<void, never, R> =>
+  Effect.repeat(action.pipe(Effect.catchAllCause(Effect.logWarning)), schedule);
+
+/**
  * Normalizes one queued payload into either a validated queue entry or an
  * immediate rejection describing malformed binary fields.
  */
@@ -124,22 +213,10 @@ const payloadToQueuedTx = (payload: QueuedTxPayload): QueuedTx | RejectedTx => {
       detail: "Queued payload missing binary tx fields",
     };
   }
-  if (
-    payload.txBodyHashForWitnesses !== undefined &&
-    (!Buffer.isBuffer(payload.txBodyHashForWitnesses) ||
-      payload.txBodyHashForWitnesses.length !== 32)
-  ) {
-    return {
-      txId: payload.txId,
-      code: RejectCodes.CborDeserialization,
-      detail: "Queued payload has invalid txBodyHashForWitnesses",
-    };
-  }
 
   const queuedTx: QueuedTx = {
     txId: payload.txId,
     txCbor: payload.txCbor,
-    txBodyHashForWitnesses: payload.txBodyHashForWitnesses,
     arrivalSeq: nextArrivalSeq,
     createdAt: new Date(payload.createdAtMillis),
   };
@@ -243,9 +320,10 @@ const selectPhaseAConcurrency = (
 const txQueueProcessorAction = (
   txQueue: Queue.Dequeue<QueuedTxPayload>,
   withMonitoring?: boolean,
-): Effect.Effect<void, DatabaseError, SqlClient | NodeConfig | Globals> =>
+): Effect.Effect<void, DatabaseError, SqlClient | NodeConfig | Globals | Lucid> =>
   Effect.gen(function* () {
     const globals = yield* Globals;
+    const { api: lucid } = yield* Lucid;
     yield* Ref.set(globals.HEARTBEAT_TX_QUEUE_PROCESSOR, Date.now());
     const nodeConfig = yield* NodeConfig;
     const configuredBatchSize = Math.max(1, nodeConfig.VALIDATION_BATCH_SIZE);
@@ -307,6 +385,7 @@ const txQueueProcessorAction = (
       return;
     }
 
+    const pendingSinceBeforeBatch = pendingSinceMillis;
     const txPayloads = pendingPayloads.splice(0, batchSize);
     if (pendingPayloads.length === 0) {
       pendingSinceMillis = undefined;
@@ -318,86 +397,115 @@ const txQueueProcessorAction = (
     const utilization = txPayloads.length / batchSize;
     yield* validationWorkerUtilizationGauge(Effect.succeed(utilization));
 
-    const queuedTxs: QueuedTx[] = [];
-    const decodeRejected: RejectedTx[] = [];
-    for (const payload of txPayloads) {
-      const decoded = payloadToQueuedTx(payload);
-      if ("arrivalSeq" in decoded) {
-        queuedTxs.push(decoded);
-      } else {
-        decodeRejected.push(decoded);
+    const restoreDrainedBatch = () => {
+      pendingPayloads.unshift(...txPayloads);
+      pendingSinceMillis = pendingSinceBeforeBatch ?? Date.now();
+    };
+
+    try {
+      const queuedTxs: QueuedTx[] = [];
+      const decodeRejected: RejectedTx[] = [];
+      for (const payload of txPayloads) {
+        const decoded = payloadToQueuedTx(payload);
+        if ("arrivalSeq" in decoded) {
+          queuedTxs.push(decoded);
+        } else {
+          decodeRejected.push(decoded);
+        }
       }
+
+      const phaseAStart = Date.now();
+      const phaseAConcurrency = selectPhaseAConcurrency(
+        nodeConfig.VALIDATION_PHASE_A_CONCURRENCY,
+        queuedTxs.length,
+      );
+      const phaseA = yield* runPhaseAValidation(queuedTxs, {
+        expectedNetworkId: nodeConfig.NETWORK === "Mainnet" ? 1n : 0n,
+        minFeeA: nodeConfig.MIN_FEE_A,
+        minFeeB: nodeConfig.MIN_FEE_B,
+        concurrency: phaseAConcurrency,
+        strictnessProfile: nodeConfig.VALIDATION_STRICTNESS_PROFILE,
+      });
+      yield* validationPhaseAConcurrencyGauge(
+        Effect.succeed(BigInt(phaseAConcurrency)),
+      );
+      yield* validationPhaseALatencyGauge(
+        Effect.succeed(Date.now() - phaseAStart),
+      );
+
+      const cachedState = yield* ensureCachedUtxoState();
+      const phaseBStart = Date.now();
+      const phaseB = yield* runPhaseBValidationWithPatch(
+        phaseA.accepted,
+        cachedState,
+        {
+          nowCardanoSlotNo: BigInt(lucid.currentSlot()),
+          bucketConcurrency: nodeConfig.VALIDATION_G4_BUCKET_CONCURRENCY,
+          evaluatePlutusTx: async ({
+            txCborHex,
+            additionalUtxos,
+          }): Promise<PlutusEvaluationResult> => {
+            try {
+              evaluatePlutusTxLocally(lucid, txCborHex, additionalUtxos);
+              return { kind: "accepted" };
+            } catch (error) {
+              const scriptFailure =
+                classifyPlutusEvaluationFailure(error);
+              if (scriptFailure !== null) {
+                return {
+                  kind: "script_invalid",
+                  detail: scriptFailure,
+                };
+              }
+              throw error;
+            }
+          },
+        },
+      );
+      yield* validationPhaseBLatencyGauge(
+        Effect.succeed(Date.now() - phaseBStart),
+      );
+
+      const allRejected = [
+        ...decodeRejected,
+        ...phaseA.rejected,
+        ...phaseB.rejected,
+      ];
+
+      if (allRejected.length > 0) {
+        yield* TxRejectionsDB.insertMany(
+          allRejected.map((rejectedTx) => ({
+            tx_id: rejectedTx.txId,
+            reject_code: rejectedTx.code,
+            reject_detail: rejectedTx.detail,
+          })),
+        );
+        yield* Metric.incrementBy(
+          validationRejectCounter,
+          BigInt(allRejected.length),
+        );
+      }
+
+      if (phaseB.accepted.length > 0) {
+        yield* MempoolDB.insertMultiple(
+          phaseB.accepted.map((acceptedTx) => acceptedTx.processedTx),
+        );
+        yield* Metric.incrementBy(
+          validationAcceptCounter,
+          BigInt(phaseB.accepted.length),
+        );
+      }
+      applyUTxOStatePatch(cachedState, phaseB.statePatch);
+      cachedUtxoState = cachedState;
+      cachedUtxoStateVersion = yield* Ref.get(globals.MEMPOOL_LEDGER_VERSION);
+
+      yield* Effect.logInfo(
+        `tx-queue validation batch done: queued=${txPayloads.length}, accepted=${phaseB.accepted.length}, rejected=${allRejected.length}, rejected_by_code=[${summarizeRejections(allRejected)}]`,
+      );
+    } catch (error) {
+      restoreDrainedBatch();
+      throw error;
     }
-
-    const phaseAStart = Date.now();
-    const phaseAConcurrency = selectPhaseAConcurrency(
-      nodeConfig.VALIDATION_PHASE_A_CONCURRENCY,
-      queuedTxs.length,
-    );
-    const phaseA = yield* runPhaseAValidation(queuedTxs, {
-      expectedNetworkId: nodeConfig.NETWORK === "Mainnet" ? 1n : 0n,
-      minFeeA: nodeConfig.MIN_FEE_A,
-      minFeeB: nodeConfig.MIN_FEE_B,
-      concurrency: phaseAConcurrency,
-      strictnessProfile: nodeConfig.VALIDATION_STRICTNESS_PROFILE,
-    });
-    yield* validationPhaseAConcurrencyGauge(
-      Effect.succeed(BigInt(phaseAConcurrency)),
-    );
-    yield* validationPhaseALatencyGauge(
-      Effect.succeed(Date.now() - phaseAStart),
-    );
-
-    const cachedState = yield* ensureCachedUtxoState();
-    const phaseBStart = Date.now();
-    const phaseB = yield* runPhaseBValidationWithPatch(
-      phaseA.accepted,
-      cachedState,
-      {
-        nowMillis: BigInt(Date.now()),
-        bucketConcurrency: nodeConfig.VALIDATION_G4_BUCKET_CONCURRENCY,
-      },
-    );
-    yield* validationPhaseBLatencyGauge(
-      Effect.succeed(Date.now() - phaseBStart),
-    );
-
-    const allRejected = [
-      ...decodeRejected,
-      ...phaseA.rejected,
-      ...phaseB.rejected,
-    ];
-
-    if (allRejected.length > 0) {
-      yield* TxRejectionsDB.insertMany(
-        allRejected.map((rejectedTx) => ({
-          tx_id: rejectedTx.txId,
-          reject_code: rejectedTx.code,
-          reject_detail: rejectedTx.detail,
-        })),
-      );
-      yield* Metric.incrementBy(
-        validationRejectCounter,
-        BigInt(allRejected.length),
-      );
-    }
-
-    if (phaseB.accepted.length > 0) {
-      yield* MempoolDB.insertMultiple(
-        phaseB.accepted.map((acceptedTx) => acceptedTx.processedTx),
-      );
-      yield* Metric.incrementBy(
-        validationAcceptCounter,
-        BigInt(phaseB.accepted.length),
-      );
-    }
-    applyUTxOStatePatch(cachedState, phaseB.statePatch);
-    cachedUtxoState = cachedState;
-    cachedUtxoStateVersion = yield* Ref.get(globals.MEMPOOL_LEDGER_VERSION);
-
-    yield* Effect.logInfo(
-      `tx-queue validation batch done: queued=${txPayloads.length}, accepted=${phaseB.accepted.length}, rejected=${allRejected.length}, rejected_by_code=[${summarizeRejections(allRejected)}]`,
-    );
   });
 
 /**
@@ -408,14 +516,11 @@ export const txQueueProcessorFiber = (
   schedule: Schedule.Schedule<number>,
   txQueue: Queue.Dequeue<QueuedTxPayload>,
   withMonitoring?: boolean,
-): Effect.Effect<void, never, SqlClient | NodeConfig | Globals> =>
-  pipe(
-    Effect.gen(function* () {
-      yield* Effect.logInfo("🔶 Tx queue processor fiber started.");
-      yield* Effect.repeat(
-        txQueueProcessorAction(txQueue, withMonitoring),
-        schedule,
-      );
-    }),
-    Effect.catchAllCause(Effect.logWarning),
-  );
+): Effect.Effect<void, never, SqlClient | NodeConfig | Globals | Lucid> =>
+  Effect.gen(function* () {
+    yield* Effect.logInfo("🔶 Tx queue processor fiber started.");
+    yield* repeatScheduledWithCauseLogging(
+      txQueueProcessorAction(txQueue, withMonitoring),
+      schedule,
+    );
+  });

@@ -13,7 +13,7 @@ When making any implementation or operational decision, prefer options that maxi
 - Determinism and reproducibility
 - Operational reliability and failure recovery
 - Auditability, traceability, and clear observability
-- Backward-compatible migrations and explicit configuration
+- Explicit, auditable migrations and explicit configuration
 
 ## Explicit Non-Goals (Unless Clearly Requested and Isolated)
 
@@ -21,6 +21,19 @@ When making any implementation or operational decision, prefer options that maxi
 - Silent data rewrites that hide integrity issues
 - Demo-only behavior becoming default production behavior
 - Throughput optimizations that compromise safety or liveness guarantees
+- For `demo/midgard-node`, backward compatibility, compatibility layers,
+  legacy identifier support, and migration shims
+
+## Midgard Node Compatibility Rule
+
+For `demo/midgard-node`:
+
+- Backward compatibility is never a goal.
+- Do not add compatibility modes, fallback paths, alias lookups, dual-ID
+  behavior, legacy-format support, or operator toggles intended to preserve old
+  behavior.
+- If a cleaner or stricter production design breaks prior behavior, prefer the
+  stricter design.
 
 ## No Shortcuts Policy
 

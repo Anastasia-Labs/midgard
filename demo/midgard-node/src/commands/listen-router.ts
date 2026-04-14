@@ -37,7 +37,9 @@ import {
   handleStateQueueGetFailure,
   handleTxGetFailure,
 } from "@/commands/listen-response.js";
+import * as DepositStatusCommand from "@/commands/deposit-status.js";
 import { resolveTxStatus } from "@/commands/tx-status.js";
+import * as UtxosCommand from "@/commands/utxos.js";
 import * as SubmitDeposit from "@/transactions/submit-deposit.js";
 import { fromHex, getAddressDetails, toHex } from "@lucid-evolution/lucid";
 import * as SDK from "@al-ft/midgard-sdk";
@@ -57,6 +59,7 @@ import { SerializedStateQueueUTxO } from "@/workers/utils/commit-block-header.js
 const TX_ENDPOINT: string = "tx";
 const ADDRESS_HISTORY_ENDPOINT: string = "txs";
 const MERGE_ENDPOINT: string = "merge";
+const UTXO_ENDPOINT: string = "utxo";
 const UTXOS_ENDPOINT: string = "utxos";
 const BLOCK_ENDPOINT: string = "block";
 const INIT_ENDPOINT: string = "init";
@@ -66,6 +69,7 @@ const SUBMIT_ENDPOINT: string = "submit";
 const DEPOSIT_BUILD_ENDPOINT: string = "deposit/build";
 const STATE_QUEUE_ENDPOINT: string = "stateQueue";
 const TX_STATUS_ENDPOINT: string = "tx-status";
+const DEPOSIT_STATUS_ENDPOINT: string = "deposit-status";
 const HEALTH_ENDPOINT: string = "healthz";
 const READINESS_ENDPOINT: string = "readyz";
 
@@ -187,11 +191,12 @@ const getUtxosHandler = Effect.gen(function* () {
     const utxosWithAddress = yield* MempoolLedgerDB.retrieveByAddress(
       addrDetails.address.bech32,
     );
-
-    const response = utxosWithAddress.map((entry) => ({
-      outref: SDK.bufferToHex(entry.outref),
-      value: SDK.bufferToHex(entry.output),
-    }));
+    const response = UtxosCommand.encodeStoredUtxos(
+      utxosWithAddress.map((entry) => ({
+        outref: entry.outref,
+        output: entry.output,
+      })),
+    );
 
     yield* Effect.logInfo(`Found ${response.length} UTxOs for ${addr}`);
     return yield* HttpServerResponse.json({
@@ -207,6 +212,94 @@ const getUtxosHandler = Effect.gen(function* () {
 }).pipe(
   Effect.catchTag("HttpBodyError", (e) =>
     failWith500("GET", UTXOS_ENDPOINT, e),
+  ),
+  Effect.catchTag("DatabaseError", (e) =>
+    handleDBGetFailure(UTXOS_ENDPOINT, e),
+  ),
+);
+
+/**
+ * `GET /utxo`: returns one spendable mempool-ledger UTxO by raw TxOutRef CBOR
+ * hex.
+ */
+const getUtxoHandler = Effect.gen(function* () {
+  const params = yield* ParsedSearchParams;
+  const rawTxOutRef = params["txOutRef"];
+
+  let txOutRef: Buffer;
+  try {
+    txOutRef = UtxosCommand.parseTxOutRefCborHex(rawTxOutRef, "txOutRef");
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    yield* Effect.logInfo(
+      `GET /${UTXO_ENDPOINT} - invalid txOutRef: ${message}`,
+    );
+    return yield* HttpServerResponse.json({ error: message }, { status: 400 });
+  }
+
+  const matched = yield* UtxosCommand.utxosByTxOutRefsProgram([txOutRef]);
+  if (matched.length === 0) {
+    return yield* HttpServerResponse.json(
+      { error: `UTxO not found for txOutRef ${txOutRef.toString("hex")}` },
+      { status: 404 },
+    );
+  }
+
+  return yield* HttpServerResponse.json({
+    utxo: UtxosCommand.encodeStoredUtxo(matched[0]),
+  });
+}).pipe(
+  Effect.catchTag("HttpBodyError", (e) => failWith500("GET", UTXO_ENDPOINT, e)),
+  Effect.catchTag("DatabaseError", (e) => handleDBGetFailure(UTXO_ENDPOINT, e)),
+);
+
+/**
+ * `POST /utxos?by-outrefs`: returns spendable mempool-ledger UTxOs for a
+ * requested list of `txHash#outputIndex` identifiers.
+ */
+const postUtxosByTxOutRefsHandler = Effect.gen(function* () {
+  const request = yield* HttpServerRequest.HttpServerRequest;
+  const params = yield* ParsedSearchParams;
+
+  try {
+    UtxosCommand.requireByOutRefsSelector(params);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    yield* Effect.logInfo(
+      `POST /${UTXOS_ENDPOINT} - missing selector: ${message}`,
+    );
+    return yield* HttpServerResponse.json({ error: message }, { status: 400 });
+  }
+
+  const parsedBody = yield* Effect.either(request.json);
+  if (parsedBody._tag === "Left") {
+    yield* Effect.logInfo(
+      `POST /${UTXOS_ENDPOINT} - invalid JSON request body`,
+    );
+    return yield* HttpServerResponse.json(
+      { error: "Request body must be valid JSON." },
+      { status: 400 },
+    );
+  }
+
+  let txOutRefs: readonly Buffer[];
+  try {
+    txOutRefs = UtxosCommand.parseTxOutRefsRequest(parsedBody.right);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    yield* Effect.logInfo(
+      `POST /${UTXOS_ENDPOINT} - invalid request: ${message}`,
+    );
+    return yield* HttpServerResponse.json({ error: message }, { status: 400 });
+  }
+
+  const matched = yield* UtxosCommand.utxosByTxOutRefsProgram(txOutRefs);
+  return yield* HttpServerResponse.json({
+    utxos: UtxosCommand.encodeStoredUtxos(matched),
+  });
+}).pipe(
+  Effect.catchTag("HttpBodyError", (e) =>
+    failWith500("POST", UTXOS_ENDPOINT, e),
   ),
   Effect.catchTag("DatabaseError", (e) =>
     handleDBGetFailure(UTXOS_ENDPOINT, e),
@@ -268,6 +361,41 @@ const getTxStatusHandler = Effect.gen(function* () {
   ),
   Effect.catchTag("DatabaseError", (e) =>
     handleDBGetFailure(TX_STATUS_ENDPOINT, e),
+  ),
+);
+
+/**
+ * `GET /deposit-status`: returns one serialized deposit row by event id or L1
+ * tx hash.
+ */
+const getDepositStatusHandler = Effect.gen(function* () {
+  const params = yield* ParsedSearchParams;
+
+  let lookup: DepositStatusCommand.DepositStatusLookup;
+  try {
+    lookup = DepositStatusCommand.parseDepositStatusLookup(params);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    yield* Effect.logInfo(
+      `GET /${DEPOSIT_STATUS_ENDPOINT} - invalid request: ${message}`,
+    );
+    return yield* HttpServerResponse.json({ error: message }, { status: 400 });
+  }
+
+  const deposit =
+    yield* DepositStatusCommand.resolveDepositStatusProgram(lookup);
+  return yield* HttpServerResponse.json(
+    DepositStatusCommand.encodeDepositStatus(deposit),
+  );
+}).pipe(
+  Effect.catchTag("HttpBodyError", (e) =>
+    failWith500("GET", DEPOSIT_STATUS_ENDPOINT, e),
+  ),
+  Effect.catchTag("DepositStatusCommandError", (e) =>
+    HttpServerResponse.json({ error: e.message }, { status: e.status }),
+  ),
+  Effect.catchTag("DatabaseError", (e) =>
+    handleDBGetFailure(DEPOSIT_STATUS_ENDPOINT, e),
   ),
 );
 
@@ -863,7 +991,6 @@ const postSubmitHandler = (txQueue: Queue.Enqueue<QueuedTxPayload>) =>
     const payload: QueuedTxPayload = {
       txId: normalized.txId,
       txCbor: normalized.txCbor,
-      txBodyHashForWitnesses: normalized.txBodyHashForWitnesses,
       createdAtMillis: Date.now(),
     };
     const queued = yield* txQueue.offer(payload);
@@ -910,7 +1037,9 @@ export const buildListenRouter = (
       HttpRouter.get(`/${READINESS_ENDPOINT}`, getReadinessHandler(txQueue)),
       HttpRouter.get(`/${TX_ENDPOINT}`, getTxHandler),
       HttpRouter.get(`/${TX_STATUS_ENDPOINT}`, getTxStatusHandler),
+      HttpRouter.get(`/${DEPOSIT_STATUS_ENDPOINT}`, getDepositStatusHandler),
       HttpRouter.get(`/${ADDRESS_HISTORY_ENDPOINT}`, getTxsOfAddressHandler),
+      HttpRouter.get(`/${UTXO_ENDPOINT}`, getUtxoHandler),
       HttpRouter.get(`/${UTXOS_ENDPOINT}`, getUtxosHandler),
       HttpRouter.get(`/${BLOCK_ENDPOINT}`, getBlockHandler),
       HttpRouter.get(
@@ -941,6 +1070,7 @@ export const buildListenRouter = (
         `/logGlobals`,
         withAdminAccess("logGlobals", getLogGlobalsHandler),
       ),
+      HttpRouter.post(`/${UTXOS_ENDPOINT}`, postUtxosByTxOutRefsHandler),
       HttpRouter.post(`/${DEPOSIT_BUILD_ENDPOINT}`, postDepositBuildHandler),
       HttpRouter.post(`/${SUBMIT_ENDPOINT}`, postSubmitHandler(txQueue)),
     )

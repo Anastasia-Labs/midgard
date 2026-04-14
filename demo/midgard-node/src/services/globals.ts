@@ -34,6 +34,13 @@ export class Globals extends Effect.Service<Globals>()("Globals", {
     const AVAILABLE_CONFIRMED_BLOCK: Ref.Ref<"" | SerializedStateQueueUTxO> =
       yield* Ref.make("" as "" | SerializedStateQueueUTxO);
 
+    // The specific confirmed state_queue block whose roots must be used for
+    // local finalization recovery when a submission succeeded on-chain but the
+    // node crashed or failed during local persistence.
+    const AVAILABLE_LOCAL_FINALIZATION_BLOCK: Ref.Ref<
+      "" | SerializedStateQueueUTxO
+    > = yield* Ref.make("" as "" | SerializedStateQueueUTxO);
+
     // Accumulator for the number of processed mempool transactions (only used
     // in metrics)
     const PROCESSED_UNSUBMITTED_TXS_COUNT: Ref.Ref<number> = yield* Ref.make(0);
@@ -77,6 +84,7 @@ export class Globals extends Effect.Service<Globals>()("Globals", {
       RESET_IN_PROGRESS,
       COMMIT_WORKER_ACTIVE,
       AVAILABLE_CONFIRMED_BLOCK,
+      AVAILABLE_LOCAL_FINALIZATION_BLOCK,
       PROCESSED_UNSUBMITTED_TXS_COUNT,
       PROCESSED_UNSUBMITTED_TXS_SIZE,
       UNCONFIRMED_SUBMITTED_BLOCK_TX_HASH,

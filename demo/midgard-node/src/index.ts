@@ -5,10 +5,15 @@ import { ENV_VARS_GUIDE, chalk } from "@/utils.js";
 import { runNode } from "@/commands/index.js";
 import { auditBlocksImmutableProgram } from "@/commands/audit-blocks-immutable.js";
 import * as ContractDeploymentInfo from "@/commands/contract-deployment-info.js";
+import * as AddressFromSeed from "@/commands/address-from-seed.js";
+import * as L1UtxosCommand from "@/commands/l1-utxos.js";
 import * as SubmitL2Transfer from "@/commands/submit-l2-transfer.js";
 import * as UtxosCommand from "@/commands/utxos.js";
 import * as Services from "@/services/index.js";
-import { fetchAndInsertDepositUTxOs } from "@/fibers/index.js";
+import {
+  fetchAndInsertDepositUTxOs,
+  projectDepositsToMempoolLedger,
+} from "@/fibers/index.js";
 import * as RegisterActiveOperator from "@/transactions/register-active-operator.js";
 import * as Initialization from "@/transactions/initialization.js";
 import * as SubmitDeposit from "@/transactions/submit-deposit.js";
@@ -146,6 +151,84 @@ program.version(VERSION).description(
           ${"Midgard Node – Demo CLI Application"}
   ${ENV_VARS_GUIDE}`,
 );
+
+program
+  .command("l1-utxos")
+  .description(
+    "Fetch and print Cardano L1 UTxOs for an address through Blockfrost",
+  )
+  .requiredOption(
+    "--address <address>",
+    "Cardano payment address to query from Blockfrost",
+  )
+  .option(
+    "--blockfrost-api-url <url>",
+    "Override Blockfrost API base URL; defaults to L1_BLOCKFROST_API_URL",
+  )
+  .option(
+    "--blockfrost-key <key>",
+    "Override Blockfrost API key; defaults to L1_BLOCKFROST_KEY",
+  )
+  .action(async (_args, options) => {
+    let address: string;
+    let blockfrostConfig: { apiUrl: string; apiKey: string };
+    try {
+      address = UtxosCommand.parseAddressArgument(options.opts().address);
+      blockfrostConfig = L1UtxosCommand.resolveBlockfrostConfig({
+        apiUrl: options.opts().blockfrostApiUrl,
+        apiKey: options.opts().blockfrostKey,
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      console.error(`l1-utxos: ${message}`);
+      process.exitCode = 1;
+      return;
+    }
+
+    try {
+      const result = await L1UtxosCommand.fetchAllBlockfrostAddressUtxos({
+        address,
+        ...blockfrostConfig,
+      });
+      process.stdout.write(`${L1UtxosCommand.formatL1UtxosResult(result)}\n`);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      console.error(`l1-utxos: ${message}`);
+      process.exitCode = 1;
+    }
+  });
+
+program
+  .command("address-from-seed")
+  .description(
+    "Derive the Cardano address for a seed phrase using the network implied by the configured Blockfrost URL",
+  )
+  .requiredOption(
+    "--seed-phrase <seedPhrase>",
+    "Quoted BIP-39 seed phrase used to derive the payment address",
+  )
+  .option(
+    "--blockfrost-api-url <url>",
+    "Override Blockfrost API base URL; defaults to L1_BLOCKFROST_API_URL",
+  )
+  .action(async (_args, options) => {
+    try {
+      const blockfrostApiUrl = AddressFromSeed.resolveBlockfrostApiUrl({
+        blockfrostApiUrl: options.opts().blockfrostApiUrl,
+      });
+      const network =
+        AddressFromSeed.inferNetworkFromBlockfrostApiUrl(blockfrostApiUrl);
+      const address = AddressFromSeed.deriveAddressFromSeedPhrase(
+        options.opts().seedPhrase,
+        network,
+      );
+      process.stdout.write(`${address}\n`);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      console.error(`address-from-seed: ${message}`);
+      process.exitCode = 1;
+    }
+  });
 
 program
   .command("listen")
@@ -650,11 +733,12 @@ program
 program
   .command("project-deposits-once")
   .description(
-    "Fetch deposit events from L1 once and project newly visible deposits into the local Midgard mempool ledger",
+    "Fetch deposit events from L1 once and project all deposits due by now into the local Midgard mempool ledger",
   )
   .action(async () => {
     const mainEffect = provideNodeRuntimeServices(
       fetchAndInsertDepositUTxOs.pipe(
+        Effect.andThen(projectDepositsToMempoolLedger),
         Effect.tap(() =>
           Effect.logInfo("project-deposits-once completed successfully"),
         ),

@@ -3,6 +3,7 @@ import {
   asArray,
   asBigInt,
   asBytes,
+  asMap,
   decodeSingleCbor,
   encodeCbor,
 } from "./cbor.js";
@@ -55,6 +56,7 @@ export type MidgardNativeTxWitnessSetCompact = {
   readonly addrTxWitsRoot: Hash32;
   readonly scriptTxWitsRoot: Hash32;
   readonly redeemerTxWitsRoot: Hash32;
+  readonly datumTxWitsRoot: Hash32;
 };
 
 export type MidgardNativeTxBodyFull = {
@@ -85,6 +87,8 @@ export type MidgardNativeTxWitnessSetFull = {
   readonly scriptTxWitsPreimageCbor: Buffer;
   readonly redeemerTxWitsRoot: Hash32;
   readonly redeemerTxWitsPreimageCbor: Buffer;
+  readonly datumTxWitsRoot: Hash32;
+  readonly datumTxWitsPreimageCbor: Buffer;
 };
 
 export type MidgardNativeTxFull = {
@@ -113,6 +117,7 @@ export type MidgardNativeTxWitnessSetCanonical = {
   readonly addrTxWitsPreimageCbor: Buffer;
   readonly scriptTxWitsPreimageCbor: Buffer;
   readonly redeemerTxWitsPreimageCbor: Buffer;
+  readonly datumTxWitsPreimageCbor: Buffer;
 };
 
 export type MidgardNativeTxCanonical = {
@@ -139,6 +144,9 @@ const TX_CODE_TO_VALIDITY = new Map<bigint, MidgardTxValidity>(
     k as MidgardTxValidity,
   ]),
 );
+
+const EMPTY_CBOR_LIST = encodeCbor([]);
+const EMPTY_LIST_ROOT = computeHash32(EMPTY_CBOR_LIST);
 
 const asFixedArray = (
   value: unknown,
@@ -187,7 +195,7 @@ const decodeVersion = (value: unknown, fieldName: string): bigint => {
     throw new MidgardTxCodecError(
       MidgardTxCodecErrorCodes.SchemaMismatch,
       `Unsupported Midgard native tx version`,
-      `expected=${MIDGARD_NATIVE_TX_VERSION} actual=${version}`,
+      `supported=${MIDGARD_NATIVE_TX_VERSION} actual=${version}`,
     );
   }
   return version;
@@ -343,27 +351,35 @@ const decodeNativeTxBodyCompactValue = (
 };
 
 const encodeNativeTxWitnessSetCompactValue = (
+  _version: bigint,
   witnessSet: MidgardNativeTxWitnessSetCompact,
-): readonly [Hash32, Hash32, Hash32] => [
-  ensureHash32(
-    witnessSet.addrTxWitsRoot,
-    "transaction_witness_set_compact.addr_tx_wits",
-  ),
-  ensureHash32(
-    witnessSet.scriptTxWitsRoot,
-    "transaction_witness_set_compact.script_tx_wits",
-  ),
-  ensureHash32(
-    witnessSet.redeemerTxWitsRoot,
-    "transaction_witness_set_compact.redeemer_tx_wits",
-  ),
-];
+): readonly Hash32[] => {
+  return [
+    ensureHash32(
+      witnessSet.addrTxWitsRoot,
+      "transaction_witness_set_compact.addr_tx_wits",
+    ),
+    ensureHash32(
+      witnessSet.scriptTxWitsRoot,
+      "transaction_witness_set_compact.script_tx_wits",
+    ),
+    ensureHash32(
+      witnessSet.redeemerTxWitsRoot,
+      "transaction_witness_set_compact.redeemer_tx_wits",
+    ),
+    ensureHash32(
+      witnessSet.datumTxWitsRoot,
+      "transaction_witness_set_compact.datum_tx_wits",
+    ),
+  ];
+};
 
 const decodeNativeTxWitnessSetCompactValue = (
   value: unknown,
   fieldName: string,
+  _version: bigint,
 ): MidgardNativeTxWitnessSetCompact => {
-  const v = asFixedArray(value, 3, fieldName);
+  const v = asFixedArray(value, 4, fieldName);
   return {
     addrTxWitsRoot: ensureHash32(
       asBytes(v[0], `${fieldName}[0]`),
@@ -377,6 +393,7 @@ const decodeNativeTxWitnessSetCompactValue = (
       asBytes(v[2], `${fieldName}[2]`),
       `${fieldName}[2]`,
     ),
+    datumTxWitsRoot: ensureHash32(asBytes(v[3], `${fieldName}[3]`), `${fieldName}[3]`),
   };
 };
 
@@ -489,30 +506,39 @@ const decodeNativeTxBodyFullValue = (
 };
 
 const encodeNativeTxWitnessSetFullValue = (
+  _version: bigint,
   witnessSet: MidgardNativeTxWitnessSetFull,
-): readonly [Hash32, Buffer, Hash32, Buffer, Hash32, Buffer] => [
-  ensureHash32(
-    witnessSet.addrTxWitsRoot,
-    "transaction_witness_set_full.addr_tx_wits_root",
-  ),
-  Buffer.from(witnessSet.addrTxWitsPreimageCbor),
-  ensureHash32(
-    witnessSet.scriptTxWitsRoot,
-    "transaction_witness_set_full.script_tx_wits_root",
-  ),
-  Buffer.from(witnessSet.scriptTxWitsPreimageCbor),
-  ensureHash32(
-    witnessSet.redeemerTxWitsRoot,
-    "transaction_witness_set_full.redeemer_tx_wits_root",
-  ),
-  Buffer.from(witnessSet.redeemerTxWitsPreimageCbor),
-];
+): readonly (Hash32 | Buffer)[] => {
+  return [
+    ensureHash32(
+      witnessSet.addrTxWitsRoot,
+      "transaction_witness_set_full.addr_tx_wits_root",
+    ),
+    Buffer.from(witnessSet.addrTxWitsPreimageCbor),
+    ensureHash32(
+      witnessSet.scriptTxWitsRoot,
+      "transaction_witness_set_full.script_tx_wits_root",
+    ),
+    Buffer.from(witnessSet.scriptTxWitsPreimageCbor),
+    ensureHash32(
+      witnessSet.redeemerTxWitsRoot,
+      "transaction_witness_set_full.redeemer_tx_wits_root",
+    ),
+    Buffer.from(witnessSet.redeemerTxWitsPreimageCbor),
+    ensureHash32(
+      witnessSet.datumTxWitsRoot,
+      "transaction_witness_set_full.datum_tx_wits_root",
+    ),
+    Buffer.from(witnessSet.datumTxWitsPreimageCbor),
+  ];
+};
 
 const decodeNativeTxWitnessSetFullValue = (
   value: unknown,
   fieldName: string,
+  _version: bigint,
 ): MidgardNativeTxWitnessSetFull => {
-  const v = asFixedArray(value, 6, fieldName);
+  const v = asFixedArray(value, 8, fieldName);
   return {
     addrTxWitsRoot: ensureHash32(
       asBytes(v[0], `${fieldName}[0]`),
@@ -529,6 +555,8 @@ const decodeNativeTxWitnessSetFullValue = (
       `${fieldName}[4]`,
     ),
     redeemerTxWitsPreimageCbor: Buffer.from(asBytes(v[5], `${fieldName}[5]`)),
+    datumTxWitsRoot: ensureHash32(asBytes(v[6], `${fieldName}[6]`), `${fieldName}[6]`),
+    datumTxWitsPreimageCbor: Buffer.from(asBytes(v[7], `${fieldName}[7]`)),
   };
 };
 
@@ -551,11 +579,15 @@ const deriveMidgardNativeTxBodyCompactFromCanonical = (
 
 const deriveMidgardNativeTxWitnessSetCompactFromCanonical = (
   witnessSet: MidgardNativeTxWitnessSetCanonical,
-): MidgardNativeTxWitnessSetCompact => ({
-  addrTxWitsRoot: computeHash32(witnessSet.addrTxWitsPreimageCbor),
-  scriptTxWitsRoot: computeHash32(witnessSet.scriptTxWitsPreimageCbor),
-  redeemerTxWitsRoot: computeHash32(witnessSet.redeemerTxWitsPreimageCbor),
-});
+  version = MIDGARD_NATIVE_TX_VERSION,
+): MidgardNativeTxWitnessSetCompact => {
+  return {
+    addrTxWitsRoot: computeHash32(witnessSet.addrTxWitsPreimageCbor),
+    scriptTxWitsRoot: computeHash32(witnessSet.scriptTxWitsPreimageCbor),
+    redeemerTxWitsRoot: computeHash32(witnessSet.redeemerTxWitsPreimageCbor),
+    datumTxWitsRoot: computeHash32(witnessSet.datumTxWitsPreimageCbor),
+  };
+};
 
 const toBodyCanonicalFromFull = (
   body: MidgardNativeTxBodyFull,
@@ -586,6 +618,7 @@ const toWitnessSetCanonicalFromFull = (
   addrTxWitsPreimageCbor: Buffer.from(witnessSet.addrTxWitsPreimageCbor),
   scriptTxWitsPreimageCbor: Buffer.from(witnessSet.scriptTxWitsPreimageCbor),
   redeemerTxWitsPreimageCbor: Buffer.from(witnessSet.redeemerTxWitsPreimageCbor),
+  datumTxWitsPreimageCbor: Buffer.from(witnessSet.datumTxWitsPreimageCbor),
 });
 
 export const deriveMidgardNativeTxBodyCompactFromFull = (
@@ -595,9 +628,11 @@ export const deriveMidgardNativeTxBodyCompactFromFull = (
 
 export const deriveMidgardNativeTxWitnessSetCompactFromFull = (
   witnessSet: MidgardNativeTxWitnessSetFull,
+  version = MIDGARD_NATIVE_TX_VERSION,
 ): MidgardNativeTxWitnessSetCompact =>
   deriveMidgardNativeTxWitnessSetCompactFromCanonical(
     toWitnessSetCanonicalFromFull(witnessSet),
+    version,
   );
 
 export const materializeMidgardNativeTxBodyFull = (
@@ -634,9 +669,10 @@ export const materializeMidgardNativeTxBodyFull = (
 
 export const materializeMidgardNativeTxWitnessSetFull = (
   witnessSet: MidgardNativeTxWitnessSetCanonical,
+  version = MIDGARD_NATIVE_TX_VERSION,
 ): MidgardNativeTxWitnessSetFull => {
   const compact =
-    deriveMidgardNativeTxWitnessSetCompactFromCanonical(witnessSet);
+    deriveMidgardNativeTxWitnessSetCompactFromCanonical(witnessSet, version);
   return {
     addrTxWitsRoot: compact.addrTxWitsRoot,
     addrTxWitsPreimageCbor: Buffer.from(witnessSet.addrTxWitsPreimageCbor),
@@ -646,6 +682,8 @@ export const materializeMidgardNativeTxWitnessSetFull = (
     redeemerTxWitsPreimageCbor: Buffer.from(
       witnessSet.redeemerTxWitsPreimageCbor,
     ),
+    datumTxWitsRoot: compact.datumTxWitsRoot,
+    datumTxWitsPreimageCbor: Buffer.from(witnessSet.datumTxWitsPreimageCbor),
   };
 };
 
@@ -662,18 +700,20 @@ export const deriveMidgardNativeTxCompact = (
   body: MidgardNativeTxBodyFull,
   witnessSet: MidgardNativeTxWitnessSetFull,
   validity: MidgardTxValidity,
+  version = MIDGARD_NATIVE_TX_VERSION,
 ): MidgardNativeTxCompact => {
   const bodyCompact = deriveMidgardNativeTxBodyCompactFromFull(body);
   const witnessCompact = deriveMidgardNativeTxWitnessSetCompactFromFull(
     witnessSet,
+    version,
   );
   return {
-    version: MIDGARD_NATIVE_TX_VERSION,
+    version,
     transactionBodyHash: computeHash32(
       encodeMidgardNativeTxBodyCompact(bodyCompact),
     ),
     transactionWitnessSetHash: computeHash32(
-      encodeMidgardNativeTxWitnessSetCompact(witnessCompact),
+      encodeMidgardNativeTxWitnessSetCompact(witnessCompact, version),
     ),
     validity,
   };
@@ -686,11 +726,13 @@ export const materializeMidgardNativeTxFromCanonical = (
   const body = materializeMidgardNativeTxBodyFull(canonical.body);
   const witnessSet = materializeMidgardNativeTxWitnessSetFull(
     canonical.witnessSet,
+    version,
   );
   const compact = deriveMidgardNativeTxCompact(
     body,
     witnessSet,
     canonical.validity,
+    version,
   );
   return {
     version,
@@ -710,10 +752,17 @@ export const verifyMidgardNativeTxFullConsistency = (
       `${tx.version}`,
     );
   }
-
+  if (tx.compact.version !== tx.version) {
+    throw new MidgardTxCodecError(
+      MidgardTxCodecErrorCodes.SchemaMismatch,
+      "transaction_full.version must match transaction_compact.version",
+      `${tx.version} != ${tx.compact.version}`,
+    );
+  }
   const bodyCompact = deriveMidgardNativeTxBodyCompactFromFull(tx.body);
   const witnessCompact = deriveMidgardNativeTxWitnessSetCompactFromFull(
     tx.witnessSet,
+    tx.version,
   );
 
   const ensureRootMatchesPreimage = (
@@ -768,10 +817,15 @@ export const verifyMidgardNativeTxFullConsistency = (
     tx.witnessSet.redeemerTxWitsPreimageCbor,
     "transaction_witness_set_full.redeemer_tx_wits_root",
   );
+  ensureRootMatchesPreimage(
+    tx.witnessSet.datumTxWitsRoot,
+    tx.witnessSet.datumTxWitsPreimageCbor,
+    "transaction_witness_set_full.datum_tx_wits_root",
+  );
 
   const encodedBodyCompact = encodeMidgardNativeTxBodyCompact(bodyCompact);
   const encodedWitnessCompact =
-    encodeMidgardNativeTxWitnessSetCompact(witnessCompact);
+    encodeMidgardNativeTxWitnessSetCompact(witnessCompact, tx.version);
 
   ensureHashMatch(
     tx.compact.transactionBodyHash,
@@ -805,15 +859,28 @@ export const decodeMidgardNativeTxBodyCompact = (
 
 export const encodeMidgardNativeTxWitnessSetCompact = (
   witnessSet: MidgardNativeTxWitnessSetCompact,
-): Buffer => encodeCbor(encodeNativeTxWitnessSetCompactValue(witnessSet));
+  version = MIDGARD_NATIVE_TX_VERSION,
+): Buffer => encodeCbor(encodeNativeTxWitnessSetCompactValue(version, witnessSet));
 
 export const decodeMidgardNativeTxWitnessSetCompact = (
   bytes: Uint8Array,
 ): MidgardNativeTxWitnessSetCompact =>
-  decodeNativeTxWitnessSetCompactValue(
-    decodeSingleCbor(bytes),
-    "transaction_witness_set",
-  );
+  (() => {
+    const decoded = decodeSingleCbor(bytes);
+    const arr = asArray(decoded, "transaction_witness_set");
+    if (arr.length === 4) {
+      return decodeNativeTxWitnessSetCompactValue(
+        decoded,
+        "transaction_witness_set",
+        MIDGARD_NATIVE_TX_VERSION,
+      );
+    }
+    throw new MidgardTxCodecError(
+      MidgardTxCodecErrorCodes.SchemaMismatch,
+      "transaction_witness_set must have exactly 4 elements",
+      `length=${arr.length}`,
+    );
+  })();
 
 export const encodeMidgardNativeTxBodyFull = (
   body: MidgardNativeTxBodyFull,
@@ -826,15 +893,28 @@ export const decodeMidgardNativeTxBodyFull = (
 
 export const encodeMidgardNativeTxWitnessSetFull = (
   witnessSet: MidgardNativeTxWitnessSetFull,
-): Buffer => encodeCbor(encodeNativeTxWitnessSetFullValue(witnessSet));
+  version = MIDGARD_NATIVE_TX_VERSION,
+): Buffer => encodeCbor(encodeNativeTxWitnessSetFullValue(version, witnessSet));
 
 export const decodeMidgardNativeTxWitnessSetFull = (
   bytes: Uint8Array,
 ): MidgardNativeTxWitnessSetFull =>
-  decodeNativeTxWitnessSetFullValue(
-    decodeSingleCbor(bytes),
-    "transaction_witness_set_full",
-  );
+  (() => {
+    const decoded = decodeSingleCbor(bytes);
+    const arr = asArray(decoded, "transaction_witness_set_full");
+    if (arr.length === 8) {
+      return decodeNativeTxWitnessSetFullValue(
+        decoded,
+        "transaction_witness_set_full",
+        MIDGARD_NATIVE_TX_VERSION,
+      );
+    }
+    throw new MidgardTxCodecError(
+      MidgardTxCodecErrorCodes.SchemaMismatch,
+      "transaction_witness_set_full must have exactly 8 elements",
+      `length=${arr.length}`,
+    );
+  })();
 
 export const encodeMidgardNativeTxFull = (
   tx: MidgardNativeTxFull,
@@ -847,7 +927,7 @@ export const encodeMidgardNativeTxFull = (
     decodeVersion(tx.version, "transaction_full.version"),
     encodeNativeTxCompactValue(tx.compact),
     encodeNativeTxBodyFullValue(tx.body),
-    encodeNativeTxWitnessSetFullValue(tx.witnessSet),
+    encodeNativeTxWitnessSetFullValue(tx.version, tx.witnessSet),
   ]);
 };
 
@@ -861,7 +941,11 @@ export const decodeMidgardNativeTxFull = (
     version: decodeVersion(v[0], "transaction_full[0]"),
     compact: decodeNativeTxCompactValue(v[1], "transaction_full[1]"),
     body: decodeNativeTxBodyFullValue(v[2], "transaction_full[2]"),
-    witnessSet: decodeNativeTxWitnessSetFullValue(v[3], "transaction_full[3]"),
+    witnessSet: decodeNativeTxWitnessSetFullValue(
+      v[3],
+      "transaction_full[3]",
+      decodeVersion(v[0], "transaction_full[0]"),
+    ),
   };
   if (options.enforceConsistency !== false) {
     verifyMidgardNativeTxFullConsistency(tx);
@@ -871,7 +955,7 @@ export const decodeMidgardNativeTxFull = (
 
 export const computeMidgardNativeTxIdFromCompact = (
   compact: MidgardNativeTxCompact,
-): Buffer => computeHash32(encodeMidgardNativeTxCompact(compact));
+): Buffer => Buffer.from(compact.transactionBodyHash);
 
 export const computeMidgardNativeTxIdFromFull = (
   tx: MidgardNativeTxFull,
@@ -911,6 +995,10 @@ type CmlCollectionLike = {
 
 type CmlMintLike = {
   policy_count(): number;
+  keys(): CmlCollectionLike;
+  get_assets(
+    scriptHash: InstanceType<typeof CML.ScriptHash>,
+  ): InstanceType<typeof CML.MapAssetNameToNonZeroInt64> | undefined;
 };
 
 const asCmlCallable = (
@@ -979,20 +1067,68 @@ const cmlCollectionToPreimageCbor = (
   return encodeCbor(entries);
 };
 
+const cmlMintToPreimageCbor = (
+  mint: CmlMintLike,
+  fieldName: string,
+): Buffer => {
+  if (mint.policy_count() === 0) {
+    return encodeCbor([]);
+  }
+
+  const policies = new Map<Buffer, Map<Buffer, bigint>>();
+  const policyIds = mint.keys();
+  for (let i = 0; i < policyIds.len(); i++) {
+    const policyId = policyIds.get(i);
+    if (!(policyId instanceof CML.ScriptHash)) {
+      throw new MidgardTxCodecError(
+        MidgardTxCodecErrorCodes.SchemaMismatch,
+        `Unexpected policy id in ${fieldName}[${i}]`,
+      );
+    }
+    const assets = mint.get_assets(policyId);
+    if (assets === undefined) {
+      throw new MidgardTxCodecError(
+        MidgardTxCodecErrorCodes.SchemaMismatch,
+        `Missing assets for policy in ${fieldName}[${i}]`,
+      );
+    }
+
+    const encodedAssets = new Map<Buffer, bigint>();
+    const assetNames = assets.keys();
+    for (let j = 0; j < assetNames.len(); j++) {
+      const assetName = assetNames.get(j);
+      if (!(assetName instanceof CML.AssetName)) {
+        throw new MidgardTxCodecError(
+          MidgardTxCodecErrorCodes.SchemaMismatch,
+          `Unexpected asset name in ${fieldName}[${i}][${j}]`,
+        );
+      }
+      const quantity = assets.get(assetName);
+      if (quantity === undefined) {
+        throw new MidgardTxCodecError(
+          MidgardTxCodecErrorCodes.SchemaMismatch,
+          `Missing quantity for asset in ${fieldName}[${i}][${j}]`,
+        );
+      }
+      encodedAssets.set(
+        Buffer.from(assetName.to_raw_bytes()),
+        BigInt(quantity.toString(10)),
+      );
+    }
+
+    policies.set(Buffer.from(policyId.to_raw_bytes()), encodedAssets);
+  }
+
+  return encodeCbor(policies);
+};
+
 const cmlAnyToPreimageCbor = (value: unknown, fieldName: string): Buffer => {
   if (value === undefined) {
     return encodeCbor([]);
   }
   const mint = asMintLike(value);
   if (mint !== undefined) {
-    if (mint.policy_count() === 0) {
-      return encodeCbor([]);
-    }
-    throw new MidgardTxCodecError(
-      MidgardTxCodecErrorCodes.ConversionUnsupportedFeature,
-      "Cardano tx cannot be converted to Midgard native format without dropping fields",
-      fieldName,
-    );
+    return cmlMintToPreimageCbor(mint, fieldName);
   }
   const toCbor = asCmlCallable(value, "to_cbor_bytes");
   if (toCbor !== undefined) {
@@ -1021,6 +1157,86 @@ const hasAnyCmlEntries = (value: unknown): boolean => {
   return collection !== undefined && collection.len() > 0;
 };
 
+const withdrawalsToRequiredObserversPreimageCbor = (
+  withdrawals: InstanceType<typeof CML.MapRewardAccountToCoin> | undefined,
+): Buffer => {
+  if (withdrawals === undefined) {
+    return encodeCbor([]);
+  }
+  const keys = withdrawals.keys();
+  const observers: Buffer[] = [];
+  for (let i = 0; i < keys.len(); i++) {
+    const rewardAddr = keys.get(i);
+    const amount = withdrawals.get(rewardAddr);
+    if (amount === undefined) {
+      throw new MidgardTxCodecError(
+        MidgardTxCodecErrorCodes.SchemaMismatch,
+        "Withdrawal map missing amount",
+        `transaction_body.withdrawals[${i}]`,
+      );
+    }
+    if (amount !== 0n) {
+      failLossyConversion("withdrawals");
+    }
+    const scriptHash = rewardAddr.payment().as_script();
+    if (scriptHash === undefined) {
+      failLossyConversion("withdrawals");
+    }
+    observers.push(Buffer.from(scriptHash.to_raw_bytes()));
+  }
+  return encodeCbor(observers);
+};
+
+const scriptWitnessesToPreimageCbor = (
+  txWitnessSet: InstanceType<typeof CML.TransactionWitnessSet>,
+): Buffer => {
+  const scripts: Buffer[] = [];
+
+  const nativeScripts = txWitnessSet.native_scripts();
+  if (nativeScripts !== undefined) {
+    for (let i = 0; i < nativeScripts.len(); i++) {
+      scripts.push(
+        Buffer.from(CML.Script.new_native(nativeScripts.get(i)).to_cbor_bytes()),
+      );
+    }
+  }
+
+  const plutusV1Scripts = txWitnessSet.plutus_v1_scripts();
+  if (plutusV1Scripts !== undefined) {
+    for (let i = 0; i < plutusV1Scripts.len(); i++) {
+      scripts.push(
+        Buffer.from(
+          CML.Script.new_plutus_v1(plutusV1Scripts.get(i)).to_cbor_bytes(),
+        ),
+      );
+    }
+  }
+
+  const plutusV2Scripts = txWitnessSet.plutus_v2_scripts();
+  if (plutusV2Scripts !== undefined) {
+    for (let i = 0; i < plutusV2Scripts.len(); i++) {
+      scripts.push(
+        Buffer.from(
+          CML.Script.new_plutus_v2(plutusV2Scripts.get(i)).to_cbor_bytes(),
+        ),
+      );
+    }
+  }
+
+  const plutusV3Scripts = txWitnessSet.plutus_v3_scripts();
+  if (plutusV3Scripts !== undefined) {
+    for (let i = 0; i < plutusV3Scripts.len(); i++) {
+      scripts.push(
+        Buffer.from(
+          CML.Script.new_plutus_v3(plutusV3Scripts.get(i)).to_cbor_bytes(),
+        ),
+      );
+    }
+  }
+
+  return encodeCbor(scripts);
+};
+
 const assertCardanoTxConvertibleToNative = (
   tx: InstanceType<typeof CML.Transaction>,
 ): void => {
@@ -1036,12 +1252,8 @@ const assertCardanoTxConvertibleToNative = (
   }
 
   const withdrawals = txBody.withdrawals();
-  if (withdrawals !== undefined && withdrawals.len() > 0) {
-    failLossyConversion("withdrawals");
-  }
-  const mint = asMintLike(txBody.mint());
-  if (mint !== undefined && mint.policy_count() > 0) {
-    failLossyConversion("mint");
+  if (withdrawals !== undefined) {
+    withdrawalsToRequiredObserversPreimageCbor(withdrawals);
   }
 
   if (hasAnyCmlEntries(txBody.collateral_inputs())) {
@@ -1069,21 +1281,6 @@ const assertCardanoTxConvertibleToNative = (
   if (hasAnyCmlEntries(txWitnessSet.bootstrap_witnesses())) {
     failLossyConversion("bootstrap_witnesses");
   }
-  if (hasAnyCmlEntries(txWitnessSet.plutus_v1_scripts())) {
-    failLossyConversion("plutus_v1_scripts");
-  }
-  if (hasAnyCmlEntries(txWitnessSet.plutus_v2_scripts())) {
-    failLossyConversion("plutus_v2_scripts");
-  }
-  if (hasAnyCmlEntries(txWitnessSet.plutus_v3_scripts())) {
-    failLossyConversion("plutus_v3_scripts");
-  }
-  if (hasAnyCmlEntries(txWitnessSet.plutus_datums())) {
-    failLossyConversion("plutus_datums");
-  }
-  if (txWitnessSet.redeemers() !== undefined) {
-    failLossyConversion("redeemers");
-  }
 };
 
 export const cardanoTxBytesToMidgardNativeTxFull = (
@@ -1107,7 +1304,9 @@ export const cardanoTxBytesToMidgardNativeTxFull = (
     asCollectionLike(txOutputs),
     "transaction_body.outputs",
   );
-  const requiredObserversPreimageCbor = encodeCbor([]);
+  const requiredObserversPreimageCbor = withdrawalsToRequiredObserversPreimageCbor(
+    txBody.withdrawals(),
+  );
   const requiredSignersPreimageCbor = cmlCollectionToPreimageCbor(
     asCollectionLike(txBody.required_signers()),
     "transaction_body.required_signers",
@@ -1121,13 +1320,14 @@ export const cardanoTxBytesToMidgardNativeTxFull = (
     asCollectionLike(txWitnessSet.vkeywitnesses()),
     "transaction_witness_set.vkeywitnesses",
   );
-  const scriptTxWitsPreimageCbor = cmlCollectionToPreimageCbor(
-    asCollectionLike(txWitnessSet.native_scripts()),
-    "transaction_witness_set.native_scripts",
-  );
+  const scriptTxWitsPreimageCbor = scriptWitnessesToPreimageCbor(txWitnessSet);
   const redeemerTxWitsPreimageCbor = cmlAnyToPreimageCbor(
     txWitnessSet.redeemers(),
     "transaction_witness_set.redeemers",
+  );
+  const datumTxWitsPreimageCbor = cmlCollectionToPreimageCbor(
+    asCollectionLike(txWitnessSet.plutus_datums()),
+    "transaction_witness_set.plutus_datums",
   );
 
   const scriptDataHash = txBody.script_data_hash();
@@ -1172,6 +1372,7 @@ export const cardanoTxBytesToMidgardNativeTxFull = (
       addrTxWitsPreimageCbor,
       scriptTxWitsPreimageCbor,
       redeemerTxWitsPreimageCbor,
+      datumTxWitsPreimageCbor,
     },
   };
 
@@ -1184,3 +1385,429 @@ export const cardanoTxBytesToMidgardNativeTxFullBytes = (
   encodeMidgardNativeTxFull(
     cardanoTxBytesToMidgardNativeTxFull(cardanoTxBytes),
   );
+
+const decodeNativeCredentialObserver = (
+  observerBytes: Uint8Array,
+  fieldName: string,
+): InstanceType<typeof CML.Credential> => {
+  if (observerBytes.length === 28) {
+    return CML.Credential.new_script(
+      CML.ScriptHash.from_raw_bytes(observerBytes),
+    );
+  }
+  try {
+    const credential = CML.Credential.from_cbor_bytes(observerBytes);
+    if (credential.kind() !== CML.CredentialKind.Script) {
+      throw new Error("observer credential must be a script credential");
+    }
+    return credential;
+  } catch (e) {
+    throw new MidgardTxCodecError(
+      MidgardTxCodecErrorCodes.InvalidFieldType,
+      "Midgard observer must be a script hash or a CBOR-encoded script credential",
+      `${fieldName}: ${String(e)}`,
+    );
+  }
+};
+
+const toCardanoNetworkId = (
+  networkId: bigint,
+  fieldName: string,
+): InstanceType<typeof CML.NetworkId> | undefined => {
+  if (networkId === MIDGARD_NATIVE_NETWORK_ID_NONE) {
+    return undefined;
+  }
+  if (networkId === 0n) {
+    return CML.NetworkId.testnet();
+  }
+  if (networkId === 1n) {
+    return CML.NetworkId.mainnet();
+  }
+  throw new MidgardTxCodecError(
+    MidgardTxCodecErrorCodes.InvalidFieldType,
+    "Unsupported Cardano network id for reverse conversion",
+    `${fieldName}: ${networkId.toString(10)}`,
+  );
+};
+
+const decodeNativeRequiredSignersToCardano = (
+  preimageCbor: Uint8Array,
+): InstanceType<typeof CML.Ed25519KeyHashList> => {
+  const signerBytes = decodeMidgardNativeByteListPreimage(
+    preimageCbor,
+    "native.required_signers",
+  );
+  const signers = CML.Ed25519KeyHashList.new();
+  for (let i = 0; i < signerBytes.length; i++) {
+    const signer = signerBytes[i];
+    if (signer.length !== 28) {
+      throw new MidgardTxCodecError(
+        MidgardTxCodecErrorCodes.InvalidFieldType,
+        "Required signer must be 28 bytes",
+        `native.required_signers[${i}]`,
+      );
+    }
+    signers.add(CML.Ed25519KeyHash.from_raw_bytes(signer));
+  }
+  return signers;
+};
+
+const decodeNativeObserversToWithdrawals = (
+  preimageCbor: Uint8Array,
+  networkId: InstanceType<typeof CML.NetworkId> | undefined,
+): InstanceType<typeof CML.MapRewardAccountToCoin> | undefined => {
+  const observerBytes = decodeMidgardNativeByteListPreimage(
+    preimageCbor,
+    "native.required_observers",
+  );
+  if (observerBytes.length === 0) {
+    return undefined;
+  }
+  if (networkId === undefined) {
+    throw new MidgardTxCodecError(
+      MidgardTxCodecErrorCodes.InvalidFieldType,
+      "Observer-to-withdrawal conversion requires an explicit Cardano network id",
+      "native.network_id",
+    );
+  }
+  const withdrawals = CML.MapRewardAccountToCoin.new();
+  for (let i = 0; i < observerBytes.length; i++) {
+    const credential = decodeNativeCredentialObserver(
+      observerBytes[i],
+      `native.required_observers[${i}]`,
+    );
+    withdrawals.insert(
+      CML.RewardAddress.new(Number(networkId.network()), credential),
+      0n,
+    );
+  }
+  return withdrawals;
+};
+
+const decodeNativeInputsToCardano = (
+  preimageCbor: Uint8Array,
+  fieldName: string,
+): InstanceType<typeof CML.TransactionInputList> => {
+  const inputBytes = decodeMidgardNativeByteListPreimage(preimageCbor, fieldName);
+  const inputs = CML.TransactionInputList.new();
+  for (let i = 0; i < inputBytes.length; i++) {
+    inputs.add(CML.TransactionInput.from_cbor_bytes(inputBytes[i]));
+  }
+  return inputs;
+};
+
+const decodeNativeOutputsToCardano = (
+  preimageCbor: Uint8Array,
+): InstanceType<typeof CML.TransactionOutputList> => {
+  const outputBytes = decodeMidgardNativeByteListPreimage(
+    preimageCbor,
+    "native.outputs",
+  );
+  const outputs = CML.TransactionOutputList.new();
+  for (let i = 0; i < outputBytes.length; i++) {
+    outputs.add(CML.TransactionOutput.from_cbor_bytes(outputBytes[i]));
+  }
+  return outputs;
+};
+
+const decodeNativeAddrWitnessesToCardano = (
+  preimageCbor: Uint8Array,
+): InstanceType<typeof CML.VkeywitnessList> | undefined => {
+  const witnessBytes = decodeMidgardNativeByteListPreimage(
+    preimageCbor,
+    "native.addr_tx_wits",
+  );
+  if (witnessBytes.length === 0) {
+    return undefined;
+  }
+  const witnesses = CML.VkeywitnessList.new();
+  for (let i = 0; i < witnessBytes.length; i++) {
+    witnesses.add(CML.Vkeywitness.from_cbor_bytes(witnessBytes[i]));
+  }
+  return witnesses;
+};
+
+type DecodedCardanoScripts = {
+  readonly nativeScripts?: InstanceType<typeof CML.NativeScriptList>;
+  readonly plutusV1Scripts?: InstanceType<typeof CML.PlutusV1ScriptList>;
+  readonly plutusV2Scripts?: InstanceType<typeof CML.PlutusV2ScriptList>;
+  readonly plutusV3Scripts?: InstanceType<typeof CML.PlutusV3ScriptList>;
+};
+
+export type DecodedMidgardNativeMint = {
+  readonly mint: InstanceType<typeof CML.Mint>;
+  readonly policyIds: readonly string[];
+  readonly mintedValue: InstanceType<typeof CML.Value>;
+  readonly burnedValue: InstanceType<typeof CML.Value>;
+};
+
+const decodeNativeScriptsToCardano = (
+  preimageCbor: Uint8Array,
+): DecodedCardanoScripts => {
+  const scriptBytes = decodeMidgardNativeByteListPreimage(
+    preimageCbor,
+    "native.script_tx_wits",
+  );
+  if (scriptBytes.length === 0) {
+    return {};
+  }
+  const nativeScripts = CML.NativeScriptList.new();
+  const plutusV1Scripts = CML.PlutusV1ScriptList.new();
+  const plutusV2Scripts = CML.PlutusV2ScriptList.new();
+  const plutusV3Scripts = CML.PlutusV3ScriptList.new();
+  for (let i = 0; i < scriptBytes.length; i++) {
+    try {
+      const script = CML.Script.from_cbor_bytes(scriptBytes[i]);
+      const native = script.as_native();
+      if (native !== undefined) {
+        nativeScripts.add(native);
+        continue;
+      }
+      const plutusV1 = script.as_plutus_v1();
+      if (plutusV1 !== undefined) {
+        plutusV1Scripts.add(plutusV1);
+        continue;
+      }
+      const plutusV2 = script.as_plutus_v2();
+      if (plutusV2 !== undefined) {
+        plutusV2Scripts.add(plutusV2);
+        continue;
+      }
+      const plutusV3 = script.as_plutus_v3();
+      if (plutusV3 !== undefined) {
+        plutusV3Scripts.add(plutusV3);
+        continue;
+      }
+      throw new Error("unsupported script witness kind");
+    } catch {
+      nativeScripts.add(CML.NativeScript.from_cbor_bytes(scriptBytes[i]));
+    }
+  }
+  return {
+    nativeScripts: nativeScripts.len() > 0 ? nativeScripts : undefined,
+    plutusV1Scripts: plutusV1Scripts.len() > 0 ? plutusV1Scripts : undefined,
+    plutusV2Scripts: plutusV2Scripts.len() > 0 ? plutusV2Scripts : undefined,
+    plutusV3Scripts: plutusV3Scripts.len() > 0 ? plutusV3Scripts : undefined,
+  };
+};
+
+const valueFromMultiasset = (
+  multiasset: InstanceType<typeof CML.MultiAsset>,
+): InstanceType<typeof CML.Value> =>
+  multiasset.policy_count() === 0 ? CML.Value.zero() : CML.Value.new(0n, multiasset);
+
+export const decodeMidgardNativeMint = (
+  preimageCbor: Uint8Array,
+): DecodedMidgardNativeMint | undefined => {
+  const decoded = decodeSingleCbor(preimageCbor);
+  if (Array.isArray(decoded)) {
+    if (decoded.length === 0) {
+      return undefined;
+    }
+    throw new MidgardTxCodecError(
+      MidgardTxCodecErrorCodes.InvalidFieldType,
+      "Midgard mint preimage must be an empty array or a CBOR map",
+      "native.mint",
+    );
+  }
+
+  const policies = asMap(decoded, "native.mint");
+  if (policies.size === 0) {
+    throw new MidgardTxCodecError(
+      MidgardTxCodecErrorCodes.InvalidFieldType,
+      "Midgard mint map cannot be empty",
+      "native.mint",
+    );
+  }
+
+  const mint = CML.Mint.new();
+  for (const [policyBytesValue, assetsValue] of policies.entries()) {
+    const policyBytes = asBytes(policyBytesValue, "native.mint.policy");
+    if (policyBytes.length !== 28) {
+      throw new MidgardTxCodecError(
+        MidgardTxCodecErrorCodes.InvalidFieldType,
+        "Mint policy id must be 28 bytes",
+        "native.mint.policy",
+      );
+    }
+
+    const assetsMap = asMap(assetsValue, "native.mint.assets");
+    if (assetsMap.size === 0) {
+      throw new MidgardTxCodecError(
+        MidgardTxCodecErrorCodes.InvalidFieldType,
+        "Mint policy asset map cannot be empty",
+        "native.mint.assets",
+      );
+    }
+    const assets = CML.MapAssetNameToNonZeroInt64.new();
+    for (const [assetNameValue, quantityValue] of assetsMap.entries()) {
+      const assetName = asBytes(assetNameValue, "native.mint.asset_name");
+      const quantity = asSigned(quantityValue, "native.mint.quantity");
+      if (quantity === 0n) {
+        throw new MidgardTxCodecError(
+          MidgardTxCodecErrorCodes.InvalidFieldType,
+          "Mint quantity cannot be zero",
+          "native.mint.quantity",
+        );
+      }
+      assets.insert(CML.AssetName.from_raw_bytes(assetName), quantity);
+    }
+
+    mint.insert_assets(CML.ScriptHash.from_raw_bytes(policyBytes), assets);
+  }
+
+  const policyIds = Array.from({ length: mint.keys().len() }, (_, index) =>
+    mint.keys().get(index).to_hex(),
+  ).sort((a, b) => a.localeCompare(b));
+
+  return {
+    mint,
+    policyIds,
+    mintedValue: valueFromMultiasset(mint.as_positive_multiasset()),
+    burnedValue: valueFromMultiasset(mint.as_negative_multiasset()),
+  };
+};
+
+const decodeNativeRedeemersToCardano = (
+  preimageCbor: Uint8Array,
+): InstanceType<typeof CML.Redeemers> | undefined => {
+  const decoded = decodeSingleCbor(preimageCbor);
+  if (Array.isArray(decoded) && decoded.length === 0) {
+    return undefined;
+  }
+  return CML.Redeemers.from_cbor_bytes(preimageCbor);
+};
+
+const decodeNativeDatumWitnessesToCardano = (
+  preimageCbor: Uint8Array,
+): InstanceType<typeof CML.PlutusDataList> | undefined => {
+  const datumBytes = decodeMidgardNativeByteListPreimage(
+    preimageCbor,
+    "native.datum_tx_wits",
+  );
+  if (datumBytes.length === 0) {
+    return undefined;
+  }
+  const datums = CML.PlutusDataList.new();
+  for (let i = 0; i < datumBytes.length; i++) {
+    datums.add(CML.PlutusData.from_cbor_bytes(datumBytes[i]));
+  }
+  return datums;
+};
+
+export type MidgardToCardanoTxEncodingOptions = {
+  readonly omitVkeyWitnesses?: boolean;
+};
+
+export const midgardNativeTxFullToCardanoTxEncoding = (
+  tx: MidgardNativeTxFull,
+  options?: MidgardToCardanoTxEncodingOptions,
+): Buffer => {
+  verifyMidgardNativeTxFullConsistency(tx);
+
+  const inputs = decodeNativeInputsToCardano(
+    tx.body.spendInputsPreimageCbor,
+    "native.spend_inputs",
+  );
+  const outputs = decodeNativeOutputsToCardano(tx.body.outputsPreimageCbor);
+  const body = CML.TransactionBody.new(inputs, outputs, tx.body.fee);
+  const networkId = toCardanoNetworkId(tx.body.networkId, "native.network_id");
+  if (networkId !== undefined) {
+    body.set_network_id(networkId);
+  }
+
+  const referenceInputs = decodeNativeInputsToCardano(
+    tx.body.referenceInputsPreimageCbor,
+    "native.reference_inputs",
+  );
+  if (referenceInputs.len() > 0) {
+    body.set_reference_inputs(referenceInputs);
+  }
+
+  if (tx.body.validityIntervalStart !== MIDGARD_POSIX_TIME_NONE) {
+    body.set_validity_interval_start(tx.body.validityIntervalStart);
+  }
+  if (tx.body.validityIntervalEnd !== MIDGARD_POSIX_TIME_NONE) {
+    body.set_ttl(tx.body.validityIntervalEnd);
+  }
+
+  const withdrawals = decodeNativeObserversToWithdrawals(
+    tx.body.requiredObserversPreimageCbor,
+    networkId,
+  );
+  if (withdrawals !== undefined) {
+    body.set_withdrawals(withdrawals);
+  }
+
+  const requiredSigners = decodeNativeRequiredSignersToCardano(
+    tx.body.requiredSignersPreimageCbor,
+  );
+  if (requiredSigners.len() > 0) {
+    body.set_required_signers(requiredSigners);
+  }
+
+  const decodedMint = decodeMidgardNativeMint(tx.body.mintPreimageCbor);
+  if (decodedMint !== undefined) {
+    body.set_mint(decodedMint.mint);
+  }
+
+  const emptyNullRoot = computeHash32(encodeCbor(null));
+  if (!tx.body.scriptIntegrityHash.equals(emptyNullRoot)) {
+    body.set_script_data_hash(
+      CML.ScriptDataHash.from_raw_bytes(tx.body.scriptIntegrityHash),
+    );
+  }
+  if (!tx.body.auxiliaryDataHash.equals(emptyNullRoot)) {
+    body.set_auxiliary_data_hash(
+      CML.AuxiliaryDataHash.from_raw_bytes(tx.body.auxiliaryDataHash),
+    );
+  }
+
+  const witnessSet = CML.TransactionWitnessSet.new();
+  if (options?.omitVkeyWitnesses !== true) {
+    const vkeyWitnesses = decodeNativeAddrWitnessesToCardano(
+      tx.witnessSet.addrTxWitsPreimageCbor,
+    );
+    if (vkeyWitnesses !== undefined) {
+      witnessSet.set_vkeywitnesses(vkeyWitnesses);
+    }
+  }
+
+  const scripts = decodeNativeScriptsToCardano(
+    tx.witnessSet.scriptTxWitsPreimageCbor,
+  );
+  if (scripts.nativeScripts !== undefined) {
+    witnessSet.set_native_scripts(scripts.nativeScripts);
+  }
+  if (scripts.plutusV1Scripts !== undefined) {
+    witnessSet.set_plutus_v1_scripts(scripts.plutusV1Scripts);
+  }
+  if (scripts.plutusV2Scripts !== undefined) {
+    witnessSet.set_plutus_v2_scripts(scripts.plutusV2Scripts);
+  }
+  if (scripts.plutusV3Scripts !== undefined) {
+    witnessSet.set_plutus_v3_scripts(scripts.plutusV3Scripts);
+  }
+
+  const redeemers = decodeNativeRedeemersToCardano(
+    tx.witnessSet.redeemerTxWitsPreimageCbor,
+  );
+  if (redeemers !== undefined) {
+    witnessSet.set_redeemers(redeemers);
+  }
+  const datumWitnesses = decodeNativeDatumWitnessesToCardano(
+    tx.witnessSet.datumTxWitsPreimageCbor,
+  );
+  if (datumWitnesses !== undefined) {
+    witnessSet.set_plutus_datums(datumWitnesses);
+  }
+
+  return Buffer.from(
+    CML.Transaction.new(
+      body,
+      witnessSet,
+      tx.compact.validity === "TxIsValid",
+      undefined,
+    ).to_cbor_bytes(),
+  );
+};

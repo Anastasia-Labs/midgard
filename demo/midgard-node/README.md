@@ -98,6 +98,37 @@ quite easily.
    docker compose -f docker-compose.dev.yaml up -d
    ```
 
+7. To run against an in-stack local `Kupmios` provider backed by a Mithril
+   bootstrap, start with the compose override:
+
+   ```sh
+   docker compose -f docker-compose.yaml -f docker-compose.kupmios.yaml up -d
+   ```
+
+   Notes:
+
+   1. The first run restores a Mithril-certified Cardano DB snapshot into
+      `./cardano/db` only when that directory is empty. Existing data is never
+      overwritten implicitly.
+   2. `NETWORK` is the source of truth. The bootstrap validates that
+      `CARDANO_NODE_IMAGE_TAG` is new enough for the certified Mithril snapshot
+      and that any explicit Mithril endpoints/keys all match that network
+      before the local Cardano stack is allowed to start.
+   3. Changing networks requires explicit cleanup of `./cardano/db` and
+      `./cardano/kupo` before restarting the stack.
+   4. The local stack restores an official Kupo SQLite snapshot into
+      `./cardano/kupo` when that directory is empty, then continues syncing
+      with `--match * --since origin --prune-utxo`. That preserves a full
+      wildcard current-UTxO index without forcing every fresh checkout to
+      start from an empty Kupo database.
+   5. Kupo is considered healthy only once its `/health` endpoint returns
+      `200`, not while it is still returning `202 Accepted` during replay. That
+      keeps `midgard-node` from starting against a stale wildcard index.
+   6. The local stack intentionally runs standalone `cardano-node` and Ogmios
+      containers instead of the combined `cardano-node-ogmios` image, because
+      the certified Mithril snapshot can move ahead of that combined image's
+      bundled Cardano node version.
+
 Midgard node should be running on port `PORT` (from your `.env`).
 
 You can view logs of `midgard-node` with `docker`:
@@ -174,7 +205,11 @@ The main listener exposes a small operator-facing API. Common routes include:
 - `/deposit/build` for building unsigned L1 deposit transactions from a
   caller-supplied wallet view,
 - `/submit` for submitting Midgard-native transactions,
-- `/utxos` for querying spendable Midgard mempool-ledger UTxOs,
+- `/utxo` for querying one spendable Midgard mempool-ledger UTxO by raw
+  TxOutRef CBOR hex,
+- `/utxos` for querying spendable Midgard mempool-ledger UTxOs either by
+  address (`GET`) or by a requested list of `txHash#outputIndex` references
+  at `POST /utxos?by-outrefs`,
 - `/tx-status` for resolving the node's canonical status for a transaction,
 - `/healthz` and `/readyz` for health and readiness checks.
 

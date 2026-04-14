@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  isBlockfrostRateLimitError,
   stringifyJsonWithBigIntNumbers,
   toBlockfrostAdditionalValue,
 } from "@/services/lucid.js";
@@ -33,5 +34,31 @@ describe("blockfrost additional UTxO serialization", () => {
     expect(body).toContain('"amount":456');
     expect(body).not.toContain('"123"');
     expect(body).not.toContain('"456"');
+  });
+
+  it("treats explicit quota responses as fallback-key eligible", () => {
+    expect(
+      isBlockfrostRateLimitError(
+        new Error('{"status_code":429,"message":"Too many requests"}'),
+      ),
+    ).toBe(true);
+    expect(
+      isBlockfrostRateLimitError(
+        new Error('{"status_code":402,"message":"Project Over Limit"}'),
+      ),
+    ).toBe(true);
+  });
+
+  it("treats Blockfrost's degraded provider errors as quota-like", () => {
+    expect(
+      isBlockfrostRateLimitError(
+        new TypeError("Cannot convert undefined to a BigInt"),
+      ),
+    ).toBe(true);
+    expect(
+      isBlockfrostRateLimitError(
+        new Error("Could not fetch UTxOs from Blockfrost. Try again."),
+      ),
+    ).toBe(true);
   });
 });

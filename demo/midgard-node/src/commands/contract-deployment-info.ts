@@ -16,6 +16,7 @@ import {
 } from "@lucid-evolution/lucid";
 import * as SDK from "@al-ft/midgard-sdk";
 import { dirname, resolve as resolvePath } from "node:path";
+import { existsSync } from "node:fs";
 import { mkdir, rename, writeFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { Lucid, MidgardContracts } from "@/services/index.js";
@@ -42,12 +43,20 @@ export type ContractDeploymentInfo = Readonly<
 const DEFAULT_CONTRACT_DEPLOYMENT_INFO_FILENAME =
   "contract-deployment-info.json";
 const DEFAULT_CONTRACT_DEPLOYMENT_INFO_DIRECTORY_NAME = "deploymentInfo";
-const DEFAULT_CONTRACT_DEPLOYMENT_INFO_OUTPUT_PATH = resolvePath(
-  dirname(fileURLToPath(import.meta.url)),
-  "../../../../",
-  DEFAULT_CONTRACT_DEPLOYMENT_INFO_DIRECTORY_NAME,
-  DEFAULT_CONTRACT_DEPLOYMENT_INFO_FILENAME,
-);
+
+const resolvePackageRootFromModuleUrl = (moduleUrl: string): string => {
+  let currentDir = dirname(fileURLToPath(moduleUrl));
+  while (true) {
+    if (existsSync(resolvePath(currentDir, "package.json"))) {
+      return currentDir;
+    }
+    const parentDir = resolvePath(currentDir, "..");
+    if (parentDir === currentDir) {
+      return resolvePath(process.cwd());
+    }
+    currentDir = parentDir;
+  }
+};
 
 type ScriptDescriptor = {
   readonly name: string;
@@ -254,7 +263,11 @@ export const resolveLiveContractDeploymentInfoProgram: Effect.Effect<
 });
 
 export const defaultContractDeploymentInfoOutputPath = (): string =>
-  DEFAULT_CONTRACT_DEPLOYMENT_INFO_OUTPUT_PATH;
+  resolvePath(
+    resolvePackageRootFromModuleUrl(import.meta.url),
+    DEFAULT_CONTRACT_DEPLOYMENT_INFO_DIRECTORY_NAME,
+    DEFAULT_CONTRACT_DEPLOYMENT_INFO_FILENAME,
+  );
 
 const normalizeOutputPath = (outputPath: string): string => {
   const normalized = outputPath.trim();

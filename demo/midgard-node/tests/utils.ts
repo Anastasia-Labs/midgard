@@ -1,6 +1,5 @@
 import { NodeConfig } from "@/services/config.js";
 import { Database } from "@/services/database.js";
-import { Lucid } from "@/services/lucid.js";
 import { Effect } from "effect";
 
 const TEST_ENV_DEFAULTS: Record<string, string> = {
@@ -41,6 +40,5 @@ for (const [key, value] of Object.entries(TEST_ENV_DEFAULTS)) {
 export const provideDatabaseLayers = <A, E, R>(eff: Effect.Effect<A, E, R>) =>
   eff.pipe(
     Effect.provide(Database.layer),
-    Effect.provide(Lucid.Default),
     Effect.provide(NodeConfig.layer),
   );

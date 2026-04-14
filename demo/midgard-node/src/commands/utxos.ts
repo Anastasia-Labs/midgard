@@ -1,6 +1,7 @@
 import * as MempoolLedgerDB from "@/database/mempoolLedger.js";
 import { DatabaseError } from "@/database/utils/common.js";
 import { Database } from "@/services/database.js";
+import { isHexString } from "@/utils.js";
 import {
   CML,
   coreToUtxo,
@@ -26,6 +27,14 @@ export class UtxosCommandError extends EffectData.TaggedError(
 export type StoredUtxoRecord = {
   readonly outref: Buffer;
   readonly output: Buffer;
+};
+
+/**
+ * Stable JSON shape exposed by the HTTP UTxO endpoints.
+ */
+export type EncodedStoredUtxo = {
+  readonly outref: string;
+  readonly value: string;
 };
 
 /**
@@ -70,6 +79,123 @@ export const parseAddressArgument = (address: string): string => {
 };
 
 /**
+ * Parses a raw TxOutRef CBOR hex string and normalizes it to canonical CBOR.
+ */
+export const parseTxOutRefCborHex = (
+  value: unknown,
+  fieldName = "txOutRef",
+): Buffer => {
+  if (typeof value !== "string") {
+    throw new Error(`${fieldName} must be a hex string.`);
+  }
+
+  const normalized = value.trim().toLowerCase();
+  if (normalized.length === 0) {
+    throw new Error(`${fieldName} must not be empty.`);
+  }
+  if (normalized.length % 2 !== 0 || !isHexString(normalized)) {
+    throw new Error(`${fieldName} must be an even-length hex string.`);
+  }
+
+  try {
+    const parsed = CML.TransactionInput.from_cbor_bytes(
+      Buffer.from(normalized, "hex"),
+    );
+    return Buffer.from(parsed.to_cbor_bytes());
+  } catch (cause) {
+    throw new Error(
+      `Invalid ${fieldName}: failed to decode TxOutRef CBOR (${String(cause)}).`,
+    );
+  }
+};
+
+/**
+ * Parses a textual TxOutRef in `txHash#outputIndex` form and normalizes it to
+ * canonical CBOR bytes.
+ */
+export const parseTxOutRefLabel = (
+  value: unknown,
+  fieldName = "txOutRef",
+): Buffer => {
+  if (typeof value !== "string") {
+    throw new Error(`${fieldName} must be a string.`);
+  }
+
+  const normalized = value.trim().toLowerCase();
+  if (normalized.length === 0) {
+    throw new Error(`${fieldName} must not be empty.`);
+  }
+
+  const parts = normalized.split("#");
+  if (parts.length !== 2) {
+    throw new Error(
+      `${fieldName} must use the format <txHash>#<outputIndex>.`,
+    );
+  }
+
+  const [txHash, outputIndexRaw] = parts;
+  if (
+    txHash === undefined ||
+    txHash.length !== 64 ||
+    !isHexString(txHash)
+  ) {
+    throw new Error(`${fieldName}.txHash must be a 32-byte hex string.`);
+  }
+  if (outputIndexRaw === undefined || !/^\d+$/.test(outputIndexRaw)) {
+    throw new Error(`${fieldName}.outputIndex must be a non-negative integer.`);
+  }
+
+  try {
+    return Buffer.from(
+      CML.TransactionInput.new(
+        CML.TransactionHash.from_hex(txHash),
+        BigInt(outputIndexRaw),
+      ).to_cbor_bytes(),
+    );
+  } catch (cause) {
+    throw new Error(
+      `Invalid ${fieldName}: failed to encode TxOutRef (${String(cause)}).`,
+    );
+  }
+};
+
+/**
+ * Parses a POST /utxos request body containing a JSON array of
+ * `txHash#outputIndex` strings.
+ */
+export const parseTxOutRefsRequest = (body: unknown): readonly Buffer[] => {
+  if (!Array.isArray(body)) {
+    throw new Error(
+      "Request body must be a JSON array of `txHash#outputIndex` strings.",
+    );
+  }
+
+  const seen = new Set<string>();
+  return body.map((item, index) => {
+    const outRef = parseTxOutRefLabel(item, `txOutRefs[${index.toString()}]`);
+    const outRefHex = outRef.toString("hex");
+    if (seen.has(outRefHex)) {
+      throw new Error(
+        `Duplicate txOutRef provided at txOutRefs[${index.toString()}].`,
+      );
+    }
+    seen.add(outRefHex);
+    return outRef;
+  });
+};
+
+/**
+ * Requires the explicit `?by-outrefs` selector for batch outref lookups.
+ */
+export const requireByOutRefsSelector = (
+  params: Readonly<Record<string, unknown>>,
+): void => {
+  if (!Object.hasOwn(params, "by-outrefs")) {
+    throw new Error("POST /utxos requires the `?by-outrefs` query selector.");
+  }
+};
+
+/**
  * Decodes one stored outref/output pair into a Lucid `UTxO`.
  */
 export const decodeStoredUtxo = (
@@ -99,6 +225,40 @@ export const sumAssets = (utxos: readonly UTxO[]): Readonly<Assets> => {
     }
   }
   return totals;
+};
+
+/**
+ * Encodes one ledger entry into the stable HTTP response shape.
+ */
+export const encodeStoredUtxo = (
+  entry: StoredUtxoRecord,
+): EncodedStoredUtxo => ({
+  outref: entry.outref.toString("hex"),
+  value: entry.output.toString("hex"),
+});
+
+/**
+ * Encodes a list of ledger entries into the stable HTTP response shape.
+ */
+export const encodeStoredUtxos = (
+  entries: readonly StoredUtxoRecord[],
+): readonly EncodedStoredUtxo[] => entries.map(encodeStoredUtxo);
+
+/**
+ * Orders fetched ledger entries by the requested outref sequence, omitting
+ * misses while preserving request order.
+ */
+export const orderStoredUtxosByOutRef = (
+  requestedOutRefs: readonly Buffer[],
+  entries: readonly StoredUtxoRecord[],
+): readonly StoredUtxoRecord[] => {
+  const byOutRef = new Map(
+    entries.map((entry) => [entry.outref.toString("hex"), entry] as const),
+  );
+  return requestedOutRefs.flatMap((outRef) => {
+    const entry = byOutRef.get(outRef.toString("hex"));
+    return entry === undefined ? [] : [entry];
+  });
 };
 
 /**
@@ -133,4 +293,25 @@ export const utxosProgram = (
       totals: sumAssets(utxos),
       utxos,
     };
+  });
+
+/**
+ * Reads mempool-ledger UTxOs by raw TxOutRef CBOR bytes and preserves the
+ * caller's requested order for found entries.
+ */
+export const utxosByTxOutRefsProgram = (
+  txOutRefs: readonly Buffer[],
+): Effect.Effect<readonly StoredUtxoRecord[], DatabaseError, Database> =>
+  Effect.gen(function* () {
+    if (txOutRefs.length === 0) {
+      return [];
+    }
+    const entries = yield* MempoolLedgerDB.retrieveByTxOutRefs(txOutRefs);
+    return orderStoredUtxosByOutRef(
+      txOutRefs,
+      entries.map((entry) => ({
+        outref: entry.outref,
+        output: entry.output,
+      })),
+    );
   });

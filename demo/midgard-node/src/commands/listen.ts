@@ -17,10 +17,22 @@ import {
 import { buildListenRouter } from "@/commands/listen-router.js";
 import {
   ensureProtocolInitializedOnStartup,
+  hydratePendingBlockFinalizationOnStartup,
   seedLatestLocalBlockBoundaryOnStartup,
 } from "@/commands/listen-startup.js";
 import { shouldRunGenesisOnStartup } from "@/commands/startup-policy.js";
-import { fetchAndInsertDepositUTxOs, fetchAndInsertDepositUTxOsFiber, blockConfirmationFiber, blockCommitmentFiber, mergeFiber, monitorMempoolFiber, retentionSweeperFiber, txQueueProcessorFiber } from "@/fibers/index.js";
+import {
+  blockCommitmentFiber,
+  blockConfirmationFiber,
+  fetchAndInsertDepositUTxOs,
+  fetchAndInsertDepositUTxOsFiber,
+  mergeFiber,
+  monitorMempoolFiber,
+  projectDepositsToMempoolLedger,
+  projectDepositsToMempoolLedgerFiber,
+  retentionSweeperFiber,
+  txQueueProcessorFiber,
+} from "@/fibers/index.js";
 import { QueuedTxPayload } from "@/validation/index.js";
 import * as Genesis from "@/genesis.js";
 import { NodeSdk } from "@effect/opentelemetry";
@@ -57,10 +69,19 @@ export const runNode = (
     yield* InitDB.program.pipe(Effect.provide(Database.layer));
     yield* ensureProtocolInitializedOnStartup;
     yield* seedLatestLocalBlockBoundaryOnStartup;
+    yield* hydratePendingBlockFinalizationOnStartup;
     yield* fetchAndInsertDepositUTxOs.pipe(
       Effect.tapError((e) =>
         Effect.logWarning(
           `Startup deposit catch-up failed: ${JSON.stringify(e)}`,
+        ),
+      ),
+      Effect.catchAll(() => Effect.void),
+    );
+    yield* projectDepositsToMempoolLedger.pipe(
+      Effect.tapError((e) =>
+        Effect.logWarning(
+          `Startup deposit projection reconciliation failed: ${JSON.stringify(e)}`,
         ),
       ),
       Effect.catchAll(() => Effect.void),
@@ -114,6 +135,9 @@ export const runNode = (
           mkSchedule(nodeConfig.WAIT_BETWEEN_BLOCK_CONFIRMATION),
         ),
         fetchAndInsertDepositUTxOsFiber(
+          mkSchedule(nodeConfig.WAIT_BETWEEN_DEPOSIT_UTXO_FETCHES),
+        ),
+        projectDepositsToMempoolLedgerFiber(
           mkSchedule(nodeConfig.WAIT_BETWEEN_DEPOSIT_UTXO_FETCHES),
         ),
         retentionSweeperFiber(

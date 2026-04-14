@@ -1,10 +1,15 @@
-import { CML } from "@lucid-evolution/lucid";
+import { CML, coreToTxOutput, type UTxO } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 import { LedgerUtils } from "@/database/index.js";
+import {
+  decodeMidgardNativeTxFull,
+  midgardNativeTxFullToCardanoTxEncoding,
+} from "@/midgard-tx-codec/index.js";
 import {
   PhaseAAccepted,
   PhaseBConfig,
   PhaseBResult,
+  PlutusEvaluationResult,
   RejectedTx,
   RejectCodes,
 } from "./types.js";
@@ -38,6 +43,18 @@ export type UTxOStatePatch = {
 export type PhaseBResultWithPatch = PhaseBResult & {
   readonly statePatch: UTxOStatePatch;
 };
+
+export class PlutusEvaluationInfrastructureError extends Error {
+  readonly txIdHex: string;
+
+  constructor(txId: Buffer, detail: string) {
+    super(
+      `Plutus evaluation infrastructure failure for ${txId.toString("hex")}: ${detail}`,
+    );
+    this.name = "PlutusEvaluationInfrastructureError";
+    this.txIdHex = txId.toString("hex");
+  }
+}
 
 type MutableStatePatch = {
   readonly deletedOutRefs: Set<string>;
@@ -124,6 +141,114 @@ const hasIntersection = (left: Set<string>, right: Set<string>): boolean => {
     }
   }
   return false;
+};
+
+const decodeReferenceInputNativeScripts = (
+  node: CandidateNode,
+  stateValue: (outRefHex: string) => Buffer | undefined,
+):
+  | {
+      readonly nativeScripts: Map<string, InstanceType<typeof CML.NativeScript>>;
+      readonly nonNativeScriptHashes: Set<string>;
+    }
+  | RejectedTx => {
+  const referenceScripts = new Map<string, InstanceType<typeof CML.NativeScript>>();
+  const nonNativeScriptHashes = new Set<string>();
+
+  for (const referenceOutRefHex of node.referenceOutRefs) {
+    const referenceOutput = stateValue(referenceOutRefHex);
+    if (referenceOutput === undefined) {
+      continue;
+    }
+
+    let output: InstanceType<typeof CML.TransactionOutput>;
+    try {
+      output = CML.TransactionOutput.from_cbor_bytes(referenceOutput);
+    } catch (e) {
+      return reject(
+        node.candidate.txId,
+        RejectCodes.InvalidOutput,
+        `failed to decode reference input output ${referenceOutRefHex}: ${String(e)}`,
+      );
+    }
+
+    const scriptRef = output.script_ref();
+    if (scriptRef === undefined) {
+      continue;
+    }
+
+    const nativeScript = scriptRef.as_native();
+    if (nativeScript === undefined) {
+      nonNativeScriptHashes.add(scriptRef.hash().to_hex());
+      continue;
+    }
+
+    referenceScripts.set(nativeScript.hash().to_hex(), nativeScript);
+  }
+
+  return { nativeScripts: referenceScripts, nonNativeScriptHashes };
+};
+
+const witnessSignerListFromHashes = (
+  witnessKeyHashes: readonly string[],
+): InstanceType<typeof CML.Ed25519KeyHashList> => {
+  const signers = CML.Ed25519KeyHashList.new();
+  for (const witnessKeyHash of witnessKeyHashes) {
+    signers.add(CML.Ed25519KeyHash.from_hex(witnessKeyHash));
+  }
+  return signers;
+};
+
+const buildAdditionalUtxos = (
+  candidate: PhaseAAccepted,
+  stateValue: (outRefHex: string) => Buffer | undefined,
+): readonly UTxO[] | RejectedTx => {
+  const additionalUtxos: UTxO[] = [];
+  const seenOutRefs = new Set<string>();
+  const orderedOutRefs = [
+    ...candidate.processedTx.spent,
+    ...candidate.referenceInputs,
+  ];
+
+  for (const outRef of orderedOutRefs) {
+    const outRefHex = outRef.toString("hex");
+    if (seenOutRefs.has(outRefHex)) {
+      continue;
+    }
+    seenOutRefs.add(outRefHex);
+
+    const outputBytes = stateValue(outRefHex);
+    if (outputBytes === undefined) {
+      return reject(
+        candidate.txId,
+        RejectCodes.InputNotFound,
+        `evaluation context input not found: ${outRefHex}`,
+      );
+    }
+
+    try {
+      const input = CML.TransactionInput.from_cbor_bytes(outRef);
+      const output = CML.TransactionOutput.from_cbor_bytes(outputBytes);
+      const lucidOutput = coreToTxOutput(output);
+      additionalUtxos.push({
+        txHash: input.transaction_id().to_hex(),
+        outputIndex: Number(input.index()),
+        address: lucidOutput.address,
+        assets: lucidOutput.assets,
+        datumHash: lucidOutput.datumHash ?? undefined,
+        datum: lucidOutput.datum ?? undefined,
+        scriptRef: lucidOutput.scriptRef ?? undefined,
+      });
+    } catch (e) {
+      return reject(
+        candidate.txId,
+        RejectCodes.InvalidOutput,
+        `failed to decode evaluation context UTxO ${outRefHex}: ${String(e)}`,
+      );
+    }
+  }
+
+  return additionalUtxos;
 };
 
 const conflict = (left: CandidateNode, right: CandidateNode): boolean =>
@@ -270,136 +395,295 @@ const validateCandidateAgainstState = (
   node: CandidateNode,
   stateValue: (outRefHex: string) => Buffer | undefined,
   spentByAccepted: Set<string>,
-  nowMillis: bigint,
-): CandidateDecision => {
-  const candidate = node.candidate;
-  const fail = (code: RejectedTx["code"], detail: string | null = null) => ({
-    index: node.index,
-    accepted: false as const,
-    rejection: reject(candidate.txId, code, detail),
-  });
+  config: PhaseBConfig,
+): Effect.Effect<CandidateDecision, PlutusEvaluationInfrastructureError> =>
+  Effect.gen(function* () {
+    const candidate = node.candidate;
+    const fail = (code: RejectedTx["code"], detail: string | null = null) => ({
+      index: node.index,
+      accepted: false as const,
+      rejection: reject(candidate.txId, code, detail),
+    });
 
-  if (
-    candidate.validityIntervalStart !== undefined &&
-    nowMillis < candidate.validityIntervalStart
-  ) {
-    return fail(
-      RejectCodes.ValidityIntervalMismatch,
-      `${nowMillis} < ${candidate.validityIntervalStart}`,
-    );
-  }
-
-  if (
-    candidate.validityIntervalEnd !== undefined &&
-    nowMillis > candidate.validityIntervalEnd
-  ) {
-    return fail(
-      RejectCodes.ValidityIntervalMismatch,
-      `${nowMillis} > ${candidate.validityIntervalEnd}`,
-    );
-  }
-
-  const inputValues: InstanceType<typeof CML.Value>[] = [];
-
-  for (const referenceOutRefHex of node.referenceOutRefs) {
-    if (node.spentOutRefs.has(referenceOutRefHex)) {
+    if (
+      candidate.validityIntervalStart !== undefined &&
+      config.nowCardanoSlotNo < candidate.validityIntervalStart
+    ) {
       return fail(
-        RejectCodes.InputNotFound,
-        `reference input is also spent by tx: ${referenceOutRefHex}`,
+        RejectCodes.ValidityIntervalMismatch,
+        `${config.nowCardanoSlotNo} < ${candidate.validityIntervalStart}`,
       );
     }
-    if (stateValue(referenceOutRefHex) === undefined) {
+
+    if (
+      candidate.validityIntervalEnd !== undefined &&
+      config.nowCardanoSlotNo > candidate.validityIntervalEnd
+    ) {
       return fail(
-        RejectCodes.InputNotFound,
-        `reference input not found: ${referenceOutRefHex}`,
+        RejectCodes.ValidityIntervalMismatch,
+        `${config.nowCardanoSlotNo} > ${candidate.validityIntervalEnd}`,
       );
     }
-  }
 
-  const witnessKeyHashes = new Set(candidate.witnessKeyHashes);
-  const nativeScriptHashes = new Set(candidate.nativeScriptHashes);
+    const inputValues: InstanceType<typeof CML.Value>[] = [];
 
-  for (const inputOutRefHex of node.spentOutRefs) {
-    if (spentByAccepted.has(inputOutRefHex)) {
-      return fail(RejectCodes.DoubleSpend, inputOutRefHex);
-    }
-
-    const inputOutput = stateValue(inputOutRefHex);
-    if (!inputOutput) {
-      return fail(RejectCodes.InputNotFound, inputOutRefHex);
-    }
-
-    try {
-      const output = CML.TransactionOutput.from_cbor_bytes(inputOutput);
-      const paymentCred = output.address().payment_cred();
-      if (paymentCred === undefined) {
+    for (const referenceOutRefHex of node.referenceOutRefs) {
+      if (node.spentOutRefs.has(referenceOutRefHex)) {
         return fail(
-          RejectCodes.InvalidOutput,
-          `missing payment credential for spent outref ${inputOutRefHex}`,
+          RejectCodes.InputNotFound,
+          `reference input is also spent by tx: ${referenceOutRefHex}`,
+        );
+      }
+      if (stateValue(referenceOutRefHex) === undefined) {
+        return fail(
+          RejectCodes.InputNotFound,
+          `reference input not found: ${referenceOutRefHex}`,
+        );
+      }
+    }
+
+    const witnessKeyHashes = new Set(candidate.witnessKeyHashes);
+    const inlineNativeScriptHashCounts = candidate.nativeScriptHashes.reduce(
+      (counts, scriptHash) => {
+        counts.set(scriptHash, (counts.get(scriptHash) ?? 0) + 1);
+        return counts;
+      },
+      new Map<string, number>(),
+    );
+    const inlinePlutusScriptHashes = new Set(candidate.plutusScriptHashes);
+    const witnessSigners = witnessSignerListFromHashes(candidate.witnessKeyHashes);
+    const referenceNativeScriptsResult = decodeReferenceInputNativeScripts(
+      node,
+      stateValue,
+    );
+    if ("code" in referenceNativeScriptsResult) {
+      return {
+        index: node.index,
+        accepted: false,
+        rejection: referenceNativeScriptsResult,
+      };
+    }
+    const {
+      nativeScripts: referenceNativeScripts,
+      nonNativeScriptHashes,
+    } = referenceNativeScriptsResult;
+
+    const hasSatisfiedScriptMaterial = (
+      scriptHash: string,
+      context: string,
+    ): CandidateDecision | true => {
+      const inlineNativeScriptCount =
+        inlineNativeScriptHashCounts.get(scriptHash) ?? 0;
+      if (inlineNativeScriptCount > 0) {
+        if (inlineNativeScriptCount === 1) {
+          inlineNativeScriptHashCounts.delete(scriptHash);
+        } else {
+          inlineNativeScriptHashCounts.set(
+            scriptHash,
+            inlineNativeScriptCount - 1,
+          );
+        }
+        return true;
+      }
+
+      const referenceNativeScript = referenceNativeScripts.get(scriptHash);
+      if (referenceNativeScript !== undefined) {
+        if (
+          !referenceNativeScript.verify(
+            candidate.validityIntervalStart,
+            candidate.validityIntervalEnd,
+            witnessSigners,
+          )
+        ) {
+          return fail(
+            RejectCodes.NativeScriptInvalid,
+            `reference native script verification failed for ${context}: ${scriptHash}`,
+          );
+        }
+        return true;
+      }
+
+      if (
+        candidate.requiresPlutusEvaluation &&
+        (inlinePlutusScriptHashes.has(scriptHash) ||
+          nonNativeScriptHashes.has(scriptHash))
+      ) {
+        return true;
+      }
+
+      if (nonNativeScriptHashes.has(scriptHash)) {
+        return fail(
+          RejectCodes.UnsupportedFieldNonEmpty,
+          `non-native reference script unsupported for ${context}: ${scriptHash}`,
         );
       }
 
-      if (paymentCred.kind() === CML.CredentialKind.PubKey) {
-        const inputSigner = paymentCred.as_pub_key()?.to_hex();
-        if (inputSigner === undefined) {
-          return fail(
-            RejectCodes.InvalidOutput,
-            `failed to decode pubkey credential for spent outref ${inputOutRefHex}`,
-          );
-        }
-        if (!witnessKeyHashes.has(inputSigner)) {
-          return fail(
-            RejectCodes.MissingRequiredWitness,
-            `missing witness for input signer ${inputSigner} (outref ${inputOutRefHex})`,
-          );
-        }
-      } else if (paymentCred.kind() === CML.CredentialKind.Script) {
-        const inputScriptHash = paymentCred.as_script()?.to_hex();
-        if (inputScriptHash === undefined) {
-          return fail(
-            RejectCodes.InvalidOutput,
-            `failed to decode script credential for spent outref ${inputOutRefHex}`,
-          );
-        }
-        if (!nativeScriptHashes.has(inputScriptHash)) {
-          return fail(
-            RejectCodes.MissingRequiredWitness,
-            `missing native script witness ${inputScriptHash} for outref ${inputOutRefHex}`,
-          );
-        }
+      return fail(
+        RejectCodes.MissingRequiredWitness,
+        `missing script witness ${scriptHash} for ${context}`,
+      );
+    };
+
+    for (const observerHash of candidate.requiredObserverHashes) {
+      const observerSatisfied = hasSatisfiedScriptMaterial(
+        observerHash,
+        `required observer ${observerHash}`,
+      );
+      if (observerSatisfied !== true) {
+        return observerSatisfied;
+      }
+    }
+
+    for (const mintPolicyHash of candidate.mintPolicyHashes) {
+      const mintSatisfied = hasSatisfiedScriptMaterial(
+        mintPolicyHash,
+        `mint policy ${mintPolicyHash}`,
+      );
+      if (mintSatisfied !== true) {
+        return mintSatisfied;
+      }
+    }
+
+    for (const inputOutRefHex of node.spentOutRefs) {
+      if (spentByAccepted.has(inputOutRefHex)) {
+        return fail(RejectCodes.DoubleSpend, inputOutRefHex);
       }
 
-      inputValues.push(output.amount());
+      const inputOutput = stateValue(inputOutRefHex);
+      if (!inputOutput) {
+        return fail(RejectCodes.InputNotFound, inputOutRefHex);
+      }
+
+      try {
+        const output = CML.TransactionOutput.from_cbor_bytes(inputOutput);
+        const paymentCred = output.address().payment_cred();
+        if (paymentCred === undefined) {
+          return fail(
+            RejectCodes.InvalidOutput,
+            `missing payment credential for spent outref ${inputOutRefHex}`,
+          );
+        }
+
+        if (paymentCred.kind() === CML.CredentialKind.PubKey) {
+          const inputSigner = paymentCred.as_pub_key()?.to_hex();
+          if (inputSigner === undefined) {
+            return fail(
+              RejectCodes.InvalidOutput,
+              `failed to decode pubkey credential for spent outref ${inputOutRefHex}`,
+            );
+          }
+          if (!witnessKeyHashes.has(inputSigner)) {
+            return fail(
+              RejectCodes.MissingRequiredWitness,
+              `missing witness for input signer ${inputSigner} (outref ${inputOutRefHex})`,
+            );
+          }
+        } else if (paymentCred.kind() === CML.CredentialKind.Script) {
+          const inputScriptHash = paymentCred.as_script()?.to_hex();
+          if (inputScriptHash === undefined) {
+            return fail(
+              RejectCodes.InvalidOutput,
+              `failed to decode script credential for spent outref ${inputOutRefHex}`,
+            );
+          }
+          const inputScriptSatisfied = hasSatisfiedScriptMaterial(
+            inputScriptHash,
+            `outref ${inputOutRefHex}`,
+          );
+          if (inputScriptSatisfied !== true) {
+            return inputScriptSatisfied;
+          }
+        }
+
+        inputValues.push(output.amount());
+      } catch (e) {
+        return fail(
+          RejectCodes.InvalidOutput,
+          `failed to decode input output: ${String(e)}`,
+        );
+      }
+    }
+
+    if (inlineNativeScriptHashCounts.size > 0) {
+      const [extraneousHash] = inlineNativeScriptHashCounts.keys();
+      return fail(
+        RejectCodes.InvalidFieldType,
+        `extraneous native script witness ${extraneousHash}`,
+      );
+    }
+
+    if (candidate.requiresPlutusEvaluation) {
+      if (config.evaluatePlutusTx === undefined) {
+        return fail(
+          RejectCodes.PlutusEvaluationUnavailable,
+          "Plutus witness bundle present but no evaluator is configured",
+        );
+      }
+
+      const additionalUtxos = buildAdditionalUtxos(candidate, stateValue);
+      if ("code" in additionalUtxos) {
+        return {
+          index: node.index,
+          accepted: false,
+          rejection: additionalUtxos,
+        };
+      }
+
+      let txCborHex: string;
+      try {
+        const nativeTx = decodeMidgardNativeTxFull(candidate.txCbor);
+        txCborHex = midgardNativeTxFullToCardanoTxEncoding(nativeTx, {
+          omitVkeyWitnesses: true,
+        }).toString("hex");
+      } catch (e) {
+        return fail(
+          RejectCodes.InvalidFieldType,
+          `failed to reconstruct Cardano tx for Plutus evaluation: ${String(e)}`,
+        );
+      }
+
+      const plutusEvaluation: PlutusEvaluationResult = yield* Effect.tryPromise({
+        try: () =>
+          config.evaluatePlutusTx!({
+            txId: candidate.txId,
+            txCborHex,
+            additionalUtxos,
+          }),
+        catch: (e) =>
+          new PlutusEvaluationInfrastructureError(candidate.txId, String(e)),
+      });
+      if (plutusEvaluation.kind === "script_invalid") {
+        return fail(
+          RejectCodes.PlutusScriptInvalid,
+          plutusEvaluation.detail,
+        );
+      }
+    }
+
+    try {
+      const inputSum = sumValues(inputValues);
+      const outputSum = candidate.outputSum;
+      const lhs = inputSum
+        .checked_sub(CML.Value.from_coin(candidate.fee))
+        .checked_add(candidate.mintedValue)
+        .checked_sub(candidate.burnedValue);
+      const delta = lhs.checked_sub(outputSum);
+
+      if (!delta.is_zero()) {
+        return fail(
+          RejectCodes.ValueNotPreserved,
+          `equation mismatch: (inputs - fee + minted - burned) - outputs = { coin: ${delta.coin()}, has_multiassets: ${delta.has_multiassets()} }`,
+        );
+      }
     } catch (e) {
-      return fail(
-        RejectCodes.InvalidOutput,
-        `failed to decode input output: ${String(e)}`,
-      );
+      return fail(RejectCodes.ValueNotPreserved, String(e));
     }
-  }
 
-  try {
-    const inputSum = sumValues(inputValues);
-    const outputSum = candidate.outputSum;
-    // phase-A hard-rejects non-empty mint, so minted and burned are both zero here.
-    const lhs = inputSum.checked_sub(CML.Value.from_coin(candidate.fee));
-    const delta = lhs.checked_sub(outputSum);
-
-    if (!delta.is_zero()) {
-      return fail(
-        RejectCodes.ValueNotPreserved,
-        `equation mismatch: (inputs - fee) - outputs = { coin: ${delta.coin()}, has_multiassets: ${delta.has_multiassets()} }`,
-      );
-    }
-  } catch (e) {
-    return fail(RejectCodes.ValueNotPreserved, String(e));
-  }
-
-  return {
-    index: node.index,
-    accepted: true,
-  };
-};
+    return {
+      index: node.index,
+      accepted: true,
+    };
+  });
 
 const cascadeRejectDescendants = (
   nodes: readonly CandidateNode[],
@@ -436,7 +720,7 @@ export const runPhaseBValidationWithPatch = (
   phaseACandidates: readonly PhaseAAccepted[],
   preStateEntries: PreState,
   config: PhaseBConfig,
-): Effect.Effect<PhaseBResultWithPatch> =>
+): Effect.Effect<PhaseBResultWithPatch, PlutusEvaluationInfrastructureError> =>
   Effect.gen(function* () {
     const accepted: PhaseAAccepted[] = [];
     const rejected: RejectedTx[] = [];
@@ -511,13 +795,11 @@ export const runPhaseBValidationWithPatch = (
         const decisions = yield* Effect.forEach(
           pendingBucket,
           (node) =>
-            Effect.sync(() =>
-              validateCandidateAgainstState(
-                node,
-                stateValue,
-                spentByAccepted,
-                config.nowMillis,
-              ),
+            validateCandidateAgainstState(
+              node,
+              stateValue,
+              spentByAccepted,
+              config,
             ),
           {
             concurrency:
@@ -623,7 +905,7 @@ export const runPhaseBValidation = (
   phaseACandidates: readonly PhaseAAccepted[],
   preStateEntries: PreState,
   config: PhaseBConfig,
-): Effect.Effect<PhaseBResult> =>
+): Effect.Effect<PhaseBResult, PlutusEvaluationInfrastructureError> =>
   runPhaseBValidationWithPatch(phaseACandidates, preStateEntries, config).pipe(
     Effect.map(({ accepted, rejected }) => ({ accepted, rejected })),
   );

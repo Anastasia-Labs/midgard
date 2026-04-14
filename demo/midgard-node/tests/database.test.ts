@@ -1,11 +1,13 @@
 import { describe, expect, beforeAll } from "vitest";
 import fs from "node:fs";
 import path from "node:path";
-import { toHex } from "@lucid-evolution/lucid";
+import { Data as LucidData, toHex } from "@lucid-evolution/lucid";
 import { it } from "@effect/vitest";
 import { Effect } from "effect";
 import { SqlClient } from "@effect/sql";
+import * as SDK from "@al-ft/midgard-sdk";
 import { Database } from "../src/services/database.js";
+import { Globals } from "../src/services/globals.js";
 import { NodeConfig } from "../src/services/config.js";
 import * as InitDB from "../src/database/init.js";
 import {
@@ -24,18 +26,27 @@ import {
   LatestLedgerDB,
   MempoolLedgerDB,
   ConfirmedLedgerDB,
+  DepositsDB,
+  DepositIngestionCursorDB,
+  PendingBlockFinalizationsDB,
 
   // Utils
   TxUtils,
   LedgerUtils,
 } from "../src/database/index.js";
+import { projectDepositsToMempoolLedger } from "../src/fibers/project-deposits-to-mempool-ledger.js";
 import { ProcessedTx } from "../src/utils.js";
+import { resolveIncludedDepositEntriesForWindow } from "../src/workers/utils/mpt.js";
 import { provideDatabaseLayers } from "./utils.js";
 import {
   cardanoTxBytesToMidgardNativeTxFullBytes,
   computeMidgardNativeTxIdFromFull,
   decodeMidgardNativeTxFull,
 } from "../src/midgard-tx-codec/index.js";
+import {
+  DepositStatusCommandError,
+  resolveDepositStatusProgram,
+} from "../src/commands/deposit-status.js";
 
 const flushAll = Effect.gen(function* () {
   yield* Effect.all(
@@ -48,6 +59,9 @@ const flushAll = Effect.gen(function* () {
       MempoolDB.clear,
       AddressHistoryDB.clear,
       ProcessedMempoolDB.clear,
+      DepositsDB.clear,
+      DepositIngestionCursorDB.clear,
+      PendingBlockFinalizationsDB.clear,
     ],
     { discard: true },
   );
@@ -492,7 +506,7 @@ describe("LatestLedgerDB", () => {
 
 describe("MempoolLedgerDB", () => {
   it.effect(
-    "insert, retrieve by address, retrieve all, clearUTxOs, clearAll",
+    "insert, retrieve by address, retrieve by outrefs, retrieve all, clearUTxOs, clearAll",
     () =>
       provideDatabaseLayers(
         Effect.gen(function* () {
@@ -506,6 +520,19 @@ describe("MempoolLedgerDB", () => {
           expect(
             new Set(atAddress.map((e) => removeTimestampFromLedgerEntry(e))),
           ).toStrictEqual(new Set([ledgerEntry1]));
+
+          // retrieve by outrefs
+          const byOutRefs = yield* MempoolLedgerDB.retrieveByTxOutRefs([
+            ledgerEntry2[LedgerUtils.Columns.OUTREF],
+            randomBytes(36),
+          ]);
+          expect(
+            new Set(byOutRefs.map((e) => removeTimestampFromLedgerEntry(e))),
+          ).toStrictEqual(new Set([ledgerEntry2]));
+
+          // retrieve by empty outref set
+          const emptyOutRefs = yield* MempoolLedgerDB.retrieveByTxOutRefs([]);
+          expect(emptyOutRefs).toStrictEqual([]);
 
           // retrieve all
           const all = yield* MempoolLedgerDB.retrieve;
@@ -727,6 +754,402 @@ describe("AddressHistoryDB", () => {
   );
 });
 
+describe("DepositsDB and MempoolLedgerDB exact-once projection", () => {
+  it.effect("rejects payload drift for the same deposit event_id", (_) =>
+    provideDatabaseLayers(
+      Effect.gen(function* () {
+        yield* flushAll;
+
+        const eventId = makeDepositEventId(0);
+        const first = makeDepositEntry({
+          [DepositsDB.Columns.ID]: eventId,
+        });
+        const conflicting = makeDepositEntry({
+          [DepositsDB.Columns.ID]: eventId,
+          [DepositsDB.Columns.INFO]: randomBytes(48),
+        });
+
+        yield* DepositsDB.insertEntries([first]);
+        const result = yield* Effect.either(
+          DepositsDB.insertEntries([conflicting]),
+        );
+
+        expect(result._tag).toEqual("Left");
+      }),
+    ),
+  );
+
+  it.effect("retrieves one deposit by event_id", (_) =>
+    provideDatabaseLayers(
+      Effect.gen(function* () {
+        yield* flushAll;
+
+        const deposit = makeDepositEntry();
+        yield* DepositsDB.insertEntries([deposit]);
+
+        const retrieved = yield* DepositsDB.retrieveByEventId(
+          deposit[DepositsDB.Columns.ID],
+        );
+        expect(retrieved._tag).toEqual("Some");
+        if (retrieved._tag !== "Some") {
+          throw new Error("expected deposit lookup to return a row");
+        }
+
+        expect(
+          retrieved.value[DepositsDB.Columns.ID].equals(
+            deposit[DepositsDB.Columns.ID],
+          ),
+        ).toEqual(true);
+        expect(
+          retrieved.value[DepositsDB.Columns.DEPOSIT_L1_TX_HASH].equals(
+            deposit[DepositsDB.Columns.DEPOSIT_L1_TX_HASH],
+          ),
+        ).toEqual(true);
+      }),
+    ),
+  );
+
+  it.effect(
+    "retrieves deposits by Cardano tx hash in deterministic order",
+    (_) =>
+      provideDatabaseLayers(
+        Effect.gen(function* () {
+          yield* flushAll;
+
+          const sharedCardanoTxHash = randomBytes(32);
+          const first = makeDepositEntry({
+            [DepositsDB.Columns.INCLUSION_TIME]: new Date(
+              "2026-04-13T17:00:00.000Z",
+            ),
+            [DepositsDB.Columns.DEPOSIT_L1_TX_HASH]: sharedCardanoTxHash,
+            [DepositsDB.Columns.ID]: makeDepositEventId(0),
+          });
+          const second = makeDepositEntry({
+            [DepositsDB.Columns.INCLUSION_TIME]: new Date(
+              "2026-04-13T17:00:01.000Z",
+            ),
+            [DepositsDB.Columns.DEPOSIT_L1_TX_HASH]: sharedCardanoTxHash,
+            [DepositsDB.Columns.ID]: makeDepositEventId(1),
+          });
+          yield* DepositsDB.insertEntries([second, first]);
+
+          const retrieved =
+            yield* DepositsDB.retrieveByCardanoTxHash(sharedCardanoTxHash);
+
+          expect(retrieved).toHaveLength(2);
+          expect(
+            retrieved[0]?.[DepositsDB.Columns.ID].equals(
+              first[DepositsDB.Columns.ID],
+            ),
+          ).toEqual(true);
+          expect(
+            retrieved[1]?.[DepositsDB.Columns.ID].equals(
+              second[DepositsDB.Columns.ID],
+            ),
+          ).toEqual(true);
+        }),
+      ),
+  );
+
+  it.effect(
+    "rejects ambiguous cardanoTxHash lookups and requires eventId to disambiguate",
+    (_) =>
+      provideDatabaseLayers(
+        Effect.gen(function* () {
+          yield* flushAll;
+
+          const sharedCardanoTxHash = randomBytes(32);
+          yield* DepositsDB.insertEntries([
+            makeDepositEntry({
+              [DepositsDB.Columns.ID]: makeDepositEventId(0),
+              [DepositsDB.Columns.DEPOSIT_L1_TX_HASH]: sharedCardanoTxHash,
+            }),
+            makeDepositEntry({
+              [DepositsDB.Columns.ID]: makeDepositEventId(1),
+              [DepositsDB.Columns.DEPOSIT_L1_TX_HASH]: sharedCardanoTxHash,
+            }),
+          ]);
+
+          const result = yield* Effect.either(
+            resolveDepositStatusProgram({
+              cardanoTxHash: sharedCardanoTxHash,
+            }),
+          );
+
+          expect(result._tag).toEqual("Left");
+          if (result._tag !== "Left") {
+            throw new Error("expected ambiguous lookup to fail");
+          }
+          expect(result.left).toBeInstanceOf(DepositStatusCommandError);
+          if (!(result.left instanceof DepositStatusCommandError)) {
+            throw new Error("expected DepositStatusCommandError");
+          }
+          expect(result.left.status).toEqual(409);
+        }),
+      ),
+  );
+
+  it.effect(
+    "allows eventId to disambiguate a shared cardanoTxHash lookup",
+    (_) =>
+      provideDatabaseLayers(
+        Effect.gen(function* () {
+          yield* flushAll;
+
+          const sharedCardanoTxHash = randomBytes(32);
+          const first = makeDepositEntry({
+            [DepositsDB.Columns.ID]: makeDepositEventId(0),
+            [DepositsDB.Columns.DEPOSIT_L1_TX_HASH]: sharedCardanoTxHash,
+          });
+          const second = makeDepositEntry({
+            [DepositsDB.Columns.ID]: makeDepositEventId(1),
+            [DepositsDB.Columns.DEPOSIT_L1_TX_HASH]: sharedCardanoTxHash,
+          });
+          yield* DepositsDB.insertEntries([first, second]);
+
+          const resolved = yield* resolveDepositStatusProgram({
+            eventId: second[DepositsDB.Columns.ID],
+            cardanoTxHash: sharedCardanoTxHash,
+          });
+
+          expect(
+            resolved[DepositsDB.Columns.ID].equals(
+              second[DepositsDB.Columns.ID],
+            ),
+          ).toEqual(true);
+        }),
+      ),
+  );
+
+  it.effect(
+    "projects a deposit into mempool_ledger exactly once by source_event_id",
+    (_) =>
+      provideDatabaseLayers(
+        Effect.gen(function* () {
+          yield* flushAll;
+
+          const deposit = makeDepositEntry();
+          yield* DepositsDB.insertEntries([deposit]);
+          const mempoolEntry = yield* DepositsDB.toMempoolLedgerEntry(deposit);
+
+          yield* MempoolLedgerDB.insertDepositEntriesStrict([mempoolEntry]);
+          yield* DepositsDB.markAwaitingAsProjected([
+            deposit[DepositsDB.Columns.ID],
+          ]);
+
+          const duplicateResult = yield* Effect.either(
+            MempoolLedgerDB.insertDepositEntriesStrict([mempoolEntry]),
+          );
+          expect(duplicateResult._tag).toEqual("Left");
+
+          const mempoolRows = yield* MempoolLedgerDB.retrieve;
+          expect(mempoolRows).toHaveLength(1);
+          expect(
+            mempoolRows[0]?.[MempoolLedgerDB.Columns.SOURCE_EVENT_ID]?.equals(
+              deposit[DepositsDB.Columns.ID],
+            ),
+          ).toEqual(true);
+
+          const projectedRows = yield* DepositsDB.retrieveProjectedEntries();
+          expect(projectedRows).toHaveLength(1);
+          expect(projectedRows[0]?.[DepositsDB.Columns.STATUS]).toEqual(
+            DepositsDB.Status.Projected,
+          );
+        }),
+      ),
+  );
+
+  it.effect("projects only deposits whose inclusion time has arrived", (_) =>
+    provideDatabaseLayers(
+      Effect.gen(function* () {
+        yield* flushAll;
+
+        const pastDeposit = makeDepositEntry({
+          [DepositsDB.Columns.INCLUSION_TIME]: new Date(Date.now() - 1_000),
+        });
+        const futureDeposit = makeDepositEntry({
+          [DepositsDB.Columns.INCLUSION_TIME]: new Date(Date.now() + 60_000),
+        });
+        yield* DepositsDB.insertEntries([pastDeposit, futureDeposit]);
+
+        yield* projectDepositsToMempoolLedger.pipe(
+          Effect.provide(Globals.Default),
+        );
+
+        const projectedRows = yield* DepositsDB.retrieveProjectedEntries();
+        expect(projectedRows).toHaveLength(1);
+        expect(
+          projectedRows[0]?.[DepositsDB.Columns.ID].equals(
+            pastDeposit[DepositsDB.Columns.ID],
+          ),
+        ).toEqual(true);
+
+        const awaitingRows = yield* DepositsDB.retrieveAwaitingEntries();
+        expect(awaitingRows).toHaveLength(1);
+        expect(
+          awaitingRows[0]?.[DepositsDB.Columns.ID].equals(
+            futureDeposit[DepositsDB.Columns.ID],
+          ),
+        ).toEqual(true);
+      }),
+    ),
+  );
+
+  it.effect(
+    "rejects source_event_id payload drift during idempotent projection reconciliation",
+    (_) =>
+      provideDatabaseLayers(
+        Effect.gen(function* () {
+          yield* flushAll;
+
+          const deposit = makeDepositEntry();
+          yield* DepositsDB.insertEntries([deposit]);
+          const mempoolEntry = yield* DepositsDB.toMempoolLedgerEntry(deposit);
+          yield* MempoolLedgerDB.insertDepositEntriesStrict([mempoolEntry]);
+
+          const conflictingEntry = {
+            ...mempoolEntry,
+            [MempoolLedgerDB.Columns.OUTPUT]: randomBytes(80),
+          };
+
+          const result = yield* Effect.either(
+            MempoolLedgerDB.reconcileDepositEntries([conflictingEntry]),
+          );
+          expect(result._tag).toEqual("Left");
+        }),
+      ),
+  );
+
+  it.effect(
+    "assigns and clears a projected header hash for a projected deposit",
+    (_) =>
+      provideDatabaseLayers(
+        Effect.gen(function* () {
+          yield* flushAll;
+
+          const deposit = makeDepositEntry();
+          const headerHash = randomBytes(28);
+          yield* DepositsDB.insertEntries([deposit]);
+          yield* DepositsDB.markAwaitingAsProjected([
+            deposit[DepositsDB.Columns.ID],
+          ]);
+          yield* DepositsDB.markProjectedByEventIds(
+            [deposit[DepositsDB.Columns.ID]],
+            headerHash,
+          );
+
+          const assignedRows = yield* DepositsDB.retrieveAllEntries();
+          expect(
+            assignedRows[0]?.[DepositsDB.Columns.PROJECTED_HEADER_HASH]?.equals(
+              headerHash,
+            ),
+          ).toEqual(true);
+
+          yield* DepositsDB.clearProjectedHeaderAssignmentByEventIds(
+            [deposit[DepositsDB.Columns.ID]],
+            headerHash,
+          );
+
+          const clearedRows = yield* DepositsDB.retrieveAllEntries();
+          expect(
+            clearedRows[0]?.[DepositsDB.Columns.PROJECTED_HEADER_HASH],
+          ).toBeNull();
+        }),
+      ),
+  );
+
+  it.effect(
+    "treats projection claiming as idempotent once a deposit is already projected",
+    (_) =>
+      provideDatabaseLayers(
+        Effect.gen(function* () {
+          yield* flushAll;
+
+          const deposit = makeDepositEntry();
+          yield* DepositsDB.insertEntries([deposit]);
+          yield* DepositsDB.markAwaitingAsProjected([
+            deposit[DepositsDB.Columns.ID],
+          ]);
+          yield* DepositsDB.markAwaitingAsProjected([
+            deposit[DepositsDB.Columns.ID],
+          ]);
+
+          const rows = yield* DepositsDB.retrieveAllEntries();
+          expect(rows).toHaveLength(1);
+          expect(rows[0]?.[DepositsDB.Columns.STATUS]).toEqual(
+            DepositsDB.Status.Projected,
+          );
+          expect(
+            rows[0]?.[DepositsDB.Columns.PROJECTED_HEADER_HASH],
+          ).toBeNull();
+        }),
+      ),
+  );
+
+  it.effect(
+    "re-includes an overdue projected deposit whose earlier header assignment was abandoned",
+    (_) =>
+      provideDatabaseLayers(
+        Effect.gen(function* () {
+          yield* flushAll;
+
+          const currentBlockStartTime = new Date(Date.now());
+          const overdueProjectedDeposit = makeDepositEntry({
+            [DepositsDB.Columns.INCLUSION_TIME]: new Date(
+              currentBlockStartTime.getTime() - 1_000,
+            ),
+            [DepositsDB.Columns.STATUS]: DepositsDB.Status.Projected,
+          });
+          yield* DepositsDB.insertEntries([overdueProjectedDeposit]);
+
+          const included = yield* resolveIncludedDepositEntriesForWindow({
+            currentBlockStartTime,
+            effectiveEndTime: new Date(currentBlockStartTime.getTime() + 1_000),
+          });
+
+          expect(included).toHaveLength(1);
+          expect(
+            included[0]?.[DepositsDB.Columns.ID].equals(
+              overdueProjectedDeposit[DepositsDB.Columns.ID],
+            ),
+          ).toEqual(true);
+          expect(included[0]?.[DepositsDB.Columns.STATUS]).toEqual(
+            DepositsDB.Status.Projected,
+          );
+        }),
+      ),
+  );
+
+  it.effect(
+    "fails closed when an overdue deposit was never projected before its window closed",
+    (_) =>
+      provideDatabaseLayers(
+        Effect.gen(function* () {
+          yield* flushAll;
+
+          const currentBlockStartTime = new Date(Date.now());
+          const overdueAwaitingDeposit = makeDepositEntry({
+            [DepositsDB.Columns.INCLUSION_TIME]: new Date(
+              currentBlockStartTime.getTime() - 1_000,
+            ),
+          });
+          yield* DepositsDB.insertEntries([overdueAwaitingDeposit]);
+
+          const result = yield* Effect.either(
+            resolveIncludedDepositEntriesForWindow({
+              currentBlockStartTime,
+              effectiveEndTime: new Date(
+                currentBlockStartTime.getTime() + 1_000,
+              ),
+            }),
+          );
+
+          expect(result._tag).toEqual("Left");
+        }),
+      ),
+  );
+});
+
 const blockHeader1 = randomBytes(32);
 const blockHeader2 = randomBytes(32);
 
@@ -812,5 +1235,44 @@ const removeTimestampFromLedgerEntry = (
     [LedgerUtils.Columns.OUTREF]: e[LedgerUtils.Columns.OUTREF],
     [LedgerUtils.Columns.OUTPUT]: e[LedgerUtils.Columns.OUTPUT],
     [LedgerUtils.Columns.ADDRESS]: e[LedgerUtils.Columns.ADDRESS],
+  };
+};
+
+const makeDepositEventId = (outputIndex = 0): Buffer =>
+  Buffer.from(
+    LucidData.to(
+      {
+        transactionId: randomBytes(32).toString("hex"),
+        outputIndex: BigInt(outputIndex),
+      },
+      SDK.OutputReference,
+    ),
+    "hex",
+  );
+
+const makeDepositEntry = (
+  overrides: Partial<DepositsDB.Entry> = {},
+): DepositsDB.Entry => {
+  const eventId =
+    overrides[DepositsDB.Columns.ID] ??
+    makeDepositEventId(Math.floor(Math.random() * 10));
+  return {
+    [DepositsDB.Columns.ID]: eventId,
+    [DepositsDB.Columns.INFO]:
+      overrides[DepositsDB.Columns.INFO] ?? randomBytes(48),
+    [DepositsDB.Columns.INCLUSION_TIME]:
+      overrides[DepositsDB.Columns.INCLUSION_TIME] ?? new Date(),
+    [DepositsDB.Columns.DEPOSIT_L1_TX_HASH]:
+      overrides[DepositsDB.Columns.DEPOSIT_L1_TX_HASH] ?? randomBytes(32),
+    [DepositsDB.Columns.LEDGER_TX_ID]:
+      overrides[DepositsDB.Columns.LEDGER_TX_ID] ?? randomBytes(32),
+    [DepositsDB.Columns.LEDGER_OUTPUT]:
+      overrides[DepositsDB.Columns.LEDGER_OUTPUT] ?? randomBytes(80),
+    [DepositsDB.Columns.LEDGER_ADDRESS]:
+      overrides[DepositsDB.Columns.LEDGER_ADDRESS] ?? address1,
+    [DepositsDB.Columns.PROJECTED_HEADER_HASH]:
+      overrides[DepositsDB.Columns.PROJECTED_HEADER_HASH] ?? null,
+    [DepositsDB.Columns.STATUS]:
+      overrides[DepositsDB.Columns.STATUS] ?? DepositsDB.Status.Awaiting,
   };
 };

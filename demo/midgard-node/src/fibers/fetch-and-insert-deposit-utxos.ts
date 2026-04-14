@@ -16,26 +16,24 @@ import {
   type Credential,
   type Network,
 } from "@lucid-evolution/lucid";
-import { DepositsDB, MempoolLedgerDB, UserEventsUtils } from "@/database/index.js";
+import { DepositsDB, UserEventsUtils } from "@/database/index.js";
 import { DatabaseError } from "@/database/utils/common.js";
 import { Schedule } from "effect";
 import { computeHash32 } from "@/midgard-tx-codec/hash.js";
 
 /**
- * Background ingestion for deposit UTxOs and their projection into the
- * off-chain ledger views.
+ * Background ingestion for deposit UTxOs into the authoritative off-chain
+ * deposit log.
  *
- * The fiber fetches deposit events from the on-chain deposit validator,
- * persists them in the deposits table, and projects newly visible entries into
- * the mempool ledger when they affect the current block pre-state.
+ * Projection into the mempool ledger is intentionally handled by a separate
+ * step so ingestion remains idempotent and projection can enforce its own
+ * timing and exactly-once rules.
  */
 
 /**
  * Converts the SDK's credential representation into Lucid's credential shape.
  */
-const credentialFromAddressData = (
-  credential: SDK.CredentialD,
-): Credential =>
+const credentialFromAddressData = (credential: SDK.CredentialD): Credential =>
   "PublicKeyCredential" in credential
     ? {
         type: "Key",
@@ -98,11 +96,19 @@ const depositUTxOToEntry = (
         [UserEventsUtils.Columns.ID]: depositUTxO.idCbor,
         [UserEventsUtils.Columns.INFO]: depositUTxO.infoCbor,
         [UserEventsUtils.Columns.INCLUSION_TIME]: depositUTxO.inclusionTime,
+        [DepositsDB.Columns.DEPOSIT_L1_TX_HASH]: Buffer.from(
+          depositUTxO.utxo.txHash,
+          "hex",
+        ),
         [DepositsDB.Columns.LEDGER_TX_ID]: computeHash32(depositUTxO.idCbor),
         [DepositsDB.Columns.LEDGER_OUTPUT]: Buffer.from(
-          CML.TransactionOutput.new_conway_format_tx_out(output).to_cbor_bytes(),
+          CML.TransactionOutput.new_conway_format_tx_out(
+            output,
+          ).to_cbor_bytes(),
         ),
         [DepositsDB.Columns.LEDGER_ADDRESS]: l2Address,
+        [DepositsDB.Columns.PROJECTED_HEADER_HASH]: null,
+        [DepositsDB.Columns.STATUS]: DepositsDB.Status.Awaiting,
       };
     },
     catch: (cause) =>
@@ -113,84 +119,113 @@ const depositUTxOToEntry = (
   });
 
 /**
- * Fetches deposit UTxOs whose inclusion times fall within the requested
- * window.
+ * Fetches the currently visible deposit UTxO set.
+ *
+ * Production correctness matters more than incremental scan efficiency here:
+ * repeatedly reconciling the full visible deposit set avoids missing deposits
+ * when provider/indexer visibility lags behind the node's previous scan time.
  */
 const fetchDepositUTxOs = (
   lucid: LucidEvolution,
-  inclusionStartTime: number,
-  inclusionEndTime: number,
+  config?: Pick<
+    SDK.DepositFetchConfig,
+    "inclusionTimeLowerBound" | "inclusionTimeUpperBound"
+  >,
 ): Effect.Effect<SDK.DepositUTxO[], SDK.LucidError, MidgardContracts> =>
   Effect.gen(function* () {
     const { deposit: depositAuthValidator } = yield* MidgardContracts;
     const fetchConfig: SDK.DepositFetchConfig = {
       depositAddress: depositAuthValidator.spendingScriptAddress,
       depositPolicyId: depositAuthValidator.policyId,
-      inclusionTimeLowerBound: BigInt(inclusionStartTime),
-      inclusionTimeUpperBound: BigInt(inclusionEndTime),
+      ...config,
     };
     return yield* SDK.fetchDepositUTxOsProgram(lucid, fetchConfig);
   });
 
+const reconcileVisibleDepositUTxOs = (
+  config?: Pick<
+    SDK.DepositFetchConfig,
+    "inclusionTimeLowerBound" | "inclusionTimeUpperBound"
+  >,
+): Effect.Effect<
+  { readonly reconciledCount: number; readonly completedAt: Date },
+  SDK.LucidError | DatabaseError,
+  MidgardContracts | Lucid | Database | NodeConfig
+> =>
+  Effect.gen(function* () {
+    const { api: lucid } = yield* Lucid;
+    const nodeConfig = yield* NodeConfig;
+
+    const depositUTxOs: SDK.DepositUTxO[] = yield* fetchDepositUTxOs(
+      lucid,
+      config,
+    );
+
+    if (depositUTxOs.length <= 0) {
+      yield* Effect.logDebug("🏦 No deposit UTxOs found.");
+      return {
+        reconciledCount: 0,
+        completedAt: new Date(),
+      } as const;
+    }
+
+    yield* Effect.logInfo(`🏦 ${depositUTxOs.length} deposit UTxOs found.`);
+
+    const entries = yield* Effect.forEach(depositUTxOs, (utxo) =>
+      depositUTxOToEntry(utxo, nodeConfig.NETWORK),
+    );
+
+    yield* DepositsDB.insertEntries(entries);
+    return {
+      reconciledCount: entries.length,
+      completedAt: new Date(),
+    } as const;
+  });
+
 /**
- * Runs one deposit-fetch pass, persisting new deposits and projecting
- * block-relevant ones into the mempool ledger.
+ * Runs one deposit-discovery pass and persists newly visible deposits into the
+ * authoritative deposit log.
  */
 export const fetchAndInsertDepositUTxOs: Effect.Effect<
   void,
   SDK.LucidError | DatabaseError,
   MidgardContracts | Lucid | Database | Globals | NodeConfig
 > = Effect.gen(function* () {
-  const { api: lucid } = yield* Lucid;
-  const nodeConfig = yield* NodeConfig;
   const globals = yield* Globals;
   yield* Ref.set(globals.HEARTBEAT_DEPOSIT_FETCH, Date.now());
-  const startTime: number = yield* Ref.get(globals.LATEST_DEPOSIT_FETCH_TIME);
-  const endTime: number = Date.now();
 
   yield* Effect.logDebug("🏦 fetching DepositUTxOs...");
-
-  const depositUTxOs: SDK.DepositUTxO[] = yield* fetchDepositUTxOs(
-    lucid,
-    startTime,
-    endTime,
-  );
-
-  if (depositUTxOs.length <= 0) {
-    yield* Effect.logDebug("🏦 No deposit UTxOs found.");
+  const { reconciledCount, completedAt } =
+    yield* reconcileVisibleDepositUTxOs();
+  yield* Ref.set(globals.LATEST_DEPOSIT_FETCH_TIME, completedAt.getTime());
+  if (reconciledCount <= 0) {
     return;
   }
-
-  yield* Effect.logInfo(`🏦 ${depositUTxOs.length} deposit UTxOs found.`);
-
-  const entries = yield* Effect.forEach(depositUTxOs, (utxo) =>
-    depositUTxOToEntry(utxo, nodeConfig.NETWORK),
+  yield* Effect.logInfo(
+    `🏦 Reconciled ${reconciledCount} visible deposit UTxO(s) into deposits_utxos.`,
   );
-
-  yield* DepositsDB.insertEntries(entries);
-
-  const currentBlockStartTimeMs = yield* Ref.get(
-    globals.LATEST_LOCAL_BLOCK_END_TIME_MS,
-  );
-  const projectedEntries = entries.filter(
-    (entry) =>
-      entry[UserEventsUtils.Columns.INCLUSION_TIME].getTime() >
-      currentBlockStartTimeMs,
-  );
-  if (projectedEntries.length > 0) {
-    const projectedLedgerEntries = yield* Effect.forEach(
-      projectedEntries,
-      DepositsDB.toLedgerEntry,
-    );
-    yield* MempoolLedgerDB.insert(projectedLedgerEntries);
-    yield* Ref.update(globals.MEMPOOL_LEDGER_VERSION, (version) => version + 1);
-    yield* Effect.logInfo(
-      `🏦 Projected ${projectedEntries.length} deposit UTxO(s) into mempool_ledger for the current block pre-state.`,
-    );
-  }
-
-  yield* Ref.set(globals.LATEST_DEPOSIT_FETCH_TIME, endTime);
 });
+
+export const fetchAndInsertDepositUTxOsForCommitBarrier = (
+  inclusionTimeUpperBound: Date,
+): Effect.Effect<
+  Date,
+  SDK.LucidError | DatabaseError,
+  MidgardContracts | Lucid | Database | NodeConfig
+> =>
+  Effect.gen(function* () {
+    yield* Effect.logInfo(
+      `🏦 Running commit-time deposit ingestion barrier up to ${inclusionTimeUpperBound.toISOString()}.`,
+    );
+    const { reconciledCount, completedAt } =
+      yield* reconcileVisibleDepositUTxOs({
+        inclusionTimeUpperBound: BigInt(inclusionTimeUpperBound.getTime()),
+      });
+    yield* Effect.logInfo(
+      `🏦 Commit-time deposit barrier reconciled ${reconciledCount} deposit UTxO(s); fetch completed at ${completedAt.toISOString()} and locked the visibility barrier at ${inclusionTimeUpperBound.toISOString()}.`,
+    );
+    return inclusionTimeUpperBound;
+  });
 
 /**
  * Fiber wrapper that repeats deposit fetching on the provided schedule.

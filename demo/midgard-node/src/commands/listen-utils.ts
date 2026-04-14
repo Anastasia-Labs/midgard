@@ -1,5 +1,5 @@
 import { isHexString } from "@/utils.js";
-import { CML, fromHex } from "@lucid-evolution/lucid";
+import { fromHex } from "@lucid-evolution/lucid";
 import {
   cardanoTxBytesToMidgardNativeTxFull,
   computeMidgardNativeTxIdFromFull,
@@ -173,7 +173,6 @@ export type NormalizedSubmitTx =
       readonly txId: Buffer;
       readonly txIdHex: string;
       readonly txCbor: Buffer;
-      readonly txBodyHashForWitnesses?: Buffer;
       readonly source: "native" | "cardano-converted";
     }
   | {
@@ -205,16 +204,11 @@ export const normalizeSubmitTxHexToNative = (
       const nativeTx = cardanoTxBytesToMidgardNativeTxFull(submittedTxCbor);
       const normalizedTxCbor = encodeMidgardNativeTxFull(nativeTx);
       const txId = computeMidgardNativeTxIdFromFull(nativeTx);
-      const cardanoTx = CML.Transaction.from_cbor_bytes(submittedTxCbor);
-      const txBodyHashForWitnesses = Buffer.from(
-        CML.hash_transaction(cardanoTx.body()).to_raw_bytes(),
-      );
       return {
         ok: true,
         txId,
         txIdHex: txId.toString("hex"),
         txCbor: Buffer.from(normalizedTxCbor),
-        txBodyHashForWitnesses,
         source: "cardano-converted",
       };
     } catch (conversionError) {

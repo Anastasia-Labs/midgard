@@ -56,8 +56,14 @@ const isBlockfrostFallbackEligibleError = (error: unknown): boolean => {
 /**
  * Returns whether a Blockfrost failure specifically looks like quota/rate-limit
  * exhaustion.
+ *
+ * Lucid's Blockfrost provider does not always preserve the upstream 402/429
+ * payloads. Under sustained quota pressure it can also collapse into generic
+ * deserialization and "try again" errors, so we treat those provider-specific
+ * symptoms as quota-like and attempt the fallback API key before degrading to
+ * Koios.
  */
-const isBlockfrostRateLimitError = (error: unknown): boolean => {
+export const isBlockfrostRateLimitError = (error: unknown): boolean => {
   const message = formatUnknownError(error).toLowerCase();
   return (
     message.includes("project over limit") ||
@@ -67,7 +73,14 @@ const isBlockfrostRateLimitError = (error: unknown): boolean => {
     message.includes("\"status_code\":429") ||
     message.includes("status_code: 429") ||
     message.includes("too many requests") ||
-    message.includes("rate limit")
+    message.includes("rate limit") ||
+    message.includes("cannot convert undefined to a bigint") ||
+    message.includes("could not fetch utxos from blockfrost") ||
+    message.includes("could not fetch utxoswithunit from blockfrost") ||
+    message.includes("could not fetch utxobyunit from blockfrost") ||
+    message.includes("could not fetch datum from blockfrost") ||
+    message.includes("could not submit transaction to blockfrost") ||
+    message.includes("could not evaluate transaction")
   );
 };
 

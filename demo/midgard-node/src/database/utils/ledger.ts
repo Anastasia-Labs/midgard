@@ -159,6 +159,37 @@ export const retrieveEntriesWithAddress = (
   );
 
 /**
+ * Looks up ledger entries identified by their raw TxOutRef CBOR bytes.
+ */
+export const retrieveEntriesByOutRefs = (
+  tableName: string,
+  outrefs: readonly Buffer[],
+): Effect.Effect<readonly EntryWithTimeStamp[], DatabaseError, Database> =>
+  Effect.gen(function* () {
+    yield* Effect.logDebug(
+      `${tableName} db: attempt to retrieve Ledger UTxOs by outref`,
+    );
+    if (outrefs.length === 0) {
+      return [];
+    }
+    const sql = yield* SqlClient.SqlClient;
+    return yield* sql<EntryWithTimeStamp>`SELECT * FROM ${sql(
+      tableName,
+    )} WHERE ${sql(Columns.OUTREF)} IN ${sql.in(outrefs)}`;
+  }).pipe(
+    Effect.withLogSpan(`retrieveEntriesByOutRefs ${tableName}`),
+    Effect.tapErrorTag("SqlError", (e) =>
+      Effect.logError(
+        `${tableName} db: retrieveEntriesByOutRefs: ${JSON.stringify(e)}`,
+      ),
+    ),
+    sqlErrorToDatabaseError(
+      tableName,
+      "Failed to retrieve UTxOs for the given outrefs",
+    ),
+  );
+
+/**
  * Deletes the rows identified by the provided outrefs.
  */
 export const delEntries = (

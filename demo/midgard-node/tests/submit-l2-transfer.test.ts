@@ -26,6 +26,7 @@ import {
 import { runPhaseAValidation, type QueuedTx } from "@/validation/index.js";
 import { Database } from "@/services/database.js";
 import { NodeConfig } from "@/services/config.js";
+import { Lucid as LucidService } from "@/services/lucid.js";
 
 const TEST_SEED =
   "cupboard digital guitar diesel critic will afford salon game dolphin phrase baby dad urban machine barely rack acoustic blood vote misery enemy salute depart";
@@ -71,6 +72,21 @@ const mkNodeUtxo = ({
     assets,
   };
 };
+
+const mockLucidService = LucidService.make({
+  api: {
+    currentSlot: () => 0,
+  } as never,
+  referenceScriptsApi: {
+    currentSlot: () => 0,
+  } as never,
+  operatorMainAddress: "",
+  operatorMergeAddress: "",
+  referenceScriptsAddress: "",
+  switchToOperatorsMainWallet: Effect.succeed(undefined),
+  switchToOperatorsMergingWallet: Effect.succeed(undefined),
+  switchToReferenceScriptWallet: Effect.succeed(undefined),
+});
 
 describe("submit-l2-transfer config helpers", () => {
   it("parses a valid config and derives a normalized endpoint", () => {
@@ -275,7 +291,11 @@ describe("submit-l2-transfer program", () => {
         config,
         resolvedWalletSeedPhrase,
         assertWalletAddress,
-      }).pipe(Effect.provide(Database.layer), Effect.provide(NodeConfig.layer)),
+      }).pipe(
+        Effect.provideService(LucidService, mockLucidService),
+        Effect.provide(Database.layer),
+        Effect.provide(NodeConfig.layer),
+      ),
     );
 
     expect(result.txId).toHaveLength(64);

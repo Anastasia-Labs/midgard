@@ -8,6 +8,7 @@ import {
 import { Metric } from "effect";
 import { Worker } from "worker_threads";
 import { emitQueueStateMetrics } from "./queue-metrics.js";
+import { resolveWorkerEntry } from "./resolve-worker-entry.js";
 
 /**
  * Background block-commitment loop that packages processed L2 transactions into
@@ -53,6 +54,8 @@ export const buildAndSubmitCommitmentBlockAction = () =>
   Effect.gen(function* () {
     const globals = yield* Globals;
     const AVAILABLE_CONFIRMED_BLOCK = yield* globals.AVAILABLE_CONFIRMED_BLOCK;
+    const AVAILABLE_LOCAL_FINALIZATION_BLOCK =
+      yield* globals.AVAILABLE_LOCAL_FINALIZATION_BLOCK;
     const CURRENT_BLOCK_START_TIME_MS =
       yield* globals.LATEST_LOCAL_BLOCK_END_TIME_MS;
     const LOCAL_FINALIZATION_PENDING = yield* globals.LOCAL_FINALIZATION_PENDING;
@@ -64,11 +67,13 @@ export const buildAndSubmitCommitmentBlockAction = () =>
     const worker = Effect.async<WorkerOutput, WorkerError, never>((resume) => {
       Effect.runSync(Effect.logInfo(`👷 Starting block commitment worker...`));
       const worker = new Worker(
-        new URL("./commit-block-header.js", import.meta.url),
+        resolveWorkerEntry(import.meta.url, "commit-block-header.js"),
         {
           workerData: {
             data: {
               availableConfirmedBlock: AVAILABLE_CONFIRMED_BLOCK,
+              availableLocalFinalizationBlock:
+                AVAILABLE_LOCAL_FINALIZATION_BLOCK,
               currentBlockStartTimeMs: CURRENT_BLOCK_START_TIME_MS,
               localFinalizationPending: LOCAL_FINALIZATION_PENDING,
               mempoolTxsCountSoFar: PROCESSED_UNSUBMITTED_TXS_COUNT,
@@ -129,6 +134,7 @@ export const buildAndSubmitCommitmentBlockAction = () =>
       case "SuccessfulSubmissionOutput": {
         yield* Ref.update(globals.BLOCKS_IN_QUEUE, (n) => n + 1);
         yield* Ref.set(globals.AVAILABLE_CONFIRMED_BLOCK, "");
+        yield* Ref.set(globals.AVAILABLE_LOCAL_FINALIZATION_BLOCK, "");
         yield* Ref.set(
           globals.UNCONFIRMED_SUBMITTED_BLOCK_TX_HASH,
           workerOutput.submittedTxHash,
@@ -158,6 +164,7 @@ export const buildAndSubmitCommitmentBlockAction = () =>
       case "SubmittedAwaitingLocalFinalizationOutput": {
         yield* Ref.update(globals.BLOCKS_IN_QUEUE, (n) => n + 1);
         yield* Ref.set(globals.AVAILABLE_CONFIRMED_BLOCK, "");
+        yield* Ref.set(globals.AVAILABLE_LOCAL_FINALIZATION_BLOCK, "");
         yield* Ref.set(
           globals.UNCONFIRMED_SUBMITTED_BLOCK_TX_HASH,
           workerOutput.submittedTxHash,
@@ -173,8 +180,28 @@ export const buildAndSubmitCommitmentBlockAction = () =>
         );
         break;
       }
+      case "SubmittedAwaitingConfirmationOutput": {
+        yield* Ref.update(globals.BLOCKS_IN_QUEUE, (n) => n + 1);
+        yield* Ref.set(globals.AVAILABLE_CONFIRMED_BLOCK, "");
+        yield* Ref.set(globals.AVAILABLE_LOCAL_FINALIZATION_BLOCK, "");
+        yield* Ref.set(
+          globals.UNCONFIRMED_SUBMITTED_BLOCK_TX_HASH,
+          workerOutput.submittedTxHash,
+        );
+        yield* Ref.set(globals.UNCONFIRMED_SUBMITTED_BLOCK_SINCE_MS, Date.now());
+        yield* Ref.set(
+          globals.LATEST_LOCAL_BLOCK_END_TIME_MS,
+          workerOutput.blockEndTimeMs,
+        );
+        yield* Ref.set(globals.LOCAL_FINALIZATION_PENDING, true);
+        yield* Effect.logInfo(
+          "🔹 Block submitted; local finalization is intentionally deferred until L1 confirmation.",
+        );
+        break;
+      }
       case "SuccessfulLocalFinalizationRecoveryOutput": {
         yield* Ref.set(globals.LOCAL_FINALIZATION_PENDING, false);
+        yield* Ref.set(globals.AVAILABLE_LOCAL_FINALIZATION_BLOCK, "");
         yield* Ref.set(globals.PROCESSED_UNSUBMITTED_TXS_COUNT, 0);
         yield* Ref.set(globals.PROCESSED_UNSUBMITTED_TXS_SIZE, 0);
         yield* Effect.logInfo(

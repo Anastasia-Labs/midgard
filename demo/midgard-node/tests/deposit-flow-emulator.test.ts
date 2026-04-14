@@ -2,7 +2,7 @@ import "./utils.js";
 
 import { randomUUID } from "node:crypto";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { Effect } from "effect";
+import { Effect, Ref } from "effect";
 import * as SDK from "@al-ft/midgard-sdk";
 import {
   CML,
@@ -17,6 +17,7 @@ import {
   type LucidEvolution,
 } from "@lucid-evolution/lucid";
 import { utxosProgram } from "@/commands/utxos.js";
+import { seedLatestLocalBlockBoundaryOnStartup } from "@/commands/listen-startup.js";
 import {
   AddressHistoryDB,
   BlocksDB,
@@ -29,11 +30,12 @@ import {
   MempoolDB,
   MempoolLedgerDB,
   MempoolTxDeltasDB,
+  PendingBlockFinalizationsDB,
   ProcessedMempoolDB,
   TxRejectionsDB,
   UserEventsUtils,
 } from "@/database/index.js";
-import { fetchAndInsertDepositUTxOs } from "@/fibers/fetch-and-insert-deposit-utxos.js";
+import { buildBlockConfirmationAction } from "@/fibers/block-confirmation.js";
 import {
   Database,
   Globals,
@@ -56,7 +58,16 @@ import {
   buildUnsignedDepositTxProgram,
 } from "@/transactions/submit-deposit.js";
 import { runCommitBlockHeaderWorkerProgram } from "@/workers/commit-block-header.js";
-import { serializeStateQueueUTxO } from "@/workers/utils/commit-block-header.js";
+import { runConfirmBlockCommitmentsWorkerProgram } from "@/workers/confirm-block-commitments.js";
+import {
+  serializeStateQueueUTxO,
+  type WorkerInput as CommitWorkerInput,
+} from "@/workers/utils/commit-block-header.js";
+import {
+  type WorkerInput as ConfirmationWorkerInput,
+  type WorkerOutput as ConfirmationWorkerOutput,
+} from "@/workers/utils/confirm-block-commitments.js";
+import { WorkerError } from "@/workers/utils/common.js";
 import { deleteMpt, keyValueMptRoot } from "@/workers/utils/mpt.js";
 
 const EMULATOR_PROTOCOL_PARAMETERS = {
@@ -217,6 +228,7 @@ const clearNodeTables = Effect.all(
     MempoolTxDeltasDB.clear,
     ProcessedMempoolDB.clear,
     ImmutableDB.clear,
+    PendingBlockFinalizationsDB.clear,
     TxRejectionsDB.clear,
     CommonUtils.clearTable(DepositsDB.tableName),
   ],
@@ -510,20 +522,6 @@ const makeLucidRuntimeService = async ({
   ),
 });
 
-const runDepositFetch = (
-  contracts: SDK.MidgardValidators,
-  lucidService: Awaited<ReturnType<typeof makeLucidRuntimeService>>,
-) =>
-  Effect.runPromise(
-    fetchAndInsertDepositUTxOs.pipe(
-      Effect.provideService(LucidService, lucidService),
-      Effect.provideService(MidgardContracts, contracts),
-      Effect.provide(Globals.Default),
-      Effect.provide(Database.layer),
-      Effect.provide(NodeConfig.layer),
-    ),
-  );
-
 const runCommitWorker = async (
   contracts: SDK.MidgardValidators,
   lucidService: Awaited<ReturnType<typeof makeLucidRuntimeService>>,
@@ -532,19 +530,101 @@ const runCommitWorker = async (
   const currentBlockStartTimeMs = await getStateQueueDatumEndTime(
     latestBlock.datum,
   );
-  return Effect.runPromise(
-    serializeStateQueueUTxO(latestBlock).pipe(
-      Effect.andThen((serializedLatestBlock) =>
-        runCommitBlockHeaderWorkerProgram({
-          data: {
-            availableConfirmedBlock: serializedLatestBlock,
-            currentBlockStartTimeMs,
-            localFinalizationPending: false,
-            mempoolTxsCountSoFar: 0,
-            sizeOfProcessedTxsSoFar: 0,
-          },
-        }),
+  return runCommitWorkerWithInput(contracts, lucidService, {
+    data: {
+      availableConfirmedBlock: await Effect.runPromise(
+        serializeStateQueueUTxO(latestBlock),
       ),
+      availableLocalFinalizationBlock: "",
+      currentBlockStartTimeMs,
+      localFinalizationPending: false,
+      mempoolTxsCountSoFar: 0,
+      sizeOfProcessedTxsSoFar: 0,
+    },
+  });
+};
+
+const runCommitWorkerWithInput = (
+  contracts: SDK.MidgardValidators,
+  lucidService: Awaited<ReturnType<typeof makeLucidRuntimeService>>,
+  workerInput: CommitWorkerInput,
+) =>
+  Effect.runPromise(
+    runCommitBlockHeaderWorkerProgram(workerInput).pipe(
+      Effect.provideService(LucidService, lucidService),
+      Effect.provideService(MidgardContracts, contracts),
+      Effect.provide(Database.layer),
+      Effect.provide(NodeConfig.layer),
+    ),
+  );
+
+const makeGlobalsService = () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      return yield* Globals;
+    }).pipe(Effect.provide(Globals.Default)),
+  );
+
+const runBlockConfirmation = (
+  globals: Globals,
+  contracts: SDK.MidgardValidators,
+  lucidService: Awaited<ReturnType<typeof makeLucidRuntimeService>>,
+) =>
+  Effect.runPromise(
+    buildBlockConfirmationAction(
+      (
+        input: ConfirmationWorkerInput,
+      ): Effect.Effect<ConfirmationWorkerOutput, WorkerError, never> =>
+        runConfirmBlockCommitmentsWorkerProgram(input).pipe(
+          Effect.provideService(LucidService, lucidService),
+          Effect.provideService(MidgardContracts, contracts),
+          Effect.provide(NodeConfig.layer),
+          Effect.catchAllCause((cause) =>
+            Effect.fail(
+              new WorkerError({
+                worker: "confirm-block-commitments",
+                message: "Confirmation worker failed.",
+                cause,
+              }),
+            ),
+          ),
+        ),
+    ).pipe(
+      Effect.provideService(Globals, globals),
+      Effect.provide(Database.layer),
+    ),
+  );
+
+const runLocalFinalizationRecoveryWorker = async (
+  globals: Globals,
+  contracts: SDK.MidgardValidators,
+  lucidService: Awaited<ReturnType<typeof makeLucidRuntimeService>>,
+) => {
+  const workerInput = await Effect.runPromise(
+    Effect.gen(function* () {
+      return {
+        data: {
+          availableConfirmedBlock: yield* Ref.get(
+            globals.AVAILABLE_CONFIRMED_BLOCK,
+          ),
+          availableLocalFinalizationBlock: yield* Ref.get(
+            globals.AVAILABLE_LOCAL_FINALIZATION_BLOCK,
+          ),
+          currentBlockStartTimeMs: yield* Ref.get(
+            globals.LATEST_LOCAL_BLOCK_END_TIME_MS,
+          ),
+          localFinalizationPending: yield* Ref.get(
+            globals.LOCAL_FINALIZATION_PENDING,
+          ),
+          mempoolTxsCountSoFar: 0,
+          sizeOfProcessedTxsSoFar: 0,
+        },
+      } satisfies CommitWorkerInput;
+    }),
+  );
+
+  return Effect.runPromise(
+    runCommitBlockHeaderWorkerProgram(workerInput).pipe(
       Effect.provideService(LucidService, lucidService),
       Effect.provideService(MidgardContracts, contracts),
       Effect.provide(Database.layer),
@@ -719,7 +799,6 @@ describeRealisticDepositFlow("deposit flow emulator", () => {
     await initializeProtocol(fixture);
 
     const lucidService = await makeLucidRuntimeService(fixture);
-
     const schedulerBeforeCommit = await fetchSchedulerDatum(fixture);
     expect(schedulerBeforeCommit).toEqual(SDK.INITIAL_SCHEDULER_DATUM);
 
@@ -754,27 +833,15 @@ describeRealisticDepositFlow("deposit flow emulator", () => {
 
     vi.setSystemTime(new Date(fixture.emulator.now()));
 
-    await runDepositFetch(fixture.contracts, lucidService);
-
     const depositEntries = await runNodeDatabaseEffect(
       DepositsDB.retrieveAllEntries(),
     );
-    expect(depositEntries).toHaveLength(1);
+    expect(depositEntries).toHaveLength(0);
 
-    const projectedUtxos = await Effect.runPromise(
+    const utxosBeforeProjection = await Effect.runPromise(
       utxosProgram(l2Address).pipe(Effect.provide(Database.layer)),
     );
-    expect(projectedUtxos.utxoCount).toEqual(1);
-    expect(projectedUtxos.totals.lovelace).toEqual(12_000_000n);
-    expect(projectedUtxos.utxos[0]?.address).toEqual(l2Address);
-    expect(projectedUtxos.utxos[0]?.datum).toBeUndefined();
-
-    const expectedDepositsRoot = await Effect.runPromise(
-      keyValueMptRoot(
-        depositEntries.map((entry) => entry[UserEventsUtils.Columns.ID]),
-        depositEntries.map((entry) => entry[UserEventsUtils.Columns.INFO]),
-      ),
-    );
+    expect(utxosBeforeProjection.utxoCount).toEqual(0);
 
     const latestBlockBeforeCommit = await fetchLatestCommittedBlock(
       fixture.operatorLucid,
@@ -787,10 +854,10 @@ describeRealisticDepositFlow("deposit flow emulator", () => {
     );
 
     expect(commitOutput).toBeDefined();
-    expect(commitOutput?.type).toBe("SuccessfulSubmissionOutput");
+    expect(commitOutput?.type).toBe("SubmittedAwaitingConfirmationOutput");
     if (
       commitOutput === undefined ||
-      commitOutput.type !== "SuccessfulSubmissionOutput"
+      commitOutput.type !== "SubmittedAwaitingConfirmationOutput"
     ) {
       throw new Error(
         `Unexpected commit output: ${JSON.stringify(commitOutput)}`,
@@ -798,7 +865,107 @@ describeRealisticDepositFlow("deposit flow emulator", () => {
     }
     expect(commitOutput.mempoolTxsCount).toEqual(0);
 
+    const depositEntriesAfterSubmission = await runNodeDatabaseEffect(
+      DepositsDB.retrieveAllEntries(),
+    );
+    expect(depositEntriesAfterSubmission).toHaveLength(1);
+    const depositEntry = depositEntriesAfterSubmission[0]!;
+    expect(
+      depositEntry[DepositsDB.Columns.DEPOSIT_L1_TX_HASH]?.toString("hex"),
+    ).toEqual(depositTxHash);
+    expect(depositEntry[DepositsDB.Columns.STATUS]).toEqual(
+      DepositsDB.Status.Projected,
+    );
+    expect(depositEntry[DepositsDB.Columns.PROJECTED_HEADER_HASH]).toBeNull();
+
+    const projectedUtxos = await Effect.runPromise(
+      utxosProgram(l2Address).pipe(Effect.provide(Database.layer)),
+    );
+    expect(projectedUtxos.utxoCount).toEqual(1);
+    expect(projectedUtxos.totals.lovelace).toEqual(12_000_000n);
+    expect(projectedUtxos.utxos[0]?.address).toEqual(l2Address);
+    expect(projectedUtxos.utxos[0]?.datum).toBeUndefined();
+
+    const activePendingAfterSubmission = await runNodeDatabaseEffect(
+      PendingBlockFinalizationsDB.retrieveActive(),
+    );
+    expect(activePendingAfterSubmission._tag).toBe("Some");
+    if (activePendingAfterSubmission._tag !== "Some") {
+      throw new Error("Expected an active pending-finalization journal record");
+    }
+    expect(
+      activePendingAfterSubmission.value[
+        PendingBlockFinalizationsDB.Columns.STATUS
+      ],
+    ).toBe(
+      PendingBlockFinalizationsDB.Status.SubmittedLocalFinalizationPending,
+    );
+
+    const expectedDepositsRoot = await Effect.runPromise(
+      keyValueMptRoot(
+        depositEntriesAfterSubmission.map(
+          (entry) => entry[UserEventsUtils.Columns.ID],
+        ),
+        depositEntriesAfterSubmission.map(
+          (entry) => entry[UserEventsUtils.Columns.INFO],
+        ),
+      ),
+    );
+
     await fixture.operatorLucid.awaitTx(commitOutput.submittedTxHash);
+    const restartedGlobals = await makeGlobalsService();
+
+    const preConfirmationLocalFinalizationPending = await Effect.runPromise(
+      Ref.get(restartedGlobals.LOCAL_FINALIZATION_PENDING),
+    );
+    const preConfirmationRecoverableBlock = await Effect.runPromise(
+      Ref.get(restartedGlobals.AVAILABLE_LOCAL_FINALIZATION_BLOCK),
+    );
+    expect(preConfirmationLocalFinalizationPending).toBe(false);
+    expect(preConfirmationRecoverableBlock).toBe("");
+
+    await runBlockConfirmation(
+      restartedGlobals,
+      fixture.contracts,
+      lucidService,
+    );
+
+    const observedPendingFinalization = await runNodeDatabaseEffect(
+      PendingBlockFinalizationsDB.retrieveActive(),
+    );
+    expect(observedPendingFinalization._tag).toBe("Some");
+    if (observedPendingFinalization._tag !== "Some") {
+      throw new Error(
+        "Expected the pending-finalization journal to remain active until local recovery completes",
+      );
+    }
+    expect(
+      observedPendingFinalization.value[
+        PendingBlockFinalizationsDB.Columns.STATUS
+      ],
+    ).toBe(PendingBlockFinalizationsDB.Status.ObservedWaitingStability);
+
+    const localFinalizationPendingAfterObservation = await Effect.runPromise(
+      Ref.get(restartedGlobals.LOCAL_FINALIZATION_PENDING),
+    );
+    const recoverableConfirmedBlockAfterObservation = await Effect.runPromise(
+      Ref.get(restartedGlobals.AVAILABLE_LOCAL_FINALIZATION_BLOCK),
+    );
+    const localBoundaryAfterObservation = await Effect.runPromise(
+      Ref.get(restartedGlobals.LATEST_LOCAL_BLOCK_END_TIME_MS),
+    );
+    expect(localFinalizationPendingAfterObservation).toBe(true);
+    expect(recoverableConfirmedBlockAfterObservation).not.toBe("");
+    expect(localBoundaryAfterObservation).toBe(commitOutput.blockEndTimeMs);
+
+    const recoveryOutput = await runLocalFinalizationRecoveryWorker(
+      restartedGlobals,
+      fixture.contracts,
+      lucidService,
+    );
+    expect(recoveryOutput.type).toBe(
+      "SuccessfulLocalFinalizationRecoveryOutput",
+    );
 
     const latestBlockAfterCommit = await fetchLatestCommittedBlock(
       fixture.operatorLucid,
@@ -807,7 +974,46 @@ describeRealisticDepositFlow("deposit flow emulator", () => {
     const latestHeader = await Effect.runPromise(
       SDK.getHeaderFromStateQueueDatum(latestBlockAfterCommit.datum),
     );
+    const latestHeaderHash = await Effect.runPromise(
+      SDK.hashBlockHeader(latestHeader),
+    );
     const schedulerAfterCommit = await fetchSchedulerDatum(fixture);
+    const depositEntriesAfterCommit = await runNodeDatabaseEffect(
+      DepositsDB.retrieveAllEntries(),
+    );
+    expect(depositEntriesAfterCommit).toHaveLength(1);
+    expect(
+      depositEntriesAfterCommit[0]?.[
+        DepositsDB.Columns.PROJECTED_HEADER_HASH
+      ]?.toString("hex"),
+    ).toEqual(latestHeaderHash);
+    expect(depositEntriesAfterCommit[0]?.[DepositsDB.Columns.STATUS]).toEqual(
+      DepositsDB.Status.Projected,
+    );
+
+    const activePendingFinalization = await runNodeDatabaseEffect(
+      PendingBlockFinalizationsDB.retrieveActive(),
+    );
+    expect(activePendingFinalization._tag).toBe("None");
+
+    const localBoundaryAfterRecovery = await Effect.runPromise(
+      Ref.get(restartedGlobals.LATEST_LOCAL_BLOCK_END_TIME_MS),
+    );
+    expect(localBoundaryAfterRecovery).toBe(commitOutput.blockEndTimeMs);
+
+    const coldStartGlobals = await makeGlobalsService();
+    await Effect.runPromise(
+      seedLatestLocalBlockBoundaryOnStartup.pipe(
+        Effect.provideService(Globals, coldStartGlobals),
+        Effect.provideService(LucidService, lucidService),
+        Effect.provideService(MidgardContracts, fixture.contracts),
+        Effect.provide(Database.layer),
+      ),
+    );
+    const coldStartBoundary = await Effect.runPromise(
+      Ref.get(coldStartGlobals.LATEST_LOCAL_BLOCK_END_TIME_MS),
+    );
+    expect(coldStartBoundary).toBe(commitOutput.blockEndTimeMs);
 
     expect(latestBlockAfterCommit.utxo.txHash).toEqual(
       commitOutput.submittedTxHash,

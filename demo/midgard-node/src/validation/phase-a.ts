@@ -7,6 +7,7 @@ import {
   MIDGARD_POSIX_TIME_NONE,
   computeHash32,
   computeMidgardNativeTxIdFromFull,
+  decodeMidgardNativeMint,
   decodeMidgardNativeByteListPreimage,
   decodeMidgardNativeTxFull,
 } from "@/midgard-tx-codec/index.js";
@@ -62,6 +63,11 @@ type NativeWitnessVerification = {
   readonly witnessSignerSet: ReadonlySet<string>;
   readonly witnessSigners: InstanceType<typeof CML.Ed25519KeyHashList>;
   readonly witnesses: readonly InstanceType<typeof CML.Vkeywitness>[];
+};
+
+type DecodedScriptWitnesses = {
+  readonly nativeScriptHashes: readonly string[];
+  readonly plutusScriptHashes: readonly string[];
 };
 
 const decodeNativeWitnesses = (
@@ -124,42 +130,115 @@ const verifyNativeWitnessSignatures = (
   return null;
 };
 
-const decodeAndVerifyNativeScripts = (
+const decodeAndClassifyScriptWitnesses = (
   txId: Buffer,
   preimageCbor: Uint8Array,
   validityIntervalStart: bigint | undefined,
   validityIntervalEnd: bigint | undefined,
   witnessSigners: InstanceType<typeof CML.Ed25519KeyHashList>,
-): string[] | RejectedTx => {
+): DecodedScriptWitnesses | RejectedTx => {
   try {
     const scripts = decodeMidgardNativeByteListPreimage(
       preimageCbor,
       "native.script_tx_wits",
     );
-    const hashes: string[] = [];
+    const nativeScriptHashes: string[] = [];
+    const plutusScriptHashes: string[] = [];
     for (let i = 0; i < scripts.length; i++) {
-      const script = CML.NativeScript.from_cbor_bytes(scripts[i]);
-      const hash = script.hash();
-      if (hash === undefined) {
-        throw new Error(`native script hash undefined at index ${i}`);
-      }
-      hashes.push(hash.to_hex());
-      if (
-        !script.verify(validityIntervalStart, validityIntervalEnd, witnessSigners)
-      ) {
-        return reject(
-          txId,
-          RejectCodes.NativeScriptInvalid,
-          `native script verification failed for script index ${i}`,
-        );
+      try {
+        const wrapped = CML.Script.from_cbor_bytes(scripts[i]);
+        const native = wrapped.as_native();
+        if (native !== undefined) {
+          const hash = native.hash();
+          if (hash === undefined) {
+            throw new Error(`native script hash undefined at index ${i}`);
+          }
+          nativeScriptHashes.push(hash.to_hex());
+          if (
+            !native.verify(
+              validityIntervalStart,
+              validityIntervalEnd,
+              witnessSigners,
+            )
+          ) {
+            return reject(
+              txId,
+              RejectCodes.NativeScriptInvalid,
+              `native script verification failed for script index ${i}`,
+            );
+          }
+          continue;
+        }
+        plutusScriptHashes.push(wrapped.hash().to_hex());
+      } catch {
+        const native = CML.NativeScript.from_cbor_bytes(scripts[i]);
+        const hash = native.hash();
+        if (hash === undefined) {
+          throw new Error(`native script hash undefined at index ${i}`);
+        }
+        nativeScriptHashes.push(hash.to_hex());
+        if (
+          !native.verify(
+            validityIntervalStart,
+            validityIntervalEnd,
+            witnessSigners,
+          )
+        ) {
+          return reject(
+            txId,
+            RejectCodes.NativeScriptInvalid,
+            `native script verification failed for script index ${i}`,
+          );
+        }
       }
     }
-    return hashes;
+    return { nativeScriptHashes, plutusScriptHashes };
   } catch (e) {
     return reject(
       txId,
       RejectCodes.InvalidFieldType,
       `native script witness decode failed: ${String(e)}`,
+    );
+  }
+};
+
+const decodeNativeRedeemerWitnesses = (
+  txId: Buffer,
+  preimageCbor: Uint8Array,
+): boolean | RejectedTx => {
+  if (Buffer.from(preimageCbor).equals(EMPTY_CBOR_LIST)) {
+    return false;
+  }
+  try {
+    CML.Redeemers.from_cbor_bytes(preimageCbor);
+    return true;
+  } catch (e) {
+    return reject(
+      txId,
+      RejectCodes.InvalidFieldType,
+      `native redeemer witness decode failed: ${String(e)}`,
+    );
+  }
+};
+
+const decodeNativeDatumWitnesses = (
+  txId: Buffer,
+  preimageCbor: Uint8Array,
+): number | RejectedTx => {
+  try {
+    const datumBytes = decodeMidgardNativeByteListPreimage(
+      preimageCbor,
+      "native.datum_tx_wits",
+    );
+    for (let i = 0; i < datumBytes.length; i++) {
+      CML.PlutusData.from_cbor_bytes(datumBytes[i]);
+    }
+    return datumBytes.length;
+  } catch (e) {
+    return reject(
+      txId,
+      RejectCodes.InvalidFieldType,
+      `native datum witness decode failed: ${String(e)}`,
     );
   }
 };
@@ -191,6 +270,82 @@ const decodeNativeRequiredSigners = (
       txId,
       RejectCodes.InvalidFieldType,
       `native required signers decode failed: ${String(e)}`,
+    );
+  }
+};
+
+const decodeNativeRequiredObservers = (
+  txId: Buffer,
+  preimageCbor: Uint8Array,
+): string[] | RejectedTx => {
+  try {
+    const observerBytes = decodeMidgardNativeByteListPreimage(
+      preimageCbor,
+      "native.required_observers",
+    );
+    const observers: string[] = [];
+    const seenObservers = new Set<string>();
+    for (let i = 0; i < observerBytes.length; i++) {
+      const observer = observerBytes[i];
+      if (observer.length === 28) {
+        const observerHex = observer.toString("hex");
+        if (seenObservers.has(observerHex)) {
+          return reject(
+            txId,
+            RejectCodes.InvalidFieldType,
+            `duplicate required observer ${observerHex}`,
+          );
+        }
+        seenObservers.add(observerHex);
+        observers.push(observerHex);
+        continue;
+      }
+
+      let credential: InstanceType<typeof CML.Credential>;
+      try {
+        credential = CML.Credential.from_cbor_bytes(observer);
+      } catch (e) {
+        return reject(
+          txId,
+          RejectCodes.InvalidFieldType,
+          `required observer at index ${i} must be a 28-byte script hash or a CBOR-encoded script credential: ${String(e)}`,
+        );
+      }
+
+      if (credential.kind() !== CML.CredentialKind.Script) {
+        return reject(
+          txId,
+          RejectCodes.InvalidFieldType,
+          `required observer at index ${i} must be a script credential`,
+        );
+      }
+
+      const scriptHash = credential.as_script();
+      if (scriptHash === undefined) {
+        return reject(
+          txId,
+          RejectCodes.InvalidFieldType,
+          `required observer at index ${i} failed to decode script hash`,
+        );
+      }
+
+      const observerHex = scriptHash.to_hex();
+      if (seenObservers.has(observerHex)) {
+        return reject(
+          txId,
+          RejectCodes.InvalidFieldType,
+          `duplicate required observer ${observerHex}`,
+        );
+      }
+      seenObservers.add(observerHex);
+      observers.push(observerHex);
+    }
+    return observers;
+  } catch (e) {
+    return reject(
+      txId,
+      RejectCodes.InvalidFieldType,
+      `native required observers decode failed: ${String(e)}`,
     );
   }
 };
@@ -235,34 +390,6 @@ const validateNativeOne = (
       queuedTx.txId,
       RejectCodes.AuxDataForbidden,
       "auxiliary_data_hash must match canonical empty hash",
-    );
-  }
-
-  if (!nativeTx.body.mintRoot.equals(EMPTY_LIST_ROOT)) {
-    return reject(queuedTx.txId, RejectCodes.MintForbidden, "mint_root");
-  }
-
-  if (!nativeTx.body.requiredObserversRoot.equals(EMPTY_LIST_ROOT)) {
-    return reject(
-      queuedTx.txId,
-      RejectCodes.UnsupportedFieldNonEmpty,
-      "required_observers",
-    );
-  }
-
-  if (!nativeTx.body.scriptIntegrityHash.equals(EMPTY_NULL_ROOT)) {
-    return reject(
-      queuedTx.txId,
-      RejectCodes.UnsupportedFieldNonEmpty,
-      "script_integrity_hash",
-    );
-  }
-
-  if (!nativeTx.witnessSet.redeemerTxWitsRoot.equals(EMPTY_LIST_ROOT)) {
-    return reject(
-      queuedTx.txId,
-      RejectCodes.UnsupportedFieldNonEmpty,
-      "redeemer_tx_wits",
     );
   }
 
@@ -314,6 +441,25 @@ const validateNativeOne = (
     return referenceInputsDecoded;
   }
   const referenceInputs = referenceInputsDecoded;
+  const seenReferenceInputs = new Set<string>();
+  for (const referenceInput of referenceInputs) {
+    const outRefHex = referenceInput.toString("hex");
+    if (seenReferenceInputs.has(outRefHex)) {
+      return reject(
+        queuedTx.txId,
+        RejectCodes.DuplicateInputInTx,
+        `duplicate reference input ${outRefHex}`,
+      );
+    }
+    if (seenInputs.has(outRefHex)) {
+      return reject(
+        queuedTx.txId,
+        RejectCodes.DuplicateInputInTx,
+        `outref appears in both spend and reference inputs ${outRefHex}`,
+      );
+    }
+    seenReferenceInputs.add(outRefHex);
+  }
 
   /**
    * Normalizes an output into the byte representation used by Phase A validation.
@@ -417,6 +563,33 @@ const validateNativeOne = (
   }
   const requiredSigners = requiredSignersResult;
 
+  const requiredObserversResult = decodeNativeRequiredObservers(
+    queuedTx.txId,
+    nativeTx.body.requiredObserversPreimageCbor,
+  );
+  if ("code" in requiredObserversResult) {
+    return requiredObserversResult;
+  }
+  const requiredObserverHashes = requiredObserversResult;
+
+  let mintPolicyHashes: readonly string[] = [];
+  let mintedValue = CML.Value.zero();
+  let burnedValue = CML.Value.zero();
+  try {
+    const decodedMint = decodeMidgardNativeMint(nativeTx.body.mintPreimageCbor);
+    if (decodedMint !== undefined) {
+      mintPolicyHashes = decodedMint.policyIds;
+      mintedValue = decodedMint.mintedValue;
+      burnedValue = decodedMint.burnedValue;
+    }
+  } catch (e) {
+    return reject(
+      queuedTx.txId,
+      RejectCodes.InvalidFieldType,
+      `native mint decode failed: ${String(e)}`,
+    );
+  }
+
   if (requiredSigners.length > 0 && witnessKeyHashes.length === 0) {
     return reject(
       queuedTx.txId,
@@ -435,26 +608,83 @@ const validateNativeOne = (
     }
   }
 
+  // Converted ingress must still prove authorization over the Midgard-native
+  // body hash; Cardano-domain signature hashes are not admitted.
   const signatureResult = verifyNativeWitnessSignatures(
     queuedTx.txId,
-    queuedTx.txBodyHashForWitnesses ?? nativeTx.compact.transactionBodyHash,
+    nativeTx.compact.transactionBodyHash,
     witnessVerificationResult.witnesses,
   );
   if (signatureResult !== null) {
     return signatureResult;
   }
 
-  const nativeScriptHashesResult = decodeAndVerifyNativeScripts(
+  const scriptWitnessesResult = decodeAndClassifyScriptWitnesses(
     queuedTx.txId,
     nativeTx.witnessSet.scriptTxWitsPreimageCbor,
     validityIntervalStart,
     validityIntervalEnd,
     witnessSigners,
   );
-  if ("code" in nativeScriptHashesResult) {
-    return nativeScriptHashesResult;
+  if ("code" in scriptWitnessesResult) {
+    return scriptWitnessesResult;
   }
-  const nativeScriptHashes = nativeScriptHashesResult;
+  const { nativeScriptHashes, plutusScriptHashes } = scriptWitnessesResult;
+
+  const redeemerWitnessesResult = decodeNativeRedeemerWitnesses(
+    queuedTx.txId,
+    nativeTx.witnessSet.redeemerTxWitsPreimageCbor,
+  );
+  if (
+    typeof redeemerWitnessesResult === "object" &&
+    redeemerWitnessesResult !== null &&
+    "code" in redeemerWitnessesResult
+  ) {
+    return redeemerWitnessesResult;
+  }
+  const hasRedeemerWitnesses = redeemerWitnessesResult;
+
+  const datumWitnessCountResult = decodeNativeDatumWitnesses(
+    queuedTx.txId,
+    nativeTx.witnessSet.datumTxWitsPreimageCbor,
+  );
+  if (
+    typeof datumWitnessCountResult === "object" &&
+    datumWitnessCountResult !== null &&
+    "code" in datumWitnessCountResult
+  ) {
+    return datumWitnessCountResult;
+  }
+  const datumWitnessCount = datumWitnessCountResult;
+
+  const requiresPlutusEvaluation =
+    plutusScriptHashes.length > 0 ||
+    hasRedeemerWitnesses ||
+    datumWitnessCount > 0 ||
+    !nativeTx.body.scriptIntegrityHash.equals(EMPTY_NULL_ROOT);
+
+  if (
+    requiresPlutusEvaluation &&
+    nativeTx.body.scriptIntegrityHash.equals(EMPTY_NULL_ROOT)
+  ) {
+    return reject(
+      queuedTx.txId,
+      RejectCodes.InvalidFieldType,
+      "missing script_integrity_hash for plutus witness bundle",
+    );
+  }
+
+  if (
+    requiresPlutusEvaluation &&
+    requiredObserverHashes.length > 0 &&
+    nativeTx.body.networkId === MIDGARD_NATIVE_NETWORK_ID_NONE
+  ) {
+    return reject(
+      queuedTx.txId,
+      RejectCodes.InvalidFieldType,
+      "network_id is required when plutus witness bundles use required observers",
+    );
+  }
 
   return {
     txId: queuedTx.txId,
@@ -466,7 +696,13 @@ const validateNativeOne = (
     referenceInputs,
     outputSum,
     witnessKeyHashes,
+    requiredObserverHashes,
+    mintPolicyHashes,
+    mintedValue,
+    burnedValue,
     nativeScriptHashes,
+    plutusScriptHashes,
+    requiresPlutusEvaluation,
     processedTx: {
       txId: queuedTx.txId,
       txCbor: queuedTx.txCbor,

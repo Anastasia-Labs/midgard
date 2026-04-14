@@ -1,3 +1,5 @@
+use cardano/transaction.{OutputReference, Transaction}
+
 validator hub_oracle_mint {
   else(_) {
     trace @"Midgard Demo – Hub Oracle Mint"
@@ -142,6 +144,25 @@ validator reserve_withdraw {
   else(_) {
     trace @"Midgard Demo – Reserve Withdraw"
     True
+  }
+}
+
+validator always_fail {
+  else(_) {
+    trace @"Midgard Demo – Always Fail"
+    fail
+  }
+}
+
+validator datum_equals_redeemer_spend {
+  spend(
+    datum: Option<Int>,
+    redeemer: Int,
+    _own_out_ref: OutputReference,
+    _tx: Transaction,
+  ) {
+    expect Some(actual_datum) = datum
+    actual_datum == redeemer
   }
 }
 

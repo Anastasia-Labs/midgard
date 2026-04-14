@@ -235,6 +235,8 @@ const buildQueuedBlock = (
         scriptTxWitsPreimageCbor: EMPTY_CBOR_LIST,
         redeemerTxWitsRoot: EMPTY_LIST_ROOT,
         redeemerTxWitsPreimageCbor: EMPTY_CBOR_LIST,
+        datumTxWitsRoot: EMPTY_LIST_ROOT,
+        datumTxWitsPreimageCbor: EMPTY_CBOR_LIST,
       },
     };
     const txForQueue = {
@@ -268,7 +270,7 @@ const runPhaseB = (
 ) =>
   Effect.runPromise(
     runPhaseBValidation(accepted, preState, {
-      nowMillis: 0n,
+      nowCardanoSlotNo: 0n,
       bucketConcurrency: Math.max(1, Math.floor(PHASE_A_CONCURRENCY / 2)),
     }),
   );

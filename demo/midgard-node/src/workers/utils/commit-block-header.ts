@@ -11,6 +11,7 @@ import {
 export type WorkerInput = {
   data: {
     availableConfirmedBlock: "" | SerializedStateQueueUTxO;
+    availableLocalFinalizationBlock: "" | SerializedStateQueueUTxO;
     currentBlockStartTimeMs: number;
     localFinalizationPending: boolean;
     mempoolTxsCountSoFar: number;
@@ -52,6 +53,15 @@ export type SubmittedAwaitingLocalFinalizationOutput = {
   error: string;
 };
 
+export type SubmittedAwaitingConfirmationOutput = {
+  type: "SubmittedAwaitingConfirmationOutput";
+  submittedTxHash: string;
+  txSize: number;
+  mempoolTxsCount: number;
+  sizeOfBlocksTxs: number;
+  blockEndTimeMs: number;
+};
+
 export type SuccessfulLocalFinalizationRecoveryOutput = {
   type: "SuccessfulLocalFinalizationRecoveryOutput";
   mempoolTxsCount: number;
@@ -64,6 +74,7 @@ export type WorkerOutput =
   | NothingToCommitOutput
   | FailureOutput
   | SubmittedAwaitingLocalFinalizationOutput
+  | SubmittedAwaitingConfirmationOutput
   | SuccessfulLocalFinalizationRecoveryOutput;
 
 // Datatype to use CBOR hex of state queue UTxOs instead of `UTxO` from LE for
