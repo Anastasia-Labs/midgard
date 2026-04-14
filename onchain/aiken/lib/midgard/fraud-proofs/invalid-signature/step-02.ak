@@ -9,7 +9,7 @@ pub type State {
 }
 
 pub type Datum =
-  ct.StepDatum<Data>
+  ct.StepDatum<State>
 
 pub type Args {
   input_index: Int,

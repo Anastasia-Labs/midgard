@@ -74,7 +74,7 @@ validator main(
   }
 }
 
-//TODO: This will need execution traces to calculate it
+// TODO: This will need execution traces to calculate it
 fn get_min_transaction_fee(_transaction: MidgardTxCompact) {
   0
 }
