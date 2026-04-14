@@ -20,8 +20,15 @@ use midgard/fraud_proof_catalogue
 use midgard/hub_oracle as hub
 use midgard/ledger_state.{
   Header, MidgardTxBodyCompact, MidgardTxCompact, MidgardTxId,
+  MidgardTxWitnessSetCompact,
 }
 use midgard/state_queue
+
+pub type TxFieldPreimage {
+  TxBodyProvided(MidgardTxBodyCompact)
+  TxWitsProvided(MidgardTxWitnessSetCompact)
+  TxBodyAndWitsProvided(MidgardTxBodyCompact, MidgardTxWitnessSetCompact)
+}
 
 pub type TxInclusionArgs {
   input_index: Int,
@@ -30,11 +37,16 @@ pub type TxInclusionArgs {
   state_queue_node_ref_input_index: Int,
   tx_id: MidgardTxId,
   tx: MidgardTxCompact,
-  tx_body: MidgardTxBodyCompact,
+  tx_field_preimage: TxFieldPreimage,
   tx_membership_proof: Proof,
   inclusion_proof_script_withdraw_redeemer_index: Int,
 }
 
+/// > [!NOTE]
+/// > This function uses `plutarch_phas` under the hood, which is a helper that
+/// > cannot be used more than once within a given transaction. So if a
+/// > validator utilizes this function, it should not use `plutarch_phas`
+/// > alongside it.
 pub fn pass_tx_to_next_step(
   computation_thread_token_policy_id: PolicyId,
   hub_oracle: ScriptHash,
@@ -52,7 +64,7 @@ pub fn pass_tx_to_next_step(
     Header,
     MidgardTxId,
     MidgardTxCompact,
-    MidgardTxBodyCompact,
+    TxFieldPreimage,
   ) ->
     Bool,
 ) -> Bool {
@@ -63,7 +75,7 @@ pub fn pass_tx_to_next_step(
     state_queue_node_ref_input_index,
     tx_id,
     tx,
-    tx_body,
+    tx_field_preimage,
     tx_membership_proof,
     inclusion_proof_script_withdraw_redeemer_index,
   } = tx_inclusion_args
@@ -97,7 +109,7 @@ pub fn pass_tx_to_next_step(
     verify_tx_in_state_queue_node_and_get_header(
       tx_id,
       tx,
-      tx_body,
+      tx_field_preimage,
       tx_membership_proof,
       computation_thread_token_asset_name,
       hub_oracle,
@@ -120,7 +132,7 @@ pub fn pass_tx_to_next_step(
       header,
       tx_id,
       tx,
-      tx_body,
+      tx_field_preimage,
     )
 
   // Done.
@@ -359,22 +371,34 @@ pub fn finalize(
 
 // Internal Helpers
 
-pub fn verify_tx_and_its_body(
+pub fn verify_tx_and_its_provided_field_preimage(
   tx_id: MidgardTxId,
   tx: MidgardTxCompact,
-  tx_body: MidgardTxBodyCompact,
+  tx_field_preimage: TxFieldPreimage,
 ) -> Bool {
   let tx_data: Data = tx
   and {
     verify_hash_32(data: tx_data, data_hash: tx_id),
-    verify_hash_32(data: tx_body, data_hash: tx.body),
+    when tx_field_preimage is {
+      TxBodyProvided(tx_body) ->
+        verify_hash_32(data: tx_body, data_hash: tx.body)
+      TxWitsProvided(tx_wits) ->
+        verify_hash_32(data: tx_wits, data_hash: tx.wits)
+      TxBodyAndWitsProvided(tx_body, tx_wits) -> {
+        let MidgardTxCompact { body, wits, .. } = tx
+        and {
+          verify_hash_32(data: tx_body, data_hash: body),
+          verify_hash_32(data: tx_wits, data_hash: wits),
+        }
+      }
+    },
   }
 }
 
 pub fn verify_tx_in_state_queue_node_and_get_header(
   tx_id: MidgardTxId,
   tx: MidgardTxCompact,
-  tx_body: MidgardTxBodyCompact,
+  tx_field_preimage: TxFieldPreimage,
   tx_membership_proof: Proof,
   computation_thread_token_asset_name: AssetName,
   hub_oracle: PolicyId,
@@ -384,9 +408,9 @@ pub fn verify_tx_in_state_queue_node_and_get_header(
   reference_inputs: List<Input>,
   redeemers: Pairs<ScriptPurpose, Redeemer>,
 ) -> Header {
-  // 1. Verify authenticity of the provided tx and its body against its ID, and
-  //    body hash.
-  expect verify_tx_and_its_body(tx_id, tx, tx_body)
+  // 1. Verify authenticity of the provided tx and its field preimage against
+  //    its ID, and the field's hash.
+  expect verify_tx_and_its_provided_field_preimage(tx_id, tx, tx_field_preimage)
 
   // 2. Hub oracle must be provided as a reference input.
   let hub.Datum { state_queue: state_queue_policy, .. } =
