@@ -8,6 +8,7 @@ use cardano/transaction.{
 use midgard/common/utils
 use midgard/hub_oracle as hub
 use midgard/ledger_state
+use midgard/operator_directory.{SlashOperatorForBadSettlement}
 use midgard/operator_directory/active_operators
 use midgard/operator_directory/retired_operators
 use midgard/scheduler
@@ -82,10 +83,11 @@ validator spend(hub_oracle: ScriptHash, settlement_policy_id: ScriptHash) {
           hub.get_datum(reference_inputs, hub_oracle, hub_ref_input_index)
 
         // 6. The transaction must include an input (`operator_node`), spent via
-        //    the Update Bond Hold New Settlement redeemer, of an
+        //    the `UpdateBondHoldNewSettlement` redeemer, of an
         //    `active_operators` node with a key matching the resolution claim's
         //    operator.
         expect active_operators.UpdateBondHoldNewSettlement {
+          active_operator,
           new_bond_unlock_time,
           ..
         } =
@@ -96,6 +98,7 @@ validator spend(hub_oracle: ScriptHash, settlement_policy_id: ScriptHash) {
             inputs: inputs,
             redeemers: redeemers,
           )
+        expect operator == active_operator
 
         // 7. The `bond_unlock_time` of the `operator_node` must match the
         //    `resolution_time` of the resolution claim, which lies in the
@@ -118,16 +121,16 @@ validator spend(hub_oracle: ScriptHash, settlement_policy_id: ScriptHash) {
           }
         expect cont_output_datum_data == expected_output_datum_data
 
-        // 8. The transaction must include the `scheduler` utxo as a reference
+        // 8. The transaction must include the `scheduler` UTxO as a reference
         //    input, indicating that the current operator matches the resolution
         //    claim's operator.
-        let parsed_scheduler_state_datum: scheduler.Datum =
+        expect scheduler.ActiveOperator { operator: schedulers_operator, .. } =
           scheduler.get_datum(
             reference_inputs,
             scheduler,
             scheduler_ref_input_index,
           )
-        expect operator == parsed_scheduler_state_datum.operator
+        expect operator == schedulers_operator
 
         // Done. 
         True
@@ -230,44 +233,43 @@ validator spend(hub_oracle: ScriptHash, settlement_policy_id: ScriptHash) {
           utils.get_inclusive_upper_bound_of_interval(validity_range)
         expect valid_to < resolution_time
 
-        // 8. Let `operator_is_active` be a redeemer argument indicating whether
-        //    `operator` is active or retired.
-        if operator_is_active {
-          // 9a. The transaction must remove a node from the active operators
-          //     list via the Remove Operator Bad Settlement redeemer.
-          let active_operators_mint_redeemer_data =
-            redeemers
-              |> utils.get_redeemer_at(
-                  Mint(active_operators),
-                  operators_redeemer_index,
-                )
-          expect active_operators.RemoveOperatorBadSettlement {
-            slashed_active_operator_key,
-            ..
-          }: active_operators.MintRedeemer = active_operators_mint_redeemer_data
-          expect slashed_active_operator_key == operator
+        // 8. Depending on whether the fraudulent operator is in the active set
+        //    or retired, retrieve the slashing reason from the set's burn
+        //    redeemer.
+        let slashing_reason_from_operators_set =
+          if operator_is_active {
+            operator_directory.cross_validate_slashing_reason(
+              operator,
+              active_operators,
+              operators_redeemer_index,
+              fn(redeemer_data: Data) {
+                expect active_operators.SlashOperator { slashing_arguments, .. } =
+                  redeemer_data
+                slashing_arguments
+              },
+              redeemers,
+            )
+          } else {
+            operator_directory.cross_validate_slashing_reason(
+              operator,
+              retired_operators,
+              operators_redeemer_index,
+              fn(redeemer_data: Data) {
+                expect retired_operators.SlashOperator { slashing_arguments } =
+                  redeemer_data
+                slashing_arguments
+              },
+              redeemers,
+            )
+          }
 
-          // Done.
-          True
-        } else {
-          // 9b. The transaction must remove a node from the retired operators
-          //     list via the Remove Operator Bad Settlement redeemer.
-          let retired_operators_mint_redeemer_data =
-            redeemers
-              |> utils.get_redeemer_at(
-                  Mint(retired_operators),
-                  operators_redeemer_index,
-                )
-          expect retired_operators.RemoveOperatorBadSettlement {
-            slashed_retired_operator_key,
-            ..
-          }: retired_operators.MintRedeemer =
-            retired_operators_mint_redeemer_data
-          expect slashed_retired_operator_key == operator
+        // 9. The reason for slashing the operator in either case must be due to
+        //    a bad settlement resolution claim.
+        expect SlashOperatorForBadSettlement { .. } =
+          slashing_reason_from_operators_set
 
-          // Done.
-          True
-        }
+        // Done.
+        True
       }
       Resolve { settlement_id } -> {
         // 1. The specified settlement NFT must be burnt.
@@ -387,8 +389,8 @@ validator mint(hub_oracle: ScriptHash) {
         True
       }
       Remove { settlement_id, input_index, spend_redeemer_index } -> {
-        // 1. The transaction must spend the specified settlement utxo. Let
-        //    `removed_settlement` be that utxo.
+        // 1. The transaction must spend the specified settlement UTxO. Let
+        //    `removed_settlement` be that UTxO.
         expect Input {
           output: Output { datum: InlineDatum(input_datum_data), .. },
           output_reference: input_outref,
@@ -400,14 +402,11 @@ validator mint(hub_oracle: ScriptHash) {
                 input_index,
               )
 
-        let settlement_spending_redeemer_data =
-          redeemers
-            |> utils.get_redeemer_at(Spend(input_outref), spend_redeemer_index)
-
         // 2. The redeemer used for spending the `removed_settlement` must be
         //    `Resolve`. This also validates the specified NFT is getting burnt.
         expect Resolve { settlement_id: settlement_id_from_spend_redeemer }: SpendRedeemer =
-          settlement_spending_redeemer_data
+          redeemers
+            |> utils.get_redeemer_at(Spend(input_outref), spend_redeemer_index)
 
         // 3. The `settlement_id` included in the spending redeemer must match
         //    the ID provided in the burning redeemer.

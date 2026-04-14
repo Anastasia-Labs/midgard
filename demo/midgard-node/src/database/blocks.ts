@@ -1,172 +1,146 @@
-import { Effect } from "effect";
-import { clearTable, DatabaseError } from "@/database/utils/common.js";
-import { SqlClient, SqlError } from "@effect/sql";
 import { Database } from "@/services/database.js";
-import { sqlErrorToDatabaseError } from "@/database/utils/common.js";
+import { Effect, Option } from "effect";
+import { SqlClient } from "@effect/sql";
+import * as SDK from "@al-ft/midgard-sdk";
+import {
+  clearTable,
+  deserializeUTxOsFromStorage,
+  DatabaseError,
+  sqlErrorToDatabaseError,
+} from "@/database/utils/common.js";
+import { UTxO } from "@lucid-evolution/lucid";
+import {
+  BlocksTxsDB,
+  DepositsDB,
+  MempoolDB,
+  Tx,
+  TxOrdersDB,
+  UserEvents,
+  WithdrawalsDB,
+} from "./index.js";
+import { AlwaysSucceedsContract } from "@/services/always-succeeds.js";
 
-export const tableName = "blocks";
+export const tableName = "unsubmitted_blocks";
 
 export enum Columns {
   HEIGHT = "height",
-  HEADER_HASH = "header_hash",
-  TX_ID = "tx_id",
   TIMESTAMPTZ = "time_stamp_tz",
+  HEADER_HASH = "header_hash",
+  EVENT_START_TIME = "event_start_time",
+  EVENT_END_TIME = "event_end_time",
+  NEW_WALLET_UTXOS = "new_wallet_utxos",
+  PRODUCED_UTXOS = "produced_utxos",
+  L1_CBOR = "l1_cbor",
+  STATUS = "status",
+  DEPOSITS_COUNT = "deposits_count",
+  TX_REQUESTS_COUNT = "tx_requests_count",
+  TX_ORDERS_COUNT = "tx_orders_count",
+  WITHDRAWALS_COUNT = "withdrawals_count",
+  TOTAL_EVENTS_SIZE = "total_events_size",
 }
 
-export enum ColumnsIndices {
-  HEADER_HASH = "idx_blocks_header_hash",
-  TX_ID = "idx_blocks_tx_id",
-}
-
-type EntryNoHeightAndTS = {
-  [Columns.HEADER_HASH]: Buffer;
-  [Columns.TX_ID]: Buffer;
+export type Stats = {
+  [Columns.DEPOSITS_COUNT]: number;
+  [Columns.TX_REQUESTS_COUNT]: number;
+  [Columns.TX_ORDERS_COUNT]: number;
+  [Columns.WITHDRAWALS_COUNT]: number;
+  [Columns.TOTAL_EVENTS_SIZE]: number;
 };
 
-type Entry = EntryNoHeightAndTS & {
-  [Columns.HEIGHT]: number;
+export type EntryNoMeta = Stats & {
+  [Columns.HEADER_HASH]: Buffer;
+  [Columns.EVENT_START_TIME]: Date;
+  [Columns.EVENT_END_TIME]: Date;
+  // Corresponds to `.chain()` first tuple value.
+  [Columns.NEW_WALLET_UTXOS]: Buffer;
+  // Corresponds to `.chain()` second tuple value.
+  [Columns.PRODUCED_UTXOS]: Buffer;
+  // Corresponds to `.chain()` third tuple value.
+  [Columns.L1_CBOR]: Buffer;
+  [Columns.STATUS]: Status;
+};
+
+export enum Status {
+  UNSUBMITTED = 0,
+  SUBMITTED = 1,
+  CONFIRMED = 2,
+  MERGED = 3,
+}
+
+export type Entry = EntryNoMeta & {
+  [Columns.HEIGHT]: bigint;
   [Columns.TIMESTAMPTZ]: Date;
+};
+
+export type Events = {
+  withdrawals: readonly UserEvents.Entry[];
+  txOrders: readonly UserEvents.Entry[];
+  txRequests: readonly Tx.Entry[];
+  deposits: readonly UserEvents.Entry[];
+};
+
+export type LatestUnsubmittedBlockWithTxs = Omit<
+  Entry,
+  Columns.NEW_WALLET_UTXOS | Columns.PRODUCED_UTXOS
+> & {
+  [Columns.NEW_WALLET_UTXOS]: readonly UTxO[];
+  [Columns.PRODUCED_UTXOS]: readonly UTxO[];
+  txHashes: readonly Buffer[];
+  txCbors: readonly Buffer[];
+};
+
+type LatestUnsubmittedBlockJoinRow = Entry & {
+  [BlocksTxsDB.Columns.TX_ID]: Buffer | null;
+  [Tx.Columns.TX]: Buffer | null;
 };
 
 export const createTable: Effect.Effect<void, DatabaseError, Database> =
   Effect.gen(function* () {
     const sql = yield* SqlClient.SqlClient;
-    yield* sql.withTransaction(
-      Effect.gen(function* () {
-        yield* sql`CREATE TABLE IF NOT EXISTS ${sql(tableName)} (
-      ${sql(Columns.HEIGHT)} SERIAL PRIMARY KEY,
-      ${sql(Columns.HEADER_HASH)} BYTEA NOT NULL,
-      ${sql(Columns.TX_ID)} BYTEA NOT NULL UNIQUE,
+    yield* sql`CREATE TABLE IF NOT EXISTS ${sql(tableName)} (
+      ${sql(Columns.HEIGHT)} BIGSERIAL PRIMARY KEY,
+      ${sql(Columns.HEADER_HASH)} BYTEA NOT NULL UNIQUE,
+      ${sql(Columns.EVENT_START_TIME)} TIMESTAMPTZ NOT NULL,
+      ${sql(Columns.EVENT_END_TIME)} TIMESTAMPTZ NOT NULL,
+      ${sql(Columns.NEW_WALLET_UTXOS)} BYTEA NOT NULL,
+      ${sql(Columns.L1_CBOR)} BYTEA NOT NULL,
+      ${sql(Columns.PRODUCED_UTXOS)} BYTEA NOT NULL,
+      ${sql(Columns.DEPOSITS_COUNT)} INTEGER NOT NULL,
+      ${sql(Columns.TX_REQUESTS_COUNT)} INTEGER NOT NULL,
+      ${sql(Columns.TX_ORDERS_COUNT)} INTEGER NOT NULL,
+      ${sql(Columns.WITHDRAWALS_COUNT)} INTEGER NOT NULL,
+      ${sql(Columns.TOTAL_EVENTS_SIZE)} INTEGER NOT NULL,
+      ${sql(Columns.STATUS)} INTEGER NOT NULL DEFAULT(${sql.literal(String(Status.UNSUBMITTED))}),
       ${sql(Columns.TIMESTAMPTZ)} TIMESTAMPTZ NOT NULL DEFAULT(NOW())
     );`;
-        yield* sql`CREATE INDEX IF NOT EXISTS ${sql(
-          ColumnsIndices.HEADER_HASH,
-        )} ON ${sql(tableName)} (${sql(Columns.HEADER_HASH)});`;
-        yield* sql`CREATE INDEX IF NOT EXISTS ${sql(
-          ColumnsIndices.TX_ID,
-        )} ON ${sql(tableName)} (${sql(Columns.TX_ID)});`;
-      }),
-    );
-  }).pipe(sqlErrorToDatabaseError(tableName, "Failed to create the table"));
+  }).pipe(
+    Effect.withLogSpan(`creating table ${tableName}`),
+    sqlErrorToDatabaseError(tableName, "Failed to create the table"),
+  );
 
-export const insert = (
-  headerHash: Buffer,
-  txHashes: Buffer[],
+export const upsert = (
+  entry: EntryNoMeta,
 ): Effect.Effect<void, DatabaseError, Database> =>
   Effect.gen(function* () {
     const sql = yield* SqlClient.SqlClient;
-    if (txHashes.length <= 0) {
-      yield* Effect.logDebug("No txHashes provided, skipping block insertion.");
-      return;
-    }
-    const rowsToInsert: EntryNoHeightAndTS[] = txHashes.map(
-      (txHash: Buffer) => ({
-        [Columns.HEADER_HASH]: headerHash,
-        [Columns.TX_ID]: txHash,
-      }),
-    );
-    yield* sql`INSERT INTO ${sql(tableName)} ${sql.insert(rowsToInsert)}`;
+    yield* sql`INSERT INTO ${sql(tableName)} ${sql.insert(entry)}
+      ON CONFLICT (${sql(Columns.HEADER_HASH)}) DO UPDATE SET
+        ${sql(Columns.EVENT_START_TIME)} = ${entry[Columns.EVENT_START_TIME]},
+        ${sql(Columns.EVENT_END_TIME)} = ${entry[Columns.EVENT_END_TIME]},
+        ${sql(Columns.NEW_WALLET_UTXOS)} = ${entry[Columns.NEW_WALLET_UTXOS]},
+        ${sql(Columns.L1_CBOR)} = ${entry[Columns.L1_CBOR]},
+        ${sql(Columns.PRODUCED_UTXOS)} = ${entry[Columns.PRODUCED_UTXOS]},
+        ${sql(Columns.DEPOSITS_COUNT)} = ${entry[Columns.DEPOSITS_COUNT]},
+        ${sql(Columns.TX_REQUESTS_COUNT)} = ${entry[Columns.TX_REQUESTS_COUNT]},
+        ${sql(Columns.TX_ORDERS_COUNT)} = ${entry[Columns.TX_ORDERS_COUNT]},
+        ${sql(Columns.WITHDRAWALS_COUNT)} = ${entry[Columns.WITHDRAWALS_COUNT]},
+        ${sql(Columns.TOTAL_EVENTS_SIZE)} = ${entry[Columns.TOTAL_EVENTS_SIZE]},
+        ${sql(Columns.TIMESTAMPTZ)} = NOW()`;
   }).pipe(
-    Effect.tapErrorTag("SqlError", (e) =>
-      Effect.logError(`${tableName} db: inserting error: ${e}`),
-    ),
-    Effect.withLogSpan(`insert ${tableName}`),
-    sqlErrorToDatabaseError(tableName, "Failed to insert the given block"),
-  );
-
-export const retrieveTxHashesByHeaderHash = (
-  headerHash: Buffer,
-): Effect.Effect<readonly Buffer[], DatabaseError, Database> =>
-  Effect.gen(function* () {
-    yield* Effect.logDebug(
-      `${tableName} db: attempt retrieve txHashes for block ${headerHash}`,
-    );
-    const sql = yield* SqlClient.SqlClient;
-
-    const result = yield* sql<
-      Pick<Entry, Columns.TX_ID>
-    >`SELECT ${sql(Columns.TX_ID)} FROM ${sql(
-      tableName,
-    )} WHERE ${sql(Columns.HEADER_HASH)} = ${headerHash}`;
-
-    yield* Effect.logDebug(
-      `${tableName} db: retrieved ${result.length} txHashes for block ${headerHash}`,
-    );
-    return result.map((row) => row[Columns.TX_ID]);
-  }).pipe(
-    Effect.withLogSpan(`retrieveTxHashesByHeaderHash ${tableName}`),
-    Effect.tapErrorTag("SqlError", (e) =>
-      Effect.logError(
-        `${tableName} db: retrieving txHashes error: ${JSON.stringify(e)}`,
-      ),
-    ),
+    Effect.withLogSpan(`upsert ${tableName}`),
     sqlErrorToDatabaseError(
       tableName,
-      "Failed to retrieve transactions of the given block",
-    ),
-  );
-
-export const retrieveHeaderHashByTxHash = (
-  txHash: Buffer,
-): Effect.Effect<Buffer, DatabaseError, Database> =>
-  Effect.gen(function* () {
-    yield* Effect.logDebug(
-      `${tableName} db: attempt retrieve headerHash for txHash ${txHash}`,
-    );
-    const sql = yield* SqlClient.SqlClient;
-
-    const rows = yield* sql<Pick<Entry, Columns.HEADER_HASH>>`SELECT ${sql(
-      Columns.HEADER_HASH,
-    )} FROM ${sql(tableName)} WHERE ${sql(Columns.TX_ID)} = ${txHash} LIMIT 1`;
-
-    if (rows.length <= 0) {
-      const msg = `No headerHash found for ${txHash} txHash`;
-      yield* Effect.logDebug(msg);
-      yield* Effect.fail(new SqlError.SqlError({ cause: msg }));
-    }
-    const result = rows[0][Columns.HEADER_HASH];
-    yield* Effect.logDebug(
-      `${tableName} db: retrieved headerHash for tx ${txHash}: ${result}`,
-    );
-    return result;
-  }).pipe(
-    Effect.withLogSpan(`retrieveBlockHashByTxHash ${tableName}`),
-    Effect.tapErrorTag("SqlError", (e) =>
-      Effect.logError(
-        `${tableName} db: retrieving headerHash error: ${JSON.stringify(e)}`,
-      ),
-    ),
-    sqlErrorToDatabaseError(
-      tableName,
-      "Failed to retrieve header hash of the given block",
-    ),
-  );
-
-export const clearBlock = (
-  headerHash: Buffer,
-): Effect.Effect<void, DatabaseError, Database> =>
-  Effect.gen(function* () {
-    yield* Effect.logDebug(
-      `${tableName} db: attempt clear block ${headerHash}`,
-    );
-    const sql = yield* SqlClient.SqlClient;
-    yield* sql`DELETE FROM ${sql(
-      tableName,
-    )} WHERE ${sql(Columns.HEADER_HASH)} = ${headerHash}`;
-    // yield* Effect.logInfo(
-    //   `${tableName} db: cleared ${result.entries()} rows for block ${toHex(headerHash)}`,
-    // );
-    return Effect.void;
-  }).pipe(
-    Effect.withLogSpan(`clearBlock ${tableName}`),
-    Effect.tapErrorTag("SqlError", (e) =>
-      Effect.logError(
-        `${tableName} db: clearing block error: ${JSON.stringify(e)}`,
-      ),
-    ),
-    sqlErrorToDatabaseError(
-      tableName,
-      "Failed to delete transactions of the given block",
+      "Failed to upsert the given unsubmitted block",
     ),
   );
 
@@ -175,21 +149,190 @@ export const retrieve: Effect.Effect<
   DatabaseError,
   Database
 > = Effect.gen(function* () {
-  yield* Effect.logInfo(`${tableName} db: attempt to retrieve blocks`);
   const sql = yield* SqlClient.SqlClient;
-  const result = yield* sql<Entry>`SELECT * FROM ${sql(tableName)}`;
-  yield* Effect.logDebug(`${tableName} db: retrieved ${result.length} rows.`);
-  return result;
+  return yield* sql<Entry>`SELECT * FROM ${sql(tableName)} ORDER BY ${sql(
+    Columns.HEIGHT,
+  )} ASC`;
 }).pipe(
   Effect.withLogSpan(`retrieve ${tableName}`),
-  Effect.tapErrorTag("SqlError", (e) =>
-    Effect.logError(`${tableName} db: retrieving error: ${JSON.stringify(e)}`),
-  ),
+  sqlErrorToDatabaseError(tableName, "Failed to retrieve unsubmitted blocks"),
+);
+
+export const retrieveEvents = (
+  startDate: Date,
+  endDate: Date,
+): Effect.Effect<Events, DatabaseError, Database> =>
+  Effect.gen(function* () {
+    const [withdrawals, txOrders, txRequests, deposits] = yield* Effect.all(
+      [
+        WithdrawalsDB.retrieveTimeBoundEntries(startDate, endDate),
+        TxOrdersDB.retrieveTimeBoundEntries(startDate, endDate),
+        MempoolDB.retrieveTimeBoundEntries(startDate, endDate),
+        DepositsDB.retrieveTimeBoundEntries(startDate, endDate),
+      ],
+      { concurrency: "unbounded" },
+    );
+    return {
+      withdrawals,
+      txOrders,
+      txRequests,
+      deposits,
+    };
+  });
+
+export const retrieveEarliestUnsubmittedEntry: Effect.Effect<
+  Option.Option<Entry>,
+  DatabaseError,
+  Database
+> = Effect.gen(function* () {
+  const sql = yield* SqlClient.SqlClient;
+  const rows = yield* sql<Entry>`
+    SELECT * FROM ${sql(tableName)}
+    WHERE ${sql(Columns.STATUS)} = ${Status.UNSUBMITTED}
+    ORDER BY ${sql(Columns.HEIGHT)} ASC`;
+  if (rows.length <= 0) {
+    return Option.none();
+  } else {
+    return Option.some(rows[0]);
+  }
+}).pipe(sqlErrorToDatabaseError(tableName, "retrieveEarliestUnsubmittedEntry"));
+
+export const retrieveLatestEntry: Effect.Effect<
+  Option.Option<Entry>,
+  DatabaseError,
+  Database
+> = Effect.gen(function* () {
+  const sql = yield* SqlClient.SqlClient;
+  const rows = yield* sql<LatestUnsubmittedBlockJoinRow>`
+    SELECT * FROM ${sql(tableName)} ORDER BY ${sql(Columns.HEIGHT)} DESC`;
+  if (rows.length <= 0) {
+    return Option.none();
+  } else {
+    return Option.some(rows[0]);
+  }
+}).pipe(
   sqlErrorToDatabaseError(
     tableName,
-    "Failed to retrieve transactions of all the blocks",
+    "Failed retrieve latest unsubmitted block",
   ),
 );
 
-export const clear: Effect.Effect<void, DatabaseError, Database> =
-  clearTable(tableName);
+/**
+ * A `BlocksDB` entry contains the list of produced UTxOs from its signed
+ * transaction. Since this transaciton is a linked list append operation, one of
+ * the elements is the appended node (i.e. block header).
+ *
+ * TODO: This function attempts conversion on all the produced UTxOs and returns
+ *       the one that succeeds. However, if we guarantee the position of the
+ *       appended block in the UTxO array, we can have a more optimized function
+ *       here.
+ */
+export const getAppendedStateQueueUTxOFromEntry = (
+  entry: Entry,
+): Effect.Effect<
+  SDK.StateQueueUTxO,
+  SDK.CborDeserializationError | SDK.CmlUnexpectedError | SDK.StateQueueError,
+  AlwaysSucceedsContract
+> =>
+  Effect.gen(function* () {
+    const { stateQueue } = yield* AlwaysSucceedsContract;
+    const producedUTxOs = yield* deserializeUTxOsFromStorage(
+      entry[Columns.PRODUCED_UTXOS],
+    );
+    // Keeps only UTxOs that successfully map to a StateQueueUTxO with no links
+    // (i.e. last element in the linked list).
+    const foundMatches: SDK.StateQueueUTxO[] = yield* Effect.allSuccesses(
+      producedUTxOs.map((utxo) =>
+        Effect.gen(function* () {
+          const stateQueueUTxO = yield* SDK.utxoToStateQueueUTxO(
+            utxo,
+            stateQueue.policyId,
+          );
+          if (stateQueueUTxO.datum.next === "Empty") {
+            const headerHash =
+              yield* SDK.headerHashFromStateQueueUTxO(stateQueueUTxO);
+            if (SDK.bufferToHex(entry[Columns.HEADER_HASH]) === headerHash) {
+              return stateQueueUTxO;
+            } else {
+              // Doesn't matter what error is raised here (or below) as errors
+              // are ignored in `allSuccesses`.
+              return yield* new SDK.StateQueueError({ message: "", cause: "" });
+            }
+          } else {
+            return yield* new SDK.StateQueueError({ message: "", cause: "" });
+          }
+        }),
+      ),
+    );
+    if (foundMatches.length === 1) {
+      return foundMatches[0];
+    } else {
+      return yield* new SDK.StateQueueError({
+        message:
+          "Failed to get the appended StateQueueUTxO from the given BlocksDB entry",
+        cause:
+          "The list of produced UTxOs stored in the entry did not contain exactly one UTxO such that it could be mapped to a StateQueueUTxO with no links",
+      });
+    }
+  });
+
+export const setStatusOfEntry = (
+  entry: Entry,
+  newStatus: Status,
+): Effect.Effect<void, DatabaseError, Database> =>
+  Effect.gen(function* () {
+    const sql = yield* SqlClient.SqlClient;
+    yield* sql`UPDATE ${sql(tableName)} SET ${sql(Columns.STATUS)} = ${newStatus} WHERE
+    ${sql(Columns.HEADER_HASH)} = ${entry[Columns.HEADER_HASH]}
+  `;
+  }).pipe(
+    sqlErrorToDatabaseError(
+      tableName,
+      "Failed to update status of given block entry",
+    ),
+  );
+
+export const deleteByBlocks = (
+  headerHashes: Buffer[] | readonly Buffer[],
+): Effect.Effect<void, DatabaseError, Database> =>
+  Effect.gen(function* () {
+    if (headerHashes.length <= 0) {
+      return;
+    }
+    const sql = yield* SqlClient.SqlClient;
+    yield* sql`DELETE FROM ${sql(tableName)} WHERE ${sql.in(
+      Columns.HEADER_HASH,
+      headerHashes,
+    )}`;
+  }).pipe(
+    Effect.withLogSpan(`deleteByBlocks ${tableName}`),
+    sqlErrorToDatabaseError(
+      tableName,
+      "Failed to remove unsubmitted blocks by header hash",
+    ),
+  );
+
+export const deleteUpToAndIncludingBlock = (
+  headerHash: Buffer,
+): Effect.Effect<void, DatabaseError, Database> =>
+  Effect.gen(function* () {
+    const sql = yield* SqlClient.SqlClient;
+    yield* sql`WITH target AS (
+      SELECT ${sql(Columns.HEIGHT)}
+      FROM ${sql(tableName)}
+      WHERE ${sql(Columns.HEADER_HASH)} = ${headerHash}
+      LIMIT 1
+    )
+    DELETE FROM ${sql(tableName)}
+    WHERE ${sql(Columns.HEIGHT)} <= (
+      SELECT ${sql(Columns.HEIGHT)} FROM target
+    )`;
+  }).pipe(
+    Effect.withLogSpan(`deleteUpToAndIncludingBlock ${tableName}`),
+    sqlErrorToDatabaseError(
+      tableName,
+      "Failed to delete unsubmitted blocks up to the given block",
+    ),
+  );
+
+export const clear = clearTable(tableName);
