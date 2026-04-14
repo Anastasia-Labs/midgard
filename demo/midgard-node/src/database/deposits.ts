@@ -152,7 +152,7 @@ export const toLedgerEntry = (
         );
         return Buffer.from(
           CML.TransactionInput.new(
-            CML.TransactionHash.from_hex(outRef.txHash.hash),
+            CML.TransactionHash.from_hex(outRef.transactionId),
             outRef.outputIndex,
           ).to_cbor_bytes(),
         );

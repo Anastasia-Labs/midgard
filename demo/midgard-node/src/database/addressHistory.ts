@@ -2,7 +2,6 @@ import { Database } from "@/services/database.js";
 import { SqlClient } from "@effect/sql";
 import { Effect } from "effect";
 import { Address } from "@lucid-evolution/lucid";
-import * as SDK from "@al-ft/midgard-sdk";
 import {
   DatabaseError,
   clearTable,
@@ -18,8 +17,6 @@ import {
   DepositsDB,
 } from "./index.js";
 import { ProcessedTx } from "@/utils.js";
-import { MidgardContracts } from "@/services/midgard-contracts.js";
-import { NodeConfig } from "@/services/config.js";
 
 const tableName = "address_history";
 
@@ -183,15 +180,11 @@ export const insertWithdrwals = (
   upsertEntries(withdrawals.map((w) => resolvedWithdrawalToEntry(w, status)));
 
 export const depositEntryToEntry = (
-  deposit: UserEvents.Entry,
+  deposit: DepositsDB.Entry,
   status: Status,
-): Effect.Effect<
-  Entry,
-  SDK.CmlDeserializationError,
-  NodeConfig | MidgardContracts
-> =>
+): Effect.Effect<Entry, DatabaseError> =>
   Effect.gen(function* () {
-    const ledgerEntry = yield* DepositsDB.entryToLedgerEntry(deposit);
+    const ledgerEntry = yield* DepositsDB.toLedgerEntry(deposit);
     return {
       [Columns.EVENT_ID]: deposit[UserEvents.Columns.ID],
       [Columns.ADDRESS]: ledgerEntry[Ledger.Columns.ADDRESS],
@@ -201,13 +194,9 @@ export const depositEntryToEntry = (
   });
 
 export const insertDeposits = (
-  deposits: UserEvents.Entry[],
+  deposits: DepositsDB.Entry[],
   status: Status,
-): Effect.Effect<
-  void,
-  SDK.CmlDeserializationError | DatabaseError,
-  NodeConfig | Database | MidgardContracts
-> =>
+): Effect.Effect<void, DatabaseError, Database> =>
   Effect.all(deposits.map((d) => depositEntryToEntry(d, status))).pipe(
     Effect.andThen(upsertEntries),
   );

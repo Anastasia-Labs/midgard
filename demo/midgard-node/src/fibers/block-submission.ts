@@ -1,11 +1,6 @@
 import * as SDK from "@al-ft/midgard-sdk";
 import { DatabaseError, NotFoundError } from "@/database/utils/common.js";
-import {
-  MidgardContracts,
-  Database,
-  Lucid,
-  NodeConfig,
-} from "@/services/index.js";
+import { Database, Lucid } from "@/services/index.js";
 import { TxSignError, TxSubmitError } from "@/transactions/utils.js";
 import { Effect, Option, Schedule } from "effect";
 import {
@@ -134,13 +129,13 @@ const processTxRequestsProgram = (txRequests: readonly Tx.Entry[]) =>
  * Add produced ledger entries and corresponding address history entries for
  * the deposit events.
  */
-const processDepositsProgram = (deposits: readonly UserEvents.Entry[]) =>
+const processDepositsProgram = (deposits: readonly DepositsDB.Entry[]) =>
   Effect.gen(function* () {
     const depositLedgerEntries: Ledger.Entry[] = [];
     const depositAddressHistoryEntries: AddressHistoryDB.Entry[] = [];
     yield* Effect.forEach(deposits, (deposit) =>
       Effect.gen(function* () {
-        const ledgerEntry = yield* DepositsDB.entryToLedgerEntry(deposit);
+        const ledgerEntry = yield* DepositsDB.toLedgerEntry(deposit);
         const addressHistoryEntry = yield* AddressHistoryDB.depositEntryToEntry(
           deposit,
           AddressHistoryDB.Status.SUBMITTED,
@@ -180,7 +175,7 @@ const processEventsForLedgerApplication = (
   | SDK.DataCoercionError
   | DatabaseError
   | NotFoundError,
-  NodeConfig | Database | MidgardContracts
+  Database
 > =>
   Effect.gen(function* () {
     const blockEvents = yield* BlocksDB.retrieveEvents(startDate, endDate);
@@ -331,7 +326,7 @@ export const blockSubmissionFiber = (
 ): Effect.Effect<
   void,
   never,
-  NodeConfig | Database | Lucid | MidgardContracts
+  Database | Lucid
 > =>
   Effect.gen(function* () {
     yield* Effect.logInfo("🔗 Block submission fiber started.");
