@@ -369,8 +369,6 @@ pub fn finalize(
   )
 }
 
-// Internal Helpers
-
 pub fn verify_tx_and_its_provided_field_preimage(
   tx_id: MidgardTxId,
   tx: MidgardTxCompact,
@@ -461,6 +459,8 @@ pub fn validate_output_to_fraud_prover(
     _ -> False
   }
 }
+
+// ## Internal Helpers
 
 /// Validates authenticity of the input at `input_index` (i.e. that it comes
 /// from a script, and that it carries only a computation thread token), and

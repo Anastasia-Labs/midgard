@@ -285,8 +285,9 @@ pub type MidgardNetworkId {
 
 // ### Transaction witnesses
 
+/// TODO: Can we use `MerkleRoot<VerificationKey, Signature>`?
 pub type AddressWitsRoot =
-  MerkleRoot<VerificationKey, Signature>
+  MerkleRoot<VerificationKeyHash, (VerificationKey, Signature)>
 
 pub type MidgardScriptWitsRoot =
   MerkleRoot<ScriptHash, MidgardScript>

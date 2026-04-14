@@ -49,7 +49,7 @@ validator main(
           header,
           _bad_tx_id,
           _bad_tx,
-          bad_tx_body,
+          tx_field_preimage,
         <-
           pass_tx_to_next_step(
             computation_thread_token_policy_id,
@@ -60,6 +60,9 @@ validator main(
             tx,
           )
 
+        // 2. Bad transaction's body must be provided.
+        expect TxBodyProvided(bad_tx_body) = tx_field_preimage
+
         let Header {
           start_time: block_valid_from,
           end_time: block_valid_to,
@@ -69,7 +72,7 @@ validator main(
         let bad_tx_normalized_validity_range =
           vrn.normalize_time_range(bad_tx_body.validity_interval)
 
-        // 2. The UTxO must be produced at next step's script hash with validity
+        // 3. The UTxO must be produced at next step's script hash with validity
         //    range of the bad tx, and block's time range provided.
         expect output_script_hash == step_02_validator_script_hash
         let expected_output_state: Data =
