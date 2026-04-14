@@ -45,72 +45,55 @@ validator main(
 
         expect Some(step_datum) = datum
 
-        // 1. Generic validations for passing the provided bad tx to the next
-        //    step must pass.
-        let
-          _m_input_state_data,
-          output_script_hash,
-          output_state_data,
-          _header,
-          _bad_tx_id,
-          bad_tx,
-          bad_tx_body,
-        <-
-          pass_tx_to_next_step(
-            computation_thread_token_policy_id,
-            hub_oracle,
-            datum,
-            tx_inclusion_args,
-            own_out_ref,
-            tx,
-          )
+        // 1. Specified input must be authentic and properly reproduced at the
+        //    fraud proof's spending address.
         let
           _own_script_hash,
           _computation_thread_token_asset_name,
           _fraud_prover,
           m_input_state_data,
-          output_script_hash,
-          output_state_data,
         <-
-          continue(
+          finalize(
             computation_thread_token_policy_id,
+            fraud_proof_token_policy_id,
+            fraud_proof_token_address,
             step_datum,
             input_index,
             output_index,
+            fraud_proof_mint_redeemer_index,
             own_out_ref,
             inputs,
             outputs,
+            redeemers,
           )
 
-        // 2. Verify that the provided `tx_wits` correctly corresponds to the
-        //    verified bad tx.
-        expect verify_hash_32(bad_tx_wits, bad_tx.wits)
+        expect Some(State { bad_tx_body, bad_addr_tx_wits_root }) =
+          m_input_state_data
 
-        // 3. Prove that <VerificationKeyHash, (VerificationKey, Signature)>
+        // 2. Prove that <VerificationKeyHash, (VerificationKey, Signature)>
         //    belongs to addr_tx_wits(tx)
         expect
           utils.plutarch_phas(
-            bad_tx_wits.addr_tx_wits,
+            bad_addr_tx_wits_root,
             bad_addr_tx_wit_verification_key_hash,
             bad_addr_tx_wit,
             bad_addr_tx_wit_membership_proof,
-            tx.redeemers,
+            redeemers,
             plutarch_phas_withdraw_redeemer_index,
           )
 
         let (verification_key, signature): (VerificationKey, Signature) =
           bad_addr_tx_wit
 
-        // 4. The UTxO must be produced at next step's script hash
-        expect output_script_hash == step_02_validator_script_hash
-        let expected_output_state: Data =
-          step_02.State {
-            bad_tx_body,
-            bad_addr_tx_wit_verification_key_hash,
-            verification_key,
-            signature,
+        // 3. Verification key hash must be wrong OR the signature is invalid
+        expect or {
+            blake2b_224(verification_key) != bad_addr_tx_wit_verification_key_hash,
+            verify_ed25519_signature(
+              verification_key,
+              builtin.serialise_data(bad_tx_body),
+              signature,
+            ) == False,
           }
-        expect output_state_data == expected_output_state
 
         // Done.
         True
@@ -135,4 +118,3 @@ pub fn resolve_address_tx_wits_from_data(
   // Fails if not in ascending order
   coerced |> dict.from_ascending_pairs
 }
-

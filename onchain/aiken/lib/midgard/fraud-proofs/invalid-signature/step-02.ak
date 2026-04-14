@@ -5,7 +5,7 @@ use midgard/ledger_state.{AddressWitsRoot, MidgardTxBodyCompact}
 
 pub type State {
   bad_tx_body: MidgardTxBodyCompact,
-  bad_addr_tx_wits: AddressWitsRoot,
+  bad_addr_tx_wits_root: AddressWitsRoot,
 }
 
 pub type Datum =
@@ -18,8 +18,8 @@ pub type Args {
   bad_addr_tx_wit: (VerificationKey, Signature),
   bad_addr_tx_wit_membership_proof: Proof,
   plutarch_phas_withdraw_redeemer_index: Int,
+  fraud_proof_mint_redeemer_index: Int,
 }
 
 pub type SpendRedeemer =
   ct.StepRedeemer<Args>
-
