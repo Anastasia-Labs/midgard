@@ -91,8 +91,8 @@ pub fn pass_tx_to_next_step(
       outputs,
     )
 
-  // 2. The provided transaction must be valid, and must be included in
-  //    the specified state queue node.
+  // 2. The provided transaction must be valid, and must be included in the
+  //    specified state queue node.
   let header =
     verify_tx_in_state_queue_node_and_get_header(
       tx_id,
@@ -326,11 +326,9 @@ pub fn finalize(
       1,
     )
 
-  // 4. Fraud prover must be preserved, with no additional `data`.
-  expect ct.StepDatum { fraud_prover: output_fraud_prover, data: None }: ct.StepDatum<
-    Data,
-  > = output_datum_data
-  expect output_fraud_prover == fraud_prover
+  // 4. Fraud prover must be presreved, with no additional `data`.
+  let expected_output_datum_data: Data = fraud_proof.Datum { fraud_prover }
+  expect output_datum_data == expected_output_datum_data
 
   // 5. Fraud proof's minting script must be invoked (which also validates the
   //    burning of the computation thread token).

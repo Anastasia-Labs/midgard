@@ -16,14 +16,11 @@
 
 use aiken/builtin
 use aiken/collection/dict.{Dict}
-use aiken/crypto.{
-  ScriptHash, Signature, VerificationKey, VerificationKeyHash,
-}
+use aiken/crypto.{ScriptHash, Signature, VerificationKey, VerificationKeyHash}
 use cardano/address.{Address}
 use cardano/assets.{Lovelace}
 use cardano/transaction.{
-  Datum as CardanoDatum, OutputReference, Redeemer, ScriptPurpose,
-  ValidityRange,
+  Datum as CardanoDatum, OutputReference, Redeemer, ScriptPurpose, ValidityRange,
 }
 use midgard/common/constants.{empty_merkle_tree_root}
 use midgard/common/types.{H28, H32, MerkleRoot, PosixTime, ValuePairs}
@@ -93,8 +90,7 @@ pub type ConfirmedState {
 pub const genesis_header_hash: HeaderHash =
   #"00000000000000000000000000000000000000000000000000000000"
 
-pub const genesis_utxo_root: MidgardLedgerRoot =
-  empty_merkle_tree_root
+pub const genesis_utxo_root: MidgardLedgerRoot = empty_merkle_tree_root
 
 pub const genesis_protocol_version: Int = 0
 

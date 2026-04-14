@@ -594,8 +594,8 @@ pub fn get_inline_datum_and_spending_redeemer_data_at(
 /// > This function can only be used **once within a given transaction**.
 pub fn plutarch_phas(
   merkle_root: MerkleRoot<key, value>,
-  key: Data,
-  value: Data,
+  key: Data<key>,
+  value: Data<value>,
   membership_proof: Proof,
   redeemers: Pairs<ScriptPurpose, Redeemer>,
   withdraw_redeemer_index: Int,
@@ -630,7 +630,7 @@ pub fn plutarch_phas(
 /// > This function can only be used **once within a given transaction**.
 pub fn plutarch_pexcludes(
   merkle_root: MerkleRoot<key, value>,
-  key: Data,
+  key: Data<key>,
   non_membership_proof: Proof,
   redeemers: Pairs<ScriptPurpose, Redeemer>,
   withdraw_redeemer_index: Int,
@@ -659,8 +659,8 @@ pub fn plutarch_pexcludes(
 
 pub fn plutarch_pdelete(
   merkle_root_before_delete: MerkleRoot<key, value>,
-  key: Data,
-  value: Data,
+  key: Data<key>,
+  value: Data<value>,
   membership_proof: Proof,
   redeemers: Pairs<ScriptPurpose, Redeemer>,
   withdraw_redeemer_index: Int,
