@@ -4,8 +4,10 @@ RUN corepack enable
 FROM base AS sdk-build
 WORKDIR /midgard-sdk
 COPY --from=sdk . .
+ENV CI=true
 RUN --mount=type=cache,id=pnpm,target=/root/.local/share/pnpm/store \
   pnpm fetch --no-frozen-lockfile
+ENV CI=true
 RUN --mount=type=cache,id=pnpm,target=/root/.local/share/pnpm/store \
   pnpm install --no-frozen-lockfile
 RUN pnpm repack
@@ -14,6 +16,7 @@ FROM base AS build
 WORKDIR /app
 COPY --from=sdk-build /midgard-sdk/*.tgz /midgard-sdk/
 COPY . .
+ENV CI=true
 RUN pnpm install --no-frozen-lockfile
 RUN pnpm build
 
