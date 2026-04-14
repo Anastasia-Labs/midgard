@@ -32,15 +32,7 @@ validator main(
           computation_thread_mint_redeemer_index,
           tx,
         )
-      ct.Continue(tx_inclusion_and_bad_addr_with_args) -> {
-        let Args {
-          tx_inclusion_args,
-          bad_tx_wits,
-          bad_addr_tx_wit_verification_key_hash,
-          bad_addr_tx_wit,
-          bad_addr_tx_wit_membership_proof,
-          plutarch_phas_withdraw_redeemer_index,
-        } = tx_inclusion_and_bad_addr_with_args
+      ct.Continue(tx_inclusion_args) -> {
         // 1. Generic validations for passing the provided bad tx to the next
         //    step must pass.
         let
@@ -64,33 +56,12 @@ validator main(
             tx,
           )
 
-        //2. Verify that the tx_wits really belong to this tx
-        expect verify_hash_32(bad_tx_wits, bad_tx.wits)
-
-        //3. Prove that <VerificationKeyHash, (VerificationKey, Signature)> belongs to addr_tx_wits(tx)
-        let addr_tx_wits_merkle_tree_root =
-          get_addr_tx_wits_merkle_tree_root(bad_tx_wits)
-        expect
-          utils.plutarch_phas(
-            addr_tx_wits_merkle_tree_root,
-            bad_addr_tx_wit_verification_key_hash,
-            bad_addr_tx_wit,
-            bad_addr_tx_wit_membership_proof,
-            tx.redeemers,
-            plutarch_phas_withdraw_redeemer_index,
-          )
-
-        let (verification_key, signature): (VerificationKey, Signature) =
-          bad_addr_tx_wit
-
-        // 4. The UTxO must be produced at next step's script hash
+        // 2. The UTxO must be produced at next step's script hash with
         expect output_script_hash == step_02_validator_script_hash
         let expected_output_state: Data =
           step_02.State {
-            bad_tx_body,
-            bad_addr_tx_wit_verification_key_hash,
-            verification_key,
-            signature,
+            bad_tx_body: bad_tx_body,
+            bad_addr_tx_wits: bad_tx.wits.addr_tx_wits,
           }
         expect output_state_data == expected_output_state
 
@@ -103,27 +74,4 @@ validator main(
   else(_) {
     fail
   }
-}
-
-pub fn get_addr_tx_wits_merkle_tree_root(
-  bad_tx_wits: MidgardTxWitnessSetCompact,
-) -> MerkleRoot<VerificationKeyHash, (VerificationKey, Signature)> {
-  //It's the first field and it's a ByteArray
-  bad_tx_wits
-    |> builtin.unconstr_fields
-    |> builtin.head_list
-    |> builtin.un_b_data
-}
-
-pub fn resolve_address_tx_wits_from_data(
-  address_tx_wits_as_data: Data<
-    Dict<VerificationKeyHash, (VerificationKey, Signature)>,
-  >,
-) -> Dict<VerificationKeyHash, (VerificationKey, Signature)> {
-  // Return the resolved hash
-  expect coerced: Pairs<VerificationKeyHash, (VerificationKey, Signature)> =
-    address_tx_wits_as_data
-
-  // Fails if not in ascending order
-  coerced |> dict.from_ascending_pairs
 }
