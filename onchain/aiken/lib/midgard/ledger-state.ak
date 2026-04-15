@@ -16,13 +16,16 @@
 
 use aiken/builtin
 use aiken/collection/dict.{Dict}
-use aiken/crypto.{ScriptHash, Signature, VerificationKey, VerificationKeyHash}
-use cardano/address.{Address}
+use aiken/crypto.{
+  ScriptHash, Signature, VerificationKey, VerificationKeyHash, blake2b_224,
+}
+use aiken/primitive/bytearray
+use cardano/address.{Address, Credential}
 use cardano/assets.{Lovelace}
 use cardano/transaction.{
   Datum as CardanoDatum, OutputReference, Redeemer, ScriptPurpose, ValidityRange,
 }
-use midgard/common/constants.{empty_merkle_tree_root}
+use midgard/common/constants.{empty_merkle_tree_root, plutus_version}
 use midgard/common/types.{H28, H32, MerkleRoot, PosixTime, ValuePairs}
 
 // # Ledger state types
@@ -143,7 +146,7 @@ pub type WithdrawalId =
 pub type WithdrawalBody {
   l2_outref: OutputReference,
   l2_owner: VerificationKeyHash,
-  l2_value: ValuePairs,
+  l2_value: MidgardValue,
   l1_address: Address,
   l1_datum: CardanoDatum,
 }
@@ -223,7 +226,7 @@ pub type MidgardTxValidity {
 
 /// TODO
 pub type MidgardAddress =
-  Address
+  Credential
 
 /// TODO
 pub type MidgardValue =
@@ -308,4 +311,19 @@ pub type MidgardTxWitnessSetCompact {
 pub type MidgardScript {
   Timelock { script: ByteArray }
   Plutus { script: ByteArray }
+}
+
+/// TODO: This assumes the script stored under `Plutus` constructor of
+///       `MidgardScript` is the single CBOR encoding of the Flat encoded
+///       program bytes. Also uses a hardcoded Plutus version 3.
+///
+///       `Timelock` scripts are simply passed to the hash function.
+pub fn hash_midgard_script(midgard_script: MidgardScript) -> ScriptHash {
+  when midgard_script is {
+    Timelock { script } -> script |> blake2b_224
+    Plutus { script } ->
+      builtin.integer_to_bytearray(True, 1, plutus_version)
+        |> bytearray.concat(script)
+        |> blake2b_224
+  }
 }

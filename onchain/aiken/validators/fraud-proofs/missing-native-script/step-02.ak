@@ -8,14 +8,14 @@ use midgard/common/types.{MerkleRoot} as midgard_types
 use midgard/common/utils.{verify_hash_32}
 use midgard/computation_thread as ct
 use midgard/fraud_proofs/common.{cancel, pass_tx_to_next_step}
-use midgard/fraud_proofs/missing_native_script/step_01.{
+use midgard/fraud_proofs/missing_native_script/step_02.{
   Args, Datum, SpendRedeemer,
 }
-use midgard/fraud_proofs/missing_native_script/step_02_recursive as step_02
+use midgard/fraud_proofs/missing_native_script/step_03_recursive as step_03
 use midgard/ledger_state.{MidgardScript, MidgardTxWitnessSetCompact}
 
 validator main(
-  step_02_validator_script_hash: ScriptHash,
+  step_03_validator_script_hash: ScriptHash,
   computation_thread_token_policy_id: PolicyId,
   hub_oracle: ScriptHash,
 ) {
@@ -35,41 +35,67 @@ validator main(
           computation_thread_mint_redeemer_index,
           tx,
         )
-      ct.Continue(tx_inclusion_args) -> {
-        // 1. Generic validations for passing the provided bad tx to the next
-        //    step must pass.
+      ct.Continue(Args {
+        input_index,
+        output_index,
+        bad_output_index,
+        bad_output,
+        bad_output_membership_proof,
+        missing_native_script_bytes,
+        inclusion_proof_script_withdraw_redeemer_index,
+      }) -> {
+        let Transaction { inputs, outputs, redeemers, .. } = tx
+
+        expect Some(step_datum) = datum
+
+        // 1. Specified input must be authentic and properly reproduced.
         let
           _own_script_hash,
           _computation_thread_token_asset_name,
           _fraud_prover,
-          _m_input_state_data,
+          m_input_state_data,
           output_script_hash,
           output_state_data,
-          _header,
-          _bad_tx_id,
-          bad_tx,
-          bad_tx_field_preimage,
         <-
-          pass_tx_to_next_step(
+          continue(
             computation_thread_token_policy_id,
-            hub_oracle,
-            datum,
-            tx_inclusion_args,
+            step_datum,
+            input_index,
+            output_index,
             own_out_ref,
-            tx,
+            inputs,
+            outputs,
           )
 
-        // 2. Both body and witness set of the bad tx must have been provided.
-        expect TxBodyAndWitsProvided(bad_tx_body, bad_tx_wits) =
-          bad_tx_field_preimage
+        expect Some(State { bad_tx_outputs_root, bad_tx_script_wits }) =
+          m_input_state_data
 
-        // 3. The UTxO must be produced at next step's script hash with a proper
-        //    state.
-        expect output_script_hash == step_02_validator_script_hash
+        // 3. Prove output u belongs to outputs(tx)
+        expect
+          utils.plutarch_phas(
+            merkle_root: bad_tx_outputs_root,
+            key: bad_output_index,
+            value: bad_output,
+            membership_proof: bad_output_membership_proof,
+            redeemers: redeemers,
+            withdraw_redeemer_index: inclusion_proof_script_withdraw_redeemer_index,
+          )
+
+        // 4. The specified output must be at a script address.
+        expect Script(bad_output_script_hash) = bad_output.address
+
+        // 5. The missing script must be a Native script.
+        expect
+          bad_output_script_hash == ledger_state.hash_midgard_script(
+            Timelock(missing_native_script_bytes),
+          )
+
+        // 6. The produced UTxO must go to the next step with a proper state.
+        expect output_script_hash == step_03_validator_script_hash
         let expected_output_state: Data =
-          step_02.State {
-            bad_tx_outputs_root: bad_tx_body.outputs,
-            bad_tx_script_wits: bad_tx_wits.script_tx_wits,
+          step_03.State {
+            expected_missing_script_hash: bad_output_script_hash,
+            verified_script_wits_root: bad_tx_script_wits,
           }
         expect output_state_data == expected_output_state
 

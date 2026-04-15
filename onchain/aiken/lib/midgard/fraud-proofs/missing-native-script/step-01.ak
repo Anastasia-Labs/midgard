@@ -1,20 +1,11 @@
-use aiken/merkle_patricia_forestry as mpf
-use cardano/transaction.{Output}
 use midgard/computation_thread as ct
 use midgard/fraud_proofs/common.{TxInclusionArgs}
-use midgard/ledger_state.{MidgardTxWitnessSetCompact}
 
 pub type Datum =
   ct.StepDatum<Data>
 
-pub type Args {
-  tx_inclusion_args: TxInclusionArgs,
-  bad_output_index: Int,
-  bad_output_as_data: Data<Output>,
-  bad_output_membership_proof: mpf.Proof,
-  bad_tx_wits: MidgardTxWitnessSetCompact,
-  plutarch_phas_withdraw_redeemer_index: Int,
-}
+pub type Args =
+  TxInclusionArgs
 
 pub type SpendRedeemer =
   ct.StepRedeemer<Args>
