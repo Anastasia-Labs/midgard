@@ -60,7 +60,7 @@ validator main(
           bad_tx_field_preimage
 
         // 2. The UTxO must be produced at next step's script hash with the bad
-        //    transactin's body and address witness set root.
+        //    transaction's body and address witness set root.
         expect output_script_hash == step_02_validator_script_hash
         let expected_output_state: Data =
           step_02.State {

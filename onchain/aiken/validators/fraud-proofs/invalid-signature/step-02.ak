@@ -105,16 +105,3 @@ validator main(
     fail
   }
 }
-
-pub fn resolve_address_tx_wits_from_data(
-  address_tx_wits_as_data: Data<
-    Dict<VerificationKeyHash, (VerificationKey, Signature)>,
-  >,
-) -> Dict<VerificationKeyHash, (VerificationKey, Signature)> {
-  // Return the resolved hash
-  expect coerced: Pairs<VerificationKeyHash, (VerificationKey, Signature)> =
-    address_tx_wits_as_data
-
-  // Fails if not in ascending order
-  coerced |> dict.from_ascending_pairs
-}
