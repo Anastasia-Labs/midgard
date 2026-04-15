@@ -36,6 +36,7 @@ data MerkleMembershipRedeemer = MerkleMembershipRedeemer
   deriving stock (Show, Eq, Generic)
 
 instance PlutusTx.ToData MerkleMembershipRedeemer where
+  -- | Serializes a membership redeemer into Plutus builtin data.
   toBuiltinData MerkleMembershipRedeemer {mmInputRoot, mmInputKey, mmInputValue, mmInputProof} =
     dataToBuiltinData $
       PD.List
@@ -46,6 +47,7 @@ instance PlutusTx.ToData MerkleMembershipRedeemer where
         ]
 
 instance PlutusTx.FromData MerkleMembershipRedeemer where
+  -- | Deserializes a membership redeemer from Plutus builtin data.
   fromBuiltinData :: PlutusTx.BuiltinData -> Maybe MerkleMembershipRedeemer
   fromBuiltinData (builtinDataToData -> PD.List dataList) = do
     (rawInputRoot, rest) <- uncons dataList
@@ -68,6 +70,7 @@ data MerkleNonMembershipRedeemer = MerkleNonMembershipRedeemer
   deriving stock (Show, Eq, Generic)
 
 instance PlutusTx.ToData MerkleNonMembershipRedeemer where
+  -- | Serializes a non-membership redeemer into Plutus builtin data.
   toBuiltinData MerkleNonMembershipRedeemer {mnmInputRoot, mnmInputKey, mnmInputProof} =
     dataToBuiltinData $
       PD.List
@@ -77,6 +80,7 @@ instance PlutusTx.ToData MerkleNonMembershipRedeemer where
         ]
 
 instance PlutusTx.FromData MerkleNonMembershipRedeemer where
+  -- | Deserializes a non-membership redeemer from Plutus builtin data.
   fromBuiltinData :: PlutusTx.BuiltinData -> Maybe MerkleNonMembershipRedeemer
   fromBuiltinData (builtinDataToData -> PD.List dataList) = do
     (rawInputRoot, rest) <- uncons dataList

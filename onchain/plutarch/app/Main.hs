@@ -31,6 +31,8 @@ import PlutusLedgerApi.V2 (
  )
 import System.IO
 
+-- | Runs the module's entrypoint.
+-- | Writes compiled Plutus scripts to disk for local inspection.
 main :: IO ()
 main = do
   putStrLn "Writing Plutus Scripts to files"

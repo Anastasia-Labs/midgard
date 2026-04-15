@@ -23,7 +23,6 @@ use cardano/transaction.{
   Datum as CardanoDatum, Output, OutputReference, Redeemer, ScriptPurpose,
   ValidityRange,
 }
-use midgard/common/constants.{empty_merkle_tree_root}
 use midgard/common/types.{H28, H32, MerkleRoot, PosixTime, ValuePairs}
 
 // # Ledger state types
@@ -81,20 +80,17 @@ pub type ConfirmedState {
   protocol_version: Int,
 }
 
-pub const genesis_header_hash: HeaderHash =
-  #"00000000000000000000000000000000000000000000000000000000"
-
-pub const genesis_utxo_root: MerkleRoot = empty_merkle_tree_root
-
-pub const genesis_protocol_version: Int = 0
-
 // ## User events
 
+/// Converts an event into its identifier datum representation.
+/// Builds the identifier datum payload for an event without extra validation.
 pub fn unsafe_event_to_id_data(event_datum_data: Data) -> Data {
   expect [id_data, ..] = builtin.unconstr_fields(event_datum_data)
   id_data
 }
+/// Converts an event into the key-value pair stored in the ledger map.
 
+/// Builds the ledger-state key/value pair for an event without extra validation.
 pub fn unsafe_event_to_key_value_pair(
   event_datum_data: Data,
 ) -> Pair<Data, Data> {

@@ -34,8 +34,8 @@ const fetchUserEventUTxOs = (
     const inclusionTimeLowerBound = BigInt(inclusionStartTime);
     const inclusionTimeUpperBound = BigInt(inclusionEndTime);
     const depositFetchConfig: SDK.DepositFetchConfig = {
-      eventAddress: deposit.spendingScriptAddress,
-      eventPolicyId: deposit.policyId,
+      depositAddress: deposit.spendingScriptAddress,
+      depositPolicyId: deposit.policyId,
       inclusionTimeLowerBound,
       inclusionTimeUpperBound,
     };

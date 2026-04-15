@@ -52,6 +52,7 @@ validator spend(hub_oracle: ScriptHash) {
 
     // 1. Spending a deposit UTxO must also be accompanied by the burning of its
     //    NFT (and consequently deregistration of its witness staking script).
+    /// s1: burn redeemer
     expect user_events.BurnEventNFT { nonce_asset_name: burn_asset_name, .. } =
       utils.get_redeemer_at(
         redeemers,
@@ -77,6 +78,7 @@ validator spend(hub_oracle: ScriptHash) {
     let Input { output: Output { value: own_value, .. }, .. } = input
 
     // 2. The produced UTxO must not have any scripts attached to it.
+    /// s2: no ref script
     expect Output {
       address: output_address,
       value: output_value,
@@ -88,6 +90,7 @@ validator spend(hub_oracle: ScriptHash) {
     //    deposit NFT.
     //    TODO: Reserve contract might end up requiring an NFT.
     //    TODO: Fees must be deduced whenever we have a clear plan for them.
+    /// s3: value minus nft
     expect
       output_value == (
         own_value |> assets.add(deposit_policy_id, burn_asset_name, -1)
@@ -98,6 +101,7 @@ validator spend(hub_oracle: ScriptHash) {
 
     // 4. The referenced settlement utxo's deposit tree must contain the
     //    subject deposit event.
+    /// s4: membership proof
     expect
       plutarch_phas(
         deposits_root,
@@ -110,9 +114,11 @@ validator spend(hub_oracle: ScriptHash) {
 
     // 5. Assert no datum is attached to the produced UTxO.
     //    TODO: This might change depending on implementation of reserve.
+    /// s5: no datum
     expect output_datum == NoDatum
 
     // 6. Deposit must go to the reserve.
+    /// s6: to reserve
     expect output_address == reserve_addr
 
     // Done.
@@ -163,8 +169,10 @@ validator mint(hub_oracle: ScriptHash) {
         0,
         fn(policy_tokens_pair, state_nft_found, token_count_so_far, return) {
           if !state_nft_found && policy_tokens_pair.1st == own_policy {
+            /// m1: single nft token
             expect [output_deposit_nft_tn_qty] =
               policy_tokens_pair.2nd |> dict.to_pairs
+            /// m2: nft matches nonce
             expect output_deposit_nft_tn_qty == Pair(l2_id, 1)
             return(True, token_count_so_far)
           } else {
@@ -174,13 +182,11 @@ validator mint(hub_oracle: ScriptHash) {
         },
       )
 
-    and {
-      // 3. Deposit NFT must be included in the produced UTxO.
-      output_deposit_nft_is_valid,
-      // 4. Total token count in the deposit UTxO (including ADA) must not
-      //    exceed the relevant protocol parameter.
-      total_token_count <= env.max_tokens_allowed_in_deposits,
-    }
+    /// m3: nft in output
+    expect output_deposit_nft_is_valid
+    /// m4: token count
+    expect total_token_count <= env.max_tokens_allowed_in_deposits
+    True
   }
 
   else(_) {
