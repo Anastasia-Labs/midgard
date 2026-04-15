@@ -250,6 +250,11 @@ pub type MidgardInputId {
   output_index: Int,
 }
 
+pub fn midgard_input_id_to_out_ref(input_id: MidgardInputId) -> OutputReference {
+  let MidgardInputId { transaction_id, output_index, .. } = input_id
+  OutputReference { transaction_id, output_index }
+}
+
 pub type MidgardInputsRoot =
   MerkleRoot<MidgardInputId, MidgardOutput>
 

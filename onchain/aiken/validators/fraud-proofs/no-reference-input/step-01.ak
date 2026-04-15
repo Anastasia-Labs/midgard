@@ -1,6 +1,8 @@
-//// ## Non-Existent Input UTxO Fraud Proof (Section 5.1.1)
+//// ## Non-Existent Reference Input UTxO Fraud Proof (Section 5.1.16)
 ////
-//// Proves a given transaction spends an input that does not exist in the
+//// Proves a given transaction refers to an input that was either missing from
+//// the block's starting ledger, or had been spent in a prior withdrawal event
+//// or transaction order.
 //// initial ledger (i.e. `prev_utxos_root`) of its containing block.
 
 use aiken/crypto.{ScriptHash}
@@ -45,7 +47,7 @@ validator main(
           header,
           _bad_tx_id,
           _bad_tx,
-          bad_tx_body,
+          bad_tx_field_preimage,
         <-
           pass_tx_to_next_step(
             computation_thread_token_policy_id,
@@ -56,13 +58,20 @@ validator main(
             tx,
           )
 
-        // 2. The UTxO must be produced at next step's script hash with inputs
+        // 2. Bad transaction's body must be provided.
+        expect TxBodyProvided(bad_tx_body) = bad_tx_field_preimage
+
+        // 3. The UTxO must be produced at next step's script hash with inputs
         //    root of the bad transaction, and block's prev UTxOs root.
+        let Header { prev_utxos_root, withdrawals_root, transactions_root, .. } =
+          header
         expect output_script_hash == step_02_validator_script_hash
         let expected_output_state: Data =
           step_02.State {
             bad_tx_reference_inputs_root: bad_tx_body.reference_inputs,
-            blocks_prev_utxos_root: header.prev_utxos_root,
+            blocks_prev_utxos_root: prev_utxos_root,
+            blocks_transactions_root: transactions_root,
+            blocks_withdrawals_root: withdrawals_root,
           }
         expect output_state_data == expected_output_state
 

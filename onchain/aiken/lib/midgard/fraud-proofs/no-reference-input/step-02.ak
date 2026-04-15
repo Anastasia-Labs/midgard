@@ -1,11 +1,15 @@
-use cardano/transaction.{OutputReference}
-use midgard/common/types.{MerkleRoot, Proof}
+use midgard/common/types.{Proof}
 use midgard/computation_thread as ct
-use midgard/ledger_state.{MidgardInputId}
+use midgard/ledger_state.{
+  MidgardInputId, MidgardInputsRoot, MidgardLedgerRoot, MidgardOutput,
+  WithdrawalsRoot,
+}
 
 pub type State {
-  bad_tx_reference_inputs_root: MerkleRoot<Int, OutputReference>,
-  blocks_prev_utxos_root: MerkleRoot<Int, OutputReference>,
+  bad_tx_reference_inputs_root: MidgardInputsRoot,
+  blocks_prev_utxos_root: MidgardLedgerRoot,
+  blocks_transactions_root: MidgardTxsRoot,
+  blocks_withdrawals_root: WitdhrawalsRoot,
 }
 
 pub type Datum =
@@ -14,13 +18,10 @@ pub type Datum =
 pub type Args {
   input_index: Int,
   output_index: Int,
-  no_reference_input_key: MidgardInputId,
-  no_reference_input_value: Data,
+  no_reference_input_id: MidgardInputId,
+  no_reference_input_resolved: MidgardOutput,
   membership_proof_in_bad_tx: Proof,
   membership_proof_script_redeemer_index: Int,
-  non_membership_proof_in_ledger: Proof,
-  non_membership_proof_script_redeemer_index: Int,
-  fraud_proof_mint_redeemer_index: Int,
 }
 
 pub type SpendRedeemer =
