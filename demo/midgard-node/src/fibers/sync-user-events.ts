@@ -5,8 +5,17 @@ import {
   Globals,
   Lucid,
   Database,
+  NodeConfig,
 } from "@/services/index.js";
-import { LucidEvolution } from "@lucid-evolution/lucid";
+import {
+  assetsToValue,
+  CML,
+  credentialToAddress,
+  Data as LucidData,
+  LucidEvolution,
+  type Credential,
+  type Network,
+} from "@lucid-evolution/lucid";
 import {
   DepositsDB,
   TxOrdersDB,
@@ -15,6 +24,7 @@ import {
 } from "@/database/index.js";
 import { DatabaseError } from "@/database/utils/common.js";
 import { Schedule } from "effect";
+import { blake2b } from "@noble/hashes/blake2.js";
 
 const fetchUserEventUTxOs = (
   lucid: LucidEvolution,
@@ -61,17 +71,71 @@ const fetchUserEventUTxOs = (
     };
   });
 
-const depositUTxOsToEntries = (
-  depositUTxOs: SDK.DepositUTxO[],
-): DepositsDB.Entry[] =>
-  depositUTxOs.map((utxo) => ({
-    [UserEvents.Columns.ID]: utxo.idCbor,
-    [UserEvents.Columns.INFO]: utxo.infoCbor,
-    [UserEvents.Columns.INCLUSION_TIME]: utxo.inclusionTime,
-    [DepositsDB.Columns.LEDGER_TX_ID]: null,
-    [DepositsDB.Columns.LEDGER_OUTPUT]: null,
-    [DepositsDB.Columns.LEDGER_ADDRESS]: null,
-  }));
+const credentialFromAddressData = (credential: SDK.CredentialD): Credential =>
+  "PublicKeyCredential" in credential
+    ? { type: "Key", hash: credential.PublicKeyCredential[0] }
+    : { type: "Script", hash: credential.ScriptCredential[0] };
+
+const addressFromDepositInfo = (
+  network: Network,
+  addressData: SDK.AddressData,
+): string => {
+  const stakeCredential =
+    addressData.stakeCredential === null
+      ? undefined
+      : "Inline" in addressData.stakeCredential
+        ? credentialFromAddressData(addressData.stakeCredential.Inline[0])
+        : undefined;
+  return credentialToAddress(
+    network,
+    credentialFromAddressData(addressData.paymentCredential),
+    stakeCredential,
+  );
+};
+
+const depositUTxOToEntry = (
+  depositUTxO: SDK.DepositUTxO,
+  network: Network,
+): Effect.Effect<DepositsDB.Entry, SDK.LucidError> =>
+  Effect.try({
+    try: () => {
+      const l2Address = addressFromDepositInfo(
+        network,
+        depositUTxO.datum.event.info.l2Address,
+      );
+      const output = CML.ConwayFormatTxOut.new(
+        CML.Address.from_bech32(l2Address),
+        assetsToValue(depositUTxO.utxo.assets),
+      );
+      const l2Datum = depositUTxO.datum.event.info.l2Datum;
+      if (l2Datum !== null) {
+        output.set_datum_option(
+          CML.DatumOption.new_datum(
+            CML.PlutusData.from_cbor_hex(LucidData.to(l2Datum)),
+          ),
+        );
+      }
+      return {
+        [UserEvents.Columns.ID]: depositUTxO.idCbor,
+        [UserEvents.Columns.INFO]: depositUTxO.infoCbor,
+        [UserEvents.Columns.INCLUSION_TIME]: depositUTxO.inclusionTime,
+        [DepositsDB.Columns.LEDGER_TX_ID]: Buffer.from(
+          blake2b(depositUTxO.idCbor, { dkLen: 32 }),
+        ),
+        [DepositsDB.Columns.LEDGER_OUTPUT]: Buffer.from(
+          CML.TransactionOutput.new_conway_format_tx_out(
+            output,
+          ).to_cbor_bytes(),
+        ),
+        [DepositsDB.Columns.LEDGER_ADDRESS]: l2Address,
+      };
+    },
+    catch: (cause) =>
+      new SDK.LucidError({
+        message: "Failed to project deposit UTxO into an offchain ledger entry",
+        cause,
+      }),
+  });
 
 const userEventUTxOsToEntry = (
   eventUTxOs: (SDK.TxOrderUTxO | SDK.WithdrawalUTxO)[],
@@ -86,7 +150,7 @@ const userEventUTxOsToEntry = (
 export const syncUserEvents: Effect.Effect<
   void,
   SDK.LucidError | DatabaseError,
-  MidgardContracts | Lucid | Database | Globals
+  MidgardContracts | Lucid | Database | Globals | NodeConfig
 > = Effect.gen(function* () {
   const { api: lucid } = yield* Lucid;
   const globals = yield* Globals;
@@ -114,7 +178,11 @@ export const syncUserEvents: Effect.Effect<
   yield* Effect.logInfo(`🏦 ${txOrders.length} tx order(s) found.`);
   yield* Effect.logInfo(`🏦 ${withdrawals.length} withdrawal order(s) found.`);
 
-  const depositEntries: DepositsDB.Entry[] = depositUTxOsToEntries(deposits);
+  const { NETWORK: network } = yield* NodeConfig;
+  const depositEntries: DepositsDB.Entry[] = yield* Effect.forEach(
+    deposits,
+    (utxo) => depositUTxOToEntry(utxo, network),
+  );
   const txOrderEntries: UserEvents.Entry[] = userEventUTxOsToEntry(txOrders);
   const withdrawalEntries: UserEvents.Entry[] =
     userEventUTxOsToEntry(withdrawals);
@@ -133,7 +201,7 @@ export const syncUserEventsFiber = (
 ): Effect.Effect<
   void,
   SDK.LucidError | DatabaseError,
-  MidgardContracts | Lucid | Database | Globals
+  MidgardContracts | Lucid | Database | Globals | NodeConfig
 > =>
   Effect.gen(function* () {
     yield* Effect.logInfo("🏦 Sync user events to db");
