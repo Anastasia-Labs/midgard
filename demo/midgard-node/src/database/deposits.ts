@@ -75,9 +75,9 @@ export const insertEntries = (
       ON CONFLICT (${sql(Columns.ID)}) DO UPDATE SET
         ${sql(Columns.INFO)} = EXCLUDED.${sql(Columns.INFO)},
         ${sql(Columns.INCLUSION_TIME)} = EXCLUDED.${sql(Columns.INCLUSION_TIME)},
-        ${sql(Columns.LEDGER_TX_ID)} = EXCLUDED.${sql(Columns.LEDGER_TX_ID)},
-        ${sql(Columns.LEDGER_OUTPUT)} = EXCLUDED.${sql(Columns.LEDGER_OUTPUT)},
-        ${sql(Columns.LEDGER_ADDRESS)} = EXCLUDED.${sql(Columns.LEDGER_ADDRESS)}`;
+        ${sql(Columns.LEDGER_TX_ID)} = COALESCE(EXCLUDED.${sql(Columns.LEDGER_TX_ID)}, ${sql(tableName)}.${sql(Columns.LEDGER_TX_ID)}),
+        ${sql(Columns.LEDGER_OUTPUT)} = COALESCE(EXCLUDED.${sql(Columns.LEDGER_OUTPUT)}, ${sql(tableName)}.${sql(Columns.LEDGER_OUTPUT)}),
+        ${sql(Columns.LEDGER_ADDRESS)} = COALESCE(EXCLUDED.${sql(Columns.LEDGER_ADDRESS)}, ${sql(tableName)}.${sql(Columns.LEDGER_ADDRESS)})`;
   }).pipe(
     Effect.withLogSpan(`insertEntries ${tableName}`),
     Effect.tapErrorTag("SqlError", (e) =>

@@ -6,7 +6,7 @@ import {
   Lucid,
   Database,
 } from "@/services/index.js";
-import { LucidEvolution, utxoToCore } from "@lucid-evolution/lucid";
+import { LucidEvolution } from "@lucid-evolution/lucid";
 import {
   DepositsDB,
   TxOrdersDB,
@@ -61,16 +61,24 @@ const fetchUserEventUTxOs = (
     };
   });
 
+const depositUTxOsToEntries = (
+  depositUTxOs: SDK.DepositUTxO[],
+): DepositsDB.Entry[] =>
+  depositUTxOs.map((utxo) => ({
+    [UserEvents.Columns.ID]: utxo.idCbor,
+    [UserEvents.Columns.INFO]: utxo.infoCbor,
+    [UserEvents.Columns.INCLUSION_TIME]: utxo.inclusionTime,
+    [DepositsDB.Columns.LEDGER_TX_ID]: null,
+    [DepositsDB.Columns.LEDGER_OUTPUT]: null,
+    [DepositsDB.Columns.LEDGER_ADDRESS]: null,
+  }));
+
 const userEventUTxOsToEntry = (
-  eventUTxOs: (SDK.DepositUTxO | SDK.TxOrderUTxO | SDK.WithdrawalUTxO)[],
+  eventUTxOs: (SDK.TxOrderUTxO | SDK.WithdrawalUTxO)[],
 ): UserEvents.Entry[] => {
   return eventUTxOs.map((utxo) => ({
     [UserEvents.Columns.ID]: utxo.idCbor,
     [UserEvents.Columns.INFO]: utxo.infoCbor,
-    [UserEvents.Columns.ASSET_NAME]: utxo.assetName,
-    [UserEvents.Columns.L1_UTXO_CBOR]: Buffer.from(
-      utxoToCore(utxo.utxo).to_cbor_bytes(),
-    ),
     [UserEvents.Columns.INCLUSION_TIME]: utxo.inclusionTime,
   }));
 };
@@ -106,7 +114,7 @@ export const syncUserEvents: Effect.Effect<
   yield* Effect.logInfo(`🏦 ${txOrders.length} tx order(s) found.`);
   yield* Effect.logInfo(`🏦 ${withdrawals.length} withdrawal order(s) found.`);
 
-  const depositEntries: UserEvents.Entry[] = userEventUTxOsToEntry(deposits);
+  const depositEntries: DepositsDB.Entry[] = depositUTxOsToEntries(deposits);
   const txOrderEntries: UserEvents.Entry[] = userEventUTxOsToEntry(txOrders);
   const withdrawalEntries: UserEvents.Entry[] =
     userEventUTxOsToEntry(withdrawals);
