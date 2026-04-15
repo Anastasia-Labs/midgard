@@ -12,9 +12,9 @@ use midgard/fraud_proofs/invalid_signature/step_02
 use midgard/ledger_state.{MidgardTxWitnessSetCompact}
 
 validator main(
-  step_02_validator_script_hash: ScriptHash,
   computation_thread_token_policy_id: PolicyId,
-  hub_oracle: ScriptHash,
+  fraud_proof_token_policy_id: ScriptHash,
+  fraud_proof_token_address: Address,
 ) {
   spend(
     datum: Option<Datum>,

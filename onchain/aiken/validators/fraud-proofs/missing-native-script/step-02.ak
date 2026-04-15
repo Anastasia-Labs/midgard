@@ -17,7 +17,6 @@ use midgard/ledger_state.{MidgardScript, MidgardTxWitnessSetCompact}
 validator main(
   step_03_validator_script_hash: ScriptHash,
   computation_thread_token_policy_id: PolicyId,
-  hub_oracle: ScriptHash,
 ) {
   spend(
     datum: Option<Datum>,

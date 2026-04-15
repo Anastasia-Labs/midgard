@@ -1,9 +1,9 @@
 use cardano/transaction.{OutputReference}
-use midgard/common/types.{MerkleRoot}
 use midgard/computation_thread as ct
+use midgard/ledger_state.{MidgardInputsRoot}
 
 pub type State {
-  bad_tx_body_spend_inputs: MerkleRoot<Int, OutputReference>,
+  bad_tx_spend_inputs: MidgardInputsRoot,
 }
 
 pub type Datum =
