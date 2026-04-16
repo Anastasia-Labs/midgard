@@ -5,10 +5,9 @@ use midgard/common/utils
 use midgard/computation_thread as ct
 use midgard/fraud_proofs/common.{cancel, continue}
 use midgard/fraud_proofs/no_reference_input/step_03.{
-  Args, Datum, NonExistentInPrevLedger, SpendRedeemer, SpentInWithdrawal, State,
+  Args, Datum, SpendRedeemer, State,
 }
 use midgard/fraud_proofs/no_reference_input/step_04
-use midgard/ledger_state.{WithdrawalBody, WithdrawalInfo, WithdrawalIsValid}
 
 validator main(
   step_04_validator_script_hash: ScriptHash,
@@ -30,7 +29,12 @@ validator main(
           computation_thread_mint_redeemer_index,
           tx,
         )
-      ct.Continue(Args { input_index, output_index, missing_cause }) -> {
+      ct.Continue(Args {
+        input_index,
+        output_index,
+        non_membership_proof_in_ledger,
+        non_membership_proof_script_redeemer_index,
+      }) -> {
         let Transaction { inputs, outputs, redeemers, .. } = tx
 
         expect Some(step_datum) = datum
@@ -58,7 +62,6 @@ validator main(
           missing_output_reference,
           blocks_prev_utxos_root,
           blocks_transactions_root,
-          blocks_withdrawals_root,
         }) = m_input_state_data
 
         // 3. The block's transactions root must be passed to next step's
@@ -70,48 +73,16 @@ validator main(
             blocks_transactions_root,
           }
         expect output_state_data == expected_output_state
-        expect
-          when missing_cause is {
-            NonExistentInPrevLedger {
-              non_membership_proof_in_ledger,
-              non_membership_proof_script_redeemer_index,
-            } ->
-              // 4a. Target input must be absent from the verified block's prev
-              //     ledger.
-              utils.plutarch_pexcludes(
-                merkle_root: blocks_prev_utxos_root,
-                key: missing_output_reference,
-                non_membership_proof: non_membership_proof_in_ledger,
-                redeemers: redeemers,
-                withdraw_redeemer_index: non_membership_proof_script_redeemer_index,
-              )
-            SpentInWithdrawal {
-              withdrawal_id,
-              withdrawal_info,
-              membership_proof,
-              membership_proof_script_redeemer_index,
-            } -> {
-              // 4b. The provided withdrawal event must be valid, and it must
-              //     spend the input that was referenced in the bad transaction.
-              expect WithdrawalInfo {
-                body: WithdrawalBody { l2_outref, .. },
-                validity: WithdrawalIsValid,
-                ..
-              } = withdrawal_info
-              expect l2_outref == missing_output_reference
 
-              // 5b. The withdrawal event must be present in the withdrawals root
-              //     of the block.
-              utils.plutarch_phas(
-                merkle_root: blocks_withdrawals_root,
-                key: withdrawal_id,
-                value: withdrawal_info,
-                membership_proof: membership_proof,
-                redeemers: redeemers,
-                withdraw_redeemer_index: membership_proof_script_redeemer_index,
-              )
-            }
-          }
+        // 4. Target input must be absent from the verified block's prev ledger.
+        expect
+          utils.plutarch_pexcludes(
+            merkle_root: blocks_prev_utxos_root,
+            key: missing_output_reference,
+            non_membership_proof: non_membership_proof_in_ledger,
+            redeemers: redeemers,
+            withdraw_redeemer_index: non_membership_proof_script_redeemer_index,
+          )
 
         // Done.
         True

@@ -65,7 +65,6 @@ validator main(
           bad_tx_reference_inputs_root,
           blocks_prev_utxos_root,
           blocks_transactions_root,
-          blocks_withdrawals_root,
         }) = m_input_state_data
 
         // 2. Target input must be included in the verified transaction inputs.
@@ -88,7 +87,6 @@ validator main(
               |> ledger_state.midgard_input_id_to_out_ref,
             blocks_prev_utxos_root,
             blocks_transactions_root,
-            blocks_withdrawals_root,
           }
         expect output_state_data == expected_output_state
 

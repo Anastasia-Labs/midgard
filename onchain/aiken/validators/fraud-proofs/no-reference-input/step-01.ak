@@ -1,8 +1,8 @@
-//// ## No Reference Input & Withdrawn Reference Input Fraud Proofs (Section 5.1.16)
+//// ## No Reference Input Fraud Proof (Section 5.1.16)
 ////
-//// Proves a given transaction refers to an input that was either missing from
-//// the block's starting ledger (i.e. `prev_utxos_root`), or had been spent in
-//// a withdrawal event.
+//// Proves a given transaction refers to an input that was missing from the
+//// block's starting ledger (i.e. `prev_utxos_root`), and that it wasn't
+//// produced by any of the block's transactions.
 
 use aiken/crypto.{ScriptHash}
 use cardano/assets.{PolicyId}
@@ -63,15 +63,13 @@ validator main(
 
         // 3. The UTxO must be produced at next step's script hash with relevant
         //    roots.
-        let Header { prev_utxos_root, withdrawals_root, transactions_root, .. } =
-          header
+        let Header { prev_utxos_root, transactions_root, .. } = header
         expect output_script_hash == step_02_validator_script_hash
         let expected_output_state: Data =
           step_02.State {
             bad_tx_reference_inputs_root: bad_tx_body.reference_inputs,
             blocks_prev_utxos_root: prev_utxos_root,
             blocks_transactions_root: transactions_root,
-            blocks_withdrawals_root: withdrawals_root,
           }
         expect output_state_data == expected_output_state
 
