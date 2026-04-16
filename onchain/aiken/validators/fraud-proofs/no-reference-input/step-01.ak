@@ -2,7 +2,7 @@
 ////
 //// Proves a given transaction refers to an input that was either missing from
 //// the block's starting ledger (i.e. `prev_utxos_root`), or had been spent in
-//// a prior block, or a withdrawal event of the containing block.
+//// a withdrawal event.
 
 use aiken/crypto.{ScriptHash}
 use cardano/assets.{PolicyId}
@@ -61,8 +61,8 @@ validator main(
         // 2. Bad transaction's body must be provided.
         expect TxBodyProvided(bad_tx_body) = bad_tx_field_preimage
 
-        // 3. The UTxO must be produced at next step's script hash with inputs
-        //    root of the bad transaction, and block's prev UTxOs root.
+        // 3. The UTxO must be produced at next step's script hash with relevant
+        //    roots.
         let Header { prev_utxos_root, withdrawals_root, transactions_root, .. } =
           header
         expect output_script_hash == step_02_validator_script_hash
