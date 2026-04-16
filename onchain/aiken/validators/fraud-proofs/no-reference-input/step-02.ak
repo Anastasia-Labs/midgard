@@ -77,7 +77,8 @@ validator main(
             withdraw_redeemer_index: membership_proof_script_redeemer_index,
           )
 
-        // 3. 
+        // 3. Output reference of the missing reference input, plus the required
+        //    roots must be passed to the next step.
         expect output_script_hash == step_03_validator_script_hash
         let expected_output_state: Data =
           step_03.State {

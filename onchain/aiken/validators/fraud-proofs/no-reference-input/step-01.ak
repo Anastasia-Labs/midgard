@@ -1,9 +1,8 @@
-//// ## Non-Existent Reference Input UTxO Fraud Proof (Section 5.1.16)
+//// ## No Reference Input & Withdrawn Reference Input Fraud Proofs (Section 5.1.16)
 ////
 //// Proves a given transaction refers to an input that was either missing from
-//// the block's starting ledger, or had been spent in a prior withdrawal event
-//// or transaction order.
-//// initial ledger (i.e. `prev_utxos_root`) of its containing block.
+//// the block's starting ledger (i.e. `prev_utxos_root`), or had been spent in
+//// a prior block, or a withdrawal event of the containing block.
 
 use aiken/crypto.{ScriptHash}
 use cardano/assets.{PolicyId}
