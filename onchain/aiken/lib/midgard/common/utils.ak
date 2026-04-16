@@ -9,7 +9,7 @@ use aiken/interval.{Finite, Interval, NegativeInfinity, PositiveInfinity}
 use aiken_design_patterns/merkelized_validator
 use aiken_design_patterns/stake_validator
 use aiken_design_patterns/validity_range_normalization as vrn
-use cardano/address.{Address, PaymentCredential, Script, StakeCredential}
+use cardano/address.{Address, Script}
 use cardano/assets.{AssetName, PolicyId, Value, tokens}
 use cardano/transaction.{
   InlineDatum, Input, Output, OutputReference, Redeemer, ScriptPurpose, Spend,
@@ -680,36 +680,4 @@ pub fn plutarch_pdelete(
 
 pub fn get_verification_key_hash(key: VerificationKey) -> VerificationKeyHash {
   blake2b_224(key)
-}
-
-pub fn address_coercer(address_as_data: Data) -> Address {
-  expect [payment_cred_data,
-    stake_cred_data] = builtin.unconstr_fields(address_as_data)
-
-  Address {
-    payment_credential: payment_credential_coercer(payment_cred_data),
-    stake_credential: optional_stake_credential_coercer(stake_cred_data),
-  }
-}
-
-pub fn payment_credential_coercer(
-  payment_cred_as_data: Data,
-) -> PaymentCredential {
-  expect result: PaymentCredential = payment_cred_as_data
-  result
-}
-
-pub fn optional_stake_credential_coercer(
-  opt_stake_cred_as_data: Data,
-) -> Option<StakeCredential> {
-  when builtin.unconstr_index(opt_stake_cred_as_data) is {
-    0 -> None
-    1 -> {
-      expect [stake_cred_as_data] =
-        builtin.unconstr_fields(opt_stake_cred_as_data)
-      expect stake_cred: StakeCredential = stake_cred_as_data
-      Some(stake_cred)
-    }
-    _ -> fail @"Unexpected optional stake credential constructor"
-  }
 }

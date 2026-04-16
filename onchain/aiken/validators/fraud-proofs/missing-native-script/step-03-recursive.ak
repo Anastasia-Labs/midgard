@@ -1,14 +1,15 @@
 use aiken/crypto.{ScriptHash}
+use cardano/address.{Address}
 use cardano/assets.{PolicyId}
 use cardano/transaction.{OutputReference, Transaction}
 use midgard/common/constants.{empty_merkle_tree_root}
 use midgard/common/utils
 use midgard/computation_thread as ct
-use midgard/fraud_proofs/common.{cancel, pass_tx_to_next_step}
+use midgard/fraud_proofs/common.{cancel, continue, finalize}
 use midgard/fraud_proofs/missing_native_script/step_03_recursive.{
-  Args, Datum, Finalize, Recurse, SpendRedeemer, State,
+  Datum, Finalize, Recurse, SpendRedeemer, State,
 }
-use midgard/ledger_state.{Plutus, Timelock}
+use midgard/ledger_state
 
 validator main(
   computation_thread_token_policy_id: PolicyId,
@@ -35,6 +36,7 @@ validator main(
         input_index,
         output_index,
         script_hash_to_delete,
+        script_to_delete,
         membership_proof,
         merkle_delete_script_withdraw_redeemer_index,
       }) -> {
@@ -68,7 +70,12 @@ validator main(
         // 2. With `Recurse` redeemer, the script witness set must not be empty.
         expect verified_script_wits_root != empty_merkle_tree_root
 
-        // 3. The script about to be deleted must not have a hash that is
+        // 3. Provided script must correctly correspond to its hash.
+        //    TODO: Another fraud proof seems to be needed for invalid mapping.
+        expect
+          ledger_state.hash_midgard_script(script_to_delete) == script_hash_to_delete
+
+        // 4. The script about to be deleted must not have a hash that is
         //    expected to be missing from the transaction's script witness set.
         expect script_hash_to_delete != expected_missing_script_hash
 
@@ -82,7 +89,7 @@ validator main(
             withdraw_redeemer_index: merkle_delete_script_withdraw_redeemer_index,
           )
 
-        // 4. The UTxO must be produced at own script hash with the updated
+        // 5. The UTxO must be produced at own script hash with the updated
         //    state.
         expect output_script_hash == own_script_hash
         let expected_output_state: Data =
@@ -126,13 +133,11 @@ validator main(
             redeemers,
           )
 
-        expect Some(State {
-          expected_missing_script_hash,
-          verified_script_wits_root,
-        }) = m_input_state_data
+        expect Some(State { verified_script_wits_root, .. }) =
+          m_input_state_data
 
         // 2. With `Finalize` redeemer, the script witness set must be empty.
-        expect verified_outputs_root == empty_merkle_tree_root
+        expect verified_script_wits_root == empty_merkle_tree_root
 
         // Done.
         True

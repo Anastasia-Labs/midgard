@@ -17,7 +17,7 @@ pub type Args {
   bad_addr_tx_wit_verification_key_hash: VerificationKeyHash,
   bad_addr_tx_wit: (VerificationKey, Signature),
   bad_addr_tx_wit_membership_proof: Proof,
-  plutarch_phas_withdraw_redeemer_index: Int,
+  inclusion_proof_script_withdraw_redeemer_index: Int,
   fraud_proof_mint_redeemer_index: Int,
 }
 

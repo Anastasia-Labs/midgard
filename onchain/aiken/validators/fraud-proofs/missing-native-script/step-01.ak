@@ -1,18 +1,12 @@
-use aiken/builtin
-use aiken/collection/dict.{Dict}
-use aiken/crypto.{ScriptHash, Signature, VerificationKey, VerificationKeyHash}
-use cardano/address.{Address, Script}
+use aiken/crypto.{ScriptHash}
 use cardano/assets.{PolicyId}
-use cardano/transaction.{Output, OutputReference, Transaction}
-use midgard/common/types.{MerkleRoot} as midgard_types
-use midgard/common/utils.{verify_hash_32}
+use cardano/transaction.{OutputReference, Transaction}
 use midgard/computation_thread as ct
-use midgard/fraud_proofs/common.{cancel, pass_tx_to_next_step}
-use midgard/fraud_proofs/missing_native_script/step_01.{
-  Args, Datum, SpendRedeemer,
+use midgard/fraud_proofs/common.{
+  TxBodyAndWitsProvided, cancel, pass_tx_to_next_step,
 }
-use midgard/fraud_proofs/missing_native_script/step_02_recursive as step_02
-use midgard/ledger_state.{MidgardScript, MidgardTxWitnessSetCompact}
+use midgard/fraud_proofs/missing_native_script/step_01.{Datum, SpendRedeemer}
+use midgard/fraud_proofs/missing_native_script/step_02
 
 validator main(
   step_02_validator_script_hash: ScriptHash,
@@ -47,7 +41,7 @@ validator main(
           output_state_data,
           _header,
           _bad_tx_id,
-          bad_tx,
+          _bad_tx,
           bad_tx_field_preimage,
         <-
           pass_tx_to_next_step(
@@ -81,56 +75,5 @@ validator main(
 
   else(_) {
     fail
-  }
-}
-
-pub fn get_addr_tx_wits_merkle_tree_root(
-  bad_tx_wits: MidgardTxWitnessSetCompact,
-) -> MerkleRoot<VerificationKeyHash, (VerificationKey, Signature)> {
-  //It's the first field and it's a ByteArray
-  bad_tx_wits
-    |> builtin.unconstr_fields
-    |> builtin.head_list
-    |> builtin.un_b_data
-}
-
-pub fn resolve_address_tx_wits_from_data(
-  address_tx_wits_as_data: Data<
-    Dict<VerificationKeyHash, (VerificationKey, Signature)>,
-  >,
-) -> Dict<VerificationKeyHash, (VerificationKey, Signature)> {
-  // Return the resolved hash
-  expect coerced: Pairs<VerificationKeyHash, (VerificationKey, Signature)> =
-    address_tx_wits_as_data
-
-  // Fails if not in ascending order
-  coerced |> dict.from_ascending_pairs
-}
-
-pub fn get_script_tx_wits_merkle_root(
-  bad_tx_wits_as_data: Data<MidgardTxWitnessSetCompact>,
-) -> MerkleRoot<ScriptHash, MidgardScript> {
-  //It's the second field and it's a ByteArray
-  bad_tx_wits_as_data
-    |> builtin.unconstr_fields
-    |> builtin.tail_list
-    |> builtin.head_list
-    |> builtin.un_b_data
-}
-
-pub fn output_address_coercer(output_as_data: Data<Output>) -> Address {
-  // Unsafely destructuring `output_as_data`, assuming it is structured as 
-  // an `Output`. Since further down we are validating the presence of 
-  // this UTxO in the latest ledger, we don't need to worry about the 
-  // correctness of its structure here. 
-  expect [output_address_data, ..] = builtin.unconstr_fields(output_as_data)
-
-  utils.address_coercer(output_address_data)
-}
-
-pub fn get_script_hash(address: Address) -> ByteArray {
-  when address.payment_credential is {
-    Script(hash) -> hash
-    _ -> fail @"Expected a script credential"
   }
 }

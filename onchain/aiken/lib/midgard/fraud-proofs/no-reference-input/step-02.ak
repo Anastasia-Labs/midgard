@@ -9,7 +9,7 @@ pub type State {
   bad_tx_reference_inputs_root: MidgardInputsRoot,
   blocks_prev_utxos_root: MidgardLedgerRoot,
   blocks_transactions_root: MidgardTxsRoot,
-  blocks_withdrawals_root: WitdhrawalsRoot,
+  blocks_withdrawals_root: WithdrawalsRoot,
 }
 
 pub type Datum =

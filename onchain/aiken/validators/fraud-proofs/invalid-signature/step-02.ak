@@ -1,15 +1,16 @@
 use aiken/builtin
-use aiken/collection/dict.{Dict}
-use aiken/crypto.{ScriptHash, Signature, VerificationKey, VerificationKeyHash}
+use aiken/crypto.{
+  ScriptHash, Signature, VerificationKey, verify_ed25519_signature,
+}
+use cardano/address.{Address}
 use cardano/assets.{PolicyId}
 use cardano/transaction.{OutputReference, Transaction}
-use midgard/common/types.{MerkleRoot} as midgard_types
-use midgard/common/utils.{verify_hash_32}
+use midgard/common/utils
 use midgard/computation_thread as ct
-use midgard/fraud_proofs/common.{cancel, pass_tx_to_next_step}
-use midgard/fraud_proofs/invalid_signature/step_01.{Args, Datum, SpendRedeemer}
-use midgard/fraud_proofs/invalid_signature/step_02
-use midgard/ledger_state.{MidgardTxWitnessSetCompact}
+use midgard/fraud_proofs/common.{cancel, finalize}
+use midgard/fraud_proofs/invalid_signature/step_02.{
+  Args, Datum, SpendRedeemer, State,
+}
 
 validator main(
   computation_thread_token_policy_id: PolicyId,
@@ -35,11 +36,11 @@ validator main(
       ct.Continue(Args {
         input_index,
         output_index,
-        bad_tx_wits,
         bad_addr_tx_wit_verification_key_hash,
         bad_addr_tx_wit,
         bad_addr_tx_wit_membership_proof,
-        plutarch_phas_withdraw_redeemer_index,
+        inclusion_proof_script_withdraw_redeemer_index,
+        fraud_proof_mint_redeemer_index,
       }) -> {
         let Transaction { inputs, outputs, redeemers, .. } = tx
 
@@ -74,12 +75,12 @@ validator main(
         //    belongs to addr_tx_wits(tx)
         expect
           utils.plutarch_phas(
-            bad_addr_tx_wits_root,
-            bad_addr_tx_wit_verification_key_hash,
-            bad_addr_tx_wit,
-            bad_addr_tx_wit_membership_proof,
-            redeemers,
-            plutarch_phas_withdraw_redeemer_index,
+            merkle_root: bad_addr_tx_wits_root,
+            key: bad_addr_tx_wit_verification_key_hash,
+            value: bad_addr_tx_wit,
+            membership_proof: bad_addr_tx_wit_membership_proof,
+            redeemers: redeemers,
+            withdraw_redeemer_index: inclusion_proof_script_withdraw_redeemer_index,
           )
 
         let (verification_key, signature): (VerificationKey, Signature) =
@@ -87,7 +88,7 @@ validator main(
 
         // 3. Verification key hash must be wrong OR the signature is invalid
         expect or {
-            blake2b_224(verification_key) != bad_addr_tx_wit_verification_key_hash,
+            utils.get_verification_key_hash(verification_key) != bad_addr_tx_wit_verification_key_hash,
             verify_ed25519_signature(
               verification_key,
               builtin.serialise_data(bad_tx_body),

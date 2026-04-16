@@ -1,7 +1,5 @@
-use aiken/crypto.{ScriptHash}
 use midgard/common/types.{Proof}
 use midgard/computation_thread as ct
-use midgard/fraud_proofs/common.{TxInclusionArgs}
 use midgard/ledger_state.{
   MidgardOutput, MidgardOutputsRoot, MidgardScriptWitsRoot,
 }

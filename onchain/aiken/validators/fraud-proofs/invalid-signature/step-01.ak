@@ -1,13 +1,11 @@
-use aiken/builtin
-use aiken/collection/dict.{Dict}
-use aiken/crypto.{ScriptHash, Signature, VerificationKey, VerificationKeyHash}
+use aiken/crypto.{ScriptHash}
 use cardano/assets.{PolicyId}
 use cardano/transaction.{OutputReference, Transaction}
-use midgard/common/types.{MerkleRoot} as midgard_types
-use midgard/common/utils.{verify_hash_32}
 use midgard/computation_thread as ct
-use midgard/fraud_proofs/common.{cancel, pass_tx_to_next_step}
-use midgard/fraud_proofs/invalid_signature/step_01.{Args, Datum, SpendRedeemer}
+use midgard/fraud_proofs/common.{
+  TxBodyAndWitsProvided, cancel, pass_tx_to_next_step,
+}
+use midgard/fraud_proofs/invalid_signature/step_01.{Datum, SpendRedeemer}
 use midgard/fraud_proofs/invalid_signature/step_02
 use midgard/ledger_state.{MidgardTxWitnessSetCompact}
 
@@ -44,7 +42,7 @@ validator main(
           output_state_data,
           _header,
           _bad_tx_id,
-          bad_tx,
+          _bad_tx,
           bad_tx_field_preimage,
         <-
           pass_tx_to_next_step(

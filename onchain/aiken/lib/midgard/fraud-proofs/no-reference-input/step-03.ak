@@ -2,15 +2,15 @@ use cardano/transaction.{OutputReference}
 use midgard/common/types.{Proof}
 use midgard/computation_thread as ct
 use midgard/ledger_state.{
-  MidgardInputId, MidgardInputsRoot, MidgardLedgerRoot, MidgardOutput,
-  WithdrawalId, WithdrawalInfo,
+  MidgardLedgerRoot, MidgardTxsRoot, WithdrawalId, WithdrawalInfo,
+  WithdrawalsRoot,
 }
 
 pub type State {
   missing_output_reference: OutputReference,
   blocks_prev_utxos_root: MidgardLedgerRoot,
   blocks_transactions_root: MidgardTxsRoot,
-  blocks_withdrawals_root: WitdhrawalsRoot,
+  blocks_withdrawals_root: WithdrawalsRoot,
 }
 
 pub type Datum =

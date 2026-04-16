@@ -1,13 +1,14 @@
-use cardano/address.{Address}
+use aiken/crypto.{ScriptHash}
 use cardano/assets.{PolicyId}
 use cardano/transaction.{OutputReference, Transaction}
 use midgard/common/utils
 use midgard/computation_thread as ct
-use midgard/fraud_proofs/common.{cancel, finalize}
+use midgard/fraud_proofs/common.{cancel, continue}
 use midgard/fraud_proofs/no_reference_input/step_02.{
   Args, Datum, SpendRedeemer, State,
 }
 use midgard/fraud_proofs/no_reference_input/step_03
+use midgard/ledger_state
 
 validator main(
   step_03_validator_script_hash: ScriptHash,
@@ -63,6 +64,7 @@ validator main(
         expect Some(State {
           bad_tx_reference_inputs_root,
           blocks_prev_utxos_root,
+          blocks_transactions_root,
           blocks_withdrawals_root,
         }) = m_input_state_data
 

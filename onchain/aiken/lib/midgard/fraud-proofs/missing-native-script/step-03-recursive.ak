@@ -1,7 +1,6 @@
 use aiken/crypto.{ScriptHash}
-use midgard/common/types.{MerkleRoot}
+use midgard/common/types.{Proof}
 use midgard/computation_thread as ct
-use midgard/fraud_proofs/common.{TxInclusionArgs}
 use midgard/ledger_state.{MidgardScript, MidgardScriptWitsRoot}
 
 pub type State {

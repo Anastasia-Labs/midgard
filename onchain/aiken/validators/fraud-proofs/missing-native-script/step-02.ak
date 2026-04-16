@@ -1,18 +1,15 @@
-use aiken/builtin
-use aiken/collection/dict.{Dict}
-use aiken/crypto.{ScriptHash, Signature, VerificationKey, VerificationKeyHash}
-use cardano/address.{Address, Script}
+use aiken/crypto.{ScriptHash}
+use cardano/address.{Script}
 use cardano/assets.{PolicyId}
-use cardano/transaction.{Output, OutputReference, Transaction}
-use midgard/common/types.{MerkleRoot} as midgard_types
-use midgard/common/utils.{verify_hash_32}
+use cardano/transaction.{OutputReference, Transaction}
+use midgard/common/utils
 use midgard/computation_thread as ct
-use midgard/fraud_proofs/common.{cancel, pass_tx_to_next_step}
+use midgard/fraud_proofs/common.{cancel, continue}
 use midgard/fraud_proofs/missing_native_script/step_02.{
-  Args, Datum, SpendRedeemer,
+  Args, Datum, SpendRedeemer, State,
 }
 use midgard/fraud_proofs/missing_native_script/step_03_recursive as step_03
-use midgard/ledger_state.{MidgardScript, MidgardTxWitnessSetCompact}
+use midgard/ledger_state
 
 validator main(
   step_03_validator_script_hash: ScriptHash,
@@ -86,7 +83,7 @@ validator main(
         // 5. The missing script must be a Native script.
         expect
           bad_output_script_hash == ledger_state.hash_midgard_script(
-            Timelock(missing_native_script_bytes),
+            ledger_state.Timelock(missing_native_script_bytes),
           )
 
         // 6. The produced UTxO must go to the next step with a proper state.

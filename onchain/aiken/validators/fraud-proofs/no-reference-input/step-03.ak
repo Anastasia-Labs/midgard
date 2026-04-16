@@ -1,13 +1,14 @@
-use cardano/address.{Address}
+use aiken/crypto.{ScriptHash}
 use cardano/assets.{PolicyId}
 use cardano/transaction.{OutputReference, Transaction}
 use midgard/common/utils
 use midgard/computation_thread as ct
-use midgard/fraud_proofs/common.{cancel, finalize}
+use midgard/fraud_proofs/common.{cancel, continue}
 use midgard/fraud_proofs/no_reference_input/step_03.{
-  Args, Datum, SpendRedeemer, State,
+  Args, Datum, NonExistentInPrevLedger, SpendRedeemer, SpentInWithdrawal, State,
 }
 use midgard/fraud_proofs/no_reference_input/step_04
+use midgard/ledger_state.{WithdrawalBody, WithdrawalInfo, WithdrawalIsValid}
 
 validator main(
   step_04_validator_script_hash: ScriptHash,
@@ -92,7 +93,7 @@ validator main(
             } -> {
               // 4b. The provided withdrawal event must be valid, and it must
               //     spend the input that was referenced in the bad transaction.
-              expect WitdhrawalInfo {
+              expect WithdrawalInfo {
                 body: WithdrawalBody { l2_outref, .. },
                 validity: WithdrawalIsValid,
                 ..

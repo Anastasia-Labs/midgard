@@ -4,7 +4,7 @@ use cardano/transaction.{OutputReference, Transaction}
 use midgard/common/utils
 use midgard/computation_thread as ct
 use midgard/fraud_proofs/common.{cancel, finalize}
-use midgard/fraud_proofs/missing_signature/step_02.{
+use midgard/fraud_proofs/missing_signature/step_03.{
   Args, Datum, SpendRedeemer, State,
 }
 
@@ -34,7 +34,7 @@ validator main(
         output_index,
         fraud_proof_mint_redeemer_index,
         signature_exclusion_proof,
-        plutarch_pexcludes_withdraw_redeemer_index,
+        non_membership_proof_script_redeemer_index,
       }) -> {
         let Transaction { inputs, outputs, redeemers, .. } = tx
 
@@ -70,11 +70,11 @@ validator main(
         // 2. Required signer must not be in addr_tx_wits
         expect
           utils.plutarch_pexcludes(
-            bad_addr_tx_wits,
-            missing_required_signer_hash,
-            signature_exclusion_proof,
-            redeemers,
-            plutarch_pexcludes_withdraw_redeemer_index,
+            merkle_root: verified_addr_tx_wits,
+            key: missing_required_signer_hash,
+            non_membership_proof: signature_exclusion_proof,
+            redeemers: redeemers,
+            withdraw_redeemer_index: non_membership_proof_script_redeemer_index,
           )
 
         // Done.

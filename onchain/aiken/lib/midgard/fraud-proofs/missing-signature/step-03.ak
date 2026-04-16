@@ -1,4 +1,4 @@
-use aiken/crypto.{Signature, VerificationKey, VerificationKeyHash}
+use aiken/crypto.{VerificationKeyHash}
 use midgard/common/types.{Proof}
 use midgard/computation_thread as ct
 use midgard/ledger_state.{AddressWitsRoot}
@@ -16,7 +16,7 @@ pub type Args {
   output_index: Int,
   fraud_proof_mint_redeemer_index: Int,
   signature_exclusion_proof: Proof,
-  plutarch_pexcludes_withdraw_redeemer_index: Int,
+  non_membership_proof_script_redeemer_index: Int,
 }
 
 pub type SpendRedeemer =

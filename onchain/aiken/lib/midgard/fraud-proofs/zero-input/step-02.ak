@@ -1,4 +1,3 @@
-use cardano/transaction.{OutputReference}
 use midgard/computation_thread as ct
 use midgard/ledger_state.{MidgardInputsRoot}
 

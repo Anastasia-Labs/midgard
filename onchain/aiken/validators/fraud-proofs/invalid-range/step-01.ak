@@ -10,7 +10,7 @@ use aiken_design_patterns/validity_range_normalization as vrn
 use cardano/assets.{PolicyId}
 use cardano/transaction.{OutputReference, Transaction}
 use midgard/computation_thread as ct
-use midgard/fraud_proofs/common.{cancel, pass_tx_to_next_step}
+use midgard/fraud_proofs/common.{TxBodyProvided, cancel, pass_tx_to_next_step}
 use midgard/fraud_proofs/invalid_range/step_01.{Datum, SpendRedeemer}
 use midgard/fraud_proofs/invalid_range/step_02
 use midgard/ledger_state.{Header}
