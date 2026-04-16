@@ -1,7 +1,7 @@
 use aiken/crypto.{ScriptHash, VerificationKeyHash}
 use cardano/assets.{AssetName, PolicyId}
 use cardano/transaction.{InlineDatum, Input, Output, Redeemer, ScriptPurpose}
-use midgard/common/types.{MerkleRoot, PosixTime, Proof}
+use midgard/common/types.{PosixTime, Proof}
 use midgard/common/utils
 use midgard/ledger_state
 
