@@ -88,15 +88,9 @@ pub fn valid_event_inclusion(
   deposit_script_hash: ScriptHash,
   withdrawal_script_hash: ScriptHash,
   tx_order_script_hash: ScriptHash,
-  deposits_root: MerkleRoot<ledger_state.DepositId, ledger_state.DepositEvent>,
-  withdrawals_root: MerkleRoot<
-    ledger_state.WithdrawalId,
-    ledger_state.WithdrawalEvent,
-  >,
-  transactions_root: MerkleRoot<
-    ledger_state.MidgardTxId,
-    ledger_state.MidgardTx,
-  >,
+  deposits_root: ledger_state.DepositsRoot,
+  withdrawals_root: ledger_state.WithdrawalsRoot,
+  transactions_root: ledger_state.MidgardTxsRoot,
   membership_proof: Proof,
   unresolved_event_asset_name: AssetName,
   unresolved_event_ref_input_index: Int,
