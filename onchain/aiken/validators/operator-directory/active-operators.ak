@@ -405,12 +405,12 @@ fn spend_for_updating_bond_unlock_time(
       active_node_output_data,
     <-
       linked_list.spend_for_updating_elements_data(
-        active_node_input_index,
-        active_node_output_index,
-        own_out_ref,
-        inputs,
-        outputs,
-        mint,
+        element_input_index: active_node_input_index,
+        continued_element_output_index: active_node_output_index,
+        element_input_outref: own_out_ref,
+        inputs: inputs,
+        outputs: outputs,
+        tx_mint: mint,
       )
 
     // 3. Node's ADA bond must be preserved.
