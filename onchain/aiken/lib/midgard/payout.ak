@@ -1,11 +1,10 @@
 use cardano/assets.{AssetName}
 use cardano/transaction.{OutputReference}
-use midgard/common/types.{Proof}
+use midgard/common/types.{Proof, ValuePairs}
 
-// No Datum type — payout UTxOs hold NoDatum during accumulation.
-// Payout parameters (l2_value, l1_address, l1_datum) are recovered trustlessly
-// from the settlement tree at ConcludeWithdrawal time using withdrawal_out_ref
-// + Merkle proof. This eliminates the datum injection attack entirely.
+pub type Datum {
+  l2_value: ValuePairs,
+}
 
 pub type SpendRedeemer {
   AddFunds {

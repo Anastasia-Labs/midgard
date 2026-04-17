@@ -10,7 +10,7 @@ use midgard/common/utils
 use midgard/hub_oracle as hub
 use midgard/ledger_state
 use midgard/payout.{
-  AddFunds, BurnPayout, ConcludeWithdrawal, MintPayout, MintRedeemer,
+  AddFunds, BurnPayout, ConcludeWithdrawal, Datum, MintPayout, MintRedeemer,
   SpendRedeemer,
 }
 use midgard/settlement
@@ -91,19 +91,16 @@ validator mint(withdrawal_addr: Address) {
   }
 }
 
-validator spend(hub_oracle: ScriptHash) {
+validator spend(payout_policy_id: PolicyId, reserve_addr: Address) {
   spend(
-    // Payout UTxOs always hold NoDatum. datum must be None.
-    datum: Option<Data>,
+    m_datum: Option<Datum>,
     redeemer: SpendRedeemer,
     own_out_ref: OutputReference,
     tx: Transaction,
   ) {
     let Transaction { inputs, outputs, reference_inputs, redeemers, .. } = tx
 
-    // Invariant: payout UTxOs must never carry a datum.
-    // Enforced at creation (withdrawal.ak) and at continuation (AddFunds).
-    expect datum == None
+    expect Some(Datum { l2_value }) = m_datum
 
     when redeemer is {
       // ── AddFunds ───────────────────────────────────────────────────────────
@@ -117,9 +114,6 @@ validator spend(hub_oracle: ScriptHash) {
         reserve_change_output_index,
         hub_ref_input_index,
       } -> {
-        let hub.Datum { payout: payout_policy_id, reserve_addr, .. } =
-          hub.get_datum(reference_inputs, hub_oracle, hub_ref_input_index)
-
         // 1. Authenticate payout input and bind its asset name.
         let
           payout_input,
@@ -138,34 +132,18 @@ validator spend(hub_oracle: ScriptHash) {
           output: Output {
             address: payout_in_address,
             value: payout_in_value,
-            datum: payout_in_datum,
             ..
           },
           ..
         } = payout_input
 
-        // Invariant check on input.
-        expect payout_in_datum == NoDatum
-
         // 2. Reserve input must come from reserve_addr. Enforce exactly one
         //    reserve input per transaction to prevent draining multiple UTxOs.
-        expect Some(Input {
-          output: Output {
-            address: reserve_in_address,
-            value: reserve_in_value,
-            ..
-          },
-          ..
-        }) = inputs |> list.at(reserve_input_index)
+        expect [Input { output: Output { value: reserve_in_value, .. }, .. }] =
+          inputs |> list.filter(fn(i) { i.output.address == reserve_addr })
 
-        expect reserve_in_address == reserve_addr
-
-        let reserve_input_count =
-          list.count(inputs, fn(i) { i.output.address == reserve_addr })
-        expect reserve_input_count == 1
-
-        // 3. Payout output: same address (prevents theft), NoDatum (prevents
-        //    injection), NFT preserved, no reference script attached.
+        // 3. Payout output: same address (prevents theft) and same datum, NFT
+        //    preserved, no reference script attached.
         expect Some(Output {
           address: payout_out_address,
           value: payout_out_value,
@@ -174,7 +152,7 @@ validator spend(hub_oracle: ScriptHash) {
         }) = outputs |> list.at(payout_output_index)
 
         expect payout_out_address == payout_in_address
-        expect payout_out_datum == NoDatum
+        expect payout_out_datum == m_datum
         expect
           assets.quantity_of(
             payout_out_value,
@@ -195,6 +173,10 @@ validator spend(hub_oracle: ScriptHash) {
         //    operator. excess = (payout_in + reserve_in) - payout_out.
         let excess_lovelace =
           payout_in_lovelace + reserve_in_lovelace - payout_out_lovelace
+
+        // 6. TODO: Currently incorrect, but this check prevents the accumulator
+        //          to grow larger than the target.
+        expect payout_out_lovelace <= assets.lovelace_of(l2_value)
 
         when reserve_change_output_index is {
           None -> {
