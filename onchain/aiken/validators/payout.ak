@@ -1,6 +1,7 @@
 use aiken/collection/dict
 use aiken/collection/list
 use aiken/crypto.{ScriptHash}
+use cardano/address.{Address}
 use cardano/assets.{PolicyId}
 use cardano/transaction.{
   Input, Mint, NoDatum, Output, OutputReference, Spend, Transaction,
@@ -8,46 +9,41 @@ use cardano/transaction.{
 use midgard/common/utils
 use midgard/hub_oracle as hub
 use midgard/ledger_state
-use midgard/payout
+use midgard/payout.{
+  AddFunds, BurnPayout, ConcludeWithdrawal, MintPayout, MintRedeemer,
+  SpendRedeemer,
+}
 use midgard/settlement
 use midgard/user_events
-use midgard/user_events/withdrawal as withdrawal_lib
+use midgard/user_events/withdrawal
 
-// ── Minting policy ──────────────────────────────────────────────────────────
-
-validator mint(_hub_oracle: ScriptHash) {
-  mint(redeemer: payout.MintRedeemer, own_policy: PolicyId, tx: Transaction) {
+validator mint(withdrawal_addr: Address) {
+  mint(redeemer: MintRedeemer, own_policy: PolicyId, tx: Transaction) {
     let Transaction { inputs, redeemers, mint, .. } = tx
 
     when redeemer is {
       // Minting: must be coupled with InitializePayout in the withdrawal
       // spending validator, ensuring a payout NFT is only ever created for a
       // confirmed, valid withdrawal.
-      payout.MintPayout {
-        withdrawal_utxo_out_ref,
-        withdrawal_spend_redeemer_index,
-      } -> {
-        // 1. The withdrawal UTxO must be consumed in this transaction.
-        expect
-          list.any(
-            inputs,
-            fn(i) { i.output_reference == withdrawal_utxo_out_ref },
-          )
+      MintPayout { withdrawal_input_index, withdrawal_spend_redeemer_index } -> {
+        let Transaction { inputs, outputs, redeemers, .. } = tx
 
-        // 2. Its spending redeemer must be InitializePayout. The withdrawal
+        // 1. Its spending redeemer must be InitializePayout. The withdrawal
         //    spending validator already validates all other minting conditions
         //    (asset name, output value, destination, etc.).
-        expect withdrawal_lib.SpendRedeemer {
-          purpose: withdrawal_lib.InitializePayout,
+        expect withdrawal.SpendRedeemer {
+          purpose: withdrawal.InitializePayout,
           ..
-        }: withdrawal_lib.SpendRedeemer =
-          utils.get_redeemer_at(
-            redeemers,
-            Spend(withdrawal_utxo_out_ref),
-            withdrawal_spend_redeemer_index,
+        } =
+          utils.get_spending_redeemer_data_at(
+            script_address: withdrawal_addr,
+            input_index: withdrawal_input_index,
+            redeemer_index: withdrawal_spend_redeemer_index,
+            inputs: inputs,
+            redeemers: redeemers,
           )
 
-        // 3. Exactly one payout NFT minted with quantity 1.
+        // 2. Exactly one payout NFT minted with quantity 1.
         //    The withdrawal validator ensures the asset name matches the
         //    burnt withdrawal NFT.
         expect [Pair(_, 1)] = assets.tokens(mint, own_policy) |> dict.to_pairs
@@ -58,7 +54,7 @@ validator mint(_hub_oracle: ScriptHash) {
       // Burning: must be coupled with ConcludeWithdrawal in the payout
       // spending validator, ensuring the NFT can only be destroyed when
       // the accumulator is fully funded and funds are released to L1.
-      payout.BurnPayout {
+      BurnPayout {
         payout_asset_name,
         payout_input_index,
         payout_spend_redeemer_index,
@@ -78,7 +74,7 @@ validator mint(_hub_oracle: ScriptHash) {
             payout_input_index,
           )
 
-        expect payout.ConcludeWithdrawal { .. }: payout.SpendRedeemer =
+        expect ConcludeWithdrawal { .. }: SpendRedeemer =
           utils.get_redeemer_at(
             redeemers,
             Spend(payout_input.output_reference),
@@ -95,13 +91,11 @@ validator mint(_hub_oracle: ScriptHash) {
   }
 }
 
-// ── Spending validator ───────────────────────────────────────────────────────
-
 validator spend(hub_oracle: ScriptHash) {
   spend(
     // Payout UTxOs always hold NoDatum. datum must be None.
     datum: Option<Data>,
-    redeemer: payout.SpendRedeemer,
+    redeemer: SpendRedeemer,
     own_out_ref: OutputReference,
     tx: Transaction,
   ) {
@@ -116,7 +110,7 @@ validator spend(hub_oracle: ScriptHash) {
       // Spends exactly one reserve UTxO to top up the payout accumulator.
       // Partial accumulation is allowed (combined < target is fine).
       // Any excess beyond what was deposited must return to the reserve.
-      payout.AddFunds {
+      AddFunds {
         payout_input_index,
         payout_output_index,
         reserve_input_index,
@@ -229,7 +223,7 @@ validator spend(hub_oracle: ScriptHash) {
       // Burns the payout NFT and releases the accumulated funds to the L1
       // recipient. Payout parameters are recovered trustlessly from the
       // settlement tree — no datum needed on the payout UTxO.
-      payout.ConcludeWithdrawal {
+      ConcludeWithdrawal {
         payout_input_index,
         l1_output_index,
         hub_ref_input_index,
@@ -339,7 +333,7 @@ validator spend(hub_oracle: ScriptHash) {
 
         // 8. Payout NFT must be burned via the BurnPayout mint redeemer,
         //    which itself is coupled back to this ConcludeWithdrawal redeemer.
-        expect payout.BurnPayout { payout_asset_name: burn_asset_name, .. }: payout.MintRedeemer =
+        expect BurnPayout { payout_asset_name: burn_asset_name, .. }: MintRedeemer =
           utils.get_redeemer_at(
             redeemers,
             Mint(payout_policy_id),

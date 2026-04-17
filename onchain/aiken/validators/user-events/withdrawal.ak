@@ -102,13 +102,13 @@ validator spend(hub_oracle: ScriptHash) {
 
         // 4. The payout mint redeemer must reference this withdrawal UTxO,
         //    coupling payout minting to this specific InitializePayout spend.
-        expect payout.MintPayout { withdrawal_utxo_out_ref, .. }: payout.MintRedeemer =
+        expect payout.MintPayout { withdrawal_input_index, .. }: payout.MintRedeemer =
           utils.get_redeemer_at(
             redeemers,
             Mint(payout_policy_id),
             payout_mint_redeemer_index,
           )
-        expect withdrawal_utxo_out_ref == own_out_ref
+        expect withdrawal_input_index == input_index
 
         let Pair(withdrawal_event_id, withdrawal_event_info) =
           ledger_state.unsafe_event_to_key_value_pair(withdrawal_event)

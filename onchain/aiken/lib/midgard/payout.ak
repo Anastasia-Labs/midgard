@@ -37,7 +37,7 @@ pub type SpendRedeemer {
 
 pub type MintRedeemer {
   MintPayout {
-    withdrawal_utxo_out_ref: OutputReference,
+    withdrawal_input_index: Int,
     // Index in redeemers of Spend(withdrawal_utxo_out_ref); its redeemer must
     // decode as InitializePayout, coupling minting to withdrawal spending.
     withdrawal_spend_redeemer_index: Int,
