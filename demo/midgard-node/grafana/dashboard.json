@@ -908,7 +908,7 @@
         {
           "disableTextWrap": false,
           "editorMode": "builder",
-          "expr": "commit_block_tx_size{instance=\"midgard-node:9464\"}",
+          "expr": "block_total_user_events_count{instance=\"midgard-node:9464\"}",
           "fullMetaSearch": false,
           "includeNullMetadata": true,
           "legendFormat": "__auto",
@@ -917,7 +917,7 @@
           "useBackend": false
         }
       ],
-      "title": "L1 Block Commitment Transaction Size",
+      "title": "Total User Events Count in Block Commitment",
       "type": "timeseries"
     },
     {

@@ -1,0 +1,113 @@
+services:
+  config-init:
+    image: curlimages/curl:latest
+    user: root
+    entrypoint: []
+    command:
+      - /bin/sh
+      - -c
+      - |
+        CONFIG_DIR=/config
+        BASE_URL=https://book.play.dev.cardano.org/environments/${CARDANO_NETWORK}
+        for file in config.json topology.json byron-genesis.json shelley-genesis.json alonzo-genesis.json conway-genesis.json; do
+          if [ ! -f "$$CONFIG_DIR/$$file" ]; then
+            echo "Downloading $$file..."
+            curl -sSfL "$$BASE_URL/$$file" -o "$$CONFIG_DIR/$$file"
+          else
+            echo "$$file already present, skipping"
+          fi
+        done
+    environment:
+      - CARDANO_NETWORK=${CARDANO_NETWORK}
+    volumes:
+      - ${DATA_DIR}/cardano-node:/config
+    restart: "no"
+
+  mithril-bootstrap:
+    image: ${MITHRIL_CLIENT_IMAGE}
+    user: root
+    depends_on:
+      config-init:
+        condition: service_completed_successfully
+    entrypoint: []
+    command:
+      - /bin/sh
+      - -c
+      - |
+        if [ -d "/data/db/immutable" ]; then
+          echo "DB already present, skipping mithril-bootstrap"
+          exit 0
+        fi
+        exec /app/bin/mithril-client -vvv cardano-db download --include-ancillary ${SNAPSHOT_DIGEST} --download-dir /data
+    environment:
+      - CARDANO_NETWORK=${CARDANO_NETWORK}
+      - AGGREGATOR_ENDPOINT=${AGGREGATOR_ENDPOINT}
+      - SNAPSHOT_DIGEST=${SNAPSHOT_DIGEST}
+      - GENESIS_VERIFICATION_KEY=${GENESIS_VERIFICATION_KEY}
+      - ANCILLARY_VERIFICATION_KEY=${ANCILLARY_VERIFICATION_KEY}
+    volumes:
+      - ${DATA_DIR}/cardano-node:/data
+
+    restart: "no"
+
+  cardano-node:
+    image: ${CARDANO_NODE_IMAGE}
+    depends_on:
+      mithril-bootstrap:
+        condition: service_completed_successfully
+    environment:
+      - NETWORK=preprod
+    volumes:
+      - ${DATA_DIR}/cardano-node:/data
+      - node-ipc:/ipc
+    restart: on-failure
+    healthcheck:
+      test: ["CMD-SHELL", "[ -S /ipc/node.socket ]"]
+      interval: 10s
+      timeout: 5s
+      retries: 100
+
+  ogmios:
+    image: cardanosolutions/ogmios:v6.11.0
+    command:
+      - --host
+      - "0.0.0.0"
+      - --node-socket
+      - /ipc/node.socket
+      - --node-config
+      - /config/config.json
+    volumes:
+      - node-ipc:/ipc
+      - ${DATA_DIR}/cardano-node:/config
+    ports:
+      - "1337:1337"
+    depends_on:
+      cardano-node:
+        condition: service_healthy
+    restart: on-failure
+
+  kupo:
+    image: cardanosolutions/kupo:v2.9.0
+    command:
+      - --ogmios-host
+      - ogmios
+      - --ogmios-port
+      - "1337"
+      - --host
+      - "0.0.0.0"
+      - --workdir
+      - /db
+      - --since
+      - origin
+      - --match
+      - "*"
+    volumes:
+      - ${DATA_DIR}/kupo:/db
+    ports:
+      - "1442:1442"
+    depends_on:
+      - ogmios
+    restart: on-failure
+
+volumes:
+  node-ipc:

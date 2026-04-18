@@ -1,24 +1,29 @@
-import { AuthenticatedValidator, POSIXTimeSchema } from "@/common.js";
-import { LucidEvolution, TxBuilder } from "@lucid-evolution/lucid";
-import { Data } from "@lucid-evolution/lucid";
+import {
+  AuthenticatedValidator,
+  LucidError,
+  POSIXTimeSchema,
+} from "@/common.js";
+import { AuthenticUTxO, authenticateUTxOs } from "@/internals.js";
+import { LucidEvolution, TxBuilder, UTxO, Data } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 import { incompleteInitLinkedListTxProgram } from "./linked-list.js";
-
-export const ActiveOperatorDatumSchema = Data.Object({
-  commitmentTime: Data.Nullable(POSIXTimeSchema),
-});
-export type ActiveOperatorDatum = Data.Static<typeof ActiveOperatorDatumSchema>;
-export const ActiveOperatorDatum =
-  ActiveOperatorDatumSchema as unknown as ActiveOperatorDatum;
 
 export const ActiveOperatorSpendRedeemerSchema = Data.Enum([
   Data.Literal("ListStateTransition"),
   Data.Object({
-    UpdateCommitmentTime: Data.Object({
-      activeNodeInputIndex: Data.Integer(),
-      prevActiveNodeRefInputIndex: Data.Integer(),
+    UpdateBondHoldNewState: Data.Object({
+      activeNodeOutputIndex: Data.Integer(),
       hubOracleRefInputIndex: Data.Integer(),
       stateQueueRedeemerIndex: Data.Integer(),
+    }),
+  }),
+  Data.Object({
+    UpdateBondHoldNewSettlement: Data.Object({
+      activeNodeOutputIndex: Data.Integer(),
+      hubOracleRefInputIndex: Data.Integer(),
+      settlementQueueInputIndex: Data.Integer(),
+      settlementQueueRedeemerIndex: Data.Integer(),
+      newBondUnlockTime: POSIXTimeSchema,
     }),
   }),
 ]);
@@ -41,12 +46,22 @@ export const ActiveOperatorMintRedeemerSchema = Data.Enum([
     }),
   }),
   Data.Object({
-    RemoveOperatorSlashBond: Data.Object({
+    RemoveOperatorBadState: Data.Object({
       slashedActiveOperatorKey: Data.Bytes(),
       hubOracleRefInputIndex: Data.Integer(),
       activeOperatorSlashedNodeInputIndex: Data.Integer(),
       activeOperatorAnchorNodeInputIndex: Data.Integer(),
       stateQueueRedeemerIndex: Data.Integer(),
+    }),
+  }),
+  Data.Object({
+    RemoveOperatorBadSettlement: Data.Object({
+      slashedActiveOperatorKey: Data.Bytes(),
+      hubOracleRefInputIndex: Data.Integer(),
+      activeOperatorSlashedNodeInputIndex: Data.Integer(),
+      activeOperatorAnchorNodeInputIndex: Data.Integer(),
+      settlementInputIndex: Data.Integer(),
+      settlementRedeemerIndex: Data.Integer(),
     }),
   }),
   Data.Object({
@@ -66,6 +81,15 @@ export type ActiveOperatorMintRedeemer = Data.Static<
 export const ActiveOperatorMintRedeemer =
   ActiveOperatorMintRedeemerSchema as unknown as ActiveOperatorMintRedeemer;
 
+export const ActiveOperatorDatumSchema = Data.Object({
+  key: Data.Nullable(Data.Bytes()),
+  link: Data.Nullable(Data.Bytes()),
+  bondUnlockTime: Data.Nullable(POSIXTimeSchema),
+});
+export type ActiveOperatorDatum = Data.Static<typeof ActiveOperatorDatumSchema>;
+export const ActiveOperatorDatum =
+  ActiveOperatorDatumSchema as unknown as ActiveOperatorDatum;
+
 export type ActiveOperatorInitParams = {
   validator: AuthenticatedValidator;
 };
@@ -75,6 +99,42 @@ export type ActiveOperatorRetireParams = {};
 export type ActiveOperatorListStateTransitionParams = {};
 export type ActiveOperatorRemoveSlashBondParams = {};
 export type ActiveOperatorUpdateCommitmentTimeParams = {};
+
+export type ActiveOperatorUTxO = AuthenticUTxO<ActiveOperatorDatum>;
+
+export type FetchActiveOperatorParams = {
+  activeOperatorAddress: string;
+  operator: string;
+  activeOperatorPolicyId: string;
+};
+
+export const fetchActiveOperatorUTxOs = (
+  params: FetchActiveOperatorParams,
+  lucid: LucidEvolution,
+): Effect.Effect<ActiveOperatorUTxO[], LucidError> =>
+  Effect.gen(function* () {
+    const allUtxos: UTxO[] = yield* Effect.tryPromise({
+      try: () => lucid.utxosAt(params.activeOperatorAddress),
+      catch: (err) =>
+        new LucidError({
+          message: "Failed to fetch Active Operators UTxOs",
+          cause: err,
+        }),
+    });
+    if (allUtxos.length === 0) {
+      yield* new LucidError({
+        message: "Failed to build the Active Operators transaction",
+        cause: "No UTxOs found in Active Operators Contract address",
+      });
+    }
+    const activeOperatorUTxOs: ActiveOperatorUTxO[] =
+      yield* authenticateUTxOs<ActiveOperatorDatum>(
+        allUtxos,
+        params.activeOperatorPolicyId,
+        ActiveOperatorDatum,
+      );
+    return activeOperatorUTxOs;
+  });
 
 /**
  * Init
