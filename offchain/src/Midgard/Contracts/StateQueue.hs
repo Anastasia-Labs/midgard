@@ -108,12 +108,12 @@ initStateQueue
             { elementData =
                 LinkedList.Root $
                   LedgerState.ConfirmedState
-                    { headerHash = LedgerState.genesisHeaderHash
-                    , prevHeaderHash = LedgerState.genesisHeaderHash
-                    , utxoRoot = LedgerState.genesisUtxoRoot
-                    , startTime = validityUpperBoundTime
-                    , endTime = validityUpperBoundTime
-                    , protocolVersion = LedgerState.genesisProtocolVersion
+                    { confirmedHeaderHash = LedgerState.genesisHeaderHash
+                    , confirmedPrevHeaderHash = LedgerState.genesisHeaderHash
+                    , confirmedUtxoRoot = LedgerState.genesisUtxoRoot
+                    , confirmedStartTime = validityUpperBoundTime
+                    , confirmedEndTime = validityUpperBoundTime
+                    , confirmedProtocolVersion = LedgerState.genesisProtocolVersion
                     }
             , elementLink = Nothing
             }
@@ -232,10 +232,10 @@ commitBlockHeader
     let (prevHeaderHash, prevUtxosRoot, blockStartTime, blockProtocolVersion) =
           case latestBlockDatum of
             LinkedList.Element {elementData = LinkedList.Root confirmedState} ->
-              ( confirmedState.headerHash
-              , confirmedState.utxoRoot
-              , confirmedState.endTime
-              , confirmedState.protocolVersion
+              ( confirmedState.confirmedHeaderHash
+              , confirmedState.confirmedUtxoRoot
+              , confirmedState.confirmedEndTime
+              , confirmedState.confirmedProtocolVersion
               )
             LinkedList.Element {elementData = LinkedList.Node header} ->
               ( toBuiltin $ LinkedList.nodeKeyFromAssetName' StateQueue.blockAssetNamePrefixLen latestBlockAssetName
@@ -414,12 +414,12 @@ mergeToConfirmedState MidgardScripts {stateQueueValidator, stateQueuePolicy} = d
                 { elementData =
                     LinkedList.Root $
                       LedgerState.ConfirmedState
-                        { headerHash = toBuiltin $ LinkedList.getNodeKey headerNodeKey
-                        , prevHeaderHash = confirmedState.headerHash
-                        , utxoRoot = header.utxosRoot
-                        , startTime = confirmedState.startTime
-                        , endTime = header.endTime
-                        , protocolVersion = header.protocolVersion
+                        { confirmedHeaderHash = toBuiltin $ LinkedList.getNodeKey headerNodeKey
+                        , confirmedPrevHeaderHash = confirmedState.confirmedHeaderHash
+                        , confirmedUtxoRoot = header.utxosRoot
+                        , confirmedStartTime = confirmedState.confirmedStartTime
+                        , confirmedEndTime = header.endTime
+                        , confirmedProtocolVersion = header.protocolVersion
                         }
                 , elementLink = remainingLink
                 }

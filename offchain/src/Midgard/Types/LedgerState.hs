@@ -46,12 +46,12 @@ $( makeIsDataSchemaIndexed
  )
 
 data ConfirmedState = ConfirmedState
-  { headerHash :: HeaderHash
-  , prevHeaderHash :: HeaderHash
-  , utxoRoot :: MerkleRoot
-  , startTime :: POSIXTime
-  , endTime :: POSIXTime
-  , protocolVersion :: Integer
+  { confirmedHeaderHash :: HeaderHash
+  , confirmedPrevHeaderHash :: HeaderHash
+  , confirmedUtxoRoot :: MerkleRoot
+  , confirmedStartTime :: POSIXTime
+  , confirmedEndTime :: POSIXTime
+  , confirmedProtocolVersion :: Integer
   }
   deriving stock (Eq, Show, Generic)
   deriving anyclass (HasBlueprintDefinition)

@@ -136,6 +136,7 @@ test-suite mockchain-tests
   other-modules:
     Spec.Operators
     Spec.Scheduler
+    Spec.StateQueue
     Spec.Types
     Spec.Utils
 
