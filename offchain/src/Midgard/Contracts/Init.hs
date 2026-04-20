@@ -13,7 +13,15 @@ import Convex.BuildTx (
   payToScriptInlineDatum,
   setMinAdaDepositAll,
  )
-import Convex.Class (MonadBlockchain (queryNetworkId, queryProtocolParameters, querySlotNo))
+import Convex.Class (
+  MonadBlockchain (
+    queryEraHistory,
+    queryNetworkId,
+    queryProtocolParameters,
+    querySlotNo,
+    querySystemStart
+  ),
+ )
 import Convex.PlutusLedger.V1 (transPOSIXTime)
 import PlutusLedgerApi.V1 (ScriptHash (ScriptHash), currencySymbol, scriptHashAddress, toBuiltin)
 import Ply (
@@ -27,6 +35,7 @@ import Midgard.Contracts.ActiveOperators (initActiveOperators)
 import Midgard.Contracts.RegisteredOperators (initRegisteredOperators)
 import Midgard.Contracts.RetiredOperators (initRetiredOperators)
 import Midgard.Contracts.Scheduler (initScheduler)
+import Midgard.Contracts.StateQueue (initStateQueue)
 import Midgard.Contracts.Utils (slotToBeginUTCTime)
 import Midgard.ScriptUtils (mintingPolicyId, policyIdBytes, scriptHashBytes, toMintingPolicy, validatorHash)
 import Midgard.Scripts (
@@ -51,11 +60,15 @@ initProtocol
     , activeOperatorsValidator
     , retiredOperatorsValidator
     , schedulerValidator
+    , stateQueuePolicy
+    , stateQueueValidator
     }
   refScripts =
     do
       netId <- queryNetworkId
       params <- queryProtocolParameters
+      eraHistory <- queryEraHistory
+      systemStart <- querySystemStart
       (currentSlot, _, _) <- querySlotNo
       currentTime <- utcTimeToPOSIXSeconds <$> slotToBeginUTCTime currentSlot
       pure . execBuildTx $ do
@@ -71,7 +84,7 @@ initProtocol
             , activeOperators = scriptCurrencySymbol activeOperatorsPolicy
             , registeredOperators = scriptCurrencySymbol registeredOperatorsPolicy
             , scheduler = scriptCurrencySymbol schedulerPolicy
-            , stateQueue = scriptCurrencySymbol registeredOperatorsPolicy
+            , stateQueue = scriptCurrencySymbol stateQueuePolicy
             , fraudProofCatalogue = scriptCurrencySymbol registeredOperatorsPolicy
             , fraudProof = scriptCurrencySymbol registeredOperatorsPolicy
             , deposit = scriptCurrencySymbol registeredOperatorsPolicy
@@ -83,7 +96,7 @@ initProtocol
             , activeOperatorsAddr = scriptHashAddress (scriptHash activeOperatorsValidator)
             , retiredOperatorsAddr = scriptHashAddress (scriptHash retiredOperatorsValidator)
             , schedulerAddr = scriptHashAddress (scriptHash schedulerValidator)
-            , stateQueueAddr = scriptHashAddress (scriptHash registeredOperatorsValidator)
+            , stateQueueAddr = scriptHashAddress (scriptHash stateQueueValidator)
             , fraudProofCatalogueAddr = scriptHashAddress (scriptHash registeredOperatorsValidator)
             , fraudProofAddr = scriptHashAddress (scriptHash registeredOperatorsValidator)
             , depositAddr = scriptHashAddress (scriptHash registeredOperatorsValidator)
@@ -101,6 +114,7 @@ initProtocol
         initActiveOperators netId scripts refScripts
         initRetiredOperators netId scripts refScripts
         initScheduler netId (transPOSIXTime currentTime) scripts
+        initStateQueue netId eraHistory systemStart currentSlot scripts
         setMinAdaDepositAll params
     where
       scriptCurrencySymbol = currencySymbol . policyIdBytes . mintingPolicyId

@@ -1,4 +1,4 @@
-module Midgard.Contracts.Scheduler (initScheduler, scheduleNextOperator) where
+module Midgard.Contracts.Scheduler (initScheduler, scheduleNextOperator, currentScheduleInfo) where
 
 import Control.Monad (guard, when)
 import Control.Monad.Except (MonadError (throwError))
@@ -344,6 +344,35 @@ constructAdvanceOrRewind
                 , activeNodeRefInputIndex = toInteger $ findIndexReference predecessorActiveNodeTxIn txBody
                 }
         pure (assetNameToActiveOperatorKey activeNodeAssetName, [], mkRedeemer, Nothing)
+
+-- | Obtain the currently scheduled operator PKH and the next shift start time as per the scheduler TxIn.
+currentScheduleInfo ::
+  forall era m.
+  ( MonadError String m
+  , MonadBlockchain era m
+  , MonadUtxoQuery m
+  , C.HasScriptLanguageInEra C.PlutusScriptV3 era
+  , C.IsBabbageBasedEra era
+  ) =>
+  MidgardScripts ->
+  m (C.TxIn, PubKeyHash, POSIXTime)
+currentScheduleInfo MidgardScripts {schedulerValidator, schedulerPolicy} = do
+  schedulerUtxos <-
+    utxosByPaymentCredential $
+      C.PaymentCredentialByScript $
+        validatorHash schedulerValidator
+  (schedulerTxIn, (schedulerUtxoAnyEra, _)) <-
+    maybe (throwError "No scheduler state found") pure $
+      findUTxOWithAsset schedulerUtxos $
+        C.AssetId (mintingPolicyId schedulerPolicy) Scheduler.assetName
+  let schedulerTxOut = toTxOut @era schedulerUtxoAnyEra
+  -- Obtain the current operator and shift info.
+  schedulerDatum <-
+    maybe (throwError "Invalid scheduler datum") pure $
+      inlineDatumFromUTxO @Scheduler.Datum schedulerTxOut
+  let Scheduler.Datum {operator = currentOperator, startTime = currentStartTime} = schedulerDatum
+      nextShiftStartTime = unTransPOSIXTime currentStartTime + shiftDuration
+  pure (schedulerTxIn, currentOperator, transPOSIXTime nextShiftStartTime)
 
 assetNameToActiveOperatorKey :: C.AssetName -> BuiltinByteString
 assetNameToActiveOperatorKey =

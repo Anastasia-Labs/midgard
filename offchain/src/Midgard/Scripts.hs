@@ -11,6 +11,7 @@ import Midgard.Types.ActiveOperators qualified as ActiveOperators
 import Midgard.Types.RegisteredOperators qualified as RegisteredOperators
 import Midgard.Types.RetiredOperators qualified as RetiredOperators
 import Midgard.Types.Scheduler qualified as Scheduler
+import Midgard.Types.StateQueue qualified as StateQueue
 
 data MidgardScripts = MidgardScripts
   { registeredOperatorsValidator ::
@@ -57,6 +58,17 @@ data MidgardScripts = MidgardScripts
         '[ AsDatum Scheduler.Datum
          , AsRedeemer Scheduler.SpendRedeemer
          ]
+  , stateQueuePolicy ::
+      TypedScript
+        PlutusV3
+        '[ AsRedeemer StateQueue.MintRedeemer
+         ]
+  , stateQueueValidator ::
+      TypedScript
+        PlutusV3
+        '[ AsDatum BuiltinData
+         , AsRedeemer BuiltinData
+         ]
   }
 
 -- | Structure to track the published reference scripts.
@@ -78,6 +90,8 @@ readAikenScripts = do
   retiredOperatorsPolicy' <- getTypedScript aikenBp "operator_directory/retired_operators.mint.mint"
   schedulerPolicy' <- getTypedScript aikenBp "scheduler.mint.mint"
   schedulerValidator' <- getTypedScript aikenBp "scheduler.spend.spend"
+  stateQueuePolicy' <- getTypedScript aikenBp "state_queue.mint.mint"
+  stateQueueValidator' <- getTypedScript aikenBp "state_queue.spend.spend"
   let retiredOperatorsPolicy =
         retiredOperatorsPolicy'
           #! PlutusTx.toBuiltin (policyIdBytes hubOracleMintingPolicyId)
@@ -115,6 +129,21 @@ readAikenScripts = do
           #! PlutusTx.toBuiltin (policyIdBytes $ mintingPolicyId registeredOperatorsPolicy)
           #! PlutusTx.toBuiltin (policyIdBytes $ mintingPolicyId activeOperatorsPolicy)
           #! PlutusTx.toBuiltin (policyIdBytes $ mintingPolicyId schedulerPolicy)
+  let stateQueuePolicy =
+        stateQueuePolicy'
+          #! PlutusTx.toBuiltin (policyIdBytes hubOracleMintingPolicyId)
+          #! PlutusTx.toBuiltin (policyIdBytes $ mintingPolicyId activeOperatorsPolicy)
+          #! PlutusTx.toBuiltin (policyIdBytes $ mintingPolicyId retiredOperatorsPolicy)
+          #! PlutusTx.toBuiltin (policyIdBytes $ mintingPolicyId schedulerPolicy)
+          -- TODO(chase): Replace these temporary placeholder hashes once
+          -- fraud-proof and settlement offchain script wiring lands.
+          #! PlutusTx.toBuiltin (policyIdBytes $ mintingPolicyId registeredOperatorsPolicy)
+          #! PlutusTx.toBuiltin (policyIdBytes $ mintingPolicyId registeredOperatorsPolicy)
+  let stateQueueValidator =
+        stateQueueValidator'
+          #$! PlutusTx.toBuiltin
+          . policyIdBytes
+          $ mintingPolicyId stateQueuePolicy
   pure
     MidgardScripts
       { registeredOperatorsValidator
@@ -125,4 +154,6 @@ readAikenScripts = do
       , retiredOperatorsPolicy
       , schedulerPolicy
       , schedulerValidator
+      , stateQueuePolicy
+      , stateQueueValidator
       }
