@@ -59,7 +59,6 @@ pub type Header {
   transactions_root: MidgardTxsRoot,
   deposits_root: DepositsRoot,
   withdrawals_root: WithdrawalsRoot,
-  tx_orders_root: MidgardTxsRoot,
   start_time: PosixTime,
   end_time: PosixTime,
   prev_header_hash: HeaderHash,
