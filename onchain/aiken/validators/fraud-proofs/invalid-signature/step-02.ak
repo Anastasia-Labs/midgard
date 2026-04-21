@@ -1,8 +1,11 @@
 use aiken/builtin
-use aiken/crypto.{blake2b_224, verify_ed25519_signature}
+use aiken/crypto.{
+  ScriptHash, Signature, VerificationKey, verify_ed25519_signature,
+}
 use cardano/address.{Address}
 use cardano/assets.{PolicyId}
 use cardano/transaction.{OutputReference, Transaction}
+use midgard/common/utils
 use midgard/computation_thread as ct
 use midgard/fraud_proofs/common.{cancel, finalize}
 use midgard/fraud_proofs/invalid_signature/step_02.{
@@ -10,9 +13,9 @@ use midgard/fraud_proofs/invalid_signature/step_02.{
 }
 
 validator main(
-  fraud_proof_token_policy_id: PolicyId,
-  fraud_proof_token_address: Address,
   computation_thread_token_policy_id: PolicyId,
+  fraud_proof_token_policy_id: ScriptHash,
+  fraud_proof_token_address: Address,
 ) {
   spend(
     datum: Option<Datum>,
@@ -33,6 +36,10 @@ validator main(
       ct.Continue(Args {
         input_index,
         output_index,
+        bad_addr_tx_wit_verification_key_hash,
+        bad_addr_tx_wit,
+        bad_addr_tx_wit_membership_proof,
+        inclusion_proof_script_withdraw_redeemer_index,
         fraud_proof_mint_redeemer_index,
       }) -> {
         let Transaction { inputs, outputs, redeemers, .. } = tx
@@ -61,20 +68,33 @@ validator main(
             redeemers,
           )
 
-        expect Some(State {
-          bad_tx_body,
-          bad_addr_tx_wit_verification_key_hash,
-          verification_key,
-          signature,
-        }) = m_input_state_data
+        expect Some(State { bad_tx_body, bad_addr_tx_wits_root }) =
+          m_input_state_data
 
-        // 2. Verification key hash must be wrong OR the signature is invalid
+        // 2. Prove that <VerificationKeyHash, (VerificationKey, Signature)>
+        //    belongs to addr_tx_wits(tx)
         expect
-          blake2b_224(verification_key) != bad_addr_tx_wit_verification_key_hash || verify_ed25519_signature(
-            verification_key,
-            builtin.serialise_data(bad_tx_body),
-            signature,
-          ) == False
+          utils.plutarch_phas(
+            merkle_root: bad_addr_tx_wits_root,
+            key: bad_addr_tx_wit_verification_key_hash,
+            value: bad_addr_tx_wit,
+            membership_proof: bad_addr_tx_wit_membership_proof,
+            redeemers: redeemers,
+            withdraw_redeemer_index: inclusion_proof_script_withdraw_redeemer_index,
+          )
+
+        let (verification_key, signature): (VerificationKey, Signature) =
+          bad_addr_tx_wit
+
+        // 3. Verification key hash must be wrong OR the signature is invalid
+        expect or {
+            utils.get_verification_key_hash(verification_key) != bad_addr_tx_wit_verification_key_hash,
+            verify_ed25519_signature(
+              verification_key,
+              builtin.serialise_data(bad_tx_body),
+              signature,
+            ) == False,
+          }
 
         // Done.
         True

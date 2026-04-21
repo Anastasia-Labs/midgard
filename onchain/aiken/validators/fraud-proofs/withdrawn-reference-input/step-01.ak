@@ -1,12 +1,18 @@
+//// ## Withdrawn Reference Input Fraud Proof (Section 5.1.16)
+////
+//// Proves a given transaction refers to an input that was spent in a
+//// withdrawal event.
+
 use aiken/crypto.{ScriptHash}
 use cardano/assets.{PolicyId}
 use cardano/transaction.{OutputReference, Transaction}
 use midgard/computation_thread as ct
-use midgard/fraud_proofs/common.{
-  TxBodyAndWitsProvided, cancel, pass_tx_to_next_step,
+use midgard/fraud_proofs/common.{TxBodyProvided, cancel, pass_tx_to_next_step}
+use midgard/fraud_proofs/withdrawn_reference_input/step_01.{
+  Datum, SpendRedeemer,
 }
-use midgard/fraud_proofs/missing_native_script/step_01.{Datum, SpendRedeemer}
-use midgard/fraud_proofs/missing_native_script/step_02
+use midgard/fraud_proofs/withdrawn_reference_input/step_02
+use midgard/ledger_state.{Header}
 
 validator main(
   step_02_validator_script_hash: ScriptHash,
@@ -39,7 +45,7 @@ validator main(
           _m_input_state_data,
           output_script_hash,
           output_state_data,
-          _header,
+          header,
           _bad_tx_id,
           _bad_tx,
           bad_tx_field_preimage,
@@ -53,17 +59,17 @@ validator main(
             tx,
           )
 
-        // 2. Both body and witness set of the bad tx must have been provided.
-        expect TxBodyAndWitsProvided(bad_tx_body, bad_tx_wits) =
-          bad_tx_field_preimage
+        // 2. Bad transaction's body must be provided.
+        expect TxBodyProvided(bad_tx_body) = bad_tx_field_preimage
 
-        // 3. The UTxO must be produced at next step's script hash with a proper
-        //    state.
+        // 3. The UTxO must be produced at next step's script hash with
+        //    withdrawals root.
+        let Header { withdrawals_root, .. } = header
         expect output_script_hash == step_02_validator_script_hash
         let expected_output_state: Data =
           step_02.State {
-            bad_tx_outputs_root: bad_tx_body.outputs,
-            bad_tx_script_wits: bad_tx_wits.script_tx_wits,
+            bad_tx_reference_inputs_root: bad_tx_body.reference_inputs,
+            blocks_withdrawals_root: withdrawals_root,
           }
         expect output_state_data == expected_output_state
 

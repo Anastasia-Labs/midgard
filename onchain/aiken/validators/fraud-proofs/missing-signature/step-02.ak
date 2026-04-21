@@ -1,16 +1,16 @@
-use cardano/address.{Address}
+use aiken/crypto.{ScriptHash}
 use cardano/assets.{PolicyId}
 use cardano/transaction.{OutputReference, Transaction}
 use midgard/common/utils
 use midgard/computation_thread as ct
-use midgard/fraud_proofs/common.{cancel, finalize}
+use midgard/fraud_proofs/common.{cancel, continue}
 use midgard/fraud_proofs/missing_signature/step_02.{
   Args, Datum, SpendRedeemer, State,
 }
+use midgard/fraud_proofs/missing_signature/step_03
 
 validator main(
-  fraud_proof_token_policy_id: PolicyId,
-  fraud_proof_token_address: Address,
+  step_03_validator_script_hash: ScriptHash,
   computation_thread_token_policy_id: PolicyId,
 ) {
   spend(
@@ -32,48 +32,62 @@ validator main(
       ct.Continue(Args {
         input_index,
         output_index,
-        fraud_proof_mint_redeemer_index,
-        signature_exclusion_proof,
-        plutarch_pexcludes_withdraw_redeemer_index,
+        bad_required_signer_hash_index,
+        bad_required_signer_hash,
+        bad_required_signer_membership_proof,
+        inclusion_proof_script_withdraw_redeemer_index,
       }) -> {
         let Transaction { inputs, outputs, redeemers, .. } = tx
 
         expect Some(step_datum) = datum
 
-        // 1. Specified input must be authentic and properly reproduced at the
-        //    fraud proof's spending address.
+        // 1. Specified input must be authentic and properly reproduced.
         let
           _own_script_hash,
           _computation_thread_token_asset_name,
           _fraud_prover,
           m_input_state_data,
+          output_script_hash,
+          output_state_data,
         <-
-          finalize(
+          continue(
             computation_thread_token_policy_id,
-            fraud_proof_token_policy_id,
-            fraud_proof_token_address,
             step_datum,
             input_index,
             output_index,
-            fraud_proof_mint_redeemer_index,
             own_out_ref,
             inputs,
             outputs,
-            redeemers,
           )
 
-        expect Some(State { bad_addr_tx_wits, bad_required_signer_hash }) =
-          m_input_state_data
+        expect Some(State {
+          verified_required_signers_root,
+          verified_addr_tx_wits,
+        }) = m_input_state_data
 
-        // 2. Required signer must not be in addr_tx_wits
+        // 2. Provided required signer must be a member of the verified root
+        //    passed from the previous step.
         expect
-          utils.plutarch_pexcludes(
-            bad_addr_tx_wits,
-            bad_required_signer_hash,
-            signature_exclusion_proof,
-            redeemers,
-            plutarch_pexcludes_withdraw_redeemer_index,
+          utils.plutarch_phas(
+            merkle_root: verified_required_signers_root,
+            key: bad_required_signer_hash_index,
+            value: bad_required_signer_hash,
+            membership_proof: bad_required_signer_membership_proof,
+            redeemers: redeemers,
+            withdraw_redeemer_index: inclusion_proof_script_withdraw_redeemer_index,
           )
+
+        // 3. The required signer (whose signature is being proven missing),
+        //    along with the verified address witness set must be passed to the
+        //    next step.
+        expect output_script_hash == step_03_validator_script_hash
+        let expected_output_state: Data =
+          step_03.State {
+            missing_required_signer_hash: bad_required_signer_hash,
+            verified_addr_tx_wits,
+          }
+        expect output_state_data == expected_output_state
+
         // Done.
         True
       }

@@ -1,15 +1,19 @@
+use aiken/crypto.{ScriptHash}
 use cardano/address.{Address}
 use cardano/assets.{PolicyId}
 use cardano/transaction.{OutputReference, Transaction}
+use midgard/common/utils
 use midgard/computation_thread as ct
 use midgard/fraud_proofs/common.{cancel, finalize}
-use midgard/fraud_proofs/min_fee/step_02.{Args, Datum, SpendRedeemer, State}
-use midgard/ledger_state.{MidgardTxCompact}
+use midgard/fraud_proofs/withdrawn_reference_input/step_03.{
+  Args, Datum, SpendRedeemer, State,
+}
+use midgard/ledger_state.{WithdrawalBody, WithdrawalInfo, WithdrawalIsValid}
 
 validator main(
-  fraud_proof_token_policy_id: PolicyId,
-  fraud_proof_token_address: Address,
   computation_thread_token_policy_id: PolicyId,
+  fraud_proof_token_policy_id: ScriptHash,
+  fraud_proof_token_address: Address,
 ) {
   spend(
     datum: Option<Datum>,
@@ -30,14 +34,16 @@ validator main(
       ct.Continue(Args {
         input_index,
         output_index,
+        withdrawal_id,
+        withdrawal_info,
+        membership_proof,
+        membership_proof_script_redeemer_index,
         fraud_proof_mint_redeemer_index,
       }) -> {
         let Transaction { inputs, outputs, redeemers, .. } = tx
 
         expect Some(step_datum) = datum
 
-        // 1. Specified input must be authentic and properly reproduced at the
-        //    fraud proof's spending address.
         let
           _own_script_hash,
           _computation_thread_token_asset_name,
@@ -58,10 +64,31 @@ validator main(
             redeemers,
           )
 
-        expect Some(State { bad_tx, bad_tx_body_fee }) = m_input_state_data
+        expect Some(input_state) = m_input_state_data
 
-        // 2. Fee must be greater than or equal to the minimum fee
-        expect bad_tx_body_fee < get_min_transaction_fee(bad_tx)
+        let State { missing_output_reference, blocks_withdrawals_root } =
+          input_state
+
+        // 4. The provided withdrawal event must be valid, and it must spend the
+        //    input that was referenced in the bad transaction.
+        expect WithdrawalInfo {
+          body: WithdrawalBody { l2_outref, .. },
+          validity: WithdrawalIsValid,
+          ..
+        } = withdrawal_info
+        expect l2_outref == missing_output_reference
+
+        // 5. The withdrawal event must be present in the withdrawals root of
+        //    the block.
+        expect
+          utils.plutarch_phas(
+            merkle_root: blocks_withdrawals_root,
+            key: withdrawal_id,
+            value: withdrawal_info,
+            membership_proof: membership_proof,
+            redeemers: redeemers,
+            withdraw_redeemer_index: membership_proof_script_redeemer_index,
+          )
 
         // Done.
         True
@@ -72,9 +99,4 @@ validator main(
   else(_) {
     fail
   }
-}
-
-// TODO: This will need execution traces to calculate it
-fn get_min_transaction_fee(_transaction: MidgardTxCompact) {
-  0
 }

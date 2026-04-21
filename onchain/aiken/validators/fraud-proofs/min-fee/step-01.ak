@@ -2,7 +2,7 @@ use aiken/crypto.{ScriptHash}
 use cardano/assets.{PolicyId}
 use cardano/transaction.{OutputReference, Transaction}
 use midgard/computation_thread as ct
-use midgard/fraud_proofs/common.{cancel, pass_tx_to_next_step}
+use midgard/fraud_proofs/common.{TxBodyProvided, cancel, pass_tx_to_next_step}
 use midgard/fraud_proofs/min_fee/step_01.{Datum, SpendRedeemer}
 use midgard/fraud_proofs/min_fee/step_02
 
@@ -40,7 +40,7 @@ validator main(
           _header,
           _bad_tx_id,
           bad_tx,
-          bad_tx_body,
+          tx_field_preimage,
         <-
           pass_tx_to_next_step(
             computation_thread_token_policy_id,
@@ -51,7 +51,8 @@ validator main(
             tx,
           )
 
-        // -------- Zero input: validation-specific logic END --------
+        expect TxBodyProvided(bad_tx_body) = tx_field_preimage
+
         // 2. The UTxO must be produced at next step's script hash with validity
         //    range of the bad tx, and block's time range provided.
         expect output_script_hash == step_02_validator_script_hash

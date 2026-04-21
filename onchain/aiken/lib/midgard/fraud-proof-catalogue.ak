@@ -1,4 +1,4 @@
-use aiken/crypto.{Blake2b_256, ScriptHash}
+use aiken/crypto.{ScriptHash}
 use cardano/assets.{AssetName}
 use cardano/transaction.{InlineDatum, Input, Output}
 use midgard/common/types.{MerkleRoot}
@@ -8,8 +8,10 @@ pub const asset_name: AssetName = "MIDGARD_FRAUD_PROOF_CATALOGUE"
 
 pub const id_byte_count = 4
 
+/// Keys are integer indices, each represented with `id_byte_count` number of
+/// bytes.
 pub type Datum =
-  MerkleRoot<Blake2b_256, ByteArray>
+  MerkleRoot<Int, ByteArray>
 
 pub fn get_datum(
   reference_inputs: List<Input>,

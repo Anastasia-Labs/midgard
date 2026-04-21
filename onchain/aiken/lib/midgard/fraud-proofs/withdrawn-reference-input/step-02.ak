@@ -1,14 +1,12 @@
 use midgard/common/types.{Proof}
 use midgard/computation_thread as ct
 use midgard/ledger_state.{
-  MidgardInputId, MidgardInputsRoot, MidgardLedgerRoot, MidgardOutput,
-  MidgardTxsRoot,
+  MidgardInputId, MidgardInputsRoot, MidgardOutput, WithdrawalsRoot,
 }
 
 pub type State {
   bad_tx_reference_inputs_root: MidgardInputsRoot,
-  blocks_prev_utxos_root: MidgardLedgerRoot,
-  blocks_transactions_root: MidgardTxsRoot,
+  blocks_withdrawals_root: WithdrawalsRoot,
 }
 
 pub type Datum =

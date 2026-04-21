@@ -18,7 +18,7 @@ use aiken/crypto.{ScriptHash}
 use cardano/assets.{PolicyId}
 use cardano/transaction.{OutputReference, Transaction}
 use midgard/computation_thread as ct
-use midgard/fraud_proofs/common.{cancel, pass_tx_to_next_step}
+use midgard/fraud_proofs/common.{TxBodyProvided, cancel, pass_tx_to_next_step}
 use midgard/fraud_proofs/double_spend/step_01_recursive.{
   Datum, SpendRedeemer, State,
 }
@@ -58,7 +58,7 @@ validator main(
           _header,
           bad_tx_id,
           _bad_tx,
-          bad_tx_body,
+          bad_tx_field_preimage,
         <-
           pass_tx_to_next_step(
             computation_thread_token_policy_id,
@@ -69,9 +69,12 @@ validator main(
             tx,
           )
 
+        // 2. Bad transaction's body must be provided.
+        expect TxBodyProvided(bad_tx_body) = bad_tx_field_preimage
+
         when m_input_state_data is {
           None -> {
-            // 2a. The UTxO must be produced at own script hash with the
+            // 3a. The UTxO must be produced at own script hash with the
             //     verified first bad transaction ID and its inputs included in
             //     the `data` field of its `StepDatum`.
             expect output_script_hash == own_script_hash
@@ -86,7 +89,7 @@ validator main(
             True
           }
           Some(step_1_state) -> {
-            // 2b. The UTxO must be produced at next step's script hash with the
+            // 3b. The UTxO must be produced at next step's script hash with the
             //     verified bad transactions' inputs included in its datum.
             expect output_script_hash == step_02_validator_script_hash
             let State { verified_tx1_id, verified_tx1_inputs_root } =
@@ -98,7 +101,7 @@ validator main(
               }
             expect output_state_data == expected_output_state
 
-            // 3b. The two transactions must be different.
+            // 4b. The two transactions must be different.
             expect verified_tx1_id != bad_tx_id
 
             // Done.

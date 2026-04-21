@@ -1,11 +1,10 @@
 use midgard/common/types.{Proof}
 use midgard/computation_thread as ct
-use midgard/ledger_state.{MidgardInputId, MidgardInputsRoot}
+use midgard/ledger_state.{MidgardTxId, MidgardTxsRoot}
 
 pub type State {
-  verified_tx2_inputs_root: MidgardInputsRoot,
-  double_spent_input_key: MidgardInputId,
-  double_spent_input_value: Data,
+  missing_ref_input_tx_id: MidgardTxId,
+  blocks_transactions_root: MidgardTxsRoot,
 }
 
 pub type Datum =
@@ -14,9 +13,9 @@ pub type Datum =
 pub type Args {
   input_index: Int,
   output_index: Int,
-  input_membership_proof: Proof,
+  non_membership_proof_in_txs: Proof,
+  non_membership_proof_script_redeemer_index: Int,
   fraud_proof_mint_redeemer_index: Int,
-  inclusion_proof_script_withdraw_redeemer_index: Int,
 }
 
 pub type SpendRedeemer =

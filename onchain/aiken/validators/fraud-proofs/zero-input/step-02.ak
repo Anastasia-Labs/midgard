@@ -36,6 +36,7 @@ validator main(
         let Transaction { inputs, outputs, redeemers, .. } = tx
 
         expect Some(step_datum) = datum
+
         // 1. Specified input must be authentic and properly reproduced at the
         //    fraud proof's spending address.
         let
@@ -58,10 +59,10 @@ validator main(
             redeemers,
           )
 
-        expect Some(State { bad_tx_body_spend_inputs }) = m_input_state_data
+        expect Some(State { bad_tx_spend_inputs }) = m_input_state_data
 
-        // 2. The merkletree of inputs must be empty
-        expect bad_tx_body_spend_inputs == constants.empty_merkle_tree_root
+        // 2. The merkle tree of inputs must be empty
+        expect bad_tx_spend_inputs == constants.empty_merkle_tree_root
 
         // Done.
         True

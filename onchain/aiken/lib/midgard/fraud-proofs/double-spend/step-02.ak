@@ -1,11 +1,10 @@
-use cardano/transaction.{OutputReference}
-use midgard/common/types.{MerkleRoot, Proof}
+use midgard/common/types.{Proof}
 use midgard/computation_thread as ct
-use midgard/ledger_state.{MidgardInputId}
+use midgard/ledger_state.{MidgardInputId, MidgardInputsRoot}
 
 pub type State {
-  verified_tx1_inputs_root: MerkleRoot<Int, OutputReference>,
-  verified_tx2_inputs_root: MerkleRoot<Int, OutputReference>,
+  verified_tx1_inputs_root: MidgardInputsRoot,
+  verified_tx2_inputs_root: MidgardInputsRoot,
 }
 
 pub type Datum =

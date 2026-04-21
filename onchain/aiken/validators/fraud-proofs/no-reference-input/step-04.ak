@@ -1,15 +1,18 @@
+use aiken/crypto.{ScriptHash}
 use cardano/address.{Address}
 use cardano/assets.{PolicyId}
 use cardano/transaction.{OutputReference, Transaction}
+use midgard/common/utils
 use midgard/computation_thread as ct
 use midgard/fraud_proofs/common.{cancel, finalize}
-use midgard/fraud_proofs/min_fee/step_02.{Args, Datum, SpendRedeemer, State}
-use midgard/ledger_state.{MidgardTxCompact}
+use midgard/fraud_proofs/no_reference_input/step_04.{
+  Args, Datum, SpendRedeemer, State,
+}
 
 validator main(
-  fraud_proof_token_policy_id: PolicyId,
-  fraud_proof_token_address: Address,
   computation_thread_token_policy_id: PolicyId,
+  fraud_proof_token_policy_id: ScriptHash,
+  fraud_proof_token_address: Address,
 ) {
   spend(
     datum: Option<Datum>,
@@ -30,14 +33,14 @@ validator main(
       ct.Continue(Args {
         input_index,
         output_index,
+        non_membership_proof_in_txs,
+        non_membership_proof_script_redeemer_index,
         fraud_proof_mint_redeemer_index,
       }) -> {
         let Transaction { inputs, outputs, redeemers, .. } = tx
 
         expect Some(step_datum) = datum
 
-        // 1. Specified input must be authentic and properly reproduced at the
-        //    fraud proof's spending address.
         let
           _own_script_hash,
           _computation_thread_token_asset_name,
@@ -58,10 +61,21 @@ validator main(
             redeemers,
           )
 
-        expect Some(State { bad_tx, bad_tx_body_fee }) = m_input_state_data
+        expect Some(input_state) = m_input_state_data
 
-        // 2. Fee must be greater than or equal to the minimum fee
-        expect bad_tx_body_fee < get_min_transaction_fee(bad_tx)
+        let State { missing_ref_input_tx_id, blocks_transactions_root } =
+          input_state
+
+        // 1. The missing reference input must not have been produced in the
+        //    same block.
+        expect
+          utils.plutarch_pexcludes(
+            merkle_root: blocks_transactions_root,
+            key: missing_ref_input_tx_id,
+            non_membership_proof: non_membership_proof_in_txs,
+            redeemers: redeemers,
+            withdraw_redeemer_index: non_membership_proof_script_redeemer_index,
+          )
 
         // Done.
         True
@@ -72,9 +86,4 @@ validator main(
   else(_) {
     fail
   }
-}
-
-// TODO: This will need execution traces to calculate it
-fn get_min_transaction_fee(_transaction: MidgardTxCompact) {
-  0
 }

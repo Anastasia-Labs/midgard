@@ -7,7 +7,7 @@ use aiken/crypto.{ScriptHash}
 use cardano/assets.{PolicyId}
 use cardano/transaction.{OutputReference, Transaction}
 use midgard/computation_thread as ct
-use midgard/fraud_proofs/common.{cancel, pass_tx_to_next_step}
+use midgard/fraud_proofs/common.{TxBodyProvided, cancel, pass_tx_to_next_step}
 use midgard/fraud_proofs/zero_input/step_01.{Datum, SpendRedeemer}
 use midgard/fraud_proofs/zero_input/step_02
 
@@ -45,7 +45,7 @@ validator main(
           _header,
           _bad_tx_id,
           _bad_tx,
-          bad_tx_body,
+          bad_tx_field_preimage,
         <-
           pass_tx_to_next_step(
             computation_thread_token_policy_id,
@@ -56,11 +56,14 @@ validator main(
             tx,
           )
 
-        // 2. The UTxO must be produced at next step's script hash with inputs
+        // 2. The bad transaction's body must be provided.
+        expect TxBodyProvided(bad_tx_body) = bad_tx_field_preimage
+
+        // 3. The UTxO must be produced at next step's script hash with inputs
         //    root of the bad transaction, and block's prev UTxOs root.
         expect output_script_hash == step_02_validator_script_hash
         let expected_output_state: Data =
-          step_02.State { bad_tx_body_spend_inputs: bad_tx_body.spend_inputs }
+          step_02.State { bad_tx_spend_inputs: bad_tx_body.spend_inputs }
         expect output_state_data == expected_output_state
 
         // Done.
