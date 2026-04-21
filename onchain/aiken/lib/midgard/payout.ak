@@ -13,7 +13,7 @@ pub type SpendRedeemer {
     reserve_input_index: Int,
     // When reserve UTxO has more value than needed, excess must go back to
     // reserve_addr. Set to None only when combined lovelace <= target.
-    reserve_change_output_index: Option<Int>,
+    m_reserve_change_output_index: Option<Int>,
     hub_ref_input_index: Int,
   }
   ConcludeWithdrawal {
@@ -49,4 +49,13 @@ pub type MintRedeemer {
     // ConcludeWithdrawal, ensuring burn only happens for fully funded accumulators.
     payout_spend_redeemer_index: Int,
   }
+}
+
+pub type AddFundsRedeemer {
+  payout_input_index: Int,
+  payout_output_index: Int,
+  reserve_input_index: Int,
+  m_reserve_change_output_index: Option<Int>,
+  payout_input_outref: OutputReference,
+  payout_input_redeemer_index: Int,
 }

@@ -457,6 +457,8 @@ pub fn authentic_value_has_tokens(
 /// `with` function. The lists are traversed from left to right, stopping after
 /// the smaller list's elements are exhausted. However, the `with` function
 /// is applied in reverse order (i.e. right to left).
+///
+/// TODO: Rewrite description.
 pub fn zip_foldr(
   self: List<a>,
   bs: List<b>,
@@ -497,11 +499,13 @@ pub fn zip_foldl(
 }
 
 /// Function for comparing a `Value` (presumably coming from script context),
-/// agains a `ValuePairs` (presumably coming from a datum). This helper only
+/// against a `ValuePairs` (presumably coming from a datum). This helper only
 /// works for values that are identical, apart from the quantities.
 ///
 /// As an example use-case, this allows checking the `Value` has still not
 /// reached the target `ValuePairs`.
+///
+/// TODO: Needs review.
 pub fn compare_authentic_value_with_target(
   value: Value,
   nft_policy_id: PolicyId,
