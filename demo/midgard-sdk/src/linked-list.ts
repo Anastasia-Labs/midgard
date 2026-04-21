@@ -14,6 +14,7 @@ import {
   TxBuilder,
   TxSignBuilder,
 } from "@lucid-evolution/lucid";
+import { AuthenticUTxO } from "./internals.js";
 
 export const ElementDataSchema = Data.Enum([
   Data.Object({ Root: Data.Any() }),
@@ -29,9 +30,82 @@ export const ElementSchema = Data.Object({
 export type Element = Data.Static<typeof ElementSchema>;
 export const Element = ElementSchema as unknown as Element;
 
-export class LinkedListError extends EffectData.TaggedError(
-  "LinkedListError",
-)<GenericErrorFields> {}
+export type RootElementUTxO<TRootData> = { data: TRootData };
+export type NodeElementUTxO<TNodeData> = { key: string; data: TNodeData };
+
+export type ElementUTxO<TRootData, TNodeData> =
+  | AuthenticUTxO<Element, RootElementUTxO<TRootData>>
+  | AuthenticUTxO<Element, NodeElementUTxO<TNodeData>>;
+
+export interface LinkedElement {
+  key?: string;
+  datum: {
+    link: string | null;
+  };
+}
+
+/**
+ * Function to find a node in a linked list by its key.
+ */
+export const findLinkInLinkedList = <T extends { key?: string }>(
+  link: string | null,
+  elements: T[],
+): Effect.Effect<T, LinkedListError> => {
+  const errorMessage = `Failed to find link in elements`;
+
+  if (link === null) {
+    return Effect.fail(
+      new LinkedListError({
+        message: errorMessage,
+        cause: `Given link is null`,
+      }),
+    );
+  }
+  const foundLink = elements.find((u) => u.key === link);
+  if (foundLink) {
+    return Effect.succeed(foundLink);
+  } else {
+    return Effect.fail(
+      new LinkedListError({
+        message: errorMessage,
+        cause: `Link "${link}" not found among given elements`,
+      }),
+    );
+  }
+};
+
+/**
+ * Function to sort a linked list.
+ */
+export const sortLinkedList = <T extends LinkedElement>(
+  elements: T[],
+  root: T,
+  firstLink: string | null,
+): Effect.Effect<T[], LinkedListError> =>
+  Effect.gen(function* () {
+    const elementMap = new Map(
+      elements.filter((e) => e.key !== undefined).map((e) => [e.key!, e]),
+    );
+    const sorted: T[] = [root];
+    let link = firstLink;
+
+    while (link !== null) {
+      const nextElement = elementMap.get(link);
+
+      if (nextElement) {
+        sorted.push(nextElement);
+        link = nextElement.datum.link;
+      } else {
+        return yield* Effect.fail(
+          new LinkedListError({
+            message: `Failed to sort elements in linked list`,
+            cause: `Root node not found among given elements`,
+          }),
+        );
+      }
+    }
+    return sorted;
+  });
 
 export type LinkedListInitParams = {
   validator: AuthenticatedValidator;
@@ -105,3 +179,7 @@ export const unsignedLinkedListTx = (
   initParams: LinkedListInitParams,
 ): Promise<TxSignBuilder> =>
   makeReturn(unsignedLinkedListTxProgram(lucid, initParams)).unsafeRun();
+
+export class LinkedListError extends EffectData.TaggedError(
+  "LinkedListError",
+)<GenericErrorFields> {}

@@ -1,4 +1,4 @@
-import { POSIXTimeSchema } from "@/common.js";
+import { POSIXTimeSchema, VerificationKeyHashSchema } from "@/common.js";
 import { Data } from "@lucid-evolution/lucid";
 import { Element } from "@/linked-list.js";
 
@@ -21,7 +21,7 @@ export const RetiredOperatorNodeData =
   RetiredOperatorNodeSchema as unknown as RetiredOperatorNodeData;
 
 export const RegisteredNodeDataSchema = Data.Object({
-  activation_time: POSIXTimeSchema,
+  operator: VerificationKeyHashSchema,
 });
 export type RegisteredNodeData = Data.Static<typeof RegisteredNodeDataSchema>;
 export const RegisteredNodeData =

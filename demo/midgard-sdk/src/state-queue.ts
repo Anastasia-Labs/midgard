@@ -18,8 +18,6 @@ import {
   DataCoercionError,
   GenericErrorFields,
   HashingError,
-  MissingDatumError,
-  UnauthenticUtxoError,
   MerkleRoot,
   OutputReferenceSchema,
   POSIXTime,
@@ -36,7 +34,9 @@ import {
 } from "@/internals.js";
 import {
   LinkedListError,
+  findLinkInLinkedList,
   incompleteInitLinkedListTxProgram,
+  sortLinkedList,
 } from "@/linked-list.js";
 import { ConfirmedState, Header } from "@/ledger-state.js";
 import { Element } from "@/linked-list.js";
@@ -144,6 +144,7 @@ type ElementExtra = {
   key: string;
 };
 export type ElementUTxO<TDatum = Element> = AuthenticUTxO<TDatum, ElementExtra>;
+
 export type StateQueueUTxO = ElementUTxO<StateQueueDatum>;
 
 export type StateQueueFetchConfig = {
@@ -177,38 +178,12 @@ export type StateQueueDeinitParams = {};
 
 export type StateQueueRemoveBlockParams = {};
 
-export const findLinkStateQueueUTxO = (
-  link: string | null,
-  utxos: StateQueueUTxO[],
-): Effect.Effect<StateQueueUTxO, LinkedListError> => {
-  const errorMessage = `Failed to find link state queue UTxO`;
-  if (link === null) {
-    return Effect.fail(
-      new LinkedListError({
-        message: errorMessage,
-        cause: `Given link is null`,
-      }),
-    );
-  } else {
-    const foundLink = utxos.find((u: StateQueueUTxO) => u.key === link);
-    if (foundLink) {
-      return Effect.succeed(foundLink);
-    } else {
-      return Effect.fail(
-        new LinkedListError({
-          message: errorMessage,
-          cause: `Link not found among given state queue UTxOs`,
-        }),
-      );
-    }
-  }
-};
-
 /**
  * Returns a sorted array of `StateQueueUTxO`s where the confirmed state's UTxO
  * is the head element, and the following elements are linked from their
  * previous elements.
  *
+ * Review needed: Tried to resolve this in function `sortLinkedList` in linkedList.ts, is this a better approach?, 
  * TODO: Make it more efficient. Currently that same list of all state queue
  *       UTxOs is traversed to find the next link UTxO multiple times. It might
  *       be better to drop link UTxOs when found so that subsequent lookups
@@ -231,22 +206,18 @@ export const sortStateQueueUTxOs = (
     if (filteredForConfirmedState.length === 1) {
       const { utxo: confirmedStateUTxO, link: linkToOldestBlock } =
         filteredForConfirmedState[0];
-      const sorted: StateQueueUTxO[] = [confirmedStateUTxO];
-      let link = linkToOldestBlock;
-      while (link !== null) {
-        const linkUTxO = yield* findLinkStateQueueUTxO(link, stateQueueUTxOs);
-        sorted.push(linkUTxO);
-        link = linkUTxO.datum.link;
-      }
-      return sorted;
+      return yield* sortLinkedList(
+        stateQueueUTxOs,
+        confirmedStateUTxO,
+        linkToOldestBlock,
+      );
     } else {
-      yield* Effect.fail(
+      return yield* Effect.fail(
         new LinkedListError({
           message: `Failed to sort state queue UTxOs`,
           cause: `Confirmed state (root node) not found among state queue UTxOs`,
         }),
       );
-      return [];
     }
   });
 
@@ -629,7 +600,7 @@ export const fetchConfirmedStateAndItsLinkProgram = (
     if (filteredForConfirmedState.length === 1) {
       const { utxo: confirmedStateUTxO, link: confirmedStatesLink } =
         filteredForConfirmedState[0];
-      const linkUTxO = yield* findLinkStateQueueUTxO(
+      const linkUTxO = yield* findLinkInLinkedList(
         confirmedStatesLink,
         allUTxOs,
       );
