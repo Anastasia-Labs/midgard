@@ -82,7 +82,7 @@ Three protocol parameters govern how operators can be considered inactive.
 \end{enumerate}
 
 \code{max\_inactivity\_between\_block\_commitments} is the largest of the three.
-Therefore, it's the value that determines the longest period in which the chain can remain inactive without consequences for operators.
+Therefore, the longest inactivity period without consequences for operators would be the sum of \code{max\_inactivity\_between\_block\_commitments} and \code{new\_shift\_inactivity\_grace\_period}.
 
 The point of time after which an operator can be given an inactivity strike can be found as below:
 \begin{equation*}
