@@ -1,13 +1,14 @@
-use aiken/collection/list
-use aiken/builtin
+use aiken/crypto.{ScriptHash, VerificationKeyHash}
+use cardano/transaction.{Input}
 use midgard/common/types.{PosixTime}
+use midgard/common/utils
 use midgard/protocol_parameters.{shift_duration}
 
-pub const scheduler_asset_name = ""
+pub const asset_name = "MIDGARD_SCHEDULER"
 
 pub type Datum {
-  operator: ByteArray,
-  start_time: PosixTime,
+  NoActiveOperators
+  ActiveOperator { operator: VerificationKeyHash, start_time: PosixTime }
 }
 
 pub type MintRedeemer {
@@ -15,39 +16,85 @@ pub type MintRedeemer {
   Deinit
 }
 
-pub type SpendRedeemer {
-  Advance { scheduler_output_index: Int, active_node_ref_input_index: Int }
-  Rewind {
-    scheduler_output_index: Int,
-    active_node_ref_input_index: Int,
-    active_root_node_ref_input_index: Int,
-    registered_node_ref_input_index: Int,
+pub type OperatorRemovalReason {
+  OperatorRetirement
+  OperatorSlashing
+}
+
+pub type NeglectedUserEvent {
+  NoNeglectedUserEvent
+  NeglectedDeposit { deposit_ref_input_index: Int }
+  NeglectedWithdrawal { withdrawal_ref_input_index: Int }
+  NeglectedTxOrder { tx_order_ref_input_index: Int }
+}
+
+pub type AdvancingApproach {
+  GoToNextDueToEndOfShift { new_shifts_operator_node_ref_input_index: Int }
+  RewindDueToEndOfShift {
+    active_operators_root_ref_input_index: Int,
+    active_operators_last_node_ref_input_index: Int,
+    registered_element_ref_input_index: Int,
+  }
+  GoToNextDueToSkippedOperator {
+    new_shifts_operator_node_ref_input_index: Int,
+    skipped_operator_node_input_index: Int,
+    active_operators_spend_redeemer_index: Int,
+    state_queue_ref_input_index: Int,
+    hub_oracle_ref_input_index: Int,
+    neglected_user_event: NeglectedUserEvent,
+  }
+  RewindDueToSkippedOperator {
+    active_operators_root_ref_input_index: Int,
+    skipped_operator_node_input_index: Int,
+    active_operators_spend_redeemer_index: Int,
+    state_queue_ref_input_index: Int,
+    hub_oracle_ref_input_index: Int,
+    // If only one operator exists in the active set, we won't be able to refer
+    // to the operator's UTxO as the next shift's, since it's being spent in the
+    // transaction.
+    m_active_operators_last_node_ref_input_index: Option<Int>,
+    registered_element_ref_input_index: Int,
+    neglected_user_event: NeglectedUserEvent,
+  }
+  GoToNextDueToOperatorRemoval {
+    active_operators_mint_redeemer_index: Int,
+    removal_reason: OperatorRemovalReason,
+  }
+  RewindDueToOperatorRemoval {
+    active_operators_mint_redeemer_index: Int,
+    m_active_operators_last_node_ref_input_index: Option<Int>,
+    removal_reason: OperatorRemovalReason,
+    registered_element_ref_input_index: Int,
+  }
+  AppointFirstOperator {
+    new_shifts_operator_node_ref_input_index: Int,
+    registered_element_ref_input_index: Int,
   }
 }
 
-/// Parses scheduler datum data using Aiken's typed expectation path.
-/// Decodes scheduler datum data using an expect cast.
-pub fn parse_scheduler_expect_datum(data: Data) -> Datum {
-  expect datum: Datum = data 
-  datum 
-}
-/// Parses scheduler datum data using the manual field decoder.
-
-/// Parses scheduler datum data field by field.
-pub fn parse_scheduler_datum(data: Data) -> Datum {
-  let raw_datum = builtin.un_constr_data(data)
-  expect raw_datum.1st == 0
-  let fields = raw_datum.2nd
-  let operator_data = builtin.head_list(fields)
-  expect operator: ByteArray = operator_data
-  let start_time_data = builtin.head_list(builtin.tail_list(fields))
-  expect start_time: PosixTime = start_time_data
-  expect builtin.null_list(builtin.tail_list(builtin.tail_list(fields)))
-  Datum { operator, start_time }
+pub type SpendRedeemer {
+  scheduler_input_index: Int,
+  scheduler_output_index: Int,
+  advancing_approach: AdvancingApproach,
 }
 
-/// The end of a shift is the start of the shift, shifted forward
-/// by the shift_duration parameter.
+/// The end of a shift is the start of the shift, shifted forward by the
+/// `shift_duration` parameter.
 pub fn shift_end_time(start_time: PosixTime) -> PosixTime {
   start_time + shift_duration
+}
+
+pub fn get_datum(
+  reference_inputs: List<Input>,
+  scheduler_policy_id: ScriptHash,
+  scheduler_ref_input_index: Int,
+) -> Datum {
+  expect scheduler_datum: Datum =
+    utils.get_authentic_input_datum_with_nft_at(
+      reference_inputs,
+      scheduler_policy_id,
+      asset_name,
+      scheduler_ref_input_index,
+    )
+  scheduler_datum
 }

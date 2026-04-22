@@ -4,7 +4,7 @@ import type * as SDK from "@al-ft/midgard-sdk";
 import {
   encodeSchedulerDatumForChain,
   type NodeUtxoWithDatum,
-  resolveReferenceInputIndexFromAuthoredOrder,
+  resolveReferenceInputIndexFromLedgerOrder,
   resolveSchedulerRefreshWitnessSelection,
 } from "@/workers/utils/scheduler-refresh.js";
 
@@ -88,7 +88,7 @@ describe("scheduler refresh witness selection", () => {
     );
   });
 
-  it("selects a genesis Rewind from the canonical empty scheduler operator", () => {
+  it("selects AppointFirst from the canonical empty scheduler operator", () => {
     const registeredRoot = mkNode("55".repeat(32), 0, {
       key: "Empty",
       next: "Empty",
@@ -103,9 +103,9 @@ describe("scheduler refresh witness selection", () => {
       allowGenesisRewind: true,
     });
 
-    expect(selection.kind).toBe("Rewind");
-    if (selection.kind !== "Rewind") {
-      throw new Error("expected rewind selection");
+    expect(selection.kind).toBe("AppointFirst");
+    if (selection.kind !== "AppointFirst") {
+      throw new Error("expected appoint-first selection");
     }
     expect(selection.activeNode.utxo.txHash).toBe(activeTail.utxo.txHash);
     expect(selection.registeredWitnessNode.utxo.txHash).toBe(
@@ -125,15 +125,15 @@ describe("scheduler refresh witness selection", () => {
     ).toThrow("cannot rewind scheduler");
   });
 
-  it("derives reference indices from authored refresh witness order", () => {
+  it("derives reference indices from ledger-sorted refresh witnesses", () => {
     const referenceInputs = [activeTail.utxo, activeRoot.utxo];
 
     expect(
-      resolveReferenceInputIndexFromAuthoredOrder(activeTail.utxo, referenceInputs),
-    ).toBe(0n);
-    expect(
-      resolveReferenceInputIndexFromAuthoredOrder(activeRoot.utxo, referenceInputs),
+      resolveReferenceInputIndexFromLedgerOrder(activeTail.utxo, referenceInputs),
     ).toBe(1n);
+    expect(
+      resolveReferenceInputIndexFromLedgerOrder(activeRoot.utxo, referenceInputs),
+    ).toBe(0n);
   });
 
   it("keeps the registered witness index at the authored tail position for rewind", () => {
@@ -149,16 +149,21 @@ describe("scheduler refresh witness selection", () => {
     ];
 
     expect(
-      resolveReferenceInputIndexFromAuthoredOrder(registeredRoot.utxo, referenceInputs),
+      resolveReferenceInputIndexFromLedgerOrder(
+        registeredRoot.utxo,
+        referenceInputs,
+      ),
     ).toBe(2n);
   });
 
   it("encodes scheduler datums with a definite root array for deployed validators", () => {
     expect(
       encodeSchedulerDatumForChain({
-        operator: "aa",
-        startTime: 42n,
+        ActiveOperator: {
+          operator: "aa",
+          start_time: 42n,
+        },
       } satisfies SDK.SchedulerDatum),
-    ).toBe("d8798241aa182a");
+    ).toBe("d87a8241aa182a");
   });
 });

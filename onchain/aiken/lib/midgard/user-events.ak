@@ -2,8 +2,7 @@ use aiken/builtin
 use aiken/cbor
 use aiken/collection/list
 use aiken/crypto.{ScriptHash, blake2b_256}
-use aiken/interval.{Finite}
-use aiken_design_patterns/validity_range_normalization as vrn
+use aiken_design_patterns/parameter_validation
 use cardano/address.{Address}
 use cardano/assets.{AssetName, PolicyId, Value}
 use cardano/transaction.{
@@ -11,8 +10,9 @@ use cardano/transaction.{
   ScriptPurpose, Transaction, ValidityRange,
 }
 use env
-use midgard/common/parameter_validation
+use midgard/common/constants.{plutus_version}
 use midgard/common/types.{PosixTime}
+use midgard/common/utils
 use midgard/hub_oracle as hub
 use midgard/ledger_state
 use midgard/user_events/witness.{
@@ -44,16 +44,12 @@ pub type MintRedeemer {
 
 // ## Utilities & Helpers
 
-/// Converts an output reference into the event nonce asset name.
-/// Derives the user-event nonce asset name from an output reference.
 pub fn out_ref_to_nonce(out_ref: OutputReference) -> AssetName {
   cbor.serialise(out_ref) |> blake2b_256
 }
 
 // ## Validation Abstractions
-/// Validates that the minted value matches the expected token bundle.
 
-/// Validates the minting pattern for a user-event NFT.
 pub fn validate_mint(
   hub_oracle: ScriptHash,
   event_address_getter: fn(hub.Datum) -> Address,
@@ -85,7 +81,7 @@ pub fn validate_mint(
 
       let event_address = event_address_getter(hub_datum)
 
-      authenticate_event(
+      authenticate_new_event(
         event_address,
         nonce_input_index,
         event_output_index,
@@ -110,11 +106,9 @@ pub fn validate_mint(
       )
     }
   }
-/// Authenticates an event input and returns its decoded datum context.
 }
 
-/// Authenticates a user-event input and returns its decoded state.
-pub fn authenticate_event(
+fn authenticate_new_event(
   event_address: Address,
   nonce_input_index: Int,
   event_output_index: Int,
@@ -129,12 +123,7 @@ pub fn authenticate_event(
 ) -> Bool {
   // Grab validity range's inclusive upper bound.
   // TODO: Is it needed to ensure inclusivity?
-  let valid_to =
-    when vrn.normalize_time_range(validity_range) is {
-      vrn.ClosedRange { upper, .. } | vrn.FromNegInf { upper } -> upper
-      _ ->
-        fail @"Invalid validity range encountered for user event authentication"
-    }
+  let valid_to = utils.get_inclusive_upper_bound_of_interval(validity_range)
 
   // Grab output reference of the specified nonce input.
   expect Some(Input { output_reference: nonce_input_out_ref, .. }) =
@@ -151,7 +140,7 @@ pub fn authenticate_event(
   // transaction.
   let expected_witness_script_hash =
     parameter_validation.apply_prehashed_param(
-      version: 3,
+      version: plutus_version,
       prefix: witness_script_prefix,
       param: nonce,
     )
@@ -194,23 +183,24 @@ pub fn authenticate_event(
   // 4. Event's ID must be the same as the specified spent input.
   expect event_id == nonce_input_out_ref_data
 
-  and {
-    // 5. Event UTxO must be produced at the provided script's address from
-    //    hub oracle.
-    output_event_address == event_address,
-    // 6. Specified inclusion time of the event must be some time in the
-    //    future.
-    output_event_inclusion_time == valid_to + env.event_wait_duration,
-    // 7. Recorded witness must be correct.
-    output_event_witness == expected_witness_script_hash,
-    // 8. The provided validation function must pass.
-    event_validator(nonce, output_event_value, event_info),
-/// Validates the burn of the event authentication NFT.
-  }
+  // 5. Event UTxO must be produced at the provided script's address from hub
+  //    oracle.
+  expect output_event_address == event_address
+
+  // 6. Specified inclusion time of the event must be some time in the future.
+  expect output_event_inclusion_time == valid_to + env.event_wait_duration
+
+  // 7. Recorded witness must be correct.
+  expect output_event_witness == expected_witness_script_hash
+
+  // 8. The provided validation function must pass.
+  expect event_validator(nonce, output_event_value, event_info)
+
+  // Done.
+  True
 }
 
-/// Validates burning the event NFT from the supplied input.
-pub fn validate_event_nft_burn(
+fn validate_event_nft_burn(
   nonce_asset_name: AssetName,
   witness_unregistration_redeemer_index: Int,
   own_policy: PolicyId,
@@ -219,24 +209,27 @@ pub fn validate_event_nft_burn(
 ) -> Bool {
   let expected_witness_script_hash =
     parameter_validation.apply_prehashed_param(
-      version: 3,
+      version: plutus_version,
       prefix: witness_script_prefix,
       param: nonce_asset_name,
     )
 
-  and {
-    // 1. The specified NFT must be burnt.
-    assets.quantity_of(mint, own_policy, nonce_asset_name) == -1,
-    // 2. Witness staking script corresponding to the NFT must be getting
-    //    unregistered.
-    // 3. `PublishRedeemer` for unregistration must be equal to
-    //    `own_policy`
+  // 1. The specified NFT must be burnt.
+  expect assets.quantity_of(mint, own_policy, nonce_asset_name) == -1
+
+  // 2. Witness staking script corresponding to the NFT must be getting
+  //    unregistered.
+  // 3. `PublishRedeemer` for unregistration must be equal to
+  //    `own_policy`
+  expect
     validate_witness_redeemer(
       expected_witness_script_hash: expected_witness_script_hash,
       witness_redeemer_index: witness_unregistration_redeemer_index,
       for_registration: False,
       event_policy_id: own_policy,
       redeemers: redeemers,
-    ),
-  }
+    )
+
+  // Done.
+  True
 }

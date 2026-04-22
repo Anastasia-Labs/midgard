@@ -19,25 +19,6 @@ const MIN_ACTIVE_OPERATOR_NODE_LOVELACE = 5_000_000n;
 const BOOTSTRAP_CONFIRMATION_POLL_INTERVAL = "3 seconds";
 const BOOTSTRAP_CONFIRMATION_MAX_POLLS = 40;
 const BOOTSTRAP_AWAIT_TX_TIMEOUT_MS = 20_000;
-const ACTIVE_OPERATOR_DATUM_AIKEN_OPTION_SCHEMA = LucidData.Enum([
-  LucidData.Object({
-    Some: LucidData.Tuple([LucidData.Integer()]),
-  }),
-  LucidData.Literal("None"),
-]);
-const ACTIVE_OPERATOR_DATUM_AIKEN_SCHEMA = LucidData.Object({
-  bond_unlock_time: ACTIVE_OPERATOR_DATUM_AIKEN_OPTION_SCHEMA,
-});
-
-/**
- * Encodes the active-operator datum in the Aiken-compatible shape expected by
- * the on-chain validator.
- */
-const encodeActiveOperatorDatum = (bondUnlockTime: bigint | null): string =>
-  LucidData.castTo(
-    { bond_unlock_time: bondUnlockTime } as never,
-    ACTIVE_OPERATOR_DATUM_AIKEN_SCHEMA as never,
-  ) as string;
 
 /**
  * Picks the largest wallet UTxO, breaking ties deterministically by outref.
@@ -154,7 +135,7 @@ export const ensureActiveOperatorWitnessNodeProgram = (
     const operatorKeyHash = yield* getOperatorKeyHash(lucid);
     const operatorNodeUnit = toUnit(
       contracts.activeOperators.policyId,
-      SDK.NODE_ASSET_NAME + operatorKeyHash,
+      SDK.ACTIVE_OPERATOR_NODE_ASSET_NAME_PREFIX + operatorKeyHash,
     );
 
     const activeOperatorUtxos = yield* SDK.utxosAtByNFTPolicyId(
@@ -207,10 +188,13 @@ export const ensureActiveOperatorWitnessNodeProgram = (
       );
     }
 
-    const bootstrapDatum: SDK.StateQueueDatum = {
+    const bootstrapDatum: SDK.LinkedListNodeView = {
       key: { Key: { key: operatorKeyHash } },
       next: "Empty",
-      data: encodeActiveOperatorDatum(null),
+      data: SDK.castActiveOperatorDatumToData({
+        bond_unlock_time: null,
+        inactivity_strikes: 0n,
+      }) as SDK.LinkedListNodeView["data"],
     };
     const bootstrapAssets = {
       lovelace: MIN_ACTIVE_OPERATOR_NODE_LOVELACE,
@@ -227,7 +211,7 @@ export const ensureActiveOperatorWitnessNodeProgram = (
             contracts.activeOperators.spendingScriptAddress,
             {
               kind: "inline",
-              value: LucidData.to(bootstrapDatum, SDK.StateQueueDatum),
+              value: SDK.encodeLinkedListNodeView(bootstrapDatum),
             },
             bootstrapAssets,
           )

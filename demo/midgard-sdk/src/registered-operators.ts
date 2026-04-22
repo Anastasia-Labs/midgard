@@ -3,13 +3,6 @@ import { Data, LucidEvolution, TxBuilder } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 import { incompleteInitLinkedListTxProgram } from "./linked-list.js";
 
-/**
- * SDK data and transaction builders for the registered-operators state machine.
- *
- * Registered operators are stored in a linked-list structure on chain, so the
- * redeemer shapes here carry the positional data needed to keep that structure
- * consistent during inserts, removals, and status transitions.
- */
 export const RegisteredOperatorDatumSchema = Data.Object({
   registrationTime: POSIXTimeSchema,
 });
@@ -19,9 +12,6 @@ export type RegisteredOperatorDatum = Data.Static<
 export const RegisteredOperatorDatum =
   RegisteredOperatorDatumSchema as unknown as RegisteredOperatorDatum;
 
-/**
- * Witness status used when resolving duplicate slash-bond scenarios.
- */
 export const RegisteredOperatorWitnessStatusSchema = Data.Enum([
   Data.Literal("Registered"),
   Data.Literal("Active"),
@@ -33,9 +23,6 @@ export type RegisteredOperatorWitnessStatus = Data.Static<
 export const RegisteredOperatorWitnessStatus =
   RegisteredOperatorWitnessStatusSchema as unknown as RegisteredOperatorWitnessStatus;
 
-/**
- * Mint redeemers for the registered-operators validator/policy pair.
- */
 export const RegisteredOperatorMintRedeemerSchema = Data.Enum([
   Data.Literal("Init"),
   Data.Literal("Deinit"),
@@ -99,7 +86,11 @@ export type RegisteredOperatorActivateParams = {};
 export type RegisteredOperatorRemoveDuplicateSlashBondParams = {};
 
 /**
- * Builds the linked-list initialization fragment for registered operators.
+ * Init
+ *
+ * @param lucid - The LucidEvolution
+ * @param params - The parameters
+ * @returns {TxBuilder} A TxBuilder instance that can be used to build the transaction.
  */
 export const incompleteRegisteredOperatorInitTxProgram = (
   lucid: LucidEvolution,
@@ -116,61 +107,76 @@ export const incompleteRegisteredOperatorInitTxProgram = (
   });
 
 /**
- * Stub entry point for tearing down the registered-operators state machine.
+ * Deinit
+ *
+ * @param lucid - The LucidEvolution
+ * @param params - The parameters
+ * @returns {TxBuilder} A TxBuilder instance that can be used to build the transaction.
  */
 export const incompleteRegisteredOperatorDeinitTxProgram = (
   lucid: LucidEvolution,
   params: RegisteredOperatorDeinitParams,
 ): TxBuilder => {
-  void params;
   const tx = lucid.newTx();
   return tx;
 };
 
 /**
- * Stub entry point for appending a newly registered operator.
+ * Register
+ *
+ * @param lucid - The LucidEvolution
+ * @param params - The parameters
+ * @returns {TxBuilder} A TxBuilder instance that can be used to build the transaction.
  */
 export const incompleteRegisteredOperatorRegisterTxProgram = (
   lucid: LucidEvolution,
   params: RegisteredOperatorRegisterParams,
 ): TxBuilder => {
-  void params;
   const tx = lucid.newTx();
   return tx;
 };
 
 /**
- * Stub entry point for removing a registered operator.
+ * Deregister
+ *
+ * @param lucid - The LucidEvolution
+ * @param params - The parameters
+ * @returns {TxBuilder} A TxBuilder instance that can be used to build the transaction.
  */
 export const incompleteRegisteredOperatorDeregisterTxProgram = (
   lucid: LucidEvolution,
   params: RegisteredOperatorDeregisterParams,
 ): TxBuilder => {
-  void params;
   const tx = lucid.newTx();
   return tx;
 };
 
 /**
- * Stub entry point for promoting a registered operator to active status.
+ * Activate
+ *
+ * @param lucid - The LucidEvolution
+ * @param params - The parameters
+ * @returns {TxBuilder} A TxBuilder instance that can be used to build the transaction.
  */
 export const incompleteRegisteredOperatorActivateTxProgram = (
   lucid: LucidEvolution,
   params: RegisteredOperatorActivateParams,
 ): TxBuilder => {
-  void params;
   const tx = lucid.newTx();
   return tx;
 };
 
 /**
- * Stub entry point for removing an operator that duplicated a slash bond.
+ * RemoveDuplicate
+ *
+ * @param lucid - The LucidEvolution
+ * @param params - The parameters
+ * @returns {TxBuilder} A TxBuilder instance that can be used to build the transaction.
  */
 export const incompleteRegisteredOperatorRemoveDuplicateSlashBondTxProgram = (
   lucid: LucidEvolution,
   params: RegisteredOperatorRemoveDuplicateSlashBondParams,
 ): TxBuilder => {
-  void params;
   const tx = lucid.newTx();
   return tx;
 };

@@ -1,16 +1,12 @@
 import { AuthenticatedValidator } from "@/common.js";
-import { FRAUD_PROOF_CATALOGUE_ASSET_NAME } from "@/constants.js";
-import { Assets, Data, toUnit } from "@lucid-evolution/lucid";
+import { Assets, Data, fromText, toUnit } from "@lucid-evolution/lucid";
 import { LucidEvolution, TxBuilder } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
-/**
- * SDK helpers for the fraud-proof catalogue state machine.
- *
- * The catalogue anchors the set of recognized fraud-proof categories, so its
- * initialization path is part of the protocol's safety-critical bootstrap
- * sequence.
- */
+export const FRAUD_PROOF_CATALOGUE_ASSET_NAME = fromText(
+  "Fraud Proof Catalogue",
+);
+
 export const FraudProofCatalogueDatumSchema = Data.Bytes();
 
 export type FraudProofCatalogueDatum = Data.Static<
@@ -31,9 +27,6 @@ export type FraudProofCatalogueMintRedeemer = Data.Static<
 export const FraudProofCatalogueMintRedeemer =
   FraudProofCatalogueMintRedeemerSchema as unknown as FraudProofCatalogueMintRedeemer;
 
-/**
- * Spend redeemer selecting a catalogue entry by asset name.
- */
 export const FraudProofCatalogueSpendRedeemerSchema = Data.Object({
   fraudProofCatalogueAssetName: Data.Bytes(),
 });
@@ -53,10 +46,11 @@ export type FraudProofCatalogueNewCategoryParams = {};
 export type FraudProofCatalogueRemoveCategoryParams = {};
 
 /**
- * Builds the fraud-proof catalogue initialization transaction fragment.
+ * Init
  *
- * The initial datum stores the Merkle Patricia Trie root that identifies the
- * catalogue contents expected by the rest of the protocol.
+ * @param lucid - The LucidEvolution
+ * @param params - The parameters
+ * @returns {TxBuilder} A TxBuilder instance that can be used to build the transaction.
  */
 export const incompleteFraudProofCatalogueInitTxProgram = (
   lucid: LucidEvolution,
@@ -82,37 +76,46 @@ export const incompleteFraudProofCatalogueInitTxProgram = (
     return tx;
   });
 /**
- * Stub entry point for tearing down the fraud-proof catalogue.
+ * Deinit
+ *
+ * @param lucid - The LucidEvolution
+ * @param params - The parameters
+ * @returns {TxBuilder} A TxBuilder instance that can be used to build the transaction.
  */
 export const incompleteFraudProofDeinitTxProgram = (
   lucid: LucidEvolution,
   params: FraudProofCatalogueDeinitParams,
 ): TxBuilder => {
-  void params;
   const tx = lucid.newTx();
   return tx;
 };
 
 /**
- * Stub entry point for adding a new fraud-proof category.
+ * NewCategory
+ *
+ * @param lucid - The LucidEvolution
+ * @param params - The parameters
+ * @returns {TxBuilder} A TxBuilder instance that can be used to build the transaction.
  */
 export const incompleteFraudProofNewCategoryTxProgram = (
   lucid: LucidEvolution,
   params: FraudProofCatalogueNewCategoryParams,
 ): TxBuilder => {
-  void params;
   const tx = lucid.newTx();
   return tx;
 };
 
 /**
- * Stub entry point for removing a fraud-proof category.
+ * RemoveCategory
+ *
+ * @param lucid - The LucidEvolution
+ * @param params - The parameters
+ * @returns {TxBuilder} A TxBuilder instance that can be used to build the transaction.
  */
 export const incompleteFraudProofRemoveCategoryTxProgram = (
   lucid: LucidEvolution,
   params: FraudProofCatalogueRemoveCategoryParams,
 ): TxBuilder => {
-  void params;
   const tx = lucid.newTx();
   return tx;
 };

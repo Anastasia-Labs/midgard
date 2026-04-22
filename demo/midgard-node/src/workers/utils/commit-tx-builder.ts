@@ -33,12 +33,13 @@ import {
 
 type CommitLayoutLike = {
   readonly schedulerRefInputIndex: bigint;
-  readonly activeNodeInputIndex: bigint;
+  readonly latestBlockInputIndex: bigint;
+  readonly activeOperatorsInputIndex: bigint;
   readonly activeOperatorsRedeemerIndex: bigint;
-  readonly stateQueueRedeemerIndex: bigint;
-  readonly headerNodeOutputIndex: bigint;
-  readonly previousHeaderNodeOutputIndex: bigint;
-  readonly activeNodeOutputIndex: bigint;
+  readonly stateQueueSpendRedeemerIndex: bigint;
+  readonly newBlockOutputIndex: bigint;
+  readonly continuedLatestBlockOutputIndex: bigint;
+  readonly activeOperatorOutputIndex: bigint;
   readonly hubOracleRefInputIndex: bigint;
 };
 
@@ -54,24 +55,26 @@ export type DeterministicCommitTxBuilderInput = {
   readonly previousHeaderNodeDatumCbor: string;
   readonly updatedActiveOperatorDatumCbor: string;
   readonly commitMintAssets: Readonly<Record<string, bigint>>;
-  readonly makeBaseCommitTx: () => TxBuilder;
+  readonly makeBaseCommitTx: (stateQueueCommitRedeemer: string) => TxBuilder;
 };
 
 const formatLayout = (layout: CommitLayoutLike): string =>
-  `scheduler_ref_input_index=${layout.schedulerRefInputIndex.toString()},active_node_input_index=${layout.activeNodeInputIndex.toString()},active_operators_redeemer_index=${layout.activeOperatorsRedeemerIndex.toString()},state_queue_redeemer_index=${layout.stateQueueRedeemerIndex.toString()},header_node_output_index=${layout.headerNodeOutputIndex.toString()},previous_header_node_output_index=${layout.previousHeaderNodeOutputIndex.toString()},active_node_output_index=${layout.activeNodeOutputIndex.toString()},hub_oracle_ref_input_index=${layout.hubOracleRefInputIndex.toString()}`;
+  `scheduler_ref_input_index=${layout.schedulerRefInputIndex.toString()},latest_block_input_index=${layout.latestBlockInputIndex.toString()},active_operators_input_index=${layout.activeOperatorsInputIndex.toString()},active_operators_redeemer_index=${layout.activeOperatorsRedeemerIndex.toString()},state_queue_spend_redeemer_index=${layout.stateQueueSpendRedeemerIndex.toString()},new_block_output_index=${layout.newBlockOutputIndex.toString()},continued_latest_block_output_index=${layout.continuedLatestBlockOutputIndex.toString()},active_operator_output_index=${layout.activeOperatorOutputIndex.toString()},hub_oracle_ref_input_index=${layout.hubOracleRefInputIndex.toString()}`;
 
 const commitLayoutsEqual = (
   left: StateQueueCommitLayout,
   right: StateQueueCommitLayout,
 ): boolean =>
   left.schedulerRefInputIndex === right.schedulerRefInputIndex &&
-  left.activeNodeInputIndex === right.activeNodeInputIndex &&
-  left.headerNodeOutputIndex === right.headerNodeOutputIndex &&
-  left.previousHeaderNodeOutputIndex === right.previousHeaderNodeOutputIndex &&
+  left.latestBlockInputIndex === right.latestBlockInputIndex &&
+  left.activeOperatorsInputIndex === right.activeOperatorsInputIndex &&
+  left.newBlockOutputIndex === right.newBlockOutputIndex &&
+  left.continuedLatestBlockOutputIndex ===
+    right.continuedLatestBlockOutputIndex &&
   left.activeOperatorsRedeemerIndex === right.activeOperatorsRedeemerIndex &&
-  left.activeNodeOutputIndex === right.activeNodeOutputIndex &&
+  left.activeOperatorOutputIndex === right.activeOperatorOutputIndex &&
   left.hubOracleRefInputIndex === right.hubOracleRefInputIndex &&
-  left.stateQueueRedeemerIndex === right.stateQueueRedeemerIndex;
+  left.stateQueueSpendRedeemerIndex === right.stateQueueSpendRedeemerIndex;
 
 const completeCommitTxForLayout = ({
   makeCommitTxForLayout,
@@ -173,13 +176,33 @@ export const buildDeterministicCommitTxBuilder = ({
     /**
      * Builds a commit transaction for a specific layout plan.
      */
-    const makeCommitTxForLayout = (commitLayout: StateQueueCommitLayout) =>
-      makeBaseCommitTx()
+    const makeCommitTxForLayout = (commitLayout: StateQueueCommitLayout) => {
+      const stateQueueCommitRedeemer = encodeStateQueueCommitRedeemer(
+        witness.operatorKeyHash,
+        commitLayout,
+      );
+      const referenceInputs = [
+        witness.schedulerRefInput,
+        witness.hubOracleRefInput,
+        ...(witness.activeOperatorsSpendingScriptRef === undefined
+          ? []
+          : [witness.activeOperatorsSpendingScriptRef]),
+        ...(witness.stateQueueSpendingScriptRef === undefined
+          ? []
+          : [witness.stateQueueSpendingScriptRef]),
+        ...(witness.stateQueueMintingScriptRef === undefined
+          ? []
+          : [witness.stateQueueMintingScriptRef]),
+      ];
+      const tx = makeBaseCommitTx(stateQueueCommitRedeemer)
         .collectFrom([feeInput])
-        .readFrom([witness.schedulerRefInput, witness.hubOracleRefInput])
+        .readFrom(referenceInputs)
         .collectFrom(
           [witness.activeOperatorInput],
-          encodeActiveOperatorCommitRedeemer(commitLayout),
+          encodeActiveOperatorCommitRedeemer(
+            witness.operatorKeyHash,
+            commitLayout,
+          ),
         )
         .pay.ToContract(
           witness.activeOperatorInput.address,
@@ -189,20 +212,43 @@ export const buildDeterministicCommitTxBuilder = ({
           },
           witness.activeOperatorInput.assets,
         )
-        .attach.Script(witness.activeOperatorsSpendingScript)
         .addSignerKey(witness.operatorKeyHash)
-        .mintAssets(
-          commitMintAssets,
-          encodeStateQueueCommitRedeemer(witness.operatorKeyHash, commitLayout),
-        )
-        .attach.Script(contracts.stateQueue.spendingScript)
-        .attach.Script(contracts.stateQueue.mintingScript);
+        .mintAssets(commitMintAssets, stateQueueCommitRedeemer);
+      const withActiveOperatorsScript =
+        witness.activeOperatorsSpendingScriptRef === undefined
+          ? tx.attach.Script(witness.activeOperatorsSpendingScript)
+          : tx;
+      const withStateQueueSpendingScript =
+        witness.stateQueueSpendingScriptRef === undefined
+          ? withActiveOperatorsScript.attach.Script(
+              contracts.stateQueue.spendingScript,
+            )
+          : withActiveOperatorsScript;
+      return witness.stateQueueMintingScriptRef === undefined
+        ? withStateQueueSpendingScript.attach.Script(
+            contracts.stateQueue.mintingScript,
+          )
+        : withStateQueueSpendingScript;
+    };
 
     const seedLayout = deriveStateQueueCommitLayout({
       latestBlockInput,
       activeOperatorInput: witness.activeOperatorInput,
       schedulerRefInput: witness.schedulerRefInput,
       hubOracleRefInput: witness.hubOracleRefInput,
+      txReferenceInputs: [
+        witness.schedulerRefInput,
+        witness.hubOracleRefInput,
+        ...(witness.activeOperatorsSpendingScriptRef === undefined
+          ? []
+          : [witness.activeOperatorsSpendingScriptRef]),
+        ...(witness.stateQueueSpendingScriptRef === undefined
+          ? []
+          : [witness.stateQueueSpendingScriptRef]),
+        ...(witness.stateQueueMintingScriptRef === undefined
+          ? []
+          : [witness.stateQueueMintingScriptRef]),
+      ],
       txInputs: [latestBlockInput, witness.activeOperatorInput, feeInput],
     });
     const { commitLayout, draftDiagnostics } = yield* Effect.tryPromise({
@@ -224,6 +270,7 @@ export const buildDeterministicCommitTxBuilder = ({
             : slotToUnixTimeForLucid(lucid, txValidityUpperBoundSlot);
         const commitLayout = deriveCommitLayoutFromDraftTx({
           tx: draftTx,
+          latestBlockInput,
           schedulerRefInput: witness.schedulerRefInput,
           hubOracleRefInput: witness.hubOracleRefInput,
           activeOperatorInput: witness.activeOperatorInput,
@@ -283,6 +330,7 @@ export const buildDeterministicCommitTxBuilder = ({
     for (let iteration = 0; iteration < 2; iteration += 1) {
       const derivedSubmitLayout = deriveCommitLayoutFromDraftTx({
         tx: builtCommitTx.toTransaction(),
+        latestBlockInput,
         schedulerRefInput: witness.schedulerRefInput,
         hubOracleRefInput: witness.hubOracleRefInput,
         activeOperatorInput: witness.activeOperatorInput,

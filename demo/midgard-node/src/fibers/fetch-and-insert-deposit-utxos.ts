@@ -13,6 +13,8 @@ import {
   credentialToAddress,
   Data as LucidData,
   LucidEvolution,
+  toUnit,
+  type Assets,
   type Credential,
   type Network,
 } from "@lucid-evolution/lucid";
@@ -66,24 +68,45 @@ const addressFromDepositInfo = (
 };
 
 /**
+ * Removes the L1-only deposit auth NFT while preserving user-deposited value.
+ */
+const projectedDepositAssets = (
+  depositUTxO: SDK.DepositUTxO,
+  depositPolicyId: string,
+): Assets => {
+  const depositAuthUnit = toUnit(depositPolicyId, depositUTxO.assetName);
+  const depositAuthQuantity = depositUTxO.utxo.assets[depositAuthUnit] ?? 0n;
+  if (depositAuthQuantity !== 1n) {
+    throw new Error(
+      `Deposit auth NFT invariant violated for ${depositUTxO.utxo.txHash}#${depositUTxO.utxo.outputIndex.toString()}: expected exactly 1 ${depositAuthUnit}, found ${depositAuthQuantity.toString()}`,
+    );
+  }
+
+  const assets: Assets = { ...depositUTxO.utxo.assets };
+  delete assets[depositAuthUnit];
+  return assets;
+};
+
+/**
  * Projects one deposit UTxO into the database row shape used by the off-chain
  * deposits ledger.
  */
 const depositUTxOToEntry = (
   depositUTxO: SDK.DepositUTxO,
   network: Network,
+  depositPolicyId: string,
 ): Effect.Effect<DepositsDB.Entry, SDK.LucidError> =>
   Effect.try({
     try: () => {
       const l2Address = addressFromDepositInfo(
         network,
-        depositUTxO.datum.event.info.l2Address,
+        depositUTxO.datum.event.info.l2_address,
       );
       const output = CML.ConwayFormatTxOut.new(
         CML.Address.from_bech32(l2Address),
-        assetsToValue(depositUTxO.utxo.assets),
+        assetsToValue(projectedDepositAssets(depositUTxO, depositPolicyId)),
       );
-      const l2Datum = depositUTxO.datum.event.info.l2Datum;
+      const l2Datum = depositUTxO.datum.event.info.l2_datum;
       if (l2Datum !== null) {
         output.set_datum_option(
           CML.DatumOption.new_datum(
@@ -135,8 +158,8 @@ const fetchDepositUTxOs = (
   Effect.gen(function* () {
     const { deposit: depositAuthValidator } = yield* MidgardContracts;
     const fetchConfig: SDK.DepositFetchConfig = {
-      depositAddress: depositAuthValidator.spendingScriptAddress,
-      depositPolicyId: depositAuthValidator.policyId,
+      eventAddress: depositAuthValidator.spendingScriptAddress,
+      eventPolicyId: depositAuthValidator.policyId,
       ...config,
     };
     return yield* SDK.fetchDepositUTxOsProgram(lucid, fetchConfig);
@@ -154,6 +177,7 @@ const reconcileVisibleDepositUTxOs = (
 > =>
   Effect.gen(function* () {
     const { api: lucid } = yield* Lucid;
+    const { deposit: depositAuthValidator } = yield* MidgardContracts;
     const nodeConfig = yield* NodeConfig;
 
     const depositUTxOs: SDK.DepositUTxO[] = yield* fetchDepositUTxOs(
@@ -172,7 +196,7 @@ const reconcileVisibleDepositUTxOs = (
     yield* Effect.logInfo(`🏦 ${depositUTxOs.length} deposit UTxOs found.`);
 
     const entries = yield* Effect.forEach(depositUTxOs, (utxo) =>
-      depositUTxOToEntry(utxo, nodeConfig.NETWORK),
+      depositUTxOToEntry(utxo, nodeConfig.NETWORK, depositAuthValidator.policyId),
     );
 
     yield* DepositsDB.insertEntries(entries);

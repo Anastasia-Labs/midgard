@@ -1,9 +1,10 @@
-use aiken/collection/list
 use aiken/crypto.{ScriptHash}
-use cardano/address.{Address, Script}
-use cardano/assets.{PolicyId}
-use cardano/transaction.{InlineDatum, Input, NoDatum, Output, OutputReference}
+use cardano/address.{Address}
+use cardano/assets.{AssetName, PolicyId}
+use cardano/transaction.{InlineDatum, Input, Output}
 use midgard/common/utils
+
+pub const asset_name: AssetName = "MIDGARD_HUB_ORACLE"
 
 pub type Datum {
   registered_operators: PolicyId,
@@ -35,77 +36,19 @@ pub type Datum {
 }
 
 /// The assumption here is that the UTxO with the datum is authenticated with an
-/// NFT whose policy is the same as the address's payment script hash.
-///
-/// The hub-oracle minting policy already fixes the singleton asset name, so
-/// readers should authenticate by policy and address rather than hardcoding a
-/// specific token name. That keeps the reference input rule compatible with
-/// existing deployments that minted the singleton under a non-empty asset name.
-fn get_authenticated_input(
-  reference_inputs: List<Input>,
-  hub_oracle_script_hash: ScriptHash,
-  hub_ref_input_index: Int,
-) -> Input {
-  expect Some(
-    Input {
-      output: Output {
-        address: Address { payment_credential: Script(refs_script_hash), .. },
-        value: refs_value,
-        ..
-      },
-      ..
-    } as found_ref_input,
-  ) = list.at(reference_inputs, hub_ref_input_index)
-
-  expect (refs_nft_policy_id, _, 1) =
-    utils.get_single_asset_from_value_apart_from_ada(refs_value)
-
-  expect and {
-      refs_script_hash == hub_oracle_script_hash,
-      refs_nft_policy_id == hub_oracle_script_hash,
-    }
-
-  found_ref_input
-}
-
-/// Returns the decoded inline datum for the authenticated state UTxO.
-/// Returns the datum carried by an authenticated hub oracle input.
+/// NFT which its policy is the same as the address's payment script hash.
 pub fn get_datum(
   reference_inputs: List<Input>,
   hub_oracle_script_hash: ScriptHash,
   hub_ref_input_index: Int,
 ) -> Datum {
   expect Input { output: Output { datum: InlineDatum(hub_datum_data), .. }, .. } =
-    get_authenticated_input(
+    utils.get_authentic_input_of(
       reference_inputs,
       hub_oracle_script_hash,
+      asset_name,
       hub_ref_input_index,
     )
   expect hub_datum: Datum = hub_datum_data
   hub_datum
-}
-
-test get_authenticated_input_accepts_named_singleton() {
-  let hub_oracle_script_hash =
-    #"281ff0b5cc5c2c142dbf01f6fa799f6cc077237e6fdb3e4055047c1e"
-  let hub_oracle_asset_name = #"487562204f7261636c65"
-  let hub_input =
-    Input {
-      output_reference: OutputReference {
-        transaction_id: #"1111111111111111111111111111111111111111111111111111111111111111",
-        output_index: 0,
-      },
-      output: Output {
-        address: Address {
-          payment_credential: Script(hub_oracle_script_hash),
-          stake_credential: None,
-        },
-        value: assets.from_lovelace(5_000_000)
-          |> assets.add(hub_oracle_script_hash, hub_oracle_asset_name, 1),
-        datum: NoDatum,
-        reference_script: None,
-      },
-    }
-
-  get_authenticated_input([hub_input], hub_oracle_script_hash, 0) == hub_input
 }

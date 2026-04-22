@@ -167,6 +167,26 @@ const makeAuthenticatedValidator = (
     ),
   );
 
+const makeMintOnlyAuthenticatedValidator = (
+  baseName: string,
+  network: Network,
+): Effect.Effect<SDK.AuthenticatedValidator, NoSuchElementException> =>
+  Effect.gen(function* () {
+    const mintingValidator = yield* makeMintingValidator("midgard", baseName);
+    const spendingScript: SpendingValidator = {
+      type: "PlutusV3",
+      script: mintingValidator.mintingScript.script,
+    };
+
+    return {
+      spendingScriptCBOR: mintingValidator.mintingScriptCBOR,
+      spendingScript,
+      spendingScriptAddress: validatorToAddress(network, spendingScript),
+      spendingScriptHash: validatorToScriptHash(spendingScript),
+      ...mintingValidator,
+    };
+  });
+
 /**
  * Resolves the full always-succeeds validator set used by test environments.
  */
@@ -185,7 +205,10 @@ const makeAlwaysSucceedsService: Effect.Effect<SDK.MidgardValidators> =
       makeSpendingValidator("fraud_proofs", fp, NETWORK);
 
     // Midgard Contracts
-    const hubOracle = yield* makeMintingValidator("midgard", "hub_oracle");
+    const hubOracle = yield* makeMintOnlyAuthenticatedValidator(
+      "hub_oracle",
+      NETWORK,
+    );
     const scheduler = yield* mkAuthVal("scheduler");
     const stateQueue = yield* mkAuthVal("state_queue");
     const registeredOperators = yield* mkAuthVal("registered_operators");

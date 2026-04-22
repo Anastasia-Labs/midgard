@@ -22,7 +22,7 @@ import { Effect, Option, Ref } from "effect";
  * Resolves the end-time boundary represented by the current state-queue tip.
  */
 const resolveStateQueueTipEndTimeMs = (
-  datum: SDK.StateQueueDatum,
+  datum: SDK.StateQueueNodeView,
 ): Effect.Effect<number, SDK.DataCoercionError, never> =>
   Effect.gen(function* () {
     if (datum.key === "Empty") {

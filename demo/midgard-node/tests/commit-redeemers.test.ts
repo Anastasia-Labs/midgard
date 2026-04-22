@@ -18,14 +18,16 @@ describe("commit redeemer shapes", () => {
     expect(redeemer).toEqual({
       CommitBlockHeader: {
         operator,
+        latest_block_input_index:
+          DEFAULT_STATE_QUEUE_COMMIT_LAYOUT.latestBlockInputIndex,
+        new_block_output_index:
+          DEFAULT_STATE_QUEUE_COMMIT_LAYOUT.newBlockOutputIndex,
+        continued_latest_block_output_index:
+          DEFAULT_STATE_QUEUE_COMMIT_LAYOUT.continuedLatestBlockOutputIndex,
         scheduler_ref_input_index:
           DEFAULT_STATE_QUEUE_COMMIT_LAYOUT.schedulerRefInputIndex,
-        active_node_input_index:
-          DEFAULT_STATE_QUEUE_COMMIT_LAYOUT.activeNodeInputIndex,
-        header_node_output_index:
-          DEFAULT_STATE_QUEUE_COMMIT_LAYOUT.headerNodeOutputIndex,
-        previous_header_node_output_index:
-          DEFAULT_STATE_QUEUE_COMMIT_LAYOUT.previousHeaderNodeOutputIndex,
+        active_operators_input_index:
+          DEFAULT_STATE_QUEUE_COMMIT_LAYOUT.activeOperatorsInputIndex,
         active_operators_redeemer_index:
           DEFAULT_STATE_QUEUE_COMMIT_LAYOUT.activeOperatorsRedeemerIndex,
       },
@@ -41,18 +43,24 @@ describe("commit redeemer shapes", () => {
   });
 
   it("encodes active-operators UpdateBondHoldNewState redeemer", () => {
-    const redeemer = makeActiveOperatorCommitRedeemer();
+    const operator = "11".repeat(28);
+    const redeemer = makeActiveOperatorCommitRedeemer(operator);
     expect(redeemer).toEqual({
       UpdateBondHoldNewState: {
+        active_operator: operator,
+        active_node_input_index:
+          DEFAULT_STATE_QUEUE_COMMIT_LAYOUT.activeOperatorsInputIndex,
         active_node_output_index:
-          DEFAULT_STATE_QUEUE_COMMIT_LAYOUT.activeNodeOutputIndex,
+          DEFAULT_STATE_QUEUE_COMMIT_LAYOUT.activeOperatorOutputIndex,
         hub_oracle_ref_input_index:
           DEFAULT_STATE_QUEUE_COMMIT_LAYOUT.hubOracleRefInputIndex,
+        state_queue_input_index:
+          DEFAULT_STATE_QUEUE_COMMIT_LAYOUT.latestBlockInputIndex,
         state_queue_redeemer_index:
-          DEFAULT_STATE_QUEUE_COMMIT_LAYOUT.stateQueueRedeemerIndex,
+          DEFAULT_STATE_QUEUE_COMMIT_LAYOUT.stateQueueSpendRedeemerIndex,
       },
     });
-    const encoded = encodeActiveOperatorCommitRedeemer();
+    const encoded = encodeActiveOperatorCommitRedeemer(operator);
     expect(encoded).not.toEqual(Data.void());
     expect(Data.from(encoded, ActiveOperatorSpendRedeemer)).toEqual(redeemer);
   });
@@ -85,7 +93,9 @@ describe("commit redeemer shapes", () => {
       hubOracleRefInput: hubOracleRef,
       txInputs: [latest, active, fee],
     });
-    expect(layout.activeNodeInputIndex).toEqual(2n);
+    expect(layout.latestBlockInputIndex).toEqual(1n);
+    expect(layout.activeOperatorsInputIndex).toEqual(2n);
+    expect(layout.stateQueueSpendRedeemerIndex).toEqual(0n);
     expect(layout.activeOperatorsRedeemerIndex).toEqual(1n);
     expect(layout.schedulerRefInputIndex).toEqual(1n);
     expect(layout.hubOracleRefInputIndex).toEqual(0n);
@@ -121,7 +131,9 @@ describe("commit redeemer shapes", () => {
       txInputs: [latest, fee, active],
     });
 
-    expect(layout.activeNodeInputIndex).toEqual(1n);
+    expect(layout.latestBlockInputIndex).toEqual(2n);
+    expect(layout.activeOperatorsInputIndex).toEqual(1n);
+    expect(layout.stateQueueSpendRedeemerIndex).toEqual(1n);
     expect(layout.activeOperatorsRedeemerIndex).toEqual(0n);
     expect(layout.schedulerRefInputIndex).toEqual(0n);
     expect(layout.hubOracleRefInputIndex).toEqual(1n);
@@ -131,13 +143,14 @@ describe("commit redeemer shapes", () => {
     expect(stateQueueRedeemer).toEqual({
       CommitBlockHeader: {
         operator,
+        latest_block_input_index: 2n,
+        new_block_output_index:
+          DEFAULT_STATE_QUEUE_COMMIT_LAYOUT.newBlockOutputIndex,
+        continued_latest_block_output_index:
+          DEFAULT_STATE_QUEUE_COMMIT_LAYOUT.continuedLatestBlockOutputIndex,
         scheduler_ref_input_index:
           DEFAULT_STATE_QUEUE_COMMIT_LAYOUT.schedulerRefInputIndex,
-        active_node_input_index: 1n,
-        header_node_output_index:
-          DEFAULT_STATE_QUEUE_COMMIT_LAYOUT.headerNodeOutputIndex,
-        previous_header_node_output_index:
-          DEFAULT_STATE_QUEUE_COMMIT_LAYOUT.previousHeaderNodeOutputIndex,
+        active_operators_input_index: 1n,
         active_operators_redeemer_index: 0n,
       },
     });
@@ -173,7 +186,9 @@ describe("commit redeemer shapes", () => {
       txInputs: [latest, active, fee],
     });
 
-    expect(layout.activeNodeInputIndex).toEqual(1n);
+    expect(layout.latestBlockInputIndex).toEqual(2n);
+    expect(layout.activeOperatorsInputIndex).toEqual(1n);
+    expect(layout.stateQueueSpendRedeemerIndex).toEqual(1n);
     expect(layout.activeOperatorsRedeemerIndex).toEqual(0n);
     expect(layout.schedulerRefInputIndex).toEqual(1n);
     expect(layout.hubOracleRefInputIndex).toEqual(0n);
@@ -218,13 +233,14 @@ describe("commit redeemer shapes", () => {
     const customLayout = {
       ...DEFAULT_STATE_QUEUE_COMMIT_LAYOUT,
       schedulerRefInputIndex: 1n,
-      activeNodeInputIndex: 2n,
-      headerNodeOutputIndex: 2n,
-      previousHeaderNodeOutputIndex: 0n,
+      latestBlockInputIndex: 1n,
+      activeOperatorsInputIndex: 2n,
+      newBlockOutputIndex: 2n,
+      continuedLatestBlockOutputIndex: 0n,
       activeOperatorsRedeemerIndex: 0n,
-      activeNodeOutputIndex: 3n,
+      activeOperatorOutputIndex: 3n,
       hubOracleRefInputIndex: 1n,
-      stateQueueRedeemerIndex: 0n,
+      stateQueueSpendRedeemerIndex: 1n,
     } as const;
 
     const operator = "44".repeat(28);
@@ -232,13 +248,16 @@ describe("commit redeemer shapes", () => {
       operator,
       customLayout,
     );
-    const encodedActiveOperator = encodeActiveOperatorCommitRedeemer(customLayout);
+    const encodedActiveOperator = encodeActiveOperatorCommitRedeemer(
+      operator,
+      customLayout,
+    );
 
     expect(Data.from(encodedStateQueue, SDK.StateQueueRedeemer)).toEqual(
       makeStateQueueCommitRedeemer(operator, customLayout),
     );
     expect(Data.from(encodedActiveOperator, ActiveOperatorSpendRedeemer)).toEqual(
-      makeActiveOperatorCommitRedeemer(customLayout),
+      makeActiveOperatorCommitRedeemer(operator, customLayout),
     );
   });
 });

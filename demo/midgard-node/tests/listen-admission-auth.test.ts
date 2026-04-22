@@ -131,17 +131,15 @@ describe("submit admission helpers", () => {
     expect(accepted.byteLength).toBe(5);
   });
 
-  it("normalizes Cardano tx bytes into Midgard-native bytes", () => {
+  it("rejects ordinary Cardano-signed tx bytes at ingress", () => {
     const cardanoHex = txFixtures[0].cborHex;
     const normalized = normalizeSubmitTxHexToNative(cardanoHex);
-    expect(normalized.ok).toBe(true);
-    if (!normalized.ok) {
-      throw new Error("expected normalized tx");
+    expect(normalized.ok).toBe(false);
+    if (normalized.ok) {
+      throw new Error("expected unsupported Cardano-signed ingress");
     }
-    expect(normalized.source).toBe("cardano-converted");
-    expect(normalized.txIdHex.length).toBe(64);
-    expect(normalized.txCbor.length).toBeGreaterThan(0);
-    expect(normalized).not.toHaveProperty("txBodyHashForWitnesses");
+    expect(normalized.error).toBe("Unsupported Cardano-signed ingress");
+    expect(normalized.detail).toContain("Midgard-native body hash");
   });
 
   it("preserves native-script mint intent when normalizing Cardano tx bytes", () => {

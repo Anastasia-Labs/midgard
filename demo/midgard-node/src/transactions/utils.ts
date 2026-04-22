@@ -50,6 +50,10 @@ const isPotentiallyAlreadyIncludedError = (message: string): boolean =>
 
 const OUTSIDE_VALIDITY_INTERVAL_REGEX =
   /OutsideValidityIntervalUTxO \(ValidityInterval \{invalidBefore = SJust \(SlotNo (\d+)\), invalidHereafter = SJust \(SlotNo (\d+)\)\}\) \(SlotNo (\d+)\)/;
+const EMULATOR_LOWER_BOUND_OUTSIDE_VALIDITY_REGEX =
+  /Lower bound \((\d+)\) not in slot range \((\d+)\)/;
+const OGMIOS_OUTSIDE_VALIDITY_INTERVAL_REGEX =
+  /"validityInterval"\s*:\s*\{\s*"invalidBefore"\s*:\s*(\d+)\s*,\s*"invalidAfter"\s*:\s*(\d+)\s*\}\s*,\s*"currentSlot"\s*:\s*(\d+)/;
 
 type OutsideValidityIntervalDetails = {
   readonly invalidBeforeSlot: number;
@@ -64,22 +68,58 @@ const parseOutsideValidityIntervalDetails = (
   message: string,
 ): OutsideValidityIntervalDetails | null => {
   const match = OUTSIDE_VALIDITY_INTERVAL_REGEX.exec(message);
-  if (match === null) {
-    return null;
+  if (match !== null) {
+    const invalidBeforeSlot = Number(match[1]);
+    const invalidHereafterSlot = Number(match[2]);
+    const currentSlot = Number(match[3]);
+    if (
+      !Number.isFinite(invalidBeforeSlot) ||
+      !Number.isFinite(invalidHereafterSlot) ||
+      !Number.isFinite(currentSlot)
+    ) {
+      return null;
+    }
+    return {
+      invalidBeforeSlot,
+      invalidHereafterSlot,
+      currentSlot,
+    };
   }
-  const invalidBeforeSlot = Number(match[1]);
-  const invalidHereafterSlot = Number(match[2]);
-  const currentSlot = Number(match[3]);
+
+  const emulatorLowerBoundMatch =
+    EMULATOR_LOWER_BOUND_OUTSIDE_VALIDITY_REGEX.exec(message);
+  if (emulatorLowerBoundMatch === null) {
+    const ogmiosMatch = OGMIOS_OUTSIDE_VALIDITY_INTERVAL_REGEX.exec(message);
+    if (ogmiosMatch === null) {
+      return null;
+    }
+    const invalidBeforeSlot = Number(ogmiosMatch[1]);
+    const invalidHereafterSlot = Number(ogmiosMatch[2]);
+    const currentSlot = Number(ogmiosMatch[3]);
+    if (
+      !Number.isFinite(invalidBeforeSlot) ||
+      !Number.isFinite(invalidHereafterSlot) ||
+      !Number.isFinite(currentSlot)
+    ) {
+      return null;
+    }
+    return {
+      invalidBeforeSlot,
+      invalidHereafterSlot,
+      currentSlot,
+    };
+  }
+  const invalidBeforeSlot = Number(emulatorLowerBoundMatch[1]);
+  const currentSlot = Number(emulatorLowerBoundMatch[2]);
   if (
     !Number.isFinite(invalidBeforeSlot) ||
-    !Number.isFinite(invalidHereafterSlot) ||
     !Number.isFinite(currentSlot)
   ) {
     return null;
   }
   return {
     invalidBeforeSlot,
-    invalidHereafterSlot,
+    invalidHereafterSlot: Number.MAX_SAFE_INTEGER,
     currentSlot,
   };
 };
@@ -169,7 +209,11 @@ export type BlockTxPayload = {
  */
 const formatSubmitError = (error: unknown): string => {
   if (error instanceof Error) {
-    return `${error.name}: ${error.message}`;
+    const cause = (error as Error & { cause?: unknown }).cause;
+    if (cause === undefined) {
+      return `${error.name}: ${error.message}`;
+    }
+    return `${error.name}: ${error.message}; cause=${formatSubmitError(cause)}`;
   }
   if (typeof error === "string") {
     return error;
@@ -245,15 +289,25 @@ const submitSignedTxWithRecovery = (
           const slotsUntilValid =
             outsideValidityDetails.invalidBeforeSlot -
             outsideValidityDetails.currentSlot;
+          const validityWindowSlots =
+            outsideValidityDetails.invalidHereafterSlot -
+            outsideValidityDetails.invalidBeforeSlot;
+          const reportedSlotLagExceedsValidityWindow =
+            validityWindowSlots > 0 && slotsUntilValid > validityWindowSlots;
+          const retryWaitSlots = reportedSlotLagExceedsValidityWindow
+            ? EARLY_VALIDITY_RETRY_SLOT_BUFFER
+            : slotsUntilValid + EARLY_VALIDITY_RETRY_SLOT_BUFFER;
           const waitMs =
-            (slotsUntilValid + EARLY_VALIDITY_RETRY_SLOT_BUFFER) *
-            SLOT_LENGTH_MS;
+            retryWaitSlots * SLOT_LENGTH_MS;
           yield* Effect.logWarning(
             [
               `Tx ${txHash} submitted before validity interval opened `,
               `(slot=${outsideValidityDetails.currentSlot},`,
               `invalidBefore=${outsideValidityDetails.invalidBeforeSlot},`,
               `invalidHereafter=${outsideValidityDetails.invalidHereafterSlot}).`,
+              reportedSlotLagExceedsValidityWindow
+                ? " Reported slot lag exceeds validity window; using bounded retry delay."
+                : "",
               ` Waiting ${waitMs}ms and retrying submit `,
               `(${attempt + 1}/${EARLY_VALIDITY_RETRY_MAX_ATTEMPTS}).`,
             ].join(" "),

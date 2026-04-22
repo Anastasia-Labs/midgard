@@ -4,9 +4,15 @@ import { Effect } from "effect";
 import { mintingPolicyToId } from "@lucid-evolution/lucid";
 import { AlwaysSucceedsContract } from "@/services/always-succeeds.js";
 import {
+  REAL_ACTIVE_OPERATORS_SCRIPT_TITLES,
   REAL_DEPOSIT_SCRIPT_TITLES,
   REAL_HUB_ORACLE_SCRIPT_TITLES,
+  REAL_REGISTERED_OPERATORS_SCRIPT_TITLES,
+  REAL_RETIRED_OPERATORS_SCRIPT_TITLES,
+  REAL_SETTLEMENT_SCRIPT_TITLES,
   REAL_STATE_QUEUE_SCRIPT_TITLES,
+  REAL_TX_ORDER_SCRIPT_TITLES,
+  REAL_WITHDRAWAL_SCRIPT_TITLES,
   withRealStateQueueAndOperatorContracts,
 } from "@/services/midgard-contracts.js";
 
@@ -33,6 +39,22 @@ describe("midgard contracts registry", () => {
       expect(REAL_DEPOSIT_SCRIPT_TITLES.mint).toBe(
         "user_events/deposit.mint.mint",
       );
+      expect(REAL_REGISTERED_OPERATORS_SCRIPT_TITLES.mint).toBe(
+        "operator_directory/registered_operators.mint.mint",
+      );
+      expect(REAL_ACTIVE_OPERATORS_SCRIPT_TITLES.mint).toBe(
+        "operator_directory/active_operators.mint.mint",
+      );
+      expect(REAL_RETIRED_OPERATORS_SCRIPT_TITLES.mint).toBe(
+        "operator_directory/retired_operators.mint.mint",
+      );
+      expect(REAL_TX_ORDER_SCRIPT_TITLES.mint).toBe(
+        "user_events/tx_order.mint.mint",
+      );
+      expect(REAL_WITHDRAWAL_SCRIPT_TITLES.mint).toBe(
+        "user_events/withdrawal.mint.mint",
+      );
+      expect(REAL_SETTLEMENT_SCRIPT_TITLES.mint).toBe("settlement.mint.mint");
 
       expect(resolved.hubOracle.mintingScriptCBOR).not.toEqual(
         placeholderContracts.hubOracle.mintingScriptCBOR,
@@ -63,6 +85,15 @@ describe("midgard contracts registry", () => {
 
       expect(resolved.deposit.policyId).not.toEqual(
         placeholderContracts.deposit.policyId,
+      );
+      expect(resolved.txOrder.policyId).not.toEqual(
+        placeholderContracts.txOrder.policyId,
+      );
+      expect(resolved.withdrawal.policyId).not.toEqual(
+        placeholderContracts.withdrawal.policyId,
+      );
+      expect(resolved.settlement.policyId).not.toEqual(
+        placeholderContracts.settlement.policyId,
       );
       expect(resolved.scheduler.policyId).not.toEqual(
         placeholderContracts.scheduler.policyId,

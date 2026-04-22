@@ -10,41 +10,35 @@ import {
   MidgardValidators,
   AuthenticatedValidator,
   ScriptHashSchema,
-  MintingValidator,
   UnspecifiedNetworkError,
 } from "@/common.js";
+import {
+  AuthenticUTxO,
+  authenticateUTxOs,
+  fetchSingleAuthenticUTxOProgram,
+} from "@/internals.js";
 import {
   Address,
   LucidEvolution,
   PolicyId,
+  fromText,
   toUnit,
   TxBuilder,
   UTxO,
   Data,
   Assets,
-  credentialToAddress,
-  scriptHashToCredential,
 } from "@lucid-evolution/lucid";
-import { HUB_ORACLE_ASSET_NAME } from "@/constants.js";
 
-/**
- * Hub-oracle helpers for bootstrapping and reading the Midgard validator
- * registry.
- *
- * The hub oracle anchors the policy ids and script addresses for the rest of
- * the protocol. Off-chain code therefore treats its datum as the canonical
- * source of validator wiring.
- */
 export type HubOracleConfig = {
   hubOracleAddress: Address;
   hubOraclePolicyId: PolicyId;
 };
 
-export const hubOracleAssetName = HUB_ORACLE_ASSET_NAME;
+export const HUB_ORACLE_ASSET_NAME = fromText("Hub Oracle");
 
-/**
- * Datum stored at the unique hub-oracle UTxO.
- */
+// TODO: This should ideally come from Aiken env directory.
+export const hubOracleAssetName = "";
+
 export const HubOracleDatumSchema = Data.Object({
   registeredOperators: PolicyIdSchema,
   activeOperators: PolicyIdSchema,
@@ -76,26 +70,27 @@ export const HubOracleDatumSchema = Data.Object({
 export type HubOracleDatum = Data.Static<typeof HubOracleDatumSchema>;
 export const HubOracleDatum = HubOracleDatumSchema as unknown as HubOracleDatum;
 
-/**
- * Parameters required to mint and initialize the hub oracle.
- */
-export type HubOracleInitParams = {
-  hubOracleMintValidator: MintingValidator;
-  validators: HubOracleValidators;
-  oneShotNonceUTxO: UTxO;
-};
+export type HubOracleUTxO = AuthenticUTxO<HubOracleDatum>;
+
+export const utxosToHubOracleUTxOs = (
+  utxos: UTxO[],
+  nftPolicy: PolicyId,
+): Effect.Effect<HubOracleUTxO[], LucidError> =>
+  authenticateUTxOs<HubOracleDatum>(utxos, nftPolicy, HubOracleDatum);
 
 /**
- * Validators recorded in the hub oracle datum.
+ * Parameters for the init transaction.
  */
+export type HubOracleInitParams = {
+  hubOracleValidator: AuthenticatedValidator;
+  validators: HubOracleValidators;
+};
+
 export type HubOracleValidators = Omit<
   MidgardValidators,
   "hubOracle" | "fraudProofs"
 >;
 
-/**
- * Builds the hub-oracle datum from the active validator bundle.
- */
 export const makeHubOracleDatum = (
   validators: HubOracleValidators,
 ): Effect.Effect<HubOracleDatum, Bech32DeserializationError> =>
@@ -168,10 +163,11 @@ export const makeHubOracleDatum = (
   });
 
 /**
- * Creates the transaction fragment that mints and places the hub-oracle UTxO.
- *
- * Datum construction is handled internally so callers only need to supply the
- * validator bundle and one-shot nonce input.
+ * Creates a hub oracle init transaction builder.
+ * Handles datum construction internally from validators.
+ * @param {LucidEvolution} lucid - The LucidEvolution instance.
+ * @param {HubOracleInitParams} params - All validators that need to be registered in the hub oracle
+ * @returns {TxBuilder} Effect that produces a transaction builder.
  */
 export const incompleteHubOracleInitTxProgram = (
   lucid: LucidEvolution,
@@ -187,23 +183,18 @@ export const incompleteHubOracleInitTxProgram = (
       const encodedDatum = Data.to<HubOracleDatum>(datum, HubOracleDatum);
 
       const assets: Assets = {
-        [toUnit(params.hubOracleMintValidator.policyId, HUB_ORACLE_ASSET_NAME)]:
-          1n,
+        [toUnit(params.hubOracleValidator.policyId, HUB_ORACLE_ASSET_NAME)]: 1n,
       };
 
       return lucid
         .newTx()
-        .collectFrom([params.oneShotNonceUTxO])
         .mintAssets(assets, Data.void())
         .pay.ToAddressWithData(
-          credentialToAddress(
-            network,
-            scriptHashToCredential(params.hubOracleMintValidator.policyId),
-          ),
+          params.hubOracleValidator.spendingScriptAddress,
           { kind: "inline", value: encodedDatum },
           assets,
         )
-        .attach.MintingPolicy(params.hubOracleMintValidator.mintingScript);
+        .attach.MintingPolicy(params.hubOracleValidator.mintingScript);
     } else {
       return yield* new UnspecifiedNetworkError({
         message: "",
@@ -216,67 +207,32 @@ export class HubOracleError extends EffectData.TaggedError(
   "HubOracleError",
 )<GenericErrorFields> {}
 
-/**
- * Fetches and decodes the unique hub-oracle UTxO authenticated by the hub
- * oracle NFT.
- */
 export const fetchHubOracleUTxOProgram = (
   lucid: LucidEvolution,
   config: HubOracleConfig,
-): Effect.Effect<
-  { utxo: UTxO; datum: HubOracleDatum },
-  HubOracleError | LucidError
-> =>
-  Effect.gen(function* () {
-    const errorMessage = "Failed to fetch the hub oracle UTxO";
-    const hubOracleUTxOs: UTxO[] = yield* Effect.tryPromise({
-      try: async () => {
-        return await lucid.utxosAtWithUnit(
-          config.hubOracleAddress,
-          toUnit(config.hubOraclePolicyId, hubOracleAssetName),
-        );
-      },
-      catch: (e) =>
-        new LucidError({
-          message: errorMessage,
-          cause: e,
-        }),
-    });
-    if (hubOracleUTxOs.length === 1) {
-      const utxo = hubOracleUTxOs[0];
-      const datum = yield* Effect.try({
-        try: () => {
-          if (utxo.datum) {
-            const coerced = Data.from(utxo.datum, HubOracleDatum);
-            return coerced;
-          } else {
-            throw new HubOracleError({
-              message: errorMessage,
-              cause: "Hub oracle UTxO datum is missing",
-            });
-          }
-        },
-        catch: (e) => {
-          return new HubOracleError({
-            message: errorMessage,
-            cause: `Failed to parse the hub oracle datum: ${e}`,
-          });
-        },
-      });
-      return { utxo, datum };
-    } else {
-      return yield* Effect.fail(
+): Effect.Effect<HubOracleUTxO, HubOracleError | LucidError> =>
+  fetchSingleAuthenticUTxOProgram<HubOracleUTxO, LucidError, HubOracleError>(
+    lucid,
+    {
+      address: config.hubOracleAddress,
+      policyId: config.hubOraclePolicyId,
+      utxoLabel: "hub oracle",
+      conversionFunction: utxosToHubOracleUTxOs,
+      onUnexpectedAuthenticUTxOCount: () =>
         new HubOracleError({
-          message: errorMessage,
+          message: "Failed to fetch the hub oracle UTxO",
           cause:
             "Exactly one hub oracle UTxO was expected, but none or more were found",
         }),
-      );
-    }
-  });
+    },
+  );
 
 /**
- * Promise-style wrapper around `fetchHubOracleUTxOProgram`.
+ * Attempts fetching the hub oracle UTxO.
+ *
+ * @param lucid - The `LucidEvolution` API object.
+ * @param config - Configuration values required to know where to look for which NFT.
+ * @returns {UTxO} - The authentic hub oracle UTxO.
  */
 export const fetchHubOracleUTxO = (
   lucid: LucidEvolution,

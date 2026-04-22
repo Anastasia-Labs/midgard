@@ -13,6 +13,10 @@ export default defineConfig({
   resolve: {
     alias: {
       "@": path.resolve(__dirname, "./src"),
+      "@al-ft/midgard-sdk": path.resolve(
+        __dirname,
+        "./src/vendor/midgard-sdk.ts",
+      ),
     },
   },
   esbuild: {

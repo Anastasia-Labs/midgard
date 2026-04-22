@@ -80,82 +80,14 @@ import { formatUnknownError } from "@/error-format.js";
 const STATE_QUEUE_HEADER_NODE_LOVELACE = 5_000_000n;
 const ACTIVE_OPERATOR_MATURITY_DURATION_MS = 30n;
 const COMMIT_STALE_OPERATOR_WALLET_VIEW_RETRIES = 1;
-const ACTIVE_OPERATOR_DATUM_AIKEN_OPTION_SCHEMA = LucidData.Enum([
-  LucidData.Object({
-    Some: LucidData.Tuple([LucidData.Integer()]),
-  }),
-  LucidData.Literal("None"),
-]);
-const ACTIVE_OPERATOR_DATUM_AIKEN_SCHEMA = LucidData.Object({
-  bond_unlock_time: ACTIVE_OPERATOR_DATUM_AIKEN_OPTION_SCHEMA,
-});
-const ACTIVE_OPERATOR_DATUM_OPTION_SCHEMA = LucidData.Nullable(
-  LucidData.Integer(),
-);
-
-type ActiveOperatorDatumEncoding = "aiken" | "record" | "option";
 
 const decodeActiveOperatorDatum = (
-  data: SDK.NodeDatum["data"],
-): {
-  readonly encoding: ActiveOperatorDatumEncoding;
-  readonly commitmentTime: bigint | null;
-} => {
-  try {
-    const parsedAiken = LucidData.castFrom(
-      data as never,
-      ACTIVE_OPERATOR_DATUM_AIKEN_SCHEMA as never,
-    ) as { bond_unlock_time: bigint | null };
-    return {
-      encoding: "aiken",
-      commitmentTime:
-        parsedAiken.bond_unlock_time === null
-          ? null
-          : BigInt(parsedAiken.bond_unlock_time),
-    };
-  } catch {
-    // Fall through to legacy encodings.
-  }
-  try {
-    const parsedRecord = LucidData.castFrom(data, SDK.ActiveOperatorDatum);
-    return {
-      encoding: "record",
-      commitmentTime:
-        parsedRecord.commitmentTime === null
-          ? null
-          : BigInt(parsedRecord.commitmentTime),
-    };
-  } catch {
-    const parsedOption = LucidData.castFrom(
-      data as never,
-      ACTIVE_OPERATOR_DATUM_OPTION_SCHEMA as never,
-    ) as bigint | null;
-    return {
-      encoding: "option",
-      commitmentTime: parsedOption,
-    };
-  }
-};
-
-const encodeActiveOperatorDatum = (
-  encoding: ActiveOperatorDatumEncoding,
-  commitmentTime: bigint | null,
-) => {
-  switch (encoding) {
-    case "aiken":
-      return LucidData.castTo(
-        { bond_unlock_time: commitmentTime } as never,
-        ACTIVE_OPERATOR_DATUM_AIKEN_SCHEMA as never,
-      );
-    case "record":
-      return LucidData.castTo({ commitmentTime }, SDK.ActiveOperatorDatum);
-    case "option":
-      return LucidData.castTo(
-        commitmentTime as never,
-        ACTIVE_OPERATOR_DATUM_OPTION_SCHEMA as never,
-      );
-  }
-};
+  data: unknown,
+): SDK.ActiveOperatorDatum =>
+  LucidData.castFrom(
+    data as never,
+    SDK.ActiveOperatorDatum as never,
+  ) as SDK.ActiveOperatorDatum;
 
 class LocalFinalizationPendingError extends Data.TaggedError(
   "LocalFinalizationPendingError",
@@ -194,14 +126,14 @@ const localizeSdkEffect = <A, E, R = never>(
 ): Effect.Effect<A, E, R> => effect as Effect.Effect<A, E, R>;
 
 const getConfirmedStateFromStateQueueDatumLocal = (
-  nodeDatum: SDK.StateQueueDatum,
+  nodeDatum: SDK.StateQueueNodeView,
 ): Effect.Effect<
   { readonly data: SDK.ConfirmedState; readonly link: unknown },
   SDK.DataCoercionError
 > => localizeSdkEffect(SDK.getConfirmedStateFromStateQueueDatum(nodeDatum));
 
 const getHeaderFromStateQueueDatumLocal = (
-  nodeDatum: SDK.StateQueueDatum,
+  nodeDatum: SDK.StateQueueNodeView,
 ): Effect.Effect<SDK.Header, SDK.DataCoercionError> =>
   localizeSdkEffect(SDK.getHeaderFromStateQueueDatum(nodeDatum));
 
@@ -214,14 +146,14 @@ const updateLatestBlocksDatumAndGetTheNewHeaderLocal = (
   lucid: Parameters<
     typeof SDK.updateLatestBlocksDatumAndGetTheNewHeaderProgram
   >[0],
-  latestBlocksDatum: SDK.StateQueueDatum,
+  latestBlocksDatum: SDK.StateQueueNodeView,
   newUTxOsRoot: string,
   transactionsRoot: string,
   depositsRoot: string,
   withdrawalsRoot: string,
   endTime: bigint,
 ): Effect.Effect<
-  { readonly nodeDatum: SDK.StateQueueDatum; readonly header: SDK.Header },
+  { readonly nodeDatum: SDK.StateQueueNodeView; readonly header: SDK.Header },
   SDK.DataCoercionError | SDK.LucidError | SDK.HashingError
 > =>
   localizeSdkEffect(
@@ -237,7 +169,7 @@ const updateLatestBlocksDatumAndGetTheNewHeaderLocal = (
   );
 
 const getLatestBlockDatumEndTime = (
-  latestBlocksDatum: SDK.StateQueueDatum,
+  latestBlocksDatum: SDK.StateQueueNodeView,
 ): Effect.Effect<Date, SDK.DataCoercionError> =>
   latestBlocksDatum.key === "Empty"
     ? getConfirmedStateFromStateQueueDatumLocal(latestBlocksDatum).pipe(
@@ -251,7 +183,7 @@ const getLatestBlockDatumEndTime = (
       );
 
 const getLatestBlockHeaderRoots = (
-  latestBlocksDatum: SDK.StateQueueDatum,
+  latestBlocksDatum: SDK.StateQueueNodeView,
 ): Effect.Effect<
   Option.Option<{
     readonly utxoRoot: string;
@@ -355,6 +287,7 @@ const buildUnsignedTx = (
         contracts,
         commitWindow.resolvedEndTime,
         witnessContext?.operatorWalletView ?? initialOperatorWalletView,
+        lucid.referenceScriptsAddress,
       );
       const refreshedCommitWindow = resolveCommitWindow();
       if (
@@ -410,7 +343,7 @@ const buildUnsignedTx = (
 
     const headerNodeUnit = toUnit(
       stateQueueAuthValidator.policyId,
-      SDK.NODE_ASSET_NAME + newHeaderHash,
+      SDK.STATE_QUEUE_NODE_ASSET_NAME_PREFIX + newHeaderHash,
     );
     const commitMintAssets = {
       [headerNodeUnit]: 1n,
@@ -419,36 +352,38 @@ const buildUnsignedTx = (
       lovelace: STATE_QUEUE_HEADER_NODE_LOVELACE,
       ...commitMintAssets,
     };
-    const appendedNodeDatum: SDK.StateQueueDatum = {
+    const appendedNodeDatum: SDK.StateQueueNodeView = {
       key: updatedNodeDatum.next,
       next: "Empty",
-      data: LucidData.castTo(newHeader, SDK.Header),
+      data: SDK.castHeaderToData(newHeader) as SDK.LinkedListNodeView["data"],
     };
-    const appendedNodeDatumCbor = LucidData.to(
-      appendedNodeDatum,
-      SDK.StateQueueDatum,
-    );
-    const updatedNodeDatumCbor = LucidData.to(
-      updatedNodeDatum,
-      SDK.StateQueueDatum,
-    );
+    const appendedNodeDatumCbor =
+      SDK.encodeLinkedListNodeView(appendedNodeDatum);
+    const updatedNodeDatumCbor =
+      SDK.encodeLinkedListNodeView(updatedNodeDatum);
     const updatedActiveOperatorDatumCbor = yield* Effect.try({
       try: () => {
-        const activeOperatorNodeDatum = LucidData.from(
+        const activeOperatorLinkedListDatum = LucidData.from(
           witnessContext.activeOperatorInput.datum,
           SDK.NodeDatum,
         );
-        const activeOperatorDatum = decodeActiveOperatorDatum(
-          activeOperatorNodeDatum.data,
+        const activeOperatorNodeView = SDK.linkedListDatumToNodeView(
+          activeOperatorLinkedListDatum,
+          SDK.ACTIVE_OPERATOR_NODE_ASSET_NAME_PREFIX +
+            witnessContext.operatorKeyHash,
         );
-        const updatedActiveOperatorNodeDatum: SDK.NodeDatum = {
-          ...activeOperatorNodeDatum,
-          data: encodeActiveOperatorDatum(
-            activeOperatorDatum.encoding,
-            BigInt(alignedEndTime) + ACTIVE_OPERATOR_MATURITY_DURATION_MS,
-          ),
+        const activeOperatorDatum = decodeActiveOperatorDatum(
+          activeOperatorNodeView.data,
+        );
+        const updatedActiveOperatorNodeDatum: SDK.LinkedListNodeView = {
+          ...activeOperatorNodeView,
+          data: SDK.castActiveOperatorDatumToData({
+            ...activeOperatorDatum,
+            bond_unlock_time:
+              BigInt(alignedEndTime) - 1n + ACTIVE_OPERATOR_MATURITY_DURATION_MS,
+          }) as SDK.LinkedListNodeView["data"],
         };
-        return LucidData.to(updatedActiveOperatorNodeDatum, SDK.NodeDatum);
+        return SDK.encodeLinkedListNodeView(updatedActiveOperatorNodeDatum);
       },
       catch: (cause) =>
         new SDK.StateQueueError({
@@ -461,16 +396,16 @@ const buildUnsignedTx = (
     /**
      * Builds the shared transaction skeleton for a block-header commit attempt.
      */
-    const makeBaseCommitTx = () =>
+    const makeBaseCommitTx = (stateQueueCommitRedeemer: string) =>
       lucid.api
         .newTx()
         .validTo(alignedEndTime)
-        .collectFrom([latestBlock.utxo], LucidData.void())
+        .collectFrom([latestBlock.utxo], stateQueueCommitRedeemer)
         .pay.ToContract(
           stateQueueAuthValidator.spendingScriptAddress,
           {
             kind: "inline",
-            value: LucidData.to(appendedNodeDatum, SDK.StateQueueDatum),
+            value: SDK.encodeLinkedListNodeView(appendedNodeDatum),
           },
           headerNodeOutputAssets,
         )
@@ -478,7 +413,7 @@ const buildUnsignedTx = (
           stateQueueAuthValidator.spendingScriptAddress,
           {
             kind: "inline",
-            value: LucidData.to(updatedNodeDatum, SDK.StateQueueDatum),
+            value: SDK.encodeLinkedListNodeView(updatedNodeDatum),
           },
           latestBlock.utxo.assets,
         );

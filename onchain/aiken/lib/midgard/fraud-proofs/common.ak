@@ -9,7 +9,6 @@ use cardano/transaction.{
   InlineDatum, Input, Mint, Output, OutputReference, Redeemer, ScriptPurpose,
   Transaction,
 }
-use midgard/common/constants.{fraud_category_id_byte_count}
 use midgard/common/types.{Proof}
 use midgard/common/utils.{
   get_redeemer_at, get_single_asset_from_value_apart_from_ada, has_signed,
@@ -17,11 +16,19 @@ use midgard/common/utils.{
 }
 use midgard/computation_thread as ct
 use midgard/fraud_proof
+use midgard/fraud_proof_catalogue
 use midgard/hub_oracle as hub
 use midgard/ledger_state.{
   Header, MidgardTxBodyCompact, MidgardTxCompact, MidgardTxId,
+  MidgardTxWitnessSetCompact,
 }
 use midgard/state_queue
+
+pub type TxFieldPreimage {
+  TxBodyProvided(MidgardTxBodyCompact)
+  TxWitsProvided(MidgardTxWitnessSetCompact)
+  TxBodyAndWitsProvided(MidgardTxBodyCompact, MidgardTxWitnessSetCompact)
+}
 
 pub type TxInclusionArgs {
   input_index: Int,
@@ -30,13 +37,16 @@ pub type TxInclusionArgs {
   state_queue_node_ref_input_index: Int,
   tx_id: MidgardTxId,
   tx: MidgardTxCompact,
-  tx_body: MidgardTxBodyCompact,
+  tx_field_preimage: TxFieldPreimage,
   tx_membership_proof: Proof,
   inclusion_proof_script_withdraw_redeemer_index: Int,
 }
 
-/// Carries the verified transaction body into the next fraud-proof step.
-/// Validates and forwards the current fraud-proof state into the next step output.
+/// > [!NOTE]
+/// > This function uses `plutarch_phas` under the hood, which is a helper that
+/// > cannot be used more than once within a given transaction. So if a
+/// > validator utilizes this function, it should not use `plutarch_phas`
+/// > alongside it.
 pub fn pass_tx_to_next_step(
   computation_thread_token_policy_id: PolicyId,
   hub_oracle: ScriptHash,
@@ -54,7 +64,7 @@ pub fn pass_tx_to_next_step(
     Header,
     MidgardTxId,
     MidgardTxCompact,
-    MidgardTxBodyCompact,
+    TxFieldPreimage,
   ) ->
     Bool,
 ) -> Bool {
@@ -65,7 +75,7 @@ pub fn pass_tx_to_next_step(
     state_queue_node_ref_input_index,
     tx_id,
     tx,
-    tx_body,
+    tx_field_preimage,
     tx_membership_proof,
     inclusion_proof_script_withdraw_redeemer_index,
   } = tx_inclusion_args
@@ -93,13 +103,13 @@ pub fn pass_tx_to_next_step(
       outputs,
     )
 
-  // 2. The provided transaction must be valid, and must be included in
-  //    the specified state queue node.
+  // 2. The provided transaction must be valid, and must be included in the
+  //    specified state queue node.
   let header =
     verify_tx_in_state_queue_node_and_get_header(
       tx_id,
       tx,
-      tx_body,
+      tx_field_preimage,
       tx_membership_proof,
       computation_thread_token_asset_name,
       hub_oracle,
@@ -122,15 +132,13 @@ pub fn pass_tx_to_next_step(
       header,
       tx_id,
       tx,
-      tx_body,
+      tx_field_preimage,
     )
 
   // Done.
   True
 }
-/// Validates the cancellation path for an in-flight fraud proof.
 
-/// Cancels a fraud-proof progression and refunds the prover.
 pub fn cancel(
   computation_thread_token_policy_id: PolicyId,
   m_datum: Option<ct.StepDatum<a>>,
@@ -266,10 +274,8 @@ pub fn continue(
     output_script_hash,
     output_state_data,
   )
-/// Validates the final fraud-proof transition into its terminal step.
 }
 
-/// Validates the final fraud-proof step and releases the resulting output.
 pub fn finalize(
   computation_thread_token_policy_id: PolicyId,
   fraud_proof_token_policy_id: PolicyId,
@@ -333,10 +339,8 @@ pub fn finalize(
     )
 
   // 4. Fraud prover must be presreved, with no additional `data`.
-  expect ct.StepDatum { fraud_prover: output_fraud_prover, data: None }: ct.StepDatum<
-    Data,
-  > = output_datum_data
-  expect output_fraud_prover == fraud_prover
+  let expected_output_datum_data: Data = fraud_proof.Datum { fraud_prover }
+  expect output_datum_data == expected_output_datum_data
 
   // 5. Fraud proof's minting script must be invoked (which also validates the
   //    burning of the computation thread token).
@@ -362,29 +366,37 @@ pub fn finalize(
     computation_thread_token_asset_name,
     fraud_prover,
     m_input_state_data,
-/// Verifies a transaction witness and returns the decoded body.
   )
 }
 
-/// Verifies a transaction and returns its decoded body.
-pub fn verify_tx_and_its_body(
+pub fn verify_tx_and_its_provided_field_preimage(
   tx_id: MidgardTxId,
   tx: MidgardTxCompact,
-  tx_body: MidgardTxBodyCompact,
+  tx_field_preimage: TxFieldPreimage,
 ) -> Bool {
   let tx_data: Data = tx
   and {
     verify_hash_32(data: tx_data, data_hash: tx_id),
-/// Verifies a transaction inside a state-queue node and returns its header.
-    verify_hash_32(data: tx_body, data_hash: tx.body),
+    when tx_field_preimage is {
+      TxBodyProvided(tx_body) ->
+        verify_hash_32(data: tx_body, data_hash: tx.body)
+      TxWitsProvided(tx_wits) ->
+        verify_hash_32(data: tx_wits, data_hash: tx.wits)
+      TxBodyAndWitsProvided(tx_body, tx_wits) -> {
+        let MidgardTxCompact { body, wits, .. } = tx
+        and {
+          verify_hash_32(data: tx_body, data_hash: body),
+          verify_hash_32(data: tx_wits, data_hash: wits),
+        }
+      }
+    },
   }
 }
 
-/// Verifies a transaction inside a state-queue node and returns the block header.
 pub fn verify_tx_in_state_queue_node_and_get_header(
   tx_id: MidgardTxId,
   tx: MidgardTxCompact,
-  tx_body: MidgardTxBodyCompact,
+  tx_field_preimage: TxFieldPreimage,
   tx_membership_proof: Proof,
   computation_thread_token_asset_name: AssetName,
   hub_oracle: PolicyId,
@@ -394,9 +406,9 @@ pub fn verify_tx_in_state_queue_node_and_get_header(
   reference_inputs: List<Input>,
   redeemers: Pairs<ScriptPurpose, Redeemer>,
 ) -> Header {
-  // 1. Verify authenticity of the provided tx and its body against its ID, and
-  //    body hash.
-  expect verify_tx_and_its_body(tx_id, tx, tx_body)
+  // 1. Verify authenticity of the provided tx and its field preimage against
+  //    its ID, and the field's hash.
+  expect verify_tx_and_its_provided_field_preimage(tx_id, tx, tx_field_preimage)
 
   // 2. Hub oracle must be provided as a reference input.
   let hub.Datum { state_queue: state_queue_policy, .. } =
@@ -413,11 +425,12 @@ pub fn verify_tx_in_state_queue_node_and_get_header(
     )
 
   // 3. The asset name of the computation thread token must match the state
-  //    queue node key (after dropping the fraud category ID prefix).
+  //    queue node key (after dropping the fraud category ID prefix), which is
+  //    the block's header hash.
   expect
     state_queue_node_key == bytearray.drop(
       computation_thread_token_asset_name,
-      fraud_category_id_byte_count,
+      fraud_proof_catalogue.id_byte_count,
     )
 
   // 4. Specified transaction must be proven to be included in the referenced
@@ -432,13 +445,11 @@ pub fn verify_tx_in_state_queue_node_and_get_header(
       redeemers: redeemers,
       withdraw_redeemer_index: inclusion_proof_script_withdraw_redeemer_index,
     )
-/// Validates the payout output directed to the fraud prover.
 
   // Done. Return the block header.
   state_queue_datum
 }
 
-/// Checks that an output pays the expected value to the fraud prover.
 pub fn validate_output_to_fraud_prover(
   output_to_fraud_prover: Output,
   prover_hash: ByteArray,
@@ -449,7 +460,7 @@ pub fn validate_output_to_fraud_prover(
   }
 }
 
-// Internal Helpers
+// ## Internal Helpers
 
 /// Validates authenticity of the input at `input_index` (i.e. that it comes
 /// from a script, and that it carries only a computation thread token), and

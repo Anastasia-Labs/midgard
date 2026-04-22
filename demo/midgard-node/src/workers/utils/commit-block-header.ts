@@ -2,7 +2,6 @@ import { Effect } from "effect";
 import * as SDK from "@al-ft/midgard-sdk";
 import {
   CML,
-  Data,
   UTxO,
   coreToUtxo,
   utxoToCore,
@@ -100,7 +99,7 @@ export const serializeStateQueueUTxO = (
         }),
     });
     const datumCBOR = yield* Effect.try({
-      try: () => Data.to(stateQueueUTxO.datum, SDK.StateQueueDatum),
+      try: () => SDK.encodeLinkedListNodeView(stateQueueUTxO.datum),
       catch: (e) =>
         new SDK.CborSerializationError({
           message: `Failed to serialize state queue datum: ${e}`,
@@ -132,14 +131,15 @@ export const deserializeStateQueueUTxO = (
           cause: e,
         }),
     });
-    const d = yield* Effect.try({
-      try: () => Data.from(stateQueueUTxO.datum, SDK.StateQueueDatum),
-      catch: (e) =>
-        new SDK.CborDeserializationError({
-          message: `Failed to deserialize datum: ${e}`,
-          cause: e,
-        }),
-    });
+    const d = yield* SDK.getLinkedListNodeViewFromUTxO(u).pipe(
+      Effect.mapError(
+        (e) =>
+          new SDK.CborDeserializationError({
+            message: `Failed to deserialize datum: ${e}`,
+            cause: e,
+          }),
+      ),
+    );
     return {
       ...stateQueueUTxO,
       utxo: u,

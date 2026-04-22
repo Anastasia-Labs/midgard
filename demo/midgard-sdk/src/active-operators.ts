@@ -1,49 +1,29 @@
-import { AuthenticatedValidator, POSIXTimeSchema } from "@/common.js";
-import { LucidEvolution, TxBuilder } from "@lucid-evolution/lucid";
-import { Data } from "@lucid-evolution/lucid";
+import {
+  AuthenticatedValidator,
+  LucidError,
+  POSIXTimeSchema,
+} from "@/common.js";
+import { AuthenticUTxO, authenticateUTxOs } from "@/internals.js";
+import { LucidEvolution, TxBuilder, UTxO, Data } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 import { incompleteInitLinkedListTxProgram } from "./linked-list.js";
 
-/**
- * SDK data shapes and transaction builders for the active-operators state
- * machine.
- *
- * Active operators participate in block commitment and retirement flows, so the
- * redeemers here carry the cross-state-machine indices needed to keep the
- * ledger view aligned with on-chain script-context ordering.
- */
-export const ActiveOperatorDatumSchema = Data.Object({
-  commitmentTime: Data.Nullable(POSIXTimeSchema),
-});
-export type ActiveOperatorDatum = Data.Static<typeof ActiveOperatorDatumSchema>;
-export const ActiveOperatorDatum = 
-  ActiveOperatorDatumSchema as unknown as ActiveOperatorDatum;
-
-/**
- * Aiken-compatible view of the active-operator datum used during
- * initialization.
- */
-const ActiveOperatorDatumAikenOptionSchema = Data.Enum([
-  Data.Object({
-    Some: Data.Tuple([Data.Integer()]),
-  }),
-  Data.Literal("None"),
-]);
-const ActiveOperatorDatumAikenSchema = Data.Object({
-  bond_unlock_time: ActiveOperatorDatumAikenOptionSchema,
-});
-
-/**
- * Spend redeemers accepted by the active-operators validator.
- */
 export const ActiveOperatorSpendRedeemerSchema = Data.Enum([
   Data.Literal("ListStateTransition"),
   Data.Object({
-    UpdateCommitmentTime: Data.Object({
-      activeNodeInputIndex: Data.Integer(),
-      prevActiveNodeRefInputIndex: Data.Integer(),
+    UpdateBondHoldNewState: Data.Object({
+      activeNodeOutputIndex: Data.Integer(),
       hubOracleRefInputIndex: Data.Integer(),
       stateQueueRedeemerIndex: Data.Integer(),
+    }),
+  }),
+  Data.Object({
+    UpdateBondHoldNewSettlement: Data.Object({
+      activeNodeOutputIndex: Data.Integer(),
+      hubOracleRefInputIndex: Data.Integer(),
+      settlementQueueInputIndex: Data.Integer(),
+      settlementQueueRedeemerIndex: Data.Integer(),
+      newBondUnlockTime: POSIXTimeSchema,
     }),
   }),
 ]);
@@ -53,9 +33,6 @@ export type ActiveOperatorSpendRedeemer = Data.Static<
 export const ActiveOperatorSpendRedeemer =
   ActiveOperatorSpendRedeemerSchema as unknown as ActiveOperatorSpendRedeemer;
 
-/**
- * Mint redeemers accepted by the active-operators policy.
- */
 export const ActiveOperatorMintRedeemerSchema = Data.Enum([
   Data.Literal("Init"),
   Data.Literal("Deinit"),
@@ -69,12 +46,22 @@ export const ActiveOperatorMintRedeemerSchema = Data.Enum([
     }),
   }),
   Data.Object({
-    RemoveOperatorSlashBond: Data.Object({
+    RemoveOperatorBadState: Data.Object({
       slashedActiveOperatorKey: Data.Bytes(),
       hubOracleRefInputIndex: Data.Integer(),
       activeOperatorSlashedNodeInputIndex: Data.Integer(),
       activeOperatorAnchorNodeInputIndex: Data.Integer(),
       stateQueueRedeemerIndex: Data.Integer(),
+    }),
+  }),
+  Data.Object({
+    RemoveOperatorBadSettlement: Data.Object({
+      slashedActiveOperatorKey: Data.Bytes(),
+      hubOracleRefInputIndex: Data.Integer(),
+      activeOperatorSlashedNodeInputIndex: Data.Integer(),
+      activeOperatorAnchorNodeInputIndex: Data.Integer(),
+      settlementInputIndex: Data.Integer(),
+      settlementRedeemerIndex: Data.Integer(),
     }),
   }),
   Data.Object({
@@ -94,6 +81,15 @@ export type ActiveOperatorMintRedeemer = Data.Static<
 export const ActiveOperatorMintRedeemer =
   ActiveOperatorMintRedeemerSchema as unknown as ActiveOperatorMintRedeemer;
 
+export const ActiveOperatorDatumSchema = Data.Object({
+  key: Data.Nullable(Data.Bytes()),
+  link: Data.Nullable(Data.Bytes()),
+  bondUnlockTime: Data.Nullable(POSIXTimeSchema),
+});
+export type ActiveOperatorDatum = Data.Static<typeof ActiveOperatorDatumSchema>;
+export const ActiveOperatorDatum =
+  ActiveOperatorDatumSchema as unknown as ActiveOperatorDatum;
+
 export type ActiveOperatorInitParams = {
   validator: AuthenticatedValidator;
 };
@@ -104,21 +100,55 @@ export type ActiveOperatorListStateTransitionParams = {};
 export type ActiveOperatorRemoveSlashBondParams = {};
 export type ActiveOperatorUpdateCommitmentTimeParams = {};
 
+export type ActiveOperatorUTxO = AuthenticUTxO<ActiveOperatorDatum>;
+
+export type FetchActiveOperatorParams = {
+  activeOperatorAddress: string;
+  operator: string;
+  activeOperatorPolicyId: string;
+};
+
+export const fetchActiveOperatorUTxOs = (
+  params: FetchActiveOperatorParams,
+  lucid: LucidEvolution,
+): Effect.Effect<ActiveOperatorUTxO[], LucidError> =>
+  Effect.gen(function* () {
+    const allUtxos: UTxO[] = yield* Effect.tryPromise({
+      try: () => lucid.utxosAt(params.activeOperatorAddress),
+      catch: (err) =>
+        new LucidError({
+          message: "Failed to fetch Active Operators UTxOs",
+          cause: err,
+        }),
+    });
+    if (allUtxos.length === 0) {
+      yield* new LucidError({
+        message: "Failed to build the Active Operators transaction",
+        cause: "No UTxOs found in Active Operators Contract address",
+      });
+    }
+    const activeOperatorUTxOs: ActiveOperatorUTxO[] =
+      yield* authenticateUTxOs<ActiveOperatorDatum>(
+        allUtxos,
+        params.activeOperatorPolicyId,
+        ActiveOperatorDatum,
+      );
+    return activeOperatorUTxOs;
+  });
+
 /**
- * Builds the linked-list initialization fragment for active operators.
+ * Init
  *
- * The root datum is encoded in the Aiken-facing shape expected by the on-chain
- * validator so the initial list anchor is born in a protocol-valid state.
+ * @param lucid - The LucidEvolution
+ * @param params - The parameters
+ * @returns {TxBuilder} A TxBuilder instance that can be used to build the transaction.
  */
 export const incompleteActiveOperatorInitTxProgram = (
   lucid: LucidEvolution,
   params: ActiveOperatorInitParams,
 ): Effect.Effect<TxBuilder, never> =>
   Effect.gen(function* () {
-    const rootData = Data.castTo(
-      { bond_unlock_time: null } as never,
-      ActiveOperatorDatumAikenSchema as never,
-    );
+    const rootData = "00";
 
     return yield* incompleteInitLinkedListTxProgram(lucid, {
       validator: params.validator,
@@ -128,72 +158,90 @@ export const incompleteActiveOperatorInitTxProgram = (
   });
 
 /**
- * Stub entry point for tearing down the active-operators state machine.
+ * The program that performs the deinit of an operator.
+ *
+ * @param lucid - The LucidEvolution instance to use for the deinit.
+ * @param params - The parameters required for deinit.
+ * @returns {TxBuilder} A TxBuilder instance that can be used to build the transaction.
  */
 export const incompleteActiveOperatorDeinitTxProgram = (
   lucid: LucidEvolution,
   params: ActiveOperatorDeinitParams,
 ): TxBuilder => {
-  void params;
   const tx = lucid.newTx();
   return tx;
 };
 /**
- * Stub entry point for activating a registered operator.
+ * The program that performs the activation of an operator.
+ *
+ * @param lucid - The LucidEvolution instance to use for the activation.
+ * @param params - The parameters required for activation.
+ * @returns {TxBuilder} A TxBuilder instance that can be used to build the transaction.
  */
 export const incompleteActiveOperatorActivateTxProgram = (
   lucid: LucidEvolution,
   params: ActiveOperatorActivateParams,
 ): TxBuilder => {
-  void params;
   const tx = lucid.newTx();
   return tx;
 };
 
 /**
- * Stub entry point for retiring an active operator into the retired list.
+ * Retire
+ *
+ * @param lucid - The LucidEvolution
+ * @param params - The parameters
+ * @returns {TxBuilder} A TxBuilder instance that can be used to build the transaction.
  */
 export const incompleteActiveOperatorRetireTxProgram = (
   lucid: LucidEvolution,
   params: ActiveOperatorRetireParams,
 ): TxBuilder => {
-  void params;
   const tx = lucid.newTx();
   return tx;
 };
 
 /**
- * Stub entry point for generic list-state transitions on active operators.
+ * ListStateTransition
+ *
+ * @param lucid - The LucidEvolution
+ * @param params - The parameters
+ * @returns {TxBuilder} A TxBuilder instance that can be used to build the transaction.
  */
 export const incompleteActiveOperatorListStateTransitionTxProgram = (
   lucid: LucidEvolution,
   params: ActiveOperatorListStateTransitionParams,
 ): TxBuilder => {
-  void params;
   const tx = lucid.newTx();
   return tx;
 };
 
 /**
- * Stub entry point for removing the slash bond of an active operator.
+ * Remove slash bond
+ *
+ * @param lucid - The LucidEvolution
+ * @param params - The parameters
+ * @returns {TxBuilder} A TxBuilder instance that can be used to build the transaction.
  */
 export const incompleteActiveOperatorRemoveSlashBondTxProgram = (
   lucid: LucidEvolution,
   params: ActiveOperatorRemoveSlashBondParams,
 ): TxBuilder => {
-  void params;
   const tx = lucid.newTx();
   return tx;
 };
 
 /**
- * Stub entry point for updating an active operator's commitment timestamp.
+ * UpdateCommitmentTime
+ *
+ * @param lucid - The LucidEvolution
+ * @param params - The parameters
+ * @returns {TxBuilder} A TxBuilder instance that can be used to build the transaction.
  */
 export const incompleteActiveOperatorUpdateCommitmentTimeTxProgram = (
   lucid: LucidEvolution,
   params: ActiveOperatorUpdateCommitmentTimeParams,
 ): TxBuilder => {
-  void params;
   const tx = lucid.newTx();
   return tx;
 };

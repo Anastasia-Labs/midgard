@@ -27,11 +27,12 @@ export type ReferenceScriptPublication = {
 
 export type NodeWithDatum = {
   readonly utxo: UTxO;
-  readonly datum: SDK.NodeDatum;
+  readonly datum: SDK.LinkedListNodeView;
   readonly assetName: string;
 };
 
 export type RegisterRedeemerLayout = {
+  readonly rootInputIndex: bigint;
   readonly hubOracleRefInputIndex: bigint;
   readonly activeOperatorRefInputIndex: bigint;
   readonly retiredOperatorRefInputIndex: bigint;
@@ -43,8 +44,11 @@ export type ActivateRedeemerLayout = {
   readonly hubOracleRefInputIndex: bigint;
   readonly retiredOperatorRefInputIndex: bigint;
   readonly registeredOperatorsRedeemerIndex: bigint;
-  readonly removedNodeInputIndex: bigint;
-  readonly anchorNodeInputIndex: bigint;
+  readonly activeOperatorsRedeemerIndex: bigint;
+  readonly registeredOperatorsRemovedNodeInputIndex: bigint;
+  readonly registeredOperatorsAnchorNodeInputIndex: bigint;
+  readonly registeredOperatorsAnchorNodeOutputIndex: bigint;
+  readonly activeOperatorsAnchorNodeInputIndex: bigint;
   readonly activeOperatorsInsertedNodeOutputIndex: bigint;
   readonly activeOperatorsAnchorNodeOutputIndex: bigint;
 };
@@ -87,26 +91,31 @@ const resolveOrderedOutRefIndex = (
 const isPolicyAsset = (unit: string, quantity: bigint, policyId: string) =>
   unit !== "lovelace" && quantity > 0n && unit.startsWith(policyId);
 
-/**
- * Collects authored transaction outputs that contain at least one asset from
- * the given policy.
- */
-const getPolicyOutputs = (
-  tx: CML.Transaction,
+const stringifyDatum = (value: unknown): string =>
+  JSON.stringify(value, (_key, nested) =>
+    typeof nested === "bigint" ? nested.toString() : nested,
+  );
+
+const decodeCanonicalNodeDatumFromOutput = (
+  output: ReturnType<typeof coreToTxOutput>,
   policyId: string,
-): readonly ReturnType<typeof coreToTxOutput>[] => {
-  const outputs = tx.body().outputs();
-  const policyOutputs: ReturnType<typeof coreToTxOutput>[] = [];
-  for (let index = 0; index < outputs.len(); index += 1) {
-    const output = coreToTxOutput(outputs.get(index));
-    const hasPolicyAsset = Object.entries(output.assets).some(
-      ([assetUnit, quantity]) => isPolicyAsset(assetUnit, quantity, policyId),
-    );
-    if (hasPolicyAsset) {
-      policyOutputs.push(output);
-    }
+): SDK.LinkedListNodeView | undefined => {
+  if (output.datum === undefined) {
+    return undefined;
   }
-  return policyOutputs;
+  const assetName = getAssetNameByPolicy(output.assets, policyId);
+  if (assetName === null) {
+    return undefined;
+  }
+  try {
+    const linkedListDatum = LucidData.from(
+      output.datum,
+      SDK.LinkedListDatum,
+    );
+    return SDK.linkedListDatumToNodeView(linkedListDatum, assetName);
+  } catch {
+    return undefined;
+  }
 };
 
 /**
@@ -190,7 +199,7 @@ export const findInputIndex = (
 };
 
 /**
- * Finds the authored output position of a specific node token under one policy.
+ * Finds the global authored output position of a specific node token.
  */
 export const findNodeOutputIndexByUnit = (
   tx: CML.Transaction,
@@ -198,11 +207,20 @@ export const findNodeOutputIndexByUnit = (
   address: string,
   unit: string,
 ): bigint | undefined => {
-  const outputs = getPolicyOutputs(tx, policyId);
-  const position = outputs.findIndex(
-    (output) => output.address === address && (output.assets[unit] ?? 0n) === 1n,
-  );
-  return position >= 0 ? BigInt(position) : undefined;
+  const outputs = tx.body().outputs();
+  for (let index = 0; index < outputs.len(); index += 1) {
+    const output = coreToTxOutput(outputs.get(index));
+    if (
+      output.address === address &&
+      (output.assets[unit] ?? 0n) === 1n &&
+      Object.entries(output.assets).some(([assetUnit, quantity]) =>
+        isPolicyAsset(assetUnit, quantity, policyId),
+      )
+    ) {
+      return BigInt(index);
+    }
+  }
+  return undefined;
 };
 
 /**
@@ -212,6 +230,7 @@ export const registerLayoutsEqual = (
   left: RegisterRedeemerLayout,
   right: RegisterRedeemerLayout,
 ): boolean =>
+  left.rootInputIndex === right.rootInputIndex &&
   left.hubOracleRefInputIndex === right.hubOracleRefInputIndex &&
   left.activeOperatorRefInputIndex === right.activeOperatorRefInputIndex &&
   left.retiredOperatorRefInputIndex === right.retiredOperatorRefInputIndex &&
@@ -224,7 +243,7 @@ export const registerLayoutsEqual = (
 export const registerLayoutToLogString = (
   layout: RegisterRedeemerLayout,
 ): string =>
-  `hub_ref=${layout.hubOracleRefInputIndex.toString()},active_ref=${layout.activeOperatorRefInputIndex.toString()},retired_ref=${layout.retiredOperatorRefInputIndex.toString()},prepended_out=${layout.prependedNodeOutputIndex.toString()},anchor_out=${layout.anchorNodeOutputIndex.toString()}`;
+  `root_in=${layout.rootInputIndex.toString()},hub_ref=${layout.hubOracleRefInputIndex.toString()},active_ref=${layout.activeOperatorRefInputIndex.toString()},retired_ref=${layout.retiredOperatorRefInputIndex.toString()},prepended_out=${layout.prependedNodeOutputIndex.toString()},anchor_out=${layout.anchorNodeOutputIndex.toString()}`;
 
 /**
  * Compares two activate-layout derivations for exact equality.
@@ -237,8 +256,15 @@ export const activateLayoutsEqual = (
   left.retiredOperatorRefInputIndex === right.retiredOperatorRefInputIndex &&
   left.registeredOperatorsRedeemerIndex ===
     right.registeredOperatorsRedeemerIndex &&
-  left.removedNodeInputIndex === right.removedNodeInputIndex &&
-  left.anchorNodeInputIndex === right.anchorNodeInputIndex &&
+  left.activeOperatorsRedeemerIndex === right.activeOperatorsRedeemerIndex &&
+  left.registeredOperatorsRemovedNodeInputIndex ===
+    right.registeredOperatorsRemovedNodeInputIndex &&
+  left.registeredOperatorsAnchorNodeInputIndex ===
+    right.registeredOperatorsAnchorNodeInputIndex &&
+  left.registeredOperatorsAnchorNodeOutputIndex ===
+    right.registeredOperatorsAnchorNodeOutputIndex &&
+  left.activeOperatorsAnchorNodeInputIndex ===
+    right.activeOperatorsAnchorNodeInputIndex &&
   left.activeOperatorsInsertedNodeOutputIndex ===
     right.activeOperatorsInsertedNodeOutputIndex &&
   left.activeOperatorsAnchorNodeOutputIndex ===
@@ -254,8 +280,11 @@ export const activateLayoutToLogString = (
     `hub_ref=${layout.hubOracleRefInputIndex.toString()}`,
     `retired_ref=${layout.retiredOperatorRefInputIndex.toString()}`,
     `registered_redeemer=${layout.registeredOperatorsRedeemerIndex.toString()}`,
-    `removed_in=${layout.removedNodeInputIndex.toString()}`,
-    `anchor_in=${layout.anchorNodeInputIndex.toString()}`,
+    `active_redeemer=${layout.activeOperatorsRedeemerIndex.toString()}`,
+    `registered_removed_in=${layout.registeredOperatorsRemovedNodeInputIndex.toString()}`,
+    `registered_anchor_in=${layout.registeredOperatorsAnchorNodeInputIndex.toString()}`,
+    `registered_anchor_out=${layout.registeredOperatorsAnchorNodeOutputIndex.toString()}`,
+    `active_anchor_in=${layout.activeOperatorsAnchorNodeInputIndex.toString()}`,
     `active_inserted_out=${layout.activeOperatorsInsertedNodeOutputIndex.toString()}`,
     `active_anchor_out=${layout.activeOperatorsAnchorNodeOutputIndex.toString()}`,
   ].join(",");
@@ -268,11 +297,15 @@ export const resolveInitialRegisterRedeemerLayout = ({
   hubOracleRefInput,
   activeNotMemberWitness,
   retiredNotMemberWitness,
+  registeredRootNode,
+  fundingInputs,
 }: {
   readonly registeredOperatorScriptRefs: readonly ReferenceScriptPublication[];
   readonly hubOracleRefInput: UTxO;
   readonly activeNotMemberWitness: NodeWithDatum;
   readonly retiredNotMemberWitness: NodeWithDatum;
+  readonly registeredRootNode: NodeWithDatum;
+  readonly fundingInputs: readonly UTxO[];
 }): RegisterRedeemerLayout => {
   const referenceInputs = [
     ...registeredOperatorScriptRefs.map(({ utxo }) => utxo),
@@ -280,7 +313,17 @@ export const resolveInitialRegisterRedeemerLayout = ({
     activeNotMemberWitness.utxo,
     retiredNotMemberWitness.utxo,
   ] as const;
+  const rootInputIndex = resolveOrderedOutRefIndex(registeredRootNode.utxo, [
+    registeredRootNode.utxo,
+    ...fundingInputs,
+  ]);
+  if (rootInputIndex === undefined) {
+    throw new Error(
+      `Failed to resolve initial registered root input index for ${registeredRootNode.utxo.txHash}#${registeredRootNode.utxo.outputIndex.toString()}`,
+    );
+  }
   return {
+    rootInputIndex,
     hubOracleRefInputIndex: resolveReferenceInputIndexFromSet(
       hubOracleRefInput,
       referenceInputs,
@@ -312,6 +355,7 @@ export const resolveInitialActivateRedeemerLayout = ({
   registeredAnchor,
   activeAppendAnchor,
   contracts,
+  fundingInputs,
 }: {
   readonly registeredOperatorScriptRefs: readonly ReferenceScriptPublication[];
   readonly activeOperatorScriptRefs: readonly ReferenceScriptPublication[];
@@ -321,6 +365,7 @@ export const resolveInitialActivateRedeemerLayout = ({
   readonly registeredAnchor: NodeWithDatum;
   readonly activeAppendAnchor: NodeWithDatum;
   readonly contracts: SDK.MidgardValidators;
+  readonly fundingInputs: readonly UTxO[];
 }): ActivateRedeemerLayout => {
   const referenceInputs = [
     ...registeredOperatorScriptRefs.map(({ utxo }) => utxo),
@@ -328,8 +373,31 @@ export const resolveInitialActivateRedeemerLayout = ({
     hubOracleRefInput,
     retiredNotMemberWitnessForActivate.utxo,
   ] as const;
-  const removedNodeInputIndex =
-    compareOutRefs(registeredNode.utxo, registeredAnchor.utxo) < 0 ? 0n : 1n;
+  const activationInputs = [
+    registeredNode.utxo,
+    registeredAnchor.utxo,
+    activeAppendAnchor.utxo,
+    ...fundingInputs,
+  ] as const;
+  const registeredOperatorsRemovedNodeInputIndex = resolveOrderedOutRefIndex(
+    registeredNode.utxo,
+    activationInputs,
+  );
+  const registeredOperatorsAnchorNodeInputIndex = resolveOrderedOutRefIndex(
+    registeredAnchor.utxo,
+    activationInputs,
+  );
+  const activeOperatorsAnchorNodeInputIndex = resolveOrderedOutRefIndex(
+    activeAppendAnchor.utxo,
+    activationInputs,
+  );
+  if (
+    registeredOperatorsRemovedNodeInputIndex === undefined ||
+    registeredOperatorsAnchorNodeInputIndex === undefined ||
+    activeOperatorsAnchorNodeInputIndex === undefined
+  ) {
+    throw new Error("Failed to resolve initial activation input indexes");
+  }
   const activationScriptSpendCount = 3;
   return {
     hubOracleRefInputIndex: resolveReferenceInputIndexFromSet(
@@ -348,71 +416,90 @@ export const resolveInitialActivateRedeemerLayout = ({
       ],
       spendRedeemerCount: activationScriptSpendCount,
     }),
-    removedNodeInputIndex,
-    anchorNodeInputIndex: removedNodeInputIndex === 0n ? 1n : 0n,
-    // The activation tx emits the inserted node and the updated active anchor
-    // in authored order under the active-operators policy.
+    activeOperatorsRedeemerIndex: resolveMintRedeemerTxInfoIndex({
+      targetPolicyId: contracts.activeOperators.policyId,
+      policyIds: [
+        contracts.registeredOperators.policyId,
+        contracts.activeOperators.policyId,
+      ],
+      spendRedeemerCount: activationScriptSpendCount,
+    }),
+    registeredOperatorsRemovedNodeInputIndex,
+    registeredOperatorsAnchorNodeInputIndex,
+    activeOperatorsAnchorNodeInputIndex,
+    // The activation tx emits the active inserted node, active anchor, and
+    // registered anchor in authored order.
+    registeredOperatorsAnchorNodeOutputIndex: 2n,
     activeOperatorsInsertedNodeOutputIndex: 0n,
     activeOperatorsAnchorNodeOutputIndex: 1n,
   };
 };
 
 /**
- * Describes the datum at a policy-local output index for diagnostics.
+ * Describes the datum at a global authored output index for diagnostics.
  */
 export const describePolicyOutputDatumAtIndex = (
   tx: CML.Transaction,
   policyId: string,
   outputIndex: bigint,
 ): string => {
-  const outputs = getPolicyOutputs(tx, policyId);
   const index = Number(outputIndex);
-  if (!Number.isSafeInteger(index) || index < 0 || index >= outputs.length) {
+  const outputs = tx.body().outputs();
+  if (!Number.isSafeInteger(index) || index < 0 || index >= outputs.len()) {
     return `<missing:${outputIndex.toString()}>`;
   }
-  const output = outputs[index];
+  const output = coreToTxOutput(outputs.get(index));
+  const hasPolicyAsset = Object.entries(output.assets).some(
+    ([assetUnit, quantity]) => isPolicyAsset(assetUnit, quantity, policyId),
+  );
+  if (!hasPolicyAsset) {
+    return `<wrong-policy:${outputIndex.toString()}>`;
+  }
   if (output.datum === undefined) {
     return "<no-datum>";
   }
   try {
-    const nodeDatum = LucidData.from(output.datum, SDK.NodeDatum);
-    return `cbor=${output.datum},decoded=${JSON.stringify(nodeDatum)}`;
+    const nodeDatum = decodeCanonicalNodeDatumFromOutput(output, policyId);
+    return `cbor=${output.datum},decoded=${stringifyDatum(nodeDatum)}`;
   } catch (cause) {
     return `<datum-decode-error:${String(cause)},cbor=${output.datum}>`;
   }
 };
 
 /**
- * Decodes a node datum from a policy-local output index when present.
+ * Decodes a node datum from a global authored output index when present.
  */
 export const getNodeDatumAtPolicyOutputIndex = (
   tx: CML.Transaction,
   policyId: string,
   outputIndex: bigint,
-): SDK.NodeDatum | undefined => {
-  const outputs = getPolicyOutputs(tx, policyId);
+): SDK.LinkedListNodeView | undefined => {
   const index = Number(outputIndex);
-  if (!Number.isSafeInteger(index) || index < 0 || index >= outputs.length) {
+  const outputs = tx.body().outputs();
+  if (!Number.isSafeInteger(index) || index < 0 || index >= outputs.len()) {
     return undefined;
   }
-  const output = outputs[index];
+  const output = coreToTxOutput(outputs.get(index));
+  const hasPolicyAsset = Object.entries(output.assets).some(
+    ([assetUnit, quantity]) => isPolicyAsset(assetUnit, quantity, policyId),
+  );
+  if (!hasPolicyAsset) {
+    return undefined;
+  }
   if (output.datum === undefined) {
     return undefined;
   }
-  try {
-    return LucidData.from(output.datum, SDK.NodeDatum);
-  } catch {
-    return undefined;
-  }
+  return decodeCanonicalNodeDatumFromOutput(output, policyId);
 };
 
 /**
  * Resolves the tx-info redeemer index of the registered-operators mint action
  * from a balanced draft transaction.
  */
-const resolveRegisteredMintRedeemerIndex = (
+const resolveMintRedeemerIndexForPolicy = (
   draftTx: CML.Transaction,
   contracts: SDK.MidgardValidators,
+  targetPolicyId: string,
 ): Effect.Effect<number, SDK.StateQueueError> =>
   Effect.gen(function* () {
     const pointers = getRedeemerPointersInContextOrder(draftTx);
@@ -421,19 +508,19 @@ const resolveRegisteredMintRedeemerIndex = (
       contracts.registeredOperators.policyId,
       contracts.activeOperators.policyId,
     ].sort(compareHex);
-    const registeredMintContextIndex = BigInt(
-      mintPolicyIds.indexOf(contracts.registeredOperators.policyId),
+    const targetMintContextIndex = BigInt(
+      mintPolicyIds.indexOf(targetPolicyId),
     );
-    const registeredMintRedeemerContextIndex = pointers.findIndex(
+    const targetMintRedeemerContextIndex = pointers.findIndex(
       (pointer) =>
         pointer.tag === CML.RedeemerTag.Mint &&
-        pointer.index === registeredMintContextIndex,
+        pointer.index === targetMintContextIndex,
     );
-    if (registeredMintRedeemerContextIndex < 0) {
+    if (targetMintRedeemerContextIndex < 0) {
       return yield* Effect.fail(
         new SDK.StateQueueError({
           message:
-            "Failed to locate registered-operators mint redeemer index in balanced draft tx",
+            "Failed to locate mint redeemer index in balanced draft tx",
           cause: JSON.stringify(
             pointers.map((pointer) => ({
               tag: pointer.tag,
@@ -443,15 +530,16 @@ const resolveRegisteredMintRedeemerIndex = (
         }),
       );
     }
-    const registeredMintRedeemerTxInfoIndex =
-      txInfoRedeemerIndexes[registeredMintRedeemerContextIndex] ?? -1;
-    if (registeredMintRedeemerTxInfoIndex < 0) {
+    const targetMintRedeemerTxInfoIndex =
+      txInfoRedeemerIndexes[targetMintRedeemerContextIndex] ?? -1;
+    if (targetMintRedeemerTxInfoIndex < 0) {
       return yield* Effect.fail(
         new SDK.StateQueueError({
           message:
-            "Failed to map registered-operators mint redeemer from context order to tx-info order",
+            "Failed to map mint redeemer from context order to tx-info order",
           cause: JSON.stringify({
-            registeredMintRedeemerContextIndex,
+            targetPolicyId,
+            targetMintRedeemerContextIndex,
             txInfoRedeemerIndexes,
             pointers: pointers.map((pointer, contextIndex) => ({
               contextIndex,
@@ -462,7 +550,7 @@ const resolveRegisteredMintRedeemerIndex = (
         }),
       );
     }
-    return registeredMintRedeemerTxInfoIndex;
+    return targetMintRedeemerTxInfoIndex;
   });
 
 /**
@@ -474,8 +562,13 @@ export const deriveActivateRedeemerLayout = (
   params: {
     readonly hubOracleRefInput: UTxO;
     readonly retiredNotMemberWitnessForActivate: NodeWithDatum;
+    readonly operatorKeyHash: string;
     readonly registeredNode: NodeWithDatum;
     readonly registeredAnchor: NodeWithDatum;
+    readonly activeAppendAnchor: NodeWithDatum;
+    readonly registeredOperatorsPolicyId: string;
+    readonly registeredOperatorsAddress: string;
+    readonly registeredAnchorNodeUnit: string;
     readonly activeOperatorsPolicyId: string;
     readonly activeOperatorsAddress: string;
     readonly activeNodeUnit: string;
@@ -492,9 +585,15 @@ export const deriveActivateRedeemerLayout = (
       tx,
       params.retiredNotMemberWitnessForActivate.utxo,
     );
-    const registeredOperatorsRedeemerIndex = yield* resolveRegisteredMintRedeemerIndex(
+    const registeredOperatorsRedeemerIndex = yield* resolveMintRedeemerIndexForPolicy(
       tx,
       params.contracts,
+      params.contracts.registeredOperators.policyId,
+    );
+    const activeOperatorsRedeemerIndex = yield* resolveMintRedeemerIndexForPolicy(
+      tx,
+      params.contracts,
+      params.contracts.activeOperators.policyId,
     );
     const registeredNodeInputPosition = findInputIndex(
       tx,
@@ -503,6 +602,16 @@ export const deriveActivateRedeemerLayout = (
     const registeredAnchorInputPosition = findInputIndex(
       tx,
       params.registeredAnchor.utxo,
+    );
+    const activeOperatorsAnchorInputPosition = findInputIndex(
+      tx,
+      params.activeAppendAnchor.utxo,
+    );
+    const registeredOperatorsAnchorNodeOutputIndex = findNodeOutputIndexByUnit(
+      tx,
+      params.registeredOperatorsPolicyId,
+      params.registeredOperatorsAddress,
+      params.registeredAnchorNodeUnit,
     );
     const activeOperatorsInsertedNodeOutputIndex = findNodeOutputIndexByUnit(
       tx,
@@ -521,7 +630,11 @@ export const deriveActivateRedeemerLayout = (
       retiredOperatorRefInputIndex === undefined ||
       registeredNodeInputPosition === undefined ||
       registeredAnchorInputPosition === undefined ||
+      activeOperatorsAnchorInputPosition === undefined ||
       registeredNodeInputPosition === registeredAnchorInputPosition ||
+      registeredNodeInputPosition === activeOperatorsAnchorInputPosition ||
+      registeredAnchorInputPosition === activeOperatorsAnchorInputPosition ||
+      registeredOperatorsAnchorNodeOutputIndex === undefined ||
       activeOperatorsInsertedNodeOutputIndex === undefined ||
       activeOperatorsAnchorNodeOutputIndex === undefined
     ) {
@@ -540,6 +653,10 @@ export const deriveActivateRedeemerLayout = (
               registeredNodeInputPosition?.toString() ?? "missing",
             registeredAnchorInputPosition:
               registeredAnchorInputPosition?.toString() ?? "missing",
+            activeOperatorsAnchorInputPosition:
+              activeOperatorsAnchorInputPosition?.toString() ?? "missing",
+            registeredOperatorsAnchorNodeOutputIndex:
+              registeredOperatorsAnchorNodeOutputIndex?.toString() ?? "missing",
             activeOperatorsInsertedNodeOutputIndex:
               activeOperatorsInsertedNodeOutputIndex?.toString() ?? "missing",
             activeOperatorsAnchorNodeOutputIndex:
@@ -558,7 +675,7 @@ export const deriveActivateRedeemerLayout = (
         }),
       );
     }
-    const operatorKeyHash = params.registeredNode.datum.key.Key.key;
+    const operatorKeyHash = params.operatorKeyHash;
     const insertedOutputDatum = getNodeDatumAtPolicyOutputIndex(
       tx,
       params.activeOperatorsPolicyId,
@@ -616,6 +733,24 @@ export const deriveActivateRedeemerLayout = (
         ].join(" "),
       );
     } else if (!insertedMatchesOperator) {
+      yield* Effect.logWarning(
+        [
+          "Activation output derivation failed: inserted output does not carry operator key.",
+          `operator=${operatorKeyHash}`,
+          `inserted_out=${activeOperatorsInsertedNodeOutputIndex.toString()}`,
+          `anchor_out=${activeOperatorsAnchorNodeOutputIndex.toString()}`,
+          `inserted_datum=${describePolicyOutputDatumAtIndex(
+            tx,
+            params.activeOperatorsPolicyId,
+            activeOperatorsInsertedNodeOutputIndex,
+          )}`,
+          `anchor_datum=${describePolicyOutputDatumAtIndex(
+            tx,
+            params.activeOperatorsPolicyId,
+            activeOperatorsAnchorNodeOutputIndex,
+          )}`,
+        ].join(" "),
+      );
       return yield* Effect.fail(
         new SDK.StateQueueError({
           message:
@@ -638,15 +773,15 @@ export const deriveActivateRedeemerLayout = (
         }),
       );
     }
-    const removedNodeInputIndex =
-      registeredNodeInputPosition < registeredAnchorInputPosition ? 0n : 1n;
-    const anchorNodeInputIndex = removedNodeInputIndex === 0n ? 1n : 0n;
     return {
       hubOracleRefInputIndex,
       retiredOperatorRefInputIndex,
       registeredOperatorsRedeemerIndex: BigInt(registeredOperatorsRedeemerIndex),
-      removedNodeInputIndex,
-      anchorNodeInputIndex,
+      activeOperatorsRedeemerIndex: BigInt(activeOperatorsRedeemerIndex),
+      registeredOperatorsRemovedNodeInputIndex: registeredNodeInputPosition,
+      registeredOperatorsAnchorNodeInputIndex: registeredAnchorInputPosition,
+      registeredOperatorsAnchorNodeOutputIndex,
+      activeOperatorsAnchorNodeInputIndex: activeOperatorsAnchorInputPosition,
       activeOperatorsInsertedNodeOutputIndex: resolvedInsertedNodeOutputIndex,
       activeOperatorsAnchorNodeOutputIndex: resolvedAnchorNodeOutputIndex,
     };
@@ -662,6 +797,7 @@ export const deriveRegisterRedeemerLayout = (
     readonly hubOracleRefInput: UTxO;
     readonly activeNotMemberWitness: NodeWithDatum;
     readonly retiredNotMemberWitness: NodeWithDatum;
+    readonly registeredRootNode: NodeWithDatum;
     readonly registeredOperatorsPolicyId: string;
     readonly registeredOperatorsAddress: string;
     readonly registeredNodeUnit: string;
@@ -681,6 +817,7 @@ export const deriveRegisterRedeemerLayout = (
       tx,
       params.retiredNotMemberWitness.utxo,
     );
+    const rootInputIndex = findInputIndex(tx, params.registeredRootNode.utxo);
     const prependedNodeOutputIndex = findNodeOutputIndexByUnit(
       tx,
       params.registeredOperatorsPolicyId,
@@ -698,6 +835,7 @@ export const deriveRegisterRedeemerLayout = (
       hubOracleRefInputIndex === undefined ||
       activeOperatorRefInputIndex === undefined ||
       retiredOperatorRefInputIndex === undefined ||
+      rootInputIndex === undefined ||
       prependedNodeOutputIndex === undefined ||
       anchorNodeOutputIndex === undefined
     ) {
@@ -712,6 +850,7 @@ export const deriveRegisterRedeemerLayout = (
               activeOperatorRefInputIndex?.toString() ?? "missing",
             retiredOperatorRefInputIndex:
               retiredOperatorRefInputIndex?.toString() ?? "missing",
+            rootInputIndex: rootInputIndex?.toString() ?? "missing",
             prependedNodeOutputIndex:
               prependedNodeOutputIndex?.toString() ?? "missing",
             anchorNodeOutputIndex: anchorNodeOutputIndex?.toString() ?? "missing",
@@ -721,6 +860,7 @@ export const deriveRegisterRedeemerLayout = (
     }
 
     return {
+      rootInputIndex,
       hubOracleRefInputIndex,
       activeOperatorRefInputIndex,
       retiredOperatorRefInputIndex,
@@ -733,7 +873,7 @@ export const deriveRegisterRedeemerLayout = (
  * Returns whether a node carries the provided key hash as its own key.
  */
 export const nodeKeyEquals = (
-  node: SDK.NodeDatum,
+  node: SDK.LinkedListNodeView,
   keyHash: string,
 ): boolean => node.key !== "Empty" && node.key.Key.key === keyHash;
 
@@ -741,7 +881,7 @@ export const nodeKeyEquals = (
  * Returns whether a node points to the provided key hash via its `next` link.
  */
 export const linkPointsTo = (
-  node: SDK.NodeDatum,
+  node: SDK.LinkedListNodeView,
   keyHash: string,
 ): boolean => node.next !== "Empty" && node.next.Key.key === keyHash;
 
@@ -750,7 +890,7 @@ export const linkPointsTo = (
  * provided key hash.
  */
 export const orderedNotMemberWitness = (
-  node: SDK.NodeDatum,
+  node: SDK.LinkedListNodeView,
   keyHash: string,
 ): boolean => {
   const lowerBoundSatisfied =
@@ -765,7 +905,7 @@ export const orderedNotMemberWitness = (
  * operators list.
  */
 export const activeAppendAnchorWitness = (
-  node: SDK.NodeDatum,
+  node: SDK.LinkedListNodeView,
   keyHash: string,
 ): boolean =>
   node.next === "Empty" &&

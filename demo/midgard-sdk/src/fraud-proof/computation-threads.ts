@@ -1,14 +1,6 @@
 import { Data } from "@lucid-evolution/lucid";
 import { LucidEvolution, TxBuilder } from "@lucid-evolution/lucid";
 
-/**
- * SDK types and builders for fraud-proof computation threads.
- *
- * A computation thread represents the stepwise execution state of a fraud proof
- * challenge. Even though the transaction builders are still stubs, the datum
- * and redeemer schemas define the public contract that off-chain code must
- * satisfy.
- */
 export const FraudProofComputationThreadStepDatumSchema = Data.Object({
   fraudProver: Data.Bytes(),
   data: Data.Any(),
@@ -19,9 +11,6 @@ export type FraudProofComputationThreadStepDatum = Data.Static<
 export const FraudProofComputationThreadStepDatum =
   FraudProofComputationThreadStepDatumSchema as unknown as FraudProofComputationThreadStepDatum;
 
-/**
- * Redeemers for creating, concluding, or cancelling a computation thread.
- */
 export const FraudProofComputationThreadRedeemerSchema = Data.Enum([
   Data.Object({
     Mint: Data.Object({
@@ -53,37 +42,46 @@ export type FraudProofComputationThreadSuccessParams = {};
 export type FraudProofComputationThreadCancelParams = {};
 
 /**
- * Stub entry point for initializing a fraud-proof computation thread.
+ * Init
+ *
+ * @param lucid - The LucidEvolution
+ * @param params - The parameters
+ * @returns {TxBuilder} A TxBuilder instance that can be used to build the transaction.
  */
 export const incompleteFraudProofComputationThreadInitTxProgram = (
   lucid: LucidEvolution,
   params: FraudProofComputationThreadInitParams,
 ): TxBuilder => {
-  void params;
   const tx = lucid.newTx();
   return tx;
 };
 
 /**
- * Stub entry point for concluding a computation thread successfully.
+ * Success
+ *
+ * @param lucid - The LucidEvolution
+ * @param params - The parameters
+ * @returns {TxBuilder} A TxBuilder instance that can be used to build the transaction.
  */
 export const incompleteFraudProofComputationThreadSuccessTxProgram = (
   lucid: LucidEvolution,
   params: FraudProofComputationThreadSuccessParams,
 ): TxBuilder => {
-  void params;
   const tx = lucid.newTx();
   return tx;
 };
 
 /**
- * Stub entry point for cancelling a computation thread.
+ * Cancel
+ *
+ * @param lucid - The LucidEvolution
+ * @param params - The parameters
+ * @returns {TxBuilder} A TxBuilder instance that can be used to build the transaction.
  */
 export const incompleteFraudProofComputationThreadCancelTxProgram = (
   lucid: LucidEvolution,
   params: FraudProofComputationThreadCancelParams,
 ): TxBuilder => {
-  void params;
   const tx = lucid.newTx();
   return tx;
 };

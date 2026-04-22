@@ -1,39 +1,28 @@
 import { Network } from "@lucid-evolution/lucid";
+import { PosixTimeDuration } from "@/common.js";
 
-/**
- * Off-chain projection of the protocol parameters currently needed by the SDK.
- */
+//TODO: change event_wait_duration to POSIXTime or maturity_duration to number for better consistency
 export type ProtocolParameters = {
   event_wait_duration: number;
+  maturity_duration: PosixTimeDuration;
+  slashing_penalty: bigint;
 };
 
-// This must stay aligned with the compiled on-chain environment in
-// `onchain/aiken/env/default.ak`. We do not currently compile per-network
-// variants of that module, so the off-chain protocol view must not diverge by
-// network.
-const ONCHAIN_EVENT_WAIT_DURATION_MS = 60_000;
-// This must stay aligned with `onchain/aiken/lib/midgard/protocol-parameters.ak`.
-export const ONCHAIN_SHIFT_DURATION_MS = 300_000;
-// This must stay aligned with `onchain/aiken/validators/scheduler.ak`.
-export const SCHEDULER_TRANSITION_MAX_VALIDITY_WINDOW_MS = 10 * 60 * 1000;
-
 /**
- * Returns the protocol parameters expected by the SDK for the selected
- * network.
- *
- * The current implementation is network-invariant by design because the
- * corresponding on-chain environment is compiled once and shared across
- * networks.
+ * Given the network, this functions returns appropriate protocol parameters.
  */
-export const getProtocolParameters = (_network: Network): ProtocolParameters => ({
-  event_wait_duration: ONCHAIN_EVENT_WAIT_DURATION_MS,
-});
-
-/**
- * Computes the last millisecond at which an event may be included given the
- * transaction validity upper bound.
- */
-export const resolveEventInclusionTime = (
-  validTo: number,
-  network: Network,
-): number => validTo + getProtocolParameters(network).event_wait_duration - 1;
+export const getProtocolParameters = (network: Network): ProtocolParameters => {
+  if (network === "Mainnet") {
+    return {
+      event_wait_duration: 60_000,
+      maturity_duration: 30n,
+      slashing_penalty: 2000000n,
+    };
+  } else {
+    return {
+      event_wait_duration: 50_000,
+      maturity_duration: 1n,
+      slashing_penalty: 1000000n,
+    };
+  }
+};

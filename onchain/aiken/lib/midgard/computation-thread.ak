@@ -1,4 +1,5 @@
-use aiken/crypto.{VerificationKeyHash}
+use aiken/crypto.{ScriptHash, VerificationKeyHash}
+use midgard/common/types.{Proof}
 
 pub type StepDatum<a> {
   fraud_prover: VerificationKeyHash,
@@ -12,13 +13,14 @@ pub type StepRedeemer<a> {
 
 pub type MintRedeemer {
   Init {
-    fraud_proof_set_node_ref_input_index: Int,
+    first_step_output_index: Int,
+    fraud_category_id: ByteArray,
+    fraud_category: ScriptHash,
+    fraud_category_membership_proof: Proof,
+    fraud_proof_catalogue_ref_input_index: Int,
+    inclusion_proof_script_redeemer_index: Int,
     hub_oracle_ref_input_index: Int,
-    frauded_state_queue_node_ref_input_index: Int,
-    output_to_init_step_index: Int,
-    fraud_prover_hash: VerificationKeyHash,
-    fraud_proof_catalogue_asset_name: ByteArray,
-    state_queue_asset_name: ByteArray,
+    fraudulent_block_ref_input_index: Int,
   }
   Success { burning_token_asset_name: ByteArray }
   BurnForCancellation { burning_token_asset_name: ByteArray }

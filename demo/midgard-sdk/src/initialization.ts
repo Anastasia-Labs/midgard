@@ -4,77 +4,41 @@ import {
   TxBuilder,
   makeReturn,
   TxSignBuilder,
-  UTxO,
 } from "@lucid-evolution/lucid";
 import {
+  AuthenticatedValidator,
   Bech32DeserializationError,
   LucidError,
   MidgardValidators,
   UnspecifiedNetworkError,
 } from "@/common.js";
 import { incompleteHubOracleInitTxProgram } from "@/hub-oracle.js";
-import {
-  INITIAL_SCHEDULER_DATUM,
-  SchedulerDatum,
-  incompleteSchedulerInitTxProgram,
-} from "@/scheduler.js";
+import { incompleteSchedulerInitTxProgram } from "@/scheduler.js";
 import { incompleteFraudProofCatalogueInitTxProgram } from "@/fraud-proof/catalogue.js";
 import { incompleteInitStateQueueTxProgram } from "@/state-queue.js";
 import { incompleteActiveOperatorInitTxProgram } from "@/active-operators.js";
 import { incompleteRegisteredOperatorInitTxProgram } from "@/registered-operators.js";
 import { incompleteRetiredOperatorInitTxProgram } from "@/retired-operators.js";
 
-/**
- * Extra validity headroom applied to the initialization transaction.
- */
 export const VALIDITY_RANGE_BUFFER = 5 * 60 * 1000;
 
-/**
- * Parameters for bootstrapping the hub oracle and scheduler together.
- */
-export type HubAndSchedulerInitializationParams = {
-  validators: MidgardValidators;
-  oneShotNonceUTxO: UTxO;
-  schedulerDatum?: SchedulerDatum;
-  schedulerLovelace?: bigint;
-};
-
-/**
- * Parameters for full Midgard initialization.
- */
 export type InitializationParams = {
   midgardValidators: MidgardValidators;
   fraudProofCatalogueMerkleRoot: string;
 };
 
-/**
- * Composes the initialization fragments for the hub oracle and scheduler.
- */
-export const incompleteHubAndSchedulerInitTxProgram = (
-  lucid: LucidEvolution,
-  params: HubAndSchedulerInitializationParams,
-): Effect.Effect<
-  TxBuilder,
-  Bech32DeserializationError | UnspecifiedNetworkError
-> =>
-  Effect.gen(function* () {
-    const hubOracleTx = yield* incompleteHubOracleInitTxProgram(lucid, {
-      hubOracleMintValidator: params.validators.hubOracle,
-      validators: params.validators,
-      oneShotNonceUTxO: params.oneShotNonceUTxO,
-    });
-    const schedulerTx = incompleteSchedulerInitTxProgram(lucid, {
-      validator: params.validators.scheduler,
-      datum: params.schedulerDatum ?? INITIAL_SCHEDULER_DATUM,
-      lovelace: params.schedulerLovelace,
-    });
+export const getInitializedValidatorsFromMidgardValidators = (
+  validators: MidgardValidators,
+): AuthenticatedValidator[] => [
+  validators.hubOracle,
+  validators.stateQueue,
+  validators.scheduler,
+  validators.registeredOperators,
+  validators.activeOperators,
+  validators.retiredOperators,
+  validators.fraudProofCatalogue,
+];
 
-    return lucid.newTx().compose(hubOracleTx).compose(schedulerTx);
-  });
-
-/**
- * Builds the full initialization transaction prior to `.complete(...)`.
- */
 export const incompleteInitializationTxProgram = (
   lucid: LucidEvolution,
   params: InitializationParams,
@@ -103,15 +67,15 @@ export const incompleteInitializationTxProgram = (
 
     const nonceUtxo = utxos[0];
     const genesisTime = BigInt(Date.now() + VALIDITY_RANGE_BUFFER);
-    const tx = lucid.newTx().validTo(Number(genesisTime));
+    let tx = lucid
+      .newTx()
+      .collectFrom([nonceUtxo])
+      .validTo(Number(genesisTime));
 
-    const hubAndSchedulerTx = yield* incompleteHubAndSchedulerInitTxProgram(
-      lucid,
-      {
-        validators: params.midgardValidators,
-        oneShotNonceUTxO: nonceUtxo,
-      },
-    );
+    const hubOracleTx = yield* incompleteHubOracleInitTxProgram(lucid, {
+      hubOracleValidator: params.midgardValidators.hubOracle,
+      validators: params.midgardValidators,
+    });
 
     const stateQueueTx: TxBuilder = yield* incompleteInitStateQueueTxProgram(
       lucid,
@@ -138,6 +102,10 @@ export const incompleteInitializationTxProgram = (
       },
     );
 
+    const schedulerTx = incompleteSchedulerInitTxProgram(lucid, {
+      validator: params.midgardValidators.scheduler,
+    });
+
     const fraudProofCatalogueTx: TxBuilder =
       yield* incompleteFraudProofCatalogueInitTxProgram(lucid, {
         validator: params.midgardValidators.fraudProofCatalogue,
@@ -145,17 +113,15 @@ export const incompleteInitializationTxProgram = (
       });
 
     return tx
-      .compose(hubAndSchedulerTx)
+      .compose(hubOracleTx)
       .compose(stateQueueTx)
       .compose(registeredOperatorsTx)
       .compose(activeOperatorsTx)
       .compose(retiredOperatorsTx)
+      .compose(schedulerTx)
       .compose(fraudProofCatalogueTx);
   });
 
-/**
- * Completes the initialization transaction with local UPLC evaluation enabled.
- */
 export const unsignedInitializationTxProgram = (
   lucid: LucidEvolution,
   initParams: InitializationParams,
@@ -180,7 +146,11 @@ export const unsignedInitializationTxProgram = (
   });
 
 /**
- * Promise-style wrapper for building the completed initialization transaction.
+ * Builds completed tx for initializing all Midgard contracts.
+ *
+ * @param lucid - The `LucidEvolution` API object.
+ * @param initParams - Parameters for initializing all Midgard contracts.
+ * @returns A promise that resolves to a `TxSignBuilder` instance.
  */
 export const unsignedInitializationTx = (
   lucid: LucidEvolution,

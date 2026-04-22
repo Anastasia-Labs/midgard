@@ -13,6 +13,7 @@ import {
 import {
   findRedeemerDataCbor,
   getRedeemerPointersInContextOrder,
+  getTxInfoRedeemerIndexes,
 } from "@/cml-redeemers.js";
 import {
   collectIndexedOutputs,
@@ -21,7 +22,6 @@ import {
   outRefLabel,
 } from "@/tx-context.js";
 import {
-  ActiveOperatorSpendRedeemerSchema,
   StateQueueCommitLayout,
 } from "@/workers/utils/commit-redeemers.js";
 
@@ -38,8 +38,38 @@ const assetsEqual = (
   return true;
 };
 
+type CanonicalSchedulerDatum =
+  | "NoActiveOperators"
+  | {
+      readonly ActiveOperator: {
+        readonly operator: string;
+        readonly start_time: bigint;
+      };
+    };
+
+const linkedListAssetNameFromOutputAssets = (
+  assets: Readonly<Record<string, bigint>>,
+): string => {
+  const nonAdaUnits = Object.keys(assets).filter((unit) => unit !== "lovelace");
+  return nonAdaUnits.length === 1 ? nonAdaUnits[0]!.slice(56) : "";
+};
+
+const decodeLinkedListNodeViewFromOutput = (
+  output: { readonly datum?: string | null; readonly assets: Record<string, bigint> },
+): SDK.LinkedListNodeView | undefined => {
+  if (output.datum == null) {
+    return undefined;
+  }
+  const linkedListDatum = LucidData.from(output.datum, SDK.LinkedListDatum);
+  return SDK.linkedListDatumToNodeView(
+    linkedListDatum,
+    linkedListAssetNameFromOutputAssets(output.assets),
+  );
+};
+
 export const deriveCommitLayoutFromDraftTx = ({
   tx,
+  latestBlockInput,
   schedulerRefInput,
   hubOracleRefInput,
   activeOperatorInput,
@@ -49,6 +79,7 @@ export const deriveCommitLayoutFromDraftTx = ({
   previousHeaderNodeDatum,
 }: {
   readonly tx: CML.Transaction;
+  readonly latestBlockInput: UTxO;
   readonly schedulerRefInput: UTxO;
   readonly hubOracleRefInput: UTxO;
   readonly activeOperatorInput: UTxO;
@@ -62,11 +93,21 @@ export const deriveCommitLayoutFromDraftTx = ({
   const referenceInputListRaw = txBody.reference_inputs();
   const indexedOutputs = collectIndexedOutputs(txBody.outputs());
 
-  const activeNodeInputIndex = findOutRefIndex(
+  const latestBlockInputIndex = findOutRefIndex(
+    inputList,
+    latestBlockInput,
+  );
+  if (latestBlockInputIndex === undefined) {
+    throw new Error(
+      `Unable to find latest state-queue input ${outRefLabel(latestBlockInput)} in balanced draft tx body inputs`,
+    );
+  }
+
+  const activeOperatorsInputIndex = findOutRefIndex(
     inputList,
     activeOperatorInput,
   );
-  if (activeNodeInputIndex === undefined) {
+  if (activeOperatorsInputIndex === undefined) {
     throw new Error(
       `Unable to find active-operator input ${outRefLabel(activeOperatorInput)} in balanced draft tx body inputs`,
     );
@@ -108,7 +149,7 @@ export const deriveCommitLayoutFromDraftTx = ({
       `Expected exactly one header-node output at ${stateQueueAddress} with datum ${headerNodeDatum.slice(0, 24)}..., found ${headerNodeOutputCandidates.length}`,
     );
   }
-  const headerNodeOutputIndex = headerNodeOutputCandidates[0].index;
+  const newBlockOutputIndex = headerNodeOutputCandidates[0].index;
 
   const previousHeaderOutputCandidates = indexedOutputs.filter(
     (output) =>
@@ -120,7 +161,7 @@ export const deriveCommitLayoutFromDraftTx = ({
       `Expected exactly one previous-header output at ${stateQueueAddress} with datum ${previousHeaderNodeDatum.slice(0, 24)}..., found ${previousHeaderOutputCandidates.length}`,
     );
   }
-  const previousHeaderNodeOutputIndex = previousHeaderOutputCandidates[0].index;
+  const continuedLatestBlockOutputIndex = previousHeaderOutputCandidates[0].index;
 
   const activeNodeOutputCandidates = indexedOutputs.filter(
     (output) =>
@@ -132,41 +173,58 @@ export const deriveCommitLayoutFromDraftTx = ({
       `Expected exactly one active-operator output at ${activeOperatorInput.address} with unchanged assets, found ${activeNodeOutputCandidates.length}`,
     );
   }
-  const activeNodeOutputIndex = activeNodeOutputCandidates[0].index;
+  const activeOperatorOutputIndex = activeNodeOutputCandidates[0].index;
 
   const redeemerPointers = getRedeemerPointersInContextOrder(tx);
+  const txInfoRedeemerIndexes = getTxInfoRedeemerIndexes(redeemerPointers);
   if (redeemerPointers.length <= 0) {
     throw new Error("Balanced draft tx did not contain redeemers");
   }
-  const activeOperatorSpendRedeemerIndex = redeemerPointers.findIndex(
+  const activeOperatorSpendRedeemerContextIndex = redeemerPointers.findIndex(
     (pointer) =>
       pointer.tag === CML.RedeemerTag.Spend &&
-      pointer.index === BigInt(activeNodeInputIndex),
+      pointer.index === BigInt(activeOperatorsInputIndex),
   );
-  if (activeOperatorSpendRedeemerIndex < 0) {
+  if (activeOperatorSpendRedeemerContextIndex < 0) {
     throw new Error(
-      `Unable to find active-operator spend redeemer for input index ${activeNodeInputIndex}`,
+      `Unable to find active-operator spend redeemer for input index ${activeOperatorsInputIndex}`,
     );
   }
-  const mintRedeemerCandidates = redeemerPointers
-    .map((pointer, index) => ({ pointer, index }))
-    .filter(({ pointer }) => pointer.tag === CML.RedeemerTag.Mint);
-  if (mintRedeemerCandidates.length !== 1) {
+  const stateQueueSpendRedeemerContextIndex = redeemerPointers.findIndex(
+    (pointer) =>
+      pointer.tag === CML.RedeemerTag.Spend &&
+      pointer.index === BigInt(latestBlockInputIndex),
+  );
+  if (stateQueueSpendRedeemerContextIndex < 0) {
     throw new Error(
-      `Expected exactly one mint redeemer pointer for state_queue commit, found ${mintRedeemerCandidates.length}`,
+      `Unable to find state-queue spend redeemer for input index ${latestBlockInputIndex}`,
     );
   }
-  const stateQueueRedeemerIndex = mintRedeemerCandidates[0].index;
+  const activeOperatorsRedeemerIndex =
+    txInfoRedeemerIndexes[activeOperatorSpendRedeemerContextIndex];
+  const stateQueueSpendRedeemerIndex =
+    txInfoRedeemerIndexes[stateQueueSpendRedeemerContextIndex];
+  if (activeOperatorsRedeemerIndex === undefined) {
+    throw new Error(
+      `Unable to map active-operator spend redeemer context index ${activeOperatorSpendRedeemerContextIndex} to tx-info order`,
+    );
+  }
+  if (stateQueueSpendRedeemerIndex === undefined) {
+    throw new Error(
+      `Unable to map state-queue spend redeemer context index ${stateQueueSpendRedeemerContextIndex} to tx-info order`,
+    );
+  }
 
   return {
     schedulerRefInputIndex: BigInt(schedulerRefInputIndex),
-    activeNodeInputIndex: BigInt(activeNodeInputIndex),
-    headerNodeOutputIndex: BigInt(headerNodeOutputIndex),
-    previousHeaderNodeOutputIndex: BigInt(previousHeaderNodeOutputIndex),
-    activeOperatorsRedeemerIndex: BigInt(activeOperatorSpendRedeemerIndex),
-    activeNodeOutputIndex: BigInt(activeNodeOutputIndex),
+    latestBlockInputIndex: BigInt(latestBlockInputIndex),
+    activeOperatorsInputIndex: BigInt(activeOperatorsInputIndex),
+    newBlockOutputIndex: BigInt(newBlockOutputIndex),
+    continuedLatestBlockOutputIndex: BigInt(continuedLatestBlockOutputIndex),
+    activeOperatorsRedeemerIndex: BigInt(activeOperatorsRedeemerIndex),
+    activeOperatorOutputIndex: BigInt(activeOperatorOutputIndex),
     hubOracleRefInputIndex: BigInt(hubOracleRefInputIndex),
-    stateQueueRedeemerIndex: BigInt(stateQueueRedeemerIndex),
+    stateQueueSpendRedeemerIndex: BigInt(stateQueueSpendRedeemerIndex),
   };
 };
 
@@ -283,7 +341,7 @@ export const buildRealCommitDraftDiagnostics = ({
 
   const expectedActiveUnit = toUnit(
     activeOperatorsPolicyId,
-    SDK.NODE_ASSET_NAME + operatorKeyHash,
+    SDK.ACTIVE_OPERATOR_NODE_ASSET_NAME_PREFIX + operatorKeyHash,
   );
   const expectedSchedulerUnit = toUnit(
     schedulerPolicyId,
@@ -293,21 +351,30 @@ export const buildRealCommitDraftDiagnostics = ({
     hubOraclePolicyId,
     SDK.HUB_ORACLE_ASSET_NAME,
   );
-  const headerOutputIndex = Number(layout.headerNodeOutputIndex);
+  const headerOutputIndex = Number(layout.newBlockOutputIndex);
   const previousHeaderOutputIndex = Number(
-    layout.previousHeaderNodeOutputIndex,
+    layout.continuedLatestBlockOutputIndex,
   );
   const activeRedeemerLayoutIndex = Number(layout.activeOperatorsRedeemerIndex);
-  const stateQueueRedeemerLayoutIndex = Number(layout.stateQueueRedeemerIndex);
+  const stateQueueRedeemerLayoutIndex = Number(
+    layout.stateQueueSpendRedeemerIndex,
+  );
+  const txInfoRedeemerIndexes = getTxInfoRedeemerIndexes(redeemerPointers);
+  const findRedeemerPointerByTxInfoIndex = (
+    txInfoIndex: number,
+  ): (typeof redeemerPointers)[number] | undefined => {
+    const contextIndex = txInfoRedeemerIndexes.findIndex(
+      (candidate) => candidate === txInfoIndex,
+    );
+    return contextIndex < 0 ? undefined : redeemerPointers[contextIndex];
+  };
   const activeRedeemerPointer =
-    activeRedeemerLayoutIndex >= 0 &&
-    activeRedeemerLayoutIndex < redeemerPointers.length
-      ? redeemerPointers[activeRedeemerLayoutIndex]
+    activeRedeemerLayoutIndex >= 0
+      ? findRedeemerPointerByTxInfoIndex(activeRedeemerLayoutIndex)
       : undefined;
   const stateQueueRedeemerPointer =
-    stateQueueRedeemerLayoutIndex >= 0 &&
-    stateQueueRedeemerLayoutIndex < redeemerPointers.length
-      ? redeemerPointers[stateQueueRedeemerLayoutIndex]
+    stateQueueRedeemerLayoutIndex >= 0
+      ? findRedeemerPointerByTxInfoIndex(stateQueueRedeemerLayoutIndex)
       : undefined;
   const activeRedeemerCbor = findRedeemerDataCbor(tx, activeRedeemerPointer);
   const stateQueueRedeemerCbor = findRedeemerDataCbor(
@@ -325,10 +392,10 @@ export const buildRealCommitDraftDiagnostics = ({
       ? undefined
       : (() => {
           try {
-            const nodeDatum = LucidData.from(
-              headerOutput.datum,
-              SDK.StateQueueDatum,
-            );
+            const nodeDatum = decodeLinkedListNodeViewFromOutput(headerOutput);
+            if (nodeDatum === undefined) {
+              return undefined;
+            }
             const header = LucidData.castFrom(nodeDatum.data, SDK.Header);
             return {
               startTime: header.startTime.toString(),
@@ -344,10 +411,11 @@ export const buildRealCommitDraftDiagnostics = ({
       ? undefined
       : (() => {
           try {
-            const nodeDatum = LucidData.from(
-              previousHeaderOutput.datum,
-              SDK.StateQueueDatum,
-            );
+            const nodeDatum =
+              decodeLinkedListNodeViewFromOutput(previousHeaderOutput);
+            if (nodeDatum === undefined) {
+              return undefined;
+            }
             try {
               const header = LucidData.castFrom(nodeDatum.data, SDK.Header);
               return {
@@ -375,12 +443,16 @@ export const buildRealCommitDraftDiagnostics = ({
           try {
             const schedulerDatum = LucidData.from(
               schedulerRefInput.datum,
-              SDK.SchedulerDatum,
-            );
-            return {
-              operator: schedulerDatum.operator,
-              startTime: schedulerDatum.startTime.toString(),
-            };
+              SDK.SchedulerDatum as never,
+            ) as CanonicalSchedulerDatum;
+            return schedulerDatum === "NoActiveOperators"
+              ? { kind: "NoActiveOperators" as const }
+              : {
+                  kind: "ActiveOperator" as const,
+                  operator: schedulerDatum.ActiveOperator.operator,
+                  startTime:
+                    schedulerDatum.ActiveOperator.start_time.toString(),
+                };
           } catch {
             return undefined;
           }
@@ -406,19 +478,25 @@ export const buildRealCommitDraftDiagnostics = ({
     expectedActiveOperatorInput: outRefLabel(activeOperatorInput),
     layout: {
       schedulerRefInputIndex: layout.schedulerRefInputIndex.toString(),
-      activeNodeInputIndex: layout.activeNodeInputIndex.toString(),
-      headerNodeOutputIndex: layout.headerNodeOutputIndex.toString(),
-      previousHeaderNodeOutputIndex:
-        layout.previousHeaderNodeOutputIndex.toString(),
+      latestBlockInputIndex: layout.latestBlockInputIndex.toString(),
+      activeOperatorsInputIndex: layout.activeOperatorsInputIndex.toString(),
+      newBlockOutputIndex: layout.newBlockOutputIndex.toString(),
+      continuedLatestBlockOutputIndex:
+        layout.continuedLatestBlockOutputIndex.toString(),
       activeOperatorsRedeemerIndex:
         layout.activeOperatorsRedeemerIndex.toString(),
-      activeNodeOutputIndex: layout.activeNodeOutputIndex.toString(),
+      activeOperatorOutputIndex: layout.activeOperatorOutputIndex.toString(),
       hubOracleRefInputIndex: layout.hubOracleRefInputIndex.toString(),
-      stateQueueRedeemerIndex: layout.stateQueueRedeemerIndex.toString(),
+      stateQueueSpendRedeemerIndex:
+        layout.stateQueueSpendRedeemerIndex.toString(),
     },
-    activeNodeInputAtLayoutIndex: findTxInputAtIndex(
+    latestBlockInputAtLayoutIndex: findTxInputAtIndex(
       inputs,
-      layout.activeNodeInputIndex,
+      layout.latestBlockInputIndex,
+    ),
+    activeOperatorsInputAtLayoutIndex: findTxInputAtIndex(
+      inputs,
+      layout.activeOperatorsInputIndex,
     ),
     schedulerRefInputAtLayoutIndex: findTxReferenceInputAtIndex(
       referenceInputs,
@@ -443,7 +521,7 @@ export const buildRealCommitDraftDiagnostics = ({
             try {
               return LucidData.from(
                 activeRedeemerCbor,
-                ActiveOperatorSpendRedeemerSchema,
+                SDK.ActiveOperatorSpendRedeemer,
               );
             } catch {
               return `decode-failed:${activeRedeemerCbor}`;

@@ -1,31 +1,36 @@
 import {
+  Address,
   Assets,
   Data,
+  fromText,
   LucidEvolution,
+  PolicyId,
   toUnit,
   TxBuilder,
+  UTxO,
 } from "@lucid-evolution/lucid";
-import { AuthenticatedValidator } from "@/common.js";
-import { SCHEDULER_ASSET_NAME } from "@/constants.js";
+import {
+  AuthenticatedValidator,
+  GenericErrorFields,
+  LucidError,
+  POSIXTimeSchema,
+} from "@/common.js";
+import {
+  authenticateUTxOs,
+  AuthenticUTxO,
+  fetchSingleAuthenticUTxOProgram,
+} from "@/internals.js";
+import { Effect, Data as EffectData } from "effect";
 
-/**
- * Scheduler SDK helpers and redeemer/data schemas.
- *
- * The scheduler coordinates operator turns and time windows, so even the simple
- * initialization helpers here are part of the protocol's state-machine
- * bootstrap path.
- */
+export const SCHEDULER_ASSET_NAME = fromText("Scheduler");
+
 export const SchedulerDatumSchema = Data.Object({
   operator: Data.Bytes(),
-  startTime: Data.Integer(),
+  startTime: POSIXTimeSchema,
 });
-
 export type SchedulerDatum = Data.Static<typeof SchedulerDatumSchema>;
 export const SchedulerDatum = SchedulerDatumSchema as unknown as SchedulerDatum;
 
-/**
- * Mint redeemers understood by the scheduler policy.
- */
 export const SchedulerMintRedeemerSchema = Data.Enum([
   Data.Literal("Init"),
   Data.Literal("Deinit"),
@@ -60,30 +65,57 @@ export type SchedulerSpendRedeemer = Data.Static<
 export const SchedulerSpendRedeemer =
   SchedulerSpendRedeemerSchema as unknown as SchedulerSpendRedeemer;
 
-/**
- * Parameters for creating the initial scheduler UTxO.
- */
 export type SchedulerInitParams = {
   validator: AuthenticatedValidator;
-  datum?: SchedulerDatum;
-  lovelace?: bigint;
 };
 
 export type SchedulerDeinitParams = {};
 export type SchedulerAdvanceParams = {};
 export type SchedulerRewindParams = {};
 
-const DEFAULT_SCHEDULER_INIT_LOVELACE = 5_000_000n;
-export const INITIAL_SCHEDULER_DATUM: SchedulerDatum = {
-  operator: "",
-  startTime: 0n,
+export type SchedulerUTxO = AuthenticUTxO<SchedulerDatum>;
+
+export const utxosToSchedulerUTxOs = (
+  utxos: UTxO[],
+  nftPolicy: PolicyId,
+): Effect.Effect<SchedulerUTxO[], LucidError> =>
+  authenticateUTxOs<SchedulerDatum>(utxos, nftPolicy, SchedulerDatum);
+
+export type SchedulerConfig = {
+  schedulerAddress: Address;
+  schedulerPolicyId: PolicyId;
 };
 
+export class SchedulerError extends EffectData.TaggedError(
+  "SchedulerError",
+)<GenericErrorFields> {}
+
+export const fetchSchedulerUTxOProgram = (
+  lucid: LucidEvolution,
+  config: SchedulerConfig,
+): Effect.Effect<SchedulerUTxO, SchedulerError | LucidError> =>
+  fetchSingleAuthenticUTxOProgram<SchedulerUTxO, LucidError, SchedulerError>(
+    lucid,
+    {
+      address: config.schedulerAddress,
+      policyId: config.schedulerPolicyId,
+      utxoLabel: "scheduler",
+      conversionFunction: utxosToSchedulerUTxOs,
+      onUnexpectedAuthenticUTxOCount: () =>
+        new SchedulerError({
+          message: "Failed to fetch the scheduler UTxO",
+          cause:
+            "Exactly one scheduler UTxO was expected, but none or more were found",
+        }),
+    },
+  );
+
 /**
- * Builds the scheduler initialization transaction fragment.
+ * Init
  *
- * This mints the scheduler witness NFT and creates the first scheduler output
- * with either the provided datum/lovelace or the protocol defaults.
+ * @param lucid - The LucidEvolution
+ * @param params - The parameters
+ * @returns {TxBuilder} A TxBuilder instance that can be used to build the transaction.
  */
 export const incompleteSchedulerInitTxProgram = (
   lucid: LucidEvolution,
@@ -92,60 +124,57 @@ export const incompleteSchedulerInitTxProgram = (
   const assets: Assets = {
     [toUnit(params.validator.policyId, SCHEDULER_ASSET_NAME)]: 1n,
   };
-  const outputAssets: Assets = {
-    lovelace: params.lovelace ?? DEFAULT_SCHEDULER_INIT_LOVELACE,
-    ...assets,
-  };
-  const initialDatum: SchedulerDatum = params.datum ?? INITIAL_SCHEDULER_DATUM;
 
   const redeemer = Data.to("Init", SchedulerMintRedeemer);
 
   return lucid
     .newTx()
     .mintAssets(assets, redeemer)
-    .pay.ToContract(
-      params.validator.spendingScriptAddress,
-      {
-        kind: "inline",
-        value: Data.to(initialDatum, SchedulerDatum),
-      },
-      outputAssets,
-    )
+    .pay.ToAddress(params.validator.spendingScriptAddress, assets)
     .attach.Script(params.validator.mintingScript);
 };
 
 /**
- * Stub entry point for scheduler de-initialization flows.
+ * Deinit
+ *
+ * @param lucid - The LucidEvolution
+ * @param params - The parameters
+ * @returns {TxBuilder} A TxBuilder instance that can be used to build the transaction.
  */
 export const incompleteSchedulerDeinitTxProgram = (
   lucid: LucidEvolution,
   params: SchedulerDeinitParams,
 ): TxBuilder => {
-  void params;
   const tx = lucid.newTx();
   return tx;
 };
 
 /**
- * Stub entry point for advancing the scheduler state machine.
+ * Advance
+ *
+ * @param lucid - The LucidEvolution
+ * @param params - The parameters
+ * @returns {TxBuilder} A TxBuilder instance that can be used to build the transaction.
  */
 export const incompleteSchedulerAdvanceTxProgram = (
   lucid: LucidEvolution,
   params: SchedulerAdvanceParams,
 ): TxBuilder => {
-  void params;
   const tx = lucid.newTx();
   return tx;
 };
 
 /**
- * Stub entry point for rewinding the scheduler state machine.
+ * Rewind
+ *
+ * @param lucid - The LucidEvolution
+ * @param params - The parameters
+ * @returns {TxBuilder} A TxBuilder instance that can be used to build the transaction.
  */
 export const incompleteSchedulerRewindTxProgram = (
   lucid: LucidEvolution,
   params: SchedulerRewindParams,
 ): TxBuilder => {
-  void params;
   const tx = lucid.newTx();
   return tx;
 };

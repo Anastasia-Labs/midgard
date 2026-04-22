@@ -54,7 +54,10 @@ export const mergeAction = (
       lucid.api,
       fetchConfig,
       contracts,
-      { bypassQueueLengthGuard: force },
+      {
+        bypassQueueLengthGuard: force,
+        referenceScriptsAddress: lucid.referenceScriptsAddress,
+      },
     );
   });
 

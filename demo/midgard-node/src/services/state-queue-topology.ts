@@ -92,7 +92,7 @@ export const fetchStateQueueTopologyProgram = (
       stateQueue.policyId,
     );
     const parsed = yield* SDK.utxosToStateQueueUTxOs(
-      policyUtxos,
+      policyUtxos.map(({ utxo }) => utxo),
       stateQueue.policyId,
     );
     return summarizeStateQueueTopology(policyUtxos.length, parsed);

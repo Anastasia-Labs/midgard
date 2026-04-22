@@ -968,7 +968,7 @@ const postSubmitHandler = (txQueue: Queue.Enqueue<QueuedTxPayload>) =>
       yield* Effect.logInfo(`▫️ ${normalized.error}`);
       yield* Effect.logInfo(`▫️ ${normalized.detail}`);
       return yield* HttpServerResponse.json(
-        { error: "Invalid transaction CBOR payload" },
+        { error: normalized.error },
         { status: 400 },
       );
     }

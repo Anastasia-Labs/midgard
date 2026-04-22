@@ -4,11 +4,13 @@ import {
   GenericErrorFields,
   LucidError,
   MissingDatumError,
+  ValueSchema,
 } from "@/common.js";
 import { Data as EffectData, Effect } from "effect";
 import {
   Assets,
   Data,
+  fromText,
   LucidEvolution,
   makeReturn,
   toUnit,
@@ -16,16 +18,9 @@ import {
   TxSignBuilder,
   UTxO,
 } from "@lucid-evolution/lucid";
-import { NODE_ASSET_NAME } from "@/constants.js";
 
-/**
- * Shared linked-list primitives used by several Midgard on-chain state
- * machines.
- *
- * Registered, active, and retired operators all reuse the same anchor-node
- * pattern. Centralizing the datum and initialization logic keeps those lists
- * structurally consistent at genesis.
- */
+export const NODE_ASSET_NAME = fromText("Node");
+
 export const NodeKeySchema = Data.Enum([
   Data.Object({ Key: Data.Object({ key: Data.Bytes() }) }),
   Data.Literal("Empty"),
@@ -33,9 +28,6 @@ export const NodeKeySchema = Data.Enum([
 export type NodeKey = Data.Static<typeof NodeKeySchema>;
 export const NodeKey = NodeKeySchema as unknown as NodeKey;
 
-/**
- * Datum stored at each node in a Midgard linked list.
- */
 export const NodeDatumSchema = Data.Object({
   key: NodeKeySchema,
   next: NodeKeySchema,
@@ -44,9 +36,6 @@ export const NodeDatumSchema = Data.Object({
 export type NodeDatum = Data.Static<typeof NodeDatumSchema>;
 export const NodeDatum = NodeDatumSchema as unknown as NodeDatum;
 
-/**
- * Extracts and decodes a linked-list node datum from a UTxO.
- */
 export const getNodeDatumFromUTxO = (
   nodeUTxO: UTxO,
 ): Effect.Effect<NodeDatum, DataCoercionError | MissingDatumError> => {
@@ -77,35 +66,20 @@ export class LinkedListError extends EffectData.TaggedError(
   "LinkedListError",
 )<GenericErrorFields> {}
 
-/**
- * Parameters for minting the initial linked-list anchor node.
- */
 export type LinkedListInitParams = {
   validator: AuthenticatedValidator;
   data?: Data;
   redeemer: string;
-  lovelace?: bigint;
 };
 
-/**
- * Builds a transaction fragment that mints the anchor NFT and creates the first
- * linked-list node for a state machine.
- */
 export const incompleteInitLinkedListTxProgram = (
   lucid: LucidEvolution,
   params: LinkedListInitParams,
 ): Effect.Effect<TxBuilder> =>
   Effect.gen(function* () {
-    const mintedAssets: Assets = {
+    const assets: Assets = {
       [toUnit(params.validator.policyId, NODE_ASSET_NAME)]: 1n,
     };
-    const outputAssets: Assets =
-      params.lovelace === undefined
-        ? mintedAssets
-        : {
-            ...mintedAssets,
-            lovelace: params.lovelace,
-          };
 
     const rootData = params.data ?? Data.to([]);
 
@@ -118,21 +92,17 @@ export const incompleteInitLinkedListTxProgram = (
     const encodedDatum = Data.to<NodeDatum>(nodeDatum, NodeDatum);
     const tx = lucid
       .newTx()
-      .mintAssets(mintedAssets, params.redeemer)
+      .mintAssets(assets, params.redeemer)
       .pay.ToAddressWithData(
         params.validator.spendingScriptAddress,
         { kind: "inline", value: encodedDatum },
-        outputAssets,
+        assets,
       )
       .attach.Script(params.validator.mintingScript);
 
     return tx;
   });
 
-/**
- * Completes the linked-list initialization fragment with local UPLC evaluation
- * enabled.
- */
 export const unsignedLinkedListTxProgram = (
   lucid: LucidEvolution,
   initParams: LinkedListInitParams,
@@ -154,7 +124,14 @@ export const unsignedLinkedListTxProgram = (
   });
 
 /**
- * Promise-style wrapper for linked-list initialization transactions.
+ * Builds completed tx for initializing all Midgard contracts.
+ * This includes: Hub Oracle, State Queue, Settlement Queue,
+ * Registered/Active/Retired Operators, Scheduler, Escape Hatch,
+ * and Fraud Proof Catalogue.
+ *
+ * @param lucid - The `LucidEvolution` API object.
+ * @param initParams - Parameters for initializing all Midgard contracts.
+ * @returns A promise that resolves to a `TxSignBuilder` instance.
  */
 export const unsignedLinkedListTx = (
   lucid: LucidEvolution,

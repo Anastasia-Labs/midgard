@@ -64,11 +64,11 @@ const readOperatorNodeState = async (
   const operatorKeyHash = await readOperatorKeyHash(lucid);
   const registeredNodeUnit = toUnit(
     contracts.registeredOperators.policyId,
-    SDK.NODE_ASSET_NAME + operatorKeyHash,
+    SDK.REGISTERED_OPERATOR_NODE_ASSET_NAME_PREFIX + operatorKeyHash,
   );
   const activeNodeUnit = toUnit(
     contracts.activeOperators.policyId,
-    SDK.NODE_ASSET_NAME + operatorKeyHash,
+    SDK.ACTIVE_OPERATOR_NODE_ASSET_NAME_PREFIX + operatorKeyHash,
   );
 
   const [registeredNodes, activeNodes] = await Promise.all([

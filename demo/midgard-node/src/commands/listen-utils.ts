@@ -1,8 +1,9 @@
 import { isHexString } from "@/utils.js";
-import { fromHex } from "@lucid-evolution/lucid";
+import { CML, fromHex } from "@lucid-evolution/lucid";
 import {
   cardanoTxBytesToMidgardNativeTxFull,
   computeMidgardNativeTxIdFromFull,
+  decodeMidgardNativeByteListPreimage,
   decodeMidgardNativeTxFull,
   encodeMidgardNativeTxFull,
 } from "@/midgard-tx-codec/index.js";
@@ -182,8 +183,37 @@ export type NormalizedSubmitTx =
     };
 
 /**
- * Normalizes a submitted tx payload into Midgard-native bytes and derives the
- * canonical tx id.
+ * Ordinary Cardano-domain signatures are not valid Midgard ingress; converted
+ * transactions may carry vkey witnesses only when they already authorize the
+ * Midgard-native body hash.
+ */
+const findUnsupportedCardanoWitnessDetail = (
+  nativeTx: ReturnType<typeof cardanoTxBytesToMidgardNativeTxFull>,
+): string | null => {
+  const witnessBytes = decodeMidgardNativeByteListPreimage(
+    nativeTx.witnessSet.addrTxWitsPreimageCbor,
+    "native.addr_tx_wits",
+  );
+  for (let index = 0; index < witnessBytes.length; index += 1) {
+    const witness = CML.Vkeywitness.from_cbor_bytes(witnessBytes[index]!);
+    if (
+      !witness
+        .vkey()
+        .verify(
+          nativeTx.compact.transactionBodyHash,
+          witness.ed25519_signature(),
+        )
+    ) {
+      return `Converted Cardano tx carries vkey witness #${index.toString()} that does not authorize the Midgard-native body hash`;
+    }
+  }
+  return null;
+};
+
+/**
+ * Normalizes a submitted tx payload into Midgard-native bytes, rejecting
+ * ordinary Cardano-signed ingress that cannot authorize the Midgard-native
+ * body hash, and derives the canonical tx id.
  */
 export const normalizeSubmitTxHexToNative = (
   txHex: string,
@@ -202,6 +232,15 @@ export const normalizeSubmitTxHexToNative = (
   } catch (nativeDecodeError) {
     try {
       const nativeTx = cardanoTxBytesToMidgardNativeTxFull(submittedTxCbor);
+      const unsupportedWitnessDetail =
+        findUnsupportedCardanoWitnessDetail(nativeTx);
+      if (unsupportedWitnessDetail !== null) {
+        return {
+          ok: false,
+          error: "Unsupported Cardano-signed ingress",
+          detail: unsupportedWitnessDetail,
+        };
+      }
       const normalizedTxCbor = encodeMidgardNativeTxFull(nativeTx);
       const txId = computeMidgardNativeTxIdFromFull(nativeTx);
       return {

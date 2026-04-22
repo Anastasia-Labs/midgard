@@ -11,26 +11,51 @@ type OutRefLike = {
   readonly outputIndex: number;
 };
 
+export type StateQueueCommitRedeemer = {
+  readonly CommitBlockHeader: {
+    readonly latest_block_input_index: bigint;
+    readonly new_block_output_index: bigint;
+    readonly continued_latest_block_output_index: bigint;
+    readonly operator: string;
+    readonly scheduler_ref_input_index: bigint;
+    readonly active_operators_input_index: bigint;
+    readonly active_operators_redeemer_index: bigint;
+  };
+};
+
+export type ActiveOperatorCommitRedeemer = {
+  readonly UpdateBondHoldNewState: {
+    readonly active_operator: string;
+    readonly active_node_input_index: bigint;
+    readonly active_node_output_index: bigint;
+    readonly hub_oracle_ref_input_index: bigint;
+    readonly state_queue_input_index: bigint;
+    readonly state_queue_redeemer_index: bigint;
+  };
+};
+
 export type StateQueueCommitLayout = {
   readonly schedulerRefInputIndex: bigint;
-  readonly activeNodeInputIndex: bigint;
-  readonly headerNodeOutputIndex: bigint;
-  readonly previousHeaderNodeOutputIndex: bigint;
+  readonly latestBlockInputIndex: bigint;
+  readonly newBlockOutputIndex: bigint;
+  readonly continuedLatestBlockOutputIndex: bigint;
+  readonly activeOperatorsInputIndex: bigint;
   readonly activeOperatorsRedeemerIndex: bigint;
-  readonly activeNodeOutputIndex: bigint;
+  readonly activeOperatorOutputIndex: bigint;
   readonly hubOracleRefInputIndex: bigint;
-  readonly stateQueueRedeemerIndex: bigint;
+  readonly stateQueueSpendRedeemerIndex: bigint;
 };
 
 export const DEFAULT_STATE_QUEUE_COMMIT_LAYOUT: StateQueueCommitLayout = {
   schedulerRefInputIndex: 0n,
-  activeNodeInputIndex: 1n,
-  headerNodeOutputIndex: 0n,
-  previousHeaderNodeOutputIndex: 1n,
+  latestBlockInputIndex: 0n,
+  newBlockOutputIndex: 0n,
+  continuedLatestBlockOutputIndex: 1n,
+  activeOperatorsInputIndex: 1n,
   activeOperatorsRedeemerIndex: 1n,
-  activeNodeOutputIndex: 2n,
+  activeOperatorOutputIndex: 2n,
   hubOracleRefInputIndex: 0n,
-  stateQueueRedeemerIndex: 2n,
+  stateQueueSpendRedeemerIndex: 0n,
 } as const;
 
 const compareOutRefs = (a: OutRefLike, b: OutRefLike): number => {
@@ -49,31 +74,46 @@ export const deriveStateQueueCommitLayout = ({
   activeOperatorInput,
   schedulerRefInput,
   hubOracleRefInput,
+  txReferenceInputs,
   txInputs,
 }: {
   readonly latestBlockInput: OutRefLike;
   readonly activeOperatorInput: OutRefLike;
   readonly schedulerRefInput?: OutRefLike;
   readonly hubOracleRefInput?: OutRefLike;
+  readonly txReferenceInputs?: readonly OutRefLike[];
   readonly txInputs: readonly OutRefLike[];
 }): StateQueueCommitLayout => {
   const sortedInputs = [...txInputs].sort(compareOutRefs);
+  const latestOutRef = outRefId(latestBlockInput);
+  const latestBlockInputIndex = sortedInputs.findIndex(
+    (input) => outRefId(input) === latestOutRef,
+  );
+  if (latestBlockInputIndex < 0) {
+    throw new Error(
+      `Latest state-queue input ${latestOutRef} missing from tx input set`,
+    );
+  }
   const activeOutRef = outRefId(activeOperatorInput);
-  const activeNodeInputIndex = sortedInputs.findIndex(
+  const activeOperatorsInputIndex = sortedInputs.findIndex(
     (input) => outRefId(input) === activeOutRef,
   );
-  if (activeNodeInputIndex < 0) {
+  if (activeOperatorsInputIndex < 0) {
     throw new Error(
       `Active operator input ${activeOutRef} missing from tx input set`,
     );
   }
+  const stateQueueSpendRedeemerIndex =
+    compareOutRefs(latestBlockInput, activeOperatorInput) < 0 ? 0n : 1n;
   const activeOperatorsRedeemerIndex =
     compareOutRefs(activeOperatorInput, latestBlockInput) < 0 ? 0n : 1n;
 
   if (schedulerRefInput === undefined && hubOracleRefInput === undefined) {
     return {
       ...DEFAULT_STATE_QUEUE_COMMIT_LAYOUT,
-      activeNodeInputIndex: BigInt(activeNodeInputIndex),
+      latestBlockInputIndex: BigInt(latestBlockInputIndex),
+      activeOperatorsInputIndex: BigInt(activeOperatorsInputIndex),
+      stateQueueSpendRedeemerIndex,
       activeOperatorsRedeemerIndex,
     };
   }
@@ -84,9 +124,9 @@ export const deriveStateQueueCommitLayout = ({
     );
   }
 
-  const sortedReferenceInputs = [schedulerRefInput, hubOracleRefInput].sort(
-    compareOutRefs,
-  );
+  const sortedReferenceInputs = [
+    ...(txReferenceInputs ?? [schedulerRefInput, hubOracleRefInput]),
+  ].sort(compareOutRefs);
   const schedulerRefOutRef = outRefId(schedulerRefInput);
   const hubOracleRefOutRef = outRefId(hubOracleRefInput);
   const schedulerRefInputIndex = sortedReferenceInputs.findIndex(
@@ -108,53 +148,44 @@ export const deriveStateQueueCommitLayout = ({
   return {
     ...DEFAULT_STATE_QUEUE_COMMIT_LAYOUT,
     schedulerRefInputIndex: BigInt(schedulerRefInputIndex),
-    activeNodeInputIndex: BigInt(activeNodeInputIndex),
+    latestBlockInputIndex: BigInt(latestBlockInputIndex),
+    activeOperatorsInputIndex: BigInt(activeOperatorsInputIndex),
     hubOracleRefInputIndex: BigInt(hubOracleRefInputIndex),
+    stateQueueSpendRedeemerIndex,
     activeOperatorsRedeemerIndex,
   };
 };
 
-// The production validator and checked-in blueprint still use the
-// UpdateBondHoldNewState constructor even though the SDK typings currently
-// expose a renamed UpdateCommitmentTime variant.
-export const ActiveOperatorSpendRedeemerSchema = Data.Enum([
-  Data.Literal("ListStateTransition"),
-  Data.Object({
-    UpdateBondHoldNewState: Data.Object({
-      active_node_output_index: Data.Integer(),
-      hub_oracle_ref_input_index: Data.Integer(),
-      state_queue_redeemer_index: Data.Integer(),
-    }),
-  }),
-]);
-
-export type ActiveOperatorSpendRedeemer = Data.Static<
-  typeof ActiveOperatorSpendRedeemerSchema
->;
+export type ActiveOperatorSpendRedeemer = unknown;
 export const ActiveOperatorSpendRedeemer =
-  ActiveOperatorSpendRedeemerSchema as unknown as ActiveOperatorSpendRedeemer;
+  SDK.ActiveOperatorSpendRedeemer as unknown;
 
 export const makeStateQueueCommitRedeemer = (
   operatorKeyHash: string,
   layout: StateQueueCommitLayout = DEFAULT_STATE_QUEUE_COMMIT_LAYOUT,
-): SDK.StateQueueRedeemer => ({
+): StateQueueCommitRedeemer => ({
   CommitBlockHeader: {
+    latest_block_input_index: layout.latestBlockInputIndex,
+    new_block_output_index: layout.newBlockOutputIndex,
+    continued_latest_block_output_index: layout.continuedLatestBlockOutputIndex,
     operator: operatorKeyHash,
     scheduler_ref_input_index: layout.schedulerRefInputIndex,
-    active_node_input_index: layout.activeNodeInputIndex,
-    header_node_output_index: layout.headerNodeOutputIndex,
-    previous_header_node_output_index: layout.previousHeaderNodeOutputIndex,
+    active_operators_input_index: layout.activeOperatorsInputIndex,
     active_operators_redeemer_index: layout.activeOperatorsRedeemerIndex,
   },
 });
 
 export const makeActiveOperatorCommitRedeemer = (
+  operatorKeyHash: string,
   layout: StateQueueCommitLayout = DEFAULT_STATE_QUEUE_COMMIT_LAYOUT,
-): ActiveOperatorSpendRedeemer => ({
+): ActiveOperatorCommitRedeemer => ({
   UpdateBondHoldNewState: {
-    active_node_output_index: layout.activeNodeOutputIndex,
+    active_operator: operatorKeyHash,
+    active_node_input_index: layout.activeOperatorsInputIndex,
+    active_node_output_index: layout.activeOperatorOutputIndex,
     hub_oracle_ref_input_index: layout.hubOracleRefInputIndex,
-    state_queue_redeemer_index: layout.stateQueueRedeemerIndex,
+    state_queue_input_index: layout.latestBlockInputIndex,
+    state_queue_redeemer_index: layout.stateQueueSpendRedeemerIndex,
   },
 });
 
@@ -163,14 +194,15 @@ export const encodeStateQueueCommitRedeemer = (
   layout: StateQueueCommitLayout = DEFAULT_STATE_QUEUE_COMMIT_LAYOUT,
 ): string =>
   Data.to(
-    makeStateQueueCommitRedeemer(operatorKeyHash, layout),
-    SDK.StateQueueRedeemer,
+    makeStateQueueCommitRedeemer(operatorKeyHash, layout) as never,
+    SDK.StateQueueRedeemer as never,
   );
 
 export const encodeActiveOperatorCommitRedeemer = (
+  operatorKeyHash: string,
   layout: StateQueueCommitLayout = DEFAULT_STATE_QUEUE_COMMIT_LAYOUT,
 ): string =>
   Data.to(
-    makeActiveOperatorCommitRedeemer(layout) as never,
-    ActiveOperatorSpendRedeemerSchema as never,
+    makeActiveOperatorCommitRedeemer(operatorKeyHash, layout) as never,
+    SDK.ActiveOperatorSpendRedeemer as never,
   );

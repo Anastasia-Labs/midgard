@@ -1,18 +1,14 @@
-use aiken/collection/list
 use aiken/crypto.{ScriptHash, VerificationKeyHash}
 use cardano/assets.{AssetName, PolicyId}
-use cardano/transaction.{
-  InlineDatum, Input, Output, Redeemer, ScriptPurpose, Spend,
-}
-use midgard/common/types.{MerkleRoot, PosixTime, Proof}
+use cardano/transaction.{InlineDatum, Input, Output, Redeemer, ScriptPurpose}
+use midgard/common/types.{PosixTime, Proof}
 use midgard/common/utils
-use midgard/hub_oracle as hub
 use midgard/ledger_state
 
 pub type Datum {
-  deposits_root: MerkleRoot,
-  withdrawals_root: MerkleRoot,
-  transactions_root: MerkleRoot,
+  deposits_root: ledger_state.DepositsRoot,
+  withdrawals_root: ledger_state.WithdrawalsRoot,
+  transactions_root: ledger_state.MidgardTxsRoot,
   resolution_claim: Option<ResolutionClaim>,
 }
 
@@ -37,7 +33,7 @@ pub type SpendRedeemer {
     hub_ref_input_index: Int,
     operators_redeemer_index: Int,
     operator: VerificationKeyHash,
-    operator_status: OperatorStatus,
+    operator_is_active: Bool,
     unresolved_event_ref_input_index: Int,
     unresolved_event_asset_name: AssetName,
     event_type: EventType,
@@ -51,11 +47,6 @@ pub type EventType {
   Deposit
   Withdrawal { validity_override: ledger_state.WithdrawalValidity }
   TxOrder { validity_override: ledger_state.MidgardTxValidity }
-}
-
-pub type OperatorStatus {
-  ActiveOperator
-  RetiredOperator
 }
 
 pub type MintRedeemer {
@@ -72,8 +63,6 @@ pub type MintRedeemer {
   }
 }
 
-/// Returns the decoded inline datum for the authenticated state UTxO.
-/// Returns the datum carried by an authenticated settlement input.
 pub fn get_datum(
   reference_inputs: List<Input>,
   settlement_policy_id: PolicyId,
@@ -93,24 +82,22 @@ pub fn get_datum(
 
   parsed_settlement_datum
 }
-/// Validates that the settlement references the expected event inclusion proof.
 
-/// Checks that an event is included in a block before the settlement deadline.
 pub fn valid_event_inclusion(
   event_type: EventType,
   deposit_script_hash: ScriptHash,
   withdrawal_script_hash: ScriptHash,
   tx_order_script_hash: ScriptHash,
-  deposits_root: MerkleRoot,
-  withdrawals_root: MerkleRoot,
-  transactions_root: MerkleRoot,
+  deposits_root: ledger_state.DepositsRoot,
+  withdrawals_root: ledger_state.WithdrawalsRoot,
+  transactions_root: ledger_state.MidgardTxsRoot,
   membership_proof: Proof,
   unresolved_event_asset_name: AssetName,
   unresolved_event_ref_input_index: Int,
   reference_inputs: List<Input>,
   redeemers: Pairs<ScriptPurpose, Redeemer>,
   inclusion_proof_script_withdraw_redeemer_index: Int,
-) {
+) -> Bool {
   when event_type is {
     Deposit -> {
       // 1. The transaction must include a deposit event utxo as a reference
@@ -208,7 +195,7 @@ pub fn valid_event_inclusion(
 
       // 2. A valid membership proof must be provided, proving that
       //    `unprocessed_tx_order` with overridden `validity` is a member of the
-      //    withdrawals tree in the settlement utxo.
+      //    transactions tree in the settlement utxo.
       utils.plutarch_phas(
         merkle_root: transactions_root,
         key: tx_order_key,
@@ -219,37 +206,4 @@ pub fn valid_event_inclusion(
       )
     }
   }
-/// Returns the decoded spending redeemer data for the settlement input.
-}
-
-/// Returns the raw redeemer data for the settlement spending input.
-pub fn get_spending_redeemer_data(
-  hub_oracle_script_hash: ScriptHash,
-  hub_oracle_ref_input_index: Int,
-  settlement_input_index: Int,
-  settlement_redeemer_index: Int,
-  inputs: List<Input>,
-  reference_inputs: List<Input>,
-  redeemers: Pairs<ScriptPurpose, Redeemer>,
-) -> Data {
-  let hub.Datum { settlement_addr, .. } =
-    hub.get_datum(
-      reference_inputs,
-      hub_oracle_script_hash,
-      hub_oracle_ref_input_index,
-    )
-  //
-  expect Some(Input {
-    output_reference: settlement_input_outref,
-    output: Output { address: settlement_input_address, .. },
-  }) = inputs |> list.at(settlement_input_index)
-  //
-  expect
-    settlement_input_address.payment_credential == settlement_addr.payment_credential
-  //
-  redeemers
-    |> utils.get_redeemer_at(
-        Spend(settlement_input_outref),
-        settlement_redeemer_index,
-      )
 }

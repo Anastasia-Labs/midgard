@@ -24,10 +24,19 @@ export const resolveCurrentTimeMs = (
  */
 export const currentTimeMsForLucidOrEmulatorFallback = (
   lucid: LucidEvolution,
-): bigint =>
-  BigInt(
+): bigint => {
+  if (lucid.config().network === "Custom") {
+    const provider = lucid.config().provider as {
+      time?: number;
+    };
+    if (typeof provider.time === "number") {
+      return BigInt(provider.time);
+    }
+  }
+  return BigInt(
     slotToUnixTimeForLucidOrEmulatorFallback(lucid, lucid.currentSlot()),
   );
+};
 
 /**
  * Aligns a unix timestamp to the slot boundary used by the active Lucid

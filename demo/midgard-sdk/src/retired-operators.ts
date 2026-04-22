@@ -1,19 +1,18 @@
-import { AuthenticatedValidator, POSIXTimeSchema } from "@/common.js";
-import { Data } from "@lucid-evolution/lucid";
+import {
+  AuthenticatedValidator,
+  POSIXTimeSchema,
+  LucidError,
+} from "@/common.js";
+import { AuthenticUTxO, authenticateUTxOs } from "@/internals.js";
+import { Data, UTxO } from "@lucid-evolution/lucid";
 import { LucidEvolution, TxBuilder } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 import { incompleteInitLinkedListTxProgram } from "./linked-list.js";
 
-/**
- * SDK data shapes and transaction builders for the retired-operators state
- * machine.
- *
- * Retired operators stay in protocol state until their bond is either recovered
- * or slashed, so the redeemers here model both normal retirement and punitive
- * cleanup paths.
- */
 export const RetiredOperatorDatumSchema = Data.Object({
-  commitmentTime: Data.Nullable(POSIXTimeSchema),
+  key: Data.Nullable(Data.Bytes()),
+  link: Data.Nullable(Data.Bytes()),
+  bondUnlockTime: Data.Nullable(POSIXTimeSchema),
 });
 export type RetiredOperatorDatum = Data.Static<
   typeof RetiredOperatorDatumSchema
@@ -21,9 +20,6 @@ export type RetiredOperatorDatum = Data.Static<
 export const RetiredOperatorDatum =
   RetiredOperatorDatumSchema as unknown as RetiredOperatorDatum;
 
-/**
- * Mint redeemers accepted by the retired-operators policy.
- */
 export const RetiredOperatorMintRedeemerSchema = Data.Enum([
   Data.Literal("Init"),
   Data.Literal("Deinit"),
@@ -44,12 +40,22 @@ export const RetiredOperatorMintRedeemerSchema = Data.Enum([
     }),
   }),
   Data.Object({
-    RemoveOperatorSlashBond: Data.Object({
+    RemoveOperatorBadState: Data.Object({
       slashedRetiredOperatorKey: Data.Bytes(),
       hubOracleRefInputIndex: Data.Integer(),
       retiredOperatorSlashedNodeInputIndex: Data.Integer(),
       retiredOperatorAnchorNodeInputIndex: Data.Integer(),
-      state_queueRedeemerIndex: Data.Integer(),
+      stateQueueRedeemerIndex: Data.Integer(),
+    }),
+  }),
+  Data.Object({
+    RemoveOperatorBadSettlement: Data.Object({
+      slashedRetiredOperatorKey: Data.Bytes(),
+      hubOracleRefInputIndex: Data.Integer(),
+      retiredOperatorSlashedNodeInputIndex: Data.Integer(),
+      retiredOperatorAnchorNodeInputIndex: Data.Integer(),
+      settlementInputIndex: Data.Integer(),
+      settlementRedeemerIndex: Data.Integer(),
     }),
   }),
 ]);
@@ -68,8 +74,48 @@ export type RetiredOperatorRetireParams = {};
 export type RetiredOperatorRemoveOperatorParams = {};
 export type RetiredOperatorRecoverSlashBondParams = {};
 
+export type RetiredOperatorUTxO = AuthenticUTxO<RetiredOperatorDatum>;
+
+export type FetchRetiredOperatorParams = {
+  retiredOperatorAddress: string;
+  operator: string;
+  retiredOperatorPolicyId: string;
+};
+
+export const fetchRetiredOperatorUTxOs = (
+  params: FetchRetiredOperatorParams,
+  lucid: LucidEvolution,
+): Effect.Effect<RetiredOperatorUTxO[], LucidError> =>
+  Effect.gen(function* () {
+    const allUtxos: UTxO[] = yield* Effect.tryPromise({
+      try: () => lucid.utxosAt(params.retiredOperatorAddress),
+      catch: (err) =>
+        new LucidError({
+          message: "Failed to fetch Retired Operators UTxOs",
+          cause: err,
+        }),
+    });
+    if (allUtxos.length === 0) {
+      yield* new LucidError({
+        message: "Failed to build the Retired Operators transaction",
+        cause: "No UTxOs found in Retired Operators Contract address",
+      });
+    }
+    const retiredOperatorUTxOs: RetiredOperatorUTxO[] =
+      yield* authenticateUTxOs<RetiredOperatorDatum>(
+        allUtxos,
+        params.retiredOperatorPolicyId,
+        RetiredOperatorDatum,
+      );
+    return retiredOperatorUTxOs;
+  });
+
 /**
- * Builds the linked-list initialization fragment for retired operators.
+ * Init
+ *
+ * @param lucid - The LucidEvolution
+ * @param params - The parameters
+ * @returns {TxBuilder} A TxBuilder instance that can be used to build the transaction.
  */
 export const incompleteRetiredOperatorInitTxProgram = (
   lucid: LucidEvolution,
@@ -86,49 +132,61 @@ export const incompleteRetiredOperatorInitTxProgram = (
   });
 
 /**
- * Stub entry point for tearing down the retired-operators state machine.
+ * Deinit
+ *
+ * @param lucid - The LucidEvolution
+ * @param params - The parameters
+ * @returns {TxBuilder} A TxBuilder instance that can be used to build the transaction.
  */
 export const incompleteRetiredOperatorDeinitTxProgram = (
   lucid: LucidEvolution,
   params: RetiredOperatorDeinitParams,
 ): TxBuilder => {
-  void params;
   const tx = lucid.newTx();
   return tx;
 };
 
 /**
- * Stub entry point for appending an operator to the retired list.
+ * Retire
+ *
+ * @param lucid - The LucidEvolution
+ * @param params - The parameters
+ * @returns {TxBuilder} A TxBuilder instance that can be used to build the transaction.
  */
 export const incompleteRetiredOperatorRetireTxProgram = (
   lucid: LucidEvolution,
   params: RetiredOperatorRetireParams,
 ): TxBuilder => {
-  void params;
   const tx = lucid.newTx();
   return tx;
 };
 
 /**
- * Stub entry point for removing a retired operator from the list.
+ * RemoveOperator
+ *
+ * @param lucid - The LucidEvolution
+ * @param params - The parameters
+ * @returns {TxBuilder} A TxBuilder instance that can be used to build the transaction.
  */
 export const incompleteRetiredOperatorRemoveOperatorTxProgram = (
   lucid: LucidEvolution,
   params: RetiredOperatorRemoveOperatorParams,
 ): TxBuilder => {
-  void params;
   const tx = lucid.newTx();
   return tx;
 };
 
 /**
- * Stub entry point for recovering the bond of a retired operator.
+ * Recover
+ *
+ * @param lucid - The LucidEvolution
+ * @param params - The parameters
+ * @returns {TxBuilder} A TxBuilder instance that can be used to build the transaction.
  */
 export const incompleteRetiredOperatorRecoverSlashBondTxProgram = (
   lucid: LucidEvolution,
   params: RetiredOperatorRecoverSlashBondParams,
 ): TxBuilder => {
-  void params;
   const tx = lucid.newTx();
   return tx;
 };

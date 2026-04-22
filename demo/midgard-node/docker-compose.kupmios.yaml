@@ -128,7 +128,7 @@ services:
       test:
         [
           "CMD-SHELL",
-          "wget -S -q -O /dev/null http://127.0.0.1:1442/health 2>&1 | grep -q 'HTTP/[0-9.][0-9]* 200'",
+          "wget -S -q -O /dev/null http://127.0.0.1:1442/health 2>&1 | grep -Eq 'HTTP/[0-9.]+ 200'",
         ]
       interval: 15s
       timeout: 10s

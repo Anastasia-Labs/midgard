@@ -19,16 +19,18 @@ describe("normalizeRootIndefiniteArrayEncoding", () => {
   it("rewrites a constructor root from Data.to without re-encoding inner fields", () => {
     const cborHex = Data.to(
       {
-        operator: "aa",
-        startTime: 1n,
+        ActiveOperator: {
+          operator: "aa",
+          start_time: 1n,
+        },
       },
       SchedulerDatum,
     );
 
-    expect(cborHex.startsWith("d8799f")).toBe(true);
+    expect(cborHex.startsWith("d87a9f")).toBe(true);
     expect(cborHex.endsWith("ff")).toBe(true);
     expect(normalizeRootIndefiniteArrayEncoding(cborHex)).toBe(
-      `d87982${cborHex.slice(6, -2)}`,
+      `d87a82${cborHex.slice(6, -2)}`,
     );
   });
 

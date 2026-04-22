@@ -3,8 +3,8 @@ import type * as SDK from "@al-ft/midgard-sdk";
 import { summarizeStateQueueTopology } from "@/services/state-queue-topology.js";
 
 const mkNode = (
-  key: SDK.StateQueueDatum["key"],
-  next: SDK.StateQueueDatum["next"],
+  key: SDK.StateQueueNodeView["key"],
+  next: SDK.StateQueueNodeView["next"],
 ): SDK.StateQueueUTxO =>
   ({
     utxo: {
@@ -17,7 +17,7 @@ const mkNode = (
       key,
       next,
       data: "00",
-    } as SDK.StateQueueDatum,
+    } as SDK.StateQueueNodeView,
     assetName: "4e6f6465",
   }) as SDK.StateQueueUTxO;
 
