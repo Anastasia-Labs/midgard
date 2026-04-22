@@ -10,7 +10,6 @@ import {
   toUnit,
   TxBuilder,
   TxSignBuilder,
-  UTxO,
 } from "@lucid-evolution/lucid";
 import { ActiveOperatorUpdateCommitmentTimeParams } from "@/operator-directory/active-operators.js";
 import { Data as EffectData, Effect } from "effect";
@@ -37,6 +36,7 @@ import {
   findLinkInLinkedList,
   incompleteInitLinkedListTxProgram,
   sortLinkedList,
+  ElementUTxO,
 } from "@/linked-list.js";
 import { ConfirmedState, Header } from "@/ledger-state.js";
 import { Element } from "@/linked-list.js";
@@ -140,12 +140,7 @@ export const StateQueueMintRedeemer =
 export type StateQueueDatum = Element;
 export const StateQueueDatum = Element;
 
-type ElementExtra = {
-  key: string;
-};
-export type ElementUTxO<TDatum = Element> = AuthenticUTxO<TDatum, ElementExtra>;
-
-export type StateQueueUTxO = ElementUTxO<StateQueueDatum>;
+export type StateQueueUTxO = ElementUTxO<ConfirmedState, Header>;
 
 export type StateQueueFetchConfig = {
   stateQueueAddress: Address;

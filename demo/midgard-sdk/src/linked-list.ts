@@ -3,7 +3,7 @@ import {
   GenericErrorFields,
   LucidError,
 } from "@/common.js";
-import { Data as EffectData, Effect } from "effect";
+import { Array, Order, Data as EffectData, Effect } from "effect";
 import {
   Assets,
   Data,
@@ -75,36 +75,81 @@ export const findLinkInLinkedList = <T extends { key?: string }>(
 };
 
 /**
- * Function to sort a linked list.
+ * Given a list of `ElementUTxO` values, this function sorts them by their keys
+ * (with the given comparison function, ascending by default), and keeps as many
+ * of the elements that correctly point to their links. In other words, any
+ * dangling element is silently dropped from the given list of elements.
+ *
+ * This function does NOT mutate the given array of elements.
+ *
+ * This function also does not work if any of the **node elements** have empty
+ * keys. Root key is not considered at all.
+ *
+ * @param elements: The array of `ElementUTxO` values that you want to sort.
  */
-export const sortLinkedList = <T extends LinkedElement>(
-  elements: T[],
-  root: T,
-  firstLink: string | null,
-): Effect.Effect<T[], LinkedListError> =>
+export const takeSortedElements = <
+  R extends Data,
+  N extends Data,
+  T extends ElementUTxO<R, N>
+>(elements: T[], compFn: (k0: string, k1: string) => -1 | 0 | 1 = (k0, k1) => {
+  if (k0 === k1) {
+    return 0;
+  } else if (k0 < k1) {
+    return -1;
+  } else {
+    return 1;
+  }
+}): Effect.Effect<T[], LinkedListError> =>
   Effect.gen(function* () {
-    const elementMap = new Map(
-      elements.filter((e) => e.key !== undefined).map((e) => [e.key!, e]),
-    );
-    const sorted: T[] = [root];
-    let link = firstLink;
+    if (elements.length <= 0) return elements;
 
-    while (link !== null) {
-      const nextElement = elementMap.get(link);
+    // This function only works if none of the node elements are identified with
+    // empty keys.
+    let emptyKeyEncountered = false;
 
-      if (nextElement) {
-        sorted.push(nextElement);
-        link = nextElement.datum.link;
+    // We initially sort by keys:
+    const sortedByKeys = Array.sortWith(elements, (e) => {
+      if ("key" in e) {
+        if (e.key === "") {
+          emptyKeyEncountered = true;
+        }
+        return e.key;
       } else {
-        return yield* Effect.fail(
-          new LinkedListError({
-            message: `Failed to sort elements in linked list`,
-            cause: `Root node not found among given elements`,
-          }),
-        );
+        return "";
       }
+    }, Order.make(compFn));
+
+    if (emptyKeyEncountered) {
+      return yield* new LinkedListError({
+        message: "Sort failed",
+        cause: "An element with empty key was encountered",
+      });
     }
-    return sorted;
+
+    // In a second pass we make sure each element is followed by its link:
+    const firstElement = sortedByKeys[0];
+    const [remainingElements, _lastElement] = yield* Effect.reduce(
+      sortedByKeys,
+      [[], firstElement],
+      ([acc, prev]: [T[], T | undefined], curr: T) => Effect.gen(function* () {
+        if (prev === undefined) {
+          return [acc, undefined];
+        } else if ("key" in curr) {
+          if (prev.datum.link === curr.key) {
+            return [[...acc, prev], curr];
+          } else {
+            return [[...acc, prev], undefined];
+          }
+        } else {
+          return yield* new LinkedListError({
+            message: "Sort failed",
+            cause: "More than 1 root element encountered",
+          });
+        }
+      }),
+    );
+
+    return remainingElements;
   });
 
 export type LinkedListInitParams = {
