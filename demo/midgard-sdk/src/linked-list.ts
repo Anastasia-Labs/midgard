@@ -30,12 +30,10 @@ export const ElementSchema = Data.Object({
 export type Element = Data.Static<typeof ElementSchema>;
 export const Element = ElementSchema as unknown as Element;
 
-export type RootElementUTxO<TRootData> = { data: TRootData };
-export type NodeElementUTxO<TNodeData> = { key: string; data: TNodeData };
-
-export type ElementUTxO<TRootData, TNodeData> =
-  | AuthenticUTxO<Element, RootElementUTxO<TRootData>>
-  | AuthenticUTxO<Element, NodeElementUTxO<TNodeData>>;
+export type ElementExtra = {
+  key: string;
+};
+export type ElementUTxO<TDatum = Element> = AuthenticUTxO<TDatum, ElementExtra>;
 
 export interface LinkedElement {
   key?: string;
@@ -45,9 +43,9 @@ export interface LinkedElement {
 }
 
 /**
- * Function to find a node in a linked list by its key.
+ * Function to find a nodeUTxO that corresponds to the given link
  */
-export const findLinkInLinkedList = <T extends { key?: string }>(
+export const findUTxOByLink = <T extends { key?: string }>(
   link: string | null,
   elements: T[],
 ): Effect.Effect<T, LinkedListError> => {
@@ -68,7 +66,7 @@ export const findLinkInLinkedList = <T extends { key?: string }>(
     return Effect.fail(
       new LinkedListError({
         message: errorMessage,
-        cause: `Link "${link}" not found among given elements`,
+        cause: `Link not found among given elements`,
       }),
     );
   }

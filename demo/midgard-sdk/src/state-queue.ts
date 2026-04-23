@@ -27,14 +27,11 @@ import {
   utxosAtByNFTPolicyId,
 } from "@/common.js";
 import { LucidError, makeReturn } from "@/common.js";
+import { authenticateUTxO, authenticateUTxOs } from "@/internals.js";
 import {
-  authenticateUTxO,
-  authenticateUTxOs,
-  AuthenticUTxO,
-} from "@/internals.js";
-import {
+  ElementUTxO,
   LinkedListError,
-  findLinkInLinkedList,
+  findUTxOByLink,
   incompleteInitLinkedListTxProgram,
   sortLinkedList,
 } from "@/linked-list.js";
@@ -140,11 +137,6 @@ export const StateQueueMintRedeemer =
 export type StateQueueDatum = Element;
 export const StateQueueDatum = Element;
 
-type ElementExtra = {
-  key: string;
-};
-export type ElementUTxO<TDatum = Element> = AuthenticUTxO<TDatum, ElementExtra>;
-
 export type StateQueueUTxO = ElementUTxO<StateQueueDatum>;
 
 export type StateQueueFetchConfig = {
@@ -183,7 +175,7 @@ export type StateQueueRemoveBlockParams = {};
  * is the head element, and the following elements are linked from their
  * previous elements.
  *
- * Review needed: Tried to resolve this in function `sortLinkedList` in linkedList.ts, is this a better approach?, 
+ * Review needed: Tried to resolve this in function `sortLinkedList` in linkedList.ts, is this a better approach?,
  * TODO: Make it more efficient. Currently that same list of all state queue
  *       UTxOs is traversed to find the next link UTxO multiple times. It might
  *       be better to drop link UTxOs when found so that subsequent lookups
@@ -600,10 +592,7 @@ export const fetchConfirmedStateAndItsLinkProgram = (
     if (filteredForConfirmedState.length === 1) {
       const { utxo: confirmedStateUTxO, link: confirmedStatesLink } =
         filteredForConfirmedState[0];
-      const linkUTxO = yield* findLinkInLinkedList(
-        confirmedStatesLink,
-        allUTxOs,
-      );
+      const linkUTxO = yield* findUTxOByLink(confirmedStatesLink, allUTxOs);
       return {
         confirmed: confirmedStateUTxO,
         link: linkUTxO,
