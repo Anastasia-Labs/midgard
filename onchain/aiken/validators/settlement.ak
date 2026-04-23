@@ -1,4 +1,3 @@
-use aiken/collection/list
 use aiken/crypto.{ScriptHash}
 use aiken_design_patterns/singular_utxo_indexer
 use cardano/assets.{PolicyId}
@@ -7,7 +6,6 @@ use cardano/transaction.{
 }
 use midgard/common/utils
 use midgard/hub_oracle as hub
-use midgard/ledger_state
 use midgard/operator_directory.{SlashOperatorForBadSettlement}
 use midgard/operator_directory/active_operators
 use midgard/operator_directory/retired_operators
@@ -330,10 +328,12 @@ validator mint(hub_oracle: ScriptHash) {
         //
         expect state_queue.MergeToConfirmedState {
           header_node_key,
-          header_node_input_index,
           m_settlement_redeemer_index,
+          merged_block_transactions_root,
+          merged_block_deposits_root,
+          merged_block_withdrawals_root,
           ..
-        }: state_queue.MintRedeemer = state_queue_redeemer_data
+        } = state_queue_redeemer_data
         // We verify this redeemer argument so that other scripts can use it:
         expect header_node_key == settlement_id
         // Provision of redeemer index in state queue's redeemer shows that at
@@ -343,19 +343,6 @@ validator mint(hub_oracle: ScriptHash) {
         // Another solution would be checking the absence of settlement minting
         // by the state queue policy, which would be more expensive.
         expect Some(_) = m_settlement_redeemer_index
-        //
-        expect Some(merged_block) = list.at(inputs, header_node_input_index)
-        expect Input {
-          output: Output { datum: InlineDatum(block_datum_data), .. },
-          ..
-        } = merged_block
-        //
-        expect ledger_state.Header {
-          deposits_root,
-          withdrawals_root,
-          transactions_root,
-          ..
-        } = block_datum_data
 
         // 4. The transaction must produce an authentic settlement utxo with an
         //    NFT which its asset name matches `header_hash`. Let
@@ -374,9 +361,9 @@ validator mint(hub_oracle: ScriptHash) {
         // 6. The `resolution_claim` of `new_settlement` must be empty.
         let expected_produced_settlement_datum: Data =
           Datum {
-            deposits_root,
-            withdrawals_root,
-            transactions_root,
+            deposits_root: merged_block_deposits_root,
+            withdrawals_root: merged_block_withdrawals_root,
+            transactions_root: merged_block_transactions_root,
             resolution_claim: None,
           }
         expect

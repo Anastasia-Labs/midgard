@@ -59,7 +59,6 @@ pub type Header {
   transactions_root: MidgardTxsRoot,
   deposits_root: DepositsRoot,
   withdrawals_root: WithdrawalsRoot,
-  tx_orders_root: MidgardTxsRoot,
   start_time: PosixTime,
   end_time: PosixTime,
   prev_header_hash: HeaderHash,
@@ -293,9 +292,8 @@ pub type MidgardNetworkId {
 
 // ### Transaction witnesses
 
-/// TODO: Can we use `MerkleRoot<VerificationKey, Signature>`?
 pub type AddressWitsRoot =
-  MerkleRoot<VerificationKeyHash, (VerificationKey, Signature)>
+  MerkleRoot<VerificationKey, Signature>
 
 pub type MidgardScriptWitsRoot =
   MerkleRoot<ScriptHash, MidgardScript>
