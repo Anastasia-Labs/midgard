@@ -479,7 +479,7 @@ validator spend(
         registered_element_ref_input_index,
       } -> {
         // 4g. There must be no operators appointed active.
-        expect NoActiveOperators = output_datum_data
+        expect NoActiveOperators = datum
 
         // 5g. An active operator must be appointed at output.
         expect ActiveOperator {

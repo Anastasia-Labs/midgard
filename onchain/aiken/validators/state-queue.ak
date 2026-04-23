@@ -202,10 +202,7 @@ validator mint(
           // scheduler:
           // 7. The transaction must include a reference input with the
           //    scheduler NFT. Let that input's datum be the `scheduler_state`.
-          expect scheduler.ActiveOperator {
-            operator: scheduler_operator,
-            start_time: scheduler_start_time,
-          } =
+          expect scheduler.ActiveOperator { operator: scheduler_operator, .. } =
             scheduler.get_datum(
               reference_inputs: reference_inputs,
               scheduler_policy_id: scheduler_script_hash,
@@ -216,23 +213,10 @@ validator mint(
           //    from redeemer.
           expect operator == scheduler_operator
 
-          // 9. The `end_time` of `header_node` must be within the shift
-          //    interval of `scheduler_state`.
-          //
-          //    Note that scheduler's start time is inclusive, while block
-          //    header's end time is exclusive. Therefore we are using `>`,
-          //    since equality between the two wouldn't mean the block is
-          //    within the shift interval.
-          expect output_end_time > scheduler_start_time
-          // Here since both scheduler and blocks have an exclusive upper bound,
-          // we are using `<=` instead of `<`.
-          expect
-            output_end_time <= scheduler.shift_end_time(scheduler_start_time)
-
           // Update the operator's timestamp in the active operators set:
-          // 10. The transaction must include an input, spent via the
-          //     `UpdateBondHoldNewState` redeemer, of an `active_operators`
-          //     node with a key matching the `operator`.
+          // 9. The transaction must include an input, spent via the
+          //    `UpdateBondHoldNewState` redeemer, of an `active_operators`
+          //    node with a key matching the `operator`.
           expect active_operators.UpdateBondHoldNewState { active_operator, .. } =
             utils.get_spending_redeemer_data_at(
               active_operators_addr,
@@ -248,7 +232,7 @@ validator mint(
           // node (i.e. latest block in the queue).
           when m_anchor_key is {
             Some(header_hash) -> {
-              // 11a. New block must properly carry over data from previous
+              // 10a. New block must properly carry over data from previous
               //      block.
               expect Header { utxos_root, end_time, protocol_version, .. } =
                 anchor_data
@@ -261,7 +245,7 @@ validator mint(
               True
             }
             None -> {
-              // 11b. New block must properly carry over data from confirmed
+              // 10b. New block must properly carry over data from confirmed
               //      state.
               expect ConfirmedState {
                 header_hash,
