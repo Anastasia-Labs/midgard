@@ -154,27 +154,14 @@ const publishDepositFlowReferenceScripts = async ({
   "operatorLucid" | "referenceScriptsLucid" | "contracts"
 >): Promise<DepositFlowReferenceScripts> => {
   const publications: Array<{ readonly name: string; readonly utxo: UTxO }> =
-    [];
-  for (const commandName of [
-    "protocol-init",
-    "registered-operators",
-    "active-operators",
-    "state-queue",
-    "scheduler",
-    "deposit",
-    "settlement",
-  ] as const) {
-    publications.push(
-      ...(await Effect.runPromise(
-        deployReferenceScriptCommandProgram(
-          referenceScriptsLucid,
-          contracts,
-          commandName,
-          operatorLucid,
-        ),
-      )),
+    await Effect.runPromise(
+      deployReferenceScriptCommandProgram(
+        referenceScriptsLucid,
+        contracts,
+        "node-runtime",
+        operatorLucid,
+      ),
     );
-  }
   const byName = new Map<string, UTxO>();
   for (const publication of publications) {
     byName.set(publication.name, publication.utxo);

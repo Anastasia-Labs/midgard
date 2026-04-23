@@ -17,6 +17,11 @@ import {
 import * as RegisterActiveOperator from "@/transactions/register-active-operator.js";
 import * as Initialization from "@/transactions/initialization.js";
 import * as SubmitDeposit from "@/transactions/submit-deposit.js";
+import {
+  fetchReferenceScriptUtxosProgram,
+  referenceScriptByName,
+  referenceScriptTargetsByCommand,
+} from "@/transactions/reference-scripts.js";
 import packageJson from "../package.json" with { type: "json" };
 import { Effect, pipe } from "effect";
 import dotenv from "dotenv";
@@ -447,10 +452,19 @@ program
             referenceScriptsAddress: lucidService.referenceScriptsAddress,
           }),
         );
+        const depositReferenceScripts = yield* fetchReferenceScriptUtxosProgram(
+          lucidService.api,
+          lucidService.referenceScriptsAddress,
+          referenceScriptTargetsByCommand(contracts).deposit,
+        ).pipe(
+          Effect.map((resolved) => ({
+            depositMinting: referenceScriptByName(resolved, "deposit minting"),
+          })),
+        );
         return yield* SubmitDeposit.submitDepositProgram(
           lucidService.api,
           contracts,
-          depositConfig,
+          { ...depositConfig, referenceScripts: depositReferenceScripts },
         );
       }).pipe(
         Effect.tap((txHash) =>

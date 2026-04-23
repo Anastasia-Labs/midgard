@@ -41,6 +41,11 @@ import * as DepositStatusCommand from "@/commands/deposit-status.js";
 import { resolveTxStatus } from "@/commands/tx-status.js";
 import * as UtxosCommand from "@/commands/utxos.js";
 import * as SubmitDeposit from "@/transactions/submit-deposit.js";
+import {
+  fetchReferenceScriptUtxosProgram,
+  referenceScriptByName,
+  referenceScriptTargetsByCommand,
+} from "@/transactions/reference-scripts.js";
 import { fromHex, getAddressDetails, toHex } from "@lucid-evolution/lucid";
 import * as SDK from "@al-ft/midgard-sdk";
 import { Cause, Effect, Metric, Queue, Ref } from "effect";
@@ -896,11 +901,20 @@ const postDepositBuildHandler = Effect.gen(function* () {
   }
 
   const contracts = yield* MidgardContracts;
+  const depositReferenceScripts = yield* fetchReferenceScriptUtxosProgram(
+    lucid.api,
+    lucid.referenceScriptsAddress,
+    referenceScriptTargetsByCommand(contracts).deposit,
+  ).pipe(
+    Effect.map((resolved) => ({
+      depositMinting: referenceScriptByName(resolved, "deposit minting"),
+    })),
+  );
   const built =
     yield* SubmitDeposit.buildUnsignedDepositTxFromFundingContextProgram(
       lucid.api,
       contracts,
-      buildRequest,
+      { ...buildRequest, referenceScripts: depositReferenceScripts },
     );
   return yield* HttpServerResponse.json(built);
 }).pipe(
@@ -908,6 +922,9 @@ const postDepositBuildHandler = Effect.gen(function* () {
     failWith500("POST", DEPOSIT_BUILD_ENDPOINT, e),
   ),
   Effect.catchTag("SubmitDepositError", (e) =>
+    failWith500("POST", DEPOSIT_BUILD_ENDPOINT, e.cause, e.message),
+  ),
+  Effect.catchTag("StateQueueError", (e) =>
     failWith500("POST", DEPOSIT_BUILD_ENDPOINT, e.cause, e.message),
   ),
   Effect.catchTag("HubOracleError", (e) =>

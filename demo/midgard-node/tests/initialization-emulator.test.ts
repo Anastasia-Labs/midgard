@@ -27,6 +27,7 @@ import {
   activateOperatorProgram,
   registerOperatorProgram,
 } from "@/transactions/register-active-operator.js";
+import { verifyNodeRuntimeReferenceScriptsProgram } from "@/transactions/reference-scripts.js";
 
 const loadContracts = (oneShotOutRef: {
   txHash: string;
@@ -178,12 +179,25 @@ describe("initialization emulator", () => {
     const status = await Effect.runPromise(
       fetchProtocolDeploymentStatus(lucid, contracts),
     );
+    const runtimeReferenceScripts = await Effect.runPromise(
+      verifyNodeRuntimeReferenceScriptsProgram(
+        lucid,
+        await referenceScriptsLucid.wallet().address(),
+        contracts,
+      ),
+    );
+    const runtimeReferenceScriptNames = runtimeReferenceScripts.map(
+      ({ name }) => name,
+    );
 
     expect(txHash).toHaveLength(64);
     expect(hubOracleWitness).not.toBeNull();
     expect(schedulerInitialized).toBe(true);
     expect(schedulerDatum).toEqual("NoActiveOperators");
     expect(status.complete).toBe(true);
+    expect(runtimeReferenceScriptNames).toContain("state-queue spending");
+    expect(runtimeReferenceScriptNames).toContain("deposit minting");
+    expect(runtimeReferenceScriptNames).toContain("settlement minting");
   });
 
   it("reports already initialized when the atomic protocol root set exists", async () => {

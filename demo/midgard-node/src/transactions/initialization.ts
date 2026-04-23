@@ -20,7 +20,7 @@ import {
   TxSignError,
   TxSubmitError,
 } from "@/transactions/utils.js";
-import { deployReferenceScriptCommandProgram } from "@/transactions/register-active-operator.js";
+import { ensureNodeRuntimeReferenceScriptsProgram } from "@/transactions/reference-scripts.js";
 import { slotToUnixTimeForLucidOrEmulatorFallback } from "@/lucid-time.js";
 
 import { MidgardMpt, MptError } from "@/workers/utils/mpt.js";
@@ -82,7 +82,7 @@ export const createFraudProofCatalogueMpt = (
 export const outRefLabel = (utxo: UTxO): string =>
   `${utxo.txHash}#${utxo.outputIndex}`;
 export const OPERATOR_SET_ROOT_LOVELACE = 2_000_000n;
-const DEFAULT_DEPLOYMENT_VALIDITY_WINDOW_MS = 30_000n;
+const DEFAULT_DEPLOYMENT_VALIDITY_WINDOW_MS = 7n * 60n * 1000n;
 const DEPLOYMENT_VISIBILITY_REFRESH_MAX_RETRIES = 12;
 const DEPLOYMENT_VISIBILITY_REFRESH_DELAY = "2 seconds";
 const encodeLinkedListRootDatum = (rootData: unknown): string =>
@@ -154,14 +154,15 @@ export const atomicProtocolInitReferenceScriptsFromPublications = (
 export const ensureAtomicProtocolInitReferenceScriptsProgram = (
   referenceScriptsLucid: LucidEvolution,
   contracts: SDK.MidgardValidators,
+  fundingLucid: LucidEvolution = referenceScriptsLucid,
 ): Effect.Effect<
   AtomicProtocolInitReferenceScripts,
   SDK.StateQueueError | SDK.LucidError | TxSignError | TxSubmitError
 > =>
-  deployReferenceScriptCommandProgram(
+  ensureNodeRuntimeReferenceScriptsProgram(
     referenceScriptsLucid,
     contracts,
-    "protocol-init",
+    fundingLucid,
   ).pipe(Effect.map(atomicProtocolInitReferenceScriptsFromPublications));
 
 /**
@@ -740,6 +741,7 @@ export const program: Effect.Effect<
   const referenceScripts = yield* ensureAtomicProtocolInitReferenceScriptsProgram(
     lucidService.referenceScriptsApi,
     contracts,
+    lucid,
   );
   const initDeadline = resolveDefaultDeploymentDeadline(lucid);
   const txHash = yield* completeAndSubmit(

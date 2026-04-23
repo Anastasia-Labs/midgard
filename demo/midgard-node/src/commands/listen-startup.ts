@@ -15,6 +15,10 @@ import { formatStateQueueTopology } from "@/services/state-queue-topology.js";
 import { shouldRunGenesisOnStartup } from "@/commands/startup-policy.js";
 import * as ContractDeploymentInfo from "@/commands/contract-deployment-info.js";
 import * as Initialization from "@/transactions/initialization.js";
+import {
+  ensureNodeRuntimeReferenceScriptsProgram,
+  verifyNodeRuntimeReferenceScriptsProgram,
+} from "@/transactions/reference-scripts.js";
 import * as SDK from "@al-ft/midgard-sdk";
 import { Effect, Option, Ref } from "effect";
 
@@ -51,6 +55,35 @@ const writeStartupContractDeploymentInfo = Effect.gen(function* () {
   ),
 );
 
+const ensureNodeRuntimeReferenceScriptsOnStartup = (
+  shouldBootstrap: boolean,
+) =>
+  Effect.gen(function* () {
+    const lucid = yield* Lucid;
+    const contracts = yield* MidgardContracts;
+    if (shouldBootstrap) {
+      yield* lucid.switchToOperatorsMainWallet;
+      const publications = yield* ensureNodeRuntimeReferenceScriptsProgram(
+        lucid.referenceScriptsApi,
+        contracts,
+        lucid.api,
+      );
+      yield* Effect.logInfo(
+        `Startup node-runtime reference-script preflight completed: count=${publications.length.toString()},address=${lucid.referenceScriptsAddress}`,
+      );
+      return publications;
+    }
+    const publications = yield* verifyNodeRuntimeReferenceScriptsProgram(
+      lucid.api,
+      lucid.referenceScriptsAddress,
+      contracts,
+    );
+    yield* Effect.logInfo(
+      `Startup node-runtime reference-script verification completed: count=${publications.length.toString()},address=${lucid.referenceScriptsAddress}`,
+    );
+    return publications;
+  });
+
 /**
  * Verifies protocol deployment state at startup and optionally auto-initializes
  * an empty deployment.
@@ -85,6 +118,7 @@ export const ensureProtocolInitializedOnStartup = Effect.gen(function* () {
     yield* Effect.logInfo(
       `Startup initialization check: protocol deployment already present (state_queue=${details}).`,
     );
+    yield* ensureNodeRuntimeReferenceScriptsOnStartup(shouldBootstrap);
     yield* writeStartupContractDeploymentInfo;
     return;
   }
@@ -113,6 +147,7 @@ export const ensureProtocolInitializedOnStartup = Effect.gen(function* () {
   yield* Effect.logInfo(
     `Startup protocol initialization submitted successfully: ${initTxHash}`,
   );
+  yield* ensureNodeRuntimeReferenceScriptsOnStartup(false);
   yield* writeStartupContractDeploymentInfo;
 }).pipe(
   Effect.tapError((e) =>
