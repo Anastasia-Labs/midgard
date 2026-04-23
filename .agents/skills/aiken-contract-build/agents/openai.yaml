@@ -1,0 +1,4 @@
+interface:
+  display_name: "Aiken Contract Build"
+  short_description: "Build Aiken contracts with traced flags."
+  default_prompt: "Use the Midgard Aiken contract build workflow."

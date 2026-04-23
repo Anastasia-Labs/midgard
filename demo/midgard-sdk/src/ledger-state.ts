@@ -3,7 +3,6 @@ import {
   AddressSchema,
   H32Schema,
   MerkleRootSchema,
-  MidgardAddressSchema,
   OutputReferenceSchema,
   POSIXTimeSchema,
   PubKeyHashSchema,
@@ -28,6 +27,8 @@ export const HeaderSchema = Data.Object({
 });
 export type Header = Data.Static<typeof HeaderSchema>;
 export const Header = HeaderSchema as unknown as Header;
+export const castHeaderToData = (header: Header): unknown =>
+  Data.castTo(header, Header);
 
 export const ConfirmedStateSchema = Data.Object({
   headerHash: HeaderHashSchema,
@@ -39,6 +40,9 @@ export const ConfirmedStateSchema = Data.Object({
 });
 export type ConfirmedState = Data.Static<typeof ConfirmedStateSchema>;
 export const ConfirmedState = ConfirmedStateSchema as unknown as ConfirmedState;
+export const castConfirmedStateToData = (
+  confirmedState: ConfirmedState,
+): unknown => Data.castTo(confirmedState, ConfirmedState);
 
 export const CardanoDatumSchema = Data.Enum([
   Data.Literal("NoDatum"),
@@ -57,8 +61,8 @@ export type CardanoDatum = Data.Static<typeof CardanoDatumSchema>;
 export const CardanoDatum = CardanoDatumSchema as unknown as CardanoDatum;
 
 export const DepositInfoSchema = Data.Object({
-  l2Address: MidgardAddressSchema,
-  l2Datum: Data.Nullable(Data.Bytes()),
+  l2_address: AddressSchema,
+  l2_datum: Data.Nullable(Data.Any()),
 });
 export type DepositInfo = Data.Static<typeof DepositInfoSchema>;
 export const DepositInfo = DepositInfoSchema as unknown as DepositInfo;
@@ -157,7 +161,10 @@ export const WithdrawalBodySchema = Data.Object({
 export type WithdrawalBody = Data.Static<typeof WithdrawalBodySchema>;
 export const WithdrawalBody = WithdrawalBodySchema as unknown as WithdrawalBody;
 
-export const WithdrawalSignatureSchema = Data.Map(Data.Bytes(), Data.Bytes());
+export const WithdrawalSignatureSchema = Data.Tuple([
+  Data.Bytes(),
+  Data.Bytes(),
+]);
 export type WithdrawalSignature = Data.Static<typeof WithdrawalSignatureSchema>;
 export const WithdrawalSignature =
   WithdrawalSignatureSchema as unknown as WithdrawalSignature;
@@ -165,7 +172,11 @@ export const WithdrawalSignature =
 export const WithdrawalValiditySchema = Data.Enum([
   Data.Literal("WithdrawalIsValid"),
   Data.Literal("NonExistentWithdrawalUtxo"),
-  Data.Literal("SpentWithdrawalUtxo"),
+  Data.Object({
+    SpentWithdrawalUtxo: Data.Object({
+      l2_tx_id: Data.Bytes(),
+    }),
+  }),
   Data.Literal("IncorrectWithdrawalOwner"),
   Data.Literal("IncorrectWithdrawalValue"),
   Data.Literal("IncorrectWithdrawalSignature"),

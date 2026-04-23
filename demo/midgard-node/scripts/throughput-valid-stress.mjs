@@ -28,6 +28,20 @@ const chainLength = Number.parseInt(process.env.STRESS_CHAIN_LENGTH ?? '500', 10
 const maxChains = Number.parseInt(process.env.STRESS_MAX_CHAINS ?? '8', 10);
 const utxosPerWallet = Number.parseInt(process.env.STRESS_UTXOS_PER_WALLET ?? '3', 10);
 const minLovelace = BigInt(process.env.STRESS_MIN_LOVELACE ?? '0');
+const fanoutEnabled =
+  (process.env.STRESS_FANOUT_ENABLED ?? 'true').trim().toLowerCase() !== 'false';
+const fanoutMaxOutputsPerTx = Number.parseInt(
+  process.env.STRESS_FANOUT_MAX_OUTPUTS_PER_TX ?? '256',
+  10,
+);
+const fanoutOutputLovelace =
+  process.env.STRESS_FANOUT_OUTPUT_LOVELACE === undefined
+    ? null
+    : BigInt(process.env.STRESS_FANOUT_OUTPUT_LOVELACE);
+const fanoutStatusTimeoutMs = Number.parseInt(
+  process.env.STRESS_FANOUT_STATUS_TIMEOUT_MS ?? '30000',
+  10,
+);
 const retry503 = Number.parseInt(process.env.STRESS_RETRY_503 ?? '3', 10);
 const retryDelayMs = Number.parseInt(process.env.STRESS_RETRY_DELAY_MS ?? '25', 10);
 const metricsPollMs = Number.parseInt(process.env.STRESS_METRICS_POLL_MS ?? '1000', 10);
@@ -53,6 +67,12 @@ if (!Number.isFinite(maxChains) || maxChains <= 0) {
 }
 if (!Number.isFinite(utxosPerWallet) || utxosPerWallet <= 0) {
   throw new Error('STRESS_UTXOS_PER_WALLET must be a positive integer');
+}
+if (!Number.isFinite(fanoutMaxOutputsPerTx) || fanoutMaxOutputsPerTx <= 1) {
+  throw new Error('STRESS_FANOUT_MAX_OUTPUTS_PER_TX must be an integer greater than 1');
+}
+if (!Number.isFinite(fanoutStatusTimeoutMs) || fanoutStatusTimeoutMs <= 0) {
+  throw new Error('STRESS_FANOUT_STATUS_TIMEOUT_MS must be a positive integer');
 }
 if (!Number.isFinite(metricsPollMs) || metricsPollMs <= 0) {
   throw new Error('STRESS_METRICS_POLL_MS must be a positive integer');
@@ -237,12 +257,79 @@ const decodeCoin = (outputHex) => {
 };
 
 /**
- * Builds and signs a native one-to-one transfer transaction.
+ * Returns true when a transaction output carries non-ADA assets.
  */
-const buildNativeSignedOneToOne = ({ spendOutRefCbor, outputCbor, signer }) => {
+const outputHasMultiAssets = (outputCbor) =>
+  CML.TransactionOutput.from_cbor_bytes(outputCbor).amount().has_multiassets();
+
+/**
+ * Returns a transaction output equivalent to `outputCbor` with a reduced coin.
+ */
+const withOutputCoin = (outputCbor, coin) => {
+  const output = CML.TransactionOutput.from_cbor_bytes(outputCbor);
+  const currentAmount = output.amount();
+  const nextAmount = currentAmount.has_multiassets()
+    ? CML.Value.new(coin, currentAmount.multi_asset())
+    : CML.Value.from_coin(coin);
+  output.set_amount(nextAmount);
+  return Buffer.from(output.to_cbor_bytes());
+};
+
+/**
+ * Returns a transaction output with the same address as `templateOutputCbor`
+ * and a lovelace-only value.
+ */
+const lovelaceOnlyOutputForTemplate = (templateOutputCbor, coin) => {
+  const template = CML.TransactionOutput.from_cbor_bytes(templateOutputCbor);
+  return Buffer.from(
+    CML.TransactionOutput.new(
+      template.address(),
+      CML.Value.from_coin(coin),
+    ).to_cbor_bytes(),
+  );
+};
+
+/**
+ * Splits a lovelace-only native UTxO into many same-address outputs for
+ * high-concurrency benchmark setup.
+ */
+const buildNativeSignedSplitWithFee = ({
+  spendOutRefCbor,
+  inputOutputCbor,
+  signer,
+  outputCount,
+  fee,
+}) => {
+  const input = CML.TransactionOutput.from_cbor_bytes(inputOutputCbor);
+  if (input.amount().has_multiassets()) {
+    throw new Error('fanout setup only supports lovelace-only source UTxOs');
+  }
+  const inputCoin = input.amount().coin();
+  if (inputCoin <= fee) {
+    throw new Error(
+      `fanout source coin ${inputCoin.toString()} cannot cover fee ${fee.toString()}`,
+    );
+  }
+  const available = inputCoin - fee;
+  const outputCountBig = BigInt(outputCount);
+  const baseCoin = available / outputCountBig;
+  const remainder = available % outputCountBig;
+  if (baseCoin <= 0n) {
+    throw new Error(
+      `fanout source coin ${inputCoin.toString()} too small for ${outputCount} outputs`,
+    );
+  }
+
+  const outputs = Array.from({ length: outputCount }, (_, index) =>
+    lovelaceOnlyOutputForTemplate(
+      inputOutputCbor,
+      baseCoin + (BigInt(index) < remainder ? 1n : 0n),
+    ),
+  );
+
   const spendInputsPreimageCbor = encodeByteListPreimage([spendOutRefCbor]);
   const referenceInputsPreimageCbor = EMPTY_CBOR_LIST;
-  const outputsPreimageCbor = encodeByteListPreimage([outputCbor]);
+  const outputsPreimageCbor = encodeByteListPreimage(outputs);
   const requiredObserversPreimageCbor = EMPTY_CBOR_LIST;
   const requiredSignersPreimageCbor = encodeByteListPreimage([
     Buffer.from(signer.to_public().hash().to_raw_bytes()),
@@ -256,7 +343,7 @@ const buildNativeSignedOneToOne = ({ spendOutRefCbor, outputCbor, signer }) => {
     hash32(spendInputsPreimageCbor),
     hash32(referenceInputsPreimageCbor),
     hash32(outputsPreimageCbor),
-    0n,
+    fee,
     MIDGARD_POSIX_TIME_NONE,
     MIDGARD_POSIX_TIME_NONE,
     hash32(requiredObserversPreimageCbor),
@@ -278,11 +365,13 @@ const buildNativeSignedOneToOne = ({ spendOutRefCbor, outputCbor, signer }) => {
   ]);
   const scriptTxWitsPreimageCbor = EMPTY_CBOR_LIST;
   const redeemerTxWitsPreimageCbor = EMPTY_CBOR_LIST;
+  const datumTxWitsPreimageCbor = EMPTY_CBOR_LIST;
 
   const witnessCompact = [
     hash32(addrTxWitsPreimageCbor),
     hash32(scriptTxWitsPreimageCbor),
     hash32(redeemerTxWitsPreimageCbor),
+    hash32(datumTxWitsPreimageCbor),
   ];
 
   const compact = [
@@ -320,6 +409,8 @@ const buildNativeSignedOneToOne = ({ spendOutRefCbor, outputCbor, signer }) => {
     scriptTxWitsPreimageCbor,
     witnessCompact[2],
     redeemerTxWitsPreimageCbor,
+    witnessCompact[3],
+    datumTxWitsPreimageCbor,
   ];
 
   const txCbor = encodeCbor([
@@ -329,33 +420,220 @@ const buildNativeSignedOneToOne = ({ spendOutRefCbor, outputCbor, signer }) => {
     witnessFull,
   ]);
 
-  const txId = hash32(encodeCbor(compact));
+  return {
+    txId: bodyHash,
+    txHex: txCbor.toString('hex'),
+    outputs: outputs.map((outputCbor, outputIndex) => ({
+      outputCbor,
+      spendOutRefCbor: toOutRefCbor(bodyHash, outputIndex),
+      outRefHex: toOutRefCbor(bodyHash, outputIndex).toString('hex'),
+      outputIndex,
+    })),
+    fee,
+  };
+};
+
+/**
+ * Builds a native split transaction with a converged linear min fee.
+ */
+const buildNativeSignedSplit = ({
+  spendOutRefCbor,
+  inputOutputCbor,
+  signer,
+  outputCount,
+  minFeeA,
+  minFeeB,
+}) => {
+  let fee = minFeeB;
+  for (let iteration = 0; iteration < 12; iteration += 1) {
+    const tx = buildNativeSignedSplitWithFee({
+      spendOutRefCbor,
+      inputOutputCbor,
+      signer,
+      outputCount,
+      fee,
+    });
+    const requiredFee = minFeeA * BigInt(Buffer.from(tx.txHex, 'hex').length) + minFeeB;
+    if (requiredFee === fee) {
+      return tx;
+    }
+    fee = requiredFee;
+  }
+  throw new Error('failed to converge native fanout transaction min fee');
+};
+
+/**
+ * Builds and signs a native one-to-one transfer transaction for a fixed fee.
+ */
+const buildNativeSignedOneToOneWithFee = ({
+  spendOutRefCbor,
+  outputCbor,
+  signer,
+  fee,
+}) => {
+  const spendInputsPreimageCbor = encodeByteListPreimage([spendOutRefCbor]);
+  const referenceInputsPreimageCbor = EMPTY_CBOR_LIST;
+  const outputsPreimageCbor = encodeByteListPreimage([outputCbor]);
+  const requiredObserversPreimageCbor = EMPTY_CBOR_LIST;
+  const requiredSignersPreimageCbor = encodeByteListPreimage([
+    Buffer.from(signer.to_public().hash().to_raw_bytes()),
+  ]);
+  const mintPreimageCbor = EMPTY_CBOR_LIST;
+
+  const scriptIntegrityHash = hash32(EMPTY_CBOR_NULL);
+  const auxiliaryDataHash = hash32(EMPTY_CBOR_NULL);
+
+  const bodyCompact = [
+    hash32(spendInputsPreimageCbor),
+    hash32(referenceInputsPreimageCbor),
+    hash32(outputsPreimageCbor),
+    fee,
+    MIDGARD_POSIX_TIME_NONE,
+    MIDGARD_POSIX_TIME_NONE,
+    hash32(requiredObserversPreimageCbor),
+    hash32(requiredSignersPreimageCbor),
+    hash32(mintPreimageCbor),
+    scriptIntegrityHash,
+    auxiliaryDataHash,
+    MIDGARD_NETWORK_ID_PREPROD,
+  ];
+
+  const bodyHash = hash32(encodeCbor(bodyCompact));
+  const witness = CML.make_vkey_witness(
+    CML.TransactionHash.from_raw_bytes(bodyHash),
+    signer,
+  );
+
+  const addrTxWitsPreimageCbor = encodeByteListPreimage([
+    Buffer.from(witness.to_cbor_bytes()),
+  ]);
+  const scriptTxWitsPreimageCbor = EMPTY_CBOR_LIST;
+  const redeemerTxWitsPreimageCbor = EMPTY_CBOR_LIST;
+  const datumTxWitsPreimageCbor = EMPTY_CBOR_LIST;
+
+  const witnessCompact = [
+    hash32(addrTxWitsPreimageCbor),
+    hash32(scriptTxWitsPreimageCbor),
+    hash32(redeemerTxWitsPreimageCbor),
+    hash32(datumTxWitsPreimageCbor),
+  ];
+
+  const compact = [
+    MIDGARD_NATIVE_TX_VERSION,
+    bodyHash,
+    hash32(encodeCbor(witnessCompact)),
+    TX_IS_VALID_CODE,
+  ];
+
+  const bodyFull = [
+    bodyCompact[0],
+    spendInputsPreimageCbor,
+    bodyCompact[1],
+    referenceInputsPreimageCbor,
+    bodyCompact[2],
+    outputsPreimageCbor,
+    bodyCompact[3],
+    bodyCompact[4],
+    bodyCompact[5],
+    bodyCompact[6],
+    requiredObserversPreimageCbor,
+    bodyCompact[7],
+    requiredSignersPreimageCbor,
+    bodyCompact[8],
+    mintPreimageCbor,
+    bodyCompact[9],
+    bodyCompact[10],
+    bodyCompact[11],
+  ];
+
+  const witnessFull = [
+    witnessCompact[0],
+    addrTxWitsPreimageCbor,
+    witnessCompact[1],
+    scriptTxWitsPreimageCbor,
+    witnessCompact[2],
+    redeemerTxWitsPreimageCbor,
+    witnessCompact[3],
+    datumTxWitsPreimageCbor,
+  ];
+
+  const txCbor = encodeCbor([
+    MIDGARD_NATIVE_TX_VERSION,
+    compact,
+    bodyFull,
+    witnessFull,
+  ]);
+
+  const txId = bodyHash;
 
   return {
     txId,
     txHex: txCbor.toString('hex'),
     nextOutRef: toOutRefCbor(txId, 0),
+    outputCbor,
+    fee,
   };
+};
+
+/**
+ * Builds and signs a native one-to-one transfer transaction with a converged
+ * linear min fee.
+ */
+const buildNativeSignedOneToOne = ({
+  spendOutRefCbor,
+  inputOutputCbor,
+  signer,
+  minFeeA,
+  minFeeB,
+}) => {
+  let fee = minFeeB;
+  for (let iteration = 0; iteration < 12; iteration += 1) {
+    const inputCoin = CML.TransactionOutput.from_cbor_bytes(
+      inputOutputCbor,
+    ).amount().coin();
+    if (inputCoin <= fee) {
+      throw new Error(
+        `input coin ${inputCoin.toString()} cannot cover fee ${fee.toString()}`,
+      );
+    }
+    const outputCbor = withOutputCoin(inputOutputCbor, inputCoin - fee);
+    const tx = buildNativeSignedOneToOneWithFee({
+      spendOutRefCbor,
+      outputCbor,
+      signer,
+      fee,
+    });
+    const requiredFee = minFeeA * BigInt(Buffer.from(tx.txHex, 'hex').length) + minFeeB;
+    if (requiredFee === fee) {
+      return tx;
+    }
+    fee = requiredFee;
+  }
+  throw new Error('failed to converge native stress transaction min fee');
 };
 
 /**
  * Prebuilds a dependent transaction chain for the stress workload.
  */
-const prebuildChain = (chain, length) => {
+const prebuildChain = (chain, length, feeConfig) => {
   /** @type {PrebuiltTx[]} */
   const txs = [];
   let currentOutRef = chain.spendOutRefCbor;
+  let currentOutputCbor = chain.outputCbor;
   for (let i = 0; i < length; i++) {
     const tx = buildNativeSignedOneToOne({
       spendOutRefCbor: currentOutRef,
-      outputCbor: chain.outputCbor,
       signer: chain.signer,
+      inputOutputCbor: currentOutputCbor,
+      minFeeA: feeConfig.minFeeA,
+      minFeeB: feeConfig.minFeeB,
     });
     txs.push({
       txHex: tx.txHex,
       txIdHex: tx.txId.toString('hex'),
     });
     currentOutRef = tx.nextOutRef;
+    currentOutputCbor = tx.outputCbor;
   }
   return txs;
 };
@@ -394,11 +672,138 @@ const submitTxHex = async (txHex) => {
 };
 
 /**
+ * Waits until a transaction has passed validation or failed.
+ */
+const waitForAcceptedTx = async (txIdHex, label) => {
+  const startedAt = Date.now();
+  while (Date.now() - startedAt <= fanoutStatusTimeoutMs) {
+    const status = await fetchTxStatus(txIdHex);
+    if (
+      status === 'accepted' ||
+      status === 'pending_commit' ||
+      status === 'awaiting_local_recovery' ||
+      status === 'committed'
+    ) {
+      return status;
+    }
+    if (status === 'rejected') {
+      throw new Error(`${label} ${txIdHex} was rejected`);
+    }
+    await sleep(txStatusRetryDelayMs);
+  }
+  throw new Error(
+    `${label} ${txIdHex} did not reach accepted status within ${fanoutStatusTimeoutMs}ms`,
+  );
+};
+
+/**
+ * Estimates a safe leaf value for generated fanout UTxOs.
+ */
+const defaultFanoutOutputLovelace = (minFeeA, minFeeB) => {
+  const estimatedTxBytes = 900n;
+  const estimatedFee = minFeeA * estimatedTxBytes + minFeeB;
+  return estimatedFee * BigInt(chainLength + 2) + 1_000_000n;
+};
+
+/**
+ * Expands available source UTxOs into enough independent benchmark chains.
+ */
+const ensureFanoutCandidates = async ({
+  candidates,
+  minFeeA,
+  minFeeB,
+}) => {
+  if (!fanoutEnabled || candidates.length >= maxChains) {
+    return {
+      candidates,
+      fanoutTxCount: 0,
+      fanoutOutputCount: 0,
+    };
+  }
+
+  const leafLovelace =
+    fanoutOutputLovelace ?? defaultFanoutOutputLovelace(minFeeA, minFeeB);
+  const result = [...candidates];
+  let fanoutTxCount = 0;
+  let fanoutOutputCount = 0;
+
+  result.sort((a, b) =>
+    a.lovelace === b.lovelace ? 0 : a.lovelace > b.lovelace ? -1 : 1,
+  );
+
+  for (let sourceIndex = 0; result.length < maxChains && sourceIndex < result.length; sourceIndex += 1) {
+    const source = result[sourceIndex];
+    if (outputHasMultiAssets(source.outputCbor)) {
+      continue;
+    }
+
+    const remainingAfterSpendingSource = result.length - 1;
+    const neededOutputs = maxChains - remainingAfterSpendingSource;
+    const affordableOutputs = Number(source.lovelace / leafLovelace);
+    const outputCount = Math.min(
+      fanoutMaxOutputsPerTx,
+      neededOutputs,
+      affordableOutputs,
+    );
+    if (outputCount <= 1) {
+      continue;
+    }
+
+    const split = buildNativeSignedSplit({
+      spendOutRefCbor: source.spendOutRefCbor,
+      inputOutputCbor: source.outputCbor,
+      signer: source.signer,
+      outputCount,
+      minFeeA,
+      minFeeB,
+    });
+    const txIdHex = split.txId.toString('hex');
+    const submittedResult = await submitTxHex(split.txHex);
+    if (!submittedResult.ok) {
+      throw new Error(
+        `fanout submit failed for ${source.outRefHex}: status=${submittedResult.status} body=${submittedResult.body ?? ''}`,
+      );
+    }
+    const status = await waitForAcceptedTx(txIdHex, 'fanout tx');
+    console.log(
+      `fanout tx accepted: tx=${txIdHex} status=${status} outputs=${split.outputs.length} source=${source.outRefHex}`,
+    );
+
+    result.splice(
+      sourceIndex,
+      1,
+      ...split.outputs.map((output) => ({
+        walletKey: source.walletKey,
+        address: source.address,
+        signer: source.signer,
+        spendOutRefCbor: output.spendOutRefCbor,
+        outputCbor: output.outputCbor,
+        lovelace: CML.TransactionOutput.from_cbor_bytes(output.outputCbor)
+          .amount()
+          .coin(),
+        outRefHex: output.outRefHex,
+      })),
+    );
+    fanoutTxCount += 1;
+    fanoutOutputCount += split.outputs.length;
+    sourceIndex += split.outputs.length - 1;
+  }
+
+  return {
+    candidates: result,
+    fanoutTxCount,
+    fanoutOutputCount,
+  };
+};
+
+/**
  * Runs the valid-stress throughput workload.
  */
 const main = async () => {
   const env = parseEnv(envPath);
   const wallets = makeWalletsFromEnv(env);
+  const minFeeA = BigInt(process.env.STRESS_MIN_FEE_A ?? env.MIN_FEE_A ?? '0');
+  const minFeeB = BigInt(process.env.STRESS_MIN_FEE_B ?? env.MIN_FEE_B ?? '0');
 
   if (wallets.length === 0) {
     throw new Error(`No genesis wallet seeds found in ${envPath}`);
@@ -415,12 +820,19 @@ const main = async () => {
         maxChains,
         utxosPerWallet,
         minLovelace: minLovelace.toString(),
+        fanoutEnabled,
+        fanoutMaxOutputsPerTx,
+        fanoutOutputLovelace:
+          fanoutOutputLovelace === null ? null : fanoutOutputLovelace.toString(),
+        fanoutStatusTimeoutMs,
         retry503,
         retryDelayMs,
         metricsPollMs,
         observeAfterSubmitSec,
         targetAcceptedTps,
         requireFreshChains,
+        minFeeA: minFeeA.toString(),
+        minFeeB: minFeeB.toString(),
       },
       null,
       2,
@@ -469,17 +881,37 @@ const main = async () => {
     throw new Error('No spendable UTxOs found for configured wallets');
   }
 
+  const fanout = await ensureFanoutCandidates({
+    candidates,
+    minFeeA,
+    minFeeB,
+  });
+  const effectiveCandidates = fanout.candidates;
+  console.log(
+    `Available benchmark source UTxOs after fanout: ${effectiveCandidates.length} (fanout_txs=${fanout.fanoutTxCount}, fanout_outputs=${fanout.fanoutOutputCount})`,
+  );
+
   /** @type {{ outRefHex: string; txs: PrebuiltTx[]; signer: any; outputCbor: Buffer; spendOutRefCbor: Buffer; walletKey: string; address: string; lovelace: bigint; }[]} */
   const selectedChains = [];
   const generatedTxIds = new Set();
   let replaySkipped = 0;
   let duplicateSkipped = 0;
+  let chainBuildSkipped = 0;
 
-  for (const candidate of candidates) {
+  for (const candidate of effectiveCandidates) {
     if (selectedChains.length >= maxChains) {
       break;
     }
-    const txs = prebuildChain(candidate, chainLength);
+    let txs;
+    try {
+      txs = prebuildChain(candidate, chainLength, { minFeeA, minFeeB });
+    } catch (error) {
+      chainBuildSkipped += 1;
+      console.log(
+        `Skipping source UTxO that cannot fund requested chain: outref=${candidate.outRefHex} lovelace=${candidate.lovelace.toString()} reason=${error instanceof Error ? error.message : String(error)}`,
+      );
+      continue;
+    }
     if (txs.length === 0) {
       continue;
     }
@@ -517,7 +949,7 @@ const main = async () => {
   }
 
   console.log(
-    `Using ${selectedChains.length} independent prebuilt chains (replay_skipped=${replaySkipped}, duplicate_skipped=${duplicateSkipped})`,
+    `Using ${selectedChains.length} independent prebuilt chains (replay_skipped=${replaySkipped}, duplicate_skipped=${duplicateSkipped}, chain_build_skipped=${chainBuildSkipped})`,
   );
 
   const startCounters = await readCounters();
@@ -629,6 +1061,9 @@ const main = async () => {
     attempted: selectedChains.reduce((acc, chain) => acc + chain.txs.length, 0),
     replaySkipped,
     duplicateSkipped,
+    chainBuildSkipped,
+    fanoutTxCount: fanout.fanoutTxCount,
+    fanoutOutputCount: fanout.fanoutOutputCount,
     uniquePrebuiltTxIds: generatedTxIds.size,
     submitted,
     submitErrors,

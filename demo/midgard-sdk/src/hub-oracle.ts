@@ -9,6 +9,7 @@ import {
   Bech32DeserializationError,
   MidgardValidators,
   AuthenticatedValidator,
+  MintingValidator,
   ScriptHashSchema,
   UnspecifiedNetworkError,
 } from "@/common.js";
@@ -21,7 +22,9 @@ import {
   Address,
   LucidEvolution,
   PolicyId,
+  credentialToAddress,
   fromText,
+  scriptHashToCredential,
   toUnit,
   TxBuilder,
   UTxO,
@@ -34,38 +37,37 @@ export type HubOracleConfig = {
   hubOraclePolicyId: PolicyId;
 };
 
-export const HUB_ORACLE_ASSET_NAME = fromText("Hub Oracle");
+export const HUB_ORACLE_ASSET_NAME = fromText("MIDGARD_HUB_ORACLE");
 
-// TODO: This should ideally come from Aiken env directory.
-export const hubOracleAssetName = "";
+export const hubOracleAssetName = HUB_ORACLE_ASSET_NAME;
 
 export const HubOracleDatumSchema = Data.Object({
-  registeredOperators: PolicyIdSchema,
-  activeOperators: PolicyIdSchema,
-  retiredOperators: PolicyIdSchema,
+  registered_operators: PolicyIdSchema,
+  active_operators: PolicyIdSchema,
+  retired_operators: PolicyIdSchema,
   scheduler: PolicyIdSchema,
-  stateQueue: PolicyIdSchema,
-  fraudProofCatalogue: PolicyIdSchema,
-  fraudProof: PolicyIdSchema,
+  state_queue: PolicyIdSchema,
+  fraud_proof_catalogue: PolicyIdSchema,
+  fraud_proof: PolicyIdSchema,
   deposit: PolicyIdSchema,
   withdrawal: PolicyIdSchema,
-  txOrder: PolicyIdSchema,
+  tx_order: PolicyIdSchema,
   settlement: PolicyIdSchema,
   payout: PolicyIdSchema,
-  registeredOperatorsAddr: AddressSchema,
-  activeOperatorsAddr: AddressSchema,
-  retiredOperatorsAddr: AddressSchema,
-  schedulerAddr: AddressSchema,
-  stateQueueAddr: AddressSchema,
-  fraudProofCatalogueAddr: AddressSchema,
-  fraudProofAddr: AddressSchema,
-  depositAddr: AddressSchema,
-  withdrawalAddr: AddressSchema,
-  txOrderAddr: AddressSchema,
-  settlementAddr: AddressSchema,
-  payoutAddr: AddressSchema,
-  reserveAddr: AddressSchema,
-  reserveObserver: ScriptHashSchema,
+  registered_operators_addr: AddressSchema,
+  active_operators_addr: AddressSchema,
+  retired_operators_addr: AddressSchema,
+  scheduler_addr: AddressSchema,
+  state_queue_addr: AddressSchema,
+  fraud_proof_catalogue_addr: AddressSchema,
+  fraud_proof_addr: AddressSchema,
+  deposit_addr: AddressSchema,
+  withdrawal_addr: AddressSchema,
+  tx_order_addr: AddressSchema,
+  settlement_addr: AddressSchema,
+  reserve_addr: AddressSchema,
+  payout_addr: AddressSchema,
+  reserve_observer: ScriptHashSchema,
 });
 export type HubOracleDatum = Data.Static<typeof HubOracleDatumSchema>;
 export const HubOracleDatum = HubOracleDatumSchema as unknown as HubOracleDatum;
@@ -82,8 +84,9 @@ export const utxosToHubOracleUTxOs = (
  * Parameters for the init transaction.
  */
 export type HubOracleInitParams = {
-  hubOracleValidator: AuthenticatedValidator;
+  hubOracleMintValidator: MintingValidator;
   validators: HubOracleValidators;
+  oneShotNonceUTxO: UTxO;
 };
 
 export type HubOracleValidators = Omit<
@@ -133,32 +136,32 @@ export const makeHubOracleDatum = (
     );
 
     return {
-      registeredOperators: validators.registeredOperators.policyId,
-      activeOperators: validators.activeOperators.policyId,
-      retiredOperators: validators.retiredOperators.policyId,
+      registered_operators: validators.registeredOperators.policyId,
+      active_operators: validators.activeOperators.policyId,
+      retired_operators: validators.retiredOperators.policyId,
       scheduler: validators.scheduler.policyId,
-      stateQueue: validators.stateQueue.policyId,
-      fraudProofCatalogue: validators.fraudProofCatalogue.policyId,
-      fraudProof: validators.fraudProof.policyId,
+      state_queue: validators.stateQueue.policyId,
+      fraud_proof_catalogue: validators.fraudProofCatalogue.policyId,
+      fraud_proof: validators.fraudProof.policyId,
       deposit: validators.deposit.policyId,
       withdrawal: validators.withdrawal.policyId,
-      txOrder: validators.txOrder.policyId,
+      tx_order: validators.txOrder.policyId,
       settlement: validators.settlement.policyId,
       payout: validators.payout.policyId,
-      registeredOperatorsAddr,
-      activeOperatorsAddr,
-      retiredOperatorsAddr,
-      schedulerAddr,
-      stateQueueAddr,
-      fraudProofCatalogueAddr,
-      fraudProofAddr,
-      depositAddr,
-      withdrawalAddr,
-      txOrderAddr,
-      settlementAddr,
-      payoutAddr,
-      reserveAddr,
-      reserveObserver: validators.reserve.withdrawalScriptHash,
+      registered_operators_addr: registeredOperatorsAddr,
+      active_operators_addr: activeOperatorsAddr,
+      retired_operators_addr: retiredOperatorsAddr,
+      scheduler_addr: schedulerAddr,
+      state_queue_addr: stateQueueAddr,
+      fraud_proof_catalogue_addr: fraudProofCatalogueAddr,
+      fraud_proof_addr: fraudProofAddr,
+      deposit_addr: depositAddr,
+      withdrawal_addr: withdrawalAddr,
+      tx_order_addr: txOrderAddr,
+      settlement_addr: settlementAddr,
+      reserve_addr: reserveAddr,
+      payout_addr: payoutAddr,
+      reserve_observer: validators.reserve.withdrawalScriptHash,
     };
   });
 
@@ -183,18 +186,23 @@ export const incompleteHubOracleInitTxProgram = (
       const encodedDatum = Data.to<HubOracleDatum>(datum, HubOracleDatum);
 
       const assets: Assets = {
-        [toUnit(params.hubOracleValidator.policyId, HUB_ORACLE_ASSET_NAME)]: 1n,
+        [toUnit(params.hubOracleMintValidator.policyId, HUB_ORACLE_ASSET_NAME)]:
+          1n,
       };
 
       return lucid
         .newTx()
+        .collectFrom([params.oneShotNonceUTxO])
         .mintAssets(assets, Data.void())
         .pay.ToAddressWithData(
-          params.hubOracleValidator.spendingScriptAddress,
+          credentialToAddress(
+            network,
+            scriptHashToCredential(params.hubOracleMintValidator.policyId),
+          ),
           { kind: "inline", value: encodedDatum },
           assets,
         )
-        .attach.MintingPolicy(params.hubOracleValidator.mintingScript);
+        .attach.MintingPolicy(params.hubOracleMintValidator.mintingScript);
     } else {
       return yield* new UnspecifiedNetworkError({
         message: "",

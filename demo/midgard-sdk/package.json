@@ -31,18 +31,18 @@
     "eslint": "^9.21.0",
     "eslint-config-prettier": "^9.1.0",
     "prettier": "^3.5.2",
+    "rimraf": "^6.0.1",
     "ts-node": "^10.9.2",
     "tsup": "^8.4.0",
     "typescript": "^5.7.3",
-    "vitest": "2.1.8",
-    "rimraf": "^6.0.1"
+    "vitest": "2.1.8"
   },
   "directories": {
     "test": "test"
   },
   "dependencies": {
     "@harmoniclabs/crypto": "^0.3.0",
-    "@lucid-evolution/lucid": "^0.4.29",
+    "@lucid-evolution/lucid": "^0.4.30",
     "@noble/hashes": "^1.7.1",
     "effect": "^3.14.22"
   }

@@ -6,3 +6,5 @@ build/
 docs/
 .direnv
 utils.log
+.codex
+deploymentInfo/

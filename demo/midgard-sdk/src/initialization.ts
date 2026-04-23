@@ -6,7 +6,6 @@ import {
   TxSignBuilder,
 } from "@lucid-evolution/lucid";
 import {
-  AuthenticatedValidator,
   Bech32DeserializationError,
   LucidError,
   MidgardValidators,
@@ -20,24 +19,22 @@ import { incompleteActiveOperatorInitTxProgram } from "@/active-operators.js";
 import { incompleteRegisteredOperatorInitTxProgram } from "@/registered-operators.js";
 import { incompleteRetiredOperatorInitTxProgram } from "@/retired-operators.js";
 
-export const VALIDITY_RANGE_BUFFER = 5 * 60 * 1000;
+export const VALIDITY_RANGE_BUFFER = 8 * 60 * 1000;
+
+export const ATOMIC_INIT_OUTPUT_INDEXES = {
+  hubOracle: 0n,
+  scheduler: 1n,
+  stateQueue: 2n,
+  registeredOperators: 3n,
+  activeOperators: 4n,
+  retiredOperators: 5n,
+  fraudProofCatalogue: 6n,
+} as const;
 
 export type InitializationParams = {
   midgardValidators: MidgardValidators;
   fraudProofCatalogueMerkleRoot: string;
 };
-
-export const getInitializedValidatorsFromMidgardValidators = (
-  validators: MidgardValidators,
-): AuthenticatedValidator[] => [
-  validators.hubOracle,
-  validators.stateQueue,
-  validators.scheduler,
-  validators.registeredOperators,
-  validators.activeOperators,
-  validators.retiredOperators,
-  validators.fraudProofCatalogue,
-];
 
 export const incompleteInitializationTxProgram = (
   lucid: LucidEvolution,
@@ -67,14 +64,16 @@ export const incompleteInitializationTxProgram = (
 
     const nonceUtxo = utxos[0];
     const genesisTime = BigInt(Date.now() + VALIDITY_RANGE_BUFFER);
-    let tx = lucid
-      .newTx()
-      .collectFrom([nonceUtxo])
-      .validTo(Number(genesisTime));
+    const tx = lucid.newTx().validTo(Number(genesisTime));
 
     const hubOracleTx = yield* incompleteHubOracleInitTxProgram(lucid, {
-      hubOracleValidator: params.midgardValidators.hubOracle,
+      hubOracleMintValidator: params.midgardValidators.hubOracle,
       validators: params.midgardValidators,
+      oneShotNonceUTxO: nonceUtxo,
+    });
+
+    const schedulerTx = incompleteSchedulerInitTxProgram(lucid, {
+      validator: params.midgardValidators.scheduler,
     });
 
     const stateQueueTx: TxBuilder = yield* incompleteInitStateQueueTxProgram(
@@ -82,29 +81,29 @@ export const incompleteInitializationTxProgram = (
       {
         validator: params.midgardValidators.stateQueue,
         genesisTime: genesisTime,
+        outputIndex: ATOMIC_INIT_OUTPUT_INDEXES.stateQueue,
       },
     );
 
     const registeredOperatorsTx: TxBuilder =
       yield* incompleteRegisteredOperatorInitTxProgram(lucid, {
         validator: params.midgardValidators.registeredOperators,
+        outputIndex: ATOMIC_INIT_OUTPUT_INDEXES.registeredOperators,
       });
 
     const activeOperatorsTx: TxBuilder =
       yield* incompleteActiveOperatorInitTxProgram(lucid, {
         validator: params.midgardValidators.activeOperators,
+        outputIndex: ATOMIC_INIT_OUTPUT_INDEXES.activeOperators,
       });
 
     const retiredOperatorsTx = yield* incompleteRetiredOperatorInitTxProgram(
       lucid,
       {
         validator: params.midgardValidators.retiredOperators,
+        outputIndex: ATOMIC_INIT_OUTPUT_INDEXES.retiredOperators,
       },
     );
-
-    const schedulerTx = incompleteSchedulerInitTxProgram(lucid, {
-      validator: params.midgardValidators.scheduler,
-    });
 
     const fraudProofCatalogueTx: TxBuilder =
       yield* incompleteFraudProofCatalogueInitTxProgram(lucid, {
@@ -114,11 +113,11 @@ export const incompleteInitializationTxProgram = (
 
     return tx
       .compose(hubOracleTx)
+      .compose(schedulerTx)
       .compose(stateQueueTx)
       .compose(registeredOperatorsTx)
       .compose(activeOperatorsTx)
       .compose(retiredOperatorsTx)
-      .compose(schedulerTx)
       .compose(fraudProofCatalogueTx);
   });
 

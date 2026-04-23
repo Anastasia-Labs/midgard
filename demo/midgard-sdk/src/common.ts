@@ -264,7 +264,7 @@ export type MidgardValidators = {
 };
 
 export const OutputReferenceSchema = Data.Object({
-  txHash: Data.Object({ hash: Data.Bytes({ minLength: 32, maxLength: 32 }) }),
+  transactionId: Data.Bytes({ minLength: 32, maxLength: 32 }),
   outputIndex: Data.Integer(),
 });
 export type OutputReference = Data.Static<typeof OutputReferenceSchema>;
@@ -438,7 +438,7 @@ export const findOperatorByPKH = (
 > => {
   const activeOperatorMatch = EffectArray.findFirst(
     activeOperators,
-    (utxo) => utxo.datum.key === operatorPKH,
+    (utxo) => utxo.assetName.endsWith(operatorPKH),
   );
 
   if (Option.isSome(activeOperatorMatch)) {
@@ -447,7 +447,7 @@ export const findOperatorByPKH = (
 
   const retiredOperatorMatch = EffectArray.findFirst(
     retiredOperators,
-    (utxo) => utxo.datum.key === operatorPKH,
+    (utxo) => utxo.assetName.endsWith(operatorPKH),
   );
 
   if (Option.isSome(retiredOperatorMatch)) {

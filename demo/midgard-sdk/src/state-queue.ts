@@ -2,6 +2,7 @@ import {
   Address,
   Assets,
   Data,
+  fromText,
   LucidEvolution,
   paymentCredentialOf,
   PolicyId,
@@ -20,6 +21,7 @@ import {
   MissingDatumError,
   UnauthenticUtxoError,
   MerkleRoot,
+  MerkleRootSchema,
   OutputReferenceSchema,
   POSIXTime,
   POSIXTimeSchema,
@@ -30,19 +32,25 @@ import {
 import { LucidError, makeReturn } from "@/common.js";
 import { getStateToken } from "@/internals.js";
 import {
-  NodeDatum,
-  NodeDatumSchema,
-  NODE_ASSET_NAME,
+  LinkedListDatum,
+  LinkedListNodeView,
   NodeKey,
-  getNodeDatumFromUTxO,
+  STATE_QUEUE_NODE_ASSET_NAME_PREFIX,
+  encodeLinkedListNodeView,
+  getLinkedListNodeViewFromUTxO,
   LinkedListError,
   incompleteInitLinkedListTxProgram,
 } from "@/linked-list.js";
 import { ConfirmedState, Header } from "@/ledger-state.js";
 
 export const GENESIS_HEADER_HASH = "00".repeat(28);
-export const GENESIS_UTXO_ROOT = "00".repeat(32);
+export const EMPTY_MERKLE_TREE_ROOT =
+  "0e5751c026e543b2e8ab2eb06099daa1d1e5df47778f7787faab45cdf12fe3a8";
+export const GENESIS_UTXO_ROOT = EMPTY_MERKLE_TREE_ROOT;
 export const GENESIS_PROTOCOL_VERSION = 0n;
+export const STATE_QUEUE_ROOT_ASSET_NAME = fromText(
+  "MIDGARD_CONFIRMED_STATE",
+);
 
 export const StateQueueConfigSchema = Data.Object({
   initUTxO: OutputReferenceSchema,
@@ -53,19 +61,39 @@ export const StateQueueConfig =
   StateQueueConfigSchema as unknown as StateQueueConfig;
 
 export const StateQueueRedeemerSchema = Data.Enum([
-  Data.Literal("Init"),
-  Data.Literal("Deinit"),
+  Data.Object({
+    Init: Data.Object({
+      output_index: Data.Integer(),
+    }),
+  }),
+  Data.Object({
+    Deinit: Data.Object({
+      input_index: Data.Integer(),
+    }),
+  }),
   Data.Object({
     CommitBlockHeader: Data.Object({
+      latest_block_input_index: Data.Integer(),
+      new_block_output_index: Data.Integer(),
+      continued_latest_block_output_index: Data.Integer(),
       operator: Data.Bytes(),
       scheduler_ref_input_index: Data.Integer(),
-      active_node_input_index: Data.Integer(),
-      header_node_output_index: Data.Integer(),
-      previous_header_node_output_index: Data.Integer(),
+      active_operators_input_index: Data.Integer(),
       active_operators_redeemer_index: Data.Integer(),
     }),
   }),
-  Data.Literal("MergeToConfirmedState"),
+  Data.Object({
+    MergeToConfirmedState: Data.Object({
+      header_node_key: Data.Bytes(),
+      header_node_input_index: Data.Integer(),
+      confirmed_state_input_index: Data.Integer(),
+      confirmed_state_output_index: Data.Integer(),
+      m_settlement_redeemer_index: Data.Nullable(Data.Integer()),
+      merged_block_transactions_root: MerkleRootSchema,
+      merged_block_deposits_root: MerkleRootSchema,
+      merged_block_withdrawals_root: MerkleRootSchema,
+    }),
+  }),
   Data.Object({
     RemoveFraudulentBlockHeader: Data.Object({
       fraudulentOperator: Data.Bytes(),
@@ -76,12 +104,13 @@ export type StateQueueRedeemer = Data.Static<typeof StateQueueRedeemerSchema>;
 export const StateQueueRedeemer =
   StateQueueRedeemerSchema as unknown as StateQueueRedeemer;
 
-export type StateQueueDatum = Data.Static<typeof NodeDatumSchema>;
-export const StateQueueDatum = NodeDatumSchema as unknown as StateQueueDatum;
+export type StateQueueDatum = LinkedListDatum;
+export const StateQueueDatum = LinkedListDatum;
+export type StateQueueNodeView = LinkedListNodeView;
 
 export type StateQueueUTxO = {
   utxo: UTxO;
-  datum: StateQueueDatum;
+  datum: StateQueueNodeView;
   assetName: string;
 };
 
@@ -90,8 +119,8 @@ export type StateQueueUTxO = {
  *
  * If the UTxO is the confirmed state node (`datum.key === "Empty"`), it
  * returns `confirmedState.headerHash` extracted from datum.
- * Otherwise, it unsafely drops the first 4 bytes from `assetName` and returns
- * the suffix as the header hash.
+ * Otherwise, it drops the canonical state-queue block prefix from `assetName`
+ * and returns the suffix as the header hash.
  */
 export const headerHashFromStateQueueUTxO = (
   stateQueueUTxO: StateQueueUTxO,
@@ -100,7 +129,9 @@ export const headerHashFromStateQueueUTxO = (
     ? getConfirmedStateFromStateQueueDatum(stateQueueUTxO.datum).pipe(
         Effect.andThen(({ data }) => data.headerHash),
       )
-    : Effect.succeed(stateQueueUTxO.assetName.slice(NODE_ASSET_NAME.length));
+    : Effect.succeed(
+        stateQueueUTxO.assetName.slice(STATE_QUEUE_NODE_ASSET_NAME_PREFIX.length),
+      );
 
 export type StateQueueFetchConfig = {
   stateQueueAddress: Address;
@@ -109,7 +140,7 @@ export type StateQueueFetchConfig = {
 
 export type StateQueueCommitBlockParams = {
   anchorUTxO: StateQueueUTxO;
-  updatedAnchorDatum: StateQueueDatum;
+  updatedAnchorDatum: StateQueueNodeView;
   newHeader: Header;
   stateQueueSpendingScript: Script;
   policyId: PolicyId;
@@ -126,6 +157,8 @@ export type StateQueueMergeParams = {
 export type StateQueueInitParams = {
   validator: AuthenticatedValidator;
   genesisTime: POSIXTime; // Just pass the time, not the full state
+  outputIndex?: bigint;
+  lovelace?: bigint;
 };
 
 export type StateQueueDeinitParams = {};
@@ -143,7 +176,7 @@ export const utxoToStateQueueUTxO = (
   DataCoercionError | MissingDatumError | UnauthenticUtxoError
 > =>
   Effect.gen(function* () {
-    const datum = yield* getNodeDatumFromUTxO(utxo);
+    const datum = yield* getLinkedListNodeViewFromUTxO(utxo);
     const [sym, assetName] = yield* getStateToken(utxo.assets);
     if (sym !== nftPolicy) {
       yield* Effect.fail(
@@ -249,7 +282,7 @@ export const sortStateQueueUTxOs = (
  * a `ConfirmedState`.
  */
 export const getConfirmedStateFromStateQueueDatum = (
-  nodeDatum: StateQueueDatum,
+  nodeDatum: StateQueueNodeView,
 ): Effect.Effect<
   { data: ConfirmedState; link: NodeKey },
   DataCoercionError
@@ -281,7 +314,7 @@ export const getConfirmedStateFromStateQueueDatum = (
 
 // TODO: this function is from ledger-state, mb it should be moved from here
 export const getHeaderFromStateQueueDatum = (
-  nodeDatum: StateQueueDatum,
+  nodeDatum: StateQueueNodeView,
 ): Effect.Effect<Header, DataCoercionError> =>
   Effect.gen(function* () {
     const header: Header = yield* Effect.try({
@@ -316,14 +349,14 @@ export const hashBlockHeader = (
  */
 export const updateLatestBlocksDatumAndGetTheNewHeaderProgram = (
   lucid: LucidEvolution,
-  latestBlocksDatum: StateQueueDatum,
+  latestBlocksDatum: StateQueueNodeView,
   newUTxOsRoot: MerkleRoot,
   transactionsRoot: MerkleRoot,
   depositsRoot: MerkleRoot,
   withdrawalsRoot: MerkleRoot,
   endTime: POSIXTime,
 ): Effect.Effect<
-  { nodeDatum: StateQueueDatum; header: Header },
+  { nodeDatum: StateQueueNodeView; header: Header },
   DataCoercionError | LucidError | HashingError
 > =>
   Effect.gen(function* () {
@@ -384,6 +417,8 @@ export const updateLatestBlocksDatumAndGetTheNewHeaderProgram = (
           prevUtxosRoot: latestHeader.utxosRoot,
           utxosRoot: newUTxOsRoot,
           transactionsRoot,
+          depositsRoot,
+          withdrawalsRoot,
           startTime: latestHeader.endTime,
           endTime,
           prevHeaderHash,
@@ -408,13 +443,13 @@ export const updateLatestBlocksDatumAndGetTheNewHeaderProgram = (
  */
 export const updateLatestBlocksDatumAndGetTheNewHeader = (
   lucid: LucidEvolution,
-  latestBlocksDatum: StateQueueDatum,
+  latestBlocksDatum: StateQueueNodeView,
   newUTxOsRoot: MerkleRoot,
   transactionsRoot: MerkleRoot,
   depositsRoot: MerkleRoot,
   withdrawalsRoot: MerkleRoot,
   endTime: POSIXTime,
-): Promise<{ nodeDatum: StateQueueDatum; header: Header }> =>
+): Promise<{ nodeDatum: StateQueueNodeView; header: Header }> =>
   makeReturn(
     updateLatestBlocksDatumAndGetTheNewHeaderProgram(
       lucid,
@@ -451,10 +486,10 @@ export const incompleteCommitBlockHeaderTxProgram = (
   Effect.gen(function* () {
     const newHeaderHash = yield* hashBlockHeader(newHeader);
     const assets: Assets = {
-      [toUnit(policyId, NODE_ASSET_NAME + newHeaderHash)]: 1n,
+      [toUnit(policyId, STATE_QUEUE_NODE_ASSET_NAME_PREFIX + newHeaderHash)]: 1n,
     };
 
-    const newNodeDatum: StateQueueDatum = {
+    const newNodeDatum: StateQueueNodeView = {
       key: updatedNodeDatum.next,
       next: "Empty",
       data: Data.castTo(newHeader, Header),
@@ -466,12 +501,12 @@ export const incompleteCommitBlockHeaderTxProgram = (
       .collectFrom([latestBlock.utxo], Data.void())
       .pay.ToContract(
         config.stateQueueAddress,
-        { kind: "inline", value: Data.to(newNodeDatum, StateQueueDatum) },
+        { kind: "inline", value: encodeLinkedListNodeView(newNodeDatum) },
         assets,
       )
       .pay.ToContract(
         config.stateQueueAddress,
-        { kind: "inline", value: Data.to(updatedNodeDatum, StateQueueDatum) },
+        { kind: "inline", value: encodeLinkedListNodeView(updatedNodeDatum) },
         latestBlock.utxo.assets,
       )
       .mintAssets(assets, Data.void())
@@ -498,7 +533,7 @@ export const unsignedCommitBlockHeaderTxProgram = (
           // .compose(
           //   ActiveOperators.updateCommitmentTimeTxBuilder(lucid, aoUpdateParams)
           // )
-          .complete({ localUPLCEval: false }),
+          .complete({ localUPLCEval: true }),
       catch: (e) =>
         new StateQueueError({
           message: `Failed to build block header commitment transaction: ${e}`,
@@ -711,8 +746,13 @@ export const incompleteInitStateQueueTxProgram = (
 
     return yield* incompleteInitLinkedListTxProgram(lucid, {
       validator: params.validator,
+      rootAssetName: STATE_QUEUE_ROOT_ASSET_NAME,
       data: Data.castTo(stateQueueData, ConfirmedState),
-      redeemer: Data.to("Init", StateQueueRedeemer),
+      redeemer: Data.to(
+        { Init: { output_index: params.outputIndex ?? 0n } },
+        StateQueueRedeemer,
+      ),
+      lovelace: params.lovelace,
     });
   });
 
@@ -726,7 +766,7 @@ export const unsignedInitStateQueueTxProgram = (
       initParams,
     );
     const completedTx: TxSignBuilder = yield* Effect.tryPromise({
-      try: () => commitTx.complete({ localUPLCEval: false }),
+      try: () => commitTx.complete({ localUPLCEval: true }),
       catch: (e) =>
         new LucidError({
           message: `Failed to build the init state queue transaction: ${e}`,
@@ -812,7 +852,7 @@ export const incompleteStateQueueMergeTxProgram = (
       startTime: currentConfirmedState.endTime,
       endTime: blockHeader.endTime,
     };
-    const newConfirmedNodeDatum: NodeDatum = {
+    const newConfirmedNodeDatum: StateQueueNodeView = {
       ...confirmedUTxO.datum,
       data: Data.castTo(newConfirmedState, ConfirmedState),
       next: firstBlockUTxO.datum.next,
@@ -820,17 +860,29 @@ export const incompleteStateQueueMergeTxProgram = (
     const assetsToBurn: Assets = {
       [toUnit(fetchConfig.stateQueuePolicyId, firstBlockUTxO.assetName)]: -1n,
     };
+    const mergeRedeemer: StateQueueRedeemer = {
+      MergeToConfirmedState: {
+        header_node_key: headerHash,
+        header_node_input_index: 1n,
+        confirmed_state_input_index: 0n,
+        confirmed_state_output_index: 0n,
+        m_settlement_redeemer_index: null,
+        merged_block_transactions_root: blockHeader.transactionsRoot,
+        merged_block_deposits_root: blockHeader.depositsRoot,
+        merged_block_withdrawals_root: blockHeader.withdrawalsRoot,
+      },
+    };
     const tx = lucid
       .newTx()
       .collectFrom(
         [confirmedUTxO.utxo, firstBlockUTxO.utxo],
-        Data.to("MergeToConfirmedState", StateQueueRedeemer),
+        Data.to(mergeRedeemer, StateQueueRedeemer),
       )
       .pay.ToContract(
         fetchConfig.stateQueueAddress,
         {
           kind: "inline",
-          value: Data.to(newConfirmedNodeDatum, NodeDatum),
+          value: encodeLinkedListNodeView(newConfirmedNodeDatum),
         },
         confirmedUTxO.utxo.assets,
       )
