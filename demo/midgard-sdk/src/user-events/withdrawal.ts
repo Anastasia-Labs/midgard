@@ -6,6 +6,7 @@ import {
   LucidError,
   OutputReference,
   POSIXTimeSchema,
+  ProofSchema,
   UnspecifiedNetworkError,
   makeReturn,
 } from "@/common.js";
@@ -18,12 +19,17 @@ import {
   UserEventExtraFields,
   UserEventFetchConfig,
   UserEventMintRedeemer,
+  UserEventMintRedeemerSchema,
+  userEventWitnessScriptHash,
 } from "./internals.js";
 import {
+  CardanoDatum,
+  CardanoDatumSchema,
   WithdrawalBody,
   WithdrawalEventSchema,
   WithdrawalInfo,
   WithdrawalSignature,
+  WithdrawalValiditySchema,
 } from "@/ledger-state.js";
 import {
   Data,
@@ -39,15 +45,49 @@ import { Data as EffectData, Effect } from "effect";
 
 export const WithdrawalOrderDatumSchema = Data.Object({
   event: WithdrawalEventSchema,
-  inclusionTime: POSIXTimeSchema,
-  refundAddress: AddressSchema,
-  refundDatum: Data.Nullable(Data.Any()),
+  inclusion_time: POSIXTimeSchema,
+  witness: Data.Bytes({ minLength: 28, maxLength: 28 }),
+  refund_address: AddressSchema,
+  refund_datum: CardanoDatumSchema,
 });
 export type WithdrawalOrderDatum = Data.Static<
   typeof WithdrawalOrderDatumSchema
 >;
 export const WithdrawalOrderDatum =
   WithdrawalOrderDatumSchema as unknown as WithdrawalOrderDatum;
+export const WithdrawalMintRedeemerSchema = UserEventMintRedeemerSchema;
+export type WithdrawalMintRedeemer = UserEventMintRedeemer;
+export const WithdrawalMintRedeemer =
+  UserEventMintRedeemer as unknown as WithdrawalMintRedeemer;
+export const WithdrawalSpendPurposeSchema = Data.Enum([
+  Data.Literal("InitializePayout"),
+  Data.Object({
+    Refund: Data.Object({
+      validity_override: WithdrawalValiditySchema,
+    }),
+  }),
+]);
+export type WithdrawalSpendPurpose = Data.Static<
+  typeof WithdrawalSpendPurposeSchema
+>;
+export const WithdrawalSpendPurpose =
+  WithdrawalSpendPurposeSchema as unknown as WithdrawalSpendPurpose;
+export const WithdrawalSpendRedeemerSchema = Data.Object({
+  input_index: Data.Integer(),
+  output_index: Data.Integer(),
+  hub_ref_input_index: Data.Integer(),
+  settlement_ref_input_index: Data.Integer(),
+  burn_redeemer_index: Data.Integer(),
+  payout_mint_redeemer_index: Data.Integer(),
+  membership_proof: ProofSchema,
+  inclusion_proof_script_withdraw_redeemer_index: Data.Integer(),
+  purpose: WithdrawalSpendPurposeSchema,
+});
+export type WithdrawalSpendRedeemer = Data.Static<
+  typeof WithdrawalSpendRedeemerSchema
+>;
+export const WithdrawalSpendRedeemer =
+  WithdrawalSpendRedeemerSchema as unknown as WithdrawalSpendRedeemer;
 
 export type WithdrawalUTxO = AuthenticUTxO<
   WithdrawalOrderDatum,
@@ -68,7 +108,7 @@ export const utxosToWithdrawalUTxOs = (
   ): UserEventExtraFields => ({
     idCbor: Buffer.from(fromHex(Data.to(datum.event.id, OutputReference))),
     infoCbor: Buffer.from(fromHex(Data.to(datum.event.info, WithdrawalInfo))),
-    inclusionTime: new Date(Number(datum.inclusionTime)),
+    inclusionTime: new Date(Number(datum.inclusion_time)),
   });
 
   return authenticateUTxOs<WithdrawalOrderDatum, UserEventExtraFields>(
@@ -100,7 +140,7 @@ export type WithdrawalOrderParams = {
   withdrawalBody: WithdrawalBody;
   withdrawalSignature: WithdrawalSignature;
   refundAddress: AddressData;
-  refundDatum?: Data;
+  refundDatum?: CardanoDatum;
 };
 
 /**
@@ -140,9 +180,10 @@ export const incompleteWithdrawalTxProgram = (
           validity: "WithdrawalIsValid",
         },
       },
-      inclusionTime: BigInt(inclusionTime),
-      refundAddress: params.refundAddress,
-      refundDatum: params.refundDatum ?? null,
+      inclusion_time: BigInt(inclusionTime),
+      witness: userEventWitnessScriptHash(assetName),
+      refund_address: params.refundAddress,
+      refund_datum: params.refundDatum ?? "NoDatum",
     };
     const withdrawalOrderDatumCBOR = Data.to(
       withdrawalOrderDatum,
@@ -151,10 +192,10 @@ export const incompleteWithdrawalTxProgram = (
 
     const mintRedeemer: UserEventMintRedeemer = {
       AuthenticateEvent: {
-        nonceInputIndex: 0n,
-        eventOutputIndex: 0n,
-        hubRefInputIndex: 0n,
-        witnessRegistrationRedeemerIndex: 0n,
+        nonce_input_index: 0n,
+        event_output_index: 0n,
+        hub_ref_input_index: 0n,
+        witness_registration_redeemer_index: 0n,
       },
     };
     const mintRedeemerCBOR = Data.to(mintRedeemer, UserEventMintRedeemer);
@@ -194,7 +235,7 @@ export const unsignedWithdrawalTxProgram = (
       withdrawalParams,
     );
     const completedTx: TxSignBuilder = yield* Effect.tryPromise({
-      try: () => commitTx.complete({ localUPLCEval: false }),
+      try: () => commitTx.complete({ localUPLCEval: true }),
       catch: (e) =>
         new WithdrawalError({
           message: `Failed to build the transaction: ${e}`,

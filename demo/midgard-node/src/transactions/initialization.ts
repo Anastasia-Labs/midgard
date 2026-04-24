@@ -14,14 +14,14 @@ import {
   toUnit,
   UTxO,
   LucidEvolution,
-  TxSignBuilder,
 } from "@lucid-evolution/lucid";
 import {
   handleSignSubmit,
   TxSignError,
   TxSubmitError,
-  TxConfirmError,
 } from "@/transactions/utils.js";
+import { ensureNodeRuntimeReferenceScriptsProgram } from "@/transactions/reference-scripts.js";
+import { slotToUnixTimeForLucidOrEmulatorFallback } from "@/lucid-time.js";
 
 import { MidgardMpt, MptError } from "@/workers/utils/mpt.js";
 import { BatchDBOp } from "@ethereumjs/util";
@@ -29,9 +29,8 @@ import { BatchDBOp } from "@ethereumjs/util";
 /**
  * Deployment helpers for the protocol's initial on-chain contract state.
  *
- * These effects orchestrate the phased deployment of hub-oracle, scheduler,
- * state-queue, and operator-set contracts while enforcing visibility and
- * consistency checks between phases.
+ * Canonical real deployment is atomic: hub-oracle, scheduler, state-queue,
+ * operator-set roots, and fraud-proof catalogue are minted in one transaction.
  */
 
 /**
@@ -82,32 +81,89 @@ export const createFraudProofCatalogueMpt = (
  */
 export const outRefLabel = (utxo: UTxO): string =>
   `${utxo.txHash}#${utxo.outputIndex}`;
-
 export const OPERATOR_SET_ROOT_LOVELACE = 2_000_000n;
-const DEFAULT_DEPLOYMENT_VALIDITY_WINDOW_MS = 30_000n;
+const DEFAULT_DEPLOYMENT_VALIDITY_WINDOW_MS = 7n * 60n * 1000n;
 const DEPLOYMENT_VISIBILITY_REFRESH_MAX_RETRIES = 12;
 const DEPLOYMENT_VISIBILITY_REFRESH_DELAY = "2 seconds";
-const ACTIVE_OPERATOR_DATUM_AIKEN_OPTION_SCHEMA = LucidData.Enum([
-  LucidData.Object({
-    Some: LucidData.Tuple([LucidData.Integer()]),
-  }),
-  LucidData.Literal("None"),
-]);
-const ACTIVE_OPERATOR_DATUM_AIKEN_SCHEMA = LucidData.Object({
-  bond_unlock_time: ACTIVE_OPERATOR_DATUM_AIKEN_OPTION_SCHEMA,
+const encodeLinkedListRootDatum = (rootData: unknown): string =>
+  SDK.encodeLinkedListNodeView({
+    key: "Empty",
+    next: "Empty",
+    data: rootData,
+  });
+
+export type AtomicProtocolInitReferenceScripts = {
+  readonly hubOracleMinting: UTxO;
+  readonly schedulerMinting: UTxO;
+  readonly stateQueueMinting: UTxO;
+  readonly registeredOperatorsMinting: UTxO;
+  readonly activeOperatorsMinting: UTxO;
+  readonly retiredOperatorsMinting: UTxO;
+  readonly fraudProofCatalogueMinting: UTxO;
+};
+
+type ReferenceScriptPublicationLike = {
+  readonly name: string;
+  readonly utxo: UTxO;
+};
+
+const requireReferenceScriptPublication = (
+  publications: readonly ReferenceScriptPublicationLike[],
+  name: string,
+): UTxO => {
+  const publication = publications.find((candidate) => candidate.name === name);
+  if (publication === undefined) {
+    throw new Error(`Missing published reference script ${name}`);
+  }
+  return publication.utxo;
+};
+
+export const atomicProtocolInitReferenceScriptsFromPublications = (
+  publications: readonly ReferenceScriptPublicationLike[],
+): AtomicProtocolInitReferenceScripts => ({
+  hubOracleMinting: requireReferenceScriptPublication(
+    publications,
+    "hub-oracle minting",
+  ),
+  schedulerMinting: requireReferenceScriptPublication(
+    publications,
+    "scheduler minting",
+  ),
+  stateQueueMinting: requireReferenceScriptPublication(
+    publications,
+    "state-queue minting",
+  ),
+  registeredOperatorsMinting: requireReferenceScriptPublication(
+    publications,
+    "registered-operators minting",
+  ),
+  activeOperatorsMinting: requireReferenceScriptPublication(
+    publications,
+    "active-operators minting",
+  ),
+  retiredOperatorsMinting: requireReferenceScriptPublication(
+    publications,
+    "retired-operators minting",
+  ),
+  fraudProofCatalogueMinting: requireReferenceScriptPublication(
+    publications,
+    "fraud-proof-catalogue minting",
+  ),
 });
 
-/**
- * Encodes the active-operator datum in the Aiken-compatible shape expected by
- * initialization and bootstrap flows.
- */
-export const encodeActiveOperatorDatum = (
-  bondUnlockTime: bigint | null,
-): string =>
-  LucidData.castTo(
-    { bond_unlock_time: bondUnlockTime } as never,
-    ACTIVE_OPERATOR_DATUM_AIKEN_SCHEMA as never,
-  ) as string;
+export const ensureAtomicProtocolInitReferenceScriptsProgram = (
+  referenceScriptsLucid: LucidEvolution,
+  contracts: SDK.MidgardValidators,
+  fundingLucid: LucidEvolution = referenceScriptsLucid,
+): Effect.Effect<
+  AtomicProtocolInitReferenceScripts,
+  SDK.StateQueueError | SDK.LucidError | TxSignError | TxSubmitError
+> =>
+  ensureNodeRuntimeReferenceScriptsProgram(
+    referenceScriptsLucid,
+    contracts,
+    fundingLucid,
+  ).pipe(Effect.map(atomicProtocolInitReferenceScriptsFromPublications));
 
 /**
  * Fetches the hub-oracle witness UTxO if it exists.
@@ -185,7 +241,10 @@ export const isSchedulerInitialized = (
 ): Effect.Effect<boolean, SDK.LucidError> =>
   Effect.tryPromise({
     try: async () => {
-      const schedulerUnit = toUnit(scheduler.policyId, SDK.SCHEDULER_ASSET_NAME);
+      const schedulerUnit = toUnit(
+        scheduler.policyId,
+        SDK.SCHEDULER_ASSET_NAME,
+      );
       const schedulerUtxos = await lucid.utxosAtWithUnit(
         scheduler.spendingScriptAddress,
         schedulerUnit,
@@ -246,10 +305,10 @@ export const completeAndSubmit = (
   lucid: LucidEvolution,
   txBuilder: any,
   failureMessage: string,
-): Effect.Effect<string, SDK.LucidError | TxSignError | TxSubmitError | TxConfirmError> =>
+): Effect.Effect<string, SDK.LucidError | TxSignError | TxSubmitError> =>
   Effect.gen(function* () {
     const unsignedTx = yield* Effect.tryPromise({
-      try: () => txBuilder.complete({ localUPLCEval: true }) as Promise<TxSignBuilder>,
+      try: () => txBuilder.complete({ localUPLCEval: true }),
       catch: (cause) =>
         new SDK.LucidError({
           message: `${failureMessage}: ${cause}`,
@@ -263,45 +322,62 @@ export const completeAndSubmit = (
  * Produces a conservative default validity deadline for deployment
  * transactions.
  */
-const resolveDefaultDeploymentDeadline = (): bigint =>
-  BigInt(
-    Date.now() + SDK.VALIDITY_RANGE_BUFFER + Number(DEFAULT_DEPLOYMENT_VALIDITY_WINDOW_MS),
-  );
-
-/**
- * Requires the hub-oracle witness UTxO to exist before dependent deployments
- * proceed.
- */
-const requireHubOracleWitness = (
-  lucid: LucidEvolution,
-  contracts: SDK.MidgardValidators,
-): Effect.Effect<UTxO, SDK.LucidError> =>
-  Effect.gen(function* () {
-    const witness = yield* fetchHubOracleWitness(lucid, contracts);
-    if (witness !== null) {
-      return witness;
+const resolveDeploymentStartTime = (lucid?: LucidEvolution): bigint => {
+  if (lucid !== undefined && lucid.config().network === "Custom") {
+    const provider = lucid.config().provider as {
+      time?: number;
+    };
+    if (typeof provider.time === "number") {
+      return BigInt(provider.time);
     }
-    return yield* Effect.fail(
-      new SDK.LucidError({
-        message:
-          "Hub-oracle witness UTxO is required before deploying dependent protocol contracts",
-        cause: contracts.hubOracle.policyId,
-      }),
-    );
-  });
+  }
+  return BigInt(Date.now());
+};
 
-/**
- * Constructs a stable error describing an unsafe partially deployed
- * hub-oracle/scheduler state.
- */
-const makePartialHubAndSchedulerDeploymentError = (
-  hubOraclePresent: boolean,
-  schedulerInitialized: boolean,
+const resolveDefaultDeploymentDeadline = (lucid?: LucidEvolution): bigint => {
+  const targetTime = Number(
+    resolveDeploymentStartTime(lucid) + DEFAULT_DEPLOYMENT_VALIDITY_WINDOW_MS,
+  );
+  if (lucid === undefined) {
+    return BigInt(targetTime);
+  }
+  const targetSlot = lucid.unixTimeToSlot(targetTime);
+  const alignedTime = slotToUnixTimeForLucidOrEmulatorFallback(
+    lucid,
+    targetSlot,
+  );
+  if (alignedTime >= targetTime) {
+    return BigInt(alignedTime);
+  }
+  return BigInt(
+    slotToUnixTimeForLucidOrEmulatorFallback(lucid, targetSlot + 1),
+  );
+};
+
+const resolveDeploymentValidityBounds = (
+  lucid?: LucidEvolution,
+  validTo?: bigint,
+): { validFrom: bigint; validTo: bigint } => {
+  if (validTo !== undefined) {
+    return {
+      validFrom: validTo - DEFAULT_DEPLOYMENT_VALIDITY_WINDOW_MS,
+      validTo,
+    };
+  }
+  const upperBound = resolveDefaultDeploymentDeadline(lucid);
+  return {
+    validFrom: resolveDeploymentStartTime(lucid),
+    validTo: upperBound,
+  };
+};
+
+const makePartialProtocolDeploymentError = (
+  status: ProtocolDeploymentStatus,
 ): SDK.LucidError =>
   new SDK.LucidError({
     message:
-      "Hub-oracle and scheduler deployment is partial and cannot be completed in-place",
-    cause: `hub_oracle_present=${hubOraclePresent}; scheduler_initialized=${schedulerInitialized}; the real scheduler init requires hub-oracle and scheduler mints in the same transaction; use a fresh one-shot hub-oracle outref for a clean redeployment`,
+      "Real protocol deployment is partial and cannot be completed in-place",
+    cause: `missing_components=[${status.missingComponents.join(",")}]; the canonical Init validators require one atomic bootstrap transaction that mints the hub-oracle NFT and protocol root NFTs together; use a fresh one-shot hub-oracle nonce/deployment`,
   });
 
 export type ProtocolDeploymentStatus = {
@@ -311,6 +387,7 @@ export type ProtocolDeploymentStatus = {
   readonly registeredOperatorsInitialized: boolean;
   readonly activeOperatorsInitialized: boolean;
   readonly retiredOperatorsInitialized: boolean;
+  readonly fraudProofCatalogueInitialized: boolean;
   readonly complete: boolean;
   readonly empty: boolean;
   readonly missingComponents: readonly string[];
@@ -345,6 +422,10 @@ export const fetchProtocolDeploymentStatus = (
       lucid,
       contracts.retiredOperators,
     );
+    const fraudProofCatalogueInitialized = yield* isNodeSetInitialized(
+      lucid,
+      contracts.fraudProofCatalogue,
+    );
     const missingComponents = [
       ...(hubOracleWitness === null ? ["hub-oracle"] : []),
       ...(!stateQueueTopology.initialized ? ["state-queue"] : []),
@@ -352,6 +433,7 @@ export const fetchProtocolDeploymentStatus = (
       ...(!registeredOperatorsInitialized ? ["registered-operators"] : []),
       ...(!activeOperatorsInitialized ? ["active-operators"] : []),
       ...(!retiredOperatorsInitialized ? ["retired-operators"] : []),
+      ...(!fraudProofCatalogueInitialized ? ["fraud-proof-catalogue"] : []),
     ] as const;
     const complete =
       hubOracleWitness !== null &&
@@ -360,14 +442,16 @@ export const fetchProtocolDeploymentStatus = (
       schedulerInitialized &&
       registeredOperatorsInitialized &&
       activeOperatorsInitialized &&
-      retiredOperatorsInitialized;
+      retiredOperatorsInitialized &&
+      fraudProofCatalogueInitialized;
     const empty =
       hubOracleWitness === null &&
       !stateQueueTopology.initialized &&
       !schedulerInitialized &&
       !registeredOperatorsInitialized &&
       !activeOperatorsInitialized &&
-      !retiredOperatorsInitialized;
+      !retiredOperatorsInitialized &&
+      !fraudProofCatalogueInitialized;
 
     return {
       hubOracleWitness,
@@ -376,57 +460,29 @@ export const fetchProtocolDeploymentStatus = (
       registeredOperatorsInitialized,
       activeOperatorsInitialized,
       retiredOperatorsInitialized,
+      fraudProofCatalogueInitialized,
       complete,
       empty,
       missingComponents,
     };
   });
 
-/**
- * Waits for the provider to expose the phase-1 deployment outputs after the
- * deployment transaction has confirmed.
- */
-const waitForPhase1InitializationVisibility = (
+const waitForAtomicInitializationVisibility = (
   lucid: LucidEvolution,
   contracts: SDK.MidgardValidators,
-): Effect.Effect<
-  {
-    readonly hubOracleWitness: UTxO;
-    readonly stateQueueInitialized: true;
-    readonly schedulerInitialized: true;
-  },
-  SDK.LucidError
-> =>
+): Effect.Effect<ProtocolDeploymentStatus, SDK.LucidError> =>
   Effect.gen(function* () {
-    const hubOracleWitness = yield* fetchHubOracleWitness(lucid, contracts);
-    const stateQueueInitialized = yield* isNodeSetInitialized(
-      lucid,
-      contracts.stateQueue,
-    );
-    const schedulerInitialized = yield* isSchedulerInitialized(
-      lucid,
-      contracts.scheduler,
-    );
-
-    if (
-      hubOracleWitness === null ||
-      !stateQueueInitialized ||
-      !schedulerInitialized
-    ) {
-      return yield* Effect.fail(
-        new SDK.LucidError({
-          message:
-            "Phase-1 initialization transaction is confirmed but not yet fully visible through the provider",
-          cause: `hub_oracle_present=${hubOracleWitness !== null}; state_queue_initialized=${stateQueueInitialized}; scheduler_initialized=${schedulerInitialized}`,
-        }),
-      );
+    const status = yield* fetchProtocolDeploymentStatus(lucid, contracts);
+    if (status.complete) {
+      return status;
     }
-
-    return {
-      hubOracleWitness,
-      stateQueueInitialized: true,
-      schedulerInitialized: true,
-    } as const;
+    return yield* Effect.fail(
+      new SDK.LucidError({
+        message:
+          "Atomic initialization transaction is confirmed but not yet fully visible through the provider",
+        cause: `missing_components=[${status.missingComponents.join(",")}]`,
+      }),
+    );
   }).pipe(
     Effect.retry(
       Schedule.intersect(
@@ -436,207 +492,229 @@ const waitForPhase1InitializationVisibility = (
     ),
   );
 
-/**
- * Deploys hub-oracle and scheduler in the shared phase-1 transaction expected
- * by the real contract parameterization.
- */
-export const deploySchedulerAndHubProgram = (
+export const buildAtomicProtocolInitTxProgram = (
   lucid: LucidEvolution,
   contracts: SDK.MidgardValidators,
   nodeConfig: {
     HUB_ORACLE_ONE_SHOT_TX_HASH: string;
     HUB_ORACLE_ONE_SHOT_OUTPUT_INDEX: number;
   },
-  validTo: bigint = resolveDefaultDeploymentDeadline(),
-): Effect.Effect<string, SDK.LucidError | TxSignError | TxSubmitError | TxConfirmError | SDK.Bech32DeserializationError | SDK.UnspecifiedNetworkError> =>
+  fraudProofCatalogueMerkleRoot: string,
+  validTo?: bigint,
+  referenceScripts?: AtomicProtocolInitReferenceScripts,
+): Effect.Effect<
+  any,
+  SDK.LucidError | SDK.Bech32DeserializationError | SDK.UnspecifiedNetworkError
+> =>
   Effect.gen(function* () {
-    const existingWitness = yield* fetchHubOracleWitness(lucid, contracts);
-    const schedulerInitialized = yield* isSchedulerInitialized(
-      lucid,
-      contracts.scheduler,
-    );
-
-    if (existingWitness !== null && schedulerInitialized) {
-      return "already-deployed";
-    }
-
-    if (existingWitness !== null || schedulerInitialized) {
+    const { validFrom, validTo: deploymentDeadline } =
+      resolveDeploymentValidityBounds(lucid, validTo);
+    const nonceUtxo = yield* fetchConfiguredNonceUtxo(lucid, nodeConfig);
+    const network = lucid.config().network;
+    if (network === undefined) {
       return yield* Effect.fail(
-        makePartialHubAndSchedulerDeploymentError(
-          existingWitness !== null,
-          schedulerInitialized,
-        ),
+        new SDK.UnspecifiedNetworkError({
+          message: "Failed to build atomic protocol initialization",
+          cause: "lucid.config().network is undefined",
+        }),
       );
     }
 
-    const nonceUtxo = yield* fetchConfiguredNonceUtxo(lucid, nodeConfig);
-    const hubAndSchedulerTx = yield* SDK.incompleteHubAndSchedulerInitTxProgram(
-      lucid,
-      {
-        validators: contracts,
-        oneShotNonceUTxO: nonceUtxo,
-      },
+    const hubOracleDatum = yield* SDK.makeHubOracleDatum(contracts);
+    const encodedHubOracleDatum = LucidData.to(
+      hubOracleDatum,
+      SDK.HubOracleDatum,
     );
+    // Lucid's validTo maps to an exclusive upper slot. The on-chain validator
+    // compares against the inclusive normalized upper bound.
+    const stateQueueGenesisTime = deploymentDeadline - 1n;
+    const genesisConfirmedState: SDK.ConfirmedState = {
+      headerHash: SDK.GENESIS_HEADER_HASH,
+      prevHeaderHash: SDK.GENESIS_HEADER_HASH,
+      utxoRoot: SDK.GENESIS_UTXO_ROOT,
+      startTime: stateQueueGenesisTime,
+      endTime: stateQueueGenesisTime,
+      protocolVersion: SDK.GENESIS_PROTOCOL_VERSION,
+    };
 
-    return yield* completeAndSubmit(
-      lucid,
-      lucid.newTx().validTo(Number(validTo)).compose(hubAndSchedulerTx),
-      "Failed to build hub-oracle + scheduler deployment transaction",
-    );
-  });
+    const hubOracleAssets = {
+      [toUnit(contracts.hubOracle.policyId, SDK.HUB_ORACLE_ASSET_NAME)]: 1n,
+    };
+    const schedulerAssets = {
+      [toUnit(contracts.scheduler.policyId, SDK.SCHEDULER_ASSET_NAME)]: 1n,
+    };
+    const stateQueueAssets = {
+      [toUnit(contracts.stateQueue.policyId, SDK.STATE_QUEUE_ROOT_ASSET_NAME)]:
+        1n,
+    };
+    const registeredOperatorsAssets = {
+      [toUnit(
+        contracts.registeredOperators.policyId,
+        SDK.REGISTERED_OPERATORS_ROOT_ASSET_NAME,
+      )]: 1n,
+    };
+    const activeOperatorsAssets = {
+      [toUnit(
+        contracts.activeOperators.policyId,
+        SDK.ACTIVE_OPERATORS_ROOT_ASSET_NAME,
+      )]: 1n,
+    };
+    const retiredOperatorsAssets = {
+      [toUnit(
+        contracts.retiredOperators.policyId,
+        SDK.RETIRED_OPERATORS_ROOT_ASSET_NAME,
+      )]: 1n,
+    };
+    const fraudProofCatalogueAssets = {
+      [toUnit(
+        contracts.fraudProofCatalogue.policyId,
+        SDK.FRAUD_PROOF_CATALOGUE_ASSET_NAME,
+      )]: 1n,
+    };
 
-/**
- * Deploys the state-queue validator after the hub-oracle witness is available.
- */
-export const deployStateQueueProgram = (
-  lucid: LucidEvolution,
-  contracts: SDK.MidgardValidators,
-  genesisTime: bigint = resolveDefaultDeploymentDeadline(),
-): Effect.Effect<string, SDK.LucidError | TxSignError | TxSubmitError | TxConfirmError> =>
-  Effect.gen(function* () {
-    const topology = yield* fetchStateQueueTopologyProgram(
-      lucid,
-      contracts.stateQueue,
-    );
-    if (topology.initialized) {
-      if (!topology.healthy) {
-        return yield* Effect.fail(
-          new SDK.LucidError({
-            message:
-              "Cannot deploy state_queue over an invalid existing on-chain topology",
-            cause: JSON.stringify(topology),
-          }),
-        );
-      }
-      return "already-deployed";
+    const tx = lucid
+      .newTx()
+      .validFrom(Number(validFrom))
+      .validTo(Number(deploymentDeadline))
+      .collectFrom([nonceUtxo])
+      .mintAssets(hubOracleAssets, LucidData.void())
+      .pay.ToAddressWithData(
+        credentialToAddress(
+          network,
+          scriptHashToCredential(contracts.hubOracle.policyId),
+        ),
+        { kind: "inline", value: encodedHubOracleDatum },
+        hubOracleAssets,
+      )
+      .mintAssets(
+        schedulerAssets,
+        LucidData.to("Init", SDK.SchedulerMintRedeemer),
+      )
+      .pay.ToContract(
+        contracts.scheduler.spendingScriptAddress,
+        {
+          kind: "inline",
+          value: LucidData.to(SDK.INITIAL_SCHEDULER_DATUM, SDK.SchedulerDatum),
+        },
+        { lovelace: 5_000_000n, ...schedulerAssets },
+      )
+      .mintAssets(
+        stateQueueAssets,
+        LucidData.to(
+          {
+            Init: {
+              output_index: SDK.ATOMIC_INIT_OUTPUT_INDEXES.stateQueue,
+            },
+          },
+          SDK.StateQueueRedeemer,
+        ),
+      )
+      .pay.ToContract(
+        contracts.stateQueue.spendingScriptAddress,
+        {
+          kind: "inline",
+          value: encodeLinkedListRootDatum(
+            SDK.castConfirmedStateToData(genesisConfirmedState),
+          ),
+        },
+        { lovelace: 5_000_000n, ...stateQueueAssets },
+      )
+      .mintAssets(
+        registeredOperatorsAssets,
+        LucidData.to(
+          {
+            Init: {
+              output_index: SDK.ATOMIC_INIT_OUTPUT_INDEXES.registeredOperators,
+            },
+          },
+          SDK.RegisteredOperatorMintRedeemer,
+        ),
+      )
+      .pay.ToContract(
+        contracts.registeredOperators.spendingScriptAddress,
+        { kind: "inline", value: encodeLinkedListRootDatum("") },
+        { lovelace: OPERATOR_SET_ROOT_LOVELACE, ...registeredOperatorsAssets },
+      )
+      .mintAssets(
+        activeOperatorsAssets,
+        LucidData.to(
+          {
+            Init: {
+              output_index: SDK.ATOMIC_INIT_OUTPUT_INDEXES.activeOperators,
+            },
+          },
+          SDK.ActiveOperatorMintRedeemer,
+        ),
+      )
+      .pay.ToContract(
+        contracts.activeOperators.spendingScriptAddress,
+        { kind: "inline", value: encodeLinkedListRootDatum("") },
+        { lovelace: OPERATOR_SET_ROOT_LOVELACE, ...activeOperatorsAssets },
+      )
+      .mintAssets(
+        retiredOperatorsAssets,
+        LucidData.to(
+          {
+            Init: {
+              output_index: SDK.ATOMIC_INIT_OUTPUT_INDEXES.retiredOperators,
+            },
+          },
+          SDK.RetiredOperatorMintRedeemer,
+        ),
+      )
+      .pay.ToContract(
+        contracts.retiredOperators.spendingScriptAddress,
+        { kind: "inline", value: encodeLinkedListRootDatum("") },
+        { lovelace: OPERATOR_SET_ROOT_LOVELACE, ...retiredOperatorsAssets },
+      )
+      .mintAssets(
+        fraudProofCatalogueAssets,
+        LucidData.to("Init", SDK.FraudProofCatalogueMintRedeemer),
+      )
+      .pay.ToAddressWithData(
+        contracts.fraudProofCatalogue.spendingScriptAddress,
+        {
+          kind: "inline",
+          value: LucidData.to(
+            fraudProofCatalogueMerkleRoot,
+            SDK.FraudProofCatalogueDatum,
+          ),
+        },
+        fraudProofCatalogueAssets,
+      );
+
+    if (referenceScripts !== undefined) {
+      return tx.readFrom([
+        referenceScripts.hubOracleMinting,
+        referenceScripts.schedulerMinting,
+        referenceScripts.stateQueueMinting,
+        referenceScripts.registeredOperatorsMinting,
+        referenceScripts.activeOperatorsMinting,
+        referenceScripts.retiredOperatorsMinting,
+        referenceScripts.fraudProofCatalogueMinting,
+      ]);
     }
-    const hubOracleWitness = yield* requireHubOracleWitness(lucid, contracts);
-    const stateQueueTx = yield* SDK.incompleteInitStateQueueTxProgram(lucid, {
-      validator: contracts.stateQueue,
-      genesisTime,
-    });
-    return yield* completeAndSubmit(
-      lucid,
-      lucid
-        .newTx()
-        .validTo(Number(genesisTime))
-        .readFrom([hubOracleWitness])
-        .compose(stateQueueTx),
-      "Failed to build state_queue deployment transaction",
-    );
-  });
 
-/**
- * Shared helper for deploying one of the operator-list validators.
- */
-const deployNodeSetProgram = (
-  lucid: LucidEvolution,
-  validator: SDK.AuthenticatedValidator,
-  hubOracleWitness: UTxO,
-  validTo: bigint,
-  build: () => Effect.Effect<any, never>,
-  failureMessage: string,
-): Effect.Effect<string, SDK.LucidError | TxSignError | TxSubmitError | TxConfirmError> =>
-  Effect.gen(function* () {
-    const initialized = yield* isNodeSetInitialized(lucid, validator);
-    if (initialized) {
-      return "already-deployed";
-    }
-    return yield* completeAndSubmit(
-      lucid,
-      lucid
-        .newTx()
-        .validTo(Number(validTo))
-        .readFrom([hubOracleWitness])
-        .compose(yield* build()),
-      failureMessage,
-    );
-  });
-
-/**
- * Deploys the registered-operators validator if it is not already present.
- */
-export const deployRegisteredOperatorsProgram = (
-  lucid: LucidEvolution,
-  contracts: SDK.MidgardValidators,
-  validTo: bigint = resolveDefaultDeploymentDeadline(),
-): Effect.Effect<string, SDK.LucidError | TxSignError | TxSubmitError | TxConfirmError> =>
-  Effect.gen(function* () {
-    const hubOracleWitness = yield* requireHubOracleWitness(lucid, contracts);
-    return yield* deployNodeSetProgram(
-      lucid,
-      contracts.registeredOperators,
-      hubOracleWitness,
-      validTo,
-      () =>
-        SDK.incompleteRegisteredOperatorInitTxProgram(lucid, {
-          validator: contracts.registeredOperators,
-        }),
-      "Failed to build registered-operators deployment transaction",
-    );
-  });
-
-/**
- * Deploys the active-operators validator if it is not already present.
- */
-export const deployActiveOperatorsProgram = (
-  lucid: LucidEvolution,
-  contracts: SDK.MidgardValidators,
-  validTo: bigint = resolveDefaultDeploymentDeadline(),
-): Effect.Effect<string, SDK.LucidError | TxSignError | TxSubmitError | TxConfirmError> =>
-  Effect.gen(function* () {
-    const hubOracleWitness = yield* requireHubOracleWitness(lucid, contracts);
-    return yield* deployNodeSetProgram(
-      lucid,
-      contracts.activeOperators,
-      hubOracleWitness,
-      validTo,
-      () =>
-        SDK.incompleteActiveOperatorInitTxProgram(lucid, {
-          validator: contracts.activeOperators,
-        }),
-      "Failed to build active-operators deployment transaction",
-    );
-  });
-
-/**
- * Deploys the retired-operators validator if it is not already present.
- */
-export const deployRetiredOperatorsProgram = (
-  lucid: LucidEvolution,
-  contracts: SDK.MidgardValidators,
-  validTo: bigint = resolveDefaultDeploymentDeadline(),
-): Effect.Effect<string, SDK.LucidError | TxSignError | TxSubmitError | TxConfirmError> =>
-  Effect.gen(function* () {
-    const hubOracleWitness = yield* requireHubOracleWitness(lucid, contracts);
-    return yield* deployNodeSetProgram(
-      lucid,
-      contracts.retiredOperators,
-      hubOracleWitness,
-      validTo,
-      () =>
-        SDK.incompleteRetiredOperatorInitTxProgram(lucid, {
-          validator: contracts.retiredOperators,
-        }),
-      "Failed to build retired-operators deployment transaction",
-    );
+    return tx.attach
+      .MintingPolicy(contracts.hubOracle.mintingScript)
+      .attach.Script(contracts.scheduler.mintingScript)
+      .attach.Script(contracts.stateQueue.mintingScript)
+      .attach.Script(contracts.registeredOperators.mintingScript)
+      .attach.Script(contracts.activeOperators.mintingScript)
+      .attach.Script(contracts.retiredOperators.mintingScript)
+      .attach.Script(contracts.fraudProofCatalogue.mintingScript);
   });
 
 /**
  * End-to-end protocol initialization program.
  *
- * The flow handles phase-1 deployment of hub-oracle, scheduler, and optionally
- * state-queue, then initializes any missing operator-set roots.
+ * The flow performs exactly one atomic bootstrap. Partial real deployment is
+ * fatal because canonical Init validators depend on the hub-oracle NFT being
+ * minted in the same transaction as every protocol root.
  */
 export const program: Effect.Effect<
   string,
-  | SDK.LucidError
-  | TxSignError
-  | TxSubmitError
-  | TxConfirmError
-  | SDK.Bech32DeserializationError
-  | SDK.UnspecifiedNetworkError
-  | MptError,
+  unknown,
   Lucid | MidgardContracts | NodeConfig
 > = Effect.gen(function* () {
   const lucidService = yield* Lucid;
@@ -655,163 +733,37 @@ export const program: Effect.Effect<
     `Fraud proof catalogue root prepared for initialization: ${fraudProofCatalogueMerkleRoot}`,
   );
 
-  let lastSubmittedTxHash: string | null = null;
-
-  /**
-   * Produces a fresh validity deadline for each deployment phase so later
-   * transactions do not reuse an aging validity window.
-   */
-  const nextPhaseDeadline = () =>
-    BigInt(Date.now() + SDK.VALIDITY_RANGE_BUFFER + 30_000);
-
-  let hubOracleWitness = yield* fetchHubOracleWitness(lucid, contracts);
-  let stateQueueInitialized = yield* isNodeSetInitialized(lucid, contracts.stateQueue);
-  let schedulerInitialized = yield* isSchedulerInitialized(lucid, contracts.scheduler);
-
-  if (hubOracleWitness === null && stateQueueInitialized) {
-    return yield* Effect.fail(
-      new SDK.LucidError({
-        message:
-          "Invalid initialization state: state_queue is initialized while hub-oracle witness is missing",
-        cause: contracts.stateQueue.policyId,
-      }),
-    );
-  }
-
-  if ((hubOracleWitness !== null) !== schedulerInitialized) {
-    return yield* Effect.fail(
-      makePartialHubAndSchedulerDeploymentError(
-        hubOracleWitness !== null,
-        schedulerInitialized,
-      ),
-    );
-  }
-
-  if (hubOracleWitness === null || !schedulerInitialized) {
-    const phase1Deadline = nextPhaseDeadline();
-    const nonceUtxo = yield* fetchConfiguredNonceUtxo(lucid, nodeConfig);
-    const hubAndSchedulerTx = yield* SDK.incompleteHubAndSchedulerInitTxProgram(
-      lucid,
-      {
-        validators: contracts,
-        oneShotNonceUTxO: nonceUtxo,
-      },
-    );
-    let phase1Builder = lucid
-      .newTx()
-      .validTo(Number(phase1Deadline))
-      .compose(hubAndSchedulerTx);
-
-    if (!stateQueueInitialized) {
-      const stateQueueTx = yield* SDK.incompleteInitStateQueueTxProgram(lucid, {
-        validator: contracts.stateQueue,
-        genesisTime: phase1Deadline,
-      });
-      phase1Builder = phase1Builder.compose(stateQueueTx);
-    }
-
-    lastSubmittedTxHash = yield* completeAndSubmit(
-      lucid,
-      phase1Builder,
-      "Failed to build phase-1 initialization transaction",
-    );
-    yield* Effect.logInfo(
-      `Initialization phase-1 submitted: txHash=${lastSubmittedTxHash}`,
-    );
-
-    const phase1Visibility = yield* waitForPhase1InitializationVisibility(
-      lucid,
-      contracts,
-    );
-    hubOracleWitness = phase1Visibility.hubOracleWitness;
-    stateQueueInitialized = phase1Visibility.stateQueueInitialized;
-    schedulerInitialized = phase1Visibility.schedulerInitialized;
-  } else if (!stateQueueInitialized) {
-    lastSubmittedTxHash = yield* deployStateQueueProgram(
-      lucid,
-      contracts,
-      nextPhaseDeadline(),
-    );
-    stateQueueInitialized = true;
-  }
-
-  if (hubOracleWitness === null) {
-    return yield* Effect.fail(
-      new SDK.LucidError({
-        message:
-          "Hub-oracle witness UTxO is missing after phase-1 initialization",
-        cause: contracts.hubOracle.policyId,
-      }),
-    );
-  }
-
-  /**
-   * These targets share the same linked-list initialization pattern but differ
-   * in validator and datum/redeemer payload.
-   */
-  const operatorInitTargets = [
-    {
-      name: "registered-operators",
-      validator: contracts.registeredOperators,
-      build: () =>
-        SDK.incompleteInitLinkedListTxProgram(lucid, {
-          validator: contracts.registeredOperators,
-          data: "00",
-          redeemer: LucidData.to(
-            "Init",
-            SDK.RegisteredOperatorMintRedeemer,
-          ),
-          lovelace: OPERATOR_SET_ROOT_LOVELACE,
-        }),
-    },
-    {
-      name: "active-operators",
-      validator: contracts.activeOperators,
-      build: () =>
-        SDK.incompleteInitLinkedListTxProgram(lucid, {
-          validator: contracts.activeOperators,
-          data: encodeActiveOperatorDatum(null),
-          redeemer: LucidData.to("Init", SDK.ActiveOperatorMintRedeemer),
-          lovelace: OPERATOR_SET_ROOT_LOVELACE,
-        }),
-    },
-    {
-      name: "retired-operators",
-      validator: contracts.retiredOperators,
-      build: () =>
-        SDK.incompleteInitLinkedListTxProgram(lucid, {
-          validator: contracts.retiredOperators,
-          data: "00",
-          redeemer: LucidData.to("Init", SDK.RetiredOperatorMintRedeemer),
-          lovelace: OPERATOR_SET_ROOT_LOVELACE,
-        }),
-    },
-  ] as const;
-
-  for (const target of operatorInitTargets) {
-    const initialized = yield* isNodeSetInitialized(lucid, target.validator);
-    if (initialized) {
-      continue;
-    }
-    const opInitBuilder = lucid
-      .newTx()
-      .validTo(Number(nextPhaseDeadline()))
-      .readFrom([hubOracleWitness])
-      .compose(yield* target.build());
-    const txHash = yield* completeAndSubmit(
-      lucid,
-      opInitBuilder,
-      `Failed to build ${target.name} initialization transaction`,
-    );
-    lastSubmittedTxHash = txHash;
-    yield* Effect.logInfo(
-      `Initialization phase-2 submitted for ${target.name}: txHash=${txHash}`,
-    );
-  }
-
-  if (lastSubmittedTxHash === null) {
+  const status = yield* fetchProtocolDeploymentStatus(lucid, contracts);
+  if (status.complete) {
     return "already-initialized";
   }
 
-  return lastSubmittedTxHash;
+  if (!status.empty) {
+    return yield* Effect.fail(makePartialProtocolDeploymentError(status));
+  }
+
+  const referenceScripts =
+    yield* ensureAtomicProtocolInitReferenceScriptsProgram(
+      lucid,
+      contracts,
+      lucid,
+    );
+  const initDeadline = resolveDefaultDeploymentDeadline(lucid);
+  const txHash = yield* completeAndSubmit(
+    lucid,
+    yield* buildAtomicProtocolInitTxProgram(
+      lucid,
+      contracts,
+      nodeConfig,
+      fraudProofCatalogueMerkleRoot,
+      initDeadline,
+      referenceScripts,
+    ),
+    "Failed to build atomic real protocol initialization transaction",
+  );
+  yield* Effect.logInfo(
+    `Atomic real protocol initialization submitted: txHash=${txHash}`,
+  );
+  yield* waitForAtomicInitializationVisibility(lucid, contracts);
+  return txHash;
 });

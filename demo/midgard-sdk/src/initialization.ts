@@ -4,7 +4,6 @@ import {
   TxBuilder,
   makeReturn,
   TxSignBuilder,
-  UTxO,
 } from "@lucid-evolution/lucid";
 import {
   Bech32DeserializationError,
@@ -13,58 +12,29 @@ import {
   UnspecifiedNetworkError,
 } from "@/common.js";
 import { incompleteHubOracleInitTxProgram } from "@/hub-oracle.js";
-import {
-  INITIAL_SCHEDULER_DATUM,
-  SchedulerDatum,
-  incompleteSchedulerInitTxProgram,
-} from "@/scheduler.js";
+import { incompleteSchedulerInitTxProgram } from "@/scheduler.js";
 import { incompleteFraudProofCatalogueInitTxProgram } from "@/fraud-proof/catalogue.js";
 import { incompleteInitStateQueueTxProgram } from "@/state-queue.js";
 import { incompleteActiveOperatorInitTxProgram } from "@/active-operators.js";
 import { incompleteRegisteredOperatorInitTxProgram } from "@/registered-operators.js";
 import { incompleteRetiredOperatorInitTxProgram } from "@/retired-operators.js";
 
-export const VALIDITY_RANGE_BUFFER = 5 * 60 * 1000;
+export const VALIDITY_RANGE_BUFFER = 8 * 60 * 1000;
 
-/**
- * Parameters for bootstrapping the hub oracle and scheduler together.
- */
-export type HubAndSchedulerInitializationParams = {
-  validators: MidgardValidators;
-  oneShotNonceUTxO: UTxO;
-  schedulerDatum?: SchedulerDatum;
-  schedulerLovelace?: bigint;
-};
+export const ATOMIC_INIT_OUTPUT_INDEXES = {
+  hubOracle: 0n,
+  scheduler: 1n,
+  stateQueue: 2n,
+  registeredOperators: 3n,
+  activeOperators: 4n,
+  retiredOperators: 5n,
+  fraudProofCatalogue: 6n,
+} as const;
 
 export type InitializationParams = {
   midgardValidators: MidgardValidators;
   fraudProofCatalogueMerkleRoot: string;
 };
-
-/**
- * Composes the initialization fragments for the hub oracle and scheduler.
- */
-export const incompleteHubAndSchedulerInitTxProgram = (
-  lucid: LucidEvolution,
-  params: HubAndSchedulerInitializationParams,
-): Effect.Effect<
-  TxBuilder,
-  Bech32DeserializationError | UnspecifiedNetworkError
-> =>
-  Effect.gen(function* () {
-    const hubOracleTx = yield* incompleteHubOracleInitTxProgram(lucid, {
-      hubOracleMintValidator: params.validators.hubOracle,
-      validators: params.validators,
-      oneShotNonceUTxO: params.oneShotNonceUTxO,
-    });
-    const schedulerTx = incompleteSchedulerInitTxProgram(lucid, {
-      validator: params.validators.scheduler,
-      datum: params.schedulerDatum ?? INITIAL_SCHEDULER_DATUM,
-      lovelace: params.schedulerLovelace,
-    });
-
-    return lucid.newTx().compose(hubOracleTx).compose(schedulerTx);
-  });
 
 export const incompleteInitializationTxProgram = (
   lucid: LucidEvolution,
@@ -96,36 +66,42 @@ export const incompleteInitializationTxProgram = (
     const genesisTime = BigInt(Date.now() + VALIDITY_RANGE_BUFFER);
     const tx = lucid.newTx().validTo(Number(genesisTime));
 
-    const hubAndSchedulerTx = yield* incompleteHubAndSchedulerInitTxProgram(
-      lucid,
-      {
-        validators: params.midgardValidators,
-        oneShotNonceUTxO: nonceUtxo,
-      },
-    );
+    const hubOracleTx = yield* incompleteHubOracleInitTxProgram(lucid, {
+      hubOracleMintValidator: params.midgardValidators.hubOracle,
+      validators: params.midgardValidators,
+      oneShotNonceUTxO: nonceUtxo,
+    });
+
+    const schedulerTx = incompleteSchedulerInitTxProgram(lucid, {
+      validator: params.midgardValidators.scheduler,
+    });
 
     const stateQueueTx: TxBuilder = yield* incompleteInitStateQueueTxProgram(
       lucid,
       {
         validator: params.midgardValidators.stateQueue,
         genesisTime: genesisTime,
+        outputIndex: ATOMIC_INIT_OUTPUT_INDEXES.stateQueue,
       },
     );
 
     const registeredOperatorsTx: TxBuilder =
       yield* incompleteRegisteredOperatorInitTxProgram(lucid, {
         validator: params.midgardValidators.registeredOperators,
+        outputIndex: ATOMIC_INIT_OUTPUT_INDEXES.registeredOperators,
       });
 
     const activeOperatorsTx: TxBuilder =
       yield* incompleteActiveOperatorInitTxProgram(lucid, {
         validator: params.midgardValidators.activeOperators,
+        outputIndex: ATOMIC_INIT_OUTPUT_INDEXES.activeOperators,
       });
 
     const retiredOperatorsTx = yield* incompleteRetiredOperatorInitTxProgram(
       lucid,
       {
         validator: params.midgardValidators.retiredOperators,
+        outputIndex: ATOMIC_INIT_OUTPUT_INDEXES.retiredOperators,
       },
     );
 
@@ -136,7 +112,8 @@ export const incompleteInitializationTxProgram = (
       });
 
     return tx
-      .compose(hubAndSchedulerTx)
+      .compose(hubOracleTx)
+      .compose(schedulerTx)
       .compose(stateQueueTx)
       .compose(registeredOperatorsTx)
       .compose(activeOperatorsTx)

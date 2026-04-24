@@ -4,7 +4,7 @@ import { LucidEvolution, TxBuilder } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
 export const FRAUD_PROOF_CATALOGUE_ASSET_NAME = fromText(
-  "Fraud Proof Catalogue",
+  "MIDGARD_FRAUD_PROOF_CATALOGUE",
 );
 
 export const FraudProofCatalogueDatumSchema = Data.Bytes();

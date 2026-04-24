@@ -10,6 +10,7 @@ export * from "./registered-operators.js";
 export * from "./retired-operators.js";
 export * from "./scheduler.js";
 export * from "./state-queue.js";
+export * from "./settlement.js";
 export * from "./initialization.js";
 
 export * from "./user-events/index.js";

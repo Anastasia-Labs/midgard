@@ -9,7 +9,12 @@ import {
   TxSignBuilder,
   UTxO,
 } from "@lucid-evolution/lucid";
-import { GenericErrorFields, makeReturn, OutputReference } from "@/common.js";
+import {
+  GenericErrorFields,
+  makeReturn,
+  OutputReference,
+  ProofSchema,
+} from "@/common.js";
 import { AuthenticUTxO, authenticateUTxOs } from "@/internals.js";
 import {
   AddressData,
@@ -19,7 +24,12 @@ import {
   LucidError,
   UnspecifiedNetworkError,
 } from "@/common.js";
-import { TxOrderEventSchema } from "@/ledger-state.js";
+import {
+  CardanoDatum,
+  CardanoDatumSchema,
+  MidgardTxValiditySchema,
+  TxOrderEventSchema,
+} from "@/ledger-state.js";
 import {
   buildUserEventMintTransaction,
   fetchUserEventUTxOsProgram,
@@ -28,17 +38,39 @@ import {
   UserEventExtraFields,
   UserEventFetchConfig,
   UserEventMintRedeemer,
+  UserEventMintRedeemerSchema,
+  userEventWitnessScriptHash,
 } from "./internals.js";
 import { Data as EffectData, Effect } from "effect";
 
 export const TxOrderDatumSchema = Data.Object({
   event: TxOrderEventSchema,
-  inclusionTime: POSIXTimeSchema,
-  refundAddress: AddressSchema,
-  refundDatum: Data.Nullable(Data.Any()),
+  inclusion_time: POSIXTimeSchema,
+  witness: Data.Bytes({ minLength: 28, maxLength: 28 }),
+  refund_address: AddressSchema,
+  refund_datum: CardanoDatumSchema,
 });
 export type TxOrderDatum = Data.Static<typeof TxOrderDatumSchema>;
 export const TxOrderDatum = TxOrderDatumSchema as unknown as TxOrderDatum;
+export const TxOrderMintRedeemerSchema = UserEventMintRedeemerSchema;
+export type TxOrderMintRedeemer = UserEventMintRedeemer;
+export const TxOrderMintRedeemer =
+  UserEventMintRedeemer as unknown as TxOrderMintRedeemer;
+export const TxOrderSpendRedeemerSchema = Data.Object({
+  input_index: Data.Integer(),
+  output_index: Data.Integer(),
+  hub_ref_input_index: Data.Integer(),
+  settlement_ref_input_index: Data.Integer(),
+  burn_redeemer_index: Data.Integer(),
+  membership_proof: ProofSchema,
+  inclusion_proof_script_withdraw_redeemer_index: Data.Integer(),
+  validity_override: MidgardTxValiditySchema,
+});
+export type TxOrderSpendRedeemer = Data.Static<
+  typeof TxOrderSpendRedeemerSchema
+>;
+export const TxOrderSpendRedeemer =
+  TxOrderSpendRedeemerSchema as unknown as TxOrderSpendRedeemer;
 
 export type TxOrderUTxO = AuthenticUTxO<TxOrderDatum, UserEventExtraFields>;
 
@@ -54,7 +86,7 @@ export const utxosToTxOrderUTxOs = (
   const calculateExtraFields = (datum: TxOrderDatum): UserEventExtraFields => ({
     idCbor: Buffer.from(fromHex(Data.to(datum.event.id, OutputReference))),
     infoCbor: Buffer.from(fromHex(datum.event.tx)),
-    inclusionTime: new Date(Number(datum.inclusionTime)),
+    inclusionTime: new Date(Number(datum.inclusion_time)),
   });
 
   return authenticateUTxOs<TxOrderDatum, UserEventExtraFields>(
@@ -85,7 +117,7 @@ export type TxOrderParams = {
   nonceUTxO?: UTxO;
   cardanoTx: CML.Transaction; // temporary until midgard tx conversion is done
   refundAddress: AddressData;
-  refundDatum?: Data;
+  refundDatum?: CardanoDatum;
 };
 
 /**
@@ -120,18 +152,19 @@ export const incompleteTxOrderTxProgram = (
         },
         tx: params.cardanoTx.to_cbor_hex(),
       },
-      inclusionTime: BigInt(inclusionTime),
-      refundAddress: params.refundAddress,
-      refundDatum: params.refundDatum ?? null,
+      inclusion_time: BigInt(inclusionTime),
+      witness: userEventWitnessScriptHash(assetName),
+      refund_address: params.refundAddress,
+      refund_datum: params.refundDatum ?? "NoDatum",
     };
     const txOrderDatumCBOR = Data.to(txOrderDatum, TxOrderDatum);
 
     const mintRedeemer: UserEventMintRedeemer = {
       AuthenticateEvent: {
-        nonceInputIndex: 0n,
-        eventOutputIndex: 0n,
-        hubRefInputIndex: 0n,
-        witnessRegistrationRedeemerIndex: 0n,
+        nonce_input_index: 0n,
+        event_output_index: 0n,
+        hub_ref_input_index: 0n,
+        witness_registration_redeemer_index: 0n,
       },
     };
     const mintRedeemerCBOR = Data.to(mintRedeemer, UserEventMintRedeemer);
@@ -168,7 +201,7 @@ export const unsignedTxOrderTxProgram = (
   Effect.gen(function* () {
     const commitTx = yield* incompleteTxOrderTxProgram(lucid, depositParams);
     const completedTx: TxSignBuilder = yield* Effect.tryPromise({
-      try: () => commitTx.complete({ localUPLCEval: false }),
+      try: () => commitTx.complete({ localUPLCEval: true }),
       catch: (e) =>
         new TxOrderError({
           message: `Failed to build the transaction: ${e}`,

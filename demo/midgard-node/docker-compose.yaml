@@ -12,6 +12,7 @@ services:
       context: .
       additional_contexts:
         - sdk=../midgard-sdk
+        - onchain=../../onchain/aiken
       dockerfile: ./Dockerfile
     env_file:
       - .env

@@ -1,19 +1,23 @@
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { Effect } from "effect";
 import * as SDK from "@al-ft/midgard-sdk";
 import {
   Constr,
+  Data,
+  credentialToAddress,
   MintingPolicy,
   Network,
   SpendingValidator,
   applyParamsToScript,
   mintingPolicyToId,
+  scriptHashToCredential,
   validatorToAddress,
   validatorToScriptHash,
 } from "@lucid-evolution/lucid";
 import { AlwaysSucceedsContract } from "./always-succeeds.js";
 import { NodeConfig } from "./config.js";
-import * as bundledRealScripts from "../../blueprints/real/plutus.json" with { type: "json" };
 
 /**
  * Contract-loading service for Midgard validators.
@@ -31,17 +35,51 @@ type Blueprint = {
   validators: BlueprintValidator[];
 };
 
-const bundledRealBlueprint = bundledRealScripts.default as Blueprint;
+const moduleDir = path.dirname(fileURLToPath(import.meta.url));
+const DEFAULT_REAL_BLUEPRINT_CANDIDATES = [
+  path.resolve(moduleDir, "../../../../onchain/aiken/plutus.json"),
+  path.resolve(moduleDir, "../../../onchain/aiken/plutus.json"),
+  path.resolve(process.cwd(), "../../onchain/aiken/plutus.json"),
+  path.resolve(process.cwd(), "onchain/aiken/plutus.json"),
+] as const;
 
 /**
- * Cached override blueprint loaded from `MIDGARD_REAL_BLUEPRINT_PATH`.
+ * Cached real blueprint loaded from either `MIDGARD_REAL_BLUEPRINT_PATH` or
+ * the canonical onchain Aiken build output.
  */
-let cachedOverriddenRealBlueprint:
+let cachedRealBlueprint:
   | {
       readonly path: string;
       readonly blueprint: Blueprint;
     }
   | undefined;
+
+const parseBlueprint = (raw: string, sourcePath: string): Blueprint => {
+  const parsed = JSON.parse(raw) as unknown;
+  if (
+    typeof parsed !== "object" ||
+    parsed === null ||
+    !("validators" in parsed) ||
+    !Array.isArray((parsed as { validators?: unknown }).validators)
+  ) {
+    throw new Error(
+      `Blueprint at "${sourcePath}" does not have a validators array`,
+    );
+  }
+  return parsed as Blueprint;
+};
+
+const resolveDefaultRealBlueprintPath = (): string => {
+  for (const candidate of new Set(DEFAULT_REAL_BLUEPRINT_CANDIDATES)) {
+    if (existsSync(candidate)) {
+      return candidate;
+    }
+  }
+
+  throw new Error(
+    `Failed to locate canonical real blueprint. Looked in: ${DEFAULT_REAL_BLUEPRINT_CANDIDATES.join(", ")}`,
+  );
+};
 
 /**
  * Loads the real-contract blueprint, optionally honoring an override path from
@@ -50,38 +88,30 @@ let cachedOverriddenRealBlueprint:
 const loadRealBlueprint = (): Effect.Effect<Blueprint, Error> =>
   Effect.try({
     try: () => {
-      const overridePath = process.env.MIDGARD_REAL_BLUEPRINT_PATH?.trim();
-      if (!overridePath) {
-        return bundledRealBlueprint;
+      const configuredPath = process.env.MIDGARD_REAL_BLUEPRINT_PATH?.trim();
+      const blueprintPath =
+        configuredPath && configuredPath.length > 0
+          ? configuredPath
+          : resolveDefaultRealBlueprintPath();
+
+      if (cachedRealBlueprint?.path === blueprintPath) {
+        return cachedRealBlueprint.blueprint;
       }
-      if (cachedOverriddenRealBlueprint?.path === overridePath) {
-        return cachedOverriddenRealBlueprint.blueprint;
-      }
-      const parsed = JSON.parse(readFileSync(overridePath, "utf8")) as unknown;
-      if (
-        typeof parsed !== "object" ||
-        parsed === null ||
-        !("validators" in parsed) ||
-        !Array.isArray((parsed as { validators?: unknown }).validators)
-      ) {
-        throw new Error(
-          `Blueprint at "${overridePath}" does not have a validators array`,
-        );
-      }
-      const blueprint = parsed as Blueprint;
-      cachedOverriddenRealBlueprint = {
-        path: overridePath,
+
+      const blueprint = parseBlueprint(
+        readFileSync(blueprintPath, "utf8"),
+        blueprintPath,
+      );
+
+      cachedRealBlueprint = {
+        path: blueprintPath,
         blueprint,
       };
       return blueprint;
     },
     catch: (cause) =>
       new Error(
-        `Failed to load real blueprint${
-          process.env.MIDGARD_REAL_BLUEPRINT_PATH
-            ? ` from "${process.env.MIDGARD_REAL_BLUEPRINT_PATH}"`
-            : ""
-        }: ${cause instanceof Error ? cause.message : String(cause)}`,
+        `Failed to load real blueprint: ${cause instanceof Error ? cause.message : String(cause)}`,
       ),
   });
 
@@ -138,6 +168,44 @@ export const REAL_SCHEDULER_SCRIPT_TITLES = {
 export const REAL_DEPOSIT_SCRIPT_TITLES = {
   mint: "user_events/deposit.mint.mint",
   spend: "user_events/deposit.spend.spend",
+} as const;
+
+/**
+ * Blueprint titles for the real tx-order scripts.
+ */
+export const REAL_TX_ORDER_SCRIPT_TITLES = {
+  mint: "user_events/tx_order.mint.mint",
+  spend: "user_events/tx_order.spend.spend",
+} as const;
+
+/**
+ * Blueprint titles for the real withdrawal scripts.
+ */
+export const REAL_WITHDRAWAL_SCRIPT_TITLES = {
+  mint: "user_events/withdrawal.mint.mint",
+  spend: "user_events/withdrawal.spend.spend",
+} as const;
+
+/**
+ * Blueprint titles for the real settlement scripts.
+ */
+export const REAL_SETTLEMENT_SCRIPT_TITLES = {
+  mint: "settlement.mint.mint",
+  spend: "settlement.spend.spend",
+} as const;
+
+export const REAL_FRAUD_PROOF_CATALOGUE_SCRIPT_TITLES = {
+  mint: "fraud_proof_catalogue.mint.mint",
+  spend: "fraud_proof_catalogue.spend.else",
+} as const;
+
+export const REAL_COMPUTATION_THREAD_SCRIPT_TITLES = {
+  mint: "computation_thread.mint.mint",
+} as const;
+
+export const REAL_FRAUD_PROOF_SCRIPT_TITLES = {
+  mint: "fraud_proof.mint.mint",
+  spend: "fraud_proof.spend.else",
 } as const;
 
 /**
@@ -201,13 +269,52 @@ const getCompiledScript = (
     return found.compiledCode;
   });
 
+const makeMintingPolicy = (mintingScriptCBOR: string): SDK.MintingValidator => {
+  const mintingScript: MintingPolicy = {
+    type: "PlutusV3",
+    script: mintingScriptCBOR,
+  };
+  return {
+    mintingScriptCBOR,
+    mintingScript,
+    policyId: mintingPolicyToId(mintingScript),
+  };
+};
+
+const makeSpendingValidator = (
+  network: Network,
+  spendingScriptCBOR: string,
+): SDK.SpendingValidator => {
+  const spendingScript: SpendingValidator = {
+    type: "PlutusV3",
+    script: spendingScriptCBOR,
+  };
+  return {
+    spendingScriptCBOR,
+    spendingScript,
+    spendingScriptAddress: validatorToAddress(network, spendingScript),
+    spendingScriptHash: validatorToScriptHash(spendingScript),
+  };
+};
+
+const makeAuthenticatedValidator = (
+  network: Network,
+  mintingScriptCBOR: string,
+  spendingScriptCBOR: string,
+): SDK.AuthenticatedValidator => ({
+  ...makeSpendingValidator(network, spendingScriptCBOR),
+  ...makeMintingPolicy(mintingScriptCBOR),
+});
+
 /**
  * Builds the real hub-oracle minting validator parameterized by the configured
  * one-shot outref.
  */
 const buildRealHubOracleValidator = (
+  network: Network,
+  fallbackSpendingValidator: SDK.SpendingValidator,
   oneShotOutRef: HubOracleOneShotOutRef,
-): Effect.Effect<SDK.MintingValidator, Error> =>
+): Effect.Effect<SDK.AuthenticatedValidator, Error> =>
   Effect.gen(function* () {
     const blueprint = yield* loadRealBlueprint();
     const mintBase = yield* getCompiledScript(
@@ -226,11 +333,80 @@ const buildRealHubOracleValidator = (
       type: "PlutusV3",
       script: mintingScriptCBOR,
     };
+    const policyId = mintingPolicyToId(mintingScript);
     return {
+      spendingScriptCBOR: fallbackSpendingValidator.spendingScriptCBOR,
+      spendingScript: fallbackSpendingValidator.spendingScript,
+      // The canonical Aiken tree only ships the one-shot mint policy. The
+      // witness UTxO lives at the script credential derived from that policy id.
+      spendingScriptHash: policyId,
+      spendingScriptAddress: credentialToAddress(
+        network,
+        scriptHashToCredential(policyId),
+      ),
       mintingScriptCBOR,
       mintingScript,
-      policyId: mintingPolicyToId(mintingScript),
+      policyId,
     };
+  });
+
+const buildRealFraudProofCatalogueValidator = (
+  network: Network,
+  contracts: SDK.MidgardValidators,
+): Effect.Effect<SDK.AuthenticatedValidator, Error> =>
+  Effect.gen(function* () {
+    const blueprint = yield* loadRealBlueprint();
+    const mintBase = yield* getCompiledScript(
+      blueprint,
+      REAL_FRAUD_PROOF_CATALOGUE_SCRIPT_TITLES.mint,
+    );
+    const spendBase = yield* getCompiledScript(
+      blueprint,
+      REAL_FRAUD_PROOF_CATALOGUE_SCRIPT_TITLES.spend,
+    );
+
+    const mintingScriptCBOR = applyParamsToScript(mintBase, [
+      contracts.hubOracle.policyId,
+    ]);
+    return makeAuthenticatedValidator(network, mintingScriptCBOR, spendBase);
+  });
+
+const buildRealComputationThreadValidator = (
+  contracts: SDK.MidgardValidators,
+): Effect.Effect<SDK.MintingValidator, Error> =>
+  Effect.gen(function* () {
+    const blueprint = yield* loadRealBlueprint();
+    const mintBase = yield* getCompiledScript(
+      blueprint,
+      REAL_COMPUTATION_THREAD_SCRIPT_TITLES.mint,
+    );
+    return makeMintingPolicy(
+      applyParamsToScript(mintBase, [
+        contracts.fraudProofCatalogue.policyId,
+        contracts.hubOracle.policyId,
+      ]),
+    );
+  });
+
+const buildRealFraudProofValidator = (
+  network: Network,
+  computationThread: SDK.MintingValidator,
+): Effect.Effect<SDK.AuthenticatedValidator, Error> =>
+  Effect.gen(function* () {
+    const blueprint = yield* loadRealBlueprint();
+    const mintBase = yield* getCompiledScript(
+      blueprint,
+      REAL_FRAUD_PROOF_SCRIPT_TITLES.mint,
+    );
+    const spendBase = yield* getCompiledScript(
+      blueprint,
+      REAL_FRAUD_PROOF_SCRIPT_TITLES.spend,
+    );
+    return makeAuthenticatedValidator(
+      network,
+      applyParamsToScript(mintBase, [computationThread.policyId]),
+      spendBase,
+    );
   });
 
 /**
@@ -242,6 +418,18 @@ const buildRealStateQueueValidator = (
 ): Effect.Effect<SDK.AuthenticatedValidator, Error> =>
   Effect.gen(function* () {
     const blueprint = yield* loadRealBlueprint();
+    const activeOperatorsAddress = yield* Effect.mapError(
+      Effect.map(
+        SDK.addressDataFromBech32(
+          contracts.activeOperators.spendingScriptAddress,
+        ),
+        (addressData) => Data.from(Data.to(addressData, SDK.AddressData)),
+      ),
+      (cause) =>
+        new Error(
+          `Failed to encode active-operators address for state_queue mint parameters: ${String(cause)}`,
+        ),
+    );
     const mintBase = yield* getCompiledScript(
       blueprint,
       REAL_STATE_QUEUE_SCRIPT_TITLES.mint,
@@ -253,8 +441,8 @@ const buildRealStateQueueValidator = (
 
     const mintingScriptCBOR = applyParamsToScript(mintBase, [
       contracts.hubOracle.policyId,
-      SDK.HUB_ORACLE_ASSET_NAME,
       contracts.activeOperators.policyId,
+      activeOperatorsAddress,
       contracts.retiredOperators.policyId,
       contracts.scheduler.policyId,
       contracts.fraudProof.policyId,
@@ -303,10 +491,8 @@ const buildRealRegisteredOperatorsValidator = (
     );
 
     const mintingScriptCBOR = applyParamsToScript(mintBase, [
-      operatorParams.requiredBondLovelace,
-      operatorParams.slashingPenaltyLovelace,
+      contracts.retiredOperators.policyId,
       contracts.hubOracle.policyId,
-      SDK.HUB_ORACLE_ASSET_NAME,
     ]);
     const mintingScript: MintingPolicy = {
       type: "PlutusV3",
@@ -350,9 +536,9 @@ const buildRealActiveOperatorsValidator = (
     );
 
     const mintingScriptCBOR = applyParamsToScript(mintBase, [
-      operatorParams.slashingPenaltyLovelace,
       contracts.hubOracle.policyId,
-      SDK.HUB_ORACLE_ASSET_NAME,
+      contracts.registeredOperators.policyId,
+      contracts.retiredOperators.policyId,
     ]);
     const mintingScript: MintingPolicy = {
       type: "PlutusV3",
@@ -362,7 +548,6 @@ const buildRealActiveOperatorsValidator = (
     const spendingScriptCBOR = applyParamsToScript(spendBase, [
       policyId,
       contracts.hubOracle.policyId,
-      SDK.HUB_ORACLE_ASSET_NAME,
     ]);
     const spendingScript: SpendingValidator = {
       type: "PlutusV3",
@@ -400,9 +585,7 @@ const buildRealRetiredOperatorsValidator = (
     );
 
     const mintingScriptCBOR = applyParamsToScript(mintBase, [
-      operatorParams.slashingPenaltyLovelace,
       contracts.hubOracle.policyId,
-      SDK.HUB_ORACLE_ASSET_NAME,
     ]);
     const mintingScript: MintingPolicy = {
       type: "PlutusV3",
@@ -435,6 +618,18 @@ const buildRealSchedulerValidator = (
 ): Effect.Effect<SDK.AuthenticatedValidator, Error> =>
   Effect.gen(function* () {
     const blueprint = yield* loadRealBlueprint();
+    const activeOperatorsAddress = yield* Effect.mapError(
+      Effect.map(
+        SDK.addressDataFromBech32(
+          contracts.activeOperators.spendingScriptAddress,
+        ),
+        (addressData) => Data.from(Data.to(addressData, SDK.AddressData)),
+      ),
+      (cause) =>
+        new Error(
+          `Failed to encode active-operators address for scheduler spend parameters: ${String(cause)}`,
+        ),
+    );
     const mintBase = yield* getCompiledScript(
       blueprint,
       REAL_SCHEDULER_SCRIPT_TITLES.mint,
@@ -446,7 +641,6 @@ const buildRealSchedulerValidator = (
 
     const mintingScriptCBOR = applyParamsToScript(mintBase, [
       contracts.hubOracle.policyId,
-      SDK.HUB_ORACLE_ASSET_NAME,
     ]);
     const mintingScript: MintingPolicy = {
       type: "PlutusV3",
@@ -455,8 +649,10 @@ const buildRealSchedulerValidator = (
     const policyId = mintingPolicyToId(mintingScript);
     const spendingScriptCBOR = applyParamsToScript(spendBase, [
       contracts.registeredOperators.policyId,
+      activeOperatorsAddress,
       contracts.activeOperators.policyId,
       policyId,
+      contracts.hubOracle.policyId,
     ]);
     const spendingScript: SpendingValidator = {
       type: "PlutusV3",
@@ -519,6 +715,133 @@ const buildRealDepositValidator = (
     };
   });
 
+const buildRealTxOrderValidator = (
+  network: Network,
+  contracts: SDK.MidgardValidators,
+): Effect.Effect<SDK.AuthenticatedValidator, Error> =>
+  Effect.gen(function* () {
+    const blueprint = yield* loadRealBlueprint();
+    const mintBase = yield* getCompiledScript(
+      blueprint,
+      REAL_TX_ORDER_SCRIPT_TITLES.mint,
+    );
+    const spendBase = yield* getCompiledScript(
+      blueprint,
+      REAL_TX_ORDER_SCRIPT_TITLES.spend,
+    );
+
+    const mintingScriptCBOR = applyParamsToScript(mintBase, [
+      contracts.hubOracle.policyId,
+    ]);
+    const mintingScript: MintingPolicy = {
+      type: "PlutusV3",
+      script: mintingScriptCBOR,
+    };
+    const policyId = mintingPolicyToId(mintingScript);
+    const spendingScriptCBOR = applyParamsToScript(spendBase, [
+      contracts.hubOracle.policyId,
+    ]);
+    const spendingScript: SpendingValidator = {
+      type: "PlutusV3",
+      script: spendingScriptCBOR,
+    };
+
+    return {
+      spendingScriptCBOR,
+      spendingScript,
+      spendingScriptAddress: validatorToAddress(network, spendingScript),
+      spendingScriptHash: validatorToScriptHash(spendingScript),
+      mintingScriptCBOR,
+      mintingScript,
+      policyId,
+    };
+  });
+
+const buildRealWithdrawalValidator = (
+  network: Network,
+  contracts: SDK.MidgardValidators,
+): Effect.Effect<SDK.AuthenticatedValidator, Error> =>
+  Effect.gen(function* () {
+    const blueprint = yield* loadRealBlueprint();
+    const mintBase = yield* getCompiledScript(
+      blueprint,
+      REAL_WITHDRAWAL_SCRIPT_TITLES.mint,
+    );
+    const spendBase = yield* getCompiledScript(
+      blueprint,
+      REAL_WITHDRAWAL_SCRIPT_TITLES.spend,
+    );
+
+    const mintingScriptCBOR = applyParamsToScript(mintBase, [
+      contracts.hubOracle.policyId,
+    ]);
+    const mintingScript: MintingPolicy = {
+      type: "PlutusV3",
+      script: mintingScriptCBOR,
+    };
+    const policyId = mintingPolicyToId(mintingScript);
+    const spendingScriptCBOR = applyParamsToScript(spendBase, [
+      contracts.hubOracle.policyId,
+    ]);
+    const spendingScript: SpendingValidator = {
+      type: "PlutusV3",
+      script: spendingScriptCBOR,
+    };
+
+    return {
+      spendingScriptCBOR,
+      spendingScript,
+      spendingScriptAddress: validatorToAddress(network, spendingScript),
+      spendingScriptHash: validatorToScriptHash(spendingScript),
+      mintingScriptCBOR,
+      mintingScript,
+      policyId,
+    };
+  });
+
+const buildRealSettlementValidator = (
+  network: Network,
+  contracts: SDK.MidgardValidators,
+): Effect.Effect<SDK.AuthenticatedValidator, Error> =>
+  Effect.gen(function* () {
+    const blueprint = yield* loadRealBlueprint();
+    const mintBase = yield* getCompiledScript(
+      blueprint,
+      REAL_SETTLEMENT_SCRIPT_TITLES.mint,
+    );
+    const spendBase = yield* getCompiledScript(
+      blueprint,
+      REAL_SETTLEMENT_SCRIPT_TITLES.spend,
+    );
+
+    const mintingScriptCBOR = applyParamsToScript(mintBase, [
+      contracts.hubOracle.policyId,
+    ]);
+    const mintingScript: MintingPolicy = {
+      type: "PlutusV3",
+      script: mintingScriptCBOR,
+    };
+    const policyId = mintingPolicyToId(mintingScript);
+    const spendingScriptCBOR = applyParamsToScript(spendBase, [
+      contracts.hubOracle.policyId,
+      policyId,
+    ]);
+    const spendingScript: SpendingValidator = {
+      type: "PlutusV3",
+      script: spendingScriptCBOR,
+    };
+
+    return {
+      spendingScriptCBOR,
+      spendingScript,
+      spendingScriptAddress: validatorToAddress(network, spendingScript),
+      spendingScriptHash: validatorToScriptHash(spendingScript),
+      mintingScriptCBOR,
+      mintingScript,
+      policyId,
+    };
+  });
+
 /**
  * Replaces the base hub-oracle/scheduler/state-queue contracts with their real
  * blueprint-derived counterparts.
@@ -529,33 +852,11 @@ export const withRealStateQueueContracts = (
   hubOracleOneShotOutRef: HubOracleOneShotOutRef,
 ): Effect.Effect<SDK.MidgardValidators, Error> =>
   Effect.gen(function* () {
-    yield* validateHubOracleOneShotOutRef(hubOracleOneShotOutRef);
-
-    const realHubOracle = yield* buildRealHubOracleValidator(
+    return yield* withRealStateQueueAndOperatorContracts(
+      network,
+      baseContracts,
       hubOracleOneShotOutRef,
     );
-    const withRealHubOracle: SDK.MidgardValidators = {
-      ...baseContracts,
-      hubOracle: realHubOracle,
-    };
-
-    const realScheduler = yield* buildRealSchedulerValidator(
-      network,
-      withRealHubOracle,
-    );
-    const withRealHubOracleAndScheduler: SDK.MidgardValidators = {
-      ...withRealHubOracle,
-      scheduler: realScheduler,
-    };
-
-    const realStateQueue = yield* buildRealStateQueueValidator(
-      network,
-      withRealHubOracleAndScheduler,
-    );
-    return {
-      ...withRealHubOracleAndScheduler,
-      stateQueue: realStateQueue,
-    };
   });
 
 /**
@@ -575,6 +876,8 @@ export const withRealStateQueueAndOperatorContracts = (
     yield* validateHubOracleOneShotOutRef(hubOracleOneShotOutRef);
 
     const realHubOracle = yield* buildRealHubOracleValidator(
+      network,
+      baseContracts.hubOracle as unknown as SDK.SpendingValidator,
       hubOracleOneShotOutRef,
     );
     const withRealHubOracle: SDK.MidgardValidators = {
@@ -582,22 +885,43 @@ export const withRealStateQueueAndOperatorContracts = (
       hubOracle: realHubOracle,
     };
 
-    const realDeposit = yield* buildRealDepositValidator(
-      network,
-      withRealHubOracle,
-    );
-    const withRealHubOracleAndDeposit: SDK.MidgardValidators = {
+    const realFraudProofCatalogue =
+      yield* buildRealFraudProofCatalogueValidator(network, withRealHubOracle);
+    const withRealFraudProofCatalogue: SDK.MidgardValidators = {
       ...withRealHubOracle,
-      deposit: realDeposit,
+      fraudProofCatalogue: realFraudProofCatalogue,
     };
 
-    const realRegisteredOperators = yield* buildRealRegisteredOperatorsValidator(
+    const realComputationThread = yield* buildRealComputationThreadValidator(
+      withRealFraudProofCatalogue,
+    );
+    const realFraudProof = yield* buildRealFraudProofValidator(
       network,
-      withRealHubOracleAndDeposit,
+      realComputationThread,
+    );
+    const withRealFraudProof: SDK.MidgardValidators = {
+      ...withRealFraudProofCatalogue,
+      fraudProof: realFraudProof,
+    };
+
+    const realRetiredOperators = yield* buildRealRetiredOperatorsValidator(
+      network,
+      withRealFraudProof,
       operatorParams,
     );
+    const withRealRetiredOperators: SDK.MidgardValidators = {
+      ...withRealFraudProof,
+      retiredOperators: realRetiredOperators,
+    };
+
+    const realRegisteredOperators =
+      yield* buildRealRegisteredOperatorsValidator(
+        network,
+        withRealRetiredOperators,
+        operatorParams,
+      );
     const withRealRegisteredOperators: SDK.MidgardValidators = {
-      ...withRealHubOracleAndDeposit,
+      ...withRealRetiredOperators,
       registeredOperators: realRegisteredOperators,
     };
 
@@ -606,36 +930,62 @@ export const withRealStateQueueAndOperatorContracts = (
       withRealRegisteredOperators,
       operatorParams,
     );
-    const withRealActiveOperators: SDK.MidgardValidators = {
+    const withRealOperatorSets: SDK.MidgardValidators = {
       ...withRealRegisteredOperators,
       activeOperators: realActiveOperators,
     };
 
-    const realRetiredOperators = yield* buildRealRetiredOperatorsValidator(
+    const realDeposit = yield* buildRealDepositValidator(
       network,
-      withRealActiveOperators,
-      operatorParams,
+      withRealOperatorSets,
     );
-    const withRealOperatorSets: SDK.MidgardValidators = {
-      ...withRealActiveOperators,
-      retiredOperators: realRetiredOperators,
+    const withRealHubOracleAndDeposit: SDK.MidgardValidators = {
+      ...withRealOperatorSets,
+      deposit: realDeposit,
+    };
+
+    const realTxOrder = yield* buildRealTxOrderValidator(
+      network,
+      withRealHubOracleAndDeposit,
+    );
+    const withRealHubOracleDepositAndTxOrder: SDK.MidgardValidators = {
+      ...withRealHubOracleAndDeposit,
+      txOrder: realTxOrder,
+    };
+
+    const realWithdrawal = yield* buildRealWithdrawalValidator(
+      network,
+      withRealHubOracleDepositAndTxOrder,
+    );
+    const withRealUserEvents: SDK.MidgardValidators = {
+      ...withRealHubOracleDepositAndTxOrder,
+      withdrawal: realWithdrawal,
     };
 
     const realScheduler = yield* buildRealSchedulerValidator(
       network,
-      withRealOperatorSets,
+      withRealUserEvents,
     );
     const withRealScheduler: SDK.MidgardValidators = {
-      ...withRealOperatorSets,
+      ...withRealUserEvents,
       scheduler: realScheduler,
+    };
+
+    const realSettlement = yield* buildRealSettlementValidator(
+      network,
+      withRealScheduler,
+    );
+    const withRealSettlement: SDK.MidgardValidators = {
+      ...withRealScheduler,
+      settlement: realSettlement,
     };
 
     const realStateQueue = yield* buildRealStateQueueValidator(
       network,
-      withRealScheduler,
+      withRealSettlement,
     );
     return {
-      ...withRealScheduler,
+      ...withRealSettlement,
       stateQueue: realStateQueue,
     };
   });
@@ -674,7 +1024,7 @@ const makeMidgardContracts = Effect.gen(function* () {
     },
   );
   yield* Effect.logInfo(
-    "🔐 Contract source selected: state_queue=real, hub_oracle=real, deposit=real, registered_operators=real, active_operators=real, retired_operators=real, scheduler=real",
+    "🔐 Contract source selected: state_queue=real, hub_oracle=real, deposit=real, tx_order=real, withdrawal=real, settlement=real, registered_operators=real, active_operators=real, retired_operators=real, scheduler=real",
   );
   return resolvedContracts;
 }).pipe(Effect.orDie);
