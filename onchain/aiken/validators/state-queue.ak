@@ -2,8 +2,9 @@ use aiken/builtin
 use aiken/collection/list
 use aiken/crypto
 use aiken_design_patterns/linked_list
+use cardano/address.{Address}
 use cardano/assets.{Lovelace, PolicyId, quantity_of}
-use cardano/transaction.{Input, Mint, OutputReference, Spend, Transaction}
+use cardano/transaction.{Mint, OutputReference, Transaction}
 use midgard/common/constants.{empty_merkle_tree_root}
 use midgard/common/utils
 use midgard/fraud_proof
@@ -12,7 +13,7 @@ use midgard/ledger_state.{
   ConfirmedState, Header, genesis_header_hash, genesis_protocol_version,
   genesis_utxo_root,
 }
-use midgard/operator_directory
+use midgard/operator_directory.{SlashOperatorForBadState}
 use midgard/operator_directory/active_operators
 use midgard/operator_directory/retired_operators
 use midgard/protocol_parameters.{maturity_duration}
@@ -46,6 +47,7 @@ validator spend(state_queue_mint_script_hash: ByteArray) {
 validator mint(
   hub_oracle_script_hash: PolicyId,
   active_operators_script_hash: PolicyId,
+  active_operators_addr: Address,
   retired_operators_script_hash: PolicyId,
   scheduler_script_hash: PolicyId,
   fraud_proof_script_hash: PolicyId,
@@ -192,79 +194,45 @@ validator mint(
           } = output_header_data
           expect output_start_time < output_end_time
 
-          // 7. The operator pub key hash from the redeemer must match the one
+          // 6. The operator pub key hash from the redeemer must match the one
           //    in the new header.
           expect output_operator_vkey == operator
 
           // Verify that it is the operator's turn to commit according to the
           // scheduler:
-          // 8. The transaction must include a reference input with the
+          // 7. The transaction must include a reference input with the
           //    scheduler NFT. Let that input's datum be the `scheduler_state`.
-          let scheduler.Datum {
-            operator: scheduler_operator,
-            start_time: scheduler_start_time,
-          } =
+          expect scheduler.ActiveOperator { operator: scheduler_operator, .. } =
             scheduler.get_datum(
               reference_inputs: reference_inputs,
               scheduler_policy_id: scheduler_script_hash,
               scheduler_ref_input_index: scheduler_ref_input_index,
             )
 
-          // 9. The `operator` field of `scheduler_state` must match `operator`
+          // 8. The `operator` field of `scheduler_state` must match `operator`
           //    from redeemer.
           expect operator == scheduler_operator
 
-          // 10. The `end_time` of `header_node` must be within the shift
-          //     interval of `scheduler_state`.
-          //
-          //     Note that scheduler's start time is inclusive, while block
-          //     header's end time is exclusive. Therefore we are using `>`,
-          //     since equality between the two wouldn't mean the block is
-          //     within the shift interval.
-          expect output_end_time > scheduler_start_time
-          // Here since both scheduler and blocks have an exclusive upper bound,
-          // we are using `<=` instead of `<`.
-          expect
-            output_end_time <= scheduler.shift_end_time(scheduler_start_time)
-
           // Update the operator's timestamp in the active operators set:
-          // 11. The transaction must include an input, spent via the Update
-          //     Bond Hold New State redeemer, of an `active_operators` node
-          //     with a key matching the `operator`.
-          //
-          //     Here we are indirectly validating the active operators spending
-          //     script is invoked by checking the presence of the linked list
-          //     NFT.
-          expect Some(Input {
-            output_reference: active_node_outref,
-            output: active_node_output,
-          }) = inputs |> list.at(active_operators_input_index)
-          let active_operators_linked_list_eval =
-            linked_list.get_element_info(
-              active_node_output,
-              fn(_, m_active_node_key, _, _) -> Bool {
-                Some(operator) == m_active_node_key
-              },
+          // 9. The transaction must include an input, spent via the
+          //    `UpdateBondHoldNewState` redeemer, of an `active_operators`
+          //    node with a key matching the `operator`.
+          expect active_operators.UpdateBondHoldNewState { active_operator, .. } =
+            utils.get_spending_redeemer_data_at(
+              active_operators_addr,
+              active_operators_input_index,
+              active_operators_redeemer_index,
+              inputs,
+              redeemers,
             )
-          expect
-            active_operators_linked_list_eval
-              |> active_operators.finalize_linked_list(
-                  active_operators_script_hash,
-                )
-          //
-          expect active_operators.UpdateBondHoldNewState { .. } =
-            redeemers
-              |> utils.get_redeemer_at(
-                  Spend(active_node_outref),
-                  active_operators_redeemer_index,
-                )
+          expect operator == active_operator
 
           // To validate the output header, we must take two routes depending on
           // whether the anchor element is the root (i.e. confirmed state), or a
           // node (i.e. latest block in the queue).
           when m_anchor_key is {
             Some(header_hash) -> {
-              // 12a. New block must properly carry over data from previous
+              // 10a. New block must properly carry over data from previous
               //      block.
               expect Header { utxos_root, end_time, protocol_version, .. } =
                 anchor_data
@@ -277,7 +245,7 @@ validator mint(
               True
             }
             None -> {
-              // 12b. New block must properly carry over data from confirmed
+              // 10b. New block must properly carry over data from confirmed
               //      state.
               expect ConfirmedState {
                 header_hash,
@@ -459,38 +427,49 @@ validator mint(
             SlashActiveOperator { active_operators_redeemer_index } -> {
               // 2a. If the operator is active:
               //     The transaction must Remove a node from the
-              //     `active_operators` set via the `RemoveOperatorBadState`
+              //     `active_operators` set via the `SlashOperatorBadState`
               //     redeemer. The `slashed_operator` argument provided to that
               //     redeemer must match `fraudulent_operator`.
-              let active_operators_redeemer_data =
-                utils.get_redeemer_at(
-                  redeemers: redeemers,
-                  expected_purpose: Mint(active_operators_script_hash),
-                  redeemer_index: active_operators_redeemer_index,
+              let slashing_reason_from_active_operators =
+                operator_directory.cross_validate_slashing_reason(
+                  fraudulent_operator,
+                  active_operators_script_hash,
+                  active_operators_redeemer_index,
+                  fn(redeemer_data: Data) {
+                    expect active_operators.SlashOperator {
+                      slashing_arguments,
+                      ..
+                    } = redeemer_data
+                    slashing_arguments
+                  },
+                  redeemers,
                 )
-              expect active_operators.RemoveOperatorBadState {
-                slashed_active_operator_key,
-                ..
-              } = active_operators_redeemer_data
-              fraudulent_operator == slashed_active_operator_key
+              expect SlashOperatorForBadState { .. } =
+                slashing_reason_from_active_operators
+              True
             }
             SlashRetiredOperator { retired_operators_redeemer_index } -> {
               // 2b. If the operator is retired:
               //     The transaction must Remove a node from the
-              //     `retired_operators` set via the `RemoveOperatorBadState`
+              //     `retired_operators` set via the `SlashOperatorBadState`
               //     redeemer. The `slashed_operator` argument provided to that
               //     redeemer must match `fraudulent_operator`.
-              let retired_operators_redeemer_data =
-                utils.get_redeemer_at(
-                  redeemers: redeemers,
-                  expected_purpose: Mint(active_operators_script_hash),
-                  redeemer_index: retired_operators_redeemer_index,
+              let slashing_reason_from_retired_operators =
+                operator_directory.cross_validate_slashing_reason(
+                  fraudulent_operator,
+                  retired_operators_script_hash,
+                  retired_operators_redeemer_index,
+                  fn(redeemer_data: Data) {
+                    expect retired_operators.SlashOperator {
+                      slashing_arguments,
+                    } = redeemer_data
+                    slashing_arguments
+                  },
+                  redeemers,
                 )
-              expect retired_operators.RemoveOperatorBadState {
-                slashed_retired_operator_key,
-                ..
-              } = retired_operators_redeemer_data
-              fraudulent_operator == slashed_retired_operator_key
+              expect SlashOperatorForBadState { .. } =
+                slashing_reason_from_retired_operators
+              True
             }
             OperatorAlreadySlashed {
               active_operators_element_ref_input_index,
@@ -537,9 +516,9 @@ validator mint(
               //     be removed first.
               //
               //     > [!NOTE]
-              //     > The successor node is also considered fraudulent because of
-              //     > getting appended to a fraudulent block, so it does not need
-              //     > to have an associated fraud proof token.
+              //     > The successor node is also considered fraudulent because
+              //     > of getting appended to a fraudulent block, so it does not
+              //     > need to have an associated fraud proof token.
               expect Some(removed_block_input) =
                 inputs |> list.at(removed_block_input_index)
               expect Some(fraudulent_node_output) =
@@ -568,8 +547,8 @@ validator mint(
               anchor_element_input_index,
               anchor_element_output_index,
             } -> {
-              // 4b. If the fraudulent block has no links, it can be removed from
-              //     the very end of the state queue.
+              // 4b. If the fraudulent block has no links, it can be removed
+              //     from the very end of the state queue.
               expect Some(anchor_element_input) =
                 inputs |> list.at(anchor_element_input_index)
               expect Some(anchor_element_output) =
