@@ -104,24 +104,24 @@ export const REAL_HUB_ORACLE_SCRIPT_TITLES = {
  * Blueprint titles for the real registered-operators scripts.
  */
 export const REAL_REGISTERED_OPERATORS_SCRIPT_TITLES = {
-  mint: "registered_operators.mint.mint",
-  spend: "registered_operators.spend.spend",
+  mint: "operator_directory/registered_operators.mint.mint",
+  spend: "operator_directory/registered_operators.spend.spend",
 } as const;
 
 /**
  * Blueprint titles for the real active-operators scripts.
  */
 export const REAL_ACTIVE_OPERATORS_SCRIPT_TITLES = {
-  mint: "active_operators.mint.mint",
-  spend: "active_operators.spend.spend",
+  mint: "operator_directory/active_operators.mint.mint",
+  spend: "operator_directory/active_operators.spend.spend",
 } as const;
 
 /**
  * Blueprint titles for the real retired-operators scripts.
  */
 export const REAL_RETIRED_OPERATORS_SCRIPT_TITLES = {
-  mint: "retired_operators.mint.mint",
-  spend: "retired_operators.spend.spend",
+  mint: "operator_directory/retired_operators.mint.mint",
+  spend: "operator_directory/retired_operators.spend.spend",
 } as const;
 
 /**
