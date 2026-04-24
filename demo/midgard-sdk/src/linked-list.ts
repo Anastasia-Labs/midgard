@@ -38,51 +38,107 @@ export const ElementSchema = Data.Object({
 export type Element = Data.Static<typeof ElementSchema>;
 export const Element = ElementSchema as unknown as Element;
 
-export type RootElementUTxO<TRootData> = { data: TRootData };
-export type NodeElementUTxO<TNodeData> = { key: string; data: TNodeData };
+export type RootElementUTxO<TRootData> = { coercedData: TRootData };
+export type NodeElementUTxO<TNodeData> = {
+  key: string;
+  coercedData: TNodeData;
+};
 
 export type ElementUTxO<TRootData, TNodeData> =
   | AuthenticUTxO<Element, RootElementUTxO<TRootData>>
   | AuthenticUTxO<Element, NodeElementUTxO<TNodeData>>;
 
-export const utxoToElementUTxO = <TRootData, TNodeData>(
+export type LinkedListParameters<TRootData, TNodeData> = {
+  nftPolicy: PolicyId;
+  rootKey: string;
+  nodeKeyPrefix: string;
+  rootType: TRootData;
+  nodeType: TNodeData;
+};
+
+export const utxoToElementUTxO = <R, N>(
   utxo: UTxO,
-  nftPolicy: PolicyId,
-  rootKey: string,
-  nodeKeyPrefix: string,
-  rootType: TRootData,
-  nodeType: TNodeData,
-): Effect.Effect<
-  ElementUTxO<TRootData, TNodeData>,
-  DataCoercionError | UnauthenticUtxoError
-> =>
+  params: LinkedListParameters<R, N>,
+): Effect.Effect<ElementUTxO<R, N>, DataCoercionError | UnauthenticUtxoError> =>
   Effect.gen(function* () {
-    const authUTxO = yield* authenticateUTxO<Element>(utxo, nftPolicy, Element);
+    const authUTxO = yield* authenticateUTxO<Element>(
+      utxo,
+      params.nftPolicy,
+      Element,
+    );
     if ("Root" in authUTxO.datum.data) {
-      if (authUTxO.assetName === rootKey) {
+      if (authUTxO.assetName === params.rootKey) {
         const rootData = authUTxO.datum.data.Root;
-        const root = Data.castFrom(rootData, rootType);
-        return { ...authUTxO, data: root };
+        const root = Data.castFrom(rootData, params.rootType);
+        return { ...authUTxO, coercedData: root };
       } else {
         return yield* new UnauthenticUtxoError({
-          message: "",
-          cause: "",
+          message: "Failed to authenticate the given UTxO as an ElementUTxO",
+          cause: "Found element UTxO datum mismatches its asset name",
         });
       }
     } else {
-      if (authUTxO.assetName.startsWith(nodeKeyPrefix)) {
+      if (authUTxO.assetName.startsWith(params.nodeKeyPrefix)) {
         const nodeData = authUTxO.datum.data.Node;
-        const node = Data.castFrom(nodeData, nodeType);
+        const node = Data.castFrom(nodeData, params.nodeType);
         return {
           ...authUTxO,
-          data: node,
-          key: authUTxO.assetName.slice(nodeKeyPrefix.length),
+          coercedData: node,
+          key: authUTxO.assetName.slice(0, params.nodeKeyPrefix.length),
         };
       } else {
         return yield* new UnauthenticUtxoError({
-          message: "",
-          cause: "",
+          message: "Failed to authenticate the given UTxO as an ElementUTxO",
+          cause: "Unexpected key prefix in asset name",
         });
+      }
+    }
+  });
+
+export const utxosToElementUTxOs = <R, N>(
+  utxos: UTxO[],
+  params: LinkedListParameters<R, N>,
+): Effect.Effect<ElementUTxO<R, N>[]> =>
+  Effect.allSuccesses(utxos.map((u) => utxoToElementUTxO<R, N>(u, params)));
+
+export const findElementUTxOByKey = <R, N, T extends ElementUTxO<R, N>>(
+  key: string | null,
+  elements: T[],
+  params: LinkedListParameters<R, N>,
+): Effect.Effect<T, LinkedListError> =>
+  Effect.gen(function* () {
+    if (elements.length <= 0) {
+      return yield* new LinkedListError({
+        message: "Failed to find ElementUTxO with the given key",
+        cause: "Empty list of ElementUTxOs provided",
+      });
+    } else if (key === params.rootKey) {
+      const foundUTxO = elements.find(
+        (e) => e.assetName === params.rootKey && "Root" in e.datum.data,
+      );
+      if (foundUTxO === undefined) {
+        return yield* new LinkedListError({
+          message: "Root element not found",
+          cause:
+            "None of the provided ElementUTxOs matched the given root key along with a Root element data",
+        });
+      } else {
+        return foundUTxO;
+      }
+    } else {
+      const foundUTxO = elements.find(
+        (e) =>
+          e.assetName.startsWith(params.nodeKeyPrefix) &&
+          "Node" in e.datum.data,
+      );
+      if (foundUTxO === undefined) {
+        return yield* new LinkedListError({
+          message: "Node element not found",
+          cause:
+            "None of the provided ElementUTxOs had an NFT with an asset name starting with the given prefix, along with a Node element data",
+        });
+      } else {
+        return foundUTxO;
       }
     }
   });

@@ -29,10 +29,11 @@ import { LucidError, makeReturn } from "@/common.js";
 import { authenticateUTxO, authenticateUTxOs } from "@/internals.js";
 import {
   LinkedListError,
-  findLinkInLinkedList,
+  findElementUTxOByKey,
   incompleteInitLinkedListTxProgram,
   takeSortedElements,
   ElementUTxO,
+  LinkedListParameters,
 } from "@/linked-list.js";
 import { ConfirmedState, Header } from "@/ledger-state.js";
 import { Element } from "@/linked-list.js";
@@ -42,6 +43,16 @@ export const GENESIS_HASH_32 = "00".repeat(32);
 export const INITIAL_PROTOCOL_VERSION = 0n;
 export const ROOT_KEY: string = fromText("MIDGARD_CONFIRMED_STATE");
 export const BLOCK_ASSET_NAME_PREFIX: string = fromText("MBLC");
+
+export const STATE_QUEUE_LINKED_LIST_PARAMETERS = (
+  nftPolicy: PolicyId,
+): LinkedListParameters<ConfirmedState, Header> => ({
+  nftPolicy,
+  rootKey: ROOT_KEY,
+  nodeKeyPrefix: BLOCK_ASSET_NAME_PREFIX,
+  rootType: ConfirmedState,
+  nodeType: Header,
+});
 
 export const StateQueueConfigSchema = Data.Object({
   initUTxO: OutputReferenceSchema,
@@ -580,9 +591,10 @@ export const fetchConfirmedStateAndItsLinkProgram = (
     if (filteredForConfirmedState.length === 1) {
       const { utxo: confirmedStateUTxO, link: confirmedStatesLink } =
         filteredForConfirmedState[0];
-      const linkUTxO = yield* findLinkInLinkedList(
+      const linkUTxO = yield* findElementUTxOByKey(
         confirmedStatesLink,
         allUTxOs,
+        STATE_QUEUE_LINKED_LIST_PARAMETERS(config.stateQueuePolicyId),
       );
       return {
         confirmed: confirmedStateUTxO,
