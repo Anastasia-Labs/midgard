@@ -1,7 +1,6 @@
 ## Database Tables
 
 We currently have the following tables:
-
 - AddressHistoryDB
 - BlocksDB
 - BlocksTxsDB
@@ -16,7 +15,6 @@ We currently have the following tables:
 
 Apart from `AddressHistoryDB`, `BlocksDB`, and `BlocksTxsDB`, the rest are
 instances of three abstract tables:
-
 - Ledger
 - Transactions
 - User events
@@ -33,13 +31,11 @@ This table maps "event IDs" to addresses, with 2 flags: one for the state of a
 given record, and another for specifying the nature of its event.
 
 Addresses can send/receive funds via 3 different interactions:
-
 1. Transactions (either requests or orders)
 2. Deposits
 3. Withdrawals
 
 Each entry can also have 4 different states:
-
 1. **Slated**: For events that are not included in a block commitment. This is
    currently only used for transactions in `MempoolDB`.
 2. **Committed**: For events that are included in a committed block. Committed
@@ -77,7 +73,6 @@ on-chain confirmation.
 
 Similar to `AddressHistoryDB`, each entry here is also marked with a status.
 Namely:
-
 - **Unsubmitted**: Block commitments in queue for submission.
 - **Submitted**: Block commitments that are successfully submitted on L1.
 - **Confirmed**: Block commitments that have become available on-chain. This is
@@ -96,7 +91,6 @@ header hashes to transaction hashes. This happens along with block commitments
 ### Ledger
 
 We have four ledgers, 3 of which are instances of the `Ledger` abstraction:
-
 - **`MempoolLedgerDB`**: The most up-to-date ledger, which is populated along
   with `MempoolDB`.
 - **`LatestLedgerDB`**: Ledger after the latest submitted block.
@@ -111,7 +105,6 @@ identical if all blocks are submitted.
 ### Transactions
 
 Two transaction tables exist:
-
 - **`ImmutableDB`**: For storing a historical record of transactions.
 - **`MempoolDB`**: Temporary storage of transactions slated for inclusion in the
   next block commitment.
@@ -121,13 +114,11 @@ Transaction hashes (i.e. IDs), are mapped to their preimages (CBOR bytes).
 ### User Events
 
 There are 3 user event tables:
-
 - **`DepositsDB`**
 - **`TxOrdersDB`**
 - **`WithdrawalsDB`**
 
 They all record a few values:
-
 - Event IDs: Nonce spent output references at the time of creating the events.
 - Event infos: CBOR bytes of the corresponding data stored in datum of their L1
   UTxOs.

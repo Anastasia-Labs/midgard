@@ -17,49 +17,49 @@ payload into a `CML.Transaction` value, and "phase 2" is always true.
    their own dedicated checks).
 4. Commitment worker runs periodically:
    a) Reads the latest block from `BlocksDB` and stores it in memory as
-   `latestBlock`.
+      `latestBlock`.
    b) Stores the current time to use as the upper bound of the block's event
-   interval.
+      interval.
    c) Retrieves all user events and transaction requests that fall within the
-   established event interval. At this point, all withdrawals, transaction
-   orders and requests, and deposits that should be included in the block are
-   available (note that transaction requests don't have formally recognized
-   "inclusion times" as user events do—their timestamps in `MempoolDB` should
-   be used instead).
+      established event interval. At this point, all withdrawals, transaction
+      orders and requests, and deposits that should be included in the block are
+      available (note that transaction requests don't have formally recognized
+      "inclusion times" as user events do—their timestamps in `MempoolDB` should
+      be used instead).
    d) Retrieves the ledger Merkle Patricia Trie (MPT) from disk. This _should
-   be_ the state of Midgard ledger after `latestBlock` (TODO, some syncing
-   mechanism might be needed).
+      be_ the state of Midgard ledger after `latestBlock` (TODO, some syncing
+      mechanism might be needed).
    e) Applies events to the ledger in order:
-   i. Withdrawals
-   ii. Transaction orders
-   iii. Transaction requests
-   iv. Deposits
-   Within each category, events are sorted by their timestamps. However, this
-   should only matter for transactions and withdrawals.
+          i. Withdrawals
+         ii. Transaction orders
+        iii. Transaction requests
+         iv. Deposits
+      Within each category, events are sorted by their timestamps. However, this
+      should only matter for transactions and withdrawals.
    f) Find the roots of withdrawals and deposits (most likely during their
-   application to the ledger). The ledger's root is found at this point.
+      application to the ledger). The ledger's root is found at this point.
    g) Uses the 3 MPT roots, `latestBlock`, and the new event interval to build
-   the new block.
+      the new block.
    h) Switches to the operator's dedicated block commitment Cardano wallet.
    i) Retrieves latest state of wallet and contract UTxOs from `latestBlock`,
-   overrides the wallet's UTxO in LE's interface, builds the block commitment
-   transaction and signs it.
+      overrides the wallet's UTxO in LE's interface, builds the block commitment
+      transaction and signs it.
    j) Adds another entry to the blocks table, with the status flag set to
-   "unsubmitted," containing the unsubmitted transaction CBOR along with the
-   wallet's state after the transaction, and its produced UTxOs.
+      "unsubmitted," containing the unsubmitted transaction CBOR along with the
+      wallet's state after the transaction, and its produced UTxOs.
    All these steps are to be performed in such a way that any failure would lead
    to reversal of any changes to the ledger MPT.
 5. Block submission fiber runs periodically:
    a) Retrieves the oldest unsubmitted block from `BlocksDB` and submits its
-   signed Cardano transaction. Fiber dies if this fails. (TODO, we should
-   implement a recovery mechanism in case the already built and signed
-   transaction becomes invalid).
+      signed Cardano transaction. Fiber dies if this fails. (TODO, we should
+      implement a recovery mechanism in case the already built and signed
+      transaction becomes invalid).
    b) Retrieves all transaction requests which their timestamps fall within the
-   submitted block's event interval from `MempoolDB`.
+      submitted block's event interval from `MempoolDB`.
    c) Similarly, retrieves all user events from its 3 tables.
    d) Processes all the retrieved events to find the ledger entries to be
-   removed/added from/to `LatestLedgerDB`, and also entries to be added to
-   `AddressHistoryDB`.
+      removed/added from/to `LatestLedgerDB`, and also entries to be added to
+      `AddressHistoryDB`.
    e) Transfers included mempool transactions to `ImmutableDB` and
-   `BlocksTxsDB`.
+      `BlocksTxsDB`.
    g) Marks submitted block as "submitted."
