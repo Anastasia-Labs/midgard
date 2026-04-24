@@ -23,6 +23,10 @@ export const ElementDataSchema = Data.Enum([
 export type ElementData = Data.Static<typeof ElementDataSchema>;
 export const ElementData = ElementDataSchema as unknown as ElementData;
 
+export const LinkSchema = Data.Nullable(Data.Bytes());
+export type Link = Data.Static<typeof LinkSchema>;
+export const Link = LinkSchema as unknown as Link;
+
 export const ElementSchema = Data.Object({
   data: ElementDataSchema,
   link: Data.Nullable(Data.Bytes()),

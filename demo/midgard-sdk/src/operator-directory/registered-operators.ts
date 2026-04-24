@@ -1,4 +1,8 @@
-import { AuthenticatedValidator, POSIXTimeSchema } from "@/common.js";
+import {
+  AuthenticatedValidator,
+  POSIXTimeSchema,
+  VerificationKeyHashSchema,
+} from "@/common.js";
 import {
   Data,
   fromText,
@@ -8,11 +12,20 @@ import {
 import { Effect } from "effect";
 import { incompleteInitLinkedListTxProgram } from "@/linked-list.js";
 import { Element } from "@/linked-list.js";
+import { SlashingArgumentsSchema } from "./internal.js";
 
 export const REGISTERED_ROOT_KEY: string = fromText(
   "MIDGARD_REGISTERED_OPERATORS",
 );
 export const REGISTERED_NODE_ASSET_NAME_PREFIX: string = fromText("MREG");
+
+export const RegisteredNodeDataSchema = Data.Object({
+  operator: VerificationKeyHashSchema,
+  bond_unlock_time: Data.Nullable(POSIXTimeSchema),
+});
+export type RegisteredNodeData = Data.Static<typeof RegisteredNodeDataSchema>;
+export const RegisteredNodeData =
+  RegisteredNodeDataSchema as unknown as RegisteredNodeData;
 
 export type RegisteredOperatorDatum = Element;
 export const RegisteredOperatorDatum = Element;
@@ -30,23 +43,38 @@ export type DuplicateOperatorStatus = Data.Static<
 export const DuplicateOperatorStatus =
   DuplicateOperatorStatusSchema as unknown as DuplicateOperatorStatus;
 
+export const OperatorOriginSchema = Data.Enum([
+  Data.Object({
+    ReturningOperator: Data.Object({
+      retired_operators_redeemer_index: Data.Integer(),
+    }),
+  }),
+  Data.Object({
+    NewOperator: Data.Object({
+      retired_operators_element_ref_input_index: Data.Integer(),
+    }),
+  }),
+]);
+export type OperatorOrigin = Data.Static<typeof OperatorOriginSchema>;
+export const OperatorOrigin = OperatorOriginSchema as unknown as OperatorOrigin;
+
 export const RegisteredOperatorMintRedeemerSchema = Data.Enum([
   Data.Object({ Init: Data.Object({ outputIndex: Data.Integer() }) }),
   Data.Object({ Deinit: Data.Object({ inputIndex: Data.Integer() }) }),
   Data.Object({
     RegisterOperator: Data.Object({
-      registeringOperator: Data.Bytes(),
+      registeringOperator: VerificationKeyHashSchema,
       rootInputIndex: Data.Integer(),
       rootOutputIndex: Data.Integer(),
       registeredNodeOutputIndex: Data.Integer(),
       hubOracleRefInputIndex: Data.Integer(),
       activeOperatorsElementRefInputIndex: Data.Integer(),
-      retiredOperatorsElementRefInputIndex: Data.Integer(),
+      operatorOrigin: OperatorOriginSchema,
     }),
   }),
   Data.Object({
     ActivateOperator: Data.Object({
-      activatingOperator: Data.Bytes(),
+      activatingOperator: VerificationKeyHashSchema,
       anchorElementInputIndex: Data.Integer(),
       removedNodeInputIndex: Data.Integer(),
       anchorElementOutputIndex: Data.Integer(),
@@ -57,21 +85,24 @@ export const RegisteredOperatorMintRedeemerSchema = Data.Enum([
   }),
   Data.Object({
     DeregisterOperator: Data.Object({
-      deregisteringOperator: Data.Bytes(),
+      deregisteringOperator: VerificationKeyHashSchema,
       anchorElementInputIndex: Data.Integer(),
       removedNodeInputIndex: Data.Integer(),
       anchorElementOutputIndex: Data.Integer(),
     }),
   }),
   Data.Object({
-    RemoveDuplicateSlashBond: Data.Object({
-      duplicateOperator: Data.Bytes(),
+    SlashDuplicateOperator: Data.Object({
+      duplicateOperator: VerificationKeyHashSchema,
       anchorElementInputIndex: Data.Integer(),
       removedNodeInputIndex: Data.Integer(),
       anchorElementOutputIndex: Data.Integer(),
       duplicateNodeRefInputIndex: Data.Integer(),
       duplicateOperatorStatus: DuplicateOperatorStatusSchema,
     }),
+  }),
+  Data.Object({
+    SlashFraudulentOperator: SlashingArgumentsSchema,
   }),
 ]);
 export type RegisteredOperatorMintRedeemer = Data.Static<
@@ -88,7 +119,36 @@ export type RegisteredOperatorDeinitParams = {};
 export type RegisteredOperatorRegisterParams = {};
 export type RegisteredOperatorDeregisterParams = {};
 export type RegisteredOperatorActivateParams = {};
-export type RegisteredOperatorRemoveDuplicateSlashBondParams = {};
+export type RegisteredOperatorSlashDuplicateOperatorParams = {};
+
+/**
+ * NOTE: Silently clamps negative values to 0. Registered operators on-chain
+ *       script prevents negative values.
+ */
+export const intToBigEndianUint8Array = (n: bigint): Uint8Array => {
+  if (n <= 0n) {
+    return new Uint8Array([0]);
+  }
+
+  const bytes: number[] = [];
+  while (n > 0n) {
+    bytes.push(Number(n & 0xffn));
+    n >>= 8n;
+  }
+
+  bytes.reverse();
+  return new Uint8Array(bytes);
+};
+
+export const bigEndianUint8ArrayToInt = (bytes: Uint8Array): bigint => {
+  let value = 0n;
+
+  for (const byte of bytes) {
+    value = (value << 8n) | BigInt(byte);
+  }
+
+  return value;
+};
 
 /**
  * Init
@@ -184,9 +244,9 @@ export const incompleteRegisteredOperatorActivateTxProgram = (
  * @param params - The parameters
  * @returns {TxBuilder} A TxBuilder instance that can be used to build the transaction.
  */
-export const incompleteRegisteredOperatorRemoveDuplicateSlashBondTxProgram = (
+export const incompleteRegisteredOperatorSlashDuplicateOperatorTxProgram = (
   lucid: LucidEvolution,
-  params: RegisteredOperatorRemoveDuplicateSlashBondParams,
+  params: RegisteredOperatorSlashDuplicateOperatorParams,
 ): TxBuilder => {
   const tx = lucid.newTx();
   return tx;

@@ -1,52 +1,30 @@
-import { POSIXTimeSchema, VerificationKeyHashSchema } from "@/common.js";
+import { VerificationKeyHashSchema } from "@/common.js";
 import { Data } from "@lucid-evolution/lucid";
-import { Element } from "@/linked-list.js";
 
-export const ActiveOperatorNodeDataSchema = Data.Object({
-  bond_unlock_time: Data.Nullable(POSIXTimeSchema),
+export const SlashingReasonSchema = Data.Enum([
+  Data.Object({
+    SlashOperatorForBadState: Data.Object({
+      state_queue_redeemer_index: Data.Integer(),
+    }),
+  }),
+  Data.Object({
+    SlashOperatorForBadSettlement: Data.Object({
+      settlement_input_index: Data.Integer(),
+      settlement_redeemer_index: Data.Integer(),
+    }),
+  }),
+]);
+export type SlashingReason = Data.Static<typeof SlashingReasonSchema>;
+export const SlashingReason = SlashingReasonSchema as unknown as SlashingReason;
+
+export const SlashingArgumentsSchema = Data.Object({
+  slashed_operator: VerificationKeyHashSchema,
+  hub_oracle_ref_input_index: Data.Integer(),
+  slashed_operator_anchor_element_input_index: Data.Integer(),
+  slashed_operator_node_input_index: Data.Integer(),
+  slashed_operator_anchor_element_output_index: Data.Integer(),
+  slashing_reason: SlashingReasonSchema,
 });
-export type ActiveOperatorNodeData = Data.Static<
-  typeof ActiveOperatorNodeDataSchema
->;
-export const ActiveOperatorNodeData =
-  ActiveOperatorNodeDataSchema as unknown as ActiveOperatorNodeData;
-
-export const RetiredOperatorNodeSchema = Data.Object({
-  bond_unlock_time: Data.Nullable(POSIXTimeSchema),
-});
-export type RetiredOperatorNodeData = Data.Static<
-  typeof RetiredOperatorNodeSchema
->;
-export const RetiredOperatorNodeData =
-  RetiredOperatorNodeSchema as unknown as RetiredOperatorNodeData;
-
-export const RegisteredNodeDataSchema = Data.Object({
-  operator: VerificationKeyHashSchema,
-});
-export type RegisteredNodeData = Data.Static<typeof RegisteredNodeDataSchema>;
-export const RegisteredNodeData =
-  RegisteredNodeDataSchema as unknown as RegisteredNodeData;
-
-export function getActiveOperatorNodeData(element: Element) {
-  if ("Node" in element.data) {
-    const node = Data.castFrom(element.data.Node, ActiveOperatorNodeDataSchema);
-    return node.bond_unlock_time;
-  }
-  return null;
-}
-
-export function getRetiredOperatorNodeData(element: Element) {
-  if ("Node" in element.data) {
-    const node = Data.castFrom(element.data.Node, RetiredOperatorNodeSchema);
-    return node.bond_unlock_time;
-  }
-  return null;
-}
-
-export function getRegisteredOperatorNodeData(element: Element) {
-  if ("Node" in element.data) {
-    const node = Data.castFrom(element.data.Node, RegisteredNodeDataSchema);
-    return node.activation_time;
-  }
-  return null;
-}
+export type SlashingArguments = Data.Static<typeof SlashingArgumentsSchema>;
+export const SlashingArguments =
+  SlashingArgumentsSchema as unknown as SlashingArguments;

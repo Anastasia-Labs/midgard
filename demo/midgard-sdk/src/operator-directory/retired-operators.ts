@@ -2,6 +2,7 @@ import {
   AuthenticatedValidator,
   POSIXTimeSchema,
   LucidError,
+  VerificationKeyHashSchema,
 } from "@/common.js";
 import { AuthenticUTxO, authenticateUTxOs } from "@/internals.js";
 import { Data, fromText, UTxO } from "@lucid-evolution/lucid";
@@ -9,9 +10,19 @@ import { LucidEvolution, TxBuilder } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 import { incompleteInitLinkedListTxProgram } from "@/linked-list.js";
 import { Element } from "@/linked-list.js";
+import { SlashingArgumentsSchema } from "./internal.js";
 
 export const RETIRED_ROOT_KEY: string = fromText("MIDGARD_RETIRED_OPERATORS");
 export const RETIRED_NODE_ASSET_NAME_PREFIX: string = fromText("MRET");
+
+export const RetiredOperatorNodeSchema = Data.Object({
+  bond_unlock_time: Data.Nullable(POSIXTimeSchema),
+});
+export type RetiredOperatorNodeData = Data.Static<
+  typeof RetiredOperatorNodeSchema
+>;
+export const RetiredOperatorNodeData =
+  RetiredOperatorNodeSchema as unknown as RetiredOperatorNodeData;
 
 export type RetiredOperatorDatum = Element;
 export const RetiredOperatorDatum = Element;
@@ -31,6 +42,17 @@ export const RetiredOperatorMintRedeemerSchema = Data.Enum([
     }),
   }),
   Data.Object({
+    ReregisterOperator: Data.Object({
+      retiredOperatorKey: VerificationKeyHashSchema,
+      retiredOperatorBondUnlockTime: Data.Nullable(POSIXTimeSchema),
+      hubOracleRefInputIndex: Data.Integer(),
+      retiredOperatorAnchorElementInputIndex: Data.Integer(),
+      retiredOperatorRemovedNodeInputIndex: Data.Integer(),
+      retiredOperatorAnchorElementOutputIndex: Data.Integer(),
+      registeredOperatorsRedeemerIndex: Data.Integer(),
+    }),
+  }),
+  Data.Object({
     RecoverOperatorBond: Data.Object({
       retiredOperatorKey: Data.Bytes(),
       retiredOperatorAnchorElementInputIndex: Data.Integer(),
@@ -39,24 +61,8 @@ export const RetiredOperatorMintRedeemerSchema = Data.Enum([
     }),
   }),
   Data.Object({
-    RemoveOperatorBadState: Data.Object({
-      slashedRetiredOperatorKey: Data.Bytes(),
-      hubOracleRefInputIndex: Data.Integer(),
-      retiredOperatorAnchorElementInputIndex: Data.Integer(),
-      retiredOperatorSlashedNodeInputIndex: Data.Integer(),
-      retiredOperatorAnchorElementOutputIndex: Data.Integer(),
-      stateQueueRedeemerIndex: Data.Integer(),
-    }),
-  }),
-  Data.Object({
-    RemoveOperatorBadSettlement: Data.Object({
-      slashedRetiredOperatorKey: Data.Bytes(),
-      hubOracleRefInputIndex: Data.Integer(),
-      retiredOperatorAnchorElementInputIndex: Data.Integer(),
-      retiredOperatorSlashedNodeInputIndex: Data.Integer(),
-      retiredOperatorAnchorElementOutputIndex: Data.Integer(),
-      settlementInputIndex: Data.Integer(),
-      settlementRedeemerIndex: Data.Integer(),
+    SlashOperator: Data.Object({
+      slashingArguments: SlashingArgumentsSchema,
     }),
   }),
 ]);
