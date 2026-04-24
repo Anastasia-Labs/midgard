@@ -44,8 +44,8 @@ const fetchUserEventUTxOs = (
     const inclusionTimeLowerBound = BigInt(inclusionStartTime);
     const inclusionTimeUpperBound = BigInt(inclusionEndTime);
     const depositFetchConfig: SDK.DepositFetchConfig = {
-      depositAddress: deposit.spendingScriptAddress,
-      depositPolicyId: deposit.policyId,
+      eventAddress: deposit.spendingScriptAddress,
+      eventPolicyId: deposit.policyId,
       inclusionTimeLowerBound,
       inclusionTimeUpperBound,
     };
@@ -101,13 +101,13 @@ const depositUTxOToEntry = (
     try: () => {
       const l2Address = addressFromDepositInfo(
         network,
-        depositUTxO.datum.event.info.l2Address,
+        depositUTxO.datum.event.info.l2_address,
       );
       const output = CML.ConwayFormatTxOut.new(
         CML.Address.from_bech32(l2Address),
         assetsToValue(depositUTxO.utxo.assets),
       );
-      const l2Datum = depositUTxO.datum.event.info.l2Datum;
+      const l2Datum = depositUTxO.datum.event.info.l2_datum;
       if (l2Datum !== null) {
         output.set_datum_option(
           CML.DatumOption.new_datum(
