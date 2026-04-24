@@ -5,7 +5,7 @@ import {
   LucidError,
   UnauthenticUtxoError,
 } from "@/common.js";
-import { Array, Order, Data as EffectData, Effect } from "effect";
+import { Data as EffectData, Effect } from "effect";
 import {
   Assets,
   Data,
@@ -102,9 +102,8 @@ export const utxosToElementUTxOs = <R, N>(
   Effect.allSuccesses(utxos.map((u) => utxoToElementUTxO<R, N>(u, params)));
 
 export const findElementUTxOByKey = <R, N, T extends ElementUTxO<R, N>>(
-  key: string | null,
+  key: string,
   elements: T[],
-  params: LinkedListParameters<R, N>,
 ): Effect.Effect<T, LinkedListError> =>
   Effect.gen(function* () {
     if (elements.length <= 0) {
@@ -112,24 +111,9 @@ export const findElementUTxOByKey = <R, N, T extends ElementUTxO<R, N>>(
         message: "Failed to find ElementUTxO with the given key",
         cause: "Empty list of ElementUTxOs provided",
       });
-    } else if (key === params.rootKey) {
-      const foundUTxO = elements.find(
-        (e) => e.assetName === params.rootKey && "Root" in e.datum.data,
-      );
-      if (foundUTxO === undefined) {
-        return yield* new LinkedListError({
-          message: "Root element not found",
-          cause:
-            "None of the provided ElementUTxOs matched the given root key along with a Root element data",
-        });
-      } else {
-        return foundUTxO;
-      }
     } else {
       const foundUTxO = elements.find(
-        (e) =>
-          e.assetName.startsWith(params.nodeKeyPrefix) &&
-          "Node" in e.datum.data,
+        (e) => "Node" in e.datum.data && e.assetName.endsWith(key),
       );
       if (foundUTxO === undefined) {
         return yield* new LinkedListError({
@@ -144,78 +128,78 @@ export const findElementUTxOByKey = <R, N, T extends ElementUTxO<R, N>>(
   });
 
 /**
- * Given a list of `ElementUTxO` values, this function sorts them by their keys
- * (with the given comparison function, ascending by default), and keeps as many
- * of the elements that correctly point to their links. In other words, any
- * dangling element is silently dropped from the given list of elements.
- *
- * This function does NOT mutate the given array of elements.
- *
- * This function also does not work if any of the **node elements** have empty
- * keys. Root key is not considered at all.
- *
- * @param elements: The array of `ElementUTxO` values that you want to sort.
+ * This function assumes provided `ElementUTxO`s have already undergone
+ * authentication. Therefore no validation is performed on the assets.
  */
-export const takeSortedElements = <R, N, T extends ElementUTxO<R, N>>(
+export const findRootElement = <R, N, T extends ElementUTxO<R, N>>(
   elements: T[],
-  compFn: (k0: string, k1: string) => -1 | 0 | 1 = (k0, k1) =>
-    Buffer.from(k0, "hex").compare(Buffer.from(k1, "hex")),
-): Effect.Effect<T[], LinkedListError> =>
+): Effect.Effect<T, LinkedListError> => {
+  const rootElements = elements.filter((e) => "key" in e);
+  if (rootElements.length === 1) {
+    return Effect.succeed(rootElements[0]);
+  } else {
+    return new LinkedListError({
+      message: "Failed to find the root element",
+      cause: "Expected exactly one Root element",
+    });
+  }
+};
+
+export const getRootData = <R, N, T extends ElementUTxO<R, N>>(
+  element: T,
+): Effect.Effect<R, LinkedListError> => {
+  if ("key" in element) {
+    return new LinkedListError({
+      message: "Failed to map given element UTxO to a root",
+      cause: "Given ElementUTxO is a node element",
+    });
+  } else {
+    return Effect.succeed(element.coercedData);
+  }
+};
+
+export const getNodeDataAndKey = <R, N, T extends ElementUTxO<R, N>>(
+  element: T,
+): Effect.Effect<{ nodeData: N; key: string }, LinkedListError> => {
+  if ("key" in element) {
+    return Effect.succeed({ nodeData: element.coercedData, key: element.key });
+  } else {
+    return new LinkedListError({
+      message: "Failed to map given element UTxO to a node",
+      cause: "Given ElementUTxO has no key",
+    });
+  }
+};
+
+/**
+ * Expects the root element and the last element (the one without link) to be
+ * present in the given list of element UTxOs.  Starts with root's link, and
+ * keeps collecting linked elements up until either the given list is exhausted,
+ * or a linked element is not found.
+ */
+export const sortElementUTxOs = <R, N, T extends ElementUTxO<R, N>>(
+  elements: T[],
+): Effect.Effect<{ root: T; nodes: T[] }, LinkedListError> =>
   Effect.gen(function* () {
-    if (elements.length <= 0) return elements;
-
-    // This function only works if none of the node elements are identified with
-    // empty keys.
-    let emptyKeyEncountered = false;
-
-    // We initially sort by keys:
-    const sortedByKeys = Array.sortWith(
-      elements,
-      (e) => {
-        if ("key" in e) {
-          if (e.key === "") {
-            emptyKeyEncountered = true;
-          }
-          return e.key;
-        } else {
-          return "";
-        }
-      },
-      Order.make(compFn),
-    );
-
-    if (emptyKeyEncountered) {
+    const root = yield* findRootElement(elements);
+    const nodes: T[] = [];
+    let latestLink = root.datum.link;
+    while (latestLink) {
+      const linkedElementUTxO = yield* findElementUTxOByKey(
+        latestLink,
+        elements,
+      );
+      nodes.push(linkedElementUTxO);
+      latestLink = linkedElementUTxO.datum.link;
+    }
+    if (latestLink === null) {
+      return { root, nodes };
+    } else {
       return yield* new LinkedListError({
-        message: "Sort failed",
-        cause: "An element with empty key was encountered",
+        message: "Sorting of the given linked list element UTxOs failed",
+        cause: "The last element pointed to a missing element",
       });
     }
-
-    // In a second pass we make sure each element is followed by its link:
-    const firstElement = sortedByKeys[0];
-    const [remainingElements, _lastElement] = yield* Effect.reduce(
-      sortedByKeys,
-      [[], firstElement],
-      ([acc, prev]: [T[], T | undefined], curr: T) =>
-        Effect.gen(function* () {
-          if (prev === undefined) {
-            return [acc, undefined];
-          } else if ("key" in curr) {
-            if (prev.datum.link === curr.key) {
-              return [[...acc, prev], curr];
-            } else {
-              return [[...acc, prev], undefined];
-            }
-          } else {
-            return yield* new LinkedListError({
-              message: "Sort failed",
-              cause: "More than 1 root element encountered",
-            });
-          }
-        }),
-    );
-
-    return remainingElements;
   });
 
 export type LinkedListInitParams = {
