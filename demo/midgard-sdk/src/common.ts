@@ -26,7 +26,7 @@ import {
   LucidError,
   UnauthenticUtxoError,
 } from "@/errors.js";
-import { getStateToken } from "@/internals.js";
+import { getStateToken } from "./internals.js";
 
 export * from "./errors.js";
 
@@ -438,7 +438,7 @@ export const findOperatorByPKH = (
 > => {
   const activeOperatorMatch = EffectArray.findFirst(
     activeOperators,
-    (utxo) => utxo.datum.link === operatorPKH,
+    (utxo) => utxo.datum.key === operatorPKH,
   );
 
   if (Option.isSome(activeOperatorMatch)) {
@@ -447,7 +447,7 @@ export const findOperatorByPKH = (
 
   const retiredOperatorMatch = EffectArray.findFirst(
     retiredOperators,
-    (utxo) => utxo.datum.link === operatorPKH,
+    (utxo) => utxo.datum.key === operatorPKH,
   );
 
   if (Option.isSome(retiredOperatorMatch)) {

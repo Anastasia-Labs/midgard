@@ -140,7 +140,6 @@ validator mint(
           mint,
           extra_signatories,
           redeemers,
-          validity_range,
           ..
         } = self
         // Commit the block header to the state queue, with the operator's
@@ -178,7 +177,7 @@ validator mint(
           // 4. The new block in state queue must have the hash of the header as
           //    its linked list key.
           let output_header_hash =
-            crypto.blake2b_224(builtin.un_b_data(output_header_data))
+            crypto.blake2b_224(builtin.serialise_data(output_header_data))
           expect output_header_key == output_header_hash
 
           // 5. New element's data must be `Header` with a valid time range.
@@ -192,16 +191,6 @@ validator mint(
             ..
           } = output_header_data
           expect output_start_time < output_end_time
-
-          // 6. The `end_time` of `header_node` must match the transaction's
-          //    time-validity upper bound.
-          //
-          //    > [!NOTE]
-          //    > We are assuming inclusive lower bound and exclusive upper
-          //    > bound in the block. TODO: This needs clarification in specs.
-          let inclusive_tx_upper_bound =
-            utils.get_inclusive_upper_bound_of_interval(validity_range)
-          expect output_end_time == inclusive_tx_upper_bound + 1
 
           // 7. The operator pub key hash from the redeemer must match the one
           //    in the new header.

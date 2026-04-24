@@ -10,7 +10,7 @@ import { LucidEvolution, utxoToCore } from "@lucid-evolution/lucid";
 import {
   DepositsDB,
   TxOrdersDB,
-  UserEventsUtils,
+  UserEvents,
   WithdrawalsDB,
 } from "@/database/index.js";
 import { DatabaseError } from "@/database/utils/common.js";
@@ -63,15 +63,15 @@ const fetchUserEventUTxOs = (
 
 const userEventUTxOsToEntry = (
   eventUTxOs: (SDK.DepositUTxO | SDK.TxOrderUTxO | SDK.WithdrawalUTxO)[],
-): UserEventsUtils.Entry[] => {
+): UserEvents.Entry[] => {
   return eventUTxOs.map((utxo) => ({
-    [UserEventsUtils.Columns.ID]: utxo.idCbor,
-    [UserEventsUtils.Columns.INFO]: utxo.infoCbor,
-    [UserEventsUtils.Columns.ASSET_NAME]: utxo.assetName,
-    [UserEventsUtils.Columns.L1_UTXO_CBOR]: Buffer.from(
+    [UserEvents.Columns.ID]: utxo.idCbor,
+    [UserEvents.Columns.INFO]: utxo.infoCbor,
+    [UserEvents.Columns.ASSET_NAME]: utxo.assetName,
+    [UserEvents.Columns.L1_UTXO_CBOR]: Buffer.from(
       utxoToCore(utxo.utxo).to_cbor_bytes(),
     ),
-    [UserEventsUtils.Columns.INCLUSION_TIME]: utxo.inclusionTime,
+    [UserEvents.Columns.INCLUSION_TIME]: utxo.inclusionTime,
   }));
 };
 
@@ -96,7 +96,7 @@ export const syncUserEvents: Effect.Effect<
   );
 
   if (deposits.length <= 0 && txOrders.length <= 0 && withdrawals.length <= 0) {
-    yield* Effect.logDebug(
+    yield* Effect.logInfo(
       `🏦 No user events found within [${startTime}, ${endTime})`,
     );
     return;
@@ -106,16 +106,16 @@ export const syncUserEvents: Effect.Effect<
   yield* Effect.logInfo(`🏦 ${txOrders.length} tx order(s) found.`);
   yield* Effect.logInfo(`🏦 ${withdrawals.length} withdrawal order(s) found.`);
 
-  const depositEntries: UserEventsUtils.Entry[] =
-    userEventUTxOsToEntry(deposits);
-  const txOrderEntries: UserEventsUtils.Entry[] =
-    userEventUTxOsToEntry(txOrders);
-  const withdrawalEntries: UserEventsUtils.Entry[] =
+  const depositEntries: UserEvents.Entry[] = userEventUTxOsToEntry(deposits);
+  const txOrderEntries: UserEvents.Entry[] = userEventUTxOsToEntry(txOrders);
+  const withdrawalEntries: UserEvents.Entry[] =
     userEventUTxOsToEntry(withdrawals);
 
-  yield* DepositsDB.insertEntries(depositEntries);
-  yield* TxOrdersDB.insertEntries(txOrderEntries);
-  yield* WithdrawalsDB.insertEntries(withdrawalEntries);
+  yield* Effect.all([
+    DepositsDB.insertEntries(depositEntries),
+    TxOrdersDB.insertEntries(txOrderEntries),
+    WithdrawalsDB.insertEntries(withdrawalEntries),
+  ]);
 
   yield* Ref.set(globals.LATEST_USER_EVENTS_FETCH_TIME, endTime);
 });

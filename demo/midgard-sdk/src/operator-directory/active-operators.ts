@@ -156,7 +156,7 @@ export const incompleteActiveOperatorInitTxProgram = (
   params: ActiveOperatorInitParams,
 ): Effect.Effect<TxBuilder, never> =>
   Effect.gen(function* () {
-    const rootData = "";
+    const rootData: Data = "";
 
     const mintRedeemer = Data.to(
       { Init: { outputIndex: 0n } },
@@ -165,7 +165,7 @@ export const incompleteActiveOperatorInitTxProgram = (
 
     return yield* incompleteInitLinkedListTxProgram(lucid, {
       validator: params.validator,
-      data: rootData,
+      rootData,
       redeemer: mintRedeemer,
       rootKey: ACTIVE_ROOT_KEY,
     });

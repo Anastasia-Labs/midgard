@@ -26,11 +26,7 @@ import {
   utxosAtByNFTPolicyId,
 } from "@/common.js";
 import { LucidError, makeReturn } from "@/common.js";
-import {
-  authenticateUTxO,
-  authenticateUTxOs,
-  AuthenticUTxO,
-} from "@/internals.js";
+import { authenticateUTxO, authenticateUTxOs } from "@/internals.js";
 import {
   LinkedListError,
   findLinkInLinkedList,
@@ -424,12 +420,10 @@ export const incompleteCommitBlockHeaderTxProgram = (
       },
       link: null,
     };
-    // Add 1 minute
-    const endTime = Date.now();
-    const endTimePlusOneMinute = endTime + 60000;
+
+    // Note that we are not specifying a validity range (TODO?).
     const tx = lucid
       .newTx()
-      .validTo(endTimePlusOneMinute)
       .collectFrom([latestBlock.utxo], Data.void())
       .pay.ToContract(
         config.stateQueueAddress,

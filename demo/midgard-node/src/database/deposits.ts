@@ -5,6 +5,8 @@ import * as UserEvents from "@/database/utils/user-events.js";
 import { CML, Data, PolicyId } from "@lucid-evolution/lucid";
 import * as SDK from "@al-ft/midgard-sdk";
 import { NodeConfig } from "@/services/config.js";
+import { Ledger } from "./index.js";
+import { AlwaysSucceedsContract } from "@/services/always-succeeds.js";
 
 export const tableName = "deposits_utxos";
 
@@ -35,7 +37,7 @@ export const delEntries = (
 ): Effect.Effect<void, DatabaseError, Database> =>
   UserEvents.delEntries(tableName, ids);
 
-export const depositEventToCmlTransactionUnspentOutput = (
+export const entryToCMLUTxO = (
   entry: UserEvents.Entry,
   policyId: PolicyId,
 ): Effect.Effect<
@@ -123,4 +125,25 @@ export const depositEventToCmlTransactionUnspentOutput = (
       transactionOutput,
     );
     return utxo;
+  });
+
+export const entryToLedgerEntry = (
+  deposit: UserEvents.Entry,
+): Effect.Effect<
+  Ledger.Entry,
+  SDK.CmlDeserializationError,
+  NodeConfig | AlwaysSucceedsContract
+> =>
+  Effect.gen(function* () {
+    const { deposit: depositAuthVal } = yield* AlwaysSucceedsContract;
+    const cmlUTxO = yield* entryToCMLUTxO(deposit, depositAuthVal.policyId);
+    return {
+      [Ledger.Columns.ADDRESS]: cmlUTxO.output().address().to_bech32(),
+      [Ledger.Columns.OUTPUT]: Buffer.from(cmlUTxO.output().to_cbor_bytes()),
+      [Ledger.Columns.OUTREF]: Buffer.from(cmlUTxO.input().to_cbor_bytes()),
+      [Ledger.Columns.TX_ID]: Buffer.from(
+        cmlUTxO.input().transaction_id().to_raw_bytes(),
+      ),
+      [Ledger.Columns.TIMESTAMPTZ]: deposit[UserEvents.Columns.INCLUSION_TIME],
+    };
   });

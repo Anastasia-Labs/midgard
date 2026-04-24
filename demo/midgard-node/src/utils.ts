@@ -42,7 +42,7 @@ export const isHexString = (str: string): boolean => {
   return hexRegex.test(str);
 };
 
-export const findSpentAndProducedUTxOs = (
+export const breakDownTxMinimally = (
   txCBOR: Buffer,
   txHash?: Buffer,
 ): Effect.Effect<
@@ -81,6 +81,13 @@ export const findSpentAndProducedUTxOs = (
     return { spent, produced };
   });
 
+/**
+ * Given a transaction CBOR bytes, this function breaks it down into its spent
+ * outrefs and produced outputs (as ledger entries).
+ *
+ * @param txCbor - Uint8Array of the CBOR encoded transaction itself (expected to be deserializable to a CML.Transaction).
+ * @returns An effect that can be reduced to a `ProcessedTx`.
+ */
 export const breakDownTx = (
   txCbor: Uint8Array,
 ): Effect.Effect<ProcessedTx, SDK.CmlDeserializationError> =>
