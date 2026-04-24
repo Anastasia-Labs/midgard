@@ -6,12 +6,6 @@ use midgard/common/utils
 validator mint(init_utxo: OutputReference, hub_oracle_asset_name: AssetName) {
   mint(_redeemer: Data, policy_id: PolicyId, self: Transaction) {
     let qty = quantity_of(self.mint, policy_id, hub_oracle_asset_name)
-
-    expect or {
-        qty == 1,
-        qty == -1,
-      }
-
     expect utils.validate_mint(self.mint, policy_id, hub_oracle_asset_name, qty)
 
     if qty == 1 {
@@ -22,6 +16,7 @@ validator mint(init_utxo: OutputReference, hub_oracle_asset_name: AssetName) {
         )
       True
     } else {
+      expect qty == -1
       True
     }
   }
