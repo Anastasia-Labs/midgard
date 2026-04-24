@@ -1,7 +1,9 @@
 import {
   AuthenticatedValidator,
+  DataCoercionError,
   GenericErrorFields,
   LucidError,
+  UnauthenticUtxoError,
 } from "@/common.js";
 import { Array, Order, Data as EffectData, Effect } from "effect";
 import {
@@ -10,11 +12,13 @@ import {
   fromText,
   LucidEvolution,
   makeReturn,
+  PolicyId,
   toUnit,
   TxBuilder,
   TxSignBuilder,
+  UTxO,
 } from "@lucid-evolution/lucid";
-import { AuthenticUTxO } from "./internals.js";
+import { authenticateUTxO, AuthenticUTxO } from "./internals.js";
 
 export const ElementDataSchema = Data.Enum([
   Data.Object({ Root: Data.Any() }),
@@ -40,6 +44,48 @@ export type NodeElementUTxO<TNodeData> = { key: string; data: TNodeData };
 export type ElementUTxO<TRootData, TNodeData> =
   | AuthenticUTxO<Element, RootElementUTxO<TRootData>>
   | AuthenticUTxO<Element, NodeElementUTxO<TNodeData>>;
+
+export const utxoToElementUTxO = <TRootData, TNodeData>(
+  utxo: UTxO,
+  nftPolicy: PolicyId,
+  rootKey: string,
+  nodeKeyPrefix: string,
+  rootType: TRootData,
+  nodeType: TNodeData,
+): Effect.Effect<
+  ElementUTxO<TRootData, TNodeData>,
+  DataCoercionError | UnauthenticUtxoError
+> =>
+  Effect.gen(function* () {
+    const authUTxO = yield* authenticateUTxO<Element>(utxo, nftPolicy, Element);
+    if ("Root" in authUTxO.datum.data) {
+      if (authUTxO.assetName === rootKey) {
+        const rootData = authUTxO.datum.data.Root;
+        const root = Data.castFrom(rootData, rootType);
+        return { ...authUTxO, data: root };
+      } else {
+        return yield* new UnauthenticUtxoError({
+          message: "",
+          cause: "",
+        });
+      }
+    } else {
+      if (authUTxO.assetName.startsWith(nodeKeyPrefix)) {
+        const nodeData = authUTxO.datum.data.Node;
+        const node = Data.castFrom(nodeData, nodeType);
+        return {
+          ...authUTxO,
+          data: node,
+          key: authUTxO.assetName.slice(nodeKeyPrefix.length),
+        };
+      } else {
+        return yield* new UnauthenticUtxoError({
+          message: "",
+          cause: "",
+        });
+      }
+    }
+  });
 
 /**
  * Given a list of `ElementUTxO` values, this function sorts them by their keys
