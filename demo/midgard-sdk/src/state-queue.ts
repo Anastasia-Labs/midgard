@@ -35,7 +35,7 @@ import {
   LinkedListError,
   findLinkInLinkedList,
   incompleteInitLinkedListTxProgram,
-  sortLinkedList,
+  takeSortedElements,
   ElementUTxO,
 } from "@/linked-list.js";
 import { ConfirmedState, Header } from "@/ledger-state.js";
@@ -177,12 +177,6 @@ export type StateQueueRemoveBlockParams = {};
  * Returns a sorted array of `StateQueueUTxO`s where the confirmed state's UTxO
  * is the head element, and the following elements are linked from their
  * previous elements.
- *
- * Review needed: Tried to resolve this in function `sortLinkedList` in linkedList.ts, is this a better approach?, 
- * TODO: Make it more efficient. Currently that same list of all state queue
- *       UTxOs is traversed to find the next link UTxO multiple times. It might
- *       be better to drop link UTxOs when found so that subsequent lookups
- *       become cheaper.
  */
 export const sortStateQueueUTxOs = (
   stateQueueUTxOs: StateQueueUTxO[],
@@ -199,13 +193,7 @@ export const sortStateQueueUTxOs = (
       ),
     );
     if (filteredForConfirmedState.length === 1) {
-      const { utxo: confirmedStateUTxO, link: linkToOldestBlock } =
-        filteredForConfirmedState[0];
-      return yield* sortLinkedList(
-        stateQueueUTxOs,
-        confirmedStateUTxO,
-        linkToOldestBlock,
-      );
+      return yield* takeSortedElements(stateQueueUTxOs);
     } else {
       return yield* Effect.fail(
         new LinkedListError({
@@ -222,17 +210,20 @@ export const sortStateQueueUTxOs = (
  * a `ConfirmedState`.
  */
 export const getConfirmedStateFromStateQueueDatum = (
-  nodeDatum: StateQueueDatum,
+  elementDatum: StateQueueDatum,
 ): Effect.Effect<
   { data: ConfirmedState; link: string | null },
   DataCoercionError
 > => {
   try {
-    if ("Root" in nodeDatum.data) {
-      const confirmedState = Data.castFrom(nodeDatum.data.Root, ConfirmedState);
+    if ("Root" in elementDatum.data) {
+      const confirmedState = Data.castFrom(
+        elementDatum.data.Root,
+        ConfirmedState,
+      );
       return Effect.succeed({
         data: confirmedState,
-        link: nodeDatum.link,
+        link: elementDatum.link,
       });
     } else {
       return Effect.fail(
@@ -245,7 +236,7 @@ export const getConfirmedStateFromStateQueueDatum = (
   } catch (e) {
     return Effect.fail(
       new DataCoercionError({
-        message: `Could not coerce to a state queue datum`,
+        message: `Could not coerce element data to a ConfirmedState`,
         cause: e,
       }),
     );

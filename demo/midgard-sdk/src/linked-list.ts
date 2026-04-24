@@ -37,43 +37,6 @@ export type ElementUTxO<TRootData, TNodeData> =
   | AuthenticUTxO<Element, RootElementUTxO<TRootData>>
   | AuthenticUTxO<Element, NodeElementUTxO<TNodeData>>;
 
-export interface LinkedElement {
-  key?: string;
-  datum: {
-    link: string | null;
-  };
-}
-
-/**
- * Function to find a node in a linked list by its key.
- */
-export const findLinkInLinkedList = <T extends { key?: string }>(
-  link: string | null,
-  elements: T[],
-): Effect.Effect<T, LinkedListError> => {
-  const errorMessage = `Failed to find link in elements`;
-
-  if (link === null) {
-    return Effect.fail(
-      new LinkedListError({
-        message: errorMessage,
-        cause: `Given link is null`,
-      }),
-    );
-  }
-  const foundLink = elements.find((u) => u.key === link);
-  if (foundLink) {
-    return Effect.succeed(foundLink);
-  } else {
-    return Effect.fail(
-      new LinkedListError({
-        message: errorMessage,
-        cause: `Link "${link}" not found among given elements`,
-      }),
-    );
-  }
-};
-
 /**
  * Given a list of `ElementUTxO` values, this function sorts them by their keys
  * (with the given comparison function, ascending by default), and keeps as many
@@ -87,19 +50,11 @@ export const findLinkInLinkedList = <T extends { key?: string }>(
  *
  * @param elements: The array of `ElementUTxO` values that you want to sort.
  */
-export const takeSortedElements = <
-  R extends Data,
-  N extends Data,
-  T extends ElementUTxO<R, N>
->(elements: T[], compFn: (k0: string, k1: string) => -1 | 0 | 1 = (k0, k1) => {
-  if (k0 === k1) {
-    return 0;
-  } else if (k0 < k1) {
-    return -1;
-  } else {
-    return 1;
-  }
-}): Effect.Effect<T[], LinkedListError> =>
+export const takeSortedElements = <R, N, T extends ElementUTxO<R, N>>(
+  elements: T[],
+  compFn: (k0: string, k1: string) => -1 | 0 | 1 = (k0, k1) =>
+    Buffer.from(k0, "hex").compare(Buffer.from(k1, "hex")),
+): Effect.Effect<T[], LinkedListError> =>
   Effect.gen(function* () {
     if (elements.length <= 0) return elements;
 
@@ -108,16 +63,20 @@ export const takeSortedElements = <
     let emptyKeyEncountered = false;
 
     // We initially sort by keys:
-    const sortedByKeys = Array.sortWith(elements, (e) => {
-      if ("key" in e) {
-        if (e.key === "") {
-          emptyKeyEncountered = true;
+    const sortedByKeys = Array.sortWith(
+      elements,
+      (e) => {
+        if ("key" in e) {
+          if (e.key === "") {
+            emptyKeyEncountered = true;
+          }
+          return e.key;
+        } else {
+          return "";
         }
-        return e.key;
-      } else {
-        return "";
-      }
-    }, Order.make(compFn));
+      },
+      Order.make(compFn),
+    );
 
     if (emptyKeyEncountered) {
       return yield* new LinkedListError({
@@ -131,22 +90,23 @@ export const takeSortedElements = <
     const [remainingElements, _lastElement] = yield* Effect.reduce(
       sortedByKeys,
       [[], firstElement],
-      ([acc, prev]: [T[], T | undefined], curr: T) => Effect.gen(function* () {
-        if (prev === undefined) {
-          return [acc, undefined];
-        } else if ("key" in curr) {
-          if (prev.datum.link === curr.key) {
-            return [[...acc, prev], curr];
+      ([acc, prev]: [T[], T | undefined], curr: T) =>
+        Effect.gen(function* () {
+          if (prev === undefined) {
+            return [acc, undefined];
+          } else if ("key" in curr) {
+            if (prev.datum.link === curr.key) {
+              return [[...acc, prev], curr];
+            } else {
+              return [[...acc, prev], undefined];
+            }
           } else {
-            return [[...acc, prev], undefined];
+            return yield* new LinkedListError({
+              message: "Sort failed",
+              cause: "More than 1 root element encountered",
+            });
           }
-        } else {
-          return yield* new LinkedListError({
-            message: "Sort failed",
-            cause: "More than 1 root element encountered",
-          });
-        }
-      }),
+        }),
     );
 
     return remainingElements;
@@ -154,7 +114,7 @@ export const takeSortedElements = <
 
 export type LinkedListInitParams = {
   validator: AuthenticatedValidator;
-  data?: Data;
+  rootData: Data;
   redeemer: string;
   rootKey: string;
 };
@@ -168,10 +128,8 @@ export const incompleteInitLinkedListTxProgram = (
       [toUnit(params.validator.policyId, fromText(params.rootKey))]: 1n,
     };
 
-    const rootData = params.data ?? Data.to([]);
-
     const elementDatum: Element = {
-      data: { Root: rootData },
+      data: { Root: params.rootData },
       link: null,
     };
 
