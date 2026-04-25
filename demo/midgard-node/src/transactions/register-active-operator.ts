@@ -19,6 +19,7 @@ import {
 import { Effect } from "effect";
 import { Lucid, MidgardContracts, NodeConfig } from "@/services/index.js";
 import {
+  TxConfirmError,
   TxSignError,
   TxSubmitError,
   handleSignSubmit,
@@ -645,7 +646,7 @@ const operatorLifecycleProgram = (
   referenceScriptsLucid: LucidEvolution = lucid,
 ): Effect.Effect<
   OperatorLifecycleTxHashes,
-  SDK.StateQueueError | SDK.LucidError | TxSignError | TxSubmitError
+  SDK.StateQueueError | SDK.LucidError | TxSignError | TxSubmitError | TxConfirmError
 > =>
   Effect.gen(function* () {
     const operatorKeyHash = yield* getOperatorKeyHash(lucid);
@@ -1734,7 +1735,7 @@ export const registerAndActivateOperatorProgram = (
   referenceScriptsLucid?: LucidEvolution,
 ): Effect.Effect<
   ActivationTxHashes,
-  SDK.StateQueueError | SDK.LucidError | TxSignError | TxSubmitError
+  SDK.StateQueueError | SDK.LucidError | TxSignError | TxSubmitError | TxConfirmError
 > =>
   operatorLifecycleProgram(
     lucid,
@@ -1758,7 +1759,7 @@ export const registerOperatorProgram = (
   referenceScriptsLucid?: LucidEvolution,
 ): Effect.Effect<
   RegistrationTxHashes,
-  SDK.StateQueueError | SDK.LucidError | TxSignError | TxSubmitError
+  SDK.StateQueueError | SDK.LucidError | TxSignError | TxSubmitError | TxConfirmError
 > =>
   operatorLifecycleProgram(
     lucid,
@@ -1779,7 +1780,7 @@ export const activateOperatorProgram = (
   referenceScriptsLucid?: LucidEvolution,
 ): Effect.Effect<
   ActivationTxHashes,
-  SDK.StateQueueError | SDK.LucidError | TxSignError | TxSubmitError
+  SDK.StateQueueError | SDK.LucidError | TxSignError | TxSubmitError | TxConfirmError
 > =>
   operatorLifecycleProgram(
     lucid,
@@ -1801,7 +1802,7 @@ export const deregisterOperatorProgram = (
   referenceScriptsLucid?: LucidEvolution,
 ): Effect.Effect<
   DeregistrationTxHashes,
-  SDK.StateQueueError | SDK.LucidError | TxSignError | TxSubmitError
+  SDK.StateQueueError | SDK.LucidError | TxSignError | TxSubmitError | TxConfirmError
 > =>
   operatorLifecycleProgram(
     lucid,

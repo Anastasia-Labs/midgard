@@ -593,9 +593,9 @@ pub fn get_inline_datum_and_spending_redeemer_data_at(
 /// > [!WARNING]
 /// > This function can only be used **once within a given transaction**.
 pub fn plutarch_phas(
-  merkle_root: MerkleRoot<key, value>,
-  key: Data<key>,
-  value: Data<value>,
+  merkle_root: MerkleRoot,
+  key: Data,
+  value: Data,
   membership_proof: Proof,
   redeemers: Pairs<ScriptPurpose, Redeemer>,
   withdraw_redeemer_index: Int,
@@ -629,8 +629,8 @@ pub fn plutarch_phas(
 /// > [!WARNING]
 /// > This function can only be used **once within a given transaction**.
 pub fn plutarch_pexcludes(
-  merkle_root: MerkleRoot<key, value>,
-  key: Data<key>,
+  merkle_root: MerkleRoot,
+  key: Data,
   non_membership_proof: Proof,
   redeemers: Pairs<ScriptPurpose, Redeemer>,
   withdraw_redeemer_index: Int,
@@ -658,13 +658,13 @@ pub fn plutarch_pexcludes(
 }
 
 pub fn plutarch_pdelete(
-  merkle_root_before_delete: MerkleRoot<key, value>,
-  key: Data<key>,
-  value: Data<value>,
+  merkle_root_before_delete: MerkleRoot,
+  key: Data,
+  value: Data,
   membership_proof: Proof,
   redeemers: Pairs<ScriptPurpose, Redeemer>,
   withdraw_redeemer_index: Int,
-) -> MerkleRoot<key, value> {
+) -> MerkleRoot {
   let proof_data: Data = membership_proof
   let function_input: List<Data> =
     [builtin.b_data(merkle_root_before_delete), key, value, proof_data]

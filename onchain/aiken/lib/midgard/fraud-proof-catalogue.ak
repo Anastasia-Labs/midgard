@@ -8,10 +8,8 @@ pub const asset_name: AssetName = "MIDGARD_FRAUD_PROOF_CATALOGUE"
 
 pub const id_byte_count = 4
 
-/// Keys are integer indices, each represented with `id_byte_count` number of
-/// bytes.
 pub type Datum =
-  MerkleRoot<Int, ByteArray>
+  MerkleRoot
 
 pub fn get_datum(
   reference_inputs: List<Input>,

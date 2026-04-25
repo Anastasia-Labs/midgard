@@ -1,19 +1,15 @@
-//// ## Invalid Range Fraud Proof (Section 5.1.2)
+//// ## Non-Existent Input UTxO Fraud Proof (Section 5.1.1)
 ////
-//// Proves a given transaction, which has a validity range with one or both
-//// ends bounded, is included in a Midgard block whose validity range does not
-//// cover the transaction's validity range. Or if the transaction has an
-//// invalid time range (i.e. reversed interval).
+//// Proves a given transaction spends an input that does not exist in the
+//// initial ledger (i.e. `prev_utxos_root`) of its containing block.
 
 use aiken/crypto.{ScriptHash}
-use aiken_design_patterns/validity_range_normalization as vrn
 use cardano/assets.{PolicyId}
 use cardano/transaction.{OutputReference, Transaction}
 use midgard/computation_thread as ct
 use midgard/fraud_proofs/common.{cancel, pass_tx_to_next_step}
-use midgard/fraud_proofs/invalid_range/step_01.{Datum, SpendRedeemer}
-use midgard/fraud_proofs/invalid_range/step_02
-use midgard/ledger_state.{Header}
+use midgard/fraud_proofs/non_existent_input/step_01.{Datum, SpendRedeemer}
+use midgard/fraud_proofs/non_existent_input/step_02
 
 validator main(
   step_02_validator_script_hash: ScriptHash,
@@ -60,23 +56,13 @@ validator main(
             tx,
           )
 
-        let Header {
-          start_time: block_valid_from,
-          end_time: block_valid_to,
-          ..
-        } = header
-
-        let bad_tx_normalized_validity_range =
-          vrn.normalize_time_range(bad_tx_body.validity_interval)
-
-        // 2. The UTxO must be produced at next step's script hash with validity
-        //    range of the bad tx, and block's time range provided.
+        // 2. The UTxO must be produced at next step's script hash with inputs
+        //    root of the bad transaction, and block's prev UTxOs root.
         expect output_script_hash == step_02_validator_script_hash
         let expected_output_state: Data =
           step_02.State {
-            block_valid_from,
-            block_valid_to,
-            bad_tx_normalized_validity_range,
+            bad_tx_inputs_root: bad_tx_body.spend_inputs,
+            blocks_prev_utxos_root: header.prev_utxos_root,
           }
         expect output_state_data == expected_output_state
 

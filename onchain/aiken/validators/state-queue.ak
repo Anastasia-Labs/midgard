@@ -202,10 +202,7 @@ validator mint(
           // scheduler:
           // 7. The transaction must include a reference input with the
           //    scheduler NFT. Let that input's datum be the `scheduler_state`.
-          expect scheduler.ActiveOperator {
-            operator: scheduler_operator,
-            start_time: scheduler_start_time,
-          } =
+          expect scheduler.ActiveOperator { operator: scheduler_operator, .. } =
             scheduler.get_datum(
               reference_inputs: reference_inputs,
               scheduler_policy_id: scheduler_script_hash,
@@ -216,23 +213,10 @@ validator mint(
           //    from redeemer.
           expect operator == scheduler_operator
 
-          // 9. The `end_time` of `header_node` must be within the shift
-          //    interval of `scheduler_state`.
-          //
-          //    Note that scheduler's start time is inclusive, while block
-          //    header's end time is exclusive. Therefore we are using `>`,
-          //    since equality between the two wouldn't mean the block is
-          //    within the shift interval.
-          expect output_end_time > scheduler_start_time
-          // Here since both scheduler and blocks have an exclusive upper bound,
-          // we are using `<=` instead of `<`.
-          expect
-            output_end_time <= scheduler.shift_end_time(scheduler_start_time)
-
           // Update the operator's timestamp in the active operators set:
-          // 10. The transaction must include an input, spent via the
-          //     `UpdateBondHoldNewState` redeemer, of an `active_operators`
-          //     node with a key matching the `operator`.
+          // 9. The transaction must include an input, spent via the
+          //    `UpdateBondHoldNewState` redeemer, of an `active_operators`
+          //    node with a key matching the `operator`.
           expect active_operators.UpdateBondHoldNewState { active_operator, .. } =
             utils.get_spending_redeemer_data_at(
               active_operators_addr,
@@ -248,7 +232,7 @@ validator mint(
           // node (i.e. latest block in the queue).
           when m_anchor_key is {
             Some(header_hash) -> {
-              // 11a. New block must properly carry over data from previous
+              // 10a. New block must properly carry over data from previous
               //      block.
               expect Header { utxos_root, end_time, protocol_version, .. } =
                 anchor_data
@@ -261,7 +245,7 @@ validator mint(
               True
             }
             None -> {
-              // 11b. New block must properly carry over data from confirmed
+              // 10b. New block must properly carry over data from confirmed
               //      state.
               expect ConfirmedState {
                 header_hash,
@@ -288,9 +272,6 @@ validator mint(
         confirmed_state_input_index,
         confirmed_state_output_index,
         m_settlement_redeemer_index,
-        merged_block_transactions_root,
-        merged_block_deposits_root,
-        merged_block_withdrawals_root,
       } -> {
         let Transaction { inputs, outputs, mint, redeemers, validity_range, .. } =
           self
@@ -311,12 +292,12 @@ validator mint(
         {
           let
             _confirmed_state_lovelace_change,
-            input_confirmed_state_element_data,
+            input_confirmed_state_data,
             _input_header_lovelace,
             input_header_node_key,
-            input_header_node_element_data,
+            input_header_node_data,
             _input_header_link,
-            output_confirmed_state_element_data,
+            output_confirmed_state_data,
           <-
             linked_list.fold_from_root(
               confirmed_state_input,
@@ -330,20 +311,7 @@ validator mint(
           //    `header_node_input_index`.
           expect input_header_node_key == header_node_key
 
-          expect linked_list.Root {
-            data: input_confirmed_state_data,
-          }: linked_list.ElementData<ConfirmedState, Header> =
-            input_confirmed_state_element_data
-          expect linked_list.Node {
-            data: input_header_node_data,
-          }: linked_list.ElementData<ConfirmedState, Header> =
-            input_header_node_element_data
-          expect linked_list.Root {
-            data: output_confirmed_state_data,
-          }: linked_list.ElementData<ConfirmedState, Header> =
-            output_confirmed_state_element_data
-
-          let Header {
+          expect Header {
             utxos_root: input_header_utxos_root,
             end_time: input_header_end_time,
             protocol_version: input_header_protocol_version,
@@ -353,14 +321,7 @@ validator mint(
             ..
           } = input_header_node_data
 
-          // 4. Correctness of redeemer arguments must be guaranteed for other
-          //    contracts to use.
-          expect
-            merged_block_transactions_root == input_header_transactions_root
-          expect merged_block_deposits_root == input_header_deposits_root
-          expect merged_block_withdrawals_root == input_header_withdrawals_root
-
-          // 5. `header_node` must be mature---the lower bound of the
+          // 4. `header_node` must be mature---the lower bound of the
           //    transaction validity interval meets or exceeds the sum of the
           //    `end_time` field of `header_node` and the Midgard
           //    `maturity_duration` protocol parameter.
@@ -369,11 +330,11 @@ validator mint(
           expect
             inclusive_tx_lower_bound >= input_header_end_time + maturity_duration
 
-          // 6. a. `header_hash` of the input confirmed state must be preserved
+          // 5. a. `header_hash` of the input confirmed state must be preserved
           //       under `prev_header_hash` of the updated confirmed state.
           //    b. `start_time` of the input confirmed state must also carry
           //       over.
-          // 7. From the merging header node, these values must be preserved in
+          // 6. From the merging header node, these values must be preserved in
           //    the new confirmed state:
           //    a. `utxos_root` must be the new confirmed ledger.
           //    b. `end_time` must replace confirmed state's.
@@ -381,12 +342,12 @@ validator mint(
           //       (TODO?).
           //    d. Key (i.e. header hash) must also be saved under
           //       `header_hash`.
-          let ConfirmedState {
+          expect ConfirmedState {
             start_time: input_confirmed_state_start_time,
             header_hash: input_confirmed_state_header_hash,
             ..
           } = input_confirmed_state_data
-          let expected_output_confirmed_state_data: ConfirmedState =
+          let expected_output_confirmed_state_data: Data =
             ConfirmedState {
               header_hash: header_node_key,
               prev_header_hash: input_confirmed_state_header_hash,
@@ -398,7 +359,7 @@ validator mint(
           expect
             output_confirmed_state_data == expected_output_confirmed_state_data
 
-          // 8. If either the `deposits_root`, or `withdrawals_root`, or
+          // 7. If either the `deposits_root`, or `withdrawals_root`, or
           //    `transactions_root` of `header_node` is _not_ the MPT root hash
           //    of the empty set, a `settlement` utxo must be produced via the
           //    Spawn redeemer. The redeemer must mention `header_node` by input
@@ -413,7 +374,7 @@ validator mint(
             input_header_deposits_root != empty_merkle_tree_root,
             input_header_withdrawals_root != empty_merkle_tree_root,
           } {
-            // 9a. The redeemer index for settlement minting policy must be
+            // 8a. The redeemer index for settlement minting policy must be
             //     provided.
             expect Some(settlement_redeemer_index) = m_settlement_redeemer_index
             let settlement_minting_redeemer_data =
@@ -430,7 +391,7 @@ validator mint(
             // Done.
             True
           } else {
-            // 9b. No mint redeemer index must be provided. Settlement contract
+            // 8b. No mint redeemer index must be provided. Settlement contract
             //     uses this argument to disallow minting empty settlement
             //     utxos.
             expect None == m_settlement_redeemer_index
