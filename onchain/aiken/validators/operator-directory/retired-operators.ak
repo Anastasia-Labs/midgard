@@ -257,12 +257,17 @@ validator mint(hub_oracle_script_hash: PolicyId) {
           // 6. The retirement of the operator must be mature. In other words,
           //    lower bound of the transaction must be later than retired
           //    operator's commitment time.
-          expect NodeData{bond_unlock_time: Some(bond_unlock_time)} =
-            retired_operator_node_data
-          expect validity_range |> interval.is_entirely_after(bond_unlock_time)
+          expect NodeData { bond_unlock_time } = retired_operator_node_data
+          when bond_unlock_time is {
+            None -> True
+            Some(bond_unlock_time) -> {
+              expect
+                validity_range |> interval.is_entirely_after(bond_unlock_time)
 
-          // Done.
-          True
+              // Done.
+              True
+            }
+          }
         }
           |> finalize_linked_list(own_policy_id)
       }

@@ -173,7 +173,9 @@ Redeemers:
                 \end{enumerate}
             \item Verify descending insertion of a new node in the registered operators set (see \cref{h:list-minting-helpers}):
                 \begin{enumerate}[resume]
-                    \item Let \code{registering\_lovelace}, \code{registering\_key} and \code{registering\_data} be corresponding values of the inserted node.
+                    \item Let \code{registering\_lovelace}, \code{registering\_key}, \code{registering\_data}, and \code{anchor\_lovelace\_change} be corresponding values of the inserted node and its anchor.
+                    \item \code{anchor\_lovelace\_change} must be greater than or equal to 0.
+                      This ensures registration cannot drain ADA from an existing registered operator node when insertion does not happen at the root.
                     \item \code{registering\_lovelace} must be greater than or equal to the \code{required\_bond} protocol parameter.
                     \item Let \code{activation\_time} be equal to the sum of the Midgard \code{registration\_duration} protocol parameter and the inclusive upper bound of the transaction's validity interval.
                     \item \code{registering\_key} must equal the big-endian encoding of \code{activation\_time} in as few bytes as possible.
@@ -350,7 +352,10 @@ Redeemers:
                 \item The transaction must \emph{not} mint or burn tokens of the \code{active\_operators} minting policy.
                 \item Let \code{active\_node} be an output of the transaction indicated by a redeemer argument.
                 \item \code{active\_node} must be an \code{active\_operators} node that matches the datum argument of the spending validator on the \code{key} and \code{link} fields.
-                \item The \code{bond\_unlock\_time} field of \code{active\_node} must match the sum of the Midgard \code{maturity\_duration} parameter and the upper bound of the transaction validity interval.
+                \item Let \code{fresh\_bond\_unlock\_time} be the sum of the Midgard \code{maturity\_duration} parameter and the upper bound of the transaction validity interval.
+                \item If the operator has prior commitments, let \code{old\_bond\_unlock\_time} be its value.
+                \item The \code{bond\_unlock\_time} field of \code{active\_node} must be the bigger value between \code{old\_bond\_unlock\_time} and \code{fresh\_bond\_unlock\_time}.
+                \item The \code{inactivity\_strikes} field of \code{active\_node} must remain unchanged.
             \end{enumerate}
             \item Verify that the operator is currently committing a block header to the state queue:
             \begin{enumerate}[resume]
@@ -368,9 +373,15 @@ Redeemers:
                 \item The transaction must \emph{not} mint or burn tokens of the \code{active\_operators} minting policy.
                 \item Let \code{active\_node} be an output of the transaction indicated by a redeemer argument.
                 \item \code{active\_node} must be an \code{active\_operators} node that matches the datum argument of the spending validator on the \code{key} and \code{link} fields.
-                \item The \code{bond\_unlock\_time} field of \code{active\_node} must match the sum of the Midgard \code{maturity\_duration} parameter and the upper bound of the transaction validity interval.
+                \item Let \code{resolution\_time} be a redeemer argument.
+                \item Let \code{fresh\_bond\_unlock\_time} be the sum of the Midgard \code{maturity\_duration} parameter and the upper bound of the transaction validity interval.
+                \item \code{resolution\_time} must match \code{fresh\_bond\_unlock\_time}.
+                  This value is used by the settlement validator as the resolution claim's \code{resolution\_time}.
+                \item If the operator has prior commitments, let \code{old\_bond\_unlock\_time} be its value.
+                \item The \code{bond\_unlock\_time} field of \code{active\_node} must be the bigger value between \code{old\_bond\_unlock\_time} and \code{fresh\_bond\_unlock\_time}.
+                \item The \code{inactivity\_strikes} field of \code{active\_node} must remain unchanged.
             \end{enumerate}
-            \item Verify that the operator is currently committing a block header to the state queue:
+            \item Verify that the operator is currently attaching a resolution claim to a settlement utxo:
             \begin{enumerate}[resume]
                 \item The transaction must include the Midgard hub oracle NFT in a reference input.
                 \item Let \code{settlement\_addr} be the script address in the corresponding field of the Midgard hub oracle.
