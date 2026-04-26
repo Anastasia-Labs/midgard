@@ -129,7 +129,7 @@ validator mint(
         //          unnecessarily longer.
         {
           let
-            _anchor_lovelace_change,
+            anchor_lovelace_change,
             _m_anchor_key,
             _anchor_data,
             registered_node_lovelace,
@@ -144,11 +144,14 @@ validator mint(
               mint,
             )
 
-          // 6. The Lovelace in the registered node must equal the
+          // 6. Anchor's Lovelace must be preserved.
+          expect anchor_lovelace_change >= 0
+
+          // 7. The Lovelace in the registered node must equal the
           //    `required_bond` Midgard parameter.
           expect registered_node_lovelace >= required_bond
 
-          // 7. Let `activation_time` be equal to the sum of the Midgard
+          // 8. Let `activation_time` be equal to the sum of the Midgard
           //    `registration_duration` protocol parameter and the inclusive
           //    upper bound of the transaction's validity interval.
           let activation_time =
@@ -156,15 +159,15 @@ validator mint(
               validity_range,
             )
 
-          // 8. The key of registered node must match the big-endian encoding of
+          // 9. The key of registered node must match the big-endian encoding of
           //    `activation_time`
           expect
             registered_node_key == activation_time_to_node_key(activation_time)
 
           when operator_origin is {
             ReturningOperator { retired_operators_redeemer_index } -> {
-              // 9a. `ReregisterOperator` redeemer of the retired operators set
-              //     must be invoked with a matching operator key.
+              // 10a. `ReregisterOperator` redeemer of the retired operators set
+              //      must be invoked with a matching operator key.
               expect retired_operators.ReregisterOperator {
                 retired_operator_key,
                 retired_operator_bond_unlock_time,
@@ -177,7 +180,7 @@ validator mint(
                     )
               expect registering_operator == retired_operator_key
 
-              // 10a. The returning operators bond unlock time must be carried
+              // 11a. The returning operators bond unlock time must be carried
               //      over.
               let expected_node_data: Data =
                 NodeData {
@@ -190,8 +193,8 @@ validator mint(
               True
             }
             NewOperator { retired_operators_element_ref_input_index } -> {
-              // 9b. Registering operator must not be present in the retired
-              //     operators set.
+              // 10b. Registering operator must not be present in the retired
+              //      operators set.
               expect
                 registering_operator
                   |> operator_is_not_a_member(
@@ -202,7 +205,7 @@ validator mint(
                       retired_operators_mint_script_hash,
                     )
 
-              // 10b. Registered node's data must carry the registering
+              // 11b. Registered node's data must carry the registering
               //      operator, with no bond unlock time.
               let expected_node_data: Data =
                 NodeData {
