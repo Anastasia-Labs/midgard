@@ -18,8 +18,9 @@ After the maturity period, the settlement utxo can be spent if the resolution cl
 \tipbox{Perhaps concluding a settlement should also release the user fees collected from the utxo's user events to the operator.
 These fees would incentivize the operator to resolve settlements promptly.}
 
-The timestamp in the operator's node in the Operator Directory should be updated whenever an operator optimistically marks a settlement as resolved, similar to how it is updated when committing a block to the state queue.
+The bond unlock time in the operator's node in the Operator Directory should be advanced whenever an operator optimistically marks a settlement as resolved, similar to how it is updated when committing a block to the state queue.
 Updating this timestamp ensures that the operator cannot recover their bond until all their resolution claims have matured in the settlement queue.
+If the operator already has a later bond unlock time from another unresolved obligation, that later timestamp must be preserved.
 
 \subsection{Minting policy}
 \label{h:settlement-minting-policy}
@@ -32,7 +33,7 @@ It's responsible for authenticating spawned utxos at the \code{settlement\_addr}
       \begin{enumerate}
         \item The transaction must include the Midgard hub oracle NFT in a reference input.
         \item Let \code{state\_queue} be the policy ID in the corresponding field of the Midgard hub oracle.
-        \item The transaction must Remove a \code{state\_queue} node via the Merge To Confirmed State redeemer.
+        \item The transaction must Fold a \code{state\_queue} node via the Merge To Confirmed State redeemer.
           Let \code{merged\_block} be the block being merged to the confirmed state, and let \code{header\_hash} be its header-hash key.
         \item The transaction must produce a utxo at the settlement contract containing an NFT with \code{header\_hash} as its asset name.
           Let \code{new\_settlement} be the new utxo.
@@ -71,7 +72,9 @@ Conditions:
         \item The transaction must include the Midgard hub oracle NFT in a reference input.
         \item Let \code{active\_operators} and \code{scheduler} be the corresponding policy IDs in the Midgard hub oracle.
         \item The transaction must include an input (\code{operator\_node}), spent via the Update Bond Hold New Settlement redeemer, of an \code{active\_operators} node with a key matching the resolution claim's operator.
-        \item The \code{bond\_unlock\_time} of the \code{operator\_node} must match the \code{resolution\_time} of the resolution claim.
+        \item The Update Bond Hold New Settlement redeemer must provide a \code{resolution\_time} value.
+        \item The \code{resolution\_time} of the attached resolution claim must match this redeemer value.
+          The active operators validator ensures this value equals the current claim's maturity time and that the operator node's \code{bond\_unlock\_time} is advanced to at least this value without shortening any previous hold.
         \item The transaction must include the \code{scheduler} utxo as a reference input, indicating that the current operator matches the resolution claim's operator.
       \end{enumerate}
   \item[Disprove Resolution Claim.] Disprove and detach a settlement utxo's resolution claim, slashing the claimant operator.
