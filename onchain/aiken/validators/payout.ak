@@ -46,7 +46,8 @@ validator mint(withdrawal_addr: Address) {
         // 2. Exactly one payout NFT minted with quantity 1.
         //    The withdrawal validator ensures the asset name matches the
         //    burnt withdrawal NFT.
-        expect Pair(_, 1) = utils.get_singleton_asset_with_policy(mint, own_policy)
+        expect Pair(_, 1) =
+          utils.get_singleton_asset_with_policy(mint, own_policy)
 
         // Done.
         True
@@ -61,7 +62,11 @@ validator mint(withdrawal_addr: Address) {
         payout_spend_redeemer_index,
       } -> {
         // 1. Exactly one payout NFT burned.
-        expect Pair(payout_asset_name, -1) == utils.get_singleton_asset_with_policy(mint, own_policy)
+        expect
+          Pair(payout_asset_name, -1) == utils.get_singleton_asset_with_policy(
+            mint,
+            own_policy,
+          )
 
         // 2. The payout UTxO must be spent with the ConcludeWithdrawal
         //    redeemer, preventing burns outside of the conclusion endpoint.
@@ -220,10 +225,8 @@ validator spend(payout_policy_id: PolicyId, reserve_addr: Address) {
         membership_proof,
         inclusion_proof_script_withdraw_redeemer_index,
       } -> {
-        let hub.Datum {
-          settlement: settlement_policy_id,
-          ..
-        } = hub.get_datum(reference_inputs, hub_oracle, hub_ref_input_index)
+        let hub.Datum { settlement: settlement_policy_id, .. } =
+          hub.get_datum(reference_inputs, hub_oracle, hub_ref_input_index)
 
         let
           payout_input,
@@ -370,8 +373,10 @@ validator add_funds(payout_policy_id: PolicyId, reserve_addr: Address) {
       payout_input_redeemer_index,
     } = redeemer
 
-
-    let payout_input, payout_output <-
+    let
+      payout_input,
+      payout_output,
+    <-
       singular_utxo_indexer.one_to_one(
         payout_input_index,
         payout_output_index,
@@ -401,54 +406,36 @@ validator add_funds(payout_policy_id: PolicyId, reserve_addr: Address) {
     } =
       redeemers
         |> utils.get_redeemer_at(
-          Spend(payout_input_outref),
-          payout_input_redeemer_index,
-        )
+            Spend(payout_input_outref),
+            payout_input_redeemer_index,
+          )
 
     expect and {
-      p0 == payout_input_index,
-      p1 == payout_output_index,
-      r0 == reserve_input_index,
-      r1 == m_reserve_change_output_index,
-    }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+        p0 == payout_input_index,
+        p1 == payout_output_index,
+        r0 == reserve_input_index,
+        r1 == m_reserve_change_output_index,
+      }
 
     expect (Spend(payout_input_outref_in_redeemer), payout_spend_redeemer_data) =
       redeemers |> list.at(payout_input_redeemer_index)
 
     expect payout_input_outref_in_redeemer == payout_input_outref
 
-    let payout_input, payout_cont_output <- singular_utxo_indexer.one_to_one(
-      payout_input_index,
-      payout_output_index,
-      payout_input_outref,
-      inputs,
-      outputs,
-      // Double satisfaction prevented by TODO
-      True,
-    )
+    let
+      payout_input,
+      payout_cont_output,
+    <-
+      singular_utxo_indexer.one_to_one(
+        payout_input_index,
+        payout_output_index,
+        payout_input_outref,
+        inputs,
+        outputs,
+        // Double satisfaction prevented by TODO
+        True,
+      )
 
-      script_address: withdrawal_addr,
-      input_index: withdrawal_input_index,
-      redeemer_index: withdrawal_spend_redeemer_index,
-      inputs: inputs,
-      redeemers: redeemers,
-    )
     todo
   }
 
@@ -491,9 +478,7 @@ fn authenticate_input_output_and_get_info(
 }
 
 pub type AssetToAdd {
-  Lovelace {
-    m_reserve_change_output_index: Option<Int>,
-  }
+  Lovelace { m_reserve_change_output_index: Option<Int> }
   Asset {
     policy_id: PolicyId,
     asset_name: AssetName,
@@ -513,13 +498,13 @@ pub fn validate_value_accumulation_with_change(
   payout_asset_name: AssetName,
   outputs: List<Output>,
 ) -> Bool {
-  // Remove auth NFT
+  // Remove auth NFT.
   let p0 = p0 |> assets.add(payout_policy_id, payout_asset_name, -1)
   let p1 = p1 |> assets.add(payout_policy_id, payout_asset_name, -1)
 
+  // Separate Lovelace from the rest of assets.
   let (p0_lovelace, p0_assets) = p0 |> get_lovelace_and_assets
   let (r0_lovelace, r0_assets) = r0 |> get_lovelace_and_assets
-
   let (p1_lovelace, p1_assets) = p1 |> get_lovelace_and_assets
 
   // NOTE that we are assuming it is already verified that the first entry in
@@ -554,7 +539,7 @@ pub fn validate_value_accumulation_with_change(
     expect r1_lovelace == r0_lovelace
 
     // Verify accumulation of the given asset
-    validate_given_asset_with_change(
+    validate_transfer_of_given_asset_with_change(
       p0_assets,
       r0_assets,
       p1_assets,
@@ -573,9 +558,7 @@ pub fn validate_value_accumulation_with_change(
     expect p1_lovelace >= p0_lovelace
 
     when asset_to_add is {
-      Lovelace {
-        m_reserve_change_output_index,
-      } -> {
+      Lovelace { m_reserve_change_output_index } ->
         when m_reserve_change_output_index is {
           None -> {
             // Input reserve must contain only ADA, and all its quantity must be
@@ -605,7 +588,6 @@ pub fn validate_value_accumulation_with_change(
             True
           }
         }
-      }
       Asset {
         policy_id,
         asset_name,
@@ -622,8 +604,8 @@ pub fn validate_value_accumulation_with_change(
 
         let (r1_lovelace, r1_assets) = r1 |> get_lovelace_and_assets
 
-        // Verify accumulation of the given asset
-        validate_given_asset_with_change(
+        // Verify accumulation of the given asset.
+        validate_transfer_of_given_asset_with_change(
           p0_assets,
           r0_assets,
           p1_assets,
@@ -639,7 +621,12 @@ pub fn validate_value_accumulation_with_change(
   }
 }
 
-fn validate_given_asset_with_change(
+/// p0: Assets of input payout
+/// r0: Assets of input reserve
+/// p1: Assets of output payout
+/// r1: Assets of output reserve
+/// pt: Target assets
+fn validate_transfer_of_given_asset_with_change(
   p0_assets: Dict<PolicyId, Dict<AssetName, Int>>,
   r0_assets: Dict<PolicyId, Dict<AssetName, Int>>,
   p1_assets: Dict<PolicyId, Dict<AssetName, Int>>,
@@ -650,42 +637,56 @@ fn validate_given_asset_with_change(
   policy_id_index_in_target: Int,
   asset_name_index_in_target: Int,
 ) -> Bool {
-  expect Some(Pair(target_policy_id, target_asset_pairs)) = pt_assets |> list.at(policy_id_index_in_target)
+  // 1. Provided indices for extracting the subject asset must be valid.
+  let Pair(target_policy_id, target_asset_pairs) =
+    pt_assets |> list.expect_at(policy_id_index_in_target)
   expect target_policy_id == policy_id_to_add
-  expect Some(Pair(target_asset_name, pt_qty)) = target_asset_pairs |> list.at(asset_name_index_in_target)
+  let Pair(target_asset_name, pt_qty) =
+    target_asset_pairs |> list.expect_at(asset_name_index_in_target)
   expect target_asset_name == asset_name_to_add
 
   let p0_qty = p0_assets |> get_token_qty(policy_id_to_add, asset_name_to_add)
-  let r0_qty = r0_assets |> get_token_qty_strict(policy_id_to_add, asset_name_to_add)
-  let p1_qty = p1_assets |> get_token_qty_strict(policy_id_to_add, asset_name_to_add)
+  let r0_qty =
+    r0_assets |> get_token_qty_strict(policy_id_to_add, asset_name_to_add)
+  let p1_qty =
+    p1_assets |> get_token_qty_strict(policy_id_to_add, asset_name_to_add)
   let r1_qty = r1_assets |> get_token_qty(policy_id_to_add, asset_name_to_add)
 
-  // Token's quantity must not exceed the target
+  // 2. Token's quantity must not exceed the target.
   expect p1_qty <= pt_qty
-  // Token's quantity must grow
+
+  // 3. Token's quantity must grow.
   expect p1_qty > p0_qty
-  // The change in reserve's token quantity must match the change in payout's
+
+  // 4. The change in reserve's token quantity must match the change in
+  //    payout's.
   expect r0_qty - r1_qty == p1_qty - p0_qty
+
   // Done.
   True
 }
 
-fn get_lovelace_and_assets(v: Value) -> (Lovelace, Dict<PolicyId, Dict<AssetName, Int>>) {
-  let (v_lovelace, v_assets) = v |> assets.to_dict |> dict.pop(ada_policy_id)
-  let v_lovelace = when v_lovelace is {
-    Some(tokens) -> builtin.head_list(dict.to_pairs(tokens)).2nd
-    None -> 0
-  }
-  (v_lovelace, v_assets)
+fn get_lovelace_and_assets(
+  v: Value,
+) -> (Lovelace, Dict<PolicyId, Dict<AssetName, Int>>) {
+  let (v_lovelace, v_assets) =
+    v |> assets.to_dict |> dict.expect_pop(ada_policy_id)
+  (builtin.head_list(dict.to_pairs(v_lovelace)).2nd, v_assets)
 }
 
-fn get_token_qty_strict(assets: Dict<PolicyId, Dict<AssetName, Int>>, policy_id: PolicyId, asset_name: AssetName) -> Int {
-  expect Some(tokens) = assets |> dict.get(policy_id)
-  expect Some(qty) = tokens |> dict.get(asset_name)
-  qty
+fn get_token_qty_strict(
+  assets: Dict<PolicyId, Dict<AssetName, Int>>,
+  policy_id: PolicyId,
+  asset_name: AssetName,
+) -> Int {
+  assets |> dict.expect_get(policy_id) |> dict.expect_get(asset_name)
 }
 
-fn get_token_qty(assets: Dict<PolicyId, Dict<AssetName, Int>>, policy_id: PolicyId, asset_name: AssetName) -> Int {
+fn get_token_qty(
+  assets: Dict<PolicyId, Dict<AssetName, Int>>,
+  policy_id: PolicyId,
+  asset_name: AssetName,
+) -> Int {
   let m_tokens = assets |> dict.get(policy_id)
   when m_tokens is {
     None -> 0

@@ -14,3 +14,5 @@ pub const slashing_penalty: Int = 0
 pub const fraud_prover_reward: Int = 0
 
 pub const required_bond: Int = slashing_penalty + fraud_prover_reward
+
+pub const withdrawal_min_ada: Int = 5_000_000

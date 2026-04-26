@@ -1,3 +1,4 @@
+use aiken/builtin
 use aiken/crypto.{ScriptHash}
 use aiken_design_patterns/singular_utxo_indexer
 use cardano/assets.{PolicyId}
@@ -252,8 +253,19 @@ validator mint(hub_oracle: ScriptHash) {
     //    only valid withdrawals can initialize payout accumulators.
     expect ledger_state.WithdrawalInfo {
       validity: ledger_state.WithdrawalIsValid,
+      body: ledger_state.WithdrawalBody { l2_value },
       ..
     } = withdrawal_info_data
+
+    // 4. The withdrawn UTxO's value must be properly formed, and  must carry
+    //    `withdrawal_min_ada` or more Lovelace.
+    //    TODO: This probably can be optimized.
+    let Pair(l2_first_asset_policy, l2_first_asset_pairs) =
+      l2_value |> builtin.head_list
+    expect [Pair(l2_first_asset_name, l2_lovelace)] = l2_first_asset_pairs
+    expect l2_first_asset_policy == ada_policy_id
+    expect l2_first_asset_name == ada_asset_name
+    expect l2_lovelace >= withdrawal_min_ada
 
     // Done.
     True
