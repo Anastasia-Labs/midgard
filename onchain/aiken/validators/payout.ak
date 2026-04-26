@@ -10,8 +10,8 @@ use midgard/common/utils
 use midgard/hub_oracle as hub
 use midgard/ledger_state
 use midgard/payout.{
-  AddFunds, BurnPayout, ConcludeWithdrawal, Datum, MintPayout, MintRedeemer,
-  SpendRedeemer,
+  AddFunds, AddFundsRedeemer, AssetToAdd, BurnPayout, ConcludeWithdrawal, Datum,
+  MintPayout, MintRedeemer, SpendRedeemer,
 }
 use midgard/settlement
 use midgard/user_events
@@ -121,7 +121,6 @@ validator spend(payout_policy_id: PolicyId, reserve_addr: Address) {
         payout_output_index,
         reserve_input_index,
         m_reserve_change_output_index,
-        hub_ref_input_index,
       } -> {
         // 1. Authenticate payout input and bind its asset name.
         let
@@ -365,13 +364,18 @@ validator add_funds(payout_policy_id: PolicyId, reserve_addr: Address) {
     expect Script(own_script_hash) = own_credential
 
     let AddFundsRedeemer {
-      payout_input_index,
-      payout_output_index,
-      reserve_input_index,
-      m_reserve_change_output_index,
+      accumulation_args,
       payout_input_outref,
       payout_input_redeemer_index,
     } = redeemer
+
+    let AccumulationArgs {
+      payout_input_index,
+      payout_output_index,
+      reserve_input_index,
+      asset_to_add,
+      payout_nft_asset_name,
+    } = accumulation_args
 
     let
       payout_input,
@@ -383,7 +387,8 @@ validator add_funds(payout_policy_id: PolicyId, reserve_addr: Address) {
         payout_input_outref,
         inputs,
         outputs,
-        // Double satisfaction prevented by TODO
+        // Double satisfaction prevented by validating the same NFT is present
+        // in the output.
         True,
       )
 
@@ -477,23 +482,13 @@ fn authenticate_input_output_and_get_info(
   return(input_nft_asset_name, output_datum_data)
 }
 
-pub type AssetToAdd {
-  Lovelace { m_reserve_change_output_index: Option<Int> }
-  Asset {
-    policy_id: PolicyId,
-    asset_name: AssetName,
-    policy_id_index_in_target: Int,
-    asset_name_index_in_target: Int,
-    reserve_change_output_index: Int,
-  }
-}
-
-pub fn validate_value_accumulation_with_change(
+pub fn validate_asset_accumulation(
   asset_to_add: AssetToAdd,
   p0: Value,
   r0: Value,
   p1: Value,
   pt: ValuePairs,
+  reserve_addr: Address,
   payout_policy_id: PolicyId,
   payout_asset_name: AssetName,
   outputs: List<Output>,
@@ -513,8 +508,8 @@ pub fn validate_value_accumulation_with_change(
   let pt_assets = pt |> builtin.tail_list
 
   if p0_lovelace == pt_lovelace {
-    // If target ADA had already been reached, this endpoint must have been
-    // invoked for addition of another asset.
+    // 1a. If target ADA had already been reached, this endpoint must have been
+    //     invoked for addition of another asset.
     expect Asset {
       policy_id,
       asset_name,
@@ -523,22 +518,24 @@ pub fn validate_value_accumulation_with_change(
       reserve_change_output_index,
     } = asset_to_add
 
-    expect Some(Output {
-      address: reserve_output_address,
-      value: r1,
-      datum: NoDatum,
-      reference_script: None,
-    }) = outputs |> list.at(reserve_change_output_index)
+    // 2a. Change output must go to the Midgard reserve with no datum and ref.
+    //     script attached.
+    let (r1_lovelace, r1_assets) =
+      get_reserve_change_output_lovelace_and_assets(
+        reserve_addr,
+        reserve_change_output_index,
+        outputs,
+      )
 
-    let (r1_lovelace, r1_assets) = r1 |> get_lovelace_and_assets
-
-    // Payout lovelace must not change
+    // 3a. Since we are only adding another token, payout Lovelace must not
+    //     change.
     expect p1_lovelace == p0_lovelace
 
-    // Reserve lovelace must not change
+    // 4a. ADA of the reserve UTxO must also be preserved.
     expect r1_lovelace == r0_lovelace
 
-    // Verify accumulation of the given asset
+    // 5a. Transfer of the specified asset from reserve to the payout
+    //     accumulator must be valid.
     validate_transfer_of_given_asset_with_change(
       p0_assets,
       r0_assets,
@@ -551,37 +548,36 @@ pub fn validate_value_accumulation_with_change(
       asset_name_index_in_target,
     )
   } else {
-    // Output lovelace must not exceed the target
+    // 1b. Output lovelace must not exceed the target.
     expect p1_lovelace <= pt_lovelace
 
-    // Output lovelace must either grow or remain unchanged
+    // 2b. Output lovelace must either grow or remain unchanged.
     expect p1_lovelace >= p0_lovelace
 
     when asset_to_add is {
       Lovelace { m_reserve_change_output_index } ->
         when m_reserve_change_output_index is {
           None -> {
-            // Input reserve must contain only ADA, and all its quantity must be
-            // absorbed by the payout accumulator.
+            // 3b. When redeemer specifies no change must go back to the
+            //     reserve, input reserve must contain only ADA, and all its
+            //     quantity must be absorbed by the payout accumulator.
             expect r0_assets == dict.empty
             expect r0_lovelace == p1_lovelace - p0_lovelace
             True
           }
           Some(reserve_change_output_index) -> {
-            expect Some(Output {
-              address: reserve_output_address,
-              value: r1,
-              datum: NoDatum,
-              reference_script: None,
-            }) = outputs |> list.at(reserve_change_output_index)
+            let (r1_lovelace, r1_assets) =
+              get_reserve_change_output_lovelace_and_assets(
+                reserve_addr,
+                reserve_change_output_index,
+                outputs,
+              )
 
-            let (r1_lovelace, r1_assets) = r1 |> get_lovelace_and_assets
-
-            // The change in reserve lovelace must match the change in payout
-            // lovelace.
+            // 3c. The change in reserve lovelace must match the change in
+            //     payout Lovelace.
             expect r0_lovelace - r1_lovelace == p1_lovelace - p0_lovelace
 
-            // Other assets of reserve must remain unchanged.
+            // 4c. Other assets of reserve must remain unchanged.
             let r0_assets_data: Data = r0_assets
             let r1_assets_data: Data = r1_assets
             expect r0_assets_data == r1_assets_data
@@ -595,16 +591,15 @@ pub fn validate_value_accumulation_with_change(
         asset_name_index_in_target,
         reserve_change_output_index,
       } -> {
-        expect Some(Output {
-          address: reserve_output_address,
-          value: r1,
-          datum: NoDatum,
-          reference_script: None,
-        }) = outputs |> list.at(reserve_change_output_index)
+        let (r1_lovelace, r1_assets) =
+          get_reserve_change_output_lovelace_and_assets(
+            reserve_addr,
+            reserve_change_output_index,
+            outputs,
+          )
 
-        let (r1_lovelace, r1_assets) = r1 |> get_lovelace_and_assets
-
-        // Verify accumulation of the given asset.
+        // 5d. Transfer of the specified asset from reserve to the payout
+        //     accumulator must be valid.
         validate_transfer_of_given_asset_with_change(
           p0_assets,
           r0_assets,
@@ -626,6 +621,10 @@ pub fn validate_value_accumulation_with_change(
 /// p1: Assets of output payout
 /// r1: Assets of output reserve
 /// pt: Target assets
+///
+/// This function assumes all assets except `pt` are stripped of their ADA.
+/// Therefore no validations are performed to prevent `policy_id_to_add` from
+/// being the same as ADA.
 fn validate_transfer_of_given_asset_with_change(
   p0_assets: Dict<PolicyId, Dict<AssetName, Int>>,
   r0_assets: Dict<PolicyId, Dict<AssetName, Int>>,
@@ -698,4 +697,22 @@ fn get_token_qty(
       }
     }
   }
+}
+
+fn get_reserve_change_output_lovelace_and_assets(
+  reserve_addr: Address,
+  reserve_change_output_index: Int,
+  outputs: List<Output>,
+) {
+  // 1. Change output must go to the Midgard reserve with no datum and reference
+  //    script attached.
+  expect Some(Output {
+    address: reserve_output_address,
+    value: r1,
+    datum: NoDatum,
+    reference_script: None,
+  }) = outputs |> list.at(reserve_change_output_index)
+  expect reserve_output_address == reserve_addr
+
+  r1 |> get_lovelace_and_assets
 }

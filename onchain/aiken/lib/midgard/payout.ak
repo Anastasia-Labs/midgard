@@ -6,16 +6,16 @@ pub type Datum {
   l2_value: ValuePairs,
 }
 
+pub type AccumulationArgs {
+  payout_input_index: Int,
+  payout_output_index: Int,
+  reserve_input_index: Int,
+  asset_to_add: AssetToAdd,
+  payout_nft_asset_name: AssetName,
+}
+
 pub type SpendRedeemer {
-  AddFunds {
-    payout_input_index: Int,
-    payout_output_index: Int,
-    reserve_input_index: Int,
-    // When reserve UTxO has more value than needed, excess must go back to
-    // reserve_addr. Set to None only when combined lovelace <= target.
-    m_reserve_change_output_index: Option<Int>,
-    hub_ref_input_index: Int,
-  }
+  AddFunds { accumulation_args: AccumulationArgs }
   ConcludeWithdrawal {
     payout_input_index: Int,
     l1_output_index: Int,
@@ -51,11 +51,19 @@ pub type MintRedeemer {
   }
 }
 
+pub type AssetToAdd {
+  Lovelace { m_reserve_change_output_index: Option<Int> }
+  Asset {
+    policy_id: PolicyId,
+    asset_name: AssetName,
+    policy_id_index_in_target: Int,
+    asset_name_index_in_target: Int,
+    reserve_change_output_index: Int,
+  }
+}
+
 pub type AddFundsRedeemer {
-  payout_input_index: Int,
-  payout_output_index: Int,
-  reserve_input_index: Int,
-  m_reserve_change_output_index: Option<Int>,
+  accumulation_args: AccumulationArgs,
   payout_input_outref: OutputReference,
   payout_input_redeemer_index: Int,
 }
