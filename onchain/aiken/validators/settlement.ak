@@ -86,7 +86,7 @@ validator spend(hub_oracle: ScriptHash, settlement_policy_id: ScriptHash) {
         //    operator.
         expect active_operators.UpdateBondHoldNewSettlement {
           active_operator,
-          new_bond_unlock_time,
+          resolution_time,
           ..
         } =
           utils.get_spending_redeemer_data_at(
@@ -98,9 +98,8 @@ validator spend(hub_oracle: ScriptHash, settlement_policy_id: ScriptHash) {
           )
         expect operator == active_operator
 
-        // 7. The `bond_unlock_time` of the `operator_node` must match the
-        //    `resolution_time` of the resolution claim, which lies in the
-        //    future by `maturity_duration` milliseconds.
+        // 7. The active operators redeemer provides a validated resolution
+        //    time, which must be used as the settlement claim's resolution time.
         let cont_output_datum_data =
           utils.authenticate_input_output_and_get_output_datum_data(
             input,
@@ -111,10 +110,7 @@ validator spend(hub_oracle: ScriptHash, settlement_policy_id: ScriptHash) {
           Datum {
             ..datum,
             resolution_claim: Some(
-              ResolutionClaim {
-                resolution_time: new_bond_unlock_time,
-                operator,
-              },
+              ResolutionClaim { resolution_time, operator },
             ),
           }
         expect cont_output_datum_data == expected_output_datum_data

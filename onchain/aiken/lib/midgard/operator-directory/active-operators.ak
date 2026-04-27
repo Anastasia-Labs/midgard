@@ -44,7 +44,7 @@ pub type SpendRedeemer {
     hub_oracle_ref_input_index: Int,
     settlement_input_index: Int,
     settlement_redeemer_index: Int,
-    new_bond_unlock_time: PosixTime,
+    resolution_time: PosixTime,
   }
   StrikeForInactivity {
     active_node_input_index: Int,
