@@ -3,7 +3,7 @@ use midgard/common/types.{PosixTimeDuration}
 // TODO: set realistic parameter values
 // TODO: what about parameter values for testing?
 
-pub const shift_duration: PosixTimeDuration = 30
+pub const shift_duration: PosixTimeDuration = 60 * 60 * 1000
 
 pub const registration_duration: PosixTimeDuration = 30
 
@@ -39,4 +39,4 @@ pub const new_shift_inactivity_grace_period: PosixTimeDuration = 5 * 60 * 1000
 
 pub const max_inactivity_strikes: Int = 5
 
-pub const max_validity_range_length: PosixTimeDuration = 5 * 60 * 1000
+pub const max_validity_range_length: PosixTimeDuration = 8 * 60 * 1000

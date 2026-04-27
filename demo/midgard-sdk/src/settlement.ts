@@ -166,7 +166,7 @@ export const SettlementMintRedeemer =
 export type AttachResolutionClaimParams = {
   settlementValidator: AuthenticatedValidator;
   resolutionClaimOperator: string;
-  newBondUnlockTime: bigint;
+  resolutionTime: bigint;
   hubOracleValidator: AuthenticatedValidator;
   schedulerValidator: AuthenticatedValidator;
   settlementUTxO: SettlementUTxO;
@@ -211,7 +211,7 @@ export const incompleteAttachResolutionClaimTxProgram = (
     const updatedDatum: SettlementDatum = {
       ...params.settlementUTxO.datum,
       resolution_claim: {
-        resolution_time: params.newBondUnlockTime,
+        resolution_time: params.resolutionTime,
         operator: params.resolutionClaimOperator,
       },
     };
@@ -253,9 +253,8 @@ export const incompleteAttachResolutionClaimTxProgram = (
   );
 
 export type UpdateBondHoldNewSettlementParams = {
-  newBondUnlockTime: bigint;
+  resolutionTime: bigint;
   hubOracleValidator: AuthenticatedValidator;
-  schedulerValidator: AuthenticatedValidator;
   activeOperatorParams: FetchActiveOperatorParams;
 };
 
@@ -286,7 +285,7 @@ export const incompleteUpdateBondHoldNewSettlementTxProgram = (
         hub_oracle_ref_input_index: 0n,
         settlement_input_index: 0n,
         settlement_redeemer_index: 0n,
-        new_bond_unlock_time: params.newBondUnlockTime,
+        resolution_time: params.resolutionTime,
       },
     };
     const spendRedeemerCBOR = Data.to(
@@ -311,7 +310,11 @@ export const incompleteUpdateBondHoldNewSettlementTxProgram = (
 
     const updatedDatum: ActiveOperatorDatum = {
       ...activeOperatorsInputUtxo.datum,
-      bond_unlock_time: params.newBondUnlockTime,
+      bond_unlock_time:
+        activeOperatorsInputUtxo.datum.bond_unlock_time === null ||
+        activeOperatorsInputUtxo.datum.bond_unlock_time < params.resolutionTime
+          ? params.resolutionTime
+          : activeOperatorsInputUtxo.datum.bond_unlock_time,
     };
     const updatedDatumCBOR = Data.to(updatedDatum, ActiveOperatorDatum);
 
@@ -320,18 +323,12 @@ export const incompleteUpdateBondHoldNewSettlementTxProgram = (
       hubOraclePolicyId: params.hubOracleValidator.policyId,
     });
 
-    const schedulerRefUTxO = yield* fetchSchedulerUTxOProgram(lucid, {
-      schedulerAddress: params.schedulerValidator.spendingScriptAddress,
-      schedulerPolicyId: params.schedulerValidator.policyId,
-    });
-
     const txUpperBound = Date.now() + 2 * 60_000;
 
     const buildUpdateBondHoldNewSettlementTx = lucid
       .newTx()
       .collectFrom([activeOperatorsInputUtxo.utxo], spendRedeemerCBOR)
       .readFrom([hubOracleRefUTxO.utxo])
-      .readFrom([schedulerRefUTxO.utxo])
       .pay.ToAddressWithData(
         params.activeOperatorParams.activeOperatorAddress,
         {

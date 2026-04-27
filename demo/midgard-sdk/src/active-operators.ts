@@ -38,7 +38,7 @@ export const ActiveOperatorSpendRedeemerSchema = Data.Enum([
       hub_oracle_ref_input_index: Data.Integer(),
       settlement_input_index: Data.Integer(),
       settlement_redeemer_index: Data.Integer(),
-      new_bond_unlock_time: POSIXTimeSchema,
+      resolution_time: POSIXTimeSchema,
     }),
   }),
   Data.Object({
@@ -58,6 +58,27 @@ export type ActiveOperatorSpendRedeemer = Data.Static<
 >;
 export const ActiveOperatorSpendRedeemer =
   ActiveOperatorSpendRedeemerSchema as unknown as ActiveOperatorSpendRedeemer;
+
+export const OperatorRemovalSchedulerSyncSchema = Data.Enum([
+  Data.Object({
+    ShowOperatorIsInactive: Data.Object({
+      scheduler_ref_input_index: Data.Integer(),
+    }),
+  }),
+  Data.Object({
+    ShowSchedulerIsAdvancing: Data.Object({
+      scheduler_input_index: Data.Integer(),
+      scheduler_redeemer_index: Data.Integer(),
+      removing_operators_anchor_element_key: Data.Nullable(Data.Bytes()),
+      removing_operator_is_the_last_member: Data.Boolean(),
+    }),
+  }),
+]);
+export type OperatorRemovalSchedulerSync = Data.Static<
+  typeof OperatorRemovalSchedulerSyncSchema
+>;
+export const OperatorRemovalSchedulerSync =
+  OperatorRemovalSchedulerSyncSchema as unknown as OperatorRemovalSchedulerSync;
 
 export const ActiveOperatorMintRedeemerSchema = Data.Enum([
   Data.Object({
@@ -89,13 +110,13 @@ export const ActiveOperatorMintRedeemerSchema = Data.Enum([
       active_operator_anchor_element_output_index: Data.Integer(),
       retired_operators_redeemer_index: Data.Integer(),
       penalize_for_inactivity: Data.Boolean(),
-      operator_removal_scheduler_sync: Data.Any(),
+      operator_removal_scheduler_sync: OperatorRemovalSchedulerSyncSchema,
     }),
   }),
   Data.Object({
     SlashOperator: Data.Object({
       slashing_arguments: Data.Any(),
-      operator_removal_scheduler_sync: Data.Any(),
+      operator_removal_scheduler_sync: OperatorRemovalSchedulerSyncSchema,
     }),
   }),
 ]);
