@@ -8,6 +8,7 @@ import {
   CML,
   Constr as LucidConstr,
   Data as LucidData,
+  type Data as LucidDatum,
   LucidEvolution,
   type RedeemerBuilder,
   UTxO,
@@ -38,6 +39,7 @@ import {
   type ActivateRedeemerLayout,
   activeAppendAnchorWitness,
   type NodeWithDatum,
+  type ReferenceScriptPublication,
   type RegisterRedeemerLayout,
   activateLayoutToLogString,
   activateLayoutsEqual,
@@ -119,6 +121,21 @@ type OperatorLifecycleMode =
 
 type StubEvaluationMode = "draft" | "submission";
 
+type RegisterOperatorOrigin =
+  | {
+      readonly tag: "NewOperator";
+      readonly retiredNotMemberWitness: NodeWithDatum;
+      readonly bondUnlockTime: null;
+    }
+  | {
+      readonly tag: "ReturningOperator";
+      readonly retiredOperatorNode: NodeWithDatum;
+      readonly retiredOperatorAnchor: NodeWithDatum;
+      readonly retiredNodeUnit: string;
+      readonly retiredAnchorNodeUnit: string;
+      readonly bondUnlockTime: bigint | null;
+    };
+
 const summarizeOnChainScriptFailure = (cause: unknown): string | null => {
   const message = String(cause);
   const scriptHashMatch = message.match(/ScriptHash[^0-9a-f]*([0-9a-f]{56})/i);
@@ -145,11 +162,11 @@ const summarizeOnChainScriptFailure = (cause: unknown): string | null => {
 
 const encodeActiveOperatorDatumValue = (
   bondUnlockTime: bigint | null,
-): unknown =>
+): LucidDatum =>
   SDK.castActiveOperatorDatumToData({
     bond_unlock_time: bondUnlockTime,
     inactivity_strikes: 0n,
-  });
+  }) as LucidDatum;
 
 const encodeLinkedListNodeView = (nodeView: SDK.LinkedListNodeView): string =>
   SDK.encodeLinkedListNodeView(nodeView);
@@ -243,11 +260,14 @@ const nodeKeyToPosixTime = (key: SDK.NodeKey): bigint | undefined => {
   return key.Key.key.length === 0 ? 0n : BigInt(`0x${key.Key.key}`);
 };
 
-const encodeRegisteredOperatorDatumValue = (operatorKeyHash: string) =>
+const encodeRegisteredOperatorDatumValue = (
+  operatorKeyHash: string,
+  bondUnlockTime: bigint | null,
+): LucidDatum =>
   SDK.castRegisteredOperatorDatumToData({
     operator: operatorKeyHash,
-    bond_unlock_time: null,
-  });
+    bond_unlock_time: bondUnlockTime,
+  }) as LucidDatum;
 
 const decodeRegisteredOperatorDatumValue = (
   value: unknown,
@@ -280,6 +300,32 @@ const registeredNodeMatchesOperator = (
   operatorKeyHash: string,
 ): boolean =>
   decodeRegisteredOperatorDatumValue(node.data)?.operator === operatorKeyHash;
+
+const decodeRetiredOperatorDatumValue = (
+  value: unknown,
+): SDK.RetiredOperatorDatum | undefined => {
+  if (typeof value === "object" && value !== null) {
+    const bondUnlockTime =
+      "bond_unlock_time" in value
+        ? decodeOptionalBigIntValue(value.bond_unlock_time)
+        : null;
+    if (bondUnlockTime === undefined) {
+      return undefined;
+    }
+    return {
+      bond_unlock_time: bondUnlockTime,
+    };
+  }
+  try {
+    const normalizedValue = normalizeLucidDataValue(value);
+    return LucidData.castFrom(
+      normalizedValue as never,
+      SDK.RetiredOperatorDatum as never,
+    ) as SDK.RetiredOperatorDatum;
+  } catch {
+    return undefined;
+  }
+};
 
 const linkPointsToKey = (
   node: SDK.LinkedListNodeView,
@@ -331,6 +377,55 @@ const mkRegisteredActivateRedeemer = ({
       },
     },
     SDK.RegisteredOperatorMintRedeemer,
+  );
+};
+
+const mkRegisterOperatorOriginRedeemer = (
+  operatorOrigin: RegisterRedeemerLayout["operatorOrigin"],
+) =>
+  operatorOrigin.tag === "NewOperator"
+    ? {
+        NewOperator: {
+          retired_operators_element_ref_input_index:
+            operatorOrigin.retiredOperatorRefInputIndex,
+        },
+      }
+    : {
+        ReturningOperator: {
+          retired_operators_redeemer_index:
+            operatorOrigin.retiredOperatorsRedeemerIndex,
+        },
+      };
+
+const mkRetiredReregisterRedeemer = ({
+  operatorKeyHash,
+  bondUnlockTime,
+  layout,
+}: {
+  readonly operatorKeyHash: string;
+  readonly bondUnlockTime: bigint | null;
+  readonly layout: RegisterRedeemerLayout;
+}): string => {
+  if (layout.operatorOrigin.tag !== "ReturningOperator") {
+    throw new Error("Returning-operator register layout is required");
+  }
+  return LucidData.to(
+    {
+      ReregisterOperator: {
+        retired_operator_key: operatorKeyHash,
+        retired_operator_bond_unlock_time: bondUnlockTime,
+        hub_oracle_ref_input_index: layout.hubOracleRefInputIndex,
+        retired_operator_anchor_element_input_index:
+          layout.operatorOrigin.retiredOperatorAnchorNodeInputIndex,
+        retired_operator_removed_node_input_index:
+          layout.operatorOrigin.retiredOperatorRemovedNodeInputIndex,
+        retired_operator_anchor_element_output_index:
+          layout.operatorOrigin.retiredOperatorAnchorNodeOutputIndex,
+        registered_operators_redeemer_index:
+          layout.operatorOrigin.registeredOperatorsRedeemerIndex,
+      },
+    },
+    SDK.RetiredOperatorMintRedeemer,
   );
 };
 
@@ -606,7 +701,7 @@ const decodeHubOracleDatum = (
 ): Effect.Effect<SDK.HubOracleDatum, SDK.StateQueueError> =>
   Effect.try({
     try: () => {
-      if (hubOracleRefInput.datum === undefined) {
+      if (hubOracleRefInput.datum === undefined || hubOracleRefInput.datum === null) {
         throw new Error("Hub oracle reference input is missing inline datum");
       }
       return LucidData.from(hubOracleRefInput.datum, SDK.HubOracleDatum);
@@ -706,13 +801,27 @@ const operatorLifecycleProgram = (
     const activeOperatorScriptRefs = operatorReferenceScriptRefs.filter(
       ({ name }) => name.startsWith("active-operators "),
     );
-    const lifecycleScriptRefs = [
+    let retiredOperatorScriptRefs: readonly ReferenceScriptPublication[] = [];
+    let lifecycleScriptRefs: readonly ReferenceScriptPublication[] = [
       ...registeredOperatorScriptRefs,
       ...activeOperatorScriptRefs,
     ];
-    const lifecycleScriptRefOutRefs = new Set(
+    let lifecycleScriptRefOutRefs = new Set(
       lifecycleScriptRefs.map(({ utxo }) => utxoOutRefKey(utxo)),
     );
+    const includeRetiredOperatorScriptRefs = (
+      refs: readonly ReferenceScriptPublication[],
+    ) => {
+      retiredOperatorScriptRefs = refs;
+      lifecycleScriptRefs = [
+        ...registeredOperatorScriptRefs,
+        ...activeOperatorScriptRefs,
+        ...retiredOperatorScriptRefs,
+      ];
+      lifecycleScriptRefOutRefs = new Set(
+        lifecycleScriptRefs.map(({ utxo }) => utxoOutRefKey(utxo)),
+      );
+    };
 
     const registeredNodes = yield* fetchNodeSet(
       lucid,
@@ -756,6 +865,7 @@ const operatorLifecycleProgram = (
     }
 
     let currentRegisteredNodes = registeredNodes;
+    let currentRetiredNodes = retiredNodes;
     let registerTxHash: string | null = null;
     let activateTxHash: string | null = null;
     let deregisterTxHash: string | null = null;
@@ -836,6 +946,7 @@ const operatorLifecycleProgram = (
           | SDK.LucidError
           | TxSignError
           | TxSubmitError
+          | TxConfirmError
           | null = null;
         for (const deregisterLayout of deregisterLayouts) {
           const deregisterRedeemer = LucidData.to(
@@ -1036,17 +1147,96 @@ const operatorLifecycleProgram = (
           }),
         );
       }
-      const retiredNotMemberWitness = retiredNodes.find(({ datum }) =>
-        orderedNotMemberWitness(datum, operatorKeyHash),
+      const returningRetiredNodes = currentRetiredNodes.filter(({ datum }) =>
+        nodeKeyEquals(datum, operatorKeyHash),
       );
-      if (retiredNotMemberWitness === undefined) {
+      if (returningRetiredNodes.length > 1) {
         return yield* Effect.fail(
           new SDK.StateQueueError({
             message:
-              "Failed to find retired-operators witness node proving non-membership for registration",
+              "Found multiple retired-operator nodes for the current operator key",
             cause: operatorKeyHash,
           }),
         );
+      }
+
+      let registerOperatorOrigin: RegisterOperatorOrigin;
+      if (returningRetiredNodes.length === 1) {
+        const retiredOperatorNode = returningRetiredNodes[0];
+        const retiredOperatorAnchor = currentRetiredNodes.find(({ datum }) =>
+          linkPointsToKey(datum, retiredOperatorNode.datum.key),
+        );
+        if (retiredOperatorAnchor === undefined) {
+          return yield* Effect.fail(
+            new SDK.StateQueueError({
+              message:
+                "Retired-operators anchor node for returning registration was not found",
+              cause: operatorKeyHash,
+            }),
+          );
+        }
+        const retiredOperatorDatum = decodeRetiredOperatorDatumValue(
+          retiredOperatorNode.datum.data,
+        );
+        if (retiredOperatorDatum === undefined) {
+          return yield* Effect.fail(
+            new SDK.StateQueueError({
+              message:
+                "Failed to decode retired-operator datum for returning registration",
+              cause: describeUnknownValue(retiredOperatorNode.datum.data),
+            }),
+          );
+        }
+        const retiredOperatorLovelace =
+          retiredOperatorNode.utxo.assets.lovelace ?? 0n;
+        if (retiredOperatorLovelace < requiredBondLovelace) {
+          return yield* Effect.fail(
+            new SDK.StateQueueError({
+              message:
+                "Retired operator node does not carry enough lovelace to satisfy registered-operator bond",
+              cause: `operator=${operatorKeyHash},lovelace=${retiredOperatorLovelace.toString()},required=${requiredBondLovelace.toString()}`,
+            }),
+          );
+        }
+        includeRetiredOperatorScriptRefs(
+          yield* resolveReferenceScriptTargetsProgram(
+            referenceScriptsLucid,
+            "retired-operators",
+            referenceScriptTargetsByCommand(contracts)["retired-operators"],
+          ),
+        );
+        registerOperatorOrigin = {
+          tag: "ReturningOperator",
+          retiredOperatorNode,
+          retiredOperatorAnchor,
+          retiredNodeUnit: toUnit(
+            contracts.retiredOperators.policyId,
+            retiredOperatorNode.assetName,
+          ),
+          retiredAnchorNodeUnit: toUnit(
+            contracts.retiredOperators.policyId,
+            retiredOperatorAnchor.assetName,
+          ),
+          bondUnlockTime: retiredOperatorDatum.bond_unlock_time,
+        };
+      } else {
+        const retiredNotMemberWitness = currentRetiredNodes.find(({ datum }) =>
+          orderedNotMemberWitness(datum, operatorKeyHash),
+        );
+        if (retiredNotMemberWitness === undefined) {
+          return yield* Effect.fail(
+            new SDK.StateQueueError({
+              message:
+                "Failed to find retired-operators witness node proving non-membership for registration",
+              cause: operatorKeyHash,
+            }),
+          );
+        }
+        registerOperatorOrigin = {
+          tag: "NewOperator",
+          retiredNotMemberWitness,
+          bondUnlockTime: null,
+        };
       }
 
       const registerBuildTime = yield* resolveCurrentTimeMs(lucid);
@@ -1060,7 +1250,10 @@ const operatorLifecycleProgram = (
       const prependedNodeDatum: SDK.LinkedListNodeView = {
         key: { Key: { key: registrationNodeKey } },
         next: registeredRootNode.datum.next,
-        data: encodeRegisteredOperatorDatumValue(operatorKeyHash),
+        data: encodeRegisteredOperatorDatumValue(
+          operatorKeyHash,
+          registerOperatorOrigin.bondUnlockTime,
+        ),
       };
       const updatedRegisteredRootDatum: SDK.LinkedListNodeView = {
         ...registeredRootNode.datum,
@@ -1071,9 +1264,6 @@ const operatorLifecycleProgram = (
         contracts.registeredOperators.policyId,
         SDK.REGISTERED_OPERATOR_NODE_ASSET_NAME_PREFIX + registrationNodeKey,
       );
-      const registerMintAssets = {
-        [registeredNodeUnit]: 1n,
-      };
       const registeredRootNodeUnit = toUnit(
         contracts.registeredOperators.policyId,
         registeredRootNode.assetName,
@@ -1092,10 +1282,14 @@ const operatorLifecycleProgram = (
             }),
           );
       }
-      const registerFundingInputs = selectWalletFundingUtxos(
-        spendableWalletUtxosForRegister,
-        requiredBondLovelace + ACTIVATION_WALLET_FUNDING_TARGET_LOVELACE,
-      );
+      const registerFundingInputs = [
+        ...selectWalletFundingUtxos(
+          spendableWalletUtxosForRegister,
+          (registerOperatorOrigin.tag === "NewOperator"
+            ? requiredBondLovelace
+            : 0n) + ACTIVATION_WALLET_FUNDING_TARGET_LOVELACE,
+        ),
+      ];
       if (registerFundingInputs.length === 0) {
         return yield* Effect.fail(
           new SDK.StateQueueError({
@@ -1105,14 +1299,35 @@ const operatorLifecycleProgram = (
           }),
         );
       }
-      const prependedNodeAssets = {
-        lovelace: requiredBondLovelace,
-        [registeredNodeUnit]: 1n,
-      };
+      const prependedNodeAssets: Record<string, bigint> =
+        registerOperatorOrigin.tag === "ReturningOperator"
+          ? {
+              ...registerOperatorOrigin.retiredOperatorNode.utxo.assets,
+              [registeredNodeUnit]: 1n,
+            }
+          : {
+              lovelace: requiredBondLovelace,
+              [registeredNodeUnit]: 1n,
+            };
+      if (registerOperatorOrigin.tag === "ReturningOperator") {
+        delete prependedNodeAssets[registerOperatorOrigin.retiredNodeUnit];
+      }
+      const updatedRetiredAnchorDatum: SDK.LinkedListNodeView | null =
+        registerOperatorOrigin.tag === "ReturningOperator"
+          ? {
+              ...registerOperatorOrigin.retiredOperatorAnchor.datum,
+              next: registerOperatorOrigin.retiredOperatorNode.datum.next,
+            }
+          : null;
       /**
        * Builds the registration transaction for an active operator.
        */
       const mkRegisterTx = (layout: RegisterRedeemerLayout) => {
+        if (layout.operatorOrigin.tag !== registerOperatorOrigin.tag) {
+          throw new Error(
+            `Register layout origin ${layout.operatorOrigin.tag} does not match selected origin ${registerOperatorOrigin.tag}`,
+          );
+        }
         const registerRedeemer = LucidData.to(
           {
             RegisterOperator: {
@@ -1123,27 +1338,50 @@ const operatorLifecycleProgram = (
               hub_oracle_ref_input_index: layout.hubOracleRefInputIndex,
               active_operators_element_ref_input_index:
                 layout.activeOperatorRefInputIndex,
-              operator_origin: {
-                NewOperator: {
-                  retired_operators_element_ref_input_index:
-                    layout.retiredOperatorRefInputIndex,
-                },
-              },
+              operator_origin: mkRegisterOperatorOriginRedeemer(
+                layout.operatorOrigin,
+              ),
             },
           },
           SDK.RegisteredOperatorMintRedeemer,
         );
         let tx = lucid
           .newTx()
-          .collectFrom([registeredRootNode.utxo], LucidData.void())
+          .collectFrom([registeredRootNode.utxo], LucidData.void());
+        if (registerOperatorOrigin.tag === "ReturningOperator") {
+          tx = tx.collectFrom(
+            [
+              registerOperatorOrigin.retiredOperatorNode.utxo,
+              registerOperatorOrigin.retiredOperatorAnchor.utxo,
+            ],
+            LucidData.void(),
+          );
+        }
+        tx = tx
           .readFrom([
             ...registeredOperatorScriptRefs.map(({ utxo }) => utxo),
+            ...(registerOperatorOrigin.tag === "ReturningOperator"
+              ? retiredOperatorScriptRefs.map(({ utxo }) => utxo)
+              : []),
             hubOracleRefInput,
             activeNotMemberWitness.utxo,
-            retiredNotMemberWitness.utxo,
+            ...(registerOperatorOrigin.tag === "NewOperator"
+              ? [registerOperatorOrigin.retiredNotMemberWitness.utxo]
+              : []),
           ])
-          .mintAssets(registerMintAssets, registerRedeemer)
-          .pay.ToContract(
+          .mintAssets({ [registeredNodeUnit]: 1n }, registerRedeemer);
+        if (registerOperatorOrigin.tag === "ReturningOperator") {
+          tx = tx.mintAssets(
+            { [registerOperatorOrigin.retiredNodeUnit]: -1n },
+            mkRetiredReregisterRedeemer({
+              operatorKeyHash,
+              bondUnlockTime: registerOperatorOrigin.bondUnlockTime,
+              layout,
+            }),
+          );
+        }
+        tx = tx.pay
+          .ToContract(
             contracts.registeredOperators.spendingScriptAddress,
             {
               kind: "inline",
@@ -1158,30 +1396,77 @@ const operatorLifecycleProgram = (
               value: encodeLinkedListNodeView(updatedRegisteredRootDatum),
             },
             registeredRootNode.utxo.assets,
-          )
-          .addSignerKey(operatorKeyHash);
+          );
+        if (
+          registerOperatorOrigin.tag === "ReturningOperator" &&
+          updatedRetiredAnchorDatum !== null
+        ) {
+          tx = tx.pay.ToContract(
+            contracts.retiredOperators.spendingScriptAddress,
+            {
+              kind: "inline",
+              value: encodeLinkedListNodeView(updatedRetiredAnchorDatum),
+            },
+            registerOperatorOrigin.retiredOperatorAnchor.utxo.assets,
+          );
+        }
+        tx = tx.addSignerKey(operatorKeyHash);
         tx = tx.validTo(Number(registerValidTo));
         return tx;
       };
 
+      const registerLayoutOperatorOriginParams =
+        registerOperatorOrigin.tag === "NewOperator"
+          ? {
+              tag: "NewOperator" as const,
+              retiredNotMemberWitness:
+                registerOperatorOrigin.retiredNotMemberWitness,
+            }
+          : {
+              tag: "ReturningOperator" as const,
+              retiredOperatorNode: registerOperatorOrigin.retiredOperatorNode,
+              retiredOperatorAnchor:
+                registerOperatorOrigin.retiredOperatorAnchor,
+              retiredOperatorsPolicyId: contracts.retiredOperators.policyId,
+              retiredOperatorsAddress:
+                contracts.retiredOperators.spendingScriptAddress,
+              retiredAnchorNodeUnit:
+                registerOperatorOrigin.retiredAnchorNodeUnit,
+              contracts,
+            };
       const layoutDerivationParams = {
         hubOracleRefInput,
         activeNotMemberWitness,
-        retiredNotMemberWitness,
         registeredRootNode,
         registeredOperatorsPolicyId: contracts.registeredOperators.policyId,
         registeredOperatorsAddress:
           contracts.registeredOperators.spendingScriptAddress,
         registeredNodeUnit,
         registeredRootNodeUnit,
+        operatorOrigin: registerLayoutOperatorOriginParams,
       } as const;
+      const initialRegisterOperatorOrigin =
+        registerOperatorOrigin.tag === "NewOperator"
+          ? {
+              tag: "NewOperator" as const,
+              retiredNotMemberWitness:
+                registerOperatorOrigin.retiredNotMemberWitness,
+            }
+          : {
+              tag: "ReturningOperator" as const,
+              retiredOperatorNode: registerOperatorOrigin.retiredOperatorNode,
+              retiredOperatorAnchor:
+                registerOperatorOrigin.retiredOperatorAnchor,
+              contracts,
+            };
       const draftRegisterLayout = resolveInitialRegisterRedeemerLayout({
         registeredOperatorScriptRefs,
+        retiredOperatorScriptRefs,
         hubOracleRefInput,
         activeNotMemberWitness,
-        retiredNotMemberWitness,
         registeredRootNode,
         fundingInputs: registerFundingInputs,
+        operatorOrigin: initialRegisterOperatorOrigin,
       });
       const draftRegisterUnsignedTx = yield* Effect.tryPromise({
         try: () =>
@@ -1208,13 +1493,21 @@ const operatorLifecycleProgram = (
       yield* Effect.logInfo(
         [
           "Register witnesses:",
+          `origin=${registerOperatorOrigin.tag}`,
           `hub=${hubOracleRefInput.txHash}#${hubOracleRefInput.outputIndex.toString()}`,
           `active=${activeNotMemberWitness.utxo.txHash}#${activeNotMemberWitness.utxo.outputIndex.toString()}:${activeNotMemberWitness.assetName}`,
-          `retired=${retiredNotMemberWitness.utxo.txHash}#${retiredNotMemberWitness.utxo.outputIndex.toString()}:${retiredNotMemberWitness.assetName}`,
+          registerOperatorOrigin.tag === "NewOperator"
+            ? `retired_nonmember=${registerOperatorOrigin.retiredNotMemberWitness.utxo.txHash}#${registerOperatorOrigin.retiredNotMemberWitness.utxo.outputIndex.toString()}:${registerOperatorOrigin.retiredNotMemberWitness.assetName}`
+            : `retired_removed=${registerOperatorOrigin.retiredOperatorNode.utxo.txHash}#${registerOperatorOrigin.retiredOperatorNode.utxo.outputIndex.toString()}:${registerOperatorOrigin.retiredOperatorNode.assetName}`,
+          registerOperatorOrigin.tag === "ReturningOperator"
+            ? `retired_anchor=${registerOperatorOrigin.retiredOperatorAnchor.utxo.txHash}#${registerOperatorOrigin.retiredOperatorAnchor.utxo.outputIndex.toString()}:${registerOperatorOrigin.retiredOperatorAnchor.assetName}`
+            : null,
           `valid_to=${registerValidTo.toString()}`,
           `registration_time=${registrationTime.toString()}`,
           `prepended_node_datum=${encodeLinkedListNodeView(prependedNodeDatum)}`,
-        ].join(" "),
+        ]
+          .filter((part): part is string => part !== null)
+          .join(" "),
       );
       let registerUnsignedTx = yield* Effect.tryPromise({
         try: () =>
@@ -1320,6 +1613,48 @@ const operatorLifecycleProgram = (
           }),
         );
       }
+      if (registerOperatorOrigin.tag === "ReturningOperator") {
+        let refreshedRetiredNodeSet = false;
+        for (
+          let attempt = 0;
+          attempt < REGISTERED_SET_REFRESH_MAX_RETRIES;
+          attempt += 1
+        ) {
+          currentRetiredNodes = yield* fetchNodeSet(
+            lucid,
+            contracts.retiredOperators.spendingScriptAddress,
+            contracts.retiredOperators.policyId,
+          );
+          const remainingRetiredOperatorNodes = currentRetiredNodes.filter(
+            ({ datum }) => nodeKeyEquals(datum, operatorKeyHash),
+          );
+          if (remainingRetiredOperatorNodes.length === 0) {
+            refreshedRetiredNodeSet = true;
+            break;
+          }
+          if (remainingRetiredOperatorNodes.length > 1) {
+            return yield* Effect.fail(
+              new SDK.StateQueueError({
+                message:
+                  "Found multiple retired-operator nodes after returning registration",
+                cause: operatorKeyHash,
+              }),
+            );
+          }
+          if (attempt + 1 < REGISTERED_SET_REFRESH_MAX_RETRIES) {
+            yield* Effect.sleep(REGISTERED_SET_REFRESH_RETRY_DELAY);
+          }
+        }
+        if (!refreshedRetiredNodeSet) {
+          return yield* Effect.fail(
+            new SDK.StateQueueError({
+              message:
+                "Retired set refresh did not remove the operator node after successful returning registration",
+              cause: operatorKeyHash,
+            }),
+          );
+        }
+      }
     }
 
     if (mode === "register-only") {
@@ -1354,6 +1689,27 @@ const operatorLifecycleProgram = (
         }),
       );
     }
+    const registeredOperatorDatum = decodeRegisteredOperatorDatumValue(
+      registeredNode.datum.data,
+    );
+    if (registeredOperatorDatum === undefined) {
+      return yield* Effect.fail(
+        new SDK.StateQueueError({
+          message: "Failed to decode registered-operator datum for activation",
+          cause: describeUnknownValue(registeredNode.datum.data),
+        }),
+      );
+    }
+    if (registeredOperatorDatum.operator !== operatorKeyHash) {
+      return yield* Effect.fail(
+        new SDK.StateQueueError({
+          message:
+            "Registered-operator datum operator does not match active wallet key",
+          cause: `operator=${operatorKeyHash},datum_operator=${registeredOperatorDatum.operator}`,
+        }),
+      );
+    }
+    const activeBondUnlockTime = registeredOperatorDatum.bond_unlock_time;
 
     const activeAppendAnchor = activeNodes.find(({ datum }) =>
       activeAppendAnchorWitness(datum, operatorKeyHash),
@@ -1368,8 +1724,8 @@ const operatorLifecycleProgram = (
         }),
       );
     }
-    const retiredNotMemberWitnessForActivate = retiredNodes.find(({ datum }) =>
-      orderedNotMemberWitness(datum, operatorKeyHash),
+    const retiredNotMemberWitnessForActivate = currentRetiredNodes.find(
+      ({ datum }) => orderedNotMemberWitness(datum, operatorKeyHash),
     );
     if (retiredNotMemberWitnessForActivate === undefined) {
       return yield* Effect.fail(
@@ -1471,10 +1827,12 @@ const operatorLifecycleProgram = (
             }),
           );
     }
-    const activationFundingInputs = selectWalletFundingUtxos(
-      spendableWalletUtxosForActivation,
-      ACTIVATION_WALLET_FUNDING_TARGET_LOVELACE,
-    );
+    const activationFundingInputs = [
+      ...selectWalletFundingUtxos(
+        spendableWalletUtxosForActivation,
+        ACTIVATION_WALLET_FUNDING_TARGET_LOVELACE,
+      ),
+    ];
     if (activationFundingInputs.length === 0) {
       return yield* Effect.fail(
         new SDK.StateQueueError({
@@ -1492,7 +1850,7 @@ const operatorLifecycleProgram = (
     });
     const activationDraftCompleteOptions = {
       presetWalletInputs: [...activationFundingInputs],
-    } as const;
+    };
 
     const updatedRegisteredAnchorDatum: SDK.LinkedListNodeView = {
       ...registeredAnchor.datum,
@@ -1506,7 +1864,7 @@ const operatorLifecycleProgram = (
       const activatedNodeDatum: SDK.LinkedListNodeView = {
         key: { Key: { key: operatorKeyHash } },
         next: activeAppendAnchor.datum.next,
-        data: encodeActiveOperatorDatumValue(null),
+        data: encodeActiveOperatorDatumValue(activeBondUnlockTime),
       };
       const updatedActiveAnchorDatum: SDK.LinkedListNodeView = {
         ...activeAppendAnchor.datum,
@@ -1524,7 +1882,7 @@ const operatorLifecycleProgram = (
         {
           ActivateOperator: {
             new_active_operator_key: operatorKeyHash,
-            new_active_operator_bond_unlock_time: null,
+            new_active_operator_bond_unlock_time: activeBondUnlockTime,
             active_operator_anchor_element_input_index:
               layout.activeOperatorsAnchorNodeInputIndex,
             active_operator_anchor_element_output_index:

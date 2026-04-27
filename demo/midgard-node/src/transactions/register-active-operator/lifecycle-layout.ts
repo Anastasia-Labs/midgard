@@ -35,10 +35,36 @@ export type RegisterRedeemerLayout = {
   readonly rootInputIndex: bigint;
   readonly hubOracleRefInputIndex: bigint;
   readonly activeOperatorRefInputIndex: bigint;
-  readonly retiredOperatorRefInputIndex: bigint;
   readonly prependedNodeOutputIndex: bigint;
   readonly anchorNodeOutputIndex: bigint;
+  readonly operatorOrigin:
+    | {
+        readonly tag: "NewOperator";
+        readonly retiredOperatorRefInputIndex: bigint;
+      }
+    | {
+        readonly tag: "ReturningOperator";
+        readonly retiredOperatorsRedeemerIndex: bigint;
+        readonly registeredOperatorsRedeemerIndex: bigint;
+        readonly retiredOperatorRemovedNodeInputIndex: bigint;
+        readonly retiredOperatorAnchorNodeInputIndex: bigint;
+        readonly retiredOperatorAnchorNodeOutputIndex: bigint;
+      };
 };
+
+type PartialRegisterOperatorOriginLayout =
+  | {
+      readonly tag: "NewOperator";
+      readonly retiredOperatorRefInputIndex: bigint | undefined;
+    }
+  | {
+      readonly tag: "ReturningOperator";
+      readonly retiredOperatorsRedeemerIndex: bigint;
+      readonly registeredOperatorsRedeemerIndex: bigint;
+      readonly retiredOperatorRemovedNodeInputIndex: bigint | undefined;
+      readonly retiredOperatorAnchorNodeInputIndex: bigint | undefined;
+      readonly retiredOperatorAnchorNodeOutputIndex: bigint | undefined;
+    };
 
 export type ActivateRedeemerLayout = {
   readonly hubOracleRefInputIndex: bigint;
@@ -100,7 +126,7 @@ const decodeCanonicalNodeDatumFromOutput = (
   output: ReturnType<typeof coreToTxOutput>,
   policyId: string,
 ): SDK.LinkedListNodeView | undefined => {
-  if (output.datum === undefined) {
+  if (output.datum === undefined || output.datum === null) {
     return undefined;
   }
   const assetName = getAssetNameByPolicy(output.assets, policyId);
@@ -233,9 +259,37 @@ export const registerLayoutsEqual = (
   left.rootInputIndex === right.rootInputIndex &&
   left.hubOracleRefInputIndex === right.hubOracleRefInputIndex &&
   left.activeOperatorRefInputIndex === right.activeOperatorRefInputIndex &&
-  left.retiredOperatorRefInputIndex === right.retiredOperatorRefInputIndex &&
   left.prependedNodeOutputIndex === right.prependedNodeOutputIndex &&
-  left.anchorNodeOutputIndex === right.anchorNodeOutputIndex;
+  left.anchorNodeOutputIndex === right.anchorNodeOutputIndex &&
+  registerOriginLayoutsEqual(left.operatorOrigin, right.operatorOrigin);
+
+const registerOriginLayoutsEqual = (
+  left: RegisterRedeemerLayout["operatorOrigin"],
+  right: RegisterRedeemerLayout["operatorOrigin"],
+): boolean => {
+  if (left.tag !== right.tag) {
+    return false;
+  }
+  if (left.tag === "NewOperator") {
+    return (
+      right.tag === "NewOperator" &&
+      left.retiredOperatorRefInputIndex === right.retiredOperatorRefInputIndex
+    );
+  }
+  return (
+    right.tag === "ReturningOperator" &&
+    left.retiredOperatorsRedeemerIndex ===
+      right.retiredOperatorsRedeemerIndex &&
+    left.registeredOperatorsRedeemerIndex ===
+      right.registeredOperatorsRedeemerIndex &&
+    left.retiredOperatorRemovedNodeInputIndex ===
+      right.retiredOperatorRemovedNodeInputIndex &&
+    left.retiredOperatorAnchorNodeInputIndex ===
+      right.retiredOperatorAnchorNodeInputIndex &&
+    left.retiredOperatorAnchorNodeOutputIndex ===
+      right.retiredOperatorAnchorNodeOutputIndex
+  );
+};
 
 /**
  * Formats a register-layout derivation for logs.
@@ -243,7 +297,28 @@ export const registerLayoutsEqual = (
 export const registerLayoutToLogString = (
   layout: RegisterRedeemerLayout,
 ): string =>
-  `root_in=${layout.rootInputIndex.toString()},hub_ref=${layout.hubOracleRefInputIndex.toString()},active_ref=${layout.activeOperatorRefInputIndex.toString()},retired_ref=${layout.retiredOperatorRefInputIndex.toString()},prepended_out=${layout.prependedNodeOutputIndex.toString()},anchor_out=${layout.anchorNodeOutputIndex.toString()}`;
+  [
+    `root_in=${layout.rootInputIndex.toString()}`,
+    `hub_ref=${layout.hubOracleRefInputIndex.toString()}`,
+    `active_ref=${layout.activeOperatorRefInputIndex.toString()}`,
+    `prepended_out=${layout.prependedNodeOutputIndex.toString()}`,
+    `anchor_out=${layout.anchorNodeOutputIndex.toString()}`,
+    registerOriginLayoutToLogString(layout.operatorOrigin),
+  ].join(",");
+
+const registerOriginLayoutToLogString = (
+  origin: RegisterRedeemerLayout["operatorOrigin"],
+): string =>
+  origin.tag === "NewOperator"
+    ? `origin=NewOperator,retired_ref=${origin.retiredOperatorRefInputIndex.toString()}`
+    : [
+        "origin=ReturningOperator",
+        `retired_redeemer=${origin.retiredOperatorsRedeemerIndex.toString()}`,
+        `registered_redeemer=${origin.registeredOperatorsRedeemerIndex.toString()}`,
+        `retired_removed_in=${origin.retiredOperatorRemovedNodeInputIndex.toString()}`,
+        `retired_anchor_in=${origin.retiredOperatorAnchorNodeInputIndex.toString()}`,
+        `retired_anchor_out=${origin.retiredOperatorAnchorNodeOutputIndex.toString()}`,
+      ].join(",");
 
 /**
  * Compares two activate-layout derivations for exact equality.
@@ -294,34 +369,74 @@ export const activateLayoutToLogString = (
  */
 export const resolveInitialRegisterRedeemerLayout = ({
   registeredOperatorScriptRefs,
+  retiredOperatorScriptRefs,
   hubOracleRefInput,
   activeNotMemberWitness,
-  retiredNotMemberWitness,
   registeredRootNode,
   fundingInputs,
+  operatorOrigin,
 }: {
   readonly registeredOperatorScriptRefs: readonly ReferenceScriptPublication[];
+  readonly retiredOperatorScriptRefs?: readonly ReferenceScriptPublication[];
   readonly hubOracleRefInput: UTxO;
   readonly activeNotMemberWitness: NodeWithDatum;
-  readonly retiredNotMemberWitness: NodeWithDatum;
   readonly registeredRootNode: NodeWithDatum;
   readonly fundingInputs: readonly UTxO[];
+  readonly operatorOrigin:
+    | {
+        readonly tag: "NewOperator";
+        readonly retiredNotMemberWitness: NodeWithDatum;
+      }
+    | {
+        readonly tag: "ReturningOperator";
+        readonly retiredOperatorNode: NodeWithDatum;
+        readonly retiredOperatorAnchor: NodeWithDatum;
+        readonly contracts: SDK.MidgardValidators;
+      };
 }): RegisterRedeemerLayout => {
   const referenceInputs = [
     ...registeredOperatorScriptRefs.map(({ utxo }) => utxo),
+    ...(operatorOrigin.tag === "ReturningOperator"
+      ? (retiredOperatorScriptRefs ?? []).map(({ utxo }) => utxo)
+      : []),
     hubOracleRefInput,
     activeNotMemberWitness.utxo,
-    retiredNotMemberWitness.utxo,
+    ...(operatorOrigin.tag === "NewOperator"
+      ? [operatorOrigin.retiredNotMemberWitness.utxo]
+      : []),
   ] as const;
-  const rootInputIndex = resolveOrderedOutRefIndex(registeredRootNode.utxo, [
+  const transactionInputs = [
     registeredRootNode.utxo,
+    ...(operatorOrigin.tag === "ReturningOperator"
+      ? [
+          operatorOrigin.retiredOperatorNode.utxo,
+          operatorOrigin.retiredOperatorAnchor.utxo,
+        ]
+      : []),
     ...fundingInputs,
-  ]);
+  ] as const;
+  const rootInputIndex = resolveOrderedOutRefIndex(
+    registeredRootNode.utxo,
+    transactionInputs,
+  );
   if (rootInputIndex === undefined) {
     throw new Error(
       `Failed to resolve initial registered root input index for ${registeredRootNode.utxo.txHash}#${registeredRootNode.utxo.outputIndex.toString()}`,
     );
   }
+  const originLayout =
+    operatorOrigin.tag === "NewOperator"
+      ? {
+          tag: "NewOperator" as const,
+          retiredOperatorRefInputIndex: resolveReferenceInputIndexFromSet(
+            operatorOrigin.retiredNotMemberWitness.utxo,
+            referenceInputs,
+          ),
+        }
+      : resolveInitialReturningOperatorOriginLayout({
+          operatorOrigin,
+          transactionInputs,
+        });
   return {
     rootInputIndex,
     hubOracleRefInputIndex: resolveReferenceInputIndexFromSet(
@@ -332,14 +447,66 @@ export const resolveInitialRegisterRedeemerLayout = ({
       activeNotMemberWitness.utxo,
       referenceInputs,
     ),
-    retiredOperatorRefInputIndex: resolveReferenceInputIndexFromSet(
-      retiredNotMemberWitness.utxo,
-      referenceInputs,
-    ),
     // The register tx only emits the prepended node and the updated anchor in
-    // authored order under the registered-operators policy.
+    // authored order under the registered-operators policy. Returning operators
+    // emit the updated retired anchor after those two outputs.
     prependedNodeOutputIndex: 0n,
     anchorNodeOutputIndex: 1n,
+    operatorOrigin: originLayout,
+  };
+};
+
+const resolveInitialReturningOperatorOriginLayout = ({
+  operatorOrigin,
+  transactionInputs,
+}: {
+  readonly operatorOrigin: Extract<
+    Parameters<
+      typeof resolveInitialRegisterRedeemerLayout
+    >[0]["operatorOrigin"],
+    { readonly tag: "ReturningOperator" }
+  >;
+  readonly transactionInputs: readonly OrderedOutRef[];
+}): Extract<
+  RegisterRedeemerLayout["operatorOrigin"],
+  { readonly tag: "ReturningOperator" }
+> => {
+  const retiredOperatorRemovedNodeInputIndex = resolveOrderedOutRefIndex(
+    operatorOrigin.retiredOperatorNode.utxo,
+    transactionInputs,
+  );
+  const retiredOperatorAnchorNodeInputIndex = resolveOrderedOutRefIndex(
+    operatorOrigin.retiredOperatorAnchor.utxo,
+    transactionInputs,
+  );
+  if (
+    retiredOperatorRemovedNodeInputIndex === undefined ||
+    retiredOperatorAnchorNodeInputIndex === undefined
+  ) {
+    throw new Error("Failed to resolve initial retired operator input indexes");
+  }
+  const returningRegisterScriptSpendCount = 3;
+  return {
+    tag: "ReturningOperator",
+    retiredOperatorsRedeemerIndex: resolveMintRedeemerTxInfoIndex({
+      targetPolicyId: operatorOrigin.contracts.retiredOperators.policyId,
+      policyIds: [
+        operatorOrigin.contracts.registeredOperators.policyId,
+        operatorOrigin.contracts.retiredOperators.policyId,
+      ],
+      spendRedeemerCount: returningRegisterScriptSpendCount,
+    }),
+    registeredOperatorsRedeemerIndex: resolveMintRedeemerTxInfoIndex({
+      targetPolicyId: operatorOrigin.contracts.registeredOperators.policyId,
+      policyIds: [
+        operatorOrigin.contracts.registeredOperators.policyId,
+        operatorOrigin.contracts.retiredOperators.policyId,
+      ],
+      spendRedeemerCount: returningRegisterScriptSpendCount,
+    }),
+    retiredOperatorRemovedNodeInputIndex,
+    retiredOperatorAnchorNodeInputIndex,
+    retiredOperatorAnchorNodeOutputIndex: 2n,
   };
 };
 
@@ -500,16 +667,17 @@ const resolveMintRedeemerIndexForPolicy = (
   draftTx: CML.Transaction,
   contracts: SDK.MidgardValidators,
   targetPolicyId: string,
+  mintPolicyIds: readonly string[] = [
+    contracts.registeredOperators.policyId,
+    contracts.activeOperators.policyId,
+  ],
 ): Effect.Effect<number, SDK.StateQueueError> =>
   Effect.gen(function* () {
     const pointers = getRedeemerPointersInContextOrder(draftTx);
     const txInfoRedeemerIndexes = getTxInfoRedeemerIndexes(pointers);
-    const mintPolicyIds = [
-      contracts.registeredOperators.policyId,
-      contracts.activeOperators.policyId,
-    ].sort(compareHex);
+    const sortedMintPolicyIds = [...mintPolicyIds].sort(compareHex);
     const targetMintContextIndex = BigInt(
-      mintPolicyIds.indexOf(targetPolicyId),
+      sortedMintPolicyIds.indexOf(targetPolicyId),
     );
     const targetMintRedeemerContextIndex = pointers.findIndex(
       (pointer) =>
@@ -796,12 +964,25 @@ export const deriveRegisterRedeemerLayout = (
   params: {
     readonly hubOracleRefInput: UTxO;
     readonly activeNotMemberWitness: NodeWithDatum;
-    readonly retiredNotMemberWitness: NodeWithDatum;
     readonly registeredRootNode: NodeWithDatum;
     readonly registeredOperatorsPolicyId: string;
     readonly registeredOperatorsAddress: string;
     readonly registeredNodeUnit: string;
     readonly registeredRootNodeUnit: string;
+    readonly operatorOrigin:
+      | {
+          readonly tag: "NewOperator";
+          readonly retiredNotMemberWitness: NodeWithDatum;
+        }
+      | {
+          readonly tag: "ReturningOperator";
+          readonly retiredOperatorNode: NodeWithDatum;
+          readonly retiredOperatorAnchor: NodeWithDatum;
+          readonly retiredOperatorsPolicyId: string;
+          readonly retiredOperatorsAddress: string;
+          readonly retiredAnchorNodeUnit: string;
+          readonly contracts: SDK.MidgardValidators;
+        };
   },
 ): Effect.Effect<RegisterRedeemerLayout, SDK.StateQueueError> =>
   Effect.gen(function* () {
@@ -812,10 +993,6 @@ export const deriveRegisterRedeemerLayout = (
     const activeOperatorRefInputIndex = findReferenceInputIndex(
       tx,
       params.activeNotMemberWitness.utxo,
-    );
-    const retiredOperatorRefInputIndex = findReferenceInputIndex(
-      tx,
-      params.retiredNotMemberWitness.utxo,
     );
     const rootInputIndex = findInputIndex(tx, params.registeredRootNode.utxo);
     const prependedNodeOutputIndex = findNodeOutputIndexByUnit(
@@ -830,14 +1007,62 @@ export const deriveRegisterRedeemerLayout = (
       params.registeredOperatorsAddress,
       params.registeredRootNodeUnit,
     );
+    const originLayout =
+      params.operatorOrigin.tag === "NewOperator"
+        ? {
+            tag: "NewOperator" as const,
+            retiredOperatorRefInputIndex: findReferenceInputIndex(
+              tx,
+              params.operatorOrigin.retiredNotMemberWitness.utxo,
+            ),
+          }
+        : {
+            tag: "ReturningOperator" as const,
+            retiredOperatorsRedeemerIndex: BigInt(
+              yield* resolveMintRedeemerIndexForPolicy(
+                tx,
+                params.operatorOrigin.contracts,
+                params.operatorOrigin.contracts.retiredOperators.policyId,
+                [
+                  params.operatorOrigin.contracts.registeredOperators.policyId,
+                  params.operatorOrigin.contracts.retiredOperators.policyId,
+                ],
+              ),
+            ),
+            registeredOperatorsRedeemerIndex: BigInt(
+              yield* resolveMintRedeemerIndexForPolicy(
+                tx,
+                params.operatorOrigin.contracts,
+                params.operatorOrigin.contracts.registeredOperators.policyId,
+                [
+                  params.operatorOrigin.contracts.registeredOperators.policyId,
+                  params.operatorOrigin.contracts.retiredOperators.policyId,
+                ],
+              ),
+            ),
+            retiredOperatorRemovedNodeInputIndex: findInputIndex(
+              tx,
+              params.operatorOrigin.retiredOperatorNode.utxo,
+            ),
+            retiredOperatorAnchorNodeInputIndex: findInputIndex(
+              tx,
+              params.operatorOrigin.retiredOperatorAnchor.utxo,
+            ),
+            retiredOperatorAnchorNodeOutputIndex: findNodeOutputIndexByUnit(
+              tx,
+              params.operatorOrigin.retiredOperatorsPolicyId,
+              params.operatorOrigin.retiredOperatorsAddress,
+              params.operatorOrigin.retiredAnchorNodeUnit,
+            ),
+          };
 
     if (
       hubOracleRefInputIndex === undefined ||
       activeOperatorRefInputIndex === undefined ||
-      retiredOperatorRefInputIndex === undefined ||
       rootInputIndex === undefined ||
       prependedNodeOutputIndex === undefined ||
-      anchorNodeOutputIndex === undefined
+      anchorNodeOutputIndex === undefined ||
+      originLayoutHasMissingIndex(originLayout)
     ) {
       return yield* Effect.fail(
         new SDK.StateQueueError({
@@ -848,12 +1073,12 @@ export const deriveRegisterRedeemerLayout = (
               hubOracleRefInputIndex?.toString() ?? "missing",
             activeOperatorRefInputIndex:
               activeOperatorRefInputIndex?.toString() ?? "missing",
-            retiredOperatorRefInputIndex:
-              retiredOperatorRefInputIndex?.toString() ?? "missing",
             rootInputIndex: rootInputIndex?.toString() ?? "missing",
             prependedNodeOutputIndex:
               prependedNodeOutputIndex?.toString() ?? "missing",
             anchorNodeOutputIndex: anchorNodeOutputIndex?.toString() ?? "missing",
+            operatorOrigin:
+              registerOriginLayoutToLogStringWithMissingIndexes(originLayout),
           }),
         }),
       );
@@ -863,11 +1088,65 @@ export const deriveRegisterRedeemerLayout = (
       rootInputIndex,
       hubOracleRefInputIndex,
       activeOperatorRefInputIndex,
-      retiredOperatorRefInputIndex,
       prependedNodeOutputIndex,
       anchorNodeOutputIndex,
+      operatorOrigin: completeRegisterOriginLayout(originLayout),
     };
   });
+
+const originLayoutHasMissingIndex = (
+  origin: PartialRegisterOperatorOriginLayout,
+): boolean =>
+  origin.tag === "NewOperator"
+    ? origin.retiredOperatorRefInputIndex === undefined
+    : origin.retiredOperatorRemovedNodeInputIndex === undefined ||
+      origin.retiredOperatorAnchorNodeInputIndex === undefined ||
+      origin.retiredOperatorAnchorNodeOutputIndex === undefined;
+
+const registerOriginLayoutToLogStringWithMissingIndexes = (
+  origin: PartialRegisterOperatorOriginLayout,
+): string =>
+  origin.tag === "NewOperator"
+    ? `origin=NewOperator,retired_ref=${origin.retiredOperatorRefInputIndex?.toString() ?? "missing"}`
+    : [
+        "origin=ReturningOperator",
+        `retired_redeemer=${origin.retiredOperatorsRedeemerIndex.toString()}`,
+        `registered_redeemer=${origin.registeredOperatorsRedeemerIndex.toString()}`,
+        `retired_removed_in=${origin.retiredOperatorRemovedNodeInputIndex?.toString() ?? "missing"}`,
+        `retired_anchor_in=${origin.retiredOperatorAnchorNodeInputIndex?.toString() ?? "missing"}`,
+        `retired_anchor_out=${origin.retiredOperatorAnchorNodeOutputIndex?.toString() ?? "missing"}`,
+      ].join(",");
+
+const completeRegisterOriginLayout = (
+  origin: PartialRegisterOperatorOriginLayout,
+): RegisterRedeemerLayout["operatorOrigin"] => {
+  if (origin.tag === "NewOperator") {
+    if (origin.retiredOperatorRefInputIndex === undefined) {
+      throw new Error("NewOperator origin is missing retired ref input index");
+    }
+    return {
+      tag: "NewOperator",
+      retiredOperatorRefInputIndex: origin.retiredOperatorRefInputIndex,
+    };
+  }
+  if (
+    origin.retiredOperatorRemovedNodeInputIndex === undefined ||
+    origin.retiredOperatorAnchorNodeInputIndex === undefined ||
+    origin.retiredOperatorAnchorNodeOutputIndex === undefined
+  ) {
+    throw new Error("ReturningOperator origin is missing retired layout indexes");
+  }
+  return {
+    tag: "ReturningOperator",
+    retiredOperatorsRedeemerIndex: origin.retiredOperatorsRedeemerIndex,
+    registeredOperatorsRedeemerIndex: origin.registeredOperatorsRedeemerIndex,
+    retiredOperatorRemovedNodeInputIndex:
+      origin.retiredOperatorRemovedNodeInputIndex,
+    retiredOperatorAnchorNodeInputIndex: origin.retiredOperatorAnchorNodeInputIndex,
+    retiredOperatorAnchorNodeOutputIndex:
+      origin.retiredOperatorAnchorNodeOutputIndex,
+  };
+};
 
 /**
  * Returns whether a node carries the provided key hash as its own key.
