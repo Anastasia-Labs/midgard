@@ -272,6 +272,9 @@ validator mint(
         confirmed_state_input_index,
         confirmed_state_output_index,
         m_settlement_redeemer_index,
+        merged_block_transactions_root,
+        merged_block_deposits_root,
+        merged_block_withdrawals_root,
       } -> {
         let Transaction { inputs, outputs, mint, redeemers, validity_range, .. } =
           self
@@ -321,7 +324,14 @@ validator mint(
             ..
           } = input_header_node_data
 
-          // 4. `header_node` must be mature---the lower bound of the
+          // 4. Correctness of redeemer arguments must be guaranteed for other
+          //    contracts to use.
+          expect
+            merged_block_transactions_root == input_header_transactions_root
+          expect merged_block_deposits_root == input_header_deposits_root
+          expect merged_block_withdrawals_root == input_header_withdrawals_root
+
+          // 5. `header_node` must be mature---the lower bound of the
           //    transaction validity interval meets or exceeds the sum of the
           //    `end_time` field of `header_node` and the Midgard
           //    `maturity_duration` protocol parameter.
@@ -330,11 +340,11 @@ validator mint(
           expect
             inclusive_tx_lower_bound >= input_header_end_time + maturity_duration
 
-          // 5. a. `header_hash` of the input confirmed state must be preserved
+          // 6. a. `header_hash` of the input confirmed state must be preserved
           //       under `prev_header_hash` of the updated confirmed state.
           //    b. `start_time` of the input confirmed state must also carry
           //       over.
-          // 6. From the merging header node, these values must be preserved in
+          // 7. From the merging header node, these values must be preserved in
           //    the new confirmed state:
           //    a. `utxos_root` must be the new confirmed ledger.
           //    b. `end_time` must replace confirmed state's.
@@ -359,7 +369,7 @@ validator mint(
           expect
             output_confirmed_state_data == expected_output_confirmed_state_data
 
-          // 7. If either the `deposits_root`, or `withdrawals_root`, or
+          // 8. If either the `deposits_root`, or `withdrawals_root`, or
           //    `transactions_root` of `header_node` is _not_ the MPT root hash
           //    of the empty set, a `settlement` utxo must be produced via the
           //    Spawn redeemer. The redeemer must mention `header_node` by input
@@ -374,7 +384,7 @@ validator mint(
             input_header_deposits_root != empty_merkle_tree_root,
             input_header_withdrawals_root != empty_merkle_tree_root,
           } {
-            // 8a. The redeemer index for settlement minting policy must be
+            // 9a. The redeemer index for settlement minting policy must be
             //     provided.
             expect Some(settlement_redeemer_index) = m_settlement_redeemer_index
             let settlement_minting_redeemer_data =
@@ -391,7 +401,7 @@ validator mint(
             // Done.
             True
           } else {
-            // 8b. No mint redeemer index must be provided. Settlement contract
+            // 9b. No mint redeemer index must be provided. Settlement contract
             //     uses this argument to disallow minting empty settlement
             //     utxos.
             expect None == m_settlement_redeemer_index
