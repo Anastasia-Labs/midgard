@@ -9,7 +9,9 @@ import {
   ImmutableDB,
   MempoolDB,
   MempoolLedgerDB,
+  MutationJobsDB,
   ProcessedMempoolDB,
+  TxAdmissionsDB,
   TxRejectionsDB,
 } from "@/database/index.js";
 import { Database } from "@/services/index.js";
@@ -48,7 +50,7 @@ import {
 } from "@/transactions/reference-scripts.js";
 import { fromHex, getAddressDetails, toHex } from "@lucid-evolution/lucid";
 import * as SDK from "@al-ft/midgard-sdk";
-import { Cause, Effect, Metric, Queue, Ref } from "effect";
+import { Cause, Duration, Effect, Metric, Queue, Ref } from "effect";
 import {
   HttpBodyError,
   HttpRouter,
@@ -69,7 +71,6 @@ const UTXOS_ENDPOINT: string = "utxos";
 const BLOCK_ENDPOINT: string = "block";
 const INIT_ENDPOINT: string = "init";
 const COMMIT_ENDPOINT: string = "commit";
-const RESET_ENDPOINT: string = "reset";
 const SUBMIT_ENDPOINT: string = "submit";
 const DEPOSIT_BUILD_ENDPOINT: string = "deposit/build";
 const STATE_QUEUE_ENDPOINT: string = "stateQueue";
@@ -83,6 +84,21 @@ const txCounter = Metric.counter("tx_count", {
   bigint: true,
   incremental: true,
 });
+
+const submitHandlerLatencyTimer = Metric.timer(
+  "submit_handler_latency",
+  "Latency of POST /submit handler responses in milliseconds",
+);
+
+const submitQueueOfferFailureCounter = Metric.counter(
+  "submit_queue_offer_failure_count",
+  {
+    description:
+      "Number of POST /submit requests rejected because the queue was full",
+    bigint: true,
+    incremental: true,
+  },
+);
 
 /**
  * Wraps a route handler with admin-key authorization when the path belongs to
@@ -331,6 +347,7 @@ const getTxStatusHandler = Effect.gen(function* () {
   const txHashBytes = Buffer.from(fromHex(txHashParam));
   const globals = yield* Globals;
   const rejected = yield* TxRejectionsDB.retrieveByTxId(txHashBytes);
+  const admission = yield* TxAdmissionsDB.getByTxId(txHashBytes);
   const inImmutable = yield* ImmutableDB.retrieveTxCborsByHashes([txHashBytes]);
   const inMempool = yield* MempoolDB.retrieveTxCborsByHashes([txHashBytes]);
   const inProcessedMempool = yield* ProcessedMempoolDB.retrieveTxCborsByHashes([
@@ -347,6 +364,7 @@ const getTxStatusHandler = Effect.gen(function* () {
             createdAtIso: rejected[0].created_at.toISOString(),
           }
         : null,
+    admissionStatus: admission?.status ?? null,
     inImmutable: inImmutable.length > 0,
     inMempool: inMempool.length > 0,
     inProcessedMempool: inProcessedMempool.length > 0,
@@ -428,7 +446,10 @@ const getReadinessHandler = (txQueue: Queue.Dequeue<QueuedTxPayload>) =>
     const nodeConfig = yield* NodeConfig;
     const sql = yield* SqlClient;
 
-    const queueDepth = yield* txQueue.size;
+    const legacyQueueDepth = yield* txQueue.size;
+    const durableAdmissionBacklog = yield* TxAdmissionsDB.countBacklog;
+    const durableAdmissionOldestAgeMs = yield* TxAdmissionsDB.oldestQueuedAgeMs;
+    const unfinishedMutationJobs = yield* MutationJobsDB.countUnfinished;
     const nowMillis = Date.now();
     const blockCommitmentHeartbeat = yield* Ref.get(
       globals.HEARTBEAT_BLOCK_COMMITMENT,
@@ -446,15 +467,26 @@ const getReadinessHandler = (txQueue: Queue.Dequeue<QueuedTxPayload>) =>
     const localFinalizationPending = yield* Ref.get(
       globals.LOCAL_FINALIZATION_PENDING,
     );
+    const unconfirmedSubmittedBlockTxHash = yield* Ref.get(
+      globals.UNCONFIRMED_SUBMITTED_BLOCK_TX_HASH,
+    );
+    const unconfirmedSubmittedBlockSinceMs = yield* Ref.get(
+      globals.UNCONFIRMED_SUBMITTED_BLOCK_SINCE_MS,
+    );
+    const unresolvedBlockSubmissionAgeMs =
+      unconfirmedSubmittedBlockTxHash === "" ||
+      unconfirmedSubmittedBlockSinceMs <= 0
+        ? 0
+        : nowMillis - unconfirmedSubmittedBlockSinceMs;
 
     const dbProbe = yield* Effect.either(sql`SELECT 1 AS ok`);
     const dbHealthy = dbProbe._tag === "Right";
 
-    const readiness = evaluateReadiness({
+    const baseReadiness = evaluateReadiness({
       nowMillis,
       maxHeartbeatAgeMs: nodeConfig.READINESS_MAX_HEARTBEAT_AGE_MS,
-      maxQueueDepth: nodeConfig.READINESS_MAX_QUEUE_DEPTH,
-      queueDepth,
+      maxQueueDepth: nodeConfig.READINESS_MAX_DURABLE_ADMISSION_BACKLOG,
+      queueDepth: Number(durableAdmissionBacklog),
       workerHeartbeats: {
         blockCommitment: blockCommitmentHeartbeat,
         blockConfirmation: blockConfirmationHeartbeat,
@@ -463,8 +495,34 @@ const getReadinessHandler = (txQueue: Queue.Dequeue<QueuedTxPayload>) =>
         txQueueProcessor: txQueueProcessorHeartbeat,
       },
       localFinalizationPending,
+      unresolvedBlockSubmissionAgeMs,
+      maxUnresolvedBlockSubmissionAgeMs:
+        nodeConfig.UNCONFIRMED_BLOCK_MAX_AGE_MS,
       dbHealthy,
     });
+    const reasons = [...baseReadiness.reasons];
+    if (
+      durableAdmissionOldestAgeMs >
+      nodeConfig.READINESS_MAX_DURABLE_ADMISSION_AGE_MS
+    ) {
+      reasons.push(
+        `durable_admission_oldest_age_exceeded:${durableAdmissionOldestAgeMs}:${nodeConfig.READINESS_MAX_DURABLE_ADMISSION_AGE_MS}`,
+      );
+    }
+    if (unfinishedMutationJobs > 0n) {
+      reasons.push(
+        `unfinished_local_mutation_jobs:${unfinishedMutationJobs.toString()}`,
+      );
+    }
+    const readiness = {
+      ready: reasons.length === 0,
+      reasons,
+      durableAdmissionBacklog: durableAdmissionBacklog.toString(),
+      durableAdmissionOldestAgeMs,
+      unfinishedLocalMutationJobs: unfinishedMutationJobs.toString(),
+      unresolvedBlockSubmissionAgeMs,
+      legacyInMemoryQueueDepth: legacyQueueDepth,
+    };
 
     return yield* HttpServerResponse.json(readiness, {
       status: readiness.ready ? 200 : 503,
@@ -616,6 +674,9 @@ const getMergeHandler = Effect.gen(function* () {
   Effect.catchTag("TxSubmitError", (e) =>
     handleTxGetFailure(MERGE_ENDPOINT, e),
   ),
+  Effect.catchTag("TxConfirmError", (e) =>
+    handleTxGetFailure(MERGE_ENDPOINT, e),
+  ),
   Effect.catchTag("TxSignError", (e) => handleTxGetFailure(MERGE_ENDPOINT, e)),
   Effect.catchTag("CmlDeserializationError", (e) =>
     handleGenericGetFailure(MERGE_ENDPOINT, e),
@@ -634,31 +695,6 @@ const getMergeHandler = Effect.gen(function* () {
   ),
   Effect.catchTag("StateQueueError", (e) =>
     handleStateQueueGetFailure(MERGE_ENDPOINT, e),
-  ),
-);
-
-/**
- * `GET /reset`: triggers the reset flow that reclaims protocol-controlled
- * UTxOs.
- */
-const getResetHandler = Effect.gen(function* () {
-  yield* Effect.logInfo(`🚧 Reset request received`);
-  yield* Reset.program;
-
-  return yield* HttpServerResponse.json({
-    message: `Collected all UTxOs successfully!`,
-  });
-}).pipe(
-  Effect.catchTag("HttpBodyError", (e) => failWith500("GET", "reset", e)),
-  Effect.catchTag("DatabaseError", (e) =>
-    handleDBGetFailure(RESET_ENDPOINT, e),
-  ),
-  Effect.catchTag("TxSubmitError", (e) =>
-    handleTxGetFailure(RESET_ENDPOINT, e),
-  ),
-  Effect.catchTag("TxSignError", (e) => handleTxGetFailure(RESET_ENDPOINT, e)),
-  Effect.catchTag("LucidError", (e) =>
-    handleGenericGetFailure(RESET_ENDPOINT, e),
   ),
 );
 
@@ -945,98 +981,151 @@ const postDepositBuildHandler = Effect.gen(function* () {
  * `POST /submit`: validates, normalizes, and enqueues a submitted L2
  * transaction.
  */
-const postSubmitHandler = (txQueue: Queue.Enqueue<QueuedTxPayload>) =>
+const postSubmitHandler = (
+  _txQueue: Queue.Enqueue<QueuedTxPayload>,
+  withMonitoring?: boolean,
+) =>
   Effect.gen(function* () {
-    const nodeConfig = yield* NodeConfig;
-    const request = yield* HttpServerRequest.HttpServerRequest;
-    const params = yield* ParsedSearchParams;
-    const queryTxHex = extractSubmitTxHexFromQueryParams(params);
-    let bodyTxHex: string | undefined = undefined;
-    if (queryTxHex === undefined) {
-      const parsedBody = yield* Effect.either(request.json);
-      if (parsedBody._tag === "Right") {
-        bodyTxHex = extractSubmitTxHex(parsedBody.right);
+    const startedAt = withMonitoring === true ? Date.now() : 0;
+    const recordLatency = () =>
+      withMonitoring === true
+        ? submitHandlerLatencyTimer(
+            Effect.succeed(Duration.millis(Date.now() - startedAt)),
+          )
+        : Effect.void;
+    return yield* Effect.gen(function* () {
+      const nodeConfig = yield* NodeConfig;
+      const request = yield* HttpServerRequest.HttpServerRequest;
+      const params = yield* ParsedSearchParams;
+      const queryTxHex = extractSubmitTxHexFromQueryParams(params);
+      let bodyTxHex: string | undefined = undefined;
+      if (queryTxHex === undefined) {
+        const parsedBody = yield* Effect.either(request.json);
+        if (parsedBody._tag === "Right") {
+          bodyTxHex = extractSubmitTxHex(parsedBody.right);
+        }
       }
-    }
-    const txString = queryTxHex ?? bodyTxHex;
+      const txString = queryTxHex ?? bodyTxHex;
 
-    if (txString === undefined) {
-      yield* Effect.logInfo(`▫️ Invalid submit payload: missing tx_cbor`);
-      return yield* HttpServerResponse.json(
-        { error: "Request body must include `tx_cbor` as a hex string" },
-        { status: 400 },
+      if (txString === undefined) {
+        yield* Effect.logInfo(`▫️ Invalid submit payload: missing tx_cbor`);
+        yield* recordLatency();
+        return yield* HttpServerResponse.json(
+          { error: "Request body must include `tx_cbor` as a hex string" },
+          { status: 400 },
+        );
+      }
+
+      const validation = validateSubmitTxHex(
+        txString,
+        nodeConfig.MAX_SUBMIT_TX_CBOR_BYTES,
       );
-    }
+      if (!validation.ok) {
+        yield* Effect.logInfo(`▫️ Submit rejected: ${validation.error}`);
+        yield* recordLatency();
+        return yield* HttpServerResponse.json(
+          { error: validation.error },
+          { status: validation.status },
+        );
+      }
 
-    const validation = validateSubmitTxHex(
-      txString,
-      nodeConfig.MAX_SUBMIT_TX_CBOR_BYTES,
+      const normalized = normalizeSubmitTxHexToNative(validation.txHex);
+      if (!normalized.ok) {
+        yield* Effect.logInfo(`▫️ ${normalized.error}`);
+        yield* Effect.logInfo(`▫️ ${normalized.detail}`);
+        yield* recordLatency();
+        return yield* HttpServerResponse.json(
+          { error: normalized.error },
+          { status: 400 },
+        );
+      }
+
+      if (normalized.source === "cardano-converted") {
+        yield* Effect.logInfo(
+          `▫️ Accepted Cardano tx and converted to Midgard-native format`,
+        );
+      }
+
+      if (normalized.txCbor.length > nodeConfig.MAX_SUBMIT_TX_CBOR_BYTES) {
+        yield* recordLatency();
+        return yield* HttpServerResponse.json(
+          {
+            error: `Transaction CBOR exceeds max size (${normalized.txCbor.length} > ${nodeConfig.MAX_SUBMIT_TX_CBOR_BYTES})`,
+          },
+          { status: 413 },
+        );
+      }
+
+      const admitted = yield* TxAdmissionsDB.admit({
+        txId: normalized.txId,
+        txCbor: normalized.txCbor,
+        submitSource: normalized.source,
+        maxBacklog: nodeConfig.MAX_DURABLE_ADMISSION_BACKLOG,
+      });
+
+      Effect.runSync(Metric.increment(txCounter));
+      yield* recordLatency();
+      return yield* HttpServerResponse.json(
+        {
+          txId: normalized.txIdHex,
+          status: admitted.entry.status,
+          firstSeenAt: admitted.entry.first_seen_at.toISOString(),
+          lastSeenAt: admitted.entry.last_seen_at.toISOString(),
+          duplicate: admitted.kind === "duplicate",
+        },
+        { status: admitted.kind === "new" ? 202 : 200 },
+      );
+    }).pipe(
+      Effect.catchTag("TxAdmissionConflictError", (e) =>
+        Effect.gen(function* () {
+          yield* recordLatency();
+          return yield* HttpServerResponse.json(
+            {
+              error: "E_TX_ID_BYTES_CONFLICT",
+              message: e.message,
+              txId: e.txIdHex,
+            },
+            { status: 409 },
+          );
+        }),
+      ),
+      Effect.catchTag("TxAdmissionBacklogFullError", (e) =>
+        Effect.gen(function* () {
+          yield* Metric.increment(submitQueueOfferFailureCounter);
+          yield* recordLatency();
+          return yield* HttpServerResponse.json(
+            {
+              error: "Durable submission admission backlog is full",
+              backlog: e.backlog.toString(),
+              maxBacklog: e.maxBacklog.toString(),
+            },
+            { status: 503 },
+          );
+        }),
+      ),
+      Effect.catchTag("DatabaseError", (e) =>
+        Effect.gen(function* () {
+          yield* recordLatency();
+          return yield* failWith500(
+            "POST",
+            "submit",
+            e.cause,
+            "durable transaction admission failed",
+          );
+        }),
+      ),
+      Effect.catchTag("HttpBodyError", (e) =>
+        failWith500("POST", "submit", e, "▫️ L2 transaction failed"),
+      ),
     );
-    if (!validation.ok) {
-      yield* Effect.logInfo(`▫️ Submit rejected: ${validation.error}`);
-      return yield* HttpServerResponse.json(
-        { error: validation.error },
-        { status: validation.status },
-      );
-    }
-
-    const normalized = normalizeSubmitTxHexToNative(validation.txHex);
-    if (!normalized.ok) {
-      yield* Effect.logInfo(`▫️ ${normalized.error}`);
-      yield* Effect.logInfo(`▫️ ${normalized.detail}`);
-      return yield* HttpServerResponse.json(
-        { error: normalized.error },
-        { status: 400 },
-      );
-    }
-
-    if (normalized.source === "cardano-converted") {
-      yield* Effect.logInfo(
-        `▫️ Accepted Cardano tx and converted to Midgard-native format`,
-      );
-    }
-
-    if (normalized.txCbor.length > nodeConfig.MAX_SUBMIT_TX_CBOR_BYTES) {
-      return yield* HttpServerResponse.json(
-        {
-          error: `Transaction CBOR exceeds max size (${normalized.txCbor.length} > ${nodeConfig.MAX_SUBMIT_TX_CBOR_BYTES})`,
-        },
-        { status: 413 },
-      );
-    }
-
-    const payload: QueuedTxPayload = {
-      txId: normalized.txId,
-      txCbor: normalized.txCbor,
-      createdAtMillis: Date.now(),
-    };
-    const queued = yield* txQueue.offer(payload);
-    if (!queued) {
-      return yield* HttpServerResponse.json(
-        {
-          error:
-            "Submission queue is full; retry later with exponential backoff",
-        },
-        { status: 503 },
-      );
-    }
-
-    Effect.runSync(Metric.increment(txCounter));
-    return yield* HttpServerResponse.json({
-      txId: normalized.txIdHex,
-      status: "queued",
-    });
-  }).pipe(
-    Effect.catchTag("HttpBodyError", (e) =>
-      failWith500("POST", "submit", e, "▫️ L2 transaction failed"),
-    ),
-  );
+  });
 
 /**
  * Builds the full HTTP router for the node command server.
  */
 export const buildListenRouter = (
   txQueue: Queue.Queue<QueuedTxPayload>,
+  withMonitoring?: boolean,
 ): Effect.Effect<
   HttpServerResponse.HttpServerResponse,
   HttpBodyError,
@@ -1072,10 +1161,6 @@ export const buildListenRouter = (
         withAdminAccess(MERGE_ENDPOINT, getMergeHandler),
       ),
       HttpRouter.get(
-        `/${RESET_ENDPOINT}`,
-        withAdminAccess(RESET_ENDPOINT, getResetHandler),
-      ),
-      HttpRouter.get(
         `/${STATE_QUEUE_ENDPOINT}`,
         withAdminAccess(STATE_QUEUE_ENDPOINT, getStateQueueHandler),
       ),
@@ -1089,7 +1174,10 @@ export const buildListenRouter = (
       ),
       HttpRouter.post(`/${UTXOS_ENDPOINT}`, postUtxosByTxOutRefsHandler),
       HttpRouter.post(`/${DEPOSIT_BUILD_ENDPOINT}`, postDepositBuildHandler),
-      HttpRouter.post(`/${SUBMIT_ENDPOINT}`, postSubmitHandler(txQueue)),
+      HttpRouter.post(
+        `/${SUBMIT_ENDPOINT}`,
+        postSubmitHandler(txQueue, withMonitoring),
+      ),
     )
     .pipe(
       Effect.catchAllCause((cause) =>

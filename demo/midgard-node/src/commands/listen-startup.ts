@@ -37,6 +37,98 @@ const resolveStateQueueTipEndTimeMs = (
     return Number(header.endTime);
   });
 
+type CanonicalCommittedHeader = {
+  readonly headerHash: Buffer;
+  readonly endTimeMs: number;
+  readonly journal: Option.Option<PendingBlockFinalizationsDB.Record>;
+};
+
+const localJournalHasPayloadMembers = (
+  journal: PendingBlockFinalizationsDB.Record,
+): boolean =>
+  journal.depositEventIds.length > 0 || journal.mempoolTxIds.length > 0;
+
+const fetchCanonicalCommittedHeaders = Effect.gen(function* () {
+  const lucid = yield* Lucid;
+  const contracts = yield* MidgardContracts;
+  const committedBlocks = yield* SDK.fetchSortedStateQueueUTxOsProgram(
+    lucid.api,
+    {
+      stateQueueAddress: contracts.stateQueue.spendingScriptAddress,
+      stateQueuePolicyId: contracts.stateQueue.policyId,
+    },
+  );
+  const headers: CanonicalCommittedHeader[] = [];
+  for (const block of committedBlocks) {
+    if (block.datum.key === "Empty") {
+      continue;
+    }
+    const header = yield* SDK.getHeaderFromStateQueueDatum(block.datum);
+    const headerHash = Buffer.from(yield* SDK.hashBlockHeader(header), "hex");
+    const journal =
+      yield* PendingBlockFinalizationsDB.retrieveByHeaderHash(headerHash);
+    headers.push({
+      headerHash,
+      endTimeMs: Number(header.endTime),
+      journal,
+    });
+  }
+  return headers;
+});
+
+const reviveEarliestCanonicalPayloadJournalOnStartup = (
+  canonicalHeaders: readonly CanonicalCommittedHeader[],
+) =>
+  Effect.gen(function* () {
+    const candidateIndex = canonicalHeaders.findIndex(
+      ({ journal }) =>
+        Option.isSome(journal) &&
+        journal.value[PendingBlockFinalizationsDB.Columns.STATUS] ===
+          PendingBlockFinalizationsDB.Status.Abandoned &&
+        localJournalHasPayloadMembers(journal.value),
+    );
+    if (candidateIndex < 0) {
+      return Option.none<CanonicalCommittedHeader>();
+    }
+
+    const candidate = canonicalHeaders[candidateIndex]!;
+    const active = yield* PendingBlockFinalizationsDB.retrieveActive();
+    if (Option.isSome(active)) {
+      const activeHeaderHash =
+        active.value[PendingBlockFinalizationsDB.Columns.HEADER_HASH];
+      if (activeHeaderHash.equals(candidate.headerHash)) {
+        return Option.some(candidate);
+      }
+
+      const activeCanonicalIndex = canonicalHeaders.findIndex(
+        ({ headerHash }) => headerHash.equals(activeHeaderHash),
+      );
+      if (
+        activeCanonicalIndex > candidateIndex &&
+        !localJournalHasPayloadMembers(active.value)
+      ) {
+        yield* PendingBlockFinalizationsDB.markAbandoned(activeHeaderHash);
+        yield* Effect.logWarning(
+          `Demoted active empty canonical pending-finalization journal ${activeHeaderHash.toString("hex")} so earlier payload-bearing canonical block ${candidate.headerHash.toString("hex")} can recover local finalization first.`,
+        );
+      } else {
+        yield* Effect.logInfo(
+          `Skipping abandoned canonical payload journal revival for ${candidate.headerHash.toString("hex")}; active pending-finalization journal ${activeHeaderHash.toString("hex")} must resolve first.`,
+        );
+        return Option.none<CanonicalCommittedHeader>();
+      }
+    }
+
+    yield* PendingBlockFinalizationsDB.reviveAbandonedCanonical(
+      candidate.headerHash,
+      BigInt(Date.now()),
+    );
+    yield* Effect.logWarning(
+      `Revived abandoned pending-finalization journal for canonical payload-bearing block ${candidate.headerHash.toString("hex")}; local finalization recovery will replay that block before later canonical descendants.`,
+    );
+    return Option.some(candidate);
+  });
+
 const writeStartupContractDeploymentInfo = Effect.gen(function* () {
   const outputPath =
     ContractDeploymentInfo.defaultContractDeploymentInfoOutputPath();
@@ -55,9 +147,7 @@ const writeStartupContractDeploymentInfo = Effect.gen(function* () {
   ),
 );
 
-const ensureNodeRuntimeReferenceScriptsOnStartup = (
-  shouldBootstrap: boolean,
-) =>
+const ensureNodeRuntimeReferenceScriptsOnStartup = (shouldBootstrap: boolean) =>
   Effect.gen(function* () {
     const lucid = yield* Lucid;
     const contracts = yield* MidgardContracts;
@@ -174,6 +264,9 @@ export const seedLatestLocalBlockBoundaryOnStartup = Effect.gen(function* () {
   const latestEndTimeMs = yield* resolveStateQueueTipEndTimeMs(
     latestBlock.datum,
   );
+  const canonicalHeaders = yield* fetchCanonicalCommittedHeaders;
+  const revivedPayloadJournal =
+    yield* reviveEarliestCanonicalPayloadJournalOnStartup(canonicalHeaders);
   let seededBoundaryMs = latestEndTimeMs;
   if (latestBlock.datum.key !== "Empty") {
     const latestHeader = yield* SDK.getHeaderFromStateQueueDatum(
@@ -186,14 +279,44 @@ export const seedLatestLocalBlockBoundaryOnStartup = Effect.gen(function* () {
     const finalizedJournal =
       yield* PendingBlockFinalizationsDB.retrieveByHeaderHash(latestHeaderHash);
     if (Option.isSome(finalizedJournal)) {
-      seededBoundaryMs =
+      const journalBoundaryMs =
         finalizedJournal.value[
           PendingBlockFinalizationsDB.Columns.BLOCK_END_TIME
         ].getTime();
+      seededBoundaryMs = Math.max(journalBoundaryMs, latestEndTimeMs);
+      if (
+        finalizedJournal.value[PendingBlockFinalizationsDB.Columns.STATUS] ===
+          PendingBlockFinalizationsDB.Status.Abandoned &&
+        localJournalHasPayloadMembers(finalizedJournal.value) &&
+        Option.isNone(revivedPayloadJournal)
+      ) {
+        yield* PendingBlockFinalizationsDB.reviveAbandonedCanonical(
+          latestHeaderHash,
+          BigInt(Date.now()),
+        );
+        yield* Effect.logWarning(
+          `Revived abandoned pending-finalization journal for canonical payload-bearing state-queue tip ${latestHeaderHash.toString("hex")}; local finalization recovery will replay the block payload.`,
+        );
+      }
       yield* Effect.logInfo(
         `Seeded latest local block boundary from pending-finalization journal for header ${latestHeaderHash.toString("hex")}: ${new Date(seededBoundaryMs).toISOString()}`,
       );
     }
+  }
+  if (Option.isSome(revivedPayloadJournal)) {
+    seededBoundaryMs = Math.max(
+      seededBoundaryMs,
+      revivedPayloadJournal.value.endTimeMs,
+      revivedPayloadJournal.value.journal.pipe(
+        Option.match({
+          onNone: () => 0,
+          onSome: (journal) =>
+            journal[
+              PendingBlockFinalizationsDB.Columns.BLOCK_END_TIME
+            ].getTime(),
+        }),
+      ),
+    );
   }
   yield* Ref.set(globals.LATEST_LOCAL_BLOCK_END_TIME_MS, seededBoundaryMs);
   yield* Effect.logInfo(

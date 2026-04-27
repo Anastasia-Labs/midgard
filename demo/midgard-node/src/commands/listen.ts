@@ -5,7 +5,7 @@
  */
 export { extractStateQueueErrorCode } from "@/commands/listen-response.js";
 
-import { InitDB } from "@/database/index.js";
+import { InitDB, MutationJobsDB } from "@/database/index.js";
 import {
   Database,
   DatabaseInitializationError,
@@ -70,21 +70,49 @@ export const runNode = (
     yield* ensureProtocolInitializedOnStartup;
     yield* seedLatestLocalBlockBoundaryOnStartup;
     yield* hydratePendingBlockFinalizationOnStartup;
+    const unfinishedMutationJobs = yield* MutationJobsDB.retrieveUnfinished;
+    if (unfinishedMutationJobs.length > 0) {
+      return yield* Effect.fail(
+        new DatabaseInitializationError({
+          message:
+            "Startup found unfinished local mutation jobs; refusing to serve until recovery is performed",
+          cause: unfinishedMutationJobs.map((job) => ({
+            jobId: job[MutationJobsDB.Columns.JOB_ID],
+            kind: job[MutationJobsDB.Columns.KIND],
+            status: job[MutationJobsDB.Columns.STATUS],
+            updatedAt: job[MutationJobsDB.Columns.UPDATED_AT].toISOString(),
+            lastError: job[MutationJobsDB.Columns.LAST_ERROR],
+          })),
+        }),
+      );
+    }
     yield* fetchAndInsertDepositUTxOs.pipe(
       Effect.tapError((e) =>
-        Effect.logWarning(
+        Effect.logError(
           `Startup deposit catch-up failed: ${JSON.stringify(e)}`,
         ),
       ),
-      Effect.catchAll(() => Effect.void),
+      Effect.mapError(
+        (e) =>
+          new DatabaseInitializationError({
+            message: "Startup deposit catch-up failed",
+            cause: e,
+          }),
+      ),
     );
     yield* projectDepositsToMempoolLedger.pipe(
       Effect.tapError((e) =>
-        Effect.logWarning(
+        Effect.logError(
           `Startup deposit projection reconciliation failed: ${JSON.stringify(e)}`,
         ),
       ),
-      Effect.catchAll(() => Effect.void),
+      Effect.mapError(
+        (e) =>
+          new DatabaseInitializationError({
+            message: "Startup deposit projection reconciliation failed",
+            cause: e,
+          }),
+      ),
     );
 
     if (
@@ -114,7 +142,7 @@ export const runNode = (
 
     const appThread = Layer.launch(
       Layer.provide(
-        HttpServer.serve(buildListenRouter(txQueue)),
+        HttpServer.serve(buildListenRouter(txQueue, withMonitoring)),
         NodeHttpServer.layer(createServer, { port: nodeConfig.PORT }),
       ),
     );

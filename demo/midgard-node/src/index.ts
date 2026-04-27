@@ -28,6 +28,7 @@ import dotenv from "dotenv";
 import { NodeRuntime } from "@effect/platform-node";
 import { DatabaseError } from "@/database/utils/common.js";
 import { SqlError } from "@effect/sql";
+import * as MigrationRunner from "@/database/migrations/runner.js";
 
 dotenv.config();
 const VERSION = packageJson.version;
@@ -251,6 +252,70 @@ program
   });
 
 program
+  .command("db:migrate")
+  .description("Apply pending Midgard node schema migrations explicitly")
+  .action(async () => {
+    const mainEffect = provideDatabaseServices(
+      MigrationRunner.migrate({
+        appVersion: VERSION,
+        actor: "midgard-node db:migrate",
+      }).pipe(
+        Effect.tap((status) =>
+          Effect.sync(() => {
+            process.stdout.write(`${MigrationRunner.formatStatus(status)}\n`);
+          }),
+        ),
+      ),
+    );
+
+    NodeRuntime.runMain(mainEffect, { teardown: undefined });
+  });
+
+program
+  .command("db:status")
+  .description("Print Midgard node schema migration status")
+  .option("--json", "Print machine-readable JSON status", true)
+  .action(async () => {
+    const mainEffect = provideDatabaseServices(
+      MigrationRunner.getStatus.pipe(
+        Effect.tap((status) =>
+          Effect.sync(() => {
+            process.stdout.write(`${MigrationRunner.formatStatus(status)}\n`);
+          }),
+        ),
+      ),
+    );
+
+    NodeRuntime.runMain(mainEffect, { teardown: undefined });
+  });
+
+program
+  .command("db:verify")
+  .description(
+    "Verify the database schema is compatible with this Midgard node binary",
+  )
+  .action(async () => {
+    const mainEffect = provideDatabaseServices(
+      MigrationRunner.verify.pipe(
+        Effect.tap(() =>
+          Effect.sync(() => {
+            process.stdout.write("schema compatibility verified\n");
+          }),
+        ),
+      ),
+    );
+
+    NodeRuntime.runMain(mainEffect, { teardown: undefined });
+  });
+
+program
+  .command("db:checksum")
+  .description("Print the compiled schema migration manifest checksums")
+  .action(async () => {
+    process.stdout.write(`${MigrationRunner.formatChecksum()}\n`);
+  });
+
+program
   .command("init")
   .description(
     "Initialize hub-oracle, state_queue, registered/active/retired operators, and scheduler roots",
@@ -277,7 +342,9 @@ program
         );
         return txHash;
       }).pipe(
-        Effect.tap((txHash) => Effect.logInfo(`init completed: txHash=${txHash}`)),
+        Effect.tap((txHash) =>
+          Effect.logInfo(`init completed: txHash=${txHash}`),
+        ),
       ),
     );
 
@@ -377,10 +444,7 @@ program
     "--lovelace <amount>",
     "Amount to deposit, expressed as a positive integer number of lovelace",
   )
-  .option(
-    "--l2-datum <hex>",
-    "Optional L2 inline datum bytes as hex",
-  )
+  .option("--l2-datum <hex>", "Optional L2 inline datum bytes as hex")
   .option(
     "--wallet-seed-phrase-env <envVar>",
     "Environment variable containing the seed phrase for the wallet that should sign the deposit transaction",
@@ -400,80 +464,84 @@ program
         readonly walletSeedPhraseEnv: string;
       },
     ) => {
-    let depositConfig: SubmitDeposit.SubmitDepositConfig;
-    let walletSeedPhrase: string;
-    try {
-      const { l2Address, l2Datum, lovelace, walletSeedPhraseEnv } = options;
-      depositConfig = SubmitDeposit.parseSubmitDepositConfig({
-        l2Address,
-        l2Datum,
-        lovelace,
-        assetSpecs,
-      });
-      const normalizedSeedPhraseEnv = walletSeedPhraseEnv.trim();
-      if (normalizedSeedPhraseEnv.length === 0) {
-        throw new Error("Wallet seed phrase env var name must not be empty.");
-      }
-      walletSeedPhrase = process.env[normalizedSeedPhraseEnv]?.trim() ?? "";
-      if (walletSeedPhrase.length === 0) {
-        throw new Error(
-          `Environment variable "${normalizedSeedPhraseEnv}" does not contain a wallet seed phrase.`,
-        );
-      }
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      console.error(`submit-deposit: ${message}`);
-      process.exitCode = 1;
-      return;
-    }
-
-    const mainEffect = provideTxServices(
-      Effect.gen(function* () {
-        const lucidService = yield* Services.Lucid;
-        const contracts = yield* Services.MidgardContracts;
-        yield* Effect.sync(() =>
-          lucidService.api.selectWallet.fromSeed(walletSeedPhrase),
-        );
-        const walletAddress = yield* Effect.tryPromise({
-          try: () => lucidService.api.wallet().address(),
-          catch: (cause) =>
-            Promise.reject(
-              new Error(
-                `Failed to resolve submit-deposit wallet address: ${String(cause)}`,
-              ),
-            ),
+      let depositConfig: SubmitDeposit.SubmitDepositConfig;
+      let walletSeedPhrase: string;
+      try {
+        const { l2Address, l2Datum, lovelace, walletSeedPhraseEnv } = options;
+        depositConfig = SubmitDeposit.parseSubmitDepositConfig({
+          l2Address,
+          l2Datum,
+          lovelace,
+          assetSpecs,
         });
-        yield* Effect.sync(() =>
-          assertUserCliWalletIsOperationallyIsolated({
-            commandName: "submit-deposit",
-            walletAddress,
-            operatorMainAddress: lucidService.operatorMainAddress,
-            operatorMergeAddress: lucidService.operatorMergeAddress,
-            referenceScriptsAddress: lucidService.referenceScriptsAddress,
-          }),
-        );
-        const depositReferenceScripts = yield* fetchReferenceScriptUtxosProgram(
-          lucidService.api,
-          lucidService.referenceScriptsAddress,
-          referenceScriptTargetsByCommand(contracts).deposit,
-        ).pipe(
-          Effect.map((resolved) => ({
-            depositMinting: referenceScriptByName(resolved, "deposit minting"),
-          })),
-        );
-        return yield* SubmitDeposit.submitDepositProgram(
-          lucidService.api,
-          contracts,
-          { ...depositConfig, referenceScripts: depositReferenceScripts },
-        );
-      }).pipe(
-        Effect.tap((txHash) =>
-          Effect.logInfo(`submit-deposit completed: txHash=${txHash}`),
-        ),
-      ),
-    );
+        const normalizedSeedPhraseEnv = walletSeedPhraseEnv.trim();
+        if (normalizedSeedPhraseEnv.length === 0) {
+          throw new Error("Wallet seed phrase env var name must not be empty.");
+        }
+        walletSeedPhrase = process.env[normalizedSeedPhraseEnv]?.trim() ?? "";
+        if (walletSeedPhrase.length === 0) {
+          throw new Error(
+            `Environment variable "${normalizedSeedPhraseEnv}" does not contain a wallet seed phrase.`,
+          );
+        }
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        console.error(`submit-deposit: ${message}`);
+        process.exitCode = 1;
+        return;
+      }
 
-    NodeRuntime.runMain(mainEffect, { teardown: undefined });
+      const mainEffect = provideTxServices(
+        Effect.gen(function* () {
+          const lucidService = yield* Services.Lucid;
+          const contracts = yield* Services.MidgardContracts;
+          yield* Effect.sync(() =>
+            lucidService.api.selectWallet.fromSeed(walletSeedPhrase),
+          );
+          const walletAddress = yield* Effect.tryPromise({
+            try: () => lucidService.api.wallet().address(),
+            catch: (cause) =>
+              Promise.reject(
+                new Error(
+                  `Failed to resolve submit-deposit wallet address: ${String(cause)}`,
+                ),
+              ),
+          });
+          yield* Effect.sync(() =>
+            assertUserCliWalletIsOperationallyIsolated({
+              commandName: "submit-deposit",
+              walletAddress,
+              operatorMainAddress: lucidService.operatorMainAddress,
+              operatorMergeAddress: lucidService.operatorMergeAddress,
+              referenceScriptsAddress: lucidService.referenceScriptsAddress,
+            }),
+          );
+          const depositReferenceScripts =
+            yield* fetchReferenceScriptUtxosProgram(
+              lucidService.api,
+              lucidService.referenceScriptsAddress,
+              referenceScriptTargetsByCommand(contracts).deposit,
+            ).pipe(
+              Effect.map((resolved) => ({
+                depositMinting: referenceScriptByName(
+                  resolved,
+                  "deposit minting",
+                ),
+              })),
+            );
+          return yield* SubmitDeposit.submitDepositProgram(
+            lucidService.api,
+            contracts,
+            { ...depositConfig, referenceScripts: depositReferenceScripts },
+          );
+        }).pipe(
+          Effect.tap((txHash) =>
+            Effect.logInfo(`submit-deposit completed: txHash=${txHash}`),
+          ),
+        ),
+      );
+
+      NodeRuntime.runMain(mainEffect, { teardown: undefined });
     },
   );
 

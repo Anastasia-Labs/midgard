@@ -14,6 +14,12 @@ export type TxRejectionDetails = {
 export type ResolveTxStatusInput = {
   readonly txIdHex: string;
   readonly rejection: TxRejectionDetails | null;
+  readonly admissionStatus:
+    | "queued"
+    | "validating"
+    | "accepted"
+    | "rejected"
+    | null;
   readonly inImmutable: boolean;
   readonly inMempool: boolean;
   readonly inProcessedMempool: boolean;
@@ -40,25 +46,17 @@ export type ResolvedTxStatus =
         | "accepted"
         | "pending_commit"
         | "awaiting_local_recovery"
+        | "validating"
+        | "queued"
         | "not_found";
     };
 
 /**
  * Resolves the highest-priority status that applies to a transaction id.
  */
-export const resolveTxStatus = (input: ResolveTxStatusInput): ResolvedTxStatus => {
-  if (input.rejection !== null) {
-    return {
-      txId: input.txIdHex,
-      status: "rejected",
-      reasonCode: input.rejection.rejectCode,
-      reasonDetail: input.rejection.rejectDetail ?? undefined,
-      timestamps: {
-        createdAt: input.rejection.createdAtIso,
-      },
-    };
-  }
-
+export const resolveTxStatus = (
+  input: ResolveTxStatusInput,
+): ResolvedTxStatus => {
   if (input.inImmutable) {
     return {
       txId: input.txIdHex,
@@ -84,6 +82,32 @@ export const resolveTxStatus = (input: ResolveTxStatusInput): ResolvedTxStatus =
     return {
       txId: input.txIdHex,
       status: "accepted",
+    };
+  }
+
+  if (input.rejection !== null) {
+    return {
+      txId: input.txIdHex,
+      status: "rejected",
+      reasonCode: input.rejection.rejectCode,
+      reasonDetail: input.rejection.rejectDetail ?? undefined,
+      timestamps: {
+        createdAt: input.rejection.createdAtIso,
+      },
+    };
+  }
+
+  if (input.admissionStatus === "validating") {
+    return {
+      txId: input.txIdHex,
+      status: "validating",
+    };
+  }
+
+  if (input.admissionStatus === "queued") {
+    return {
+      txId: input.txIdHex,
+      status: "queued",
     };
   }
 

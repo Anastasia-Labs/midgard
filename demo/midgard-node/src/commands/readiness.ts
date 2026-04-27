@@ -19,6 +19,8 @@ export type ReadinessInput = {
   readonly queueDepth: number;
   readonly workerHeartbeats: WorkerHeartbeats;
   readonly localFinalizationPending: boolean;
+  readonly unresolvedBlockSubmissionAgeMs: number;
+  readonly maxUnresolvedBlockSubmissionAgeMs: number;
   readonly dbHealthy: boolean;
 };
 
@@ -64,6 +66,15 @@ export const evaluateReadiness = (input: ReadinessInput): ReadinessResult => {
 
   if (input.localFinalizationPending) {
     reasons.push("local_finalization_pending");
+  }
+
+  if (
+    input.unresolvedBlockSubmissionAgeMs >
+    Math.max(0, input.maxUnresolvedBlockSubmissionAgeMs)
+  ) {
+    reasons.push(
+      `unresolved_block_submission:${input.unresolvedBlockSubmissionAgeMs}:${input.maxUnresolvedBlockSubmissionAgeMs}`,
+    );
   }
 
   return {

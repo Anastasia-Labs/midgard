@@ -16,7 +16,11 @@
  * 5. Build and submit the merge transaction.
  */
 
-import { BlocksDB, ConfirmedLedgerDB } from "@/database/index.js";
+import {
+  BlocksDB,
+  ConfirmedLedgerDB,
+  MutationJobsDB,
+} from "@/database/index.js";
 import * as SDK from "@al-ft/midgard-sdk";
 import {
   Address,
@@ -29,7 +33,7 @@ import {
   scriptHashToCredential,
   toUnit,
 } from "@lucid-evolution/lucid";
-import { Effect, Metric, Ref } from "effect";
+import { Duration, Effect, Metric, Ref } from "effect";
 import {
   BlockTxPayload,
   TxConfirmError,
@@ -40,9 +44,13 @@ import {
 } from "@/transactions/utils.js";
 import { alignedUnixTimeStrictlyAfter } from "@/workers/utils/commit-end-time.js";
 import { Entry as LedgerEntry } from "@/database/utils/ledger.js";
-import { DatabaseError } from "@/database/utils/common.js";
+import {
+  DatabaseError,
+  sqlErrorToDatabaseError,
+} from "@/database/utils/common.js";
 import { breakDownTx } from "@/utils.js";
 import { Database, Globals, NodeConfig } from "@/services/index.js";
+import { SqlClient } from "@effect/sql";
 import { emitQueueStateMetrics } from "@/fibers/queue-metrics.js";
 import {
   findRedeemerDataCbor,
@@ -106,6 +114,11 @@ const mergeLocalFinalizationFailureCounter = Metric.counter(
     bigint: true,
     incremental: true,
   },
+);
+
+const mergeDurationTimer = Metric.timer(
+  "merge_duration",
+  "Duration of one merge attempt in milliseconds",
 );
 
 // 30 minutes.
@@ -469,6 +482,7 @@ export const buildAndSubmitMergeTx = (
   Database | Globals | NodeConfig
 > =>
   Effect.gen(function* () {
+    const mergeStartedAt = Date.now();
     const globals = yield* Globals;
     const nodeConfig = yield* NodeConfig;
     const currentStateQueueLength = yield* getStateQueueLength(
@@ -698,15 +712,24 @@ export const buildAndSubmitMergeTx = (
       const stateQueueSpendingScriptRef =
         options?.referenceScriptsAddress === undefined
           ? undefined
-          : referenceScriptByName(resolvedReferenceScripts, "state-queue spending");
+          : referenceScriptByName(
+              resolvedReferenceScripts,
+              "state-queue spending",
+            );
       const stateQueueMintingScriptRef =
         options?.referenceScriptsAddress === undefined
           ? undefined
-          : referenceScriptByName(resolvedReferenceScripts, "state-queue minting");
+          : referenceScriptByName(
+              resolvedReferenceScripts,
+              "state-queue minting",
+            );
       const settlementMintingScriptRef =
         options?.referenceScriptsAddress === undefined
           ? undefined
-          : referenceScriptByName(resolvedReferenceScripts, "settlement minting");
+          : referenceScriptByName(
+              resolvedReferenceScripts,
+              "settlement minting",
+            );
       const mergeReferenceInputs = [
         hubOracleRefInput,
         ...(stateQueueSpendingScriptRef === undefined
@@ -926,8 +949,10 @@ export const buildAndSubmitMergeTx = (
       if (initialHubOracleRefInputIndex === undefined) {
         return yield* Effect.fail(
           new SDK.StateQueueError({
-            message: "Failed to derive initial merge hub-oracle reference index",
-            cause: "hub-oracle reference input missing from merge reference set",
+            message:
+              "Failed to derive initial merge hub-oracle reference index",
+            cause:
+              "hub-oracle reference input missing from merge reference set",
           }),
         );
       }
@@ -1383,7 +1408,19 @@ export const buildAndSubmitMergeTx = (
        * Normalizes transaction-confirmation failures during confirmed-state merging.
        */
       const onConfirmFailure = (err: TxConfirmError) =>
-        Effect.logError(`Confirm tx error: ${err}`);
+        Effect.gen(function* () {
+          yield* Effect.logError(
+            `Confirm tx error: ${err}; refusing local merge finalization until L1 confirmation is verified`,
+          );
+          yield* Effect.fail(
+            new TxConfirmError({
+              message:
+                "failed to confirm the merge tx; local merge finalization blocked",
+              cause: err,
+              txHash: txBuilder.toHash(),
+            }),
+          );
+        });
       yield* handleSignSubmit(lucid, txBuilder).pipe(
         Effect.catchTag("TxSubmitError", onSubmitFailure),
         Effect.catchTag("TxConfirmError", onConfirmFailure),
@@ -1394,29 +1431,61 @@ export const buildAndSubmitMergeTx = (
       );
 
       const finalizeLocalMergeProgram = Effect.gen(function* () {
+        const jobId = `confirmed_merge_finalization:${headerHash.toString(
+          "hex",
+        )}`;
+        yield* MutationJobsDB.start({
+          jobId,
+          kind: MutationJobsDB.Kind.ConfirmedMergeFinalization,
+          payload: {
+            headerHash: headerHash.toString("hex"),
+            spentOutRefCount: preflightSpentOutRefs.length,
+            producedUtxoCount: preflightProducedUTxOs.length,
+          },
+        });
+        const sql = yield* SqlClient.SqlClient;
         // - Clear all the spent UTxOs from the confirmed ledger
         // - Add all the produced UTxOs from the confirmed ledger
         // - Remove all the tx hashes of the merged block from BlocksDB
         const bs = 100;
-        yield* Effect.logInfo("🔸 Clear confirmed ledger db...");
-        for (let i = 0; i < preflightSpentOutRefs.length; i += bs) {
-          yield* ConfirmedLedgerDB.clearUTxOs(
-            preflightSpentOutRefs.slice(i, i + bs),
-          ).pipe(Effect.withSpan(`confirmed-ledger-clearUTxOs-${i}`));
-        }
-        yield* Effect.logInfo("🔸 Insert produced UTxOs...");
-        for (let i = 0; i < preflightProducedUTxOs.length; i += bs) {
-          yield* ConfirmedLedgerDB.insertMultiple(
-            preflightProducedUTxOs.slice(i, i + bs),
+        yield* sql
+          .withTransaction(
+            Effect.gen(function* () {
+              yield* Effect.logInfo("🔸 Clear confirmed ledger db...");
+              for (let i = 0; i < preflightSpentOutRefs.length; i += bs) {
+                yield* ConfirmedLedgerDB.clearUTxOs(
+                  preflightSpentOutRefs.slice(i, i + bs),
+                ).pipe(Effect.withSpan(`confirmed-ledger-clearUTxOs-${i}`));
+              }
+              yield* Effect.logInfo("🔸 Insert produced UTxOs...");
+              for (let i = 0; i < preflightProducedUTxOs.length; i += bs) {
+                yield* ConfirmedLedgerDB.insertMultiple(
+                  preflightProducedUTxOs.slice(i, i + bs),
+                )
+                  // .map((u) => utxoToOutRefAndCBORArray(u)),
+                  .pipe(Effect.withSpan(`confirmed-ledger-insert-${i}`));
+              }
+              yield* Effect.logInfo("🔸 Clear block from BlocksDB...");
+              yield* BlocksDB.clearBlock(headerHash).pipe(
+                Effect.withSpan("clear-block-from-BlocksDB"),
+              );
+            }),
           )
-            // .map((u) => utxoToOutRefAndCBORArray(u)),
-            .pipe(Effect.withSpan(`confirmed-ledger-insert-${i}`));
-        }
-        yield* Effect.logInfo("🔸 Clear block from BlocksDB...");
-        yield* BlocksDB.clearBlock(headerHash).pipe(
-          Effect.withSpan("clear-block-from-BlocksDB"),
-        );
-      });
+          .pipe(
+            sqlErrorToDatabaseError(
+              "confirmed_merge_finalization",
+              "Failed to finalize confirmed-state merge locally",
+            ),
+          );
+        yield* MutationJobsDB.markCompleted(jobId);
+      }).pipe(
+        Effect.tapError((error) =>
+          MutationJobsDB.markFailed(
+            `confirmed_merge_finalization:${headerHash.toString("hex")}`,
+            formatUnknownError(error),
+          ).pipe(Effect.catchAll(() => Effect.void)),
+        ),
+      );
       yield* finalizeLocalMergeProgram.pipe(
         Effect.tapError((error) =>
           Effect.gen(function* () {
@@ -1438,6 +1507,9 @@ export const buildAndSubmitMergeTx = (
       yield* Metric.increment(mergeBlockCounter).pipe(
         Effect.withSpan("increment-merge-block-counter"),
       );
+      yield* mergeDurationTimer(
+        Effect.succeed(Duration.millis(Date.now() - mergeStartedAt)),
+      );
 
       yield* Ref.update(globals.BLOCKS_IN_QUEUE, (n) => Math.max(0, n - 1));
       yield* emitQueueStateMetrics;
@@ -1449,6 +1521,9 @@ export const buildAndSubmitMergeTx = (
       );
       yield* emitQueueStateMetrics;
       yield* Effect.logInfo("🔸 No blocks found in queue.");
+      yield* mergeDurationTimer(
+        Effect.succeed(Duration.millis(Date.now() - mergeStartedAt)),
+      );
       return;
     }
   });

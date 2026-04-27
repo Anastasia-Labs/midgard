@@ -76,11 +76,14 @@ const pendingRecordRequiresLocalFinalizationRecovery = (
   record: PendingBlockFinalizationsDB.Record,
 ): boolean => {
   const status = record[PendingBlockFinalizationsDB.Columns.STATUS];
+  const hasLocalPayloadMembers =
+    record.depositEventIds.length > 0 || record.mempoolTxIds.length > 0;
   return (
-    status === PendingBlockFinalizationsDB.Status.PendingSubmission ||
-    status ===
-      PendingBlockFinalizationsDB.Status.SubmittedLocalFinalizationPending ||
-    status === PendingBlockFinalizationsDB.Status.ObservedWaitingStability
+    hasLocalPayloadMembers &&
+    (status === PendingBlockFinalizationsDB.Status.PendingSubmission ||
+      status ===
+        PendingBlockFinalizationsDB.Status.SubmittedLocalFinalizationPending ||
+      status === PendingBlockFinalizationsDB.Status.ObservedWaitingStability)
   );
 };
 

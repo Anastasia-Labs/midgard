@@ -46,9 +46,16 @@ type NodeConfigDep = {
   RUN_GENESIS_ON_STARTUP: boolean;
   ADMIN_API_KEY: string;
   MAX_SUBMIT_QUEUE_SIZE: number;
+  MAX_DURABLE_ADMISSION_BACKLOG: number;
   MAX_SUBMIT_TX_CBOR_BYTES: number;
   READINESS_MAX_HEARTBEAT_AGE_MS: number;
   READINESS_MAX_QUEUE_DEPTH: number;
+  READINESS_MAX_DURABLE_ADMISSION_BACKLOG: number;
+  READINESS_MAX_DURABLE_ADMISSION_AGE_MS: number;
+  VALIDATION_LEASE_MS: number;
+  VALIDATION_RETRY_BACKOFF_BASE_MS: number;
+  VALIDATION_RETRY_BACKOFF_MAX_MS: number;
+  VALIDATION_EXPIRED_LEASE_READINESS_THRESHOLD: number;
   RETENTION_DAYS: number;
   WAIT_BETWEEN_RETENTION_SWEEPS: number;
   HUB_ORACLE_ONE_SHOT_TX_HASH: string;
@@ -99,9 +106,12 @@ const makeConfig = Effect.gen(function* () {
   const configuredReferenceScriptAddress = yield* Config.string(
     "L1_REFERENCE_SCRIPT_ADDRESS",
   ).pipe(Config.withDefault(""));
-  const derivedReferenceScriptAddress = walletFromSeed(referenceScriptSeedPhrase, {
-    network,
-  }).address;
+  const derivedReferenceScriptAddress = walletFromSeed(
+    referenceScriptSeedPhrase,
+    {
+      network,
+    },
+  ).address;
   const referenceScriptAddress =
     configuredReferenceScriptAddress.trim().length > 0
       ? configuredReferenceScriptAddress.trim()
@@ -163,6 +173,9 @@ const makeConfig = Effect.gen(function* () {
   const maxSubmitQueueSize = yield* Config.integer(
     "MAX_SUBMIT_QUEUE_SIZE",
   ).pipe(Config.withDefault(10_000));
+  const maxDurableAdmissionBacklog = yield* Config.integer(
+    "MAX_DURABLE_ADMISSION_BACKLOG",
+  ).pipe(Config.withDefault(maxSubmitQueueSize));
   const maxSubmitTxCborBytes = yield* Config.integer(
     "MAX_SUBMIT_TX_CBOR_BYTES",
   ).pipe(Config.withDefault(32_768));
@@ -172,6 +185,24 @@ const makeConfig = Effect.gen(function* () {
   const readinessMaxQueueDepth = yield* Config.integer(
     "READINESS_MAX_QUEUE_DEPTH",
   ).pipe(Config.withDefault(maxSubmitQueueSize));
+  const readinessMaxDurableAdmissionBacklog = yield* Config.integer(
+    "READINESS_MAX_DURABLE_ADMISSION_BACKLOG",
+  ).pipe(Config.withDefault(readinessMaxQueueDepth));
+  const readinessMaxDurableAdmissionAgeMs = yield* Config.integer(
+    "READINESS_MAX_DURABLE_ADMISSION_AGE_MS",
+  ).pipe(Config.withDefault(120_000));
+  const validationLeaseMs = yield* Config.integer("VALIDATION_LEASE_MS").pipe(
+    Config.withDefault(30_000),
+  );
+  const validationRetryBackoffBaseMs = yield* Config.integer(
+    "VALIDATION_RETRY_BACKOFF_BASE_MS",
+  ).pipe(Config.withDefault(250));
+  const validationRetryBackoffMaxMs = yield* Config.integer(
+    "VALIDATION_RETRY_BACKOFF_MAX_MS",
+  ).pipe(Config.withDefault(10_000));
+  const validationExpiredLeaseReadinessThreshold = yield* Config.integer(
+    "VALIDATION_EXPIRED_LEASE_READINESS_THRESHOLD",
+  ).pipe(Config.withDefault(1));
   const retentionDays = yield* Config.integer("RETENTION_DAYS").pipe(
     Config.withDefault(0),
   );
@@ -324,9 +355,18 @@ const makeConfig = Effect.gen(function* () {
     RUN_GENESIS_ON_STARTUP: runGenesisOnStartup,
     ADMIN_API_KEY: adminApiKey,
     MAX_SUBMIT_QUEUE_SIZE: maxSubmitQueueSize,
+    MAX_DURABLE_ADMISSION_BACKLOG: maxDurableAdmissionBacklog,
     MAX_SUBMIT_TX_CBOR_BYTES: maxSubmitTxCborBytes,
     READINESS_MAX_HEARTBEAT_AGE_MS: readinessMaxHeartbeatAgeMs,
     READINESS_MAX_QUEUE_DEPTH: readinessMaxQueueDepth,
+    READINESS_MAX_DURABLE_ADMISSION_BACKLOG:
+      readinessMaxDurableAdmissionBacklog,
+    READINESS_MAX_DURABLE_ADMISSION_AGE_MS: readinessMaxDurableAdmissionAgeMs,
+    VALIDATION_LEASE_MS: validationLeaseMs,
+    VALIDATION_RETRY_BACKOFF_BASE_MS: validationRetryBackoffBaseMs,
+    VALIDATION_RETRY_BACKOFF_MAX_MS: validationRetryBackoffMaxMs,
+    VALIDATION_EXPIRED_LEASE_READINESS_THRESHOLD:
+      validationExpiredLeaseReadinessThreshold,
     RETENTION_DAYS: retentionDays,
     WAIT_BETWEEN_RETENTION_SWEEPS: waitBetweenRetentionSweeps,
     HUB_ORACLE_ONE_SHOT_TX_HASH: hubOracleOneShotTxHash,

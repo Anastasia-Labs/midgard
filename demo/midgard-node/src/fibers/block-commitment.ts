@@ -1,5 +1,5 @@
 import { Globals } from "@/services/index.js";
-import { Effect, Ref, Schedule } from "effect";
+import { Duration, Effect, Ref, Schedule } from "effect";
 import { WorkerError } from "@/workers/utils/common.js";
 import {
   WorkerInput,
@@ -46,19 +46,26 @@ const commitBlockTxSizeGauge = Metric.gauge("commit_block_tx_size", {
   description: "A gauge for tracking the size of the commit block transaction",
 });
 
+const commitWorkerDurationTimer = Metric.timer(
+  "commit_worker_duration",
+  "Duration of one block commitment worker attempt in milliseconds",
+);
+
 /**
  * Launches one commitment worker, applies its result to global node state, and
  * updates the block-commitment metrics.
  */
 export const buildAndSubmitCommitmentBlockAction = () =>
   Effect.gen(function* () {
+    const workerStartedAt = Date.now();
     const globals = yield* Globals;
     const AVAILABLE_CONFIRMED_BLOCK = yield* globals.AVAILABLE_CONFIRMED_BLOCK;
     const AVAILABLE_LOCAL_FINALIZATION_BLOCK =
       yield* globals.AVAILABLE_LOCAL_FINALIZATION_BLOCK;
     const CURRENT_BLOCK_START_TIME_MS =
       yield* globals.LATEST_LOCAL_BLOCK_END_TIME_MS;
-    const LOCAL_FINALIZATION_PENDING = yield* globals.LOCAL_FINALIZATION_PENDING;
+    const LOCAL_FINALIZATION_PENDING =
+      yield* globals.LOCAL_FINALIZATION_PENDING;
     const PROCESSED_UNSUBMITTED_TXS_COUNT =
       yield* globals.PROCESSED_UNSUBMITTED_TXS_COUNT;
     const PROCESSED_UNSUBMITTED_TXS_SIZE =
@@ -129,6 +136,9 @@ export const buildAndSubmitCommitmentBlockAction = () =>
     });
 
     const workerOutput: WorkerOutput = yield* worker;
+    yield* commitWorkerDurationTimer(
+      Effect.succeed(Duration.millis(Date.now() - workerStartedAt)),
+    );
 
     switch (workerOutput.type) {
       case "SuccessfulSubmissionOutput": {
@@ -139,7 +149,10 @@ export const buildAndSubmitCommitmentBlockAction = () =>
           globals.UNCONFIRMED_SUBMITTED_BLOCK_TX_HASH,
           workerOutput.submittedTxHash,
         );
-        yield* Ref.set(globals.UNCONFIRMED_SUBMITTED_BLOCK_SINCE_MS, Date.now());
+        yield* Ref.set(
+          globals.UNCONFIRMED_SUBMITTED_BLOCK_SINCE_MS,
+          Date.now(),
+        );
         yield* Ref.set(
           globals.LATEST_LOCAL_BLOCK_END_TIME_MS,
           workerOutput.blockEndTimeMs,
@@ -169,7 +182,10 @@ export const buildAndSubmitCommitmentBlockAction = () =>
           globals.UNCONFIRMED_SUBMITTED_BLOCK_TX_HASH,
           workerOutput.submittedTxHash,
         );
-        yield* Ref.set(globals.UNCONFIRMED_SUBMITTED_BLOCK_SINCE_MS, Date.now());
+        yield* Ref.set(
+          globals.UNCONFIRMED_SUBMITTED_BLOCK_SINCE_MS,
+          Date.now(),
+        );
         yield* Ref.set(
           globals.LATEST_LOCAL_BLOCK_END_TIME_MS,
           workerOutput.blockEndTimeMs,
@@ -188,7 +204,10 @@ export const buildAndSubmitCommitmentBlockAction = () =>
           globals.UNCONFIRMED_SUBMITTED_BLOCK_TX_HASH,
           workerOutput.submittedTxHash,
         );
-        yield* Ref.set(globals.UNCONFIRMED_SUBMITTED_BLOCK_SINCE_MS, Date.now());
+        yield* Ref.set(
+          globals.UNCONFIRMED_SUBMITTED_BLOCK_SINCE_MS,
+          Date.now(),
+        );
         yield* Ref.set(
           globals.LATEST_LOCAL_BLOCK_END_TIME_MS,
           workerOutput.blockEndTimeMs,
@@ -241,8 +260,9 @@ export const blockCommitmentAction: Effect.Effect<void, WorkerError, Globals> =
     yield* Ref.set(globals.HEARTBEAT_BLOCK_COMMITMENT, Date.now());
     const RESET_IN_PROGRESS = yield* Ref.get(globals.RESET_IN_PROGRESS);
     if (!RESET_IN_PROGRESS) {
-      const acquired = yield* Ref.modify(globals.COMMIT_WORKER_ACTIVE, (active) =>
-        active ? [false, true] : [true, true],
+      const acquired = yield* Ref.modify(
+        globals.COMMIT_WORKER_ACTIVE,
+        (active) => (active ? [false, true] : [true, true]),
       );
       if (!acquired) {
         yield* Effect.logInfo(

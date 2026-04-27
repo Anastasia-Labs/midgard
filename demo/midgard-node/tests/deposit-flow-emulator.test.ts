@@ -26,13 +26,15 @@ import {
   ConfirmedLedgerDB,
   DepositsDB,
   ImmutableDB,
-  InitDB,
   LatestLedgerDB,
   MempoolDB,
   MempoolLedgerDB,
   MempoolTxDeltasDB,
+  MigrationRunner,
+  MutationJobsDB,
   PendingBlockFinalizationsDB,
   ProcessedMempoolDB,
+  TxAdmissionsDB,
   TxRejectionsDB,
   UserEventsUtils,
 } from "@/database/index.js";
@@ -324,6 +326,8 @@ const clearNodeTables = Effect.all(
     ImmutableDB.clear,
     PendingBlockFinalizationsDB.clear,
     TxRejectionsDB.clear,
+    CommonUtils.clearTable(TxAdmissionsDB.tableName),
+    CommonUtils.clearTable(MutationJobsDB.tableName),
     CommonUtils.clearTable(DepositsDB.tableName),
   ],
   { concurrency: "unbounded" },
@@ -343,7 +347,12 @@ const runNodeDatabaseEffect = <A, E>(
  * Initializes the runtime used by the deposit-flow emulator tests.
  */
 const initializeNodeRuntime = async () => {
-  await runNodeDatabaseEffect(InitDB.program);
+  await runNodeDatabaseEffect(
+    MigrationRunner.migrate({
+      appVersion: "test",
+      actor: "deposit-flow-emulator.test",
+    }),
+  );
   await runNodeDatabaseEffect(clearNodeTables);
 };
 

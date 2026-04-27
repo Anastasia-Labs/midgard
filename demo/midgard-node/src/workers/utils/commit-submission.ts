@@ -10,14 +10,19 @@ import {
   DepositsDB,
   ImmutableDB,
   MempoolDB,
+  MutationJobsDB,
   PendingBlockFinalizationsDB,
   ProcessedMempoolDB,
   TxUtils as TxTable,
 } from "@/database/index.js";
 import { Columns as TxColumns } from "@/database/utils/tx.js";
-import { DatabaseError } from "@/database/utils/common.js";
+import {
+  DatabaseError,
+  sqlErrorToDatabaseError,
+} from "@/database/utils/common.js";
 import { formatUnknownError } from "@/error-format.js";
 import { Lucid, type Database } from "@/services/index.js";
+import { SqlClient } from "@effect/sql";
 import type { TxSubmitError } from "@/transactions/utils.js";
 import { batchProgram, type FileSystemError } from "@/utils.js";
 import {
@@ -35,17 +40,52 @@ const BATCH_SIZE = 100;
 const SKIPPED_SUBMISSION_TRANSFER_RETRIES = 2;
 const SKIPPED_SUBMISSION_TRANSFER_INITIAL_BACKOFF = "250 millis";
 
+const localBlockFinalizationJobId = (headerHash: string): string =>
+  `local_block_finalization:${headerHash}`;
+
+const withLocalBlockFinalizationJob = <A, E, R>(
+  input: {
+    readonly headerHash: string;
+    readonly mempoolTxCount: number;
+    readonly includedDepositCount: number;
+  },
+  program: Effect.Effect<A, E, R>,
+): Effect.Effect<A, E | DatabaseError, R | Database> => {
+  const jobId = localBlockFinalizationJobId(input.headerHash);
+  return Effect.gen(function* () {
+    yield* MutationJobsDB.start({
+      jobId,
+      kind: MutationJobsDB.Kind.LocalBlockFinalization,
+      payload: {
+        headerHash: input.headerHash,
+        mempoolTxCount: input.mempoolTxCount,
+        includedDepositCount: input.includedDepositCount,
+      },
+    });
+    const result = yield* program;
+    yield* MutationJobsDB.markCompleted(jobId);
+    return result;
+  }).pipe(
+    Effect.tapError((error) =>
+      MutationJobsDB.markFailed(jobId, formatUnknownError(error)).pipe(
+        Effect.catchAll(() => Effect.void),
+      ),
+    ),
+    Effect.tapError((error) =>
+      Effect.logError(
+        `🔹 Local block finalization job failed (job=${jobId},error=${formatUnknownError(error)})`,
+      ),
+    ),
+  );
+};
+
 export const finalizeCommittedBlockLocally = (
   mempoolTrie: MidgardMpt,
   mempoolTxs: readonly TxTable.EntryWithTimeStamp[],
   mempoolTxHashes: Buffer[],
   includedDepositEventIds: readonly Buffer[],
   newHeaderHash: string,
-): Effect.Effect<
-  void,
-  DatabaseError | FileSystemError,
-  Database
-> =>
+): Effect.Effect<void, DatabaseError | FileSystemError, Database> =>
   Effect.gen(function* () {
     const filterAlreadyCommittedTxs = (
       candidateBatches: readonly SuccessfulCommitBatch[],
@@ -117,39 +157,42 @@ export const finalizeCommittedBlockLocally = (
     yield* Effect.logInfo(
       "🔹 Inserting included transactions into ImmutableDB and BlocksDB, clearing all the processed txs from MempoolDB and ProcessedMempoolDB, and deleting mempool LevelDB...",
     );
-    yield* Effect.all(
-      [
-        Effect.forEach(
-          filteredBatches,
-          (batch, i) => {
-            const clearMempoolProgram =
-              batch.clearMempoolTxHashes.length === 0
-                ? Effect.void
-                : MempoolDB.clearTxs([...batch.clearMempoolTxHashes]).pipe(
-                    Effect.withSpan(`mempool-db-clear-txs-batch-${i}`),
-                  );
-            return Effect.all(
-              [
-                ImmutableDB.insertTxsValidatedNative([
+    const sql = yield* SqlClient.SqlClient;
+    yield* sql
+      .withTransaction(
+        Effect.gen(function* () {
+          yield* Effect.forEach(
+            filteredBatches,
+            (batch, i) =>
+              Effect.gen(function* () {
+                const clearMempoolProgram =
+                  batch.clearMempoolTxHashes.length === 0
+                    ? Effect.void
+                    : MempoolDB.clearTxs([...batch.clearMempoolTxHashes]).pipe(
+                        Effect.withSpan(`mempool-db-clear-txs-batch-${i}`),
+                      );
+                yield* ImmutableDB.insertTxsValidatedNative([
                   ...batch.txsToInsertImmutable,
-                ]).pipe(Effect.withSpan(`immutable-db-insert-batch-${i}`)),
-                BlocksDB.insert(newHeaderHashBuffer, [
+                ]).pipe(Effect.withSpan(`immutable-db-insert-batch-${i}`));
+                yield* BlocksDB.insert(newHeaderHashBuffer, [
                   ...batch.blockTxHashes,
-                ]).pipe(Effect.withSpan(`blocks-db-insert-batch-${i}`)),
-                clearMempoolProgram,
-              ],
-              { concurrency: "unbounded" },
-            );
-          },
-          {
-            concurrency: "unbounded",
-          },
+                ]).pipe(Effect.withSpan(`blocks-db-insert-batch-${i}`));
+                yield* clearMempoolProgram;
+              }),
+            {
+              concurrency: 1,
+            },
+          );
+          yield* ProcessedMempoolDB.clear;
+        }),
+      )
+      .pipe(
+        sqlErrorToDatabaseError(
+          "local_block_finalization",
+          "Failed to finalize committed block locally",
         ),
-        ProcessedMempoolDB.clear,
-        mempoolTrie.delete(),
-      ],
-      { concurrency: "unbounded" },
-    );
+      );
+    yield* mempoolTrie.delete();
   }).pipe(
     Effect.tapError((error) =>
       Effect.gen(function* () {
@@ -172,33 +215,40 @@ export const successfulSubmissionProgram = (
   txHash: string,
   blockEndTimeMs: number,
 ): Effect.Effect<WorkerOutput, DatabaseError | FileSystemError, Database> =>
-  Effect.gen(function* () {
-    yield* finalizeCommittedBlockLocally(
-      mempoolTrie,
-      mempoolTxs,
-      mempoolTxHashes,
-      includedDepositEventIds,
-      newHeaderHash,
-    );
-    yield* DepositsDB.markProjectedByEventIds(
-      includedDepositEventIds,
-      Buffer.from(fromHex(newHeaderHash)),
-    );
-    yield* PendingBlockFinalizationsDB.markLocalFinalizationComplete(
-      Buffer.from(fromHex(newHeaderHash)),
-    );
+  withLocalBlockFinalizationJob(
+    {
+      headerHash: newHeaderHash,
+      mempoolTxCount: mempoolTxs.length,
+      includedDepositCount: includedDepositEventIds.length,
+    },
+    Effect.gen(function* () {
+      yield* finalizeCommittedBlockLocally(
+        mempoolTrie,
+        mempoolTxs,
+        mempoolTxHashes,
+        includedDepositEventIds,
+        newHeaderHash,
+      );
+      yield* DepositsDB.markProjectedByEventIds(
+        includedDepositEventIds,
+        Buffer.from(fromHex(newHeaderHash)),
+      );
+      yield* PendingBlockFinalizationsDB.markLocalFinalizationComplete(
+        Buffer.from(fromHex(newHeaderHash)),
+      );
 
-    return {
-      type: "SuccessfulSubmissionOutput",
-      submittedTxHash: txHash,
-      txSize,
-      mempoolTxsCount:
-        mempoolTxs.length + workerInput.data.mempoolTxsCountSoFar,
-      sizeOfBlocksTxs:
-        sizeOfProcessedTxs + workerInput.data.sizeOfProcessedTxsSoFar,
-      blockEndTimeMs,
-    };
-  });
+      return {
+        type: "SuccessfulSubmissionOutput",
+        submittedTxHash: txHash,
+        txSize,
+        mempoolTxsCount:
+          mempoolTxs.length + workerInput.data.mempoolTxsCountSoFar,
+        sizeOfBlocksTxs:
+          sizeOfProcessedTxs + workerInput.data.sizeOfProcessedTxsSoFar,
+        blockEndTimeMs,
+      };
+    }),
+  );
 
 export const successfulLocalFinalizationRecoveryProgram = (
   mempoolTrie: MidgardMpt,
@@ -209,25 +259,32 @@ export const successfulLocalFinalizationRecoveryProgram = (
   workerInput: WorkerInput,
   sizeOfProcessedTxs: number,
 ): Effect.Effect<WorkerOutput, DatabaseError | FileSystemError, Database> =>
-  Effect.gen(function* () {
-    yield* finalizeCommittedBlockLocally(
-      mempoolTrie,
-      mempoolTxs,
-      mempoolTxHashes,
-      includedDepositEventIds,
-      confirmedHeaderHash,
-    );
-    yield* PendingBlockFinalizationsDB.markFinalized(
-      Buffer.from(fromHex(confirmedHeaderHash)),
-    );
-    return {
-      type: "SuccessfulLocalFinalizationRecoveryOutput",
-      mempoolTxsCount:
-        mempoolTxs.length + workerInput.data.mempoolTxsCountSoFar,
-      sizeOfBlocksTxs:
-        sizeOfProcessedTxs + workerInput.data.sizeOfProcessedTxsSoFar,
-    };
-  });
+  withLocalBlockFinalizationJob(
+    {
+      headerHash: confirmedHeaderHash,
+      mempoolTxCount: mempoolTxs.length,
+      includedDepositCount: includedDepositEventIds.length,
+    },
+    Effect.gen(function* () {
+      yield* finalizeCommittedBlockLocally(
+        mempoolTrie,
+        mempoolTxs,
+        mempoolTxHashes,
+        includedDepositEventIds,
+        confirmedHeaderHash,
+      );
+      yield* PendingBlockFinalizationsDB.markFinalized(
+        Buffer.from(fromHex(confirmedHeaderHash)),
+      );
+      return {
+        type: "SuccessfulLocalFinalizationRecoveryOutput",
+        mempoolTxsCount:
+          mempoolTxs.length + workerInput.data.mempoolTxsCountSoFar,
+        sizeOfBlocksTxs:
+          sizeOfProcessedTxs + workerInput.data.sizeOfProcessedTxsSoFar,
+      };
+    }),
+  );
 
 export const skippedSubmissionProgram = (
   mempoolTxs: readonly TxTable.EntryWithTimeStamp[],

@@ -396,6 +396,39 @@ export const markObservedWaitingStability = (
     ),
   );
 
+export const reviveAbandonedCanonical = (
+  headerHash: Buffer,
+  observedConfirmedAtMs: bigint,
+): Effect.Effect<void, DatabaseError, Database> =>
+  Effect.gen(function* () {
+    const sql = yield* SqlClient.SqlClient;
+    const rows = yield* sql<Row>`UPDATE ${sql(tableName)}
+      SET ${sql(Columns.STATUS)} = ${Status.ObservedWaitingStability},
+          ${sql(Columns.OBSERVED_CONFIRMED_AT_MS)} = COALESCE(
+            ${sql(Columns.OBSERVED_CONFIRMED_AT_MS)},
+            ${observedConfirmedAtMs}
+          ),
+          ${sql(Columns.UPDATED_AT)} = NOW()
+      WHERE ${sql(Columns.HEADER_HASH)} = ${headerHash}
+        AND ${sql(Columns.STATUS)} = ${Status.Abandoned}
+      RETURNING *`;
+    if (rows.length !== 1) {
+      return yield* Effect.fail(
+        new DatabaseError({
+          table: tableName,
+          message: "Failed to revive abandoned canonical pending block journal",
+          cause: `header_hash=${headerHash.toString("hex")}`,
+        }),
+      );
+    }
+  }).pipe(
+    Effect.withLogSpan(`reviveAbandonedCanonical ${tableName}`),
+    sqlErrorToDatabaseError(
+      tableName,
+      "Failed to revive abandoned canonical pending block journal",
+    ),
+  );
+
 export const markFinalized = (
   headerHash: Buffer,
 ): Effect.Effect<void, DatabaseError, Database> =>

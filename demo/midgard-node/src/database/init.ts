@@ -1,60 +1,23 @@
-import { SqlClient, SqlError } from "@effect/sql";
-import * as BlocksDB from "./blocks.js";
-import * as ConfirmedLedgerDB from "./confirmedLedger.js";
-import * as ImmutableDB from "./immutable.js";
-import * as LatestLedgerDB from "./latestLedger.js";
-import * as MempoolDB from "./mempool.js";
-import * as ProcessedMempoolDB from "./processedMempool.js";
-import * as MempoolLedgerDB from "./mempoolLedger.js";
-import * as MempoolTxDeltasDB from "./mempoolTxDeltas.js";
-import * as TxRejectionsDB from "./txRejections.js";
-import * as DepositIngestionCursorDB from "./depositIngestionCursor.js";
-import * as PendingBlockFinalizationsDB from "./pendingBlockFinalizations.js";
-import * as Tx from "@/database/utils/tx.js";
-import * as Ledger from "@/database/utils/ledger.js";
-import * as DepositsDB from "@/database/deposits.js";
-import * as AddressHistory from "@/database/addressHistory.js";
+import * as MigrationRunner from "@/database/migrations/runner.js";
 import { Effect } from "effect";
-import { Database, NodeConfig } from "@/services/index.js";
+import { Database } from "@/services/index.js";
 import { DatabaseError } from "./utils/common.js";
 
-export const program: Effect.Effect<
-  void,
-  DatabaseError,
-  Database | NodeConfig
-> = Effect.gen(function* () {
-  const sql = yield* SqlClient.SqlClient;
-  // yield* sql`SET default_transaction_read_only TO 'off'`;
-  yield* sql`SET client_min_messages = 'error'`;
-  yield* sql`SET default_transaction_isolation TO 'serializable'`;
-
-  yield* AddressHistory.createTable;
-  yield* BlocksDB.createTable;
-  yield* Ledger.createTable(ConfirmedLedgerDB.tableName);
-  yield* Ledger.createTable(LatestLedgerDB.tableName);
-  yield* DepositsDB.createTable;
-  yield* Tx.createTable(ImmutableDB.tableName);
-  yield* Tx.createTable(MempoolDB.tableName);
-  yield* Tx.createTable(ProcessedMempoolDB.tableName);
-  yield* MempoolLedgerDB.createTable;
-  yield* MempoolTxDeltasDB.createTable;
-  yield* TxRejectionsDB.createTable;
-  yield* DepositIngestionCursorDB.createTable;
-  yield* PendingBlockFinalizationsDB.createTables;
-
-  yield* Effect.logInfo("PostgreSQL database initialized Successfully.");
-}).pipe(
-  Effect.mapError((error: unknown) =>
-    error instanceof SqlError.SqlError
-      ? new DatabaseError({
-          message: `Failed to initialize database`,
+/**
+ * Startup schema gate for the long-running node.
+ *
+ * Production startup must not create, alter, or repair application tables. The
+ * node only verifies that explicit migrations have already brought the database
+ * to the exact schema version supported by this binary.
+ */
+export const program: Effect.Effect<void, DatabaseError, Database> =
+  MigrationRunner.assertCompatible.pipe(
+    Effect.mapError(
+      (error) =>
+        new DatabaseError({
+          message: `Database schema is not compatible: ${error.message}`,
           cause: error,
-          table: "<n/a>",
-        })
-      : new DatabaseError({
-          message: `Unknown error during database initialization: ${error}`,
-          cause: error,
-          table: "<n/a>",
+          table: "<schema_migrations>",
         }),
-  ),
-);
+    ),
+  );

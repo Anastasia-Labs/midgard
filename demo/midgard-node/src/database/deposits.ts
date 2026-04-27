@@ -321,10 +321,7 @@ export const retrieveProjectedEntries = (): Effect.Effect<
       ORDER BY ${sql(Columns.INCLUSION_TIME)} ASC, ${sql(Columns.ID)} ASC`;
   }).pipe(
     Effect.withLogSpan(`retrieveProjectedEntries ${tableName}`),
-    sqlErrorToDatabaseError(
-      tableName,
-      "Failed to retrieve projected deposits",
-    ),
+    sqlErrorToDatabaseError(tableName, "Failed to retrieve projected deposits"),
   );
 
 export const markAwaitingAsProjected = (
@@ -646,6 +643,14 @@ export const pruneOlderThan = (
       tableName,
     )}
       WHERE ${sql(Columns.INCLUSION_TIME)} < ${cutoff}
+        AND ${sql(Columns.STATUS)} = ${Status.Consumed}
+        AND ${sql(Columns.PROJECTED_HEADER_HASH)} IS NOT NULL
+        AND NOT EXISTS (
+          SELECT 1 FROM ${sql("pending_block_finalization_deposits")} pending
+          WHERE pending.${sql("member_id")} = ${sql(tableName)}.${sql(
+            Columns.ID,
+          )}
+        )
       RETURNING ${sql(Columns.ID)}`;
     return deleted.length;
   }).pipe(

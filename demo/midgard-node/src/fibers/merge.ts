@@ -6,7 +6,11 @@ import {
   NodeConfig,
 } from "@/services/index.js";
 import { StateQueueTx } from "@/transactions/index.js";
-import { TxSignError, TxSubmitError } from "@/transactions/utils.js";
+import {
+  TxConfirmError,
+  TxSignError,
+  TxSubmitError,
+} from "@/transactions/utils.js";
 import * as SDK from "@al-ft/midgard-sdk";
 import { Effect, pipe, Ref, Schedule } from "effect";
 import { Database } from "@/services/index.js";
@@ -34,6 +38,7 @@ export const mergeAction = (
   | SDK.LucidError
   | SDK.StateQueueError
   | DatabaseError
+  | TxConfirmError
   | TxSubmitError
   | TxSignError,
   Lucid | MidgardContracts | Database | Globals | NodeConfig
@@ -41,6 +46,24 @@ export const mergeAction = (
   Effect.gen(function* () {
     const globals = yield* Globals;
     yield* Ref.set(globals.HEARTBEAT_MERGE, Date.now());
+    if (!force) {
+      const [unconfirmedSubmittedBlockTxHash, localFinalizationPending] =
+        yield* Effect.all(
+          [
+            Ref.get(globals.UNCONFIRMED_SUBMITTED_BLOCK_TX_HASH),
+            Ref.get(globals.LOCAL_FINALIZATION_PENDING),
+          ],
+          { concurrency: "unbounded" },
+        );
+      if (unconfirmedSubmittedBlockTxHash !== "" || localFinalizationPending) {
+        yield* Effect.logInfo(
+          `🔸 Skipping merge while block commitment is unresolved (submitted_tx=${
+            unconfirmedSubmittedBlockTxHash || "none"
+          },local_finalization_pending=${localFinalizationPending.toString()}).`,
+        );
+        return;
+      }
+    }
     const lucid = yield* Lucid;
     const contracts = yield* MidgardContracts;
     const { stateQueue: stateQueueAuthValidator } = contracts;

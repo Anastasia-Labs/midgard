@@ -98,6 +98,17 @@ quite easily.
    docker compose -f docker-compose.dev.yaml up -d
    ```
 
+   `docker compose up` starts PostgreSQL, runs the one-shot
+   `midgard-node-migrate` service with `node ./dist/index.js db:migrate`, and
+   starts `midgard-node` only after the migration service exits successfully.
+   On an empty Postgres volume this creates the Midgard schema before the node
+   begins listening. If migration fails, the node is not started; inspect the
+   migration logs with:
+
+   ```sh
+   docker compose logs midgard-node-migrate
+   ```
+
 7. To run against an in-stack local `Kupmios` provider backed by a Mithril
    bootstrap, start with the compose override:
 
@@ -106,7 +117,6 @@ quite easily.
    ```
 
    Notes:
-
    1. The first run restores a Mithril-certified Cardano DB snapshot into
       `./cardano/db` only when that directory is empty. Existing data is never
       overwritten implicitly.
@@ -352,13 +362,24 @@ node dist/index.js init \
 
 ## Valid Throughput Stress Test
 
-Run a high-throughput submitter that builds and submits **valid Midgard-native**
-transactions (parallel dependent chains), then prints submit/accept/reject rates
-from Prometheus metrics.
+Run a high-throughput benchmark runner that builds and submits **valid
+Midgard-native** transactions (parallel dependent chains), then reports
+submitted, accepted, committed, and merged rates from Prometheus metrics. The
+runner separates setup, fanout, prebuild, warmup, measured steady-state,
+cooldown, and drain verification so the reported average TPS excludes setup and
+drain time.
 
 ```sh
 cd midgard-node
 pnpm stress:valid
+```
+
+For stricter benchmark runs with client-capacity preflight enabled:
+
+```sh
+pnpm bench:l2:valid
+pnpm bench:l2:find-max
+pnpm bench:l2:profile
 ```
 
 Useful overrides:
@@ -366,16 +387,51 @@ Useful overrides:
 ```sh
 STRESS_CHAIN_LENGTH=500 \
 STRESS_MAX_CHAINS=6 \
+STRESS_MODE=open \
+STRESS_OPEN_LOOP_RATE_TPS=800 \
+STRESS_MEASURED_SEC=60 \
 STRESS_TARGET_ACCEPTED_TPS=600 \
 pnpm stress:valid
 ```
+
+Recommended run matrix:
+
+- `pnpm bench:l2:valid`: fixed-rate or closed-loop L2 admission run.
+- `pnpm bench:l2:find-max`: searches for the maximum sustainable accepted
+  L2 tx/s, then confirms the best candidate with repeat steady-state runs.
+- `STRESS_WAIT_FOR_COMMIT=true pnpm bench:l2:find-max`: commit-aware run that
+  reports committed tx/s separately from accepted tx/s.
+- `STRESS_WAIT_FOR_MERGE=true STRESS_WAIT_FOR_COMMIT=true pnpm bench:l2:find-max`:
+  end-to-end run that reports merge blocks/s. It does not report merged tx/s
+  until the node exposes a merged-transaction counter.
+- `pnpm bench:l2:profile`: profiling run with Node CPU/heap profiles. Enable
+  `STRESS_PG_STAT_STATEMENTS=true` and `STRESS_PYROSCOPE=true` when those
+  services are available.
 
 Notes:
 
 - This script reads `TESTNET_GENESIS_WALLET_SEED_PHRASE_A/B/C` from `.env`.
 - It uses `/utxos` to pick spendable UTxOs and submits to `/submit`.
-- It reports counters from `validation_accept_count_total`,
-  `validation_reject_count_total`, and `tx_count_total`.
+- It uses pooled Undici HTTP clients and supports `STRESS_MODE=closed`,
+  `STRESS_MODE=open`, `STRESS_MODE=ramp`, and `STRESS_MODE=find-max`.
+- `STRESS_MODE=find-max` is a candidate search, not a ramp average. It records
+  each candidate's pass/fail reasons and reports one
+  `maxSustainableAcceptedTxPerSec` only after confirmation repeats pass.
+- Measured submit stages do not retry `429`/`503` by default
+  (`STRESS_MEASURED_RETRY_503=0`). Queue-full responses are treated as ingress
+  saturation evidence.
+- For trustworthy deltas, run against a dedicated or demonstrably idle node.
+  The runner enforces this by default with `STRESS_REQUIRE_IDLE_NODE=true`
+  because Prometheus counters are global.
+- It reports fixed 1s/5s/30s rolling rates, measured-window average TPS,
+  submit/status latency percentiles, runtime event-loop stats, and a likely
+  bottleneck classification.
+- Rate names are explicit: physical submit attempts/s, queued submit
+  successes/s, accepted tx/s, committed tx/s, and merge blocks/s.
+- It writes a JSON artifact to `benchmark-results/l2-throughput-*.json` unless
+  `STRESS_REPORT_PATH` is provided. The artifact includes git/runtime metadata,
+  candidate evaluations, pass/fail reasons, and the metric evidence used for
+  bottleneck classification.
 
 ## Nominal Sustained Activity Test
 

@@ -15,7 +15,6 @@ export const ADMIN_ROUTE_PATHS: ReadonlySet<string> = new Set([
   "/init",
   "/commit",
   "/merge",
-  "/reset",
   "/stateQueue",
   "/logBlocksDB",
   "/logGlobals",

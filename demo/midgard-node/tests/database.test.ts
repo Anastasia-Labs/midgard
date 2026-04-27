@@ -9,7 +9,7 @@ import * as SDK from "@al-ft/midgard-sdk";
 import { Database } from "../src/services/database.js";
 import { Globals } from "../src/services/globals.js";
 import { NodeConfig } from "../src/services/config.js";
-import * as InitDB from "../src/database/init.js";
+import * as MigrationRunner from "../src/database/migrations/runner.js";
 import {
   // Block
   BlocksDB,
@@ -29,8 +29,11 @@ import {
   DepositsDB,
   DepositIngestionCursorDB,
   PendingBlockFinalizationsDB,
+  MutationJobsDB,
+  TxAdmissionsDB,
 
   // Utils
+  CommonUtils,
   TxUtils,
   LedgerUtils,
 } from "../src/database/index.js";
@@ -62,6 +65,8 @@ const flushAll = Effect.gen(function* () {
       DepositsDB.clear,
       DepositIngestionCursorDB.clear,
       PendingBlockFinalizationsDB.clear,
+      CommonUtils.clearTable(TxAdmissionsDB.tableName),
+      CommonUtils.clearTable(MutationJobsDB.tableName),
     ],
     { discard: true },
   );
@@ -82,7 +87,10 @@ beforeAll(async () => {
         yield* sql`
           DROP SCHEMA public CASCADE;
           CREATE SCHEMA public;`;
-        yield* InitDB.program;
+        yield* MigrationRunner.migrate({
+          appVersion: "test",
+          actor: "database.test",
+        });
         yield* flushAll;
       }),
     ),

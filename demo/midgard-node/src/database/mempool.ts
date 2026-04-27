@@ -17,9 +17,7 @@ import * as Ledger from "@/database/utils/ledger.js";
 
 export const tableName = "mempool";
 
-const toTxDelta = (
-  processedTx: ProcessedTx,
-): MempoolTxDeltasDB.TxDelta => ({
+const toTxDelta = (processedTx: ProcessedTx): MempoolTxDeltasDB.TxDelta => ({
   txId: processedTx.txId,
   spent: processedTx.spent.map((outRef) => Buffer.from(outRef)),
   produced: processedTx.produced.map((entry) => ({
@@ -32,25 +30,32 @@ export const insert = (
   processedTx: ProcessedTx,
 ): Effect.Effect<void, DatabaseError, Database> =>
   Effect.gen(function* () {
+    const sql = yield* SqlClient.SqlClient;
     const { txId, txCbor, spent, produced } = processedTx;
-    // Insert the tx itself in `MempoolDB`.
-    yield* Tx.insertEntry(tableName, {
-      tx_id: txId,
-      tx: txCbor,
-    });
-    // Insert produced UTxOs in `MempoolLedgerDB`.
-    yield* MempoolLedgerDB.insert(produced);
-    yield* MempoolTxDeltasDB.upsertMany([toTxDelta(processedTx)]);
-    // Remove spent inputs from MempoolLedgerDB.
-    const consumedDepositEventIds = yield* MempoolLedgerDB.clearUTxOs(spent);
-    yield* DepositsDB.markConsumedByEventIds(consumedDepositEventIds);
-    // Add handled addresses to the lookup table
-    yield* AddressHistoryDB.insert(spent, produced);
+    yield* sql.withTransaction(
+      Effect.gen(function* () {
+        // Insert the tx itself in `MempoolDB`.
+        yield* Tx.insertEntry(tableName, {
+          tx_id: txId,
+          tx: txCbor,
+        });
+        // Insert produced UTxOs in `MempoolLedgerDB`.
+        yield* MempoolLedgerDB.insert(produced);
+        yield* MempoolTxDeltasDB.upsertMany([toTxDelta(processedTx)]);
+        // Remove spent inputs from MempoolLedgerDB.
+        const consumedDepositEventIds =
+          yield* MempoolLedgerDB.clearUTxOs(spent);
+        yield* DepositsDB.markConsumedByEventIds(consumedDepositEventIds);
+        // Add handled addresses to the lookup table
+        yield* AddressHistoryDB.insert(spent, produced);
+      }),
+    );
   }).pipe(
     Effect.withLogSpan(`insert ${tableName}`),
     Effect.tapError((e) =>
       Effect.logError(`${tableName} db: insert: ${JSON.stringify(e)}`),
     ),
+    sqlErrorToDatabaseError(tableName, "Failed to insert mempool transaction"),
   );
 
 export const insertMultiple = (
@@ -60,34 +65,41 @@ export const insertMultiple = (
     if (processedTxs.length === 0) {
       return;
     }
+    const sql = yield* SqlClient.SqlClient;
     const txEntries = processedTxs.map((v) => ({
       tx_id: v.txId,
       tx: v.txCbor,
     }));
-    // Insert the tx itself in `MempoolDB`.
-    yield* Tx.insertEntries(tableName, txEntries);
+    yield* sql.withTransaction(
+      Effect.gen(function* () {
+        // Insert the tx itself in `MempoolDB`.
+        yield* Tx.insertEntries(tableName, txEntries);
 
-    const initAcc: { allProduced: Ledger.Entry[]; allSpent: Buffer[] } = {
-      allProduced: [],
-      allSpent: [],
-    };
-    const { allProduced, allSpent } = processedTxs.reduce((acc, v) => {
-      acc.allProduced.push(...v.produced);
-      acc.allSpent.push(...v.spent);
-      return acc;
-    }, initAcc);
+        const initAcc: { allProduced: Ledger.Entry[]; allSpent: Buffer[] } = {
+          allProduced: [],
+          allSpent: [],
+        };
+        const { allProduced, allSpent } = processedTxs.reduce((acc, v) => {
+          acc.allProduced.push(...v.produced);
+          acc.allSpent.push(...v.spent);
+          return acc;
+        }, initAcc);
 
-    // Insert produced UTxOs in `MempoolLedgerDB`.
-    yield* MempoolLedgerDB.insert(allProduced);
-    yield* MempoolTxDeltasDB.upsertMany(processedTxs.map(toTxDelta));
-    // Remove spent inputs from MempoolLedgerDB.
-    const consumedDepositEventIds = yield* MempoolLedgerDB.clearUTxOs(allSpent);
-    yield* DepositsDB.markConsumedByEventIds(consumedDepositEventIds);
-    // Update AddressHistoryDB
-    yield* AddressHistoryDB.insert(allSpent, allProduced);
+        // Insert produced UTxOs in `MempoolLedgerDB`.
+        yield* MempoolLedgerDB.insert(allProduced);
+        yield* MempoolTxDeltasDB.upsertMany(processedTxs.map(toTxDelta));
+        // Remove spent inputs from MempoolLedgerDB.
+        const consumedDepositEventIds =
+          yield* MempoolLedgerDB.clearUTxOs(allSpent);
+        yield* DepositsDB.markConsumedByEventIds(consumedDepositEventIds);
+        // Update AddressHistoryDB
+        yield* AddressHistoryDB.insert(allSpent, allProduced);
+      }),
+    );
   }).pipe(
     Effect.withLogSpan(`insert ${tableName}`),
     Effect.tapError((e) => Effect.logError(`${tableName} db: insert: ${e}`)),
+    sqlErrorToDatabaseError(tableName, "Failed to insert mempool transactions"),
   );
 
 /**
@@ -131,8 +143,9 @@ export const clearTxs = (
     yield* MempoolTxDeltasDB.clearTxs(txHashes);
   });
 
-export const clear: Effect.Effect<void, DatabaseError, Database> =
-  Effect.gen(function* () {
+export const clear: Effect.Effect<void, DatabaseError, Database> = Effect.gen(
+  function* () {
     yield* clearTable(tableName);
     yield* MempoolTxDeltasDB.clear;
-  });
+  },
+);

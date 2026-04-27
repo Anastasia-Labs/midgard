@@ -81,9 +81,7 @@ const STATE_QUEUE_HEADER_NODE_LOVELACE = 5_000_000n;
 const ACTIVE_OPERATOR_MATURITY_DURATION_MS = 30n;
 const COMMIT_STALE_OPERATOR_WALLET_VIEW_RETRIES = 1;
 
-const decodeActiveOperatorDatum = (
-  data: unknown,
-): SDK.ActiveOperatorDatum =>
+const decodeActiveOperatorDatum = (data: unknown): SDK.ActiveOperatorDatum =>
   LucidData.castFrom(
     data as never,
     SDK.ActiveOperatorDatum as never,
@@ -359,8 +357,7 @@ const buildUnsignedTx = (
     };
     const appendedNodeDatumCbor =
       SDK.encodeLinkedListNodeView(appendedNodeDatum);
-    const updatedNodeDatumCbor =
-      SDK.encodeLinkedListNodeView(updatedNodeDatum);
+    const updatedNodeDatumCbor = SDK.encodeLinkedListNodeView(updatedNodeDatum);
     const updatedActiveOperatorDatumCbor = yield* Effect.try({
       try: () => {
         const activeOperatorLinkedListDatum = LucidData.from(
@@ -380,7 +377,9 @@ const buildUnsignedTx = (
           data: SDK.castActiveOperatorDatumToData({
             ...activeOperatorDatum,
             bond_unlock_time:
-              BigInt(alignedEndTime) - 1n + ACTIVE_OPERATOR_MATURITY_DURATION_MS,
+              BigInt(alignedEndTime) -
+              1n +
+              ACTIVE_OPERATOR_MATURITY_DURATION_MS,
           }) as SDK.LinkedListNodeView["data"],
         };
         return SDK.encodeLinkedListNodeView(updatedActiveOperatorNodeDatum);
@@ -441,6 +440,7 @@ const buildUnsignedTx = (
 
     return {
       newHeaderHash,
+      blockEndTimeMs: alignedEndTime,
       signAndSubmitProgram,
       txSize,
     };
@@ -507,6 +507,7 @@ const submitDepositOnlyCommit = ({
     const submittedAwaitingConfirmationOutput = (
       submittedTxHash: string,
       txSize: number,
+      blockEndTimeMs: number,
     ) =>
       Effect.succeed({
         type: "SubmittedAwaitingConfirmationOutput",
@@ -514,7 +515,7 @@ const submitDepositOnlyCommit = ({
         txSize,
         mempoolTxsCount: workerInput.data.mempoolTxsCountSoFar,
         sizeOfBlocksTxs: workerInput.data.sizeOfProcessedTxsSoFar,
-        blockEndTimeMs: endTime.getTime(),
+        blockEndTimeMs,
       } satisfies WorkerOutput);
     const emptyRoot = yield* emptyRootHexProgram;
     const roots = selectCommitRoots({
@@ -523,7 +524,7 @@ const submitDepositOnlyCommit = ({
       computedTxRoot: txRoot,
       emptyRoot,
     });
-    const { newHeaderHash, signAndSubmitProgram, txSize } =
+    const { newHeaderHash, blockEndTimeMs, signAndSubmitProgram, txSize } =
       yield* buildUnsignedTx(
         contracts,
         latestBlock,
@@ -535,7 +536,7 @@ const submitDepositOnlyCommit = ({
     const headerHashBuffer = Buffer.from(fromHex(newHeaderHash));
     yield* PendingBlockFinalizationsDB.preparePendingSubmission({
       headerHash: headerHashBuffer,
-      blockEndTime: endTime,
+      blockEndTime: new Date(blockEndTimeMs),
       depositEventIds: includedDepositEventIds,
       mempoolTxIds: [],
     });
@@ -560,7 +561,9 @@ const submitDepositOnlyCommit = ({
           headerHashBuffer,
           Buffer.from(fromHex(txHash)),
         ).pipe(
-          Effect.andThen(submittedAwaitingConfirmationOutput(txHash, txSize)),
+          Effect.andThen(
+            submittedAwaitingConfirmationOutput(txHash, txSize, blockEndTimeMs),
+          ),
         ),
     });
   });
@@ -599,10 +602,10 @@ const submitTxBackedCommit = ({
       ? optDepositsRoot.value
       : yield* emptyRootHexProgram;
     const currentBlockMempoolTxsCount = processedMempoolTxs.length;
-    const blockEndTimeMs = endTime.getTime();
     const submittedAwaitingConfirmationOutput = (
       submittedTxHash: string,
       txSize: number,
+      blockEndTimeMs: number,
     ) =>
       Effect.succeed({
         type: "SubmittedAwaitingConfirmationOutput",
@@ -632,100 +635,107 @@ const submitTxBackedCommit = ({
         endTime,
         initialOperatorWalletView,
       ).pipe(
-        Effect.flatMap(({ newHeaderHash, signAndSubmitProgram, txSize }) => {
-          const headerHashBuffer = Buffer.from(fromHex(newHeaderHash));
-          return PendingBlockFinalizationsDB.preparePendingSubmission({
-            headerHash: headerHashBuffer,
-            blockEndTime: endTime,
-            depositEventIds: includedDepositEventIds,
-            mempoolTxIds: processedMempoolTxs.map(
-              (entry) => entry[TxColumns.TX_ID],
-            ),
-          }).pipe(
-            Effect.andThen(
-              Effect.matchEffect(signAndSubmitProgram, {
-                onFailure: (error) => {
-                  if (error instanceof TxSignError) {
+        Effect.flatMap(
+          ({ newHeaderHash, blockEndTimeMs, signAndSubmitProgram, txSize }) => {
+            const headerHashBuffer = Buffer.from(fromHex(newHeaderHash));
+            return PendingBlockFinalizationsDB.preparePendingSubmission({
+              headerHash: headerHashBuffer,
+              blockEndTime: new Date(blockEndTimeMs),
+              depositEventIds: includedDepositEventIds,
+              mempoolTxIds: processedMempoolTxs.map(
+                (entry) => entry[TxColumns.TX_ID],
+              ),
+            }).pipe(
+              Effect.andThen(
+                Effect.matchEffect(signAndSubmitProgram, {
+                  onFailure: (error) => {
+                    if (error instanceof TxSignError) {
+                      return Effect.gen(function* () {
+                        yield* PendingBlockFinalizationsDB.markAbandoned(
+                          headerHashBuffer,
+                        ).pipe(Effect.catchAll(() => Effect.void));
+                        const detail = formatUnknownError(error);
+                        yield* Effect.logError(
+                          `🔹 Commit signing failed: ${detail}`,
+                        );
+                        return {
+                          type: "FailureOutput",
+                          error: `Commit signing failed: ${detail}`,
+                        } satisfies WorkerOutput;
+                      });
+                    }
+
                     return Effect.gen(function* () {
+                      const recoveredTxHash =
+                        yield* recoverSubmittedTxHashByHeaderProgram(
+                          contracts.stateQueue,
+                          newHeaderHash,
+                        );
+                      if (Option.isSome(recoveredTxHash)) {
+                        return yield* PendingBlockFinalizationsDB.markSubmitted(
+                          headerHashBuffer,
+                          Buffer.from(fromHex(recoveredTxHash.value)),
+                        ).pipe(
+                          Effect.andThen(
+                            submittedAwaitingConfirmationOutput(
+                              recoveredTxHash.value,
+                              txSize,
+                              blockEndTimeMs,
+                            ),
+                          ),
+                        );
+                      }
+
                       yield* PendingBlockFinalizationsDB.markAbandoned(
                         headerHashBuffer,
                       ).pipe(Effect.catchAll(() => Effect.void));
-                      const detail = formatUnknownError(error);
-                      yield* Effect.logError(
-                        `🔹 Commit signing failed: ${detail}`,
-                      );
-                      return {
-                        type: "FailureOutput",
-                        error: `Commit signing failed: ${detail}`,
-                      } satisfies WorkerOutput;
-                    });
-                  }
-
-                  return Effect.gen(function* () {
-                    const recoveredTxHash =
-                      yield* recoverSubmittedTxHashByHeaderProgram(
-                        contracts.stateQueue,
-                        newHeaderHash,
-                      );
-                    if (Option.isSome(recoveredTxHash)) {
-                      return yield* PendingBlockFinalizationsDB.markSubmitted(
-                        headerHashBuffer,
-                        Buffer.from(fromHex(recoveredTxHash.value)),
-                      ).pipe(
-                        Effect.andThen(
-                          submittedAwaitingConfirmationOutput(
-                            recoveredTxHash.value,
-                            txSize,
-                          ),
+                      const transferResult = yield* Effect.either(
+                        skippedSubmissionProgram(
+                          processedMempoolTxs,
+                          mempoolTxHashes,
                         ),
                       );
-                    }
+                      if (transferResult._tag === "Left") {
+                        const detail = formatUnknownError(transferResult.left);
+                        yield* Effect.logError(
+                          `🔹 Commit submission failed and deferred transfer failed: submit=${formatUnknownError(
+                            error,
+                          )}; transfer=${detail}`,
+                        );
+                        return {
+                          type: "FailureOutput",
+                          error: `Commit submission failed and deferred transfer failed: submit=${formatUnknownError(
+                            error,
+                          )}; transfer=${detail}`,
+                        } satisfies WorkerOutput;
+                      }
 
-                    yield* PendingBlockFinalizationsDB.markAbandoned(
-                      headerHashBuffer,
-                    ).pipe(Effect.catchAll(() => Effect.void));
-                    const transferResult = yield* Effect.either(
-                      skippedSubmissionProgram(
-                        processedMempoolTxs,
-                        mempoolTxHashes,
-                      ),
-                    );
-                    if (transferResult._tag === "Left") {
-                      const detail = formatUnknownError(transferResult.left);
-                      yield* Effect.logError(
-                        `🔹 Commit submission failed and deferred transfer failed: submit=${formatUnknownError(
-                          error,
-                        )}; transfer=${detail}`,
+                      return yield* failedSubmissionProgram(
+                        mempoolTrie,
+                        currentBlockMempoolTxsCount,
+                        sizeOfProcessedTxs,
+                        error,
                       );
-                      return {
-                        type: "FailureOutput",
-                        error: `Commit submission failed and deferred transfer failed: submit=${formatUnknownError(
-                          error,
-                        )}; transfer=${detail}`,
-                      } satisfies WorkerOutput;
-                    }
-
-                    return yield* failedSubmissionProgram(
-                      mempoolTrie,
-                      currentBlockMempoolTxsCount,
-                      sizeOfProcessedTxs,
-                      error,
-                    );
-                  });
-                },
-                onSuccess: (txHash) =>
-                  PendingBlockFinalizationsDB.markSubmitted(
-                    headerHashBuffer,
-                    Buffer.from(fromHex(txHash)),
-                  ).pipe(
-                    Effect.andThen(
-                      submittedAwaitingConfirmationOutput(txHash, txSize),
+                    });
+                  },
+                  onSuccess: (txHash) =>
+                    PendingBlockFinalizationsDB.markSubmitted(
+                      headerHashBuffer,
+                      Buffer.from(fromHex(txHash)),
+                    ).pipe(
+                      Effect.andThen(
+                        submittedAwaitingConfirmationOutput(
+                          txHash,
+                          txSize,
+                          blockEndTimeMs,
+                        ),
+                      ),
                     ),
-                  ),
-              }),
-            ),
-          );
-        }),
+                }),
+              ),
+            );
+          },
+        ),
       );
 
     let lastResult = yield* Effect.either(submitCommitAttempt());

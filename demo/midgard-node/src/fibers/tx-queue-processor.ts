@@ -1,9 +1,5 @@
-import { Chunk, Effect, Metric, Queue, Ref, Schedule } from "effect";
-import {
-  MempoolDB,
-  MempoolLedgerDB,
-  TxRejectionsDB,
-} from "@/database/index.js";
+import { Duration, Effect, Metric, Queue, Ref, Schedule } from "effect";
+import { MempoolLedgerDB, TxAdmissionsDB } from "@/database/index.js";
 import { SqlClient } from "@effect/sql/SqlClient";
 import { DatabaseError } from "@/database/utils/common.js";
 import { Globals, Lucid, NodeConfig } from "@/services/index.js";
@@ -84,13 +80,42 @@ const validationPhaseAConcurrencyGauge = Metric.gauge(
   },
 );
 
+const validationOldestQueuedTxAgeGauge = Metric.gauge(
+  "validation_oldest_queued_tx_age_ms",
+  {
+    description: "Age of the oldest transaction waiting for validation",
+  },
+);
+
+const validationBatchDurationTimer = Metric.timer(
+  "validation_batch_duration",
+  "End-to-end validation batch duration in milliseconds",
+);
+
+const validationPhaseADurationTimer = Metric.timer(
+  "validation_phase_a_duration",
+  "Phase-A validation duration in milliseconds",
+);
+
+const validationPhaseBDurationTimer = Metric.timer(
+  "validation_phase_b_duration",
+  "Phase-B validation duration in milliseconds",
+);
+
+const validationMempoolInsertDurationTimer = Metric.timer(
+  "validation_mempool_insert_duration",
+  "Duration of accepted transaction inserts into MempoolDB",
+);
+
+const validationRejectionInsertDurationTimer = Metric.timer(
+  "validation_rejection_insert_duration",
+  "Duration of rejected transaction inserts into TxRejectionsDB",
+);
+
 const VALIDATION_BATCH_HARD_CAP = 1600;
 const VALIDATION_MIN_BATCH = 128;
 const VALIDATION_PHASE_A_MAX_EFFECTIVE_CONCURRENCY = 8;
 
-let nextArrivalSeq = 0n;
-let pendingPayloads: QueuedTxPayload[] = [];
-let pendingSinceMillis: number | undefined;
 let cachedUtxoState: Map<string, Buffer> | undefined;
 let cachedUtxoStateVersion = -1;
 
@@ -205,22 +230,26 @@ export const repeatScheduledWithCauseLogging = <R>(
  * Normalizes one queued payload into either a validated queue entry or an
  * immediate rejection describing malformed binary fields.
  */
-const payloadToQueuedTx = (payload: QueuedTxPayload): QueuedTx | RejectedTx => {
-  if (!Buffer.isBuffer(payload.txId) || !Buffer.isBuffer(payload.txCbor)) {
+const admissionToQueuedTx = (
+  admission: TxAdmissionsDB.Entry,
+): QueuedTx | RejectedTx => {
+  if (
+    !Buffer.isBuffer(admission.tx_id) ||
+    !Buffer.isBuffer(admission.tx_cbor)
+  ) {
     return {
       txId: Buffer.alloc(32, 0),
       code: RejectCodes.CborDeserialization,
-      detail: "Queued payload missing binary tx fields",
+      detail: "Durable admission row missing binary tx fields",
     };
   }
 
   const queuedTx: QueuedTx = {
-    txId: payload.txId,
-    txCbor: payload.txCbor,
-    arrivalSeq: nextArrivalSeq,
-    createdAt: new Date(payload.createdAtMillis),
+    txId: admission.tx_id,
+    txCbor: admission.tx_cbor,
+    arrivalSeq: admission.arrival_seq,
+    createdAt: admission.first_seen_at,
   };
-  nextArrivalSeq += 1n;
   return queuedTx;
 };
 
@@ -318,26 +347,31 @@ const selectPhaseAConcurrency = (
  * effective batch against the current mempool-ledger pre-state.
  */
 const txQueueProcessorAction = (
-  txQueue: Queue.Dequeue<QueuedTxPayload>,
+  _txQueue: Queue.Dequeue<QueuedTxPayload>,
   withMonitoring?: boolean,
-): Effect.Effect<void, DatabaseError, SqlClient | NodeConfig | Globals | Lucid> =>
+): Effect.Effect<
+  void,
+  DatabaseError,
+  SqlClient | NodeConfig | Globals | Lucid
+> =>
   Effect.gen(function* () {
     const globals = yield* Globals;
     const { api: lucid } = yield* Lucid;
     yield* Ref.set(globals.HEARTBEAT_TX_QUEUE_PROCESSOR, Date.now());
     const nodeConfig = yield* NodeConfig;
     const configuredBatchSize = Math.max(1, nodeConfig.VALIDATION_BATCH_SIZE);
-    const queueSize = yield* txQueue.size;
     const localFinalizationPending = yield* Ref.get(
       globals.LOCAL_FINALIZATION_PENDING,
     );
 
-    const totalQueueDepth = queueSize + pendingPayloads.length;
+    const expiredLeaseCount = yield* TxAdmissionsDB.requeueExpiredLeases;
+    const durableBacklog = yield* TxAdmissionsDB.countBacklog;
+    const totalQueueDepth = Number(durableBacklog);
     if (withMonitoring) {
-      yield* txQueueSizeGauge(Effect.succeed(BigInt(totalQueueDepth)));
+      yield* txQueueSizeGauge(Effect.succeed(durableBacklog));
     }
 
-    yield* validationQueueDepthGauge(Effect.succeed(BigInt(totalQueueDepth)));
+    yield* validationQueueDepthGauge(Effect.succeed(durableBacklog));
 
     if (localFinalizationPending) {
       yield* validationBatchSizeGauge(Effect.succeed(0n));
@@ -348,65 +382,56 @@ const txQueueProcessorAction = (
       return;
     }
 
-    const drainedChunk: Chunk.Chunk<QueuedTxPayload> =
-      yield* Queue.takeAll(txQueue);
-    const drainedPayloads = Chunk.toReadonlyArray(drainedChunk);
-    if (drainedPayloads.length > 0) {
-      if (pendingPayloads.length === 0) {
-        pendingSinceMillis = Date.now();
-      }
-      pendingPayloads.push(...drainedPayloads);
+    if (durableBacklog === 0n) {
+      yield* validationBatchSizeGauge(Effect.succeed(0n));
+      yield* validationWorkerUtilizationGauge(Effect.succeed(0));
+      yield* validationOldestQueuedTxAgeGauge(Effect.succeed(0));
+      return;
     }
 
-    if (pendingPayloads.length === 0) {
+    const oldestAgeMillis = yield* TxAdmissionsDB.oldestQueuedAgeMs;
+    yield* validationOldestQueuedTxAgeGauge(
+      Effect.succeed(Math.max(0, oldestAgeMillis)),
+    );
+    const batchSize = selectValidationBatchSize(
+      configuredBatchSize,
+      totalQueueDepth,
+    );
+    const shouldRunBatch = totalQueueDepth > 0;
+
+    if (!shouldRunBatch) {
+      yield* validationBatchSizeGauge(Effect.succeed(durableBacklog));
+      yield* validationWorkerUtilizationGauge(
+        Effect.succeed(totalQueueDepth / batchSize),
+      );
+      return;
+    }
+
+    const leaseOwner = `tx-queue-processor:${process.pid}:${Date.now()}`;
+    const admittedRows = yield* TxAdmissionsDB.claimBatch({
+      limit: batchSize,
+      leaseOwner,
+      leaseDurationMs: nodeConfig.VALIDATION_LEASE_MS,
+    });
+
+    if (admittedRows.length === 0) {
       yield* validationBatchSizeGauge(Effect.succeed(0n));
       yield* validationWorkerUtilizationGauge(Effect.succeed(0));
       return;
     }
 
-    const nowMillis = Date.now();
-    const oldestAgeMillis =
-      pendingSinceMillis === undefined ? 0 : nowMillis - pendingSinceMillis;
-    const batchSize = selectValidationBatchSize(
-      configuredBatchSize,
-      pendingPayloads.length,
+    yield* validationBatchSizeGauge(
+      Effect.succeed(BigInt(admittedRows.length)),
     );
-    const shouldRunBatch =
-      pendingPayloads.length >= batchSize ||
-      oldestAgeMillis >= nodeConfig.VALIDATION_MAX_QUEUE_AGE_MS;
-
-    if (!shouldRunBatch) {
-      yield* validationBatchSizeGauge(
-        Effect.succeed(BigInt(pendingPayloads.length)),
-      );
-      yield* validationWorkerUtilizationGauge(
-        Effect.succeed(pendingPayloads.length / batchSize),
-      );
-      return;
-    }
-
-    const pendingSinceBeforeBatch = pendingSinceMillis;
-    const txPayloads = pendingPayloads.splice(0, batchSize);
-    if (pendingPayloads.length === 0) {
-      pendingSinceMillis = undefined;
-    } else {
-      pendingSinceMillis = nowMillis;
-    }
-
-    yield* validationBatchSizeGauge(Effect.succeed(BigInt(txPayloads.length)));
-    const utilization = txPayloads.length / batchSize;
+    const utilization = admittedRows.length / batchSize;
     yield* validationWorkerUtilizationGauge(Effect.succeed(utilization));
 
-    const restoreDrainedBatch = () => {
-      pendingPayloads.unshift(...txPayloads);
-      pendingSinceMillis = pendingSinceBeforeBatch ?? Date.now();
-    };
-
     try {
+      const batchStart = Date.now();
       const queuedTxs: QueuedTx[] = [];
       const decodeRejected: RejectedTx[] = [];
-      for (const payload of txPayloads) {
-        const decoded = payloadToQueuedTx(payload);
+      for (const admission of admittedRows) {
+        const decoded = admissionToQueuedTx(admission);
         if ("arrivalSeq" in decoded) {
           queuedTxs.push(decoded);
         } else {
@@ -432,6 +457,9 @@ const txQueueProcessorAction = (
       yield* validationPhaseALatencyGauge(
         Effect.succeed(Date.now() - phaseAStart),
       );
+      yield* validationPhaseADurationTimer(
+        Effect.succeed(Duration.millis(Date.now() - phaseAStart)),
+      );
 
       const cachedState = yield* ensureCachedUtxoState();
       const phaseBStart = Date.now();
@@ -449,8 +477,7 @@ const txQueueProcessorAction = (
               evaluatePlutusTxLocally(lucid, txCborHex, additionalUtxos);
               return { kind: "accepted" };
             } catch (error) {
-              const scriptFailure =
-                classifyPlutusEvaluationFailure(error);
+              const scriptFailure = classifyPlutusEvaluationFailure(error);
               if (scriptFailure !== null) {
                 return {
                   kind: "script_invalid",
@@ -465,6 +492,9 @@ const txQueueProcessorAction = (
       yield* validationPhaseBLatencyGauge(
         Effect.succeed(Date.now() - phaseBStart),
       );
+      yield* validationPhaseBDurationTimer(
+        Effect.succeed(Duration.millis(Date.now() - phaseBStart)),
+      );
 
       const allRejected = [
         ...decodeRejected,
@@ -473,12 +503,14 @@ const txQueueProcessorAction = (
       ];
 
       if (allRejected.length > 0) {
-        yield* TxRejectionsDB.insertMany(
-          allRejected.map((rejectedTx) => ({
-            tx_id: rejectedTx.txId,
-            reject_code: rejectedTx.code,
-            reject_detail: rejectedTx.detail,
-          })),
+        const rejectionInsertStart = Date.now();
+        yield* TxAdmissionsDB.markRejected({
+          rows: admittedRows,
+          leaseOwner,
+          rejectedTxs: allRejected,
+        });
+        yield* validationRejectionInsertDurationTimer(
+          Effect.succeed(Duration.millis(Date.now() - rejectionInsertStart)),
         );
         yield* Metric.incrementBy(
           validationRejectCounter,
@@ -487,8 +519,16 @@ const txQueueProcessorAction = (
       }
 
       if (phaseB.accepted.length > 0) {
-        yield* MempoolDB.insertMultiple(
-          phaseB.accepted.map((acceptedTx) => acceptedTx.processedTx),
+        const mempoolInsertStart = Date.now();
+        yield* TxAdmissionsDB.markAccepted({
+          rows: admittedRows,
+          leaseOwner,
+          processedTxs: phaseB.accepted.map(
+            (acceptedTx) => acceptedTx.processedTx,
+          ),
+        });
+        yield* validationMempoolInsertDurationTimer(
+          Effect.succeed(Duration.millis(Date.now() - mempoolInsertStart)),
         );
         yield* Metric.incrementBy(
           validationAcceptCounter,
@@ -500,10 +540,17 @@ const txQueueProcessorAction = (
       cachedUtxoStateVersion = yield* Ref.get(globals.MEMPOOL_LEDGER_VERSION);
 
       yield* Effect.logInfo(
-        `tx-queue validation batch done: queued=${txPayloads.length}, accepted=${phaseB.accepted.length}, rejected=${allRejected.length}, rejected_by_code=[${summarizeRejections(allRejected)}]`,
+        `tx-queue validation batch done: queued=${admittedRows.length}, accepted=${phaseB.accepted.length}, rejected=${allRejected.length}, expired_leases_requeued=${expiredLeaseCount}, rejected_by_code=[${summarizeRejections(allRejected)}]`,
+      );
+      yield* validationBatchDurationTimer(
+        Effect.succeed(Duration.millis(Date.now() - batchStart)),
       );
     } catch (error) {
-      restoreDrainedBatch();
+      yield* TxAdmissionsDB.releaseForRetry({
+        txIds: admittedRows.map((row) => row.tx_id),
+        leaseOwner,
+        delayMs: nodeConfig.VALIDATION_RETRY_BACKOFF_BASE_MS,
+      });
       throw error;
     }
   });
