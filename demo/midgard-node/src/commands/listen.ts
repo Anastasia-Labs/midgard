@@ -49,6 +49,8 @@ import { HttpBodyError } from "@effect/platform/HttpBody";
 import * as Genesis from "@/genesis.js";
 import * as Initialization from "@/transactions/initialization.js";
 import * as Reset from "@/reset.js";
+import { ensureProtocolInitializedOnStartup } from "@/commands/listen-startup.js";
+import { shouldRunGenesisOnStartup } from "@/commands/startup-policy.js";
 import { DatabaseError } from "@/database/utils/common.js";
 import { TxConfirmError, TxSignError } from "@/transactions/utils.js";
 import {
@@ -601,15 +603,32 @@ export const runNode = (withMonitoring?: boolean) =>
 
     yield* DBInitialization.program.pipe(Effect.provide(Database.layer));
 
-    yield* Effect.forkDaemon(
-      Genesis.program.pipe(
-        Effect.catchAllCause((cause) =>
-          Effect.logError(
-            `Startup genesis program failed: ${Cause.pretty(cause)}`,
+    yield* ensureProtocolInitializedOnStartup;
+
+    if (
+      shouldRunGenesisOnStartup({
+        network: nodeConfig.NETWORK,
+        runGenesisOnStartup: nodeConfig.RUN_GENESIS_ON_STARTUP,
+      })
+    ) {
+      yield* Effect.logInfo(
+        "Scheduling genesis startup program in background.",
+      );
+      yield* Effect.forkDaemon(
+        Genesis.program.pipe(
+          Effect.tapErrorCause((cause) =>
+            Effect.logError(
+              `Startup genesis program failed: ${Cause.pretty(cause)}`,
+            ),
           ),
+          Effect.catchAllCause(() => Effect.void),
         ),
-      ),
-    );
+      );
+    } else {
+      yield* Effect.logInfo(
+        "Skipping genesis on startup (disabled or mainnet).",
+      );
+    }
 
     const appThread = Layer.launch(
       Layer.provide(

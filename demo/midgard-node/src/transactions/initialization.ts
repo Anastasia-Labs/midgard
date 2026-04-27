@@ -17,6 +17,7 @@ import {
 } from "@lucid-evolution/lucid";
 import {
   handleSignSubmit,
+  TxConfirmError,
   TxSignError,
   TxSubmitError,
 } from "@/transactions/utils.js";
@@ -83,6 +84,7 @@ export const outRefLabel = (utxo: UTxO): string =>
   `${utxo.txHash}#${utxo.outputIndex}`;
 export const OPERATOR_SET_ROOT_LOVELACE = 2_000_000n;
 const DEFAULT_DEPLOYMENT_VALIDITY_WINDOW_MS = 7n * 60n * 1000n;
+const CLOCK_SKEW_TOLERANCE_MS = 2n * 60n * 1000n;
 const DEPLOYMENT_VISIBILITY_REFRESH_MAX_RETRIES = 12;
 const DEPLOYMENT_VISIBILITY_REFRESH_DELAY = "2 seconds";
 const encodeLinkedListRootDatum = (rootData: unknown): string =>
@@ -305,7 +307,7 @@ export const completeAndSubmit = (
   lucid: LucidEvolution,
   txBuilder: any,
   failureMessage: string,
-): Effect.Effect<string, SDK.LucidError | TxSignError | TxSubmitError> =>
+): Effect.Effect<string, SDK.LucidError | TxSignError | TxSubmitError | TxConfirmError> =>
   Effect.gen(function* () {
     const unsignedTx = yield* Effect.tryPromise({
       try: () => txBuilder.complete({ localUPLCEval: true }),
@@ -331,7 +333,7 @@ const resolveDeploymentStartTime = (lucid?: LucidEvolution): bigint => {
       return BigInt(provider.time);
     }
   }
-  return BigInt(Date.now());
+  return BigInt(Date.now()) - CLOCK_SKEW_TOLERANCE_MS;
 };
 
 const resolveDefaultDeploymentDeadline = (lucid?: LucidEvolution): bigint => {
@@ -744,7 +746,7 @@ export const program: Effect.Effect<
 
   const referenceScripts =
     yield* ensureAtomicProtocolInitReferenceScriptsProgram(
-      lucid,
+      lucidService.referenceScriptsApi,
       contracts,
       lucid,
     );

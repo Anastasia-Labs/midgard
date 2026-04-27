@@ -13,6 +13,8 @@ type NodeConfigDep = {
   L1_OPERATOR_SEED_PHRASE: string;
   L1_OPERATOR_SEED_PHRASE_FOR_BLOCK_COMMITMENT: string;
   L1_OPERATOR_SEED_PHRASE_FOR_MERGE_TX: string;
+  L1_REFERENCE_SCRIPT_SEED_PHRASE: string;
+  L1_REFERENCE_SCRIPT_ADDRESS: string;
   NETWORK: Network;
   PROTOCOL_PARAMETERS: SDK.ProtocolParameters;
   PORT: number;
@@ -33,6 +35,7 @@ type NodeConfigDep = {
   HUB_ORACLE_ONE_SHOT_OUTPUT_INDEX: number;
   OPERATOR_REQUIRED_BOND_LOVELACE: bigint;
   OPERATOR_SLASHING_PENALTY_LOVELACE: bigint;
+  RUN_GENESIS_ON_STARTUP: boolean;
 };
 
 const makeConfig = Effect.gen(function* () {
@@ -51,12 +54,32 @@ const makeConfig = Effect.gen(function* () {
   const operatorSeedPhraseForMergeTx = yield* Config.string(
     "L1_OPERATOR_SEED_PHRASE_FOR_MERGE_TX",
   );
+  const referenceScriptSeedPhrase = yield* Config.string(
+    "L1_REFERENCE_SCRIPT_SEED_PHRASE",
+  ).pipe(Config.withDefault(operatorSeedPhrase));
   const network = yield* Config.literal(
     "Mainnet",
     "Preprod",
     "Preview",
     "Custom",
   )("NETWORK");
+  const configuredReferenceScriptAddress = yield* Config.string(
+    "L1_REFERENCE_SCRIPT_ADDRESS",
+  ).pipe(Config.withDefault(""));
+  const derivedReferenceScriptAddress = walletFromSeed(
+    referenceScriptSeedPhrase,
+    { network },
+  ).address;
+  const referenceScriptAddress =
+    configuredReferenceScriptAddress.trim().length > 0
+      ? configuredReferenceScriptAddress.trim()
+      : derivedReferenceScriptAddress;
+  const runGenesisOnStartup = yield* Config.string(
+    "RUN_GENESIS_ON_STARTUP",
+  ).pipe(
+    Config.withDefault("false"),
+    Config.map((value) => value.trim().toLowerCase() === "true"),
+  );
   const port = yield* Config.integer("PORT").pipe(Config.withDefault(3000));
   const waitBetweenBlockCommitments = yield* Config.integer(
     "WAIT_BETWEEN_BLOCK_COMMITMENTS",
@@ -189,6 +212,8 @@ const makeConfig = Effect.gen(function* () {
     L1_OPERATOR_SEED_PHRASE_FOR_BLOCK_COMMITMENT:
       operatorSeedPhraseForBlockCommitment,
     L1_OPERATOR_SEED_PHRASE_FOR_MERGE_TX: operatorSeedPhraseForMergeTx,
+    L1_REFERENCE_SCRIPT_SEED_PHRASE: referenceScriptSeedPhrase,
+    L1_REFERENCE_SCRIPT_ADDRESS: referenceScriptAddress,
     NETWORK: network,
     PROTOCOL_PARAMETERS: SDK.getProtocolParameters(network),
     PORT: port,
@@ -209,6 +234,7 @@ const makeConfig = Effect.gen(function* () {
     HUB_ORACLE_ONE_SHOT_OUTPUT_INDEX: hubOracleOneShotOutputIndex,
     OPERATOR_REQUIRED_BOND_LOVELACE: operatorRequiredBondLovelace,
     OPERATOR_SLASHING_PENALTY_LOVELACE: operatorSlashingPenaltyLovelace,
+    RUN_GENESIS_ON_STARTUP: runGenesisOnStartup,
   };
 }).pipe(
   Effect.retry(Schedule.fixed("5000 millis")),
