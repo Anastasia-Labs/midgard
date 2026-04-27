@@ -643,9 +643,9 @@ export const runNode = (withMonitoring?: boolean) =>
     const program = Effect.all(
       [
         appThread,
-        // blockCommitmentFiber(
-        //   mkSchedule(nodeConfig.WAIT_BETWEEN_BLOCK_COMMITMENTS),
-        // ),
+        blockCommitmentFiber(
+          mkSchedule(nodeConfig.WAIT_BETWEEN_BLOCK_COMMITMENTS),
+        ),
         Effect.void,
         blockSubmissionFiber(
           mkSchedule(nodeConfig.WAIT_BETWEEN_BLOCK_SUBMISSIONS),

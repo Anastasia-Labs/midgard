@@ -18,7 +18,7 @@ import {
   NodeConfig,
 } from "@/services/index.js";
 import { MempoolLedgerDB, BlocksDB } from "@/database/index.js";
-import { TxSignError } from "@/transactions/utils.js";
+import { TxSignError, TxSubmitError } from "@/transactions/utils.js";
 import { MidgardMpt, MptError } from "@/workers/utils/mpt.js";
 import {
   DatabaseError,
@@ -100,7 +100,8 @@ const mainProgram: Effect.Effect<
   | SDK.StateQueueError
   | DatabaseError
   | MptError
-  | TxSignError,
+  | TxSignError
+  | TxSubmitError,
   MidgardContracts | Database | Lucid | NodeConfig
 > = Effect.gen(function* () {
   const optLatestBlock = yield* BlocksDB.retrieveLatestEntry;

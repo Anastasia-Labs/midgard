@@ -15,3 +15,4 @@ export * from "./initialization.js";
 
 export * from "./user-events/index.js";
 export * from "./fraud-proof/index.js";
+export * from "./cbor.js";
