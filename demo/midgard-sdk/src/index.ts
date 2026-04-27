@@ -4,11 +4,8 @@ export * from "./protocol-parameters.js";
 export * from "./ledger-state.js";
 export * from "./linked-list.js";
 export * from "./escape-hatch.js";
-
-export * from "./active-operators.js";
+export * from "./operator-directory/index.js";
 export * from "./hub-oracle.js";
-export * from "./registered-operators.js";
-export * from "./retired-operators.js";
 export * from "./scheduler.js";
 export * from "./settlement.js";
 export * from "./state-queue.js";

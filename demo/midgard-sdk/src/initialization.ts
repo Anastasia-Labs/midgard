@@ -15,9 +15,9 @@ import { incompleteHubOracleInitTxProgram } from "@/hub-oracle.js";
 import { incompleteSchedulerInitTxProgram } from "@/scheduler.js";
 import { incompleteFraudProofCatalogueInitTxProgram } from "@/fraud-proof/catalogue.js";
 import { incompleteInitStateQueueTxProgram } from "@/state-queue.js";
-import { incompleteActiveOperatorInitTxProgram } from "@/active-operators.js";
-import { incompleteRegisteredOperatorInitTxProgram } from "@/registered-operators.js";
-import { incompleteRetiredOperatorInitTxProgram } from "@/retired-operators.js";
+import { incompleteActiveOperatorInitTxProgram } from "@/operator-directory/active-operators.js";
+import { incompleteRegisteredOperatorInitTxProgram } from "@/operator-directory/registered-operators.js";
+import { incompleteRetiredOperatorInitTxProgram } from "@/operator-directory/retired-operators.js";
 
 export const VALIDITY_RANGE_BUFFER = 8 * 60 * 1000;
 

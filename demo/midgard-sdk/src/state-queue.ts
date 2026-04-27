@@ -12,7 +12,7 @@ import {
   TxSignBuilder,
   UTxO,
 } from "@lucid-evolution/lucid";
-import { ActiveOperatorUpdateCommitmentTimeParams } from "@/active-operators.js";
+import { ActiveOperatorUpdateCommitmentTimeParams } from "@/operator-directory/active-operators.js";
 import { Data as EffectData, Effect } from "effect";
 import {
   DataCoercionError,

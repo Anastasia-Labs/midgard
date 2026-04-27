@@ -53,12 +53,12 @@ import {
   ActiveOperatorUTxO,
   FetchActiveOperatorParams,
   fetchActiveOperatorUTxOs,
-} from "@/active-operators.js";
+} from "@/operator-directory/active-operators.js";
 import {
   RetiredOperatorUTxO,
   FetchRetiredOperatorParams,
   fetchRetiredOperatorUTxOs,
-} from "@/retired-operators.js";
+} from "@/operator-directory/retired-operators.js";
 
 export const ResolutionClaimSchema = Data.Object({
   resolution_time: POSIXTimeSchema,

@@ -21,7 +21,7 @@ import {
   UserEventMintRedeemer,
   UserEventMintRedeemerSchema,
   userEventWitnessScriptHash,
-} from "./internals.js";
+} from "./common.js";
 import {
   CardanoDatum,
   CardanoDatumSchema,

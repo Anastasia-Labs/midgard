@@ -40,7 +40,7 @@ import {
   UserEventMintRedeemer,
   UserEventMintRedeemerSchema,
   userEventWitnessScriptHash,
-} from "./internals.js";
+} from "./common.js";
 import { Data as EffectData, Effect } from "effect";
 
 export const TxOrderDatumSchema = Data.Object({

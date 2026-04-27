@@ -6,7 +6,8 @@ import {
   fromText,
 } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
-import { incompleteInitLinkedListTxProgram } from "./linked-list.js";
+import { incompleteInitLinkedListTxProgram } from "../linked-list.js";
+import { SlashingArgumentsSchema } from "./common.js";
 
 export const REGISTERED_OPERATORS_ROOT_ASSET_NAME = fromText(
   "MIDGARD_REGISTERED_OPERATORS",
@@ -108,7 +109,7 @@ export const RegisteredOperatorMintRedeemerSchema = Data.Enum([
   }),
   Data.Object({
     SlashFraudulentOperator: Data.Object({
-      slashing_arguments: Data.Any(),
+      slashing_arguments: SlashingArgumentsSchema,
     }),
   }),
 ]);

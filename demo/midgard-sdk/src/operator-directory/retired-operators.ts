@@ -7,7 +7,8 @@ import { AuthenticUTxO, authenticateUTxOs } from "@/internals.js";
 import { Data, UTxO, fromText } from "@lucid-evolution/lucid";
 import { LucidEvolution, TxBuilder } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
-import { incompleteInitLinkedListTxProgram } from "./linked-list.js";
+import { incompleteInitLinkedListTxProgram } from "../linked-list.js";
+import { SlashingArgumentsSchema } from "./common.js";
 
 export const RETIRED_OPERATORS_ROOT_ASSET_NAME = fromText(
   "MIDGARD_RETIRED_OPERATORS",
@@ -68,7 +69,7 @@ export const RetiredOperatorMintRedeemerSchema = Data.Enum([
   }),
   Data.Object({
     SlashOperator: Data.Object({
-      slashing_arguments: Data.Any(),
+      slashing_arguments: SlashingArgumentsSchema,
     }),
   }),
 ]);

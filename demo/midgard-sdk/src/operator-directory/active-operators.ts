@@ -12,7 +12,8 @@ import {
   fromText,
 } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
-import { incompleteInitLinkedListTxProgram } from "./linked-list.js";
+import { incompleteInitLinkedListTxProgram } from "../linked-list.js";
+import { SlashingArgumentsSchema } from "./common.js";
 
 export const ACTIVE_OPERATORS_ROOT_ASSET_NAME = fromText(
   "MIDGARD_ACTIVE_OPERATORS",
@@ -115,7 +116,7 @@ export const ActiveOperatorMintRedeemerSchema = Data.Enum([
   }),
   Data.Object({
     SlashOperator: Data.Object({
-      slashing_arguments: Data.Any(),
+      slashing_arguments: SlashingArgumentsSchema,
       operator_removal_scheduler_sync: OperatorRemovalSchedulerSyncSchema,
     }),
   }),

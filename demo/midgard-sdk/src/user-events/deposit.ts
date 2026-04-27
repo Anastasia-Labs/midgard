@@ -31,7 +31,7 @@ import {
   UserEventMintRedeemer,
   UserEventMintRedeemerSchema,
   userEventWitnessScriptHash,
-} from "./internals.js";
+} from "./common.js";
 
 export const DepositDatumSchema = Data.Object({
   event: DepositEventSchema,
