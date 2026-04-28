@@ -92,6 +92,14 @@ const encodeLinkedListRootDatum = (rootData: unknown): string =>
     data: rootData,
   });
 
+const encodeSchedulerDatumForChain = (datum: SDK.SchedulerDatum): string => {
+  // Keep scheduler datum encoding aligned with scheduler-refresh publication:
+  // deployed validators expect the root constructor array in definite form.
+  return SDK.normalizeRootIndefiniteArrayEncoding(
+    LucidData.to(datum as never, SDK.SchedulerDatum as never),
+  );
+};
+
 export type AtomicProtocolInitReferenceScripts = {
   readonly hubOracleMinting: UTxO;
   readonly schedulerMinting: UTxO;
@@ -586,11 +594,7 @@ export const buildAtomicProtocolInitTxProgram = (
         contracts.scheduler.spendingScriptAddress,
         {
           kind: "inline",
-          value: LucidData.to(
-            SDK.INITIAL_SCHEDULER_DATUM,
-            SDK.SchedulerDatum,
-            { canonical: true },
-          ),
+          value: encodeSchedulerDatumForChain(SDK.INITIAL_SCHEDULER_DATUM),
         },
         { lovelace: 5_000_000n, ...schedulerAssets },
       )

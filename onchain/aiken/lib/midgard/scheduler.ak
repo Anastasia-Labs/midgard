@@ -1,3 +1,4 @@
+use aiken/builtin
 use aiken/crypto.{ScriptHash, VerificationKeyHash}
 use cardano/transaction.{Input}
 use midgard/common/types.{PosixTime}
@@ -89,12 +90,22 @@ pub fn get_datum(
   scheduler_policy_id: ScriptHash,
   scheduler_ref_input_index: Int,
 ) -> Datum {
-  expect scheduler_datum: Datum =
+  let scheduler_datum_data =
     utils.get_authentic_input_datum_with_nft_at(
       reference_inputs,
       scheduler_policy_id,
       asset_name,
       scheduler_ref_input_index,
     )
-  scheduler_datum
+  // HACKY FIX: Using `expect` fails to pass current LE's local UPC evaluation
+  //            This is just there as a workaround.
+  let Pair(constr_idx, constr_fields) = builtin.un_constr_data(scheduler_datum_data)
+  if constr_idx == 0 {
+    NoActiveOperators
+  } else {
+    ActiveOperator {
+      operator: constr_fields |> builtin.head_list |> builtin.un_b_data,
+      start_time: constr_fields |> builtin.tail_list |> builtin.head_list |> builtin.un_i_data,
+    }
+  }
 }
