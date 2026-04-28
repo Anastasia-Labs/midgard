@@ -4,11 +4,13 @@ import {
   GenericErrorFields,
   LucidError,
   MissingDatumError,
+  POSIXTimeSchema,
   ValueSchema,
 } from "@/common.js";
 import { Data as EffectData, Effect } from "effect";
 import {
   Assets,
+  Constr,
   Data,
   fromText,
   LucidEvolution,
@@ -81,6 +83,51 @@ export type LinkedListNodeView = Data.Static<
 export const LinkedListNodeView =
   LinkedListNodeViewSchema as unknown as LinkedListNodeView;
 
+const RegisteredOperatorNodeDataSchema = Data.Object({
+  operator: Data.Bytes({ minLength: 28, maxLength: 28 }),
+  bond_unlock_time: Data.Nullable(POSIXTimeSchema),
+});
+
+const isRawConstr = (
+  value: unknown,
+): value is { readonly index: number | bigint; readonly fields: unknown[] } =>
+  typeof value === "object" &&
+  value !== null &&
+  "index" in value &&
+  "fields" in value &&
+  (typeof value.index === "number" || typeof value.index === "bigint") &&
+  Array.isArray(value.fields);
+
+const normalizeConstrData = (value: unknown): unknown => {
+  if (value instanceof Constr) {
+    return value;
+  }
+  if (isRawConstr(value)) {
+    return new Constr(
+      Number(value.index),
+      value.fields.map(normalizeConstrData),
+    );
+  }
+  if (Array.isArray(value)) {
+    return value.map(normalizeConstrData);
+  }
+  return value;
+};
+
+const normalizeNodeData = (assetName: string, data: unknown): unknown => {
+  if (!assetName.startsWith(REGISTERED_OPERATOR_NODE_ASSET_NAME_PREFIX)) {
+    return data;
+  }
+  try {
+    return Data.castFrom(
+      normalizeConstrData(data) as never,
+      RegisteredOperatorNodeDataSchema as never,
+    );
+  } catch {
+    return data;
+  }
+};
+
 const extractSingletonAssetName = (assets: Assets): string => {
   const nonAdaUnits = Object.keys(assets).filter((unit) => unit !== "lovelace");
   if (nonAdaUnits.length !== 1) {
@@ -88,7 +135,11 @@ const extractSingletonAssetName = (assets: Assets): string => {
       `Expected exactly one non-ADA linked-list authentication asset, found ${nonAdaUnits.length}`,
     );
   }
-  return nonAdaUnits[0]!.slice(56);
+  const assetUnit = nonAdaUnits[0];
+  if (assetUnit === undefined) {
+    throw new Error("Missing linked-list authentication asset");
+  }
+  return assetUnit.slice(56);
 };
 
 const assetNameToNodeKey = (assetName: string): NodeKey => {
@@ -125,7 +176,7 @@ export const linkedListDatumToNodeView = (
   return {
     key: assetNameToNodeKey(assetName),
     next: linkToNodeKey(linkedListDatum.link),
-    data: linkedListDatum.data.Node.data,
+    data: normalizeNodeData(assetName, linkedListDatum.data.Node.data) as Data,
   };
 };
 

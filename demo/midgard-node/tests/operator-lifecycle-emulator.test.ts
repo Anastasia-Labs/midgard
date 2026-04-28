@@ -34,6 +34,59 @@ const EMULATOR_PROTOCOL_PARAMETERS = {
 const MIN_COLLATERAL_SAFE_FRAGMENT_LOVELACE = 2_300_000n;
 const EMPTY_FRAUD_PROOF_CATALOGUE_ROOT = "00".repeat(32);
 
+type RegisterActivateRetireReregisterTxHashes = {
+  readonly registerTxHash: string | null;
+  readonly activateTxHash: string | null;
+  readonly retireTxHash: string | null;
+  readonly reregisterTxHash: string | null;
+};
+
+type RegisterActivateRetireReregisterLifecycleProgram = (
+  lucid: Awaited<ReturnType<typeof Lucid>>,
+  contracts: SDK.MidgardValidators,
+  requiredBondLovelace: bigint,
+  referenceScriptsLucid: Awaited<ReturnType<typeof Lucid>>,
+) => Effect.Effect<RegisterActivateRetireReregisterTxHashes>;
+
+type OperatorLifecycleModuleWithReregisterMode = {
+  readonly registerActivateRetireReregisterOperatorProgram?:
+    RegisterActivateRetireReregisterLifecycleProgram;
+  readonly operatorLifecycleProgram?: (
+    lucid: Awaited<ReturnType<typeof Lucid>>,
+    contracts: SDK.MidgardValidators,
+    requiredBondLovelace: bigint,
+    mode: "register-activate-retire-reregister",
+    referenceScriptsLucid: Awaited<ReturnType<typeof Lucid>>,
+  ) => Effect.Effect<RegisterActivateRetireReregisterTxHashes>;
+};
+
+const loadRegisterActivateRetireReregisterLifecycleProgram =
+  async (): Promise<RegisterActivateRetireReregisterLifecycleProgram> => {
+    const lifecycleModule = (await import(
+      "@/transactions/register-active-operator.js"
+    )) as unknown as OperatorLifecycleModuleWithReregisterMode;
+    if (
+      lifecycleModule.registerActivateRetireReregisterOperatorProgram !==
+      undefined
+    ) {
+      return lifecycleModule.registerActivateRetireReregisterOperatorProgram;
+    }
+    if (lifecycleModule.operatorLifecycleProgram !== undefined) {
+      const runMode = lifecycleModule.operatorLifecycleProgram;
+      return (lucid, contracts, requiredBondLovelace, referenceScriptsLucid) =>
+        runMode(
+          lucid,
+          contracts,
+          requiredBondLovelace,
+          "register-activate-retire-reregister",
+          referenceScriptsLucid,
+        );
+    }
+    throw new Error(
+      'Expected register-activate-retire-reregister lifecycle mode runner to be exported from "@/transactions/register-active-operator.js"',
+    );
+  };
+
 const loadOperatorContracts = (oneShotOutRef: {
   txHash: string;
   outputIndex: number;
@@ -261,6 +314,56 @@ const assertOperatorActivatedState = async ({
   expect(registeredNodeUtxosAfterActivate.length).toEqual(0);
 };
 
+const assertOperatorRegisteredState = async ({
+  lucid,
+  contracts,
+  operatorKeyHash,
+}: {
+  lucid: Awaited<ReturnType<typeof Lucid>>;
+  contracts: SDK.MidgardValidators;
+  operatorKeyHash: string;
+}) => {
+  const registeredNodeUtxos = await fetchRegisteredOperatorNodes(
+    lucid,
+    contracts,
+  );
+  const operatorRegisteredNodes = await Promise.all(
+    registeredNodeUtxos.map(async (utxo) => ({
+      utxo,
+      datum: await Effect.runPromise(SDK.getNodeDatumFromUTxO(utxo)),
+    })),
+  ).then((nodes) =>
+    nodes.filter((node) => {
+      const data = node.datum.data;
+      return (
+        typeof data === "object" &&
+        data !== null &&
+        "operator" in data &&
+        data.operator === operatorKeyHash
+      );
+    }),
+  );
+  expect(operatorRegisteredNodes).toHaveLength(1);
+};
+
+const fetchRetiredOperatorNodes = async (
+  lucid: Awaited<ReturnType<typeof Lucid>>,
+  contracts: SDK.MidgardValidators,
+): Promise<readonly UTxO[]> => {
+  const utxos = await lucid.utxosAt(
+    contracts.retiredOperators.spendingScriptAddress,
+  );
+  return utxos.filter((utxo) =>
+    Object.keys(utxo.assets).some((unit) => {
+      if (!unit.startsWith(contracts.retiredOperators.policyId)) {
+        return false;
+      }
+      const assetName = unit.slice(contracts.retiredOperators.policyId.length);
+      return assetName.startsWith(SDK.RETIRED_OPERATOR_NODE_ASSET_NAME_PREFIX);
+    }),
+  );
+};
+
 const fetchRegisteredOperatorNodes = async (
   lucid: Awaited<ReturnType<typeof Lucid>>,
   contracts: SDK.MidgardValidators,
@@ -387,6 +490,51 @@ describe("operator lifecycle emulator", () => {
       operatorKeyHash,
     });
   });
+
+  it(
+    "runs register-activate-retire-reregister lifecycle mode happy path",
+    async () => {
+      const runLifecycle =
+        await loadRegisterActivateRetireReregisterLifecycleProgram();
+      const {
+        lucid,
+        referenceScriptsLucid,
+        contracts,
+        activeNodeUnit,
+        operatorKeyHash,
+      } = await initOperatorLifecycleFixture();
+
+      const result = await Effect.runPromise(
+        runLifecycle(
+          lucid,
+          contracts,
+          5_000_000n,
+          referenceScriptsLucid,
+        ),
+      );
+      expect(result.registerTxHash).toHaveLength(64);
+      expect(result.activateTxHash).toHaveLength(64);
+      expect(result.retireTxHash).toHaveLength(64);
+      expect(result.reregisterTxHash).toHaveLength(64);
+
+      await assertOperatorRegisteredState({
+        lucid,
+        contracts,
+        operatorKeyHash,
+      });
+      const activeNodeUtxosAfterReregister = await lucid.utxosAtWithUnit(
+        contracts.activeOperators.spendingScriptAddress,
+        activeNodeUnit,
+      );
+      expect(activeNodeUtxosAfterReregister.length).toEqual(0);
+      const retiredOperatorNodesAfterReregister = await fetchRetiredOperatorNodes(
+        lucid,
+        contracts,
+      );
+      expect(retiredOperatorNodesAfterReregister.length).toEqual(0);
+    },
+    420_000,
+  );
 
   it("runs deregister-only after register-only and removes registered node", async () => {
     const { lucid, referenceScriptsLucid, contracts, operatorKeyHash } =

@@ -589,6 +589,7 @@ export const buildAtomicProtocolInitTxProgram = (
           value: LucidData.to(
             SDK.INITIAL_SCHEDULER_DATUM,
             SDK.SchedulerDatum,
+            { canonical: true },
           ),
         },
         { lovelace: 5_000_000n, ...schedulerAssets },

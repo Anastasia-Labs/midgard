@@ -79,6 +79,19 @@ export type ActivateRedeemerLayout = {
   readonly activeOperatorsAnchorNodeOutputIndex: bigint;
 };
 
+export type RetireRedeemerLayout = {
+  readonly hubOracleRefInputIndex: bigint;
+  readonly schedulerRefInputIndex: bigint;
+  readonly activeOperatorsRedeemerIndex: bigint;
+  readonly retiredOperatorsRedeemerIndex: bigint;
+  readonly activeOperatorsRemovedNodeInputIndex: bigint;
+  readonly activeOperatorsAnchorNodeInputIndex: bigint;
+  readonly activeOperatorsAnchorNodeOutputIndex: bigint;
+  readonly retiredOperatorsAnchorNodeInputIndex: bigint;
+  readonly retiredOperatorsInsertedNodeOutputIndex: bigint;
+  readonly retiredOperatorsAnchorNodeOutputIndex: bigint;
+};
+
 /**
  * Minimal outref shape used for canonical ordering calculations.
  */
@@ -365,6 +378,49 @@ export const activateLayoutToLogString = (
   ].join(",");
 
 /**
+ * Compares two retire-layout derivations for exact equality.
+ */
+export const retireLayoutsEqual = (
+  left: RetireRedeemerLayout,
+  right: RetireRedeemerLayout,
+): boolean =>
+  left.hubOracleRefInputIndex === right.hubOracleRefInputIndex &&
+  left.schedulerRefInputIndex === right.schedulerRefInputIndex &&
+  left.activeOperatorsRedeemerIndex === right.activeOperatorsRedeemerIndex &&
+  left.retiredOperatorsRedeemerIndex === right.retiredOperatorsRedeemerIndex &&
+  left.activeOperatorsRemovedNodeInputIndex ===
+    right.activeOperatorsRemovedNodeInputIndex &&
+  left.activeOperatorsAnchorNodeInputIndex ===
+    right.activeOperatorsAnchorNodeInputIndex &&
+  left.activeOperatorsAnchorNodeOutputIndex ===
+    right.activeOperatorsAnchorNodeOutputIndex &&
+  left.retiredOperatorsAnchorNodeInputIndex ===
+    right.retiredOperatorsAnchorNodeInputIndex &&
+  left.retiredOperatorsInsertedNodeOutputIndex ===
+    right.retiredOperatorsInsertedNodeOutputIndex &&
+  left.retiredOperatorsAnchorNodeOutputIndex ===
+    right.retiredOperatorsAnchorNodeOutputIndex;
+
+/**
+ * Formats a retire-layout derivation for logs.
+ */
+export const retireLayoutToLogString = (
+  layout: RetireRedeemerLayout,
+): string =>
+  [
+    `hub_ref=${layout.hubOracleRefInputIndex.toString()}`,
+    `scheduler_ref=${layout.schedulerRefInputIndex.toString()}`,
+    `active_redeemer=${layout.activeOperatorsRedeemerIndex.toString()}`,
+    `retired_redeemer=${layout.retiredOperatorsRedeemerIndex.toString()}`,
+    `active_removed_in=${layout.activeOperatorsRemovedNodeInputIndex.toString()}`,
+    `active_anchor_in=${layout.activeOperatorsAnchorNodeInputIndex.toString()}`,
+    `active_anchor_out=${layout.activeOperatorsAnchorNodeOutputIndex.toString()}`,
+    `retired_anchor_in=${layout.retiredOperatorsAnchorNodeInputIndex.toString()}`,
+    `retired_inserted_out=${layout.retiredOperatorsInsertedNodeOutputIndex.toString()}`,
+    `retired_anchor_out=${layout.retiredOperatorsAnchorNodeOutputIndex.toString()}`,
+  ].join(",");
+
+/**
  * Derives the expected register redeemer layout before transaction balancing.
  */
 export const resolveInitialRegisterRedeemerLayout = ({
@@ -599,6 +655,95 @@ export const resolveInitialActivateRedeemerLayout = ({
     registeredOperatorsAnchorNodeOutputIndex: 2n,
     activeOperatorsInsertedNodeOutputIndex: 0n,
     activeOperatorsAnchorNodeOutputIndex: 1n,
+  };
+};
+
+/**
+ * Derives the expected retire redeemer layout before transaction balancing.
+ */
+export const resolveInitialRetireRedeemerLayout = ({
+  activeOperatorScriptRefs,
+  retiredOperatorScriptRefs,
+  hubOracleRefInput,
+  schedulerRefInput,
+  activeOperatorNode,
+  activeOperatorAnchor,
+  retiredAppendAnchor,
+  contracts,
+  fundingInputs,
+}: {
+  readonly activeOperatorScriptRefs: readonly ReferenceScriptPublication[];
+  readonly retiredOperatorScriptRefs: readonly ReferenceScriptPublication[];
+  readonly hubOracleRefInput: UTxO;
+  readonly schedulerRefInput: UTxO;
+  readonly activeOperatorNode: NodeWithDatum;
+  readonly activeOperatorAnchor: NodeWithDatum;
+  readonly retiredAppendAnchor: NodeWithDatum;
+  readonly contracts: SDK.MidgardValidators;
+  readonly fundingInputs: readonly UTxO[];
+}): RetireRedeemerLayout => {
+  const referenceInputs = [
+    ...activeOperatorScriptRefs.map(({ utxo }) => utxo),
+    ...retiredOperatorScriptRefs.map(({ utxo }) => utxo),
+    hubOracleRefInput,
+    schedulerRefInput,
+  ] as const;
+  const retireInputs = [
+    activeOperatorNode.utxo,
+    activeOperatorAnchor.utxo,
+    retiredAppendAnchor.utxo,
+    ...fundingInputs,
+  ] as const;
+  const activeOperatorsRemovedNodeInputIndex = resolveOrderedOutRefIndex(
+    activeOperatorNode.utxo,
+    retireInputs,
+  );
+  const activeOperatorsAnchorNodeInputIndex = resolveOrderedOutRefIndex(
+    activeOperatorAnchor.utxo,
+    retireInputs,
+  );
+  const retiredOperatorsAnchorNodeInputIndex = resolveOrderedOutRefIndex(
+    retiredAppendAnchor.utxo,
+    retireInputs,
+  );
+  if (
+    activeOperatorsRemovedNodeInputIndex === undefined ||
+    activeOperatorsAnchorNodeInputIndex === undefined ||
+    retiredOperatorsAnchorNodeInputIndex === undefined
+  ) {
+    throw new Error("Failed to resolve initial retire input indexes");
+  }
+  return {
+    hubOracleRefInputIndex: resolveReferenceInputIndexFromSet(
+      hubOracleRefInput,
+      referenceInputs,
+    ),
+    schedulerRefInputIndex: resolveReferenceInputIndexFromSet(
+      schedulerRefInput,
+      referenceInputs,
+    ),
+    activeOperatorsRedeemerIndex: resolveMintRedeemerTxInfoIndex({
+      targetPolicyId: contracts.activeOperators.policyId,
+      policyIds: [
+        contracts.activeOperators.policyId,
+        contracts.retiredOperators.policyId,
+      ],
+      spendRedeemerCount: 3,
+    }),
+    retiredOperatorsRedeemerIndex: resolveMintRedeemerTxInfoIndex({
+      targetPolicyId: contracts.retiredOperators.policyId,
+      policyIds: [
+        contracts.activeOperators.policyId,
+        contracts.retiredOperators.policyId,
+      ],
+      spendRedeemerCount: 3,
+    }),
+    activeOperatorsRemovedNodeInputIndex,
+    activeOperatorsAnchorNodeInputIndex,
+    activeOperatorsAnchorNodeOutputIndex: 2n,
+    retiredOperatorsAnchorNodeInputIndex,
+    retiredOperatorsInsertedNodeOutputIndex: 0n,
+    retiredOperatorsAnchorNodeOutputIndex: 1n,
   };
 };
 
@@ -952,6 +1097,172 @@ export const deriveActivateRedeemerLayout = (
       activeOperatorsAnchorNodeInputIndex: activeOperatorsAnchorInputPosition,
       activeOperatorsInsertedNodeOutputIndex: resolvedInsertedNodeOutputIndex,
       activeOperatorsAnchorNodeOutputIndex: resolvedAnchorNodeOutputIndex,
+    };
+  });
+
+/**
+ * Derives the final retire redeemer layout from a balanced draft transaction.
+ */
+export const deriveRetireRedeemerLayout = (
+  tx: CML.Transaction,
+  params: {
+    readonly hubOracleRefInput: UTxO;
+    readonly schedulerRefInput: UTxO;
+    readonly activeOperatorNode: NodeWithDatum;
+    readonly activeOperatorAnchor: NodeWithDatum;
+    readonly retiredAppendAnchor: NodeWithDatum;
+    readonly activeOperatorsPolicyId: string;
+    readonly activeOperatorsAddress: string;
+    readonly activeNodeUnit: string;
+    readonly activeAnchorNodeUnit: string;
+    readonly retiredOperatorsPolicyId: string;
+    readonly retiredOperatorsAddress: string;
+    readonly retiredNodeUnit: string;
+    readonly retiredAnchorNodeUnit: string;
+    readonly contracts: SDK.MidgardValidators;
+  },
+): Effect.Effect<RetireRedeemerLayout, SDK.StateQueueError> =>
+  Effect.gen(function* () {
+    const hubOracleRefInputIndex = findReferenceInputIndex(
+      tx,
+      params.hubOracleRefInput,
+    );
+    const schedulerRefInputIndex = findReferenceInputIndex(
+      tx,
+      params.schedulerRefInput,
+    );
+    const activeOperatorsRedeemerIndex = yield* resolveMintRedeemerIndexForPolicy(
+      tx,
+      params.contracts,
+      params.contracts.activeOperators.policyId,
+      [
+        params.contracts.activeOperators.policyId,
+        params.contracts.retiredOperators.policyId,
+      ],
+    );
+    const retiredOperatorsRedeemerIndex = yield* resolveMintRedeemerIndexForPolicy(
+      tx,
+      params.contracts,
+      params.contracts.retiredOperators.policyId,
+      [
+        params.contracts.activeOperators.policyId,
+        params.contracts.retiredOperators.policyId,
+      ],
+    );
+    const activeOperatorsRemovedNodeInputIndex = findInputIndex(
+      tx,
+      params.activeOperatorNode.utxo,
+    );
+    const activeOperatorsAnchorNodeInputIndex = findInputIndex(
+      tx,
+      params.activeOperatorAnchor.utxo,
+    );
+    const retiredOperatorsAnchorNodeInputIndex = findInputIndex(
+      tx,
+      params.retiredAppendAnchor.utxo,
+    );
+    const activeOperatorsAnchorNodeOutputIndex = findNodeOutputIndexByUnit(
+      tx,
+      params.activeOperatorsPolicyId,
+      params.activeOperatorsAddress,
+      params.activeAnchorNodeUnit,
+    );
+    const retiredOperatorsInsertedNodeOutputIndex = findNodeOutputIndexByUnit(
+      tx,
+      params.retiredOperatorsPolicyId,
+      params.retiredOperatorsAddress,
+      params.retiredNodeUnit,
+    );
+    const retiredOperatorsAnchorNodeOutputIndex = findNodeOutputIndexByUnit(
+      tx,
+      params.retiredOperatorsPolicyId,
+      params.retiredOperatorsAddress,
+      params.retiredAnchorNodeUnit,
+    );
+    if (
+      hubOracleRefInputIndex === undefined ||
+      schedulerRefInputIndex === undefined ||
+      activeOperatorsRemovedNodeInputIndex === undefined ||
+      activeOperatorsAnchorNodeInputIndex === undefined ||
+      retiredOperatorsAnchorNodeInputIndex === undefined ||
+      activeOperatorsRemovedNodeInputIndex ===
+        activeOperatorsAnchorNodeInputIndex ||
+      activeOperatorsRemovedNodeInputIndex ===
+        retiredOperatorsAnchorNodeInputIndex ||
+      activeOperatorsAnchorNodeInputIndex ===
+        retiredOperatorsAnchorNodeInputIndex ||
+      activeOperatorsAnchorNodeOutputIndex === undefined ||
+      retiredOperatorsInsertedNodeOutputIndex === undefined ||
+      retiredOperatorsAnchorNodeOutputIndex === undefined
+    ) {
+      return yield* Effect.fail(
+        new SDK.StateQueueError({
+          message:
+            "Failed to derive retire redeemer layout from balanced draft transaction",
+          cause: JSON.stringify({
+            hubOracleRefInputIndex:
+              hubOracleRefInputIndex?.toString() ?? "missing",
+            schedulerRefInputIndex:
+              schedulerRefInputIndex?.toString() ?? "missing",
+            activeOperatorsRedeemerIndex:
+              activeOperatorsRedeemerIndex.toString(),
+            retiredOperatorsRedeemerIndex:
+              retiredOperatorsRedeemerIndex.toString(),
+            activeOperatorsRemovedNodeInputIndex:
+              activeOperatorsRemovedNodeInputIndex?.toString() ?? "missing",
+            activeOperatorsAnchorNodeInputIndex:
+              activeOperatorsAnchorNodeInputIndex?.toString() ?? "missing",
+            retiredOperatorsAnchorNodeInputIndex:
+              retiredOperatorsAnchorNodeInputIndex?.toString() ?? "missing",
+            activeOperatorsAnchorNodeOutputIndex:
+              activeOperatorsAnchorNodeOutputIndex?.toString() ?? "missing",
+            retiredOperatorsInsertedNodeOutputIndex:
+              retiredOperatorsInsertedNodeOutputIndex?.toString() ?? "missing",
+            retiredOperatorsAnchorNodeOutputIndex:
+              retiredOperatorsAnchorNodeOutputIndex?.toString() ?? "missing",
+          }),
+        }),
+      );
+    }
+    const insertedOutputDatum = getNodeDatumAtPolicyOutputIndex(
+      tx,
+      params.retiredOperatorsPolicyId,
+      retiredOperatorsInsertedNodeOutputIndex,
+    );
+    if (
+      insertedOutputDatum === undefined ||
+      params.activeOperatorNode.datum.key === "Empty" ||
+      !nodeKeyEquals(
+        insertedOutputDatum,
+        params.activeOperatorNode.datum.key.Key.key,
+      )
+    ) {
+      return yield* Effect.fail(
+        new SDK.StateQueueError({
+          message:
+            "Derived inserted retired output index does not point to the retiring operator node",
+          cause: JSON.stringify({
+            insertedIndex: retiredOperatorsInsertedNodeOutputIndex.toString(),
+            insertedDatum: describePolicyOutputDatumAtIndex(
+              tx,
+              params.retiredOperatorsPolicyId,
+              retiredOperatorsInsertedNodeOutputIndex,
+            ),
+          }),
+        }),
+      );
+    }
+    return {
+      hubOracleRefInputIndex,
+      schedulerRefInputIndex,
+      activeOperatorsRedeemerIndex: BigInt(activeOperatorsRedeemerIndex),
+      retiredOperatorsRedeemerIndex: BigInt(retiredOperatorsRedeemerIndex),
+      activeOperatorsRemovedNodeInputIndex,
+      activeOperatorsAnchorNodeInputIndex,
+      activeOperatorsAnchorNodeOutputIndex,
+      retiredOperatorsAnchorNodeInputIndex,
+      retiredOperatorsInsertedNodeOutputIndex,
+      retiredOperatorsAnchorNodeOutputIndex,
     };
   });
 
