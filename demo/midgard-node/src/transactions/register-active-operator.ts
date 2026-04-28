@@ -66,6 +66,7 @@ export type { ReferenceScriptCommandName } from "@/transactions/reference-script
 
 const REGISTERED_ACTIVATION_DELAY_MS = 30n;
 const ACTIVATION_VALIDITY_WINDOW_MS = 120_000n;
+const ACTIVATION_SUBMISSION_LAG_BUFFER_MS = 60_000n;
 const DRAFT_REDEEMER_EX_UNITS = {
   mem: 1_000_000,
   steps: 1_000_000,
@@ -1401,7 +1402,8 @@ const operatorLifecycleProgram = (
     }
     const initialNow = yield* resolveCurrentTimeMs(lucid);
     if (!usesWallClockTime && initialNow < activationTime) {
-      const waitMs = activationTime - initialNow + 1_000n;
+      const waitMs =
+        activationTime - initialNow + ACTIVATION_SUBMISSION_LAG_BUFFER_MS;
       yield* Effect.logInfo(
         `Waiting ${waitMs.toString()}ms until operator activation time (ledger_now=${initialNow.toString()},activation_time=${activationTime.toString()})`,
       );

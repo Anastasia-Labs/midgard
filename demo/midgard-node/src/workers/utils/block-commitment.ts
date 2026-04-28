@@ -21,11 +21,7 @@ import {
   DatabaseError,
   serializeUTxOsForStorage,
 } from "@/database/utils/common.js";
-import {
-  MidgardContracts,
-  Database,
-  Lucid,
-} from "@/services/index.js";
+import { MidgardContracts, Database, Lucid } from "@/services/index.js";
 import { TxSignError, TxSubmitError } from "@/transactions/utils.js";
 import { breakDownTx } from "@/utils.js";
 import { fetchRealStateQueueWitnessContext } from "@/workers/utils/scheduler-refresh.js";
@@ -314,7 +310,10 @@ const ACTIVE_OPERATOR_MATURITY_DURATION_MS = 30n;
 const STATE_QUEUE_HEADER_NODE_LOVELACE = 5_000_000n;
 
 const decodeActiveOperatorDatum = (data: unknown): SDK.ActiveOperatorDatum =>
-  LucidData.castFrom(data as never, SDK.ActiveOperatorDatum as never) as SDK.ActiveOperatorDatum;
+  LucidData.castFrom(
+    data as never,
+    SDK.ActiveOperatorDatum as never,
+  ) as SDK.ActiveOperatorDatum;
 
 const getLatestEndTimeMs = (
   datum: SDK.StateQueueNodeView,
@@ -349,9 +348,10 @@ export const buildNewBlockEntry = (
   MidgardContracts | Lucid
 > =>
   Effect.gen(function* () {
-    const appendedUTxO = yield* BlocksDB.getAppendedStateQueueUTxOFromEntry(entry);
+    const appendedUTxO =
+      yield* BlocksDB.getAppendedStateQueueUTxOFromEntry(entry);
     const lucidService = yield* Lucid;
-    yield* lucidService.switchToOperatorsBlockCommitmentWallet;
+    yield* lucidService.switchToOperatorsMainWallet;
     const lucidAPI = lucidService.api;
 
     const contracts = yield* MidgardContracts;
@@ -402,7 +402,8 @@ export const buildNewBlockEntry = (
       next: "Empty",
       data: SDK.castHeaderToData(newHeader) as SDK.LinkedListNodeView["data"],
     };
-    const appendedNodeDatumCbor = SDK.encodeLinkedListNodeView(appendedNodeDatum);
+    const appendedNodeDatumCbor =
+      SDK.encodeLinkedListNodeView(appendedNodeDatum);
     const updatedNodeDatumCbor = SDK.encodeLinkedListNodeView(updatedNodeDatum);
 
     const updatedActiveOperatorDatumCbor = yield* Effect.try({
@@ -413,22 +414,28 @@ export const buildNewBlockEntry = (
         );
         const activeOperatorNodeView = SDK.linkedListDatumToNodeView(
           activeOperatorLinkedListDatum,
-          SDK.ACTIVE_OPERATOR_NODE_ASSET_NAME_PREFIX + witnessContext.operatorKeyHash,
+          SDK.ACTIVE_OPERATOR_NODE_ASSET_NAME_PREFIX +
+            witnessContext.operatorKeyHash,
         );
-        const activeOperatorDatum = decodeActiveOperatorDatum(activeOperatorNodeView.data);
+        const activeOperatorDatum = decodeActiveOperatorDatum(
+          activeOperatorNodeView.data,
+        );
         const updatedActiveOperatorNodeDatum: SDK.LinkedListNodeView = {
           ...activeOperatorNodeView,
           data: SDK.castActiveOperatorDatumToData({
             ...activeOperatorDatum,
             bond_unlock_time:
-              BigInt(alignedEndTime) - 1n + ACTIVE_OPERATOR_MATURITY_DURATION_MS,
+              BigInt(alignedEndTime) -
+              1n +
+              ACTIVE_OPERATOR_MATURITY_DURATION_MS,
           }) as SDK.LinkedListNodeView["data"],
         };
         return SDK.encodeLinkedListNodeView(updatedActiveOperatorNodeDatum);
       },
       catch: (cause) =>
         new SDK.StateQueueError({
-          message: "Failed to update active-operator bond-hold datum for commit tx",
+          message:
+            "Failed to update active-operator bond-hold datum for commit tx",
           cause,
         }),
     });
@@ -505,15 +512,18 @@ export const buildNewBlockEntry = (
       }
     }
 
-    const serializedNewWalletUTxOs = yield* serializeUTxOsForStorage(newWalletUTxOs);
-    const serializedProducedUTxOs = yield* serializeUTxOsForStorage(producedUTxOs);
+    const serializedNewWalletUTxOs =
+      yield* serializeUTxOsForStorage(newWalletUTxOs);
+    const serializedProducedUTxOs =
+      yield* serializeUTxOsForStorage(producedUTxOs);
     const l1CBOR = Buffer.from(cmlTx.to_cbor_bytes());
 
     const endTime = new Date(alignedEndTime);
     const newBlockEntry: BlocksDB.EntryNoMeta = {
       ...stats,
       [BlocksDB.Columns.HEADER_HASH]: Buffer.from(fromHex(newHeaderHash)),
-      [BlocksDB.Columns.EVENT_START_TIME]: entry[BlocksDB.Columns.EVENT_END_TIME],
+      [BlocksDB.Columns.EVENT_START_TIME]:
+        entry[BlocksDB.Columns.EVENT_END_TIME],
       [BlocksDB.Columns.EVENT_END_TIME]: endTime,
       [BlocksDB.Columns.NEW_WALLET_UTXOS]: serializedNewWalletUTxOs,
       [BlocksDB.Columns.PRODUCED_UTXOS]: serializedProducedUTxOs,

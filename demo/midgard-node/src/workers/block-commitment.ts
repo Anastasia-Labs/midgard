@@ -42,7 +42,7 @@ const seedBlocksDBFromChain: Effect.Effect<
     stateQueueAddress: stateQueue.spendingScriptAddress,
     stateQueuePolicyId: stateQueue.policyId,
   };
-  yield* lucid.switchToOperatorsBlockCommitmentWallet;
+  yield* lucid.switchToOperatorsMainWallet;
   const genesisStateQueueUTxO = yield* SDK.fetchLatestCommittedBlockProgram(
     lucid.api,
     fetchConfig,
