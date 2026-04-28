@@ -232,44 +232,6 @@ const describeUnknownValue = (value: unknown): string => {
   }
 };
 
-const describePolicyAssets = (assets: Record<string, bigint>): string => {
-  const policyAssets = Object.entries(assets).filter(
-    ([unit, quantity]) => unit !== "lovelace" && quantity > 0n,
-  );
-  if (policyAssets.length === 0) {
-    return "<none>";
-  }
-  return policyAssets
-    .map(
-      ([unit, quantity]) =>
-        `${unit.slice(0, 56)}.${unit.slice(56)}=${quantity.toString()}`,
-    )
-    .join("|");
-};
-
-const policyIdsFromAssets = (
-  assets: Record<string, bigint>,
-): readonly string[] =>
-  Object.entries(assets)
-    .filter(([unit, quantity]) => unit !== "lovelace" && quantity > 0n)
-    .map(([unit]) => unit.slice(0, 56));
-
-const describeReferenceInputOrder = (
-  referenceInputs: readonly UTxO[],
-  labelsByOutRef: ReadonlyMap<string, string>,
-): string =>
-  referenceInputs
-    .map((utxo, index) => {
-      const outRef = utxoOutRefKey(utxo);
-      return [
-        `${index.toString()}:${labelsByOutRef.get(outRef) ?? "unknown"}`,
-        outRef,
-        `assets=${describePolicyAssets(utxo.assets)}`,
-        `datum=${utxo.datum ?? "none"}`,
-      ].join(":");
-    })
-    .join(",");
-
 const isRawLucidConstr = (
   value: unknown,
 ): value is { readonly index: number | bigint; readonly fields: unknown[] } =>
@@ -1037,38 +999,6 @@ const retireActiveOperatorProgram = (
       ),
     );
     const schedulerRefInput = schedulerRef.utxo;
-    let hubOracleSchedulerPolicyId: string | null = null;
-    let hubOracleDatumStatus = "missing";
-    if (hubOracleRefInput.datum !== undefined) {
-      try {
-        const hubOracleDatum = LucidData.from(
-          hubOracleRefInput.datum,
-          SDK.HubOracleDatum,
-        ) as SDK.HubOracleDatum;
-        hubOracleSchedulerPolicyId = hubOracleDatum.scheduler;
-        hubOracleDatumStatus = "decoded";
-      } catch (cause) {
-        hubOracleDatumStatus = `decode_error=${String(cause)}`;
-      }
-    }
-    const schedulerRefPolicyIds = policyIdsFromAssets(schedulerRefInput.assets);
-    const schedulerPolicyDiagnostics = [
-      "Retirement scheduler policy check:",
-      `hub_scheduler_policy=${hubOracleSchedulerPolicyId ?? "<unavailable>"}`,
-      `contracts_scheduler_policy=${contracts.scheduler.policyId}`,
-      `scheduler_ref_assets=${describePolicyAssets(schedulerRefInput.assets)}`,
-      `hub_matches_contracts=${(
-        hubOracleSchedulerPolicyId === contracts.scheduler.policyId
-      ).toString()}`,
-      `scheduler_ref_has_hub_policy=${(
-        hubOracleSchedulerPolicyId !== null &&
-        schedulerRefPolicyIds.includes(hubOracleSchedulerPolicyId)
-      ).toString()}`,
-      `hub_datum_status=${hubOracleDatumStatus}`,
-      `hub_ref=${hubOracleRefInput.txHash}#${hubOracleRefInput.outputIndex.toString()}`,
-      `scheduler_ref=${schedulerRefInput.txHash}#${schedulerRefInput.outputIndex.toString()}`,
-    ].join(" ");
-    yield* Effect.logWarning(schedulerPolicyDiagnostics);
 
     const activeNodeUnit = toUnit(
       contracts.activeOperators.policyId,
@@ -1148,22 +1078,6 @@ const retireActiveOperatorProgram = (
       hubOracleRefInput,
       schedulerRefInput,
     ].sort(compareOutRefs);
-    const retirementReferenceInputLabels = new Map<string, string>([
-      ...activeOperatorScriptRefs.map(
-        ({ name, utxo }) => [utxoOutRefKey(utxo), name] as const,
-      ),
-      ...retiredOperatorScriptRefs.map(
-        ({ name, utxo }) => [utxoOutRefKey(utxo), name] as const,
-      ),
-      [utxoOutRefKey(hubOracleRefInput), "hub oracle"] as const,
-      [utxoOutRefKey(schedulerRefInput), "scheduler"] as const,
-    ]);
-    const retirementReferenceInputDiagnostics =
-      `retire_reference_inputs=${describeReferenceInputOrder(
-        retirementReferenceInputs,
-        retirementReferenceInputLabels,
-      )}`;
-    yield* Effect.logWarning(retirementReferenceInputDiagnostics);
     const mkRetireTx = (layout: RetireRedeemerLayout) => {
       const activeRetireRedeemer = mkActiveRetireRedeemer({
         operatorKeyHash,
@@ -1239,12 +1153,9 @@ const retireActiveOperatorProgram = (
       contracts,
       fundingInputs: retirementFundingInputs,
     });
-    const initialRetireLayoutDiagnostics =
-      `computed_retire_layout=${retireLayoutToLogString(retireLayout)}`;
     yield* Effect.logInfo(
       `Initial retire redeemer layout: ${retireLayoutToLogString(retireLayout)}`,
     );
-    yield* Effect.logWarning(initialRetireLayoutDiagnostics);
     const retireDraft = yield* Effect.tryPromise({
       try: () =>
         withRegisteredOperatorStubbedProviderEvaluation(lucid, () =>
@@ -1255,7 +1166,7 @@ const retireActiveOperatorProgram = (
         ),
       catch: (cause) =>
         new SDK.LucidError({
-          message: `Failed to build retirement draft transaction: ${String(cause)} layout=${retireLayoutToLogString(retireLayout)} ${retirementReferenceInputDiagnostics} ${initialRetireLayoutDiagnostics} ${schedulerPolicyDiagnostics}`,
+          message: `Failed to build retirement draft transaction: ${String(cause)} layout=${retireLayoutToLogString(retireLayout)}`,
           cause,
         }),
     });
