@@ -6,16 +6,36 @@ pub type Datum {
   l2_value: ValuePairs,
 }
 
+/// TODO: Support minting as a source of token.
+pub type AssetToAdd {
+  Lovelace {
+    reserve_input_index: Int,
+    m_reserve_change_output_index: Option<Int>,
+  }
+  Asset {
+    policy_id: PolicyId,
+    asset_name: AssetName,
+    policy_id_index_in_target: Int,
+    asset_name_index_in_target: Int,
+    reserve_input_index: Int,
+    reserve_change_output_index: Int,
+  }
+}
+
 pub type AccumulationArgs {
   payout_input_index: Int,
   payout_output_index: Int,
-  reserve_input_index: Int,
   asset_to_add: AssetToAdd,
   payout_nft_asset_name: AssetName,
 }
 
 pub type SpendRedeemer {
-  AddFunds { accumulation_args: AccumulationArgs }
+  AddFunds {
+    accumulation_args: AccumulationArgs,
+    reserve_redeemer_index: Int,
+    payout_input_outref: OutputReference,
+    payout_input_redeemer_index: Int,
+  }
   ConcludeWithdrawal {
     payout_input_index: Int,
     l1_output_index: Int,
@@ -51,19 +71,19 @@ pub type MintRedeemer {
   }
 }
 
-pub type AssetToAdd {
-  Lovelace { m_reserve_change_output_index: Option<Int> }
-  Asset {
-    policy_id: PolicyId,
-    asset_name: AssetName,
-    policy_id_index_in_target: Int,
-    asset_name_index_in_target: Int,
-    reserve_change_output_index: Int,
-  }
-}
-
-pub type AddFundsRedeemer {
-  accumulation_args: AccumulationArgs,
-  payout_input_outref: OutputReference,
-  payout_input_redeemer_index: Int,
+/// Given a value `v`, a policy ID and asset name of a target authentication
+/// NFT, this function expects the NFT to be present in `v` with a quantity of
+/// 1, removes it, and also pops ADA from the value to return it separately.
+pub fn separate_ada_and_remove_auth_nft(
+  v: Value,
+  nft_policy_id: PolicyId,
+  nft_asset_name: AssetName,
+) -> (Lovelace, Dict<PolicyId, Dict<AssetName, Int>>) {
+  let (v_lovelace_dict, v_assets) =
+    v |> assets.to_dict |> dict.expect_pop(ada_policy_id)
+  let (nft_assets, v_assets_without_nft) =
+    v_assets |> dict.expect_pop(nft_policy_id)
+  expect [nft_name_qty_pair] = nft_assets |> dict.to_pairs
+  expect nft_name_qty_pair == Pair(nft_asset_name, 1)
+  (builtin.head_list(dict.to_pairs(v_lovelace_dict)).2nd, v_assets_without_nft)
 }

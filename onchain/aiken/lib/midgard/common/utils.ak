@@ -62,6 +62,14 @@ pub fn get_inclusive_lower_bound_of_interval(interval: Interval) -> Int {
   }
 }
 
+pub fn get_lovelace_and_assets(
+  v: Value,
+) -> (Lovelace, Dict<PolicyId, Dict<AssetName, Int>>) {
+  let (v_lovelace, v_assets) =
+    v |> assets.to_dict |> dict.expect_pop(ada_policy_id)
+  (builtin.head_list(dict.to_pairs(v_lovelace)).2nd, v_assets)
+}
+
 pub fn validate_mint(
   mints: Value,
   expected_minting_policy: ByteArray,
