@@ -24,7 +24,11 @@ import {
   TxSubmitError,
   handleSignSubmit,
 } from "@/transactions/utils.js";
-import { compareOutRefs } from "@/tx-context.js";
+import {
+  compareOutRefs,
+  requireOutRefIndex,
+  resolveReferenceInputIndexFromSet,
+} from "@/tx-context.js";
 import {
   alignUnixTimeToSlotBoundary,
   alignedUnixTimeStrictlyAfter,
@@ -41,6 +45,7 @@ import {
   type ReferenceScriptPublication,
   type RegisterRedeemerLayout,
   type RetireRedeemerLayout,
+  type RetireSchedulerSyncParams,
   activateLayoutToLogString,
   activateLayoutsEqual,
   deriveActivateRedeemerLayout,
@@ -61,6 +66,7 @@ import {
   withStubbedProviderEvaluation as withSharedStubbedProviderEvaluation,
 } from "@/cml-redeemers.js";
 import {
+  referenceScriptByName,
   referenceScriptTargetsByCommand,
   resolveReferenceScriptTargetsProgram,
   resolveSpendableWalletUtxos,
@@ -114,9 +120,17 @@ type RegistrationTxHashes = {
 type OperatorLifecycleTxHashes = {
   readonly registerTxHash: string | null;
   readonly activateTxHash: string | null;
+  readonly schedulerAdvanceTxHash: string | null;
   readonly deregisterTxHash: string | null;
   readonly retireTxHash: string | null;
   readonly reregisterTxHash: string | null;
+};
+
+type RegisterActivateAppointFirstRetireTxHashes = {
+  readonly registerTxHash: string | null;
+  readonly activateTxHash: string | null;
+  readonly schedulerAdvanceTxHash: string | null;
+  readonly retireTxHash: string | null;
 };
 
 type RegisterActivateRetireReregisterTxHashes = {
@@ -131,6 +145,7 @@ type OperatorLifecycleMode =
   | "register-only"
   | "activate-only"
   | "deregister-only"
+  | "register-activate-appoint-first-retire"
   | "register-activate-retire-reregister";
 
 type StubEvaluationMode = "draft" | "submission";
@@ -538,15 +553,56 @@ const mkActiveRetireRedeemer = ({
         retired_operators_redeemer_index:
           layout.retiredOperatorsRedeemerIndex,
         penalize_for_inactivity: false,
-        operator_removal_scheduler_sync: {
-          ShowOperatorIsInactive: {
-            scheduler_ref_input_index: layout.schedulerRefInputIndex,
-          },
-        },
+        operator_removal_scheduler_sync:
+          layout.schedulerSync.kind === "inactive"
+            ? {
+                ShowOperatorIsInactive: {
+                  scheduler_ref_input_index:
+                    layout.schedulerSync.schedulerRefInputIndex,
+                },
+              }
+            : {
+                ShowSchedulerIsAdvancing: {
+                  scheduler_input_index:
+                    layout.schedulerSync.schedulerInputIndex,
+                  scheduler_redeemer_index:
+                    layout.schedulerSync.schedulerRedeemerIndex,
+                  removing_operators_anchor_element_key:
+                    layout.schedulerSync.removingOperatorsAnchorElementKey,
+                  removing_operator_is_the_last_member:
+                    layout.schedulerSync.removingOperatorIsTheLastMember,
+                },
+              },
       },
     },
     SDK.ActiveOperatorMintRedeemer,
   );
+
+const mkSchedulerOperatorRemovalRedeemer = (
+  layout: RetireRedeemerLayout,
+): string => {
+  if (layout.schedulerSync.kind !== "advancing") {
+    throw new Error("Scheduler operator-removal redeemer requires advancing sync");
+  }
+  return LucidData.to(
+    {
+      scheduler_input_index: layout.schedulerSync.schedulerInputIndex,
+      scheduler_output_index: layout.schedulerSync.schedulerOutputIndex,
+      advancing_approach: {
+        RewindDueToOperatorRemoval: {
+          active_operators_mint_redeemer_index:
+            layout.activeOperatorsRedeemerIndex,
+          m_active_operators_last_node_ref_input_index:
+            layout.schedulerSync.activeOperatorsLastNodeRefInputIndex,
+          removal_reason: "OperatorRetirement",
+          registered_element_ref_input_index:
+            layout.schedulerSync.registeredOperatorRefInputIndex,
+        },
+      },
+    },
+    SDK.SchedulerSpendRedeemer,
+  );
+};
 
 const mkRetiredRetireRedeemer = ({
   operatorKeyHash,
@@ -865,6 +921,68 @@ const decodeHubOracleDatum = (
       }),
   });
 
+const encodeSchedulerDatumForChain = (datum: SDK.SchedulerDatum): string =>
+  SDK.normalizeRootIndefiniteArrayEncoding(
+    LucidData.to(datum as never, SDK.SchedulerDatum as never),
+  );
+
+const decodeSchedulerDatum = (
+  schedulerInput: UTxO,
+): Effect.Effect<SDK.SchedulerDatum, SDK.StateQueueError> =>
+  Effect.try({
+    try: () => {
+      if (schedulerInput.datum === undefined || schedulerInput.datum === null) {
+        throw new Error("Scheduler input is missing inline datum");
+      }
+      return LucidData.from(
+        schedulerInput.datum,
+        SDK.SchedulerDatum as never,
+      ) as SDK.SchedulerDatum;
+    },
+    catch: (cause) =>
+      new SDK.StateQueueError({
+        message: "Failed to decode scheduler datum",
+        cause,
+      }),
+  });
+
+const schedulerDatumOperator = (
+  datum: SDK.SchedulerDatum,
+): string | null =>
+  datum === "NoActiveOperators" ? null : datum.ActiveOperator.operator;
+
+const findRootNode = (
+  nodes: readonly NodeWithDatum[],
+  label: string,
+): Effect.Effect<NodeWithDatum, SDK.StateQueueError> =>
+  Effect.gen(function* () {
+    const root = nodes.find(({ datum }) => datum.key === "Empty");
+    if (root === undefined) {
+      return yield* Effect.fail(
+        new SDK.StateQueueError({
+          message: `${label} root node is missing`,
+          cause: label,
+        }),
+      );
+    }
+    return root;
+  });
+
+const findRegisteredSchedulerWitness = (
+  nodes: readonly NodeWithDatum[],
+): Effect.Effect<NodeWithDatum, SDK.StateQueueError> =>
+  Effect.gen(function* () {
+    return (
+      nodes.find(
+        ({ datum }) => datum.key !== "Empty" && datum.next === "Empty",
+      ) ?? (yield* findRootNode(nodes, "registered-operators"))
+    );
+  });
+
+const nodeKeyToSchedulerRemovalAnchorKey = (
+  key: SDK.NodeKey,
+): string | null => (key === "Empty" ? null : key.Key.key);
+
 const toActivationResult = (
   txHashes: ActivationTxHashes,
 ): Effect.Effect<ActivationTxHashes, never> =>
@@ -880,9 +998,177 @@ const toLifecycleResult = (
 ): Effect.Effect<OperatorLifecycleTxHashes, never> =>
   Effect.gen(function* () {
     yield* Effect.logInfo(
-      `Operator lifecycle result: registerTxHash=${txHashes.registerTxHash ?? "skipped"}, activateTxHash=${txHashes.activateTxHash ?? "skipped"}, deregisterTxHash=${txHashes.deregisterTxHash ?? "skipped"}, retireTxHash=${txHashes.retireTxHash ?? "skipped"}, reregisterTxHash=${txHashes.reregisterTxHash ?? "skipped"}`,
+      `Operator lifecycle result: registerTxHash=${txHashes.registerTxHash ?? "skipped"}, activateTxHash=${txHashes.activateTxHash ?? "skipped"}, schedulerAdvanceTxHash=${txHashes.schedulerAdvanceTxHash ?? "skipped"}, deregisterTxHash=${txHashes.deregisterTxHash ?? "skipped"}, retireTxHash=${txHashes.retireTxHash ?? "skipped"}, reregisterTxHash=${txHashes.reregisterTxHash ?? "skipped"}`,
     );
     return txHashes;
+  });
+
+const appointFirstSchedulerOperatorProgram = (
+  lucid: LucidEvolution,
+  contracts: SDK.MidgardValidators,
+  operatorKeyHash: string,
+  referenceScriptsLucid: LucidEvolution = lucid,
+): Effect.Effect<
+  string,
+  SDK.StateQueueError | SDK.LucidError | TxSignError | TxSubmitError | TxConfirmError
+> =>
+  Effect.gen(function* () {
+    const schedulerReferenceScriptRefs =
+      yield* resolveReferenceScriptTargetsProgram(
+        referenceScriptsLucid,
+        "scheduler appoint first",
+        referenceScriptTargetsByCommand(contracts).scheduler,
+      );
+    const schedulerSpendingScriptRef = referenceScriptByName(
+      schedulerReferenceScriptRefs,
+      "scheduler spending",
+    );
+    const schedulerRef = yield* SDK.fetchSchedulerUTxOProgram(lucid, {
+      schedulerAddress: contracts.scheduler.spendingScriptAddress,
+      schedulerPolicyId: contracts.scheduler.policyId,
+    }).pipe(
+      Effect.mapError(
+        (cause) =>
+          new SDK.StateQueueError({
+            message: "Failed to fetch scheduler UTxO for first appointment",
+            cause,
+          }),
+      ),
+    );
+    const schedulerRefInput = schedulerRef.utxo;
+    const schedulerDatum = yield* decodeSchedulerDatum(schedulerRefInput);
+    if (schedulerDatum !== SDK.INITIAL_SCHEDULER_DATUM) {
+      return yield* Effect.fail(
+        new SDK.StateQueueError({
+          message: "Scheduler first appointment requires no active operator",
+          cause: describeUnknownValue(schedulerDatum),
+        }),
+      );
+    }
+
+    const activeNodes = yield* fetchNodeSet(
+      lucid,
+      contracts.activeOperators.spendingScriptAddress,
+      contracts.activeOperators.policyId,
+    );
+    const activeOperatorNode = activeNodes.find(({ datum }) =>
+      nodeKeyEquals(datum, operatorKeyHash),
+    );
+    if (activeOperatorNode === undefined) {
+      return yield* Effect.fail(
+        new SDK.StateQueueError({
+          message:
+            "Cannot appoint scheduler first operator because the operator is not active",
+          cause: operatorKeyHash,
+        }),
+      );
+    }
+    if (activeOperatorNode.datum.next !== "Empty") {
+      return yield* Effect.fail(
+        new SDK.StateQueueError({
+          message:
+            "Cannot appoint scheduler first operator because the operator is not the last active node",
+          cause: operatorKeyHash,
+        }),
+      );
+    }
+
+    const registeredNodes = yield* fetchNodeSet(
+      lucid,
+      contracts.registeredOperators.spendingScriptAddress,
+      contracts.registeredOperators.policyId,
+    );
+    const registeredWitness = yield* findRegisteredSchedulerWitness(
+      registeredNodes,
+    );
+    const now = yield* resolveCurrentTimeMs(lucid);
+    const validFrom = alignUnixTimeMsToSlotBoundary(lucid, now);
+    const validTo = alignUnixTimeMsToSlotBoundary(
+      lucid,
+      validFrom + ACTIVATION_VALIDITY_WINDOW_MS,
+    );
+    const schedulerStartTime = validTo - 1n;
+    const referenceInputs = [
+      activeOperatorNode.utxo,
+      registeredWitness.utxo,
+      schedulerSpendingScriptRef,
+    ];
+    const schedulerSpendableWalletUtxos = yield* resolveSpendableWalletUtxos(
+      lucid,
+      new Set(schedulerReferenceScriptRefs.map(({ utxo }) => utxoOutRefKey(utxo))),
+    );
+    const schedulerFundingInputs = [
+      ...selectWalletFundingUtxos(
+        schedulerSpendableWalletUtxos,
+        ACTIVATION_WALLET_FUNDING_TARGET_LOVELACE,
+      ),
+    ];
+    if (schedulerFundingInputs.length === 0) {
+      return yield* Effect.fail(
+        new SDK.StateQueueError({
+          message:
+            "Failed to select wallet funding UTxOs for scheduler first appointment",
+          cause: operatorKeyHash,
+        }),
+      );
+    }
+    const schedulerInputIndex = requireOutRefIndex(
+      [schedulerRefInput, ...schedulerFundingInputs].sort(compareOutRefs),
+      schedulerRefInput,
+    );
+    const schedulerSpendRedeemer = LucidData.to(
+      {
+        scheduler_input_index: schedulerInputIndex,
+        scheduler_output_index: 0n,
+        advancing_approach: {
+          AppointFirstOperator: {
+            new_shifts_operator_node_ref_input_index:
+              resolveReferenceInputIndexFromSet(
+                activeOperatorNode.utxo,
+                referenceInputs,
+              ),
+            registered_element_ref_input_index:
+              resolveReferenceInputIndexFromSet(
+                registeredWitness.utxo,
+                referenceInputs,
+              ),
+          },
+        },
+      },
+      SDK.SchedulerSpendRedeemer,
+    );
+    const schedulerOutputDatum = encodeSchedulerDatumForChain({
+      ActiveOperator: {
+        operator: operatorKeyHash,
+        start_time: schedulerStartTime,
+      },
+    });
+    const appointFirstTx = yield* Effect.tryPromise({
+      try: () =>
+        lucid
+          .newTx()
+          .validFrom(Number(validFrom))
+          .validTo(Number(validTo))
+          .collectFrom(schedulerFundingInputs)
+          .readFrom(referenceInputs)
+          .collectFrom([schedulerRefInput], schedulerSpendRedeemer)
+          .pay.ToContract(
+            contracts.scheduler.spendingScriptAddress,
+            {
+              kind: "inline",
+              value: schedulerOutputDatum,
+            },
+            schedulerRefInput.assets,
+          )
+          .addSignerKey(operatorKeyHash)
+          .complete({ localUPLCEval: true }),
+      catch: (cause) =>
+        new SDK.LucidError({
+          message: `Failed to build scheduler first-appointment transaction: ${String(cause)}`,
+          cause,
+        }),
+    });
+    return yield* handleSignSubmit(lucid, appointFirstTx);
   });
 
 const retireActiveOperatorProgram = (
@@ -910,9 +1196,6 @@ const retireActiveOperatorProgram = (
     );
     const retiredOperatorScriptRefs = retireReferenceScriptRefs.filter(
       ({ name }) => name.startsWith("retired-operators "),
-    );
-    const lifecycleScriptRefOutRefs = new Set(
-      retireReferenceScriptRefs.map(({ utxo }) => utxoOutRefKey(utxo)),
     );
 
     const hubOracleRefInput = yield* fetchHubOracleRefInput(lucid, contracts);
@@ -999,6 +1282,21 @@ const retireActiveOperatorProgram = (
       ),
     );
     const schedulerRefInput = schedulerRef.utxo;
+    const schedulerDatum = yield* decodeSchedulerDatum(schedulerRefInput);
+    const schedulerIsAdvancingForRetirement =
+      schedulerDatumOperator(schedulerDatum) === operatorKeyHash;
+    const schedulerReferenceScriptRefs =
+      schedulerIsAdvancingForRetirement
+        ? yield* resolveReferenceScriptTargetsProgram(
+            referenceScriptsLucid,
+            "scheduler retirement",
+            referenceScriptTargetsByCommand(contracts).scheduler,
+          )
+        : [];
+    const schedulerSpendingScriptRef =
+      schedulerIsAdvancingForRetirement
+        ? referenceScriptByName(schedulerReferenceScriptRefs, "scheduler spending")
+        : null;
 
     const activeNodeUnit = toUnit(
       contracts.activeOperators.policyId,
@@ -1036,11 +1334,71 @@ const retireActiveOperatorProgram = (
       [retiredNodeUnit]: 1n,
     };
     delete retiredNodeAssets[activeNodeUnit];
+    const schedulerRetirementRegisteredWitness =
+      schedulerIsAdvancingForRetirement
+        ? yield* fetchNodeSet(
+            lucid,
+            contracts.registeredOperators.spendingScriptAddress,
+            contracts.registeredOperators.policyId,
+          ).pipe(Effect.flatMap(findRegisteredSchedulerWitness))
+        : null;
+    if (schedulerIsAdvancingForRetirement) {
+      if (
+        activeOperatorAnchor.datum.key !== "Empty" ||
+        activeOperatorNode.datum.next !== "Empty"
+      ) {
+        return yield* Effect.fail(
+          new SDK.StateQueueError({
+            message:
+              "Scheduler-spent retirement currently supports removing the sole active operator",
+            cause: operatorKeyHash,
+          }),
+        );
+      }
+    }
+    let schedulerSync: RetireSchedulerSyncParams;
+    if (schedulerIsAdvancingForRetirement) {
+      if (schedulerRetirementRegisteredWitness === null) {
+        return yield* Effect.fail(
+          new SDK.StateQueueError({
+            message:
+              "Registered-operators witness is missing for scheduler-spent retirement",
+            cause: operatorKeyHash,
+          }),
+        );
+      }
+      schedulerSync = {
+        kind: "advancing",
+        schedulerInput: schedulerRefInput,
+        registeredOperatorWitness: schedulerRetirementRegisteredWitness,
+        schedulerOutputUnit: toUnit(
+          contracts.scheduler.policyId,
+          SDK.SCHEDULER_ASSET_NAME,
+        ),
+        schedulerAddress: contracts.scheduler.spendingScriptAddress,
+        schedulerReferenceInputs:
+          schedulerSpendingScriptRef === null ? [] : [schedulerSpendingScriptRef],
+        removingOperatorsAnchorElementKey:
+          nodeKeyToSchedulerRemovalAnchorKey(activeOperatorAnchor.datum.key),
+        removingOperatorIsTheLastMember:
+          activeOperatorNode.datum.next === "Empty",
+      };
+    } else {
+      schedulerSync = {
+        kind: "inactive",
+        schedulerRefInput,
+      };
+    }
 
     const spendableWalletUtxosForRetirement =
       yield* resolveSpendableWalletUtxos(
         lucid,
-        lifecycleScriptRefOutRefs,
+        new Set(
+          [
+            ...retireReferenceScriptRefs,
+            ...schedulerReferenceScriptRefs,
+          ].map(({ utxo }) => utxoOutRefKey(utxo)),
+        ),
       );
     if (spendableWalletUtxosForRetirement.length === 0) {
       return yield* Effect.fail(
@@ -1076,7 +1434,12 @@ const retireActiveOperatorProgram = (
       ...activeOperatorScriptRefs.map(({ utxo }) => utxo),
       ...retiredOperatorScriptRefs.map(({ utxo }) => utxo),
       hubOracleRefInput,
-      schedulerRefInput,
+      ...(schedulerSync.kind === "inactive"
+        ? [schedulerSync.schedulerRefInput]
+        : [
+            schedulerSync.registeredOperatorWitness.utxo,
+            ...schedulerSync.schedulerReferenceInputs,
+          ]),
     ].sort(compareOutRefs);
     const mkRetireTx = (layout: RetireRedeemerLayout) => {
       const activeRetireRedeemer = mkActiveRetireRedeemer({
@@ -1088,7 +1451,7 @@ const retireActiveOperatorProgram = (
         bondUnlockTime: activeOperatorDatum.bond_unlock_time,
         layout,
       });
-      return lucid
+      let tx = lucid
         .newTx()
         .collectFrom(retirementFundingInputs)
         .collectFrom(
@@ -1097,7 +1460,23 @@ const retireActiveOperatorProgram = (
         )
         .collectFrom([retiredAppendAnchor.utxo], LucidData.void())
         .readFrom(retirementReferenceInputs)
-        .mintAssets({ [activeNodeUnit]: -1n }, activeRetireRedeemer)
+        .mintAssets({ [activeNodeUnit]: -1n }, activeRetireRedeemer);
+      if (layout.schedulerSync.kind === "advancing") {
+        tx = tx
+          .collectFrom(
+            [schedulerRefInput],
+            mkSchedulerOperatorRemovalRedeemer(layout),
+          )
+          .pay.ToContract(
+            contracts.scheduler.spendingScriptAddress,
+            {
+              kind: "inline",
+              value: encodeSchedulerDatumForChain(SDK.INITIAL_SCHEDULER_DATUM),
+            },
+            schedulerRefInput.assets,
+          );
+      }
+      return tx
         .mintAssets({ [retiredNodeUnit]: 1n }, retiredRetireRedeemer)
         .pay.ToContract(
           contracts.retiredOperators.spendingScriptAddress,
@@ -1128,7 +1507,7 @@ const retireActiveOperatorProgram = (
 
     const retireLayoutParams = {
       hubOracleRefInput,
-      schedulerRefInput,
+      schedulerSync,
       activeOperatorNode,
       activeOperatorAnchor,
       retiredAppendAnchor,
@@ -1146,7 +1525,7 @@ const retireActiveOperatorProgram = (
       activeOperatorScriptRefs,
       retiredOperatorScriptRefs,
       hubOracleRefInput,
-      schedulerRefInput,
+      schedulerSync,
       activeOperatorNode,
       activeOperatorAnchor,
       retiredAppendAnchor,
@@ -1444,6 +1823,7 @@ const operatorLifecycleProgram = (
       return yield* toLifecycleResult({
         registerTxHash: null,
         activateTxHash: null,
+        schedulerAdvanceTxHash: null,
         deregisterTxHash: null,
         retireTxHash: null,
         reregisterTxHash: null,
@@ -1454,6 +1834,7 @@ const operatorLifecycleProgram = (
     let currentRetiredNodes = retiredNodes;
     let registerTxHash: string | null = null;
     let activateTxHash: string | null = null;
+    let schedulerAdvanceTxHash: string | null = null;
     let deregisterTxHash: string | null = null;
     let retireTxHash: string | null = null;
     let reregisterTxHash: string | null = null;
@@ -1479,6 +1860,7 @@ const operatorLifecycleProgram = (
         return yield* toLifecycleResult({
           registerTxHash: null,
           activateTxHash: null,
+          schedulerAdvanceTxHash: null,
           deregisterTxHash: null,
           retireTxHash: null,
           reregisterTxHash: null,
@@ -1676,6 +2058,7 @@ const operatorLifecycleProgram = (
         return yield* toLifecycleResult({
           registerTxHash: null,
           activateTxHash: null,
+          schedulerAdvanceTxHash: null,
           deregisterTxHash,
           retireTxHash: null,
           reregisterTxHash: null,
@@ -2253,6 +2636,7 @@ const operatorLifecycleProgram = (
       return yield* toLifecycleResult({
         registerTxHash,
         activateTxHash: null,
+        schedulerAdvanceTxHash: null,
         deregisterTxHash,
         retireTxHash: null,
         reregisterTxHash: null,
@@ -2681,7 +3065,20 @@ const operatorLifecycleProgram = (
     }
     activateTxHash = activateSubmitResult.right;
 
-    if (mode === "register-activate-retire-reregister") {
+    if (mode === "register-activate-appoint-first-retire") {
+      schedulerAdvanceTxHash = yield* appointFirstSchedulerOperatorProgram(
+        lucid,
+        contracts,
+        operatorKeyHash,
+        referenceScriptsLucid,
+      );
+      retireTxHash = yield* retireActiveOperatorProgram(
+        lucid,
+        contracts,
+        operatorKeyHash,
+        referenceScriptsLucid,
+      );
+    } else if (mode === "register-activate-retire-reregister") {
       retireTxHash = yield* retireActiveOperatorProgram(
         lucid,
         contracts,
@@ -2710,6 +3107,7 @@ const operatorLifecycleProgram = (
     return yield* toLifecycleResult({
       registerTxHash,
       activateTxHash,
+      schedulerAdvanceTxHash,
       deregisterTxHash,
       retireTxHash,
       reregisterTxHash,
@@ -2767,6 +3165,37 @@ export const registerActivateRetireReregisterOperatorProgram = (
         activateTxHash,
         retireTxHash,
         reregisterTxHash,
+      }),
+    ),
+  );
+
+export const registerActivateAppointFirstRetireOperatorProgram = (
+  lucid: LucidEvolution,
+  contracts: SDK.MidgardValidators,
+  requiredBondLovelace: bigint,
+  referenceScriptsLucid?: LucidEvolution,
+): Effect.Effect<
+  RegisterActivateAppointFirstRetireTxHashes,
+  SDK.StateQueueError | SDK.LucidError | TxSignError | TxSubmitError | TxConfirmError
+> =>
+  operatorLifecycleProgram(
+    lucid,
+    contracts,
+    requiredBondLovelace,
+    "register-activate-appoint-first-retire",
+    referenceScriptsLucid,
+  ).pipe(
+    Effect.map(
+      ({
+        registerTxHash,
+        activateTxHash,
+        schedulerAdvanceTxHash,
+        retireTxHash,
+      }) => ({
+        registerTxHash,
+        activateTxHash,
+        schedulerAdvanceTxHash,
+        retireTxHash,
       }),
     ),
   );

@@ -81,7 +81,21 @@ export type ActivateRedeemerLayout = {
 
 export type RetireRedeemerLayout = {
   readonly hubOracleRefInputIndex: bigint;
-  readonly schedulerRefInputIndex: bigint;
+  readonly schedulerSync:
+    | {
+        readonly kind: "inactive";
+        readonly schedulerRefInputIndex: bigint;
+      }
+    | {
+        readonly kind: "advancing";
+        readonly schedulerInputIndex: bigint;
+        readonly schedulerRedeemerIndex: bigint;
+        readonly schedulerOutputIndex: bigint;
+        readonly registeredOperatorRefInputIndex: bigint;
+        readonly activeOperatorsLastNodeRefInputIndex: bigint | null;
+        readonly removingOperatorsAnchorElementKey: string | null;
+        readonly removingOperatorIsTheLastMember: boolean;
+      };
   readonly activeOperatorsRedeemerIndex: bigint;
   readonly retiredOperatorsRedeemerIndex: bigint;
   readonly activeOperatorsRemovedNodeInputIndex: bigint;
@@ -99,6 +113,23 @@ type OrderedOutRef = {
   readonly txHash: string;
   readonly outputIndex: number;
 };
+
+export type RetireSchedulerSyncParams =
+  | {
+      readonly kind: "inactive";
+      readonly schedulerRefInput: UTxO;
+    }
+  | {
+      readonly kind: "advancing";
+      readonly schedulerInput: UTxO;
+      readonly registeredOperatorWitness: NodeWithDatum;
+      readonly schedulerOutputUnit: string;
+      readonly schedulerAddress: string;
+      readonly schedulerReferenceInputs: readonly UTxO[];
+      readonly activeOperatorsLastNodeRefInput?: NodeWithDatum;
+      readonly removingOperatorsAnchorElementKey: string | null;
+      readonly removingOperatorIsTheLastMember: boolean;
+    };
 
 /**
  * Lexicographically compares two hex strings by byte value.
@@ -262,6 +293,66 @@ export const findNodeOutputIndexByUnit = (
   return undefined;
 };
 
+export const findOutputIndexByUnit = (
+  tx: CML.Transaction,
+  address: string,
+  unit: string,
+): bigint | undefined => {
+  const outputs = tx.body().outputs();
+  for (let index = 0; index < outputs.len(); index += 1) {
+    const output = coreToTxOutput(outputs.get(index));
+    if (output.address === address && (output.assets[unit] ?? 0n) > 0n) {
+      return BigInt(index);
+    }
+  }
+  return undefined;
+};
+
+const resolveSpendRedeemerTxInfoIndex = (
+  draftTx: CML.Transaction,
+  targetInputIndex: bigint,
+): Effect.Effect<number, SDK.StateQueueError> =>
+  Effect.gen(function* () {
+    const pointers = getRedeemerPointersInContextOrder(draftTx);
+    const txInfoRedeemerIndexes = getTxInfoRedeemerIndexes(pointers);
+    const targetSpendRedeemerContextIndex = pointers.findIndex(
+      (pointer) =>
+        pointer.tag === CML.RedeemerTag.Spend &&
+        pointer.index === targetInputIndex,
+    );
+    if (targetSpendRedeemerContextIndex < 0) {
+      return yield* Effect.fail(
+        new SDK.StateQueueError({
+          message:
+            "Failed to locate spend redeemer index in balanced draft tx",
+          cause: JSON.stringify({
+            targetInputIndex: targetInputIndex.toString(),
+            pointers: pointers.map((pointer) => ({
+              tag: pointer.tag,
+              index: pointer.index.toString(),
+            })),
+          }),
+        }),
+      );
+    }
+    const targetSpendRedeemerTxInfoIndex =
+      txInfoRedeemerIndexes[targetSpendRedeemerContextIndex] ?? -1;
+    if (targetSpendRedeemerTxInfoIndex < 0) {
+      return yield* Effect.fail(
+        new SDK.StateQueueError({
+          message:
+            "Failed to map spend redeemer from context order to tx-info order",
+          cause: JSON.stringify({
+            targetInputIndex: targetInputIndex.toString(),
+            targetSpendRedeemerContextIndex,
+            txInfoRedeemerIndexes,
+          }),
+        }),
+      );
+    }
+    return targetSpendRedeemerTxInfoIndex;
+  });
+
 /**
  * Compares two register-layout derivations for exact equality.
  */
@@ -385,7 +476,7 @@ export const retireLayoutsEqual = (
   right: RetireRedeemerLayout,
 ): boolean =>
   left.hubOracleRefInputIndex === right.hubOracleRefInputIndex &&
-  left.schedulerRefInputIndex === right.schedulerRefInputIndex &&
+  schedulerSyncLayoutsEqual(left.schedulerSync, right.schedulerSync) &&
   left.activeOperatorsRedeemerIndex === right.activeOperatorsRedeemerIndex &&
   left.retiredOperatorsRedeemerIndex === right.retiredOperatorsRedeemerIndex &&
   left.activeOperatorsRemovedNodeInputIndex ===
@@ -401,6 +492,35 @@ export const retireLayoutsEqual = (
   left.retiredOperatorsAnchorNodeOutputIndex ===
     right.retiredOperatorsAnchorNodeOutputIndex;
 
+const schedulerSyncLayoutsEqual = (
+  left: RetireRedeemerLayout["schedulerSync"],
+  right: RetireRedeemerLayout["schedulerSync"],
+): boolean => {
+  if (left.kind !== right.kind) {
+    return false;
+  }
+  if (left.kind === "inactive") {
+    return (
+      right.kind === "inactive" &&
+      left.schedulerRefInputIndex === right.schedulerRefInputIndex
+    );
+  }
+  return (
+    right.kind === "advancing" &&
+    left.schedulerInputIndex === right.schedulerInputIndex &&
+    left.schedulerRedeemerIndex === right.schedulerRedeemerIndex &&
+    left.schedulerOutputIndex === right.schedulerOutputIndex &&
+    left.registeredOperatorRefInputIndex ===
+      right.registeredOperatorRefInputIndex &&
+    left.activeOperatorsLastNodeRefInputIndex ===
+      right.activeOperatorsLastNodeRefInputIndex &&
+    left.removingOperatorsAnchorElementKey ===
+      right.removingOperatorsAnchorElementKey &&
+    left.removingOperatorIsTheLastMember ===
+      right.removingOperatorIsTheLastMember
+  );
+};
+
 /**
  * Formats a retire-layout derivation for logs.
  */
@@ -409,7 +529,14 @@ export const retireLayoutToLogString = (
 ): string =>
   [
     `hub_ref=${layout.hubOracleRefInputIndex.toString()}`,
-    `scheduler_ref=${layout.schedulerRefInputIndex.toString()}`,
+    layout.schedulerSync.kind === "inactive"
+      ? `scheduler_ref=${layout.schedulerSync.schedulerRefInputIndex.toString()}`
+      : [
+          `scheduler_in=${layout.schedulerSync.schedulerInputIndex.toString()}`,
+          `scheduler_redeemer=${layout.schedulerSync.schedulerRedeemerIndex.toString()}`,
+          `scheduler_out=${layout.schedulerSync.schedulerOutputIndex.toString()}`,
+          `registered_ref=${layout.schedulerSync.registeredOperatorRefInputIndex.toString()}`,
+        ].join(","),
     `active_redeemer=${layout.activeOperatorsRedeemerIndex.toString()}`,
     `retired_redeemer=${layout.retiredOperatorsRedeemerIndex.toString()}`,
     `active_removed_in=${layout.activeOperatorsRemovedNodeInputIndex.toString()}`,
@@ -665,7 +792,7 @@ export const resolveInitialRetireRedeemerLayout = ({
   activeOperatorScriptRefs,
   retiredOperatorScriptRefs,
   hubOracleRefInput,
-  schedulerRefInput,
+  schedulerSync,
   activeOperatorNode,
   activeOperatorAnchor,
   retiredAppendAnchor,
@@ -675,7 +802,7 @@ export const resolveInitialRetireRedeemerLayout = ({
   readonly activeOperatorScriptRefs: readonly ReferenceScriptPublication[];
   readonly retiredOperatorScriptRefs: readonly ReferenceScriptPublication[];
   readonly hubOracleRefInput: UTxO;
-  readonly schedulerRefInput: UTxO;
+  readonly schedulerSync: RetireSchedulerSyncParams;
   readonly activeOperatorNode: NodeWithDatum;
   readonly activeOperatorAnchor: NodeWithDatum;
   readonly retiredAppendAnchor: NodeWithDatum;
@@ -686,12 +813,23 @@ export const resolveInitialRetireRedeemerLayout = ({
     ...activeOperatorScriptRefs.map(({ utxo }) => utxo),
     ...retiredOperatorScriptRefs.map(({ utxo }) => utxo),
     hubOracleRefInput,
-    schedulerRefInput,
+    ...(schedulerSync.kind === "inactive"
+      ? [schedulerSync.schedulerRefInput]
+      : [
+          schedulerSync.registeredOperatorWitness.utxo,
+          ...(schedulerSync.activeOperatorsLastNodeRefInput === undefined
+            ? []
+            : [schedulerSync.activeOperatorsLastNodeRefInput.utxo]),
+          ...schedulerSync.schedulerReferenceInputs,
+        ]),
   ] as const;
   const retireInputs = [
     activeOperatorNode.utxo,
     activeOperatorAnchor.utxo,
     retiredAppendAnchor.utxo,
+    ...(schedulerSync.kind === "advancing"
+      ? [schedulerSync.schedulerInput]
+      : []),
     ...fundingInputs,
   ] as const;
   const activeOperatorsRemovedNodeInputIndex = resolveOrderedOutRefIndex(
@@ -713,22 +851,76 @@ export const resolveInitialRetireRedeemerLayout = ({
   ) {
     throw new Error("Failed to resolve initial retire input indexes");
   }
+  const spendRedeemerCount = schedulerSync.kind === "advancing" ? 4 : 3;
+  const schedulerOutputOffset = schedulerSync.kind === "advancing" ? 1n : 0n;
+  const resolvedSchedulerSync =
+    schedulerSync.kind === "inactive"
+      ? {
+          kind: "inactive" as const,
+          schedulerRefInputIndex: resolveReferenceInputIndexFromSet(
+            schedulerSync.schedulerRefInput,
+            referenceInputs,
+          ),
+        }
+      : (() => {
+          const schedulerInputIndex = resolveOrderedOutRefIndex(
+            schedulerSync.schedulerInput,
+            retireInputs,
+          );
+          const registeredOperatorRefInputIndex =
+            resolveReferenceInputIndexFromSet(
+              schedulerSync.registeredOperatorWitness.utxo,
+              referenceInputs,
+            );
+          const activeOperatorsLastNodeRefInputIndex =
+            schedulerSync.activeOperatorsLastNodeRefInput === undefined
+              ? null
+              : resolveReferenceInputIndexFromSet(
+                  schedulerSync.activeOperatorsLastNodeRefInput.utxo,
+                  referenceInputs,
+                );
+          if (schedulerInputIndex === undefined) {
+            throw new Error("Failed to resolve initial scheduler input index");
+          }
+          const scriptSpendInputs = [
+            activeOperatorNode.utxo,
+            activeOperatorAnchor.utxo,
+            retiredAppendAnchor.utxo,
+            schedulerSync.schedulerInput,
+          ] as const;
+          const schedulerRedeemerIndex = resolveOrderedOutRefIndex(
+            schedulerSync.schedulerInput,
+            scriptSpendInputs,
+          );
+          if (schedulerRedeemerIndex === undefined) {
+            throw new Error("Failed to resolve initial scheduler redeemer index");
+          }
+          return {
+            kind: "advancing" as const,
+            schedulerInputIndex,
+            schedulerRedeemerIndex,
+            schedulerOutputIndex: 0n,
+            registeredOperatorRefInputIndex,
+            activeOperatorsLastNodeRefInputIndex,
+            removingOperatorsAnchorElementKey:
+              schedulerSync.removingOperatorsAnchorElementKey,
+            removingOperatorIsTheLastMember:
+              schedulerSync.removingOperatorIsTheLastMember,
+          };
+        })();
   return {
     hubOracleRefInputIndex: resolveReferenceInputIndexFromSet(
       hubOracleRefInput,
       referenceInputs,
     ),
-    schedulerRefInputIndex: resolveReferenceInputIndexFromSet(
-      schedulerRefInput,
-      referenceInputs,
-    ),
+    schedulerSync: resolvedSchedulerSync,
     activeOperatorsRedeemerIndex: resolveMintRedeemerTxInfoIndex({
       targetPolicyId: contracts.activeOperators.policyId,
       policyIds: [
         contracts.activeOperators.policyId,
         contracts.retiredOperators.policyId,
       ],
-      spendRedeemerCount: 3,
+      spendRedeemerCount,
     }),
     retiredOperatorsRedeemerIndex: resolveMintRedeemerTxInfoIndex({
       targetPolicyId: contracts.retiredOperators.policyId,
@@ -736,14 +928,14 @@ export const resolveInitialRetireRedeemerLayout = ({
         contracts.activeOperators.policyId,
         contracts.retiredOperators.policyId,
       ],
-      spendRedeemerCount: 3,
+      spendRedeemerCount,
     }),
     activeOperatorsRemovedNodeInputIndex,
     activeOperatorsAnchorNodeInputIndex,
-    activeOperatorsAnchorNodeOutputIndex: 2n,
+    activeOperatorsAnchorNodeOutputIndex: 2n + schedulerOutputOffset,
     retiredOperatorsAnchorNodeInputIndex,
-    retiredOperatorsInsertedNodeOutputIndex: 0n,
-    retiredOperatorsAnchorNodeOutputIndex: 1n,
+    retiredOperatorsInsertedNodeOutputIndex: schedulerOutputOffset,
+    retiredOperatorsAnchorNodeOutputIndex: 1n + schedulerOutputOffset,
   };
 };
 
@@ -1107,7 +1299,7 @@ export const deriveRetireRedeemerLayout = (
   tx: CML.Transaction,
   params: {
     readonly hubOracleRefInput: UTxO;
-    readonly schedulerRefInput: UTxO;
+    readonly schedulerSync: RetireSchedulerSyncParams;
     readonly activeOperatorNode: NodeWithDatum;
     readonly activeOperatorAnchor: NodeWithDatum;
     readonly retiredAppendAnchor: NodeWithDatum;
@@ -1127,10 +1319,50 @@ export const deriveRetireRedeemerLayout = (
       tx,
       params.hubOracleRefInput,
     );
-    const schedulerRefInputIndex = findReferenceInputIndex(
-      tx,
-      params.schedulerRefInput,
-    );
+    const schedulerSync =
+      params.schedulerSync.kind === "inactive"
+        ? {
+            kind: "inactive" as const,
+            schedulerRefInputIndex: findReferenceInputIndex(
+              tx,
+              params.schedulerSync.schedulerRefInput,
+            ),
+          }
+        : {
+            kind: "advancing" as const,
+            schedulerInputIndex: findInputIndex(
+              tx,
+              params.schedulerSync.schedulerInput,
+            ),
+            schedulerOutputIndex: findOutputIndexByUnit(
+              tx,
+              params.schedulerSync.schedulerAddress,
+              params.schedulerSync.schedulerOutputUnit,
+            ),
+            registeredOperatorRefInputIndex: findReferenceInputIndex(
+              tx,
+              params.schedulerSync.registeredOperatorWitness.utxo,
+            ),
+            activeOperatorsLastNodeRefInputIndex:
+              params.schedulerSync.activeOperatorsLastNodeRefInput === undefined
+                ? null
+                : findReferenceInputIndex(
+                    tx,
+                    params.schedulerSync.activeOperatorsLastNodeRefInput.utxo,
+                  ),
+            removingOperatorsAnchorElementKey:
+              params.schedulerSync.removingOperatorsAnchorElementKey,
+            removingOperatorIsTheLastMember:
+              params.schedulerSync.removingOperatorIsTheLastMember,
+          };
+    const schedulerRedeemerIndex =
+      schedulerSync.kind === "advancing" &&
+      schedulerSync.schedulerInputIndex !== undefined
+        ? yield* resolveSpendRedeemerTxInfoIndex(
+            tx,
+            schedulerSync.schedulerInputIndex,
+          )
+        : undefined;
     const activeOperatorsRedeemerIndex = yield* resolveMintRedeemerIndexForPolicy(
       tx,
       params.contracts,
@@ -1181,7 +1413,14 @@ export const deriveRetireRedeemerLayout = (
     );
     if (
       hubOracleRefInputIndex === undefined ||
-      schedulerRefInputIndex === undefined ||
+      (schedulerSync.kind === "inactive" &&
+        schedulerSync.schedulerRefInputIndex === undefined) ||
+      (schedulerSync.kind === "advancing" &&
+        (schedulerSync.schedulerInputIndex === undefined ||
+          schedulerRedeemerIndex === undefined ||
+          schedulerSync.schedulerOutputIndex === undefined ||
+          schedulerSync.registeredOperatorRefInputIndex === undefined ||
+          schedulerSync.activeOperatorsLastNodeRefInputIndex === undefined)) ||
       activeOperatorsRemovedNodeInputIndex === undefined ||
       activeOperatorsAnchorNodeInputIndex === undefined ||
       retiredOperatorsAnchorNodeInputIndex === undefined ||
@@ -1202,8 +1441,33 @@ export const deriveRetireRedeemerLayout = (
           cause: JSON.stringify({
             hubOracleRefInputIndex:
               hubOracleRefInputIndex?.toString() ?? "missing",
-            schedulerRefInputIndex:
-              schedulerRefInputIndex?.toString() ?? "missing",
+            schedulerSync:
+              schedulerSync.kind === "inactive"
+                ? {
+                    kind: schedulerSync.kind,
+                    schedulerRefInputIndex:
+                      schedulerSync.schedulerRefInputIndex?.toString() ??
+                      "missing",
+                  }
+                : {
+                    kind: schedulerSync.kind,
+                    schedulerInputIndex:
+                      schedulerSync.schedulerInputIndex?.toString() ??
+                      "missing",
+                    schedulerRedeemerIndex:
+                      schedulerRedeemerIndex?.toString() ?? "missing",
+                    schedulerOutputIndex:
+                      schedulerSync.schedulerOutputIndex?.toString() ??
+                      "missing",
+                    registeredOperatorRefInputIndex:
+                      schedulerSync.registeredOperatorRefInputIndex?.toString() ??
+                      "missing",
+                    activeOperatorsLastNodeRefInputIndex:
+                      schedulerSync.activeOperatorsLastNodeRefInputIndex === null
+                        ? null
+                        : schedulerSync.activeOperatorsLastNodeRefInputIndex?.toString() ??
+                          "missing",
+                  },
             activeOperatorsRedeemerIndex:
               activeOperatorsRedeemerIndex.toString(),
             retiredOperatorsRedeemerIndex:
@@ -1252,9 +1516,74 @@ export const deriveRetireRedeemerLayout = (
         }),
       );
     }
+    let resolvedSchedulerSync: RetireRedeemerLayout["schedulerSync"];
+    if (schedulerSync.kind === "inactive") {
+      const schedulerRefInputIndex = schedulerSync.schedulerRefInputIndex;
+      if (schedulerRefInputIndex === undefined) {
+        return yield* Effect.fail(
+          new SDK.StateQueueError({
+            message:
+              "Failed to resolve inactive scheduler sync after retire layout validation",
+            cause: "schedulerRefInputIndex",
+          }),
+        );
+      }
+      resolvedSchedulerSync = {
+        kind: "inactive",
+        schedulerRefInputIndex,
+      };
+    } else {
+      const schedulerInputIndex = schedulerSync.schedulerInputIndex;
+      const schedulerOutputIndex = schedulerSync.schedulerOutputIndex;
+      const registeredOperatorRefInputIndex =
+        schedulerSync.registeredOperatorRefInputIndex;
+      const activeOperatorsLastNodeRefInputIndex =
+        schedulerSync.activeOperatorsLastNodeRefInputIndex;
+      if (
+        schedulerInputIndex === undefined ||
+        schedulerRedeemerIndex === undefined ||
+        schedulerOutputIndex === undefined ||
+        registeredOperatorRefInputIndex === undefined ||
+        activeOperatorsLastNodeRefInputIndex === undefined
+      ) {
+        return yield* Effect.fail(
+          new SDK.StateQueueError({
+            message:
+              "Failed to resolve advancing scheduler sync after retire layout validation",
+            cause: JSON.stringify({
+              schedulerInputIndex:
+                schedulerInputIndex?.toString() ?? "missing",
+              schedulerRedeemerIndex:
+                schedulerRedeemerIndex?.toString() ?? "missing",
+              schedulerOutputIndex:
+                schedulerOutputIndex?.toString() ?? "missing",
+              registeredOperatorRefInputIndex:
+                registeredOperatorRefInputIndex?.toString() ?? "missing",
+              activeOperatorsLastNodeRefInputIndex:
+                activeOperatorsLastNodeRefInputIndex === null
+                  ? null
+                  : activeOperatorsLastNodeRefInputIndex?.toString() ??
+                    "missing",
+            }),
+          }),
+        );
+      }
+      resolvedSchedulerSync = {
+        kind: "advancing",
+        schedulerInputIndex,
+        schedulerRedeemerIndex: BigInt(schedulerRedeemerIndex),
+        schedulerOutputIndex,
+        registeredOperatorRefInputIndex,
+        activeOperatorsLastNodeRefInputIndex,
+        removingOperatorsAnchorElementKey:
+          schedulerSync.removingOperatorsAnchorElementKey,
+        removingOperatorIsTheLastMember:
+          schedulerSync.removingOperatorIsTheLastMember,
+      };
+    }
     return {
       hubOracleRefInputIndex,
-      schedulerRefInputIndex,
+      schedulerSync: resolvedSchedulerSync,
       activeOperatorsRedeemerIndex: BigInt(activeOperatorsRedeemerIndex),
       retiredOperatorsRedeemerIndex: BigInt(retiredOperatorsRedeemerIndex),
       activeOperatorsRemovedNodeInputIndex,

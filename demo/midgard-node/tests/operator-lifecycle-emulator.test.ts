@@ -3,6 +3,7 @@ import { Effect } from "effect";
 import * as SDK from "@al-ft/midgard-sdk";
 import {
   Emulator,
+  Data,
   Lucid,
   PROTOCOL_PARAMETERS_DEFAULT,
   UTxO,
@@ -48,6 +49,20 @@ type RegisterActivateRetireReregisterLifecycleProgram = (
   referenceScriptsLucid: Awaited<ReturnType<typeof Lucid>>,
 ) => Effect.Effect<RegisterActivateRetireReregisterTxHashes>;
 
+type RegisterActivateAppointFirstRetireTxHashes = {
+  readonly registerTxHash: string | null;
+  readonly activateTxHash: string | null;
+  readonly schedulerAdvanceTxHash: string | null;
+  readonly retireTxHash: string | null;
+};
+
+type RegisterActivateAppointFirstRetireLifecycleProgram = (
+  lucid: Awaited<ReturnType<typeof Lucid>>,
+  contracts: SDK.MidgardValidators,
+  requiredBondLovelace: bigint,
+  referenceScriptsLucid: Awaited<ReturnType<typeof Lucid>>,
+) => Effect.Effect<RegisterActivateAppointFirstRetireTxHashes>;
+
 type OperatorLifecycleModuleWithReregisterMode = {
   readonly registerActivateRetireReregisterOperatorProgram?:
     RegisterActivateRetireReregisterLifecycleProgram;
@@ -58,6 +73,18 @@ type OperatorLifecycleModuleWithReregisterMode = {
     mode: "register-activate-retire-reregister",
     referenceScriptsLucid: Awaited<ReturnType<typeof Lucid>>,
   ) => Effect.Effect<RegisterActivateRetireReregisterTxHashes>;
+};
+
+type OperatorLifecycleModuleWithAppointFirstRetireMode = {
+  readonly registerActivateAppointFirstRetireOperatorProgram?:
+    RegisterActivateAppointFirstRetireLifecycleProgram;
+  readonly operatorLifecycleProgram?: (
+    lucid: Awaited<ReturnType<typeof Lucid>>,
+    contracts: SDK.MidgardValidators,
+    requiredBondLovelace: bigint,
+    mode: "register-activate-appoint-first-retire",
+    referenceScriptsLucid: Awaited<ReturnType<typeof Lucid>>,
+  ) => Effect.Effect<RegisterActivateAppointFirstRetireTxHashes>;
 };
 
 const loadRegisterActivateRetireReregisterLifecycleProgram =
@@ -84,6 +111,33 @@ const loadRegisterActivateRetireReregisterLifecycleProgram =
     }
     throw new Error(
       'Expected register-activate-retire-reregister lifecycle mode runner to be exported from "@/transactions/register-active-operator.js"',
+    );
+  };
+
+const loadRegisterActivateAppointFirstRetireLifecycleProgram =
+  async (): Promise<RegisterActivateAppointFirstRetireLifecycleProgram> => {
+    const lifecycleModule = (await import(
+      "@/transactions/register-active-operator.js"
+    )) as unknown as OperatorLifecycleModuleWithAppointFirstRetireMode;
+    if (
+      lifecycleModule.registerActivateAppointFirstRetireOperatorProgram !==
+      undefined
+    ) {
+      return lifecycleModule.registerActivateAppointFirstRetireOperatorProgram;
+    }
+    if (lifecycleModule.operatorLifecycleProgram !== undefined) {
+      const runMode = lifecycleModule.operatorLifecycleProgram;
+      return (lucid, contracts, requiredBondLovelace, referenceScriptsLucid) =>
+        runMode(
+          lucid,
+          contracts,
+          requiredBondLovelace,
+          "register-activate-appoint-first-retire",
+          referenceScriptsLucid,
+        );
+    }
+    throw new Error(
+      'Expected register-activate-appoint-first-retire lifecycle mode runner to be exported from "@/transactions/register-active-operator.js"',
     );
   };
 
@@ -346,6 +400,47 @@ const assertOperatorRegisteredState = async ({
   expect(operatorRegisteredNodes).toHaveLength(1);
 };
 
+const assertOperatorRetiredState = async ({
+  lucid,
+  contracts,
+  operatorKeyHash,
+}: {
+  lucid: Awaited<ReturnType<typeof Lucid>>;
+  contracts: SDK.MidgardValidators;
+  operatorKeyHash: string;
+}) => {
+  const activeNodeUnit = toUnit(
+    contracts.activeOperators.policyId,
+    SDK.ACTIVE_OPERATOR_NODE_ASSET_NAME_PREFIX + operatorKeyHash,
+  );
+  const activeNodeUtxosAfterRetire = await lucid.utxosAtWithUnit(
+    contracts.activeOperators.spendingScriptAddress,
+    activeNodeUnit,
+  );
+  expect(activeNodeUtxosAfterRetire.length).toEqual(0);
+
+  const registeredNodeUtxosAfterRetire = await fetchRegisteredOperatorNodes(
+    lucid,
+    contracts,
+  );
+  expect(registeredNodeUtxosAfterRetire.length).toEqual(0);
+
+  const retiredOperatorNodes = await fetchRetiredOperatorNodes(lucid, contracts);
+  const operatorRetiredNodes = await Promise.all(
+    retiredOperatorNodes.map(async (utxo) => ({
+      utxo,
+      datum: await Effect.runPromise(SDK.getNodeDatumFromUTxO(utxo)),
+    })),
+  ).then((nodes) =>
+    nodes.filter((node) =>
+      node.datum.key === "Empty"
+        ? false
+        : node.datum.key.Key.key === operatorKeyHash,
+    ),
+  );
+  expect(operatorRetiredNodes).toHaveLength(1);
+};
+
 const fetchRetiredOperatorNodes = async (
   lucid: Awaited<ReturnType<typeof Lucid>>,
   contracts: SDK.MidgardValidators,
@@ -380,6 +475,23 @@ const fetchRegisteredOperatorNodes = async (
       return assetName.startsWith(SDK.REGISTERED_OPERATOR_NODE_ASSET_NAME_PREFIX);
     }),
   );
+};
+
+const fetchSchedulerDatum = async (
+  lucid: Awaited<ReturnType<typeof Lucid>>,
+  contracts: SDK.MidgardValidators,
+): Promise<SDK.SchedulerDatum> => {
+  const schedulerUnit = toUnit(
+    contracts.scheduler.policyId,
+    SDK.SCHEDULER_ASSET_NAME,
+  );
+  const schedulerUtxos = await lucid.utxosAtWithUnit(
+    contracts.scheduler.spendingScriptAddress,
+    schedulerUnit,
+  );
+  expect(schedulerUtxos).toHaveLength(1);
+  expect(schedulerUtxos[0]?.datum).toBeDefined();
+  return Data.from(schedulerUtxos[0]!.datum!, SDK.SchedulerDatum);
 };
 
 const advanceEmulatorPastRegistrationDelay = (emulator: Emulator): void => {
@@ -490,6 +602,43 @@ describe("operator lifecycle emulator", () => {
       operatorKeyHash,
     });
   });
+
+  it(
+    "runs register-activate-appoint-first-retire lifecycle mode happy path",
+    async () => {
+      const runLifecycle =
+        await loadRegisterActivateAppointFirstRetireLifecycleProgram();
+      const { lucid, referenceScriptsLucid, contracts, operatorKeyHash } =
+        await initOperatorLifecycleFixture();
+
+      const schedulerBeforeLifecycle = await fetchSchedulerDatum(
+        lucid,
+        contracts,
+      );
+      expect(schedulerBeforeLifecycle).toEqual(SDK.INITIAL_SCHEDULER_DATUM);
+
+      const result = await Effect.runPromise(
+        runLifecycle(lucid, contracts, 5_000_000n, referenceScriptsLucid),
+      );
+      expect(result.registerTxHash).toHaveLength(64);
+      expect(result.activateTxHash).toHaveLength(64);
+      expect(result.schedulerAdvanceTxHash).toHaveLength(64);
+      expect(result.retireTxHash).toHaveLength(64);
+
+      const schedulerAfterRetire = await fetchSchedulerDatum(
+        lucid,
+        contracts,
+      );
+      expect(schedulerAfterRetire).toEqual(SDK.INITIAL_SCHEDULER_DATUM);
+
+      await assertOperatorRetiredState({
+        lucid,
+        contracts,
+        operatorKeyHash,
+      });
+    },
+    420_000,
+  );
 
   it(
     "runs register-activate-retire-reregister lifecycle mode happy path",
