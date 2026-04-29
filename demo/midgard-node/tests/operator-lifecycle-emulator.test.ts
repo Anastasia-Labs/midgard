@@ -23,6 +23,27 @@ import {
   deregisterOperatorProgram,
   registerOperatorProgram,
 } from "@/transactions/register-active-operator.js";
+import { withStubbedProviderEvaluation } from "@/cml-redeemers.js";
+import {
+  compareOutRefs,
+  requireOutRefIndex,
+  resolveReferenceInputIndexFromSet,
+} from "@/tx-context.js";
+import {
+  deriveRetireRedeemerLayout,
+  getAssetNameByPolicy,
+  linkPointsTo,
+  nodeKeyEquals,
+  orderedNotMemberWitness,
+  resolveInitialRetireRedeemerLayout,
+  type NodeWithDatum,
+  type RetireRedeemerLayout,
+  type RetireSchedulerSyncParams,
+} from "@/transactions/register-active-operator/lifecycle-layout.js";
+import {
+  alignUnixTimeMsToSlotBoundary,
+  currentTimeMsForLucidOrEmulatorFallback,
+} from "@/transactions/register-active-operator/clock.js";
 
 const EMULATOR_PROTOCOL_PARAMETERS = {
   ...PROTOCOL_PARAMETERS_DEFAULT,
@@ -34,6 +55,28 @@ const EMULATOR_PROTOCOL_PARAMETERS = {
 // can satisfy collateral + collateral-return constraints within max inputs (3).
 const MIN_COLLATERAL_SAFE_FRAGMENT_LOVELACE = 2_300_000n;
 const EMPTY_FRAUD_PROOF_CATALOGUE_ROOT = "00".repeat(32);
+const OPERATOR_BOND_LOVELACE = 5_000_000n;
+const MANUAL_TX_FUNDING_TARGET_LOVELACE = 30_000_000n;
+const SCHEDULER_APPOINTMENT_VALIDITY_WINDOW_MS = 120_000n;
+
+type LucidInstance = Awaited<ReturnType<typeof Lucid>>;
+
+type OperatorTestWallet = {
+  readonly lucid: LucidInstance;
+  readonly operatorKeyHash: string;
+  readonly activeNodeUnit: string;
+};
+
+type SchedulerAppointmentRedeemerValue = {
+  scheduler_input_index: bigint;
+  scheduler_output_index: bigint;
+  advancing_approach: {
+    AppointFirstOperator: {
+      new_shifts_operator_node_ref_input_index: bigint;
+      registered_element_ref_input_index: bigint;
+    };
+  };
+};
 
 type RegisterActivateRetireReregisterTxHashes = {
   readonly registerTxHash: string | null;
@@ -183,26 +226,55 @@ const buildOperatorAwareInitializationTx = async (
   );
 };
 
+const compareHexStrings = (left: string, right: string): number =>
+  Buffer.from(left, "hex").compare(Buffer.from(right, "hex"));
+
+const getWalletOperatorKeyHash = async (
+  lucid: LucidInstance,
+): Promise<string> => {
+  const operatorAddress = await lucid.wallet().address();
+  const paymentCredential = paymentCredentialOf(operatorAddress);
+  if (paymentCredential?.type !== "Key") {
+    throw new Error("Expected operator wallet payment credential to be Key");
+  }
+  return paymentCredential.hash;
+};
+
 /**
  * Initializes the shared fixture used by operator-lifecycle emulator tests.
  */
-const initOperatorLifecycleFixture = async () => {
-  const operator = generateEmulatorAccount({
-    lovelace: 30_000_000_000n,
-  });
+const initOperatorLifecycleFixture = async ({
+  operatorCount = 1,
+}: {
+  readonly operatorCount?: number;
+} = {}) => {
+  const operatorAccounts = Array.from({ length: operatorCount }, () =>
+    generateEmulatorAccount({
+      lovelace: 30_000_000_000n,
+    }),
+  );
   const referenceScripts = generateEmulatorAccount({
     lovelace: 20_000_000_000n,
   });
   const emulator = new Emulator(
-    [operator, referenceScripts],
+    [...operatorAccounts, referenceScripts],
     EMULATOR_PROTOCOL_PARAMETERS,
   );
-  const lucid = await Lucid(emulator, "Custom");
+  const operatorLucids = await Promise.all(
+    operatorAccounts.map(async (operator) => {
+      const operatorLucid = await Lucid(emulator, "Custom");
+      operatorLucid.selectWallet.fromSeed(operator.seedPhrase);
+      return operatorLucid;
+    }),
+  );
   const referenceScriptsLucid = await Lucid(emulator, "Custom");
-  lucid.selectWallet.fromSeed(operator.seedPhrase);
   referenceScriptsLucid.selectWallet.fromSeed(referenceScripts.seedPhrase);
 
-  const nonceUtxo = (await lucid.wallet().getUtxos())[0];
+  const initializationLucid = operatorLucids[0];
+  if (initializationLucid === undefined) {
+    throw new Error("initOperatorLifecycleFixture requires an operator wallet");
+  }
+  const nonceUtxo = (await initializationLucid.wallet().getUtxos())[0];
   if (!nonceUtxo) {
     throw new Error("Expected at least one wallet UTxO in emulator");
   }
@@ -211,7 +283,7 @@ const initOperatorLifecycleFixture = async () => {
     outputIndex: nonceUtxo.outputIndex,
   });
   const initTx = await buildOperatorAwareInitializationTx(
-    lucid,
+    initializationLucid,
     referenceScriptsLucid,
     contracts,
     nonceUtxo,
@@ -219,27 +291,38 @@ const initOperatorLifecycleFixture = async () => {
   const initCompleted = await initTx.complete({ localUPLCEval: true });
   const initSigned = await initCompleted.sign.withWallet().complete();
   const initTxHash = await initSigned.submit();
-  await lucid.awaitTx(initTxHash);
+  await initializationLucid.awaitTx(initTxHash);
 
-  const operatorAddress = await lucid.wallet().address();
-  const paymentCredential = paymentCredentialOf(operatorAddress);
-  if (paymentCredential?.type !== "Key") {
-    throw new Error("Expected operator wallet payment credential to be Key");
-  }
-  const operatorKeyHash = paymentCredential.hash;
-
-  const activeNodeUnit = toUnit(
-    contracts.activeOperators.policyId,
-    SDK.ACTIVE_OPERATOR_NODE_ASSET_NAME_PREFIX + operatorKeyHash,
+  const operators = await Promise.all(
+    operatorLucids.map(async (operatorLucid): Promise<OperatorTestWallet> => {
+      const operatorKeyHash = await getWalletOperatorKeyHash(operatorLucid);
+      return {
+        lucid: operatorLucid,
+        operatorKeyHash,
+        activeNodeUnit: toUnit(
+          contracts.activeOperators.policyId,
+          SDK.ACTIVE_OPERATOR_NODE_ASSET_NAME_PREFIX + operatorKeyHash,
+        ),
+      };
+    }),
+  ).then((wallets) =>
+    [...wallets].sort((left, right) =>
+      compareHexStrings(left.operatorKeyHash, right.operatorKeyHash),
+    ),
   );
+  const primaryOperator = operators[0];
+  if (primaryOperator === undefined) {
+    throw new Error("Expected at least one operator wallet in emulator");
+  }
 
   return {
     emulator,
-    lucid,
+    lucid: primaryOperator.lucid,
     referenceScriptsLucid,
     contracts,
-    operatorKeyHash,
-    activeNodeUnit,
+    operatorKeyHash: primaryOperator.operatorKeyHash,
+    activeNodeUnit: primaryOperator.activeNodeUnit,
+    operators,
   };
 };
 
@@ -494,6 +577,726 @@ const fetchSchedulerDatum = async (
   return Data.from(schedulerUtxos[0]!.datum!, SDK.SchedulerDatum);
 };
 
+const encodeSchedulerDatumForChain = (datum: SDK.SchedulerDatum): string =>
+  SDK.normalizeRootIndefiniteArrayEncoding(
+    Data.to(datum as never, SDK.SchedulerDatum as never),
+  );
+
+const encodeRetiredOperatorDatumValue = (
+  bondUnlockTime: bigint | null,
+): unknown =>
+  SDK.castRetiredOperatorDatumToData({
+    bond_unlock_time: bondUnlockTime,
+  });
+
+const decodeNullableBigInt = (value: unknown): bigint | null => {
+  if (value === null || value === "None" || value === undefined) {
+    return null;
+  }
+  if (typeof value === "bigint") {
+    return value;
+  }
+  if (typeof value === "number" && Number.isInteger(value)) {
+    return BigInt(value);
+  }
+  if (
+    typeof value === "object" &&
+    value !== null &&
+    "Some" in value &&
+    Array.isArray(value.Some) &&
+    value.Some.length === 1
+  ) {
+    return decodeNullableBigInt(value.Some[0]);
+  }
+  throw new Error(`Unsupported nullable bigint value: ${String(value)}`);
+};
+
+const decodeActiveBondUnlockTime = (node: NodeWithDatum): bigint | null => {
+  const data = node.datum.data;
+  if (typeof data === "object" && data !== null && "bond_unlock_time" in data) {
+    return decodeNullableBigInt(data.bond_unlock_time);
+  }
+  return null;
+};
+
+const uniqueUtxosByOutRef = (utxos: readonly UTxO[]): readonly UTxO[] =>
+  Array.from(
+    new Map(
+      utxos.map((utxo) => [
+        `${utxo.txHash}#${utxo.outputIndex.toString()}`,
+        utxo,
+      ]),
+    ).values(),
+  );
+
+const selectManualFundingInputs = async (
+  lucid: LucidInstance,
+  targetLovelace: bigint = MANUAL_TX_FUNDING_TARGET_LOVELACE,
+): Promise<readonly UTxO[]> => {
+  const spendableWalletUtxos = await reconcileLiveWalletUtxos(
+    lucid,
+    await lucid.wallet().getUtxos(),
+  ).then((utxos) => utxos.filter((utxo) => utxo.scriptRef === undefined));
+  const selected: UTxO[] = [];
+  let selectedLovelace = 0n;
+  for (const utxo of spendableWalletUtxos) {
+    selected.push(utxo);
+    selectedLovelace += utxo.assets.lovelace ?? 0n;
+    if (selectedLovelace >= targetLovelace) {
+      break;
+    }
+  }
+  if (selected.length === 0 || selectedLovelace < targetLovelace) {
+    throw new Error(
+      `Insufficient wallet funding for manual negative transaction: selected=${selectedLovelace.toString()},target=${targetLovelace.toString()}`,
+    );
+  }
+  return selected;
+};
+
+const fetchSchedulerUtxo = async (
+  lucid: LucidInstance,
+  contracts: SDK.MidgardValidators,
+): Promise<UTxO> =>
+  Effect.runPromise(
+    SDK.fetchSchedulerUTxOProgram(lucid, {
+      schedulerAddress: contracts.scheduler.spendingScriptAddress,
+      schedulerPolicyId: contracts.scheduler.policyId,
+    }),
+  ).then(({ utxo }) => utxo);
+
+const fetchHubOracleUtxo = async (
+  lucid: LucidInstance,
+  contracts: SDK.MidgardValidators,
+): Promise<UTxO> =>
+  Effect.runPromise(
+    SDK.fetchHubOracleUTxOProgram(lucid, {
+      hubOracleAddress: contracts.hubOracle.spendingScriptAddress,
+      hubOraclePolicyId: contracts.hubOracle.policyId,
+    }),
+  ).then(({ utxo }) => utxo);
+
+const fetchOperatorNodeSet = async (
+  lucid: LucidInstance,
+  address: string,
+  policyId: string,
+): Promise<readonly NodeWithDatum[]> => {
+  const utxos = await lucid.utxosAt(address);
+  const nodeUtxos = utxos.filter((utxo) =>
+    Object.entries(utxo.assets).some(
+      ([unit, quantity]) =>
+        unit !== "lovelace" && quantity > 0n && unit.startsWith(policyId),
+    ),
+  );
+  return Promise.all(
+    nodeUtxos.sort(compareOutRefs).map(async (utxo) => {
+      const datum = await Effect.runPromise(SDK.getNodeDatumFromUTxO(utxo));
+      const assetName = getAssetNameByPolicy(utxo.assets, policyId);
+      if (assetName === null) {
+        throw new Error(
+          `Expected one operator node NFT for ${utxo.txHash}#${utxo.outputIndex.toString()}`,
+        );
+      }
+      return { utxo, datum, assetName };
+    }),
+  );
+};
+
+const fetchActiveOperatorNodeSet = (
+  lucid: LucidInstance,
+  contracts: SDK.MidgardValidators,
+): Promise<readonly NodeWithDatum[]> =>
+  fetchOperatorNodeSet(
+    lucid,
+    contracts.activeOperators.spendingScriptAddress,
+    contracts.activeOperators.policyId,
+  );
+
+const fetchRegisteredOperatorNodeSet = (
+  lucid: LucidInstance,
+  contracts: SDK.MidgardValidators,
+): Promise<readonly NodeWithDatum[]> =>
+  fetchOperatorNodeSet(
+    lucid,
+    contracts.registeredOperators.spendingScriptAddress,
+    contracts.registeredOperators.policyId,
+  );
+
+const fetchRetiredOperatorNodeSet = (
+  lucid: LucidInstance,
+  contracts: SDK.MidgardValidators,
+): Promise<readonly NodeWithDatum[]> =>
+  fetchOperatorNodeSet(
+    lucid,
+    contracts.retiredOperators.spendingScriptAddress,
+    contracts.retiredOperators.policyId,
+  );
+
+const requireRootNode = (
+  nodes: readonly NodeWithDatum[],
+  label: string,
+): NodeWithDatum => {
+  const root = nodes.find(({ datum }) => datum.key === "Empty");
+  if (root === undefined) {
+    throw new Error(`Expected ${label} root node`);
+  }
+  return root;
+};
+
+const requireNodeForOperator = (
+  nodes: readonly NodeWithDatum[],
+  operatorKeyHash: string,
+  label: string,
+): NodeWithDatum => {
+  const node = nodes.find(({ datum }) => nodeKeyEquals(datum, operatorKeyHash));
+  if (node === undefined) {
+    throw new Error(`Expected ${label} node for operator ${operatorKeyHash}`);
+  }
+  return node;
+};
+
+const requireAnchorForNode = (
+  nodes: readonly NodeWithDatum[],
+  node: NodeWithDatum,
+  label: string,
+): NodeWithDatum => {
+  if (node.datum.key === "Empty") {
+    throw new Error(`Cannot find anchor for ${label} root node`);
+  }
+  const anchor = nodes.find(({ datum }) =>
+    linkPointsTo(datum, node.datum.key.Key.key),
+  );
+  if (anchor === undefined) {
+    throw new Error(`Expected ${label} anchor node`);
+  }
+  return anchor;
+};
+
+const requireRegisteredSchedulerWitness = (
+  registeredNodes: readonly NodeWithDatum[],
+): NodeWithDatum =>
+  registeredNodes.find(
+    ({ datum }) => datum.key !== "Empty" && datum.next === "Empty",
+  ) ?? requireRootNode(registeredNodes, "registered-operators");
+
+const requireRetiredAppendAnchor = (
+  retiredNodes: readonly NodeWithDatum[],
+  operatorKeyHash: string,
+): NodeWithDatum => {
+  const anchor = retiredNodes.find(({ datum }) =>
+    orderedNotMemberWitness(datum, operatorKeyHash),
+  );
+  if (anchor === undefined) {
+    throw new Error(
+      `Expected retired-operators append anchor for operator ${operatorKeyHash}`,
+    );
+  }
+  return anchor;
+};
+
+const requireActiveTailNode = (
+  activeNodes: readonly NodeWithDatum[],
+): NodeWithDatum => {
+  const tail = activeNodes.find(
+    ({ datum }) => datum.key !== "Empty" && datum.next === "Empty",
+  );
+  if (tail === undefined) {
+    throw new Error("Expected active-operators tail node");
+  }
+  return tail;
+};
+
+const submitCompletedTx = async (
+  lucid: LucidInstance,
+  completed: Awaited<
+    ReturnType<ReturnType<LucidInstance["newTx"]>["complete"]>
+  >,
+): Promise<string> => {
+  const signed = await completed.sign.withWallet().complete();
+  const txHash = await signed.submit();
+  await lucid.awaitTx(txHash);
+  return txHash;
+};
+
+const expectContractRejection = async (
+  label: string,
+  attempt: () => Promise<unknown>,
+) => {
+  let rejected = false;
+  try {
+    await attempt();
+  } catch {
+    rejected = true;
+  }
+  expect(rejected, label).toBe(true);
+};
+
+const submitSchedulerAppointmentTx = async ({
+  lucid,
+  contracts,
+  operatorKeyHash,
+  activeOperatorWitness,
+  registeredWitness,
+  schedulerOutputDatum,
+  schedulerOutputMode = "scheduler-inline",
+  redeemerOverride,
+}: {
+  readonly lucid: LucidInstance;
+  readonly contracts: SDK.MidgardValidators;
+  readonly operatorKeyHash: string;
+  readonly activeOperatorWitness: NodeWithDatum;
+  readonly registeredWitness: NodeWithDatum;
+  readonly schedulerOutputDatum?: SDK.SchedulerDatum;
+  readonly schedulerOutputMode?: "scheduler-inline" | "wallet-address";
+  readonly redeemerOverride?: (
+    redeemer: SchedulerAppointmentRedeemerValue,
+  ) => SchedulerAppointmentRedeemerValue;
+}): Promise<string> => {
+  const schedulerInput = await fetchSchedulerUtxo(lucid, contracts);
+  const fundingInputs = await selectManualFundingInputs(lucid);
+  const referenceInputs = uniqueUtxosByOutRef([
+    activeOperatorWitness.utxo,
+    registeredWitness.utxo,
+  ]);
+  const validFrom = alignUnixTimeMsToSlotBoundary(
+    lucid,
+    currentTimeMsForLucidOrEmulatorFallback(lucid),
+  );
+  const validTo = alignUnixTimeMsToSlotBoundary(
+    lucid,
+    validFrom + SCHEDULER_APPOINTMENT_VALIDITY_WINDOW_MS,
+  );
+  const schedulerDatum =
+    schedulerOutputDatum ??
+    ({
+      ActiveOperator: {
+        operator: operatorKeyHash,
+        start_time: validTo - 1n,
+      },
+    } satisfies SDK.SchedulerDatum);
+  const schedulerInputIndex = requireOutRefIndex(
+    [schedulerInput, ...fundingInputs].sort(compareOutRefs),
+    schedulerInput,
+  );
+  const baseRedeemer: SchedulerAppointmentRedeemerValue = {
+    scheduler_input_index: schedulerInputIndex,
+    scheduler_output_index: 0n,
+    advancing_approach: {
+      AppointFirstOperator: {
+        new_shifts_operator_node_ref_input_index:
+          resolveReferenceInputIndexFromSet(
+            activeOperatorWitness.utxo,
+            referenceInputs,
+          ),
+        registered_element_ref_input_index: resolveReferenceInputIndexFromSet(
+          registeredWitness.utxo,
+          referenceInputs,
+        ),
+      },
+    },
+  };
+  const schedulerRedeemer = Data.to(
+    (redeemerOverride?.(baseRedeemer) ?? baseRedeemer) as never,
+    SDK.SchedulerSpendRedeemer as never,
+  );
+  let tx = lucid
+    .newTx()
+    .validFrom(Number(validFrom))
+    .validTo(Number(validTo))
+    .collectFrom(fundingInputs)
+    .readFrom(referenceInputs)
+    .collectFrom([schedulerInput], schedulerRedeemer)
+    .addSignerKey(operatorKeyHash)
+    .attach.Script(contracts.scheduler.spendingScript);
+  if (schedulerOutputMode === "scheduler-inline") {
+    tx = tx.pay.ToContract(
+      contracts.scheduler.spendingScriptAddress,
+      {
+        kind: "inline",
+        value: encodeSchedulerDatumForChain(schedulerDatum),
+      },
+      schedulerInput.assets,
+    );
+  } else {
+    tx = tx.pay.ToAddress(
+      await lucid.wallet().address(),
+      schedulerInput.assets,
+    );
+  }
+  const completed = await tx.complete({
+    localUPLCEval: true,
+    presetWalletInputs: [...fundingInputs],
+  });
+  return submitCompletedTx(lucid, completed);
+};
+
+const mkActiveRetireRedeemer = ({
+  operatorKeyHash,
+  layout,
+}: {
+  readonly operatorKeyHash: string;
+  readonly layout: RetireRedeemerLayout;
+}): string =>
+  Data.to(
+    {
+      RetireOperator: {
+        active_operator_key: operatorKeyHash,
+        hub_oracle_ref_input_index: layout.hubOracleRefInputIndex,
+        active_operator_anchor_element_input_index:
+          layout.activeOperatorsAnchorNodeInputIndex,
+        active_operator_removed_node_input_index:
+          layout.activeOperatorsRemovedNodeInputIndex,
+        active_operator_anchor_element_output_index:
+          layout.activeOperatorsAnchorNodeOutputIndex,
+        retired_operators_redeemer_index: layout.retiredOperatorsRedeemerIndex,
+        penalize_for_inactivity: false,
+        operator_removal_scheduler_sync:
+          layout.schedulerSync.kind === "inactive"
+            ? {
+                ShowOperatorIsInactive: {
+                  scheduler_ref_input_index:
+                    layout.schedulerSync.schedulerRefInputIndex,
+                },
+              }
+            : {
+                ShowSchedulerIsAdvancing: {
+                  scheduler_input_index:
+                    layout.schedulerSync.schedulerInputIndex,
+                  scheduler_redeemer_index:
+                    layout.schedulerSync.schedulerRedeemerIndex,
+                  removing_operators_anchor_element_key:
+                    layout.schedulerSync.removingOperatorsAnchorElementKey,
+                  removing_operator_is_the_last_member:
+                    layout.schedulerSync.removingOperatorIsTheLastMember,
+                },
+              },
+      },
+    },
+    SDK.ActiveOperatorMintRedeemer,
+  );
+
+const mkRetiredRetireRedeemer = ({
+  operatorKeyHash,
+  bondUnlockTime,
+  layout,
+}: {
+  readonly operatorKeyHash: string;
+  readonly bondUnlockTime: bigint | null;
+  readonly layout: RetireRedeemerLayout;
+}): string =>
+  Data.to(
+    {
+      RetireOperator: {
+        new_retired_operator_key: operatorKeyHash,
+        bond_unlock_time: bondUnlockTime,
+        hub_oracle_ref_input_index: layout.hubOracleRefInputIndex,
+        retired_operator_anchor_element_input_index:
+          layout.retiredOperatorsAnchorNodeInputIndex,
+        retired_operator_anchor_element_output_index:
+          layout.retiredOperatorsAnchorNodeOutputIndex,
+        retired_operator_inserted_node_output_index:
+          layout.retiredOperatorsInsertedNodeOutputIndex,
+        active_operators_redeemer_index: layout.activeOperatorsRedeemerIndex,
+      },
+    },
+    SDK.RetiredOperatorMintRedeemer,
+  );
+
+const mkSchedulerOperatorRemovalRedeemer = (
+  layout: RetireRedeemerLayout,
+): string => {
+  if (layout.schedulerSync.kind !== "advancing") {
+    throw new Error(
+      "Scheduler operator-removal redeemer requires advancing sync",
+    );
+  }
+  return Data.to(
+    {
+      scheduler_input_index: layout.schedulerSync.schedulerInputIndex,
+      scheduler_output_index: layout.schedulerSync.schedulerOutputIndex,
+      advancing_approach: {
+        RewindDueToOperatorRemoval: {
+          active_operators_mint_redeemer_index:
+            layout.activeOperatorsRedeemerIndex,
+          m_active_operators_last_node_ref_input_index:
+            layout.schedulerSync.activeOperatorsLastNodeRefInputIndex,
+          removal_reason: "OperatorRetirement",
+          registered_element_ref_input_index:
+            layout.schedulerSync.registeredOperatorRefInputIndex,
+        },
+      },
+    },
+    SDK.SchedulerSpendRedeemer,
+  );
+};
+
+const submitRetirementTx = async ({
+  lucid,
+  contracts,
+  operatorKeyHash,
+  schedulerMode,
+  activeOperatorsLastNodeRefInput,
+  omitOperatorSigner = false,
+}: {
+  readonly lucid: LucidInstance;
+  readonly contracts: SDK.MidgardValidators;
+  readonly operatorKeyHash: string;
+  readonly schedulerMode: "inactive" | "advancing";
+  readonly activeOperatorsLastNodeRefInput?: NodeWithDatum;
+  readonly omitOperatorSigner?: boolean;
+}): Promise<string> => {
+  const activeNodes = await fetchActiveOperatorNodeSet(lucid, contracts);
+  const retiredNodes = await fetchRetiredOperatorNodeSet(lucid, contracts);
+  const registeredNodes = await fetchRegisteredOperatorNodeSet(
+    lucid,
+    contracts,
+  );
+  const activeOperatorNode = requireNodeForOperator(
+    activeNodes,
+    operatorKeyHash,
+    "active-operators",
+  );
+  const activeOperatorAnchor = requireAnchorForNode(
+    activeNodes,
+    activeOperatorNode,
+    "active-operators",
+  );
+  const retiredAppendAnchor = requireRetiredAppendAnchor(
+    retiredNodes,
+    operatorKeyHash,
+  );
+  const schedulerInput = await fetchSchedulerUtxo(lucid, contracts);
+  const hubOracleRefInput = await fetchHubOracleUtxo(lucid, contracts);
+  const fundingInputs = await selectManualFundingInputs(lucid);
+  const activeNodeUnit = toUnit(
+    contracts.activeOperators.policyId,
+    activeOperatorNode.assetName,
+  );
+  const activeAnchorNodeUnit = toUnit(
+    contracts.activeOperators.policyId,
+    activeOperatorAnchor.assetName,
+  );
+  const retiredNodeUnit = toUnit(
+    contracts.retiredOperators.policyId,
+    SDK.RETIRED_OPERATOR_NODE_ASSET_NAME_PREFIX + operatorKeyHash,
+  );
+  const retiredAnchorNodeUnit = toUnit(
+    contracts.retiredOperators.policyId,
+    retiredAppendAnchor.assetName,
+  );
+  const bondUnlockTime = decodeActiveBondUnlockTime(activeOperatorNode);
+  const retiredNodeDatum: SDK.LinkedListNodeView = {
+    key: { Key: { key: operatorKeyHash } },
+    next: retiredAppendAnchor.datum.next,
+    data: encodeRetiredOperatorDatumValue(bondUnlockTime),
+  };
+  const updatedRetiredAnchorDatum: SDK.LinkedListNodeView = {
+    ...retiredAppendAnchor.datum,
+    next: { Key: { key: operatorKeyHash } },
+  };
+  const updatedActiveAnchorDatum: SDK.LinkedListNodeView = {
+    ...activeOperatorAnchor.datum,
+    next: activeOperatorNode.datum.next,
+  };
+  const retiredNodeAssets: Record<string, bigint> = {
+    ...activeOperatorNode.utxo.assets,
+    [retiredNodeUnit]: 1n,
+  };
+  delete retiredNodeAssets[activeNodeUnit];
+  const schedulerSync: RetireSchedulerSyncParams =
+    schedulerMode === "inactive"
+      ? {
+          kind: "inactive",
+          schedulerRefInput: schedulerInput,
+        }
+      : {
+          kind: "advancing",
+          schedulerInput,
+          registeredOperatorWitness:
+            requireRegisteredSchedulerWitness(registeredNodes),
+          schedulerOutputUnit: toUnit(
+            contracts.scheduler.policyId,
+            SDK.SCHEDULER_ASSET_NAME,
+          ),
+          schedulerAddress: contracts.scheduler.spendingScriptAddress,
+          schedulerReferenceInputs: [],
+          activeOperatorsLastNodeRefInput,
+          removingOperatorsAnchorElementKey:
+            activeOperatorAnchor.datum.key === "Empty"
+              ? null
+              : activeOperatorAnchor.datum.key.Key.key,
+          removingOperatorIsTheLastMember:
+            activeOperatorNode.datum.next === "Empty",
+        };
+  const referenceInputs = [
+    hubOracleRefInput,
+    ...(schedulerSync.kind === "inactive"
+      ? [schedulerSync.schedulerRefInput]
+      : [
+          schedulerSync.registeredOperatorWitness.utxo,
+          ...(schedulerSync.activeOperatorsLastNodeRefInput === undefined
+            ? []
+            : [schedulerSync.activeOperatorsLastNodeRefInput.utxo]),
+        ]),
+  ].sort(compareOutRefs);
+  const mkRetireTx = (layout: RetireRedeemerLayout) => {
+    const activeRetireRedeemer = mkActiveRetireRedeemer({
+      operatorKeyHash,
+      layout,
+    });
+    const retiredRetireRedeemer = mkRetiredRetireRedeemer({
+      operatorKeyHash,
+      bondUnlockTime,
+      layout,
+    });
+    let tx = lucid
+      .newTx()
+      .collectFrom(fundingInputs)
+      .collectFrom(
+        [activeOperatorNode.utxo, activeOperatorAnchor.utxo],
+        Data.to("ListStateTransition", SDK.ActiveOperatorSpendRedeemer),
+      )
+      .collectFrom([retiredAppendAnchor.utxo], Data.void())
+      .readFrom(referenceInputs)
+      .mintAssets({ [activeNodeUnit]: -1n }, activeRetireRedeemer);
+    if (layout.schedulerSync.kind === "advancing") {
+      tx = tx
+        .collectFrom(
+          [schedulerInput],
+          mkSchedulerOperatorRemovalRedeemer(layout),
+        )
+        .pay.ToContract(
+          contracts.scheduler.spendingScriptAddress,
+          {
+            kind: "inline",
+            value: encodeSchedulerDatumForChain(SDK.INITIAL_SCHEDULER_DATUM),
+          },
+          schedulerInput.assets,
+        );
+    }
+    tx = tx
+      .mintAssets({ [retiredNodeUnit]: 1n }, retiredRetireRedeemer)
+      .pay.ToContract(
+        contracts.retiredOperators.spendingScriptAddress,
+        {
+          kind: "inline",
+          value: SDK.encodeLinkedListNodeView(retiredNodeDatum),
+        },
+        retiredNodeAssets,
+      )
+      .pay.ToContract(
+        contracts.retiredOperators.spendingScriptAddress,
+        {
+          kind: "inline",
+          value: SDK.encodeLinkedListNodeView(updatedRetiredAnchorDatum),
+        },
+        retiredAppendAnchor.utxo.assets,
+      )
+      .pay.ToContract(
+        contracts.activeOperators.spendingScriptAddress,
+        {
+          kind: "inline",
+          value: SDK.encodeLinkedListNodeView(updatedActiveAnchorDatum),
+        },
+        activeOperatorAnchor.utxo.assets,
+      )
+      .attach.Script(contracts.activeOperators.spendingScript)
+      .attach.Script(contracts.retiredOperators.spendingScript)
+      .attach.Script(contracts.activeOperators.mintingScript)
+      .attach.Script(contracts.retiredOperators.mintingScript);
+    if (layout.schedulerSync.kind === "advancing") {
+      tx = tx.attach.Script(contracts.scheduler.spendingScript);
+    }
+    if (!omitOperatorSigner) {
+      tx = tx.addSignerKey(operatorKeyHash);
+    }
+    return tx;
+  };
+  const initialLayout = resolveInitialRetireRedeemerLayout({
+    activeOperatorScriptRefs: [],
+    retiredOperatorScriptRefs: [],
+    hubOracleRefInput,
+    schedulerSync,
+    activeOperatorNode,
+    activeOperatorAnchor,
+    retiredAppendAnchor,
+    contracts,
+    fundingInputs,
+  });
+  const draft = await withStubbedProviderEvaluation(lucid, () =>
+    mkRetireTx(initialLayout).complete({
+      localUPLCEval: true,
+      presetWalletInputs: [...fundingInputs],
+    }),
+  );
+  const layout = await Effect.runPromise(
+    deriveRetireRedeemerLayout(draft.toTransaction(), {
+      hubOracleRefInput,
+      schedulerSync,
+      activeOperatorNode,
+      activeOperatorAnchor,
+      retiredAppendAnchor,
+      activeOperatorsPolicyId: contracts.activeOperators.policyId,
+      activeOperatorsAddress: contracts.activeOperators.spendingScriptAddress,
+      activeNodeUnit,
+      activeAnchorNodeUnit,
+      retiredOperatorsPolicyId: contracts.retiredOperators.policyId,
+      retiredOperatorsAddress: contracts.retiredOperators.spendingScriptAddress,
+      retiredNodeUnit,
+      retiredAnchorNodeUnit,
+      contracts,
+    }),
+  );
+  const completed = await mkRetireTx(layout).complete({
+    localUPLCEval: true,
+    presetWalletInputs: [...fundingInputs],
+  });
+  return submitCompletedTx(lucid, completed);
+};
+
+const registerOperator = async (
+  operator: OperatorTestWallet,
+  contracts: SDK.MidgardValidators,
+  referenceScriptsLucid: LucidInstance,
+) => {
+  const result = await Effect.runPromise(
+    registerOperatorProgram(
+      operator.lucid,
+      contracts,
+      OPERATOR_BOND_LOVELACE,
+      referenceScriptsLucid,
+    ),
+  );
+  expect(result.registerTxHash).toHaveLength(64);
+};
+
+const activateOperator = async (
+  operator: OperatorTestWallet,
+  contracts: SDK.MidgardValidators,
+  referenceScriptsLucid: LucidInstance,
+) => {
+  const result = await Effect.runPromise(
+    activateOperatorProgram(
+      operator.lucid,
+      contracts,
+      OPERATOR_BOND_LOVELACE,
+      referenceScriptsLucid,
+    ),
+  );
+  expect(result.activateTxHash).toHaveLength(64);
+};
+
+const registerAndActivateOperator = async (
+  emulator: Emulator,
+  operator: OperatorTestWallet,
+  contracts: SDK.MidgardValidators,
+  referenceScriptsLucid: LucidInstance,
+) => {
+  await registerOperator(operator, contracts, referenceScriptsLucid);
+  advanceEmulatorPastRegistrationDelay(emulator);
+  await activateOperator(operator, contracts, referenceScriptsLucid);
+};
+
 const advanceEmulatorPastRegistrationDelay = (emulator: Emulator): void => {
   emulator.awaitSlot(180);
 };
@@ -732,6 +1535,265 @@ describe("operator lifecycle emulator", () => {
       ),
     ).rejects.toThrow();
   });
+
+  it("rejects invalid scheduler first-appointment lifecycle transitions", async () => {
+    const { emulator, referenceScriptsLucid, contracts, operators } =
+      await initOperatorLifecycleFixture({ operatorCount: 2 });
+    const firstOperator = operators[0];
+    const secondOperator = operators[1];
+    if (firstOperator === undefined || secondOperator === undefined) {
+      throw new Error("Expected two operator wallets");
+    }
+
+    await registerOperator(firstOperator, contracts, referenceScriptsLucid);
+    const registeredNodesAfterRegister = await fetchRegisteredOperatorNodeSet(
+      firstOperator.lucid,
+      contracts,
+    );
+    const registeredInactiveWitness = requireRegisteredSchedulerWitness(
+      registeredNodesAfterRegister,
+    );
+    const activeRootBeforeActivation = requireRootNode(
+      await fetchActiveOperatorNodeSet(firstOperator.lucid, contracts),
+      "active-operators",
+    );
+    await expectContractRejection(
+      "AppointFirstOperator rejects an operator that is registered but not active",
+      () =>
+        submitSchedulerAppointmentTx({
+          lucid: firstOperator.lucid,
+          contracts,
+          operatorKeyHash: firstOperator.operatorKeyHash,
+          activeOperatorWitness: activeRootBeforeActivation,
+          registeredWitness: registeredInactiveWitness,
+        }),
+    );
+
+    advanceEmulatorPastRegistrationDelay(emulator);
+    await activateOperator(firstOperator, contracts, referenceScriptsLucid);
+    const activeNodesAfterFirstActivation = await fetchActiveOperatorNodeSet(
+      firstOperator.lucid,
+      contracts,
+    );
+    const firstActiveNode = requireNodeForOperator(
+      activeNodesAfterFirstActivation,
+      firstOperator.operatorKeyHash,
+      "active-operators",
+    );
+    const emptyRegisteredWitness = requireRegisteredSchedulerWitness(
+      await fetchRegisteredOperatorNodeSet(firstOperator.lucid, contracts),
+    );
+    await expectContractRejection(
+      "AppointFirstOperator rejects a wrong scheduler output start_time",
+      () =>
+        submitSchedulerAppointmentTx({
+          lucid: firstOperator.lucid,
+          contracts,
+          operatorKeyHash: firstOperator.operatorKeyHash,
+          activeOperatorWitness: firstActiveNode,
+          registeredWitness: emptyRegisteredWitness,
+          schedulerOutputDatum: {
+            ActiveOperator: {
+              operator: firstOperator.operatorKeyHash,
+              start_time: 0n,
+            },
+          },
+        }),
+    );
+    await expectContractRejection(
+      "AppointFirstOperator rejects a wrong scheduler output index claim",
+      () =>
+        submitSchedulerAppointmentTx({
+          lucid: firstOperator.lucid,
+          contracts,
+          operatorKeyHash: firstOperator.operatorKeyHash,
+          activeOperatorWitness: firstActiveNode,
+          registeredWitness: emptyRegisteredWitness,
+          redeemerOverride: (redeemer) => ({
+            ...redeemer,
+            scheduler_output_index: redeemer.scheduler_output_index + 1n,
+          }),
+        }),
+    );
+    await expectContractRejection(
+      "AppointFirstOperator rejects scheduler NFT continuity outside the scheduler inline-datum output",
+      () =>
+        submitSchedulerAppointmentTx({
+          lucid: firstOperator.lucid,
+          contracts,
+          operatorKeyHash: firstOperator.operatorKeyHash,
+          activeOperatorWitness: firstActiveNode,
+          registeredWitness: emptyRegisteredWitness,
+          schedulerOutputMode: "wallet-address",
+        }),
+    );
+
+    await registerOperator(secondOperator, contracts, referenceScriptsLucid);
+    advanceEmulatorPastRegistrationDelay(emulator);
+    const eligibleRegisteredWitness = requireRegisteredSchedulerWitness(
+      await fetchRegisteredOperatorNodeSet(firstOperator.lucid, contracts),
+    );
+    await expectContractRejection(
+      "AppointFirstOperator rejects appointment while a registered operator is eligible for activation",
+      () =>
+        submitSchedulerAppointmentTx({
+          lucid: firstOperator.lucid,
+          contracts,
+          operatorKeyHash: firstOperator.operatorKeyHash,
+          activeOperatorWitness: firstActiveNode,
+          registeredWitness: eligibleRegisteredWitness,
+        }),
+    );
+
+    await activateOperator(secondOperator, contracts, referenceScriptsLucid);
+    const activeNodesAfterSecondActivation = await fetchActiveOperatorNodeSet(
+      firstOperator.lucid,
+      contracts,
+    );
+    const refreshedFirstActiveNode = requireNodeForOperator(
+      activeNodesAfterSecondActivation,
+      firstOperator.operatorKeyHash,
+      "active-operators",
+    );
+    const secondActiveNode = requireNodeForOperator(
+      activeNodesAfterSecondActivation,
+      secondOperator.operatorKeyHash,
+      "active-operators",
+    );
+    const registeredRootAfterSecondActivation =
+      requireRegisteredSchedulerWitness(
+        await fetchRegisteredOperatorNodeSet(firstOperator.lucid, contracts),
+      );
+    await expectContractRejection(
+      "AppointFirstOperator rejects a referenced active node that is not the last active node",
+      () =>
+        submitSchedulerAppointmentTx({
+          lucid: firstOperator.lucid,
+          contracts,
+          operatorKeyHash: firstOperator.operatorKeyHash,
+          activeOperatorWitness: refreshedFirstActiveNode,
+          registeredWitness: registeredRootAfterSecondActivation,
+        }),
+    );
+
+    const schedulerAdvanceTxHash = await submitSchedulerAppointmentTx({
+      lucid: secondOperator.lucid,
+      contracts,
+      operatorKeyHash: secondOperator.operatorKeyHash,
+      activeOperatorWitness: secondActiveNode,
+      registeredWitness: registeredRootAfterSecondActivation,
+    });
+    expect(schedulerAdvanceTxHash).toHaveLength(64);
+    await expectContractRejection(
+      "AppointFirstOperator rejects appointment when scheduler is not NoActiveOperators",
+      () =>
+        submitSchedulerAppointmentTx({
+          lucid: secondOperator.lucid,
+          contracts,
+          operatorKeyHash: secondOperator.operatorKeyHash,
+          activeOperatorWitness: secondActiveNode,
+          registeredWitness: registeredRootAfterSecondActivation,
+        }),
+    );
+  }, 900_000);
+
+  it("rejects invalid retirement scheduler synchronization transitions", async () => {
+    const { emulator, referenceScriptsLucid, contracts, operators } =
+      await initOperatorLifecycleFixture({ operatorCount: 2 });
+    const appointedOperator = operators[0];
+    const otherOperator = operators[1];
+    if (appointedOperator === undefined || otherOperator === undefined) {
+      throw new Error("Expected two operator wallets");
+    }
+
+    await registerAndActivateOperator(
+      emulator,
+      appointedOperator,
+      contracts,
+      referenceScriptsLucid,
+    );
+    await expectContractRejection(
+      "Non-penalty retirement rejects missing operator consent signature",
+      () =>
+        submitRetirementTx({
+          lucid: appointedOperator.lucid,
+          contracts,
+          operatorKeyHash: appointedOperator.operatorKeyHash,
+          schedulerMode: "inactive",
+          omitOperatorSigner: true,
+        }),
+    );
+
+    const appointedActiveNode = requireNodeForOperator(
+      await fetchActiveOperatorNodeSet(appointedOperator.lucid, contracts),
+      appointedOperator.operatorKeyHash,
+      "active-operators",
+    );
+    const registeredRoot = requireRegisteredSchedulerWitness(
+      await fetchRegisteredOperatorNodeSet(appointedOperator.lucid, contracts),
+    );
+    const schedulerAdvanceTxHash = await submitSchedulerAppointmentTx({
+      lucid: appointedOperator.lucid,
+      contracts,
+      operatorKeyHash: appointedOperator.operatorKeyHash,
+      activeOperatorWitness: appointedActiveNode,
+      registeredWitness: registeredRoot,
+    });
+    expect(schedulerAdvanceTxHash).toHaveLength(64);
+
+    await registerOperator(otherOperator, contracts, referenceScriptsLucid);
+    advanceEmulatorPastRegistrationDelay(emulator);
+    await expectContractRejection(
+      "Scheduler-spent retirement rejects rewinding to NoActiveOperators while a registered operator is activation-eligible",
+      () =>
+        submitRetirementTx({
+          lucid: appointedOperator.lucid,
+          contracts,
+          operatorKeyHash: appointedOperator.operatorKeyHash,
+          schedulerMode: "advancing",
+        }),
+    );
+
+    await activateOperator(otherOperator, contracts, referenceScriptsLucid);
+    await expectContractRejection(
+      "Appointed operator retirement rejects omitting the scheduler spend/update",
+      () =>
+        submitRetirementTx({
+          lucid: appointedOperator.lucid,
+          contracts,
+          operatorKeyHash: appointedOperator.operatorKeyHash,
+          schedulerMode: "inactive",
+        }),
+    );
+    await expectContractRejection(
+      "Scheduler-spent retirement rejects removing an operator that scheduler is not appointing",
+      () =>
+        submitRetirementTx({
+          lucid: otherOperator.lucid,
+          contracts,
+          operatorKeyHash: otherOperator.operatorKeyHash,
+          schedulerMode: "advancing",
+        }),
+    );
+
+    const activeNodesWithOtherOperator = await fetchActiveOperatorNodeSet(
+      appointedOperator.lucid,
+      contracts,
+    );
+    await expectContractRejection(
+      "Scheduler-spent retirement rejects rewinding to NoActiveOperators when another active operator remains",
+      () =>
+        submitRetirementTx({
+          lucid: appointedOperator.lucid,
+          contracts,
+          operatorKeyHash: appointedOperator.operatorKeyHash,
+          schedulerMode: "advancing",
+          activeOperatorsLastNodeRefInput: requireActiveTailNode(
+            activeNodesWithOtherOperator,
+          ),
+        }),
+    );
+  }, 900_000);
 
   it(
     "runs register-only then activate-only with fragmented wallet UTxOs to stress coin selection",
