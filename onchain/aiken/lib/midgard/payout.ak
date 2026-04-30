@@ -1,3 +1,4 @@
+use cardano/address.{Address}
 use cardano/assets.{AssetName}
 use cardano/transaction.{OutputReference}
 use midgard/common/types.{Proof, ValuePairs}
@@ -9,16 +10,26 @@ pub type Datum {
 /// TODO: Support minting as a source of token.
 pub type AssetToAdd {
   Lovelace {
+    reserve_addr: Address,
     reserve_input_index: Int,
+    reserve_redeemer_index: Int,
     m_reserve_change_output_index: Option<Int>,
   }
-  Asset {
-    policy_id: PolicyId,
-    asset_name: AssetName,
+  CardanoAsset {
     policy_id_index_in_target: Int,
     asset_name_index_in_target: Int,
+    reserve_addr: Address,
     reserve_input_index: Int,
+    reserve_redeemer_index: Int,
     reserve_change_output_index: Int,
+  }
+  MidgardAsset {
+    policy_id_to_mint: PolicyId,
+    asset_name_to_mint: AssetName,
+    quantity_to_mint: Int,
+    registry_ref_input_index: Int,
+    policy_id_index_in_target: Int,
+    asset_name_index_in_target: Int,
   }
 }
 
@@ -32,7 +43,6 @@ pub type AccumulationArgs {
 pub type SpendRedeemer {
   AddFunds {
     accumulation_args: AccumulationArgs,
-    reserve_redeemer_index: Int,
     payout_input_outref: OutputReference,
     payout_input_redeemer_index: Int,
   }
