@@ -135,19 +135,19 @@ validator spend(payout_policy_id: PolicyId) {
             payout_input_outref,
             inputs,
             outputs,
-            // Double satisfaction prevented by validating the same NFT is present
-            // in the output.
+            // Double satisfaction prevented by validating the same NFT is
+            // present in the output.
             True,
           )
 
         expect
           validate_asset_accumulation(
             payout_policy_id,
+            payout_nft_asset_name,
             asset_to_add,
             payout_input.output.value,
             payout_output.value,
             l2_value,
-            payout_nft_asset_name,
             accumulation_args,
             inputs,
             outputs,
@@ -164,163 +164,124 @@ validator spend(payout_policy_id: PolicyId) {
 
 fn validate_asset_accumulation(
   payout_policy_id: PolicyId,
+  payout_asset_name: AssetName,
   asset_to_add: AssetToAdd,
   p0: Value,
   p1: Value,
   pt: ValuePairs,
-  payout_asset_name: AssetName,
   accumulation_args_data: Data,
   inputs: List<Input>,
   outputs: List<Output>,
 ) -> Bool {
-  // Separate Lovelace from the rest of assets.
-  let (p0_lovelace, p0_assets) = p0 |> separate_ada_and_remove_auth_nft
-  let (p1_lovelace, p1_assets) = p1 |> separate_ada_and_remove_auth_nft
+  // 1. Separate Lovelace from the rest of assets. `p0` and `p1` must carry 1 of
+  //    the given auth NFT.
+  let (p0_lovelace, p0_assets) =
+    p0 |> separate_ada_and_remove_auth_nft(payout_policy_id, payout_asset_name)
+  let (p1_lovelace, p1_assets) =
+    p1 |> separate_ada_and_remove_auth_nft(payout_policy_id, payout_asset_name)
 
   // NOTE that we are assuming it is already verified that the first entry in
   // the target `ValuePairs` is ADA. This validation is currently happening at
-  // minting of the withdrawal order UTxO.
+  // minting of the withdrawal order UTxO (TODO?).
   let Pair(_, pt_lovelace) = builtin.head_list(pt).2nd |> builtin.head_list
   let pt_assets = pt |> builtin.tail_list
 
-  if p0_lovelace == pt_lovelace {
-    when asset_to_add is {
-      CardanoAsset {
-        policy_id,
-        asset_name,
-        policy_id_index_in_target,
-        asset_name_index_in_target,
-        reserve_addr,
-        reserve_input_index,
-        reserve_redeemer_index,
-        reserve_change_output_index,
-      } -> {
-        // 2a. Specified UTxO from reserve must be getting spent with a matching
-        //     set of redeemer arguments.
-        let (r0_lovelace, r0_assets) =
-          get_reserve_input_lovelace_and_assets(
-            reserve_addr,
-            reserve_input_index,
-            reserve_redeemer_index,
-            accumulation_args_data,
-            inputs,
-          )
+  // 2. Output lovelace must not exceed the target.
+  expect p1_lovelace <= pt_lovelace
 
-        // 3a. Change output must go to the Midgard reserve with no datum and
-        //     reference script attached.
-        let (r1_lovelace, r1_assets) =
-          get_reserve_change_output_lovelace_and_assets(
-            reserve_addr,
-            reserve_change_output_index,
-            outputs,
-          )
+  // 3. Output lovelace must either grow or remain unchanged.
+  expect p1_lovelace >= p0_lovelace
 
-        // 4a. Since we are only adding another token, payout Lovelace must not
-        //     change.
-        expect p1_lovelace == p0_lovelace
+  when asset_to_add is {
+    Lovelace {
+      reserve_addr,
+      reserve_input_index,
+      reserve_redeemer_index,
+      m_reserve_change_output_index,
+    } -> {
+      // 4a. Target Lovelace must not have been reached.
+      expect p0_lovelace < pt_lovelace
 
-        // 5a. ADA of the reserve UTxO must also be preserved.
-        expect r1_lovelace == r0_lovelace
-
-        // 6a. Transfer of the specified asset from reserve to the payout
-        //     accumulator must be valid.
-        validate_transfer_of_given_asset_with_change(
-          p0_assets,
-          r0_assets,
-          p1_assets,
-          r1_assets,
-          pt_assets,
-          policy_id,
-          asset_name,
-          policy_id_index_in_target,
-          asset_name_index_in_target,
+      // 5a. Specified UTxO from reserve must be getting spent with a matching
+      //     set of redeemer arguments.
+      let (r0_lovelace, r0_assets) =
+        get_reserve_input_lovelace_and_assets(
+          reserve_addr,
+          reserve_input_index,
+          reserve_redeemer_index,
+          accumulation_args_data,
+          inputs,
         )
-      }
-      MidgardAsset { .. } -> todo
-      Lovelace { .. } -> fail @"Target Lovelace already reached"
-    }
-  } else {
-    // 1b. Output lovelace must not exceed the target.
-    expect p1_lovelace <= pt_lovelace
 
-    // 2b. Output lovelace must either grow or remain unchanged.
-    expect p1_lovelace >= p0_lovelace
+      when m_reserve_change_output_index is {
+        None -> {
+          // 6a. When redeemer specifies no change must go back to the reserve,
+          //     input reserve must contain only ADA, and all its quantity must
+          //     be absorbed by the payout accumulator.
+          expect r0_assets == dict.empty
+          expect r0_lovelace == p1_lovelace - p0_lovelace
 
-    when asset_to_add is {
-      Lovelace {
-        reserve_addr,
-        reserve_input_index,
-        reserve_redeemer_index,
-        m_reserve_change_output_index,
-      } -> {
-        // 3b. Specified UTxO from reserve must be getting spent with a matching
-        //     set of redeemer arguments.
-        let (r0_lovelace, r0_assets) =
-          get_reserve_input_lovelace_and_assets(
-            reserve_addr,
-            reserve_input_index,
-            reserve_redeemer_index,
-            accumulation_args_data,
-            inputs,
-          )
-        when m_reserve_change_output_index is {
-          None -> {
-            // 4b. When redeemer specifies no change must go back to the
-            //     reserve, input reserve must contain only ADA, and all its
-            //     quantity must be absorbed by the payout accumulator.
-            expect r0_assets == dict.empty
-            expect r0_lovelace == p1_lovelace - p0_lovelace
-            True
-          }
-          Some(reserve_change_output_index) -> {
-            let (r1_lovelace, r1_assets) =
-              get_reserve_change_output_lovelace_and_assets(
-                reserve_addr,
-                reserve_change_output_index,
-                outputs,
-              )
+          // Done.
+          True
+        }
+        Some(reserve_change_output_index) -> {
+          let (r1_lovelace, r1_assets) =
+            get_reserve_change_output_lovelace_and_assets(
+              reserve_addr,
+              reserve_change_output_index,
+              outputs,
+            )
 
-            // 4b'. The change in reserve lovelace must match the change in
-            //      payout Lovelace.
-            expect r0_lovelace - r1_lovelace == p1_lovelace - p0_lovelace
+          // 6a'. The change in reserve lovelace must match the change in
+          //      payout Lovelace.
+          expect r0_lovelace - r1_lovelace == p1_lovelace - p0_lovelace
 
-            // 5b'. Other assets of reserve must remain unchanged.
-            let r0_assets_data: Data = r0_assets
-            let r1_assets_data: Data = r1_assets
-            expect r0_assets_data == r1_assets_data
-            True
-          }
+          // 7a'. Other assets of reserve must remain unchanged.
+          let r0_assets_data: Data = r0_assets
+          let r1_assets_data: Data = r1_assets
+          expect r0_assets_data == r1_assets_data
+
+          // Done.
+          True
         }
       }
-      CardanoAsset {
-        policy_id_index_in_target,
-        asset_name_index_in_target,
-        reserve_addr,
-        reserve_input_index,
-        reserve_redeemer_index,
-        reserve_change_output_index,
-      } -> {
-        // 3c. Specified UTxO from reserve must be getting spent with a matching
-        //     set of redeemer arguments.
-        let (r0_lovelace, r0_assets) =
-          get_reserve_input_lovelace_and_assets(
-            reserve_addr,
-            reserve_input_index,
-            reserve_redeemer_index,
-            accumulation_args_data,
-            inputs,
-          )
+    }
+    CardanoAsset {
+      policy_id,
+      asset_name,
+      policy_id_index_in_target,
+      asset_name_index_in_target,
+      reserve_addr,
+      reserve_input_index,
+      reserve_redeemer_index,
+      reserve_change_output_index,
+    } -> {
+      // 4b. Specified UTxO from reserve must be getting spent with a matching
+      //     set of redeemer arguments.
+      let (r0_lovelace, r0_assets) =
+        get_reserve_input_lovelace_and_assets(
+          reserve_addr,
+          reserve_input_index,
+          reserve_redeemer_index,
+          accumulation_args_data,
+          inputs,
+        )
 
-        // 4c. A change output is expected to be going back to the reserve.
-        let (r1_lovelace, r1_assets) =
-          get_reserve_change_output_lovelace_and_assets(
-            reserve_addr,
-            reserve_change_output_index,
-            outputs,
-          )
+      // 5b. A change output is expected to be going back to the reserve.
+      let (r1_lovelace, r1_assets) =
+        get_reserve_change_output_lovelace_and_assets(
+          reserve_addr,
+          reserve_change_output_index,
+          outputs,
+        )
 
-        // 5c. Transfer of the specified asset from reserve to the payout
-        //     accumulator must be valid.
+      // 6b. The change in reserve lovelace must match the change in payout
+      //     Lovelace.
+      expect r0_lovelace - r1_lovelace == p1_lovelace - p0_lovelace
+
+      // 7b. Transfer of the specified asset from reserve to the payout
+      //     accumulator must be valid.
+      expect
         validate_transfer_of_given_asset_with_change(
           p0_assets,
           r0_assets,
@@ -330,8 +291,11 @@ fn validate_asset_accumulation(
           policy_id_index_in_target,
           asset_name_index_in_target,
         )
-      }
+
+      // Done.
+      True
     }
+    MidgardAsset { .. } -> todo
   }
 }
 
@@ -370,8 +334,9 @@ fn get_reserve_input_lovelace_and_assets(
 /// r1: Non-ADA assets of output reserve
 /// pt: Target non-ADA assets
 ///
-/// This function assumes all assets are stripped of their ADA. Therefore, no
-/// validations are performed to prevent `policy_id` from being the same as ADA.
+/// This function assumes all assets are stripped of their ADA. Since it is
+/// expected for the target value to have ADA at its head, the given policy ID
+/// index cannot be 0 (as it gets decremented to compensate the removal of ADA).
 fn validate_transfer_of_given_asset_with_change(
   p0_assets: Dict<PolicyId, Dict<AssetName, Int>>,
   r0_assets: Dict<PolicyId, Dict<AssetName, Int>>,
@@ -382,8 +347,10 @@ fn validate_transfer_of_given_asset_with_change(
   asset_name_index_in_target: Int,
 ) -> Bool {
   // 1. Provided indices for extracting the subject asset must yield values.
+  //    We are decrementing the policy ID's index since the assumption is that
+  //    Lovelace at head was removed.
   let Pair(policy_id, target_asset_pairs) =
-    pt_assets |> list.expect_at(policy_id_index_in_target)
+    pt_assets |> list.expect_at(policy_id_index_in_target - 1)
   let Pair(asset_name, pt_qty) =
     target_asset_pairs |> list.expect_at(asset_name_index_in_target)
 
