@@ -7,7 +7,6 @@ pub type Datum {
   l2_value: ValuePairs,
 }
 
-/// TODO: Support minting as a source of token.
 pub type AssetToAdd {
   Lovelace {
     reserve_addr: Address,
