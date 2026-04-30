@@ -62,7 +62,7 @@ test zip_foldr() {
   final_list == [(1, 1), (2, 2), (3, 3)]
 }
 
-test prop_get_lovelace_and_assets_matches_without_lovelace(
+test success__get_lovelace_and_assets(
   v via cardano_fuzz.value(assets.from_lovelace(baseline_lovelace)),
 ) {
   let (lovelace, v_assets) = utils.get_lovelace_and_assets(v)
@@ -73,7 +73,9 @@ test prop_get_lovelace_and_assets_matches_without_lovelace(
   }
 }
 
-test prop_get_lovelace_and_assets_lovelace_only(v via cardano_fuzz.lovelace()) {
+test success__get_lovelace_and_assets__lovelace_only(
+  v via cardano_fuzz.lovelace(),
+) {
   let (lovelace, v_assets) = utils.get_lovelace_and_assets(v)
 
   and {

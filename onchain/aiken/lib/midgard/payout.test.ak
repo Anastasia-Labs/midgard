@@ -77,7 +77,7 @@ fn value_with_extra_target_asset(lovelace: Lovelace) -> Value {
   )
 }
 
-test prop_separate_ada_and_remove_auth_nft_removes_target_from_generated_value(
+test success__separate_ada_and_remove_auth_nft__removes_target_from_generated_value(
   v via cardano_fuzz.value(value_with_target_asset(baseline_lovelace)),
 ) {
   let (lovelace, assets_without_nft) =
@@ -96,7 +96,7 @@ test prop_separate_ada_and_remove_auth_nft_removes_target_from_generated_value(
   }
 }
 
-test prop_separate_ada_and_remove_auth_nft_fails_without_target(
+test fail__separate_ada_and_remove_auth_nft__missing_target(
   v via cardano_fuzz.value(
     assets.from_asset_list(
       [
@@ -118,7 +118,7 @@ test prop_separate_ada_and_remove_auth_nft_fails_without_target(
   }
 }
 
-test prop_separate_ada_and_remove_auth_nft_fails_with_mismatched_target_asset(
+test fail__separate_ada_and_remove_auth_nft__mismatched_target_asset(
   v via cardano_fuzz.value(
     value_with_mismatched_target_asset(baseline_lovelace),
   ),
@@ -132,7 +132,7 @@ test prop_separate_ada_and_remove_auth_nft_fails_with_mismatched_target_asset(
   }
 }
 
-test prop_separate_ada_and_remove_auth_nft_fails_with_invalid_target_quantity(
+test fail__separate_ada_and_remove_auth_nft__invalid_target_quantity(
   v via cardano_fuzz.value(
     value_with_invalid_target_quantity(baseline_lovelace),
   ),
@@ -146,7 +146,7 @@ test prop_separate_ada_and_remove_auth_nft_fails_with_invalid_target_quantity(
   }
 }
 
-test prop_separate_ada_and_remove_auth_nft_fails_with_extra_target_asset(
+test fail__separate_ada_and_remove_auth_nft__extra_target_asset(
   v via cardano_fuzz.value(value_with_extra_target_asset(baseline_lovelace)),
 ) fail {
   let (lovelace, assets_without_nft) =
@@ -158,7 +158,7 @@ test prop_separate_ada_and_remove_auth_nft_fails_with_extra_target_asset(
   }
 }
 
-test prop_separate_ada_and_remove_auth_nft_preserves_generated_lovelace(
+test success__separate_ada_and_remove_auth_nft__preserves_generated_lovelace(
   lovelace via fuzz.int_at_least(1),
 ) {
   let v = value_with_target_asset(lovelace)
