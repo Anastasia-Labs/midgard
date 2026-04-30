@@ -24,8 +24,8 @@ import { formatUnknownError } from "@/error-format.js";
 import { slotToUnixTimeForLucid } from "@/lucid-time.js";
 import {
   availableOperatorWalletUtxos,
-  applySubmittedTxToOperatorWalletView,
   fetchOperatorWalletView,
+  noteConsumedOperatorWalletInputs,
   type OperatorWalletView,
 } from "@/operator-wallet-view.js";
 import {
@@ -122,6 +122,9 @@ const SCHEDULER_SUBMISSION_CONFIRMATION_TIMEOUT_MS = 90_000;
 const SCHEDULER_SUBMISSION_CONFIRMATION_POLL_INTERVAL_MS = 5_000;
 const SCHEDULER_SHIFT_DURATION_MS = SDK.SHIFT_DURATION_MS;
 const SCHEDULER_TRANSITION_VALIDITY_WINDOW_MS = 5n * 60n * 1000n;
+// Keep the lower bound behind the builder's current slot so remote submit
+// providers with a slightly stale ledger view do not reject an otherwise valid tx.
+const SCHEDULER_VALID_FROM_PAST_SKEW_MS = 60_000;
 export const encodeSchedulerDatumForChain = (
   datum: CanonicalSchedulerDatum,
 ): string =>
@@ -317,6 +320,18 @@ const decodeRegisteredOperatorActivationTime = (
   return key === undefined ? undefined : BigInt(`0x${key === "" ? "0" : key}`);
 };
 
+const resolveSchedulerValidFromWithProviderSkew = (
+  lucid: LucidEvolution,
+): number => {
+  const currentSlot = lucid.currentSlot();
+  const currentSlotStart =
+    slotToUnixTimeForLucid(lucid, currentSlot) ?? Date.now();
+  return alignUnixTimeToSlotBoundary(
+    lucid,
+    Math.max(0, currentSlotStart - SCHEDULER_VALID_FROM_PAST_SKEW_MS),
+  );
+};
+
 const resolveSchedulerRefreshValidityWindow = (
   lucid: LucidEvolution,
   currentSchedulerStartTime: bigint,
@@ -324,22 +339,19 @@ const resolveSchedulerRefreshValidityWindow = (
   readonly validFrom: bigint;
   readonly validTo: bigint;
 } => {
-  const currentSlot = lucid.currentSlot();
-  const currentSlotStart =
-    slotToUnixTimeForLucid(lucid, currentSlot) ?? Date.now();
   const minimumShiftStart = Number(
     currentSchedulerStartTime + SCHEDULER_SHIFT_DURATION_MS,
   );
-  let validFrom = alignUnixTimeToSlotBoundary(
-    lucid,
-    Math.max(currentSlotStart, minimumShiftStart),
-  );
-  if (validFrom < minimumShiftStart) {
-    validFrom = alignUnixTimeToSlotBoundary(lucid, minimumShiftStart + 999);
+  const validFrom = resolveSchedulerValidFromWithProviderSkew(lucid);
+  const validTo = BigInt(validFrom) + SCHEDULER_TRANSITION_VALIDITY_WINDOW_MS;
+  if (validTo <= BigInt(minimumShiftStart)) {
+    throw new Error(
+      `Cannot refresh scheduler before the next shift can fit in the validity window: valid_from=${validFrom.toString()},valid_to=${validTo.toString()},minimum_shift_start=${minimumShiftStart.toString()}`,
+    );
   }
   return {
     validFrom: BigInt(validFrom),
-    validTo: BigInt(validFrom) + SCHEDULER_TRANSITION_VALIDITY_WINDOW_MS,
+    validTo,
   };
 };
 
@@ -350,11 +362,14 @@ const resolveSchedulerFirstAppointmentValidityWindow = (
   readonly validFrom: bigint;
   readonly validTo: bigint;
 } => {
-  const currentSlot = lucid.currentSlot();
-  const currentSlotStart =
-    slotToUnixTimeForLucid(lucid, currentSlot) ?? Date.now();
-  const validFrom = BigInt(alignUnixTimeToSlotBoundary(lucid, currentSlotStart));
+  const validFromCandidate = BigInt(
+    resolveSchedulerValidFromWithProviderSkew(lucid),
+  );
   const validTo = targetCommitEndTime;
+  const validFrom =
+    validTo - validFromCandidate > SCHEDULER_TRANSITION_VALIDITY_WINDOW_MS
+      ? validTo - SCHEDULER_TRANSITION_VALIDITY_WINDOW_MS
+      : validFromCandidate;
   if (validFrom >= validTo) {
     throw new Error(
       `Cannot appoint first scheduler operator because the target commit end-time is not in the future: valid_from=${validFrom.toString()},target_commit_end=${validTo.toString()}`,
@@ -864,7 +879,7 @@ const ensureSchedulerAlignedForCommit = (
             },
           };
     yield* Effect.logInfo(
-      `🔹 Refreshing scheduler witness datum for commit window via ${selection.kind} (from=${describeSchedulerDatum(schedulerDatum)} to=${describeSchedulerDatum(refreshedSchedulerDatum)}, validTo=${validTo.toString()}).`,
+      `🔹 Refreshing scheduler witness datum for commit window via ${selection.kind} (from=${describeSchedulerDatum(schedulerDatum)} to=${describeSchedulerDatum(refreshedSchedulerDatum)}, validFrom=${validFrom.toString()}, validTo=${validTo.toString()}).`,
     );
 
     /**
@@ -908,16 +923,20 @@ const ensureSchedulerAlignedForCommit = (
     });
 
     const refreshTxHash = yield* handleSignSubmitNoConfirmation(lucid, refreshTx);
-    const refreshedOperatorWalletView = applySubmittedTxToOperatorWalletView(
+    // The following block-commitment tx is persisted and submitted by another
+    // fiber. Do not fund it from the refresh tx's own change output.
+    const refreshedOperatorWalletView = noteConsumedOperatorWalletInputs(
       flowOperatorWalletView,
-      refreshTx.toTransaction(),
-      refreshTxHash,
+      [feeInput],
     );
+    const refreshedAvailableWalletUtxos = availableOperatorWalletUtxos(
+      refreshedOperatorWalletView,
+    ).length;
     yield* Effect.logInfo(
       `🔹 Scheduler refresh transaction submitted: ${refreshTxHash}`,
     );
     yield* Effect.logInfo(
-      `🔹 Scheduler refresh tx updated operator wallet view: available_utxos=${refreshedOperatorWalletView.knownUtxos.length.toString()},consumed_outrefs=${refreshedOperatorWalletView.consumedOutRefs.length.toString()}.`,
+      `🔹 Scheduler refresh tx reserved wallet funding input ${outRefLabel(feeInput)}; available_utxos=${refreshedAvailableWalletUtxos.toString()},consumed_outrefs=${refreshedOperatorWalletView.consumedOutRefs.length.toString()}.`,
     );
     yield* awaitSubmittedSchedulerTx(lucid, refreshTxHash, "refresh");
 

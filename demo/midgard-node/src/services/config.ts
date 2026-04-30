@@ -20,6 +20,9 @@ type NodeConfigDep = {
   PORT: number;
   WAIT_BETWEEN_BLOCK_COMMITMENTS: number;
   WAIT_BETWEEN_BLOCK_SUBMISSIONS: number;
+  WAIT_BETWEEN_BLOCK_CONFIRMATION: number;
+  BLOCK_CONFIRMATION_AWAIT_TIMEOUT_MS: number;
+  UNCONFIRMED_BLOCK_MAX_AGE_MS: number;
   WAIT_BETWEEN_USER_EVENT_FETCHES: number;
   WAIT_BETWEEN_MERGE_TXS: number;
   PROM_METRICS_PORT: number;
@@ -83,10 +86,19 @@ const makeConfig = Effect.gen(function* () {
   const port = yield* Config.integer("PORT").pipe(Config.withDefault(3000));
   const waitBetweenBlockCommitments = yield* Config.integer(
     "WAIT_BETWEEN_BLOCK_COMMITMENTS",
-  ).pipe(Config.withDefault(1000));
+  ).pipe(Config.withDefault(10000));
   const waitBetweenBlockSubmissions = yield* Config.integer(
     "WAIT_BETWEEN_BLOCK_SUBMISSIONS",
   ).pipe(Config.withDefault(10000));
+  const waitBetweenBlockConfirmation = yield* Config.integer(
+    "WAIT_BETWEEN_BLOCK_CONFIRMATION",
+  ).pipe(Config.withDefault(10000));
+  const blockConfirmationAwaitTimeoutMs = yield* Config.integer(
+    "BLOCK_CONFIRMATION_AWAIT_TIMEOUT_MS",
+  ).pipe(Config.withDefault(60000));
+  const unconfirmedBlockMaxAgeMs = yield* Config.integer(
+    "UNCONFIRMED_BLOCK_MAX_AGE_MS",
+  ).pipe(Config.withDefault(300000));
   const waitBetweenMergeTxs = yield* Config.integer(
     "WAIT_BETWEEN_MERGE_TXS",
   ).pipe(Config.withDefault(10000));
@@ -219,6 +231,9 @@ const makeConfig = Effect.gen(function* () {
     PORT: port,
     WAIT_BETWEEN_BLOCK_COMMITMENTS: waitBetweenBlockCommitments,
     WAIT_BETWEEN_BLOCK_SUBMISSIONS: waitBetweenBlockSubmissions,
+    WAIT_BETWEEN_BLOCK_CONFIRMATION: waitBetweenBlockConfirmation,
+    BLOCK_CONFIRMATION_AWAIT_TIMEOUT_MS: blockConfirmationAwaitTimeoutMs,
+    UNCONFIRMED_BLOCK_MAX_AGE_MS: unconfirmedBlockMaxAgeMs,
     WAIT_BETWEEN_MERGE_TXS: waitBetweenMergeTxs,
     WAIT_BETWEEN_USER_EVENT_FETCHES: waitBetweenUserEventFetches,
     PROM_METRICS_PORT: promMetricsPort,

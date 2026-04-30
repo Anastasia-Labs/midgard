@@ -49,7 +49,11 @@ import { HttpBodyError } from "@effect/platform/HttpBody";
 import * as Genesis from "@/genesis.js";
 import * as Initialization from "@/transactions/initialization.js";
 import * as Reset from "@/reset.js";
-import { ensureProtocolInitializedOnStartup } from "@/commands/listen-startup.js";
+import {
+  ensureProtocolInitializedOnStartup,
+  hydratePendingBlockFinalizationOnStartup,
+  seedAvailableConfirmedBlockOnStartup,
+} from "@/commands/listen-startup.js";
 import { shouldRunGenesisOnStartup } from "@/commands/startup-policy.js";
 import { DatabaseError } from "@/database/utils/common.js";
 import { TxConfirmError, TxSignError } from "@/transactions/utils.js";
@@ -57,6 +61,7 @@ import {
   syncUserEventsFiber,
   blockCommitmentFiber,
   blockCommitmentAction,
+  blockConfirmationFiber,
   mergeFiber,
   mergeAction,
   monitorMempoolFiber,
@@ -604,6 +609,8 @@ export const runNode = (withMonitoring?: boolean) =>
     yield* DBInitialization.program.pipe(Effect.provide(Database.layer));
 
     yield* ensureProtocolInitializedOnStartup;
+    yield* seedAvailableConfirmedBlockOnStartup;
+    yield* hydratePendingBlockFinalizationOnStartup;
 
     if (
       shouldRunGenesisOnStartup({
@@ -646,7 +653,9 @@ export const runNode = (withMonitoring?: boolean) =>
         blockCommitmentFiber(
           mkSchedule(nodeConfig.WAIT_BETWEEN_BLOCK_COMMITMENTS),
         ),
-        Effect.void,
+        blockConfirmationFiber(
+          mkSchedule(nodeConfig.WAIT_BETWEEN_BLOCK_CONFIRMATION),
+        ),
         blockSubmissionFiber(
           mkSchedule(nodeConfig.WAIT_BETWEEN_BLOCK_SUBMISSIONS),
         ),

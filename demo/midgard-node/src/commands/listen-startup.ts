@@ -3,7 +3,9 @@
  * This module isolates safety checks that must run before serving traffic from
  * the steady-state wiring in the main listen entrypoint.
  */
+import { PendingBlockFinalizationsDB } from "@/database/index.js";
 import {
+  Globals,
   Lucid,
   MidgardContracts,
   NodeConfig,
@@ -16,8 +18,9 @@ import {
   ensureNodeRuntimeReferenceScriptsProgram,
   verifyNodeRuntimeReferenceScriptsProgram,
 } from "@/transactions/reference-scripts.js";
+import { serializeStateQueueUTxO } from "@/workers/utils/commit-block-header.js";
 import * as SDK from "@al-ft/midgard-sdk";
-import { Effect } from "effect";
+import { Effect, Option, Ref } from "effect";
 
 const writeStartupContractDeploymentInfo = Effect.gen(function* () {
   const outputPath =
@@ -135,6 +138,72 @@ export const ensureProtocolInitializedOnStartup = Effect.gen(function* () {
   Effect.tapError((e) =>
     Effect.logError(
       `Startup protocol initialization failed: ${JSON.stringify(e)}`,
+    ),
+  ),
+  Effect.orDie,
+);
+
+/**
+ * Seeds AVAILABLE_CONFIRMED_BLOCK from the current state-queue tip so the
+ * commitment fiber can start producing the next block.
+ */
+export const seedAvailableConfirmedBlockOnStartup = Effect.gen(function* () {
+  const lucid = yield* Lucid;
+  const contracts = yield* MidgardContracts;
+  const globals = yield* Globals;
+
+  const latestBlock = yield* SDK.fetchLatestCommittedBlockProgram(lucid.api, {
+    stateQueueAddress: contracts.stateQueue.spendingScriptAddress,
+    stateQueuePolicyId: contracts.stateQueue.policyId,
+  });
+  const serialized = yield* serializeStateQueueUTxO(latestBlock);
+  yield* Ref.set(globals.AVAILABLE_CONFIRMED_BLOCK, serialized);
+  yield* Effect.logInfo(
+    "Seeded AVAILABLE_CONFIRMED_BLOCK from current state-queue tip on startup.",
+  );
+}).pipe(
+  Effect.tapError((e) =>
+    Effect.logError(
+      `Failed to seed AVAILABLE_CONFIRMED_BLOCK on startup: ${JSON.stringify(e)}`,
+    ),
+  ),
+  Effect.orDie,
+);
+
+/**
+ * Replays any persisted pending-finalization journal into the in-memory
+ * globals so the confirmation fiber can resume after restarts.
+ */
+export const hydratePendingBlockFinalizationOnStartup = Effect.gen(
+  function* () {
+    const globals = yield* Globals;
+    const pending = yield* PendingBlockFinalizationsDB.retrieveActive();
+    if (Option.isNone(pending)) {
+      yield* Ref.set(globals.UNCONFIRMED_SUBMITTED_BLOCK_TX_HASH, "");
+      yield* Ref.set(globals.UNCONFIRMED_SUBMITTED_BLOCK_SINCE_MS, 0);
+      return;
+    }
+    const record = pending.value;
+    const submittedTxHash =
+      record[PendingBlockFinalizationsDB.Columns.SUBMITTED_TX_HASH];
+    yield* Ref.set(
+      globals.UNCONFIRMED_SUBMITTED_BLOCK_TX_HASH,
+      submittedTxHash === null ? "" : submittedTxHash.toString("hex"),
+    );
+    yield* Ref.set(
+      globals.UNCONFIRMED_SUBMITTED_BLOCK_SINCE_MS,
+      record[PendingBlockFinalizationsDB.Columns.UPDATED_AT].getTime(),
+    );
+    yield* Effect.logInfo(
+      `Hydrated pending block-finalization journal on startup for header ${record[
+        PendingBlockFinalizationsDB.Columns.HEADER_HASH
+      ].toString("hex")}.`,
+    );
+  },
+).pipe(
+  Effect.tapError((error) =>
+    Effect.logError(
+      `Failed to hydrate pending block-finalization journal on startup: ${JSON.stringify(error)}`,
     ),
   ),
   Effect.orDie,
