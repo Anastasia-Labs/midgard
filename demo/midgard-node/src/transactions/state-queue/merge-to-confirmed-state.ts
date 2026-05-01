@@ -42,7 +42,7 @@ const mergeBlockCounter = Metric.counter("merge_block_count", {
 // 30 minutes.
 const MAX_LIFE_OF_LOCAL_SYNC: number = 1_800_000;
 
-const MIN_QUEUE_LENGTH_FOR_MERGING: number = 8;
+const MIN_QUEUE_LENGTH_FOR_MERGING: number = 3;
 
 const getStateQueueLength = (
   lucid: LucidEvolution,
@@ -122,7 +122,7 @@ export const buildAndSubmitMergeTx = (
     );
     // Avoid a merge tx if the queue is too short (performing a merge with such
     // conditions has a chance of wasting the work done for root computations).
-    const RESET_IN_PROGRESS = Ref.get(globals.RESET_IN_PROGRESS);
+    const RESET_IN_PROGRESS = yield* Ref.get(globals.RESET_IN_PROGRESS);
     if (
       currentStateQueueLength < MIN_QUEUE_LENGTH_FOR_MERGING ||
       RESET_IN_PROGRESS
