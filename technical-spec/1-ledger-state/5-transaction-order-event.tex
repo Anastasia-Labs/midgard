@@ -25,7 +25,7 @@ This invalidity claim itself can then be subject to fraud proofs if the operator
 \end{align*}
 \endgroup
 
-The \code{TxOrderId} of a transaction order event corresponds to one of the inputs spent by the user in the L1 transaction that created the transaction order utxo on L1 (more specifically, it's the hash of its serialized output-reference).
+The \code{TxOrderId} of a transaction order event corresponds to one of the inputs spent by the user in the L1 transaction that created the transaction order utxo on L1.
 This key is needed to identify the L1 transaction order utxo, and ensure that each order is unique.
 
 The effect of an included transaction order on a block's utxo set is identical to any other transaction from block's transaction tree.
