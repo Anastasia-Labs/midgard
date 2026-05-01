@@ -356,7 +356,6 @@ validator mint(
         )
       ActivateOperator {
         new_active_operator_key,
-        new_active_operator_bond_unlock_time,
         active_operator_anchor_element_input_index,
         active_operator_anchor_element_output_index,
         active_operator_inserted_node_output_index,
@@ -390,13 +389,9 @@ validator mint(
               redeemers,
             )
 
-          // 2. Newly activated operator must have the bond unlock time which
-          //    comes from the registered operators node.
+          // 2. Newly activated operator must not have any outstanding bond hold.
           let expected_inserted_node_data: Data =
-            NodeData {
-              bond_unlock_time: new_active_operator_bond_unlock_time,
-              inactivity_strikes: 0,
-            }
+            NodeData { bond_unlock_time: None, inactivity_strikes: 0 }
           expect inserted_node_data == expected_inserted_node_data
 
           // Done.
@@ -536,8 +531,6 @@ validator mint(
           let
             slashed_operator_from_redeemer,
             m_anchor_key,
-            slashed_operator_node_key,
-            _slashed_operator_node_data,
             slashed_operator_node_link,
             hub_datum,
             inputs,
@@ -550,11 +543,7 @@ validator mint(
               self,
             )
 
-          // 1. The operator key indicated in the redeemer must match the key of
-          //    the removed node from the active operators set.
-          expect slashed_operator_node_key == slashed_operator_from_redeemer
-
-          // 2. If operator is currently active, validate scheduler datum is
+          // 1. If operator is currently active, validate scheduler datum is
           //    getting updated. Otherwise, show the currently appointed
           //    operator is different from the slashing operator.
           expect

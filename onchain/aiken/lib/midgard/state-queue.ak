@@ -24,7 +24,6 @@ pub type Datum =
   linked_list.Element<ConfirmedState, Header>
 
 pub type SlashingApproach {
-  SlashRegisteredOperator { registered_operators_redeemer_index: Int }
   SlashActiveOperator { active_operators_redeemer_index: Int }
   SlashRetiredOperator { retired_operators_redeemer_index: Int }
   OperatorAlreadySlashed {
