@@ -1,4 +1,5 @@
 use aiken/collection/dict
+use aiken/collection/dict/strategy as dict_strategy
 use aiken/collection/list
 use aiken/crypto.{ScriptHash}
 use cardano/address.{Address}
@@ -355,22 +356,77 @@ fn validate_transfer_of_given_asset_with_change(
     target_asset_pairs |> list.expect_at(asset_name_index_in_target)
 
   let p0_qty = p0_assets |> get_token_qty(policy_id, asset_name)
-  let r0_qty = r0_assets |> get_token_qty_strict(policy_id, asset_name)
   let p1_qty = p1_assets |> get_token_qty_strict(policy_id, asset_name)
-  let r1_qty = r1_assets |> get_token_qty(policy_id, asset_name)
+
+  let (p0_target_qty, p0_names_without_target, p0_policies_without_target) =
+    p0_assets |> pop_target_asset(policy_id, asset_name)
+  let (p1_target_qty, p1_names_without_target, p1_policies_without_target) =
+    p1_assets |> pop_target_asset_strict(policy_id, asset_name)
+
+  let (r0_target_qty, r0_names_without_target, r0_policies_without_target) =
+    r0_assets |> pop_target_asset_strict(policy_id, asset_name)
+  let (r1_target_qty, r1_names_without_target, r1_policies_without_target) =
+    r1_assets |> pop_target_asset(policy_id, asset_name)
 
   // 2. Token's quantity must not exceed the target.
-  expect p1_qty <= pt_qty
+  expect p1_target_qty <= pt_target_qty
 
   // 3. Token's quantity must grow.
-  expect p1_qty > p0_qty
+  expect p1_target_qty > p0_target_qty
 
   // 4. The change in reserve's token quantity must match the change in
   //    payout's.
-  expect r0_qty - r1_qty == p1_qty - p0_qty
+  expect r0_target_qty - r1_target_qty == p1_target_qty - p0_target_qty
 
   // Done.
   True
+}
+
+/// This is essentially the same as `dict.expect_pop`, but goes one level
+/// deeper to correspond to `Value` dicts. Therefore returns 3 values:
+/// 1. Quantity of the popped asset.
+/// 2. Dict carrying the rest of the asset name - quantity pairs (as `Data`).
+/// 3. Dict carrying the rest of the policy IDs and their asset name dicts (as
+///    `Data`).
+fn pop_target_asset_strict(
+  r: Dict<PolicyId, Dict<AssetName, Int>>,
+  policy_id: PolicyId,
+  asset_name: AssetName,
+) -> (
+  Int,
+  Data<Dict<AssetName, Int>>,
+  Data<Dict<PolicyId, Dict<AssetName, Int>>>,
+) {
+  let (r_target_names_qty_dict, r_without_target_policy) =
+    r_assets |> dict.expect_pop(policy_id)
+  let (r_target_qty, r_without_target_asset) =
+    r_without_target_policy |> dict.expect_pop(asset_name)
+  (r_target_qty, r_without_target_asset, r_without_target_policy)
+}
+
+fn pop_target_asset(
+  r: Dict<PolicyId, Dict<AssetName, Int>>,
+  policy_id: PolicyId,
+  asset_name: AssetName,
+) -> (
+  Int,
+  Data<Dict<AssetName, Int>>,
+  Data<Dict<PolicyId, Dict<AssetName, Int>>>,
+) {
+  let (m_r_target_names_qty_dict, r_without_target_policy) =
+    r_assets |> dict.pop(policy_id)
+  when m_r_target_names_qty_dict is {
+    None -> (0, Dict.empty, r)
+    Some(r_target_names_qty_dict) -> {
+      let (m_r_target_qty, r_without_target_asset) =
+        r_without_target_policy |> dict.pop(asset_name)
+      when m_r_target_qty is {
+        None -> (0, r_target_names_qty_dict, r_without_target_policy)
+        Some(r_target_qty) ->
+          (r_target_qty, r_without_target_asset, r_without_target_policy)
+      }
+    }
+  }
 }
 
 fn get_token_qty_strict(
@@ -415,4 +471,43 @@ fn get_reserve_change_output_lovelace_and_assets(
   expect reserve_output_address == reserve_addr
 
   r1 |> get_lovelace_and_assets
+}
+
+/// Re-implementation of `assets.difference` for `Dict`s. Behavior is
+/// `v0 - v1`.
+fn difference_between_value_dicts(
+  v0: Dict<PolicyId, Dict<AssetName, Int>>,
+  v1: Dict<PolicyId, Dict<AssetName, Int>>,
+) -> Value {
+  Value(
+    dict.difference_with(
+      v0,
+      v1,
+      fn(_, a0, a1, keep, discard) {
+        let result = difference_between_asset_name_dicts(a0, a1)
+        if dict.empty == result {
+          discard()
+        } else {
+          keep(result)
+        }
+      },
+      fn(_k, right, keep, _discard) {
+        keep(dict.map(right, fn(_, qty) { -qty }))
+      },
+    ),
+  )
+}
+
+/// Re-implementation of `assets.difference` for asset-name quantity dicts.
+/// Behavior is `a0 - a1`.
+fn difference_between_asset_name_dicts(
+  a0: Dict<AssetName, Int>,
+  a1: Dict<AssetName, Int>,
+) -> Dict<AssetName, Int> {
+  dict.difference_with(
+    a0,
+    a1,
+    dict_strategy.difference_if_non_zero(),
+    dict_strategy.negate(),
+  )
 }

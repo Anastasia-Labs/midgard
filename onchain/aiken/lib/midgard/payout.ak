@@ -14,9 +14,10 @@ pub type AssetToAdd {
     reserve_redeemer_index: Int,
     m_reserve_change_output_index: Option<Int>,
   }
-  CardanoAsset {
-    policy_id_index_in_target: Int,
-    asset_name_index_in_target: Int,
+  CardanoAssets {
+    assets: ValuePairs,
+    // policy_id_index_in_target: Int,
+    // asset_name_index_in_target: Int,
     reserve_addr: Address,
     reserve_input_index: Int,
     reserve_redeemer_index: Int,
@@ -24,7 +25,7 @@ pub type AssetToAdd {
   }
   MidgardAsset {
     policy_id_to_mint: PolicyId,
-    asset_name_to_mint: AssetName,
+    assets_to_mint: Pairs<AssetName, Int>,
     quantity_to_mint: Int,
     registry_ref_input_index: Int,
     policy_id_index_in_target: Int,
