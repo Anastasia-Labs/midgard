@@ -5,6 +5,8 @@ use midgard/common/types.{Proof, ValuePairs}
 
 pub type Datum {
   l2_value: ValuePairs,
+  l1_address: Address,
+  l1_datum: CardanoDatum,
 }
 
 pub type AssetsToAdd {
@@ -44,22 +46,7 @@ pub type SpendRedeemer {
     payout_input_outref: OutputReference,
     payout_input_redeemer_index: Int,
   }
-  ConcludeWithdrawal {
-    payout_input_index: Int,
-    l1_output_index: Int,
-    hub_ref_input_index: Int,
-    settlement_ref_input_index: Int,
-    burn_redeemer_index: Int,
-    // Original withdrawal UTxO outref. blake2b_256(cbor(withdrawal_out_ref))
-    // must equal the payout NFT asset name, linking this payout to its
-    // withdrawal trustlessly without needing the (already-spent) withdrawal UTxO.
-    withdrawal_out_ref: OutputReference,
-    // The WithdrawalInfo stored in the settlement tree for this withdrawal.
-    // Validated against the tree by the Merkle proof — cannot be forged.
-    withdrawal_event_info: Data,
-    membership_proof: Proof,
-    inclusion_proof_script_withdraw_redeemer_index: Int,
-  }
+  ConcludeWithdrawal { input_index: Int, burn_redeemer_index: Int }
 }
 
 pub type MintRedeemer {

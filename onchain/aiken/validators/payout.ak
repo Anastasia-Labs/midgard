@@ -77,7 +77,7 @@ validator mint(withdrawal_addr: Address) {
           payout_input,
           payout_input_nft_asset_name,
         <-
-          utils.get_authentic_input_and_asset_name_with_policy_at(
+          utils.get_authentic_input_with_nft_at(
             inputs,
             own_policy,
             payout_input_index,
@@ -110,7 +110,7 @@ validator spend(payout_policy_id: PolicyId) {
     own_out_ref: OutputReference,
     tx: Transaction,
   ) {
-    expect Some(Datum { l2_value } as input_datum) = m_datum
+    expect Some(input_datum) = m_datum
 
     when redeemer is {
       AddFunds {
@@ -118,6 +118,8 @@ validator spend(payout_policy_id: PolicyId) {
         payout_input_outref,
         payout_input_redeemer_index,
       } -> {
+        let Datum { l2_value, .. } = input_datum
+
         let Transaction { inputs, outputs, redeemer, .. } = tx
 
         let AccumulationArgs {
@@ -184,7 +186,20 @@ validator spend(payout_policy_id: PolicyId) {
         // Done.
         True
       }
-      ConcludeWithdrawal { .. } -> todo
+      ConcludeWithdrawal { input_index, burn_redeemer_index } -> {
+        let Transaction { inputs, redeemers, .. } = tx
+        expect BurnPayout { payout_input_index, .. } =
+          redeemers
+            |> utils.get_redeemer_at(
+                Mint(payout_policy_id),
+                burn_redeemer_index,
+              )
+        expect input_index == payout_input_index
+        let Input { output_reference, .. } =
+          inputs |> list.expect_at(input_index)
+        expect output_reference == own_out_ref
+        True
+      }
     }
   }
 
