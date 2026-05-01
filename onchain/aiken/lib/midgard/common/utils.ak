@@ -15,8 +15,9 @@ use cardano/transaction.{
   InlineDatum, Input, Output, OutputReference, Redeemer, ScriptPurpose, Spend,
 }
 use env
-use midgard/common/constants.{max_validity_range_length, posix_time_none}
+use midgard/common/constants.{posix_time_none}
 use midgard/common/types.{H28, H32, MerkleRoot, PosixTime, Proof, ValuePairs}
+use midgard/protocol_parameters.{max_validity_range_length}
 
 /// Check whether the interval starts on or after the point.
 pub fn is_hereafter(self: Interval, point: Int) -> Bool {
@@ -430,7 +431,7 @@ pub fn get_authentic_output_datum_at_address_with_nft_at(
 ///
 /// > [!NOTE]
 /// > This does NOT check the output's value contains the same amount of ADA
-/// > as the input, since change in data can fluctuate the min required ADA.
+/// > as the input's, since change in data can fluctuate the min required ADA.
 ///
 /// Useful for contracts with singular authentic UTxOs (which their data is the
 /// only thing that matters), at endpoints for updating their datums.
@@ -606,14 +607,40 @@ pub fn get_spending_redeemer_data_at(
   redeemers |> get_redeemer_at(Spend(input_outref), redeemer_index)
 }
 
+/// Similar to [`get_spending_redeemer_data_at`](#get_spending_redeemer_data_at),
+/// but also returns the inline datum's data.
+pub fn get_inline_datum_and_spending_redeemer_data_at(
+  script_address: Address,
+  input_index: Int,
+  redeemer_index: Int,
+  inputs: List<Input>,
+  redeemers: Pairs<ScriptPurpose, Redeemer>,
+) -> (Data, Data) {
+  expect Some(Input {
+    output_reference: input_outref,
+    output: Output {
+      address: input_address,
+      datum: InlineDatum(datum_data),
+      ..
+    },
+  }) = inputs |> list.at(input_index)
+  //
+  expect input_address.payment_credential == script_address.payment_credential
+  //
+  (
+    datum_data,
+    redeemers |> get_redeemer_at(Spend(input_outref), redeemer_index),
+  )
+}
+
 /// Merkelized validator abstraction for `phas` function from Plutarch.
 ///
 /// > [!WARNING]
 /// > This function can only be used **once within a given transaction**.
 pub fn plutarch_phas(
-  merkle_root: MerkleRoot,
-  key: Data,
-  value: Data,
+  merkle_root: MerkleRoot<key, value>,
+  key: Data<key>,
+  value: Data<value>,
   membership_proof: Proof,
   redeemers: Pairs<ScriptPurpose, Redeemer>,
   withdraw_redeemer_index: Int,
@@ -647,8 +674,8 @@ pub fn plutarch_phas(
 /// > [!WARNING]
 /// > This function can only be used **once within a given transaction**.
 pub fn plutarch_pexcludes(
-  merkle_root: MerkleRoot,
-  key: Data,
+  merkle_root: MerkleRoot<key, value>,
+  key: Data<key>,
   non_membership_proof: Proof,
   redeemers: Pairs<ScriptPurpose, Redeemer>,
   withdraw_redeemer_index: Int,
@@ -676,13 +703,13 @@ pub fn plutarch_pexcludes(
 }
 
 pub fn plutarch_pdelete(
-  merkle_root_before_delete: MerkleRoot,
-  key: Data,
-  value: Data,
+  merkle_root_before_delete: MerkleRoot<key, value>,
+  key: Data<key>,
+  value: Data<value>,
   membership_proof: Proof,
   redeemers: Pairs<ScriptPurpose, Redeemer>,
   withdraw_redeemer_index: Int,
-) -> MerkleRoot {
+) -> MerkleRoot<key, value> {
   let proof_data: Data = membership_proof
   let function_input: List<Data> =
     [builtin.b_data(merkle_root_before_delete), key, value, proof_data]

@@ -7,8 +7,8 @@ use midgard/protocol_parameters.{shift_duration}
 pub const asset_name = "MIDGARD_SCHEDULER"
 
 pub type Datum {
-  operator: VerificationKeyHash,
-  start_time: PosixTime,
+  NoActiveOperators
+  ActiveOperator { operator: VerificationKeyHash, start_time: PosixTime }
 }
 
 pub type MintRedeemer {
@@ -16,19 +16,66 @@ pub type MintRedeemer {
   Deinit
 }
 
-pub type SpendRedeemer {
-  Advance {
-    scheduler_input_index: Int,
-    scheduler_output_index: Int,
-    active_node_ref_input_index: Int,
-  }
-  Rewind {
-    scheduler_input_index: Int,
-    scheduler_output_index: Int,
-    active_node_ref_input_index: Int,
-    active_root_ref_input_index: Int,
+pub type OperatorRemovalReason {
+  OperatorRetirement
+  OperatorSlashing
+}
+
+pub type NeglectedUserEvent {
+  NoNeglectedUserEvent
+  NeglectedDeposit { deposit_ref_input_index: Int }
+  NeglectedWithdrawal { withdrawal_ref_input_index: Int }
+  NeglectedTxOrder { tx_order_ref_input_index: Int }
+}
+
+pub type AdvancingApproach {
+  GoToNextDueToEndOfShift { new_shifts_operator_node_ref_input_index: Int }
+  RewindDueToEndOfShift {
+    active_operators_root_ref_input_index: Int,
+    active_operators_last_node_ref_input_index: Int,
     registered_element_ref_input_index: Int,
   }
+  GoToNextDueToSkippedOperator {
+    new_shifts_operator_node_ref_input_index: Int,
+    skipped_operator_node_input_index: Int,
+    active_operators_spend_redeemer_index: Int,
+    state_queue_ref_input_index: Int,
+    hub_oracle_ref_input_index: Int,
+    neglected_user_event: NeglectedUserEvent,
+  }
+  RewindDueToSkippedOperator {
+    active_operators_root_ref_input_index: Int,
+    skipped_operator_node_input_index: Int,
+    active_operators_spend_redeemer_index: Int,
+    state_queue_ref_input_index: Int,
+    hub_oracle_ref_input_index: Int,
+    // If only one operator exists in the active set, we won't be able to refer
+    // to the operator's UTxO as the next shift's, since it's being spent in the
+    // transaction.
+    m_active_operators_last_node_ref_input_index: Option<Int>,
+    registered_element_ref_input_index: Int,
+    neglected_user_event: NeglectedUserEvent,
+  }
+  GoToNextDueToOperatorRemoval {
+    active_operators_mint_redeemer_index: Int,
+    removal_reason: OperatorRemovalReason,
+  }
+  RewindDueToOperatorRemoval {
+    active_operators_mint_redeemer_index: Int,
+    m_active_operators_last_node_ref_input_index: Option<Int>,
+    removal_reason: OperatorRemovalReason,
+    registered_element_ref_input_index: Int,
+  }
+  AppointFirstOperator {
+    new_shifts_operator_node_ref_input_index: Int,
+    registered_element_ref_input_index: Int,
+  }
+}
+
+pub type SpendRedeemer {
+  scheduler_input_index: Int,
+  scheduler_output_index: Int,
+  advancing_approach: AdvancingApproach,
 }
 
 /// The end of a shift is the start of the shift, shifted forward by the
