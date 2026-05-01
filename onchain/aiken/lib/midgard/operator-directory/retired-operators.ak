@@ -3,7 +3,7 @@ use aiken/primitive/bytearray
 use aiken_design_patterns/linked_list
 use cardano/assets.{AssetName, PolicyId}
 use midgard/common/types.{PosixTime}
-use midgard/operator_directory
+use midgard/operator_directory.{SlashingArguments}
 
 /// TODO: Refer to state queue's library module.
 pub const root_asset_name: AssetName = "MIDGARD_RETIRED_OPERATORS"
@@ -38,29 +38,22 @@ pub type MintRedeemer {
     retired_operator_inserted_node_output_index: Int,
     active_operators_redeemer_index: Int,
   }
+  ReregisterOperator {
+    retired_operator_key: VerificationKeyHash,
+    retired_operator_bond_unlock_time: Option<PosixTime>,
+    hub_oracle_ref_input_index: Int,
+    retired_operator_anchor_element_input_index: Int,
+    retired_operator_removed_node_input_index: Int,
+    retired_operator_anchor_element_output_index: Int,
+    registered_operators_redeemer_index: Int,
+  }
   RecoverOperatorBond {
     retired_operator_key: VerificationKeyHash,
     retired_operator_anchor_element_input_index: Int,
     retired_operator_removed_node_input_index: Int,
     retired_operator_anchor_element_output_index: Int,
   }
-  RemoveOperatorBadState {
-    slashed_retired_operator_key: VerificationKeyHash,
-    hub_oracle_ref_input_index: Int,
-    retired_operator_anchor_element_input_index: Int,
-    retired_operator_slashed_node_input_index: Int,
-    retired_operator_anchor_element_output_index: Int,
-    state_queue_redeemer_index: Int,
-  }
-  RemoveOperatorBadSettlement {
-    slashed_retired_operator_key: VerificationKeyHash,
-    hub_oracle_ref_input_index: Int,
-    retired_operator_anchor_element_input_index: Int,
-    retired_operator_slashed_node_input_index: Int,
-    retired_operator_anchor_element_output_index: Int,
-    settlement_input_index: Int,
-    settlement_redeemer_index: Int,
-  }
+  SlashOperator { slashing_arguments: SlashingArguments }
 }
 
 pub fn finalize_linked_list(

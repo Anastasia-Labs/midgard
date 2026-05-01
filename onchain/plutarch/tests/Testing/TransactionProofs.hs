@@ -79,6 +79,8 @@ import Types.StateCommitment
 -- txInfoData = Map {unMap = []},
 -- txInfoId = ac6fdf5f0c3e6e3092a7a063d45eca133e96305ed8d27a5e6b8fe2f05db8c62a}
 
+-- | Defines the mock transaction info used by transaction-proof tests.
+-- | Mock transaction info used by the transaction-proof tests.
 mockInfo :: TxInfo
 mockInfo =
   scriptContextTxInfo . buildScriptContext $
@@ -259,7 +261,9 @@ txInfoRedeemers =
     , (Spending (TxOutRef {txOutRefId = TxId $ toBuiltinHexString "e053c715fccb903f438f57bd40c7150e88514c58f6796e4733851d7ca6181d56", txOutRefIdx = 0}), Redeemer {getRedeemer = dataToBuiltinData $ Constr 0 []})
     ]
 -}
+-- | Defines the mock outputs used by transaction-proof tests.
 
+-- | Mock outputs used by the transaction-proof tests.
 mockOutputs :: [TxOutBuilder]
 mockOutputs =
   [ mconcat
@@ -476,11 +480,14 @@ mockOutputs =
             }
       , withTxOutValue $ lovelaceValue 999999999802333717
       ]
+-- | Hashes a Midgard transaction info structure.
   ]
 
+-- | Hashes Midgard transaction info into the transaction-proof format.
 hashMidgardTx :: MidgardTxInfo -> ByteString
 hashMidgardTx midgardTx = plift @PByteString $ pblake2b_256 #$ pserialiseData # pforgetData (pdata $ pconstant @PMidgardTxInfo midgardTx)
 
+-- | Converts ledger transaction info into the Midgard transaction representation.
 txInfoToMidgardTxInfo :: TxInfo -> MidgardTxInfo
 txInfoToMidgardTxInfo txInfo =
   MidgardTxInfo
@@ -497,6 +504,7 @@ txInfoToMidgardTxInfo txInfo =
     , mtxInfoId = txInfoId txInfo
     }
   where
+    -- | Collects rewarding script hashes from the withdrawal map.
     getScriptHashesFromWithdrawals :: [(Credential, Lovelace)] -> [ScriptHash]
     getScriptHashesFromWithdrawals wdrls =
       mapMaybe
@@ -507,6 +515,7 @@ txInfoToMidgardTxInfo txInfo =
         )
         wdrls
 
+-- | Prints the transaction-proof debug fixture to stdout.
 dumpDebug :: IO ()
 dumpDebug = do
   let midgardTxInfo = txInfoToMidgardTxInfo mockInfo

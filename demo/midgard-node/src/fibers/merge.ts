@@ -1,5 +1,5 @@
 import { DatabaseError } from "@/database/utils/common.js";
-import { Lucid, AlwaysSucceedsContract, Globals } from "@/services/index.js";
+import { Lucid, MidgardContracts, Globals } from "@/services/index.js";
 import { StateQueueTx } from "@/transactions/index.js";
 import { TxSignError, TxSubmitError } from "@/transactions/utils.js";
 import * as SDK from "@al-ft/midgard-sdk";
@@ -16,10 +16,10 @@ export const mergeAction: Effect.Effect<
   | DatabaseError
   | TxSubmitError
   | TxSignError,
-  Lucid | AlwaysSucceedsContract | Database | Globals
+  Lucid | MidgardContracts | Database | Globals
 > = Effect.gen(function* () {
   const lucid = yield* Lucid;
-  const { stateQueue: stateQueueAuthValidator } = yield* AlwaysSucceedsContract;
+  const { stateQueue: stateQueueAuthValidator } = yield* MidgardContracts;
 
   const fetchConfig: SDK.StateQueueFetchConfig = {
     stateQueueAddress: stateQueueAuthValidator.spendingScriptAddress,
@@ -42,7 +42,7 @@ export const mergeFiber = (
 ): Effect.Effect<
   void,
   never,
-  Lucid | AlwaysSucceedsContract | Database | Globals
+  Lucid | MidgardContracts | Database | Globals
 > =>
   pipe(
     Effect.gen(function* () {

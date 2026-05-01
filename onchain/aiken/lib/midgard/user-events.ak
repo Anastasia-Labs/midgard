@@ -10,6 +10,7 @@ use cardano/transaction.{
   ScriptPurpose, Transaction, ValidityRange,
 }
 use env
+use midgard/common/constants.{plutus_version}
 use midgard/common/types.{PosixTime}
 use midgard/common/utils
 use midgard/hub_oracle as hub
@@ -80,7 +81,7 @@ pub fn validate_mint(
 
       let event_address = event_address_getter(hub_datum)
 
-      authenticate_event(
+      authenticate_new_event(
         event_address,
         nonce_input_index,
         event_output_index,
@@ -107,7 +108,7 @@ pub fn validate_mint(
   }
 }
 
-pub fn authenticate_event(
+fn authenticate_new_event(
   event_address: Address,
   nonce_input_index: Int,
   event_output_index: Int,
@@ -139,7 +140,7 @@ pub fn authenticate_event(
   // transaction.
   let expected_witness_script_hash =
     parameter_validation.apply_prehashed_param(
-      version: 3,
+      version: plutus_version,
       prefix: witness_script_prefix,
       param: nonce,
     )
@@ -182,21 +183,24 @@ pub fn authenticate_event(
   // 4. Event's ID must be the same as the specified spent input.
   expect event_id == nonce_input_out_ref_data
 
-  and {
-    // 5. Event UTxO must be produced at the provided script's address from
-    //    hub oracle.
-    output_event_address == event_address,
-    // 6. Specified inclusion time of the event must be some time in the
-    //    future.
-    output_event_inclusion_time == valid_to + env.event_wait_duration,
-    // 7. Recorded witness must be correct.
-    output_event_witness == expected_witness_script_hash,
-    // 8. The provided validation function must pass.
-    event_validator(nonce, output_event_value, event_info),
-  }
+  // 5. Event UTxO must be produced at the provided script's address from hub
+  //    oracle.
+  expect output_event_address == event_address
+
+  // 6. Specified inclusion time of the event must be some time in the future.
+  expect output_event_inclusion_time == valid_to + env.event_wait_duration
+
+  // 7. Recorded witness must be correct.
+  expect output_event_witness == expected_witness_script_hash
+
+  // 8. The provided validation function must pass.
+  expect event_validator(nonce, output_event_value, event_info)
+
+  // Done.
+  True
 }
 
-pub fn validate_event_nft_burn(
+fn validate_event_nft_burn(
   nonce_asset_name: AssetName,
   witness_unregistration_redeemer_index: Int,
   own_policy: PolicyId,
@@ -205,24 +209,27 @@ pub fn validate_event_nft_burn(
 ) -> Bool {
   let expected_witness_script_hash =
     parameter_validation.apply_prehashed_param(
-      version: 3,
+      version: plutus_version,
       prefix: witness_script_prefix,
       param: nonce_asset_name,
     )
 
-  and {
-    // 1. The specified NFT must be burnt.
-    assets.quantity_of(mint, own_policy, nonce_asset_name) == -1,
-    // 2. Witness staking script corresponding to the NFT must be getting
-    //    unregistered.
-    // 3. `PublishRedeemer` for unregistration must be equal to
-    //    `own_policy`
+  // 1. The specified NFT must be burnt.
+  expect assets.quantity_of(mint, own_policy, nonce_asset_name) == -1
+
+  // 2. Witness staking script corresponding to the NFT must be getting
+  //    unregistered.
+  // 3. `PublishRedeemer` for unregistration must be equal to
+  //    `own_policy`
+  expect
     validate_witness_redeemer(
       expected_witness_script_hash: expected_witness_script_hash,
       witness_redeemer_index: witness_unregistration_redeemer_index,
       for_registration: False,
       event_policy_id: own_policy,
       redeemers: redeemers,
-    ),
-  }
+    )
+
+  // Done.
+  True
 }

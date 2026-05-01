@@ -1,6 +1,12 @@
 import { Effect } from "effect";
 import * as SDK from "@al-ft/midgard-sdk";
-import { LucidEvolution, fromHex } from "@lucid-evolution/lucid";
+import {
+  CML,
+  Data as LucidData,
+  coreToTxOutput,
+  fromHex,
+  toUnit,
+} from "@lucid-evolution/lucid";
 import * as ETH_UTILS from "@ethereumjs/util";
 import { MidgardMpt, MptError } from "./mpt.js";
 import {
@@ -13,17 +19,15 @@ import {
 } from "@/database/index.js";
 import {
   DatabaseError,
-  deserializeUTxOsFromStorage,
   serializeUTxOsForStorage,
 } from "@/database/utils/common.js";
-import {
-  AlwaysSucceedsContract,
-  Database,
-  Lucid,
-  NodeConfig,
-} from "@/services/index.js";
-import { TxSignError } from "@/transactions/utils.js";
+import { MidgardContracts, Database, Lucid } from "@/services/index.js";
+import { TxSignError, TxSubmitError } from "@/transactions/utils.js";
 import { breakDownTx } from "@/utils.js";
+import { fetchRealStateQueueWitnessContext } from "@/workers/utils/scheduler-refresh.js";
+import { buildDeterministicCommitTxBuilder } from "@/workers/utils/commit-tx-builder.js";
+import { resolveAlignedCommitEndTime } from "@/workers/utils/commit-end-time.js";
+import { extractWalletOutputsFromSubmittedTx } from "@/operator-wallet-view.js";
 
 export type WorkerInput = {
   data: {};
@@ -252,15 +256,14 @@ export const applyTxRequestsToLedger = (
 
 export const applyDepositsToLedger = (
   ledgerTrie: MidgardMpt,
-  deposits: readonly UserEvents.Entry[],
+  deposits: readonly DepositsDB.Entry[],
 ): Effect.Effect<
   {
     depositLedgerEntries: Ledger.Entry[];
     depositsRoot: string;
     sizeOfDeposits: number;
   },
-  MptError | SDK.CmlDeserializationError,
-  NodeConfig | AlwaysSucceedsContract
+  MptError | DatabaseError
 > =>
   Effect.gen(function* () {
     yield* Effect.logInfo(
@@ -273,7 +276,7 @@ export const applyDepositsToLedger = (
     let sizeOfDeposits = 0;
     yield* Effect.forEach(deposits, (depositEntry) =>
       Effect.gen(function* () {
-        const ledgerEntry = yield* DepositsDB.entryToLedgerEntry(depositEntry);
+        const ledgerEntry = yield* DepositsDB.toLedgerEntry(depositEntry);
         depositLedgerEntries.push(ledgerEntry);
         sizeOfDeposits += depositEntry[UserEvents.Columns.INFO].length;
         ledgerBatchOps.push({
@@ -303,33 +306,25 @@ export const applyDepositsToLedger = (
     };
   });
 
-const prepareLucidForBlockCommitment = (
-  entry: BlocksDB.Entry,
-): Effect.Effect<
-  {
-    lucidPreparation: Effect.Effect<LucidEvolution>;
-    appendedUTxO: SDK.StateQueueUTxO;
-  },
-  SDK.CborDeserializationError | SDK.CmlUnexpectedError | SDK.StateQueueError,
-  AlwaysSucceedsContract | Lucid
-> =>
-  Effect.gen(function* () {
-    const newWalletUTxOs = yield* deserializeUTxOsFromStorage(
-      entry[BlocksDB.Columns.NEW_WALLET_UTXOS],
-    );
-    const appendedUTxO =
-      yield* BlocksDB.getAppendedStateQueueUTxOFromEntry(entry);
-    const lucid = yield* Lucid;
-    const lucidPreparation = Effect.gen(function* () {
-      yield* lucid.switchToOperatorsBlockCommitmentWallet;
-      yield* Effect.sync(() => lucid.api.overrideUTxOs(newWalletUTxOs));
-      return lucid.api;
-    });
-    return {
-      lucidPreparation,
-      appendedUTxO,
-    };
-  });
+const ACTIVE_OPERATOR_MATURITY_DURATION_MS = 30n;
+const STATE_QUEUE_HEADER_NODE_LOVELACE = 5_000_000n;
+
+const decodeActiveOperatorDatum = (data: unknown): SDK.ActiveOperatorDatum =>
+  LucidData.castFrom(
+    data as never,
+    SDK.ActiveOperatorDatum as never,
+  ) as SDK.ActiveOperatorDatum;
+
+const getLatestEndTimeMs = (
+  datum: SDK.StateQueueNodeView,
+): Effect.Effect<number, SDK.DataCoercionError> =>
+  datum.key === "Empty"
+    ? SDK.getConfirmedStateFromStateQueueDatum(datum).pipe(
+        Effect.map(({ data }) => Number(data.endTime)),
+      )
+    : SDK.getHeaderFromStateQueueDatum(datum).pipe(
+        Effect.map((h) => Number(h.endTime)),
+      );
 
 export const buildNewBlockEntry = (
   entry: BlocksDB.Entry,
@@ -348,59 +343,134 @@ export const buildNewBlockEntry = (
   | SDK.HashingError
   | SDK.LucidError
   | SDK.StateQueueError
-  | TxSignError,
-  AlwaysSucceedsContract | Lucid
+  | TxSignError
+  | TxSubmitError,
+  MidgardContracts | Lucid
 > =>
   Effect.gen(function* () {
-    const { lucidPreparation, appendedUTxO } =
-      yield* prepareLucidForBlockCommitment(entry);
-    const initLucidAPI = yield* lucidPreparation;
+    const appendedUTxO =
+      yield* BlocksDB.getAppendedStateQueueUTxOFromEntry(entry);
+    const lucidService = yield* Lucid;
+    yield* lucidService.switchToOperatorsMainWallet;
+    const lucidAPI = lucidService.api;
+
+    const contracts = yield* MidgardContracts;
+    const stateQueue = contracts.stateQueue;
+
+    const latestEndTimeMs = yield* getLatestEndTimeMs(appendedUTxO.datum);
+    const { resolvedEndTime: alignedEndTime } = resolveAlignedCommitEndTime({
+      lucid: lucidAPI,
+      latestEndTime: latestEndTimeMs,
+      candidateEndTime: endDate.getTime(),
+    });
+
+    yield* Effect.logInfo("🔹 Fetching real state_queue witness context...");
+    const witnessContext = yield* fetchRealStateQueueWitnessContext(
+      lucidAPI,
+      contracts,
+      alignedEndTime,
+      undefined,
+      lucidService.referenceScriptsAddress,
+    );
+
+    yield* Effect.logInfo("🔹 Finding updated block datum and new header...");
     const { nodeDatum: updatedNodeDatum, header: newHeader } =
       yield* SDK.updateLatestBlocksDatumAndGetTheNewHeaderProgram(
-        initLucidAPI,
+        lucidAPI,
         appendedUTxO.datum,
         utxosRoot,
         txsRoot,
         depositsRoot,
         withdrawalsRoot,
-        BigInt(endDate.getTime()),
+        BigInt(alignedEndTime),
       );
     const newHeaderHash = yield* SDK.hashBlockHeader(newHeader);
     yield* Effect.logInfo(`🔹 New header hash is: ${newHeaderHash}`);
-    const { stateQueue } = yield* AlwaysSucceedsContract;
-    const commitBlockParams: SDK.StateQueueCommitBlockParams = {
-      anchorUTxO: appendedUTxO,
-      updatedAnchorDatum: updatedNodeDatum,
-      newHeader: newHeader,
-      stateQueueSpendingScript: stateQueue.spendingScript,
-      policyId: stateQueue.policyId,
-      stateQueueMintingScript: stateQueue.mintingScript,
+
+    const headerNodeUnit = toUnit(
+      stateQueue.policyId,
+      SDK.STATE_QUEUE_NODE_ASSET_NAME_PREFIX + newHeaderHash,
+    );
+    const commitMintAssets = { [headerNodeUnit]: 1n };
+    const headerNodeOutputAssets = {
+      lovelace: STATE_QUEUE_HEADER_NODE_LOVELACE,
+      ...commitMintAssets,
     };
 
-    yield* Effect.logInfo("🔹 Building block commitment transaction...");
-    const fetchConfig: SDK.StateQueueFetchConfig = {
-      stateQueueAddress: stateQueue.spendingScriptAddress,
-      stateQueuePolicyId: stateQueue.policyId,
+    const appendedNodeDatum: SDK.StateQueueNodeView = {
+      key: updatedNodeDatum.next,
+      next: "Empty",
+      data: SDK.castHeaderToData(newHeader) as SDK.LinkedListNodeView["data"],
     };
-    // Rerunning `lucidPreparation` to ensure Lucid API object is in proper state.
-    const lucidAPI = yield* lucidPreparation;
-    const txBuilder = yield* SDK.incompleteCommitBlockHeaderTxProgram(
-      lucidAPI,
-      fetchConfig,
-      commitBlockParams,
-    );
-    const [newWalletUTxOs, producedUTxOs, txSignBuilder] = yield* txBuilder
-      .chainProgram()
-      .pipe(
-        Effect.mapError(
-          (e) =>
-            new SDK.LucidError({
-              message:
-                "Failed to complete (chain method) built block commitment transaction",
-              cause: e,
-            }),
-        ),
-      );
+    const appendedNodeDatumCbor =
+      SDK.encodeLinkedListNodeView(appendedNodeDatum);
+    const updatedNodeDatumCbor = SDK.encodeLinkedListNodeView(updatedNodeDatum);
+
+    const updatedActiveOperatorDatumCbor = yield* Effect.try({
+      try: () => {
+        const activeOperatorLinkedListDatum = LucidData.from(
+          witnessContext.activeOperatorInput.datum,
+          SDK.NodeDatum,
+        );
+        const activeOperatorNodeView = SDK.linkedListDatumToNodeView(
+          activeOperatorLinkedListDatum,
+          SDK.ACTIVE_OPERATOR_NODE_ASSET_NAME_PREFIX +
+            witnessContext.operatorKeyHash,
+        );
+        const activeOperatorDatum = decodeActiveOperatorDatum(
+          activeOperatorNodeView.data,
+        );
+        const updatedActiveOperatorNodeDatum: SDK.LinkedListNodeView = {
+          ...activeOperatorNodeView,
+          data: SDK.castActiveOperatorDatumToData({
+            ...activeOperatorDatum,
+            bond_unlock_time:
+              BigInt(alignedEndTime) -
+              1n +
+              ACTIVE_OPERATOR_MATURITY_DURATION_MS,
+          }) as SDK.LinkedListNodeView["data"],
+        };
+        return SDK.encodeLinkedListNodeView(updatedActiveOperatorNodeDatum);
+      },
+      catch: (cause) =>
+        new SDK.StateQueueError({
+          message:
+            "Failed to update active-operator bond-hold datum for commit tx",
+          cause,
+        }),
+    });
+
+    const makeBaseCommitTx = (stateQueueCommitRedeemer: string) =>
+      lucidAPI
+        .newTx()
+        .validTo(alignedEndTime)
+        .collectFrom([appendedUTxO.utxo], stateQueueCommitRedeemer)
+        .pay.ToContract(
+          stateQueue.spendingScriptAddress,
+          { kind: "inline", value: appendedNodeDatumCbor },
+          headerNodeOutputAssets,
+        )
+        .pay.ToContract(
+          stateQueue.spendingScriptAddress,
+          { kind: "inline", value: updatedNodeDatumCbor },
+          appendedUTxO.utxo.assets,
+        );
+
+    yield* Effect.logInfo("🔹 Building block commitment transaction...");
+    const txSignBuilder = yield* buildDeterministicCommitTxBuilder({
+      lucid: lucidAPI,
+      contracts,
+      latestBlockInput: appendedUTxO.utxo,
+      witness: witnessContext,
+      headerNodeUnit,
+      appendedNodeDatumCbor,
+      previousHeaderNodeDatumCbor: updatedNodeDatumCbor,
+      updatedActiveOperatorDatumCbor,
+      commitMintAssets,
+      makeBaseCommitTx,
+    });
+
+    const txHash = txSignBuilder.toHash();
     const signedTx = yield* txSignBuilder.sign
       .withWallet()
       .completeProgram()
@@ -410,21 +480,51 @@ export const buildNewBlockEntry = (
             new TxSignError({
               message: "Failed to sign block commitment transaction",
               cause: e,
-              txHash: txSignBuilder.toHash(),
+              txHash,
             }),
         ),
       );
+
+    const cmlTx: CML.Transaction = signedTx.toTransaction();
+    const walletAddress = yield* Effect.tryPromise({
+      try: () => lucidAPI.wallet().address(),
+      catch: (e) =>
+        new SDK.LucidError({
+          message: "Failed to get block commitment wallet address",
+          cause: e,
+        }),
+    });
+    const newWalletUTxOs = extractWalletOutputsFromSubmittedTx(
+      cmlTx,
+      txHash,
+      walletAddress,
+    );
+    // Collect the new state-queue UTxO (the appended header node) as the produced UTxO
+    const outputs = cmlTx.body().outputs();
+    const producedUTxOs = [];
+    for (let i = 0; i < outputs.len(); i++) {
+      const out = coreToTxOutput(outputs.get(i));
+      if (
+        out.address === stateQueue.spendingScriptAddress &&
+        (out.assets[headerNodeUnit] ?? 0n) === 1n
+      ) {
+        producedUTxOs.push({ txHash, outputIndex: i, ...out });
+      }
+    }
+
     const serializedNewWalletUTxOs =
       yield* serializeUTxOsForStorage(newWalletUTxOs);
     const serializedProducedUTxOs =
       yield* serializeUTxOsForStorage(producedUTxOs);
-    const l1CBOR = Buffer.from(signedTx.toTransaction().to_cbor_bytes());
+    const l1CBOR = Buffer.from(cmlTx.to_cbor_bytes());
+
+    const endTime = new Date(alignedEndTime);
     const newBlockEntry: BlocksDB.EntryNoMeta = {
       ...stats,
       [BlocksDB.Columns.HEADER_HASH]: Buffer.from(fromHex(newHeaderHash)),
       [BlocksDB.Columns.EVENT_START_TIME]:
         entry[BlocksDB.Columns.EVENT_END_TIME],
-      [BlocksDB.Columns.EVENT_END_TIME]: endDate,
+      [BlocksDB.Columns.EVENT_END_TIME]: endTime,
       [BlocksDB.Columns.NEW_WALLET_UTXOS]: serializedNewWalletUTxOs,
       [BlocksDB.Columns.PRODUCED_UTXOS]: serializedProducedUTxOs,
       [BlocksDB.Columns.L1_CBOR]: l1CBOR,

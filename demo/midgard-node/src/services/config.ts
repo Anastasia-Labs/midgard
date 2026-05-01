@@ -13,11 +13,16 @@ type NodeConfigDep = {
   L1_OPERATOR_SEED_PHRASE: string;
   L1_OPERATOR_SEED_PHRASE_FOR_BLOCK_COMMITMENT: string;
   L1_OPERATOR_SEED_PHRASE_FOR_MERGE_TX: string;
+  L1_REFERENCE_SCRIPT_SEED_PHRASE: string;
+  L1_REFERENCE_SCRIPT_ADDRESS: string;
   NETWORK: Network;
   PROTOCOL_PARAMETERS: SDK.ProtocolParameters;
   PORT: number;
   WAIT_BETWEEN_BLOCK_COMMITMENTS: number;
   WAIT_BETWEEN_BLOCK_SUBMISSIONS: number;
+  WAIT_BETWEEN_BLOCK_CONFIRMATION: number;
+  BLOCK_CONFIRMATION_AWAIT_TIMEOUT_MS: number;
+  UNCONFIRMED_BLOCK_MAX_AGE_MS: number;
   WAIT_BETWEEN_USER_EVENT_FETCHES: number;
   WAIT_BETWEEN_MERGE_TXS: number;
   PROM_METRICS_PORT: number;
@@ -29,6 +34,11 @@ type NodeConfigDep = {
   LEDGER_MPT_DB_PATH: string;
   MEMPOOL_MPT_DB_PATH: string;
   GENESIS_UTXOS: UTxO[];
+  HUB_ORACLE_ONE_SHOT_TX_HASH: string;
+  HUB_ORACLE_ONE_SHOT_OUTPUT_INDEX: number;
+  OPERATOR_REQUIRED_BOND_LOVELACE: bigint;
+  OPERATOR_SLASHING_PENALTY_LOVELACE: bigint;
+  RUN_GENESIS_ON_STARTUP: boolean;
 };
 
 const makeConfig = Effect.gen(function* () {
@@ -47,19 +57,48 @@ const makeConfig = Effect.gen(function* () {
   const operatorSeedPhraseForMergeTx = yield* Config.string(
     "L1_OPERATOR_SEED_PHRASE_FOR_MERGE_TX",
   );
+  const referenceScriptSeedPhrase = yield* Config.string(
+    "L1_REFERENCE_SCRIPT_SEED_PHRASE",
+  ).pipe(Config.withDefault(operatorSeedPhrase));
   const network = yield* Config.literal(
     "Mainnet",
     "Preprod",
     "Preview",
     "Custom",
   )("NETWORK");
+  const configuredReferenceScriptAddress = yield* Config.string(
+    "L1_REFERENCE_SCRIPT_ADDRESS",
+  ).pipe(Config.withDefault(""));
+  const derivedReferenceScriptAddress = walletFromSeed(
+    referenceScriptSeedPhrase,
+    { network },
+  ).address;
+  const referenceScriptAddress =
+    configuredReferenceScriptAddress.trim().length > 0
+      ? configuredReferenceScriptAddress.trim()
+      : derivedReferenceScriptAddress;
+  const runGenesisOnStartup = yield* Config.string(
+    "RUN_GENESIS_ON_STARTUP",
+  ).pipe(
+    Config.withDefault("false"),
+    Config.map((value) => value.trim().toLowerCase() === "true"),
+  );
   const port = yield* Config.integer("PORT").pipe(Config.withDefault(3000));
   const waitBetweenBlockCommitments = yield* Config.integer(
     "WAIT_BETWEEN_BLOCK_COMMITMENTS",
-  ).pipe(Config.withDefault(1000));
+  ).pipe(Config.withDefault(10000));
   const waitBetweenBlockSubmissions = yield* Config.integer(
     "WAIT_BETWEEN_BLOCK_SUBMISSIONS",
   ).pipe(Config.withDefault(10000));
+  const waitBetweenBlockConfirmation = yield* Config.integer(
+    "WAIT_BETWEEN_BLOCK_CONFIRMATION",
+  ).pipe(Config.withDefault(10000));
+  const blockConfirmationAwaitTimeoutMs = yield* Config.integer(
+    "BLOCK_CONFIRMATION_AWAIT_TIMEOUT_MS",
+  ).pipe(Config.withDefault(60000));
+  const unconfirmedBlockMaxAgeMs = yield* Config.integer(
+    "UNCONFIRMED_BLOCK_MAX_AGE_MS",
+  ).pipe(Config.withDefault(300000));
   const waitBetweenMergeTxs = yield* Config.integer(
     "WAIT_BETWEEN_MERGE_TXS",
   ).pipe(Config.withDefault(10000));
@@ -89,6 +128,24 @@ const makeConfig = Effect.gen(function* () {
   );
   const mempoolMptDbPath = yield* Config.string("MEMPOOL_MPT_DB_PATH").pipe(
     Config.withDefault("midgard-mempool-mpt-db"),
+  );
+  const hubOracleOneShotTxHash = yield* Config.string(
+    "HUB_ORACLE_ONE_SHOT_TX_HASH",
+  ).pipe(Config.withDefault(""));
+  const hubOracleOneShotOutputIndex = yield* Config.integer(
+    "HUB_ORACLE_ONE_SHOT_OUTPUT_INDEX",
+  ).pipe(Config.withDefault(-1));
+  const operatorRequiredBondLovelace = yield* Config.string(
+    "OPERATOR_REQUIRED_BOND_LOVELACE",
+  ).pipe(
+    Config.withDefault("5000000"),
+    Config.mapAttempt((value) => BigInt(value)),
+  );
+  const operatorSlashingPenaltyLovelace = yield* Config.string(
+    "OPERATOR_SLASHING_PENALTY_LOVELACE",
+  ).pipe(
+    Config.withDefault("200000"),
+    Config.mapAttempt((value) => BigInt(value)),
   );
   const seedA = yield* Config.string("TESTNET_GENESIS_WALLET_SEED_PHRASE_A");
   const seedB = yield* Config.string("TESTNET_GENESIS_WALLET_SEED_PHRASE_B");
@@ -167,11 +224,16 @@ const makeConfig = Effect.gen(function* () {
     L1_OPERATOR_SEED_PHRASE_FOR_BLOCK_COMMITMENT:
       operatorSeedPhraseForBlockCommitment,
     L1_OPERATOR_SEED_PHRASE_FOR_MERGE_TX: operatorSeedPhraseForMergeTx,
+    L1_REFERENCE_SCRIPT_SEED_PHRASE: referenceScriptSeedPhrase,
+    L1_REFERENCE_SCRIPT_ADDRESS: referenceScriptAddress,
     NETWORK: network,
     PROTOCOL_PARAMETERS: SDK.getProtocolParameters(network),
     PORT: port,
     WAIT_BETWEEN_BLOCK_COMMITMENTS: waitBetweenBlockCommitments,
     WAIT_BETWEEN_BLOCK_SUBMISSIONS: waitBetweenBlockSubmissions,
+    WAIT_BETWEEN_BLOCK_CONFIRMATION: waitBetweenBlockConfirmation,
+    BLOCK_CONFIRMATION_AWAIT_TIMEOUT_MS: blockConfirmationAwaitTimeoutMs,
+    UNCONFIRMED_BLOCK_MAX_AGE_MS: unconfirmedBlockMaxAgeMs,
     WAIT_BETWEEN_MERGE_TXS: waitBetweenMergeTxs,
     WAIT_BETWEEN_USER_EVENT_FETCHES: waitBetweenUserEventFetches,
     PROM_METRICS_PORT: promMetricsPort,
@@ -183,6 +245,11 @@ const makeConfig = Effect.gen(function* () {
     LEDGER_MPT_DB_PATH: ledgerMptDbPath,
     MEMPOOL_MPT_DB_PATH: mempoolMptDbPath,
     GENESIS_UTXOS: network === "Mainnet" ? [] : genesisUtxos,
+    HUB_ORACLE_ONE_SHOT_TX_HASH: hubOracleOneShotTxHash,
+    HUB_ORACLE_ONE_SHOT_OUTPUT_INDEX: hubOracleOneShotOutputIndex,
+    OPERATOR_REQUIRED_BOND_LOVELACE: operatorRequiredBondLovelace,
+    OPERATOR_SLASHING_PENALTY_LOVELACE: operatorSlashingPenaltyLovelace,
+    RUN_GENESIS_ON_STARTUP: runGenesisOnStartup,
   };
 }).pipe(
   Effect.retry(Schedule.fixed("5000 millis")),

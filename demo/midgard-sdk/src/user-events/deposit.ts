@@ -15,6 +15,7 @@ import {
   LucidError,
   makeReturn,
   UnspecifiedNetworkError,
+  ProofSchema,
 } from "@/common.js";
 import { AuthenticUTxO, authenticateUTxOs } from "@/internals.js";
 import { Data as EffectData, Effect } from "effect";
@@ -28,14 +29,35 @@ import {
   UserEventExtraFields,
   UserEventFetchConfig,
   UserEventMintRedeemer,
+  UserEventMintRedeemerSchema,
+  userEventWitnessScriptHash,
 } from "./internals.js";
 
 export const DepositDatumSchema = Data.Object({
   event: DepositEventSchema,
-  inclusionTime: POSIXTimeSchema,
+  inclusion_time: POSIXTimeSchema,
+  witness: Data.Bytes({ minLength: 28, maxLength: 28 }),
 });
 export type DepositDatum = Data.Static<typeof DepositDatumSchema>;
 export const DepositDatum = DepositDatumSchema as unknown as DepositDatum;
+export const DepositMintRedeemerSchema = UserEventMintRedeemerSchema;
+export type DepositMintRedeemer = UserEventMintRedeemer;
+export const DepositMintRedeemer =
+  UserEventMintRedeemer as unknown as DepositMintRedeemer;
+export const DepositSpendRedeemerSchema = Data.Object({
+  input_index: Data.Integer(),
+  output_index: Data.Integer(),
+  hub_ref_input_index: Data.Integer(),
+  settlement_ref_input_index: Data.Integer(),
+  mint_redeemer_index: Data.Integer(),
+  membership_proof: ProofSchema,
+  inclusion_proof_script_withdraw_redeemer_index: Data.Integer(),
+});
+export type DepositSpendRedeemer = Data.Static<
+  typeof DepositSpendRedeemerSchema
+>;
+export const DepositSpendRedeemer =
+  DepositSpendRedeemerSchema as unknown as DepositSpendRedeemer;
 
 export type DepositUTxO = AuthenticUTxO<DepositDatum, UserEventExtraFields>;
 
@@ -51,7 +73,7 @@ export const utxosToDepositUTxOs = (
   const calculateExtraFields = (datum: DepositDatum): UserEventExtraFields => ({
     idCbor: Buffer.from(fromHex(Data.to(datum.event.id, OutputReference))),
     infoCbor: Buffer.from(fromHex(Data.to(datum.event.info, DepositInfo))),
-    inclusionTime: new Date(Number(datum.inclusionTime)),
+    inclusionTime: new Date(Number(datum.inclusion_time)),
   });
 
   return authenticateUTxOs<DepositDatum, UserEventExtraFields>(
@@ -112,21 +134,22 @@ export const incompleteDepositTxProgram = (
     const depositDatum: DepositDatum = {
       event: {
         id: {
-          txHash: { hash: inputUtxo.txHash },
+          transactionId: inputUtxo.txHash,
           outputIndex: BigInt(inputUtxo.outputIndex),
         },
         info: params.depositInfo,
       },
-      inclusionTime: BigInt(inclusionTime),
+      inclusion_time: BigInt(inclusionTime),
+      witness: userEventWitnessScriptHash(assetName),
     };
     const depositDatumCBOR = Data.to(depositDatum, DepositDatum);
 
     const mintRedeemer: UserEventMintRedeemer = {
       AuthenticateEvent: {
-        nonceInputIndex: 0n,
-        eventOutputIndex: 0n,
-        hubRefInputIndex: 0n,
-        witnessRegistrationRedeemerIndex: 0n,
+        nonce_input_index: 0n,
+        event_output_index: 0n,
+        hub_ref_input_index: 0n,
+        witness_registration_redeemer_index: 0n,
       },
     };
     const mintRedeemerCBOR = Data.to(mintRedeemer, UserEventMintRedeemer);
@@ -168,7 +191,7 @@ export const unsignedDepositTxProgram = (
   Effect.gen(function* () {
     const commitTx = yield* incompleteDepositTxProgram(lucid, depositParams);
     const completedTx: TxSignBuilder = yield* Effect.tryPromise({
-      try: () => commitTx.complete({ localUPLCEval: false }),
+      try: () => commitTx.complete({ localUPLCEval: true }),
       catch: (e) =>
         new DepositError({
           message: `Failed to build the transaction: ${e}`,

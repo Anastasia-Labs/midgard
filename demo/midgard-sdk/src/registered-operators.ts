@@ -1,71 +1,114 @@
 import { AuthenticatedValidator, POSIXTimeSchema } from "@/common.js";
-import { Data, LucidEvolution, TxBuilder } from "@lucid-evolution/lucid";
+import {
+  Data,
+  LucidEvolution,
+  TxBuilder,
+  fromText,
+} from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 import { incompleteInitLinkedListTxProgram } from "./linked-list.js";
 
+export const REGISTERED_OPERATORS_ROOT_ASSET_NAME = fromText(
+  "MIDGARD_REGISTERED_OPERATORS",
+);
+
 export const RegisteredOperatorDatumSchema = Data.Object({
-  registrationTime: POSIXTimeSchema,
+  operator: Data.Bytes({ minLength: 28, maxLength: 28 }),
+  bond_unlock_time: Data.Nullable(POSIXTimeSchema),
 });
 export type RegisteredOperatorDatum = Data.Static<
   typeof RegisteredOperatorDatumSchema
 >;
 export const RegisteredOperatorDatum =
   RegisteredOperatorDatumSchema as unknown as RegisteredOperatorDatum;
+export const castRegisteredOperatorDatumToData = (
+  datum: RegisteredOperatorDatum,
+): unknown => Data.castTo(datum, RegisteredOperatorDatum);
 
-export const RegisteredOperatorWitnessStatusSchema = Data.Enum([
-  Data.Literal("Registered"),
-  Data.Literal("Active"),
-  Data.Literal("Retired"),
+export const DuplicateOperatorStatusSchema = Data.Enum([
+  Data.Literal("DuplicateIsRegistered"),
+  Data.Object({
+    DuplicateIsActive: Data.Object({
+      hub_oracle_ref_input_index: Data.Integer(),
+    }),
+  }),
+  Data.Literal("DuplicateIsRetired"),
 ]);
-export type RegisteredOperatorWitnessStatus = Data.Static<
-  typeof RegisteredOperatorWitnessStatusSchema
+export type DuplicateOperatorStatus = Data.Static<
+  typeof DuplicateOperatorStatusSchema
 >;
-export const RegisteredOperatorWitnessStatus =
-  RegisteredOperatorWitnessStatusSchema as unknown as RegisteredOperatorWitnessStatus;
+export const DuplicateOperatorStatus =
+  DuplicateOperatorStatusSchema as unknown as DuplicateOperatorStatus;
+
+export const OperatorOriginSchema = Data.Enum([
+  Data.Object({
+    ReturningOperator: Data.Object({
+      retired_operators_redeemer_index: Data.Integer(),
+    }),
+  }),
+  Data.Object({
+    NewOperator: Data.Object({
+      retired_operators_element_ref_input_index: Data.Integer(),
+    }),
+  }),
+]);
+export type OperatorOrigin = Data.Static<typeof OperatorOriginSchema>;
+export const OperatorOrigin = OperatorOriginSchema as unknown as OperatorOrigin;
 
 export const RegisteredOperatorMintRedeemerSchema = Data.Enum([
-  Data.Literal("Init"),
-  Data.Literal("Deinit"),
   Data.Object({
-    Register: Data.Object({
-      keyToPrepend: Data.Bytes(),
-      hubOracleRefInputIndex: Data.Integer(),
-      activeOperatorRefInputIndex: Data.Integer(),
-      activeOperatorAssetName: Data.Bytes(),
-      retiredOperatorRefInputIndex: Data.Integer(),
-      retiredOperatorAssetName: Data.Bytes(),
-      prependedNodeOutputIndex: Data.Integer(),
-      anchorNodeOutputIndex: Data.Integer(),
+    Init: Data.Object({
+      output_index: Data.Integer(),
     }),
   }),
   Data.Object({
-    Activate: Data.Object({
-      nodeToActivateKey: Data.Bytes(),
-      hubOracleRefInputIndex: Data.Integer(),
-      retiredOperatorRefInputIndex: Data.Integer(),
-      retiredOperatorAsset_name: Data.Bytes(),
-      removedNodeInputIndex: Data.Integer(),
-      anchorNodeInputIndex: Data.Integer(),
-      activeOperatorsInsertedNodeOutputIndex: Data.Integer(),
-      activeOperatorsAnchorNodeOutputIndex: Data.Integer(),
+    Deinit: Data.Object({
+      input_index: Data.Integer(),
     }),
   }),
   Data.Object({
-    Deregister: Data.Object({
-      nodeToDeregisterKey: Data.Bytes(),
-      removedNodeInputIndex: Data.Integer(),
-      anchorNodeInputIndex: Data.Integer(),
+    RegisterOperator: Data.Object({
+      registering_operator: Data.Bytes({ minLength: 28, maxLength: 28 }),
+      root_input_index: Data.Integer(),
+      root_output_index: Data.Integer(),
+      registered_node_output_index: Data.Integer(),
+      hub_oracle_ref_input_index: Data.Integer(),
+      active_operators_element_ref_input_index: Data.Integer(),
+      operator_origin: OperatorOriginSchema,
     }),
   }),
   Data.Object({
-    RemoveDuplicateSlashBond: Data.Object({
-      duplicateNodeKey: Data.Bytes(),
-      hubOracleRefInputIndex: Data.Integer(),
-      duplicateNodeRefInputIndex: Data.Integer(),
-      duplicateNodeRefInputAssetName: Data.Bytes(),
-      removedNodeInputIndex: Data.Integer(),
-      anchorNodeInputIndex: Data.Integer(),
-      witnessStatus: RegisteredOperatorWitnessStatusSchema,
+    ActivateOperator: Data.Object({
+      activating_operator: Data.Bytes({ minLength: 28, maxLength: 28 }),
+      anchor_element_input_index: Data.Integer(),
+      removed_node_input_index: Data.Integer(),
+      anchor_element_output_index: Data.Integer(),
+      hub_oracle_ref_input_index: Data.Integer(),
+      retired_operators_element_ref_input_index: Data.Integer(),
+      active_operators_redeemer_index: Data.Integer(),
+    }),
+  }),
+  Data.Object({
+    DeregisterOperator: Data.Object({
+      deregistering_operator: Data.Bytes({ minLength: 28, maxLength: 28 }),
+      anchor_element_input_index: Data.Integer(),
+      removed_node_input_index: Data.Integer(),
+      anchor_element_output_index: Data.Integer(),
+    }),
+  }),
+  Data.Object({
+    SlashDuplicateOperator: Data.Object({
+      duplicate_operator: Data.Bytes({ minLength: 28, maxLength: 28 }),
+      anchor_element_input_index: Data.Integer(),
+      removed_node_input_index: Data.Integer(),
+      anchor_element_output_index: Data.Integer(),
+      duplicate_node_ref_input_index: Data.Integer(),
+      duplicate_operator_status: DuplicateOperatorStatusSchema,
+    }),
+  }),
+  Data.Object({
+    SlashFraudulentOperator: Data.Object({
+      slashing_arguments: Data.Any(),
     }),
   }),
 ]);
@@ -77,6 +120,8 @@ export const RegisteredOperatorMintRedeemer =
 
 export type RegisteredOperatorInitParams = {
   validator: AuthenticatedValidator;
+  outputIndex?: bigint;
+  lovelace?: bigint;
 };
 
 export type RegisteredOperatorDeinitParams = {};
@@ -97,12 +142,17 @@ export const incompleteRegisteredOperatorInitTxProgram = (
   params: RegisteredOperatorInitParams,
 ): Effect.Effect<TxBuilder, never> =>
   Effect.gen(function* () {
-    const rootData = "00";
+    const rootData = "";
 
     return yield* incompleteInitLinkedListTxProgram(lucid, {
       validator: params.validator,
+      rootAssetName: REGISTERED_OPERATORS_ROOT_ASSET_NAME,
       data: rootData,
-      redeemer: Data.to("Init", RegisteredOperatorMintRedeemer),
+      redeemer: Data.to(
+        { Init: { output_index: params.outputIndex ?? 0n } },
+        RegisteredOperatorMintRedeemer,
+      ),
+      lovelace: params.lovelace,
     });
   });
 

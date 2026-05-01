@@ -18,7 +18,7 @@ import {
   UserEvents,
   WithdrawalsDB,
 } from "./index.js";
-import { AlwaysSucceedsContract } from "@/services/always-succeeds.js";
+import { MidgardContracts } from "@/services/midgard-contracts.js";
 
 export const tableName = "unsubmitted_blocks";
 
@@ -76,7 +76,7 @@ export type Events = {
   withdrawals: readonly UserEvents.Entry[];
   txOrders: readonly UserEvents.Entry[];
   txRequests: readonly Tx.Entry[];
-  deposits: readonly UserEvents.Entry[];
+  deposits: readonly DepositsDB.Entry[];
 };
 
 export type LatestUnsubmittedBlockWithTxs = Omit<
@@ -217,6 +217,26 @@ export const retrieveLatestEntry: Effect.Effect<
   ),
 );
 
+export const retrieveByHeaderHash = (
+  headerHash: Buffer,
+): Effect.Effect<Option.Option<Entry>, DatabaseError, Database> =>
+  Effect.gen(function* () {
+    const sql = yield* SqlClient.SqlClient;
+    const rows = yield* sql<Entry>`
+      SELECT * FROM ${sql(tableName)}
+      WHERE ${sql(Columns.HEADER_HASH)} = ${headerHash}
+      LIMIT 1`;
+    if (rows.length <= 0) {
+      return Option.none();
+    }
+    return Option.some(rows[0]);
+  }).pipe(
+    sqlErrorToDatabaseError(
+      tableName,
+      "Failed to retrieve block entry by header hash",
+    ),
+  );
+
 /**
  * A `BlocksDB` entry contains the list of produced UTxOs from its signed
  * transaction. Since this transaciton is a linked list append operation, one of
@@ -232,10 +252,10 @@ export const getAppendedStateQueueUTxOFromEntry = (
 ): Effect.Effect<
   SDK.StateQueueUTxO,
   SDK.CborDeserializationError | SDK.CmlUnexpectedError | SDK.StateQueueError,
-  AlwaysSucceedsContract
+  MidgardContracts
 > =>
   Effect.gen(function* () {
-    const { stateQueue } = yield* AlwaysSucceedsContract;
+    const { stateQueue } = yield* MidgardContracts;
     const producedUTxOs = yield* deserializeUTxOsFromStorage(
       entry[Columns.PRODUCED_UTXOS],
     );

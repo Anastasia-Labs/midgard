@@ -14,11 +14,11 @@ import {
 import {
   Database,
   Lucid,
-  AlwaysSucceedsContract,
+  MidgardContracts,
   NodeConfig,
 } from "@/services/index.js";
 import { MempoolLedgerDB, BlocksDB } from "@/database/index.js";
-import { TxSignError } from "@/transactions/utils.js";
+import { TxSignError, TxSubmitError } from "@/transactions/utils.js";
 import { MidgardMpt, MptError } from "@/workers/utils/mpt.js";
 import {
   DatabaseError,
@@ -31,18 +31,18 @@ import { fromHex } from "@lucid-evolution/lucid";
 const seedBlocksDBFromChain: Effect.Effect<
   SeededOutput | string,
   never,
-  AlwaysSucceedsContract | Database | Lucid
+  MidgardContracts | Database | Lucid
 > = Effect.gen(function* () {
   yield* Effect.logInfo(
     "🔹 BlocksDB is empty - attempting to seed from chain...",
   );
   const lucid = yield* Lucid;
-  const { stateQueue } = yield* AlwaysSucceedsContract;
+  const { stateQueue } = yield* MidgardContracts;
   const fetchConfig: SDK.StateQueueFetchConfig = {
     stateQueueAddress: stateQueue.spendingScriptAddress,
     stateQueuePolicyId: stateQueue.policyId,
   };
-  yield* lucid.switchToOperatorsBlockCommitmentWallet;
+  yield* lucid.switchToOperatorsMainWallet;
   const genesisStateQueueUTxO = yield* SDK.fetchLatestCommittedBlockProgram(
     lucid.api,
     fetchConfig,
@@ -100,8 +100,9 @@ const mainProgram: Effect.Effect<
   | SDK.StateQueueError
   | DatabaseError
   | MptError
-  | TxSignError,
-  AlwaysSucceedsContract | Database | Lucid | NodeConfig
+  | TxSignError
+  | TxSubmitError,
+  MidgardContracts | Database | Lucid | NodeConfig
 > = Effect.gen(function* () {
   const optLatestBlock = yield* BlocksDB.retrieveLatestEntry;
   return yield* Option.match(optLatestBlock, {
@@ -215,7 +216,7 @@ const inputData = workerData as WorkerInput;
 
 const program = pipe(
   wrapper(inputData),
-  Effect.provide(AlwaysSucceedsContract.Default),
+  Effect.provide(MidgardContracts.Default),
   Effect.provide(Database.layer),
   Effect.provide(Lucid.Default),
   Effect.provide(NodeConfig.layer),

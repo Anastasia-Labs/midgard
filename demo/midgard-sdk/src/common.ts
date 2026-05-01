@@ -264,7 +264,7 @@ export type MidgardValidators = {
 };
 
 export const OutputReferenceSchema = Data.Object({
-  txHash: Data.Object({ hash: Data.Bytes({ minLength: 32, maxLength: 32 }) }),
+  transactionId: Data.Bytes({ minLength: 32, maxLength: 32 }),
   outputIndex: Data.Integer(),
 });
 export type OutputReference = Data.Static<typeof OutputReferenceSchema>;
@@ -436,18 +436,16 @@ export const findOperatorByPKH = (
   | (RetiredOperatorUTxO & { isActive: false }),
   LucidError
 > => {
-  const activeOperatorMatch = EffectArray.findFirst(
-    activeOperators,
-    (utxo) => utxo.datum.key === operatorPKH,
+  const activeOperatorMatch = EffectArray.findFirst(activeOperators, (utxo) =>
+    utxo.assetName.endsWith(operatorPKH),
   );
 
   if (Option.isSome(activeOperatorMatch)) {
     return Effect.succeed({ ...activeOperatorMatch.value, isActive: true });
   }
 
-  const retiredOperatorMatch = EffectArray.findFirst(
-    retiredOperators,
-    (utxo) => utxo.datum.key === operatorPKH,
+  const retiredOperatorMatch = EffectArray.findFirst(retiredOperators, (utxo) =>
+    utxo.assetName.endsWith(operatorPKH),
   );
 
   if (Option.isSome(retiredOperatorMatch)) {
