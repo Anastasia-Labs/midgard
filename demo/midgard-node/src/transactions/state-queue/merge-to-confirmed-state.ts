@@ -153,9 +153,8 @@ export const buildAndSubmitMergeTx = (
       ).pipe(Effect.withSpan("fetchFirstBlockTxs"));
       if (firstBlockTxs.length === 0) {
         yield* Effect.logInfo(
-          "🔸 ❌ Failed to find first block's transactions in BlocksTxsDB.",
+          "🔸 First block has no transactions in BlocksTxsDB — proceeding with empty-block merge.",
         );
-        return;
       }
       yield* Effect.logInfo("🔸 Building merge transaction...");
       // Build the transaction
