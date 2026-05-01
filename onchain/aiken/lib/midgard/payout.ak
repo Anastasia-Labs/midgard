@@ -7,7 +7,7 @@ pub type Datum {
   l2_value: ValuePairs,
 }
 
-pub type AssetToAdd {
+pub type AssetsToAdd {
   Lovelace {
     reserve_addr: Address,
     reserve_input_index: Int,
@@ -16,14 +16,12 @@ pub type AssetToAdd {
   }
   CardanoAssets {
     assets: ValuePairs,
-    // policy_id_index_in_target: Int,
-    // asset_name_index_in_target: Int,
     reserve_addr: Address,
     reserve_input_index: Int,
     reserve_redeemer_index: Int,
     reserve_change_output_index: Int,
   }
-  MidgardAsset {
+  MidgardAssets {
     policy_id_to_mint: PolicyId,
     assets_to_mint: Pairs<AssetName, Int>,
     quantity_to_mint: Int,
@@ -36,7 +34,7 @@ pub type AssetToAdd {
 pub type AccumulationArgs {
   payout_input_index: Int,
   payout_output_index: Int,
-  asset_to_add: AssetToAdd,
+  assets_to_add: AssetsToAdd,
   payout_nft_asset_name: AssetName,
 }
 

@@ -2,6 +2,7 @@ use aiken/collection/dict
 use aiken/collection/dict/strategy as dict_strategy
 use aiken/collection/list
 use aiken/crypto.{ScriptHash}
+use aiken/primitive/int
 use cardano/address.{Address}
 use cardano/assets.{AssetName, PolicyId}
 use cardano/transaction.{
@@ -11,7 +12,7 @@ use midgard/common/utils
 use midgard/hub_oracle as hub
 use midgard/ledger_state
 use midgard/payout.{
-  AddFunds, AddFundsRedeemer, AssetToAdd, BurnPayout, ConcludeWithdrawal, Datum,
+  AddFunds, AddFundsRedeemer, AssetsToAdd, BurnPayout, ConcludeWithdrawal, Datum,
   MintPayout, MintRedeemer, SpendRedeemer, separate_ada_and_remove_auth_nft,
 }
 use midgard/reserve
@@ -122,7 +123,7 @@ validator spend(payout_policy_id: PolicyId) {
         let AccumulationArgs {
           payout_input_index,
           payout_output_index,
-          asset_to_add,
+          assets_to_add,
           payout_nft_asset_name,
         } = accumulation_args
 
@@ -145,7 +146,7 @@ validator spend(payout_policy_id: PolicyId) {
           validate_asset_accumulation(
             payout_policy_id,
             payout_nft_asset_name,
-            asset_to_add,
+            assets_to_add,
             payout_input.output.value,
             payout_output.value,
             l2_value,
@@ -166,7 +167,7 @@ validator spend(payout_policy_id: PolicyId) {
 fn validate_asset_accumulation(
   payout_policy_id: PolicyId,
   payout_asset_name: AssetName,
-  asset_to_add: AssetToAdd,
+  assets_to_add: AssetsToAdd,
   p0: Value,
   p1: Value,
   pt: ValuePairs,
@@ -181,9 +182,13 @@ fn validate_asset_accumulation(
   let (p1_lovelace, p1_assets) =
     p1 |> separate_ada_and_remove_auth_nft(payout_policy_id, payout_asset_name)
 
-  // NOTE that we are assuming it is already verified that the first entry in
-  // the target `ValuePairs` is ADA. This validation is currently happening at
-  // minting of the withdrawal order UTxO (TODO?).
+  // NOTE that we are assuming it is already verified that it's properly formed.
+  // Meaning:
+  // - The head is `Pair(ada_policy_id, [Pair(ada_asset_name, pt_lovelace)])`
+  // - All entries have quantities greater than 0.
+  // - Both inner and outer pairs are in ascending order lexicographically.
+  // This guarantee is currently happening at minting of the withdrawal order
+  // UTxO (TODO?).
   let Pair(_, pt_lovelace) = builtin.head_list(pt).2nd |> builtin.head_list
   let pt_assets = pt |> builtin.tail_list
 
@@ -193,7 +198,7 @@ fn validate_asset_accumulation(
   // 3. Output lovelace must either grow or remain unchanged.
   expect p1_lovelace >= p0_lovelace
 
-  when asset_to_add is {
+  when assets_to_add is {
     Lovelace {
       reserve_addr,
       reserve_input_index,
@@ -247,11 +252,8 @@ fn validate_asset_accumulation(
         }
       }
     }
-    CardanoAsset {
-      policy_id,
-      asset_name,
-      policy_id_index_in_target,
-      asset_name_index_in_target,
+    CardanoAssets {
+      assets,
       reserve_addr,
       reserve_input_index,
       reserve_redeemer_index,
@@ -283,7 +285,7 @@ fn validate_asset_accumulation(
       // 7b. Transfer of the specified asset from reserve to the payout
       //     accumulator must be valid.
       expect
-        validate_transfer_of_given_asset_with_change(
+        validate_transfer_of_given_assets_with_change(
           p0_assets,
           r0_assets,
           p1_assets,
@@ -300,6 +302,46 @@ fn validate_asset_accumulation(
   }
 }
 
+/// Validates addition of `assets_to_add` to `p0_assets` eqauls `p1_assets`.
+/// Assumes `assets_to_add` is validated to only carry positive quantities.
+fn validate_addition_reaches(
+  p0_assets: Dict<PolicyId, Dict<AssetName, Int>>,
+  assets_to_add: Dict<PolicyId, Dict<AssetName, Int>>,
+  p1_assets: Dict<PolicyId, Dict<AssetName, Int>>,
+) -> Bool {
+  p1_assets == dict.union_with(p0_assets, assets_to_add, dict_strategy.sum)
+}
+
+/// p0: Non-ADA assets of input payout (without auth NFT)
+/// r0: Non-ADA assets of input reserve
+/// p1: Non-ADA assets of output payout (without auth NFT)
+/// r1: Non-ADA assets of output reserve
+/// pt: Target non-ADA assets
+///
+/// This function assumes all assets are stripped of their ADA.
+fn validate_transfer_of_given_assets_with_change(
+  p0_assets: Dict<PolicyId, Dict<AssetName, Int>>,
+  r0_assets: Dict<PolicyId, Dict<AssetName, Int>>,
+  p1_assets: Dict<PolicyId, Dict<AssetName, Int>>,
+  r1_assets: Dict<PolicyId, Dict<AssetName, Int>>,
+  pt_assets: ValuePairs,
+  assets_to_add_pairs: ValuePairs,
+) -> Bool {
+  expect utils.all_value_pairs_quantities_are_positive(assets_to_add_pairs)
+  let assets_to_add =
+    utils.unsafe_value_pairs_to_value(assets_to_add_pairs) |> assets.to_dict
+
+  expect p0_assets |> validate_addition_reaches(assets_to_add, p1_assets)
+  expect r1_assets |> validate_addition_reaches(assets_to_add, r0_assets)
+
+  let pt_assets_dict =
+    utils.unsafe_value_pairs_to_value(pt_assets) |> assets.to_dict
+  expect pt_assets_dict |> dict.expect_contains(p1_assets, int.compare)
+
+  // Done.
+  True
+}
+
 /// TODO: Here the assumption is that resreve UTxOs do not carry any beacon
 ///       tokens.
 fn get_reserve_input_lovelace_and_assets(
@@ -311,11 +353,7 @@ fn get_reserve_input_lovelace_and_assets(
 ) -> (Lovelace, Dict<PolicyId, Dict<AssetName, Int>>) {
   expect Some(Input {
     output_reference: reserve_input_outref,
-    output: Output {
-      address: reserve_input_address,
-      value: reserve_input_value,
-      ..
-    },
+    output: Output { address: reserve_input_address, value: r0, .. },
   }) = inputs |> list.at(reserve_input_index)
   expect
     reserve_input_address.payment_credential == reserve_addr.payment_credential
@@ -326,133 +364,7 @@ fn get_reserve_input_lovelace_and_assets(
           reserve_redeemer_index,
         )
   expect accumulation_args_data == reserve_spend_redeemer_data
-  reserve_input_value |> utils.get_lovelace_and_assets
-}
-
-/// p0: Non-ADA assets of input payout (without auth NFT)
-/// r0: Non-ADA assets of input reserve
-/// p1: Non-ADA assets of output payout (without auth NFT)
-/// r1: Non-ADA assets of output reserve
-/// pt: Target non-ADA assets
-///
-/// This function assumes all assets are stripped of their ADA. Since it is
-/// expected for the target value to have ADA at its head, the given policy ID
-/// index cannot be 0 (as it gets decremented to compensate the removal of ADA).
-fn validate_transfer_of_given_asset_with_change(
-  p0_assets: Dict<PolicyId, Dict<AssetName, Int>>,
-  r0_assets: Dict<PolicyId, Dict<AssetName, Int>>,
-  p1_assets: Dict<PolicyId, Dict<AssetName, Int>>,
-  r1_assets: Dict<PolicyId, Dict<AssetName, Int>>,
-  pt_assets: ValuePairs,
-  policy_id_index_in_target: Int,
-  asset_name_index_in_target: Int,
-) -> Bool {
-  // 1. Provided indices for extracting the subject asset must yield values.
-  //    We are decrementing the policy ID's index since the assumption is that
-  //    Lovelace at head was removed.
-  let Pair(policy_id, target_asset_pairs) =
-    pt_assets |> list.expect_at(policy_id_index_in_target - 1)
-  let Pair(asset_name, pt_qty) =
-    target_asset_pairs |> list.expect_at(asset_name_index_in_target)
-
-  let p0_qty = p0_assets |> get_token_qty(policy_id, asset_name)
-  let p1_qty = p1_assets |> get_token_qty_strict(policy_id, asset_name)
-
-  let (p0_target_qty, p0_names_without_target, p0_policies_without_target) =
-    p0_assets |> pop_target_asset(policy_id, asset_name)
-  let (p1_target_qty, p1_names_without_target, p1_policies_without_target) =
-    p1_assets |> pop_target_asset_strict(policy_id, asset_name)
-
-  let (r0_target_qty, r0_names_without_target, r0_policies_without_target) =
-    r0_assets |> pop_target_asset_strict(policy_id, asset_name)
-  let (r1_target_qty, r1_names_without_target, r1_policies_without_target) =
-    r1_assets |> pop_target_asset(policy_id, asset_name)
-
-  // 2. Token's quantity must not exceed the target.
-  expect p1_target_qty <= pt_target_qty
-
-  // 3. Token's quantity must grow.
-  expect p1_target_qty > p0_target_qty
-
-  // 4. The change in reserve's token quantity must match the change in
-  //    payout's.
-  expect r0_target_qty - r1_target_qty == p1_target_qty - p0_target_qty
-
-  // Done.
-  True
-}
-
-/// This is essentially the same as `dict.expect_pop`, but goes one level
-/// deeper to correspond to `Value` dicts. Therefore returns 3 values:
-/// 1. Quantity of the popped asset.
-/// 2. Dict carrying the rest of the asset name - quantity pairs (as `Data`).
-/// 3. Dict carrying the rest of the policy IDs and their asset name dicts (as
-///    `Data`).
-fn pop_target_asset_strict(
-  r: Dict<PolicyId, Dict<AssetName, Int>>,
-  policy_id: PolicyId,
-  asset_name: AssetName,
-) -> (
-  Int,
-  Data<Dict<AssetName, Int>>,
-  Data<Dict<PolicyId, Dict<AssetName, Int>>>,
-) {
-  let (r_target_names_qty_dict, r_without_target_policy) =
-    r_assets |> dict.expect_pop(policy_id)
-  let (r_target_qty, r_without_target_asset) =
-    r_without_target_policy |> dict.expect_pop(asset_name)
-  (r_target_qty, r_without_target_asset, r_without_target_policy)
-}
-
-fn pop_target_asset(
-  r: Dict<PolicyId, Dict<AssetName, Int>>,
-  policy_id: PolicyId,
-  asset_name: AssetName,
-) -> (
-  Int,
-  Data<Dict<AssetName, Int>>,
-  Data<Dict<PolicyId, Dict<AssetName, Int>>>,
-) {
-  let (m_r_target_names_qty_dict, r_without_target_policy) =
-    r_assets |> dict.pop(policy_id)
-  when m_r_target_names_qty_dict is {
-    None -> (0, Dict.empty, r)
-    Some(r_target_names_qty_dict) -> {
-      let (m_r_target_qty, r_without_target_asset) =
-        r_without_target_policy |> dict.pop(asset_name)
-      when m_r_target_qty is {
-        None -> (0, r_target_names_qty_dict, r_without_target_policy)
-        Some(r_target_qty) ->
-          (r_target_qty, r_without_target_asset, r_without_target_policy)
-      }
-    }
-  }
-}
-
-fn get_token_qty_strict(
-  assets: Dict<PolicyId, Dict<AssetName, Int>>,
-  policy_id: PolicyId,
-  asset_name: AssetName,
-) -> Int {
-  assets |> dict.expect_get(policy_id) |> dict.expect_get(asset_name)
-}
-
-fn get_token_qty(
-  assets: Dict<PolicyId, Dict<AssetName, Int>>,
-  policy_id: PolicyId,
-  asset_name: AssetName,
-) -> Int {
-  let m_tokens = assets |> dict.get(policy_id)
-  when m_tokens is {
-    None -> 0
-    Some(tokens) -> {
-      let m_qty = tokens |> dict.get(asset_name)
-      when m_qty is {
-        None -> 0
-        Some(qty) -> qty
-      }
-    }
-  }
+  r0 |> utils.get_lovelace_and_assets
 }
 
 fn get_reserve_change_output_lovelace_and_assets(
@@ -470,44 +382,5 @@ fn get_reserve_change_output_lovelace_and_assets(
   }) = outputs |> list.at(reserve_change_output_index)
   expect reserve_output_address == reserve_addr
 
-  r1 |> get_lovelace_and_assets
-}
-
-/// Re-implementation of `assets.difference` for `Dict`s. Behavior is
-/// `v0 - v1`.
-fn difference_between_value_dicts(
-  v0: Dict<PolicyId, Dict<AssetName, Int>>,
-  v1: Dict<PolicyId, Dict<AssetName, Int>>,
-) -> Value {
-  Value(
-    dict.difference_with(
-      v0,
-      v1,
-      fn(_, a0, a1, keep, discard) {
-        let result = difference_between_asset_name_dicts(a0, a1)
-        if dict.empty == result {
-          discard()
-        } else {
-          keep(result)
-        }
-      },
-      fn(_k, right, keep, _discard) {
-        keep(dict.map(right, fn(_, qty) { -qty }))
-      },
-    ),
-  )
-}
-
-/// Re-implementation of `assets.difference` for asset-name quantity dicts.
-/// Behavior is `a0 - a1`.
-fn difference_between_asset_name_dicts(
-  a0: Dict<AssetName, Int>,
-  a1: Dict<AssetName, Int>,
-) -> Dict<AssetName, Int> {
-  dict.difference_with(
-    a0,
-    a1,
-    dict_strategy.difference_if_non_zero(),
-    dict_strategy.negate(),
-  )
+  r1 |> utils.get_lovelace_and_assets
 }

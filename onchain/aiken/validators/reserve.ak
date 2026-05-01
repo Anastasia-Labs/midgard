@@ -16,7 +16,7 @@ validator spend(payout_policy_id: PolicyId, payout_addr: Address) {
 
     let payout.AccumulationArgs {
       payout_input_index,
-      asset_to_add,
+      assets_to_add,
       payout_nft_asset_name,
       ..
     } = accumulation_args
@@ -43,14 +43,14 @@ validator spend(payout_policy_id: PolicyId, payout_addr: Address) {
     let own_acc_args_data: Data = accumulation_args
     expect payout_acc_args_data = own_acc_args_data
 
-    when asset_to_add is {
+    when assets_to_add is {
       payout.Lovelace {
         reserve_addr,
         reserve_input_index,
         m_reserve_change_output_index,
         ..
       } |
-      payout.CardanoAsset {
+      payout.CardanoAssets {
         reserve_addr,
         reserve_input_index,
         m_reserve_change_output_index,
@@ -72,7 +72,7 @@ validator spend(payout_policy_id: PolicyId, payout_addr: Address) {
         // Done.
         True
       }
-      payout.MidgardAsset { .. } ->
+      payout.MidgardAssets { .. } ->
         fail @"Specified token must be minted and not withdrawn from Midgard reserve"
     }
   }
