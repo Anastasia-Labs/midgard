@@ -17,6 +17,12 @@ pub type ResolutionClaim {
   operator: VerificationKeyHash,
 }
 
+pub type FraudulentOperatorStatus {
+  FraudulentOperatorIsRegistered
+  FraudulentOperatorIsActive
+  FraudulentOperatorIsRetired
+}
+
 pub type SpendRedeemer {
   AttachResolutionClaim {
     settlement_input_index: Int,
@@ -33,7 +39,7 @@ pub type SpendRedeemer {
     hub_ref_input_index: Int,
     operators_redeemer_index: Int,
     operator: VerificationKeyHash,
-    operator_is_active: Bool,
+    fraudulent_operator_status: FraudulentOperatorStatus,
     unresolved_event_ref_input_index: Int,
     unresolved_event_asset_name: AssetName,
     event_type: EventType,
