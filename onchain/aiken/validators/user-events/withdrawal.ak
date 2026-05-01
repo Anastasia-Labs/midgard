@@ -5,7 +5,7 @@ use cardano/assets.{PolicyId}
 use cardano/transaction.{
   Input, Mint, NoDatum, Output, OutputReference, Transaction,
 }
-use midgard/common/utils.{plutarch_phas}
+use midgard/common/utils.{plutarch_phas, value_pairs_to_value_strict}
 use midgard/hub_oracle as hub
 use midgard/ledger_state
 use midgard/payout
@@ -260,12 +260,12 @@ validator mint(hub_oracle: ScriptHash) {
     // 4. The withdrawn UTxO's value must be properly formed, and  must carry
     //    `withdrawal_min_ada` or more Lovelace.
     //    TODO: This probably can be optimized.
-    let Pair(l2_first_asset_policy, l2_first_asset_pairs) =
-      l2_value |> builtin.head_list
-    expect [Pair(l2_first_asset_name, l2_lovelace)] = l2_first_asset_pairs
-    expect l2_first_asset_policy == ada_policy_id
-    expect l2_first_asset_name == ada_asset_name
-    expect l2_lovelace >= withdrawal_min_ada
+    //    TODO: Strict validation on `l2_value` was initially omitted in favor
+    //          of optimism. Invalid values would render the event eligible for
+    //          the `IncorrectWithdrawalValue` validity flag. With the payout
+    //          contract currently relying heavily on correctness of `l2_value`,
+    //          it _seems safer_ to enforce it deterministically.
+    expect _v = l2_value |> value_pairs_to_value_strict(withdrawal_min_ada)
 
     // Done.
     True

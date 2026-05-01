@@ -70,6 +70,36 @@ pub fn get_lovelace_and_assets(
   (builtin.head_list(dict.to_pairs(v_lovelace)).2nd, v_assets)
 }
 
+/// Convert `ValuePairs` to `Value`, requiring all quantities to be positive
+/// and requiring the first policy entry to be exactly Lovelace.
+pub fn value_pairs_to_value_strict(
+  value_pairs: ValuePairs,
+  min_required_ada: Lovelace,
+) -> Value {
+  expect
+    value_pairs
+      |> list.all(
+          fn(policy_pair) {
+            policy_pair.2nd
+              |> list.all(fn(name_qty_pair) { name_qty_pair.2nd > 0 })
+          },
+        )
+
+  let Pair(first_policy, first_asset_pairs) = value_pairs |> builtin.head_list
+  expect first_policy == assets.ada_policy_id
+  expect [Pair(first_asset_name, lovelace)] = first_asset_pairs
+  expect first_asset_name == assets.ada_asset_name
+  expect lovelace >= min_required_ada
+
+  assets.from_asset_list(value_pairs)
+}
+
+/// Convert already-validated, canonical `ValuePairs` to `Value`.
+/// Assumes all strict requirements are already guaranteed by the caller.
+pub fn unsafe_value_pairs_to_value(value_pairs: ValuePairs) -> Value {
+  value_pairs |> assets.from_ascending_pairs
+}
+
 pub fn validate_mint(
   mints: Value,
   expected_minting_policy: ByteArray,
