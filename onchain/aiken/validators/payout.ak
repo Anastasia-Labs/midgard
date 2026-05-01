@@ -291,8 +291,7 @@ fn validate_asset_accumulation(
           p1_assets,
           r1_assets,
           pt_assets,
-          policy_id_index_in_target,
-          asset_name_index_in_target,
+          assets,
         )
 
       // Done.
