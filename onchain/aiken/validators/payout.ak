@@ -110,9 +110,7 @@ validator spend(payout_policy_id: PolicyId) {
     own_out_ref: OutputReference,
     tx: Transaction,
   ) {
-    let Transaction { inputs, outputs, redeemer, .. } = tx
-
-    expect Some(Datum { l2_value }) = m_datum
+    expect Some(Datum { l2_value } as input_datum) = m_datum
 
     when redeemer is {
       AddFunds {
@@ -120,6 +118,8 @@ validator spend(payout_policy_id: PolicyId) {
         payout_input_outref,
         payout_input_redeemer_index,
       } -> {
+        let Transaction { inputs, outputs, redeemer, .. } = tx
+
         let AccumulationArgs {
           payout_input_index,
           payout_output_index,
@@ -142,18 +142,47 @@ validator spend(payout_policy_id: PolicyId) {
             True,
           )
 
+        let Input {
+          output: Output {
+            address: payout_input_address,
+            value: payout_output_value,
+            ..
+          },
+          ..
+        } = payout_input
+
+        expect Output {
+          address: payout_output_address,
+          value: payout_output_value,
+          datum: InlineDatum(output_datum_data),
+          reference_script: None,
+        } = payout_output
+
+        // 1. Payout UTxO must be reproduced at the same address.
+        expect payout_input_address == payout_output_address
+
+        // 2. Datum must not change.
+        let input_datum_data: Data = input_datum
+        expect output_datum_data == input_datum_data
+
+        // 3. Specified assets must be included in the singular reserve UTxO
+        //    (which its address is also specified in the redeemer) and they
+        //    must all go to the reproduced payout UTxO.
         expect
           validate_asset_accumulation(
             payout_policy_id,
             payout_nft_asset_name,
             assets_to_add,
-            payout_input.output.value,
-            payout_output.value,
+            payout_input_value,
+            payout_output_value,
             l2_value,
             accumulation_args,
             inputs,
             outputs,
           )
+
+        // Done.
+        True
       }
       ConcludeWithdrawal { .. } -> todo
     }
