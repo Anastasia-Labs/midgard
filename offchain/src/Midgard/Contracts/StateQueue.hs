@@ -45,7 +45,7 @@ import Midgard.Contracts.Utils (
   findOutputIndexWithAsset,
   findSpendingRedeemerIndex,
   findUTxOWithAsset,
-  hashPlutusData,
+  hashPlutusData224,
   inlineDatumFromUTxO,
   listAssetNameFromUTxO,
   mintPlutusWithRedeemerFinal,
@@ -256,7 +256,7 @@ commitBlockHeader
             , operatorVkey = currentOperator
             , protocolVersion = blockProtocolVersion
             }
-        newBlockHash = hashPlutusData headerDatum
+        newBlockHash = hashPlutusData224 headerDatum
         newBlockKey = LinkedList.nodeKey newBlockHash
         newBlockAssetName = C.UnsafeAssetName $ StateQueue.blockAssetNamePrefix <> newBlockHash
 

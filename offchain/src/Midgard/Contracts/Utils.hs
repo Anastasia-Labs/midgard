@@ -1,6 +1,6 @@
 module Midgard.Contracts.Utils (
   LinkedListInfo (..),
-  hashPlutusData,
+  hashPlutusData224,
   findSpendingRedeemerIndex,
   nextOutIx,
   slotToBeginUTCTime,
@@ -37,16 +37,19 @@ import Control.Lens (
 import Convex.BuildTx (MonadBuildTx, addInputWithTxBody, addMintWithTxBody, buildRefScriptWitness, buildScriptWitness)
 import Convex.CardanoApi.Lenses qualified as L
 import Convex.Class (MonadBlockchain (queryEraHistory, querySystemStart))
-import Convex.Scripts (fromHashableScriptData, toHashableScriptData)
+import Convex.Scripts (fromHashableScriptData)
 import Convex.Utils qualified as Convex
 import Convex.Utxos (UtxoSet (UtxoSet))
 import PlutusLedgerApi.Common (BuiltinData, FromData, ToData, fromBuiltin)
 
 import Midgard.Types.LinkedList (NodeKey (NodeKey), nodeKey, nodeKeyToAssetName)
 import Midgard.Types.LinkedList qualified as LinkedList
+import PlutusTx.Builtins qualified as PlutusTx
+import PlutusTx.IsData qualified as PlutusTx
 
-hashPlutusData :: (ToData a) => a -> ByteString
-hashPlutusData = C.serialiseToRawBytes . C.hashScriptDataBytes . toHashableScriptData
+-- | This is for hashing Midgard block headers. Those use blake2b 224 instead of blake2b 256 (usualy Plutus Data).
+hashPlutusData224 :: (ToData a) => a -> ByteString
+hashPlutusData224 = PlutusTx.fromBuiltin . PlutusTx.blake2b_224 . PlutusTx.serialiseData . PlutusTx.toBuiltinData
 
 -- | Index of the next output to be added into the tx.
 nextOutIx :: C.TxBodyContent v era -> Int

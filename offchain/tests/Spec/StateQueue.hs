@@ -27,7 +27,7 @@ import Midgard.Contracts.Utils (
   LinkedListInfo (..),
   findFinalUTxONode,
   findUTxOWithAsset,
-  hashPlutusData,
+  hashPlutusData224,
   inlineDatumFromUTxO,
   listAssetNameFromUTxO,
  )
@@ -82,7 +82,7 @@ tests ms =
         void $ balanceAndSubmit' operatorWallet txBody TrailingChange []
 
         let expectedCommittedHeader = expectedHeader {LedgerState.endTime = headerEndTime}
-            expectedHeaderHash = hashPlutusData expectedCommittedHeader
+            expectedHeaderHash = hashPlutusData224 expectedCommittedHeader
             expectedHeaderAssetName =
               C.UnsafeAssetName $ StateQueue.blockAssetNamePrefix <> expectedHeaderHash
 
@@ -139,7 +139,7 @@ tests ms =
         void $ balanceAndSubmit' operatorWallet txBody TrailingChange []
 
         let expectedCommittedHeader = expectedHeader {LedgerState.endTime = headerEndTime}
-            expectedHeaderHash = hashPlutusData expectedCommittedHeader
+            expectedHeaderHash = hashPlutusData224 expectedCommittedHeader
             expectedHeaderAssetName =
               C.UnsafeAssetName $ StateQueue.blockAssetNamePrefix <> expectedHeaderHash
 
