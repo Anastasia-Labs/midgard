@@ -21,7 +21,6 @@ import Convex.Class (
     querySystemStart
   ),
  )
-import Convex.PlutusLedger.V1 (transPOSIXTime)
 import PlutusLedgerApi.V1 (ScriptHash (ScriptHash), currencySymbol, scriptHashAddress, toBuiltin)
 import Ply (
   PlutusVersion (PlutusV3),
@@ -35,7 +34,6 @@ import Midgard.Contracts.RegisteredOperators (initRegisteredOperators)
 import Midgard.Contracts.RetiredOperators (initRetiredOperators)
 import Midgard.Contracts.Scheduler (initScheduler)
 import Midgard.Contracts.StateQueue (initStateQueue)
-import Midgard.Contracts.Utils (slotToBeginUTCTime)
 import Midgard.ScriptUtils (mintingPolicyId, policyIdBytes, scriptHashBytes, toMintingPolicy, validatorHash)
 import Midgard.Scripts (
   MidgardRefScripts (..),
@@ -69,7 +67,6 @@ initProtocol
       eraHistory <- queryEraHistory
       systemStart <- querySystemStart
       (currentSlot, _, _) <- querySlotNo
-      currentTime <- utcTimeToPOSIXSeconds <$> slotToBeginUTCTime currentSlot
       pure . execBuildTx $ do
         -- The hub oracle is required for all initializations.
         -- TODO (chase): The real hub oracle must be parameterized by a nonce UTxO.

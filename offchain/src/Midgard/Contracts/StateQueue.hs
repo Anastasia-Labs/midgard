@@ -30,7 +30,7 @@ import Convex.Class (
   MonadUtxoQuery,
   utxosByPaymentCredential,
  )
-import Convex.PlutusLedger.V1 (transPOSIXTime, unTransPubKeyHash)
+import Convex.PlutusLedger.V1 (transPOSIXTime, unTransPOSIXTime, unTransPubKeyHash)
 import Convex.Utils (utcTimeToPosixTime)
 import Convex.Utxos (toTxOut)
 import PlutusLedgerApi.Common (fromBuiltin, toBuiltin)
@@ -75,6 +75,7 @@ data NewBlock = NewBlock
   , withdrawalsRoot :: LedgerState.MerkleRoot
   }
 
+-- | Initialize the state queue and return the start time for committing blocks.
 initStateQueue ::
   forall era m.
   ( C.HasScriptLanguageInEra C.PlutusScriptV3 era
@@ -86,7 +87,7 @@ initStateQueue ::
   C.SystemStart ->
   C.SlotNo ->
   MidgardScripts ->
-  m ()
+  m POSIXTime
 initStateQueue
   netId
   eraHistory
@@ -149,6 +150,8 @@ initStateQueue
         , C.txValidityUpperBound =
             C.TxValidityUpperBound (C.shelleyBasedEra @era) $ Just validityUpperBoundExclusive
         }
+    -- Add one ms to signal the start time (exclusively after the confirmed end slot) for block commits.
+    pure . transPOSIXTime $ unTransPOSIXTime validityUpperBoundTime + 0.001
 
 commitBlockHeader ::
   forall era m.

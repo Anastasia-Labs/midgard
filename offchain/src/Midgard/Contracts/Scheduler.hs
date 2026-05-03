@@ -279,7 +279,7 @@ advanceOrRewindScheduler
         . flip runReaderT activeOperatorsListInfo
         $ findUTxOWithLink activeOperatorsUtxos currentOperatorBytes
     let predecessorActiveNodeTxOut = toTxOut @era predecessorActiveNodeUtxoAnyEra
-    -- Figure out the next shift starting slot so it can be set in the validity range.
+    -- Figure out the next shift (the shift we're scheduling for) starting slot so it can be set in the validity range.
     let nextShiftStartTime = unTransPOSIXTime currentStartTime + shiftDuration
     nextShiftStartSlot <- utcTimeToEnclosingSlot . posixSecondsToUTCTime $ nextShiftStartTime
     -- Decide whether to advance or rewind and obtain the information necessary for the chosen path.
