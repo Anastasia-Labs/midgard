@@ -65,14 +65,14 @@ validator spend(hub_oracle: ScriptHash, settlement_policy_id: ScriptHash) {
           output,
         <-
           singular_utxo_indexer.one_to_one(
-            input_index: settlement_input_index,
-            output_index: settlement_output_index,
-            own_ref: own_out_ref,
-            inputs: inputs,
-            outputs: outputs,
+            settlement_input_index,
+            settlement_output_index,
+            own_out_ref,
+            inputs,
+            outputs,
             // Double satisfaction prevented by requiring the input NFT to be
             // reproduced at the output.
-            double_satisfaction_prevented: True,
+            True,
           )
 
         // 4. The transaction must include the Midgard hub oracle NFT in a
@@ -168,14 +168,14 @@ validator spend(hub_oracle: ScriptHash, settlement_policy_id: ScriptHash) {
           output,
         <-
           singular_utxo_indexer.one_to_one(
-            input_index: settlement_input_index,
-            output_index: settlement_output_index,
-            own_ref: own_out_ref,
-            inputs: inputs,
-            outputs: outputs,
+            settlement_input_index,
+            settlement_output_index,
+            own_out_ref,
+            inputs,
+            outputs,
             // Double satisfaction prevented by requiring the input NFT to be
             // reproduced at the output.
-            double_satisfaction_prevented: True,
+            True,
           )
         let cont_output_datum_data =
           utils.authenticate_input_output_and_get_output_datum_data(

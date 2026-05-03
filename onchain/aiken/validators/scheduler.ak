@@ -279,14 +279,14 @@ fn validate_end_of_shift_and_get_operators(
     output,
   <-
     singular_utxo_indexer.one_to_one(
-      input_index: scheduler_input_index,
-      output_index: scheduler_output_index,
-      own_ref: own_out_ref,
-      inputs: inputs,
-      outputs: outputs,
+      scheduler_input_index,
+      scheduler_output_index,
+      own_out_ref,
+      inputs,
+      outputs,
       // Double satisfaction is prevented by requiring the same NFT present in
       // both the input and the output.
-      double_satisfaction_prevented: True,
+      True,
     )
 
   // 3. Both input and output must have the scheduler NFT, and the output

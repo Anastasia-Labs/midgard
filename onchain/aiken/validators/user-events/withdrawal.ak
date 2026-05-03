@@ -2,7 +2,7 @@ use aiken/crypto.{ScriptHash}
 use aiken_design_patterns/singular_utxo_indexer
 use cardano/assets.{PolicyId}
 use cardano/transaction.{
-  InlineDatum, Input, Mint, Output, OutputReference, Transaction,
+  Input, Mint, NoDatum, Output, OutputReference, Transaction,
 }
 use midgard/common/utils.{plutarch_phas}
 use midgard/hub_oracle as hub
@@ -100,9 +100,9 @@ validator spend(hub_oracle: ScriptHash) {
               |> assets.add(payout_policy_id, burn_asset_name, 1)
           )
 
-        // 4. TODO: Anticipating what the payout mint redeemer should look
-        //          like.
-        expect payout.MintRedeemer { withdrawal_utxo_out_ref }: payout.MintRedeemer =
+        // 4. The payout mint redeemer must reference this withdrawal UTxO,
+        //    coupling payout minting to this specific InitializePayout spend.
+        expect payout.MintPayout { withdrawal_utxo_out_ref, .. }: payout.MintRedeemer =
           utils.get_redeemer_at(
             redeemers,
             Mint(payout_policy_id),
@@ -116,7 +116,7 @@ validator spend(hub_oracle: ScriptHash) {
         // 5. Initiation of a payout accumulator can only happen for valid
         //    withdrawals.
         expect ledger_state.WithdrawalInfo {
-          body: withdrawal_body,
+          body: _,
           validity: ledger_state.WithdrawalIsValid,
           ..
         } = withdrawal_event_info
@@ -133,15 +133,10 @@ validator spend(hub_oracle: ScriptHash) {
             inclusion_proof_script_withdraw_redeemer_index,
           )
 
-        let ledger_state.WithdrawalBody { l2_value, l1_address, l1_datum, .. } =
-          withdrawal_body
-
-        let expected_output_datum: Data =
-          payout.Datum { l2_value, l1_address, l1_datum }
-
-        // 7. Assert payout datum properly carries over all the required
-        //    info.
-        expect output_datum == InlineDatum(expected_output_datum)
+        // 7. Payout UTxO must hold no datum during accumulation.
+        //    Parameters are recovered from the settlement tree at
+        //    ConcludeWithdrawal time, eliminating the datum injection attack.
+        expect output_datum == NoDatum
 
         // 8. Withdrawal must go to the payout contract.
         expect output_address == payout_addr
