@@ -6,11 +6,10 @@ use cardano/assets.{AssetName, PolicyId, Value}
 use cardano/transaction.{
   Input, Mint, Output, Redeemer, ScriptPurpose, Transaction,
 }
-use midgard/common/constants.{empty_data}
+use env.{empty_data, required_bond, slashing_penalty}
 use midgard/common/types.{Empty}
 use midgard/common/utils
 use midgard/hub_oracle as hub
-use midgard/protocol_parameters.{required_bond, slashing_penalty}
 use midgard/settlement
 use midgard/state_queue
 

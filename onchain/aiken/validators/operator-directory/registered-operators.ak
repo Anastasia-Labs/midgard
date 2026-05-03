@@ -5,6 +5,7 @@ use cardano/assets.{PolicyId, Value}
 use cardano/transaction.{
   Input, Mint, Output, OutputReference, Redeemer, Transaction,
 }
+use env.{registration_duration, required_bond, slashing_penalty}
 use midgard/common/utils
 use midgard/hub_oracle as hub
 use midgard/operator_directory.{deinit, init, operator_is_not_a_member}
@@ -16,9 +17,6 @@ use midgard/operator_directory/registered_operators.{
   finalize_linked_list, node_key_to_activation_time, root_asset_name,
 }
 use midgard/operator_directory/retired_operators
-use midgard/protocol_parameters.{
-  registration_duration, required_bond, slashing_penalty,
-}
 
 validator spend(registered_operators_mint_script_hash: ByteArray) {
   spend(

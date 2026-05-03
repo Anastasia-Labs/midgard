@@ -4,7 +4,7 @@ use aiken/crypto
 use aiken_design_patterns/linked_list
 use cardano/assets.{Lovelace, PolicyId, quantity_of}
 use cardano/transaction.{Input, Mint, OutputReference, Spend, Transaction}
-use midgard/common/constants.{empty_merkle_tree_root}
+use env.{empty_merkle_tree_root, maturity_duration}
 use midgard/common/utils
 use midgard/fraud_proof
 use midgard/hub_oracle as hub
@@ -15,7 +15,6 @@ use midgard/ledger_state.{
 use midgard/operator_directory
 use midgard/operator_directory/active_operators
 use midgard/operator_directory/retired_operators
-use midgard/protocol_parameters.{maturity_duration}
 use midgard/scheduler
 use midgard/settlement
 use midgard/state_queue.{
