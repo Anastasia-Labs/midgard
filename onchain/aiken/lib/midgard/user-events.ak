@@ -9,14 +9,12 @@ use cardano/transaction.{
   Datum as CardanoDatum, InlineDatum, Input, Output, OutputReference, Redeemer,
   ScriptPurpose, Transaction, ValidityRange,
 }
-use env
+use env.{user_events_witness_script_prefix}
 use midgard/common/types.{PosixTime}
 use midgard/common/utils
 use midgard/hub_oracle as hub
 use midgard/ledger_state
-use midgard/user_events/witness.{
-  validate_witness_redeemer, witness_script_prefix,
-}
+use midgard/user_events/witness.{validate_witness_redeemer}
 
 // ## Types
 
@@ -140,7 +138,7 @@ pub fn authenticate_event(
   let expected_witness_script_hash =
     parameter_validation.apply_prehashed_param(
       version: 3,
-      prefix: witness_script_prefix,
+      prefix: user_events_witness_script_prefix,
       param: nonce,
     )
 
@@ -206,7 +204,7 @@ pub fn validate_event_nft_burn(
   let expected_witness_script_hash =
     parameter_validation.apply_prehashed_param(
       version: 3,
-      prefix: witness_script_prefix,
+      prefix: user_events_witness_script_prefix,
       param: nonce_asset_name,
     )
 

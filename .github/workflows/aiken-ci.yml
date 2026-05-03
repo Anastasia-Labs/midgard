@@ -21,6 +21,12 @@ jobs:
       - uses: aiken-lang/setup-aiken@v1.0.3
         with:
           version: v1.1.21
+      - name: Verify generated witness prefix
+        if: (github.event_name == 'push' && github.ref == 'refs/heads/main') || (github.event_name == 'pull_request' && github.base_ref == 'main')
+        working-directory: .
+        run: |
+          ./scripts/generate-user-events-witness-script-prefix.sh
+          git diff --name-only --exit-code onchain/aiken/env/default.ak onchain/aiken/env/testnet.ak
       - name: Run Aiken auto-formatter
         run: aiken fmt --check
       - name: Compile Aiken code and run test suite
