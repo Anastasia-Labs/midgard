@@ -97,4 +97,7 @@ generate_prefix "testnet" "$testnet_blueprint" "$testnet_applied_blueprint"
 testnet_prefix="$prefix"
 update_prefix "env/testnet.ak" "$testnet_prefix"
 
+echo "🎨 Formatting Aiken sources..."
+aiken fmt >/dev/null
+
 echo "✅ User-events witness script prefix generated."
