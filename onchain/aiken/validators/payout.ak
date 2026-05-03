@@ -73,15 +73,16 @@ validator mint(withdrawal_addr: Address) {
 
         // 2. The payout UTxO must be spent with the ConcludeWithdrawal
         //    redeemer, preventing burns outside of the conclusion endpoint.
-        let
-          payout_input,
-          payout_input_nft_asset_name,
-        <-
-          utils.get_authentic_input_with_nft_at(
-            inputs,
-            own_policy,
-            payout_input_index,
-          )
+        expect Input {
+          output_reference: payout_input_outref,
+          output: Output {
+            address: payout_input_address,
+            value: payout_input_value,
+            datum: InlineDatum(payout_input_datum_data),
+            ..
+          },
+        } = inputs |> list.expect_at(payout_input_index)
+        expect payout_input_value |> assets.has_nft_strict(own_policy, payout_asset_name)
 
         // 3. Validate correctness of the asset name name in redeemer.
         expect payout_asset_name == payout_input_nft_asset_name
@@ -188,6 +189,10 @@ validator spend(payout_policy_id: PolicyId) {
       }
       ConcludeWithdrawal { input_index, burn_redeemer_index } -> {
         let Transaction { inputs, redeemers, .. } = tx
+
+        // 1. The minting policy of the payout script must be invoked via the
+        //    `BurnPayout` redeemer, with a matching payout input index. Let
+        //    this index be `input_index`.
         expect BurnPayout { payout_input_index, .. } =
           redeemers
             |> utils.get_redeemer_at(
@@ -195,9 +200,14 @@ validator spend(payout_policy_id: PolicyId) {
                 burn_redeemer_index,
               )
         expect input_index == payout_input_index
+
+        // 2. The input corresponding to `input_index` must have a matching
+        //    output reference from the script info.
         let Input { output_reference, .. } =
           inputs |> list.expect_at(input_index)
         expect output_reference == own_out_ref
+
+        // Done.
         True
       }
     }
