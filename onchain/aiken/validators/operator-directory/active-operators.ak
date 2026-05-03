@@ -5,6 +5,7 @@ use cardano/assets.{PolicyId, Value}
 use cardano/transaction.{
   Input, Mint, Output, OutputReference, Transaction, ValidityRange,
 }
+use env.{maturity_duration}
 use midgard/common/utils
 use midgard/hub_oracle as hub
 use midgard/operator_directory.{
@@ -20,7 +21,6 @@ use midgard/operator_directory/active_operators.{
 }
 use midgard/operator_directory/registered_operators
 use midgard/operator_directory/retired_operators
-use midgard/protocol_parameters.{maturity_duration}
 use midgard/settlement
 use midgard/state_queue
 

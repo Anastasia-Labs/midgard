@@ -14,8 +14,7 @@ use cardano/assets.{AssetName, PolicyId, Value, tokens}
 use cardano/transaction.{
   InlineDatum, Input, Output, OutputReference, Redeemer, ScriptPurpose, Spend,
 }
-use env
-use midgard/common/constants.{max_validity_range_length, posix_time_none}
+use env.{max_validity_range_length}
 use midgard/common/types.{H28, H32, MerkleRoot, PosixTime, Proof, ValuePairs}
 
 /// Check whether the interval starts on or after the point.
@@ -85,10 +84,6 @@ pub fn safe_list_head(elems: List<a>) -> a {
 pub fn safe_list_init(elems: List<a>) {
   expect Some(elems_except_last) = list.init(elems)
   elems_except_last
-}
-
-pub fn is_posix_time_none(time: PosixTime) {
-  time == posix_time_none
 }
 
 /// Returns the quantity of all tokens with the policyId
