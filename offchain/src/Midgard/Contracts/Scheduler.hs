@@ -97,6 +97,12 @@ initScheduler
 
 {- | Set the scheduler to designate the next operator, either before or after the current operator's shift end time.
 In the first case, existing shift operator must sign the transaction.
+
+It is easy to figure out whether or not we're trying to schedule next operator before the current shift end within this
+function. However, it is necessary for the caller to know this information anyway, as they'll have to add the current
+operator as a signer if it's before the shift end.
+
+Also return the time when this newly scheduled operator's shift will start.
 Note: This will either 'Advance' or 'Rewind' depending on the current operator position.
 -}
 scheduleNextOperator ::
@@ -158,7 +164,7 @@ scheduleNextOperator
         . flip runReaderT activeOperatorsListInfo
         $ finderF activeOperatorsUtxos
     let predecessorActiveNodeTxOut = toTxOut @era predecessorActiveNodeUtxoAnyEra
-    -- Figure out the next shift starting slot so it can be set in the validity range.
+    -- Figure out the next shift (the shift we're scheduling for) starting slot so it can be set in the validity range.
     let nextShiftStartTime = unTransPOSIXTime currentStartTime + shiftDuration
     nextShiftStartSlot <- utcTimeToEnclosingSlot . posixSecondsToUTCTime $ nextShiftStartTime
     -- Decide whether to advance or rewind and obtain the information necessary for the chosen path.
@@ -186,7 +192,7 @@ scheduleNextOperator
         (txOutValue schedulerTxOut)
       -- If a shift is ending prematurely, the existing operator must sign off.
       when isBeforeShiftEnd $ do
-        -- Assumption: Current operator is valid if we're passed isBeforeShiftEnd = rue.
+        -- Assumption: Current operator is valid if we're passed isBeforeShiftEnd = True.
         currentOperatorC <- either (error . show) pure $ unTransPubKeyHash currentOperator
         addRequiredSignature currentOperatorC
       addBtx $ setValidityBasedOnShift currentSlot nextShiftStartSlot
