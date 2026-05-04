@@ -180,7 +180,10 @@ fn validate_asset_accumulation(
       }
     }
     AddCardanoAssets { assets, reserve_change_output_index } -> {
-      // 4b. Specified UTxO from reserve must be getting spent with a matching
+      // 4b. Specified assets must all be positive in quantity.
+      expect utils.all_value_pairs_quantities_are_positive(assets)
+
+      // 5b. Specified UTxO from reserve must be getting spent with a matching
       //     set of redeemer arguments.
       let (r0_lovelace, r0_assets) =
         get_reserve_input_lovelace_and_assets(reserve_addr, inputs)
@@ -193,11 +196,11 @@ fn validate_asset_accumulation(
           outputs,
         )
 
-      // 6b. The change in reserve lovelace must match the change in payout
+      // 7b. The change in reserve lovelace must match the change in payout
       //     Lovelace.
       expect r0_lovelace - r1_lovelace == p1_lovelace - p0_lovelace
 
-      // 7b. Transfer of the specified asset from reserve to the payout
+      // 8b. Transfer of the specified asset from reserve to the payout
       //     accumulator must be valid.
       expect
         validate_transfer_of_given_assets_with_change(
@@ -238,7 +241,8 @@ fn validate_addition_reaches(
 /// r1: Non-ADA assets of output reserve
 /// pt: Target non-ADA assets
 ///
-/// This function assumes all assets are stripped of their ADA.
+/// This function assumes all assets are stripped of their ADA, and assumes
+/// `assets_to_add` is validated to only carry assets with positive quantities.
 fn validate_transfer_of_given_assets_with_change(
   p0_assets: Dict<PolicyId, Dict<AssetName, Int>>,
   r0_assets: Dict<PolicyId, Dict<AssetName, Int>>,
@@ -247,7 +251,6 @@ fn validate_transfer_of_given_assets_with_change(
   pt_assets: ValuePairs,
   assets_to_add_pairs: ValuePairs,
 ) -> Bool {
-  expect utils.all_value_pairs_quantities_are_positive(assets_to_add_pairs)
   let assets_to_add =
     utils.unsafe_value_pairs_to_value(assets_to_add_pairs) |> assets.to_dict
 
