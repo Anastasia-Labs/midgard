@@ -2,7 +2,7 @@ use aiken/crypto.{ScriptHash}
 use cardano/address.{Address}
 use cardano/assets.{PolicyId}
 use cardano/transaction.{OutputReference, Transaction}
-use midgard/common/constants.{empty_merkle_tree_root}
+use env
 use midgard/common/utils
 use midgard/computation_thread as ct
 use midgard/fraud_proofs/common.{cancel, continue, finalize}
@@ -68,7 +68,7 @@ validator main(
         ) = m_input_state_data
 
         // 2. With `Recurse` redeemer, the script witness set must not be empty.
-        expect verified_script_wits_root != empty_merkle_tree_root
+        expect verified_script_wits_root != env.empty_merkle_tree_root
 
         // 3. Provided script must correctly correspond to its hash.
         //    TODO: Another fraud proof seems to be needed for invalid mapping.
@@ -137,7 +137,7 @@ validator main(
           m_input_state_data
 
         // 2. With `Finalize` redeemer, the script witness set must be empty.
-        expect verified_script_wits_root == empty_merkle_tree_root
+        expect verified_script_wits_root == env.empty_merkle_tree_root
 
         // Done.
         True
