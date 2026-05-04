@@ -6,12 +6,29 @@ use cardano/assets.{AssetName, PolicyId, Value}
 use cardano/transaction.{
   Input, Mint, Output, Redeemer, ScriptPurpose, Transaction,
 }
-use env.{empty_data, required_bond, slashing_penalty}
+use env
 use midgard/common/types.{Empty}
 use midgard/common/utils
 use midgard/hub_oracle as hub
 use midgard/settlement
 use midgard/state_queue
+
+pub type SlashingReason {
+  SlashOperatorForBadState { state_queue_redeemer_index: Int }
+  SlashOperatorForBadSettlement {
+    settlement_input_index: Int,
+    settlement_redeemer_index: Int,
+  }
+}
+
+pub type SlashingArguments {
+  slashed_operator: VerificationKeyHash,
+  hub_oracle_ref_input_index: Int,
+  slashed_operator_anchor_element_input_index: Int,
+  slashed_operator_node_input_index: Int,
+  slashed_operator_anchor_element_output_index: Int,
+  slashing_reason: SlashingReason,
+}
 
 pub type Datum<node_data> =
   linked_list.Element<Empty, node_data>
@@ -38,7 +55,9 @@ pub fn init(
     ) == 1,
     produced_element_output: root_output,
     tx_mint: mint,
-    root_validator: fn(_, root_data: Data) -> Bool { root_data == empty_data },
+    root_validator: fn(_, root_data: Data) -> Bool {
+      root_data == env.empty_data
+    },
   )
     |> linked_list.run_root_with(directory_policy_id, root_asset_name)
 }
@@ -105,7 +124,8 @@ pub fn validate_operator_transfer_and_get_inserted_data(
   operator: VerificationKeyHash,
   origin_list_policy_id: PolicyId,
   origin_list_redeemer_index: Int,
-  origin_list_redeemer_to_operator: fn(Data) -> VerificationKeyHash,
+  origin_list_redeemer_to_operator_and_penalty_flag: fn(Data) ->
+    (VerificationKeyHash, Bool),
   target_list_anchor_element_input_index: Int,
   target_list_anchor_element_output_index: Int,
   target_list_inserted_node_output_index: Int,
@@ -123,8 +143,8 @@ pub fn validate_operator_transfer_and_get_inserted_data(
           redeemer_index: origin_list_redeemer_index,
         )
 
-  let operator_from_origin_list_redeemer =
-    origin_list_redeemer_to_operator(origin_list_redeemer_data)
+  let (operator_from_origin_list_redeemer, must_penalize) =
+    origin_list_redeemer_to_operator_and_penalty_flag(origin_list_redeemer_data)
 
   // 2. The operator from target list's redeemer must agree with the one
   //    extracted from the origin list's redeemer.
@@ -158,8 +178,16 @@ pub fn validate_operator_transfer_and_get_inserted_data(
   // 5. ADA of anchor element must be preserved.
   expect anchor_lovelace_change >= 0
 
-  // 6. ADA bond must be transferred from the origin operator node.
-  expect inserted_node_lovelace >= required_bond
+  expect
+    if must_penalize {
+      // 6a. ADA bond must be transferred from the origin operator node, without
+      //     the inactivity slashing penalty (paid as transaction fees only,
+      //     TODO?).
+      inserted_node_lovelace >= env.required_bond - env.inactivity_slashing_penalty
+    } else {
+      // 6b. ADA bond must be transferred from the origin operator node.
+      inserted_node_lovelace >= env.required_bond
+    }
 
   // 7. The newly inserted node must carry the same operator as the one
   //    provided via the redeemer as its key.
@@ -172,25 +200,50 @@ pub fn validate_operator_transfer_and_get_inserted_data(
   True
 }
 
-/// Common requirements for slashing an operator from either the active or
-/// retired operators set. Fraud can be either because of a bad block
-/// commitment, or an invalid resolution claim on a settlement UTxO. Which is
-/// why this function returs the hub oracle datum for endpoints to lookup either
-/// the state queue or the settlement UTxO.
-fn slash_operator_and_get_hub_datum(
+/// Validations for slashing a fraudulent operator from either the active or
+/// retired operators set. Verifies:
+/// - Proper penalties are paid through transaction fees.
+/// - Removal of the list node.
+/// - Correctness of the operator PKH against the removed node key.
+/// - Depending on slashing reason, cross validates with state queue or
+///   settlement contract.
+///
+/// Returns various info extracted from the slashing arguments, list node
+/// removal, and script context (`tx`).
+pub fn slash_fraudulent_operator_and_get_info(
   hub_oracle_script_hash: PolicyId,
-  slashed_operator_key: VerificationKeyHash,
-  hub_oracle_ref_input_index: Int,
-  slashed_operator_anchor_element_input_index: Int,
-  slashed_operator_node_input_index: Int,
-  slashed_operator_anchor_element_output_index: Int,
-  inputs: List<Input>,
-  outputs: List<Output>,
-  reference_inputs: List<Input>,
-  mint: Value,
-  fee: Int,
-  return: fn(hub.Datum) -> Bool,
+  slashing_arguments: SlashingArguments,
+  tx: Transaction,
+  further_validations: fn(
+    VerificationKeyHash,
+    Option<linked_list.NodeKey>,
+    linked_list.Link,
+    hub.Datum,
+    List<Input>,
+    List<Input>,
+    Pairs<ScriptPurpose, Redeemer>,
+  ) ->
+    Bool,
 ) -> linked_list.Eval {
+  let SlashingArguments {
+    slashed_operator,
+    hub_oracle_ref_input_index,
+    slashed_operator_anchor_element_input_index,
+    slashed_operator_node_input_index,
+    slashed_operator_anchor_element_output_index,
+    slashing_reason,
+  } = slashing_arguments
+
+  let Transaction {
+    inputs,
+    outputs,
+    reference_inputs,
+    mint,
+    fee,
+    redeemers,
+    ..
+  } = tx
+
   // 1. Transaction must refer to the authentic hub oracle UTxO to allow
   //    extraction of relevant addresses or policy IDs.
   let hub_datum =
@@ -213,12 +266,12 @@ fn slash_operator_and_get_hub_datum(
   //    output.
   let
     anchor_lovelace_change,
-    _m_anchor_key,
+    m_anchor_key,
     _anchor_data,
-    _slashed_operator_node_lovelace,
+    slashed_operator_node_lovelace,
     slashed_operator_node_key,
     _slashed_operator_node_data,
-    _slashed_operator_node_link,
+    slashed_operator_node_link,
   <-
     linked_list.remove(
       slashed_operator_anchor_element_input,
@@ -230,122 +283,89 @@ fn slash_operator_and_get_hub_datum(
   // 4. ADA of anchor element must be preserved.
   expect anchor_lovelace_change >= 0
 
-  // 5. Key of the removing node must be that of the fraudulent operator's
-  //    specified via the redeemer.
-  expect slashed_operator_node_key == slashed_operator_key
+  // 5. The slashed operator key indicated in the redeemer must match the key
+  //    of the removed node.
+  expect slashed_operator_node_key == slashed_operator
 
-  // 6. Slashing penalty must be paid to the Cardano treasury via the
-  //    transaction fee. Fraud prover is assumed to be the signer of the
-  //    transaction, and therefore will receive the remaining bond.
-  expect fee >= slashing_penalty
+  expect
+    if slashed_operator_node_lovelace < env.required_bond {
+      // 6a. If the operator is partially slashed, the portion already sent to
+      //     the Cardano treasury doesn't need to be deposited again (since
+      //     partial slashing is entirely paid as tx fee).
+      fee >= env.slashing_penalty - env.inactivity_slashing_penalty
+    } else {
+      // 6b. Slashing penalty must be paid to the Cardano treasury via the
+      //     transaction fee. Fraud prover is assumed to be the signer of the
+      //     transaction, and therefore will receive the remaining bond.
+      fee >= env.slashing_penalty
+    }
 
-  // Done.
-  return(hub_datum)
-}
-
-pub fn remove_operator_for_bad_state(
-  hub_oracle_script_hash: PolicyId,
-  slashed_operator_key: VerificationKeyHash,
-  hub_oracle_ref_input_index: Int,
-  operator_anchor_element_input_index: Int,
-  operator_slashed_node_input_index: Int,
-  operator_anchor_element_output_index: Int,
-  state_queue_redeemer_index: Int,
-  tx: Transaction,
-) -> linked_list.Eval {
-  let Transaction {
-    inputs,
-    outputs,
-    reference_inputs,
-    mint,
-    redeemers,
-    fee,
-    ..
-  } = tx
-
-  let hub_datum <-
-    slash_operator_and_get_hub_datum(
-      hub_oracle_script_hash,
-      slashed_operator_key,
-      hub_oracle_ref_input_index,
-      operator_anchor_element_input_index,
-      operator_slashed_node_input_index,
-      operator_anchor_element_output_index,
+  // 7. Given custom validations must pass.
+  expect
+    further_validations(
+      slashed_operator,
+      m_anchor_key,
+      slashed_operator_node_link,
+      hub_datum,
       inputs,
-      outputs,
       reference_inputs,
-      mint,
-      fee,
-    )
-
-  // 2. State queue minting script must be invoked via the
-  //    `RemoveFraudulentBlockHeader` redeemer, and the operator
-  //    specified there must agree with the
-  //    `slashed_retired_operator_key` redeemer argument here.
-  expect state_queue.RemoveFraudulentBlockHeader { fraudulent_operator, .. } =
-    redeemers
-      |> utils.get_redeemer_at(
-          expected_purpose: Mint(hub_datum.state_queue),
-          redeemer_index: state_queue_redeemer_index,
-        )
-  expect fraudulent_operator == slashed_operator_key
-
-  // Done.
-  True
-}
-
-pub fn remove_operator_for_bad_settlement(
-  hub_oracle_script_hash: PolicyId,
-  slashed_operator_key: VerificationKeyHash,
-  hub_oracle_ref_input_index: Int,
-  operator_anchor_element_input_index: Int,
-  operator_slashed_node_input_index: Int,
-  operator_anchor_element_output_index: Int,
-  settlement_input_index: Int,
-  settlement_redeemer_index: Int,
-  tx: Transaction,
-) -> linked_list.Eval {
-  let Transaction {
-    inputs,
-    outputs,
-    reference_inputs,
-    mint,
-    redeemers,
-    fee,
-    ..
-  } = tx
-
-  let hub_datum <-
-    slash_operator_and_get_hub_datum(
-      hub_oracle_script_hash,
-      slashed_operator_key,
-      hub_oracle_ref_input_index,
-      operator_anchor_element_input_index,
-      operator_slashed_node_input_index,
-      operator_anchor_element_output_index,
-      inputs,
-      outputs,
-      reference_inputs,
-      mint,
-      fee,
-    )
-
-  // 2. A settlement UTxO must be getting spent via the
-  //    `DisproveResolutionClaim` redeemer.
-  //
-  // TODO: Potential optimization opportunities, i.e. using builtin functions.
-  // This requires implicitly imposing the position of `operator` field in the
-  // redeemer to be at index 0.
-  expect settlement.DisproveResolutionClaim { operator, .. } =
-    utils.get_spending_redeemer_data_at(
-      hub_datum.settlement_addr,
-      settlement_input_index,
-      settlement_redeemer_index,
-      inputs,
       redeemers,
     )
-  expect operator == slashed_operator_key
 
-  // Done.
-  True
+  when slashing_reason is {
+    SlashOperatorForBadState { state_queue_redeemer_index } -> {
+      // 8a. State queue minting script must be invoked via the
+      //     `RemoveFraudulentBlockHeader` redeemer, and the operator specified
+      //     there must agree with the `slashed_operator` redeemer argument
+      //     here.
+      expect state_queue.RemoveFraudulentBlockHeader { fraudulent_operator, .. } =
+        redeemers
+          |> utils.get_redeemer_at(
+              expected_purpose: Mint(hub_datum.state_queue),
+              redeemer_index: state_queue_redeemer_index,
+            )
+      expect fraudulent_operator == slashed_operator
+
+      // Done.
+      True
+    }
+    SlashOperatorForBadSettlement {
+      settlement_input_index,
+      settlement_redeemer_index,
+    } -> {
+      // 8b. A settlement UTxO must be getting spent via the
+      //     `DisproveResolutionClaim` redeemer.
+      expect settlement.DisproveResolutionClaim { operator, .. } =
+        utils.get_spending_redeemer_data_at(
+          hub_datum.settlement_addr,
+          settlement_input_index,
+          settlement_redeemer_index,
+          inputs,
+          redeemers,
+        )
+      expect operator == slashed_operator
+
+      // Done.
+      True
+    }
+  }
+}
+
+pub fn cross_validate_slashing_reason(
+  fraudulent_operator: VerificationKeyHash,
+  target_operators_set_policy_id: PolicyId,
+  target_operators_set_redeemer_index: Int,
+  redeemer_to_slashing_arguments: fn(Redeemer) -> SlashingArguments,
+  redeemers: Pairs<ScriptPurpose, Redeemer>,
+) -> SlashingReason {
+  let target_operators_set_redeemer_data =
+    utils.get_redeemer_at(
+      redeemers: redeemers,
+      expected_purpose: Mint(target_operators_set_policy_id),
+      redeemer_index: target_operators_set_redeemer_index,
+    )
+  let SlashingArguments { slashed_operator, slashing_reason, .. } =
+    redeemer_to_slashing_arguments(target_operators_set_redeemer_data)
+  expect fraudulent_operator == slashed_operator
+  slashing_reason
 }

@@ -63,7 +63,7 @@ We also simplify the script types.}
     \end{array} \right\}\\
     \T{CardanoTxWits} \coloneq\;& \left\{
     \begin{array}{ll}
-        \T{addr\_tx\_wits} : & \quad?\;\T{Set(VKey, Signature, VKeyHash)} \\
+        \T{addr\_tx\_wits} : & \quad?\;\T{Set(VKey, Signature)} \\
         \T{boot\_addr\_tx\_wits} : & \quad?\;\T{Set(BootstrapWitness)} \\
         \T{script\_tx\_wits} : & \quad?\;\T{Map(ScriptHash, CardanoScript)} \\
         \T{data\_tx\_wits} : & \quad?\;\T{TxDats} \\
@@ -145,7 +145,7 @@ We use the empty set symbol \code{$\varnothing$} to indicate fields required to 
     \end{array} \right\}\\
     \T{MidgardSTxWits} \coloneq\;& \left\{
     \begin{array}{ll}
-        \T{addr\_tx\_wits} : & \quad?\;\T{Set(VKey, Signature, VKeyHash)} \\
+        \T{addr\_tx\_wits} : & \quad?\;\T{Set(VKey, Signature)} \\
         \varnothing\;\T{boot\_addr\_tx\_wits} : & \quad?\;\T{Set(BootstrapWitness)} \\
         \T{script\_tx\_wits} : & \quad?\;\T{Map(ScriptHash, MidgardSScript)} \\
         \varnothing\;\T{data\_tx\_wits} : & \quad?\;\T{TxDats} \\
@@ -189,7 +189,7 @@ The data availability layer is responsible for confirming that the hashes corres
     \end{array} \right\}\\
     \T{MidgardTxWits} \coloneq\;& \left\{
     \begin{array}{ll}
-        \T{addr\_tx\_wits} : & \quad?\;\mathcal{H}(\T{Set(VKey, Signature, VKeyHash)}) \\
+        \T{addr\_tx\_wits} : & \quad?\;\mathcal{H}(\T{Set(VKey, Signature)}) \\
         \T{script\_tx\_wits} : & \quad?\;\mathcal{H}(\T{Map(ScriptHash, MidgardSScript)}) \\
         \T{redeemer\_tx\_wits} : & \quad?\;\mathcal{H}(\T{Redeemers})
     \end{array} \right\}\\

@@ -224,7 +224,7 @@ Fraud proof construction:
 \begin{enumerate}
   \item Let $t$ be the transaction alleged to violate the ledger rule. 
   \item A membership proof must be provided that shows that the transaction is included in the ledger
-  \item A DA layer proof must be presented that certifies that $length(spend\_inputs(t)) = 0$
+  \item The transaction inputs list must be empty
 \end{enumerate}
 
 \subsection{Rule: Minimum fee}
@@ -803,7 +803,7 @@ This ledger rule is violated if any of the following violations occur:
 
 \subsubsection{NO-REFERENCE-INPUT violation}
 \label{violation:NO-REFERENCE-INPUT}
-A transaction $t$ attempted to spend the UTxO $i$ that does not exist or was spent in a previous block.
+A transaction $t$ attempted to reference the UTxO $i$ that does not exist or was spent in a previous block.
 Formal specification:
 \begin{equation*}
 \begin{split}
@@ -842,6 +842,26 @@ Fraud proof construction:
   \item A membership proof must be presented for input $i$ such that $i \in reference\_inputs(t)$
   \item A membership proof must be created for $t_1$ such that $tx\_hash(t_1) = tx\_hash(i)$
   \item A DA layer proof must be presented that certifies that $length(outputs(t_1)) < index(i)$
+\end{enumerate}
+
+\subsubsection{WITHDRAWN-REFERENCE-INPUT violation}
+\label{violation:WITHDRAWN-REFERENCE-INPUT}
+A transaction $t$ attempted to reference the UTxO $i$, which was spent in a withdraw transaction.
+Formal specification:
+\begin{equation*}
+\begin{split}
+  &\exists t \in txs,\; \exists i \in reference\_inputs(t),\; \exists w \in wtxs:\\
+    &\quad i = l2\_outref(w)
+\end{split}
+\end{equation*}
+
+Fraud proof construction:
+\begin{enumerate}
+  \item Let $t$ be the transaction alleged to violate the ledger rule. 
+  \item A membership proof must be provided for $t$ that shows that the transaction is included in the block ($t \in txs$)
+  \item A membership proof must be generated for input $i$ such that $i \in reference\_inputs(t)$
+  \item A membership proof must be created to show that $w$ is in $wtxs$, which also spends input $i$
+  \item A non-membership proof must also be generated that shows that no transactions in the block match the input's tx hash.
 \end{enumerate}
 
 % TODO: maybe also include $inputs \cap reference\_inputs = \varnothing$
