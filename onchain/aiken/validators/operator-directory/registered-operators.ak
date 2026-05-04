@@ -6,6 +6,7 @@ use cardano/assets.{PolicyId, Value}
 use cardano/transaction.{
   Input, Mint, Output, OutputReference, Redeemer, Transaction,
 }
+use env
 use midgard/common/utils
 use midgard/hub_oracle as hub
 use midgard/operator_directory.{deinit, init, operator_is_not_a_member}
@@ -17,9 +18,6 @@ use midgard/operator_directory/registered_operators.{
   finalize_linked_list, node_key_to_activation_time, root_asset_name,
 }
 use midgard/operator_directory/retired_operators
-use midgard/protocol_parameters.{
-  registration_duration, required_bond, slashing_penalty,
-}
 
 validator spend(registered_operators_mint_script_hash: ByteArray) {
   spend(
@@ -145,13 +143,13 @@ validator mint(
 
           // 7. The Lovelace in the registered node must equal the
           //    `required_bond` Midgard parameter.
-          expect registered_node_lovelace >= required_bond
+          expect registered_node_lovelace >= env.required_bond
 
           // 8. Let `activation_time` be equal to the sum of the Midgard
           //    `registration_duration` protocol parameter and the inclusive
           //    upper bound of the transaction's validity interval.
           let activation_time =
-            registration_duration + utils.get_inclusive_upper_bound_of_interval(
+            env.registration_duration + utils.get_inclusive_upper_bound_of_interval(
               validity_range,
             )
 
@@ -297,7 +295,7 @@ validator mint(
         // 1. `slashing_penalty` must be paid via the transaction fee. The rest
         //    of the bond is assumed to be going to the signer's desired
         //    destination.
-        expect fee >= slashing_penalty
+        expect fee >= env.slashing_penalty
 
         // 2. Removal of the duplicate operator's node from the registered
         //    operator set must be valid.

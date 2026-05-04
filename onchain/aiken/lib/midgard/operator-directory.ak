@@ -6,13 +6,10 @@ use cardano/assets.{AssetName, PolicyId, Value}
 use cardano/transaction.{
   Input, Mint, Output, Redeemer, ScriptPurpose, Transaction,
 }
-use midgard/common/constants.{empty_data}
+use env
 use midgard/common/types.{Empty}
 use midgard/common/utils
 use midgard/hub_oracle as hub
-use midgard/protocol_parameters.{
-  inactivity_slashing_penalty, required_bond, slashing_penalty,
-}
 use midgard/settlement
 use midgard/state_queue
 
@@ -58,7 +55,9 @@ pub fn init(
     ) == 1,
     produced_element_output: root_output,
     tx_mint: mint,
-    root_validator: fn(_, root_data: Data) -> Bool { root_data == empty_data },
+    root_validator: fn(_, root_data: Data) -> Bool {
+      root_data == env.empty_data
+    },
   )
     |> linked_list.run_root_with(directory_policy_id, root_asset_name)
 }
@@ -184,10 +183,10 @@ pub fn validate_operator_transfer_and_get_inserted_data(
       // 6a. ADA bond must be transferred from the origin operator node, without
       //     the inactivity slashing penalty (paid as transaction fees only,
       //     TODO?).
-      inserted_node_lovelace >= required_bond - inactivity_slashing_penalty
+      inserted_node_lovelace >= env.required_bond - env.inactivity_slashing_penalty
     } else {
       // 6b. ADA bond must be transferred from the origin operator node.
-      inserted_node_lovelace >= required_bond
+      inserted_node_lovelace >= env.required_bond
     }
 
   // 7. The newly inserted node must carry the same operator as the one
@@ -289,16 +288,16 @@ pub fn slash_fraudulent_operator_and_get_info(
   expect slashed_operator_node_key == slashed_operator
 
   expect
-    if slashed_operator_node_lovelace < required_bond {
+    if slashed_operator_node_lovelace < env.required_bond {
       // 6a. If the operator is partially slashed, the portion already sent to
       //     the Cardano treasury doesn't need to be deposited again (since
       //     partial slashing is entirely paid as tx fee).
-      fee >= slashing_penalty - inactivity_slashing_penalty
+      fee >= env.slashing_penalty - env.inactivity_slashing_penalty
     } else {
       // 6b. Slashing penalty must be paid to the Cardano treasury via the
       //     transaction fee. Fraud prover is assumed to be the signer of the
       //     transaction, and therefore will receive the remaining bond.
-      fee >= slashing_penalty
+      fee >= env.slashing_penalty
     }
 
   // 7. Given custom validations must pass.
