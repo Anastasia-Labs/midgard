@@ -133,11 +133,11 @@ fn validate_asset_accumulation(
   // 2. Output lovelace must not exceed the target.
   expect p1_lovelace <= pt_lovelace
 
-  // 3. Output lovelace must either grow or remain unchanged.
-  expect p1_lovelace >= p0_lovelace
-
   when assets_to_add is {
     AddLovelace { m_reserve_change_output_index } -> {
+      // 3a. Output lovelace must grow.
+      expect p1_lovelace > p0_lovelace
+
       // 4a. Target Lovelace must not have been reached.
       expect p0_lovelace < pt_lovelace
 
@@ -180,15 +180,21 @@ fn validate_asset_accumulation(
       }
     }
     AddCardanoAssets { assets, reserve_change_output_index } -> {
-      // 4b. Specified assets must all be positive in quantity.
+      // 3b. Output lovelace must either grow or remain unchanged.
+      expect p1_lovelace >= p0_lovelace
+
+      // 4b. At least one asset must be provided.
+      expect [_, ..] = assets
+
+      // 5b. Specified assets must all be positive in quantity.
       expect utils.all_value_pairs_quantities_are_positive(assets)
 
-      // 5b. Specified UTxO from reserve must be getting spent with a matching
+      // 6b. Specified UTxO from reserve must be getting spent with a matching
       //     set of redeemer arguments.
       let (r0_lovelace, r0_assets) =
         get_reserve_input_lovelace_and_assets(reserve_addr, inputs)
 
-      // 5b. A change output is expected to be going back to the reserve.
+      // 7b. A change output is expected to be going back to the reserve.
       let (r1_lovelace, r1_assets) =
         get_reserve_change_output_lovelace_and_assets(
           reserve_addr,
@@ -196,11 +202,11 @@ fn validate_asset_accumulation(
           outputs,
         )
 
-      // 7b. The change in reserve lovelace must match the change in payout
+      // 8b. The change in reserve lovelace must match the change in payout
       //     Lovelace.
       expect r0_lovelace - r1_lovelace == p1_lovelace - p0_lovelace
 
-      // 8b. Transfer of the specified asset from reserve to the payout
+      // 9b. Transfer of the specified asset from reserve to the payout
       //     accumulator must be valid.
       expect
         validate_transfer_of_given_assets_with_change(
