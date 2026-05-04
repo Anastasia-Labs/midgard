@@ -3,7 +3,7 @@ use aiken/crypto.{ScriptHash}
 use cardano/address.{Address}
 use cardano/assets.{PolicyId}
 use cardano/transaction.{OutputReference, Transaction}
-use midgard/common/constants.{empty_merkle_tree_root}
+use env.{empty_merkle_tree_root}
 use midgard/common/utils
 use midgard/computation_thread as ct
 use midgard/fraud_proofs/common.{cancel, continue, finalize}

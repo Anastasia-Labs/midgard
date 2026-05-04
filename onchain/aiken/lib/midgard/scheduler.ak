@@ -1,8 +1,8 @@
 use aiken/crypto.{ScriptHash, VerificationKeyHash}
 use cardano/transaction.{Input}
+use env.{shift_duration}
 use midgard/common/types.{PosixTime}
 use midgard/common/utils
-use midgard/protocol_parameters.{shift_duration}
 
 pub const asset_name = "MIDGARD_SCHEDULER"
 

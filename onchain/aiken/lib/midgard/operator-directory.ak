@@ -6,13 +6,10 @@ use cardano/assets.{AssetName, PolicyId, Value}
 use cardano/transaction.{
   Input, Mint, Output, Redeemer, ScriptPurpose, Transaction,
 }
-use midgard/common/constants.{empty_data}
+use env
 use midgard/common/types.{Empty}
 use midgard/common/utils
 use midgard/hub_oracle as hub
-use midgard/protocol_parameters.{
-  inactivity_slashing_penalty, required_bond, slashing_penalty,
-}
 use midgard/settlement
 use midgard/state_queue
 
@@ -58,7 +55,9 @@ pub fn init(
     ) == 1,
     produced_element_output: root_output,
     tx_mint: mint,
-    root_validator: fn(_, root_data: Data) -> Bool { root_data == empty_data },
+    root_validator: fn(_, root_data: Data) -> Bool {
+      root_data == env.empty_data
+    },
   )
     |> linked_list.run_root_with(directory_policy_id, root_asset_name)
 }
@@ -184,10 +183,10 @@ pub fn validate_operator_transfer_and_get_inserted_data(
       // 6a. ADA bond must be transferred from the origin operator node, without
       //     the inactivity slashing penalty (paid as transaction fees only,
       //     TODO?).
-      inserted_node_lovelace >= required_bond - inactivity_slashing_penalty
+      inserted_node_lovelace >= env.required_bond - env.inactivity_slashing_penalty
     } else {
       // 6b. ADA bond must be transferred from the origin operator node.
-      inserted_node_lovelace >= required_bond
+      inserted_node_lovelace >= env.required_bond
     }
 
   // 7. The newly inserted node must carry the same operator as the one
@@ -201,20 +200,16 @@ pub fn validate_operator_transfer_and_get_inserted_data(
   True
 }
 
-/// Validations for slashing a fraudulent operator from either the active,
-/// retired or registered operators set. Verifies:
+/// Validations for slashing a fraudulent operator from either the active or
+/// retired operators set. Verifies:
 /// - Proper penalties are paid through transaction fees.
 /// - Removal of the list node.
+/// - Correctness of the operator PKH against the removed node key.
 /// - Depending on slashing reason, cross validates with state queue or
 ///   settlement contract.
 ///
 /// Returns various info extracted from the slashing arguments, list node
 /// removal, and script context (`tx`).
-///
-/// > [!NOTE]
-/// > Correctness of the slashed operator key indicated in the redeemer is not
-/// > validated here. This is because of the registered operators set, where
-/// > node keys are not operator PKHs, unlike the other two lists.
 pub fn slash_fraudulent_operator_and_get_info(
   hub_oracle_script_hash: PolicyId,
   slashing_arguments: SlashingArguments,
@@ -222,8 +217,6 @@ pub fn slash_fraudulent_operator_and_get_info(
   further_validations: fn(
     VerificationKeyHash,
     Option<linked_list.NodeKey>,
-    linked_list.NodeKey,
-    Data,
     linked_list.Link,
     hub.Datum,
     List<Input>,
@@ -277,7 +270,7 @@ pub fn slash_fraudulent_operator_and_get_info(
     _anchor_data,
     slashed_operator_node_lovelace,
     slashed_operator_node_key,
-    slashed_operator_node_data,
+    _slashed_operator_node_data,
     slashed_operator_node_link,
   <-
     linked_list.remove(
@@ -290,26 +283,28 @@ pub fn slash_fraudulent_operator_and_get_info(
   // 4. ADA of anchor element must be preserved.
   expect anchor_lovelace_change >= 0
 
+  // 5. The slashed operator key indicated in the redeemer must match the key
+  //    of the removed node.
+  expect slashed_operator_node_key == slashed_operator
+
   expect
-    if slashed_operator_node_lovelace < required_bond {
-      // 5a. If the operator is partially slashed, the portion already sent to the
-      //     Cardano treasury doesn't need to be deposited again (since partial
-      //     slashing is entirely paid as tx fee).
-      fee >= slashing_penalty - inactivity_slashing_penalty
+    if slashed_operator_node_lovelace < env.required_bond {
+      // 6a. If the operator is partially slashed, the portion already sent to
+      //     the Cardano treasury doesn't need to be deposited again (since
+      //     partial slashing is entirely paid as tx fee).
+      fee >= env.slashing_penalty - env.inactivity_slashing_penalty
     } else {
-      // 5b. Slashing penalty must be paid to the Cardano treasury via the
+      // 6b. Slashing penalty must be paid to the Cardano treasury via the
       //     transaction fee. Fraud prover is assumed to be the signer of the
       //     transaction, and therefore will receive the remaining bond.
-      fee >= slashing_penalty
+      fee >= env.slashing_penalty
     }
 
-  // 6. Given custom validations must pass.
+  // 7. Given custom validations must pass.
   expect
     further_validations(
       slashed_operator,
       m_anchor_key,
-      slashed_operator_node_key,
-      slashed_operator_node_data,
       slashed_operator_node_link,
       hub_datum,
       inputs,
@@ -319,7 +314,7 @@ pub fn slash_fraudulent_operator_and_get_info(
 
   when slashing_reason is {
     SlashOperatorForBadState { state_queue_redeemer_index } -> {
-      // 7a. State queue minting script must be invoked via the
+      // 8a. State queue minting script must be invoked via the
       //     `RemoveFraudulentBlockHeader` redeemer, and the operator specified
       //     there must agree with the `slashed_operator` redeemer argument
       //     here.
@@ -338,7 +333,7 @@ pub fn slash_fraudulent_operator_and_get_info(
       settlement_input_index,
       settlement_redeemer_index,
     } -> {
-      // 7b. A settlement UTxO must be getting spent via the
+      // 8b. A settlement UTxO must be getting spent via the
       //     `DisproveResolutionClaim` redeemer.
       expect settlement.DisproveResolutionClaim { operator, .. } =
         utils.get_spending_redeemer_data_at(

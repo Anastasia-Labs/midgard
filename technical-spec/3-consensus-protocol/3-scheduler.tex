@@ -132,7 +132,6 @@ Redeemers:
           \begin{enumerate}
             \item Both \code{input\_datum} and \code{output\_datum} must have appointed operators.
               Let \code{prev\_op} and \code{next\_op} be their operators, and \code{prev\_shift} and \code{next\_shift} be their shift start times in order.
-            \item \code{next\_shift} must equal \code{prev\_shift} plus the \code{shift\_duration} protocol parameter.
           \end{enumerate}
         \item Verify operator inactivity:
           \begin{enumerate}[resume]
@@ -183,7 +182,7 @@ Redeemers:
             \item Let \code{last\_node\_index} be a redeemer argument that may carry an index to reference the last node in the active operators set.
             \item If \code{last\_node\_index} provides an index, the referenced utxo must be the last node in the active operators set, and its key must match \code{next\_op}.
               Otherwise, \code{inactive\_operator\_link} must not point to another node, and \code{prev\_op} and \code{next\_op} must be identical.
-          \end{itemize}
+          \end{enumerate}
       \end{itemize}
     \item[Go to Next -- Operator Removal.] If the currently appointed operator is removed from the active operators set, either for slashing or retirement, advances the scheduler to the next key-descending operator.
       Grouped conditions:
