@@ -102,7 +102,7 @@ validator spend(
     tx: Transaction,
   ) {
     when redeemer is {
-      AddFunds { payout_input_outref, observer_withdraw_redeemer_index } -> {
+      AddFunds { observer_withdraw_redeemer_index } -> {
         let observer_withdraw_redeemer_data <-
           stake_validator.validate_withdraw(
             withdraw_script_hash: observer_withdraw_script_hash,
@@ -115,7 +115,7 @@ validator spend(
           ..
         } = observer_withdraw_redeemer_data
 
-        expect payout_outref_from_observer == payout_input_outref
+        expect payout_outref_from_observer == own_out_ref
 
         // Done.
         True

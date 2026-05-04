@@ -1,6 +1,6 @@
 use cardano/address.{Address}
 use cardano/assets.{AssetName}
-use cardano/transaction.{Datum as CardanoDatum, OutputReference}
+use cardano/transaction.{Datum as CardanoDatum}
 use midgard/common/types.{ValuePairs}
 
 pub type Datum {
@@ -10,10 +10,7 @@ pub type Datum {
 }
 
 pub type SpendRedeemer {
-  AddFunds {
-    payout_input_outref: OutputReference,
-    observer_withdraw_redeemer_index: Int,
-  }
+  AddFunds { observer_withdraw_redeemer_index: Int }
   ConcludeWithdrawal { input_index: Int, burn_redeemer_index: Int }
 }
 
