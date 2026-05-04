@@ -64,6 +64,10 @@ import Midgard.Types.LinkedList (nodeKeyFromAssetName, nodeKeyToPOSIXTime)
 import Midgard.Types.RegisteredOperators qualified as RegisteredOperators
 import Midgard.Types.Scheduler qualified as Scheduler
 
+-- Initialize the scheduler with the given start time as the intended "start of shift" for the first operator to be
+-- scheduled (e.g via 'scheduleNextOperator').
+-- Note: This does not schedule an actual operator. Instead, it uses a dummy PKH and sets this dummy shift to end
+-- at 'startTime'.
 initScheduler ::
   ( C.HasScriptLanguageInEra C.PlutusScriptV3 era
   , MonadBuildTx era m
@@ -86,7 +90,7 @@ initScheduler
           Scheduler.Datum
             { -- Starts with an invalid pub key hash. The aim is to replace it after the shift end time.
               operator = PubKeyHash $ PlutusTx.toBuiltin BS.empty
-            , startTime = startTime
+            , startTime = transPOSIXTime $ unTransPOSIXTime startTime - shiftDuration
             }
     payToScriptInlineDatum
       netId
@@ -95,7 +99,7 @@ initScheduler
       C.NoStakeAddress
       (assetValue policyId Scheduler.assetName 1)
 
-{- | Set the scheduler to designate the next operator, either before or after the current operator's shift end time.
+{- | Set the scheduler to designate the next operator, either during or after the existing operator's shift end time.
 In the first case, existing shift operator must sign the transaction.
 
 It is easy to figure out whether or not we're trying to schedule next operator before the current shift end within this
@@ -218,9 +222,9 @@ scheduleNextOperator
             txBody
               { C.txValidityUpperBound =
                   C.TxValidityUpperBound (C.shelleyBasedEra @era) . Just
-                  -- Either 5 minutes into the future, or just before next shift start, whichever is earlier.
+                  -- Either 5 minutes into the future, or just after the next shift start, whichever is earlier.
                   $
-                    min (currentSlot + 300) (nextShiftStartSlot - 1)
+                    min (currentSlot + 300) (nextShiftStartSlot + 1)
               , -- Must have a lower bound too since it needs to be a closed range.
                 C.txValidityLowerBound = C.TxValidityLowerBound (C.allegraBasedEra @era) currentSlot
               }

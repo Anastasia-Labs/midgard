@@ -5,6 +5,7 @@ module Midgard.Constants (
   hubOracleAssetName,
   shiftDuration,
   maturityDuration,
+  maxValidityRangeLength,
   registrationDuration,
   operatorRequiredBond,
   operatorSlashingPenalty,
@@ -44,21 +45,25 @@ hubOracleMintingPolicyId = C.PolicyId . C.hashScript $ C.PlutusScript C.plutusSc
 hubOracleAssetName :: C.AssetName
 hubOracleAssetName = C.UnsafeAssetName $ BS8.pack "MIDGARD_HUB_ORACLE"
 
--- | Mimicking aiken. 30 milliseconds.
+-- | Mimicking aiken (testnet). 1 hour.
 shiftDuration :: NominalDiffTime
-shiftDuration = 0.030
+shiftDuration = 60 * 60
 
 -- | Mimicking aiken. 30 milliseconds.
 maturityDuration :: NominalDiffTime
 maturityDuration = 0.030
 
--- | Mimicking aiken.
-operatorRequiredBond :: C.Lovelace
-operatorRequiredBond = 0
-
 -- | Mimicking aiken. 30 milliseconds.
 registrationDuration :: NominalDiffTime
 registrationDuration = 0.030
+
+-- | Mimicking aiken. 5 minutes.
+maxValidityRangeLength :: NominalDiffTime
+maxValidityRangeLength = 5 * 60
+
+-- | Mimicking aiken.
+operatorRequiredBond :: C.Lovelace
+operatorRequiredBond = 0
 
 operatorSlashingPenalty :: C.Lovelace
 operatorSlashingPenalty = 3_000_000
