@@ -19,18 +19,17 @@ export const mergeAction: Effect.Effect<
   Lucid | MidgardContracts | Database | Globals
 > = Effect.gen(function* () {
   const lucid = yield* Lucid;
-  const { stateQueue: stateQueueAuthValidator } = yield* MidgardContracts;
+  const contracts = yield* MidgardContracts;
 
   const fetchConfig: SDK.StateQueueFetchConfig = {
-    stateQueueAddress: stateQueueAuthValidator.spendingScriptAddress,
-    stateQueuePolicyId: stateQueueAuthValidator.policyId,
+    stateQueueAddress: contracts.stateQueue.spendingScriptAddress,
+    stateQueuePolicyId: contracts.stateQueue.policyId,
   };
   yield* lucid.switchToOperatorsMergingWallet;
   yield* StateQueueTx.buildAndSubmitMergeTx(
     lucid.api,
     fetchConfig,
-    stateQueueAuthValidator.spendingScript,
-    stateQueueAuthValidator.mintingScript,
+    contracts,
   );
 });
 
