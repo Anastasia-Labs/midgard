@@ -13,7 +13,7 @@ pub const plutarch_pexcludes_validator_hash: ScriptHash = #""
 
 pub const plutarch_pdelete_validator_hash: ScriptHash = #""
 
-pub const shift_duration: PosixTimeDuration = 30
+pub const shift_duration: PosixTimeDuration = 60 * 60 * 1000
 
 pub const registration_duration: PosixTimeDuration = 30
 
