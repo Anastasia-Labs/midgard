@@ -4,6 +4,9 @@ artifacts/
 build/
 # Aiken's default documentation export
 docs/
+# Cardano Node, Ogmios, Kupo services data
+data/
 .direnv
 utils.log
 .codex
+.env

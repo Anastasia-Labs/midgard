@@ -5,7 +5,7 @@ use aiken_design_patterns/linked_list
 use cardano/address.{Address}
 use cardano/assets.{Lovelace, PolicyId, quantity_of}
 use cardano/transaction.{Mint, OutputReference, Transaction}
-use midgard/common/constants.{empty_merkle_tree_root}
+use env
 use midgard/common/utils
 use midgard/fraud_proof
 use midgard/hub_oracle as hub
@@ -16,7 +16,6 @@ use midgard/ledger_state.{
 use midgard/operator_directory.{SlashOperatorForBadState}
 use midgard/operator_directory/active_operators
 use midgard/operator_directory/retired_operators
-use midgard/protocol_parameters.{maturity_duration}
 use midgard/scheduler
 use midgard/settlement
 use midgard/state_queue.{
@@ -338,7 +337,7 @@ validator mint(
           let inclusive_tx_lower_bound =
             utils.get_inclusive_lower_bound_of_interval(validity_range)
           expect
-            inclusive_tx_lower_bound >= input_header_end_time + maturity_duration
+            inclusive_tx_lower_bound >= input_header_end_time + env.maturity_duration
 
           // 6. a. `header_hash` of the input confirmed state must be preserved
           //       under `prev_header_hash` of the updated confirmed state.
@@ -380,9 +379,9 @@ validator mint(
           //    > it to check the equality between its `settlement_id` and
           //    > `header_node_key` here from the redeemer here.
           if or {
-            input_header_transactions_root != empty_merkle_tree_root,
-            input_header_deposits_root != empty_merkle_tree_root,
-            input_header_withdrawals_root != empty_merkle_tree_root,
+            input_header_transactions_root != env.empty_merkle_tree_root,
+            input_header_deposits_root != env.empty_merkle_tree_root,
+            input_header_withdrawals_root != env.empty_merkle_tree_root,
           } {
             // 9a. The redeemer index for settlement minting policy must be
             //     provided.

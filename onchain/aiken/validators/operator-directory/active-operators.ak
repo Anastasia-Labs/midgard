@@ -7,6 +7,7 @@ use cardano/transaction.{
   Input, Mint, Output, OutputReference, Redeemer, ScriptPurpose, Transaction,
   ValidityRange,
 }
+use env
 use midgard/common/types.{PosixTime}
 use midgard/common/utils
 use midgard/hub_oracle as hub
@@ -23,9 +24,6 @@ use midgard/operator_directory/active_operators.{
 }
 use midgard/operator_directory/registered_operators
 use midgard/operator_directory/retired_operators
-use midgard/protocol_parameters.{
-  inactivity_slashing_penalty, maturity_duration, max_inactivity_strikes,
-}
 use midgard/scheduler
 use midgard/settlement
 use midgard/state_queue
@@ -316,7 +314,7 @@ validator spend(
           //    With this check in place, the operator's UTxO cannot be spent
           //    for strikes any further, and the node will be free for transfer
           //    to the retired set.
-          expect new_inactivity_strikes <= max_inactivity_strikes
+          expect new_inactivity_strikes <= env.max_inactivity_strikes
 
           // Done.
           True
@@ -356,7 +354,6 @@ validator mint(
         )
       ActivateOperator {
         new_active_operator_key,
-        new_active_operator_bond_unlock_time,
         active_operator_anchor_element_input_index,
         active_operator_anchor_element_output_index,
         active_operator_inserted_node_output_index,
@@ -390,13 +387,9 @@ validator mint(
               redeemers,
             )
 
-          // 2. Newly activated operator must have the bond unlock time which
-          //    comes from the registered operators node.
+          // 2. Newly activated operator must not have any outstanding bond hold.
           let expected_inserted_node_data: Data =
-            NodeData {
-              bond_unlock_time: new_active_operator_bond_unlock_time,
-              inactivity_strikes: 0,
-            }
+            NodeData { bond_unlock_time: None, inactivity_strikes: 0 }
           expect inserted_node_data == expected_inserted_node_data
 
           // Done.
@@ -510,17 +503,17 @@ validator mint(
           if penalize_for_inactivity {
             // 9a. Since retired operators minting script relies on the penalty
             //     flag here, its correctness must be verified.
-            expect inactivity_strikes >= max_inactivity_strikes
+            expect inactivity_strikes >= env.max_inactivity_strikes
 
             // 10a. With enough strikes, anyone can partially slash the
             //      operator,
-            expect self.fee >= inactivity_slashing_penalty
+            expect self.fee >= env.inactivity_slashing_penalty
 
             // Done.
             True
           } else {
             // 9b. The penalty flag must be valid.
-            expect inactivity_strikes < max_inactivity_strikes
+            expect inactivity_strikes < env.max_inactivity_strikes
 
             // 10b. The retiring operator must consent to the transaction.
             expect active_operator_key |> utils.has_signed(extra_signatories)
@@ -536,8 +529,6 @@ validator mint(
           let
             slashed_operator_from_redeemer,
             m_anchor_key,
-            slashed_operator_node_key,
-            _slashed_operator_node_data,
             slashed_operator_node_link,
             hub_datum,
             inputs,
@@ -550,11 +541,7 @@ validator mint(
               self,
             )
 
-          // 1. The operator key indicated in the redeemer must match the key of
-          //    the removed node from the active operators set.
-          expect slashed_operator_node_key == slashed_operator_from_redeemer
-
-          // 2. If operator is currently active, validate scheduler datum is
+          // 1. If operator is currently active, validate scheduler datum is
           //    getting updated. Otherwise, show the currently appointed
           //    operator is different from the slashing operator.
           expect
@@ -634,7 +621,7 @@ fn spend_for_updating_bond_unlock_time(
     //    validity range upper bound plus the maturity duration.
     //    TODO: Does inclusivity of the upper bound matter here?
     let valid_to = utils.get_inclusive_upper_bound_of_interval(validity_range)
-    let new_bond_unlock_time = valid_to + maturity_duration
+    let new_bond_unlock_time = valid_to + env.maturity_duration
 
     // 6. Transaction must have the hub oracle's UTxO referenced.
     let hub_datum =
