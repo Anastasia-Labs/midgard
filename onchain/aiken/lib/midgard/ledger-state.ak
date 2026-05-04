@@ -25,7 +25,7 @@ use cardano/assets.{Lovelace}
 use cardano/transaction.{
   Datum as CardanoDatum, OutputReference, Redeemer, ScriptPurpose, ValidityRange,
 }
-use midgard/common/constants.{empty_merkle_tree_root, plutus_version}
+use env
 use midgard/common/types.{H28, H32, MerkleRoot, PosixTime, ValuePairs}
 
 // # Ledger state types
@@ -92,7 +92,7 @@ pub type ConfirmedState {
 pub const genesis_header_hash: HeaderHash =
   #"00000000000000000000000000000000000000000000000000000000"
 
-pub const genesis_utxo_root: MidgardLedgerRoot = empty_merkle_tree_root
+pub const genesis_utxo_root: MidgardLedgerRoot = env.empty_merkle_tree_root
 
 pub const genesis_protocol_version: Int = 0
 
@@ -325,7 +325,7 @@ pub fn hash_midgard_script(midgard_script: MidgardScript) -> ScriptHash {
   when midgard_script is {
     Timelock { script } -> script |> blake2b_224
     Plutus { script } ->
-      builtin.integer_to_bytearray(True, 1, plutus_version)
+      builtin.integer_to_bytearray(True, 1, env.plutus_version)
         |> bytearray.concat(script)
         |> blake2b_224
   }

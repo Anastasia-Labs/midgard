@@ -44,7 +44,7 @@ pub type SpendRedeemer {
     hub_oracle_ref_input_index: Int,
     settlement_input_index: Int,
     settlement_redeemer_index: Int,
-    new_bond_unlock_time: PosixTime,
+    resolution_time: PosixTime,
   }
   StrikeForInactivity {
     active_node_input_index: Int,
@@ -67,31 +67,11 @@ pub type OperatorRemovalSchedulerSync {
   }
 }
 
-/// TODO: Add a "slash duplicate operator" constructor as well. Currently only
-///       the registered operators set has this endpoint, where it can slash
-///       operators who are on the registered set, and also on any of the other
-///       sets (including registered set itself, as its node keys are not PKHs).
-///       However, since this slashing is not _mandatory_, it is _possible_ (but
-///       highly unlikely) for a duplicate operator to end up in the active set
-///       and the retired set (e.g. an active operator retires, registers anew,
-///       doesn't get slashed for duplication, and finally activates). This
-///       can lock the scheduler for the duration of an entire shift: if the
-///       duplicate operator neglects their duties, they will receive inactivity
-///       strikes until its max is reached, which renders them eligible for
-///       partial slashing and transfer to the retired set. But since there
-///       exists a duplicate node there, the transfer transaction cannot go
-///       through. When the scheduler rewinds and appoints the duplicate
-///       operator again, the operator cannot be skipped as its strike count
-///       can't be incremented further.
-///
-///       Adding this constructor to the retired operators set might be better
-///       as it won't require involvement of the scheduler UTxO.
 pub type MintRedeemer {
   Init { output_index: Int }
   Deinit { input_index: Int }
   ActivateOperator {
     new_active_operator_key: VerificationKeyHash,
-    new_active_operator_bond_unlock_time: Option<PosixTime>,
     active_operator_anchor_element_input_index: Int,
     active_operator_anchor_element_output_index: Int,
     active_operator_inserted_node_output_index: Int,

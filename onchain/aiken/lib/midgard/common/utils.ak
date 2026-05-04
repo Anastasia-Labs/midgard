@@ -15,9 +15,7 @@ use cardano/transaction.{
   InlineDatum, Input, Output, OutputReference, Redeemer, ScriptPurpose, Spend,
 }
 use env
-use midgard/common/constants.{posix_time_none}
 use midgard/common/types.{H28, H32, MerkleRoot, PosixTime, Proof, ValuePairs}
-use midgard/protocol_parameters.{max_validity_range_length}
 
 /// Check whether the interval starts on or after the point.
 pub fn is_hereafter(self: Interval, point: Int) -> Bool {
@@ -42,7 +40,7 @@ pub fn get_inclusive_bounds_of_a_short_validity_range(
 ) -> (PosixTime, PosixTime) {
   when vrn.normalize_time_range(interval) is {
     vrn.ClosedRange { lower, upper } -> {
-      expect upper - lower <= max_validity_range_length
+      expect upper - lower <= env.max_validity_range_length
       (lower, upper)
     }
     _ -> fail @"Validity range was expected to be a closed range"
@@ -127,10 +125,6 @@ pub fn safe_list_head(elems: List<a>) -> a {
 pub fn safe_list_init(elems: List<a>) {
   expect Some(elems_except_last) = list.init(elems)
   elems_except_last
-}
-
-pub fn is_posix_time_none(time: PosixTime) {
-  time == posix_time_none
 }
 
 /// Returns the quantity of all tokens with the policyId

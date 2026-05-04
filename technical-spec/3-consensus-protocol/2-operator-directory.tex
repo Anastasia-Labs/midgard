@@ -23,9 +23,10 @@ Every forfeited bond is split into a reward paid to the fraud prover and a slash
 Among the Midgard protocol parameters, the \code{fraud\_prover\_reward} and \code{slashing\_penalty} parameters must sum up to the \code{required\_bond} parameter.
 
 To ensure liveness, a penalty mechanism gives strikes to inactive operators.
-After enough strikes, violating operator's bond can be partially slashed and their remaining bond transferred to the retired operators set.
+After enough strikes, a violating operator's bond can be partially slashed and their remaining bond transferred to the retired operators set.
 
-Partially slashed operators can either recover the remainder of their bond (after maturity of their latest commitment), or deposit the slashed portion in order to get back in the registered operators set, or get slashed if their latest commitment is proven fraudulent.
+Partially slashed operators can recover the remainder of their bond after maturity of their latest commitment.
+They can only register again after recovering from the retired operators set, as a fresh registration.
 
 \subsection{Utxo representation}
 \label{h:operator-directory-utxo-representation}
@@ -43,13 +44,10 @@ It separates operators into three groups based on their status, primarily using 
 \end{itemize}
 
 The Operator Directory keeps track of the activation time of every registered operator in their node keys, which indicates when the operator will become eligible for activation.
-It also keeps track of any holds on the ADA bonds of operators, which prevent those operators from recovering their bonds until their latest committed blocks and latest settlement resolution claims mature.
+The active and retired operator sets also keep track of any holds on the ADA bonds of operators, which prevent those operators from recovering their bonds until their latest committed blocks and latest settlement resolution claims mature.
 \begin{align*}
-    \T{RegisteredOperator} &\coloneq{} \left\{
-      \begin{array}{ll}
-        \T{operator} : & \T{PubKeyHash} \\
-        \T{bond\_unlock\_time} : & \T{Option}(\T{PosixTime})
-      \end{array} \right\} \\
+    \T{RegisteredOperator}    &\coloneq \Bigl( \T{operator}:
+        \T{PubKeyHash} \Bigr) \\
     \T{ActiveOperator}     &\coloneq{} \left\{
       \begin{array}{ll}
         \T{bond\_unlock\_time} : & \T{Option}(\T{PosixTime}) \\
@@ -82,7 +80,7 @@ Three protocol parameters govern how operators can be considered inactive.
 \end{enumerate}
 
 \code{max\_inactivity\_between\_block\_commitments} is the largest of the three.
-Therefore, it's the value that determines the longest period in which the chain can remain inactive without consequences for operators.
+Therefore, the longest inactivity period without consequences for operators would be the sum of \code{max\_inactivity\_between\_block\_commitments} and \code{new\_shift\_inactivity\_grace\_period}.
 
 The point of time after which an operator can be given an inactivity strike can be found as below:
 \begin{equation*}
@@ -102,7 +100,8 @@ Where:
 As long as it can be shown that \(t_a\) falls within the current operator's shift interval (\(t_a < t_0 + T\), where \(T\) is the shift duration), the operator can be considered inactive.
 
 Inactivity strikes are accumulated in active operators set nodes, and are cleared for each operator on retirement.
-Partially slashed operators can re-register by depositing their lost portion and have thier node utxo transferred to the registered operators set.
+Partially slashed operators cannot be transferred back to the registered operators set.
+They must wait until their latest commitment matures, recover their remaining bond from the retired operators set, and only then register again.
 
 \subsection{Operator slashing}
 \label{h:operator-slashing}
@@ -115,14 +114,14 @@ There are four ways for operators to get slashed of their ADA bonds, either full
   \item Be proven inactive multiple times.
 \end{enumerate}
 
-Operators can be slashed from any of the sets for bad blocks or settlement resolution claims.
-This is enforced through each set's minting policy with a dedicated endpoint.
+Operators can be slashed from the active or retired operators set for bad blocks or settlement resolution claims.
+This is enforced through the active and retired set minting policies with dedicated endpoints.
 Conditions:
 \begin{enumerate}
   \item Let \code{slashed\_operator} be a redeemer argument indicating the operator being slashed.
-  \item The transaction must Remove a node from the source operator directory set.
+  \item The transaction must Remove a node from the source active or retired operator directory set.
     Let that node be \code{removed\_node}.
-  \item \code{slashed\_operator} must match the operator of \code{removed\_node} (which is obtained either through node's key or its underlying data).
+  \item \code{slashed\_operator} must match the key of \code{removed\_node}.
   \item Lovelaces of the anchor element of \code{removed\_node} must be preserved.
   \item Slashing penalty must be paid through transaction fees.
     For paritally slashed operators, this penalty is attained by \code{slashing\_penalty} minus \code{inactivity\_slashing\_penalty}, as the latter is already deduced from their bonds.
@@ -155,7 +154,7 @@ Redeemers:
             \item The transaction must mint the Midgard hub oracle NFT.
             \item The transaction must Init the \code{registered\_operators} queue.
         \end{enumerate}
-    \item[Register Operator.] Insert a key-descending node into the \code{registered\_operators} queue with the operator's ADA bond, the registration time as key, and storing the operator's pub key hash.
+    \item[Register Operator.] Insert a key-descending node into the \code{registered\_operators} queue with the operator's ADA bond, the activation time as key, and storing the operator's pub key hash.
       Grouped conditions:
         \begin{itemize}
             \item Verify operator consent:
@@ -173,18 +172,17 @@ Redeemers:
                 \end{enumerate}
             \item Verify descending insertion of a new node in the registered operators set (see \cref{h:list-minting-helpers}):
                 \begin{enumerate}[resume]
-                    \item Let \code{registering\_lovelace}, \code{registering\_key} and \code{registering\_data} be corresponding values of the inserted node.
+                    \item Let \code{registering\_lovelace}, \code{registering\_key}, \code{registering\_data}, and \code{anchor\_lovelace\_change} be corresponding values of the inserted node and its anchor.
+                    \item \code{anchor\_lovelace\_change} must be greater than or equal to 0.
+                      This ensures registration cannot drain ADA from an existing registered operator node when insertion does not happen at the root.
                     \item \code{registering\_lovelace} must be greater than or equal to the \code{required\_bond} protocol parameter.
                     \item Let \code{activation\_time} be equal to the sum of the Midgard \code{registration\_duration} protocol parameter and the inclusive upper bound of the transaction's validity interval.
                     \item \code{registering\_key} must equal the big-endian encoding of \code{activation\_time} in as few bytes as possible.
-                    \item Let \code{operator\_origin} be a redeemer argument that indicates whether the operator is being transferred from the retired set or not:
-                      \begin{enumerate}
-                        \item If the operator is new, verify its non-membership in the retired set.
-                          Let \code{registering\_bond\_unlock\_time} be \code{None}.
-                        \item Otherwise, verify the retired set burns its node NFT with a matching Register Operator redeemer.
-                          Let \code{registering\_bond\_unlock\_time} be the value retrieved from the removed node shared via this redeemer.
-                      \end{enumerate}
-                    \item \code{registering\_data} must carry \code{registering\_operator} as its \code{operator}, and \code{registering\_bond\_unlock\_time} as its \code{bond\_unlock\_time}.
+                    \item The transaction must reference an element utxo from the retired operators set.
+                      Let that element be \code{retired\_element}.
+                    \item If \code{retired\_element} is a node, its key must be smaller than \code{registering\_operator}.
+                    \item If \code{retired\_element} has a link, it must be larger than \code{registering\_operator}.
+                    \item \code{registering\_data} must carry only \code{registering\_operator} as its \code{operator}.
                 \end{enumerate}
         \end{itemize}
     \item[Activate Operator.] Transfer an operator node from the \code{registered\_operators} queue to the \code{active\_operators} set.
@@ -194,9 +192,7 @@ Redeemers:
                 \begin{enumerate}[resume]
                     \item The transaction must include the Midgard hub oracle NFT in a reference input.
                     \item Let \code{active\_operators} be the policy ID in the corresponding field of the Midgard hub oracle.
-                    \item The transaction must Insert a node into the \code{active\_operators} set, as evidenced by minting a \code{active\_operators} node NFT for the \code{registered\_node} key via the Activate Operator redeemer.
-                    \item Let \code{new\_bond\_unlock\_time} be a value retrieved from the \code{active\_operators} mint redeemer.
-                      It is assumed to be the same value as the inserted node's.
+                    \item The transaction must Insert a node into the \code{active\_operators} set, as evidenced by minting a \code{active\_operators} node NFT for the activating operator key via the Activate Operator redeemer.
                 \end{enumerate}
             \item Verify that the registrant is not already retired (non-membership in \code{retired\_operators} set, similar to above).
             \item Remove the registrant from the registered operators if it is eligible to activate:
@@ -205,8 +201,7 @@ Redeemers:
                   Let that node be \code{registered\_node}.
                 \item Let \code{activation\_time} be the big-endian decoding of \code{registered\_node}'s key.
                 \item The transaction's validity interval must be entirely after \code{activation\_time}.
-                \item Let \code{old\_bond\_unlock\_time} be a value retrieved from the underlying data of \code{registered\_node}.
-                \item \code{old\_bond\_unlock\_time} and \code{new\_bond\_unlock\_time} must be equal to ensure proper transafer of operators' bond unlock times.
+                \item The operator stored in the underlying data of \code{registered\_node} must match the activating operator key.
             \end{enumerate}
         \end{itemize}
     \item[Deregister Operator.] Remove a node from the \code{registered\_operators} queue, with the operator's consent, and return the ADA bond to the operator.
@@ -216,8 +211,6 @@ Redeemers:
               Let \code{removed\_node} be that node.
             \item The operator key of \code{removed\_node} must correspond to a PKH that signed the transaction.
               This is needed so the ADA bond can be assumed to return to the operator's control.
-            \item Let \code{bond\_unlock\_time} be the value retrieved from the underlying data of \code{removed\_node}.
-            \item If \code{bond\_unlock\_time} carries a value, transaction's validity range must be entirely after this designated unlock time.
         \end{enumerate}
     \item[Slash Duplicate Operator.] Remove a node from the \code{registered\_operators} queue if its operator key duplicates the key of any other node among the registered, active, or retired operators.
       Does \emph{not} return the duplicate node's ADA bond to its operator.
@@ -243,12 +236,6 @@ Redeemers:
                 \end{enumerate}
         \end{enumerate}
     The submitter of the Slash Duplicate Operator transaction is considered to be the fraud prover, so the conditions for that redeemer do not need to explicitly enforce that the \code{fraud\_prover\_reward} is paid out because the submitter consents to the transaction.
-    \item[Slash Fraudulent Operator.] Remove a node from the \code{registered\_operators} queue if its operator had returned from retirement, and had committed fraud during activity.
-      Conditions:
-        \begin{enumerate}
-          \item The operator must be Slashed.
-            Note that operator key must be retrieved from the underlying node data, as node keys here correspond to activation times of operators.
-        \end{enumerate}
 \end{description}
 
 \subsubsection{Spending validator}
@@ -284,10 +271,10 @@ Redeemers:
         \begin{enumerate}
             \item The transaction must Insert a node into the \code{active\_operators} set.
               Let that node be \code{active\_node}.
-            \item The transaction must Remove a node from the \code{registered\_operators} queue, as evidenced by burning a \code{registered\_operators} node NFT corresponding to the \code{active\_node} key.
+            \item The transaction must Remove a node from the \code{registered\_operators} queue, as evidenced by burning a \code{registered\_operators} node NFT through the matching Activate Operator redeemer.
               Let this node be \code{removed\_node}.
-            \item Let \code{new\_bond\_unlock\_time} be a redeemer argument corresponding to the underlying data of \code{removed\_node}, which its correctness is validated by \code{registered\_operators} minting script.
-            \item The \code{bond\_unlock\_time} field of \code{active\_node} must match \code{new\_bond\_unlock\_time}.
+            \item The \code{bond\_unlock\_time} field of \code{active\_node} must be \code{None}.
+            \item The \code{inactivity\_strikes} field of \code{active\_node} must be \code{0}.
         \end{enumerate}
     \item[Retire Operator.] Transfer an operator node from the \code{active\_operators} set to the \code{retired\_operators} set.
       Grouped conditions:
@@ -350,7 +337,10 @@ Redeemers:
                 \item The transaction must \emph{not} mint or burn tokens of the \code{active\_operators} minting policy.
                 \item Let \code{active\_node} be an output of the transaction indicated by a redeemer argument.
                 \item \code{active\_node} must be an \code{active\_operators} node that matches the datum argument of the spending validator on the \code{key} and \code{link} fields.
-                \item The \code{bond\_unlock\_time} field of \code{active\_node} must match the sum of the Midgard \code{maturity\_duration} parameter and the upper bound of the transaction validity interval.
+                \item Let \code{fresh\_bond\_unlock\_time} be the sum of the Midgard \code{maturity\_duration} parameter and the upper bound of the transaction validity interval.
+                \item If the operator has prior commitments, let \code{old\_bond\_unlock\_time} be its value.
+                \item The \code{bond\_unlock\_time} field of \code{active\_node} must be the bigger value between \code{old\_bond\_unlock\_time} and \code{fresh\_bond\_unlock\_time}.
+                \item The \code{inactivity\_strikes} field of \code{active\_node} must remain unchanged.
             \end{enumerate}
             \item Verify that the operator is currently committing a block header to the state queue:
             \begin{enumerate}[resume]
@@ -368,9 +358,15 @@ Redeemers:
                 \item The transaction must \emph{not} mint or burn tokens of the \code{active\_operators} minting policy.
                 \item Let \code{active\_node} be an output of the transaction indicated by a redeemer argument.
                 \item \code{active\_node} must be an \code{active\_operators} node that matches the datum argument of the spending validator on the \code{key} and \code{link} fields.
-                \item The \code{bond\_unlock\_time} field of \code{active\_node} must match the sum of the Midgard \code{maturity\_duration} parameter and the upper bound of the transaction validity interval.
+                \item Let \code{resolution\_time} be a redeemer argument.
+                \item Let \code{fresh\_bond\_unlock\_time} be the sum of the Midgard \code{maturity\_duration} parameter and the upper bound of the transaction validity interval.
+                \item \code{resolution\_time} must match \code{fresh\_bond\_unlock\_time}.
+                  This value is used by the settlement validator as the resolution claim's \code{resolution\_time}.
+                \item If the operator has prior commitments, let \code{old\_bond\_unlock\_time} be its value.
+                \item The \code{bond\_unlock\_time} field of \code{active\_node} must be the bigger value between \code{old\_bond\_unlock\_time} and \code{fresh\_bond\_unlock\_time}.
+                \item The \code{inactivity\_strikes} field of \code{active\_node} must remain unchanged.
             \end{enumerate}
-            \item Verify that the operator is currently committing a block header to the state queue:
+            \item Verify that the operator is currently attaching a resolution claim to a settlement utxo:
             \begin{enumerate}[resume]
                 \item The transaction must include the Midgard hub oracle NFT in a reference input.
                 \item Let \code{settlement\_addr} be the script address in the corresponding field of the Midgard hub oracle.
@@ -405,6 +401,7 @@ The \code{retired\_operators} set keeps track of operators after retiring and be
 
 The \code{retired\_operators} minting policy implements structural operations for its key-ordered linked list.
 It is statically parametrized on the \code{hub\_oracle} minting policy.
+There is no re-registration redeemer; operators must recover their bond after maturity before using the Register Operator path again.
 Redeemers:
 \begin{description}
     \item[Init.] Initialize the \code{retired\_operators} set via the Midgard hub oracle.
@@ -412,25 +409,6 @@ Redeemers:
         \begin{enumerate}
             \item The transaction must mint the Midgard hub oracle NFT.
             \item The transaction must Init the \code{retired\_operators} set.
-        \end{enumerate}
-    \item[Re-register Operator.] Transfer an operator node from the \code{retired\_operators} set to the \code{registered\_operators} set.
-      Conditions:
-        \begin{enumerate}
-          \item Let \code{operator} be a redeemer argument, equal to the key of the transferring operator.
-          \item The transaction must include the Midgard hub oracle NFT in a reference input.
-          \item Let \code{registered\_operators} be the policy ID in the corresponding field of the Midgard hub oracle.
-          \item \code{operator} must be Inserted into the registered operators set, as evidenced by minting a \code{registered\_operators} node NFT.
-            Let \code{operator\_origin} and \code{registering\_operator} be corresponding values retrieved from its mint redeemer.
-          \item \code{operator\_origin} must indicate that the operator is registering from the retired set.
-          \item \code{registering\_operator} must be equal to \code{operator}.
-          \item Transaction must Remove a node from the retired operators set.
-            Let this node be \code{removed\_node}.
-          \item ADA of the \code{removed\_node}'s anchor must be preserved.
-          \item Key of \code{removed\_node} must match \code{operator}.
-          \item Let \code{bond\_unlock\_time} be the value retrieved from data of \code{removed\_node}.
-            And let \code{retired\_bond\_unlock\_time} be a redeemer argument.
-          \item \code{bond\_unlock\_time} and \code{retired\_bond\_unlock\_time} must be equal.
-            This allows the registered operators set to reliably use this value.
         \end{enumerate}
     \item[Retire Operator.] Transfer an operator node, unchanged, from the \code{active\_operators} set to the \code{retired\_operators} set.
       Conditions:
@@ -458,7 +436,7 @@ Redeemers:
 \label{h:retired-operators-spending-validator}
 
 The spending validator of \code{retired\_operators\_addr} always forwards to its corresponding minting policy (statically parametrized) and requires the transaction to invoke it.
-It does not allow any in-place modifications to the \code{RegisteredOperator} value of the node \code{data} field.
+It does not allow any in-place modifications to the \code{RetiredOperator} value of the node \code{data} field.
 Conditions:
 \begin{enumerate}
     \item The transaction must mint or burn tokens of the \code{retired\_operators} minting policy.

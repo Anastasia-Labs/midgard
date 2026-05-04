@@ -1,11 +1,14 @@
 use aiken/collection/list
 use aiken/crypto.{VerificationKeyHash}
+use aiken/math.{max}
 use aiken_design_patterns/linked_list
 use cardano/assets.{PolicyId, Value}
 use cardano/transaction.{
   Input, Mint, Output, OutputReference, Redeemer, ScriptPurpose, Transaction,
   ValidityRange,
 }
+use env
+use midgard/common/types.{PosixTime}
 use midgard/common/utils
 use midgard/hub_oracle as hub
 use midgard/operator_directory.{
@@ -21,9 +24,6 @@ use midgard/operator_directory/active_operators.{
 }
 use midgard/operator_directory/registered_operators
 use midgard/operator_directory/retired_operators
-use midgard/protocol_parameters.{
-  inactivity_slashing_penalty, maturity_duration, max_inactivity_strikes,
-}
 use midgard/scheduler
 use midgard/settlement
 use midgard/state_queue
@@ -65,7 +65,10 @@ validator spend(
         // 1. Common validations for spending and reproducing an active operator
         //    node must pass.
         let
-          _new_bond_unlock_time,
+          new_bond_unlock_time,
+          old_bond_unlock_time,
+          active_node_output_data,
+          inactivity_strikes,
           hub_datum,
         <-
           spend_for_updating_bond_unlock_time(
@@ -83,7 +86,18 @@ validator spend(
             validity_range,
           )
 
-        // 2. Transaction must spend a UTxO from state queue with the Commit
+        // 2. The reproduced node must preserve inactivity strike count and
+        //    properly store the monotonic bond unlock time.
+        let expected_active_node_output_data: Data =
+          NodeData {
+            bond_unlock_time: Some(
+              max_bond_unlock_time(new_bond_unlock_time, old_bond_unlock_time),
+            ),
+            inactivity_strikes,
+          }
+        expect active_node_output_data == expected_active_node_output_data
+
+        // 3. Transaction must spend a UTxO from state queue with the Commit
         //    Block Header redeemer. The operator's signature should be
         //    validated there.
         expect state_queue.CommitBlockHeader {
@@ -98,7 +112,7 @@ validator spend(
             redeemers,
           )
 
-        // 3. The operator specified in state queue's redeemer must match the
+        // 4. The operator specified in state queue's redeemer must match the
         //    key of the spending active operator node.
         expect state_queue_redeemer_operator == active_operator
 
@@ -112,7 +126,7 @@ validator spend(
         hub_oracle_ref_input_index,
         settlement_input_index,
         settlement_redeemer_index,
-        new_bond_unlock_time,
+        resolution_time,
       } -> {
         let Transaction {
           inputs,
@@ -127,7 +141,10 @@ validator spend(
         // 1. Common validations for spending and reproducing an active operator
         //    node must pass.
         let
-          computed_new_bond_unlock_time,
+          computed_resolution_time,
+          old_bond_unlock_time,
+          active_node_output_data,
+          inactivity_strikes,
           hub_datum,
         <-
           spend_for_updating_bond_unlock_time(
@@ -145,11 +162,22 @@ validator spend(
             validity_range,
           )
 
-        // 2. The new bond unlock time in the redeemer must be valid for other
+        // 2. The resolution time in the redeemer must be valid for other
         //    contracts to rely on.
-        expect computed_new_bond_unlock_time == new_bond_unlock_time
+        expect computed_resolution_time == resolution_time
 
-        // 3. Transaction must spend a UTxO from settlement with the Attach
+        // 3. The reproduced node must preserve inactivity strike count and
+        //    properly store the monotonic bond unlock time.
+        let expected_active_node_output_data: Data =
+          NodeData {
+            bond_unlock_time: Some(
+              max_bond_unlock_time(resolution_time, old_bond_unlock_time),
+            ),
+            inactivity_strikes,
+          }
+        expect active_node_output_data == expected_active_node_output_data
+
+        // 4. Transaction must spend a UTxO from settlement with the Attach
         //    Resolution Claim redeemer. The operator's signature should be
         //    validated there.
         expect settlement.AttachResolutionClaim {
@@ -286,7 +314,7 @@ validator spend(
           //    With this check in place, the operator's UTxO cannot be spent
           //    for strikes any further, and the node will be free for transfer
           //    to the retired set.
-          expect new_inactivity_strikes <= max_inactivity_strikes
+          expect new_inactivity_strikes <= env.max_inactivity_strikes
 
           // Done.
           True
@@ -326,7 +354,6 @@ validator mint(
         )
       ActivateOperator {
         new_active_operator_key,
-        new_active_operator_bond_unlock_time,
         active_operator_anchor_element_input_index,
         active_operator_anchor_element_output_index,
         active_operator_inserted_node_output_index,
@@ -360,13 +387,9 @@ validator mint(
               redeemers,
             )
 
-          // 2. Newly activated operator must have the bond unlock time which
-          //    comes from the registered operators node.
+          // 2. Newly activated operator must not have any outstanding bond hold.
           let expected_inserted_node_data: Data =
-            NodeData {
-              bond_unlock_time: new_active_operator_bond_unlock_time,
-              inactivity_strikes: 0,
-            }
+            NodeData { bond_unlock_time: None, inactivity_strikes: 0 }
           expect inserted_node_data == expected_inserted_node_data
 
           // Done.
@@ -480,17 +503,17 @@ validator mint(
           if penalize_for_inactivity {
             // 9a. Since retired operators minting script relies on the penalty
             //     flag here, its correctness must be verified.
-            expect inactivity_strikes >= max_inactivity_strikes
+            expect inactivity_strikes >= env.max_inactivity_strikes
 
             // 10a. With enough strikes, anyone can partially slash the
             //      operator,
-            expect self.fee >= inactivity_slashing_penalty
+            expect self.fee >= env.inactivity_slashing_penalty
 
             // Done.
             True
           } else {
             // 9b. The penalty flag must be valid.
-            expect inactivity_strikes < max_inactivity_strikes
+            expect inactivity_strikes < env.max_inactivity_strikes
 
             // 10b. The retiring operator must consent to the transaction.
             expect active_operator_key |> utils.has_signed(extra_signatories)
@@ -506,8 +529,6 @@ validator mint(
           let
             slashed_operator_from_redeemer,
             m_anchor_key,
-            slashed_operator_node_key,
-            _slashed_operator_node_data,
             slashed_operator_node_link,
             hub_datum,
             inputs,
@@ -520,11 +541,7 @@ validator mint(
               self,
             )
 
-          // 1. The operator key indicated in the redeemer must match the key of
-          //    the removed node from the active operators set.
-          expect slashed_operator_node_key == slashed_operator_from_redeemer
-
-          // 2. If operator is currently active, validate scheduler datum is
+          // 1. If operator is currently active, validate scheduler datum is
           //    getting updated. Otherwise, show the currently appointed
           //    operator is different from the slashing operator.
           expect
@@ -564,15 +581,9 @@ fn spend_for_updating_bond_unlock_time(
   reference_inputs: List<Input>,
   mint: Value,
   validity_range: ValidityRange,
-  return: fn(Int, hub.Datum) -> Bool,
+  return: fn(PosixTime, Option<PosixTime>, Data, Int, hub.Datum) -> Bool,
 ) -> Bool {
-  // 1. The new bond unlock time must be equal to the transaction's
-  //    validity range upper bound plus the maturity duration.
-  //    TODO: Does inclusivity of the upper bound matter here?
-  let valid_to = utils.get_inclusive_upper_bound_of_interval(validity_range)
-  let new_bond_unlock_time = valid_to + maturity_duration
-
-  // 2. An element from the active operators directory must be spent and
+  // 1. An element from the active operators directory must be spent and
   //    reproduced without affecting the linked list structure.
   {
     let
@@ -591,23 +602,26 @@ fn spend_for_updating_bond_unlock_time(
         tx_mint: mint,
       )
 
-    // 3. Node's ADA bond must be preserved.
+    // 2. Node's ADA bond must be preserved.
     expect lovelace_change >= 0
 
-    // 4. The spent element must be a node (i.e. not root) such that its key
+    // 3. The spent element must be a node (i.e. not root) such that its key
     //    matches the operator pub key hash specified in the redeemer. This
     //    allows other contracts to rely on the key in the spending redeemer.
     expect Some(active_operator) == m_operator
 
-    // 5. The reproduced node must preserve inactivity strike count and
-    //    properly store the new bond unlock time.
-    expect NodeData { inactivity_strikes, .. } = active_node_input_data
-    let expected_active_node_output_data: Data =
-      NodeData {
-        bond_unlock_time: Some(new_bond_unlock_time),
-        inactivity_strikes,
-      }
-    expect active_node_output_data == expected_active_node_output_data
+    // 4. The input node data is exposed to callers so they can decide whether
+    //    the output hold should be the fresh maturity time or a monotonic value.
+    expect NodeData {
+      inactivity_strikes,
+      bond_unlock_time: old_bond_unlock_time,
+    } = active_node_input_data
+
+    // 5. The fresh bond unlock time must be equal to the transaction's
+    //    validity range upper bound plus the maturity duration.
+    //    TODO: Does inclusivity of the upper bound matter here?
+    let valid_to = utils.get_inclusive_upper_bound_of_interval(validity_range)
+    let new_bond_unlock_time = valid_to + env.maturity_duration
 
     // 6. Transaction must have the hub oracle's UTxO referenced.
     let hub_datum =
@@ -617,9 +631,26 @@ fn spend_for_updating_bond_unlock_time(
         hub_oracle_ref_input_index,
       )
 
-    return(new_bond_unlock_time, hub_datum)
+    return(
+      new_bond_unlock_time,
+      old_bond_unlock_time,
+      active_node_output_data,
+      inactivity_strikes,
+      hub_datum,
+    )
   }
     |> finalize_linked_list(active_operators_mint_script_hash)
+}
+
+fn max_bond_unlock_time(
+  new_bond_unlock_time: PosixTime,
+  old_bond_unlock_time: Option<PosixTime>,
+) -> PosixTime {
+  when old_bond_unlock_time is {
+    None -> new_bond_unlock_time
+    Some(old_bond_unlock_time) ->
+      max(new_bond_unlock_time, old_bond_unlock_time)
+  }
 }
 
 /// If the subject operator is currently appointed active, this function
