@@ -2,7 +2,7 @@ use aiken/crypto.{ScriptHash}
 use cardano/address.{Address}
 use cardano/assets.{PolicyId}
 use cardano/transaction.{OutputReference, Transaction}
-use midgard/common/constants
+use env
 use midgard/computation_thread as ct
 use midgard/fraud_proofs/common.{cancel, finalize}
 use midgard/fraud_proofs/zero_input/step_02.{Args, Datum, SpendRedeemer, State}
@@ -62,7 +62,7 @@ validator main(
         expect Some(State { bad_tx_spend_inputs }) = m_input_state_data
 
         // 2. The merkle tree of inputs must be empty
-        expect bad_tx_spend_inputs == constants.empty_merkle_tree_root
+        expect bad_tx_spend_inputs == env.empty_merkle_tree_root
 
         // Done.
         True
