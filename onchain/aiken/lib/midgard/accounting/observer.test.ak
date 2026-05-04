@@ -1,7 +1,8 @@
 use aiken/collection/dict
-use cardano/assets.{ada_asset_name, ada_policy_id}
+use aiken/fuzz
+use cardano/assets.{Lovelace, Value, ada_asset_name, ada_policy_id}
 use cardano/fuzz as cardano_fuzz
-use midgard/payout.{separate_ada_and_remove_auth_nft}
+use midgard/accounting/observer.{separate_ada_and_remove_auth_nft}
 
 const target_policy_id = #"01"
 

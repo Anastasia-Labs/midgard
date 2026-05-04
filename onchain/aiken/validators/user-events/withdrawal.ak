@@ -1,14 +1,14 @@
-use aiken/builtin
 use aiken/crypto.{ScriptHash}
 use aiken_design_patterns/singular_utxo_indexer
 use cardano/assets.{PolicyId}
 use cardano/transaction.{
-  InlineDatum, Input, Mint, NoDatum, Output, OutputReference, Transaction,
+  InlineDatum, Input, Mint, Output, OutputReference, Transaction,
 }
+use env.{withdrawal_min_ada}
+use midgard/accounting/payout
 use midgard/common/utils.{plutarch_phas, value_pairs_to_value_strict}
 use midgard/hub_oracle as hub
 use midgard/ledger_state
-use midgard/payout
 use midgard/settlement
 use midgard/user_events
 use midgard/user_events/withdrawal.{
@@ -117,7 +117,12 @@ validator spend(hub_oracle: ScriptHash) {
         // 5a. Initiation of a payout accumulator can only happen for valid
         //     withdrawals.
         expect ledger_state.WithdrawalInfo {
-          body: ledger_state.WithdrawalBody { l2_value },
+          body: ledger_state.WithdrawalBody {
+            l2_value,
+            l1_address,
+            l1_datum,
+            ..
+          },
           validity: ledger_state.WithdrawalIsValid,
           ..
         } = withdrawal_event_info
@@ -137,8 +142,9 @@ validator spend(hub_oracle: ScriptHash) {
         // 7a. Payout UTxO must only hold the L2 value of the withdrawn UTxO.
         //     The rest are recovered from the settlement tree at
         //     ConcludeWithdrawal time.
-        let expected_payout_datum: Data = payout.Datum { l2_value }
-        expect output_datum_data == InlineDatum(expected_payout_datum)
+        let expected_payout_datum: Data =
+          payout.Datum { l2_value, l1_address, l1_datum }
+        expect output_datum_data == expected_payout_datum
 
         // 8a. Withdrawal must go to the payout contract.
         expect output_address == payout_addr
@@ -173,7 +179,7 @@ validator spend(hub_oracle: ScriptHash) {
           ledger_state.unsafe_event_to_key_value_pair(withdrawal_event)
         //
         expect ledger_state.WithdrawalInfo {
-          body: ledger_state.WithdrawalBody { l1_address, l1_datum },
+          body: ledger_state.WithdrawalBody { l1_address, l1_datum, .. },
           ..
         } as coerced_withdrawal_info: ledger_state.WithdrawalInfo =
           withdrawal_event_info
@@ -253,7 +259,7 @@ validator mint(hub_oracle: ScriptHash) {
     //    only valid withdrawals can initialize payout accumulators.
     expect ledger_state.WithdrawalInfo {
       validity: ledger_state.WithdrawalIsValid,
-      body: ledger_state.WithdrawalBody { l2_value },
+      body: ledger_state.WithdrawalBody { l2_value, .. },
       ..
     } = withdrawal_info_data
 
