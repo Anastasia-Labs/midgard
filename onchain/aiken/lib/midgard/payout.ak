@@ -1,7 +1,9 @@
+use aiken/builtin
+use aiken/collection/dict.{Dict}
 use cardano/address.{Address}
-use cardano/assets.{AssetName}
-use cardano/transaction.{OutputReference}
-use midgard/common/types.{Proof, ValuePairs}
+use cardano/assets.{AssetName, Lovelace, PolicyId, Value, ada_policy_id}
+use cardano/transaction.{Datum as CardanoDatum, OutputReference}
+use midgard/common/types.{ValuePairs}
 
 pub type Datum {
   l2_value: ValuePairs,
@@ -10,20 +12,20 @@ pub type Datum {
 }
 
 pub type AssetsToAdd {
-  Lovelace {
+  AddLovelace {
     reserve_addr: Address,
     reserve_input_index: Int,
     reserve_redeemer_index: Int,
     m_reserve_change_output_index: Option<Int>,
   }
-  CardanoAssets {
+  AddCardanoAssets {
     assets: ValuePairs,
     reserve_addr: Address,
     reserve_input_index: Int,
     reserve_redeemer_index: Int,
     reserve_change_output_index: Int,
   }
-  MidgardAssets {
+  AddMidgardAssets {
     policy_id_to_mint: PolicyId,
     assets_to_mint: Pairs<AssetName, Int>,
     quantity_to_mint: Int,

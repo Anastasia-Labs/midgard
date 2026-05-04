@@ -32,6 +32,7 @@ validator spend(payout_policy_id: PolicyId, payout_addr: Address) {
         payout_nft_asset_name,
         payout_input_index,
       )
+
     // 2. Specified payout input must be getting spend for fund accumulation
     //    with a matching set of arguments.
     expect Pair(Spend(payout_redeemer_outref), payout_spend_redeemer_data) =
@@ -44,13 +45,13 @@ validator spend(payout_policy_id: PolicyId, payout_addr: Address) {
     expect payout_acc_args_data = own_acc_args_data
 
     when assets_to_add is {
-      payout.Lovelace {
+      payout.AddLovelace {
         reserve_addr,
         reserve_input_index,
         m_reserve_change_output_index,
         ..
       } |
-      payout.CardanoAssets {
+      payout.AddCardanoAssets {
         reserve_addr,
         reserve_input_index,
         m_reserve_change_output_index,
@@ -72,7 +73,7 @@ validator spend(payout_policy_id: PolicyId, payout_addr: Address) {
         // Done.
         True
       }
-      payout.MidgardAssets { .. } ->
+      payout.AddMidgardAssets { .. } ->
         fail @"Specified token must be minted and not withdrawn from Midgard reserve"
     }
   }

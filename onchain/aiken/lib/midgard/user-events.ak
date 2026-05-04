@@ -211,8 +211,8 @@ fn validate_event_nft_burn(
       param: nonce_asset_name,
     )
 
-  // 1. The specified NFT must be burnt.
-  expect assets.quantity_of(mint, own_policy, nonce_asset_name) == -1
+  // 1. Only the specified NFT from this policy must be burnt.
+  expect mint |> utils.validate_mint(own_policy, nonce_asset_name, -1)
 
   // 2. Witness staking script corresponding to the NFT must be getting
   //    unregistered.

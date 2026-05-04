@@ -12,8 +12,9 @@ use midgard/common/utils
 use midgard/hub_oracle as hub
 use midgard/ledger_state
 use midgard/payout.{
-  AddFunds, AddFundsRedeemer, AssetsToAdd, BurnPayout, ConcludeWithdrawal, Datum,
-  MintPayout, MintRedeemer, SpendRedeemer, separate_ada_and_remove_auth_nft,
+  AddCardanoAssets, AddFunds, AddLovelace, AddMidgardAssets, AssetsToAdd,
+  BurnPayout, ConcludeWithdrawal, Datum, MintPayout, MintRedeemer, SpendRedeemer,
+  separate_ada_and_remove_auth_nft,
 }
 use midgard/reserve
 use midgard/settlement
@@ -82,7 +83,9 @@ validator mint(withdrawal_addr: Address) {
             ..
           },
         } = inputs |> list.expect_at(payout_input_index)
-        expect payout_input_value |> assets.has_nft_strict(own_policy, payout_asset_name)
+        expect
+          payout_input_value
+            |> assets.has_nft_strict(own_policy, payout_asset_name)
 
         // 3. Validate correctness of the asset name name in redeemer.
         expect payout_asset_name == payout_input_nft_asset_name
@@ -253,7 +256,7 @@ fn validate_asset_accumulation(
   expect p1_lovelace >= p0_lovelace
 
   when assets_to_add is {
-    Lovelace {
+    AddLovelace {
       reserve_addr,
       reserve_input_index,
       reserve_redeemer_index,
@@ -306,7 +309,7 @@ fn validate_asset_accumulation(
         }
       }
     }
-    CardanoAssets {
+    AddCardanoAssets {
       assets,
       reserve_addr,
       reserve_input_index,
@@ -351,7 +354,7 @@ fn validate_asset_accumulation(
       // Done.
       True
     }
-    MidgardAsset { .. } -> todo
+    AddMidgardAssets { .. } -> todo
   }
 }
 

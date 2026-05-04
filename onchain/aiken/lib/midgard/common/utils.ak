@@ -2,6 +2,7 @@ use aiken/builtin
 use aiken/cbor
 use aiken/collection/dict.{Dict}
 use aiken/collection/list
+use aiken/collection/pairs
 use aiken/crypto.{
   ScriptHash, VerificationKey, VerificationKeyHash, blake2b_224, blake2b_256,
 }
@@ -10,7 +11,7 @@ use aiken_design_patterns/merkelized_validator
 use aiken_design_patterns/stake_validator
 use aiken_design_patterns/validity_range_normalization as vrn
 use cardano/address.{Address, Script}
-use cardano/assets.{AssetName, PolicyId, Value, tokens}
+use cardano/assets.{AssetName, Lovelace, PolicyId, Value, ada_policy_id, tokens}
 use cardano/transaction.{
   InlineDatum, Input, Output, OutputReference, Redeemer, ScriptPurpose, Spend,
 }
@@ -79,8 +80,13 @@ pub fn all_value_pairs_quantities_are_positive(value_pairs: ValuePairs) -> Bool 
       )
 }
 
+pub fn value_to_value_pairs(v: Value) -> ValuePairs {
+  v |> assets.to_pairs |> pairs.map(fn(_k, v) { v |> dict.to_pairs })
+}
+
 /// Convert `ValuePairs` to `Value`, requiring all quantities to be positive
-/// and requiring the first policy entry to be exactly Lovelace.
+/// and requiring the first policy entry to be Lovelace with at least
+/// `min_required_ada` quantity.
 pub fn value_pairs_to_value_strict(
   value_pairs: ValuePairs,
   min_required_ada: Lovelace,
@@ -97,7 +103,7 @@ pub fn value_pairs_to_value_strict(
 }
 
 /// Convert a `ValuePairs` to `Value`. This fails on malformed pairs, but won't
-/// require ADA and head and all around positive quantities.
+/// require ADA at head and all around positive quantities.
 pub fn unsafe_value_pairs_to_value(value_pairs: ValuePairs) -> Value {
   assets.from_asset_list(value_pairs)
 }
@@ -110,21 +116,6 @@ pub fn validate_mint(
 ) -> Bool {
   let mints_policy = dict.to_pairs(tokens(mints, expected_minting_policy))
   mints_policy == [Pair(expected_minting_name, expected_minting_amt)]
-}
-
-pub fn safe_list_last(elems: List<a>) -> a {
-  expect Some(last_elem) = list.last(elems)
-  last_elem
-}
-
-pub fn safe_list_head(elems: List<a>) -> a {
-  expect Some(last_elem) = list.head(elems)
-  last_elem
-}
-
-pub fn safe_list_init(elems: List<a>) {
-  expect Some(elems_except_last) = list.init(elems)
-  elems_except_last
 }
 
 /// Returns the quantity of all tokens with the policyId

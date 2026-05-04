@@ -1,3 +1,4 @@
+use aiken/fuzz
 use cardano/assets.{Lovelace, PolicyId, Value, ada_asset_name, ada_policy_id}
 use cardano/fuzz as cardano_fuzz
 use midgard/common/utils
@@ -81,5 +82,37 @@ test success__get_lovelace_and_assets__lovelace_only(
   and {
     lovelace == assets.lovelace_of(v),
     v_assets == dict.empty,
+  }
+}
+
+// COMMENTED OUT: Waiting for Aiken's next release.
+// 
+// const asset_name_fuzzer = fn(_p: PolicyId) { cardano_fuzz.asset_name() }
+//
+// const quantity_fuzzer = fn(_p: PolicyId, _a: AssetName) { fuzz.int_at_least(1) }
+// 
+// test success__all_value_pairs_quantities_are_positive(
+//   v via cardano_fuzz.value_with(
+//     assets.from_lovelace(baseline_lovelace),
+//     fuzz.list(cardano_fuzz.policy_id()),
+//     asset_name_fuzzer,
+//     quantity_fuzzer,
+//   ),
+// ) {
+//   all_value_pairs_quantities_are_positive(v |> value_to_value_pairs)
+// }
+
+test roundtrip__value_to_pairs_to_value(
+  v0 via cardano_fuzz.value(assets.from_lovelace(baseline_lovelace)),
+) {
+  let v_pairs = value_to_value_pairs(v0)
+  let v1 = v_pairs |> value_pairs_to_value_strict(baseline_lovelace)
+  let v2 = v_pairs |> unsafe_value_pairs_to_value
+  let v_pairs2 = v1 |> value_to_value_pairs
+  let v3 = v_pairs2 |> unsafe_value_pairs_to_value
+  and {
+    v0 == v1,
+    v0 == v2,
+    v0 == v3,
   }
 }

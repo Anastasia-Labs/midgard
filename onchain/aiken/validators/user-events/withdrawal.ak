@@ -3,7 +3,7 @@ use aiken/crypto.{ScriptHash}
 use aiken_design_patterns/singular_utxo_indexer
 use cardano/assets.{PolicyId}
 use cardano/transaction.{
-  Input, Mint, NoDatum, Output, OutputReference, Transaction,
+  InlineDatum, Input, Mint, NoDatum, Output, OutputReference, Transaction,
 }
 use midgard/common/utils.{plutarch_phas, value_pairs_to_value_strict}
 use midgard/hub_oracle as hub
