@@ -358,7 +358,7 @@ export const buildNewBlockEntry = (
     const { nodeDatum: updatedNodeDatum, header: newHeader } =
       yield* SDK.updateLatestBlocksDatumAndGetTheNewHeaderProgram(
         initLucidAPI,
-        appendedUTxO.datum,
+        appendedUTxO,
         utxosRoot,
         txsRoot,
         depositsRoot,

@@ -15,7 +15,7 @@ import {
 import { incompleteHubOracleInitTxProgram } from "@/hub-oracle.js";
 import { incompleteSchedulerInitTxProgram } from "@/scheduler.js";
 import { incompleteFraudProofCatalogueInitTxProgram } from "@/fraud-proof/catalogue.js";
-import { incompleteInitStateQueueTxProgram } from "@/state-queue.js";
+import { incompleteInitStateQueueTxProgram, ROOT_KEY } from "@/state-queue.js";
 import { incompleteActiveOperatorInitTxProgram } from "@/active-operators.js";
 import { incompleteRegisteredOperatorInitTxProgram } from "@/registered-operators.js";
 import { incompleteRetiredOperatorInitTxProgram } from "@/retired-operators.js";
@@ -82,6 +82,7 @@ export const incompleteInitializationTxProgram = (
       {
         validator: params.midgardValidators.stateQueue,
         genesisTime: genesisTime,
+        rootKey: ROOT_KEY,
       },
     );
 

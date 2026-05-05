@@ -54,13 +54,13 @@ import {
   ActiveOperatorUTxO,
   FetchActiveOperatorParams,
   fetchActiveOperatorUTxOs,
-} from "@/active-operators.js";
+} from "@/operator-directory/active-operators.js";
 import {
   RetiredOperatorMintRedeemer,
   RetiredOperatorUTxO,
   FetchRetiredOperatorParams,
   fetchRetiredOperatorUTxOs,
-} from "@/retired-operators.js";
+} from "@/operator-directory/retired-operators.js";
 
 export const ResolutionClaimSchema = Data.Object({
   resolutionTime: POSIXTimeSchema,
@@ -281,10 +281,11 @@ export const incompleteUpdateBondHoldNewSettlementTxProgram = (
   Effect.gen(function* () {
     const spendRedeemer: ActiveOperatorSpendRedeemer = {
       UpdateBondHoldNewSettlement: {
+        activeNodeInputIndex: 0n,
         activeNodeOutputIndex: 0n,
         hubOracleRefInputIndex: 0n,
-        settlementQueueInputIndex: 0n,
-        settlementQueueRedeemerIndex: 0n,
+        settlementInputIndex: 0n,
+        settlementRedeemerIndex: 0n,
         newBondUnlockTime: params.newBondUnlockTime,
       },
     };
@@ -299,7 +300,7 @@ export const incompleteUpdateBondHoldNewSettlementTxProgram = (
     );
 
     const activeOperatorsInputUtxo = activeOperatorsUTxOs.find(
-      (utxo) => utxo.datum.key === params.activeOperatorParams.operator,
+      (utxo) => utxo.datum.link === params.activeOperatorParams.operator,
     );
     if (!activeOperatorsInputUtxo) {
       return yield* Effect.fail(
@@ -310,10 +311,15 @@ export const incompleteUpdateBondHoldNewSettlementTxProgram = (
       );
     }
 
+    const bondUnlockTime = params.newBondUnlockTime;
+
     const updatedDatum: ActiveOperatorDatum = {
       ...activeOperatorsInputUtxo.datum,
-      bondUnlockTime: params.newBondUnlockTime,
+      data: {
+        Node: bondUnlockTime,
+      },
     };
+
     const updatedDatumCBOR = Data.to(updatedDatum, ActiveOperatorDatum);
 
     const hubOracleRefUTxO = yield* fetchHubOracleUTxOProgram(lucid, {
@@ -586,8 +592,9 @@ export const createSlashedOperatorMintRedeemerCBOR = (
       RemoveOperatorBadSettlement: {
         slashedActiveOperatorKey: slashedOperatorKey,
         hubOracleRefInputIndex: 0n,
+        activeOperatorAnchorElementInputIndex: 0n,
         activeOperatorSlashedNodeInputIndex: 0n,
-        activeOperatorAnchorNodeInputIndex: 0n,
+        activeOperatorAnchorElementOutputIndex: 0n,
         settlementInputIndex: 0n,
         settlementRedeemerIndex: 0n,
       },
@@ -599,8 +606,9 @@ export const createSlashedOperatorMintRedeemerCBOR = (
       RemoveOperatorBadSettlement: {
         slashedRetiredOperatorKey: slashedOperatorKey,
         hubOracleRefInputIndex: 0n,
+        retiredOperatorAnchorElementInputIndex: 0n,
         retiredOperatorSlashedNodeInputIndex: 0n,
-        retiredOperatorAnchorNodeInputIndex: 0n,
+        retiredOperatorAnchorElementOutputIndex: 0n,
         settlementInputIndex: 0n,
         settlementRedeemerIndex: 0n,
       },

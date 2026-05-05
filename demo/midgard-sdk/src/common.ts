@@ -18,14 +18,14 @@ import {
   toHex,
 } from "@lucid-evolution/lucid";
 import { blake2b } from "@noble/hashes/blake2.js";
-import { ActiveOperatorUTxO } from "./active-operators.js";
-import { RetiredOperatorUTxO } from "./retired-operators.js";
+import { ActiveOperatorUTxO } from "@/operator-directory/active-operators.js";
+import { RetiredOperatorUTxO } from "@/operator-directory/retired-operators.js";
 import {
   Bech32DeserializationError,
   HashingError,
   LucidError,
   UnauthenticUtxoError,
-} from "./errors.js";
+} from "@/errors.js";
 import { getStateToken } from "./internals.js";
 
 export * from "./errors.js";
