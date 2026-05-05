@@ -84,7 +84,7 @@ validator mint(withdrawal_addr: Address) {
         //    have assets other than ADA and auth NFT.
         expect
           payout_input_value
-            |> assets.has_nft_strict(own_policy, payout_asset_name)
+            |> assets.has_nft(own_policy, payout_asset_name)
 
         // 4. Produced UTxO from the payout accumulator must correspond to the
         //    initial withdrawal order.
