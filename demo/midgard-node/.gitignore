@@ -3,6 +3,8 @@
 .eslintrc.json
 node_modules
 dist
+cardano
+data
 *.tgz
 .direnv
 *mpt-db/*

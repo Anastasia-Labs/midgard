@@ -1,0 +1,11 @@
+node_modules
+dist
+coverage
+
+db
+cardano
+deploymentInfo
+tempo-data
+
+.env
+*.log
