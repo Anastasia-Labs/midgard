@@ -624,7 +624,7 @@ const publishMissingReferenceScriptTargets = (
                 try: () =>
                   tx.complete({
                     coinSelection: false,
-                    localUPLCEval: true,
+                    localUPLCEval: false,
                     presetWalletInputs: [...selectedFundingInputs],
                   }),
                 catch: (cause) =>

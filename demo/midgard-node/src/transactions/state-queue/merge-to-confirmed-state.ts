@@ -17,7 +17,6 @@ import * as SDK from "@al-ft/midgard-sdk";
 import {
   Address,
   LucidEvolution,
-  Script,
   TxSignBuilder,
 } from "@lucid-evolution/lucid";
 import { Effect, Metric, Ref } from "effect";
@@ -91,16 +90,15 @@ const getStateQueueLength = (
  *
  * @param lucid - The LucidEvolution instance.
  * @param fetchConfig - The configuration for fetching data.
- * @param spendScript - State queue's spending script.
- * @param mintScript - State queue's minting script.
+ * @param contracts - The Midgard contract bundle; the merge tx attaches the
+ *                    state queue spending and minting scripts from it.
  * @returns An Effect that resolves when the merge transaction is built and
  *          submitted.
  */
 export const buildAndSubmitMergeTx = (
   lucid: LucidEvolution,
   fetchConfig: SDK.StateQueueFetchConfig,
-  spendScript: Script,
-  mintScript: Script,
+  contracts: SDK.MidgardValidators,
 ): Effect.Effect<
   void,
   | SDK.CmlDeserializationError
@@ -164,8 +162,8 @@ export const buildAndSubmitMergeTx = (
         {
           confirmedUTxO,
           firstBlockUTxO,
-          stateQueueSpendingScript: spendScript,
-          stateQueueMintingScript: mintScript,
+          stateQueueSpendingScript: contracts.stateQueue.spendingScript,
+          stateQueueMintingScript: contracts.stateQueue.mintingScript,
         },
       ).pipe(Effect.withSpan("mergeToConfirmedStateProgram"));
 
