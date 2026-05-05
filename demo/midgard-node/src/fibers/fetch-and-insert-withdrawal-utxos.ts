@@ -1,7 +1,12 @@
 import * as SDK from "@al-ft/midgard-sdk";
 import { Effect, Ref, Schedule } from "effect";
 import { Data, LucidEvolution } from "@lucid-evolution/lucid";
-import { Database, Globals, Lucid, MidgardContracts } from "@/services/index.js";
+import {
+  Database,
+  Globals,
+  Lucid,
+  MidgardContracts,
+} from "@/services/index.js";
 import { DatabaseError } from "@/database/utils/common.js";
 import { WithdrawalsDB } from "@/database/index.js";
 
@@ -59,10 +64,7 @@ const withdrawalUTxOToEntry = (
           body.l2_outref,
           SDK.OutputReference,
         ),
-        [WithdrawalsDB.Columns.L2_OWNER]: Buffer.from(
-          body.l2_owner,
-          "hex",
-        ),
+        [WithdrawalsDB.Columns.L2_OWNER]: Buffer.from(body.l2_owner, "hex"),
         [WithdrawalsDB.Columns.L2_VALUE]: cborBuffer(body.l2_value, SDK.Value),
         [WithdrawalsDB.Columns.L1_ADDRESS]: cborBuffer(
           body.l1_address,
@@ -94,7 +96,7 @@ const withdrawalUTxOToEntry = (
       }),
   });
 
-const reconcileVisibleWithdrawalUTxOs = (
+export const reconcileVisibleWithdrawalUTxOs = (
   config?: Pick<
     SDK.WithdrawalFetchConfig,
     "inclusionTimeLowerBound" | "inclusionTimeUpperBound"

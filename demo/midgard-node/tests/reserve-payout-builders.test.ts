@@ -1,5 +1,4 @@
 import { describe, expect, it } from "vitest";
-import { readFileSync } from "node:fs";
 import { Effect } from "effect";
 import {
   CML,
@@ -29,6 +28,7 @@ import {
 } from "@/transactions/reserve-payout.js";
 import { AlwaysSucceedsContract } from "@/services/always-succeeds.js";
 import { withRealStateQueueAndOperatorContracts } from "@/services/midgard-contracts.js";
+import { loadPhasMembershipWithdrawalScript } from "@/phas-membership.js";
 import * as SDK from "@al-ft/midgard-sdk";
 
 const mkUtxo = (
@@ -49,38 +49,9 @@ const scriptRef = {
 
 const EMULATOR_PROTOCOL_PARAMETERS = {
   ...PROTOCOL_PARAMETERS_DEFAULT,
-  maxTxSize: 65_536,
+  maxTxSize: PROTOCOL_PARAMETERS_DEFAULT.maxTxSize,
   maxCollateralInputs: 3,
 } as const;
-
-const REAL_BLUEPRINT_PATH = new URL(
-  "../../../onchain/aiken/plutus.json",
-  import.meta.url,
-);
-
-const loadPhasMembershipWithdrawalScript = (): Script => {
-  const blueprint = JSON.parse(readFileSync(REAL_BLUEPRINT_PATH, "utf8")) as {
-    readonly validators?: readonly {
-      readonly title?: unknown;
-      readonly compiledCode?: unknown;
-    }[];
-  };
-  const validator = blueprint.validators?.find(
-    (candidate) => candidate.title === "phas.membership.withdraw",
-  );
-  if (
-    typeof validator?.compiledCode !== "string" ||
-    validator.compiledCode.length === 0
-  ) {
-    throw new Error(
-      `Missing PHAS membership validator in ${REAL_BLUEPRINT_PATH.toString()}`,
-    );
-  }
-  return {
-    type: "PlutusV3",
-    script: validator.compiledCode,
-  };
-};
 
 const hashHexBlake2b256 = (hex: string): Promise<string> =>
   Effect.runPromise(SDK.hashHexWithBlake2b256(hex));
@@ -144,9 +115,27 @@ const findReferenceScriptUtxo = (
   return utxo;
 };
 
+const findPureAdaUtxo = (utxos: readonly UTxO[], lovelace: bigint): UTxO => {
+  const utxo = utxos.find(
+    (candidate) =>
+      candidate.scriptRef === undefined &&
+      Object.keys(candidate.assets).length === 1 &&
+      candidate.assets.lovelace === lovelace,
+  );
+  if (utxo === undefined) {
+    throw new Error(
+      `Missing pure ADA UTxO with ${lovelace.toString()} lovelace`,
+    );
+  }
+  return utxo;
+};
+
 const submitWithWallet = async (tx: TxSignBuilder): Promise<string> => {
   try {
     const signed = await tx.sign.withWallet().complete();
+    expect(signed.toCBOR().length / 2).toBeLessThanOrEqual(
+      PROTOCOL_PARAMETERS_DEFAULT.maxTxSize,
+    );
     return await signed.submit();
   } catch (cause) {
     const message =
@@ -278,6 +267,29 @@ const makeReservePayoutBuilderFixture = async () => {
       operator,
       beneficiary,
       makeSeededScriptAccount({
+        address: operator.address,
+        assets: { lovelace: 10_000_000n },
+      }),
+      makeSeededScriptAccount({
+        address: operator.address,
+        assets: { lovelace: 11_000_000n },
+      }),
+      makeSeededScriptAccount({
+        address: operator.address,
+        assets: { lovelace: 3_000_000n },
+        scriptRef: contracts.reserve.spendingScript,
+      }),
+      makeSeededScriptAccount({
+        address: operator.address,
+        assets: { lovelace: 3_000_000n },
+        scriptRef: contracts.payout.spendingScript,
+      }),
+      makeSeededScriptAccount({
+        address: operator.address,
+        assets: { lovelace: 3_000_000n },
+        scriptRef: contracts.payout.mintingScript,
+      }),
+      makeSeededScriptAccount({
         address: hubOracleAddress,
         assets: { lovelace: 3_000_000n, [hubUnit]: 1n },
         inlineDatum: hubDatumCbor,
@@ -311,6 +323,7 @@ const makeReservePayoutBuilderFixture = async () => {
   if (reserveInput === undefined) {
     throw new Error("Missing seeded reserve input");
   }
+  const referenceUtxos = await lucid.utxosAt(operator.address);
 
   return {
     contracts,
@@ -319,6 +332,24 @@ const makeReservePayoutBuilderFixture = async () => {
     lucid,
     payoutInput,
     payoutUnit,
+    feeInputs: [
+      findPureAdaUtxo(referenceUtxos, 10_000_000n),
+      findPureAdaUtxo(referenceUtxos, 11_000_000n),
+    ],
+    referenceScripts: {
+      reserveSpending: findReferenceScriptUtxo(
+        referenceUtxos,
+        contracts.reserve.spendingScript,
+      ),
+      payoutSpending: findReferenceScriptUtxo(
+        referenceUtxos,
+        contracts.payout.spendingScript,
+      ),
+      payoutMinting: findReferenceScriptUtxo(
+        referenceUtxos,
+        contracts.payout.mintingScript,
+      ),
+    },
     reserveInput,
   };
 };
@@ -438,6 +469,57 @@ const makeReserveLifecycleBuilderFixture = async ({
       beneficiary,
       makeSeededScriptAccount({
         address: operator.address,
+        assets: { lovelace: 10_000_000n },
+      }),
+      makeSeededScriptAccount({
+        address: operator.address,
+        assets: { lovelace: 11_000_000n },
+      }),
+      makeSeededScriptAccount({
+        address: operator.address,
+        assets: { lovelace: 12_000_000n },
+      }),
+      makeSeededScriptAccount({
+        address: operator.address,
+        assets: { lovelace: 13_000_000n },
+      }),
+      makeSeededScriptAccount({
+        address: operator.address,
+        assets: { lovelace: 3_000_000n },
+        scriptRef: contracts.deposit.mintingScript,
+      }),
+      makeSeededScriptAccount({
+        address: operator.address,
+        assets: { lovelace: 3_000_000n },
+        scriptRef: contracts.deposit.spendingScript,
+      }),
+      makeSeededScriptAccount({
+        address: operator.address,
+        assets: { lovelace: 3_000_000n },
+        scriptRef: contracts.withdrawal.mintingScript,
+      }),
+      makeSeededScriptAccount({
+        address: operator.address,
+        assets: { lovelace: 3_000_000n },
+        scriptRef: contracts.withdrawal.spendingScript,
+      }),
+      makeSeededScriptAccount({
+        address: operator.address,
+        assets: { lovelace: 3_000_000n },
+        scriptRef: contracts.reserve.spendingScript,
+      }),
+      makeSeededScriptAccount({
+        address: operator.address,
+        assets: { lovelace: 3_000_000n },
+        scriptRef: contracts.payout.spendingScript,
+      }),
+      makeSeededScriptAccount({
+        address: operator.address,
+        assets: { lovelace: 3_000_000n },
+        scriptRef: contracts.payout.mintingScript,
+      }),
+      makeSeededScriptAccount({
+        address: operator.address,
         assets: { lovelace: 3_000_000n },
         scriptRef: depositWitnessScript,
       }),
@@ -445,15 +527,6 @@ const makeReserveLifecycleBuilderFixture = async ({
         address: operator.address,
         assets: { lovelace: 3_000_000n },
         scriptRef: withdrawalWitnessScript,
-      }),
-      makeSeededScriptAccount({
-        address: operator.address,
-        assets: { lovelace: 3_000_000n },
-        scriptRef: membershipProofScript,
-      }),
-      makeSeededScriptAccount({
-        address: operator.address,
-        assets: { lovelace: 10_000_000n },
       }),
       makeSeededScriptAccount({
         address: hubOracleAddress,
@@ -503,13 +576,41 @@ const makeReserveLifecycleBuilderFixture = async ({
   );
   const referenceUtxos = await lucid.utxosAt(operator.address);
   const referenceScripts = {
+    depositMinting: findReferenceScriptUtxo(
+      referenceUtxos,
+      contracts.deposit.mintingScript,
+    ),
+    depositSpending: findReferenceScriptUtxo(
+      referenceUtxos,
+      contracts.deposit.spendingScript,
+    ),
     depositWitnessCertificate: findReferenceScriptUtxo(
       referenceUtxos,
       depositWitnessScript,
     ),
+    withdrawalMinting: findReferenceScriptUtxo(
+      referenceUtxos,
+      contracts.withdrawal.mintingScript,
+    ),
+    withdrawalSpending: findReferenceScriptUtxo(
+      referenceUtxos,
+      contracts.withdrawal.spendingScript,
+    ),
     withdrawalWitnessCertificate: findReferenceScriptUtxo(
       referenceUtxos,
       withdrawalWitnessScript,
+    ),
+    reserveSpending: findReferenceScriptUtxo(
+      referenceUtxos,
+      contracts.reserve.spendingScript,
+    ),
+    payoutSpending: findReferenceScriptUtxo(
+      referenceUtxos,
+      contracts.payout.spendingScript,
+    ),
+    payoutMinting: findReferenceScriptUtxo(
+      referenceUtxos,
+      contracts.payout.mintingScript,
     ),
   };
 
@@ -522,6 +623,12 @@ const makeReserveLifecycleBuilderFixture = async ({
       datum: depositDatum,
     }),
     depositUnit,
+    feeInputs: [
+      findPureAdaUtxo(referenceUtxos, 10_000_000n),
+      findPureAdaUtxo(referenceUtxos, 11_000_000n),
+      findPureAdaUtxo(referenceUtxos, 12_000_000n),
+      findPureAdaUtxo(referenceUtxos, 13_000_000n),
+    ],
     hubOracleRefInput,
     lucid,
     membershipProof: [] as SDK.Proof,
@@ -734,18 +841,22 @@ describe("reserve/payout transaction builder primitives", () => {
   it("builds, locally evaluates, and submits reserve funding plus payout conclusion", async () => {
     const {
       contracts,
+      feeInputs,
       hubOracleRefInput,
       l1Address,
       lucid,
       payoutInput,
       payoutUnit,
+      referenceScripts,
       reserveInput,
     } = await makeReservePayoutBuilderFixture();
 
     const addFunds = await Effect.runPromise(
       buildAddReserveFundsToPayoutTxProgram(lucid, contracts, {
         hubOracleRefInput,
+        feeInput: feeInputs[0],
         payoutInput,
+        referenceScripts,
         reserveInput,
       }),
     );
@@ -766,7 +877,9 @@ describe("reserve/payout transaction builder primitives", () => {
     const conclude = await Effect.runPromise(
       buildConcludePayoutTxProgram(lucid, contracts, {
         hubOracleRefInput,
+        feeInput: feeInputs[1],
         payoutInput: fundedPayout,
+        referenceScripts,
       }),
     );
     expect(conclude.layout.l1OutputIndex).toBe(0n);
@@ -790,6 +903,7 @@ describe("reserve/payout transaction builder primitives", () => {
       contracts,
       deposit,
       depositUnit,
+      feeInputs,
       hubOracleRefInput,
       lucid,
       membershipProof,
@@ -804,6 +918,7 @@ describe("reserve/payout transaction builder primitives", () => {
     const absorb = await Effect.runPromise(
       buildAbsorbConfirmedDepositToReserveTxProgram(lucid, contracts, {
         deposit,
+        feeInput: feeInputs[0],
         hubOracleRefInput,
         membershipProof,
         membershipProofWithdrawal,
@@ -833,6 +948,7 @@ describe("reserve/payout transaction builder primitives", () => {
     const initialize = await Effect.runPromise(
       buildInitializePayoutTxProgram(lucid, contracts, {
         hubOracleRefInput,
+        feeInput: feeInputs[1],
         membershipProof,
         membershipProofWithdrawal,
         referenceScripts,
@@ -852,7 +968,9 @@ describe("reserve/payout transaction builder primitives", () => {
     const addFunds = await Effect.runPromise(
       buildAddReserveFundsToPayoutTxProgram(lucid, contracts, {
         hubOracleRefInput,
+        feeInput: feeInputs[2],
         payoutInput: initializedPayout,
+        referenceScripts,
         reserveInput,
       }),
     );
@@ -875,7 +993,9 @@ describe("reserve/payout transaction builder primitives", () => {
     const conclude = await Effect.runPromise(
       buildConcludePayoutTxProgram(lucid, contracts, {
         hubOracleRefInput,
+        feeInput: feeInputs[3],
         payoutInput: fundedPayout,
+        referenceScripts,
       }),
     );
     expect(conclude.layout.l1OutputIndex).toBe(0n);
@@ -897,20 +1017,31 @@ describe("reserve/payout transaction builder primitives", () => {
     const {
       contracts,
       deposit,
+      feeInputs,
       hubOracleRefInput,
       lucid,
       membershipProof,
       membershipProofWithdrawal,
+      referenceScripts,
       settlementRefInput,
       withdrawal,
     } = await makeReserveLifecycleBuilderFixture();
+    const staticReferenceScripts = {
+      depositMinting: referenceScripts.depositMinting,
+      depositSpending: referenceScripts.depositSpending,
+      withdrawalMinting: referenceScripts.withdrawalMinting,
+      withdrawalSpending: referenceScripts.withdrawalSpending,
+      payoutMinting: referenceScripts.payoutMinting,
+    };
 
     const absorb = await Effect.runPromise(
       buildAbsorbConfirmedDepositToReserveTxProgram(lucid, contracts, {
         deposit,
+        feeInput: feeInputs[0],
         hubOracleRefInput,
         membershipProof,
         membershipProofWithdrawal,
+        referenceScripts: staticReferenceScripts,
         settlementRefInput,
       }),
     );
@@ -919,8 +1050,10 @@ describe("reserve/payout transaction builder primitives", () => {
     const initialize = await Effect.runPromise(
       buildInitializePayoutTxProgram(lucid, contracts, {
         hubOracleRefInput,
+        feeInput: feeInputs[1],
         membershipProof,
         membershipProofWithdrawal,
+        referenceScripts: staticReferenceScripts,
         settlementRefInput,
         withdrawal,
       }),
@@ -932,6 +1065,7 @@ describe("reserve/payout transaction builder primitives", () => {
     const {
       beneficiary,
       contracts,
+      feeInputs,
       hubOracleRefInput,
       lucid,
       membershipProof,
@@ -947,6 +1081,7 @@ describe("reserve/payout transaction builder primitives", () => {
     const refund = await Effect.runPromise(
       buildRefundInvalidWithdrawalTxProgram(lucid, contracts, {
         hubOracleRefInput,
+        feeInput: feeInputs[0],
         membershipProof,
         membershipProofWithdrawal,
         referenceScripts,

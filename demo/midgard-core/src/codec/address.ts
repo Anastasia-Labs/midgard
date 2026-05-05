@@ -1,6 +1,8 @@
 import { MidgardTxCodecError, MidgardTxCodecErrorCodes } from "./errors.js";
 
-export const MIDGARD_PROTECTED_ADDRESS_HEADER_MASK = 0x80;
+// Midgard uses the otherwise-reserved Shelley network-nibble bit 3 for output
+// protection while preserving the Cardano Shelley address-family high nibble.
+export const MIDGARD_PROTECTED_ADDRESS_HEADER_MASK = 0x08;
 export const MIDGARD_ADDRESS_MAINNET_HRP = "addr";
 export const MIDGARD_ADDRESS_TESTNET_HRP = "addr_test";
 export const MIDGARD_ADDRESS_MAINNET_NETWORK_ID = 1;
@@ -62,7 +64,9 @@ const validateHrpForNetwork = (networkId: number): string => {
 };
 
 const bech32Polymod = (values: readonly number[]): number => {
-  const generators = [0x3b6a57b2, 0x26508e6d, 0x1ea119fa, 0x3d4233dd, 0x2a1462b3];
+  const generators = [
+    0x3b6a57b2, 0x26508e6d, 0x1ea119fa, 0x3d4233dd, 0x2a1462b3,
+  ];
   let chk = 1;
   for (const value of values) {
     const top = chk >> 25;
@@ -95,10 +99,8 @@ const bech32CreateChecksum = (
   return checksum;
 };
 
-const bech32VerifyChecksum = (
-  hrp: string,
-  data: readonly number[],
-): boolean => bech32Polymod([...bech32HrpExpand(hrp), ...data]) === 1;
+const bech32VerifyChecksum = (hrp: string, data: readonly number[]): boolean =>
+  bech32Polymod([...bech32HrpExpand(hrp), ...data]) === 1;
 
 const convertBits = (
   data: readonly number[],
@@ -175,10 +177,14 @@ export const decodeMidgardAddressBytes = (
 ): DecodedMidgardAddress => {
   const bytes = Buffer.from(address);
   if (bytes.length !== 57 && bytes.length !== 29) {
-    fail("Midgard address must be a base or enterprise Shelley payment address", `length=${bytes.length}`);
+    fail(
+      "Midgard address must be a base or enterprise Shelley payment address",
+      `length=${bytes.length}`,
+    );
   }
   const header = bytes[0];
-  const protectedAddress = (header & MIDGARD_PROTECTED_ADDRESS_HEADER_MASK) !== 0;
+  const protectedAddress =
+    (header & MIDGARD_PROTECTED_ADDRESS_HEADER_MASK) !== 0;
   const unprotectedHeader = header & ~MIDGARD_PROTECTED_ADDRESS_HEADER_MASK;
   const addressType = unprotectedHeader >> 4;
   const networkId = unprotectedHeader & 0x0f;
@@ -196,19 +202,21 @@ export const decodeMidgardAddressBytes = (
     fail("Base Midgard address must be 57 bytes", `length=${bytes.length}`);
   }
   if (isEnterprise && bytes.length !== 29) {
-    fail("Enterprise Midgard address must be 29 bytes", `length=${bytes.length}`);
+    fail(
+      "Enterprise Midgard address must be 29 bytes",
+      `length=${bytes.length}`,
+    );
   }
 
   const paymentCredentialKind: MidgardCredentialKind =
     addressType === 1 || addressType === 3 || addressType === 7
       ? "Script"
       : "PubKey";
-  const stakeCredentialKind: MidgardCredentialKind | undefined =
-    !isBase
-      ? undefined
-      : addressType === 2 || addressType === 3
-        ? "Script"
-        : "PubKey";
+  const stakeCredentialKind: MidgardCredentialKind | undefined = !isBase
+    ? undefined
+    : addressType === 2 || addressType === 3
+      ? "Script"
+      : "PubKey";
 
   const paymentCredentialHash = Buffer.from(bytes.subarray(1, 29));
   const stakeCredentialHash = isBase
@@ -233,9 +241,7 @@ export const decodeMidgardAddressBytes = (
   };
 };
 
-export const encodeMidgardAddressBytes = (
-  address: Uint8Array,
-): Buffer => {
+export const encodeMidgardAddressBytes = (address: Uint8Array): Buffer => {
   decodeMidgardAddressBytes(address);
   return Buffer.from(address);
 };
@@ -252,18 +258,15 @@ export const midgardAddressFromText = (text: string): Buffer => {
   return decoded.payload;
 };
 
-export const encodeMidgardAddressText = (
-  address: Uint8Array,
-): string => {
+export const encodeMidgardAddressText = (address: Uint8Array): string => {
   const decoded = decodeMidgardAddressBytes(address);
   return bech32Encode(validateHrpForNetwork(decoded.networkId), address);
 };
 
 export const midgardAddressToText = encodeMidgardAddressText;
 
-export const decodeMidgardAddressText = (
-  text: string,
-): DecodedMidgardAddress => decodeMidgardAddressBytes(midgardAddressFromText(text));
+export const decodeMidgardAddressText = (text: string): DecodedMidgardAddress =>
+  decodeMidgardAddressBytes(midgardAddressFromText(text));
 
 export const isProtectedMidgardAddress = (address: Uint8Array): boolean =>
   decodeMidgardAddressBytes(address).protected;
@@ -280,22 +283,6 @@ export const protectMidgardAddress = (address: Uint8Array): Buffer => {
   const bytes = Buffer.from(address);
   bytes[0] |= MIDGARD_PROTECTED_ADDRESS_HEADER_MASK;
   return bytes;
-};
-
-export const midgardAddressLookupVariants = (
-  address: Uint8Array | string,
-): readonly string[] => {
-  const addressBytes =
-    typeof address === "string"
-      ? midgardAddressFromText(address)
-      : address;
-  decodeMidgardAddressBytes(addressBytes);
-  const unprotected = unprotectMidgardAddress(addressBytes);
-  const protectedBytes = protectMidgardAddress(addressBytes);
-  return [
-    encodeMidgardAddressText(unprotected),
-    encodeMidgardAddressText(protectedBytes),
-  ];
 };
 
 export const paymentCredentialFromMidgardAddress = (

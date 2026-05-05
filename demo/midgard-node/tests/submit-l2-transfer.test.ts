@@ -12,6 +12,9 @@ import {
   computeMidgardNativeTxIdFromFull,
   decodeMidgardNativeByteListPreimage,
   decodeMidgardNativeTxFull,
+  midgardAddressFromText,
+  midgardAddressToText,
+  protectMidgardAddress,
 } from "@/midgard-tx-codec/index.js";
 import {
   DEFAULT_WALLET_SEED_ENV,
@@ -114,6 +117,23 @@ describe("submit-l2-transfer config helpers", () => {
     expect(config.nodeEndpoint).toBe("http://127.0.0.1:3000");
     expect(config.networkId).toBe(0n);
     expect(config.submissionMode).toBe("api");
+  });
+
+  it("parses protected Midgard destination addresses with the Midgard codec", () => {
+    const wallet = walletFromSeed(TEST_SEED, { network: "Preprod" });
+    const protectedAddress = midgardAddressToText(
+      protectMidgardAddress(midgardAddressFromText(wallet.address)),
+    );
+
+    const config = parseSubmitL2TransferConfig({
+      l2Address: ` ${protectedAddress} `,
+      lovelace: "5000000",
+      assetSpecs: [],
+      nodeEndpoint: "http://127.0.0.1:3000/",
+    });
+
+    expect(config.l2Address).toBe(protectedAddress);
+    expect(config.networkId).toBe(0n);
   });
 
   it("resolves USER_WALLET by default and falls back to USER_SEED_PHRASE", () => {
@@ -370,7 +390,7 @@ describe("submit-l2-transfer program", () => {
           utxos: [
             {
               outref: senderUtxo.outrefCbor.toString("hex"),
-              value: senderUtxo.outputCbor.toString("hex"),
+              outputCbor: senderUtxo.outputCbor.toString("hex"),
             },
           ],
         }),

@@ -90,12 +90,19 @@ export type BuiltUnsignedDepositTx = {
   readonly unsignedTxCbor: string;
 };
 
-type DepositBuildMetadata = {
+export type DepositBuildMetadata = {
   readonly depositAddress: string;
+  readonly depositEventId: string;
+  readonly depositAssetName: string;
   readonly depositAuthUnit: string;
   readonly nonceInput: Pick<UTxO, "txHash" | "outputIndex">;
   readonly validTo: number;
   readonly inclusionTime: number;
+};
+
+export type SubmittedDeposit = {
+  readonly txHash: string;
+  readonly metadata: DepositBuildMetadata;
 };
 
 export class SubmitDepositError extends EffectData.TaggedError(
@@ -386,9 +393,8 @@ const buildUnsignedDepositTxWithMetadataProgram = (
       );
     }
 
-    const nonceAssetName = yield* SDK.hashHexWithBlake2b256(
-      outputReferenceToPlutusDataCbor(nonceInput),
-    );
+    const depositEventId = outputReferenceToPlutusDataCbor(nonceInput);
+    const nonceAssetName = yield* SDK.hashHexWithBlake2b256(depositEventId);
     const depositUnit = toUnit(contracts.deposit.policyId, nonceAssetName);
     if ((config.additionalAssets[depositUnit] ?? 0n) !== 0n) {
       return yield* Effect.fail(
@@ -578,6 +584,8 @@ const buildUnsignedDepositTxWithMetadataProgram = (
       tx,
       metadata: {
         depositAddress: contracts.deposit.spendingScriptAddress,
+        depositEventId,
+        depositAssetName: nonceAssetName,
         depositAuthUnit: depositUnit,
         nonceInput,
         validTo,
@@ -665,9 +673,33 @@ export const submitDepositProgram = (
   | TxConfirmError
   | TxSignError
 > =>
+  submitDepositWithMetadataProgram(lucid, contracts, config).pipe(
+    Effect.map((result) => result.txHash),
+  );
+
+export const submitDepositWithMetadataProgram = (
+  lucid: LucidEvolution,
+  contracts: SDK.MidgardValidators,
+  config: SubmitDepositConfig,
+): Effect.Effect<
+  SubmittedDeposit,
+  | SDK.HubOracleError
+  | SDK.LucidError
+  | SDK.Bech32DeserializationError
+  | SDK.HashingError
+  | SubmitDepositError
+  | TxSubmitError
+  | TxConfirmError
+  | TxSignError
+> =>
   Effect.gen(function* () {
-    const tx = yield* buildUnsignedDepositTxProgram(lucid, contracts, config);
-    return yield* handleSignSubmit(lucid, tx);
+    const { tx, metadata } = yield* buildUnsignedDepositTxWithMetadataProgram(
+      lucid,
+      contracts,
+      config,
+    );
+    const txHash = yield* handleSignSubmit(lucid, tx);
+    return { txHash, metadata };
   });
 
 export const parseLovelace = (value: string): bigint => {

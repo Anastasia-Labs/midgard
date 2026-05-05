@@ -763,8 +763,80 @@ describe("Midgard local script evaluation primitives", () => {
       unknown,
       Constr<unknown>,
     ];
+    const inputs = txInfo.fields[0] as Constr<unknown>[];
+    const inputTxOut = inputs[0]!.fields[1] as Constr<unknown>;
+    const inputAddress = inputTxOut.fields[0] as Constr<unknown>;
+    const inputStakeMaybe = inputAddress.fields[1] as Constr<unknown>;
+
+    expect(inputStakeMaybe).toEqual(new Constr(1, []));
     expect(scriptInfo.index).toBe(1);
     expect((scriptInfo.fields[1] as Constr<unknown>).index).toBe(0);
     expect(txInfo.fields[10]).toEqual(new Map());
+  });
+
+  it("preserves base-address stake credentials in script context TxOut addresses", () => {
+    const paymentScriptHash = "cd".repeat(28);
+    const stakeKeyHash = "ab".repeat(28);
+    const input = CML.TransactionInput.new(
+      CML.TransactionHash.from_hex("34".repeat(32)),
+      1n,
+    );
+    const outRefHex = Buffer.from(input.to_cbor_bytes()).toString("hex");
+    const output = makeMidgardTxOutput(
+      CML.BaseAddress.new(
+        0,
+        CML.Credential.new_script(CML.ScriptHash.from_hex(paymentScriptHash)),
+        CML.Credential.new_pub_key(CML.Ed25519KeyHash.from_hex(stakeKeyHash)),
+      ).to_address(),
+      CML.Value.from_coin(2_000_000n),
+    );
+    const purpose = {
+      kind: "spend" as const,
+      scriptHash: paymentScriptHash,
+      outRefHex,
+    };
+    const redeemer = {
+      tag: MidgardRedeemerTag.Spend,
+      index: 0n,
+      dataCborHex: Data.to(new Constr(0, [])),
+      exUnits: { memory: 0n, steps: 0n },
+    };
+
+    const context = buildPlutusV3ScriptContext(
+      {
+        txId: Buffer.alloc(32, 0),
+        inputs: [{ outRefHex, output }],
+        referenceInputs: [],
+        outputs: [output],
+        fee: 1n,
+        observers: [],
+        signatories: [],
+        mint: new Map(),
+        redeemers: [{ purpose, redeemer }],
+      },
+      purpose,
+      redeemer,
+    );
+
+    const [txInfo] = context.fields as [Constr<unknown>, unknown, Constr<unknown>];
+    const inputs = txInfo.fields[0] as Constr<unknown>[];
+    const inputTxOut = inputs[0]!.fields[1] as Constr<unknown>;
+    const inputAddress = inputTxOut.fields[0] as Constr<unknown>;
+    const inputStakeMaybe = inputAddress.fields[1] as Constr<unknown>;
+    const inputStakingHash = inputStakeMaybe.fields[0] as Constr<unknown>;
+
+    expect(inputAddress.fields[0]).toEqual(
+      new Constr(1, [paymentScriptHash]),
+    );
+    expect(inputStakeMaybe.index).toBe(0);
+    expect(inputStakingHash).toEqual(
+      new Constr(0, [new Constr(0, [stakeKeyHash])]),
+    );
+
+    const outputs = txInfo.fields[2] as Constr<unknown>[];
+    const outputTxOut = outputs[0]!;
+    const outputAddress = outputTxOut.fields[0] as Constr<unknown>;
+
+    expect(outputAddress.fields[1]).toEqual(inputStakeMaybe);
   });
 });

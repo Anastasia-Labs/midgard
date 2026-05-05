@@ -1,5 +1,6 @@
 import { CML, Constr, Data } from "@lucid-evolution/lucid";
 import {
+  decodeMidgardAddressBytes,
   hashMidgardVersionedScript,
   type MidgardCredential,
   type MidgardTxOutput,
@@ -12,7 +13,6 @@ import {
   outputReferenceData,
   redeemerDataFromCborHex,
 } from "./midgard-redeemers.js";
-import { midgardOutputPaymentCredential } from "./midgard-output.js";
 
 type ResolvedInput = {
   readonly outRefHex: string;
@@ -57,8 +57,20 @@ const credentialData = (credential: MidgardCredential): Constr<unknown> =>
     credential.hash.toString("hex"),
   ]);
 
-const addressData = (output: MidgardTxOutput): Constr<unknown> =>
-  new Constr(0, [credentialData(midgardOutputPaymentCredential(output)), none]);
+const stakingCredentialData = (
+  credential: MidgardCredential | undefined,
+): Constr<unknown> =>
+  credential === undefined
+    ? none
+    : some(new Constr(0, [credentialData(credential)]));
+
+const addressData = (output: MidgardTxOutput): Constr<unknown> => {
+  const decoded = decodeMidgardAddressBytes(output.address);
+  return new Constr(0, [
+    credentialData(decoded.paymentCredential),
+    stakingCredentialData(decoded.stakeCredential),
+  ]);
+};
 
 const multiassetToData = (
   multiasset: InstanceType<typeof CML.MultiAsset> | undefined,

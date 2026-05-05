@@ -75,8 +75,8 @@ Outputs are serialized as byte strings inside the native outputs preimage.
 They must be Babbage/Conway map-form transaction outputs with a Shelley payment
 credential. Output order is authored order and must be preserved.
 
-Protected outputs set bit `0x80` on the first address byte before inclusion in
-the native output preimage. Validation normalizes that bit away for ordinary
+Protected outputs set bit `0x08` on the first address byte before inclusion in
+the native output preimage. Validation clears that bit for ordinary
 address decoding, but Phase B uses the marker to require:
 
 - A matching vkey witness for protected pubkey outputs.

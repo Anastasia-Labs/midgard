@@ -65,9 +65,9 @@ Out of scope:
 - Midgard output addresses support Cardano Shelley payment address families
   except pointer addresses. Byron addresses, pointer addresses, and
   stake/reward address inputs are not supported.
-- The protected flag is encoded in the unused high bit of the Midgard address
-  header, using the existing `0x80` protected mask. Protected status is derived
-  from address bytes, not from a separate output field.
+- The protected flag is encoded in bit 3 of the Midgard address header, using
+  the `0x08` protected mask. Protected status is derived from address bytes,
+  not from a separate output field.
 - Canonical Midgard address text uses the same Bech32 HRPs as Cardano Shelley
   payment addresses: `addr` for mainnet and `addr_test` for non-mainnet. The
   Bech32 payload is the exact Midgard address bytes, including the protected
@@ -229,7 +229,7 @@ Wire shape:
 Initial language tags:
 
 - `0`: `NativeCardano`
-- `2`: `PlutusV3`
+- `3`: `PlutusV3`, matching the Cardano script-ref language tag for PlutusV3
 - `128`: `MidgardV1`, matching the existing `0x80` MidgardV1 tag/hash prefix
 
 Rules:
@@ -401,11 +401,11 @@ directly inside those bytes and is not carried as a separate output boolean.
 
 Rules:
 
-- The protected flag is bit `0x80` of the first address header byte.
-- To interpret the address family, the decoder clears bit `0x80` and then
+- The protected flag is bit 3, mask `0x08`, of the first address header byte.
+- To interpret the address family, the decoder clears bit `0x08` and then
   interprets the remaining header as a Shelley payment address header.
 - The network id is the low nibble of the address header after clearing
-  `0x80`. Canonical Midgard mainnet Bech32 (`addr`) requires network id `1`.
+  `0x08`. Canonical Midgard mainnet Bech32 (`addr`) requires network id `1`.
   Canonical Midgard testnet/non-mainnet Bech32 (`addr_test`) requires network
   id `0`. Other network ids reject unless a future explicit network policy
   allows them.
@@ -423,11 +423,9 @@ Rules:
   - any reserved or unknown family
 - Stake/reward addresses are separate from Shelley payment addresses and are not
   valid Midgard output addresses.
-- Protected enterprise Midgard address headers overlap Cardano reward-address
-  byte values. Therefore Cardano-address adapters must reject stake/reward
-  addresses before conversion; raw Midgard output decode follows the Midgard
-  protected-bit rules and must not call CML to reinterpret those bytes as
-  Cardano rewards.
+- Using bit 3 preserves the Shelley address-family high nibble. Protected
+  addresses are Midgard Bech32 values, not Cardano/CML addresses, because the
+  protected bit occupies a Midgard-reserved network-nibble bit.
 - Address bytes must decode enough to recover a payment credential for Phase B.
 - All supported Cardano Shelley payment address bytes are valid unprotected
   Midgard address bytes, except pointer addresses which Midgard intentionally
@@ -446,7 +444,6 @@ Rules:
   - `isProtectedMidgardAddress`
   - `protectMidgardAddress`
   - `unprotectMidgardAddress`
-  - `midgardAddressLookupVariants`
   - `paymentCredentialFromMidgardAddress`
 
 ### Midgard Bech32 Address Text
@@ -458,27 +455,26 @@ Rules:
 - Mainnet Midgard address text uses HRP `addr`.
 - Non-mainnet Midgard address text uses HRP `addr_test`.
 - The Bech32 data payload is the exact Midgard address bytes.
-- Protected addresses are encoded by setting `0x80` in the first address byte
+- Protected addresses are encoded by setting `0x08` in the first address byte
   and recomputing the Bech32 checksum with the same HRP.
 - Unprotected Cardano Shelley base and enterprise payment addresses are already
   valid Midgard address text.
 - Protected Midgard address text is valid Bech32 and valid Midgard address
   text, but must not be parsed with CML as a Cardano address.
 - Decoding Midgard address text must use the Midgard address codec. It must
-  accept protected headers by clearing `0x80` for family validation and reject
+  accept protected headers by clearing `0x08` for family validation and reject
   pointer, Byron/bootstrap, stake/reward, reserved, and unknown address forms.
 - Encoding Midgard address text is canonical. Re-encoding decoded address bytes
   must reproduce the same lowercase Bech32 string.
 - Node DB columns named `address TEXT` store canonical Midgard address text,
   not necessarily CML-parseable Cardano bech32.
-- For address lookup APIs, `address=<midgard-bech32>` identifies the underlying
-  payment address after clearing the protected bit. Lookup should query both the
-  unprotected and protected canonical Midgard address text variants for that
-  payment address and return each output with its exact canonical Midgard
-  Bech32 address.
-- Exact-match diagnostics may expose a separately named parameter if needed,
-  but the default wallet-facing address lookup is by underlying payment address,
-  not by protected bit.
+- Address lookup APIs are exact by canonical Midgard Bech32 address text.
+  `address=<midgard-bech32>` identifies the exact address bytes in the query,
+  including the protected bit. A protected-address query returns only protected
+  outputs at that exact address; an unprotected-address query returns only
+  unprotected outputs at that exact address.
+- Wallet-facing address lookup must not clear `0x08` or implicitly query both
+  protected and unprotected variants.
 
 ### Node And Provider UTxO API Shape
 
@@ -500,12 +496,11 @@ Rules:
 - The old `value` field name for output CBOR is replaced by `outputCbor`; this
   is a pre-release API cleanup, not a compatibility change.
 - `/utxos?address=<addr...>` and `/txs?address=<addr...>` parse the input with
-  `decodeMidgardAddressText`, derive protected and unprotected canonical
-  address-text variants for the same payment address, query both variants, and
-  return exact stored outputs.
-- Provider-side `getUtxos(address)` consistency checks must accept either
-  protected or unprotected returned output addresses when they share the same
-  underlying payment address as the requested address.
+  `decodeMidgardAddressText`, canonicalize the exact Midgard Bech32 address
+  text, query that exact address, and return exact stored outputs.
+- Provider-side `getUtxos(address)` consistency checks must require returned
+  output addresses to exactly match the requested canonical Midgard Bech32
+  address, including the protected bit.
 - Provider-side `getUtxoByOutRef` and `getUtxosByOutRefs` validate outrefs and
   decode `outputCbor`, but do not require an address filter.
 - Public/provider decoded outputs use `address`, `assets`, `datum`, and
@@ -778,18 +773,16 @@ Deliverables:
 - Add encode/decode helpers for `MidgardAddress`.
 - Add encode/decode helpers for canonical Midgard Bech32 address text using
   `addr` and `addr_test` HRPs.
-- Implement protected status with the `0x80` header bit in the core address
+- Implement protected status with the `0x08` header bit in the core address
   codec.
 - Add helpers to derive protected status, recover payment credentials, and
   convert to/from supported Cardano/Lucid address formats at adapter
   boundaries.
-- Add helpers to derive the unprotected and protected canonical Midgard Bech32
-  variants for the same underlying payment address.
 - Export the required helpers `decodeMidgardAddressBytes`,
   `encodeMidgardAddressBytes`, `decodeMidgardAddressText`,
   `encodeMidgardAddressText`, `isProtectedMidgardAddress`,
   `protectMidgardAddress`, `unprotectMidgardAddress`,
-  `midgardAddressLookupVariants`, and `paymentCredentialFromMidgardAddress`.
+  and `paymentCredentialFromMidgardAddress`.
 - Remove CML address normalization from the production output codec path.
 - Keep old byte-patch helpers only as explicitly named diagnostic utilities if
   still needed during cutover diagnostics.
@@ -866,7 +859,7 @@ Deliverables:
 
 - Add `MidgardVersionedScript` encode/decode helpers.
 - Add explicit versioned-script tag constants. Reuse the existing numeric
-  values `2` for PlutusV3 and `0x80` for MidgardV1, and add
+  values `0x03` for PlutusV3 and `0x80` for MidgardV1, and add
   `NativeCardano = 0`.
 - Keep NativeCardano out of Plutus script language views and cost-model maps;
   native scripts do not have a Plutus cost model.
@@ -1063,8 +1056,8 @@ Deliverables:
   as matching a decoded `PlutusV3` CML script ref.
 - Preserve CML address/value convenience adapters only at API boundaries.
 - Update provider decoding from node UTxO responses to read `outputCbor`.
-- Provider address consistency checks compare payment-address identity after
-  clearing the protected bit, not literal Bech32 equality.
+- Provider address consistency checks compare exact canonical Midgard Bech32
+  address text, including the protected bit.
 
 Acceptance criteria:
 
@@ -1080,9 +1073,9 @@ Acceptance criteria:
   Midgard output CBOR by default.
 - Provider UTxO consistency checks compare structured Midgard output fields
   against decoded Midgard output bytes.
-- Provider `getUtxos(address)` accepts returned protected and unprotected output
-  addresses when they share the same underlying payment address as the requested
-  Midgard address.
+- Provider `getUtxos(address)` rejects returned output addresses that do not
+  exactly match the requested canonical Midgard Bech32 address, including the
+  protected bit.
 - Provider `getUtxoByOutRef` and `getUtxosByOutRefs` decode `outputCbor` and
   validate requested outrefs without requiring an address filter.
 - A supplied `MidgardV1` script ref and a decoded `PlutusV3` script ref with
@@ -1137,8 +1130,7 @@ Deliverables:
   address, value, datum, or script-ref display.
 - Update JSON UTxO response shapes to use `{ outref, outputCbor }`.
 - Update `/utxos` and `/txs` address lookups to parse Midgard Bech32 text and
-  query both protected/unprotected canonical address variants for the same
-  payment address.
+  query the exact canonical Midgard address text supplied by the caller.
 - Update internal logs that report decoded output/script data.
 
 Acceptance criteria:
@@ -1149,10 +1141,10 @@ Acceptance criteria:
 - `/utxos`, `/utxo`, status/debug commands, and internal logs report
   `MidgardV1` script refs accurately.
 - `/utxos?address=<addr...>` / `/utxos?address=<addr_test...>` and
-  address-history lookups parse the input as Midgard Bech32 address text, clear
-  the protected bit for payment-address lookup, query both protected and
-  unprotected canonical Midgard address text variants, and return each output
-  with its exact canonical Midgard Bech32 address.
+  address-history lookups parse the input as Midgard Bech32 address text,
+  canonicalize it, query exactly that canonical address text, and return each
+  output with its exact canonical Midgard Bech32 address. They must not clear the
+  protected bit or implicitly include sibling protected/unprotected variants.
 - API responses include canonical Midgard address text for each output. Any
   wallet-compatible Cardano address display is derived by clearing the
   protected bit and is not the authoritative stored address for protected
@@ -1361,10 +1353,10 @@ The workstream is complete when all of the following are true:
 
 ## Remaining Implementation Notes
 
-- The protected-address `0x80` decision means Midgard protected enterprise
-  address bytes overlap Cardano reward-address header byte values. This is
-  acceptable only because Midgard owns the L2 address format. Cardano-address
-  adapters must reject stake/reward addresses before conversion.
+- The protected-address `0x08` decision preserves the Shelley address-family
+  high nibble while using a Midgard-reserved network-nibble bit. Midgard
+  protected addresses are canonical Midgard Bech32 values and are not required
+  to be CML-parseable Cardano addresses.
 - A fresh pre-implementation audit should confirm every current CML TxOut,
   CML Script, CML NativeScript, protected-address patch, and raw script witness
   usage has an assigned task above.

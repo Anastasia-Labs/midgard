@@ -337,6 +337,22 @@ export const retrieveByCardanoTxHash = (
     ),
   );
 
+export const retrieveByProjectedHeaderHash = (
+  projectedHeaderHash: Buffer,
+): Effect.Effect<readonly Entry[], DatabaseError, Database> =>
+  Effect.gen(function* () {
+    const sql = yield* SqlClient.SqlClient;
+    return yield* sql<Entry>`SELECT * FROM ${sql(tableName)}
+      WHERE ${sql(Columns.PROJECTED_HEADER_HASH)} = ${projectedHeaderHash}
+      ORDER BY ${sql(Columns.INCLUSION_TIME)} ASC, ${sql(Columns.ID)} ASC`;
+  }).pipe(
+    Effect.withLogSpan(`retrieveByProjectedHeaderHash ${tableName}`),
+    sqlErrorToDatabaseError(
+      tableName,
+      "Failed to retrieve withdrawals by projected header hash",
+    ),
+  );
+
 export const retrieveAwaitingEntriesDueBy = (
   endTime: Date,
 ): Effect.Effect<readonly Entry[], DatabaseError, Database> =>
@@ -723,9 +739,7 @@ export const clearProjectedHeaderAssignmentByEventIds = (
       WHERE ${sql(Columns.ID)} IN ${sql.in(uniqueIds)}
         AND ${sql(Columns.PROJECTED_HEADER_HASH)} = ${projectedHeaderHash}`;
   }).pipe(
-    Effect.withLogSpan(
-      `clearProjectedHeaderAssignmentByEventIds ${tableName}`,
-    ),
+    Effect.withLogSpan(`clearProjectedHeaderAssignmentByEventIds ${tableName}`),
     sqlErrorToDatabaseError(
       tableName,
       "Failed to clear projected header assignments for withdrawals",
@@ -766,10 +780,7 @@ export const markFinalizedByEventIds = (
     }
   }).pipe(
     Effect.withLogSpan(`markFinalizedByEventIds ${tableName}`),
-    sqlErrorToDatabaseError(
-      tableName,
-      "Failed to mark withdrawals finalized",
-    ),
+    sqlErrorToDatabaseError(tableName, "Failed to mark withdrawals finalized"),
   );
 
 export const toRootKeyValue = (

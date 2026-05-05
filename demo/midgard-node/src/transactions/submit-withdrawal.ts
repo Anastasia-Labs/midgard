@@ -67,8 +67,9 @@ export type SubmitWithdrawalConfig = {
   readonly referenceScripts?: SubmitWithdrawalReferenceScripts;
 };
 
-type WithdrawalBuildMetadata = {
+export type WithdrawalBuildMetadata = {
   readonly withdrawalAddress: string;
+  readonly withdrawalEventIdCbor: string;
   readonly withdrawalAuthUnit: string;
   readonly nonceInput: Pick<UTxO, "txHash" | "outputIndex">;
   readonly validTo: number;
@@ -132,7 +133,9 @@ const deriveWithdrawalDraftLayout = ({
     (pointer) => pointer.tag === CML.RedeemerTag.Cert,
   );
   if (certContextIndex < 0) {
-    throw new Error("Failed to locate certificate redeemer in withdrawal draft");
+    throw new Error(
+      "Failed to locate certificate redeemer in withdrawal draft",
+    );
   }
   const txInfoIndexes = getTxInfoRedeemerIndexes(pointers);
   const witnessRegistrationRedeemerIndex = txInfoIndexes[certContextIndex];
@@ -299,7 +302,7 @@ const fetchHubOracleReferenceProgram = (
     return actual.utxo;
   });
 
-const buildUnsignedWithdrawalTxWithMetadataProgram = (
+export const buildUnsignedWithdrawalTxWithMetadataProgram = (
   lucid: LucidEvolution,
   contracts: SDK.MidgardValidators,
   config: SubmitWithdrawalConfig,
@@ -349,10 +352,14 @@ const buildUnsignedWithdrawalTxWithMetadataProgram = (
       );
     }
 
+    const withdrawalEventIdCbor = outputReferenceToPlutusDataCbor(nonceInput);
     const nonceAssetName = yield* SDK.hashHexWithBlake2b256(
-      outputReferenceToPlutusDataCbor(nonceInput),
+      withdrawalEventIdCbor,
     );
-    const withdrawalUnit = toUnit(contracts.withdrawal.policyId, nonceAssetName);
+    const withdrawalUnit = toUnit(
+      contracts.withdrawal.policyId,
+      nonceAssetName,
+    );
     const witnessScript =
       SDK.buildUserEventWitnessCertificateValidator(nonceAssetName);
     const witnessScriptHash = SDK.userEventWitnessScriptHash(nonceAssetName);
@@ -535,6 +542,7 @@ const buildUnsignedWithdrawalTxWithMetadataProgram = (
       tx,
       metadata: {
         withdrawalAddress: contracts.withdrawal.spendingScriptAddress,
+        withdrawalEventIdCbor,
         withdrawalAuthUnit: withdrawalUnit,
         nonceInput,
         validTo,
@@ -558,3 +566,55 @@ export const buildUnsignedWithdrawalTxProgram = (
   buildUnsignedWithdrawalTxWithMetadataProgram(lucid, contracts, config).pipe(
     Effect.map(({ tx }) => tx),
   );
+
+export const submitWithdrawalProgram = (
+  lucid: LucidEvolution,
+  contracts: SDK.MidgardValidators,
+  config: SubmitWithdrawalConfig,
+): Effect.Effect<
+  {
+    readonly txHash: string;
+    readonly metadata: WithdrawalBuildMetadata;
+  },
+  | SDK.HubOracleError
+  | SDK.LucidError
+  | SDK.Bech32DeserializationError
+  | SDK.HashingError
+  | SubmitWithdrawalError,
+  never
+> =>
+  Effect.gen(function* () {
+    const built = yield* buildUnsignedWithdrawalTxWithMetadataProgram(
+      lucid,
+      contracts,
+      config,
+    );
+    const signed = yield* Effect.tryPromise({
+      try: () => built.tx.sign.withWallet().complete(),
+      catch: (cause) =>
+        new SubmitWithdrawalError({
+          message: "Failed to sign withdrawal transaction",
+          cause,
+        }),
+    });
+    const txHash = yield* Effect.tryPromise({
+      try: () => signed.submit(),
+      catch: (cause) =>
+        new SubmitWithdrawalError({
+          message: "Failed to submit withdrawal transaction",
+          cause,
+        }),
+    });
+    yield* Effect.tryPromise({
+      try: () => lucid.awaitTx(txHash),
+      catch: (cause) =>
+        new SubmitWithdrawalError({
+          message: "Failed to confirm withdrawal transaction",
+          cause,
+        }),
+    });
+    return {
+      txHash,
+      metadata: built.metadata,
+    };
+  });

@@ -1,7 +1,6 @@
 import "./utils.js";
 
 import { randomUUID } from "node:crypto";
-import { readFileSync } from "node:fs";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { Effect, Ref } from "effect";
 import * as SDK from "@al-ft/midgard-sdk";
@@ -16,6 +15,7 @@ import {
   paymentCredentialOf,
   toUnit,
   validatorToScriptHash,
+  walletFromSeed,
   type LucidEvolution,
   type Script,
   type TxSignBuilder,
@@ -72,15 +72,25 @@ import {
 } from "@/transactions/submit-deposit.js";
 import {
   type SubmitWithdrawalReferenceScripts,
-  buildUnsignedWithdrawalTxProgram,
+  buildUnsignedWithdrawalTxWithMetadataProgram,
 } from "@/transactions/submit-withdrawal.js";
+import { signWithdrawalBody } from "@/withdrawal-signature.js";
+import { withdrawalEventIdFromBuildMetadata } from "@/commands/submit-withdrawal.js";
+import { loadPhasMembershipWithdrawalScript } from "@/phas-membership.js";
+import { assetsToValue } from "@/transactions/reserve-payout.js";
 import {
-  assetsToValue,
-  buildAbsorbConfirmedDepositToReserveTxProgram,
-  buildAddReserveFundsToPayoutTxProgram,
-  buildConcludePayoutTxProgram,
-  buildInitializePayoutTxProgram,
-} from "@/transactions/reserve-payout.js";
+  absorbConfirmedDepositToReserveProgram,
+  addReserveFundsToPayoutProgram,
+  concludePayoutProgram,
+  initializePayoutProgram,
+} from "@/commands/reserve-payout.js";
+import {
+  payoutStatusProgram,
+  reserveUtxosProgram,
+} from "@/commands/reserve-inspection.js";
+import { resolveEventSettlementProofProgram } from "@/commands/event-settlement-proof.js";
+import { fetchWithdrawalsOnceProgram } from "@/commands/fetch-withdrawals-once.js";
+import { withdrawalStatusProgram } from "@/commands/withdrawal-status.js";
 import { runCommitBlockHeaderWorkerProgram } from "@/workers/commit-block-header.js";
 import { runConfirmBlockCommitmentsWorkerProgram } from "@/workers/confirm-block-commitments.js";
 import {
@@ -92,16 +102,12 @@ import {
   type WorkerOutput as ConfirmationWorkerOutput,
 } from "@/workers/utils/confirm-block-commitments.js";
 import { WorkerError } from "@/workers/utils/common.js";
-import {
-  deleteMpt,
-  keyValuePhasProof,
-  keyValuePhasRoot,
-} from "@/workers/utils/mpt.js";
+import { deleteMpt, keyValuePhasRoot } from "@/workers/utils/mpt.js";
 import { collectSortedInputOutRefs, outRefLabel } from "@/tx-context.js";
 
 const EMULATOR_PROTOCOL_PARAMETERS = {
   ...PROTOCOL_PARAMETERS_DEFAULT,
-  maxTxSize: 65_536,
+  maxTxSize: PROTOCOL_PARAMETERS_DEFAULT.maxTxSize,
   maxCollateralInputs: 3,
 } as const;
 
@@ -112,10 +118,6 @@ const SLASHING_PENALTY_LOVELACE = BigInt(
   process.env.OPERATOR_SLASHING_PENALTY_LOVELACE ?? "200000",
 );
 const REGISTRATION_ACTIVATION_DELAY_SLOTS = 180;
-const REAL_BLUEPRINT_PATH = new URL(
-  "../../../onchain/aiken/plutus.json",
-  import.meta.url,
-);
 // This harness exercises the real initialization, deposit submission, deposit
 // ingestion, and live commit-worker path against the bundled real blueprint.
 // Keep it sequential because it mutates shared emulator/database state.
@@ -146,35 +148,12 @@ type EmulatorFixture = {
   readonly contracts: SDK.MidgardValidators;
   readonly referenceScripts: DepositFlowReferenceScripts;
   readonly operatorAccount: ReturnType<typeof generateEmulatorAccount>;
+  readonly depositorAccount: ReturnType<typeof generateEmulatorAccount>;
   readonly referenceScriptsAccount: ReturnType<typeof generateEmulatorAccount>;
   readonly operatorLucid: LucidEvolution;
   readonly depositorLucid: LucidEvolution;
   readonly referenceScriptsLucid: LucidEvolution;
   readonly operatorKeyHash: string;
-};
-
-const loadPhasMembershipWithdrawalScript = (): Script => {
-  const blueprint = JSON.parse(readFileSync(REAL_BLUEPRINT_PATH, "utf8")) as {
-    readonly validators?: readonly {
-      readonly title?: unknown;
-      readonly compiledCode?: unknown;
-    }[];
-  };
-  const validator = blueprint.validators?.find(
-    (candidate) => candidate.title === "phas.membership.withdraw",
-  );
-  if (
-    typeof validator?.compiledCode !== "string" ||
-    validator.compiledCode.length === 0
-  ) {
-    throw new Error(
-      `Missing PHAS membership validator in ${REAL_BLUEPRINT_PATH.toString()}`,
-    );
-  }
-  return {
-    type: "PlutusV3",
-    script: validator.compiledCode,
-  };
 };
 
 const scriptRewardAddress = (script: Script): string => {
@@ -230,15 +209,17 @@ const publishDepositFlowReferenceScripts = async ({
   EmulatorFixture,
   "operatorLucid" | "referenceScriptsLucid" | "contracts"
 >): Promise<DepositFlowReferenceScripts> => {
-  const publications: readonly { readonly name: string; readonly utxo: UTxO }[] =
-    await Effect.runPromise(
-      deployReferenceScriptCommandProgram(
-        referenceScriptsLucid,
-        contracts,
-        "node-runtime",
-        operatorLucid,
-      ),
-    );
+  const publications: readonly {
+    readonly name: string;
+    readonly utxo: UTxO;
+  }[] = await Effect.runPromise(
+    deployReferenceScriptCommandProgram(
+      referenceScriptsLucid,
+      contracts,
+      "node-runtime",
+      operatorLucid,
+    ),
+  );
   const byName = new Map<string, UTxO>();
   for (const publication of publications) {
     byName.set(publication.name, publication.utxo);
@@ -313,6 +294,7 @@ const makeFixture = async (): Promise<EmulatorFixture> => {
     contracts,
     referenceScripts,
     operatorAccount,
+    depositorAccount,
     referenceScriptsAccount,
     operatorLucid,
     depositorLucid,
@@ -755,9 +737,9 @@ const submitWithWallet = async (
   const signed = await tx.sign.withWallet().complete();
   const txHash = signed.toHash();
   const signedTx = CML.Transaction.from_cbor_hex(signed.toCBOR());
-  const signedInputs = collectSortedInputOutRefs(
-    signedTx.body().inputs(),
-  ).map(outRefLabel);
+  const signedInputs = collectSortedInputOutRefs(signedTx.body().inputs()).map(
+    outRefLabel,
+  );
   const signedReferenceInputs =
     signedTx.body().reference_inputs() === undefined
       ? []
@@ -912,14 +894,10 @@ const submitDepositWithDiagnostics = async (
   },
 ): Promise<string> => {
   const unsignedDepositTx = await Effect.runPromise(
-    buildUnsignedDepositTxProgram(
-      fixture.depositorLucid,
-      fixture.contracts,
-      {
-        ...config,
-        referenceScripts: fixture.referenceScripts.deposit,
-      },
-    ),
+    buildUnsignedDepositTxProgram(fixture.depositorLucid, fixture.contracts, {
+      ...config,
+      referenceScripts: fixture.referenceScripts.deposit,
+    }),
   );
   const expectedWitnessHash = extractDraftDepositWitnessHash({
     tx: unsignedDepositTx.toTransaction(),
@@ -943,9 +921,12 @@ const submitWithdrawalWithDiagnostics = async (
     readonly refundAddress: SDK.AddressData;
     readonly refundDatum?: SDK.CardanoDatum;
   },
-): Promise<string> => {
-  const unsignedWithdrawalTx = await Effect.runPromise(
-    buildUnsignedWithdrawalTxProgram(
+): Promise<{
+  readonly txHash: string;
+  readonly withdrawalEventId: string;
+}> => {
+  const builtWithdrawalTx = await Effect.runPromise(
+    buildUnsignedWithdrawalTxWithMetadataProgram(
       fixture.depositorLucid,
       fixture.contracts,
       {
@@ -958,17 +939,23 @@ const submitWithdrawalWithDiagnostics = async (
     ),
   );
   const expectedWitnessHash = extractDraftWithdrawalWitnessHash({
-    tx: unsignedWithdrawalTx.toTransaction(),
+    tx: builtWithdrawalTx.tx.toTransaction(),
     withdrawalAddress: fixture.contracts.withdrawal.spendingScriptAddress,
   });
   const signedWithdrawalTx = await Effect.runPromise(
-    unsignedWithdrawalTx.sign.withWallet().completeProgram(),
+    builtWithdrawalTx.tx.sign.withWallet().completeProgram(),
   );
-  return submitSignedDepositTxWithHarnessWorkaround({
+  const txHash = await submitSignedDepositTxWithHarnessWorkaround({
     lucid: fixture.depositorLucid,
     signedTx: signedWithdrawalTx,
     expectedWitnessHash,
   });
+  return {
+    txHash,
+    withdrawalEventId: withdrawalEventIdFromBuildMetadata(
+      builtWithdrawalTx.metadata,
+    ),
+  };
 };
 
 const makeLucidRuntimeService = async ({
@@ -1042,6 +1029,68 @@ const makeGlobalsService = () =>
     }).pipe(Effect.provide(Globals.Default)),
   );
 
+const withEmulatorExtraneousScriptRetry = async <A>(
+  lucid: LucidEvolution,
+  run: () => Promise<A>,
+): Promise<A> => {
+  const provider = lucid.config().provider;
+  if (!isEmulatorProvider(provider)) {
+    return run();
+  }
+
+  const originalSubmitTx = provider.submitTx;
+  provider.submitTx = async (txCbor: string) => {
+    try {
+      return await originalSubmitTx.call(provider, txCbor);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      const extraneousScriptHash = message.match(
+        /Extraneous plutus script\. Script hash: ([0-9a-fA-F]{56})/,
+      )?.[1];
+      if (extraneousScriptHash === undefined) {
+        throw error;
+      }
+      return originalSubmitTx.call(
+        provider,
+        stripPlutusV3WitnessByHash({
+          txCbor,
+          witnessHash: extraneousScriptHash.toLowerCase(),
+        }),
+      );
+    }
+  };
+
+  try {
+    return await run();
+  } finally {
+    provider.submitTx = originalSubmitTx;
+  }
+};
+
+const runNodeCommandProgram = <A>(
+  effect: Effect.Effect<A, any, any>,
+  {
+    fixture,
+    lucidService,
+    globals,
+  }: {
+    readonly fixture: EmulatorFixture;
+    readonly lucidService: Awaited<ReturnType<typeof makeLucidRuntimeService>>;
+    readonly globals: Globals;
+  },
+): Promise<A> =>
+  withEmulatorExtraneousScriptRetry(lucidService.api, () =>
+    Effect.runPromise(
+      effect.pipe(
+        Effect.provideService(LucidService, lucidService as any),
+        Effect.provideService(MidgardContracts, fixture.contracts as any),
+        Effect.provideService(Globals, globals),
+        Effect.provide(Database.layer),
+        Effect.provide(NodeConfig.layer),
+      ) as Effect.Effect<A, any, never>,
+    ),
+  );
+
 const runBlockConfirmation = (
   globals: Globals,
   contracts: SDK.MidgardValidators,
@@ -1053,8 +1102,8 @@ const runBlockConfirmation = (
         input: ConfirmationWorkerInput,
       ): Effect.Effect<ConfirmationWorkerOutput, WorkerError, never> =>
         runConfirmBlockCommitmentsWorkerProgram(input).pipe(
-              Effect.provideService(LucidService, lucidService as any),
-              Effect.provideService(MidgardContracts, contracts as any),
+          Effect.provideService(LucidService, lucidService as any),
+          Effect.provideService(MidgardContracts, contracts as any),
           Effect.provide(NodeConfig.layer),
           Effect.catchAllCause((cause) =>
             Effect.fail(
@@ -1230,7 +1279,9 @@ const commitConfirmRecoverAndMerge = async ({
     commitOutput === undefined ||
     commitOutput.type !== "SubmittedAwaitingConfirmationOutput"
   ) {
-    throw new Error(`Unexpected commit output: ${JSON.stringify(commitOutput)}`);
+    throw new Error(
+      `Unexpected commit output: ${JSON.stringify(commitOutput)}`,
+    );
   }
   await fixture.operatorLucid.awaitTx(commitOutput.submittedTxHash);
   await runBlockConfirmation(globals, fixture.contracts, lucidService);
@@ -1818,10 +1869,10 @@ describeRealisticDepositFlow("deposit flow emulator", () => {
     await initializeProtocol(fixture);
     const lucidService = await makeLucidRuntimeService(fixture);
     const globals = await makeGlobalsService();
-    const membershipProofWithdrawal = {
-      script: loadPhasMembershipWithdrawalScript(),
-    };
-    registerZeroRewardScript(fixture.emulator, membershipProofWithdrawal.script);
+    registerZeroRewardScript(
+      fixture.emulator,
+      loadPhasMembershipWithdrawalScript(),
+    );
 
     await advanceEmulatorPastLatestBlockEndTime(fixture);
 
@@ -1863,41 +1914,54 @@ describeRealisticDepositFlow("deposit flow emulator", () => {
     expect(depositBlock.queuedHeader.depositsRoot).not.toEqual(
       emptyProtocolRoot,
     );
-    expect(depositBlock.queuedHeader.depositsRoot).toEqual(
-      expectedDepositRoot,
-    );
+    expect(depositBlock.queuedHeader.depositsRoot).toEqual(expectedDepositRoot);
     expect(depositBlock.queuedHeader.withdrawalsRoot).toEqual(
       emptyProtocolRoot,
     );
-    const depositMembershipProof = await Effect.runPromise(
-      keyValuePhasProof(
-        [depositUtxo.idCbor],
-        [depositUtxo.infoCbor],
-        depositUtxo.idCbor,
-      ),
+    const depositEventIdHex = depositUtxo.idCbor.toString("hex");
+    const depositResolution = await runNodeCommandProgram(
+      resolveEventSettlementProofProgram({
+        kind: "deposit",
+        eventId: Buffer.from(depositUtxo.idCbor),
+      }),
+      { fixture, lucidService, globals },
     );
-
-    const absorb = await Effect.runPromise(
-      buildAbsorbConfirmedDepositToReserveTxProgram(
-        fixture.operatorLucid,
-        fixture.contracts,
-        {
-          deposit: depositUtxo,
-          membershipProof: depositMembershipProof,
-          membershipProofWithdrawal,
-          settlementRefInput: depositBlock.settlementUtxo,
-        },
-      ),
+    expect(depositResolution.root).toEqual(expectedDepositRoot);
+    expect(depositResolution.settlementRefInput.txHash).toEqual(
+      depositBlock.settlementUtxo.txHash,
     );
-    await submitWithWallet(fixture.operatorLucid, absorb.tx);
+    const absorb = await runNodeCommandProgram(
+      absorbConfirmedDepositToReserveProgram({ eventId: depositEventIdHex }),
+      { fixture, lucidService, globals },
+    );
+    expect(absorb.details.depositOutRef).toEqual(
+      `${depositUtxo.utxo.txHash}#${depositUtxo.utxo.outputIndex.toString()}`,
+    );
     const reserveAfterAbsorb = (
       await fixture.operatorLucid.utxosAt(
         fixture.contracts.reserve.spendingScriptAddress,
       )
     ).find((utxo) => utxo.assets.lovelace === 12_000_000n);
     if (reserveAfterAbsorb === undefined) {
-      throw new Error("Deposit absorption did not create a 12 ADA reserve UTxO");
+      throw new Error(
+        "Deposit absorption did not create a 12 ADA reserve UTxO",
+      );
     }
+    const reserveSummary = await runNodeCommandProgram(reserveUtxosProgram, {
+      fixture,
+      lucidService,
+      globals,
+    });
+    expect(reserveSummary.utxos).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          outRef: `${reserveAfterAbsorb.txHash}#${reserveAfterAbsorb.outputIndex.toString()}`,
+          datum: "NoDatum",
+          hasReferenceScript: false,
+          spendable: true,
+        }),
+      ]),
+    );
 
     const projectedDepositUtxos = await Effect.runPromise(
       utxosProgram(l2Address).pipe(Effect.provide(Database.layer)),
@@ -1921,9 +1985,14 @@ describeRealisticDepositFlow("deposit flow emulator", () => {
       l1_address: l1AddressData,
       l1_datum: "NoDatum",
     };
-    await submitWithdrawalWithDiagnostics(fixture, {
+    const withdrawalPrivateKey = CML.PrivateKey.from_bech32(
+      walletFromSeed(fixture.depositorAccount.seedPhrase, {
+        network: "Custom",
+      }).paymentKey,
+    );
+    const submittedWithdrawal = await submitWithdrawalWithDiagnostics(fixture, {
       body: withdrawalBody,
-      signature: ["01", "02"],
+      signature: signWithdrawalBody(withdrawalPrivateKey, withdrawalBody),
       refundAddress: l1AddressData,
       refundDatum: "NoDatum",
     });
@@ -1936,6 +2005,9 @@ describeRealisticDepositFlow("deposit flow emulator", () => {
     );
     expect(fetchedWithdrawalUtxos).toHaveLength(1);
     const withdrawalUtxo = fetchedWithdrawalUtxos[0]!;
+    expect(submittedWithdrawal.withdrawalEventId).toEqual(
+      withdrawalUtxo.idCbor.toString("hex"),
+    );
 
     await fixture.emulator.awaitSlot(
       fixture.operatorLucid.unixTimeToSlot(
@@ -1943,6 +2015,17 @@ describeRealisticDepositFlow("deposit flow emulator", () => {
       ) + 1,
     );
     vi.setSystemTime(new Date(fixture.emulator.now()));
+
+    const withdrawalFetch = await runNodeCommandProgram(
+      fetchWithdrawalsOnceProgram,
+      { fixture, lucidService, globals },
+    );
+    expect(withdrawalFetch.reconciledCount).toEqual(1);
+    const withdrawalFetchAgain = await runNodeCommandProgram(
+      fetchWithdrawalsOnceProgram,
+      { fixture, lucidService, globals },
+    );
+    expect(withdrawalFetchAgain.reconciledCount).toEqual(1);
 
     const withdrawalBlock = await commitConfirmRecoverAndMerge({
       fixture,
@@ -1972,32 +2055,56 @@ describeRealisticDepositFlow("deposit flow emulator", () => {
     expect(withdrawalBlock.queuedHeader.withdrawalsRoot).toEqual(
       expectedWithdrawalRoot,
     );
-    const withdrawalMembershipProof = await Effect.runPromise(
-      keyValuePhasProof(
-        withdrawalRootKeyValues.map((keyValue) => keyValue.key),
-        withdrawalRootKeyValues.map((keyValue) => keyValue.value),
-        withdrawalUtxo.idCbor,
-      ),
+    const withdrawalEventIdHex = withdrawalUtxo.idCbor.toString("hex");
+    const withdrawalResolution = await runNodeCommandProgram(
+      resolveEventSettlementProofProgram({
+        kind: "withdrawal",
+        eventId: Buffer.from(withdrawalUtxo.idCbor),
+      }),
+      { fixture, lucidService, globals },
     );
+    expect(withdrawalResolution.root).toEqual(expectedWithdrawalRoot);
+    if (withdrawalResolution.kind !== "withdrawal") {
+      throw new Error("Expected withdrawal settlement proof resolution.");
+    }
+    expect(withdrawalResolution.validity).toEqual(
+      WithdrawalsDB.Validity.WithdrawalIsValid,
+    );
+    expect(withdrawalResolution.settlementRefInput.txHash).toEqual(
+      withdrawalBlock.settlementUtxo.txHash,
+    );
+    const withdrawalStatus = await runNodeCommandProgram(
+      withdrawalStatusProgram({
+        eventId: Buffer.from(withdrawalUtxo.idCbor),
+      }),
+      { fixture, lucidService, globals },
+    );
+    expect(withdrawalStatus.status).toEqual(WithdrawalsDB.Status.Finalized);
+    expect(withdrawalStatus.validity).toEqual(
+      WithdrawalsDB.Validity.WithdrawalIsValid,
+    );
+    expect(withdrawalStatus.settlementOutRef).not.toBeNull();
     const projectedAfterWithdrawal = await Effect.runPromise(
       utxosProgram(l2Address).pipe(Effect.provide(Database.layer)),
     );
     expect(projectedAfterWithdrawal.utxoCount).toEqual(0);
 
-    const initialize = await Effect.runPromise(
-      buildInitializePayoutTxProgram(fixture.operatorLucid, fixture.contracts, {
-        membershipProof: withdrawalMembershipProof,
-        membershipProofWithdrawal,
-        settlementRefInput: withdrawalBlock.settlementUtxo,
-        withdrawal: withdrawalUtxo,
-      }),
+    const initialize = await runNodeCommandProgram(
+      initializePayoutProgram({ eventId: withdrawalEventIdHex }),
+      { fixture, lucidService, globals },
     );
-    await submitWithWallet(fixture.operatorLucid, initialize.tx);
     await ensureSeparateCollateralUtxo(fixture.operatorLucid);
-    const payoutUnit = toUnit(
-      fixture.contracts.payout.policyId,
-      withdrawalUtxo.assetName,
+    expect(initialize.details.withdrawalOutRef).toEqual(
+      `${withdrawalUtxo.utxo.txHash}#${withdrawalUtxo.utxo.outputIndex.toString()}`,
     );
+    const initializedStatus = await runNodeCommandProgram(
+      payoutStatusProgram(withdrawalEventIdHex),
+      { fixture, lucidService, globals },
+    );
+    expect(["initialized", "partially_funded"]).toContain(
+      initializedStatus.phase,
+    );
+    const payoutUnit = initializedStatus.payoutUnit;
     const initializedPayout = findUtxoWithUnit(
       await fixture.operatorLucid.utxosAt(
         fixture.contracts.payout.spendingScriptAddress,
@@ -2006,17 +2113,18 @@ describeRealisticDepositFlow("deposit flow emulator", () => {
     );
     expect(initializedPayout.assets[payoutUnit]).toEqual(1n);
 
-    const addFunds = await Effect.runPromise(
-      buildAddReserveFundsToPayoutTxProgram(
-        fixture.operatorLucid,
-        fixture.contracts,
-        {
-          payoutInput: initializedPayout,
-          reserveInput: reserveAfterAbsorb,
-        },
-      ),
+    const addFunds = await runNodeCommandProgram(
+      addReserveFundsToPayoutProgram({ eventId: withdrawalEventIdHex }),
+      { fixture, lucidService, globals },
     );
-    await submitWithWallet(fixture.operatorLucid, addFunds.tx);
+    expect(addFunds.details.reserveOutRef).toEqual(
+      `${reserveAfterAbsorb.txHash}#${reserveAfterAbsorb.outputIndex.toString()}`,
+    );
+    const fundedStatus = await runNodeCommandProgram(
+      payoutStatusProgram(withdrawalEventIdHex),
+      { fixture, lucidService, globals },
+    );
+    expect(fundedStatus.phase).toEqual("funded");
     const fundedPayout = findUtxoWithUnit(
       await fixture.operatorLucid.utxosAt(
         fixture.contracts.payout.spendingScriptAddress,
@@ -2025,17 +2133,23 @@ describeRealisticDepositFlow("deposit flow emulator", () => {
     );
     expect(fundedPayout.assets.lovelace).toEqual(12_000_000n);
 
-    const conclude = await Effect.runPromise(
-      buildConcludePayoutTxProgram(fixture.operatorLucid, fixture.contracts, {
-        payoutInput: fundedPayout,
-      }),
+    const conclude = await runNodeCommandProgram(
+      concludePayoutProgram({ eventId: withdrawalEventIdHex }),
+      { fixture, lucidService, globals },
     );
-    await submitWithWallet(fixture.operatorLucid, conclude.tx);
+    expect(conclude.details.payoutUnit).toEqual(payoutUnit);
+    const concludedStatus = await runNodeCommandProgram(
+      payoutStatusProgram(withdrawalEventIdHex),
+      { fixture, lucidService, globals },
+    );
+    expect(concludedStatus.phase).toEqual("concluded");
 
     expect(
-      (await fixture.operatorLucid.utxosAt(
-        fixture.contracts.payout.spendingScriptAddress,
-      )).some((utxo) => utxo.assets[payoutUnit] === 1n),
+      (
+        await fixture.operatorLucid.utxosAt(
+          fixture.contracts.payout.spendingScriptAddress,
+        )
+      ).some((utxo) => utxo.assets[payoutUnit] === 1n),
     ).toBe(false);
     expect(
       (await fixture.operatorLucid.utxosAt(l2Address)).some(

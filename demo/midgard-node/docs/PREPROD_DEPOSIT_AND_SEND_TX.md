@@ -85,16 +85,19 @@ Build first if needed, then submit the deposit from the user wallet to the user'
 cd demo/midgard-node
 pnpm build
 
-node dist/index.js submit-deposit \
+DEPOSIT_JSON="$(node dist/index.js submit-deposit \
   --wallet-seed-phrase-env USER_WALLET \
   --l2-address "$USER_L2_ADDRESS" \
-  --lovelace 12000000
+  --lovelace 12000000)"
+
+printf '%s\n' "$DEPOSIT_JSON" | jq .
 ```
 
 Important details:
 
 - `submit-deposit` defaults to `L1_OPERATOR_SEED_PHRASE`; for this flow, override it with `--wallet-seed-phrase-env USER_WALLET`.
-- The command signs, submits, waits for L1 confirmation, and then returns the deposit transaction hash.
+- The command signs, submits, waits for L1 confirmation, and then prints JSON
+  containing `txHash`, `metadata.depositEventId`, and the deposit auth asset.
 - If the user wallet collides with an operational node wallet, the command will fail by design.
 
 ## 4. Wait For The Deposit To Become Projectable

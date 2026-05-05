@@ -7,7 +7,6 @@ import { SqlClient } from "@effect/sql";
 import {
   CML,
   Data as LucidData,
-  getAddressDetails,
   toHex,
   valueToAssets,
 } from "@lucid-evolution/lucid";
@@ -36,6 +35,8 @@ import {
   midgardOutputAddressText,
   midgardValueToCmlValue,
 } from "@/validation/midgard-output.js";
+import { verifyWithdrawalSignature } from "@/withdrawal-signature.js";
+import { decodeMidgardAddressText } from "@/midgard-tx-codec/index.js";
 
 const LEVELDB_ENCODING_OPTS = {
   keyEncoding: ETH_UTILS.KeyEncoding.Bytes,
@@ -342,7 +343,9 @@ const decodeLedgerUtxo = ({
         txHash: input.transaction_id().to_hex(),
         outputIndex,
         address: midgardOutputAddressText(decodedOutput),
-        assets: valueToAssets(midgardValueToCmlValue(decodedOutput.value)) as Assets,
+        assets: valueToAssets(
+          midgardValueToCmlValue(decodedOutput.value),
+        ) as Assets,
         ...(decodedOutput.datum === undefined
           ? {}
           : { datum: decodedOutput.datum.cbor.toString("hex") }),
@@ -393,10 +396,11 @@ const classifyWithdrawal = ({
         outRef: ledgerOutRef,
         output: ledgerOutput.value,
       });
-      const paymentCredential = getAddressDetails(utxo.address).paymentCredential;
+      const paymentCredential = decodeMidgardAddressText(
+        utxo.address,
+      ).paymentCredential;
       if (
-        paymentCredential == null ||
-        paymentCredential.hash.toLowerCase() !==
+        paymentCredential.hash.toString("hex").toLowerCase() !==
           entry[WithdrawalsDB.Columns.L2_OWNER].toString("hex").toLowerCase()
       ) {
         validity = WithdrawalsDB.Validity.IncorrectWithdrawalOwner;
@@ -430,7 +434,23 @@ const classifyWithdrawal = ({
         } else if (Object.keys(normalizeAssets(utxo.assets)).length > 100) {
           validity = WithdrawalsDB.Validity.TooManyTokensInWithdrawal;
         } else {
-          validity = WithdrawalsDB.Validity.WithdrawalIsValid;
+          const withdrawalInfo = yield* decodeWithdrawalInfo(entry);
+          const verification = verifyWithdrawalSignature(
+            withdrawalInfo.body,
+            withdrawalInfo.signature,
+            entry[WithdrawalsDB.Columns.L2_OWNER].toString("hex"),
+          );
+          if (!verification.valid) {
+            validity = WithdrawalsDB.Validity.IncorrectWithdrawalSignature;
+            validityDetail = {
+              reason: verification.reason,
+              ...(verification.publicKeyHash === undefined
+                ? {}
+                : { public_key_hash: verification.publicKeyHash }),
+            };
+          } else {
+            validity = WithdrawalsDB.Validity.WithdrawalIsValid;
+          }
         }
       }
     }
@@ -578,9 +598,7 @@ export const resolveIncludedWithdrawalEntriesForWindow = ({
               message:
                 "Refusing to build a block because one or more withdrawals due for an earlier block were never assigned to a header",
               cause: skippedAwaitingEntries
-                .map((entry) =>
-                  entry[WithdrawalsDB.Columns.ID].toString("hex"),
-                )
+                .map((entry) => entry[WithdrawalsDB.Columns.ID].toString("hex"))
                 .join(","),
             }),
           );
@@ -861,9 +879,10 @@ export const processMpts = (
             [TxRejectionsDB.Columns.TX_ID]: Buffer.from(decoded.txHash),
             [TxRejectionsDB.Columns.REJECT_CODE]:
               COMMIT_REJECT_CODE_WITHDRAWN_REFERENCE_INPUT,
-            [TxRejectionsDB.Columns.REJECT_DETAIL]: `Transaction spends L2 outref ${withdrawnOutRef.toString(
-              "hex",
-            )}, which is consumed by a valid withdrawal in the same block window`,
+            [TxRejectionsDB.Columns.REJECT_DETAIL]:
+              `Transaction spends L2 outref ${withdrawnOutRef.toString(
+                "hex",
+              )}, which is consumed by a valid withdrawal in the same block window`,
           });
           yield* Effect.logWarning(
             `Skipping mempool tx ${txHashHex}: it spends an outref consumed by a due withdrawal event.`,
@@ -987,7 +1006,10 @@ export const keyValueMptRoot = (
   });
 
 const toPhasTrieItem = (keyCbor: Buffer, valueCbor: Buffer) => ({
-  key: Buffer.from(aikenSerialisedPlutusDataCbor(keyCbor.toString("hex")), "hex"),
+  key: Buffer.from(
+    aikenSerialisedPlutusDataCbor(keyCbor.toString("hex")),
+    "hex",
+  ),
   value: Buffer.from(
     aikenSerialisedPlutusDataCbor(valueCbor.toString("hex")),
     "hex",
@@ -1032,7 +1054,9 @@ export const keyValuePhasProof = (
         );
       }
       if (keys.length === 0) {
-        throw new Error("Cannot build a PHAS membership proof for an empty tree");
+        throw new Error(
+          "Cannot build a PHAS membership proof for an empty tree",
+        );
       }
       const trie = await Trie.fromList(
         keys.map((itemKey, index) => toPhasTrieItem(itemKey, values[index]!)),

@@ -15,7 +15,10 @@ import {
   walletFromSeed,
 } from "@lucid-evolution/lucid";
 import {
+  decodeMidgardAddressBytes,
   decodeMidgardNativeByteListPreimage,
+  midgardAddressFromText,
+  midgardAddressToText,
   MIDGARD_SUPPORTED_SCRIPT_LANGUAGES,
 } from "@/midgard-tx-codec/index.js";
 import {
@@ -498,20 +501,19 @@ export const parseSubmitL2TransferConfig = ({
     throw new Error("L2 address must not be empty.");
   }
 
-  let addressDetails: ReturnType<typeof getAddressDetails>;
+  let addressBytes: Buffer;
+  let addressDetails: ReturnType<typeof decodeMidgardAddressBytes>;
   try {
-    addressDetails = getAddressDetails(normalizedL2Address);
+    addressBytes = midgardAddressFromText(normalizedL2Address);
+    addressDetails = decodeMidgardAddressBytes(addressBytes);
   } catch (cause) {
     throw new Error(
       `Invalid L2 address "${normalizedL2Address}": ${String(cause)}`,
     );
   }
-  if (!addressDetails.paymentCredential) {
-    throw new Error("L2 address must include a payment credential.");
-  }
 
   return {
-    l2Address: addressDetails.address.bech32,
+    l2Address: midgardAddressToText(addressBytes),
     lovelace: parseLovelaceAmount(
       lovelace,
       "Transfer lovelace amount must be greater than zero.",

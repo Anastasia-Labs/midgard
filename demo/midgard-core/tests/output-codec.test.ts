@@ -8,6 +8,7 @@ import {
   encodeMidgardTxOutput,
   encodeMidgardVersionedScript,
   midgardAddressFromText,
+  MIDGARD_PROTECTED_ADDRESS_HEADER_MASK,
   protectMidgardAddress,
   type MidgardTxOutput,
 } from "../src/codec/index.js";
@@ -47,18 +48,47 @@ const sampleOutput = (): MidgardTxOutput => ({
 
 describe("Midgard output codec", () => {
   it("derives protected state from the address header bit and Bech32 text", () => {
-    const protectedAddress = protectMidgardAddress(
-      midgardAddressFromText(unprotectedAddress),
-    );
+    const unprotectedBytes = midgardAddressFromText(unprotectedAddress);
+    const protectedAddress = protectMidgardAddress(unprotectedBytes);
     const protectedText = encodeMidgardAddressText(protectedAddress);
 
     expect(protectedText).toBe(
-      "addr1s9ynxme7c0tcmmvgk2tjuv63aw7zk9tk6yqkaqd48ulhkyl5f6v47dp5rc7286z5f57339d0c79khw4y3lwxzm8ywkzsvf8xs7",
+      "addr1p9ynxme7c0tcmmvgk2tjuv63aw7zk9tk6yqkaqd48ulhkyl5f6v47dp5rc7286z5f57339d0c79khw4y3lwxzm8ywkzsuegces",
     );
-    expect(decodeMidgardAddressBytes(midgardAddressFromText(protectedText))).toMatchObject({
+    expect(protectedAddress[0]).toBe(
+      unprotectedBytes[0] | MIDGARD_PROTECTED_ADDRESS_HEADER_MASK,
+    );
+    expect(protectedAddress[0] & 0xf0).toBe(unprotectedBytes[0] & 0xf0);
+    expect(
+      decodeMidgardAddressBytes(midgardAddressFromText(protectedText)),
+    ).toMatchObject({
       protected: true,
       networkId: 1,
     });
+  });
+
+  it("rejects old bit-7 protected address headers", () => {
+    const oldProtectedBytes = Buffer.from(
+      midgardAddressFromText(unprotectedAddress),
+    );
+    oldProtectedBytes[0] |= 0x80;
+
+    expect(() => decodeMidgardAddressBytes(oldProtectedBytes)).toThrow(
+      /Unsupported Midgard address family/,
+    );
+  });
+
+  it("rejects reserved network-nibble bits other than the protected bit", () => {
+    for (const reservedNetworkBit of [0x02, 0x04]) {
+      const badAddress = Buffer.from(
+        midgardAddressFromText(unprotectedAddress),
+      );
+      badAddress[0] |= reservedNetworkBit;
+
+      expect(() => decodeMidgardAddressBytes(badAddress)).toThrow(
+        /Unsupported Midgard address network id/,
+      );
+    }
   });
 
   it("round trips output CBOR byte-exactly", () => {
@@ -92,7 +122,9 @@ describe("Midgard output codec", () => {
 
   it("rejects non-canonical value policy ordering", () => {
     const assetMap = (quantity: bigint) =>
-      encodeCborMapRaw([[encodeCborBytes(Buffer.alloc(0)), encodeCborUnsigned(quantity)]]);
+      encodeCborMapRaw([
+        [encodeCborBytes(Buffer.alloc(0)), encodeCborUnsigned(quantity)],
+      ]);
     const nonCanonical = encodeCborArrayRaw([
       encodeCborUnsigned(0n),
       encodeCborMapRaw([

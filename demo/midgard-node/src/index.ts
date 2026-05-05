@@ -7,8 +7,14 @@ import { auditBlocksImmutableProgram } from "@/commands/audit-blocks-immutable.j
 import * as ContractDeploymentInfo from "@/commands/contract-deployment-info.js";
 import * as AddressFromSeed from "@/commands/address-from-seed.js";
 import * as L1UtxosCommand from "@/commands/l1-utxos.js";
+import * as EventSettlementProofCommand from "@/commands/event-settlement-proof.js";
+import * as FetchWithdrawalsOnceCommand from "@/commands/fetch-withdrawals-once.js";
+import * as ReserveInspectionCommand from "@/commands/reserve-inspection.js";
+import * as ReservePayoutCommand from "@/commands/reserve-payout.js";
 import * as SubmitL2Transfer from "@/commands/submit-l2-transfer.js";
+import * as SubmitWithdrawalCommand from "@/commands/submit-withdrawal.js";
 import * as UtxosCommand from "@/commands/utxos.js";
+import * as WithdrawalStatusCommand from "@/commands/withdrawal-status.js";
 import * as Services from "@/services/index.js";
 import {
   fetchAndInsertDepositUTxOs,
@@ -92,6 +98,28 @@ const provideNodeRuntimeServices = <A, E>(
     Effect.provide(Services.MidgardContracts.Default),
     Effect.provide(Services.Lucid.Default),
     Effect.provide(Services.Globals.Default),
+  );
+
+const provideDatabaseTxServices = <A, E>(
+  effect: Effect.Effect<
+    A,
+    E,
+    | Services.NodeConfig
+    | Services.Database
+    | Services.MidgardContracts
+    | Services.Lucid
+  >,
+): Effect.Effect<
+  A,
+  E | Services.ConfigError | Services.DatabaseInitializationError,
+  never
+> =>
+  pipe(
+    effect,
+    Effect.provide(Services.NodeConfig.layer),
+    Effect.provide(Services.Database.layer),
+    Effect.provide(Services.MidgardContracts.Default),
+    Effect.provide(Services.Lucid.Default),
   );
 
 const assertUserCliWalletIsOperationallyIsolated = ({
@@ -529,14 +557,19 @@ program
                 ),
               })),
             );
-          return yield* SubmitDeposit.submitDepositProgram(
+          return yield* SubmitDeposit.submitDepositWithMetadataProgram(
             lucidService.api,
             contracts,
             { ...depositConfig, referenceScripts: depositReferenceScripts },
           );
         }).pipe(
-          Effect.tap((txHash) =>
-            Effect.logInfo(`submit-deposit completed: txHash=${txHash}`),
+          Effect.tap((result) =>
+            Effect.sync(() => {
+              process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
+            }),
+          ),
+          Effect.tap((result) =>
+            Effect.logInfo(`submit-deposit completed: txHash=${result.txHash}`),
           ),
         ),
       );
@@ -655,6 +688,91 @@ program
   );
 
 program
+  .command("submit-withdrawal")
+  .description(
+    "Submit an authenticated L1 withdrawal order for a selected Midgard L2 UTxO",
+  )
+  .requiredOption(
+    "--l2-out-ref <txHash#outputIndex>",
+    "Midgard L2 UTxO to withdraw, in txHash#outputIndex form",
+  )
+  .requiredOption(
+    "--l1-address <address>",
+    "Cardano L1 address that should receive the payout",
+  )
+  .option(
+    "--wallet-seed-phrase <seedPhrase>",
+    "Optional seed phrase used directly for the withdrawal signer",
+  )
+  .option(
+    "--wallet-seed-phrase-env <envVar>",
+    "Environment variable containing the withdrawal signer seed phrase",
+    "USER_WALLET",
+  )
+  .option(
+    "--l1-datum <hex>",
+    "Optional inline payout datum as Plutus data CBOR",
+  )
+  .option(
+    "--refund-address <address>",
+    "Optional refund address for invalid withdrawals; defaults to --l1-address",
+  )
+  .option(
+    "--refund-datum <hex>",
+    "Optional invalid-withdrawal refund datum as Plutus data CBOR",
+  )
+  .option(
+    "--order-lovelace <amount>",
+    "Optional lovelace held by the withdrawal order UTxO",
+  )
+  .option(
+    "--endpoint <url>",
+    "Midgard node HTTP endpoint used for L2 UTxO lookup",
+  )
+  .action(async (_args, options) => {
+    const opts = options.opts();
+    const mainEffect = pipe(
+      Effect.gen(function* () {
+        const lucidService = yield* Services.Lucid;
+        return yield* SubmitWithdrawalCommand.submitWithdrawalCommandProgram({
+          config: {
+            walletSeedPhrase: opts.walletSeedPhrase,
+            walletSeedPhraseEnv: opts.walletSeedPhraseEnv,
+            l2OutRef: opts.l2OutRef,
+            l1Address: opts.l1Address,
+            l1Datum: opts.l1Datum,
+            refundAddress: opts.refundAddress,
+            refundDatum: opts.refundDatum,
+            orderLovelace: opts.orderLovelace,
+            endpoint: opts.endpoint,
+          },
+          assertWalletAddress: (walletAddress) =>
+            assertUserCliWalletIsOperationallyIsolated({
+              commandName: "submit-withdrawal",
+              walletAddress,
+              operatorMainAddress: lucidService.operatorMainAddress,
+              operatorMergeAddress: lucidService.operatorMergeAddress,
+              referenceScriptsAddress: lucidService.referenceScriptsAddress,
+            }),
+        });
+      }).pipe(
+        Effect.tap((result) =>
+          Effect.sync(() => {
+            process.stdout.write(
+              `${SubmitWithdrawalCommand.formatSubmitWithdrawalResult(result)}\n`,
+            );
+          }),
+        ),
+      ),
+      Effect.provide(Services.NodeConfig.layer),
+      Effect.provide(Services.MidgardContracts.Default),
+      Effect.provide(Services.Lucid.Default),
+    );
+
+    NodeRuntime.runMain(mainEffect, { teardown: undefined });
+  });
+
+program
   .command("utxos")
   .description(
     "Print the current Midgard ledger UTxOs and summed asset totals for an address",
@@ -698,6 +816,251 @@ program
         Effect.andThen(projectDepositsToMempoolLedger),
         Effect.tap(() =>
           Effect.logInfo("project-deposits-once completed successfully"),
+        ),
+      ),
+    );
+
+    NodeRuntime.runMain(mainEffect, { teardown: undefined });
+  });
+
+program
+  .command("fetch-withdrawals-once")
+  .description(
+    "Fetch visible withdrawal order UTxOs from L1 once and reconcile them into withdrawal_utxos",
+  )
+  .action(async () => {
+    const mainEffect = provideNodeRuntimeServices(
+      FetchWithdrawalsOnceCommand.fetchWithdrawalsOnceProgram.pipe(
+        Effect.tap((result) =>
+          Effect.sync(() => {
+            process.stdout.write(
+              `${FetchWithdrawalsOnceCommand.formatFetchWithdrawalsOnceResult(result)}\n`,
+            );
+          }),
+        ),
+      ),
+    );
+
+    NodeRuntime.runMain(mainEffect, { teardown: undefined });
+  });
+
+program
+  .command("resolve-event-settlement-proof")
+  .description(
+    "Resolve a deposit or withdrawal event's settlement UTxO and PHAS membership proof",
+  )
+  .requiredOption("--kind <kind>", 'Event kind: "deposit" or "withdrawal"')
+  .requiredOption("--event-id <hex>", "Canonical OutputReference CBOR event id")
+  .action(async (_args, options) => {
+    const opts = options.opts();
+    let lookup: EventSettlementProofCommand.EventSettlementProofLookup;
+    try {
+      lookup = EventSettlementProofCommand.parseEventSettlementProofLookup({
+        kind: opts.kind,
+        eventId: opts.eventId,
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      console.error(`resolve-event-settlement-proof: ${message}`);
+      process.exitCode = 1;
+      return;
+    }
+
+    const mainEffect = provideDatabaseTxServices(
+      EventSettlementProofCommand.resolveEventSettlementProofProgram(
+        lookup,
+      ).pipe(
+        Effect.tap((result) =>
+          Effect.sync(() => {
+            process.stdout.write(
+              `${EventSettlementProofCommand.formatEventSettlementProofResolution(result)}\n`,
+            );
+          }),
+        ),
+      ),
+    );
+
+    NodeRuntime.runMain(mainEffect, { teardown: undefined });
+  });
+
+program
+  .command("absorb-confirmed-deposit-to-reserve")
+  .description("Absorb a confirmed deposit event into the Midgard reserve")
+  .requiredOption(
+    "--deposit-event-id <hex>",
+    "Canonical OutputReference CBOR deposit event id",
+  )
+  .action(async (_args, options) => {
+    const opts = options.opts();
+    const mainEffect = provideDatabaseTxServices(
+      ReservePayoutCommand.absorbConfirmedDepositToReserveProgram({
+        eventId: opts.depositEventId,
+      }).pipe(
+        Effect.tap((result) =>
+          Effect.sync(() => {
+            process.stdout.write(
+              `${ReservePayoutCommand.formatPayoutCommandResult(result)}\n`,
+            );
+          }),
+        ),
+      ),
+    );
+
+    NodeRuntime.runMain(mainEffect, { teardown: undefined });
+  });
+
+program
+  .command("initialize-payout")
+  .description("Initialize payout for a valid confirmed withdrawal event")
+  .requiredOption(
+    "--withdrawal-event-id <hex>",
+    "Canonical OutputReference CBOR withdrawal event id",
+  )
+  .action(async (_args, options) => {
+    const opts = options.opts();
+    const mainEffect = provideDatabaseTxServices(
+      ReservePayoutCommand.initializePayoutProgram({
+        eventId: opts.withdrawalEventId,
+      }).pipe(
+        Effect.tap((result) =>
+          Effect.sync(() => {
+            process.stdout.write(
+              `${ReservePayoutCommand.formatPayoutCommandResult(result)}\n`,
+            );
+          }),
+        ),
+      ),
+    );
+
+    NodeRuntime.runMain(mainEffect, { teardown: undefined });
+  });
+
+program
+  .command("add-reserve-funds-to-payout")
+  .description("Move reserve funds into an initialized payout accumulator")
+  .requiredOption(
+    "--withdrawal-event-id <hex>",
+    "Canonical OutputReference CBOR withdrawal event id",
+  )
+  .action(async (_args, options) => {
+    const opts = options.opts();
+    const mainEffect = provideDatabaseTxServices(
+      ReservePayoutCommand.addReserveFundsToPayoutProgram({
+        eventId: opts.withdrawalEventId,
+      }).pipe(
+        Effect.tap((result) =>
+          Effect.sync(() => {
+            process.stdout.write(
+              `${ReservePayoutCommand.formatPayoutCommandResult(result)}\n`,
+            );
+          }),
+        ),
+      ),
+    );
+
+    NodeRuntime.runMain(mainEffect, { teardown: undefined });
+  });
+
+program
+  .command("conclude-payout")
+  .description("Conclude a fully funded payout to the withdrawal target")
+  .requiredOption(
+    "--withdrawal-event-id <hex>",
+    "Canonical OutputReference CBOR withdrawal event id",
+  )
+  .action(async (_args, options) => {
+    const opts = options.opts();
+    const mainEffect = provideDatabaseTxServices(
+      ReservePayoutCommand.concludePayoutProgram({
+        eventId: opts.withdrawalEventId,
+      }).pipe(
+        Effect.tap((result) =>
+          Effect.sync(() => {
+            process.stdout.write(
+              `${ReservePayoutCommand.formatPayoutCommandResult(result)}\n`,
+            );
+          }),
+        ),
+      ),
+    );
+
+    NodeRuntime.runMain(mainEffect, { teardown: undefined });
+  });
+
+program
+  .command("withdrawal-status")
+  .description("Print the local status of a withdrawal event")
+  .option(
+    "--event-id <hex>",
+    "Canonical OutputReference CBOR withdrawal event id",
+  )
+  .option("--l1-tx-hash <hex>", "Withdrawal order L1 transaction hash")
+  .action(async (_args, options) => {
+    const opts = options.opts();
+    let lookup: WithdrawalStatusCommand.WithdrawalStatusLookup;
+    try {
+      lookup = WithdrawalStatusCommand.parseWithdrawalStatusLookup({
+        eventId: opts.eventId,
+        l1TxHash: opts.l1TxHash,
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      console.error(`withdrawal-status: ${message}`);
+      process.exitCode = 1;
+      return;
+    }
+
+    const mainEffect = provideDatabaseTxServices(
+      WithdrawalStatusCommand.withdrawalStatusProgram(lookup).pipe(
+        Effect.tap((result) =>
+          Effect.sync(() => {
+            process.stdout.write(
+              `${WithdrawalStatusCommand.formatWithdrawalStatusResult(result)}\n`,
+            );
+          }),
+        ),
+      ),
+    );
+
+    NodeRuntime.runMain(mainEffect, { teardown: undefined });
+  });
+
+program
+  .command("reserve-utxos")
+  .description("Print typed reserve-address UTxOs and aggregate assets")
+  .action(async () => {
+    const mainEffect = provideTxServices(
+      ReserveInspectionCommand.reserveUtxosProgram.pipe(
+        Effect.tap((result) =>
+          Effect.sync(() => {
+            process.stdout.write(
+              `${ReserveInspectionCommand.formatReserveUtxosResult(result)}\n`,
+            );
+          }),
+        ),
+      ),
+    );
+
+    NodeRuntime.runMain(mainEffect, { teardown: undefined });
+  });
+
+program
+  .command("payout-status")
+  .description("Print payout accumulator status for a withdrawal event")
+  .requiredOption(
+    "--withdrawal-event-id <hex>",
+    "Canonical OutputReference CBOR withdrawal event id",
+  )
+  .action(async (_args, options) => {
+    const opts = options.opts();
+    const mainEffect = provideDatabaseTxServices(
+      ReserveInspectionCommand.payoutStatusProgram(opts.withdrawalEventId).pipe(
+        Effect.tap((result) =>
+          Effect.sync(() => {
+            process.stdout.write(
+              `${ReserveInspectionCommand.formatPayoutStatusResult(result)}\n`,
+            );
+          }),
         ),
       ),
     );

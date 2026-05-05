@@ -218,6 +218,22 @@ export const retrieveByCardanoTxHash = (
     ),
   );
 
+export const retrieveByProjectedHeaderHash = (
+  projectedHeaderHash: Buffer,
+): Effect.Effect<readonly Entry[], DatabaseError, Database> =>
+  Effect.gen(function* () {
+    const sql = yield* SqlClient.SqlClient;
+    return yield* sql<Entry>`SELECT * FROM ${sql(tableName)}
+      WHERE ${sql(Columns.PROJECTED_HEADER_HASH)} = ${projectedHeaderHash}
+      ORDER BY ${sql(Columns.INCLUSION_TIME)} ASC, ${sql(Columns.ID)} ASC`;
+  }).pipe(
+    Effect.withLogSpan(`retrieveByProjectedHeaderHash ${tableName}`),
+    sqlErrorToDatabaseError(
+      tableName,
+      "Failed to retrieve deposit UTxOs by projected header hash",
+    ),
+  );
+
 export const retrieveTimeBoundEntries = (
   startTime: Date,
   endTime: Date,

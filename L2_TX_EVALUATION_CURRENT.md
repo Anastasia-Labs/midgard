@@ -245,10 +245,10 @@ inputs, and outputs converted from Cardano transaction CBOR. Because datum hashe
 are not supported, the Midgard native witness set has no datum-witness bucket and
 script context construction uses an empty Cardano `txInfoData` datum map.
 
-Midgard uses bit `0x80` on the first address byte as a protected-address
-marker. `normalizeMidgardOutputAddressBytes` clears that bit before ordinary
-CML decoding and returns `protectedAddress: true` when the bit was set
-(`output.ts:190-203`). Protected outputs affect Phase B:
+Midgard uses bit `0x08` on the first address byte as a protected-address
+marker. The Midgard address codec clears that bit for ordinary Shelley payment
+address-family interpretation and derives protected status from the address
+bytes. Protected outputs affect Phase B:
 
 - Protected pubkey outputs require a matching vkey witness
   (`phase-b.ts:572-604`).
