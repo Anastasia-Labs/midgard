@@ -40,6 +40,7 @@ import {
   handleTxGetFailure,
 } from "@/commands/listen-response.js";
 import * as DepositStatusCommand from "@/commands/deposit-status.js";
+import * as ProtocolInfoCommand from "@/commands/protocol-info.js";
 import { resolveTxStatus } from "@/commands/tx-status.js";
 import * as UtxosCommand from "@/commands/utxos.js";
 import * as SubmitDeposit from "@/transactions/submit-deposit.js";
@@ -48,20 +49,26 @@ import {
   referenceScriptByName,
   referenceScriptTargetsByCommand,
 } from "@/transactions/reference-scripts.js";
-import { fromHex, getAddressDetails, toHex } from "@lucid-evolution/lucid";
+import { fromHex, toHex } from "@lucid-evolution/lucid";
 import * as SDK from "@al-ft/midgard-sdk";
 import { Cause, Duration, Effect, Metric, Queue, Ref } from "effect";
 import {
-  HttpBodyError,
   HttpRouter,
   HttpServerRequest,
   HttpServerResponse,
 } from "@effect/platform";
+import type { HttpBodyError } from "@effect/platform/HttpBody";
 import { ParsedSearchParams } from "@effect/platform/HttpServerRequest";
 import { DatabaseError } from "@/database/utils/common.js";
 import { SqlClient } from "@effect/sql/SqlClient";
 import { blockCommitmentAction, mergeAction } from "@/fibers/index.js";
 import { SerializedStateQueueUTxO } from "@/workers/utils/commit-block-header.js";
+import * as Initialization from "@/transactions/initialization.js";
+import * as Genesis from "@/genesis.js";
+import {
+  fetchStateQueueTopologyProgram,
+  formatStateQueueTopology,
+} from "@/services/state-queue-topology.js";
 
 const TX_ENDPOINT: string = "tx";
 const ADDRESS_HISTORY_ENDPOINT: string = "txs";
@@ -76,6 +83,7 @@ const DEPOSIT_BUILD_ENDPOINT: string = "deposit/build";
 const STATE_QUEUE_ENDPOINT: string = "stateQueue";
 const TX_STATUS_ENDPOINT: string = "tx-status";
 const DEPOSIT_STATUS_ENDPOINT: string = "deposit-status";
+const PROTOCOL_INFO_ENDPOINT: string = "protocol-info";
 const HEALTH_ENDPOINT: string = "healthz";
 const READINESS_ENDPOINT: string = "readyz";
 
@@ -200,17 +208,10 @@ const getUtxosHandler = Effect.gen(function* () {
     );
   }
   try {
-    const addrDetails = getAddressDetails(addr);
-    if (!addrDetails.paymentCredential) {
-      yield* Effect.logInfo(`Invalid address format: ${addr}`);
-      return yield* HttpServerResponse.json(
-        { error: `Invalid address format: ${addr}` },
-        { status: 400 },
-      );
-    }
+    const address = UtxosCommand.parseAddressArgument(addr);
 
     const utxosWithAddress = yield* MempoolLedgerDB.retrieveByAddress(
-      addrDetails.address.bech32,
+      address,
     );
     const response = UtxosCommand.encodeStoredUtxos(
       utxosWithAddress.map((entry) => ({
@@ -461,6 +462,9 @@ const getReadinessHandler = (txQueue: Queue.Dequeue<QueuedTxPayload>) =>
     const depositFetchHeartbeat = yield* Ref.get(
       globals.HEARTBEAT_DEPOSIT_FETCH,
     );
+    const withdrawalFetchHeartbeat = yield* Ref.get(
+      globals.HEARTBEAT_WITHDRAWAL_FETCH,
+    );
     const txQueueProcessorHeartbeat = yield* Ref.get(
       globals.HEARTBEAT_TX_QUEUE_PROCESSOR,
     );
@@ -492,6 +496,7 @@ const getReadinessHandler = (txQueue: Queue.Dequeue<QueuedTxPayload>) =>
         blockConfirmation: blockConfirmationHeartbeat,
         merge: mergeHeartbeat,
         depositFetch: depositFetchHeartbeat,
+        withdrawalFetch: withdrawalFetchHeartbeat,
         txQueueProcessor: txQueueProcessorHeartbeat,
       },
       localFinalizationPending,
@@ -528,6 +533,24 @@ const getReadinessHandler = (txQueue: Queue.Dequeue<QueuedTxPayload>) =>
       status: readiness.ready ? 200 : 503,
     });
   });
+
+/**
+ * `GET /protocol-info`: returns stable public facts needed by external
+ * Midgard transaction builders.
+ */
+const getProtocolInfoHandler = Effect.gen(function* () {
+  const nodeConfig = yield* NodeConfig;
+  const lucid = yield* Lucid;
+  const response = yield* Effect.try({
+    try: () =>
+      ProtocolInfoCommand.encodeProtocolInfo({
+        nodeConfig,
+        currentSlot: lucid.api.currentSlot(),
+      }),
+    catch: (error) => error,
+  });
+  return yield* HttpServerResponse.json(response);
+}).pipe(Effect.catchAll((e) => failWith500("GET", PROTOCOL_INFO_ENDPOINT, e)));
 
 /**
  * `GET /block`: returns tx hashes referenced by a committed block header.
@@ -615,18 +638,7 @@ const getInitHandler = Effect.gen(function* () {
   return yield* HttpServerResponse.json({
     message: `Initiation successful: ${txHash}`,
   });
-}).pipe(
-  Effect.catchTag("HttpBodyError", (e) => failWith500("GET", INIT_ENDPOINT, e)),
-  Effect.catchTag("LucidError", (e) =>
-    handleGenericGetFailure(INIT_ENDPOINT, e),
-  ),
-  Effect.catchTag("MptError", (e) => handleGenericGetFailure(INIT_ENDPOINT, e)),
-  Effect.catchTag("TxSubmitError", (e) => handleTxGetFailure(INIT_ENDPOINT, e)),
-  Effect.catchTag("TxSignError", (e) => handleTxGetFailure(INIT_ENDPOINT, e)),
-  Effect.catchTag("UnspecifiedNetworkError", (e) =>
-    handleGenericGetFailure(INIT_ENDPOINT, e),
-  ),
-);
+}).pipe(Effect.catchAll((e) => failWith500("GET", INIT_ENDPOINT, e)));
 
 /**
  * `GET /commit`: triggers manual block commitment.
@@ -715,16 +727,8 @@ const getTxsOfAddressHandler = Effect.gen(function* () {
     );
   }
   try {
-    const addrDetails = getAddressDetails(addr);
-    if (!addrDetails.paymentCredential) {
-      yield* Effect.logInfo(`Invalid address format: ${addr}`);
-      return yield* HttpServerResponse.json(
-        { error: `Invalid address format: ${addr}` },
-        { status: 400 },
-      );
-    }
-
-    const cbors = yield* AddressHistoryDB.retrieve(addrDetails.address.bech32);
+    const address = UtxosCommand.parseAddressArgument(addr);
+    const cbors = yield* AddressHistoryDB.retrieve(address);
     yield* Effect.logInfo(`Found ${cbors.length} CBORs with ${addr}`);
     return yield* HttpServerResponse.json({
       txs: cbors.map(SDK.bufferToHex),
@@ -878,6 +882,9 @@ const getLogGlobalsHandler = Effect.gen(function* () {
   const HEARTBEAT_DEPOSIT_FETCH: number = yield* Ref.get(
     globals.HEARTBEAT_DEPOSIT_FETCH,
   );
+  const HEARTBEAT_WITHDRAWAL_FETCH: number = yield* Ref.get(
+    globals.HEARTBEAT_WITHDRAWAL_FETCH,
+  );
   const HEARTBEAT_TX_QUEUE_PROCESSOR: number = yield* Ref.get(
     globals.HEARTBEAT_TX_QUEUE_PROCESSOR,
   );
@@ -896,6 +903,7 @@ const getLogGlobalsHandler = Effect.gen(function* () {
   HEARTBEAT_BLOCK_CONFIRMATION ⋅ ${new Date(Number(HEARTBEAT_BLOCK_CONFIRMATION)).toLocaleString()}
   HEARTBEAT_MERGE ⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅ ${new Date(Number(HEARTBEAT_MERGE)).toLocaleString()}
   HEARTBEAT_DEPOSIT_FETCH ⋅⋅⋅⋅ ${new Date(Number(HEARTBEAT_DEPOSIT_FETCH)).toLocaleString()}
+  HEARTBEAT_WITHDRAWAL_FETCH ⋅ ${new Date(Number(HEARTBEAT_WITHDRAWAL_FETCH)).toLocaleString()}
   HEARTBEAT_TX_QUEUE_PROCESSOR ⋅ ${new Date(Number(HEARTBEAT_TX_QUEUE_PROCESSOR)).toLocaleString()}
 `);
   return yield* HttpServerResponse.json({
@@ -1141,6 +1149,7 @@ export const buildListenRouter = (
     .pipe(
       HttpRouter.get(`/${HEALTH_ENDPOINT}`, getHealthHandler),
       HttpRouter.get(`/${READINESS_ENDPOINT}`, getReadinessHandler(txQueue)),
+      HttpRouter.get(`/${PROTOCOL_INFO_ENDPOINT}`, getProtocolInfoHandler),
       HttpRouter.get(`/${TX_ENDPOINT}`, getTxHandler),
       HttpRouter.get(`/${TX_STATUS_ENDPOINT}`, getTxStatusHandler),
       HttpRouter.get(`/${DEPOSIT_STATUS_ENDPOINT}`, getDepositStatusHandler),

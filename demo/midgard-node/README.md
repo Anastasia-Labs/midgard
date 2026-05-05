@@ -315,6 +315,8 @@ curl -X POST http://127.0.0.1:3000/deposit/build \
 Optional fields:
 
 - `l2Datum`: even-length hex inline datum for the projected Midgard UTxO.
+  Midgard L2 outputs support only absent datums or inline datums; datum-hash
+  outputs are rejected.
 - `additionalAssets`: array of `{ unit, amount }` entries to deposit alongside
   lovelace.
 - `fundingUtxos[].datumHash`, `fundingUtxos[].datum`, `fundingUtxos[].scriptRef`:

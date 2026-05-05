@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 import { CML } from "@lucid-evolution/lucid";
 import { Effect, Queue } from "effect";
 import { buildListenRouter } from "@/commands/listen-router.js";
+import type { QueuedTxPayload } from "@/validation/index.js";
 import {
   ADMIN_ROUTE_PATHS,
   authorizeAdminRoute,
@@ -18,6 +19,7 @@ import {
   decodeMidgardNativeMint,
   decodeMidgardNativeTxFull,
 } from "@/midgard-tx-codec/index.js";
+import { makeCardanoTxOutput } from "./midgard-output-helpers.js";
 
 type TxFixture = {
   readonly cborHex: string;
@@ -28,6 +30,34 @@ const fixturePath = path.resolve(__dirname, "./txs/txs_0.json");
 const txFixtures = JSON.parse(
   fs.readFileSync(fixturePath, "utf8"),
 ) as readonly TxFixture[];
+
+const makeCardanoSignedMapOutputTxBytes = (): Buffer => {
+  const signerKey = CML.PrivateKey.generate_ed25519();
+  const inputs = CML.TransactionInputList.new();
+  inputs.add(
+    CML.TransactionInput.new(CML.TransactionHash.from_hex("11".repeat(32)), 0n),
+  );
+  const outputs = CML.TransactionOutputList.new();
+  outputs.add(
+    makeCardanoTxOutput(
+      CML.EnterpriseAddress.new(
+        0,
+        CML.Credential.new_pub_key(signerKey.to_public().hash()),
+      ).to_address(),
+      CML.Value.from_coin(3_000_000n),
+    ),
+  );
+  const body = CML.TransactionBody.new(inputs, outputs, 0n);
+  const witnessSet = CML.TransactionWitnessSet.new();
+  const vkeyWitnesses = CML.VkeywitnessList.new();
+  vkeyWitnesses.add(
+    CML.make_vkey_witness(CML.hash_transaction(body), signerKey),
+  );
+  witnessSet.set_vkeywitnesses(vkeyWitnesses);
+  return Buffer.from(
+    CML.Transaction.new(body, witnessSet, true, undefined).to_cbor_bytes(),
+  );
+};
 
 describe("listen admin auth helpers", () => {
   it("detects admin route paths", () => {
@@ -132,7 +162,7 @@ describe("submit admission helpers", () => {
   });
 
   it("rejects ordinary Cardano-signed tx bytes at ingress", () => {
-    const cardanoHex = txFixtures[0].cborHex;
+    const cardanoHex = makeCardanoSignedMapOutputTxBytes().toString("hex");
     const normalized = normalizeSubmitTxHexToNative(cardanoHex);
     expect(normalized.ok).toBe(false);
     if (normalized.ok) {
@@ -158,7 +188,7 @@ describe("submit admission helpers", () => {
     );
     const outputs = CML.TransactionOutputList.new();
     outputs.add(
-      CML.TransactionOutput.new(
+      makeCardanoTxOutput(
         CML.Address.from_bech32(
           "addr_test1wzylc3gg4h37gt69yx057gkn4egefs5t9rsycmryecpsenswtdp58",
         ),
@@ -167,7 +197,10 @@ describe("submit admission helpers", () => {
     );
     const body = CML.TransactionBody.new(inputs, outputs, 0n);
     const mintAssets = CML.MapAssetNameToNonZeroInt64.new();
-    mintAssets.insert(CML.AssetName.from_raw_bytes(Buffer.from("01", "hex")), 1n);
+    mintAssets.insert(
+      CML.AssetName.from_raw_bytes(Buffer.from("01", "hex")),
+      1n,
+    );
     const mint = CML.Mint.new();
     mint.insert_assets(policyId, mintAssets);
     body.set_mint(mint);
@@ -193,11 +226,15 @@ describe("submit admission helpers", () => {
     const decodedMint = decodeMidgardNativeMint(nativeTx.body.mintPreimageCbor);
     expect(decodedMint).toBeDefined();
     expect(decodedMint?.policyIds).toStrictEqual([policyId.to_hex()]);
-    expect(nativeTx.witnessSet.scriptTxWitsRoot.equals(nativeTx.witnessSet.addrTxWitsRoot)).toBe(false);
+    expect(
+      nativeTx.witnessSet.scriptTxWitsRoot.equals(
+        nativeTx.witnessSet.addrTxWitsRoot,
+      ),
+    ).toBe(false);
   });
 
   it("keeps native tx bytes unchanged when payload is already Midgard-native", () => {
-    const cardanoBytes = Buffer.from(txFixtures[0].cborHex, "hex");
+    const cardanoBytes = makeCardanoSignedMapOutputTxBytes();
     const nativeBytes = cardanoTxBytesToMidgardNativeTxFullBytes(cardanoBytes);
     const normalized = normalizeSubmitTxHexToNative(
       nativeBytes.toString("hex"),
@@ -221,7 +258,7 @@ describe("submit admission helpers", () => {
   });
 
   it("constructs the listen router with the extended utxo routes", async () => {
-    const txQueue = await Effect.runPromise(Queue.unbounded());
+    const txQueue = await Effect.runPromise(Queue.unbounded<QueuedTxPayload>());
     expect(buildListenRouter(txQueue)).toBeDefined();
   });
 });

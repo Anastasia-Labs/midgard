@@ -235,8 +235,6 @@ const buildQueuedBlock = (
         scriptTxWitsPreimageCbor: EMPTY_CBOR_LIST,
         redeemerTxWitsRoot: EMPTY_LIST_ROOT,
         redeemerTxWitsPreimageCbor: EMPTY_CBOR_LIST,
-        datumTxWitsRoot: EMPTY_LIST_ROOT,
-        datumTxWitsPreimageCbor: EMPTY_CBOR_LIST,
       },
     };
     const txForQueue = {
@@ -455,6 +453,9 @@ describe("validation benchmark", () => {
         result !== undefined,
         `Missing benchmark result for size ${size}`,
       );
+      if (result === undefined) {
+        throw new Error(`Missing benchmark result for size ${size}`);
+      }
       results.push(result);
     }
 

@@ -8,8 +8,6 @@ import {
   NodeConfig,
 } from "@/services/index.js";
 import {
-  assetsToValue,
-  CML,
   credentialToAddress,
   Data as LucidData,
   LucidEvolution,
@@ -18,6 +16,7 @@ import {
   type Credential,
   type Network,
 } from "@lucid-evolution/lucid";
+import { encodeMidgardTxOutput } from "@al-ft/lucid-midgard";
 import { DepositsDB, UserEventsUtils } from "@/database/index.js";
 import { DatabaseError } from "@/database/utils/common.js";
 import { Schedule } from "effect";
@@ -102,18 +101,12 @@ const depositUTxOToEntry = (
         network,
         depositUTxO.datum.event.info.l2_address,
       );
-      const output = CML.ConwayFormatTxOut.new(
-        CML.Address.from_bech32(l2Address),
-        assetsToValue(projectedDepositAssets(depositUTxO, depositPolicyId)),
-      );
       const l2Datum = depositUTxO.datum.event.info.l2_datum;
-      if (l2Datum !== null) {
-        output.set_datum_option(
-          CML.DatumOption.new_datum(
-            CML.PlutusData.from_cbor_hex(LucidData.to(l2Datum)),
-          ),
-        );
-      }
+      const output = encodeMidgardTxOutput(l2Address, projectedDepositAssets(depositUTxO, depositPolicyId), {
+        ...(l2Datum === null
+          ? {}
+          : { datum: { kind: "inline" as const, data: LucidData.to(l2Datum) } }),
+      });
 
       return {
         [UserEventsUtils.Columns.ID]: depositUTxO.idCbor,
@@ -124,11 +117,7 @@ const depositUTxOToEntry = (
           "hex",
         ),
         [DepositsDB.Columns.LEDGER_TX_ID]: computeHash32(depositUTxO.idCbor),
-        [DepositsDB.Columns.LEDGER_OUTPUT]: Buffer.from(
-          CML.TransactionOutput.new_conway_format_tx_out(
-            output,
-          ).to_cbor_bytes(),
-        ),
+        [DepositsDB.Columns.LEDGER_OUTPUT]: Buffer.from(output),
         [DepositsDB.Columns.LEDGER_ADDRESS]: l2Address,
         [DepositsDB.Columns.PROJECTED_HEADER_HASH]: null,
         [DepositsDB.Columns.STATUS]: DepositsDB.Status.Awaiting,

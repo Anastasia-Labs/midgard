@@ -22,7 +22,10 @@ const makeLucid = async () => {
 describe("commit end-time resolver", () => {
   it("forces end-time to advance when candidate is stale", async () => {
     const lucid = await makeLucid();
-    const provider = lucid.config().provider as { time: number; slot: number };
+    const provider = lucid.config().provider as unknown as {
+      time: number;
+      slot: number;
+    };
     const zeroTime = provider.time - provider.slot * 1000;
     const latestEndTime = zeroTime + provider.slot * 1000;
 
@@ -41,7 +44,10 @@ describe("commit end-time resolver", () => {
 
   it("keeps a forward candidate end-time when already monotonic", async () => {
     const lucid = await makeLucid();
-    const provider = lucid.config().provider as { time: number; slot: number };
+    const provider = lucid.config().provider as unknown as {
+      time: number;
+      slot: number;
+    };
     const zeroTime = provider.time - provider.slot * 1000;
     const latestEndTime = zeroTime + provider.slot * 1000;
     const candidateEndTime = latestEndTime + 2_500;

@@ -278,9 +278,10 @@ export const AssetsSchema = Data.Object({
 export type Assets = Data.Static<typeof AssetsSchema>;
 export const Assets = AssetsSchema as unknown as Assets;
 
-export const ValueSchema = Data.Object({
-  inner: Data.Map(Data.Bytes(), Data.Map(Data.Bytes(), Data.Integer())),
-});
+export const ValueSchema = Data.Map(
+  Data.Bytes(),
+  Data.Map(Data.Bytes(), Data.Integer()),
+);
 export type Value = Data.Static<typeof ValueSchema>;
 export const Value = ValueSchema as unknown as Value;
 

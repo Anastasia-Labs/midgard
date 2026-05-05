@@ -50,7 +50,7 @@ describe("splitSqlStatements", () => {
     expect(statements[0]).toContain(
       "existing untracked tx state; restore a clean snapshot",
     );
-    expect(statements[0]).toContain("END AS durable_tx_admission_guard");
+    expect(statements[0]).toContain("END $$");
   });
 
   it("fails closed on unterminated quoted SQL", () => {

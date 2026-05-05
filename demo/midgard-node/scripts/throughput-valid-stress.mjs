@@ -780,13 +780,11 @@ const buildNativeSignedSplitWithFee = ({
   ]);
   const scriptTxWitsPreimageCbor = EMPTY_CBOR_LIST;
   const redeemerTxWitsPreimageCbor = EMPTY_CBOR_LIST;
-  const datumTxWitsPreimageCbor = EMPTY_CBOR_LIST;
 
   const witnessCompact = [
     hash32(addrTxWitsPreimageCbor),
     hash32(scriptTxWitsPreimageCbor),
     hash32(redeemerTxWitsPreimageCbor),
-    hash32(datumTxWitsPreimageCbor),
   ];
 
   const compact = [
@@ -824,8 +822,6 @@ const buildNativeSignedSplitWithFee = ({
     scriptTxWitsPreimageCbor,
     witnessCompact[2],
     redeemerTxWitsPreimageCbor,
-    witnessCompact[3],
-    datumTxWitsPreimageCbor,
   ];
 
   const txCbor = encodeCbor([
@@ -925,13 +921,11 @@ const buildNativeSignedOneToOneWithFee = ({
   ]);
   const scriptTxWitsPreimageCbor = EMPTY_CBOR_LIST;
   const redeemerTxWitsPreimageCbor = EMPTY_CBOR_LIST;
-  const datumTxWitsPreimageCbor = EMPTY_CBOR_LIST;
 
   const witnessCompact = [
     hash32(addrTxWitsPreimageCbor),
     hash32(scriptTxWitsPreimageCbor),
     hash32(redeemerTxWitsPreimageCbor),
-    hash32(datumTxWitsPreimageCbor),
   ];
 
   const compact = [
@@ -969,8 +963,6 @@ const buildNativeSignedOneToOneWithFee = ({
     scriptTxWitsPreimageCbor,
     witnessCompact[2],
     redeemerTxWitsPreimageCbor,
-    witnessCompact[3],
-    datumTxWitsPreimageCbor,
   ];
 
   const txCbor = encodeCbor([

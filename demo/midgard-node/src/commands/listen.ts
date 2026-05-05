@@ -7,6 +7,7 @@ export { extractStateQueueErrorCode } from "@/commands/listen-response.js";
 
 import { InitDB, MutationJobsDB } from "@/database/index.js";
 import {
+  ConfigError,
   Database,
   DatabaseInitializationError,
   Globals,
@@ -26,6 +27,8 @@ import {
   blockConfirmationFiber,
   fetchAndInsertDepositUTxOs,
   fetchAndInsertDepositUTxOsFiber,
+  fetchAndInsertWithdrawalUTxOs,
+  fetchAndInsertWithdrawalUTxOsFiber,
   mergeFiber,
   monitorMempoolFiber,
   projectDepositsToMempoolLedger,
@@ -56,7 +59,7 @@ export const runNode = (
   withMonitoring?: boolean,
 ): Effect.Effect<
   void,
-  DatabaseError | DatabaseInitializationError,
+  ConfigError | DatabaseError | DatabaseInitializationError,
   NodeConfig | Database | MidgardContracts | Lucid | Globals
 > =>
   Effect.gen(function* () {
@@ -114,6 +117,20 @@ export const runNode = (
           }),
       ),
     );
+    yield* fetchAndInsertWithdrawalUTxOs.pipe(
+      Effect.tapError((e) =>
+        Effect.logError(
+          `Startup withdrawal catch-up failed: ${JSON.stringify(e)}`,
+        ),
+      ),
+      Effect.mapError(
+        (e) =>
+          new DatabaseInitializationError({
+            message: "Startup withdrawal catch-up failed",
+            cause: e,
+          }),
+      ),
+    );
 
     if (
       shouldRunGenesisOnStartup({
@@ -163,6 +180,9 @@ export const runNode = (
           mkSchedule(nodeConfig.WAIT_BETWEEN_BLOCK_CONFIRMATION),
         ),
         fetchAndInsertDepositUTxOsFiber(
+          mkSchedule(nodeConfig.WAIT_BETWEEN_DEPOSIT_UTXO_FETCHES),
+        ),
+        fetchAndInsertWithdrawalUTxOsFiber(
           mkSchedule(nodeConfig.WAIT_BETWEEN_DEPOSIT_UTXO_FETCHES),
         ),
         projectDepositsToMempoolLedgerFiber(

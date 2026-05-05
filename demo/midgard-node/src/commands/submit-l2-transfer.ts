@@ -5,27 +5,26 @@
  * transaction with explicit change, and submits it through the node's public
  * `/submit` endpoint.
  */
-import { encode as cborEncode } from "cborg";
 import { Effect } from "effect";
 import {
   type Assets,
   CML,
-  assetsToValue,
   getAddressDetails,
+  type Network,
   valueToAssets,
   walletFromSeed,
 } from "@lucid-evolution/lucid";
 import {
-  MIDGARD_NATIVE_TX_VERSION,
-  MIDGARD_POSIX_TIME_NONE,
-  computeHash32,
-  computeMidgardNativeTxIdFromFull,
-  deriveMidgardNativeTxCompact,
-  encodeMidgardNativeTxFull,
-  type MidgardNativeTxBodyFull,
-  type MidgardNativeTxFull,
-  type MidgardNativeTxWitnessSetFull,
+  decodeMidgardNativeByteListPreimage,
+  MIDGARD_SUPPORTED_SCRIPT_LANGUAGES,
 } from "@/midgard-tx-codec/index.js";
+import {
+  decodeMidgardUtxo,
+  LucidMidgard,
+  type CompleteTx,
+  type MidgardProvider,
+  type MidgardUtxo,
+} from "@al-ft/lucid-midgard";
 import * as MempoolDB from "@/database/mempool.js";
 import * as MempoolLedgerDB from "@/database/mempoolLedger.js";
 import * as TxRejectionsDB from "@/database/txRejections.js";
@@ -39,14 +38,17 @@ import {
   type QueuedTx,
 } from "@/validation/index.js";
 import {
+  decodeMidgardTxOutput,
+  midgardOutputAddressText,
+  midgardValueToCmlValue,
+} from "@/validation/midgard-output.js";
+import {
   Database as DatabaseService,
   Lucid,
   NodeConfig as NodeConfigService,
 } from "@/services/index.js";
 import { compareOutRefs, outRefLabel, type OutRefLike } from "@/tx-context.js";
 
-const EMPTY_CBOR_LIST = Buffer.from([0x80]);
-const EMPTY_CBOR_NULL = Buffer.from([0xf6]);
 const DEFAULT_MIDGARD_NODE_PORT = "3000";
 export const DEFAULT_WALLET_SEED_ENV = "USER_WALLET";
 export const LEGACY_DEFAULT_WALLET_SEED_ENV = "USER_SEED_PHRASE";
@@ -72,7 +74,7 @@ export type ResolvedWalletSeedPhrase = {
 
 export type RawNodeUtxo = {
   readonly outref: string;
-  readonly value: string;
+  readonly outputCbor: string;
 };
 
 export type NodeUtxo = OutRefLike & {
@@ -120,13 +122,6 @@ const serializeJson = (value: unknown): string =>
   JSON.stringify(value, jsonReplacer, 2);
 
 /**
- * CBOR-encodes a list of byte arrays in the format expected by Midgard-native
- * transaction hashing.
- */
-const encodeByteListPreimage = (items: readonly Uint8Array[]): Buffer =>
-  Buffer.from(cborEncode(items.map((item) => Buffer.from(item))));
-
-/**
  * Normalizes and validates the configured Midgard node endpoint.
  */
 const parseNodeEndpoint = (value: string): string => {
@@ -159,9 +154,8 @@ const toError = (cause: unknown, prefix: string): Error =>
 /**
  * Maps a network id into the Lucid wallet-network discriminator.
  */
-const walletNetworkFromId = (
-  networkId: bigint,
-): "Mainnet" | "Preprod" => (networkId === 1n ? "Mainnet" : "Preprod");
+const walletNetworkFromId = (networkId: bigint): "Mainnet" | "Preprod" =>
+  networkId === 1n ? "Mainnet" : "Preprod";
 
 /**
  * Parses the submission mode from CLI or environment input.
@@ -329,36 +323,129 @@ const compareAssetsByCoverage = (
   return 0;
 };
 
-/**
- * Encodes one selected input into the CBOR byte form used by the Midgard-
- * native transaction preimage.
- */
-const toTransactionInputBytes = (utxo: NodeUtxo): Buffer =>
-  Buffer.from(
-    CML.TransactionInput.new(
-      CML.TransactionHash.from_hex(utxo.txHash),
-      BigInt(utxo.outputIndex),
-    ).to_cbor_bytes(),
+const toMidgardUtxo = (utxo: NodeUtxo): MidgardUtxo =>
+  decodeMidgardUtxo({
+    outRef: {
+      txHash: utxo.txHash,
+      outputIndex: utxo.outputIndex,
+    },
+    outRefCbor: Buffer.from(utxo.outrefCbor),
+    outputCbor: Buffer.from(utxo.outputCbor),
+  });
+
+type TransferNetworkName = Network;
+
+const networkNameFromId = (networkId: bigint): TransferNetworkName =>
+  networkId === 1n ? "Mainnet" : "Preprod";
+
+const networkIdFromName = (network: TransferNetworkName): bigint =>
+  network === "Mainnet" ? 1n : 0n;
+
+const makeTransferMidgard = async ({
+  senderAddress,
+  signer,
+  utxos,
+  network,
+  networkId,
+  minFeeA,
+  minFeeB,
+}: {
+  readonly senderAddress: string;
+  readonly signer: ReturnType<typeof CML.PrivateKey.from_bech32>;
+  readonly utxos: readonly NodeUtxo[];
+  readonly network: TransferNetworkName;
+  readonly networkId: bigint;
+  readonly minFeeA: bigint;
+  readonly minFeeB: bigint;
+}): Promise<LucidMidgard> => {
+  const midgard = await LucidMidgard.new(
+    makeStaticMidgardProvider({
+      address: senderAddress,
+      utxos,
+      network,
+      networkId,
+      minFeeA,
+      minFeeB,
+    }),
+    { network, networkId: Number(networkId) },
   );
+  midgard.selectWallet.fromPrivateKey(signer, senderAddress);
+  return midgard;
+};
+
+const makeStaticMidgardProvider = ({
+  address,
+  utxos,
+  network,
+  networkId,
+  minFeeA,
+  minFeeB,
+}: {
+  readonly address: string;
+  readonly utxos: readonly NodeUtxo[];
+  readonly network: TransferNetworkName;
+  readonly networkId: bigint;
+  readonly minFeeA: bigint;
+  readonly minFeeB: bigint;
+}): MidgardProvider => ({
+  getUtxos: async (requestedAddress) =>
+    requestedAddress === address ? utxos.map(toMidgardUtxo) : [],
+  getUtxoByOutRef: async (outRef) =>
+    utxos
+      .filter(
+        (utxo) =>
+          utxo.txHash === outRef.txHash &&
+          utxo.outputIndex === outRef.outputIndex,
+      )
+      .map(toMidgardUtxo)[0],
+  getProtocolInfo: async () => ({
+    apiVersion: 1,
+    network,
+    midgardNativeTxVersion: 1,
+    currentSlot: 0n,
+    supportedScriptLanguages: MIDGARD_SUPPORTED_SCRIPT_LANGUAGES,
+    protocolFeeParameters: { minFeeA, minFeeB },
+    submissionLimits: { maxSubmitTxCborBytes: 32768 },
+    validation: {
+      strictnessProfile: "phase1_midgard",
+      localValidationIsAuthoritative: false,
+    },
+  }),
+  getProtocolParameters: async () => ({
+    minFeeA,
+    minFeeB,
+    networkId,
+  }),
+  getCurrentSlot: async () => 0n,
+  submitTx: async () => {
+    throw new Error("Static Midgard transfer provider cannot submit.");
+  },
+  getTxStatus: async (txId) => ({ kind: "not_found", txId }),
+  diagnostics: () => ({
+    endpoint: "memory://submit-l2-transfer",
+    protocolInfoSource: "fallback",
+    protocolInfoFallbackReason: "submit-l2-transfer static builder context",
+  }),
+});
 
 /**
  * Decodes one raw UTxO payload returned by the node's `/utxos` endpoint.
  */
 const decodeNodeUtxo = (raw: RawNodeUtxo): NodeUtxo => {
   const outrefHex = raw.outref.trim().toLowerCase();
-  const valueHex = raw.value.trim().toLowerCase();
+  const outputHex = raw.outputCbor.trim().toLowerCase();
   const outrefBytes = Buffer.from(outrefHex, "hex");
-  const outputBytes = Buffer.from(valueHex, "hex");
+  const outputBytes = Buffer.from(outputHex, "hex");
   const input = CML.TransactionInput.from_cbor_bytes(outrefBytes);
-  const output = CML.TransactionOutput.from_cbor_bytes(outputBytes);
+  const output = decodeMidgardTxOutput(outputBytes);
 
   return {
     txHash: input.transaction_id().to_hex(),
     outputIndex: Number(input.index()),
     outrefCbor: outrefBytes,
     outputCbor: outputBytes,
-    address: output.address().to_bech32(),
-    assets: valueToAssets(output.amount()),
+    address: midgardOutputAddressText(output),
+    assets: valueToAssets(midgardValueToCmlValue(output.value)),
   };
 };
 
@@ -377,16 +464,16 @@ const parseNodeUtxoResponse = (payload: unknown): readonly RawNodeUtxo[] => {
     if (typeof entry !== "object" || entry === null) {
       throw new Error(`UTxO entry ${index} is not an object.`);
     }
-    const { outref, value } = entry as {
+    const { outref, outputCbor } = entry as {
       readonly outref?: unknown;
-      readonly value?: unknown;
+      readonly outputCbor?: unknown;
     };
-    if (typeof outref !== "string" || typeof value !== "string") {
+    if (typeof outref !== "string" || typeof outputCbor !== "string") {
       throw new Error(
-        `UTxO entry ${index} must contain string outref/value fields.`,
+        `UTxO entry ${index} must contain string outref/outputCbor fields.`,
       );
     }
-    return { outref, value };
+    return { outref, outputCbor };
   });
 };
 
@@ -430,7 +517,9 @@ export const parseSubmitL2TransferConfig = ({
       "Transfer lovelace amount must be greater than zero.",
     ),
     additionalAssets: parseAdditionalAssetSpecs(assetSpecs),
-    nodeEndpoint: parseNodeEndpoint(nodeEndpoint ?? defaultMidgardNodeEndpoint()),
+    nodeEndpoint: parseNodeEndpoint(
+      nodeEndpoint ?? defaultMidgardNodeEndpoint(),
+    ),
     networkId: BigInt(addressDetails.networkId),
     submissionMode: parseSubmissionMode(submissionMode),
   };
@@ -539,29 +628,66 @@ export const selectTransferInputs = (
   return selected.sort(compareOutRefs);
 };
 
-/**
- * Constructs one transaction output from a bech32 address and normalized asset
- * map.
- */
-const makeOutput = (
-  address: string,
-  assets: Readonly<Assets>,
-): InstanceType<typeof CML.TransactionOutput> =>
-  CML.TransactionOutput.new(
-    CML.Address.from_bech32(address),
-    assetsToValue(normalizeAssets(assets)),
-  );
+const selectedInputsFromCompletedTx = (
+  completed: CompleteTx,
+  availableUtxos: readonly NodeUtxo[],
+): readonly NodeUtxo[] => {
+  const byLabel = new Map(availableUtxos.map((utxo) => [outRefLabel(utxo), utxo]));
+  return decodeMidgardNativeByteListPreimage(
+    completed.tx.body.spendInputsPreimageCbor,
+  ).map((bytes) => {
+    const input = CML.TransactionInput.from_cbor_bytes(bytes);
+    const label = `${input.transaction_id().to_hex()}#${input.index().toString()}`;
+    const utxo = byLabel.get(label);
+    if (utxo === undefined) {
+      throw new Error(`Built transfer selected unknown input ${label}.`);
+    }
+    return utxo;
+  });
+};
+
+const toBuiltTransferTx = ({
+  signed,
+  senderAddress,
+  destinationAddress,
+  availableUtxos,
+  requestedAssets,
+  changeAssets,
+}: {
+  readonly signed: CompleteTx;
+  readonly senderAddress: string;
+  readonly destinationAddress: string;
+  readonly availableUtxos: readonly NodeUtxo[];
+  readonly requestedAssets: Readonly<Assets>;
+  readonly changeAssets?: Readonly<Assets>;
+}): BuiltTransferTx => {
+  const txCbor = signed.txCbor;
+  const txId = signed.txId;
+  return {
+    txId,
+    txIdHex: txId.toString("hex"),
+    txCbor,
+    txHex: txCbor.toString("hex"),
+    fee: signed.metadata.fee,
+    senderAddress,
+    destinationAddress,
+    selectedInputs: selectedInputsFromCompletedTx(signed, availableUtxos),
+    requestedAssets,
+    changeAssets: changeAssets ?? signed.metadata.changeAssets ?? {},
+  };
+};
 
 /**
  * Builds a fully signed Midgard-native transfer transaction with explicit
  * change handling.
  */
-export const buildTransferTx = ({
+export const buildTransferTx = async ({
   senderAddress,
   destinationAddress,
   signer,
   selectedInputs,
   requestedAssets,
+  network,
   networkId,
   fee = 0n,
 }: {
@@ -570,9 +696,10 @@ export const buildTransferTx = ({
   readonly signer: ReturnType<typeof CML.PrivateKey.from_bech32>;
   readonly selectedInputs: readonly NodeUtxo[];
   readonly requestedAssets: Readonly<Assets>;
+  readonly network?: TransferNetworkName;
   readonly networkId: bigint;
   readonly fee?: bigint;
-}): BuiltTransferTx => {
+}): Promise<BuiltTransferTx> => {
   if (selectedInputs.length === 0) {
     throw new Error("Cannot build a transfer without selected inputs.");
   }
@@ -587,123 +714,48 @@ export const buildTransferTx = ({
     addAssetMaps(requestedAssets, fee > 0n ? { lovelace: fee } : {}),
   );
 
-  const spendInputs = orderedInputs.map(toTransactionInputBytes);
-  const outputs = [
-    Buffer.from(
-      makeOutput(destinationAddress, requestedAssets).to_cbor_bytes(),
-    ),
-  ];
-  if (Object.keys(changeAssets).length > 0) {
-    outputs.push(
-      Buffer.from(makeOutput(senderAddress, changeAssets).to_cbor_bytes()),
-    );
-  }
-
-  const spendInputsPreimageCbor = encodeByteListPreimage(spendInputs);
-  const referenceInputsPreimageCbor = EMPTY_CBOR_LIST;
-  const outputsPreimageCbor = encodeByteListPreimage(outputs);
-  const requiredObserversPreimageCbor = EMPTY_CBOR_LIST;
-  const requiredSignersPreimageCbor = encodeByteListPreimage([
-    Buffer.from(signer.to_public().hash().to_raw_bytes()),
-  ]);
-  const mintPreimageCbor = EMPTY_CBOR_LIST;
-
-  const body: MidgardNativeTxBodyFull = {
-    spendInputsRoot: computeHash32(spendInputsPreimageCbor),
-    spendInputsPreimageCbor,
-    referenceInputsRoot: computeHash32(referenceInputsPreimageCbor),
-    referenceInputsPreimageCbor,
-    outputsRoot: computeHash32(outputsPreimageCbor),
-    outputsPreimageCbor,
-    fee,
-    validityIntervalStart: MIDGARD_POSIX_TIME_NONE,
-    validityIntervalEnd: MIDGARD_POSIX_TIME_NONE,
-    requiredObserversRoot: computeHash32(requiredObserversPreimageCbor),
-    requiredObserversPreimageCbor,
-    requiredSignersRoot: computeHash32(requiredSignersPreimageCbor),
-    requiredSignersPreimageCbor,
-    mintRoot: computeHash32(mintPreimageCbor),
-    mintPreimageCbor,
-    scriptIntegrityHash: computeHash32(EMPTY_CBOR_NULL),
-    auxiliaryDataHash: computeHash32(EMPTY_CBOR_NULL),
-    networkId,
-  };
-
-  const bodyHash = deriveMidgardNativeTxCompact(
-    body,
-    {
-      addrTxWitsRoot: computeHash32(EMPTY_CBOR_LIST),
-      addrTxWitsPreimageCbor: EMPTY_CBOR_LIST,
-      scriptTxWitsRoot: computeHash32(EMPTY_CBOR_LIST),
-      scriptTxWitsPreimageCbor: EMPTY_CBOR_LIST,
-      redeemerTxWitsRoot: computeHash32(EMPTY_CBOR_LIST),
-      redeemerTxWitsPreimageCbor: EMPTY_CBOR_LIST,
-      datumTxWitsRoot: computeHash32(EMPTY_CBOR_LIST),
-      datumTxWitsPreimageCbor: EMPTY_CBOR_LIST,
-    },
-    "TxIsValid",
-  ).transactionBodyHash;
-
-  const witness = CML.make_vkey_witness(
-    CML.TransactionHash.from_raw_bytes(bodyHash),
+  const midgard = await makeTransferMidgard({
+    senderAddress,
     signer,
-  );
-  const addrTxWitsPreimageCbor = encodeByteListPreimage([
-    Buffer.from(witness.to_cbor_bytes()),
-  ]);
-  const witnessSet: MidgardNativeTxWitnessSetFull = {
-    addrTxWitsRoot: computeHash32(addrTxWitsPreimageCbor),
-    addrTxWitsPreimageCbor,
-    scriptTxWitsRoot: computeHash32(EMPTY_CBOR_LIST),
-    scriptTxWitsPreimageCbor: EMPTY_CBOR_LIST,
-    redeemerTxWitsRoot: computeHash32(EMPTY_CBOR_LIST),
-    redeemerTxWitsPreimageCbor: EMPTY_CBOR_LIST,
-    datumTxWitsRoot: computeHash32(EMPTY_CBOR_LIST),
-    datumTxWitsPreimageCbor: EMPTY_CBOR_LIST,
-  };
-
-  const tx: MidgardNativeTxFull = {
-    version: MIDGARD_NATIVE_TX_VERSION,
-    compact: deriveMidgardNativeTxCompact(body, witnessSet, "TxIsValid"),
-    body,
-    witnessSet,
-  };
-  const txCbor = encodeMidgardNativeTxFull(tx);
-  const txId = computeMidgardNativeTxIdFromFull(tx);
-
-  return {
-    txId,
-    txIdHex: txId.toString("hex"),
-    txCbor,
-    txHex: txCbor.toString("hex"),
-    fee,
+    utxos: orderedInputs,
+    network: network ?? networkNameFromId(networkId),
+    networkId,
+    minFeeA: 0n,
+    minFeeB: 0n,
+  });
+  let txBuilder = midgard
+    .newTx()
+    .collectFrom(orderedInputs.map(toMidgardUtxo))
+    .addSigner(signer.to_public().hash().to_hex())
+    .pay.ToAddress(destinationAddress, requestedAssets);
+  if (Object.keys(changeAssets).length > 0) {
+    txBuilder = txBuilder.pay.ToAddress(senderAddress, changeAssets);
+  }
+  const completed = await txBuilder.complete({ fee });
+  const signed = await completed.sign();
+  return toBuiltTransferTx({
+    signed,
     senderAddress,
     destinationAddress,
-    selectedInputs: orderedInputs,
+    availableUtxos: orderedInputs,
     requestedAssets,
     changeAssets,
-  };
+  });
 };
 
 /**
- * Computes the linear minimum fee implied by the configured fee policy.
+ * Builds a signed Midgard-native transfer with fee convergence over the exact
+ * bytes submitted to the node. Native body construction, deterministic wallet
+ * input selection, change output creation, fee convergence, and body-hash
+ * signing are delegated to lucid-midgard.
  */
-const computeRequiredMinFee = (
-  txByteLength: number,
-  minFeeA: bigint,
-  minFeeB: bigint,
-): bigint => minFeeA * BigInt(txByteLength) + minFeeB;
-
-/**
- * Rebuilds the transfer transaction until the selected fee converges on the
- * minimum fee implied by the final transaction size.
- */
-export const buildTransferTxWithMinFee = ({
+export const buildTransferTxWithMinFee = async ({
   senderAddress,
   destinationAddress,
   signer,
   availableUtxos,
   requestedAssets,
+  network,
   networkId,
   minFeeA,
   minFeeB,
@@ -713,40 +765,39 @@ export const buildTransferTxWithMinFee = ({
   readonly signer: ReturnType<typeof CML.PrivateKey.from_bech32>;
   readonly availableUtxos: readonly NodeUtxo[];
   readonly requestedAssets: Readonly<Assets>;
+  readonly network?: TransferNetworkName;
   readonly networkId: bigint;
   readonly minFeeA: bigint;
   readonly minFeeB: bigint;
-}): BuiltTransferTx => {
-  let fee = minFeeB;
-
-  for (let iteration = 0; iteration < 12; iteration += 1) {
-    const selectedInputs = selectTransferInputs(
-      availableUtxos,
-      addAssetMaps(requestedAssets, fee > 0n ? { lovelace: fee } : {}),
-    );
-    const built = buildTransferTx({
-      senderAddress,
-      destinationAddress,
-      signer,
-      selectedInputs,
-      requestedAssets,
-      networkId,
-      fee,
-    });
-    const requiredFee = computeRequiredMinFee(
-      built.txCbor.length,
-      minFeeA,
-      minFeeB,
-    );
-    if (requiredFee === fee) {
-      return built;
-    }
-    fee = requiredFee;
+}): Promise<BuiltTransferTx> => {
+  if (availableUtxos.length === 0) {
+    throw new Error("Cannot build a transfer without available inputs.");
   }
-
-  throw new Error(
-    "Failed to converge on a stable Midgard-native minimum fee for the transfer.",
-  );
+  const orderedAvailableUtxos = [...availableUtxos].sort(compareOutRefs);
+  const midgard = await makeTransferMidgard({
+    senderAddress,
+    signer,
+    utxos: orderedAvailableUtxos,
+    network: network ?? networkNameFromId(networkId),
+    networkId,
+    minFeeA,
+    minFeeB,
+  });
+  const completed = await midgard
+    .newTx()
+    .pay.ToAddress(destinationAddress, requestedAssets)
+    .complete({
+      changeAddress: senderAddress,
+      feePolicy: "provider",
+    });
+  const signed = await completed.sign();
+  return toBuiltTransferTx({
+    signed,
+    senderAddress,
+    destinationAddress,
+    availableUtxos: orderedAvailableUtxos,
+    requestedAssets,
+  });
 };
 
 /**
@@ -787,7 +838,7 @@ export const fetchLocalUtxos = (
       entries.map((entry) =>
         decodeNodeUtxo({
           outref: entry.outref.toString("hex"),
-          value: entry.output.toString("hex"),
+          outputCbor: entry.output.toString("hex"),
         }),
       ),
     ),
@@ -824,7 +875,10 @@ export const submitNativeTransferTx = (
         readonly txId?: unknown;
         readonly status?: unknown;
       };
-      if (typeof parsed.txId !== "string" || typeof parsed.status !== "string") {
+      if (
+        typeof parsed.txId !== "string" ||
+        typeof parsed.status !== "string"
+      ) {
         throw new Error(
           "Midgard node submit response must contain string txId/status fields.",
         );
@@ -881,10 +935,15 @@ export const submitNativeTransferLocally = (
       preState.set(entry.outref.toString("hex"), entry.output);
     }
 
-    const phaseB = yield* runPhaseBValidationWithPatch(phaseA.accepted, preState, {
-      nowCardanoSlotNo: BigInt(lucid.currentSlot()),
-      bucketConcurrency: nodeConfig.VALIDATION_G4_BUCKET_CONCURRENCY,
-    });
+    const phaseB = yield* runPhaseBValidationWithPatch(
+      phaseA.accepted,
+      preState,
+      {
+        nowCardanoSlotNo: BigInt(lucid.currentSlot()),
+        bucketConcurrency: nodeConfig.VALIDATION_G4_BUCKET_CONCURRENCY,
+        enforceScriptBudget: true,
+      },
+    );
     const rejected = [...phaseA.rejected, ...phaseB.rejected];
     if (rejected.length > 0) {
       yield* TxRejectionsDB.insertMany(
@@ -941,12 +1000,21 @@ export const submitL2TransferProgram = ({
 > =>
   Effect.gen(function* () {
     const nodeConfig = yield* NodeConfigService;
+    const nodeNetworkId = networkIdFromName(nodeConfig.NETWORK);
+    if (config.networkId !== nodeNetworkId) {
+      return yield* Effect.fail(
+        new Error(
+          `Destination address network id ${config.networkId.toString()} does not match configured Midgard node network ${nodeConfig.NETWORK} (network id ${nodeNetworkId.toString()}).`,
+        ),
+      );
+    }
     const wallet = yield* Effect.try({
       try: () =>
         walletFromSeed(resolvedWalletSeedPhrase.seedPhrase, {
           network: walletNetworkFromId(config.networkId),
         }),
-      catch: (cause) => toError(cause, "Failed to derive wallet from seed phrase"),
+      catch: (cause) =>
+        toError(cause, "Failed to derive wallet from seed phrase"),
     });
     const senderAddress = wallet.address;
     yield* Effect.sync(() => assertWalletAddress?.(senderAddress));
@@ -971,12 +1039,14 @@ export const submitL2TransferProgram = ({
         : yield* fetchNodeUtxos(config.nodeEndpoint, senderAddress);
     if (availableUtxos.length === 0) {
       return yield* Effect.fail(
-        new Error(`No Midgard L2 UTxOs found for sender address ${senderAddress}.`),
+        new Error(
+          `No Midgard L2 UTxOs found for sender address ${senderAddress}.`,
+        ),
       );
     }
 
     const signer = CML.PrivateKey.from_bech32(wallet.paymentKey);
-    const built = yield* Effect.try({
+    const built = yield* Effect.tryPromise({
       try: () =>
         buildTransferTxWithMinFee({
           senderAddress,
@@ -984,11 +1054,13 @@ export const submitL2TransferProgram = ({
           signer,
           availableUtxos,
           requestedAssets,
+          network: nodeConfig.NETWORK,
           networkId: config.networkId,
           minFeeA: nodeConfig.MIN_FEE_A,
           minFeeB: nodeConfig.MIN_FEE_B,
         }),
-      catch: (cause) => toError(cause, "Failed to build Midgard-native transfer"),
+      catch: (cause) =>
+        toError(cause, "Failed to build Midgard-native transfer"),
     });
     const submitResult =
       config.submissionMode === "local"

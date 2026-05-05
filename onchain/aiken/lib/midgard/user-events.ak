@@ -1,5 +1,6 @@
 use aiken/builtin
 use aiken/cbor
+use aiken/collection/dict
 use aiken/collection/list
 use aiken/crypto.{ScriptHash, blake2b_256}
 use aiken_design_patterns/parameter_validation
@@ -214,8 +215,13 @@ fn validate_event_nft_burn(
       param: nonce_asset_name,
     )
 
-  // 1. The specified NFT must be burnt.
-  expect assets.quantity_of(mint, own_policy, nonce_asset_name) == -1
+  // 1. The specified NFT must be burnt, and it must be the only mint/burn
+  //    under this event policy.
+  expect [Pair(burned_asset_name, -1)] =
+    mint
+      |> assets.tokens(own_policy)
+      |> dict.to_pairs
+  expect burned_asset_name == nonce_asset_name
 
   // 2. Witness staking script corresponding to the NFT must be getting
   //    unregistered.

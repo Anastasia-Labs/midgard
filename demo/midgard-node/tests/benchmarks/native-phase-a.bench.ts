@@ -210,8 +210,6 @@ describe("native tx phase-A benchmark", () => {
           scriptTxWitsPreimageCbor: EMPTY_CBOR_LIST,
           redeemerTxWitsRoot: EMPTY_LIST_ROOT,
           redeemerTxWitsPreimageCbor: EMPTY_CBOR_LIST,
-          datumTxWitsRoot: EMPTY_LIST_ROOT,
-          datumTxWitsPreimageCbor: EMPTY_CBOR_LIST,
         },
       };
       return {

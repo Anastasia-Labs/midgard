@@ -23,6 +23,7 @@ import {
   MempoolDB,
   ProcessedMempoolDB,
   DepositsDB,
+  WithdrawalsDB,
   PendingBlockFinalizationsDB,
   TxUtils as TxTable,
 } from "@/database/index.js";
@@ -43,7 +44,7 @@ import {
   MidgardMpt,
   MptError,
   emptyRootHexProgram,
-  keyValueMptRoot,
+  keyValuePhasRoot,
   makeMpts,
   processMpts,
   withTrieTransaction,
@@ -65,6 +66,7 @@ import {
 } from "@/workers/utils/commit-submission.js";
 import { resolveAlignedCommitEndTime } from "@/workers/utils/commit-end-time.js";
 import { fetchAndInsertDepositUTxOsForCommitBarrier } from "@/fibers/fetch-and-insert-deposit-utxos.js";
+import { fetchAndInsertWithdrawalUTxOsForCommitBarrier } from "@/fibers/fetch-and-insert-withdrawal-utxos.js";
 import {
   fetchRealStateQueueWitnessContext,
   type RealStateQueueWitnessContext,
@@ -242,7 +244,25 @@ const resolveDepositsRoot = (
     const eventInfos = depositEntries.map(
       (entry) => entry[DepositsDB.Columns.INFO],
     );
-    const root = yield* keyValueMptRoot(eventIds, eventInfos);
+    const root = yield* keyValuePhasRoot(eventIds, eventInfos);
+    return Option.some(root);
+  });
+
+const resolveWithdrawalsRoot = (
+  withdrawalEntries: readonly WithdrawalsDB.Entry[],
+): Effect.Effect<Option.Option<string>, MptError | DatabaseError, never> =>
+  Effect.gen(function* () {
+    if (withdrawalEntries.length <= 0) {
+      return Option.none();
+    }
+    const keyValues = yield* Effect.forEach(
+      withdrawalEntries,
+      WithdrawalsDB.toRootKeyValue,
+    );
+    const root = yield* keyValuePhasRoot(
+      keyValues.map((keyValue) => keyValue.key),
+      keyValues.map((keyValue) => keyValue.value),
+    );
     return Option.some(root);
   });
 
@@ -254,6 +274,7 @@ const buildUnsignedTx = (
   utxosRoot: string,
   txsRoot: string,
   depositsRoot: string,
+  withdrawalsRoot: string,
   endDate: Date,
   initialOperatorWalletView?: OperatorWalletView,
 ) =>
@@ -327,7 +348,7 @@ const buildUnsignedTx = (
         utxosRoot,
         txsRoot,
         depositsRoot,
-        "00".repeat(32),
+        withdrawalsRoot,
         BigInt(alignedEndTime),
       );
 
@@ -480,6 +501,8 @@ const submitDepositOnlyCommit = ({
   endTime,
   includedDepositEntries,
   includedDepositEventIds,
+  includedWithdrawalEntries,
+  includedWithdrawalEventIds,
   workerInput,
   utxoRoot,
   txRoot,
@@ -489,21 +512,32 @@ const submitDepositOnlyCommit = ({
   readonly endTime: Date;
   readonly includedDepositEntries: readonly DepositsDB.Entry[];
   readonly includedDepositEventIds: readonly Buffer[];
+  readonly includedWithdrawalEntries: readonly WithdrawalsDB.Entry[];
+  readonly includedWithdrawalEventIds: readonly Buffer[];
   readonly workerInput: WorkerInput;
   readonly utxoRoot: string;
   readonly txRoot: string;
 }) =>
   Effect.gen(function* () {
     const optDepositsRoot = yield* resolveDepositsRoot(includedDepositEntries);
-    if (Option.isNone(optDepositsRoot)) {
+    const optWithdrawalsRoot =
+      yield* resolveWithdrawalsRoot(includedWithdrawalEntries);
+    if (Option.isNone(optDepositsRoot) && Option.isNone(optWithdrawalsRoot)) {
       yield* Effect.logInfo("🔹 Nothing to commit.");
       return {
         type: "NothingToCommitOutput",
       } as WorkerOutput;
     }
 
-    const depositsRoot = optDepositsRoot.value;
+    const emptyRoot = yield* emptyRootHexProgram;
+    const depositsRoot = Option.isSome(optDepositsRoot)
+      ? optDepositsRoot.value
+      : SDK.EMPTY_MERKLE_TREE_ROOT;
+    const withdrawalsRoot = Option.isSome(optWithdrawalsRoot)
+      ? optWithdrawalsRoot.value
+      : SDK.EMPTY_MERKLE_TREE_ROOT;
     yield* Effect.logInfo(`🔹 Deposits root is: ${depositsRoot}`);
+    yield* Effect.logInfo(`🔹 Withdrawals root is: ${withdrawalsRoot}`);
     const submittedAwaitingConfirmationOutput = (
       submittedTxHash: string,
       txSize: number,
@@ -517,7 +551,6 @@ const submitDepositOnlyCommit = ({
         sizeOfBlocksTxs: workerInput.data.sizeOfProcessedTxsSoFar,
         blockEndTimeMs,
       } satisfies WorkerOutput);
-    const emptyRoot = yield* emptyRootHexProgram;
     const roots = selectCommitRoots({
       hasTxRequests: false,
       computedUtxoRoot: utxoRoot,
@@ -531,6 +564,7 @@ const submitDepositOnlyCommit = ({
         roots.utxoRoot,
         roots.txRoot,
         depositsRoot,
+        withdrawalsRoot,
         endTime,
       );
     const headerHashBuffer = Buffer.from(fromHex(newHeaderHash));
@@ -538,6 +572,7 @@ const submitDepositOnlyCommit = ({
       headerHash: headerHashBuffer,
       blockEndTime: new Date(blockEndTimeMs),
       depositEventIds: includedDepositEventIds,
+      withdrawalEventIds: includedWithdrawalEventIds,
       mempoolTxIds: [],
     });
 
@@ -549,11 +584,11 @@ const submitDepositOnlyCommit = ({
           ).pipe(Effect.catchAll(() => Effect.void));
           const detail = formatUnknownError(error);
           yield* Effect.logError(
-            `🔹 Deposit-only commit submission failed: ${detail}`,
+            `🔹 User-event-only commit submission failed: ${detail}`,
           );
           return {
             type: "FailureOutput",
-            error: `Deposit-only commit submission failed: ${detail}`,
+            error: `User-event-only commit submission failed: ${detail}`,
           } satisfies WorkerOutput;
         }),
       onSuccess: (txHash) =>
@@ -574,6 +609,8 @@ const submitTxBackedCommit = ({
   endTime,
   includedDepositEntries,
   includedDepositEventIds,
+  includedWithdrawalEntries,
+  includedWithdrawalEventIds,
   utxoRoot,
   txRoot,
   mempoolTrie,
@@ -587,6 +624,8 @@ const submitTxBackedCommit = ({
   readonly endTime: Date;
   readonly includedDepositEntries: readonly DepositsDB.Entry[];
   readonly includedDepositEventIds: readonly Buffer[];
+  readonly includedWithdrawalEntries: readonly WithdrawalsDB.Entry[];
+  readonly includedWithdrawalEventIds: readonly Buffer[];
   readonly utxoRoot: string;
   readonly txRoot: string;
   readonly mempoolTrie: MidgardMpt;
@@ -597,10 +636,16 @@ const submitTxBackedCommit = ({
 }) =>
   Effect.gen(function* () {
     const lucid = yield* Lucid;
+    const emptyRoot = yield* emptyRootHexProgram;
     const optDepositsRoot = yield* resolveDepositsRoot(includedDepositEntries);
+    const optWithdrawalsRoot =
+      yield* resolveWithdrawalsRoot(includedWithdrawalEntries);
     const depositsRoot = Option.isSome(optDepositsRoot)
       ? optDepositsRoot.value
-      : yield* emptyRootHexProgram;
+      : SDK.EMPTY_MERKLE_TREE_ROOT;
+    const withdrawalsRoot = Option.isSome(optWithdrawalsRoot)
+      ? optWithdrawalsRoot.value
+      : SDK.EMPTY_MERKLE_TREE_ROOT;
     const currentBlockMempoolTxsCount = processedMempoolTxs.length;
     const submittedAwaitingConfirmationOutput = (
       submittedTxHash: string,
@@ -619,6 +664,7 @@ const submitTxBackedCommit = ({
       } satisfies WorkerOutput);
 
     yield* Effect.logInfo(`🔹 Deposits root is: ${depositsRoot}`);
+    yield* Effect.logInfo(`🔹 Withdrawals root is: ${withdrawalsRoot}`);
 
     /**
      * Submits a prepared block-header commit transaction and waits for the resulting status.
@@ -632,6 +678,7 @@ const submitTxBackedCommit = ({
         utxoRoot,
         txRoot,
         depositsRoot,
+        withdrawalsRoot,
         endTime,
         initialOperatorWalletView,
       ).pipe(
@@ -642,6 +689,7 @@ const submitTxBackedCommit = ({
               headerHash: headerHashBuffer,
               blockEndTime: new Date(blockEndTimeMs),
               depositEventIds: includedDepositEventIds,
+              withdrawalEventIds: includedWithdrawalEventIds,
               mempoolTxIds: processedMempoolTxs.map(
                 (entry) => entry[TxColumns.TX_ID],
               ),
@@ -814,6 +862,7 @@ const recoverLocalFinalizationAgainstConfirmedBlock = ({
   processedMempoolTxs,
   mempoolTxHashes,
   includedDepositEventIds,
+  includedWithdrawalEventIds,
   workerInput,
   sizeOfProcessedTxs,
 }: {
@@ -824,6 +873,7 @@ const recoverLocalFinalizationAgainstConfirmedBlock = ({
   readonly processedMempoolTxs: readonly TxTable.EntryWithTimeStamp[];
   readonly mempoolTxHashes: Buffer[];
   readonly includedDepositEventIds: readonly Buffer[];
+  readonly includedWithdrawalEventIds: readonly Buffer[];
   readonly workerInput: WorkerInput;
   readonly sizeOfProcessedTxs: number;
 }) =>
@@ -864,6 +914,7 @@ const recoverLocalFinalizationAgainstConfirmedBlock = ({
       confirmedHeaderHash,
       workerInput,
       sizeOfProcessedTxs,
+      includedWithdrawalEventIds,
     );
   });
 
@@ -885,7 +936,15 @@ const databaseOperationsProgram = (
       mempoolTxs.length > 0 ? [] : yield* ProcessedMempoolDB.retrieve;
     const depositIngestionBarrierTime =
       yield* fetchAndInsertDepositUTxOsForCommitBarrier(new Date());
-    const depositOnlyEndTime = depositIngestionBarrierTime;
+    const withdrawalIngestionBarrierTime =
+      yield* fetchAndInsertWithdrawalUTxOsForCommitBarrier(
+        depositIngestionBarrierTime,
+      );
+    const userEventOnlyEndTime =
+      depositIngestionBarrierTime.getTime() <=
+      withdrawalIngestionBarrierTime.getTime()
+        ? depositIngestionBarrierTime
+        : withdrawalIngestionBarrierTime;
 
     const availableConfirmedBlock = workerInput.data.availableConfirmedBlock;
     const availableLocalFinalizationBlock =
@@ -919,6 +978,9 @@ const databaseOperationsProgram = (
       includedDepositEntriesCount,
       includedDepositEntries,
       includedDepositEventIds,
+      includedWithdrawalEntriesCount,
+      includedWithdrawalEntries,
+      includedWithdrawalEventIds,
     } = yield* processMpts(ledgerTrie, mempoolTrie, mempoolTxs, {
       currentBlockStartTime:
         availableConfirmedBlock !== "" &&
@@ -931,10 +993,15 @@ const databaseOperationsProgram = (
         !workerInput.data.localFinalizationPending
           ? depositIngestionBarrierTime
           : undefined,
+      withdrawalVisibilityBarrierTime:
+        availableConfirmedBlock !== "" &&
+        !workerInput.data.localFinalizationPending
+          ? withdrawalIngestionBarrierTime
+          : undefined,
       depositOnlyEndTime:
         availableConfirmedBlock !== "" &&
         !workerInput.data.localFinalizationPending
-          ? depositOnlyEndTime
+          ? userEventOnlyEndTime
           : undefined,
     });
 
@@ -946,6 +1013,11 @@ const databaseOperationsProgram = (
     if (includedDepositEntriesCount > 0) {
       yield* Effect.logInfo(
         `🔹 Commitment pre-state includes ${includedDepositEntriesCount} due deposit UTxO(s).`,
+      );
+    }
+    if (includedWithdrawalEntriesCount > 0) {
+      yield* Effect.logInfo(
+        `🔹 Commitment pre-state includes ${includedWithdrawalEntriesCount} due withdrawal event(s).`,
       );
     }
 
@@ -997,6 +1069,7 @@ const databaseOperationsProgram = (
           processedMempoolTxs,
           mempoolTxHashes,
           includedDepositEventIds,
+          includedWithdrawalEventIds,
           workerInput,
           sizeOfProcessedTxs,
         });
@@ -1012,9 +1085,11 @@ const databaseOperationsProgram = (
         return yield* submitDepositOnlyCommit({
           contracts,
           latestBlock,
-          endTime: depositOnlyEndTime,
+          endTime: userEventOnlyEndTime,
           includedDepositEntries,
           includedDepositEventIds,
+          includedWithdrawalEntries,
+          includedWithdrawalEventIds,
           workerInput,
           utxoRoot,
           txRoot,
@@ -1032,6 +1107,8 @@ const databaseOperationsProgram = (
           endTime,
           includedDepositEntries,
           includedDepositEventIds,
+          includedWithdrawalEntries,
+          includedWithdrawalEventIds,
           utxoRoot,
           txRoot,
           mempoolTrie,

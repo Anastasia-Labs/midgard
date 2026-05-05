@@ -161,6 +161,7 @@ pub type WithdrawalValidity {
   IncorrectWithdrawalValue
   IncorrectWithdrawalSignature
   TooManyTokensInWithdrawal
+  UnpayableWithdrawalValue
 }
 
 pub type WithdrawalInfo {

@@ -19,6 +19,7 @@ import {
 import { Effect } from "effect";
 import { Lucid, MidgardContracts, NodeConfig } from "@/services/index.js";
 import {
+  TxConfirmError,
   TxSignError,
   TxSubmitError,
   handleSignSubmit,
@@ -605,7 +606,7 @@ const decodeHubOracleDatum = (
 ): Effect.Effect<SDK.HubOracleDatum, SDK.StateQueueError> =>
   Effect.try({
     try: () => {
-      if (hubOracleRefInput.datum === undefined) {
+      if (hubOracleRefInput.datum == null) {
         throw new Error("Hub oracle reference input is missing inline datum");
       }
       return LucidData.from(hubOracleRefInput.datum, SDK.HubOracleDatum);
@@ -645,7 +646,7 @@ const operatorLifecycleProgram = (
   referenceScriptsLucid: LucidEvolution = lucid,
 ): Effect.Effect<
   OperatorLifecycleTxHashes,
-  SDK.StateQueueError | SDK.LucidError | TxSignError | TxSubmitError
+  SDK.StateQueueError | SDK.LucidError | TxConfirmError | TxSignError | TxSubmitError
 > =>
   Effect.gen(function* () {
     const operatorKeyHash = yield* getOperatorKeyHash(lucid);
@@ -833,6 +834,7 @@ const operatorLifecycleProgram = (
         let deregistered = false;
         let lastDeregisterFailure:
           | SDK.LucidError
+          | TxConfirmError
           | TxSignError
           | TxSubmitError
           | null = null;
@@ -1059,7 +1061,9 @@ const operatorLifecycleProgram = (
       const prependedNodeDatum: SDK.LinkedListNodeView = {
         key: { Key: { key: registrationNodeKey } },
         next: registeredRootNode.datum.next,
-        data: encodeRegisteredOperatorDatumValue(operatorKeyHash),
+        data: encodeRegisteredOperatorDatumValue(
+          operatorKeyHash,
+        ) as SDK.LinkedListNodeView["data"],
       };
       const updatedRegisteredRootDatum: SDK.LinkedListNodeView = {
         ...registeredRootNode.datum,
@@ -1491,7 +1495,7 @@ const operatorLifecycleProgram = (
     });
     const activationDraftCompleteOptions = {
       presetWalletInputs: [...activationFundingInputs],
-    } as const;
+    };
 
     const updatedRegisteredAnchorDatum: SDK.LinkedListNodeView = {
       ...registeredAnchor.datum,
@@ -1505,7 +1509,9 @@ const operatorLifecycleProgram = (
       const activatedNodeDatum: SDK.LinkedListNodeView = {
         key: { Key: { key: operatorKeyHash } },
         next: activeAppendAnchor.datum.next,
-        data: encodeActiveOperatorDatumValue(null),
+        data: encodeActiveOperatorDatumValue(
+          null,
+        ) as SDK.LinkedListNodeView["data"],
       };
       const updatedActiveAnchorDatum: SDK.LinkedListNodeView = {
         ...activeAppendAnchor.datum,
@@ -1540,7 +1546,7 @@ const operatorLifecycleProgram = (
       let tx = lucid
         .newTx()
         .validFrom(Number(validFrom))
-        .collectFrom(activationFundingInputs)
+        .collectFrom([...activationFundingInputs])
         .collectFrom(
           [registeredNode.utxo, registeredAnchor.utxo],
           LucidData.void(),
@@ -1734,7 +1740,7 @@ export const registerAndActivateOperatorProgram = (
   referenceScriptsLucid?: LucidEvolution,
 ): Effect.Effect<
   ActivationTxHashes,
-  SDK.StateQueueError | SDK.LucidError | TxSignError | TxSubmitError
+  SDK.StateQueueError | SDK.LucidError | TxConfirmError | TxSignError | TxSubmitError
 > =>
   operatorLifecycleProgram(
     lucid,
@@ -1758,7 +1764,7 @@ export const registerOperatorProgram = (
   referenceScriptsLucid?: LucidEvolution,
 ): Effect.Effect<
   RegistrationTxHashes,
-  SDK.StateQueueError | SDK.LucidError | TxSignError | TxSubmitError
+  SDK.StateQueueError | SDK.LucidError | TxConfirmError | TxSignError | TxSubmitError
 > =>
   operatorLifecycleProgram(
     lucid,
@@ -1779,7 +1785,7 @@ export const activateOperatorProgram = (
   referenceScriptsLucid?: LucidEvolution,
 ): Effect.Effect<
   ActivationTxHashes,
-  SDK.StateQueueError | SDK.LucidError | TxSignError | TxSubmitError
+  SDK.StateQueueError | SDK.LucidError | TxConfirmError | TxSignError | TxSubmitError
 > =>
   operatorLifecycleProgram(
     lucid,
@@ -1801,7 +1807,7 @@ export const deregisterOperatorProgram = (
   referenceScriptsLucid?: LucidEvolution,
 ): Effect.Effect<
   DeregistrationTxHashes,
-  SDK.StateQueueError | SDK.LucidError | TxSignError | TxSubmitError
+  SDK.StateQueueError | SDK.LucidError | TxConfirmError | TxSignError | TxSubmitError
 > =>
   operatorLifecycleProgram(
     lucid,

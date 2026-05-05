@@ -154,7 +154,7 @@ export const ensureActiveOperatorWitnessNodeProgram = (
     );
 
     const operatorNodeExists = yield* hasOperatorNode(
-      activeOperatorUtxos,
+      activeOperatorUtxos.map((beacon) => beacon.utxo),
       operatorKeyHash,
       operatorNodeUnit,
     );

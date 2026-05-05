@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import initialSchemaSql from "./sql/0001_initial_schema.sql";
 import durableTxAdmissionsSql from "./sql/0002_durable_tx_admissions.sql";
 import localMutationJobsSql from "./sql/0003_local_mutation_jobs.sql";
+import withdrawalEventsSql from "./sql/0004_withdrawal_events.sql";
 
 export type Migration = {
   readonly version: number;
@@ -36,6 +37,13 @@ export const MIGRATIONS: readonly Migration[] = [
     sql: localMutationJobsSql,
     transactional: true,
   },
+  {
+    version: 4,
+    name: "withdrawal_events",
+    checksumSha256: sha256Hex(withdrawalEventsSql),
+    sql: withdrawalEventsSql,
+    transactional: true,
+  },
 ] as const;
 
 export const EXPECTED_SCHEMA_VERSION =
@@ -54,6 +62,7 @@ export const APPLICATION_TABLE_NAMES = [
   "confirmed_ledger",
   "latest_ledger",
   "deposits_utxos",
+  "withdrawal_utxos",
   "immutable",
   "mempool",
   "processed_mempool",
@@ -63,6 +72,7 @@ export const APPLICATION_TABLE_NAMES = [
   "deposit_ingestion_cursor",
   "pending_block_finalizations",
   "pending_block_finalization_deposits",
+  "pending_block_finalization_withdrawals",
   "pending_block_finalization_txs",
   "tx_admissions",
   "local_mutation_jobs",
@@ -77,6 +87,10 @@ export const APPLICATION_INDEX_NAMES = [
   "idx_deposits_utxos_status_inclusion_time_event_id",
   "idx_deposits_utxos_projected_header_hash",
   "idx_deposits_utxos_deposit_l1_tx_hash",
+  "idx_withdrawal_utxos_status_inclusion_time_event_id",
+  "idx_withdrawal_utxos_projected_header_hash",
+  "idx_withdrawal_utxos_withdrawal_l1_tx_hash",
+  "idx_withdrawal_utxos_l2_outref",
   "idx_immutable_time_stamp_tz",
   "idx_mempool_time_stamp_tz",
   "idx_processed_mempool_time_stamp_tz",

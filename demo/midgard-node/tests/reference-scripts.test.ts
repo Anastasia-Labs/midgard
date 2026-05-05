@@ -42,7 +42,14 @@ describe("node-runtime reference-script registry", () => {
     expect(names).toContain("retired-operators minting");
     expect(names).toContain("fraud-proof-catalogue minting");
     expect(names).toContain("deposit minting");
+    expect(names).toContain("deposit spending");
+    expect(names).toContain("withdrawal minting");
+    expect(names).toContain("withdrawal spending");
     expect(names).toContain("settlement minting");
+    expect(names).toContain("reserve spending");
+    expect(names).toContain("reserve observer");
+    expect(names).toContain("payout spending");
+    expect(names).toContain("payout minting");
   });
 
   it("derives protocol-init as a strict subset of node-runtime", async () => {
@@ -59,6 +66,35 @@ describe("node-runtime reference-script registry", () => {
     for (const initTarget of byCommand["protocol-init"]) {
       expect(runtimeNames.has(initTarget.name)).toEqual(true);
     }
+  });
+
+  it("exposes reserve and payout script sets as explicit deployment commands", async () => {
+    const contracts = await Effect.runPromise(
+      Effect.gen(function* () {
+        return yield* AlwaysSucceedsContract;
+      }).pipe(Effect.provide(AlwaysSucceedsContract.Default)),
+    );
+    const byCommand = referenceScriptTargetsByCommand(contracts);
+
+    expect(REFERENCE_SCRIPT_COMMAND_NAMES).toContain("reserve");
+    expect(REFERENCE_SCRIPT_COMMAND_NAMES).toContain("payout");
+    expect(REFERENCE_SCRIPT_COMMAND_NAMES).toContain("withdrawal");
+    expect(byCommand.deposit.map(({ name }) => name)).toEqual([
+      "deposit minting",
+      "deposit spending",
+    ]);
+    expect(byCommand.withdrawal.map(({ name }) => name)).toEqual([
+      "withdrawal minting",
+      "withdrawal spending",
+    ]);
+    expect(byCommand.reserve.map(({ name }) => name)).toEqual([
+      "reserve spending",
+      "reserve observer",
+    ]);
+    expect(byCommand.payout.map(({ name }) => name)).toEqual([
+      "payout spending",
+      "payout minting",
+    ]);
   });
 
   it("accepts a complete published node-runtime reference-script set", async () => {
@@ -104,16 +140,23 @@ describe("node-runtime reference-script registry", () => {
       utxosAt: async () => [] as UTxO[],
     } as unknown as LucidEvolution;
 
-    await expect(
-      Effect.runPromise(
+    const result = await Effect.runPromise(
+      Effect.either(
         verifyNodeRuntimeReferenceScriptsProgram(
           emptyLucid,
           REFERENCE_SCRIPT_ADDRESS,
           contracts,
         ),
       ),
-    ).rejects.toMatchObject({
-      message: "Missing node-runtime reference scripts",
-    });
+    );
+
+    expect(result._tag).toEqual("Left");
+    if (result._tag === "Left") {
+      expect(result.left.message).toEqual(
+        "Missing node-runtime reference scripts",
+      );
+      expect(String(result.left.cause)).toContain("reserve spending");
+      expect(String(result.left.cause)).toContain("payout minting");
+    }
   });
 });

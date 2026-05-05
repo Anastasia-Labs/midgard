@@ -483,10 +483,7 @@ const buildUnsignedDepositTxWithMetadataProgram = (
         .newTx()
         .collectFrom([nonceInput])
         .readFrom(referenceInputs)
-        .mintAssets(
-          { [depositUnit]: 1n },
-          mkDepositMintRedeemerBuilder(layout),
-        )
+        .mintAssets({ [depositUnit]: 1n }, mkDepositMintRedeemerBuilder(layout))
         .pay.ToAddressWithData(
           contracts.deposit.spendingScriptAddress,
           {
@@ -521,7 +518,8 @@ const buildUnsignedDepositTxWithMetadataProgram = (
       return yield* Effect.fail(
         new SubmitDepositError({
           message: "Failed to derive initial deposit hub reference input index",
-          cause: "hub-oracle reference input missing from deposit reference set",
+          cause:
+            "hub-oracle reference input missing from deposit reference set",
         }),
       );
     }
@@ -725,7 +723,7 @@ const parseOptionalString = (
   field: string,
 ): string | null | undefined => {
   if (value === undefined || value === null) {
-    return value;
+    return null;
   }
   if (typeof value !== "string") {
     throw new Error(`${field} must be a string when provided.`);
@@ -807,7 +805,7 @@ const normalizeOptionalHexField = (
   pattern?: RegExp,
 ): string | null | undefined => {
   if (value === undefined || value === null) {
-    return value;
+    return null;
   }
   if (typeof value !== "string") {
     throw new Error(`${field} must be a hex string when provided.`);
@@ -961,6 +959,11 @@ const parseFundingUtxos = ({
       raw.scriptRef,
       `fundingUtxos[${index.toString()}].scriptRef`,
     );
+    if (scriptRef !== null) {
+      throw new Error(
+        `fundingUtxos[${index.toString()}].scriptRef is not supported for deposit build funding inputs.`,
+      );
+    }
 
     return {
       txHash,
@@ -972,7 +975,7 @@ const parseFundingUtxos = ({
       ),
       datumHash: datumHash ?? undefined,
       datum: datum ?? undefined,
-      scriptRef: scriptRef ?? undefined,
+      scriptRef: undefined,
     };
   });
 };

@@ -4,11 +4,7 @@
  * Workers and transaction builders use this to keep off-chain indexes aligned
  * with on-chain evaluation order.
  */
-import {
-  CML,
-  type LucidEvolution,
-  type UTxO,
-} from "@lucid-evolution/lucid";
+import { CML, type LucidEvolution, type UTxO } from "@lucid-evolution/lucid";
 
 /**
  * Redeemer tags exposed by provider evaluation APIs.
@@ -68,9 +64,7 @@ const txInfoRedeemerPurposeRank = (tag: number): number => {
 /**
  * Converts a CML redeemer tag into the provider-facing string variant.
  */
-export const toProviderRedeemerTag = (
-  tag: number,
-): ProviderRedeemerTag => {
+export const toProviderRedeemerTag = (tag: number): ProviderRedeemerTag => {
   switch (tag) {
     case CML.RedeemerTag.Spend:
       return "spend";

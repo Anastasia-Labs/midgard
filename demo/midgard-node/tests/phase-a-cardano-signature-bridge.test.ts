@@ -15,6 +15,10 @@ import {
   runPhaseBValidation,
   type QueuedTx,
 } from "@/validation/index.js";
+import {
+  makeCardanoTxOutput,
+  makeMidgardTxOutput,
+} from "./midgard-output-helpers.js";
 
 type TxFixture = {
   readonly cborHex: string;
@@ -42,7 +46,7 @@ const makePubKeyOutput = (
   value: InstanceType<typeof CML.Value>,
 ): Buffer =>
   Buffer.from(
-    CML.TransactionOutput.new(
+    makeMidgardTxOutput(
       CML.EnterpriseAddress.new(
         0,
         CML.Credential.new_pub_key(keyHash),
@@ -53,7 +57,34 @@ const makePubKeyOutput = (
 
 describe("phase-a cardano signature bridge", () => {
   it("rejects converted Cardano witnesses that only sign the original Cardano body hash", async () => {
-    const cardanoBytes = Buffer.from(txFixtures[0].cborHex, "hex");
+    const signerKey = CML.PrivateKey.generate_ed25519();
+    const inputs = CML.TransactionInputList.new();
+    inputs.add(
+      CML.TransactionInput.new(
+        CML.TransactionHash.from_hex("11".repeat(32)),
+        0n,
+      ),
+    );
+    const outputs = CML.TransactionOutputList.new();
+    outputs.add(
+      makeCardanoTxOutput(
+        CML.EnterpriseAddress.new(
+          0,
+          CML.Credential.new_pub_key(signerKey.to_public().hash()),
+        ).to_address(),
+        CML.Value.from_coin(3_000_000n),
+      ),
+    );
+    const body = CML.TransactionBody.new(inputs, outputs, 0n);
+    const witnessSet = CML.TransactionWitnessSet.new();
+    const vkeyWitnesses = CML.VkeywitnessList.new();
+    vkeyWitnesses.add(
+      CML.make_vkey_witness(CML.hash_transaction(body), signerKey),
+    );
+    witnessSet.set_vkeywitnesses(vkeyWitnesses);
+    const cardanoBytes = Buffer.from(
+      CML.Transaction.new(body, witnessSet, true, undefined).to_cbor_bytes(),
+    );
     const nativeBytes = cardanoTxBytesToMidgardNativeTxFullBytes(cardanoBytes);
     const nativeTx = decodeMidgardNativeTxFull(nativeBytes);
     const txId = computeMidgardNativeTxIdFromFull(nativeTx);
@@ -92,7 +123,7 @@ describe("phase-a cardano signature bridge", () => {
     multiasset.insert_assets(policyId, mintAssets);
     const outputs = CML.TransactionOutputList.new();
     outputs.add(
-      CML.TransactionOutput.new(
+      makeCardanoTxOutput(
         CML.Address.from_bech32(TEST_ADDRESS),
         CML.Value.new(3_000_000n, multiasset),
       ),
@@ -106,7 +137,12 @@ describe("phase-a cardano signature bridge", () => {
     body.set_mint(mint);
 
     const witnessSet = CML.TransactionWitnessSet.new();
-    const unsignedCardanoTx = CML.Transaction.new(body, witnessSet, true, undefined);
+    const unsignedCardanoTx = CML.Transaction.new(
+      body,
+      witnessSet,
+      true,
+      undefined,
+    );
     const normalizedUnsigned = normalizeSubmitTxHexToNative(
       Buffer.from(unsignedCardanoTx.to_cbor_bytes()).toString("hex"),
     );
@@ -118,7 +154,9 @@ describe("phase-a cardano signature bridge", () => {
     const vkeyWitnesses = CML.VkeywitnessList.new();
     vkeyWitnesses.add(
       CML.make_vkey_witness(
-        CML.TransactionHash.from_raw_bytes(nativeTx.compact.transactionBodyHash),
+        CML.TransactionHash.from_raw_bytes(
+          nativeTx.compact.transactionBodyHash,
+        ),
         signerKey,
       ),
     );
@@ -153,7 +191,10 @@ describe("phase-a cardano signature bridge", () => {
     const preState = new Map<string, Buffer>([
       [
         Buffer.from(input.to_cbor_bytes()).toString("hex"),
-        makePubKeyOutput(signerKey.to_public().hash(), CML.Value.from_coin(3_000_000n)),
+        makePubKeyOutput(
+          signerKey.to_public().hash(),
+          CML.Value.from_coin(3_000_000n),
+        ),
       ],
     ]);
     const phaseB = await Effect.runPromise(

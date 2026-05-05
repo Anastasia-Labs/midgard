@@ -46,7 +46,9 @@ type CanonicalCommittedHeader = {
 const localJournalHasPayloadMembers = (
   journal: PendingBlockFinalizationsDB.Record,
 ): boolean =>
-  journal.depositEventIds.length > 0 || journal.mempoolTxIds.length > 0;
+  journal.depositEventIds.length > 0 ||
+  journal.withdrawalEventIds.length > 0 ||
+  journal.mempoolTxIds.length > 0;
 
 const fetchCanonicalCommittedHeaders = Effect.gen(function* () {
   const lucid = yield* Lucid;

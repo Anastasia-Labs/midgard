@@ -35,11 +35,13 @@ It consists of a single utxo holding the hub oracle NFT and a datum of the follo
         \T{tx\_order\_addr} : & \T{Address} \\
         \T{settlement\_addr} : & \T{Address} \\
         \T{reserve\_addr} : & \T{Address} \\ 
-        \T{payout\_addr} : & \T{Address}
+        \T{payout\_addr} : & \T{Address} \\
+        \T{reserve\_observer} : & \T{ScriptHash}
     \end{array} \right\}
 \end{equation*}
 
-\notebox{Add missing policy IDs and addresses to the hub oracle datum.}\todo
+The \code{reserve\_observer} field is reserved for a future observer-script design.
+The reserve and payout validators defined in \cref{h:reserve-and-payout} do not rely on it for authorization unless this specification is extended with a concrete observer protocol.
 
 \subsection{Minting policy}
 \label{h:hub-oracle-minting-policy}

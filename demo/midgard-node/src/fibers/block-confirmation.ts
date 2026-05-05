@@ -1,4 +1,8 @@
-import { DepositsDB, PendingBlockFinalizationsDB } from "@/database/index.js";
+import {
+  DepositsDB,
+  PendingBlockFinalizationsDB,
+  WithdrawalsDB,
+} from "@/database/index.js";
 import { DatabaseError } from "@/database/utils/common.js";
 import { Database, Globals } from "@/services/index.js";
 import { Data, Effect, Option, Ref, Schedule } from "effect";
@@ -77,7 +81,9 @@ const pendingRecordRequiresLocalFinalizationRecovery = (
 ): boolean => {
   const status = record[PendingBlockFinalizationsDB.Columns.STATUS];
   const hasLocalPayloadMembers =
-    record.depositEventIds.length > 0 || record.mempoolTxIds.length > 0;
+    record.depositEventIds.length > 0 ||
+    record.withdrawalEventIds.length > 0 ||
+    record.mempoolTxIds.length > 0;
   return (
     hasLocalPayloadMembers &&
     (status === PendingBlockFinalizationsDB.Status.PendingSubmission ||
@@ -98,8 +104,18 @@ const observeConfirmedPendingBlock = (
       record.depositEventIds,
       journalHeaderHash,
     );
+    yield* WithdrawalsDB.markProjectedByEventIds(
+      record.withdrawalEventIds,
+      journalHeaderHash,
+    );
     const requiresLocalFinalizationRecovery =
       pendingRecordRequiresLocalFinalizationRecovery(record);
+    if (!requiresLocalFinalizationRecovery) {
+      yield* WithdrawalsDB.markFinalizedByEventIds(
+        record.withdrawalEventIds,
+        journalHeaderHash,
+      );
+    }
     yield* requiresLocalFinalizationRecovery
       ? PendingBlockFinalizationsDB.markObservedWaitingStability(
           journalHeaderHash,
@@ -117,6 +133,10 @@ const abandonPendingBlockIfPresent = (
     const headerHash = record[PendingBlockFinalizationsDB.Columns.HEADER_HASH];
     yield* DepositsDB.clearProjectedHeaderAssignmentByEventIds(
       record.depositEventIds,
+      headerHash,
+    );
+    yield* WithdrawalsDB.clearProjectedHeaderAssignmentByEventIds(
+      record.withdrawalEventIds,
       headerHash,
     );
     yield* PendingBlockFinalizationsDB.markAbandoned(headerHash);

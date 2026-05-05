@@ -1,6 +1,7 @@
 import "./utils.js";
 
 import { randomUUID } from "node:crypto";
+import { readFileSync } from "node:fs";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { Effect, Ref } from "effect";
 import * as SDK from "@al-ft/midgard-sdk";
@@ -14,7 +15,10 @@ import {
   generateEmulatorAccount,
   paymentCredentialOf,
   toUnit,
+  validatorToScriptHash,
   type LucidEvolution,
+  type Script,
+  type TxSignBuilder,
   type UTxO,
 } from "@lucid-evolution/lucid";
 import { utxosProgram } from "@/commands/utxos.js";
@@ -37,6 +41,7 @@ import {
   TxAdmissionsDB,
   TxRejectionsDB,
   UserEventsUtils,
+  WithdrawalsDB,
 } from "@/database/index.js";
 import { buildBlockConfirmationAction } from "@/fibers/block-confirmation.js";
 import { mergeAction } from "@/fibers/merge.js";
@@ -65,6 +70,17 @@ import {
   buildUnsignedDepositTxFromFundingContextProgram,
   buildUnsignedDepositTxProgram,
 } from "@/transactions/submit-deposit.js";
+import {
+  type SubmitWithdrawalReferenceScripts,
+  buildUnsignedWithdrawalTxProgram,
+} from "@/transactions/submit-withdrawal.js";
+import {
+  assetsToValue,
+  buildAbsorbConfirmedDepositToReserveTxProgram,
+  buildAddReserveFundsToPayoutTxProgram,
+  buildConcludePayoutTxProgram,
+  buildInitializePayoutTxProgram,
+} from "@/transactions/reserve-payout.js";
 import { runCommitBlockHeaderWorkerProgram } from "@/workers/commit-block-header.js";
 import { runConfirmBlockCommitmentsWorkerProgram } from "@/workers/confirm-block-commitments.js";
 import {
@@ -76,7 +92,12 @@ import {
   type WorkerOutput as ConfirmationWorkerOutput,
 } from "@/workers/utils/confirm-block-commitments.js";
 import { WorkerError } from "@/workers/utils/common.js";
-import { deleteMpt, keyValueMptRoot } from "@/workers/utils/mpt.js";
+import {
+  deleteMpt,
+  keyValuePhasProof,
+  keyValuePhasRoot,
+} from "@/workers/utils/mpt.js";
+import { collectSortedInputOutRefs, outRefLabel } from "@/tx-context.js";
 
 const EMULATOR_PROTOCOL_PARAMETERS = {
   ...PROTOCOL_PARAMETERS_DEFAULT,
@@ -91,6 +112,10 @@ const SLASHING_PENALTY_LOVELACE = BigInt(
   process.env.OPERATOR_SLASHING_PENALTY_LOVELACE ?? "200000",
 );
 const REGISTRATION_ACTIVATION_DELAY_SLOTS = 180;
+const REAL_BLUEPRINT_PATH = new URL(
+  "../../../onchain/aiken/plutus.json",
+  import.meta.url,
+);
 // This harness exercises the real initialization, deposit submission, deposit
 // ingestion, and live commit-worker path against the bundled real blueprint.
 // Keep it sequential because it mutates shared emulator/database state.
@@ -102,9 +127,18 @@ const DepositDraftDatumWithWitnessSchema = Data.Object({
   witness: Data.Bytes(),
 });
 
+const WithdrawalDraftDatumWithWitnessSchema = Data.Object({
+  event: Data.Any(),
+  inclusion_time: Data.Integer(),
+  witness: Data.Bytes(),
+  refund_address: Data.Any(),
+  refund_datum: Data.Any(),
+});
+
 type DepositFlowReferenceScripts = {
   readonly init: AtomicProtocolInitReferenceScripts;
   readonly deposit: SubmitDepositReferenceScripts;
+  readonly withdrawal: SubmitWithdrawalReferenceScripts;
 };
 
 type EmulatorFixture = {
@@ -117,6 +151,47 @@ type EmulatorFixture = {
   readonly depositorLucid: LucidEvolution;
   readonly referenceScriptsLucid: LucidEvolution;
   readonly operatorKeyHash: string;
+};
+
+const loadPhasMembershipWithdrawalScript = (): Script => {
+  const blueprint = JSON.parse(readFileSync(REAL_BLUEPRINT_PATH, "utf8")) as {
+    readonly validators?: readonly {
+      readonly title?: unknown;
+      readonly compiledCode?: unknown;
+    }[];
+  };
+  const validator = blueprint.validators?.find(
+    (candidate) => candidate.title === "phas.membership.withdraw",
+  );
+  if (
+    typeof validator?.compiledCode !== "string" ||
+    validator.compiledCode.length === 0
+  ) {
+    throw new Error(
+      `Missing PHAS membership validator in ${REAL_BLUEPRINT_PATH.toString()}`,
+    );
+  }
+  return {
+    type: "PlutusV3",
+    script: validator.compiledCode,
+  };
+};
+
+const scriptRewardAddress = (script: Script): string => {
+  const credential = CML.Credential.new_script(
+    CML.ScriptHash.from_hex(validatorToScriptHash(script)),
+  );
+  return CML.RewardAddress.new(0, credential).to_address().to_bech32();
+};
+
+const registerZeroRewardScript = (emulator: Emulator, script: Script): void => {
+  emulator.chain[scriptRewardAddress(script)] = {
+    registeredStake: true,
+    delegation: {
+      poolId: null,
+      rewards: 0n,
+    },
+  };
 };
 
 const loadContracts = (oneShotOutRef: {
@@ -155,7 +230,7 @@ const publishDepositFlowReferenceScripts = async ({
   EmulatorFixture,
   "operatorLucid" | "referenceScriptsLucid" | "contracts"
 >): Promise<DepositFlowReferenceScripts> => {
-  const publications: Array<{ readonly name: string; readonly utxo: UTxO }> =
+  const publications: readonly { readonly name: string; readonly utxo: UTxO }[] =
     await Effect.runPromise(
       deployReferenceScriptCommandProgram(
         referenceScriptsLucid,
@@ -187,6 +262,9 @@ const publishDepositFlowReferenceScripts = async ({
     },
     deposit: {
       depositMinting: requireRef("deposit minting"),
+    },
+    withdrawal: {
+      withdrawalMinting: requireRef("withdrawal minting"),
     },
   };
 };
@@ -329,6 +407,7 @@ const clearNodeTables = Effect.all(
     CommonUtils.clearTable(TxAdmissionsDB.tableName),
     CommonUtils.clearTable(MutationJobsDB.tableName),
     CommonUtils.clearTable(DepositsDB.tableName),
+    CommonUtils.clearTable(WithdrawalsDB.tableName),
   ],
   { concurrency: "unbounded" },
 ).pipe(Effect.asVoid);
@@ -420,6 +499,36 @@ const extractDraftDepositWitnessHash = ({
   );
 };
 
+const extractDraftWithdrawalWitnessHash = ({
+  tx,
+  withdrawalAddress,
+}: {
+  readonly tx: InstanceType<typeof CML.Transaction>;
+  readonly withdrawalAddress: string;
+}): string => {
+  const outputs = tx.body().outputs();
+  for (let index = 0; index < outputs.len(); index += 1) {
+    const output = coreToTxOutput(outputs.get(index));
+    if (
+      output.address !== withdrawalAddress ||
+      output.datum === undefined ||
+      output.datum === null
+    ) {
+      continue;
+    }
+
+    const withdrawalDatum = Data.from(
+      output.datum,
+      WithdrawalDraftDatumWithWitnessSchema,
+    );
+    return withdrawalDatum.witness;
+  }
+
+  throw new Error(
+    `Failed to locate withdrawal output at address=${withdrawalAddress} in withdrawal draft`,
+  );
+};
+
 const extractDraftDepositOutput = ({
   tx,
   depositAddress,
@@ -480,6 +589,232 @@ type HarnessSignedTx = {
   >;
   readonly toHash: () => string;
   readonly toCBOR: () => string;
+};
+
+const describeProviderOutRefStates = (
+  lucid: LucidEvolution,
+  outRefs: readonly string[],
+) => {
+  const provider = lucid.config().provider as {
+    readonly ledger?: Record<string, { readonly spent?: boolean } | undefined>;
+    readonly mempool?: Record<string, { readonly spent?: boolean } | undefined>;
+  };
+  return outRefs.map((outRef) => {
+    const key = outRef.replace("#", "");
+    const ledgerEntry = provider.ledger?.[key];
+    const mempoolEntry = provider.mempool?.[key];
+    return {
+      outRef,
+      ledger: ledgerEntry === undefined ? "missing" : ledgerEntry.spent,
+      mempool: mempoolEntry === undefined ? "missing" : mempoolEntry.spent,
+    };
+  });
+};
+
+const isProviderVisibleUnspent = (
+  lucid: LucidEvolution,
+  utxo: UTxO,
+): boolean => {
+  const provider = lucid.config().provider as {
+    readonly ledger?: Record<string, { readonly spent?: boolean } | undefined>;
+    readonly mempool?: Record<string, { readonly spent?: boolean } | undefined>;
+  };
+  const hasVisibleProviderState =
+    provider.ledger !== undefined || provider.mempool !== undefined;
+  const key = `${utxo.txHash}${utxo.outputIndex.toString()}`;
+  const entry = provider.ledger?.[key] ?? provider.mempool?.[key];
+  if (entry === undefined) {
+    return !hasVisibleProviderState;
+  }
+  return entry.spent !== true;
+};
+
+const refreshWalletUtxosFromProvider = async (
+  lucid: LucidEvolution,
+): Promise<void> => {
+  const overrideUTxOs = (
+    lucid as LucidEvolution & { overrideUTxOs?: (utxos: UTxO[]) => void }
+  ).overrideUTxOs;
+  if (typeof overrideUTxOs !== "function") {
+    return;
+  }
+  const walletAddress = await lucid.wallet().address();
+  const provider = lucid.config().provider as {
+    readonly ledger?: Record<
+      string,
+      { readonly utxo?: UTxO; readonly spent?: boolean } | undefined
+    >;
+    readonly mempool?: Record<
+      string,
+      { readonly utxo?: UTxO; readonly spent?: boolean } | undefined
+    >;
+  };
+  const visibleProviderEntries = [
+    ...Object.values(provider.ledger ?? {}),
+    ...Object.values(provider.mempool ?? {}),
+  ];
+  const walletUtxos =
+    visibleProviderEntries.length > 0
+      ? visibleProviderEntries.flatMap((entry) => {
+          if (
+            entry === undefined ||
+            entry.spent === true ||
+            entry.utxo === undefined ||
+            entry.utxo.address !== walletAddress
+          ) {
+            return [];
+          }
+          return [entry.utxo];
+        })
+      : (await lucid.utxosAt(walletAddress)).filter((utxo) =>
+          isProviderVisibleUnspent(lucid, utxo),
+        );
+  overrideUTxOs.call(lucid, walletUtxos);
+};
+
+const providerVisibleWalletUtxos = async (
+  lucid: LucidEvolution,
+): Promise<UTxO[]> => {
+  const walletAddress = await lucid.wallet().address();
+  const provider = lucid.config().provider as {
+    readonly ledger?: Record<
+      string,
+      { readonly utxo?: UTxO; readonly spent?: boolean } | undefined
+    >;
+    readonly mempool?: Record<
+      string,
+      { readonly utxo?: UTxO; readonly spent?: boolean } | undefined
+    >;
+  };
+  const visibleProviderEntries = [
+    ...Object.values(provider.ledger ?? {}),
+    ...Object.values(provider.mempool ?? {}),
+  ];
+  if (visibleProviderEntries.length > 0) {
+    return visibleProviderEntries.flatMap((entry) => {
+      if (
+        entry === undefined ||
+        entry.spent === true ||
+        entry.utxo === undefined ||
+        entry.utxo.address !== walletAddress
+      ) {
+        return [];
+      }
+      return [entry.utxo];
+    });
+  }
+  return (await lucid.utxosAt(walletAddress)).filter((utxo) =>
+    isProviderVisibleUnspent(lucid, utxo),
+  );
+};
+
+const isPlainPureAdaUtxo = (utxo: UTxO): boolean =>
+  utxo.scriptRef === undefined &&
+  Object.entries(utxo.assets).every(
+    ([unit, quantity]) => unit === "lovelace" || quantity === 0n,
+  );
+
+const ensureSeparateCollateralUtxo = async (
+  lucid: LucidEvolution,
+): Promise<void> => {
+  await refreshWalletUtxosFromProvider(lucid);
+  const walletAddress = await lucid.wallet().address();
+  const pureAdaUtxos = (await providerVisibleWalletUtxos(lucid))
+    .filter(isPlainPureAdaUtxo)
+    .filter((utxo) => (utxo.assets.lovelace ?? 0n) >= 20_000_000n)
+    .sort((left, right) => {
+      const leftLovelace = left.assets.lovelace ?? 0n;
+      const rightLovelace = right.assets.lovelace ?? 0n;
+      if (leftLovelace === rightLovelace) {
+        return outRefLabel(left).localeCompare(outRefLabel(right));
+      }
+      return leftLovelace > rightLovelace ? -1 : 1;
+    });
+  if (pureAdaUtxos.length >= 2) {
+    return;
+  }
+  const source = pureAdaUtxos[0];
+  if (source === undefined) {
+    throw new Error("Operator wallet has no pure ADA UTxO to split");
+  }
+  const splitTx = await lucid
+    .newTx()
+    .collectFrom([source])
+    .pay.ToAddress(walletAddress, { lovelace: 8_000_000n })
+    .pay.ToAddress(walletAddress, { lovelace: 8_000_000n })
+    .addSigner(walletAddress)
+    .complete({ localUPLCEval: true });
+  await submitWithWallet(lucid, splitTx);
+};
+
+const submitWithWallet = async (
+  lucid: LucidEvolution,
+  tx: TxSignBuilder,
+): Promise<string> => {
+  await refreshWalletUtxosFromProvider(lucid);
+  const signed = await tx.sign.withWallet().complete();
+  const txHash = signed.toHash();
+  const signedTx = CML.Transaction.from_cbor_hex(signed.toCBOR());
+  const signedInputs = collectSortedInputOutRefs(
+    signedTx.body().inputs(),
+  ).map(outRefLabel);
+  const signedReferenceInputs =
+    signedTx.body().reference_inputs() === undefined
+      ? []
+      : collectSortedInputOutRefs(signedTx.body().reference_inputs()!).map(
+          outRefLabel,
+        );
+  const signedCollateralInputs =
+    signedTx.body().collateral_inputs() === undefined
+      ? []
+      : collectSortedInputOutRefs(signedTx.body().collateral_inputs()!).map(
+          outRefLabel,
+        );
+  const plutusV3Scripts = signedTx.witness_set().plutus_v3_scripts();
+  const witnessHashes =
+    plutusV3Scripts === undefined
+      ? []
+      : Array.from({ length: Number(plutusV3Scripts.len()) }, (_value, index) =>
+          plutusV3Scripts.get(index).hash().to_hex(),
+        );
+  const result = await signed.submitSafe();
+  if (result._tag === "Left") {
+    const provider = lucid.config().provider;
+    const extraneousScriptHash = result.left.message.match(
+      /Extraneous plutus script\. Script hash: ([0-9a-fA-F]{56})/,
+    )?.[1];
+    if (extraneousScriptHash !== undefined && isEmulatorProvider(provider)) {
+      const emulatorCompatibleTxCbor = stripPlutusV3WitnessByHash({
+        txCbor: signed.toCBOR(),
+        witnessHash: extraneousScriptHash.toLowerCase(),
+      });
+      const submittedHash = await provider.submitTx(emulatorCompatibleTxCbor);
+      await lucid.awaitTx(submittedHash);
+      return submittedHash;
+    }
+    throw new Error(
+      [
+        `Reserve/payout submission failed for tx=${txHash}`,
+        `provider_error=${result.left.message}`,
+        `signed_inputs=${signedInputs.join(",")}`,
+        `signed_reference_inputs=${signedReferenceInputs.join(",")}`,
+        `signed_collateral_inputs=${signedCollateralInputs.join(",")}`,
+        `provider_input_states=${JSON.stringify(
+          describeProviderOutRefStates(lucid, signedInputs),
+        )}`,
+        `provider_ref_states=${JSON.stringify(
+          describeProviderOutRefStates(lucid, signedReferenceInputs),
+        )}`,
+        `provider_collateral_states=${JSON.stringify(
+          describeProviderOutRefStates(lucid, signedCollateralInputs),
+        )}`,
+        `tx_cbor_bytes=${signed.toCBOR().length / 2}`,
+        `plutus_v3_witness_hashes=${witnessHashes.join(",")}`,
+      ].join("\n"),
+    );
+  }
+  await lucid.awaitTx(result.right);
+  return result.right;
 };
 
 const stripPlutusV3WitnessByHash = ({
@@ -600,6 +935,42 @@ const submitDepositWithDiagnostics = async (
   });
 };
 
+const submitWithdrawalWithDiagnostics = async (
+  fixture: EmulatorFixture,
+  config: {
+    readonly body: SDK.WithdrawalBody;
+    readonly signature: SDK.WithdrawalSignature;
+    readonly refundAddress: SDK.AddressData;
+    readonly refundDatum?: SDK.CardanoDatum;
+  },
+): Promise<string> => {
+  const unsignedWithdrawalTx = await Effect.runPromise(
+    buildUnsignedWithdrawalTxProgram(
+      fixture.depositorLucid,
+      fixture.contracts,
+      {
+        body: config.body,
+        signature: config.signature,
+        refundAddress: config.refundAddress,
+        refundDatum: config.refundDatum,
+        referenceScripts: fixture.referenceScripts.withdrawal,
+      },
+    ),
+  );
+  const expectedWitnessHash = extractDraftWithdrawalWitnessHash({
+    tx: unsignedWithdrawalTx.toTransaction(),
+    withdrawalAddress: fixture.contracts.withdrawal.spendingScriptAddress,
+  });
+  const signedWithdrawalTx = await Effect.runPromise(
+    unsignedWithdrawalTx.sign.withWallet().completeProgram(),
+  );
+  return submitSignedDepositTxWithHarnessWorkaround({
+    lucid: fixture.depositorLucid,
+    signedTx: signedWithdrawalTx,
+    expectedWitnessHash,
+  });
+};
+
 const makeLucidRuntimeService = async ({
   operatorLucid,
   referenceScriptsLucid,
@@ -657,8 +1028,8 @@ const runCommitWorkerWithInput = (
 ) =>
   Effect.runPromise(
     runCommitBlockHeaderWorkerProgram(workerInput).pipe(
-      Effect.provideService(LucidService, lucidService),
-      Effect.provideService(MidgardContracts, contracts),
+      Effect.provideService(LucidService, lucidService as any),
+      Effect.provideService(MidgardContracts, contracts as any),
       Effect.provide(Database.layer),
       Effect.provide(NodeConfig.layer),
     ),
@@ -682,8 +1053,8 @@ const runBlockConfirmation = (
         input: ConfirmationWorkerInput,
       ): Effect.Effect<ConfirmationWorkerOutput, WorkerError, never> =>
         runConfirmBlockCommitmentsWorkerProgram(input).pipe(
-          Effect.provideService(LucidService, lucidService),
-          Effect.provideService(MidgardContracts, contracts),
+              Effect.provideService(LucidService, lucidService as any),
+              Effect.provideService(MidgardContracts, contracts as any),
           Effect.provide(NodeConfig.layer),
           Effect.catchAllCause((cause) =>
             Effect.fail(
@@ -731,8 +1102,8 @@ const runLocalFinalizationRecoveryWorker = async (
 
   return Effect.runPromise(
     runCommitBlockHeaderWorkerProgram(workerInput).pipe(
-      Effect.provideService(LucidService, lucidService),
-      Effect.provideService(MidgardContracts, contracts),
+      Effect.provideService(LucidService, lucidService as any),
+      Effect.provideService(MidgardContracts, contracts as any),
       Effect.provide(Database.layer),
       Effect.provide(NodeConfig.layer),
     ),
@@ -821,6 +1192,105 @@ const fetchSchedulerDatum = async ({
   return Data.from(schedulerUtxos[0]!.datum!, SDK.SchedulerDatum);
 };
 
+const findUtxoWithUnit = (
+  utxos: readonly UTxO[],
+  unit: string,
+  quantity = 1n,
+): UTxO => {
+  const utxo = utxos.find((candidate) => candidate.assets[unit] === quantity);
+  if (utxo === undefined) {
+    throw new Error(
+      `Missing UTxO with ${unit} quantity ${quantity.toString()}`,
+    );
+  }
+  return utxo;
+};
+
+const commitConfirmRecoverAndMerge = async ({
+  fixture,
+  lucidService,
+  globals,
+}: {
+  readonly fixture: EmulatorFixture;
+  readonly lucidService: Awaited<ReturnType<typeof makeLucidRuntimeService>>;
+  readonly globals: Globals;
+}) => {
+  const latestBlockBeforeCommit = await fetchLatestCommittedBlock(
+    fixture.operatorLucid,
+    fixture.contracts,
+  );
+  const commitOutput = await runCommitWorker(
+    fixture.contracts,
+    lucidService,
+    latestBlockBeforeCommit,
+  );
+  expect(commitOutput).toBeDefined();
+  expect(commitOutput?.type).toBe("SubmittedAwaitingConfirmationOutput");
+  if (
+    commitOutput === undefined ||
+    commitOutput.type !== "SubmittedAwaitingConfirmationOutput"
+  ) {
+    throw new Error(`Unexpected commit output: ${JSON.stringify(commitOutput)}`);
+  }
+  await fixture.operatorLucid.awaitTx(commitOutput.submittedTxHash);
+  await runBlockConfirmation(globals, fixture.contracts, lucidService);
+  await runLocalFinalizationRecoveryWorker(
+    globals,
+    fixture.contracts,
+    lucidService,
+  );
+
+  const sortedStateQueueBeforeMerge = await Effect.runPromise(
+    SDK.fetchSortedStateQueueUTxOsProgram(
+      fixture.operatorLucid,
+      stateQueueFetchConfig(fixture.contracts),
+    ),
+  );
+  expect(sortedStateQueueBeforeMerge.length).toBeGreaterThanOrEqual(2);
+  const queuedBlockBeforeMerge =
+    sortedStateQueueBeforeMerge[sortedStateQueueBeforeMerge.length - 1]!;
+  const queuedHeaderBeforeMerge = await Effect.runPromise(
+    SDK.getHeaderFromStateQueueDatum(queuedBlockBeforeMerge.datum),
+  );
+  const queuedHeaderHash = await Effect.runPromise(
+    SDK.hashBlockHeader(queuedHeaderBeforeMerge),
+  );
+
+  await advanceEmulatorPastUnixTime(
+    fixture,
+    Number(queuedHeaderBeforeMerge.endTime) + 60_000,
+  );
+  vi.setSystemTime(new Date(fixture.emulator.now()));
+
+  await Effect.runPromise(
+    mergeAction(true).pipe(
+      Effect.provideService(LucidService, lucidService as any),
+      Effect.provideService(MidgardContracts, fixture.contracts as any),
+      Effect.provideService(Globals, globals),
+      Effect.provide(Database.layer),
+      Effect.provide(NodeConfig.layer),
+    ),
+  );
+
+  const settlementUnit = toUnit(
+    fixture.contracts.settlement.policyId,
+    queuedHeaderHash,
+  );
+  const settlementUtxo = findUtxoWithUnit(
+    await fixture.operatorLucid.utxosAtWithUnit(
+      fixture.contracts.settlement.spendingScriptAddress,
+      settlementUnit,
+    ),
+    settlementUnit,
+  );
+  return {
+    commitOutput,
+    queuedHeader: queuedHeaderBeforeMerge,
+    queuedHeaderHash,
+    settlementUtxo,
+  };
+};
+
 let activeRuntimePaths: {
   readonly ledgerMptPath: string;
   readonly mempoolMptPath: string;
@@ -897,7 +1367,7 @@ describeRealisticDepositFlow("deposit flow emulator", () => {
     expect(deposited!.assets[builtDepositOutput.depositAuthUnit]).toEqual(1n);
 
     const depositedDatum = Data.from(
-      deposited!.datum,
+      deposited!.datum ?? "",
       DepositDraftDatumWithWitnessSchema,
     );
     expect(depositedDatum.witness).toEqual(expectedWitnessHash);
@@ -1023,7 +1493,7 @@ describeRealisticDepositFlow("deposit flow emulator", () => {
     );
 
     const expectedDepositsRoot = await Effect.runPromise(
-      keyValueMptRoot(
+      keyValuePhasRoot(
         depositEntriesAfterSubmission.map(
           (entry) => entry[UserEventsUtils.Columns.ID],
         ),
@@ -1126,8 +1596,8 @@ describeRealisticDepositFlow("deposit flow emulator", () => {
     await Effect.runPromise(
       seedLatestLocalBlockBoundaryOnStartup.pipe(
         Effect.provideService(Globals, coldStartGlobals),
-        Effect.provideService(LucidService, lucidService),
-        Effect.provideService(MidgardContracts, fixture.contracts),
+        Effect.provideService(LucidService, lucidService as any),
+        Effect.provideService(MidgardContracts, fixture.contracts as any),
         Effect.provide(Database.layer),
       ),
     );
@@ -1144,7 +1614,11 @@ describeRealisticDepositFlow("deposit flow emulator", () => {
     expect(
       schedulerAfterCommit === SDK.INITIAL_SCHEDULER_DATUM
         ? undefined
-        : schedulerAfterCommit.ActiveOperator.operator,
+        : typeof schedulerAfterCommit === "object" &&
+            schedulerAfterCommit !== null &&
+            "ActiveOperator" in schedulerAfterCommit
+          ? schedulerAfterCommit.ActiveOperator.operator
+          : undefined,
     ).toEqual(fixture.operatorKeyHash);
   }, 180_000);
 
@@ -1266,8 +1740,8 @@ describeRealisticDepositFlow("deposit flow emulator", () => {
 
     await Effect.runPromise(
       mergeAction(true).pipe(
-        Effect.provideService(LucidService, lucidService),
-        Effect.provideService(MidgardContracts, fixture.contracts),
+        Effect.provideService(LucidService, lucidService as any),
+        Effect.provideService(MidgardContracts, fixture.contracts as any),
         Effect.provideService(Globals, globalsAfterCommit),
         Effect.provide(Database.layer),
         Effect.provide(NodeConfig.layer),
@@ -1334,4 +1808,239 @@ describeRealisticDepositFlow("deposit flow emulator", () => {
       resolution_claim: null,
     });
   }, 240_000);
+
+  it("runs deposit, reserve absorption, withdrawal commitment, and payout to conclusion", async () => {
+    activeRuntimePaths = makeRuntimePaths();
+    await cleanupRuntimePaths(activeRuntimePaths);
+    await initializeNodeRuntime();
+
+    const fixture = await makeFixture();
+    await initializeProtocol(fixture);
+    const lucidService = await makeLucidRuntimeService(fixture);
+    const globals = await makeGlobalsService();
+    const membershipProofWithdrawal = {
+      script: loadPhasMembershipWithdrawalScript(),
+    };
+    registerZeroRewardScript(fixture.emulator, membershipProofWithdrawal.script);
+
+    await advanceEmulatorPastLatestBlockEndTime(fixture);
+
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date(fixture.emulator.now()));
+
+    const l2Address = await fixture.depositorLucid.wallet().address();
+    await submitDepositWithDiagnostics(fixture, {
+      l2Address,
+      l2Datum: null,
+      lovelace: 12_000_000n,
+      additionalAssets: {},
+    });
+
+    const fetchedDepositUtxos = await Effect.runPromise(
+      SDK.fetchDepositUTxOsProgram(fixture.depositorLucid, {
+        eventAddress: fixture.contracts.deposit.spendingScriptAddress,
+        eventPolicyId: fixture.contracts.deposit.policyId,
+      }),
+    );
+    expect(fetchedDepositUtxos).toHaveLength(1);
+    const depositUtxo = fetchedDepositUtxos[0]!;
+    await fixture.emulator.awaitSlot(
+      fixture.operatorLucid.unixTimeToSlot(
+        Number(depositUtxo.datum.inclusion_time),
+      ) + 1,
+    );
+    vi.setSystemTime(new Date(fixture.emulator.now()));
+
+    const depositBlock = await commitConfirmRecoverAndMerge({
+      fixture,
+      lucidService,
+      globals,
+    });
+    const emptyProtocolRoot = SDK.EMPTY_MERKLE_TREE_ROOT;
+    const expectedDepositRoot = await Effect.runPromise(
+      keyValuePhasRoot([depositUtxo.idCbor], [depositUtxo.infoCbor]),
+    );
+    expect(depositBlock.queuedHeader.depositsRoot).not.toEqual(
+      emptyProtocolRoot,
+    );
+    expect(depositBlock.queuedHeader.depositsRoot).toEqual(
+      expectedDepositRoot,
+    );
+    expect(depositBlock.queuedHeader.withdrawalsRoot).toEqual(
+      emptyProtocolRoot,
+    );
+    const depositMembershipProof = await Effect.runPromise(
+      keyValuePhasProof(
+        [depositUtxo.idCbor],
+        [depositUtxo.infoCbor],
+        depositUtxo.idCbor,
+      ),
+    );
+
+    const absorb = await Effect.runPromise(
+      buildAbsorbConfirmedDepositToReserveTxProgram(
+        fixture.operatorLucid,
+        fixture.contracts,
+        {
+          deposit: depositUtxo,
+          membershipProof: depositMembershipProof,
+          membershipProofWithdrawal,
+          settlementRefInput: depositBlock.settlementUtxo,
+        },
+      ),
+    );
+    await submitWithWallet(fixture.operatorLucid, absorb.tx);
+    const reserveAfterAbsorb = (
+      await fixture.operatorLucid.utxosAt(
+        fixture.contracts.reserve.spendingScriptAddress,
+      )
+    ).find((utxo) => utxo.assets.lovelace === 12_000_000n);
+    if (reserveAfterAbsorb === undefined) {
+      throw new Error("Deposit absorption did not create a 12 ADA reserve UTxO");
+    }
+
+    const projectedDepositUtxos = await Effect.runPromise(
+      utxosProgram(l2Address).pipe(Effect.provide(Database.layer)),
+    );
+    expect(projectedDepositUtxos.utxoCount).toEqual(1);
+    const l2WithdrawalTarget = projectedDepositUtxos.utxos[0]!;
+    const l2PaymentCredential = paymentCredentialOf(l2Address);
+    if (l2PaymentCredential?.type !== "Key") {
+      throw new Error("Expected withdrawal target L2 owner to be a key hash");
+    }
+    const l1AddressData = await Effect.runPromise(
+      SDK.addressDataFromBech32(l2Address),
+    );
+    const withdrawalBody: SDK.WithdrawalBody = {
+      l2_outref: {
+        transactionId: l2WithdrawalTarget.txHash,
+        outputIndex: BigInt(l2WithdrawalTarget.outputIndex),
+      },
+      l2_owner: l2PaymentCredential.hash,
+      l2_value: assetsToValue({ lovelace: 12_000_000n }),
+      l1_address: l1AddressData,
+      l1_datum: "NoDatum",
+    };
+    await submitWithdrawalWithDiagnostics(fixture, {
+      body: withdrawalBody,
+      signature: ["01", "02"],
+      refundAddress: l1AddressData,
+      refundDatum: "NoDatum",
+    });
+
+    const fetchedWithdrawalUtxos = await Effect.runPromise(
+      SDK.fetchWithdrawalUTxOsProgram(fixture.depositorLucid, {
+        eventAddress: fixture.contracts.withdrawal.spendingScriptAddress,
+        eventPolicyId: fixture.contracts.withdrawal.policyId,
+      }),
+    );
+    expect(fetchedWithdrawalUtxos).toHaveLength(1);
+    const withdrawalUtxo = fetchedWithdrawalUtxos[0]!;
+
+    await fixture.emulator.awaitSlot(
+      fixture.operatorLucid.unixTimeToSlot(
+        Number(withdrawalUtxo.datum.inclusion_time),
+      ) + 1,
+    );
+    vi.setSystemTime(new Date(fixture.emulator.now()));
+
+    const withdrawalBlock = await commitConfirmRecoverAndMerge({
+      fixture,
+      lucidService,
+      globals,
+    });
+    expect(withdrawalBlock.queuedHeader.withdrawalsRoot).not.toEqual(
+      emptyProtocolRoot,
+    );
+
+    const withdrawalEntries = await runNodeDatabaseEffect(
+      WithdrawalsDB.retrieveAllEntries(),
+    );
+    expect(withdrawalEntries).toHaveLength(1);
+    expect(withdrawalEntries[0]?.[WithdrawalsDB.Columns.VALIDITY]).toEqual(
+      WithdrawalsDB.Validity.WithdrawalIsValid,
+    );
+    const withdrawalRootKeyValues = await Effect.runPromise(
+      Effect.forEach(withdrawalEntries, WithdrawalsDB.toRootKeyValue),
+    );
+    const expectedWithdrawalRoot = await Effect.runPromise(
+      keyValuePhasRoot(
+        withdrawalRootKeyValues.map((keyValue) => keyValue.key),
+        withdrawalRootKeyValues.map((keyValue) => keyValue.value),
+      ),
+    );
+    expect(withdrawalBlock.queuedHeader.withdrawalsRoot).toEqual(
+      expectedWithdrawalRoot,
+    );
+    const withdrawalMembershipProof = await Effect.runPromise(
+      keyValuePhasProof(
+        withdrawalRootKeyValues.map((keyValue) => keyValue.key),
+        withdrawalRootKeyValues.map((keyValue) => keyValue.value),
+        withdrawalUtxo.idCbor,
+      ),
+    );
+    const projectedAfterWithdrawal = await Effect.runPromise(
+      utxosProgram(l2Address).pipe(Effect.provide(Database.layer)),
+    );
+    expect(projectedAfterWithdrawal.utxoCount).toEqual(0);
+
+    const initialize = await Effect.runPromise(
+      buildInitializePayoutTxProgram(fixture.operatorLucid, fixture.contracts, {
+        membershipProof: withdrawalMembershipProof,
+        membershipProofWithdrawal,
+        settlementRefInput: withdrawalBlock.settlementUtxo,
+        withdrawal: withdrawalUtxo,
+      }),
+    );
+    await submitWithWallet(fixture.operatorLucid, initialize.tx);
+    await ensureSeparateCollateralUtxo(fixture.operatorLucid);
+    const payoutUnit = toUnit(
+      fixture.contracts.payout.policyId,
+      withdrawalUtxo.assetName,
+    );
+    const initializedPayout = findUtxoWithUnit(
+      await fixture.operatorLucid.utxosAt(
+        fixture.contracts.payout.spendingScriptAddress,
+      ),
+      payoutUnit,
+    );
+    expect(initializedPayout.assets[payoutUnit]).toEqual(1n);
+
+    const addFunds = await Effect.runPromise(
+      buildAddReserveFundsToPayoutTxProgram(
+        fixture.operatorLucid,
+        fixture.contracts,
+        {
+          payoutInput: initializedPayout,
+          reserveInput: reserveAfterAbsorb,
+        },
+      ),
+    );
+    await submitWithWallet(fixture.operatorLucid, addFunds.tx);
+    const fundedPayout = findUtxoWithUnit(
+      await fixture.operatorLucid.utxosAt(
+        fixture.contracts.payout.spendingScriptAddress,
+      ),
+      payoutUnit,
+    );
+    expect(fundedPayout.assets.lovelace).toEqual(12_000_000n);
+
+    const conclude = await Effect.runPromise(
+      buildConcludePayoutTxProgram(fixture.operatorLucid, fixture.contracts, {
+        payoutInput: fundedPayout,
+      }),
+    );
+    await submitWithWallet(fixture.operatorLucid, conclude.tx);
+
+    expect(
+      (await fixture.operatorLucid.utxosAt(
+        fixture.contracts.payout.spendingScriptAddress,
+      )).some((utxo) => utxo.assets[payoutUnit] === 1n),
+    ).toBe(false);
+    expect(
+      (await fixture.operatorLucid.utxosAt(l2Address)).some(
+        (utxo) => utxo.assets.lovelace === 12_000_000n,
+      ),
+    ).toBe(true);
+  }, 360_000);
 });

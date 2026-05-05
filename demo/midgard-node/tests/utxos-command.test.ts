@@ -12,6 +12,7 @@ import {
   orderStoredUtxosByOutRef,
   sumAssets,
 } from "@/commands/utxos.js";
+import { makeMidgardTxOutput } from "./midgard-output-helpers.js";
 import { Effect } from "effect";
 
 const VALID_ADDRESS =
@@ -33,7 +34,7 @@ describe("utxos command helpers", () => {
   it("decodes stored UTxOs from ledger records", async () => {
     const txHash = CML.TransactionHash.from_hex("11".repeat(32));
     const outRef = CML.TransactionInput.new(txHash, 0n);
-    const output = CML.TransactionOutput.new(
+    const output = makeMidgardTxOutput(
       CML.Address.from_bech32(VALID_ADDRESS),
       CML.Value.from_coin(1_500_000n),
     );
@@ -54,9 +55,11 @@ describe("utxos command helpers", () => {
   it("parses and canonicalizes txOutRef CBOR hex", () => {
     const txHash = CML.TransactionHash.from_hex("22".repeat(32));
     const outRef = CML.TransactionInput.new(txHash, 3n);
-    expect(parseTxOutRefCborHex(` ${Buffer.from(outRef.to_cbor_bytes()).toString("hex").toUpperCase()} `)).toEqual(
-      Buffer.from(outRef.to_cbor_bytes()),
-    );
+    expect(
+      parseTxOutRefCborHex(
+        ` ${Buffer.from(outRef.to_cbor_bytes()).toString("hex").toUpperCase()} `,
+      ),
+    ).toEqual(Buffer.from(outRef.to_cbor_bytes()));
   });
 
   it("rejects malformed txOutRef CBOR hex", () => {
@@ -110,9 +113,9 @@ describe("utxos command helpers", () => {
       ),
     ]);
 
-    expect(() =>
-      parseTxOutRefsRequest([first, first]),
-    ).toThrow("Duplicate txOutRef provided at txOutRefs[1].");
+    expect(() => parseTxOutRefsRequest([first, first])).toThrow(
+      "Duplicate txOutRef provided at txOutRefs[1].",
+    );
   });
 
   it("requires the by-outrefs query selector for batch lookup", () => {

@@ -100,7 +100,7 @@ const decodeCanonicalNodeDatumFromOutput = (
   output: ReturnType<typeof coreToTxOutput>,
   policyId: string,
 ): SDK.LinkedListNodeView | undefined => {
-  if (output.datum === undefined) {
+  if (output.datum == null) {
     return undefined;
   }
   const assetName = getAssetNameByPolicy(output.assets, policyId);

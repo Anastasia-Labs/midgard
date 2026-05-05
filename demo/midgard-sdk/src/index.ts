@@ -13,6 +13,8 @@ export * from "./scheduler.js";
 export * from "./settlement.js";
 export * from "./state-queue.js";
 export * from "./initialization.js";
+export * from "./payout.js";
+export * from "./reserve.js";
 
 export * from "./user-events/index.js";
 export * from "./fraud-proof/index.js";

@@ -9,11 +9,10 @@ x-logging:
 services:
   midgard-node:
     build:
-      context: .
+      context: ..
       additional_contexts:
-        - sdk=../midgard-sdk
         - onchain=../../onchain/aiken
-      dockerfile: ./Dockerfile
+      dockerfile: midgard-node/Dockerfile
     env_file:
       - .env
     labels:
@@ -43,11 +42,10 @@ services:
 
   midgard-node-migrate:
     build:
-      context: .
+      context: ..
       additional_contexts:
-        - sdk=../midgard-sdk
         - onchain=../../onchain/aiken
-      dockerfile: ./Dockerfile
+      dockerfile: midgard-node/Dockerfile
     env_file:
       - .env
     command:
@@ -214,10 +212,10 @@ services:
 
   midgard-node-tests:
     build:
-      context: .
+      context: ..
       additional_contexts:
-        - sdk=../midgard-sdk
-      dockerfile: ./Dockerfile
+        - onchain=../../onchain/aiken
+      dockerfile: midgard-node/Dockerfile
     env_file:
       - .env
     command: ["sh", "-c", "yes | pnpm test"]

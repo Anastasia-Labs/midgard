@@ -499,8 +499,7 @@ txInfoToMidgardTxInfo txInfo =
     , mtxInfoObservers = getScriptHashesFromWithdrawals (Map.toList (txInfoWdrl txInfo))
     , mtxInfoValidRange = txInfoValidRange txInfo
     , mtxInfoSignatories = txInfoSignatories txInfo
-    , mtxInfoScriptIntegrityHash = BuiltinData $ Constr 0 [] -- Unused
-    , mtxInfoAuxDataHash = BuiltinData $ Constr 0 [] -- Unused
+    , mtxInfoRedeemers = Map.empty
     , mtxInfoId = txInfoId txInfo
     }
   where

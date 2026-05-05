@@ -17,13 +17,24 @@ import {
   DEFAULT_WALLET_SEED_ENV,
   LEGACY_DEFAULT_WALLET_SEED_ENV,
   buildTransferTx,
+  buildTransferTxWithMinFee,
   parseSubmitL2TransferConfig,
   resolveWalletSeedPhrase,
   selectTransferInputs,
   submitL2TransferProgram,
   type NodeUtxo,
 } from "@/commands/submit-l2-transfer.js";
-import { runPhaseAValidation, type QueuedTx } from "@/validation/index.js";
+import {
+  runPhaseAValidation,
+  runPhaseBValidationWithPatch,
+  type QueuedTx,
+} from "@/validation/index.js";
+import {
+  decodeMidgardTxOutput,
+  midgardOutputAddressText,
+  midgardValueToCmlValue,
+} from "@/validation/midgard-output.js";
+import { makeMidgardTxOutput } from "./midgard-output-helpers.js";
 import { Database } from "@/services/database.js";
 import { NodeConfig } from "@/services/config.js";
 import { Lucid as LucidService } from "@/services/lucid.js";
@@ -58,7 +69,7 @@ const mkNodeUtxo = ({
     ).to_cbor_bytes(),
   );
   const outputCbor = Buffer.from(
-    CML.TransactionOutput.new(
+    makeMidgardTxOutput(
       CML.Address.from_bech32(address),
       assetsToValue(assets),
     ).to_cbor_bytes(),
@@ -156,12 +167,11 @@ describe("submit-l2-transfer tx building", () => {
     } as const;
 
     const selected = selectTransferInputs(utxos, requestedAssets);
-    expect(selected.map((utxo) => `${utxo.txHash}#${utxo.outputIndex}`)).toEqual([
-      `${"11".repeat(32)}#0`,
-      `${"22".repeat(32)}#1`,
-    ]);
+    expect(
+      selected.map((utxo) => `${utxo.txHash}#${utxo.outputIndex}`),
+    ).toEqual([`${"11".repeat(32)}#0`, `${"22".repeat(32)}#1`]);
 
-    const built = buildTransferTx({
+    const built = await buildTransferTx({
       senderAddress: sender.address,
       destinationAddress: destination.address,
       signer: CML.PrivateKey.from_bech32(sender.paymentKey),
@@ -189,10 +199,11 @@ describe("submit-l2-transfer tx building", () => {
     const outputs = decodeMidgardNativeByteListPreimage(
       nativeTx.body.outputsPreimageCbor,
     ).map((bytes) => {
-      const output = CML.TransactionOutput.from_cbor_bytes(bytes);
+      expect(bytes[0] >> 5).toBe(5);
+      const output = decodeMidgardTxOutput(bytes);
       return {
-        address: output.address().to_bech32(),
-        assets: valueToAssets(output.amount()),
+        address: midgardOutputAddressText(output),
+        assets: valueToAssets(midgardValueToCmlValue(output.value)),
       };
     });
     expect(outputs).toHaveLength(2);
@@ -222,12 +233,106 @@ describe("submit-l2-transfer tx building", () => {
     expect(validation.rejected).toHaveLength(0);
     expect(validation.accepted).toHaveLength(1);
   });
+
+  it("converges fees against signed bytes and passes local Phase A/B", async () => {
+    const sender = walletFromSeed(TEST_SEED, { network: "Preprod" });
+    const destination = walletFromSeed(OTHER_TEST_SEED, { network: "Preprod" });
+    const minFeeA = 44n;
+    const minFeeB = 155_381n;
+    const senderUtxo = mkNodeUtxo({
+      txHash: "44".repeat(32),
+      outputIndex: 0,
+      address: sender.address,
+      assets: {
+        lovelace: 8_000_000n,
+      },
+    });
+
+    const built = await buildTransferTxWithMinFee({
+      senderAddress: sender.address,
+      destinationAddress: destination.address,
+      signer: CML.PrivateKey.from_bech32(sender.paymentKey),
+      availableUtxos: [senderUtxo],
+      requestedAssets: { lovelace: 3_000_000n },
+      networkId: 0n,
+      minFeeA,
+      minFeeB,
+    });
+
+    expect(built.fee).toBe(minFeeA * BigInt(built.txCbor.length) + minFeeB);
+    expect(built.changeAssets).toEqual({
+      lovelace: 8_000_000n - 3_000_000n - built.fee,
+    });
+
+    const phaseA = await Effect.runPromise(
+      runPhaseAValidation([mkQueued(built.txId, built.txCbor)], {
+        expectedNetworkId: 0n,
+        minFeeA,
+        minFeeB,
+        concurrency: 1,
+        strictnessProfile: "phase1_midgard",
+      }),
+    );
+    expect(phaseA.rejected).toHaveLength(0);
+    expect(phaseA.accepted).toHaveLength(1);
+
+    const phaseB = await Effect.runPromise(
+      runPhaseBValidationWithPatch(
+        phaseA.accepted,
+        new Map([
+          [senderUtxo.outrefCbor.toString("hex"), senderUtxo.outputCbor],
+        ]),
+        {
+          nowCardanoSlotNo: 0n,
+          bucketConcurrency: 1,
+          enforceScriptBudget: true,
+        },
+      ),
+    );
+    expect(phaseB.rejected).toHaveLength(0);
+    expect(phaseB.accepted).toHaveLength(1);
+  });
 });
 
 describe("submit-l2-transfer program", () => {
   afterEach(() => {
+    vi.unstubAllEnvs();
     vi.unstubAllGlobals();
     vi.restoreAllMocks();
+  });
+
+  it("rejects destination addresses from a different configured node network before fetching UTxOs", async () => {
+    vi.stubEnv("NETWORK", "Mainnet");
+    const destination = walletFromSeed(OTHER_TEST_SEED, { network: "Preprod" });
+    const config = parseSubmitL2TransferConfig({
+      l2Address: destination.address,
+      lovelace: "3000000",
+      assetSpecs: [],
+      nodeEndpoint: "http://127.0.0.1:3000",
+    });
+    const resolvedWalletSeedPhrase = resolveWalletSeedPhrase({
+      walletSeedPhrase: TEST_SEED,
+      walletSeedPhraseEnv: DEFAULT_WALLET_SEED_ENV,
+      env: {},
+    });
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(
+      Effect.runPromise(
+        submitL2TransferProgram({
+          config,
+          resolvedWalletSeedPhrase,
+        }).pipe(
+          Effect.provideService(LucidService, mockLucidService),
+          Effect.provide(Database.layer),
+          Effect.provide(NodeConfig.layer),
+        ),
+      ),
+    ).rejects.toThrow(
+      "Destination address network id 0 does not match configured Midgard node network Mainnet (network id 1).",
+    );
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 
   it("queries utxos, builds a transfer, and submits the native tx", async () => {
@@ -270,20 +375,26 @@ describe("submit-l2-transfer program", () => {
           ],
         }),
     }));
-    fetchMock.mockImplementationOnce(async (_input: string, init?: RequestInit) => {
-      const body = JSON.parse(String(init?.body)) as { readonly tx_cbor: string };
-      const built = decodeMidgardNativeTxFull(Buffer.from(body.tx_cbor, "hex"));
-      expectedTxId = computeMidgardNativeTxIdFromFull(built).toString("hex");
-      return {
-        ok: true,
-        status: 200,
-        text: async () =>
-          JSON.stringify({
-            txId: expectedTxId,
-            status: "queued",
-          }),
-      };
-    });
+    fetchMock.mockImplementationOnce(
+      async (_input: string, init?: RequestInit) => {
+        const body = JSON.parse(String(init?.body)) as {
+          readonly tx_cbor: string;
+        };
+        const built = decodeMidgardNativeTxFull(
+          Buffer.from(body.tx_cbor, "hex"),
+        );
+        expectedTxId = computeMidgardNativeTxIdFromFull(built).toString("hex");
+        return {
+          ok: true,
+          status: 200,
+          text: async () =>
+            JSON.stringify({
+              txId: expectedTxId,
+              status: "queued",
+            }),
+        };
+      },
+    );
 
     const assertWalletAddress = vi.fn();
     const result = await Effect.runPromise(

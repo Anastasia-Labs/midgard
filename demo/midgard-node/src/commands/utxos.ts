@@ -1,14 +1,19 @@
 import * as MempoolLedgerDB from "@/database/mempoolLedger.js";
 import { DatabaseError } from "@/database/utils/common.js";
 import { Database } from "@/services/database.js";
+import {
+  decodeMidgardTxOutput,
+  midgardOutputAddressText,
+  midgardValueToCmlValue,
+} from "@/validation/midgard-output.js";
 import { isHexString } from "@/utils.js";
 import {
   CML,
-  coreToUtxo,
-  getAddressDetails,
+  valueToAssets,
   type Assets,
   type UTxO,
 } from "@lucid-evolution/lucid";
+import { midgardAddressFromText, midgardAddressToText } from "@al-ft/midgard-core/codec";
 import { Data as EffectData, Effect } from "effect";
 
 /**
@@ -34,7 +39,7 @@ export type StoredUtxoRecord = {
  */
 export type EncodedStoredUtxo = {
   readonly outref: string;
-  readonly value: string;
+  readonly outputCbor: string;
 };
 
 /**
@@ -68,11 +73,7 @@ export const parseAddressArgument = (address: string): string => {
   }
 
   try {
-    const details = getAddressDetails(normalized);
-    if (!details.paymentCredential) {
-      throw new Error("Address must include a payment credential.");
-    }
-    return details.address.bech32;
+    return midgardAddressToText(midgardAddressFromText(normalized));
   } catch (cause) {
     throw new Error(`Invalid address "${normalized}": ${String(cause)}`);
   }
@@ -204,8 +205,20 @@ export const decodeStoredUtxo = (
   Effect.try({
     try: () => {
       const input = CML.TransactionInput.from_cbor_bytes(entry.outref);
-      const output = CML.TransactionOutput.from_cbor_bytes(entry.output);
-      return coreToUtxo(CML.TransactionUnspentOutput.new(input, output));
+      const output = decodeMidgardTxOutput(entry.output);
+      const outputIndex = Number(input.index());
+      if (!Number.isSafeInteger(outputIndex)) {
+        throw new Error("output index exceeds JavaScript safe integer range");
+      }
+      return {
+        txHash: input.transaction_id().to_hex(),
+        outputIndex,
+        address: midgardOutputAddressText(output),
+        assets: valueToAssets(midgardValueToCmlValue(output.value)) as Assets,
+        ...(output.datum === undefined
+          ? {}
+          : { datum: output.datum.cbor.toString("hex") }),
+      } satisfies UTxO;
     },
     catch: (cause) =>
       new UtxosCommandError({
@@ -234,7 +247,7 @@ export const encodeStoredUtxo = (
   entry: StoredUtxoRecord,
 ): EncodedStoredUtxo => ({
   outref: entry.outref.toString("hex"),
-  value: entry.output.toString("hex"),
+  outputCbor: entry.output.toString("hex"),
 });
 
 /**

@@ -6,6 +6,7 @@ export type WorkerHeartbeats = {
   readonly blockConfirmation: number;
   readonly merge: number;
   readonly depositFetch: number;
+  readonly withdrawalFetch: number;
   readonly txQueueProcessor: number;
 };
 
@@ -49,6 +50,7 @@ export const evaluateReadiness = (input: ReadinessInput): ReadinessResult => {
     ["blockConfirmation", input.workerHeartbeats.blockConfirmation],
     ["merge", input.workerHeartbeats.merge],
     ["depositFetch", input.workerHeartbeats.depositFetch],
+    ["withdrawalFetch", input.workerHeartbeats.withdrawalFetch],
     ["txQueueProcessor", input.workerHeartbeats.txQueueProcessor],
   ];
 

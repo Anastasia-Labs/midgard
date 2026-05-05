@@ -18,6 +18,7 @@
     "test:watch": "vitest --mode=test"
   },
   "dependencies": {
+    "@al-ft/lucid-midgard": "file:../../../lucid-midgard",
     "@lucid-evolution/lucid": "^0.4.20",
     "chalk": "^4.1.2",
     "commander": "^11.1.0",

@@ -2,11 +2,11 @@
   "name": "midgard-demo",
   "private": true,
   "scripts": {
-    "build": "turbo build",
+    "build": "pnpm -r --if-present --workspace-concurrency=1 run build",
     "format": "prettier --write \"**/*.{ts,tsx,md}\"",
     "format-check": "prettier --check \"**/*.{ts,tsx,md}\"",
-    "test": "vitest run --mode=test",
-    "clean": "turbo clean && rm -rf node_modules",
+    "test": "pnpm -r --if-present --workspace-concurrency=1 run typecheck && pnpm -r --if-present --workspace-concurrency=1 run test",
+    "clean": "pnpm -r --if-present --workspace-concurrency=1 run clean && rm -rf node_modules",
     "install-sdk": "pnpm --filter midgard-sdk install",
     "repack-sdk": "pnpm --filter midgard-sdk repack"
   },
@@ -16,5 +16,6 @@
   },
   "engines": {
     "node": ">=18"
-  }
+  },
+  "packageManager": "pnpm@9.15.4+sha512.b2dc20e2fc72b3e18848459b37359a32064663e5627a51e4c74b2c29dd8e8e0491483c3abb40789cfd578bf362fb6ba8261b05f0387d76792ed6e23ea3b1b6a0"
 }

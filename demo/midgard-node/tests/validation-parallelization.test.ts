@@ -1,14 +1,17 @@
-import { readFileSync } from "node:fs";
+import { encode } from "cborg";
 import { CML, walletFromSeed } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 import {
-  cardanoTxBytesToMidgardNativeTxFullBytes,
+  MIDGARD_NATIVE_TX_VERSION,
+  MIDGARD_POSIX_TIME_NONE,
   computeHash32,
   computeMidgardNativeTxIdFromFull,
-  decodeMidgardNativeTxFull,
   deriveMidgardNativeTxCompact,
   encodeMidgardNativeTxFull,
+  type MidgardNativeTxBodyFull,
+  type MidgardNativeTxFull,
+  type MidgardNativeTxWitnessSetFull,
 } from "@/midgard-tx-codec/index.js";
 import {
   PhaseAAccepted,
@@ -17,26 +20,7 @@ import {
   runPhaseAValidation,
   runPhaseBValidation,
 } from "@/validation/index.js";
-
-type TxFixture = {
-  readonly txId: string;
-  readonly cborHex: string;
-};
-
-type TxFixtureFile = {
-  readonly transactions: readonly TxFixture[];
-};
-
-const fixturePath = new URL(
-  "./benchmarks/fixtures/tx-sequence.json",
-  import.meta.url,
-);
-
-const loadTxFixtures = (): readonly TxFixture[] => {
-  const raw = readFileSync(fixturePath, "utf8");
-  const parsed = JSON.parse(raw) as TxFixtureFile;
-  return parsed.transactions;
-};
+import { makeMidgardTxOutput } from "./midgard-output-helpers.js";
 
 /**
  * Builds a fixed-width 32-byte hex string for validation tests.
@@ -53,7 +37,7 @@ const outRefFromHash = (txHashHex: string, index: bigint): Buffer =>
 
 const makeOutput = (address: string, lovelace: bigint): Buffer =>
   Buffer.from(
-    CML.TransactionOutput.new(
+    makeMidgardTxOutput(
       CML.Address.from_bech32(address),
       CML.Value.from_coin(lovelace),
     ).to_cbor_bytes(),
@@ -76,7 +60,64 @@ const signerHash = (() => {
   return signer;
 })();
 const EMPTY_CBOR_LIST = Buffer.from([0x80]);
+const EMPTY_CBOR_NULL = Buffer.from([0xf6]);
 const EMPTY_LIST_ROOT = computeHash32(EMPTY_CBOR_LIST);
+const EMPTY_NULL_ROOT = computeHash32(EMPTY_CBOR_NULL);
+
+const encodeByteList = (items: readonly Uint8Array[]): Buffer =>
+  Buffer.from(encode(items.map((item) => Buffer.from(item))));
+
+const makeNativeTx = ({
+  spent,
+  referenceInputs = [],
+  outputs,
+  validityIntervalStart,
+  validityIntervalEnd,
+}: {
+  readonly spent: readonly Buffer[];
+  readonly referenceInputs?: readonly Buffer[];
+  readonly outputs: readonly Buffer[];
+  readonly validityIntervalStart?: bigint;
+  readonly validityIntervalEnd?: bigint;
+}): MidgardNativeTxFull => {
+  const spendInputsPreimageCbor = encodeByteList(spent);
+  const referenceInputsPreimageCbor = encodeByteList(referenceInputs);
+  const outputsPreimageCbor = encodeByteList(outputs);
+  const body: MidgardNativeTxBodyFull = {
+    spendInputsRoot: computeHash32(spendInputsPreimageCbor),
+    spendInputsPreimageCbor,
+    referenceInputsRoot: computeHash32(referenceInputsPreimageCbor),
+    referenceInputsPreimageCbor,
+    outputsRoot: computeHash32(outputsPreimageCbor),
+    outputsPreimageCbor,
+    fee: 0n,
+    validityIntervalStart: validityIntervalStart ?? MIDGARD_POSIX_TIME_NONE,
+    validityIntervalEnd: validityIntervalEnd ?? MIDGARD_POSIX_TIME_NONE,
+    requiredObserversRoot: EMPTY_LIST_ROOT,
+    requiredObserversPreimageCbor: EMPTY_CBOR_LIST,
+    requiredSignersRoot: EMPTY_LIST_ROOT,
+    requiredSignersPreimageCbor: EMPTY_CBOR_LIST,
+    mintRoot: EMPTY_LIST_ROOT,
+    mintPreimageCbor: EMPTY_CBOR_LIST,
+    scriptIntegrityHash: EMPTY_NULL_ROOT,
+    auxiliaryDataHash: EMPTY_NULL_ROOT,
+    networkId: 0n,
+  };
+  const witnessSet: MidgardNativeTxWitnessSetFull = {
+    addrTxWitsRoot: EMPTY_LIST_ROOT,
+    addrTxWitsPreimageCbor: EMPTY_CBOR_LIST,
+    scriptTxWitsRoot: EMPTY_LIST_ROOT,
+    scriptTxWitsPreimageCbor: EMPTY_CBOR_LIST,
+    redeemerTxWitsRoot: EMPTY_LIST_ROOT,
+    redeemerTxWitsPreimageCbor: EMPTY_CBOR_LIST,
+  };
+  return {
+    version: MIDGARD_NATIVE_TX_VERSION,
+    body,
+    witnessSet,
+    compact: deriveMidgardNativeTxCompact(body, witnessSet, "TxIsValid"),
+  };
+};
 
 const makeCandidate = ({
   txByte,
@@ -95,12 +136,20 @@ const makeCandidate = ({
   readonly validityIntervalStart?: bigint;
   readonly validityIntervalEnd?: bigint;
 }): PhaseAAccepted => {
-  const txId = Buffer.from(hex32(txByte), "hex");
-  const producedOutRef = outRefFromHash(txId.toString("hex"), 0n);
   const output = makeOutput(testAddress, inputLovelace);
+  const tx = makeNativeTx({
+    spent,
+    referenceInputs,
+    outputs: [output],
+    validityIntervalStart,
+    validityIntervalEnd,
+  });
+  const txId = computeMidgardNativeTxIdFromFull(tx);
+  const txCbor = encodeMidgardNativeTxFull(tx);
+  const producedOutRef = outRefFromHash(txId.toString("hex"), 0n);
   return {
     txId,
-    txCbor: Buffer.alloc(0),
+    txCbor,
     arrivalSeq,
     fee: 0n,
     validityIntervalStart,
@@ -117,7 +166,7 @@ const makeCandidate = ({
     requiresPlutusEvaluation: false,
     processedTx: {
       txId,
-      txCbor: Buffer.alloc(0),
+      txCbor,
       spent: [...spent],
       produced: [
         {
@@ -133,43 +182,15 @@ const makeCandidate = ({
 
 describe("validation parallelization", () => {
   it("keeps phase-A verdicts and order stable across concurrency levels", async () => {
-    const fixtures = loadTxFixtures().slice(0, 64);
-    const queued: QueuedTx[] = fixtures.map((tx, index) => {
-      const converted = decodeMidgardNativeTxFull(
-        cardanoTxBytesToMidgardNativeTxFullBytes(
-          Buffer.from(tx.cborHex, "hex"),
-        ),
-      );
-      const normalized = {
-        version: converted.version,
-        body: {
-          ...converted.body,
-          requiredSignersRoot: EMPTY_LIST_ROOT,
-          requiredSignersPreimageCbor: EMPTY_CBOR_LIST,
-        },
-        witnessSet: {
-          ...converted.witnessSet,
-          addrTxWitsRoot: EMPTY_LIST_ROOT,
-          addrTxWitsPreimageCbor: EMPTY_CBOR_LIST,
-          scriptTxWitsRoot: EMPTY_LIST_ROOT,
-          scriptTxWitsPreimageCbor: EMPTY_CBOR_LIST,
-          redeemerTxWitsRoot: EMPTY_LIST_ROOT,
-          redeemerTxWitsPreimageCbor: EMPTY_CBOR_LIST,
-          datumTxWitsRoot: EMPTY_LIST_ROOT,
-          datumTxWitsPreimageCbor: EMPTY_CBOR_LIST,
-        },
-      };
-      const txForQueue = {
-        ...normalized,
-        compact: deriveMidgardNativeTxCompact(
-          normalized.body,
-          normalized.witnessSet,
-          "TxIsValid",
-        ),
-      };
-      const nativeTxBytes = encodeMidgardNativeTxFull(txForQueue);
+    const queued: QueuedTx[] = Array.from({ length: 64 }, (_, index) => {
+      const spent = outRefFromHash(hex32(index + 1), 0n);
+      const nativeTx = makeNativeTx({
+        spent: [spent],
+        outputs: [makeOutput(testAddress, 10n)],
+      });
+      const nativeTxBytes = encodeMidgardNativeTxFull(nativeTx);
       return {
-        txId: computeMidgardNativeTxIdFromFull(txForQueue),
+        txId: computeMidgardNativeTxIdFromFull(nativeTx),
         txCbor: nativeTxBytes,
         arrivalSeq: BigInt(index),
         createdAt: new Date(0),
@@ -294,9 +315,9 @@ describe("validation parallelization", () => {
         bucketConcurrency: 1,
       }),
     );
-    expect(activePhaseB.accepted.map((tx) => tx.txId.toString("hex"))).toStrictEqual([
-      active.txId.toString("hex"),
-    ]);
+    expect(
+      activePhaseB.accepted.map((tx) => tx.txId.toString("hex")),
+    ).toStrictEqual([active.txId.toString("hex")]);
     expect(activePhaseB.rejected).toHaveLength(0);
   });
 });

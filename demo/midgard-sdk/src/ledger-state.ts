@@ -181,6 +181,7 @@ export const WithdrawalValiditySchema = Data.Enum([
   Data.Literal("IncorrectWithdrawalValue"),
   Data.Literal("IncorrectWithdrawalSignature"),
   Data.Literal("TooManyTokensInWithdrawal"),
+  Data.Literal("UnpayableWithdrawalValue"),
 ]);
 export type WithdrawalValidity = Data.Static<typeof WithdrawalValiditySchema>;
 export const WithdrawalValidity =

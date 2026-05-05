@@ -10,6 +10,7 @@ import {
   MintingPolicy,
   Network,
   SpendingValidator,
+  WithdrawalValidator,
   applyParamsToScript,
   mintingPolicyToId,
   scriptHashToCredential,
@@ -194,6 +195,22 @@ export const REAL_SETTLEMENT_SCRIPT_TITLES = {
   spend: "settlement.spend.spend",
 } as const;
 
+/**
+ * Blueprint titles for the real reserve scripts.
+ */
+export const REAL_RESERVE_SCRIPT_TITLES = {
+  spend: "reserve.spend.spend",
+  withdraw: "reserve.withdraw.else",
+} as const;
+
+/**
+ * Blueprint titles for the real payout scripts.
+ */
+export const REAL_PAYOUT_SCRIPT_TITLES = {
+  mint: "payout.mint.mint",
+  spend: "payout.spend.spend",
+} as const;
+
 export const REAL_FRAUD_PROOF_CATALOGUE_SCRIPT_TITLES = {
   mint: "fraud_proof_catalogue.mint.mint",
   spend: "fraud_proof_catalogue.spend.else",
@@ -294,6 +311,20 @@ const makeSpendingValidator = (
     spendingScript,
     spendingScriptAddress: validatorToAddress(network, spendingScript),
     spendingScriptHash: validatorToScriptHash(spendingScript),
+  };
+};
+
+const makeWithdrawalValidator = (
+  withdrawalScriptCBOR: string,
+): SDK.WithdrawalValidator => {
+  const withdrawalScript: WithdrawalValidator = {
+    type: "PlutusV3",
+    script: withdrawalScriptCBOR,
+  };
+  return {
+    withdrawalScriptCBOR,
+    withdrawalScript,
+    withdrawalScriptHash: validatorToScriptHash(withdrawalScript),
   };
 };
 
@@ -420,7 +451,9 @@ const buildRealStateQueueValidator = (
     const blueprint = yield* loadRealBlueprint();
     const activeOperatorsAddress = yield* Effect.mapError(
       Effect.map(
-        SDK.addressDataFromBech32(contracts.activeOperators.spendingScriptAddress),
+        SDK.addressDataFromBech32(
+          contracts.activeOperators.spendingScriptAddress,
+        ),
         (addressData) => Data.from(Data.to(addressData, SDK.AddressData)),
       ),
       (cause) =>
@@ -618,7 +651,9 @@ const buildRealSchedulerValidator = (
     const blueprint = yield* loadRealBlueprint();
     const activeOperatorsAddress = yield* Effect.mapError(
       Effect.map(
-        SDK.addressDataFromBech32(contracts.activeOperators.spendingScriptAddress),
+        SDK.addressDataFromBech32(
+          contracts.activeOperators.spendingScriptAddress,
+        ),
         (addressData) => Data.from(Data.to(addressData, SDK.AddressData)),
       ),
       (cause) =>
@@ -838,6 +873,59 @@ const buildRealSettlementValidator = (
     };
   });
 
+const buildRealReserveValidator = (
+  network: Network,
+  contracts: SDK.MidgardValidators,
+): Effect.Effect<SDK.SpendingValidator & SDK.WithdrawalValidator, Error> =>
+  Effect.gen(function* () {
+    const blueprint = yield* loadRealBlueprint();
+    const spendBase = yield* getCompiledScript(
+      blueprint,
+      REAL_RESERVE_SCRIPT_TITLES.spend,
+    );
+    const withdrawScriptCBOR = yield* getCompiledScript(
+      blueprint,
+      REAL_RESERVE_SCRIPT_TITLES.withdraw,
+    );
+
+    const spendingScriptCBOR = applyParamsToScript(spendBase, [
+      contracts.hubOracle.policyId,
+    ]);
+
+    return {
+      ...makeSpendingValidator(network, spendingScriptCBOR),
+      ...makeWithdrawalValidator(withdrawScriptCBOR),
+    };
+  });
+
+const buildRealPayoutValidator = (
+  network: Network,
+  contracts: SDK.MidgardValidators,
+): Effect.Effect<SDK.AuthenticatedValidator, Error> =>
+  Effect.gen(function* () {
+    const blueprint = yield* loadRealBlueprint();
+    const mintBase = yield* getCompiledScript(
+      blueprint,
+      REAL_PAYOUT_SCRIPT_TITLES.mint,
+    );
+    const spendBase = yield* getCompiledScript(
+      blueprint,
+      REAL_PAYOUT_SCRIPT_TITLES.spend,
+    );
+
+    const mintingScriptCBOR = applyParamsToScript(mintBase, [
+      contracts.hubOracle.policyId,
+    ]);
+    const spendingScriptCBOR = applyParamsToScript(spendBase, [
+      contracts.hubOracle.policyId,
+    ]);
+    return makeAuthenticatedValidator(
+      network,
+      mintingScriptCBOR,
+      spendingScriptCBOR,
+    );
+  });
+
 /**
  * Replaces the base hub-oracle/scheduler/state-queue contracts with their real
  * blueprint-derived counterparts.
@@ -910,11 +998,12 @@ export const withRealStateQueueAndOperatorContracts = (
       retiredOperators: realRetiredOperators,
     };
 
-    const realRegisteredOperators = yield* buildRealRegisteredOperatorsValidator(
-      network,
-      withRealRetiredOperators,
-      operatorParams,
-    );
+    const realRegisteredOperators =
+      yield* buildRealRegisteredOperatorsValidator(
+        network,
+        withRealRetiredOperators,
+        operatorParams,
+      );
     const withRealRegisteredOperators: SDK.MidgardValidators = {
       ...withRealRetiredOperators,
       registeredOperators: realRegisteredOperators,
@@ -979,9 +1068,28 @@ export const withRealStateQueueAndOperatorContracts = (
       network,
       withRealSettlement,
     );
-    return {
+
+    const withRealStateQueue: SDK.MidgardValidators = {
       ...withRealSettlement,
       stateQueue: realStateQueue,
+    };
+
+    const realPayout = yield* buildRealPayoutValidator(
+      network,
+      withRealStateQueue,
+    );
+    const withRealPayout: SDK.MidgardValidators = {
+      ...withRealStateQueue,
+      payout: realPayout,
+    };
+
+    const realReserve = yield* buildRealReserveValidator(
+      network,
+      withRealPayout,
+    );
+    return {
+      ...withRealPayout,
+      reserve: realReserve,
     };
   });
 
@@ -1019,7 +1127,7 @@ const makeMidgardContracts = Effect.gen(function* () {
     },
   );
   yield* Effect.logInfo(
-    "🔐 Contract source selected: state_queue=real, hub_oracle=real, deposit=real, tx_order=real, withdrawal=real, settlement=real, registered_operators=real, active_operators=real, retired_operators=real, scheduler=real",
+    "🔐 Contract source selected: state_queue=real, hub_oracle=real, deposit=real, tx_order=real, withdrawal=real, settlement=real, reserve=real, payout=real, registered_operators=real, active_operators=real, retired_operators=real, scheduler=real",
   );
   return resolvedContracts;
 }).pipe(Effect.orDie);

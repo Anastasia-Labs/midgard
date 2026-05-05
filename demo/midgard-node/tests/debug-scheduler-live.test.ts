@@ -61,7 +61,8 @@ describe("debug scheduler live", () => {
       ]);
 
       const registered = await Promise.all(
-        registeredUtxos.map(async (utxo) => {
+        registeredUtxos.map(async (beacon) => {
+          const utxo = beacon.utxo;
           const node = await Effect.runPromise(SDK.getNodeDatumFromUTxO(utxo));
           return {
             outRef: `${utxo.txHash}#${utxo.outputIndex}`,
@@ -75,7 +76,8 @@ describe("debug scheduler live", () => {
       );
 
       const active = await Promise.all(
-        activeUtxos.map(async (utxo) => {
+        activeUtxos.map(async (beacon) => {
+          const utxo = beacon.utxo;
           const node = await Effect.runPromise(SDK.getNodeDatumFromUTxO(utxo));
           return {
             outRef: `${utxo.txHash}#${utxo.outputIndex}`,
@@ -87,12 +89,15 @@ describe("debug scheduler live", () => {
         }),
       );
 
-      const scheduler = schedulerUtxos.map((utxo) => ({
+      const scheduler = schedulerUtxos.map((beacon) => {
+        const utxo = beacon.utxo;
+        return {
         outRef: `${utxo.txHash}#${utxo.outputIndex}`,
         datum:
           utxo.datum == null ? null : Data.from(utxo.datum, SDK.SchedulerDatum),
         assets: utxo.assets,
-      }));
+        };
+      });
 
       console.log(
         JSON.stringify(

@@ -9,11 +9,13 @@ import {
   BlocksDB,
   DepositsDB,
   ImmutableDB,
+  MempoolLedgerDB,
   MempoolDB,
   MutationJobsDB,
   PendingBlockFinalizationsDB,
   ProcessedMempoolDB,
   TxUtils as TxTable,
+  WithdrawalsDB,
 } from "@/database/index.js";
 import { Columns as TxColumns } from "@/database/utils/tx.js";
 import {
@@ -48,6 +50,7 @@ const withLocalBlockFinalizationJob = <A, E, R>(
     readonly headerHash: string;
     readonly mempoolTxCount: number;
     readonly includedDepositCount: number;
+    readonly includedWithdrawalCount: number;
   },
   program: Effect.Effect<A, E, R>,
 ): Effect.Effect<A, E | DatabaseError, R | Database> => {
@@ -60,6 +63,7 @@ const withLocalBlockFinalizationJob = <A, E, R>(
         headerHash: input.headerHash,
         mempoolTxCount: input.mempoolTxCount,
         includedDepositCount: input.includedDepositCount,
+        includedWithdrawalCount: input.includedWithdrawalCount,
       },
     });
     const result = yield* program;
@@ -79,12 +83,55 @@ const withLocalBlockFinalizationJob = <A, E, R>(
   );
 };
 
+const applyFinalizedWithdrawalLedgerEffects = (
+  includedWithdrawalEventIds: readonly Buffer[],
+): Effect.Effect<void, DatabaseError, Database> =>
+  Effect.gen(function* () {
+    if (includedWithdrawalEventIds.length <= 0) {
+      return;
+    }
+    const uniqueEventIdHexes = Array.from(
+      new Set(includedWithdrawalEventIds.map((id) => id.toString("hex"))),
+    );
+    const withdrawals = yield* WithdrawalsDB.retrieveByEventIds(
+      uniqueEventIdHexes.map((hex) => Buffer.from(hex, "hex")),
+    );
+    if (withdrawals.length !== uniqueEventIdHexes.length) {
+      return yield* Effect.fail(
+        new DatabaseError({
+          table: WithdrawalsDB.tableName,
+          message:
+            "Failed to apply finalized withdrawal ledger effects because at least one withdrawal row is missing",
+          cause: `requested=${uniqueEventIdHexes.length},found=${withdrawals.length}`,
+        }),
+      );
+    }
+
+    const validWithdrawals = withdrawals.filter(
+      (entry) =>
+        entry[WithdrawalsDB.Columns.VALIDITY] ===
+        WithdrawalsDB.Validity.WithdrawalIsValid,
+    );
+    if (validWithdrawals.length <= 0) {
+      return;
+    }
+
+    const consumedOutRefs = yield* Effect.forEach(
+      validWithdrawals,
+      WithdrawalsDB.toLedgerOutRef,
+    );
+    const consumedDepositEventIds =
+      yield* MempoolLedgerDB.clearUTxOs(consumedOutRefs);
+    yield* DepositsDB.markConsumedByEventIds(consumedDepositEventIds);
+  });
+
 export const finalizeCommittedBlockLocally = (
   mempoolTrie: MidgardMpt,
   mempoolTxs: readonly TxTable.EntryWithTimeStamp[],
   mempoolTxHashes: Buffer[],
   includedDepositEventIds: readonly Buffer[],
   newHeaderHash: string,
+  includedWithdrawalEventIds: readonly Buffer[] = [],
 ): Effect.Effect<void, DatabaseError | FileSystemError, Database> =>
   Effect.gen(function* () {
     const filterAlreadyCommittedTxs = (
@@ -184,6 +231,9 @@ export const finalizeCommittedBlockLocally = (
             },
           );
           yield* ProcessedMempoolDB.clear;
+          yield* applyFinalizedWithdrawalLedgerEffects(
+            includedWithdrawalEventIds,
+          );
         }),
       )
       .pipe(
@@ -214,12 +264,14 @@ export const successfulSubmissionProgram = (
   sizeOfProcessedTxs: number,
   txHash: string,
   blockEndTimeMs: number,
+  includedWithdrawalEventIds: readonly Buffer[] = [],
 ): Effect.Effect<WorkerOutput, DatabaseError | FileSystemError, Database> =>
   withLocalBlockFinalizationJob(
     {
       headerHash: newHeaderHash,
       mempoolTxCount: mempoolTxs.length,
       includedDepositCount: includedDepositEventIds.length,
+      includedWithdrawalCount: includedWithdrawalEventIds.length,
     },
     Effect.gen(function* () {
       yield* finalizeCommittedBlockLocally(
@@ -228,9 +280,14 @@ export const successfulSubmissionProgram = (
         mempoolTxHashes,
         includedDepositEventIds,
         newHeaderHash,
+        includedWithdrawalEventIds,
       );
       yield* DepositsDB.markProjectedByEventIds(
         includedDepositEventIds,
+        Buffer.from(fromHex(newHeaderHash)),
+      );
+      yield* WithdrawalsDB.markProjectedByEventIds(
+        includedWithdrawalEventIds,
         Buffer.from(fromHex(newHeaderHash)),
       );
       yield* PendingBlockFinalizationsDB.markLocalFinalizationComplete(
@@ -258,33 +315,54 @@ export const successfulLocalFinalizationRecoveryProgram = (
   confirmedHeaderHash: string,
   workerInput: WorkerInput,
   sizeOfProcessedTxs: number,
+  includedWithdrawalEventIds: readonly Buffer[] = [],
 ): Effect.Effect<WorkerOutput, DatabaseError | FileSystemError, Database> =>
-  withLocalBlockFinalizationJob(
-    {
-      headerHash: confirmedHeaderHash,
-      mempoolTxCount: mempoolTxs.length,
-      includedDepositCount: includedDepositEventIds.length,
-    },
-    Effect.gen(function* () {
-      yield* finalizeCommittedBlockLocally(
-        mempoolTrie,
-        mempoolTxs,
-        mempoolTxHashes,
-        includedDepositEventIds,
-        confirmedHeaderHash,
+  Effect.gen(function* () {
+    const confirmedHeaderHashBuffer = Buffer.from(fromHex(confirmedHeaderHash));
+    const pendingRecord =
+      yield* PendingBlockFinalizationsDB.retrieveByHeaderHash(
+        confirmedHeaderHashBuffer,
       );
-      yield* PendingBlockFinalizationsDB.markFinalized(
-        Buffer.from(fromHex(confirmedHeaderHash)),
-      );
-      return {
-        type: "SuccessfulLocalFinalizationRecoveryOutput",
-        mempoolTxsCount:
-          mempoolTxs.length + workerInput.data.mempoolTxsCountSoFar,
-        sizeOfBlocksTxs:
-          sizeOfProcessedTxs + workerInput.data.sizeOfProcessedTxsSoFar,
-      };
-    }),
-  );
+    const finalizedDepositEventIds = Option.isSome(pendingRecord)
+      ? pendingRecord.value.depositEventIds
+      : includedDepositEventIds;
+    const finalizedWithdrawalEventIds = Option.isSome(pendingRecord)
+      ? pendingRecord.value.withdrawalEventIds
+      : includedWithdrawalEventIds;
+
+    return yield* withLocalBlockFinalizationJob(
+      {
+        headerHash: confirmedHeaderHash,
+        mempoolTxCount: mempoolTxs.length,
+        includedDepositCount: finalizedDepositEventIds.length,
+        includedWithdrawalCount: finalizedWithdrawalEventIds.length,
+      },
+      Effect.gen(function* () {
+        yield* finalizeCommittedBlockLocally(
+          mempoolTrie,
+          mempoolTxs,
+          mempoolTxHashes,
+          finalizedDepositEventIds,
+          confirmedHeaderHash,
+          finalizedWithdrawalEventIds,
+        );
+        yield* WithdrawalsDB.markFinalizedByEventIds(
+          finalizedWithdrawalEventIds,
+          confirmedHeaderHashBuffer,
+        );
+        yield* PendingBlockFinalizationsDB.markFinalized(
+          confirmedHeaderHashBuffer,
+        );
+        return {
+          type: "SuccessfulLocalFinalizationRecoveryOutput" as const,
+          mempoolTxsCount:
+            mempoolTxs.length + workerInput.data.mempoolTxsCountSoFar,
+          sizeOfBlocksTxs:
+            sizeOfProcessedTxs + workerInput.data.sizeOfProcessedTxsSoFar,
+        } satisfies WorkerOutput;
+      }),
+    );
+  });
 
 export const skippedSubmissionProgram = (
   mempoolTxs: readonly TxTable.EntryWithTimeStamp[],

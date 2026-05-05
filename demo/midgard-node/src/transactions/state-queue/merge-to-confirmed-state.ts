@@ -382,9 +382,9 @@ const SettlementResolutionClaim =
   SettlementResolutionClaimSchema as unknown as SettlementResolutionClaim;
 
 const SettlementDatumSchema = Data.Object({
-  deposits_root: SDK.MerkleRoot,
-  withdrawals_root: SDK.MerkleRoot,
-  transactions_root: SDK.MerkleRoot,
+  deposits_root: SDK.MerkleRootSchema,
+  withdrawals_root: SDK.MerkleRootSchema,
+  transactions_root: SDK.MerkleRootSchema,
   resolution_claim: Data.Nullable(SettlementResolutionClaimSchema),
 });
 type SettlementDatum = Data.Static<typeof SettlementDatumSchema>;
@@ -478,6 +478,7 @@ export const buildAndSubmitMergeTx = (
   | SDK.StateQueueError
   | DatabaseError
   | TxSubmitError
+  | TxConfirmError
   | TxSignError,
   Database | Globals | NodeConfig
 > =>
@@ -1204,9 +1205,11 @@ export const buildAndSubmitMergeTx = (
       const decodedStateQueueRedeemer = decodedRedeemersEither.right.stateQueue;
       const decodedSettlementRedeemer = decodedRedeemersEither.right.settlement;
       const redeemerInvariantMismatches: string[] = [];
-      let decodedStateQueueMerge:
-        | SDK.StateQueueRedeemer["MergeToConfirmedState"]
-        | undefined;
+      type DecodedStateQueueMerge = Extract<
+        SDK.StateQueueRedeemer,
+        { MergeToConfirmedState: unknown }
+      >["MergeToConfirmedState"];
+      let decodedStateQueueMerge: DecodedStateQueueMerge | undefined;
       if (!("MergeToConfirmedState" in decodedStateQueueRedeemer)) {
         redeemerInvariantMismatches.push(
           `state_queue variant mismatch: expected=MergeToConfirmedState,got=${Object.keys(decodedStateQueueRedeemer).join("|") || "unknown"}`,
@@ -1215,7 +1218,11 @@ export const buildAndSubmitMergeTx = (
         decodedStateQueueMerge =
           decodedStateQueueRedeemer.MergeToConfirmedState;
       }
-      let decodedSettlementSpawn: SettlementMintRedeemer["Spawn"] | undefined;
+      type DecodedSettlementSpawn = Extract<
+        SettlementMintRedeemer,
+        { Spawn: unknown }
+      >["Spawn"];
+      let decodedSettlementSpawn: DecodedSettlementSpawn | undefined;
       if (!("Spawn" in decodedSettlementRedeemer)) {
         redeemerInvariantMismatches.push(
           `settlement variant mismatch: expected=Spawn,got=${Object.keys(decodedSettlementRedeemer).join("|") || "unknown"}`,

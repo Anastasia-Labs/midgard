@@ -9,6 +9,7 @@ import {
 
 export const tableName = "pending_block_finalizations";
 const depositsTableName = "pending_block_finalization_deposits";
+const withdrawalsTableName = "pending_block_finalization_withdrawals";
 const txsTableName = "pending_block_finalization_txs";
 
 export enum Columns {
@@ -57,6 +58,7 @@ export type Row = {
 
 export type Record = Row & {
   readonly depositEventIds: readonly Buffer[];
+  readonly withdrawalEventIds: readonly Buffer[];
   readonly mempoolTxIds: readonly Buffer[];
 };
 
@@ -64,6 +66,7 @@ export type PrepareInput = {
   readonly headerHash: Buffer;
   readonly blockEndTime: Date;
   readonly depositEventIds: readonly Buffer[];
+  readonly withdrawalEventIds?: readonly Buffer[];
   readonly mempoolTxIds: readonly Buffer[];
 };
 
@@ -91,9 +94,10 @@ const retrieveRecord = (
   row: Row,
 ): Effect.Effect<Record, never, never> =>
   Effect.gen(function* () {
-    const [depositEventIds, mempoolTxIds] = yield* Effect.all(
+    const [depositEventIds, withdrawalEventIds, mempoolTxIds] = yield* Effect.all(
       [
         retrieveMembers(sql, depositsTableName, row[Columns.HEADER_HASH]),
+        retrieveMembers(sql, withdrawalsTableName, row[Columns.HEADER_HASH]),
         retrieveMembers(sql, txsTableName, row[Columns.HEADER_HASH]),
       ],
       { concurrency: "unbounded" },
@@ -101,6 +105,7 @@ const retrieveRecord = (
     return {
       ...row,
       depositEventIds,
+      withdrawalEventIds,
       mempoolTxIds,
     };
   }).pipe(Effect.orDie);
@@ -133,6 +138,21 @@ export const createTables: Effect.Effect<void, DatabaseError, Database> =
           )}(${sql(Columns.HEADER_HASH)}) ON DELETE CASCADE,
           ${sql(MemberColumns.MEMBER_ID)} BYTEA NOT NULL REFERENCES ${sql(
             "deposits_utxos",
+          )}(${sql("event_id")}) ON DELETE RESTRICT,
+          ${sql(MemberColumns.ORDINAL)} INTEGER NOT NULL,
+          PRIMARY KEY (${sql(MemberColumns.HEADER_HASH)}, ${sql(
+            MemberColumns.MEMBER_ID,
+          )}),
+          UNIQUE (${sql(MemberColumns.HEADER_HASH)}, ${sql(
+            MemberColumns.ORDINAL,
+          )})
+        );`;
+        yield* sql`CREATE TABLE IF NOT EXISTS ${sql(withdrawalsTableName)} (
+          ${sql(MemberColumns.HEADER_HASH)} BYTEA NOT NULL REFERENCES ${sql(
+            tableName,
+          )}(${sql(Columns.HEADER_HASH)}) ON DELETE CASCADE,
+          ${sql(MemberColumns.MEMBER_ID)} BYTEA NOT NULL REFERENCES ${sql(
+            "withdrawal_utxos",
           )}(${sql("event_id")}) ON DELETE RESTRICT,
           ${sql(MemberColumns.ORDINAL)} INTEGER NOT NULL,
           PRIMARY KEY (${sql(MemberColumns.HEADER_HASH)}, ${sql(
@@ -229,6 +249,7 @@ export const preparePendingSubmission = (
   Effect.gen(function* () {
     const sql = yield* SqlClient.SqlClient;
     const depositEventIds = uniqueBuffers(input.depositEventIds);
+    const withdrawalEventIds = uniqueBuffers(input.withdrawalEventIds ?? []);
     const mempoolTxIds = uniqueBuffers(input.mempoolTxIds);
     yield* sql.withTransaction(
       Effect.gen(function* () {
@@ -266,6 +287,15 @@ export const preparePendingSubmission = (
         if (depositEventIds.length > 0) {
           yield* sql`INSERT INTO ${sql(depositsTableName)} ${sql.insert(
             depositEventIds.map((eventId, ordinal) => ({
+              [MemberColumns.HEADER_HASH]: input.headerHash,
+              [MemberColumns.MEMBER_ID]: eventId,
+              [MemberColumns.ORDINAL]: ordinal,
+            })),
+          )}`;
+        }
+        if (withdrawalEventIds.length > 0) {
+          yield* sql`INSERT INTO ${sql(withdrawalsTableName)} ${sql.insert(
+            withdrawalEventIds.map((eventId, ordinal) => ({
               [MemberColumns.HEADER_HASH]: input.headerHash,
               [MemberColumns.MEMBER_ID]: eventId,
               [MemberColumns.ORDINAL]: ordinal,
@@ -491,6 +521,7 @@ export const markAbandoned = (
 export const clear = Effect.all(
   [
     clearTable(depositsTableName),
+    clearTable(withdrawalsTableName),
     clearTable(txsTableName),
     clearTable(tableName),
   ],

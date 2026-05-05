@@ -1,5 +1,6 @@
 import { Effect } from 'effect';
-import { CML, coreToUtxo, UTxO } from '@lucid-evolution/lucid';
+import { CML, UTxO } from '@lucid-evolution/lucid';
+import { decodeMidgardTxOutput } from '@al-ft/lucid-midgard';
 
 import { logFailedTransaction, logSubmittedTransaction } from '../../utils/logging.js';
 import { MidgardNodeConfig, TRANSACTION_CONSTANTS } from '../types.js';
@@ -32,13 +33,25 @@ export class MidgardNodeClient {
    * Decodes one raw UTxO payload returned by the node into Lucid's core UTxO
    * shape.
    */
-  private decodeNodeUtxo(raw: { outref: string; value: string }): UTxO | undefined {
+  private decodeNodeUtxo(raw: { outref: string; outputCbor: string }): UTxO | undefined {
     try {
       const outRefBytes = Buffer.from(raw.outref, 'hex');
-      const outputBytes = Buffer.from(raw.value, 'hex');
+      const outputBytes = Buffer.from(raw.outputCbor, 'hex');
       const input = CML.TransactionInput.from_cbor_bytes(outRefBytes);
-      const output = CML.TransactionOutput.from_cbor_bytes(outputBytes);
-      return coreToUtxo(CML.TransactionUnspentOutput.new(input, output));
+      const outputIndex = Number(input.index());
+      if (!Number.isSafeInteger(outputIndex)) {
+        return undefined;
+      }
+      const output = decodeMidgardTxOutput(outputBytes).txOutput;
+      return {
+        txHash: input.transaction_id().to_hex(),
+        outputIndex,
+        address: output.address,
+        assets: output.assets,
+        ...(output.datum === undefined || output.datum === null
+          ? {}
+          : { datum: output.datum.cbor }),
+      };
     } catch {
       return undefined;
     }
@@ -207,7 +220,7 @@ export class MidgardNodeClient {
     }
 
     const data = (await response.json()) as {
-      utxos?: Array<{ outref: string; value: string }>;
+      utxos?: Array<{ outref: string; outputCbor: string }>;
     };
     if (!Array.isArray(data.utxos)) {
       return [];

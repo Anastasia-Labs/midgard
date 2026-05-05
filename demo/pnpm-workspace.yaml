@@ -1,0 +1,6 @@
+packages:
+  - lucid-midgard
+  - midgard-core
+  - midgard-validation
+  - midgard-node
+  - midgard-sdk

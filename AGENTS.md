@@ -21,8 +21,21 @@ When making any implementation or operational decision, prefer options that maxi
 - Silent data rewrites that hide integrity issues
 - Demo-only behavior becoming default production behavior
 - Throughput optimizations that compromise safety or liveness guarantees
+- Backward compatibility for unlaunched runtime formats, local state files,
+  scaffold APIs, or previous in-repo shapes
 - For `demo/midgard-node`, backward compatibility, compatibility layers,
   legacy identifier support, and migration shims
+
+## No Pre-Launch Legacy Support Rule
+
+Midgard has not launched yet. Agents and review subagents must not request,
+implement, or preserve support for older runtime objects, old local state files,
+previous scaffold API shapes, legacy UTxO layouts, alias fields, or compatibility
+shims unless the user explicitly asks for an isolated migration tool.
+
+When a cleaner production design breaks older in-repo behavior, prefer the
+cleaner design. Tests should prove the intended current canonical behavior, not
+backward compatibility with abandoned pre-launch shapes.
 
 ## Midgard Node Compatibility Rule
 

@@ -9,6 +9,10 @@ import {
   decodeMidgardNativeByteListPreimage,
   decodeMidgardNativeTxFull,
 } from "@/midgard-tx-codec/index.js";
+import {
+  decodeMidgardTxOutput,
+  midgardOutputAddressText,
+} from "@/validation/midgard-output.js";
 
 export type ProcessedTx = {
   txId: Buffer;
@@ -105,7 +109,9 @@ export const findSpentAndProducedUTxOs = (
     const spent = yield* Effect.try({
       try: () =>
         nativeSpent.map((outRef) =>
-          Buffer.from(CML.TransactionInput.from_cbor_bytes(outRef).to_cbor_bytes()),
+          Buffer.from(
+            CML.TransactionInput.from_cbor_bytes(outRef).to_cbor_bytes(),
+          ),
         ),
       catch: (e) =>
         new SDK.CmlUnexpectedError({
@@ -116,7 +122,9 @@ export const findSpentAndProducedUTxOs = (
 
     const produced: Ledger.MinimalEntry[] = [];
     const finalTxHash =
-      txHash === undefined ? computeMidgardNativeTxIdFromFull(nativeTx) : txHash;
+      txHash === undefined
+        ? computeMidgardNativeTxIdFromFull(nativeTx)
+        : txHash;
     const txHashObj = CML.TransactionHash.from_raw_bytes(finalTxHash);
     for (let i = 0; i < nativeOutputs.length; i++) {
       const output = nativeOutputs[i];
@@ -151,7 +159,9 @@ export const breakDownTx = (
           nativeTx.body.spendInputsPreimageCbor,
           "native.spend_inputs",
         ).map((outRef) =>
-          Buffer.from(CML.TransactionInput.from_cbor_bytes(outRef).to_cbor_bytes()),
+          Buffer.from(
+            CML.TransactionInput.from_cbor_bytes(outRef).to_cbor_bytes(),
+          ),
         ),
       catch: (e) =>
         new SDK.CmlDeserializationError({
@@ -173,14 +183,14 @@ export const breakDownTx = (
     });
     const produced: Ledger.Entry[] = [];
     for (let i = 0; i < outputBytes.length; i++) {
-      const output = CML.TransactionOutput.from_cbor_bytes(outputBytes[i]);
+      const output = decodeMidgardTxOutput(outputBytes[i]);
       produced.push({
         [Ledger.Columns.TX_ID]: txHashBytes,
         [Ledger.Columns.OUTREF]: Buffer.from(
           CML.TransactionInput.new(txHash, BigInt(i)).to_cbor_bytes(),
         ),
-        [Ledger.Columns.OUTPUT]: Buffer.from(output.to_cbor_bytes()),
-        [Ledger.Columns.ADDRESS]: output.address().to_bech32(),
+        [Ledger.Columns.OUTPUT]: Buffer.from(outputBytes[i]),
+        [Ledger.Columns.ADDRESS]: midgardOutputAddressText(output),
       });
     }
     return {

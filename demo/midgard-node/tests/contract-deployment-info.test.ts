@@ -10,31 +10,51 @@ import {
 } from "@/commands/contract-deployment-info.js";
 
 describe("contract deployment info", () => {
-  it.effect("builds explicit script entries for the current validator bundle", () =>
-    Effect.gen(function* () {
-      const contracts = yield* AlwaysSucceedsContract;
-      const manifest = buildContractDeploymentInfoFromContracts(contracts);
+  it.effect(
+    "builds explicit script entries for the current validator bundle",
+    () =>
+      Effect.gen(function* () {
+        const contracts = yield* AlwaysSucceedsContract;
+        const manifest = buildContractDeploymentInfoFromContracts(contracts);
 
-      expect(manifest.hubOracleMint.contract.type).toEqual("PlutusV3");
-      expect(manifest.hubOracleMint.scriptHash).toEqual(
-        contracts.hubOracle.policyId,
-      );
-      expect(manifest.depositMint.scriptHash).toEqual(contracts.deposit.policyId);
-      expect(manifest.depositSpend.scriptHash).toEqual(
-        contracts.deposit.spendingScriptHash,
-      );
-      expect(manifest.reserveWithdraw.scriptHash).toEqual(
-        contracts.reserve.withdrawalScriptHash,
-      );
-      expect(manifest.depositMint.refScriptUTxO).toBeNull();
-      expect(manifest.fraudProofInvalidRange.refScriptUTxO).toBeNull();
-    }).pipe(Effect.provide(AlwaysSucceedsContract.Default)),
+        expect(manifest.hubOracleMint.contract.type).toEqual("PlutusV3");
+        expect(manifest.hubOracleMint.scriptHash).toEqual(
+          contracts.hubOracle.policyId,
+        );
+        expect(manifest.depositMint.scriptHash).toEqual(
+          contracts.deposit.policyId,
+        );
+        expect(manifest.depositSpend.scriptHash).toEqual(
+          contracts.deposit.spendingScriptHash,
+        );
+        expect(manifest.reserveWithdraw.scriptHash).toEqual(
+          contracts.reserve.withdrawalScriptHash,
+        );
+        expect(manifest.reserveSpend.scriptHash).toEqual(
+          contracts.reserve.spendingScriptHash,
+        );
+        expect(manifest.payoutSpend.scriptHash).toEqual(
+          contracts.payout.spendingScriptHash,
+        );
+        expect(manifest.payoutMint.scriptHash).toEqual(
+          contracts.payout.policyId,
+        );
+        expect(manifest.depositMint.refScriptUTxO).toBeNull();
+        expect(manifest.fraudProofInvalidRange.refScriptUTxO).toBeNull();
+      }).pipe(Effect.provide(AlwaysSucceedsContract.Default)),
   );
 
   it("defaults init manifest output to the package-root deploymentInfo", () => {
-    const packageRoot = resolvePath(dirname(fileURLToPath(import.meta.url)), "..");
+    const packageRoot = resolvePath(
+      dirname(fileURLToPath(import.meta.url)),
+      "..",
+    );
     expect(defaultContractDeploymentInfoOutputPath()).toEqual(
-      resolvePath(packageRoot, "deploymentInfo", "contract-deployment-info.json"),
+      resolvePath(
+        packageRoot,
+        "deploymentInfo",
+        "contract-deployment-info.json",
+      ),
     );
   });
 });

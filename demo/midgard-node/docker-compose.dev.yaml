@@ -1,10 +1,10 @@
 services:
   midgard-node:
     build:
-      context: .
+      context: ..
       additional_contexts:
-        - sdk=../midgard-sdk
-      dockerfile: ./Dockerfile
+        - onchain=../../onchain/aiken
+      dockerfile: midgard-node/Dockerfile
     env_file:
       - .env
     labels:
@@ -29,10 +29,10 @@ services:
 
   midgard-node-migrate:
     build:
-      context: .
+      context: ..
       additional_contexts:
-        - sdk=../midgard-sdk
-      dockerfile: ./Dockerfile
+        - onchain=../../onchain/aiken
+      dockerfile: midgard-node/Dockerfile
     env_file:
       - .env
     command:

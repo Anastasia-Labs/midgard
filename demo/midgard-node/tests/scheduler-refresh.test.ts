@@ -22,7 +22,7 @@ const mkUtxo = (txHash: string, outputIndex: number): UTxO =>
 const mkNode = (
   txHash: string,
   outputIndex: number,
-  datum: SDK.NodeDatum,
+  datum: SDK.LinkedListNodeView,
 ): NodeUtxoWithDatum => ({
   utxo: mkUtxo(txHash, outputIndex),
   datum,
@@ -32,17 +32,17 @@ describe("scheduler refresh witness selection", () => {
   const activeRoot = mkNode("00".repeat(32), 0, {
     key: "Empty",
     next: { Key: { key: "aa" } },
-    data: "00",
+    data: "00" as SDK.LinkedListNodeView["data"],
   });
   const activeHead = mkNode("11".repeat(32), 0, {
     key: { Key: { key: "aa" } },
     next: { Key: { key: "bb" } },
-    data: "00",
+    data: "00" as SDK.LinkedListNodeView["data"],
   });
   const activeTail = mkNode("22".repeat(32), 0, {
     key: { Key: { key: "bb" } },
     next: "Empty",
-    data: "00",
+    data: "00" as SDK.LinkedListNodeView["data"],
   });
 
   it("selects Advance when the target operator precedes the current operator", () => {
@@ -62,12 +62,12 @@ describe("scheduler refresh witness selection", () => {
     const registeredRoot = mkNode("33".repeat(32), 0, {
       key: "Empty",
       next: { Key: { key: "cc" } },
-      data: "00",
+      data: "00" as SDK.LinkedListNodeView["data"],
     });
     const registeredTail = mkNode("44".repeat(32), 0, {
       key: { Key: { key: "cc" } },
       next: "Empty",
-      data: "00",
+      data: "00" as SDK.LinkedListNodeView["data"],
     });
 
     const selection = resolveSchedulerRefreshWitnessSelection({
@@ -92,7 +92,7 @@ describe("scheduler refresh witness selection", () => {
     const registeredRoot = mkNode("55".repeat(32), 0, {
       key: "Empty",
       next: "Empty",
-      data: "00",
+      data: "00" as SDK.LinkedListNodeView["data"],
     });
 
     const selection = resolveSchedulerRefreshWitnessSelection({
@@ -140,7 +140,7 @@ describe("scheduler refresh witness selection", () => {
     const registeredRoot = mkNode("33".repeat(32), 0, {
       key: "Empty",
       next: "Empty",
-      data: "00",
+      data: "00" as SDK.LinkedListNodeView["data"],
     });
     const referenceInputs = [
       activeTail.utxo,

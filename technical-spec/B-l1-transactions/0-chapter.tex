@@ -451,7 +451,7 @@ Absorb a confirmed deposit into Midgard reserves via a transaction that (\cref{f
 Correctness is jointly enforced by these script redeemers:
 \begin{itemize}
   \item Transfer to Reserve of the deposit spending validator (\cref{h:deposit-spending-validator}).
-  \item Burn Deposit NFt of the deposit minting policy (\cref{h:deposit-minting-policy}).
+  \item Burn Deposit NFT of the deposit minting policy (\cref{h:deposit-minting-policy}).
   \item Mint or Burn of the witness staking script (\cref{h:witness-staking-script}).
 \end{itemize}
 
@@ -467,6 +467,7 @@ Transform a confirmed withdrawal into a payout accumulator via a transaction tha
 \begin{enumerate}
   \item Spends the withdrawal order and burns its NFT.
   \item Produces a payout accumulator with \code{l2\_value}, \code{l1\_address}, and \code{l1\_datum} datum fields matching those of the withdrawal order.
+  \item The payout accumulator's initial value, excluding the payout NFT, must not exceed \code{l2\_value} for any asset.
   \item De-registers the staking credential witnessing the withdrawal order.
   \item References a settlement utxo that includes the withdrawal (marked as valid) to prove that it has been confirmed.
 \end{enumerate}
@@ -513,8 +514,10 @@ Collect funds from Midgard reserves into a payout accumulator via a transaction 
 \begin{enumerate}
   \item Spends a payout accumulator.
   \item Spends a reserve utxo.
-  \item Produces a payout accumulator output that combines the funds from the payout accumulator input with as many funds from the reserve utxo input as possible, up to the limit defined in the payout accumulator's \code{l2\_value} datum field.
-  \item Produces a reserve utxo if needed to hold the remainder of the funds.
+  \item Produces a payout accumulator output at \code{payout\_addr} with the same payout NFT and exact same payout datum.
+  \item The payout output combines the payout input value, excluding the payout NFT, with the portion of the reserve input needed to approach the payout datum's \code{l2\_value}, without exceeding it for any asset.
+  \item Produces a datumless reserve utxo with no reference script if needed to hold the exact remainder of the reserve input.
+  \item Pays transaction fees from non-reserve, non-payout inputs.
 \end{enumerate}
 
 Correctness is jointly enforced by these script redeemers:
@@ -533,8 +536,11 @@ Correctness is jointly enforced by these script redeemers:
 
 Conclude a payout from Midgard via a transaction that (\cref{fig:tx-conclude-payout}):
 \begin{enumerate}
-  \item Spends a payout accumulator with funds matching or exceeding the amount defined in its \code{l2\_value} datum field.
+  \item Spends a payout accumulator with funds exactly matching the amount defined in its \code{l2\_value} datum field, excluding the payout NFT.
   \item Produces an output at the address and datum defined by the payout accumulator's \code{l1\_address} and \code{l1\_datum} datum fields.
+  \item The produced output's value exactly matches the payout accumulator's \code{l2\_value}.
+  \item Burns the payout NFT and produces no continuing payout accumulator for the same payout.
+  \item Pays transaction fees from non-reserve, non-payout inputs.
 \end{enumerate}
 
 Correctness is jointly enforced by these script redeemers:

@@ -1,0 +1,51 @@
+{
+  "name": "@al-ft/lucid-midgard",
+  "version": "0.1.0",
+  "description": "Midgard-native L2 transaction builder primitives inspired by lucid-evolution",
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "type": "module",
+  "files": [
+    "dist"
+  ],
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "require": "./dist/index.cjs"
+    }
+  },
+  "scripts": {
+    "clean": "rimraf dist",
+    "prebuild": "pnpm --dir ../midgard-validation run build",
+    "build": "tsup src/index.ts --format esm,cjs --dts --clean",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "keywords": [
+    "cardano",
+    "layer2",
+    "midgard",
+    "transaction-builder"
+  ],
+  "author": "Anastasia Labs",
+  "license": "ISC",
+  "dependencies": {
+    "@al-ft/midgard-core": "workspace:*",
+    "@al-ft/midgard-validation": "workspace:*",
+    "@noble/hashes": "^2.0.1",
+    "effect": "^3.14.22"
+  },
+  "peerDependencies": {
+    "@lucid-evolution/lucid": "0.4.30"
+  },
+  "devDependencies": {
+    "@lucid-evolution/lucid": "0.4.30",
+    "@types/node": "^22.17.0",
+    "rimraf": "^6.0.1",
+    "tsup": "^8.4.0",
+    "typescript": "^5.7.3",
+    "vitest": "^3.0.7"
+  }
+}

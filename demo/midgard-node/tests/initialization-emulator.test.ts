@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { Effect } from "effect";
 import * as SDK from "@al-ft/midgard-sdk";
 import {
@@ -138,6 +138,100 @@ describe("initialization emulator", () => {
     await expect(
       hubOracleTx.complete({ localUPLCEval: true }),
     ).resolves.toBeDefined();
+  });
+
+  it("builds the SDK atomic init transaction from explicit inputs only", async () => {
+    const { emulator, lucid, nonceUtxo } = await initEmulatorLucid();
+    const contracts = await loadContracts({
+      txHash: nonceUtxo.txHash,
+      outputIndex: nonceUtxo.outputIndex,
+    });
+    const validFrom = BigInt(emulator.now());
+    const validTo = validFrom + 7n * 60n * 1000n;
+    const outputAssets: Record<string, bigint>[] = [];
+    const calls: {
+      validFrom?: number;
+      validTo?: number;
+      collected?: UTxO[];
+    } = {};
+    const txBuilder: any = {};
+    Object.assign(txBuilder, {
+      validFrom: vi.fn((value: number) => {
+        calls.validFrom = value;
+        return txBuilder;
+      }),
+      validTo: vi.fn((value: number) => {
+        calls.validTo = value;
+        return txBuilder;
+      }),
+      collectFrom: vi.fn((utxos: UTxO[]) => {
+        calls.collected = utxos;
+        return txBuilder;
+      }),
+      mintAssets: vi.fn(() => txBuilder),
+      pay: {
+        ToAddressWithData: vi.fn(
+          (
+            _address: unknown,
+            _datum: unknown,
+            assets: Record<string, bigint>,
+          ) => {
+            outputAssets.push(assets);
+            return txBuilder;
+          },
+        ),
+        ToContract: vi.fn(
+          (
+            _address: unknown,
+            _datum: unknown,
+            assets: Record<string, bigint>,
+          ) => {
+            outputAssets.push(assets);
+            return txBuilder;
+          },
+        ),
+      },
+      readFrom: vi.fn(() => txBuilder),
+      attach: {
+        MintingPolicy: vi.fn(() => txBuilder),
+        Script: vi.fn(() => txBuilder),
+      },
+    });
+    const wallet = vi.fn(() => {
+      throw new Error("SDK initialization builder must not fetch wallet UTxOs");
+    });
+    const fakeLucid = {
+      config: () => lucid.config(),
+      newTx: () => txBuilder,
+      wallet,
+    } as unknown as typeof lucid;
+
+    const dateNowSpy = vi
+      .spyOn(Date, "now")
+      .mockReturnValue(Number(validTo) + 123_456_789);
+
+    try {
+      const initTx = await Effect.runPromise(
+        SDK.unsignedInitializationTxProgram(fakeLucid, {
+          midgardValidators: contracts,
+          fraudProofCatalogueMerkleRoot: EMPTY_FRAUD_PROOF_CATALOGUE_ROOT,
+          oneShotNonceUTxO: nonceUtxo,
+          validityRange: { validFrom, validTo },
+        }),
+      );
+
+      expect(initTx).toBe(txBuilder);
+      expect(calls.validFrom).toBe(Number(validFrom));
+      expect(calls.validTo).toBe(Number(validTo));
+      expect(calls.collected).toEqual([nonceUtxo]);
+      expect(outputAssets).toHaveLength(7);
+      expect(
+        outputAssets.every((assets) => !("lovelace" in assets)),
+      ).toBe(true);
+      expect(wallet).not.toHaveBeenCalled();
+    } finally {
+      dateNowSpy.mockRestore();
+    }
   });
 
   it("deploys the canonical real protocol roots atomically", async () => {
@@ -289,9 +383,12 @@ describe("initialization emulator", () => {
     expect(txHash).toHaveLength(64);
     expect(latest.datum.key).toEqual("Empty");
     expect(latest.datum.next).toEqual("Empty");
-    expect(latest.utxo.assets.lovelace ?? 0n).toBeGreaterThanOrEqual(
-      5_000_000n,
-    );
+    expect(
+      latest.utxo.assets[
+        toUnit(contracts.stateQueue.policyId, SDK.STATE_QUEUE_ROOT_ASSET_NAME)
+      ],
+    ).toEqual(1n);
+    expect(latest.utxo.assets.lovelace ?? 0n).toBeGreaterThan(0n);
   });
 
   it("rejects re-initialization when the hub_oracle one-shot nonce is already consumed", async () => {

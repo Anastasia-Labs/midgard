@@ -4,7 +4,6 @@ import { SqlClient } from "@effect/sql/SqlClient";
 import { DatabaseError } from "@/database/utils/common.js";
 import { Globals, Lucid, NodeConfig } from "@/services/index.js";
 import {
-  type PlutusEvaluationResult,
   QueuedTx,
   QueuedTxPayload,
   RejectCode,
@@ -14,7 +13,6 @@ import {
   runPhaseAValidation,
   runPhaseBValidationWithPatch,
 } from "@/validation/index.js";
-import { evaluatePlutusTxLocally } from "@/validation/local-plutus-eval.js";
 
 /**
  * Background validation loop for queued L2 transactions.
@@ -469,24 +467,7 @@ const txQueueProcessorAction = (
         {
           nowCardanoSlotNo: BigInt(lucid.currentSlot()),
           bucketConcurrency: nodeConfig.VALIDATION_G4_BUCKET_CONCURRENCY,
-          evaluatePlutusTx: async ({
-            txCborHex,
-            additionalUtxos,
-          }): Promise<PlutusEvaluationResult> => {
-            try {
-              evaluatePlutusTxLocally(lucid, txCborHex, additionalUtxos);
-              return { kind: "accepted" };
-            } catch (error) {
-              const scriptFailure = classifyPlutusEvaluationFailure(error);
-              if (scriptFailure !== null) {
-                return {
-                  kind: "script_invalid",
-                  detail: scriptFailure,
-                };
-              }
-              throw error;
-            }
-          },
+          enforceScriptBudget: true,
         },
       );
       yield* validationPhaseBLatencyGauge(

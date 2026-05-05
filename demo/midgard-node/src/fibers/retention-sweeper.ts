@@ -1,4 +1,9 @@
-import { AddressHistoryDB, DepositsDB, TxRejectionsDB } from "@/database/index.js";
+import {
+  AddressHistoryDB,
+  DepositsDB,
+  TxRejectionsDB,
+  WithdrawalsDB,
+} from "@/database/index.js";
 import {
   computeRetentionCutoff,
   shouldPruneRetention,
@@ -24,18 +29,24 @@ export const retentionSweepAction: Effect.Effect<
   }
 
   const cutoff = computeRetentionCutoff(new Date(), nodeConfig.RETENTION_DAYS);
-  const [prunedTxRejections, prunedAddressHistory, prunedDeposits] =
+  const [
+    prunedTxRejections,
+    prunedAddressHistory,
+    prunedDeposits,
+    prunedWithdrawals,
+  ] =
     yield* Effect.all(
       [
         TxRejectionsDB.pruneOlderThan(cutoff),
         AddressHistoryDB.pruneOlderThan(cutoff),
         DepositsDB.pruneOlderThan(cutoff),
+        WithdrawalsDB.pruneOlderThan(cutoff),
       ],
       { concurrency: "unbounded" },
     );
 
   yield* Effect.logInfo(
-    `🧹 Retention sweep done (cutoff=${cutoff.toISOString()}): tx_rejections=${prunedTxRejections}, address_history=${prunedAddressHistory}, deposits_utxos=${prunedDeposits}`,
+    `🧹 Retention sweep done (cutoff=${cutoff.toISOString()}): tx_rejections=${prunedTxRejections}, address_history=${prunedAddressHistory}, deposits_utxos=${prunedDeposits}, withdrawal_utxos=${prunedWithdrawals}`,
   );
 });
 

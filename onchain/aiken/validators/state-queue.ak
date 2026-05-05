@@ -330,18 +330,18 @@ validator mint(
           //    `header_node_input_index`.
           expect input_header_node_key == header_node_key
 
-          expect linked_list.Root {
-            data: input_confirmed_state_data,
-          }: linked_list.ElementData<ConfirmedState, Header> =
-            input_confirmed_state_element_data
-          expect linked_list.Node {
-            data: input_header_node_data,
-          }: linked_list.ElementData<ConfirmedState, Header> =
-            input_header_node_element_data
-          expect linked_list.Root {
-            data: output_confirmed_state_data,
-          }: linked_list.ElementData<ConfirmedState, Header> =
-            output_confirmed_state_element_data
+          expect linked_list.Root { data: input_confirmed_state_data }: linked_list.ElementData<
+            ConfirmedState,
+            Header,
+          > = input_confirmed_state_element_data
+          expect linked_list.Node { data: input_header_node_data }: linked_list.ElementData<
+            ConfirmedState,
+            Header,
+          > = input_header_node_element_data
+          expect linked_list.Root { data: output_confirmed_state_data }: linked_list.ElementData<
+            ConfirmedState,
+            Header,
+          > = output_confirmed_state_element_data
 
           let Header {
             utxos_root: input_header_utxos_root,

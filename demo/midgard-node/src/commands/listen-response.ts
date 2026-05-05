@@ -5,10 +5,8 @@
  */
 import * as SDK from "@al-ft/midgard-sdk";
 import { Effect } from "effect";
-import {
-  HttpBodyError,
-  HttpServerResponse,
-} from "@effect/platform";
+import { HttpServerResponse } from "@effect/platform";
+import type { HttpBodyError } from "@effect/platform/HttpBody";
 import { DatabaseError } from "@/database/utils/common.js";
 import {
   TxConfirmError,

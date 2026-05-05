@@ -17,7 +17,7 @@
     "format": "prettier --write \"**/*.{ts,tsx,md}\"",
     "format-check": "prettier --check \"**/*.{ts,tsx,md}\"",
     "ts-node": "ts-node",
-    "test": "vitest run"
+    "test": "vitest run --passWithNoTests"
   },
   "keywords": [],
   "author": "",
@@ -28,8 +28,10 @@
     "@types/node": "^22.13.5",
     "@typescript-eslint/eslint-plugin": "^8.25.0",
     "@typescript-eslint/parser": "^8.25.0",
+    "@lucid-evolution/lucid": "0.4.30",
     "eslint": "^9.21.0",
     "eslint-config-prettier": "^9.1.0",
+    "effect": "^3.14.22",
     "prettier": "^3.5.2",
     "rimraf": "^6.0.1",
     "ts-node": "^10.9.2",
@@ -42,8 +44,10 @@
   },
   "dependencies": {
     "@harmoniclabs/crypto": "^0.3.0",
-    "@lucid-evolution/lucid": "^0.4.30",
-    "@noble/hashes": "^1.7.1",
+    "@noble/hashes": "^2.0.1"
+  },
+  "peerDependencies": {
+    "@lucid-evolution/lucid": "0.4.30",
     "effect": "^3.14.22"
   }
 }

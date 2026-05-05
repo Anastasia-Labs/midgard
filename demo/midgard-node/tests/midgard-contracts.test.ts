@@ -7,7 +7,9 @@ import {
   REAL_ACTIVE_OPERATORS_SCRIPT_TITLES,
   REAL_DEPOSIT_SCRIPT_TITLES,
   REAL_HUB_ORACLE_SCRIPT_TITLES,
+  REAL_PAYOUT_SCRIPT_TITLES,
   REAL_REGISTERED_OPERATORS_SCRIPT_TITLES,
+  REAL_RESERVE_SCRIPT_TITLES,
   REAL_RETIRED_OPERATORS_SCRIPT_TITLES,
   REAL_SETTLEMENT_SCRIPT_TITLES,
   REAL_STATE_QUEUE_SCRIPT_TITLES,
@@ -55,6 +57,10 @@ describe("midgard contracts registry", () => {
         "user_events/withdrawal.mint.mint",
       );
       expect(REAL_SETTLEMENT_SCRIPT_TITLES.mint).toBe("settlement.mint.mint");
+      expect(REAL_RESERVE_SCRIPT_TITLES.spend).toBe("reserve.spend.spend");
+      expect(REAL_RESERVE_SCRIPT_TITLES.withdraw).toBe("reserve.withdraw.else");
+      expect(REAL_PAYOUT_SCRIPT_TITLES.mint).toBe("payout.mint.mint");
+      expect(REAL_PAYOUT_SCRIPT_TITLES.spend).toBe("payout.spend.spend");
 
       expect(resolved.hubOracle.mintingScriptCBOR).not.toEqual(
         placeholderContracts.hubOracle.mintingScriptCBOR,
@@ -98,6 +104,18 @@ describe("midgard contracts registry", () => {
       expect(resolved.scheduler.policyId).not.toEqual(
         placeholderContracts.scheduler.policyId,
       );
+      expect(resolved.payout.policyId).not.toEqual(
+        placeholderContracts.payout.policyId,
+      );
+      expect(resolved.payout.spendingScriptCBOR).not.toEqual(
+        placeholderContracts.payout.spendingScriptCBOR,
+      );
+      expect(resolved.reserve.spendingScriptCBOR).not.toEqual(
+        placeholderContracts.reserve.spendingScriptCBOR,
+      );
+      expect(resolved.reserve.withdrawalScriptCBOR).not.toEqual(
+        placeholderContracts.reserve.withdrawalScriptCBOR,
+      );
     }).pipe(Effect.provide(AlwaysSucceedsContract.Default)),
   );
 
@@ -105,10 +123,14 @@ describe("midgard contracts registry", () => {
     Effect.gen(function* () {
       const placeholderContracts = yield* AlwaysSucceedsContract;
       const result = yield* Effect.either(
-        withRealStateQueueAndOperatorContracts("Preprod", placeholderContracts, {
-          txHash: "zz",
-          outputIndex: -1,
-        }),
+        withRealStateQueueAndOperatorContracts(
+          "Preprod",
+          placeholderContracts,
+          {
+            txHash: "zz",
+            outputIndex: -1,
+          },
+        ),
       );
       expect(result._tag).toEqual("Left");
     }).pipe(Effect.provide(AlwaysSucceedsContract.Default)),

@@ -1,10 +1,17 @@
 import { BatchDBOp } from "@ethereumjs/util";
-import { Data, Effect } from "effect";
+import { Trie } from "@aiken-lang/merkle-patricia-forestry";
+import { Data, Effect, Option } from "effect";
 import * as ETH from "@ethereumjs/mpt";
 import * as ETH_UTILS from "@ethereumjs/util";
 import { SqlClient } from "@effect/sql";
-import { toHex, utxoToCore, Script } from "@lucid-evolution/lucid";
-import type { UTxO } from "@lucid-evolution/lucid";
+import {
+  CML,
+  Data as LucidData,
+  getAddressDetails,
+  toHex,
+  valueToAssets,
+} from "@lucid-evolution/lucid";
+import type { Assets, UTxO } from "@lucid-evolution/lucid";
 import { Level } from "level";
 import { Database, NodeConfig } from "@/services/index.js";
 import * as Tx from "@/database/utils/tx.js";
@@ -14,13 +21,21 @@ import * as TxRejectionsDB from "@/database/txRejections.js";
 import * as MempoolDB from "@/database/mempool.js";
 import * as MempoolLedgerDB from "@/database/mempoolLedger.js";
 import * as DepositsDB from "@/database/deposits.js";
+import * as WithdrawalsDB from "@/database/withdrawals.js";
 import { FileSystemError, findSpentAndProducedUTxOs } from "@/utils.js";
+import { aikenSerialisedPlutusDataCbor } from "@/utils/plutus-data-cbor.js";
 import * as FS from "fs";
 import * as SDK from "@al-ft/midgard-sdk";
+import { encodeMidgardTxOutput } from "@al-ft/lucid-midgard";
 import {
   DatabaseError,
   sqlErrorToDatabaseError,
 } from "@/database/utils/common.js";
+import {
+  decodeMidgardTxOutput,
+  midgardOutputAddressText,
+  midgardValueToCmlValue,
+} from "@/validation/midgard-output.js";
 
 const LEVELDB_ENCODING_OPTS = {
   keyEncoding: ETH_UTILS.KeyEncoding.Bytes,
@@ -28,6 +43,8 @@ const LEVELDB_ENCODING_OPTS = {
 };
 
 export const COMMIT_REJECT_CODE_DECODE_FAILED = "E_COMMIT_CBOR_DESERIALIZATION";
+export const COMMIT_REJECT_CODE_WITHDRAWN_REFERENCE_INPUT =
+  "E_COMMIT_WITHDRAWN_REFERENCE_INPUT";
 
 export type ResolvedTxDeltaForCommit =
   | {
@@ -128,18 +145,35 @@ export const utxoToPutBatchOp = (
   utxo: UTxO,
 ): Effect.Effect<ETH_UTILS.BatchDBOp, SDK.CmlDeserializationError> =>
   Effect.gen(function* () {
-    const core = yield* Effect.try({
-      try: () => utxoToCore(utxo),
+    const input = yield* Effect.try({
+      try: () =>
+        CML.TransactionInput.new(
+          CML.TransactionHash.from_hex(utxo.txHash),
+          BigInt(utxo.outputIndex),
+        ),
       catch: (e) =>
         new SDK.CmlDeserializationError({
-          message: "Failed to convert UTxO to CML.TransactionOutput",
+          message: "Failed to convert UTxO outref to CML.TransactionInput",
+          cause: e,
+        }),
+    });
+    const output = yield* Effect.try({
+      try: () =>
+        encodeMidgardTxOutput(utxo.address, utxo.assets, {
+          ...(utxo.datum == null
+            ? {}
+            : { datum: { kind: "inline" as const, data: utxo.datum } }),
+        }),
+      catch: (e) =>
+        new SDK.CmlDeserializationError({
+          message: "Failed to convert UTxO to Midgard output CBOR",
           cause: e,
         }),
     });
     const op: ETH_UTILS.BatchDBOp = {
       type: "put",
-      key: Buffer.from(core.input().to_cbor_bytes()),
-      value: Buffer.from(core.output().to_cbor_bytes()),
+      key: Buffer.from(input.to_cbor_bytes()),
+      value: output,
     };
     return op;
   });
@@ -173,7 +207,249 @@ export type ProcessMptsConfig = {
   readonly processedOnlyEndTime?: Date;
   readonly depositOnlyEndTime?: Date;
   readonly depositVisibilityBarrierTime?: Date;
+  readonly withdrawalVisibilityBarrierTime?: Date;
 };
+
+type DecodedMempoolTxForCommit = {
+  readonly entry: Tx.EntryWithTimeStamp;
+  readonly txHash: Buffer;
+  readonly txCbor: Buffer;
+  readonly spent: readonly Buffer[];
+  readonly produced: readonly Ledger.MinimalEntry[];
+};
+
+type ClassifiedWithdrawal = {
+  readonly entry: WithdrawalsDB.Entry;
+  readonly ledgerOutRef: Buffer;
+  readonly validity: WithdrawalsDB.Validity;
+  readonly validityDetail: unknown;
+  readonly settlementEventInfo: Buffer;
+  readonly shouldDeleteLedgerUtxo: boolean;
+};
+
+const LOVELACE_UNIT = "lovelace";
+const ADA_POLICY_ID = "";
+const ADA_ASSET_NAME = "";
+
+const normalizeAssets = (assets: Assets): Assets => {
+  const result: Record<string, bigint> = {};
+  for (const [unit, quantity] of Object.entries(assets)) {
+    if (quantity === 0n) {
+      continue;
+    }
+    result[unit] = (result[unit] ?? 0n) + quantity;
+  }
+  return result as Assets;
+};
+
+const assetsToValue = (assets: Assets): SDK.Value => {
+  const outer = new Map<string, Map<string, bigint>>();
+  for (const [unit, quantity] of Object.entries(normalizeAssets(assets))) {
+    const policyId =
+      unit === LOVELACE_UNIT ? ADA_POLICY_ID : unit.slice(0, 56).toLowerCase();
+    const assetName =
+      unit === LOVELACE_UNIT ? ADA_ASSET_NAME : unit.slice(56).toLowerCase();
+    const inner = outer.get(policyId) ?? new Map<string, bigint>();
+    inner.set(assetName, (inner.get(assetName) ?? 0n) + quantity);
+    outer.set(policyId, inner);
+  }
+  return outer;
+};
+
+const withdrawalValidityToSdk = (
+  validity: WithdrawalsDB.Validity,
+  detail: unknown,
+): SDK.WithdrawalValidity => {
+  if (validity !== WithdrawalsDB.Validity.SpentWithdrawalUtxo) {
+    return validity as SDK.WithdrawalValidity;
+  }
+  const detailRecord =
+    typeof detail === "object" && detail !== null
+      ? (detail as { readonly l2_tx_id?: unknown })
+      : {};
+  const l2TxId =
+    typeof detailRecord.l2_tx_id === "string"
+      ? detailRecord.l2_tx_id
+      : "00".repeat(32);
+  return {
+    SpentWithdrawalUtxo: {
+      l2_tx_id: l2TxId,
+    },
+  } as SDK.WithdrawalValidity;
+};
+
+const decodeWithdrawalInfo = (
+  entry: WithdrawalsDB.Entry,
+): Effect.Effect<SDK.WithdrawalInfo, DatabaseError, never> =>
+  Effect.try({
+    try: () =>
+      LucidData.from(
+        entry[WithdrawalsDB.Columns.RAW_EVENT_INFO].toString("hex"),
+        SDK.WithdrawalInfo,
+      ) as SDK.WithdrawalInfo,
+    catch: (cause) =>
+      new DatabaseError({
+        table: WithdrawalsDB.tableName,
+        message: "Failed to decode withdrawal event info",
+        cause,
+      }),
+  });
+
+const encodeWithdrawalSettlementInfo = (
+  entry: WithdrawalsDB.Entry,
+  validity: WithdrawalsDB.Validity,
+  validityDetail: unknown,
+): Effect.Effect<Buffer, DatabaseError, never> =>
+  Effect.gen(function* () {
+    const rawInfo = yield* decodeWithdrawalInfo(entry);
+    return yield* Effect.try({
+      try: () =>
+        Buffer.from(
+          LucidData.to(
+            {
+              ...rawInfo,
+              validity: withdrawalValidityToSdk(validity, validityDetail),
+            } satisfies SDK.WithdrawalInfo,
+            SDK.WithdrawalInfo,
+          ),
+          "hex",
+        ),
+      catch: (cause) =>
+        new DatabaseError({
+          table: WithdrawalsDB.tableName,
+          message: "Failed to encode withdrawal settlement event info",
+          cause,
+        }),
+    });
+  });
+
+const decodeLedgerUtxo = ({
+  outRef,
+  output,
+}: {
+  readonly outRef: Buffer;
+  readonly output: Buffer;
+}): Effect.Effect<UTxO, DatabaseError, never> =>
+  Effect.try({
+    try: () => {
+      const input = CML.TransactionInput.from_cbor_bytes(outRef);
+      const decodedOutput = decodeMidgardTxOutput(output);
+      const outputIndex = Number(input.index());
+      if (!Number.isSafeInteger(outputIndex)) {
+        throw new Error("output index exceeds JavaScript safe integer range");
+      }
+      return {
+        txHash: input.transaction_id().to_hex(),
+        outputIndex,
+        address: midgardOutputAddressText(decodedOutput),
+        assets: valueToAssets(midgardValueToCmlValue(decodedOutput.value)) as Assets,
+        ...(decodedOutput.datum === undefined
+          ? {}
+          : { datum: decodedOutput.datum.cbor.toString("hex") }),
+      } satisfies UTxO;
+    },
+    catch: (cause) =>
+      new DatabaseError({
+        table: WithdrawalsDB.tableName,
+        message: "Failed to decode ledger UTxO for withdrawal classification",
+        cause,
+      }),
+  });
+
+const valuesEqual = (
+  left: SDK.Value,
+  right: SDK.Value,
+): Effect.Effect<boolean, DatabaseError, never> =>
+  Effect.try({
+    try: () =>
+      Buffer.from(LucidData.to(left, SDK.Value), "hex").equals(
+        Buffer.from(LucidData.to(right, SDK.Value), "hex"),
+      ),
+    catch: (cause) =>
+      new DatabaseError({
+        table: WithdrawalsDB.tableName,
+        message: "Failed to compare withdrawal value CBOR",
+        cause,
+      }),
+  });
+
+const classifyWithdrawal = ({
+  entry,
+  ledgerOutRef,
+  ledgerOutput,
+}: {
+  readonly entry: WithdrawalsDB.Entry;
+  readonly ledgerOutRef: Buffer;
+  readonly ledgerOutput: Option.Option<Buffer>;
+}): Effect.Effect<ClassifiedWithdrawal, DatabaseError, never> =>
+  Effect.gen(function* () {
+    let validity: WithdrawalsDB.Validity;
+    let validityDetail: unknown = {};
+
+    if (Option.isNone(ledgerOutput)) {
+      validity = WithdrawalsDB.Validity.NonExistentWithdrawalUtxo;
+    } else {
+      const utxo = yield* decodeLedgerUtxo({
+        outRef: ledgerOutRef,
+        output: ledgerOutput.value,
+      });
+      const paymentCredential = getAddressDetails(utxo.address).paymentCredential;
+      if (
+        paymentCredential == null ||
+        paymentCredential.hash.toLowerCase() !==
+          entry[WithdrawalsDB.Columns.L2_OWNER].toString("hex").toLowerCase()
+      ) {
+        validity = WithdrawalsDB.Validity.IncorrectWithdrawalOwner;
+      } else {
+        const requestedValue = yield* Effect.try({
+          try: () =>
+            LucidData.from(
+              entry[WithdrawalsDB.Columns.L2_VALUE].toString("hex"),
+              SDK.Value,
+            ) as SDK.Value,
+          catch: (cause) =>
+            new DatabaseError({
+              table: WithdrawalsDB.tableName,
+              message: "Failed to decode withdrawal l2_value",
+              cause,
+            }),
+        });
+        const actualValue = assetsToValue(utxo.assets);
+        const valueMatches = yield* valuesEqual(requestedValue, actualValue);
+        if (!valueMatches) {
+          validity = WithdrawalsDB.Validity.IncorrectWithdrawalValue;
+          validityDetail = {
+            requested_value_cbor:
+              entry[WithdrawalsDB.Columns.L2_VALUE].toString("hex"),
+            actual_assets: Object.fromEntries(
+              Object.entries(normalizeAssets(utxo.assets)).map(
+                ([unit, quantity]) => [unit, quantity.toString()],
+              ),
+            ),
+          };
+        } else if (Object.keys(normalizeAssets(utxo.assets)).length > 100) {
+          validity = WithdrawalsDB.Validity.TooManyTokensInWithdrawal;
+        } else {
+          validity = WithdrawalsDB.Validity.WithdrawalIsValid;
+        }
+      }
+    }
+
+    const settlementEventInfo = yield* encodeWithdrawalSettlementInfo(
+      entry,
+      validity,
+      validityDetail,
+    );
+    return {
+      entry,
+      ledgerOutRef,
+      validity,
+      validityDetail,
+      settlementEventInfo,
+      shouldDeleteLedgerUtxo:
+        validity === WithdrawalsDB.Validity.WithdrawalIsValid,
+    };
+  });
 
 export const resolveIncludedDepositEntriesForWindow = ({
   currentBlockStartTime,
@@ -266,6 +542,77 @@ export const resolveIncludedDepositEntriesForWindow = ({
     ),
   );
 
+export const resolveIncludedWithdrawalEntriesForWindow = ({
+  currentBlockStartTime,
+  effectiveEndTime,
+}: {
+  readonly currentBlockStartTime: Date;
+  readonly effectiveEndTime: Date;
+}): Effect.Effect<readonly WithdrawalsDB.Entry[], DatabaseError, Database> =>
+  Effect.gen(function* () {
+    const sql = yield* SqlClient.SqlClient;
+    return yield* sql.withTransaction(
+      Effect.gen(function* () {
+        const pendingEntries =
+          yield* WithdrawalsDB.retrievePendingHeaderEntriesUpTo(
+            effectiveEndTime,
+          );
+        if (pendingEntries.length <= 0) {
+          return [];
+        }
+
+        const overdueEntries = pendingEntries.filter(
+          (entry) =>
+            entry[WithdrawalsDB.Columns.INCLUSION_TIME].getTime() <=
+            currentBlockStartTime.getTime(),
+        );
+        const skippedAwaitingEntries = overdueEntries.filter(
+          (entry) =>
+            entry[WithdrawalsDB.Columns.STATUS] ===
+            WithdrawalsDB.Status.Awaiting,
+        );
+        if (skippedAwaitingEntries.length > 0) {
+          return yield* Effect.fail(
+            new DatabaseError({
+              table: WithdrawalsDB.tableName,
+              message:
+                "Refusing to build a block because one or more withdrawals due for an earlier block were never assigned to a header",
+              cause: skippedAwaitingEntries
+                .map((entry) =>
+                  entry[WithdrawalsDB.Columns.ID].toString("hex"),
+                )
+                .join(","),
+            }),
+          );
+        }
+
+        const replayableOverdueEntries = overdueEntries.filter(
+          (entry) =>
+            entry[WithdrawalsDB.Columns.STATUS] !==
+            WithdrawalsDB.Status.Awaiting,
+        );
+        if (replayableOverdueEntries.length > 0) {
+          yield* Effect.logWarning(
+            `Re-including ${replayableOverdueEntries.length} previously projected withdrawal UTxO(s) whose prior header assignment was abandoned before confirmation.`,
+          );
+        }
+
+        const currentWindowEntries = pendingEntries.filter(
+          (entry) =>
+            currentBlockStartTime.getTime() <
+            entry[WithdrawalsDB.Columns.INCLUSION_TIME].getTime(),
+        );
+
+        return [...replayableOverdueEntries, ...currentWindowEntries];
+      }),
+    );
+  }).pipe(
+    sqlErrorToDatabaseError(
+      WithdrawalsDB.tableName,
+      "Failed to resolve withdrawals for the current block window",
+    ),
+  );
+
 export const processMpts = (
   ledgerTrie: MidgardMpt,
   mempoolTrie: MidgardMpt,
@@ -282,6 +629,9 @@ export const processMpts = (
     includedDepositEntriesCount: number;
     includedDepositEntries: readonly DepositsDB.Entry[];
     includedDepositEventIds: readonly Buffer[];
+    includedWithdrawalEntriesCount: number;
+    includedWithdrawalEntries: readonly WithdrawalsDB.Entry[];
+    includedWithdrawalEventIds: readonly Buffer[];
   },
   MptError | DatabaseError,
   Database
@@ -293,6 +643,7 @@ export const processMpts = (
     const mempoolTxHashes: Buffer[] = [];
     const mempoolBatchOps: ETH_UTILS.BatchDBOp[] = [];
     const batchDBOps: ETH_UTILS.BatchDBOp[] = [];
+    const decodedMempoolTxs: DecodedMempoolTxForCommit[] = [];
     let sizeOfProcessedTxs = 0;
     const txDeltasByTxHash = yield* MempoolTxDeltasDB.retrieveByTxIds(
       mempoolTxs.map((entry) => entry[Tx.Columns.TX_ID]),
@@ -317,34 +668,18 @@ export const processMpts = (
           return;
         }
         const { spent, produced } = resolved;
-        mempoolTxHashes.push(txHash);
-        processedMempoolTxs.push(entry);
-        sizeOfProcessedTxs += txCbor.length;
-        const delOps: ETH_UTILS.BatchDBOp[] = spent.map((outRef) => ({
-          type: "del",
-          key: outRef,
-        }));
-        const putOps: ETH_UTILS.BatchDBOp[] = produced.map(
-          (le: Ledger.MinimalEntry) => ({
-            type: "put",
-            key: le[Ledger.Columns.OUTREF],
-            value: le[Ledger.Columns.OUTPUT],
-          }),
-        );
-        yield* Effect.sync(() =>
-          mempoolBatchOps.push({
-            type: "put",
-            key: txHash,
-            value: txCbor,
-          }),
-        );
-        yield* Effect.sync(() => batchDBOps.push(...delOps));
-        yield* Effect.sync(() => batchDBOps.push(...putOps));
+        decodedMempoolTxs.push({
+          entry,
+          txHash,
+          txCbor,
+          spent,
+          produced,
+        });
       }),
     );
 
     const effectiveEndTime =
-      processedMempoolTxs[0]?.[Tx.Columns.TIMESTAMPTZ] ??
+      decodedMempoolTxs[0]?.entry[Tx.Columns.TIMESTAMPTZ] ??
       config?.processedOnlyEndTime ??
       config?.depositOnlyEndTime;
 
@@ -359,6 +694,22 @@ export const processMpts = (
           message:
             "Refusing to build a block because deposit ingestion is not confirmed up to the selected block end time",
           cause: `effective_end_time=${effectiveEndTime.toISOString()},deposit_visibility_barrier_time=${config.depositVisibilityBarrierTime.toISOString()}`,
+        }),
+      );
+    }
+
+    if (
+      effectiveEndTime !== undefined &&
+      config?.withdrawalVisibilityBarrierTime !== undefined &&
+      effectiveEndTime.getTime() >
+        config.withdrawalVisibilityBarrierTime.getTime()
+    ) {
+      return yield* Effect.fail(
+        new DatabaseError({
+          table: WithdrawalsDB.tableName,
+          message:
+            "Refusing to build a block because withdrawal ingestion is not confirmed up to the selected block end time",
+          cause: `effective_end_time=${effectiveEndTime.toISOString()},withdrawal_visibility_barrier_time=${config.withdrawalVisibilityBarrierTime.toISOString()}`,
         }),
       );
     }
@@ -381,6 +732,169 @@ export const processMpts = (
       includedDepositEntries,
       DepositsDB.toLedgerEntry,
     );
+    const sameBlockDepositOutputsByOutRef = new Map(
+      depositLedgerEntries.map((entry) => [
+        entry[Ledger.Columns.OUTREF].toString("hex"),
+        Buffer.from(entry[Ledger.Columns.OUTPUT]),
+      ]),
+    );
+
+    let includedWithdrawalEntries: readonly WithdrawalsDB.Entry[] = [];
+    let classifiedWithdrawals: readonly ClassifiedWithdrawal[] = [];
+    if (
+      config?.currentBlockStartTime !== undefined &&
+      effectiveEndTime !== undefined
+    ) {
+      includedWithdrawalEntries =
+        yield* resolveIncludedWithdrawalEntriesForWindow({
+          currentBlockStartTime: config.currentBlockStartTime,
+          effectiveEndTime,
+        });
+
+      const seenWithdrawalTarget = new Map<string, Buffer>();
+      const mutableClassifiedWithdrawals: ClassifiedWithdrawal[] = [];
+      for (const entry of includedWithdrawalEntries) {
+        const ledgerOutRef = yield* WithdrawalsDB.toLedgerOutRef(entry);
+        const ledgerOutRefHex = ledgerOutRef.toString("hex");
+        const priorWithdrawalEventId =
+          seenWithdrawalTarget.get(ledgerOutRefHex);
+        if (priorWithdrawalEventId !== undefined) {
+          return yield* Effect.fail(
+            new DatabaseError({
+              table: WithdrawalsDB.tableName,
+              message:
+                "Refusing to build a block because multiple withdrawals target the same L2 outref in one candidate window",
+              cause: `l2_outref=${ledgerOutRefHex},first_event_id=${priorWithdrawalEventId.toString(
+                "hex",
+              )},duplicate_event_id=${entry[WithdrawalsDB.Columns.ID].toString(
+                "hex",
+              )}`,
+            }),
+          );
+        }
+
+        const sameBlockDepositOutput =
+          sameBlockDepositOutputsByOutRef.get(ledgerOutRefHex);
+        const trieLedgerOutput =
+          sameBlockDepositOutput === undefined
+            ? yield* ledgerTrie.get(ledgerOutRef)
+            : Option.some(sameBlockDepositOutput);
+        const classifiedWithdrawal = yield* classifyWithdrawal({
+          entry,
+          ledgerOutRef,
+          ledgerOutput: trieLedgerOutput,
+        });
+        mutableClassifiedWithdrawals.push(classifiedWithdrawal);
+        seenWithdrawalTarget.set(
+          ledgerOutRefHex,
+          entry[WithdrawalsDB.Columns.ID],
+        );
+      }
+      classifiedWithdrawals = mutableClassifiedWithdrawals;
+
+      yield* WithdrawalsDB.setSettlementInfoForEventIds(
+        classifiedWithdrawals.map((classified) => ({
+          eventId: classified.entry[WithdrawalsDB.Columns.ID],
+          settlementEventInfo: classified.settlementEventInfo,
+          validity: classified.validity,
+          validityDetail: classified.validityDetail,
+        })),
+      );
+      yield* WithdrawalsDB.markAwaitingAsProjected(
+        classifiedWithdrawals.map(
+          (classified) => classified.entry[WithdrawalsDB.Columns.ID],
+        ),
+      );
+
+      const classifiedByEventId = new Map(
+        classifiedWithdrawals.map(
+          (classified) =>
+            [
+              classified.entry[WithdrawalsDB.Columns.ID].toString("hex"),
+              classified,
+            ] as const,
+        ),
+      );
+      includedWithdrawalEntries = includedWithdrawalEntries.map((entry) => {
+        const classified = classifiedByEventId.get(
+          entry[WithdrawalsDB.Columns.ID].toString("hex"),
+        );
+        return classified === undefined
+          ? entry
+          : {
+              ...entry,
+              [WithdrawalsDB.Columns.SETTLEMENT_EVENT_INFO]:
+                classified.settlementEventInfo,
+              [WithdrawalsDB.Columns.VALIDITY]: classified.validity,
+              [WithdrawalsDB.Columns.VALIDITY_DETAIL]:
+                classified.validityDetail,
+              [WithdrawalsDB.Columns.STATUS]:
+                entry[WithdrawalsDB.Columns.STATUS] ===
+                WithdrawalsDB.Status.Awaiting
+                  ? WithdrawalsDB.Status.Projected
+                  : entry[WithdrawalsDB.Columns.STATUS],
+            };
+      });
+    }
+
+    const withdrawalLedgerDelOps: ETH_UTILS.BatchDBOp[] = classifiedWithdrawals
+      .filter((classified) => classified.shouldDeleteLedgerUtxo)
+      .map((classified) => ({
+        type: "del" as const,
+        key: classified.ledgerOutRef,
+      }));
+    const withdrawnOutRefHexes = new Set(
+      classifiedWithdrawals
+        .filter((classified) => classified.shouldDeleteLedgerUtxo)
+        .map((classified) => classified.ledgerOutRef.toString("hex")),
+    );
+
+    yield* Effect.forEach(decodedMempoolTxs, (decoded) =>
+      Effect.gen(function* () {
+        const txHashHex = decoded.txHash.toString("hex");
+        const withdrawnOutRef = decoded.spent.find((outRef) =>
+          withdrawnOutRefHexes.has(outRef.toString("hex")),
+        );
+        if (withdrawnOutRef !== undefined) {
+          rejectedTxHashes.push(Buffer.from(decoded.txHash));
+          rejectionEntries.push({
+            [TxRejectionsDB.Columns.TX_ID]: Buffer.from(decoded.txHash),
+            [TxRejectionsDB.Columns.REJECT_CODE]:
+              COMMIT_REJECT_CODE_WITHDRAWN_REFERENCE_INPUT,
+            [TxRejectionsDB.Columns.REJECT_DETAIL]: `Transaction spends L2 outref ${withdrawnOutRef.toString(
+              "hex",
+            )}, which is consumed by a valid withdrawal in the same block window`,
+          });
+          yield* Effect.logWarning(
+            `Skipping mempool tx ${txHashHex}: it spends an outref consumed by a due withdrawal event.`,
+          );
+          return;
+        }
+
+        mempoolTxHashes.push(decoded.txHash);
+        processedMempoolTxs.push(decoded.entry);
+        sizeOfProcessedTxs += decoded.txCbor.length;
+        const delOps: ETH_UTILS.BatchDBOp[] = decoded.spent.map((outRef) => ({
+          type: "del",
+          key: outRef,
+        }));
+        const putOps: ETH_UTILS.BatchDBOp[] = decoded.produced.map(
+          (le: Ledger.MinimalEntry) => ({
+            type: "put",
+            key: le[Ledger.Columns.OUTREF],
+            value: le[Ledger.Columns.OUTPUT],
+          }),
+        );
+        mempoolBatchOps.push({
+          type: "put",
+          key: decoded.txHash,
+          value: decoded.txCbor,
+        });
+        batchDBOps.push(...delOps);
+        batchDBOps.push(...putOps);
+      }),
+    );
+
     if (depositLedgerEntries.length > 0) {
       yield* Effect.logInfo(
         `🔹 Applying ${depositLedgerEntries.length} projected deposit UTxO(s) to the block pre-state.`,
@@ -396,9 +910,16 @@ export const processMpts = (
       );
     }
 
+    if (withdrawalLedgerDelOps.length > 0) {
+      yield* Effect.logInfo(
+        `🔹 Applying ${withdrawalLedgerDelOps.length} valid withdrawal event(s) to the block UTxO state.`,
+      );
+      batchDBOps.push(...withdrawalLedgerDelOps);
+    }
+
     if (rejectedTxHashes.length > 0) {
       yield* Effect.logWarning(
-        `Dropping ${rejectedTxHashes.length} malformed transaction(s) from MempoolDB`,
+        `Dropping ${rejectedTxHashes.length} transaction(s) from MempoolDB`,
       );
       yield* Effect.all(
         [
@@ -420,16 +941,24 @@ export const processMpts = (
     yield* Effect.logInfo(`🔹 New transaction root found: ${txRoot}`);
     yield* Effect.logInfo(`🔹 New UTxO root found: ${utxoRoot}`);
 
+    const includedWithdrawalEntriesCount = includedWithdrawalEntries.length;
+    const includedWithdrawalEventIds = includedWithdrawalEntries.map((entry) =>
+      Buffer.from(entry[WithdrawalsDB.Columns.ID]),
+    );
+
     return {
       utxoRoot,
       txRoot,
-      mempoolTxHashes: mempoolTxHashes,
+      mempoolTxHashes,
       processedMempoolTxs,
-      sizeOfProcessedTxs: sizeOfProcessedTxs,
+      sizeOfProcessedTxs,
       rejectedMempoolTxsCount: rejectedTxHashes.length,
       includedDepositEntriesCount,
       includedDepositEntries,
       includedDepositEventIds,
+      includedWithdrawalEntriesCount,
+      includedWithdrawalEntries,
+      includedWithdrawalEventIds,
     };
   });
 
@@ -455,6 +984,68 @@ export const keyValueMptRoot = (
 
     yield* trie.batch(ops);
     return yield* trie.getRootHex();
+  });
+
+const toPhasTrieItem = (keyCbor: Buffer, valueCbor: Buffer) => ({
+  key: Buffer.from(aikenSerialisedPlutusDataCbor(keyCbor.toString("hex")), "hex"),
+  value: Buffer.from(
+    aikenSerialisedPlutusDataCbor(valueCbor.toString("hex")),
+    "hex",
+  ),
+});
+
+export const keyValuePhasRoot = (
+  keys: readonly Buffer[],
+  values: readonly Buffer[],
+): Effect.Effect<string, MptError, never> =>
+  Effect.tryPromise({
+    try: async () => {
+      if (keys.length !== values.length) {
+        throw new Error(
+          `Cannot build PHAS root for ${keys.length} keys and ${values.length} values`,
+        );
+      }
+      if (keys.length === 0) {
+        return SDK.EMPTY_MERKLE_TREE_ROOT;
+      }
+      const trie = await Trie.fromList(
+        keys.map((key, index) => toPhasTrieItem(key, values[index]!)),
+      );
+      if (trie.hash === undefined || trie.hash === null) {
+        throw new Error("PHAS trie returned an empty root for non-empty input");
+      }
+      return trie.hash.toString("hex");
+    },
+    catch: (e) => MptError.phasRoot(e),
+  });
+
+export const keyValuePhasProof = (
+  keys: readonly Buffer[],
+  values: readonly Buffer[],
+  key: Buffer,
+): Effect.Effect<SDK.Proof, MptError, never> =>
+  Effect.tryPromise({
+    try: async () => {
+      if (keys.length !== values.length) {
+        throw new Error(
+          `Cannot build PHAS proof for ${keys.length} keys and ${values.length} values`,
+        );
+      }
+      if (keys.length === 0) {
+        throw new Error("Cannot build a PHAS membership proof for an empty tree");
+      }
+      const trie = await Trie.fromList(
+        keys.map((itemKey, index) => toPhasTrieItem(itemKey, values[index]!)),
+      );
+      const proof = await trie.prove(
+        Buffer.from(aikenSerialisedPlutusDataCbor(key.toString("hex")), "hex"),
+      );
+      return LucidData.from(
+        proof.toCBOR().toString("hex"),
+        SDK.Proof as never,
+      ) as SDK.Proof;
+    },
+    catch: (e) => MptError.phasRoot(e),
   });
 
 export const withTrieTransaction = <A, E, R>(
@@ -576,6 +1167,16 @@ export class MptError extends Data.TaggedError(
   static batch(trie: string, cause: unknown) {
     return new MptError({
       message: `An error occurred during a batch operation on ${trie} trie`,
+      cause,
+    });
+  }
+
+  /**
+   * Builds an error for Midgard PHAS user-event root/proof failures.
+   */
+  static phasRoot(cause: unknown) {
+    return new MptError({
+      message: "An error occurred building a Midgard PHAS root or proof",
       cause,
     });
   }
@@ -744,6 +1345,23 @@ export class MidgardMpt {
       try: () => trieBatch,
       catch: (e) => MptError.batch(trieName, e),
     });
+  }
+
+  /**
+   * Reads one trie entry by raw key.
+   */
+  public get(key: Buffer): Effect.Effect<Option.Option<Buffer>, MptError> {
+    const trieName = this.trieName;
+    return Effect.tryPromise({
+      try: () => this.trie.get(key),
+      catch: (e) => MptError.get(trieName, e),
+    }).pipe(
+      Effect.map((value) =>
+        value === null || value === undefined
+          ? Option.none()
+          : Option.some(Buffer.from(value)),
+      ),
+    );
   }
 
   /**

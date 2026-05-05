@@ -38,6 +38,10 @@ tests =
         psucceeds $
           membershipStakeValidator #$ pconstant . buildScriptContext $
             withRewardingScript (toBuiltinData simpleMembershipRedeemer2) membershipValidatorCredential 0
+    , testCase "Singleton Membership" $ do
+        psucceeds $
+          membershipStakeValidator #$ pconstant . buildScriptContext $
+            withRewardingScript (toBuiltinData singletonMembershipRedeemer) membershipValidatorCredential 0
     , testCase "Simple Non Membership" $ do
         psucceeds $
           nonMembershipStakeValidator #$ pconstant . buildScriptContext $
@@ -89,6 +93,17 @@ simpleMembershipRedeemer2 =
 -- | Defines the simple non-membership redeemer fixture.
     , mmInputValue = stringToBuiltinByteStringHex "decaf"
     , mmInputProof = parseProofCBOR "9fd87b9f005820f3e925002fed7cc0ded46842569eb5c90c910c091d8d04a1bdf96e0db719fd915820888938a89cccc775894c0a433c2f7d7bfee5a7d64ac5563c22ca54b8a0cc4644ffff"
+    }
+
+-- | Single-entry membership proof fixture. With an empty proof, the root is
+-- blake2b_256(0xff || blake2b_256(key) || blake2b_256(value)).
+singletonMembershipRedeemer :: MerkleMembershipRedeemer
+singletonMembershipRedeemer =
+  MerkleMembershipRedeemer
+    { mmInputRoot = MerklePatriciaForestry $ stringToBuiltinByteStringHex "1396f545b85434d8ed22d1f54c2dfbfc914d18fd9a411a1acd94bde336f7ba02"
+    , mmInputKey = stringToBuiltinByteStringHex "d8799f5820111111111111111111111111111111111111111111111111111111111111111100ff"
+    , mmInputValue = stringToBuiltinByteStringHex "d8799fd8799fd8799f581c00000000000000000000000000000000000000000000000000000000ffd87a80ffd87a80ff"
+    , mmInputProof = []
     }
 
 -- The root hash has changed to the previous tree after deleting "cafe".

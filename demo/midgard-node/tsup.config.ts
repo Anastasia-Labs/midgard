@@ -11,9 +11,5 @@ export default defineConfig({
       ...(options.loader ?? {}),
       ".sql": "text",
     };
-    options.alias = {
-      ...(options.alias ?? {}),
-      "@al-ft/midgard-sdk": "./src/vendor/midgard-sdk.ts",
-    };
   },
 });

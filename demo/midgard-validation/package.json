@@ -1,0 +1,95 @@
+{
+  "name": "@al-ft/midgard-validation",
+  "version": "0.1.0",
+  "description": "Shared Midgard native transaction validation pipeline",
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "type": "module",
+  "files": [
+    "dist"
+  ],
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "require": "./dist/index.cjs"
+    },
+    "./ledger": {
+      "types": "./dist/ledger.d.ts",
+      "import": "./dist/ledger.js",
+      "require": "./dist/ledger.cjs"
+    },
+    "./local-script-eval": {
+      "types": "./dist/local-script-eval.d.ts",
+      "import": "./dist/local-script-eval.js",
+      "require": "./dist/local-script-eval.cjs"
+    },
+    "./midgard-output": {
+      "types": "./dist/midgard-output.d.ts",
+      "import": "./dist/midgard-output.js",
+      "require": "./dist/midgard-output.cjs"
+    },
+    "./midgard-redeemers": {
+      "types": "./dist/midgard-redeemers.d.ts",
+      "import": "./dist/midgard-redeemers.js",
+      "require": "./dist/midgard-redeemers.cjs"
+    },
+    "./phase-a": {
+      "types": "./dist/phase-a.d.ts",
+      "import": "./dist/phase-a.js",
+      "require": "./dist/phase-a.cjs"
+    },
+    "./phase-b": {
+      "types": "./dist/phase-b.d.ts",
+      "import": "./dist/phase-b.js",
+      "require": "./dist/phase-b.cjs"
+    },
+    "./script-context": {
+      "types": "./dist/script-context.d.ts",
+      "import": "./dist/script-context.js",
+      "require": "./dist/script-context.cjs"
+    },
+    "./script-source": {
+      "types": "./dist/script-source.d.ts",
+      "import": "./dist/script-source.js",
+      "require": "./dist/script-source.cjs"
+    },
+    "./types": {
+      "types": "./dist/types.d.ts",
+      "import": "./dist/types.js",
+      "require": "./dist/types.cjs"
+    }
+  },
+  "scripts": {
+    "clean": "rimraf dist",
+    "prebuild": "pnpm --dir ../midgard-core run build",
+    "build": "tsup src/index.ts src/ledger.ts src/local-script-eval.ts src/midgard-output.ts src/midgard-redeemers.ts src/phase-a.ts src/phase-b.ts src/script-context.ts src/script-source.ts src/types.ts --format esm,cjs --dts --clean",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run --passWithNoTests"
+  },
+  "keywords": [
+    "cardano",
+    "layer2",
+    "midgard",
+    "validation"
+  ],
+  "author": "Anastasia Labs",
+  "license": "ISC",
+  "dependencies": {
+    "@al-ft/midgard-core": "workspace:*",
+    "@harmoniclabs/plutus-data": "1.2.6",
+    "@harmoniclabs/plutus-machine": "2.1.3",
+    "@harmoniclabs/uplc": "1.4.1",
+    "@lucid-evolution/lucid": "0.4.30",
+    "@noble/hashes": "^2.0.1",
+    "effect": "^3.14.22"
+  },
+  "devDependencies": {
+    "@types/node": "^22.17.0",
+    "rimraf": "^6.0.1",
+    "tsup": "^8.4.0",
+    "typescript": "^5.7.3",
+    "vitest": "^3.0.7"
+  }
+}

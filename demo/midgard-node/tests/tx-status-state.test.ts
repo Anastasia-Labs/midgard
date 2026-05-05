@@ -4,6 +4,7 @@ import { resolveTxStatus } from "@/commands/tx-status.js";
 describe("resolveTxStatus", () => {
   it("returns rejected when rejection entry exists", () => {
     const status = resolveTxStatus({
+      admissionStatus: null,
       txIdHex: "ab",
       rejection: {
         rejectCode: "E_MIN_FEE",
@@ -21,6 +22,7 @@ describe("resolveTxStatus", () => {
 
   it("returns committed when immutable hit exists", () => {
     const status = resolveTxStatus({
+      admissionStatus: null,
       txIdHex: "ab",
       rejection: null,
       inImmutable: true,
@@ -34,6 +36,7 @@ describe("resolveTxStatus", () => {
 
   it("returns pending_commit when tx is in processed mempool", () => {
     const status = resolveTxStatus({
+      admissionStatus: null,
       txIdHex: "ab",
       rejection: null,
       inImmutable: false,
@@ -47,6 +50,7 @@ describe("resolveTxStatus", () => {
 
   it("returns accepted when tx is in mempool", () => {
     const status = resolveTxStatus({
+      admissionStatus: null,
       txIdHex: "ab",
       rejection: null,
       inImmutable: false,
@@ -60,6 +64,7 @@ describe("resolveTxStatus", () => {
 
   it("returns awaiting_local_recovery when pending finalization is active", () => {
     const status = resolveTxStatus({
+      admissionStatus: null,
       txIdHex: "ab",
       rejection: null,
       inImmutable: false,
@@ -73,6 +78,7 @@ describe("resolveTxStatus", () => {
 
   it("returns not_found when tx is unknown", () => {
     const status = resolveTxStatus({
+      admissionStatus: null,
       txIdHex: "ab",
       rejection: null,
       inImmutable: false,

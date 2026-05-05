@@ -1,0 +1,106 @@
+{
+  "name": "@al-ft/midgard-core",
+  "version": "0.1.0",
+  "description": "Shared Midgard protocol primitives and native transaction codec",
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "type": "module",
+  "files": [
+    "dist"
+  ],
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "require": "./dist/index.cjs"
+    },
+    "./codec": {
+      "types": "./dist/codec/index.d.ts",
+      "import": "./dist/codec/index.js",
+      "require": "./dist/codec/index.cjs"
+    },
+    "./codec/cbor": {
+      "types": "./dist/codec/cbor.d.ts",
+      "import": "./dist/codec/cbor.js",
+      "require": "./dist/codec/cbor.cjs"
+    },
+    "./codec/address": {
+      "types": "./dist/codec/address.d.ts",
+      "import": "./dist/codec/address.js",
+      "require": "./dist/codec/address.cjs"
+    },
+    "./codec/datum": {
+      "types": "./dist/codec/datum.d.ts",
+      "import": "./dist/codec/datum.js",
+      "require": "./dist/codec/datum.cjs"
+    },
+    "./codec/errors": {
+      "types": "./dist/codec/errors.d.ts",
+      "import": "./dist/codec/errors.js",
+      "require": "./dist/codec/errors.cjs"
+    },
+    "./codec/hash": {
+      "types": "./dist/codec/hash.d.ts",
+      "import": "./dist/codec/hash.js",
+      "require": "./dist/codec/hash.cjs"
+    },
+    "./codec/native": {
+      "types": "./dist/codec/native.d.ts",
+      "import": "./dist/codec/native.js",
+      "require": "./dist/codec/native.cjs"
+    },
+    "./codec/native-script": {
+      "types": "./dist/codec/native-script.d.ts",
+      "import": "./dist/codec/native-script.js",
+      "require": "./dist/codec/native-script.cjs"
+    },
+    "./codec/output": {
+      "types": "./dist/codec/output.d.ts",
+      "import": "./dist/codec/output.js",
+      "require": "./dist/codec/output.cjs"
+    },
+    "./codec/script-language-views": {
+      "types": "./dist/codec/script-language-views.d.ts",
+      "import": "./dist/codec/script-language-views.js",
+      "require": "./dist/codec/script-language-views.cjs"
+    },
+    "./codec/value": {
+      "types": "./dist/codec/value.d.ts",
+      "import": "./dist/codec/value.js",
+      "require": "./dist/codec/value.cjs"
+    },
+    "./codec/versioned-script": {
+      "types": "./dist/codec/versioned-script.d.ts",
+      "import": "./dist/codec/versioned-script.js",
+      "require": "./dist/codec/versioned-script.cjs"
+    }
+  },
+  "scripts": {
+    "clean": "rimraf dist",
+    "build": "tsup src/index.ts src/codec/index.ts src/codec/address.ts src/codec/cbor.ts src/codec/datum.ts src/codec/errors.ts src/codec/hash.ts src/codec/native.ts src/codec/native-script.ts src/codec/output.ts src/codec/script-language-views.ts src/codec/value.ts src/codec/versioned-script.ts --format esm,cjs --dts --clean",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "keywords": [
+    "cardano",
+    "layer2",
+    "midgard",
+    "codec"
+  ],
+  "author": "Anastasia Labs",
+  "license": "ISC",
+  "dependencies": {
+    "@lucid-evolution/lucid": "0.4.30",
+    "@noble/hashes": "^2.0.1",
+    "cborg": "^4.5.8"
+  },
+  "devDependencies": {
+    "@harmoniclabs/cardano-costmodels-ts": "1.4.0",
+    "@types/node": "^22.17.0",
+    "rimraf": "^6.0.1",
+    "tsup": "^8.4.0",
+    "typescript": "^5.7.3",
+    "vitest": "^3.0.7"
+  }
+}

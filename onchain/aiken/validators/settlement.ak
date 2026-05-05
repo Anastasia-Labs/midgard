@@ -1,6 +1,7 @@
+use aiken/collection/dict
 use aiken/crypto.{ScriptHash}
 use aiken_design_patterns/singular_utxo_indexer
-use cardano/assets.{PolicyId}
+use cardano/assets.{AssetName, PolicyId}
 use cardano/transaction.{
   InlineDatum, Input, Mint, Output, OutputReference, Spend, Transaction,
 }
@@ -369,8 +370,12 @@ validator mint(hub_oracle: ScriptHash) {
         expect
           settlement_output_datum_data == expected_produced_settlement_datum
 
-        // 7. Only 1 of the new NFT must be minted.
-        expect assets.quantity_of(mint, own_policy, settlement_id) == 1
+        // 7. Only the new settlement NFT may be minted under this policy.
+        expect [Pair(minted_settlement_id, 1)] =
+          mint
+            |> assets.tokens(own_policy)
+            |> dict.to_pairs
+        expect minted_settlement_id == settlement_id
 
         // Done.
         True
@@ -428,4 +433,57 @@ validator mint(hub_oracle: ScriptHash) {
   else(_) {
     fail
   }
+}
+
+const test_settlement_policy: PolicyId =
+  #"11111111111111111111111111111111111111111111111111111111"
+
+const test_settlement_id: AssetName = #"aa"
+
+test exact_settlement_policy_mint_accepts_only_settlement_nft() {
+  let mint = assets.from_asset(test_settlement_policy, test_settlement_id, 1)
+  expect [Pair(minted_settlement_id, 1)] =
+    mint
+      |> assets.tokens(test_settlement_policy)
+      |> dict.to_pairs
+  minted_settlement_id == test_settlement_id
+}
+
+test exact_settlement_policy_mint_rejects_extra_same_policy_token() fail {
+  let mint =
+    assets.merge(
+      assets.from_asset(test_settlement_policy, test_settlement_id, 1),
+      assets.from_asset(test_settlement_policy, #"bb", 1),
+    )
+  expect [Pair(minted_settlement_id, 1)] =
+    mint
+      |> assets.tokens(test_settlement_policy)
+      |> dict.to_pairs
+  minted_settlement_id == test_settlement_id
+}
+
+test exact_settlement_policy_mint_rejects_wrong_same_policy_token() fail {
+  let mint = assets.from_asset(test_settlement_policy, #"bb", 1)
+  expect [Pair(minted_settlement_id, 1)] =
+    mint
+      |> assets.tokens(test_settlement_policy)
+      |> dict.to_pairs
+  minted_settlement_id == test_settlement_id
+}
+
+test exact_settlement_policy_mint_allows_other_policy_mints() {
+  let mint =
+    assets.merge(
+      assets.from_asset(test_settlement_policy, test_settlement_id, 1),
+      assets.from_asset(
+        #"22222222222222222222222222222222222222222222222222222222",
+        #"cc",
+        1,
+      ),
+    )
+  expect [Pair(minted_settlement_id, 1)] =
+    mint
+      |> assets.tokens(test_settlement_policy)
+      |> dict.to_pairs
+  minted_settlement_id == test_settlement_id
 }

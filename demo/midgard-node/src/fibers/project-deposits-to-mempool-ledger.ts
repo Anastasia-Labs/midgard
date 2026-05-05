@@ -1,6 +1,7 @@
 import { Database, Globals } from "@/services/index.js";
 import { DepositsDB, MempoolLedgerDB } from "@/database/index.js";
 import { DatabaseError } from "@/database/utils/common.js";
+import { sqlErrorToDatabaseError } from "@/database/utils/common.js";
 import { SqlClient } from "@effect/sql";
 import { Effect, Ref, Schedule } from "effect";
 
@@ -96,7 +97,12 @@ const projectAwaitingDeposits = Effect.gen(function* () {
       return awaitingEntries.length;
     }),
   );
-});
+}).pipe(
+  sqlErrorToDatabaseError(
+    MempoolLedgerDB.tableName,
+    "Failed to project awaiting deposits into mempool ledger",
+  ),
+);
 
 export const projectDepositsToMempoolLedger: Effect.Effect<
   void,

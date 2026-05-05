@@ -14,9 +14,9 @@ const TEST_ENV_DEFAULTS: Record<string, string> = {
   L1_OPERATOR_SEED_PHRASE_FOR_MERGE_TX:
     "second salad helmet humble left noise inform person swamp surround twice animal fitness sing laundry saddle stove guess cabin rural kidney reject oil fee",
   L1_REFERENCE_SCRIPT_SEED_PHRASE:
-    "panther fly crawl express smile lend company blue slogan dawn wall tip angle tomorrow battle myth category vanish misery ocean include salon wood rail",
+    "cactus chalk grit reopen true slight whale sand law sibling silver fringe cement twist process bracket history leopard churn federal coral three hockey fossil",
   L1_REFERENCE_SCRIPT_ADDRESS:
-    "addr_test1qrtuk9vwzuyj2ly4fp2e0fdc36xzk7j2n34jeygl9n38yce7qqpmjursw62tm3acwl6z2kw38cxau355ukc9cxqyhk0sjy7d2s",
+    "addr_test1qpdjresrrk294hy9ndtqly955ldlhy688507shkfxpwtgf39vzk9uwp87k96zkd5yal83h9x0qheeu0lrqp9lldvsqjs5s4ggd",
   NETWORK: "Preprod",
   POSTGRES_HOST: "127.0.0.1",
   POSTGRES_PORT: "5433",
@@ -38,7 +38,4 @@ for (const [key, value] of Object.entries(TEST_ENV_DEFAULTS)) {
 }
 
 export const provideDatabaseLayers = <A, E, R>(eff: Effect.Effect<A, E, R>) =>
-  eff.pipe(
-    Effect.provide(Database.layer),
-    Effect.provide(NodeConfig.layer),
-  );
+  eff.pipe(Effect.provide(Database.layer), Effect.provide(NodeConfig.layer));

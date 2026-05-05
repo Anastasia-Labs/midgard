@@ -91,7 +91,9 @@ Midgard's transaction types deviate from Cardano's in the following ways:
       Public key hash credentials, native scripts, and Plutus scripts at or above V3 are allowed.
     \item[No transaction metadata.] Midgard prohibits using metadata in L2 transactions but allows users to set the \code{auxiliary\_data\_hash} to any arbitrary hash, which Midgard's ledger's rules do not require to match the empty transaction metadata field.
       This preserves users' ability to pin metadata content via a hash in Midgard's ledger, but they are expected to store the actual metadata offchain.
-    \item[No datum hashes in outputs.] Midgard requires all utxo datums to be inline, which avoids the need to index the datum-hash to datum map from transactions' datum witnesses.
+    \item[No datum hashes in outputs.] Midgard output datums are either absent or inline.
+      Datum-hash outputs are invalid in Midgard L2 transactions and deposits, and transactions do not carry a datum-witness bucket.
+      This avoids maintaining a datum-hash to datum witness map and makes each UTxO's script-visible datum fully determined by the UTxO itself.
     \item[CIPs 112 and 128.] Midgard has adopted \href{https://github.com/cardano-foundation/CIPs/tree/master/CIP-0112}{CIP-112} and \href{https://github.com/cardano-foundation/CIPs/tree/master/CIP-0128}{CIP 128} ahead of Cardano mainnet, which we expect to merge them in 2025.
       CIP-112 provides a new ``Observe'' script purpose, a more principled and streamlined alternative to the ``Withdraw 0'' trick widely used by most Cardano dApps.
       It also allows native scripts to conditionally forward their logic to an observer script.

@@ -4,10 +4,11 @@
     "allowUnusedLabels": false,
     "declaration": true,
     "forceConsistentCasingInFileNames": true,
-    "lib": ["es2020"],
+    "lib": ["es2022", "dom"],
     "esModuleInterop": true,
     "module": "NodeNext",
     "moduleResolution": "nodenext",
+    "skipLibCheck": true,
     "resolveJsonModule": true,
     "noEmitOnError": true,
     "noFallthroughCasesInSwitch": true,
@@ -19,8 +20,7 @@
     "outDir": "dist",
     "baseUrl": ".",
     "paths": {
-      "@/*": ["src/*"],
-      "@al-ft/midgard-sdk": ["src/vendor/midgard-sdk"]
+      "@/*": ["src/*"]
     }
   },
   "ts-node": {

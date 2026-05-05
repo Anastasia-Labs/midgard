@@ -5,12 +5,16 @@
 \section{Settlement}
 \label{h:settlement}
 
-The settlement contract tracks deposit events, withdrawal orders, and forced L2 transaction orders until they are spent.
+The settlement contract tracks deposit events, withdrawal orders, and forced L2 transaction orders until they are processed.
 Each settlement utxo is created whenever a block merges into the confirmed state and includes any deposits, withdrawals, or transaction orders.
-The settlement contains the block's deposits root hash, withdrawals root hash, and the transactions root hash (including both the requeusts and orders).
-Users must reference a settlement utxo to spend its confirmed deposits, withdrawals, or transaction orders.
+The settlement contains the block's deposits root hash, withdrawals root hash, and the transactions root hash (including both the requests and orders).
+Users must reference a settlement utxo to process its confirmed deposits, withdrawals, or transaction orders.
+For deposits, processed means the deposit utxo has been spent into the reserve.
+For valid withdrawals, processed means the withdrawal order utxo has been spent into an authenticated payout accumulator; the later reserve-funding and payout-completion lifecycle is tracked by the payout NFT and payout validator.
+For invalid withdrawals, processed means the withdrawal order utxo has been refunded according to its refund address and datum.
+For transaction orders, processed means the transaction order utxo has been spent through its confirmed settlement path.
 
-The current operator can optimistically resolve any settlement utxo, claiming that its confirmed user events have all been spent.
+The current operator can optimistically resolve any settlement utxo, claiming that its confirmed user events have all been processed.
 To do so, the operator attaches a resolution claim to the settlement datum for the \code{maturity\_duration} (a protocol parameter).
 During this maturity period, if the operator's resolution claim is proven fraudulent, the prover can slash the operator's bond and remove the resolution claim from the settlement datum.
 After the maturity period, the settlement utxo can be spent if the resolution claim is intact.

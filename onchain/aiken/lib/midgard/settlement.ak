@@ -1,3 +1,4 @@
+use aiken/builtin
 use aiken/crypto.{ScriptHash, VerificationKeyHash}
 use cardano/assets.{AssetName, PolicyId}
 use cardano/transaction.{InlineDatum, Input, Output, Redeemer, ScriptPurpose}
@@ -78,9 +79,39 @@ pub fn get_datum(
           settlement_ref_input_index,
         )
 
-  expect parsed_settlement_datum: Datum = settlement_datum_data
+  expect Pair(0, settlement_fields) =
+    builtin.un_constr_data(settlement_datum_data)
+  expect [
+    deposits_root_data, withdrawals_root_data, transactions_root_data,
+    resolution_claim_data,
+  ] = settlement_fields
 
-  parsed_settlement_datum
+  Datum {
+    deposits_root: builtin.un_b_data(deposits_root_data),
+    withdrawals_root: builtin.un_b_data(withdrawals_root_data),
+    transactions_root: builtin.un_b_data(transactions_root_data),
+    resolution_claim: parse_resolution_claim(resolution_claim_data),
+  }
+}
+
+fn parse_resolution_claim(claim_data: Data) -> Option<ResolutionClaim> {
+  expect Pair(option_constructor, option_fields) =
+    builtin.un_constr_data(claim_data)
+  if option_constructor == 1 {
+    expect [] = option_fields
+    None
+  } else {
+    expect option_constructor == 0
+    expect [wrapped_claim_data] = option_fields
+    expect Pair(0, claim_fields) = builtin.un_constr_data(wrapped_claim_data)
+    expect [resolution_time_data, operator_data] = claim_fields
+    Some(
+      ResolutionClaim {
+        resolution_time: builtin.un_i_data(resolution_time_data),
+        operator: builtin.un_b_data(operator_data),
+      },
+    )
+  }
 }
 
 pub fn valid_event_inclusion(

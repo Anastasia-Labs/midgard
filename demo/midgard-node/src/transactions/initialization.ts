@@ -8,15 +8,17 @@ import {
 } from "@/services/state-queue-topology.js";
 import * as SDK from "@al-ft/midgard-sdk";
 import {
-  Data as LucidData,
   credentialToAddress,
   scriptHashToCredential,
   toUnit,
   UTxO,
   LucidEvolution,
+  type TxBuilder,
+  type TxSignBuilder,
 } from "@lucid-evolution/lucid";
 import {
   handleSignSubmit,
+  TxConfirmError,
   TxSignError,
   TxSubmitError,
 } from "@/transactions/utils.js";
@@ -81,26 +83,12 @@ export const createFraudProofCatalogueMpt = (
  */
 export const outRefLabel = (utxo: UTxO): string =>
   `${utxo.txHash}#${utxo.outputIndex}`;
-export const OPERATOR_SET_ROOT_LOVELACE = 2_000_000n;
 const DEFAULT_DEPLOYMENT_VALIDITY_WINDOW_MS = 7n * 60n * 1000n;
 const DEPLOYMENT_VISIBILITY_REFRESH_MAX_RETRIES = 12;
 const DEPLOYMENT_VISIBILITY_REFRESH_DELAY = "2 seconds";
-const encodeLinkedListRootDatum = (rootData: unknown): string =>
-  SDK.encodeLinkedListNodeView({
-    key: "Empty",
-    next: "Empty",
-    data: rootData,
-  });
 
-export type AtomicProtocolInitReferenceScripts = {
-  readonly hubOracleMinting: UTxO;
-  readonly schedulerMinting: UTxO;
-  readonly stateQueueMinting: UTxO;
-  readonly registeredOperatorsMinting: UTxO;
-  readonly activeOperatorsMinting: UTxO;
-  readonly retiredOperatorsMinting: UTxO;
-  readonly fraudProofCatalogueMinting: UTxO;
-};
+export type AtomicProtocolInitReferenceScripts =
+  SDK.AtomicProtocolInitReferenceScripts;
 
 type ReferenceScriptPublicationLike = {
   readonly name: string;
@@ -157,7 +145,11 @@ export const ensureAtomicProtocolInitReferenceScriptsProgram = (
   fundingLucid: LucidEvolution = referenceScriptsLucid,
 ): Effect.Effect<
   AtomicProtocolInitReferenceScripts,
-  SDK.StateQueueError | SDK.LucidError | TxSignError | TxSubmitError
+  | SDK.StateQueueError
+  | SDK.LucidError
+  | TxConfirmError
+  | TxSignError
+  | TxSubmitError
 > =>
   ensureNodeRuntimeReferenceScriptsProgram(
     referenceScriptsLucid,
@@ -302,7 +294,10 @@ export const completeAndSubmit = (
   lucid: LucidEvolution,
   txBuilder: any,
   failureMessage: string,
-): Effect.Effect<string, SDK.LucidError | TxSignError | TxSubmitError> =>
+): Effect.Effect<
+  string,
+  SDK.LucidError | TxConfirmError | TxSignError | TxSubmitError
+> =>
   Effect.gen(function* () {
     const unsignedTx = yield* Effect.tryPromise({
       try: () => txBuilder.complete({ localUPLCEval: true }),
@@ -312,11 +307,11 @@ export const completeAndSubmit = (
           cause,
         }),
     });
-    return yield* handleSignSubmit(lucid, unsignedTx);
+    return yield* handleSignSubmit(lucid, unsignedTx as TxSignBuilder);
   });
 
 /**
- * Produces a conservative default validity deadline for deployment
+ * Produces a conservative default validity start time for deployment
  * transactions.
  */
 const resolveDeploymentStartTime = (lucid?: LucidEvolution): bigint => {
@@ -499,206 +494,20 @@ export const buildAtomicProtocolInitTxProgram = (
   fraudProofCatalogueMerkleRoot: string,
   validTo?: bigint,
   referenceScripts?: AtomicProtocolInitReferenceScripts,
-): Effect.Effect<any, SDK.LucidError | SDK.Bech32DeserializationError | SDK.UnspecifiedNetworkError> =>
+): Effect.Effect<
+  TxBuilder,
+  SDK.LucidError | SDK.Bech32DeserializationError | SDK.UnspecifiedNetworkError
+> =>
   Effect.gen(function* () {
-    const { validFrom, validTo: deploymentDeadline } =
-      resolveDeploymentValidityBounds(lucid, validTo);
+    const validityRange = resolveDeploymentValidityBounds(lucid, validTo);
     const nonceUtxo = yield* fetchConfiguredNonceUtxo(lucid, nodeConfig);
-    const network = lucid.config().network;
-    if (network === undefined) {
-      return yield* Effect.fail(
-        new SDK.UnspecifiedNetworkError({
-          message: "Failed to build atomic protocol initialization",
-          cause: "lucid.config().network is undefined",
-        }),
-      );
-    }
-
-    const hubOracleDatum = yield* SDK.makeHubOracleDatum(contracts);
-    const encodedHubOracleDatum = LucidData.to(
-      hubOracleDatum,
-      SDK.HubOracleDatum,
-    );
-    const stateQueueGenesisTime = deploymentDeadline - 1n;
-    const genesisConfirmedState: SDK.ConfirmedState = {
-      headerHash: SDK.GENESIS_HEADER_HASH,
-      prevHeaderHash: SDK.GENESIS_HEADER_HASH,
-      utxoRoot: SDK.GENESIS_UTXO_ROOT,
-      startTime: stateQueueGenesisTime,
-      endTime: stateQueueGenesisTime,
-      protocolVersion: SDK.GENESIS_PROTOCOL_VERSION,
-    };
-
-    const hubOracleAssets = {
-      [toUnit(contracts.hubOracle.policyId, SDK.HUB_ORACLE_ASSET_NAME)]: 1n,
-    };
-    const schedulerAssets = {
-      [toUnit(contracts.scheduler.policyId, SDK.SCHEDULER_ASSET_NAME)]: 1n,
-    };
-    const stateQueueAssets = {
-      [toUnit(contracts.stateQueue.policyId, SDK.STATE_QUEUE_ROOT_ASSET_NAME)]:
-        1n,
-    };
-    const registeredOperatorsAssets = {
-      [toUnit(
-        contracts.registeredOperators.policyId,
-        SDK.REGISTERED_OPERATORS_ROOT_ASSET_NAME,
-      )]: 1n,
-    };
-    const activeOperatorsAssets = {
-      [toUnit(
-        contracts.activeOperators.policyId,
-        SDK.ACTIVE_OPERATORS_ROOT_ASSET_NAME,
-      )]: 1n,
-    };
-    const retiredOperatorsAssets = {
-      [toUnit(
-        contracts.retiredOperators.policyId,
-        SDK.RETIRED_OPERATORS_ROOT_ASSET_NAME,
-      )]: 1n,
-    };
-    const fraudProofCatalogueAssets = {
-      [toUnit(
-        contracts.fraudProofCatalogue.policyId,
-        SDK.FRAUD_PROOF_CATALOGUE_ASSET_NAME,
-      )]: 1n,
-    };
-
-    const tx = lucid
-      .newTx()
-      .validFrom(Number(validFrom))
-      .validTo(Number(deploymentDeadline))
-      .collectFrom([nonceUtxo])
-      .mintAssets(hubOracleAssets, LucidData.void())
-      .pay.ToAddressWithData(
-        credentialToAddress(
-          network,
-          scriptHashToCredential(contracts.hubOracle.policyId),
-        ),
-        { kind: "inline", value: encodedHubOracleDatum },
-        hubOracleAssets,
-      )
-      .mintAssets(
-        schedulerAssets,
-        LucidData.to("Init", SDK.SchedulerMintRedeemer),
-      )
-      .pay.ToContract(
-        contracts.scheduler.spendingScriptAddress,
-        {
-          kind: "inline",
-          value: LucidData.to(
-            SDK.INITIAL_SCHEDULER_DATUM,
-            SDK.SchedulerDatum,
-          ),
-        },
-        { lovelace: 5_000_000n, ...schedulerAssets },
-      )
-      .mintAssets(
-        stateQueueAssets,
-        LucidData.to(
-          {
-            Init: {
-              output_index: SDK.ATOMIC_INIT_OUTPUT_INDEXES.stateQueue,
-            },
-          },
-          SDK.StateQueueRedeemer,
-        ),
-      )
-      .pay.ToContract(
-        contracts.stateQueue.spendingScriptAddress,
-        {
-          kind: "inline",
-          value: encodeLinkedListRootDatum(
-            SDK.castConfirmedStateToData(genesisConfirmedState),
-          ),
-        },
-        { lovelace: 5_000_000n, ...stateQueueAssets },
-      )
-      .mintAssets(
-        registeredOperatorsAssets,
-        LucidData.to(
-          {
-            Init: {
-              output_index:
-                SDK.ATOMIC_INIT_OUTPUT_INDEXES.registeredOperators,
-            },
-          },
-          SDK.RegisteredOperatorMintRedeemer,
-        ),
-      )
-      .pay.ToContract(
-        contracts.registeredOperators.spendingScriptAddress,
-        { kind: "inline", value: encodeLinkedListRootDatum("") },
-        { lovelace: OPERATOR_SET_ROOT_LOVELACE, ...registeredOperatorsAssets },
-      )
-      .mintAssets(
-        activeOperatorsAssets,
-        LucidData.to(
-          {
-            Init: {
-              output_index: SDK.ATOMIC_INIT_OUTPUT_INDEXES.activeOperators,
-            },
-          },
-          SDK.ActiveOperatorMintRedeemer,
-        ),
-      )
-      .pay.ToContract(
-        contracts.activeOperators.spendingScriptAddress,
-        { kind: "inline", value: encodeLinkedListRootDatum("") },
-        { lovelace: OPERATOR_SET_ROOT_LOVELACE, ...activeOperatorsAssets },
-      )
-      .mintAssets(
-        retiredOperatorsAssets,
-        LucidData.to(
-          {
-            Init: {
-              output_index: SDK.ATOMIC_INIT_OUTPUT_INDEXES.retiredOperators,
-            },
-          },
-          SDK.RetiredOperatorMintRedeemer,
-        ),
-      )
-      .pay.ToContract(
-        contracts.retiredOperators.spendingScriptAddress,
-        { kind: "inline", value: encodeLinkedListRootDatum("") },
-        { lovelace: OPERATOR_SET_ROOT_LOVELACE, ...retiredOperatorsAssets },
-      )
-      .mintAssets(
-        fraudProofCatalogueAssets,
-        LucidData.to("Init", SDK.FraudProofCatalogueMintRedeemer),
-      )
-      .pay.ToAddressWithData(
-        contracts.fraudProofCatalogue.spendingScriptAddress,
-        {
-          kind: "inline",
-          value: LucidData.to(
-            fraudProofCatalogueMerkleRoot,
-            SDK.FraudProofCatalogueDatum,
-          ),
-        },
-        fraudProofCatalogueAssets,
-      );
-
-    if (referenceScripts !== undefined) {
-      return tx.readFrom([
-        referenceScripts.hubOracleMinting,
-        referenceScripts.schedulerMinting,
-        referenceScripts.stateQueueMinting,
-        referenceScripts.registeredOperatorsMinting,
-        referenceScripts.activeOperatorsMinting,
-        referenceScripts.retiredOperatorsMinting,
-        referenceScripts.fraudProofCatalogueMinting,
-      ]);
-    }
-
-    return tx
-      .attach.MintingPolicy(contracts.hubOracle.mintingScript)
-      .attach.Script(contracts.scheduler.mintingScript)
-      .attach.Script(contracts.stateQueue.mintingScript)
-      .attach.Script(contracts.registeredOperators.mintingScript)
-      .attach.Script(contracts.activeOperators.mintingScript)
-      .attach.Script(contracts.retiredOperators.mintingScript)
-      .attach.Script(contracts.fraudProofCatalogue.mintingScript);
+    return yield* SDK.unsignedInitializationTxProgram(lucid, {
+      midgardValidators: contracts,
+      fraudProofCatalogueMerkleRoot,
+      oneShotNonceUTxO: nonceUtxo,
+      validityRange,
+      referenceScripts,
+    });
   });
 
 /**

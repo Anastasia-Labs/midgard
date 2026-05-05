@@ -2,10 +2,15 @@ import { describe, expect, it } from "vitest";
 import { evaluateReadiness } from "@/commands/readiness.js";
 
 const now = 1_000_000;
+const readyInputBase = {
+  unresolvedBlockSubmissionAgeMs: 0,
+  maxUnresolvedBlockSubmissionAgeMs: 10_000,
+};
 
 describe("evaluateReadiness", () => {
   it("returns ready when heartbeats are fresh and queue depth is under threshold", () => {
     const readiness = evaluateReadiness({
+      ...readyInputBase,
       nowMillis: now,
       maxHeartbeatAgeMs: 10_000,
       maxQueueDepth: 100,
@@ -15,6 +20,7 @@ describe("evaluateReadiness", () => {
         blockConfirmation: now - 2_000,
         merge: now - 2_000,
         depositFetch: now - 3_000,
+        withdrawalFetch: now - 3_000,
         txQueueProcessor: now - 1_000,
       },
       localFinalizationPending: false,
@@ -27,6 +33,7 @@ describe("evaluateReadiness", () => {
 
   it("fails readiness when any worker heartbeat is stale", () => {
     const readiness = evaluateReadiness({
+      ...readyInputBase,
       nowMillis: now,
       maxHeartbeatAgeMs: 10_000,
       maxQueueDepth: 100,
@@ -36,6 +43,7 @@ describe("evaluateReadiness", () => {
         blockConfirmation: now - 2_000,
         merge: now - 2_000,
         depositFetch: now - 3_000,
+        withdrawalFetch: now - 3_000,
         txQueueProcessor: now - 1_000,
       },
       localFinalizationPending: false,
@@ -48,6 +56,7 @@ describe("evaluateReadiness", () => {
 
   it("fails readiness when queue backlog exceeds threshold", () => {
     const readiness = evaluateReadiness({
+      ...readyInputBase,
       nowMillis: now,
       maxHeartbeatAgeMs: 10_000,
       maxQueueDepth: 100,
@@ -57,6 +66,7 @@ describe("evaluateReadiness", () => {
         blockConfirmation: now - 2_000,
         merge: now - 2_000,
         depositFetch: now - 3_000,
+        withdrawalFetch: now - 3_000,
         txQueueProcessor: now - 1_000,
       },
       localFinalizationPending: false,
@@ -69,6 +79,7 @@ describe("evaluateReadiness", () => {
 
   it("fails readiness when local finalization is pending", () => {
     const readiness = evaluateReadiness({
+      ...readyInputBase,
       nowMillis: now,
       maxHeartbeatAgeMs: 10_000,
       maxQueueDepth: 100,
@@ -78,6 +89,7 @@ describe("evaluateReadiness", () => {
         blockConfirmation: now - 2_000,
         merge: now - 2_000,
         depositFetch: now - 3_000,
+        withdrawalFetch: now - 3_000,
         txQueueProcessor: now - 1_000,
       },
       localFinalizationPending: true,
@@ -90,6 +102,7 @@ describe("evaluateReadiness", () => {
 
   it("fails readiness when database health probe fails", () => {
     const readiness = evaluateReadiness({
+      ...readyInputBase,
       nowMillis: now,
       maxHeartbeatAgeMs: 10_000,
       maxQueueDepth: 100,
@@ -99,6 +112,7 @@ describe("evaluateReadiness", () => {
         blockConfirmation: now - 2_000,
         merge: now - 2_000,
         depositFetch: now - 3_000,
+        withdrawalFetch: now - 3_000,
         txQueueProcessor: now - 1_000,
       },
       localFinalizationPending: false,

@@ -164,7 +164,7 @@ const buildReferenceScriptOutRefMap = (
   const sorted = [...utxos].sort(compareOutRefs).reverse();
   const byScriptHash = new Map<string, ContractDeploymentInfoRefScriptUTxO>();
   for (const utxo of sorted) {
-    if (utxo.scriptRef === undefined) {
+    if (utxo.scriptRef == null) {
       continue;
     }
     try {

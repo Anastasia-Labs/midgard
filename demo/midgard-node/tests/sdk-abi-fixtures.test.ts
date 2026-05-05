@@ -58,10 +58,11 @@ const address: SDK.AddressData = {
   paymentCredential: { PublicKeyCredential: [h28] },
   stakeCredential: null,
 };
+const value: SDK.Value = new Map([["", new Map([["", 1n]])]]);
 const proof: SDK.Proof = [];
 
 const roundTrip = <T>(value: T, schema: T): T =>
-  Data.from(Data.to(value, schema), schema);
+  Data.from(Data.to(value as any, schema as any), schema as any) as T;
 
 describe("SDK canonical ABI fixtures", () => {
   it("tracks canonical Aiken datum and redeemer field names", () => {
@@ -110,6 +111,62 @@ describe("SDK canonical ABI fixtures", () => {
         ),
       ),
     ).toContain("purpose");
+    expect(
+      constructor(
+        "midgard/ledger_state/WithdrawalValidity",
+        "UnpayableWithdrawalValue",
+      ).index,
+    ).toBe(7);
+
+    expect(
+      fields(constructor("midgard/payout/MintRedeemer", "MintPayout")),
+    ).toEqual([
+      "withdrawal_utxo_out_ref",
+      "withdrawal_input_index",
+      "withdrawal_spend_redeemer_index",
+      "hub_ref_input_index",
+    ]);
+    expect(
+      fields(constructor("midgard/payout/MintRedeemer", "BurnPayout")),
+    ).toEqual([
+      "payout_input_index",
+      "payout_asset_name",
+      "payout_spend_redeemer_index",
+      "hub_ref_input_index",
+    ]);
+    const addFundsFields = fields(
+      constructor("midgard/payout/SpendRedeemer", "AddFunds"),
+    );
+    expect(addFundsFields).toEqual([
+      "payout_input_index",
+      "payout_output_index",
+      "reserve_input_index",
+      "reserve_change_output_index",
+      "reserve_spend_redeemer_index",
+      "payout_spend_redeemer_index",
+      "hub_ref_input_index",
+    ]);
+    expect(addFundsFields).not.toContain("settlement_ref_input_index");
+    expect(addFundsFields).not.toContain("membership_proof");
+    const concludeFields = fields(
+      constructor("midgard/payout/SpendRedeemer", "ConcludeWithdrawal"),
+    );
+    expect(concludeFields).toEqual([
+      "payout_input_index",
+      "l1_output_index",
+      "burn_redeemer_index",
+      "hub_ref_input_index",
+    ]);
+    expect(concludeFields).not.toContain("settlement_ref_input_index");
+    expect(concludeFields).not.toContain("membership_proof");
+    expect(
+      fields(constructor("midgard/reserve/SpendRedeemer", "Spend")),
+    ).toEqual([
+      "reserve_input_index",
+      "payout_input_index",
+      "payout_spend_redeemer_index",
+      "hub_ref_input_index",
+    ]);
   });
 
   it("encodes scheduler, hub-oracle, state-queue, and operator redeemers", () => {
@@ -335,9 +392,7 @@ describe("SDK canonical ABI fixtures", () => {
           body: {
             l2_outref: { transactionId: h32, outputIndex: 1n },
             l2_owner: h28,
-            l2_value: {
-              inner: new Map([["", new Map([["", 1n]])]]),
-            },
+            l2_value: value,
             l1_address: address,
             l1_datum: "NoDatum",
           },
@@ -375,6 +430,9 @@ describe("SDK canonical ABI fixtures", () => {
         SDK.WithdrawalSpendRedeemer,
       ),
     ).toMatchObject({ purpose: { Refund: expect.any(Object) } });
+    expect(roundTrip("UnpayableWithdrawalValue", SDK.WithdrawalValidity)).toBe(
+      "UnpayableWithdrawalValue",
+    );
 
     expect(
       roundTrip(
@@ -401,5 +459,121 @@ describe("SDK canonical ABI fixtures", () => {
       ),
     ).toMatchObject({ Spawn: { settlement_id: h28 } });
     expect(roundTrip("Init", SDK.FraudProofCatalogueMintRedeemer)).toBe("Init");
+  });
+
+  it("encodes reserve and datum-based payout fixtures", () => {
+    const payoutDatum: SDK.PayoutDatum = {
+      l2_value: value,
+      l1_address: address,
+      l1_datum: "NoDatum",
+    };
+    expect(roundTrip(payoutDatum, SDK.PayoutDatum)).toEqual(payoutDatum);
+
+    expect(
+      roundTrip(
+        {
+          MintPayout: {
+            withdrawal_utxo_out_ref: { transactionId: h32, outputIndex: 0n },
+            withdrawal_input_index: 1n,
+            withdrawal_spend_redeemer_index: 2n,
+            hub_ref_input_index: 3n,
+          },
+        },
+        SDK.PayoutMintRedeemer,
+      ),
+    ).toEqual({
+      MintPayout: {
+        withdrawal_utxo_out_ref: { transactionId: h32, outputIndex: 0n },
+        withdrawal_input_index: 1n,
+        withdrawal_spend_redeemer_index: 2n,
+        hub_ref_input_index: 3n,
+      },
+    });
+
+    expect(
+      roundTrip(
+        {
+          BurnPayout: {
+            payout_input_index: 0n,
+            payout_asset_name: h32,
+            payout_spend_redeemer_index: 1n,
+            hub_ref_input_index: 2n,
+          },
+        },
+        SDK.PayoutMintRedeemer,
+      ),
+    ).toEqual({
+      BurnPayout: {
+        payout_input_index: 0n,
+        payout_asset_name: h32,
+        payout_spend_redeemer_index: 1n,
+        hub_ref_input_index: 2n,
+      },
+    });
+
+    expect(
+      roundTrip(
+        {
+          AddFunds: {
+            payout_input_index: 0n,
+            payout_output_index: 1n,
+            reserve_input_index: 2n,
+            reserve_change_output_index: null,
+            reserve_spend_redeemer_index: 3n,
+            payout_spend_redeemer_index: 4n,
+            hub_ref_input_index: 5n,
+          },
+        },
+        SDK.PayoutSpendRedeemer,
+      ),
+    ).toEqual({
+      AddFunds: {
+        payout_input_index: 0n,
+        payout_output_index: 1n,
+        reserve_input_index: 2n,
+        reserve_change_output_index: null,
+        reserve_spend_redeemer_index: 3n,
+        payout_spend_redeemer_index: 4n,
+        hub_ref_input_index: 5n,
+      },
+    });
+
+    expect(
+      roundTrip(
+        {
+          ConcludeWithdrawal: {
+            payout_input_index: 0n,
+            l1_output_index: 1n,
+            burn_redeemer_index: 2n,
+            hub_ref_input_index: 3n,
+          },
+        },
+        SDK.PayoutSpendRedeemer,
+      ),
+    ).toEqual({
+      ConcludeWithdrawal: {
+        payout_input_index: 0n,
+        l1_output_index: 1n,
+        burn_redeemer_index: 2n,
+        hub_ref_input_index: 3n,
+      },
+    });
+
+    expect(
+      roundTrip(
+        {
+          reserve_input_index: 0n,
+          payout_input_index: 1n,
+          payout_spend_redeemer_index: 2n,
+          hub_ref_input_index: 3n,
+        },
+        SDK.ReserveSpendRedeemer,
+      ),
+    ).toEqual({
+      reserve_input_index: 0n,
+      payout_input_index: 1n,
+      payout_spend_redeemer_index: 2n,
+      hub_ref_input_index: 3n,
+    });
   });
 });
