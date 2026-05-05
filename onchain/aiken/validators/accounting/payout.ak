@@ -4,7 +4,7 @@ use aiken_design_patterns/stake_validator
 use cardano/address.{Address}
 use cardano/assets.{PolicyId}
 use cardano/transaction.{
-  Input, Mint, Output, OutputReference, Spend, Transaction,
+  InlineDatum, Input, Mint, Output, OutputReference, Spend, Transaction,
 }
 use midgard/accounting/observer
 use midgard/accounting/payout.{
@@ -16,7 +16,7 @@ use midgard/user_events/withdrawal
 
 validator mint(withdrawal_addr: Address) {
   mint(redeemer: MintRedeemer, own_policy: PolicyId, tx: Transaction) {
-    let Transaction { inputs, redeemers, mint, .. } = tx
+    let Transaction { inputs, outputs, redeemers, mint, .. } = tx
 
     when redeemer is {
       // Minting: must be coupled with InitializePayout in the withdrawal
@@ -56,31 +56,53 @@ validator mint(withdrawal_addr: Address) {
       BurnPayout {
         payout_asset_name,
         payout_input_index,
+        payout_output_index,
         payout_spend_redeemer_index,
       } -> {
-        // 1. Exactly one payout NFT burned.
+        // 1. Exactly one payout NFT must be burned.
         expect utils.validate_mint(mint, own_policy, payout_asset_name, -1)
 
         // 2. The payout UTxO must be spent with the ConcludeWithdrawal
-        //    redeemer, preventing burns outside of the conclusion endpoint.
-        let Input {
+        //    redeemer with a matching payout input index.
+        expect Input {
           output_reference: payout_input_outref,
-          output: Output { value: payout_input_value, .. },
+          output: Output {
+            datum: InlineDatum(input_datum_data),
+            value: payout_input_value,
+            ..
+          },
         } = inputs |> list.expect_at(payout_input_index)
-
-        expect
-          payout_input_value
-            |> assets.has_nft_strict(own_policy, payout_asset_name)
-
         expect ConcludeWithdrawal { input_index: spend_payout_input_index, .. } =
           utils.get_redeemer_at(
             redeemers,
             Spend(payout_input_outref),
             payout_spend_redeemer_index,
           )
-
         expect spend_payout_input_index == payout_input_index
 
+        // 3. The specified payout input must be authentic. Note that it may
+        //    have assets other than ADA and auth NFT.
+        expect
+          payout_input_value
+            |> assets.has_nft_strict(own_policy, payout_asset_name)
+
+        // 4. Produced UTxO from the payout accumulator must correspond to the
+        //    initial withdrawal order.
+        let Output {
+          address: payout_output_address,
+          value: payout_output_value,
+          datum: payout_output_datum,
+          ..
+        } = outputs |> list.expect_at(payout_output_index)
+
+        expect Datum { l2_value, l1_address, l1_datum } = input_datum_data
+
+        expect payout_output_address == l1_address
+        expect
+          payout_output_value |> assets.match(l2_value, fn(l0, l1) { l0 == l1 })
+        expect payout_output_datum == l1_datum
+
+        // Done.
         True
       }
     }
@@ -121,8 +143,6 @@ validator spend(
         True
       }
       ConcludeWithdrawal { input_index, burn_redeemer_index } -> {
-        expect Some(_input_datum) = m_datum
-
         let Transaction { inputs, redeemers, .. } = tx
 
         // 1. The minting policy of the payout script must be invoked via the

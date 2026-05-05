@@ -23,10 +23,8 @@ pub type MintRedeemer {
   }
   BurnPayout {
     payout_asset_name: AssetName,
-    // Index in inputs of the payout UTxO being spent.
     payout_input_index: Int,
-    // Index in redeemers of Spend(payout_outref); its redeemer must decode as
-    // ConcludeWithdrawal, ensuring burn only happens for fully funded accumulators.
+    payout_output_index: Int,
     payout_spend_redeemer_index: Int,
   }
 }
