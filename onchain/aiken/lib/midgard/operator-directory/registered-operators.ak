@@ -13,8 +13,7 @@ pub const root_asset_name: AssetName = "MIDGARD_REGISTERED_OPERATORS"
 ///
 /// > [!NOTE]
 /// > This should not be longer than 4 bytes, as each node's asset name carries
-/// > this prefix, followed by its operator's public key hash, which is 28 bytes
-/// > long.
+/// > this prefix, followed by its activation-time key.
 pub const node_asset_name_prefix: AssetName = "MREG"
 
 pub const node_asset_name_prefix_length: Int =
@@ -60,7 +59,7 @@ pub type MintRedeemer {
     removed_node_input_index: Int,
     anchor_element_output_index: Int,
   }
-  RemoveDuplicateSlashBond {
+  SlashDuplicateOperator {
     duplicate_operator: VerificationKeyHash,
     anchor_element_input_index: Int,
     removed_node_input_index: Int,

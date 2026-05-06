@@ -6,36 +6,47 @@
 \label{h:scheduler}
 
 The Midgard scheduler is an L1 mechanism that indicates which operator is assigned to the current shift and controls the transitions to the next shift and next operator.
-Whenever a shift ends, the next operator in key-descending order from the \code{active\_operators} list has the exclusive privilege to advance the scheduler's state to the next shift, assigning it to themself.
+Whenever the current shift must advance, the next operator in key-descending order from the \code{active\_operators} list can be picked to take over the next shift.
 
 When the root element of \code{active\_operators} is reached, the scheduler rewinds to start a new cycle.
 However, the scheduler requires the \code{registered\_operators} queue to be checked to see if any registered operators are eligible to activate.
 If so, all eligible registered operators must activate before the new cycle can begin.
 
-Active operators can retire anytime without waiting for the end of the scheduler cycle.
-The scheduler automatically adjusts to retirement because the next operator is always selected among active operators.
-However, to minimize disruption, an operator should complete their shift before retiring.
-
-\notebox{We should allow operators to take over for negligent operators.
-
-If a shift's assigned operator neglects their duty to commit blocks regularly to the state queue, the next active operator can take over the shift (without starting the next shift).
-Similarly, the next operator can advance the scheduler and take over if their predecessor neglects to do so.
-Midgard's \code{operator\_inactivity\_timeout} protocol parameter controls when this unscheduled takeover can happen.}\todo
+Active operators can either retire or get slashed during their shift.
+The scheduler is ensured to remain in sync with the active operators set.
 
 \subsection{Utxo representation}
 \label{h:scheduler-utxo-representation}
 
 The scheduler state consists of a single utxo that holds the scheduler NFT, minted when Midgard is initialized via the hub oracle.
 That utxo's datum type is as follows:
-\begin{equation*}
-    \T{SchedulerDatum} \coloneq \left\{
-    \begin{array}{ll}
-        \T{operator}  : & \T{PubKeyHash} \\
-        \T{shift\_start} : & \T{PosixTime}
-    \end{array} \right\}
-\end{equation*}
+\begin{align*}
+    \T{SchedulerDatum} \coloneq\;& \T{NoActiveOperators} \\
+                           \mid\;& \T{ActiveOperator} \\
+    \T{ActiveOperator} &\coloneq{} \left\{
+        \begin{array}{ll}
+            \T{operator} : & \T{PubKeyHash} \\
+            \T{start\_time} : & \T{PosixTime}
+        \end{array} \right\}
+\end{align*}
 
-The shift's inclusive lower bound is \code{shift\_start}, and its exclusive upper bound is the sum of \code{shift\_start} and the \code{shift\_duration} Midgard protocol parameter.
+When an active operator is appointed, the shift's inclusive lower bound is \code{shift\_start}, and its exclusive upper bound is the sum of \code{shift\_start} and the \code{shift\_duration} Midgard protocol parameter.
+
+The shift interval is used only for scheduler advancement; block commitments and settlement resolution claims validate only the appointed operator.
+This allows the current operator to continue committing when the next scheduled operator is inactive, and relieves the current operator of the need to advance the scheduler before an active successor takes over.
+
+\subsection{State consistency}
+\label{h:scheduler-state-consistency}
+
+The scheduler is essentially a cursor for the active operators set, which means it has to have a local representation of the set's state.
+In order to keep this local state in sync with the active operators set, the scheduler must advance for any actions that affect the appointed operator.
+
+We can define three reasons for advancing the scheduler:
+\begin{enumerate}
+  \item \textbf{End of shift.} Picking the next operator in set, or updating the shift start time of the current one if no other operators are available.
+  \item \textbf{Skipping.} Operators who can be deemed inactive (see \cref{h:operator-inactivity}) can be skipped to preserve liveness of the network.
+  \item \textbf{Removal from active set.} If the operator is currently active and is being removed from the active operators set, either for retiring or slashing, the scheduler must advance.
+\end{enumerate}
 
 \subsection{Minting policy}
 \label{h:scheduler-minting-policy}
@@ -57,94 +68,182 @@ Redeemers:
 \label{h:scheduler-spending-validator}
 
 The spending validator of \code{scheduler\_addr} controls the evolution of the scheduler state.
-It is statically parametrized on the \code{active\_operators} and \code{registered\_operators} minting policies.
+It is statically parametrized on the \code{active\_operators}, \code{registered\_operators} and \code{hub\_oracle} minting policies, along with \code{active\_operators\_addr} for cross validation of node expenditures.
+
+As mentioned above, there are three reasons for the scheduler to advance.
+Additionally, depending on the position of the cursor, advancement can either be traversal towards the root (key-descending), or rewinding to the end of the list.
+This results in 6 different paths for advancing the scheduler.
+
+Prerequisites shared by all redeemers:
+\begin{itemize}
+  \item Let \code{scheduler\_input} and \code{scheduler\_output} be the spent utxo and its reproduction respectively.
+  \item Both \code{scheduler\_input} and \code{scheduler\_output} must carry the singular scheduler NFT, min ADA and no other tokens.
+  \item Let \code{input\_datum} be the inline datum of \code{scheduler\_input} and \code{output\_datum} be the inline datum of \code{scheduler\_output}.
+\end{itemize}
+
 Redeemers:
-
 \begin{description}
-    \item[Advance.] The next operator in key-descending order advances the scheduler to the next shift and assigns it to themself.
+    \item[Go to Next -- End Of Shift.] The next operator in key-descending order is appointed to the next shift.
       Grouped conditions:
-        \begin{itemize}
-            \item Parse scheduler input and output:
-            \begin{enumerate}
-                \item Let \code{scheduler\_datum} be the datum argument for the spending validator being evaluated.
-                  It is assumed to belong to the transaction input that holds the scheduler NFT.
-                \item Let \code{scheduler\_output} be the transaction output that holds the scheduler NFT.
-                \item Let \code{operator} be the \code{operator} field value of \code{scheduler\_output}.
-                \item Let \code{previous\_operator} be the \code{operator} field value of \code{scheduler\_datum}.
-            \end{enumerate}
-            \item Verify the shift transition:
-            \begin{enumerate}[resume]
-                \item The shift interval of \code{scheduler\_output} must equal that of \code{scheduler\_datum}, moved forward by \code{shift\_duration}.
-            \end{enumerate}
-            
-            \item Verify operator consent:
-            \begin{enumerate}[resume]
-                \item Either of the following must hold:
-                \begin{enumerate}
-                    \item The \code{scheduler\_output} shift interval starts entirely before the transaction validity interval, so anyone should be able to advance the scheduler for the next shift.
-                    \item The start time of \code{scheduler\_output} shift interval is contained in the transaction's validity range.
-                      This means that \code{previous\_operator} is still active, and therefore they must have signed the transaction.
-                      The validity interval of the transaction must also be short.\footnote{The length of the validity interval is essentially the max range within which no blocks can be committed to the state queue (TODO).}
-                \end{enumerate}
-            \end{enumerate}
-            
-            \item Verify the operator transition:
-            \begin{enumerate}[resume]
-                \item The transaction must include a reference input of an \code{active\_operators} node.
-                  Let \code{operator\_node} be that node.
-                \item The key of \code{operator\_node} must match \code{operator}.
-                \item If \code{operator\_node} has a link, it must match or exceed \code{previous\_operator}.\footnote{It will exceed the previous operator if they have retired.}
-            \end{enumerate}
-        \end{itemize}
+      \begin{itemize}
+        \item Verify end of shift:
+          \begin{enumerate}
+            \item Both \code{input\_datum} and \code{output\_datum} must have appointed operators.
+              Let \code{prev\_op} and \code{next\_op} be their operators, and \code{prev\_shift} and \code{next\_shift} be their shift start times in order.
+            \item \code{next\_shift} must equal \code{prev\_shift} plus the \code{shift\_duration} protocol parameter.
+            \item Either of the following must hold:
+              \begin{enumerate}
+                \item \code{next\_shift} must lie in the past.
+                  This allows anyone to advance the scheduler and potentially give an inactivity strike to \code{next\_op} in a subsequent transaction.
+                \item The validity range of the transaction must be short (governed by \code{max\_validity\_range\_length} protocol parameter), and it must contain \code{next\_shift}.
+                  The transaction must also be signed by \code{next\_op} as consent for readiness.
+              \end{enumerate}
+          \end{enumerate}
+        \item Verify operators follow correctly:
+          \begin{enumerate}[resume]
+            \item Let \code{active\_node} be a referenced node utxo from the active operators set.
+            \item The key of \code{active\_node} must match \code{next\_op}, and its link must point to \code{prev\_op}.
+          \end{enumerate}
+      \end{itemize}
+    \item[Rewind -- End Of Shift.] The scheduler advances to the next shift and assigns the highest-key active operator, provided that no registered operators are eligible to activate.
+      This includes updating the shift interval of the active operator if no other operators are present in the set.
+      Grouped conditions:
+      \begin{itemize}
+        \item Verify end of shift (same as above).
+        \item Verify the root of the active operators set is reached:
+          \begin{enumerate}[resume]
+            \item Let \code{active\_root} be the referenced root element of the active operators set.
+            \item \code{active\_root} must point to \code{prev\_op} as its link.
+          \end{enumerate}
+        \item Verify there are no registered operators that can be activated:
+          \begin{enumerate}[resume]
+            \item Let \code{registered\_element} be the referenced element from registered operators set.
+            \item \code{registered\_element} must not have a link, i.e.\ it must be the last element of the list.
+            \item \code{registered\_element} must either be the root element, or its key must correspond to an activation time in the future.
+          \end{enumerate}
+        \item Verify the new operator is also the last node of the active operators set:
+          \begin{enumerate}[resume]
+            \item Let \code{active\_node} be the referenced node element from the active operators set.
+            \item \code{active\_node} must link to no other node.
+            \item The key of \code{active\_node} must match \code{next\_op}.
+          \end{enumerate}
+      \end{itemize}
+    \item[Go to Next -- Skipped Operator.] If inactivity criteria passes for the currently appointed operator, advances the scheduler to the next key-descending operator.
+      Grouped conditions:
+      \begin{itemize}
+        \item Verify input and output datums:
+          \begin{enumerate}
+            \item Both \code{input\_datum} and \code{output\_datum} must have appointed operators.
+              Let \code{prev\_op} and \code{next\_op} be their operators, and \code{prev\_shift} and \code{next\_shift} be their shift start times in order.
+          \end{enumerate}
+        \item Verify operator inactivity:
+          \begin{enumerate}[resume]
+            \item Let \code{operator} be a redeemer argument retrieved from spending a node utxo of the active operators set via the \code{StrikeForInactivity} endpoint.
+            \item \code{operator} must be the same as \code{prev\_op}.
+            \item The transaction must reference the authentic hub oracle utxo.
+              Let its datum be \code{hub\_datum}.
+            \item Let \code{state\_queue\_element} be a reference utxo from the state queue.
+            \item \code{state\_queue\_element} must have no link.
+            \item Let \code{last\_end\_time} be the exclusive upper bound retrieved from \code{state\_queue\_element} datum (either \code{ConfirmedState} if it's root, or \code{Header} if it's a node).
+            \item Let \code{commitment\_inactivity} be a point in time after the latest activity.
+              It must be found as the following:
+              \begin{itemize}
+                \item Let \code{neglected\_user\_event} be a redeemer argument that may point to a user event.
+                \item If \code{neglected\_user\_event} points to no utxos, \code{commitment\_inactivity} is equal to the sum of \code{last\_end\_time} and \code{max\_inactivity\_between\_block\_commitments}.
+                \item Otherwise, \code{commitment\_inactivity} must equal the inclusion time of the reference user event, plus the \code{user\_events\_negligence\_timeout} protocol parameter.
+                  Additionally, the inclusion time of the event must be greater than or equal \code{last\_end\_time}.
+              \end{itemize}
+            \item Let \code{inactivity\_threshold} be the point in time that can determine inactivity of \code{prev\_op}.
+              It must be found as the following:
+              \begin{itemize}
+                \item Let \code{allowed\_init\_inactivity} be the sum of \code{prev\_shift} and the \code{new\_shift\_inactivity\_grace\_period} protocol parameter.
+                \item \code{inactivity\_threshold} is the larger value between \code{allowed\_init\_inactivity} and \code{commitment\_inactivity}.
+              \end{itemize}
+            \item Let \code{prev\_shift\_end} be equal to \code{prev\_shift} plust \code{shift\_duration}.
+            \item \code{inactivity\_threshold} must be smaller than \code{prev\_shift\_end}.
+            \item Transaction's validity range must be entirely after \code{inactivity\_threshold}.
+          \end{enumerate}
+        \item Verify new shift's start time for an unscheduled advancement:
+          \begin{enumerate}[resume]
+            \item Transaction's validity range must be shorter than or equal the \code{max\_validity\_range\_length} protocol parameter.
+            \item \code{next\_shift} must equal the inclusive upper bound of transaction validity range.
+          \end{enumerate}
+        \item Verify operators follow correctly (same as \textbf{Go to Next} above).
+      \end{itemize}
+    \item[Rewind -- Skipped Operator.] If the appointed operator is at the head of the active operators list and can be proven inactive, rewinds the scheduler to appoint the last active operator node, or updates the shift start time of the inactive operator if no other operators are available.
+      Grouped conditions:
+      \begin{itemize}
+        \item Verify input and output datums (same as above).
+        \item Verify the root of the active operators set is reached (same as \textbf{Rewind} above).
+        \item Verify there are no registered operators that can be activated (same as \textbf{Rewind} above).
+        \item Verify operator inactivity.
+          Same as above, with the difference that the spending active operator node's link must also be retrieved from the \code{StrikeForInactivity} redeemer.
+          Let \code{inactive\_operator\_link} be this value.
+        \item Verify new shift's start time for an unscheduled advancement (same as above).
+        \item Verify the next operator:
+          \begin{enumerate}
+            \item Let \code{last\_node\_index} be a redeemer argument that may carry an index to reference the last node in the active operators set.
+            \item If \code{last\_node\_index} provides an index, the referenced utxo must be the last node in the active operators set, and its key must match \code{next\_op}.
+              Otherwise, \code{inactive\_operator\_link} must not point to another node, and \code{prev\_op} and \code{next\_op} must be identical.
+          \end{enumerate}
+      \end{itemize}
+    \item[Go to Next -- Operator Removal.] If the currently appointed operator is removed from the active operators set, either for slashing or retirement, advances the scheduler to the next key-descending operator.
+      Grouped conditions:
+      \begin{itemize}
+        \item Verify input and output datums (same as above).
+        \item Verify new shift's start time for an unscheduled advancement (same as above).
+        \item Verify operator node's removal from the active set:
+          \begin{enumerate}
+            \item Let \code{removed\_operator} be a redeemer argument retrieved from either the \code{SlashOperator} or \code{RetireOperator} mint redeemer of the active operators set.
+            \item \code{removed\_operator} must match \code{prev\_op}.
+            \item Let \code{anchor} be the parent element to the removed node element.
+            \item \code{anchor} must be a node with a key that matches \code{next\_op}.
+          \end{enumerate}
+      \end{itemize}
+    \item[Rewind -- Operator Removal.] If the appointed operator is at the head of the active operators list and is being slashed or retired, rewinds the scheduler to appoint the last active operator node, or sets the scheduler to \code{NoActiveOperators} if no other nodes remain in the active operators set after removal.
+      Grouped conditions:
+      \begin{itemize}
+        \item Input datum must have an appointed operator.
+          Let its key be \code{prev\_op}.
+        \item Verify there are no registered operators that can be activated (same as \textbf{Rewind} above).
+        \item Verify operator node's removal from the active set:
+          \begin{enumerate}
+            \item Let \code{removed\_operator} be a redeemer argument retrieved from either the \code{SlashOperator} or \code{RetireOperator} mint redeemer of the active operators set.
+            \item Let \code{last\_node\_is\_removed} be another redeemer argument retrieved along \code{removed\_operator}.
+              A boolean that indicates whether the active operators set empties after removal or not.
+            \item \code{removed\_operator} must match \code{prev\_op}.
+            \item Let \code{anchor} be the parent element to the removed node element.
+            \item \code{anchor} must be root.
+          \end{enumerate}
+        \item Let \code{last\_node\_index} be an index of the reference inputs for the last node of the active operators set that may or may not be provided:
+          \begin{itemize}
+            \item If it is provided:
+              \begin{enumerate}[resume]
+                \item \code{last\_node\_is\_removed} must be false, showing that active operators redeemer has verified \code{remove\_operator} did have a link.
+                \item Scheduler's output datum must carry the new operator.
+                  Let its shift start time be \code{next\_shift}.
+                \item Verify \code{next\_shift} for an unscheduled advancement (same as above).
+                \item Verify the new operator is also the last node of the active operators set (same as \textbf{Rewind -- End Of Shift} above).
+              \end{enumerate}
+            \item If an index is not provided:
+              \begin{enumerate}[resume]
+                \item \code{last\_node\_is\_removed} must be true.
+                  This shows the active operatos set has verified that \code{removed\_operator} linked to no other operator.
+                \item Scheduler's output datum for scheduler must be \code{NoActiveOperators}.
+              \end{enumerate}
+          \end{itemize}
+      \end{itemize}
+    \item[Appoint First Operator.] Appoints the last operator in the active operators set when there are no registered operators eligible for activation.
+      Grouped conditions:
+      \begin{itemize}
+        \item Input datum must not have an appointed operator (\code{NoActiveOperators}).
+        \item Output datum must carry the new operator.
+          Let its key be \code{next\_op} and its shift start time be \code{next\_shift}.
+        \item Verify new shift's start time for an unscheduled advancement (same as above).
+        \item Verify the new operator is also the last node of the active operators set (same as above).
+        \item Verify there are no registered operators that can be activated (same as above).
+      \end{itemize}
 
-       \item[Rewind.] The scheduler advances to the next shift and assigns the highest-key active operator, provided that no registered operators are eligible to activate.
-         Grouped conditions:
-        \begin{itemize}
-            \item Parse scheduler input and output:
-            \begin{enumerate}
-                \item Let \code{scheduler\_datum} be the datum argument for the spending validator being evaluated.
-                  It is assumed to belong to the transaction input that holds the scheduler NFT.
-                \item Let \code{scheduler\_output} be the transaction output that holds the scheduler NFT.
-                \item Let \code{operator} be the \code{operator} field value of \code{scheduler\_output}.
-                \item Let \code{previous\_operator} be the \code{operator} field value of \code{scheduler\_datum}.
-            \end{enumerate}
-            \item Verify the shift transition:
-            \begin{enumerate}[resume]
-                \item The shift interval of \code{scheduler\_output} must equal that of \code{scheduler\_datum}, moved forward by \code{shift\_duration}.
-            \end{enumerate}
-            
-            \item Verify operator consent:
-            \begin{enumerate}[resume]
-                \item Either of the following must hold:
-                \begin{enumerate}
-                    \item The \code{scheduler\_output} shift interval starts entirely before the transaction validity interval, so anyone should be able to advance the scheduler for the next shift.
-                    \item The start time of \code{scheduler\_output} shift interval is contained in the transaction's validity range.
-                      This means that \code{previous\_operator} is still active, and therefore they must have signed the transaction.
-                      The validity interval of the transaction must also be short.\footnote{The length of the validity interval is essentially the max range within which no blocks can be committed to the state queue (TODO).}
-                \end{enumerate}
-            \end{enumerate}
-            
-            \item Rewind to a new operator cycle:
-            \begin{enumerate}[resume]
-                \item The transaction must include a reference input of the last \code{active\_operators} node.
-                  Let \code{operator\_node} be that node.
-                \item The transaction must include a reference input of the root \code{active\_operators} element.
-                  Let \code{root} be that element.
-                \item The key of \code{operator\_node} must match \code{operator}.
-                \item The \code{link} of \code{root} must match or exceed \code{previous\_operator}.
-                \footnote{In other words, this means that there is no \codeNC{active\_operators} node with a smaller key than \codeNC{previous\_operator}.
-                  If there were such a node, then we would advance the scheduler to that node instead of rewinding.}
-            \end{enumerate}
-            
-            \item Verify that no registered operator is eligible to activate:
-            \begin{enumerate}[resume]
-                \item The transaction must include a reference input of a \code{registered\_operators} element.
-                  Let \code{registered\_element} be that element.
-                \item \code{registered\_element} must be the last element of the \code{registered\_operators} queue.
-                  This means it either corresponds to the root of an empty queue, or the \emph{earliest} registrant that hasn't yet activated because new registrants are prepended to the beginning of that queue.
-                \item If \code{registered\_element} is a node, it must \emph{not yet} be eligible for activation---the upper bound of the transaction validity interval is smaller than the \code{activation\_time} of the \code{registered\_element}.
-            \end{enumerate}
-        \end{itemize}
 \end{description}
 
 \end{document}
