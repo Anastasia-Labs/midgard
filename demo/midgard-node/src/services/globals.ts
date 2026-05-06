@@ -46,6 +46,13 @@ export class Globals extends Effect.Service<Globals>()("Globals", {
     // Worker liveness signals used by readiness checks.
     const HEARTBEAT_BLOCK_COMMITMENT: Ref.Ref<number> = yield* Ref.make(now);
     const HEARTBEAT_BLOCK_CONFIRMATION: Ref.Ref<number> = yield* Ref.make(now);
+    const HEARTBEAT_MERGE: Ref.Ref<number> = yield* Ref.make(now);
+
+    // Set while merge tx has been submitted on-chain but local DB
+    // finalization (clearing spent UTxOs / inserting produced UTxOs / clearing
+    // the merged block from BlocksTxsDB) is still in flight or has failed and
+    // is awaiting recovery. Gates the next merge attempt.
+    const LOCAL_FINALIZATION_PENDING: Ref.Ref<boolean> = yield* Ref.make(false);
 
     return {
       BLOCKS_IN_QUEUE,
@@ -59,6 +66,8 @@ export class Globals extends Effect.Service<Globals>()("Globals", {
       MEMPOOL_LEDGER_VERSION,
       HEARTBEAT_BLOCK_COMMITMENT,
       HEARTBEAT_BLOCK_CONFIRMATION,
+      HEARTBEAT_MERGE,
+      LOCAL_FINALIZATION_PENDING,
     };
   }),
 }) {}

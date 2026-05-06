@@ -39,6 +39,7 @@ type NodeConfigDep = {
   OPERATOR_REQUIRED_BOND_LOVELACE: bigint;
   OPERATOR_SLASHING_PENALTY_LOVELACE: bigint;
   RUN_GENESIS_ON_STARTUP: boolean;
+  MIN_QUEUE_LENGTH_FOR_MERGING: number;
 };
 
 const makeConfig = Effect.gen(function* () {
@@ -147,6 +148,9 @@ const makeConfig = Effect.gen(function* () {
     Config.withDefault("200000"),
     Config.mapAttempt((value) => BigInt(value)),
   );
+  const minQueueLengthForMerging = yield* Config.integer(
+    "MIN_QUEUE_LENGTH_FOR_MERGING",
+  ).pipe(Config.withDefault(3));
   const seedA = yield* Config.string("TESTNET_GENESIS_WALLET_SEED_PHRASE_A");
   const seedB = yield* Config.string("TESTNET_GENESIS_WALLET_SEED_PHRASE_B");
   const seedC = yield* Config.string("TESTNET_GENESIS_WALLET_SEED_PHRASE_C");
@@ -250,6 +254,7 @@ const makeConfig = Effect.gen(function* () {
     OPERATOR_REQUIRED_BOND_LOVELACE: operatorRequiredBondLovelace,
     OPERATOR_SLASHING_PENALTY_LOVELACE: operatorSlashingPenaltyLovelace,
     RUN_GENESIS_ON_STARTUP: runGenesisOnStartup,
+    MIN_QUEUE_LENGTH_FOR_MERGING: minQueueLengthForMerging,
   };
 }).pipe(
   Effect.retry(Schedule.fixed("5000 millis")),
