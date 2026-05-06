@@ -42,15 +42,14 @@ import {
   incompleteInitLinkedListTxProgram,
 } from "@/linked-list.js";
 import { ConfirmedState, Header } from "@/ledger-state.js";
+import { MATURITY_DURATION_MS } from "@/protocol-parameters.js";
 
 export const GENESIS_HEADER_HASH = "00".repeat(28);
 export const EMPTY_MERKLE_TREE_ROOT =
   "0e5751c026e543b2e8ab2eb06099daa1d1e5df47778f7787faab45cdf12fe3a8";
 export const GENESIS_UTXO_ROOT = EMPTY_MERKLE_TREE_ROOT;
 export const GENESIS_PROTOCOL_VERSION = 0n;
-export const STATE_QUEUE_ROOT_ASSET_NAME = fromText(
-  "MIDGARD_CONFIRMED_STATE",
-);
+export const STATE_QUEUE_ROOT_ASSET_NAME = fromText("MIDGARD_CONFIRMED_STATE");
 
 export const StateQueueConfigSchema = Data.Object({
   initUTxO: OutputReferenceSchema,
@@ -130,7 +129,9 @@ export const headerHashFromStateQueueUTxO = (
         Effect.andThen(({ data }) => data.headerHash),
       )
     : Effect.succeed(
-        stateQueueUTxO.assetName.slice(STATE_QUEUE_NODE_ASSET_NAME_PREFIX.length),
+        stateQueueUTxO.assetName.slice(
+          STATE_QUEUE_NODE_ASSET_NAME_PREFIX.length,
+        ),
       );
 
 export type StateQueueFetchConfig = {
@@ -486,7 +487,8 @@ export const incompleteCommitBlockHeaderTxProgram = (
   Effect.gen(function* () {
     const newHeaderHash = yield* hashBlockHeader(newHeader);
     const assets: Assets = {
-      [toUnit(policyId, STATE_QUEUE_NODE_ASSET_NAME_PREFIX + newHeaderHash)]: 1n,
+      [toUnit(policyId, STATE_QUEUE_NODE_ASSET_NAME_PREFIX + newHeaderHash)]:
+        1n,
     };
 
     const newNodeDatum: StateQueueNodeView = {
@@ -872,11 +874,12 @@ export const incompleteStateQueueMergeTxProgram = (
         merged_block_withdrawals_root: blockHeader.withdrawalsRoot,
       },
     };
+    const encodedMergeRedeemer = Data.to(mergeRedeemer, StateQueueRedeemer);
     const tx = lucid
       .newTx()
       .collectFrom(
         [confirmedUTxO.utxo, firstBlockUTxO.utxo],
-        Data.to(mergeRedeemer, StateQueueRedeemer),
+        encodedMergeRedeemer,
       )
       .pay.ToContract(
         fetchConfig.stateQueueAddress,
@@ -886,7 +889,7 @@ export const incompleteStateQueueMergeTxProgram = (
         },
         confirmedUTxO.utxo.assets,
       )
-      .mintAssets(assetsToBurn, Data.void())
+      .mintAssets(assetsToBurn, encodedMergeRedeemer)
       .attach.Script(stateQueueSpendingScript)
       .attach.Script(stateQueueMintingScript);
     return tx;

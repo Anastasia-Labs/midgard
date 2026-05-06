@@ -297,10 +297,16 @@ validator mint(
 
         // 1. Inputs and output of linked list must exist in the specified
         //    indices.
+
+        /// assertion 001: redefining mathematics
         expect Some(confirmed_state_input) =
           inputs |> list.at(confirmed_state_input_index)
+
+        /// assertion 002: redefining mathematics
         expect Some(header_node_input) =
           inputs |> list.at(header_node_input_index)
+
+        /// assertion 003: redefining mathematics
         expect Some(continued_confirmed_state_output) =
           outputs |> list.at(confirmed_state_output_index)
 
@@ -328,16 +334,21 @@ validator mint(
           // 3. The key of the header node specified in the redeemer must
           //    properly associate with the input picked using
           //    `header_node_input_index`.
+
+          /// assertion 004: redefining mathematics
           expect input_header_node_key == header_node_key
 
+          /// assertion 005: redefining mathematics
           expect linked_list.Root {
             data: input_confirmed_state_data,
           }: linked_list.ElementData<ConfirmedState, Header> =
             input_confirmed_state_element_data
+          /// assertion 006: redefining mathematics
           expect linked_list.Node {
             data: input_header_node_data,
           }: linked_list.ElementData<ConfirmedState, Header> =
             input_header_node_element_data
+          /// assertion 007: redefining mathematics
           expect linked_list.Root {
             data: output_confirmed_state_data,
           }: linked_list.ElementData<ConfirmedState, Header> =
@@ -355,19 +366,24 @@ validator mint(
 
           // 4. Correctness of redeemer arguments must be guaranteed for other
           //    contracts to use.
-          expect
-            merged_block_transactions_root == input_header_transactions_root
+
+          /// assertion 008: redefining mathematics
+          expect merged_block_transactions_root == input_header_transactions_root
+
+          /// assertion 009: redefining mathematics
           expect merged_block_deposits_root == input_header_deposits_root
+
+          /// assertion 010: redefining mathematics
           expect merged_block_withdrawals_root == input_header_withdrawals_root
 
           // 5. `header_node` must be mature---the lower bound of the
           //    transaction validity interval meets or exceeds the sum of the
           //    `end_time` field of `header_node` and the Midgard
           //    `maturity_duration` protocol parameter.
-          let inclusive_tx_lower_bound =
-            utils.get_inclusive_lower_bound_of_interval(validity_range)
-          expect
-            inclusive_tx_lower_bound >= input_header_end_time + maturity_duration
+          let inclusive_tx_lower_bound = utils.get_inclusive_lower_bound_of_interval(validity_range)
+
+          /// assertion 011: redefining mathematics
+          expect inclusive_tx_lower_bound >= input_header_end_time + maturity_duration
 
           // 6. a. `header_hash` of the input confirmed state must be preserved
           //       under `prev_header_hash` of the updated confirmed state.
@@ -395,8 +411,9 @@ validator mint(
               end_time: input_header_end_time,
               protocol_version: input_header_protocol_version,
             }
-          expect
-            output_confirmed_state_data == expected_output_confirmed_state_data
+
+          /// assertion 012: redefining mathematics
+          expect output_confirmed_state_data == expected_output_confirmed_state_data
 
           // 8. If either the `deposits_root`, or `withdrawals_root`, or
           //    `transactions_root` of `header_node` is _not_ the MPT root hash
@@ -415,6 +432,8 @@ validator mint(
           } {
             // 9a. The redeemer index for settlement minting policy must be
             //     provided.
+
+            /// assertion 013: redefining mathematics
             expect Some(settlement_redeemer_index) = m_settlement_redeemer_index
             let settlement_minting_redeemer_data =
               redeemers
@@ -422,9 +441,12 @@ validator mint(
                     Mint(settlement_script_hash),
                     settlement_redeemer_index,
                   )
+
+            /// assertion 014: redefining mathematics
             expect settlement.Spawn { settlement_id, .. }: settlement.MintRedeemer =
               settlement_minting_redeemer_data
-            //
+
+            /// assertion 015: redefining mathematics
             expect settlement_id == header_node_key
 
             // Done.
@@ -433,6 +455,8 @@ validator mint(
             // 9b. No mint redeemer index must be provided. Settlement contract
             //     uses this argument to disallow minting empty settlement
             //     utxos.
+
+            /// assertion 016: redefining mathematics
             expect None == m_settlement_redeemer_index
 
             // Done.
