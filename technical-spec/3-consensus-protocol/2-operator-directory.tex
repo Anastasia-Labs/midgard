@@ -12,6 +12,7 @@ This responsibility is shared among the operators on a rotating schedule, with e
 
 Anyone can register to become a Midgard operator if they post the required ADA bond.
 Registrants must wait a prescribed period of time before they activate as an operator.
+If the active operator set is empty, the earliest registered operator can activate immediately, regardless of its activation time, to restore liveness.
 An active operator can retire to remove themself from the rotating schedule.
 Retired operators must wait until all their committed block headers mature before recovering their ADA bond.
 
@@ -193,6 +194,7 @@ Redeemers:
                     \item The transaction must include the Midgard hub oracle NFT in a reference input.
                     \item Let \code{active\_operators} be the policy ID in the corresponding field of the Midgard hub oracle.
                     \item The transaction must Insert a node into the \code{active\_operators} set, as evidenced by minting a \code{active\_operators} node NFT for the activating operator key via the Activate Operator redeemer.
+                    \item The active operators Activate Operator redeemer must indicate whether the \code{active\_operators} set was empty before the insertion.
                 \end{enumerate}
             \item Verify that the registrant is not already retired (non-membership in \code{retired\_operators} set, similar to above).
             \item Remove the registrant from the registered operators if it is eligible to activate:
@@ -200,7 +202,8 @@ Redeemers:
                 \item The transaction must Remove a node from the \code{registered\_operators} queue.
                   Let that node be \code{registered\_node}.
                 \item Let \code{activation\_time} be the big-endian decoding of \code{registered\_node}'s key.
-                \item The transaction's validity interval must be entirely after \code{activation\_time}.
+                \item Either the transaction's validity interval must be entirely after \code{activation\_time}, or the \code{active\_operators} set must have been empty before insertion and \code{registered\_node} must be the last node of the \code{registered\_operators} queue.
+                  Since the queue is ordered descending by activation time, the last node is the earliest registered operator.
                 \item The operator stored in the underlying data of \code{registered\_node} must match the activating operator key.
             \end{enumerate}
         \end{itemize}
@@ -275,6 +278,8 @@ Redeemers:
               Let this node be \code{removed\_node}.
             \item The \code{bond\_unlock\_time} field of \code{active\_node} must be \code{None}.
             \item The \code{inactivity\_strikes} field of \code{active\_node} must be \code{0}.
+            \item The \code{active\_operators\_set\_was\_empty} redeemer field must be true if and only if the insertion shows that the set had no active operators before \code{active\_node} was inserted.
+              The registered operators minting policy uses this signal to allow the earliest registered operator to activate before its \code{activation\_time} when the active set is empty.
         \end{enumerate}
     \item[Retire Operator.] Transfer an operator node from the \code{active\_operators} set to the \code{retired\_operators} set.
       Grouped conditions:

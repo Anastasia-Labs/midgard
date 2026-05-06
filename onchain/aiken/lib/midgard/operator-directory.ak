@@ -119,8 +119,10 @@ pub fn operator_is_not_a_member(
 /// - From registered to active set
 /// - From active to retired set
 ///
-/// The return value is the data of the new node at destination/target list.
-pub fn validate_operator_transfer_and_get_inserted_data(
+/// The continuation receives the data of the new node at destination/target
+/// list, along with the anchor key and inserted node link from the validated
+/// insertion.
+pub fn validate_transferred_operator_insertion(
   operator: VerificationKeyHash,
   origin_list_policy_id: PolicyId,
   origin_list_redeemer_index: Int,
@@ -133,7 +135,12 @@ pub fn validate_operator_transfer_and_get_inserted_data(
   outputs: List<Output>,
   mint: Value,
   redeemers: Pairs<ScriptPurpose, Redeemer>,
-  validate_inserted_node_data: fn(Data) -> Bool,
+  validate_target_insertion: fn(
+    Data,
+    Option<linked_list.NodeKey>,
+    linked_list.Link,
+  ) ->
+    Bool,
 ) -> linked_list.Eval {
   // 1. The minting redeemer of the origin operators list must be invoked.
   let origin_list_redeemer_data =
@@ -161,12 +168,12 @@ pub fn validate_operator_transfer_and_get_inserted_data(
   // 4. Ordered insertion in the linked list must be proper.
   let
     anchor_lovelace_change,
-    _m_anchor_key,
+    m_anchor_key,
     _anchor_data,
     inserted_node_lovelace,
     inserted_node_key,
     inserted_node_data,
-    _inserted_node_link,
+    inserted_node_link,
   <-
     linked_list.insert_ascending(
       target_list_anchor_element_input,
@@ -193,8 +200,14 @@ pub fn validate_operator_transfer_and_get_inserted_data(
   //    provided via the redeemer as its key.
   expect inserted_node_key == operator
 
-  // 8. Inserted node's data must pass the custom validation.
-  expect validate_inserted_node_data(inserted_node_data)
+  // 8. Inserted node's data and insertion context must pass the custom
+  //    validation.
+  expect
+    validate_target_insertion(
+      inserted_node_data,
+      m_anchor_key,
+      inserted_node_link,
+    )
 
   // Done.
   True

@@ -13,7 +13,7 @@ use midgard/common/utils
 use midgard/hub_oracle as hub
 use midgard/operator_directory.{
   deinit, init, slash_fraudulent_operator_and_get_info,
-  validate_operator_transfer_and_get_inserted_data,
+  validate_transferred_operator_insertion,
 }
 use midgard/operator_directory/active_operators.{
   ActivateOperator, Datum, Deinit, Init, ListStateTransition, MintRedeemer,
@@ -358,13 +358,18 @@ validator mint(
         active_operator_anchor_element_output_index,
         active_operator_inserted_node_output_index,
         registered_operators_redeemer_index,
+        active_operators_set_was_empty,
       } -> {
         let Transaction { inputs, outputs, mint, redeemers, .. } = self
 
         // 1. Generic validations for operator transfer must pass.
         {
-          let inserted_node_data <-
-            validate_operator_transfer_and_get_inserted_data(
+          let
+            inserted_node_data,
+            m_active_operator_anchor_key,
+            inserted_active_operator_link,
+          <-
+            validate_transferred_operator_insertion(
               new_active_operator_key,
               registered_operators_policy_id,
               registered_operators_redeemer_index,
@@ -391,6 +396,14 @@ validator mint(
           let expected_inserted_node_data: Data =
             NodeData { bond_unlock_time: None, inactivity_strikes: 0 }
           expect inserted_node_data == expected_inserted_node_data
+
+          // 3. Signal whether the active operators set was empty before the
+          //    insertion, so the registered operators set can rely on it
+          //    without re-validating active elements.
+          expect active_operators_set_was_empty == and {
+              m_active_operator_anchor_key == None,
+              inserted_active_operator_link == None,
+            }
 
           // Done.
           True
