@@ -212,7 +212,11 @@ validator mint(
 
         // 2. `ActivateOperator` minting redeemer of the active operators script
         //    must be invoked with a matching operator pub key hash.
-        expect active_operators.ActivateOperator { new_active_operator_key, .. } =
+        expect active_operators.ActivateOperator {
+          new_active_operator_key,
+          active_operators_set_was_empty,
+          ..
+        } =
           redeemers
             |> utils.get_redeemer_at(
                 expected_purpose: Mint(active_operators_mint_script_hash),
@@ -233,8 +237,11 @@ validator mint(
 
         // 4. Removal of the activating node from the registered operator set
         //    must be valid.
-        let removed_node_key <-
-          remove_operator_and_get_node_key(
+        let
+          removed_node_key,
+          removed_node_link,
+        <-
+          remove_operator_and_get_node_info(
             own_policy_id,
             activating_operator,
             anchor_element_input_index,
@@ -246,9 +253,19 @@ validator mint(
           )
 
         // 5. The `activation_time` of the removed node (retrieved from its
-        //     key) must be in the past.
+        //    key) must be in the past. If the active operators set is empty,
+        //    the earliest registered operator can activate immediately to
+        //    restore liveness.
         let activation_time = node_key_to_activation_time(removed_node_key)
-        expect validity_range |> interval.is_entirely_after(activation_time)
+        expect or {
+            validity_range |> interval.is_entirely_after(activation_time),
+            and {
+              // The registered operators list is ordered descending by
+              // activation time, so a node with no link is the earliest one.
+              removed_node_link == None,
+              active_operators_set_was_empty,
+            },
+          }
 
         // Done.
         True
@@ -266,8 +283,11 @@ validator mint(
 
         // 2. Removal of the deregistering operator's node from the registered
         //    operator set must be valid.
-        let _removed_node_key <-
-          remove_operator_and_get_node_key(
+        let
+          _removed_node_key,
+          _removed_node_link,
+        <-
+          remove_operator_and_get_node_info(
             own_policy_id,
             deregistering_operator,
             anchor_element_input_index,
@@ -299,8 +319,11 @@ validator mint(
 
         // 2. Removal of the duplicate operator's node from the registered
         //    operator set must be valid.
-        let _removed_node_key <-
-          remove_operator_and_get_node_key(
+        let
+          _removed_node_key,
+          _removed_node_link,
+        <-
+          remove_operator_and_get_node_info(
             own_policy_id,
             duplicate_operator,
             anchor_element_input_index,
@@ -395,7 +418,7 @@ validator mint(
   }
 }
 
-fn remove_operator_and_get_node_key(
+fn remove_operator_and_get_node_info(
   own_policy_id: PolicyId,
   removed_operator: VerificationKeyHash,
   anchor_element_input_index: Int,
@@ -404,7 +427,7 @@ fn remove_operator_and_get_node_key(
   inputs: List<Input>,
   outputs: List<Output>,
   mint: Value,
-  custom_validator: fn(linked_list.NodeKey) -> Bool,
+  custom_validator: fn(linked_list.NodeKey, linked_list.Link) -> Bool,
 ) -> Bool {
   // 1. Linked list inputs and output for removal must exist at specified
   //    indices.
@@ -424,7 +447,7 @@ fn remove_operator_and_get_node_key(
       _removed_node_lovelace,
       removed_node_key,
       removed_node_data,
-      _removed_node_link,
+      removed_node_link,
     <-
       linked_list.remove(
         anchor_element_input,
@@ -443,7 +466,7 @@ fn remove_operator_and_get_node_key(
     expect removed_operator == operator
 
     // 5.  The custom validation must pass.
-    expect custom_validator(removed_node_key)
+    expect custom_validator(removed_node_key, removed_node_link)
 
     // Done.
     True

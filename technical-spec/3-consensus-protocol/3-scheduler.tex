@@ -32,6 +32,9 @@ That utxo's datum type is as follows:
 
 When an active operator is appointed, the shift's inclusive lower bound is \code{shift\_start}, and its exclusive upper bound is the sum of \code{shift\_start} and the \code{shift\_duration} Midgard protocol parameter.
 
+The shift interval is used only for scheduler advancement; block commitments and settlement resolution claims validate only the appointed operator.
+This allows the current operator to continue committing when the next scheduled operator is inactive, and relieves the current operator of the need to advance the scheduler before an active successor takes over.
+
 \subsection{State consistency}
 \label{h:scheduler-state-consistency}
 

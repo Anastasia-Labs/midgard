@@ -59,7 +59,8 @@ Redeemers:
             \begin{enumerate}[resume]
                 \item The transaction must include a reference input with the scheduler NFT.
                   Let that input be the \code{scheduler\_state}.
-                \item The \code{operator} field of \code{scheduler\_state} must match \code{operator}.
+                \item \code{scheduler\_state} must have an appointed operator with a PKH that matches \code{operator}.
+                  Neither the transaction validity range nor the committed block interval needs to be contained within the appointed operator's nominal shift interval (see \cref{h:scheduler-utxo-representation}).
             \end{enumerate}
 
             \item Verify block timestamps:

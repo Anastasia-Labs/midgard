@@ -8,7 +8,7 @@ use midgard/common/utils
 use midgard/hub_oracle as hub
 use midgard/operator_directory.{
   deinit, init, slash_fraudulent_operator_and_get_info,
-  validate_operator_transfer_and_get_inserted_data,
+  validate_transferred_operator_insertion,
 }
 use midgard/operator_directory/active_operators
 use midgard/operator_directory/retired_operators.{
@@ -75,8 +75,12 @@ validator mint(hub_oracle_script_hash: PolicyId) {
 
         // 2. Generic validations for operator transfer must pass.
         {
-          let inserted_node_data <-
-            validate_operator_transfer_and_get_inserted_data(
+          let
+            inserted_node_data,
+            _m_retired_operator_anchor_key,
+            _inserted_retired_operator_link,
+          <-
+            validate_transferred_operator_insertion(
               new_retired_operator_key,
               hub_datum.active_operators,
               active_operators_redeemer_index,

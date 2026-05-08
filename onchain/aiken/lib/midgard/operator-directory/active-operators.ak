@@ -34,8 +34,7 @@ pub type SpendRedeemer {
     active_node_input_index: Int,
     active_node_output_index: Int,
     hub_oracle_ref_input_index: Int,
-    state_queue_input_index: Int,
-    state_queue_redeemer_index: Int,
+    state_queue_mint_redeemer_index: Int,
   }
   UpdateBondHoldNewSettlement {
     active_operator: VerificationKeyHash,
@@ -76,6 +75,7 @@ pub type MintRedeemer {
     active_operator_anchor_element_output_index: Int,
     active_operator_inserted_node_output_index: Int,
     registered_operators_redeemer_index: Int,
+    active_operators_set_was_empty: Bool,
   }
   RetireOperator {
     active_operator_key: VerificationKeyHash,
