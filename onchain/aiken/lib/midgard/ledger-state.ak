@@ -323,7 +323,10 @@ pub type MidgardScript {
 ///       `Timelock` scripts are simply passed to the hash function.
 pub fn hash_midgard_script(midgard_script: MidgardScript) -> ScriptHash {
   when midgard_script is {
-    Timelock { script } -> script |> blake2b_224
+    Timelock { script } ->
+      builtin.integer_to_bytearray(True, 1, 0)
+        |> bytearray.concat(script)
+        |> blake2b_224
     Plutus { script } ->
       builtin.integer_to_bytearray(True, 1, env.plutus_version)
         |> bytearray.concat(script)
