@@ -2,9 +2,7 @@ use aiken/crypto.{ScriptHash}
 use cardano/assets.{PolicyId}
 use cardano/transaction.{OutputReference, Transaction}
 use midgard/computation_thread as ct
-use midgard/fraud_proofs/common.{
-  TxBodyProvided, cancel, continue, verify_tx_and_its_provided_field_preimage,
-}
+use midgard/fraud_proofs/common.{cancel, continue, verify_tx_body}
 use midgard/fraud_proofs/input_no_idx/step_03.{
   Args, Datum, SpendRedeemer, State,
 }
@@ -30,12 +28,7 @@ validator main(
           computation_thread_mint_redeemer_index,
           tx,
         )
-      ct.Continue(Args {
-        input_index,
-        output_index,
-        producing_tx,
-        producing_tx_body,
-      }) -> {
+      ct.Continue(Args { input_index, output_index, producing_tx_body }) -> {
         let Transaction { inputs, outputs, .. } = tx
 
         expect Some(step_datum) = datum
@@ -62,14 +55,9 @@ validator main(
         expect Some(State { bad_input_tx_id, bad_input_output_index }) =
           m_input_state_data
 
-        // 2. The provided transaction must match the transaction hash of the
+        // 2. The provided transaction body must match the transaction ID of the
         //    picked input (i.e. the one that is supposedly non-existent).
-        expect
-          verify_tx_and_its_provided_field_preimage(
-            bad_input_tx_id,
-            producing_tx,
-            TxBodyProvided(producing_tx_body),
-          )
+        expect verify_tx_body(producing_tx_body, bad_input_tx_id)
 
         // 3. The UTxO must be produced at next step's script hash with the
         //    verified transaction's outputs root included in its datum, the

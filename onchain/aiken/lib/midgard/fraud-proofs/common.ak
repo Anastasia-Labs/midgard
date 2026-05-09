@@ -1,4 +1,3 @@
-use aiken/builtin
 use aiken/collection/list
 use aiken/crypto.{ScriptHash, VerificationKeyHash}
 use aiken/primitive/bytearray
@@ -20,7 +19,7 @@ use midgard/fraud_proof_catalogue
 use midgard/hub_oracle as hub
 use midgard/ledger_state.{
   Header, MidgardTxBodyCompact, MidgardTxCompact, MidgardTxId,
-  MidgardTxWitnessSetCompact,
+  MidgardTxWitnessSetCompact, MidgardTxWitsHash,
 }
 use midgard/state_queue
 
@@ -35,7 +34,6 @@ pub type TxInclusionArgs {
   output_index: Int,
   hub_ref_input_index: Int,
   state_queue_node_ref_input_index: Int,
-  tx_id: MidgardTxId,
   tx: MidgardTxCompact,
   tx_field_preimage: TxFieldPreimage,
   tx_membership_proof: Proof,
@@ -73,7 +71,6 @@ pub fn pass_tx_to_next_step(
     output_index,
     hub_ref_input_index,
     state_queue_node_ref_input_index,
-    tx_id,
     tx,
     tx_field_preimage,
     tx_membership_proof,
@@ -105,9 +102,11 @@ pub fn pass_tx_to_next_step(
 
   // 2. The provided transaction must be valid, and must be included in the
   //    specified state queue node.
-  let header =
-    verify_tx_in_state_queue_node_and_get_header(
-      tx_id,
+  let
+    tx_id,
+    header,
+  <-
+    verify_tx_in_state_queue_node(
       tx,
       tx_field_preimage,
       tx_membership_proof,
@@ -370,31 +369,30 @@ pub fn finalize(
 }
 
 pub fn verify_tx_and_its_provided_field_preimage(
-  tx_id: MidgardTxId,
-  tx: MidgardTxCompact,
+  tx_body_hash: MidgardTxId,
+  tx_wits_hash: MidgardTxWitsHash,
   tx_field_preimage: TxFieldPreimage,
 ) -> Bool {
-  let tx_data: Data = tx
-  and {
-    verify_hash_32(data: tx_data, data_hash: tx_id),
-    when tx_field_preimage is {
-      TxBodyProvided(tx_body) ->
-        verify_hash_32(data: tx_body, data_hash: tx.body)
-      TxWitsProvided(tx_wits) ->
-        verify_hash_32(data: tx_wits, data_hash: tx.wits)
-      TxBodyAndWitsProvided(tx_body, tx_wits) -> {
-        let MidgardTxCompact { body, wits, .. } = tx
-        and {
-          verify_hash_32(data: tx_body, data_hash: body),
-          verify_hash_32(data: tx_wits, data_hash: wits),
-        }
+  when tx_field_preimage is {
+    TxBodyProvided(tx_body) ->
+      verify_hash_32(data: tx_body, data_hash: tx_body_hash)
+    TxWitsProvided(tx_wits) ->
+      verify_hash_32(data: tx_wits, data_hash: tx_wits_hash)
+    TxBodyAndWitsProvided(tx_body, tx_wits) -> and {
+        verify_hash_32(data: tx_body, data_hash: tx_body_hash),
+        verify_hash_32(data: tx_wits, data_hash: tx_wits_hash),
       }
-    },
   }
 }
 
-pub fn verify_tx_in_state_queue_node_and_get_header(
-  tx_id: MidgardTxId,
+pub fn verify_tx_body(
+  tx_body_compact_preimage: MidgardTxBodyCompact,
+  tx_body_hash: MidgardTxId,
+) -> Bool {
+  verify_hash_32(tx_body_compact_preimage, tx_body_hash)
+}
+
+pub fn verify_tx_in_state_queue_node(
   tx: MidgardTxCompact,
   tx_field_preimage: TxFieldPreimage,
   tx_membership_proof: Proof,
@@ -405,10 +403,17 @@ pub fn verify_tx_in_state_queue_node_and_get_header(
   inclusion_proof_script_withdraw_redeemer_index: Int,
   reference_inputs: List<Input>,
   redeemers: Pairs<ScriptPurpose, Redeemer>,
-) -> Header {
-  // 1. Verify authenticity of the provided tx and its field preimage against
-  //    its ID, and the field's hash.
-  expect verify_tx_and_its_provided_field_preimage(tx_id, tx, tx_field_preimage)
+  return: fn(MidgardTxId, Header) -> result,
+) -> result {
+  let MidgardTxCompact { body: tx_id, wits: tx_wits_hash, .. } = tx
+
+  // 1. Verify authenticity of the provided tx and field preimage(s).
+  expect
+    verify_tx_and_its_provided_field_preimage(
+      tx_id,
+      tx_wits_hash,
+      tx_field_preimage,
+    )
 
   // 2. Hub oracle must be provided as a reference input.
   let hub.Datum { state_queue: state_queue_policy, .. } =
@@ -435,19 +440,18 @@ pub fn verify_tx_in_state_queue_node_and_get_header(
 
   // 4. Specified transaction must be proven to be included in the referenced
   //    state queue node.
-  let tx_data: Data = tx
   expect
     plutarch_phas(
       merkle_root: state_queue_datum.transactions_root,
-      key: builtin.b_data(tx_id),
-      value: tx_data,
+      key: tx_id,
+      value: tx,
       membership_proof: tx_membership_proof,
       redeemers: redeemers,
       withdraw_redeemer_index: inclusion_proof_script_withdraw_redeemer_index,
     )
 
-  // Done. Return the block header.
-  state_queue_datum
+  // Done. Return tx ID and block header.
+  return(tx_id, state_queue_datum)
 }
 
 pub fn validate_output_to_fraud_prover(

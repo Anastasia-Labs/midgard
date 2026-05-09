@@ -191,6 +191,9 @@ pub type TxOrderEvent {
 pub type MidgardTxId =
   H32<MidgardTxBodyCompact>
 
+pub type MidgardTxWitsHash =
+  H32<MidgardTxWitnessSetCompact>
+
 /// Midgard transaction. TODO: This is a stub!
 pub type MidgardTx {
   body: MidgardTxBodyCompact,
@@ -206,8 +209,8 @@ pub type MidgardTxsRoot =
 
 /// Compact representation.
 pub type MidgardTxCompact {
-  body: H32<MidgardTxBodyCompact>,
-  wits: H32<MidgardTxWitnessSetCompact>,
+  body: MidgardTxId,
+  wits: MidgardTxWitsHash,
   validity: MidgardTxValidity,
 }
 

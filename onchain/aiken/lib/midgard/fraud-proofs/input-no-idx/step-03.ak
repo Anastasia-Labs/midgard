@@ -1,5 +1,5 @@
 use midgard/computation_thread as ct
-use midgard/ledger_state.{MidgardTxBodyCompact, MidgardTxCompact, MidgardTxId}
+use midgard/ledger_state.{MidgardTxBodyCompact, MidgardTxId}
 
 pub type State {
   bad_input_tx_id: MidgardTxId,
@@ -12,7 +12,6 @@ pub type Datum =
 pub type Args {
   input_index: Int,
   output_index: Int,
-  producing_tx: MidgardTxCompact,
   producing_tx_body: MidgardTxBodyCompact,
 }
 

@@ -5,12 +5,14 @@
 \section{Transaction}
 \label{h:transaction}
 
-A transaction set in Midgard is a finite map from transaction ID to Midgard L2 transaction, where the ID is also constrained to be the Blake2b-256 hash of the transaction:
+A transaction set in Midgard is a finite map from transaction ID to Midgard L2 transaction.
+The ID is the Blake2b-256 hash of the transaction body; equivalently, the map key must match the transaction's \code{body} field.
+The witness-set hash and validity tag are authenticated by the block's \code{transactions\_root} through the map value, but they are not part of the transaction ID:
 \begin{align*}
     \T{TxSet} &\coloneq \T{Map(TxId, MidgardTx)} \\
       &\coloneq \Bigl\{
         (k_i: \T{TxId}, v_i: \T{MidgardTx}) \mid 
-        k_i \equiv \mathcal{H}_\T{Blake2b-256}(v_i) ,\;
+        k_i \equiv v_i.\T{body} ,\;
         \forall i \neq j.\; k_i \neq k_j
     \Bigr\}
 \end{align*}
@@ -167,9 +169,10 @@ The data availability layer is responsible for confirming that the hashes corres
 \begingroup
 \allowdisplaybreaks
 \begin{align*}
+    \T{TxId} \coloneq\;& \mathcal{H}_\T{Blake2b-256}(\T{MidgardTxBody}) \\
     \T{MidgardTx} \coloneq\;& \left\{
     \begin{array}{ll}
-        \T{body} : & \mathcal{H}(\T{MidgardTxBody}) \\
+        \T{body} : & \T{TxId} \\
         \T{wits} : & \mathcal{H}(\T{MidgardTxWits}) \\
         \T{validity} : & \T{MidgardTxValidity} \\
     \end{array} \right\} \\
