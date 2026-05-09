@@ -187,9 +187,9 @@ pub type TxOrderEvent {
 // ## Transaction
 
 /// > [!NOTE]
-/// > This is the hash of the compact representation.
+/// > This is the hash of the compact body.
 pub type MidgardTxId =
-  H32<MidgardTxCompact>
+  H32<MidgardTxBodyCompact>
 
 /// Midgard transaction. TODO: This is a stub!
 pub type MidgardTx {
