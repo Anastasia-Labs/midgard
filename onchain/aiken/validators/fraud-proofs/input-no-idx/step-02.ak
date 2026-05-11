@@ -5,7 +5,9 @@ use cardano/transaction.{OutputReference, Transaction}
 use midgard/common/utils.{verify_hash_32}
 use midgard/computation_thread as ct
 use midgard/fraud_proofs/common.{cancel, continue}
-use midgard/fraud_proofs/input_no_idx/step_02.{Args, Datum, SpendRedeemer, State}
+use midgard/fraud_proofs/input_no_idx/step_02.{
+  Args, Datum, SpendRedeemer, State,
+}
 use midgard/fraud_proofs/input_no_idx/step_03
 
 validator main(
@@ -63,7 +65,8 @@ validator main(
         //    along hash.
         expect inputs_preimage |> verify_hash_32(verified_tx_inputs_hash)
 
-        let bad_inputs_outref = inputs_preimage |> list.expect_at(bad_inputs_index)
+        let bad_inputs_outref =
+          inputs_preimage |> list.expect_at(bad_inputs_index)
 
         // 3. The fetched inputs tx id and output index must be passed to the
         //    next step so that its producing transaction can be verified

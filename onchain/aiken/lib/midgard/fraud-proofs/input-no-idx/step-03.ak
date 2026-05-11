@@ -10,7 +10,8 @@ pub type State {
 pub type Datum =
   ct.StepDatum<State>
 
-pub type Args = TxInclusionArgs
+pub type Args =
+  TxInclusionArgs
 
 pub type SpendRedeemer =
   ct.StepRedeemer<Args>

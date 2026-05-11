@@ -2,7 +2,7 @@ use aiken/crypto.{ScriptHash}
 use cardano/assets.{PolicyId}
 use cardano/transaction.{OutputReference, Transaction}
 use midgard/computation_thread as ct
-use midgard/fraud_proofs/common.{cancel, pass_tx_to_next_step, TxBodyProvided}
+use midgard/fraud_proofs/common.{TxBodyProvided, cancel, pass_tx_to_next_step}
 use midgard/fraud_proofs/input_no_idx/step_03.{
   Args, Datum, SpendRedeemer, State,
 }
@@ -65,7 +65,7 @@ validator main(
 
         // 3. The verified producing tx ID must match the bad transaciton's
         //    input.
-        expect producing_tx_id == bad_input_tx_id  
+        expect producing_tx_id == bad_input_tx_id
 
         // 4. The UTxO must be produced at next step's script hash with the
         //    verified transaction's outputs hash included in its datum, and the

@@ -7,7 +7,7 @@ use midgard/common/utils.{verify_hash_32}
 use midgard/computation_thread as ct
 use midgard/fraud_proofs/common.{cancel, finalize}
 use midgard/fraud_proofs/input_no_idx/step_04.{
-  Datum, Args, SpendRedeemer, State,
+  Args, Datum, SpendRedeemer, State,
 }
 
 validator main(
