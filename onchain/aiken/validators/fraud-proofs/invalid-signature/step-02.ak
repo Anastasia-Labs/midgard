@@ -1,4 +1,4 @@
-use aiken/collection/dict
+use aiken/collection/pairs
 use aiken/crypto.{ScriptHash, verify_ed25519_signature}
 use cardano/address.{Address}
 use cardano/assets.{PolicyId}
@@ -71,10 +71,12 @@ validator main(
         //    from the previous step.
         expect addr_tx_wits_preimage |> verify_hash_32(bad_addr_tx_wits_hash)
 
-        // 3. Fetch the signature witnessed by the provided verification key.
+        // 3. The provided vkey must map to the invalid signature.
+        //    TODO: We are relying on the correctness of the witness set. We
+        //          might need a fraud proof to prevent e.g. duplicate vkeys.
         let bad_addr_tx_wit_signature =
           addr_tx_wits_preimage
-            |> dict.expect_get(bad_addr_tx_wit_verification_key)
+            |> pairs.expect_get_first(bad_addr_tx_wit_verification_key)
 
         // 4. The signature must be invalid.
         expect

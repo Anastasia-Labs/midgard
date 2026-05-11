@@ -370,13 +370,13 @@ pub type MidgardNetworkId {
 // ### Transaction witnesses
 
 pub type AddressWits =
-  Dict<VerificationKey, Signature>
+  Pairs<VerificationKey, Signature>
 
 pub type AddressWitsHash =
   H32<AddressWits>
 
 pub type MidgardScriptWits =
-  Dict<ScriptHash, MidgardScript>
+  Pairs<ScriptHash, MidgardScript>
 
 pub type MidgardScriptWitsHash =
   H32<MidgardScriptWits>
