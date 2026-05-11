@@ -4,7 +4,7 @@ use aiken/primitive/bytearray
 use aiken_design_patterns/linked_list
 use cardano/assets.{AssetName, PolicyId}
 use midgard/common/types.{PosixTime}
-use midgard/operator_directory
+use midgard/operator_directory.{SlashingArguments}
 
 /// TODO: Refer to state queue's library module.
 pub const root_asset_name: AssetName = "MIDGARD_REGISTERED_OPERATORS"
@@ -13,7 +13,8 @@ pub const root_asset_name: AssetName = "MIDGARD_REGISTERED_OPERATORS"
 ///
 /// > [!NOTE]
 /// > This should not be longer than 4 bytes, as each node's asset name carries
-/// > this prefix, followed by its activation-time key.
+/// > this prefix, followed by its operator's public key hash, which is 28 bytes
+/// > long.
 pub const node_asset_name_prefix: AssetName = "MREG"
 
 pub const node_asset_name_prefix_length: Int =
@@ -21,6 +22,7 @@ pub const node_asset_name_prefix_length: Int =
 
 pub type NodeData {
   operator: VerificationKeyHash,
+  bond_unlock_time: Option<PosixTime>,
 }
 
 pub type Datum =
@@ -30,6 +32,11 @@ pub type DuplicateOperatorStatus {
   DuplicateIsRegistered
   DuplicateIsActive { hub_oracle_ref_input_index: Int }
   DuplicateIsRetired
+}
+
+pub type OperatorOrigin {
+  ReturningOperator { retired_operators_redeemer_index: Int }
+  NewOperator { retired_operators_element_ref_input_index: Int }
 }
 
 pub type MintRedeemer {
@@ -42,7 +49,7 @@ pub type MintRedeemer {
     registered_node_output_index: Int,
     hub_oracle_ref_input_index: Int,
     active_operators_element_ref_input_index: Int,
-    retired_operators_element_ref_input_index: Int,
+    operator_origin: OperatorOrigin,
   }
   ActivateOperator {
     activating_operator: VerificationKeyHash,
@@ -67,6 +74,7 @@ pub type MintRedeemer {
     duplicate_node_ref_input_index: Int,
     duplicate_operator_status: DuplicateOperatorStatus,
   }
+  SlashFraudulentOperator { slashing_arguments: SlashingArguments }
 }
 
 /// Converts the given integer to a big endian byte array, in as few bytes as

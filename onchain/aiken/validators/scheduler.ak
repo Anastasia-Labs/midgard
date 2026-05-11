@@ -10,7 +10,10 @@ use cardano/transaction.{
   Input, Mint, OutputReference, Redeemer, ScriptPurpose, Transaction,
   ValidityRange,
 }
-use env
+use env.{
+  max_inactivity_between_block_commitments, new_shift_inactivity_grace_period,
+  user_events_negligence_timeout,
+}
 use midgard/common/types.{PosixTime}
 use midgard/common/utils
 use midgard/hub_oracle as hub
@@ -685,10 +688,10 @@ fn validate_operator_inactivity_and_get_its_link(
       //      `user_events_negligence_timeout` protocol parameter.
       let inactivity_threshold =
         max(
-          inactive_operators_shift_start_time + env.new_shift_inactivity_grace_period,
+          inactive_operators_shift_start_time + new_shift_inactivity_grace_period,
           when neglected_user_event is {
             NoNeglectedUserEvent ->
-              last_state_queue_elements_end_time + env.max_inactivity_between_block_commitments
+              last_state_queue_elements_end_time + max_inactivity_between_block_commitments
             NeglectedDeposit { deposit_ref_input_index } -> {
               let deposit.Datum { inclusion_time, .. } =
                 reference_inputs
@@ -755,7 +758,7 @@ fn inactivity_threshold_from_user_event_inclusion_time(
   last_state_queue_elements_end_time: PosixTime,
 ) -> PosixTime {
   expect inclusion_time >= last_state_queue_elements_end_time
-  inclusion_time + env.user_events_negligence_timeout
+  inclusion_time + user_events_negligence_timeout
 }
 
 /// Given the index of the input in reference inputs, this function validates

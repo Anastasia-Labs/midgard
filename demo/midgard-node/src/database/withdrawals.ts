@@ -35,7 +35,9 @@ export const entryToOutRef = (
     });
     const txId = yield* Effect.try({
       try: () =>
-        CML.TransactionHash.from_hex(withdrawalInfo.body.l2_outref.txHash.hash),
+        CML.TransactionHash.from_hex(
+          withdrawalInfo.body.l2_outref.transactionId,
+        ),
       catch: (e) =>
         new SDK.CmlDeserializationError({
           message:

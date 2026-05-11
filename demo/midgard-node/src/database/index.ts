@@ -9,6 +9,7 @@ export * as MempoolDB from "./mempool.js";
 export * as TxOrdersDB from "./txOrders.js";
 export * as WithdrawalsDB from "./withdrawals.js";
 export * as MempoolLedgerDB from "./mempoolLedger.js";
+export * as PendingBlockFinalizationsDB from "./pendingBlockFinalizations.js";
 export * as DBInitialization from "./init.js";
 export * as CommonUtils from "./utils/common.js";
 export * as Ledger from "./utils/ledger.js";

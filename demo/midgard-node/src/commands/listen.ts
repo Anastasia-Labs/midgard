@@ -2,7 +2,7 @@ import {
   Database,
   NodeConfig,
   Lucid,
-  AlwaysSucceedsContract,
+  MidgardContracts,
   Globals,
 } from "@/services/index.js";
 import * as SDK from "@al-ft/midgard-sdk";
@@ -49,12 +49,19 @@ import { HttpBodyError } from "@effect/platform/HttpBody";
 import * as Genesis from "@/genesis.js";
 import * as Initialization from "@/transactions/initialization.js";
 import * as Reset from "@/reset.js";
+import {
+  ensureProtocolInitializedOnStartup,
+  hydratePendingBlockFinalizationOnStartup,
+  seedAvailableConfirmedBlockOnStartup,
+} from "@/commands/listen-startup.js";
+import { shouldRunGenesisOnStartup } from "@/commands/startup-policy.js";
 import { DatabaseError } from "@/database/utils/common.js";
 import { TxConfirmError, TxSignError } from "@/transactions/utils.js";
 import {
   syncUserEventsFiber,
   blockCommitmentFiber,
   blockCommitmentAction,
+  blockConfirmationFiber,
   mergeFiber,
   mergeAction,
   monitorMempoolFiber,
@@ -259,7 +266,15 @@ const getBlockHandler = Effect.gen(function* () {
 const getInitHandler = Effect.gen(function* () {
   yield* Effect.logInfo(`✨ Initialization request received`);
   const txHash = yield* Initialization.program;
-  yield* Genesis.program;
+  yield* Effect.forkDaemon(
+    Genesis.program.pipe(
+      Effect.catchAllCause((cause) =>
+        Effect.logError(
+          `Post-init genesis program failed: ${Cause.pretty(cause)}`,
+        ),
+      ),
+    ),
+  );
   yield* Effect.logInfo(
     `GET /${INIT_ENDPOINT} - Initialization successful: ${txHash}`,
   );
@@ -274,6 +289,12 @@ const getInitHandler = Effect.gen(function* () {
   Effect.catchTag("MptError", (e) => handleGenericGetFailure(INIT_ENDPOINT, e)),
   Effect.catchTag("TxSubmitError", (e) => handleTxGetFailure(INIT_ENDPOINT, e)),
   Effect.catchTag("TxSignError", (e) => handleTxGetFailure(INIT_ENDPOINT, e)),
+  Effect.catchTag("TxConfirmError", (e) =>
+    handleTxGetFailure(INIT_ENDPOINT, e),
+  ),
+  Effect.catchTag("Bech32DeserializationError", (e) =>
+    handleGenericGetFailure(INIT_ENDPOINT, e),
+  ),
   Effect.catchTag("UnspecifiedNetworkError", (e) =>
     handleGenericGetFailure(INIT_ENDPOINT, e),
   ),
@@ -408,7 +429,7 @@ const getTxsOfAddressHandler = Effect.gen(function* () {
 const getStateQueueHandler = Effect.gen(function* () {
   yield* Effect.logInfo(`✍  Drawing state queue UTxOs...`);
   const lucid = yield* Lucid;
-  const alwaysSucceeds = yield* AlwaysSucceedsContract;
+  const alwaysSucceeds = yield* MidgardContracts;
   const fetchConfig: SDK.StateQueueFetchConfig = {
     stateQueuePolicyId: alwaysSucceeds.stateQueue.policyId,
     stateQueueAddress: alwaysSucceeds.stateQueue.spendingScriptAddress,
@@ -550,7 +571,7 @@ const router = (
   | Database
   | Lucid
   | NodeConfig
-  | AlwaysSucceedsContract
+  | MidgardContracts
   | HttpServerRequest.HttpServerRequest
   | Globals
 > =>
@@ -587,7 +608,34 @@ export const runNode = (withMonitoring?: boolean) =>
 
     yield* DBInitialization.program.pipe(Effect.provide(Database.layer));
 
-    yield* Genesis.program;
+    yield* ensureProtocolInitializedOnStartup;
+    yield* seedAvailableConfirmedBlockOnStartup;
+    yield* hydratePendingBlockFinalizationOnStartup;
+
+    if (
+      shouldRunGenesisOnStartup({
+        network: nodeConfig.NETWORK,
+        runGenesisOnStartup: nodeConfig.RUN_GENESIS_ON_STARTUP,
+      })
+    ) {
+      yield* Effect.logInfo(
+        "Scheduling genesis startup program in background.",
+      );
+      yield* Effect.forkDaemon(
+        Genesis.program.pipe(
+          Effect.tapErrorCause((cause) =>
+            Effect.logError(
+              `Startup genesis program failed: ${Cause.pretty(cause)}`,
+            ),
+          ),
+          Effect.catchAllCause(() => Effect.void),
+        ),
+      );
+    } else {
+      yield* Effect.logInfo(
+        "Skipping genesis on startup (disabled or mainnet).",
+      );
+    }
 
     const appThread = Layer.launch(
       Layer.provide(
@@ -604,6 +652,9 @@ export const runNode = (withMonitoring?: boolean) =>
         appThread,
         blockCommitmentFiber(
           mkSchedule(nodeConfig.WAIT_BETWEEN_BLOCK_COMMITMENTS),
+        ),
+        blockConfirmationFiber(
+          mkSchedule(nodeConfig.WAIT_BETWEEN_BLOCK_CONFIRMATION),
         ),
         blockSubmissionFiber(
           mkSchedule(nodeConfig.WAIT_BETWEEN_BLOCK_SUBMISSIONS),

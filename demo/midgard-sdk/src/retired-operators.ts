@@ -4,58 +4,71 @@ import {
   LucidError,
 } from "@/common.js";
 import { AuthenticUTxO, authenticateUTxOs } from "@/internals.js";
-import { Data, UTxO } from "@lucid-evolution/lucid";
+import { Data, UTxO, fromText } from "@lucid-evolution/lucid";
 import { LucidEvolution, TxBuilder } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 import { incompleteInitLinkedListTxProgram } from "./linked-list.js";
 
+export const RETIRED_OPERATORS_ROOT_ASSET_NAME = fromText(
+  "MIDGARD_RETIRED_OPERATORS",
+);
+
 export const RetiredOperatorDatumSchema = Data.Object({
-  key: Data.Nullable(Data.Bytes()),
-  link: Data.Nullable(Data.Bytes()),
-  bondUnlockTime: Data.Nullable(POSIXTimeSchema),
+  bond_unlock_time: Data.Nullable(POSIXTimeSchema),
 });
 export type RetiredOperatorDatum = Data.Static<
   typeof RetiredOperatorDatumSchema
 >;
 export const RetiredOperatorDatum =
   RetiredOperatorDatumSchema as unknown as RetiredOperatorDatum;
+export const castRetiredOperatorDatumToData = (
+  datum: RetiredOperatorDatum,
+): unknown => Data.castTo(datum, RetiredOperatorDatum);
 
 export const RetiredOperatorMintRedeemerSchema = Data.Enum([
-  Data.Literal("Init"),
-  Data.Literal("Deinit"),
+  Data.Object({
+    Init: Data.Object({
+      output_index: Data.Integer(),
+    }),
+  }),
+  Data.Object({
+    Deinit: Data.Object({
+      input_index: Data.Integer(),
+    }),
+  }),
   Data.Object({
     RetireOperator: Data.Object({
-      newRetireOperatorKey: Data.Bytes(),
-      hubOracleRefInputIndex: Data.Integer(),
-      retiredOperatorAppendedNodeOutputIndex: Data.Integer(),
-      retiredOperatorAnchorNodeOutputIndex: Data.Integer(),
-      activeOperatorsRedeemerIndex: Data.Integer(),
+      new_retired_operator_key: Data.Bytes({ minLength: 28, maxLength: 28 }),
+      bond_unlock_time: Data.Nullable(POSIXTimeSchema),
+      hub_oracle_ref_input_index: Data.Integer(),
+      retired_operator_anchor_element_input_index: Data.Integer(),
+      retired_operator_anchor_element_output_index: Data.Integer(),
+      retired_operator_inserted_node_output_index: Data.Integer(),
+      active_operators_redeemer_index: Data.Integer(),
+    }),
+  }),
+  Data.Object({
+    ReregisterOperator: Data.Object({
+      retired_operator_key: Data.Bytes({ minLength: 28, maxLength: 28 }),
+      retired_operator_bond_unlock_time: Data.Nullable(POSIXTimeSchema),
+      hub_oracle_ref_input_index: Data.Integer(),
+      retired_operator_anchor_element_input_index: Data.Integer(),
+      retired_operator_removed_node_input_index: Data.Integer(),
+      retired_operator_anchor_element_output_index: Data.Integer(),
+      registered_operators_redeemer_index: Data.Integer(),
     }),
   }),
   Data.Object({
     RecoverOperatorBond: Data.Object({
-      retiredOperatorKey: Data.Bytes(),
-      removedNodeInputIndex: Data.Integer(),
-      anchorNodeInputIndex: Data.Integer(),
+      retired_operator_key: Data.Bytes({ minLength: 28, maxLength: 28 }),
+      retired_operator_anchor_element_input_index: Data.Integer(),
+      retired_operator_removed_node_input_index: Data.Integer(),
+      retired_operator_anchor_element_output_index: Data.Integer(),
     }),
   }),
   Data.Object({
-    RemoveOperatorBadState: Data.Object({
-      slashedRetiredOperatorKey: Data.Bytes(),
-      hubOracleRefInputIndex: Data.Integer(),
-      retiredOperatorSlashedNodeInputIndex: Data.Integer(),
-      retiredOperatorAnchorNodeInputIndex: Data.Integer(),
-      stateQueueRedeemerIndex: Data.Integer(),
-    }),
-  }),
-  Data.Object({
-    RemoveOperatorBadSettlement: Data.Object({
-      slashedRetiredOperatorKey: Data.Bytes(),
-      hubOracleRefInputIndex: Data.Integer(),
-      retiredOperatorSlashedNodeInputIndex: Data.Integer(),
-      retiredOperatorAnchorNodeInputIndex: Data.Integer(),
-      settlementInputIndex: Data.Integer(),
-      settlementRedeemerIndex: Data.Integer(),
+    SlashOperator: Data.Object({
+      slashing_arguments: Data.Any(),
     }),
   }),
 ]);
@@ -67,6 +80,8 @@ export const RetiredOperatorMintRedeemer =
 
 export type RetiredOperatorInitParams = {
   validator: AuthenticatedValidator;
+  outputIndex?: bigint;
+  lovelace?: bigint;
 };
 
 export type RetiredOperatorDeinitParams = {};
@@ -122,12 +137,17 @@ export const incompleteRetiredOperatorInitTxProgram = (
   params: RetiredOperatorInitParams,
 ): Effect.Effect<TxBuilder> =>
   Effect.gen(function* () {
-    const rootData = "00";
+    const rootData = "";
 
     return yield* incompleteInitLinkedListTxProgram(lucid, {
       validator: params.validator,
+      rootAssetName: RETIRED_OPERATORS_ROOT_ASSET_NAME,
       data: rootData,
-      redeemer: Data.to("Init", RetiredOperatorMintRedeemer),
+      redeemer: Data.to(
+        { Init: { output_index: params.outputIndex ?? 0n } },
+        RetiredOperatorMintRedeemer,
+      ),
+      lovelace: params.lovelace,
     });
   });
 

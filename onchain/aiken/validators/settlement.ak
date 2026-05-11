@@ -1,13 +1,12 @@
-use aiken/collection/list
+use aiken/collection/dict
 use aiken/crypto.{ScriptHash}
 use aiken_design_patterns/singular_utxo_indexer
-use cardano/assets.{PolicyId}
+use cardano/assets.{AssetName, PolicyId}
 use cardano/transaction.{
   InlineDatum, Input, Mint, Output, OutputReference, Spend, Transaction,
 }
 use midgard/common/utils
 use midgard/hub_oracle as hub
-use midgard/ledger_state
 use midgard/operator_directory.{SlashOperatorForBadSettlement}
 use midgard/operator_directory/active_operators
 use midgard/operator_directory/retired_operators
@@ -88,7 +87,7 @@ validator spend(hub_oracle: ScriptHash, settlement_policy_id: ScriptHash) {
         //    operator.
         expect active_operators.UpdateBondHoldNewSettlement {
           active_operator,
-          resolution_time,
+          new_bond_unlock_time,
           ..
         } =
           utils.get_spending_redeemer_data_at(
@@ -100,8 +99,9 @@ validator spend(hub_oracle: ScriptHash, settlement_policy_id: ScriptHash) {
           )
         expect operator == active_operator
 
-        // 7. The active operators redeemer provides a validated resolution
-        //    time, which must be used as the settlement claim's resolution time.
+        // 7. The `bond_unlock_time` of the `operator_node` must match the
+        //    `resolution_time` of the resolution claim, which lies in the
+        //    future by `maturity_duration` milliseconds.
         let cont_output_datum_data =
           utils.authenticate_input_output_and_get_output_datum_data(
             input,
@@ -112,7 +112,10 @@ validator spend(hub_oracle: ScriptHash, settlement_policy_id: ScriptHash) {
           Datum {
             ..datum,
             resolution_claim: Some(
-              ResolutionClaim { resolution_time, operator },
+              ResolutionClaim {
+                resolution_time: new_bond_unlock_time,
+                operator,
+              },
             ),
           }
         expect cont_output_datum_data == expected_output_datum_data
@@ -326,10 +329,12 @@ validator mint(hub_oracle: ScriptHash) {
         //
         expect state_queue.MergeToConfirmedState {
           header_node_key,
-          header_node_input_index,
           m_settlement_redeemer_index,
+          merged_block_transactions_root,
+          merged_block_deposits_root,
+          merged_block_withdrawals_root,
           ..
-        }: state_queue.MintRedeemer = state_queue_redeemer_data
+        } = state_queue_redeemer_data
         // We verify this redeemer argument so that other scripts can use it:
         expect header_node_key == settlement_id
         // Provision of redeemer index in state queue's redeemer shows that at
@@ -339,19 +344,6 @@ validator mint(hub_oracle: ScriptHash) {
         // Another solution would be checking the absence of settlement minting
         // by the state queue policy, which would be more expensive.
         expect Some(_) = m_settlement_redeemer_index
-        //
-        expect Some(merged_block) = list.at(inputs, header_node_input_index)
-        expect Input {
-          output: Output { datum: InlineDatum(block_datum_data), .. },
-          ..
-        } = merged_block
-        //
-        expect ledger_state.Header {
-          deposits_root,
-          withdrawals_root,
-          transactions_root,
-          ..
-        } = block_datum_data
 
         // 4. The transaction must produce an authentic settlement utxo with an
         //    NFT which its asset name matches `header_hash`. Let
@@ -370,16 +362,20 @@ validator mint(hub_oracle: ScriptHash) {
         // 6. The `resolution_claim` of `new_settlement` must be empty.
         let expected_produced_settlement_datum: Data =
           Datum {
-            deposits_root,
-            withdrawals_root,
-            transactions_root,
+            deposits_root: merged_block_deposits_root,
+            withdrawals_root: merged_block_withdrawals_root,
+            transactions_root: merged_block_transactions_root,
             resolution_claim: None,
           }
         expect
           settlement_output_datum_data == expected_produced_settlement_datum
 
-        // 7. Only 1 of the new NFT must be minted.
-        expect assets.quantity_of(mint, own_policy, settlement_id) == 1
+        // 7. Only the new settlement NFT may be minted under this policy.
+        expect [Pair(minted_settlement_id, 1)] =
+          mint
+            |> assets.tokens(own_policy)
+            |> dict.to_pairs
+        expect minted_settlement_id == settlement_id
 
         // Done.
         True
@@ -437,4 +433,57 @@ validator mint(hub_oracle: ScriptHash) {
   else(_) {
     fail
   }
+}
+
+const test_settlement_policy: PolicyId =
+  #"11111111111111111111111111111111111111111111111111111111"
+
+const test_settlement_id: AssetName = #"aa"
+
+test exact_settlement_policy_mint_accepts_only_settlement_nft() {
+  let mint = assets.from_asset(test_settlement_policy, test_settlement_id, 1)
+  expect [Pair(minted_settlement_id, 1)] =
+    mint
+      |> assets.tokens(test_settlement_policy)
+      |> dict.to_pairs
+  minted_settlement_id == test_settlement_id
+}
+
+test exact_settlement_policy_mint_rejects_extra_same_policy_token() fail {
+  let mint =
+    assets.merge(
+      assets.from_asset(test_settlement_policy, test_settlement_id, 1),
+      assets.from_asset(test_settlement_policy, #"bb", 1),
+    )
+  expect [Pair(minted_settlement_id, 1)] =
+    mint
+      |> assets.tokens(test_settlement_policy)
+      |> dict.to_pairs
+  minted_settlement_id == test_settlement_id
+}
+
+test exact_settlement_policy_mint_rejects_wrong_same_policy_token() fail {
+  let mint = assets.from_asset(test_settlement_policy, #"bb", 1)
+  expect [Pair(minted_settlement_id, 1)] =
+    mint
+      |> assets.tokens(test_settlement_policy)
+      |> dict.to_pairs
+  minted_settlement_id == test_settlement_id
+}
+
+test exact_settlement_policy_mint_allows_other_policy_mints() {
+  let mint =
+    assets.merge(
+      assets.from_asset(test_settlement_policy, test_settlement_id, 1),
+      assets.from_asset(
+        #"22222222222222222222222222222222222222222222222222222222",
+        #"cc",
+        1,
+      ),
+    )
+  expect [Pair(minted_settlement_id, 1)] =
+    mint
+      |> assets.tokens(test_settlement_policy)
+      |> dict.to_pairs
+  minted_settlement_id == test_settlement_id
 }
