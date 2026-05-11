@@ -15,11 +15,9 @@
 //// Codec Standard (/codec.cddl).
 
 use aiken/builtin
-use aiken/cbor
 use aiken/collection/dict.{Dict}
 use aiken/crypto.{
   ScriptHash, Signature, VerificationKey, VerificationKeyHash, blake2b_224,
-  blake2b_256,
 }
 use aiken/primitive/bytearray
 use cardano/address.{Address, Credential}

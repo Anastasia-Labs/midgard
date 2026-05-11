@@ -1,12 +1,12 @@
+use aiken/collection/list
 use aiken/crypto.{ScriptHash}
 use cardano/assets.{PolicyId}
 use cardano/transaction.{OutputReference, Transaction}
-use midgard/common/utils.{plutarch_phas}
+use midgard/common/utils.{verify_hash_32}
 use midgard/computation_thread as ct
 use midgard/fraud_proofs/common.{cancel, continue}
-use midgard/fraud_proofs/input_no_idx/step_02.{Args, Datum, SpendRedeemer}
+use midgard/fraud_proofs/input_no_idx/step_02.{Args, Datum, SpendRedeemer, State}
 use midgard/fraud_proofs/input_no_idx/step_03
-use midgard/ledger_state.{MidgardInputId}
 
 validator main(
   step_03_validator_script_hash: ScriptHash,
@@ -31,10 +31,8 @@ validator main(
       ct.Continue(Args {
         input_index,
         output_index,
-        bad_input_id,
-        bad_input_resolved,
-        bad_input_membership_proof,
-        inclusion_proof_script_withdraw_redeemer_index,
+        inputs_preimage,
+        bad_inputs_index,
       }) -> {
         let Transaction { inputs, outputs, redeemers, .. } = tx
 
@@ -59,24 +57,19 @@ validator main(
             outputs,
           )
 
-        expect Some(input_state) = m_input_state_data
+        expect Some(State { verified_tx_inputs_hash }) = m_input_state_data
 
-        // 2. Provided input must be a member of the verified transaction's
-        //    inputs.
-        expect
-          plutarch_phas(
-            merkle_root: input_state.verified_tx_inputs_root,
-            key: bad_input_id,
-            value: bad_input_resolved,
-            membership_proof: bad_input_membership_proof,
-            redeemers: redeemers,
-            withdraw_redeemer_index: inclusion_proof_script_withdraw_redeemer_index,
-          )
+        // 2. Provided inputs preimage must correspond correctly to the passed
+        //    along hash.
+        expect inputs_preimage |> verify_hash_32(verified_tx_inputs_hash)
 
-        // 3. The proven inputs key must be passed to the next step so that its
-        //    producing transaction can be verified against the included hash.
+        let bad_inputs_outref = inputs_preimage |> list.expect_at(bad_inputs_index)
+
+        // 3. The fetched inputs tx id and output index must be passed to the
+        //    next step so that its producing transaction can be verified
+        //    against the included hash.
         expect output_script_hash == step_03_validator_script_hash
-        let MidgardInputId { transaction_id, output_index, .. } = bad_input_id
+        let OutputReference { transaction_id, output_index } = bad_inputs_outref
         let expected_output_state: Data =
           step_03.State {
             bad_input_tx_id: transaction_id,

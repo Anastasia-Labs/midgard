@@ -65,7 +65,7 @@ validator main(
         //    verified bad transactions' inputs included in its datum.
         expect output_script_hash == step_02_validator_script_hash
         let expected_output_state: Data =
-          step_02.State { verified_tx_inputs_root: bad_tx_body.spend_inputs }
+          step_02.State { verified_tx_inputs_hash: bad_tx_body.spend_inputs }
         expect output_state_data == expected_output_state
 
         // Done.

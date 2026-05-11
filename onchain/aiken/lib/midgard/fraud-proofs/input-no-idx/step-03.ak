@@ -1,5 +1,6 @@
 use midgard/computation_thread as ct
-use midgard/ledger_state.{MidgardTxBodyCompact, MidgardTxId}
+use midgard/fraud_proofs/common.{TxInclusionArgs}
+use midgard/ledger_state.{MidgardTxId}
 
 pub type State {
   bad_input_tx_id: MidgardTxId,
@@ -9,11 +10,7 @@ pub type State {
 pub type Datum =
   ct.StepDatum<State>
 
-pub type Args {
-  input_index: Int,
-  output_index: Int,
-  producing_tx_body: MidgardTxBodyCompact,
-}
+pub type Args = TxInclusionArgs
 
 pub type SpendRedeemer =
   ct.StepRedeemer<Args>
