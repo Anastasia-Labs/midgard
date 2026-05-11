@@ -1,11 +1,10 @@
-use aiken/crypto.{Signature, VerificationKey}
-use midgard/common/types.{Proof}
+use aiken/crypto.{VerificationKey}
 use midgard/computation_thread as ct
-use midgard/ledger_state.{AddressWitsRoot, MidgardTxBodyCompact}
+use midgard/ledger_state.{AddressWits, AddressWitsHash, MidgardTxId}
 
 pub type State {
-  bad_tx_body: MidgardTxBodyCompact,
-  bad_addr_tx_wits_root: AddressWitsRoot,
+  bad_tx_id: MidgardTxId,
+  bad_addr_tx_wits_hash: AddressWitsHash,
 }
 
 pub type Datum =
@@ -14,10 +13,8 @@ pub type Datum =
 pub type Args {
   input_index: Int,
   output_index: Int,
+  addr_tx_wits_preimage: AddressWits,
   bad_addr_tx_wit_verification_key: VerificationKey,
-  bad_addr_tx_wit_signature: Signature,
-  bad_addr_tx_wit_membership_proof: Proof,
-  inclusion_proof_script_withdraw_redeemer_index: Int,
   fraud_proof_mint_redeemer_index: Int,
 }
 

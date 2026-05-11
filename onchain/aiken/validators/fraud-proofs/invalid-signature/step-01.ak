@@ -2,12 +2,9 @@ use aiken/crypto.{ScriptHash}
 use cardano/assets.{PolicyId}
 use cardano/transaction.{OutputReference, Transaction}
 use midgard/computation_thread as ct
-use midgard/fraud_proofs/common.{
-  TxBodyAndWitsProvided, cancel, pass_tx_to_next_step,
-}
+use midgard/fraud_proofs/common.{TxWitsProvided, cancel, pass_tx_to_next_step}
 use midgard/fraud_proofs/invalid_signature/step_01.{Datum, SpendRedeemer}
 use midgard/fraud_proofs/invalid_signature/step_02
-use midgard/ledger_state.{MidgardTxWitnessSetCompact}
 
 validator main(
   step_02_validator_script_hash: ScriptHash,
@@ -41,7 +38,7 @@ validator main(
           output_script_hash,
           output_state_data,
           _header,
-          _bad_tx_id,
+          bad_tx_id,
           _bad_tx,
           bad_tx_field_preimage,
         <-
@@ -54,16 +51,16 @@ validator main(
             tx,
           )
 
-        expect TxBodyAndWitsProvided(bad_tx_body, bod_tx_wits) =
-          bad_tx_field_preimage
+        expect TxWitsProvided(bod_tx_wits) = bad_tx_field_preimage
 
         // 2. The UTxO must be produced at next step's script hash with the bad
-        //    transaction's body and address witness set root.
+        //    transaction's ID (i.e. hash of the compact body) and address
+        //    witness set hash.
         expect output_script_hash == step_02_validator_script_hash
         let expected_output_state: Data =
           step_02.State {
-            bad_tx_body,
-            bad_addr_tx_wits_root: bod_tx_wits.addr_tx_wits,
+            bad_tx_id,
+            bad_addr_tx_wits_hash: bod_tx_wits.addr_tx_wits,
           }
         expect output_state_data == expected_output_state
 

@@ -1,9 +1,9 @@
-use aiken/builtin
+use aiken/collection/dict
 use aiken/crypto.{ScriptHash, verify_ed25519_signature}
 use cardano/address.{Address}
 use cardano/assets.{PolicyId}
 use cardano/transaction.{OutputReference, Transaction}
-use midgard/common/utils
+use midgard/common/utils.{verify_hash_32}
 use midgard/computation_thread as ct
 use midgard/fraud_proofs/common.{cancel, finalize}
 use midgard/fraud_proofs/invalid_signature/step_02.{
@@ -34,10 +34,8 @@ validator main(
       ct.Continue(Args {
         input_index,
         output_index,
+        addr_tx_wits_preimage,
         bad_addr_tx_wit_verification_key,
-        bad_addr_tx_wit_signature,
-        bad_addr_tx_wit_membership_proof,
-        inclusion_proof_script_withdraw_redeemer_index,
         fraud_proof_mint_redeemer_index,
       }) -> {
         let Transaction { inputs, outputs, redeemers, .. } = tx
@@ -66,26 +64,23 @@ validator main(
             redeemers,
           )
 
-        expect Some(State { bad_tx_body, bad_addr_tx_wits_root }) =
+        expect Some(State { bad_tx_id, bad_addr_tx_wits_hash }) =
           m_input_state_data
 
-        // 2. Prove that <VerificationKey, Signature> belongs to
-        //    addr_tx_wits(tx).
-        expect
-          utils.plutarch_phas(
-            merkle_root: bad_addr_tx_wits_root,
-            key: bad_addr_tx_wit_verification_key,
-            value: bad_addr_tx_wit_signature,
-            membership_proof: bad_addr_tx_wit_membership_proof,
-            redeemers: redeemers,
-            withdraw_redeemer_index: inclusion_proof_script_withdraw_redeemer_index,
-          )
+        // 2. Provided address witnesses preimage must match the hash carried
+        //    from the previous step.
+        expect addr_tx_wits_preimage |> verify_hash_32(bad_addr_tx_wits_hash)
 
-        // 3. The signature must be invalid.
+        // 3. Fetch the signature witnessed by the provided verification key.
+        let bad_addr_tx_wit_signature =
+          addr_tx_wits_preimage
+            |> dict.expect_get(bad_addr_tx_wit_verification_key)
+
+        // 4. The signature must be invalid.
         expect
           verify_ed25519_signature(
             bad_addr_tx_wit_verification_key,
-            builtin.serialise_data(bad_tx_body),
+            bad_tx_id,
             bad_addr_tx_wit_signature,
           ) == False
 
