@@ -15,9 +15,11 @@
 //// Codec Standard (/codec.cddl).
 
 use aiken/builtin
+use aiken/cbor
 use aiken/collection/dict.{Dict}
 use aiken/crypto.{
   ScriptHash, Signature, VerificationKey, VerificationKeyHash, blake2b_224,
+  blake2b_256,
 }
 use aiken/primitive/bytearray
 use cardano/address.{Address, Credential}
@@ -181,7 +183,7 @@ pub type TxOrderId =
 
 pub type TxOrderEvent {
   id: TxOrderId,
-  tx: MidgardTxCompact,
+  tx: MidgardTx,
 }
 
 // ## Transaction
@@ -194,10 +196,14 @@ pub type MidgardTxId =
 pub type MidgardTxWitsHash =
   H32<MidgardTxWitnessSetCompact>
 
-/// Midgard transaction. TODO: This is a stub!
+/// Midgard transaction. It includes both the full version and compact versions
+/// of body and witness set.
+/// TODO: This is a draft. Might need further tweaks.
 pub type MidgardTx {
-  body: MidgardTxBodyCompact,
-  wits: MidgardTxWitnessSetCompact,
+  body: MidgardTxBody,
+  body_compact: MidgardTxBodyCompact,
+  wits: MidgardTxWitnessSet,
+  wits_compact: MidgardTxWitnessSetCompact,
   validity: MidgardTxValidity,
 }
 
@@ -222,6 +228,15 @@ pub type MidgardTxValidity {
   FailedScript
   FeeTooLow
   UnbalancedTx
+}
+
+pub fn midgard_tx_to_compact(tx: MidgardTx) -> MidgardTxCompact {
+  let MidgardTx { body_compact, wits_compact, validity, .. } = tx
+  MidgardTxCompact {
+    body: body_compact |> midgard_compact_tx_body_to_id(),
+    wits: wits_compact |> hash_compact_midgard_tx_wits(),
+    validity,
+  }
 }
 
 // ### Transaction body
@@ -257,8 +272,14 @@ pub fn midgard_input_id_to_out_ref(input_id: MidgardInputId) -> OutputReference 
   OutputReference { transaction_id, output_index }
 }
 
+pub type MidgardInputs =
+  Pairs<MidgardInputId, MidgardOutput>
+
 pub type MidgardInputsRoot =
   MerkleRoot<MidgardInputId, MidgardOutput>
+
+pub type MidgardOutputs =
+  Pairs<Int, MidgardOutput>
 
 pub type MidgardOutputsRoot =
   MerkleRoot<Int, MidgardOutput>
@@ -268,6 +289,22 @@ pub type ObserversRoot =
 
 pub type SignersRoot =
   MerkleRoot<Int, VerificationKeyHash>
+
+/// Midgard transaction body.
+/// Full representation.
+pub type MidgardTxBody {
+  spend_inputs: MidgardInputs,
+  reference_inputs: MidgardInputs,
+  outputs: MidgardOutputs,
+  fee: Lovelace,
+  validity_interval: ValidityRange,
+  required_observers: List<ScriptHash>,
+  required_signer_hashes: List<VerificationKeyHash>,
+  mint: MidgardValue,
+  script_integrity_hash: H32<Data>,
+  auxiliary_data_hash: H32<Data>,
+  network_id: MidgardNetworkId,
+}
 
 /// Midgard transaction body.
 /// Compact representation.
@@ -285,6 +322,16 @@ pub type MidgardTxBodyCompact {
   network_id: MidgardNetworkId,
 }
 
+pub fn midgard_compact_tx_body_to_id(body: MidgardTxBodyCompact) -> MidgardTxId {
+  body |> cbor.serialise |> blake2b_256
+}
+
+pub fn hash_compact_midgard_tx_wits(
+  wits: MidgardTxWitnessSetCompact,
+) -> MidgardTxWitsHash {
+  wits |> cbor.serialise |> blake2b_256
+}
+
 /// Midgard network ID
 /// It indicates the network for which the transaction is intended.
 /// Compact representation.
@@ -295,14 +342,31 @@ pub type MidgardNetworkId {
 
 // ### Transaction witnesses
 
+pub type AddressWits =
+  Dict<VerificationKey, Signature>
+
 pub type AddressWitsRoot =
   MerkleRoot<VerificationKey, Signature>
+
+pub type MidgardScriptWits =
+  Pairs<ScriptHash, MidgardScript>
 
 pub type MidgardScriptWitsRoot =
   MerkleRoot<ScriptHash, MidgardScript>
 
+pub type Redeemers =
+  Pairs<ScriptPurpose, Redeemer>
+
 pub type RedeemersRoot =
   MerkleRoot<ScriptPurpose, Redeemer>
+
+/// Midgard transaction witnesses.
+/// Full representation.
+pub type MidgardTxWitnessSet {
+  addr_tx_wits: AddressWits,
+  script_tx_wits: MidgardScriptWits,
+  redeemer_tx_wits: Redeemers,
+}
 
 /// Midgard transaction witnesses.
 /// Compact representation.
