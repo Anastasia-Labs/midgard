@@ -81,7 +81,7 @@ validator main(
             let expected_output_state: Data =
               State {
                 verified_tx1_id: bad_tx_id,
-                verified_tx1_inputs_root: bad_tx_body.spend_inputs,
+                verified_tx1_inputs_hash: bad_tx_body.spend_inputs,
               }
             expect output_state_data == expected_output_state
 
@@ -92,12 +92,12 @@ validator main(
             // 3b. The UTxO must be produced at next step's script hash with the
             //     verified bad transactions' inputs included in its datum.
             expect output_script_hash == step_02_validator_script_hash
-            let State { verified_tx1_id, verified_tx1_inputs_root } =
+            let State { verified_tx1_id, verified_tx1_inputs_hash } =
               step_1_state
             let expected_output_state: Data =
               step_02.State {
-                verified_tx1_inputs_root,
-                verified_tx2_inputs_root: bad_tx_body.spend_inputs,
+                verified_tx1_inputs_hash,
+                verified_tx2_inputs_hash: bad_tx_body.spend_inputs,
               }
             expect output_state_data == expected_output_state
 

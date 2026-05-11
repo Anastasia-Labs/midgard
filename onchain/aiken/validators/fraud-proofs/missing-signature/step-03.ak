@@ -33,6 +33,7 @@ validator main(
         input_index,
         output_index,
         fraud_proof_mint_redeemer_index,
+        missing_required_signer_vkey,
         signature_exclusion_proof,
         non_membership_proof_script_redeemer_index,
       }) -> {
@@ -67,11 +68,16 @@ validator main(
           verified_addr_tx_wits,
         }) = m_input_state_data
 
-        // 2. Required signer must not be in addr_tx_wits
+        // 2. The provided verificaiton key must correspond correctly to the
+        //    required signer vkey hash passed down from the previous step.
+        expect
+          utils.get_verification_key_hash(missing_required_signer_vkey) == missing_required_signer_hash
+
+        // 3. Required signer's verification key must not be in addr_tx_wits.
         expect
           utils.plutarch_pexcludes(
             merkle_root: verified_addr_tx_wits,
-            key: missing_required_signer_hash,
+            key: missing_required_signer_vkey,
             non_membership_proof: signature_exclusion_proof,
             redeemers: redeemers,
             withdraw_redeemer_index: non_membership_proof_script_redeemer_index,

@@ -420,14 +420,22 @@ pub fn authenticate_input_output_and_get_output_datum_data(
   output_datum_data
 }
 
-// Verify a 32-byte hash (Blake2b-256)
-pub fn verify_hash_32(data: Data, data_hash: H32<Data>) -> Bool {
-  blake2b_256(cbor.serialise(data)) == data_hash
+pub fn serialise_and_hash_28(data: Data) -> H28<Data> {
+  data |> cbor.serialise |> blake2b_224
+}
+
+pub fn serialise_and_hash_32(data: Data) -> H32<Data> {
+  data |> cbor.serialise |> blake2b_256
 }
 
 // Verify a 28-byte hash (Blake2b-224)
 pub fn verify_hash_28(data: Data, data_hash: H28<Data>) -> Bool {
-  blake2b_224(cbor.serialise(data)) == data_hash
+  serialise_and_hash_28(data) == data_hash
+}
+
+// Verify a 32-byte hash (Blake2b-256)
+pub fn verify_hash_32(data: Data, data_hash: H32<Data>) -> Bool {
+  serialise_and_hash_32(data) == data_hash
 }
 
 /// Given a value, an NFT, and a `ValuePairs` (structured identical to `Value`,

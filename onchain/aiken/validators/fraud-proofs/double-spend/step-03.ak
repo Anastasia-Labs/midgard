@@ -2,7 +2,7 @@ use aiken/crypto.{ScriptHash}
 use cardano/address.{Address}
 use cardano/assets.{PolicyId}
 use cardano/transaction.{OutputReference, Transaction}
-use midgard/common/utils.{plutarch_phas}
+use midgard/common/utils.{verify_hash_32}
 use midgard/computation_thread as ct
 use midgard/fraud_proofs/common.{cancel, finalize}
 use midgard/fraud_proofs/double_spend/step_03.{
@@ -33,9 +33,9 @@ validator main(
       ct.Continue(Args {
         input_index,
         output_index,
-        input_membership_proof,
         fraud_proof_mint_redeemer_index,
-        inclusion_proof_script_withdraw_redeemer_index,
+        tx2_inputs_preimage,
+        double_spent_input_index,
       }) -> {
         let Transaction { inputs, outputs, redeemers, .. } = tx
 
@@ -63,22 +63,17 @@ validator main(
 
         expect Some(input_state) = m_input_state_data
 
-        let State {
-          verified_tx2_inputs_root,
-          double_spent_input_key,
-          double_spent_input_value,
-        } = input_state
+        let State { verified_tx2_inputs_hash, double_spent_input_outref } =
+          input_state
 
-        // 1. Provided input must be a member of the second transaction's
-        //    inputs.
+        // 1. Provided inputs preimage for tx2 must be valid.
+        expect tx2_inputs_preimage |> verify_hash_32(verified_tx2_inputs_hash)
+
+        // 2. The provided index must correspond to an input in the given list
+        //    such that it matches the outref carried over from previous step.
         expect
-          plutarch_phas(
-            merkle_root: verified_tx2_inputs_root,
-            key: double_spent_input_key,
-            value: double_spent_input_value,
-            membership_proof: input_membership_proof,
-            redeemers: redeemers,
-            withdraw_redeemer_index: inclusion_proof_script_withdraw_redeemer_index,
+          double_spent_input_outref == (
+            tx2_inputs_preimage |> list.expect_at(double_spent_input_index)
           )
 
         // Done.
