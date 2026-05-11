@@ -26,17 +26,18 @@ pub fn set_tx_validity_and_get_compact_info(
 ) -> result {
   let Pair(_tx_order_event_id, tx_order_event_tx_data) =
     ledger_state.unsafe_event_to_key_value_pair(tx_order_event_data)
-  expect ledger_state.MidgardTx { body_compact, wits_compact, .. } =
-    tx_order_event_tx_data
-  let tx_body_hash =
-    body_compact |> ledger_state.midgard_compact_tx_body_to_id()
+
+  expect tx_order_event_tx: ledger_state.MidgardTx = tx_order_event_tx_data
+
+  let ledger_state.MidgardTxCompact { body: tx_id, .. } as init_compact_tx =
+    tx_order_event_tx |> ledger_state.midgard_tx_to_compact
+
   let overridden_tx_order_compact_tx =
     ledger_state.MidgardTxCompact {
-      body: tx_body_hash,
-      wits: wits_compact |> ledger_state.hash_compact_midgard_tx_wits(),
+      ..init_compact_tx,
       validity: validity_override,
     }
-  return(tx_body_hash, overridden_tx_order_compact_tx)
+  return(tx_id, overridden_tx_order_compact_tx)
 }
 
 pub fn get_datum(

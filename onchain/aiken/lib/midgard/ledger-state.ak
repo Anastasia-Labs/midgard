@@ -280,6 +280,10 @@ pub fn midgard_tx_to_compact(tx: MidgardTx) -> MidgardTxCompact {
   }
 }
 
+pub fn midgard_full_tx_to_id(tx: MidgardTx) -> MidgardTxId {
+  tx.body |> midgard_tx_body_to_compact |> utils.serialise_and_hash_32
+}
+
 // ### Transaction body
 
 /// TODO
