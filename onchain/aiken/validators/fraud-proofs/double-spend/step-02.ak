@@ -1,17 +1,15 @@
 use aiken/crypto.{ScriptHash}
 use cardano/assets.{PolicyId}
 use cardano/transaction.{OutputReference, Transaction}
-use midgard/common/utils.{verify_hash_32}
 use midgard/computation_thread as ct
-use midgard/fraud_proofs/common.{cancel, continue}
-use midgard/fraud_proofs/double_spend/step_02.{
-  Args, Datum, SpendRedeemer, State,
-}
+use midgard/fraud_proofs/common.{TxBodyProvided, cancel, pass_tx_to_next_step}
+use midgard/fraud_proofs/double_spend/step_02.{Datum, SpendRedeemer, State}
 use midgard/fraud_proofs/double_spend/step_03
 
 validator main(
   step_03_validator_script_hash: ScriptHash,
   computation_thread_token_policy_id: PolicyId,
+  hub_oracle: ScriptHash,
 ) {
   spend(
     datum: Option<Datum>,
@@ -29,17 +27,9 @@ validator main(
           computation_thread_mint_redeemer_index,
           tx,
         )
-      ct.Continue(Args {
-        input_index,
-        output_index,
-        tx1_inputs_preimage,
-        double_spent_input_index,
-      }) -> {
-        let Transaction { inputs, outputs, redeemers, .. } = tx
-
-        expect Some(step_datum) = datum
-
-        // 1. Specified input must be authentic and properly reproduced.
+      ct.Continue(tx_inclusion_args) -> {
+        // 1. Generic validations for passing the provided bad tx to the next
+        //    step must pass.
         let
           _own_script_hash,
           _computation_thread_token_asset_name,
@@ -47,34 +37,36 @@ validator main(
           m_input_state_data,
           output_script_hash,
           output_state_data,
+          _header,
+          tx2_id,
+          _tx2,
+          tx2_field_preimage,
         <-
-          continue(
+          pass_tx_to_next_step(
             computation_thread_token_policy_id,
-            step_datum,
-            input_index,
-            output_index,
+            hub_oracle,
+            datum,
+            tx_inclusion_args,
             own_out_ref,
-            inputs,
-            outputs,
+            tx,
           )
 
-        expect Some(State { verified_tx1_inputs_hash, verified_tx2_inputs_hash }) =
+        // 2. Second bad transaction's body must be provided.
+        expect TxBodyProvided(tx2_body) = tx2_field_preimage
+
+        expect Some(State { verified_tx1_id, verified_tx1_inputs_hash }) =
           m_input_state_data
 
-        // 2. Provided inputs preimage for tx1 must be valid.
-        expect tx1_inputs_preimage |> verify_hash_32(verified_tx1_inputs_hash)
+        // 3. The two transactions must be different.
+        expect verified_tx1_id != tx2_id
 
-        // 3. The provided index must correspond to an input in the given list.
-        let tx1_double_spent_input =
-          tx1_inputs_preimage |> list.expect_at(double_spent_input_index)
-
-        // 4. The fetched input, along with the unused second transaction must
-        //    be carried over in the datum of the next step.
+        // 4. The UTxO must be produced at next step's script hash with both
+        //    verified bad transactions' inputs hashes in its datum.
         expect output_script_hash == step_03_validator_script_hash
         let expected_output_state: Data =
           step_03.State {
-            verified_tx2_inputs_hash,
-            double_spent_input_outref: tx1_double_spent_input,
+            verified_tx1_inputs_hash,
+            verified_tx2_inputs_hash: tx2_body.spend_inputs,
           }
         expect output_state_data == expected_output_state
 
