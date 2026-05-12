@@ -24,14 +24,12 @@ import { formatUnknownError } from "@/error-format.js";
 import { slotToUnixTimeForLucid } from "@/lucid-time.js";
 import {
   availableOperatorWalletUtxos,
+  extractInputOutRefsFromTx,
   fetchOperatorWalletView,
   noteConsumedOperatorWalletInputs,
   type OperatorWalletView,
 } from "@/operator-wallet-view.js";
-import {
-  compareOutRefs,
-  outRefLabel,
-} from "@/tx-context.js";
+import { compareOutRefs, outRefLabel } from "@/tx-context.js";
 import { alignUnixTimeToSlotBoundary } from "@/workers/utils/commit-end-time.js";
 import {
   fetchReferenceScriptUtxosProgram,
@@ -452,9 +450,9 @@ export const resolveReferenceInputIndexFromLedgerOrder = (
   referenceInputs: readonly UTxO[],
 ): bigint => {
   const targetLabel = outRefLabel(target);
-  const resolvedIndex = [...referenceInputs].sort(compareOutRefs).findIndex(
-    (candidate) => outRefLabel(candidate) === targetLabel,
-  );
+  const resolvedIndex = [...referenceInputs]
+    .sort(compareOutRefs)
+    .findIndex((candidate) => outRefLabel(candidate) === targetLabel);
   if (resolvedIndex < 0) {
     throw new Error(
       `Reference input ${targetLabel} missing from refresh witness set`,
@@ -468,11 +466,13 @@ const resolveInputIndexFromLedgerOrder = (
   inputs: readonly UTxO[],
 ): bigint => {
   const targetLabel = outRefLabel(target);
-  const resolvedIndex = [...inputs].sort(compareOutRefs).findIndex(
-    (candidate) => outRefLabel(candidate) === targetLabel,
-  );
+  const resolvedIndex = [...inputs]
+    .sort(compareOutRefs)
+    .findIndex((candidate) => outRefLabel(candidate) === targetLabel);
   if (resolvedIndex < 0) {
-    throw new Error(`Input ${targetLabel} missing from scheduler refresh input set`);
+    throw new Error(
+      `Input ${targetLabel} missing from scheduler refresh input set`,
+    );
   }
   return BigInt(resolvedIndex);
 };
@@ -772,8 +772,9 @@ const ensureSchedulerAlignedForCommit = (
       operatorKeyHash,
       refreshedSchedulerStartTime,
     );
-    const refreshedSchedulerDatumCbor =
-      encodeSchedulerDatumForChain(refreshedSchedulerDatum);
+    const refreshedSchedulerDatumCbor = encodeSchedulerDatumForChain(
+      refreshedSchedulerDatum,
+    );
     const witnessReferenceInputs =
       selection.kind === "Advance"
         ? [selection.activeNode.utxo]
@@ -832,7 +833,7 @@ const ensureSchedulerAlignedForCommit = (
                   resolveReferenceInputIndexFromLedgerOrder(
                     selection.activeNode.utxo,
                     referenceInputs,
-                ),
+                  ),
               },
             },
           }
@@ -855,29 +856,29 @@ const ensureSchedulerAlignedForCommit = (
                 },
               },
             }
-        : {
-            scheduler_input_index: schedulerInputIndex,
-            scheduler_output_index: 0n,
-            advancing_approach: {
-              RewindDueToEndOfShift: {
-                active_operators_root_ref_input_index:
-                  resolveReferenceInputIndexFromLedgerOrder(
-                    selection.activeRootNode.utxo,
-                    referenceInputs,
-                  ),
-                active_operators_last_node_ref_input_index:
-                  resolveReferenceInputIndexFromLedgerOrder(
-                    selection.activeNode.utxo,
-                    referenceInputs,
-                  ),
-                registered_element_ref_input_index:
-                  resolveReferenceInputIndexFromLedgerOrder(
-                    selection.registeredWitnessNode.utxo,
-                    referenceInputs,
-                  ),
+          : {
+              scheduler_input_index: schedulerInputIndex,
+              scheduler_output_index: 0n,
+              advancing_approach: {
+                RewindDueToEndOfShift: {
+                  active_operators_root_ref_input_index:
+                    resolveReferenceInputIndexFromLedgerOrder(
+                      selection.activeRootNode.utxo,
+                      referenceInputs,
+                    ),
+                  active_operators_last_node_ref_input_index:
+                    resolveReferenceInputIndexFromLedgerOrder(
+                      selection.activeNode.utxo,
+                      referenceInputs,
+                    ),
+                  registered_element_ref_input_index:
+                    resolveReferenceInputIndexFromLedgerOrder(
+                      selection.registeredWitnessNode.utxo,
+                      referenceInputs,
+                    ),
+                },
               },
-            },
-          };
+            };
     yield* Effect.logInfo(
       `🔹 Refreshing scheduler witness datum for commit window via ${selection.kind} (from=${describeSchedulerDatum(schedulerDatum)} to=${describeSchedulerDatum(refreshedSchedulerDatum)}, validFrom=${validFrom.toString()}, validTo=${validTo.toString()}).`,
     );
@@ -910,11 +911,19 @@ const ensureSchedulerAlignedForCommit = (
         .addSignerKey(operatorKeyHash);
     const mkSchedulerRefreshTxWithScript = () =>
       schedulerSpendingScriptRef === undefined
-        ? mkSchedulerRefreshTx().attach.Script(contracts.scheduler.spendingScript)
+        ? mkSchedulerRefreshTx().attach.Script(
+            contracts.scheduler.spendingScript,
+          )
         : mkSchedulerRefreshTx();
 
     const refreshTx = yield* Effect.tryPromise({
-      try: () => mkSchedulerRefreshTxWithScript().complete({ localUPLCEval: true }),
+      try: () =>
+        mkSchedulerRefreshTxWithScript().complete({
+          localUPLCEval: true,
+          presetWalletInputs: [
+            ...availableOperatorWalletUtxos(flowOperatorWalletView),
+          ],
+        }),
       catch: (cause) =>
         new SDK.StateQueueError({
           message: `Failed to build scheduler refresh tx: ${cause}`,
@@ -922,12 +931,20 @@ const ensureSchedulerAlignedForCommit = (
         }),
     });
 
-    const refreshTxHash = yield* handleSignSubmitNoConfirmation(lucid, refreshTx);
+    const refreshTxHash = yield* handleSignSubmitNoConfirmation(
+      lucid,
+      refreshTx,
+    );
     // The following block-commitment tx is persisted and submitted by another
-    // fiber. Do not fund it from the refresh tx's own change output.
+    // fiber. Mark every input the refresh tx consumed (the explicit fee input
+    // plus anything Lucid added while balancing) as locally consumed so the
+    // commit tx — built later in this same flow — does not reuse them as a fee
+    // or collateral input before the chain provider reflects the spend. The
+    // refresh tx's change output is intentionally NOT added back: it is not
+    // confirmed yet, so it must not fund the commit tx either.
     const refreshedOperatorWalletView = noteConsumedOperatorWalletInputs(
       flowOperatorWalletView,
-      [feeInput],
+      extractInputOutRefsFromTx(refreshTx.toTransaction()),
     );
     const refreshedAvailableWalletUtxos = availableOperatorWalletUtxos(
       refreshedOperatorWalletView,
@@ -1003,28 +1020,32 @@ export const fetchRealStateQueueWitnessContext = (
     const resolvedReferenceScripts =
       referenceScriptsAddress === undefined
         ? []
-        : yield* fetchReferenceScriptUtxosProgram(lucid, referenceScriptsAddress, [
-            {
-              name: "scheduler spending",
-              script: contracts.scheduler.spendingScript,
-            },
-            {
-              name: "scheduler minting",
-              script: contracts.scheduler.mintingScript,
-            },
-            {
-              name: "active-operators spending",
-              script: contracts.activeOperators.spendingScript,
-            },
-            {
-              name: "state-queue spending",
-              script: contracts.stateQueue.spendingScript,
-            },
-            {
-              name: "state-queue minting",
-              script: contracts.stateQueue.mintingScript,
-            },
-          ]);
+        : yield* fetchReferenceScriptUtxosProgram(
+            lucid,
+            referenceScriptsAddress,
+            [
+              {
+                name: "scheduler spending",
+                script: contracts.scheduler.spendingScript,
+              },
+              {
+                name: "scheduler minting",
+                script: contracts.scheduler.mintingScript,
+              },
+              {
+                name: "active-operators spending",
+                script: contracts.activeOperators.spendingScript,
+              },
+              {
+                name: "state-queue spending",
+                script: contracts.stateQueue.spendingScript,
+              },
+              {
+                name: "state-queue minting",
+                script: contracts.stateQueue.mintingScript,
+              },
+            ],
+          );
     const schedulerSpendingScriptRef =
       referenceScriptsAddress === undefined
         ? undefined
@@ -1043,63 +1064,63 @@ export const fetchRealStateQueueWitnessContext = (
     const stateQueueSpendingScriptRef =
       referenceScriptsAddress === undefined
         ? undefined
-        : referenceScriptByName(resolvedReferenceScripts, "state-queue spending");
+        : referenceScriptByName(
+            resolvedReferenceScripts,
+            "state-queue spending",
+          );
     const stateQueueMintingScriptRef =
       referenceScriptsAddress === undefined
         ? undefined
-        : referenceScriptByName(resolvedReferenceScripts, "state-queue minting");
+        : referenceScriptByName(
+            resolvedReferenceScripts,
+            "state-queue minting",
+          );
     const schedulerWitnessUnit = toUnit(
       contracts.scheduler.policyId,
       SDK.SCHEDULER_ASSET_NAME,
     );
-    const activeOperatorUtxosForRefresh = (
-      yield* SDK.utxosAtByNFTPolicyId(
+    const activeOperatorUtxosForRefresh = (yield* SDK.utxosAtByNFTPolicyId(
       lucid,
       contracts.activeOperators.spendingScriptAddress,
       contracts.activeOperators.policyId,
     ).pipe(
-        Effect.mapError(
-          (cause) =>
-            new SDK.StateQueueError({
-              message:
-                "Failed to fetch active-operators UTxOs for state_queue commit",
-              cause,
-            }),
-        ),
-      )
-    ).map((beacon) => beacon.utxo);
-    const registeredOperatorUtxos = (
-      yield* SDK.utxosAtByNFTPolicyId(
+      Effect.mapError(
+        (cause) =>
+          new SDK.StateQueueError({
+            message:
+              "Failed to fetch active-operators UTxOs for state_queue commit",
+            cause,
+          }),
+      ),
+    )).map((beacon) => beacon.utxo);
+    const registeredOperatorUtxos = (yield* SDK.utxosAtByNFTPolicyId(
       lucid,
       contracts.registeredOperators.spendingScriptAddress,
       contracts.registeredOperators.policyId,
     ).pipe(
-        Effect.mapError(
-          (cause) =>
-            new SDK.StateQueueError({
-              message:
-                "Failed to fetch registered-operators UTxOs for scheduler refresh",
-              cause,
-            }),
-        ),
-      )
-    ).map((beacon) => beacon.utxo);
+      Effect.mapError(
+        (cause) =>
+          new SDK.StateQueueError({
+            message:
+              "Failed to fetch registered-operators UTxOs for scheduler refresh",
+            cause,
+          }),
+      ),
+    )).map((beacon) => beacon.utxo);
 
-    const schedulerUtxos = (
-      yield* SDK.utxosAtByNFTPolicyId(
+    const schedulerUtxos = (yield* SDK.utxosAtByNFTPolicyId(
       lucid,
       contracts.scheduler.spendingScriptAddress,
       contracts.scheduler.policyId,
     ).pipe(
-        Effect.mapError(
-          (cause) =>
-            new SDK.StateQueueError({
-              message: "Failed to fetch scheduler UTxOs for state_queue commit",
-              cause,
-            }),
-        ),
-      )
-    ).map((beacon) => beacon.utxo);
+      Effect.mapError(
+        (cause) =>
+          new SDK.StateQueueError({
+            message: "Failed to fetch scheduler UTxOs for state_queue commit",
+            cause,
+          }),
+      ),
+    )).map((beacon) => beacon.utxo);
     const initialSchedulerRefInput = yield* ensureRealSchedulerWitnessUtxo(
       lucid,
       contracts,
@@ -1156,22 +1177,20 @@ export const fetchRealStateQueueWitnessContext = (
     }
     const hubOracleRefInput = hubOracleWitnessUtxos[0];
 
-    const activeOperatorUtxos = (
-      yield* SDK.utxosAtByNFTPolicyId(
+    const activeOperatorUtxos = (yield* SDK.utxosAtByNFTPolicyId(
       lucid,
       contracts.activeOperators.spendingScriptAddress,
       contracts.activeOperators.policyId,
     ).pipe(
-        Effect.mapError(
-          (cause) =>
-            new SDK.StateQueueError({
-              message:
-                "Failed to refresh active-operators UTxOs for state_queue commit",
-              cause,
-            }),
-        ),
-      )
-    ).map((beacon) => beacon.utxo);
+      Effect.mapError(
+        (cause) =>
+          new SDK.StateQueueError({
+            message:
+              "Failed to refresh active-operators UTxOs for state_queue commit",
+            cause,
+          }),
+      ),
+    )).map((beacon) => beacon.utxo);
     const activeOperatorInput = yield* selectActiveOperatorInput(
       activeOperatorUtxos,
       operatorKeyHash,

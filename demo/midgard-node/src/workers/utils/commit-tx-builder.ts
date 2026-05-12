@@ -80,20 +80,24 @@ const completeCommitTxForLayout = ({
   makeCommitTxForLayout,
   layout,
   label,
+  presetWalletInputs,
 }: {
   readonly makeCommitTxForLayout: (
     commitLayout: StateQueueCommitLayout,
   ) => TxBuilder;
   readonly layout: StateQueueCommitLayout;
   readonly label: CommitLayoutBuildLabel;
+  readonly presetWalletInputs: readonly UTxO[];
 }): Effect.Effect<TxSignBuilder, SDK.StateQueueError> => {
   const verb = label === "derived" ? "build" : "rebuild";
-  const layoutLabel = label === "derived" ? "derived layout" : "tx-derived layout";
+  const layoutLabel =
+    label === "derived" ? "derived layout" : "tx-derived layout";
+  const completeOptions = {
+    localUPLCEval: true,
+    presetWalletInputs: [...presetWalletInputs],
+  };
   return Effect.tryPromise({
-    try: () =>
-      makeCommitTxForLayout(layout).complete({
-        localUPLCEval: true,
-      }),
+    try: () => makeCommitTxForLayout(layout).complete(completeOptions),
     catch: (cause) =>
       new SDK.StateQueueError({
         message: `Failed to ${verb} block header commitment transaction with ${layoutLabel} (${formatLayout(
@@ -106,10 +110,7 @@ const completeCommitTxForLayout = ({
       Effect.gen(function* () {
         const localEvalDiagnostic = yield* Effect.either(
           Effect.tryPromise({
-            try: () =>
-              makeCommitTxForLayout(layout).complete({
-                localUPLCEval: true,
-              }),
+            try: () => makeCommitTxForLayout(layout).complete(completeOptions),
             catch: (cause) =>
               new SDK.StateQueueError({
                 message: `Local UPLC eval diagnostic failed for ${layoutLabel} (${formatLayout(
@@ -258,6 +259,7 @@ export const buildDeterministicCommitTxBuilder = ({
           () =>
             makeCommitTxForLayout(seedLayout).chain({
               localUPLCEval: true,
+              presetWalletInputs: [...feeInputCandidates],
             }),
         );
         const draftTx = draftSignBuilder.toTransaction();
@@ -326,6 +328,7 @@ export const buildDeterministicCommitTxBuilder = ({
       makeCommitTxForLayout,
       layout: stableCommitLayout,
       label: "derived",
+      presetWalletInputs: feeInputCandidates,
     });
     for (let iteration = 0; iteration < 2; iteration += 1) {
       const derivedSubmitLayout = deriveCommitLayoutFromDraftTx({
@@ -363,6 +366,7 @@ export const buildDeterministicCommitTxBuilder = ({
         makeCommitTxForLayout,
         layout: stableCommitLayout,
         label: "tx-derived",
+        presetWalletInputs: feeInputCandidates,
       });
     }
 

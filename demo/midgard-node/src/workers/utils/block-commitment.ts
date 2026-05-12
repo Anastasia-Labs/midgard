@@ -3,6 +3,7 @@ import * as SDK from "@al-ft/midgard-sdk";
 import {
   CML,
   Data as LucidData,
+  type LucidEvolution,
   coreToTxOutput,
   fromHex,
   toUnit,
@@ -27,7 +28,14 @@ import { breakDownTx } from "@/utils.js";
 import { fetchRealStateQueueWitnessContext } from "@/workers/utils/scheduler-refresh.js";
 import { buildDeterministicCommitTxBuilder } from "@/workers/utils/commit-tx-builder.js";
 import { resolveAlignedCommitEndTime } from "@/workers/utils/commit-end-time.js";
-import { extractWalletOutputsFromSubmittedTx } from "@/operator-wallet-view.js";
+import {
+  extractInputOutRefsFromTx,
+  extractWalletOutputsFromSubmittedTx,
+  fetchOperatorWalletView,
+  noteConsumedOperatorWalletInputs,
+  type OperatorWalletView,
+} from "@/operator-wallet-view.js";
+import type { OutRefLike } from "@/tx-context.js";
 
 export type WorkerInput = {
   data: {};
@@ -326,6 +334,68 @@ const getLatestEndTimeMs = (
         Effect.map((h) => Number(h.endTime)),
       );
 
+/**
+ * Builds the operator wallet view used for block-commit fee selection: the
+ * freshly fetched wallet UTxOs, minus any inputs already consumed by in-flight
+ * (built but not yet merged) block-commit transactions persisted in `BlocksDB`.
+ *
+ * Without this, a subsequent commit can re-select a fee input the previous
+ * commit already spent — the chain provider may not yet reflect that spend — and
+ * the resulting transaction is rejected on submission with `BadInputsUTxO` /
+ * `TranslationLogicMissingInput`, then resubmitted unchanged until the provider
+ * catches up.
+ */
+const buildOperatorWalletViewForCommit = (
+  lucid: LucidEvolution,
+): Effect.Effect<
+  OperatorWalletView,
+  SDK.LucidError | DatabaseError,
+  Database
+> =>
+  Effect.gen(function* () {
+    const baseView = yield* Effect.tryPromise({
+      try: () => fetchOperatorWalletView(lucid),
+      catch: (cause) =>
+        new SDK.LucidError({
+          message: "Failed to fetch operator wallet view for block commitment",
+          cause,
+        }),
+    });
+    // Only entries with a real commit tx body matter here. The genesis seed row
+    // (see `seedBlocksDBFromChain`) carries an empty `L1_CBOR` and no operator
+    // inputs, so it is skipped.
+    const inFlightBlocks = (yield* BlocksDB.retrieve).filter(
+      (blockEntry) => blockEntry[BlocksDB.Columns.L1_CBOR].length > 0,
+    );
+    if (inFlightBlocks.length === 0) {
+      return baseView;
+    }
+    const consumedOutRefs: OutRefLike[] = [];
+    for (const blockEntry of inFlightBlocks) {
+      const inputs = yield* Effect.try(() =>
+        extractInputOutRefsFromTx(
+          CML.Transaction.from_cbor_bytes(blockEntry[BlocksDB.Columns.L1_CBOR]),
+        ),
+      ).pipe(
+        Effect.catchAll((cause) =>
+          Effect.logWarning(
+            `🔹 Skipping in-flight block ${blockEntry[
+              BlocksDB.Columns.HEADER_HASH
+            ].toString(
+              "hex",
+            )} while seeding operator wallet view; could not parse its commit tx: ${String(cause)}`,
+          ).pipe(Effect.as<readonly OutRefLike[]>([])),
+        ),
+      );
+      consumedOutRefs.push(...inputs);
+    }
+    const view = noteConsumedOperatorWalletInputs(baseView, consumedOutRefs);
+    yield* Effect.logInfo(
+      `🔹 Operator wallet view seeded: known=${view.knownUtxos.length}, in_flight_blocks=${inFlightBlocks.length}, consumed_excluded=${view.consumedOutRefs.length}.`,
+    );
+    return view;
+  });
+
 export const buildNewBlockEntry = (
   entry: BlocksDB.Entry,
   utxosRoot: string,
@@ -343,9 +413,10 @@ export const buildNewBlockEntry = (
   | SDK.HashingError
   | SDK.LucidError
   | SDK.StateQueueError
+  | DatabaseError
   | TxSignError
   | TxSubmitError,
-  MidgardContracts | Lucid
+  MidgardContracts | Database | Lucid
 > =>
   Effect.gen(function* () {
     const appendedUTxO =
@@ -364,12 +435,15 @@ export const buildNewBlockEntry = (
       candidateEndTime: endDate.getTime(),
     });
 
+    const operatorWalletView =
+      yield* buildOperatorWalletViewForCommit(lucidAPI);
+
     yield* Effect.logInfo("🔹 Fetching real state_queue witness context...");
     const witnessContext = yield* fetchRealStateQueueWitnessContext(
       lucidAPI,
       contracts,
       alignedEndTime,
-      undefined,
+      operatorWalletView,
       lucidService.referenceScriptsAddress,
     );
 

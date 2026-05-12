@@ -4,7 +4,12 @@
  * merge, and lifecycle code can account for locally submitted transactions
  * without relying on a provider to reflect those spends immediately.
  */
-import { CML, coreToTxOutput, type LucidEvolution, type UTxO } from "@lucid-evolution/lucid";
+import {
+  CML,
+  coreToTxOutput,
+  type LucidEvolution,
+  type UTxO,
+} from "@lucid-evolution/lucid";
 import { dedupeByOutRef, outRefLabel, type OutRefLike } from "@/tx-context.js";
 
 export type OperatorWalletView = {
@@ -133,14 +138,11 @@ export const noteProducedOperatorWalletOutputs = (
 };
 
 /**
- * Applies the effects of a successfully submitted transaction to the wallet
- * overlay.
+ * Extracts the outrefs consumed by a transaction's body inputs.
  */
-export const applySubmittedTxToOperatorWalletView = (
-  view: OperatorWalletView,
+export const extractInputOutRefsFromTx = (
   tx: CML.Transaction,
-  txHash: string,
-): OperatorWalletView => {
+): readonly OutRefLike[] => {
   const txInputs = tx.body().inputs();
   const spentInputs: OutRefLike[] = [];
   for (let index = 0; index < txInputs.len(); index += 1) {
@@ -150,11 +152,22 @@ export const applySubmittedTxToOperatorWalletView = (
       outputIndex: Number(input.index()),
     });
   }
-  return noteProducedOperatorWalletOutputs(
-    noteConsumedOperatorWalletInputs(view, spentInputs),
+  return spentInputs;
+};
+
+/**
+ * Applies the effects of a successfully submitted transaction to the wallet
+ * overlay.
+ */
+export const applySubmittedTxToOperatorWalletView = (
+  view: OperatorWalletView,
+  tx: CML.Transaction,
+  txHash: string,
+): OperatorWalletView =>
+  noteProducedOperatorWalletOutputs(
+    noteConsumedOperatorWalletInputs(view, extractInputOutRefsFromTx(tx)),
     extractWalletOutputsFromSubmittedTx(tx, txHash, view.walletAddress),
   );
-};
 
 /**
  * Merges a freshly-fetched wallet view with a prior overlay that may already
@@ -190,24 +203,40 @@ export const reloadOperatorWalletView = async (
 ): Promise<OperatorWalletView> => fetchOperatorWalletView(lucid);
 
 /**
+ * Flattens an error and its `cause` chain into a single searchable string.
+ */
+const errorChainText = (value: unknown, depth = 0): string => {
+  if (value === undefined || value === null || depth > 8) {
+    return "";
+  }
+  const self =
+    typeof value === "string"
+      ? value
+      : value instanceof Error
+        ? `${value.name}: ${value.message}`
+        : (() => {
+            try {
+              return JSON.stringify(value);
+            } catch {
+              return String(value);
+            }
+          })();
+  const cause = (value as { readonly cause?: unknown }).cause;
+  return cause === undefined
+    ? self
+    : `${self} ${errorChainText(cause, depth + 1)}`;
+};
+
+/**
  * Heuristically detects errors that likely mean the local wallet overlay has
- * gone stale relative to the provider.
+ * gone stale relative to the provider — i.e. a transaction references a wallet
+ * input the chain no longer has (or never had). Walks the full `cause` chain so
+ * it still matches when the ledger error is wrapped several layers deep.
  */
 export const isPotentiallyStaleOperatorWalletViewError = (
   cause: unknown,
 ): boolean => {
-  const message =
-    cause instanceof Error
-      ? `${cause.name}: ${cause.message}`
-      : typeof cause === "string"
-        ? cause
-        : (() => {
-            try {
-              return JSON.stringify(cause);
-            } catch {
-              return String(cause);
-            }
-          })();
+  const message = errorChainText(cause);
   return STALE_OPERATOR_WALLET_VIEW_ERROR_PATTERNS.some((pattern) =>
     message.includes(pattern),
   );

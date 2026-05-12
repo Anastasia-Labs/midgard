@@ -18,6 +18,8 @@ import {
   PendingBlockFinalizationsDB,
 } from "@/database/index.js";
 import { batchProgram, breakDownTx, ProcessedTx } from "@/utils.js";
+import { formatUnknownError } from "@/error-format.js";
+import { isPotentiallyStaleOperatorWalletViewError } from "@/operator-wallet-view.js";
 
 // For database operations.
 const BATCH_SIZE = 100;
@@ -259,18 +261,43 @@ const submitEarliestBlock = Effect.gen(function* () {
           mempoolTxIds: [],
         });
         yield* Effect.logInfo("🔗 ✉️  Submitting block commitment...");
-        const txHash = yield* submitSignedTxCBOR(
-          blockEntry[BlocksDB.Columns.L1_CBOR],
+        const submissionResult = yield* Effect.either(
+          submitSignedTxCBOR(blockEntry[BlocksDB.Columns.L1_CBOR]),
         );
+        if (submissionResult._tag === "Left") {
+          const error = submissionResult.left;
+          if (
+            error instanceof TxSubmitError &&
+            isPotentiallyStaleOperatorWalletViewError(error)
+          ) {
+            // The pre-built commit tx references a wallet input the chain no
+            // longer has (e.g. a fee/collateral UTxO consumed by a sibling tx
+            // the provider hasn't reflected yet). Resubmitting the same bytes
+            // can never succeed, so drop the block: an unsubmitted block has no
+            // local state to roll back beyond its (idempotent) MempoolLedgerDB
+            // delta, and removing the row makes the commit worker rebuild it on
+            // top of the real chain tip with fresh inputs.
+            yield* PendingBlockFinalizationsDB.markAbandoned(headerHash).pipe(
+              Effect.catchAll(() => Effect.void),
+            );
+            yield* BlocksDB.deleteByBlocks([headerHash]);
+            yield* Ref.update(globals.BLOCKS_IN_QUEUE, (n) =>
+              Math.max(0, n - 1),
+            );
+            yield* Effect.logWarning(
+              `🔗 ⚠️  Discarding unsubmittable block ${headerHash.toString("hex")} (stale wallet input); it will be rebuilt: ${formatUnknownError(error)}`,
+            );
+            return;
+          }
+          return yield* Effect.fail(error);
+        }
+        const txHash = submissionResult.right;
         yield* Effect.logInfo(`🔗 🚀 Block commitment submitted: ${txHash}`);
         yield* PendingBlockFinalizationsDB.markSubmitted(
           headerHash,
           Buffer.from(txHash, "hex"),
         );
-        yield* Ref.set(
-          globals.UNCONFIRMED_SUBMITTED_BLOCK_TX_HASH,
-          txHash,
-        );
+        yield* Ref.set(globals.UNCONFIRMED_SUBMITTED_BLOCK_TX_HASH, txHash);
         yield* Ref.set(
           globals.UNCONFIRMED_SUBMITTED_BLOCK_SINCE_MS,
           Date.now(),
@@ -355,10 +382,7 @@ export const finalizeConfirmedBlock = (
             "Transfer of MempoolDB entries to ImmutableDB and BlocksTxsDB",
             (startIndex, endIndex) => {
               const txsBatch = txRequests.slice(startIndex, endIndex);
-              const txHashesBatch = mempoolTxHashes.slice(
-                startIndex,
-                endIndex,
-              );
+              const txHashesBatch = mempoolTxHashes.slice(startIndex, endIndex);
               return Effect.all(
                 [
                   MempoolDB.clearTxs(txHashesBatch),
@@ -401,11 +425,7 @@ export const finalizeConfirmedBlock = (
 
 export const blockSubmissionFiber = (
   schedule: Schedule.Schedule<number>,
-): Effect.Effect<
-  void,
-  never,
-  Database | Globals | Lucid
-> =>
+): Effect.Effect<void, never, Database | Globals | Lucid> =>
   Effect.gen(function* () {
     yield* Effect.logInfo("🔗 Block submission fiber started.");
     const action = submitEarliestBlock.pipe(
