@@ -7,7 +7,6 @@ use midgard/fraud_proofs/common.{
 }
 use midgard/fraud_proofs/missing_signature/step_01.{Datum, SpendRedeemer}
 use midgard/fraud_proofs/missing_signature/step_02
-use midgard/ledger_state.{MidgardTxWitnessSetCompact}
 
 validator main(
   step_02_validator_script_hash: ScriptHash,
@@ -59,13 +58,13 @@ validator main(
         expect TxBodyAndWitsProvided(bad_tx_body, bad_tx_wits) =
           bad_tx_field_preimage
 
-        // 3. The UTxO must be produced at next step's script hash with roots of
+        // 3. The UTxO must be produced at next step's script hash with hashes of
         //    required signers and address witness set.
         expect output_script_hash == step_02_validator_script_hash
         let expected_output_state: Data =
           step_02.State {
-            verified_required_signers_root: bad_tx_body.required_signer_hashes,
-            verified_addr_tx_wits: bad_tx_wits.addr_tx_wits,
+            verified_required_signers_hash: bad_tx_body.required_signer_hashes,
+            verified_addr_tx_wits_hash: bad_tx_wits.addr_tx_wits,
           }
         expect output_state_data == expected_output_state
 

@@ -1,16 +1,17 @@
-use aiken/crypto.{ScriptHash}
+use aiken/collection/pairs
+use cardano/address.{Address}
 use cardano/assets.{PolicyId}
 use cardano/transaction.{OutputReference, Transaction}
-use midgard/common/utils
+use midgard/common/utils.{verify_hash_32}
 use midgard/computation_thread as ct
-use midgard/fraud_proofs/common.{cancel, continue}
-use midgard/fraud_proofs/missing_signature/step_03.{
+use midgard/fraud_proofs/common.{cancel, finalize}
+use midgard/fraud_proofs/missing_signature/step_04.{
   Args, Datum, SpendRedeemer, State,
 }
-use midgard/fraud_proofs/missing_signature/step_04
 
 validator main(
-  step_04_validator_script_hash: ScriptHash,
+  fraud_proof_token_policy_id: PolicyId,
+  fraud_proof_token_address: Address,
   computation_thread_token_policy_id: PolicyId,
 ) {
   spend(
@@ -32,50 +33,48 @@ validator main(
       ct.Continue(Args {
         input_index,
         output_index,
-        missing_required_signer_vkey,
+        fraud_proof_mint_redeemer_index,
+        addr_tx_wits_preimage,
       }) -> {
-        let Transaction { inputs, outputs, .. } = tx
+        let Transaction { inputs, outputs, redeemers, .. } = tx
 
         expect Some(step_datum) = datum
 
-        // 1. Specified input must be authentic and properly reproduced.
+        // 1. Specified input must be authentic and properly reproduced at the
+        //    fraud proof's spending address.
         let
           _own_script_hash,
           _computation_thread_token_asset_name,
           _fraud_prover,
           m_input_state_data,
-          output_script_hash,
-          output_state_data,
         <-
-          continue(
+          finalize(
             computation_thread_token_policy_id,
+            fraud_proof_token_policy_id,
+            fraud_proof_token_address,
             step_datum,
             input_index,
             output_index,
+            fraud_proof_mint_redeemer_index,
             own_out_ref,
             inputs,
             outputs,
+            redeemers,
           )
 
         expect Some(State {
-          missing_required_signer_hash,
+          missing_required_signer_vkey,
           verified_addr_tx_wits_hash,
         }) = m_input_state_data
 
-        // 2. The provided verification key must correspond correctly to the
-        //    required signer hash passed down from the previous step.
-        expect
-          utils.get_verification_key_hash(missing_required_signer_vkey) == missing_required_signer_hash
+        // 2. Address witnesses preimage must match the hash carried from step 1.
+        expect addr_tx_wits_preimage |> verify_hash_32(verified_addr_tx_wits_hash)
 
-        // 3. The UTxO must be produced at next step's script hash with a proper
-        //    state.
-        expect output_script_hash == step_04_validator_script_hash
-        let expected_output_state: Data =
-          step_04.State {
-            missing_required_signer_vkey,
-            verified_addr_tx_wits_hash,
-          }
-        expect output_state_data == expected_output_state
+        // 3. Required signer's verification key must not be in addr_tx_wits.
+        let required_signature_is_present =
+          addr_tx_wits_preimage |> pairs.has_key(missing_required_signer_vkey)
+        expect
+          required_signature_is_present == False
 
         // Done.
         True

@@ -1,11 +1,10 @@
 use aiken/crypto.{VerificationKey, VerificationKeyHash}
-use midgard/common/types.{Proof}
 use midgard/computation_thread as ct
-use midgard/ledger_state.{AddressWitsRoot}
+use midgard/ledger_state.{AddressWitsHash}
 
 pub type State {
   missing_required_signer_hash: VerificationKeyHash,
-  verified_addr_tx_wits: AddressWitsRoot,
+  verified_addr_tx_wits_hash: AddressWitsHash,
 }
 
 pub type Datum =
@@ -14,10 +13,7 @@ pub type Datum =
 pub type Args {
   input_index: Int,
   output_index: Int,
-  fraud_proof_mint_redeemer_index: Int,
   missing_required_signer_vkey: VerificationKey,
-  signature_exclusion_proof: Proof,
-  non_membership_proof_script_redeemer_index: Int,
 }
 
 pub type SpendRedeemer =
