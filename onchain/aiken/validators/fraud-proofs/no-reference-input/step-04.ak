@@ -1,4 +1,3 @@
-use aiken/crypto.{ScriptHash}
 use cardano/address.{Address}
 use cardano/assets.{PolicyId}
 use cardano/transaction.{OutputReference, Transaction}
@@ -10,9 +9,9 @@ use midgard/fraud_proofs/no_reference_input/step_04.{
 }
 
 validator main(
-  computation_thread_token_policy_id: PolicyId,
-  fraud_proof_token_policy_id: ScriptHash,
+  fraud_proof_token_policy_id: PolicyId,
   fraud_proof_token_address: Address,
+  computation_thread_token_policy_id: PolicyId,
 ) {
   spend(
     datum: Option<Datum>,
@@ -41,6 +40,8 @@ validator main(
 
         expect Some(step_datum) = datum
 
+        // 1. Specified input must be authentic and properly reproduced at the
+        //    fraud proof's spending address.
         let
           _own_script_hash,
           _computation_thread_token_asset_name,
@@ -61,17 +62,17 @@ validator main(
             redeemers,
           )
 
-        expect Some(input_state) = m_input_state_data
+        expect Some(State {
+          missing_reference_input_tx_id,
+          blocks_transactions_root,
+        }) = m_input_state_data
 
-        let State { missing_ref_input_tx_id, blocks_transactions_root } =
-          input_state
-
-        // 1. The missing reference input must not have been produced in the
+        // 2. The missing reference input must not have been produced in the
         //    same block.
         expect
           utils.plutarch_pexcludes(
             merkle_root: blocks_transactions_root,
-            key: missing_ref_input_tx_id,
+            key: missing_reference_input_tx_id,
             non_membership_proof: non_membership_proof_in_txs,
             redeemers: redeemers,
             withdraw_redeemer_index: non_membership_proof_script_redeemer_index,

@@ -3,7 +3,7 @@ use midgard/computation_thread as ct
 use midgard/ledger_state.{MidgardTxId, MidgardTxsRoot}
 
 pub type State {
-  missing_ref_input_tx_id: MidgardTxId,
+  missing_reference_input_tx_id: MidgardTxId,
   blocks_transactions_root: MidgardTxsRoot,
 }
 

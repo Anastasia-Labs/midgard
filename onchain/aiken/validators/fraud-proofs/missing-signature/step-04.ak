@@ -68,13 +68,13 @@ validator main(
         }) = m_input_state_data
 
         // 2. Address witnesses preimage must match the hash carried from step 1.
-        expect addr_tx_wits_preimage |> verify_hash_32(verified_addr_tx_wits_hash)
+        expect
+          addr_tx_wits_preimage |> verify_hash_32(verified_addr_tx_wits_hash)
 
         // 3. Required signer's verification key must not be in addr_tx_wits.
         let required_signature_is_present =
           addr_tx_wits_preimage |> pairs.has_key(missing_required_signer_vkey)
-        expect
-          required_signature_is_present == False
+        expect required_signature_is_present == False
 
         // Done.
         True

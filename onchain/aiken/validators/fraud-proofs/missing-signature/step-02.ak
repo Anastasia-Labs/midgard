@@ -59,16 +59,18 @@ validator main(
             outputs,
           )
 
-        expect Some(
-          State { verified_required_signers_hash, verified_addr_tx_wits_hash },
-        ) = m_input_state_data
+        expect Some(State {
+          verified_required_signers_hash,
+          verified_addr_tx_wits_hash,
+        }) = m_input_state_data
 
         // 2. Fetch the required signer hash from the verified signer list.
         expect
           required_signers_preimage
             |> verify_hash_32(verified_required_signers_hash)
         let missing_required_signer_hash =
-          required_signers_preimage |> list.expect_at(bad_required_signer_hash_index)
+          required_signers_preimage
+            |> list.expect_at(bad_required_signer_hash_index)
 
         // 3. The required signer (whose signature is being proven missing),
         //    along with the verified address witness set must be passed to the
