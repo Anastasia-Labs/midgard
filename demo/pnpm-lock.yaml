@@ -20,6 +20,9 @@ importers:
       '@al-ft/midgard-core':
         specifier: workspace:*
         version: link:../midgard-core
+      '@al-ft/midgard-ts':
+        specifier: workspace:*
+        version: link:../midgard-ts
       '@al-ft/midgard-validation':
         specifier: workspace:*
         version: link:../midgard-validation

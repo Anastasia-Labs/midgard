@@ -46,6 +46,15 @@ import {
   readAssetNameDynamic,
 } from "./primitives";
 
+import {
+  VersionedScript,
+  VersionedScriptPartial,
+  writeVersionedScriptStatic,
+  writeVersionedScriptDynamic,
+  readVersionedScriptStatic,
+  readVersionedScriptDynamic,
+} from "./script";
+
 // ---------------------------------------------------------------------------
 // VKeyWitness  =  [vkey, signature]   (fully static, no dynamic)
 // cddl: codec.cddl:196 — referenced as nonempty_set<vkeywitness> in transaction_witness_set
@@ -383,7 +392,7 @@ export interface TransactionOutput {
   address: Uint8Array;
   value: Value;
   datum: Uint8Array | undefined;
-  script_ref: Uint8Array | undefined;
+  script_ref: VersionedScript | undefined;
 }
 
 export interface TransactionOutputPartial {
@@ -391,8 +400,7 @@ export interface TransactionOutputPartial {
   value: ValuePartial;
   datumPresent: boolean;
   datumLen: number;
-  scriptRefPresent: boolean;
-  scriptRefLen: number;
+  scriptRefPartial: VersionedScriptPartial | undefined;
 }
 
 // fuel: fuel-types/src/canonical.rs:101 — Serialize::encode_static
@@ -407,10 +415,10 @@ export function writeTransactionOutputStatic(w: Writer, o: TransactionOutput): v
   } else {
     writeU64(w, 0);
   }
-  // script_ref: Option<Vec<u8>>
+  // script_ref: Option<VersionedScript>
   if (o.script_ref !== undefined) {
     writeU64(w, 1);
-    writeVarBytesStatic(w, o.script_ref);
+    writeVersionedScriptStatic(w, o.script_ref);
   } else {
     writeU64(w, 0);
   }
@@ -422,7 +430,7 @@ export function writeTransactionOutputDynamic(w: Writer, o: TransactionOutput): 
   writeAddressDynamic(w, o.address);
   writeValueDynamic(w, o.value);
   if (o.datum !== undefined) writeVarBytesDynamic(w, o.datum);
-  if (o.script_ref !== undefined) writeVarBytesDynamic(w, o.script_ref);
+  if (o.script_ref !== undefined) writeVersionedScriptDynamic(w, o.script_ref);
 }
 
 // fuel: fuel-types/src/canonical.rs:167 — Deserialize::decode_static
@@ -433,14 +441,15 @@ export function readTransactionOutputStatic(r: Reader): TransactionOutputPartial
   const datumPresent = readU64(r) !== 0;
   const datumLen = datumPresent ? readVarBytesLen(r) : 0;
   const scriptRefPresent = readU64(r) !== 0;
-  const scriptRefLen = scriptRefPresent ? readVarBytesLen(r) : 0;
+  const scriptRefPartial = scriptRefPresent
+    ? readVersionedScriptStatic(r)
+    : undefined;
   return {
     addrLen,
     value,
     datumPresent,
     datumLen,
-    scriptRefPresent,
-    scriptRefLen,
+    scriptRefPartial,
   };
 }
 
@@ -453,9 +462,10 @@ export function readTransactionOutputDynamic(
   const address = readAddressDynamic(r, p.addrLen);
   const value = readValueDynamic(r, p.value);
   const datum = p.datumPresent ? readVarBytesDynamic(r, p.datumLen) : undefined;
-  const script_ref = p.scriptRefPresent
-    ? readVarBytesDynamic(r, p.scriptRefLen)
-    : undefined;
+  const script_ref =
+    p.scriptRefPartial !== undefined
+      ? readVersionedScriptDynamic(r, p.scriptRefPartial)
+      : undefined;
   return { address, value, datum, script_ref };
 }
 

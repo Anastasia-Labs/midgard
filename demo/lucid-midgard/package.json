@@ -18,7 +18,7 @@
   },
   "scripts": {
     "clean": "rimraf dist",
-    "prebuild": "pnpm --dir ../midgard-validation run build",
+    "prebuild": "pnpm --dir ../midgard-ts run build && pnpm --dir ../midgard-validation run build",
     "build": "tsup src/index.ts --format esm,cjs --dts --clean",
     "typecheck": "tsc --noEmit",
     "test": "vitest run"
@@ -33,6 +33,7 @@
   "license": "ISC",
   "dependencies": {
     "@al-ft/midgard-core": "workspace:*",
+    "@al-ft/midgard-ts": "workspace:*",
     "@al-ft/midgard-validation": "workspace:*",
     "@noble/hashes": "^2.0.1",
     "effect": "^3.14.22"

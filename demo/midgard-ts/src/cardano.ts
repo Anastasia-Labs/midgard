@@ -30,6 +30,8 @@ import {
   VKeyWitness,
 } from "./types/output";
 
+import { VersionedScript } from "./types/script";
+
 import { OutputReference } from "./types/primitives";
 
 // ===========================================================================
@@ -313,13 +315,44 @@ function cmlOutputToMidgard(out: CML.TransactionOutput): TransactionOutput {
     datum = datumOpt.as_datum()!.to_cbor_bytes();
   }
 
-  let script_ref: Uint8Array | undefined;
+  let script_ref: VersionedScript | undefined;
   const scriptRef = conway.script_reference();
   if (scriptRef !== undefined) {
-    script_ref = scriptRef.to_cbor_bytes();
+    script_ref = cmlScriptToVersioned(scriptRef);
   }
 
   return { address, value, datum, script_ref };
+}
+
+function cmlScriptToVersioned(
+  script: CML.Script,
+): VersionedScript {
+  const native = script.as_native();
+  if (native !== undefined) {
+    return { language: "NativeCardano", bytes: native.to_cbor_bytes() };
+  }
+  const pv3 = script.as_plutus_v3();
+  if (pv3 !== undefined) {
+    return { language: "PlutusV3", bytes: pv3.to_raw_bytes() };
+  }
+  throw new ConversionError(
+    "Only NativeCardano and PlutusV3 scripts are supported in Midgard",
+  );
+}
+
+function versionedToCmlScript(vs: VersionedScript): CML.Script {
+  switch (vs.language) {
+    case "NativeCardano":
+      return CML.Script.new_native(CML.NativeScript.from_cbor_bytes(vs.bytes));
+    case "PlutusV3":
+      return CML.Script.new_plutus_v3(
+        CML.PlutusV3Script.from_raw_bytes(vs.bytes),
+      );
+    case "MidgardV1":
+      throw new ConversionError(
+        "MidgardV1 scripts cannot be represented as a Cardano script",
+      );
+  }
 }
 
 function midgardOutputToCml(o: TransactionOutput): CML.TransactionOutput {
@@ -334,7 +367,7 @@ function midgardOutputToCml(o: TransactionOutput): CML.TransactionOutput {
   }
 
   if (o.script_ref !== undefined) {
-    conway.set_script_reference(CML.Script.from_cbor_bytes(o.script_ref));
+    conway.set_script_reference(versionedToCmlScript(o.script_ref));
   }
 
   return CML.TransactionOutput.new_conway_format_tx_out(conway);
@@ -448,31 +481,36 @@ function cmlWitnessSetToMidgard(
     }
   }
 
-  let native_scripts: Uint8Array[] | undefined;
-  const cmlNs = ws.native_scripts();
-  if (cmlNs !== undefined) {
-    native_scripts = [];
-    for (let i = 0; i < cmlNs.len(); i++) {
-      native_scripts.push(cmlNs.get(i).to_cbor_bytes());
-    }
-  }
-
   let redeemers: Uint8Array | undefined;
   const cmlRdm = ws.redeemers();
   if (cmlRdm !== undefined) {
     redeemers = cmlRdm.to_cbor_bytes();
   }
 
-  let plutus_v3_scripts: Uint8Array[] | undefined;
+  let scripts: VersionedScript[] | undefined;
+  const cmlNs = ws.native_scripts();
   const cmlPv3 = ws.plutus_v3_scripts();
-  if (cmlPv3 !== undefined) {
-    plutus_v3_scripts = [];
-    for (let i = 0; i < cmlPv3.len(); i++) {
-      plutus_v3_scripts.push(cmlPv3.get(i).to_cbor_bytes());
+  if (cmlNs !== undefined || cmlPv3 !== undefined) {
+    scripts = [];
+    if (cmlNs !== undefined) {
+      for (let i = 0; i < cmlNs.len(); i++) {
+        scripts.push({
+          language: "NativeCardano",
+          bytes: cmlNs.get(i).to_cbor_bytes(),
+        });
+      }
+    }
+    if (cmlPv3 !== undefined) {
+      for (let i = 0; i < cmlPv3.len(); i++) {
+        scripts.push({
+          language: "PlutusV3",
+          bytes: cmlPv3.get(i).to_raw_bytes(),
+        });
+      }
     }
   }
 
-  return { vkey_witnesses, native_scripts, redeemers, plutus_v3_scripts };
+  return { vkey_witnesses, scripts, redeemers };
 }
 
 function midgardWitnessSetToCml(
@@ -493,24 +531,29 @@ function midgardWitnessSetToCml(
     cmlWs.set_vkeywitnesses(list);
   }
 
-  if (ws.native_scripts !== undefined) {
-    const list = CML.NativeScriptList.new();
-    for (const ns of ws.native_scripts) {
-      list.add(CML.NativeScript.from_cbor_bytes(ns));
-    }
-    cmlWs.set_native_scripts(list);
-  }
-
   if (ws.redeemers !== undefined) {
     cmlWs.set_redeemers(CML.Redeemers.from_cbor_bytes(ws.redeemers));
   }
 
-  if (ws.plutus_v3_scripts !== undefined) {
-    const list = CML.PlutusV3ScriptList.new();
-    for (const s of ws.plutus_v3_scripts) {
-      list.add(CML.PlutusV3Script.from_cbor_bytes(s));
+  if (ws.scripts !== undefined) {
+    const natives = ws.scripts.filter((s) => s.language === "NativeCardano");
+    const plutusV3 = ws.scripts.filter((s) => s.language === "PlutusV3");
+    if (ws.scripts.some((s) => s.language === "MidgardV1")) {
+      throw new ConversionError(
+        "MidgardV1 witness scripts cannot be represented as a Cardano transaction",
+      );
     }
-    cmlWs.set_plutus_v3_scripts(list);
+    if (natives.length > 0) {
+      const list = CML.NativeScriptList.new();
+      for (const s of natives) list.add(CML.NativeScript.from_cbor_bytes(s.bytes));
+      cmlWs.set_native_scripts(list);
+    }
+    if (plutusV3.length > 0) {
+      const list = CML.PlutusV3ScriptList.new();
+      for (const s of plutusV3)
+        list.add(CML.PlutusV3Script.from_raw_bytes(s.bytes));
+      cmlWs.set_plutus_v3_scripts(list);
+    }
   }
 
   return cmlWs;

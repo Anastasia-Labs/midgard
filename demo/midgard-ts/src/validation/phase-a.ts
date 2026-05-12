@@ -125,8 +125,8 @@ function validateOne(
     return reject(txId, RejectCodes.UnsupportedFieldNonEmpty, "redeemers");
   }
   if (
-    tx.witness_set.plutus_v3_scripts !== undefined &&
-    tx.witness_set.plutus_v3_scripts.length > 0
+    tx.witness_set.scripts !== undefined &&
+    tx.witness_set.scripts.some((s) => s.language === "PlutusV3")
   ) {
     return reject(
       txId,
@@ -283,13 +283,14 @@ function validateOne(
 
   // R15 - native scripts present and valid
   const nativeScriptHashes: string[] = [];
-  if (tx.witness_set.native_scripts !== undefined) {
-    for (let i = 0; i < tx.witness_set.native_scripts.length; i++) {
+  const nativeScripts = (tx.witness_set.scripts ?? []).filter(
+    (s) => s.language === "NativeCardano",
+  );
+  {
+    for (let i = 0; i < nativeScripts.length; i++) {
       let script: CML.NativeScript;
       try {
-        script = CML.NativeScript.from_cbor_bytes(
-          tx.witness_set.native_scripts[i],
-        );
+        script = CML.NativeScript.from_cbor_bytes(nativeScripts[i].bytes);
       } catch (e) {
         return reject(
           txId,

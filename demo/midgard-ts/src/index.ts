@@ -4,6 +4,7 @@ export * from "./hash";
 
 // Types and codecs
 export * from "./types/primitives";
+export * from "./types/script";
 export * from "./types/output";
 export * from "./types/events";
 export * from "./types/transaction";

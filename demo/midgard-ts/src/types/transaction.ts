@@ -58,6 +58,14 @@ import {
   readTransactionOutputDynamic,
 } from "./output";
 
+import {
+  VersionedScript,
+  writeVersionedScriptVecStatic,
+  writeVersionedScriptVecDynamic,
+  readVersionedScriptVecStatic,
+  readVersionedScriptVecDynamic,
+} from "./script";
+
 // ===========================================================================
 // TransactionWitnessSet   (Full Representation)
 // cddl: codec.cddl:195 — transaction_witness_set = { ? 0: nonempty_set<vkeywitness>, ? 1: nonempty_set<native_script>, ? 5: redeemers, ? 7: nonempty_set<plutus_v3_script> }
@@ -74,20 +82,18 @@ import {
 // ===========================================================================
 
 export interface TransactionWitnessSet {
-  vkey_witnesses: VKeyWitness[] | undefined;
-  native_scripts: Uint8Array[] | undefined;
-  redeemers: Uint8Array | undefined;
-  plutus_v3_scripts: Uint8Array[] | undefined;
+  vkey_witnesses: VKeyWitness[] | undefined; // bit 0
+  scripts: VersionedScript[] | undefined; // bit 1 — language-tagged (NativeCardano / PlutusV3 / MidgardV1)
+  redeemers: Uint8Array | undefined; // bit 2 — raw redeemers CBOR
 }
 
-// Helper: compute the presence bitmask for all four optional fields.
+// Helper: compute the presence bitmask for the optional fields.
 // Midgard-specific design; Fuel uses fuel-tx/src/transaction/policies.rs (Policies bitmask) instead.
 function witnessMask(ws: TransactionWitnessSet): number {
   let m = 0;
   if (ws.vkey_witnesses !== undefined) m |= 1 << 0;
-  if (ws.native_scripts !== undefined) m |= 1 << 1;
+  if (ws.scripts !== undefined) m |= 1 << 1;
   if (ws.redeemers !== undefined) m |= 1 << 2;
-  if (ws.plutus_v3_scripts !== undefined) m |= 1 << 3;
   return m;
 }
 
@@ -110,23 +116,13 @@ function writeTransactionWitnessSetDynamic(
     writeU64(w, ws.vkey_witnesses.length);
     for (const ww of ws.vkey_witnesses) writeVKeyWitness(w, ww);
   }
-  if (ws.native_scripts !== undefined) {
-    writeU64(w, ws.native_scripts.length);
-    for (const s of ws.native_scripts) {
-      writeU64(w, s.length);
-      writeVarBytesDynamic(w, s);
-    }
+  if (ws.scripts !== undefined) {
+    writeVersionedScriptVecStatic(w, ws.scripts);
+    writeVersionedScriptVecDynamic(w, ws.scripts);
   }
   if (ws.redeemers !== undefined) {
     writeU64(w, ws.redeemers.length);
     writeVarBytesDynamic(w, ws.redeemers);
-  }
-  if (ws.plutus_v3_scripts !== undefined) {
-    writeU64(w, ws.plutus_v3_scripts.length);
-    for (const s of ws.plutus_v3_scripts) {
-      writeU64(w, s.length);
-      writeVarBytesDynamic(w, s);
-    }
   }
 }
 
@@ -143,9 +139,8 @@ function readTransactionWitnessSetDynamic(
   mask: number,
 ): TransactionWitnessSet {
   let vkey_witnesses: VKeyWitness[] | undefined;
-  let native_scripts: Uint8Array[] | undefined;
+  let scripts: VersionedScript[] | undefined;
   let redeemers: Uint8Array | undefined;
-  let plutus_v3_scripts: Uint8Array[] | undefined;
 
   if (mask & (1 << 0)) {
     const len = readU64(r);
@@ -153,26 +148,14 @@ function readTransactionWitnessSetDynamic(
     for (let i = 0; i < len; i++) vkey_witnesses.push(readVKeyWitness(r));
   }
   if (mask & (1 << 1)) {
-    const len = readU64(r);
-    native_scripts = [];
-    for (let i = 0; i < len; i++) {
-      const blen = readU64(r);
-      native_scripts.push(readVarBytesDynamic(r, blen));
-    }
+    const partials = readVersionedScriptVecStatic(r);
+    scripts = readVersionedScriptVecDynamic(r, partials);
   }
   if (mask & (1 << 2)) {
     const blen = readU64(r);
     redeemers = readVarBytesDynamic(r, blen);
   }
-  if (mask & (1 << 3)) {
-    const len = readU64(r);
-    plutus_v3_scripts = [];
-    for (let i = 0; i < len; i++) {
-      const blen = readU64(r);
-      plutus_v3_scripts.push(readVarBytesDynamic(r, blen));
-    }
-  }
-  return { vkey_witnesses, native_scripts, redeemers, plutus_v3_scripts };
+  return { vkey_witnesses, scripts, redeemers };
 }
 
 // ===========================================================================
@@ -186,9 +169,8 @@ function readTransactionWitnessSetDynamic(
 
 export interface TransactionWitnessSetCompact {
   vkey_witnesses_hash: Hash32 | undefined;
-  native_scripts_hash: Hash32 | undefined;
+  scripts_hash: Hash32 | undefined;
   redeemers_hash: Hash32 | undefined;
-  plutus_v3_scripts_hash: Hash32 | undefined;
 }
 
 // fuel: fuel-types/src/canonical.rs:101 — Serialize::encode_static (presence u64 + Hash32 per field)
@@ -203,9 +185,8 @@ function writeTransactionWitnessSetCompactStatic(
     } else writeU64(w, 0);
   };
   writeOpt(ws.vkey_witnesses_hash);
-  writeOpt(ws.native_scripts_hash);
+  writeOpt(ws.scripts_hash);
   writeOpt(ws.redeemers_hash);
-  writeOpt(ws.plutus_v3_scripts_hash);
 }
 
 // fuel: fuel-types/src/canonical.rs:167 — Deserialize::decode_static (presence u64, then Hash32 if present)
@@ -217,9 +198,8 @@ function readTransactionWitnessSetCompactStatic(
   };
   return {
     vkey_witnesses_hash: readOpt(),
-    native_scripts_hash: readOpt(),
+    scripts_hash: readOpt(),
     redeemers_hash: readOpt(),
-    plutus_v3_scripts_hash: readOpt(),
   };
 }
 

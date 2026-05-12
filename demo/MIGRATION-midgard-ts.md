@@ -28,7 +28,8 @@ Re-derive a per-session task list from the next unchecked items.
 | --- | --- |
 | `MidgardNativeTxFull { version, compact, body, witnessSet }` | `Transaction { body, witness_set, is_valid }` (no version byte) |
 | `MidgardNativeTxBodyFull` with `spendInputsRoot`+`spendInputsPreimageCbor`, `outputsRoot`+`outputsPreimageCbor`, `referenceInputsRoot`+`referenceInputsPreimageCbor`, `mintRoot`+`mintPreimageCbor`, `requiredSignersRoot`+`requiredSignersPreimageCbor`, `requiredObserversRoot`+`requiredObserversPreimageCbor`, `scriptIntegrityHash`, `auxiliaryDataHash`, `fee`, `validityIntervalStart`, `validityIntervalEnd`, `networkId` | `TransactionBody { inputs: OutputReference[], outputs: TransactionOutput[], fee, ttl?, auxiliary_data_hash?, validity_interval_start?, mint?: Mint, script_data_hash?, required_signers?: Hash28[], network_id?, reference_inputs?: OutputReference[], required_observers?: Hash28[] }` |
-| `MidgardNativeTxWitnessSetFull` with `addrTxWitsRoot`+`addrTxWitsPreimageCbor`, `scriptTxWitsRoot`+`scriptTxWitsPreimageCbor`, `redeemerTxWitsRoot`+`redeemerTxWitsPreimageCbor` | `TransactionWitnessSet { vkey_witnesses?: VKeyWitness[] (={vkey,signature} raw bytes), native_scripts?: Uint8Array[] (raw CBOR), redeemers?: Uint8Array (raw CBOR), plutus_v3_scripts?: Uint8Array[] (raw CBOR) }` |
+| `MidgardNativeTxWitnessSetFull` with `addrTxWitsRoot`+`addrTxWitsPreimageCbor`, `scriptTxWitsRoot`+`scriptTxWitsPreimageCbor`, `redeemerTxWitsRoot`+`redeemerTxWitsPreimageCbor` | `TransactionWitnessSet { vkey_witnesses?: VKeyWitness[] (={vkey,signature} raw bytes), scripts?: VersionedScript[] ({language: NativeCardano\|PlutusV3\|MidgardV1, bytes}), redeemers?: Uint8Array (raw CBOR) }` |
+| `MidgardVersionedScript { language, scriptBytes, nativeScript? }` (midgard-core) | `VersionedScript { language: "NativeCardano" \| "PlutusV3" \| "MidgardV1", bytes }` (midgard-ts `types/script.ts`) |
 | `MidgardNativeTxCompact { version, transactionBodyHash, transactionWitnessSetHash, validity }` | `TransactionCompact { transaction_body_hash, transaction_witness_set_hash, is_valid }` — derive via `deriveTransactionCompact(tx)` |
 | `MidgardNativeTxBodyCompact` (roots inline) | `TransactionBodyCompact { inputs_hash, outputs_hash, fee, ttl?, auxiliary_data_hash?, validity_interval_start?, mint_hash?, script_data_hash?, required_signers_hash?, network_id?, reference_inputs_hash?, required_observers_hash? }` — derive via `deriveTransactionBodyCompact(body)` |
 | `MidgardNativeTxWitnessSetCompact` | `TransactionWitnessSetCompact { vkey_witnesses_hash?, native_scripts_hash?, redeemers_hash?, plutus_v3_scripts_hash? }` — derive via `deriveTransactionWitnessSetCompact(ws)` |
@@ -55,7 +56,36 @@ Re-derive a per-session task list from the next unchecked items.
 | `computeHash32` (midgard-core, `Buffer`) | `computeHash32` (midgard-ts, `Uint8Array`) — same blake2b-256; wrap in `Buffer` where needed |
 | `MIDGARD_NATIVE_TX_VERSION` | re-exported as `1n` from `midgard-tx-codec`; the binary `Transaction` itself has no version field |
 
-### Open semantic gaps to resolve before/while doing Phase 4
+### ✅ RESOLVED — `MidgardV1` scripts now have a tagged representation in midgard-ts
+
+Chose **Option 1**: extended the midgard-ts codec spec with a language-tagged
+script type. New `midgard-ts/src/types/script.ts`:
+`VersionedScript { language: "NativeCardano" | "PlutusV3" | "MidgardV1", bytes }`
+— encoding: static = `language(u64)` + `bytes_len(u64)`; dynamic = `bytes + pad`.
+`NativeCardano` bytes = CML `NativeScript` CBOR; `PlutusV3`/`MidgardV1` bytes =
+raw flat-encoded script.
+
+Format changes (⚠️ this is a wire-format change to midgard-ts):
+- `TransactionOutput.script_ref`: `Uint8Array | undefined` → `VersionedScript | undefined`.
+- `TransactionWitnessSet`: dropped `native_scripts` (bit 1) + `plutus_v3_scripts`
+  (bit 3); replaced with a single `scripts: VersionedScript[] | undefined` (bit 1).
+  Bits now: 0 = `vkey_witnesses`, 1 = `scripts`, 2 = `redeemers`.
+- `TransactionWitnessSetCompact`: `vkey_witnesses_hash`, `scripts_hash`,
+  `redeemers_hash` (was `native_scripts_hash` + `plutus_v3_scripts_hash`).
+- `derived.ts` `deriveTransactionWitnessSetCompact`: `scripts_hash` =
+  `blake2b256(encodeVersionedScriptVec(ws.scripts))`.
+- `cardano.ts`: `cmlToMidgard` builds `scripts` from CML native + plutus-v3 lists
+  (tagged), and `script_ref` from `CML.Script` (native → `NativeScript` CBOR,
+  plutus-v3 → raw bytes; v1/v2 → `ConversionError`); `midgardToCml` splits
+  `scripts` back by tag and **throws** if any `MidgardV1` script is present
+  (can't represent a MidgardV1 script in a Cardano tx — by design).
+- `midgard-ts/src/validation/phase-a.ts` updated for the new shape.
+
+⚠️ **midgard-ts's own jest tests are now stale** (`tests/round-trip.test.ts`,
+`tests/cardano-roundtrip.test.ts` construct `native_scripts` / `plutus_v3_scripts`
+/ `script_ref: bytes`) — fix when porting them (Phase 6 / Phase 0 last item).
+
+### Other open semantic gaps to resolve before/while doing Phase 4
 
 - **Script references — language tags.** The old midgard-core codec models a
   ref script as `MidgardVersionedScript { language: "NativeCardano" | "PlutusV3"
@@ -102,9 +132,10 @@ Re-derive a per-session task list from the next unchecked items.
 - [x] `midgard-ts/src/hash.ts` (blake2b-256, `computeHash32`, `ensureHashMatch`, `bytesEqual`)
 - [x] `midgard-ts/src/derived.ts` (`deriveTransactionBodyCompact`, `deriveTransactionWitnessSetCompact`, `deriveTransactionCompact`, `transactionBodyHash`, `transactionWitnessSetHash`, `transactionId`)
 - [x] `midgard-ts/src/cardano.ts` += `cardanoTxBytesToMidgardTx` / `cardanoTxBytesToMidgardTxBytes`
-- [x] `midgard-ts/src/index.ts` re-exports `hash` / `derived` / `cardano`
+- [x] `midgard-ts/src/types/script.ts` — language-tagged `VersionedScript` (NativeCardano/PlutusV3/MidgardV1) + Vec helpers; wired into `TransactionOutput.script_ref` and `TransactionWitnessSet.scripts` (replaced `native_scripts`/`plutus_v3_scripts`); `derived.ts`, `cardano.ts`, `validation/phase-a.ts` updated
+- [x] `midgard-ts/src/index.ts` re-exports `hash` / `derived` / `cardano` / `types/script`
 - [x] `pnpm install` + `pnpm --dir midgard-ts build` clean
-- [ ] (later) port midgard-ts's jest tests to vitest, or wire `pnpm --dir midgard-ts test` into CI
+- [ ] fix midgard-ts's jest tests for the new `VersionedScript` shape (`tests/round-trip.test.ts`, `tests/cardano-roundtrip.test.ts` still use `native_scripts`/`plutus_v3_scripts`/`script_ref: bytes`); then port to vitest or wire `pnpm --dir midgard-ts test` into CI
 
 ### Phase 1 — midgard-node codec module  ✅ DONE
 - [x] `midgard-node/package.json` += `@al-ft/midgard-ts` dep; `prebuild`/`typecheck` build midgard-ts first
@@ -129,15 +160,19 @@ Re-derive a per-session task list from the next unchecked items.
 - [ ] `src/database/utils/ledger.ts` / `tx.ts` — column types unchanged (`BYTEA`/`TEXT`); just confirm callers
 - [ ] migration/checksum tooling (`db:migrate` / `db:checksum` / `db:verify`) — old rows are CBOR, new rows are binary; decide on a hard cutover vs. a versioned column / wipe-and-reindex
 
-### Phase 4 — lucid-midgard  (the unblocker; biggest item)
-- [ ] `src/codec/index.ts` (+ `codec/{native,output,cbor,hash,errors}.ts`) — repoint to `@al-ft/midgard-ts` + still-CBOR midgard-core helpers (mirror midgard-node's `midgard-tx-codec/index.ts`)
-- [ ] `src/core/output.ts` (539 ln) — `encode/decodeMidgardTxOutput` → midgard-ts `encode/decodeTransactionOutput`; write `assetsToMidgardValue(Assets): Value` and `midgardValueToAssets(Value): Assets` bridges; keep the higher-level `MidgardTxOutput` (`core/types.ts`) shape but back its codec with midgard-ts
-- [ ] `src/core/types.ts` — adjust `MidgardTxOutput` / `MidgardUtxo` as needed
-- [ ] `src/builder.ts` (**6,668 ln**) — assemble a midgard-ts `Transaction` (structured `inputs: OutputReference[]`, `outputs: TransactionOutput[]`, `mint: Mint`, `required_signers`/`required_observers` as `Hash28[]`, witnesses as `{vkey,signature}` + raw-CBOR script/redeemer bytes) instead of `MidgardNativeTxFull`; `CompleteTx`/`CompleteTx.tx` shape changes (`.body.spendInputsPreimageCbor` → `.body.inputs`); `to_cbor_bytes()`-equivalent → `encodeTransaction`; tx-id → `transactionId`. Do this incrementally: first the output/value/mint/input plumbing, then witness assembly, then final encode + hash.
+### Phase 4 — lucid-midgard  (the unblocker; biggest item)  — UNBLOCKED (Option 1 done); IN PROGRESS
+- [x] `lucid-midgard/package.json` — added `@al-ft/midgard-ts` dep + `pnpm --dir ../midgard-ts run build` in prebuild
+- [x] `src/core/output.ts` — `encode/decodeMidgardTxOutput` now go through midgard-ts `encode/decodeTransactionOutput`. Added bridges `coreValueToMidgardTsValue`/`midgardTsValueToCoreValue`, `coreScriptRefToMidgardTs`/`midgardTsScriptRefToCore` (the old `MidgardVersionedScript` language strings `"NativeCardano"|"PlutusV3"|"MidgardV1"` map 1:1 to midgard-ts `VersionedScript.language`; `scriptBytes`↔`bytes`; NativeCardano decode-side rebuilds `nativeScript` via `decodeMidgardNativeScript`), `coreOutputToMidgardTs`/`midgardTsOutputToCore`; local `encode/decodeCoreMidgardTxOutput` now delegate to midgard-ts. The higher-level `MidgardTxOutput` (`core/types.ts`) shape is unchanged. `lucid-midgard` builds.
+- [ ] **NOT done — `codec/index.ts` left as-is** on purpose (still re-exports `@al-ft/midgard-core/codec`, so `builder.ts`'s `materializeMidgardNativeTxFromCanonical` / `MidgardNativeTxFull` imports still resolve). Plan was to add midgard-ts imports directly in the files that need them, not blanket-re-export (avoids `computeHash32`/`Hash32`/`ensureHashMatch` collisions).
+- [ ] **`src/builder.ts` (6,668 ln) — the critical remaining piece.** Boundary-adapter approach (smallest diff): keep builder building `MidgardNativeTxFull` internally, but at the encoding boundary swap the wire format to midgard-ts binary:
+  - add `nativeFullToMidgardTs(tx: MidgardNativeTxFull): MidgardTsTransaction` — decode the preimage CBORs into structured arrays: `spendInputsPreimageCbor`/`referenceInputsPreimageCbor` → `CML.TransactionInput.from_cbor_bytes(b)` → `{tx_id, index}`; `outputsPreimageCbor` → each element is **already a midgard-ts `TransactionOutput` encoding** (because `encodeMidgardTxOutput` was migrated above) → `decodeTransactionOutput(b)`; `addrTxWitsPreimageCbor` → `CML.Vkeywitness.from_cbor_bytes(b)` → `{vkey, signature}`; `scriptTxWitsPreimageCbor` → list of `MidgardVersionedScript` CBOR (`decodeMidgardVersionedScript`) → `{language, bytes}` via `coreScriptRefToMidgardTs`; `mintPreimageCbor` → `decodeMidgardNativeMint` → midgard-ts `Mint`; `requiredSignersPreimageCbor`/`requiredObserversPreimageCbor` → list of Hash28; scalars: `fee`; `validity_interval_start = validityIntervalStart === -1n ? undefined : Number(...)`; **`ttl` ⟵ `validityIntervalEnd` (`=== -1n ? undefined : Number(...)`)** — confirm this mapping is right; `auxiliary_data_hash`/`script_data_hash` ⟵ `auxiliaryDataHash`/`scriptIntegrityHash` (treat the "empty" sentinels `EMPTY_NULL_ROOT` / `EMPTY_SCRIPT_INTEGRITY_HASH` as `undefined`); `network_id = networkId === 255n ? undefined : Number(...)`; `is_valid = compact.validity === "TxIsValid"` (⚠️ midgard-ts `is_valid` is a bool; the old `validity` enum has 6 codes — decide how non-`TxIsValid` maps, probably `is_valid=false` + the code lives elsewhere).
+  - add `midgardTsToNativeFull(tx: MidgardTsTransaction): MidgardNativeTxFull` — build a `MidgardNativeTxCanonical` from the midgard-ts tx (re-encode the preimage CBORs: inputs/ref-inputs as CBOR-list-of-`CML.TransactionInput`-bytes, outputs as CBOR-list-of-`encodeTransactionOutput`-bytes, vkey-wits as CBOR-list-of-`CML.Vkeywitness`-bytes, scripts as CBOR-list-of-`encodeMidgardVersionedScript`-bytes, mint via `encodeMidgardNativeMint`, signers/observers as CBOR lists; scalars back; `validityIntervalEnd ⟵ ttl ?? -1n`, etc.), then `materializeMidgardNativeTxFromCanonical(canonical)`.
+  - replace `encodeMidgardNativeTxFull(x)` (~12 sites) → `Buffer.from(encodeTransaction(nativeFullToMidgardTs(x)))`; `computeMidgardNativeTxIdFromFull(x)` (~6 sites) → `Buffer.from(transactionId(nativeFullToMidgardTs(x)))`; `decodeMidgardNativeTxFull(bytes)` (~4 sites incl. `get tx()`) → `midgardTsToNativeFull(decodeTransaction(bytes))`.
+  - keep `verifyMidgardNativeTxFullConsistency` / `deriveMidgardNativeTxCompact` / `materializeMidgardNativeTxFromCanonical` working on the internal old model — no change.
 - [ ] `src/provider.ts` (1,016 ln) — wherever it decodes/encodes Midgard txs/outputs
 - [ ] `src/wallet.ts` (274 ln) — signing produces `{vkey, signature}` raw-byte witnesses
-- [ ] `lucid-midgard/package.json` — add `@al-ft/midgard-ts`; build it in prebuild
 - [ ] update lucid-midgard's own tests
+- [ ] ⚠️ **incoherent intermediate state right now**: midgard-node's `breakDownTx` / `utils.ts` decode tx bytes via `decodeTransaction` (midgard-ts binary), but `lucid-midgard/builder.ts` still emits CBOR `MidgardNativeTxFull` bytes from `encodeMidgardNativeTxFull`. End-to-end submit/commit will NOT work until the builder.ts boundary swap above lands. (Output bytes *are* already consistent — both sides use midgard-ts `encode/decodeTransactionOutput`.)
 
 ### Phase 5 — midgard-validation
 - [ ] Decide: **(a)** rewrite `phase-a.ts` (689) / `phase-b.ts` (**1,298**) / `script-context.ts` (290) / `midgard-redeemers.ts` (209) / `midgard-output.ts` / `types.ts` / `ledger.ts` to operate on midgard-ts `Transaction`, **or (b)** adopt `@al-ft/midgard-ts/validation` (already has phase-A/phase-B + reject codes against the new types) and delete the bespoke modules, re-exposing the same public surface midgard-node imports (`@/validation/*`)

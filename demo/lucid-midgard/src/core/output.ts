@@ -3,9 +3,7 @@ import {
   MIDGARD_PROTECTED_ADDRESS_HEADER_MASK,
   decodeMidgardAddressBytes,
   decodeMidgardNativeScript,
-  decodeMidgardTxOutput as decodeCoreMidgardTxOutput,
   encodeMidgardAddressText,
-  encodeMidgardTxOutput as encodeCoreMidgardTxOutput,
   isProtectedMidgardAddress,
   midgardAddressFromText,
   protectMidgardAddress,
@@ -14,6 +12,13 @@ import {
   type MidgardValue as CoreMidgardValue,
   type MidgardVersionedScript,
 } from "@al-ft/midgard-core/codec";
+import {
+  decodeTransactionOutput as decodeMidgardTsOutput,
+  encodeTransactionOutput as encodeMidgardTsOutput,
+  type TransactionOutput as MidgardTsTxOutput,
+  type Value as MidgardTsValue,
+  type VersionedScript as MidgardTsVersionedScript,
+} from "@al-ft/midgard-ts";
 import {
   assertNonNegativeAssets,
   cmlValueToAssets,
@@ -337,6 +342,90 @@ const publicOutputFromCore = (
     ? {}
     : { scriptRef: midgardScriptFromCore(output.script_ref) }),
 });
+
+// --- Bridge: midgard-core `MidgardTxOutput` (CBOR model) <-> midgard-ts binary `TransactionOutput` ---
+
+const coreValueToMidgardTsValue = (v: CoreMidgardValue): MidgardTsValue => {
+  if (v.assets.size === 0) {
+    return { type: "Coin", coin: v.lovelace };
+  }
+  const assets: Array<[Uint8Array, Array<[Uint8Array, bigint]>]> = [];
+  for (const [policyHex, names] of v.assets.entries()) {
+    const entries: Array<[Uint8Array, bigint]> = [];
+    for (const [nameHex, amount] of names.entries()) {
+      entries.push([Buffer.from(nameHex, "hex"), amount]);
+    }
+    assets.push([Buffer.from(policyHex, "hex"), entries]);
+  }
+  return { type: "MultiAsset", coin: v.lovelace, assets };
+};
+
+const midgardTsValueToCoreValue = (v: MidgardTsValue): CoreMidgardValue => {
+  if (v.type === "Coin") {
+    return { lovelace: v.coin, assets: new Map() };
+  }
+  const assets = new Map<string, Map<string, bigint>>();
+  for (const [policyId, entries] of v.assets) {
+    const names = new Map<string, bigint>();
+    for (const [name, amount] of entries) {
+      names.set(Buffer.from(name).toString("hex"), amount);
+    }
+    assets.set(Buffer.from(policyId).toString("hex"), names);
+  }
+  return { lovelace: v.coin, assets };
+};
+
+const coreScriptRefToMidgardTs = (
+  s: MidgardVersionedScript,
+): MidgardTsVersionedScript => ({
+  language: s.language,
+  bytes: Buffer.from(s.scriptBytes),
+});
+
+const midgardTsScriptRefToCore = (
+  s: MidgardTsVersionedScript,
+): MidgardVersionedScript => {
+  if (s.language === "NativeCardano") {
+    const decoded = decodeMidgardNativeScript(s.bytes);
+    return {
+      language: "NativeCardano",
+      scriptBytes: decoded.cbor,
+      nativeScript: decoded.script,
+    };
+  }
+  return { language: s.language, scriptBytes: Buffer.from(s.bytes) };
+};
+
+const coreOutputToMidgardTs = (
+  output: CoreMidgardTxOutput,
+): MidgardTsTxOutput => ({
+  address: Buffer.from(output.address),
+  value: coreValueToMidgardTsValue(output.value),
+  datum: output.datum === undefined ? undefined : Buffer.from(output.datum.cbor),
+  script_ref:
+    output.script_ref === undefined
+      ? undefined
+      : coreScriptRefToMidgardTs(output.script_ref),
+});
+
+const midgardTsOutputToCore = (
+  output: MidgardTsTxOutput,
+): CoreMidgardTxOutput => ({
+  address: Buffer.from(output.address),
+  value: midgardTsValueToCoreValue(output.value),
+  ...(output.datum === undefined
+    ? {}
+    : { datum: { kind: "inline" as const, cbor: Buffer.from(output.datum) } }),
+  ...(output.script_ref === undefined
+    ? {}
+    : { script_ref: midgardTsScriptRefToCore(output.script_ref) }),
+});
+
+const encodeCoreMidgardTxOutput = (output: CoreMidgardTxOutput): Buffer =>
+  Buffer.from(encodeMidgardTsOutput(coreOutputToMidgardTs(output)));
+
+const decodeCoreMidgardTxOutput = (bytes: Uint8Array): CoreMidgardTxOutput =>
+  midgardTsOutputToCore(decodeMidgardTsOutput(bytes));
 
 export const makeMidgardTxOutput = (
   address: Address | InstanceType<typeof CML.Address>,

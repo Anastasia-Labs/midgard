@@ -22,6 +22,7 @@ import {
   writeTransactionOutputStatic,
   writeTransactionOutputDynamic,
 } from "./types/output";
+import { encodeVersionedScriptVec } from "./types/script";
 import type {
   Transaction,
   TransactionBody,
@@ -80,17 +81,6 @@ function hashVKeyWitnessVec(ws: VKeyWitness[]): Hash32 {
   return computeHash32(w.toBytes());
 }
 
-// Vec<Vec<u8>> encoded inline as: len(u64) + for each (blen(u64) + bytes + pad)
-function hashBytesListInline(items: Uint8Array[]): Hash32 {
-  const w = new Writer();
-  writeU64(w, items.length);
-  for (const it of items) {
-    writeU64(w, it.length);
-    writeVarBytesDynamic(w, it);
-  }
-  return computeHash32(w.toBytes());
-}
-
 // Vec<u8> encoded inline as: blen(u64) + bytes + pad
 function hashBytesInline(bytes: Uint8Array): Hash32 {
   const w = new Writer();
@@ -135,16 +125,12 @@ export function deriveTransactionWitnessSetCompact(
       ws.vkey_witnesses !== undefined
         ? hashVKeyWitnessVec(ws.vkey_witnesses)
         : undefined,
-    native_scripts_hash:
-      ws.native_scripts !== undefined
-        ? hashBytesListInline(ws.native_scripts)
+    scripts_hash:
+      ws.scripts !== undefined
+        ? computeHash32(encodeVersionedScriptVec(ws.scripts))
         : undefined,
     redeemers_hash:
       ws.redeemers !== undefined ? hashBytesInline(ws.redeemers) : undefined,
-    plutus_v3_scripts_hash:
-      ws.plutus_v3_scripts !== undefined
-        ? hashBytesListInline(ws.plutus_v3_scripts)
-        : undefined,
   };
 }
 
