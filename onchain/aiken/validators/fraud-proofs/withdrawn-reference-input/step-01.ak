@@ -1,7 +1,7 @@
 //// ## Withdrawn Reference Input Fraud Proof (Section 5.1.16)
 ////
-//// Proves a given transaction refers to an input that was spent in a
-//// withdrawal event.
+//// Proves a given transaction refers to an input that was spent in a withdrawl
+//// event.
 
 use aiken/crypto.{ScriptHash}
 use cardano/assets.{PolicyId}
@@ -12,7 +12,6 @@ use midgard/fraud_proofs/withdrawn_reference_input/step_01.{
   Datum, SpendRedeemer,
 }
 use midgard/fraud_proofs/withdrawn_reference_input/step_02
-use midgard/ledger_state.{Header}
 
 validator main(
   step_02_validator_script_hash: ScriptHash,
@@ -63,13 +62,13 @@ validator main(
         expect TxBodyProvided(bad_tx_body) = bad_tx_field_preimage
 
         // 3. The UTxO must be produced at next step's script hash with
-        //    withdrawals root.
-        let Header { withdrawals_root, .. } = header
+        //    reference inputs hash of the bad transaction, and withdrawals
+        //    root.
         expect output_script_hash == step_02_validator_script_hash
         let expected_output_state: Data =
           step_02.State {
-            bad_tx_reference_inputs_root: bad_tx_body.reference_inputs,
-            blocks_withdrawals_root: withdrawals_root,
+            bad_tx_reference_inputs_hash: bad_tx_body.reference_inputs,
+            blocks_withdrawals_root: header.withdrawals_root,
           }
         expect output_state_data == expected_output_state
 

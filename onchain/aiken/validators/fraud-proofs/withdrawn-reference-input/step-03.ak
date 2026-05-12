@@ -1,4 +1,3 @@
-use aiken/crypto.{ScriptHash}
 use cardano/address.{Address}
 use cardano/assets.{PolicyId}
 use cardano/transaction.{OutputReference, Transaction}
@@ -11,9 +10,9 @@ use midgard/fraud_proofs/withdrawn_reference_input/step_03.{
 use midgard/ledger_state.{WithdrawalBody, WithdrawalInfo, WithdrawalIsValid}
 
 validator main(
-  computation_thread_token_policy_id: PolicyId,
-  fraud_proof_token_policy_id: ScriptHash,
+  fraud_proof_token_policy_id: PolicyId,
   fraud_proof_token_address: Address,
+  computation_thread_token_policy_id: PolicyId,
 ) {
   spend(
     datum: Option<Datum>,
@@ -36,7 +35,7 @@ validator main(
         output_index,
         withdrawal_id,
         withdrawal_info,
-        membership_proof,
+        membership_proof_in_withdrawals,
         membership_proof_script_redeemer_index,
         fraud_proof_mint_redeemer_index,
       }) -> {
@@ -44,6 +43,8 @@ validator main(
 
         expect Some(step_datum) = datum
 
+        // 1. Specified input must be authentic and properly reproduced at the
+        //    fraud proof's spending address.
         let
           _own_script_hash,
           _computation_thread_token_asset_name,
@@ -64,28 +65,28 @@ validator main(
             redeemers,
           )
 
-        expect Some(input_state) = m_input_state_data
+        expect Some(State {
+          missing_reference_input_outref,
+          blocks_withdrawals_root,
+        }) = m_input_state_data
 
-        let State { missing_output_reference, blocks_withdrawals_root } =
-          input_state
-
-        // 4. The provided withdrawal event must be valid, and it must spend the
-        //    input that was referenced in the bad transaction.
+        // 2. The provided withdrawal event must be valid, and it must spend the
+        //    reference input that was referenced in the bad transaction.
         expect WithdrawalInfo {
           body: WithdrawalBody { l2_outref, .. },
           validity: WithdrawalIsValid,
           ..
         } = withdrawal_info
-        expect l2_outref == missing_output_reference
+        expect l2_outref == missing_reference_input_outref
 
-        // 5. The withdrawal event must be present in the withdrawals root of
+        // 3. The withdrawal event must be present in the withdrawals root of
         //    the block.
         expect
           utils.plutarch_phas(
             merkle_root: blocks_withdrawals_root,
             key: withdrawal_id,
             value: withdrawal_info,
-            membership_proof: membership_proof,
+            membership_proof: membership_proof_in_withdrawals,
             redeemers: redeemers,
             withdraw_redeemer_index: membership_proof_script_redeemer_index,
           )
