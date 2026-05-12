@@ -1,8 +1,8 @@
 use midgard/computation_thread as ct
-use midgard/ledger_state.{MidgardInputsRoot}
+use midgard/ledger_state.{MidgardInputsHash}
 
 pub type State {
-  bad_tx_spend_inputs: MidgardInputsRoot,
+  bad_tx_spend_inputs_hash: MidgardInputsHash,
 }
 
 pub type Datum =

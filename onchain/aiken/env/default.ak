@@ -1,6 +1,7 @@
 use aiken/builtin
-use aiken/crypto.{ScriptHash}
-use midgard/common/types.{Empty, PosixTimeDuration}
+use aiken/cbor
+use aiken/crypto.{ScriptHash, blake2b_256}
+use midgard/common/types.{Empty, H32, PosixTimeDuration}
 
 pub const plutus_version: Int = 3
 
@@ -50,6 +51,8 @@ pub const max_validity_range_length: PosixTimeDuration = 5 * 60 * 1000
 pub const empty: Empty = ""
 
 pub const empty_data: Data = empty |> builtin.b_data()
+
+pub const empty_list_hash: H32<List<Data>> = [] |> cbor.serialise |> blake2b_256
 
 pub const empty_merkle_tree_root =
   #"0e5751c026e543b2e8ab2eb06099daa1d1e5df47778f7787faab45cdf12fe3a8"

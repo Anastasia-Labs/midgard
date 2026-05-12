@@ -1,7 +1,6 @@
-//// ## Non-Existent Input UTxO Fraud Proof (Section 5.1.1)
+//// ## Zero Input Fraud Proof (Section 5.1.1)
 ////
-//// Proves a given transaction spends an input that does not exist in the
-//// initial ledger (i.e. `prev_utxos_root`) of its containing block.
+//// Proves a given transaction spends no inputs.
 
 use aiken/crypto.{ScriptHash}
 use cardano/assets.{PolicyId}
@@ -59,11 +58,11 @@ validator main(
         // 2. The bad transaction's body must be provided.
         expect TxBodyProvided(bad_tx_body) = bad_tx_field_preimage
 
-        // 3. The UTxO must be produced at next step's script hash with inputs
-        //    root of the bad transaction, and block's prev UTxOs root.
+        // 3. The UTxO must be produced at next step's script hash with spend
+        //    inputs hash of the bad transaction.
         expect output_script_hash == step_02_validator_script_hash
         let expected_output_state: Data =
-          step_02.State { bad_tx_spend_inputs: bad_tx_body.spend_inputs }
+          step_02.State { bad_tx_spend_inputs_hash: bad_tx_body.spend_inputs }
         expect output_state_data == expected_output_state
 
         // Done.
