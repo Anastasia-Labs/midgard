@@ -67,7 +67,8 @@ validator main(
           verified_addr_tx_wits_hash,
         }) = m_input_state_data
 
-        // 2. Address witnesses preimage must match the hash carried from step 1.
+        // 2. Address witnesses preimage must match the hash carried from the
+        //    previous steps.
         expect
           addr_tx_wits_preimage |> verify_hash_32(verified_addr_tx_wits_hash)
 

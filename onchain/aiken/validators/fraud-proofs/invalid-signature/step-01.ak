@@ -51,16 +51,18 @@ validator main(
             tx,
           )
 
-        expect TxWitsProvided(bod_tx_wits) = bad_tx_field_preimage
+        // 2. The provided preimage must be that of the bad transaction's
+        //    witness set.
+        expect TxWitsProvided(bad_tx_wits) = bad_tx_field_preimage
 
-        // 2. The UTxO must be produced at next step's script hash with the bad
+        // 3. The UTxO must be produced at next step's script hash with the bad
         //    transaction's ID (i.e. hash of the compact body) and address
         //    witness set hash.
         expect output_script_hash == step_02_validator_script_hash
         let expected_output_state: Data =
           step_02.State {
             bad_tx_id,
-            bad_addr_tx_wits_hash: bod_tx_wits.addr_tx_wits,
+            bad_addr_tx_wits_hash: bad_tx_wits.addr_tx_wits,
           }
         expect output_state_data == expected_output_state
 

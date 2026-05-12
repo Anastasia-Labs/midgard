@@ -62,7 +62,8 @@ validator main(
         expect Some(State { bad_tx_inputs_hash, bad_tx_script_wits_hash }) =
           m_input_state_data
 
-        // 2. Fetch the input with missing script from inputs(tx).
+        // 2. Provided inputs preimage must match the bad transaction's spend
+        //    inputs hash.
         expect inputs_preimage |> verify_hash_32(bad_tx_inputs_hash)
         let input_with_missing_script =
           inputs_preimage |> list.expect_at(bad_input_index)

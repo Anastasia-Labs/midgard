@@ -3,9 +3,7 @@ use cardano/assets.{PolicyId}
 use cardano/transaction.{OutputReference, Transaction}
 use midgard/computation_thread as ct
 use midgard/fraud_proofs/common.{TxBodyProvided, cancel, pass_tx_to_next_step}
-use midgard/fraud_proofs/input_no_idx/step_03.{
-  Args, Datum, SpendRedeemer, State,
-}
+use midgard/fraud_proofs/input_no_idx/step_03.{Datum, SpendRedeemer, State}
 use midgard/fraud_proofs/input_no_idx/step_04
 
 validator main(

@@ -1,7 +1,7 @@
 //// ## Withdrawn Reference Input Fraud Proof (Section 5.1.16)
 ////
-//// Proves a given transaction refers to an input that was spent in a withdrawl
-//// event.
+//// Proves a given transaction refers to a reference input that was spent in a
+//// withdrawal event.
 
 use aiken/crypto.{ScriptHash}
 use cardano/assets.{PolicyId}

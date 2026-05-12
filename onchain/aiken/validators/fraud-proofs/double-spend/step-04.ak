@@ -1,5 +1,4 @@
 use aiken/collection/list
-use aiken/crypto.{ScriptHash}
 use cardano/address.{Address}
 use cardano/assets.{PolicyId}
 use cardano/transaction.{OutputReference, Transaction}
@@ -12,7 +11,7 @@ use midgard/fraud_proofs/double_spend/step_04.{
 
 validator main(
   computation_thread_token_policy_id: PolicyId,
-  fraud_proof_token_policy_id: ScriptHash,
+  fraud_proof_token_policy_id: PolicyId,
   fraud_proof_token_address: Address,
 ) {
   spend(
@@ -42,6 +41,8 @@ validator main(
 
         expect Some(step_datum) = datum
 
+        // 1. Specified input must be authentic and properly reproduced at the
+        //    fraud proof's spending address.
         let
           _own_script_hash,
           _computation_thread_token_asset_name,
@@ -67,10 +68,10 @@ validator main(
           double_spent_input_outref,
         }) = m_input_state_data
 
-        // 1. Provided inputs preimage for tx2 must be valid.
+        // 2. Provided inputs preimage for tx2 must be valid.
         expect tx2_inputs_preimage |> verify_hash_32(verified_tx2_inputs_hash)
 
-        // 2. The provided index must correspond to an input in the given list
+        // 3. The provided index must correspond to an input in the given list
         //    such that it matches the outref carried over from previous step.
         expect
           double_spent_input_outref == (

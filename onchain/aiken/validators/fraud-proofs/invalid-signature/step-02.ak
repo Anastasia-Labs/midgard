@@ -1,5 +1,5 @@
 use aiken/collection/pairs
-use aiken/crypto.{ScriptHash, verify_ed25519_signature}
+use aiken/crypto.{verify_ed25519_signature}
 use cardano/address.{Address}
 use cardano/assets.{PolicyId}
 use cardano/transaction.{OutputReference, Transaction}
@@ -12,7 +12,7 @@ use midgard/fraud_proofs/invalid_signature/step_02.{
 
 validator main(
   computation_thread_token_policy_id: PolicyId,
-  fraud_proof_token_policy_id: ScriptHash,
+  fraud_proof_token_policy_id: PolicyId,
   fraud_proof_token_address: Address,
 ) {
   spend(

@@ -67,10 +67,13 @@ validator main(
           verified_script_wits_hash,
         }) = m_input_state_data
 
-        // 2. The bad transaction's script witnesses must not contain the required
-        //    native script.
+        // 2. The provided script witnesses preimage must match the hash carried
+        //    from the previous steps.
         expect
           script_tx_wits_preimage |> verify_hash_32(verified_script_wits_hash)
+
+        // 3. The bad transaction's script witnesses must not contain the
+        //    required native script.
         let required_script_is_present =
           script_tx_wits_preimage |> pairs.has_key(expected_missing_script_hash)
         expect required_script_is_present == False

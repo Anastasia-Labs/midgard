@@ -1,5 +1,4 @@
 use aiken/collection/list
-use aiken/crypto.{ScriptHash}
 use cardano/address.{Address}
 use cardano/assets.{PolicyId}
 use cardano/transaction.{OutputReference, Transaction}
@@ -12,7 +11,7 @@ use midgard/fraud_proofs/input_no_idx/step_04.{
 
 validator main(
   computation_thread_token_policy_id: PolicyId,
-  fraud_proof_token_policy_id: ScriptHash,
+  fraud_proof_token_policy_id: PolicyId,
   fraud_proof_token_address: Address,
 ) {
   spend(
@@ -66,6 +65,8 @@ validator main(
         expect Some(State { producing_tx_outputs_hash, bad_input_output_index }) =
           m_input_state_data
 
+        // 2. Provided outputs preimage must match the producing transaction
+        //    outputs hash.
         expect outputs_preimage |> verify_hash_32(producing_tx_outputs_hash)
 
         // 3. With preimage of outputs verified, it must be shown its length is

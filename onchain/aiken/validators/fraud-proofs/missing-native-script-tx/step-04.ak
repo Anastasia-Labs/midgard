@@ -61,7 +61,8 @@ validator main(
           verified_script_wits_hash,
         }) = m_input_state_data
 
-        // 2. Fetch the producing tx output spent by the bad input.
+        // 2. Provided outputs preimage must match the producing transaction
+        //    outputs hash.
         expect outputs_preimage |> verify_hash_32(producing_tx_outputs_hash)
         let output_with_missing_script =
           outputs_preimage |> list.expect_at(bad_input_output_index)

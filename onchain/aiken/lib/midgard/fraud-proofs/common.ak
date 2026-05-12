@@ -337,7 +337,7 @@ pub fn finalize(
       1,
     )
 
-  // 4. Fraud prover must be presreved, with no additional `data`.
+  // 4. Fraud prover must be preserved, with no additional `data`.
   let expected_output_datum_data: Data = fraud_proof.Datum { fraud_prover }
   expect output_datum_data == expected_output_datum_data
 
@@ -397,7 +397,7 @@ pub fn verify_tx_in_state_queue_node(
   tx_field_preimage: TxFieldPreimage,
   tx_membership_proof: Proof,
   computation_thread_token_asset_name: AssetName,
-  hub_oracle: PolicyId,
+  hub_oracle: ScriptHash,
   hub_ref_input_index: Int,
   state_queue_node_ref_input_index: Int,
   inclusion_proof_script_withdraw_redeemer_index: Int,

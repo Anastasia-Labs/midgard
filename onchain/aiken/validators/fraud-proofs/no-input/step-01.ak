@@ -11,6 +11,7 @@ use midgard/computation_thread as ct
 use midgard/fraud_proofs/common.{TxBodyProvided, cancel, pass_tx_to_next_step}
 use midgard/fraud_proofs/no_input/step_01.{Datum, SpendRedeemer}
 use midgard/fraud_proofs/no_input/step_02
+use midgard/ledger_state
 
 validator main(
   step_02_validator_script_hash: ScriptHash,

@@ -62,7 +62,7 @@ validator main(
         expect output_script_hash == step_02_validator_script_hash
         let expected_output_state: Data =
           step_02.State {
-            bad_tx_inputs_hash: bad_tx_body.inputs,
+            bad_tx_inputs_hash: bad_tx_body.spend_inputs,
             bad_tx_script_wits_hash: bad_tx_wits.script_tx_wits,
           }
         expect output_state_data == expected_output_state

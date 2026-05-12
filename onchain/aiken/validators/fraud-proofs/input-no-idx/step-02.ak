@@ -36,7 +36,7 @@ validator main(
         inputs_preimage,
         bad_inputs_index,
       }) -> {
-        let Transaction { inputs, outputs, redeemers, .. } = tx
+        let Transaction { inputs, outputs, .. } = tx
 
         expect Some(step_datum) = datum
 

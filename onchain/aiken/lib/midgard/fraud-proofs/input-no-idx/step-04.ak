@@ -1,4 +1,3 @@
-use midgard/common/types.{Proof}
 use midgard/computation_thread as ct
 use midgard/ledger_state.{MidgardOutputs, MidgardOutputsHash}
 
