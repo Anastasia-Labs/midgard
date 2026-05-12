@@ -1,0 +1,1595 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "Midgard Node API",
+    "version": "0.1.0-draft",
+    "description": "This document is intended as a spec that both the TypeScript node and the Haskell node should target."
+  },
+  "tags": [
+    {
+      "name": "public"
+    },
+    {
+      "name": "admin"
+    }
+  ],
+  "paths": {
+    "/healthz": {
+      "get": {
+        "tags": [
+          "public"
+        ],
+        "summary": "Liveness check",
+        "operationId": "getHealthz",
+        "responses": {
+          "200": {
+            "description": "Server is running",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HealthResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          }
+        }
+      }
+    },
+    "/readyz": {
+      "get": {
+        "tags": [
+          "public"
+        ],
+        "summary": "Readiness check for worker heartbeats, queue depth, local recovery state, and database connectivity",
+        "operationId": "getReadyz",
+        "responses": {
+          "200": {
+            "description": "Node is ready",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReadinessResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Node is not ready",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReadinessResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          }
+        }
+      }
+    },
+    "/protocol-info": {
+      "get": {
+        "tags": [
+          "public"
+        ],
+        "summary": "Get stable protocol info for external builders",
+        "operationId": "getProtocolInfo",
+        "responses": {
+          "200": {
+            "description": "Protocol info",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProtocolInfoResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          }
+        }
+      }
+    },
+    "/tx": {
+      "get": {
+        "tags": [
+          "public"
+        ],
+        "summary": "Fetch tx CBOR by tx hash",
+        "operationId": "getTx",
+        "parameters": [
+          {
+            "name": "tx_hash",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/TxHashHex"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Transaction found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TxResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Invalid tx hash or transaction not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          }
+        }
+      }
+    },
+    "/tx-status": {
+      "get": {
+        "tags": [
+          "public"
+        ],
+        "summary": "Get canonical node status for a transaction",
+        "operationId": "getTxStatus",
+        "parameters": [
+          {
+            "name": "tx_hash",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/TxHashHex"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Status resolved",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TxStatusResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid transaction hash",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Transaction status not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TxStatusNotFoundResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          }
+        }
+      }
+    },
+    "/deposit-status": {
+      "get": {
+        "tags": [
+          "public"
+        ],
+        "summary": "Get deposit status by eventId or Cardano L1 tx hash",
+        "operationId": "getDepositStatus",
+        "parameters": [
+          {
+            "name": "eventId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "description": "Canonical OutputReference CBOR hex"
+            }
+          },
+          {
+            "name": "cardanoTxHash",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/TxHashHex"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Deposit status",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DepositStatusResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Deposit not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Selector conflict or ambiguous Cardano tx hash",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          }
+        }
+      }
+    },
+    "/txs": {
+      "get": {
+        "tags": [
+          "public"
+        ],
+        "summary": "Get tx payloads by address history",
+        "operationId": "getAddressTxs",
+        "parameters": [
+          {
+            "name": "address",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Address history tx CBORs",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TxsResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid address",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          }
+        }
+      }
+    },
+    "/utxo": {
+      "get": {
+        "tags": [
+          "public"
+        ],
+        "summary": "Get one spendable mempool-ledger UTxO by TxOutRef CBOR hex",
+        "operationId": "getUtxo",
+        "parameters": [
+          {
+            "name": "txOutRef",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "UTxO found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UtxoResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid txOutRef",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "UTxO not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          }
+        }
+      }
+    },
+    "/utxos": {
+      "get": {
+        "tags": [
+          "public"
+        ],
+        "summary": "Get spendable mempool-ledger UTxOs by address",
+        "operationId": "getUtxos",
+        "parameters": [
+          {
+            "name": "address",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "UTxOs found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UtxosResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid address",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "public"
+        ],
+        "summary": "Get spendable mempool-ledger UTxOs by requested outrefs",
+        "operationId": "postUtxosByOutrefs",
+        "parameters": [
+          {
+            "name": "by-outrefs",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "nullable": true
+            },
+            "description": "Presence selector required by the current API. An empty value is accepted."
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UtxoByOutrefsRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Matched UTxOs in requested order",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UtxosResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid selector or request body",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          }
+        }
+      }
+    },
+    "/block": {
+      "get": {
+        "tags": [
+          "public"
+        ],
+        "summary": "Get tx hashes for a committed block header",
+        "operationId": "getBlock",
+        "parameters": [
+          {
+            "name": "header_hash",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/HeaderHashHex"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Block tx hashes",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BlockResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid block hash",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          }
+        }
+      }
+    },
+    "/deposit/build": {
+      "post": {
+        "tags": [
+          "public"
+        ],
+        "summary": "Build an unsigned L1 deposit transaction",
+        "operationId": "postDepositBuild",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DepositBuildRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Unsigned deposit transaction built",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DepositBuildResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request body",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          }
+        }
+      }
+    },
+    "/submit": {
+      "post": {
+        "tags": [
+          "public"
+        ],
+        "summary": "Submit a Midgard-native or convertible Cardano transaction (NOTE: Supports both query and req body tx cbor in different nomenclature - why?)",
+        "operationId": "postSubmit",
+        "parameters": [
+          {
+            "name": "tx_cbor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "txCbor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SubmitTxRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Duplicate transaction admission refreshed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SubmitAcceptedResponse"
+                }
+              }
+            }
+          },
+          "202": {
+            "description": "New transaction durably admitted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SubmitAcceptedResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid transaction payload",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "tx id / tx bytes conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SubmitConflictResponse"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Transaction CBOR too large",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Durable admission backlog full",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SubmitBacklogFullResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          }
+        }
+      }
+    },
+    "/init": {
+      "get": {
+        "tags": [
+          "admin"
+        ],
+        "summary": "Initialize protocol state if allowed",
+        "operationId": "getInit",
+        "security": [
+          {
+            "AdminApiKey": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Initialization completed or skipped because already initialized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/MessageResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/StateQueueConflictResponse"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/AdminUnauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/AdminDisabled"
+          },
+          "409": {
+            "description": "Initialization refused because on-chain topology is invalid",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StateQueueConflictResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          }
+        }
+      }
+    },
+    "/commit": {
+      "get": {
+        "tags": [
+          "admin"
+        ],
+        "summary": "Trigger manual block commitment",
+        "operationId": "getCommit",
+        "security": [
+          {
+            "AdminApiKey": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Manual block commitment completed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MessageResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/AdminUnauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/AdminDisabled"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          }
+        }
+      }
+    },
+    "/merge": {
+      "get": {
+        "tags": [
+          "admin"
+        ],
+        "summary": "Trigger manual merge of the oldest queued confirmed block",
+        "operationId": "getMerge",
+        "security": [
+          {
+            "AdminApiKey": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Manual merge completed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MessageResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/AdminUnauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/AdminDisabled"
+          },
+          "500": {
+            "description": "Merge failed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/ErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/StateQueueErrorResponse"
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/stateQueue": {
+      "get": {
+        "tags": [
+          "admin"
+        ],
+        "summary": "Inspect ordered state-queue headers",
+        "operationId": "getStateQueue",
+        "security": [
+          {
+            "AdminApiKey": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Current ordered state-queue headers",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StateQueueResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/AdminUnauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/AdminDisabled"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          }
+        }
+      }
+    },
+    "/logBlocksDB": {
+      "get": {
+        "tags": [
+          "admin"
+        ],
+        "summary": "Log compact block summary to server logs",
+        "operationId": "getLogBlocksDB",
+        "security": [
+          {
+            "AdminApiKey": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Blocks summary written to logs",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MessageResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/AdminUnauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/AdminDisabled"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          }
+        }
+      }
+    },
+    "/logGlobals": {
+      "get": {
+        "tags": [
+          "admin"
+        ],
+        "summary": "Log process-global coordination state",
+        "operationId": "getLogGlobals",
+        "security": [
+          {
+            "AdminApiKey": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Global state written to logs",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MessageResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/AdminUnauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/AdminDisabled"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "AdminApiKey": {
+        "type": "apiKey",
+        "in": "header",
+        "name": "x-midgard-admin-key"
+      }
+    },
+    "responses": {
+      "InternalError": {
+        "description": "Generic internal server error",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorResponse"
+            }
+          }
+        }
+      },
+      "AdminUnauthorized": {
+        "description": "Missing or invalid admin credentials",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorResponse"
+            }
+          }
+        }
+      },
+      "AdminDisabled": {
+        "description": "Admin endpoints are disabled",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorResponse"
+            }
+          }
+        }
+      }
+    },
+    "schemas": {
+      "IsoTimestamp": {
+        "type": "string",
+        "format": "date-time"
+      },
+      "HexString": {
+        "type": "string",
+        "pattern": "^[0-9a-f]+$"
+      },
+      "TxHashHex": {
+        "type": "string",
+        "pattern": "^[0-9a-f]{64}$"
+      },
+      "HeaderHashHex": {
+        "type": "string",
+        "pattern": "^[0-9a-f]{56}$"
+      },
+      "ErrorResponse": {
+        "type": "object",
+        "required": [
+          "error"
+        ],
+        "properties": {
+          "error": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": true
+      },
+      "StateQueueErrorResponse": {
+        "type": "object",
+        "required": [
+          "error"
+        ],
+        "properties": {
+          "error": {
+            "type": "string"
+          },
+          "error_code": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": true
+      },
+      "MessageResponse": {
+        "type": "object",
+        "required": [
+          "message"
+        ],
+        "properties": {
+          "message": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": true
+      },
+      "HealthResponse": {
+        "type": "object",
+        "required": [
+          "status",
+          "now"
+        ],
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "ok"
+            ]
+          },
+          "now": {
+            "$ref": "#/components/schemas/IsoTimestamp"
+          }
+        }
+      },
+      "ReadinessResponse": {
+        "type": "object",
+        "required": [
+          "ready",
+          "reasons",
+          "durableAdmissionBacklog",
+          "durableAdmissionOldestAgeMs",
+          "unfinishedLocalMutationJobs",
+          "unresolvedBlockSubmissionAgeMs",
+          "legacyInMemoryQueueDepth"
+        ],
+        "properties": {
+          "ready": {
+            "type": "boolean"
+          },
+          "reasons": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "durableAdmissionBacklog": {
+            "type": "string"
+          },
+          "durableAdmissionOldestAgeMs": {
+            "type": "integer"
+          },
+          "unfinishedLocalMutationJobs": {
+            "type": "string"
+          },
+          "unresolvedBlockSubmissionAgeMs": {
+            "type": "integer"
+          },
+          "legacyInMemoryQueueDepth": {
+            "type": "integer"
+          }
+        }
+      },
+      "ProtocolInfoResponse": {
+        "type": "object",
+        "required": [
+          "apiVersion",
+          "network",
+          "midgardNativeTxVersion",
+          "currentSlot",
+          "supportedScriptLanguages",
+          "protocolFeeParameters",
+          "submissionLimits",
+          "validation"
+        ],
+        "properties": {
+          "apiVersion": {
+            "type": "integer",
+            "enum": [
+              1
+            ]
+          },
+          "network": {
+            "type": "string",
+            "enum": [
+              "Mainnet",
+              "Preprod",
+              "Preview",
+              "Custom"
+            ]
+          },
+          "midgardNativeTxVersion": {
+            "type": "integer"
+          },
+          "currentSlot": {
+            "type": "string"
+          },
+          "supportedScriptLanguages": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ScriptLanguageView"
+            }
+          },
+          "protocolFeeParameters": {
+            "type": "object",
+            "required": [
+              "minFeeA",
+              "minFeeB"
+            ],
+            "properties": {
+              "minFeeA": {
+                "type": "string"
+              },
+              "minFeeB": {
+                "type": "string"
+              }
+            }
+          },
+          "submissionLimits": {
+            "type": "object",
+            "required": [
+              "maxSubmitTxCborBytes"
+            ],
+            "properties": {
+              "maxSubmitTxCborBytes": {
+                "type": "integer"
+              }
+            }
+          },
+          "validation": {
+            "type": "object",
+            "required": [
+              "strictnessProfile",
+              "localValidationIsAuthoritative"
+            ],
+            "properties": {
+              "strictnessProfile": {
+                "type": "string"
+              },
+              "localValidationIsAuthoritative": {
+                "type": "boolean",
+                "enum": [
+                  false
+                ]
+              }
+            }
+          }
+        }
+      },
+      "TxResponse": {
+        "type": "object",
+        "required": [
+          "tx"
+        ],
+        "properties": {
+          "tx": {
+            "$ref": "#/components/schemas/HexString"
+          }
+        }
+      },
+      "TxStatusRejectedResponse": {
+        "type": "object",
+        "required": [
+          "txId",
+          "status",
+          "reasonCode",
+          "timestamps"
+        ],
+        "properties": {
+          "txId": {
+            "$ref": "#/components/schemas/HexString"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "rejected"
+            ]
+          },
+          "reasonCode": {
+            "type": "string"
+          },
+          "reasonDetail": {
+            "type": "string"
+          },
+          "timestamps": {
+            "type": "object",
+            "required": [
+              "createdAt"
+            ],
+            "properties": {
+              "createdAt": {
+                "$ref": "#/components/schemas/IsoTimestamp"
+              }
+            }
+          }
+        }
+      },
+      "TxStatusSimpleResponse": {
+        "type": "object",
+        "required": [
+          "txId",
+          "status"
+        ],
+        "properties": {
+          "txId": {
+            "$ref": "#/components/schemas/HexString"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "committed",
+              "accepted",
+              "pending_commit",
+              "awaiting_local_recovery",
+              "validating",
+              "queued"
+            ]
+          }
+        }
+      },
+      "TxStatusNotFoundResponse": {
+        "type": "object",
+        "required": [
+          "txId",
+          "status"
+        ],
+        "properties": {
+          "txId": {
+            "$ref": "#/components/schemas/HexString"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "not_found"
+            ]
+          }
+        }
+      },
+      "TxStatusResponse": {
+        "oneOf": [
+          {
+            "$ref": "#/components/schemas/TxStatusSimpleResponse"
+          },
+          {
+            "$ref": "#/components/schemas/TxStatusRejectedResponse"
+          }
+        ]
+      },
+      "DepositStatusResponse": {
+        "type": "object",
+        "required": [
+          "eventId",
+          "eventInfo",
+          "inclusionTime",
+          "cardanoTxHash",
+          "ledgerTxId",
+          "ledgerOutput",
+          "ledgerAddress",
+          "projectedHeaderHash",
+          "status"
+        ],
+        "properties": {
+          "eventId": {
+            "$ref": "#/components/schemas/HexString"
+          },
+          "eventInfo": {
+            "$ref": "#/components/schemas/HexString"
+          },
+          "inclusionTime": {
+            "$ref": "#/components/schemas/IsoTimestamp"
+          },
+          "cardanoTxHash": {
+            "$ref": "#/components/schemas/TxHashHex"
+          },
+          "ledgerTxId": {
+            "$ref": "#/components/schemas/HexString"
+          },
+          "ledgerOutput": {
+            "$ref": "#/components/schemas/HexString"
+          },
+          "ledgerAddress": {
+            "type": "string"
+          },
+          "projectedHeaderHash": {
+            "type": "string",
+            "nullable": true
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "awaiting",
+              "projected",
+              "consumed"
+            ]
+          }
+        }
+      },
+      "TxsResponse": {
+        "type": "object",
+        "required": [
+          "txs"
+        ],
+        "properties": {
+          "txs": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/HexString"
+            }
+          }
+        }
+      },
+      "EncodedStoredUtxo": {
+        "type": "object",
+        "required": [
+          "outref",
+          "outputCbor"
+        ],
+        "properties": {
+          "outref": {
+            "$ref": "#/components/schemas/HexString"
+          },
+          "outputCbor": {
+            "$ref": "#/components/schemas/HexString"
+          }
+        }
+      },
+      "UtxoResponse": {
+        "type": "object",
+        "required": [
+          "utxo"
+        ],
+        "properties": {
+          "utxo": {
+            "$ref": "#/components/schemas/EncodedStoredUtxo"
+          }
+        }
+      },
+      "UtxosResponse": {
+        "type": "object",
+        "required": [
+          "utxos"
+        ],
+        "properties": {
+          "utxos": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/EncodedStoredUtxo"
+            }
+          }
+        }
+      },
+      "UtxoByOutrefsRequest": {
+        "type": "array",
+        "items": {
+          "type": "string",
+          "description": "txHash#outputIndex"
+        }
+      },
+      "BlockResponse": {
+        "type": "object",
+        "required": [
+          "hashes"
+        ],
+        "properties": {
+          "hashes": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/HexString"
+            }
+          }
+        }
+      },
+      "LucidAssetMap": {
+        "type": "object",
+        "additionalProperties": {
+          "type": "string",
+          "description": "Integer amount encoded as a decimal string in clients that cannot represent bigint safely; runtime callers may also use JSON numbers in practice."
+        }
+      },
+      "FundingUtxo": {
+        "type": "object",
+        "required": [
+          "txHash",
+          "outputIndex",
+          "address",
+          "assets"
+        ],
+        "properties": {
+          "txHash": {
+            "$ref": "#/components/schemas/TxHashHex"
+          },
+          "outputIndex": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "address": {
+            "type": "string"
+          },
+          "assets": {
+            "$ref": "#/components/schemas/LucidAssetMap"
+          },
+          "datum": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
+      },
+      "AdditionalAssets": {
+        "type": "object",
+        "additionalProperties": {
+          "oneOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "integer"
+            }
+          ]
+        }
+      },
+      "DepositBuildRequest": {
+        "type": "object",
+        "required": [
+          "fundingAddress",
+          "fundingUtxos",
+          "l2Address",
+          "lovelace"
+        ],
+        "properties": {
+          "fundingAddress": {
+            "type": "string"
+          },
+          "fundingUtxos": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/FundingUtxo"
+            }
+          },
+          "l2Address": {
+            "type": "string"
+          },
+          "l2Datum": {
+            "type": "string",
+            "nullable": true
+          },
+          "lovelace": {
+            "type": "string"
+          },
+          "additionalAssets": {
+            "$ref": "#/components/schemas/AdditionalAssets"
+          }
+        }
+      },
+      "DepositBuildResponse": {
+        "type": "object",
+        "required": [
+          "unsignedTxCbor"
+        ],
+        "properties": {
+          "unsignedTxCbor": {
+            "$ref": "#/components/schemas/HexString"
+          }
+        }
+      },
+      "SubmitTxRequest": {
+        "type": "object",
+        "properties": {
+          "tx_cbor": {
+            "type": "string"
+          },
+          "txCbor": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": true
+      },
+      "SubmitAcceptedResponse": {
+        "type": "object",
+        "required": [
+          "txId",
+          "status",
+          "firstSeenAt",
+          "lastSeenAt",
+          "duplicate"
+        ],
+        "properties": {
+          "txId": {
+            "$ref": "#/components/schemas/HexString"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "queued",
+              "validating",
+              "accepted",
+              "rejected"
+            ]
+          },
+          "firstSeenAt": {
+            "$ref": "#/components/schemas/IsoTimestamp"
+          },
+          "lastSeenAt": {
+            "$ref": "#/components/schemas/IsoTimestamp"
+          },
+          "duplicate": {
+            "type": "boolean"
+          }
+        }
+      },
+      "SubmitConflictResponse": {
+        "type": "object",
+        "required": [
+          "error",
+          "message",
+          "txId"
+        ],
+        "properties": {
+          "error": {
+            "type": "string",
+            "enum": [
+              "E_TX_ID_BYTES_CONFLICT"
+            ]
+          },
+          "message": {
+            "type": "string"
+          },
+          "txId": {
+            "$ref": "#/components/schemas/HexString"
+          }
+        }
+      },
+      "ScriptLanguageView": {
+        "oneOf": [
+          {
+            "type": "object",
+            "required": ["name", "tag"],
+            "properties": {
+              "name": { "type": "string", "enum": ["PlutusV3"] },
+              "tag": { "type": "integer", "enum": [2] }
+            },
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "required": ["name", "tag"],
+            "properties": {
+              "name": { "type": "string", "enum": ["MidgardV1"] },
+              "tag": { "type": "integer", "enum": [128] }
+            },
+            "additionalProperties": false
+          }
+        ]
+      },
+      "SubmitBacklogFullResponse": {
+        "type": "object",
+        "required": [
+          "error",
+          "backlog",
+          "maxBacklog"
+        ],
+        "properties": {
+          "error": {
+            "type": "string"
+          },
+          "backlog": {
+            "type": "string"
+          },
+          "maxBacklog": {
+            "type": "string"
+          }
+        }
+      },
+      "StateQueueResponse": {
+        "type": "object",
+        "required": [
+          "headers"
+        ],
+        "properties": {
+          "headers": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/HexString"
+            }
+          }
+        }
+      },
+      "StateQueueConflictResponse": {
+        "type": "object",
+        "required": [
+          "error",
+          "details",
+          "reason"
+        ],
+        "properties": {
+          "error": {
+            "type": "string"
+          },
+          "details": {
+            "type": "string"
+          },
+          "reason": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": true
+      }
+    }
+  }
+}
