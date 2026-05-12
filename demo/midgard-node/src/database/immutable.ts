@@ -7,10 +7,7 @@ import {
 } from "@/database/utils/common.js";
 import { Database } from "@/services/database.js";
 import { SqlClient, SqlError } from "@effect/sql";
-import {
-  computeMidgardNativeTxIdFromFull,
-  decodeMidgardNativeTxFull,
-} from "@/midgard-tx-codec/index.js";
+import { decodeTransaction, transactionId } from "@/midgard-tx-codec/index.js";
 
 export const tableName = "immutable";
 
@@ -70,8 +67,8 @@ const assertNativeTxEntryIdsMatchPayload = (
       const txId = tx[Tx.Columns.TX_ID];
       const txPayload = tx[Tx.Columns.TX];
       try {
-        const decoded = decodeMidgardNativeTxFull(txPayload);
-        const computedTxId = computeMidgardNativeTxIdFromFull(decoded);
+        const decoded = decodeTransaction(txPayload);
+        const computedTxId = Buffer.from(transactionId(decoded));
         if (!computedTxId.equals(txId)) {
           yield* Effect.fail(
             new SqlError.SqlError({

@@ -1,11 +1,12 @@
 import { isHexString } from "@/utils.js";
 import { CML, fromHex } from "@lucid-evolution/lucid";
 import {
-  cardanoTxBytesToMidgardNativeTxFull,
-  computeMidgardNativeTxIdFromFull,
-  decodeMidgardNativeByteListPreimage,
-  decodeMidgardNativeTxFull,
-  encodeMidgardNativeTxFull,
+  cardanoTxBytesToMidgardTx,
+  decodeTransaction,
+  encodeTransaction,
+  transactionBodyHash,
+  transactionId,
+  type Transaction,
 } from "@/midgard-tx-codec/index.js";
 
 /**
@@ -187,22 +188,17 @@ export type NormalizedSubmitTx =
  * Midgard-native body hash.
  */
 const findUnsupportedCardanoWitnessDetail = (
-  nativeTx: ReturnType<typeof cardanoTxBytesToMidgardNativeTxFull>,
+  nativeTx: Transaction,
 ): string | null => {
-  const witnessBytes = decodeMidgardNativeByteListPreimage(
-    nativeTx.witnessSet.addrTxWitsPreimageCbor,
-    "native.addr_tx_wits",
-  );
-  for (let index = 0; index < witnessBytes.length; index += 1) {
-    const witness = CML.Vkeywitness.from_cbor_bytes(witnessBytes[index]!);
-    if (
-      !witness
-        .vkey()
-        .verify(
-          nativeTx.compact.transactionBodyHash,
-          witness.ed25519_signature(),
-        )
-    ) {
+  const vkeyWitnesses = nativeTx.witness_set.vkey_witnesses ?? [];
+  const bodyHash = transactionBodyHash(nativeTx.body);
+  for (let index = 0; index < vkeyWitnesses.length; index += 1) {
+    const w = vkeyWitnesses[index]!;
+    const verified = CML.PublicKey.from_bytes(w.vkey).verify(
+      bodyHash,
+      CML.Ed25519Signature.from_raw_bytes(w.signature),
+    );
+    if (!verified) {
       return `Converted Cardano tx carries vkey witness #${index.toString()} that does not authorize the Midgard-native body hash`;
     }
   }
@@ -219,8 +215,8 @@ export const normalizeSubmitTxHexToNative = (
 ): NormalizedSubmitTx => {
   const submittedTxCbor = Buffer.from(fromHex(txHex));
   try {
-    const nativeTx = decodeMidgardNativeTxFull(submittedTxCbor);
-    const txId = computeMidgardNativeTxIdFromFull(nativeTx);
+    const nativeTx = decodeTransaction(submittedTxCbor);
+    const txId = Buffer.from(transactionId(nativeTx));
     return {
       ok: true,
       txId,
@@ -230,7 +226,7 @@ export const normalizeSubmitTxHexToNative = (
     };
   } catch (nativeDecodeError) {
     try {
-      const nativeTx = cardanoTxBytesToMidgardNativeTxFull(submittedTxCbor);
+      const nativeTx = cardanoTxBytesToMidgardTx(submittedTxCbor);
       const unsupportedWitnessDetail =
         findUnsupportedCardanoWitnessDetail(nativeTx);
       if (unsupportedWitnessDetail !== null) {
@@ -240,8 +236,8 @@ export const normalizeSubmitTxHexToNative = (
           detail: unsupportedWitnessDetail,
         };
       }
-      const normalizedTxCbor = encodeMidgardNativeTxFull(nativeTx);
-      const txId = computeMidgardNativeTxIdFromFull(nativeTx);
+      const normalizedTxCbor = encodeTransaction(nativeTx);
+      const txId = Buffer.from(transactionId(nativeTx));
       return {
         ok: true,
         txId,

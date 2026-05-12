@@ -5,18 +5,19 @@ import os from "node:os";
 import path from "node:path";
 import { execSync } from "node:child_process";
 import {
-  cardanoTxBytesToMidgardNativeTxFullBytes,
-  computeMidgardNativeTxIdFromFull,
-  decodeMidgardNativeTxBodyCompact,
-  decodeMidgardNativeTxCompact,
-  decodeMidgardNativeTxFull,
-  decodeMidgardNativeTxWitnessSetCompact,
-  deriveMidgardNativeTxBodyCompactFromFull,
-  deriveMidgardNativeTxWitnessSetCompactFromFull,
-  encodeMidgardNativeTxBodyCompact,
-  encodeMidgardNativeTxCompact,
-  encodeMidgardNativeTxFull,
-  encodeMidgardNativeTxWitnessSetCompact,
+  cardanoTxBytesToMidgardTxBytes,
+  decodeTransaction,
+  encodeTransaction,
+  decodeTransactionCompact,
+  encodeTransactionCompact,
+  decodeTransactionBodyCompact,
+  encodeTransactionBodyCompact,
+  decodeTransactionWitnessSetCompact,
+  encodeTransactionWitnessSetCompact,
+  deriveTransactionBodyCompact,
+  deriveTransactionWitnessSetCompact,
+  deriveTransactionCompact,
+  transactionId,
 } from "@/midgard-tx-codec/index.js";
 
 type TxFixture = {
@@ -55,7 +56,7 @@ type Report = {
   operations: OperationStats[];
 };
 
-const BENCHMARK_VERSION = "3.0.0";
+const BENCHMARK_VERSION = "4.0.0";
 const QUICK_MODE = process.env.BENCH_QUICK === "1";
 const WARMUP_RUNS = QUICK_MODE ? 1 : 2;
 const MEASURED_RUNS = QUICK_MODE ? 5 : 15;
@@ -131,8 +132,8 @@ const benchmarkOperation = (
   return summarize(name, runTimesMs, txCount);
 };
 
-describe("midgard native tx codec benchmark", () => {
-  it("measures native serialization, deserialization, conversion, and hashing", () => {
+describe("midgard tx binary codec benchmark", () => {
+  it("measures binary serialization, deserialization, conversion, and hashing", () => {
     const fixtures = JSON.parse(
       fs.readFileSync(fixturePath, "utf8"),
     ) as readonly TxFixture[];
@@ -140,117 +141,101 @@ describe("midgard native tx codec benchmark", () => {
       .slice(0, TX_LIMIT)
       .map((tx) => Buffer.from(tx.cborHex, "hex"));
 
-    const nativeFullBytes = txBytes.map((bytes) =>
-      cardanoTxBytesToMidgardNativeTxFullBytes(bytes),
+    const fullBytes = txBytes.map((bytes) =>
+      cardanoTxBytesToMidgardTxBytes(bytes),
     );
-    const nativeFullDecoded = nativeFullBytes.map((bytes) =>
-      decodeMidgardNativeTxFull(bytes),
+    const fullDecoded = fullBytes.map((bytes) => decodeTransaction(bytes));
+    const bodyCompactDecoded = fullDecoded.map((tx) =>
+      deriveTransactionBodyCompact(tx.body),
     );
-    const nativeBodyCompactDecoded = nativeFullDecoded.map((tx) =>
-      deriveMidgardNativeTxBodyCompactFromFull(tx.body),
+    const witnessCompactDecoded = fullDecoded.map((tx) =>
+      deriveTransactionWitnessSetCompact(tx.witness_set),
     );
-    const nativeWitnessCompactDecoded = nativeFullDecoded.map((tx) =>
-      deriveMidgardNativeTxWitnessSetCompactFromFull(tx.witnessSet),
+    const txCompactDecoded = fullDecoded.map((tx) =>
+      deriveTransactionCompact(tx),
     );
-    const nativeCompactDecoded = nativeFullDecoded.map((tx) => tx.compact);
-    const nativeBodyCompactBytes = nativeBodyCompactDecoded.map((body) =>
-      encodeMidgardNativeTxBodyCompact(body),
+    const bodyCompactBytes = bodyCompactDecoded.map((body) =>
+      encodeTransactionBodyCompact(body),
     );
-    const nativeWitnessCompactBytes = nativeWitnessCompactDecoded.map((wits) =>
-      encodeMidgardNativeTxWitnessSetCompact(wits),
+    const witnessCompactBytes = witnessCompactDecoded.map((wits) =>
+      encodeTransactionWitnessSetCompact(wits),
     );
-    const nativeCompactBytes = nativeCompactDecoded.map((compact) =>
-      encodeMidgardNativeTxCompact(compact),
+    const txCompactBytes = txCompactDecoded.map((compact) =>
+      encodeTransactionCompact(compact),
     );
 
     const operations: OperationStats[] = [
       benchmarkOperation(
-        "serialize_native_full",
+        "serialize_tx_full",
         () => {
-          for (const tx of nativeFullDecoded) {
-            encodeMidgardNativeTxFull(tx);
-          }
+          for (const tx of fullDecoded) encodeTransaction(tx);
         },
         txBytes.length,
       ),
       benchmarkOperation(
-        "deserialize_native_full",
+        "deserialize_tx_full",
         () => {
-          for (const bytes of nativeFullBytes) {
-            decodeMidgardNativeTxFull(bytes);
-          }
+          for (const bytes of fullBytes) decodeTransaction(bytes);
         },
         txBytes.length,
       ),
       benchmarkOperation(
-        "serialize_native_compact",
+        "serialize_tx_compact",
         () => {
-          for (const tx of nativeCompactDecoded) {
-            encodeMidgardNativeTxCompact(tx);
-          }
+          for (const tx of txCompactDecoded) encodeTransactionCompact(tx);
         },
         txBytes.length,
       ),
       benchmarkOperation(
-        "deserialize_native_compact",
+        "deserialize_tx_compact",
         () => {
-          for (const bytes of nativeCompactBytes) {
-            decodeMidgardNativeTxCompact(bytes);
-          }
+          for (const bytes of txCompactBytes) decodeTransactionCompact(bytes);
         },
         txBytes.length,
       ),
       benchmarkOperation(
-        "serialize_native_body_compact",
+        "serialize_tx_body_compact",
         () => {
-          for (const body of nativeBodyCompactDecoded) {
-            encodeMidgardNativeTxBodyCompact(body);
-          }
+          for (const body of bodyCompactDecoded)
+            encodeTransactionBodyCompact(body);
         },
         txBytes.length,
       ),
       benchmarkOperation(
-        "deserialize_native_body_compact",
+        "deserialize_tx_body_compact",
         () => {
-          for (const bytes of nativeBodyCompactBytes) {
-            decodeMidgardNativeTxBodyCompact(bytes);
-          }
+          for (const bytes of bodyCompactBytes)
+            decodeTransactionBodyCompact(bytes);
         },
         txBytes.length,
       ),
       benchmarkOperation(
-        "serialize_native_witness_compact",
+        "serialize_tx_witness_compact",
         () => {
-          for (const wits of nativeWitnessCompactDecoded) {
-            encodeMidgardNativeTxWitnessSetCompact(wits);
-          }
+          for (const wits of witnessCompactDecoded)
+            encodeTransactionWitnessSetCompact(wits);
         },
         txBytes.length,
       ),
       benchmarkOperation(
-        "deserialize_native_witness_compact",
+        "deserialize_tx_witness_compact",
         () => {
-          for (const bytes of nativeWitnessCompactBytes) {
-            decodeMidgardNativeTxWitnessSetCompact(bytes);
-          }
+          for (const bytes of witnessCompactBytes)
+            decodeTransactionWitnessSetCompact(bytes);
         },
         txBytes.length,
       ),
       benchmarkOperation(
-        "convert_cardano_to_midgard_native_full",
+        "convert_cardano_to_midgard_tx",
         () => {
-          for (const bytes of txBytes) {
-            cardanoTxBytesToMidgardNativeTxFullBytes(bytes);
-          }
+          for (const bytes of txBytes) cardanoTxBytesToMidgardTxBytes(bytes);
         },
         txBytes.length,
       ),
       benchmarkOperation(
-        "hash_midgard_native_tx_id",
+        "hash_midgard_tx_id",
         () => {
-          for (const tx of nativeFullDecoded) {
-            computeMidgardNativeTxIdFromFull(tx);
-          }
+          for (const tx of fullDecoded) transactionId(tx);
         },
         txBytes.length,
       ),

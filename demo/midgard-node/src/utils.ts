@@ -5,14 +5,12 @@ import { Data, Effect, pipe } from "effect";
 import * as Ledger from "@/database/utils/ledger.js";
 import * as SDK from "@al-ft/midgard-sdk";
 import {
-  computeMidgardNativeTxIdFromFull,
-  decodeMidgardNativeByteListPreimage,
-  decodeMidgardNativeTxFull,
+  decodeTransaction,
+  encodeTransactionOutput,
+  midgardAddressToText,
+  transactionId,
+  type OutputReference,
 } from "@/midgard-tx-codec/index.js";
-import {
-  decodeMidgardTxOutput,
-  midgardOutputAddressText,
-} from "@/validation/midgard-output.js";
 
 export type ProcessedTx = {
   txId: Buffer;
@@ -63,6 +61,15 @@ export const isHexString = (str: string): boolean => {
   return hexRegex.test(str);
 };
 
+/** CBOR bytes of a Cardano `TransactionInput` for a Midgard output reference. */
+const outRefToCardanoInputCbor = (ref: OutputReference): Buffer =>
+  Buffer.from(
+    CML.TransactionInput.new(
+      CML.TransactionHash.from_raw_bytes(ref.tx_id),
+      BigInt(ref.index),
+    ).to_cbor_bytes(),
+  );
+
 export const findSpentAndProducedUTxOs = (
   txCBOR: Buffer,
   txHash?: Buffer,
@@ -71,68 +78,36 @@ export const findSpentAndProducedUTxOs = (
   SDK.CmlUnexpectedError
 > =>
   Effect.gen(function* () {
-    const nativeTx = yield* Effect.try({
-      try: () => decodeMidgardNativeTxFull(txCBOR),
+    const tx = yield* Effect.try({
+      try: () => decodeTransaction(txCBOR),
       catch: (e) =>
         new SDK.CmlUnexpectedError({
-          message: `Failed to decode Midgard-native tx payload`,
-          cause: e,
-        }),
-    });
-
-    const nativeSpent = yield* Effect.try({
-      try: () =>
-        decodeMidgardNativeByteListPreimage(
-          nativeTx.body.spendInputsPreimageCbor,
-          "native.spend_inputs",
-        ),
-      catch: (e) =>
-        new SDK.CmlUnexpectedError({
-          message: `Failed to decode native spend inputs`,
-          cause: e,
-        }),
-    });
-
-    const nativeOutputs = yield* Effect.try({
-      try: () =>
-        decodeMidgardNativeByteListPreimage(
-          nativeTx.body.outputsPreimageCbor,
-          "native.outputs",
-        ),
-      catch: (e) =>
-        new SDK.CmlUnexpectedError({
-          message: `Failed to decode native outputs`,
+          message: `Failed to decode Midgard tx payload`,
           cause: e,
         }),
     });
 
     const spent = yield* Effect.try({
-      try: () =>
-        nativeSpent.map((outRef) =>
-          Buffer.from(
-            CML.TransactionInput.from_cbor_bytes(outRef).to_cbor_bytes(),
-          ),
-        ),
+      try: () => tx.body.inputs.map(outRefToCardanoInputCbor),
       catch: (e) =>
         new SDK.CmlUnexpectedError({
-          message: `An error occurred on native input CBOR serialization`,
+          message: `An error occurred on Midgard input CBOR serialization`,
           cause: e,
         }),
     });
 
     const produced: Ledger.MinimalEntry[] = [];
     const finalTxHash =
-      txHash === undefined
-        ? computeMidgardNativeTxIdFromFull(nativeTx)
-        : txHash;
+      txHash === undefined ? Buffer.from(transactionId(tx)) : txHash;
     const txHashObj = CML.TransactionHash.from_raw_bytes(finalTxHash);
-    for (let i = 0; i < nativeOutputs.length; i++) {
-      const output = nativeOutputs[i];
+    for (let i = 0; i < tx.body.outputs.length; i++) {
       produced.push({
         [Ledger.Columns.OUTREF]: Buffer.from(
           CML.TransactionInput.new(txHashObj, BigInt(i)).to_cbor_bytes(),
         ),
-        [Ledger.Columns.OUTPUT]: Buffer.from(output),
+        [Ledger.Columns.OUTPUT]: Buffer.from(
+          encodeTransactionOutput(tx.body.outputs[i]),
+        ),
       });
     }
     return { spent, produced };
@@ -142,55 +117,36 @@ export const breakDownTx = (
   txCbor: Uint8Array,
 ): Effect.Effect<ProcessedTx, SDK.CmlDeserializationError> =>
   Effect.gen(function* () {
-    const nativeTx = yield* Effect.try({
-      try: () => decodeMidgardNativeTxFull(txCbor),
+    const tx = yield* Effect.try({
+      try: () => decodeTransaction(txCbor),
       catch: (e) =>
         new SDK.CmlDeserializationError({
-          message: `Failed to deserialize Midgard-native transaction`,
+          message: `Failed to deserialize Midgard transaction`,
           cause: e,
         }),
     });
 
-    const txHashBytes = computeMidgardNativeTxIdFromFull(nativeTx);
+    const txHashBytes = Buffer.from(transactionId(tx));
     const txHash = CML.TransactionHash.from_raw_bytes(txHashBytes);
     const spent = yield* Effect.try({
-      try: () =>
-        decodeMidgardNativeByteListPreimage(
-          nativeTx.body.spendInputsPreimageCbor,
-          "native.spend_inputs",
-        ).map((outRef) =>
-          Buffer.from(
-            CML.TransactionInput.from_cbor_bytes(outRef).to_cbor_bytes(),
-          ),
-        ),
+      try: () => tx.body.inputs.map(outRefToCardanoInputCbor),
       catch: (e) =>
         new SDK.CmlDeserializationError({
-          message: `Failed to decode native spend inputs`,
-          cause: e,
-        }),
-    });
-    const outputBytes = yield* Effect.try({
-      try: () =>
-        decodeMidgardNativeByteListPreimage(
-          nativeTx.body.outputsPreimageCbor,
-          "native.outputs",
-        ),
-      catch: (e) =>
-        new SDK.CmlDeserializationError({
-          message: `Failed to decode native outputs`,
+          message: `Failed to encode Midgard spend inputs`,
           cause: e,
         }),
     });
     const produced: Ledger.Entry[] = [];
-    for (let i = 0; i < outputBytes.length; i++) {
-      const output = decodeMidgardTxOutput(outputBytes[i]);
+    for (let i = 0; i < tx.body.outputs.length; i++) {
+      const output = tx.body.outputs[i];
+      const outputBytes = encodeTransactionOutput(output);
       produced.push({
         [Ledger.Columns.TX_ID]: txHashBytes,
         [Ledger.Columns.OUTREF]: Buffer.from(
           CML.TransactionInput.new(txHash, BigInt(i)).to_cbor_bytes(),
         ),
-        [Ledger.Columns.OUTPUT]: Buffer.from(outputBytes[i]),
-        [Ledger.Columns.ADDRESS]: midgardOutputAddressText(output),
+        [Ledger.Columns.OUTPUT]: Buffer.from(outputBytes),
+        [Ledger.Columns.ADDRESS]: midgardAddressToText(output.address),
       });
     }
     return {
