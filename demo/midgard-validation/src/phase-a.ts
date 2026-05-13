@@ -6,14 +6,16 @@ import {
   MIDGARD_NATIVE_NETWORK_ID_NONE,
   MIDGARD_POSIX_TIME_NONE,
   computeHash32,
-  computeMidgardNativeTxIdFromFull,
   decodeMidgardNativeMint,
   decodeMidgardNativeByteListPreimage,
   decodeMidgardVersionedScriptListPreimage,
-  decodeMidgardNativeTxFull,
   hashMidgardVersionedScript,
   verifyMidgardNativeScript,
 } from "@al-ft/midgard-core/codec";
+import {
+  decodeMidgardTxBytesToNativeFull,
+  midgardTxIdFromNativeFull,
+} from "./native-tx-bridge.js";
 import {
   PhaseAAccepted,
   PhaseAConfig,
@@ -315,9 +317,9 @@ const validateNativeOne = (
   queuedTx: QueuedTx,
   config: PhaseAConfig,
 ): PhaseAAccepted | RejectedTx => {
-  let nativeTx: ReturnType<typeof decodeMidgardNativeTxFull>;
+  let nativeTx: ReturnType<typeof decodeMidgardTxBytesToNativeFull>;
   try {
-    nativeTx = decodeMidgardNativeTxFull(queuedTx.txCbor);
+    nativeTx = decodeMidgardTxBytesToNativeFull(queuedTx.txCbor);
   } catch (e) {
     if (e instanceof MidgardTxCodecError) {
       const detail =
@@ -333,7 +335,7 @@ const validateNativeOne = (
     );
   }
 
-  const computedTxId = computeMidgardNativeTxIdFromFull(nativeTx);
+  const computedTxId = midgardTxIdFromNativeFull(nativeTx);
   if (!computedTxId.equals(queuedTx.txId)) {
     return reject(
       queuedTx.txId,

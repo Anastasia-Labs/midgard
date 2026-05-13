@@ -5,7 +5,6 @@ import {
   computeScriptIntegrityHashForLanguages,
   decodeMidgardNativeByteListPreimage,
   decodeMidgardNativeMint,
-  decodeMidgardNativeTxFull,
   decodeMidgardVersionedScriptListPreimage,
   encodeMidgardVersionedScript,
   hashMidgardVersionedScript,
@@ -14,6 +13,7 @@ import {
   type MidgardTxOutput,
   type ScriptLanguageName,
 } from "@al-ft/midgard-core/codec";
+import { decodeMidgardTxBytesToNativeFull } from "./native-tx-bridge.js";
 import {
   asArray,
   asBytes,
@@ -314,7 +314,7 @@ type LocalScriptValidationResult =
 const collectInlineScriptSources = (
   candidate: PhaseAAccepted,
 ): readonly ScriptSource[] => {
-  const nativeTx = decodeMidgardNativeTxFull(candidate.txCbor);
+  const nativeTx = decodeMidgardTxBytesToNativeFull(candidate.txCbor);
   const scripts = decodeMidgardVersionedScriptListPreimage(
     nativeTx.witnessSet.scriptTxWitsPreimageCbor,
     "native.script_tx_wits",
@@ -391,7 +391,7 @@ const discoverLocalScriptExecutions = (
       readonly contextView: ScriptContextView;
     } => {
   const candidate = node.candidate;
-  const nativeTx = decodeMidgardNativeTxFull(candidate.txCbor);
+  const nativeTx = decodeMidgardTxBytesToNativeFull(candidate.txCbor);
   const redeemers = decodeMidgardRedeemers(
     nativeTx.witnessSet.redeemerTxWitsPreimageCbor,
   );
@@ -595,7 +595,7 @@ const runLocalScriptEvaluation = (
   enforceScriptBudget: boolean,
 ): LocalScriptValidationResult => {
   const candidate = node.candidate;
-  const nativeTx = decodeMidgardNativeTxFull(candidate.txCbor);
+  const nativeTx = decodeMidgardTxBytesToNativeFull(candidate.txCbor);
   const inlineSources = collectInlineScriptSources(candidate);
   const referenceSources = collectReferenceScriptSources(node, stateValue);
   const sources = [...inlineSources, ...referenceSources];
