@@ -31,6 +31,7 @@ import {
 import {
   decodeTransaction as decodeMidgardTsTransaction,
   decodeTransactionOutput as decodeMidgardTsTxOutput,
+  encodeTransaction as encodeMidgardTsTransaction,
   encodeTransactionOutput as encodeMidgardTsTxOutput,
   transactionId as midgardTsTransactionId,
   type Mint as MidgardTsMint,
@@ -269,6 +270,13 @@ export const nativeFullToMidgardTs = (
 export const decodeMidgardTxBytesToNativeFull = (
   bytes: Uint8Array,
 ): MidgardNativeTxFull => midgardTsToNativeFull(decodeMidgardTsTransaction(bytes));
+
+/**
+ * Encode a `MidgardNativeTxFull` to midgard-ts wire-format binary bytes.
+ * Used by lucid-midgard's builder; lives here so the bridge has one home.
+ */
+export const encodeMidgardTxBytes = (tx: MidgardNativeTxFull): Buffer =>
+  Buffer.from(encodeMidgardTsTransaction(nativeFullToMidgardTs(tx)));
 
 /**
  * Canonical midgard-ts transaction id of a `MidgardNativeTxFull`.

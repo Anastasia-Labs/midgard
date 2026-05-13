@@ -10,3 +10,4 @@ export * from "./midgard-redeemers.js";
 export * from "./script-context.js";
 export * from "./script-source.js";
 export * from "./local-script-eval.js";
+export * from "./native-tx-bridge.js";
