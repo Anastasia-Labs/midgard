@@ -9,17 +9,22 @@ import {
   MIDGARD_NATIVE_TX_VERSION,
   MIDGARD_POSIX_TIME_NONE,
   computeScriptIntegrityHashForLanguages,
-  computeMidgardNativeTxIdFromFull,
   deriveMidgardNativeTxBodyCompactFromFull,
   deriveMidgardNativeTxCompact,
   encodeMidgardNativeTxBodyCompact,
-  encodeMidgardNativeTxFull,
   ScriptLanguageTags,
   type ScriptLanguageName,
   type MidgardNativeTxBodyFull,
   type MidgardNativeTxFull,
   type MidgardNativeTxWitnessSetFull,
 } from "@/midgard-tx-codec/index.js";
+// Phase A / B now decode midgard-ts wire bytes (via the validation bridge),
+// so this test must encode through the bridge as well — not via the OLD
+// `encodeMidgardNativeTxFull` CBOR codec.
+import {
+  encodeMidgardTxBytes as encodeMidgardNativeTxFull,
+  midgardTxIdFromNativeFull as computeMidgardNativeTxIdFromFull,
+} from "@al-ft/midgard-validation";
 // Buffer-returning `computeHash32` from midgard-core (not midgard-ts's
 // Uint8Array variant) — this test builds `MidgardNativeTxBodyFull` literals.
 import { computeHash32 } from "@al-ft/midgard-core/codec/hash";
