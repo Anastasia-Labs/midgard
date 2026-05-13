@@ -74,19 +74,6 @@ export const DepositEventSchema = Data.Object({
 export type DepositEvent = Data.Static<typeof DepositEventSchema>;
 export const DepositEvent = DepositEventSchema as unknown as DepositEvent;
 
-// Changed from hashes of body and witness set to full tx representation
-// to enable tx order processing in node. Otherwise it is impossible to
-// get utxos from tx orders.
-export const MidgardTxCompactSchema = Data.Object({
-  tx: Data.Bytes(),
-  is_valid: Data.Boolean(),
-});
-export type MidgardTxCompact = Data.Static<typeof MidgardTxCompactSchema>;
-export const MidgardTxCompact =
-  MidgardTxCompactSchema as unknown as MidgardTxCompact;
-
-// This is currently unused. We assume the bytes stored under `tx` of tx order
-// events can be deserialized to a `CML.Transaction`.
 export const MidgardTxValiditySchema = Data.Enum([
   Data.Literal("TxIsValid"),
   Data.Literal("NonExistentInputUtxo"),
@@ -98,13 +85,6 @@ export const MidgardTxValiditySchema = Data.Enum([
 export type MidgardTxValidity = Data.Static<typeof MidgardTxValiditySchema>;
 export const MidgardTxValidity =
   MidgardTxValiditySchema as unknown as MidgardTxValidity;
-
-export const TxOrderEventSchema = Data.Object({
-  id: OutputReferenceSchema,
-  tx: Data.Bytes(),
-});
-export type TxOrderEvent = Data.Static<typeof TxOrderEventSchema>;
-export const TxOrderEvent = TxOrderEventSchema as unknown as TxOrderEvent;
 
 export const MidgardNetworkIdSchema = Data.Enum([
   Data.Literal("Mainnet"),
@@ -150,6 +130,26 @@ export type MidgardTxBodyCompact = Data.Static<
 >;
 export const MidgardTxBodyCompact =
   MidgardTxBodyCompactSchema as unknown as MidgardTxBodyCompact;
+
+export const MidgardTxCompactSchema = Data.Object({
+  body: MidgardTxBodyCompactSchema,
+  wits: H32Schema,
+  validity: MidgardTxValiditySchema,
+});
+export type MidgardTxCompact = Data.Static<typeof MidgardTxCompactSchema>;
+export const MidgardTxCompact =
+  MidgardTxCompactSchema as unknown as MidgardTxCompact;
+
+export const MidgardTxIdSchema = H32Schema;
+export type MidgardTxId = Data.Static<typeof MidgardTxIdSchema>;
+export const MidgardTxId = MidgardTxIdSchema as unknown as MidgardTxId;
+
+export const TxOrderEventSchema = Data.Object({
+  id: MidgardTxIdSchema,
+  tx: MidgardTxCompactSchema,
+});
+export type TxOrderEvent = Data.Static<typeof TxOrderEventSchema>;
+export const TxOrderEvent = TxOrderEventSchema as unknown as TxOrderEvent;
 
 export const WithdrawalBodySchema = Data.Object({
   l2_outref: OutputReferenceSchema,

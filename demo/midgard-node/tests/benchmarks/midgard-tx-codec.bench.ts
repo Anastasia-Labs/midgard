@@ -11,8 +11,8 @@ import {
   decodeMidgardNativeTxCompact,
   decodeMidgardNativeTxFull,
   decodeMidgardNativeTxWitnessSetCompact,
-  deriveMidgardNativeTxBodyCompactFromFull,
-  deriveMidgardNativeTxWitnessSetCompactFromFull,
+  deriveMidgardNativeTxBodyCompact,
+  deriveMidgardNativeTxWitnessSetCompact,
   encodeMidgardNativeTxBodyCompact,
   encodeMidgardNativeTxCompact,
   encodeMidgardNativeTxFull,
@@ -147,10 +147,10 @@ describe("midgard native tx codec benchmark", () => {
       decodeMidgardNativeTxFull(bytes),
     );
     const nativeBodyCompactDecoded = nativeFullDecoded.map((tx) =>
-      deriveMidgardNativeTxBodyCompactFromFull(tx.body),
+      deriveMidgardNativeTxBodyCompact(tx.body),
     );
     const nativeWitnessCompactDecoded = nativeFullDecoded.map((tx) =>
-      deriveMidgardNativeTxWitnessSetCompactFromFull(tx.witnessSet),
+      deriveMidgardNativeTxWitnessSetCompact(tx.witnessSet),
     );
     const nativeCompactDecoded = nativeFullDecoded.map((tx) => tx.compact);
     const nativeBodyCompactBytes = nativeBodyCompactDecoded.map((body) =>

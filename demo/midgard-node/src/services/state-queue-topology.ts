@@ -1,6 +1,11 @@
 import * as SDK from "@al-ft/midgard-sdk";
 import { LucidEvolution } from "@lucid-evolution/lucid";
-import { Effect } from "effect";
+import { Effect, Ref } from "effect";
+import {
+  serializeStateQueueUTxO,
+  type SerializedStateQueueUTxO,
+} from "@/workers/utils/commit-block-header.js";
+import type { Globals } from "@/services/globals.js";
 
 /**
  * Summary of the current on-chain state-queue topology.
@@ -14,6 +19,39 @@ export type StateQueueTopology = {
   readonly initialized: boolean;
   readonly healthy: boolean;
   readonly reason: string | undefined;
+};
+
+export type StateQueueSnapshotReason =
+  | "startup"
+  | "post_merge"
+  | "commit_preflight"
+  | "commit_revalidation"
+  | "readiness"
+  | "manual_status"
+  | "recovery";
+
+export type StateQueueSnapshot = {
+  readonly snapshotId: string;
+  readonly reason: StateQueueSnapshotReason;
+  readonly observedAtMs: number;
+  readonly topology: StateQueueTopology;
+  readonly root: {
+    readonly outRef: string;
+    readonly headerHash: string | null;
+    readonly utxo: SerializedStateQueueUTxO;
+  };
+  readonly tailCommitBase: {
+    readonly outRef: string;
+    readonly headerHash: string | null;
+    readonly utxo: SerializedStateQueueUTxO;
+    readonly blockEndTimeMs: number;
+    readonly roots: {
+      readonly utxosRoot: string;
+      readonly transactionsRoot: string;
+      readonly depositsRoot: string;
+      readonly withdrawalsRoot: string;
+    };
+  };
 };
 
 /**
@@ -96,4 +134,161 @@ export const fetchStateQueueTopologyProgram = (
       stateQueue.policyId,
     );
     return summarizeStateQueueTopology(policyUtxos.length, parsed);
+  });
+
+const outRef = (node: SDK.StateQueueUTxO): string =>
+  `${node.utxo.txHash}#${node.utxo.outputIndex.toString()}`;
+
+const nodeHeaderHash = (
+  node: SDK.StateQueueUTxO,
+): Effect.Effect<string | null, SDK.DataCoercionError | SDK.HashingError> =>
+  node.datum.key === "Empty"
+    ? Effect.gen(function* () {
+        const { data } = yield* SDK.getConfirmedStateFromStateQueueDatum(
+          node.datum,
+        );
+        return data.headerHash;
+      })
+    : Effect.gen(function* () {
+        const header = yield* SDK.getHeaderFromStateQueueDatum(node.datum);
+        return yield* SDK.hashBlockHeader(header);
+      });
+
+const nodeEndTimeAndRoots = (
+  node: SDK.StateQueueUTxO,
+): Effect.Effect<
+  StateQueueSnapshot["tailCommitBase"]["roots"] & {
+    readonly blockEndTimeMs: number;
+  },
+  SDK.DataCoercionError
+> =>
+  Effect.gen(function* () {
+    if (node.datum.key === "Empty") {
+      const { data } = yield* SDK.getConfirmedStateFromStateQueueDatum(
+        node.datum,
+      );
+      return {
+        blockEndTimeMs: Number(data.endTime),
+        utxosRoot: data.utxoRoot,
+        transactionsRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
+        depositsRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
+        withdrawalsRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
+      };
+    }
+    const header = yield* SDK.getHeaderFromStateQueueDatum(node.datum);
+    return {
+      blockEndTimeMs: Number(header.endTime),
+      utxosRoot: header.utxosRoot,
+      transactionsRoot: header.transactionsRoot,
+      depositsRoot: header.depositsRoot,
+      withdrawalsRoot: header.withdrawalsRoot,
+    };
+  });
+
+export const fetchStateQueueSnapshotProgram = (
+  lucid: LucidEvolution,
+  stateQueue: SDK.AuthenticatedValidator,
+  reason: StateQueueSnapshotReason,
+): Effect.Effect<
+  StateQueueSnapshot,
+  | SDK.LucidError
+  | SDK.StateQueueError
+  | SDK.DataCoercionError
+  | SDK.HashingError
+  | SDK.CmlUnexpectedError
+  | SDK.CborSerializationError
+> =>
+  Effect.gen(function* () {
+    const policyUtxos = yield* SDK.utxosAtByNFTPolicyId(
+      lucid,
+      stateQueue.spendingScriptAddress,
+      stateQueue.policyId,
+    );
+    const nodes = yield* SDK.utxosToStateQueueUTxOs(
+      policyUtxos.map(({ utxo }) => utxo),
+      stateQueue.policyId,
+    );
+    const topology = summarizeStateQueueTopology(policyUtxos.length, nodes);
+    if (!topology.healthy) {
+      return yield* Effect.fail(
+        new SDK.StateQueueError({
+          message: "Cannot derive state-queue snapshot from unhealthy topology",
+          cause: `${formatStateQueueTopology(topology)}; reason=${topology.reason ?? "unknown"}`,
+        }),
+      );
+    }
+    const root = nodes.find((node) => node.datum.key === "Empty");
+    const tail = nodes.find((node) => node.datum.next === "Empty");
+    if (root === undefined || tail === undefined) {
+      return yield* Effect.fail(
+        new SDK.StateQueueError({
+          message: "Cannot derive state-queue snapshot without root and tail",
+          cause: formatStateQueueTopology(topology),
+        }),
+      );
+    }
+    const [rootSerialized, tailSerialized, rootHeaderHash, tailHeaderHash] =
+      yield* Effect.all(
+        [
+          serializeStateQueueUTxO(root),
+          serializeStateQueueUTxO(tail),
+          nodeHeaderHash(root),
+          nodeHeaderHash(tail),
+        ],
+        { concurrency: "unbounded" },
+      );
+    const tailMetadata = yield* nodeEndTimeAndRoots(tail);
+    const observedAtMs = Date.now();
+    const snapshotId = [
+      reason,
+      outRef(root),
+      outRef(tail),
+      observedAtMs.toString(),
+    ].join(":");
+    return {
+      snapshotId,
+      reason,
+      observedAtMs,
+      topology,
+      root: {
+        outRef: outRef(root),
+        headerHash: rootHeaderHash,
+        utxo: rootSerialized,
+      },
+      tailCommitBase: {
+        outRef: outRef(tail),
+        headerHash: tailHeaderHash,
+        utxo: tailSerialized,
+        blockEndTimeMs: tailMetadata.blockEndTimeMs,
+        roots: {
+          utxosRoot: tailMetadata.utxosRoot,
+          transactionsRoot: tailMetadata.transactionsRoot,
+          depositsRoot: tailMetadata.depositsRoot,
+          withdrawalsRoot: tailMetadata.withdrawalsRoot,
+        },
+      },
+    };
+  });
+
+export const refreshStateQueueGlobalsFromSnapshot = (
+  globals: Globals,
+  snapshot: StateQueueSnapshot,
+): Effect.Effect<void> =>
+  Effect.gen(function* () {
+    yield* Ref.set(
+      globals.AVAILABLE_CONFIRMED_BLOCK,
+      snapshot.tailCommitBase.utxo,
+    );
+    yield* Ref.set(
+      globals.LATEST_LOCAL_BLOCK_END_TIME_MS,
+      snapshot.tailCommitBase.blockEndTimeMs,
+    );
+    yield* Ref.set(
+      globals.BLOCKS_IN_QUEUE,
+      Math.max(0, snapshot.topology.parsedNodeCount - 1),
+    );
+    yield* Ref.set(
+      globals.LATEST_SYNC_TIME_OF_STATE_QUEUE_LENGTH,
+      snapshot.observedAtMs,
+    );
   });

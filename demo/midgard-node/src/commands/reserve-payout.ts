@@ -131,6 +131,11 @@ const fetchReferenceScripts = (
       )
         ? byName("withdrawal spending")
         : undefined,
+      membershipProofWithdrawal: resolved.some(
+        (entry) => entry.name === "membership proof withdrawal",
+      )
+        ? byName("membership proof withdrawal")
+        : undefined,
       reserveSpending: resolved.some(
         (entry) => entry.name === "reserve spending",
       )
@@ -242,6 +247,10 @@ export const absorbConfirmedDepositToReserveProgram = (
     const refs = yield* fetchReferenceScripts([
       { name: "deposit minting", script: contracts.deposit.mintingScript },
       { name: "deposit spending", script: contracts.deposit.spendingScript },
+      {
+        name: "membership proof withdrawal",
+        script: membershipProofWithdrawal.script,
+      },
     ]);
     const txHash = yield* submitAbsorbConfirmedDepositToReserveProgram(
       lucidService.api,
@@ -304,6 +313,10 @@ export const initializePayoutProgram = (
         script: contracts.withdrawal.spendingScript,
       },
       { name: "payout minting", script: contracts.payout.mintingScript },
+      {
+        name: "membership proof withdrawal",
+        script: membershipProofWithdrawal.script,
+      },
     ]);
     const txHash = yield* submitInitializePayoutProgram(
       lucidService.api,

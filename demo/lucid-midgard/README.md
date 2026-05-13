@@ -1,8 +1,8 @@
 # lucid-midgard
 
 Midgard-native L2 transaction builder primitives inspired by lucid-evolution.
-The library builds and signs Midgard native transaction bytes; it does not build
-or submit Cardano transactions.
+The library builds and signs Midgard native transaction envelope bytes; it does
+not build or submit Cardano transactions.
 
 ## Quickstart
 
@@ -91,8 +91,9 @@ trusted metadata through `readFrom(..., { trustedReferenceScripts })` or
 
 ## Partial Signing
 
-Signing verifies witnesses against the Midgard native body hash. Detached
-partial bundles are bound to one transaction id/body hash.
+Signing verifies witnesses against `computeMidgardNativeTxIdFromFull(nativeTx)`,
+the hash of the compact transaction body. Detached partial bundles are bound to
+one transaction id/body hash.
 
 ```ts
 const bundleA = await tx.sign.withWallet(walletA).partial();
@@ -143,7 +144,8 @@ failures into strings or booleans.
 `submit` returns `SubmittedTx` with durable admission metadata. Admission is not
 final validation acceptance. Use `status` or `awaitStatus` to observe `queued`,
 `accepted`, `rejected`, and `committed` states. Rejected status preserves node
-reject codes and details.
+reject codes and details. Provider submission posts the raw Midgard transaction
+envelope CBOR to `/submit` with `Content-Type: application/cbor`.
 
 ## Protected Outputs
 

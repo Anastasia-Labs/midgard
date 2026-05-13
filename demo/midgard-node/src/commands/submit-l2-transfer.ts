@@ -863,9 +863,9 @@ export const submitNativeTransferTx = (
       const response = await fetch(`${nodeEndpoint}/submit`, {
         method: "POST",
         headers: {
-          "content-type": "application/json",
+          "content-type": "application/cbor",
         },
-        body: JSON.stringify({ tx_cbor: txHex }),
+        body: Buffer.from(txHex, "hex"),
       });
       const responseText = await response.text();
       if (!response.ok) {

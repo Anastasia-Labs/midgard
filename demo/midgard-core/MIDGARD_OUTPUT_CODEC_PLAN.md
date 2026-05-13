@@ -125,7 +125,7 @@ type MidgardDatum = {
 type MidgardVersionedScript =
   | {
       language: "NativeCardano";
-      scriptBytes: Uint8Array;        // canonical native-script CBOR
+      scriptBytes: Uint8Array; // canonical native-script CBOR
       nativeScript: MidgardNativeScript;
     }
   | { language: "PlutusV3"; scriptBytes: Uint8Array }
@@ -153,7 +153,7 @@ camelCase field names:
 
 ```ts
 type PublicMidgardTxOutput = {
-  readonly address: string;       // canonical Midgard Bech32, may be protected
+  readonly address: string; // canonical Midgard Bech32, may be protected
   readonly assets: Assets;
   readonly datum?: PublicMidgardDatum | null;
   readonly scriptRef?: PublicMidgardScript | null;
@@ -161,7 +161,7 @@ type PublicMidgardTxOutput = {
 
 type PublicMidgardDatum = {
   readonly kind: "inline";
-  readonly cbor: string;          // PlutusData CBOR hex
+  readonly cbor: string; // PlutusData CBOR hex
 };
 
 type PublicMidgardScript =
@@ -170,8 +170,8 @@ type PublicMidgardScript =
   | { readonly type: "MidgardV1"; readonly script: string };
 
 type NodeUtxoResponse = {
-  readonly outref: string;      // TxOutRef CBOR hex
-  readonly outputCbor: string;  // MidgardTxOutput CBOR hex
+  readonly outref: string; // TxOutRef CBOR hex
+  readonly outputCbor: string; // MidgardTxOutput CBOR hex
 };
 ```
 
@@ -248,7 +248,7 @@ Rules:
   native-script bytes and the parsed `MidgardNativeScript` AST. The canonical
   bytes are used for hashing and byte-exact re-encode checks; the AST is used
   for Midgard-owned native-script verification.
-- The same raw UPLC bytes with tag `2` and tag `128` are distinct script
+- The same raw UPLC bytes with tag `3` and tag `128` are distinct script
   values and must produce distinct script CBOR, output CBOR, output roots, and
   script hashes/language views where relevant.
 
@@ -291,7 +291,7 @@ Rules:
   iff the transaction validity lower bound exists and is greater than or equal
   to `slot`.
 - `[5, slot]` is Cardano `invalid_hereafter` / before-slot and evaluates true
-  iff the transaction validity upper bound exists and is strictly less than
+  iff the transaction validity upper bound exists and is less than or equal to
   `slot`.
 - Missing validity lower/upper bounds make the corresponding time-lock script
   evaluate false.
@@ -476,6 +476,30 @@ Rules:
 - Wallet-facing address lookup must not clear `0x08` or implicitly query both
   protected and unprotected variants.
 
+### Script Context Address Shape
+
+PlutusV3 script contexts remain Cardano-compatible. Their `txOutAddress`
+encoding is the Cardano `Address` shape:
+
+```text
+Constr 0 [payment_credential, maybe_staking_credential]
+```
+
+MidgardV1 script contexts use a Midgard-owned address shape so scripts can
+distinguish protected and unprotected L2 outputs:
+
+```text
+Constr 0 [payment_credential, maybe_stake_credential] // unprotected
+Constr 1 [payment_credential, maybe_stake_credential] // protected
+```
+
+The payment credential encoding is Cardano `Credential`. The stake credential
+encoding is `Option<MidgardInlineStakeCredential(Credential)>`; MidgardV1
+script contexts do not include a pointer stake-credential constructor because
+Midgard outputs reject pointer addresses at the codec boundary. Protectedness
+is derived from the authoritative Midgard address bytes; it is not stored as a
+separate boolean field in outputs or public UTxO API objects.
+
 ### Node And Provider UTxO API Shape
 
 Node HTTP endpoints expose stored protocol bytes. Provider/Lucid APIs decode
@@ -486,8 +510,8 @@ Node response shape for `GET /utxos`, `GET /utxo`, and
 
 ```ts
 type NodeUtxoResponse = {
-  readonly outref: string;      // TxOutRef CBOR hex
-  readonly outputCbor: string;  // MidgardTxOutput CBOR hex
+  readonly outref: string; // TxOutRef CBOR hex
+  readonly outputCbor: string; // MidgardTxOutput CBOR hex
 };
 ```
 
@@ -838,7 +862,7 @@ Acceptance criteria:
 - Native script evaluation fixtures prove empty `all` is true, empty `any` is
   false, `atLeast(0, children)` is true, `atLeast(n, children)` is false when
   fewer than `n` children evaluate true, `[4, slot]` requires an existing lower
-  bound `>= slot`, and `[5, slot]` requires an existing upper bound `< slot`.
+  bound `>= slot`, and `[5, slot]` requires an existing upper bound `<= slot`.
 - Native script verifier inputs are explicit and limited to
   `validityIntervalStart?: bigint`, `validityIntervalEnd?: bigint`, and
   `witnessSigners: ReadonlySet<keyHashHex>`.
@@ -871,7 +895,7 @@ Acceptance criteria:
 
 - `[0, native_script_cbor]` decodes as `NativeCardano` only if the native script
   payload is valid canonical Midgard native-script CBOR.
-- `[2, raw_uplc]` decodes as `PlutusV3`.
+- `[3, raw_uplc]` decodes as `PlutusV3`.
 - `[128, raw_uplc]` decodes as `MidgardV1`.
 - Same raw UPLC bytes tagged as `PlutusV3` and `MidgardV1` produce different
   versioned-script CBOR and different containing output CBOR.

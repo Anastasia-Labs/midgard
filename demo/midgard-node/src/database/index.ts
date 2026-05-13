@@ -11,6 +11,7 @@ export * as ProcessedMempoolDB from "./processedMempool.js";
 export * as MempoolLedgerDB from "./mempoolLedger.js";
 export * as MempoolTxDeltasDB from "./mempoolTxDeltas.js";
 export * as MutationJobsDB from "./mutationJobs.js";
+export * as StateQueueMutationLeasesDB from "./stateQueueMutationLeases.js";
 export * as PendingBlockFinalizationsDB from "./pendingBlockFinalizations.js";
 export * as TxRejectionsDB from "./txRejections.js";
 export * as TxAdmissionsDB from "./txAdmissions.js";

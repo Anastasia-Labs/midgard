@@ -2,6 +2,11 @@ import { describe, expect, it } from "vitest";
 import { Effect } from "effect";
 import * as SDK from "@al-ft/midgard-sdk";
 import { CML, Data, walletFromSeed } from "@lucid-evolution/lucid";
+import {
+  midgardAddressFromText,
+  midgardAddressToText,
+  protectMidgardAddress,
+} from "@/midgard-tx-codec/index.js";
 import { assetsToValue } from "@/transactions/reserve-payout.js";
 import {
   publicKeyHashFromWithdrawalSignature,
@@ -14,7 +19,10 @@ import {
   parseTxOutRefLabel,
   resolveWalletSeedPhrase,
 } from "@/commands/withdrawal-utils.js";
-import { withdrawalEventIdFromBuildMetadata } from "@/commands/submit-withdrawal.js";
+import {
+  __submitWithdrawalTest,
+  withdrawalEventIdFromBuildMetadata,
+} from "@/commands/submit-withdrawal.js";
 
 const seedPhrase =
   "test test test test test test test test test test test junk";
@@ -107,6 +115,40 @@ describe("withdrawal signature utilities", () => {
 });
 
 describe("withdrawal CLI parsers", () => {
+  it("extracts selected protected L2 UTxO owners with the Midgard address codec", () => {
+    const wallet = walletFromSeed(seedPhrase, { network: "Preprod" });
+    const keyHash = CML.PrivateKey.from_bech32(wallet.paymentKey)
+      .to_public()
+      .hash()
+      .to_hex();
+    const protectedAddress = midgardAddressToText(
+      protectMidgardAddress(midgardAddressFromText(wallet.address)),
+    );
+
+    expect(
+      __submitWithdrawalTest.selectedUtxoPaymentKeyHash(protectedAddress),
+    ).toEqual(keyHash);
+  });
+
+  it("rejects selected L2 UTxOs owned by script credentials", () => {
+    const scriptAddress = CML.EnterpriseAddress.new(
+      0,
+      CML.Credential.new_script(CML.ScriptHash.from_hex("22".repeat(28))),
+    )
+      .to_address()
+      .to_bech32();
+
+    expect(() =>
+      __submitWithdrawalTest.selectedUtxoPaymentKeyHash(scriptAddress),
+    ).toThrow("Selected L2 UTxO must be owned by a key credential.");
+  });
+
+  it("rejects malformed selected L2 UTxO addresses", () => {
+    expect(() =>
+      __submitWithdrawalTest.selectedUtxoPaymentKeyHash("not-an-address"),
+    ).toThrow();
+  });
+
   it("parses tx out refs and event ids in canonical OutputReference CBOR form", () => {
     const parsed = parseTxOutRefLabel(
       "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa#2",

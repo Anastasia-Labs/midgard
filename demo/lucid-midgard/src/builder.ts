@@ -1405,7 +1405,7 @@ const applyAddrWitnessesToTx = (
   readonly tx: MidgardNativeTxFull;
   readonly witnesses: readonly VKeyWitness[];
 } => {
-  const bodyHash = tx.compact.transactionBodyHash;
+  const bodyHash = computeMidgardNativeTxIdFromFull(tx);
   const merged = canonicalizeAddrWitnesses(bodyHash, [
     ...decodeAddrWitnesses(tx.witnessSet.addrTxWitsPreimageCbor),
     ...witnesses,
@@ -1413,7 +1413,6 @@ const applyAddrWitnessesToTx = (
   const nextAddrTxWitsPreimageCbor = encodeAddrWitnesses(merged);
   const witnessSet = {
     ...tx.witnessSet,
-    addrTxWitsRoot: computeHash32(nextAddrTxWitsPreimageCbor),
     addrTxWitsPreimageCbor: nextAddrTxWitsPreimageCbor,
   };
   const signedTx: MidgardNativeTxFull = {
@@ -1422,7 +1421,7 @@ const applyAddrWitnessesToTx = (
     compact: deriveMidgardNativeTxCompact(
       tx.body,
       witnessSet,
-      tx.compact.validity,
+      tx.validity,
       tx.version,
     ),
   };
@@ -1444,7 +1443,7 @@ const decodeImportAddrWitnesses = (
   }
   const byKeyHash = new Map<string, Buffer>();
   for (const witness of witnesses) {
-    assertVKeyWitness(tx.compact.transactionBodyHash, witness);
+    assertVKeyWitness(computeMidgardNativeTxIdFromFull(tx), witness);
     const keyHash = witness.vkey().hash().to_hex();
     const bytes = Buffer.from(witness.to_cbor_bytes());
     const existing = byKeyHash.get(keyHash);
@@ -1646,7 +1645,7 @@ const signMidgardNativeTx = async (
   tx: MidgardNativeTxFull,
   wallet: MidgardWallet,
 ): Promise<MidgardNativeTxFull> => {
-  const bodyHash = tx.compact.transactionBodyHash;
+  const bodyHash = computeMidgardNativeTxIdFromFull(tx);
   const witness = assertVKeyWitness(
     bodyHash,
     await wallet.signBodyHash(bodyHash),
@@ -1742,7 +1741,7 @@ const partialWitnessBundleFromWitnesses = (
   witnesses: readonly VKeyWitness[],
 ): MidgardPartialWitnessBundle => {
   const canonical = canonicalizeAddrWitnesses(
-    tx.compact.transactionBodyHash,
+    computeMidgardNativeTxIdFromFull(tx),
     witnesses,
   );
   if (canonical.length === 0) {
@@ -1754,7 +1753,7 @@ const partialWitnessBundleFromWitnesses = (
     version: PARTIAL_WITNESS_BUNDLE_VERSION,
     midgardNativeTxVersion: Number(tx.version),
     txId,
-    bodyHash: Buffer.from(tx.compact.transactionBodyHash).toString("hex"),
+    bodyHash: Buffer.from(computeMidgardNativeTxIdFromFull(tx)).toString("hex"),
     witnesses: canonical.map((witness) =>
       Buffer.from(witness.to_cbor_bytes()).toString("hex"),
     ),
@@ -1903,7 +1902,7 @@ const assertPartialBundleMatchesTx = (
   bundle: MidgardPartialWitnessBundle,
 ): void => {
   const txId = computeMidgardNativeTxIdFromFull(tx).toString("hex");
-  const bodyHash = Buffer.from(tx.compact.transactionBodyHash).toString("hex");
+  const bodyHash = Buffer.from(computeMidgardNativeTxIdFromFull(tx)).toString("hex");
   if (bundle.txId !== txId || bundle.bodyHash !== bodyHash) {
     throw new SigningError(
       "Partial witness bundle belongs to a different transaction",
@@ -1943,7 +1942,7 @@ const withEstimatedAddrWitnesses = (
   for (let index = witnesses.length; index < expectedWitnessCount; index += 1) {
     estimatedWitnesses.push(
       makeVKeyWitness(
-        tx.compact.transactionBodyHash,
+        computeMidgardNativeTxIdFromFull(tx),
         dummyWitnessPrivateKey(index),
       ),
     );
@@ -1951,7 +1950,6 @@ const withEstimatedAddrWitnesses = (
   const addrTxWitsPreimageCbor = encodeAddrWitnesses(estimatedWitnesses);
   const witnessSet = {
     ...tx.witnessSet,
-    addrTxWitsRoot: computeHash32(addrTxWitsPreimageCbor),
     addrTxWitsPreimageCbor,
   };
   const estimatedTx: MidgardNativeTxFull = {
@@ -1960,7 +1958,7 @@ const withEstimatedAddrWitnesses = (
     compact: deriveMidgardNativeTxCompact(
       tx.body,
       witnessSet,
-      tx.compact.validity,
+      tx.validity,
       tx.version,
     ),
   };
@@ -1987,14 +1985,14 @@ const canonicalImportedTxFromBytes = (
     tx = decodeMidgardNativeTxFull(bytes);
   } catch (cause) {
     throw new BuilderInvariantError(
-      "fromTx accepts only Midgard native full transaction bytes",
+      "fromTx accepts only Midgard native transaction envelope bytes",
       cause instanceof Error ? cause.message : String(cause),
     );
   }
   const canonical = encodeMidgardNativeTxFull(tx);
   if (!canonical.equals(Buffer.from(bytes))) {
     throw new BuilderInvariantError(
-      "fromTx requires canonical Midgard native full transaction bytes",
+      "fromTx requires canonical Midgard native transaction envelope bytes",
     );
   }
   return tx;
@@ -2266,7 +2264,7 @@ export class TxPartialSignBuilder {
 
   private async collectWitnesses(): Promise<readonly VKeyWitness[]> {
     const nativeTx = this.#tx.tx;
-    const bodyHash = nativeTx.compact.transactionBodyHash;
+    const bodyHash = computeMidgardNativeTxIdFromFull(nativeTx);
     const witnesses: VKeyWitness[] = this.#witnesses.map((witness, index) =>
       normalizeVKeyWitnessInput(
         witness,
@@ -2681,7 +2679,7 @@ const assemblePartialWitnessBundles = (
   if (inputs.length === 0) {
     throw new SigningError("At least one partial witness bundle is required");
   }
-  const bodyHash = tx.compact.transactionBodyHash;
+  const bodyHash = computeMidgardNativeTxIdFromFull(tx);
   const witnesses = inputs.flatMap((input) => {
     const bundle = parsePartialWitnessBundle(input);
     assertPartialBundleMatchesTx(tx, bundle);
@@ -6085,7 +6083,7 @@ export class TxBuilder {
     const expectedAddrWitnessCount = expectedWitnessKeyHashes.length;
     if (
       !computeHash32(tx.body.spendInputsPreimageCbor).equals(
-        tx.body.spendInputsRoot,
+        tx.compact.transactionBody.spendInputsRoot,
       )
     ) {
       throw new BuilderInvariantError(

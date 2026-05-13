@@ -8,6 +8,7 @@ import {
   decodeMidgardNativeByteListPreimage,
   decodeMidgardNativeTxFull,
   decodeMidgardUtxo,
+  deriveMidgardNativeTxWitnessSetCompact,
   EMPTY_CBOR_LIST,
   EMPTY_NULL_ROOT,
   encodeMidgardTxOutput,
@@ -124,7 +125,6 @@ describe("TxBuilder finalization", () => {
 
     const decoded = decodeMidgardNativeTxFull(completed.txCbor);
     expect(completed.txId).toEqual(computeMidgardNativeTxIdFromFull(decoded));
-    expect(completed.txId).toEqual(decoded.compact.transactionBodyHash);
     expect(completed.toHash()).toBe(completed.txIdHex);
     expect(completed.toCBOR()).toBe(completed.txHex);
     expect(completed.toJSON()).toMatchObject({
@@ -165,24 +165,30 @@ describe("TxBuilder finalization", () => {
       .pay.ToAddress(address, { lovelace: 1_000_000n })
       .complete();
     const tx = decodeMidgardNativeTxFull(completed.txCbor);
+    const witnessCompact = deriveMidgardNativeTxWitnessSetCompact(
+      tx.witnessSet,
+      tx.version,
+    );
 
-    expect(tx.body.spendInputsRoot).toEqual(
+    expect(tx.compact.transactionBody.spendInputsRoot).toEqual(
       computeHash32(tx.body.spendInputsPreimageCbor),
     );
-    expect(tx.body.referenceInputsRoot).toEqual(computeHash32(EMPTY_CBOR_LIST));
-    expect(tx.body.requiredObserversRoot).toEqual(
+    expect(tx.compact.transactionBody.referenceInputsRoot).toEqual(
       computeHash32(EMPTY_CBOR_LIST),
     );
-    expect(tx.body.mintRoot).toEqual(computeHash32(EMPTY_CBOR_LIST));
+    expect(tx.compact.transactionBody.requiredObserversRoot).toEqual(
+      computeHash32(EMPTY_CBOR_LIST),
+    );
+    expect(tx.compact.transactionBody.mintRoot).toEqual(
+      computeHash32(EMPTY_CBOR_LIST),
+    );
     expect(tx.body.scriptIntegrityHash).toEqual(EMPTY_NULL_ROOT);
     expect(tx.body.auxiliaryDataHash).toEqual(EMPTY_NULL_ROOT);
-    expect(tx.witnessSet.addrTxWitsRoot).toEqual(
+    expect(witnessCompact.addrTxWitsRoot).toEqual(computeHash32(EMPTY_CBOR_LIST));
+    expect(witnessCompact.scriptTxWitsRoot).toEqual(
       computeHash32(EMPTY_CBOR_LIST),
     );
-    expect(tx.witnessSet.scriptTxWitsRoot).toEqual(
-      computeHash32(EMPTY_CBOR_LIST),
-    );
-    expect(tx.witnessSet.redeemerTxWitsRoot).toEqual(
+    expect(witnessCompact.redeemerTxWitsRoot).toEqual(
       computeHash32(EMPTY_CBOR_LIST),
     );
     expect(tx.body.validityIntervalStart).toBe(MIDGARD_POSIX_TIME_NONE);

@@ -1,7 +1,12 @@
 import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import type { Script } from "@lucid-evolution/lucid";
+import {
+  CML,
+  type Network,
+  type Script,
+  validatorToScriptHash,
+} from "@lucid-evolution/lucid";
 
 const moduleDir = path.dirname(fileURLToPath(import.meta.url));
 const blueprintCandidates = [
@@ -42,3 +47,24 @@ export const loadPhasMembershipWithdrawalScript = (): Script => {
     script: validator.compiledCode,
   };
 };
+
+const networkId = (network: Network): number => (network === "Mainnet" ? 1 : 0);
+
+export const phasMembershipWithdrawalScriptHash = (
+  script: Script = loadPhasMembershipWithdrawalScript(),
+): string => validatorToScriptHash(script);
+
+export const phasMembershipStakeCredential = (
+  script: Script = loadPhasMembershipWithdrawalScript(),
+): CML.Credential =>
+  CML.Credential.new_script(
+    CML.ScriptHash.from_hex(phasMembershipWithdrawalScriptHash(script)),
+  );
+
+export const phasMembershipRewardAddress = (
+  network: Network,
+  script: Script = loadPhasMembershipWithdrawalScript(),
+): string =>
+  CML.RewardAddress.new(networkId(network), phasMembershipStakeCredential(script))
+    .to_address()
+    .to_bech32();

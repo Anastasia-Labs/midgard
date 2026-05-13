@@ -1,8 +1,8 @@
 import * as SDK from "@al-ft/midgard-sdk";
 import { Effect } from "effect";
-import { getAddressDetails } from "@lucid-evolution/lucid";
 import { assetsToValue } from "@/transactions/reserve-payout.js";
 import * as SubmitWithdrawalTx from "@/transactions/submit-withdrawal.js";
+import { decodeMidgardAddressText } from "@/midgard-tx-codec/index.js";
 import {
   fetchReferenceScriptUtxosProgram,
   referenceScriptByName,
@@ -68,12 +68,11 @@ const parseOptionalPositiveLovelace = (
 };
 
 const selectedUtxoPaymentKeyHash = (address: string): string => {
-  const details = getAddressDetails(address);
-  const paymentCredential = details.paymentCredential;
-  if (paymentCredential === undefined || paymentCredential.type !== "Key") {
+  const { paymentCredential } = decodeMidgardAddressText(address);
+  if (paymentCredential.kind !== "PubKey") {
     throw new Error("Selected L2 UTxO must be owned by a key credential.");
   }
-  return paymentCredential.hash;
+  return paymentCredential.hash.toString("hex");
 };
 
 export const withdrawalEventIdFromBuildMetadata = (
@@ -204,4 +203,5 @@ export const formatSubmitWithdrawalResult = (
 
 export const __submitWithdrawalTest = {
   lucidUtxoFromNodeUtxo,
+  selectedUtxoPaymentKeyHash,
 };

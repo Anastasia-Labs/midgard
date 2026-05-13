@@ -213,7 +213,6 @@ describe("fromTx, compose, and local chaining", () => {
     ]);
     const witnessSet = {
       ...completed.tx.witnessSet,
-      addrTxWitsRoot: computeHash32(addrTxWitsPreimageCbor),
       addrTxWitsPreimageCbor,
     };
     const staleTx: MidgardNativeTxFull = {
@@ -222,7 +221,7 @@ describe("fromTx, compose, and local chaining", () => {
       compact: deriveMidgardNativeTxCompact(
         completed.tx.body,
         witnessSet,
-        completed.tx.compact.validity,
+        completed.tx.validity,
         completed.tx.version,
       ),
     };

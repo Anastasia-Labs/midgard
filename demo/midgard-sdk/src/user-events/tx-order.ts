@@ -1,5 +1,4 @@
 import {
-  CML,
   Data,
   fromHex,
   LucidEvolution,
@@ -12,7 +11,6 @@ import {
 import {
   GenericErrorFields,
   makeReturn,
-  OutputReference,
   ProofSchema,
 } from "@/common.js";
 import { AuthenticUTxO, authenticateUTxOs } from "@/internals.js";
@@ -27,6 +25,8 @@ import {
 import {
   CardanoDatum,
   CardanoDatumSchema,
+  MidgardTxCompact,
+  MidgardTxId,
   MidgardTxValiditySchema,
   TxOrderEventSchema,
 } from "@/ledger-state.js";
@@ -84,8 +84,8 @@ export const utxosToTxOrderUTxOs = (
   nftPolicy: string,
 ): Effect.Effect<TxOrderUTxO[]> => {
   const calculateExtraFields = (datum: TxOrderDatum): UserEventExtraFields => ({
-    idCbor: Buffer.from(fromHex(Data.to(datum.event.id, OutputReference))),
-    infoCbor: Buffer.from(fromHex(datum.event.tx)),
+    idCbor: Buffer.from(fromHex(Data.to(datum.event.id, MidgardTxId))),
+    infoCbor: Buffer.from(fromHex(Data.to(datum.event.tx, MidgardTxCompact))),
     inclusionTime: new Date(Number(datum.inclusion_time)),
   });
 
@@ -115,7 +115,8 @@ export type TxOrderParams = {
   mintingPolicy: Script;
   policyId: string;
   nonceUTxO?: UTxO;
-  cardanoTx: CML.Transaction; // temporary until midgard tx conversion is done
+  txId: MidgardTxId;
+  tx: MidgardTxCompact;
   refundAddress: AddressData;
   refundDatum?: CardanoDatum;
 };
@@ -146,11 +147,8 @@ export const incompleteTxOrderTxProgram = (
 
     const txOrderDatum: TxOrderDatum = {
       event: {
-        id: {
-          transactionId: inputUtxo.txHash,
-          outputIndex: BigInt(inputUtxo.outputIndex),
-        },
-        tx: params.cardanoTx.to_cbor_hex(),
+        id: params.txId,
+        tx: params.tx,
       },
       inclusion_time: BigInt(inclusionTime),
       witness: userEventWitnessScriptHash(assetName),

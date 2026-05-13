@@ -9,9 +9,9 @@ import {
   computeMidgardNativeTxIdFromFull,
   deriveMidgardNativeTxCompact,
   encodeMidgardNativeTxFull,
-  type MidgardNativeTxBodyFull,
+  type MidgardNativeTxBodyCanonical,
   type MidgardNativeTxFull,
-  type MidgardNativeTxWitnessSetFull,
+  type MidgardNativeTxWitnessSetCanonical,
 } from "@/midgard-tx-codec/index.js";
 import {
   PhaseAAccepted,
@@ -83,36 +83,28 @@ const makeNativeTx = ({
   const spendInputsPreimageCbor = encodeByteList(spent);
   const referenceInputsPreimageCbor = encodeByteList(referenceInputs);
   const outputsPreimageCbor = encodeByteList(outputs);
-  const body: MidgardNativeTxBodyFull = {
-    spendInputsRoot: computeHash32(spendInputsPreimageCbor),
+  const body: MidgardNativeTxBodyCanonical = {
     spendInputsPreimageCbor,
-    referenceInputsRoot: computeHash32(referenceInputsPreimageCbor),
     referenceInputsPreimageCbor,
-    outputsRoot: computeHash32(outputsPreimageCbor),
     outputsPreimageCbor,
     fee: 0n,
     validityIntervalStart: validityIntervalStart ?? MIDGARD_POSIX_TIME_NONE,
     validityIntervalEnd: validityIntervalEnd ?? MIDGARD_POSIX_TIME_NONE,
-    requiredObserversRoot: EMPTY_LIST_ROOT,
     requiredObserversPreimageCbor: EMPTY_CBOR_LIST,
-    requiredSignersRoot: EMPTY_LIST_ROOT,
     requiredSignersPreimageCbor: EMPTY_CBOR_LIST,
-    mintRoot: EMPTY_LIST_ROOT,
     mintPreimageCbor: EMPTY_CBOR_LIST,
     scriptIntegrityHash: EMPTY_NULL_ROOT,
     auxiliaryDataHash: EMPTY_NULL_ROOT,
     networkId: 0n,
   };
-  const witnessSet: MidgardNativeTxWitnessSetFull = {
-    addrTxWitsRoot: EMPTY_LIST_ROOT,
+  const witnessSet: MidgardNativeTxWitnessSetCanonical = {
     addrTxWitsPreimageCbor: EMPTY_CBOR_LIST,
-    scriptTxWitsRoot: EMPTY_LIST_ROOT,
     scriptTxWitsPreimageCbor: EMPTY_CBOR_LIST,
-    redeemerTxWitsRoot: EMPTY_LIST_ROOT,
     redeemerTxWitsPreimageCbor: EMPTY_CBOR_LIST,
   };
   return {
     version: MIDGARD_NATIVE_TX_VERSION,
+    validity: "TxIsValid",
     body,
     witnessSet,
     compact: deriveMidgardNativeTxCompact(body, witnessSet, "TxIsValid"),

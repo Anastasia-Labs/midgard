@@ -9,6 +9,7 @@ import {
 import { Effect } from "effect";
 import { formatUnknownError } from "@/error-format.js";
 import { compareOutRefs, outRefLabel } from "@/tx-context.js";
+import { loadPhasMembershipWithdrawalScript } from "@/phas-membership.js";
 import {
   handleSignSubmit,
   TxConfirmError,
@@ -54,6 +55,7 @@ export const REFERENCE_SCRIPT_COMMAND_NAMES = [
   "deposit",
   "withdrawal",
   "settlement",
+  "phas-membership",
   "reserve",
   "payout",
 ] as const;
@@ -867,6 +869,10 @@ export const nodeRuntimeReferenceScriptTargets = (
     script: contracts.settlement.mintingScript,
   },
   {
+    name: "membership proof withdrawal",
+    script: loadPhasMembershipWithdrawalScript(),
+  },
+  {
     name: "reserve spending",
     script: contracts.reserve.spendingScript,
   },
@@ -1000,6 +1006,12 @@ export const referenceScriptTargetsByCommand = (
     {
       name: "settlement minting",
       script: contracts.settlement.mintingScript,
+    },
+  ],
+  "phas-membership": [
+    {
+      name: "membership proof withdrawal",
+      script: loadPhasMembershipWithdrawalScript(),
     },
   ],
   reserve: [

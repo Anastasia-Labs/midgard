@@ -19,8 +19,8 @@ CREATE TYPE tx_admission_status AS ENUM (
 
 CREATE TABLE tx_admissions (
   tx_id BYTEA PRIMARY KEY CHECK (octet_length(tx_id) = 32),
-  tx_cbor BYTEA NOT NULL CHECK (octet_length(tx_cbor) > 0),
-  tx_cbor_sha256 BYTEA NOT NULL CHECK (octet_length(tx_cbor_sha256) = 32),
+  tx_envelope_cbor BYTEA NOT NULL CHECK (octet_length(tx_envelope_cbor) > 0),
+  tx_envelope_cbor_sha256 BYTEA NOT NULL CHECK (octet_length(tx_envelope_cbor_sha256) = 32),
   arrival_seq BIGSERIAL UNIQUE NOT NULL,
   status tx_admission_status NOT NULL,
   first_seen_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -36,7 +36,7 @@ CREATE TABLE tx_admissions (
   reject_detail TEXT,
   submit_source TEXT NOT NULL,
   request_count BIGINT NOT NULL DEFAULT 1 CHECK (request_count >= 1),
-  CHECK (submit_source IN ('native', 'cardano-converted', 'backfill')),
+  CHECK (submit_source IN ('native', 'backfill')),
   CHECK (last_seen_at >= first_seen_at AND updated_at >= first_seen_at),
   CHECK (
     (

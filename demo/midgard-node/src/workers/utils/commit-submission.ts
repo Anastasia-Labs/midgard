@@ -1,6 +1,6 @@
 /**
  * Commit submission and local-finalization side effects for the block worker.
- * This module owns the database and trie transitions that happen after a
+ * This module owns the database and MPF transitions that happen after a
  * commit transaction is submitted, recovered, deferred, or finalized locally.
  */
 import * as SDK from "@al-ft/midgard-sdk";
@@ -26,7 +26,7 @@ import { formatUnknownError } from "@/error-format.js";
 import { Lucid, type Database } from "@/services/index.js";
 import { SqlClient } from "@effect/sql";
 import type { TxSubmitError } from "@/transactions/utils.js";
-import { batchProgram, type FileSystemError } from "@/utils.js";
+import { batchProgram } from "@/utils.js";
 import {
   buildSuccessfulCommitBatches,
   type SuccessfulCommitBatch,
@@ -35,7 +35,7 @@ import type {
   WorkerInput,
   WorkerOutput,
 } from "@/workers/utils/commit-block-header.js";
-import type { MidgardMpt } from "@/workers/utils/mpt.js";
+import type { MidgardMpf, MpfError } from "@/workers/utils/mpf.js";
 import { fromHex } from "@lucid-evolution/lucid";
 
 const BATCH_SIZE = 100;
@@ -126,13 +126,17 @@ const applyFinalizedWithdrawalLedgerEffects = (
   });
 
 export const finalizeCommittedBlockLocally = (
-  mempoolTrie: MidgardMpt,
+  transactionsMpf: MidgardMpf,
   mempoolTxs: readonly TxTable.EntryWithTimeStamp[],
   mempoolTxHashes: Buffer[],
   includedDepositEventIds: readonly Buffer[],
   newHeaderHash: string,
   includedWithdrawalEventIds: readonly Buffer[] = [],
-): Effect.Effect<void, DatabaseError | FileSystemError, Database> =>
+  options: {
+    readonly processedMempoolTxsOverride?: readonly TxTable.EntryWithTimeStamp[];
+    readonly useAmbientProcessedMempool?: boolean;
+  } = {},
+): Effect.Effect<void, DatabaseError | MpfError, Database> =>
   Effect.gen(function* () {
     const filterAlreadyCommittedTxs = (
       candidateBatches: readonly SuccessfulCommitBatch[],
@@ -192,7 +196,11 @@ export const finalizeCommittedBlockLocally = (
 
     const newHeaderHashBuffer = Buffer.from(fromHex(newHeaderHash));
 
-    const processedMempoolTxs = yield* ProcessedMempoolDB.retrieve;
+    const processedMempoolTxs =
+      options.processedMempoolTxsOverride ??
+      (options.useAmbientProcessedMempool === false
+        ? []
+        : yield* ProcessedMempoolDB.retrieve);
     const batches = buildSuccessfulCommitBatches(
       mempoolTxs,
       mempoolTxHashes,
@@ -202,7 +210,7 @@ export const finalizeCommittedBlockLocally = (
     const filteredBatches = yield* filterAlreadyCommittedTxs(batches);
 
     yield* Effect.logInfo(
-      "🔹 Inserting included transactions into ImmutableDB and BlocksDB, clearing all the processed txs from MempoolDB and ProcessedMempoolDB, and deleting mempool LevelDB...",
+      "🔹 Inserting included transactions into ImmutableDB and BlocksDB, clearing included txs from MempoolDB/ProcessedMempoolDB, and resetting the transactions MPF root marker...",
     );
     const sql = yield* SqlClient.SqlClient;
     yield* sql
@@ -230,7 +238,12 @@ export const finalizeCommittedBlockLocally = (
               concurrency: 1,
             },
           );
-          yield* ProcessedMempoolDB.clear;
+          const processedTxHashes = processedMempoolTxs.map((entry) =>
+            Buffer.from(entry[TxColumns.TX_ID]),
+          );
+          if (processedTxHashes.length > 0) {
+            yield* ProcessedMempoolDB.clearTxs(processedTxHashes);
+          }
           yield* applyFinalizedWithdrawalLedgerEffects(
             includedWithdrawalEventIds,
           );
@@ -242,7 +255,7 @@ export const finalizeCommittedBlockLocally = (
           "Failed to finalize committed block locally",
         ),
       );
-    yield* mempoolTrie.delete();
+    yield* transactionsMpf.resetToEmpty();
   }).pipe(
     Effect.tapError((error) =>
       Effect.gen(function* () {
@@ -254,7 +267,7 @@ export const finalizeCommittedBlockLocally = (
   );
 
 export const successfulSubmissionProgram = (
-  mempoolTrie: MidgardMpt,
+  transactionsMpf: MidgardMpf,
   mempoolTxs: readonly TxTable.EntryWithTimeStamp[],
   mempoolTxHashes: Buffer[],
   includedDepositEventIds: readonly Buffer[],
@@ -265,7 +278,7 @@ export const successfulSubmissionProgram = (
   txHash: string,
   blockEndTimeMs: number,
   includedWithdrawalEventIds: readonly Buffer[] = [],
-): Effect.Effect<WorkerOutput, DatabaseError | FileSystemError, Database> =>
+): Effect.Effect<WorkerOutput, DatabaseError | MpfError, Database> =>
   withLocalBlockFinalizationJob(
     {
       headerHash: newHeaderHash,
@@ -275,7 +288,7 @@ export const successfulSubmissionProgram = (
     },
     Effect.gen(function* () {
       yield* finalizeCommittedBlockLocally(
-        mempoolTrie,
+        transactionsMpf,
         mempoolTxs,
         mempoolTxHashes,
         includedDepositEventIds,
@@ -308,43 +321,98 @@ export const successfulSubmissionProgram = (
   );
 
 export const successfulLocalFinalizationRecoveryProgram = (
-  mempoolTrie: MidgardMpt,
-  mempoolTxs: readonly TxTable.EntryWithTimeStamp[],
-  mempoolTxHashes: Buffer[],
+  transactionsMpf: MidgardMpf,
+  _mempoolTxs: readonly TxTable.EntryWithTimeStamp[],
+  _mempoolTxHashes: Buffer[],
   includedDepositEventIds: readonly Buffer[],
   confirmedHeaderHash: string,
   workerInput: WorkerInput,
-  sizeOfProcessedTxs: number,
+  _sizeOfProcessedTxs: number,
   includedWithdrawalEventIds: readonly Buffer[] = [],
-): Effect.Effect<WorkerOutput, DatabaseError | FileSystemError, Database> =>
+): Effect.Effect<WorkerOutput, DatabaseError | MpfError, Database> =>
   Effect.gen(function* () {
     const confirmedHeaderHashBuffer = Buffer.from(fromHex(confirmedHeaderHash));
     const pendingRecord =
       yield* PendingBlockFinalizationsDB.retrieveByHeaderHash(
         confirmedHeaderHashBuffer,
       );
-    const finalizedDepositEventIds = Option.isSome(pendingRecord)
-      ? pendingRecord.value.depositEventIds
-      : includedDepositEventIds;
-    const finalizedWithdrawalEventIds = Option.isSome(pendingRecord)
-      ? pendingRecord.value.withdrawalEventIds
-      : includedWithdrawalEventIds;
+    if (Option.isNone(pendingRecord)) {
+      return yield* Effect.fail(
+        new DatabaseError({
+          table: PendingBlockFinalizationsDB.tableName,
+          message:
+            "Cannot recover local finalization without a durable pending block journal",
+          cause: `header_hash=${confirmedHeaderHash}`,
+        }),
+      );
+    }
+    const record = pendingRecord.value;
+    const finalizedDepositEventIds = record.depositEventIds;
+    const finalizedWithdrawalEventIds = record.withdrawalEventIds;
+    const unknownTxMember = record.txMembers.find(
+      (member) =>
+        member[PendingBlockFinalizationsDB.MemberColumns.SOURCE_TABLE] !==
+          MempoolDB.tableName &&
+        member[PendingBlockFinalizationsDB.MemberColumns.SOURCE_TABLE] !==
+          ProcessedMempoolDB.tableName,
+    );
+    if (unknownTxMember !== undefined) {
+      return yield* Effect.fail(
+        new DatabaseError({
+          table: PendingBlockFinalizationsDB.tableName,
+          message:
+            "Cannot recover local finalization because the journal contains an unknown tx source table",
+          cause: `header_hash=${confirmedHeaderHash},source_table=${
+            unknownTxMember[
+              PendingBlockFinalizationsDB.MemberColumns.SOURCE_TABLE
+            ]
+          }`,
+        }),
+      );
+    }
+    const journalMempoolTxs = record.txMembers
+      .filter(
+        (member) =>
+          member[PendingBlockFinalizationsDB.MemberColumns.SOURCE_TABLE] ===
+          MempoolDB.tableName,
+      )
+      .map(PendingBlockFinalizationsDB.txMemberToEntry);
+    const journalProcessedMempoolTxs = record.txMembers
+      .filter(
+        (member) =>
+          member[PendingBlockFinalizationsDB.MemberColumns.SOURCE_TABLE] ===
+          ProcessedMempoolDB.tableName,
+      )
+      .map(PendingBlockFinalizationsDB.txMemberToEntry);
+    const journalMempoolTxHashes = journalMempoolTxs.map((entry) =>
+      Buffer.from(entry[TxColumns.TX_ID]),
+    );
+    const journalTxsSize = record.txMembers.reduce(
+      (total, member) =>
+        total +
+        member[PendingBlockFinalizationsDB.MemberColumns.PAYLOAD_CBOR].length,
+      0,
+    );
 
     return yield* withLocalBlockFinalizationJob(
       {
         headerHash: confirmedHeaderHash,
-        mempoolTxCount: mempoolTxs.length,
+        mempoolTxCount: record.txMembers.length,
         includedDepositCount: finalizedDepositEventIds.length,
         includedWithdrawalCount: finalizedWithdrawalEventIds.length,
       },
       Effect.gen(function* () {
         yield* finalizeCommittedBlockLocally(
-          mempoolTrie,
-          mempoolTxs,
-          mempoolTxHashes,
+          transactionsMpf,
+          journalMempoolTxs,
+          journalMempoolTxHashes,
           finalizedDepositEventIds,
           confirmedHeaderHash,
           finalizedWithdrawalEventIds,
+          {
+            processedMempoolTxsOverride: journalProcessedMempoolTxs,
+            useAmbientProcessedMempool: false,
+          },
         );
         yield* WithdrawalsDB.markFinalizedByEventIds(
           finalizedWithdrawalEventIds,
@@ -356,9 +424,9 @@ export const successfulLocalFinalizationRecoveryProgram = (
         return {
           type: "SuccessfulLocalFinalizationRecoveryOutput" as const,
           mempoolTxsCount:
-            mempoolTxs.length + workerInput.data.mempoolTxsCountSoFar,
+            record.txMembers.length + workerInput.data.mempoolTxsCountSoFar,
           sizeOfBlocksTxs:
-            sizeOfProcessedTxs + workerInput.data.sizeOfProcessedTxsSoFar,
+            journalTxsSize + workerInput.data.sizeOfProcessedTxsSoFar,
         } satisfies WorkerOutput;
       }),
     );
@@ -406,7 +474,7 @@ export const skippedSubmissionProgram = (
   );
 
 export const failedSubmissionProgram = (
-  mempoolTrie: MidgardMpt,
+  transactionsMpf: MidgardMpf,
   mempoolTxsCount: number,
   sizeOfProcessedTxs: number,
   err: TxSubmitError,
@@ -414,10 +482,14 @@ export const failedSubmissionProgram = (
   Effect.gen(function* () {
     yield* Effect.logError(`🔹 ⚠️  Tx submit failed: ${err}`);
     yield* Effect.logError(
-      "🔹 ⚠️  Mempool trie will be preserved, but db will be cleared.",
+      "🔹 ⚠️  Transactions MPF root marker will be preserved for recovery.",
     );
-    yield* Effect.logInfo("🔹 Mempool Trie stats:");
-    console.dir(mempoolTrie.databaseStats(), { depth: null });
+    const diagnostics = yield* transactionsMpf
+      .diagnostics()
+      .pipe(Effect.catchAll(() => Effect.succeed({ entries: -1 })));
+    yield* Effect.logInfo(
+      `🔹 Transactions MPF diagnostics: entries=${diagnostics.entries}`,
+    );
     return {
       type: "SkippedSubmissionOutput",
       mempoolTxsCount,

@@ -279,19 +279,19 @@ const fromHex = (hex: string, fieldName: string, endpoint: string): Buffer => {
   return Buffer.from(normalized, "hex");
 };
 
-const normalizeSubmitTxCborHex = (
-  txCborHex: string,
+const normalizeSubmitTxEnvelopeCborHex = (
+  txEnvelopeCborHex: string,
   endpoint: string,
   maxSubmitTxCborBytes?: number,
 ): string => {
-  const bytes = fromHex(txCborHex, "tx_cbor", endpoint);
+  const bytes = fromHex(txEnvelopeCborHex, "tx_envelope_cbor", endpoint);
   if (
     maxSubmitTxCborBytes !== undefined &&
     bytes.length > maxSubmitTxCborBytes
   ) {
     throw new ProviderPayloadError(
       endpoint,
-      "tx_cbor exceeds protocol submit size limit",
+      "tx_envelope_cbor exceeds protocol submit size limit",
       `size=${bytes.length.toString()} max=${maxSubmitTxCborBytes.toString()}`,
     );
   }
@@ -871,15 +871,15 @@ export class MidgardNodeProvider implements MidgardProvider {
   async submitTx(txCborHex: string): Promise<SubmitTxResult> {
     const endpoint = "/submit";
     const protocolInfo = await this.getProtocolInfo();
-    const normalizedTxCborHex = normalizeSubmitTxCborHex(
+    const normalizedTxEnvelopeCborHex = normalizeSubmitTxEnvelopeCborHex(
       txCborHex,
       endpoint,
       protocolInfo.submissionLimits.maxSubmitTxCborBytes,
     );
     const { response, payload } = await this.requestJson(endpoint, {
       method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ tx_cbor: normalizedTxCborHex }),
+      headers: { "content-type": "application/cbor" },
+      body: Buffer.from(normalizedTxEnvelopeCborHex, "hex"),
     });
     if (response.status !== 200 && response.status !== 202) {
       const message = isObject(payload)

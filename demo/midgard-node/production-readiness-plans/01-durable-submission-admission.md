@@ -39,9 +39,9 @@ Relevant code paths:
   [`src/commands/listen.ts:65`](../src/commands/listen.ts#L65).
 - The HTTP server receives that queue through `buildListenRouter(txQueue)`:
   [`src/commands/listen.ts:115`](../src/commands/listen.ts#L115).
-- `/submit` accepts both query-string and JSON body input, normalizes the
-  submitted bytes, builds a `QueuedTxPayload`, and offers it to the in-memory
-  queue:
+- `/submit` accepts raw `application/cbor` Midgard transaction-envelope bytes,
+  normalizes the submitted bytes, builds a `QueuedTxPayload`, and offers it to
+  the in-memory queue:
   [`src/commands/listen-router.ts:971`](../src/commands/listen-router.ts#L971),
   [`src/commands/listen-router.ts:1005`](../src/commands/listen-router.ts#L1005),
   [`src/commands/listen-router.ts:1032`](../src/commands/listen-router.ts#L1032),
@@ -124,8 +124,8 @@ CREATE TYPE tx_admission_status AS ENUM (
 
 CREATE TABLE tx_admissions (
   tx_id BYTEA PRIMARY KEY CHECK (octet_length(tx_id) = 32),
-  tx_cbor BYTEA NOT NULL CHECK (octet_length(tx_cbor) > 0),
-  tx_cbor_sha256 BYTEA NOT NULL CHECK (octet_length(tx_cbor_sha256) = 32),
+  tx_envelope_cbor BYTEA NOT NULL CHECK (octet_length(tx_envelope_cbor) > 0),
+  tx_envelope_cbor_sha256 BYTEA NOT NULL CHECK (octet_length(tx_envelope_cbor_sha256) = 32),
   arrival_seq BIGSERIAL UNIQUE NOT NULL,
   status tx_admission_status NOT NULL,
   first_seen_at TIMESTAMPTZ NOT NULL DEFAULT now(),
@@ -142,7 +142,7 @@ CREATE TABLE tx_admissions (
   submit_source TEXT NOT NULL,
   request_count BIGINT NOT NULL DEFAULT 1 CHECK (request_count >= 1),
   CONSTRAINT tx_admissions_submit_source_check
-    CHECK (submit_source IN ('native', 'cardano-converted', 'backfill')),
+    CHECK (submit_source IN ('native', 'backfill')),
   CONSTRAINT tx_admissions_time_order_check
     CHECK (last_seen_at >= first_seen_at AND updated_at >= first_seen_at),
   CONSTRAINT tx_admissions_lease_status_check CHECK (
@@ -231,7 +231,8 @@ admission row":
 ```text
 POST /submit
   parse request
-  validate size and hex shape
+  require Content-Type application/cbor
+  validate non-empty raw CBOR size
   normalize to canonical Midgard-native bytes and tx_id
   TxAdmissionsDB.admit(...)
   return durable state
@@ -382,19 +383,20 @@ Use the report's rule:
 [`PRODUCTION_READINESS_REPORT.md:939`](../PRODUCTION_READINESS_REPORT.md#L939).
 
 ```text
-same tx_id + same normalized tx_cbor = idempotent
-same tx_id + different normalized tx_cbor = integrity conflict
+same tx_id + same tx_envelope_cbor = idempotent
+same tx_id + different tx_envelope_cbor = integrity conflict
 ```
 
 Admission conflict handling:
 
 1. In a serializable transaction, try to insert the new row.
 2. On primary-key conflict, lock the existing row.
-3. Compare `tx_cbor_sha256` and, if equal, the stored `tx_cbor` bytes.
+3. Compare `tx_envelope_cbor_sha256` and, if equal, the stored
+   `tx_envelope_cbor` bytes.
 4. If both match, update only `last_seen_at` and `request_count`, then return
    the existing durable status.
 5. If either differs, return `409` and record an integrity event. Do not change
-   `tx_cbor`, `status`, or lifecycle timestamps.
+   `tx_envelope_cbor`, `status`, or lifecycle timestamps.
 
 Serialization failures in `admit` are retryable inside the adapter with a small
 bounded retry count. After retries are exhausted, `/submit` must return `503`
@@ -426,8 +428,9 @@ Required migration phases:
 1. Add the `tx_admission_status` enum and `tx_admissions` table.
 2. Backfill from durable transaction tables that contain bytes:
    `mempool`, `processed_mempool`, and immutable transaction storage. Backfilled
-   rows must compute `tx_cbor_sha256`, set `status = 'accepted'`, and preserve a
-   deterministic `arrival_seq` ordered by existing timestamps and `tx_id`.
+   rows must compute `tx_envelope_cbor_sha256`, set `status = 'accepted'`, and
+   preserve a deterministic `arrival_seq` ordered by existing timestamps and
+   `tx_id`.
    After explicit `arrival_seq` inserts, reset the backing sequence to
    `max(arrival_seq) + 1` in the same migration so new admissions cannot collide.
 3. Backfill rejected rows only if there is enough durable information to prove

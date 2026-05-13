@@ -3,7 +3,6 @@ import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { CML } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
-import { normalizeSubmitTxHexToNative } from "@/commands/listen-utils.js";
 import {
   cardanoTxBytesToMidgardNativeTxFullBytes,
   computeMidgardNativeTxIdFromFull,
@@ -55,7 +54,7 @@ const makePubKeyOutput = (
     ).to_cbor_bytes(),
   );
 
-describe("phase-a cardano signature bridge", () => {
+describe("phase-a converted fixture signature bridge", () => {
   it("rejects converted Cardano witnesses that only sign the original Cardano body hash", async () => {
     const signerKey = CML.PrivateKey.generate_ed25519();
     const inputs = CML.TransactionInputList.new();
@@ -102,7 +101,7 @@ describe("phase-a cardano signature bridge", () => {
     expect(result.rejected[0].code).toBe(RejectCodes.InvalidSignature);
   });
 
-  it("accepts converted ingress only when witnesses sign the Midgard-native body hash", async () => {
+  it("accepts converted fixture bytes only when witnesses sign the Midgard-native body hash", async () => {
     const signerKey = CML.PrivateKey.generate_ed25519();
     const mintScript = CML.NativeScript.new_script_pubkey(
       signerKey.to_public().hash(),
@@ -143,19 +142,15 @@ describe("phase-a cardano signature bridge", () => {
       true,
       undefined,
     );
-    const normalizedUnsigned = normalizeSubmitTxHexToNative(
-      Buffer.from(unsignedCardanoTx.to_cbor_bytes()).toString("hex"),
+    const unsignedNativeBytes = cardanoTxBytesToMidgardNativeTxFullBytes(
+      Buffer.from(unsignedCardanoTx.to_cbor_bytes()),
     );
-    expect(normalizedUnsigned.ok).toBe(true);
-    if (!normalizedUnsigned.ok) {
-      throw new Error("expected normalized tx");
-    }
-    const nativeTx = decodeMidgardNativeTxFull(normalizedUnsigned.txCbor);
+    const nativeTx = decodeMidgardNativeTxFull(unsignedNativeBytes);
     const vkeyWitnesses = CML.VkeywitnessList.new();
     vkeyWitnesses.add(
       CML.make_vkey_witness(
         CML.TransactionHash.from_raw_bytes(
-          nativeTx.compact.transactionBodyHash,
+          computeMidgardNativeTxIdFromFull(nativeTx),
         ),
         signerKey,
       ),
@@ -166,19 +161,15 @@ describe("phase-a cardano signature bridge", () => {
     witnessSet.set_native_scripts(nativeScripts);
 
     const cardanoTx = CML.Transaction.new(body, witnessSet, true, undefined);
-    const normalized = normalizeSubmitTxHexToNative(
-      Buffer.from(cardanoTx.to_cbor_bytes()).toString("hex"),
+    const nativeBytes = cardanoTxBytesToMidgardNativeTxFullBytes(
+      Buffer.from(cardanoTx.to_cbor_bytes()),
     );
-
-    expect(normalized.ok).toBe(true);
-    if (!normalized.ok) {
-      throw new Error("expected normalized tx");
-    }
-    expect(normalized.source).toBe("cardano-converted");
+    const converted = decodeMidgardNativeTxFull(nativeBytes);
+    const txId = computeMidgardNativeTxIdFromFull(converted);
 
     const queued: QueuedTx = {
-      txId: normalized.txId,
-      txCbor: normalized.txCbor,
+      txId,
+      txCbor: nativeBytes,
       arrivalSeq: 0n,
       createdAt: new Date(0),
     };

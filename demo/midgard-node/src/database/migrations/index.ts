@@ -3,6 +3,8 @@ import initialSchemaSql from "./sql/0001_initial_schema.sql";
 import durableTxAdmissionsSql from "./sql/0002_durable_tx_admissions.sql";
 import localMutationJobsSql from "./sql/0003_local_mutation_jobs.sql";
 import withdrawalEventsSql from "./sql/0004_withdrawal_events.sql";
+import pendingFinalizationJournalPayloadsSql from "./sql/0005_pending_finalization_journal_payloads.sql";
+import stateQueueMutationLeasesSql from "./sql/0006_state_queue_mutation_leases.sql";
 
 export type Migration = {
   readonly version: number;
@@ -44,6 +46,20 @@ export const MIGRATIONS: readonly Migration[] = [
     sql: withdrawalEventsSql,
     transactional: true,
   },
+  {
+    version: 5,
+    name: "pending_finalization_journal_payloads",
+    checksumSha256: sha256Hex(pendingFinalizationJournalPayloadsSql),
+    sql: pendingFinalizationJournalPayloadsSql,
+    transactional: true,
+  },
+  {
+    version: 6,
+    name: "state_queue_mutation_leases",
+    checksumSha256: sha256Hex(stateQueueMutationLeasesSql),
+    sql: stateQueueMutationLeasesSql,
+    transactional: true,
+  },
 ] as const;
 
 export const EXPECTED_SCHEMA_VERSION =
@@ -76,6 +92,7 @@ export const APPLICATION_TABLE_NAMES = [
   "pending_block_finalization_txs",
   "tx_admissions",
   "local_mutation_jobs",
+  "state_queue_mutation_leases",
 ] as const;
 
 export const APPLICATION_INDEX_NAMES = [
@@ -106,6 +123,8 @@ export const APPLICATION_INDEX_NAMES = [
   "idx_tx_admissions_lease",
   "uniq_tx_rejections_tx_id",
   "idx_local_mutation_jobs_status_updated",
+  "uniq_state_queue_mutation_leases_active_scope",
+  "idx_state_queue_mutation_leases_status_updated",
 ] as const;
 
 export const migrationByVersion = new Map(

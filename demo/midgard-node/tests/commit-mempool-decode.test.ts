@@ -4,7 +4,7 @@ import { it } from "@effect/vitest";
 import {
   COMMIT_REJECT_CODE_DECODE_FAILED,
   resolveTxDeltaForCommit,
-} from "@/workers/utils/mpt.js";
+} from "@/workers/utils/mpf.js";
 import * as Tx from "@/database/utils/tx.js";
 import * as Ledger from "@/database/utils/ledger.js";
 

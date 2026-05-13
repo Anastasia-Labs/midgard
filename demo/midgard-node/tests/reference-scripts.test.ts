@@ -46,6 +46,7 @@ describe("node-runtime reference-script registry", () => {
     expect(names).toContain("withdrawal minting");
     expect(names).toContain("withdrawal spending");
     expect(names).toContain("settlement minting");
+    expect(names).toContain("membership proof withdrawal");
     expect(names).toContain("reserve spending");
     expect(names).toContain("reserve observer");
     expect(names).toContain("payout spending");
@@ -79,6 +80,7 @@ describe("node-runtime reference-script registry", () => {
     expect(REFERENCE_SCRIPT_COMMAND_NAMES).toContain("reserve");
     expect(REFERENCE_SCRIPT_COMMAND_NAMES).toContain("payout");
     expect(REFERENCE_SCRIPT_COMMAND_NAMES).toContain("withdrawal");
+    expect(REFERENCE_SCRIPT_COMMAND_NAMES).toContain("phas-membership");
     expect(byCommand.deposit.map(({ name }) => name)).toEqual([
       "deposit minting",
       "deposit spending",
@@ -90,6 +92,9 @@ describe("node-runtime reference-script registry", () => {
     expect(byCommand.reserve.map(({ name }) => name)).toEqual([
       "reserve spending",
       "reserve observer",
+    ]);
+    expect(byCommand["phas-membership"].map(({ name }) => name)).toEqual([
+      "membership proof withdrawal",
     ]);
     expect(byCommand.payout.map(({ name }) => name)).toEqual([
       "payout spending",

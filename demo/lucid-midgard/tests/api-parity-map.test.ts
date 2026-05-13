@@ -224,8 +224,8 @@ describe("API parity map", () => {
   });
 
   it("documents the non-Cardano semantics that callers must migrate around", () => {
-    expect(markdown).toContain("nativeTx.compact.transactionBodyHash");
-    expect(markdown).toContain("Midgard native full transaction bytes");
+    expect(markdown).toContain("computeMidgardNativeTxIdFromFull(nativeTx)");
+    expect(markdown).toContain("Midgard native transaction envelope bytes");
     expect(markdown).toContain("durable admission metadata");
     expect(markdown).toContain("complete({ localValidation");
     expect(markdown).toContain("GET /protocol-info");

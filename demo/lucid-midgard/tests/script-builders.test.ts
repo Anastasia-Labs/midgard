@@ -8,6 +8,7 @@ import {
   decodeMidgardNativeTxFull,
   decodeMidgardUtxo,
   decodeSingleCbor,
+  deriveMidgardNativeTxWitnessSetCompact,
   EMPTY_CBOR_LIST,
   EMPTY_NULL_ROOT,
   encodeMidgardTxOutput,
@@ -148,7 +149,7 @@ describe("script and redeemer builders", () => {
       "0:1",
     ]);
     expect(tx.body.scriptIntegrityHash).toEqual(
-      computeScriptIntegrityHashForLanguages(tx.witnessSet.redeemerTxWitsRoot, [
+      computeScriptIntegrityHashForLanguages(deriveMidgardNativeTxWitnessSetCompact(tx.witnessSet, tx.version).redeemerTxWitsRoot, [
         "PlutusV3",
       ]),
     );
@@ -222,7 +223,7 @@ describe("script and redeemer builders", () => {
       "3:1",
     ]);
     expect(tx.body.scriptIntegrityHash).toEqual(
-      computeScriptIntegrityHashForLanguages(tx.witnessSet.redeemerTxWitsRoot, [
+      computeScriptIntegrityHashForLanguages(deriveMidgardNativeTxWitnessSetCompact(tx.witnessSet, tx.version).redeemerTxWitsRoot, [
         "MidgardV1",
         "PlutusV3",
       ]),
@@ -296,7 +297,7 @@ describe("script and redeemer builders", () => {
     const tx = decodeMidgardNativeTxFull(completed.txCbor);
 
     expect(tx.body.scriptIntegrityHash).toEqual(
-      computeScriptIntegrityHashForLanguages(tx.witnessSet.redeemerTxWitsRoot, [
+      computeScriptIntegrityHashForLanguages(deriveMidgardNativeTxWitnessSetCompact(tx.witnessSet, tx.version).redeemerTxWitsRoot, [
         "PlutusV3",
       ]),
     );
@@ -363,7 +364,7 @@ describe("script and redeemer builders", () => {
       "0:0",
     ]);
     expect(tx.body.scriptIntegrityHash).toEqual(
-      computeScriptIntegrityHashForLanguages(tx.witnessSet.redeemerTxWitsRoot, [
+      computeScriptIntegrityHashForLanguages(deriveMidgardNativeTxWitnessSetCompact(tx.witnessSet, tx.version).redeemerTxWitsRoot, [
         "PlutusV3",
       ]),
     );
@@ -404,7 +405,7 @@ describe("script and redeemer builders", () => {
 
     expect(tx.witnessSet.scriptTxWitsPreimageCbor).toEqual(EMPTY_CBOR_LIST);
     expect(tx.body.scriptIntegrityHash).toEqual(
-      computeScriptIntegrityHashForLanguages(tx.witnessSet.redeemerTxWitsRoot, [
+      computeScriptIntegrityHashForLanguages(deriveMidgardNativeTxWitnessSetCompact(tx.witnessSet, tx.version).redeemerTxWitsRoot, [
         "PlutusV3",
       ]),
     );
@@ -611,7 +612,7 @@ describe("script and redeemer builders", () => {
       "6:0",
     ]);
     expect(tx.body.scriptIntegrityHash).toEqual(
-      computeScriptIntegrityHashForLanguages(tx.witnessSet.redeemerTxWitsRoot, [
+      computeScriptIntegrityHashForLanguages(deriveMidgardNativeTxWitnessSetCompact(tx.witnessSet, tx.version).redeemerTxWitsRoot, [
         "MidgardV1",
       ]),
     );

@@ -31,6 +31,7 @@ import {
   PendingBlockFinalizationsDB,
   MutationJobsDB,
   TxAdmissionsDB,
+  StateQueueMutationLeasesDB,
 
   // Utils
   CommonUtils,
@@ -39,7 +40,7 @@ import {
 } from "../src/database/index.js";
 import { projectDepositsToMempoolLedger } from "../src/fibers/project-deposits-to-mempool-ledger.js";
 import { ProcessedTx } from "../src/utils.js";
-import { resolveIncludedDepositEntriesForWindow } from "../src/workers/utils/mpt.js";
+import { resolveIncludedDepositEntriesForWindow } from "../src/workers/utils/mpf.js";
 import { provideDatabaseLayers } from "./utils.js";
 import {
   cardanoTxBytesToMidgardNativeTxFullBytes,
@@ -67,6 +68,7 @@ const flushAll = Effect.gen(function* () {
       PendingBlockFinalizationsDB.clear,
       CommonUtils.clearTable(TxAdmissionsDB.tableName),
       CommonUtils.clearTable(MutationJobsDB.tableName),
+      CommonUtils.clearTable(StateQueueMutationLeasesDB.tableName),
     ],
     { discard: true },
   );
@@ -108,6 +110,88 @@ describe("Database: initialization and basic operations", () => {
         expect(now.length).toBeGreaterThan(0);
       }),
     ),
+  );
+});
+
+describe("StateQueueMutationLeasesDB", () => {
+  it.effect(
+    "returns Busy instead of failing when the state-queue lease is already held",
+    (_) =>
+      provideDatabaseLayers(
+        Effect.gen(function* () {
+          yield* flushAll;
+
+          const first = yield* StateQueueMutationLeasesDB.tryAcquire({
+            holder: "first",
+          });
+          expect(first._tag).toBe("Acquired");
+          if (first._tag !== "Acquired") {
+            return;
+          }
+
+          const second = yield* StateQueueMutationLeasesDB.tryAcquire({
+            holder: "second",
+          });
+          expect(second._tag).toBe("Busy");
+          if (second._tag === "Busy") {
+            expect(
+              second.activeLease?.[StateQueueMutationLeasesDB.Columns.HOLDER],
+            ).toBe("first");
+          }
+
+          yield* StateQueueMutationLeasesDB.release(first.token);
+          const third = yield* StateQueueMutationLeasesDB.tryAcquire({
+            holder: "third",
+          });
+          expect(third._tag).toBe("Acquired");
+          if (third._tag === "Acquired") {
+            yield* StateQueueMutationLeasesDB.release(third.token);
+          }
+        }),
+      ),
+  );
+
+  it.effect(
+    "tryWithLease releases successful work and marks failed work without leaving an active lease",
+    (_) =>
+      provideDatabaseLayers(
+        Effect.gen(function* () {
+          yield* flushAll;
+
+          const success = yield* StateQueueMutationLeasesDB.tryWithLease(
+            "success",
+            (token) => Effect.succeed(token),
+          );
+          expect(success._tag).toBe("Ran");
+          expect(yield* StateQueueMutationLeasesDB.retrieveActive()).toBe(
+            undefined,
+          );
+
+          const failure = yield* StateQueueMutationLeasesDB.tryWithLease(
+            "failure",
+            () => Effect.fail(new Error("boom")),
+          ).pipe(Effect.either);
+          expect(failure._tag).toBe("Left");
+          expect(yield* StateQueueMutationLeasesDB.retrieveActive()).toBe(
+            undefined,
+          );
+
+          const sql = yield* SqlClient.SqlClient;
+          const rows = yield* sql<{
+            status: StateQueueMutationLeasesDB.Status;
+            last_error: string | null;
+          }>`SELECT status, last_error FROM ${sql(
+            StateQueueMutationLeasesDB.tableName,
+          )}
+            WHERE holder = ${"failure"}
+            ORDER BY acquired_at DESC
+            LIMIT 1`;
+          expect(rows[0]?.status).toBe(
+            StateQueueMutationLeasesDB.Status.Failed,
+          );
+          expect(rows[0]?.last_error).toContain("boom");
+        }),
+      ),
   );
 });
 

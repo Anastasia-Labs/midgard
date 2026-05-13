@@ -374,18 +374,22 @@ pub fn verify_tx_and_its_provided_field_preimage(
   tx: MidgardTxCompact,
   tx_field_preimage: TxFieldPreimage,
 ) -> Bool {
-  let tx_data: Data = tx
+  let tx_body_data: Data = tx.body
   and {
-    verify_hash_32(data: tx_data, data_hash: tx_id),
+    verify_hash_32(data: tx_body_data, data_hash: tx_id),
     when tx_field_preimage is {
       TxBodyProvided(tx_body) ->
-        verify_hash_32(data: tx_body, data_hash: tx.body)
+        and {
+          tx_body == tx.body,
+          verify_hash_32(data: tx_body, data_hash: tx_id),
+        }
       TxWitsProvided(tx_wits) ->
         verify_hash_32(data: tx_wits, data_hash: tx.wits)
       TxBodyAndWitsProvided(tx_body, tx_wits) -> {
         let MidgardTxCompact { body, wits, .. } = tx
         and {
-          verify_hash_32(data: tx_body, data_hash: body),
+          tx_body == body,
+          verify_hash_32(data: tx_body, data_hash: tx_id),
           verify_hash_32(data: tx_wits, data_hash: wits),
         }
       }

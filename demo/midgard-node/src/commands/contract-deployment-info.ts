@@ -21,6 +21,10 @@ import { mkdir, rename, writeFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { Lucid, MidgardContracts } from "@/services/index.js";
 import { compareOutRefs } from "@/tx-context.js";
+import {
+  loadPhasMembershipWithdrawalScript,
+  phasMembershipWithdrawalScriptHash,
+} from "@/phas-membership.js";
 
 export type ContractDeploymentInfoRefScriptUTxO = {
   readonly txHash: string;
@@ -103,6 +107,19 @@ const withdrawalDescriptor = (
     cborHex: validator.withdrawalScriptCBOR,
   },
 });
+
+const phasMembershipDescriptor = (): ScriptDescriptor => {
+  const script = loadPhasMembershipWithdrawalScript();
+  return {
+    name: "phasMembershipWithdraw",
+    script,
+    scriptHash: phasMembershipWithdrawalScriptHash(script),
+    contract: {
+      type: script.type,
+      cborHex: script.script,
+    },
+  };
+};
 
 const mergeWalletUtxosPreservingScriptRefs = (
   liveUtxos: readonly UTxO[],
@@ -214,6 +231,7 @@ const collectScriptDescriptors = (
   mintDescriptor("payoutMint", contracts.payout),
   spendDescriptor("reserveSpend", contracts.reserve),
   withdrawalDescriptor("reserveWithdraw", contracts.reserve),
+  phasMembershipDescriptor(),
   spendDescriptor("fraudProofDoubleSpend", contracts.fraudProofs.doubleSpend),
   spendDescriptor(
     "fraudProofNonExistentInput",

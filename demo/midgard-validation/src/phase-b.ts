@@ -7,6 +7,7 @@ import {
   decodeMidgardNativeMint,
   decodeMidgardNativeTxFull,
   decodeMidgardVersionedScriptListPreimage,
+  deriveMidgardNativeTxWitnessSetCompact,
   encodeMidgardVersionedScript,
   hashMidgardVersionedScript,
   verifyMidgardNativeScript,
@@ -657,8 +658,12 @@ const runLocalScriptEvaluation = (
   );
 
   const languages = requiredScriptLanguages(discovered.executions);
+  const witnessCompact = deriveMidgardNativeTxWitnessSetCompact(
+    nativeTx.witnessSet,
+    nativeTx.version,
+  );
   const expectedScriptIntegrityHash = computeScriptIntegrityHashForLanguages(
-    nativeTx.witnessSet.redeemerTxWitsRoot,
+    witnessCompact.redeemerTxWitsRoot,
     languages,
   );
   if (!nativeTx.body.scriptIntegrityHash.equals(expectedScriptIntegrityHash)) {

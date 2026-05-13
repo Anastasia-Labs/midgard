@@ -11,8 +11,8 @@ It is responsible for:
 - validating and enqueuing submitted Midgard-native transactions,
 - maintaining PostgreSQL-backed views of mempool, latest-ledger, immutable
   history, and auxiliary indexes,
-- maintaining LevelDB-backed Merkle Patricia Trie state for ledger and mempool
-  roots,
+- maintaining LevelDB-backed Merkle Patricia Forestry state for ledger and
+  transaction roots,
 - running background fibers that monitor mempool state, commit blocks, confirm
   block commitments, merge confirmed state, fetch deposit UTxOs, and sweep old
   retention data.
@@ -36,8 +36,8 @@ It is responsible for:
 
 - PostgreSQL stores durable relational views such as mempool entries, latest
   ledger entries, immutable transactions, address history, and rejection logs.
-- `LEDGER_MPT_DB_PATH` and `MEMPOOL_MPT_DB_PATH` point at the LevelDB
-  directories used to persist trie-backed state roots across restarts.
+- `LEDGER_MPF_DB_PATH` and `TRANSACTIONS_MPF_DB_PATH` point at the LevelDB
+  directories used to persist MPF-backed state roots across restarts.
 - `pnpm build` regenerates `src/generated/midgard-sdk-types.d.ts` by syncing
   the built SDK declarations before bundling the node.
 - `ADMIN_API_KEY` gates the admin-only HTTP surface; keep it set in any shared
@@ -149,12 +149,16 @@ docker logs -f midgard-node-midgard-node-1
 ```
 
 If you made any changes to `midgard-node` and had an image running, restart it
-with the 3 steps:
+without deleting durable state:
 
 ```sh
-docker compose down -v
+docker compose stop midgard-node
 docker compose up -d --build
 ```
+
+Only wipe Docker volumes or local MPF/PostgreSQL state as part of a full clean
+protocol redeploy. Do not combine a fresh local database with previously
+deployed on-chain protocol state.
 
 ### Without Docker (No Monitoring)
 
@@ -166,8 +170,8 @@ POSTGRES_USER=postgres
 POSTGRES_PASSWORD=postgres
 POSTGRES_DB=midgard
 POSTGRES_HOST=localhost
-LEDGER_MPT_DB_PATH=midgard-ledger-mpt-db
-MEMPOOL_MPT_DB_PATH=midgard-mempool-mpt-db
+LEDGER_MPF_DB_PATH=midgard-ledger-mpf-db
+TRANSACTIONS_MPF_DB_PATH=midgard-transactions-mpf-db
 ```
 
 With a properly setup database, the following set of commands should start the
@@ -214,7 +218,8 @@ The main listener exposes a small operator-facing API. Common routes include:
 
 - `/deposit/build` for building unsigned L1 deposit transactions from a
   caller-supplied wallet view,
-- `/submit` for submitting Midgard-native transactions,
+- `/submit` for submitting raw Midgard transaction-envelope CBOR with
+  `Content-Type: application/cbor`,
 - `/utxo` for querying one spendable Midgard mempool-ledger UTxO by raw
   TxOutRef CBOR hex,
 - `/utxos` for querying spendable Midgard mempool-ledger UTxOs either by

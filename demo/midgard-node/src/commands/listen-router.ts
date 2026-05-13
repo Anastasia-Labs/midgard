@@ -25,11 +25,9 @@ import { isHexString } from "@/utils.js";
 import { QueuedTxPayload } from "@/validation/index.js";
 import {
   authorizeAdminRoute,
-  extractSubmitTxHex,
-  extractSubmitTxHexFromQueryParams,
   isAdminRoutePath,
-  normalizeSubmitTxHexToNative,
-  validateSubmitTxHex,
+  normalizeSubmitTxEnvelopeCborToNative,
+  validateSubmitTxEnvelopeCbor,
 } from "@/commands/listen-utils.js";
 import { evaluateReadiness } from "@/commands/readiness.js";
 import {
@@ -107,6 +105,12 @@ const submitQueueOfferFailureCounter = Metric.counter(
     incremental: true,
   },
 );
+
+const isApplicationCbor = (contentType: string | undefined): boolean =>
+  contentType
+    ?.split(";")[0]
+    ?.trim()
+    .toLowerCase() === "application/cbor";
 
 /**
  * Wraps a route handler with admin-key authorization when the path belongs to
@@ -671,10 +675,11 @@ const getMergeHandler = Effect.gen(function* () {
   yield* Effect.logInfo(`GET /${MERGE_ENDPOINT} - Manual merge order received`);
   const result = yield* mergeAction(true);
   yield* Effect.logInfo(
-    `GET /${MERGE_ENDPOINT} - Merging confirmed state successful: ${result}`,
+    `GET /${MERGE_ENDPOINT} - Merge result: ${JSON.stringify(result)}`,
   );
   return yield* HttpServerResponse.json({
-    message: `Merging confirmed state successful: ${result}`,
+    message: "Merge request processed",
+    result,
   });
 }).pipe(
   Effect.catchTag("HttpBodyError", (e) =>
@@ -1004,28 +1009,33 @@ const postSubmitHandler = (
     return yield* Effect.gen(function* () {
       const nodeConfig = yield* NodeConfig;
       const request = yield* HttpServerRequest.HttpServerRequest;
-      const params = yield* ParsedSearchParams;
-      const queryTxHex = extractSubmitTxHexFromQueryParams(params);
-      let bodyTxHex: string | undefined = undefined;
-      if (queryTxHex === undefined) {
-        const parsedBody = yield* Effect.either(request.json);
-        if (parsedBody._tag === "Right") {
-          bodyTxHex = extractSubmitTxHex(parsedBody.right);
-        }
-      }
-      const txString = queryTxHex ?? bodyTxHex;
 
-      if (txString === undefined) {
-        yield* Effect.logInfo(`▫️ Invalid submit payload: missing tx_cbor`);
+      if (!isApplicationCbor(request.headers["content-type"])) {
+        yield* Effect.logInfo(
+          `▫️ Invalid submit payload: expected application/cbor`,
+        );
         yield* recordLatency();
         return yield* HttpServerResponse.json(
-          { error: "Request body must include `tx_cbor` as a hex string" },
+          {
+            error:
+              "Request body must be raw Midgard transaction envelope CBOR with Content-Type application/cbor",
+          },
+          { status: 415 },
+        );
+      }
+
+      const bodyBytes = yield* Effect.either(request.arrayBuffer);
+      if (bodyBytes._tag === "Left") {
+        yield* Effect.logInfo(`▫️ Submit rejected: failed to read request body`);
+        yield* recordLatency();
+        return yield* HttpServerResponse.json(
+          { error: "Invalid transaction envelope CBOR payload" },
           { status: 400 },
         );
       }
 
-      const validation = validateSubmitTxHex(
-        txString,
+      const validation = validateSubmitTxEnvelopeCbor(
+        new Uint8Array(bodyBytes.right),
         nodeConfig.MAX_SUBMIT_TX_CBOR_BYTES,
       );
       if (!validation.ok) {
@@ -1037,7 +1047,9 @@ const postSubmitHandler = (
         );
       }
 
-      const normalized = normalizeSubmitTxHexToNative(validation.txHex);
+      const normalized = normalizeSubmitTxEnvelopeCborToNative(
+        validation.txEnvelopeCbor,
+      );
       if (!normalized.ok) {
         yield* Effect.logInfo(`▫️ ${normalized.error}`);
         yield* Effect.logInfo(`▫️ ${normalized.detail}`);
@@ -1048,17 +1060,13 @@ const postSubmitHandler = (
         );
       }
 
-      if (normalized.source === "cardano-converted") {
-        yield* Effect.logInfo(
-          `▫️ Accepted Cardano tx and converted to Midgard-native format`,
-        );
-      }
-
-      if (normalized.txCbor.length > nodeConfig.MAX_SUBMIT_TX_CBOR_BYTES) {
+      if (
+        normalized.txEnvelopeCbor.length > nodeConfig.MAX_SUBMIT_TX_CBOR_BYTES
+      ) {
         yield* recordLatency();
         return yield* HttpServerResponse.json(
           {
-            error: `Transaction CBOR exceeds max size (${normalized.txCbor.length} > ${nodeConfig.MAX_SUBMIT_TX_CBOR_BYTES})`,
+            error: `Transaction envelope CBOR exceeds max size (${normalized.txEnvelopeCbor.length} > ${nodeConfig.MAX_SUBMIT_TX_CBOR_BYTES})`,
           },
           { status: 413 },
         );
@@ -1066,7 +1074,7 @@ const postSubmitHandler = (
 
       const admitted = yield* TxAdmissionsDB.admit({
         txId: normalized.txId,
-        txCbor: normalized.txCbor,
+        txEnvelopeCbor: normalized.txEnvelopeCbor,
         submitSource: normalized.source,
         maxBacklog: nodeConfig.MAX_DURABLE_ADMISSION_BACKLOG,
       });

@@ -178,7 +178,7 @@ pub type WithdrawalEvent {
 // ### Transaction order event
 
 pub type TxOrderId =
-  OutputReference
+  MidgardTxId
 
 pub type TxOrderEvent {
   id: TxOrderId,
@@ -188,9 +188,10 @@ pub type TxOrderEvent {
 // ## Transaction
 
 /// > [!NOTE]
-/// > This is the hash of the compact representation.
+/// > This is the hash of the compact transaction body. The transaction root
+/// > maps this id to MidgardTxCompact, which carries the compact body inline.
 pub type MidgardTxId =
-  H32<MidgardTxCompact>
+  H32<MidgardTxBodyCompact>
 
 /// Midgard transaction. TODO: This is a stub!
 pub type MidgardTx {
@@ -200,14 +201,14 @@ pub type MidgardTx {
 }
 
 pub type MidgardTxs =
-  Dict<MidgardTxId, MidgardTx>
+  Dict<MidgardTxId, MidgardTxCompact>
 
 pub type MidgardTxsRoot =
   MerkleRoot<MidgardTxId, MidgardTxCompact>
 
 /// Compact representation.
 pub type MidgardTxCompact {
-  body: H32<MidgardTxBodyCompact>,
+  body: MidgardTxBodyCompact,
   wits: H32<MidgardTxWitnessSetCompact>,
   validity: MidgardTxValidity,
 }

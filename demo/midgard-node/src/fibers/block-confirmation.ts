@@ -84,12 +84,16 @@ const pendingRecordRequiresLocalFinalizationRecovery = (
     record.depositEventIds.length > 0 ||
     record.withdrawalEventIds.length > 0 ||
     record.mempoolTxIds.length > 0;
+  if (
+    status === PendingBlockFinalizationsDB.Status.PendingSubmission ||
+    status ===
+      PendingBlockFinalizationsDB.Status.SubmittedLocalFinalizationPending
+  ) {
+    return true;
+  }
   return (
     hasLocalPayloadMembers &&
-    (status === PendingBlockFinalizationsDB.Status.PendingSubmission ||
-      status ===
-        PendingBlockFinalizationsDB.Status.SubmittedLocalFinalizationPending ||
-      status === PendingBlockFinalizationsDB.Status.ObservedWaitingStability)
+    status === PendingBlockFinalizationsDB.Status.ObservedWaitingStability
   );
 };
 
@@ -266,6 +270,9 @@ export const buildBlockConfirmationAction = (
           const matchedBlock = yield* deserializeStateQueueUTxO(
             workerOutput.matchedPendingBlocksUTxO,
           ).pipe(Effect.orDie);
+          const matchedHeader = yield* SDK.getHeaderFromStateQueueDatum(
+            matchedBlock.datum,
+          ).pipe(Effect.orDie);
           const journalHeaderHash =
             pending.value[PendingBlockFinalizationsDB.Columns.HEADER_HASH];
           if (
@@ -283,6 +290,28 @@ export const buildBlockConfirmationAction = (
                     ? "null"
                     : matchedMetadata.headerHash.toString("hex")
                 }`,
+              }),
+            );
+          }
+          const journalRootsMatch =
+            pending.value[
+              PendingBlockFinalizationsDB.Columns.EXPECTED_UTXOS_ROOT
+            ] === matchedHeader.utxosRoot &&
+            pending.value[
+              PendingBlockFinalizationsDB.Columns.EXPECTED_TRANSACTIONS_ROOT
+            ] === matchedHeader.transactionsRoot &&
+            pending.value[
+              PendingBlockFinalizationsDB.Columns.EXPECTED_DEPOSITS_ROOT
+            ] === matchedHeader.depositsRoot &&
+            pending.value[
+              PendingBlockFinalizationsDB.Columns.EXPECTED_WITHDRAWALS_ROOT
+            ] === matchedHeader.withdrawalsRoot;
+          if (!journalRootsMatch) {
+            return yield* Effect.fail(
+              new ConfirmationInvariantError({
+                message:
+                  "Confirmed block roots do not match the persisted pending-finalization journal",
+                cause: `header_hash=${journalHeaderHash.toString("hex")}`,
               }),
             );
           }

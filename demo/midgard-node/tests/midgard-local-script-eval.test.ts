@@ -5,6 +5,7 @@ import path from "node:path";
 import { CML, Constr, Data } from "@lucid-evolution/lucid";
 import {
   decodeMidgardAddressBytes,
+  encodeMidgardNativeScript,
   encodeMidgardVersionedScript,
   hashMidgardVersionedScript,
 } from "@al-ft/midgard-core/codec";
@@ -176,14 +177,22 @@ describe("Midgard local script evaluation primitives", () => {
     const native = CML.NativeScript.new_script_pubkey(
       signerKey.to_public().hash(),
     );
+    const nativeScript = {
+      type: "sig",
+      keyHash: Buffer.from(signerKey.to_public().hash().to_raw_bytes()),
+    } as const;
     const typed = decodeScriptSource(
-      CML.Script.new_native(native).to_cbor_bytes(),
+      encodeMidgardVersionedScript({
+        language: "NativeCardano",
+        scriptBytes: encodeMidgardNativeScript(nativeScript),
+        nativeScript,
+      }),
       "inline",
       "typed",
     );
 
     expect(typed.version).toBe("NativeCardano");
-    expect(typed.nativeScript).toBeDefined();
+    expect(typed.nativeScript).toEqual(nativeScript);
     expect(typed.scriptHash).toBe(native.hash().to_hex());
   });
 
@@ -236,11 +245,32 @@ describe("Midgard local script evaluation primitives", () => {
     );
 
     expect(() => decodeMidgardTxOutput(output.to_cbor_bytes())).toThrow(
-      "Babbage map-form",
+      "output must be a map",
     );
   });
 
   it("rejects map-form outputs with datum hashes", () => {
+    const keyHash = CML.Ed25519KeyHash.from_hex("11".repeat(28));
+    const address = CML.EnterpriseAddress.new(
+      0,
+      CML.Credential.new_pub_key(keyHash),
+    ).to_address();
+    const output = Buffer.from(
+      encode(
+        new Map<bigint, unknown>([
+          [0n, Buffer.from(address.to_raw_bytes())],
+          [1n, [2_000_000n, new Map<Uint8Array, unknown>()]],
+          [2n, [0n, Buffer.alloc(32, 7)]],
+        ]),
+      ),
+    );
+
+    expect(() => decodeMidgardTxOutput(output)).toThrow(
+      "output.datum must be a byte string",
+    );
+  });
+
+  it("rejects Cardano map-form outputs with CML value shape", () => {
     const keyHash = CML.Ed25519KeyHash.from_hex("11".repeat(28));
     const output = CML.ConwayFormatTxOut.new(
       CML.EnterpriseAddress.new(
@@ -261,7 +291,7 @@ describe("Midgard local script evaluation primitives", () => {
       decodeMidgardTxOutput(
         CML.TransactionOutput.new_conway_format_tx_out(output).to_cbor_bytes(),
       ),
-    ).toThrow("datum hashes");
+    ).toThrow("value must be an array");
   });
 
   it("decodes protected map-form outputs with inline datum and reference script", () => {
@@ -295,13 +325,19 @@ describe("Midgard local script evaluation primitives", () => {
 
   it("rejects malformed map-form outputs without a usable address field", () => {
     expect(() =>
-      decodeMidgardTxOutput(Buffer.from(encode(new Map([[1n, 2n]])))),
+      decodeMidgardTxOutput(
+        Buffer.from(
+          encode(new Map<bigint, unknown>([[1n, [2_000_000n, new Map()]]])),
+        ),
+      ),
     ).toThrow("missing address key 0");
     expect(() =>
       decodeMidgardTxOutput(
         Buffer.from(encode(new Map([[0n, Buffer.alloc(0)]]))),
       ),
-    ).toThrow("must not be empty");
+    ).toThrow(
+      "Midgard address must be a base or enterprise Shelley payment address",
+    );
   });
 
   it("builds the MidgardV1 context with redeemers and no Cardano governance fields", () => {
@@ -344,6 +380,90 @@ describe("Midgard local script evaluation primitives", () => {
       new Map([[scriptHash, new Map([["", -2n]])]]),
     );
     expect(scriptPurpose.index).toBe(3);
+  });
+
+  it("uses the protected address constructor only in MidgardV1 script contexts", () => {
+    const keyHash = CML.Ed25519KeyHash.from_hex("11".repeat(28));
+    const unprotectedOutput = makeMidgardTxOutput(
+      CML.EnterpriseAddress.new(
+        0,
+        CML.Credential.new_pub_key(keyHash),
+      ).to_address(),
+      CML.Value.from_coin(2_000_000n),
+    );
+    const protectedOutput = decodeMidgardTxOutput(
+      protectOutputAddressBytes(unprotectedOutput.to_cbor_bytes()),
+    );
+    const receivePurpose = {
+      kind: "receive" as const,
+      scriptHash: "aa".repeat(28),
+    };
+    const receiveRedeemer = {
+      tag: MidgardRedeemerTag.Receiving,
+      index: 0n,
+      dataCborHex: Data.to(new Constr(0, [])),
+      exUnits: { memory: 0n, steps: 0n },
+    };
+    const midgardContext = buildMidgardV1ScriptContext(
+      {
+        txId: Buffer.alloc(32, 0),
+        inputs: [],
+        referenceInputs: [],
+        outputs: [protectedOutput],
+        fee: 1n,
+        observers: [],
+        signatories: [],
+        mint: new Map(),
+        redeemers: [{ purpose: receivePurpose, redeemer: receiveRedeemer }],
+      },
+      receivePurpose,
+      receiveRedeemer,
+    );
+    const mintPurpose = {
+      kind: "mint" as const,
+      scriptHash: "bb".repeat(28),
+      policyId: "bb".repeat(28),
+    };
+    const mintRedeemer = {
+      tag: MidgardRedeemerTag.Mint,
+      index: 0n,
+      dataCborHex: Data.to(new Constr(0, [])),
+      exUnits: { memory: 0n, steps: 0n },
+    };
+    const plutusContext = buildPlutusV3ScriptContext(
+      {
+        txId: Buffer.alloc(32, 0),
+        inputs: [],
+        referenceInputs: [],
+        outputs: [protectedOutput],
+        fee: 1n,
+        observers: [],
+        signatories: [],
+        mint: new Map(),
+        redeemers: [{ purpose: mintPurpose, redeemer: mintRedeemer }],
+      },
+      mintPurpose,
+      mintRedeemer,
+    );
+
+    const [midgardTxInfo] = midgardContext.fields as [Constr<unknown>];
+    const midgardOutputs = midgardTxInfo.fields[2] as Constr<unknown>[];
+    const midgardOutputAddress = midgardOutputs[0]!
+      .fields[0] as Constr<unknown>;
+
+    expect(midgardOutputAddress.index).toBe(1);
+    expect(midgardOutputAddress.fields[0]).toEqual(
+      new Constr(0, [keyHash.to_hex()]),
+    );
+
+    const [plutusTxInfo] = plutusContext.fields as [Constr<unknown>];
+    const plutusOutputs = plutusTxInfo.fields[2] as Constr<unknown>[];
+    const plutusOutputAddress = plutusOutputs[0]!.fields[0] as Constr<unknown>;
+
+    expect(plutusOutputAddress.index).toBe(0);
+    expect(plutusOutputAddress.fields[0]).toEqual(
+      new Constr(0, [keyHash.to_hex()]),
+    );
   });
 
   it("evaluates the MidgardV1 spend guard against a Midgard-shaped context", () => {
@@ -818,16 +938,18 @@ describe("Midgard local script evaluation primitives", () => {
       redeemer,
     );
 
-    const [txInfo] = context.fields as [Constr<unknown>, unknown, Constr<unknown>];
+    const [txInfo] = context.fields as [
+      Constr<unknown>,
+      unknown,
+      Constr<unknown>,
+    ];
     const inputs = txInfo.fields[0] as Constr<unknown>[];
     const inputTxOut = inputs[0]!.fields[1] as Constr<unknown>;
     const inputAddress = inputTxOut.fields[0] as Constr<unknown>;
     const inputStakeMaybe = inputAddress.fields[1] as Constr<unknown>;
     const inputStakingHash = inputStakeMaybe.fields[0] as Constr<unknown>;
 
-    expect(inputAddress.fields[0]).toEqual(
-      new Constr(1, [paymentScriptHash]),
-    );
+    expect(inputAddress.fields[0]).toEqual(new Constr(1, [paymentScriptHash]));
     expect(inputStakeMaybe.index).toBe(0);
     expect(inputStakingHash).toEqual(
       new Constr(0, [new Constr(0, [stakeKeyHash])]),

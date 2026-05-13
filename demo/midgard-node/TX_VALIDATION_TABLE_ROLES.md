@@ -293,12 +293,12 @@ consumed deposits, and writes address history
 
 ### Readers
 
-`processMpts` reads deltas for the mempool tx ids it is about to include in an
-MPT build
-([mpt.ts](src/workers/utils/mpt.ts#L297)). If a delta is missing or invalid,
+`processMpfs` reads deltas for the mempool tx ids it is about to include in an
+MPF build
+([mpf.ts](src/workers/utils/mpf.ts#L297)). If a delta is missing or invalid,
 the commit path has to fall back to resolving the tx effect, or reject the tx
 depending on the decoding outcome
-([mpt.ts](src/workers/utils/mpt.ts#L307)).
+([mpf.ts](src/workers/utils/mpf.ts#L307)).
 
 ### Lifecycle
 
@@ -374,7 +374,7 @@ Writers include:
   `tx_admissions` in one transaction
   ([txAdmissions.ts](src/database/txAdmissions.ts#L371));
 - commitment preprocessing for malformed mempool txs
-  ([mpt.ts](src/workers/utils/mpt.ts#L399));
+  ([mpf.ts](src/workers/utils/mpf.ts#L399));
 - local submit tooling that records immediate local rejection evidence
   ([submit-l2-transfer.ts](src/commands/submit-l2-transfer.ts#L888)).
 
@@ -802,8 +802,8 @@ Migration 2 creates enum `tx_admission_status` and table `tx_admissions`
 Columns:
 
 - `tx_id BYTEA PRIMARY KEY CHECK (octet_length(tx_id) = 32)`
-- `tx_cbor BYTEA NOT NULL`
-- `tx_cbor_sha256 BYTEA NOT NULL`
+- `tx_envelope_cbor BYTEA NOT NULL`
+- `tx_envelope_cbor_sha256 BYTEA NOT NULL`
 - `arrival_seq BIGSERIAL UNIQUE NOT NULL`
 - `status tx_admission_status NOT NULL`
 - `first_seen_at TIMESTAMPTZ NOT NULL DEFAULT NOW()`
@@ -830,7 +830,6 @@ Statuses:
 Submit sources:
 
 - `native`
-- `cardano-converted`
 - `backfill`
 
 Indexes:

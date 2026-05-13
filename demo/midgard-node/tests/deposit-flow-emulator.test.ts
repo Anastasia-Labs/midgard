@@ -14,10 +14,8 @@ import {
   generateEmulatorAccount,
   paymentCredentialOf,
   toUnit,
-  validatorToScriptHash,
   walletFromSeed,
   type LucidEvolution,
-  type Script,
   type TxSignBuilder,
   type UTxO,
 } from "@lucid-evolution/lucid";
@@ -57,7 +55,7 @@ import { withRealStateQueueAndOperatorContracts } from "@/services/midgard-contr
 import {
   type AtomicProtocolInitReferenceScripts,
   buildAtomicProtocolInitTxProgram,
-  createFraudProofCatalogueMpt,
+  createFraudProofCatalogueMpf,
   fraudProofsToIndexedValidators,
 } from "@/transactions/initialization.js";
 import {
@@ -74,9 +72,9 @@ import {
   type SubmitWithdrawalReferenceScripts,
   buildUnsignedWithdrawalTxWithMetadataProgram,
 } from "@/transactions/submit-withdrawal.js";
+import { ensurePhasMembershipRewardAccountRegisteredProgram } from "@/transactions/phas-membership-registration.js";
 import { signWithdrawalBody } from "@/withdrawal-signature.js";
 import { withdrawalEventIdFromBuildMetadata } from "@/commands/submit-withdrawal.js";
-import { loadPhasMembershipWithdrawalScript } from "@/phas-membership.js";
 import { assetsToValue } from "@/transactions/reserve-payout.js";
 import {
   absorbConfirmedDepositToReserveProgram,
@@ -102,7 +100,7 @@ import {
   type WorkerOutput as ConfirmationWorkerOutput,
 } from "@/workers/utils/confirm-block-commitments.js";
 import { WorkerError } from "@/workers/utils/common.js";
-import { deleteMpt, keyValuePhasRoot } from "@/workers/utils/mpt.js";
+import { deleteMpfStore, keyValuePhasRoot } from "@/workers/utils/mpf.js";
 import { collectSortedInputOutRefs, outRefLabel } from "@/tx-context.js";
 
 const EMULATOR_PROTOCOL_PARAMETERS = {
@@ -154,23 +152,6 @@ type EmulatorFixture = {
   readonly depositorLucid: LucidEvolution;
   readonly referenceScriptsLucid: LucidEvolution;
   readonly operatorKeyHash: string;
-};
-
-const scriptRewardAddress = (script: Script): string => {
-  const credential = CML.Credential.new_script(
-    CML.ScriptHash.from_hex(validatorToScriptHash(script)),
-  );
-  return CML.RewardAddress.new(0, credential).to_address().to_bech32();
-};
-
-const registerZeroRewardScript = (emulator: Emulator, script: Script): void => {
-  emulator.chain[scriptRewardAddress(script)] = {
-    registeredStake: true,
-    delegation: {
-      poolId: null,
-      rewards: 0n,
-    },
-  };
 };
 
 const loadContracts = (oneShotOutRef: {
@@ -325,11 +306,11 @@ const initializeProtocol = async ({
   const indexedFraudProofs = fraudProofsToIndexedValidators(
     contracts.fraudProofs,
   );
-  const fraudProofCatalogueMpt = await Effect.runPromise(
-    createFraudProofCatalogueMpt(indexedFraudProofs),
+  const fraudProofCatalogueMpf = await Effect.runPromise(
+    createFraudProofCatalogueMpf(indexedFraudProofs),
   );
   const fraudProofCatalogueRoot = await Effect.runPromise(
-    fraudProofCatalogueMpt.getRootHex(),
+    fraudProofCatalogueMpf.rootHex(),
   );
 
   vi.useFakeTimers({ toFake: ["Date"] });
@@ -351,6 +332,9 @@ const initializeProtocol = async ({
   const completedInitTx = await initTx.complete({ localUPLCEval: true });
   const signedInitTx = await completedInitTx.sign.withWallet().complete();
   await operatorLucid.awaitTx(await signedInitTx.submit());
+  await Effect.runPromise(
+    ensurePhasMembershipRewardAccountRegisteredProgram(operatorLucid),
+  );
 
   vi.setSystemTime(new Date(emulator.now()));
   await Effect.runPromise(
@@ -422,27 +406,27 @@ const initializeNodeRuntime = async () => {
  */
 const makeRuntimePaths = () => {
   const suffix = randomUUID();
-  const ledgerMptPath = `/tmp/midgard-deposit-flow-${suffix}-ledger`;
-  const mempoolMptPath = `/tmp/midgard-deposit-flow-${suffix}-mempool`;
-  process.env.LEDGER_MPT_DB_PATH = ledgerMptPath;
-  process.env.MEMPOOL_MPT_DB_PATH = mempoolMptPath;
-  return { ledgerMptPath, mempoolMptPath };
+  const ledgerMpfPath = `/tmp/midgard-deposit-flow-${suffix}-ledger`;
+  const transactionsMpfPath = `/tmp/midgard-deposit-flow-${suffix}-transactions`;
+  process.env.LEDGER_MPF_DB_PATH = ledgerMpfPath;
+  process.env.TRANSACTIONS_MPF_DB_PATH = transactionsMpfPath;
+  return { ledgerMpfPath, transactionsMpfPath };
 };
 
 const cleanupRuntimePaths = async ({
-  ledgerMptPath,
-  mempoolMptPath,
+  ledgerMpfPath,
+  transactionsMpfPath,
 }: {
-  readonly ledgerMptPath: string;
-  readonly mempoolMptPath: string;
+  readonly ledgerMpfPath: string;
+  readonly transactionsMpfPath: string;
 }) => {
   await Effect.runPromise(
     Effect.all(
       [
-        deleteMpt(ledgerMptPath, "ledger").pipe(
+        deleteMpfStore(ledgerMpfPath, "ledger").pipe(
           Effect.catchAll(() => Effect.void),
         ),
-        deleteMpt(mempoolMptPath, "mempool").pipe(
+        deleteMpfStore(transactionsMpfPath, "transactions").pipe(
           Effect.catchAll(() => Effect.void),
         ),
       ],
@@ -1343,8 +1327,8 @@ const commitConfirmRecoverAndMerge = async ({
 };
 
 let activeRuntimePaths: {
-  readonly ledgerMptPath: string;
-  readonly mempoolMptPath: string;
+  readonly ledgerMpfPath: string;
+  readonly transactionsMpfPath: string;
 } | null = null;
 
 afterEach(async () => {
@@ -1869,11 +1853,6 @@ describeRealisticDepositFlow("deposit flow emulator", () => {
     await initializeProtocol(fixture);
     const lucidService = await makeLucidRuntimeService(fixture);
     const globals = await makeGlobalsService();
-    registerZeroRewardScript(
-      fixture.emulator,
-      loadPhasMembershipWithdrawalScript(),
-    );
-
     await advanceEmulatorPastLatestBlockEndTime(fixture);
 
     vi.useFakeTimers({ toFake: ["Date"] });

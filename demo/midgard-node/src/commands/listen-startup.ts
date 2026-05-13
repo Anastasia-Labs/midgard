@@ -11,7 +11,11 @@ import {
   MidgardContracts,
   NodeConfig,
 } from "@/services/index.js";
-import { formatStateQueueTopology } from "@/services/state-queue-topology.js";
+import {
+  fetchStateQueueSnapshotProgram,
+  formatStateQueueTopology,
+  refreshStateQueueGlobalsFromSnapshot,
+} from "@/services/state-queue-topology.js";
 import { shouldRunGenesisOnStartup } from "@/commands/startup-policy.js";
 import * as ContractDeploymentInfo from "@/commands/contract-deployment-info.js";
 import * as Initialization from "@/transactions/initialization.js";
@@ -21,21 +25,7 @@ import {
 } from "@/transactions/reference-scripts.js";
 import * as SDK from "@al-ft/midgard-sdk";
 import { Effect, Option, Ref } from "effect";
-
-/**
- * Resolves the end-time boundary represented by the current state-queue tip.
- */
-const resolveStateQueueTipEndTimeMs = (
-  datum: SDK.StateQueueNodeView,
-): Effect.Effect<number, SDK.DataCoercionError, never> =>
-  Effect.gen(function* () {
-    if (datum.key === "Empty") {
-      const { data } = yield* SDK.getConfirmedStateFromStateQueueDatum(datum);
-      return Number(data.endTime);
-    }
-    const header = yield* SDK.getHeaderFromStateQueueDatum(datum);
-    return Number(header.endTime);
-  });
+import { deserializeStateQueueUTxO } from "@/workers/utils/commit-block-header.js";
 
 type CanonicalCommittedHeader = {
   readonly headerHash: Buffer;
@@ -220,7 +210,7 @@ export const ensureProtocolInitializedOnStartup = Effect.gen(function* () {
       new SDK.StateQueueError({
         message:
           "Startup initialization check found a partial deployment; refusing to auto-initialize over externally provisioned state",
-        cause: `state_queue=${details}; missing=[${deploymentStatus.missingComponents.join(",")}]; hub_oracle_present=${deploymentStatus.hubOracleWitness !== null}; scheduler_initialized=${deploymentStatus.schedulerInitialized}; registered_initialized=${deploymentStatus.registeredOperatorsInitialized}; active_initialized=${deploymentStatus.activeOperatorsInitialized}; retired_initialized=${deploymentStatus.retiredOperatorsInitialized}`,
+        cause: `state_queue=${details}; missing=[${deploymentStatus.missingComponents.join(",")}]; hub_oracle_present=${deploymentStatus.hubOracleWitness !== null}; scheduler_initialized=${deploymentStatus.schedulerInitialized}; registered_initialized=${deploymentStatus.registeredOperatorsInitialized}; active_initialized=${deploymentStatus.activeOperatorsInitialized}; retired_initialized=${deploymentStatus.retiredOperatorsInitialized}; phas_reward_address=${deploymentStatus.phasMembershipRewardAddress}`,
       }),
     );
   }
@@ -259,12 +249,18 @@ export const seedLatestLocalBlockBoundaryOnStartup = Effect.gen(function* () {
   const contracts = yield* MidgardContracts;
   const globals = yield* Globals;
 
-  const latestBlock = yield* SDK.fetchLatestCommittedBlockProgram(lucid.api, {
-    stateQueueAddress: contracts.stateQueue.spendingScriptAddress,
-    stateQueuePolicyId: contracts.stateQueue.policyId,
-  });
-  const latestEndTimeMs = yield* resolveStateQueueTipEndTimeMs(
-    latestBlock.datum,
+  const snapshot = yield* fetchStateQueueSnapshotProgram(
+    lucid.api,
+    contracts.stateQueue,
+    "startup",
+  );
+  yield* refreshStateQueueGlobalsFromSnapshot(globals, snapshot);
+  const latestBlock = yield* deserializeStateQueueUTxO(
+    snapshot.tailCommitBase.utxo,
+  );
+  const latestEndTimeMs = snapshot.tailCommitBase.blockEndTimeMs;
+  yield* Effect.logInfo(
+    `Startup state-queue snapshot hydrated: tail=${snapshot.tailCommitBase.outRef},snapshot=${snapshot.snapshotId}`,
   );
   const canonicalHeaders = yield* fetchCanonicalCommittedHeaders;
   const revivedPayloadJournal =
@@ -336,6 +332,7 @@ export const seedLatestLocalBlockBoundaryOnStartup = Effect.gen(function* () {
 export const hydratePendingBlockFinalizationOnStartup = Effect.gen(
   function* () {
     const globals = yield* Globals;
+    yield* PendingBlockFinalizationsDB.assertActiveJournalPayloadsComplete;
     const pending = yield* PendingBlockFinalizationsDB.retrieveActive();
     if (Option.isNone(pending)) {
       yield* Ref.set(globals.UNCONFIRMED_SUBMITTED_BLOCK_TX_HASH, "");

@@ -64,6 +64,32 @@ printf 'USER_L2_ADDRESS=%s\n' "$USER_L2_ADDRESS"
 printf 'DEST_L2_ADDRESS=%s\n' "$DEST_L2_ADDRESS"
 ```
 
+Verify the live deployment before submitting value:
+
+```sh
+node dist/index.js deployment-status | jq .
+```
+
+Expected deployment fields:
+
+- `complete` is `true`
+- `missingComponents` is empty
+
+Fresh `init` registers the canonical PHAS membership reward account in the
+atomic initialization transaction. `deployment-status` intentionally does not
+query provider-specific reward-account state. The ledger proves missing
+registration when a membership-proof withdraw-zero transaction is submitted.
+
+If an existing deployment is otherwise complete but the PHAS reward account is
+known missing, or a reserve/payout transaction fails with
+`WithdrawalsNotInRewardsCERTS`, run the explicit deployment repair command and
+check status again:
+
+```sh
+node dist/index.js register-phas-membership-reward-account
+node dist/index.js deployment-status | jq .
+```
+
 ## 2. Submit The Deposit
 
 ```sh
@@ -136,6 +162,10 @@ curl -fsS \
   -H "x-midgard-admin-key: $ADMIN_API_KEY" \
   "$MIDGARD_NODE_URL/merge" | jq .
 ```
+
+The merge response should include `result.status == "merged"`. A skipped status
+means no state-queue block was folded into confirmed state and the next steps
+must wait or resolve the reported blocker.
 
 Resolve the deposit settlement proof as a diagnostic check:
 
@@ -239,6 +269,9 @@ curl -fsS \
   "$MIDGARD_NODE_URL/merge" | jq .
 ```
 
+Require `result.status == "merged"` before continuing to payout proof
+resolution.
+
 Verify the withdrawal is finalized and valid:
 
 ```sh
@@ -336,6 +369,26 @@ node environment and restart `pnpm listen`.
 
 The `x-midgard-admin-key` header does not match the running node's
 `ADMIN_API_KEY`.
+
+### Reserve Or Payout Fails With `WithdrawalsNotInRewardsCERTS`
+
+The PHAS membership withdrawal reward account is not registered on the live
+network. Check the canonical address:
+
+```sh
+node dist/index.js deployment-status | jq '.phasMembershipRewardAddress, .missingComponents'
+```
+
+For a fresh deployment, rerun the clean deployment flow. For an existing
+otherwise-complete deployment, use:
+
+```sh
+node dist/index.js register-phas-membership-reward-account
+```
+
+Reserve and payout commands intentionally do not auto-register this account
+while spending protocol state. The repair command submits the canonical
+registration transaction and relies on normal transaction confirmation.
 
 ### `project-deposits-once` Or `fetch-withdrawals-once` Finds Nothing
 

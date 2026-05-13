@@ -166,7 +166,7 @@ describe("partial signing", () => {
 
     const firstBundle = await completed.sign.withPrivateKey(firstKey).partial();
     const secondBundle = await completed.sign.withWallet(secondWallet).partial();
-    const bodyHash = completed.tx.compact.transactionBodyHash;
+    const bodyHash = computeMidgardNativeTxIdFromFull(completed.tx);
     const signedFromSignBuilder = await completed.sign
       .withWitnesses([
         makeVKeyWitness(bodyHash, secondKey),
@@ -208,7 +208,7 @@ describe("partial signing", () => {
 
   it("exports, imports, and reuses canonical partial witness bundles", async () => {
     const { completed, firstKey, secondKey } = await makeFixture();
-    const bodyHash = completed.tx.compact.transactionBodyHash;
+    const bodyHash = computeMidgardNativeTxIdFromFull(completed.tx);
     const firstWitness = makeVKeyWitness(bodyHash, firstKey);
     const secondWitness = makeVKeyWitness(bodyHash, secondKey);
     const combinedBundle = await completed.sign

@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import { Effect } from "effect";
 import * as SDK from "@al-ft/midgard-sdk";
 import {
+  CML,
   Data,
   Emulator,
   Lucid,
@@ -23,6 +24,11 @@ import {
   fetchHubOracleWitness,
   isSchedulerInitialized,
 } from "@/transactions/initialization.js";
+import {
+  loadPhasMembershipWithdrawalScript,
+  phasMembershipRewardAddress,
+  phasMembershipWithdrawalScriptHash,
+} from "@/phas-membership.js";
 import {
   activateOperatorProgram,
   registerOperatorProgram,
@@ -46,7 +52,7 @@ const loadContracts = (oneShotOutRef: {
 
 const EMULATOR_PROTOCOL_PARAMETERS = {
   ...PROTOCOL_PARAMETERS_DEFAULT,
-  maxTxSize: 65_536,
+  maxTxSize: PROTOCOL_PARAMETERS_DEFAULT.maxTxSize,
   maxCollateralInputs: 3,
 } as const;
 
@@ -120,6 +126,47 @@ const initEmulatorLucid = async () => {
 };
 
 describe("initialization emulator", () => {
+  it("derives the canonical PHAS membership reward address", () => {
+    const script = loadPhasMembershipWithdrawalScript();
+    const scriptHash = phasMembershipWithdrawalScriptHash(script);
+    const rewardAddress = phasMembershipRewardAddress("Preprod", script);
+
+    expect(scriptHash).toEqual(
+      "46df0027fc0af07197924dc07f1c27ac6b15eb2bd6efc7a73b0dbb4d",
+    );
+    expect(rewardAddress.startsWith("stake_test")).toBe(true);
+  });
+
+  it("builds PHAS registration as a script stake certificate without a Plutus certificate witness", async () => {
+    const { lucid } = await initEmulatorLucid();
+    const script = loadPhasMembershipWithdrawalScript();
+    const scriptHash = phasMembershipWithdrawalScriptHash(script);
+    const rewardAddress = phasMembershipRewardAddress("Preprod", script);
+
+    const unsigned = await lucid
+      .newTx()
+      .register.Stake(rewardAddress)
+      .complete({
+        localUPLCEval: true,
+      });
+    const tx = CML.Transaction.from_cbor_hex(unsigned.toCBOR());
+    const certs = tx.body().certs();
+    expect(certs?.len()).toBe(1);
+    const cert = certs!.get(0);
+    expect(cert.kind()).toBe(CML.CertificateKind.StakeRegistration);
+    const stakeRegistration = cert.as_stake_registration();
+    expect(stakeRegistration).not.toBeUndefined();
+    const credential = stakeRegistration!.stake_credential();
+    expect(credential.kind()).toBe(CML.CredentialKind.Script);
+    expect(credential.as_script()?.to_hex()).toBe(scriptHash);
+
+    const witnessSet = tx.witness_set();
+    expect(witnessSet.plutus_v1_scripts()).toBeUndefined();
+    expect(witnessSet.plutus_v2_scripts()).toBeUndefined();
+    expect(witnessSet.plutus_v3_scripts()).toBeUndefined();
+    expect(witnessSet.redeemers()).toBeUndefined();
+  });
+
   it("builds the hub-oracle mint fragment in isolation", async () => {
     const { lucid, nonceUtxo } = await initEmulatorLucid();
     const contracts = await loadContracts({
@@ -225,9 +272,9 @@ describe("initialization emulator", () => {
       expect(calls.validTo).toBe(Number(validTo));
       expect(calls.collected).toEqual([nonceUtxo]);
       expect(outputAssets).toHaveLength(7);
-      expect(
-        outputAssets.every((assets) => !("lovelace" in assets)),
-      ).toBe(true);
+      expect(outputAssets.every((assets) => !("lovelace" in assets))).toBe(
+        true,
+      );
       expect(wallet).not.toHaveBeenCalled();
     } finally {
       dateNowSpy.mockRestore();
@@ -248,9 +295,7 @@ describe("initialization emulator", () => {
       contracts,
       nonceUtxo,
     );
-    const signed = await (
-      await initTx.complete({ localUPLCEval: true })
-    ).sign
+    const signed = await (await initTx.complete({ localUPLCEval: true })).sign
       .withWallet()
       .complete();
     const txHash = await signed.submit();
@@ -289,9 +334,18 @@ describe("initialization emulator", () => {
     expect(schedulerInitialized).toBe(true);
     expect(schedulerDatum).toEqual("NoActiveOperators");
     expect(status.complete).toBe(true);
+    expect(status.phasMembershipRewardAddress).toEqual(
+      phasMembershipRewardAddress("Preprod"),
+    );
+    expect(status.phasMembershipScriptHash).toEqual(
+      phasMembershipWithdrawalScriptHash(),
+    );
     expect(runtimeReferenceScriptNames).toContain("state-queue spending");
     expect(runtimeReferenceScriptNames).toContain("deposit minting");
     expect(runtimeReferenceScriptNames).toContain("settlement minting");
+    expect(runtimeReferenceScriptNames).toContain(
+      "membership proof withdrawal",
+    );
   });
 
   it("reports already initialized when the atomic protocol root set exists", async () => {
@@ -308,9 +362,7 @@ describe("initialization emulator", () => {
       contracts,
       nonceUtxo,
     );
-    const signed = await (
-      await initTx.complete({ localUPLCEval: true })
-    ).sign
+    const signed = await (await initTx.complete({ localUPLCEval: true })).sign
       .withWallet()
       .complete();
     const txHash = await signed.submit();

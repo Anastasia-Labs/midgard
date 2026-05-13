@@ -3,7 +3,7 @@ import { it } from "@effect/vitest";
 import { Effect } from "effect";
 import {
   uint32ToFraudProofID,
-  createFraudProofCatalogueMpt,
+  createFraudProofCatalogueMpf,
   fraudProofsToIndexedValidators,
 } from "@/transactions/initialization.js";
 import { AlwaysSucceedsContract } from "@/services/always-succeeds.js";
@@ -19,10 +19,10 @@ describe("Fraud Proof Catalogue Root", () => {
 
         const indexedFraudProofs = fraudProofsToIndexedValidators(fraudProofs);
 
-        const fraudProofsMPT =
-          yield* createFraudProofCatalogueMpt(indexedFraudProofs);
+        const fraudProofsMPF =
+          yield* createFraudProofCatalogueMpf(indexedFraudProofs);
 
-        const rootHash = yield* fraudProofsMPT.getRootHex();
+        const rootHash = yield* fraudProofsMPF.rootHex();
         console.log(`Fraud Proofs Merkle Root: ${rootHash}`);
 
         const indicesToCheck = [
@@ -34,7 +34,7 @@ describe("Fraud Proof Catalogue Root", () => {
 
         for (const i of indicesToCheck) {
           const retrievedValue = yield* Effect.tryPromise(() =>
-            fraudProofsMPT.trie.get(uint32ToFraudProofID(i)),
+            fraudProofsMPF.trie.get(uint32ToFraudProofID(i)),
           );
           const expectedHash = indexedFraudProofs[i][1].spendingScriptHash;
           expect(Buffer.from(retrievedValue!).toString("hex")).toBe(

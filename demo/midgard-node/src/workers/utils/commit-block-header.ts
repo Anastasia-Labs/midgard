@@ -15,6 +15,8 @@ export type WorkerInput = {
     localFinalizationPending: boolean;
     mempoolTxsCountSoFar: number;
     sizeOfProcessedTxsSoFar: number;
+    stateQueueLeaseToken?: string;
+    baseSnapshotId?: string;
   };
 };
 

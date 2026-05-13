@@ -342,7 +342,7 @@ const validateNativeOne = (
     );
   }
 
-  if (nativeTx.compact.validity !== "TxIsValid") {
+  if (nativeTx.validity !== "TxIsValid") {
     return reject(queuedTx.txId, RejectCodes.IsValidFalseForbidden);
   }
 
@@ -571,7 +571,7 @@ const validateNativeOne = (
   // body hash; Cardano-domain signature hashes are not admitted.
   const signatureResult = verifyNativeWitnessSignatures(
     queuedTx.txId,
-    nativeTx.compact.transactionBodyHash,
+    computedTxId,
     witnessVerificationResult.witnesses,
   );
   if (signatureResult !== null) {

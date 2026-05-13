@@ -23,12 +23,12 @@ export const Status = {
 
 export type Status = (typeof Status)[keyof typeof Status];
 
-export type SubmitSource = "native" | "cardano-converted" | "backfill";
+export type SubmitSource = "native" | "backfill";
 
 export enum Columns {
   TX_ID = "tx_id",
-  TX_CBOR = "tx_cbor",
-  TX_CBOR_SHA256 = "tx_cbor_sha256",
+  TX_ENVELOPE_CBOR = "tx_envelope_cbor",
+  TX_ENVELOPE_CBOR_SHA256 = "tx_envelope_cbor_sha256",
   ARRIVAL_SEQ = "arrival_seq",
   STATUS = "status",
   FIRST_SEEN_AT = "first_seen_at",
@@ -48,8 +48,8 @@ export enum Columns {
 
 type RawEntry = {
   readonly [Columns.TX_ID]: Buffer;
-  readonly [Columns.TX_CBOR]: Buffer;
-  readonly [Columns.TX_CBOR_SHA256]: Buffer;
+  readonly [Columns.TX_ENVELOPE_CBOR]: Buffer;
+  readonly [Columns.TX_ENVELOPE_CBOR_SHA256]: Buffer;
   readonly [Columns.ARRIVAL_SEQ]: bigint | number | string;
   readonly [Columns.STATUS]: Status;
   readonly [Columns.FIRST_SEEN_AT]: Date;
@@ -126,12 +126,12 @@ const normalizeSqlError =
 
 export const admit = ({
   txId,
-  txCbor,
+  txEnvelopeCbor,
   submitSource,
   maxBacklog,
 }: {
   readonly txId: Buffer;
-  readonly txCbor: Buffer;
+  readonly txEnvelopeCbor: Buffer;
   readonly submitSource: Exclude<SubmitSource, "backfill">;
   readonly maxBacklog: number;
 }): Effect.Effect<
@@ -141,7 +141,7 @@ export const admit = ({
 > =>
   Effect.gen(function* () {
     const sql = yield* SqlClient.SqlClient;
-    const txCborSha256 = sha256(txCbor);
+    const txEnvelopeCborSha256 = sha256(txEnvelopeCbor);
     return yield* sql.withTransaction(
       Effect.gen(function* () {
         const existingRows = yield* sql<RawEntry>`SELECT *
@@ -151,8 +151,11 @@ export const admit = ({
         const existing = existingRows[0];
         if (existing !== undefined) {
           if (
-            !sameBytes(existing[Columns.TX_CBOR_SHA256], txCborSha256) ||
-            !sameBytes(existing[Columns.TX_CBOR], txCbor)
+            !sameBytes(
+              existing[Columns.TX_ENVELOPE_CBOR_SHA256],
+              txEnvelopeCborSha256,
+            ) ||
+            !sameBytes(existing[Columns.TX_ENVELOPE_CBOR], txEnvelopeCbor)
           ) {
             return yield* Effect.fail(
               new TxAdmissionConflictError({
@@ -195,14 +198,14 @@ export const admit = ({
 
         const inserted = yield* sql<RawEntry>`INSERT INTO ${sql(tableName)} (
             ${sql(Columns.TX_ID)},
-            ${sql(Columns.TX_CBOR)},
-            ${sql(Columns.TX_CBOR_SHA256)},
+            ${sql(Columns.TX_ENVELOPE_CBOR)},
+            ${sql(Columns.TX_ENVELOPE_CBOR_SHA256)},
             ${sql(Columns.STATUS)},
             ${sql(Columns.SUBMIT_SOURCE)}
           ) VALUES (
             ${txId},
-            ${txCbor},
-            ${txCborSha256},
+            ${txEnvelopeCbor},
+            ${txEnvelopeCborSha256},
             'queued',
             ${submitSource}
           )

@@ -22,6 +22,7 @@ import {
 } from "@/fibers/index.js";
 import * as RegisterActiveOperator from "@/transactions/register-active-operator.js";
 import * as Initialization from "@/transactions/initialization.js";
+import * as PhasMembershipRegistration from "@/transactions/phas-membership-registration.js";
 import * as SubmitDeposit from "@/transactions/submit-deposit.js";
 import {
   fetchReferenceScriptUtxosProgram,
@@ -40,6 +41,22 @@ dotenv.config();
 const VERSION = packageJson.version;
 
 const program = new Command();
+
+const cliJsonReplacer = (_key: string, value: unknown): unknown => {
+  if (typeof value === "bigint") {
+    return value.toString(10);
+  }
+  if (value instanceof Map) {
+    return Object.fromEntries([...value.entries()]);
+  }
+  if (Buffer.isBuffer(value)) {
+    return value.toString("hex");
+  }
+  return value;
+};
+
+const formatCliJson = (value: unknown): string =>
+  JSON.stringify(value, cliJsonReplacer, 2);
 
 const provideTxServices = <A, E>(
   effect: Effect.Effect<
@@ -380,6 +397,52 @@ program
   });
 
 program
+  .command("deployment-status")
+  .description("Print live protocol deployment status for configured contracts")
+  .action(async () => {
+    const mainEffect = provideTxServices(
+      Effect.gen(function* () {
+        const lucidService = yield* Services.Lucid;
+        const contracts = yield* Services.MidgardContracts;
+        const status = yield* Initialization.fetchProtocolDeploymentStatus(
+          lucidService.api,
+          contracts,
+        );
+        process.stdout.write(`${formatCliJson(status)}\n`);
+      }),
+    );
+
+    NodeRuntime.runMain(mainEffect, { teardown: undefined });
+  });
+
+program
+  .command("register-phas-membership-reward-account")
+  .description(
+    "Explicitly register the canonical PHAS membership reward account for an existing deployment",
+  )
+  .action(async () => {
+    const mainEffect = provideTxServices(
+      Effect.gen(function* () {
+        const lucidService = yield* Services.Lucid;
+        yield* lucidService.switchToOperatorsMainWallet;
+        return yield* PhasMembershipRegistration.ensurePhasMembershipRewardAccountRegisteredProgram(
+          lucidService.api,
+        );
+      }).pipe(
+        Effect.tap((result) =>
+          Effect.logInfo(
+            `register-phas-membership-reward-account completed: ${formatCliJson(
+              result,
+            )}`,
+          ),
+        ),
+      ),
+    );
+
+    NodeRuntime.runMain(mainEffect, { teardown: undefined });
+  });
+
+program
   .command("export-contract-deployment-info")
   .description(
     "Write contract deployment info JSON for the currently configured live validator bundle",
@@ -565,7 +628,7 @@ program
         }).pipe(
           Effect.tap((result) =>
             Effect.sync(() => {
-              process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
+              process.stdout.write(`${formatCliJson(result)}\n`);
             }),
           ),
           Effect.tap((result) =>

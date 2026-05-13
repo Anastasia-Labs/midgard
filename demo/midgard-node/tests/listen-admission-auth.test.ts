@@ -8,15 +8,12 @@ import type { QueuedTxPayload } from "@/validation/index.js";
 import {
   ADMIN_ROUTE_PATHS,
   authorizeAdminRoute,
-  extractSubmitTxHex,
-  extractSubmitTxHexFromQueryParams,
   isAdminRoutePath,
-  normalizeSubmitTxHexToNative,
-  validateSubmitTxHex,
+  normalizeSubmitTxEnvelopeCborToNative,
+  validateSubmitTxEnvelopeCbor,
 } from "@/commands/listen-utils.js";
 import {
   cardanoTxBytesToMidgardNativeTxFullBytes,
-  decodeMidgardNativeMint,
   decodeMidgardNativeTxFull,
 } from "@/midgard-tx-codec/index.js";
 import { makeCardanoTxOutput } from "./midgard-output-helpers.js";
@@ -104,47 +101,15 @@ describe("listen admin auth helpers", () => {
 });
 
 describe("submit admission helpers", () => {
-  it("extracts tx hex from canonical and camelCase keys", () => {
-    expect(extractSubmitTxHex({ tx_cbor: "abcd" })).toBe("abcd");
-    expect(extractSubmitTxHex({ txCbor: "1234" })).toBe("1234");
-    expect(extractSubmitTxHex({ tx_cbor: 42 })).toBeUndefined();
-    expect(extractSubmitTxHex(null)).toBeUndefined();
-  });
-
-  it("extracts tx hex from query params", () => {
-    expect(
-      extractSubmitTxHexFromQueryParams({
-        tx_cbor: "abcd",
-      }),
-    ).toBe("abcd");
-    expect(
-      extractSubmitTxHexFromQueryParams({
-        txCbor: "1234",
-      }),
-    ).toBe("1234");
-    expect(
-      extractSubmitTxHexFromQueryParams({
-        tx_cbor: ["abcd"],
-      }),
-    ).toBeUndefined();
-  });
-
-  it("rejects non-hex, odd-length, and oversized tx payloads", () => {
-    const invalidHex = validateSubmitTxHex("zz", 4);
-    expect(invalidHex.ok).toBe(false);
-    if (invalidHex.ok) {
+  it("rejects empty and oversized raw tx envelope payloads", () => {
+    const empty = validateSubmitTxEnvelopeCbor(Buffer.alloc(0), 4);
+    expect(empty.ok).toBe(false);
+    if (empty.ok) {
       throw new Error("expected invalid result");
     }
-    expect(invalidHex.status).toBe(400);
+    expect(empty.status).toBe(400);
 
-    const oddLength = validateSubmitTxHex("abc", 4);
-    expect(oddLength.ok).toBe(false);
-    if (oddLength.ok) {
-      throw new Error("expected invalid result");
-    }
-    expect(oddLength.status).toBe(400);
-
-    const oversized = validateSubmitTxHex("00".repeat(6), 5);
+    const oversized = validateSubmitTxEnvelopeCbor(Buffer.alloc(6), 5);
     expect(oversized.ok).toBe(false);
     if (oversized.ok) {
       throw new Error("expected invalid result");
@@ -153,7 +118,7 @@ describe("submit admission helpers", () => {
   });
 
   it("accepts valid tx payload and returns byte length", () => {
-    const accepted = validateSubmitTxHex("00".repeat(5), 5);
+    const accepted = validateSubmitTxEnvelopeCbor(Buffer.alloc(5), 5);
     expect(accepted.ok).toBe(true);
     if (!accepted.ok) {
       throw new Error("expected accepted result");
@@ -162,17 +127,17 @@ describe("submit admission helpers", () => {
   });
 
   it("rejects ordinary Cardano-signed tx bytes at ingress", () => {
-    const cardanoHex = makeCardanoSignedMapOutputTxBytes().toString("hex");
-    const normalized = normalizeSubmitTxHexToNative(cardanoHex);
+    const cardanoBytes = makeCardanoSignedMapOutputTxBytes();
+    const normalized = normalizeSubmitTxEnvelopeCborToNative(cardanoBytes);
     expect(normalized.ok).toBe(false);
     if (normalized.ok) {
-      throw new Error("expected unsupported Cardano-signed ingress");
+      throw new Error("expected invalid Cardano ingress");
     }
-    expect(normalized.error).toBe("Unsupported Cardano-signed ingress");
-    expect(normalized.detail).toContain("Midgard-native body hash");
+    expect(normalized.error).toBe("Invalid transaction envelope CBOR payload");
+    expect(normalized.detail).toContain("native envelope decode failed");
   });
 
-  it("preserves native-script mint intent when normalizing Cardano tx bytes", () => {
+  it("rejects Cardano tx bytes even when they are structurally convertible", () => {
     const signerKey = CML.PrivateKey.generate_ed25519();
     const mintScript = CML.NativeScript.new_script_pubkey(
       signerKey.to_public().hash(),
@@ -211,50 +176,40 @@ describe("submit admission helpers", () => {
     witnessSet.set_native_scripts(nativeScripts);
 
     const cardanoTx = CML.Transaction.new(body, witnessSet, true, undefined);
-    const normalized = normalizeSubmitTxHexToNative(
-      Buffer.from(cardanoTx.to_cbor_bytes()).toString("hex"),
+    const normalized = normalizeSubmitTxEnvelopeCborToNative(
+      Buffer.from(cardanoTx.to_cbor_bytes()),
     );
 
-    expect(normalized.ok).toBe(true);
-    if (!normalized.ok) {
-      throw new Error("expected normalized tx");
+    expect(normalized.ok).toBe(false);
+    if (normalized.ok) {
+      throw new Error("expected invalid Cardano ingress");
     }
-    expect(normalized.source).toBe("cardano-converted");
-    expect(normalized).not.toHaveProperty("txBodyHashForWitnesses");
-
-    const nativeTx = decodeMidgardNativeTxFull(normalized.txCbor);
-    const decodedMint = decodeMidgardNativeMint(nativeTx.body.mintPreimageCbor);
-    expect(decodedMint).toBeDefined();
-    expect(decodedMint?.policyIds).toStrictEqual([policyId.to_hex()]);
-    expect(
-      nativeTx.witnessSet.scriptTxWitsRoot.equals(
-        nativeTx.witnessSet.addrTxWitsRoot,
-      ),
-    ).toBe(false);
+    expect(normalized.error).toBe("Invalid transaction envelope CBOR payload");
+    expect(normalized.detail).toContain("native envelope decode failed");
   });
 
   it("keeps native tx bytes unchanged when payload is already Midgard-native", () => {
     const cardanoBytes = makeCardanoSignedMapOutputTxBytes();
     const nativeBytes = cardanoTxBytesToMidgardNativeTxFullBytes(cardanoBytes);
-    const normalized = normalizeSubmitTxHexToNative(
-      nativeBytes.toString("hex"),
-    );
+    const normalized = normalizeSubmitTxEnvelopeCborToNative(nativeBytes);
     expect(normalized.ok).toBe(true);
     if (!normalized.ok) {
       throw new Error("expected normalized tx");
     }
     expect(normalized.source).toBe("native");
-    expect(normalized.txCbor.equals(nativeBytes)).toBe(true);
+    expect(normalized.txEnvelopeCbor.equals(nativeBytes)).toBe(true);
     expect(normalized).not.toHaveProperty("txBodyHashForWitnesses");
   });
 
   it("returns an invalid payload result for bytes that are neither native nor convertible Cardano", () => {
-    const normalized = normalizeSubmitTxHexToNative("ffff");
+    const normalized = normalizeSubmitTxEnvelopeCborToNative(
+      Buffer.from("ffff", "hex"),
+    );
     expect(normalized.ok).toBe(false);
     if (normalized.ok) {
       throw new Error("expected invalid payload result");
     }
-    expect(normalized.error).toBe("Invalid transaction CBOR payload");
+    expect(normalized.error).toBe("Invalid transaction envelope CBOR payload");
   });
 
   it("constructs the listen router with the extended utxo routes", async () => {

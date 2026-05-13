@@ -1,11 +1,6 @@
-import { isHexString } from "@/utils.js";
-import { CML, fromHex } from "@lucid-evolution/lucid";
 import {
-  cardanoTxBytesToMidgardNativeTxFull,
   computeMidgardNativeTxIdFromFull,
-  decodeMidgardNativeByteListPreimage,
   decodeMidgardNativeTxFull,
-  encodeMidgardNativeTxFull,
 } from "@/midgard-tx-codec/index.js";
 
 /**
@@ -70,59 +65,12 @@ export const authorizeAdminRoute = (
 };
 
 /**
- * Narrows an unknown JSON payload into a generic record when possible.
- */
-const asRecord = (value: unknown): Record<string, unknown> | undefined => {
-  if (typeof value !== "object" || value === null) {
-    return undefined;
-  }
-  return value as Record<string, unknown>;
-};
-
-/**
- * Extracts transaction CBOR from the canonical or camel-case request-body field
- * names.
- */
-export const extractSubmitTxHex = (payload: unknown): string | undefined => {
-  const body = asRecord(payload);
-  if (body === undefined) {
-    return undefined;
-  }
-  const canonical = body.tx_cbor;
-  if (typeof canonical === "string") {
-    return canonical;
-  }
-  const camel = body.txCbor;
-  if (typeof camel === "string") {
-    return camel;
-  }
-  return undefined;
-};
-
-/**
- * Extracts transaction CBOR from canonical or camel-case query parameters.
- */
-export const extractSubmitTxHexFromQueryParams = (
-  params: Record<string, string | readonly string[] | undefined>,
-): string | undefined => {
-  const canonical = params.tx_cbor;
-  if (typeof canonical === "string") {
-    return canonical;
-  }
-  const camel = params.txCbor;
-  if (typeof camel === "string") {
-    return camel;
-  }
-  return undefined;
-};
-
-/**
- * Validation result for a submitted transaction CBOR payload.
+ * Validation result for a submitted transaction envelope CBOR payload.
  */
 export type SubmitTxValidation =
   | {
       readonly ok: true;
-      readonly txHex: string;
+      readonly txEnvelopeCbor: Buffer;
       readonly byteLength: number;
     }
   | {
@@ -132,48 +80,47 @@ export type SubmitTxValidation =
     };
 
 /**
- * Validates hex formatting and maximum size for a submitted tx payload.
+ * Validates maximum size and non-emptiness for a submitted tx envelope.
  */
-export const validateSubmitTxHex = (
-  txHex: string,
+export const validateSubmitTxEnvelopeCbor = (
+  txEnvelopeCbor: Uint8Array,
   maxTxBytes: number,
 ): SubmitTxValidation => {
-  if (txHex.length === 0 || txHex.length % 2 !== 0 || !isHexString(txHex)) {
+  if (txEnvelopeCbor.length === 0) {
     return {
       ok: false,
       status: 400,
-      error: "Invalid transaction CBOR payload",
+      error: "Invalid transaction envelope CBOR payload",
     };
   }
 
-  const byteLength = txHex.length / 2;
+  const byteLength = txEnvelopeCbor.length;
   const maxAllowed = Math.max(1, maxTxBytes);
   if (byteLength > maxAllowed) {
     return {
       ok: false,
       status: 413,
-      error: `Transaction CBOR exceeds max size (${byteLength} > ${maxAllowed})`,
+      error: `Transaction envelope CBOR exceeds max size (${byteLength} > ${maxAllowed})`,
     };
   }
 
   return {
     ok: true,
-    txHex,
+    txEnvelopeCbor: Buffer.from(txEnvelopeCbor),
     byteLength,
   };
 };
 
 /**
- * Normalized result of accepting either native Midgard CBOR or Cardano tx CBOR
- * converted into Midgard-native form.
+ * Normalized result of accepting Midgard-native transaction-envelope CBOR.
  */
 export type NormalizedSubmitTx =
   | {
       readonly ok: true;
       readonly txId: Buffer;
       readonly txIdHex: string;
-      readonly txCbor: Buffer;
-      readonly source: "native" | "cardano-converted";
+      readonly txEnvelopeCbor: Buffer;
+      readonly source: "native";
     }
   | {
       readonly ok: false;
@@ -182,79 +129,28 @@ export type NormalizedSubmitTx =
     };
 
 /**
- * Ordinary Cardano-domain signatures are not valid Midgard ingress; converted
- * transactions may carry vkey witnesses only when they already authorize the
- * Midgard-native body hash.
- */
-const findUnsupportedCardanoWitnessDetail = (
-  nativeTx: ReturnType<typeof cardanoTxBytesToMidgardNativeTxFull>,
-): string | null => {
-  const witnessBytes = decodeMidgardNativeByteListPreimage(
-    nativeTx.witnessSet.addrTxWitsPreimageCbor,
-    "native.addr_tx_wits",
-  );
-  for (let index = 0; index < witnessBytes.length; index += 1) {
-    const witness = CML.Vkeywitness.from_cbor_bytes(witnessBytes[index]!);
-    if (
-      !witness
-        .vkey()
-        .verify(
-          nativeTx.compact.transactionBodyHash,
-          witness.ed25519_signature(),
-        )
-    ) {
-      return `Converted Cardano tx carries vkey witness #${index.toString()} that does not authorize the Midgard-native body hash`;
-    }
-  }
-  return null;
-};
-
-/**
  * Normalizes a submitted tx payload into Midgard-native bytes, rejecting
- * ordinary Cardano-signed ingress that cannot authorize the Midgard-native
- * body hash, and derives the canonical tx id.
+ * non-envelope payloads and deriving the canonical tx id.
  */
-export const normalizeSubmitTxHexToNative = (
-  txHex: string,
+export const normalizeSubmitTxEnvelopeCborToNative = (
+  txEnvelopeCbor: Uint8Array,
 ): NormalizedSubmitTx => {
-  const submittedTxCbor = Buffer.from(fromHex(txHex));
+  const submittedTxEnvelopeCbor = Buffer.from(txEnvelopeCbor);
   try {
-    const nativeTx = decodeMidgardNativeTxFull(submittedTxCbor);
+    const nativeTx = decodeMidgardNativeTxFull(submittedTxEnvelopeCbor);
     const txId = computeMidgardNativeTxIdFromFull(nativeTx);
     return {
       ok: true,
       txId,
       txIdHex: txId.toString("hex"),
-      txCbor: submittedTxCbor,
+      txEnvelopeCbor: submittedTxEnvelopeCbor,
       source: "native",
     };
   } catch (nativeDecodeError) {
-    try {
-      const nativeTx = cardanoTxBytesToMidgardNativeTxFull(submittedTxCbor);
-      const unsupportedWitnessDetail =
-        findUnsupportedCardanoWitnessDetail(nativeTx);
-      if (unsupportedWitnessDetail !== null) {
-        return {
-          ok: false,
-          error: "Unsupported Cardano-signed ingress",
-          detail: unsupportedWitnessDetail,
-        };
-      }
-      const normalizedTxCbor = encodeMidgardNativeTxFull(nativeTx);
-      const txId = computeMidgardNativeTxIdFromFull(nativeTx);
-      return {
-        ok: true,
-        txId,
-        txIdHex: txId.toString("hex"),
-        txCbor: Buffer.from(normalizedTxCbor),
-        source: "cardano-converted",
-      };
-    } catch (conversionError) {
-      return {
-        ok: false,
-        error: "Invalid transaction CBOR payload",
-        detail: `native decode failed: ${String(nativeDecodeError)}; cardano conversion failed: ${String(conversionError)}`,
-      };
-    }
+    return {
+      ok: false,
+      error: "Invalid transaction envelope CBOR payload",
+      detail: `native envelope decode failed: ${String(nativeDecodeError)}`,
+    };
   }
 };

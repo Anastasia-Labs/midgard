@@ -4,6 +4,7 @@ import { Effect } from "effect";
 import {
   BuilderInvariantError,
   CompleteTx,
+  computeHash32,
   computeMidgardNativeTxIdFromFull,
   decodeMidgardNativeByteListPreimage,
   decodeMidgardNativeTxFull,
@@ -143,8 +144,8 @@ describe("submit/status chaining", () => {
       "native.addr_tx_wits",
     );
     expect(witnessBytes).toHaveLength(1);
-    expect(decoded.witnessSet.addrTxWitsRoot).not.toEqual(
-      completed.tx.witnessSet.addrTxWitsRoot,
+    expect(computeHash32(decoded.witnessSet.addrTxWitsPreimageCbor)).not.toEqual(
+      computeHash32(completed.tx.witnessSet.addrTxWitsPreimageCbor),
     );
   });
 

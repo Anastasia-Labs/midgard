@@ -24,9 +24,13 @@ import {
 } from "@/transactions/utils.js";
 import { ensureNodeRuntimeReferenceScriptsProgram } from "@/transactions/reference-scripts.js";
 import { slotToUnixTimeForLucidOrEmulatorFallback } from "@/lucid-time.js";
+import {
+  phasMembershipRewardAddress,
+  phasMembershipWithdrawalScriptHash,
+} from "@/phas-membership.js";
+import { ensurePhasMembershipRewardAccountRegisteredProgram } from "@/transactions/phas-membership-registration.js";
 
-import { MidgardMpt, MptError } from "@/workers/utils/mpt.js";
-import { BatchDBOp } from "@ethereumjs/util";
+import { MidgardMpf, MpfBatchOp, MpfError } from "@/workers/utils/mpf.js";
 
 /**
  * Deployment helpers for the protocol's initial on-chain contract state.
@@ -37,7 +41,7 @@ import { BatchDBOp } from "@ethereumjs/util";
 
 /**
  * Converts a fraud-proof catalogue index into the fixed-width key used by the
- * catalogue MPT.
+ * catalogue MPF.
  */
 export const uint32ToFraudProofID = (index: number): Buffer => {
   const buf = Buffer.alloc(4);
@@ -60,22 +64,22 @@ export const fraudProofsToIndexedValidators = (
 };
 
 /**
- * Builds the Merkle Patricia Trie used as the fraud-proof catalogue root.
+ * Builds the Merkle Patricia Forestry root used as the fraud-proof catalogue.
  */
-export const createFraudProofCatalogueMpt = (
+export const createFraudProofCatalogueMpf = (
   indexedFraudProofs: [Buffer, SDK.SpendingValidator][],
-): Effect.Effect<MidgardMpt, MptError> =>
+): Effect.Effect<MidgardMpf, MpfError> =>
   Effect.gen(function* () {
     const batchOps = indexedFraudProofs.map(
-      ([i, fraudProofValidator]): BatchDBOp => ({
-        type: "put",
+      ([i, fraudProofValidator]): MpfBatchOp => ({
+        type: "insert",
         key: i,
         value: Buffer.from(fraudProofValidator.spendingScriptHash, "hex"),
       }),
     );
-    const trie = yield* MidgardMpt.create("fraud_proof_catalogue");
-    yield* trie.batch(batchOps);
-    return trie;
+    const mpf = yield* MidgardMpf.createScratch("fraud_proof_catalogue");
+    yield* mpf.applyBatch(batchOps);
+    return mpf;
   });
 
 /**
@@ -233,7 +237,10 @@ export const isSchedulerInitialized = (
 ): Effect.Effect<boolean, SDK.LucidError> =>
   Effect.tryPromise({
     try: async () => {
-      const schedulerUnit = toUnit(scheduler.policyId, SDK.SCHEDULER_ASSET_NAME);
+      const schedulerUnit = toUnit(
+        scheduler.policyId,
+        SDK.SCHEDULER_ASSET_NAME,
+      );
       const schedulerUtxos = await lucid.utxosAtWithUnit(
         scheduler.spendingScriptAddress,
         schedulerUnit,
@@ -380,6 +387,8 @@ export type ProtocolDeploymentStatus = {
   readonly activeOperatorsInitialized: boolean;
   readonly retiredOperatorsInitialized: boolean;
   readonly fraudProofCatalogueInitialized: boolean;
+  readonly phasMembershipRewardAddress: string;
+  readonly phasMembershipScriptHash: string;
   readonly complete: boolean;
   readonly empty: boolean;
   readonly missingComponents: readonly string[];
@@ -418,6 +427,20 @@ export const fetchProtocolDeploymentStatus = (
       lucid,
       contracts.fraudProofCatalogue,
     );
+    const network = lucid.config().network;
+    if (network === undefined) {
+      return yield* Effect.fail(
+        new SDK.LucidError({
+          message:
+            "Failed to resolve network while building PHAS deployment identity",
+          cause: "lucid.config().network is undefined",
+        }),
+      );
+    }
+    const phasMembershipReward = {
+      rewardAddress: phasMembershipRewardAddress(network),
+      scriptHash: phasMembershipWithdrawalScriptHash(),
+    };
     const missingComponents = [
       ...(hubOracleWitness === null ? ["hub-oracle"] : []),
       ...(!stateQueueTopology.initialized ? ["state-queue"] : []),
@@ -453,6 +476,8 @@ export const fetchProtocolDeploymentStatus = (
       activeOperatorsInitialized,
       retiredOperatorsInitialized,
       fraudProofCatalogueInitialized,
+      phasMembershipRewardAddress: phasMembershipReward.rewardAddress,
+      phasMembershipScriptHash: phasMembershipReward.scriptHash,
       complete,
       empty,
       missingComponents,
@@ -532,8 +557,8 @@ export const program: Effect.Effect<
   const indexedFraudProofs = fraudProofsToIndexedValidators(
     contracts.fraudProofs,
   );
-  const fpMPT = yield* createFraudProofCatalogueMpt(indexedFraudProofs);
-  const fraudProofCatalogueMerkleRoot = yield* fpMPT.getRootHex();
+  const fpMpf = yield* createFraudProofCatalogueMpf(indexedFraudProofs);
+  const fraudProofCatalogueMerkleRoot = yield* fpMpf.rootHex();
   yield* Effect.logInfo(
     `Fraud proof catalogue root prepared for initialization: ${fraudProofCatalogueMerkleRoot}`,
   );
@@ -547,11 +572,12 @@ export const program: Effect.Effect<
     return yield* Effect.fail(makePartialProtocolDeploymentError(status));
   }
 
-  const referenceScripts = yield* ensureAtomicProtocolInitReferenceScriptsProgram(
-    lucidService.referenceScriptsApi,
-    contracts,
-    lucid,
-  );
+  const referenceScripts =
+    yield* ensureAtomicProtocolInitReferenceScriptsProgram(
+      lucidService.referenceScriptsApi,
+      contracts,
+      lucid,
+    );
   const initDeadline = resolveDefaultDeploymentDeadline(lucid);
   const txHash = yield* completeAndSubmit(
     lucid,
@@ -569,5 +595,10 @@ export const program: Effect.Effect<
     `Atomic real protocol initialization submitted: txHash=${txHash}`,
   );
   yield* waitForAtomicInitializationVisibility(lucid, contracts);
+  const phasRegistration =
+    yield* ensurePhasMembershipRewardAccountRegisteredProgram(lucid);
+  yield* Effect.logInfo(
+    `PHAS membership reward-account registration status: status=${phasRegistration.status},scriptHash=${phasRegistration.scriptHash},rewardAddress=${phasRegistration.rewardAddress},txHash=${phasRegistration.txHash ?? "already-registered"}`,
+  );
   return txHash;
 });

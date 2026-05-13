@@ -8,8 +8,8 @@ import { Database, Lucid, MidgardContracts } from "@/services/index.js";
 import {
   keyValuePhasProof,
   keyValuePhasRoot,
-  MptError,
-} from "@/workers/utils/mpt.js";
+  MpfError,
+} from "@/workers/utils/mpf.js";
 import { formatJson, parseEventId } from "@/commands/withdrawal-utils.js";
 
 export type EventKind = "deposit" | "withdrawal";
@@ -157,7 +157,7 @@ export const resolveEventSettlementProofProgram = (
   lookup: EventSettlementProofLookup,
 ): Effect.Effect<
   EventSettlementProofResolution,
-  DatabaseError | EventSettlementProofError | MptError | SDK.LucidError,
+  DatabaseError | EventSettlementProofError | MpfError | SDK.LucidError,
   Database | Lucid | MidgardContracts
 > =>
   Effect.gen(function* () {

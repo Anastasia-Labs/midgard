@@ -445,7 +445,21 @@ describe("MidgardNodeProvider", () => {
         200,
       ),
     ];
-    const provider = await makeProvider(async () => responses.shift()!);
+    const submittedBodies: string[] = [];
+    const provider = await makeProvider(async (input, init) => {
+      const url = new URL(String(input));
+      expect(url.pathname).toBe("/submit");
+      expect(init?.method).toBe("POST");
+      expect(init?.headers).toMatchObject({
+        "content-type": "application/cbor",
+      });
+      const body =
+        init?.body instanceof Uint8Array
+          ? Buffer.from(init.body)
+          : Buffer.from(await new Response(init?.body).arrayBuffer());
+      submittedBodies.push(body.toString("hex"));
+      return responses.shift()!;
+    });
 
     await expect(provider.submitTx("00")).resolves.toMatchObject({
       txId: outRef.txHash,
@@ -457,6 +471,7 @@ describe("MidgardNodeProvider", () => {
       httpStatus: 200,
       duplicate: true,
     });
+    expect(submittedBodies).toStrictEqual(["00", "00"]);
   });
 
   it("rejects malformed or oversized direct submit payloads before posting", async () => {

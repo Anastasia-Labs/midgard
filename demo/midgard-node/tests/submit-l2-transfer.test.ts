@@ -397,11 +397,15 @@ describe("submit-l2-transfer program", () => {
     }));
     fetchMock.mockImplementationOnce(
       async (_input: string, init?: RequestInit) => {
-        const body = JSON.parse(String(init?.body)) as {
-          readonly tx_cbor: string;
-        };
+        expect(init?.headers).toMatchObject({
+          "content-type": "application/cbor",
+        });
+        const body =
+          init?.body instanceof Uint8Array
+            ? Buffer.from(init.body)
+            : Buffer.from(await new Response(init?.body).arrayBuffer());
         const built = decodeMidgardNativeTxFull(
-          Buffer.from(body.tx_cbor, "hex"),
+          body,
         );
         expectedTxId = computeMidgardNativeTxIdFromFull(built).toString("hex");
         return {

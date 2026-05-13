@@ -1,5 +1,8 @@
-import { Globals } from "@/services/index.js";
+import { Database, Globals, Lucid, MidgardContracts } from "@/services/index.js";
+import { StateQueueMutationLeasesDB } from "@/database/index.js";
+import { DatabaseError } from "@/database/utils/common.js";
 import { Duration, Effect, Ref, Schedule } from "effect";
+import * as SDK from "@al-ft/midgard-sdk";
 import { WorkerError } from "@/workers/utils/common.js";
 import {
   WorkerInput,
@@ -9,6 +12,10 @@ import { Metric } from "effect";
 import { Worker } from "worker_threads";
 import { emitQueueStateMetrics } from "./queue-metrics.js";
 import { resolveWorkerEntry } from "./resolve-worker-entry.js";
+import {
+  fetchStateQueueSnapshotProgram,
+  refreshStateQueueGlobalsFromSnapshot,
+} from "@/services/state-queue-topology.js";
 
 /**
  * Background block-commitment loop that packages processed L2 transactions into
@@ -55,17 +62,39 @@ const commitWorkerDurationTimer = Metric.timer(
  * Launches one commitment worker, applies its result to global node state, and
  * updates the block-commitment metrics.
  */
-export const buildAndSubmitCommitmentBlockAction = () =>
+export const buildAndSubmitCommitmentBlockAction = (
+  stateQueueLeaseToken?: string,
+) =>
   Effect.gen(function* () {
     const workerStartedAt = Date.now();
     const globals = yield* Globals;
-    const AVAILABLE_CONFIRMED_BLOCK = yield* globals.AVAILABLE_CONFIRMED_BLOCK;
+    const lucid = yield* Lucid;
+    const contracts = yield* MidgardContracts;
     const AVAILABLE_LOCAL_FINALIZATION_BLOCK =
       yield* globals.AVAILABLE_LOCAL_FINALIZATION_BLOCK;
-    const CURRENT_BLOCK_START_TIME_MS =
-      yield* globals.LATEST_LOCAL_BLOCK_END_TIME_MS;
     const LOCAL_FINALIZATION_PENDING =
       yield* globals.LOCAL_FINALIZATION_PENDING;
+    let AVAILABLE_CONFIRMED_BLOCK = yield* Ref.get(
+      globals.AVAILABLE_CONFIRMED_BLOCK,
+    );
+    let CURRENT_BLOCK_START_TIME_MS = yield* Ref.get(
+      globals.LATEST_LOCAL_BLOCK_END_TIME_MS,
+    );
+    let BASE_SNAPSHOT_ID: string | undefined;
+    if (!LOCAL_FINALIZATION_PENDING) {
+      const snapshot = yield* fetchStateQueueSnapshotProgram(
+        lucid.api,
+        contracts.stateQueue,
+        "commit_preflight",
+      );
+      yield* refreshStateQueueGlobalsFromSnapshot(globals, snapshot);
+      AVAILABLE_CONFIRMED_BLOCK = snapshot.tailCommitBase.utxo;
+      CURRENT_BLOCK_START_TIME_MS = snapshot.tailCommitBase.blockEndTimeMs;
+      BASE_SNAPSHOT_ID = snapshot.snapshotId;
+      yield* Effect.logInfo(
+        `🔹 Using live state-queue tail commit base ${snapshot.tailCommitBase.outRef} from snapshot ${snapshot.snapshotId}.`,
+      );
+    }
     const PROCESSED_UNSUBMITTED_TXS_COUNT =
       yield* globals.PROCESSED_UNSUBMITTED_TXS_COUNT;
     const PROCESSED_UNSUBMITTED_TXS_SIZE =
@@ -85,6 +114,8 @@ export const buildAndSubmitCommitmentBlockAction = () =>
               localFinalizationPending: LOCAL_FINALIZATION_PENDING,
               mempoolTxsCountSoFar: PROCESSED_UNSUBMITTED_TXS_COUNT,
               sizeOfProcessedTxsSoFar: PROCESSED_UNSUBMITTED_TXS_SIZE,
+              stateQueueLeaseToken,
+              baseSnapshotId: BASE_SNAPSHOT_ID,
             },
           } as WorkerInput, // TODO: Consider other approaches to avoid type assertion here.
         },
@@ -254,7 +285,18 @@ export const buildAndSubmitCommitmentBlockAction = () =>
  * Single scheduled commitment tick with a guard that prevents overlapping
  * commitment workers.
  */
-export const blockCommitmentAction: Effect.Effect<void, WorkerError, Globals> =
+export const blockCommitmentAction: Effect.Effect<
+  void,
+  | WorkerError
+  | SDK.LucidError
+  | SDK.StateQueueError
+  | SDK.DataCoercionError
+  | SDK.HashingError
+  | SDK.CmlUnexpectedError
+  | SDK.CborSerializationError
+  | DatabaseError,
+  Globals | Lucid | MidgardContracts | Database
+> =
   Effect.gen(function* () {
     const globals = yield* Globals;
     yield* Ref.set(globals.HEARTBEAT_BLOCK_COMMITMENT, Date.now());
@@ -272,10 +314,20 @@ export const blockCommitmentAction: Effect.Effect<void, WorkerError, Globals> =
       }
 
       yield* Effect.logInfo("🔹 New block commitment process started.");
-      yield* buildAndSubmitCommitmentBlockAction().pipe(
-        Effect.withSpan("buildAndSubmitCommitmentBlockAction"),
-        Effect.ensuring(Ref.set(globals.COMMIT_WORKER_ACTIVE, false)),
-      );
+      const leaseResult = yield* StateQueueMutationLeasesDB.tryWithLease(
+        "block_commitment",
+        (leaseToken) =>
+          buildAndSubmitCommitmentBlockAction(leaseToken).pipe(
+            Effect.withSpan("buildAndSubmitCommitmentBlockAction"),
+          ),
+      ).pipe(Effect.ensuring(Ref.set(globals.COMMIT_WORKER_ACTIVE, false)));
+      if (leaseResult._tag === "Busy") {
+        yield* Effect.logInfo(
+          `🔹 Skipping block commitment trigger because the state-queue mutation lease is busy (${StateQueueMutationLeasesDB.describeActiveLease(
+            leaseResult.activeLease,
+          )}).`,
+        );
+      }
     }
   });
 
@@ -284,7 +336,7 @@ export const blockCommitmentAction: Effect.Effect<void, WorkerError, Globals> =
  */
 export const blockCommitmentFiber = (
   schedule: Schedule.Schedule<number>,
-): Effect.Effect<void, never, Globals> =>
+): Effect.Effect<void, never, Globals | Lucid | MidgardContracts | Database> =>
   Effect.gen(function* () {
     yield* Effect.logInfo("🔵 Block commitment fiber started.");
     const action = blockCommitmentAction.pipe(

@@ -236,7 +236,7 @@ export const verifyMidgardNativeScript = (
     case "before":
       return (
         input.validityIntervalEnd !== undefined &&
-        input.validityIntervalEnd < script.slot
+        input.validityIntervalEnd <= script.slot
       );
   }
 };

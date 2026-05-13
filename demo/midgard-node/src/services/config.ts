@@ -69,16 +69,38 @@ type NodeConfigDep = {
   POSTGRES_DB: string;
   POSTGRES_HOST: string;
   POSTGRES_PORT: number;
-  LEDGER_MPT_DB_PATH: string;
-  MEMPOOL_MPT_DB_PATH: string;
+  LEDGER_MPF_DB_PATH: string;
+  TRANSACTIONS_MPF_DB_PATH: string;
   GENESIS_UTXOS: UTxO[];
 };
+
+const rejectDeprecatedRootStoreEnvVars = Effect.sync(() => {
+  const deprecated = [
+    ["LEDGER_MPT_DB_PATH", "LEDGER_MPF_DB_PATH"],
+    ["MEMPOOL_MPT_DB_PATH", "TRANSACTIONS_MPF_DB_PATH"],
+    ["MEMPOOL_MPF_DB_PATH", "TRANSACTIONS_MPF_DB_PATH"],
+  ] as const;
+  const configuredDeprecated = deprecated.filter(
+    ([name]) => process.env[name] !== undefined,
+  );
+  if (configuredDeprecated.length > 0) {
+    throw new Error(
+      configuredDeprecated
+        .map(
+          ([name, replacement]) =>
+            `${name} is no longer supported; use ${replacement}`,
+        )
+        .join("; "),
+    );
+  }
+});
 
 /**
  * Loads and normalizes the node's runtime configuration from environment
  * variables.
  */
 const makeConfig = Effect.gen(function* () {
+  yield* rejectDeprecatedRootStoreEnvVars;
   const provider = yield* Config.literal(
     "Kupmios",
     "Blockfrost",
@@ -251,11 +273,13 @@ const makeConfig = Effect.gen(function* () {
   const postgresUser = yield* Config.string("POSTGRES_USER").pipe(
     Config.withDefault("postgres"),
   );
-  const ledgerMptDbPath = yield* Config.string("LEDGER_MPT_DB_PATH").pipe(
-    Config.withDefault("midgard-ledger-mpt-db"),
+  const ledgerMpfDbPath = yield* Config.string("LEDGER_MPF_DB_PATH").pipe(
+    Config.withDefault("midgard-ledger-mpf-db"),
   );
-  const mempoolMptDbPath = yield* Config.string("MEMPOOL_MPT_DB_PATH").pipe(
-    Config.withDefault("midgard-mempool-mpt-db"),
+  const transactionsMpfDbPath = yield* Config.string(
+    "TRANSACTIONS_MPF_DB_PATH",
+  ).pipe(
+    Config.withDefault("midgard-transactions-mpf-db"),
   );
   const seedA = yield* Config.string("TESTNET_GENESIS_WALLET_SEED_PHRASE_A");
   const seedB = yield* Config.string("TESTNET_GENESIS_WALLET_SEED_PHRASE_B");
@@ -381,8 +405,8 @@ const makeConfig = Effect.gen(function* () {
     POSTGRES_PASSWORD: postgresPassword,
     POSTGRES_DB: postgresDb,
     POSTGRES_USER: postgresUser,
-    LEDGER_MPT_DB_PATH: ledgerMptDbPath,
-    MEMPOOL_MPT_DB_PATH: mempoolMptDbPath,
+    LEDGER_MPF_DB_PATH: ledgerMpfDbPath,
+    TRANSACTIONS_MPF_DB_PATH: transactionsMpfDbPath,
     GENESIS_UTXOS: network === "Mainnet" ? [] : genesisUtxos,
   };
 }).pipe(Effect.orDie);

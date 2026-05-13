@@ -11,15 +11,18 @@ pub type MidgardOutputReference {
   MidgardOutputReference { transaction_id: ByteArray, output_index: Int }
 }
 
-pub type MidgardCredential {
-  MidgardVerificationKey(ByteArray)
-  MidgardScript(ByteArray)
+pub type MidgardStakeCredential {
+  MidgardInlineStakeCredential(Credential)
 }
 
 pub type MidgardAddress {
-  MidgardAddress {
-    payment_credential: MidgardCredential,
-    stake_credential: Data,
+  MidgardUnprotectedAddress {
+    payment_credential: Credential,
+    stake_credential: Option<MidgardStakeCredential>,
+  }
+  MidgardProtectedAddress {
+    payment_credential: Credential,
+    stake_credential: Option<MidgardStakeCredential>,
   }
 }
 
@@ -178,8 +181,8 @@ fn midgard_script_output_matches(
   output: MidgardOutput,
   expected_script_hash: ByteArray,
 ) -> Bool {
-  when output.address.payment_credential is {
-    MidgardScript(actual_script_hash) -> actual_script_hash == expected_script_hash
+  when midgard_address_payment_credential(output.address) is {
+    Script(actual_script_hash) -> actual_script_hash == expected_script_hash
     _ -> False
   }
 }
@@ -205,14 +208,23 @@ fn midgard_outputs_contain_script_hash(
   when outputs is {
     [] -> False
     [output, ..rest] ->
-      when output.address.payment_credential is {
-        MidgardScript(actual_script_hash) ->
+      when midgard_address_payment_credential(output.address) is {
+        Script(actual_script_hash) ->
           actual_script_hash == expected_script_hash || midgard_outputs_contain_script_hash(
             rest,
             expected_script_hash,
           )
         _ -> midgard_outputs_contain_script_hash(rest, expected_script_hash)
       }
+  }
+}
+
+fn midgard_address_payment_credential(
+  address: MidgardAddress,
+) -> Credential {
+  when address is {
+    MidgardUnprotectedAddress { payment_credential, .. } -> payment_credential
+    MidgardProtectedAddress { payment_credential, .. } -> payment_credential
   }
 }
 

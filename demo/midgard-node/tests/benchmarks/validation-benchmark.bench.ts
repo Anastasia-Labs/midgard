@@ -222,18 +222,15 @@ const buildQueuedBlock = (
     );
     const normalized = {
       version: converted.version,
+      validity: "TxIsValid" as const,
       body: {
         ...converted.body,
-        requiredSignersRoot: EMPTY_LIST_ROOT,
         requiredSignersPreimageCbor: EMPTY_CBOR_LIST,
       },
       witnessSet: {
         ...converted.witnessSet,
-        addrTxWitsRoot: EMPTY_LIST_ROOT,
         addrTxWitsPreimageCbor: EMPTY_CBOR_LIST,
-        scriptTxWitsRoot: EMPTY_LIST_ROOT,
         scriptTxWitsPreimageCbor: EMPTY_CBOR_LIST,
-        redeemerTxWitsRoot: EMPTY_LIST_ROOT,
         redeemerTxWitsPreimageCbor: EMPTY_CBOR_LIST,
       },
     };

@@ -233,7 +233,7 @@ const admissionToQueuedTx = (
 ): QueuedTx | RejectedTx => {
   if (
     !Buffer.isBuffer(admission.tx_id) ||
-    !Buffer.isBuffer(admission.tx_cbor)
+    !Buffer.isBuffer(admission.tx_envelope_cbor)
   ) {
     return {
       txId: Buffer.alloc(32, 0),
@@ -244,7 +244,7 @@ const admissionToQueuedTx = (
 
   const queuedTx: QueuedTx = {
     txId: admission.tx_id,
-    txCbor: admission.tx_cbor,
+    txCbor: admission.tx_envelope_cbor,
     arrivalSeq: admission.arrival_seq,
     createdAt: admission.first_seen_at,
   };
