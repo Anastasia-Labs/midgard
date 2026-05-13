@@ -212,7 +212,7 @@ pub type MidgardTxsRoot =
 
 /// Compact representation.
 pub type MidgardTxCompact {
-  body: MidgardTxId,
+  body: MidgardTxBodyCompact,
   wits: MidgardTxWitsHash,
   validity: MidgardTxValidity,
 }
@@ -272,7 +272,7 @@ pub fn midgard_tx_wits_to_compact(
 pub fn midgard_tx_to_compact(tx: MidgardTx) -> MidgardTxCompact {
   let MidgardTx { body, wits, validity } = tx
   MidgardTxCompact {
-    body: body |> midgard_tx_body_to_compact |> utils.serialise_and_hash_32,
+    body: body |> midgard_tx_body_to_compact,
     wits: wits |> midgard_tx_wits_to_compact |> utils.serialise_and_hash_32,
     validity,
   }

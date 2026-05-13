@@ -11,7 +11,7 @@ use cardano/transaction.{
 use midgard/common/types.{Proof}
 use midgard/common/utils.{
   get_redeemer_at, get_single_asset_from_value_apart_from_ada, has_signed,
-  plutarch_phas, verify_hash_32,
+  plutarch_phas, serialise_and_hash_32, verify_hash_32,
 }
 use midgard/computation_thread as ct
 use midgard/fraud_proof
@@ -19,15 +19,9 @@ use midgard/fraud_proof_catalogue
 use midgard/hub_oracle as hub
 use midgard/ledger_state.{
   Header, MidgardTxBodyCompact, MidgardTxCompact, MidgardTxId,
-  MidgardTxWitnessSetCompact, MidgardTxWitsHash,
+  MidgardTxWitnessSetCompact,
 }
 use midgard/state_queue
-
-pub type TxFieldPreimage {
-  TxBodyProvided(MidgardTxBodyCompact)
-  TxWitsProvided(MidgardTxWitnessSetCompact)
-  TxBodyAndWitsProvided(MidgardTxBodyCompact, MidgardTxWitnessSetCompact)
-}
 
 pub type TxInclusionArgs {
   input_index: Int,
@@ -35,7 +29,7 @@ pub type TxInclusionArgs {
   hub_ref_input_index: Int,
   state_queue_node_ref_input_index: Int,
   tx: MidgardTxCompact,
-  tx_field_preimage: TxFieldPreimage,
+  provided_witness_set_preimage: Option<MidgardTxWitnessSetCompact>,
   tx_membership_proof: Proof,
   inclusion_proof_script_withdraw_redeemer_index: Int,
 }
@@ -62,7 +56,7 @@ pub fn pass_tx_to_next_step(
     Header,
     MidgardTxId,
     MidgardTxCompact,
-    TxFieldPreimage,
+    Option<MidgardTxWitnessSetCompact>,
   ) ->
     Bool,
 ) -> Bool {
@@ -72,7 +66,7 @@ pub fn pass_tx_to_next_step(
     hub_ref_input_index,
     state_queue_node_ref_input_index,
     tx,
-    tx_field_preimage,
+    provided_witness_set_preimage,
     tx_membership_proof,
     inclusion_proof_script_withdraw_redeemer_index,
   } = tx_inclusion_args
@@ -108,7 +102,7 @@ pub fn pass_tx_to_next_step(
   <-
     verify_tx_in_state_queue_node(
       tx,
-      tx_field_preimage,
+      provided_witness_set_preimage,
       tx_membership_proof,
       computation_thread_token_asset_name,
       hub_oracle,
@@ -131,7 +125,7 @@ pub fn pass_tx_to_next_step(
       header,
       tx_id,
       tx,
-      tx_field_preimage,
+      provided_witness_set_preimage,
     )
 
   // Done.
@@ -368,23 +362,6 @@ pub fn finalize(
   )
 }
 
-pub fn verify_tx_and_its_provided_field_preimage(
-  tx_body_hash: MidgardTxId,
-  tx_wits_hash: MidgardTxWitsHash,
-  tx_field_preimage: TxFieldPreimage,
-) -> Bool {
-  when tx_field_preimage is {
-    TxBodyProvided(tx_body) ->
-      verify_hash_32(data: tx_body, data_hash: tx_body_hash)
-    TxWitsProvided(tx_wits) ->
-      verify_hash_32(data: tx_wits, data_hash: tx_wits_hash)
-    TxBodyAndWitsProvided(tx_body, tx_wits) -> and {
-        verify_hash_32(data: tx_body, data_hash: tx_body_hash),
-        verify_hash_32(data: tx_wits, data_hash: tx_wits_hash),
-      }
-  }
-}
-
 pub fn verify_tx_body(
   tx_body_compact_preimage: MidgardTxBodyCompact,
   tx_body_hash: MidgardTxId,
@@ -394,7 +371,7 @@ pub fn verify_tx_body(
 
 pub fn verify_tx_in_state_queue_node(
   tx: MidgardTxCompact,
-  tx_field_preimage: TxFieldPreimage,
+  provided_witness_set_preimage: Option<MidgardTxWitnessSetCompact>,
   tx_membership_proof: Proof,
   computation_thread_token_asset_name: AssetName,
   hub_oracle: ScriptHash,
@@ -405,15 +382,22 @@ pub fn verify_tx_in_state_queue_node(
   redeemers: Pairs<ScriptPurpose, Redeemer>,
   return: fn(MidgardTxId, Header) -> result,
 ) -> result {
-  let MidgardTxCompact { body: tx_id, wits: tx_wits_hash, .. } = tx
+  let MidgardTxCompact {
+    body: midgard_tx_compact_body,
+    wits: midgard_tx_wits_hash,
+    ..
+  } = tx
 
-  // 1. Verify authenticity of the provided tx and field preimage(s).
+  let tx_id = midgard_tx_compact_body |> serialise_and_hash_32
+
+  // 1. If the preimage of the compact witness set is provided, validate it
+  //    against the given compact Midgard transaction.
   expect
-    verify_tx_and_its_provided_field_preimage(
-      tx_id,
-      tx_wits_hash,
-      tx_field_preimage,
-    )
+    when provided_witness_set_preimage is {
+      Some(tx_wits) ->
+        verify_hash_32(data: tx_wits, data_hash: midgard_tx_wits_hash)
+      None -> True
+    }
 
   // 2. Hub oracle must be provided as a reference input.
   let hub.Datum { state_queue: state_queue_policy, .. } =

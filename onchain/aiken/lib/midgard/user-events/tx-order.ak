@@ -29,8 +29,8 @@ pub fn set_tx_validity_and_get_compact_info(
 
   expect tx_order_event_tx: ledger_state.MidgardTx = tx_order_event_tx_data
 
-  let ledger_state.MidgardTxCompact { body: tx_id, .. } as init_compact_tx =
-    tx_order_event_tx |> ledger_state.midgard_tx_to_compact
+  let init_compact_tx = tx_order_event_tx |> ledger_state.midgard_tx_to_compact
+  let tx_id = init_compact_tx.body |> utils.serialise_and_hash_32
 
   let overridden_tx_order_compact_tx =
     ledger_state.MidgardTxCompact {

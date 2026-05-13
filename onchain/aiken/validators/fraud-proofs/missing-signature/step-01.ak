@@ -2,9 +2,7 @@ use aiken/crypto.{ScriptHash}
 use cardano/assets.{PolicyId}
 use cardano/transaction.{OutputReference, Transaction}
 use midgard/computation_thread as ct
-use midgard/fraud_proofs/common.{
-  TxBodyAndWitsProvided, cancel, pass_tx_to_next_step,
-}
+use midgard/fraud_proofs/common.{cancel, pass_tx_to_next_step}
 use midgard/fraud_proofs/missing_signature/step_01.{Datum, SpendRedeemer}
 use midgard/fraud_proofs/missing_signature/step_02
 
@@ -41,8 +39,8 @@ validator main(
           output_state_data,
           _header,
           _bad_tx_id,
-          _bad_tx,
-          bad_tx_field_preimage,
+          bad_tx,
+          provided_witness_set_preimage,
         <-
           pass_tx_to_next_step(
             computation_thread_token_policy_id,
@@ -53,17 +51,16 @@ validator main(
             tx,
           )
 
-        // 2. The redeemer must provide preimages of both the bad transaction's
-        //    body and witness set.
-        expect TxBodyAndWitsProvided(bad_tx_body, bad_tx_wits) =
-          bad_tx_field_preimage
+        // 2. The redeemer must provide the preimage of the bad transaction's
+        //    witness set.
+        expect Some(bad_tx_wits) = provided_witness_set_preimage
 
         // 3. The UTxO must be produced at next step's script hash with hashes of
         //    required signers and address witness set.
         expect output_script_hash == step_02_validator_script_hash
         let expected_output_state: Data =
           step_02.State {
-            verified_required_signers_hash: bad_tx_body.required_signer_hashes,
+            verified_required_signers_hash: bad_tx.body.required_signer_hashes,
             verified_addr_tx_wits_hash: bad_tx_wits.addr_tx_wits,
           }
         expect output_state_data == expected_output_state
