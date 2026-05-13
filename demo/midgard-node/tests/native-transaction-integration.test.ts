@@ -9,7 +9,6 @@ import {
   MIDGARD_NATIVE_TX_VERSION,
   MIDGARD_POSIX_TIME_NONE,
   computeScriptIntegrityHashForLanguages,
-  computeHash32,
   computeMidgardNativeTxIdFromFull,
   deriveMidgardNativeTxBodyCompactFromFull,
   deriveMidgardNativeTxCompact,
@@ -21,6 +20,9 @@ import {
   type MidgardNativeTxFull,
   type MidgardNativeTxWitnessSetFull,
 } from "@/midgard-tx-codec/index.js";
+// Buffer-returning `computeHash32` from midgard-core (not midgard-ts's
+// Uint8Array variant) — this test builds `MidgardNativeTxBodyFull` literals.
+import { computeHash32 } from "@al-ft/midgard-core/codec/hash";
 import { findSpentAndProducedUTxOs, breakDownTx } from "@/utils.js";
 import {
   RejectCodes,

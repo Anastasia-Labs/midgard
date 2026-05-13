@@ -5,7 +5,6 @@ import { describe, expect, it } from "vitest";
 import {
   MIDGARD_NATIVE_TX_VERSION,
   MIDGARD_POSIX_TIME_NONE,
-  computeHash32,
   computeMidgardNativeTxIdFromFull,
   deriveMidgardNativeTxCompact,
   encodeMidgardNativeTxFull,
@@ -13,6 +12,10 @@ import {
   type MidgardNativeTxFull,
   type MidgardNativeTxWitnessSetFull,
 } from "@/midgard-tx-codec/index.js";
+// Buffer-returning `computeHash32` from midgard-core (not midgard-ts's
+// Uint8Array variant) — this test builds `MidgardNativeTxBodyFull` literals
+// whose `Hash32` fields are typed as `Buffer`.
+import { computeHash32 } from "@al-ft/midgard-core/codec/hash";
 import {
   PhaseAAccepted,
   QueuedTx,

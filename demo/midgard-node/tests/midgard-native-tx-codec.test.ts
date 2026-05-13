@@ -8,7 +8,6 @@ import {
   MIDGARD_NATIVE_TX_VERSION,
   MIDGARD_POSIX_TIME_NONE,
   cardanoTxBytesToMidgardNativeTxFullBytes,
-  computeHash32,
   computeMidgardNativeTxIdFromFull,
   decodeMidgardNativeTxBodyCompact,
   decodeMidgardNativeTxCompact,
@@ -27,6 +26,9 @@ import {
   type MidgardNativeTxWitnessSetFull,
   verifyMidgardNativeTxFullConsistency,
 } from "@/midgard-tx-codec/index.js";
+// Buffer-returning `computeHash32` from midgard-core (not midgard-ts's
+// Uint8Array variant) — this test builds `MidgardNativeTxBodyFull` literals.
+import { computeHash32 } from "@al-ft/midgard-core/codec/hash";
 import {
   makeCardanoTxOutput,
   makeMidgardTxOutput,

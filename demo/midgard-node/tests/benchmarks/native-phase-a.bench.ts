@@ -7,12 +7,14 @@ import os from "node:os";
 import path from "node:path";
 import {
   cardanoTxBytesToMidgardNativeTxFullBytes,
-  computeHash32,
   computeMidgardNativeTxIdFromFull,
   decodeMidgardNativeTxFull,
   deriveMidgardNativeTxCompact,
   encodeMidgardNativeTxFull,
 } from "@/midgard-tx-codec/index.js";
+// Buffer-returning `computeHash32` from midgard-core (not midgard-ts's
+// Uint8Array variant) — this bench builds `MidgardNativeTxBodyFull` literals.
+import { computeHash32 } from "@al-ft/midgard-core/codec/hash";
 import { QueuedTx, runPhaseAValidation } from "@/validation/index.js";
 
 type TxFixture = {

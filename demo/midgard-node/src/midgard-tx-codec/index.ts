@@ -59,7 +59,12 @@ export {
   deriveMidgardNativeTxBodyCompactFromFull,
   deriveMidgardNativeTxCompact,
   deriveMidgardNativeTxWitnessSetCompactFromFull,
+  encodeMidgardNativeTxBodyCompact,
+  encodeMidgardNativeTxCompact,
   encodeMidgardNativeTxFull,
+  encodeMidgardNativeTxWitnessSetCompact,
+  midgardNativeTxFullToCardanoTxEncoding,
+  verifyMidgardNativeTxFullConsistency,
   MIDGARD_NATIVE_NETWORK_ID_NONE,
   MIDGARD_POSIX_TIME_NONE,
 } from "@al-ft/midgard-core/codec/native";

@@ -9,12 +9,14 @@ import { fileURLToPath } from "node:url";
 import * as LedgerUtils from "@/database/utils/ledger.js";
 import {
   cardanoTxBytesToMidgardNativeTxFullBytes,
-  computeHash32,
   computeMidgardNativeTxIdFromFull,
   decodeMidgardNativeTxFull,
   deriveMidgardNativeTxCompact,
   encodeMidgardNativeTxFull,
 } from "@/midgard-tx-codec/index.js";
+// Buffer-returning `computeHash32` from midgard-core (not midgard-ts's
+// Uint8Array variant) — this bench builds `MidgardNativeTxBodyFull` literals.
+import { computeHash32 } from "@al-ft/midgard-core/codec/hash";
 import {
   PhaseAAccepted,
   QueuedTx,
