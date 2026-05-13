@@ -35,7 +35,10 @@ export * from "@al-ft/midgard-core/codec/script-language-views";
 export * from "@al-ft/midgard-core/codec/errors";
 export * from "@al-ft/midgard-core/codec/cbor";
 
-/** Version of the Midgard transaction binary codec. */
+// Version of the Midgard transaction binary format. The midgard-ts encoding
+// itself has no on-wire version byte (unlike the old CBOR "native" codec); this
+// constant is the protocol-info surface clients use to gate compatibility, and
+// must be bumped whenever the midgard-ts wire format changes incompatibly.
 export const MIDGARD_NATIVE_TX_VERSION = 1n;
 
 // Transitional: a few callers still consume CBOR byte-list preimages produced

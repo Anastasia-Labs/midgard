@@ -16,7 +16,7 @@ import {
 } from "@lucid-evolution/lucid";
 import {
   decodeMidgardAddressBytes,
-  decodeMidgardNativeByteListPreimage,
+  decodeTransaction,
   midgardAddressFromText,
   midgardAddressToText,
   MIDGARD_SUPPORTED_SCRIPT_LANGUAGES,
@@ -635,11 +635,9 @@ const selectedInputsFromCompletedTx = (
   availableUtxos: readonly NodeUtxo[],
 ): readonly NodeUtxo[] => {
   const byLabel = new Map(availableUtxos.map((utxo) => [outRefLabel(utxo), utxo]));
-  return decodeMidgardNativeByteListPreimage(
-    completed.tx.body.spendInputsPreimageCbor,
-  ).map((bytes) => {
-    const input = CML.TransactionInput.from_cbor_bytes(bytes);
-    const label = `${input.transaction_id().to_hex()}#${input.index().toString()}`;
+  const tx = decodeTransaction(completed.txCbor);
+  return tx.body.inputs.map((input) => {
+    const label = `${Buffer.from(input.tx_id).toString("hex")}#${input.index.toString()}`;
     const utxo = byLabel.get(label);
     if (utxo === undefined) {
       throw new Error(`Built transfer selected unknown input ${label}.`);

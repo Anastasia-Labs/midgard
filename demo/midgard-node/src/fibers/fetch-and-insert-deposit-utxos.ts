@@ -20,7 +20,7 @@ import { encodeMidgardTxOutput } from "@al-ft/lucid-midgard";
 import { DepositsDB, UserEventsUtils } from "@/database/index.js";
 import { DatabaseError } from "@/database/utils/common.js";
 import { Schedule } from "effect";
-import { computeHash32 } from "@/midgard-tx-codec/hash.js";
+import { computeHash32 } from "@/midgard-tx-codec/index.js";
 
 /**
  * Background ingestion for deposit UTxOs into the authoritative off-chain
@@ -116,7 +116,9 @@ const depositUTxOToEntry = (
           depositUTxO.utxo.txHash,
           "hex",
         ),
-        [DepositsDB.Columns.LEDGER_TX_ID]: computeHash32(depositUTxO.idCbor),
+        [DepositsDB.Columns.LEDGER_TX_ID]: Buffer.from(
+          computeHash32(depositUTxO.idCbor),
+        ),
         [DepositsDB.Columns.LEDGER_OUTPUT]: Buffer.from(output),
         [DepositsDB.Columns.LEDGER_ADDRESS]: l2Address,
         [DepositsDB.Columns.PROJECTED_HEADER_HASH]: null,

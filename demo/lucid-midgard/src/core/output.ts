@@ -375,14 +375,14 @@ const midgardTsValueToCoreValue = (v: MidgardTsValue): CoreMidgardValue => {
   return { lovelace: v.coin, assets };
 };
 
-const coreScriptRefToMidgardTs = (
+export const coreScriptRefToMidgardTs = (
   s: MidgardVersionedScript,
 ): MidgardTsVersionedScript => ({
   language: s.language,
   bytes: Buffer.from(s.scriptBytes),
 });
 
-const midgardTsScriptRefToCore = (
+export const midgardTsScriptRefToCore = (
   s: MidgardTsVersionedScript,
 ): MidgardVersionedScript => {
   if (s.language === "NativeCardano") {

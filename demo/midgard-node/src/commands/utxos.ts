@@ -13,7 +13,10 @@ import {
   type Assets,
   type UTxO,
 } from "@lucid-evolution/lucid";
-import { midgardAddressFromText, midgardAddressToText } from "@al-ft/midgard-core/codec";
+import {
+  midgardAddressFromText,
+  midgardAddressToText,
+} from "@/midgard-tx-codec/index.js";
 import { Data as EffectData, Effect } from "effect";
 
 /**

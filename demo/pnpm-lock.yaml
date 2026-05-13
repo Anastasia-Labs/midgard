@@ -328,6 +328,9 @@ importers:
       '@al-ft/midgard-core':
         specifier: workspace:*
         version: link:../midgard-core
+      '@al-ft/midgard-ts':
+        specifier: workspace:*
+        version: link:../midgard-ts
       '@harmoniclabs/plutus-data':
         specifier: 1.2.6
         version: 1.2.6(@harmoniclabs/bytestring@1.0.0)(@harmoniclabs/cbor@2.0.1)

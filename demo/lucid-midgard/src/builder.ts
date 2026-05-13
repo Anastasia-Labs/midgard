@@ -14,7 +14,6 @@ import {
 } from "@al-ft/midgard-validation";
 import {
   computeHash32,
-  computeMidgardNativeTxIdFromFull,
   computeScriptIntegrityHashForLanguages,
   encodeMidgardVersionedScript,
   encodeMidgardVersionedScriptListPreimage,
@@ -23,13 +22,15 @@ import {
   asBytes,
   decodeSingleCbor,
   decodeMidgardNativeByteListPreimage,
-  decodeMidgardNativeTxFull,
+  decodeMidgardNativeMint,
+  decodeMidgardVersionedScriptListPreimage,
   deriveMidgardNativeTxCompact,
   EMPTY_CBOR_LIST,
   EMPTY_NULL_ROOT,
+  EMPTY_SCRIPT_INTEGRITY_HASH,
   encodeCbor,
-  encodeMidgardNativeTxFull,
   materializeMidgardNativeTxFromCanonical,
+  MIDGARD_NATIVE_NETWORK_ID_NONE,
   MIDGARD_SUPPORTED_SCRIPT_LANGUAGES,
   MIDGARD_NATIVE_TX_VERSION,
   MIDGARD_POSIX_TIME_NONE,
@@ -42,10 +43,21 @@ import {
   type ScriptLanguageName,
 } from "./codec/index.js";
 import {
+  decodeTransaction as decodeMidgardTsTransaction,
+  encodeTransaction as encodeMidgardTsTransaction,
+  transactionId as midgardTsTransactionId,
+  decodeTransactionOutput as decodeMidgardTsTxOutput,
+  encodeTransactionOutput as encodeMidgardTsTxOutput,
+  type Mint as MidgardTsMint,
+  type Transaction as MidgardTsTransaction,
+} from "@al-ft/midgard-ts";
+import {
   authoredOutput,
+  coreScriptRefToMidgardTs,
   decodeMidgardTxOutput,
   decodeMidgardUtxo,
   encodeMidgardTxOutput,
+  midgardTsScriptRefToCore,
   normalizeScriptRef,
   normalizePlutusData,
   outputAddressPaymentKeyHash,
@@ -138,6 +150,213 @@ import {
   type PrivateKey,
   type VKeyWitness,
 } from "./wallet.js";
+
+// ===========================================================================
+// Wire-format boundary: convert between the internal `MidgardNativeTxFull`
+// (root + preimage-CBOR) model used by this builder and the on-the-wire
+// `@al-ft/midgard-ts` binary `Transaction`. The internal model is unchanged;
+// only serialization/deserialization/tx-id now use the midgard-ts encoding.
+// ===========================================================================
+
+const cborListBuffers = (preimageCbor: Uint8Array): Buffer[] =>
+  decodeMidgardNativeByteListPreimage(preimageCbor);
+
+const isEmptyCborList = (bytes: Uint8Array): boolean =>
+  Buffer.from(bytes).equals(EMPTY_CBOR_LIST);
+
+const cborInputToOutRef = (b: Uint8Array): { tx_id: Uint8Array; index: number } => {
+  const i = CML.TransactionInput.from_cbor_bytes(b);
+  return { tx_id: i.transaction_id().to_raw_bytes(), index: Number(i.index()) };
+};
+
+const outRefToCborInput = (ref: { tx_id: Uint8Array; index: number }): Buffer =>
+  Buffer.from(
+    CML.TransactionInput.new(
+      CML.TransactionHash.from_raw_bytes(ref.tx_id),
+      BigInt(ref.index),
+    ).to_cbor_bytes(),
+  );
+
+const cmlMintToMidgardTsMint = (mint: InstanceType<typeof CML.Mint>): MidgardTsMint => {
+  const result: MidgardTsMint = [];
+  const policies = mint.keys();
+  for (let i = 0; i < policies.len(); i += 1) {
+    const pid = policies.get(i);
+    const assets = mint.get_assets(pid)!;
+    const names = assets.keys();
+    const entries: Array<[Uint8Array, bigint]> = [];
+    for (let j = 0; j < names.len(); j += 1) {
+      const name = names.get(j);
+      entries.push([name.to_raw_bytes(), assets.get(name)!]);
+    }
+    result.push([pid.to_raw_bytes(), entries]);
+  }
+  return result;
+};
+
+const midgardTsMintToCborMap = (
+  mint: MidgardTsMint,
+): Map<Buffer, Map<Buffer, bigint>> => {
+  const outer = new Map<Buffer, Map<Buffer, bigint>>();
+  for (const [pid, entries] of mint) {
+    const inner = new Map<Buffer, bigint>();
+    for (const [name, amount] of entries) inner.set(Buffer.from(name), amount);
+    outer.set(Buffer.from(pid), inner);
+  }
+  return outer;
+};
+
+const nonEmptyOrUndefined = <T>(xs: T[]): T[] | undefined =>
+  xs.length === 0 ? undefined : xs;
+
+/** Internal `MidgardNativeTxFull` -> on-the-wire midgard-ts `Transaction`. */
+const nativeFullToMidgardTs = (tx: MidgardNativeTxFull): MidgardTsTransaction => {
+  const b = tx.body;
+  const ws = tx.witnessSet;
+  const referenceInputs = cborListBuffers(b.referenceInputsPreimageCbor);
+  const requiredSigners = cborListBuffers(b.requiredSignersPreimageCbor);
+  const requiredObservers = cborListBuffers(b.requiredObserversPreimageCbor);
+  const vkeyWitnessBytes = cborListBuffers(ws.addrTxWitsPreimageCbor);
+  const decodedMint = decodeMidgardNativeMint(b.mintPreimageCbor);
+  return {
+    body: {
+      inputs: cborListBuffers(b.spendInputsPreimageCbor).map(cborInputToOutRef),
+      outputs: cborListBuffers(b.outputsPreimageCbor).map((o) =>
+        decodeMidgardTsTxOutput(o),
+      ),
+      fee: b.fee,
+      ttl:
+        b.validityIntervalEnd === MIDGARD_POSIX_TIME_NONE
+          ? undefined
+          : Number(b.validityIntervalEnd),
+      auxiliary_data_hash: Buffer.from(b.auxiliaryDataHash).equals(EMPTY_NULL_ROOT)
+        ? undefined
+        : b.auxiliaryDataHash,
+      validity_interval_start:
+        b.validityIntervalStart === MIDGARD_POSIX_TIME_NONE
+          ? undefined
+          : Number(b.validityIntervalStart),
+      mint:
+        decodedMint === undefined
+          ? undefined
+          : cmlMintToMidgardTsMint(decodedMint.mint),
+      script_data_hash: Buffer.from(b.scriptIntegrityHash).equals(
+        EMPTY_SCRIPT_INTEGRITY_HASH,
+      )
+        ? undefined
+        : b.scriptIntegrityHash,
+      required_signers: nonEmptyOrUndefined(requiredSigners),
+      network_id:
+        b.networkId === MIDGARD_NATIVE_NETWORK_ID_NONE
+          ? undefined
+          : Number(b.networkId),
+      reference_inputs: nonEmptyOrUndefined(
+        referenceInputs.map(cborInputToOutRef),
+      ),
+      required_observers: nonEmptyOrUndefined(requiredObservers),
+    },
+    witness_set: {
+      vkey_witnesses: nonEmptyOrUndefined(
+        vkeyWitnessBytes.map((wb) => {
+          const w = CML.Vkeywitness.from_cbor_bytes(wb);
+          return {
+            vkey: w.vkey().to_raw_bytes(),
+            signature: w.ed25519_signature().to_raw_bytes(),
+          };
+        }),
+      ),
+      scripts: nonEmptyOrUndefined(
+        decodeMidgardVersionedScriptListPreimage(
+          ws.scriptTxWitsPreimageCbor,
+          "script_tx_wits",
+        ).map(coreScriptRefToMidgardTs),
+      ),
+      redeemers: isEmptyCborList(ws.redeemerTxWitsPreimageCbor)
+        ? undefined
+        : ws.redeemerTxWitsPreimageCbor,
+    },
+    is_valid: tx.compact.validity === "TxIsValid",
+  };
+};
+
+/** On-the-wire midgard-ts `Transaction` -> internal `MidgardNativeTxFull`. */
+const midgardTsToNativeFull = (tx: MidgardTsTransaction): MidgardNativeTxFull => {
+  const b = tx.body;
+  const ws = tx.witness_set;
+  const list = (items: Uint8Array[]): Buffer =>
+    encodeCbor(items.map((i) => Buffer.from(i)));
+  const canonical: MidgardNativeTxCanonical = {
+    version: MIDGARD_NATIVE_TX_VERSION,
+    // midgard-ts only carries a boolean; non-valid txs are tagged generically.
+    validity: tx.is_valid ? "TxIsValid" : "FailedScript",
+    body: {
+      spendInputsPreimageCbor: list(b.inputs.map(outRefToCborInput)),
+      referenceInputsPreimageCbor: list(
+        (b.reference_inputs ?? []).map(outRefToCborInput),
+      ),
+      outputsPreimageCbor: list(
+        b.outputs.map((o) => Buffer.from(encodeMidgardTsTxOutput(o))),
+      ),
+      fee: b.fee,
+      validityIntervalStart:
+        b.validity_interval_start === undefined
+          ? MIDGARD_POSIX_TIME_NONE
+          : BigInt(b.validity_interval_start),
+      validityIntervalEnd:
+        b.ttl === undefined ? MIDGARD_POSIX_TIME_NONE : BigInt(b.ttl),
+      requiredObserversPreimageCbor: list(
+        (b.required_observers ?? []).map((h) => Buffer.from(h)),
+      ),
+      requiredSignersPreimageCbor: list(
+        (b.required_signers ?? []).map((h) => Buffer.from(h)),
+      ),
+      mintPreimageCbor:
+        b.mint === undefined
+          ? EMPTY_CBOR_LIST
+          : encodeCbor(midgardTsMintToCborMap(b.mint)),
+      scriptIntegrityHash:
+        b.script_data_hash === undefined
+          ? EMPTY_SCRIPT_INTEGRITY_HASH
+          : Buffer.from(b.script_data_hash),
+      auxiliaryDataHash:
+        b.auxiliary_data_hash === undefined
+          ? EMPTY_NULL_ROOT
+          : Buffer.from(b.auxiliary_data_hash),
+      networkId:
+        b.network_id === undefined
+          ? MIDGARD_NATIVE_NETWORK_ID_NONE
+          : BigInt(b.network_id),
+    },
+    witnessSet: {
+      addrTxWitsPreimageCbor: list(
+        (ws.vkey_witnesses ?? []).map((w) =>
+          CML.Vkeywitness.new(
+            CML.PublicKey.from_bytes(w.vkey),
+            CML.Ed25519Signature.from_raw_bytes(w.signature),
+          ).to_cbor_bytes(),
+        ),
+      ),
+      scriptTxWitsPreimageCbor: encodeMidgardVersionedScriptListPreimage(
+        (ws.scripts ?? []).map(midgardTsScriptRefToCore),
+      ),
+      redeemerTxWitsPreimageCbor:
+        ws.redeemers === undefined ? EMPTY_CBOR_LIST : Buffer.from(ws.redeemers),
+    },
+  };
+  return materializeMidgardNativeTxFromCanonical(canonical);
+};
+
+/** Serialize a `MidgardNativeTxFull` to on-the-wire midgard-ts binary bytes. */
+const encodeMidgardTxBytes = (tx: MidgardNativeTxFull): Buffer =>
+  Buffer.from(encodeMidgardTsTransaction(nativeFullToMidgardTs(tx)));
+
+/** Deserialize on-the-wire midgard-ts binary bytes to `MidgardNativeTxFull`. */
+const decodeMidgardTxBytes = (bytes: Uint8Array): MidgardNativeTxFull =>
+  midgardTsToNativeFull(decodeMidgardTsTransaction(bytes));
+
+/** Canonical transaction id of a `MidgardNativeTxFull` under the midgard-ts codec. */
+const midgardTxIdFromFull = (tx: MidgardNativeTxFull): Buffer =>
+  Buffer.from(midgardTsTransactionId(nativeFullToMidgardTs(tx)));
 
 type BuilderState = {
   readonly spendInputs: readonly MidgardUtxo[];
@@ -1748,7 +1967,7 @@ const partialWitnessBundleFromWitnesses = (
   if (canonical.length === 0) {
     throw new SigningError("Partial witness bundle must contain witnesses");
   }
-  const txId = computeMidgardNativeTxIdFromFull(tx).toString("hex");
+  const txId = midgardTxIdFromFull(tx).toString("hex");
   return normalizePartialWitnessBundle({
     kind: PARTIAL_WITNESS_BUNDLE_KIND,
     version: PARTIAL_WITNESS_BUNDLE_VERSION,
@@ -1902,7 +2121,7 @@ const assertPartialBundleMatchesTx = (
   tx: MidgardNativeTxFull,
   bundle: MidgardPartialWitnessBundle,
 ): void => {
-  const txId = computeMidgardNativeTxIdFromFull(tx).toString("hex");
+  const txId = midgardTxIdFromFull(tx).toString("hex");
   const bodyHash = Buffer.from(tx.compact.transactionBodyHash).toString("hex");
   if (bundle.txId !== txId || bundle.bodyHash !== bodyHash) {
     throw new SigningError(
@@ -1972,7 +2191,7 @@ const estimatedSignedTxByteLength = (
   tx: MidgardNativeTxFull,
   expectedWitnessCount: number,
 ): number =>
-  encodeMidgardNativeTxFull(
+  encodeMidgardTxBytes(
     withEstimatedAddrWitnesses(tx, expectedWitnessCount),
   ).length;
 
@@ -1984,14 +2203,14 @@ const canonicalImportedTxFromBytes = (
 ): MidgardNativeTxFull => {
   let tx: MidgardNativeTxFull;
   try {
-    tx = decodeMidgardNativeTxFull(bytes);
+    tx = decodeMidgardTxBytes(bytes);
   } catch (cause) {
     throw new BuilderInvariantError(
       "fromTx accepts only Midgard native full transaction bytes",
       cause instanceof Error ? cause.message : String(cause),
     );
   }
-  const canonical = encodeMidgardNativeTxFull(tx);
+  const canonical = encodeMidgardTxBytes(tx);
   if (!canonical.equals(Buffer.from(bytes))) {
     throw new BuilderInvariantError(
       "fromTx requires canonical Midgard native full transaction bytes",
@@ -2005,7 +2224,7 @@ const canonicalImportedTxFromObject = (
 ): MidgardNativeTxFull => {
   try {
     verifyMidgardNativeTxFullConsistency(tx);
-    return decodeMidgardNativeTxFull(encodeMidgardNativeTxFull(tx));
+    return decodeMidgardTxBytes(encodeMidgardTxBytes(tx));
   } catch (cause) {
     throw new BuilderInvariantError(
       "fromTx received an invalid Midgard native full transaction object",
@@ -2076,7 +2295,7 @@ const importedTxMetadata = (
     expectedComplete: expected.complete,
     requireComplete: witnesses.length > 0 && expected.complete,
   });
-  const txBytes = encodeMidgardNativeTxFull(tx);
+  const txBytes = encodeMidgardTxBytes(tx);
   return {
     fee: tx.body.fee,
     inputCount: nativeInputOutRefs(tx).length,
@@ -2123,7 +2342,7 @@ const localUtxosFromTx = (
   tx: MidgardNativeTxFull,
   _metadata: CompleteTxMetadata,
 ): readonly MidgardUtxo[] => {
-  const txId = computeMidgardNativeTxIdFromFull(tx).toString("hex");
+  const txId = midgardTxIdFromFull(tx).toString("hex");
   return nativeOutputBytes(tx).map((outputCbor, index) => {
     const outRef = { txHash: txId, outputIndex: index };
     return decodeMidgardUtxo({
@@ -2190,7 +2409,7 @@ const completeTxMetadataWithAddrWitnesses = (
   const witnesses = decodeAddrWitnesses(tx.witnessSet.addrTxWitsPreimageCbor);
   return {
     ...metadata,
-    txByteLength: encodeMidgardNativeTxFull(tx).length,
+    txByteLength: encodeMidgardTxBytes(tx).length,
     ...addrWitnessMetadata(witnesses),
   };
 };
@@ -2320,9 +2539,9 @@ export class CompleteTx {
     context?: CompleteTxContext,
   ) {
     verifyMidgardNativeTxFullConsistency(tx);
-    this.#txCbor = encodeMidgardNativeTxFull(tx);
+    this.#txCbor = encodeMidgardTxBytes(tx);
     this.txHex = this.#txCbor.toString("hex");
-    this.#txId = computeMidgardNativeTxIdFromFull(tx);
+    this.#txId = midgardTxIdFromFull(tx);
     this.txIdHex = this.#txId.toString("hex");
     this.#metadata = cloneCompleteTxMetadata(metadata);
     this.#context = context;
@@ -2335,7 +2554,7 @@ export class CompleteTx {
   }
 
   get tx(): MidgardNativeTxFull {
-    return decodeMidgardNativeTxFull(this.#txCbor);
+    return decodeMidgardTxBytes(this.#txCbor);
   }
 
   get txCbor(): Buffer {
@@ -2533,7 +2752,7 @@ export class CompleteTx {
       signedTx,
       {
         ...this.#metadata,
-        txByteLength: encodeMidgardNativeTxFull(signedTx).length,
+        txByteLength: encodeMidgardTxBytes(signedTx).length,
         ...addrWitnessMetadata(signedWitnesses),
       },
       this.#context,
@@ -2734,16 +2953,16 @@ export class PartiallySignedTx {
       );
     }
     verifyMidgardNativeTxFullConsistency(tx);
-    this.#txCbor = encodeMidgardNativeTxFull(tx);
+    this.#txCbor = encodeMidgardTxBytes(tx);
     this.txHex = this.#txCbor.toString("hex");
-    this.#txId = computeMidgardNativeTxIdFromFull(tx);
+    this.#txId = midgardTxIdFromFull(tx);
     this.txIdHex = this.#txId.toString("hex");
     this.#metadata = cloneCompleteTxMetadata(metadata);
     this.#context = context;
   }
 
   get tx(): MidgardNativeTxFull {
-    return decodeMidgardNativeTxFull(this.#txCbor);
+    return decodeMidgardTxBytes(this.#txCbor);
   }
 
   get txCbor(): Buffer {
@@ -5994,7 +6213,7 @@ export class TxBuilder {
       const candidateCanonical = buildCanonicalUnsignedTx(candidateState, fee);
       const candidateTx =
         materializeMidgardNativeTxFromCanonical(candidateCanonical);
-      const candidateTxBytes = encodeMidgardNativeTxFull(candidateTx);
+      const candidateTxBytes = encodeMidgardTxBytes(candidateTx);
       const expectedWitnessKeyHashes =
         expectedAddrWitnessKeyHashes(candidateState);
       const expectedAddrWitnessCount = expectedWitnessKeyHashes.length;
@@ -6080,7 +6299,7 @@ export class TxBuilder {
     );
     const tx = materializeMidgardNativeTxFromCanonical(canonical);
     verifyMidgardNativeTxFullConsistency(tx);
-    const txCbor = encodeMidgardNativeTxFull(tx);
+    const txCbor = encodeMidgardTxBytes(tx);
     const expectedWitnessKeyHashes = expectedAddrWitnessKeyHashes(state);
     const expectedAddrWitnessCount = expectedWitnessKeyHashes.length;
     if (
