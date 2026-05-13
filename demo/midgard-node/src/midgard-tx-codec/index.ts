@@ -41,6 +41,30 @@ export * from "@al-ft/midgard-core/codec/cbor";
 // must be bumped whenever the midgard-ts wire format changes incompatibly.
 export const MIDGARD_NATIVE_TX_VERSION = 1n;
 
-// Transitional: a few callers still consume CBOR byte-list preimages produced
-// by the (not-yet-migrated) lucid-midgard tx builder.
-export { decodeMidgardNativeByteListPreimage } from "@al-ft/midgard-core/codec/native";
+// Transitional: tests and a few builder-side callers still reference the
+// old midgard-core "native" CBOR codec (which lucid-midgard's builder uses
+// internally before re-encoding to midgard-ts on the wire). These re-exports
+// will go away once the tests are rewritten against midgard-ts directly
+// (Phase 6) and lucid-midgard's builder operates on midgard-ts structurally
+// (Phase 5-main).
+export {
+  cardanoTxBytesToMidgardNativeTxFullBytes,
+  computeMidgardNativeTxIdFromFull,
+  decodeMidgardNativeByteListPreimage,
+  decodeMidgardNativeMint,
+  decodeMidgardNativeTxBodyCompact,
+  decodeMidgardNativeTxCompact,
+  decodeMidgardNativeTxFull,
+  decodeMidgardNativeTxWitnessSetCompact,
+  deriveMidgardNativeTxBodyCompactFromFull,
+  deriveMidgardNativeTxCompact,
+  deriveMidgardNativeTxWitnessSetCompactFromFull,
+  encodeMidgardNativeTxFull,
+  MIDGARD_NATIVE_NETWORK_ID_NONE,
+  MIDGARD_POSIX_TIME_NONE,
+} from "@al-ft/midgard-core/codec/native";
+export type {
+  MidgardNativeTxBodyFull,
+  MidgardNativeTxFull,
+  MidgardNativeTxWitnessSetFull,
+} from "@al-ft/midgard-core/codec/native";

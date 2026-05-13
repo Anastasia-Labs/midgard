@@ -186,9 +186,14 @@ Format changes (⚠️ this is a wire-format change to midgard-ts):
 
 ### Phase 6 — tests & benchmarks
 - [x] `tests/benchmarks/midgard-tx-codec.bench.ts` — rewritten; `pnpm bench:codec:quick` green
-- [ ] `tests/benchmarks/native-phase-a.bench.ts` — update to midgard-ts `Transaction` + (new) validation
-- [ ] `tests/benchmarks/validation-benchmark.bench.ts` — same
-- [ ] midgard-node test files referencing the codec: `midgard-native-tx-codec.test.ts`, `native-transaction-integration.test.ts`, `database.test.ts`, `phase-a-cardano-signature-bridge.test.ts`, `protocol-info.test.ts`, `midgard-output-helpers.ts`, `submit-l2-transfer.test.ts`, `listen-admission-auth.test.ts`, `merge-error-codes.test.ts`, `midgard-local-script-eval.test.ts`, `validation-parallelization.test.ts`, `cbor-root-normalization.test.ts` (the last may be obsolete — root indefinite-array normalization is a CBOR concern)
+- [x] Transitional re-exports of the old `@al-ft/midgard-core/codec/native` API from `midgard-node/src/midgard-tx-codec/index.ts` (`cardanoTxBytesToMidgardNativeTxFullBytes`, `decodeMidgardNativeTxFull`, `encodeMidgardNativeTxFull`, `computeMidgardNativeTxIdFromFull`, `decodeMidgardNativeMint`, `decodeMidgardNativeTx{,Body,WitnessSet}Compact`, `deriveMidgardNativeTx{,Body,WitnessSet}CompactFromFull`, `deriveMidgardNativeTxCompact`, `MIDGARD_NATIVE_NETWORK_ID_NONE`, `MIDGARD_POSIX_TIME_NONE`, `MidgardNativeTx{Body,,WitnessSet}Full` types). Unblocks the 5 small/medium test files that only had import-resolution errors (`database`, `submit-l2-transfer`, `merge-error-codes`, `listen-admission-auth`, `phase-a-cardano-signature-bridge`). The re-export block is marked transitional — disappears with Phase 5-main + Phase 6 main rewrites.
+- [ ] `tests/benchmarks/native-phase-a.bench.ts` — body errors at L218+ (constructs `MidgardNativeTxBodyFull` literally — likely a type tightening on `Hash32`); update to midgard-ts `Transaction` + (new) validation
+- [ ] `tests/benchmarks/validation-benchmark.bench.ts` — same shape errors at L243+
+- [ ] `tests/midgard-native-tx-codec.test.ts` (662 ln, ~77 old-API uses) — full rewrite for midgard-ts shape
+- [ ] `tests/native-transaction-integration.test.ts` (3950 ln, ~67 old-API uses) — full rewrite
+- [ ] `tests/validation-parallelization.test.ts` (323 ln, 16 uses) — `computeHash32` from midgard-ts returns `Uint8Array` vs body fields' `Hash32 = Buffer`; needs `Buffer.from(...)` wraps OR import the old `computeHash32` from midgard-core
+- [ ] Remaining smaller test files unblocked by transitional re-exports may still have runtime semantic bugs once they actually run; revisit when Phase 5-main lands
+- [ ] regenerate any committed fixtures that hold old-format bytes (`tests/txs/txs_0.json` is *Cardano* CBOR — stays; but any `*-native-*` fixtures are now stale)
 - [ ] regenerate any committed fixtures that hold old-format bytes (`tests/txs/txs_0.json` is *Cardano* CBOR — stays; but any `*-native-*` fixtures are now stale)
 
 ### Phase 7 — finish
