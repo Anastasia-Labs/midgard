@@ -9,13 +9,18 @@ import {
   walletFromSeed,
 } from "@lucid-evolution/lucid";
 import {
-  computeMidgardNativeTxIdFromFull,
   decodeMidgardNativeByteListPreimage,
-  decodeMidgardNativeTxFull,
   midgardAddressFromText,
   midgardAddressToText,
   protectMidgardAddress,
 } from "@/midgard-tx-codec/index.js";
+// Built txCbor is midgard-ts wire bytes (post-Phase 4), so the decode side
+// uses the validation bridge that knows the midgard-ts format and returns
+// the internal `MidgardNativeTxFull` shape this test inspects.
+import {
+  decodeMidgardTxBytesToNativeFull as decodeMidgardNativeTxFull,
+  midgardTxIdFromNativeFull as computeMidgardNativeTxIdFromFull,
+} from "@al-ft/midgard-validation";
 import {
   DEFAULT_WALLET_SEED_ENV,
   LEGACY_DEFAULT_WALLET_SEED_ENV,
@@ -219,7 +224,9 @@ describe("submit-l2-transfer tx building", () => {
     const outputs = decodeMidgardNativeByteListPreimage(
       nativeTx.body.outputsPreimageCbor,
     ).map((bytes) => {
-      expect(bytes[0] >> 5).toBe(5);
+      // Outputs in `outputsPreimageCbor` are now midgard-ts binary bytes after
+      // the bridge round-trip (Phase 4) — no longer the CBOR map-form
+      // (`bytes[0] >> 5 === 5`) that the OLD codec used.
       const output = decodeMidgardTxOutput(bytes);
       return {
         address: midgardOutputAddressText(output),
