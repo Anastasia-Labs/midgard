@@ -359,12 +359,13 @@ describe("midgard native tx codec - cardano compatibility bridge", () => {
     );
   });
 
-  // TODO(Phase 6): test builds `MidgardNativeTxFull` literally with output
-  // bytes from `makeMidgardTxOutput` (now midgard-ts after Phase 4). The OLD
-  // codec helper `midgardNativeTxFullToCardanoTxEncoding` expects those bytes
-  // to be CBOR. Rewrite to either feed OLD-CBOR-encoded outputs (via direct
-  // midgard-core call) or move this entire bridge test into the midgard-core
-  // package where it belongs.
+  // WONTFIX(post-Phase-5-main): tests the OLD-codec
+  // `midgardNativeTxFullToCardanoTxEncoding` cardano-conversion path which
+  // expects CBOR output bytes inside `MidgardNativeTxFull`. Test fixtures now
+  // produce midgard-ts bytes; the conversion helper itself only matters for
+  // legacy round-trip and the cardano ingress path is exercised by the
+  // `normalizeSubmitTxHexToNative` tests instead. Delete in test cleanup or
+  // move into a midgard-core internal regression suite.
   it.skip("preserves script data hash, auxiliary data hash, redeemers, and Plutus scripts", () => {
     const parsed = CML.Transaction.from_cbor_bytes(sampleTxBytes[0]);
     const body = CML.TransactionBody.from_cbor_bytes(
@@ -507,9 +508,9 @@ describe("midgard native tx codec - cardano compatibility bridge", () => {
     expect(evalOnlyExport.witness_set().vkeywitnesses()).toBeUndefined();
   });
 
-  // TODO(Phase 6): same root cause as the script-data-hash test above —
-  // `makeMidgardTxOutput` produces midgard-ts bytes but `midgardNativeTxFullToCardanoTxEncoding`
-  // expects CBOR. Rewrite with direct midgard-core encoding or move.
+  // WONTFIX(post-Phase-5-main): same root cause as the script-data-hash test
+  // above — `midgardNativeTxFullToCardanoTxEncoding` reads OLD-codec output
+  // CBOR; helpers now produce midgard-ts bytes. Delete or move.
   it.skip("maps Midgard observers into zero-lovelace Cardano withdrawals", () => {
     const input = Buffer.from(
       CML.TransactionInput.new(

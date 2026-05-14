@@ -956,11 +956,13 @@ describe("native transaction integration", () => {
     expect(result.rejected[0].code).toBe(RejectCodes.InvalidSignature);
   });
 
-  // TODO(Phase 6): test expects 2 plutus script hashes in phase A (script in
-  // witnesses + reference script in preState); after the bridge, only 1 is
-  // detected because the reference-script path isn't going through the same
-  // versioned-script discovery. Revisit once phase-a operates natively on
-  // midgard-ts and reference-script handling is uniform.
+  // DESIGN-TODO(dual-domain script discovery): test expects 2 plutus script
+  // hashes in phase A (witness + reference). Phase-A only counts witness
+  // scripts (`ws.scripts`) — reference scripts live in spent UTxOs which phase-A
+  // doesn't read. This isn't a codec issue; it's a design choice about which
+  // phase surfaces reference-script-derived hashes. Either move the assertion
+  // to phase-B output, or have phase-A peek at the candidate's referenceInputs
+  // (would need preState access — not currently in PhaseAConfig).
   it.skip("accepts structurally valid Plutus witness bundles in phase A and rejects malformed local scripts in phase B", async () => {
     const plutusScript = CML.PlutusV3Script.from_raw_bytes(
       Buffer.from("deadbeef", "hex"),
@@ -1031,11 +1033,12 @@ describe("native transaction integration", () => {
     expect(result.rejected[0].detail).toContain("network_id is required");
   });
 
-  // TODO(Phase 6): bridge's `nativeFullToMidgardTs` + re-encoding via
-  // `encodeMidgardTxBytes` recomputes the tx hash, so a mutated/duplicate
-  // observer list now trips `E_TX_HASH_MISMATCH` before reaching the
-  // duplicate-detection field-type check. Rewrite to mutate after computing
-  // txId, or move to a phase-A unit test that doesn't go through the bridge.
+  // WONTFIX(post-Phase-5-main): observers in the midgard-ts wire format are
+  // 28-byte hashes only (`required_observers: Hash28[] | undefined`). The
+  // CBOR-credential variant this test exercised isn't representable, so the
+  // "normalize CBOR cred to hash then detect dup" path that phase-A used is
+  // gone. Phase-A still rejects exact 28-byte-hash duplicates (covered by
+  // adjacent live tests). Delete in test cleanup.
   it.skip("rejects duplicate required observers after normalization", async () => {
     const observerKey = CML.PrivateKey.generate_ed25519();
     const observerScript = CML.NativeScript.new_script_pubkey(
@@ -1663,11 +1666,10 @@ describe("native transaction integration", () => {
     expect(phaseB.rejected[0].detail).toContain(policyId.toString("hex"));
   });
 
-  // TODO(Phase 6): bridge `nativeFullToMidgardTs` calls `decodeMidgardNativeMint`
-  // eagerly, so a malformed mint preimage throws *during encode-via-bridge*
-  // rather than reaching phase-A's structured rejection path. Either wrap the
-  // bridge's mint decode in try/catch + return a "malformed" tx that phase-A
-  // rejects, or move this test to operate directly on the bridge function.
+  // WONTFIX(post-Phase-5-main): in the midgard-ts wire format mint is the
+  // structured `Array<[PolicyId, Array<[name, amt]>]>`, not a CBOR map — there
+  // is no "malformed mint preimage" to construct or reject. The OLD-codec
+  // rejection path this exercised doesn't exist. Delete in test cleanup.
   it.skip("rejects malformed native mint preimages", async () => {
     const signerKey = CML.PrivateKey.generate_ed25519();
     const malformedMintPreimageCbor = makeMintPreimage(
@@ -1690,8 +1692,9 @@ describe("native transaction integration", () => {
     expect(phaseA.rejected[0].code).toBe(RejectCodes.InvalidFieldType);
   });
 
-  // TODO(Phase 6): same root cause as `rejects malformed native mint preimages`
-  // above — bridge decodes mint eagerly and throws before phase-A.
+  // WONTFIX(post-Phase-5-main): midgard-ts `body.mint` is either absent (i.e.
+  // `undefined`) or a non-empty structured array. "Empty top-level mint map"
+  // isn't representable on the wire. Delete in test cleanup.
   it.skip("rejects empty top-level mint maps instead of treating them as no mint", async () => {
     const signerKey = CML.PrivateKey.generate_ed25519();
     const { txId, txCbor } = buildNativeTx({
@@ -1712,8 +1715,9 @@ describe("native transaction integration", () => {
     );
   });
 
-  // TODO(Phase 6): same bridge-strictness root cause as the other mint-decode
-  // skips above — bridge throws on malformed mint preimages before phase-A.
+  // WONTFIX(post-Phase-5-main): midgard-ts mint entries are nested structured
+  // arrays. Empty per-policy asset map isn't representable on the wire.
+  // Delete in test cleanup.
   it.skip("rejects empty per-policy mint asset maps instead of treating them as no mint", async () => {
     const signerKey = CML.PrivateKey.generate_ed25519();
     const policyId = Buffer.from("66".repeat(28), "hex");
@@ -2293,9 +2297,12 @@ describe("native transaction integration", () => {
     expect(phaseB.rejected[0].detail).toBeTruthy();
   });
 
-  // TODO(Phase 6): test feeds a malformed (datum-hash) output preimage to
-  // phase-A; bridge `decodeMidgardTsOutput` may throw early on it or accept it
-  // differently than the OLD codec. Revisit with the deep phase-a rewrite.
+  // WONTFIX(post-Phase-5-main): midgard-ts `TransactionOutput.datum` is
+  // inline-only (`Uint8Array | undefined`). Datum-hash outputs aren't
+  // representable on the wire, so phase-B never sees one — `decodeMidgardTxOutput`
+  // would fail at the midgard-ts decode boundary, not with phase-B's "datum
+  // hashes" rejection. The OLD codec carried datum hashes as a separate
+  // option field; the new format dropped that. Delete in test cleanup.
   it.skip("rejects Plutus datum-hash spends at the Midgard output boundary", async () => {
     const spendScript = makeAlwaysSucceedsScript(
       ALWAYS_SUCCEEDS_SPEND_SCRIPT_HEX,
@@ -2336,7 +2343,8 @@ describe("native transaction integration", () => {
     expect(phaseB.rejected[0].detail).toContain("datum hashes");
   });
 
-  // TODO(Phase 6): same datum-hash root cause as the test above.
+  // WONTFIX(post-Phase-5-main): same as above — produced outputs can't carry
+  // datum hashes on the wire. Delete in test cleanup.
   it.skip("rejects produced outputs with datum hashes in phase A", async () => {
     const spendScript = makeAlwaysSucceedsScript(
       ALWAYS_SUCCEEDS_SPEND_SCRIPT_HEX,
@@ -3312,10 +3320,9 @@ describe("native transaction integration", () => {
     );
   });
 
-  // TODO(Phase 6): asserts OLD-codec error string "datum hashes"; midgard-ts
-  // raises "UnknownDiscriminant for Value" on the same fixture. Rewrite to
-  // assert the midgard-ts error or restructure to verify rejection at the
-  // correct phase regardless of error string.
+  // WONTFIX(post-Phase-5-main): same root cause as the other datum-hash
+  // WONTFIX entries — midgard-ts output datum is inline-only. Delete in test
+  // cleanup.
   it.skip("rejects MidgardV1 datum-hash spends at the Midgard output boundary", async () => {
     const scriptHash = midgardV1Hash(MIDGARD_V1_SPEND_GUARD_SCRIPT_HEX);
     const datum = makePlutusIntegerData(5n);
@@ -3362,10 +3369,12 @@ describe("native transaction integration", () => {
     expect(phaseB.rejected[0].detail).toContain("datum hashes");
   });
 
-  // TODO(Phase 6): test expects phase-A to accept a tx where the spend script
-  // is sourced from a typed PlutusV3 reference output, but currently phase-A
-  // rejects (length 1 instead of 0). Suspected: bridge re-encoding loses the
-  // reference-script discovery path. Revisit with deep phase-A rewrite.
+  // DESIGN-TODO(dual-domain script discovery): test expects the same UPLC
+  // bytes wrapped as a typed PlutusV3 reference script to also satisfy a
+  // MidgardV1 spend hash. `resolveScriptSource` matches one hash per
+  // ScriptSource — supporting "one source serves two domains" needs explicit
+  // dual-domain handling in `collectReferenceScriptSources` (emit one source
+  // per compatible hash prefix). Not a codec issue.
   it.skip("accepts MidgardV1 spends satisfied by typed PlutusV3 reference scripts", async () => {
     const scriptHash = midgardV1Hash(MIDGARD_V1_SPEND_GUARD_SCRIPT_HEX);
     const referenceScript = makeTypedPlutusV3ReferenceScript(
@@ -3795,10 +3804,10 @@ describe("native transaction integration", () => {
     expect(phaseB.rejected[0].detail).toContain(mintScript.hash().to_hex());
   });
 
-  // TODO(Phase 6): phase-B rejects (length 1 vs expected 0) when the test
-  // exercises mixed-script witness bundles. Suspected: bridge round-trip drops
-  // reference-script discovery context, same root cause as the other skipped
-  // MidgardV1/typed-PlutusV3 reference-script tests. Revisit with Phase 5-main.
+  // DESIGN-TODO(dual-domain script discovery): same UPLC bytes appearing as
+  // a single MidgardV1 inline witness need to also satisfy a PlutusV3 spend.
+  // Needs dual-domain handling in script-source collection (one source emits
+  // both prefix variants). Not a codec issue.
   it.skip("accepts mixed transactions where the same UPLC bytes satisfy both script hash domains", async () => {
     const scriptHex = ALWAYS_SUCCEEDS_SPEND_SCRIPT_HEX;
     const plutusHash = CML.ScriptHash.from_hex(plutusV3Hash(scriptHex));
@@ -3846,8 +3855,9 @@ describe("native transaction integration", () => {
     expect(phaseB.accepted).toHaveLength(1);
   });
 
-  // TODO(Phase 6): same suspected bridge reference-script discovery gap as the
-  // other skipped mixed/typed-PlutusV3 reference-script tests.
+  // DESIGN-TODO(dual-domain script discovery): typed PlutusV3 reference
+  // script needs to also satisfy a MidgardV1 spend (same UPLC bytes, two hash
+  // domains). Same dual-domain design need as the other DESIGN-TODOs.
   it.skip("accepts mixed reference-script transactions where one typed PlutusV3 reference exposes both hash domains", async () => {
     const scriptHex = ALWAYS_SUCCEEDS_SPEND_SCRIPT_HEX;
     const plutusHash = CML.ScriptHash.from_hex(plutusV3Hash(scriptHex));
@@ -3899,9 +3909,8 @@ describe("native transaction integration", () => {
     expect(phaseB.accepted).toHaveLength(1);
   });
 
-  // TODO(Phase 6): bridge throws `E_CBOR_DESERIALIZATION` on malformed
-  // observer/signer preimages before phase-A's `E_INVALID_FIELD_TYPE` check.
-  // Test expects the latter; rewrite once phase-a operates on midgard-ts.
+  // WONTFIX(post-Phase-5-main): observers/signers are Hash28[] on the wire —
+  // there is no "preimage" to malform. Delete in test cleanup.
   it.skip("rejects malformed native required observer preimages", async () => {
     const base = buildNativeTx();
     const malformedRequiredObserversPreimageCbor = encodeByteList([
@@ -3931,7 +3940,8 @@ describe("native transaction integration", () => {
     expect(result.rejected[0].code).toBe(RejectCodes.InvalidFieldType);
   });
 
-  // TODO(Phase 6): same root cause as the observer-preimage test above.
+  // WONTFIX(post-Phase-5-main): same as observer-preimage above — signers are
+  // Hash28[] on the wire, no preimage to malform. Delete in test cleanup.
   it.skip("rejects malformed native required signer preimages", async () => {
     const base = buildNativeTx();
     const malformedRequiredSignersPreimageCbor = encodeByteList([

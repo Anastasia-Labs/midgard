@@ -7,16 +7,14 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import * as LedgerUtils from "@/database/utils/ledger.js";
+// Phase A/B decode midgard-ts wire bytes. Build the bench fixtures via
+// midgard-ts cardano-conversion directly (bypassing the OLD-codec
+// `MidgardNativeTxFull` intermediate).
 import {
-  cardanoTxBytesToMidgardNativeTxFullBytes,
-  computeMidgardNativeTxIdFromFull,
-  decodeMidgardNativeTxFull,
-  deriveMidgardNativeTxCompact,
-  encodeMidgardNativeTxFull,
-} from "@/midgard-tx-codec/index.js";
-// Buffer-returning `computeHash32` from midgard-core (not midgard-ts's
-// Uint8Array variant) — this bench builds `MidgardNativeTxBodyFull` literals.
-import { computeHash32 } from "@al-ft/midgard-core/codec/hash";
+  cardanoTxBytesToMidgardTx,
+  encodeTransaction,
+  transactionId as midgardTsTransactionId,
+} from "@al-ft/midgard-ts";
 import {
   PhaseAAccepted,
   QueuedTx,
@@ -132,8 +130,6 @@ const TX_SEQUENCE_FIXTURE_PATH = fileURLToPath(
 const OUTPUT_JSON_PATH = fileURLToPath(
   new URL("./output/validation-benchmark.json", import.meta.url),
 );
-const EMPTY_CBOR_LIST = Buffer.from([0x80]);
-const EMPTY_LIST_ROOT = computeHash32(EMPTY_CBOR_LIST);
 
 const phaseAConfig = {
   expectedNetworkId: EXPECTED_NETWORK_ID,
@@ -217,41 +213,19 @@ const buildQueuedBlock = (
     `Tx fixture has ${txFixture.transactions.length} txs, but benchmark size ${size} was requested.`,
   );
   return txFixture.transactions.slice(0, size).map((tx, index) => {
-    const converted = decodeMidgardNativeTxFull(
-      cardanoTxBytesToMidgardNativeTxFullBytes(
-        Buffer.from(tx.cborHex, "hex"),
-      ),
-    );
+    const converted = cardanoTxBytesToMidgardTx(Buffer.from(tx.cborHex, "hex"));
     const normalized = {
-      version: converted.version,
-      body: {
-        ...converted.body,
-        requiredSignersRoot: EMPTY_LIST_ROOT,
-        requiredSignersPreimageCbor: EMPTY_CBOR_LIST,
+      body: { ...converted.body, required_signers: undefined },
+      witness_set: {
+        vkey_witnesses: undefined,
+        scripts: undefined,
+        redeemers: undefined,
       },
-      witnessSet: {
-        ...converted.witnessSet,
-        addrTxWitsRoot: EMPTY_LIST_ROOT,
-        addrTxWitsPreimageCbor: EMPTY_CBOR_LIST,
-        scriptTxWitsRoot: EMPTY_LIST_ROOT,
-        scriptTxWitsPreimageCbor: EMPTY_CBOR_LIST,
-        redeemerTxWitsRoot: EMPTY_LIST_ROOT,
-        redeemerTxWitsPreimageCbor: EMPTY_CBOR_LIST,
-      },
+      is_valid: true,
     };
-    const txForQueue = {
-      ...normalized,
-      compact: deriveMidgardNativeTxCompact(
-        normalized.body,
-        normalized.witnessSet,
-        "TxIsValid",
-      ),
-    };
-    const nativeTxBytes = encodeMidgardNativeTxFull(txForQueue);
-    const nativeTxId = computeMidgardNativeTxIdFromFull(txForQueue);
     return {
-      txId: nativeTxId,
-      txCbor: nativeTxBytes,
+      txId: Buffer.from(midgardTsTransactionId(normalized)),
+      txCbor: Buffer.from(encodeTransaction(normalized)),
       arrivalSeq: BigInt(index + 1),
       createdAt: new Date(txFixture.generatedAtIso),
     };

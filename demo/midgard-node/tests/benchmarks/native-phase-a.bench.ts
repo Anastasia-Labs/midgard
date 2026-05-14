@@ -5,16 +5,15 @@ import { execSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+// Phase A decodes midgard-ts wire bytes. Build the bench fixtures via
+// midgard-ts's cardano-conversion directly (bypassing the OLD-codec
+// `MidgardNativeTxFull` intermediate, which encodes outputs in CBOR that the
+// new pipeline doesn't accept).
 import {
-  cardanoTxBytesToMidgardNativeTxFullBytes,
-  computeMidgardNativeTxIdFromFull,
-  decodeMidgardNativeTxFull,
-  deriveMidgardNativeTxCompact,
-  encodeMidgardNativeTxFull,
-} from "@/midgard-tx-codec/index.js";
-// Buffer-returning `computeHash32` from midgard-core (not midgard-ts's
-// Uint8Array variant) — this bench builds `MidgardNativeTxBodyFull` literals.
-import { computeHash32 } from "@al-ft/midgard-core/codec/hash";
+  cardanoTxBytesToMidgardTx,
+  encodeTransaction,
+  transactionId as midgardTsTransactionId,
+} from "@al-ft/midgard-ts";
 import { QueuedTx, runPhaseAValidation } from "@/validation/index.js";
 
 type TxFixture = {
@@ -76,9 +75,6 @@ const outputPath = path.resolve(
   __dirname,
   "./output/native-phase-a-benchmark.json",
 );
-const EMPTY_CBOR_LIST = Buffer.from([0x80]);
-const EMPTY_LIST_ROOT = computeHash32(EMPTY_CBOR_LIST);
-
 const quantile = (values: readonly number[], q: number): number => {
   const sorted = [...values].sort((a, b) => a - b);
   const position = (sorted.length - 1) * q;
@@ -192,41 +188,30 @@ describe("native tx phase-A benchmark", () => {
       .slice(0, TX_LIMIT)
       .map((tx) => Buffer.from(tx.cborHex, "hex"));
 
-    const nativeFullBytes = txBytes.map((bytes) =>
-      cardanoTxBytesToMidgardNativeTxFullBytes(bytes),
-    );
-    const normalizedNative = nativeFullBytes.map((bytes) => {
-      const converted = decodeMidgardNativeTxFull(bytes);
-      const normalized = {
-        version: converted.version,
-        body: {
-          ...converted.body,
-          requiredSignersRoot: EMPTY_LIST_ROOT,
-          requiredSignersPreimageCbor: EMPTY_CBOR_LIST,
-        },
-        witnessSet: {
-          ...converted.witnessSet,
-          addrTxWitsRoot: EMPTY_LIST_ROOT,
-          addrTxWitsPreimageCbor: EMPTY_CBOR_LIST,
-          scriptTxWitsRoot: EMPTY_LIST_ROOT,
-          scriptTxWitsPreimageCbor: EMPTY_CBOR_LIST,
-          redeemerTxWitsRoot: EMPTY_LIST_ROOT,
-          redeemerTxWitsPreimageCbor: EMPTY_CBOR_LIST,
-        },
-      };
+    // Convert Cardano CBOR to a midgard-ts `Transaction`, then clear
+    // witness-set + required signers so the bench measures phase-A on a
+    // structurally minimal payload (no signature verification, no script
+    // discovery). Network id is dropped along with witnesses — phase-A's
+    // expected_network_id check accepts `undefined`.
+    const normalizedTxs = txBytes.map((bytes) => {
+      const tx = cardanoTxBytesToMidgardTx(bytes);
       return {
-        ...normalized,
-        compact: deriveMidgardNativeTxCompact(
-          normalized.body,
-          normalized.witnessSet,
-          "TxIsValid",
-        ),
+        body: {
+          ...tx.body,
+          required_signers: undefined,
+        },
+        witness_set: {
+          vkey_witnesses: undefined,
+          scripts: undefined,
+          redeemers: undefined,
+        },
+        is_valid: true,
       };
     });
     const nativeExpectedNetworkId = EXPECTED_NETWORK_ID;
-    const nativeQueued: QueuedTx[] = normalizedNative.map((tx, i) => ({
-      txId: computeMidgardNativeTxIdFromFull(tx),
-      txCbor: encodeMidgardNativeTxFull(tx),
+    const nativeQueued: QueuedTx[] = normalizedTxs.map((tx, i) => ({
+      txId: Buffer.from(midgardTsTransactionId(tx)),
+      txCbor: Buffer.from(encodeTransaction(tx)),
       arrivalSeq: BigInt(i),
       createdAt: new Date(0),
     }));
