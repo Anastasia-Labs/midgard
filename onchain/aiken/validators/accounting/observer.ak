@@ -3,7 +3,6 @@ use aiken/collection/dict.{Dict}
 use aiken/collection/dict/strategy as dict_strategy
 use aiken/collection/list
 use aiken/crypto.{ScriptHash}
-use aiken/primitive/int
 use aiken_design_patterns/singular_utxo_indexer
 use cardano/address.{Address, Credential}
 use cardano/assets.{AssetName, Lovelace, PolicyId, Value}
@@ -141,14 +140,17 @@ fn validate_asset_accumulation(
       // 4a. Target Lovelace must not have been reached.
       expect p0_lovelace < pt_lovelace
 
-      // 5a. Specified UTxO from reserve must be getting spent with a matching
+      // 5a. Other accumulated assets must be transferred unchanged.
+      expect p0_assets == p1_assets
+
+      // 6a. Specified UTxO from reserve must be getting spent with a matching
       //     set of redeemer arguments.
       let (r0_lovelace, r0_assets) =
         get_reserve_input_lovelace_and_assets(reserve_addr, inputs)
 
       when m_reserve_change_output_index is {
         None -> {
-          // 6a. When redeemer specifies no change must go back to the reserve,
+          // 7a. When redeemer specifies no change must go back to the reserve,
           //     input reserve must contain only ADA, and all its quantity must
           //     be absorbed by the payout accumulator.
           expect r0_assets == dict.empty
@@ -165,11 +167,11 @@ fn validate_asset_accumulation(
               outputs,
             )
 
-          // 6a'. The change in reserve lovelace must match the change in
+          // 7a'. The change in reserve lovelace must match the change in
           //      payout Lovelace.
           expect r0_lovelace - r1_lovelace == p1_lovelace - p0_lovelace
 
-          // 7a'. Other assets of reserve must remain unchanged.
+          // 8a'. Other assets of reserve must remain unchanged.
           let r0_assets_data: Data = r0_assets
           let r1_assets_data: Data = r1_assets
           expect r0_assets_data == r1_assets_data
@@ -265,14 +267,7 @@ fn validate_transfer_of_given_assets_with_change(
 
   let pt_assets_dict =
     utils.unsafe_value_pairs_to_value(pt_assets) |> assets.to_dict
-  pt_assets_dict
-    |> dict.expect_contains(
-        p1_assets,
-        fn(superset_assets, subset_assets) {
-          dict.expect_contains(superset_assets, subset_assets, int.compare)
-          Equal
-        },
-      )
+  utils.expect_asset_quantities_at_most(p1_assets, pt_assets_dict)
 
   // Done.
   True

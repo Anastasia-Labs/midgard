@@ -7,6 +7,7 @@ use aiken/crypto.{
   ScriptHash, VerificationKey, VerificationKeyHash, blake2b_224, blake2b_256,
 }
 use aiken/interval.{Finite, Interval, NegativeInfinity, PositiveInfinity}
+use aiken/primitive/int
 use aiken_design_patterns/merkelized_validator
 use aiken_design_patterns/stake_validator
 use aiken_design_patterns/validity_range_normalization as vrn
@@ -478,6 +479,49 @@ pub fn authentic_value_has_tokens(
     value
       |> assets.add(nft_policy_id, nft_asset_name, -1)
   assets.match(without_nft, tokens, fn(_, tokens_ada) { tokens_ada == 0 })
+}
+
+/// Require every asset quantity in `value_assets` to be less than or equal to
+/// the matching quantity in `upper_bound_assets`.
+pub fn expect_asset_quantities_at_most(
+  value_assets: Dict<PolicyId, Dict<AssetName, Int>>,
+  upper_bound_assets: Dict<PolicyId, Dict<AssetName, Int>>,
+) -> Void {
+  upper_bound_assets
+    |> dict.expect_contains(
+        value_assets,
+        fn(upper_bound_policy_assets, value_policy_assets) {
+          dict.expect_contains(
+            upper_bound_policy_assets,
+            value_policy_assets,
+            int.compare,
+          )
+          Equal
+        },
+      )
+}
+
+/// Remove one auth NFT from `value` and require every remaining asset quantity
+/// to be less than or equal to `target`.
+pub fn authentic_value_is_bounded_by_target(
+  value: Value,
+  nft_policy_id: PolicyId,
+  nft_asset_name: AssetName,
+  target: ValuePairs,
+) -> Bool {
+  let (target_lovelace, target_assets) =
+    target
+      |> assets.from_asset_list
+      |> get_lovelace_and_assets
+  let (value_lovelace, value_assets) =
+    value
+      |> assets.add(nft_policy_id, nft_asset_name, -1)
+      |> get_lovelace_and_assets
+
+  expect value_lovelace <= target_lovelace
+  expect_asset_quantities_at_most(value_assets, target_assets)
+
+  True
 }
 
 /// Traverses two lists in parallel, accumulating a value using the provided

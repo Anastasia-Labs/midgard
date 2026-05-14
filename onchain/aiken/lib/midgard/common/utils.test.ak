@@ -1,6 +1,7 @@
 use aiken/collection/dict
-use cardano/assets
+use cardano/assets.{AssetName, PolicyId, Value}
 use cardano/fuzz as cardano_fuzz
+use midgard/common/types.{ValuePairs}
 use midgard/common/utils
 
 const baseline_lovelace = 2_000_000
@@ -89,4 +90,75 @@ test roundtrip__value_to_pairs_to_value(
     v0 == v2,
     v0 == v3,
   }
+}
+
+const test_auth_policy: PolicyId =
+  #"44444444444444444444444444444444444444444444444444444444"
+
+const test_auth_asset: AssetName = #"aa"
+
+const test_target_policy: PolicyId =
+  #"55555555555555555555555555555555555555555555555555555555"
+
+fn test_authentic_value(lovelace: Int) -> Value {
+  assets.from_lovelace(lovelace)
+    |> assets.add(test_auth_policy, test_auth_asset, 1)
+}
+
+fn test_target(lovelace: Int) -> ValuePairs {
+  [Pair(assets.ada_policy_id, [Pair(assets.ada_asset_name, lovelace)])]
+}
+
+fn test_multi_asset_target(lovelace: Int) -> ValuePairs {
+  [
+    Pair(assets.ada_policy_id, [Pair(assets.ada_asset_name, lovelace)]),
+    Pair(test_target_policy, [Pair(#"01", 1)]),
+  ]
+}
+
+test success__authentic_value_is_bounded_by_target__underfunded_value() {
+  utils.authentic_value_is_bounded_by_target(
+    test_authentic_value(2_000_000),
+    test_auth_policy,
+    test_auth_asset,
+    test_target(3_000_000),
+  )
+}
+
+test success__authentic_value_is_bounded_by_target__ada_only_value_for_multi_asset_target() {
+  utils.authentic_value_is_bounded_by_target(
+    test_authentic_value(2_000_000),
+    test_auth_policy,
+    test_auth_asset,
+    test_multi_asset_target(3_000_000),
+  )
+}
+
+test fail__authentic_value_is_bounded_by_target__overfunded_lovelace() fail {
+  utils.authentic_value_is_bounded_by_target(
+    test_authentic_value(4_000_000),
+    test_auth_policy,
+    test_auth_asset,
+    test_target(3_000_000),
+  )
+}
+
+test fail__authentic_value_is_bounded_by_target__overfunded_asset() fail {
+  utils.authentic_value_is_bounded_by_target(
+    test_authentic_value(2_000_000)
+      |> assets.add(test_target_policy, #"01", 2),
+    test_auth_policy,
+    test_auth_asset,
+    test_multi_asset_target(3_000_000),
+  )
+}
+
+test fail__authentic_value_is_bounded_by_target__unexpected_asset() fail {
+  utils.authentic_value_is_bounded_by_target(
+    test_authentic_value(2_000_000)
+      |> assets.add(test_target_policy, #"01", 1),
+    test_auth_policy,
+    test_auth_asset,
+    test_target(3_000_000),
+  )
 }

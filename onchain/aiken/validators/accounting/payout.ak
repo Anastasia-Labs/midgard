@@ -118,7 +118,7 @@ validator spend(
   payout_policy_id: PolicyId,
 ) {
   spend(
-    m_datum: Option<Datum>,
+    _m_datum: Option<Datum>,
     redeemer: SpendRedeemer,
     own_out_ref: OutputReference,
     tx: Transaction,
