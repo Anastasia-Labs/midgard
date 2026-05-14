@@ -2,10 +2,10 @@
 
 ## Problem Statement
 
-`demo/midgard-node` currently initializes PostgreSQL by executing the latest
-table definitions during normal node startup. This makes the database shape a
-side effect of starting the process instead of an explicit, auditable protocol
-state transition.
+`demo/midgard-node` previously initialized PostgreSQL by executing the latest
+table definitions during normal node startup. That made database shape a side
+effect of starting the process instead of an explicit, auditable protocol state
+transition.
 
 For a production L2, schema drift can become state drift. The database stores
 ledger projections, pending block finalization state, deposit ingestion cursors,
@@ -13,7 +13,8 @@ mempool state, immutable transactions, and rejection history. The node must be
 able to prove which schema it is running against, refuse incompatible schemas,
 and apply schema changes only through an ordered migration ledger.
 
-The production fix is to replace ad hoc startup table creation with:
+The core production fix has now landed: ad hoc startup table creation has been
+replaced with:
 
 - versioned migration files committed with the code;
 - a durable migration ledger in PostgreSQL;
@@ -23,21 +24,22 @@ The production fix is to replace ad hoc startup table creation with:
 - backup, rollback, and test workflows that treat schema changes as operational
   events.
 
-This plan does not implement code. It defines the implementation strategy and
-acceptance criteria for the migration work.
+This document now tracks the landed migration implementation and the remaining
+hardening needed before this blocker can be considered fully complete.
 
 ## Scope
 
 In scope:
 
-- Replace `InitDB.program` startup schema creation with a migration compatibility
+- Landed: replace `InitDB.program` startup schema creation with a migration compatibility
   assertion.
-- Add an explicit migration runner and operator-facing commands.
-- Convert the current schema into the first canonical migration.
-- Define the exact table, index, constraint, and dependency inventory that
-  `0001_initial_schema.sql` must create.
-- Define checksum, ordering, and compatibility policy.
-- Define tests, observability, packaging, and rollout steps.
+- Landed: add an explicit migration runner and operator-facing commands.
+- Landed: convert the schema into explicit migrations `0001` through `0006`.
+- Landed: define checksum, ordering, and exact-version compatibility policy.
+- Remaining: deepen schema drift detection from table/index presence to columns,
+  constraints, foreign keys, check expressions, and index definitions.
+- Remaining: complete tests, observability, packaging checks, and operator
+  rollout documentation.
 
 Out of scope:
 
@@ -49,89 +51,67 @@ Out of scope:
 
 ## Current Behavior
 
-The readiness report identifies this blocker in
-[`PRODUCTION_READINESS_REPORT.md:397`](../PRODUCTION_READINESS_REPORT.md#L397).
-It states that database initialization creates current tables directly and that
-most table creation uses `CREATE TABLE IF NOT EXISTS`.
+The long-running node still calls `InitDB.program` before serving traffic:
 
-The long-running node calls database initialization before serving traffic:
-
-- [`src/commands/listen.ts:69`](../src/commands/listen.ts#L69) runs
+- [`src/commands/listen.ts:72`](../src/commands/listen.ts#L72) runs
   `InitDB.program.pipe(Effect.provide(Database.layer))`.
-- [`src/commands/listen.ts:70`](../src/commands/listen.ts#L70) then proceeds to
+- [`src/commands/listen.ts:73`](../src/commands/listen.ts#L73) then proceeds to
   protocol startup checks.
-- [`src/commands/listen.ts:115`](../src/commands/listen.ts#L115) launches the
-  HTTP server only after those startup steps.
+- [`src/commands/listen.ts:160`](../src/commands/listen.ts#L160) constructs the
+  HTTP server only after startup checks and reconciliation complete.
 
-`InitDB.program` sets session options and then delegates to table modules:
+`InitDB.program` is now a schema compatibility gate, not startup schema DDL:
 
-- [`src/database/init.ts:21`](../src/database/init.ts#L21) defines the startup
-  initialization effect.
-- [`src/database/init.ts:28`](../src/database/init.ts#L28) sets
-  `client_min_messages`.
-- [`src/database/init.ts:29`](../src/database/init.ts#L29) sets the default
-  isolation level to `serializable`.
-- [`src/database/init.ts:31`](../src/database/init.ts#L31) through
-  [`src/database/init.ts:43`](../src/database/init.ts#L43) create every table or
-  table group directly.
-- [`src/database/init.ts:45`](../src/database/init.ts#L45) logs successful
-  initialization without recording a schema version.
+- [`src/database/init.ts:13`](../src/database/init.ts#L13) defines the effect as
+  `MigrationRunner.assertCompatible`.
+- [`src/database/init.ts:15`](../src/database/init.ts#L15) maps migration
+  incompatibility into `DatabaseError` for startup.
+- [`src/database/migrations/runner.ts:767`](../src/database/migrations/runner.ts#L767)
+  implements `assertCompatible`.
 
-The table modules contain schema-changing DDL that runs from startup:
+Explicit migrations are committed under `src/database/migrations`:
 
-- [`src/database/addressHistory.ts:27`](../src/database/addressHistory.ts#L27)
-  defines `createTable`; [`src/database/addressHistory.ts:32`](../src/database/addressHistory.ts#L32)
-  creates `address_history` if missing; [`src/database/addressHistory.ts:38`](../src/database/addressHistory.ts#L38)
-  adds `created_at` if missing.
-- [`src/database/blocks.ts:68`](../src/database/blocks.ts#L68) defines
-  `createTable`; [`src/database/blocks.ts:73`](../src/database/blocks.ts#L73)
-  creates `blocks` if missing.
-- [`src/database/utils/ledger.ts:46`](../src/database/utils/ledger.ts#L46)
-  defines a reusable ledger table creator; [`src/database/utils/ledger.ts:53`](../src/database/utils/ledger.ts#L53)
-  creates the caller-provided ledger table if missing.
-- [`src/database/deposits.ts:55`](../src/database/deposits.ts#L55) defines
-  `createTable`; [`src/database/deposits.ts:60`](../src/database/deposits.ts#L60)
-  creates `deposits_utxos` if missing.
-- [`src/database/utils/tx.ts:36`](../src/database/utils/tx.ts#L36) defines a
-  reusable transaction table creator; [`src/database/utils/tx.ts:43`](../src/database/utils/tx.ts#L43)
-  creates the caller-provided transaction table if missing.
-- [`src/database/mempoolLedger.ts:54`](../src/database/mempoolLedger.ts#L54)
-  defines `createTable`; [`src/database/mempoolLedger.ts:59`](../src/database/mempoolLedger.ts#L59)
-  creates `mempool_ledger` if missing.
-- [`src/database/mempoolLedger.ts:77`](../src/database/mempoolLedger.ts#L77)
-  drops `uniq_mempool_ledger_source_event_id` if it exists, then
-  [`src/database/mempoolLedger.ts:80`](../src/database/mempoolLedger.ts#L80)
-  recreates it.
-- [`src/database/mempoolTxDeltas.ts:119`](../src/database/mempoolTxDeltas.ts#L119)
-  defines `createTable`; [`src/database/mempoolTxDeltas.ts:122`](../src/database/mempoolTxDeltas.ts#L122)
-  creates `mempool_tx_deltas` if missing.
-- [`src/database/txRejections.ts:28`](../src/database/txRejections.ts#L28)
-  defines `createTable`; [`src/database/txRejections.ts:33`](../src/database/txRejections.ts#L33)
-  creates `tx_rejections` if missing.
-- [`src/database/depositIngestionCursor.ts:41`](../src/database/depositIngestionCursor.ts#L41)
-  defines `createTable`; [`src/database/depositIngestionCursor.ts:44`](../src/database/depositIngestionCursor.ts#L44)
-  creates `deposit_ingestion_cursor` if missing.
-- [`src/database/pendingBlockFinalizations.ts:108`](../src/database/pendingBlockFinalizations.ts#L108)
-  defines `createTables`; [`src/database/pendingBlockFinalizations.ts:113`](../src/database/pendingBlockFinalizations.ts#L113),
-  [`src/database/pendingBlockFinalizations.ts:130`](../src/database/pendingBlockFinalizations.ts#L130),
-  and [`src/database/pendingBlockFinalizations.ts:145`](../src/database/pendingBlockFinalizations.ts#L145)
-  create the pending-finalization tables if missing.
-- [`src/database/pendingBlockFinalizations.ts:158`](../src/database/pendingBlockFinalizations.ts#L158)
-  drops `uniq_pending_block_finalizations_single_active` if it exists, then
-  [`src/database/pendingBlockFinalizations.ts:161`](../src/database/pendingBlockFinalizations.ts#L161)
-  recreates it.
+- [`src/database/migrations/index.ts:20`](../src/database/migrations/index.ts#L20)
+  declares manifest entries for versions `0001` through `0006`.
+- [`src/database/migrations/index.ts:65`](../src/database/migrations/index.ts#L65)
+  derives `EXPECTED_SCHEMA_VERSION` from the manifest.
+- [`src/database/migrations/index.ts:68`](../src/database/migrations/index.ts#L68)
+  computes the manifest hash from ordered version/name/checksum entries.
+- [`src/database/migrations/sql/0001_initial_schema.sql`](../src/database/migrations/sql/0001_initial_schema.sql)
+  through
+  [`src/database/migrations/sql/0006_state_queue_mutation_leases.sql`](../src/database/migrations/sql/0006_state_queue_mutation_leases.sql)
+  are the current SQL migration files.
 
-The database service opens a PostgreSQL client but has no schema compatibility
-gate:
+The migration runner now creates and uses durable metadata tables:
 
-- [`src/services/database.ts:20`](../src/services/database.ts#L20) constructs
-  the `PgClient` layer.
-- [`src/services/database.ts:64`](../src/services/database.ts#L64) exposes the
-  database layer used by startup and runtime code.
+- [`src/database/migrations/runner.ts:59`](../src/database/migrations/runner.ts#L59)
+  creates or verifies `schema_migrations` and `schema_migration_events`.
+- [`src/database/migrations/runner.ts:120`](../src/database/migrations/runner.ts#L120)
+  acquires a Midgard-specific advisory lock.
+- [`src/database/migrations/runner.ts:650`](../src/database/migrations/runner.ts#L650)
+  applies pending migrations through `migrate`.
+- [`src/database/migrations/runner.ts:758`](../src/database/migrations/runner.ts#L758)
+  reports status.
+- [`src/database/migrations/runner.ts:801`](../src/database/migrations/runner.ts#L801)
+  exposes `verify` as the startup-compatible assertion.
 
-There is no durable table that records applied schema versions, migration
-checksums, app version, migration attempts, or the expected schema version for
-the running binary.
+Operator-facing CLI commands exist:
+
+- [`src/index.ts:300`](../src/index.ts#L300) defines `db:migrate`.
+- [`src/index.ts:320`](../src/index.ts#L320) defines `db:status`.
+- [`src/index.ts:338`](../src/index.ts#L338) defines `db:verify`.
+- [`src/index.ts:357`](../src/index.ts#L357) defines `db:checksum`.
+
+Remaining gaps:
+
+- `verifyApplicationShape` checks table and index presence only, not full column,
+  constraint, foreign-key, check-expression, or trigger definitions:
+  [`src/database/migrations/runner.ts:310`](../src/database/migrations/runner.ts#L310).
+- Table modules still export legacy `createTable`/`createTables` helpers, but
+  normal startup no longer calls them.
+- Migration and compatibility observability is mostly logs/status output; metrics,
+  readiness schema metadata, CI immutability checks, and packaged-artifact checks
+  remain to be completed.
 
 ## Target Migration Invariants
 
@@ -199,7 +179,9 @@ this table outside explicit operator recovery procedures. The implementation
 must enforce this as much as PostgreSQL allows for the selected deployment
 role, for example by using a trigger that rejects `UPDATE` and `DELETE` unless a
 documented recovery-only session setting is present, or by using privileges that
-only let the migration command insert rows.
+only let the migration command insert rows. Current code records rows by append
+only convention; database-level anti-update/delete enforcement remains
+outstanding.
 
 ### `schema_migration_events`
 
@@ -255,42 +237,41 @@ Use a deterministic directory layout:
 src/database/migrations/
   index.ts
   runner.ts
-  status.ts
   sql/
     0001_initial_schema.sql
-    0002_add_example_column.sql
+    0002_durable_tx_admissions.sql
+    0003_local_mutation_jobs.sql
+    0004_withdrawal_events.sql
+    0005_pending_finalization_journal_payloads.sql
+    0006_state_queue_mutation_leases.sql
 ```
 
 Naming policy:
 
 - File names must be zero-padded and start with the numeric version.
 - File names must be immutable once merged.
-- `0001_initial_schema.sql` must create the complete current schema represented
-  by the existing startup table modules.
+- `0001_initial_schema.sql` creates the first canonical baseline schema.
+- Later schema changes are represented by later migrations; the current schema is
+  version `0006`.
 - Future migrations must use the next integer version.
 - No migration may skip a version.
 
-`0001_initial_schema.sql` must represent the canonical schema directly. It must
-not encode the current startup's ad hoc evolution, such as
+`0001_initial_schema.sql` must represent its canonical baseline directly. It
+must not encode the old startup's ad hoc evolution, such as
 `ALTER TABLE ... ADD COLUMN IF NOT EXISTS` for a table that is created in the
 same migration. It must create the final table shape and indexes explicitly.
 
 ### Initial Schema Inventory
 
-Before writing `0001_initial_schema.sql`, produce a checked-in inventory of the
-current effective schema from a fresh database created by the existing
-`InitDB.program`. The implementation may store this as a test fixture or a
-schema-introspection snapshot, but it must be deterministic and reviewed with
-the initial migration.
-
-`0001_initial_schema.sql` must create, at minimum, the current node-owned
-application tables:
+The current schema inventory is the version `0006` manifest, not only
+`0001_initial_schema.sql`. The effective node-owned application tables are:
 
 - `address_history`
 - `blocks`
 - `confirmed_ledger`
 - `latest_ledger`
 - `deposits_utxos`
+- `withdrawal_utxos`
 - `immutable`
 - `mempool`
 - `processed_mempool`
@@ -300,10 +281,14 @@ application tables:
 - `deposit_ingestion_cursor`
 - `pending_block_finalizations`
 - `pending_block_finalization_deposits`
+- `pending_block_finalization_withdrawals`
 - `pending_block_finalization_txs`
+- `tx_admissions`
+- `local_mutation_jobs`
+- `state_queue_mutation_leases`
 
-The migration must also create the current required indexes and constraints,
-including:
+The full migration set must also create the current required indexes and
+constraints, including:
 
 - primary keys for all keyed tables;
 - `blocks.tx_id` uniqueness and indexes on `blocks.header_hash` and
@@ -312,26 +297,30 @@ including:
 - timestamp indexes used by retention on transaction tables, address history,
   and rejection history;
 - deposit status check constraints and deposit lookup indexes;
+- withdrawal status/validity check constraints and withdrawal lookup indexes;
 - `mempool_ledger.source_event_id` foreign key to
   `deposits_utxos.event_id`, `ON DELETE RESTRICT`;
 - unique `mempool_ledger.source_event_id` semantics that match PostgreSQL's
   handling of nullable values;
 - pending-finalization status check constraints, member ordinal uniqueness, and
   the partial unique index that permits only one active pending finalization.
+- durable admission indexes for dequeue/status/lease lookup;
+- state-queue mutation lease uniqueness for active scope.
 
 Foreign-key dependency order must be explicit: create `deposits_utxos` before
 `mempool_ledger` and before pending-finalization deposit members; create
+`withdrawal_utxos` before pending-finalization withdrawal members; create
 `pending_block_finalizations` before its member tables. Do not add new foreign
 keys, cascading behavior, enum types, generated columns, or stricter
-constraints in `0001` unless the current runtime code already relies on them and
+constraints in any migration unless the runtime code already relies on them and
 the change is called out as a separate reviewed schema hardening decision.
 
 ## Migration Runner Strategy
 
-Add a migration runner that can be invoked by an operator command and by tests.
-Normal node startup must call compatibility assertion, not migration apply.
+The migration runner exists and can be invoked by operator commands and tests.
+Normal node startup calls compatibility assertion, not migration apply.
 
-Runner phases:
+Current runner phases:
 
 1. Open the PostgreSQL client through the existing `Database.layer`.
 2. Set strict session options:
@@ -341,7 +330,8 @@ Runner phases:
    - `SET statement_timeout = '15min'` for `db:migrate`
    - a shorter startup compatibility lock wait, defaulting to 5 seconds
 3. Acquire a PostgreSQL advisory lock dedicated to Midgard schema migration.
-4. Create or verify migration metadata tables.
+4. Create or verify migration metadata tables. This is the only startup-time DDL
+   path and it is limited to migration metadata.
 5. Load the migration manifest from code.
 6. Read `schema_migrations` ordered by version.
 7. Validate existing ledger rows before applying anything.
@@ -349,6 +339,11 @@ Runner phases:
 9. Record successful rows and audit events.
 10. Re-read and verify final database version and checksums.
 11. Release the advisory lock.
+
+Remaining runner hardening: precondition and postcondition verification is not
+yet migration-specific for every future data migration, and full schema drift
+verification is currently table/index presence rather than complete object
+fingerprinting.
 
 The advisory lock key must be a deterministic Midgard-specific value documented
 in code, not an arbitrary magic number. The runner must use session-level
@@ -416,17 +411,17 @@ Concurrency:
 
 ## Startup Gate
 
-Replace startup schema creation with a compatibility assertion.
+Startup schema creation has been replaced with a compatibility assertion.
 
-Desired startup sequence:
+Current startup sequence:
 
 1. Create database connection layer.
-2. Run `MigrationRunner.assertCompatible(EXPECTED_SCHEMA_VERSION)`.
+2. Run `MigrationRunner.assertCompatible` through `InitDB.program`.
 3. Run protocol startup checks.
 4. Seed or verify runtime protocol dependencies as already designed.
 5. Start HTTP server and background fibers.
 
-`assertCompatible` must:
+`assertCompatible` currently:
 
 - Create or verify only the migration metadata table if it is missing.
 - Refuse to create application tables.
@@ -438,22 +433,25 @@ Desired startup sequence:
 - Verify every applied checksum matches the binary manifest.
 - Verify the database has no versions greater than `EXPECTED_SCHEMA_VERSION`.
 - Verify the final applied version equals `EXPECTED_SCHEMA_VERSION`.
-- Verify that the runtime can introspect the expected node-owned tables,
-  indexes, and constraints for the applied version. A matching migration ledger
-  is necessary but not sufficient if the live schema has drifted.
-- Emit structured logs for `expected_version`, `actual_version`,
-  `manifest_hash`, and failure reason.
-- Fail with a typed error before `listen.ts` starts serving.
+- Verify that the runtime can introspect the expected node-owned tables and
+  indexes for the applied version. A matching migration ledger is necessary but
+  not sufficient if the live schema has drifted.
+- Still needs deeper introspection of columns, constraints, foreign keys, check
+  expressions, and index definitions.
+- Logs a success summary with `expected_version`, `actual_version`, and
+  `manifest_hash`.
+- Fails with a typed migration error before `listen.ts` starts serving.
+- Still needs richer structured failure logs and metrics.
 
-Startup failure examples:
+Migration compatibility failure codes:
 
 ```text
-startup_failed: schema_unversioned_database
-startup_failed: schema_version_behind expected=7 actual=6
-startup_failed: schema_version_ahead expected=7 actual=8
-startup_failed: schema_checksum_mismatch version=4
-startup_failed: schema_migration_in_progress
-startup_failed: schema_drift_detected object=mempool_ledger
+schema_unversioned_database
+schema_version_behind expected=6 actual=5
+schema_version_ahead expected=6 actual=7
+schema_checksum_mismatch version=4
+schema_migration_in_progress
+schema_drift_detected object=mempool_ledger
 ```
 
 Readiness and metrics must include schema version metadata after startup
@@ -568,25 +566,26 @@ Developer workflow:
 6. Run migration tests against the previous schema version when applicable.
 7. Run startup compatibility tests.
 
-Commands to add:
+Commands now available:
 
 - `midgard-node db:migrate`
   - Applies pending migrations explicitly.
 - `midgard-node db:status`
   - Prints database version, expected version, pending migrations, unknown
     migrations, and checksum status.
-  - Supports `--json` for automation and deployment gates.
+  - Current output is JSON-formatted status suitable for automation.
 - `midgard-node db:verify`
   - Performs the same compatibility check as startup without starting the node.
 - `midgard-node db:checksum`
-  - Recomputes checksums and verifies the manifest.
+  - Prints the compiled manifest hash and per-migration checksums.
 
 Local development convenience:
 
 - A reset command may drop and recreate a local development database only when
   explicitly named as destructive.
 - Test helpers must run migrations for fresh test databases instead of calling
-  table `createTable` functions.
+  table `createTable` functions. The main database suite and deposit-flow
+  emulator setup now call `MigrationRunner.migrate`.
 - No development path may reintroduce normal startup table creation.
 
 ## Integration With Future Schema Changes
@@ -617,11 +616,14 @@ tables, they must use migrations.
 
 ## Tests
 
-Add tests at the runner, startup, and integration levels.
+Current coverage includes SQL-statement splitter tests and test-suite setup that
+creates schema through `MigrationRunner.migrate`. The comprehensive runner,
+startup, shape, CLI, and packaging tests below still need to be completed.
 
 Runner tests:
 
-- Empty database applies `0001_initial_schema.sql` and records version `1`.
+- Empty database applies migrations `0001` through `0006` and records version
+  `6`.
 - Empty database applies all migrations in order.
 - Re-running `db:migrate` with no pending migrations is a no-op except for
   status logging.
@@ -647,8 +649,8 @@ Startup tests:
 
 Schema shape tests:
 
-- `0001_initial_schema.sql` produces the tables currently created by
-  `InitDB.program`.
+- Migrations `0001` through `0006` produce the current version `6` application
+  schema.
 - Required primary keys, foreign keys, unique constraints, check constraints,
   and indexes exist.
 - `mempool_ledger.source_event_id` foreign key and uniqueness match the current
@@ -673,24 +675,26 @@ Operational tests:
 
 ## Rollout Steps
 
-1. Inventory the current schema from table modules and a live fresh database
-   created by the current code.
-2. Write `0001_initial_schema.sql` that creates the canonical current schema.
-3. Add the migration metadata tables and runner.
-4. Add `db:migrate`, `db:status`, `db:verify`, and checksum tooling.
-5. Replace `InitDB.program` startup table creation with
-   `assertCompatible(EXPECTED_SCHEMA_VERSION)`.
-6. Remove or stop exporting application `createTable` helpers from runtime paths.
-7. Update tests and test helpers to create schema through migrations.
+1. Landed: inventory and encode schema in explicit migrations `0001` through
+   `0006`.
+2. Landed: add migration metadata tables and runner.
+3. Landed: add `db:migrate`, `db:status`, `db:verify`, and checksum tooling.
+4. Landed: replace `InitDB.program` startup table creation with
+   `assertCompatible`.
+5. Landed: update primary test setup paths to create schema through migrations.
+6. Remove or stop exporting application `createTable` helpers from runtime paths,
+   or clearly fence them as non-startup legacy helpers until removed.
+7. Deepen startup drift detection beyond table/index presence.
 8. Add CI checks for manifest ordering, checksum correctness, and immutable old
    migrations.
 9. Add packaged-artifact checks for migration SQL availability in `dist`.
-10. Document operator migration procedure in the node README or operations guide.
-11. For local demo databases without a migration ledger, require explicit reset
+10. Add migration metrics and readiness schema metadata.
+11. Document operator migration procedure in the node README or operations guide.
+12. For local demo databases without a migration ledger, require explicit reset
     and migration. Do not auto-baseline.
-12. For any persistent deployment, take backup, run `db:status`, run
+13. For any persistent deployment, take backup, run `db:status`, run
     `db:migrate`, run `db:verify`, then start the node.
-13. Monitor startup logs, metrics, readiness schema fields, and migration audit
+14. Monitor startup logs, metrics, readiness schema fields, and migration audit
     rows after rollout.
 
 ## Risks
@@ -712,27 +716,29 @@ Risks:
 
 ## Concrete Checklist
 
-- [ ] Add migration SQL directory and manifest.
-- [ ] Encode the current schema as `0001_initial_schema.sql`.
-- [ ] Add checksum generation or verification tooling.
-- [ ] Add `schema_migrations` ledger table.
-- [ ] Add `schema_migration_events` audit table.
-- [ ] Implement advisory-lock protected migration runner.
-- [ ] Implement startup `assertCompatible`.
-- [ ] Replace `InitDB.program` schema creation in `runNode`.
-- [ ] Add CLI commands for migrate, status, verify, and checksum.
-- [ ] Update tests to use migrations for database setup.
-- [ ] Add runner unit and integration tests.
+- [x] Add migration SQL directory and manifest.
+- [x] Encode schema migrations `0001` through `0006`.
+- [x] Add checksum generation or verification tooling.
+- [x] Add `schema_migrations` ledger table.
+- [x] Add `schema_migration_events` audit table.
+- [x] Implement advisory-lock protected migration runner.
+- [x] Implement startup `assertCompatible`.
+- [x] Replace `InitDB.program` schema creation in `runNode`.
+- [x] Add CLI commands for migrate, status, verify, and checksum.
+- [x] Update primary database test setup paths to use migrations.
+- [ ] Add comprehensive runner unit and integration tests.
 - [ ] Add startup compatibility tests.
-- [ ] Add schema introspection tests for `0001`.
+- [ ] Add schema introspection tests for the effective version `0006` schema.
 - [ ] Add CI checks for manifest ordering and checksums.
 - [ ] Add packaged-artifact checks for migration SQL availability in `dist`.
-- [ ] Add structured logs, metrics, and readiness schema metadata.
+- [ ] Add metrics and readiness schema metadata. Structured success logs and JSON
+      status/checksum output are present, but dashboard-grade observability is
+      not complete.
 - [ ] Document operator backup and migration procedure.
-- [ ] Remove runtime dependencies on table `createTable` helpers.
+- [ ] Remove or fence remaining table `createTable` helpers from runtime paths.
 - [ ] Confirm startup fails closed for unversioned, behind, ahead, checksum
       mismatch, migration-in-progress, empty-unmigrated, and drifted databases.
-- [ ] Confirm no normal startup path mutates application schema.
+- [x] Confirm no normal startup path mutates application schema.
 
 ## Acceptance Criteria
 
@@ -740,7 +746,7 @@ This blocker is complete when:
 
 - A fresh database can be initialized only by running versioned migrations.
 - Node startup refuses to serve unless the database is at the binary's expected
-  schema version with matching checksums.
+  schema version with matching checksums and a fully verified schema shape.
 - The migration ledger records every successful migration.
 - Migration attempts and failures are auditable.
 - Existing ad hoc application table creation is removed from normal startup.

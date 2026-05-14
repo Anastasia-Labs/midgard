@@ -105,9 +105,25 @@ export type MidgardTxWitnessSetCompact = Data.Static<
 export const MidgardTxWitnessSetCompact =
   MidgardTxWitnessSetCompactSchema as unknown as MidgardTxWitnessSetCompact;
 
+export const IntervalBoundTypeSchema = Data.Enum([
+  Data.Literal("NegativeInfinity"),
+  Data.Object({ Finite: Data.Tuple([Data.Integer()]) }),
+  Data.Literal("PositiveInfinity"),
+]);
+export type IntervalBoundType = Data.Static<typeof IntervalBoundTypeSchema>;
+export const IntervalBoundType =
+  IntervalBoundTypeSchema as unknown as IntervalBoundType;
+
+export const IntervalBoundSchema = Data.Object({
+  bound_type: IntervalBoundTypeSchema,
+  is_inclusive: Data.Boolean(),
+});
+export type IntervalBound = Data.Static<typeof IntervalBoundSchema>;
+export const IntervalBound = IntervalBoundSchema as unknown as IntervalBound;
+
 export const ValidityRangeSchema = Data.Object({
-  lower_bound: Data.Nullable(Data.Integer()),
-  upper_bound: Data.Nullable(Data.Integer()),
+  lower_bound: IntervalBoundSchema,
+  upper_bound: IntervalBoundSchema,
 });
 export type ValidityRange = Data.Static<typeof ValidityRangeSchema>;
 export const ValidityRange = ValidityRangeSchema as unknown as ValidityRange;

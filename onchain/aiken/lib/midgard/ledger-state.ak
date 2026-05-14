@@ -27,6 +27,7 @@ use cardano/transaction.{
 }
 use midgard/common/constants.{empty_merkle_tree_root, plutus_version}
 use midgard/common/types.{H28, H32, MerkleRoot, PosixTime, ValuePairs}
+use midgard/common/utils
 
 // # Ledger state types
 
@@ -193,10 +194,13 @@ pub type TxOrderEvent {
 pub type MidgardTxId =
   H32<MidgardTxBodyCompact>
 
-/// Midgard transaction. TODO: This is a stub!
+pub type MidgardTxWitsHash =
+  H32<MidgardTxWitnessSetCompact>
+
+/// Midgard transaction.
 pub type MidgardTx {
-  body: MidgardTxBodyCompact,
-  wits: MidgardTxWitnessSetCompact,
+  body: MidgardTxBody,
+  wits: MidgardTxWitnessSet,
   validity: MidgardTxValidity,
 }
 
@@ -209,7 +213,7 @@ pub type MidgardTxsRoot =
 /// Compact representation.
 pub type MidgardTxCompact {
   body: MidgardTxBodyCompact,
-  wits: H32<MidgardTxWitnessSetCompact>,
+  wits: MidgardTxWitsHash,
   validity: MidgardTxValidity,
 }
 
@@ -233,7 +237,7 @@ pub type MidgardAddress =
 pub type MidgardValue =
   ValuePairs
 
-pub type MidgardValueCompact =
+pub type MidgardValueHash =
   H32<MidgardValue>
 
 /// TODO
@@ -244,41 +248,57 @@ pub type MidgardOutput {
   reference_script: Option<ScriptHash>,
 }
 
-/// Datatype to allow inputs of a Midgard tx to be in custom order.
-pub type MidgardInputId {
-  input_index: Int,
-  transaction_id: MidgardTxId,
-  output_index: Int,
+pub type MidgardInputs =
+  List<OutputReference>
+
+pub type MidgardInputsHash =
+  H32<MidgardInputs>
+
+pub type MidgardOutputs =
+  List<MidgardOutput>
+
+pub type MidgardOutputsHash =
+  H32<MidgardOutputs>
+
+pub type Observers =
+  List<ScriptHash>
+
+pub type ObserversHash =
+  H32<Observers>
+
+pub type Signers =
+  List<VerificationKeyHash>
+
+pub type SignersHash =
+  H32<Signers>
+
+/// Midgard transaction body.
+/// Full representation.
+pub type MidgardTxBody {
+  spend_inputs: MidgardInputs,
+  reference_inputs: MidgardInputs,
+  outputs: MidgardOutputs,
+  fee: Lovelace,
+  validity_interval: ValidityRange,
+  required_observers: Observers,
+  required_signer_hashes: Signers,
+  mint: MidgardValue,
+  script_integrity_hash: H32<Data>,
+  auxiliary_data_hash: H32<Data>,
+  network_id: MidgardNetworkId,
 }
-
-pub fn midgard_input_id_to_out_ref(input_id: MidgardInputId) -> OutputReference {
-  let MidgardInputId { transaction_id, output_index, .. } = input_id
-  OutputReference { transaction_id, output_index }
-}
-
-pub type MidgardInputsRoot =
-  MerkleRoot<MidgardInputId, MidgardOutput>
-
-pub type MidgardOutputsRoot =
-  MerkleRoot<Int, MidgardOutput>
-
-pub type ObserversRoot =
-  MerkleRoot<Int, ScriptHash>
-
-pub type SignersRoot =
-  MerkleRoot<Int, VerificationKeyHash>
 
 /// Midgard transaction body.
 /// Compact representation.
 pub type MidgardTxBodyCompact {
-  spend_inputs: MidgardInputsRoot,
-  reference_inputs: MidgardInputsRoot,
-  outputs: MidgardOutputsRoot,
+  spend_inputs: MidgardInputsHash,
+  reference_inputs: MidgardInputsHash,
+  outputs: MidgardOutputsHash,
   fee: Lovelace,
   validity_interval: ValidityRange,
-  required_observers: ObserversRoot,
-  required_signer_hashes: SignersRoot,
-  mint: MidgardValueCompact,
+  required_observers: ObserversHash,
+  required_signer_hashes: SignersHash,
+  mint: MidgardValueHash,
   script_integrity_hash: H32<Data>,
   auxiliary_data_hash: H32<Data>,
   network_id: MidgardNetworkId,
@@ -294,21 +314,94 @@ pub type MidgardNetworkId {
 
 // ### Transaction witnesses
 
-pub type AddressWitsRoot =
-  MerkleRoot<VerificationKey, Signature>
+pub type AddressWits =
+  Pairs<VerificationKey, Signature>
 
-pub type MidgardScriptWitsRoot =
-  MerkleRoot<ScriptHash, MidgardScript>
+pub type AddressWitsHash =
+  H32<AddressWits>
 
-pub type RedeemersRoot =
-  MerkleRoot<ScriptPurpose, Redeemer>
+pub type MidgardScriptWits =
+  Pairs<ScriptHash, MidgardScript>
+
+pub type MidgardScriptWitsHash =
+  H32<MidgardScriptWits>
+
+pub type Redeemers =
+  Pairs<ScriptPurpose, Redeemer>
+
+pub type RedeemersHash =
+  H32<Redeemers>
+
+/// Midgard transaction witnesses.
+/// Full representation.
+pub type MidgardTxWitnessSet {
+  addr_tx_wits: AddressWits,
+  script_tx_wits: MidgardScriptWits,
+  redeemer_tx_wits: Redeemers,
+}
 
 /// Midgard transaction witnesses.
 /// Compact representation.
 pub type MidgardTxWitnessSetCompact {
-  addr_tx_wits: AddressWitsRoot,
-  script_tx_wits: MidgardScriptWitsRoot,
-  redeemer_tx_wits: RedeemersRoot,
+  addr_tx_wits: AddressWitsHash,
+  script_tx_wits: MidgardScriptWitsHash,
+  redeemer_tx_wits: RedeemersHash,
+}
+
+pub fn midgard_tx_body_to_compact(body: MidgardTxBody) -> MidgardTxBodyCompact {
+  let MidgardTxBody {
+    spend_inputs,
+    reference_inputs,
+    outputs,
+    fee,
+    validity_interval,
+    required_observers,
+    required_signer_hashes,
+    mint,
+    script_integrity_hash,
+    auxiliary_data_hash,
+    network_id,
+  } = body
+  MidgardTxBodyCompact {
+    spend_inputs: spend_inputs |> utils.serialise_and_hash_32,
+    reference_inputs: reference_inputs |> utils.serialise_and_hash_32,
+    outputs: outputs |> utils.serialise_and_hash_32,
+    fee,
+    validity_interval,
+    required_observers: required_observers |> utils.serialise_and_hash_32,
+    required_signer_hashes: required_signer_hashes
+      |> utils.serialise_and_hash_32,
+    mint: mint |> utils.serialise_and_hash_32,
+    script_integrity_hash,
+    auxiliary_data_hash,
+    network_id,
+  }
+}
+
+pub fn midgard_tx_wits_to_compact(
+  wits: MidgardTxWitnessSet,
+) -> MidgardTxWitnessSetCompact {
+  let MidgardTxWitnessSet { addr_tx_wits, script_tx_wits, redeemer_tx_wits } =
+    wits
+  MidgardTxWitnessSetCompact {
+    addr_tx_wits: addr_tx_wits |> utils.serialise_and_hash_32,
+    script_tx_wits: script_tx_wits |> utils.serialise_and_hash_32,
+    redeemer_tx_wits: redeemer_tx_wits |> utils.serialise_and_hash_32,
+  }
+}
+
+pub fn midgard_tx_to_compact(tx: MidgardTx) -> MidgardTxCompact {
+  let MidgardTx { body, wits, validity } = tx
+  let body_compact = body |> midgard_tx_body_to_compact
+  MidgardTxCompact {
+    body: body_compact,
+    wits: wits |> midgard_tx_wits_to_compact |> utils.serialise_and_hash_32,
+    validity,
+  }
+}
+
+pub fn midgard_full_tx_to_id(tx: MidgardTx) -> MidgardTxId {
+  tx.body |> midgard_tx_body_to_compact |> utils.serialise_and_hash_32
 }
 
 /// Midgard script -- either timelock (native) or Plutus (V3).

@@ -44,6 +44,51 @@ describe("contract deployment info", () => {
       }).pipe(Effect.provide(AlwaysSucceedsContract.Default)),
   );
 
+  it.effect("can attach fraud-proof catalogue deployment metadata", () =>
+    Effect.gen(function* () {
+      const contracts = yield* AlwaysSucceedsContract;
+      const manifest = buildContractDeploymentInfoFromContracts(
+        contracts,
+        new Map(),
+        {
+          root: "aa".repeat(32),
+          categories: {
+            doubleSpend: {
+              categoryId: "00000000",
+              scriptHash: contracts.fraudProofs.doubleSpend.spendingScriptHash,
+              membershipProofCbor: "80",
+            },
+            nonExistentInput: {
+              categoryId: "00000001",
+              scriptHash:
+                contracts.fraudProofs.nonExistentInput.spendingScriptHash,
+              membershipProofCbor: "80",
+            },
+            nonExistentInputNoIndex: {
+              categoryId: "00000002",
+              scriptHash:
+                contracts.fraudProofs.nonExistentInputNoIndex
+                  .spendingScriptHash,
+              membershipProofCbor: "80",
+            },
+            invalidRange: {
+              categoryId: "00000003",
+              scriptHash: contracts.fraudProofs.invalidRange.spendingScriptHash,
+              membershipProofCbor: "80",
+            },
+          },
+        },
+      );
+
+      expect(manifest.fraudProofCatalogueMint.fraudProofCatalogue?.root).toBe(
+        "aa".repeat(32),
+      );
+      expect(
+        manifest.fraudProofCatalogueSpend.fraudProofCatalogue,
+      ).toBeUndefined();
+    }).pipe(Effect.provide(AlwaysSucceedsContract.Default)),
+  );
+
   it("defaults init manifest output to the package-root deploymentInfo", () => {
     const packageRoot = resolvePath(
       dirname(fileURLToPath(import.meta.url)),

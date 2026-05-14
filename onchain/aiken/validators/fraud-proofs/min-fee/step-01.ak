@@ -51,10 +51,11 @@ validator main(
             tx,
           )
 
+        // 2. The provided preimage must be that of the bad transaction's body.
         expect TxBodyProvided(bad_tx_body) = tx_field_preimage
 
-        // 2. The UTxO must be produced at next step's script hash with validity
-        //    range of the bad tx, and block's time range provided.
+        // 3. The UTxO must be produced at next step's script hash with the
+        //    compact bad transaction and its body fee.
         expect output_script_hash == step_02_validator_script_hash
         let expected_output_state: Data =
           step_02.State { bad_tx, bad_tx_body_fee: bad_tx_body.fee }

@@ -170,16 +170,16 @@ describe("TxBuilder finalization", () => {
       tx.version,
     );
 
-    expect(tx.compact.transactionBody.spendInputsRoot).toEqual(
+    expect(tx.compact.transactionBody.spendInputsHash).toEqual(
       computeHash32(tx.body.spendInputsPreimageCbor),
     );
-    expect(tx.compact.transactionBody.referenceInputsRoot).toEqual(
+    expect(tx.compact.transactionBody.referenceInputsHash).toEqual(
       computeHash32(EMPTY_CBOR_LIST),
     );
-    expect(tx.compact.transactionBody.requiredObserversRoot).toEqual(
+    expect(tx.compact.transactionBody.requiredObserversHash).toEqual(
       computeHash32(EMPTY_CBOR_LIST),
     );
-    expect(tx.compact.transactionBody.mintRoot).toEqual(
+    expect(tx.compact.transactionBody.mintHash).toEqual(
       computeHash32(EMPTY_CBOR_LIST),
     );
     expect(tx.body.scriptIntegrityHash).toEqual(EMPTY_NULL_ROOT);

@@ -1,0 +1,43 @@
+{
+  "name": "@al-ft/midgard-fault-proofs",
+  "version": "0.1.0",
+  "description": "Manual Midgard fault-proof tooling",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "type": "module",
+  "bin": {
+    "midgard-fault-proofs": "./dist/bin.js"
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "clean": "rimraf dist",
+    "build": "tsup src/index.ts src/bin.ts --format esm --dts --clean",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "keywords": [
+    "cardano",
+    "layer2",
+    "midgard",
+    "fault-proof"
+  ],
+  "author": "Anastasia Labs",
+  "license": "ISC",
+  "dependencies": {
+    "@aiken-lang/merkle-patricia-forestry": "^1.2.0",
+    "@al-ft/midgard-core": "workspace:*",
+    "@al-ft/midgard-sdk": "workspace:*",
+    "@harmoniclabs/cbor": "1.6.6",
+    "@lucid-evolution/lucid": "0.4.30",
+    "effect": "^3.14.22"
+  },
+  "devDependencies": {
+    "@types/node": "^22.17.0",
+    "rimraf": "^6.0.1",
+    "tsup": "^8.4.0",
+    "typescript": "^5.7.3",
+    "vitest": "^3.0.7"
+  }
+}

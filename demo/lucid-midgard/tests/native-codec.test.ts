@@ -52,20 +52,20 @@ const compactValue = (tx: MidgardNativeTxFull): readonly unknown[] => [
 ];
 
 const bodyFullValue = (tx: MidgardNativeTxFull): readonly unknown[] => [
-  tx.compact.transactionBody.spendInputsRoot,
+  tx.compact.transactionBody.spendInputsHash,
   tx.body.spendInputsPreimageCbor,
-  tx.compact.transactionBody.referenceInputsRoot,
+  tx.compact.transactionBody.referenceInputsHash,
   tx.body.referenceInputsPreimageCbor,
-  tx.compact.transactionBody.outputsRoot,
+  tx.compact.transactionBody.outputsHash,
   tx.body.outputsPreimageCbor,
   tx.body.fee,
   tx.body.validityIntervalStart,
   tx.body.validityIntervalEnd,
-  tx.compact.transactionBody.requiredObserversRoot,
+  tx.compact.transactionBody.requiredObserversHash,
   tx.body.requiredObserversPreimageCbor,
-  tx.compact.transactionBody.requiredSignersRoot,
+  tx.compact.transactionBody.requiredSignersHash,
   tx.body.requiredSignersPreimageCbor,
-  tx.compact.transactionBody.mintRoot,
+  tx.compact.transactionBody.mintHash,
   tx.body.mintPreimageCbor,
   tx.body.scriptIntegrityHash,
   tx.body.auxiliaryDataHash,
@@ -98,7 +98,7 @@ describe("Midgard native v1 codec", () => {
     expect(decoded.compact.transactionWitnessSetHash).toEqual(
       tx.compact.transactionWitnessSetHash,
     );
-    expect(decoded.compact.transactionBody.mintRoot).toEqual(
+    expect(decoded.compact.transactionBody.mintHash).toEqual(
       computeHash32(EMPTY_CBOR_LIST),
     );
   });
@@ -141,7 +141,7 @@ describe("Midgard native v1 codec", () => {
         ...tx.compact,
         transactionBody: {
           ...tx.compact.transactionBody,
-          outputsRoot: Buffer.alloc(32, 1),
+          outputsHash: Buffer.alloc(32, 1),
         },
       },
     };

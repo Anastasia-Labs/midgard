@@ -25,6 +25,10 @@ import {
   loadPhasMembershipWithdrawalScript,
   phasMembershipWithdrawalScriptHash,
 } from "@/phas-membership.js";
+import {
+  buildFraudProofCatalogueDeploymentInfo,
+  fraudProofsToIndexedValidators,
+} from "@/transactions/initialization.js";
 
 export type ContractDeploymentInfoRefScriptUTxO = {
   readonly txHash: string;
@@ -38,6 +42,7 @@ export type ContractDeploymentInfoEntry = {
     readonly cborHex: string;
   };
   readonly scriptHash: string;
+  readonly fraudProofCatalogue?: SDK.FraudProofCatalogueDeploymentInfo;
 };
 
 export type ContractDeploymentInfo = Readonly<
@@ -250,6 +255,7 @@ export const buildContractDeploymentInfoFromContracts = (
     string,
     ContractDeploymentInfoRefScriptUTxO
   > = new Map(),
+  fraudProofCatalogue?: SDK.FraudProofCatalogueDeploymentInfo,
 ): ContractDeploymentInfo =>
   Object.freeze(
     Object.fromEntries(
@@ -260,6 +266,10 @@ export const buildContractDeploymentInfoFromContracts = (
             referenceScriptOutRefs.get(descriptor.scriptHash) ?? null,
           contract: descriptor.contract,
           scriptHash: descriptor.scriptHash,
+          ...(descriptor.name === "fraudProofCatalogueMint" &&
+          fraudProofCatalogue !== undefined
+            ? { fraudProofCatalogue }
+            : {}),
         } satisfies ContractDeploymentInfoEntry,
       ]),
     ),
@@ -274,9 +284,13 @@ export const resolveLiveContractDeploymentInfoProgram: Effect.Effect<
   const referenceScriptWalletUtxos = yield* fetchReferenceScriptWalletUtxos;
   const referenceScriptOutRefs =
     buildReferenceScriptOutRefMap(referenceScriptWalletUtxos);
+  const fraudProofCatalogue = yield* buildFraudProofCatalogueDeploymentInfo(
+    fraudProofsToIndexedValidators(contracts.fraudProofs),
+  );
   return buildContractDeploymentInfoFromContracts(
     contracts,
     referenceScriptOutRefs,
+    fraudProofCatalogue,
   );
 });
 

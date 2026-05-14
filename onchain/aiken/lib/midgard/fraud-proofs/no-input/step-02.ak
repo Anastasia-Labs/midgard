@@ -1,10 +1,12 @@
-use midgard/common/types.{Proof}
 use midgard/computation_thread as ct
-use midgard/ledger_state.{MidgardInputId, MidgardInputsRoot, MidgardLedgerRoot}
+use midgard/ledger_state.{
+  MidgardInputs, MidgardInputsHash, MidgardLedgerRoot, MidgardTxsRoot,
+}
 
 pub type State {
-  bad_tx_inputs_root: MidgardInputsRoot,
+  bad_tx_inputs_hash: MidgardInputsHash,
   blocks_prev_utxos_root: MidgardLedgerRoot,
+  blocks_transactions_root: MidgardTxsRoot,
 }
 
 pub type Datum =
@@ -13,13 +15,8 @@ pub type Datum =
 pub type Args {
   input_index: Int,
   output_index: Int,
-  no_input_key: MidgardInputId,
-  no_input_value: Data,
-  membership_proof_in_bad_tx: Proof,
-  membership_proof_script_redeemer_index: Int,
-  non_membership_proof_in_ledger: Proof,
-  non_membership_proof_script_redeemer_index: Int,
-  fraud_proof_mint_redeemer_index: Int,
+  inputs_preimage: MidgardInputs,
+  bad_input_index: Int,
 }
 
 pub type SpendRedeemer =

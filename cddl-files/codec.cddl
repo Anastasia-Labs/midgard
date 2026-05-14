@@ -24,8 +24,10 @@
 ;   - Optimized for L1 storage constraints
 ;   - Represents data in lightweight form
 
-; To accommodate the constraints of Cardano L1, where Midgard state resides, 
-; Non-Fixed-size structures (e.g., arrays, tuples) are represented as Merkle root hashes. 
+; To accommodate the constraints of Cardano L1, where Midgard state resides,
+; non-fixed-size structures (e.g., arrays, tuples) are represented as compact
+; hashes or Merkle roots, depending on whether the field commits to a native
+; transaction list preimage or a Merkleized ledger/state structure.
 ; Fixed-size structures (e.g., objects, uints, hashes) retain their standard form, as their size is predetermined. 
 
 ; We use the term Full Representation to refer to the raw data representation and Compact Representation to denote the lightweight, on-chain based representation.
@@ -37,8 +39,9 @@
 ; NOTE:
 ; - This is the canonical Midgard transaction wire format.
 ; - It does not embed Cardano transaction body/witness structures.
-; - Variable-size proof-critical fields are represented as (root, preimage_cbor)
-;   pairs in full transactions and as roots in compact transactions.
+; - Variable-size proof-critical body fields are represented as
+;   (hash, preimage_cbor) pairs in full transactions and as hashes in compact
+;   transactions. Witness fields remain root/preimage pairs.
 ; - validity_interval_start / validity_interval_end use -1 as "unbounded".
 
 midgard_tx_validity_code = 0 / 1 / 2 / 3 / 4 / 5
@@ -51,15 +54,15 @@ midgard_tx_compact_v1 =
   ]
 
 midgard_tx_body_compact_v1 =
-  [ spend_inputs_root : $hash32
-  , reference_inputs_root : $hash32
-  , outputs_root : $hash32
+  [ spend_inputs_hash : $hash32
+  , reference_inputs_hash : $hash32
+  , outputs_hash : $hash32
   , fee : coin
   , validity_interval_start : int
   , validity_interval_end : int
-  , required_observers_root : $hash32
-  , required_signers_root : $hash32
-  , mint_root : $hash32
+  , required_observers_hash : $hash32
+  , required_signers_hash : $hash32
+  , mint_hash : $hash32
   , script_integrity_hash : $hash32
   , auxiliary_data_hash : $hash32
   , network_id : uint
@@ -72,20 +75,20 @@ midgard_tx_witness_set_compact_v1 =
   ]
 
 midgard_tx_body_full_v1 =
-  [ spend_inputs_root : $hash32
+  [ spend_inputs_hash : $hash32
   , spend_inputs_preimage_cbor : bytes
-  , reference_inputs_root : $hash32
+  , reference_inputs_hash : $hash32
   , reference_inputs_preimage_cbor : bytes
-  , outputs_root : $hash32
+  , outputs_hash : $hash32
   , outputs_preimage_cbor : bytes
   , fee : coin
   , validity_interval_start : int
   , validity_interval_end : int
-  , required_observers_root : $hash32
+  , required_observers_hash : $hash32
   , required_observers_preimage_cbor : bytes
-  , required_signers_root : $hash32
+  , required_signers_hash : $hash32
   , required_signers_preimage_cbor : bytes
-  , mint_root : $hash32
+  , mint_hash : $hash32
   , mint_preimage_cbor : bytes
   , script_integrity_hash : $hash32
   , auxiliary_data_hash : $hash32

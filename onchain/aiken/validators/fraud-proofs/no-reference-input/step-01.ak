@@ -1,8 +1,8 @@
 //// ## No Reference Input Fraud Proof (Section 5.1.16)
 ////
-//// Proves a given transaction refers to an input that was missing from the
-//// block's starting ledger (i.e. `prev_utxos_root`), and that it wasn't
-//// produced by any of the block's transactions.
+//// Proves a given transaction refers to a reference input that was missing
+//// from the block's starting ledger (i.e. `prev_utxos_root`), and that it
+//// wasn't produced by any of the block's transactions.
 
 use aiken/crypto.{ScriptHash}
 use cardano/assets.{PolicyId}
@@ -11,7 +11,7 @@ use midgard/computation_thread as ct
 use midgard/fraud_proofs/common.{TxBodyProvided, cancel, pass_tx_to_next_step}
 use midgard/fraud_proofs/no_reference_input/step_01.{Datum, SpendRedeemer}
 use midgard/fraud_proofs/no_reference_input/step_02
-use midgard/ledger_state.{Header}
+use midgard/ledger_state
 
 validator main(
   step_02_validator_script_hash: ScriptHash,
@@ -61,13 +61,15 @@ validator main(
         // 2. Bad transaction's body must be provided.
         expect TxBodyProvided(bad_tx_body) = bad_tx_field_preimage
 
-        // 3. The UTxO must be produced at next step's script hash with relevant
-        //    roots.
-        let Header { prev_utxos_root, transactions_root, .. } = header
+        let ledger_state.Header { prev_utxos_root, transactions_root, .. } =
+          header
+
+        // 3. The UTxO must be produced at next step's script hash with reference
+        //    inputs hash of the bad transaction, and relevant block roots.
         expect output_script_hash == step_02_validator_script_hash
         let expected_output_state: Data =
           step_02.State {
-            bad_tx_reference_inputs_root: bad_tx_body.reference_inputs,
+            bad_tx_reference_inputs_hash: bad_tx_body.reference_inputs,
             blocks_prev_utxos_root: prev_utxos_root,
             blocks_transactions_root: transactions_root,
           }

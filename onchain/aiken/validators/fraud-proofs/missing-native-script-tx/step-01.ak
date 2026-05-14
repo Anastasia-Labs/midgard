@@ -5,8 +5,8 @@ use midgard/computation_thread as ct
 use midgard/fraud_proofs/common.{
   TxBodyAndWitsProvided, cancel, pass_tx_to_next_step,
 }
-use midgard/fraud_proofs/missing_native_script/step_01.{Datum, SpendRedeemer}
-use midgard/fraud_proofs/missing_native_script/step_02
+use midgard/fraud_proofs/missing_native_script_tx/step_01.{Datum, SpendRedeemer}
+use midgard/fraud_proofs/missing_native_script_tx/step_02
 
 validator main(
   step_02_validator_script_hash: ScriptHash,
@@ -62,8 +62,8 @@ validator main(
         expect output_script_hash == step_02_validator_script_hash
         let expected_output_state: Data =
           step_02.State {
-            bad_tx_outputs_root: bad_tx_body.outputs,
-            bad_tx_script_wits: bad_tx_wits.script_tx_wits,
+            bad_tx_inputs_hash: bad_tx_body.spend_inputs,
+            bad_tx_script_wits_hash: bad_tx_wits.script_tx_wits,
           }
         expect output_state_data == expected_output_state
 

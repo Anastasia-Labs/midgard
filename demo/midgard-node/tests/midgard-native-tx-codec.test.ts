@@ -189,12 +189,12 @@ describe("midgard native tx codec - consistency checks", () => {
         ...full.compact,
         transactionBody: {
           ...full.compact.transactionBody,
-          outputsRoot: Buffer.from(full.compact.transactionBody.outputsRoot),
+          outputsHash: Buffer.from(full.compact.transactionBody.outputsHash),
         },
       },
     };
 
-    tampered.compact.transactionBody.outputsRoot[0] ^= 0xff;
+    tampered.compact.transactionBody.outputsHash[0] ^= 0xff;
 
     expect(() => encodeMidgardNativeTxFull(tampered)).toThrow();
   });
@@ -278,7 +278,7 @@ describe("midgard native tx codec - cardano compatibility bridge", () => {
 
     expect(decoded.body.mintPreimageCbor).toEqual(emptyList);
     expect(
-      decoded.compact.transactionBody.mintRoot.equals(computeHash32(emptyList)),
+      decoded.compact.transactionBody.mintHash.equals(computeHash32(emptyList)),
     ).toBe(true);
   });
 
@@ -314,7 +314,7 @@ describe("midgard native tx codec - cardano compatibility bridge", () => {
 
     expect(decoded.body.mintPreimageCbor).toEqual(expectedMintPreimage);
     expect(
-      decoded.compact.transactionBody.mintRoot.equals(
+      decoded.compact.transactionBody.mintHash.equals(
         computeHash32(expectedMintPreimage),
       ),
     ).toBe(true);

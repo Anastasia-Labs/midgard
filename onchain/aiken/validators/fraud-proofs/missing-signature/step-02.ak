@@ -1,7 +1,8 @@
+use aiken/collection/list
 use aiken/crypto.{ScriptHash}
 use cardano/assets.{PolicyId}
 use cardano/transaction.{OutputReference, Transaction}
-use midgard/common/utils
+use midgard/common/utils.{verify_hash_32}
 use midgard/computation_thread as ct
 use midgard/fraud_proofs/common.{cancel, continue}
 use midgard/fraud_proofs/missing_signature/step_02.{
@@ -32,12 +33,10 @@ validator main(
       ct.Continue(Args {
         input_index,
         output_index,
+        required_signers_preimage,
         bad_required_signer_hash_index,
-        bad_required_signer_hash,
-        bad_required_signer_membership_proof,
-        inclusion_proof_script_withdraw_redeemer_index,
       }) -> {
-        let Transaction { inputs, outputs, redeemers, .. } = tx
+        let Transaction { inputs, outputs, .. } = tx
 
         expect Some(step_datum) = datum
 
@@ -61,21 +60,17 @@ validator main(
           )
 
         expect Some(State {
-          verified_required_signers_root,
-          verified_addr_tx_wits,
+          verified_required_signers_hash,
+          verified_addr_tx_wits_hash,
         }) = m_input_state_data
 
-        // 2. Provided required signer must be a member of the verified root
-        //    passed from the previous step.
+        // 2. Fetch the required signer hash from the verified signer list.
         expect
-          utils.plutarch_phas(
-            merkle_root: verified_required_signers_root,
-            key: bad_required_signer_hash_index,
-            value: bad_required_signer_hash,
-            membership_proof: bad_required_signer_membership_proof,
-            redeemers: redeemers,
-            withdraw_redeemer_index: inclusion_proof_script_withdraw_redeemer_index,
-          )
+          required_signers_preimage
+            |> verify_hash_32(verified_required_signers_hash)
+        let missing_required_signer_hash =
+          required_signers_preimage
+            |> list.expect_at(bad_required_signer_hash_index)
 
         // 3. The required signer (whose signature is being proven missing),
         //    along with the verified address witness set must be passed to the
@@ -83,8 +78,8 @@ validator main(
         expect output_script_hash == step_03_validator_script_hash
         let expected_output_state: Data =
           step_03.State {
-            missing_required_signer_hash: bad_required_signer_hash,
-            verified_addr_tx_wits,
+            missing_required_signer_hash,
+            verified_addr_tx_wits_hash,
           }
         expect output_state_data == expected_output_state
 

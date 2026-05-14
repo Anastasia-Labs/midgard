@@ -1,15 +1,14 @@
+use aiken/collection/list
 use aiken/crypto.{ScriptHash}
-use cardano/address.{Script}
 use cardano/assets.{PolicyId}
 use cardano/transaction.{OutputReference, Transaction}
-use midgard/common/utils
+use midgard/common/utils.{verify_hash_32}
 use midgard/computation_thread as ct
 use midgard/fraud_proofs/common.{cancel, continue}
-use midgard/fraud_proofs/missing_native_script/step_02.{
+use midgard/fraud_proofs/missing_native_script_tx/step_02.{
   Args, Datum, SpendRedeemer, State,
 }
-use midgard/fraud_proofs/missing_native_script/step_03_recursive as step_03
-use midgard/ledger_state
+use midgard/fraud_proofs/missing_native_script_tx/step_03
 
 validator main(
   step_03_validator_script_hash: ScriptHash,
@@ -34,13 +33,10 @@ validator main(
       ct.Continue(Args {
         input_index,
         output_index,
-        bad_output_index,
-        bad_output,
-        bad_output_membership_proof,
-        missing_native_script_bytes,
-        inclusion_proof_script_withdraw_redeemer_index,
+        bad_input_index,
+        inputs_preimage,
       }) -> {
-        let Transaction { inputs, outputs, redeemers, .. } = tx
+        let Transaction { inputs, outputs, .. } = tx
 
         expect Some(step_datum) = datum
 
@@ -63,35 +59,21 @@ validator main(
             outputs,
           )
 
-        expect Some(State { bad_tx_outputs_root, bad_tx_script_wits }) =
+        expect Some(State { bad_tx_inputs_hash, bad_tx_script_wits_hash }) =
           m_input_state_data
 
-        // 3. Prove output u belongs to outputs(tx)
-        expect
-          utils.plutarch_phas(
-            merkle_root: bad_tx_outputs_root,
-            key: bad_output_index,
-            value: bad_output,
-            membership_proof: bad_output_membership_proof,
-            redeemers: redeemers,
-            withdraw_redeemer_index: inclusion_proof_script_withdraw_redeemer_index,
-          )
+        // 2. Provided inputs preimage must match the bad transaction's spend
+        //    inputs hash.
+        expect inputs_preimage |> verify_hash_32(bad_tx_inputs_hash)
+        let input_with_missing_script =
+          inputs_preimage |> list.expect_at(bad_input_index)
 
-        // 4. The specified output must be at a script address.
-        expect Script(bad_output_script_hash) = bad_output.address
-
-        // 5. The missing script must be a Native script.
-        expect
-          bad_output_script_hash == ledger_state.hash_midgard_script(
-            ledger_state.Timelock(missing_native_script_bytes),
-          )
-
-        // 6. The produced UTxO must go to the next step with a proper state.
+        // 3. The produced UTxO must go to the next step with a proper state.
         expect output_script_hash == step_03_validator_script_hash
         let expected_output_state: Data =
           step_03.State {
-            expected_missing_script_hash: bad_output_script_hash,
-            verified_script_wits_root: bad_tx_script_wits,
+            input_with_missing_script,
+            verified_script_wits_hash: bad_tx_script_wits_hash,
           }
         expect output_state_data == expected_output_state
 

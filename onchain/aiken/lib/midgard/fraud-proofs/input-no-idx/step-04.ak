@@ -1,32 +1,20 @@
-//TO REDO AFTER DEFINING SPECS FOR THIS FRAUD PROOF
+use midgard/computation_thread as ct
+use midgard/ledger_state.{MidgardOutputs, MidgardOutputsHash}
 
-// use cardano/transaction.{Output}
-// use midgard/common/types.{MerkleRoot, Proof}
-// use midgard/computation_thread as ct
+pub type State {
+  producing_tx_outputs_hash: MidgardOutputsHash,
+  bad_input_output_index: Int,
+}
 
-// pub type State {
-//   verified_outputs_root: MerkleRoot<Int, Output>,
-//   no_input_output_index: Int,
-//   output_index_to_delete: Int,
-// }
+pub type Datum =
+  ct.StepDatum<State>
 
-// pub type Datum =
-//   ct.StepDatum<State>
+pub type Args {
+  input_index: Int,
+  output_index: Int,
+  fraud_proof_mint_redeemer_index: Int,
+  outputs_preimage: MidgardOutputs,
+}
 
-// pub type Args {
-//   Recurse {
-//     input_index: Int,
-//     output_index: Int,
-//     output_to_delete: Data,
-//     membership_proof: Proof,
-//     merkle_delete_script_withdraw_redeemer_index: Int,
-//   }
-//   Finalize {
-//     input_index: Int,
-//     output_index: Int,
-//     fraud_proof_mint_redeemer_index: Int,
-//   }
-// }
-
-// pub type SpendRedeemer =
-//   ct.StepRedeemer<Args>
+pub type SpendRedeemer =
+  ct.StepRedeemer<Args>

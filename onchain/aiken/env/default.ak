@@ -1,11 +1,16 @@
-use aiken/crypto.{ScriptHash}
+use aiken/cbor
+use aiken/crypto.{ScriptHash, blake2b_256}
 use cardano/address.{Address, Script}
 use cardano/assets.{AssetName, PolicyId}
+use midgard/common/types.{H32}
 
 // Including ADA.
 pub const max_tokens_allowed_in_deposits: Int = 10
 
 pub const event_wait_duration: Int = 60_000
+
+pub const empty_list_hash: H32<List<Data>> =
+  [] |> cbor.serialise |> blake2b_256
 
 pub const l2_outbox_address: Address =
   Address {

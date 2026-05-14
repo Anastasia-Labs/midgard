@@ -1,10 +1,11 @@
+use cardano/transaction.{OutputReference}
 use midgard/computation_thread as ct
 use midgard/fraud_proofs/common.{TxInclusionArgs}
-use midgard/ledger_state.{MidgardInputsRoot, MidgardTxId}
+use midgard/ledger_state.{MidgardScriptWitsHash}
 
 pub type State {
-  verified_tx1_id: MidgardTxId,
-  verified_tx1_inputs_root: MidgardInputsRoot,
+  input_with_missing_script: OutputReference,
+  verified_script_wits_hash: MidgardScriptWitsHash,
 }
 
 pub type Datum =

@@ -195,10 +195,11 @@ Midgard keeps some Lucid names where the ergonomics are useful, but the
 semantics are not Cardano semantics:
 
 - Hash domain: Lucid signs Cardano transaction body hashes. `lucid-midgard`
-  signs `nativeTx.compact.transactionBodyHash`, which is also the Midgard tx id.
+  signs `computeMidgardNativeTxIdFromFull(nativeTx)`, which is also the Midgard
+  tx id.
 - Serialization: Lucid emits Cardano transaction CBOR. `lucid-midgard` emits
-  Midgard native full transaction bytes and must not submit Cardano CBOR on the
-  normal path.
+  Midgard native transaction envelope bytes and must not submit Cardano CBOR on
+  the normal path.
 - Submission: Lucid-style submit returns a hash for a Cardano provider submit.
   Midgard submit returns durable admission metadata first; `accepted`,
   `rejected`, and `committed` are later Midgard status states.

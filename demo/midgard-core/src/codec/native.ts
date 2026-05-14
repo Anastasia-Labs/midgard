@@ -54,15 +54,15 @@ export type MidgardNativeTxCompact = {
 };
 
 export type MidgardNativeTxBodyCompact = {
-  readonly spendInputsRoot: Hash32;
-  readonly referenceInputsRoot: Hash32;
-  readonly outputsRoot: Hash32;
+  readonly spendInputsHash: Hash32;
+  readonly referenceInputsHash: Hash32;
+  readonly outputsHash: Hash32;
   readonly fee: bigint;
   readonly validityIntervalStart: bigint;
   readonly validityIntervalEnd: bigint;
-  readonly requiredObserversRoot: Hash32;
-  readonly requiredSignersRoot: Hash32;
-  readonly mintRoot: Hash32;
+  readonly requiredObserversHash: Hash32;
+  readonly requiredSignersHash: Hash32;
+  readonly mintHash: Hash32;
   readonly scriptIntegrityHash: Hash32;
   readonly auxiliaryDataHash: Hash32;
   readonly networkId: bigint;
@@ -261,12 +261,15 @@ const encodeNativeTxBodyCompactValue = (
   Hash32,
   bigint,
 ] => [
-  ensureHash32(body.spendInputsRoot, "transaction_body_compact.spend_inputs"),
   ensureHash32(
-    body.referenceInputsRoot,
-    "transaction_body_compact.reference_inputs",
+    body.spendInputsHash,
+    "transaction_body_compact.spend_inputs_hash",
   ),
-  ensureHash32(body.outputsRoot, "transaction_body_compact.outputs"),
+  ensureHash32(
+    body.referenceInputsHash,
+    "transaction_body_compact.reference_inputs_hash",
+  ),
+  ensureHash32(body.outputsHash, "transaction_body_compact.outputs_hash"),
   asUnsigned(body.fee, "transaction_body_compact.fee"),
   asSigned(
     body.validityIntervalStart,
@@ -277,14 +280,14 @@ const encodeNativeTxBodyCompactValue = (
     "transaction_body_compact.validity_interval_end",
   ),
   ensureHash32(
-    body.requiredObserversRoot,
-    "transaction_body_compact.required_observers",
+    body.requiredObserversHash,
+    "transaction_body_compact.required_observers_hash",
   ),
   ensureHash32(
-    body.requiredSignersRoot,
-    "transaction_body_compact.required_signers",
+    body.requiredSignersHash,
+    "transaction_body_compact.required_signers_hash",
   ),
-  ensureHash32(body.mintRoot, "transaction_body_compact.mint"),
+  ensureHash32(body.mintHash, "transaction_body_compact.mint_hash"),
   ensureHash32(
     body.scriptIntegrityHash,
     "transaction_body_compact.script_integrity_hash",
@@ -302,30 +305,30 @@ const decodeNativeTxBodyCompactValue = (
 ): MidgardNativeTxBodyCompact => {
   const v = asFixedArray(value, 12, fieldName);
   return {
-    spendInputsRoot: ensureHash32(
+    spendInputsHash: ensureHash32(
       asBytes(v[0], `${fieldName}[0]`),
       `${fieldName}[0]`,
     ),
-    referenceInputsRoot: ensureHash32(
+    referenceInputsHash: ensureHash32(
       asBytes(v[1], `${fieldName}[1]`),
       `${fieldName}[1]`,
     ),
-    outputsRoot: ensureHash32(
+    outputsHash: ensureHash32(
       asBytes(v[2], `${fieldName}[2]`),
       `${fieldName}[2]`,
     ),
     fee: asUnsigned(v[3], `${fieldName}[3]`),
     validityIntervalStart: asSigned(v[4], `${fieldName}[4]`),
     validityIntervalEnd: asSigned(v[5], `${fieldName}[5]`),
-    requiredObserversRoot: ensureHash32(
+    requiredObserversHash: ensureHash32(
       asBytes(v[6], `${fieldName}[6]`),
       `${fieldName}[6]`,
     ),
-    requiredSignersRoot: ensureHash32(
+    requiredSignersHash: ensureHash32(
       asBytes(v[7], `${fieldName}[7]`),
       `${fieldName}[7]`,
     ),
-    mintRoot: ensureHash32(asBytes(v[8], `${fieldName}[8]`), `${fieldName}[8]`),
+    mintHash: ensureHash32(asBytes(v[8], `${fieldName}[8]`), `${fieldName}[8]`),
     scriptIntegrityHash: ensureHash32(
       asBytes(v[9], `${fieldName}[9]`),
       `${fieldName}[9]`,
@@ -480,15 +483,15 @@ const decodeNativeTxWitnessSetCanonicalValue = (
 export const deriveMidgardNativeTxBodyCompact = (
   body: MidgardNativeTxBodyCanonical,
 ): MidgardNativeTxBodyCompact => ({
-  spendInputsRoot: computeHash32(body.spendInputsPreimageCbor),
-  referenceInputsRoot: computeHash32(body.referenceInputsPreimageCbor),
-  outputsRoot: computeHash32(body.outputsPreimageCbor),
+  spendInputsHash: computeHash32(body.spendInputsPreimageCbor),
+  referenceInputsHash: computeHash32(body.referenceInputsPreimageCbor),
+  outputsHash: computeHash32(body.outputsPreimageCbor),
   fee: body.fee,
   validityIntervalStart: body.validityIntervalStart,
   validityIntervalEnd: body.validityIntervalEnd,
-  requiredObserversRoot: computeHash32(body.requiredObserversPreimageCbor),
-  requiredSignersRoot: computeHash32(body.requiredSignersPreimageCbor),
-  mintRoot: computeHash32(body.mintPreimageCbor),
+  requiredObserversHash: computeHash32(body.requiredObserversPreimageCbor),
+  requiredSignersHash: computeHash32(body.requiredSignersPreimageCbor),
+  mintHash: computeHash32(body.mintPreimageCbor),
   scriptIntegrityHash: body.scriptIntegrityHash,
   auxiliaryDataHash: body.auxiliaryDataHash,
   networkId: body.networkId,

@@ -1,4 +1,8 @@
-import { AuthenticatedValidator } from "@/common.js";
+import type {
+  AuthenticatedValidator,
+  FraudProofs,
+  MerkleRoot,
+} from "@/common.js";
 import { Assets, Data, fromText, toUnit } from "@lucid-evolution/lucid";
 import { LucidEvolution, TxBuilder } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
@@ -6,6 +10,34 @@ import { Effect } from "effect";
 export const FRAUD_PROOF_CATALOGUE_ASSET_NAME = fromText(
   "MIDGARD_FRAUD_PROOF_CATALOGUE",
 );
+
+export const FRAUD_PROOF_CATALOGUE_ID_BYTE_COUNT = 4;
+
+export const FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER = [
+  "doubleSpend",
+  "nonExistentInput",
+  "nonExistentInputNoIndex",
+  "invalidRange",
+] as const satisfies readonly (keyof FraudProofs)[];
+
+export type FraudProofCatalogueCategoryName =
+  (typeof FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER)[number];
+
+export type FraudProofCatalogueCategoryDeploymentInfo = {
+  readonly categoryId: string;
+  readonly scriptHash: string;
+  readonly membershipProofCbor: string;
+};
+
+export type FraudProofCatalogueDeploymentInfo = {
+  readonly root: MerkleRoot;
+  readonly categories: Readonly<
+    Record<
+      FraudProofCatalogueCategoryName,
+      FraudProofCatalogueCategoryDeploymentInfo
+    >
+  >;
+};
 
 export const FraudProofCatalogueDatumSchema = Data.Bytes();
 

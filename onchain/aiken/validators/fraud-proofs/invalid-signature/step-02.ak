@@ -1,9 +1,9 @@
-use aiken/builtin
-use aiken/crypto.{ScriptHash, verify_ed25519_signature}
+use aiken/collection/pairs
+use aiken/crypto.{verify_ed25519_signature}
 use cardano/address.{Address}
 use cardano/assets.{PolicyId}
 use cardano/transaction.{OutputReference, Transaction}
-use midgard/common/utils
+use midgard/common/utils.{verify_hash_32}
 use midgard/computation_thread as ct
 use midgard/fraud_proofs/common.{cancel, finalize}
 use midgard/fraud_proofs/invalid_signature/step_02.{
@@ -12,7 +12,7 @@ use midgard/fraud_proofs/invalid_signature/step_02.{
 
 validator main(
   computation_thread_token_policy_id: PolicyId,
-  fraud_proof_token_policy_id: ScriptHash,
+  fraud_proof_token_policy_id: PolicyId,
   fraud_proof_token_address: Address,
 ) {
   spend(
@@ -34,10 +34,8 @@ validator main(
       ct.Continue(Args {
         input_index,
         output_index,
+        addr_tx_wits_preimage,
         bad_addr_tx_wit_verification_key,
-        bad_addr_tx_wit_signature,
-        bad_addr_tx_wit_membership_proof,
-        inclusion_proof_script_withdraw_redeemer_index,
         fraud_proof_mint_redeemer_index,
       }) -> {
         let Transaction { inputs, outputs, redeemers, .. } = tx
@@ -66,26 +64,25 @@ validator main(
             redeemers,
           )
 
-        expect Some(State { bad_tx_body, bad_addr_tx_wits_root }) =
+        expect Some(State { bad_tx_id, bad_addr_tx_wits_hash }) =
           m_input_state_data
 
-        // 2. Prove that <VerificationKey, Signature> belongs to
-        //    addr_tx_wits(tx).
-        expect
-          utils.plutarch_phas(
-            merkle_root: bad_addr_tx_wits_root,
-            key: bad_addr_tx_wit_verification_key,
-            value: bad_addr_tx_wit_signature,
-            membership_proof: bad_addr_tx_wit_membership_proof,
-            redeemers: redeemers,
-            withdraw_redeemer_index: inclusion_proof_script_withdraw_redeemer_index,
-          )
+        // 2. Provided address witnesses preimage must match the hash carried
+        //    from the previous step.
+        expect addr_tx_wits_preimage |> verify_hash_32(bad_addr_tx_wits_hash)
 
-        // 3. The signature must be invalid.
+        // 3. The provided vkey must map to the invalid signature.
+        //    TODO: We are relying on the correctness of the witness set. We
+        //          might need a fraud proof to prevent e.g. duplicate vkeys.
+        let bad_addr_tx_wit_signature =
+          addr_tx_wits_preimage
+            |> pairs.expect_get_first(bad_addr_tx_wit_verification_key)
+
+        // 4. The signature must be invalid.
         expect
           verify_ed25519_signature(
             bad_addr_tx_wit_verification_key,
-            builtin.serialise_data(bad_tx_body),
+            bad_tx_id,
             bad_addr_tx_wit_signature,
           ) == False
 

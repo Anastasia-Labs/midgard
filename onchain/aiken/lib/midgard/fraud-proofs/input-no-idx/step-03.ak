@@ -1,22 +1,17 @@
-//TO REDO AFTER DEFINING SPECS FOR THIS FRAUD PROOF
+use midgard/computation_thread as ct
+use midgard/fraud_proofs/common.{TxInclusionArgs}
+use midgard/ledger_state.{MidgardTxId}
 
-// use midgard/computation_thread as ct
-// use midgard/ledger_state.{MidgardInputId,
-//   MidgardTxBodyCompact, MidgardTxCompact}
+pub type State {
+  bad_input_tx_id: MidgardTxId,
+  bad_input_output_index: Int,
+}
 
-// pub type State {
-//   verified_no_input_key: MidgardInputId,
-// }
+pub type Datum =
+  ct.StepDatum<State>
 
-// pub type Datum =
-//   ct.StepDatum<State>
+pub type Args =
+  TxInclusionArgs
 
-// pub type Args {
-//   input_index: Int,
-//   output_index: Int,
-//   previous_tx: MidgardTxCompact,
-//   previous_tx_body: MidgardTxBodyCompact,
-// }
-
-// pub type SpendRedeemer =
-//   ct.StepRedeemer<Args>
+pub type SpendRedeemer =
+  ct.StepRedeemer<Args>

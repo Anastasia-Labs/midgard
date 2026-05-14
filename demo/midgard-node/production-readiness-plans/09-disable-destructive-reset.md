@@ -2,141 +2,96 @@
 
 ## Problem Statement
 
-The node still contains an online reset workflow reachable from the production
-HTTP router. The on-chain reset branch currently fails closed, but the same
-workflow still includes local state deletion for every core SQL table and both
-persistent MPT stores. A production L2 must not expose a live endpoint whose
-purpose is to wipe local ledger state, pause protocol workers, and reset
-process-global recovery variables.
+The original blocker was an online reset workflow reachable from the production
+HTTP router. That route and `src/reset.ts` have since been removed from the
+current tree. The blocker is not fully closed because reset-specific runtime
+coupling still remains: `RESET_IN_PROGRESS` is still a process-global ref,
+still appears in debug logging, and still gates block commitment, block
+confirmation, and merge.
 
-The production fix is to remove `/reset` from the production route graph and
-delete the destructive reset workflow from runtime services. Recovery must be
-performed through narrow, offline, auditable commands that verify L1 evidence,
-SQL state, MPT roots, schema version, and operator intent before applying any
-mutation. Development-only state reset, if retained at all, must be outside the
-production server, explicitly named unsafe, impossible to invoke accidentally,
-and unavailable on persistent or production networks.
+The remaining production fix is to remove that reset-specific runtime coupling
+and replace any broad recovery expectations with narrow, offline, auditable
+commands that verify L1 evidence, SQL state, MPF roots, schema version, and
+operator intent before applying any mutation. Development-only state reset, if
+ever reintroduced, must be outside the production server, explicitly named
+unsafe, impossible to invoke accidentally, and unavailable on persistent or
+production networks.
 
-This plan implements the readiness report finding:
-[`PRODUCTION_READINESS_REPORT.md:674`](../PRODUCTION_READINESS_REPORT.md#L674)
-to
-[`PRODUCTION_READINESS_REPORT.md:755`](../PRODUCTION_READINESS_REPORT.md#L755).
+This document is the active P0 blocker 9 plan in the current tree. The original
+production-readiness report snapshot referenced by older versions of this file
+is no longer present in `demo/midgard-node`.
 
 ## Current Behavior
 
-The readiness report identifies the issue directly:
+Landed route/workflow removal:
 
-- The on-chain UTxO reset branch is disabled:
-  [`PRODUCTION_READINESS_REPORT.md:678`](../PRODUCTION_READINESS_REPORT.md#L678)
-  and
-  [`src/reset.ts:218`](../src/reset.ts#L218).
-- The local DB/MPT wipe still exists:
-  [`PRODUCTION_READINESS_REPORT.md:693`](../PRODUCTION_READINESS_REPORT.md#L693)
-  and
-  [`src/reset.ts:233`](../src/reset.ts#L233).
-- The route is exposed as `GET /reset`:
-  [`PRODUCTION_READINESS_REPORT.md:708`](../PRODUCTION_READINESS_REPORT.md#L708)
-  and
-  [`src/commands/listen-router.ts:655`](../src/commands/listen-router.ts#L655).
-- The recommended production direction is route removal plus offline recovery
-  tools:
-  [`PRODUCTION_READINESS_REPORT.md:738`](../PRODUCTION_READINESS_REPORT.md#L738).
+- `src/reset.ts` is absent from the current `src/` file list, and searches for
+  `Reset.program`, `RESET_ENDPOINT`, `getResetHandler`, and `/reset` in
+  production router/admin code find no reset route implementation.
+- `listen-router.ts` no longer declares a reset endpoint constant. The endpoint
+  constants include `tx`, `merge`, `init`, `commit`, `stateQueue`, status,
+  health, and readiness endpoints, but no reset endpoint:
+  [`src/commands/listen-router.ts:71`](../src/commands/listen-router.ts#L71).
+- `buildListenRouter` registers health, readiness, protocol, tx/status, UTxO,
+  block, init, commit, merge, state queue, log, deposit build, and submit
+  routes, with no `/reset` registration:
+  [`src/commands/listen-router.ts:1156`](../src/commands/listen-router.ts#L1156).
+- `ADMIN_ROUTE_PATHS` contains `/init`, `/commit`, `/merge`, `/stateQueue`,
+  `/logBlocksDB`, and `/logGlobals`; it no longer contains `/reset`:
+  [`src/commands/listen-utils.ts:9`](../src/commands/listen-utils.ts#L9).
+- Current tests exercise admin-route detection and authorization helpers, but
+  they do not yet assert that `/reset` is absent:
+  [`tests/listen-admission-auth.test.ts:59`](../tests/listen-admission-auth.test.ts#L59).
 
-Relevant code paths:
+Remaining reset-related process state and worker behavior:
 
-- `src/reset.ts` imports every destructive table helper and MPT deletion helper:
-  [`src/reset.ts:25`](../src/reset.ts#L25) to
-  [`src/reset.ts:40`](../src/reset.ts#L40).
-- `resetUTxOs` always fails with `cause: "reset-disabled"` because deinit is not
-  implemented for deployed contracts:
-  [`src/reset.ts:218`](../src/reset.ts#L218) to
-  [`src/reset.ts:228`](../src/reset.ts#L228).
-- `resetDatabases` still clears `mempool`, `mempool_ledger`,
-  `processed_mempool`, `blocks`, `immutable`, `latest_ledger`,
-  `confirmed_ledger`, `address_history`, `deposits_utxos`,
-  `deposit_ingestion_cursor`, pending block finalization tables,
-  `tx_rejections`, and deletes the mempool and ledger MPT stores:
-  [`src/reset.ts:233`](../src/reset.ts#L233) to
-  [`src/reset.ts:255`](../src/reset.ts#L255).
-- `Reset.program` sets `RESET_IN_PROGRESS`, runs `resetUTxOs` with retries in
-  parallel with `resetDatabases`, then resets in-memory state and heartbeat refs:
-  [`src/reset.ts:261`](../src/reset.ts#L261) to
-  [`src/reset.ts:303`](../src/reset.ts#L303).
-- `/reset` is declared as a router endpoint constant:
-  [`src/commands/listen-router.ts:72`](../src/commands/listen-router.ts#L72).
-- `getResetHandler` logs a reset request, runs `Reset.program`, and returns a
-  success message if the effect completes:
-  [`src/commands/listen-router.ts:659`](../src/commands/listen-router.ts#L659)
-  to
-  [`src/commands/listen-router.ts:678`](../src/commands/listen-router.ts#L678).
-- `buildListenRouter` registers `GET /reset` under admin-key authorization:
-  [`src/commands/listen-router.ts:1101`](../src/commands/listen-router.ts#L1101)
-  to
-  [`src/commands/listen-router.ts:1104`](../src/commands/listen-router.ts#L1104).
-- Admin authorization lists `/reset` as an admin route:
-  [`src/commands/listen-utils.ts:14`](../src/commands/listen-utils.ts#L14) to
-  [`src/commands/listen-utils.ts:22`](../src/commands/listen-utils.ts#L22).
-- Admin authorization can protect access only after the route exists; it does
-  not make an online destructive state wipe production-safe:
-  [`src/commands/listen-router.ts:106`](../src/commands/listen-router.ts#L106)
-  to
-  [`src/commands/listen-router.ts:130`](../src/commands/listen-router.ts#L130).
+- `Globals` still creates `RESET_IN_PROGRESS`, with a development-only comment:
+  [`src/services/globals.ts:24`](../src/services/globals.ts#L24), and still
+  exposes it from the service:
+  [`src/services/globals.ts:82`](../src/services/globals.ts#L82).
+- Block commitment still checks `RESET_IN_PROGRESS` before acquiring the commit
+  worker guard:
+  [`src/fibers/block-commitment.ts:303`](../src/fibers/block-commitment.ts#L303).
+- Block confirmation still returns early while `RESET_IN_PROGRESS` is true:
+  [`src/fibers/block-confirmation.ts:214`](../src/fibers/block-confirmation.ts#L214).
+- Merge still treats `RESET_IN_PROGRESS` as a reason to skip:
+  [`src/transactions/state-queue/merge-to-confirmed-state.ts:498`](../src/transactions/state-queue/merge-to-confirmed-state.ts#L498).
+- `getLogGlobalsHandler` still reads and logs `RESET_IN_PROGRESS`:
+  [`src/commands/listen-router.ts:857`](../src/commands/listen-router.ts#L857),
+  [`src/commands/listen-router.ts:900`](../src/commands/listen-router.ts#L900).
 
-Destructive helper behavior:
+Recovery tooling context:
 
-- `clearTable` runs `TRUNCATE TABLE ... CASCADE` for any logical table adapter:
-  [`src/database/utils/common.ts:38`](../src/database/utils/common.ts#L38) to
-  [`src/database/utils/common.ts:54`](../src/database/utils/common.ts#L54).
-- `MempoolDB.clear` truncates `mempool` and clears mempool tx deltas:
-  [`src/database/mempool.ts:134`](../src/database/mempool.ts#L134) to
-  [`src/database/mempool.ts:138`](../src/database/mempool.ts#L138).
-- Pending block finalization `clear` truncates the pending journal parent and
-  member tables:
-  [`src/database/pendingBlockFinalizations.ts:458`](../src/database/pendingBlockFinalizations.ts#L458)
-  to
-  [`src/database/pendingBlockFinalizations.ts:465`](../src/database/pendingBlockFinalizations.ts#L465).
-- `DepositsDB.clear` exposes whole-table deposit deletion:
-  [`src/database/deposits.ts:656`](../src/database/deposits.ts#L656).
-- `deleteMempoolMpt` and `deleteLedgerMpt` read paths from config and call
-  `deleteMpt`:
-  [`src/workers/utils/mpt.ts:146`](../src/workers/utils/mpt.ts#L146) to
-  [`src/workers/utils/mpt.ts:154`](../src/workers/utils/mpt.ts#L154).
-- `deleteMpt` removes the LevelDB path with `FS.rmSync(path, { recursive: true,
-force: true })`:
-  [`src/workers/utils/mpt.ts:156`](../src/workers/utils/mpt.ts#L156) to
-  [`src/workers/utils/mpt.ts:167`](../src/workers/utils/mpt.ts#L167).
-- `MidgardMpt.delete()` closes a backing database and then deletes its backing
-  store:
-  [`src/workers/utils/mpt.ts:706`](../src/workers/utils/mpt.ts#L706) to
-  [`src/workers/utils/mpt.ts:721`](../src/workers/utils/mpt.ts#L721).
+- Schema migration commands have landed: `db:migrate`, `db:status`, and
+  `db:verify` are wired in the CLI:
+  [`src/index.ts:300`](../src/index.ts#L300),
+  [`src/index.ts:320`](../src/index.ts#L320),
+  [`src/index.ts:338`](../src/index.ts#L338).
+- The replacement recovery commands described below, such as `verify-state`,
+  `mpf status`, `mpf rebuild`, and pending-finalization recovery commands, are
+  not present in current `src/` command wiring.
+- Existing mutating commands still need the shared offline recovery guard and
+  audit model if retained for production. `project-deposits-once` mutates
+  deposit and mempool-ledger state through normal node services:
+  [`src/index.ts:872`](../src/index.ts#L872). `audit-blocks-immutable --repair`
+  can mutate database state:
+  [`src/index.ts:1135`](../src/index.ts#L1135).
 
-Reset-related process state and worker behavior:
+Destructive helper context:
 
-- `Globals` includes `RESET_IN_PROGRESS`, described as development-only
-  coordination around spending all state-queue UTxOs:
-  [`src/services/globals.ts:24`](../src/services/globals.ts#L24) to
-  [`src/services/globals.ts:26`](../src/services/globals.ts#L26).
-- Block commitment skips work while `RESET_IN_PROGRESS` is true:
-  [`src/fibers/block-commitment.ts:257`](../src/fibers/block-commitment.ts#L257)
-  to
-  [`src/fibers/block-commitment.ts:263`](../src/fibers/block-commitment.ts#L263).
-- Block confirmation returns early while `RESET_IN_PROGRESS` is true:
-  [`src/fibers/block-confirmation.ts:184`](../src/fibers/block-confirmation.ts#L184)
-  to
-  [`src/fibers/block-confirmation.ts:190`](../src/fibers/block-confirmation.ts#L190).
-- Merge returns early if `RESET_IN_PROGRESS` is true:
-  [`src/transactions/state-queue/merge-to-confirmed-state.ts:489`](../src/transactions/state-queue/merge-to-confirmed-state.ts#L489)
-  to
-  [`src/transactions/state-queue/merge-to-confirmed-state.ts:499`](../src/transactions/state-queue/merge-to-confirmed-state.ts#L499).
-- `getLogGlobalsHandler` exposes the reset flag for debug inspection:
-  [`src/commands/listen-router.ts:827`](../src/commands/listen-router.ts#L827)
-  and
-  [`src/commands/listen-router.ts:867`](../src/commands/listen-router.ts#L867).
+- `clearTable` still exists as a low-level `TRUNCATE TABLE ... CASCADE` helper
+  used by table adapters, but no current reset route imports a whole-node reset
+  workflow:
+  [`src/database/utils/common.ts:38`](../src/database/utils/common.ts#L38).
+- The stale `src/workers/utils/mpt.ts` path referenced by older versions of
+  this plan is gone. Current MPF code has root reset helpers used for local
+  rollback/root management, not an exposed HTTP reset workflow:
+  [`src/workers/utils/mpf.ts:1833`](../src/workers/utils/mpf.ts#L1833).
 
 Startup and recovery context:
 
-- Startup initializes database tables, performs protocol checks, hydrates pending
-  finalization state, and then starts the HTTP server:
+- Startup verifies the migrated database schema, performs protocol checks,
+  hydrates pending finalization state, and then starts the HTTP server:
   [`src/commands/listen.ts:69`](../src/commands/listen.ts#L69) to
   [`src/commands/listen.ts:119`](../src/commands/listen.ts#L119).
 - Startup hydrates active pending block finalization journals into global refs:
@@ -164,29 +119,23 @@ Startup and recovery context:
 
 Related readiness plans:
 
-- P0 blocker 2 requires destructive recovery operations and MPT rebuilds to be
+- P0 blocker 2 requires destructive recovery operations and MPF rebuilds to be
   explicit operator commands with durable audit records:
-  [`02-atomic-recoverable-ledger-mutations.md:217`](./02-atomic-recoverable-ledger-mutations.md#L217).
+  [`02-atomic-recoverable-ledger-mutations.md`](./02-atomic-recoverable-ledger-mutations.md).
 - P0 blocker 2 explicitly warns that whole-table reset remains dangerous and
   should be isolated:
-  [`02-atomic-recoverable-ledger-mutations.md:950`](./02-atomic-recoverable-ledger-mutations.md#L950)
-  to
-  [`02-atomic-recoverable-ledger-mutations.md:952`](./02-atomic-recoverable-ledger-mutations.md#L952).
-- P0 blocker 4 already defines MPT rebuild as an explicit dry-run/apply recovery
+  [`02-atomic-recoverable-ledger-mutations.md`](./02-atomic-recoverable-ledger-mutations.md).
+- P0 blocker 4 already defines MPF rebuild as an explicit dry-run/apply recovery
   command with audit manifests:
-  [`04-startup-fail-closed-integrity.md:493`](./04-startup-fail-closed-integrity.md#L493)
-  to
-  [`04-startup-fail-closed-integrity.md:507`](./04-startup-fail-closed-integrity.md#L507).
+  [`04-startup-fail-closed-integrity.md`](./04-startup-fail-closed-integrity.md).
 - P0 blocker 5 allows local development reset only when explicitly named as
   destructive:
-  [`05-versioned-schema-migrations.md:458`](./05-versioned-schema-migrations.md#L458)
-  to
-  [`05-versioned-schema-migrations.md:464`](./05-versioned-schema-migrations.md#L464).
+  [`05-versioned-schema-migrations.md`](./05-versioned-schema-migrations.md).
 
 ## Target Invariants
 
 1. Production startup must not register any HTTP route that can delete SQL rows,
-   truncate tables, remove MPT backing stores, reset recovery journals, or reset
+   truncate tables, remove MPF backing stores, reset recovery journals, or reset
    process-global protocol state.
 2. `GET /reset` must not exist in the production route graph. A request to
    `/reset` must return the same unknown-route behavior as any unsupported path,
@@ -194,7 +143,7 @@ Related readiness plans:
 3. Admin-key authorization must not be treated as sufficient protection for
    destructive operations. Online destructive recovery is prohibited even for
    authenticated administrators.
-4. Normal recovery must never depend on whole-table truncation, MPT directory
+4. Normal recovery must never depend on whole-table truncation, MPF directory
    deletion, or process-global zeroing.
 5. Any state-mutating recovery must be offline: the HTTP listener and workers are
    stopped, the command obtains the node-wide PostgreSQL advisory lock, and the
@@ -202,7 +151,7 @@ Related readiness plans:
 6. Recovery tools must be narrow. Each tool mutates one explicit domain, verifies
    preconditions, supports dry-run where meaningful, emits durable audit records,
    and is idempotent or fail-closed on replay.
-7. MPT rebuild must be an auditable backup/swap operation. It must never call
+7. MPF rebuild must be an auditable backup/swap operation. It must never call
    `rm -rf` on the active store as a first step.
 8. Persistent SQL history, finalization journals, deposit records, admission
    records, and audit records must not be deleted as a convenience recovery path.
@@ -214,18 +163,19 @@ Related readiness plans:
 
 ## Route Removal And Production Gating
 
-### Remove The Production HTTP Route
+### Production HTTP Route Removed
 
-Implementation should remove the reset route completely from the server:
+Route removal has landed in the current implementation:
 
-1. Delete `RESET_ENDPOINT` from `listen-router.ts` if it has no remaining
-   production use.
-2. Delete `getResetHandler`.
-3. Remove the `RESET_ENDPOINT` route registration from `buildListenRouter`.
-4. Remove the `Reset` import from `listen-router.ts`.
-5. Remove `/reset` from `ADMIN_ROUTE_PATHS` in `listen-utils.ts`.
-6. Add a router test proving `GET /reset` is not registered and does not call
-   `Reset.program`.
+1. `RESET_ENDPOINT` is not present in `listen-router.ts`.
+2. `getResetHandler` is not present.
+3. `buildListenRouter` does not register `GET /reset`.
+4. `listen-router.ts` does not import a reset module.
+5. `/reset` is not present in `ADMIN_ROUTE_PATHS`.
+
+The remaining route-removal work is test and guard coverage: add a router/admin
+route test proving `GET /reset` is not registered and cannot call any reset
+program, plus a static guard that fails if the route or reset imports return.
 
 Do not replace the route with a 403, 404 handler, compatibility route, or
 feature-flagged handler. A named denial endpoint still advertises a production
@@ -250,10 +200,11 @@ If other in-progress work still references `RESET_IN_PROGRESS`, do not preserve
 it as a compatibility shim. Replace each use with the production recovery state
 that actually describes the condition being guarded.
 
-### Delete Or Quarantine `src/reset.ts`
+### `src/reset.ts` Deleted
 
-The preferred production implementation is to delete `src/reset.ts` after route
-removal and after tests prove no runtime import remains.
+`src/reset.ts` is gone from the current implementation. Keep it deleted. If a
+future development reset is needed, do not recreate the old production runtime
+module.
 
 If development reset must be retained temporarily, move it out of runtime code
 into a clearly named dev-only module, for example
@@ -266,7 +217,7 @@ into a clearly named dev-only module, for example
   module loading, so production bundles and import-graph tests cannot reach the
   destructive code.
 - The command refuses `NETWORK=mainnet`, `NETWORK=preprod`, and any config that
-  marks the database or MPT paths as persistent.
+  marks the database or MPF paths as persistent.
 - The command name includes `unsafe-dev-reset`.
 - It requires an exact acknowledgement flag such as
   `--i-understand-this-deletes-local-state`.
@@ -293,12 +244,12 @@ Add read-only commands first so operators can diagnose without mutating state:
 
 - `midgard-node verify-state --json`
   - Runs schema compatibility checks, SQL cross-table invariants, pending
-    finalization inspection, MPT root checks, deposit projection checks, and L1
+    finalization inspection, MPF root checks, deposit projection checks, and L1
     state-queue root comparison.
   - Exits non-zero on any invariant failure.
   - Emits stable machine-readable evidence and recommended recovery commands.
-- `midgard-node mpt status --json`
-  - Prints configured MPT paths, active roots, root manifest rows, filesystem
+- `midgard-node mpf status --json`
+  - Prints configured MPF paths, active roots, root manifest rows, filesystem
     presence, root persistence status, and SQL-derived expected roots.
 - `midgard-node pending-finalization status --json`
   - Prints active pending journal state, submitted tx hash if known, header hash,
@@ -317,10 +268,10 @@ commands below must require the node to be offline.
 
 Add narrow mutating commands that replace reset use cases:
 
-- `midgard-node mpt rebuild --trie <mempool|ledger> --from-sql --dry-run --write-audit <path>`
+- `midgard-node mpf rebuild --trie <transactions|ledger> --from-sql --dry-run --write-audit <path>`
   - Recomputes the trie from SQL, writes an audit manifest, and applies no
     mutation.
-- `midgard-node mpt rebuild --trie <mempool|ledger> --from-sql --apply --audit <path>`
+- `midgard-node mpf rebuild --trie <transactions|ledger> --from-sql --apply --audit <path>`
   - Requires a prior dry-run audit manifest, verifies it still matches current
     SQL/L1 evidence, builds a new store under a staging path, fsyncs, atomically
     swaps the active pointer or directory, and retains the previous store under a
@@ -343,14 +294,14 @@ Add narrow mutating commands that replace reset use cases:
 
 Every mutating command must:
 
-1. Refuse to run while the HTTP listener is active for the same database/MPT
+1. Refuse to run while the HTTP listener is active for the same database/MPF
    paths. Prefer an advisory lock plus process identity marker over best-effort
    port checks.
 2. Acquire the same node-wide PostgreSQL advisory lock used by startup recovery
    and migrations.
 3. Verify schema version and migration manifest before reading application
    tables.
-4. Verify configured network, contract identifiers, and MPT paths match the
+4. Verify configured network, contract identifiers, and MPF paths match the
    audit manifest or command evidence.
 5. Write a durable `started` audit event before mutation.
 6. Apply mutation in a transaction or journaled state machine.
@@ -434,13 +385,13 @@ and must not delay removing the HTTP route.
 ### Normal Production Recovery
 
 1. Stop the node process and verify no other node instance is serving the same
-   database and MPT paths.
-2. Take a database backup and a filesystem snapshot or copy of both MPT stores.
+   database and MPF paths.
+2. Take a database backup and a filesystem snapshot or copy of both MPF stores.
 3. Run `midgard-node db:status` and `midgard-node db:verify` once P0 blocker 5 is
    available.
 4. Run `midgard-node verify-state --json > verify-state.before.json`.
-5. If the failure is an MPT drift:
-   - run `midgard-node mpt rebuild --trie <name> --from-sql --dry-run --write-audit <path>`;
+5. If the failure is an MPF drift:
+   - run `midgard-node mpf rebuild --trie <name> --from-sql --dry-run --write-audit <path>`;
    - review old root, computed root, SQL fingerprint, L1 root evidence, and
      affected row counts;
    - run the matching `--apply --audit <path>` command;
@@ -493,7 +444,7 @@ deployment.
 ### Integration Tests
 
 - `GET /reset` returns the generic unknown-route response and leaves SQL tables,
-  MPT directories, and globals unchanged.
+  MPF directories, and globals unchanged.
 - A request to `/reset` with a valid admin key still cannot invoke any reset
   behavior.
 - Starting the production listener and then running a mutating recovery command
@@ -502,11 +453,11 @@ deployment.
 - Existing mutating CLI commands, including deposit projection and immutable
   block repair if retained, fail before mutation unless the shared offline
   recovery guard, schema checks, and audit writer are active.
-- `mpt rebuild --dry-run` writes an audit manifest and does not mutate active MPT
+- `mpf rebuild --dry-run` writes an audit manifest and does not mutate active MPF
   stores.
-- `mpt rebuild --apply` refuses if the audit manifest no longer matches current
+- `mpf rebuild --apply` refuses if the audit manifest no longer matches current
   SQL/L1 evidence.
-- `mpt rebuild --apply` preserves the old store in quarantine and updates only
+- `mpf rebuild --apply` preserves the old store in quarantine and updates only
   after postcondition verification.
 - Pending-finalization recovery succeeds only with matching L1 header evidence.
 - Pending-finalization abandon refuses without explicit non-canonical evidence.
@@ -518,7 +469,7 @@ deployment.
 
 - Crash after writing `recovery_started` but before mutation: rerun resumes or
   fails closed with an existing in-progress audit event.
-- Crash after staging an MPT rebuild but before promotion: startup ignores the
+- Crash after staging an MPF rebuild but before promotion: startup ignores the
   staging path and the recovery command can clean or resume it.
 - Crash after promotion but before `recovery_succeeded`: startup detects root
   manifest/audit mismatch and requires recovery verification, not reset.
@@ -538,19 +489,19 @@ deployment.
 
 ## Rollout Steps
 
-1. Remove `/reset` from `listen-router.ts` and `/reset` from admin route paths.
-   This is the immediate blocker fix and must not wait for replacement recovery
-   commands.
-2. Delete `src/reset.ts` or move any retained disposable cleanup code to a
-   dev-only command with all hard gates and no production static import.
-3. Remove `RESET_IN_PROGRESS` from `Globals`, logs, and worker branches.
+1. Keep `/reset` absent from `listen-router.ts` and admin route paths. This part
+   has landed and must not regress.
+2. Keep `src/reset.ts` deleted. If disposable cleanup is reintroduced, it must
+   be a dev-only command with all hard gates and no production static import.
+3. Remove remaining `RESET_IN_PROGRESS` references from `Globals`, logs, and
+   worker branches.
 4. Add unit, integration, static, and CI guard tests proving reset cannot be
    reached or reintroduced.
 5. Add the audit migration for operator recovery events, or sequence after P0
    blocker 5 if migrations land first.
 6. Add read-only state verification commands.
-7. Add MPT status and dry-run rebuild command.
-8. Add MPT apply rebuild with staging, backup/quarantine, advisory lock, and
+7. Add MPF status and dry-run rebuild command.
+8. Add MPF apply rebuild with staging, backup/quarantine, advisory lock, and
    audit records.
 9. Add pending-finalization and deposit projection recovery commands, or link to
    the implementations from P0 blockers 2 and 4 if they land first.
@@ -561,22 +512,23 @@ deployment.
 12. Run a deployment smoke test proving `/reset` is absent and normal startup,
     `/readyz`, `/submit`, commit, confirmation, and merge still work.
 13. During rollout, monitor startup integrity failures, recovery audit events,
-    MPT root metrics, and unknown-route hits for `/reset`.
+    MPF root metrics, and unknown-route hits for `/reset`.
 
 Rollback must not reintroduce `/reset`, `src/reset.ts` production imports, or
 `RESET_IN_PROGRESS`. If the first deployment has an unrelated regression, roll
 forward with a targeted fix or revert only unrelated changes while preserving
-the reset removal.
+the reset removal that has already landed.
 
 ## Risks And Mitigations
 
 - Risk: operators used `/reset` as a broad recovery escape hatch.
   Mitigation: ship read-only diagnostics before removing any documented recovery
   path, and provide narrow commands for the actual failure classes.
-- Risk: delaying route removal behind replacement tooling leaves the P0 online
-  destructive surface exposed.
-  Mitigation: remove the HTTP route, production imports, and reset flag first;
-  deliver replacement recovery tooling as separate audited CLI work.
+- Risk: delaying `RESET_IN_PROGRESS` cleanup behind replacement tooling leaves
+  stale reset-specific runtime coupling in production workers.
+  Mitigation: keep the HTTP route and reset module removed, remove the reset
+  flag next, and deliver replacement recovery tooling as separate audited CLI
+  work.
 - Risk: deleting the reset flag changes worker scheduling behavior.
   Mitigation: replace reset gating with durable recovery/readiness gates from P0
   blockers 2 and 4, and add worker tests for pending recovery states.
@@ -590,7 +542,7 @@ the reset removal.
 - Risk: dev/test environments still need disposable cleanup.
   Mitigation: provide a dev-only command with explicit acknowledgement and
   disposable-data-root checks, never an HTTP route.
-- Risk: MPT rebuild apply can lose the previous store if implemented as direct
+- Risk: MPF rebuild apply can lose the previous store if implemented as direct
   deletion.
   Mitigation: require staging, atomic promotion, quarantine retention, and
   postcondition verification before marking success.
@@ -612,18 +564,18 @@ the reset removal.
 - Should dev-only `unsafe-dev-reset` be compiled into the published binary but
   hidden behind runtime gates, or excluded from production packaging entirely?
   Excluding it from production packaging is safer.
-- What retention period should apply to quarantined MPT stores after successful
+- What retention period should apply to quarantined MPF stores after successful
   rebuild?
 - Which P0 blocker owns the final shared `verify-state` command if blockers 2,
   4, 5, and 9 are implemented in parallel?
 
 ## Concrete Checklist
 
-- [ ] Remove `GET /reset` from `buildListenRouter`.
-- [ ] Remove `/reset` from `ADMIN_ROUTE_PATHS`.
-- [ ] Remove `getResetHandler` and reset endpoint constants/imports from
+- [x] Remove `GET /reset` from `buildListenRouter`.
+- [x] Remove `/reset` from `ADMIN_ROUTE_PATHS`.
+- [x] Remove `getResetHandler` and reset endpoint constants/imports from
       production router code.
-- [ ] Delete `src/reset.ts` or move any retained cleanup code to a dev-only
+- [x] Delete `src/reset.ts` or move any retained cleanup code to a dev-only
       `unsafe-dev-reset` command with hard gates.
 - [ ] Prove production CLI entrypoints do not statically import any unsafe dev
       reset module.
@@ -631,9 +583,9 @@ the reset removal.
 - [ ] Remove reset gating from block commitment, block confirmation, and merge.
 - [ ] Remove reset state from debug/global logging.
 - [ ] Add `operator_recovery_events` migration and repository helpers.
-- [ ] Add read-only `verify-state`, `mpt status`, pending-finalization status,
+- [ ] Add read-only `verify-state`, `mpf status`, pending-finalization status,
       and deposit projection verification commands.
-- [ ] Add audited MPT rebuild dry-run and apply commands.
+- [ ] Add audited MPF rebuild dry-run and apply commands.
 - [ ] Add pending-finalization recovery/abandon commands if not already provided
       by P0 blocker 2 or 4.
 - [ ] Add strict deposit projection recovery command if not already provided by
@@ -661,7 +613,7 @@ This blocker is complete when:
 - Production workers no longer depend on `RESET_IN_PROGRESS`.
 - Any retained disposable reset is dev/test-only, explicitly unsafe, and
   impossible to reach through `listen`.
-- Operators have offline recovery commands that cover MPT rebuild, pending local
+- Operators have offline recovery commands that cover MPF rebuild, pending local
   finalization, deposit projection, and durable admission replay without
   deleting unrelated state.
 - Every mutating recovery command is guarded by advisory locks, schema checks,

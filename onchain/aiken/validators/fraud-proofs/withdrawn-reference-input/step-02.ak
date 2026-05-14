@@ -1,3 +1,4 @@
+use aiken/collection/list
 use aiken/crypto.{ScriptHash}
 use cardano/assets.{PolicyId}
 use cardano/transaction.{OutputReference, Transaction}
@@ -8,7 +9,6 @@ use midgard/fraud_proofs/withdrawn_reference_input/step_02.{
   Args, Datum, SpendRedeemer, State,
 }
 use midgard/fraud_proofs/withdrawn_reference_input/step_03
-use midgard/ledger_state
 
 validator main(
   step_03_validator_script_hash: ScriptHash,
@@ -33,12 +33,10 @@ validator main(
       ct.Continue(Args {
         input_index,
         output_index,
-        no_reference_input_id,
-        no_reference_input_resolved,
-        membership_proof_in_bad_tx,
-        membership_proof_script_redeemer_index,
+        reference_inputs_preimage,
+        bad_reference_input_index,
       }) -> {
-        let Transaction { inputs, outputs, redeemers, .. } = tx
+        let Transaction { inputs, outputs, .. } = tx
 
         expect Some(step_datum) = datum
 
@@ -62,28 +60,24 @@ validator main(
           )
 
         expect Some(State {
-          bad_tx_reference_inputs_root,
+          bad_tx_reference_inputs_hash,
           blocks_withdrawals_root,
         }) = m_input_state_data
 
-        // 2. Target input must be included in the verified transaction inputs.
+        // 2. Target reference input must be included in the verified
+        //    transaction reference inputs.
         expect
-          utils.plutarch_phas(
-            merkle_root: bad_tx_reference_inputs_root,
-            key: no_reference_input_id,
-            value: no_reference_input_resolved,
-            membership_proof: membership_proof_in_bad_tx,
-            redeemers: redeemers,
-            withdraw_redeemer_index: membership_proof_script_redeemer_index,
-          )
+          reference_inputs_preimage
+            |> utils.verify_hash_32(bad_tx_reference_inputs_hash)
+        let missing_reference_input_outref =
+          reference_inputs_preimage |> list.expect_at(bad_reference_input_index)
 
-        // 3. Output reference of the missing reference input, plus the required
-        //    roots must be passed to the next step.
+        // 3. Target reference input, plus the withdrawals root, must be passed
+        //    to the next step.
         expect output_script_hash == step_03_validator_script_hash
         let expected_output_state: Data =
           step_03.State {
-            missing_output_reference: no_reference_input_id
-              |> ledger_state.midgard_input_id_to_out_ref,
+            missing_reference_input_outref,
             blocks_withdrawals_root,
           }
         expect output_state_data == expected_output_state

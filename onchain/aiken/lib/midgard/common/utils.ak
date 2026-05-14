@@ -431,6 +431,10 @@ pub fn verify_hash_32(data: Data, data_hash: H32<Data>) -> Bool {
   blake2b_256(cbor.serialise(data)) == data_hash
 }
 
+pub fn serialise_and_hash_32(data: Data) -> H32<Data> {
+  data |> cbor.serialise |> blake2b_256
+}
+
 // Verify a 28-byte hash (Blake2b-224)
 pub fn verify_hash_28(data: Data, data_hash: H28<Data>) -> Bool {
   blake2b_224(cbor.serialise(data)) == data_hash
@@ -596,7 +600,7 @@ pub fn plutarch_phas(
   redeemers: Pairs<ScriptPurpose, Redeemer>,
   withdraw_redeemer_index: Int,
 ) -> Bool {
-  let _ = withdraw_redeemer_index
+  expect _withdraw_redeemer_index = withdraw_redeemer_index
   let phas_validator_redeemer =
     get_unique_withdraw_redeemer(redeemers, env.plutarch_phas_validator_hash)
   let key_bytes = cbor.serialise(key)
@@ -619,6 +623,33 @@ pub fn plutarch_phas(
   True
 }
 
+pub fn plutarch_phas_raw(
+  merkle_root: ByteArray,
+  key_bytes: ByteArray,
+  value_bytes: ByteArray,
+  membership_proof: Proof,
+  redeemers: Pairs<ScriptPurpose, Redeemer>,
+  withdraw_redeemer_index: Int,
+) -> Bool {
+  expect _withdraw_redeemer_index = withdraw_redeemer_index
+  let phas_validator_redeemer =
+    get_unique_withdraw_redeemer(redeemers, env.plutarch_phas_validator_hash)
+  expect [
+    redeemer_root_data, redeemer_key_data, redeemer_value_data,
+    redeemer_proof_data,
+    ..
+  ] = builtin.un_list_data(phas_validator_redeemer)
+
+  let proof_data: Data = membership_proof
+
+  expect redeemer_root_data == builtin.b_data(merkle_root)
+  expect redeemer_key_data == builtin.b_data(key_bytes)
+  expect redeemer_value_data == builtin.b_data(value_bytes)
+  expect redeemer_proof_data == proof_data
+
+  True
+}
+
 /// Merkelized validator abstraction for `pexcludes` function from Plutarch.
 ///
 /// > [!WARNING]
@@ -630,7 +661,7 @@ pub fn plutarch_pexcludes(
   redeemers: Pairs<ScriptPurpose, Redeemer>,
   withdraw_redeemer_index: Int,
 ) -> Bool {
-  let _ = withdraw_redeemer_index
+  expect _withdraw_redeemer_index = withdraw_redeemer_index
   let pexcludes_validator_redeemer =
     get_unique_withdraw_redeemer(
       redeemers,

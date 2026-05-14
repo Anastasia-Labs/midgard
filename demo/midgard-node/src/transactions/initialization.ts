@@ -9,6 +9,7 @@ import {
 import * as SDK from "@al-ft/midgard-sdk";
 import {
   credentialToAddress,
+  Data as LucidData,
   scriptHashToCredential,
   toUnit,
   UTxO,
@@ -49,37 +50,100 @@ export const uint32ToFraudProofID = (index: number): Buffer => {
   return buf;
 };
 
+const FraudProofCatalogueIdSchema = LucidData.Bytes({
+  minLength: SDK.FRAUD_PROOF_CATALOGUE_ID_BYTE_COUNT,
+  maxLength: SDK.FRAUD_PROOF_CATALOGUE_ID_BYTE_COUNT,
+});
+type LucidDataSchema = Parameters<typeof LucidData.to>[1];
+
+type IndexedFraudProof = readonly [
+  categoryId: Buffer,
+  validator: SDK.SpendingValidator,
+  categoryName: SDK.FraudProofCatalogueCategoryName,
+];
+
 /**
  * Assigns deterministic integer keys to the fraud-proof validator set.
  */
 export const fraudProofsToIndexedValidators = (
   fraudProofs: SDK.FraudProofs,
-): [Buffer, SDK.SpendingValidator][] => {
-  return Object.entries(fraudProofs).map(
-    ([_fraudProofTitle, fraudProofValidator], i) => [
+): IndexedFraudProof[] => {
+  return SDK.FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER.map(
+    (fraudProofTitle, i) => [
       uint32ToFraudProofID(i),
-      fraudProofValidator,
+      fraudProofs[fraudProofTitle],
+      fraudProofTitle,
     ],
   );
 };
+
+const encodeFraudProofCatalogueKey = (categoryId: Buffer): Buffer =>
+  Buffer.from(
+    LucidData.to(
+      categoryId.toString("hex"),
+      FraudProofCatalogueIdSchema as unknown as LucidDataSchema,
+    ),
+    "hex",
+  );
+
+const encodeFraudProofCatalogueValue = (
+  fraudProofValidator: SDK.SpendingValidator,
+): Buffer =>
+  Buffer.from(
+    LucidData.to(
+      fraudProofValidator.spendingScriptHash,
+      SDK.ScriptHashSchema as unknown as LucidDataSchema,
+    ),
+    "hex",
+  );
 
 /**
  * Builds the Merkle Patricia Forestry root used as the fraud-proof catalogue.
  */
 export const createFraudProofCatalogueMpf = (
-  indexedFraudProofs: [Buffer, SDK.SpendingValidator][],
+  indexedFraudProofs: readonly IndexedFraudProof[],
 ): Effect.Effect<MidgardMpf, MpfError> =>
   Effect.gen(function* () {
     const batchOps = indexedFraudProofs.map(
       ([i, fraudProofValidator]): MpfBatchOp => ({
         type: "insert",
-        key: i,
-        value: Buffer.from(fraudProofValidator.spendingScriptHash, "hex"),
+        key: encodeFraudProofCatalogueKey(i),
+        value: encodeFraudProofCatalogueValue(fraudProofValidator),
       }),
     );
     const mpf = yield* MidgardMpf.createScratch("fraud_proof_catalogue");
     yield* mpf.applyBatch(batchOps);
     return mpf;
+  });
+
+export const buildFraudProofCatalogueDeploymentInfo = (
+  indexedFraudProofs: readonly IndexedFraudProof[],
+): Effect.Effect<SDK.FraudProofCatalogueDeploymentInfo, MpfError> =>
+  Effect.gen(function* () {
+    const mpf = yield* createFraudProofCatalogueMpf(indexedFraudProofs);
+    const root = yield* mpf.rootHex();
+    const categories: Partial<
+      Record<
+        SDK.FraudProofCatalogueCategoryName,
+        SDK.FraudProofCatalogueCategoryDeploymentInfo
+      >
+    > = {};
+
+    for (const [categoryId, validator, categoryName] of indexedFraudProofs) {
+      const key = encodeFraudProofCatalogueKey(categoryId);
+      const proof = yield* mpf.prove(key);
+      categories[categoryName] = {
+        categoryId: categoryId.toString("hex"),
+        scriptHash: validator.spendingScriptHash,
+        membershipProofCbor: proof.cbor.toString("hex"),
+      };
+    }
+
+    return {
+      root,
+      categories:
+        categories as SDK.FraudProofCatalogueDeploymentInfo["categories"],
+    };
   });
 
 /**
@@ -557,10 +621,10 @@ export const program: Effect.Effect<
   const indexedFraudProofs = fraudProofsToIndexedValidators(
     contracts.fraudProofs,
   );
-  const fpMpf = yield* createFraudProofCatalogueMpf(indexedFraudProofs);
-  const fraudProofCatalogueMerkleRoot = yield* fpMpf.rootHex();
+  const fraudProofCatalogueDeploymentInfo =
+    yield* buildFraudProofCatalogueDeploymentInfo(indexedFraudProofs);
   yield* Effect.logInfo(
-    `Fraud proof catalogue root prepared for initialization: ${fraudProofCatalogueMerkleRoot}`,
+    `Fraud proof catalogue root prepared for initialization: ${fraudProofCatalogueDeploymentInfo.root}`,
   );
 
   const status = yield* fetchProtocolDeploymentStatus(lucid, contracts);
@@ -585,7 +649,7 @@ export const program: Effect.Effect<
       lucid,
       contracts,
       nodeConfig,
-      fraudProofCatalogueMerkleRoot,
+      fraudProofCatalogueDeploymentInfo.root,
       initDeadline,
       referenceScripts,
     ),

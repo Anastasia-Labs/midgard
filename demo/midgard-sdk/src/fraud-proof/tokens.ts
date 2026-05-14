@@ -2,7 +2,7 @@ import { Data } from "@lucid-evolution/lucid";
 import { LucidEvolution, TxBuilder } from "@lucid-evolution/lucid";
 
 export const FraudProofTokenDatumSchema = Data.Object({
-  fraudProver: Data.Bytes(),
+  fraud_prover: Data.Bytes({ minLength: 28, maxLength: 28 }),
 });
 export type FraudProofTokenDatum = Data.Static<
   typeof FraudProofTokenDatumSchema
@@ -20,11 +20,8 @@ export const FraudProofTokenSpendRedeemer =
   FraudProofTokenSpendRedeemerSchema as unknown as FraudProofTokenSpendRedeemer;
 
 export const FraudProofTokenMintRedeemerSchema = Data.Object({
-  hubOracleRefInputIndex: Data.Integer(),
-  fraudProofLastStepInputIndex: Data.Integer(),
-  computationThreadTokenAssetName: Data.Bytes(),
-  outputWithFraudProofIndex: Data.Integer(),
-  hubOracleAssetName: Data.Bytes(),
+  computation_thread_token_asset_name: Data.Bytes(),
+  computation_thread_mint_redeemer_index: Data.Integer(),
 });
 export type FraudProofTokenMintRedeemer = Data.Static<
   typeof FraudProofTokenMintRedeemerSchema

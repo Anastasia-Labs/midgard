@@ -1,16 +1,15 @@
-use aiken/crypto.{ScriptHash}
 use cardano/address.{Address}
 use cardano/assets.{PolicyId}
 use cardano/transaction.{OutputReference, Transaction}
-use midgard/common/constants
+use env
 use midgard/computation_thread as ct
 use midgard/fraud_proofs/common.{cancel, finalize}
 use midgard/fraud_proofs/zero_input/step_02.{Args, Datum, SpendRedeemer, State}
 
 validator main(
-  computation_thread_token_policy_id: PolicyId,
-  fraud_proof_token_policy_id: ScriptHash,
+  fraud_proof_token_policy_id: PolicyId,
   fraud_proof_token_address: Address,
+  computation_thread_token_policy_id: PolicyId,
 ) {
   spend(
     datum: Option<Datum>,
@@ -59,10 +58,10 @@ validator main(
             redeemers,
           )
 
-        expect Some(State { bad_tx_spend_inputs }) = m_input_state_data
+        expect Some(State { bad_tx_spend_inputs_hash }) = m_input_state_data
 
-        // 2. The merkle tree of inputs must be empty
-        expect bad_tx_spend_inputs == constants.empty_merkle_tree_root
+        // 2. The spend inputs list must be empty.
+        expect bad_tx_spend_inputs_hash == env.empty_list_hash
 
         // Done.
         True

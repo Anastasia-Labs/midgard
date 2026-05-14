@@ -1,14 +1,15 @@
-use cardano/address.{Address}
+use aiken/collection/list
+use aiken/crypto.{ScriptHash}
 use cardano/assets.{PolicyId}
 use cardano/transaction.{OutputReference, Transaction}
 use midgard/common/utils
 use midgard/computation_thread as ct
-use midgard/fraud_proofs/common.{cancel, finalize}
+use midgard/fraud_proofs/common.{cancel, continue}
 use midgard/fraud_proofs/no_input/step_02.{Args, Datum, SpendRedeemer, State}
+use midgard/fraud_proofs/no_input/step_03
 
 validator main(
-  fraud_proof_token_policy_id: PolicyId,
-  fraud_proof_token_address: Address,
+  step_03_validator_script_hash: ScriptHash,
   computation_thread_token_policy_id: PolicyId,
 ) {
   spend(
@@ -30,65 +31,52 @@ validator main(
       ct.Continue(Args {
         input_index,
         output_index,
-        no_input_key,
-        no_input_value,
-        membership_proof_in_bad_tx,
-        membership_proof_script_redeemer_index,
-        non_membership_proof_in_ledger,
-        non_membership_proof_script_redeemer_index,
-        fraud_proof_mint_redeemer_index,
+        inputs_preimage,
+        bad_input_index,
       }) -> {
-        let Transaction { inputs, outputs, redeemers, .. } = tx
+        let Transaction { inputs, outputs, .. } = tx
 
         expect Some(step_datum) = datum
 
-        // 1. Specified input must be authentic and properly reproduced at the
-        //    fraud proof's spending address.
+        // 1. Specified input must be authentic and properly reproduced.
         let
           _own_script_hash,
           _computation_thread_token_asset_name,
           _fraud_prover,
           m_input_state_data,
+          output_script_hash,
+          output_state_data,
         <-
-          finalize(
+          continue(
             computation_thread_token_policy_id,
-            fraud_proof_token_policy_id,
-            fraud_proof_token_address,
             step_datum,
             input_index,
             output_index,
-            fraud_proof_mint_redeemer_index,
             own_out_ref,
             inputs,
             outputs,
-            redeemers,
           )
 
-        expect Some(State { bad_tx_inputs_root, blocks_prev_utxos_root }) =
-          m_input_state_data
-
-        let no_input_key_data: Data = no_input_key
+        expect Some(State {
+          bad_tx_inputs_hash,
+          blocks_prev_utxos_root,
+          blocks_transactions_root,
+        }) = m_input_state_data
 
         // 2. Target input must be included in the verified transaction inputs.
-        expect
-          utils.plutarch_phas(
-            merkle_root: bad_tx_inputs_root,
-            key: no_input_key_data,
-            value: no_input_value,
-            membership_proof: membership_proof_in_bad_tx,
-            redeemers: redeemers,
-            withdraw_redeemer_index: membership_proof_script_redeemer_index,
-          )
+        expect inputs_preimage |> utils.verify_hash_32(bad_tx_inputs_hash)
+        let no_input_outref = inputs_preimage |> list.expect_at(bad_input_index)
 
-        // 3. Target input must be absent from the verified block's prev ledger.
-        expect
-          utils.plutarch_pexcludes(
-            merkle_root: blocks_prev_utxos_root,
-            key: no_input_key_data,
-            non_membership_proof: non_membership_proof_in_ledger,
-            redeemers: redeemers,
-            withdraw_redeemer_index: non_membership_proof_script_redeemer_index,
-          )
+        // 3. Target input, plus the relevant block roots, must be passed to the
+        //    next step.
+        expect output_script_hash == step_03_validator_script_hash
+        let expected_output_state: Data =
+          step_03.State {
+            missing_output_reference: no_input_outref,
+            blocks_prev_utxos_root,
+            blocks_transactions_root,
+          }
+        expect output_state_data == expected_output_state
 
         // Done.
         True

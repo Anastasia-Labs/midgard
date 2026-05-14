@@ -59,30 +59,31 @@ validator main(
           )
 
         expect Some(State {
-          missing_output_reference,
+          missing_reference_input_outref,
           blocks_prev_utxos_root,
           blocks_transactions_root,
         }) = m_input_state_data
 
-        // 3. The block's transactions root must be passed to next step's
-        //    address.
-        expect output_script_hash == step_04_validator_script_hash
-        let expected_output_state: Data =
-          step_04.State {
-            missing_ref_input_tx_id: missing_output_reference.transaction_id,
-            blocks_transactions_root,
-          }
-        expect output_state_data == expected_output_state
-
-        // 4. Target input must be absent from the verified block's prev ledger.
+        // 2. Target reference input must be absent from the verified block's
+        //    prev ledger.
         expect
           utils.plutarch_pexcludes(
             merkle_root: blocks_prev_utxos_root,
-            key: missing_output_reference,
+            key: missing_reference_input_outref,
             non_membership_proof: non_membership_proof_in_ledger,
             redeemers: redeemers,
             withdraw_redeemer_index: non_membership_proof_script_redeemer_index,
           )
+
+        // 3. Reference input's transaction ID, plus the block's transactions
+        //    root, must be passed to the next step.
+        expect output_script_hash == step_04_validator_script_hash
+        let expected_output_state: Data =
+          step_04.State {
+            missing_reference_input_tx_id: missing_reference_input_outref.transaction_id,
+            blocks_transactions_root,
+          }
+        expect output_state_data == expected_output_state
 
         // Done.
         True

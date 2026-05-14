@@ -116,6 +116,9 @@ describe("midgard contracts registry", () => {
       expect(resolved.reserve.withdrawalScriptCBOR).not.toEqual(
         placeholderContracts.reserve.withdrawalScriptCBOR,
       );
+      expect(resolved.fraudProofs.doubleSpend.spendingScriptCBOR).not.toEqual(
+        placeholderContracts.fraudProofs.doubleSpend.spendingScriptCBOR,
+      );
     }).pipe(Effect.provide(AlwaysSucceedsContract.Default)),
   );
 

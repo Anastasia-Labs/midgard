@@ -43,6 +43,7 @@
     "test": "test"
   },
   "dependencies": {
+    "@harmoniclabs/cbor": "1.6.6",
     "@harmoniclabs/crypto": "^0.3.0",
     "@noble/hashes": "^2.0.1"
   },

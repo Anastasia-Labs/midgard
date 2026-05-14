@@ -3,12 +3,14 @@
 ## Problem Statement
 
 Startup is the last safe point before the node accepts L2 traffic and starts
-mutating local protocol state. Today, several startup checks are best-effort:
-deposit catch-up and deposit projection failures are logged and suppressed, and
-the HTTP server plus background fibers still start. A production L2 cannot admit
-transactions, build block roots, or perform local finalization when the node has
-not proven that local SQL state, LevelDB-backed MPT state, L1 state, deposit
-state, and pending recovery journals agree.
+mutating local protocol state. Several fail-closed checks have now landed:
+schema compatibility, protocol startup checks, startup deposit catch-up, startup
+deposit projection, startup withdrawal catch-up, pending payload completeness,
+and unfinished local mutation-job detection all run before HTTP serving and
+background fibers. A production L2 still cannot admit transactions, build block
+roots, or perform local finalization until the node has also proven that local
+SQL state, LevelDB-backed MPF state, L1 state, user-event state, and pending
+recovery journals agree.
 
 The production behavior must be fail closed by default:
 
@@ -19,60 +21,77 @@ The production behavior must be fail closed by default:
 - Startup may perform deterministic, idempotent reconciliation only when the
   source of truth is available and the reconciliation result is verified before
   serving.
-- Startup must never silently rewrite data, reseed state, delete MPT stores, or
+- Startup must never silently rewrite data, reseed state, delete MPF stores, or
   continue from ambiguous state.
 
-This plan is intentionally limited to implementation planning. It does not
-implement code.
+This document is now both an implementation status tracker and the remaining
+plan. It should clearly distinguish landed behavior from outstanding integrity
+work.
 
 ## Current Behavior
 
-`runNode` creates an in-memory submit queue before startup checks:
-[`src/commands/listen.ts:63`](../src/commands/listen.ts#L63).
-That queue is not externally reachable until the HTTP router is bound, but the
-production startup gate should still be evaluated before constructing admission
-plumbing so a failed node has no usable submission surface.
+`runNode` still creates an in-memory submit queue before startup checks:
+[`src/commands/listen.ts:68`](../src/commands/listen.ts#L68). The queue is not
+externally reachable until the HTTP router is bound:
+[`src/commands/listen.ts:160`](../src/commands/listen.ts#L160). This is a
+remaining ordering gap for the stricter invariant that a failed node should not
+construct admission plumbing at all.
 
-Database initialization and the current startup checks run before the HTTP
-server:
-[`src/commands/listen.ts:69`](../src/commands/listen.ts#L69).
-This initialization is schema-mutating: `InitDB.program` executes
-`CREATE TABLE IF NOT EXISTS`, index creation, and index drop/recreate statements
-during normal `listen` startup:
-[`src/database/init.ts:21`](../src/database/init.ts#L21).
-That behavior is incompatible with fail-closed startup because it can mask an
-unversioned, partially migrated, or drifted database before integrity checks
-inspect it.
+Database initialization and startup checks run before the HTTP server and worker
+fibers:
+[`src/commands/listen.ts:72`](../src/commands/listen.ts#L72) through
+[`src/commands/listen.ts:133`](../src/commands/listen.ts#L133). `InitDB.program`
+is no longer schema-mutating application DDL; it delegates to
+`MigrationRunner.assertCompatible` and maps incompatibility into `DatabaseError`:
+[`src/database/init.ts:13`](../src/database/init.ts#L13). The runner verifies the
+metadata ledger, exact expected version, checksums, and application table/index
+presence without creating application tables:
+[`src/database/migrations/runner.ts:767`](../src/database/migrations/runner.ts#L767).
+The only startup-time DDL exception is migration metadata table bootstrap inside
+the migration runner:
+[`src/database/migrations/runner.ts:59`](../src/database/migrations/runner.ts#L59).
 
-Protocol initialization and topology checks are already mandatory because
-`ensureProtocolInitializedOnStartup` logs and dies on failure:
-[`src/commands/listen-startup.ts:91`](../src/commands/listen-startup.ts#L91)
+Protocol initialization, state-queue topology, and reference-script checks are
+mandatory startup checks. `ensureProtocolInitializedOnStartup` verifies or
+initializes protocol deployment according to startup policy, verifies runtime
+reference scripts, writes deployment info, and dies on failure:
+[`src/commands/listen-startup.ts:142`](../src/commands/listen-startup.ts#L142)
 and
-[`src/commands/listen-startup.ts:152`](../src/commands/listen-startup.ts#L152).
+[`src/commands/listen-startup.ts:173`](../src/commands/listen-startup.ts#L173).
 
-The local block boundary is seeded from the current state-queue tip and, when
-the tip header has a pending-finalization journal, from that journal's block end
-time:
-[`src/commands/listen-startup.ts:165`](../src/commands/listen-startup.ts#L165).
-This is mandatory via `Effect.orDie`:
-[`src/commands/listen-startup.ts:202`](../src/commands/listen-startup.ts#L202).
+The local block boundary is seeded from a startup state-queue snapshot. Startup
+also scans canonical committed headers and may revive an abandoned
+payload-bearing journal so local finalization can recover in canonical order:
+[`src/commands/listen-startup.ts:43`](../src/commands/listen-startup.ts#L43),
+[`src/commands/listen-startup.ts:71`](../src/commands/listen-startup.ts#L71), and
+[`src/commands/listen-startup.ts:247`](../src/commands/listen-startup.ts#L247).
+This path is mandatory via `Effect.orDie`:
+[`src/commands/listen-startup.ts:323`](../src/commands/listen-startup.ts#L323).
 
-Pending finalization hydration loads at most one active journal into process
-refs:
-[`src/commands/listen-startup.ts:211`](../src/commands/listen-startup.ts#L211).
+Pending finalization hydration now first asserts that active journal payload
+members are complete:
+[`src/commands/listen-startup.ts:335`](../src/commands/listen-startup.ts#L335).
+It still loads at most one active journal because `retrieveActive` orders and
+limits to one row:
+[`src/database/pendingBlockFinalizations.ts:412`](../src/database/pendingBlockFinalizations.ts#L412).
 It sets `LOCAL_FINALIZATION_PENDING` for `pending_submission`,
 `submitted_local_finalization_pending`, and `observed_waiting_stability`:
-[`src/commands/listen-startup.ts:235`](../src/commands/listen-startup.ts#L235).
-It is also mandatory via `Effect.orDie`:
-[`src/commands/listen-startup.ts:252`](../src/commands/listen-startup.ts#L252).
+[`src/commands/listen-startup.ts:357`](../src/commands/listen-startup.ts#L357).
+Full L1 stale/confirmed comparison remains outstanding.
 
-Startup deposit catch-up is not mandatory. It logs a warning and suppresses all
-errors:
-[`src/commands/listen.ts:73`](../src/commands/listen.ts#L73).
+Startup deposit catch-up is now mandatory. `runNode` logs failures and maps them
+to `DatabaseInitializationError`, preventing the server from being constructed:
+[`src/commands/listen.ts:92`](../src/commands/listen.ts#L92).
 
-Startup deposit projection reconciliation is also not mandatory. It logs a
-warning and suppresses all errors:
-[`src/commands/listen.ts:81`](../src/commands/listen.ts#L81).
+Startup deposit projection reconciliation is also mandatory and maps failures to
+`DatabaseInitializationError`:
+[`src/commands/listen.ts:106`](../src/commands/listen.ts#L106).
+
+Startup withdrawal catch-up has been added and is mandatory in the same way:
+[`src/commands/listen.ts:120`](../src/commands/listen.ts#L120).
+
+Startup refuses to serve when unfinished local mutation jobs are present:
+[`src/commands/listen.ts:76`](../src/commands/listen.ts#L76).
 
 The steady-state deposit fetch fiber also suppresses failures:
 [`src/fibers/fetch-and-insert-deposit-utxos.ts:257`](../src/fibers/fetch-and-insert-deposit-utxos.ts#L257).
@@ -104,18 +123,27 @@ Its strict deposit reconcile path fails when an existing source-event row has a
 different payload:
 [`src/database/mempoolLedger.ts:141`](../src/database/mempoolLedger.ts#L141).
 
-The MPT helper opens persistent ledger and mempool tries from configured paths:
-[`src/workers/utils/mpt.ts:86`](../src/workers/utils/mpt.ts#L86).
-If the ledger trie root is empty, it currently inserts configured genesis UTxOs:
-[`src/workers/utils/mpt.ts:100`](../src/workers/utils/mpt.ts#L100).
-For production startup this is dangerous unless proven to be the first
-deployment state, because an empty or missing trie can mean data loss.
+Withdrawal ingestion reconciles visible withdrawal order UTxOs into
+`withdrawal_utxos`:
+[`src/fibers/fetch-and-insert-withdrawal-utxos.ts:99`](../src/fibers/fetch-and-insert-withdrawal-utxos.ts#L99).
+Its startup call is fail-closed, but the strict startup verifier still needs the
+same stable barrier, re-read, and L1 evidence discipline required for deposits.
 
-Block construction mutates MPT roots and writes the new transaction and UTxO
+The MPF helper opens persistent ledger and transactions stores from configured
+paths:
+[`src/workers/utils/mpf.ts:155`](../src/workers/utils/mpf.ts#L155).
+If the ledger MPF root is empty, it currently inserts configured genesis UTxOs:
+[`src/workers/utils/mpf.ts:169`](../src/workers/utils/mpf.ts#L169).
+For production startup this is dangerous unless proven to be the first
+deployment state, because an empty or missing MPF store can mean data loss.
+
+Block construction mutates MPF roots and writes the new transaction and UTxO
 roots:
-[`src/workers/utils/mpt.ts:411`](../src/workers/utils/mpt.ts#L411).
-It already refuses to build a block past the deposit visibility barrier:
-[`src/workers/utils/mpt.ts:350`](../src/workers/utils/mpt.ts#L350).
+[`src/workers/utils/mpf.ts:819`](../src/workers/utils/mpf.ts#L819).
+It already refuses to build a block past commit-time deposit or withdrawal
+visibility barriers:
+[`src/workers/utils/mpf.ts:891`](../src/workers/utils/mpf.ts#L891) and
+[`src/workers/utils/mpf.ts:906`](../src/workers/utils/mpf.ts#L906).
 
 Pending finalization journals are durable and constrained to one active record:
 [`src/database/pendingBlockFinalizations.ts:108`](../src/database/pendingBlockFinalizations.ts#L108).
@@ -125,19 +153,40 @@ Confirmed pending blocks update deposit header assignment and pending status:
 [`src/fibers/block-confirmation.ts:87`](../src/fibers/block-confirmation.ts#L87).
 
 Local commit finalization mutates immutable transactions, block links,
-processed/mempool rows, and the mempool trie as separate effects:
-[`src/workers/utils/commit-submission.ts:38`](../src/workers/utils/commit-submission.ts#L38).
+processed/mempool rows, withdrawal ledger effects, and the transactions MPF root
+marker:
+[`src/workers/utils/commit-submission.ts:128`](../src/workers/utils/commit-submission.ts#L128).
 Successful submission then marks included deposits and the pending journal:
-[`src/workers/utils/commit-submission.ts:163`](../src/workers/utils/commit-submission.ts#L163).
+[`src/workers/utils/commit-submission.ts:269`](../src/workers/utils/commit-submission.ts#L269).
 Recovery completion marks the pending journal finalized:
-[`src/workers/utils/commit-submission.ts:203`](../src/workers/utils/commit-submission.ts#L203).
+[`src/workers/utils/commit-submission.ts:323`](../src/workers/utils/commit-submission.ts#L323).
 
 Readiness currently checks database connectivity, worker heartbeats, queue
-depth, and `LOCAL_FINALIZATION_PENDING`:
-[`src/commands/readiness.ts:37`](../src/commands/readiness.ts#L37).
+depth, unresolved block-submission age, and `LOCAL_FINALIZATION_PENDING`:
+[`src/commands/readiness.ts:40`](../src/commands/readiness.ts#L40).
 The `/readyz` route wires those inputs:
-[`src/commands/listen-router.ts:440`](../src/commands/listen-router.ts#L440).
-It has no startup-integrity status input.
+[`src/commands/listen-router.ts:448`](../src/commands/listen-router.ts#L448).
+The route also reports durable admission backlog and unfinished local mutation
+jobs:
+[`src/commands/listen-router.ts:454`](../src/commands/listen-router.ts#L454).
+It still has no startup-integrity status input and no verified schema metadata in
+the readiness response.
+
+Remaining startup integrity gaps include:
+
+- no unified `StartupIntegrityError` or durable/exported startup integrity report;
+- submit queue construction still precedes startup checks;
+- deposit and withdrawal startup reconciliation lack persisted stable cursor,
+  byte-for-byte re-read verification, and provider/tip evidence;
+- startup deposit projection still uses `new Date()` rather than the verified
+  deposit barrier;
+- pending-finalization startup hydration is not yet a full L1 stale/confirmed
+  verifier;
+- full SQL cross-table invariant checks are not yet wired into startup;
+- full SQL/MPF/L1 root reconciliation is not implemented;
+- MPF empty-root classification is not solved because `makeMpfs` still treats an
+  empty ledger MPF as a genesis-seeding trigger;
+- readiness and metrics do not expose startup integrity state.
 
 ## Target Startup Invariants
 
@@ -151,9 +200,10 @@ verify protocol deployment and reference scripts
 verify L1 state-queue topology and current canonical root/tail
 verify/hydrate pending finalization journal
 reconcile visible stable deposits from L1 into SQL
+reconcile visible stable withdrawal orders from L1 into SQL
 reconcile due/projected deposits into mempool_ledger
 verify SQL cross-table invariants
-verify SQL roots against persistent MPT roots
+verify SQL roots against persistent MPF roots
 verify local roots against L1 state-queue root/tail and pending journal
 publish startup_integrity_status=ok
 construct submit queue and admission router
@@ -201,29 +251,29 @@ The required invariants are:
     - a tx id cannot be in `mempool`, `processed_mempool`, `immutable`, and
       `tx_rejections` in contradictory states;
     - each `blocks` tx link points to exactly one immutable tx;
-    - processed payloads waiting for confirmation are represented in the MPT
+    - processed payloads waiting for confirmation are represented in the MPF
       and by the pending context that needs them.
-13. SQL ledger tables and persistent MPT roots agree with their explicit
+13. SQL ledger tables and persistent MPF roots agree with their explicit
     authorities:
     - `confirmed_ledger` root matches the confirmed-state `utxoRoot` in the L1
       state-queue root node;
-    - persistent `ledger` MPT root matches the L1 state-queue tail header's
+    - persistent `ledger` MPF root matches the L1 state-queue tail header's
       `utxosRoot`, or the confirmed-state `utxoRoot` when the queue is empty,
       with pending-journal-specific recovery targets handled explicitly;
     - `latest_ledger` is either removed from startup trust or verified only as a
       derived cache with an exact source root;
     - `mempool_ledger` is verified as the SQL admission pre-state and is not
       treated as an L1 block root;
-    - persistent `mempool` trie root matches `processed_mempool` when that trie
+    - persistent `transactions` MPF root matches `processed_mempool` when that trie
       is preserving a deferred transaction root, otherwise it must be empty or
       rebuildable from a verified journal.
-14. Empty MPT stores are accepted only for a proven fresh deployment. If L1,
-    SQL, or pending journals indicate prior state, an empty trie is a data-loss
+14. Empty MPF stores are accepted only for a proven fresh deployment. If L1,
+    SQL, or pending journals indicate prior state, an empty store is a data-loss
     signal and startup fails closed.
 15. No check relies on legacy IDs, fallback schemas, compatibility modes, or
     operator toggles that preserve old behavior in `demo/midgard-node`.
 16. A failed startup leaves a durable or exported failure report, but performs
-    no application DDL, no MPT reseed, no destructive reset, and no admission
+    no application DDL, no MPF reseed, no destructive reset, and no admission
     queue exposure.
 
 ## Integrity Checks To Add
@@ -244,7 +294,7 @@ The implementation should return a structured success record containing:
 - L1 state-queue root/tail hash, header hash, end time, and slot/time evidence;
 - deposit reconciliation barrier;
 - SQL root summaries;
-- MPT root summaries;
+- MPF root summaries;
 - pending-finalization journal summary;
 - reconciliation mutations applied during startup.
 
@@ -260,25 +310,30 @@ It should fail with a typed `StartupIntegrityError` that includes:
 
 ### SQL And Schema Checks
 
-The startup gate must verify schema before trusting table contents. For
-production `listen`, replace `InitDB.program` with a compatibility assertion
-from P0 blocker 5. The assertion opens a DB connection, verifies the migration
-ledger, expected version, migration checksums, and application-schema
-fingerprint, and then returns without running application DDL.
+The startup schema gate has landed. Production `listen` still calls
+`InitDB.program`, but that program is now a compatibility assertion over the
+explicit migration ledger rather than a table-creation helper:
+[`src/database/init.ts:13`](../src/database/init.ts#L13). The assertion checks
+that the database has already been migrated to the binary's expected migration
+version, that applied migration checksums match the manifest, and that known
+application tables and indexes are present:
+[`src/database/migrations/runner.ts:767`](../src/database/migrations/runner.ts#L767).
 
 Only explicit migration commands may create or alter application schema. The
-metadata table bootstrap exception from P0 blocker 5 is allowed only inside the
-migration runner and schema checker, never as a hidden table-creation path for
-application tables.
+metadata table bootstrap exception is allowed only inside the migration runner
+and schema checker:
+[`src/database/migrations/runner.ts:59`](../src/database/migrations/runner.ts#L59).
+It is not a hidden table-creation path for application tables.
 
-Until P0 blocker 5 lands, this plan may include a stopgap
-`assertCurrentSchemaFingerprint` used by `listen`, but it must be read-only. It
-must fail if the database is empty, unversioned, missing tables, or structurally
-different. It must not call existing `createTable` helpers because several of
-those helpers run `CREATE TABLE IF NOT EXISTS` and index drop/recreate DDL.
+Remaining schema-integrity work: `verifyApplicationShape` currently checks the
+presence of manifest-listed application tables and indexes:
+[`src/database/migrations/runner.ts:310`](../src/database/migrations/runner.ts#L310).
+It does not yet fully fingerprint every expected column, constraint, unique
+index definition, foreign key, check expression, or trigger. Startup must not be
+considered a full schema drift detector until that deeper introspection exists.
 
-The read-only assertion must introspect the exact expected tables, columns,
-constraints, unique indexes, and foreign keys used by this plan:
+The read-only assertion still needs to introspect the exact expected tables,
+columns, constraints, unique indexes, and foreign keys used by this plan:
 
 - `deposits_utxos` status check and awaiting/header invariant:
   [`src/database/deposits.ts:55`](../src/database/deposits.ts#L55).
@@ -293,13 +348,18 @@ constraints, unique indexes, and foreign keys used by this plan:
 
 Failures:
 
-- `startup_failed:schema_version_missing`
-- `startup_failed:schema_fingerprint_mismatch`
-- `startup_failed:constraint_missing`
+- `schema_not_migrated`
+- `schema_unversioned_database`
+- `schema_version_behind`
+- `schema_version_ahead`
+- `schema_checksum_mismatch`
+- `schema_migration_in_progress`
+- `schema_drift_detected`
 
 Recovery:
 
-- Run the explicit migration command once P0 blocker 5 exists.
+- Run `midgard-node db:status`, `midgard-node db:migrate`, then
+  `midgard-node db:verify`.
 - Do not auto-create, auto-alter, or silently reshape production schema during
   `listen` startup.
 - For an empty fresh database, run the migration runner first. Do not let
@@ -332,12 +392,14 @@ Recovery:
 
 ### Deposit Ingestion Checks
 
-Startup must make `fetchAndInsertDepositUTxOs` mandatory. Remove the startup
-`Effect.catchAll(() => Effect.void)` wrappers in `listen.ts` and call a strict
-startup-specific reconciliation function.
+Startup now makes `fetchAndInsertDepositUTxOs` mandatory by mapping any failure
+to `DatabaseInitializationError` before HTTP serving:
+[`src/commands/listen.ts:92`](../src/commands/listen.ts#L92). The suppressing
+startup `catchAll` wrapper has been removed.
 
-Do not reuse the steady-state function without changes: the current helper does
-not persist `deposit_ingestion_cursor`, does not re-read and byte-compare every
+The current startup path still reuses the steady-state ingestion helper. That is
+fail-closed but not a complete startup verifier because the helper does not
+persist `deposit_ingestion_cursor`, does not re-read and byte-compare every
 fetched event, and does not expose the stable L1 barrier needed to make startup
 projection reproducible.
 
@@ -389,13 +451,14 @@ Recovery:
 
 ### Deposit Projection Checks
 
-Startup must make `projectDepositsToMempoolLedger` mandatory and then verify its
-result. The current reconciliation already catches missing projected rows and
-payload mismatches:
+Startup now makes `projectDepositsToMempoolLedger` mandatory and maps any
+failure to `DatabaseInitializationError` before serving:
+[`src/commands/listen.ts:106`](../src/commands/listen.ts#L106). The current
+reconciliation already catches missing projected rows and payload mismatches:
 [`src/fibers/project-deposits-to-mempool-ledger.ts:27`](../src/fibers/project-deposits-to-mempool-ledger.ts#L27).
 
-Do not reuse the current unbounded `projectAwaitingDeposits` behavior as-is. It
-selects due deposits with `new Date()`:
+The remaining issue is reproducibility. Startup still calls the unbounded
+`projectAwaitingDeposits` behavior, which selects due deposits with `new Date()`:
 [`src/fibers/project-deposits-to-mempool-ledger.ts:82`](../src/fibers/project-deposits-to-mempool-ledger.ts#L82).
 Startup projection must accept the verified deposit barrier from ingestion and
 use that fixed time for all reads, writes, and verification.
@@ -432,10 +495,37 @@ Recovery:
   only when it reports deterministic idempotent inserts/updates.
 - Restart the node after the command verifies success.
 
+### Withdrawal Ingestion Checks
+
+Startup withdrawal catch-up has landed as a fail-closed startup step:
+[`src/commands/listen.ts:120`](../src/commands/listen.ts#L120). It reconciles
+visible withdrawal order UTxOs into `withdrawal_utxos` using the same full-set
+style as deposits:
+[`src/fibers/fetch-and-insert-withdrawal-utxos.ts:99`](../src/fibers/fetch-and-insert-withdrawal-utxos.ts#L99).
+
+Remaining strict startup requirements mirror deposit ingestion:
+
+1. Resolve a stable withdrawal visibility barrier from L1.
+2. Persist provider/tip/scan evidence or otherwise include it in the startup
+   report.
+3. Re-read fetched withdrawal event IDs and byte-compare persisted rows against
+   derived rows.
+4. Ensure commit-time withdrawal classification and root construction cannot use
+   a wider time window than the verified startup barrier.
+
+Failures:
+
+- `startup_failed:withdrawal_l1_fetch_unavailable`
+- `startup_failed:withdrawal_payload_conflict`
+- `startup_failed:withdrawal_cursor_inconsistent`
+- `startup_failed:withdrawal_barrier_inconsistent`
+
 ### Pending Finalization Checks
 
-Hydration must become a verification plus hydration step. It should not only
-copy SQL values into refs.
+Hydration has partially become a verification plus hydration step. It now checks
+active journal payload completeness before copying SQL values into refs:
+[`src/commands/listen-startup.ts:335`](../src/commands/listen-startup.ts#L335).
+The rest of this section remains outstanding.
 
 Checks:
 
@@ -483,12 +573,21 @@ must write an audit record before changing state.
 
 ### Startup Ordering And Runtime Wiring
 
-`runNode` must be rewired so the fail-closed decision is structurally before any
-serving or worker construction:
+`runNode` now runs the schema gate, protocol checks, local boundary seeding,
+pending-journal hydration, unfinished mutation-job check, startup deposit
+catch-up, startup deposit projection, and startup withdrawal catch-up before
+constructing the HTTP server or worker fiber program:
+[`src/commands/listen.ts:72`](../src/commands/listen.ts#L72). The remaining
+ordering gap is that the in-memory submit queue is still constructed before
+these checks:
+[`src/commands/listen.ts:68`](../src/commands/listen.ts#L68).
+
+`runNode` still needs a single startup integrity gate so the fail-closed decision
+is structurally before all admission plumbing and serving:
 
 1. Build the DB/L1/config service layers.
-2. Run schema compatibility assertion without application DDL.
-3. Run `verifyStartupIntegrityOrFail`.
+2. Run schema compatibility assertion without application DDL. This is landed.
+3. Run `verifyStartupIntegrityOrFail` for the remaining cross-system checks.
 4. Set startup integrity refs to `ok` only after every check and allowed
    reconciliation verifies.
 5. Construct the submit queue and HTTP router.
@@ -499,7 +598,7 @@ If `verifyStartupIntegrityOrFail` fails in default mode:
 - do not construct the submit queue;
 - do not bind the HTTP server;
 - do not launch genesis, commitment, confirmation, merge, deposit, projection,
-  retention, monitoring, or tx-queue fibers;
+  withdrawal, retention, monitoring, or tx-queue fibers;
 - emit the structured failure report and exit non-zero.
 
 If diagnostic read-only mode is explicitly enabled, construct a separate
@@ -512,11 +611,11 @@ Add read-only SQL checks for contradictory transaction and ledger state:
 
 - `blocks` rows must reference existing immutable tx rows. The existing
   `audit-blocks-immutable` command starts this surface:
-  [`src/index.ts:640`](../src/index.ts#L640).
+  [`src/index.ts:1135`](../src/index.ts#L1135).
 - `immutable` tx IDs must not appear in `mempool` or `processed_mempool`.
 - `tx_rejections` must not contradict immutable inclusion for the same tx id.
 - `processed_mempool` rows must be allowed only when there is a deferred
-  commitment context that can explain the persistent mempool trie root.
+  commitment context that can explain the persistent transactions MPF root.
 - `mempool_tx_deltas` rows must reference a tx in `mempool`,
   `processed_mempool`, or `immutable` according to the lifecycle stage.
 - `deposits_utxos.projected_header_hash` must refer to either the active
@@ -538,16 +637,17 @@ Recovery:
 - Repairs must be explicit, narrow, evidence-backed, and logged. Do not run
   automatic repairs during normal startup.
 
-### MPT And Root Checks
+### MPF And Root Checks
 
-The startup gate must open the persistent MPT stores in read/verify mode before
-any worker mutates them. The `makeMpts` behavior that auto-inserts genesis when
-the ledger trie is empty must be split:
+The startup gate must open the persistent MPF stores in read/verify mode before
+any worker mutates them. The `makeMpfs` behavior that auto-inserts genesis when
+the ledger MPF root is empty must be split:
+[`src/workers/utils/mpf.ts:155`](../src/workers/utils/mpf.ts#L155).
 
 - Fresh deployment path: allowed only when L1 state queue is empty/genesis,
   SQL ledger tables are empty, pending journals are empty, and explicit
   initialization policy allows bootstrapping.
-- Existing deployment path: empty or missing ledger trie is a fatal integrity
+- Existing deployment path: empty or missing ledger MPF is a fatal integrity
   error.
 
 Root authority is defined as follows:
@@ -556,9 +656,9 @@ Root authority is defined as follows:
   `confirmed_ledger`. Rebuild a SQL root from `confirmed_ledger` and compare it
   with that datum's `utxoRoot`. If the confirmed-state datum is unavailable or
   undecodable, fail startup.
-- The L1 state-queue tail is authoritative for the persistent `ledger` MPT
+- The L1 state-queue tail is authoritative for the persistent `ledger` MPF
   pre-state used for the next block. If the queue has at least one committed
-  block, compare the persistent ledger MPT root with the tail header's
+  block, compare the persistent ledger MPF root with the tail header's
   `utxosRoot`. If the queue is empty, compare it with the confirmed-state
   `utxoRoot`.
 - During an active pending-finalization journal, compare against the
@@ -568,45 +668,45 @@ Root authority is defined as follows:
 - `latest_ledger` is not startup authority. Either remove it from the trusted
   path in the implementation or define and verify it as a derived cache with a
   precise source root. A mismatch in a derived cache must not cause startup to
-  trust the cache over L1, SQL, or the persistent MPT.
-- The persistent `mempool` MPT is authoritative only for deferred processed
+  trust the cache over L1, SQL, or the persistent MPF.
+- The persistent `transactions` MPF is authoritative only for deferred processed
   transaction bytes that are still required to match a pending or unconfirmed
   block's transaction root. Otherwise it must be empty or absent after verified
   local finalization.
 - `mempool_ledger` is the SQL admission pre-state. Rebuild its root for
   observability and compare it with any declared admission-cache root, but do
-  not confuse it with the block transaction root stored in the mempool MPT.
+  not confuse it with the block transaction root stored in the transactions MPF.
 
 Root verification should use canonical ordering and deterministic encoding:
 
 1. Rebuild a temporary root from SQL entries using raw outref bytes as keys and
    raw output bytes as values. Sort keys lexicographically before building to
-   make the root computation auditable even if the MPT implementation is order
+   make the root computation auditable even if the MPF implementation is order
    independent.
 2. Compare the computed confirmed/admission roots with the relevant SQL tables
-   and compare persistent roots with `ledgerTrie.getRootHex()` and
-   `mempoolTrie.getRootHex()`:
-   [`src/workers/utils/mpt.ts:770`](../src/workers/utils/mpt.ts#L770).
+   and compare persistent roots with `ledgerMpf.rootHex()` and
+   `transactionsMpf.rootHex()`:
+   [`src/workers/utils/mpf.ts:1162`](../src/workers/utils/mpf.ts#L1162).
 3. Compare the ledger root with the root represented by the current L1
    state-queue tail or by the active pending journal's confirmed recovery block.
-4. Compare the mempool transaction root with `processed_mempool` when the
-   mempool trie is intentionally preserving deferred processed txs. Otherwise
-   require the mempool trie to be empty after verified local finalization.
+4. Compare the transactions root with `processed_mempool` when the transactions
+   MPF is intentionally preserving deferred processed txs. Otherwise require the
+   transactions MPF to be empty after verified local finalization.
 
 Failures:
 
-- `startup_failed:ledger_mpt_missing`
-- `startup_failed:ledger_mpt_root_mismatch`
-- `startup_failed:mempool_mpt_root_mismatch`
+- `startup_failed:ledger_mpf_missing`
+- `startup_failed:ledger_mpf_root_mismatch`
+- `startup_failed:transactions_mpf_root_mismatch`
 - `startup_failed:l1_root_mismatch`
 - `startup_failed:unexpected_genesis_reseed_required`
 - `startup_failed:root_authority_ambiguous`
 
 Recovery:
 
-- `node dist/index.js mpt verify --json`
-- `node dist/index.js mpt rebuild --from-sql --dry-run --write-audit <path>`
-- `node dist/index.js mpt rebuild --from-sql --apply --audit <path>`
+- `node dist/index.js mpf verify --json`
+- `node dist/index.js mpf rebuild --from-sql --dry-run --write-audit <path>`
+- `node dist/index.js mpf rebuild --from-sql --apply --audit <path>`
 
 The apply command must:
 
@@ -701,7 +801,7 @@ Add or harden these commands as part of implementation:
 - `deposit-reconcile --apply --verify`: apply only deterministic missing-row
   reconciliation and verify by re-read.
 - `project-deposits-once --strict --verify`: make the existing command from
-  [`src/index.ts:622`](../src/index.ts#L622) fail on any incomplete projection
+  [`src/index.ts:872`](../src/index.ts#L872) fail on any incomplete projection
   or payload mismatch.
 - `pending-finalization inspect --json`: show active journal, member rows, L1
   evidence, and recommended action.
@@ -709,10 +809,10 @@ Add or harden these commands as part of implementation:
   finalization only against confirmed L1 evidence.
 - `pending-finalization abandon --header-hash <hex> --evidence <file>`: abandon
   only after explicit stale evidence.
-- `mpt verify --json`: compare SQL-derived temporary roots, persistent MPT
+- `mpf verify --json`: compare SQL-derived temporary roots, persistent MPF
   roots, and L1 roots.
-- `mpt rebuild --from-sql --dry-run --write-audit <path>` and `--apply`: rebuild
-  MPT state only through an auditable backup/swap flow.
+- `mpf rebuild --from-sql --dry-run --write-audit <path>` and `--apply`: rebuild
+  MPF state only through an auditable backup/swap flow.
 - `audit-blocks-immutable --json`: expose the existing audit command in a form
   startup and runbooks can reference.
 
@@ -753,7 +853,7 @@ Metrics:
 - `midgard_deposit_reconciliation_visible_count`
 - `midgard_deposit_reconciliation_inserted_count`
 - `midgard_deposit_projection_reconciled_count`
-- `midgard_sql_mpt_root_match{root="confirmed|ledger|mempool_tx|admission"}`
+- `midgard_sql_mpf_root_match{root="confirmed|ledger|transactions|admission"}`
 - `midgard_pending_finalization_active{status}`
 - `midgard_startup_l1_tail_slot`
 
@@ -800,16 +900,16 @@ Database integration tests with temporary Postgres:
 - Duplicate active pending journals fail startup, even if created by bypassing
   the production constraint in test setup.
 
-MPT fault-injection tests with temporary LevelDB directories:
+MPF fault-injection tests with temporary LevelDB directories:
 
-- Missing ledger MPT on non-fresh deployment fails startup.
-- Empty ledger trie with non-empty SQL or non-empty L1 state fails startup.
+- Missing ledger MPF on non-fresh deployment fails startup.
+- Empty ledger MPF with non-empty SQL or non-empty L1 state fails startup.
 - Confirmed SQL root differs from the L1 root-node confirmed-state root and
   fails startup.
 - Persistent ledger root differs from the L1 tail root and fails startup.
-- Mempool trie root is non-empty without processed/deferred context and fails
+- Transactions MPF root is non-empty without processed/deferred context and fails
   startup.
-- Rebuild dry-run produces old/new root evidence without mutating existing MPT.
+- Rebuild dry-run produces old/new root evidence without mutating existing MPF.
 
 L1/provider fault-injection tests:
 
@@ -838,29 +938,32 @@ Regression tests:
 
 ## Rollout Steps
 
-1. Add typed startup integrity errors and report serialization without changing
+1. Landed: replace `InitDB.program` application DDL with migration compatibility
+   assertion.
+2. Landed: make startup deposit catch-up strict and fail before HTTP bind on
+   errors.
+3. Landed: make startup deposit projection strict at process startup.
+4. Landed: add fail-closed startup withdrawal catch-up.
+5. Landed: refuse startup when unfinished local mutation jobs are present.
+6. Add typed startup integrity errors and report serialization without changing
    behavior. Cover serialization and readiness unit tests.
-2. Replace `listen`'s direct `InitDB.program` dependency with a read-only schema
-   compatibility assertion. Keep table creation available only through the
-   explicit migration path from P0 blocker 5.
-3. Move submit-queue construction and normal router construction after a
+7. Move submit-queue construction and normal router construction after a
    successful startup integrity gate.
-4. Add `startup-integrity check --json` that runs read-only checks and returns
+8. Add `startup-integrity check --json` that runs read-only checks and returns
    non-zero on failure. Use it in CI and local runbooks.
-5. Make startup deposit catch-up strict. Remove the suppressing catch in
-   `listen.ts` and prove provider failure prevents HTTP bind.
-6. Make startup deposit projection strict. Remove the suppressing catch in
-   `listen.ts` and verify due/projected deposits before serving.
-7. Add SQL cross-table integrity checks and fail startup on contradictions.
-8. Split `makeMpts` into explicit fresh-deployment initialization and existing
+9. Add strict stable-barrier and byte-re-read verification for deposit,
+   withdrawal, and projection startup reconciliation.
+10. Add SQL cross-table integrity checks and fail startup on contradictions.
+11. Split `makeMpfs` into explicit fresh-deployment initialization and existing
    deployment verification. Prevent automatic genesis reseed on existing state.
-9. Add SQL-derived temporary root verification for confirmed/admission ledgers
-   and persistent ledger/mempool MPTs.
-10. Add L1 root comparison and pending-finalization verification.
-11. Extend readiness and metrics with startup integrity status.
-12. Add recovery commands with dry-run, audit manifests, and apply flows.
-13. Enable fail-closed startup as the default in all environments.
-14. Document operator runbooks and expected error codes.
+12. Add SQL-derived temporary root verification for confirmed/admission ledgers
+   and persistent ledger/transactions MPFs.
+13. Add L1 root comparison and pending-finalization verification.
+14. Extend readiness and metrics with startup integrity status.
+15. Add recovery commands with dry-run, audit manifests, and apply flows.
+16. Enable the complete startup integrity gate as the default in all
+    environments.
+17. Document operator runbooks and expected error codes.
 
 Each step should include tests before enabling the next enforcement point.
 Temporary diagnostic controls must be explicitly named, non-default, and removed
@@ -877,9 +980,9 @@ or kept isolated from production serving behavior.
   implement audited rewind, but normal startup must not auto-rewind.
 - Recovery authority: define who may run mutation recovery commands and how
   audit manifests are retained.
-- Migration dependency: schema verification should ultimately depend on P0
-  blocker 5. Until then, table/constraint introspection is a stopgap and should
-  not become a permanent substitute for explicit migrations.
+- Schema drift depth: migration compatibility now depends on P0 blocker 5, but
+  current shape verification checks table and index presence only. Full
+  table/constraint/foreign-key fingerprinting remains necessary.
 - Performance: SQL-derived root rebuild may be expensive on large state. It is
   still acceptable at startup for a production correctness gate. Optimize only
   after correctness is established.
@@ -889,23 +992,29 @@ or kept isolated from production serving behavior.
 - [ ] Introduce `StartupIntegrityError` with stable codes, evidence, and recovery
       commands.
 - [ ] Add `verifyStartupIntegrityOrFail` and call it before HTTP/fiber startup.
-- [ ] Replace `listen` startup `InitDB.program` application DDL with a read-only
+- [x] Replace `listen` startup `InitDB.program` application DDL with a read-only
       schema compatibility assertion.
 - [ ] Move submit-queue and normal router construction after successful startup
       integrity.
-- [ ] Remove startup suppression around `fetchAndInsertDepositUTxOs`.
-- [ ] Remove startup suppression around `projectDepositsToMempoolLedger`.
+- [x] Remove startup suppression around `fetchAndInsertDepositUTxOs`.
+- [x] Remove startup suppression around `projectDepositsToMempoolLedger`.
+- [x] Add fail-closed startup withdrawal catch-up.
+- [x] Refuse startup when unfinished local mutation jobs exist.
 - [ ] Add strict startup deposit reconciliation with cursor evidence and
       byte-for-byte re-read verification.
 - [ ] Add strict startup deposit projection verification using the same stable
       L1 barrier returned by deposit reconciliation.
+- [ ] Add strict startup withdrawal reconciliation with barrier evidence and
+      byte-for-byte re-read verification.
+- [x] Fail startup when an active pending-finalization journal has incomplete
+      durable payload members.
 - [ ] Add pending-finalization journal verifier and L1 comparison.
 - [ ] Add SQL cross-table invariant checks for tx states, block links, deposits,
       deltas, and pending members.
-- [ ] Split fresh-deployment MPT initialization from existing-deployment MPT
+- [ ] Split fresh-deployment MPF initialization from existing-deployment MPF
       verification.
 - [ ] Add SQL-derived temporary root computation for confirmed/admission state
-      and persistent MPT roots.
+      and persistent MPF roots.
 - [ ] Compare local roots against explicit L1 root/tail and pending-journal
       evidence.
 - [ ] Extend readiness inputs and `/readyz` response with startup integrity
@@ -913,9 +1022,9 @@ or kept isolated from production serving behavior.
 - [ ] Add metrics and tracing for startup checks.
 - [ ] Add `startup-integrity check --json`.
 - [ ] Harden `project-deposits-once` with `--strict --verify`.
-- [ ] Add deposit, pending-finalization, and MPT recovery commands with dry-run
+- [ ] Add deposit, pending-finalization, and MPF recovery commands with dry-run
       and audit manifests.
-- [ ] Add unit, integration, MPT fault-injection, L1-provider fault-injection,
+- [ ] Add unit, integration, MPF fault-injection, L1-provider fault-injection,
       and end-to-end startup tests.
 - [ ] Document runbooks for every `startup_failed:*` code.
 - [ ] Verify no compatibility shim, silent rewrite, or weakened validation is

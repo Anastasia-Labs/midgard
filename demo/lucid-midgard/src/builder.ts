@@ -6083,11 +6083,11 @@ export class TxBuilder {
     const expectedAddrWitnessCount = expectedWitnessKeyHashes.length;
     if (
       !computeHash32(tx.body.spendInputsPreimageCbor).equals(
-        tx.compact.transactionBody.spendInputsRoot,
+        tx.compact.transactionBody.spendInputsHash,
       )
     ) {
       throw new BuilderInvariantError(
-        "spend input root/preimage consistency check failed",
+        "spend input hash/preimage consistency check failed",
       );
     }
 

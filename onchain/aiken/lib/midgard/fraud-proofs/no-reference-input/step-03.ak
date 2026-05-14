@@ -4,7 +4,7 @@ use midgard/computation_thread as ct
 use midgard/ledger_state.{MidgardLedgerRoot, MidgardTxsRoot}
 
 pub type State {
-  missing_output_reference: OutputReference,
+  missing_reference_input_outref: OutputReference,
   blocks_prev_utxos_root: MidgardLedgerRoot,
   blocks_transactions_root: MidgardTxsRoot,
 }

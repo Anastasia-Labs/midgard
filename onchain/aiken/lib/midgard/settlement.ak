@@ -95,7 +95,7 @@ pub fn get_datum(
 }
 
 fn parse_resolution_claim(claim_data: Data) -> Option<ResolutionClaim> {
-  expect Pair(option_constructor, option_fields) =
+  let Pair(option_constructor, option_fields) =
     builtin.un_constr_data(claim_data)
   if option_constructor == 1 {
     expect [] = option_fields
