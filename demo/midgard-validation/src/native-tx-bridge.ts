@@ -1,13 +1,15 @@
 // Boundary adapter: on-the-wire `@al-ft/midgard-ts` binary `Transaction`
 // <-> the internal `MidgardNativeTxFull` (root + preimage-CBOR) model that
-// phase-a / phase-b still operate on.
+// lucid-midgard's builder still constructs internally.
 //
-// The midgard-ts encoding replaced the old CBOR codec on the wire. This file
-// is the single place inside midgard-validation that bridges the two shapes
-// so phase-a and phase-b can keep their existing field accesses unchanged.
+// Phase-a and phase-b no longer depend on this bridge — they operate on
+// midgard-ts `Transaction` directly. The only remaining consumers are:
+//   - lucid-midgard's builder (encode/decode + body-hash for signing)
+//   - a handful of tests that construct `MidgardNativeTxFull` literally
 //
-// Once phase-a / phase-b are rewritten to operate on midgard-ts `Transaction`
-// directly (Phase 5 main item), this file can be deleted.
+// Once lucid-midgard's builder operates on midgard-ts structurally (the
+// Phase 4 follow-up), this file can be deleted along with
+// `@al-ft/midgard-core/codec/native.ts`.
 
 import { CML } from "@lucid-evolution/lucid";
 import {
@@ -124,7 +126,7 @@ const midgardTsScriptRefToCore = (
   return { language: s.language, scriptBytes: Buffer.from(s.bytes) };
 };
 
-export const midgardTsToNativeFull = (
+const midgardTsToNativeFull = (
   tx: MidgardTsTransaction,
 ): MidgardNativeTxFull => {
   const b = tx.body;
@@ -192,7 +194,7 @@ export const midgardTsToNativeFull = (
   return materializeMidgardNativeTxFromCanonical(canonical);
 };
 
-export const nativeBodyToMidgardTsBody = (
+const nativeBodyToMidgardTsBody = (
   b: MidgardNativeTxBodyFull,
 ): MidgardTsTransactionBody => {
   const referenceInputs = cborListBuffers(b.referenceInputsPreimageCbor);
@@ -237,7 +239,7 @@ export const nativeBodyToMidgardTsBody = (
   };
 };
 
-export const nativeFullToMidgardTs = (
+const nativeFullToMidgardTs = (
   tx: MidgardNativeTxFull,
 ): MidgardTsTransaction => {
   const ws = tx.witnessSet;

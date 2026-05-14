@@ -7,7 +7,6 @@ import {
   encodeMidgardTxBytes,
   midgardTsBodyHashFromNativeFull,
   midgardTxIdFromNativeFull as midgardTxIdFromFull,
-  nativeFullToMidgardTs,
   runPhaseAValidation,
   runPhaseBValidationWithPatch,
   type PhaseAConfig,
