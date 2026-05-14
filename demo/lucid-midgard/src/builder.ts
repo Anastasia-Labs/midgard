@@ -5,6 +5,7 @@ import {
   LedgerColumns,
   decodeMidgardTxBytesToNativeFull as decodeMidgardTxBytes,
   encodeMidgardTxBytes,
+  midgardTsBodyHashFromNativeFull,
   midgardTxIdFromNativeFull as midgardTxIdFromFull,
   nativeFullToMidgardTs,
   runPhaseAValidation,
@@ -1411,7 +1412,7 @@ const applyAddrWitnessesToTx = (
   readonly tx: MidgardNativeTxFull;
   readonly witnesses: readonly VKeyWitness[];
 } => {
-  const bodyHash = tx.compact.transactionBodyHash;
+  const bodyHash = midgardTsBodyHashFromNativeFull(tx);
   const merged = canonicalizeAddrWitnesses(bodyHash, [
     ...decodeAddrWitnesses(tx.witnessSet.addrTxWitsPreimageCbor),
     ...witnesses,
@@ -1450,7 +1451,7 @@ const decodeImportAddrWitnesses = (
   }
   const byKeyHash = new Map<string, Buffer>();
   for (const witness of witnesses) {
-    assertVKeyWitness(tx.compact.transactionBodyHash, witness);
+    assertVKeyWitness(midgardTsBodyHashFromNativeFull(tx), witness);
     const keyHash = witness.vkey().hash().to_hex();
     const bytes = Buffer.from(witness.to_cbor_bytes());
     const existing = byKeyHash.get(keyHash);
@@ -1652,7 +1653,7 @@ const signMidgardNativeTx = async (
   tx: MidgardNativeTxFull,
   wallet: MidgardWallet,
 ): Promise<MidgardNativeTxFull> => {
-  const bodyHash = tx.compact.transactionBodyHash;
+  const bodyHash = midgardTsBodyHashFromNativeFull(tx);
   const witness = assertVKeyWitness(
     bodyHash,
     await wallet.signBodyHash(bodyHash),
@@ -1748,7 +1749,7 @@ const partialWitnessBundleFromWitnesses = (
   witnesses: readonly VKeyWitness[],
 ): MidgardPartialWitnessBundle => {
   const canonical = canonicalizeAddrWitnesses(
-    tx.compact.transactionBodyHash,
+    midgardTsBodyHashFromNativeFull(tx),
     witnesses,
   );
   if (canonical.length === 0) {
@@ -1760,7 +1761,7 @@ const partialWitnessBundleFromWitnesses = (
     version: PARTIAL_WITNESS_BUNDLE_VERSION,
     midgardNativeTxVersion: Number(tx.version),
     txId,
-    bodyHash: Buffer.from(tx.compact.transactionBodyHash).toString("hex"),
+    bodyHash: midgardTsBodyHashFromNativeFull(tx).toString("hex"),
     witnesses: canonical.map((witness) =>
       Buffer.from(witness.to_cbor_bytes()).toString("hex"),
     ),
@@ -1909,7 +1910,7 @@ const assertPartialBundleMatchesTx = (
   bundle: MidgardPartialWitnessBundle,
 ): void => {
   const txId = midgardTxIdFromFull(tx).toString("hex");
-  const bodyHash = Buffer.from(tx.compact.transactionBodyHash).toString("hex");
+  const bodyHash = midgardTsBodyHashFromNativeFull(tx).toString("hex");
   if (bundle.txId !== txId || bundle.bodyHash !== bodyHash) {
     throw new SigningError(
       "Partial witness bundle belongs to a different transaction",
@@ -1949,7 +1950,7 @@ const withEstimatedAddrWitnesses = (
   for (let index = witnesses.length; index < expectedWitnessCount; index += 1) {
     estimatedWitnesses.push(
       makeVKeyWitness(
-        tx.compact.transactionBodyHash,
+        midgardTsBodyHashFromNativeFull(tx),
         dummyWitnessPrivateKey(index),
       ),
     );
@@ -2272,7 +2273,7 @@ export class TxPartialSignBuilder {
 
   private async collectWitnesses(): Promise<readonly VKeyWitness[]> {
     const nativeTx = this.#tx.tx;
-    const bodyHash = nativeTx.compact.transactionBodyHash;
+    const bodyHash = midgardTsBodyHashFromNativeFull(nativeTx);
     const witnesses: VKeyWitness[] = this.#witnesses.map((witness, index) =>
       normalizeVKeyWitnessInput(
         witness,
@@ -2687,7 +2688,7 @@ const assemblePartialWitnessBundles = (
   if (inputs.length === 0) {
     throw new SigningError("At least one partial witness bundle is required");
   }
-  const bodyHash = tx.compact.transactionBodyHash;
+  const bodyHash = midgardTsBodyHashFromNativeFull(tx);
   const witnesses = inputs.flatMap((input) => {
     const bundle = parsePartialWitnessBundle(input);
     assertPartialBundleMatchesTx(tx, bundle);

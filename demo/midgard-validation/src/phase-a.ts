@@ -1,21 +1,27 @@
 import { CML } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
-import { LedgerColumns, type LedgerEntry } from "./ledger.js";
+import { blake2b } from "@noble/hashes/blake2.js";
 import {
+  decodeTransaction,
+  encodeTransactionOutput,
+  transactionBodyHash,
+  transactionId,
+  type Mint,
+  type OutputReference,
+  type Transaction,
+  type TransactionOutput,
+  type Value as MidgardTsValue,
+  type VersionedScript,
+} from "@al-ft/midgard-ts";
+import {
+  MidgardScriptHashPrefixes,
   MidgardTxCodecError,
-  MIDGARD_NATIVE_NETWORK_ID_NONE,
-  MIDGARD_POSIX_TIME_NONE,
-  computeHash32,
-  decodeMidgardNativeMint,
-  decodeMidgardNativeByteListPreimage,
-  decodeMidgardVersionedScriptListPreimage,
-  hashMidgardVersionedScript,
+  decodeMidgardNativeScript,
   verifyMidgardNativeScript,
 } from "@al-ft/midgard-core/codec";
-import {
-  decodeMidgardTxBytesToNativeFull,
-  midgardTxIdFromNativeFull,
-} from "./native-tx-bridge.js";
+import { LedgerColumns, type LedgerEntry } from "./ledger.js";
+import { decodeMidgardRedeemers } from "./midgard-redeemers.js";
+import { encodeMidgardAddressText } from "@al-ft/midgard-core/codec";
 import {
   PhaseAAccepted,
   PhaseAConfig,
@@ -25,12 +31,6 @@ import {
   RejectedTx,
   RejectCodes,
 } from "./types.js";
-import {
-  decodeMidgardTxOutput,
-  midgardOutputAddressText,
-  midgardValueToCmlValue,
-} from "./midgard-output.js";
-import { decodeMidgardRedeemers } from "./midgard-redeemers.js";
 
 const reject = (
   txId: Buffer,
@@ -42,284 +42,328 @@ const reject = (
   detail,
 });
 
-const EMPTY_CBOR_LIST = Buffer.from([0x80]);
-const EMPTY_CBOR_NULL = Buffer.from([0xf6]);
-const EMPTY_LIST_ROOT = computeHash32(EMPTY_CBOR_LIST);
-const EMPTY_NULL_ROOT = computeHash32(EMPTY_CBOR_NULL);
+// Canonical CBOR encoding of a midgard-ts OutputReference as a Cardano
+// TransactionInput. This is the format the rest of the system uses for outref
+// keys (MPT keys, processedTx.spent, referenceInputs in PhaseAAccepted).
+const outRefToCborInput = (ref: OutputReference): Buffer =>
+  Buffer.from(
+    CML.TransactionInput.new(
+      CML.TransactionHash.from_raw_bytes(ref.tx_id),
+      BigInt(ref.index),
+    ).to_cbor_bytes(),
+  );
 
-const toOptionalValidity = (value: bigint): bigint | undefined =>
-  value === MIDGARD_POSIX_TIME_NONE ? undefined : value;
+// blake2b-224 hex hash of a midgard-ts VersionedScript, matching the
+// `hashMidgardVersionedScript` helper in midgard-core
+// (prefix_byte || script_bytes).
+const hashVersionedScript = (script: VersionedScript): string =>
+  Buffer.from(
+    blake2b(
+      Buffer.concat([
+        Buffer.from([MidgardScriptHashPrefixes[script.language]]),
+        Buffer.from(script.bytes),
+      ]),
+      { dkLen: 28 },
+    ),
+  ).toString("hex");
 
-const decodeOutRefListFromPreimage = (
-  txId: Buffer,
-  preimageCbor: Uint8Array,
-  fieldName: string,
-): Buffer[] | RejectedTx => {
-  try {
-    const raw = decodeMidgardNativeByteListPreimage(preimageCbor, fieldName);
-    return raw.map((bytes) =>
-      Buffer.from(CML.TransactionInput.from_cbor_bytes(bytes).to_cbor_bytes()),
-    );
-  } catch (e) {
-    return reject(
-      txId,
-      RejectCodes.InvalidFieldType,
-      `${fieldName} decode failed: ${String(e)}`,
-    );
+// Convert a midgard-ts Value to a CML.Value for the running output / minted /
+// burned aggregates that phase-A exposes.
+const midgardTsValueToCmlValue = (
+  value: MidgardTsValue,
+): InstanceType<typeof CML.Value> => {
+  if (value.type === "Coin") {
+    return CML.Value.from_coin(value.coin);
   }
+  const multiasset = CML.MultiAsset.new();
+  let policyCount = 0;
+  for (const [policyId, entries] of value.assets) {
+    const cmlAssets = CML.MapAssetNameToCoin.new();
+    let assetCount = 0;
+    for (const [name, amount] of entries) {
+      if (amount <= 0n) continue;
+      cmlAssets.insert(
+        CML.AssetName.from_raw_bytes(Buffer.from(name)),
+        amount,
+      );
+      assetCount += 1;
+    }
+    if (assetCount > 0) {
+      multiasset.insert_assets(
+        CML.ScriptHash.from_raw_bytes(Buffer.from(policyId)),
+        cmlAssets,
+      );
+      policyCount += 1;
+    }
+  }
+  return policyCount === 0
+    ? CML.Value.from_coin(value.coin)
+    : CML.Value.new(value.coin, multiasset);
 };
 
-type NativeWitnessVerification = {
-  readonly witnessKeyHashes: readonly string[];
-  readonly witnessSignerSet: ReadonlySet<string>;
-  readonly witnessSigners: InstanceType<typeof CML.Ed25519KeyHashList>;
-  readonly witnesses: readonly InstanceType<typeof CML.Vkeywitness>[];
-};
-
-type DecodedScriptWitnesses = {
-  readonly nativeScriptHashes: readonly string[];
-  readonly plutusScriptHashes: readonly string[];
-};
-
-const decodeNativeWitnesses = (
-  txId: Buffer,
-  preimageCbor: Uint8Array,
-): NativeWitnessVerification | RejectedTx => {
-  try {
-    const witnessBytes = decodeMidgardNativeByteListPreimage(
-      preimageCbor,
-      "native.addr_tx_wits",
-    );
-    const witnessSigners = CML.Ed25519KeyHashList.new();
-    const witnessSignerSet = new Set<string>();
-    const witnessKeyHashes: string[] = [];
-    const witnesses: InstanceType<typeof CML.Vkeywitness>[] = [];
-
-    for (let i = 0; i < witnessBytes.length; i++) {
-      const witness = CML.Vkeywitness.from_cbor_bytes(witnessBytes[i]);
-      witnesses.push(witness);
-      const signer = witness.vkey().hash();
-      const signerHex = signer.to_hex();
-      if (!witnessSignerSet.has(signerHex)) {
-        witnessSignerSet.add(signerHex);
-        witnessSigners.add(signer);
-        witnessKeyHashes.push(signerHex);
+// Summarise a midgard-ts Mint into the policy-hash list and the minted /
+// burned CML.Value aggregates phase-A returns.
+const summariseMint = (
+  mint: Mint,
+): {
+  readonly policyIds: readonly string[];
+  readonly mintedValue: InstanceType<typeof CML.Value>;
+  readonly burnedValue: InstanceType<typeof CML.Value>;
+} => {
+  const policyIds: string[] = [];
+  const minted = CML.MultiAsset.new();
+  const burned = CML.MultiAsset.new();
+  let mintedPolicies = 0;
+  let burnedPolicies = 0;
+  for (const [policyId, entries] of mint) {
+    const policyHash = CML.ScriptHash.from_raw_bytes(Buffer.from(policyId));
+    policyIds.push(policyHash.to_hex());
+    const mintedAssets = CML.MapAssetNameToCoin.new();
+    const burnedAssets = CML.MapAssetNameToCoin.new();
+    let mintedCount = 0;
+    let burnedCount = 0;
+    for (const [name, amount] of entries) {
+      const assetName = CML.AssetName.from_raw_bytes(Buffer.from(name));
+      if (amount > 0n) {
+        mintedAssets.insert(assetName, amount);
+        mintedCount += 1;
+      } else if (amount < 0n) {
+        burnedAssets.insert(assetName, -amount);
+        burnedCount += 1;
       }
     }
-
-    return {
-      witnessKeyHashes,
-      witnessSignerSet,
-      witnessSigners,
-      witnesses,
-    };
-  } catch (e) {
-    return reject(
-      txId,
-      RejectCodes.InvalidFieldType,
-      `native vkey witness decode failed: ${String(e)}`,
-    );
+    if (mintedCount > 0) {
+      minted.insert_assets(policyHash, mintedAssets);
+      mintedPolicies += 1;
+    }
+    if (burnedCount > 0) {
+      burned.insert_assets(policyHash, burnedAssets);
+      burnedPolicies += 1;
+    }
   }
+  return {
+    policyIds,
+    mintedValue:
+      mintedPolicies === 0 ? CML.Value.zero() : CML.Value.new(0n, minted),
+    burnedValue:
+      burnedPolicies === 0 ? CML.Value.zero() : CML.Value.new(0n, burned),
+  };
 };
 
-const verifyNativeWitnessSignatures = (
+type DecodedVKeyWitnesses = {
+  readonly witnessKeyHashes: readonly string[];
+  readonly witnessSignerSet: ReadonlySet<string>;
+  readonly publicKeys: readonly InstanceType<typeof CML.PublicKey>[];
+  readonly signatures: readonly InstanceType<typeof CML.Ed25519Signature>[];
+};
+
+const decodeVKeyWitnesses = (
+  txId: Buffer,
+  vkeyWitnesses: ReadonlyArray<{ vkey: Uint8Array; signature: Uint8Array }>,
+): DecodedVKeyWitnesses | RejectedTx => {
+  const witnessKeyHashes: string[] = [];
+  const witnessSignerSet = new Set<string>();
+  const publicKeys: InstanceType<typeof CML.PublicKey>[] = [];
+  const signatures: InstanceType<typeof CML.Ed25519Signature>[] = [];
+  for (let i = 0; i < vkeyWitnesses.length; i++) {
+    const w = vkeyWitnesses[i];
+    try {
+      const publicKey = CML.PublicKey.from_bytes(w.vkey);
+      const signature = CML.Ed25519Signature.from_raw_bytes(w.signature);
+      publicKeys.push(publicKey);
+      signatures.push(signature);
+      const signerHex = publicKey.hash().to_hex();
+      if (!witnessSignerSet.has(signerHex)) {
+        witnessSignerSet.add(signerHex);
+        witnessKeyHashes.push(signerHex);
+      }
+    } catch (e) {
+      return reject(
+        txId,
+        RejectCodes.InvalidFieldType,
+        `vkey witness #${i} decode failed: ${String(e)}`,
+      );
+    }
+  }
+  return { witnessKeyHashes, witnessSignerSet, publicKeys, signatures };
+};
+
+const verifyVKeyWitnessSignatures = (
   txId: Buffer,
   txBodyHash: Uint8Array,
-  witnesses: readonly InstanceType<typeof CML.Vkeywitness>[],
+  publicKeys: readonly InstanceType<typeof CML.PublicKey>[],
+  signatures: readonly InstanceType<typeof CML.Ed25519Signature>[],
 ): RejectedTx | null => {
-  for (let i = 0; i < witnesses.length; i++) {
-    const witness = witnesses[i];
-    const signature = witness.ed25519_signature();
-    if (!witness.vkey().verify(txBodyHash, signature)) {
+  for (let i = 0; i < publicKeys.length; i++) {
+    if (!publicKeys[i].verify(txBodyHash, signatures[i])) {
       return reject(
         txId,
         RejectCodes.InvalidSignature,
-        `invalid native vkey witness #${i}`,
+        `invalid vkey witness #${i}`,
       );
     }
   }
   return null;
 };
 
-const decodeAndClassifyScriptWitnesses = (
+type ClassifiedScripts = {
+  readonly nativeScriptHashes: readonly string[];
+  readonly plutusScriptHashes: readonly string[];
+};
+
+const classifyScriptWitnesses = (
   txId: Buffer,
-  preimageCbor: Uint8Array,
+  scripts: readonly VersionedScript[],
   validityIntervalStart: bigint | undefined,
   validityIntervalEnd: bigint | undefined,
   witnessSigners: ReadonlySet<string>,
-): DecodedScriptWitnesses | RejectedTx => {
-  try {
-    const scripts = decodeMidgardVersionedScriptListPreimage(
-      preimageCbor,
-      "native.script_tx_wits",
-    );
-    const nativeScriptHashes: string[] = [];
-    const plutusScriptHashes: string[] = [];
-    for (let i = 0; i < scripts.length; i++) {
-      const script = scripts[i];
-      const hash = hashMidgardVersionedScript(script);
-      if (script.language === "NativeCardano") {
-        nativeScriptHashes.push(hash);
-        if (
-          !verifyMidgardNativeScript(script.nativeScript, {
-            validityIntervalStart,
-            validityIntervalEnd,
-            witnessSigners,
-          })
-        ) {
-          return reject(
-            txId,
-            RejectCodes.NativeScriptInvalid,
-            `native script verification failed for script index ${i}`,
-          );
-        }
-        continue;
-      }
-      plutusScriptHashes.push(hash);
-    }
-    return { nativeScriptHashes, plutusScriptHashes };
-  } catch (e) {
-    return reject(
-      txId,
-      RejectCodes.InvalidFieldType,
-      `native script witness decode failed: ${String(e)}`,
-    );
-  }
-};
-
-const decodeNativeRedeemerWitnesses = (
-  txId: Buffer,
-  preimageCbor: Uint8Array,
-): boolean | RejectedTx => {
-  if (Buffer.from(preimageCbor).equals(EMPTY_CBOR_LIST)) {
-    return false;
-  }
-  try {
-    decodeMidgardRedeemers(preimageCbor);
-    return true;
-  } catch (e) {
-    return reject(
-      txId,
-      RejectCodes.InvalidFieldType,
-      `native redeemer witness decode failed: ${String(e)}`,
-    );
-  }
-};
-
-const decodeNativeRequiredSigners = (
-  txId: Buffer,
-  preimageCbor: Uint8Array,
-): string[] | RejectedTx => {
-  try {
-    const signerBytes = decodeMidgardNativeByteListPreimage(
-      preimageCbor,
-      "native.required_signers",
-    );
-    const signers: string[] = [];
-    for (let i = 0; i < signerBytes.length; i++) {
-      const signer = signerBytes[i];
-      if (signer.length !== 28) {
-        return reject(
-          txId,
-          RejectCodes.InvalidFieldType,
-          `required signer at index ${i} must be 28 bytes`,
-        );
-      }
-      signers.push(signer.toString("hex"));
-    }
-    return signers;
-  } catch (e) {
-    return reject(
-      txId,
-      RejectCodes.InvalidFieldType,
-      `native required signers decode failed: ${String(e)}`,
-    );
-  }
-};
-
-const decodeNativeRequiredObservers = (
-  txId: Buffer,
-  preimageCbor: Uint8Array,
-): string[] | RejectedTx => {
-  try {
-    const observerBytes = decodeMidgardNativeByteListPreimage(
-      preimageCbor,
-      "native.required_observers",
-    );
-    const observers: string[] = [];
-    const seenObservers = new Set<string>();
-    for (let i = 0; i < observerBytes.length; i++) {
-      const observer = observerBytes[i];
-      if (observer.length === 28) {
-        const observerHex = observer.toString("hex");
-        if (seenObservers.has(observerHex)) {
-          return reject(
-            txId,
-            RejectCodes.InvalidFieldType,
-            `duplicate required observer ${observerHex}`,
-          );
-        }
-        seenObservers.add(observerHex);
-        observers.push(observerHex);
-        continue;
-      }
-
-      let credential: InstanceType<typeof CML.Credential>;
+): ClassifiedScripts | RejectedTx => {
+  const nativeScriptHashes: string[] = [];
+  const plutusScriptHashes: string[] = [];
+  for (let i = 0; i < scripts.length; i++) {
+    const script = scripts[i];
+    const hash = hashVersionedScript(script);
+    if (script.language === "NativeCardano") {
+      nativeScriptHashes.push(hash);
+      let nativeScript: ReturnType<typeof decodeMidgardNativeScript>;
       try {
-        credential = CML.Credential.from_cbor_bytes(observer);
+        nativeScript = decodeMidgardNativeScript(script.bytes);
       } catch (e) {
         return reject(
           txId,
           RejectCodes.InvalidFieldType,
-          `required observer at index ${i} must be a 28-byte script hash or a CBOR-encoded script credential: ${String(e)}`,
+          `native script witness #${i} decode failed: ${String(e)}`,
         );
       }
-
-      if (credential.kind() !== CML.CredentialKind.Script) {
+      if (
+        !verifyMidgardNativeScript(nativeScript.script, {
+          validityIntervalStart,
+          validityIntervalEnd,
+          witnessSigners,
+        })
+      ) {
         return reject(
           txId,
-          RejectCodes.InvalidFieldType,
-          `required observer at index ${i} must be a script credential`,
+          RejectCodes.NativeScriptInvalid,
+          `native script verification failed for script index ${i}`,
         );
       }
+      continue;
+    }
+    plutusScriptHashes.push(hash);
+  }
+  return { nativeScriptHashes, plutusScriptHashes };
+};
 
-      const scriptHash = credential.as_script();
-      if (scriptHash === undefined) {
-        return reject(
-          txId,
-          RejectCodes.InvalidFieldType,
-          `required observer at index ${i} failed to decode script hash`,
-        );
-      }
+const validateRequiredSigners = (
+  txId: Buffer,
+  required: ReadonlyArray<Uint8Array> | undefined,
+): string[] | RejectedTx => {
+  if (required === undefined) return [];
+  const signers: string[] = [];
+  for (let i = 0; i < required.length; i++) {
+    const signer = required[i];
+    if (signer.length !== 28) {
+      return reject(
+        txId,
+        RejectCodes.InvalidFieldType,
+        `required signer at index ${i} must be 28 bytes`,
+      );
+    }
+    signers.push(Buffer.from(signer).toString("hex"));
+  }
+  return signers;
+};
 
-      const observerHex = scriptHash.to_hex();
-      if (seenObservers.has(observerHex)) {
+const validateRequiredObservers = (
+  txId: Buffer,
+  required: ReadonlyArray<Uint8Array> | undefined,
+): string[] | RejectedTx => {
+  if (required === undefined) return [];
+  const observers: string[] = [];
+  const seen = new Set<string>();
+  for (let i = 0; i < required.length; i++) {
+    const observer = required[i];
+    if (observer.length === 28) {
+      const observerHex = Buffer.from(observer).toString("hex");
+      if (seen.has(observerHex)) {
         return reject(
           txId,
           RejectCodes.InvalidFieldType,
           `duplicate required observer ${observerHex}`,
         );
       }
-      seenObservers.add(observerHex);
+      seen.add(observerHex);
       observers.push(observerHex);
+      continue;
     }
-    return observers;
+
+    let credential: InstanceType<typeof CML.Credential>;
+    try {
+      credential = CML.Credential.from_cbor_bytes(observer);
+    } catch (e) {
+      return reject(
+        txId,
+        RejectCodes.InvalidFieldType,
+        `required observer at index ${i} must be a 28-byte script hash or a CBOR-encoded script credential: ${String(e)}`,
+      );
+    }
+
+    if (credential.kind() !== CML.CredentialKind.Script) {
+      return reject(
+        txId,
+        RejectCodes.InvalidFieldType,
+        `required observer at index ${i} must be a script credential`,
+      );
+    }
+
+    const scriptHash = credential.as_script();
+    if (scriptHash === undefined) {
+      return reject(
+        txId,
+        RejectCodes.InvalidFieldType,
+        `required observer at index ${i} failed to decode script hash`,
+      );
+    }
+
+    const observerHex = scriptHash.to_hex();
+    if (seen.has(observerHex)) {
+      return reject(
+        txId,
+        RejectCodes.InvalidFieldType,
+        `duplicate required observer ${observerHex}`,
+      );
+    }
+    seen.add(observerHex);
+    observers.push(observerHex);
+  }
+  return observers;
+};
+
+const validateRedeemerWitnesses = (
+  txId: Buffer,
+  redeemers: Uint8Array | undefined,
+): boolean | RejectedTx => {
+  if (redeemers === undefined) return false;
+  try {
+    decodeMidgardRedeemers(redeemers);
+    return true;
   } catch (e) {
     return reject(
       txId,
       RejectCodes.InvalidFieldType,
-      `native required observers decode failed: ${String(e)}`,
+      `redeemer witness decode failed: ${String(e)}`,
     );
   }
 };
 
-const validateNativeOne = (
+const validateOne = (
   queuedTx: QueuedTx,
   config: PhaseAConfig,
 ): PhaseAAccepted | RejectedTx => {
-  let nativeTx: ReturnType<typeof decodeMidgardTxBytesToNativeFull>;
+  let tx: Transaction;
   try {
-    nativeTx = decodeMidgardTxBytesToNativeFull(queuedTx.txCbor);
+    tx = decodeTransaction(queuedTx.txCbor);
   } catch (e) {
     if (e instanceof MidgardTxCodecError) {
       const detail =
@@ -331,82 +375,73 @@ const validateNativeOne = (
     return reject(
       queuedTx.txId,
       RejectCodes.CborDeserialization,
-      `failed to decode native tx: ${String(e)}`,
+      `failed to decode tx: ${String(e)}`,
     );
   }
 
-  const computedTxId = midgardTxIdFromNativeFull(nativeTx);
+  const computedTxId = Buffer.from(transactionId(tx));
   if (!computedTxId.equals(queuedTx.txId)) {
     return reject(
       queuedTx.txId,
       RejectCodes.TxHashMismatch,
-      `queued tx_id ${queuedTx.txId.toString("hex")} != native ${computedTxId.toString("hex")}`,
+      `queued tx_id ${queuedTx.txId.toString("hex")} != computed ${computedTxId.toString("hex")}`,
     );
   }
 
-  if (nativeTx.compact.validity !== "TxIsValid") {
+  if (!tx.is_valid) {
     return reject(queuedTx.txId, RejectCodes.IsValidFalseForbidden);
   }
 
-  if (!nativeTx.body.auxiliaryDataHash.equals(EMPTY_NULL_ROOT)) {
+  const body = tx.body;
+  const ws = tx.witness_set;
+
+  if (body.auxiliary_data_hash !== undefined) {
     return reject(
       queuedTx.txId,
       RejectCodes.AuxDataForbidden,
-      "auxiliary_data_hash must match canonical empty hash",
+      "auxiliary_data must be omitted",
     );
   }
 
+  const expectedNetworkId = Number(config.expectedNetworkId);
   if (
-    nativeTx.body.networkId !== MIDGARD_NATIVE_NETWORK_ID_NONE &&
-    nativeTx.body.networkId !== config.expectedNetworkId
+    body.network_id !== undefined &&
+    body.network_id !== expectedNetworkId
   ) {
     return reject(
       queuedTx.txId,
       RejectCodes.NetworkIdMismatch,
-      `${nativeTx.body.networkId} != ${config.expectedNetworkId}`,
+      `${body.network_id} != ${expectedNetworkId}`,
     );
   }
 
-  const txFee = nativeTx.body.fee;
+  const txFee = body.fee;
   const minFee =
     config.minFeeA * BigInt(queuedTx.txCbor.length) + config.minFeeB;
   if (txFee < minFee) {
     return reject(queuedTx.txId, RejectCodes.MinFee, `${txFee} < ${minFee}`);
   }
 
-  const spentDecoded = decodeOutRefListFromPreimage(
-    queuedTx.txId,
-    nativeTx.body.spendInputsPreimageCbor,
-    "native.spend_inputs",
-  );
-  if ("code" in spentDecoded) {
-    return spentDecoded;
-  }
-  const spent = spentDecoded;
-  if (spent.length === 0) {
+  if (body.inputs.length === 0) {
     return reject(queuedTx.txId, RejectCodes.EmptyInputs);
   }
+  const spent: Buffer[] = [];
   const seenInputs = new Set<string>();
-  for (const input of spent) {
-    const outRefHex = input.toString("hex");
+  for (const input of body.inputs) {
+    const cborInput = outRefToCborInput(input);
+    const outRefHex = cborInput.toString("hex");
     if (seenInputs.has(outRefHex)) {
       return reject(queuedTx.txId, RejectCodes.DuplicateInputInTx, outRefHex);
     }
     seenInputs.add(outRefHex);
+    spent.push(cborInput);
   }
 
-  const referenceInputsDecoded = decodeOutRefListFromPreimage(
-    queuedTx.txId,
-    nativeTx.body.referenceInputsPreimageCbor,
-    "native.reference_inputs",
-  );
-  if ("code" in referenceInputsDecoded) {
-    return referenceInputsDecoded;
-  }
-  const referenceInputs = referenceInputsDecoded;
+  const referenceInputs: Buffer[] = [];
   const seenReferenceInputs = new Set<string>();
-  for (const referenceInput of referenceInputs) {
-    const outRefHex = referenceInput.toString("hex");
+  for (const input of body.reference_inputs ?? []) {
+    const cborInput = outRefToCborInput(input);
+    const outRefHex = cborInput.toString("hex");
     if (seenReferenceInputs.has(outRefHex)) {
       return reject(
         queuedTx.txId,
@@ -422,68 +457,57 @@ const validateNativeOne = (
       );
     }
     seenReferenceInputs.add(outRefHex);
-  }
-
-  /**
-   * Normalizes an output into the byte representation used by Phase A validation.
-   */
-  const outputBytes = (() => {
-    try {
-      return decodeMidgardNativeByteListPreimage(
-        nativeTx.body.outputsPreimageCbor,
-        "native.outputs",
-      );
-    } catch (e) {
-      return reject(
-        queuedTx.txId,
-        RejectCodes.InvalidOutput,
-        `native outputs decode failed: ${String(e)}`,
-      );
-    }
-  })();
-  if ("code" in outputBytes) {
-    return outputBytes;
+    referenceInputs.push(cborInput);
   }
 
   const txHash = CML.TransactionHash.from_raw_bytes(queuedTx.txId);
   let outputSum = CML.Value.zero();
   const produced: LedgerEntry[] = [];
-  for (let i = 0; i < outputBytes.length; i++) {
-    const outputCbor = outputBytes[i];
+  for (let i = 0; i < body.outputs.length; i++) {
+    const output: TransactionOutput = body.outputs[i];
+    if (output.value.coin < 0n) {
+      return reject(
+        queuedTx.txId,
+        RejectCodes.InvalidOutput,
+        `negative coin in output ${i}`,
+      );
+    }
     try {
-      const output = decodeMidgardTxOutput(outputCbor);
-      const amount = midgardValueToCmlValue(output.value);
-      if (output.value.lovelace < 0n) {
-        return reject(
-          queuedTx.txId,
-          RejectCodes.InvalidOutput,
-          `negative coin in output ${i}`,
-        );
-      }
-      outputSum = outputSum.checked_add(amount);
-      produced.push({
-        [LedgerColumns.TX_ID]: queuedTx.txId,
-        [LedgerColumns.OUTREF]: Buffer.from(
-          CML.TransactionInput.new(txHash, BigInt(i)).to_cbor_bytes(),
-        ),
-        [LedgerColumns.OUTPUT]: outputCbor,
-        [LedgerColumns.ADDRESS]: midgardOutputAddressText(output),
-      });
+      outputSum = outputSum.checked_add(midgardTsValueToCmlValue(output.value));
     } catch (e) {
       return reject(
         queuedTx.txId,
         RejectCodes.InvalidOutput,
-        `failed to decode output ${i}: ${String(e)}`,
+        `output ${i} value sum failed: ${String(e)}`,
       );
     }
+    const outputBytes = Buffer.from(encodeTransactionOutput(output));
+    let addressText: string;
+    try {
+      addressText = encodeMidgardAddressText(output.address);
+    } catch (e) {
+      return reject(
+        queuedTx.txId,
+        RejectCodes.InvalidOutput,
+        `output ${i} address decode failed: ${String(e)}`,
+      );
+    }
+    produced.push({
+      [LedgerColumns.TX_ID]: queuedTx.txId,
+      [LedgerColumns.OUTREF]: Buffer.from(
+        CML.TransactionInput.new(txHash, BigInt(i)).to_cbor_bytes(),
+      ),
+      [LedgerColumns.OUTPUT]: outputBytes,
+      [LedgerColumns.ADDRESS]: addressText,
+    });
   }
 
-  const validityIntervalStart = toOptionalValidity(
-    nativeTx.body.validityIntervalStart,
-  );
-  const validityIntervalEnd = toOptionalValidity(
-    nativeTx.body.validityIntervalEnd,
-  );
+  const validityIntervalStart =
+    body.validity_interval_start === undefined
+      ? undefined
+      : BigInt(body.validity_interval_start);
+  const validityIntervalEnd =
+    body.ttl === undefined ? undefined : BigInt(body.ttl);
   if (
     (validityIntervalStart !== undefined && validityIntervalStart < 0n) ||
     (validityIntervalEnd !== undefined && validityIntervalEnd < 0n)
@@ -491,7 +515,7 @@ const validateNativeOne = (
     return reject(
       queuedTx.txId,
       RejectCodes.InvalidValidityIntervalFormat,
-      "validity bounds must be non-negative unless unbounded sentinel",
+      "validity bounds must be non-negative",
     );
   }
   if (
@@ -506,27 +530,28 @@ const validateNativeOne = (
     );
   }
 
-  const witnessVerificationResult = decodeNativeWitnesses(
+  const decodedWitnesses = decodeVKeyWitnesses(
     queuedTx.txId,
-    nativeTx.witnessSet.addrTxWitsPreimageCbor,
+    ws.vkey_witnesses ?? [],
   );
-  if ("code" in witnessVerificationResult) {
-    return witnessVerificationResult;
+  if ("code" in decodedWitnesses) {
+    return decodedWitnesses;
   }
-  const { witnessKeyHashes, witnessSignerSet } = witnessVerificationResult;
+  const { witnessKeyHashes, witnessSignerSet, publicKeys, signatures } =
+    decodedWitnesses;
 
-  const requiredSignersResult = decodeNativeRequiredSigners(
+  const requiredSignersResult = validateRequiredSigners(
     queuedTx.txId,
-    nativeTx.body.requiredSignersPreimageCbor,
+    body.required_signers,
   );
   if ("code" in requiredSignersResult) {
     return requiredSignersResult;
   }
   const requiredSigners = requiredSignersResult;
 
-  const requiredObserversResult = decodeNativeRequiredObservers(
+  const requiredObserversResult = validateRequiredObservers(
     queuedTx.txId,
-    nativeTx.body.requiredObserversPreimageCbor,
+    body.required_observers,
   );
   if ("code" in requiredObserversResult) {
     return requiredObserversResult;
@@ -534,21 +559,13 @@ const validateNativeOne = (
   const requiredObserverHashes = requiredObserversResult;
 
   let mintPolicyHashes: readonly string[] = [];
-  let mintedValue = CML.Value.zero();
-  let burnedValue = CML.Value.zero();
-  try {
-    const decodedMint = decodeMidgardNativeMint(nativeTx.body.mintPreimageCbor);
-    if (decodedMint !== undefined) {
-      mintPolicyHashes = decodedMint.policyIds;
-      mintedValue = decodedMint.mintedValue;
-      burnedValue = decodedMint.burnedValue;
-    }
-  } catch (e) {
-    return reject(
-      queuedTx.txId,
-      RejectCodes.InvalidFieldType,
-      `native mint decode failed: ${String(e)}`,
-    );
+  let mintedValue: InstanceType<typeof CML.Value> = CML.Value.zero();
+  let burnedValue: InstanceType<typeof CML.Value> = CML.Value.zero();
+  if (body.mint !== undefined) {
+    const summary = summariseMint(body.mint);
+    mintPolicyHashes = summary.policyIds;
+    mintedValue = summary.mintedValue;
+    burnedValue = summary.burnedValue;
   }
 
   if (requiredSigners.length > 0 && witnessKeyHashes.length === 0) {
@@ -571,30 +588,32 @@ const validateNativeOne = (
 
   // Converted ingress must still prove authorization over the Midgard-native
   // body hash; Cardano-domain signature hashes are not admitted.
-  const signatureResult = verifyNativeWitnessSignatures(
+  const txBodyHashBytes = transactionBodyHash(body);
+  const signatureResult = verifyVKeyWitnessSignatures(
     queuedTx.txId,
-    nativeTx.compact.transactionBodyHash,
-    witnessVerificationResult.witnesses,
+    txBodyHashBytes,
+    publicKeys,
+    signatures,
   );
   if (signatureResult !== null) {
     return signatureResult;
   }
 
-  const scriptWitnessesResult = decodeAndClassifyScriptWitnesses(
+  const classifiedScripts = classifyScriptWitnesses(
     queuedTx.txId,
-    nativeTx.witnessSet.scriptTxWitsPreimageCbor,
+    ws.scripts ?? [],
     validityIntervalStart,
     validityIntervalEnd,
     witnessSignerSet,
   );
-  if ("code" in scriptWitnessesResult) {
-    return scriptWitnessesResult;
+  if ("code" in classifiedScripts) {
+    return classifiedScripts;
   }
-  const { nativeScriptHashes, plutusScriptHashes } = scriptWitnessesResult;
+  const { nativeScriptHashes, plutusScriptHashes } = classifiedScripts;
 
-  const redeemerWitnessesResult = decodeNativeRedeemerWitnesses(
+  const redeemerWitnessesResult = validateRedeemerWitnesses(
     queuedTx.txId,
-    nativeTx.witnessSet.redeemerTxWitsPreimageCbor,
+    ws.redeemers,
   );
   if (
     typeof redeemerWitnessesResult === "object" &&
@@ -608,12 +627,9 @@ const validateNativeOne = (
   const requiresPlutusEvaluation =
     plutusScriptHashes.length > 0 ||
     hasRedeemerWitnesses ||
-    !nativeTx.body.scriptIntegrityHash.equals(EMPTY_NULL_ROOT);
+    body.script_data_hash !== undefined;
 
-  if (
-    requiresPlutusEvaluation &&
-    nativeTx.body.scriptIntegrityHash.equals(EMPTY_NULL_ROOT)
-  ) {
+  if (requiresPlutusEvaluation && body.script_data_hash === undefined) {
     return reject(
       queuedTx.txId,
       RejectCodes.InvalidFieldType,
@@ -624,7 +640,7 @@ const validateNativeOne = (
   if (
     requiresPlutusEvaluation &&
     requiredObserverHashes.length > 0 &&
-    nativeTx.body.networkId === MIDGARD_NATIVE_NETWORK_ID_NONE
+    body.network_id === undefined
   ) {
     return reject(
       queuedTx.txId,
@@ -658,11 +674,6 @@ const validateNativeOne = (
     },
   };
 };
-
-const validateOne = (
-  queuedTx: QueuedTx,
-  config: PhaseAConfig,
-): PhaseAAccepted | RejectedTx => validateNativeOne(queuedTx, config);
 
 export const runPhaseAValidation = (
   queuedTxs: readonly QueuedTx[],

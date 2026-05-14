@@ -23,6 +23,7 @@ import {
 // `encodeMidgardNativeTxFull` CBOR codec.
 import {
   encodeMidgardTxBytes as encodeMidgardNativeTxFull,
+  midgardTsBodyHashFromNativeBody,
   midgardTxIdFromNativeFull as computeMidgardNativeTxIdFromFull,
 } from "@al-ft/midgard-validation";
 // Buffer-returning `computeHash32` from midgard-core (not midgard-ts's
@@ -606,11 +607,10 @@ const buildNativeTx = (opts?: {
     networkId: opts?.networkId ?? 0n,
   };
 
-  const bodyHash = computeHash32(
-    encodeMidgardNativeTxBodyCompact(
-      deriveMidgardNativeTxBodyCompactFromFull(body),
-    ),
-  );
+  // Phase A verifies signatures over the midgard-ts body hash (this is the
+  // hash the new wire format implies). Sign over the midgard-ts hash, not the
+  // OLD-codec body hash.
+  const bodyHash = midgardTsBodyHashFromNativeBody(body);
   const signedBodyHash =
     witnessMode === "invalid" ? Buffer.alloc(32, 0x7f) : bodyHash;
   const addrTxWitsPreimageCbor =
@@ -1925,7 +1925,7 @@ describe("native transaction integration", () => {
       Buffer.from(
         CML.make_vkey_witness(
           CML.TransactionHash.from_raw_bytes(
-            withScriptDataHash.tx.compact.transactionBodyHash,
+            midgardTsBodyHashFromNativeBody(withScriptDataHash.tx.body),
           ),
           signerKey,
         ).to_cbor_bytes(),
