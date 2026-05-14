@@ -292,36 +292,56 @@ function outputRefToCmlInput(ref: OutputReference): CML.TransactionInput {
 // ===========================================================================
 
 function cmlOutputToMidgard(out: CML.TransactionOutput): TransactionOutput {
-  // Midgard only supports post-Alonzo (Conway-format) outputs.
-  if (out.kind() !== CML.TransactionOutputKind.ConwayFormatTxOut) {
-    throw new ConversionError(
-      "Only Conway-format (post-Alonzo) transaction outputs are supported in Midgard",
-    );
+  // Conway-format: full feature set (inline datum, script_ref).
+  if (out.kind() === CML.TransactionOutputKind.ConwayFormatTxOut) {
+    const conway = out.as_conway_format_tx_out()!;
+
+    const address = conway.address().to_raw_bytes();
+    const value = cmlValueToMidgard(conway.amount());
+
+    let datum: Uint8Array | undefined;
+    const datumOpt = conway.datum_option();
+    if (datumOpt !== undefined) {
+      if (datumOpt.kind() === CML.DatumOptionKind.Hash) {
+        throw new ConversionError(
+          "Datum hashes in transaction outputs are not supported in Midgard; only inline datums are allowed",
+        );
+      }
+      // Inline datum: store raw PlutusData CBOR bytes.
+      datum = datumOpt.as_datum()!.to_cbor_bytes();
+    }
+
+    let script_ref: VersionedScript | undefined;
+    const scriptRef = conway.script_reference();
+    if (scriptRef !== undefined) {
+      script_ref = cmlScriptToVersioned(scriptRef);
+    }
+
+    return { address, value, datum, script_ref };
   }
-  const conway = out.as_conway_format_tx_out()!;
 
-  const address = conway.address().to_raw_bytes();
-  const value = cmlValueToMidgard(conway.amount());
-
-  let datum: Uint8Array | undefined;
-  const datumOpt = conway.datum_option();
-  if (datumOpt !== undefined) {
-    if (datumOpt.kind() === CML.DatumOptionKind.Hash) {
+  // Alonzo-format (array form): the simple, lower-feature shape that
+  // lucid-evolution's Emulator and other older builders emit. No inline datum,
+  // no script_ref. A datum hash, if present, is not representable in Midgard
+  // and is rejected.
+  if (out.kind() === CML.TransactionOutputKind.AlonzoFormatTxOut) {
+    const alonzo = out.as_alonzo_format_tx_out()!;
+    if (alonzo.datum_hash() !== undefined) {
       throw new ConversionError(
         "Datum hashes in transaction outputs are not supported in Midgard; only inline datums are allowed",
       );
     }
-    // Inline datum: store raw PlutusData CBOR bytes.
-    datum = datumOpt.as_datum()!.to_cbor_bytes();
+    return {
+      address: alonzo.address().to_raw_bytes(),
+      value: cmlValueToMidgard(alonzo.amount()),
+      datum: undefined,
+      script_ref: undefined,
+    };
   }
 
-  let script_ref: VersionedScript | undefined;
-  const scriptRef = conway.script_reference();
-  if (scriptRef !== undefined) {
-    script_ref = cmlScriptToVersioned(scriptRef);
-  }
-
-  return { address, value, datum, script_ref };
+  throw new ConversionError(
+    "Unsupported transaction output kind for Midgard conversion",
+  );
 }
 
 function cmlScriptToVersioned(
