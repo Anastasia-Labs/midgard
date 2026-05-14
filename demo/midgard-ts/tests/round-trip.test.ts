@@ -379,7 +379,7 @@ describe("TransactionOutput", () => {
       address: bytesSeq(29),
       value: { type: "Coin", coin: 1n },
       datum: bytesSeq(8),
-      script_ref: bytesSeq(16),
+      script_ref: { language: "PlutusV3", bytes: bytesSeq(16) },
     });
   });
 
@@ -472,9 +472,8 @@ describe("TransactionWitnessSetCompact", () => {
       decodeTransactionWitnessSetCompact,
       {
         vkey_witnesses_hash: undefined,
-        native_scripts_hash: undefined,
+        scripts_hash: undefined,
         redeemers_hash: undefined,
-        plutus_v3_scripts_hash: undefined,
       },
     );
   });
@@ -485,9 +484,8 @@ describe("TransactionWitnessSetCompact", () => {
       decodeTransactionWitnessSetCompact,
       {
         vkey_witnesses_hash: bytes(32, 1),
-        native_scripts_hash: bytes(32, 2),
+        scripts_hash: bytes(32, 2),
         redeemers_hash: bytes(32, 3),
-        plutus_v3_scripts_hash: bytes(32, 4),
       },
     );
   });
@@ -498,9 +496,8 @@ describe("TransactionWitnessSetCompact", () => {
       decodeTransactionWitnessSetCompact,
       {
         vkey_witnesses_hash: undefined,
-        native_scripts_hash: undefined,
+        scripts_hash: undefined,
         redeemers_hash: bytes(32, 0xaa),
-        plutus_v3_scripts_hash: undefined,
       },
     );
   });
@@ -630,9 +627,8 @@ describe("Transaction", () => {
     },
     witness_set: {
       vkey_witnesses: undefined,
-      native_scripts: undefined,
+      scripts: undefined,
       redeemers: undefined,
-      plutus_v3_scripts: undefined,
     },
     is_valid,
   });
@@ -655,9 +651,8 @@ describe("Transaction", () => {
             signature: bytes(64, 0xbb),
           },
         ],
-        native_scripts: undefined,
+        scripts: undefined,
         redeemers: undefined,
-        plutus_v3_scripts: undefined,
       },
     };
     assertRoundTrip(encodeTransaction, decodeTransaction, tx);
@@ -668,9 +663,8 @@ describe("Transaction", () => {
       ...mkTx(),
       witness_set: {
         vkey_witnesses: undefined,
-        native_scripts: undefined,
+        scripts: undefined,
         redeemers: bytesSeq(20),
-        plutus_v3_scripts: undefined,
       },
     };
     assertRoundTrip(encodeTransaction, decodeTransaction, tx);

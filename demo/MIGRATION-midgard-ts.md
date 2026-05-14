@@ -135,7 +135,7 @@ Format changes (⚠️ this is a wire-format change to midgard-ts):
 - [x] `midgard-ts/src/types/script.ts` — language-tagged `VersionedScript` (NativeCardano/PlutusV3/MidgardV1) + Vec helpers; wired into `TransactionOutput.script_ref` and `TransactionWitnessSet.scripts` (replaced `native_scripts`/`plutus_v3_scripts`); `derived.ts`, `cardano.ts`, `validation/phase-a.ts` updated
 - [x] `midgard-ts/src/index.ts` re-exports `hash` / `derived` / `cardano` / `types/script`
 - [x] `pnpm install` + `pnpm --dir midgard-ts build` clean
-- [ ] fix midgard-ts's jest tests for the new `VersionedScript` shape (`tests/round-trip.test.ts`, `tests/cardano-roundtrip.test.ts` still use `native_scripts`/`plutus_v3_scripts`/`script_ref: bytes`); then port to vitest or wire `pnpm --dir midgard-ts test` into CI
+- [x] midgard-ts test suite ported jest → vitest + new `VersionedScript` shape (2026-05-14). Switched `package.json` test script + deps; added `vitest.config.ts` with `globals: true`; deleted `jest.config.js`. Fixed stale fields in `tests/round-trip.test.ts`: `script_ref: bytesSeq(16)` → `{ language: "PlutusV3", bytes: bytesSeq(16) }`; `native_scripts_hash`/`plutus_v3_scripts_hash` → `scripts_hash`; `native_scripts`/`plutus_v3_scripts` → `scripts` (5 sites total). **midgard-ts: 64/64 passing.**
 
 ### Phase 1 — midgard-node codec module  ✅ DONE
 - [x] `midgard-node/package.json` += `@al-ft/midgard-ts` dep; `prebuild`/`typecheck` build midgard-ts first
