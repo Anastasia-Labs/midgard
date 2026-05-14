@@ -3,23 +3,18 @@ import { Effect } from "effect";
 import { LedgerColumns, type LedgerEntry } from "./ledger.js";
 import {
   computeScriptIntegrityHashForLanguages,
-  decodeMidgardNativeByteListPreimage,
-  decodeMidgardNativeMint,
-  decodeMidgardVersionedScriptListPreimage,
+  computeHash32,
   encodeMidgardVersionedScript,
-  hashMidgardVersionedScript,
   verifyMidgardNativeScript,
   type MidgardNativeScript,
   type MidgardTxOutput,
   type ScriptLanguageName,
 } from "@al-ft/midgard-core/codec";
-import { decodeMidgardTxBytesToNativeFull } from "./native-tx-bridge.js";
 import {
-  asArray,
-  asBytes,
-  asMap,
-  decodeSingleCbor,
-} from "@al-ft/midgard-core/codec/cbor";
+  decodeTransaction,
+  type Mint as MidgardTsMint,
+  type Transaction as MidgardTsTransaction,
+} from "@al-ft/midgard-ts";
 import {
   PhaseAAccepted,
   PhaseBConfig,
@@ -31,6 +26,7 @@ import {
   decodeMidgardTxOutput,
   midgardOutputPaymentCredential,
   midgardOutputProtected,
+  midgardTsOutputToCore,
   midgardValueToCmlValue,
 } from "./midgard-output.js";
 import {
@@ -45,6 +41,7 @@ import { evaluateScriptWithHarmonic } from "./local-script-eval.js";
 import {
   decodeScriptSource,
   resolveScriptSource,
+  scriptSourceFromMidgardTsScript,
   ResolvedScriptSource,
   ScriptSource,
 } from "./script-source.js";
@@ -243,60 +240,6 @@ const compareOutRefHex = (left: string, right: string): number => {
   return leftIx < rightIx ? -1 : leftIx > rightIx ? 1 : 0;
 };
 
-const asSigned = (value: unknown, fieldName: string): bigint => {
-  if (typeof value === "bigint") {
-    return value;
-  }
-  if (typeof value === "number" && Number.isInteger(value)) {
-    return BigInt(value);
-  }
-  throw new Error(`${fieldName} must be an integer`);
-};
-
-const decodeMintValueData = (preimageCbor: Uint8Array): ScriptMintValue => {
-  const decoded = decodeSingleCbor(preimageCbor);
-  if (Array.isArray(decoded)) {
-    const empty = asArray(decoded, "native.mint");
-    if (empty.length === 0) {
-      return new Map();
-    }
-    throw new Error(
-      "Midgard mint preimage must be an empty array or a CBOR map",
-    );
-  }
-
-  const policies = asMap(decoded, "native.mint");
-  if (policies.size === 0) {
-    throw new Error("Midgard mint map cannot be empty");
-  }
-
-  const result = new Map<string, Map<string, bigint>>();
-  for (const [policyBytesValue, assetsValue] of policies.entries()) {
-    const policyBytes = asBytes(policyBytesValue, "native.mint.policy");
-    if (policyBytes.length !== 28) {
-      throw new Error("Mint policy id must be 28 bytes");
-    }
-
-    const assetsMap = asMap(assetsValue, "native.mint.assets");
-    if (assetsMap.size === 0) {
-      throw new Error("Mint policy asset map cannot be empty");
-    }
-
-    const assets = new Map<string, bigint>();
-    for (const [assetNameValue, quantityValue] of assetsMap.entries()) {
-      const assetName = asBytes(assetNameValue, "native.mint.asset_name");
-      const quantity = asSigned(quantityValue, "native.mint.quantity");
-      if (quantity === 0n) {
-        throw new Error("Mint quantity cannot be zero");
-      }
-      assets.set(assetName.toString("hex"), quantity);
-    }
-    result.set(policyBytes.toString("hex"), assets);
-  }
-
-  return result;
-};
-
 type RequiredScriptExecution = {
   readonly purpose: MidgardScriptPurpose;
   readonly pointer: MidgardRedeemerPointer;
@@ -314,19 +257,31 @@ type LocalScriptValidationResult =
 const collectInlineScriptSources = (
   candidate: PhaseAAccepted,
 ): readonly ScriptSource[] => {
-  const nativeTx = decodeMidgardTxBytesToNativeFull(candidate.txCbor);
-  const scripts = decodeMidgardVersionedScriptListPreimage(
-    nativeTx.witnessSet.scriptTxWitsPreimageCbor,
-    "native.script_tx_wits",
-  );
+  const tx = decodeTransaction(candidate.txCbor);
+  const scripts = tx.witness_set.scripts ?? [];
   return scripts.map((script, index) =>
-    decodeScriptSource(
-      encodeMidgardVersionedScript(script),
-      "inline",
-      `script_wit:${index}`,
-    ),
+    scriptSourceFromMidgardTsScript(script, "inline", `script_wit:${index}`),
   );
 };
+
+// Convert a midgard-ts Mint to the `ScriptMintValue` shape used by the
+// Plutus/MidgardV1 script context view (policy hex → asset hex → quantity).
+const midgardTsMintToScriptMintValue = (mint: MidgardTsMint): ScriptMintValue => {
+  const result = new Map<string, Map<string, bigint>>();
+  for (const [policyId, entries] of mint) {
+    const assets = new Map<string, bigint>();
+    for (const [name, amount] of entries) {
+      assets.set(Buffer.from(name).toString("hex"), amount);
+    }
+    result.set(Buffer.from(policyId).toString("hex"), assets);
+  }
+  return result;
+};
+
+const midgardTsMintPolicyIds = (mint: MidgardTsMint): readonly string[] =>
+  mint.map(([policyId]) =>
+    CML.ScriptHash.from_raw_bytes(Buffer.from(policyId)).to_hex(),
+  );
 
 const collectReferenceScriptSources = (
   node: CandidateNode,
@@ -391,10 +346,11 @@ const discoverLocalScriptExecutions = (
       readonly contextView: ScriptContextView;
     } => {
   const candidate = node.candidate;
-  const nativeTx = decodeMidgardTxBytesToNativeFull(candidate.txCbor);
-  const redeemers = decodeMidgardRedeemers(
-    nativeTx.witnessSet.redeemerTxWitsPreimageCbor,
-  );
+  const tx = decodeTransaction(candidate.txCbor);
+  const redeemers =
+    tx.witness_set.redeemers === undefined
+      ? []
+      : decodeMidgardRedeemers(tx.witness_set.redeemers);
   const seenRedeemerPointers = new Set<string>();
   for (const redeemer of redeemers) {
     const key = midgardRedeemerPointerKey(redeemer);
@@ -489,9 +445,12 @@ const discoverLocalScriptExecutions = (
     }
   }
 
-  const mintValue = decodeMintValueData(nativeTx.body.mintPreimageCbor);
-  const decodedMint = decodeMidgardNativeMint(nativeTx.body.mintPreimageCbor);
-  const mintPolicies = decodedMint?.policyIds ?? [];
+  const mintValue: ScriptMintValue =
+    tx.body.mint === undefined
+      ? new Map()
+      : midgardTsMintToScriptMintValue(tx.body.mint);
+  const mintPolicies =
+    tx.body.mint === undefined ? [] : midgardTsMintPolicyIds(tx.body.mint);
   for (let index = 0; index < mintPolicies.length; index += 1) {
     const policyId = mintPolicies[index];
     const result = addExecution(
@@ -515,11 +474,7 @@ const discoverLocalScriptExecutions = (
     }
   }
 
-  const outputBytes = decodeMidgardNativeByteListPreimage(
-    nativeTx.body.outputsPreimageCbor,
-    "native.outputs",
-  );
-  const outputs = outputBytes.map((bytes) => decodeMidgardTxOutput(bytes));
+  const outputs = tx.body.outputs.map(midgardTsOutputToCore);
   const protectedReceivingHashes = new Set<string>();
   for (let index = 0; index < outputs.length; index += 1) {
     const output = outputs[index];
@@ -595,7 +550,7 @@ const runLocalScriptEvaluation = (
   enforceScriptBudget: boolean,
 ): LocalScriptValidationResult => {
   const candidate = node.candidate;
-  const nativeTx = decodeMidgardTxBytesToNativeFull(candidate.txCbor);
+  const tx = decodeTransaction(candidate.txCbor);
   const inlineSources = collectInlineScriptSources(candidate);
   const referenceSources = collectReferenceScriptSources(node, stateValue);
   const sources = [...inlineSources, ...referenceSources];
@@ -657,18 +612,36 @@ const runLocalScriptEvaluation = (
   );
 
   const languages = requiredScriptLanguages(discovered.executions);
-  const expectedScriptIntegrityHash = computeScriptIntegrityHashForLanguages(
-    nativeTx.witnessSet.redeemerTxWitsRoot,
-    languages,
-  );
-  if (!nativeTx.body.scriptIntegrityHash.equals(expectedScriptIntegrityHash)) {
-    const expectedHex = expectedScriptIntegrityHash.toString("hex");
-    const actualHex = nativeTx.body.scriptIntegrityHash.toString("hex");
-    return {
-      kind: "rejected",
-      code: RejectCodes.InvalidFieldType,
-      detail: `script_integrity_hash mismatch: expected ${expectedHex} actual ${actualHex} required_languages=${languages.join(",")}`,
-    };
+  // No script_data_hash on the body + no required script languages = no plutus
+  // witness bundle to check; this is the canonical "empty" case and accepts.
+  // Phase-A rejects bundles where one side disagrees (plutus + missing
+  // script_data_hash) so we never have to mismatch-reject here.
+  if (tx.body.script_data_hash !== undefined || languages.length > 0) {
+    // OLD codec `redeemerTxWitsRoot = blake2b256(redeemerTxWitsPreimageCbor)`;
+    // in midgard-ts, `witness_set.redeemers` is the same raw redeemer CBOR.
+    const redeemerTxWitsRoot =
+      tx.witness_set.redeemers === undefined
+        ? computeHash32(Buffer.from([0x80])) // EMPTY_CBOR_LIST
+        : computeHash32(Buffer.from(tx.witness_set.redeemers));
+    const expectedScriptIntegrityHash = computeScriptIntegrityHashForLanguages(
+      redeemerTxWitsRoot,
+      languages,
+    );
+    const actualScriptIntegrityHash =
+      tx.body.script_data_hash === undefined
+        ? Buffer.alloc(0)
+        : Buffer.from(tx.body.script_data_hash);
+    if (!actualScriptIntegrityHash.equals(expectedScriptIntegrityHash)) {
+      const expectedHex = Buffer.from(expectedScriptIntegrityHash).toString(
+        "hex",
+      );
+      const actualHex = actualScriptIntegrityHash.toString("hex");
+      return {
+        kind: "rejected",
+        code: RejectCodes.InvalidFieldType,
+        detail: `script_integrity_hash mismatch: expected ${expectedHex} actual ${actualHex} required_languages=${languages.join(",")}`,
+      };
+    }
   }
 
   if (nonNativeExecutions.length === 0) {

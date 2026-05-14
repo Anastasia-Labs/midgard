@@ -94,7 +94,9 @@ const coreOutputToMidgardTs = (
       : coreScriptRefToMidgardTs(output.script_ref),
 });
 
-const midgardTsOutputToCore = (output: MidgardTsTxOutput): MidgardTxOutput => ({
+export const midgardTsOutputToCore = (
+  output: MidgardTsTxOutput,
+): MidgardTxOutput => ({
   address: Buffer.from(output.address),
   value: midgardTsValueToCoreValue(output.value),
   ...(output.datum === undefined
