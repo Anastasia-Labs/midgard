@@ -9,18 +9,15 @@ import {
   walletFromSeed,
 } from "@lucid-evolution/lucid";
 import {
-  decodeMidgardNativeByteListPreimage,
   midgardAddressFromText,
   midgardAddressToText,
   protectMidgardAddress,
 } from "@/midgard-tx-codec/index.js";
-// Built txCbor is midgard-ts wire bytes (post-Phase 4), so the decode side
-// uses the validation bridge that knows the midgard-ts format and returns
-// the internal `MidgardNativeTxFull` shape this test inspects.
+// Built txCbor is midgard-ts wire bytes — decode directly via midgard-ts.
 import {
-  decodeMidgardTxBytesToNativeFull as decodeMidgardNativeTxFull,
-  midgardTxIdFromNativeFull as computeMidgardNativeTxIdFromFull,
-} from "@al-ft/midgard-validation";
+  decodeTransaction,
+  transactionId,
+} from "@al-ft/midgard-ts";
 import {
   DEFAULT_WALLET_SEED_ENV,
   LEGACY_DEFAULT_WALLET_SEED_ENV,
@@ -38,7 +35,6 @@ import {
   type QueuedTx,
 } from "@/validation/index.js";
 import {
-  decodeMidgardTxOutput,
   midgardOutputAddressText,
   midgardValueToCmlValue,
 } from "@/validation/midgard-output.js";
@@ -209,28 +205,40 @@ describe("submit-l2-transfer tx building", () => {
       lovelace: 3_500_000n,
     });
 
-    const nativeTx = decodeMidgardNativeTxFull(built.txCbor);
-    const spendInputs = decodeMidgardNativeByteListPreimage(
-      nativeTx.body.spendInputsPreimageCbor,
-    ).map((bytes) => {
-      const input = CML.TransactionInput.from_cbor_bytes(bytes);
-      return `${input.transaction_id().to_hex()}#${input.index().toString()}`;
-    });
+    const tx = decodeTransaction(built.txCbor);
+    const spendInputs = tx.body.inputs.map(
+      (ref) =>
+        `${Buffer.from(ref.tx_id).toString("hex")}#${ref.index.toString()}`,
+    );
     expect(spendInputs).toEqual([
       `${"11".repeat(32)}#0`,
       `${"22".repeat(32)}#1`,
     ]);
 
-    const outputs = decodeMidgardNativeByteListPreimage(
-      nativeTx.body.outputsPreimageCbor,
-    ).map((bytes) => {
-      // Outputs in `outputsPreimageCbor` are now midgard-ts binary bytes after
-      // the bridge round-trip (Phase 4) — no longer the CBOR map-form
-      // (`bytes[0] >> 5 === 5`) that the OLD codec used.
-      const output = decodeMidgardTxOutput(bytes);
+    const outputs = tx.body.outputs.map((output) => {
+      const core = {
+        address: Buffer.from(output.address),
+        value:
+          output.value.type === "Coin"
+            ? { lovelace: output.value.coin, assets: new Map() }
+            : {
+                lovelace: output.value.coin,
+                assets: new Map(
+                  output.value.assets.map(([policyId, entries]) => [
+                    Buffer.from(policyId).toString("hex"),
+                    new Map(
+                      entries.map(([name, amount]) => [
+                        Buffer.from(name).toString("hex"),
+                        amount,
+                      ]),
+                    ),
+                  ]),
+                ),
+              },
+      };
       return {
-        address: midgardOutputAddressText(output),
-        assets: valueToAssets(midgardValueToCmlValue(output.value)),
+        address: midgardOutputAddressText(core),
+        assets: valueToAssets(midgardValueToCmlValue(core.value)),
       };
     });
     expect(outputs).toHaveLength(2);
@@ -407,10 +415,8 @@ describe("submit-l2-transfer program", () => {
         const body = JSON.parse(String(init?.body)) as {
           readonly tx_cbor: string;
         };
-        const built = decodeMidgardNativeTxFull(
-          Buffer.from(body.tx_cbor, "hex"),
-        );
-        expectedTxId = computeMidgardNativeTxIdFromFull(built).toString("hex");
+        const built = decodeTransaction(Buffer.from(body.tx_cbor, "hex"));
+        expectedTxId = Buffer.from(transactionId(built)).toString("hex");
         return {
           ok: true,
           status: 200,

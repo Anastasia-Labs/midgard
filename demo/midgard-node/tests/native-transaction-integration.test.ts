@@ -311,28 +311,6 @@ const makeScriptOutput = (
     ).to_cbor_bytes(),
   );
 
-const makeDatumHashScriptOutput = (
-  scriptHash: InstanceType<typeof CML.ScriptHash>,
-  lovelace: bigint,
-  datumHash: InstanceType<typeof CML.DatumHash>,
-  scriptRef?: InstanceType<typeof CML.Script>,
-): Buffer => {
-  const output = CML.ConwayFormatTxOut.new(
-    CML.EnterpriseAddress.new(
-      0,
-      CML.Credential.new_script(scriptHash),
-    ).to_address(),
-    CML.Value.from_coin(lovelace),
-  );
-  output.set_datum_option(CML.DatumOption.new_hash(datumHash));
-  if (scriptRef !== undefined) {
-    output.set_script_reference(scriptRef);
-  }
-  return Buffer.from(
-    CML.TransactionOutput.new_conway_format_tx_out(output).to_cbor_bytes(),
-  );
-};
-
 const makeProtectedScriptOutput = (
   scriptHash: InstanceType<typeof CML.ScriptHash>,
   lovelace: bigint,
@@ -498,11 +476,6 @@ const makeMintPreimageFromEntries = (
       }, new Map()),
     ),
   );
-
-const makeEmptyMintMapPreimage = (): Buffer => Buffer.from(encode(new Map()));
-
-const makeEmptyMintPolicyAssetsPreimage = (policyId: Uint8Array): Buffer =>
-  Buffer.from(encode(new Map([[Buffer.from(policyId), new Map()]])));
 
 const buildNativeTx = (opts?: {
   readonly redeemerTxWitsPreimageCbor?: Buffer;
@@ -1031,37 +1004,6 @@ describe("native transaction integration", () => {
     expect(result.rejected).toHaveLength(1);
     expect(result.rejected[0].code).toBe(RejectCodes.InvalidFieldType);
     expect(result.rejected[0].detail).toContain("network_id is required");
-  });
-
-  // WONTFIX(post-Phase-5-main): observers in the midgard-ts wire format are
-  // 28-byte hashes only (`required_observers: Hash28[] | undefined`). The
-  // CBOR-credential variant this test exercised isn't representable, so the
-  // "normalize CBOR cred to hash then detect dup" path that phase-A used is
-  // gone. Phase-A still rejects exact 28-byte-hash duplicates (covered by
-  // adjacent live tests). Delete in test cleanup.
-  it.skip("rejects duplicate required observers after normalization", async () => {
-    const observerKey = CML.PrivateKey.generate_ed25519();
-    const observerScript = CML.NativeScript.new_script_pubkey(
-      observerKey.to_public().hash(),
-    );
-    const observerHash = Buffer.from(observerScript.hash().to_raw_bytes());
-    const observerCredential = Buffer.from(
-      CML.Credential.new_script(
-        CML.ScriptHash.from_raw_bytes(observerHash),
-      ).to_cbor_bytes(),
-    );
-    const { txId, txCbor } = buildNativeTx({
-      requiredObserverItems: [observerHash, observerCredential],
-    });
-
-    const result = await Effect.runPromise(
-      runPhaseAValidation([mkQueued(txId, txCbor)], phaseAConfig),
-    );
-
-    expect(result.accepted).toHaveLength(0);
-    expect(result.rejected).toHaveLength(1);
-    expect(result.rejected[0].code).toBe(RejectCodes.InvalidFieldType);
-    expect(result.rejected[0].detail).toContain("duplicate required observer");
   });
 
   it("rejects duplicate reference inputs in phase A", async () => {
@@ -1666,79 +1608,6 @@ describe("native transaction integration", () => {
     expect(phaseB.rejected[0].detail).toContain(policyId.toString("hex"));
   });
 
-  // WONTFIX(post-Phase-5-main): in the midgard-ts wire format mint is the
-  // structured `Array<[PolicyId, Array<[name, amt]>]>`, not a CBOR map — there
-  // is no "malformed mint preimage" to construct or reject. The OLD-codec
-  // rejection path this exercised doesn't exist. Delete in test cleanup.
-  it.skip("rejects malformed native mint preimages", async () => {
-    const signerKey = CML.PrivateKey.generate_ed25519();
-    const malformedMintPreimageCbor = makeMintPreimage(
-      Buffer.alloc(27, 0x11),
-      Buffer.from("05", "hex"),
-      1n,
-    );
-    const { txId, txCbor } = buildNativeTx({
-      mintPreimageCbor: malformedMintPreimageCbor,
-      witnessMode: "valid",
-      witnessSignerPrivateKey: signerKey,
-    });
-
-    const phaseA = await Effect.runPromise(
-      runPhaseAValidation([mkQueued(txId, txCbor)], phaseAConfig),
-    );
-
-    expect(phaseA.accepted).toHaveLength(0);
-    expect(phaseA.rejected).toHaveLength(1);
-    expect(phaseA.rejected[0].code).toBe(RejectCodes.InvalidFieldType);
-  });
-
-  // WONTFIX(post-Phase-5-main): midgard-ts `body.mint` is either absent (i.e.
-  // `undefined`) or a non-empty structured array. "Empty top-level mint map"
-  // isn't representable on the wire. Delete in test cleanup.
-  it.skip("rejects empty top-level mint maps instead of treating them as no mint", async () => {
-    const signerKey = CML.PrivateKey.generate_ed25519();
-    const { txId, txCbor } = buildNativeTx({
-      mintPreimageCbor: makeEmptyMintMapPreimage(),
-      witnessMode: "valid",
-      witnessSignerPrivateKey: signerKey,
-    });
-
-    const phaseA = await Effect.runPromise(
-      runPhaseAValidation([mkQueued(txId, txCbor)], phaseAConfig),
-    );
-
-    expect(phaseA.accepted).toHaveLength(0);
-    expect(phaseA.rejected).toHaveLength(1);
-    expect(phaseA.rejected[0].code).toBe(RejectCodes.InvalidFieldType);
-    expect(phaseA.rejected[0].detail).toContain(
-      "Midgard mint map cannot be empty",
-    );
-  });
-
-  // WONTFIX(post-Phase-5-main): midgard-ts mint entries are nested structured
-  // arrays. Empty per-policy asset map isn't representable on the wire.
-  // Delete in test cleanup.
-  it.skip("rejects empty per-policy mint asset maps instead of treating them as no mint", async () => {
-    const signerKey = CML.PrivateKey.generate_ed25519();
-    const policyId = Buffer.from("66".repeat(28), "hex");
-    const { txId, txCbor } = buildNativeTx({
-      mintPreimageCbor: makeEmptyMintPolicyAssetsPreimage(policyId),
-      witnessMode: "valid",
-      witnessSignerPrivateKey: signerKey,
-    });
-
-    const phaseA = await Effect.runPromise(
-      runPhaseAValidation([mkQueued(txId, txCbor)], phaseAConfig),
-    );
-
-    expect(phaseA.accepted).toHaveLength(0);
-    expect(phaseA.rejected).toHaveLength(1);
-    expect(phaseA.rejected[0].code).toBe(RejectCodes.InvalidFieldType);
-    expect(phaseA.rejected[0].detail).toContain(
-      "Mint policy asset map cannot be empty",
-    );
-  });
-
   it("rejects mint value-preservation mismatches when minted assets are missing from outputs", async () => {
     const signerKey = CML.PrivateKey.generate_ed25519();
     const mintScript = CML.NativeScript.new_script_pubkey(
@@ -2295,100 +2164,6 @@ describe("native transaction integration", () => {
     expect(phaseB.rejected).toHaveLength(1);
     expect(phaseB.rejected[0].code).toBe(RejectCodes.PlutusScriptInvalid);
     expect(phaseB.rejected[0].detail).toBeTruthy();
-  });
-
-  // WONTFIX(post-Phase-5-main): midgard-ts `TransactionOutput.datum` is
-  // inline-only (`Uint8Array | undefined`). Datum-hash outputs aren't
-  // representable on the wire, so phase-B never sees one — `decodeMidgardTxOutput`
-  // would fail at the midgard-ts decode boundary, not with phase-B's "datum
-  // hashes" rejection. The OLD codec carried datum hashes as a separate
-  // option field; the new format dropped that. Delete in test cleanup.
-  it.skip("rejects Plutus datum-hash spends at the Midgard output boundary", async () => {
-    const spendScript = makeAlwaysSucceedsScript(
-      ALWAYS_SUCCEEDS_SPEND_SCRIPT_HEX,
-    );
-    const scriptHash = spendScript.hash();
-    const datum = makePlutusIntegerData(9n);
-    const base = buildNativeTx({
-      scriptWitnessItems: [wrapCmlScriptAsVersioned(spendScript)],
-      redeemerTxWitsPreimageCbor: makeLegacyRedeemersCbor([
-        { tag: CML.RedeemerTag.Spend, index: 0n },
-      ]),
-    });
-    const { txId, txCbor, inputOutRef, referenceInputOutRef } =
-      attachComputedScriptIntegrityHash(base, [CML.Language.PlutusV3]);
-
-    const preState = new Map<string, Buffer>([
-      [
-        inputOutRef.toString("hex"),
-        makeDatumHashScriptOutput(
-          scriptHash,
-          3_000_000n,
-          CML.hash_plutus_data(datum),
-        ),
-      ],
-      [
-        referenceInputOutRef.toString("hex"),
-        makeOutput(TEST_ADDRESS, 2_000_000n),
-      ],
-    ]);
-
-    const { phaseA, phaseB } = await runBothPhases(txId, txCbor, preState);
-
-    expect(phaseA.rejected).toHaveLength(0);
-    expect(phaseA.accepted).toHaveLength(1);
-    expect(phaseB.accepted).toHaveLength(0);
-    expect(phaseB.rejected).toHaveLength(1);
-    expect(phaseB.rejected[0].code).toBe(RejectCodes.InvalidOutput);
-    expect(phaseB.rejected[0].detail).toContain("datum hashes");
-  });
-
-  // WONTFIX(post-Phase-5-main): same as above — produced outputs can't carry
-  // datum hashes on the wire. Delete in test cleanup.
-  it.skip("rejects produced outputs with datum hashes in phase A", async () => {
-    const spendScript = makeAlwaysSucceedsScript(
-      ALWAYS_SUCCEEDS_SPEND_SCRIPT_HEX,
-    );
-    const scriptHash = spendScript.hash();
-    const datum = makePlutusIntegerData(9n);
-    const base = buildNativeTx({
-      scriptWitnessItems: [wrapCmlScriptAsVersioned(spendScript)],
-      redeemerTxWitsPreimageCbor: makeLegacyRedeemersCbor([
-        { tag: CML.RedeemerTag.Spend, index: 0n },
-      ]),
-      outputCbors: [
-        makeDatumHashScriptOutput(
-          scriptHash,
-          3_000_000n,
-          CML.hash_plutus_data(datum),
-        ),
-      ],
-      scriptIntegrityHash: Buffer.from("92".repeat(32), "hex"),
-    });
-
-    const preState = new Map<string, Buffer>([
-      [
-        base.inputOutRef.toString("hex"),
-        makeScriptOutput(scriptHash, 3_000_000n, { datum }),
-      ],
-      [
-        base.referenceInputOutRef.toString("hex"),
-        makeOutput(TEST_ADDRESS, 2_000_000n),
-      ],
-    ]);
-
-    const { phaseA, phaseB } = await runBothPhases(
-      base.txId,
-      base.txCbor,
-      preState,
-    );
-
-    expect(phaseA.accepted).toHaveLength(0);
-    expect(phaseA.rejected).toHaveLength(1);
-    expect(phaseA.rejected[0].code).toBe(RejectCodes.InvalidOutput);
-    expect(phaseA.rejected[0].detail).toContain("datum hashes");
-    expect(phaseB.accepted).toHaveLength(0);
-    expect(phaseB.rejected).toHaveLength(0);
   });
 
   it("rejects script integrity hashes that do not match Phase B language views", async () => {
@@ -3320,55 +3095,6 @@ describe("native transaction integration", () => {
     );
   });
 
-  // WONTFIX(post-Phase-5-main): same root cause as the other datum-hash
-  // WONTFIX entries — midgard-ts output datum is inline-only. Delete in test
-  // cleanup.
-  it.skip("rejects MidgardV1 datum-hash spends at the Midgard output boundary", async () => {
-    const scriptHash = midgardV1Hash(MIDGARD_V1_SPEND_GUARD_SCRIPT_HEX);
-    const datum = makePlutusIntegerData(5n);
-    const base = buildNativeTx({
-      scriptWitnessItems: [
-        makeRawUplcWitness(MIDGARD_V1_SPEND_GUARD_SCRIPT_HEX),
-      ],
-      redeemerTxWitsPreimageCbor: makeLegacyRedeemersCbor([
-        {
-          tag: MidgardRedeemerTag.Spend,
-          index: 0n,
-          data: makePlutusDataBytes(42n),
-        },
-      ]),
-      scriptLanguages: ["MidgardV1"],
-    });
-
-    const preState = new Map<string, Buffer>([
-      [
-        base.inputOutRef.toString("hex"),
-        makeDatumHashScriptOutput(
-          CML.ScriptHash.from_hex(scriptHash),
-          3_000_000n,
-          CML.hash_plutus_data(datum),
-        ),
-      ],
-      [
-        base.referenceInputOutRef.toString("hex"),
-        makeOutput(TEST_ADDRESS, 2_000_000n),
-      ],
-    ]);
-
-    const { phaseA, phaseB } = await runBothPhases(
-      base.txId,
-      base.txCbor,
-      preState,
-    );
-
-    expect(phaseA.rejected).toHaveLength(0);
-    expect(phaseA.accepted).toHaveLength(1);
-    expect(phaseB.accepted).toHaveLength(0);
-    expect(phaseB.rejected).toHaveLength(1);
-    expect(phaseB.rejected[0].code).toBe(RejectCodes.InvalidOutput);
-    expect(phaseB.rejected[0].detail).toContain("datum hashes");
-  });
-
   // DESIGN-TODO(dual-domain script discovery): test expects the same UPLC
   // bytes wrapped as a typed PlutusV3 reference script to also satisfy a
   // MidgardV1 spend hash. `resolveScriptSource` matches one hash per
@@ -3907,68 +3633,6 @@ describe("native transaction integration", () => {
     expect(phaseA.accepted).toHaveLength(1);
     expect(phaseB.rejected).toHaveLength(0);
     expect(phaseB.accepted).toHaveLength(1);
-  });
-
-  // WONTFIX(post-Phase-5-main): observers/signers are Hash28[] on the wire —
-  // there is no "preimage" to malform. Delete in test cleanup.
-  it.skip("rejects malformed native required observer preimages", async () => {
-    const base = buildNativeTx();
-    const malformedRequiredObserversPreimageCbor = encodeByteList([
-      Buffer.from("01", "hex"),
-    ]);
-    const tx: MidgardNativeTxFull = {
-      ...base.tx,
-      body: {
-        ...base.tx.body,
-        requiredObserversRoot: computeHash32(
-          malformedRequiredObserversPreimageCbor,
-        ),
-        requiredObserversPreimageCbor: malformedRequiredObserversPreimageCbor,
-      },
-    };
-    (tx as { compact: typeof tx.compact }).compact =
-      deriveMidgardNativeTxCompact(tx.body, tx.witnessSet, "TxIsValid");
-    const txId = computeMidgardNativeTxIdFromFull(tx);
-    const txCbor = encodeMidgardNativeTxFull(tx);
-
-    const result = await Effect.runPromise(
-      runPhaseAValidation([mkQueued(txId, txCbor)], phaseAConfig),
-    );
-
-    expect(result.accepted).toHaveLength(0);
-    expect(result.rejected).toHaveLength(1);
-    expect(result.rejected[0].code).toBe(RejectCodes.InvalidFieldType);
-  });
-
-  // WONTFIX(post-Phase-5-main): same as observer-preimage above — signers are
-  // Hash28[] on the wire, no preimage to malform. Delete in test cleanup.
-  it.skip("rejects malformed native required signer preimages", async () => {
-    const base = buildNativeTx();
-    const malformedRequiredSignersPreimageCbor = encodeByteList([
-      Buffer.alloc(27, 0x11),
-    ]);
-    const tx: MidgardNativeTxFull = {
-      ...base.tx,
-      body: {
-        ...base.tx.body,
-        requiredSignersRoot: computeHash32(
-          malformedRequiredSignersPreimageCbor,
-        ),
-        requiredSignersPreimageCbor: malformedRequiredSignersPreimageCbor,
-      },
-    };
-    (tx as { compact: typeof tx.compact }).compact =
-      deriveMidgardNativeTxCompact(tx.body, tx.witnessSet, "TxIsValid");
-    const txId = computeMidgardNativeTxIdFromFull(tx);
-    const txCbor = encodeMidgardNativeTxFull(tx);
-
-    const result = await Effect.runPromise(
-      runPhaseAValidation([mkQueued(txId, txCbor)], phaseAConfig),
-    );
-
-    expect(result.accepted).toHaveLength(0);
-    expect(result.rejected).toHaveLength(1);
-    expect(result.rejected[0].code).toBe(RejectCodes.InvalidFieldType);
   });
 
   it("rejects legacy Cardano payloads in native-only phase A", async () => {

@@ -231,54 +231,6 @@ describe("Midgard local script evaluation primitives", () => {
     );
   });
 
-  // WONTFIX(post-Phase-5-main): tested OLD-CBOR-codec error string. Feeding
-  // Cardano-CBOR TxOut bytes to `decodeMidgardTxOutput` now hits midgard-ts
-  // binary decode and raises an unrelated buffer/discriminant error — the
-  // assertion this test made doesn't translate. Producer is responsible for
-  // emitting midgard-ts bytes; there's no live caller path that funnels OLD
-  // formats here. Delete in test cleanup.
-  it.skip("rejects legacy array-form TxOut bytes", () => {
-    const keyHash = CML.Ed25519KeyHash.from_hex("11".repeat(28));
-    const output = CML.TransactionOutput.new(
-      CML.EnterpriseAddress.new(
-        0,
-        CML.Credential.new_pub_key(keyHash),
-      ).to_address(),
-      CML.Value.from_coin(2_000_000n),
-    );
-
-    expect(() => decodeMidgardTxOutput(output.to_cbor_bytes())).toThrow(
-      "Babbage map-form",
-    );
-  });
-
-  // WONTFIX(post-Phase-5-main): tested OLD-CBOR-codec rejection of CBOR
-  // datum-hash outputs. midgard-ts `TransactionOutput.datum` is inline-only —
-  // there is no datum-hash field on the wire to reject. Delete in test cleanup.
-  it.skip("rejects map-form outputs with datum hashes", () => {
-    const keyHash = CML.Ed25519KeyHash.from_hex("11".repeat(28));
-    const output = CML.ConwayFormatTxOut.new(
-      CML.EnterpriseAddress.new(
-        0,
-        CML.Credential.new_pub_key(keyHash),
-      ).to_address(),
-      CML.Value.from_coin(2_000_000n),
-    );
-    output.set_datum_option(
-      CML.DatumOption.new_hash(
-        CML.hash_plutus_data(
-          CML.PlutusData.new_integer(CML.BigInteger.from_str("7")),
-        ),
-      ),
-    );
-
-    expect(() =>
-      decodeMidgardTxOutput(
-        CML.TransactionOutput.new_conway_format_tx_out(output).to_cbor_bytes(),
-      ),
-    ).toThrow("datum hashes");
-  });
-
   it("decodes protected map-form outputs with inline datum and reference script", () => {
     const keyHash = CML.Ed25519KeyHash.from_hex("11".repeat(28));
     const native = CML.NativeScript.new_script_pubkey(keyHash);
@@ -306,21 +258,6 @@ describe("Midgard local script evaluation primitives", () => {
         ? undefined
         : hashMidgardVersionedScript(decoded.script_ref),
     ).toBe(native.hash().to_hex());
-  });
-
-  // WONTFIX(post-Phase-5-main): tested OLD-CBOR-codec error strings for
-  // malformed CBOR map outputs. midgard-ts decode of the same bytes raises
-  // `BufferTooShort` instead — the underlying assertion doesn't translate.
-  // Producer responsibility, no live path. Delete in test cleanup.
-  it.skip("rejects malformed map-form outputs without a usable address field", () => {
-    expect(() =>
-      decodeMidgardTxOutput(Buffer.from(encode(new Map([[1n, 2n]])))),
-    ).toThrow("missing address key 0");
-    expect(() =>
-      decodeMidgardTxOutput(
-        Buffer.from(encode(new Map([[0n, Buffer.alloc(0)]]))),
-      ),
-    ).toThrow("must not be empty");
   });
 
   it("builds the MidgardV1 context with redeemers and no Cardano governance fields", () => {
