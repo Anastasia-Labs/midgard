@@ -663,7 +663,7 @@ const runLocalScriptEvaluation = (
     nativeTx.version,
   );
   const expectedScriptIntegrityHash = computeScriptIntegrityHashForLanguages(
-    witnessCompact.redeemerTxWitsRoot,
+    witnessCompact.redeemerTxWitsHash,
     languages,
   );
   if (!nativeTx.body.scriptIntegrityHash.equals(expectedScriptIntegrityHash)) {

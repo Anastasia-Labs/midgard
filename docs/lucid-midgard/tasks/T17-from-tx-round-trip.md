@@ -57,14 +57,14 @@ separate diagnostic/import bridge and is not the normal signing path.
   verified with native full consistency checks.
 - The compact body hash is recomputed from the full body and remains the tx id.
 - The compact witness-set hash is recomputed from the full witness set.
-- Every body and witness root matches its preimage.
+- Every body and witness hash matches its preimage.
 - Canonical native re-encoding of canonical input bytes round-trips exactly.
 - Legacy four-bucket witness sets and datum witness buckets are rejected.
 - Existing address witnesses decode as CML vkey witnesses and verify against
   `nativeTx.compact.transactionBodyHash`.
 - Duplicate address witness entries for the same key hash are rejected on raw
   import, including byte-identical duplicates. Import must never silently rewrite
-  witness bytes, witness roots, witness-set hashes, or tx hex.
+  witness bytes, witness hashes, witness-set hashes, or tx hex.
 - Expected address witness hardening is preserved for imported txs: required
   signers, protected pubkey outputs, and resolved pubkey spend inputs contribute
   to the expected witness set.
@@ -80,9 +80,9 @@ separate diagnostic/import bridge and is not the normal signing path.
   submit capability.
 - Import native tx CBOR bytes and hex, then re-encode to identical canonical
   native bytes.
-- Import native tx object and verify root/preimage consistency.
+- Import native tx object and verify hash/preimage consistency.
 - Reject Cardano transaction bytes passed to `fromTx`.
-- Reject native tx with body hash, witness hash, or root/preimage mismatch.
+- Reject native tx with body hash, witness hash, or hash/preimage mismatch.
 - Reject legacy four-bucket witness full tuple.
 - Reject invalid existing vkey witness signature.
 - Reject duplicate address witness entries, including byte-identical duplicates.

@@ -146,7 +146,7 @@ export const encodeScriptLanguageViews = (
 };
 
 export const computeScriptIntegrityHash = (
-  redeemerTxWitsRoot: Uint8Array,
+  redeemerTxWitsHash: Uint8Array,
   scriptLanguageViews: ScriptLanguageViewMap,
 ): Hash32 => {
   if (scriptLanguageViews.size === 0) {
@@ -154,7 +154,7 @@ export const computeScriptIntegrityHash = (
   }
   return computeHash32(
     encodeCbor([
-      ensureHash32(redeemerTxWitsRoot, "redeemer_tx_wits_root"),
+      ensureHash32(redeemerTxWitsHash, "redeemer_tx_wits_hash"),
       new Map(
         [...scriptLanguageViews.entries()].sort(
           ([left], [right]) => left - right,
@@ -165,11 +165,11 @@ export const computeScriptIntegrityHash = (
 };
 
 export const computeScriptIntegrityHashForLanguages = (
-  redeemerTxWitsRoot: Uint8Array,
+  redeemerTxWitsHash: Uint8Array,
   languages: readonly (ScriptLanguageTag | ScriptLanguageName)[],
 ): Hash32 =>
   computeScriptIntegrityHash(
-    redeemerTxWitsRoot,
+    redeemerTxWitsHash,
     buildScriptLanguageViews(languages),
   );
 

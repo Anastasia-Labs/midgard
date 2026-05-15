@@ -26,7 +26,7 @@ Every golden vector should record:
 - Tx id.
 - Compact body hash.
 - Compact witness hash.
-- Decoded root/preimage hashes.
+- Decoded hash/preimage commitments.
 - Expected Phase A result.
 - Expected Phase B result when pre-state is provided.
 
@@ -57,7 +57,7 @@ the library becomes the tested construction path.
 Add property tests for:
 
 - Native encode/decode round trip.
-- Root/preimage consistency.
+- Hash/preimage consistency.
 - Value preservation for generated balanced transfers.
 - Deterministic completion for identical inputs.
 - No hidden mutation after completion.

@@ -7,7 +7,7 @@ use midgard/fraud_proofs/double_spend/step_03.{
   Args, Datum, SpendRedeemer, State,
 }
 use midgard/fraud_proofs/double_spend/step_04
-use midgard/fraud_proofs/native_tx
+use midgard/fraud_proofs/native_tx/preimages
 
 validator main(
   step_04_validator_script_hash: ScriptHash,
@@ -61,19 +61,18 @@ validator main(
         expect Some(State {
           verified_tx1_spend_inputs_hash,
           verified_tx2_spend_inputs_hash,
-        }) =
-          m_input_state_data
+        }) = m_input_state_data
 
         // 2. Provided native spend-inputs preimage for tx1 must be valid.
         expect
-          native_tx.verify_spend_inputs_preimage(
+          preimages.verify_spend_inputs_preimage(
             tx1_spend_input_cbors,
             verified_tx1_spend_inputs_hash,
           )
 
         // 3. The provided index must correspond to an input in the given list.
         let tx1_double_spent_input =
-          native_tx.spend_input_cbor_at(
+          preimages.spend_input_cbor_at(
             tx1_spend_input_cbors,
             double_spent_input_index,
           )

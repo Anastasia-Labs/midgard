@@ -69,9 +69,9 @@ export type MidgardNativeTxBodyCompact = {
 };
 
 export type MidgardNativeTxWitnessSetCompact = {
-  readonly addrTxWitsRoot: Hash32;
-  readonly scriptTxWitsRoot: Hash32;
-  readonly redeemerTxWitsRoot: Hash32;
+  readonly addrTxWitsHash: Hash32;
+  readonly scriptTxWitsHash: Hash32;
+  readonly redeemerTxWitsHash: Hash32;
 };
 
 export type MidgardNativeTxBodyCanonical = {
@@ -347,16 +347,16 @@ const encodeNativeTxWitnessSetCompactValue = (
 ): readonly Hash32[] => {
   return [
     ensureHash32(
-      witnessSet.addrTxWitsRoot,
-      "transaction_witness_set_compact.addr_tx_wits",
+      witnessSet.addrTxWitsHash,
+      "transaction_witness_set_compact.addr_tx_wits_hash",
     ),
     ensureHash32(
-      witnessSet.scriptTxWitsRoot,
-      "transaction_witness_set_compact.script_tx_wits",
+      witnessSet.scriptTxWitsHash,
+      "transaction_witness_set_compact.script_tx_wits_hash",
     ),
     ensureHash32(
-      witnessSet.redeemerTxWitsRoot,
-      "transaction_witness_set_compact.redeemer_tx_wits",
+      witnessSet.redeemerTxWitsHash,
+      "transaction_witness_set_compact.redeemer_tx_wits_hash",
     ),
   ];
 };
@@ -368,15 +368,15 @@ const decodeNativeTxWitnessSetCompactValue = (
 ): MidgardNativeTxWitnessSetCompact => {
   const v = asFixedArray(value, 3, fieldName);
   return {
-    addrTxWitsRoot: ensureHash32(
+    addrTxWitsHash: ensureHash32(
       asBytes(v[0], `${fieldName}[0]`),
       `${fieldName}[0]`,
     ),
-    scriptTxWitsRoot: ensureHash32(
+    scriptTxWitsHash: ensureHash32(
       asBytes(v[1], `${fieldName}[1]`),
       `${fieldName}[1]`,
     ),
-    redeemerTxWitsRoot: ensureHash32(
+    redeemerTxWitsHash: ensureHash32(
       asBytes(v[2], `${fieldName}[2]`),
       `${fieldName}[2]`,
     ),
@@ -502,9 +502,9 @@ export const deriveMidgardNativeTxWitnessSetCompact = (
   version = MIDGARD_NATIVE_TX_VERSION,
 ): MidgardNativeTxWitnessSetCompact => {
   return {
-    addrTxWitsRoot: computeHash32(witnessSet.addrTxWitsPreimageCbor),
-    scriptTxWitsRoot: computeHash32(witnessSet.scriptTxWitsPreimageCbor),
-    redeemerTxWitsRoot: computeHash32(witnessSet.redeemerTxWitsPreimageCbor),
+    addrTxWitsHash: computeHash32(witnessSet.addrTxWitsPreimageCbor),
+    scriptTxWitsHash: computeHash32(witnessSet.scriptTxWitsPreimageCbor),
+    redeemerTxWitsHash: computeHash32(witnessSet.redeemerTxWitsPreimageCbor),
   };
 };
 

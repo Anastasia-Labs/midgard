@@ -31,7 +31,7 @@ redeemer pointer derivation.
 - Receive indexes use sorted unique protected receiving script hashes.
 - PlutusV3 receive is rejected locally.
 - Duplicate redeemer pointers fail.
-- Finalization derives redeemer witness preimages, `redeemerTxWitsRoot`,
+- Finalization derives redeemer witness preimages, `redeemerTxWitsHash`,
   required language tags, canonical `scriptLanguageViews`, and
   `scriptIntegrityHash`.
 - Required reference-script languages must be known locally before script

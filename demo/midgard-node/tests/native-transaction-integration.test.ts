@@ -581,12 +581,12 @@ const buildNativeTx = (opts?: {
         );
   const redeemerTxWitsPreimageCbor =
     opts?.redeemerTxWitsPreimageCbor ?? EMPTY_CBOR_LIST;
-  const redeemerTxWitsRoot = computeHash32(redeemerTxWitsPreimageCbor);
+  const redeemerTxWitsHash = computeHash32(redeemerTxWitsPreimageCbor);
   const scriptIntegrityHash =
     opts?.scriptIntegrityHash ??
     (opts?.scriptLanguages !== undefined
       ? computeScriptIntegrityHashForLanguages(
-          redeemerTxWitsRoot,
+          redeemerTxWitsHash,
           opts.scriptLanguages,
         )
       : computeHash32(EMPTY_CBOR_NULL));

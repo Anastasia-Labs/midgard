@@ -36,7 +36,7 @@ node validation semantics into shared packages.
   independent mirrored implementations.
 - Budget enforcement defaults to true.
 - Missing pre-state is explicit.
-- Phase B recomputes `scriptIntegrityHash` from `redeemerTxWitsRoot` and
+- Phase B recomputes `scriptIntegrityHash` from `redeemerTxWitsHash` and
   canonical `scriptLanguageViews` after resolving inline and reference scripts.
 - Missing or extraneous language views preserve node reject-code discipline and
   reject with the shared validation error path.

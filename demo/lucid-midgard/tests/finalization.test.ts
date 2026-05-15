@@ -154,7 +154,7 @@ describe("TxBuilder finalization", () => {
     expect(completed.metadata.fee).toBe(10n);
   });
 
-  it("materializes canonical roots, empty buckets, and default sentinels", async () => {
+  it("materializes canonical hashes, empty buckets, and default sentinels", async () => {
     const midgard = await LucidMidgard.new(fakeProvider, {
       network: "Preview",
       networkId: 0,
@@ -184,11 +184,11 @@ describe("TxBuilder finalization", () => {
     );
     expect(tx.body.scriptIntegrityHash).toEqual(EMPTY_NULL_ROOT);
     expect(tx.body.auxiliaryDataHash).toEqual(EMPTY_NULL_ROOT);
-    expect(witnessCompact.addrTxWitsRoot).toEqual(computeHash32(EMPTY_CBOR_LIST));
-    expect(witnessCompact.scriptTxWitsRoot).toEqual(
+    expect(witnessCompact.addrTxWitsHash).toEqual(computeHash32(EMPTY_CBOR_LIST));
+    expect(witnessCompact.scriptTxWitsHash).toEqual(
       computeHash32(EMPTY_CBOR_LIST),
     );
-    expect(witnessCompact.redeemerTxWitsRoot).toEqual(
+    expect(witnessCompact.redeemerTxWitsHash).toEqual(
       computeHash32(EMPTY_CBOR_LIST),
     );
     expect(tx.body.validityIntervalStart).toBe(MIDGARD_POSIX_TIME_NONE);

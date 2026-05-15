@@ -127,7 +127,7 @@ const makeSignedFixture = async () => {
 };
 
 describe("submit/status chaining", () => {
-  it("signs native body hashes and rebuilds witness roots without changing tx id", async () => {
+  it("signs native body hashes and rebuilds witness hashes without changing tx id", async () => {
     const { completed, wallet, keyHash } = await makeSignedFixture();
     const signed = await completed.sign(wallet);
     const signedAgain = await signed.sign(wallet);

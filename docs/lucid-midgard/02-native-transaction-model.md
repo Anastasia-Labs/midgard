@@ -20,7 +20,7 @@ The compact transaction contains:
 - transaction witness-set hash
 - validity code
 
-The body full contains root/preimage pairs for:
+The body full contains hash/preimage pairs for:
 
 - spend inputs
 - reference inputs
@@ -29,7 +29,7 @@ The body full contains root/preimage pairs for:
 - required signers
 - mint
 
-The witness full contains root/preimage pairs for:
+The witness full contains hash/preimage pairs for:
 
 - address witnesses
 - script witnesses
@@ -37,14 +37,14 @@ The witness full contains root/preimage pairs for:
 
 ## Hashing
 
-All roots and compact commitments use Blake2b-256. `Hash32` must be exactly
+All native transaction hashes and compact commitments use Blake2b-256. `Hash32` must be exactly
 32 bytes. The transaction id is the compact transaction body hash. It is not a
 hash of the full native transaction bytes.
 
 `lucid-midgard` must compute:
 
 - Preimage CBOR bytes.
-- Root hashes for every preimage.
+- Hashes for every preimage.
 - Compact body bytes.
 - Compact body hash.
 - Compact witness bytes.
@@ -89,7 +89,7 @@ transactions requiring non-native scripts it is:
 
 ```text
 blake2b256(cbor([
-  redeemerTxWitsRoot,
+  redeemerTxWitsHash,
   scriptLanguageViews
 ]))
 ```

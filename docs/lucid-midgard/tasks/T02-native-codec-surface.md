@@ -28,14 +28,14 @@ without creating a divergent serialization implementation.
   compatibility shims.
 - Decoding rejects legacy four-bucket witness sets with a datum witness bucket.
 - Tx id equals compact body hash.
-- Root/preimage mismatches fail.
+- Hash/preimage mismatches fail.
 - `midgard-node` and `lucid-midgard` do not carry independent codec
   implementations.
 
 ## Required Tests
 
 - Encode/decode round trip.
-- Root/preimage consistency.
+- Hash/preimage consistency.
 - Tx id derivation.
 - Three witness bucket enforcement.
 - Strict CBOR trailing-byte rejection.

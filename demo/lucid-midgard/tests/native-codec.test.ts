@@ -74,7 +74,7 @@ const bodyFullValue = (tx: MidgardNativeTxFull): readonly unknown[] => [
 
 describe("Midgard native v1 codec", () => {
   it("exposes shared script language view helpers", () => {
-    const redeemerTxWitsRoot = Buffer.from(
+    const redeemerTxWitsHash = Buffer.from(
       "509a422cbd3d2fdca7c6521277d3117b305aa7578bdcf1627df36382429743d1",
       "hex",
     );
@@ -82,7 +82,7 @@ describe("Midgard native v1 codec", () => {
     expect(ScriptLanguageTags.PlutusV3).toBe(2);
     expect(PLUTUS_V3_CANONICAL_COST_MODEL_VIEW).toHaveLength(297);
     expect(
-      computeScriptIntegrityHashForLanguages(redeemerTxWitsRoot, [
+      computeScriptIntegrityHashForLanguages(redeemerTxWitsHash, [
         "PlutusV3",
       ]).toString("hex"),
     ).toBe("e2ebd40127c1f2fc48fc46388895edf309bdda534dfc1b1a1c0fceb94a43c60e");

@@ -9,8 +9,7 @@ pub const max_tokens_allowed_in_deposits: Int = 10
 
 pub const event_wait_duration: Int = 60_000
 
-pub const empty_list_hash: H32<List<Data>> =
-  [] |> cbor.serialise |> blake2b_256
+pub const empty_list_hash: H32<List<Data>> = [] |> cbor.serialise |> blake2b_256
 
 pub const l2_outbox_address: Address =
   Address {

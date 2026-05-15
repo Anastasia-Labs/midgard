@@ -23,7 +23,7 @@ metadata.
 ## Acceptance Criteria
 
 - Native bytes decode with the node codec.
-- Root/preimage consistency is verified before returning.
+- Hash/preimage consistency is verified before returning.
 - Auxiliary data hash defaults to empty-null hash.
 - Validity defaults use unbounded sentinel.
 - Witness buckets exist even when empty.

@@ -24,14 +24,14 @@
   - `valid_from = -1` or `valid_to = -1` means unbounded interval side.
 
 - `MidgardTxWitnessSetCompactV1`
-  - `[addr_tx_wits_root, script_tx_wits_root, redeemer_tx_wits_root]`
+  - `[addr_tx_wits_hash, script_tx_wits_hash, redeemer_tx_wits_hash]`
 
 - `MidgardTxBodyFullV1`
   - Same scalar/hash fields as compact body, plus preimages for each body hash:
   - `(spend_inputs_hash, spend_inputs_preimage_cbor)`, `(reference_inputs_hash, reference_inputs_preimage_cbor)`, `(outputs_hash, outputs_preimage_cbor)`, `(required_observers_hash, required_observers_preimage_cbor)`, `(required_signers_hash, required_signers_preimage_cbor)`, `(mint_hash, mint_preimage_cbor)`.
 
 - `MidgardTxWitnessSetFullV1`
-  - Three `(root, preimage_cbor)` pairs:
+  - Three `(hash, preimage_cbor)` pairs:
   - `addr_tx_wits`, `script_tx_wits`, `redeemer_tx_wits`.
 
 - `MidgardTxFullV1`

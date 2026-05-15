@@ -64,7 +64,7 @@ Datum witness de-duplication must use datum hash and reject duplicates.
 
 ## Script Integrity Hash
 
-`scriptIntegrityHash` commits to the redeemer witness root and the required
+`scriptIntegrityHash` commits to the redeemer witness hash and the required
 non-native script language views:
 
 ```text
@@ -73,12 +73,12 @@ scriptLanguageViews =
 
 scriptIntegrityHash =
   blake2b256(cbor([
-    redeemerTxWitsRoot,
+    redeemerTxWitsHash,
     scriptLanguageViews
   ]))
 ```
 
-`redeemerTxWitsRoot` is the existing 32-byte redeemer witness-set root.
+`redeemerTxWitsHash` is the existing 32-byte redeemer witness-set hash.
 `scriptLanguageViews` is a canonical CBOR map. Keys are stable numeric Midgard
 protocol tags, never free-form strings:
 

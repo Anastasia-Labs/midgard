@@ -167,9 +167,9 @@ describe("midgard native tx codec - strict roundtrip", () => {
       deriveMidgardNativeTxWitnessSetCompact(mkWitnessSet());
     const legacyShape = Buffer.from(
       encode([
-        Buffer.from(witnessCompact.addrTxWitsRoot),
-        Buffer.from(witnessCompact.scriptTxWitsRoot),
-        Buffer.from(witnessCompact.redeemerTxWitsRoot),
+        Buffer.from(witnessCompact.addrTxWitsHash),
+        Buffer.from(witnessCompact.scriptTxWitsHash),
+        Buffer.from(witnessCompact.redeemerTxWitsHash),
         Buffer.from(mkHash("legacy-datum-wits")),
       ]),
     );
@@ -199,7 +199,7 @@ describe("midgard native tx codec - consistency checks", () => {
     expect(() => encodeMidgardNativeTxFull(tampered)).toThrow();
   });
 
-  it("rejects inconsistent body root/preimage pairs", () => {
+  it("rejects inconsistent body hash/preimage pairs", () => {
     const full = mkFull();
     const tampered: MidgardNativeTxFull = {
       ...full,

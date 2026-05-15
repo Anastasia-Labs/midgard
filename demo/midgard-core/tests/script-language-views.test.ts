@@ -15,7 +15,7 @@ import {
   ScriptLanguageTags,
 } from "../src/index.js";
 
-const REDEEMER_TX_WITS_ROOT = Buffer.from(
+const REDEEMER_TX_WITS_HASH = Buffer.from(
   "509a422cbd3d2fdca7c6521277d3117b305aa7578bdcf1627df36382429743d1",
   "hex",
 );
@@ -30,27 +30,27 @@ describe("script language views", () => {
 
   it("uses EMPTY_NULL_ROOT for an empty required language set", () => {
     expect(
-      computeScriptIntegrityHashForLanguages(REDEEMER_TX_WITS_ROOT, []),
+      computeScriptIntegrityHashForLanguages(REDEEMER_TX_WITS_HASH, []),
     ).toEqual(EMPTY_SCRIPT_INTEGRITY_HASH);
   });
 
   it("matches canonical fixture hashes for initial language sets", () => {
     expect(
-      computeScriptIntegrityHashForLanguages(REDEEMER_TX_WITS_ROOT, [
+      computeScriptIntegrityHashForLanguages(REDEEMER_TX_WITS_HASH, [
         "PlutusV3",
       ]).toString("hex"),
     ).toBe(
       "e2ebd40127c1f2fc48fc46388895edf309bdda534dfc1b1a1c0fceb94a43c60e",
     );
     expect(
-      computeScriptIntegrityHashForLanguages(REDEEMER_TX_WITS_ROOT, [
+      computeScriptIntegrityHashForLanguages(REDEEMER_TX_WITS_HASH, [
         "MidgardV1",
       ]).toString("hex"),
     ).toBe(
       "6439e4fbfe80ed56da131bceafc2bcbdff24b59f69e84ed96507fe3725131442",
     );
     expect(
-      computeScriptIntegrityHashForLanguages(REDEEMER_TX_WITS_ROOT, [
+      computeScriptIntegrityHashForLanguages(REDEEMER_TX_WITS_HASH, [
         "MidgardV1",
         "PlutusV3",
       ]).toString("hex"),
@@ -59,37 +59,37 @@ describe("script language views", () => {
     );
   });
 
-  it("changes when redeemer witness root changes", () => {
-    const changedRoot = computeHash32(Buffer.from("changed-redeemer-root"));
+  it("changes when redeemer witness hash changes", () => {
+    const changedHash = computeHash32(Buffer.from("changed-redeemer-hash"));
 
     expect(
-      computeScriptIntegrityHashForLanguages(changedRoot, ["PlutusV3"]),
+      computeScriptIntegrityHashForLanguages(changedHash, ["PlutusV3"]),
     ).not.toEqual(
-      computeScriptIntegrityHashForLanguages(REDEEMER_TX_WITS_ROOT, [
+      computeScriptIntegrityHashForLanguages(REDEEMER_TX_WITS_HASH, [
         "PlutusV3",
       ]),
     );
   });
 
   it("changes when redeemer data changes", () => {
-    const firstRoot = computeHash32(encodeCbor([[0n, 0n, 1n, [0n, 0n]]]));
-    const secondRoot = computeHash32(encodeCbor([[0n, 0n, 2n, [0n, 0n]]]));
+    const firstHash = computeHash32(encodeCbor([[0n, 0n, 1n, [0n, 0n]]]));
+    const secondHash = computeHash32(encodeCbor([[0n, 0n, 2n, [0n, 0n]]]));
 
     expect(
-      computeScriptIntegrityHashForLanguages(firstRoot, ["PlutusV3"]),
+      computeScriptIntegrityHashForLanguages(firstHash, ["PlutusV3"]),
     ).not.toEqual(
-      computeScriptIntegrityHashForLanguages(secondRoot, ["PlutusV3"]),
+      computeScriptIntegrityHashForLanguages(secondHash, ["PlutusV3"]),
     );
   });
 
   it("changes when redeemer ex-units change", () => {
-    const firstRoot = computeHash32(encodeCbor([[0n, 0n, 1n, [0n, 0n]]]));
-    const secondRoot = computeHash32(encodeCbor([[0n, 0n, 1n, [1n, 0n]]]));
+    const firstHash = computeHash32(encodeCbor([[0n, 0n, 1n, [0n, 0n]]]));
+    const secondHash = computeHash32(encodeCbor([[0n, 0n, 1n, [1n, 0n]]]));
 
     expect(
-      computeScriptIntegrityHashForLanguages(firstRoot, ["PlutusV3"]),
+      computeScriptIntegrityHashForLanguages(firstHash, ["PlutusV3"]),
     ).not.toEqual(
-      computeScriptIntegrityHashForLanguages(secondRoot, ["PlutusV3"]),
+      computeScriptIntegrityHashForLanguages(secondHash, ["PlutusV3"]),
     );
   });
 
@@ -104,7 +104,7 @@ describe("script language views", () => {
 
     expect(
       computeScriptIntegrityHash(
-        REDEEMER_TX_WITS_ROOT,
+        REDEEMER_TX_WITS_HASH,
         changedViews,
       ).toString("hex"),
     ).toBe(

@@ -23,9 +23,7 @@ use aiken/crypto.{ScriptHash}
 use cardano/assets.{PolicyId}
 use cardano/transaction.{OutputReference, Transaction}
 use midgard/computation_thread as ct
-use midgard/fraud_proofs/common.{
-  cancel, pass_native_tx_to_next_step,
-}
+use midgard/fraud_proofs/common.{cancel, pass_native_tx_to_next_step}
 use midgard/fraud_proofs/double_spend/step_01.{Datum, SpendRedeemer}
 use midgard/fraud_proofs/double_spend/step_02
 
@@ -82,7 +80,7 @@ validator main(
         let expected_output_state: Data =
           step_02.State {
             verified_tx1_id: bad_tx_id,
-            verified_tx1_spend_inputs_hash: bad_tx_view.spend_inputs_hash,
+            verified_tx1_spend_inputs_hash: bad_tx_view.body.spend_inputs_hash,
           }
         expect output_state_data == expected_output_state
 

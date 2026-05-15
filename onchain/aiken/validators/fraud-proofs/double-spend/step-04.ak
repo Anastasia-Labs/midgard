@@ -6,7 +6,7 @@ use midgard/fraud_proofs/common.{cancel, finalize}
 use midgard/fraud_proofs/double_spend/step_04.{
   Args, Datum, SpendRedeemer, State,
 }
-use midgard/fraud_proofs/native_tx
+use midgard/fraud_proofs/native_tx/preimages
 
 validator main(
   computation_thread_token_policy_id: PolicyId,
@@ -69,7 +69,7 @@ validator main(
 
         // 2. Provided native spend-inputs preimage for tx2 must be valid.
         expect
-          native_tx.verify_spend_inputs_preimage(
+          preimages.verify_spend_inputs_preimage(
             tx2_spend_input_cbors,
             verified_tx2_spend_inputs_hash,
           )
@@ -78,11 +78,9 @@ validator main(
         //    such that it matches the raw input CBOR carried over from previous
         //    step.
         expect
-          double_spent_input_cbor == (
-            native_tx.spend_input_cbor_at(
-              tx2_spend_input_cbors,
-              double_spent_input_index,
-            )
+          double_spent_input_cbor == preimages.spend_input_cbor_at(
+            tx2_spend_input_cbors,
+            double_spent_input_index,
           )
 
         // Done.

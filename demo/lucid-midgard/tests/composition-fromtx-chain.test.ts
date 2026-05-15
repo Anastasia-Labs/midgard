@@ -263,7 +263,7 @@ describe("fromTx, compose, and local chaining", () => {
     );
   });
 
-  it("rejects imported native transaction objects with root or compact drift", async () => {
+  it("rejects imported native transaction objects with hash or compact drift", async () => {
     const midgard = await LucidMidgard.new(makeProvider(), {
       network: "Preview",
       networkId: 0,

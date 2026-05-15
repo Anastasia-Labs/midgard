@@ -172,16 +172,16 @@ Only `TxIsValid` is accepted by Phase A.
 
 ```text
 [
-  addr_tx_wits_root,
+  addr_tx_wits_hash,
   addr_tx_wits_preimage_cbor,
-  script_tx_wits_root,
+  script_tx_wits_hash,
   script_tx_wits_preimage_cbor,
-  redeemer_tx_wits_root,
+  redeemer_tx_wits_hash,
   redeemer_tx_wits_preimage_cbor
 ]
 ```
 
-### Hash and Root Commitments
+### Hash Commitments
 
 The following body fields are Blake2b-256 hash/preimage pairs:
 
@@ -194,15 +194,15 @@ The following body fields are Blake2b-256 hash/preimage pairs:
 | `required_signers_hash`   | `required_signers_preimage_cbor`   |
 | `mint_hash`               | `mint_preimage_cbor`               |
 
-The following witness fields are root/preimage pairs:
+The following witness fields are Blake2b-256 hash/preimage pairs:
 
-| Root field              | Preimage field                   |
+| Hash field              | Preimage field                   |
 | ----------------------- | -------------------------------- |
-| `addr_tx_wits_root`     | `addr_tx_wits_preimage_cbor`     |
-| `script_tx_wits_root`   | `script_tx_wits_preimage_cbor`   |
-| `redeemer_tx_wits_root` | `redeemer_tx_wits_preimage_cbor` |
+| `addr_tx_wits_hash`     | `addr_tx_wits_preimage_cbor`     |
+| `script_tx_wits_hash`   | `script_tx_wits_preimage_cbor`   |
+| `redeemer_tx_wits_hash` | `redeemer_tx_wits_preimage_cbor` |
 
-Decoding verifies each body hash and witness root as Blake2b-256 of its
+Decoding verifies each body hash and witness hash as Blake2b-256 of its
 preimage, verifies the compact body hash against the encoded compact body,
 verifies the compact witness hash against the encoded compact witness set, and
 verifies the outer version equals the compact version (`native.ts:746-841`,

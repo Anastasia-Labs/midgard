@@ -3,6 +3,7 @@
   "private": true,
   "scripts": {
     "build": "pnpm -r --if-present --workspace-concurrency=1 run build",
+    "bench:aiken:native-tx-decoders": "node ../onchain/aiken/scripts/native-tx-decoder-benchmark-report.mjs",
     "format": "prettier --write \"**/*.{ts,tsx,md}\"",
     "format-check": "prettier --check \"**/*.{ts,tsx,md}\"",
     "test": "pnpm -r --if-present --workspace-concurrency=1 run typecheck && pnpm -r --if-present --workspace-concurrency=1 run test",

@@ -4992,7 +4992,7 @@ const deriveScriptMaterialization = (
   }
 
   const redeemerTxWitsPreimageCbor = encodeRedeemers(redeemers);
-  const redeemerTxWitsRoot = computeHash32(redeemerTxWitsPreimageCbor);
+  const redeemerTxWitsHash = computeHash32(redeemerTxWitsPreimageCbor);
   const requiredLanguages = [...languages].sort();
   return {
     requiredObserversPreimageCbor: requiredObserversPreimageCbor(
@@ -5016,7 +5016,7 @@ const deriveScriptMaterialization = (
       requiredLanguages.length === 0
         ? EMPTY_NULL_ROOT
         : computeScriptIntegrityHashForLanguages(
-            redeemerTxWitsRoot,
+            redeemerTxWitsHash,
             requiredLanguages,
           ),
     mintDelta: mintDeltaAssets(effective),

@@ -16,9 +16,10 @@ use midgard/common/utils.{
 use midgard/computation_thread as ct
 use midgard/fraud_proof
 use midgard/fraud_proof_catalogue
-use midgard/fraud_proofs/native_tx.{
-  NativeTxCompact, NativeTxCompactView, verify_native_tx_compact,
-}
+use midgard/fraud_proofs/native_tx/compact.{verify_native_tx_compact}
+use midgard/fraud_proofs/native_tx/types.{
+  NativeTxCompact, VerifiedMidgardNativeTxCompact,
+} as native_tx_types
 use midgard/hub_oracle as hub
 use midgard/ledger_state.{
   Header, MidgardTxBodyCompact, MidgardTxCompact, MidgardTxId,
@@ -175,7 +176,7 @@ pub fn pass_native_tx_to_next_step(
     Data<output_state>,
     Header,
     ByteArray,
-    NativeTxCompactView,
+    VerifiedMidgardNativeTxCompact,
   ) ->
     Bool,
 ) -> Bool {
@@ -487,8 +488,7 @@ pub fn verify_tx_and_its_provided_field_preimage(
   and {
     verify_hash_32(data: tx_body_data, data_hash: tx_id),
     when tx_field_preimage is {
-      TxBodyProvided(tx_body) ->
-        and {
+      TxBodyProvided(tx_body) -> and {
           tx_body == tx.body,
           verify_hash_32(data: tx_body, data_hash: tx_id),
         }
@@ -582,7 +582,7 @@ pub fn verify_native_tx_in_state_queue_node(
   inclusion_proof_script_withdraw_redeemer_index: Int,
   reference_inputs: List<Input>,
   redeemers: Pairs<ScriptPurpose, Redeemer>,
-  return: fn(ByteArray, Header, NativeTxCompactView) -> result,
+  return: fn(ByteArray, Header, VerifiedMidgardNativeTxCompact) -> result,
 ) -> result {
   let native_tx_view =
     verify_native_tx_compact(native_tx_id, native_tx, native_tx_compact_cbor)

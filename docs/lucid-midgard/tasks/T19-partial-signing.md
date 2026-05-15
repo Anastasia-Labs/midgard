@@ -60,7 +60,7 @@ and must not modify the transaction body, script witnesses, or redeemers.
   explicit partial collection mode, which returns a non-submit-capable object.
 - Assembly preserves the transaction body, tx id, script witness bucket, and
   redeemer witness bucket.
-- Assembly rebuilds the address witness root and compact witness-set hash.
+- Assembly rebuilds the address witness hash and compact witness-set hash.
 - Assembly can return an incomplete signed object for continued collection only
   when explicitly allowed, and that object must not expose `submit`.
 - Continued collection semantics are explicit: callers can either keep the
@@ -124,7 +124,7 @@ and must not modify the transaction body, script witnesses, or redeemers.
 - `CompleteTx.partialSign` exposes the same partial bundle API for callers that
   prefer a lifecycle-explicit name.
 - `CompleteTx.assemble(...)` and `PartiallySignedTx.assemble(...)` rebuild the
-  address witness root and compact witness hash without changing the body hash
+  address witness hash and compact witness hash without changing the body hash
   or tx id.
 - Default assembly fails closed unless expected address witnesses are known and
   complete. `{ allowPartial: true }` is required to return a non-submit-capable

@@ -79,7 +79,7 @@ validation as preflight only, never as final validity.
 
 ## Script Integrity Policy
 
-Decision: `scriptIntegrityHash` commits to `redeemerTxWitsRoot` and canonical
+Decision: `scriptIntegrityHash` commits to `redeemerTxWitsHash` and canonical
 `scriptLanguageViews`.
 
 ```text
@@ -88,7 +88,7 @@ scriptLanguageViews =
 
 scriptIntegrityHash =
   blake2b256(cbor([
-    redeemerTxWitsRoot,
+    redeemerTxWitsHash,
     scriptLanguageViews
   ]))
 ```

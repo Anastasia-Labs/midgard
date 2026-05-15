@@ -30,7 +30,7 @@ never sign or verify against a Cardano transaction body hash.
   witness bundle, not a submit-capable transaction.
 - Structured signing errors for missing wallet, invalid witness, unexpected
   witness, conflicting witness, and incomplete expected witness set.
-- Backing helper that merges address witnesses, rebuilds `addrTxWitsRoot`,
+- Backing helper that merges address witnesses, rebuilds `addrTxWitsHash`,
   rebuilds the compact witness hash, and preserves the compact body hash and tx
   id.
 - Deterministic address witness ordering by signer key hash, with duplicate
