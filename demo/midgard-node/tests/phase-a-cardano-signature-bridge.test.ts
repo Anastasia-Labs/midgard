@@ -5,9 +5,10 @@ import { CML } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 import { normalizeSubmitTxHexToNative } from "@/commands/listen-utils.js";
 import {
-  cardanoTxBytesToMidgardNativeTxFullBytes,
-  computeMidgardNativeTxIdFromFull,
-  decodeMidgardNativeTxFull,
+  cardanoTxBytesToMidgardTxBytes,
+  decodeTransaction,
+  transactionBodyHash,
+  transactionId,
 } from "@/midgard-tx-codec/index.js";
 import {
   RejectCodes,
@@ -85,9 +86,8 @@ describe("phase-a cardano signature bridge", () => {
     const cardanoBytes = Buffer.from(
       CML.Transaction.new(body, witnessSet, true, undefined).to_cbor_bytes(),
     );
-    const nativeBytes = cardanoTxBytesToMidgardNativeTxFullBytes(cardanoBytes);
-    const nativeTx = decodeMidgardNativeTxFull(nativeBytes);
-    const txId = computeMidgardNativeTxIdFromFull(nativeTx);
+    const nativeBytes = Buffer.from(cardanoTxBytesToMidgardTxBytes(cardanoBytes));
+    const txId = Buffer.from(transactionId(decodeTransaction(nativeBytes)));
     const queued: QueuedTx = {
       txId,
       txCbor: nativeBytes,
@@ -150,12 +150,12 @@ describe("phase-a cardano signature bridge", () => {
     if (!normalizedUnsigned.ok) {
       throw new Error("expected normalized tx");
     }
-    const nativeTx = decodeMidgardNativeTxFull(normalizedUnsigned.txCbor);
+    const nativeTx = decodeTransaction(normalizedUnsigned.txCbor);
     const vkeyWitnesses = CML.VkeywitnessList.new();
     vkeyWitnesses.add(
       CML.make_vkey_witness(
         CML.TransactionHash.from_raw_bytes(
-          nativeTx.compact.transactionBodyHash,
+          Buffer.from(transactionBodyHash(nativeTx.body)),
         ),
         signerKey,
       ),

@@ -15,9 +15,9 @@ import {
   validateSubmitTxHex,
 } from "@/commands/listen-utils.js";
 import {
-  cardanoTxBytesToMidgardNativeTxFullBytes,
-  decodeMidgardNativeMint,
-  decodeMidgardNativeTxFull,
+  cardanoTxBytesToMidgardTxBytes,
+  decodeTransaction,
+  deriveTransactionWitnessSetCompact,
 } from "@/midgard-tx-codec/index.js";
 import { makeCardanoTxOutput } from "./midgard-output-helpers.js";
 
@@ -222,20 +222,21 @@ describe("submit admission helpers", () => {
     expect(normalized.source).toBe("cardano-converted");
     expect(normalized).not.toHaveProperty("txBodyHashForWitnesses");
 
-    const nativeTx = decodeMidgardNativeTxFull(normalized.txCbor);
-    const decodedMint = decodeMidgardNativeMint(nativeTx.body.mintPreimageCbor);
-    expect(decodedMint).toBeDefined();
-    expect(decodedMint?.policyIds).toStrictEqual([policyId.to_hex()]);
-    expect(
-      nativeTx.witnessSet.scriptTxWitsRoot.equals(
-        nativeTx.witnessSet.addrTxWitsRoot,
-      ),
-    ).toBe(false);
+    const nativeTx = decodeTransaction(normalized.txCbor);
+    expect(nativeTx.body.mint).toBeDefined();
+    expect(nativeTx.body.mint?.map(([p]) => Buffer.from(p).toString("hex"))).toStrictEqual([
+      policyId.to_hex(),
+    ]);
+    const witnessCompact = deriveTransactionWitnessSetCompact(
+      nativeTx.witness_set,
+    );
+    expect(witnessCompact.scripts_hash).toBeDefined();
+    expect(witnessCompact.vkey_witnesses_hash).toBeUndefined();
   });
 
   it("keeps native tx bytes unchanged when payload is already Midgard-native", () => {
     const cardanoBytes = makeCardanoSignedMapOutputTxBytes();
-    const nativeBytes = cardanoTxBytesToMidgardNativeTxFullBytes(cardanoBytes);
+    const nativeBytes = Buffer.from(cardanoTxBytesToMidgardTxBytes(cardanoBytes));
     const normalized = normalizeSubmitTxHexToNative(
       nativeBytes.toString("hex"),
     );

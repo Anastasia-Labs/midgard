@@ -42,9 +42,9 @@ import { ProcessedTx } from "../src/utils.js";
 import { resolveIncludedDepositEntriesForWindow } from "../src/workers/utils/mpt.js";
 import { provideDatabaseLayers } from "./utils.js";
 import {
-  cardanoTxBytesToMidgardNativeTxFullBytes,
-  computeMidgardNativeTxIdFromFull,
-  decodeMidgardNativeTxFull,
+  cardanoTxBytesToMidgardTxBytes,
+  decodeTransaction,
+  transactionId,
 } from "../src/midgard-tx-codec/index.js";
 import {
   DepositStatusCommandError,
@@ -1185,12 +1185,10 @@ const firstFixture = (
 )[0];
 
 const makeValidNativeImmutableEntry = (): TxUtils.Entry => {
-  const nativeTx = cardanoTxBytesToMidgardNativeTxFullBytes(
-    Buffer.from(firstFixture.cborHex, "hex"),
+  const nativeTx = Buffer.from(
+    cardanoTxBytesToMidgardTxBytes(Buffer.from(firstFixture.cborHex, "hex")),
   );
-  const txId = computeMidgardNativeTxIdFromFull(
-    decodeMidgardNativeTxFull(nativeTx),
-  );
+  const txId = Buffer.from(transactionId(decodeTransaction(nativeTx)));
   return {
     [TxUtils.Columns.TX_ID]: txId,
     [TxUtils.Columns.TX]: nativeTx,

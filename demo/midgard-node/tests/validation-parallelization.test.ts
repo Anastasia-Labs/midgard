@@ -5,13 +5,17 @@ import { describe, expect, it } from "vitest";
 import {
   MIDGARD_NATIVE_TX_VERSION,
   MIDGARD_POSIX_TIME_NONE,
-  computeMidgardNativeTxIdFromFull,
   deriveMidgardNativeTxCompact,
-  encodeMidgardNativeTxFull,
   type MidgardNativeTxBodyFull,
   type MidgardNativeTxFull,
   type MidgardNativeTxWitnessSetFull,
 } from "@/midgard-tx-codec/index.js";
+// Phase A / B decode midgard-ts wire bytes via the validation bridge —
+// encode through the bridge too, not the OLD `encodeMidgardNativeTxFull`.
+import {
+  encodeMidgardTxBytes,
+  midgardTxIdFromNativeFull,
+} from "@al-ft/midgard-validation";
 // Buffer-returning `computeHash32` from midgard-core (not midgard-ts's
 // Uint8Array variant) — this test builds `MidgardNativeTxBodyFull` literals
 // whose `Hash32` fields are typed as `Buffer`.
@@ -147,8 +151,8 @@ const makeCandidate = ({
     validityIntervalStart,
     validityIntervalEnd,
   });
-  const txId = computeMidgardNativeTxIdFromFull(tx);
-  const txCbor = encodeMidgardNativeTxFull(tx);
+  const txId = midgardTxIdFromNativeFull(tx);
+  const txCbor = encodeMidgardTxBytes(tx);
   const producedOutRef = outRefFromHash(txId.toString("hex"), 0n);
   return {
     txId,
@@ -191,9 +195,9 @@ describe("validation parallelization", () => {
         spent: [spent],
         outputs: [makeOutput(testAddress, 10n)],
       });
-      const nativeTxBytes = encodeMidgardNativeTxFull(nativeTx);
+      const nativeTxBytes = encodeMidgardTxBytes(nativeTx);
       return {
-        txId: computeMidgardNativeTxIdFromFull(nativeTx),
+        txId: midgardTxIdFromNativeFull(nativeTx),
         txCbor: nativeTxBytes,
         arrivalSeq: BigInt(index),
         createdAt: new Date(0),

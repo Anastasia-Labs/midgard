@@ -50,8 +50,6 @@ export const MIDGARD_NATIVE_TX_VERSION = 1n;
 export {
   cardanoTxBytesToMidgardNativeTxFullBytes,
   computeMidgardNativeTxIdFromFull,
-  decodeMidgardNativeByteListPreimage,
-  decodeMidgardNativeMint,
   decodeMidgardNativeTxBodyCompact,
   decodeMidgardNativeTxCompact,
   decodeMidgardNativeTxFull,

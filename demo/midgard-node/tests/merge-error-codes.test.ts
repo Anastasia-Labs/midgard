@@ -10,9 +10,9 @@ import {
   preflightDecodeBlockTxs,
 } from "@/transactions/state-queue/merge-to-confirmed-state.js";
 import {
-  cardanoTxBytesToMidgardNativeTxFullBytes,
-  computeMidgardNativeTxIdFromFull,
-  decodeMidgardNativeTxFull,
+  cardanoTxBytesToMidgardTxBytes,
+  decodeTransaction,
+  transactionId,
 } from "@/midgard-tx-codec/index.js";
 
 type TxFixture = {
@@ -118,12 +118,10 @@ describe("preflightDecodeBlockTxs", () => {
    * Converts a transaction fixture into a native transaction accepted by the merge tests.
    */
   const toValidNativeTx = () => {
-    const nativeTxCbor = cardanoTxBytesToMidgardNativeTxFullBytes(
-      Buffer.from(txFixture.cborHex, "hex"),
+    const nativeTxCbor = Buffer.from(
+      cardanoTxBytesToMidgardTxBytes(Buffer.from(txFixture.cborHex, "hex")),
     );
-    const txId = computeMidgardNativeTxIdFromFull(
-      decodeMidgardNativeTxFull(nativeTxCbor),
-    );
+    const txId = Buffer.from(transactionId(decodeTransaction(nativeTxCbor)));
     return { txId, txCbor: nativeTxCbor };
   };
 
