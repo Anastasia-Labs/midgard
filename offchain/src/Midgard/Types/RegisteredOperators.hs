@@ -90,7 +90,7 @@ data MintRedeemer
       , removedNodeInputIndex :: Integer
       , anchorElementOutputIndex :: Integer
       }
-  | RemoveDuplicateSlashBond
+  | SlashDuplicateOperator
       { duplicateOperator :: PubKeyHash
       , anchorElementInputIndex :: Integer
       , removedNodeInputIndex :: Integer
@@ -108,7 +108,7 @@ $( makeIsDataSchemaIndexed
      , ('RegisterOperator, 2)
      , ('ActivateOperator, 3)
      , ('DeregisterOperator, 4)
-     , ('RemoveDuplicateSlashBond, 5)
+     , ('SlashDuplicateOperator, 5)
      ]
  )
 
