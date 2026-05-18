@@ -44,7 +44,7 @@ import PlutusTx.Builtins qualified as PlutusTx
 import Ply (PlyArg)
 
 newtype NodeKey = NodeKey BuiltinByteString
-  deriving stock (Show)
+  deriving stock (Eq, Show)
   deriving newtype (ToData, FromData, UnsafeFromData)
 
 nodeKey :: ByteString -> NodeKey
