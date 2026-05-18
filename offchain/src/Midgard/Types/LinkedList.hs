@@ -4,6 +4,7 @@ module Midgard.Types.LinkedList (
   NodeKey (..),
   Element (..),
   ElementData (..),
+  isRootData,
   nodeKeyToAssetName,
   nodeKey,
   getNodeKey,
@@ -84,6 +85,10 @@ instance PlyArg NodeKey
 
 data ElementData rootData nodeData = Root rootData | Node nodeData
   deriving stock (Eq, Show, Generic)
+
+isRootData :: ElementData rootData nodeData -> Bool
+isRootData (Root _) = True
+isRootData _ = False
 
 $( makeIsDataIndexed
      ''ElementData

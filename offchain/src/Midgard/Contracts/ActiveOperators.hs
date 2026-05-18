@@ -59,7 +59,7 @@ import Midgard.Scripts (
   ),
  )
 import Midgard.Types.ActiveOperators qualified as ActiveOperators
-import Midgard.Types.LinkedList (nodeKeyFromAssetName')
+import Midgard.Types.LinkedList (isRootData, nodeKeyFromAssetName')
 import Midgard.Types.LinkedList qualified as LinkedList
 import Midgard.Types.RegisteredOperators qualified as RegisteredOperators
 import Midgard.Types.RetiredOperators qualified as RetiredOperators
@@ -219,7 +219,9 @@ activateOperator
         activeOperatorDatum :: ActiveOperators.Datum
         activeOperatorDatum =
           LinkedList.Element
-            { elementData = LinkedList.Node $ ActiveOperators.NodeData {bondUnlockTime = Nothing}
+            { elementData =
+                LinkedList.Node $
+                  ActiveOperators.NodeData {bondUnlockTime = Nothing, inactivityStrikes = 0}
             , elementLink = LinkedList.elementLink activeOperatorsAnchorDatum
             }
     registeredOperatorsAnchorAssetName <-
@@ -308,6 +310,7 @@ activateOperator
             , registeredOperatorsRedeemerIndex =
                 toInteger $
                   findMintRedeemerIndex allPolicies txBody (mintingPolicyId registeredOperatorsPolicy)
+            , activeOperatorsSetWasEmpty = isRootData $ LinkedList.elementData activeOperatorsAnchorDatum
             }
       -- Enforce activation to happen at/after validity lower bound.
       addBtx $ \txBody ->
