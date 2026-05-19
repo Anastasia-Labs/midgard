@@ -180,11 +180,7 @@ pub type NativeTxWitnessSetCompact {
 pub type VerifiedMidgardNativeTxCompact {
   tx_id: ByteArray,
   version: Int,
-  body: NativeTxBodyCompact,
-  witness_set_hash: ByteArray,
-  validity: MidgardTxValidity,
-  validity_code: Int,
-  compact_cbor: ByteArray,
+  tx_compact: NativeTxCompact,
 }
 
 pub type VerifiedMidgardTransaction {

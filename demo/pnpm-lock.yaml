@@ -274,6 +274,12 @@ importers:
         specifier: ^2.0.1
         version: 2.2.0
     devDependencies:
+      '@aiken-lang/merkle-patricia-forestry':
+        specifier: ^1.2.0
+        version: 1.2.0
+      '@al-ft/midgard-core':
+        specifier: workspace:*
+        version: link:../midgard-core
       '@effect/vitest':
         specifier: ^0.17.8
         version: 0.17.8(effect@3.21.2)(vitest@2.1.8(@types/node@22.13.5))

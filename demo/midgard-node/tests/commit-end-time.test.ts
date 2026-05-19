@@ -5,7 +5,9 @@ import {
   generateEmulatorAccount,
 } from "@lucid-evolution/lucid";
 import {
+  EXPLICIT_COMMIT_DEFAULT_CANDIDATE_FUTURE_BUFFER_MS,
   resolveAlignedCommitEndTime,
+  resolveExplicitCommitCandidateEndTimeMs,
 } from "@/workers/utils/commit-end-time.js";
 
 /**
@@ -20,6 +22,17 @@ const makeLucid = async () => {
 };
 
 describe("commit end-time resolver", () => {
+  it("defaults explicit commit candidate end-time five minutes into the future", () => {
+    const nowMs = 1_779_150_000_000;
+
+    expect(resolveExplicitCommitCandidateEndTimeMs(undefined, nowMs)).toBe(
+      nowMs + EXPLICIT_COMMIT_DEFAULT_CANDIDATE_FUTURE_BUFFER_MS,
+    );
+    expect(resolveExplicitCommitCandidateEndTimeMs(nowMs + 42_000, nowMs)).toBe(
+      nowMs + 42_000,
+    );
+  });
+
   it("forces end-time to advance when candidate is stale", async () => {
     const lucid = await makeLucid();
     const provider = lucid.config().provider as unknown as {

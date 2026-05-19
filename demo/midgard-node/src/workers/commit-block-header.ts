@@ -5,7 +5,7 @@
  */
 import { parentPort, workerData } from "worker_threads";
 import * as SDK from "@al-ft/midgard-sdk";
-import { Cause, Data, Effect, Option, pipe } from "effect";
+import { Cause, Data, Effect, Option, Schedule, pipe } from "effect";
 import {
   WorkerInput,
   WorkerOutput,
@@ -36,6 +36,7 @@ import {
 } from "@/transactions/utils.js";
 import {
   CML,
+  type LucidEvolution,
   TxBuilder,
   Data as LucidData,
   UTxO,
@@ -64,7 +65,10 @@ import {
   skippedSubmissionProgram,
   successfulLocalFinalizationRecoveryProgram,
 } from "@/workers/utils/commit-submission.js";
-import { resolveAlignedCommitEndTime } from "@/workers/utils/commit-end-time.js";
+import {
+  resolveAlignedCommitEndTime,
+  resolveExplicitCommitCandidateEndTimeMs,
+} from "@/workers/utils/commit-end-time.js";
 import { fetchAndInsertDepositUTxOsForCommitBarrier } from "@/fibers/fetch-and-insert-deposit-utxos.js";
 import { fetchAndInsertWithdrawalUTxOsForCommitBarrier } from "@/fibers/fetch-and-insert-withdrawal-utxos.js";
 import {
@@ -82,6 +86,10 @@ import { formatUnknownError } from "@/error-format.js";
 const STATE_QUEUE_HEADER_NODE_LOVELACE = 5_000_000n;
 const ACTIVE_OPERATOR_MATURITY_DURATION_MS = 30n;
 const COMMIT_STALE_OPERATOR_WALLET_VIEW_RETRIES = 1;
+const EXPLICIT_COMMIT_CONFIRMATION_TIMEOUT_MS = 120_000;
+const EXPLICIT_COMMIT_CONFIRMATION_POLL_INTERVAL_MS = 5_000;
+const EXPLICIT_COMMIT_BLOCK_VISIBILITY_DELAY = "5 seconds";
+const EXPLICIT_COMMIT_BLOCK_VISIBILITY_RETRIES = 18;
 
 const decodeActiveOperatorDatum = (data: unknown): SDK.ActiveOperatorDatum =>
   LucidData.castFrom(
@@ -444,6 +452,178 @@ const buildUnsignedTx = (
       blockEndTimeMs: alignedEndTime,
       signAndSubmitProgram,
       txSize,
+    };
+  });
+
+export type ExplicitBlockHeaderCommitParams = {
+  readonly utxosRoot: string;
+  readonly transactionsRoot: string;
+  readonly depositsRoot: string;
+  readonly withdrawalsRoot: string;
+  readonly endTimeMs?: number;
+  readonly awaitConfirmation?: boolean;
+};
+
+export type ExplicitBlockHeaderCommitOutput = {
+  readonly submittedTxHash: string;
+  readonly headerHash: string;
+  readonly blockOutRef: string | null;
+  readonly txSize: number;
+  readonly blockEndTimeMs: number;
+  readonly roots: {
+    readonly utxosRoot: string;
+    readonly transactionsRoot: string;
+    readonly depositsRoot: string;
+    readonly withdrawalsRoot: string;
+  };
+};
+
+const waitForTxConfirmation = (
+  lucid: LucidEvolution,
+  txHash: string,
+): Effect.Effect<void, SDK.LucidError> =>
+  Effect.tryPromise({
+    try: () =>
+      new Promise<void>((resolve, reject) => {
+        const timeoutId = setTimeout(() => {
+          reject(
+            new Error(
+              `timed out waiting for explicit block-header commit confirmation after ${EXPLICIT_COMMIT_CONFIRMATION_TIMEOUT_MS}ms`,
+            ),
+          );
+        }, EXPLICIT_COMMIT_CONFIRMATION_TIMEOUT_MS);
+        lucid
+          .awaitTx(txHash, EXPLICIT_COMMIT_CONFIRMATION_POLL_INTERVAL_MS)
+          .then((confirmed) => {
+            clearTimeout(timeoutId);
+            if (confirmed) {
+              resolve();
+            } else {
+              reject(new Error(`provider returned unconfirmed for ${txHash}`));
+            }
+          })
+          .catch((error) => {
+            clearTimeout(timeoutId);
+            reject(error);
+          });
+      }),
+    catch: (cause) =>
+      new SDK.LucidError({
+        message: "Failed to confirm explicit block-header commit transaction",
+        cause,
+      }),
+  });
+
+const fetchCommittedBlockOutRef = ({
+  lucid,
+  contracts,
+  headerHash,
+}: {
+  readonly lucid: LucidEvolution;
+  readonly contracts: SDK.MidgardValidators;
+  readonly headerHash: string;
+}): Effect.Effect<string, SDK.LucidError> =>
+  Effect.tryPromise({
+    try: async () => {
+      const unit = toUnit(
+        contracts.stateQueue.policyId,
+        SDK.STATE_QUEUE_NODE_ASSET_NAME_PREFIX + headerHash,
+      );
+      const utxos = await lucid.utxosAtWithUnit(
+        contracts.stateQueue.spendingScriptAddress,
+        unit,
+      );
+      if (utxos.length !== 1) {
+        throw new Error(
+          `expected exactly one committed state_queue block UTxO for ${headerHash}, found ${utxos.length}`,
+        );
+      }
+      return `${utxos[0].txHash}#${utxos[0].outputIndex}`;
+    },
+    catch: (cause) =>
+      new SDK.LucidError({
+        message: "Failed to resolve committed state_queue block outref",
+        cause,
+      }),
+  }).pipe(
+    Effect.retry(
+      Schedule.intersect(
+        Schedule.fixed(EXPLICIT_COMMIT_BLOCK_VISIBILITY_DELAY),
+        Schedule.recurs(EXPLICIT_COMMIT_BLOCK_VISIBILITY_RETRIES),
+      ),
+    ),
+  );
+
+/**
+ * Explicit operator command helper for live fault-proof drills. The supplied
+ * roots are committed through the same real state_queue, scheduler, and active
+ * operator transaction builder used by the production block worker, but no
+ * local database finalization is attempted.
+ */
+export const commitExplicitBlockHeaderProgram = (
+  params: ExplicitBlockHeaderCommitParams,
+): Effect.Effect<
+  ExplicitBlockHeaderCommitOutput,
+  | SDK.StateQueueError
+  | SDK.DataCoercionError
+  | SDK.LucidError
+  | SDK.HashingError
+  | TxSignError
+  | TxSubmitError,
+  Lucid | MidgardContracts
+> =>
+  Effect.gen(function* () {
+    const lucidService = yield* Lucid;
+    const contracts = yield* MidgardContracts;
+    const lucid = lucidService.api;
+    const fetchConfig: SDK.StateQueueFetchConfig = {
+      stateQueueAddress: contracts.stateQueue.spendingScriptAddress,
+      stateQueuePolicyId: contracts.stateQueue.policyId,
+    };
+
+    const latestBlock = yield* localizeSdkEffect<
+      SDK.StateQueueUTxO,
+      SDK.StateQueueError | SDK.LucidError
+    >(SDK.fetchLatestCommittedBlockProgram(lucid, fetchConfig));
+    const endTime = new Date(
+      resolveExplicitCommitCandidateEndTimeMs(params.endTimeMs),
+    );
+    const { newHeaderHash, blockEndTimeMs, signAndSubmitProgram, txSize } =
+      yield* buildUnsignedTx(
+        contracts,
+        latestBlock,
+        params.utxosRoot,
+        params.transactionsRoot,
+        params.depositsRoot,
+        params.withdrawalsRoot,
+        endTime,
+      );
+
+    const submittedTxHash = yield* signAndSubmitProgram;
+    const shouldAwait = params.awaitConfirmation ?? true;
+    if (shouldAwait) {
+      yield* waitForTxConfirmation(lucid, submittedTxHash);
+    }
+    const blockOutRef = shouldAwait
+      ? yield* fetchCommittedBlockOutRef({
+          lucid,
+          contracts,
+          headerHash: newHeaderHash,
+        })
+      : null;
+
+    return {
+      submittedTxHash,
+      headerHash: newHeaderHash,
+      blockOutRef,
+      txSize,
+      blockEndTimeMs,
+      roots: {
+        utxosRoot: params.utxosRoot,
+        transactionsRoot: params.transactionsRoot,
+        depositsRoot: params.depositsRoot,
+        withdrawalsRoot: params.withdrawalsRoot,
+      },
     };
   });
 

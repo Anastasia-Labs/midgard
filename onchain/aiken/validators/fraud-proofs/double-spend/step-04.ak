@@ -1,12 +1,13 @@
+use aiken/collection/list
 use cardano/address.{Address}
 use cardano/assets.{PolicyId}
 use cardano/transaction.{OutputReference, Transaction}
 use midgard/computation_thread as ct
 use midgard/fraud_proofs/common.{cancel, finalize}
+use midgard/fraud_proofs/double_spend/input_witness
 use midgard/fraud_proofs/double_spend/step_04.{
   Args, Datum, SpendRedeemer, State,
 }
-use midgard/fraud_proofs/native_tx/preimages
 
 validator main(
   computation_thread_token_policy_id: PolicyId,
@@ -33,10 +34,11 @@ validator main(
         input_index,
         output_index,
         fraud_proof_mint_redeemer_index,
-        tx2_spend_input_cbors,
+        tx2_spend_inputs_ref_input_index,
         double_spent_input_index,
       }) -> {
-        let Transaction { inputs, outputs, redeemers, .. } = tx
+        let Transaction { inputs, outputs, redeemers, reference_inputs, .. } =
+          tx
 
         expect Some(step_datum) = datum
 
@@ -62,26 +64,22 @@ validator main(
             redeemers,
           )
 
-        expect Some(State {
-          verified_tx2_spend_inputs_hash,
-          double_spent_input_cbor,
-        }) = m_input_state_data
+        expect Some(State { verified_tx2_spend_inputs_hash, double_spent_input }) =
+          m_input_state_data
 
-        // 2. Provided native spend-inputs preimage for tx2 must be valid.
-        expect
-          preimages.verify_spend_inputs_preimage(
-            tx2_spend_input_cbors,
+        // 2. Referenced native spend-inputs preimage for tx2 must be valid.
+        let tx2_spend_inputs =
+          input_witness.verified_spend_inputs_at(
+            reference_inputs,
+            tx2_spend_inputs_ref_input_index,
             verified_tx2_spend_inputs_hash,
           )
 
         // 3. The provided index must correspond to an input in the given list
-        //    such that it matches the raw input CBOR carried over from previous
-        //    step.
-        expect
-          double_spent_input_cbor == preimages.spend_input_cbor_at(
-            tx2_spend_input_cbors,
-            double_spent_input_index,
-          )
+        //    such that it matches the input carried over from previous step.
+        let tx2_double_spent_input =
+          tx2_spend_inputs |> list.expect_at(double_spent_input_index)
+        expect double_spent_input == tx2_double_spent_input
 
         // Done.
         True

@@ -38,8 +38,8 @@ const REFERENCE_SCRIPT_PUBLICATION_TX_SIZE_EXCEEDED_PATTERN =
   /Max transaction size of \d+ exceeded\. Found: \d+/i;
 const REFERENCE_SCRIPT_PUBLICATION_BALANCE_GAP_PATTERN =
   /Inputs:\s*Value\s*\{\s*coin:\s*(\d+)[\s\S]*?Outputs:\s*Value\s*\{\s*coin:\s*(\d+)/i;
-const WALLET_OWN_ADDRESS_REFRESH_MAX_RETRIES = 6;
-const WALLET_OWN_ADDRESS_REFRESH_RETRY_DELAY = "1 second";
+const WALLET_OWN_ADDRESS_REFRESH_MAX_RETRIES = 24;
+const WALLET_OWN_ADDRESS_REFRESH_RETRY_DELAY = "5 seconds";
 const WALLET_OUTREF_RECONCILE_MAX_RETRIES = 4;
 const WALLET_OUTREF_RECONCILE_RETRY_DELAY = "750 millis";
 

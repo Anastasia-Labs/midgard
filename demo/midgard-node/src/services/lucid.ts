@@ -49,6 +49,8 @@ const isBlockfrostFallbackEligibleError = (error: unknown): boolean => {
     message.includes("rate limit") ||
     message.includes("could not fetch utxos from blockfrost") ||
     message.includes("cannot convert undefined to a bigint") ||
+    message.includes("unexpected token '<'") ||
+    message.includes("is not valid json") ||
     message.includes("fetch failed")
   );
 };
@@ -80,6 +82,8 @@ export const isBlockfrostRateLimitError = (error: unknown): boolean => {
     message.includes("could not fetch utxobyunit from blockfrost") ||
     message.includes("could not fetch datum from blockfrost") ||
     message.includes("could not submit transaction to blockfrost") ||
+    message.includes("unexpected token '<'") ||
+    message.includes("is not valid json") ||
     message.includes("could not evaluate transaction")
   );
 };

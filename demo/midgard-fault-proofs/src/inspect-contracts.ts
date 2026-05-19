@@ -1,6 +1,6 @@
 import { readFile } from "node:fs/promises";
 import { Effect } from "effect";
-import { Network, Data } from "@lucid-evolution/lucid";
+import { Network, Data, type Script } from "@lucid-evolution/lucid";
 import { Store, Trie } from "@aiken-lang/merkle-patricia-forestry";
 import {
   FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER,
@@ -16,6 +16,14 @@ import {
 
 export type ContractDeploymentInfoEntry = {
   readonly scriptHash: string;
+  readonly refScriptUTxO?: {
+    readonly txHash: string;
+    readonly outputIndex: number;
+  } | null;
+  readonly contract?: {
+    readonly type: Script["type"];
+    readonly cborHex: string;
+  };
   readonly fraudProofCatalogue?: FraudProofCatalogueDeploymentInfo;
 };
 
@@ -107,10 +115,7 @@ const normalizeHex = (
     throw new Error(`${label} must be a hex string`);
   }
   const normalized = value.toLowerCase();
-  if (
-    normalized.length !== byteLength * 2 ||
-    !HEX_PATTERN.test(normalized)
-  ) {
+  if (normalized.length !== byteLength * 2 || !HEX_PATTERN.test(normalized)) {
     throw new Error(`${label} must be ${byteLength.toString()} bytes of hex`);
   }
   return normalized;
@@ -201,6 +206,82 @@ const parseFraudProofCatalogueDeploymentInfo = (
   };
 };
 
+const parseRefScriptUTxO = (
+  value: unknown,
+  label: string,
+): ContractDeploymentInfoEntry["refScriptUTxO"] => {
+  if (value === undefined) {
+    return undefined;
+  }
+  if (value === null) {
+    return null;
+  }
+  if (typeof value !== "object" || Array.isArray(value)) {
+    throw new Error(`${label} must be an object or null`);
+  }
+  const candidate = value as {
+    readonly txHash?: unknown;
+    readonly outputIndex?: unknown;
+  };
+  return {
+    txHash: normalizeHex(candidate.txHash, `${label}.txHash`, 32),
+    outputIndex: Number(
+      normalizeSafeInteger(candidate.outputIndex, `${label}.outputIndex`),
+    ),
+  };
+};
+
+const normalizeSafeInteger = (value: unknown, label: string): bigint => {
+  if (typeof value === "bigint") {
+    if (value < 0n || value > BigInt(Number.MAX_SAFE_INTEGER)) {
+      throw new Error(`${label} must be a safe non-negative integer`);
+    }
+    return value;
+  }
+  if (typeof value === "number") {
+    if (!Number.isSafeInteger(value) || value < 0) {
+      throw new Error(`${label} must be a safe non-negative integer`);
+    }
+    return BigInt(value);
+  }
+  if (typeof value === "string" && /^\d+$/.test(value)) {
+    const parsed = BigInt(value);
+    if (parsed > BigInt(Number.MAX_SAFE_INTEGER)) {
+      throw new Error(`${label} must be a safe non-negative integer`);
+    }
+    return parsed;
+  }
+  throw new Error(`${label} must be a safe non-negative integer`);
+};
+
+const parseDeploymentContract = (
+  value: unknown,
+  label: string,
+): ContractDeploymentInfoEntry["contract"] => {
+  if (value === undefined) {
+    return undefined;
+  }
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    throw new Error(`${label} must be an object`);
+  }
+  const candidate = value as {
+    readonly type?: unknown;
+    readonly cborHex?: unknown;
+  };
+  if (
+    candidate.type !== "PlutusV1" &&
+    candidate.type !== "PlutusV2" &&
+    candidate.type !== "PlutusV3" &&
+    candidate.type !== "Native"
+  ) {
+    throw new Error(`${label}.type is not a supported script type`);
+  }
+  return {
+    type: candidate.type,
+    cborHex: normalizeVariableHex(candidate.cborHex, `${label}.cborHex`),
+  };
+};
+
 const encodeCatalogueKey = (categoryId: string): Buffer =>
   Buffer.from(
     Data.to(
@@ -238,6 +319,8 @@ export const parseContractDeploymentInfo = (
     }
     const candidate = entry as {
       readonly scriptHash?: unknown;
+      readonly refScriptUTxO?: unknown;
+      readonly contract?: unknown;
       readonly fraudProofCatalogue?: unknown;
     };
     entries[name] = {
@@ -246,6 +329,18 @@ export const parseContractDeploymentInfo = (
         `Deployment entry "${name}".scriptHash`,
         28,
       ),
+      refScriptUTxO: parseRefScriptUTxO(
+        candidate.refScriptUTxO,
+        `Deployment entry "${name}".refScriptUTxO`,
+      ),
+      ...(candidate.contract !== undefined
+        ? {
+            contract: parseDeploymentContract(
+              candidate.contract,
+              `Deployment entry "${name}".contract`,
+            ),
+          }
+        : {}),
       ...(candidate.fraudProofCatalogue !== undefined
         ? {
             fraudProofCatalogue: parseFraudProofCatalogueDeploymentInfo(

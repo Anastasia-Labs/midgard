@@ -1,10 +1,10 @@
-use aiken/builtin
 use aiken/cbor
 use aiken/crypto.{blake2b_256}
 use aiken/primitive/bytearray
 use midgard/fraud_proofs/native_tx/codec.{
-  encode_definite_bytes, expect_deserialise, expect_h32, expect_network_id,
-  expect_non_negative, expect_validity_code, validity_from_code,
+  decode_canonical_int_at, decode_canonical_uint_at, encode_definite_bytes,
+  expect_byte, expect_h32, expect_network_id, expect_non_negative,
+  expect_validity_code, slice_len,
 }
 use midgard/fraud_proofs/native_tx/types.{
   NativeTxBodyCompact, NativeTxCompact, NativeTxWitnessSetCompact,
@@ -85,52 +85,70 @@ pub fn encode_native_tx_compact(tx: NativeTxCompact) -> ByteArray {
     |> bytearray.concat(cbor.serialise(validity_code))
 }
 
-fn decode_native_tx_body_compact_data(data: Data) -> NativeTxBodyCompact {
-  expect [
-    spend_inputs_hash_data, reference_inputs_hash_data, outputs_hash_data,
-    fee_data, validity_interval_start_data, validity_interval_end_data,
-    required_observers_hash_data, required_signers_hash_data, mint_hash_data,
-    script_integrity_hash_data, auxiliary_data_hash_data, network_id_data,
-  ] = builtin.un_list_data(data)
-
-  NativeTxBodyCompact {
-    spend_inputs_hash: builtin.un_b_data(spend_inputs_hash_data),
-    reference_inputs_hash: builtin.un_b_data(reference_inputs_hash_data),
-    outputs_hash: builtin.un_b_data(outputs_hash_data),
-    fee: builtin.un_i_data(fee_data),
-    validity_interval_start: builtin.un_i_data(validity_interval_start_data),
-    validity_interval_end: builtin.un_i_data(validity_interval_end_data),
-    required_observers_hash: builtin.un_b_data(required_observers_hash_data),
-    required_signers_hash: builtin.un_b_data(required_signers_hash_data),
-    mint_hash: builtin.un_b_data(mint_hash_data),
-    script_integrity_hash: builtin.un_b_data(script_integrity_hash_data),
-    auxiliary_data_hash: builtin.un_b_data(auxiliary_data_hash_data),
-    network_id: builtin.un_i_data(network_id_data),
-  }
+fn decode_hash32_at(bytes: ByteArray, offset: Int) -> Pair<Int, ByteArray> {
+  let offset = expect_byte(bytes, offset, 88)
+  let offset = expect_byte(bytes, offset, 32)
+  Pair(offset + 32, slice_len(bytes, offset, 32))
 }
 
-fn decode_native_tx_compact_data(data: Data) -> Pair<Int, NativeTxCompact> {
-  expect [version_data,
-    body_data,
-    witness_set_hash_data, validity_code_data] = builtin.un_list_data(data)
-  let version = builtin.un_i_data(version_data)
-  expect version == native_tx_version
+fn decode_native_tx_body_compact_cbor_at(
+  compact_cbor: ByteArray,
+  offset: Int,
+) -> Pair<Int, NativeTxBodyCompact> {
+  let offset = expect_byte(compact_cbor, offset, 140)
+  let Pair(offset, spend_inputs_hash) = decode_hash32_at(compact_cbor, offset)
+  let Pair(offset, reference_inputs_hash) =
+    decode_hash32_at(compact_cbor, offset)
+  let Pair(offset, outputs_hash) = decode_hash32_at(compact_cbor, offset)
+  let Pair(offset, fee) = decode_canonical_uint_at(compact_cbor, offset)
+  let Pair(offset, validity_interval_start) =
+    decode_canonical_int_at(compact_cbor, offset)
+  let Pair(offset, validity_interval_end) =
+    decode_canonical_int_at(compact_cbor, offset)
+  let Pair(offset, required_observers_hash) =
+    decode_hash32_at(compact_cbor, offset)
+  let Pair(offset, required_signers_hash) =
+    decode_hash32_at(compact_cbor, offset)
+  let Pair(offset, mint_hash) = decode_hash32_at(compact_cbor, offset)
+  let Pair(offset, script_integrity_hash) =
+    decode_hash32_at(compact_cbor, offset)
+  let Pair(offset, auxiliary_data_hash) = decode_hash32_at(compact_cbor, offset)
+  let Pair(offset, network_id) = decode_canonical_uint_at(compact_cbor, offset)
 
-  let validity_code = builtin.un_i_data(validity_code_data)
   Pair(
-    version,
-    NativeTxCompact {
-      body: decode_native_tx_body_compact_data(body_data),
-      witness_set_hash: builtin.un_b_data(witness_set_hash_data),
-      validity_code,
+    offset,
+    NativeTxBodyCompact {
+      spend_inputs_hash,
+      reference_inputs_hash,
+      outputs_hash,
+      fee,
+      validity_interval_start,
+      validity_interval_end,
+      required_observers_hash,
+      required_signers_hash,
+      mint_hash,
+      script_integrity_hash,
+      auxiliary_data_hash,
+      network_id: expect_network_id(network_id),
     },
   )
 }
 
 pub fn decode_native_tx_compact(compact_cbor: ByteArray) -> NativeTxCompact {
-  let Pair(_, compact) =
-    compact_cbor |> expect_deserialise |> decode_native_tx_compact_data
-  compact
+  let offset = expect_byte(compact_cbor, 0, 132)
+  let offset = expect_byte(compact_cbor, offset, native_tx_version)
+  let Pair(offset, body) =
+    decode_native_tx_body_compact_cbor_at(compact_cbor, offset)
+  let Pair(offset, witness_set_hash) = decode_hash32_at(compact_cbor, offset)
+  let Pair(offset, validity_code) =
+    decode_canonical_uint_at(compact_cbor, offset)
+  expect offset == bytearray.length(compact_cbor)
+
+  NativeTxCompact {
+    body,
+    witness_set_hash,
+    validity_code: expect_validity_code(validity_code),
+  }
 }
 
 pub fn verify_native_tx_compact(
@@ -138,19 +156,56 @@ pub fn verify_native_tx_compact(
   native_tx: NativeTxCompact,
   native_tx_compact_cbor: ByteArray,
 ) -> VerifiedMidgardNativeTxCompact {
-  expect encode_native_tx_compact(native_tx) == native_tx_compact_cbor
+  let NativeTxCompact { body, witness_set_hash, validity_code } = native_tx
+  let midgard_tx_body_cbor = encode_native_tx_body_compact(body)
 
-  let NativeTxCompact { body, .. } = native_tx
-  let computed_tx_id = encode_native_tx_body_compact(body) |> blake2b_256
+  let computed_tx_id = midgard_tx_body_cbor |> blake2b_256
   expect computed_tx_id == native_tx_id
+  expect _witness_set_hash = expect_h32(witness_set_hash)
+  expect _validity_code = expect_validity_code(validity_code)
+
+  let midgard_tx_compact_cbor =
+    #"84"
+      |> bytearray.concat(cbor.serialise(native_tx_version))
+      |> bytearray.concat(midgard_tx_body_cbor)
+      |> bytearray.concat(encode_definite_bytes(witness_set_hash))
+      |> bytearray.concat(cbor.serialise(validity_code))
+
+  expect midgard_tx_compact_cbor == native_tx_compact_cbor
 
   VerifiedMidgardNativeTxCompact {
     tx_id: native_tx_id,
     version: native_tx_version,
-    body,
-    witness_set_hash: native_tx.witness_set_hash,
-    validity: native_tx.validity_code |> validity_from_code,
-    validity_code: native_tx.validity_code,
-    compact_cbor: native_tx_compact_cbor,
+    tx_compact: native_tx,
+  }
+}
+
+pub fn verify_native_tx_compact_cbor(
+  native_tx_id: ByteArray,
+  native_tx_compact_cbor: ByteArray,
+) -> VerifiedMidgardNativeTxCompact {
+  let offset = expect_byte(native_tx_compact_cbor, 0, 132)
+  let offset = expect_byte(native_tx_compact_cbor, offset, native_tx_version)
+  let body_start = offset
+  let Pair(offset, body) =
+    decode_native_tx_body_compact_cbor_at(native_tx_compact_cbor, offset)
+  let body_cbor =
+    slice_len(native_tx_compact_cbor, body_start, offset - body_start)
+  expect blake2b_256(body_cbor) == native_tx_id
+
+  let Pair(offset, witness_set_hash) =
+    decode_hash32_at(native_tx_compact_cbor, offset)
+  let Pair(offset, validity_code) =
+    decode_canonical_uint_at(native_tx_compact_cbor, offset)
+  expect offset == bytearray.length(native_tx_compact_cbor)
+
+  VerifiedMidgardNativeTxCompact {
+    tx_id: native_tx_id,
+    version: native_tx_version,
+    tx_compact: NativeTxCompact {
+      body,
+      witness_set_hash,
+      validity_code: expect_validity_code(validity_code),
+    },
   }
 }

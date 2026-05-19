@@ -373,10 +373,10 @@ pub fn verify_midgard_transaction(
 pub fn partial_view_from_compact(
   compact: VerifiedMidgardNativeTxCompact,
 ) -> MidgardTransactionPartialView {
-  let body = compact.body
+  let NativeTxCompact { body, validity_code, .. } = compact.tx_compact
   MidgardTransactionPartialView {
     version: Some(compact.version),
-    validity: Some(compact.validity),
+    validity: Some(validity_code |> validity_from_code),
     body: Some(
       MidgardTransactionBodyPartialView {
         inputs: None,
@@ -553,8 +553,9 @@ pub fn partial_view_from_compact_and_preimages(
   let witness_set_view =
     when witness_set is {
       Some(witness_set) -> {
+        let NativeTxCompact { witness_set_hash, .. } = compact.tx_compact
         expect
-          blake2b_256(encode_native_tx_witness_set_compact(witness_set)) == compact.witness_set_hash
+          blake2b_256(encode_native_tx_witness_set_compact(witness_set)) == witness_set_hash
         Some(
           partial_witness_set_view_from_compact_and_preimages(
             witness_set,
@@ -564,12 +565,13 @@ pub fn partial_view_from_compact_and_preimages(
       }
       None -> None
     }
+  let NativeTxCompact { body, validity_code, .. } = compact.tx_compact
 
   MidgardTransactionPartialView {
     version: Some(compact.version),
-    validity: Some(compact.validity),
+    validity: Some(validity_code |> validity_from_code),
     body: Some(
-      partial_body_view_from_compact_and_preimages(compact.body, body_preimages),
+      partial_body_view_from_compact_and_preimages(body, body_preimages),
     ),
     witness_set: witness_set_view,
   }

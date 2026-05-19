@@ -1,12 +1,20 @@
 #!/usr/bin/env node
 
-import { inspectContractsFromFiles, parseNetwork } from "./inspect-contracts.js";
+import {
+  inspectContractsFromFiles,
+  parseNetwork,
+} from "./inspect-contracts.js";
 import { submitInitFromFiles, type ProviderKind } from "./submit-init.js";
 import { submitStep01FromFiles } from "./submit-step-01.js";
 import { submitStep02FromFiles } from "./submit-step-02.js";
 import { submitStep03FromFiles } from "./submit-step-03.js";
 import { submitStep04FromFiles } from "./submit-step-04.js";
-import { prepareDoubleSpendFromNode } from "./prepare-double-spend.js";
+import { submitRemoveFraudulentBlockFromFiles } from "./remove-fraudulent-block.js";
+import {
+  prepareDoubleSpendFromFile,
+  prepareDoubleSpendFromNode,
+  prepareSampleDoubleSpend,
+} from "./prepare-double-spend.js";
 
 type ParsedArgs = {
   readonly command: string | undefined;
@@ -31,6 +39,8 @@ type ParsedArgs = {
   readonly tx2InputsPath: string | undefined;
   readonly doubleSpentInputIndex: string | undefined;
   readonly midgardNodeUrl: string | undefined;
+  readonly transactionsPath: string | undefined;
+  readonly sampleDoubleSpend: boolean;
   readonly headerHash: string | undefined;
   readonly expectedTransactionsRoot: string | undefined;
   readonly tx1Id: string | undefined;
@@ -41,13 +51,14 @@ type ParsedArgs = {
 };
 
 const usage = `Usage:
-  midgard-fault-proofs prepare-double-spend --midgard-node-url <url> --header-hash <hex> [--expected-transactions-root <hex>] [--tx1-id <hex> --tx2-id <hex>] [--output-dir <path>] [--allow-incompatible-output]
+  midgard-fault-proofs prepare-double-spend (--midgard-node-url <url> | --transactions-file <path> | --sample-double-spend) --header-hash <hex> [--expected-transactions-root <hex>] [--tx1-id <hex> --tx2-id <hex>] [--output-dir <path>] [--allow-incompatible-output]
   midgard-fault-proofs inspect-contracts --blueprint <path> --deployment-info <path> [--network <Mainnet|Preview|Preprod>]
   midgard-fault-proofs submit-init --blueprint <path> --deployment-info <path> --fraudulent-block-out-ref <txHash#outputIndex> [--fraudulent-header-hash <hex>] [--network <Mainnet|Preview|Preprod>] [--provider <Blockfrost|Kupmios>] [--wallet-seed-phrase <phrase> | --wallet-seed-phrase-env <envVar> | --wallet-private-key <bech32> | --wallet-private-key-env <envVar>]
   midgard-fault-proofs submit-step-01 --blueprint <path> --deployment-info <path> --thread-out-ref <txHash#outputIndex> --state-queue-block-out-ref <txHash#outputIndex> --tx-inclusion <path> [--network <Mainnet|Preview|Preprod>] [--provider <Blockfrost|Kupmios>] [--wallet-seed-phrase <phrase> | --wallet-seed-phrase-env <envVar> | --wallet-private-key <bech32> | --wallet-private-key-env <envVar>]
   midgard-fault-proofs submit-step-02 --blueprint <path> --deployment-info <path> --thread-out-ref <txHash#outputIndex> --state-queue-block-out-ref <txHash#outputIndex> --tx-inclusion <path> [--network <Mainnet|Preview|Preprod>] [--provider <Blockfrost|Kupmios>] [--wallet-seed-phrase <phrase> | --wallet-seed-phrase-env <envVar> | --wallet-private-key <bech32> | --wallet-private-key-env <envVar>]
   midgard-fault-proofs submit-step-03 --blueprint <path> --deployment-info <path> --thread-out-ref <txHash#outputIndex> --tx1-inputs <raw-input-cbor-list.json> --double-spent-input-index <n> [--network <Mainnet|Preview|Preprod>] [--provider <Blockfrost|Kupmios>] [--wallet-seed-phrase <phrase> | --wallet-seed-phrase-env <envVar> | --wallet-private-key <bech32> | --wallet-private-key-env <envVar>]
   midgard-fault-proofs submit-step-04 --blueprint <path> --deployment-info <path> --thread-out-ref <txHash#outputIndex> --tx2-inputs <raw-input-cbor-list.json> --double-spent-input-index <n> [--network <Mainnet|Preview|Preprod>] [--provider <Blockfrost|Kupmios>] [--wallet-seed-phrase <phrase> | --wallet-seed-phrase-env <envVar> | --wallet-private-key <bech32> | --wallet-private-key-env <envVar>]
+  midgard-fault-proofs remove-fraudulent-block --blueprint <path> --deployment-info <path> --fraudulent-header-hash <hex> [--network <Mainnet|Preview|Preprod>] [--provider <Blockfrost|Kupmios>] [--wallet-seed-phrase <phrase> | --wallet-seed-phrase-env <envVar> | --wallet-private-key <bech32> | --wallet-private-key-env <envVar>]
 `;
 
 const parseArgs = (argv: readonly string[]): ParsedArgs => {
@@ -77,6 +88,8 @@ const parseArgs = (argv: readonly string[]): ParsedArgs => {
   let tx2InputsPath: string | undefined;
   let doubleSpentInputIndex: string | undefined;
   let midgardNodeUrl: string | undefined;
+  let transactionsPath: string | undefined;
+  let sampleDoubleSpend = false;
   let headerHash: string | undefined;
   let expectedTransactionsRoot: string | undefined;
   let tx1Id: string | undefined;
@@ -100,7 +113,9 @@ const parseArgs = (argv: readonly string[]): ParsedArgs => {
       case "--provider": {
         const value = rest[++index];
         if (value !== "Blockfrost" && value !== "Kupmios") {
-          throw new Error('--provider must be either "Blockfrost" or "Kupmios".');
+          throw new Error(
+            '--provider must be either "Blockfrost" or "Kupmios".',
+          );
         }
         provider = value;
         break;
@@ -156,6 +171,12 @@ const parseArgs = (argv: readonly string[]): ParsedArgs => {
       case "--midgard-node-url":
         midgardNodeUrl = rest[++index];
         break;
+      case "--transactions-file":
+        transactionsPath = rest[++index];
+        break;
+      case "--sample-double-spend":
+        sampleDoubleSpend = true;
+        break;
       case "--header-hash":
         headerHash = rest[++index];
         break;
@@ -209,6 +230,8 @@ const parseArgs = (argv: readonly string[]): ParsedArgs => {
     tx2InputsPath,
     doubleSpentInputIndex,
     midgardNodeUrl,
+    transactionsPath,
+    sampleDoubleSpend,
     headerHash,
     expectedTransactionsRoot,
     tx1Id,
@@ -238,29 +261,55 @@ const main = async (): Promise<void> => {
     args.command !== "submit-step-01" &&
     args.command !== "submit-step-02" &&
     args.command !== "submit-step-03" &&
-    args.command !== "submit-step-04"
+    args.command !== "submit-step-04" &&
+    args.command !== "remove-fraudulent-block"
   ) {
     throw new Error(
-      `Expected command "prepare-double-spend", "inspect-contracts", "submit-init", "submit-step-01", "submit-step-02", "submit-step-03", or "submit-step-04".\n${usage}`,
+      `Expected command "prepare-double-spend", "inspect-contracts", "submit-init", "submit-step-01", "submit-step-02", "submit-step-03", "submit-step-04", or "remove-fraudulent-block".\n${usage}`,
     );
   }
 
   if (args.command === "prepare-double-spend") {
-    if (args.midgardNodeUrl === undefined) {
-      throw new Error(`Missing required --midgard-node-url <url>.\n${usage}`);
-    }
     if (args.headerHash === undefined) {
       throw new Error(`Missing required --header-hash <hex>.\n${usage}`);
     }
-    const output = await prepareDoubleSpendFromNode({
-      midgardNodeUrl: args.midgardNodeUrl,
-      headerHash: args.headerHash,
-      expectedTransactionsRoot: args.expectedTransactionsRoot,
-      tx1Id: args.tx1Id,
-      tx2Id: args.tx2Id,
-      outputDir: args.outputDir,
-      allowIncompatibleOutput: args.allowIncompatibleOutput,
-    });
+    const inputModes = [
+      args.midgardNodeUrl !== undefined,
+      args.transactionsPath !== undefined,
+      args.sampleDoubleSpend,
+    ].filter(Boolean).length;
+    if (inputModes !== 1) {
+      throw new Error(
+        `Provide exactly one of --midgard-node-url, --transactions-file, or --sample-double-spend.\n${usage}`,
+      );
+    }
+    const output =
+      args.midgardNodeUrl !== undefined
+        ? await prepareDoubleSpendFromNode({
+            midgardNodeUrl: args.midgardNodeUrl,
+            headerHash: args.headerHash,
+            expectedTransactionsRoot: args.expectedTransactionsRoot,
+            tx1Id: args.tx1Id,
+            tx2Id: args.tx2Id,
+            outputDir: args.outputDir,
+            allowIncompatibleOutput: args.allowIncompatibleOutput,
+          })
+        : args.transactionsPath !== undefined
+          ? await prepareDoubleSpendFromFile({
+              transactionsPath: args.transactionsPath,
+              headerHash: args.headerHash,
+              expectedTransactionsRoot: args.expectedTransactionsRoot,
+              tx1Id: args.tx1Id,
+              tx2Id: args.tx2Id,
+              outputDir: args.outputDir,
+              allowIncompatibleOutput: args.allowIncompatibleOutput,
+            })
+          : await prepareSampleDoubleSpend({
+              headerHash: args.headerHash,
+              expectedTransactionsRoot: args.expectedTransactionsRoot,
+              outputDir: args.outputDir,
+              allowIncompatibleOutput: args.allowIncompatibleOutput,
+            });
     writeJson(output);
     return;
   }
@@ -441,6 +490,33 @@ const main = async (): Promise<void> => {
       threadOutRef: args.threadOutRef,
       tx2InputsPath: args.tx2InputsPath,
       doubleSpentInputIndex: args.doubleSpentInputIndex,
+      awaitConfirmation: args.awaitConfirmation,
+    });
+
+    writeJson(output);
+    return;
+  }
+
+  if (args.command === "remove-fraudulent-block") {
+    if (args.fraudulentHeaderHash === undefined) {
+      throw new Error(
+        `Missing required --fraudulent-header-hash <hex>.\n${usage}`,
+      );
+    }
+    const output = await submitRemoveFraudulentBlockFromFiles({
+      blueprintPath: args.blueprintPath,
+      deploymentInfoPath: args.deploymentInfoPath,
+      network: parseNetwork(args.network),
+      provider: args.provider,
+      blockfrostApiUrl: args.blockfrostApiUrl,
+      blockfrostKey: args.blockfrostKey,
+      kupoUrl: args.kupoUrl,
+      ogmiosUrl: args.ogmiosUrl,
+      walletSeedPhrase: args.walletSeedPhrase,
+      walletSeedPhraseEnv: args.walletSeedPhraseEnv,
+      walletPrivateKey: args.walletPrivateKey,
+      walletPrivateKeyEnv: args.walletPrivateKeyEnv,
+      fraudulentHeaderHash: args.fraudulentHeaderHash,
       awaitConfirmation: args.awaitConfirmation,
     });
 

@@ -11,7 +11,7 @@ pub type Datum =
 pub type Args {
   input_index: Int,
   output_index: Int,
-  tx1_spend_input_cbors: List<ByteArray>,
+  tx1_spend_inputs_ref_input_index: Int,
   double_spent_input_index: Int,
 }
 

@@ -1,4 +1,12 @@
-import { LucidEvolution, Network, slotToUnixTime, unixTimeToSlot } from "@lucid-evolution/lucid";
+import {
+  LucidEvolution,
+  Network,
+  slotToUnixTime,
+  unixTimeToSlot,
+} from "@lucid-evolution/lucid";
+
+export const EXPLICIT_COMMIT_DEFAULT_CANDIDATE_FUTURE_BUFFER_MS =
+  5 * 60 * 1000;
 
 // Commit construction may include scheduler refresh + layout retries, which can
 // exceed one minute under provider latency; keep a safety margin without
@@ -87,3 +95,10 @@ export const resolveAlignedCommitEndTime = ({
     ),
   };
 };
+
+export const resolveExplicitCommitCandidateEndTimeMs = (
+  candidateEndTimeMs: number | undefined,
+  nowMs: number = Date.now(),
+): number =>
+  candidateEndTimeMs ??
+  nowMs + EXPLICIT_COMMIT_DEFAULT_CANDIDATE_FUTURE_BUFFER_MS;

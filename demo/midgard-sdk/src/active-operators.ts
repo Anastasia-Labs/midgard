@@ -18,6 +18,55 @@ export const ACTIVE_OPERATORS_ROOT_ASSET_NAME = fromText(
   "MIDGARD_ACTIVE_OPERATORS",
 );
 
+export const SlashingReasonSchema = Data.Enum([
+  Data.Object({
+    SlashOperatorForBadState: Data.Object({
+      state_queue_redeemer_index: Data.Integer(),
+    }),
+  }),
+  Data.Object({
+    SlashOperatorForBadSettlement: Data.Object({
+      settlement_input_index: Data.Integer(),
+      settlement_redeemer_index: Data.Integer(),
+    }),
+  }),
+]);
+export type SlashingReason = Data.Static<typeof SlashingReasonSchema>;
+export const SlashingReason = SlashingReasonSchema as unknown as SlashingReason;
+
+export const SlashingArgumentsSchema = Data.Object({
+  slashed_operator: Data.Bytes({ minLength: 28, maxLength: 28 }),
+  hub_oracle_ref_input_index: Data.Integer(),
+  slashed_operator_anchor_element_input_index: Data.Integer(),
+  slashed_operator_node_input_index: Data.Integer(),
+  slashed_operator_anchor_element_output_index: Data.Integer(),
+  slashing_reason: SlashingReasonSchema,
+});
+export type SlashingArguments = Data.Static<typeof SlashingArgumentsSchema>;
+export const SlashingArguments =
+  SlashingArgumentsSchema as unknown as SlashingArguments;
+
+export const OperatorRemovalSchedulerSyncSchema = Data.Enum([
+  Data.Object({
+    ShowOperatorIsInactive: Data.Object({
+      scheduler_ref_input_index: Data.Integer(),
+    }),
+  }),
+  Data.Object({
+    ShowSchedulerIsAdvancing: Data.Object({
+      scheduler_input_index: Data.Integer(),
+      scheduler_redeemer_index: Data.Integer(),
+      removing_operators_anchor_element_key: Data.Nullable(Data.Bytes()),
+      removing_operator_is_the_last_member: Data.Boolean(),
+    }),
+  }),
+]);
+export type OperatorRemovalSchedulerSync = Data.Static<
+  typeof OperatorRemovalSchedulerSyncSchema
+>;
+export const OperatorRemovalSchedulerSync =
+  OperatorRemovalSchedulerSyncSchema as unknown as OperatorRemovalSchedulerSync;
+
 export const ActiveOperatorSpendRedeemerSchema = Data.Enum([
   Data.Literal("ListStateTransition"),
   Data.Object({
@@ -89,13 +138,13 @@ export const ActiveOperatorMintRedeemerSchema = Data.Enum([
       active_operator_anchor_element_output_index: Data.Integer(),
       retired_operators_redeemer_index: Data.Integer(),
       penalize_for_inactivity: Data.Boolean(),
-      operator_removal_scheduler_sync: Data.Any(),
+      operator_removal_scheduler_sync: OperatorRemovalSchedulerSyncSchema,
     }),
   }),
   Data.Object({
     SlashOperator: Data.Object({
-      slashing_arguments: Data.Any(),
-      operator_removal_scheduler_sync: Data.Any(),
+      slashing_arguments: SlashingArgumentsSchema,
+      operator_removal_scheduler_sync: OperatorRemovalSchedulerSyncSchema,
     }),
   }),
 ]);

@@ -64,10 +64,11 @@ type OutsideValidityIntervalDetails = {
 /**
  * Extracts slot-boundary details from an `OutsideValidityIntervalUTxO` error.
  */
-const parseOutsideValidityIntervalDetails = (
+export const parseOutsideValidityIntervalDetails = (
   message: string,
 ): OutsideValidityIntervalDetails | null => {
-  const match = OUTSIDE_VALIDITY_INTERVAL_REGEX.exec(message);
+  const normalizedMessage = message.replace(/\\"/g, '"');
+  const match = OUTSIDE_VALIDITY_INTERVAL_REGEX.exec(normalizedMessage);
   if (match !== null) {
     const invalidBeforeSlot = Number(match[1]);
     const invalidHereafterSlot = Number(match[2]);
@@ -87,9 +88,11 @@ const parseOutsideValidityIntervalDetails = (
   }
 
   const emulatorLowerBoundMatch =
-    EMULATOR_LOWER_BOUND_OUTSIDE_VALIDITY_REGEX.exec(message);
+    EMULATOR_LOWER_BOUND_OUTSIDE_VALIDITY_REGEX.exec(normalizedMessage);
   if (emulatorLowerBoundMatch === null) {
-    const ogmiosMatch = OGMIOS_OUTSIDE_VALIDITY_INTERVAL_REGEX.exec(message);
+    const ogmiosMatch = OGMIOS_OUTSIDE_VALIDITY_INTERVAL_REGEX.exec(
+      normalizedMessage,
+    );
     if (ogmiosMatch === null) {
       return null;
     }

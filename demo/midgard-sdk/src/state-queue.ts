@@ -12,7 +12,12 @@ import {
   TxSignBuilder,
   UTxO,
 } from "@lucid-evolution/lucid";
-import { ActiveOperatorUpdateCommitmentTimeParams } from "@/active-operators.js";
+import {
+  ActiveOperatorMintRedeemer,
+  ActiveOperatorSpendRedeemer,
+  ActiveOperatorUpdateCommitmentTimeParams,
+} from "@/active-operators.js";
+import { SchedulerSpendRedeemer } from "@/scheduler.js";
 import { Data as EffectData, Effect } from "effect";
 import {
   DataCoercionError,
@@ -41,16 +46,14 @@ import {
   LinkedListError,
   incompleteInitLinkedListTxProgram,
 } from "@/linked-list.js";
-import { ConfirmedState, Header } from "@/ledger-state.js";
+import { ConfirmedState, Header, HeaderHashSchema } from "@/ledger-state.js";
+import {
+  GENESIS_HEADER_HASH,
+  GENESIS_PROTOCOL_VERSION,
+  GENESIS_UTXO_ROOT,
+} from "@/ledger-constants.js";
 
-export const GENESIS_HEADER_HASH = "00".repeat(28);
-export const EMPTY_MERKLE_TREE_ROOT =
-  "0e5751c026e543b2e8ab2eb06099daa1d1e5df47778f7787faab45cdf12fe3a8";
-export const GENESIS_UTXO_ROOT = EMPTY_MERKLE_TREE_ROOT;
-export const GENESIS_PROTOCOL_VERSION = 0n;
-export const STATE_QUEUE_ROOT_ASSET_NAME = fromText(
-  "MIDGARD_CONFIRMED_STATE",
-);
+export const STATE_QUEUE_ROOT_ASSET_NAME = fromText("MIDGARD_CONFIRMED_STATE");
 
 export const StateQueueConfigSchema = Data.Object({
   initUTxO: OutputReferenceSchema,
@@ -59,6 +62,48 @@ export const StateQueueConfigSchema = Data.Object({
 export type StateQueueConfig = Data.Static<typeof StateQueueConfigSchema>;
 export const StateQueueConfig =
   StateQueueConfigSchema as unknown as StateQueueConfig;
+
+export const SlashingApproachSchema = Data.Enum([
+  Data.Object({
+    SlashActiveOperator: Data.Object({
+      active_operators_redeemer_index: Data.Integer(),
+    }),
+  }),
+  Data.Object({
+    SlashRetiredOperator: Data.Object({
+      retired_operators_redeemer_index: Data.Integer(),
+    }),
+  }),
+  Data.Object({
+    OperatorAlreadySlashed: Data.Object({
+      active_operators_element_ref_input_index: Data.Integer(),
+      retired_operators_element_ref_input_index: Data.Integer(),
+    }),
+  }),
+]);
+export type SlashingApproach = Data.Static<typeof SlashingApproachSchema>;
+export const SlashingApproach =
+  SlashingApproachSchema as unknown as SlashingApproach;
+
+export const BlockRemovalApproachSchema = Data.Enum([
+  Data.Object({
+    RemoveLastFraudulentBlock: Data.Object({
+      anchor_element_input_index: Data.Integer(),
+      anchor_element_output_index: Data.Integer(),
+    }),
+  }),
+  Data.Object({
+    RemoveFraudulentBlocksLink: Data.Object({
+      fraudulent_node_output_index: Data.Integer(),
+      removed_block_input_index: Data.Integer(),
+    }),
+  }),
+]);
+export type BlockRemovalApproach = Data.Static<
+  typeof BlockRemovalApproachSchema
+>;
+export const BlockRemovalApproach =
+  BlockRemovalApproachSchema as unknown as BlockRemovalApproach;
 
 export const StateQueueRedeemerSchema = Data.Enum([
   Data.Object({
@@ -76,7 +121,7 @@ export const StateQueueRedeemerSchema = Data.Enum([
       latest_block_input_index: Data.Integer(),
       new_block_output_index: Data.Integer(),
       continued_latest_block_output_index: Data.Integer(),
-      operator: Data.Bytes(),
+      operator: Data.Bytes({ minLength: 28, maxLength: 28 }),
       scheduler_ref_input_index: Data.Integer(),
       active_operators_input_index: Data.Integer(),
       active_operators_redeemer_index: Data.Integer(),
@@ -96,7 +141,12 @@ export const StateQueueRedeemerSchema = Data.Enum([
   }),
   Data.Object({
     RemoveFraudulentBlockHeader: Data.Object({
-      fraudulentOperator: Data.Bytes(),
+      fraudulent_operator: Data.Bytes({ minLength: 28, maxLength: 28 }),
+      fraudulent_blocks_header_hash: HeaderHashSchema,
+      slashing_approach: SlashingApproachSchema,
+      fraudulent_node_input_index: Data.Integer(),
+      fraud_proof_ref_input_index: Data.Integer(),
+      block_removal_approach: BlockRemovalApproachSchema,
     }),
   }),
 ]);
@@ -130,7 +180,9 @@ export const headerHashFromStateQueueUTxO = (
         Effect.andThen(({ data }) => data.headerHash),
       )
     : Effect.succeed(
-        stateQueueUTxO.assetName.slice(STATE_QUEUE_NODE_ASSET_NAME_PREFIX.length),
+        stateQueueUTxO.assetName.slice(
+          STATE_QUEUE_NODE_ASSET_NAME_PREFIX.length,
+        ),
       );
 
 export type StateQueueFetchConfig = {
@@ -164,6 +216,110 @@ export type StateQueueInitParams = {
 export type StateQueueDeinitParams = {};
 
 export type StateQueueRemoveBlockParams = {};
+
+/**
+ * Emulator/test helper for exercising the real state_queue CommitBlockHeader
+ * mint redeemer. The output layout is fixed and reflected in the redeemer:
+ * output 0 is the new block node, output 1 is the continued anchor node. This
+ * helper validates the state-queue side of the commit path; callers still need
+ * the paired active-operators spend to be protocol-valid outside focused tests.
+ */
+export type EmulatorStateQueueCommitBlockHeaderParams = {
+  anchorUTxO: StateQueueUTxO;
+  newHeader: Header;
+  additionalInputs?: readonly UTxO[];
+  validFrom?: bigint;
+  validTo?: bigint;
+  schedulerRefInput: UTxO;
+  schedulerRefInputIndex: bigint;
+  additionalRefInputs?: readonly UTxO[];
+  activeOperatorInput: UTxO;
+  activeOperatorInputIndex: bigint;
+  activeOperatorSpendRedeemer: ActiveOperatorSpendRedeemer;
+  /** Tx-info redeemer-list index, not the full transaction input index. */
+  activeOperatorSpendRedeemerTxInfoIndex: bigint;
+  activeOperatorSpendingScript: Script;
+  continuedActiveOperatorOutput?: {
+    readonly address: Address;
+    readonly datum: string;
+    readonly assets: Assets;
+  };
+  stateQueueSpendingScript: Script;
+  stateQueueMintingScript: Script;
+  latestBlockInputIndex: bigint;
+};
+
+export type EmulatorStateQueueRemoveSlashingParams =
+  | {
+      readonly kind: "operatorAlreadySlashed";
+      readonly activeOperatorsElementRefInput: UTxO;
+      readonly activeOperatorsElementRefInputIndex: bigint;
+      readonly retiredOperatorsElementRefInput: UTxO;
+      readonly retiredOperatorsElementRefInputIndex: bigint;
+    }
+  | {
+      readonly kind: "slashActiveOperator";
+      /**
+       * Supports the active-operators `SlashOperator` mint path. For full
+       * active-operator validation, provide the anchor/node inputs, continued
+       * anchor output, hub-oracle reference input, and scheduler sync data
+       * required by the slashing redeemer.
+       */
+      readonly activeOperatorsRedeemerTxInfoIndex: bigint;
+      readonly activeOperatorsAssetsToBurn: Assets;
+      readonly activeOperatorsMintRedeemer: ActiveOperatorMintRedeemer;
+      readonly activeOperatorsMintingScript: Script;
+      readonly activeOperatorInputs: readonly UTxO[];
+      readonly activeOperatorSpendingScript?: Script;
+      readonly activeOperatorSpendRedeemer?: ActiveOperatorSpendRedeemer;
+      readonly continuedActiveOperatorAnchorOutput?: {
+        readonly address: Address;
+        readonly datum: string;
+        readonly assets: Assets;
+      };
+      readonly schedulerSpend?: {
+        readonly input: UTxO;
+        readonly redeemer: SchedulerSpendRedeemer;
+        readonly script: Script;
+        readonly continuedOutput: {
+          readonly address: Address;
+          readonly datum: string;
+          readonly assets: Assets;
+        };
+      };
+    };
+
+/**
+ * Emulator/test helper for RemoveFraudulentBlockHeader +
+ * RemoveLastFraudulentBlock. Output 0 is the continued anchor node.
+ */
+export type EmulatorStateQueueRemoveLastFraudulentBlockHeaderParams = {
+  anchorUTxO: StateQueueUTxO;
+  fraudulentBlockUTxO: StateQueueUTxO;
+  additionalInputs?: readonly UTxO[];
+  validFrom?: bigint;
+  validTo?: bigint;
+  fraudulentOperator: string;
+  fraudulentBlocksHeaderHash?: string;
+  fraudProofRefInput: UTxO;
+  fraudProofRefInputIndex: bigint;
+  additionalRefInputs?: readonly UTxO[];
+  slashing: EmulatorStateQueueRemoveSlashingParams;
+  anchorElementInputIndex: bigint;
+  anchorElementOutputIndex?: bigint;
+  fraudulentNodeInputIndex: bigint;
+  stateQueueSpendingScript: Script;
+  stateQueueMintingScript: Script;
+  referenceScripts?: StateQueueRemoveReferenceScriptUTxOs;
+};
+
+export type StateQueueRemoveReferenceScriptUTxOs = {
+  readonly stateQueueSpend?: UTxO;
+  readonly stateQueueMint?: UTxO;
+  readonly activeOperatorsSpend?: UTxO;
+  readonly activeOperatorsMint?: UTxO;
+  readonly schedulerSpend?: UTxO;
+};
 
 /**
  * Validates correctness of datum, and having a single NFT.
@@ -334,6 +490,292 @@ export const hashBlockHeader = (
 ): Effect.Effect<string, HashingError> =>
   hashHexWithBlake2b224(Data.to(header, Header));
 
+export const incompleteEmulatorCommitBlockHeaderTxProgram = (
+  lucid: LucidEvolution,
+  config: StateQueueFetchConfig,
+  params: EmulatorStateQueueCommitBlockHeaderParams,
+): Effect.Effect<TxBuilder, HashingError> =>
+  Effect.gen(function* () {
+    const newHeaderHash = yield* hashBlockHeader(params.newHeader);
+    const newBlockAssetName =
+      STATE_QUEUE_NODE_ASSET_NAME_PREFIX + newHeaderHash;
+    const newBlockAssets: Assets = {
+      [toUnit(config.stateQueuePolicyId, newBlockAssetName)]: 1n,
+    };
+    const continuedAnchorDatum: StateQueueNodeView = {
+      ...params.anchorUTxO.datum,
+      next: { Key: { key: newHeaderHash } },
+    };
+    const newBlockDatum: StateQueueNodeView = {
+      key: { Key: { key: newHeaderHash } },
+      next: "Empty",
+      data: Data.castTo(params.newHeader, Header),
+    };
+    const redeemer: StateQueueRedeemer = {
+      CommitBlockHeader: {
+        latest_block_input_index: params.latestBlockInputIndex,
+        new_block_output_index: 0n,
+        continued_latest_block_output_index: 1n,
+        operator: params.newHeader.operatorVkey,
+        scheduler_ref_input_index: params.schedulerRefInputIndex,
+        active_operators_input_index: params.activeOperatorInputIndex,
+        active_operators_redeemer_index:
+          params.activeOperatorSpendRedeemerTxInfoIndex,
+      },
+    };
+
+    const additionalInputs = params.additionalInputs ?? [];
+    let tx = lucid.newTx();
+    if (additionalInputs.length > 0) {
+      tx = tx.collectFrom([...additionalInputs]);
+    }
+    tx = tx
+      .collectFrom(
+        [params.anchorUTxO.utxo],
+        Data.to(redeemer, StateQueueRedeemer),
+      )
+      .collectFrom(
+        [params.activeOperatorInput],
+        Data.to(
+          params.activeOperatorSpendRedeemer,
+          ActiveOperatorSpendRedeemer,
+        ),
+      )
+      .readFrom([
+        ...(params.additionalRefInputs ?? []),
+        params.schedulerRefInput,
+      ])
+      .pay.ToContract(
+        config.stateQueueAddress,
+        { kind: "inline", value: encodeLinkedListNodeView(newBlockDatum) },
+        newBlockAssets,
+      )
+      .pay.ToContract(
+        config.stateQueueAddress,
+        {
+          kind: "inline",
+          value: encodeLinkedListNodeView(continuedAnchorDatum),
+        },
+        params.anchorUTxO.utxo.assets,
+      )
+      .mintAssets(newBlockAssets, Data.to(redeemer, StateQueueRedeemer))
+      .addSignerKey(params.newHeader.operatorVkey)
+      .attach.Script(params.stateQueueSpendingScript)
+      .attach.Script(params.stateQueueMintingScript)
+      .attach.Script(params.activeOperatorSpendingScript);
+
+    if (params.validFrom !== undefined) {
+      tx = tx.validFrom(Number(params.validFrom));
+    }
+    if (params.validTo !== undefined) {
+      tx = tx.validTo(Number(params.validTo));
+    }
+    if (params.continuedActiveOperatorOutput !== undefined) {
+      tx = tx.pay.ToContract(
+        params.continuedActiveOperatorOutput.address,
+        {
+          kind: "inline",
+          value: params.continuedActiveOperatorOutput.datum,
+        },
+        params.continuedActiveOperatorOutput.assets,
+      );
+    }
+
+    return tx;
+  });
+
+export const incompleteEmulatorRemoveLastFraudulentBlockHeaderTxProgram = (
+  lucid: LucidEvolution,
+  config: StateQueueFetchConfig,
+  params: EmulatorStateQueueRemoveLastFraudulentBlockHeaderParams,
+): TxBuilder =>
+  incompleteRemoveLastFraudulentBlockHeaderTxProgram(lucid, config, params);
+
+const compareUtxoOutRefs = (left: UTxO, right: UTxO): number => {
+  const hashOrder = Buffer.from(left.txHash, "hex").compare(
+    Buffer.from(right.txHash, "hex"),
+  );
+  if (hashOrder !== 0) {
+    return hashOrder;
+  }
+  return left.outputIndex - right.outputIndex;
+};
+
+const dedupeAndSortUtxos = (utxos: readonly UTxO[]): UTxO[] => {
+  const byOutRef = new Map<string, UTxO>();
+  for (const utxo of utxos) {
+    byOutRef.set(`${utxo.txHash}#${utxo.outputIndex.toString()}`, utxo);
+  }
+  return [...byOutRef.values()].sort(compareUtxoOutRefs);
+};
+
+/**
+ * Production-shaped RemoveFraudulentBlockHeader + RemoveLastFraudulentBlock
+ * builder. Reference-script UTxOs are read as ordinary reference inputs; when
+ * one is absent the matching inline script is attached for test/emulator flows.
+ */
+export const incompleteRemoveLastFraudulentBlockHeaderTxProgram = (
+  lucid: LucidEvolution,
+  config: StateQueueFetchConfig,
+  params: EmulatorStateQueueRemoveLastFraudulentBlockHeaderParams & {
+    readonly referenceScripts?: StateQueueRemoveReferenceScriptUTxOs;
+  },
+): TxBuilder => {
+  const fraudulentBlocksHeaderHash =
+    params.fraudulentBlocksHeaderHash ??
+    params.fraudulentBlockUTxO.assetName.slice(
+      STATE_QUEUE_NODE_ASSET_NAME_PREFIX.length,
+    );
+  const assetsToBurn: Assets = {
+    [toUnit(config.stateQueuePolicyId, params.fraudulentBlockUTxO.assetName)]:
+      -1n,
+  };
+  const continuedAnchorDatum: StateQueueNodeView = {
+    ...params.anchorUTxO.datum,
+    next: "Empty",
+  };
+  const slashingApproach: SlashingApproach =
+    params.slashing.kind === "operatorAlreadySlashed"
+      ? {
+          OperatorAlreadySlashed: {
+            active_operators_element_ref_input_index:
+              params.slashing.activeOperatorsElementRefInputIndex,
+            retired_operators_element_ref_input_index:
+              params.slashing.retiredOperatorsElementRefInputIndex,
+          },
+        }
+      : {
+          SlashActiveOperator: {
+            active_operators_redeemer_index:
+              params.slashing.activeOperatorsRedeemerTxInfoIndex,
+          },
+        };
+  const redeemer: StateQueueRedeemer = {
+    RemoveFraudulentBlockHeader: {
+      fraudulent_operator: params.fraudulentOperator,
+      fraudulent_blocks_header_hash: fraudulentBlocksHeaderHash,
+      slashing_approach: slashingApproach,
+      fraudulent_node_input_index: params.fraudulentNodeInputIndex,
+      fraud_proof_ref_input_index: params.fraudProofRefInputIndex,
+      block_removal_approach: {
+        RemoveLastFraudulentBlock: {
+          anchor_element_input_index: params.anchorElementInputIndex,
+          anchor_element_output_index: params.anchorElementOutputIndex ?? 0n,
+        },
+      },
+    },
+  };
+
+  const additionalInputs = params.additionalInputs ?? [];
+  const referenceScriptInputs = Object.values(
+    params.referenceScripts ?? {},
+  ).filter((utxo): utxo is UTxO => utxo !== undefined);
+  const slashingReferenceInputs =
+    params.slashing.kind === "operatorAlreadySlashed"
+      ? [
+          params.slashing.activeOperatorsElementRefInput,
+          params.slashing.retiredOperatorsElementRefInput,
+        ]
+      : [];
+  const referenceInputs = dedupeAndSortUtxos([
+    params.fraudProofRefInput,
+    ...(params.additionalRefInputs ?? []),
+    ...slashingReferenceInputs,
+    ...referenceScriptInputs,
+  ]);
+  let tx = lucid.newTx();
+  if (params.validFrom !== undefined) {
+    tx = tx.validFrom(Number(params.validFrom));
+  }
+  if (params.validTo !== undefined) {
+    tx = tx.validTo(Number(params.validTo));
+  }
+  if (additionalInputs.length > 0) {
+    tx = tx.collectFrom([...additionalInputs]);
+  }
+  tx = tx
+    .collectFrom(
+      [params.anchorUTxO.utxo, params.fraudulentBlockUTxO.utxo],
+      Data.void(),
+    )
+    .readFrom(referenceInputs)
+    .pay.ToContract(
+      config.stateQueueAddress,
+      { kind: "inline", value: encodeLinkedListNodeView(continuedAnchorDatum) },
+      params.anchorUTxO.utxo.assets,
+    )
+    .mintAssets(assetsToBurn, Data.to(redeemer, StateQueueRedeemer));
+
+  if (params.referenceScripts?.stateQueueSpend === undefined) {
+    tx = tx.attach.Script(params.stateQueueSpendingScript);
+  }
+  if (params.referenceScripts?.stateQueueMint === undefined) {
+    tx = tx.attach.Script(params.stateQueueMintingScript);
+  }
+
+  if (params.slashing.kind === "operatorAlreadySlashed") {
+    return tx;
+  } else {
+    tx = tx
+      .collectFrom(
+        [...params.slashing.activeOperatorInputs],
+        Data.to(
+          params.slashing.activeOperatorSpendRedeemer ?? "ListStateTransition",
+          ActiveOperatorSpendRedeemer,
+        ),
+      )
+      .mintAssets(
+        params.slashing.activeOperatorsAssetsToBurn,
+        Data.to(
+          params.slashing.activeOperatorsMintRedeemer,
+          ActiveOperatorMintRedeemer,
+        ),
+      );
+    if (params.referenceScripts?.activeOperatorsMint === undefined) {
+      tx = tx.attach.Script(params.slashing.activeOperatorsMintingScript);
+    }
+    if (params.slashing.continuedActiveOperatorAnchorOutput !== undefined) {
+      tx = tx.pay.ToContract(
+        params.slashing.continuedActiveOperatorAnchorOutput.address,
+        {
+          kind: "inline",
+          value: params.slashing.continuedActiveOperatorAnchorOutput.datum,
+        },
+        params.slashing.continuedActiveOperatorAnchorOutput.assets,
+      );
+    }
+    if (params.slashing.schedulerSpend !== undefined) {
+      tx = tx.pay
+        .ToContract(
+          params.slashing.schedulerSpend.continuedOutput.address,
+          {
+            kind: "inline",
+            value: params.slashing.schedulerSpend.continuedOutput.datum,
+          },
+          params.slashing.schedulerSpend.continuedOutput.assets,
+        )
+        .collectFrom(
+          [params.slashing.schedulerSpend.input],
+          Data.to(
+            params.slashing.schedulerSpend.redeemer,
+            SchedulerSpendRedeemer,
+          ),
+        );
+      if (params.referenceScripts?.schedulerSpend === undefined) {
+        tx = tx.attach.Script(params.slashing.schedulerSpend.script);
+      }
+    }
+    if (
+      params.slashing.activeOperatorSpendingScript !== undefined &&
+      params.referenceScripts?.activeOperatorsSpend === undefined
+    ) {
+      tx = tx.attach.Script(params.slashing.activeOperatorSpendingScript);
+    }
+  }
+
+  return tx;
+};
+
 /**
  * Given the latest block in state queue, along with the required tree roots,
  * this function returns the updated datum of the latest block, along with the
@@ -486,7 +928,8 @@ export const incompleteCommitBlockHeaderTxProgram = (
   Effect.gen(function* () {
     const newHeaderHash = yield* hashBlockHeader(newHeader);
     const assets: Assets = {
-      [toUnit(policyId, STATE_QUEUE_NODE_ASSET_NAME_PREFIX + newHeaderHash)]: 1n,
+      [toUnit(policyId, STATE_QUEUE_NODE_ASSET_NAME_PREFIX + newHeaderHash)]:
+        1n,
     };
 
     const newNodeDatum: StateQueueNodeView = {

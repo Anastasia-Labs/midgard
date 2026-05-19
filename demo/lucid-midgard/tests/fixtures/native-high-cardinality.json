@@ -15,6 +15,23 @@
     "receiveRedeemers": 2,
     "totalRedeemers": 13
   },
+  "sizes": {
+    "fullTxCborBytes": 2543,
+    "compactTxCborBytes": 314,
+    "compactBodyCborBytes": 277,
+    "fee": "0",
+    "preimages": {
+      "spendInputs": 305,
+      "referenceInputs": 153,
+      "outputs": 1113,
+      "requiredObservers": 61,
+      "requiredSigners": 31,
+      "mint": 235,
+      "addrTxWits": 104,
+      "scriptTxWits": 321,
+      "redeemerTxWits": 122
+    }
+  },
   "mintPolicyIdsInTxInfoOrder": [
     "06019eec4379d97f8c97eeec8e32ebb5d3abe404d04e8171b81275ad",
     "17ada84a2a391f9640e5a9166d07a873b3988f265c39a0aa08dcb63d",

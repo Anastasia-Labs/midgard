@@ -126,6 +126,49 @@ pub fn decode_uint_at(bytes: ByteArray, offset: Int) -> Pair<Int, Int> {
   }
 }
 
+pub fn decode_canonical_uint_at(bytes: ByteArray, offset: Int) -> Pair<Int, Int> {
+  let tag = byte_at(bytes, offset)
+  if tag <= 23 {
+    Pair(offset + 1, tag)
+  } else if tag == 24 {
+    let value = byte_at(bytes, offset + 1)
+    expect value >= 24
+    Pair(offset + 2, value)
+  } else if tag == 25 {
+    let value = byte_at(bytes, offset + 1) * 256 + byte_at(bytes, offset + 2)
+    expect value > 0xff
+    Pair(offset + 3, value)
+  } else if tag == 26 {
+    let value =
+      (
+        ( byte_at(bytes, offset + 1) * 256 + byte_at(bytes, offset + 2) ) * 256 + byte_at(
+          bytes,
+          offset + 3,
+        )
+      ) * 256 + byte_at(bytes, offset + 4)
+    expect value > 0xffff
+    Pair(offset + 5, value)
+  } else {
+    expect tag == 27
+    let value =
+      (
+        (
+          (
+            (
+              (
+                (
+                  byte_at(bytes, offset + 1) * 256 + byte_at(bytes, offset + 2)
+                ) * 256 + byte_at(bytes, offset + 3)
+              ) * 256 + byte_at(bytes, offset + 4)
+            ) * 256 + byte_at(bytes, offset + 5)
+          ) * 256 + byte_at(bytes, offset + 6)
+        ) * 256 + byte_at(bytes, offset + 7)
+      ) * 256 + byte_at(bytes, offset + 8)
+    expect value > 0xffffffff
+    Pair(offset + 9, value)
+  }
+}
+
 pub fn decode_int_at(bytes: ByteArray, offset: Int) -> Pair<Int, Int> {
   let tag = byte_at(bytes, offset)
   if tag <= 27 {
@@ -177,6 +220,54 @@ pub fn decode_int_at(bytes: ByteArray, offset: Int) -> Pair<Int, Int> {
         ) * 256 + byte_at(bytes, offset + 8)
       ),
     )
+  }
+}
+
+pub fn decode_canonical_int_at(bytes: ByteArray, offset: Int) -> Pair<Int, Int> {
+  let tag = byte_at(bytes, offset)
+  if tag <= 27 {
+    decode_canonical_uint_at(bytes, offset)
+  } else if and {
+    tag >= 32,
+    tag <= 55,
+  } {
+    Pair(offset + 1, -1 - ( tag - 32 ))
+  } else if tag == 56 {
+    let value = byte_at(bytes, offset + 1)
+    expect value >= 24
+    Pair(offset + 2, -1 - value)
+  } else if tag == 57 {
+    let value = byte_at(bytes, offset + 1) * 256 + byte_at(bytes, offset + 2)
+    expect value > 0xff
+    Pair(offset + 3, -1 - value)
+  } else if tag == 58 {
+    let value =
+      (
+        ( byte_at(bytes, offset + 1) * 256 + byte_at(bytes, offset + 2) ) * 256 + byte_at(
+          bytes,
+          offset + 3,
+        )
+      ) * 256 + byte_at(bytes, offset + 4)
+    expect value > 0xffff
+    Pair(offset + 5, -1 - value)
+  } else {
+    expect tag == 59
+    let value =
+      (
+        (
+          (
+            (
+              (
+                (
+                  byte_at(bytes, offset + 1) * 256 + byte_at(bytes, offset + 2)
+                ) * 256 + byte_at(bytes, offset + 3)
+              ) * 256 + byte_at(bytes, offset + 4)
+            ) * 256 + byte_at(bytes, offset + 5)
+          ) * 256 + byte_at(bytes, offset + 6)
+        ) * 256 + byte_at(bytes, offset + 7)
+      ) * 256 + byte_at(bytes, offset + 8)
+    expect value > 0xffffffff
+    Pair(offset + 9, -1 - value)
   }
 }
 

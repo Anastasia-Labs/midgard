@@ -12,7 +12,9 @@ import {
   LucidMidgard,
   MIDGARD_SUPPORTED_SCRIPT_LANGUAGES,
   outRefToCbor,
+  walletFromPrivateKey,
   walletFromSeedPhrase,
+  type MidgardWallet,
   type MidgardProvider,
   type MidgardUtxo,
   type OutRef,
@@ -34,6 +36,48 @@ export const HIGH_CARDINALITY_COUNTS = {
   totalRedeemers: 13,
 } as const;
 
+export const SIZE_BALANCED_FIXTURE_NAME =
+  "size-balanced-15_5k-v1" as const;
+
+export const SIZE_BALANCED_TARGET_FULL_TX_CBOR_BYTES = 15_872;
+export const SIZE_BALANCED_FULL_TX_CBOR_TOLERANCE_BYTES = 256;
+export const SIZE_BALANCED_MAX_LIST_LENGTH = 255;
+export const SIZE_BALANCED_MAX_FEE = 10_000_000n;
+export const SIZE_BALANCED_FEE = 5_000_000n;
+
+export const SIZE_BALANCED_COUNTS = {
+  spendInputs: 48,
+  referenceInputs: 32,
+  outputs: 48,
+  mintPolicies: 24,
+  spendRedeemers: 8,
+  mintRedeemers: 24,
+  observerRedeemers: 18,
+  receiveRedeemers: 18,
+  totalRedeemers: 68,
+  requiredSigners: 17,
+  addrWitnesses: 17,
+  scriptWitnesses: 68,
+} as const;
+
+export type NativeTxFixtureSizes = {
+  readonly fullTxCborBytes: number;
+  readonly compactTxCborBytes: number;
+  readonly compactBodyCborBytes: number;
+  readonly fee: string;
+  readonly preimages: {
+    readonly spendInputs: number;
+    readonly referenceInputs: number;
+    readonly outputs: number;
+    readonly requiredObservers: number;
+    readonly requiredSigners: number;
+    readonly mint: number;
+    readonly addrTxWits: number;
+    readonly scriptTxWits: number;
+    readonly redeemerTxWits: number;
+  };
+};
+
 export type HighCardinalityNativeTxFixture = {
   readonly name: typeof HIGH_CARDINALITY_FIXTURE_NAME;
   readonly txIdHex: string;
@@ -41,6 +85,7 @@ export type HighCardinalityNativeTxFixture = {
   readonly compactTxCborHex: string;
   readonly compactBodyCborHex: string;
   readonly counts: typeof HIGH_CARDINALITY_COUNTS;
+  readonly sizes: NativeTxFixtureSizes;
   readonly mintPolicyIdsInTxInfoOrder: readonly string[];
   readonly redeemerPointers: readonly string[];
   readonly preimages: {
@@ -66,6 +111,24 @@ export type HighCardinalityNativeTxFixture = {
     readonly redeemerTxWitsHashHex: string;
     readonly witnessSetHashHex: string;
   };
+};
+
+export type SizeBalancedNativeTxFixture = {
+  readonly name: typeof SIZE_BALANCED_FIXTURE_NAME;
+  readonly txIdHex: string;
+  readonly fullTxCborHex: string;
+  readonly compactTxCborHex: string;
+  readonly compactBodyCborHex: string;
+  readonly counts: typeof SIZE_BALANCED_COUNTS;
+  readonly targetFullTxCborBytes: typeof SIZE_BALANCED_TARGET_FULL_TX_CBOR_BYTES;
+  readonly fullTxCborToleranceBytes: typeof SIZE_BALANCED_FULL_TX_CBOR_TOLERANCE_BYTES;
+  readonly maxListLength: typeof SIZE_BALANCED_MAX_LIST_LENGTH;
+  readonly maxFee: string;
+  readonly sizes: NativeTxFixtureSizes;
+  readonly mintPolicyIdsInTxInfoOrder: readonly string[];
+  readonly redeemerPointers: readonly string[];
+  readonly preimages: HighCardinalityNativeTxFixture["preimages"];
+  readonly hashes: HighCardinalityNativeTxFixture["hashes"];
 };
 
 const seedPhrase = "test test test test test test test test test test test junk";
@@ -126,6 +189,24 @@ const scriptBytes = (domain: string, index: number): Buffer =>
     Buffer.from([index]),
   ]);
 
+const paddedScriptBytes = (
+  domain: string,
+  index: number,
+  totalBytes: number,
+): Buffer => {
+  const prefix = scriptBytes(domain, index);
+  if (prefix.length > totalBytes) {
+    throw new Error(`${domain} script prefix exceeds requested byte length`);
+  }
+  return Buffer.concat([
+    prefix,
+    blake2b(
+      Buffer.from(`${domain}:${index.toString(10)}:padding`, "utf8"),
+      { dkLen: totalBytes - prefix.length },
+    ),
+  ]);
+};
+
 const plutusV3Hash = (bytes: Uint8Array): string =>
   CML.Script.new_plutus_v3(CML.PlutusV3Script.from_raw_bytes(bytes))
     .hash()
@@ -181,6 +262,53 @@ const makeAssetName = (prefix: number, index: number): string =>
   `${prefix.toString(16).padStart(2, "0")}${index
     .toString(16)
     .padStart(2, "0")}`;
+
+const deterministicPrivateKey = (
+  domain: string,
+  index: number,
+): InstanceType<typeof CML.PrivateKey> =>
+  CML.PrivateKey.from_normal_bytes(
+    blake2b(Buffer.from(`${domain}:${index.toString(10)}`, "utf8"), {
+      dkLen: 32,
+    }),
+  );
+
+const walletFromDeterministicPrivateKey = (
+  domain: string,
+  index: number,
+): MidgardWallet => {
+  const privateKey = deterministicPrivateKey(domain, index);
+  const address = CML.EnterpriseAddress.new(
+    0,
+    CML.Credential.new_pub_key(privateKey.to_public().hash()),
+  )
+    .to_address()
+    .to_bech32();
+  return walletFromPrivateKey(privateKey, address, { expectedNetworkId: 0 });
+};
+
+const fixtureSizes = (
+  tx: ReturnType<typeof decodeMidgardNativeTxFull>,
+  compactTxCbor: Uint8Array,
+  compactBodyCbor: Uint8Array,
+  fullTxCbor: Uint8Array,
+): NativeTxFixtureSizes => ({
+  fullTxCborBytes: fullTxCbor.length,
+  compactTxCborBytes: compactTxCbor.length,
+  compactBodyCborBytes: compactBodyCbor.length,
+  fee: tx.body.fee.toString(10),
+  preimages: {
+    spendInputs: tx.body.spendInputsPreimageCbor.length,
+    referenceInputs: tx.body.referenceInputsPreimageCbor.length,
+    outputs: tx.body.outputsPreimageCbor.length,
+    requiredObservers: tx.body.requiredObserversPreimageCbor.length,
+    requiredSigners: tx.body.requiredSignersPreimageCbor.length,
+    mint: tx.body.mintPreimageCbor.length,
+    addrTxWits: tx.witnessSet.addrTxWitsPreimageCbor.length,
+    scriptTxWits: tx.witnessSet.scriptTxWitsPreimageCbor.length,
+    redeemerTxWits: tx.witnessSet.redeemerTxWitsPreimageCbor.length,
+  },
+});
 
 export const buildHighCardinalityNativeTxFixture =
   async (): Promise<HighCardinalityNativeTxFixture> => {
@@ -371,6 +499,353 @@ export const buildHighCardinalityNativeTxFixture =
       compactTxCborHex: hex(compactTxCbor),
       compactBodyCborHex: hex(compactBodyCbor),
       counts: HIGH_CARDINALITY_COUNTS,
+      sizes: fixtureSizes(tx, compactTxCbor, compactBodyCbor, signed.txCbor),
+      mintPolicyIdsInTxInfoOrder: [...mint.keys()].map((policy) =>
+        hex(policy as Uint8Array),
+      ),
+      redeemerPointers: redeemers,
+      preimages: {
+        spendInputsCborHex: hex(tx.body.spendInputsPreimageCbor),
+        referenceInputsCborHex: hex(tx.body.referenceInputsPreimageCbor),
+        outputsCborHex: hex(tx.body.outputsPreimageCbor),
+        requiredObserversCborHex: hex(tx.body.requiredObserversPreimageCbor),
+        requiredSignersCborHex: hex(tx.body.requiredSignersPreimageCbor),
+        mintCborHex: hex(tx.body.mintPreimageCbor),
+        addrTxWitsCborHex: hex(tx.witnessSet.addrTxWitsPreimageCbor),
+        scriptTxWitsCborHex: hex(tx.witnessSet.scriptTxWitsPreimageCbor),
+        redeemerTxWitsCborHex: hex(tx.witnessSet.redeemerTxWitsPreimageCbor),
+      },
+      hashes: {
+        spendInputsHashHex: hex(tx.compact.transactionBody.spendInputsHash),
+        referenceInputsHashHex: hex(
+          tx.compact.transactionBody.referenceInputsHash,
+        ),
+        outputsHashHex: hex(tx.compact.transactionBody.outputsHash),
+        requiredObserversHashHex: hex(
+          tx.compact.transactionBody.requiredObserversHash,
+        ),
+        requiredSignersHashHex: hex(
+          tx.compact.transactionBody.requiredSignersHash,
+        ),
+        mintHashHex: hex(tx.compact.transactionBody.mintHash),
+        addrTxWitsHashHex: hex(
+          computeHash32(tx.witnessSet.addrTxWitsPreimageCbor),
+        ),
+        scriptTxWitsHashHex: hex(
+          computeHash32(tx.witnessSet.scriptTxWitsPreimageCbor),
+        ),
+        redeemerTxWitsHashHex: hex(
+          computeHash32(tx.witnessSet.redeemerTxWitsPreimageCbor),
+        ),
+        witnessSetHashHex: hex(tx.compact.transactionWitnessSetHash),
+      },
+    };
+  };
+
+export const buildSizeBalancedNativeTxFixture =
+  async (): Promise<SizeBalancedNativeTxFixture> => {
+    const primaryWallet = walletFromSeedPhrase(seedPhrase, {
+      network: "Preview",
+      expectedNetworkId: 0,
+    });
+    const primaryAddress = await primaryWallet.address();
+    const primaryKeyHash = await primaryWallet.keyHash();
+    const extraSignerWallets = Array.from(
+      { length: SIZE_BALANCED_COUNTS.requiredSigners - 1 },
+      (_, index) => walletFromDeterministicPrivateKey("size-balanced", index),
+    );
+    const extraSignerKeyHashes = await Promise.all(
+      extraSignerWallets.map((wallet) => wallet.keyHash()),
+    );
+
+    const spendScripts = Array.from(
+      { length: SIZE_BALANCED_COUNTS.spendRedeemers },
+      (_, index) => {
+        const bytes = paddedScriptBytes("balanced-spend", index, 64);
+        return { bytes, hash: plutusV3Hash(bytes) };
+      },
+    );
+    const mintScripts = Array.from(
+      { length: SIZE_BALANCED_COUNTS.mintPolicies },
+      (_, index) => {
+        const bytes = paddedScriptBytes("balanced-mint", index, 64);
+        return { bytes, hash: plutusV3Hash(bytes) };
+      },
+    );
+    const observerScripts = Array.from(
+      { length: SIZE_BALANCED_COUNTS.observerRedeemers },
+      (_, index) => {
+        const bytes = paddedScriptBytes("balanced-observe", index, 64);
+        return { bytes, hash: plutusV3Hash(bytes) };
+      },
+    );
+    const receiveScripts = Array.from(
+      { length: SIZE_BALANCED_COUNTS.receiveRedeemers },
+      (_, index) => {
+        const bytes = paddedScriptBytes("balanced-receive", index, 64);
+        return { bytes, hash: midgardV1Hash(bytes) };
+      },
+    );
+
+    let builder = (
+      await LucidMidgard.new(fakeProvider, {
+        network: "Preview",
+        networkId: 0,
+      })
+    ).newTx();
+
+    for (const script of [
+      ...spendScripts,
+      ...mintScripts,
+      ...observerScripts,
+    ]) {
+      builder = builder.attach.Script({
+        kind: "plutus-v3",
+        language: "PlutusV3",
+        script: script.bytes,
+      });
+    }
+    for (const script of receiveScripts) {
+      builder = builder.attach.Script({
+        kind: "midgard-v1",
+        language: "MidgardV1",
+        script: script.bytes,
+      });
+    }
+
+    const pubKeyInputCount =
+      SIZE_BALANCED_COUNTS.spendInputs - SIZE_BALANCED_COUNTS.spendRedeemers;
+    const inputLovelace = 20_000_000n;
+    const pubKeyInputs = Array.from({ length: pubKeyInputCount }, (_, index) =>
+      makeUtxo(
+        makeOutRef(0x01 + index),
+        primaryAddress,
+        { lovelace: inputLovelace },
+      ),
+    );
+    const scriptInputs = spendScripts.map((script, index) =>
+      makeUtxo(
+        makeOutRef(0x70 + index),
+        scriptAddress(script.hash),
+        { lovelace: inputLovelace },
+      ),
+    );
+    const referenceInputUtxos = Array.from(
+      { length: SIZE_BALANCED_COUNTS.referenceInputs },
+      (_, index) =>
+        makeUtxo(
+          makeOutRef(0xa0 + index),
+          primaryAddress,
+          { lovelace: 2_000_000n },
+        ),
+    );
+
+    builder = builder.collectFrom(pubKeyInputs);
+    for (let index = 0; index < scriptInputs.length; index += 1) {
+      builder = builder.collectFrom(
+        [scriptInputs[index]!],
+        redeemer(BigInt(1000 + index)),
+      );
+    }
+    builder = builder
+      .readFrom(referenceInputUtxos)
+      .addSignerKey(primaryKeyHash);
+    for (const keyHash of extraSignerKeyHashes) {
+      builder = builder.addSignerKey(keyHash);
+    }
+
+    const mintedOutputs: Record<string, bigint>[] = [];
+    for (let index = 0; index < mintScripts.length; index += 1) {
+      const script = mintScripts[index]!;
+      const firstAssetName = makeAssetName(0x10 + index, index);
+      const secondAssetName = makeAssetName(0x40 + index, index);
+      const firstUnit = `${script.hash}${firstAssetName}`;
+      const secondUnit = `${script.hash}${secondAssetName}`;
+      const firstQuantity = BigInt(index + 1);
+      const secondQuantity = BigInt(index + 101);
+
+      builder = builder.mintAssets(
+        script.hash,
+        {
+          [firstAssetName]: firstQuantity,
+          [secondAssetName]: secondQuantity,
+        },
+        redeemer(BigInt(2000 + index)),
+      );
+      mintedOutputs.push({
+        lovelace: 4_000_000n,
+        [firstUnit]: firstQuantity,
+        [secondUnit]: secondQuantity,
+      });
+    }
+
+    for (let index = 0; index < observerScripts.length; index += 1) {
+      builder = builder.observe(
+        observerScripts[index]!.hash,
+        redeemer(BigInt(3000 + index)),
+      );
+    }
+    for (let index = 0; index < receiveScripts.length; index += 1) {
+      builder = builder.receiveRedeemer(
+        receiveScripts[index]!.hash,
+        redeemer(BigInt(4000 + index)),
+      );
+    }
+
+    for (const value of mintedOutputs) {
+      builder = builder.pay.ToAddress(primaryAddress, value);
+    }
+    for (const script of receiveScripts) {
+      builder = builder.pay.ToProtectedAddress(scriptAddress(script.hash), {
+        lovelace: 4_000_000n,
+      });
+    }
+    for (let index = 0; index < 5; index += 1) {
+      builder = builder.pay.ToAddress(
+        primaryAddress,
+        { lovelace: 4_000_000n },
+        index < 4 && index % 2 === 0
+          ? {
+              datum: CML.PlutusData.new_integer(
+                CML.BigInteger.from_str((index + 1).toString()),
+              ),
+            }
+          : undefined,
+      );
+    }
+
+    const inputTotal = BigInt(SIZE_BALANCED_COUNTS.spendInputs) * inputLovelace;
+    const fixedOutputLovelace =
+      BigInt(
+        SIZE_BALANCED_COUNTS.mintPolicies +
+          SIZE_BALANCED_COUNTS.receiveRedeemers +
+          5,
+      ) * 4_000_000n;
+    const finalOutputLovelace =
+      inputTotal - fixedOutputLovelace - SIZE_BALANCED_FEE;
+    if (finalOutputLovelace <= 0n) {
+      throw new Error("Size-balanced fixture is not lovelace-balanced");
+    }
+    builder = builder.pay.ToAddress(primaryAddress, {
+      lovelace: finalOutputLovelace,
+    });
+
+    const completed = await builder.complete({ fee: SIZE_BALANCED_FEE });
+    let signed = await completed.sign(primaryWallet);
+    for (const wallet of extraSignerWallets) {
+      signed = await signed.sign(wallet);
+    }
+    const phaseAReport = await signed.validate("phase-a");
+    if (
+      phaseAReport.rejected.length > 0 ||
+      !phaseAReport.acceptedTxIds.includes(signed.txIdHex)
+    ) {
+      throw new Error("Size-balanced native tx fixture failed Phase A validation");
+    }
+
+    const tx = decodeMidgardNativeTxFull(signed.txCbor);
+    const compactTxCbor = encodeMidgardNativeTxCompact(tx.compact);
+    const compactBodyCbor = encodeMidgardNativeTxBodyCompact(
+      tx.compact.transactionBody,
+    );
+
+    const spendInputs = asArray(
+      decodeSingleCbor(tx.body.spendInputsPreimageCbor),
+      "spend inputs",
+    );
+    const decodedReferenceInputs = asArray(
+      decodeSingleCbor(tx.body.referenceInputsPreimageCbor),
+      "reference inputs",
+    );
+    const outputs = asArray(
+      decodeSingleCbor(tx.body.outputsPreimageCbor),
+      "outputs",
+    );
+    const requiredObservers = asArray(
+      decodeSingleCbor(tx.body.requiredObserversPreimageCbor),
+      "required observers",
+    );
+    const requiredSigners = asArray(
+      decodeSingleCbor(tx.body.requiredSignersPreimageCbor),
+      "required signers",
+    );
+    const mint = asMap(decodeSingleCbor(tx.body.mintPreimageCbor), "mint");
+    const addrTxWits = asArray(
+      decodeSingleCbor(tx.witnessSet.addrTxWitsPreimageCbor),
+      "addr witnesses",
+    );
+    const scriptTxWits = asArray(
+      decodeSingleCbor(tx.witnessSet.scriptTxWitsPreimageCbor),
+      "script witnesses",
+    );
+    const redeemers = redeemerPointers(tx.witnessSet.redeemerTxWitsPreimageCbor);
+
+    const expectedLengths = {
+      spendInputs: SIZE_BALANCED_COUNTS.spendInputs,
+      referenceInputs: SIZE_BALANCED_COUNTS.referenceInputs,
+      outputs: SIZE_BALANCED_COUNTS.outputs,
+      requiredObservers: SIZE_BALANCED_COUNTS.observerRedeemers,
+      requiredSigners: SIZE_BALANCED_COUNTS.requiredSigners,
+      mintPolicies: SIZE_BALANCED_COUNTS.mintPolicies,
+      addrWitnesses: SIZE_BALANCED_COUNTS.addrWitnesses,
+      scriptWitnesses: SIZE_BALANCED_COUNTS.scriptWitnesses,
+      totalRedeemers: SIZE_BALANCED_COUNTS.totalRedeemers,
+    };
+    const actualLengths = {
+      spendInputs: spendInputs.length,
+      referenceInputs: decodedReferenceInputs.length,
+      outputs: outputs.length,
+      requiredObservers: requiredObservers.length,
+      requiredSigners: requiredSigners.length,
+      mintPolicies: mint.size,
+      addrWitnesses: addrTxWits.length,
+      scriptWitnesses: scriptTxWits.length,
+      totalRedeemers: redeemers.length,
+    };
+    if (JSON.stringify(actualLengths) !== JSON.stringify(expectedLengths)) {
+      throw new Error(
+        `Size-balanced native tx fixture shape drifted: ${JSON.stringify(
+          actualLengths,
+        )}`,
+      );
+    }
+
+    const sizes = fixtureSizes(tx, compactTxCbor, compactBodyCbor, signed.txCbor);
+    const lowerBound =
+      SIZE_BALANCED_TARGET_FULL_TX_CBOR_BYTES -
+      SIZE_BALANCED_FULL_TX_CBOR_TOLERANCE_BYTES;
+    const upperBound =
+      SIZE_BALANCED_TARGET_FULL_TX_CBOR_BYTES +
+      SIZE_BALANCED_FULL_TX_CBOR_TOLERANCE_BYTES;
+    if (
+      sizes.fullTxCborBytes < lowerBound ||
+      sizes.fullTxCborBytes > upperBound
+    ) {
+      throw new Error(
+        `Size-balanced native tx fixture size ${sizes.fullTxCborBytes.toString()} is outside target range ${lowerBound.toString()}-${upperBound.toString()}`,
+      );
+    }
+    if (tx.body.fee > SIZE_BALANCED_MAX_FEE) {
+      throw new Error("Size-balanced native tx fixture fee exceeds max fee");
+    }
+    for (const [field, count] of Object.entries(actualLengths)) {
+      if (count > SIZE_BALANCED_MAX_LIST_LENGTH) {
+        throw new Error(`${field} count exceeds max fixture list length`);
+      }
+    }
+
+    return {
+      name: SIZE_BALANCED_FIXTURE_NAME,
+      txIdHex: hex(computeMidgardNativeTxIdFromFull(tx)),
+      fullTxCborHex: hex(signed.txCbor),
+      compactTxCborHex: hex(compactTxCbor),
+      compactBodyCborHex: hex(compactBodyCbor),
+      counts: SIZE_BALANCED_COUNTS,
+      targetFullTxCborBytes: SIZE_BALANCED_TARGET_FULL_TX_CBOR_BYTES,
+      fullTxCborToleranceBytes: SIZE_BALANCED_FULL_TX_CBOR_TOLERANCE_BYTES,
+      maxListLength: SIZE_BALANCED_MAX_LIST_LENGTH,
+      maxFee: SIZE_BALANCED_MAX_FEE.toString(10),
+      sizes,
       mintPolicyIdsInTxInfoOrder: [...mint.keys()].map((policy) =>
         hex(policy as Uint8Array),
       ),
@@ -414,7 +889,7 @@ export const buildHighCardinalityNativeTxFixture =
   };
 
 export const stableFixtureJson = (
-  fixture: HighCardinalityNativeTxFixture,
+  fixture: HighCardinalityNativeTxFixture | SizeBalancedNativeTxFixture,
 ): string => `${JSON.stringify(fixture, null, 2)}\n`;
 
 const aikenByteString = (hexValue: string): string => `#"${hexValue}"`;
@@ -439,6 +914,7 @@ use aiken/fuzz
 use midgard/fraud_proofs/native_tx/compact.{
   decode_native_tx_compact, encode_native_tx_body_compact,
   encode_native_tx_compact, verify_native_tx_compact,
+  verify_native_tx_compact_cbor,
 }
 use midgard/fraud_proofs/native_tx/preimages.{
   decode_midgard_tx_address_witnesses_preimage_cbor,
@@ -460,8 +936,8 @@ use midgard/fraud_proofs/native_tx/transaction.{
 use midgard/fraud_proofs/native_tx/types.{
   MidgardRedeemerPurpose, MidgardRedeemerWitness,
   MidgardTransactionBodyPartialPreimages,
-  MidgardTransactionWitnessSetPartialPreimages, MintRedeemer, ReceiveRedeemer,
-  RewardRedeemer, SpendRedeemer,
+  MidgardTransactionWitnessSetPartialPreimages, MintRedeemer, NativeTxCompact,
+  ReceiveRedeemer, RewardRedeemer, SpendRedeemer,
 }
 
 const high_cardinality_tx_cbor = ${aikenByteString(fixture.fullTxCborHex)}
@@ -503,6 +979,17 @@ fn sample_high_cardinality_tx_cbor(_size: Int) -> Fuzzer<ByteArray> {
 
 fn sample_high_cardinality_compact_cbor(_size: Int) -> Fuzzer<ByteArray> {
   fuzz.constant(high_cardinality_compact_cbor)
+}
+
+fn sample_high_cardinality_compact_fixture(
+  _size: Int,
+) -> Fuzzer<Pair<NativeTxCompact, ByteArray>> {
+  fuzz.constant(
+    Pair(
+      decode_native_tx_compact(high_cardinality_compact_cbor),
+      high_cardinality_compact_cbor,
+    ),
+  )
 }
 
 fn sample_high_cardinality_spend_inputs_preimage_cbor(
@@ -596,6 +1083,32 @@ bench high_cardinality_decode_native_tx_compact_bench(
 ) {
   let compact = decode_native_tx_compact(compact_cbor)
   compact.validity_code == 0
+}
+
+bench high_cardinality_verify_native_tx_compact_reencode_bench(
+  fixture: Pair<NativeTxCompact, ByteArray> via sample_high_cardinality_compact_fixture,
+) {
+  let Pair(compact, compact_cbor) = fixture
+  let verified =
+    verify_native_tx_compact(high_cardinality_tx_id, compact, compact_cbor)
+  verified.tx_compact.validity_code == 0
+}
+
+bench high_cardinality_verify_native_tx_compact_cbor_bench(
+  compact_cbor: ByteArray via sample_high_cardinality_compact_cbor,
+) {
+  let verified =
+    verify_native_tx_compact_cbor(high_cardinality_tx_id, compact_cbor)
+  verified.tx_compact.validity_code == 0
+}
+
+bench high_cardinality_decode_then_verify_native_tx_compact_reencode_bench(
+  compact_cbor: ByteArray via sample_high_cardinality_compact_cbor,
+) {
+  let compact = decode_native_tx_compact(compact_cbor)
+  let verified =
+    verify_native_tx_compact(high_cardinality_tx_id, compact, compact_cbor)
+  verified.tx_compact.validity_code == 0
 }
 
 bench high_cardinality_decode_spend_inputs_preimage_bench(
@@ -704,6 +1217,7 @@ test high_cardinality_lucid_midgard_native_tx_decodes() {
   let compact = midgard_transaction_to_compact(decoded)
   let compact_from_cbor = decode_native_tx_compact(compact_cbor)
   let verified = verify_native_tx_compact(tx_id, compact_from_cbor, compact_cbor)
+  let verified_from_cbor = verify_native_tx_compact_cbor(tx_id, compact_cbor)
   let witness_set_compact =
     midgard_transaction_witness_set_to_compact(decoded.witness_set)
   let body_preimages =
@@ -732,6 +1246,7 @@ test high_cardinality_lucid_midgard_native_tx_decodes() {
   expect Some(partial_witness_set) = partial.witness_set
 
   and {
+    verified_from_cbor == verified,
     encode_midgard_transaction(decoded) == tx_cbor,
     compact == compact_from_cbor,
     encode_native_tx_compact(compact) == compact_cbor,
@@ -795,6 +1310,338 @@ test high_cardinality_lucid_midgard_native_tx_decodes() {
     partial_witness_set.redeemer_tx_wits == Some(
       decoded.witness_set.redeemer_tx_wits,
     ),
+  }
+}
+`;
+
+export const renderSizeBalancedAikenTest = (
+  fixture: SizeBalancedNativeTxFixture,
+): string => `// Generated by demo/lucid-midgard/scripts/generate-native-tx-aiken-fixtures.ts.
+// Do not edit by hand.
+
+use aiken/builtin
+use aiken/collection/list
+use aiken/crypto.{blake2b_256}
+use aiken/fuzz
+use aiken/primitive/bytearray
+use midgard/fraud_proofs/native_tx/compact.{
+  decode_native_tx_compact, encode_native_tx_body_compact,
+  encode_native_tx_compact, verify_native_tx_compact,
+  verify_native_tx_compact_cbor,
+}
+use midgard/fraud_proofs/native_tx/preimages.{
+  decode_midgard_tx_address_witnesses_preimage_cbor,
+  decode_midgard_tx_byte_list_preimage_cbor,
+  decode_midgard_tx_inputs_preimage_cbor,
+  decode_midgard_tx_mint_preimage_cbor,
+  decode_midgard_tx_outputs_preimage_cbor,
+  decode_midgard_tx_redeemer_witnesses_preimage_cbor,
+  decode_midgard_tx_script_witnesses_preimage_cbor,
+}
+use midgard/fraud_proofs/native_tx/transaction.{
+  decode_midgard_transaction, encode_midgard_transaction,
+  midgard_transaction_to_compact,
+}
+use midgard/fraud_proofs/native_tx/types.{MidgardTransaction, NativeTxCompact}
+
+const size_balanced_tx_cbor = ${aikenByteString(fixture.fullTxCborHex)}
+
+const size_balanced_compact_cbor = ${aikenByteString(fixture.compactTxCborHex)}
+
+const size_balanced_tx_id = ${aikenByteString(fixture.txIdHex)}
+
+const size_balanced_target_tx_cbor_bytes = ${fixture.targetFullTxCborBytes}
+
+const size_balanced_full_tx_cbor_bytes = ${fixture.sizes.fullTxCborBytes}
+
+const size_balanced_compact_tx_cbor_bytes = ${fixture.sizes.compactTxCborBytes}
+
+const size_balanced_fee = ${fixture.sizes.fee}
+
+const size_balanced_spend_inputs_preimage_cbor =
+  ${aikenByteString(fixture.preimages.spendInputsCborHex)}
+
+const size_balanced_reference_inputs_preimage_cbor =
+  ${aikenByteString(fixture.preimages.referenceInputsCborHex)}
+
+const size_balanced_outputs_preimage_cbor =
+  ${aikenByteString(fixture.preimages.outputsCborHex)}
+
+const size_balanced_required_observers_preimage_cbor =
+  ${aikenByteString(fixture.preimages.requiredObserversCborHex)}
+
+const size_balanced_required_signers_preimage_cbor =
+  ${aikenByteString(fixture.preimages.requiredSignersCborHex)}
+
+const size_balanced_mint_preimage_cbor =
+  ${aikenByteString(fixture.preimages.mintCborHex)}
+
+const size_balanced_addr_wits_preimage_cbor =
+  ${aikenByteString(fixture.preimages.addrTxWitsCborHex)}
+
+const size_balanced_script_wits_preimage_cbor =
+  ${aikenByteString(fixture.preimages.scriptTxWitsCborHex)}
+
+const size_balanced_redeemer_wits_preimage_cbor =
+  ${aikenByteString(fixture.preimages.redeemerTxWitsCborHex)}
+
+fn sample_size_balanced_tx_cbor(_size: Int) -> Fuzzer<ByteArray> {
+  fuzz.constant(size_balanced_tx_cbor)
+}
+
+fn sample_size_balanced_compact_cbor(_size: Int) -> Fuzzer<ByteArray> {
+  fuzz.constant(size_balanced_compact_cbor)
+}
+
+fn sample_size_balanced_decoded_tx(
+  _size: Int,
+) -> Fuzzer<MidgardTransaction> {
+  fuzz.constant(decode_midgard_transaction(size_balanced_tx_cbor))
+}
+
+fn sample_size_balanced_compact_fixture(
+  _size: Int,
+) -> Fuzzer<Pair<NativeTxCompact, ByteArray>> {
+  fuzz.constant(
+    Pair(
+      decode_native_tx_compact(size_balanced_compact_cbor),
+      size_balanced_compact_cbor,
+    ),
+  )
+}
+
+fn sample_size_balanced_spend_inputs_preimage_cbor(
+  _size: Int,
+) -> Fuzzer<ByteArray> {
+  fuzz.constant(size_balanced_spend_inputs_preimage_cbor)
+}
+
+fn sample_size_balanced_reference_inputs_preimage_cbor(
+  _size: Int,
+) -> Fuzzer<ByteArray> {
+  fuzz.constant(size_balanced_reference_inputs_preimage_cbor)
+}
+
+fn sample_size_balanced_outputs_preimage_cbor(
+  _size: Int,
+) -> Fuzzer<ByteArray> {
+  fuzz.constant(size_balanced_outputs_preimage_cbor)
+}
+
+fn sample_size_balanced_required_observers_preimage_cbor(
+  _size: Int,
+) -> Fuzzer<ByteArray> {
+  fuzz.constant(size_balanced_required_observers_preimage_cbor)
+}
+
+fn sample_size_balanced_required_signers_preimage_cbor(
+  _size: Int,
+) -> Fuzzer<ByteArray> {
+  fuzz.constant(size_balanced_required_signers_preimage_cbor)
+}
+
+fn sample_size_balanced_mint_preimage_cbor(_size: Int) -> Fuzzer<ByteArray> {
+  fuzz.constant(size_balanced_mint_preimage_cbor)
+}
+
+fn sample_size_balanced_addr_wits_preimage_cbor(
+  _size: Int,
+) -> Fuzzer<ByteArray> {
+  fuzz.constant(size_balanced_addr_wits_preimage_cbor)
+}
+
+fn sample_size_balanced_script_wits_preimage_cbor(
+  _size: Int,
+) -> Fuzzer<ByteArray> {
+  fuzz.constant(size_balanced_script_wits_preimage_cbor)
+}
+
+fn sample_size_balanced_redeemer_wits_preimage_cbor(
+  _size: Int,
+) -> Fuzzer<ByteArray> {
+  fuzz.constant(size_balanced_redeemer_wits_preimage_cbor)
+}
+
+bench size_balanced_decode_midgard_transaction_bench(
+  tx_cbor: ByteArray via sample_size_balanced_tx_cbor,
+) {
+  let decoded = decode_midgard_transaction(tx_cbor)
+  and {
+    decoded.version == 1,
+    decoded.body.fee == size_balanced_fee,
+    list.length(decoded.body.inputs) == ${fixture.counts.spendInputs},
+    list.length(decoded.body.reference_inputs) == ${fixture.counts.referenceInputs},
+    list.length(decoded.body.outputs) == ${fixture.counts.outputs},
+    list.length(decoded.witness_set.addr_tx_wits) == ${fixture.counts.addrWitnesses},
+    list.length(decoded.witness_set.script_tx_wits) == ${fixture.counts.scriptWitnesses},
+    list.length(decoded.witness_set.redeemer_tx_wits) == ${fixture.counts.totalRedeemers},
+  }
+}
+
+bench size_balanced_encode_midgard_transaction_bench(
+  decoded: MidgardTransaction via sample_size_balanced_decoded_tx,
+) {
+  let encoded = encode_midgard_transaction(decoded)
+  and {
+    bytearray.length(encoded) == size_balanced_full_tx_cbor_bytes,
+    encoded == size_balanced_tx_cbor,
+  }
+}
+
+bench size_balanced_decode_native_tx_compact_bench(
+  compact_cbor: ByteArray via sample_size_balanced_compact_cbor,
+) {
+  let compact = decode_native_tx_compact(compact_cbor)
+  compact.validity_code == 0
+}
+
+bench size_balanced_verify_native_tx_compact_reencode_bench(
+  fixture: Pair<NativeTxCompact, ByteArray> via sample_size_balanced_compact_fixture,
+) {
+  let Pair(compact, compact_cbor) = fixture
+  let verified =
+    verify_native_tx_compact(size_balanced_tx_id, compact, compact_cbor)
+  verified.tx_compact.validity_code == 0
+}
+
+bench size_balanced_verify_native_tx_compact_cbor_bench(
+  compact_cbor: ByteArray via sample_size_balanced_compact_cbor,
+) {
+  let verified =
+    verify_native_tx_compact_cbor(size_balanced_tx_id, compact_cbor)
+  verified.tx_compact.validity_code == 0
+}
+
+bench size_balanced_decode_spend_inputs_preimage_bench(
+  preimage_cbor: ByteArray via sample_size_balanced_spend_inputs_preimage_cbor,
+) {
+  list.length(decode_midgard_tx_inputs_preimage_cbor(preimage_cbor)) == ${fixture.counts.spendInputs}
+}
+
+bench size_balanced_decode_reference_inputs_preimage_bench(
+  preimage_cbor: ByteArray via sample_size_balanced_reference_inputs_preimage_cbor,
+) {
+  list.length(decode_midgard_tx_inputs_preimage_cbor(preimage_cbor)) == ${fixture.counts.referenceInputs}
+}
+
+bench size_balanced_decode_outputs_preimage_bench(
+  preimage_cbor: ByteArray via sample_size_balanced_outputs_preimage_cbor,
+) {
+  list.length(decode_midgard_tx_outputs_preimage_cbor(preimage_cbor)) == ${fixture.counts.outputs}
+}
+
+bench size_balanced_decode_required_observers_preimage_bench(
+  preimage_cbor: ByteArray via sample_size_balanced_required_observers_preimage_cbor,
+) {
+  list.length(decode_midgard_tx_byte_list_preimage_cbor(preimage_cbor)) == ${fixture.counts.observerRedeemers}
+}
+
+bench size_balanced_decode_required_signers_preimage_bench(
+  preimage_cbor: ByteArray via sample_size_balanced_required_signers_preimage_cbor,
+) {
+  list.length(decode_midgard_tx_byte_list_preimage_cbor(preimage_cbor)) == ${fixture.counts.requiredSigners}
+}
+
+bench size_balanced_decode_mint_preimage_bench(
+  preimage_cbor: ByteArray via sample_size_balanced_mint_preimage_cbor,
+) {
+  let mint = decode_midgard_tx_mint_preimage_cbor(preimage_cbor)
+  list.length(builtin.un_map_data(mint)) == ${fixture.counts.mintPolicies}
+}
+
+bench size_balanced_decode_address_witnesses_preimage_bench(
+  preimage_cbor: ByteArray via sample_size_balanced_addr_wits_preimage_cbor,
+) {
+  list.length(decode_midgard_tx_address_witnesses_preimage_cbor(preimage_cbor)) == ${fixture.counts.addrWitnesses}
+}
+
+bench size_balanced_decode_script_witnesses_preimage_bench(
+  preimage_cbor: ByteArray via sample_size_balanced_script_wits_preimage_cbor,
+) {
+  list.length(decode_midgard_tx_script_witnesses_preimage_cbor(preimage_cbor)) == ${fixture.counts.scriptWitnesses}
+}
+
+bench size_balanced_decode_redeemer_witnesses_preimage_bench(
+  preimage_cbor: ByteArray via sample_size_balanced_redeemer_wits_preimage_cbor,
+) {
+  list.length(decode_midgard_tx_redeemer_witnesses_preimage_cbor(preimage_cbor)) == ${fixture.counts.totalRedeemers}
+}
+
+test size_balanced_lucid_midgard_native_tx_decodes() {
+  let tx_cbor = size_balanced_tx_cbor
+  let compact_cbor = size_balanced_compact_cbor
+  let tx_id = size_balanced_tx_id
+  let decoded = decode_midgard_transaction(tx_cbor)
+  let compact = midgard_transaction_to_compact(decoded)
+  let compact_from_cbor = decode_native_tx_compact(compact_cbor)
+  let verified = verify_native_tx_compact(tx_id, compact_from_cbor, compact_cbor)
+  let verified_from_cbor = verify_native_tx_compact_cbor(tx_id, compact_cbor)
+  let decoded_spend_inputs =
+    decode_midgard_tx_inputs_preimage_cbor(size_balanced_spend_inputs_preimage_cbor)
+  let decoded_reference_inputs =
+    decode_midgard_tx_inputs_preimage_cbor(size_balanced_reference_inputs_preimage_cbor)
+  let decoded_outputs =
+    decode_midgard_tx_outputs_preimage_cbor(size_balanced_outputs_preimage_cbor)
+  let decoded_required_observers =
+    decode_midgard_tx_byte_list_preimage_cbor(
+      size_balanced_required_observers_preimage_cbor,
+    )
+  let decoded_required_signers =
+    decode_midgard_tx_byte_list_preimage_cbor(
+      size_balanced_required_signers_preimage_cbor,
+    )
+  let decoded_mint =
+    decode_midgard_tx_mint_preimage_cbor(size_balanced_mint_preimage_cbor)
+  let decoded_addr_wits =
+    decode_midgard_tx_address_witnesses_preimage_cbor(
+      size_balanced_addr_wits_preimage_cbor,
+    )
+  let decoded_script_wits =
+    decode_midgard_tx_script_witnesses_preimage_cbor(
+      size_balanced_script_wits_preimage_cbor,
+    )
+  let decoded_redeemer_wits =
+    decode_midgard_tx_redeemer_witnesses_preimage_cbor(
+      size_balanced_redeemer_wits_preimage_cbor,
+    )
+
+  and {
+    bytearray.length(tx_cbor) == size_balanced_full_tx_cbor_bytes,
+    bytearray.length(compact_cbor) == size_balanced_compact_tx_cbor_bytes,
+    size_balanced_full_tx_cbor_bytes >= size_balanced_target_tx_cbor_bytes - ${fixture.fullTxCborToleranceBytes},
+    size_balanced_full_tx_cbor_bytes <= size_balanced_target_tx_cbor_bytes + ${fixture.fullTxCborToleranceBytes},
+    verified_from_cbor == verified,
+    compact == compact_from_cbor,
+    verified.tx_compact == compact_from_cbor,
+    encode_midgard_transaction(decoded) == tx_cbor,
+    encode_native_tx_compact(compact) == compact_cbor,
+    blake2b_256(encode_native_tx_body_compact(compact.body)) == tx_id,
+    decoded.body.fee == size_balanced_fee,
+    decoded.body.fee <= ${fixture.maxFee},
+    list.length(decoded.body.inputs) == ${fixture.counts.spendInputs},
+    list.length(decoded.body.reference_inputs) == ${fixture.counts.referenceInputs},
+    list.length(decoded.body.outputs) == ${fixture.counts.outputs},
+    list.length(decoded.body.required_observers) == ${fixture.counts.observerRedeemers},
+    list.length(decoded.body.required_signers) == ${fixture.counts.requiredSigners},
+    list.length(builtin.un_map_data(decoded.body.mint)) == ${fixture.counts.mintPolicies},
+    list.length(decoded.witness_set.addr_tx_wits) == ${fixture.counts.addrWitnesses},
+    list.length(decoded.witness_set.script_tx_wits) == ${fixture.counts.scriptWitnesses},
+    list.length(decoded.witness_set.redeemer_tx_wits) == ${fixture.counts.totalRedeemers},
+    list.length(decoded_spend_inputs) == ${fixture.counts.spendInputs},
+    list.length(decoded_reference_inputs) == ${fixture.counts.referenceInputs},
+    list.length(decoded_outputs) == ${fixture.counts.outputs},
+    list.length(decoded_required_observers) == ${fixture.counts.observerRedeemers},
+    list.length(decoded_required_signers) == ${fixture.counts.requiredSigners},
+    list.length(builtin.un_map_data(decoded_mint)) == ${fixture.counts.mintPolicies},
+    list.length(decoded_addr_wits) == ${fixture.counts.addrWitnesses},
+    list.length(decoded_script_wits) == ${fixture.counts.scriptWitnesses},
+    list.length(decoded_redeemer_wits) == ${fixture.counts.totalRedeemers},
+    blake2b_256(size_balanced_spend_inputs_preimage_cbor) == compact.body.spend_inputs_hash,
+    blake2b_256(size_balanced_reference_inputs_preimage_cbor) == compact.body.reference_inputs_hash,
+    blake2b_256(size_balanced_outputs_preimage_cbor) == compact.body.outputs_hash,
+    blake2b_256(size_balanced_required_observers_preimage_cbor) == compact.body.required_observers_hash,
+    blake2b_256(size_balanced_required_signers_preimage_cbor) == compact.body.required_signers_hash,
+    blake2b_256(size_balanced_mint_preimage_cbor) == compact.body.mint_hash,
   }
 }
 `;

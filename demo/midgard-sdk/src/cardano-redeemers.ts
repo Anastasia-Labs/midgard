@@ -219,11 +219,11 @@ export const resolveMintPolicyContextIndex = ({
 export const resolveMintPolicyTxInfoRedeemerIndexFromPolicySet = ({
   policyIds,
   targetPolicyId,
-  precedingSpendRedeemerCount,
+  precedingSpendRedeemerCount = 0,
 }: {
   readonly policyIds: readonly string[];
   readonly targetPolicyId: string;
-  readonly precedingSpendRedeemerCount: number | bigint;
+  readonly precedingSpendRedeemerCount?: number;
 }): bigint =>
   BigInt(precedingSpendRedeemerCount) +
   resolveMintPolicyContextIndex({ policyIds, targetPolicyId });

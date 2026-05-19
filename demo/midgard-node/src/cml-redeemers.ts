@@ -40,7 +40,8 @@ const DUMMY_REDEEMER_EX_UNITS = {
 } as const;
 
 /**
- * Sort rank used to translate context-order redeemers into tx-info order.
+ * Sort rank used to translate CML redeemer pointers into the redeemer list
+ * order exposed in Plutus/Aiken transaction contexts.
  */
 const txInfoRedeemerPurposeRank = (tag: number): number => {
   switch (tag) {

@@ -108,10 +108,7 @@ const decodeCanonicalNodeDatumFromOutput = (
     return undefined;
   }
   try {
-    const linkedListDatum = LucidData.from(
-      output.datum,
-      SDK.LinkedListDatum,
-    );
+    const linkedListDatum = LucidData.from(output.datum, SDK.LinkedListDatum);
     return SDK.linkedListDatumToNodeView(linkedListDatum, assetName);
   } catch {
     return undefined;
@@ -519,8 +516,7 @@ const resolveMintRedeemerIndexForPolicy = (
     if (targetMintRedeemerContextIndex < 0) {
       return yield* Effect.fail(
         new SDK.StateQueueError({
-          message:
-            "Failed to locate mint redeemer index in balanced draft tx",
+          message: "Failed to locate mint redeemer index in balanced draft tx",
           cause: JSON.stringify(
             pointers.map((pointer) => ({
               tag: pointer.tag,
@@ -585,16 +581,18 @@ export const deriveActivateRedeemerLayout = (
       tx,
       params.retiredNotMemberWitnessForActivate.utxo,
     );
-    const registeredOperatorsRedeemerIndex = yield* resolveMintRedeemerIndexForPolicy(
-      tx,
-      params.contracts,
-      params.contracts.registeredOperators.policyId,
-    );
-    const activeOperatorsRedeemerIndex = yield* resolveMintRedeemerIndexForPolicy(
-      tx,
-      params.contracts,
-      params.contracts.activeOperators.policyId,
-    );
+    const registeredOperatorsRedeemerIndex =
+      yield* resolveMintRedeemerIndexForPolicy(
+        tx,
+        params.contracts,
+        params.contracts.registeredOperators.policyId,
+      );
+    const activeOperatorsRedeemerIndex =
+      yield* resolveMintRedeemerIndexForPolicy(
+        tx,
+        params.contracts,
+        params.contracts.activeOperators.policyId,
+      );
     const registeredNodeInputPosition = findInputIndex(
       tx,
       params.registeredNode.utxo,
@@ -668,7 +666,8 @@ export const deriveActivateRedeemerLayout = (
     if (params.registeredNode.datum.key === "Empty") {
       return yield* Effect.fail(
         new SDK.StateQueueError({
-          message: "Registered node key is unexpectedly Empty during activation",
+          message:
+            "Registered node key is unexpectedly Empty during activation",
           cause: JSON.stringify({
             registeredNodeOutRef: `${params.registeredNode.utxo.txHash}#${params.registeredNode.utxo.outputIndex.toString()}`,
           }),
@@ -716,7 +715,8 @@ export const deriveActivateRedeemerLayout = (
       anchorOutputDatum,
       operatorKeyHash,
     );
-    let resolvedInsertedNodeOutputIndex = activeOperatorsInsertedNodeOutputIndex;
+    let resolvedInsertedNodeOutputIndex =
+      activeOperatorsInsertedNodeOutputIndex;
     let resolvedAnchorNodeOutputIndex = activeOperatorsAnchorNodeOutputIndex;
     if (!insertedMatchesOperator && anchorMatchesOperator) {
       resolvedInsertedNodeOutputIndex = activeOperatorsAnchorNodeOutputIndex;
@@ -776,7 +776,9 @@ export const deriveActivateRedeemerLayout = (
     return {
       hubOracleRefInputIndex,
       retiredOperatorRefInputIndex,
-      registeredOperatorsRedeemerIndex: BigInt(registeredOperatorsRedeemerIndex),
+      registeredOperatorsRedeemerIndex: BigInt(
+        registeredOperatorsRedeemerIndex,
+      ),
       activeOperatorsRedeemerIndex: BigInt(activeOperatorsRedeemerIndex),
       registeredOperatorsRemovedNodeInputIndex: registeredNodeInputPosition,
       registeredOperatorsAnchorNodeInputIndex: registeredAnchorInputPosition,
@@ -853,7 +855,8 @@ export const deriveRegisterRedeemerLayout = (
             rootInputIndex: rootInputIndex?.toString() ?? "missing",
             prependedNodeOutputIndex:
               prependedNodeOutputIndex?.toString() ?? "missing",
-            anchorNodeOutputIndex: anchorNodeOutputIndex?.toString() ?? "missing",
+            anchorNodeOutputIndex:
+              anchorNodeOutputIndex?.toString() ?? "missing",
           }),
         }),
       );
@@ -918,8 +921,8 @@ export const getAssetNameByPolicy = (
   assets: Readonly<Record<string, bigint>>,
   policyId: string,
 ): string | null => {
-  const entries = Object.entries(assets).filter(
-    ([unit, quantity]) => isPolicyAsset(unit, quantity, policyId),
+  const entries = Object.entries(assets).filter(([unit, quantity]) =>
+    isPolicyAsset(unit, quantity, policyId),
   );
   if (entries.length !== 1) {
     return null;

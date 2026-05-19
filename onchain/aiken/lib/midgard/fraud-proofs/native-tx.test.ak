@@ -8,6 +8,7 @@ use midgard/fraud_proofs/native_tx/codec.{encode_native_byte_list}
 use midgard/fraud_proofs/native_tx/compact.{
   decode_native_tx_compact, encode_native_tx_body_compact,
   encode_native_tx_compact, verify_native_tx_compact,
+  verify_native_tx_compact_cbor,
 }
 use midgard/fraud_proofs/native_tx/components.{
   decode_midgard_tx_output_cbor, encode_midgard_tx_output,
@@ -46,6 +47,9 @@ const golden_core_native_full_tx_cbor =
 const golden_core_native_compact_tx_cbor =
   #"84018c582044bc7621c0c1b05789bfd7fae817a582b32ce0d7d357d1cb717e0512cf32eeb65820e190369d719bcefc386ac4f56886a69d3f66ff8bb7f6ce1bc01defafc7164513582090c0662cc2568cf510b3d965486a0a7a4494e811045b237c945158b3e14d16fb182a201864582045b0cfc220ceec5b7c1c62c4d4193d38e4eba48e8815729ce75f9c0ab0e4c1c0582045b0cfc220ceec5b7c1c62c4d4193d38e4eba48e8815729ce75f9c0ab0e4c1c0582045b0cfc220ceec5b7c1c62c4d4193d38e4eba48e8815729ce75f9c0ab0e4c1c0582033333333333333333333333333333333333333333333333333333333333333335820444444444444444444444444444444444444444444444444444444444444444400582052408b440567f475c3eee21c9a8be91ed05a31e81e175c69fcaec5ccd187258c00"
 
+const golden_core_native_tx_id =
+  #"ea7685b2e05809b8aa190df6cc9699f327a2e61db73ea6cd7c54309d0a8a7cd8"
+
 const golden_core_spend_inputs_preimage_cbor =
   #"815824825820111111111111111111111111111111111111111111111111111111111111111100"
 
@@ -63,6 +67,17 @@ fn sample_golden_core_native_full_tx_cbor(_size: Int) -> Fuzzer<ByteArray> {
 
 fn sample_golden_core_native_compact_tx_cbor(_size: Int) -> Fuzzer<ByteArray> {
   fuzz.constant(golden_core_native_compact_tx_cbor)
+}
+
+fn sample_golden_core_native_compact_fixture(
+  _size: Int,
+) -> Fuzzer<Pair<NativeTxCompact, ByteArray>> {
+  fuzz.constant(
+    Pair(
+      decode_native_tx_compact(golden_core_native_compact_tx_cbor),
+      golden_core_native_compact_tx_cbor,
+    ),
+  )
 }
 
 fn sample_golden_core_spend_inputs_preimage_cbor(
@@ -102,6 +117,32 @@ bench golden_core_decode_native_tx_compact_bench(
 ) {
   let compact = decode_native_tx_compact(compact_cbor)
   compact.validity_code == 0
+}
+
+bench golden_core_verify_native_tx_compact_reencode_bench(
+  fixture: Pair<NativeTxCompact, ByteArray> via sample_golden_core_native_compact_fixture,
+) {
+  let Pair(compact, compact_cbor) = fixture
+  let verified =
+    verify_native_tx_compact(golden_core_native_tx_id, compact, compact_cbor)
+  verified.tx_compact.validity_code == 0
+}
+
+bench golden_core_verify_native_tx_compact_cbor_bench(
+  compact_cbor: ByteArray via sample_golden_core_native_compact_tx_cbor,
+) {
+  let verified =
+    verify_native_tx_compact_cbor(golden_core_native_tx_id, compact_cbor)
+  verified.tx_compact.validity_code == 0
+}
+
+bench golden_core_decode_then_verify_native_tx_compact_reencode_bench(
+  compact_cbor: ByteArray via sample_golden_core_native_compact_tx_cbor,
+) {
+  let compact = decode_native_tx_compact(compact_cbor)
+  let verified =
+    verify_native_tx_compact(golden_core_native_tx_id, compact, compact_cbor)
+  verified.tx_compact.validity_code == 0
 }
 
 bench golden_core_decode_spend_inputs_preimage_bench(
@@ -183,8 +224,8 @@ test encode_native_tx_compact_matches_node_cbor_shape() {
     encode_native_tx_body_compact(body) == body_cbor,
     encode_native_tx_compact(compact) == compact_cbor,
     view.tx_id == blake2b_256(body_cbor),
-    view.body.spend_inputs_hash == #"0101010101010101010101010101010101010101010101010101010101010101",
-    view.compact_cbor == compact_cbor,
+    view.tx_compact.body.spend_inputs_hash == #"0101010101010101010101010101010101010101010101010101010101010101",
+    encode_native_tx_compact(view.tx_compact) == compact_cbor,
   }
 }
 
@@ -421,18 +462,18 @@ test golden_midgard_core_native_preimage_cbor_decoders() {
 test golden_midgard_core_native_compact_tx_decodes() {
   let compact_cbor =
     #"84018c582044bc7621c0c1b05789bfd7fae817a582b32ce0d7d357d1cb717e0512cf32eeb65820e190369d719bcefc386ac4f56886a69d3f66ff8bb7f6ce1bc01defafc7164513582090c0662cc2568cf510b3d965486a0a7a4494e811045b237c945158b3e14d16fb182a201864582045b0cfc220ceec5b7c1c62c4d4193d38e4eba48e8815729ce75f9c0ab0e4c1c0582045b0cfc220ceec5b7c1c62c4d4193d38e4eba48e8815729ce75f9c0ab0e4c1c0582045b0cfc220ceec5b7c1c62c4d4193d38e4eba48e8815729ce75f9c0ab0e4c1c0582033333333333333333333333333333333333333333333333333333333333333335820444444444444444444444444444444444444444444444444444444444444444400582052408b440567f475c3eee21c9a8be91ed05a31e81e175c69fcaec5ccd187258c00"
-  let tx_id =
-    #"ea7685b2e05809b8aa190df6cc9699f327a2e61db73ea6cd7c54309d0a8a7cd8"
+  let tx_id = golden_core_native_tx_id
   let compact = decode_native_tx_compact(compact_cbor)
   let verified = verify_native_tx_compact(tx_id, compact, compact_cbor)
+  let verified_from_cbor = verify_native_tx_compact_cbor(tx_id, compact_cbor)
 
   and {
-    verified.validity == TxIsValid,
-    verified.validity_code == 0,
-    verified.body.spend_inputs_hash == #"44bc7621c0c1b05789bfd7fae817a582b32ce0d7d357d1cb717e0512cf32eeb6",
-    verified.body.reference_inputs_hash == #"e190369d719bcefc386ac4f56886a69d3f66ff8bb7f6ce1bc01defafc7164513",
-    verified.body.outputs_hash == #"90c0662cc2568cf510b3d965486a0a7a4494e811045b237c945158b3e14d16fb",
-    verified.witness_set_hash == #"52408b440567f475c3eee21c9a8be91ed05a31e81e175c69fcaec5ccd187258c",
+    verified_from_cbor == verified,
+    verified.tx_compact.validity_code == 0,
+    verified.tx_compact.body.spend_inputs_hash == #"44bc7621c0c1b05789bfd7fae817a582b32ce0d7d357d1cb717e0512cf32eeb6",
+    verified.tx_compact.body.reference_inputs_hash == #"e190369d719bcefc386ac4f56886a69d3f66ff8bb7f6ce1bc01defafc7164513",
+    verified.tx_compact.body.outputs_hash == #"90c0662cc2568cf510b3d965486a0a7a4494e811045b237c945158b3e14d16fb",
+    verified.tx_compact.witness_set_hash == #"52408b440567f475c3eee21c9a8be91ed05a31e81e175c69fcaec5ccd187258c",
   }
 }
 

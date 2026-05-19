@@ -16,10 +16,8 @@ use midgard/common/utils.{
 use midgard/computation_thread as ct
 use midgard/fraud_proof
 use midgard/fraud_proof_catalogue
-use midgard/fraud_proofs/native_tx/compact.{verify_native_tx_compact}
-use midgard/fraud_proofs/native_tx/types.{
-  NativeTxCompact, VerifiedMidgardNativeTxCompact,
-} as native_tx_types
+use midgard/fraud_proofs/native_tx/compact.{verify_native_tx_compact_cbor}
+use midgard/fraud_proofs/native_tx/types.{VerifiedMidgardNativeTxCompact} as native_tx_types
 use midgard/hub_oracle as hub
 use midgard/ledger_state.{
   Header, MidgardTxBodyCompact, MidgardTxCompact, MidgardTxId,
@@ -51,7 +49,6 @@ pub type NativeTxInclusionArgs {
   hub_ref_input_index: Int,
   state_queue_node_ref_input_index: Int,
   native_tx_id: ByteArray,
-  native_tx: NativeTxCompact,
   native_tx_compact_cbor: ByteArray,
   tx_membership_proof: Proof,
   inclusion_proof_script_withdraw_redeemer_index: Int,
@@ -186,7 +183,6 @@ pub fn pass_native_tx_to_next_step(
     hub_ref_input_index,
     state_queue_node_ref_input_index,
     native_tx_id,
-    native_tx,
     native_tx_compact_cbor,
     tx_membership_proof,
     inclusion_proof_script_withdraw_redeemer_index,
@@ -221,7 +217,6 @@ pub fn pass_native_tx_to_next_step(
   <-
     verify_native_tx_in_state_queue_node(
       native_tx_id,
-      native_tx,
       native_tx_compact_cbor,
       tx_membership_proof,
       computation_thread_token_asset_name,
@@ -572,7 +567,6 @@ pub fn verify_tx_in_state_queue_node(
 
 pub fn verify_native_tx_in_state_queue_node(
   native_tx_id: ByteArray,
-  native_tx: NativeTxCompact,
   native_tx_compact_cbor: ByteArray,
   tx_membership_proof: Proof,
   computation_thread_token_asset_name: AssetName,
@@ -585,7 +579,7 @@ pub fn verify_native_tx_in_state_queue_node(
   return: fn(ByteArray, Header, VerifiedMidgardNativeTxCompact) -> result,
 ) -> result {
   let native_tx_view =
-    verify_native_tx_compact(native_tx_id, native_tx, native_tx_compact_cbor)
+    verify_native_tx_compact_cbor(native_tx_id, native_tx_compact_cbor)
 
   let hub.Datum { state_queue: state_queue_policy, .. } =
     hub.get_datum(reference_inputs, hub_oracle, hub_ref_input_index)

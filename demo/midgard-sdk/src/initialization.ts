@@ -26,9 +26,6 @@ import {
   SchedulerMintRedeemer,
 } from "@/scheduler.js";
 import {
-  GENESIS_HEADER_HASH,
-  GENESIS_PROTOCOL_VERSION,
-  GENESIS_UTXO_ROOT,
   STATE_QUEUE_ROOT_ASSET_NAME,
   StateQueueRedeemer,
 } from "@/state-queue.js";
@@ -53,6 +50,11 @@ import {
   castConfirmedStateToData,
   ConfirmedState,
 } from "@/ledger-state.js";
+import {
+  GENESIS_HEADER_HASH,
+  GENESIS_PROTOCOL_VERSION,
+  GENESIS_UTXO_ROOT,
+} from "@/ledger-constants.js";
 import {
   encodeLinkedListNodeView,
   LinkedListNodeView,

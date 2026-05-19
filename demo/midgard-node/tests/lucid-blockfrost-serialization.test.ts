@@ -61,4 +61,14 @@ describe("blockfrost additional UTxO serialization", () => {
       ),
     ).toBe(true);
   });
+
+  it("treats Blockfrost HTML error pages as fallback-key eligible", () => {
+    expect(
+      isBlockfrostRateLimitError(
+        new SyntaxError(
+          `Unexpected token '<', "<html><h"... is not valid JSON`,
+        ),
+      ),
+    ).toBe(true);
+  });
 });

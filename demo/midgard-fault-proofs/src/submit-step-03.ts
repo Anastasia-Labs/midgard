@@ -10,16 +10,19 @@ import {
   DoubleSpendStep04Datum,
   buildDoubleSpendFaultProofContracts,
   parseFaultProofBlueprint,
+  type MidgardTxInput,
 } from "@al-ft/midgard-sdk";
 import { computeHash32, encodeCbor } from "@al-ft/midgard-core";
 import { Effect } from "effect";
 import { parseContractDeploymentInfo } from "./inspect-contracts.js";
 import {
+  compareOutRefs,
   fetchUtxoByOutRef,
   makeLucidForSubmitInit,
   outRefLabel,
   parseOutRef,
   readJsonFile,
+  referenceInputIndex,
   requireDeploymentScriptHash,
   resolveProverSigner,
   type ResolvedProverSigner,
@@ -28,12 +31,18 @@ import {
 import {
   DEFAULT_CONFIRMATION_POLL_MS,
   inputIndex,
+  parsedOutRefFromUtxo,
   parseHex,
   parseInteger,
   requireComputationThreadToken,
   requireMatchingScriptHash,
   selectFeeInput,
 } from "./submit-step-01.js";
+import {
+  ensureSpendInputsReferenceWitness,
+  excludeUtxo,
+  spendInputsWitnessFromCbors,
+} from "./spend-input-witness.js";
 
 const STEP_03_OUTPUT_INDEX = 0n;
 
@@ -66,7 +75,11 @@ export type SubmitStep03Result = {
   readonly verifiedTx1SpendInputsHash: string;
   readonly verifiedTx2SpendInputsHash: string;
   readonly doubleSpentInputIndex: number;
+  readonly doubleSpentInput: MidgardTxInput;
   readonly doubleSpentInputCbor: string;
+  readonly tx1SpendInputsWitnessOutRef: string;
+  readonly tx1SpendInputsWitnessCreated: boolean;
+  readonly tx1SpendInputsRefInputIndex: number;
   readonly inputIndex: number;
   readonly outputIndex: number;
   readonly awaitedConfirmation: boolean;
@@ -234,20 +247,54 @@ export const submitStep03 = async ({
   if (doubleSpentInputIndex > BigInt(Number.MAX_SAFE_INTEGER)) {
     throw new Error("doubleSpentInputIndex exceeds the safe integer range.");
   }
+  const tx1SpendInputsWitness = spendInputsWitnessFromCbors(
+    tx1SpendInputCbors,
+    "--tx1-inputs",
+  );
   const doubleSpentInputCbor = tx1SpendInputCbors[Number(doubleSpentInputIndex)]!;
+  const doubleSpentInput =
+    tx1SpendInputsWitness.inputs[Number(doubleSpentInputIndex)]!;
 
   signer.selectWallet(lucid);
-  const feeInput = selectFeeInput(await lucid.wallet().getUtxos());
+  const tx1SpendInputsReferenceWitness =
+    await ensureSpendInputsReferenceWitness({
+      lucid,
+      address: signer.address,
+      paymentKeyHash: signer.paymentKeyHash,
+      witness: tx1SpendInputsWitness,
+      awaitConfirmation,
+    });
+  const sortedReferenceInputs = [
+    tx1SpendInputsReferenceWitness.utxo,
+  ].sort((left, right) =>
+    compareOutRefs(parsedOutRefFromUtxo(left), parsedOutRefFromUtxo(right)),
+  );
+  const tx1SpendInputsRefInputIndex = referenceInputIndex(
+    sortedReferenceInputs,
+    tx1SpendInputsReferenceWitness.utxo,
+  );
+  const walletUtxosWithoutWitness = excludeUtxo(
+    await lucid.wallet().getUtxos(),
+    tx1SpendInputsReferenceWitness.utxo,
+  );
+  const feeCandidates =
+    tx1SpendInputsReferenceWitness.spentFeeInput === undefined
+      ? walletUtxosWithoutWitness
+      : excludeUtxo(
+          walletUtxosWithoutWitness,
+          tx1SpendInputsReferenceWitness.spentFeeInput,
+        );
+  const feeInput = selectFeeInput(feeCandidates);
   const spendInputIndex = inputIndex(threadUtxo, feeInput);
   const redeemer = Data.to(
     {
       Continue: [
-          {
-            input_index: spendInputIndex,
-            output_index: STEP_03_OUTPUT_INDEX,
-            tx1_spend_input_cbors: [...tx1SpendInputCbors],
-            double_spent_input_index: doubleSpentInputIndex,
-          },
+        {
+          input_index: spendInputIndex,
+          output_index: STEP_03_OUTPUT_INDEX,
+          tx1_spend_inputs_ref_input_index: tx1SpendInputsRefInputIndex,
+          double_spent_input_index: doubleSpentInputIndex,
+        },
       ],
     },
     DoubleSpendStep03SpendRedeemer,
@@ -258,7 +305,7 @@ export const submitStep03 = async ({
       data: {
         verified_tx2_spend_inputs_hash:
           inputDatum.data.verified_tx2_spend_inputs_hash,
-        double_spent_input_cbor: doubleSpentInputCbor,
+        double_spent_input: doubleSpentInput,
       },
     },
     DoubleSpendStep04Datum,
@@ -272,6 +319,7 @@ export const submitStep03 = async ({
     .newTx()
     .collectFrom([feeInput])
     .collectFrom([threadUtxo], redeemer)
+    .readFrom(sortedReferenceInputs)
     .pay.ToContract(
       contracts.doubleSpend.steps[3].spendingScriptAddress,
       {
@@ -308,7 +356,11 @@ export const submitStep03 = async ({
     verifiedTx2SpendInputsHash:
       inputDatum.data.verified_tx2_spend_inputs_hash,
     doubleSpentInputIndex: Number(doubleSpentInputIndex),
+    doubleSpentInput,
     doubleSpentInputCbor,
+    tx1SpendInputsWitnessOutRef: tx1SpendInputsReferenceWitness.outRef,
+    tx1SpendInputsWitnessCreated: tx1SpendInputsReferenceWitness.created,
+    tx1SpendInputsRefInputIndex: Number(tx1SpendInputsRefInputIndex),
     inputIndex: Number(spendInputIndex),
     outputIndex: Number(STEP_03_OUTPUT_INDEX),
     awaitedConfirmation: awaitConfirmation,

@@ -30,13 +30,25 @@ export type NativeTxCompact = Data.Static<typeof NativeTxCompactSchema>;
 export const NativeTxCompact =
   NativeTxCompactSchema as unknown as NativeTxCompact;
 
+export const MidgardTxInputSchema = Data.Object({
+  tx_id: H32Schema,
+  output_index: Data.Integer(),
+});
+export type MidgardTxInput = Data.Static<typeof MidgardTxInputSchema>;
+export const MidgardTxInput =
+  MidgardTxInputSchema as unknown as MidgardTxInput;
+
+export const MidgardTxInputListSchema = Data.Array(MidgardTxInputSchema);
+export type MidgardTxInputList = Data.Static<typeof MidgardTxInputListSchema>;
+export const MidgardTxInputList =
+  MidgardTxInputListSchema as unknown as MidgardTxInputList;
+
 export const DoubleSpendTxInclusionArgsSchema = Data.Object({
   input_index: Data.Integer(),
   output_index: Data.Integer(),
   hub_ref_input_index: Data.Integer(),
   state_queue_node_ref_input_index: Data.Integer(),
   native_tx_id: H32Schema,
-  native_tx: NativeTxCompactSchema,
   native_tx_compact_cbor: Data.Bytes(),
   tx_membership_proof: ProofSchema,
   inclusion_proof_script_withdraw_redeemer_index: Data.Integer(),
@@ -149,7 +161,7 @@ export const DoubleSpendStep03Datum =
 export const DoubleSpendStep03ArgsSchema = Data.Object({
   input_index: Data.Integer(),
   output_index: Data.Integer(),
-  tx1_spend_input_cbors: Data.Array(Data.Bytes()),
+  tx1_spend_inputs_ref_input_index: Data.Integer(),
   double_spent_input_index: Data.Integer(),
 });
 export type DoubleSpendStep03Args = Data.Static<
@@ -169,7 +181,7 @@ export const DoubleSpendStep03SpendRedeemer =
 
 export const DoubleSpendStep04StateSchema = Data.Object({
   verified_tx2_spend_inputs_hash: H32Schema,
-  double_spent_input_cbor: Data.Bytes(),
+  double_spent_input: MidgardTxInputSchema,
 });
 export type DoubleSpendStep04State = Data.Static<
   typeof DoubleSpendStep04StateSchema
@@ -190,7 +202,7 @@ export const DoubleSpendStep04ArgsSchema = Data.Object({
   input_index: Data.Integer(),
   output_index: Data.Integer(),
   fraud_proof_mint_redeemer_index: Data.Integer(),
-  tx2_spend_input_cbors: Data.Array(Data.Bytes()),
+  tx2_spend_inputs_ref_input_index: Data.Integer(),
   double_spent_input_index: Data.Integer(),
 });
 export type DoubleSpendStep04Args = Data.Static<

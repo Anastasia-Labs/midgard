@@ -3,7 +3,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { Data as LucidData, toHex } from "@lucid-evolution/lucid";
 import { it } from "@effect/vitest";
-import { Effect } from "effect";
+import { Duration, Effect, Fiber, TestClock } from "effect";
 import { SqlClient } from "@effect/sql";
 import * as SDK from "@al-ft/midgard-sdk";
 import { Database } from "../src/services/database.js";
@@ -190,6 +190,47 @@ describe("StateQueueMutationLeasesDB", () => {
             StateQueueMutationLeasesDB.Status.Failed,
           );
           expect(rows[0]?.last_error).toContain("boom");
+        }),
+      ),
+  );
+
+  it.effect(
+    "tryWithLease keeps long-running state-queue work leased past the initial ttl",
+    (_) =>
+      provideDatabaseLayers(
+        Effect.gen(function* () {
+          yield* flushAll;
+
+          const leaseFiber = yield* StateQueueMutationLeasesDB.tryWithLease(
+            "long-running-work",
+            (token) =>
+              Effect.sleep(Duration.millis(90)).pipe(
+                Effect.andThen(StateQueueMutationLeasesDB.revalidate(token)),
+                Effect.as(token),
+              ),
+            {
+              ttlMs: 40,
+              renewIntervalMs: 10,
+            },
+          ).pipe(Effect.fork);
+
+          yield* TestClock.adjust(Duration.millis(100));
+          const result = yield* Fiber.join(leaseFiber);
+
+          expect(result._tag).toBe("Ran");
+          expect(yield* StateQueueMutationLeasesDB.retrieveActive()).toBe(
+            undefined,
+          );
+
+          const sql = yield* SqlClient.SqlClient;
+          const rows = yield* sql<{ status: StateQueueMutationLeasesDB.Status }>`
+            SELECT status FROM ${sql(StateQueueMutationLeasesDB.tableName)}
+            WHERE holder = ${"long-running-work"}
+            ORDER BY acquired_at DESC
+            LIMIT 1`;
+          expect(rows[0]?.status).toBe(
+            StateQueueMutationLeasesDB.Status.Released,
+          );
         }),
       ),
   );

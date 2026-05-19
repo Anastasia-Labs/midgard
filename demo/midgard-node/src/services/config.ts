@@ -52,6 +52,8 @@ type NodeConfigDep = {
   READINESS_MAX_QUEUE_DEPTH: number;
   READINESS_MAX_DURABLE_ADMISSION_BACKLOG: number;
   READINESS_MAX_DURABLE_ADMISSION_AGE_MS: number;
+  STARTUP_PROTOCOL_STATUS_QUERY_MAX_ATTEMPTS: number;
+  STARTUP_PROTOCOL_STATUS_QUERY_RETRY_DELAY_MS: number;
   VALIDATION_LEASE_MS: number;
   VALIDATION_RETRY_BACKOFF_BASE_MS: number;
   VALIDATION_RETRY_BACKOFF_MAX_MS: number;
@@ -213,6 +215,12 @@ const makeConfig = Effect.gen(function* () {
   const readinessMaxDurableAdmissionAgeMs = yield* Config.integer(
     "READINESS_MAX_DURABLE_ADMISSION_AGE_MS",
   ).pipe(Config.withDefault(120_000));
+  const startupProtocolStatusQueryMaxAttempts = yield* Config.integer(
+    "STARTUP_PROTOCOL_STATUS_QUERY_MAX_ATTEMPTS",
+  ).pipe(Config.withDefault(120));
+  const startupProtocolStatusQueryRetryDelayMs = yield* Config.integer(
+    "STARTUP_PROTOCOL_STATUS_QUERY_RETRY_DELAY_MS",
+  ).pipe(Config.withDefault(5_000));
   const validationLeaseMs = yield* Config.integer("VALIDATION_LEASE_MS").pipe(
     Config.withDefault(30_000),
   );
@@ -386,6 +394,10 @@ const makeConfig = Effect.gen(function* () {
     READINESS_MAX_DURABLE_ADMISSION_BACKLOG:
       readinessMaxDurableAdmissionBacklog,
     READINESS_MAX_DURABLE_ADMISSION_AGE_MS: readinessMaxDurableAdmissionAgeMs,
+    STARTUP_PROTOCOL_STATUS_QUERY_MAX_ATTEMPTS:
+      startupProtocolStatusQueryMaxAttempts,
+    STARTUP_PROTOCOL_STATUS_QUERY_RETRY_DELAY_MS:
+      startupProtocolStatusQueryRetryDelayMs,
     VALIDATION_LEASE_MS: validationLeaseMs,
     VALIDATION_RETRY_BACKOFF_BASE_MS: validationRetryBackoffBaseMs,
     VALIDATION_RETRY_BACKOFF_MAX_MS: validationRetryBackoffMaxMs,

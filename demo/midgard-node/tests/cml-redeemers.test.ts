@@ -3,7 +3,7 @@ import { CML } from "@lucid-evolution/lucid";
 import { getTxInfoRedeemerIndexes } from "@/cml-redeemers.js";
 
 describe("cml redeemer pointer ordering", () => {
-  it("maps context-order redeemers into tx-info order by purpose then pointer index", () => {
+  it("maps context-order redeemers into Aiken tx.redeemers order by purpose then pointer index", () => {
     const pointers = [
       { tag: CML.RedeemerTag.Mint, index: 1n },
       { tag: CML.RedeemerTag.Spend, index: 2n },

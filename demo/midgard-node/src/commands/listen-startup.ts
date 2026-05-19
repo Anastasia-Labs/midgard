@@ -24,7 +24,7 @@ import {
   verifyNodeRuntimeReferenceScriptsProgram,
 } from "@/transactions/reference-scripts.js";
 import * as SDK from "@al-ft/midgard-sdk";
-import { Effect, Option, Ref } from "effect";
+import { Duration, Effect, Option, Ref } from "effect";
 import { deserializeStateQueueUTxO } from "@/workers/utils/commit-block-header.js";
 
 type CanonicalCommittedHeader = {
@@ -139,6 +139,70 @@ const writeStartupContractDeploymentInfo = Effect.gen(function* () {
   ),
 );
 
+const describeStartupError = (error: unknown): string => {
+  if (error instanceof Error) {
+    return `${error.name}: ${error.message}`;
+  }
+  try {
+    return JSON.stringify(error) ?? String(error);
+  } catch {
+    return String(error);
+  }
+};
+
+const isRetryableProtocolStatusError = (error: SDK.LucidError): boolean =>
+  error.message.startsWith("Failed to fetch ") ||
+  error.message.startsWith("Failed to query ");
+
+export const fetchProtocolDeploymentStatusWithStartupRetry = (
+  fetchStatus: () => Effect.Effect<
+    Initialization.ProtocolDeploymentStatus,
+    SDK.LucidError
+  >,
+  options: {
+    readonly maxAttempts: number;
+    readonly retryDelayMs: number;
+  },
+): Effect.Effect<Initialization.ProtocolDeploymentStatus, SDK.LucidError> =>
+  Effect.gen(function* () {
+    const maxAttempts = Math.max(1, Math.floor(options.maxAttempts));
+    const retryDelayMs = Math.max(0, Math.floor(options.retryDelayMs));
+    let lastError: SDK.LucidError | undefined;
+
+    for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+      const statusAttempt = yield* Effect.either(fetchStatus());
+      if (statusAttempt._tag === "Right") {
+        if (attempt > 1) {
+          yield* Effect.logInfo(
+            `Startup protocol deployment status query became available after ${attempt.toString()} attempt(s).`,
+          );
+        }
+        return statusAttempt.right;
+      }
+
+      lastError = statusAttempt.left;
+      if (!isRetryableProtocolStatusError(lastError)) {
+        return yield* Effect.fail(lastError);
+      }
+      if (attempt < maxAttempts) {
+        yield* Effect.logWarning(
+          `Startup protocol deployment status query failed (attempt ${attempt.toString()}/${maxAttempts.toString()}); retrying in ${retryDelayMs.toString()}ms. cause=${describeStartupError(lastError)}`,
+        );
+        if (retryDelayMs > 0) {
+          yield* Effect.sleep(Duration.millis(retryDelayMs));
+        }
+      }
+    }
+
+    return yield* Effect.fail(
+      new SDK.LucidError({
+        message:
+          "Startup protocol deployment status query failed after bounded retries",
+        cause: `attempts=${maxAttempts.toString()},last_cause=${describeStartupError(lastError)}`,
+      }),
+    );
+  });
+
 const ensureNodeRuntimeReferenceScriptsOnStartup = (shouldBootstrap: boolean) =>
   Effect.gen(function* () {
     const lucid = yield* Lucid;
@@ -178,9 +242,13 @@ export const ensureProtocolInitializedOnStartup = Effect.gen(function* () {
   });
   const lucid = yield* Lucid;
   const contracts = yield* MidgardContracts;
-  const deploymentStatus = yield* Initialization.fetchProtocolDeploymentStatus(
-    lucid.api,
-    contracts,
+  const deploymentStatus =
+    yield* fetchProtocolDeploymentStatusWithStartupRetry(
+      () => Initialization.fetchProtocolDeploymentStatus(lucid.api, contracts),
+      {
+        maxAttempts: nodeConfig.STARTUP_PROTOCOL_STATUS_QUERY_MAX_ATTEMPTS,
+        retryDelayMs: nodeConfig.STARTUP_PROTOCOL_STATUS_QUERY_RETRY_DELAY_MS,
+      },
   );
   const details = formatStateQueueTopology(deploymentStatus.stateQueueTopology);
 

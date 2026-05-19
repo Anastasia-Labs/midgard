@@ -1,3 +1,6 @@
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { join } from "node:path";
+import { tmpdir } from "node:os";
 import { describe, expect, it } from "vitest";
 import { CML } from "@lucid-evolution/lucid";
 import {
@@ -12,6 +15,8 @@ import {
 } from "@al-ft/midgard-core";
 import {
   fetchNodeBlockTransactions,
+  prepareDoubleSpendFromFile,
+  prepareSampleDoubleSpend,
   prepareDoubleSpendFromTransactions,
   type NodeTransactionPayload,
 } from "../src/index.js";
@@ -77,7 +82,11 @@ describe("prepare-double-spend", () => {
 
     const output = await prepareDoubleSpendFromTransactions({
       headerHash: h28("aa"),
-      transactions: [payloadFromTx(tx1), payloadFromTx(tx2), payloadFromTx(tx3)],
+      transactions: [
+        payloadFromTx(tx1),
+        payloadFromTx(tx2),
+        payloadFromTx(tx3),
+      ],
     });
 
     expect(output.headerHash).toBe(h28("aa"));
@@ -88,10 +97,16 @@ describe("prepare-double-spend", () => {
     });
     expect(output.tx1.doubleSpentInputIndex).toBe(0);
     expect(output.tx2.doubleSpentInputIndex).toBe(1);
-    expect(output.tx1.txInclusion.txMembershipProofCbor.length).toBeGreaterThan(0);
-    expect(output.tx2.txInclusion.txMembershipProofCbor.length).toBeGreaterThan(0);
+    expect(output.tx1.txInclusion.txMembershipProofCbor.length).toBeGreaterThan(
+      0,
+    );
+    expect(output.tx2.txInclusion.txMembershipProofCbor.length).toBeGreaterThan(
+      0,
+    );
     expect(output.tx1.txInclusion.nativeTxId).toBe(output.tx1.nodeTxId);
-    expect(output.tx1.txInclusion.nativeTxCompactCbor.length).toBeGreaterThan(0);
+    expect(output.tx1.txInclusion.nativeTxCompactCbor.length).toBeGreaterThan(
+      0,
+    );
     expect(output.tx1.spendInputCbors[0]).toBe(sharedInput.toString("hex"));
     expect(output.commitmentEncodings.nativeNode.transactionsRoot).toMatch(
       /^[0-9a-f]{64}$/,
@@ -132,13 +147,19 @@ describe("prepare-double-spend", () => {
   });
 
   it("fetches node block and transaction payloads through public node endpoints", async () => {
-    const tx1Payload = payloadFromTx(makeNativeTx([inputCbor(h32("99"), 0n)], 1n));
-    const tx2Payload = payloadFromTx(makeNativeTx([inputCbor(h32("aa"), 0n)], 2n));
+    const tx1Payload = payloadFromTx(
+      makeNativeTx([inputCbor(h32("99"), 0n)], 1n),
+    );
+    const tx2Payload = payloadFromTx(
+      makeNativeTx([inputCbor(h32("aa"), 0n)], 2n),
+    );
     const fetchImpl = async (input: string | URL): Promise<Response> => {
       const url = new URL(String(input));
       if (url.pathname === "/block") {
         return new Response(
-          JSON.stringify({ hashes: [tx1Payload.nodeTxId, tx2Payload.nodeTxId] }),
+          JSON.stringify({
+            hashes: [tx1Payload.nodeTxId, tx2Payload.nodeTxId],
+          }),
           { status: 200 },
         );
       }
@@ -164,5 +185,62 @@ describe("prepare-double-spend", () => {
         fetchImpl,
       }),
     ).resolves.toEqual([tx1Payload, tx2Payload]);
+  });
+
+  it("prepares submit-step material from an explicit transactions file", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "midgard-fault-proof-"));
+    try {
+      const sharedInput = inputCbor(h32("ab"), 3n);
+      const tx1Payload = payloadFromTx(makeNativeTx([sharedInput], 1n));
+      const tx2Payload = payloadFromTx(
+        makeNativeTx([inputCbor(h32("cd"), 0n), sharedInput], 2n),
+      );
+      const transactionsPath = join(dir, "block-transactions.json");
+      await writeFile(
+        transactionsPath,
+        JSON.stringify([tx1Payload, tx2Payload]),
+      );
+
+      const output = await prepareDoubleSpendFromFile({
+        headerHash: h28("ee"),
+        transactionsPath,
+        outputDir: dir,
+      });
+
+      expect(output.doubleSpentInput).toEqual({
+        transactionId: h32("ab"),
+        outputIndex: 3n,
+      });
+      expect(output.files?.tx1InputsPath).toBe(join(dir, "tx1-inputs.json"));
+      expect(output.compatibility.canUseSubmitStepCommands).toBe(true);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("writes a deterministic sample double-spend block transaction file", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "midgard-fault-proof-"));
+    try {
+      const output = await prepareSampleDoubleSpend({
+        headerHash: h28("ef"),
+        outputDir: dir,
+      });
+
+      expect(output.txCount).toBe(3);
+      expect(output.doubleSpentInput).toEqual({
+        transactionId: h32("11"),
+        outputIndex: 7n,
+      });
+      expect(output.files?.blockTransactionsPath).toBe(
+        join(dir, "block-transactions.json"),
+      );
+      const payloads = JSON.parse(
+        await readFile(join(dir, "block-transactions.json"), "utf8"),
+      ) as unknown[];
+      expect(payloads).toHaveLength(3);
+      expect(output.compatibility.canUseSubmitStepCommands).toBe(true);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
   });
 });

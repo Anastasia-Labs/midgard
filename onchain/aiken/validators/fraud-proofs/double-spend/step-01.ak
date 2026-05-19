@@ -80,7 +80,7 @@ validator main(
         let expected_output_state: Data =
           step_02.State {
             verified_tx1_id: bad_tx_id,
-            verified_tx1_spend_inputs_hash: bad_tx_view.body.spend_inputs_hash,
+            verified_tx1_spend_inputs_hash: bad_tx_view.tx_compact.body.spend_inputs_hash,
           }
         expect output_state_data == expected_output_state
 

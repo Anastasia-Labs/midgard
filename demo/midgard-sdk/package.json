@@ -23,6 +23,8 @@
   "author": "",
   "license": "ISC",
   "devDependencies": {
+    "@aiken-lang/merkle-patricia-forestry": "^1.2.0",
+    "@al-ft/midgard-core": "workspace:*",
     "@effect/vitest": "^0.17.8",
     "@sinclair/typebox": "^0.34.28",
     "@types/node": "^22.13.5",

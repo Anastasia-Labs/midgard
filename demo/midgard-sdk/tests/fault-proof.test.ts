@@ -15,6 +15,7 @@ import {
   DoubleSpendStep04SpendRedeemer,
   FraudProofComputationThreadRedeemer,
   FraudProofTokenMintRedeemer,
+  MidgardTxInputList,
   buildDoubleSpendFaultProofContracts,
   parseFaultProofBlueprint,
 } from "../src/index.js";
@@ -31,33 +32,17 @@ const h28c = "44".repeat(28);
 
 const proof = [];
 const nativeTxCompactCbor = "840182005820" + "55".repeat(32) + "00";
-const spendInputCbors = ["abcd", "1234"];
-const doubleSpentInputCbor = "abcd";
-const nativeTx = {
-  body: {
-    spend_inputs_hash: h32,
-    reference_inputs_hash: h32,
-    outputs_hash: h32,
-    fee: 0n,
-    validity_interval_start: -1n,
-    validity_interval_end: -1n,
-    required_observers_hash: h32,
-    required_signers_hash: h32,
-    mint_hash: h32,
-    script_integrity_hash: h32,
-    auxiliary_data_hash: h32,
-    network_id: 0n,
-  },
-  witness_set_hash: h32,
-  validity_code: 0n,
-};
+const spendInputs = [
+  { tx_id: "aa".repeat(32), output_index: 0n },
+  { tx_id: "bb".repeat(32), output_index: 1n },
+];
+const doubleSpentInput = spendInputs[0]!;
 const txInclusionArgs = {
   input_index: 0n,
   output_index: 0n,
   hub_ref_input_index: 1n,
   state_queue_node_ref_input_index: 2n,
   native_tx_id: h32,
-  native_tx: nativeTx,
   native_tx_compact_cbor: nativeTxCompactCbor,
   tx_membership_proof: proof,
   inclusion_proof_script_withdraw_redeemer_index: 3n,
@@ -145,13 +130,17 @@ describe("fault-proof ABI", () => {
     };
     expect(roundTrip(step03Datum, DoubleSpendStep03Datum)).toEqual(step03Datum);
     expect(
+      roundTrip(spendInputs, MidgardTxInputList),
+    ).toEqual(spendInputs);
+
+    expect(
       roundTrip(
         {
           Continue: [
             {
               input_index: 0n,
               output_index: 0n,
-              tx1_spend_input_cbors: spendInputCbors,
+              tx1_spend_inputs_ref_input_index: 1n,
               double_spent_input_index: 0n,
             },
           ],
@@ -159,14 +148,14 @@ describe("fault-proof ABI", () => {
         DoubleSpendStep03SpendRedeemer,
       ),
     ).toMatchObject({
-      Continue: [{ tx1_spend_input_cbors: spendInputCbors }],
+      Continue: [{ tx1_spend_inputs_ref_input_index: 1n }],
     });
 
     const step04Datum = {
       fraud_prover: h28,
       data: {
         verified_tx2_spend_inputs_hash: h32b,
-        double_spent_input_cbor: doubleSpentInputCbor,
+        double_spent_input: doubleSpentInput,
       },
     };
     expect(roundTrip(step04Datum, DoubleSpendStep04Datum)).toEqual(step04Datum);
@@ -178,7 +167,7 @@ describe("fault-proof ABI", () => {
               input_index: 0n,
               output_index: 0n,
               fraud_proof_mint_redeemer_index: 1n,
-              tx2_spend_input_cbors: spendInputCbors,
+              tx2_spend_inputs_ref_input_index: 2n,
               double_spent_input_index: 0n,
             },
           ],

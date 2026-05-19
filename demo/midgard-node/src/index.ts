@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 import { Command } from "commander";
-import { ENV_VARS_GUIDE, chalk } from "@/utils.js";
+import { ENV_VARS_GUIDE, chalk, isHexString } from "@/utils.js";
 import { runNode } from "@/commands/index.js";
 import { auditBlocksImmutableProgram } from "@/commands/audit-blocks-immutable.js";
 import * as ContractDeploymentInfo from "@/commands/contract-deployment-info.js";
@@ -36,6 +36,7 @@ import { NodeRuntime } from "@effect/platform-node";
 import { DatabaseError } from "@/database/utils/common.js";
 import { SqlError } from "@effect/sql";
 import * as MigrationRunner from "@/database/migrations/runner.js";
+import { commitExplicitBlockHeaderProgram } from "@/workers/commit-block-header.js";
 
 dotenv.config();
 const VERSION = packageJson.version;
@@ -57,6 +58,27 @@ const cliJsonReplacer = (_key: string, value: unknown): unknown => {
 
 const formatCliJson = (value: unknown): string =>
   JSON.stringify(value, cliJsonReplacer, 2);
+
+const parseMerkleRootOption = (value: unknown, label: string): string => {
+  if (typeof value !== "string" || value.length !== 64 || !isHexString(value)) {
+    throw new Error(`${label} must be 32 bytes of hex`);
+  }
+  return value.toLowerCase();
+};
+
+const parseOptionalEndTimeMs = (value: unknown): number | undefined => {
+  if (value === undefined) {
+    return undefined;
+  }
+  if (typeof value !== "string" || !/^\d+$/.test(value)) {
+    throw new Error("--end-time-ms must be a non-negative integer");
+  }
+  const parsed = Number(value);
+  if (!Number.isSafeInteger(parsed) || parsed < 0) {
+    throw new Error("--end-time-ms must be a safe non-negative integer");
+  }
+  return parsed;
+};
 
 const provideTxServices = <A, E>(
   effect: Effect.Effect<
@@ -515,6 +537,55 @@ program
       Effect.tap((result) =>
         Effect.logInfo(
           `register-active-operator completed: ${JSON.stringify(result)}`,
+        ),
+      ),
+    );
+
+    NodeRuntime.runMain(mainEffect, { teardown: undefined });
+  });
+
+program
+  .command("commit-explicit-block-header")
+  .description(
+    "Commit a state_queue block header with caller-supplied roots using the live operator path",
+  )
+  .requiredOption("--utxos-root <hex>", "Committed UTxO MPF root")
+  .requiredOption(
+    "--transactions-root <hex>",
+    "Committed Midgard-native transaction MPF root",
+  )
+  .requiredOption("--deposits-root <hex>", "Committed deposits MPF root")
+  .requiredOption("--withdrawals-root <hex>", "Committed withdrawals MPF root")
+  .option(
+    "--end-time-ms <ms>",
+    "Optional candidate block end time in POSIX milliseconds",
+  )
+  .requiredOption(
+    "--unsafe-commit-caller-supplied-roots",
+    "Acknowledge that this submits caller-supplied roots and is only for explicit fault-proof drills",
+  )
+  .option("--no-await-confirmation", "Submit without waiting for confirmation")
+  .action(async (opts) => {
+    const params = {
+      utxosRoot: parseMerkleRootOption(opts.utxosRoot, "--utxos-root"),
+      transactionsRoot: parseMerkleRootOption(
+        opts.transactionsRoot,
+        "--transactions-root",
+      ),
+      depositsRoot: parseMerkleRootOption(opts.depositsRoot, "--deposits-root"),
+      withdrawalsRoot: parseMerkleRootOption(
+        opts.withdrawalsRoot,
+        "--withdrawals-root",
+      ),
+      endTimeMs: parseOptionalEndTimeMs(opts.endTimeMs),
+      awaitConfirmation: opts.awaitConfirmation !== false,
+    };
+    const mainEffect = provideTxServices(
+      commitExplicitBlockHeaderProgram(params).pipe(
+        Effect.tap((result) =>
+          Effect.sync(() => {
+            process.stdout.write(`${formatCliJson(result)}\n`);
+          }),
         ),
       ),
     );

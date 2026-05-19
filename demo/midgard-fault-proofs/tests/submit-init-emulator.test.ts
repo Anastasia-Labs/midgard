@@ -29,6 +29,13 @@ import {
   type WithdrawalValidator,
 } from "@lucid-evolution/lucid";
 import {
+  ACTIVE_OPERATOR_NODE_ASSET_NAME_PREFIX,
+  ACTIVE_OPERATORS_ROOT_ASSET_NAME,
+  ActiveOperatorDatum,
+  ActiveOperatorMintRedeemer,
+  ActiveOperatorSpendRedeemer,
+  AddressData,
+  ConfirmedState,
   EMPTY_MERKLE_TREE_ROOT,
   FRAUD_PROOF_CATALOGUE_ASSET_NAME,
   FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER,
@@ -39,17 +46,32 @@ import {
   FraudProofCatalogueDatum,
   FraudProofComputationThreadStepDatum,
   FraudProofTokenDatum,
+  GENESIS_HEADER_HASH,
+  GENESIS_PROTOCOL_VERSION,
+  GENESIS_UTXO_ROOT,
   HUB_ORACLE_ASSET_NAME,
   Header,
   HubOracleDatum,
-  MerkleRoot,
+  REGISTERED_OPERATORS_ROOT_ASSET_NAME,
+  RegisteredOperatorMintRedeemer,
+  SCHEDULER_ASSET_NAME,
   STATE_QUEUE_NODE_ASSET_NAME_PREFIX,
+  STATE_QUEUE_ROOT_ASSET_NAME,
+  SchedulerDatum,
+  SchedulerMintRedeemer,
+  SchedulerSpendRedeemer,
   ScriptHashSchema,
+  StateQueueRedeemer,
+  addressDataFromBech32,
   buildDoubleSpendFaultProofContracts,
   encodeLinkedListNodeView,
+  getHeaderFromStateQueueDatum,
   hashBlockHeader,
+  incompleteEmulatorCommitBlockHeaderTxProgram,
   makeHubOracleDatum,
   parseFaultProofBlueprint,
+  resolveMintPolicyTxInfoRedeemerIndexFromPolicySet,
+  utxoToStateQueueUTxO,
   type AuthenticatedValidator,
   type FraudProofCatalogueDeploymentInfo,
   type FraudProofs,
@@ -82,6 +104,7 @@ import {
   submitStep02,
   submitStep03,
   submitStep04,
+  submitRemoveFraudulentBlock,
 } from "../src/index.js";
 
 const moduleDir = dirname(fileURLToPath(import.meta.url));
@@ -111,7 +134,9 @@ const readBlueprint = (path: string): Blueprint =>
   JSON.parse(readFileSync(path, "utf8")) as Blueprint;
 
 const getCompiledScript = (blueprint: Blueprint, title: string): string => {
-  const found = blueprint.validators.find((validator) => validator.title === title);
+  const found = blueprint.validators.find(
+    (validator) => validator.title === title,
+  );
   if (found === undefined) {
     throw new Error(`Validator with title "${title}" not found`);
   }
@@ -195,9 +220,13 @@ const alwaysAuthenticated = (
     alwaysScript(blueprint, "midgard", baseName, "spend"),
   );
 
-const makeAlwaysSucceedsContracts = (blueprint: Blueprint): MidgardValidators => {
+const makeAlwaysSucceedsContracts = (
+  blueprint: Blueprint,
+): MidgardValidators => {
   const reserve = {
-    ...makeSpendingValidator(alwaysScript(blueprint, "midgard", "reserve", "spend")),
+    ...makeSpendingValidator(
+      alwaysScript(blueprint, "midgard", "reserve", "spend"),
+    ),
     ...makeWithdrawalValidator(
       alwaysScript(blueprint, "midgard", "reserve", "withdraw"),
     ),
@@ -237,7 +266,10 @@ const makeAlwaysSucceedsContracts = (blueprint: Blueprint): MidgardValidators =>
     activeOperators: alwaysAuthenticated(blueprint, "active_operators"),
     retiredOperators: alwaysAuthenticated(blueprint, "retired_operators"),
     escapeHatch: alwaysAuthenticated(blueprint, "escape_hatch"),
-    fraudProofCatalogue: alwaysAuthenticated(blueprint, "fraud_proof_catalogue"),
+    fraudProofCatalogue: alwaysAuthenticated(
+      blueprint,
+      "fraud_proof_catalogue",
+    ),
     fraudProof: alwaysAuthenticated(blueprint, "fraud_proof"),
     deposit: alwaysAuthenticated(blueprint, "deposit"),
     withdrawal: alwaysAuthenticated(blueprint, "withdrawal"),
@@ -254,12 +286,18 @@ const buildMinimalFaultProofContracts = async (
   alwaysBlueprint: Blueprint,
   nonceUtxo: UTxO,
 ): Promise<MidgardValidators> => {
+  // This integration test proves the real active-operators slashing and
+  // scheduler removal path. Registered/retired operator setup remains
+  // scaffolded only where needed to support the focused removal flow.
   const base = makeAlwaysSucceedsContracts(alwaysBlueprint);
   const hubOracle = makeMintingValidator(
     applyParamsToScript(
       getCompiledScript(realBlueprint, "hub_oracle.mint.mint"),
       [
-        new Constr(0, [nonceUtxo.txHash.toLowerCase(), BigInt(nonceUtxo.outputIndex)]),
+        new Constr(0, [
+          nonceUtxo.txHash.toLowerCase(),
+          BigInt(nonceUtxo.outputIndex),
+        ]),
         HUB_ORACLE_ASSET_NAME,
       ],
     ),
@@ -290,6 +328,37 @@ const buildMinimalFaultProofContracts = async (
     ...withHubOracle,
     fraudProofCatalogue,
   };
+
+  const activeOperatorsMinting = makeMintingValidator(
+    applyParamsToScript(
+      getCompiledScript(
+        realBlueprint,
+        "operator_directory/active_operators.mint.mint",
+      ),
+      [
+        hubOracle.policyId,
+        withCatalogue.registeredOperators.policyId,
+        withCatalogue.retiredOperators.policyId,
+      ],
+    ),
+  );
+  const activeOperators: AuthenticatedValidator = {
+    ...activeOperatorsMinting,
+    ...makeSpendingValidator(
+      applyParamsToScript(
+        getCompiledScript(
+          realBlueprint,
+          "operator_directory/active_operators.spend.spend",
+        ),
+        [activeOperatorsMinting.policyId, hubOracle.policyId],
+      ),
+    ),
+  };
+  const withActiveOperators = {
+    ...withCatalogue,
+    activeOperators,
+  };
+
   const doubleSpendContracts = await Effect.runPromise(
     buildDoubleSpendFaultProofContracts({
       blueprint: parseFaultProofBlueprint(realBlueprint),
@@ -298,9 +367,65 @@ const buildMinimalFaultProofContracts = async (
       fraudProofCataloguePolicyId: fraudProofCatalogue.policyId,
     }),
   );
+  const activeOperatorsAddressData = await Effect.runPromise(
+    addressDataFromBech32(
+      withActiveOperators.activeOperators.spendingScriptAddress,
+    ).pipe(
+      Effect.map((addressData) => Data.from(Data.to(addressData, AddressData))),
+    ),
+  );
+  const schedulerMinting = makeMintingValidator(
+    applyParamsToScript(
+      getCompiledScript(realBlueprint, "scheduler.mint.mint"),
+      [hubOracle.policyId],
+    ),
+  );
+  const scheduler: AuthenticatedValidator = {
+    ...schedulerMinting,
+    ...makeSpendingValidator(
+      applyParamsToScript(
+        getCompiledScript(realBlueprint, "scheduler.spend.spend"),
+        [
+          withActiveOperators.registeredOperators.policyId,
+          activeOperatorsAddressData,
+          withActiveOperators.activeOperators.policyId,
+          schedulerMinting.policyId,
+          hubOracle.policyId,
+        ],
+      ),
+    ),
+  };
+  const withScheduler = {
+    ...withActiveOperators,
+    scheduler,
+  };
+  const stateQueueMinting = makeMintingValidator(
+    applyParamsToScript(
+      getCompiledScript(realBlueprint, "state_queue.mint.mint"),
+      [
+        hubOracle.policyId,
+        withScheduler.activeOperators.policyId,
+        activeOperatorsAddressData,
+        withScheduler.retiredOperators.policyId,
+        withScheduler.scheduler.policyId,
+        doubleSpendContracts.fraudProof.policyId,
+        withScheduler.settlement.policyId,
+      ],
+    ),
+  );
+  const stateQueueSpending = makeSpendingValidator(
+    applyParamsToScript(
+      getCompiledScript(realBlueprint, "state_queue.spend.spend"),
+      [stateQueueMinting.policyId],
+    ),
+  );
 
   return {
-    ...withCatalogue,
+    ...withScheduler,
+    stateQueue: {
+      ...stateQueueMinting,
+      ...stateQueueSpending,
+    },
     fraudProof: {
       ...doubleSpendContracts.fraudProof,
       policyId: doubleSpendContracts.fraudProof.policyId,
@@ -308,7 +433,7 @@ const buildMinimalFaultProofContracts = async (
       mintingScriptCBOR: doubleSpendContracts.fraudProof.mintingScriptCBOR,
     },
     fraudProofs: {
-      ...withCatalogue.fraudProofs,
+      ...withActiveOperators.fraudProofs,
       doubleSpend: doubleSpendContracts.doubleSpend.firstStep,
     },
   };
@@ -343,6 +468,89 @@ const trieRootHex = (trie: Trie): string =>
     ? EMPTY_MERKLE_TREE_ROOT
     : Buffer.from(trie.hash).toString("hex");
 
+const compareLedgerOutRefs = (left: UTxO, right: UTxO): number => {
+  const hashOrder = Buffer.from(left.txHash, "hex").compare(
+    Buffer.from(right.txHash, "hex"),
+  );
+  if (hashOrder !== 0) {
+    return hashOrder;
+  }
+  return left.outputIndex - right.outputIndex;
+};
+
+const ledgerOrderedIndex = (
+  candidates: readonly UTxO[],
+  target: UTxO,
+  label: string,
+): bigint => {
+  const sorted = [...candidates].sort(compareLedgerOutRefs);
+  const index = sorted.findIndex(
+    (candidate) =>
+      candidate.txHash === target.txHash &&
+      candidate.outputIndex === target.outputIndex,
+  );
+  if (index < 0) {
+    throw new Error(`Missing ${label} in candidate set`);
+  }
+  return BigInt(index);
+};
+
+const spendRedeemerTxInfoIndex = (
+  scriptSpendInputs: readonly UTxO[],
+  target: UTxO,
+  label: string,
+): bigint => ledgerOrderedIndex(scriptSpendInputs, target, label);
+
+const alignUnixTimeToEmulatorSlotBoundary = (
+  lucid: Awaited<ReturnType<typeof Lucid>>,
+  unixTime: number,
+): number => {
+  const provider = lucid.config().provider as {
+    readonly time?: number;
+    readonly slot?: number;
+  };
+  if (typeof provider.time !== "number" || typeof provider.slot !== "number") {
+    return unixTime;
+  }
+  return (
+    provider.time - provider.slot * 1000 + lucid.unixTimeToSlot(unixTime) * 1000
+  );
+};
+
+const firstWalletUtxo = async (
+  lucid: Awaited<ReturnType<typeof Lucid>>,
+  label: string,
+): Promise<UTxO> => {
+  const [utxo] = await lucid.wallet().getUtxos();
+  if (utxo === undefined) {
+    throw new Error(`Expected wallet UTxO for ${label}`);
+  }
+  return utxo;
+};
+
+const SETUP_OUTPUT_INDEX = {
+  stateQueueRoot: 2n,
+  activeOperatorsRoot: 3n,
+} as const;
+
+const ACTIVE_OPERATOR_ACTIVATION_OUTPUT_INDEX = {
+  root: 0n,
+  insertedNode: 1n,
+} as const;
+
+const SCHEDULER_APPOINTMENT_OUTPUT_INDEX = {
+  scheduler: 0n,
+} as const;
+
+const COMMIT_OUTPUT_INDEX = {
+  activeOperatorNode: 2n,
+} as const;
+
+const REMOVE_OUTPUT_INDEX = {
+  activeOperatorsRoot: 1n,
+  scheduler: 2n,
+} as const;
+
 const h32 = (byte: string): string => byte.repeat(32);
 
 type TestOutputReference = {
@@ -375,6 +583,11 @@ const outputReferenceCbor = (outRef: TestOutputReference): Buffer =>
     ).to_cbor_bytes(),
   );
 
+const midgardTxInput = (outRef: TestOutputReference) => ({
+  tx_id: outRef.transactionId,
+  output_index: outRef.outputIndex,
+});
+
 const makeNativeTx = ({
   spendInputCbors,
   fee,
@@ -393,7 +606,9 @@ const makeNativeTx = ({
     validity: "TxIsValid",
     body: {
       spendInputsPreimageCbor: encodeCbor(spendInputCbors),
-      referenceInputsPreimageCbor: encodeCbor([Buffer.from(h32(referenceByte), "hex")]),
+      referenceInputsPreimageCbor: encodeCbor([
+        Buffer.from(h32(referenceByte), "hex"),
+      ]),
       outputsPreimageCbor: encodeCbor([Buffer.from(h32(outputByte), "hex")]),
       requiredObserversPreimageCbor: EMPTY_CBOR_LIST,
       requiredSignersPreimageCbor: EMPTY_CBOR_LIST,
@@ -406,7 +621,9 @@ const makeNativeTx = ({
       networkId: 0n,
     },
     witnessSet: {
-      addrTxWitsPreimageCbor: encodeCbor([Buffer.from(h32(witnessByte), "hex")]),
+      addrTxWitsPreimageCbor: encodeCbor([
+        Buffer.from(h32(witnessByte), "hex"),
+      ]),
       scriptTxWitsPreimageCbor: EMPTY_CBOR_LIST,
       redeemerTxWitsPreimageCbor: EMPTY_CBOR_LIST,
     },
@@ -459,9 +676,11 @@ const buildTransactionInclusionFixture = async (): Promise<{
   for (const entry of [tx1, tx2]) {
     await trie.insert(
       Buffer.from(entry.nativeTxId, "hex"),
-      Buffer.from(encodeMidgardNativeTxCompact(
-        entry === tx1 ? tx1Native.compact : tx2Native.compact,
-      )),
+      Buffer.from(
+        encodeMidgardNativeTxCompact(
+          entry === tx1 ? tx1Native.compact : tx2Native.compact,
+        ),
+      ),
     );
   }
   const withProof = async (
@@ -563,16 +782,16 @@ const makeHeader = (
   now: number,
   transactionsRoot = EMPTY_MERKLE_TREE_ROOT,
 ): Header => ({
-  prevUtxosRoot: EMPTY_MERKLE_TREE_ROOT,
+  prevUtxosRoot: GENESIS_UTXO_ROOT,
   utxosRoot: EMPTY_MERKLE_TREE_ROOT,
   transactionsRoot,
   depositsRoot: EMPTY_MERKLE_TREE_ROOT,
   withdrawalsRoot: EMPTY_MERKLE_TREE_ROOT,
   startTime: BigInt(now),
   endTime: BigInt(now + 1_000),
-  prevHeaderHash: "00".repeat(28),
+  prevHeaderHash: GENESIS_HEADER_HASH,
   operatorVkey,
-  protocolVersion: 0n,
+  protocolVersion: GENESIS_PROTOCOL_VERSION,
 });
 
 const submitSetupTx = async ({
@@ -587,7 +806,19 @@ const submitSetupTx = async ({
   readonly nonceUtxo: UTxO;
   readonly catalogue: FraudProofCatalogueDeploymentInfo;
   readonly header: Header;
-}): Promise<{ readonly fraudulentBlockOutRef: string; readonly headerHash: string }> => {
+}): Promise<{
+  readonly fraudulentBlockOutRef: string;
+  readonly headerHash: string;
+  readonly stateQueueBlockUnit: string;
+  readonly stateQueueRootUnit: string;
+  readonly hubOracle: UTxO;
+  readonly scheduler: UTxO;
+  readonly activeOperatorsRoot: UTxO;
+  readonly activeOperatorsRootUnit: string;
+  readonly activeOperatorNode: UTxO;
+  readonly activeOperatorNodeUnit: string;
+  readonly registeredOperatorsRoot: UTxO;
+}> => {
   const hubOracleDatum = await Effect.runPromise(makeHubOracleDatum(contracts));
   const headerHash = await Effect.runPromise(hashBlockHeader(header));
   const hubOracleUnit = toUnit(
@@ -602,9 +833,42 @@ const submitSetupTx = async ({
     contracts.stateQueue.policyId,
     STATE_QUEUE_NODE_ASSET_NAME_PREFIX + headerHash,
   );
+  const stateQueueRootUnit = toUnit(
+    contracts.stateQueue.policyId,
+    STATE_QUEUE_ROOT_ASSET_NAME,
+  );
+  const schedulerUnit = toUnit(
+    contracts.scheduler.policyId,
+    SCHEDULER_ASSET_NAME,
+  );
+  const activeOperatorsRootUnit = toUnit(
+    contracts.activeOperators.policyId,
+    ACTIVE_OPERATORS_ROOT_ASSET_NAME,
+  );
+  const activeOperatorNodeUnit = toUnit(
+    contracts.activeOperators.policyId,
+    ACTIVE_OPERATOR_NODE_ASSET_NAME_PREFIX + header.operatorVkey,
+  );
+  const registeredOperatorsRootUnit = toUnit(
+    contracts.registeredOperators.policyId,
+    REGISTERED_OPERATORS_ROOT_ASSET_NAME,
+  );
+  const confirmedState = {
+    headerHash: GENESIS_HEADER_HASH,
+    prevHeaderHash: GENESIS_HEADER_HASH,
+    utxoRoot: GENESIS_UTXO_ROOT,
+    startTime: header.startTime,
+    endTime: header.startTime,
+    protocolVersion: GENESIS_PROTOCOL_VERSION,
+  };
+  const rootNodeDatum = (
+    data: Parameters<typeof encodeLinkedListNodeView>[0]["data"],
+  ): string => encodeLinkedListNodeView({ key: "Empty", next: "Empty", data });
 
   const unsigned = await lucid
     .newTx()
+    .validFrom(Number(header.startTime - 120_000n))
+    .validTo(Number(header.startTime + 1n))
     .collectFrom([nonceUtxo])
     .mintAssets({ [hubOracleUnit]: 1n }, Data.void())
     .pay.ToAddressWithData(
@@ -618,6 +882,50 @@ const submitSetupTx = async ({
       },
       { [hubOracleUnit]: 1n },
     )
+    .mintAssets({ [schedulerUnit]: 1n }, Data.to("Init", SchedulerMintRedeemer))
+    .pay.ToContract(
+      contracts.scheduler.spendingScriptAddress,
+      {
+        kind: "inline",
+        value: Data.to("NoActiveOperators", SchedulerDatum),
+      },
+      { [schedulerUnit]: 1n },
+    )
+    // Fixed by the authored setup output order: hub oracle, scheduler,
+    // state-queue root, active-operators root, then registered-operators root.
+    .mintAssets(
+      { [stateQueueRootUnit]: 1n },
+      Data.to(
+        { Init: { output_index: SETUP_OUTPUT_INDEX.stateQueueRoot } },
+        StateQueueRedeemer,
+      ),
+    )
+    .pay.ToContract(
+      contracts.stateQueue.spendingScriptAddress,
+      {
+        kind: "inline",
+        value: rootNodeDatum(Data.castTo(confirmedState, ConfirmedState)),
+      },
+      { [stateQueueRootUnit]: 1n },
+    )
+    .mintAssets(
+      { [activeOperatorsRootUnit]: 1n },
+      Data.to(
+        { Init: { output_index: SETUP_OUTPUT_INDEX.activeOperatorsRoot } },
+        ActiveOperatorMintRedeemer,
+      ),
+    )
+    .pay.ToContract(
+      contracts.activeOperators.spendingScriptAddress,
+      { kind: "inline", value: rootNodeDatum("") },
+      { [activeOperatorsRootUnit]: 1n },
+    )
+    .mintAssets({ [registeredOperatorsRootUnit]: 1n }, Data.void())
+    .pay.ToContract(
+      contracts.registeredOperators.spendingScriptAddress,
+      { kind: "inline", value: rootNodeDatum("") },
+      { [registeredOperatorsRootUnit]: 1n },
+    )
     .mintAssets({ [fraudProofCatalogueUnit]: 1n }, Data.void())
     .pay.ToAddressWithData(
       contracts.fraudProofCatalogue.spendingScriptAddress,
@@ -627,356 +935,822 @@ const submitSetupTx = async ({
       },
       { [fraudProofCatalogueUnit]: 1n },
     )
-    .mintAssets({ [stateQueueBlockUnit]: 1n }, Data.void())
-    .pay.ToContract(
-      contracts.stateQueue.spendingScriptAddress,
-      {
-        kind: "inline",
-        value: encodeLinkedListNodeView({
-          key: { Key: { key: headerHash } },
-          next: "Empty",
-          data: Data.castTo(header, Header),
-        }),
-      },
-      { [stateQueueBlockUnit]: 1n },
-    )
     .attach.MintingPolicy(contracts.hubOracle.mintingScript)
     .attach.MintingPolicy(contracts.fraudProofCatalogue.mintingScript)
+    .attach.MintingPolicy(contracts.scheduler.mintingScript)
     .attach.MintingPolicy(contracts.stateQueue.mintingScript)
+    .attach.MintingPolicy(contracts.activeOperators.mintingScript)
+    .attach.MintingPolicy(contracts.registeredOperators.mintingScript)
     .complete({ localUPLCEval: true });
   const signed = await unsigned.sign.withWallet().complete();
-  const txHash = await signed.submit();
-  await lucid.awaitTx(txHash);
+  await lucid.awaitTx(await signed.submit());
+
+  const [initialActiveOperatorsRoot] = await lucid.utxosAtWithUnit(
+    contracts.activeOperators.spendingScriptAddress,
+    activeOperatorsRootUnit,
+  );
+  if (initialActiveOperatorsRoot === undefined) {
+    throw new Error("Setup transaction did not produce active-operators root");
+  }
+  const activationInputs = [initialActiveOperatorsRoot];
+  const activationMintPolicies = [
+    contracts.activeOperators.policyId,
+    contracts.registeredOperators.policyId,
+  ];
+  const activeOperatorsActivateRedeemerTxInfoIndex =
+    resolveMintPolicyTxInfoRedeemerIndexFromPolicySet({
+      policyIds: activationMintPolicies,
+      targetPolicyId: contracts.activeOperators.policyId,
+      precedingSpendRedeemerCount: activationInputs.length,
+    });
+  const registeredOperatorsActivateRedeemerTxInfoIndex =
+    resolveMintPolicyTxInfoRedeemerIndexFromPolicySet({
+      policyIds: activationMintPolicies,
+      targetPolicyId: contracts.registeredOperators.policyId,
+      precedingSpendRedeemerCount: activationInputs.length,
+    });
+  const registeredOperatorActivationUnit = toUnit(
+    contracts.registeredOperators.policyId,
+    "00",
+  );
+  const activeRootWithOperatorDatum = encodeLinkedListNodeView({
+    key: "Empty",
+    next: { Key: { key: header.operatorVkey } },
+    data: "",
+  });
+  const activeOperatorInitialDatum = encodeLinkedListNodeView({
+    key: { Key: { key: header.operatorVkey } },
+    next: "Empty",
+    data: Data.castTo(
+      { bond_unlock_time: null, inactivity_strikes: 0n },
+      ActiveOperatorDatum,
+    ),
+  });
+  const activationUnsigned = await lucid
+    .newTx()
+    .collectFrom(
+      [initialActiveOperatorsRoot],
+      Data.to("ListStateTransition", ActiveOperatorSpendRedeemer),
+    )
+    .mintAssets(
+      { [activeOperatorNodeUnit]: 1n },
+      Data.to(
+        {
+          ActivateOperator: {
+            new_active_operator_key: header.operatorVkey,
+            new_active_operator_bond_unlock_time: null,
+            active_operator_anchor_element_input_index: ledgerOrderedIndex(
+              activationInputs,
+              initialActiveOperatorsRoot,
+              "active-operators root activation input",
+            ),
+            active_operator_anchor_element_output_index:
+              ACTIVE_OPERATOR_ACTIVATION_OUTPUT_INDEX.root,
+            active_operator_inserted_node_output_index:
+              ACTIVE_OPERATOR_ACTIVATION_OUTPUT_INDEX.insertedNode,
+            registered_operators_redeemer_index:
+              registeredOperatorsActivateRedeemerTxInfoIndex,
+          },
+        },
+        ActiveOperatorMintRedeemer,
+      ),
+    )
+    .mintAssets(
+      { [registeredOperatorActivationUnit]: 1n },
+      Data.to(
+        {
+          ActivateOperator: {
+            activating_operator: header.operatorVkey,
+            anchor_element_input_index: 0n,
+            removed_node_input_index: 0n,
+            anchor_element_output_index:
+              ACTIVE_OPERATOR_ACTIVATION_OUTPUT_INDEX.root,
+            hub_oracle_ref_input_index: 0n,
+            retired_operators_element_ref_input_index: 0n,
+            active_operators_redeemer_index:
+              activeOperatorsActivateRedeemerTxInfoIndex,
+          },
+        },
+        RegisteredOperatorMintRedeemer,
+      ),
+    )
+    .pay.ToContract(
+      contracts.activeOperators.spendingScriptAddress,
+      { kind: "inline", value: activeRootWithOperatorDatum },
+      initialActiveOperatorsRoot.assets,
+    )
+    .pay.ToContract(
+      contracts.activeOperators.spendingScriptAddress,
+      { kind: "inline", value: activeOperatorInitialDatum },
+      { lovelace: 20_000_000n, [activeOperatorNodeUnit]: 1n },
+    )
+    .attach.MintingPolicy(contracts.activeOperators.mintingScript)
+    .attach.Script(contracts.activeOperators.spendingScript)
+    .attach.MintingPolicy(contracts.registeredOperators.mintingScript)
+    .complete({ localUPLCEval: true });
+  const activationSigned = await activationUnsigned.sign
+    .withWallet()
+    .complete();
+  await lucid.awaitTx(await activationSigned.submit());
+
+  const [hubOracleUtxo] = await lucid.utxosAtWithUnit(
+    credentialToAddress(
+      network,
+      scriptHashToCredential(contracts.hubOracle.policyId),
+    ),
+    hubOracleUnit,
+  );
+  const [stateQueueRootUtxo] = await lucid.utxosAtWithUnit(
+    contracts.stateQueue.spendingScriptAddress,
+    stateQueueRootUnit,
+  );
+  const [schedulerUtxo] = await lucid.utxosAtWithUnit(
+    contracts.scheduler.spendingScriptAddress,
+    schedulerUnit,
+  );
+  const [activeOperatorNode] = await lucid.utxosAtWithUnit(
+    contracts.activeOperators.spendingScriptAddress,
+    activeOperatorNodeUnit,
+  );
+  const [activeOperatorsRoot] = await lucid.utxosAtWithUnit(
+    contracts.activeOperators.spendingScriptAddress,
+    activeOperatorsRootUnit,
+  );
+  const [registeredOperatorsRoot] = await lucid.utxosAtWithUnit(
+    contracts.registeredOperators.spendingScriptAddress,
+    registeredOperatorsRootUnit,
+  );
+  if (
+    hubOracleUtxo === undefined ||
+    stateQueueRootUtxo === undefined ||
+    schedulerUtxo === undefined ||
+    activeOperatorNode === undefined ||
+    activeOperatorsRoot === undefined ||
+    registeredOperatorsRoot === undefined
+  ) {
+    throw new Error(
+      "Setup transaction did not produce all state-queue dependencies",
+    );
+  }
+
+  const stateQueueRoot = await Effect.runPromise(
+    utxoToStateQueueUTxO(stateQueueRootUtxo, contracts.stateQueue.policyId),
+  );
+  const schedulerAppointmentFeeInput = await firstWalletUtxo(
+    lucid,
+    "scheduler appointment fee input",
+  );
+  const appointmentInputs = [schedulerAppointmentFeeInput, schedulerUtxo];
+  const appointmentRefs = [activeOperatorNode, registeredOperatorsRoot];
+  const schedulerAppointmentRedeemer: SchedulerSpendRedeemer = {
+    scheduler_input_index: ledgerOrderedIndex(
+      appointmentInputs,
+      schedulerUtxo,
+      "scheduler appointment input",
+    ),
+    scheduler_output_index: SCHEDULER_APPOINTMENT_OUTPUT_INDEX.scheduler,
+    advancing_approach: {
+      AppointFirstOperator: {
+        new_shifts_operator_node_ref_input_index: ledgerOrderedIndex(
+          appointmentRefs,
+          activeOperatorNode,
+          "active-operator node appointment reference input",
+        ),
+        registered_element_ref_input_index: ledgerOrderedIndex(
+          appointmentRefs,
+          registeredOperatorsRoot,
+          "registered-operators root appointment reference input",
+        ),
+      },
+    },
+  };
+  const appointmentUnsigned = await lucid
+    .newTx()
+    .collectFrom([schedulerAppointmentFeeInput])
+    .collectFrom(
+      [schedulerUtxo],
+      Data.to(schedulerAppointmentRedeemer, SchedulerSpendRedeemer),
+    )
+    .readFrom(appointmentRefs)
+    .pay.ToContract(
+      contracts.scheduler.spendingScriptAddress,
+      {
+        kind: "inline",
+        value: Data.to(
+          {
+            ActiveOperator: {
+              operator: header.operatorVkey,
+              start_time: header.startTime,
+            },
+          },
+          SchedulerDatum,
+        ),
+      },
+      schedulerUtxo.assets,
+    )
+    .attach.Script(contracts.scheduler.spendingScript)
+    .validFrom(Number(header.startTime - 120_000n))
+    .validTo(Number(header.startTime + 1n))
+    .complete({ localUPLCEval: true });
+  const appointmentSigned = await appointmentUnsigned.sign
+    .withWallet()
+    .complete();
+  await lucid.awaitTx(await appointmentSigned.submit());
+
+  const [appointedSchedulerUtxo] = await lucid.utxosAtWithUnit(
+    contracts.scheduler.spendingScriptAddress,
+    schedulerUnit,
+  );
+  if (appointedSchedulerUtxo === undefined) {
+    throw new Error(
+      "Scheduler appointment transaction did not preserve scheduler",
+    );
+  }
+  expect(Data.from(appointedSchedulerUtxo.datum!, SchedulerDatum)).toEqual({
+    ActiveOperator: {
+      operator: header.operatorVkey,
+      start_time: header.startTime,
+    },
+  });
+
+  const commitFeeInput = await firstWalletUtxo(lucid, "commit fee input");
+  const commitScriptInputs = [stateQueueRoot.utxo, activeOperatorNode];
+  const commitAllInputs = [commitFeeInput, ...commitScriptInputs];
+  const commitRefInputs = [hubOracleUtxo, appointedSchedulerUtxo];
+  const commitValidTo = BigInt(
+    alignUnixTimeToEmulatorSlotBoundary(lucid, Number(header.endTime)),
+  );
+  const latestBlockInputIndex = ledgerOrderedIndex(
+    commitAllInputs,
+    stateQueueRoot.utxo,
+    "state-queue root input",
+  );
+  const activeOperatorInputIndex = ledgerOrderedIndex(
+    commitAllInputs,
+    activeOperatorNode,
+    "active-operator input",
+  );
+  const stateQueueSpendRedeemerIndex = spendRedeemerTxInfoIndex(
+    commitScriptInputs,
+    stateQueueRoot.utxo,
+    "state-queue spend redeemer",
+  );
+  const activeOperatorSpendRedeemerIndex = spendRedeemerTxInfoIndex(
+    commitScriptInputs,
+    activeOperatorNode,
+    "active-operator spend redeemer",
+  );
+  const continuedActiveOperatorDatum = encodeLinkedListNodeView({
+    key: { Key: { key: header.operatorVkey } },
+    next: "Empty",
+    data: Data.castTo(
+      {
+        bond_unlock_time: commitValidTo - 1n + 30n,
+        inactivity_strikes: 0n,
+      },
+      ActiveOperatorDatum,
+    ),
+  });
+  const commitTx = await Effect.runPromise(
+    incompleteEmulatorCommitBlockHeaderTxProgram(
+      lucid,
+      {
+        stateQueueAddress: contracts.stateQueue.spendingScriptAddress,
+        stateQueuePolicyId: contracts.stateQueue.policyId,
+      },
+      {
+        anchorUTxO: stateQueueRoot,
+        newHeader: header,
+        additionalInputs: [commitFeeInput],
+        validTo: commitValidTo,
+        schedulerRefInput: appointedSchedulerUtxo,
+        schedulerRefInputIndex: ledgerOrderedIndex(
+          commitRefInputs,
+          appointedSchedulerUtxo,
+          "scheduler reference input",
+        ),
+        additionalRefInputs: [hubOracleUtxo],
+        activeOperatorInput: activeOperatorNode,
+        activeOperatorInputIndex,
+        activeOperatorSpendRedeemer: {
+          UpdateBondHoldNewState: {
+            active_operator: header.operatorVkey,
+            active_node_input_index: activeOperatorInputIndex,
+            active_node_output_index: COMMIT_OUTPUT_INDEX.activeOperatorNode,
+            hub_oracle_ref_input_index: ledgerOrderedIndex(
+              commitRefInputs,
+              hubOracleUtxo,
+              "hub oracle reference input",
+            ),
+            state_queue_input_index: latestBlockInputIndex,
+            state_queue_redeemer_index: stateQueueSpendRedeemerIndex,
+          },
+        },
+        activeOperatorSpendRedeemerTxInfoIndex:
+          activeOperatorSpendRedeemerIndex,
+        activeOperatorSpendingScript: contracts.activeOperators.spendingScript,
+        continuedActiveOperatorOutput: {
+          address: contracts.activeOperators.spendingScriptAddress,
+          datum: continuedActiveOperatorDatum,
+          assets: activeOperatorNode.assets,
+        },
+        stateQueueSpendingScript: contracts.stateQueue.spendingScript,
+        stateQueueMintingScript: contracts.stateQueue.mintingScript,
+        latestBlockInputIndex,
+      },
+    ),
+  );
+  const commitUnsigned = await commitTx.complete({ localUPLCEval: true });
+  const commitSigned = await commitUnsigned.sign.withWallet().complete();
+  await lucid.awaitTx(await commitSigned.submit());
+
+  const [fraudulentBlockUtxo] = await lucid.utxosAtWithUnit(
+    contracts.stateQueue.spendingScriptAddress,
+    stateQueueBlockUnit,
+  );
+  const [continuedRootUtxo] = await lucid.utxosAtWithUnit(
+    contracts.stateQueue.spendingScriptAddress,
+    stateQueueRootUnit,
+  );
+  const [continuedActiveOperatorNode] = await lucid.utxosAtWithUnit(
+    contracts.activeOperators.spendingScriptAddress,
+    activeOperatorNodeUnit,
+  );
+  if (
+    fraudulentBlockUtxo === undefined ||
+    continuedRootUtxo === undefined ||
+    continuedActiveOperatorNode === undefined
+  ) {
+    throw new Error(
+      "Commit transaction did not produce the expected queue nodes",
+    );
+  }
+  const committedBlock = await Effect.runPromise(
+    utxoToStateQueueUTxO(fraudulentBlockUtxo, contracts.stateQueue.policyId),
+  );
+  const committedHeader = await Effect.runPromise(
+    getHeaderFromStateQueueDatum(committedBlock.datum),
+  );
+  expect(committedHeader.transactionsRoot).toBe(header.transactionsRoot);
+  const continuedRoot = await Effect.runPromise(
+    utxoToStateQueueUTxO(continuedRootUtxo, contracts.stateQueue.policyId),
+  );
+  expect(continuedRoot.datum.next).toEqual({ Key: { key: headerHash } });
 
   return {
-    fraudulentBlockOutRef: `${txHash}#2`,
+    fraudulentBlockOutRef: `${fraudulentBlockUtxo.txHash}#${fraudulentBlockUtxo.outputIndex.toString()}`,
     headerHash,
+    stateQueueBlockUnit,
+    stateQueueRootUnit,
+    hubOracle: hubOracleUtxo,
+    scheduler: appointedSchedulerUtxo,
+    activeOperatorsRoot,
+    activeOperatorsRootUnit,
+    activeOperatorNode: continuedActiveOperatorNode,
+    activeOperatorNodeUnit,
+    registeredOperatorsRoot,
   };
 };
 
 describe("submit-init emulator smoke", () => {
-  it(
-    "mints the computation-thread token and completes double-spend fault proof",
-    async () => {
-      const realBlueprint = readBlueprint(realBlueprintPath);
-      const alwaysBlueprint = readBlueprint(alwaysSucceedsBlueprintPath);
-      const funder = generateEmulatorAccount({ lovelace: 40_000_000_000n });
-      const prover = generateEmulatorAccount({ lovelace: 20_000_000_000n });
-      const emulator = new Emulator(
-        [funder, prover],
-        EMULATOR_PROTOCOL_PARAMETERS,
-      );
-      const funderLucid = await Lucid(emulator, "Custom");
-      const proverLucid = await Lucid(emulator, "Custom");
-      funderLucid.selectWallet.fromSeed(funder.seedPhrase);
-      proverLucid.selectWallet.fromSeed(prover.seedPhrase);
+  it("mints the computation-thread token and completes double-spend fault proof", async () => {
+    const realBlueprint = readBlueprint(realBlueprintPath);
+    const alwaysBlueprint = readBlueprint(alwaysSucceedsBlueprintPath);
+    const funder = generateEmulatorAccount({ lovelace: 40_000_000_000n });
+    const prover = generateEmulatorAccount({ lovelace: 20_000_000_000n });
+    const emulator = new Emulator(
+      [funder, prover],
+      EMULATOR_PROTOCOL_PARAMETERS,
+    );
+    const funderLucid = await Lucid(emulator, "Custom");
+    const proverLucid = await Lucid(emulator, "Custom");
+    funderLucid.selectWallet.fromSeed(funder.seedPhrase);
+    proverLucid.selectWallet.fromSeed(prover.seedPhrase);
 
-      await registerPhasMembershipRewardAccount(funderLucid, realBlueprint);
-      const nonceUtxo = (await funderLucid.wallet().getUtxos())[0];
-      if (nonceUtxo === undefined) {
-        throw new Error("Expected funder wallet to expose a nonce UTxO");
-      }
+    await registerPhasMembershipRewardAccount(funderLucid, realBlueprint);
+    const nonceUtxo = (await funderLucid.wallet().getUtxos())[0];
+    if (nonceUtxo === undefined) {
+      throw new Error("Expected funder wallet to expose a nonce UTxO");
+    }
 
-      const contracts = await buildMinimalFaultProofContracts(
-        realBlueprint,
-        alwaysBlueprint,
-        nonceUtxo,
-      );
-      const catalogue = await buildCatalogueDeploymentInfo(
-        contracts.fraudProofs,
-      );
-      const transactionInclusion = await buildTransactionInclusionFixture();
-      const funderAddress = await funderLucid.wallet().address();
-      const funderPaymentCredential =
-        getAddressDetails(funderAddress).paymentCredential;
-      if (
-        funderPaymentCredential === undefined ||
-        funderPaymentCredential.type !== "Key"
-      ) {
-        throw new Error("Expected funder wallet to expose a payment key hash");
-      }
-      const { fraudulentBlockOutRef, headerHash } = await submitSetupTx({
-        lucid: funderLucid,
-        contracts,
-        nonceUtxo,
-        catalogue,
-        header: makeHeader(
-          funderPaymentCredential.hash,
-          emulator.now(),
-          transactionInclusion.transactionsRoot,
-        ),
-      });
-      const deploymentInfo = {
-        hubOracleMint: { scriptHash: contracts.hubOracle.policyId },
-        fraudProofCatalogueMint: {
-          scriptHash: contracts.fraudProofCatalogue.policyId,
-          fraudProofCatalogue: catalogue,
-        },
-        fraudProofCatalogueSpend: {
-          scriptHash: contracts.fraudProofCatalogue.spendingScriptHash,
-        },
-        fraudProofMint: { scriptHash: contracts.fraudProof.policyId },
-        fraudProofSpend: {
-          scriptHash: contracts.fraudProof.spendingScriptHash,
-        },
-        fraudProofDoubleSpend: {
-          scriptHash: contracts.fraudProofs.doubleSpend.spendingScriptHash,
-        },
-        stateQueueMint: { scriptHash: contracts.stateQueue.policyId },
-      };
+    const contracts = await buildMinimalFaultProofContracts(
+      realBlueprint,
+      alwaysBlueprint,
+      nonceUtxo,
+    );
+    const catalogue = await buildCatalogueDeploymentInfo(contracts.fraudProofs);
+    const transactionInclusion = await buildTransactionInclusionFixture();
+    const headerStartTime =
+      alignUnixTimeToEmulatorSlotBoundary(
+        funderLucid,
+        emulator.now() + 120_000,
+      ) - 1;
+    const funderAddress = await funderLucid.wallet().address();
+    const funderPaymentCredential =
+      getAddressDetails(funderAddress).paymentCredential;
+    if (
+      funderPaymentCredential === undefined ||
+      funderPaymentCredential.type !== "Key"
+    ) {
+      throw new Error("Expected funder wallet to expose a payment key hash");
+    }
+    const setup = await submitSetupTx({
+      lucid: funderLucid,
+      contracts,
+      nonceUtxo,
+      catalogue,
+      header: makeHeader(
+        funderPaymentCredential.hash,
+        headerStartTime,
+        transactionInclusion.transactionsRoot,
+      ),
+    });
+    const { fraudulentBlockOutRef, headerHash } = setup;
+    const deploymentEntry = (scriptHash: string, script: Script) => ({
+      scriptHash,
+      refScriptUTxO: null,
+      contract: {
+        type: script.type,
+        cborHex: script.script,
+      },
+    });
+    const deploymentInfo = {
+      hubOracleMint: { scriptHash: contracts.hubOracle.policyId },
+      fraudProofCatalogueMint: {
+        scriptHash: contracts.fraudProofCatalogue.policyId,
+        fraudProofCatalogue: catalogue,
+      },
+      fraudProofCatalogueSpend: {
+        scriptHash: contracts.fraudProofCatalogue.spendingScriptHash,
+      },
+      fraudProofMint: { scriptHash: contracts.fraudProof.policyId },
+      fraudProofSpend: {
+        scriptHash: contracts.fraudProof.spendingScriptHash,
+      },
+      fraudProofDoubleSpend: {
+        scriptHash: contracts.fraudProofs.doubleSpend.spendingScriptHash,
+      },
+      stateQueueMint: deploymentEntry(
+        contracts.stateQueue.policyId,
+        contracts.stateQueue.mintingScript,
+      ),
+      stateQueueSpend: deploymentEntry(
+        contracts.stateQueue.spendingScriptHash,
+        contracts.stateQueue.spendingScript,
+      ),
+      retiredOperatorsMint: {
+        scriptHash: contracts.retiredOperators.policyId,
+      },
+      registeredOperatorsMint: {
+        scriptHash: contracts.registeredOperators.policyId,
+      },
+      registeredOperatorsSpend: deploymentEntry(
+        contracts.registeredOperators.spendingScriptHash,
+        contracts.registeredOperators.spendingScript,
+      ),
+      activeOperatorsMint: deploymentEntry(
+        contracts.activeOperators.policyId,
+        contracts.activeOperators.mintingScript,
+      ),
+      activeOperatorsSpend: deploymentEntry(
+        contracts.activeOperators.spendingScriptHash,
+        contracts.activeOperators.spendingScript,
+      ),
+      schedulerMint: { scriptHash: contracts.scheduler.policyId },
+      schedulerSpend: deploymentEntry(
+        contracts.scheduler.spendingScriptHash,
+        contracts.scheduler.spendingScript,
+      ),
+      settlementMint: { scriptHash: contracts.settlement.policyId },
+    };
 
-      const result = await submitInit({
-        lucid: proverLucid,
-        blueprint: realBlueprint,
-        deploymentInfo,
+    const result = await submitInit({
+      lucid: proverLucid,
+      blueprint: realBlueprint,
+      deploymentInfo,
+      network,
+      signer: resolveProverSigner({
         network,
-        signer: resolveProverSigner({
-          network,
-          walletSeedPhrase: prover.seedPhrase,
-        }),
-        fraudulentBlockOutRef,
-        awaitConfirmation: true,
-      });
+        walletSeedPhrase: prover.seedPhrase,
+      }),
+      fraudulentBlockOutRef,
+      awaitConfirmation: true,
+    });
 
-      expect(result.txHash).toHaveLength(64);
-      expect(result.fraudulentHeaderHash).toBe(headerHash);
-      expect(result.computationThreadAssetName).toBe(
-        `${catalogue.categories.doubleSpend.categoryId}${headerHash}`,
-      );
+    expect(result.txHash).toHaveLength(64);
+    expect(result.fraudulentHeaderHash).toBe(headerHash);
+    expect(result.computationThreadAssetName).toBe(
+      `${catalogue.categories.doubleSpend.categoryId}${headerHash}`,
+    );
 
-      const firstStepUtxos = await proverLucid.utxosAtWithUnit(
-        result.firstStepAddress,
-        result.computationThreadUnit,
-      );
-      expect(firstStepUtxos).toHaveLength(1);
-      const stepDatum = Data.from(
-        firstStepUtxos[0]!.datum!,
-        FraudProofComputationThreadStepDatum,
-      );
-      const proverPaymentCredential = getAddressDetails(
-        await proverLucid.wallet().address(),
-      ).paymentCredential;
-      expect(proverPaymentCredential?.type).toBe("Key");
-      expect(stepDatum).toEqual({
-        fraud_prover: proverPaymentCredential!.hash,
-        data: null,
-      });
-      expect(firstStepUtxos[0]!.assets[result.computationThreadUnit]).toBe(1n);
-      expect(
-        Object.entries(firstStepUtxos[0]!.assets).filter(
-          ([unit, amount]) => unit !== "lovelace" && amount > 0n,
-        ),
-      ).toEqual([[result.computationThreadUnit, 1n]]);
+    const firstStepUtxos = await proverLucid.utxosAtWithUnit(
+      result.firstStepAddress,
+      result.computationThreadUnit,
+    );
+    expect(firstStepUtxos).toHaveLength(1);
+    const stepDatum = Data.from(
+      firstStepUtxos[0]!.datum!,
+      FraudProofComputationThreadStepDatum,
+    );
+    const proverPaymentCredential = getAddressDetails(
+      await proverLucid.wallet().address(),
+    ).paymentCredential;
+    expect(proverPaymentCredential?.type).toBe("Key");
+    expect(stepDatum).toEqual({
+      fraud_prover: proverPaymentCredential!.hash,
+      data: null,
+    });
+    expect(firstStepUtxos[0]!.assets[result.computationThreadUnit]).toBe(1n);
+    expect(
+      Object.entries(firstStepUtxos[0]!.assets).filter(
+        ([unit, amount]) => unit !== "lovelace" && amount > 0n,
+      ),
+    ).toEqual([[result.computationThreadUnit, 1n]]);
 
-      const step01Result = await submitStep01({
-        lucid: proverLucid,
-        blueprint: realBlueprint,
-        deploymentInfo,
+    const step01Result = await submitStep01({
+      lucid: proverLucid,
+      blueprint: realBlueprint,
+      deploymentInfo,
+      network,
+      signer: resolveProverSigner({
         network,
-        signer: resolveProverSigner({
-          network,
-          walletSeedPhrase: prover.seedPhrase,
-        }),
-        threadOutRef: `${firstStepUtxos[0]!.txHash}#${firstStepUtxos[0]!.outputIndex.toString()}`,
-        stateQueueBlockOutRef: fraudulentBlockOutRef,
-        txInclusion: parseSubmitStep01TxInclusion(
-          transactionInclusion.tx1.inclusion,
-        ),
-        awaitConfirmation: true,
-      });
+        walletSeedPhrase: prover.seedPhrase,
+      }),
+      threadOutRef: `${firstStepUtxos[0]!.txHash}#${firstStepUtxos[0]!.outputIndex.toString()}`,
+      stateQueueBlockOutRef: fraudulentBlockOutRef,
+      txInclusion: parseSubmitStep01TxInclusion(
+        transactionInclusion.tx1.inclusion,
+      ),
+      awaitConfirmation: true,
+    });
 
-      expect(step01Result.txHash).toHaveLength(64);
-      expect(step01Result.fraudulentHeaderHash).toBe(headerHash);
-      expect(step01Result.nativeTxId).toBe(transactionInclusion.tx1.nativeTxId);
-      const remainingFirstStepUtxos = await proverLucid.utxosAtWithUnit(
-        result.firstStepAddress,
-        result.computationThreadUnit,
-      );
-      expect(remainingFirstStepUtxos).toHaveLength(0);
-      const secondStepUtxos = await proverLucid.utxosAtWithUnit(
-        step01Result.secondStepAddress,
-        result.computationThreadUnit,
-      );
-      expect(secondStepUtxos).toHaveLength(1);
-      const step02Datum = Data.from(
-        secondStepUtxos[0]!.datum!,
-        DoubleSpendStep02Datum,
-      );
-      expect(step02Datum).toEqual({
-        fraud_prover: proverPaymentCredential!.hash,
-        data: {
-          verified_tx1_id: transactionInclusion.tx1.nativeTxId,
-          verified_tx1_spend_inputs_hash:
-            transactionInclusion.tx1.nativeTx.body.spend_inputs_hash,
-        },
-      });
-      expect(secondStepUtxos[0]!.assets[result.computationThreadUnit]).toBe(1n);
+    expect(step01Result.txHash).toHaveLength(64);
+    expect(step01Result.fraudulentHeaderHash).toBe(headerHash);
+    expect(step01Result.nativeTxId).toBe(transactionInclusion.tx1.nativeTxId);
+    const remainingFirstStepUtxos = await proverLucid.utxosAtWithUnit(
+      result.firstStepAddress,
+      result.computationThreadUnit,
+    );
+    expect(remainingFirstStepUtxos).toHaveLength(0);
+    const secondStepUtxos = await proverLucid.utxosAtWithUnit(
+      step01Result.secondStepAddress,
+      result.computationThreadUnit,
+    );
+    expect(secondStepUtxos).toHaveLength(1);
+    const step02Datum = Data.from(
+      secondStepUtxos[0]!.datum!,
+      DoubleSpendStep02Datum,
+    );
+    expect(step02Datum).toEqual({
+      fraud_prover: proverPaymentCredential!.hash,
+      data: {
+        verified_tx1_id: transactionInclusion.tx1.nativeTxId,
+        verified_tx1_spend_inputs_hash:
+          transactionInclusion.tx1.nativeTx.body.spend_inputs_hash,
+      },
+    });
+    expect(secondStepUtxos[0]!.assets[result.computationThreadUnit]).toBe(1n);
 
-      const step02Result = await submitStep02({
-        lucid: proverLucid,
-        blueprint: realBlueprint,
-        deploymentInfo,
+    const step02Result = await submitStep02({
+      lucid: proverLucid,
+      blueprint: realBlueprint,
+      deploymentInfo,
+      network,
+      signer: resolveProverSigner({
         network,
-        signer: resolveProverSigner({
-          network,
-          walletSeedPhrase: prover.seedPhrase,
-        }),
-        threadOutRef: `${secondStepUtxos[0]!.txHash}#${secondStepUtxos[0]!.outputIndex.toString()}`,
-        stateQueueBlockOutRef: fraudulentBlockOutRef,
-        txInclusion: parseSubmitStep02TxInclusion(
-          transactionInclusion.tx2.inclusion,
-        ),
-        awaitConfirmation: true,
-      });
+        walletSeedPhrase: prover.seedPhrase,
+      }),
+      threadOutRef: `${secondStepUtxos[0]!.txHash}#${secondStepUtxos[0]!.outputIndex.toString()}`,
+      stateQueueBlockOutRef: fraudulentBlockOutRef,
+      txInclusion: parseSubmitStep02TxInclusion(
+        transactionInclusion.tx2.inclusion,
+      ),
+      awaitConfirmation: true,
+    });
 
-      expect(step02Result.txHash).toHaveLength(64);
-      expect(step02Result.fraudulentHeaderHash).toBe(headerHash);
-      expect(step02Result.verifiedTx1Id).toBe(
-        transactionInclusion.tx1.nativeTxId,
-      );
-      expect(step02Result.nativeTx2Id).toBe(transactionInclusion.tx2.nativeTxId);
-      expect(step02Result.verifiedTx1SpendInputsHash).toBe(
-        transactionInclusion.tx1.nativeTx.body.spend_inputs_hash,
-      );
-      expect(step02Result.verifiedTx2SpendInputsHash).toBe(
-        transactionInclusion.tx2.nativeTx.body.spend_inputs_hash,
-      );
-      const remainingSecondStepUtxos = await proverLucid.utxosAtWithUnit(
-        step01Result.secondStepAddress,
-        result.computationThreadUnit,
-      );
-      expect(remainingSecondStepUtxos).toHaveLength(0);
-      const thirdStepUtxos = await proverLucid.utxosAtWithUnit(
-        step02Result.thirdStepAddress,
-        result.computationThreadUnit,
-      );
-      expect(thirdStepUtxos).toHaveLength(1);
-      const step03Datum = Data.from(
-        thirdStepUtxos[0]!.datum!,
-        DoubleSpendStep03Datum,
-      );
-      expect(step03Datum).toEqual({
-        fraud_prover: proverPaymentCredential!.hash,
-        data: {
-          verified_tx1_spend_inputs_hash:
-            transactionInclusion.tx1.nativeTx.body.spend_inputs_hash,
-          verified_tx2_spend_inputs_hash:
-            transactionInclusion.tx2.nativeTx.body.spend_inputs_hash,
-        },
-      });
-      expect(thirdStepUtxos[0]!.assets[result.computationThreadUnit]).toBe(1n);
+    expect(step02Result.txHash).toHaveLength(64);
+    expect(step02Result.fraudulentHeaderHash).toBe(headerHash);
+    expect(step02Result.verifiedTx1Id).toBe(
+      transactionInclusion.tx1.nativeTxId,
+    );
+    expect(step02Result.nativeTx2Id).toBe(transactionInclusion.tx2.nativeTxId);
+    expect(step02Result.verifiedTx1SpendInputsHash).toBe(
+      transactionInclusion.tx1.nativeTx.body.spend_inputs_hash,
+    );
+    expect(step02Result.verifiedTx2SpendInputsHash).toBe(
+      transactionInclusion.tx2.nativeTx.body.spend_inputs_hash,
+    );
+    const remainingSecondStepUtxos = await proverLucid.utxosAtWithUnit(
+      step01Result.secondStepAddress,
+      result.computationThreadUnit,
+    );
+    expect(remainingSecondStepUtxos).toHaveLength(0);
+    const thirdStepUtxos = await proverLucid.utxosAtWithUnit(
+      step02Result.thirdStepAddress,
+      result.computationThreadUnit,
+    );
+    expect(thirdStepUtxos).toHaveLength(1);
+    const step03Datum = Data.from(
+      thirdStepUtxos[0]!.datum!,
+      DoubleSpendStep03Datum,
+    );
+    expect(step03Datum).toEqual({
+      fraud_prover: proverPaymentCredential!.hash,
+      data: {
+        verified_tx1_spend_inputs_hash:
+          transactionInclusion.tx1.nativeTx.body.spend_inputs_hash,
+        verified_tx2_spend_inputs_hash:
+          transactionInclusion.tx2.nativeTx.body.spend_inputs_hash,
+      },
+    });
+    expect(thirdStepUtxos[0]!.assets[result.computationThreadUnit]).toBe(1n);
 
-      const step03Result = await submitStep03({
-        lucid: proverLucid,
-        blueprint: realBlueprint,
-        deploymentInfo,
+    const step03Result = await submitStep03({
+      lucid: proverLucid,
+      blueprint: realBlueprint,
+      deploymentInfo,
+      network,
+      signer: resolveProverSigner({
         network,
-        signer: resolveProverSigner({
-          network,
-          walletSeedPhrase: prover.seedPhrase,
-        }),
-        threadOutRef: `${thirdStepUtxos[0]!.txHash}#${thirdStepUtxos[0]!.outputIndex.toString()}`,
-        tx1SpendInputCbors: parseSubmitStep03Tx1Inputs(
-          transactionInclusion.tx1SpendInputCbors,
+        walletSeedPhrase: prover.seedPhrase,
+      }),
+      threadOutRef: `${thirdStepUtxos[0]!.txHash}#${thirdStepUtxos[0]!.outputIndex.toString()}`,
+      tx1SpendInputCbors: parseSubmitStep03Tx1Inputs(
+        transactionInclusion.tx1SpendInputCbors,
+      ),
+      doubleSpentInputIndex: 1n,
+      awaitConfirmation: true,
+    });
+
+    expect(step03Result.txHash).toHaveLength(64);
+    expect(step03Result.verifiedTx1SpendInputsHash).toBe(
+      transactionInclusion.tx1.nativeTx.body.spend_inputs_hash,
+    );
+    expect(step03Result.verifiedTx2SpendInputsHash).toBe(
+      transactionInclusion.tx2.nativeTx.body.spend_inputs_hash,
+    );
+    expect(step03Result.doubleSpentInputIndex).toBe(1);
+    expect(step03Result.doubleSpentInput).toEqual(
+      midgardTxInput(transactionInclusion.tx1InputsPreimage[1]!),
+    );
+    expect(step03Result.doubleSpentInputCbor).toEqual(
+      transactionInclusion.tx1SpendInputCbors[1],
+    );
+    expect(step03Result.tx1SpendInputsWitnessCreated).toBe(true);
+    expect(step03Result.tx1SpendInputsWitnessOutRef).toMatch(
+      /^[0-9a-f]{64}#\d+$/,
+    );
+    expect(step03Result.tx1SpendInputsRefInputIndex).toBe(0);
+    const remainingThirdStepUtxos = await proverLucid.utxosAtWithUnit(
+      step02Result.thirdStepAddress,
+      result.computationThreadUnit,
+    );
+    expect(remainingThirdStepUtxos).toHaveLength(0);
+    const fourthStepUtxos = await proverLucid.utxosAtWithUnit(
+      step03Result.fourthStepAddress,
+      result.computationThreadUnit,
+    );
+    expect(fourthStepUtxos).toHaveLength(1);
+    const step04Datum = Data.from(
+      fourthStepUtxos[0]!.datum!,
+      DoubleSpendStep04Datum,
+    );
+    expect(step04Datum).toEqual({
+      fraud_prover: proverPaymentCredential!.hash,
+      data: {
+        verified_tx2_spend_inputs_hash:
+          transactionInclusion.tx2.nativeTx.body.spend_inputs_hash,
+        double_spent_input: midgardTxInput(
+          transactionInclusion.tx1InputsPreimage[1]!,
         ),
-        doubleSpentInputIndex: 1n,
-        awaitConfirmation: true,
-      });
+      },
+    });
+    expect(fourthStepUtxos[0]!.assets[result.computationThreadUnit]).toBe(1n);
 
-      expect(step03Result.txHash).toHaveLength(64);
-      expect(step03Result.verifiedTx1SpendInputsHash).toBe(
-        transactionInclusion.tx1.nativeTx.body.spend_inputs_hash,
-      );
-      expect(step03Result.verifiedTx2SpendInputsHash).toBe(
-        transactionInclusion.tx2.nativeTx.body.spend_inputs_hash,
-      );
-      expect(step03Result.doubleSpentInputIndex).toBe(1);
-      expect(step03Result.doubleSpentInputCbor).toEqual(
-        transactionInclusion.tx1SpendInputCbors[1],
-      );
-      const remainingThirdStepUtxos = await proverLucid.utxosAtWithUnit(
-        step02Result.thirdStepAddress,
-        result.computationThreadUnit,
-      );
-      expect(remainingThirdStepUtxos).toHaveLength(0);
-      const fourthStepUtxos = await proverLucid.utxosAtWithUnit(
-        step03Result.fourthStepAddress,
-        result.computationThreadUnit,
-      );
-      expect(fourthStepUtxos).toHaveLength(1);
-      const step04Datum = Data.from(
-        fourthStepUtxos[0]!.datum!,
-        DoubleSpendStep04Datum,
-      );
-      expect(step04Datum).toEqual({
-        fraud_prover: proverPaymentCredential!.hash,
-        data: {
-          verified_tx2_spend_inputs_hash:
-            transactionInclusion.tx2.nativeTx.body.spend_inputs_hash,
-          double_spent_input_cbor: transactionInclusion.tx1SpendInputCbors[1],
-        },
-      });
-      expect(fourthStepUtxos[0]!.assets[result.computationThreadUnit]).toBe(1n);
-
-      const step04Result = await submitStep04({
-        lucid: proverLucid,
-        blueprint: realBlueprint,
-        deploymentInfo,
+    const step04Result = await submitStep04({
+      lucid: proverLucid,
+      blueprint: realBlueprint,
+      deploymentInfo,
+      network,
+      signer: resolveProverSigner({
         network,
-        signer: resolveProverSigner({
-          network,
-          walletSeedPhrase: prover.seedPhrase,
-        }),
-        threadOutRef: `${fourthStepUtxos[0]!.txHash}#${fourthStepUtxos[0]!.outputIndex.toString()}`,
-        tx2SpendInputCbors: parseSubmitStep04Tx2Inputs(
-          transactionInclusion.tx2SpendInputCbors,
-        ),
-        doubleSpentInputIndex: 1n,
-        awaitConfirmation: true,
-      });
+        walletSeedPhrase: prover.seedPhrase,
+      }),
+      threadOutRef: `${fourthStepUtxos[0]!.txHash}#${fourthStepUtxos[0]!.outputIndex.toString()}`,
+      tx2SpendInputCbors: parseSubmitStep04Tx2Inputs(
+        transactionInclusion.tx2SpendInputCbors,
+      ),
+      doubleSpentInputIndex: 1n,
+      awaitConfirmation: true,
+    });
 
-      expect(step04Result.txHash).toHaveLength(64);
-      expect(step04Result.verifiedTx2SpendInputsHash).toBe(
-        transactionInclusion.tx2.nativeTx.body.spend_inputs_hash,
-      );
-      expect(step04Result.doubleSpentInputIndex).toBe(1);
-      expect(step04Result.doubleSpentInputCbor).toEqual(
-        transactionInclusion.tx2SpendInputCbors[1],
-      );
-      expect(step04Result.fraudProofAssetName).toBe(
-        result.computationThreadAssetName,
-      );
-      expect(step04Result.fraudProofUnit).toBe(
-        toUnit(contracts.fraudProof.policyId, result.computationThreadAssetName),
-      );
-      expect(step04Result.fraudProofMintRedeemerIndex).not.toBe(
-        step04Result.computationThreadMintRedeemerIndex,
-      );
+    expect(step04Result.txHash).toHaveLength(64);
+    expect(step04Result.verifiedTx2SpendInputsHash).toBe(
+      transactionInclusion.tx2.nativeTx.body.spend_inputs_hash,
+    );
+    expect(step04Result.doubleSpentInputIndex).toBe(1);
+    expect(step04Result.doubleSpentInput).toEqual(
+      midgardTxInput(transactionInclusion.tx2InputsPreimage[1]!),
+    );
+    expect(step04Result.doubleSpentInputCbor).toEqual(
+      transactionInclusion.tx2SpendInputCbors[1],
+    );
+    expect(step04Result.tx2SpendInputsWitnessCreated).toBe(true);
+    expect(step04Result.tx2SpendInputsWitnessOutRef).toMatch(
+      /^[0-9a-f]{64}#\d+$/,
+    );
+    expect(step04Result.tx2SpendInputsRefInputIndex).toBe(0);
+    expect(step04Result.fraudProofAssetName).toBe(
+      result.computationThreadAssetName,
+    );
+    expect(step04Result.fraudProofUnit).toBe(
+      toUnit(contracts.fraudProof.policyId, result.computationThreadAssetName),
+    );
+    expect(step04Result.fraudProofMintRedeemerIndex).not.toBe(
+      step04Result.computationThreadMintRedeemerIndex,
+    );
 
-      const remainingFourthStepUtxos = await proverLucid.utxosAtWithUnit(
-        step03Result.fourthStepAddress,
-        result.computationThreadUnit,
+    const remainingFourthStepUtxos = await proverLucid.utxosAtWithUnit(
+      step03Result.fourthStepAddress,
+      result.computationThreadUnit,
+    );
+    expect(remainingFourthStepUtxos).toHaveLength(0);
+    const fraudProofUtxos = await proverLucid.utxosAtWithUnit(
+      step04Result.fraudProofAddress,
+      step04Result.fraudProofUnit,
+    );
+    expect(fraudProofUtxos).toHaveLength(1);
+    const fraudProofUtxo = fraudProofUtxos[0];
+    if (fraudProofUtxo === undefined) {
+      throw new Error("Expected fraud-proof token UTxO after step 04");
+    }
+    const fraudProofDatum = Data.from(
+      fraudProofUtxo.datum!,
+      FraudProofTokenDatum,
+    );
+    expect(fraudProofDatum).toEqual({
+      fraud_prover: proverPaymentCredential!.hash,
+    });
+    expect(fraudProofUtxo.assets[step04Result.fraudProofUnit]).toBe(1n);
+    expect(
+      Object.entries(fraudProofUtxo.assets).filter(
+        ([unit, amount]) => unit !== "lovelace" && amount > 0n,
+      ),
+    ).toEqual([[step04Result.fraudProofUnit, 1n]]);
+
+    const removeNow = BigInt(emulator.now());
+    const removeResult = await submitRemoveFraudulentBlock({
+      lucid: proverLucid,
+      blueprint: realBlueprint,
+      deploymentInfo,
+      network,
+      signer: resolveProverSigner({
+        network,
+        walletSeedPhrase: prover.seedPhrase,
+      }),
+      fraudulentHeaderHash: headerHash,
+      awaitConfirmation: true,
+      requireReferenceScripts: false,
+      validFrom: removeNow > 120_000n ? removeNow - 120_000n : 0n,
+      validTo: removeNow + 300_000n,
+    });
+    expect(removeResult.fraudulentHeaderHash).toBe(headerHash);
+    expect(removeResult.fraudProver).toBe(proverPaymentCredential!.hash);
+
+    await expect(
+      funderLucid.utxosAtWithUnit(
+        contracts.stateQueue.spendingScriptAddress,
+        setup.stateQueueBlockUnit,
+      ),
+    ).resolves.toHaveLength(0);
+    await expect(
+      funderLucid.utxosAtWithUnit(
+        contracts.activeOperators.spendingScriptAddress,
+        setup.activeOperatorNodeUnit,
+      ),
+    ).resolves.toHaveLength(0);
+    const [finalSchedulerUtxo] = await funderLucid.utxosAtWithUnit(
+      contracts.scheduler.spendingScriptAddress,
+      toUnit(contracts.scheduler.policyId, SCHEDULER_ASSET_NAME),
+    );
+    if (finalSchedulerUtxo === undefined) {
+      throw new Error("Remove transaction did not preserve the scheduler");
+    }
+    expect(Data.from(finalSchedulerUtxo.datum!, SchedulerDatum)).toBe(
+      "NoActiveOperators",
+    );
+    const [finalRootUtxo] = await funderLucid.utxosAtWithUnit(
+      contracts.stateQueue.spendingScriptAddress,
+      setup.stateQueueRootUnit,
+    );
+    if (finalRootUtxo === undefined) {
+      throw new Error(
+        "Remove transaction did not preserve the state-queue root",
       );
-      expect(remainingFourthStepUtxos).toHaveLength(0);
-      const fraudProofUtxos = await proverLucid.utxosAtWithUnit(
-        step04Result.fraudProofAddress,
-        step04Result.fraudProofUnit,
-      );
-      expect(fraudProofUtxos).toHaveLength(1);
-      const fraudProofDatum = Data.from(
-        fraudProofUtxos[0]!.datum!,
-        FraudProofTokenDatum,
-      );
-      expect(fraudProofDatum).toEqual({
-        fraud_prover: proverPaymentCredential!.hash,
-      });
-      expect(fraudProofUtxos[0]!.assets[step04Result.fraudProofUnit]).toBe(1n);
-      expect(
-        Object.entries(fraudProofUtxos[0]!.assets).filter(
-          ([unit, amount]) => unit !== "lovelace" && amount > 0n,
-        ),
-      ).toEqual([[step04Result.fraudProofUnit, 1n]]);
-    },
-    120_000,
-  );
+    }
+    const finalRoot = await Effect.runPromise(
+      utxoToStateQueueUTxO(finalRootUtxo, contracts.stateQueue.policyId),
+    );
+    expect(finalRoot.datum.next).toBe("Empty");
+  }, 120_000);
 });

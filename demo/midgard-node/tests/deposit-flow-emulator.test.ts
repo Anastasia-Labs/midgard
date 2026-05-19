@@ -105,7 +105,10 @@ import { collectSortedInputOutRefs, outRefLabel } from "@/tx-context.js";
 
 const EMULATOR_PROTOCOL_PARAMETERS = {
   ...PROTOCOL_PARAMETERS_DEFAULT,
-  maxTxSize: PROTOCOL_PARAMETERS_DEFAULT.maxTxSize,
+  maxTxSize: Number(
+    process.env.MIDGARD_EMULATOR_MAX_TX_SIZE ??
+      PROTOCOL_PARAMETERS_DEFAULT.maxTxSize,
+  ),
   maxCollateralInputs: 3,
 } as const;
 

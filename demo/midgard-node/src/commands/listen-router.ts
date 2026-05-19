@@ -489,6 +489,11 @@ const getReadinessHandler = (txQueue: Queue.Dequeue<QueuedTxPayload>) =>
 
     const dbProbe = yield* Effect.either(sql`SELECT 1 AS ok`);
     const dbHealthy = dbProbe._tag === "Right";
+    const lucid = yield* Lucid;
+    const contracts = yield* MidgardContracts;
+    const providerProbe = yield* Effect.either(
+      Initialization.fetchHubOracleWitness(lucid.api, contracts),
+    );
 
     const baseReadiness = evaluateReadiness({
       nowMillis,
@@ -510,6 +515,9 @@ const getReadinessHandler = (txQueue: Queue.Dequeue<QueuedTxPayload>) =>
       dbHealthy,
     });
     const reasons = [...baseReadiness.reasons];
+    if (providerProbe._tag === "Left") {
+      reasons.push("provider_query_unhealthy:hub-oracle");
+    }
     if (
       durableAdmissionOldestAgeMs >
       nodeConfig.READINESS_MAX_DURABLE_ADMISSION_AGE_MS
@@ -531,6 +539,7 @@ const getReadinessHandler = (txQueue: Queue.Dequeue<QueuedTxPayload>) =>
       unfinishedLocalMutationJobs: unfinishedMutationJobs.toString(),
       unresolvedBlockSubmissionAgeMs,
       legacyInMemoryQueueDepth: legacyQueueDepth,
+      providerQueryHealthy: providerProbe._tag === "Right",
     };
 
     return yield* HttpServerResponse.json(readiness, {

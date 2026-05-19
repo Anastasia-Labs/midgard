@@ -2,6 +2,9 @@ import { NodeConfig } from "@/services/config.js";
 import { Database } from "@/services/database.js";
 import { Effect } from "effect";
 
+const explicitPostgresDb =
+  process.env.POSTGRES_DB !== undefined && process.env.POSTGRES_DB !== "";
+
 const TEST_ENV_DEFAULTS: Record<string, string> = {
   L1_PROVIDER: "Kupmios",
   L1_BLOCKFROST_API_URL: "https://blockfrost.invalid",
@@ -22,7 +25,7 @@ const TEST_ENV_DEFAULTS: Record<string, string> = {
   POSTGRES_PORT: "5433",
   POSTGRES_USER: "postgres",
   POSTGRES_PASSWORD: "postgres",
-  POSTGRES_DB: "midgard",
+  POSTGRES_DB: "midgard_test",
   TESTNET_GENESIS_WALLET_SEED_PHRASE_A:
     "panther fly crawl express smile lend company blue slogan dawn wall tip angle tomorrow battle myth category vanish misery ocean include salon wood rail",
   TESTNET_GENESIS_WALLET_SEED_PHRASE_B:
@@ -35,6 +38,18 @@ for (const [key, value] of Object.entries(TEST_ENV_DEFAULTS)) {
   if (process.env[key] === undefined || process.env[key] === "") {
     process.env[key] = value;
   }
+}
+
+if (
+  process.env.POSTGRES_DB === "midgard" &&
+  process.env.MIDGARD_ALLOW_TEST_DATABASE_MIDGARD !== "1" &&
+  process.env.CI !== "true"
+) {
+  throw new Error(
+    explicitPostgresDb
+      ? "Refusing to run Midgard tests against POSTGRES_DB=midgard. Use an isolated test database, or set MIDGARD_ALLOW_TEST_DATABASE_MIDGARD=1 only for an intentionally disposable local environment."
+      : "Refusing to default Midgard tests to POSTGRES_DB=midgard. Use an isolated test database.",
+  );
 }
 
 export const provideDatabaseLayers = <A, E, R>(eff: Effect.Effect<A, E, R>) =>

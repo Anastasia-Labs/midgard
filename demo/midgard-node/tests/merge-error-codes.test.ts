@@ -78,10 +78,9 @@ describe("diagnoseMissingBlockTxs", () => {
 });
 
 describe("deriveInitialMergeRedeemerSeedIndexes", () => {
-  it("seeds mint cross-references after the known merge spend redeemers", () => {
+  it("seeds mint cross-references after merge spend redeemers", () => {
     expect(
       deriveInitialMergeRedeemerSeedIndexes({
-        scriptSpendRedeemerCount: 2,
         stateQueuePolicyId:
           "16c3c3dafc78c76d61685b0cc0696d6f22d164c9b5f8c7f0ddcdf91f",
         settlementPolicyId:
@@ -95,10 +94,9 @@ describe("deriveInitialMergeRedeemerSeedIndexes", () => {
     });
   });
 
-  it("tracks the reversed mint-policy order without changing spend prefix count", () => {
+  it("tracks sorted mint-policy pointer order with a spend-redeemer prefix", () => {
     expect(
       deriveInitialMergeRedeemerSeedIndexes({
-        scriptSpendRedeemerCount: 2,
         stateQueuePolicyId:
           "ff86bf04eeaac04dd5aa28cc3865b0b94cc44fc49e7fa486fd795c8d",
         settlementPolicyId:

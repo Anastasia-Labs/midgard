@@ -276,7 +276,6 @@ export const submitStep02 = async ({
       stateQueueBlockUtxo,
     ),
     native_tx_id: txInclusion.nativeTxId,
-    native_tx: txInclusion.nativeTx,
     native_tx_compact_cbor: txInclusion.nativeTxCompactCbor,
     tx_membership_proof: txInclusion.txMembershipProof,
     inclusion_proof_script_withdraw_redeemer_index:

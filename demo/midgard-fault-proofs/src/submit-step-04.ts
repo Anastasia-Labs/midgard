@@ -19,15 +19,18 @@ import {
   parseFaultProofBlueprint,
   resolveMintPolicyRedeemerTxInfoIndex,
   resolveMintPolicyTxInfoRedeemerIndexFromPolicySet,
+  type MidgardTxInput,
 } from "@al-ft/midgard-sdk";
 import { Effect } from "effect";
 import { parseContractDeploymentInfo } from "./inspect-contracts.js";
 import {
+  compareOutRefs as compareParsedOutRefs,
   fetchUtxoByOutRef,
   makeLucidForSubmitInit,
   outRefLabel,
   parseOutRef,
   readJsonFile,
+  referenceInputIndex,
   requireDeploymentScriptHash,
   resolveProverSigner,
   type ResolvedProverSigner,
@@ -35,6 +38,7 @@ import {
 } from "./submit-init.js";
 import {
   DEFAULT_CONFIRMATION_POLL_MS,
+  parsedOutRefFromUtxo,
   parseInteger,
   requireComputationThreadToken,
   requireMatchingScriptHash,
@@ -44,6 +48,11 @@ import {
   hashSpendInputCbors,
   parseSpendInputCbors,
 } from "./submit-step-03.js";
+import {
+  ensureSpendInputsReferenceWitness,
+  excludeUtxo,
+  spendInputsWitnessFromCbors,
+} from "./spend-input-witness.js";
 
 const STEP_04_INITIAL_OUTPUT_INDEX = 0n;
 const STEP_04_SCRIPT_SPEND_REDEEMER_COUNT = 1;
@@ -79,7 +88,11 @@ export type SubmitStep04Result = {
   readonly fourthStepAddress: string;
   readonly verifiedTx2SpendInputsHash: string;
   readonly doubleSpentInputIndex: number;
+  readonly doubleSpentInput: MidgardTxInput;
   readonly doubleSpentInputCbor: string;
+  readonly tx2SpendInputsWitnessOutRef: string;
+  readonly tx2SpendInputsWitnessCreated: boolean;
+  readonly tx2SpendInputsRefInputIndex: number;
   readonly inputIndex: number;
   readonly outputIndex: number;
   readonly computationThreadMintRedeemerIndex: number;
@@ -143,7 +156,13 @@ const requireStep04Datum = ({
   return datum as Step04DatumWithState;
 };
 
-const compareOutRefs = (
+const sameMidgardTxInput = (
+  left: MidgardTxInput,
+  right: MidgardTxInput,
+): boolean =>
+  left.tx_id === right.tx_id && left.output_index === right.output_index;
+
+const compareCmlOutRefs = (
   left: { readonly txHash: string; readonly outputIndex: number },
   right: { readonly txHash: string; readonly outputIndex: number },
 ): number => {
@@ -164,7 +183,7 @@ const findInputIndex = (tx: CML.Transaction, target: UTxO): bigint => {
       txHash: input.transaction_id().to_hex(),
       outputIndex: Number(input.index()),
     };
-  }).sort(compareOutRefs);
+  }).sort(compareCmlOutRefs);
   const inputIndex = orderedInputs.findIndex(
     (input) =>
       input.txHash === target.txHash &&
@@ -210,12 +229,12 @@ const findFraudProofOutputIndex = ({
 const makeStep04SpendRedeemer = ({
   outputIndex,
   fraudProofMintRedeemerIndex,
-  tx2SpendInputCbors,
+  tx2SpendInputsRefInputIndex,
   doubleSpentInputIndex,
 }: {
   readonly outputIndex: bigint;
   readonly fraudProofMintRedeemerIndex: bigint;
-  readonly tx2SpendInputCbors: readonly string[];
+  readonly tx2SpendInputsRefInputIndex: bigint;
   readonly doubleSpentInputIndex: bigint;
 }): RedeemerBuilder => ({
   kind: "self",
@@ -227,7 +246,7 @@ const makeStep04SpendRedeemer = ({
             input_index: inputIndex,
             output_index: outputIndex,
             fraud_proof_mint_redeemer_index: fraudProofMintRedeemerIndex,
-            tx2_spend_input_cbors: [...tx2SpendInputCbors],
+            tx2_spend_inputs_ref_input_index: tx2SpendInputsRefInputIndex,
             double_spent_input_index: doubleSpentInputIndex,
           },
         ],
@@ -374,15 +393,52 @@ export const submitStep04 = async ({
   if (doubleSpentInputIndex > BigInt(Number.MAX_SAFE_INTEGER)) {
     throw new Error("doubleSpentInputIndex exceeds the safe integer range.");
   }
+  const tx2SpendInputsWitness = spendInputsWitnessFromCbors(
+    tx2SpendInputCbors,
+    "--tx2-inputs",
+  );
   const doubleSpentInputCbor = tx2SpendInputCbors[Number(doubleSpentInputIndex)]!;
-  if (doubleSpentInputCbor !== inputDatum.data.double_spent_input_cbor) {
+  const doubleSpentInput =
+    tx2SpendInputsWitness.inputs[Number(doubleSpentInputIndex)]!;
+  if (!sameMidgardTxInput(doubleSpentInput, inputDatum.data.double_spent_input)) {
     throw new Error(
       `--tx2-inputs[${doubleSpentInputIndex.toString()}] does not match the double-spent input carried by step 04 datum.`,
     );
   }
 
   signer.selectWallet(lucid);
-  const feeInput = selectFeeInput(await lucid.wallet().getUtxos());
+  const tx2SpendInputsReferenceWitness =
+    await ensureSpendInputsReferenceWitness({
+      lucid,
+      address: signer.address,
+      paymentKeyHash: signer.paymentKeyHash,
+      witness: tx2SpendInputsWitness,
+      awaitConfirmation,
+    });
+  const sortedReferenceInputs = [
+    tx2SpendInputsReferenceWitness.utxo,
+  ].sort((left, right) =>
+    compareParsedOutRefs(
+      parsedOutRefFromUtxo(left),
+      parsedOutRefFromUtxo(right),
+    ),
+  );
+  const tx2SpendInputsRefInputIndex = referenceInputIndex(
+    sortedReferenceInputs,
+    tx2SpendInputsReferenceWitness.utxo,
+  );
+  const walletUtxosWithoutWitness = excludeUtxo(
+    await lucid.wallet().getUtxos(),
+    tx2SpendInputsReferenceWitness.utxo,
+  );
+  const feeCandidates =
+    tx2SpendInputsReferenceWitness.spentFeeInput === undefined
+      ? walletUtxosWithoutWitness
+      : excludeUtxo(
+          walletUtxosWithoutWitness,
+          tx2SpendInputsReferenceWitness.spentFeeInput,
+        );
+  const feeInput = selectFeeInput(feeCandidates);
   const fraudProofUnit = toUnit(
     contracts.fraudProof.policyId,
     threadToken.assetName,
@@ -427,10 +483,11 @@ export const submitStep04 = async ({
         makeStep04SpendRedeemer({
           outputIndex: layout.outputIndex,
           fraudProofMintRedeemerIndex: layout.fraudProofMintRedeemerIndex,
-          tx2SpendInputCbors,
+          tx2SpendInputsRefInputIndex,
           doubleSpentInputIndex,
         }),
       )
+      .readFrom(sortedReferenceInputs)
       .mintAssets(
         { [threadToken.unit]: -1n },
         computationThreadSuccessRedeemer,
@@ -506,7 +563,11 @@ export const submitStep04 = async ({
     verifiedTx2SpendInputsHash:
       inputDatum.data.verified_tx2_spend_inputs_hash,
     doubleSpentInputIndex: Number(doubleSpentInputIndex),
+    doubleSpentInput,
     doubleSpentInputCbor,
+    tx2SpendInputsWitnessOutRef: tx2SpendInputsReferenceWitness.outRef,
+    tx2SpendInputsWitnessCreated: tx2SpendInputsReferenceWitness.created,
+    tx2SpendInputsRefInputIndex: Number(tx2SpendInputsRefInputIndex),
     inputIndex: Number(resolvedLayout.inputIndex),
     outputIndex: Number(resolvedLayout.outputIndex),
     computationThreadMintRedeemerIndex: Number(

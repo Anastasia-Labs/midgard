@@ -52,9 +52,6 @@ import {
   resolveInitialRegisterRedeemerLayout,
 } from "@/transactions/register-active-operator/lifecycle-layout.js";
 import {
-  withStubbedProviderEvaluation as withSharedStubbedProviderEvaluation,
-} from "@/cml-redeemers.js";
-import {
   referenceScriptTargetsByCommand,
   resolveReferenceScriptTargetsProgram,
   resolveSpendableWalletUtxos,
@@ -69,18 +66,12 @@ export type { ReferenceScriptCommandName } from "@/transactions/reference-script
 
 const REGISTERED_ACTIVATION_DELAY_MS = 30n;
 const ACTIVATION_VALIDITY_WINDOW_MS = 120_000n;
-const DRAFT_REDEEMER_EX_UNITS = {
-  mem: 1_000_000,
-  steps: 1_000_000,
-} as const;
 const REGISTERED_SET_REFRESH_MAX_RETRIES = 12;
 const REGISTERED_SET_REFRESH_RETRY_DELAY = "2 seconds";
 const NODE_SET_FETCH_MAX_RETRIES = 8;
 const NODE_SET_FETCH_RETRY_DELAY = "2 seconds";
 const HUB_ORACLE_FETCH_MAX_RETRIES = 6;
 const HUB_ORACLE_FETCH_RETRY_DELAY = "1 second";
-const SUBMISSION_EX_UNITS_HEADROOM_NUMERATOR = 8n;
-const SUBMISSION_EX_UNITS_HEADROOM_DENOMINATOR = 10n;
 const ACTIVATION_WALLET_FUNDING_TARGET_LOVELACE = 25_000_000n;
 const ACTIVE_OPERATOR_LIST_STATE_TRANSITION_REDEEMER = LucidData.to(
   "ListStateTransition",
@@ -117,7 +108,19 @@ type OperatorLifecycleMode =
   | "activate-only"
   | "deregister-only";
 
-type StubEvaluationMode = "draft" | "submission";
+type UnevaluatedDraftBuilder = {
+  readonly config: () => Promise<unknown>;
+  readonly rawConfig: () => {
+    readonly txBuilder: {
+      readonly build_for_evaluation: (
+        fee: number,
+        changeAddress: ReturnType<typeof CML.Address.from_bech32>,
+      ) => {
+        readonly draft_tx: () => CML.Transaction;
+      };
+    };
+  };
+};
 
 const summarizeOnChainScriptFailure = (cause: unknown): string | null => {
   const message = String(cause);
@@ -285,9 +288,7 @@ const linkPointsToKey = (
   node: SDK.LinkedListNodeView,
   key: SDK.NodeKey,
 ): boolean =>
-  key !== "Empty" &&
-  node.next !== "Empty" &&
-  node.next.Key.key === key.Key.key;
+  key !== "Empty" && node.next !== "Empty" && node.next.Key.key === key.Key.key;
 
 const summarizeNodeSetForDiagnostics = (
   nodes: readonly NodeWithDatum[],
@@ -350,9 +351,7 @@ const mkRegisteredActivateRedeemerBuilder = ({
   kind: "selected",
   inputs: [registeredNode, registeredAnchor],
   makeRedeemer: (inputIndices) => {
-    if (
-      inputIndices.length !== ACTIVATION_SELECTED_REGISTERED_INPUTS_COUNT
-    ) {
+    if (inputIndices.length !== ACTIVATION_SELECTED_REGISTERED_INPUTS_COUNT) {
       throw new Error(
         `Activation redeemer builder expected ${ACTIVATION_SELECTED_REGISTERED_INPUTS_COUNT.toString()} registered inputs, got ${inputIndices.length.toString()}`,
       );
@@ -377,55 +376,16 @@ const completeWithLocalEvaluation = async <A>(
   return await build({ localUPLCEval: true });
 };
 
-const withRegisteredOperatorStubbedProviderEvaluation = async <A>(
+const buildUnevaluatedDraftTx = async (
   lucid: LucidEvolution,
-  run: () => Promise<A>,
-  mode: StubEvaluationMode = "draft",
-): Promise<A> => {
-  const provider = lucid.config().provider as {
-    getProtocolParameters?: () => Promise<{
-      maxTxExMem: bigint;
-      maxTxExSteps: bigint;
-    }>;
-  };
-  const resolveStubExUnits = async (
-    redeemerPointers: readonly {
-      readonly tag: number;
-      readonly index: bigint;
-    }[],
-  ): Promise<{ mem: number; steps: number }> => {
-    const redeemerCount = redeemerPointers.length;
-    if (mode === "draft") {
-      return DRAFT_REDEEMER_EX_UNITS;
-    }
-    if (typeof provider.getProtocolParameters !== "function") {
-      return DRAFT_REDEEMER_EX_UNITS;
-    }
-
-    const protocolParameters = await provider.getProtocolParameters();
-    const safeRedeemerCount = BigInt(Math.max(redeemerCount, 1));
-    const memShare =
-      protocolParameters.maxTxExMem / safeRedeemerCount;
-    const stepsShare =
-      protocolParameters.maxTxExSteps / safeRedeemerCount;
-    const mem = Number(
-      (memShare * SUBMISSION_EX_UNITS_HEADROOM_NUMERATOR) /
-        SUBMISSION_EX_UNITS_HEADROOM_DENOMINATOR,
-    );
-    const steps = Number(
-      (stepsShare * SUBMISSION_EX_UNITS_HEADROOM_NUMERATOR) /
-        SUBMISSION_EX_UNITS_HEADROOM_DENOMINATOR,
-    );
-    if (!Number.isFinite(mem) || !Number.isFinite(steps) || mem <= 0 || steps <= 0) {
-      return DRAFT_REDEEMER_EX_UNITS;
-    }
-    return { mem, steps };
-  };
-  return withSharedStubbedProviderEvaluation(
-    lucid,
-    run,
-    resolveStubExUnits,
-  );
+  tx: UnevaluatedDraftBuilder,
+): Promise<CML.Transaction> => {
+  await tx.config();
+  const walletAddress = await lucid.wallet().address();
+  return tx
+    .rawConfig()
+    .txBuilder.build_for_evaluation(0, CML.Address.from_bech32(walletAddress))
+    .draft_tx();
 };
 
 const getOperatorKeyHash = (
@@ -477,7 +437,11 @@ const fetchHubOracleRefInput = (
     );
     let hubOracleUtxos: UTxO[] | null = null;
     let lastFetchCause: unknown = null;
-    for (let attempt = 0; attempt < HUB_ORACLE_FETCH_MAX_RETRIES; attempt += 1) {
+    for (
+      let attempt = 0;
+      attempt < HUB_ORACLE_FETCH_MAX_RETRIES;
+      attempt += 1
+    ) {
       const withUnitAttempt = yield* Effect.either(
         Effect.tryPromise({
           try: () => lucid.utxosAtWithUnit(hubOracleAddress, hubOracleUnit),
@@ -544,9 +508,7 @@ const fetchNodeSet = (
     for (let attempt = 0; attempt < NODE_SET_FETCH_MAX_RETRIES; attempt += 1) {
       const fetchResult = yield* Effect.either(
         SDK.utxosAtByNFTPolicyId(lucid, address, policyId).pipe(
-          Effect.map((beaconUtxos) =>
-            beaconUtxos.map(({ utxo }) => utxo),
-          ),
+          Effect.map((beaconUtxos) => beaconUtxos.map(({ utxo }) => utxo)),
           Effect.mapError(
             (cause) =>
               new SDK.StateQueueError({
@@ -646,7 +608,11 @@ const operatorLifecycleProgram = (
   referenceScriptsLucid: LucidEvolution = lucid,
 ): Effect.Effect<
   OperatorLifecycleTxHashes,
-  SDK.StateQueueError | SDK.LucidError | TxConfirmError | TxSignError | TxSubmitError
+  | SDK.StateQueueError
+  | SDK.LucidError
+  | TxConfirmError
+  | TxSignError
+  | TxSubmitError
 > =>
   Effect.gen(function* () {
     const operatorKeyHash = yield* getOperatorKeyHash(lucid);
@@ -657,17 +623,24 @@ const operatorLifecycleProgram = (
       `Hub oracle policies: registered=${hubOracleDatum.registered_operators},active=${hubOracleDatum.active_operators},retired=${hubOracleDatum.retired_operators}`,
     );
     const policyMismatches: string[] = [];
-    if (hubOracleDatum.registered_operators !== contracts.registeredOperators.policyId) {
+    if (
+      hubOracleDatum.registered_operators !==
+      contracts.registeredOperators.policyId
+    ) {
       policyMismatches.push(
         `registered(hub=${hubOracleDatum.registered_operators},contracts=${contracts.registeredOperators.policyId})`,
       );
     }
-    if (hubOracleDatum.active_operators !== contracts.activeOperators.policyId) {
+    if (
+      hubOracleDatum.active_operators !== contracts.activeOperators.policyId
+    ) {
       policyMismatches.push(
         `active(hub=${hubOracleDatum.active_operators},contracts=${contracts.activeOperators.policyId})`,
       );
     }
-    if (hubOracleDatum.retired_operators !== contracts.retiredOperators.policyId) {
+    if (
+      hubOracleDatum.retired_operators !== contracts.retiredOperators.policyId
+    ) {
       policyMismatches.push(
         `retired(hub=${hubOracleDatum.retired_operators},contracts=${contracts.retiredOperators.policyId})`,
       );
@@ -787,8 +760,9 @@ const operatorLifecycleProgram = (
 
       if (mode !== "activate-only") {
         const existingRegisteredNode = existingRegisteredNodes[0];
-        const existingRegisteredAnchor = currentRegisteredNodes.find(({ datum }) =>
-          linkPointsToKey(datum, existingRegisteredNode.datum.key),
+        const existingRegisteredAnchor = currentRegisteredNodes.find(
+          ({ datum }) =>
+            linkPointsToKey(datum, existingRegisteredNode.datum.key),
         );
         if (existingRegisteredAnchor === undefined) {
           return yield* Effect.fail(
@@ -809,19 +783,17 @@ const operatorLifecycleProgram = (
           contracts.registeredOperators.policyId,
           existingRegisteredNode.assetName,
         );
-        const updatedRegisteredAnchorDatumAfterDeregister: SDK.LinkedListNodeView = {
-          ...existingRegisteredAnchor.datum,
-          next: existingRegisteredNode.datum.next,
-        };
+        const updatedRegisteredAnchorDatumAfterDeregister: SDK.LinkedListNodeView =
+          {
+            ...existingRegisteredAnchor.datum,
+            next: existingRegisteredNode.datum.next,
+          };
         const deregisterLayouts = [
           { removedNodeInputIndex: 0n, anchorNodeInputIndex: 1n },
           { removedNodeInputIndex: 1n, anchorNodeInputIndex: 0n },
         ] as const;
         const spendableWalletUtxosForDeregister =
-          yield* resolveSpendableWalletUtxos(
-            lucid,
-            lifecycleScriptRefOutRefs,
-          );
+          yield* resolveSpendableWalletUtxos(lucid, lifecycleScriptRefOutRefs);
         if (spendableWalletUtxosForDeregister.length === 0) {
           return yield* Effect.fail(
             new SDK.StateQueueError({
@@ -859,13 +831,19 @@ const operatorLifecycleProgram = (
                   lucid
                     .newTx()
                     .collectFrom(
-                      [existingRegisteredNode.utxo, existingRegisteredAnchor.utxo],
+                      [
+                        existingRegisteredNode.utxo,
+                        existingRegisteredAnchor.utxo,
+                      ],
                       LucidData.void(),
                     )
                     .readFrom(
                       registeredOperatorScriptRefs.map(({ utxo }) => utxo),
                     )
-                    .mintAssets({ [registeredNodeUnit]: -1n }, deregisterRedeemer)
+                    .mintAssets(
+                      { [registeredNodeUnit]: -1n },
+                      deregisterRedeemer,
+                    )
                     .pay.ToContract(
                       contracts.registeredOperators.spendingScriptAddress,
                       {
@@ -879,7 +857,9 @@ const operatorLifecycleProgram = (
                     .addSignerKey(operatorKeyHash)
                     .complete({
                       ...options,
-                      presetWalletInputs: [...spendableWalletUtxosForDeregister],
+                      presetWalletInputs: [
+                        ...spendableWalletUtxosForDeregister,
+                      ],
                     }),
                 ),
               catch: (cause) =>
@@ -928,7 +908,8 @@ const operatorLifecycleProgram = (
             contracts.registeredOperators.policyId,
           );
           const remainingRegistrationNodes = currentRegisteredNodes.filter(
-            ({ datum }) => registeredNodeMatchesOperator(datum, operatorKeyHash),
+            ({ datum }) =>
+              registeredNodeMatchesOperator(datum, operatorKeyHash),
           );
           if (remainingRegistrationNodes.length === 0) {
             registrationCleared = true;
@@ -959,8 +940,8 @@ const operatorLifecycleProgram = (
       }
     }
 
-    const postRefreshRegisteredNodes = currentRegisteredNodes.filter(({ datum }) =>
-      registeredNodeMatchesOperator(datum, operatorKeyHash),
+    const postRefreshRegisteredNodes = currentRegisteredNodes.filter(
+      ({ datum }) => registeredNodeMatchesOperator(datum, operatorKeyHash),
     );
     if (postRefreshRegisteredNodes.length > 1) {
       return yield* Effect.fail(
@@ -1082,18 +1063,15 @@ const operatorLifecycleProgram = (
         registeredRootNode.assetName,
       );
       const spendableWalletUtxosForRegister =
-        yield* resolveSpendableWalletUtxos(
-          lucid,
-          lifecycleScriptRefOutRefs,
-        );
+        yield* resolveSpendableWalletUtxos(lucid, lifecycleScriptRefOutRefs);
       if (spendableWalletUtxosForRegister.length === 0) {
         return yield* Effect.fail(
           new SDK.StateQueueError({
-              message:
-                "No wallet funding UTxOs available for registration transaction",
-              cause: operatorKeyHash,
-            }),
-          );
+            message:
+              "No wallet funding UTxOs available for registration transaction",
+            cause: operatorKeyHash,
+          }),
+        );
       }
       const registerFundingInputs = selectWalletFundingUtxos(
         spendableWalletUtxosForRegister,
@@ -1188,11 +1166,11 @@ const operatorLifecycleProgram = (
       });
       const draftRegisterUnsignedTx = yield* Effect.tryPromise({
         try: () =>
-          withRegisteredOperatorStubbedProviderEvaluation(lucid, () =>
-            mkRegisterTx(draftRegisterLayout).complete({
-              localUPLCEval: true,
-              presetWalletInputs: [...registerFundingInputs],
-            }),
+          buildUnevaluatedDraftTx(
+            lucid,
+            mkRegisterTx(draftRegisterLayout).collectFrom([
+              ...registerFundingInputs,
+            ]) as UnevaluatedDraftBuilder,
           ),
         catch: (cause) =>
           new SDK.LucidError({
@@ -1200,9 +1178,8 @@ const operatorLifecycleProgram = (
             cause,
           }),
       });
-      const registerDraftTx = draftRegisterUnsignedTx.toTransaction();
       let registerLayout = yield* deriveRegisterRedeemerLayout(
-        registerDraftTx,
+        draftRegisterUnsignedTx,
         layoutDerivationParams,
       );
       yield* Effect.logInfo(
@@ -1423,7 +1400,9 @@ const operatorLifecycleProgram = (
       const validFrom =
         alignedActivationTime >= lowerBoundTarget
           ? alignedActivationTime
-          : BigInt(alignedUnixTimeStrictlyAfter(lucid, Number(lowerBoundTarget)));
+          : BigInt(
+              alignedUnixTimeStrictlyAfter(lucid, Number(lowerBoundTarget)),
+            );
       if (usesWallClockTime) {
         return { validFrom };
       }
@@ -1461,18 +1440,15 @@ const operatorLifecycleProgram = (
     delete transferredOperatorAssets[registeredNodeUnit];
 
     const spendableWalletUtxosForActivation =
-      yield* resolveSpendableWalletUtxos(
-        lucid,
-        lifecycleScriptRefOutRefs,
-      );
+      yield* resolveSpendableWalletUtxos(lucid, lifecycleScriptRefOutRefs);
     if (spendableWalletUtxosForActivation.length === 0) {
       return yield* Effect.fail(
         new SDK.StateQueueError({
-              message:
-                "No wallet funding UTxOs available for activation transaction",
-              cause: operatorKeyHash,
-            }),
-          );
+          message:
+            "No wallet funding UTxOs available for activation transaction",
+          cause: operatorKeyHash,
+        }),
+      );
     }
     const activationFundingInputs = selectWalletFundingUtxos(
       spendableWalletUtxosForActivation,
@@ -1487,15 +1463,12 @@ const operatorLifecycleProgram = (
         }),
       );
     }
-    const activationCompleteOptions = (
-      options: { readonly localUPLCEval: boolean },
-    ) => ({
+    const activationCompleteOptions = (options: {
+      readonly localUPLCEval: boolean;
+    }) => ({
       ...options,
       presetWalletInputs: [...activationFundingInputs],
     });
-    const activationDraftCompleteOptions = {
-      presetWalletInputs: [...activationFundingInputs],
-    };
 
     const updatedRegisteredAnchorDatum: SDK.LinkedListNodeView = {
       ...registeredAnchor.datum,
@@ -1504,7 +1477,10 @@ const operatorLifecycleProgram = (
     /**
      * Builds the activation transaction for a registered operator.
      */
-    const mkActivateTx = (layout: ActivateRedeemerLayout) => {
+    const mkActivateTx = (
+      layout: ActivateRedeemerLayout,
+      options: { readonly resolveRegisteredRedeemerWithBuilder?: boolean } = {},
+    ) => {
       const { validFrom, validTo } = resolveActivationValidityWindow();
       const activatedNodeDatum: SDK.LinkedListNodeView = {
         key: { Key: { key: operatorKeyHash } },
@@ -1517,14 +1493,22 @@ const operatorLifecycleProgram = (
         ...activeAppendAnchor.datum,
         next: { Key: { key: operatorKeyHash } },
       };
-      const registeredActivateRedeemerBuilder =
-        mkRegisteredActivateRedeemerBuilder({
-          operatorKeyHash,
-          layout,
-          retiredOperatorAssetName: retiredNotMemberWitnessForActivate.assetName,
-          registeredNode: registeredNode.utxo,
-          registeredAnchor: registeredAnchor.utxo,
-        });
+      const registeredActivateRedeemer =
+        options.resolveRegisteredRedeemerWithBuilder === true
+          ? mkRegisteredActivateRedeemerBuilder({
+              operatorKeyHash,
+              layout,
+              retiredOperatorAssetName:
+                retiredNotMemberWitnessForActivate.assetName,
+              registeredNode: registeredNode.utxo,
+              registeredAnchor: registeredAnchor.utxo,
+            })
+          : mkRegisteredActivateRedeemer({
+              operatorKeyHash,
+              layout,
+              retiredOperatorAssetName:
+                retiredNotMemberWitnessForActivate.assetName,
+            });
       const activeActivateRedeemer = LucidData.to(
         {
           ActivateOperator: {
@@ -1555,25 +1539,20 @@ const operatorLifecycleProgram = (
           [activeAppendAnchor.utxo],
           ACTIVE_OPERATOR_LIST_STATE_TRANSITION_REDEEMER,
         )
-        .readFrom(
-          [
-            ...registeredOperatorScriptRefs.map(({ utxo }) => utxo),
-            ...activeOperatorScriptRefs.map(({ utxo }) => utxo),
-            hubOracleRefInput,
-            retiredNotMemberWitnessForActivate.utxo,
-          ],
-        )
-        .mintAssets(
-          { [registeredNodeUnit]: -1n },
-          registeredActivateRedeemerBuilder,
-        )
+        .readFrom([
+          ...registeredOperatorScriptRefs.map(({ utxo }) => utxo),
+          ...activeOperatorScriptRefs.map(({ utxo }) => utxo),
+          hubOracleRefInput,
+          retiredNotMemberWitnessForActivate.utxo,
+        ])
+        .mintAssets({ [registeredNodeUnit]: -1n }, registeredActivateRedeemer)
         .mintAssets({ [activeNodeUnit]: 1n }, activeActivateRedeemer);
       if (validTo !== undefined) {
         tx = tx.validTo(Number(validTo));
       }
 
-      return tx
-        .pay.ToContract(
+      return tx.pay
+        .ToContract(
           contracts.activeOperators.spendingScriptAddress,
           {
             kind: "inline",
@@ -1608,7 +1587,8 @@ const operatorLifecycleProgram = (
       registeredAnchor,
       activeAppendAnchor,
       registeredOperatorsPolicyId: contracts.registeredOperators.policyId,
-      registeredOperatorsAddress: contracts.registeredOperators.spendingScriptAddress,
+      registeredOperatorsAddress:
+        contracts.registeredOperators.spendingScriptAddress,
       registeredAnchorNodeUnit,
       activeOperatorsPolicyId: contracts.activeOperators.policyId,
       activeOperatorsAddress: contracts.activeOperators.spendingScriptAddress,
@@ -1629,11 +1609,9 @@ const operatorLifecycleProgram = (
     });
     const activationDraft = yield* Effect.tryPromise({
       try: () =>
-        withRegisteredOperatorStubbedProviderEvaluation(lucid, () =>
-          mkActivateTx(activateLayout).complete({
-            localUPLCEval: true,
-            ...activationDraftCompleteOptions,
-          }),
+        buildUnevaluatedDraftTx(
+          lucid,
+          mkActivateTx(activateLayout) as UnevaluatedDraftBuilder,
         ),
       catch: (cause) =>
         new SDK.LucidError({
@@ -1641,9 +1619,8 @@ const operatorLifecycleProgram = (
           cause,
         }),
     });
-    const activationDraftTx = activationDraft.toTransaction();
     const derivedDraftLayout = yield* deriveActivateRedeemerLayout(
-      activationDraftTx,
+      activationDraft,
       activateLayoutParams,
     );
     if (!activateLayoutsEqual(activateLayout, derivedDraftLayout)) {
@@ -1662,7 +1639,9 @@ const operatorLifecycleProgram = (
     let activationUnsignedTx = yield* Effect.tryPromise({
       try: () =>
         completeWithLocalEvaluation((options) =>
-          mkActivateTx(activateLayout).complete(activationCompleteOptions(options)),
+          mkActivateTx(activateLayout, {
+            resolveRegisteredRedeemerWithBuilder: true,
+          }).complete(activationCompleteOptions(options)),
         ),
       catch: (cause) =>
         new SDK.LucidError({
@@ -1701,13 +1680,15 @@ const operatorLifecycleProgram = (
       activationUnsignedTx = yield* Effect.tryPromise({
         try: () =>
           completeWithLocalEvaluation((options) =>
-            mkActivateTx(activateLayout).complete(activationCompleteOptions(options)),
+            mkActivateTx(activateLayout, {
+              resolveRegisteredRedeemerWithBuilder: true,
+            }).complete(activationCompleteOptions(options)),
           ),
         catch: (cause) =>
           new SDK.LucidError({
             message: `Failed to rebuild activation transaction with tx-derived layout: ${String(cause)}`,
             cause,
-        }),
+          }),
       });
     }
     const activateSubmitResult = yield* Effect.either(
@@ -1740,7 +1721,11 @@ export const registerAndActivateOperatorProgram = (
   referenceScriptsLucid?: LucidEvolution,
 ): Effect.Effect<
   ActivationTxHashes,
-  SDK.StateQueueError | SDK.LucidError | TxConfirmError | TxSignError | TxSubmitError
+  | SDK.StateQueueError
+  | SDK.LucidError
+  | TxConfirmError
+  | TxSignError
+  | TxSubmitError
 > =>
   operatorLifecycleProgram(
     lucid,
@@ -1764,7 +1749,11 @@ export const registerOperatorProgram = (
   referenceScriptsLucid?: LucidEvolution,
 ): Effect.Effect<
   RegistrationTxHashes,
-  SDK.StateQueueError | SDK.LucidError | TxConfirmError | TxSignError | TxSubmitError
+  | SDK.StateQueueError
+  | SDK.LucidError
+  | TxConfirmError
+  | TxSignError
+  | TxSubmitError
 > =>
   operatorLifecycleProgram(
     lucid,
@@ -1785,7 +1774,11 @@ export const activateOperatorProgram = (
   referenceScriptsLucid?: LucidEvolution,
 ): Effect.Effect<
   ActivationTxHashes,
-  SDK.StateQueueError | SDK.LucidError | TxConfirmError | TxSignError | TxSubmitError
+  | SDK.StateQueueError
+  | SDK.LucidError
+  | TxConfirmError
+  | TxSignError
+  | TxSubmitError
 > =>
   operatorLifecycleProgram(
     lucid,
@@ -1807,7 +1800,11 @@ export const deregisterOperatorProgram = (
   referenceScriptsLucid?: LucidEvolution,
 ): Effect.Effect<
   DeregistrationTxHashes,
-  SDK.StateQueueError | SDK.LucidError | TxConfirmError | TxSignError | TxSubmitError
+  | SDK.StateQueueError
+  | SDK.LucidError
+  | TxConfirmError
+  | TxSignError
+  | TxSubmitError
 > =>
   operatorLifecycleProgram(
     lucid,
