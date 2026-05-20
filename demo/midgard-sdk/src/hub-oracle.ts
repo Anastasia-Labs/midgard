@@ -3,7 +3,6 @@ import {
   GenericErrorFields,
   LucidError,
   AddressSchema,
-  PolicyIdSchema,
   makeReturn,
   addressDataFromBech32,
   Bech32DeserializationError,
@@ -39,21 +38,19 @@ export type HubOracleConfig = {
 
 export const HUB_ORACLE_ASSET_NAME = fromText("MIDGARD_HUB_ORACLE");
 
-export const hubOracleAssetName = HUB_ORACLE_ASSET_NAME;
-
 export const HubOracleDatumSchema = Data.Object({
-  registered_operators: PolicyIdSchema,
-  active_operators: PolicyIdSchema,
-  retired_operators: PolicyIdSchema,
-  scheduler: PolicyIdSchema,
-  state_queue: PolicyIdSchema,
-  fraud_proof_catalogue: PolicyIdSchema,
-  fraud_proof: PolicyIdSchema,
-  deposit: PolicyIdSchema,
-  withdrawal: PolicyIdSchema,
-  tx_order: PolicyIdSchema,
-  settlement: PolicyIdSchema,
-  payout: PolicyIdSchema,
+  registered_operators: ScriptHashSchema,
+  active_operators: ScriptHashSchema,
+  retired_operators: ScriptHashSchema,
+  scheduler: ScriptHashSchema,
+  state_queue: ScriptHashSchema,
+  fraud_proof_catalogue: ScriptHashSchema,
+  fraud_proof: ScriptHashSchema,
+  deposit: ScriptHashSchema,
+  withdrawal: ScriptHashSchema,
+  tx_order: ScriptHashSchema,
+  settlement: ScriptHashSchema,
+  payout: ScriptHashSchema,
   registered_operators_addr: AddressSchema,
   active_operators_addr: AddressSchema,
   retired_operators_addr: AddressSchema,

@@ -4,7 +4,8 @@ import {
   inspectContractsFromFiles,
   parseNetwork,
 } from "./inspect-contracts.js";
-import { submitInitFromFiles, type ProviderKind } from "./submit-init.js";
+import { submitInitFromFiles } from "./submit-init.js";
+import { type ProviderKind } from "./runtime.js";
 import { submitStep01FromFiles } from "./submit-step-01.js";
 import { submitStep02FromFiles } from "./submit-step-02.js";
 import { submitStep03FromFiles } from "./submit-step-03.js";
@@ -15,6 +16,7 @@ import {
   prepareDoubleSpendFromNode,
   prepareSampleDoubleSpend,
 } from "./prepare-double-spend.js";
+import { stringifyJson } from "./json-file.js";
 
 type ParsedArgs = {
   readonly command: string | undefined;
@@ -243,13 +245,7 @@ const parseArgs = (argv: readonly string[]): ParsedArgs => {
 };
 
 const writeJson = (value: unknown): void => {
-  process.stdout.write(
-    `${JSON.stringify(
-      value,
-      (_key, item) => (typeof item === "bigint" ? item.toString() : item),
-      2,
-    )}\n`,
-  );
+  process.stdout.write(stringifyJson(value));
 };
 
 const main = async (): Promise<void> => {

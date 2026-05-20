@@ -2,7 +2,7 @@ import type { Network } from "@lucid-evolution/lucid";
 import {
   MIDGARD_NATIVE_TX_VERSION,
   MIDGARD_SUPPORTED_SCRIPT_LANGUAGES,
-} from "@/midgard-tx-codec/index.js";
+} from "@al-ft/midgard-core/codec";
 
 export const PROTOCOL_INFO_API_VERSION = 1 as const;
 

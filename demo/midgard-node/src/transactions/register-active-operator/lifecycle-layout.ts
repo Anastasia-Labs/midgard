@@ -12,13 +12,14 @@ import {
 } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 import {
-  compareOutRefs,
-  resolveReferenceInputIndexFromSet,
+  collectSortedInputOutRefs,
+  findOutRefIndex,
+  resolveOutRefIndexFromSet,
 } from "@/tx-context.js";
 import {
   getRedeemerPointersInContextOrder,
   getTxInfoRedeemerIndexes,
-} from "@/cml-redeemers.js";
+} from "@al-ft/midgard-sdk";
 
 export type ReferenceScriptPublication = {
   readonly name: string;
@@ -54,35 +55,10 @@ export type ActivateRedeemerLayout = {
 };
 
 /**
- * Minimal outref shape used for canonical ordering calculations.
- */
-type OrderedOutRef = {
-  readonly txHash: string;
-  readonly outputIndex: number;
-};
-
-/**
  * Lexicographically compares two hex strings by byte value.
  */
 const compareHex = (left: string, right: string): number =>
   Buffer.from(left, "hex").compare(Buffer.from(right, "hex"));
-
-/**
- * Finds the canonical index of a target outref inside an unordered collection.
- */
-const resolveOrderedOutRefIndex = (
-  target: OrderedOutRef,
-  ordered: readonly OrderedOutRef[],
-): bigint | undefined => {
-  const position = [...ordered]
-    .sort(compareOutRefs)
-    .findIndex(
-      (candidate) =>
-        candidate.txHash === target.txHash &&
-        candidate.outputIndex === target.outputIndex,
-    );
-  return position >= 0 ? BigInt(position) : undefined;
-};
 
 /**
  * Returns whether an asset unit belongs to the given policy and has positive
@@ -149,23 +125,11 @@ export const findReferenceInputIndex = (
   if (referenceInputs === undefined) {
     return undefined;
   }
-  const orderedReferenceInputs: OrderedOutRef[] = Array.from(
-    { length: referenceInputs.len() },
-    (_, index) => {
-      const input = referenceInputs.get(index);
-      return {
-        txHash: input.transaction_id().to_hex(),
-        outputIndex: Number(input.index()),
-      };
-    },
+  const index = findOutRefIndex(
+    collectSortedInputOutRefs(referenceInputs),
+    target,
   );
-  return resolveOrderedOutRefIndex(
-    {
-      txHash: target.txHash,
-      outputIndex: Number(target.outputIndex),
-    },
-    orderedReferenceInputs,
-  );
+  return index === undefined ? undefined : BigInt(index);
 };
 
 /**
@@ -175,24 +139,11 @@ export const findInputIndex = (
   tx: CML.Transaction,
   target: UTxO,
 ): bigint | undefined => {
-  const inputs = tx.body().inputs();
-  const orderedInputs: OrderedOutRef[] = Array.from(
-    { length: inputs.len() },
-    (_, index) => {
-      const input = inputs.get(index);
-      return {
-        txHash: input.transaction_id().to_hex(),
-        outputIndex: Number(input.index()),
-      };
-    },
+  const index = findOutRefIndex(
+    collectSortedInputOutRefs(tx.body().inputs()),
+    target,
   );
-  return resolveOrderedOutRefIndex(
-    {
-      txHash: target.txHash,
-      outputIndex: Number(target.outputIndex),
-    },
-    orderedInputs,
-  );
+  return index === undefined ? undefined : BigInt(index);
 };
 
 /**
@@ -310,26 +261,21 @@ export const resolveInitialRegisterRedeemerLayout = ({
     activeNotMemberWitness.utxo,
     retiredNotMemberWitness.utxo,
   ] as const;
-  const rootInputIndex = resolveOrderedOutRefIndex(registeredRootNode.utxo, [
+  const rootInputIndex = resolveOutRefIndexFromSet(registeredRootNode.utxo, [
     registeredRootNode.utxo,
     ...fundingInputs,
   ]);
-  if (rootInputIndex === undefined) {
-    throw new Error(
-      `Failed to resolve initial registered root input index for ${registeredRootNode.utxo.txHash}#${registeredRootNode.utxo.outputIndex.toString()}`,
-    );
-  }
   return {
     rootInputIndex,
-    hubOracleRefInputIndex: resolveReferenceInputIndexFromSet(
+    hubOracleRefInputIndex: resolveOutRefIndexFromSet(
       hubOracleRefInput,
       referenceInputs,
     ),
-    activeOperatorRefInputIndex: resolveReferenceInputIndexFromSet(
+    activeOperatorRefInputIndex: resolveOutRefIndexFromSet(
       activeNotMemberWitness.utxo,
       referenceInputs,
     ),
-    retiredOperatorRefInputIndex: resolveReferenceInputIndexFromSet(
+    retiredOperatorRefInputIndex: resolveOutRefIndexFromSet(
       retiredNotMemberWitness.utxo,
       referenceInputs,
     ),
@@ -376,32 +322,25 @@ export const resolveInitialActivateRedeemerLayout = ({
     activeAppendAnchor.utxo,
     ...fundingInputs,
   ] as const;
-  const registeredOperatorsRemovedNodeInputIndex = resolveOrderedOutRefIndex(
+  const registeredOperatorsRemovedNodeInputIndex = resolveOutRefIndexFromSet(
     registeredNode.utxo,
     activationInputs,
   );
-  const registeredOperatorsAnchorNodeInputIndex = resolveOrderedOutRefIndex(
+  const registeredOperatorsAnchorNodeInputIndex = resolveOutRefIndexFromSet(
     registeredAnchor.utxo,
     activationInputs,
   );
-  const activeOperatorsAnchorNodeInputIndex = resolveOrderedOutRefIndex(
+  const activeOperatorsAnchorNodeInputIndex = resolveOutRefIndexFromSet(
     activeAppendAnchor.utxo,
     activationInputs,
   );
-  if (
-    registeredOperatorsRemovedNodeInputIndex === undefined ||
-    registeredOperatorsAnchorNodeInputIndex === undefined ||
-    activeOperatorsAnchorNodeInputIndex === undefined
-  ) {
-    throw new Error("Failed to resolve initial activation input indexes");
-  }
   const activationScriptSpendCount = 3;
   return {
-    hubOracleRefInputIndex: resolveReferenceInputIndexFromSet(
+    hubOracleRefInputIndex: resolveOutRefIndexFromSet(
       hubOracleRefInput,
       referenceInputs,
     ),
-    retiredOperatorRefInputIndex: resolveReferenceInputIndexFromSet(
+    retiredOperatorRefInputIndex: resolveOutRefIndexFromSet(
       retiredNotMemberWitnessForActivate.utxo,
       referenceInputs,
     ),

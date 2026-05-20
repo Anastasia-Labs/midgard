@@ -10,7 +10,6 @@ import {
   WorkerInput,
   WorkerOutput,
   deserializeStateQueueUTxO,
-  serializeStateQueueUTxO,
 } from "@/workers/utils/commit-block-header.js";
 import {
   ConfigError,
@@ -23,90 +22,38 @@ import {
 import {
   MempoolDB,
   ProcessedMempoolDB,
-  DepositsDB,
-  WithdrawalsDB,
-  PendingBlockFinalizationsDB,
-  StateQueueMutationLeasesDB,
   TxUtils as TxTable,
 } from "@/database/index.js";
+import { type TxSignError, type TxSubmitError } from "@/transactions/utils.js";
+import { type LucidEvolution, toUnit } from "@lucid-evolution/lucid";
 import {
-  handleSignSubmitNoConfirmation,
-  TxSignError,
-  TxSubmitError,
-} from "@/transactions/utils.js";
-import {
-  CML,
-  type LucidEvolution,
-  TxBuilder,
-  Data as LucidData,
-  UTxO,
-  fromHex,
-  toUnit,
-} from "@lucid-evolution/lucid";
-import {
-  MidgardMpf,
-  MpfError,
-  emptyRootHexProgram,
-  keyValuePhasRoot,
+  type MidgardMpf,
   makeMpfs,
   processMpfs,
-  withMpfRootTransaction,
+  withMpfRootTransactions,
 } from "@/workers/utils/mpf.js";
 import { Columns as TxColumns } from "@/database/utils/tx.js";
 import {
   shouldAttemptLocalFinalizationRecovery,
   shouldDeferCommitSubmission,
-  selectCommitRoots,
 } from "@/workers/utils/commit-block-planner.js";
-import { buildDeterministicCommitTxBuilder } from "@/workers/utils/commit-tx-builder.js";
-import {
-  failedSubmissionProgram,
-  recoverSubmittedTxHashByHeaderProgram,
-  skippedSubmissionProgram,
-  successfulLocalFinalizationRecoveryProgram,
-} from "@/workers/utils/commit-submission.js";
-import {
-  resolveAlignedCommitEndTime,
-  resolveExplicitCommitCandidateEndTimeMs,
-} from "@/workers/utils/commit-end-time.js";
+import { resolveExplicitCommitCandidateEndTimeMs } from "@/workers/utils/commit-end-time.js";
 import { fetchAndInsertDepositUTxOsForCommitBarrier } from "@/fibers/fetch-and-insert-deposit-utxos.js";
 import { fetchAndInsertWithdrawalUTxOsForCommitBarrier } from "@/fibers/fetch-and-insert-withdrawal-utxos.js";
 import {
-  fetchRealStateQueueWitnessContext,
-  type RealStateQueueWitnessContext,
-} from "@/workers/utils/scheduler-refresh.js";
-import {
-  isPotentiallyStaleOperatorWalletViewError,
-  reloadOperatorWalletView,
-  type OperatorWalletView,
-} from "@/operator-wallet-view.js";
+  deferProcessedCommitPayloadUntilConfirmation,
+  recoverLocalFinalizationAgainstConfirmedBlock,
+  submitDepositOnlyCommit,
+  submitTxBackedCommit,
+} from "@/workers/commit-block-header/submission.js";
+import { buildUnsignedCommitTx } from "@/workers/commit-block-header/build-unsigned-tx.js";
+import { fetchLatestCommittedBlockLocal } from "@/workers/commit-block-header/state-queue.js";
 import { DatabaseError } from "@/database/utils/common.js";
-import { formatUnknownError } from "@/error-format.js";
 
-const STATE_QUEUE_HEADER_NODE_LOVELACE = 5_000_000n;
-const ACTIVE_OPERATOR_MATURITY_DURATION_MS = 30n;
-const COMMIT_STALE_OPERATOR_WALLET_VIEW_RETRIES = 1;
 const EXPLICIT_COMMIT_CONFIRMATION_TIMEOUT_MS = 120_000;
 const EXPLICIT_COMMIT_CONFIRMATION_POLL_INTERVAL_MS = 5_000;
 const EXPLICIT_COMMIT_BLOCK_VISIBILITY_DELAY = "5 seconds";
 const EXPLICIT_COMMIT_BLOCK_VISIBILITY_RETRIES = 18;
-
-const decodeActiveOperatorDatum = (data: unknown): SDK.ActiveOperatorDatum =>
-  LucidData.castFrom(
-    data as never,
-    SDK.ActiveOperatorDatum as never,
-  ) as SDK.ActiveOperatorDatum;
-
-class LocalFinalizationPendingError extends Data.TaggedError(
-  "LocalFinalizationPendingError",
-)<{
-  readonly submittedTxHash: string;
-  readonly txSize: number;
-  readonly mempoolTxsCount: number;
-  readonly sizeOfBlocksTxs: number;
-  readonly blockEndTimeMs: number;
-  readonly cause: unknown;
-}> {}
 
 class CommitWorkerInvariantError extends Data.TaggedError(
   "CommitWorkerInvariantError",
@@ -124,71 +71,6 @@ const provideCommitBlockWorkerServices = <A, E>(
     Effect.provide(Lucid.Default),
     Effect.provide(NodeConfig.layer),
   );
-
-// The sibling SDK is built in its own TypeScript program, so its exported
-// `Effect` values carry a distinct branded generator identity during DTS emit.
-// Normalize the few SDK helpers we yield from inside this worker onto the local
-// `effect` type graph once at the boundary.
-const localizeSdkEffect = <A, E, R = never>(
-  effect: unknown,
-): Effect.Effect<A, E, R> => effect as Effect.Effect<A, E, R>;
-
-const getConfirmedStateFromStateQueueDatumLocal = (
-  nodeDatum: SDK.StateQueueNodeView,
-): Effect.Effect<
-  { readonly data: SDK.ConfirmedState; readonly link: unknown },
-  SDK.DataCoercionError
-> => localizeSdkEffect(SDK.getConfirmedStateFromStateQueueDatum(nodeDatum));
-
-const getHeaderFromStateQueueDatumLocal = (
-  nodeDatum: SDK.StateQueueNodeView,
-): Effect.Effect<SDK.Header, SDK.DataCoercionError> =>
-  localizeSdkEffect(SDK.getHeaderFromStateQueueDatum(nodeDatum));
-
-const hashBlockHeaderLocal = (
-  header: SDK.Header,
-): Effect.Effect<string, SDK.HashingError> =>
-  localizeSdkEffect(SDK.hashBlockHeader(header));
-
-const updateLatestBlocksDatumAndGetTheNewHeaderLocal = (
-  lucid: Parameters<
-    typeof SDK.updateLatestBlocksDatumAndGetTheNewHeaderProgram
-  >[0],
-  latestBlocksDatum: SDK.StateQueueNodeView,
-  newUTxOsRoot: string,
-  transactionsRoot: string,
-  depositsRoot: string,
-  withdrawalsRoot: string,
-  endTime: bigint,
-): Effect.Effect<
-  { readonly nodeDatum: SDK.StateQueueNodeView; readonly header: SDK.Header },
-  SDK.DataCoercionError | SDK.LucidError | SDK.HashingError
-> =>
-  localizeSdkEffect(
-    SDK.updateLatestBlocksDatumAndGetTheNewHeaderProgram(
-      lucid,
-      latestBlocksDatum,
-      newUTxOsRoot,
-      transactionsRoot,
-      depositsRoot,
-      withdrawalsRoot,
-      endTime,
-    ),
-  );
-
-const getLatestBlockDatumEndTime = (
-  latestBlocksDatum: SDK.StateQueueNodeView,
-): Effect.Effect<Date, SDK.DataCoercionError> =>
-  latestBlocksDatum.key === "Empty"
-    ? getConfirmedStateFromStateQueueDatumLocal(latestBlocksDatum).pipe(
-        Effect.map(
-          ({ data: confirmedState }) =>
-            new Date(Number(confirmedState.endTime)),
-        ),
-      )
-    : getHeaderFromStateQueueDatumLocal(latestBlocksDatum).pipe(
-        Effect.map((latestHeader) => new Date(Number(latestHeader.endTime))),
-      );
 
 const establishEndTimeFromTxRequests = (
   mempoolTxs: readonly TxTable.EntryWithTimeStamp[],
@@ -219,241 +101,22 @@ const establishEndTimeFromTxRequests = (
     }
   });
 
-const resolveDepositsRoot = (
-  depositEntries: readonly DepositsDB.Entry[],
-): Effect.Effect<Option.Option<string>, MpfError, never> =>
-  Effect.gen(function* () {
-    if (depositEntries.length <= 0) {
-      return Option.none();
-    }
-    const eventIds = depositEntries.map(
-      (entry) => entry[DepositsDB.Columns.ID],
-    );
-    const eventInfos = depositEntries.map(
-      (entry) => entry[DepositsDB.Columns.INFO],
-    );
-    const root = yield* keyValuePhasRoot(eventIds, eventInfos);
-    return Option.some(root);
-  });
-
-const resolveWithdrawalsRoot = (
-  withdrawalEntries: readonly WithdrawalsDB.Entry[],
-): Effect.Effect<Option.Option<string>, MpfError | DatabaseError, never> =>
-  Effect.gen(function* () {
-    if (withdrawalEntries.length <= 0) {
-      return Option.none();
-    }
-    const keyValues = yield* Effect.forEach(
-      withdrawalEntries,
-      WithdrawalsDB.toRootKeyValue,
-    );
-    const root = yield* keyValuePhasRoot(
-      keyValues.map((keyValue) => keyValue.key),
-      keyValues.map((keyValue) => keyValue.value),
-    );
-    return Option.some(root);
-  });
-
-const COMMIT_WINDOW_STABILIZATION_MAX_ATTEMPTS = 4;
-
-const buildUnsignedTx = (
-  contracts: SDK.MidgardValidators,
-  latestBlock: SDK.StateQueueUTxO,
-  utxosRoot: string,
-  txsRoot: string,
-  depositsRoot: string,
-  withdrawalsRoot: string,
-  endDate: Date,
-  initialOperatorWalletView?: OperatorWalletView,
-) =>
-  Effect.gen(function* () {
-    const lucid = yield* Lucid;
-    const stateQueueAuthValidator = contracts.stateQueue;
-    const latestEndTime = Number(
-      (yield* getLatestBlockDatumEndTime(latestBlock.datum)).getTime(),
-    );
-    // The worker's Lucid service starts without a selected wallet. Select the
-    // operator wallet before any scheduler refresh or witness lookup that
-    // depends on wallet address or spendable operator inputs.
-    yield* lucid.switchToOperatorsMainWallet;
-    /**
-     * Resolves the commit window that should be used for the current block-header attempt.
-     */
-    const resolveCommitWindow = () =>
-      resolveAlignedCommitEndTime({
-        lucid: lucid.api,
-        latestEndTime,
-        candidateEndTime: endDate.getTime(),
-      });
-    let commitWindow = resolveCommitWindow();
-    let witnessContext: RealStateQueueWitnessContext | undefined;
-    let stabilizationAttempts = 0;
-    while (stabilizationAttempts < COMMIT_WINDOW_STABILIZATION_MAX_ATTEMPTS) {
-      witnessContext = yield* fetchRealStateQueueWitnessContext(
-        lucid.api,
-        contracts,
-        commitWindow.resolvedEndTime,
-        witnessContext?.operatorWalletView ?? initialOperatorWalletView,
-        lucid.referenceScriptsAddress,
-      );
-      const refreshedCommitWindow = resolveCommitWindow();
-      if (
-        refreshedCommitWindow.resolvedEndTime === commitWindow.resolvedEndTime
-      ) {
-        commitWindow = refreshedCommitWindow;
-        break;
-      }
-      stabilizationAttempts += 1;
-      yield* Effect.logWarning(
-        `Commit end-time advanced while preparing scheduler-aligned witness context; rebuilding with refreshed window (previous=${commitWindow.resolvedEndTime}, next=${refreshedCommitWindow.resolvedEndTime}, candidate=${refreshedCommitWindow.alignedCandidateEndTime}, latestEnd=${latestEndTime}, attempt=${stabilizationAttempts}/${COMMIT_WINDOW_STABILIZATION_MAX_ATTEMPTS}).`,
-      );
-      commitWindow = refreshedCommitWindow;
-    }
-    if (witnessContext === undefined) {
-      return yield* Effect.fail(
-        new SDK.StateQueueError({
-          message:
-            "Failed to stabilize the commit window before building the block commitment transaction",
-          cause: `attempts=${COMMIT_WINDOW_STABILIZATION_MAX_ATTEMPTS}`,
-        }),
-      );
-    }
-    const {
-      alignedCandidateEndTime,
-      minimumMonotonicEndTime,
-      resolvedEndTime: alignedEndTime,
-    } = commitWindow;
-    if (alignedEndTime !== alignedCandidateEndTime) {
-      yield* Effect.logWarning(
-        `Adjusted commit end-time to maintain monotonic header timing (candidate=${alignedCandidateEndTime}, minimum=${minimumMonotonicEndTime}, selected=${alignedEndTime}, latestEnd=${latestEndTime}).`,
-      );
-    }
-    yield* Effect.logInfo("🔹 Finding updated block datum and new header...");
-    const { nodeDatum: updatedNodeDatum, header: newHeader } =
-      yield* updateLatestBlocksDatumAndGetTheNewHeaderLocal(
-        lucid.api,
-        latestBlock.datum,
-        utxosRoot,
-        txsRoot,
-        depositsRoot,
-        withdrawalsRoot,
-        BigInt(alignedEndTime),
-      );
-
-    const newHeaderHash = yield* hashBlockHeaderLocal(newHeader);
-    yield* Effect.logInfo(`🔹 New header hash is: ${newHeaderHash}`);
-    yield* Effect.logInfo(
-      "🔹 Building commitment with real state_queue witness context.",
-    );
-
-    yield* Effect.logInfo("🔹 Building block commitment transaction...");
-
-    const headerNodeUnit = toUnit(
-      stateQueueAuthValidator.policyId,
-      SDK.STATE_QUEUE_NODE_ASSET_NAME_PREFIX + newHeaderHash,
-    );
-    const commitMintAssets = {
-      [headerNodeUnit]: 1n,
-    };
-    const headerNodeOutputAssets = {
-      lovelace: STATE_QUEUE_HEADER_NODE_LOVELACE,
-      ...commitMintAssets,
-    };
-    const appendedNodeDatum: SDK.StateQueueNodeView = {
-      key: updatedNodeDatum.next,
-      next: "Empty",
-      data: SDK.castHeaderToData(newHeader) as SDK.LinkedListNodeView["data"],
-    };
-    const appendedNodeDatumCbor =
-      SDK.encodeLinkedListNodeView(appendedNodeDatum);
-    const updatedNodeDatumCbor = SDK.encodeLinkedListNodeView(updatedNodeDatum);
-    const updatedActiveOperatorDatumCbor = yield* Effect.try({
-      try: () => {
-        const activeOperatorLinkedListDatum = LucidData.from(
-          witnessContext.activeOperatorInput.datum,
-          SDK.NodeDatum,
-        );
-        const activeOperatorNodeView = SDK.linkedListDatumToNodeView(
-          activeOperatorLinkedListDatum,
-          SDK.ACTIVE_OPERATOR_NODE_ASSET_NAME_PREFIX +
-            witnessContext.operatorKeyHash,
-        );
-        const activeOperatorDatum = decodeActiveOperatorDatum(
-          activeOperatorNodeView.data,
-        );
-        const updatedActiveOperatorNodeDatum: SDK.LinkedListNodeView = {
-          ...activeOperatorNodeView,
-          data: SDK.castActiveOperatorDatumToData({
-            ...activeOperatorDatum,
-            bond_unlock_time:
-              BigInt(alignedEndTime) -
-              1n +
-              ACTIVE_OPERATOR_MATURITY_DURATION_MS,
-          }) as SDK.LinkedListNodeView["data"],
-        };
-        return SDK.encodeLinkedListNodeView(updatedActiveOperatorNodeDatum);
-      },
-      catch: (cause) =>
-        new SDK.StateQueueError({
-          message:
-            "Failed to update active-operator bond-hold datum for commit tx",
-          cause,
-        }),
-    });
-
-    /**
-     * Builds the shared transaction skeleton for a block-header commit attempt.
-     */
-    const makeBaseCommitTx = (stateQueueCommitRedeemer: string) =>
-      lucid.api
-        .newTx()
-        .validTo(alignedEndTime)
-        .collectFrom([latestBlock.utxo], stateQueueCommitRedeemer)
-        .pay.ToContract(
-          stateQueueAuthValidator.spendingScriptAddress,
-          {
-            kind: "inline",
-            value: SDK.encodeLinkedListNodeView(appendedNodeDatum),
-          },
-          headerNodeOutputAssets,
-        )
-        .pay.ToContract(
-          stateQueueAuthValidator.spendingScriptAddress,
-          {
-            kind: "inline",
-            value: SDK.encodeLinkedListNodeView(updatedNodeDatum),
-          },
-          latestBlock.utxo.assets,
-        );
-
-    const txBuilder = yield* buildDeterministicCommitTxBuilder({
-      lucid: lucid.api,
-      contracts,
-      latestBlockInput: latestBlock.utxo,
-      witness: witnessContext,
-      headerNodeUnit,
-      appendedNodeDatumCbor,
-      previousHeaderNodeDatumCbor: updatedNodeDatumCbor,
-      updatedActiveOperatorDatumCbor,
-      commitMintAssets,
-      makeBaseCommitTx,
-    });
-
-    const txSize = txBuilder.toCBOR().length / 2;
-    yield* Effect.logInfo(`🔹 Transaction built successfully. Size: ${txSize}`);
-
-    const signAndSubmitProgram = handleSignSubmitNoConfirmation(
-      lucid.api,
-      txBuilder,
-    ).pipe(Effect.withSpan("handleSignSubmit-commit-block"));
-
-    return {
-      newHeaderHash,
-      blockEndTimeMs: alignedEndTime,
-      signAndSubmitProgram,
-      txSize,
-    };
-  });
+const shouldPreserveCommitMpfRoots = (output: WorkerOutput): boolean => {
+  switch (output.type) {
+    case "SubmittedAwaitingConfirmationOutput":
+    case "SubmittedAwaitingLocalFinalizationOutput":
+    case "SuccessfulSubmissionOutput":
+    case "SkippedSubmissionOutput":
+      return true;
+    case "SuccessfulLocalFinalizationRecoveryOutput":
+      // Local finalization intentionally advances durable DB state and resets
+      // the transactions MPF root; rolling back would undo recovery.
+      return true;
+    case "FailureOutput":
+    case "NothingToCommitOutput":
+      return false;
+  }
+};
 
 export type ExplicitBlockHeaderCommitParams = {
   readonly utxosRoot: string;
@@ -581,15 +244,15 @@ export const commitExplicitBlockHeaderProgram = (
       stateQueuePolicyId: contracts.stateQueue.policyId,
     };
 
-    const latestBlock = yield* localizeSdkEffect<
-      SDK.StateQueueUTxO,
-      SDK.StateQueueError | SDK.LucidError
-    >(SDK.fetchLatestCommittedBlockProgram(lucid, fetchConfig));
+    const latestBlock = yield* fetchLatestCommittedBlockLocal(
+      lucid,
+      fetchConfig,
+    );
     const endTime = new Date(
       resolveExplicitCommitCandidateEndTimeMs(params.endTimeMs),
     );
     const { newHeaderHash, blockEndTimeMs, signAndSubmitProgram, txSize } =
-      yield* buildUnsignedTx(
+      yield* buildUnsignedCommitTx(
         contracts,
         latestBlock,
         params.utxosRoot,
@@ -625,715 +288,6 @@ export const commitExplicitBlockHeaderProgram = (
         withdrawalsRoot: params.withdrawalsRoot,
       },
     };
-  });
-
-const toLocalFinalizationPendingError = ({
-  submittedTxHash,
-  txSize,
-  currentBlockMempoolTxsCount,
-  sizeOfProcessedTxs,
-  blockEndTimeMs,
-  workerInput,
-  cause,
-}: {
-  readonly submittedTxHash: string;
-  readonly txSize: number;
-  readonly currentBlockMempoolTxsCount: number;
-  readonly sizeOfProcessedTxs: number;
-  readonly blockEndTimeMs: number;
-  readonly workerInput: WorkerInput;
-  readonly cause: unknown;
-}) =>
-  new LocalFinalizationPendingError({
-    submittedTxHash,
-    txSize,
-    mempoolTxsCount:
-      currentBlockMempoolTxsCount + workerInput.data.mempoolTxsCountSoFar,
-    sizeOfBlocksTxs:
-      sizeOfProcessedTxs + workerInput.data.sizeOfProcessedTxsSoFar,
-    blockEndTimeMs,
-    cause,
-  });
-
-const stateQueueOutRef = (block: SDK.StateQueueUTxO): string =>
-  `${block.utxo.txHash}#${block.utxo.outputIndex.toString()}`;
-
-const stateQueueBaseHeaderHash = (
-  block: SDK.StateQueueUTxO,
-): Effect.Effect<string, SDK.DataCoercionError | SDK.HashingError, never> =>
-  Effect.gen(function* () {
-    if (block.datum.key === "Empty") {
-      const { data } = yield* getConfirmedStateFromStateQueueDatumLocal(
-        block.datum,
-      );
-      return data.headerHash;
-    }
-    const header = yield* getHeaderFromStateQueueDatumLocal(block.datum);
-    return yield* hashBlockHeaderLocal(header);
-  });
-
-const buildPendingJournalMetadata = ({
-  latestBlock,
-  workerInput,
-  blockEndTimeMs,
-  expectedRoots,
-}: {
-  readonly latestBlock: SDK.StateQueueUTxO;
-  readonly workerInput: WorkerInput;
-  readonly blockEndTimeMs: number;
-  readonly expectedRoots: PendingBlockFinalizationsDB.PendingBlockFinalizationMetadata["expectedRoots"];
-}): Effect.Effect<
-  PendingBlockFinalizationsDB.PendingBlockFinalizationMetadata,
-  | SDK.CmlUnexpectedError
-  | SDK.CborSerializationError
-  | SDK.DataCoercionError
-  | SDK.HashingError,
-  never
-> =>
-  Effect.gen(function* () {
-    const serializedBase = yield* serializeStateQueueUTxO(latestBlock);
-    const baseHeaderHash = yield* stateQueueBaseHeaderHash(latestBlock);
-    const fallbackSnapshotId = [
-      "worker",
-      stateQueueOutRef(latestBlock),
-      workerInput.data.currentBlockStartTimeMs.toString(),
-      blockEndTimeMs.toString(),
-    ].join(":");
-    return {
-      stateQueueLeaseToken:
-        workerInput.data.stateQueueLeaseToken ?? "unleased-worker-direct",
-      baseSnapshotId: workerInput.data.baseSnapshotId ?? fallbackSnapshotId,
-      baseTailOutRef: stateQueueOutRef(latestBlock),
-      baseTailHeaderHash: Buffer.from(fromHex(baseHeaderHash)),
-      baseTailDatumCbor: serializedBase.datum,
-      baseRoots: expectedRoots,
-      blockStartTime: new Date(workerInput.data.currentBlockStartTimeMs),
-      expectedRoots,
-    };
-  });
-
-const assertLiveTailCommitBase = (
-  contracts: SDK.MidgardValidators,
-  expectedTail: SDK.StateQueueUTxO,
-): Effect.Effect<void, SDK.LucidError | SDK.StateQueueError, Lucid> =>
-  Effect.gen(function* () {
-    const lucid = yield* Lucid;
-    const liveTail = yield* SDK.fetchLatestCommittedBlockProgram(lucid.api, {
-      stateQueueAddress: contracts.stateQueue.spendingScriptAddress,
-      stateQueuePolicyId: contracts.stateQueue.policyId,
-    });
-    const expectedOutRef = stateQueueOutRef(expectedTail);
-    const liveOutRef = stateQueueOutRef(liveTail);
-    if (expectedOutRef !== liveOutRef) {
-      return yield* Effect.fail(
-        new SDK.StateQueueError({
-          message:
-            "Commit base is stale; aborting block build before creating a pending journal",
-          cause: `expected_tail=${expectedOutRef},live_tail=${liveOutRef}`,
-        }),
-      );
-    }
-  });
-
-const assertPendingJournalCompleteness = ({
-  txRoot,
-  emptyTxRoot,
-  txMemberCount,
-  depositsRoot,
-  depositMemberCount,
-  withdrawalsRoot,
-  withdrawalMemberCount,
-}: {
-  readonly txRoot: string;
-  readonly emptyTxRoot: string;
-  readonly txMemberCount: number;
-  readonly depositsRoot: string;
-  readonly depositMemberCount: number;
-  readonly withdrawalsRoot: string;
-  readonly withdrawalMemberCount: number;
-}): Effect.Effect<void, DatabaseError> =>
-  Effect.gen(function* () {
-    if (txRoot !== emptyTxRoot && txMemberCount <= 0) {
-      return yield* Effect.fail(
-        new DatabaseError({
-          table: PendingBlockFinalizationsDB.tableName,
-          message:
-            "Refusing to submit commit because a non-empty transaction root would have no pending journal tx members",
-          cause: `tx_root=${txRoot}`,
-        }),
-      );
-    }
-    if (
-      depositsRoot !== SDK.EMPTY_MERKLE_TREE_ROOT &&
-      depositMemberCount <= 0
-    ) {
-      return yield* Effect.fail(
-        new DatabaseError({
-          table: PendingBlockFinalizationsDB.tableName,
-          message:
-            "Refusing to submit commit because a non-empty deposit root would have no pending journal deposit members",
-          cause: `deposits_root=${depositsRoot}`,
-        }),
-      );
-    }
-    if (
-      withdrawalsRoot !== SDK.EMPTY_MERKLE_TREE_ROOT &&
-      withdrawalMemberCount <= 0
-    ) {
-      return yield* Effect.fail(
-        new DatabaseError({
-          table: PendingBlockFinalizationsDB.tableName,
-          message:
-            "Refusing to submit commit because a non-empty withdrawal root would have no pending journal withdrawal members",
-          cause: `withdrawals_root=${withdrawalsRoot}`,
-        }),
-      );
-    }
-  });
-
-const revalidateStateQueueLease = (
-  workerInput: WorkerInput,
-): Effect.Effect<void, DatabaseError, Database> => {
-  const token = workerInput.data.stateQueueLeaseToken;
-  return token === undefined
-    ? Effect.void
-    : StateQueueMutationLeasesDB.revalidate(token);
-};
-
-const submitDepositOnlyCommit = ({
-  contracts,
-  latestBlock,
-  endTime,
-  includedDepositEntries,
-  includedDepositEventIds,
-  includedWithdrawalEntries,
-  includedWithdrawalEventIds,
-  workerInput,
-  utxoRoot,
-  txRoot,
-}: {
-  readonly contracts: SDK.MidgardValidators;
-  readonly latestBlock: SDK.StateQueueUTxO;
-  readonly endTime: Date;
-  readonly includedDepositEntries: readonly DepositsDB.Entry[];
-  readonly includedDepositEventIds: readonly Buffer[];
-  readonly includedWithdrawalEntries: readonly WithdrawalsDB.Entry[];
-  readonly includedWithdrawalEventIds: readonly Buffer[];
-  readonly workerInput: WorkerInput;
-  readonly utxoRoot: string;
-  readonly txRoot: string;
-}) =>
-  Effect.gen(function* () {
-    const optDepositsRoot = yield* resolveDepositsRoot(includedDepositEntries);
-    const optWithdrawalsRoot = yield* resolveWithdrawalsRoot(
-      includedWithdrawalEntries,
-    );
-    if (Option.isNone(optDepositsRoot) && Option.isNone(optWithdrawalsRoot)) {
-      yield* Effect.logInfo("🔹 Nothing to commit.");
-      return {
-        type: "NothingToCommitOutput",
-      } as WorkerOutput;
-    }
-
-    const emptyRoot = yield* emptyRootHexProgram;
-    const depositsRoot = Option.isSome(optDepositsRoot)
-      ? optDepositsRoot.value
-      : SDK.EMPTY_MERKLE_TREE_ROOT;
-    const withdrawalsRoot = Option.isSome(optWithdrawalsRoot)
-      ? optWithdrawalsRoot.value
-      : SDK.EMPTY_MERKLE_TREE_ROOT;
-    yield* Effect.logInfo(`🔹 Deposits root is: ${depositsRoot}`);
-    yield* Effect.logInfo(`🔹 Withdrawals root is: ${withdrawalsRoot}`);
-    const submittedAwaitingConfirmationOutput = (
-      submittedTxHash: string,
-      txSize: number,
-      blockEndTimeMs: number,
-    ) =>
-      Effect.succeed({
-        type: "SubmittedAwaitingConfirmationOutput",
-        submittedTxHash,
-        txSize,
-        mempoolTxsCount: workerInput.data.mempoolTxsCountSoFar,
-        sizeOfBlocksTxs: workerInput.data.sizeOfProcessedTxsSoFar,
-        blockEndTimeMs,
-      } satisfies WorkerOutput);
-    const roots = selectCommitRoots({
-      hasTxRequests: false,
-      computedUtxoRoot: utxoRoot,
-      computedTxRoot: txRoot,
-      emptyRoot,
-    });
-    yield* assertPendingJournalCompleteness({
-      txRoot: roots.txRoot,
-      emptyTxRoot: emptyRoot,
-      txMemberCount: 0,
-      depositsRoot,
-      depositMemberCount: includedDepositEventIds.length,
-      withdrawalsRoot,
-      withdrawalMemberCount: includedWithdrawalEventIds.length,
-    });
-    yield* revalidateStateQueueLease(workerInput);
-    yield* assertLiveTailCommitBase(contracts, latestBlock);
-    const { newHeaderHash, blockEndTimeMs, signAndSubmitProgram, txSize } =
-      yield* buildUnsignedTx(
-        contracts,
-        latestBlock,
-        roots.utxoRoot,
-        roots.txRoot,
-        depositsRoot,
-        withdrawalsRoot,
-        endTime,
-      );
-    const headerHashBuffer = Buffer.from(fromHex(newHeaderHash));
-    yield* PendingBlockFinalizationsDB.preparePendingSubmission({
-      headerHash: headerHashBuffer,
-      metadata: yield* buildPendingJournalMetadata({
-        latestBlock,
-        workerInput,
-        blockEndTimeMs,
-        expectedRoots: {
-          utxosRoot: roots.utxoRoot,
-          transactionsRoot: roots.txRoot,
-          depositsRoot,
-          withdrawalsRoot,
-        },
-      }),
-      blockEndTime: new Date(blockEndTimeMs),
-      depositEventIds: includedDepositEventIds,
-      depositEntries: includedDepositEntries,
-      withdrawalEventIds: includedWithdrawalEventIds,
-      withdrawalEntries: includedWithdrawalEntries,
-      mempoolTxIds: [],
-      mempoolTxs: [],
-      mempoolTxSourceTable: "none",
-    });
-
-    const submitAfterRevalidation = revalidateStateQueueLease(workerInput).pipe(
-      Effect.andThen(assertLiveTailCommitBase(contracts, latestBlock)),
-      Effect.andThen(signAndSubmitProgram),
-    );
-    return yield* Effect.matchEffect(submitAfterRevalidation, {
-      onFailure: (error) =>
-        Effect.gen(function* () {
-          yield* PendingBlockFinalizationsDB.markAbandoned(
-            headerHashBuffer,
-          ).pipe(Effect.catchAll(() => Effect.void));
-          const detail = formatUnknownError(error);
-          yield* Effect.logError(
-            `🔹 User-event-only commit submission failed: ${detail}`,
-          );
-          return {
-            type: "FailureOutput",
-            error: `User-event-only commit submission failed: ${detail}`,
-          } satisfies WorkerOutput;
-        }),
-      onSuccess: (txHash) =>
-        PendingBlockFinalizationsDB.markSubmitted(
-          headerHashBuffer,
-          Buffer.from(fromHex(txHash)),
-        ).pipe(
-          Effect.andThen(
-            submittedAwaitingConfirmationOutput(txHash, txSize, blockEndTimeMs),
-          ),
-        ),
-    });
-  });
-
-const submitTxBackedCommit = ({
-  contracts,
-  latestBlock,
-  endTime,
-  includedDepositEntries,
-  includedDepositEventIds,
-  includedWithdrawalEntries,
-  includedWithdrawalEventIds,
-  utxoRoot,
-  txRoot,
-  transactionsMpf,
-  processedMempoolTxs,
-  mempoolTxHashes,
-  mempoolTxSourceTable,
-  workerInput,
-  sizeOfProcessedTxs,
-}: {
-  readonly contracts: SDK.MidgardValidators;
-  readonly latestBlock: SDK.StateQueueUTxO;
-  readonly endTime: Date;
-  readonly includedDepositEntries: readonly DepositsDB.Entry[];
-  readonly includedDepositEventIds: readonly Buffer[];
-  readonly includedWithdrawalEntries: readonly WithdrawalsDB.Entry[];
-  readonly includedWithdrawalEventIds: readonly Buffer[];
-  readonly utxoRoot: string;
-  readonly txRoot: string;
-  readonly transactionsMpf: MidgardMpf;
-  readonly processedMempoolTxs: readonly TxTable.EntryWithTimeStamp[];
-  readonly mempoolTxHashes: Buffer[];
-  readonly mempoolTxSourceTable: string;
-  readonly workerInput: WorkerInput;
-  readonly sizeOfProcessedTxs: number;
-}) =>
-  Effect.gen(function* () {
-    const lucid = yield* Lucid;
-    const emptyRoot = yield* emptyRootHexProgram;
-    const optDepositsRoot = yield* resolveDepositsRoot(includedDepositEntries);
-    const optWithdrawalsRoot = yield* resolveWithdrawalsRoot(
-      includedWithdrawalEntries,
-    );
-    const depositsRoot = Option.isSome(optDepositsRoot)
-      ? optDepositsRoot.value
-      : SDK.EMPTY_MERKLE_TREE_ROOT;
-    const withdrawalsRoot = Option.isSome(optWithdrawalsRoot)
-      ? optWithdrawalsRoot.value
-      : SDK.EMPTY_MERKLE_TREE_ROOT;
-    const currentBlockMempoolTxsCount = processedMempoolTxs.length;
-    if (currentBlockMempoolTxsCount <= 0) {
-      return yield* Effect.fail(
-        new DatabaseError({
-          table: PendingBlockFinalizationsDB.tableName,
-          message:
-            "Refusing to submit a tx-backed commit with an empty pending tx journal",
-          cause: `tx_root=${txRoot},deposits=${includedDepositEventIds.length},withdrawals=${includedWithdrawalEventIds.length}`,
-        }),
-      );
-    }
-    yield* assertPendingJournalCompleteness({
-      txRoot,
-      emptyTxRoot: emptyRoot,
-      txMemberCount: currentBlockMempoolTxsCount,
-      depositsRoot,
-      depositMemberCount: includedDepositEventIds.length,
-      withdrawalsRoot,
-      withdrawalMemberCount: includedWithdrawalEventIds.length,
-    });
-    const submittedAwaitingConfirmationOutput = (
-      submittedTxHash: string,
-      txSize: number,
-      blockEndTimeMs: number,
-    ) =>
-      Effect.succeed({
-        type: "SubmittedAwaitingConfirmationOutput",
-        submittedTxHash,
-        txSize,
-        mempoolTxsCount:
-          currentBlockMempoolTxsCount + workerInput.data.mempoolTxsCountSoFar,
-        sizeOfBlocksTxs:
-          sizeOfProcessedTxs + workerInput.data.sizeOfProcessedTxsSoFar,
-        blockEndTimeMs,
-      } satisfies WorkerOutput);
-
-    yield* Effect.logInfo(`🔹 Deposits root is: ${depositsRoot}`);
-    yield* Effect.logInfo(`🔹 Withdrawals root is: ${withdrawalsRoot}`);
-
-    /**
-     * Submits a prepared block-header commit transaction and waits for the resulting status.
-     */
-    const submitCommitAttempt = (
-      initialOperatorWalletView?: OperatorWalletView,
-    ) =>
-      revalidateStateQueueLease(workerInput).pipe(
-        Effect.andThen(assertLiveTailCommitBase(contracts, latestBlock)),
-        Effect.andThen(
-          buildUnsignedTx(
-            contracts,
-            latestBlock,
-            utxoRoot,
-            txRoot,
-            depositsRoot,
-            withdrawalsRoot,
-            endTime,
-            initialOperatorWalletView,
-          ),
-        ),
-        Effect.flatMap(
-          ({ newHeaderHash, blockEndTimeMs, signAndSubmitProgram, txSize }) =>
-            Effect.gen(function* () {
-              const headerHashBuffer = Buffer.from(fromHex(newHeaderHash));
-              return yield* PendingBlockFinalizationsDB.preparePendingSubmission(
-                {
-                  headerHash: headerHashBuffer,
-                  metadata: yield* buildPendingJournalMetadata({
-                    latestBlock,
-                    workerInput,
-                    blockEndTimeMs,
-                    expectedRoots: {
-                      utxosRoot: utxoRoot,
-                      transactionsRoot: txRoot,
-                      depositsRoot,
-                      withdrawalsRoot,
-                    },
-                  }),
-                  blockEndTime: new Date(blockEndTimeMs),
-                  depositEventIds: includedDepositEventIds,
-                  depositEntries: includedDepositEntries,
-                  withdrawalEventIds: includedWithdrawalEventIds,
-                  withdrawalEntries: includedWithdrawalEntries,
-                  mempoolTxIds: processedMempoolTxs.map(
-                    (entry) => entry[TxColumns.TX_ID],
-                  ),
-                  mempoolTxs: processedMempoolTxs,
-                  mempoolTxSourceTable,
-                },
-              ).pipe(
-                Effect.andThen(
-                  Effect.matchEffect(
-                    revalidateStateQueueLease(workerInput).pipe(
-                      Effect.andThen(
-                        assertLiveTailCommitBase(contracts, latestBlock),
-                      ),
-                      Effect.andThen(signAndSubmitProgram),
-                    ),
-                    {
-                      onFailure: (error) => {
-                        if (error instanceof TxSignError) {
-                          return Effect.gen(function* () {
-                            yield* PendingBlockFinalizationsDB.markAbandoned(
-                              headerHashBuffer,
-                            ).pipe(Effect.catchAll(() => Effect.void));
-                            const detail = formatUnknownError(error);
-                            yield* Effect.logError(
-                              `🔹 Commit signing failed: ${detail}`,
-                            );
-                            return {
-                              type: "FailureOutput",
-                              error: `Commit signing failed: ${detail}`,
-                            } satisfies WorkerOutput;
-                          });
-                        }
-
-                        return Effect.gen(function* () {
-                          if (!(error instanceof TxSubmitError)) {
-                            yield* PendingBlockFinalizationsDB.markAbandoned(
-                              headerHashBuffer,
-                            ).pipe(Effect.catchAll(() => Effect.void));
-                            const detail = formatUnknownError(error);
-                            yield* Effect.logError(
-                              `🔹 Commit aborted before submission: ${detail}`,
-                            );
-                            return {
-                              type: "FailureOutput",
-                              error: `Commit aborted before submission: ${detail}`,
-                            } satisfies WorkerOutput;
-                          }
-
-                          const recoveredTxHash =
-                            yield* recoverSubmittedTxHashByHeaderProgram(
-                              contracts.stateQueue,
-                              newHeaderHash,
-                            );
-                          if (Option.isSome(recoveredTxHash)) {
-                            return yield* PendingBlockFinalizationsDB.markSubmitted(
-                              headerHashBuffer,
-                              Buffer.from(fromHex(recoveredTxHash.value)),
-                            ).pipe(
-                              Effect.andThen(
-                                submittedAwaitingConfirmationOutput(
-                                  recoveredTxHash.value,
-                                  txSize,
-                                  blockEndTimeMs,
-                                ),
-                              ),
-                            );
-                          }
-
-                          yield* PendingBlockFinalizationsDB.markAbandoned(
-                            headerHashBuffer,
-                          ).pipe(Effect.catchAll(() => Effect.void));
-                          const transferResult = yield* Effect.either(
-                            skippedSubmissionProgram(
-                              processedMempoolTxs,
-                              mempoolTxHashes,
-                            ),
-                          );
-                          if (transferResult._tag === "Left") {
-                            const detail = formatUnknownError(
-                              transferResult.left,
-                            );
-                            yield* Effect.logError(
-                              `🔹 Commit submission failed and deferred transfer failed: submit=${formatUnknownError(
-                                error,
-                              )}; transfer=${detail}`,
-                            );
-                            return {
-                              type: "FailureOutput",
-                              error: `Commit submission failed and deferred transfer failed: submit=${formatUnknownError(
-                                error,
-                              )}; transfer=${detail}`,
-                            } satisfies WorkerOutput;
-                          }
-
-                          return yield* failedSubmissionProgram(
-                            transactionsMpf,
-                            currentBlockMempoolTxsCount,
-                            sizeOfProcessedTxs,
-                            error,
-                          );
-                        });
-                      },
-                      onSuccess: (txHash) =>
-                        PendingBlockFinalizationsDB.markSubmitted(
-                          headerHashBuffer,
-                          Buffer.from(fromHex(txHash)),
-                        ).pipe(
-                          Effect.andThen(
-                            submittedAwaitingConfirmationOutput(
-                              txHash,
-                              txSize,
-                              blockEndTimeMs,
-                            ),
-                          ),
-                        ),
-                    },
-                  ),
-                ),
-              );
-            }),
-        ),
-      );
-
-    let lastResult = yield* Effect.either(submitCommitAttempt());
-    let retryCount = 0;
-    while (
-      lastResult._tag === "Left" &&
-      lastResult.left instanceof TxSubmitError &&
-      isPotentiallyStaleOperatorWalletViewError(lastResult.left) &&
-      retryCount < COMMIT_STALE_OPERATOR_WALLET_VIEW_RETRIES
-    ) {
-      retryCount += 1;
-      yield* lucid.switchToOperatorsMainWallet;
-      const reloadedOperatorWalletView = yield* Effect.tryPromise({
-        try: () => reloadOperatorWalletView(lucid.api),
-        catch: (cause) =>
-          new SDK.StateQueueError({
-            message:
-              "Failed to reload operator wallet view after stale commit submission",
-            cause,
-          }),
-      });
-      yield* Effect.logWarning(
-        `Commit submission hit a stale operator-wallet input class error; reloading wallet view and rebuilding (attempt=${retryCount}/${COMMIT_STALE_OPERATOR_WALLET_VIEW_RETRIES}).`,
-      );
-      lastResult = yield* Effect.either(
-        submitCommitAttempt(reloadedOperatorWalletView),
-      );
-    }
-
-    if (lastResult._tag === "Left") {
-      return yield* Effect.fail(lastResult.left);
-    }
-    return lastResult.right;
-  });
-
-const deferProcessedCommitPayloadUntilConfirmation = ({
-  processedMempoolTxs,
-  mempoolTxHashes,
-  mempoolTxsCount,
-  sizeOfProcessedTxs,
-}: {
-  readonly processedMempoolTxs: readonly TxTable.EntryWithTimeStamp[];
-  readonly mempoolTxHashes: Buffer[];
-  readonly mempoolTxsCount: number;
-  readonly sizeOfProcessedTxs: number;
-}) =>
-  Effect.gen(function* () {
-    yield* Effect.logInfo(
-      "🔹 No confirmed blocks available. Transferring to ProcessedMempoolDB...",
-    );
-    const transferResult = yield* Effect.either(
-      skippedSubmissionProgram(processedMempoolTxs, mempoolTxHashes),
-    );
-    if (transferResult._tag === "Left") {
-      const detail = formatUnknownError(transferResult.left);
-      yield* Effect.logError(
-        `🔹 Failed to defer processed txs while waiting for confirmation: ${detail}`,
-      );
-      return {
-        type: "FailureOutput",
-        error: `Failed to transfer deferred commit payload to ProcessedMempoolDB: ${detail}`,
-      } satisfies WorkerOutput;
-    }
-    return {
-      type: "SkippedSubmissionOutput",
-      mempoolTxsCount,
-      sizeOfProcessedTxs,
-    } satisfies WorkerOutput;
-  });
-
-const recoverLocalFinalizationAgainstConfirmedBlock = ({
-  latestBlock,
-  utxoRoot: _utxoRoot,
-  txRoot: _txRoot,
-  transactionsMpf,
-  processedMempoolTxs,
-  mempoolTxHashes,
-  includedDepositEventIds,
-  includedWithdrawalEventIds,
-  workerInput,
-  sizeOfProcessedTxs,
-}: {
-  readonly latestBlock: SDK.StateQueueUTxO;
-  readonly utxoRoot: string;
-  readonly txRoot: string;
-  readonly transactionsMpf: MidgardMpf;
-  readonly processedMempoolTxs: readonly TxTable.EntryWithTimeStamp[];
-  readonly mempoolTxHashes: Buffer[];
-  readonly includedDepositEventIds: readonly Buffer[];
-  readonly includedWithdrawalEventIds: readonly Buffer[];
-  readonly workerInput: WorkerInput;
-  readonly sizeOfProcessedTxs: number;
-}) =>
-  Effect.gen(function* () {
-    yield* Effect.logInfo(
-      "🔹 Attempting local finalization recovery against confirmed block roots...",
-    );
-    if (latestBlock.datum.key === "Empty") {
-      return {
-        type: "FailureOutput",
-        error:
-          "Confirmed block datum does not contain a recoverable header for local finalization",
-      } satisfies WorkerOutput;
-    }
-    const confirmedHeader = yield* getHeaderFromStateQueueDatumLocal(
-      latestBlock.datum,
-    );
-    const confirmedHeaderHash = yield* hashBlockHeaderLocal(confirmedHeader);
-    const pendingRecord =
-      yield* PendingBlockFinalizationsDB.retrieveByHeaderHash(
-        Buffer.from(fromHex(confirmedHeaderHash)),
-      );
-    if (Option.isNone(pendingRecord)) {
-      return {
-        type: "FailureOutput",
-        error:
-          "Local finalization recovery aborted: no durable pending journal exists for the confirmed block",
-      } satisfies WorkerOutput;
-    }
-    const record = pendingRecord.value;
-    const rootsMatch =
-      record[PendingBlockFinalizationsDB.Columns.EXPECTED_UTXOS_ROOT] ===
-        confirmedHeader.utxosRoot &&
-      record[PendingBlockFinalizationsDB.Columns.EXPECTED_TRANSACTIONS_ROOT] ===
-        confirmedHeader.transactionsRoot &&
-      record[PendingBlockFinalizationsDB.Columns.EXPECTED_DEPOSITS_ROOT] ===
-        confirmedHeader.depositsRoot &&
-      record[PendingBlockFinalizationsDB.Columns.EXPECTED_WITHDRAWALS_ROOT] ===
-        confirmedHeader.withdrawalsRoot;
-    if (!rootsMatch) {
-      return {
-        type: "FailureOutput",
-        error:
-          "Local finalization recovery aborted: journal expected roots do not match the confirmed block header",
-      } satisfies WorkerOutput;
-    }
-    return yield* successfulLocalFinalizationRecoveryProgram(
-      transactionsMpf,
-      processedMempoolTxs,
-      mempoolTxHashes,
-      includedDepositEventIds,
-      confirmedHeaderHash,
-      workerInput,
-      sizeOfProcessedTxs,
-      includedWithdrawalEventIds,
-    );
   });
 
 const databaseOperationsProgram = (
@@ -1404,8 +358,6 @@ const databaseOperationsProgram = (
       );
       return yield* recoverLocalFinalizationAgainstConfirmedBlock({
         latestBlock: recoverableConfirmedBlock,
-        utxoRoot: "",
-        txRoot: "",
         transactionsMpf,
         processedMempoolTxs: [],
         mempoolTxHashes: [],
@@ -1539,8 +491,6 @@ const databaseOperationsProgram = (
         );
         return yield* recoverLocalFinalizationAgainstConfirmedBlock({
           latestBlock: recoverableConfirmedBlock,
-          utxoRoot,
-          txRoot,
           transactionsMpf,
           processedMempoolTxs,
           mempoolTxHashes,
@@ -1619,25 +569,11 @@ export const runCommitBlockHeaderWorkerProgram = (
       { discard: true },
     );
 
-    const result = yield* withMpfRootTransaction(
-      ledgerMpf,
+    const result = yield* withMpfRootTransactions(
+      [ledgerMpf, transactionsMpf],
       databaseOperationsProgram(workerInput, ledgerMpf, transactionsMpf),
-    ).pipe(
-      Effect.catchAll((error) =>
-        error instanceof LocalFinalizationPendingError
-          ? Effect.succeed({
-              type: "SubmittedAwaitingLocalFinalizationOutput",
-              submittedTxHash: error.submittedTxHash,
-              txSize: error.txSize,
-              mempoolTxsCount: error.mempoolTxsCount,
-              sizeOfBlocksTxs: error.sizeOfBlocksTxs,
-              blockEndTimeMs: error.blockEndTimeMs,
-              error: formatUnknownError(error.cause),
-            } as WorkerOutput)
-          : Effect.fail(error),
-      ),
-      Effect.ensuring(closeMpfs),
-    );
+      shouldPreserveCommitMpfRoots,
+    ).pipe(Effect.ensuring(closeMpfs));
     if (result === undefined) {
       return yield* Effect.fail(
         new CommitWorkerInvariantError({

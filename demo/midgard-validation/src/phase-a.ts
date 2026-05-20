@@ -2,16 +2,20 @@ import { CML } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 import { LedgerColumns, type LedgerEntry } from "./ledger.js";
 import {
+  EMPTY_CBOR_LIST,
+  EMPTY_NULL_ROOT,
   MidgardTxCodecError,
   MIDGARD_NATIVE_NETWORK_ID_NONE,
   MIDGARD_POSIX_TIME_NONE,
-  computeHash32,
-  computeMidgardNativeTxIdFromFull,
+  computeMidgardNativeTxId,
   decodeMidgardNativeMint,
   decodeMidgardNativeByteListPreimage,
+  decodeMidgardTxOutput,
   decodeMidgardVersionedScriptListPreimage,
   decodeMidgardNativeTxFull,
+  encodeMidgardAddressText,
   hashMidgardVersionedScript,
+  midgardValueToCmlValue,
   verifyMidgardNativeScript,
 } from "@al-ft/midgard-core/codec";
 import {
@@ -23,11 +27,6 @@ import {
   RejectedTx,
   RejectCodes,
 } from "./types.js";
-import {
-  decodeMidgardTxOutput,
-  midgardOutputAddressText,
-  midgardValueToCmlValue,
-} from "./midgard-output.js";
 import { decodeMidgardRedeemers } from "./midgard-redeemers.js";
 
 const reject = (
@@ -39,11 +38,6 @@ const reject = (
   code,
   detail,
 });
-
-const EMPTY_CBOR_LIST = Buffer.from([0x80]);
-const EMPTY_CBOR_NULL = Buffer.from([0xf6]);
-const EMPTY_LIST_ROOT = computeHash32(EMPTY_CBOR_LIST);
-const EMPTY_NULL_ROOT = computeHash32(EMPTY_CBOR_NULL);
 
 const toOptionalValidity = (value: bigint): bigint | undefined =>
   value === MIDGARD_POSIX_TIME_NONE ? undefined : value;
@@ -333,7 +327,7 @@ const validateNativeOne = (
     );
   }
 
-  const computedTxId = computeMidgardNativeTxIdFromFull(nativeTx);
+  const computedTxId = computeMidgardNativeTxId(nativeTx);
   if (!computedTxId.equals(queuedTx.txId)) {
     return reject(
       queuedTx.txId,
@@ -372,15 +366,14 @@ const validateNativeOne = (
     return reject(queuedTx.txId, RejectCodes.MinFee, `${txFee} < ${minFee}`);
   }
 
-  const spentDecoded = decodeOutRefListFromPreimage(
+  const spent = decodeOutRefListFromPreimage(
     queuedTx.txId,
     nativeTx.body.spendInputsPreimageCbor,
     "native.spend_inputs",
   );
-  if ("code" in spentDecoded) {
-    return spentDecoded;
+  if ("code" in spent) {
+    return spent;
   }
-  const spent = spentDecoded;
   if (spent.length === 0) {
     return reject(queuedTx.txId, RejectCodes.EmptyInputs);
   }
@@ -393,15 +386,14 @@ const validateNativeOne = (
     seenInputs.add(outRefHex);
   }
 
-  const referenceInputsDecoded = decodeOutRefListFromPreimage(
+  const referenceInputs = decodeOutRefListFromPreimage(
     queuedTx.txId,
     nativeTx.body.referenceInputsPreimageCbor,
     "native.reference_inputs",
   );
-  if ("code" in referenceInputsDecoded) {
-    return referenceInputsDecoded;
+  if ("code" in referenceInputs) {
+    return referenceInputs;
   }
-  const referenceInputs = referenceInputsDecoded;
   const seenReferenceInputs = new Set<string>();
   for (const referenceInput of referenceInputs) {
     const outRefHex = referenceInput.toString("hex");
@@ -465,7 +457,7 @@ const validateNativeOne = (
           CML.TransactionInput.new(txHash, BigInt(i)).to_cbor_bytes(),
         ),
         [LedgerColumns.OUTPUT]: outputCbor,
-        [LedgerColumns.ADDRESS]: midgardOutputAddressText(output),
+        [LedgerColumns.ADDRESS]: encodeMidgardAddressText(output.address),
       });
     } catch (e) {
       return reject(
@@ -513,23 +505,21 @@ const validateNativeOne = (
   }
   const { witnessKeyHashes, witnessSignerSet } = witnessVerificationResult;
 
-  const requiredSignersResult = decodeNativeRequiredSigners(
+  const requiredSigners = decodeNativeRequiredSigners(
     queuedTx.txId,
     nativeTx.body.requiredSignersPreimageCbor,
   );
-  if ("code" in requiredSignersResult) {
-    return requiredSignersResult;
+  if ("code" in requiredSigners) {
+    return requiredSigners;
   }
-  const requiredSigners = requiredSignersResult;
 
-  const requiredObserversResult = decodeNativeRequiredObservers(
+  const requiredObserverHashes = decodeNativeRequiredObservers(
     queuedTx.txId,
     nativeTx.body.requiredObserversPreimageCbor,
   );
-  if ("code" in requiredObserversResult) {
-    return requiredObserversResult;
+  if ("code" in requiredObserverHashes) {
+    return requiredObserverHashes;
   }
-  const requiredObserverHashes = requiredObserversResult;
 
   let mintPolicyHashes: readonly string[] = [];
   let mintedValue = CML.Value.zero();
@@ -590,18 +580,17 @@ const validateNativeOne = (
   }
   const { nativeScriptHashes, plutusScriptHashes } = scriptWitnessesResult;
 
-  const redeemerWitnessesResult = decodeNativeRedeemerWitnesses(
+  const hasRedeemerWitnesses = decodeNativeRedeemerWitnesses(
     queuedTx.txId,
     nativeTx.witnessSet.redeemerTxWitsPreimageCbor,
   );
   if (
-    typeof redeemerWitnessesResult === "object" &&
-    redeemerWitnessesResult !== null &&
-    "code" in redeemerWitnessesResult
+    typeof hasRedeemerWitnesses === "object" &&
+    hasRedeemerWitnesses !== null &&
+    "code" in hasRedeemerWitnesses
   ) {
-    return redeemerWitnessesResult;
+    return hasRedeemerWitnesses;
   }
-  const hasRedeemerWitnesses = redeemerWitnessesResult;
 
   const requiresPlutusEvaluation =
     plutusScriptHashes.length > 0 ||
@@ -657,11 +646,6 @@ const validateNativeOne = (
   };
 };
 
-const validateOne = (
-  queuedTx: QueuedTx,
-  config: PhaseAConfig,
-): PhaseAAccepted | RejectedTx => validateNativeOne(queuedTx, config);
-
 export const runPhaseAValidation = (
   queuedTxs: readonly QueuedTx[],
   config: PhaseAConfig,
@@ -669,7 +653,7 @@ export const runPhaseAValidation = (
   Effect.gen(function* () {
     const orderedResults = yield* Effect.forEach(
       queuedTxs,
-      (queuedTx) => Effect.sync(() => validateOne(queuedTx, config)),
+      (queuedTx) => Effect.sync(() => validateNativeOne(queuedTx, config)),
       {
         concurrency: config.concurrency <= 0 ? "unbounded" : config.concurrency,
       },

@@ -1,4 +1,6 @@
+import { CML } from "@lucid-evolution/lucid";
 import {
+  assertCanonicalCborRoundTrip,
   compareBytes,
   encodeCborArrayRaw,
   encodeCborBytes,
@@ -36,19 +38,6 @@ const normalizeHex = (value: string, fieldName: string): Buffer => {
     fail(`${fieldName} must be hex`, value);
   }
   return Buffer.from(normalized, "hex");
-};
-
-const assertCanonicalRoundTrip = (
-  original: Uint8Array,
-  decoded: MidgardValue,
-): void => {
-  const encoded = encodeMidgardValue(decoded);
-  if (!Buffer.from(original).equals(encoded)) {
-    throw new MidgardTxCodecError(
-      MidgardTxCodecErrorCodes.CborDecode,
-      "Midgard value is not canonical",
-    );
-  }
 };
 
 export const encodeMidgardValue = (value: MidgardValue): Buffer => {
@@ -112,7 +101,11 @@ export const decodeMidgardValue = (bytes: Uint8Array): MidgardValue => {
     fail("Midgard value must be [coin, assets]", `length=${top.length}`);
   }
   const coin = readCborUnsigned(bytes, top.nextOffset, "value.coin");
-  const assetsHeader = readCborMapHeader(bytes, coin.nextOffset, "value.assets");
+  const assetsHeader = readCborMapHeader(
+    bytes,
+    coin.nextOffset,
+    "value.assets",
+  );
   let cursor = assetsHeader.nextOffset;
   let previousPolicy: Buffer | undefined;
   const policies = new Map<string, Map<string, bigint>>();
@@ -123,8 +116,14 @@ export const decodeMidgardValue = (bytes: Uint8Array): MidgardValue => {
     if (policy.value.length !== POLICY_ID_LENGTH) {
       fail("Value policy id must be 28 bytes", `index=${i}`);
     }
-    if (previousPolicy !== undefined && compareBytes(previousPolicy, policy.value) >= 0) {
-      fail("Value policies must be sorted by raw policy id bytes", `index=${i}`);
+    if (
+      previousPolicy !== undefined &&
+      compareBytes(previousPolicy, policy.value) >= 0
+    ) {
+      fail(
+        "Value policies must be sorted by raw policy id bytes",
+        `index=${i}`,
+      );
     }
     previousPolicy = policy.value;
     const policyHex = policy.value.toString("hex");
@@ -139,13 +138,19 @@ export const decodeMidgardValue = (bytes: Uint8Array): MidgardValue => {
       const assetName = readCborBytes(bytes, cursor, "value.asset_name");
       cursor = assetName.nextOffset;
       if (assetName.value.length > MAX_ASSET_NAME_LENGTH) {
-        fail("Value asset name must be at most 32 bytes", `policy=${policyHex}`);
+        fail(
+          "Value asset name must be at most 32 bytes",
+          `policy=${policyHex}`,
+        );
       }
       if (
         previousAssetName !== undefined &&
         compareBytes(previousAssetName, assetName.value) >= 0
       ) {
-        fail("Value asset names must be sorted by raw bytes", `policy=${policyHex}`);
+        fail(
+          "Value asset names must be sorted by raw bytes",
+          `policy=${policyHex}`,
+        );
       }
       previousAssetName = assetName.value;
       const quantity = readCborUnsigned(bytes, cursor, "value.quantity");
@@ -170,38 +175,37 @@ export const decodeMidgardValue = (bytes: Uint8Array): MidgardValue => {
     lovelace: coin.value,
     assets: policies,
   };
-  assertCanonicalRoundTrip(bytes, decoded);
+  assertCanonicalCborRoundTrip(
+    bytes,
+    decoded,
+    encodeMidgardValue,
+    "Midgard value is not canonical",
+  );
   return decoded;
 };
 
-export const midgardValueToAssetMap = (
+export const midgardValueToCmlValue = (
   value: MidgardValue,
-): Map<string, Map<string, bigint>> => {
-  const result = new Map<string, Map<string, bigint>>();
-  if (value.lovelace !== 0n) {
-    result.set("", new Map([["", value.lovelace]]));
-  }
-  for (const [policy, assets] of value.assets.entries()) {
-    result.set(policy, new Map(assets));
-  }
-  return result;
-};
-
-export const addMidgardValues = (
-  left: MidgardValue,
-  right: MidgardValue,
-): MidgardValue => {
-  const assets = new Map<string, Map<string, bigint>>();
-  const addAssets = (value: MidgardValue): void => {
-    for (const [policy, inner] of value.assets.entries()) {
-      const target = assets.get(policy) ?? new Map<string, bigint>();
-      for (const [assetName, quantity] of inner.entries()) {
-        target.set(assetName, (target.get(assetName) ?? 0n) + quantity);
+): InstanceType<typeof CML.Value> => {
+  const multiasset = CML.MultiAsset.new();
+  for (const [policyHex, assets] of value.assets.entries()) {
+    const cmlAssets = CML.MapAssetNameToCoin.new();
+    let assetCount = 0;
+    for (const [assetNameHex, quantity] of assets.entries()) {
+      if (quantity <= 0n) {
+        fail("Midgard value asset quantity must be positive", assetNameHex);
       }
-      assets.set(policy, target);
+      cmlAssets.insert(
+        CML.AssetName.from_raw_bytes(Buffer.from(assetNameHex, "hex")),
+        quantity,
+      );
+      assetCount += 1;
     }
-  };
-  addAssets(left);
-  addAssets(right);
-  return { lovelace: left.lovelace + right.lovelace, assets };
+    if (assetCount > 0) {
+      multiasset.insert_assets(CML.ScriptHash.from_hex(policyHex), cmlAssets);
+    }
+  }
+  return multiasset.policy_count() === 0
+    ? CML.Value.from_coin(value.lovelace)
+    : CML.Value.new(value.lovelace, multiasset);
 };

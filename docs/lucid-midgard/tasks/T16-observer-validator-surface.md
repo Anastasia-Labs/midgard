@@ -25,9 +25,7 @@ withdrawals, opaque compatibility shims, or generic Lucid validators.
   language values.
 - Observer validator normalization and hash derivation using the correct hash
   domain for the validator language.
-- `attach.ObserverValidator(validator)` as the primary fluent surface. A
-  standalone `attachObserverScript(validator)` helper may be added only as an
-  additive alias with identical semantics.
+- `attach.ObserverValidator(validator)` as the canonical fluent surface.
 - Documentation and examples showing how an attached observer validator is
   paired with an explicit observer intent and redeemer.
 - Observer script witnesses must integrate with existing required observer
@@ -93,8 +91,6 @@ withdrawals, opaque compatibility shims, or generic Lucid validators.
 - `attach.SpendingValidator(...)`, `attach.MintingPolicy(...)`, and
   `attach.ObserverValidator(...)` normalize into the existing strict
   `ScriptSource` path.
-- `attachObserverScript(...)` is an additive alias for
-  `attach.ObserverValidator(...)`.
 - Attaching an observer validator never creates an observer execution. Callers
   must still add `observe(scriptHash, redeemer)` explicitly, and unused
   non-native observer witnesses fail as extraneous script witnesses.

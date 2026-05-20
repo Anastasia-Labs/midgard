@@ -1,17 +1,22 @@
-import { describe, expect, it } from "vitest";
+import {
+  computeHash32,
+  computeMidgardNativeTxId,
+  decodeMidgardNativeByteListPreimage,
+  decodeMidgardNativeTxFull,
+  MIDGARD_SUPPORTED_SCRIPT_LANGUAGES,
+} from "@al-ft/midgard-core/codec";
+import {
+  describe,
+  expect,
+  it } from "vitest";
 import { CML } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 import {
   BuilderInvariantError,
   CompleteTx,
-  computeHash32,
-  computeMidgardNativeTxIdFromFull,
-  decodeMidgardNativeByteListPreimage,
-  decodeMidgardNativeTxFull,
   decodeMidgardUtxo,
   encodeMidgardTxOutput,
   LucidMidgard,
-  MIDGARD_SUPPORTED_SCRIPT_LANGUAGES,
   makeVKeyWitness,
   outRefToCbor,
   ProviderError,
@@ -89,7 +94,7 @@ const makeProvider = (opts?: {
     (async (txCborHex) => {
       const tx = decodeMidgardNativeTxFull(Buffer.from(txCborHex, "hex"));
       return {
-        txId: computeMidgardNativeTxIdFromFull(tx).toString("hex"),
+        txId: computeMidgardNativeTxId(tx).toString("hex"),
         status: "queued",
         httpStatus: 202,
         duplicate: false,
@@ -157,7 +162,7 @@ describe("submit/status chaining", () => {
         submittedHex = txCborHex;
         const tx = decodeMidgardNativeTxFull(Buffer.from(txCborHex, "hex"));
         return {
-          txId: computeMidgardNativeTxIdFromFull(tx).toString("hex"),
+          txId: computeMidgardNativeTxId(tx).toString("hex"),
           status: "queued",
           httpStatus: 202,
           duplicate: false,
@@ -193,7 +198,7 @@ describe("submit/status chaining", () => {
         submitCalls += 1;
         const tx = decodeMidgardNativeTxFull(Buffer.from(txCborHex, "hex"));
         return {
-          txId: computeMidgardNativeTxIdFromFull(tx).toString("hex"),
+          txId: computeMidgardNativeTxId(tx).toString("hex"),
           status: "queued",
           httpStatus: 202,
           duplicate: false,

@@ -5,7 +5,7 @@ import {
   Globals,
   NodeConfig,
 } from "@/services/index.js";
-import { StateQueueTx } from "@/transactions/index.js";
+import { buildAndSubmitMergeTx } from "@/transactions/state-queue/merge-to-confirmed-state.js";
 import { StateQueueMutationLeasesDB } from "@/database/index.js";
 import {
   TxConfirmError,
@@ -114,7 +114,7 @@ export const mergeAction = (
           }
           yield* lucid.switchToOperatorsMergingWallet;
           yield* StateQueueMutationLeasesDB.revalidate(leaseToken);
-          yield* StateQueueTx.buildAndSubmitMergeTx(
+          yield* buildAndSubmitMergeTx(
             lucid.api,
             fetchConfig,
             contracts,

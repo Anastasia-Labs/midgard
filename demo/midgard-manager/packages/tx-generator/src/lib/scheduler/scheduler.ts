@@ -1,22 +1,21 @@
-import { mkdir, writeFile } from 'node:fs/promises';
-import { join, dirname } from 'node:path';
-import { fileURLToPath } from 'node:url';
 import { randomBytes } from 'node:crypto';
+import { mkdir, writeFile } from 'node:fs/promises';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 import {
   CML,
-  Network,
   UTxO,
   walletFromSeed,
 } from '@lucid-evolution/lucid';
 import pLimit from 'p-limit';
 
+import { parseUnknownKeytoBech32PrivateKey } from '../../utils/common.js';
 import { MidgardNodeClient } from '../client/node-client.js';
 import {
   generateMultiOutputTransactions,
   generateOneToOneTransactions,
 } from '../generators/index.js';
-import { parseUnknownKeytoBech32PrivateKey } from '../../utils/common.js';
 import {
   DEFAULT_CONFIG,
   TRANSACTION_CONSTANTS,
@@ -162,10 +161,11 @@ export const startGenerator = async (
   // Reset stats
   state.resetStats();
 
+  const projectRoot = join(__dirname, '../../../..');
+  const outputPath = fullConfig.outputDir ? join(projectRoot, fullConfig.outputDir) : undefined;
+
   // Create output directory if needed
-  if (fullConfig.outputDir) {
-    const projectRoot = join(__dirname, '../../../..');
-    const outputPath = join(projectRoot, fullConfig.outputDir);
+  if (outputPath) {
     await mkdir(outputPath, { recursive: true });
   }
 
@@ -214,6 +214,22 @@ export const startGenerator = async (
     )
       .to_address()
       .to_bech32();
+  };
+
+  const writeGeneratedTransactions = async (
+    txs: readonly unknown[],
+    useOneToOne: boolean,
+    timestamp: string,
+    reason: 'Node unavailable' | 'Failed submission'
+  ): Promise<void> => {
+    if (!outputPath) {
+      return;
+    }
+
+    const filename = `${useOneToOne ? 'one-to-one' : 'multi-output'}-${timestamp}.json`;
+    const filepath = join(outputPath, filename);
+    await writeFile(filepath, JSON.stringify(txs, null, 2));
+    console.log(`${reason} - transactions written to ${filepath}`);
   };
 
   /**
@@ -288,11 +304,7 @@ export const startGenerator = async (
           const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
 
           if (!nodeAvailable && fullConfig.outputDir) {
-            const projectRoot = join(__dirname, '../../../..');
-            const filename = `${useOneToOne ? 'one-to-one' : 'multi-output'}-${timestamp}.json`;
-            const filepath = join(projectRoot, fullConfig.outputDir, filename);
-            await writeFile(filepath, JSON.stringify(txs, null, 2));
-            console.log(`Node unavailable - transactions written to ${filepath}`);
+            await writeGeneratedTransactions(txs, useOneToOne, timestamp, 'Node unavailable');
             state.stats.transactionsGenerated += txs.length;
           } else {
             try {
@@ -306,13 +318,7 @@ export const startGenerator = async (
 
                 // Handle node unavailability gracefully
                 if (result && result.status === 'NODE_UNAVAILABLE') {
-                  if (fullConfig.outputDir) {
-                    const projectRoot = join(__dirname, '../../../..');
-                    const filename = `${useOneToOne ? 'one-to-one' : 'multi-output'}-${timestamp}.json`;
-                    const filepath = join(projectRoot, fullConfig.outputDir, filename);
-                    await writeFile(filepath, JSON.stringify(txs, null, 2));
-                    console.log(`Node unavailable - transactions written to ${filepath}`);
-                  }
+                  await writeGeneratedTransactions(txs, useOneToOne, timestamp, 'Node unavailable');
                   state.stats.transactionsGenerated += txs.length;
                   break; // Exit the loop since node is unavailable
                 }
@@ -332,11 +338,7 @@ export const startGenerator = async (
               console.error('Failed to submit transactions:', submitError);
 
               if (fullConfig.outputDir) {
-                const projectRoot = join(__dirname, '../../../..');
-                const filename = `${useOneToOne ? 'one-to-one' : 'multi-output'}-${timestamp}.json`;
-                const filepath = join(projectRoot, fullConfig.outputDir, filename);
-                await writeFile(filepath, JSON.stringify(txs, null, 2));
-                console.log(`Failed submission - transactions written to ${filepath}`);
+                await writeGeneratedTransactions(txs, useOneToOne, timestamp, 'Failed submission');
               }
 
               state.stats.transactionsGenerated += txs.length;

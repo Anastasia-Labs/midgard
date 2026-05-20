@@ -1,6 +1,6 @@
-import { Effect } from 'effect';
-import { CML, UTxO } from '@lucid-evolution/lucid';
 import { decodeMidgardTxOutput } from '@al-ft/lucid-midgard';
+import { CML, UTxO } from '@lucid-evolution/lucid';
+import { Effect } from 'effect';
 
 import { logFailedTransaction, logSubmittedTransaction } from '../../utils/logging.js';
 import { MidgardNodeConfig, TRANSACTION_CONSTANTS } from '../types.js';
@@ -161,7 +161,6 @@ export class MidgardNodeClient {
           await new Promise((resolve) => setTimeout(resolve, this.retryDelay));
         }
         // }
-
         throw new Error('All retry attempts failed');
       })()
     ).pipe(

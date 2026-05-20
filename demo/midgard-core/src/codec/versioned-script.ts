@@ -1,5 +1,6 @@
 import { blake2b } from "@noble/hashes/blake2.js";
 import {
+  assertCanonicalCborRoundTrip,
   encodeCborArrayRaw,
   encodeCborBytes,
   encodeCborUnsigned,
@@ -93,13 +94,12 @@ export const decodeMidgardVersionedScript = (
     return fail("Unsupported Midgard versioned script tag", tag.value.toString());
   })();
 
-  const encoded = encodeMidgardVersionedScript(decoded);
-  if (!encoded.equals(Buffer.from(bytes))) {
-    throw new MidgardTxCodecError(
-      MidgardTxCodecErrorCodes.CborDecode,
-      "MidgardVersionedScript CBOR is not canonical",
-    );
-  }
+  assertCanonicalCborRoundTrip(
+    bytes,
+    decoded,
+    encodeMidgardVersionedScript,
+    "MidgardVersionedScript CBOR is not canonical",
+  );
   return decoded;
 };
 
@@ -156,12 +156,11 @@ export const decodeMidgardVersionedScriptListPreimage = (
       `offset=${cursor}`,
     );
   }
-  const encoded = encodeMidgardVersionedScriptListPreimage(scripts);
-  if (!encoded.equals(Buffer.from(bytes))) {
-    throw new MidgardTxCodecError(
-      MidgardTxCodecErrorCodes.CborDecode,
-      `${fieldName} is not canonical`,
-    );
-  }
+  assertCanonicalCborRoundTrip(
+    bytes,
+    scripts,
+    encodeMidgardVersionedScriptListPreimage,
+    `${fieldName} is not canonical`,
+  );
   return scripts;
 };

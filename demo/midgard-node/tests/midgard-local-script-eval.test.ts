@@ -5,11 +5,12 @@ import path from "node:path";
 import { CML, Constr, Data } from "@lucid-evolution/lucid";
 import {
   decodeMidgardAddressBytes,
+  decodeMidgardTxOutput,
   encodeMidgardNativeScript,
   encodeMidgardVersionedScript,
   hashMidgardVersionedScript,
+  ScriptLanguageTags,
 } from "@al-ft/midgard-core/codec";
-import { decodeMidgardTxOutput } from "@/validation/midgard-output.js";
 import {
   hashMidgardV1Script,
   hashPlutusV3Script,
@@ -20,17 +21,14 @@ import {
   decodeMidgardRedeemers,
   MidgardRedeemerTag,
   midgardScriptPurposeData,
-  outputReferenceData,
-} from "@/validation/midgard-redeemers.js";
-import {
-  decodeScriptSource,
-  MIDGARD_V1_SCRIPT_TAG,
-} from "@/validation/script-source.js";
+} from "@al-ft/midgard-validation/midgard-redeemers";
+import { txOutRefData } from "@al-ft/midgard-validation";
+import { decodeScriptSource } from "@al-ft/midgard-validation/script-source";
 import {
   buildMidgardV1ScriptContext,
   buildPlutusV3ScriptContext,
-} from "@/validation/script-context.js";
-import { evaluateScriptWithHarmonic } from "@/validation/local-script-eval.js";
+} from "@al-ft/midgard-validation/script-context";
+import { evaluateScriptWithHarmonic } from "@al-ft/midgard-validation/local-script-eval";
 
 type BlueprintValidator = {
   readonly title: string;
@@ -72,8 +70,8 @@ const MIDGARD_V1_CONTEXT_PROBE_SCRIPT_HEX = loadAlwaysSucceedsCompiledCode(
   "midgard.midgard_v1_context_probe.else",
 );
 
-const outputReferenceDataCborHex = (outRefHex: string): string =>
-  Data.to(outputReferenceData(outRefHex) as any);
+const txOutRefDataCborHex = (outRefHex: string): string =>
+  Data.to(txOutRefData(outRefHex) as any);
 
 const makeOutRefHex = (txHashByte: number, outputIndex: bigint): string =>
   Buffer.from(
@@ -118,11 +116,11 @@ const makeMidgardV1ContextProbeRedeemerCborHex = (opts: {
   Data.to(
     new Constr(0, [
       opts.expectedSpendScriptHash,
-      outputReferenceData(opts.expectedOwnRef),
-      outputReferenceData(opts.expectedFirstInput),
-      outputReferenceData(opts.expectedSecondInput),
-      outputReferenceData(opts.expectedFirstReference),
-      outputReferenceData(opts.expectedSecondReference),
+      txOutRefData(opts.expectedOwnRef),
+      txOutRefData(opts.expectedFirstInput),
+      txOutRefData(opts.expectedSecondInput),
+      txOutRefData(opts.expectedFirstReference),
+      txOutRefData(opts.expectedSecondReference),
       opts.expectedFirstOutputScriptHash,
       opts.expectedSecondOutputScriptHash,
       opts.expectedSigner,
@@ -147,7 +145,7 @@ describe("Midgard local script evaluation primitives", () => {
     expect(hashMidgardV1Script(scriptBytes)).not.toBe(
       hashMidgardV1Script(Buffer.concat([scriptBytes, Buffer.from([0x06])])),
     );
-    expect(MIDGARD_V1_SCRIPT_TAG).toBe(0x80);
+    expect(ScriptLanguageTags.MidgardV1).toBe(0x80);
   });
 
   it("recovers script identity from explicit versioned reference script bytes", () => {
@@ -590,12 +588,12 @@ describe("Midgard local script evaluation primitives", () => {
     const validRedeemer = {
       tag: MidgardRedeemerTag.Spend,
       index: 0n,
-      dataCborHex: outputReferenceDataCborHex(outRefHex),
+      dataCborHex: txOutRefDataCborHex(outRefHex),
       exUnits: { memory: 0n, steps: 0n },
     };
     const invalidRedeemer = {
       ...validRedeemer,
-      dataCborHex: outputReferenceDataCborHex(otherOutRefHex),
+      dataCborHex: txOutRefDataCborHex(otherOutRefHex),
     };
     const contextView = {
       txId: Buffer.alloc(32, 0x34),

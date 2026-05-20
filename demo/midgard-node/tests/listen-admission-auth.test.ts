@@ -4,7 +4,7 @@ import { describe, expect, it } from "vitest";
 import { CML } from "@lucid-evolution/lucid";
 import { Effect, Queue } from "effect";
 import { buildListenRouter } from "@/commands/listen-router.js";
-import type { QueuedTxPayload } from "@/validation/index.js";
+import type { QueuedTxPayload } from "@al-ft/midgard-validation";
 import {
   ADMIN_ROUTE_PATHS,
   authorizeAdminRoute,
@@ -15,7 +15,7 @@ import {
 import {
   cardanoTxBytesToMidgardNativeTxFullBytes,
   decodeMidgardNativeTxFull,
-} from "@/midgard-tx-codec/index.js";
+} from "@al-ft/midgard-core/codec";
 import { makeCardanoTxOutput } from "./midgard-output-helpers.js";
 
 type TxFixture = {

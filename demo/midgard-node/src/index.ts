@@ -2,7 +2,7 @@
 
 import { Command } from "commander";
 import { ENV_VARS_GUIDE, chalk, isHexString } from "@/utils.js";
-import { runNode } from "@/commands/index.js";
+import { runNode } from "@/commands/listen.js";
 import { auditBlocksImmutableProgram } from "@/commands/audit-blocks-immutable.js";
 import * as ContractDeploymentInfo from "@/commands/contract-deployment-info.js";
 import * as AddressFromSeed from "@/commands/address-from-seed.js";
@@ -11,6 +11,14 @@ import * as EventSettlementProofCommand from "@/commands/event-settlement-proof.
 import * as FetchWithdrawalsOnceCommand from "@/commands/fetch-withdrawals-once.js";
 import * as ReserveInspectionCommand from "@/commands/reserve-inspection.js";
 import * as ReservePayoutCommand from "@/commands/reserve-payout.js";
+import {
+  DEFAULT_WALLET_SEED_ENV,
+  defaultMidgardNodeEndpoint,
+  formatJson,
+  parseAddressArgument,
+  resolveWalletSeedPhrase,
+  type ResolvedWalletSeedPhrase,
+} from "@/commands/command-utils.js";
 import * as SubmitL2Transfer from "@/commands/submit-l2-transfer.js";
 import * as SubmitWithdrawalCommand from "@/commands/submit-withdrawal.js";
 import * as UtxosCommand from "@/commands/utxos.js";
@@ -33,8 +41,6 @@ import packageJson from "../package.json" with { type: "json" };
 import { Effect, pipe } from "effect";
 import dotenv from "dotenv";
 import { NodeRuntime } from "@effect/platform-node";
-import { DatabaseError } from "@/database/utils/common.js";
-import { SqlError } from "@effect/sql";
 import * as MigrationRunner from "@/database/migrations/runner.js";
 import { commitExplicitBlockHeaderProgram } from "@/workers/commit-block-header.js";
 
@@ -42,22 +48,6 @@ dotenv.config();
 const VERSION = packageJson.version;
 
 const program = new Command();
-
-const cliJsonReplacer = (_key: string, value: unknown): unknown => {
-  if (typeof value === "bigint") {
-    return value.toString(10);
-  }
-  if (value instanceof Map) {
-    return Object.fromEntries([...value.entries()]);
-  }
-  if (Buffer.isBuffer(value)) {
-    return value.toString("hex");
-  }
-  return value;
-};
-
-const formatCliJson = (value: unknown): string =>
-  JSON.stringify(value, cliJsonReplacer, 2);
 
 const parseMerkleRootOption = (value: unknown, label: string): string => {
   if (typeof value !== "string" || value.length !== 64 || !isHexString(value)) {
@@ -101,19 +91,6 @@ const provideDatabaseServices = <A, E>(
   E | Services.ConfigError | Services.DatabaseInitializationError,
   never
 > => pipe(effect, Effect.provide(Services.Database.layer));
-
-const provideDatabaseConfigServices = <A, E>(
-  effect: Effect.Effect<A, E, Services.Database | Services.NodeConfig>,
-): Effect.Effect<
-  A,
-  E | Services.ConfigError | Services.DatabaseInitializationError,
-  never
-> =>
-  pipe(
-    effect,
-    Effect.provide(Services.Database.layer),
-    Effect.provide(Services.NodeConfig.layer),
-  );
 
 const provideNodeRuntimeServices = <A, E>(
   effect: Effect.Effect<
@@ -246,7 +223,7 @@ program
     let address: string;
     let blockfrostConfig: { apiUrl: string; apiKey: string };
     try {
-      address = UtxosCommand.parseAddressArgument(options.opts().address);
+      address = parseAddressArgument(options.opts().address);
       blockfrostConfig = L1UtxosCommand.resolveBlockfrostConfig({
         apiUrl: options.opts().blockfrostApiUrl,
         apiKey: options.opts().blockfrostKey,
@@ -263,7 +240,7 @@ program
         address,
         ...blockfrostConfig,
       });
-      process.stdout.write(`${L1UtxosCommand.formatL1UtxosResult(result)}\n`);
+      process.stdout.write(`${formatJson(result)}\n`);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       console.error(`l1-utxos: ${message}`);
@@ -363,7 +340,7 @@ program
   )
   .action(async () => {
     const mainEffect = provideDatabaseServices(
-      MigrationRunner.verify.pipe(
+      MigrationRunner.assertCompatible.pipe(
         Effect.tap(() =>
           Effect.sync(() => {
             process.stdout.write("schema compatibility verified\n");
@@ -430,7 +407,7 @@ program
           lucidService.api,
           contracts,
         );
-        process.stdout.write(`${formatCliJson(status)}\n`);
+        process.stdout.write(`${formatJson(status)}\n`);
       }),
     );
 
@@ -453,7 +430,7 @@ program
       }).pipe(
         Effect.tap((result) =>
           Effect.logInfo(
-            `register-phas-membership-reward-account completed: ${formatCliJson(
+            `register-phas-membership-reward-account completed: ${formatJson(
               result,
             )}`,
           ),
@@ -584,7 +561,7 @@ program
       commitExplicitBlockHeaderProgram(params).pipe(
         Effect.tap((result) =>
           Effect.sync(() => {
-            process.stdout.write(`${formatCliJson(result)}\n`);
+            process.stdout.write(`${formatJson(result)}\n`);
           }),
         ),
       ),
@@ -699,7 +676,7 @@ program
         }).pipe(
           Effect.tap((result) =>
             Effect.sync(() => {
-              process.stdout.write(`${formatCliJson(result)}\n`);
+              process.stdout.write(`${formatJson(result)}\n`);
             }),
           ),
           Effect.tap((result) =>
@@ -733,12 +710,12 @@ program
   .option(
     "--wallet-seed-phrase-env <envVar>",
     "Environment variable containing the seed phrase for the wallet that should sign the Midgard transfer",
-    SubmitL2Transfer.DEFAULT_WALLET_SEED_ENV,
+    DEFAULT_WALLET_SEED_ENV,
   )
   .option(
     "--endpoint <url>",
     "Midgard node HTTP endpoint used for /utxos and /submit",
-    SubmitL2Transfer.defaultMidgardNodeEndpoint(),
+    defaultMidgardNodeEndpoint(),
   )
   .option(
     "--submission-mode <mode>",
@@ -762,7 +739,7 @@ program
       },
     ) => {
       let transferConfig: SubmitL2Transfer.SubmitL2TransferConfig;
-      let resolvedWalletSeedPhrase: SubmitL2Transfer.ResolvedWalletSeedPhrase;
+      let resolvedWalletSeedPhrase: ResolvedWalletSeedPhrase;
       try {
         transferConfig = SubmitL2Transfer.parseSubmitL2TransferConfig({
           l2Address: options.l2Address,
@@ -771,7 +748,7 @@ program
           nodeEndpoint: options.endpoint,
           submissionMode: options.submissionMode,
         });
-        resolvedWalletSeedPhrase = SubmitL2Transfer.resolveWalletSeedPhrase({
+        resolvedWalletSeedPhrase = resolveWalletSeedPhrase({
           walletSeedPhrase: options.walletSeedPhrase,
           walletSeedPhraseEnv: options.walletSeedPhraseEnv,
         });
@@ -801,9 +778,7 @@ program
         }).pipe(
           Effect.tap((result) =>
             Effect.sync(() => {
-              process.stdout.write(
-                `${SubmitL2Transfer.formatSubmitL2TransferResult(result)}\n`,
-              );
+              process.stdout.write(`${formatJson(result)}\n`);
             }),
           ),
           Effect.tapError((error) =>
@@ -892,9 +867,7 @@ program
       }).pipe(
         Effect.tap((result) =>
           Effect.sync(() => {
-            process.stdout.write(
-              `${SubmitWithdrawalCommand.formatSubmitWithdrawalResult(result)}\n`,
-            );
+            process.stdout.write(`${formatJson(result)}\n`);
           }),
         ),
       ),
@@ -918,7 +891,7 @@ program
   .action(async (_args, options) => {
     let address: string;
     try {
-      address = UtxosCommand.parseAddressArgument(options.opts().address);
+      address = parseAddressArgument(options.opts().address);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       console.error(`utxos: ${message}`);
@@ -930,7 +903,7 @@ program
       UtxosCommand.utxosProgram(address).pipe(
         Effect.flatMap((result) =>
           Effect.sync(() => {
-            process.stdout.write(`${UtxosCommand.formatUtxosResult(result)}\n`);
+            process.stdout.write(`${formatJson(result)}\n`);
           }),
         ),
       ),
@@ -967,9 +940,7 @@ program
       FetchWithdrawalsOnceCommand.fetchWithdrawalsOnceProgram.pipe(
         Effect.tap((result) =>
           Effect.sync(() => {
-            process.stdout.write(
-              `${FetchWithdrawalsOnceCommand.formatFetchWithdrawalsOnceResult(result)}\n`,
-            );
+            process.stdout.write(`${formatJson(result)}\n`);
           }),
         ),
       ),
@@ -1007,7 +978,7 @@ program
         Effect.tap((result) =>
           Effect.sync(() => {
             process.stdout.write(
-              `${EventSettlementProofCommand.formatEventSettlementProofResolution(result)}\n`,
+              `${formatJson(EventSettlementProofCommand.serializeEventSettlementProofResolution(result))}\n`,
             );
           }),
         ),
@@ -1032,9 +1003,7 @@ program
       }).pipe(
         Effect.tap((result) =>
           Effect.sync(() => {
-            process.stdout.write(
-              `${ReservePayoutCommand.formatPayoutCommandResult(result)}\n`,
-            );
+            process.stdout.write(`${formatJson(result)}\n`);
           }),
         ),
       ),
@@ -1058,9 +1027,7 @@ program
       }).pipe(
         Effect.tap((result) =>
           Effect.sync(() => {
-            process.stdout.write(
-              `${ReservePayoutCommand.formatPayoutCommandResult(result)}\n`,
-            );
+            process.stdout.write(`${formatJson(result)}\n`);
           }),
         ),
       ),
@@ -1084,9 +1051,7 @@ program
       }).pipe(
         Effect.tap((result) =>
           Effect.sync(() => {
-            process.stdout.write(
-              `${ReservePayoutCommand.formatPayoutCommandResult(result)}\n`,
-            );
+            process.stdout.write(`${formatJson(result)}\n`);
           }),
         ),
       ),
@@ -1110,9 +1075,7 @@ program
       }).pipe(
         Effect.tap((result) =>
           Effect.sync(() => {
-            process.stdout.write(
-              `${ReservePayoutCommand.formatPayoutCommandResult(result)}\n`,
-            );
+            process.stdout.write(`${formatJson(result)}\n`);
           }),
         ),
       ),
@@ -1148,9 +1111,7 @@ program
       WithdrawalStatusCommand.withdrawalStatusProgram(lookup).pipe(
         Effect.tap((result) =>
           Effect.sync(() => {
-            process.stdout.write(
-              `${WithdrawalStatusCommand.formatWithdrawalStatusResult(result)}\n`,
-            );
+            process.stdout.write(`${formatJson(result)}\n`);
           }),
         ),
       ),
@@ -1167,9 +1128,7 @@ program
       ReserveInspectionCommand.reserveUtxosProgram.pipe(
         Effect.tap((result) =>
           Effect.sync(() => {
-            process.stdout.write(
-              `${ReserveInspectionCommand.formatReserveUtxosResult(result)}\n`,
-            );
+            process.stdout.write(`${formatJson(result)}\n`);
           }),
         ),
       ),
@@ -1191,9 +1150,7 @@ program
       ReserveInspectionCommand.payoutStatusProgram(opts.withdrawalEventId).pipe(
         Effect.tap((result) =>
           Effect.sync(() => {
-            process.stdout.write(
-              `${ReserveInspectionCommand.formatPayoutStatusResult(result)}\n`,
-            );
+            process.stdout.write(`${formatJson(result)}\n`);
           }),
         ),
       ),

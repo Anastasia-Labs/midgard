@@ -7,10 +7,10 @@ import {
 } from "@/commands/address-from-seed.js";
 import {
   fetchAllBlockfrostAddressUtxos,
-  formatL1UtxosResult,
   parseBlockfrostAddressUtxoPage,
   resolveBlockfrostConfig,
 } from "@/commands/l1-utxos.js";
+import { formatJson } from "@/commands/command-utils.js";
 
 const VALID_ADDRESS =
   "addr_test1qzyem8ex0v9v76q0u52x3t2xmj5rkhjd9rsd44kx3klsut4qga2669x30zsng46mhfrrk4ngylfnnlda7rkfvxq5fywqvurkrs";
@@ -43,29 +43,36 @@ describe("l1-utxos command helpers", () => {
   });
 
   it("parses a blockfrost address utxo page into bigint-backed assets", () => {
+    const assetUnit = `${"aa".repeat(28)}${"bb".repeat(2)}`;
+    const parsed = parseBlockfrostAddressUtxoPage([
+      {
+        tx_hash: "11".repeat(32),
+        output_index: 1,
+        amount: [
+          { unit: "lovelace", quantity: "1500000" },
+          { unit: assetUnit, quantity: "7" },
+        ],
+        block: "22".repeat(32),
+        tx_index: 3,
+        data_hash: "33".repeat(32),
+        inline_datum: "d87980",
+        reference_script_hash: "44".repeat(28),
+      },
+    ]);
+
+    expect(Object.keys(parsed[0]?.assets ?? {})).toEqual([
+      assetUnit,
+      "lovelace",
+    ]);
     expect(
-      parseBlockfrostAddressUtxoPage([
-        {
-          tx_hash: "11".repeat(32),
-          output_index: 1,
-          amount: [
-            { unit: "lovelace", quantity: "1500000" },
-            { unit: `${"aa".repeat(28)}${"bb".repeat(2)}`, quantity: "7" },
-          ],
-          block: "22".repeat(32),
-          tx_index: 3,
-          data_hash: "33".repeat(32),
-          inline_datum: "d87980",
-          reference_script_hash: "44".repeat(28),
-        },
-      ]),
+      parsed,
     ).toEqual([
       {
         txHash: "11".repeat(32),
         outputIndex: 1,
         assets: {
+          [assetUnit]: 7n,
           lovelace: 1_500_000n,
-          [`${"aa".repeat(28)}${"bb".repeat(2)}`]: 7n,
         },
         block: "22".repeat(32),
         txIndex: 3,
@@ -97,7 +104,7 @@ describe("l1-utxos command helpers", () => {
             amount: [{ unit: "lovelace", quantity: "5" }],
           },
         ],
-      } as Response)
+      } as Response);
 
     const result = await fetchAllBlockfrostAddressUtxos({
       address: VALID_ADDRESS,
@@ -123,7 +130,7 @@ describe("l1-utxos command helpers", () => {
       outputIndex: 0,
       assets: { lovelace: 5n },
     });
-    expect(formatL1UtxosResult(result)).toContain('"lovelace": "105"');
+    expect(formatJson(result)).toContain('"lovelace": "105"');
   });
 });
 
@@ -142,7 +149,8 @@ describe("address-from-seed command helpers", () => {
     expect(
       resolveBlockfrostApiUrl({
         env: {
-          L1_BLOCKFROST_API_URL: "https://cardano-preprod.blockfrost.io/api/v0/",
+          L1_BLOCKFROST_API_URL:
+            "https://cardano-preprod.blockfrost.io/api/v0/",
         },
       }),
     ).toBe("https://cardano-preprod.blockfrost.io/api/v0");

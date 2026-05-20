@@ -1168,7 +1168,7 @@ const fetchLatestCommittedBlock = (
 /**
  * Extracts the end time from a state-queue datum fixture.
  */
-const getStateQueueDatumEndTime = (datum: SDK.StateQueueNodeView) =>
+const getStateQueueDatumEndTime = (datum: SDK.LinkedListNodeView) =>
   Effect.runPromise(
     Effect.gen(function* () {
       if (datum.key === "Empty") {

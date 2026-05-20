@@ -117,6 +117,7 @@ quite easily.
    ```
 
    Notes:
+
    1. The first run restores a Mithril-certified Cardano DB snapshot into
       `./cardano/db` only when that directory is empty. Existing data is never
       overwritten implicitly.
@@ -282,8 +283,8 @@ node dist/index.js submit-l2-transfer \
 Notes:
 
 - The command derives the sender address from `USER_WALLET` by default.
-- If `USER_WALLET` is unset, it falls back to `USER_SEED_PHRASE` for
-  compatibility with older local env files.
+- Override the default with `--wallet-seed-phrase-env <ENV_VAR>` or pass
+  `--wallet-seed-phrase` directly for one-off manual testing.
 - The CLI now rejects wallets that collide with the node's operational
   operator, merge, or reference-script wallets. Use a distinct user wallet for
   deposit and L2 transfer flows.

@@ -11,16 +11,15 @@ import {
   CML,
   getAddressDetails,
   type Network,
-  valueToAssets,
   walletFromSeed,
 } from "@lucid-evolution/lucid";
 import {
   decodeMidgardAddressBytes,
   decodeMidgardNativeByteListPreimage,
   midgardAddressFromText,
-  midgardAddressToText,
+  encodeMidgardAddressText,
   MIDGARD_SUPPORTED_SCRIPT_LANGUAGES,
-} from "@/midgard-tx-codec/index.js";
+} from "@al-ft/midgard-core/codec";
 import {
   decodeMidgardUtxo,
   LucidMidgard,
@@ -28,6 +27,17 @@ import {
   type MidgardProvider,
   type MidgardUtxo,
 } from "@al-ft/lucid-midgard";
+import {
+  decodeNodeUtxo,
+  defaultMidgardNodeEndpoint,
+  fetchNodeUtxosByAddress,
+  formatJson,
+  networkIdFromName,
+  parseNodeEndpoint,
+  walletNetworkFromId,
+  type NodeUtxo,
+  type ResolvedWalletSeedPhrase,
+} from "@/commands/command-utils.js";
 import * as MempoolDB from "@/database/mempool.js";
 import * as MempoolLedgerDB from "@/database/mempoolLedger.js";
 import * as TxRejectionsDB from "@/database/txRejections.js";
@@ -39,22 +49,14 @@ import {
   runPhaseAValidation,
   runPhaseBValidationWithPatch,
   type QueuedTx,
-} from "@/validation/index.js";
-import {
-  decodeMidgardTxOutput,
-  midgardOutputAddressText,
-  midgardValueToCmlValue,
-} from "@/validation/midgard-output.js";
+} from "@al-ft/midgard-validation";
 import {
   Database as DatabaseService,
   Lucid,
   NodeConfig as NodeConfigService,
 } from "@/services/index.js";
-import { compareOutRefs, outRefLabel, type OutRefLike } from "@/tx-context.js";
+import { compareOutRefs, outRefLabel } from "@/tx-context.js";
 
-const DEFAULT_MIDGARD_NODE_PORT = "3000";
-export const DEFAULT_WALLET_SEED_ENV = "USER_WALLET";
-export const LEGACY_DEFAULT_WALLET_SEED_ENV = "USER_SEED_PHRASE";
 export type SubmissionMode = "api" | "local";
 
 export type SubmitL2TransferConfig = {
@@ -64,27 +66,6 @@ export type SubmitL2TransferConfig = {
   readonly nodeEndpoint: string;
   readonly networkId: bigint;
   readonly submissionMode: SubmissionMode;
-};
-
-export type ResolvedWalletSeedPhrase = {
-  readonly seedPhrase: string;
-  readonly resolvedFrom:
-    | "direct-argument"
-    | typeof DEFAULT_WALLET_SEED_ENV
-    | typeof LEGACY_DEFAULT_WALLET_SEED_ENV
-    | string;
-};
-
-export type RawNodeUtxo = {
-  readonly outref: string;
-  readonly outputCbor: string;
-};
-
-export type NodeUtxo = OutRefLike & {
-  readonly outrefCbor: Buffer;
-  readonly outputCbor: Buffer;
-  readonly address: string;
-  readonly assets: Readonly<Assets>;
 };
 
 export type BuiltTransferTx = {
@@ -113,52 +94,12 @@ export type SubmitL2TransferResult = {
 };
 
 /**
- * JSON replacer that preserves bigint values as decimal strings.
- */
-const jsonReplacer = (_key: string, value: unknown): unknown =>
-  typeof value === "bigint" ? value.toString(10) : value;
-
-/**
- * Stable JSON serializer used for CLI and error output.
- */
-const serializeJson = (value: unknown): string =>
-  JSON.stringify(value, jsonReplacer, 2);
-
-/**
- * Normalizes and validates the configured Midgard node endpoint.
- */
-const parseNodeEndpoint = (value: string): string => {
-  const normalized = value.trim();
-  if (normalized.length === 0) {
-    throw new Error("Midgard node endpoint must not be empty.");
-  }
-  let url: URL;
-  try {
-    url = new URL(normalized);
-  } catch (cause) {
-    throw new Error(
-      `Invalid Midgard node endpoint "${value}": ${String(cause)}`,
-    );
-  }
-  url.pathname = url.pathname.replace(/\/+$/, "");
-  url.search = "";
-  url.hash = "";
-  return url.toString().replace(/\/+$/, "");
-};
-
-/**
  * Converts an unknown failure into an `Error` with a stable prefix.
  */
 const toError = (cause: unknown, prefix: string): Error =>
   cause instanceof Error
     ? new Error(`${prefix}: ${cause.message}`)
     : new Error(`${prefix}: ${String(cause)}`);
-
-/**
- * Maps a network id into the Lucid wallet-network discriminator.
- */
-const walletNetworkFromId = (networkId: bigint): "Mainnet" | "Preprod" =>
-  networkId === 1n ? "Mainnet" : "Preprod";
 
 /**
  * Parses the submission mode from CLI or environment input.
@@ -172,20 +113,6 @@ const parseSubmissionMode = (value: string | undefined): SubmissionMode => {
     `Invalid submission mode "${value}". Expected "api" or "local".`,
   );
 };
-
-/**
- * Resolves the default Midgard node endpoint from the supported environment
- * variables.
- */
-export const defaultMidgardNodeEndpoint = (
-  env: NodeJS.ProcessEnv = process.env,
-): string =>
-  parseNodeEndpoint(
-    env.MIDGARD_NODE_URL?.trim() ??
-      env.ACTIVITY_SUBMIT_ENDPOINT?.trim() ??
-      env.STRESS_SUBMIT_ENDPOINT?.trim() ??
-      `http://127.0.0.1:${env.PORT?.trim() || DEFAULT_MIDGARD_NODE_PORT}`,
-  );
 
 /**
  * Removes zero-quantity units and coerces asset values to bigint.
@@ -341,9 +268,6 @@ type TransferNetworkName = Network;
 const networkNameFromId = (networkId: bigint): TransferNetworkName =>
   networkId === 1n ? "Mainnet" : "Preprod";
 
-const networkIdFromName = (network: TransferNetworkName): bigint =>
-  network === "Mainnet" ? 1n : 0n;
-
 const makeTransferMidgard = async ({
   senderAddress,
   signer,
@@ -432,55 +356,6 @@ const makeStaticMidgardProvider = ({
 });
 
 /**
- * Decodes one raw UTxO payload returned by the node's `/utxos` endpoint.
- */
-const decodeNodeUtxo = (raw: RawNodeUtxo): NodeUtxo => {
-  const outrefHex = raw.outref.trim().toLowerCase();
-  const outputHex = raw.outputCbor.trim().toLowerCase();
-  const outrefBytes = Buffer.from(outrefHex, "hex");
-  const outputBytes = Buffer.from(outputHex, "hex");
-  const input = CML.TransactionInput.from_cbor_bytes(outrefBytes);
-  const output = decodeMidgardTxOutput(outputBytes);
-
-  return {
-    txHash: input.transaction_id().to_hex(),
-    outputIndex: Number(input.index()),
-    outrefCbor: outrefBytes,
-    outputCbor: outputBytes,
-    address: midgardOutputAddressText(output),
-    assets: valueToAssets(midgardValueToCmlValue(output.value)),
-  };
-};
-
-/**
- * Validates and extracts the raw UTxO array from the node's JSON response.
- */
-const parseNodeUtxoResponse = (payload: unknown): readonly RawNodeUtxo[] => {
-  if (typeof payload !== "object" || payload === null) {
-    throw new Error("Midgard node returned a non-object UTxO payload.");
-  }
-  const utxos = (payload as { readonly utxos?: unknown }).utxos;
-  if (!Array.isArray(utxos)) {
-    throw new Error("Midgard node UTxO response is missing an `utxos` array.");
-  }
-  return utxos.map((entry, index) => {
-    if (typeof entry !== "object" || entry === null) {
-      throw new Error(`UTxO entry ${index} is not an object.`);
-    }
-    const { outref, outputCbor } = entry as {
-      readonly outref?: unknown;
-      readonly outputCbor?: unknown;
-    };
-    if (typeof outref !== "string" || typeof outputCbor !== "string") {
-      throw new Error(
-        `UTxO entry ${index} must contain string outref/outputCbor fields.`,
-      );
-    }
-    return { outref, outputCbor };
-  });
-};
-
-/**
  * Parses CLI-style transfer arguments into a normalized transfer config.
  */
 export const parseSubmitL2TransferConfig = ({
@@ -513,7 +388,7 @@ export const parseSubmitL2TransferConfig = ({
   }
 
   return {
-    l2Address: midgardAddressToText(addressBytes),
+    l2Address: encodeMidgardAddressText(addressBytes),
     lovelace: parseLovelaceAmount(
       lovelace,
       "Transfer lovelace amount must be greater than zero.",
@@ -525,55 +400,6 @@ export const parseSubmitL2TransferConfig = ({
     networkId: BigInt(addressDetails.networkId),
     submissionMode: parseSubmissionMode(submissionMode),
   };
-};
-
-/**
- * Resolves the wallet seed phrase from either a direct argument or a
- * configured environment-variable fallback chain.
- */
-export const resolveWalletSeedPhrase = ({
-  walletSeedPhrase,
-  walletSeedPhraseEnv,
-  env = process.env,
-}: {
-  readonly walletSeedPhrase?: string;
-  readonly walletSeedPhraseEnv: string;
-  readonly env?: NodeJS.ProcessEnv;
-}): ResolvedWalletSeedPhrase => {
-  const direct = walletSeedPhrase?.trim() ?? "";
-  if (direct.length > 0) {
-    return {
-      seedPhrase: direct,
-      resolvedFrom: "direct-argument",
-    };
-  }
-
-  const normalizedEnvVar = walletSeedPhraseEnv.trim();
-  if (normalizedEnvVar.length === 0) {
-    throw new Error("Wallet seed phrase env var name must not be empty.");
-  }
-
-  const configuredSeed = env[normalizedEnvVar]?.trim() ?? "";
-  if (configuredSeed.length > 0) {
-    return {
-      seedPhrase: configuredSeed,
-      resolvedFrom: normalizedEnvVar,
-    };
-  }
-
-  if (normalizedEnvVar === DEFAULT_WALLET_SEED_ENV) {
-    const legacySeed = env[LEGACY_DEFAULT_WALLET_SEED_ENV]?.trim() ?? "";
-    if (legacySeed.length > 0) {
-      return {
-        seedPhrase: legacySeed,
-        resolvedFrom: LEGACY_DEFAULT_WALLET_SEED_ENV,
-      };
-    }
-  }
-
-  throw new Error(
-    `Environment variable "${normalizedEnvVar}" does not contain a wallet seed phrase.`,
-  );
 };
 
 /**
@@ -623,7 +449,7 @@ export const selectTransferInputs = (
 
   if (!assetsSatisfied(remaining)) {
     throw new Error(
-      `Insufficient Midgard L2 funds for requested transfer. Missing ${serializeJson(remaining)}.`,
+      `Insufficient Midgard L2 funds for requested transfer. Missing ${formatJson(remaining)}.`,
     );
   }
 
@@ -634,7 +460,9 @@ const selectedInputsFromCompletedTx = (
   completed: CompleteTx,
   availableUtxos: readonly NodeUtxo[],
 ): readonly NodeUtxo[] => {
-  const byLabel = new Map(availableUtxos.map((utxo) => [outRefLabel(utxo), utxo]));
+  const byLabel = new Map(
+    availableUtxos.map((utxo) => [outRefLabel(utxo), utxo]),
+  );
   return decodeMidgardNativeByteListPreimage(
     completed.tx.body.spendInputsPreimageCbor,
   ).map((bytes) => {
@@ -811,19 +639,7 @@ export const fetchNodeUtxos = (
   address: string,
 ): Effect.Effect<readonly NodeUtxo[], Error> =>
   Effect.tryPromise({
-    try: async () => {
-      const response = await fetch(
-        `${nodeEndpoint}/utxos?address=${encodeURIComponent(address)}`,
-      );
-      const responseText = await response.text();
-      if (!response.ok) {
-        throw new Error(
-          `Midgard node UTxO query failed (${response.status}): ${responseText}`,
-        );
-      }
-      const payload = JSON.parse(responseText) as unknown;
-      return parseNodeUtxoResponse(payload).map(decodeNodeUtxo);
-    },
+    try: () => fetchNodeUtxosByAddress(nodeEndpoint, address),
     catch: (cause) =>
       new Error(`Failed to fetch Midgard UTxOs: ${String(cause)}`),
   });
@@ -1085,10 +901,3 @@ export const submitL2TransferProgram = ({
       nodeEndpoint: config.nodeEndpoint,
     };
   });
-
-/**
- * Formats the transfer result as stable JSON for CLI output.
- */
-export const formatSubmitL2TransferResult = (
-  result: SubmitL2TransferResult,
-): string => serializeJson(result);

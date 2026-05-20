@@ -1,4 +1,5 @@
 export * from "./inspect-contracts.js";
+export * from "./runtime.js";
 export * from "./submit-init.js";
 export * from "./submit-step-01.js";
 export * from "./submit-step-02.js";

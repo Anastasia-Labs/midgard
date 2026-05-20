@@ -6,16 +6,14 @@ import {
   type ProtocolParameters,
   type UTxO,
 } from "@lucid-evolution/lucid";
+import { MidgardTxInputList, type MidgardTxInput } from "@al-ft/midgard-sdk";
+import { selectFeeInput } from "./submit-step-01.js";
 import {
-  MidgardTxInputList,
-  type MidgardTxInput,
-} from "@al-ft/midgard-sdk";
-import { compareOutRefs, outRefLabel } from "./submit-init.js";
-import {
-  parsedOutRefFromUtxo,
+  compareOutRefs,
   DEFAULT_CONFIRMATION_POLL_MS,
-  selectFeeInput,
-} from "./submit-step-01.js";
+  outRefLabel,
+  parsedOutRefFromUtxo,
+} from "./runtime.js";
 
 const MIN_ADA_STABILIZATION_LIMIT = 8;
 
@@ -93,7 +91,9 @@ export const minimumLovelaceForInlineDatumOutput = ({
     }
     lovelace = required;
   }
-  throw new Error("Failed to stabilize inline-datum witness min-ADA calculation.");
+  throw new Error(
+    "Failed to stabilize inline-datum witness min-ADA calculation.",
+  );
 };
 
 const requireCanonicalInputCbor = (
@@ -105,7 +105,9 @@ const requireCanonicalInputCbor = (
   try {
     input = CML.TransactionInput.from_cbor_bytes(inputCbor);
   } catch (cause) {
-    throw new Error(`${label} is not valid Cardano TxOutRef CBOR: ${String(cause)}`);
+    throw new Error(
+      `${label} is not valid Cardano TxOutRef CBOR: ${String(cause)}`,
+    );
   }
   const canonical = Buffer.from(input.to_cbor_bytes());
   if (!canonical.equals(inputCbor)) {
@@ -261,12 +263,14 @@ export const ensureSpendInputsReferenceWitness = async ({
   }
 
   await lucid.awaitTx(txHash, DEFAULT_CONFIRMATION_POLL_MS);
-  const confirmed = (await lucid.utxosByOutRef([
-    {
-      txHash,
-      outputIndex: Number(outputIndex),
-    },
-  ]))[0];
+  const confirmed = (
+    await lucid.utxosByOutRef([
+      {
+        txHash,
+        outputIndex: Number(outputIndex),
+      },
+    ])
+  )[0];
   if (confirmed === undefined) {
     throw new Error(
       `Spend-input witness UTxO ${txHash}#${outputIndex.toString()} was not found after confirmation.`,

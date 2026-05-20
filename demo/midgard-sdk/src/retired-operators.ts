@@ -84,11 +84,6 @@ export type RetiredOperatorInitParams = {
   lovelace?: bigint;
 };
 
-export type RetiredOperatorDeinitParams = {};
-export type RetiredOperatorRetireParams = {};
-export type RetiredOperatorRemoveOperatorParams = {};
-export type RetiredOperatorRecoverSlashBondParams = {};
-
 export type RetiredOperatorUTxO = AuthenticUTxO<RetiredOperatorDatum>;
 
 export type FetchRetiredOperatorParams = {
@@ -150,63 +145,3 @@ export const incompleteRetiredOperatorInitTxProgram = (
       lovelace: params.lovelace,
     });
   });
-
-/**
- * Deinit
- *
- * @param lucid - The LucidEvolution
- * @param params - The parameters
- * @returns {TxBuilder} A TxBuilder instance that can be used to build the transaction.
- */
-export const incompleteRetiredOperatorDeinitTxProgram = (
-  lucid: LucidEvolution,
-  params: RetiredOperatorDeinitParams,
-): TxBuilder => {
-  const tx = lucid.newTx();
-  return tx;
-};
-
-/**
- * Retire
- *
- * @param lucid - The LucidEvolution
- * @param params - The parameters
- * @returns {TxBuilder} A TxBuilder instance that can be used to build the transaction.
- */
-export const incompleteRetiredOperatorRetireTxProgram = (
-  lucid: LucidEvolution,
-  params: RetiredOperatorRetireParams,
-): TxBuilder => {
-  const tx = lucid.newTx();
-  return tx;
-};
-
-/**
- * RemoveOperator
- *
- * @param lucid - The LucidEvolution
- * @param params - The parameters
- * @returns {TxBuilder} A TxBuilder instance that can be used to build the transaction.
- */
-export const incompleteRetiredOperatorRemoveOperatorTxProgram = (
-  lucid: LucidEvolution,
-  params: RetiredOperatorRemoveOperatorParams,
-): TxBuilder => {
-  const tx = lucid.newTx();
-  return tx;
-};
-
-/**
- * Recover
- *
- * @param lucid - The LucidEvolution
- * @param params - The parameters
- * @returns {TxBuilder} A TxBuilder instance that can be used to build the transaction.
- */
-export const incompleteRetiredOperatorRecoverSlashBondTxProgram = (
-  lucid: LucidEvolution,
-  params: RetiredOperatorRecoverSlashBondParams,
-): TxBuilder => {
-  const tx = lucid.newTx();
-  return tx;
-};

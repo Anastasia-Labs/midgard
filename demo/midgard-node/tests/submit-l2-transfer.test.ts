@@ -2,6 +2,7 @@ import "./utils.js";
 
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { Effect } from "effect";
+import { SqlClient } from "@effect/sql";
 import {
   CML,
   assetsToValue,
@@ -9,36 +10,33 @@ import {
   walletFromSeed,
 } from "@lucid-evolution/lucid";
 import {
-  computeMidgardNativeTxIdFromFull,
+  computeMidgardNativeTxId,
   decodeMidgardNativeByteListPreimage,
   decodeMidgardNativeTxFull,
+  decodeMidgardTxOutput,
   midgardAddressFromText,
-  midgardAddressToText,
+  encodeMidgardAddressText,
+  midgardValueToCmlValue,
   protectMidgardAddress,
-} from "@/midgard-tx-codec/index.js";
+} from "@al-ft/midgard-core/codec";
 import {
-  DEFAULT_WALLET_SEED_ENV,
-  LEGACY_DEFAULT_WALLET_SEED_ENV,
   buildTransferTx,
   buildTransferTxWithMinFee,
   parseSubmitL2TransferConfig,
-  resolveWalletSeedPhrase,
   selectTransferInputs,
   submitL2TransferProgram,
-  type NodeUtxo,
 } from "@/commands/submit-l2-transfer.js";
+import {
+  DEFAULT_WALLET_SEED_ENV,
+  resolveWalletSeedPhrase,
+  type NodeUtxo,
+} from "@/commands/command-utils.js";
 import {
   runPhaseAValidation,
   runPhaseBValidationWithPatch,
   type QueuedTx,
-} from "@/validation/index.js";
-import {
-  decodeMidgardTxOutput,
-  midgardOutputAddressText,
-  midgardValueToCmlValue,
-} from "@/validation/midgard-output.js";
+} from "@al-ft/midgard-validation";
 import { makeMidgardTxOutput } from "./midgard-output-helpers.js";
-import { Database } from "@/services/database.js";
 import { NodeConfig } from "@/services/config.js";
 import { Lucid as LucidService } from "@/services/lucid.js";
 
@@ -102,6 +100,17 @@ const mockLucidService = LucidService.make({
   switchToReferenceScriptWallet: Effect.succeed(undefined),
 });
 
+const unusedSqlClient = new Proxy(
+  {},
+  {
+    get: (_target, property) => {
+      throw new Error(
+        `Unexpected database access in API-mode transfer test: ${String(property)}`,
+      );
+    },
+  },
+) as SqlClient.SqlClient;
+
 describe("submit-l2-transfer config helpers", () => {
   it("parses a valid config and derives a normalized endpoint", () => {
     const wallet = walletFromSeed(TEST_SEED, { network: "Preprod" });
@@ -121,7 +130,7 @@ describe("submit-l2-transfer config helpers", () => {
 
   it("parses protected Midgard destination addresses with the Midgard codec", () => {
     const wallet = walletFromSeed(TEST_SEED, { network: "Preprod" });
-    const protectedAddress = midgardAddressToText(
+    const protectedAddress = encodeMidgardAddressText(
       protectMidgardAddress(midgardAddressFromText(wallet.address)),
     );
 
@@ -136,7 +145,7 @@ describe("submit-l2-transfer config helpers", () => {
     expect(config.networkId).toBe(0n);
   });
 
-  it("resolves USER_WALLET by default and falls back to USER_SEED_PHRASE", () => {
+  it("resolves direct input or USER_WALLET without legacy fallback", () => {
     const direct = resolveWalletSeedPhrase({
       walletSeedPhrase: TEST_SEED,
       walletSeedPhraseEnv: DEFAULT_WALLET_SEED_ENV,
@@ -144,14 +153,25 @@ describe("submit-l2-transfer config helpers", () => {
     });
     expect(direct.resolvedFrom).toBe("direct-argument");
 
-    const legacy = resolveWalletSeedPhrase({
+    const envSeed = resolveWalletSeedPhrase({
       walletSeedPhraseEnv: DEFAULT_WALLET_SEED_ENV,
       env: {
-        [LEGACY_DEFAULT_WALLET_SEED_ENV]: TEST_SEED,
+        [DEFAULT_WALLET_SEED_ENV]: TEST_SEED,
       },
     });
-    expect(legacy.resolvedFrom).toBe(LEGACY_DEFAULT_WALLET_SEED_ENV);
-    expect(legacy.seedPhrase).toBe(TEST_SEED);
+    expect(envSeed.resolvedFrom).toBe(DEFAULT_WALLET_SEED_ENV);
+    expect(envSeed.seedPhrase).toBe(TEST_SEED);
+
+    expect(() =>
+      resolveWalletSeedPhrase({
+        walletSeedPhraseEnv: DEFAULT_WALLET_SEED_ENV,
+        env: {
+          USER_SEED_PHRASE: TEST_SEED,
+        },
+      }),
+    ).toThrow(
+      `Environment variable "${DEFAULT_WALLET_SEED_ENV}" does not contain a wallet seed phrase.`,
+    );
   });
 });
 
@@ -222,7 +242,7 @@ describe("submit-l2-transfer tx building", () => {
       expect(bytes[0] >> 5).toBe(5);
       const output = decodeMidgardTxOutput(bytes);
       return {
-        address: midgardOutputAddressText(output),
+        address: encodeMidgardAddressText(output.address),
         assets: valueToAssets(midgardValueToCmlValue(output.value)),
       };
     });
@@ -345,7 +365,7 @@ describe("submit-l2-transfer program", () => {
           resolvedWalletSeedPhrase,
         }).pipe(
           Effect.provideService(LucidService, mockLucidService),
-          Effect.provide(Database.layer),
+          Effect.provideService(SqlClient.SqlClient, unusedSqlClient),
           Effect.provide(NodeConfig.layer),
         ),
       ),
@@ -404,10 +424,8 @@ describe("submit-l2-transfer program", () => {
           init?.body instanceof Uint8Array
             ? Buffer.from(init.body)
             : Buffer.from(await new Response(init?.body).arrayBuffer());
-        const built = decodeMidgardNativeTxFull(
-          body,
-        );
-        expectedTxId = computeMidgardNativeTxIdFromFull(built).toString("hex");
+        const built = decodeMidgardNativeTxFull(body);
+        expectedTxId = computeMidgardNativeTxId(built).toString("hex");
         return {
           ok: true,
           status: 200,
@@ -428,7 +446,7 @@ describe("submit-l2-transfer program", () => {
         assertWalletAddress,
       }).pipe(
         Effect.provideService(LucidService, mockLucidService),
-        Effect.provide(Database.layer),
+        Effect.provideService(SqlClient.SqlClient, unusedSqlClient),
         Effect.provide(NodeConfig.layer),
       ),
     );

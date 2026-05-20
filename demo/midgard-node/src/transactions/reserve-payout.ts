@@ -9,63 +9,89 @@ import {
   type OutputDatum,
   type Script,
   type TxBuilder,
-  type TxSignBuilder,
   type UTxO,
   credentialToAddress,
   scriptHashToCredential,
   toUnit,
   validatorToScriptHash,
 } from "@lucid-evolution/lucid";
-import { Data as EffectData, Effect } from "effect";
+import { Effect } from "effect";
 import {
-  getRedeemerPointersInContextOrder,
-  getTxInfoRedeemerIndexes,
-  withStubbedProviderEvaluation,
-} from "@/cml-redeemers.js";
+  addAssets,
+  assertAssetsNonNegative,
+  assertNoAssetExceeds,
+  assetsEqual,
+  assetsToValue,
+  minPositiveAssets,
+  normalizeAssets,
+  removeAssetUnit,
+  subtractAssets,
+  valueToAssets,
+} from "@/transactions/reserve-payout/assets.js";
 import {
-  collectIndexedOutputs,
-  collectSortedInputOutRefs,
-  compareOutRefs,
-  dedupeByOutRef,
-  findOutRefIndex,
-  outRefLabel,
-  type IndexedTxOutput,
-  type OutRefLike,
-} from "@/tx-context.js";
+  completeWithTwoPassLayoutProgram,
+  type BuiltReservePayoutTx,
+} from "@/transactions/reserve-payout/completion.js";
+import { formatLayout } from "@/transactions/reserve-payout/diagnostics.js";
 import {
-  fetchReferenceScriptUtxosProgram,
-  type ReferenceScriptResolved,
-} from "@/transactions/reference-scripts.js";
+  fail,
+  ReservePayoutTxError,
+} from "@/transactions/reserve-payout/errors.js";
+import { outRefLabel } from "@/tx-context.js";
+import {
+  deriveAbsorbDepositLayout,
+  deriveAddReserveFundsLayout,
+  deriveConcludePayoutLayout,
+  deriveInitializePayoutLayout,
+  deriveRefundWithdrawalLayout,
+  initialAbsorbDepositLayout,
+  initialAddReserveFundsLayout,
+  initialConcludePayoutLayout,
+  initialInitializePayoutLayout,
+  initialRefundWithdrawalLayout,
+  sameAbsorbDepositLayout,
+  sameAddReserveFundsLayout,
+  sameConcludePayoutLayout,
+  sameInitializePayoutLayout,
+  sameRefundWithdrawalLayout,
+  settlementDatumFromInput,
+  type AbsorbDepositLayout,
+  type AddReserveFundsLayout,
+  type ConcludePayoutLayout,
+  type InitializePayoutLayout,
+  type RefundWithdrawalLayout,
+} from "@/transactions/reserve-payout/layout.js";
+import {
+  disposableFeeInputCandidates,
+  isProviderSpendableUtxo,
+  selectFeeInputProgram,
+} from "@/transactions/reserve-payout/inputs.js";
+import {
+  attachIfMissing,
+  mergeReferenceScripts,
+  referenceInputs,
+  resolveReferenceScriptsProgram,
+  type ReservePayoutReferenceScripts,
+} from "@/transactions/reserve-payout/references.js";
 import {
   handleSignSubmit,
   TxConfirmError,
   TxSignError,
   TxSubmitError,
 } from "@/transactions/utils.js";
+import { aikenSerialisedPlutusDataCbor } from "@/utils/plutus-data-cbor.js";
 
-export class ReservePayoutTxError extends EffectData.TaggedError(
-  "ReservePayoutTxError",
-)<{
-  message: string;
-  cause: unknown;
-}> {}
+export { ReservePayoutTxError } from "@/transactions/reserve-payout/errors.js";
+export {
+  assetsToValue,
+  valueToAssets,
+} from "@/transactions/reserve-payout/assets.js";
+export type { BuiltReservePayoutTx } from "@/transactions/reserve-payout/completion.js";
+export type { ReservePayoutReferenceScripts } from "@/transactions/reserve-payout/references.js";
 
 export type MembershipProofWithdrawalWitness = {
   readonly script: Script;
   readonly amount?: bigint;
-};
-
-export type ReservePayoutReferenceScripts = {
-  readonly depositMinting?: UTxO;
-  readonly depositSpending?: UTxO;
-  readonly depositWitnessCertificate?: UTxO;
-  readonly withdrawalMinting?: UTxO;
-  readonly withdrawalSpending?: UTxO;
-  readonly withdrawalWitnessCertificate?: UTxO;
-  readonly membershipProofWithdrawal?: UTxO;
-  readonly reserveSpending?: UTxO;
-  readonly payoutSpending?: UTxO;
-  readonly payoutMinting?: UTxO;
 };
 
 type CommonBuilderConfig = {
@@ -109,281 +135,8 @@ export type RefundInvalidWithdrawalConfig = CommonBuilderConfig & {
   >;
 };
 
-export type BuiltReservePayoutTx<L> = {
-  readonly tx: TxSignBuilder;
-  readonly layout: L;
-};
-
-type CompleteWithLayoutParams<L> = {
-  readonly label: string;
-  readonly lucid: LucidEvolution;
-  readonly initialLayout: L;
-  readonly walletInputExclusions?: readonly OutRefLike[];
-  readonly makeTx: (layout: L) => TxBuilder;
-  readonly deriveLayout: (tx: CML.Transaction) => L;
-  readonly sameLayout: (left: L, right: L) => boolean;
-};
-
-const ADA_POLICY_ID = "";
-const ADA_ASSET_NAME = "";
-const LOVELACE_UNIT = "lovelace";
-
-const formatLayout = (layout: unknown): string =>
-  JSON.stringify(layout, (_key, value) =>
-    typeof value === "bigint" ? value.toString() : value,
-  );
-
-type CborNode =
-  | { readonly kind: "uint"; readonly value: bigint }
-  | { readonly kind: "nint"; readonly value: bigint }
-  | { readonly kind: "bytes"; readonly value: Buffer }
-  | {
-      readonly kind: "array";
-      readonly items: readonly CborNode[];
-      readonly indefinite: boolean;
-    }
-  | {
-      readonly kind: "map";
-      readonly entries: readonly (readonly [CborNode, CborNode])[];
-    }
-  | { readonly kind: "tag"; readonly tag: bigint; readonly value: CborNode };
-
-const readCborLength = (
-  bytes: Buffer,
-  offset: number,
-  additional: number,
-): { readonly value: bigint | null; readonly offset: number } => {
-  if (additional < 24) {
-    return { value: BigInt(additional), offset };
-  }
-  if (additional === 24) {
-    return { value: BigInt(bytes[offset]!), offset: offset + 1 };
-  }
-  if (additional === 25) {
-    return { value: BigInt(bytes.readUInt16BE(offset)), offset: offset + 2 };
-  }
-  if (additional === 26) {
-    return { value: BigInt(bytes.readUInt32BE(offset)), offset: offset + 4 };
-  }
-  if (additional === 27) {
-    return { value: bytes.readBigUInt64BE(offset), offset: offset + 8 };
-  }
-  if (additional === 31) {
-    return { value: null, offset };
-  }
-  throw new Error(`Unsupported CBOR additional information ${additional}`);
-};
-
-const expectCborLength = (length: bigint | null, context: string): bigint => {
-  if (length === null) {
-    throw new Error(`${context} must use a definite length`);
-  }
-  return length;
-};
-
-const parseCborNode = (
-  bytes: Buffer,
-  offset: number,
-): { readonly node: CborNode; readonly offset: number } => {
-  const initial = bytes[offset];
-  if (initial === undefined) {
-    throw new Error("Unexpected end of CBOR input");
-  }
-  if (initial === 0xff) {
-    throw new Error("Unexpected CBOR break marker");
-  }
-
-  const major = initial >> 5;
-  const additional = initial & 0x1f;
-  const length = readCborLength(bytes, offset + 1, additional);
-
-  if (major === 0) {
-    return {
-      node: { kind: "uint", value: expectCborLength(length.value, "uint") },
-      offset: length.offset,
-    };
-  }
-  if (major === 1) {
-    return {
-      node: { kind: "nint", value: expectCborLength(length.value, "nint") },
-      offset: length.offset,
-    };
-  }
-  if (major === 2) {
-    const byteLength = Number(expectCborLength(length.value, "bytes"));
-    const end = length.offset + byteLength;
-    return {
-      node: { kind: "bytes", value: bytes.subarray(length.offset, end) },
-      offset: end,
-    };
-  }
-  if (major === 4) {
-    const items: CborNode[] = [];
-    if (length.value === null) {
-      let cursor = length.offset;
-      while (bytes[cursor] !== 0xff) {
-        const parsed = parseCborNode(bytes, cursor);
-        items.push(parsed.node);
-        cursor = parsed.offset;
-      }
-      return {
-        node: { kind: "array", items, indefinite: true },
-        offset: cursor + 1,
-      };
-    }
-    let cursor = length.offset;
-    for (let i = 0n; i < length.value; i += 1n) {
-      const parsed = parseCborNode(bytes, cursor);
-      items.push(parsed.node);
-      cursor = parsed.offset;
-    }
-    return {
-      node: { kind: "array", items, indefinite: false },
-      offset: cursor,
-    };
-  }
-  if (major === 5) {
-    const entries: (readonly [CborNode, CborNode])[] = [];
-    if (length.value === null) {
-      let cursor = length.offset;
-      while (bytes[cursor] !== 0xff) {
-        const key = parseCborNode(bytes, cursor);
-        const value = parseCborNode(bytes, key.offset);
-        entries.push([key.node, value.node]);
-        cursor = value.offset;
-      }
-      return { node: { kind: "map", entries }, offset: cursor + 1 };
-    }
-    let cursor = length.offset;
-    for (let i = 0n; i < length.value; i += 1n) {
-      const key = parseCborNode(bytes, cursor);
-      const value = parseCborNode(bytes, key.offset);
-      entries.push([key.node, value.node]);
-      cursor = value.offset;
-    }
-    return { node: { kind: "map", entries }, offset: cursor };
-  }
-  if (major === 6) {
-    const parsed = parseCborNode(bytes, length.offset);
-    return {
-      node: {
-        kind: "tag",
-        tag: expectCborLength(length.value, "tag"),
-        value: parsed.node,
-      },
-      offset: parsed.offset,
-    };
-  }
-
-  throw new Error(`Unsupported PlutusData CBOR major type ${major}`);
-};
-
-const encodeCborHeader = (major: number, value: bigint | null): Buffer => {
-  if (value === null) {
-    return Buffer.from([(major << 5) | 31]);
-  }
-  if (value < 24n) {
-    return Buffer.from([(major << 5) | Number(value)]);
-  }
-  if (value <= 0xffn) {
-    return Buffer.from([(major << 5) | 24, Number(value)]);
-  }
-  if (value <= 0xffffn) {
-    const out = Buffer.alloc(3);
-    out[0] = (major << 5) | 25;
-    out.writeUInt16BE(Number(value), 1);
-    return out;
-  }
-  if (value <= 0xffffffffn) {
-    const out = Buffer.alloc(5);
-    out[0] = (major << 5) | 26;
-    out.writeUInt32BE(Number(value), 1);
-    return out;
-  }
-  const out = Buffer.alloc(9);
-  out[0] = (major << 5) | 27;
-  out.writeBigUInt64BE(value, 1);
-  return out;
-};
-
-const encodeCborNodeWithDefiniteMaps = (node: CborNode): Buffer => {
-  switch (node.kind) {
-    case "uint":
-      return encodeCborHeader(0, node.value);
-    case "nint":
-      return encodeCborHeader(1, node.value);
-    case "bytes":
-      return Buffer.concat([
-        encodeCborHeader(2, BigInt(node.value.length)),
-        node.value,
-      ]);
-    case "array": {
-      const items = node.items.map(encodeCborNodeWithDefiniteMaps);
-      if (node.indefinite) {
-        return Buffer.concat([
-          Buffer.from([0x9f]),
-          ...items,
-          Buffer.from([0xff]),
-        ]);
-      }
-      return Buffer.concat([
-        encodeCborHeader(4, BigInt(node.items.length)),
-        ...items,
-      ]);
-    }
-    case "map": {
-      const entries = node.entries
-        .map(([key, value]) => {
-          const encodedKey = encodeCborNodeWithDefiniteMaps(key);
-          const encodedValue = encodeCborNodeWithDefiniteMaps(value);
-          return { encodedKey, encodedValue };
-        })
-        .sort((left, right) =>
-          Buffer.compare(left.encodedKey, right.encodedKey),
-        );
-      return Buffer.concat([
-        encodeCborHeader(5, BigInt(entries.length)),
-        ...entries.flatMap(({ encodedKey, encodedValue }) => [
-          encodedKey,
-          encodedValue,
-        ]),
-      ]);
-    }
-    case "tag":
-      return Buffer.concat([
-        encodeCborHeader(6, node.tag),
-        encodeCborNodeWithDefiniteMaps(node.value),
-      ]);
-  }
-};
-
-const aikenSerialisedPlutusDataCbor = (cbor: string): string => {
-  const input = Buffer.from(cbor, "hex");
-  const parsed = parseCborNode(input, 0);
-  if (parsed.offset !== input.length) {
-    throw new Error("Unexpected trailing bytes in PlutusData CBOR");
-  }
-  return encodeCborNodeWithDefiniteMaps(parsed.node).toString("hex");
-};
-
 const encodeHexBytesData = (hex: string): unknown =>
   Data.from(Data.to(hex as any, Data.Bytes()));
-
-const formatCauseSummary = (cause: unknown): string => {
-  if (cause instanceof Error && cause.message.length > 0) {
-    return cause.message;
-  }
-  if (typeof cause === "string") {
-    return cause;
-  }
-  return String(cause);
-};
-
-const fail = (
-  message: string,
-  cause: unknown,
-): Effect.Effect<never, ReservePayoutTxError> =>
-  Effect.fail(new ReservePayoutTxError({ message, cause }));
 
 const requireNetwork = (
   lucid: LucidEvolution,
@@ -469,323 +222,15 @@ const payToAddressWithCardanoDatum = (
     : tx.pay.ToAddressWithData(address, outputDatum, assets);
 };
 
-const assetsEqual = (left: Assets, right: Assets): boolean => {
-  const normalizedLeft = normalizeAssets(left);
-  const normalizedRight = normalizeAssets(right);
-  const leftEntries = Object.entries(normalizedLeft).sort(([a], [b]) =>
-    a.localeCompare(b),
-  );
-  const rightEntries = Object.entries(normalizedRight).sort(([a], [b]) =>
-    a.localeCompare(b),
-  );
-  if (leftEntries.length !== rightEntries.length) {
-    return false;
-  }
-  return leftEntries.every(
-    ([unit, quantity], index) =>
-      rightEntries[index]?.[0] === unit &&
-      rightEntries[index]?.[1] === quantity,
-  );
-};
-
-const normalizeAssets = (assets: Assets): Assets =>
-  Object.fromEntries(
-    Object.entries(assets).filter(([, quantity]) => quantity !== 0n),
-  ) as Assets;
-
-const addAssets = (left: Assets, right: Assets): Assets => {
-  const result: Record<string, bigint> = { ...left };
-  for (const [unit, quantity] of Object.entries(right)) {
-    result[unit] = (result[unit] ?? 0n) + quantity;
-  }
-  return normalizeAssets(result as Assets);
-};
-
-const negateAssets = (assets: Assets): Assets =>
-  Object.fromEntries(
-    Object.entries(assets).map(([unit, quantity]) => [unit, -quantity]),
-  ) as Assets;
-
-const subtractAssets = (left: Assets, right: Assets): Assets =>
-  addAssets(left, negateAssets(right));
-
-const removeAssetUnit = (
-  assets: Assets,
-  unit: string,
-  expectedQuantity: bigint,
-): Assets => {
-  const actual = assets[unit] ?? 0n;
-  if (actual !== expectedQuantity) {
-    throw new Error(
-      `Expected unit ${unit} quantity ${expectedQuantity.toString()}, got ${actual.toString()}`,
-    );
-  }
-  return subtractAssets(assets, { [unit]: expectedQuantity });
-};
-
-export const assetsToValue = (assets: Assets): SDK.Value => {
-  const outer = new Map<string, Map<string, bigint>>();
-  for (const [unit, quantity] of Object.entries(normalizeAssets(assets))) {
-    if (quantity === 0n) {
-      continue;
-    }
-    const policyId =
-      unit === LOVELACE_UNIT ? ADA_POLICY_ID : unit.slice(0, 56).toLowerCase();
-    const assetName =
-      unit === LOVELACE_UNIT ? ADA_ASSET_NAME : unit.slice(56).toLowerCase();
-    const inner = outer.get(policyId) ?? new Map<string, bigint>();
-    inner.set(assetName, (inner.get(assetName) ?? 0n) + quantity);
-    outer.set(policyId, inner);
-  }
-  return outer;
-};
-
-export const valueToAssets = (value: SDK.Value): Assets => {
-  const assets: Record<string, bigint> = {};
-  for (const [policyId, inner] of value.entries()) {
-    for (const [assetName, quantity] of inner.entries()) {
-      const unit =
-        policyId === ADA_POLICY_ID && assetName === ADA_ASSET_NAME
-          ? LOVELACE_UNIT
-          : `${policyId}${assetName}`;
-      assets[unit] = (assets[unit] ?? 0n) + quantity;
-    }
-  }
-  return normalizeAssets(assets as Assets);
-};
-
-const minPositiveAssets = (left: Assets, right: Assets): Assets => {
-  const result: Record<string, bigint> = {};
-  for (const [unit, leftQuantity] of Object.entries(left)) {
-    const rightQuantity = right[unit] ?? 0n;
-    const taken =
-      leftQuantity <= 0n || rightQuantity <= 0n
-        ? 0n
-        : leftQuantity < rightQuantity
-          ? leftQuantity
-          : rightQuantity;
-    if (taken > 0n) {
-      result[unit] = taken;
-    }
-  }
-  return result as Assets;
-};
-
-const assertAssetsNonNegative = (assets: Assets, context: string): void => {
-  const negative = Object.entries(assets).filter(
-    ([, quantity]) => quantity < 0n,
-  );
-  if (negative.length > 0) {
-    throw new Error(
-      `${context} contains negative quantities: ${negative
-        .map(([unit, quantity]) => `${unit}=${quantity.toString()}`)
-        .join(",")}`,
-    );
-  }
-};
-
-const assertNoAssetExceeds = (
-  actual: Assets,
-  target: Assets,
-  context: string,
-): void => {
-  for (const [unit, quantity] of Object.entries(actual)) {
-    if (quantity > (target[unit] ?? 0n)) {
-      throw new Error(
-        `${context} exceeds target for ${unit}: actual=${quantity.toString()},target=${(
-          target[unit] ?? 0n
-        ).toString()}`,
-      );
-    }
-  }
-};
-
-const isPureAdaUtxo = (utxo: UTxO): boolean =>
-  Object.entries(utxo.assets).every(
-    ([unit, quantity]) => unit === LOVELACE_UNIT || quantity === 0n,
-  );
-
-const isPlainPureAdaUtxo = (utxo: UTxO): boolean =>
-  utxo.scriptRef === undefined && isPureAdaUtxo(utxo);
-
-type ProviderLedgerEntry = {
-  readonly utxo?: UTxO;
-  readonly spent?: boolean;
-};
-
-type ProviderWithVisibleLedger = {
-  readonly ledger?: Record<string, ProviderLedgerEntry | undefined>;
-  readonly mempool?: Record<string, ProviderLedgerEntry | undefined>;
-};
-
-const isProviderSpendableUtxo = (
-  lucid: LucidEvolution,
-  utxo: UTxO,
-): boolean => {
-  const provider = lucid.config().provider as ProviderWithVisibleLedger;
-  const outRefKey = `${utxo.txHash}${utxo.outputIndex.toString()}`;
-  const hasVisibleProviderState =
-    provider.ledger !== undefined || provider.mempool !== undefined;
-  const entry = provider.ledger?.[outRefKey] ?? provider.mempool?.[outRefKey];
-  if (entry === undefined) {
-    return !hasVisibleProviderState;
-  }
-  return entry.spent !== true;
-};
-
-const fetchProviderVisibleWalletInputsProgram = (
-  lucid: LucidEvolution,
-): Effect.Effect<readonly UTxO[], SDK.LucidError> =>
-  Effect.gen(function* () {
-    const walletAddress = yield* Effect.tryPromise({
-      try: () => lucid.wallet().address(),
-      catch: (cause) =>
-        new SDK.LucidError({
-          message:
-            "Failed to fetch wallet address for reserve/payout transaction",
-          cause,
-        }),
-    });
-    const provider = lucid.config().provider as ProviderWithVisibleLedger;
-    const visibleProviderEntries = [
-      ...Object.values(provider.ledger ?? {}),
-      ...Object.values(provider.mempool ?? {}),
-    ];
-    if (visibleProviderEntries.length > 0) {
-      return visibleProviderEntries.flatMap((entry) => {
-        if (
-          entry === undefined ||
-          entry.spent === true ||
-          entry.utxo === undefined ||
-          entry.utxo.address !== walletAddress
-        ) {
-          return [];
-        }
-        return [entry.utxo];
-      });
-    }
-    const walletUtxos = yield* Effect.tryPromise({
-      try: () => lucid.utxosAt(walletAddress),
-      catch: (cause) =>
-        new SDK.LucidError({
-          message:
-            "Failed to fetch provider-visible wallet UTxOs for reserve/payout transaction",
-          cause,
-        }),
-    });
-    return walletUtxos.filter((utxo) => isProviderSpendableUtxo(lucid, utxo));
-  });
-
-const selectFeeInputProgram = (
-  lucid: LucidEvolution,
-  explicitFeeInput: UTxO | undefined,
-  excluded: readonly OutRefLike[],
-): Effect.Effect<UTxO, ReservePayoutTxError | SDK.LucidError> =>
-  Effect.gen(function* () {
-    const excludedKeys = new Set(excluded.map(outRefLabel));
-    if (explicitFeeInput !== undefined) {
-      if (excludedKeys.has(outRefLabel(explicitFeeInput))) {
-        return yield* fail(
-          "Explicit fee input overlaps a protected reserve/payout transaction input",
-          {
-            feeInput: outRefLabel(explicitFeeInput),
-          },
-        );
-      }
-      if (explicitFeeInput.scriptRef !== undefined) {
-        return yield* fail(
-          "Explicit fee input for reserve/payout transaction must not carry a reference script",
-          {
-            feeInput: outRefLabel(explicitFeeInput),
-          },
-        );
-      }
-      if (!isPlainPureAdaUtxo(explicitFeeInput)) {
-        return yield* fail(
-          "Explicit fee input for reserve/payout transaction must be pure ADA",
-          {
-            feeInput: outRefLabel(explicitFeeInput),
-            assets: explicitFeeInput.assets,
-          },
-        );
-      }
-      if ((explicitFeeInput.assets.lovelace ?? 0n) <= 0n) {
-        return yield* fail(
-          "Explicit fee input for reserve/payout transaction has no ADA",
-          {
-            feeInput: outRefLabel(explicitFeeInput),
-            assets: explicitFeeInput.assets,
-          },
-        );
-      }
-      return explicitFeeInput;
-    }
-    const walletUtxos = yield* fetchProviderVisibleWalletInputsProgram(lucid);
-    const candidates = walletUtxos
-      .filter((utxo) => !excludedKeys.has(outRefLabel(utxo)))
-      .filter((utxo) => isPlainPureAdaUtxo(utxo))
-      .filter((utxo) => (utxo.assets.lovelace ?? 0n) > 0n)
-      .sort((left, right) => {
-        const leftLovelace = left.assets.lovelace ?? 0n;
-        const rightLovelace = right.assets.lovelace ?? 0n;
-        if (leftLovelace === rightLovelace) {
-          return compareOutRefs(left, right);
-        }
-        return leftLovelace > rightLovelace ? -1 : 1;
-      });
-    const selected = candidates[0];
-    if (selected === undefined) {
-      return yield* fail(
-        "Failed to select fee input for reserve/payout transaction",
-        "wallet has no pure-ADA UTxO outside the protocol input set",
-      );
-    }
-    return selected;
-  });
-
-const fetchHubOracleReferenceProgram = (
-  lucid: LucidEvolution,
+const validateHubOracleReferenceProgram = (
   contracts: SDK.MidgardValidators,
-  explicit: UTxO | undefined,
-): Effect.Effect<
-  UTxO,
-  | ReservePayoutTxError
-  | SDK.HubOracleError
-  | SDK.LucidError
-  | SDK.Bech32DeserializationError
-> =>
+  actual: UTxO,
+): Effect.Effect<UTxO, ReservePayoutTxError | SDK.Bech32DeserializationError> =>
   Effect.gen(function* () {
-    if (explicit !== undefined) {
-      return explicit;
-    }
-    const network = yield* requireNetwork(lucid);
-    const hubOracleAddress = credentialToAddress(
-      network,
-      scriptHashToCredential(contracts.hubOracle.policyId),
-    );
     const hubOracleUnit = toUnit(
       contracts.hubOracle.policyId,
       SDK.HUB_ORACLE_ASSET_NAME,
     );
-    const hubOracleUtxos = yield* Effect.tryPromise({
-      try: () => lucid.utxosAtWithUnit(hubOracleAddress, hubOracleUnit),
-      catch: (cause) =>
-        new SDK.LucidError({
-          message: "Failed to fetch hub oracle reference UTxO",
-          cause,
-        }),
-    });
-    const spendableHubOracleUtxos = hubOracleUtxos.filter((utxo) =>
-      isProviderSpendableUtxo(lucid, utxo),
-    );
-    if (spendableHubOracleUtxos.length !== 1) {
-      return yield* fail("Failed to fetch the hub oracle reference UTxO", {
-        address: hubOracleAddress,
-        unit: hubOracleUnit,
-        found: spendableHubOracleUtxos.map(outRefLabel),
-      });
-    }
-    const actual = spendableHubOracleUtxos[0]!;
     if ((actual.assets[hubOracleUnit] ?? 0n) !== 1n) {
       return yield* fail("Hub oracle reference UTxO is not authenticated", {
         hubOracleRefInput: outRefLabel(actual),
@@ -821,388 +266,51 @@ const fetchHubOracleReferenceProgram = (
     return actual;
   });
 
-const resolveReferenceScriptsProgram = (
+const fetchHubOracleReferenceProgram = (
   lucid: LucidEvolution,
-  address: string | undefined,
-  targets: readonly {
-    readonly name: string;
-    readonly script: Script;
-  }[],
-  explicit?: ReservePayoutReferenceScripts,
-): Effect.Effect<readonly ReferenceScriptResolved[], SDK.StateQueueError> =>
-  Effect.gen(function* () {
-    if (address === undefined) {
-      return [];
-    }
-    const unresolvedTargets = targets.filter(
-      (target) => !hasExplicitReferenceScript(explicit, target.name),
-    );
-    if (unresolvedTargets.length <= 0) {
-      return [];
-    }
-    return yield* fetchReferenceScriptUtxosProgram(
-      lucid,
-      address,
-      unresolvedTargets,
-    );
-  });
-
-const hasExplicitReferenceScript = (
-  explicit: ReservePayoutReferenceScripts | undefined,
-  name: string,
-): boolean => {
-  if (explicit === undefined) {
-    return false;
-  }
-  switch (name) {
-    case "deposit minting":
-      return explicit.depositMinting !== undefined;
-    case "deposit spending":
-      return explicit.depositSpending !== undefined;
-    case "deposit witness certificate":
-      return explicit.depositWitnessCertificate !== undefined;
-    case "withdrawal minting":
-      return explicit.withdrawalMinting !== undefined;
-    case "withdrawal spending":
-      return explicit.withdrawalSpending !== undefined;
-    case "withdrawal witness certificate":
-      return explicit.withdrawalWitnessCertificate !== undefined;
-    case "membership proof withdrawal":
-      return explicit.membershipProofWithdrawal !== undefined;
-    case "reserve spending":
-      return explicit.reserveSpending !== undefined;
-    case "payout spending":
-      return explicit.payoutSpending !== undefined;
-    case "payout minting":
-      return explicit.payoutMinting !== undefined;
-    default:
-      return false;
-  }
-};
-
-const mergeReferenceScripts = (
-  explicit: ReservePayoutReferenceScripts | undefined,
-  resolved: readonly ReferenceScriptResolved[],
-): ReservePayoutReferenceScripts => ({
-  ...explicit,
-  depositMinting:
-    explicit?.depositMinting ??
-    resolved.find((entry) => entry.name === "deposit minting")?.utxo,
-  depositSpending:
-    explicit?.depositSpending ??
-    resolved.find((entry) => entry.name === "deposit spending")?.utxo,
-  depositWitnessCertificate:
-    explicit?.depositWitnessCertificate ??
-    resolved.find((entry) => entry.name === "deposit witness certificate")
-      ?.utxo,
-  withdrawalMinting:
-    explicit?.withdrawalMinting ??
-    resolved.find((entry) => entry.name === "withdrawal minting")?.utxo,
-  withdrawalSpending:
-    explicit?.withdrawalSpending ??
-    resolved.find((entry) => entry.name === "withdrawal spending")?.utxo,
-  withdrawalWitnessCertificate:
-    explicit?.withdrawalWitnessCertificate ??
-    resolved.find((entry) => entry.name === "withdrawal witness certificate")
-      ?.utxo,
-  membershipProofWithdrawal:
-    explicit?.membershipProofWithdrawal ??
-    resolved.find((entry) => entry.name === "membership proof withdrawal")
-      ?.utxo,
-  reserveSpending:
-    explicit?.reserveSpending ??
-    resolved.find((entry) => entry.name === "reserve spending")?.utxo,
-  payoutSpending:
-    explicit?.payoutSpending ??
-    resolved.find((entry) => entry.name === "payout spending")?.utxo,
-  payoutMinting:
-    explicit?.payoutMinting ??
-    resolved.find((entry) => entry.name === "payout minting")?.utxo,
-});
-
-const referenceInputs = (
-  hubOracleRefInput: UTxO,
-  additional: readonly (UTxO | undefined)[],
-): readonly UTxO[] =>
-  dedupeByOutRef([
-    hubOracleRefInput,
-    ...additional.filter((utxo): utxo is UTxO => utxo !== undefined),
-  ]);
-
-const attachIfMissing = (
-  tx: TxBuilder,
-  script: Script,
-  referenceScript: UTxO | undefined,
-): TxBuilder => (referenceScript === undefined ? tx.attach.Script(script) : tx);
-
-const completeWithTwoPassLayoutProgram = <L>({
-  label,
-  lucid,
-  initialLayout,
-  walletInputExclusions = [],
-  makeTx,
-  deriveLayout,
-  sameLayout,
-}: CompleteWithLayoutParams<L>): Effect.Effect<
-  BuiltReservePayoutTx<L>,
-  ReservePayoutTxError
+  contracts: SDK.MidgardValidators,
+  explicit: UTxO | undefined,
+): Effect.Effect<
+  UTxO,
+  | ReservePayoutTxError
+  | SDK.HubOracleError
+  | SDK.LucidError
+  | SDK.Bech32DeserializationError
 > =>
   Effect.gen(function* () {
-    const excludedWalletInputs = new Set(walletInputExclusions.map(outRefLabel));
-    const walletInputs = yield* fetchProviderVisibleWalletInputsProgram(lucid).pipe(
-      Effect.mapError(
-        (cause) =>
-          new ReservePayoutTxError({
-            message: `Failed to fetch wallet inputs for ${label} transaction completion: ${formatCauseSummary(cause)}`,
-            cause,
-          }),
-      ),
-      Effect.map((utxos) =>
-        utxos.filter((utxo) => !excludedWalletInputs.has(outRefLabel(utxo))),
-      ),
+    const hubOracleUnit = toUnit(
+      contracts.hubOracle.policyId,
+      SDK.HUB_ORACLE_ASSET_NAME,
     );
-    const draft = yield* Effect.tryPromise({
-      try: () =>
-        withStubbedProviderEvaluation(lucid, () =>
-          makeTx(initialLayout).complete({
-            localUPLCEval: true,
-            presetWalletInputs: [...walletInputs],
-          }),
-        ),
+    if (explicit !== undefined) {
+      return yield* validateHubOracleReferenceProgram(contracts, explicit);
+    }
+    const network = yield* requireNetwork(lucid);
+    const hubOracleAddress = credentialToAddress(
+      network,
+      scriptHashToCredential(contracts.hubOracle.policyId),
+    );
+    const hubOracleUtxos = yield* Effect.tryPromise({
+      try: () => lucid.utxosAtWithUnit(hubOracleAddress, hubOracleUnit),
       catch: (cause) =>
-        new ReservePayoutTxError({
-          message: `Failed to build ${label} draft transaction: ${formatCauseSummary(cause)}`,
+        new SDK.LucidError({
+          message: "Failed to fetch hub oracle reference UTxO",
           cause,
         }),
     });
-    const resolvedLayout = yield* Effect.try({
-      try: () => deriveLayout(draft.toTransaction()),
-      catch: (cause) =>
-        new ReservePayoutTxError({
-          message: `Failed to derive ${label} layout from balanced draft transaction`,
-          cause,
-        }),
-    });
-
-    const final = yield* Effect.tryPromise({
-      try: () =>
-        makeTx(resolvedLayout).complete({
-          localUPLCEval: true,
-          presetWalletInputs: [...walletInputs],
-        }),
-      catch: (cause) =>
-        new ReservePayoutTxError({
-          message: `Failed to build final ${label} transaction with real local UPLC evaluation: ${formatCauseSummary(cause)}`,
-          cause,
-        }),
-    });
-
-    const finalLayout = yield* Effect.try({
-      try: () => deriveLayout(final.toTransaction()),
-      catch: (cause) =>
-        new ReservePayoutTxError({
-          message: `Failed to derive ${label} layout from final transaction`,
-          cause,
-        }),
-    });
-
-    if (!sameLayout(resolvedLayout, finalLayout)) {
-      return yield* fail(`${label} transaction layout was unstable`, {
-        initialLayout,
-        resolvedLayout,
-        finalLayout,
+    const spendableHubOracleUtxos = hubOracleUtxos.filter((utxo) =>
+      isProviderSpendableUtxo(lucid, utxo),
+    );
+    if (spendableHubOracleUtxos.length !== 1) {
+      return yield* fail("Failed to fetch the hub oracle reference UTxO", {
+        address: hubOracleAddress,
+        unit: hubOracleUnit,
+        found: spendableHubOracleUtxos.map(outRefLabel),
       });
     }
-
-    return {
-      tx: final,
-      layout: finalLayout,
-    };
+    const actual = spendableHubOracleUtxos[0]!;
+    return yield* validateHubOracleReferenceProgram(contracts, actual);
   });
-
-const txInfoPurposeRank = (tag: number): number => {
-  switch (tag) {
-    case CML.RedeemerTag.Spend:
-      return 0;
-    case CML.RedeemerTag.Mint:
-      return 1;
-    case CML.RedeemerTag.Cert:
-      return 2;
-    case CML.RedeemerTag.Reward:
-      return 3;
-    case CML.RedeemerTag.Voting:
-      return 4;
-    case CML.RedeemerTag.Proposing:
-      return 5;
-    default:
-      return Number.MAX_SAFE_INTEGER;
-  }
-};
-
-type RedeemerPointerLike = {
-  readonly tag: number;
-  readonly index: bigint;
-};
-
-const samePointer = (
-  left: RedeemerPointerLike,
-  right: RedeemerPointerLike,
-): boolean => left.tag === right.tag && left.index === right.index;
-
-const expectedTxInfoIndex = (
-  pointers: readonly RedeemerPointerLike[],
-  target: RedeemerPointerLike,
-): bigint => {
-  const contextIndex = pointers.findIndex((pointer) =>
-    samePointer(pointer, target),
-  );
-  if (contextIndex < 0) {
-    throw new Error(
-      `Expected redeemer pointer missing: tag=${target.tag.toString()},index=${target.index.toString()}`,
-    );
-  }
-  const ordered = pointers
-    .map((pointer, index) => ({ pointer, index }))
-    .sort((left, right) => {
-      const rankLeft = txInfoPurposeRank(left.pointer.tag);
-      const rankRight = txInfoPurposeRank(right.pointer.tag);
-      if (rankLeft !== rankRight) {
-        return rankLeft - rankRight;
-      }
-      if (left.pointer.index !== right.pointer.index) {
-        return left.pointer.index < right.pointer.index ? -1 : 1;
-      }
-      return left.index - right.index;
-    });
-  const txInfoIndex = ordered.findIndex(
-    (entry) => entry.index === contextIndex,
-  );
-  if (txInfoIndex < 0) {
-    throw new Error("Failed to derive expected tx-info redeemer index");
-  }
-  return BigInt(txInfoIndex);
-};
-
-const actualTxInfoIndex = (
-  tx: CML.Transaction,
-  target: RedeemerPointerLike,
-): bigint => {
-  const pointers = getRedeemerPointersInContextOrder(tx);
-  const contextIndex = pointers.findIndex((pointer) =>
-    samePointer(pointer, target),
-  );
-  if (contextIndex < 0) {
-    throw new Error(
-      `Transaction missing redeemer pointer tag=${target.tag.toString()},index=${target.index.toString()}`,
-    );
-  }
-  const txInfoIndexes = getTxInfoRedeemerIndexes(pointers);
-  const txInfoIndex = txInfoIndexes[contextIndex];
-  if (txInfoIndex === undefined || txInfoIndex < 0) {
-    throw new Error(
-      `Transaction missing tx-info index for redeemer pointer tag=${target.tag.toString()},index=${target.index.toString()}`,
-    );
-  }
-  return BigInt(txInfoIndex);
-};
-
-const comparePolicyIds = (left: string, right: string): number =>
-  Buffer.from(left, "hex").compare(Buffer.from(right, "hex"));
-
-const mintPointerIndex = (
-  policyIds: readonly string[],
-  targetPolicyId: string,
-): bigint => {
-  const sorted = [
-    ...new Set(policyIds.map((policy) => policy.toLowerCase())),
-  ].sort(comparePolicyIds);
-  const index = sorted.indexOf(targetPolicyId.toLowerCase());
-  if (index < 0) {
-    throw new Error(
-      `Mint policy ${targetPolicyId} missing from mint policy set`,
-    );
-  }
-  return BigInt(index);
-};
-
-const requireReferenceInputIndex = (
-  tx: CML.Transaction,
-  target: UTxO,
-): bigint => {
-  const referenceInputs = tx.body().reference_inputs();
-  if (referenceInputs === undefined) {
-    throw new Error("Transaction did not include reference inputs");
-  }
-  const index = findOutRefIndex(
-    collectSortedInputOutRefs(referenceInputs),
-    target,
-  );
-  if (index === undefined) {
-    throw new Error(
-      `Reference input ${outRefLabel(target)} missing from transaction`,
-    );
-  }
-  return BigInt(index);
-};
-
-const requireInputIndex = (tx: CML.Transaction, target: UTxO): bigint => {
-  const index = findOutRefIndex(
-    collectSortedInputOutRefs(tx.body().inputs()),
-    target,
-  );
-  if (index === undefined) {
-    throw new Error(`Input ${outRefLabel(target)} missing from transaction`);
-  }
-  return BigInt(index);
-};
-
-const requireOutput = (
-  tx: CML.Transaction,
-  predicate: (output: IndexedTxOutput) => boolean,
-  description: string,
-): IndexedTxOutput => {
-  const matches = collectIndexedOutputs(tx.body().outputs()).filter(predicate);
-  if (matches.length !== 1) {
-    throw new Error(
-      `Expected exactly one ${description} output, found ${matches.length.toString()}`,
-    );
-  }
-  return matches[0]!;
-};
-
-const outputHasNoDatum = (output: IndexedTxOutput): boolean =>
-  output.datum === undefined && output.datumHash === undefined;
-
-const outputDatumMatches = (
-  output: IndexedTxOutput,
-  datum: SDK.CardanoDatum,
-): boolean => {
-  if (datum === "NoDatum") {
-    return outputHasNoDatum(output);
-  }
-  if ("DatumHash" in datum) {
-    return (
-      output.datumHash === datum.DatumHash.hash && output.datum === undefined
-    );
-  }
-  return (
-    output.datum === Data.to(datum.InlineDatum.data as any, Data.Any() as any)
-  );
-};
-
-const settlementDatumFromInput = (
-  settlementRefInput: UTxO,
-): SDK.SettlementDatum => {
-  if (settlementRefInput.datum == null) {
-    throw new Error(
-      `Settlement reference input ${outRefLabel(settlementRefInput)} has no inline datum`,
-    );
-  }
-  return Data.from(
-    settlementRefInput.datum,
-    SDK.SettlementDatum,
-  ) as SDK.SettlementDatum;
-};
 
 const encodeMembershipProofWithdrawalRedeemer = (
   root: string,
@@ -1242,620 +350,14 @@ const applyMembershipProofWithdrawal = (
   redeemer: string,
   referenceScript: UTxO | undefined,
 ): TxBuilder =>
-  (referenceScript === undefined ? tx.attach.Script(witness.script) : tx)
-    .withdraw(
-      scriptRewardAddress(network, witness.script),
-      witness.amount ?? 0n,
-      redeemer,
-    );
-
-type AbsorbDepositLayout = {
-  readonly depositInputIndex: bigint;
-  readonly reserveOutputIndex: bigint;
-  readonly hubRefInputIndex: bigint;
-  readonly settlementRefInputIndex: bigint;
-  readonly burnRedeemerIndex: bigint;
-  readonly witnessUnregistrationRedeemerIndex: bigint;
-  readonly inclusionProofWithdrawalRedeemerIndex: bigint;
-};
-
-type InitializePayoutLayout = {
-  readonly withdrawalInputIndex: bigint;
-  readonly payoutOutputIndex: bigint;
-  readonly hubRefInputIndex: bigint;
-  readonly settlementRefInputIndex: bigint;
-  readonly withdrawalBurnRedeemerIndex: bigint;
-  readonly payoutMintRedeemerIndex: bigint;
-  readonly withdrawalSpendRedeemerIndex: bigint;
-  readonly witnessUnregistrationRedeemerIndex: bigint;
-  readonly inclusionProofWithdrawalRedeemerIndex: bigint;
-};
-
-type AddReserveFundsLayout = {
-  readonly payoutInputIndex: bigint;
-  readonly reserveInputIndex: bigint;
-  readonly payoutOutputIndex: bigint;
-  readonly reserveChangeOutputIndex: bigint | null;
-  readonly payoutSpendRedeemerIndex: bigint;
-  readonly reserveSpendRedeemerIndex: bigint;
-  readonly hubRefInputIndex: bigint;
-};
-
-type ConcludePayoutLayout = {
-  readonly payoutInputIndex: bigint;
-  readonly l1OutputIndex: bigint;
-  readonly payoutSpendRedeemerIndex: bigint;
-  readonly burnRedeemerIndex: bigint;
-  readonly hubRefInputIndex: bigint;
-};
-
-type RefundWithdrawalLayout = {
-  readonly withdrawalInputIndex: bigint;
-  readonly refundOutputIndex: bigint;
-  readonly hubRefInputIndex: bigint;
-  readonly settlementRefInputIndex: bigint;
-  readonly burnRedeemerIndex: bigint;
-  readonly witnessUnregistrationRedeemerIndex: bigint;
-  readonly inclusionProofWithdrawalRedeemerIndex: bigint;
-};
-
-const sameAbsorbDepositLayout = (
-  left: AbsorbDepositLayout,
-  right: AbsorbDepositLayout,
-): boolean =>
-  left.depositInputIndex === right.depositInputIndex &&
-  left.reserveOutputIndex === right.reserveOutputIndex &&
-  left.hubRefInputIndex === right.hubRefInputIndex &&
-  left.settlementRefInputIndex === right.settlementRefInputIndex &&
-  left.burnRedeemerIndex === right.burnRedeemerIndex &&
-  left.witnessUnregistrationRedeemerIndex ===
-    right.witnessUnregistrationRedeemerIndex &&
-  left.inclusionProofWithdrawalRedeemerIndex ===
-    right.inclusionProofWithdrawalRedeemerIndex;
-
-const sameInitializePayoutLayout = (
-  left: InitializePayoutLayout,
-  right: InitializePayoutLayout,
-): boolean =>
-  left.withdrawalInputIndex === right.withdrawalInputIndex &&
-  left.payoutOutputIndex === right.payoutOutputIndex &&
-  left.hubRefInputIndex === right.hubRefInputIndex &&
-  left.settlementRefInputIndex === right.settlementRefInputIndex &&
-  left.withdrawalBurnRedeemerIndex === right.withdrawalBurnRedeemerIndex &&
-  left.payoutMintRedeemerIndex === right.payoutMintRedeemerIndex &&
-  left.withdrawalSpendRedeemerIndex === right.withdrawalSpendRedeemerIndex &&
-  left.witnessUnregistrationRedeemerIndex ===
-    right.witnessUnregistrationRedeemerIndex &&
-  left.inclusionProofWithdrawalRedeemerIndex ===
-    right.inclusionProofWithdrawalRedeemerIndex;
-
-const sameAddReserveFundsLayout = (
-  left: AddReserveFundsLayout,
-  right: AddReserveFundsLayout,
-): boolean =>
-  left.payoutInputIndex === right.payoutInputIndex &&
-  left.reserveInputIndex === right.reserveInputIndex &&
-  left.payoutOutputIndex === right.payoutOutputIndex &&
-  left.reserveChangeOutputIndex === right.reserveChangeOutputIndex &&
-  left.payoutSpendRedeemerIndex === right.payoutSpendRedeemerIndex &&
-  left.reserveSpendRedeemerIndex === right.reserveSpendRedeemerIndex &&
-  left.hubRefInputIndex === right.hubRefInputIndex;
-
-const sameConcludePayoutLayout = (
-  left: ConcludePayoutLayout,
-  right: ConcludePayoutLayout,
-): boolean =>
-  left.payoutInputIndex === right.payoutInputIndex &&
-  left.l1OutputIndex === right.l1OutputIndex &&
-  left.payoutSpendRedeemerIndex === right.payoutSpendRedeemerIndex &&
-  left.burnRedeemerIndex === right.burnRedeemerIndex &&
-  left.hubRefInputIndex === right.hubRefInputIndex;
-
-const sameRefundWithdrawalLayout = (
-  left: RefundWithdrawalLayout,
-  right: RefundWithdrawalLayout,
-): boolean =>
-  left.withdrawalInputIndex === right.withdrawalInputIndex &&
-  left.refundOutputIndex === right.refundOutputIndex &&
-  left.hubRefInputIndex === right.hubRefInputIndex &&
-  left.settlementRefInputIndex === right.settlementRefInputIndex &&
-  left.burnRedeemerIndex === right.burnRedeemerIndex &&
-  left.witnessUnregistrationRedeemerIndex ===
-    right.witnessUnregistrationRedeemerIndex &&
-  left.inclusionProofWithdrawalRedeemerIndex ===
-    right.inclusionProofWithdrawalRedeemerIndex;
-
-const initialAbsorbDepositLayout = ({
-  inputs,
-  referenceInputs,
-  deposit,
-  hubOracleRefInput,
-  settlementRefInput,
-}: {
-  readonly inputs: readonly UTxO[];
-  readonly referenceInputs: readonly UTxO[];
-  readonly deposit: SDK.DepositUTxO;
-  readonly hubOracleRefInput: UTxO;
-  readonly settlementRefInput: UTxO;
-}): AbsorbDepositLayout => {
-  const orderedInputs = [...inputs].sort(compareOutRefs);
-  const orderedRefs = [...referenceInputs].sort(compareOutRefs);
-  const pointers: RedeemerPointerLike[] = [
-    {
-      tag: CML.RedeemerTag.Spend,
-      index: BigInt(findOutRefIndex(orderedInputs, deposit.utxo) ?? -1),
-    },
-    { tag: CML.RedeemerTag.Mint, index: 0n },
-    { tag: CML.RedeemerTag.Cert, index: 0n },
-    { tag: CML.RedeemerTag.Reward, index: 0n },
-  ];
-  return {
-    depositInputIndex: BigInt(
-      findOutRefIndex(orderedInputs, deposit.utxo) ?? -1,
-    ),
-    reserveOutputIndex: 0n,
-    hubRefInputIndex: BigInt(
-      findOutRefIndex(orderedRefs, hubOracleRefInput) ?? -1,
-    ),
-    settlementRefInputIndex: BigInt(
-      findOutRefIndex(orderedRefs, settlementRefInput) ?? -1,
-    ),
-    burnRedeemerIndex: expectedTxInfoIndex(pointers, pointers[1]!),
-    witnessUnregistrationRedeemerIndex: expectedTxInfoIndex(
-      pointers,
-      pointers[2]!,
-    ),
-    inclusionProofWithdrawalRedeemerIndex: expectedTxInfoIndex(
-      pointers,
-      pointers[3]!,
-    ),
-  };
-};
-
-const deriveAbsorbDepositLayout = ({
-  tx,
-  deposit,
-  depositUnit,
-  reserveAddress,
-  reserveAssets,
-  hubOracleRefInput,
-  settlementRefInput,
-}: {
-  readonly tx: CML.Transaction;
-  readonly deposit: SDK.DepositUTxO;
-  readonly depositUnit: string;
-  readonly reserveAddress: string;
-  readonly reserveAssets: Assets;
-  readonly hubOracleRefInput: UTxO;
-  readonly settlementRefInput: UTxO;
-}): AbsorbDepositLayout => {
-  const depositInputIndex = requireInputIndex(tx, deposit.utxo);
-  const reserveOutput = requireOutput(
-    tx,
-    (output) =>
-      output.address === reserveAddress &&
-      outputHasNoDatum(output) &&
-      output.scriptRef === undefined &&
-      assetsEqual(output.assets, reserveAssets),
-    `reserve absorption output at ${reserveAddress}`,
+  (referenceScript === undefined
+    ? tx.attach.Script(witness.script)
+    : tx
+  ).withdraw(
+    scriptRewardAddress(network, witness.script),
+    witness.amount ?? 0n,
+    redeemer,
   );
-  const mintPointer = { tag: CML.RedeemerTag.Mint, index: 0n };
-  const certPointer = { tag: CML.RedeemerTag.Cert, index: 0n };
-  const rewardPointer = { tag: CML.RedeemerTag.Reward, index: 0n };
-  if ((deposit.utxo.assets[depositUnit] ?? 0n) !== 1n) {
-    throw new Error(
-      `Deposit input does not contain exactly one ${depositUnit}`,
-    );
-  }
-  return {
-    depositInputIndex,
-    reserveOutputIndex: BigInt(reserveOutput.index),
-    hubRefInputIndex: requireReferenceInputIndex(tx, hubOracleRefInput),
-    settlementRefInputIndex: requireReferenceInputIndex(tx, settlementRefInput),
-    burnRedeemerIndex: actualTxInfoIndex(tx, mintPointer),
-    witnessUnregistrationRedeemerIndex: actualTxInfoIndex(tx, certPointer),
-    inclusionProofWithdrawalRedeemerIndex: actualTxInfoIndex(tx, rewardPointer),
-  };
-};
-
-const initialInitializePayoutLayout = ({
-  inputs,
-  referenceInputs,
-  withdrawal,
-  hubOracleRefInput,
-  settlementRefInput,
-  withdrawalPolicyId,
-  payoutPolicyId,
-}: {
-  readonly inputs: readonly UTxO[];
-  readonly referenceInputs: readonly UTxO[];
-  readonly withdrawal: SDK.WithdrawalUTxO;
-  readonly hubOracleRefInput: UTxO;
-  readonly settlementRefInput: UTxO;
-  readonly withdrawalPolicyId: string;
-  readonly payoutPolicyId: string;
-}): InitializePayoutLayout => {
-  const orderedInputs = [...inputs].sort(compareOutRefs);
-  const orderedRefs = [...referenceInputs].sort(compareOutRefs);
-  const withdrawalInputIndex = BigInt(
-    findOutRefIndex(orderedInputs, withdrawal.utxo) ?? -1,
-  );
-  const withdrawalMintPointerIndex = mintPointerIndex(
-    [withdrawalPolicyId, payoutPolicyId],
-    withdrawalPolicyId,
-  );
-  const payoutMintPointerIndex = mintPointerIndex(
-    [withdrawalPolicyId, payoutPolicyId],
-    payoutPolicyId,
-  );
-  const pointers: RedeemerPointerLike[] = [
-    { tag: CML.RedeemerTag.Spend, index: withdrawalInputIndex },
-    { tag: CML.RedeemerTag.Mint, index: withdrawalMintPointerIndex },
-    { tag: CML.RedeemerTag.Mint, index: payoutMintPointerIndex },
-    { tag: CML.RedeemerTag.Cert, index: 0n },
-    { tag: CML.RedeemerTag.Reward, index: 0n },
-  ];
-  return {
-    withdrawalInputIndex,
-    payoutOutputIndex: 0n,
-    hubRefInputIndex: BigInt(
-      findOutRefIndex(orderedRefs, hubOracleRefInput) ?? -1,
-    ),
-    settlementRefInputIndex: BigInt(
-      findOutRefIndex(orderedRefs, settlementRefInput) ?? -1,
-    ),
-    withdrawalBurnRedeemerIndex: expectedTxInfoIndex(pointers, pointers[1]!),
-    payoutMintRedeemerIndex: expectedTxInfoIndex(pointers, pointers[2]!),
-    withdrawalSpendRedeemerIndex: expectedTxInfoIndex(pointers, pointers[0]!),
-    witnessUnregistrationRedeemerIndex: expectedTxInfoIndex(
-      pointers,
-      pointers[3]!,
-    ),
-    inclusionProofWithdrawalRedeemerIndex: expectedTxInfoIndex(
-      pointers,
-      pointers[4]!,
-    ),
-  };
-};
-
-const deriveInitializePayoutLayout = ({
-  tx,
-  withdrawal,
-  payoutAddress,
-  payoutAssets,
-  payoutDatumCbor,
-  hubOracleRefInput,
-  settlementRefInput,
-  withdrawalPolicyId,
-  payoutPolicyId,
-}: {
-  readonly tx: CML.Transaction;
-  readonly withdrawal: SDK.WithdrawalUTxO;
-  readonly payoutAddress: string;
-  readonly payoutAssets: Assets;
-  readonly payoutDatumCbor: string;
-  readonly hubOracleRefInput: UTxO;
-  readonly settlementRefInput: UTxO;
-  readonly withdrawalPolicyId: string;
-  readonly payoutPolicyId: string;
-}): InitializePayoutLayout => {
-  const withdrawalInputIndex = requireInputIndex(tx, withdrawal.utxo);
-  const payoutOutput = requireOutput(
-    tx,
-    (output) =>
-      output.address === payoutAddress &&
-      output.datum === payoutDatumCbor &&
-      output.scriptRef === undefined &&
-      assetsEqual(output.assets, payoutAssets),
-    `payout initialization output at ${payoutAddress}`,
-  );
-  const withdrawalMintPointer = {
-    tag: CML.RedeemerTag.Mint,
-    index: mintPointerIndex(
-      [withdrawalPolicyId, payoutPolicyId],
-      withdrawalPolicyId,
-    ),
-  };
-  const payoutMintPointer = {
-    tag: CML.RedeemerTag.Mint,
-    index: mintPointerIndex(
-      [withdrawalPolicyId, payoutPolicyId],
-      payoutPolicyId,
-    ),
-  };
-  return {
-    withdrawalInputIndex,
-    payoutOutputIndex: BigInt(payoutOutput.index),
-    hubRefInputIndex: requireReferenceInputIndex(tx, hubOracleRefInput),
-    settlementRefInputIndex: requireReferenceInputIndex(tx, settlementRefInput),
-    withdrawalBurnRedeemerIndex: actualTxInfoIndex(tx, withdrawalMintPointer),
-    payoutMintRedeemerIndex: actualTxInfoIndex(tx, payoutMintPointer),
-    withdrawalSpendRedeemerIndex: actualTxInfoIndex(tx, {
-      tag: CML.RedeemerTag.Spend,
-      index: withdrawalInputIndex,
-    }),
-    witnessUnregistrationRedeemerIndex: actualTxInfoIndex(tx, {
-      tag: CML.RedeemerTag.Cert,
-      index: 0n,
-    }),
-    inclusionProofWithdrawalRedeemerIndex: actualTxInfoIndex(tx, {
-      tag: CML.RedeemerTag.Reward,
-      index: 0n,
-    }),
-  };
-};
-
-const initialAddReserveFundsLayout = ({
-  inputs,
-  referenceInputs,
-  payoutInput,
-  reserveInput,
-  hubOracleRefInput,
-  reserveChangeAssets,
-}: {
-  readonly inputs: readonly UTxO[];
-  readonly referenceInputs: readonly UTxO[];
-  readonly payoutInput: UTxO;
-  readonly reserveInput: UTxO;
-  readonly hubOracleRefInput: UTxO;
-  readonly reserveChangeAssets: Assets;
-}): AddReserveFundsLayout => {
-  const orderedInputs = [...inputs].sort(compareOutRefs);
-  const orderedRefs = [...referenceInputs].sort(compareOutRefs);
-  const payoutInputIndex = BigInt(
-    findOutRefIndex(orderedInputs, payoutInput) ?? -1,
-  );
-  const reserveInputIndex = BigInt(
-    findOutRefIndex(orderedInputs, reserveInput) ?? -1,
-  );
-  const payoutPointer = { tag: CML.RedeemerTag.Spend, index: payoutInputIndex };
-  const reservePointer = {
-    tag: CML.RedeemerTag.Spend,
-    index: reserveInputIndex,
-  };
-  const pointers = [payoutPointer, reservePointer];
-  return {
-    payoutInputIndex,
-    reserveInputIndex,
-    payoutOutputIndex: 0n,
-    reserveChangeOutputIndex:
-      Object.keys(normalizeAssets(reserveChangeAssets)).length === 0
-        ? null
-        : 1n,
-    payoutSpendRedeemerIndex: expectedTxInfoIndex(pointers, payoutPointer),
-    reserveSpendRedeemerIndex: expectedTxInfoIndex(pointers, reservePointer),
-    hubRefInputIndex: BigInt(
-      findOutRefIndex(orderedRefs, hubOracleRefInput) ?? -1,
-    ),
-  };
-};
-
-const deriveAddReserveFundsLayout = ({
-  tx,
-  payoutInput,
-  reserveInput,
-  payoutAddress,
-  payoutOutputAssets,
-  payoutDatumCbor,
-  reserveAddress,
-  reserveChangeAssets,
-  hubOracleRefInput,
-}: {
-  readonly tx: CML.Transaction;
-  readonly payoutInput: UTxO;
-  readonly reserveInput: UTxO;
-  readonly payoutAddress: string;
-  readonly payoutOutputAssets: Assets;
-  readonly payoutDatumCbor: string;
-  readonly reserveAddress: string;
-  readonly reserveChangeAssets: Assets;
-  readonly hubOracleRefInput: UTxO;
-}): AddReserveFundsLayout => {
-  const payoutInputIndex = requireInputIndex(tx, payoutInput);
-  const reserveInputIndex = requireInputIndex(tx, reserveInput);
-  const payoutOutput = requireOutput(
-    tx,
-    (output) =>
-      output.address === payoutAddress &&
-      output.datum === payoutDatumCbor &&
-      output.scriptRef === undefined &&
-      assetsEqual(output.assets, payoutOutputAssets),
-    `updated payout output at ${payoutAddress}`,
-  );
-  const normalizedReserveChange = normalizeAssets(reserveChangeAssets);
-  const reserveChangeOutput =
-    Object.keys(normalizedReserveChange).length === 0
-      ? undefined
-      : requireOutput(
-          tx,
-          (output) =>
-            output.address === reserveAddress &&
-            outputHasNoDatum(output) &&
-            output.scriptRef === undefined &&
-            assetsEqual(output.assets, normalizedReserveChange),
-          `reserve change output at ${reserveAddress}`,
-        );
-  return {
-    payoutInputIndex,
-    reserveInputIndex,
-    payoutOutputIndex: BigInt(payoutOutput.index),
-    reserveChangeOutputIndex:
-      reserveChangeOutput === undefined
-        ? null
-        : BigInt(reserveChangeOutput.index),
-    payoutSpendRedeemerIndex: actualTxInfoIndex(tx, {
-      tag: CML.RedeemerTag.Spend,
-      index: payoutInputIndex,
-    }),
-    reserveSpendRedeemerIndex: actualTxInfoIndex(tx, {
-      tag: CML.RedeemerTag.Spend,
-      index: reserveInputIndex,
-    }),
-    hubRefInputIndex: requireReferenceInputIndex(tx, hubOracleRefInput),
-  };
-};
-
-const initialConcludePayoutLayout = ({
-  inputs,
-  referenceInputs,
-  payoutInput,
-  hubOracleRefInput,
-}: {
-  readonly inputs: readonly UTxO[];
-  readonly referenceInputs: readonly UTxO[];
-  readonly payoutInput: UTxO;
-  readonly hubOracleRefInput: UTxO;
-}): ConcludePayoutLayout => {
-  const orderedInputs = [...inputs].sort(compareOutRefs);
-  const orderedRefs = [...referenceInputs].sort(compareOutRefs);
-  const payoutInputIndex = BigInt(
-    findOutRefIndex(orderedInputs, payoutInput) ?? -1,
-  );
-  const spendPointer = { tag: CML.RedeemerTag.Spend, index: payoutInputIndex };
-  const burnPointer = { tag: CML.RedeemerTag.Mint, index: 0n };
-  const pointers = [spendPointer, burnPointer];
-  return {
-    payoutInputIndex,
-    l1OutputIndex: 0n,
-    payoutSpendRedeemerIndex: expectedTxInfoIndex(pointers, spendPointer),
-    burnRedeemerIndex: expectedTxInfoIndex(pointers, burnPointer),
-    hubRefInputIndex: BigInt(
-      findOutRefIndex(orderedRefs, hubOracleRefInput) ?? -1,
-    ),
-  };
-};
-
-const deriveConcludePayoutLayout = ({
-  tx,
-  payoutInput,
-  l1Address,
-  l1Datum,
-  l1Assets,
-  hubOracleRefInput,
-}: {
-  readonly tx: CML.Transaction;
-  readonly payoutInput: UTxO;
-  readonly l1Address: string;
-  readonly l1Datum: SDK.CardanoDatum;
-  readonly l1Assets: Assets;
-  readonly hubOracleRefInput: UTxO;
-}): ConcludePayoutLayout => {
-  const payoutInputIndex = requireInputIndex(tx, payoutInput);
-  const l1Output = requireOutput(
-    tx,
-    (output) =>
-      output.address === l1Address &&
-      outputDatumMatches(output, l1Datum) &&
-      output.scriptRef === undefined &&
-      assetsEqual(output.assets, l1Assets),
-    `payout destination output at ${l1Address}`,
-  );
-  return {
-    payoutInputIndex,
-    l1OutputIndex: BigInt(l1Output.index),
-    payoutSpendRedeemerIndex: actualTxInfoIndex(tx, {
-      tag: CML.RedeemerTag.Spend,
-      index: payoutInputIndex,
-    }),
-    burnRedeemerIndex: actualTxInfoIndex(tx, {
-      tag: CML.RedeemerTag.Mint,
-      index: 0n,
-    }),
-    hubRefInputIndex: requireReferenceInputIndex(tx, hubOracleRefInput),
-  };
-};
-
-const initialRefundWithdrawalLayout = ({
-  inputs,
-  referenceInputs,
-  withdrawal,
-  hubOracleRefInput,
-  settlementRefInput,
-}: {
-  readonly inputs: readonly UTxO[];
-  readonly referenceInputs: readonly UTxO[];
-  readonly withdrawal: SDK.WithdrawalUTxO;
-  readonly hubOracleRefInput: UTxO;
-  readonly settlementRefInput: UTxO;
-}): RefundWithdrawalLayout => {
-  const orderedInputs = [...inputs].sort(compareOutRefs);
-  const orderedRefs = [...referenceInputs].sort(compareOutRefs);
-  const withdrawalInputIndex = BigInt(
-    findOutRefIndex(orderedInputs, withdrawal.utxo) ?? -1,
-  );
-  const pointers: RedeemerPointerLike[] = [
-    { tag: CML.RedeemerTag.Spend, index: withdrawalInputIndex },
-    { tag: CML.RedeemerTag.Mint, index: 0n },
-    { tag: CML.RedeemerTag.Cert, index: 0n },
-    { tag: CML.RedeemerTag.Reward, index: 0n },
-  ];
-  return {
-    withdrawalInputIndex,
-    refundOutputIndex: 0n,
-    hubRefInputIndex: BigInt(
-      findOutRefIndex(orderedRefs, hubOracleRefInput) ?? -1,
-    ),
-    settlementRefInputIndex: BigInt(
-      findOutRefIndex(orderedRefs, settlementRefInput) ?? -1,
-    ),
-    burnRedeemerIndex: expectedTxInfoIndex(pointers, pointers[1]!),
-    witnessUnregistrationRedeemerIndex: expectedTxInfoIndex(
-      pointers,
-      pointers[2]!,
-    ),
-    inclusionProofWithdrawalRedeemerIndex: expectedTxInfoIndex(
-      pointers,
-      pointers[3]!,
-    ),
-  };
-};
-
-const deriveRefundWithdrawalLayout = ({
-  tx,
-  withdrawal,
-  refundAddress,
-  refundDatum,
-  refundAssets,
-  hubOracleRefInput,
-  settlementRefInput,
-}: {
-  readonly tx: CML.Transaction;
-  readonly withdrawal: SDK.WithdrawalUTxO;
-  readonly refundAddress: string;
-  readonly refundDatum: SDK.CardanoDatum;
-  readonly refundAssets: Assets;
-  readonly hubOracleRefInput: UTxO;
-  readonly settlementRefInput: UTxO;
-}): RefundWithdrawalLayout => {
-  const withdrawalInputIndex = requireInputIndex(tx, withdrawal.utxo);
-  const refundOutput = requireOutput(
-    tx,
-    (output) =>
-      output.address === refundAddress &&
-      outputDatumMatches(output, refundDatum) &&
-      output.scriptRef === undefined &&
-      assetsEqual(output.assets, refundAssets),
-    `withdrawal refund output at ${refundAddress}`,
-  );
-  return {
-    withdrawalInputIndex,
-    refundOutputIndex: BigInt(refundOutput.index),
-    hubRefInputIndex: requireReferenceInputIndex(tx, hubOracleRefInput),
-    settlementRefInputIndex: requireReferenceInputIndex(tx, settlementRefInput),
-    burnRedeemerIndex: actualTxInfoIndex(tx, {
-      tag: CML.RedeemerTag.Mint,
-      index: 0n,
-    }),
-    witnessUnregistrationRedeemerIndex: actualTxInfoIndex(tx, {
-      tag: CML.RedeemerTag.Cert,
-      index: 0n,
-    }),
-    inclusionProofWithdrawalRedeemerIndex: actualTxInfoIndex(tx, {
-      tag: CML.RedeemerTag.Reward,
-      index: 0n,
-    }),
-  };
-};
 
 export const buildAbsorbConfirmedDepositToReserveTxProgram = (
   lucid: LucidEvolution,
@@ -1963,7 +465,7 @@ export const buildAbsorbConfirmedDepositToReserveTxProgram = (
         inclusion_proof_script_withdraw_redeemer_index:
           layout.inclusionProofWithdrawalRedeemerIndex,
       };
-      const depositBurnRedeemer: SDK.DepositMintRedeemer = {
+      const depositBurnRedeemer: SDK.UserEventMintRedeemer = {
         BurnEventNFT: {
           nonce_asset_name: config.deposit.assetName,
           witness_unregistration_redeemer_index:
@@ -1980,7 +482,7 @@ export const buildAbsorbConfirmedDepositToReserveTxProgram = (
         .readFrom([...txReferenceInputs])
         .mintAssets(
           { [depositUnit]: -1n },
-          Data.to(depositBurnRedeemer, SDK.DepositMintRedeemer),
+          Data.to(depositBurnRedeemer, SDK.UserEventMintRedeemer),
         )
         .pay.ToAddress(contracts.reserve.spendingScriptAddress, reserveAssets);
       tx = applyEventWitnessUnregistration(
@@ -2177,7 +679,7 @@ export const buildInitializePayoutTxProgram = (
           layout.inclusionProofWithdrawalRedeemerIndex,
         purpose: "InitializePayout",
       };
-      const withdrawalBurnRedeemer: SDK.WithdrawalMintRedeemer = {
+      const withdrawalBurnRedeemer: SDK.UserEventMintRedeemer = {
         BurnEventNFT: {
           nonce_asset_name: config.withdrawal.assetName,
           witness_unregistration_redeemer_index:
@@ -2205,7 +707,7 @@ export const buildInitializePayoutTxProgram = (
         .readFrom([...txReferenceInputs])
         .mintAssets(
           { [withdrawalUnit]: -1n },
-          Data.to(withdrawalBurnRedeemer, SDK.WithdrawalMintRedeemer),
+          Data.to(withdrawalBurnRedeemer, SDK.UserEventMintRedeemer),
         )
         .mintAssets(
           { [payoutUnit]: 1n },
@@ -2736,7 +1238,7 @@ export const buildRefundInvalidWithdrawalTxProgram = (
           },
         },
       };
-      const withdrawalBurnRedeemer: SDK.WithdrawalMintRedeemer = {
+      const withdrawalBurnRedeemer: SDK.UserEventMintRedeemer = {
         BurnEventNFT: {
           nonce_asset_name: config.withdrawal.assetName,
           witness_unregistration_redeemer_index:
@@ -2753,7 +1255,7 @@ export const buildRefundInvalidWithdrawalTxProgram = (
         .readFrom([...txReferenceInputs])
         .mintAssets(
           { [withdrawalUnit]: -1n },
-          Data.to(withdrawalBurnRedeemer, SDK.WithdrawalMintRedeemer),
+          Data.to(withdrawalBurnRedeemer, SDK.UserEventMintRedeemer),
         );
       tx = payToAddressWithCardanoDatum(
         tx,
@@ -2905,35 +1407,12 @@ export const submitConcludePayoutProgram = (
     return yield* handleSignSubmit(lucid, built.tx);
   });
 
-export const submitRefundInvalidWithdrawalProgram = (
-  lucid: LucidEvolution,
-  contracts: SDK.MidgardValidators,
-  config: RefundInvalidWithdrawalConfig,
-): Effect.Effect<
-  string,
-  | ReservePayoutTxError
-  | SDK.HubOracleError
-  | SDK.LucidError
-  | SDK.Bech32DeserializationError
-  | SDK.StateQueueError
-  | TxSubmitError
-  | TxConfirmError
-  | TxSignError
-> =>
-  Effect.gen(function* () {
-    const built = yield* buildRefundInvalidWithdrawalTxProgram(
-      lucid,
-      contracts,
-      config,
-    );
-    return yield* handleSignSubmit(lucid, built.tx);
-  });
-
 export const __reservePayoutTest = {
   addAssets,
   assetsToValue,
   assetsEqual,
   encodeMembershipProofWithdrawalRedeemer,
+  disposableFeeInputCandidates,
   initialAbsorbDepositLayout,
   initialAddReserveFundsLayout,
   initialConcludePayoutLayout,

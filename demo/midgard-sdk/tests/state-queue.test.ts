@@ -28,7 +28,7 @@ import {
   EMPTY_NULL_ROOT,
   MIDGARD_NATIVE_TX_VERSION,
   MIDGARD_POSIX_TIME_NONE,
-  computeMidgardNativeTxIdFromFull,
+  computeMidgardNativeTxId,
   encodeCbor,
   encodeMidgardNativeTxCompact,
   materializeMidgardNativeTxFromCanonical,
@@ -41,12 +41,11 @@ import {
   ActiveOperatorSpendRedeemer,
   AddressData,
   ConfirmedState,
-  EMPTY_MERKLE_TREE_ROOT,
   FRAUD_PROOF_CATALOGUE_ID_BYTE_COUNT,
   FraudProofTokenDatum,
   GENESIS_HEADER_HASH,
   GENESIS_PROTOCOL_VERSION,
-  GENESIS_UTXO_ROOT,
+  EMPTY_MERKLE_TREE_ROOT,
   HUB_ORACLE_ASSET_NAME,
   RETIRED_OPERATORS_ROOT_ASSET_NAME,
   SCHEDULER_ASSET_NAME,
@@ -60,12 +59,13 @@ import {
   hashBlockHeader,
   headerHashFromStateQueueUTxO,
   incompleteEmulatorCommitBlockHeaderTxProgram,
-  incompleteEmulatorRemoveLastFraudulentBlockHeaderTxProgram,
+  incompleteRemoveLastFraudulentBlockHeaderTxProgram,
   utxoToStateQueueUTxO,
   type AuthenticatedValidator,
   type Header as HeaderType,
   type SpendingValidator as SdkSpendingValidator,
 } from "../src/index.js";
+import { compareUtxoOutRefs } from "../src/tx-out-ref-order.js";
 
 const moduleDir = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(moduleDir, "../../..");
@@ -219,22 +219,12 @@ const buildTestContracts = async (
 const roundTrip = <A>(value: A, schema: unknown): A =>
   Data.from(Data.to(value, schema as never), schema as never) as A;
 
-const compareLedgerOutRefs = (left: UTxO, right: UTxO): number => {
-  const hashOrder = Buffer.from(left.txHash, "hex").compare(
-    Buffer.from(right.txHash, "hex"),
-  );
-  if (hashOrder !== 0) {
-    return hashOrder;
-  }
-  return left.outputIndex - right.outputIndex;
-};
-
 const ledgerOrderedIndex = (
   candidates: readonly UTxO[],
   target: UTxO,
   label: string,
 ): bigint => {
-  const sorted = [...candidates].sort(compareLedgerOutRefs);
+  const sorted = [...candidates].sort(compareUtxoOutRefs);
   const index = sorted.findIndex(
     (candidate) =>
       candidate.txHash === target.txHash &&
@@ -245,12 +235,6 @@ const ledgerOrderedIndex = (
   }
   return BigInt(index);
 };
-
-const spendRedeemerTxInfoIndex = (
-  scriptSpendInputs: readonly UTxO[],
-  target: UTxO,
-  label: string,
-): bigint => ledgerOrderedIndex(scriptSpendInputs, target, label);
 
 const trieRootHex = (trie: Trie): string =>
   trie.hash === null || trie.hash === undefined
@@ -308,7 +292,7 @@ const buildTransactionsRoot = async (): Promise<string> => {
 
   for (const nativeTx of [tx1, tx2]) {
     await trie.insert(
-      computeMidgardNativeTxIdFromFull(nativeTx),
+      computeMidgardNativeTxId(nativeTx),
       encodeMidgardNativeTxCompact(nativeTx.compact),
     );
   }
@@ -376,7 +360,7 @@ const submitSetupTx = async ({
   const confirmedState = {
     headerHash: GENESIS_HEADER_HASH,
     prevHeaderHash: GENESIS_HEADER_HASH,
-    utxoRoot: GENESIS_UTXO_ROOT,
+    utxoRoot: EMPTY_MERKLE_TREE_ROOT,
     startTime: stateQueueGenesisTime,
     endTime: stateQueueGenesisTime,
     protocolVersion: GENESIS_PROTOCOL_VERSION,
@@ -611,7 +595,7 @@ describe("state-queue emulator builders", () => {
     const genesisTime = initValidTo - 1n;
     const transactionsRoot = await buildTransactionsRoot();
     const header: HeaderType = {
-      prevUtxosRoot: GENESIS_UTXO_ROOT,
+      prevUtxosRoot: EMPTY_MERKLE_TREE_ROOT,
       utxosRoot: EMPTY_MERKLE_TREE_ROOT,
       transactionsRoot,
       depositsRoot: EMPTY_MERKLE_TREE_ROOT,
@@ -656,12 +640,12 @@ describe("state-queue emulator builders", () => {
       setup.activeOperatorInput,
       "active-operator input",
     );
-    const stateQueueSpendRedeemerIndex = spendRedeemerTxInfoIndex(
+    const stateQueueSpendRedeemerIndex = ledgerOrderedIndex(
       commitScriptInputs,
       setup.stateQueueRoot,
       "state-queue spend redeemer",
     );
-    const activeOperatorSpendRedeemerIndex = spendRedeemerTxInfoIndex(
+    const activeOperatorSpendRedeemerIndex = ledgerOrderedIndex(
       commitScriptInputs,
       setup.activeOperatorInput,
       "active-operator spend redeemer",
@@ -747,7 +731,7 @@ describe("state-queue emulator builders", () => {
       setup.activeOperatorsRoot,
       setup.retiredOperatorsRoot,
     ];
-    const removeTx = incompleteEmulatorRemoveLastFraudulentBlockHeaderTxProgram(
+    const removeTx = incompleteRemoveLastFraudulentBlockHeaderTxProgram(
       lucid,
       {
         stateQueueAddress: contracts.stateQueue.spendingScriptAddress,

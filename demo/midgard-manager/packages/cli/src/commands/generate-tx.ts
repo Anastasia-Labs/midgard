@@ -82,18 +82,19 @@ export const generateTxCommand = Command.make(
   }) => {
     return pipe(
       Effect.tryPromise(async () => {
-        try {
-          // Config setup
-          const config = {
-            transactionType: type as 'one-to-one' | 'multi-output' | 'mixed',
-            oneToOneRatio,
-            batchSize,
-            interval,
-            concurrency,
-            nodeEndpoint,
-            wallet,
-          };
+        // Config setup
+        const config = {
+          transactionType: type as 'one-to-one' | 'multi-output' | 'mixed',
+          oneToOneRatio,
+          batchSize,
+          interval,
+          concurrency,
+          nodeEndpoint,
+          wallet,
+        };
+        let startSpinner: ReturnType<typeof ora> | undefined;
 
+        try {
           // If interactive mode is requested, prompt for all options
           if (interactive) {
             try {
@@ -334,7 +335,7 @@ export const generateTxCommand = Command.make(
           }
 
           // Start the generator with wallet configuration
-          const spinner = ora('Starting transaction generator...').start();
+          startSpinner = ora('Starting transaction generator...').start();
 
           await startGenerator({
             transactionType: config.transactionType,
@@ -343,11 +344,10 @@ export const generateTxCommand = Command.make(
             interval: config.interval,
             concurrency: config.concurrency,
             nodeEndpoint: config.nodeEndpoint,
-            walletPrivateKey: walletConfig.privateKey,
-            walletAddress: walletConfig.address || '', // Pass the wallet address
+            walletSeedOrPrivateKey: walletConfig.privateKey,
           });
 
-          spinner.succeed('Transaction generator started successfully');
+          startSpinner.succeed('Transaction generator started successfully');
 
           // Show configuration in a nice format
           console.log(chalk.bold('\n✓ Transaction generator is running with configuration:'));
@@ -383,7 +383,7 @@ export const generateTxCommand = Command.make(
             process.exit(0);
           });
         } catch (error) {
-          spinner.fail('Failed to start transaction generator');
+          startSpinner?.fail('Failed to start transaction generator');
           console.error(
             chalk.red(`Error: ${error instanceof Error ? error.message : String(error)}`)
           );

@@ -263,8 +263,6 @@ export const encodeMidgardAddressText = (address: Uint8Array): string => {
   return bech32Encode(validateHrpForNetwork(decoded.networkId), address);
 };
 
-export const midgardAddressToText = encodeMidgardAddressText;
-
 export const decodeMidgardAddressText = (text: string): DecodedMidgardAddress =>
   decodeMidgardAddressBytes(midgardAddressFromText(text));
 

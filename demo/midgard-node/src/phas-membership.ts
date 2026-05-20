@@ -50,21 +50,20 @@ export const loadPhasMembershipWithdrawalScript = (): Script => {
 
 const networkId = (network: Network): number => (network === "Mainnet" ? 1 : 0);
 
-export const phasMembershipWithdrawalScriptHash = (
-  script: Script = loadPhasMembershipWithdrawalScript(),
-): string => validatorToScriptHash(script);
-
 export const phasMembershipStakeCredential = (
   script: Script = loadPhasMembershipWithdrawalScript(),
 ): CML.Credential =>
   CML.Credential.new_script(
-    CML.ScriptHash.from_hex(phasMembershipWithdrawalScriptHash(script)),
+    CML.ScriptHash.from_hex(validatorToScriptHash(script)),
   );
 
 export const phasMembershipRewardAddress = (
   network: Network,
   script: Script = loadPhasMembershipWithdrawalScript(),
 ): string =>
-  CML.RewardAddress.new(networkId(network), phasMembershipStakeCredential(script))
+  CML.RewardAddress.new(
+    networkId(network),
+    phasMembershipStakeCredential(script),
+  )
     .to_address()
     .to_bech32();

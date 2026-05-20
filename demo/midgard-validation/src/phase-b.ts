@@ -3,14 +3,17 @@ import { Effect } from "effect";
 import { LedgerColumns, type LedgerEntry } from "./ledger.js";
 import {
   computeScriptIntegrityHashForLanguages,
+  decodeMidgardAddressBytes,
   decodeMidgardNativeByteListPreimage,
   decodeMidgardNativeMint,
+  decodeMidgardTxOutput,
   decodeMidgardNativeTxFull,
   decodeMidgardVersionedScriptListPreimage,
   deriveMidgardNativeTxWitnessSetCompact,
   encodeMidgardVersionedScript,
-  hashMidgardVersionedScript,
   verifyMidgardNativeScript,
+  midgardValueToCmlValue,
+  type MidgardNativeTxFull,
   type MidgardNativeScript,
   type MidgardTxOutput,
   type ScriptLanguageName,
@@ -28,12 +31,6 @@ import {
   RejectedTx,
   RejectCodes,
 } from "./types.js";
-import {
-  decodeMidgardTxOutput,
-  midgardOutputPaymentCredential,
-  midgardOutputProtected,
-  midgardValueToCmlValue,
-} from "./midgard-output.js";
 import {
   decodeMidgardRedeemers,
   findRedeemerByPointer,
@@ -55,6 +52,7 @@ import {
   ScriptMintValue,
   ScriptContextView,
 } from "./script-context.js";
+import { compareTxOutRefHex } from "./tx-out-ref.js";
 
 type UTxOState = Map<string, Buffer>;
 type PreState = readonly LedgerEntry[] | UTxOState;
@@ -228,22 +226,6 @@ const conflict = (left: CandidateNode, right: CandidateNode): boolean =>
   hasIntersection(left.spentOutRefs, right.referenceOutRefs) ||
   hasIntersection(right.spentOutRefs, left.referenceOutRefs);
 
-const outRefSortKey = (outRefHex: string): readonly [string, bigint] => {
-  const input = CML.TransactionInput.from_cbor_bytes(
-    Buffer.from(outRefHex, "hex"),
-  );
-  return [input.transaction_id().to_hex(), input.index()];
-};
-
-const compareOutRefHex = (left: string, right: string): number => {
-  const [leftTx, leftIx] = outRefSortKey(left);
-  const [rightTx, rightIx] = outRefSortKey(right);
-  if (leftTx !== rightTx) {
-    return leftTx < rightTx ? -1 : 1;
-  }
-  return leftIx < rightIx ? -1 : leftIx > rightIx ? 1 : 0;
-};
-
 const asSigned = (value: unknown, fieldName: string): bigint => {
   if (typeof value === "bigint") {
     return value;
@@ -313,9 +295,8 @@ type LocalScriptValidationResult =
     };
 
 const collectInlineScriptSources = (
-  candidate: PhaseAAccepted,
+  nativeTx: MidgardNativeTxFull,
 ): readonly ScriptSource[] => {
-  const nativeTx = decodeMidgardNativeTxFull(candidate.txCbor);
   const scripts = decodeMidgardVersionedScriptListPreimage(
     nativeTx.witnessSet.scriptTxWitsPreimageCbor,
     "native.script_tx_wits",
@@ -381,6 +362,7 @@ const requiredScriptLanguages = (
 
 const discoverLocalScriptExecutions = (
   node: CandidateNode,
+  nativeTx: MidgardNativeTxFull,
   stateValue: (outRefHex: string) => Buffer | undefined,
   sources: readonly ScriptSource[],
   witnessKeyHashes: ReadonlySet<string>,
@@ -392,7 +374,6 @@ const discoverLocalScriptExecutions = (
       readonly contextView: ScriptContextView;
     } => {
   const candidate = node.candidate;
-  const nativeTx = decodeMidgardNativeTxFull(candidate.txCbor);
   const redeemers = decodeMidgardRedeemers(
     nativeTx.witnessSet.redeemerTxWitsPreimageCbor,
   );
@@ -409,9 +390,9 @@ const discoverLocalScriptExecutions = (
     seenRedeemerPointers.add(key);
   }
 
-  const sortedSpent = [...node.spentOutRefs].sort(compareOutRefHex);
+  const sortedSpent = [...node.spentOutRefs].sort(compareTxOutRefHex);
   const sortedReferenceInputs = [...node.referenceOutRefs].sort(
-    compareOutRefHex,
+    compareTxOutRefHex,
   );
   const resolvedInputs: {
     readonly outRefHex: string;
@@ -469,7 +450,9 @@ const discoverLocalScriptExecutions = (
     }
     const output = decodeMidgardTxOutput(outputBytes);
     resolvedInputs.push({ outRefHex, output });
-    const paymentCred = midgardOutputPaymentCredential(output);
+    const paymentCred = decodeMidgardAddressBytes(
+      output.address,
+    ).paymentCredential;
     if (paymentCred.kind === "Script") {
       const scriptHash = paymentCred.hash.toString("hex");
       const result = addExecution(
@@ -524,10 +507,11 @@ const discoverLocalScriptExecutions = (
   const protectedReceivingHashes = new Set<string>();
   for (let index = 0; index < outputs.length; index += 1) {
     const output = outputs[index];
-    if (!midgardOutputProtected(output)) {
+    const outputAddress = decodeMidgardAddressBytes(output.address);
+    if (!outputAddress.protected) {
       continue;
     }
-    const paymentCred = midgardOutputPaymentCredential(output);
+    const paymentCred = outputAddress.paymentCredential;
     if (paymentCred.kind === "PubKey") {
       const pubKey = paymentCred.hash.toString("hex");
       if (!witnessKeyHashes.has(pubKey)) {
@@ -597,11 +581,12 @@ const runLocalScriptEvaluation = (
 ): LocalScriptValidationResult => {
   const candidate = node.candidate;
   const nativeTx = decodeMidgardNativeTxFull(candidate.txCbor);
-  const inlineSources = collectInlineScriptSources(candidate);
+  const inlineSources = collectInlineScriptSources(nativeTx);
   const referenceSources = collectReferenceScriptSources(node, stateValue);
   const sources = [...inlineSources, ...referenceSources];
   const discovered = discoverLocalScriptExecutions(
     node,
+    nativeTx,
     stateValue,
     sources,
     witnessKeyHashes,
@@ -660,7 +645,6 @@ const runLocalScriptEvaluation = (
   const languages = requiredScriptLanguages(discovered.executions);
   const witnessCompact = deriveMidgardNativeTxWitnessSetCompact(
     nativeTx.witnessSet,
-    nativeTx.version,
   );
   const expectedScriptIntegrityHash = computeScriptIntegrityHashForLanguages(
     witnessCompact.redeemerTxWitsHash,
@@ -1013,7 +997,9 @@ const validateCandidateAgainstState = (
 
       try {
         const output = decodeMidgardTxOutput(inputOutput);
-        const paymentCred = midgardOutputPaymentCredential(output);
+        const paymentCred = decodeMidgardAddressBytes(
+          output.address,
+        ).paymentCredential;
 
         if (paymentCred.kind === "PubKey") {
           const inputSigner = paymentCred.hash.toString("hex");
@@ -1292,12 +1278,3 @@ export const runPhaseBValidationWithPatch = (
       statePatch: materializeStatePatch(statePatch),
     };
   });
-
-export const runPhaseBValidation = (
-  phaseACandidates: readonly PhaseAAccepted[],
-  preStateEntries: PreState,
-  config: PhaseBConfig,
-): Effect.Effect<PhaseBResult> =>
-  runPhaseBValidationWithPatch(phaseACandidates, preStateEntries, config).pipe(
-    Effect.map(({ accepted, rejected }) => ({ accepted, rejected })),
-  );

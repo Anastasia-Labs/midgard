@@ -1,20 +1,22 @@
+import {
+  computeHash32,
+  computeMidgardNativeTxId,
+  decodeMidgardNativeByteListPreimage,
+  decodeMidgardNativeTxFull,
+  deriveMidgardNativeTxWitnessSetCompact,
+  EMPTY_CBOR_LIST,
+  EMPTY_NULL_ROOT,
+  MIDGARD_SUPPORTED_SCRIPT_LANGUAGES,
+  MIDGARD_POSIX_TIME_NONE,
+} from "@al-ft/midgard-core/codec";
 import { describe, expect, it } from "vitest";
 import { CML } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 import {
   BuilderInvariantError,
-  computeHash32,
-  computeMidgardNativeTxIdFromFull,
-  decodeMidgardNativeByteListPreimage,
-  decodeMidgardNativeTxFull,
   decodeMidgardUtxo,
-  deriveMidgardNativeTxWitnessSetCompact,
-  EMPTY_CBOR_LIST,
-  EMPTY_NULL_ROOT,
   encodeMidgardTxOutput,
   LucidMidgard,
-  MIDGARD_SUPPORTED_SCRIPT_LANGUAGES,
-  MIDGARD_POSIX_TIME_NONE,
   outRefToCbor,
   type MidgardProvider,
   type MidgardUtxo,
@@ -124,7 +126,7 @@ describe("TxBuilder finalization", () => {
       .complete();
 
     const decoded = decodeMidgardNativeTxFull(completed.txCbor);
-    expect(completed.txId).toEqual(computeMidgardNativeTxIdFromFull(decoded));
+    expect(completed.txId).toEqual(computeMidgardNativeTxId(decoded));
     expect(completed.toHash()).toBe(completed.txIdHex);
     expect(completed.toCBOR()).toBe(completed.txHex);
     expect(completed.toJSON()).toMatchObject({
@@ -167,7 +169,6 @@ describe("TxBuilder finalization", () => {
     const tx = decodeMidgardNativeTxFull(completed.txCbor);
     const witnessCompact = deriveMidgardNativeTxWitnessSetCompact(
       tx.witnessSet,
-      tx.version,
     );
 
     expect(tx.compact.transactionBody.spendInputsHash).toEqual(
@@ -184,7 +185,9 @@ describe("TxBuilder finalization", () => {
     );
     expect(tx.body.scriptIntegrityHash).toEqual(EMPTY_NULL_ROOT);
     expect(tx.body.auxiliaryDataHash).toEqual(EMPTY_NULL_ROOT);
-    expect(witnessCompact.addrTxWitsHash).toEqual(computeHash32(EMPTY_CBOR_LIST));
+    expect(witnessCompact.addrTxWitsHash).toEqual(
+      computeHash32(EMPTY_CBOR_LIST),
+    );
     expect(witnessCompact.scriptTxWitsHash).toEqual(
       computeHash32(EMPTY_CBOR_LIST),
     );
@@ -403,7 +406,9 @@ describe("TxBuilder finalization", () => {
       .complete();
 
     const report = await completed.validate("phase-b", {
-      localPreState: new Map([[inputOutRefCbor.toString("hex"), inputOutputCbor]]),
+      localPreState: new Map([
+        [inputOutRefCbor.toString("hex"), inputOutputCbor],
+      ]),
     });
 
     expect(report).toMatchObject({

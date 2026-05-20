@@ -13,11 +13,8 @@ import {
   MidgardContracts,
   NodeConfig,
 } from "@/services/index.js";
-import {
-  addressDataToBech32,
-  formatJson,
-  parseEventId,
-} from "@/commands/withdrawal-utils.js";
+import { parseEventId } from "@/commands/command-utils.js";
+import { addressDataToBech32 } from "@/commands/withdrawal-utils.js";
 import { valueToAssets } from "@/transactions/reserve-payout.js";
 
 type ReserveUtxoSummary = {
@@ -276,9 +273,3 @@ export const payoutStatusProgram = (
       diagnostic: null,
     };
   });
-
-export const formatReserveUtxosResult = (result: ReserveUtxosResult): string =>
-  formatJson(result);
-
-export const formatPayoutStatusResult = (result: PayoutStatusResult): string =>
-  formatJson(result);

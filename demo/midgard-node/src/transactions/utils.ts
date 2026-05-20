@@ -523,16 +523,6 @@ export const utxoToOutRef = (utxo: UTxO): OutRef => ({
   outputIndex: utxo.outputIndex,
 });
 
-/**
- * Returns whether two outrefs point to the same transaction output.
- */
-export const outRefsAreEqual = (outRef0: OutRef, outRef1: OutRef): boolean => {
-  return (
-    outRef0.txHash === outRef1.txHash &&
-    outRef0.outputIndex === outRef1.outputIndex
-  );
-};
-
 export class TxSignError extends Data.TaggedError("TxSignError")<
   SDK.GenericErrorFields & {
     readonly txHash: string;

@@ -17,6 +17,12 @@ const PROJECT_ROOT = join(MONOREPO_ROOT, 'demo/midgard-manager');
 const CONFIG_DIR = join(PROJECT_ROOT, 'config');
 const NODE_CONFIG_PATH = join(CONFIG_DIR, 'node.json');
 
+const errorMessage = (error: unknown): string =>
+  error instanceof Error ? error.message : String(error);
+
+const isAbortError = (error: unknown): boolean =>
+  error instanceof Error && error.name === 'AbortError';
+
 /**
  * CLI command that probes the configured Midgard node and prints a status
  * summary.
@@ -74,10 +80,10 @@ export const nodeStatusCommand = Command.make(
         } catch (error) {
           spinner.fail('Failed to connect to node');
 
-          if (error.name === 'AbortError') {
+          if (isAbortError(error)) {
             console.error(chalk.red('Connection timed out'));
           } else {
-            console.error(chalk.red(`Error: ${error.message}`));
+            console.error(chalk.red(`Error: ${errorMessage(error)}`));
           }
 
           // Troubleshooting tips
@@ -185,7 +191,7 @@ export const configureNodeCommand = Command.make(
               console.log(chalk.yellow(`⚠️ Node responded with status: ${response.status}`));
             }
           } catch (error) {
-            console.log(chalk.yellow(`⚠️ Could not connect to node: ${error.message}`));
+            console.log(chalk.yellow(`⚠️ Could not connect to node: ${errorMessage(error)}`));
           }
 
           console.log();
@@ -193,7 +199,7 @@ export const configureNodeCommand = Command.make(
           console.log(chalk.gray(`$ midgard-manager node-status`));
         } catch (error) {
           spinner.fail('Failed to save configuration');
-          console.error(chalk.red(`Error: ${error.message}`));
+          console.error(chalk.red(`Error: ${errorMessage(error)}`));
         }
       })
     );

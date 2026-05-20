@@ -13,7 +13,7 @@ import { displayLogo } from './utils/logo.js';
  * It renders the shared logo/header, wires the Effect Node runtime, and then
  * hands off control to the root CLI command.
  */
-displayLogo({ variant: 'full' });
+displayLogo();
 
 run(process.argv).pipe(
   Effect.provide(NodeContext.layer),

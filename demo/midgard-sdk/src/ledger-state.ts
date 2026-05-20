@@ -1,13 +1,17 @@
 import { Data } from "@lucid-evolution/lucid";
 import {
   AddressSchema,
+  DataCoercionError,
   H32Schema,
+  HashingError,
   MerkleRootSchema,
   OutputReferenceSchema,
   POSIXTimeSchema,
   PubKeyHashSchema,
   ValueSchema,
+  hashHexWithBlake2b,
 } from "@/common.js";
+import { Effect } from "effect";
 
 export const HeaderHashSchema = Data.Bytes({ minLength: 28, maxLength: 28 });
 export type HeaderHash = Data.Static<typeof HeaderHashSchema>;
@@ -29,6 +33,23 @@ export type Header = Data.Static<typeof HeaderSchema>;
 export const Header = HeaderSchema as unknown as Header;
 export const castHeaderToData = (header: Header): unknown =>
   Data.castTo(header, Header);
+
+export const getHeaderFromStateQueueDatum = (nodeDatum: {
+  readonly data: Parameters<typeof Data.castFrom>[0];
+}): Effect.Effect<Header, DataCoercionError> =>
+  Effect.try({
+    try: () => Data.castFrom(nodeDatum.data, Header),
+    catch: (cause) =>
+      new DataCoercionError({
+        message: "Failed coercing block's datum data to `Header`",
+        cause,
+      }),
+  });
+
+export const hashBlockHeader = (
+  header: Header,
+): Effect.Effect<string, HashingError> =>
+  hashHexWithBlake2b(Data.to(header, Header), 28);
 
 export const ConfirmedStateSchema = Data.Object({
   headerHash: HeaderHashSchema,
@@ -156,12 +177,8 @@ export type MidgardTxCompact = Data.Static<typeof MidgardTxCompactSchema>;
 export const MidgardTxCompact =
   MidgardTxCompactSchema as unknown as MidgardTxCompact;
 
-export const MidgardTxIdSchema = H32Schema;
-export type MidgardTxId = Data.Static<typeof MidgardTxIdSchema>;
-export const MidgardTxId = MidgardTxIdSchema as unknown as MidgardTxId;
-
 export const TxOrderEventSchema = Data.Object({
-  id: MidgardTxIdSchema,
+  id: H32Schema,
   tx: MidgardTxCompactSchema,
 });
 export type TxOrderEvent = Data.Static<typeof TxOrderEventSchema>;

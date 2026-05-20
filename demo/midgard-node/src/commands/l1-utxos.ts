@@ -1,4 +1,5 @@
-import { parseAddressArgument } from "@/commands/utxos.js";
+import { parseAddressArgument } from "@/commands/command-utils.js";
+import { compareOutRefs } from "@/tx-context.js";
 import type { Assets } from "@lucid-evolution/lucid";
 
 export type BlockfrostAmount = {
@@ -44,12 +45,12 @@ export type BlockfrostFetchConfig = {
 
 const BLOCKFROST_PAGE_SIZE = 100;
 
-const stringifyAssets = (assets: Readonly<Assets>): Record<string, string> =>
+const orderAssetsByUnit = (assets: Readonly<Assets>): Readonly<Assets> =>
   Object.fromEntries(
-    Object.entries(assets)
-      .sort(([unitA], [unitB]) => unitA.localeCompare(unitB))
-      .map(([unit, quantity]) => [unit, quantity.toString()]),
-  );
+    Object.entries(assets).sort(([unitA], [unitB]) =>
+      unitA.localeCompare(unitB),
+    ),
+  ) as Assets;
 
 const sumL1UtxoAssets = (utxos: readonly L1Utxo[]): Readonly<Assets> => {
   const totals: Assets = { lovelace: 0n };
@@ -58,7 +59,7 @@ const sumL1UtxoAssets = (utxos: readonly L1Utxo[]): Readonly<Assets> => {
       totals[unit] = (totals[unit] ?? 0n) + quantity;
     }
   }
-  return totals;
+  return orderAssetsByUnit(totals);
 };
 
 /**
@@ -104,7 +105,10 @@ export const resolveBlockfrostConfig = (input?: {
   };
 };
 
-const parseBlockfrostAmount = (amount: unknown, index: number): BlockfrostAmount => {
+const parseBlockfrostAmount = (
+  amount: unknown,
+  index: number,
+): BlockfrostAmount => {
   if (
     typeof amount !== "object" ||
     amount === null ||
@@ -139,7 +143,7 @@ const parseBlockfrostAssets = (
   if (assets.lovelace === undefined) {
     assets.lovelace = 0n;
   }
-  return assets;
+  return orderAssetsByUnit(assets);
 };
 
 /**
@@ -156,7 +160,10 @@ export const parseBlockfrostAddressUtxo = (
   }
 
   const candidate = entry as Record<string, unknown>;
-  if (typeof candidate.tx_hash !== "string" || !/^[0-9a-f]{64}$/i.test(candidate.tx_hash)) {
+  if (
+    typeof candidate.tx_hash !== "string" ||
+    !/^[0-9a-f]{64}$/i.test(candidate.tx_hash)
+  ) {
     throw new Error(
       `Blockfrost UTxO entry[${index.toString()}].tx_hash must be a 32-byte hex string.`,
     );
@@ -192,7 +199,8 @@ export const parseBlockfrostAddressUtxo = (
     assets: parseBlockfrostAssets(amount),
     block: typeof candidate.block === "string" ? candidate.block : null,
     txIndex,
-    dataHash: typeof candidate.data_hash === "string" ? candidate.data_hash : null,
+    dataHash:
+      typeof candidate.data_hash === "string" ? candidate.data_hash : null,
     inlineDatum:
       typeof candidate.inline_datum === "string"
         ? candidate.inline_datum
@@ -214,15 +222,9 @@ export const parseBlockfrostAddressUtxoPage = (
     throw new Error("Blockfrost address UTxO response must be a JSON array.");
   }
 
-  return payload.map((entry, index) => parseBlockfrostAddressUtxo(entry, index));
-};
-
-const canonicalL1UtxoOrder = (a: L1Utxo, b: L1Utxo): number => {
-  const txHashOrder = a.txHash.localeCompare(b.txHash);
-  if (txHashOrder !== 0) {
-    return txHashOrder;
-  }
-  return a.outputIndex - b.outputIndex;
+  return payload.map((entry, index) =>
+    parseBlockfrostAddressUtxo(entry, index),
+  );
 };
 
 /**
@@ -262,7 +264,7 @@ export const fetchAllBlockfrostAddressUtxos = async ({
     }
   }
 
-  utxos.sort(canonicalL1UtxoOrder);
+  utxos.sort(compareOutRefs);
 
   return {
     address: normalizedAddress,
@@ -271,27 +273,3 @@ export const fetchAllBlockfrostAddressUtxos = async ({
     utxos,
   };
 };
-
-/**
- * Renders the fetched Blockfrost UTxOs as stable CLI JSON with decimal strings.
- */
-export const formatL1UtxosResult = (result: L1UtxosResult): string =>
-  JSON.stringify(
-    {
-      address: result.address,
-      utxoCount: result.utxoCount,
-      totals: stringifyAssets(result.totals),
-      utxos: result.utxos.map((utxo) => ({
-        txHash: utxo.txHash,
-        outputIndex: utxo.outputIndex,
-        assets: stringifyAssets(utxo.assets),
-        block: utxo.block,
-        txIndex: utxo.txIndex,
-        dataHash: utxo.dataHash,
-        inlineDatum: utxo.inlineDatum,
-        referenceScriptHash: utxo.referenceScriptHash,
-      })),
-    },
-    null,
-    2,
-  );

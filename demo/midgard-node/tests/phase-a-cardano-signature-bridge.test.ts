@@ -5,15 +5,15 @@ import { CML } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 import {
   cardanoTxBytesToMidgardNativeTxFullBytes,
-  computeMidgardNativeTxIdFromFull,
+  computeMidgardNativeTxId,
   decodeMidgardNativeTxFull,
-} from "@/midgard-tx-codec/index.js";
+} from "@al-ft/midgard-core/codec";
 import {
   RejectCodes,
   runPhaseAValidation,
-  runPhaseBValidation,
+  runPhaseBValidationWithPatch,
   type QueuedTx,
-} from "@/validation/index.js";
+} from "@al-ft/midgard-validation";
 import {
   makeCardanoTxOutput,
   makeMidgardTxOutput,
@@ -86,7 +86,7 @@ describe("phase-a converted fixture signature bridge", () => {
     );
     const nativeBytes = cardanoTxBytesToMidgardNativeTxFullBytes(cardanoBytes);
     const nativeTx = decodeMidgardNativeTxFull(nativeBytes);
-    const txId = computeMidgardNativeTxIdFromFull(nativeTx);
+    const txId = computeMidgardNativeTxId(nativeTx);
     const queued: QueuedTx = {
       txId,
       txCbor: nativeBytes,
@@ -149,9 +149,7 @@ describe("phase-a converted fixture signature bridge", () => {
     const vkeyWitnesses = CML.VkeywitnessList.new();
     vkeyWitnesses.add(
       CML.make_vkey_witness(
-        CML.TransactionHash.from_raw_bytes(
-          computeMidgardNativeTxIdFromFull(nativeTx),
-        ),
+        CML.TransactionHash.from_raw_bytes(computeMidgardNativeTxId(nativeTx)),
         signerKey,
       ),
     );
@@ -165,7 +163,7 @@ describe("phase-a converted fixture signature bridge", () => {
       Buffer.from(cardanoTx.to_cbor_bytes()),
     );
     const converted = decodeMidgardNativeTxFull(nativeBytes);
-    const txId = computeMidgardNativeTxIdFromFull(converted);
+    const txId = computeMidgardNativeTxId(converted);
 
     const queued: QueuedTx = {
       txId,
@@ -188,13 +186,13 @@ describe("phase-a converted fixture signature bridge", () => {
         ),
       ],
     ]);
-    const phaseB = await Effect.runPromise(
-      runPhaseBValidation(phaseA.accepted, preState, {
+    const { accepted, rejected } = await Effect.runPromise(
+      runPhaseBValidationWithPatch(phaseA.accepted, preState, {
         nowCardanoSlotNo: 0n,
         bucketConcurrency: 1,
       }),
     );
-    expect(phaseB.rejected).toHaveLength(0);
-    expect(phaseB.accepted).toHaveLength(1);
+    expect(rejected).toHaveLength(0);
+    expect(accepted).toHaveLength(1);
   });
 });

@@ -8,7 +8,6 @@ import {
   MidgardContracts,
 } from "@/services/index.js";
 import { reconcileVisibleWithdrawalUTxOs } from "@/fibers/fetch-and-insert-withdrawal-utxos.js";
-import { formatJson } from "@/commands/withdrawal-utils.js";
 
 export type FetchWithdrawalsOnceResult = {
   readonly reconciledCount: number;
@@ -28,7 +27,3 @@ export const fetchWithdrawalsOnceProgram: Effect.Effect<
     completedAt: result.completedAt.toISOString(),
   };
 });
-
-export const formatFetchWithdrawalsOnceResult = (
-  result: FetchWithdrawalsOnceResult,
-): string => formatJson(result);

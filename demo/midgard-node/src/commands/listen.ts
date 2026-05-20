@@ -3,8 +3,6 @@
  * This module wires startup invariants, the HTTP server, and background fibers,
  * but should stay free of endpoint logic and other domain-specific details.
  */
-export { extractStateQueueErrorCode } from "@/commands/listen-response.js";
-
 import { InitDB, MutationJobsDB } from "@/database/index.js";
 import {
   ConfigError,
@@ -36,7 +34,7 @@ import {
   retentionSweeperFiber,
   txQueueProcessorFiber,
 } from "@/fibers/index.js";
-import { QueuedTxPayload } from "@/validation/index.js";
+import { QueuedTxPayload } from "@al-ft/midgard-validation";
 import * as Genesis from "@/genesis.js";
 import { NodeSdk } from "@effect/opentelemetry";
 import { PrometheusExporter } from "@opentelemetry/exporter-prometheus";

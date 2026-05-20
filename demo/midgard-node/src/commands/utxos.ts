@@ -3,17 +3,20 @@ import { DatabaseError } from "@/database/utils/common.js";
 import { Database } from "@/services/database.js";
 import {
   decodeMidgardTxOutput,
-  midgardOutputAddressText,
+  encodeMidgardAddressText,
   midgardValueToCmlValue,
-} from "@/validation/midgard-output.js";
-import { isHexString } from "@/utils.js";
+} from "@al-ft/midgard-core/codec";
+import { compareOutRefs } from "@/tx-context.js";
+import {
+  parseAddressArgument,
+  parseTxOutRefLabel,
+} from "@/commands/command-utils.js";
 import {
   CML,
   valueToAssets,
   type Assets,
   type UTxO,
 } from "@lucid-evolution/lucid";
-import { midgardAddressFromText, midgardAddressToText } from "@al-ft/midgard-core/codec";
 import { Data as EffectData, Effect } from "effect";
 
 /**
@@ -53,114 +56,6 @@ export type UtxosCommandResult = {
 };
 
 /**
- * Canonical lexicographic ordering for Cardano UTxOs.
- */
-export const canonicalUtxoOrder = (a: UTxO, b: UTxO): number => {
-  const hashOrder = a.txHash.localeCompare(b.txHash);
-  if (hashOrder !== 0) {
-    return hashOrder;
-  }
-  return a.outputIndex - b.outputIndex;
-};
-
-/**
- * Validates and normalizes a bech32 address passed to the command.
- */
-export const parseAddressArgument = (address: string): string => {
-  const normalized = address.trim();
-  if (normalized.length === 0) {
-    throw new Error("Address must not be empty.");
-  }
-
-  try {
-    return midgardAddressToText(midgardAddressFromText(normalized));
-  } catch (cause) {
-    throw new Error(`Invalid address "${normalized}": ${String(cause)}`);
-  }
-};
-
-/**
- * Parses a raw TxOutRef CBOR hex string and normalizes it to canonical CBOR.
- */
-export const parseTxOutRefCborHex = (
-  value: unknown,
-  fieldName = "txOutRef",
-): Buffer => {
-  if (typeof value !== "string") {
-    throw new Error(`${fieldName} must be a hex string.`);
-  }
-
-  const normalized = value.trim().toLowerCase();
-  if (normalized.length === 0) {
-    throw new Error(`${fieldName} must not be empty.`);
-  }
-  if (normalized.length % 2 !== 0 || !isHexString(normalized)) {
-    throw new Error(`${fieldName} must be an even-length hex string.`);
-  }
-
-  try {
-    const parsed = CML.TransactionInput.from_cbor_bytes(
-      Buffer.from(normalized, "hex"),
-    );
-    return Buffer.from(parsed.to_cbor_bytes());
-  } catch (cause) {
-    throw new Error(
-      `Invalid ${fieldName}: failed to decode TxOutRef CBOR (${String(cause)}).`,
-    );
-  }
-};
-
-/**
- * Parses a textual TxOutRef in `txHash#outputIndex` form and normalizes it to
- * canonical CBOR bytes.
- */
-export const parseTxOutRefLabel = (
-  value: unknown,
-  fieldName = "txOutRef",
-): Buffer => {
-  if (typeof value !== "string") {
-    throw new Error(`${fieldName} must be a string.`);
-  }
-
-  const normalized = value.trim().toLowerCase();
-  if (normalized.length === 0) {
-    throw new Error(`${fieldName} must not be empty.`);
-  }
-
-  const parts = normalized.split("#");
-  if (parts.length !== 2) {
-    throw new Error(
-      `${fieldName} must use the format <txHash>#<outputIndex>.`,
-    );
-  }
-
-  const [txHash, outputIndexRaw] = parts;
-  if (
-    txHash === undefined ||
-    txHash.length !== 64 ||
-    !isHexString(txHash)
-  ) {
-    throw new Error(`${fieldName}.txHash must be a 32-byte hex string.`);
-  }
-  if (outputIndexRaw === undefined || !/^\d+$/.test(outputIndexRaw)) {
-    throw new Error(`${fieldName}.outputIndex must be a non-negative integer.`);
-  }
-
-  try {
-    return Buffer.from(
-      CML.TransactionInput.new(
-        CML.TransactionHash.from_hex(txHash),
-        BigInt(outputIndexRaw),
-      ).to_cbor_bytes(),
-    );
-  } catch (cause) {
-    throw new Error(
-      `Invalid ${fieldName}: failed to encode TxOutRef (${String(cause)}).`,
-    );
-  }
-};
-
-/**
  * Parses a POST /utxos request body containing a JSON array of
  * `txHash#outputIndex` strings.
  */
@@ -173,7 +68,10 @@ export const parseTxOutRefsRequest = (body: unknown): readonly Buffer[] => {
 
   const seen = new Set<string>();
   return body.map((item, index) => {
-    const outRef = parseTxOutRefLabel(item, `txOutRefs[${index.toString()}]`);
+    const outRef = parseTxOutRefLabel(
+      item,
+      `txOutRefs[${index.toString()}]`,
+    ).cbor;
     const outRefHex = outRef.toString("hex");
     if (seen.has(outRefHex)) {
       throw new Error(
@@ -213,7 +111,7 @@ export const decodeStoredUtxo = (
       return {
         txHash: input.transaction_id().to_hex(),
         outputIndex,
-        address: midgardOutputAddressText(output),
+        address: encodeMidgardAddressText(output.address),
         assets: valueToAssets(midgardValueToCmlValue(output.value)) as Assets,
         ...(output.datum === undefined
           ? {}
@@ -275,21 +173,15 @@ export const orderStoredUtxosByOutRef = (
 };
 
 /**
- * Formats the command result as stable JSON, stringifying bigint values.
- */
-export const formatUtxosResult = (result: UtxosCommandResult): string =>
-  JSON.stringify(
-    result,
-    (_key, value) => (typeof value === "bigint" ? value.toString(10) : value),
-    2,
-  );
-
-/**
  * Reads, decodes, orders, and summarizes mempool-ledger UTxOs for an address.
  */
 export const utxosProgram = (
   address: string,
-): Effect.Effect<UtxosCommandResult, DatabaseError | UtxosCommandError, Database> =>
+): Effect.Effect<
+  UtxosCommandResult,
+  DatabaseError | UtxosCommandError,
+  Database
+> =>
   Effect.gen(function* () {
     const entries = yield* MempoolLedgerDB.retrieveByAddress(address);
     const decoded = yield* Effect.forEach(entries, (entry) =>
@@ -298,7 +190,7 @@ export const utxosProgram = (
         output: entry.output,
       }),
     );
-    const utxos = [...decoded].sort(canonicalUtxoOrder);
+    const utxos = [...decoded].sort(compareOutRefs);
 
     return {
       address,

@@ -6,7 +6,7 @@ import {
   encodeMidgardNativeTxFull,
   materializeMidgardNativeTxFromCanonical,
   computeHash32,
-  computeMidgardNativeTxIdFromFull,
+  computeMidgardNativeTxId,
   EMPTY_CBOR_LIST,
   EMPTY_CBOR_NULL,
   EMPTY_NULL_ROOT,
@@ -44,7 +44,7 @@ const makeCanonical = (): MidgardNativeTxCanonical => ({
 
 const compactValue = (tx: MidgardNativeTxFull): readonly unknown[] => [
   tx.compact.version,
-  computeMidgardNativeTxIdFromFull(tx),
+  computeMidgardNativeTxId(tx),
   tx.compact.transactionWitnessSetHash,
   0n,
 ];
@@ -89,8 +89,10 @@ describe("Midgard native v1 codec", () => {
   it("uses the compact body hash as the transaction id", () => {
     const tx = materializeMidgardNativeTxFromCanonical(makeCanonical());
 
-    expect(computeMidgardNativeTxIdFromFull(tx)).toEqual(
-      computeHash32(encodeMidgardNativeTxBodyCompact(tx.compact.transactionBody)),
+    expect(computeMidgardNativeTxId(tx)).toEqual(
+      computeHash32(
+        encodeMidgardNativeTxBodyCompact(tx.compact.transactionBody),
+      ),
     );
   });
 

@@ -8,12 +8,12 @@ import path from "node:path";
 import {
   cardanoTxBytesToMidgardNativeTxFullBytes,
   computeHash32,
-  computeMidgardNativeTxIdFromFull,
+  computeMidgardNativeTxId,
   decodeMidgardNativeTxFull,
   deriveMidgardNativeTxCompact,
   encodeMidgardNativeTxFull,
-} from "@/midgard-tx-codec/index.js";
-import { QueuedTx, runPhaseAValidation } from "@/validation/index.js";
+} from "@al-ft/midgard-core/codec";
+import { QueuedTx, runPhaseAValidation } from "@al-ft/midgard-validation";
 
 type TxFixture = {
   readonly cborHex: string;
@@ -66,7 +66,10 @@ const QUICK_MODE = process.env.BENCH_QUICK === "1";
 const WARMUP_RUNS = QUICK_MODE ? 1 : 2;
 const MEASURED_RUNS = QUICK_MODE ? 5 : 15;
 const TX_LIMIT = QUICK_MODE ? 300 : 1500;
-const CONCURRENCY = Number.parseInt(process.env.BENCH_PHASE_A_CONCURRENCY ?? "32", 10);
+const CONCURRENCY = Number.parseInt(
+  process.env.BENCH_PHASE_A_CONCURRENCY ?? "32",
+  10,
+);
 const EXPECTED_NETWORK_ID = BigInt(process.env.BENCH_NETWORK_ID ?? "0");
 
 const fixturePath = path.resolve(__dirname, "../txs/txs_0.json");
@@ -220,7 +223,7 @@ describe("native tx phase-A benchmark", () => {
     });
     const nativeExpectedNetworkId = EXPECTED_NETWORK_ID;
     const nativeQueued: QueuedTx[] = normalizedNative.map((tx, i) => ({
-      txId: computeMidgardNativeTxIdFromFull(tx),
+      txId: computeMidgardNativeTxId(tx),
       txCbor: encodeMidgardNativeTxFull(tx),
       arrivalSeq: BigInt(i),
       createdAt: new Date(0),
@@ -230,7 +233,10 @@ describe("native tx phase-A benchmark", () => {
       nativeQueued,
       nativeExpectedNetworkId,
     );
-    if (baselineNative.rejected !== 0 || baselineNative.accepted !== nativeQueued.length) {
+    if (
+      baselineNative.rejected !== 0 ||
+      baselineNative.accepted !== nativeQueued.length
+    ) {
       throw new Error(
         `Native benchmark baseline must fully validate: accepted=${baselineNative.accepted}, rejected=${baselineNative.rejected}`,
       );
@@ -252,9 +258,7 @@ describe("native tx phase-A benchmark", () => {
               baselineNative.verdictByArrival,
             )
           ) {
-            throw new Error(
-              `Native phase-A verdicts changed across runs.`,
-            );
+            throw new Error(`Native phase-A verdicts changed across runs.`);
           }
         },
         nativeQueued.length,

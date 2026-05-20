@@ -9,7 +9,7 @@ import {
   MIDGARD_POSIX_TIME_NONE,
   cardanoTxBytesToMidgardNativeTxFullBytes,
   computeHash32,
-  computeMidgardNativeTxIdFromFull,
+  computeMidgardNativeTxId,
   decodeMidgardNativeTxBodyCompact,
   decodeMidgardNativeTxCompact,
   decodeMidgardNativeTxFull,
@@ -27,7 +27,7 @@ import {
   type MidgardNativeTxFull,
   type MidgardNativeTxWitnessSetCanonical,
   verifyMidgardNativeTxFullConsistency,
-} from "@/midgard-tx-codec/index.js";
+} from "@al-ft/midgard-core/codec";
 import {
   makeCardanoTxOutput,
   makeMidgardTxOutput,
@@ -157,8 +157,10 @@ describe("midgard native tx codec - strict roundtrip", () => {
   it("uses the body hash as the canonical tx id", () => {
     const full = mkFull();
 
-    expect(computeMidgardNativeTxIdFromFull(full)).toEqual(
-      computeHash32(encodeMidgardNativeTxBodyCompact(full.compact.transactionBody)),
+    expect(computeMidgardNativeTxId(full)).toEqual(
+      computeHash32(
+        encodeMidgardNativeTxBodyCompact(full.compact.transactionBody),
+      ),
     );
   });
 
@@ -251,7 +253,7 @@ describe("midgard native tx codec - cardano compatibility bridge", () => {
           : MIDGARD_NATIVE_NETWORK_ID_NONE;
 
       expect(decoded.version).toBe(MIDGARD_NATIVE_TX_VERSION);
-      expect(computeMidgardNativeTxIdFromFull(decoded).length).toBe(32);
+      expect(computeMidgardNativeTxId(decoded).length).toBe(32);
       expect(decoded.compact.transactionWitnessSetHash.length).toBe(32);
       expect(decoded.body.networkId).toBe(expectedNetworkId);
     }
@@ -467,7 +469,7 @@ describe("midgard native tx codec - cardano compatibility bridge", () => {
     const signer = CML.PrivateKey.generate_ed25519();
     const vkeyWitness = Buffer.from(
       CML.make_vkey_witness(
-        CML.TransactionHash.from_raw_bytes(computeMidgardNativeTxIdFromFull(full)),
+        CML.TransactionHash.from_raw_bytes(computeMidgardNativeTxId(full)),
         signer,
       ).to_cbor_bytes(),
     );

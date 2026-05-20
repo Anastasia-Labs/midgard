@@ -135,43 +135,6 @@ const utxoToAuthenticUTxOBase = <TDatum>(
     return { utxo, datum, assetName };
   });
 
-const utxoToAuthenticUTxONoExtra = <TDatum>(
-  utxo: UTxO,
-  nftPolicy: string,
-  schema: any,
-): Effect.Effect<
-  AuthenticUTxO<TDatum>,
-  DataCoercionError | UnauthenticUtxoError
-> =>
-  Effect.map(
-    utxoToAuthenticUTxOBase<TDatum>(utxo, nftPolicy, schema),
-    (authenticUTxOBase) => {
-      const authenticUTxO: AuthenticUTxO<TDatum> = authenticUTxOBase;
-      return authenticUTxO;
-    },
-  );
-
-const utxoToAuthenticUTxOWithExtra = <TDatum, TExtra>(
-  utxo: UTxO,
-  nftPolicy: string,
-  schema: any,
-  extraFields: (datum: TDatum) => TExtra,
-): Effect.Effect<
-  AuthenticUTxO<TDatum, TExtra>,
-  DataCoercionError | UnauthenticUtxoError
-> =>
-  Effect.map(
-    utxoToAuthenticUTxOBase<TDatum>(utxo, nftPolicy, schema),
-    (authenticUTxOBase) => {
-      const extra: TExtra = extraFields(authenticUTxOBase.datum);
-      const authenticUTxO: AuthenticUTxO<TDatum, TExtra> = {
-        ...authenticUTxOBase,
-        ...extra,
-      };
-      return authenticUTxO;
-    },
-  );
-
 export const authenticateUTxO: {
   <TDatum>(
     utxo: UTxO,
@@ -195,18 +158,17 @@ export const authenticateUTxO: {
   nftPolicy: string,
   schema: any,
   extraFields?: (datum: TDatum) => TExtra,
-) => {
-  if (extraFields === undefined) {
-    return utxoToAuthenticUTxONoExtra<TDatum>(utxo, nftPolicy, schema);
-  }
-
-  return utxoToAuthenticUTxOWithExtra<TDatum, TExtra>(
-    utxo,
-    nftPolicy,
-    schema,
-    extraFields,
+) =>
+  Effect.map(
+    utxoToAuthenticUTxOBase<TDatum>(utxo, nftPolicy, schema),
+    (base) =>
+      extraFields === undefined
+        ? (base as AuthenticUTxO<TDatum>)
+        : ({
+            ...base,
+            ...extraFields(base.datum),
+          } as AuthenticUTxO<TDatum, TExtra>),
   );
-};
 
 /**
  * Silently drops invalid UTxOs.

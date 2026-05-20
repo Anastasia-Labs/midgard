@@ -1,8 +1,8 @@
 import { Proof, Store, Trie } from "@aiken-lang/merkle-patricia-forestry";
 import { Data, Effect, Option } from "effect";
 import { SqlClient } from "@effect/sql";
-import { CML, Data as LucidData, valueToAssets } from "@lucid-evolution/lucid";
-import type { Assets, UTxO } from "@lucid-evolution/lucid";
+import { CML } from "@lucid-evolution/lucid";
+import type { UTxO } from "@lucid-evolution/lucid";
 import { Level } from "level";
 import { Database, NodeConfig } from "@/services/index.js";
 import * as Tx from "@/database/utils/tx.js";
@@ -14,7 +14,6 @@ import * as MempoolLedgerDB from "@/database/mempoolLedger.js";
 import * as DepositsDB from "@/database/deposits.js";
 import * as WithdrawalsDB from "@/database/withdrawals.js";
 import { FileSystemError, findSpentAndProducedUTxOs } from "@/utils.js";
-import { aikenSerialisedPlutusDataCbor } from "@/utils/plutus-data-cbor.js";
 import * as FS from "fs";
 import * as SDK from "@al-ft/midgard-sdk";
 import { encodeMidgardTxOutput } from "@al-ft/lucid-midgard";
@@ -23,16 +22,15 @@ import {
   sqlErrorToDatabaseError,
 } from "@/database/utils/common.js";
 import {
-  decodeMidgardTxOutput,
-  midgardOutputAddressText,
-  midgardValueToCmlValue,
-} from "@/validation/midgard-output.js";
-import { verifyWithdrawalSignature } from "@/withdrawal-signature.js";
-import {
-  decodeMidgardAddressText,
   decodeMidgardNativeTxFull,
   encodeMidgardNativeTxCompact,
-} from "@/midgard-tx-codec/index.js";
+} from "@al-ft/midgard-core/codec";
+import {
+  classifyWithdrawal,
+  type ClassifiedWithdrawal,
+} from "./mpf/withdrawal-classification.js";
+
+export { keyValuePhasProof, keyValuePhasRoot } from "./mpf/phas.js";
 
 const ROOT_KEY = "__root__";
 const JSON_LEVEL_ENCODING_OPTS = { valueEncoding: "json" as const };
@@ -40,8 +38,6 @@ const JSON_LEVEL_ENCODING_OPTS = { valueEncoding: "json" as const };
 export const MPF_EMPTY_ROOT_HEX = SDK.EMPTY_MERKLE_TREE_ROOT;
 const MPF_EMPTY_ROOT = Buffer.from(MPF_EMPTY_ROOT_HEX, "hex");
 const MPF_INTERNAL_NULL_ROOT_HEX = "00".repeat(32);
-
-export type MpfStoreName = "ledger" | "transactions" | "scratch";
 
 export type MpfBatchOp =
   | { readonly type: "insert"; readonly key: Buffer; readonly value: Buffer }
@@ -91,7 +87,9 @@ const applyPendingBatch = (
   }, value);
 
 const encodeTransactionRootValue = (txEnvelopeCbor: Buffer): Buffer =>
-  encodeMidgardNativeTxCompact(decodeMidgardNativeTxFull(txEnvelopeCbor).compact);
+  encodeMidgardNativeTxCompact(
+    decodeMidgardNativeTxFull(txEnvelopeCbor).compact,
+  );
 
 export const COMMIT_REJECT_CODE_DECODE_FAILED = "E_COMMIT_CBOR_DESERIALIZATION";
 export const COMMIT_REJECT_CODE_WITHDRAWN_REFERENCE_INPUT =
@@ -240,16 +238,6 @@ export const deleteMpfStore = (
       }),
   }).pipe(Effect.withLogSpan(`Delete ${name} MPF store`));
 
-export const deleteTransactionsMpfStore = Effect.gen(function* () {
-  const config = yield* NodeConfig;
-  yield* deleteMpfStore(config.TRANSACTIONS_MPF_DB_PATH, "transactions");
-});
-
-export const deleteLedgerMpfStore = Effect.gen(function* () {
-  const config = yield* NodeConfig;
-  yield* deleteMpfStore(config.LEDGER_MPF_DB_PATH, "ledger");
-});
-
 export type ProcessMpfsConfig = {
   readonly currentBlockStartTime?: Date;
   readonly processedOnlyEndTime?: Date;
@@ -266,265 +254,9 @@ export type DecodedMempoolTxForCommit = {
   readonly produced: readonly Ledger.MinimalEntry[];
 };
 
-type ClassifiedWithdrawal = {
-  readonly entry: WithdrawalsDB.Entry;
-  readonly ledgerOutRef: Buffer;
-  readonly validity: WithdrawalsDB.Validity;
-  readonly validityDetail: unknown;
-  readonly settlementEventInfo: Buffer;
-  readonly shouldDeleteLedgerUtxo: boolean;
-};
-
-const LOVELACE_UNIT = "lovelace";
-const ADA_POLICY_ID = "";
-const ADA_ASSET_NAME = "";
-
-const normalizeAssets = (assets: Assets): Assets => {
-  const result: Record<string, bigint> = {};
-  for (const [unit, quantity] of Object.entries(assets)) {
-    if (quantity === 0n) {
-      continue;
-    }
-    result[unit] = (result[unit] ?? 0n) + quantity;
-  }
-  return result as Assets;
-};
-
-const assetsToValue = (assets: Assets): SDK.Value => {
-  const outer = new Map<string, Map<string, bigint>>();
-  for (const [unit, quantity] of Object.entries(normalizeAssets(assets))) {
-    const policyId =
-      unit === LOVELACE_UNIT ? ADA_POLICY_ID : unit.slice(0, 56).toLowerCase();
-    const assetName =
-      unit === LOVELACE_UNIT ? ADA_ASSET_NAME : unit.slice(56).toLowerCase();
-    const inner = outer.get(policyId) ?? new Map<string, bigint>();
-    inner.set(assetName, (inner.get(assetName) ?? 0n) + quantity);
-    outer.set(policyId, inner);
-  }
-  return outer;
-};
-
-const withdrawalValidityToSdk = (
-  validity: WithdrawalsDB.Validity,
-  detail: unknown,
-): SDK.WithdrawalValidity => {
-  if (validity !== WithdrawalsDB.Validity.SpentWithdrawalUtxo) {
-    return validity as SDK.WithdrawalValidity;
-  }
-  const detailRecord =
-    typeof detail === "object" && detail !== null
-      ? (detail as { readonly l2_tx_id?: unknown })
-      : {};
-  const l2TxId =
-    typeof detailRecord.l2_tx_id === "string"
-      ? detailRecord.l2_tx_id
-      : "00".repeat(32);
-  return {
-    SpentWithdrawalUtxo: {
-      l2_tx_id: l2TxId,
-    },
-  } as SDK.WithdrawalValidity;
-};
-
-const decodeWithdrawalInfo = (
-  entry: WithdrawalsDB.Entry,
-): Effect.Effect<SDK.WithdrawalInfo, DatabaseError, never> =>
-  Effect.try({
-    try: () =>
-      LucidData.from(
-        entry[WithdrawalsDB.Columns.RAW_EVENT_INFO].toString("hex"),
-        SDK.WithdrawalInfo,
-      ) as SDK.WithdrawalInfo,
-    catch: (cause) =>
-      new DatabaseError({
-        table: WithdrawalsDB.tableName,
-        message: "Failed to decode withdrawal event info",
-        cause,
-      }),
-  });
-
-const encodeWithdrawalSettlementInfo = (
-  entry: WithdrawalsDB.Entry,
-  validity: WithdrawalsDB.Validity,
-  validityDetail: unknown,
-): Effect.Effect<Buffer, DatabaseError, never> =>
-  Effect.gen(function* () {
-    const rawInfo = yield* decodeWithdrawalInfo(entry);
-    return yield* Effect.try({
-      try: () =>
-        Buffer.from(
-          LucidData.to(
-            {
-              ...rawInfo,
-              validity: withdrawalValidityToSdk(validity, validityDetail),
-            } satisfies SDK.WithdrawalInfo,
-            SDK.WithdrawalInfo,
-          ),
-          "hex",
-        ),
-      catch: (cause) =>
-        new DatabaseError({
-          table: WithdrawalsDB.tableName,
-          message: "Failed to encode withdrawal settlement event info",
-          cause,
-        }),
-    });
-  });
-
-const decodeLedgerUtxo = ({
-  outRef,
-  output,
-}: {
-  readonly outRef: Buffer;
-  readonly output: Buffer;
-}): Effect.Effect<UTxO, DatabaseError, never> =>
-  Effect.try({
-    try: () => {
-      const input = CML.TransactionInput.from_cbor_bytes(outRef);
-      const decodedOutput = decodeMidgardTxOutput(output);
-      const outputIndex = Number(input.index());
-      if (!Number.isSafeInteger(outputIndex)) {
-        throw new Error("output index exceeds JavaScript safe integer range");
-      }
-      return {
-        txHash: input.transaction_id().to_hex(),
-        outputIndex,
-        address: midgardOutputAddressText(decodedOutput),
-        assets: valueToAssets(
-          midgardValueToCmlValue(decodedOutput.value),
-        ) as Assets,
-        ...(decodedOutput.datum === undefined
-          ? {}
-          : { datum: decodedOutput.datum.cbor.toString("hex") }),
-      } satisfies UTxO;
-    },
-    catch: (cause) =>
-      new DatabaseError({
-        table: WithdrawalsDB.tableName,
-        message: "Failed to decode ledger UTxO for withdrawal classification",
-        cause,
-      }),
-  });
-
-const valuesEqual = (
-  left: SDK.Value,
-  right: SDK.Value,
-): Effect.Effect<boolean, DatabaseError, never> =>
-  Effect.try({
-    try: () =>
-      Buffer.from(LucidData.to(left, SDK.Value), "hex").equals(
-        Buffer.from(LucidData.to(right, SDK.Value), "hex"),
-      ),
-    catch: (cause) =>
-      new DatabaseError({
-        table: WithdrawalsDB.tableName,
-        message: "Failed to compare withdrawal value CBOR",
-        cause,
-      }),
-  });
-
-const classifyWithdrawal = ({
-  entry,
-  ledgerOutRef,
-  ledgerOutput,
-}: {
-  readonly entry: WithdrawalsDB.Entry;
-  readonly ledgerOutRef: Buffer;
-  readonly ledgerOutput: Option.Option<Buffer>;
-}): Effect.Effect<ClassifiedWithdrawal, DatabaseError, never> =>
-  Effect.gen(function* () {
-    let validity: WithdrawalsDB.Validity;
-    let validityDetail: unknown = {};
-
-    if (Option.isNone(ledgerOutput)) {
-      validity = WithdrawalsDB.Validity.NonExistentWithdrawalUtxo;
-    } else {
-      const utxo = yield* decodeLedgerUtxo({
-        outRef: ledgerOutRef,
-        output: ledgerOutput.value,
-      });
-      const paymentCredential = decodeMidgardAddressText(
-        utxo.address,
-      ).paymentCredential;
-      if (
-        paymentCredential.hash.toString("hex").toLowerCase() !==
-        entry[WithdrawalsDB.Columns.L2_OWNER].toString("hex").toLowerCase()
-      ) {
-        validity = WithdrawalsDB.Validity.IncorrectWithdrawalOwner;
-      } else {
-        const requestedValue = yield* Effect.try({
-          try: () =>
-            LucidData.from(
-              entry[WithdrawalsDB.Columns.L2_VALUE].toString("hex"),
-              SDK.Value,
-            ) as SDK.Value,
-          catch: (cause) =>
-            new DatabaseError({
-              table: WithdrawalsDB.tableName,
-              message: "Failed to decode withdrawal l2_value",
-              cause,
-            }),
-        });
-        const actualValue = assetsToValue(utxo.assets);
-        const valueMatches = yield* valuesEqual(requestedValue, actualValue);
-        if (!valueMatches) {
-          validity = WithdrawalsDB.Validity.IncorrectWithdrawalValue;
-          validityDetail = {
-            requested_value_cbor:
-              entry[WithdrawalsDB.Columns.L2_VALUE].toString("hex"),
-            actual_assets: Object.fromEntries(
-              Object.entries(normalizeAssets(utxo.assets)).map(
-                ([unit, quantity]) => [unit, quantity.toString()],
-              ),
-            ),
-          };
-        } else if (Object.keys(normalizeAssets(utxo.assets)).length > 100) {
-          validity = WithdrawalsDB.Validity.TooManyTokensInWithdrawal;
-        } else {
-          const withdrawalInfo = yield* decodeWithdrawalInfo(entry);
-          const verification = verifyWithdrawalSignature(
-            withdrawalInfo.body,
-            withdrawalInfo.signature,
-            entry[WithdrawalsDB.Columns.L2_OWNER].toString("hex"),
-          );
-          if (!verification.valid) {
-            validity = WithdrawalsDB.Validity.IncorrectWithdrawalSignature;
-            validityDetail = {
-              reason: verification.reason,
-              ...(verification.publicKeyHash === undefined
-                ? {}
-                : { public_key_hash: verification.publicKeyHash }),
-            };
-          } else {
-            validity = WithdrawalsDB.Validity.WithdrawalIsValid;
-          }
-        }
-      }
-    }
-
-    const settlementEventInfo = yield* encodeWithdrawalSettlementInfo(
-      entry,
-      validity,
-      validityDetail,
-    );
-    return {
-      entry,
-      ledgerOutRef,
-      validity,
-      validityDetail,
-      settlementEventInfo,
-      shouldDeleteLedgerUtxo:
-        validity === WithdrawalsDB.Validity.WithdrawalIsValid,
-    };
-  });
-
 export const orderDecodedMempoolTxsForLedgerApplication = (
   decodedMempoolTxs: readonly DecodedMempoolTxForCommit[],
-): Effect.Effect<
-  readonly DecodedMempoolTxForCommit[],
-  DatabaseError,
-  never
-> =>
+): Effect.Effect<readonly DecodedMempoolTxForCommit[], DatabaseError, never> =>
   Effect.gen(function* () {
     if (decodedMempoolTxs.length <= 1) {
       return decodedMempoolTxs;
@@ -1186,120 +918,6 @@ export const processMpfs = (
     };
   });
 
-export const keyValueMpfRoot = (
-  keys: Buffer[],
-  values: Buffer[],
-): Effect.Effect<string, MpfError, never> =>
-  Effect.gen(function* () {
-    if (keys.length !== values.length) {
-      return yield* Effect.fail(
-        MpfError.rootBuild(
-          "key-value",
-          new Error(
-            `Cannot build MPF root for ${keys.length} keys and ${values.length} values`,
-          ),
-        ),
-      );
-    }
-    const mpf = yield* MidgardMpf.createScratch("key-value");
-    yield* mpf.applyBatch(
-      keys.map((key, index) => ({
-        type: "insert" as const,
-        key,
-        value: values[index]!,
-      })),
-    );
-    return yield* mpf.rootHex();
-  });
-
-const toPhasTrieItem = (keyCbor: Buffer, valueCbor: Buffer) => ({
-  key: Buffer.from(
-    aikenSerialisedPlutusDataCbor(keyCbor.toString("hex")),
-    "hex",
-  ),
-  value: Buffer.from(
-    aikenSerialisedPlutusDataCbor(valueCbor.toString("hex")),
-    "hex",
-  ),
-});
-
-export const keyValuePhasRoot = (
-  keys: readonly Buffer[],
-  values: readonly Buffer[],
-): Effect.Effect<string, MpfError, never> =>
-  Effect.gen(function* () {
-    if (keys.length !== values.length) {
-      return yield* Effect.fail(
-        MpfError.phasRoot(
-          new Error(
-            `Cannot build PHAS root for ${keys.length} keys and ${values.length} values`,
-          ),
-        ),
-      );
-    }
-    if (keys.length === 0) {
-      return SDK.EMPTY_MERKLE_TREE_ROOT;
-    }
-    const mpf = yield* MidgardMpf.createScratch("phas-root");
-    yield* mpf.applyBatch(
-      keys.map((key, index) => {
-        const item = toPhasTrieItem(key, values[index]!);
-        return {
-          type: "insert" as const,
-          key: item.key,
-          value: item.value,
-        };
-      }),
-    );
-    return yield* mpf.rootHex();
-  });
-
-export const keyValuePhasProof = (
-  keys: readonly Buffer[],
-  values: readonly Buffer[],
-  key: Buffer,
-): Effect.Effect<SDK.Proof, MpfError, never> =>
-  Effect.gen(function* () {
-    if (keys.length !== values.length) {
-      return yield* Effect.fail(
-        MpfError.phasRoot(
-          new Error(
-            `Cannot build PHAS proof for ${keys.length} keys and ${values.length} values`,
-          ),
-        ),
-      );
-    }
-    if (keys.length === 0) {
-      return yield* Effect.fail(
-        MpfError.phasRoot(
-          new Error("Cannot build a PHAS membership proof for an empty tree"),
-        ),
-      );
-    }
-    const mpf = yield* MidgardMpf.createScratch("phas-proof");
-    yield* mpf.applyBatch(
-      keys.map((itemKey, index) => {
-        const item = toPhasTrieItem(itemKey, values[index]!);
-        return {
-          type: "insert" as const,
-          key: item.key,
-          value: item.value,
-        };
-      }),
-    );
-    const proof = yield* mpf.prove(
-      Buffer.from(aikenSerialisedPlutusDataCbor(key.toString("hex")), "hex"),
-    );
-    return yield* Effect.try({
-      try: () =>
-        LucidData.from(
-          proof.cbor.toString("hex"),
-          SDK.Proof as never,
-        ) as SDK.Proof,
-      catch: (e) => MpfError.phasRoot(e),
-    });
-  });
-
 export const withMpfRootTransaction = <A, E, R>(
   mpf: MidgardMpf,
   eff: Effect.Effect<A, E, R>,
@@ -1314,6 +932,35 @@ export const withMpfRootTransaction = <A, E, R>(
         }),
       ),
     );
+  });
+
+export const withMpfRootTransactions = <A, E, R>(
+  mpfs: readonly MidgardMpf[],
+  eff: Effect.Effect<A, E, R>,
+  shouldPreserveRoots: (value: A) => boolean,
+): Effect.Effect<A, E | MpfError, R> =>
+  Effect.gen(function* () {
+    const beforeRoots = yield* Effect.forEach(mpfs, (mpf) => mpf.root(), {
+      concurrency: "unbounded",
+    });
+    const resetRoots = Effect.forEach(
+      mpfs,
+      (mpf, index) => mpf.resetToRoot(beforeRoots[index]!),
+      {
+        discard: true,
+        concurrency: "unbounded",
+      },
+    );
+
+    const result = yield* Effect.either(eff);
+    if (result._tag === "Left") {
+      yield* resetRoots;
+      return yield* Effect.fail(result.left);
+    }
+    if (!shouldPreserveRoots(result.right)) {
+      yield* resetRoots;
+    }
+    return result.right;
   });
 
 export type MpfProof = {
@@ -1891,42 +1538,6 @@ const readPersistedRoot = (
       return parseStoredRootHex(rootHex);
     },
     catch: (e) => MpfError.rootNotSet("persisted", e),
-  });
-
-export const openMpfStore = (
-  storeName: MpfStoreName,
-): Effect.Effect<MidgardMpf, MpfError, NodeConfig> =>
-  Effect.gen(function* () {
-    const config = yield* NodeConfig;
-    if (storeName === "ledger") {
-      return yield* MidgardMpf.create("ledger", config.LEDGER_MPF_DB_PATH);
-    }
-    if (storeName === "transactions") {
-      return yield* MidgardMpf.create(
-        "transactions",
-        config.TRANSACTIONS_MPF_DB_PATH,
-      );
-    }
-    return yield* MidgardMpf.createScratch("scratch");
-  });
-
-export const loadMpf = (
-  storeName: MpfStoreName,
-  root: Buffer,
-): Effect.Effect<MidgardMpf, MpfError, NodeConfig> =>
-  Effect.gen(function* () {
-    const config = yield* NodeConfig;
-    if (storeName === "ledger") {
-      return yield* MidgardMpf.load("ledger", config.LEDGER_MPF_DB_PATH, root);
-    }
-    if (storeName === "transactions") {
-      return yield* MidgardMpf.load(
-        "transactions",
-        config.TRANSACTIONS_MPF_DB_PATH,
-        root,
-      );
-    }
-    return yield* MidgardMpf.createScratch("scratch");
   });
 
 export const emptyRootHexProgram: Effect.Effect<string, MpfError> =

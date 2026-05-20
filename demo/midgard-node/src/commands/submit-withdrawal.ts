@@ -2,7 +2,7 @@ import * as SDK from "@al-ft/midgard-sdk";
 import { Effect } from "effect";
 import { assetsToValue } from "@/transactions/reserve-payout.js";
 import * as SubmitWithdrawalTx from "@/transactions/submit-withdrawal.js";
-import { decodeMidgardAddressText } from "@/midgard-tx-codec/index.js";
+import { decodeMidgardAddressText } from "@al-ft/midgard-core/codec";
 import {
   fetchReferenceScriptUtxosProgram,
   referenceScriptByName,
@@ -14,10 +14,12 @@ import {
   fetchNodeUtxosByOutRefs,
   formatJson,
   lucidUtxoFromNodeUtxo,
-  parseCardanoDatum,
   parseNodeEndpoint,
-  parseTxOutRefLabel,
   resolveWalletSeedPhrase,
+} from "@/commands/command-utils.js";
+import {
+  parseCardanoDatum,
+  parseWithdrawalTxOutRefLabel,
 } from "@/commands/withdrawal-utils.js";
 import { Lucid, MidgardContracts, NodeConfig } from "@/services/index.js";
 import { signWithdrawalBody } from "@/withdrawal-signature.js";
@@ -95,7 +97,10 @@ export const submitWithdrawalCommandProgram = ({
     const lucidService = yield* Lucid;
     const contracts = yield* MidgardContracts;
 
-    const parsedOutRef = parseTxOutRefLabel(config.l2OutRef, "--l2-out-ref");
+    const parsedOutRef = parseWithdrawalTxOutRefLabel(
+      config.l2OutRef,
+      "--l2-out-ref",
+    );
     const nodeEndpoint = parseNodeEndpoint(
       config.endpoint ?? defaultMidgardNodeEndpoint(),
     );
@@ -196,10 +201,6 @@ export const submitWithdrawalCommandProgram = ({
       inclusionTime: submitted.metadata.inclusionTime,
     };
   });
-
-export const formatSubmitWithdrawalResult = (
-  result: SubmitWithdrawalCliResult,
-): string => formatJson(result);
 
 export const __submitWithdrawalTest = {
   lucidUtxoFromNodeUtxo,

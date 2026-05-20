@@ -63,7 +63,7 @@ describe("debug scheduler live", () => {
       const registered = await Promise.all(
         registeredUtxos.map(async (beacon) => {
           const utxo = beacon.utxo;
-          const node = await Effect.runPromise(SDK.getNodeDatumFromUTxO(utxo));
+          const node = await Effect.runPromise(SDK.getLinkedListNodeViewFromUTxO(utxo));
           return {
             outRef: `${utxo.txHash}#${utxo.outputIndex}`,
             assetNames: Object.keys(utxo.assets),
@@ -78,7 +78,7 @@ describe("debug scheduler live", () => {
       const active = await Promise.all(
         activeUtxos.map(async (beacon) => {
           const utxo = beacon.utxo;
-          const node = await Effect.runPromise(SDK.getNodeDatumFromUTxO(utxo));
+          const node = await Effect.runPromise(SDK.getLinkedListNodeViewFromUTxO(utxo));
           return {
             outRef: `${utxo.txHash}#${utxo.outputIndex}`,
             assetNames: Object.keys(utxo.assets),

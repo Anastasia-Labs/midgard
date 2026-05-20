@@ -1,11 +1,10 @@
 import { describe, expect, beforeAll } from "vitest";
 import fs from "node:fs";
 import path from "node:path";
-import { Data as LucidData, toHex } from "@lucid-evolution/lucid";
+import { toHex } from "@lucid-evolution/lucid";
 import { it } from "@effect/vitest";
 import { Duration, Effect, Fiber, TestClock } from "effect";
 import { SqlClient } from "@effect/sql";
-import * as SDK from "@al-ft/midgard-sdk";
 import { Database } from "../src/services/database.js";
 import { Globals } from "../src/services/globals.js";
 import { NodeConfig } from "../src/services/config.js";
@@ -41,12 +40,18 @@ import {
 import { projectDepositsToMempoolLedger } from "../src/fibers/project-deposits-to-mempool-ledger.js";
 import { ProcessedTx } from "../src/utils.js";
 import { resolveIncludedDepositEntriesForWindow } from "../src/workers/utils/mpf.js";
-import { provideDatabaseLayers } from "./utils.js";
+import {
+  deterministicFixtureBytes,
+  deterministicFixtureOutputReferenceId,
+  deterministicFixtureTxHash,
+  expectLedgerUtxos,
+  provideDatabaseLayers,
+} from "./utils.js";
 import {
   cardanoTxBytesToMidgardNativeTxFullBytes,
-  computeMidgardNativeTxIdFromFull,
+  computeMidgardNativeTxId,
   decodeMidgardNativeTxFull,
-} from "../src/midgard-tx-codec/index.js";
+} from "@al-ft/midgard-core/codec";
 import {
   DepositStatusCommandError,
   resolveDepositStatusProgram,
@@ -74,11 +79,17 @@ const flushAll = Effect.gen(function* () {
   );
 });
 
-/**
- * Generates random bytes for database test fixtures.
- */
-const randomBytes = (n: number) =>
-  Buffer.from(Array.from({ length: n }, () => Math.floor(Math.random() * 255)));
+const databaseFixtureBytes = (label: string, length: number): Buffer =>
+  deterministicFixtureBytes(`database:${label}`, length);
+
+const databaseTxHash = (label: string): Buffer =>
+  deterministicFixtureTxHash(`database:${label}`);
+
+const databaseOutputReferenceId = (
+  label: string,
+  outputIndex: number | bigint = 0n,
+): Buffer =>
+  deterministicFixtureOutputReferenceId(`database:${label}`, outputIndex);
 
 beforeAll(async () => {
   await Effect.runPromise(
@@ -223,7 +234,9 @@ describe("StateQueueMutationLeasesDB", () => {
           );
 
           const sql = yield* SqlClient.SqlClient;
-          const rows = yield* sql<{ status: StateQueueMutationLeasesDB.Status }>`
+          const rows = yield* sql<{
+            status: StateQueueMutationLeasesDB.Status;
+          }>`
             SELECT status FROM ${sql(StateQueueMutationLeasesDB.tableName)}
             WHERE holder = ${"long-running-work"}
             ORDER BY acquired_at DESC
@@ -323,18 +336,18 @@ describe("MempoolDB", () => {
         Effect.gen(function* () {
           yield* flushAll;
 
-          const pTxId1 = randomBytes(32);
-          const pTx1 = randomBytes(64);
-          const pSpent1 = randomBytes(32);
+          const pTxId1 = databaseTxHash("mempool.tx-1");
+          const pTx1 = databaseFixtureBytes("mempool.tx-1-cbor", 64);
+          const pSpent1 = databaseFixtureBytes("mempool.tx-1-spent", 32);
           const processedTx1: ProcessedTx = {
             txId: pTxId1,
             txCbor: pTx1,
             spent: [pSpent1],
             produced: [ledgerEntry1],
           };
-          const pTxId2 = randomBytes(32);
-          const pTx2 = randomBytes(64);
-          const pSpent2 = randomBytes(32);
+          const pTxId2 = databaseTxHash("mempool.tx-2");
+          const pTx2 = databaseFixtureBytes("mempool.tx-2-cbor", 64);
+          const pSpent2 = databaseFixtureBytes("mempool.tx-2-spent", 32);
           const processedTx2: ProcessedTx = {
             txId: pTxId2,
             txCbor: pTx2,
@@ -615,18 +628,14 @@ describe("LatestLedgerDB", () => {
 
         // retrieve all
         const all = yield* LatestLedgerDB.retrieve;
-        expect(
-          new Set(all.map((e) => removeTimestampFromLedgerEntry(e))),
-        ).toStrictEqual(new Set([ledgerEntry1, ledgerEntry2]));
+        expectLedgerUtxos(all, [ledgerEntry1, ledgerEntry2]);
 
         // clear UTxOs
         yield* LatestLedgerDB.clearUTxOs([
           ledgerEntry1[LedgerUtils.Columns.OUTREF],
         ]);
         const afterClear = yield* LatestLedgerDB.retrieve;
-        expect(
-          new Set(afterClear.map((e) => removeTimestampFromLedgerEntry(e))),
-        ).toStrictEqual(new Set([ledgerEntry2]));
+        expectLedgerUtxos(afterClear, [ledgerEntry2]);
 
         // clear all
         yield* LatestLedgerDB.clear;
@@ -657,7 +666,7 @@ describe("MempoolLedgerDB", () => {
           // retrieve by outrefs
           const byOutRefs = yield* MempoolLedgerDB.retrieveByTxOutRefs([
             ledgerEntry2[LedgerUtils.Columns.OUTREF],
-            randomBytes(36),
+            databaseFixtureBytes("mempool-ledger.missing-outref", 36),
           ]);
           expect(
             new Set(byOutRefs.map((e) => removeTimestampFromLedgerEntry(e))),
@@ -730,9 +739,9 @@ describe("AddressHistoryDB", () => {
       Effect.gen(function* () {
         yield* flushAll;
 
-        const pTxId1 = randomBytes(32);
-        const pTx1 = randomBytes(64);
-        const pSpent1 = randomBytes(32);
+        const pTxId1 = databaseTxHash("address-history.tx-1");
+        const pTx1 = databaseFixtureBytes("address-history.tx-1-cbor", 64);
+        const pSpent1 = databaseFixtureBytes("address-history.tx-1-spent", 32);
         const processedTx1: ProcessedTx = {
           txId: pTxId1,
           txCbor: pTx1,
@@ -743,9 +752,9 @@ describe("AddressHistoryDB", () => {
           [LedgerUtils.Columns.TX_ID]: pTxId1,
           [LedgerUtils.Columns.ADDRESS]: address1,
         };
-        const pTxId2 = randomBytes(32);
-        const pTx2 = randomBytes(64);
-        const pSpent2 = randomBytes(32);
+        const pTxId2 = databaseTxHash("address-history.tx-2");
+        const pTx2 = databaseFixtureBytes("address-history.tx-2-cbor", 64);
+        const pSpent2 = databaseFixtureBytes("address-history.tx-2-spent", 32);
         const processedTx2: ProcessedTx = {
           txId: pTxId2,
           txCbor: pTx2,
@@ -824,22 +833,39 @@ describe("AddressHistoryDB", () => {
       Effect.gen(function* () {
         yield* flushAll;
         const thisWalletAddress = address2;
-        const firstTxId = randomBytes(32);
+        const firstTxId = databaseTxHash("address-history.pipeline.tx-1");
         const firstProcessedTx: ProcessedTx = {
           txId: firstTxId,
-          txCbor: randomBytes(64),
-          spent: [randomBytes(36)],
+          txCbor: databaseFixtureBytes(
+            "address-history.pipeline.tx-1-cbor",
+            64,
+          ),
+          spent: [
+            databaseFixtureBytes("address-history.pipeline.tx-1-spent", 36),
+          ],
           produced: [
             {
               [LedgerUtils.Columns.TX_ID]: firstTxId,
-              [LedgerUtils.Columns.OUTREF]: randomBytes(36),
-              [LedgerUtils.Columns.OUTPUT]: randomBytes(80),
+              [LedgerUtils.Columns.OUTREF]: databaseFixtureBytes(
+                "address-history.pipeline.tx-1-output-1-outref",
+                36,
+              ),
+              [LedgerUtils.Columns.OUTPUT]: databaseFixtureBytes(
+                "address-history.pipeline.tx-1-output-1",
+                80,
+              ),
               [LedgerUtils.Columns.ADDRESS]: address1,
             },
             {
               [LedgerUtils.Columns.TX_ID]: firstTxId,
-              [LedgerUtils.Columns.OUTREF]: randomBytes(36),
-              [LedgerUtils.Columns.OUTPUT]: randomBytes(80),
+              [LedgerUtils.Columns.OUTREF]: databaseFixtureBytes(
+                "address-history.pipeline.tx-1-output-2-outref",
+                36,
+              ),
+              [LedgerUtils.Columns.OUTPUT]: databaseFixtureBytes(
+                "address-history.pipeline.tx-1-output-2",
+                80,
+              ),
               [LedgerUtils.Columns.ADDRESS]: thisWalletAddress,
             },
           ],
@@ -855,22 +881,39 @@ describe("AddressHistoryDB", () => {
 
         // two outputs for the same address should still produce one unique row
         yield* flushAll;
-        const secondTxId = randomBytes(32);
+        const secondTxId = databaseTxHash("address-history.pipeline.tx-2");
         const secondProcessedTx: ProcessedTx = {
           txId: secondTxId,
-          txCbor: randomBytes(64),
-          spent: [randomBytes(36)],
+          txCbor: databaseFixtureBytes(
+            "address-history.pipeline.tx-2-cbor",
+            64,
+          ),
+          spent: [
+            databaseFixtureBytes("address-history.pipeline.tx-2-spent", 36),
+          ],
           produced: [
             {
               [LedgerUtils.Columns.TX_ID]: secondTxId,
-              [LedgerUtils.Columns.OUTREF]: randomBytes(36),
-              [LedgerUtils.Columns.OUTPUT]: randomBytes(80),
+              [LedgerUtils.Columns.OUTREF]: databaseFixtureBytes(
+                "address-history.pipeline.tx-2-output-1-outref",
+                36,
+              ),
+              [LedgerUtils.Columns.OUTPUT]: databaseFixtureBytes(
+                "address-history.pipeline.tx-2-output-1",
+                80,
+              ),
               [LedgerUtils.Columns.ADDRESS]: thisWalletAddress,
             },
             {
               [LedgerUtils.Columns.TX_ID]: secondTxId,
-              [LedgerUtils.Columns.OUTREF]: randomBytes(36),
-              [LedgerUtils.Columns.OUTPUT]: randomBytes(80),
+              [LedgerUtils.Columns.OUTREF]: databaseFixtureBytes(
+                "address-history.pipeline.tx-2-output-2-outref",
+                36,
+              ),
+              [LedgerUtils.Columns.OUTPUT]: databaseFixtureBytes(
+                "address-history.pipeline.tx-2-output-2",
+                80,
+              ),
               [LedgerUtils.Columns.ADDRESS]: thisWalletAddress,
             },
           ],
@@ -893,13 +936,16 @@ describe("DepositsDB and MempoolLedgerDB exact-once projection", () => {
       Effect.gen(function* () {
         yield* flushAll;
 
-        const eventId = makeDepositEventId(0);
+        const eventId = databaseOutputReferenceId("deposits.payload-drift", 0);
         const first = makeDepositEntry({
           [DepositsDB.Columns.ID]: eventId,
         });
         const conflicting = makeDepositEntry({
           [DepositsDB.Columns.ID]: eventId,
-          [DepositsDB.Columns.INFO]: randomBytes(48),
+          [DepositsDB.Columns.INFO]: databaseFixtureBytes(
+            "deposits.payload-drift.conflicting-info",
+            48,
+          ),
         });
 
         yield* DepositsDB.insertEntries([first]);
@@ -949,20 +995,28 @@ describe("DepositsDB and MempoolLedgerDB exact-once projection", () => {
         Effect.gen(function* () {
           yield* flushAll;
 
-          const sharedCardanoTxHash = randomBytes(32);
+          const sharedCardanoTxHash = databaseTxHash(
+            "deposits.shared-cardano-tx.deterministic-order",
+          );
           const first = makeDepositEntry({
             [DepositsDB.Columns.INCLUSION_TIME]: new Date(
               "2026-04-13T17:00:00.000Z",
             ),
             [DepositsDB.Columns.DEPOSIT_L1_TX_HASH]: sharedCardanoTxHash,
-            [DepositsDB.Columns.ID]: makeDepositEventId(0),
+            [DepositsDB.Columns.ID]: databaseOutputReferenceId(
+              "deposits.deterministic-order.first",
+              0,
+            ),
           });
           const second = makeDepositEntry({
             [DepositsDB.Columns.INCLUSION_TIME]: new Date(
               "2026-04-13T17:00:01.000Z",
             ),
             [DepositsDB.Columns.DEPOSIT_L1_TX_HASH]: sharedCardanoTxHash,
-            [DepositsDB.Columns.ID]: makeDepositEventId(1),
+            [DepositsDB.Columns.ID]: databaseOutputReferenceId(
+              "deposits.deterministic-order.second",
+              1,
+            ),
           });
           yield* DepositsDB.insertEntries([second, first]);
 
@@ -991,14 +1045,22 @@ describe("DepositsDB and MempoolLedgerDB exact-once projection", () => {
         Effect.gen(function* () {
           yield* flushAll;
 
-          const sharedCardanoTxHash = randomBytes(32);
+          const sharedCardanoTxHash = databaseTxHash(
+            "deposits.shared-cardano-tx.ambiguous-status",
+          );
           yield* DepositsDB.insertEntries([
             makeDepositEntry({
-              [DepositsDB.Columns.ID]: makeDepositEventId(0),
+              [DepositsDB.Columns.ID]: databaseOutputReferenceId(
+                "deposits.ambiguous.first",
+                0,
+              ),
               [DepositsDB.Columns.DEPOSIT_L1_TX_HASH]: sharedCardanoTxHash,
             }),
             makeDepositEntry({
-              [DepositsDB.Columns.ID]: makeDepositEventId(1),
+              [DepositsDB.Columns.ID]: databaseOutputReferenceId(
+                "deposits.ambiguous.second",
+                1,
+              ),
               [DepositsDB.Columns.DEPOSIT_L1_TX_HASH]: sharedCardanoTxHash,
             }),
           ]);
@@ -1029,13 +1091,21 @@ describe("DepositsDB and MempoolLedgerDB exact-once projection", () => {
         Effect.gen(function* () {
           yield* flushAll;
 
-          const sharedCardanoTxHash = randomBytes(32);
+          const sharedCardanoTxHash = databaseTxHash(
+            "deposits.shared-cardano-tx.event-id-disambiguates",
+          );
           const first = makeDepositEntry({
-            [DepositsDB.Columns.ID]: makeDepositEventId(0),
+            [DepositsDB.Columns.ID]: databaseOutputReferenceId(
+              "deposits.disambiguates.first",
+              0,
+            ),
             [DepositsDB.Columns.DEPOSIT_L1_TX_HASH]: sharedCardanoTxHash,
           });
           const second = makeDepositEntry({
-            [DepositsDB.Columns.ID]: makeDepositEventId(1),
+            [DepositsDB.Columns.ID]: databaseOutputReferenceId(
+              "deposits.disambiguates.second",
+              1,
+            ),
             [DepositsDB.Columns.DEPOSIT_L1_TX_HASH]: sharedCardanoTxHash,
           });
           yield* DepositsDB.insertEntries([first, second]);
@@ -1098,10 +1168,14 @@ describe("DepositsDB and MempoolLedgerDB exact-once projection", () => {
         yield* flushAll;
 
         const pastDeposit = makeDepositEntry({
-          [DepositsDB.Columns.INCLUSION_TIME]: new Date(Date.now() - 1_000),
+          [DepositsDB.Columns.INCLUSION_TIME]: new Date(
+            "2020-01-01T00:00:00.000Z",
+          ),
         });
         const futureDeposit = makeDepositEntry({
-          [DepositsDB.Columns.INCLUSION_TIME]: new Date(Date.now() + 60_000),
+          [DepositsDB.Columns.INCLUSION_TIME]: new Date(
+            "2099-01-01T00:00:00.000Z",
+          ),
         });
         yield* DepositsDB.insertEntries([pastDeposit, futureDeposit]);
 
@@ -1142,7 +1216,10 @@ describe("DepositsDB and MempoolLedgerDB exact-once projection", () => {
 
           const conflictingEntry = {
             ...mempoolEntry,
-            [MempoolLedgerDB.Columns.OUTPUT]: randomBytes(80),
+            [MempoolLedgerDB.Columns.OUTPUT]: databaseFixtureBytes(
+              "deposits.projection-reconciliation.conflicting-output",
+              80,
+            ),
           };
 
           const result = yield* Effect.either(
@@ -1161,7 +1238,10 @@ describe("DepositsDB and MempoolLedgerDB exact-once projection", () => {
           yield* flushAll;
 
           const deposit = makeDepositEntry();
-          const headerHash = randomBytes(28);
+          const headerHash = databaseFixtureBytes(
+            "deposits.projected-header",
+            28,
+          );
           yield* DepositsDB.insertEntries([deposit]);
           yield* DepositsDB.markAwaitingAsProjected([
             deposit[DepositsDB.Columns.ID],
@@ -1226,7 +1306,7 @@ describe("DepositsDB and MempoolLedgerDB exact-once projection", () => {
         Effect.gen(function* () {
           yield* flushAll;
 
-          const currentBlockStartTime = new Date(Date.now());
+          const currentBlockStartTime = new Date("2026-04-13T17:28:10.000Z");
           const overdueProjectedDeposit = makeDepositEntry({
             [DepositsDB.Columns.INCLUSION_TIME]: new Date(
               currentBlockStartTime.getTime() - 1_000,
@@ -1260,7 +1340,7 @@ describe("DepositsDB and MempoolLedgerDB exact-once projection", () => {
         Effect.gen(function* () {
           yield* flushAll;
 
-          const currentBlockStartTime = new Date(Date.now());
+          const currentBlockStartTime = new Date("2026-04-13T17:28:10.000Z");
           const overdueAwaitingDeposit = makeDepositEntry({
             [DepositsDB.Columns.INCLUSION_TIME]: new Date(
               currentBlockStartTime.getTime() - 1_000,
@@ -1283,21 +1363,21 @@ describe("DepositsDB and MempoolLedgerDB exact-once projection", () => {
   );
 });
 
-const blockHeader1 = randomBytes(32);
-const blockHeader2 = randomBytes(32);
+const blockHeader1 = databaseFixtureBytes("blocks.header-1", 32);
+const blockHeader2 = databaseFixtureBytes("blocks.header-2", 32);
 
-const txId1 = randomBytes(32);
-const txId2 = randomBytes(32);
+const txId1 = databaseTxHash("shared.tx-1");
+const txId2 = databaseTxHash("shared.tx-2");
 
-const tx1 = randomBytes(64);
-const tx2 = randomBytes(64);
-const tx3 = randomBytes(64);
+const tx1 = databaseFixtureBytes("shared.tx-1-cbor", 64);
+const tx2 = databaseFixtureBytes("shared.tx-2-cbor", 64);
+const tx3 = databaseFixtureBytes("shared.tx-3-cbor", 64);
 
-const outref1 = randomBytes(36);
-const outref2 = randomBytes(36);
+const outref1 = databaseFixtureBytes("shared.outref-1", 36);
+const outref2 = databaseFixtureBytes("shared.outref-2", 36);
 
-const output1 = randomBytes(80);
-const output2 = randomBytes(80);
+const output1 = databaseFixtureBytes("shared.output-1", 80);
+const output2 = databaseFixtureBytes("shared.output-2", 80);
 
 type TxFixture = {
   readonly cborHex: string;
@@ -1313,9 +1393,7 @@ const makeValidNativeImmutableEntry = (): TxUtils.Entry => {
   const nativeTx = cardanoTxBytesToMidgardNativeTxFullBytes(
     Buffer.from(firstFixture.cborHex, "hex"),
   );
-  const txId = computeMidgardNativeTxIdFromFull(
-    decodeMidgardNativeTxFull(nativeTx),
-  );
+  const txId = computeMidgardNativeTxId(decodeMidgardNativeTxFull(nativeTx));
   return {
     [TxUtils.Columns.TX_ID]: txId,
     [TxUtils.Columns.TX]: nativeTx,
@@ -1371,36 +1449,35 @@ const removeTimestampFromLedgerEntry = (
   };
 };
 
-const makeDepositEventId = (outputIndex = 0): Buffer =>
-  Buffer.from(
-    LucidData.to(
-      {
-        transactionId: randomBytes(32).toString("hex"),
-        outputIndex: BigInt(outputIndex),
-      },
-      SDK.OutputReference,
-    ),
-    "hex",
-  );
+const depositFixtureBaseTimeMs = Date.parse("2026-04-13T17:28:10.000Z");
+let depositFixtureSequence = 0;
 
 const makeDepositEntry = (
   overrides: Partial<DepositsDB.Entry> = {},
 ): DepositsDB.Entry => {
+  const fixtureIndex = depositFixtureSequence;
+  depositFixtureSequence += 1;
+  const fixtureLabel = `entry-${fixtureIndex.toString().padStart(4, "0")}`;
   const eventId =
     overrides[DepositsDB.Columns.ID] ??
-    makeDepositEventId(Math.floor(Math.random() * 10));
+    databaseOutputReferenceId(`deposits.${fixtureLabel}`, fixtureIndex);
   return {
     [DepositsDB.Columns.ID]: eventId,
     [DepositsDB.Columns.INFO]:
-      overrides[DepositsDB.Columns.INFO] ?? randomBytes(48),
+      overrides[DepositsDB.Columns.INFO] ??
+      databaseFixtureBytes(`deposits.${fixtureLabel}.info`, 48),
     [DepositsDB.Columns.INCLUSION_TIME]:
-      overrides[DepositsDB.Columns.INCLUSION_TIME] ?? new Date(),
+      overrides[DepositsDB.Columns.INCLUSION_TIME] ??
+      new Date(depositFixtureBaseTimeMs + fixtureIndex),
     [DepositsDB.Columns.DEPOSIT_L1_TX_HASH]:
-      overrides[DepositsDB.Columns.DEPOSIT_L1_TX_HASH] ?? randomBytes(32),
+      overrides[DepositsDB.Columns.DEPOSIT_L1_TX_HASH] ??
+      databaseTxHash(`deposits.${fixtureLabel}.l1-tx`),
     [DepositsDB.Columns.LEDGER_TX_ID]:
-      overrides[DepositsDB.Columns.LEDGER_TX_ID] ?? randomBytes(32),
+      overrides[DepositsDB.Columns.LEDGER_TX_ID] ??
+      databaseTxHash(`deposits.${fixtureLabel}.ledger-tx`),
     [DepositsDB.Columns.LEDGER_OUTPUT]:
-      overrides[DepositsDB.Columns.LEDGER_OUTPUT] ?? randomBytes(80),
+      overrides[DepositsDB.Columns.LEDGER_OUTPUT] ??
+      databaseFixtureBytes(`deposits.${fixtureLabel}.ledger-output`, 80),
     [DepositsDB.Columns.LEDGER_ADDRESS]:
       overrides[DepositsDB.Columns.LEDGER_ADDRESS] ?? address1,
     [DepositsDB.Columns.PROJECTED_HEADER_HASH]:

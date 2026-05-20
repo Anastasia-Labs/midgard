@@ -261,10 +261,6 @@ export const insertEntries = (
     sqlErrorToDatabaseError(tableName, "Failed to insert withdrawal UTxOs"),
   );
 
-export const insertEntry = (
-  entry: Entry,
-): Effect.Effect<void, DatabaseError, Database> => insertEntries([entry]);
-
 export const retrieveAllEntries = (): Effect.Effect<
   readonly Entry[],
   DatabaseError,

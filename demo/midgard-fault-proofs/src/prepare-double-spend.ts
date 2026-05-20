@@ -12,7 +12,7 @@ import {
   EMPTY_NULL_ROOT,
   MIDGARD_NATIVE_TX_VERSION,
   MIDGARD_POSIX_TIME_NONE,
-  computeMidgardNativeTxIdFromFull,
+  computeMidgardNativeTxId,
   decodeMidgardNativeByteListPreimage,
   decodeMidgardNativeTxFull,
   encodeCbor,
@@ -21,7 +21,8 @@ import {
   materializeMidgardNativeTxFromCanonical,
   type MidgardNativeTxFull,
 } from "@al-ft/midgard-core";
-import { nativeTxFromCoreCompact, parseHex } from "./submit-step-01.js";
+import { parseHex, parseJsonText, stringifyJson } from "./json-file.js";
+import { nativeTxFromCoreCompact } from "./submit-step-01.js";
 
 type FetchLike = (input: string | URL, init?: RequestInit) => Promise<Response>;
 
@@ -136,11 +137,10 @@ const readJson = async (
   label: string,
 ): Promise<unknown> => {
   const text = await response.text();
-  try {
-    return JSON.parse(text) as unknown;
-  } catch (cause) {
-    throw new Error(`${label} did not return valid JSON: ${String(cause)}`);
-  }
+  return parseJsonText(
+    text,
+    (cause) => `${label} did not return valid JSON: ${String(cause)}`,
+  );
 };
 
 const fetchJson = async (
@@ -223,12 +223,10 @@ export const readNodeTransactionPayloadsFile = async (
   path: string,
 ): Promise<readonly NodeTransactionPayload[]> => {
   const text = await readFile(path, "utf8");
-  let json: unknown;
-  try {
-    json = JSON.parse(text) as unknown;
-  } catch (cause) {
-    throw new Error(`Failed to parse ${path} as JSON: ${String(cause)}`);
-  }
+  const json = parseJsonText(
+    text,
+    (cause) => `Failed to parse ${path} as JSON: ${String(cause)}`,
+  );
   return parseNodeTransactionPayloads(json, path);
 };
 
@@ -265,30 +263,28 @@ const transactionInputCbor = (txHash: string, outputIndex: bigint): Buffer =>
     ).to_cbor_bytes(),
   );
 
-const byteList = (items: readonly Buffer[]): Buffer => encodeCbor(items);
-
 const sampleNativeTx = (
   inputs: readonly Buffer[],
   fee: bigint,
 ): MidgardNativeTxFull => {
   const body = {
-    spendInputsPreimageCbor: byteList(inputs),
-    referenceInputsPreimageCbor: EMPTY_CBOR_LIST,
-    outputsPreimageCbor: EMPTY_CBOR_LIST,
+    spendInputsPreimageCbor: encodeCbor(inputs),
+    referenceInputsPreimageCbor: Buffer.from(EMPTY_CBOR_LIST),
+    outputsPreimageCbor: Buffer.from(EMPTY_CBOR_LIST),
     fee,
     validityIntervalStart: MIDGARD_POSIX_TIME_NONE,
     validityIntervalEnd: MIDGARD_POSIX_TIME_NONE,
-    requiredObserversPreimageCbor: EMPTY_CBOR_LIST,
-    requiredSignersPreimageCbor: EMPTY_CBOR_LIST,
-    mintPreimageCbor: EMPTY_CBOR_LIST,
-    scriptIntegrityHash: EMPTY_NULL_ROOT,
-    auxiliaryDataHash: EMPTY_NULL_ROOT,
+    requiredObserversPreimageCbor: Buffer.from(EMPTY_CBOR_LIST),
+    requiredSignersPreimageCbor: Buffer.from(EMPTY_CBOR_LIST),
+    mintPreimageCbor: Buffer.from(EMPTY_CBOR_LIST),
+    scriptIntegrityHash: Buffer.from(EMPTY_NULL_ROOT),
+    auxiliaryDataHash: Buffer.from(EMPTY_NULL_ROOT),
     networkId: 0n,
   };
   const witnessSet = {
-    addrTxWitsPreimageCbor: EMPTY_CBOR_LIST,
-    scriptTxWitsPreimageCbor: EMPTY_CBOR_LIST,
-    redeemerTxWitsPreimageCbor: EMPTY_CBOR_LIST,
+    addrTxWitsPreimageCbor: Buffer.from(EMPTY_CBOR_LIST),
+    scriptTxWitsPreimageCbor: Buffer.from(EMPTY_CBOR_LIST),
+    redeemerTxWitsPreimageCbor: Buffer.from(EMPTY_CBOR_LIST),
   };
   return materializeMidgardNativeTxFromCanonical({
     version: MIDGARD_NATIVE_TX_VERSION,
@@ -301,7 +297,7 @@ const sampleNativeTx = (
 const payloadFromNativeTx = (
   tx: MidgardNativeTxFull,
 ): NodeTransactionPayload => ({
-  nodeTxId: computeMidgardNativeTxIdFromFull(tx).toString("hex"),
+  nodeTxId: computeMidgardNativeTxId(tx).toString("hex"),
   txCbor: encodeMidgardNativeTxFull(tx).toString("hex"),
 });
 
@@ -374,8 +370,7 @@ const decodeTransactionMaterial = async (
       `Failed to decode native Midgard tx ${nodeTxId}: ${String(cause)}`,
     );
   }
-  const computedNodeTxId =
-    computeMidgardNativeTxIdFromFull(nativeTx).toString("hex");
+  const computedNodeTxId = computeMidgardNativeTxId(nativeTx).toString("hex");
   if (computedNodeTxId !== nodeTxId) {
     throw new Error(
       `Node tx id mismatch: listed=${nodeTxId}, computed=${computedNodeTxId}.`,
@@ -580,13 +575,6 @@ const compatibilityReasons = ({
   return reasons;
 };
 
-const jsonStringify = (value: unknown): string =>
-  `${JSON.stringify(
-    value,
-    (_key, item) => (typeof item === "bigint" ? item.toString() : item),
-    2,
-  )}\n`;
-
 const writePreparedFiles = async ({
   output,
   outputDir,
@@ -613,13 +601,13 @@ const writePreparedFiles = async ({
     planPath: join(outputDir, "plan.json"),
   };
   await Promise.all([
-    writeFile(paths.tx1InclusionPath, jsonStringify(output.tx1.txInclusion)),
-    writeFile(paths.tx2InclusionPath, jsonStringify(output.tx2.txInclusion)),
-    writeFile(paths.tx1InputsPath, jsonStringify(output.tx1.spendInputCbors)),
-    writeFile(paths.tx2InputsPath, jsonStringify(output.tx2.spendInputCbors)),
+    writeFile(paths.tx1InclusionPath, stringifyJson(output.tx1.txInclusion)),
+    writeFile(paths.tx2InclusionPath, stringifyJson(output.tx2.txInclusion)),
+    writeFile(paths.tx1InputsPath, stringifyJson(output.tx1.spendInputCbors)),
+    writeFile(paths.tx2InputsPath, stringifyJson(output.tx2.spendInputCbors)),
     writeFile(
       paths.planPath,
-      jsonStringify({
+      stringifyJson({
         headerHash: output.headerHash,
         doubleSpentInput: output.doubleSpentInput,
         tx1NodeTxId: output.tx1.nodeTxId,
@@ -643,7 +631,7 @@ const writeBlockTransactionsFile = async ({
 }): Promise<string> => {
   await mkdir(outputDir, { recursive: true });
   const path = join(outputDir, "block-transactions.json");
-  await writeFile(path, jsonStringify(transactions));
+  await writeFile(path, stringifyJson(transactions));
   return path;
 };
 

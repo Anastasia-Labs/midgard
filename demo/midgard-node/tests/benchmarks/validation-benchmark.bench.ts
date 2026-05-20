@@ -10,17 +10,17 @@ import * as LedgerUtils from "@/database/utils/ledger.js";
 import {
   cardanoTxBytesToMidgardNativeTxFullBytes,
   computeHash32,
-  computeMidgardNativeTxIdFromFull,
+  computeMidgardNativeTxId,
   decodeMidgardNativeTxFull,
   deriveMidgardNativeTxCompact,
   encodeMidgardNativeTxFull,
-} from "@/midgard-tx-codec/index.js";
+} from "@al-ft/midgard-core/codec";
 import {
   PhaseAAccepted,
   QueuedTx,
   runPhaseAValidation,
-  runPhaseBValidation,
-} from "@/validation/index.js";
+  runPhaseBValidationWithPatch,
+} from "@al-ft/midgard-validation";
 
 type InitialLedgerEntryFixture = {
   txIdHex: string;
@@ -216,9 +216,7 @@ const buildQueuedBlock = (
   );
   return txFixture.transactions.slice(0, size).map((tx, index) => {
     const converted = decodeMidgardNativeTxFull(
-      cardanoTxBytesToMidgardNativeTxFullBytes(
-        Buffer.from(tx.cborHex, "hex"),
-      ),
+      cardanoTxBytesToMidgardNativeTxFullBytes(Buffer.from(tx.cborHex, "hex")),
     );
     const normalized = {
       version: converted.version,
@@ -243,7 +241,7 @@ const buildQueuedBlock = (
       ),
     };
     const nativeTxBytes = encodeMidgardNativeTxFull(txForQueue);
-    const nativeTxId = computeMidgardNativeTxIdFromFull(txForQueue);
+    const nativeTxId = computeMidgardNativeTxId(txForQueue);
     return {
       txId: nativeTxId,
       txCbor: nativeTxBytes,
@@ -259,16 +257,18 @@ const buildQueuedBlock = (
 const runPhaseA = (queued: readonly QueuedTx[]) =>
   Effect.runPromise(runPhaseAValidation(queued, phaseAConfig));
 
-const runPhaseB = (
+const runPhaseB = async (
   accepted: readonly PhaseAAccepted[],
   preState: readonly LedgerUtils.Entry[],
-) =>
-  Effect.runPromise(
-    runPhaseBValidation(accepted, preState, {
+) => {
+  const { accepted: phaseBAccepted, rejected } = await Effect.runPromise(
+    runPhaseBValidationWithPatch(accepted, preState, {
       nowCardanoSlotNo: 0n,
       bucketConcurrency: Math.max(1, Math.floor(PHASE_A_CONCURRENCY / 2)),
     }),
   );
+  return { accepted: phaseBAccepted, rejected };
+};
 
 const getGitCommit = (): string => {
   try {

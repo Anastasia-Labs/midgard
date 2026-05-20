@@ -5,7 +5,6 @@
  */
 import { PendingBlockFinalizationsDB } from "@/database/index.js";
 import {
-  Database,
   Globals,
   Lucid,
   MidgardContracts,

@@ -1,19 +1,24 @@
-import { describe, expect, it } from "vitest";
+import {
+  computeMidgardNativeTxId,
+  decodeMidgardNativeByteListPreimage,
+  decodeMidgardNativeTxFull,
+  encodeCbor,
+  MIDGARD_SUPPORTED_SCRIPT_LANGUAGES,
+} from "@al-ft/midgard-core/codec";
+import {
+  describe,
+  expect,
+  it } from "vitest";
 import { CML } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 import {
   CompleteTx,
   PartiallySignedTx,
   SigningError,
-  computeMidgardNativeTxIdFromFull,
-  decodeMidgardNativeByteListPreimage,
-  decodeMidgardNativeTxFull,
   decodeMidgardUtxo,
   decodePartialWitnessBundle,
-  encodeCbor,
   encodeMidgardTxOutput,
   encodePartialWitnessBundle,
-  MIDGARD_SUPPORTED_SCRIPT_LANGUAGES,
   makeVKeyWitness,
   outRefToCbor,
   parsePartialWitnessBundle,
@@ -77,7 +82,7 @@ const makeProvider = (opts?: {
   submitTx: async (txCborHex) => {
     const tx = decodeMidgardNativeTxFull(Buffer.from(txCborHex, "hex"));
     return {
-      txId: computeMidgardNativeTxIdFromFull(tx).toString("hex"),
+      txId: computeMidgardNativeTxId(tx).toString("hex"),
       status: "queued",
       httpStatus: 202,
       duplicate: false,
@@ -166,7 +171,7 @@ describe("partial signing", () => {
 
     const firstBundle = await completed.sign.withPrivateKey(firstKey).partial();
     const secondBundle = await completed.sign.withWallet(secondWallet).partial();
-    const bodyHash = computeMidgardNativeTxIdFromFull(completed.tx);
+    const bodyHash = computeMidgardNativeTxId(completed.tx);
     const signedFromSignBuilder = await completed.sign
       .withWitnesses([
         makeVKeyWitness(bodyHash, secondKey),
@@ -208,7 +213,7 @@ describe("partial signing", () => {
 
   it("exports, imports, and reuses canonical partial witness bundles", async () => {
     const { completed, firstKey, secondKey } = await makeFixture();
-    const bodyHash = computeMidgardNativeTxIdFromFull(completed.tx);
+    const bodyHash = computeMidgardNativeTxId(completed.tx);
     const firstWitness = makeVKeyWitness(bodyHash, firstKey);
     const secondWitness = makeVKeyWitness(bodyHash, secondKey);
     const combinedBundle = await completed.sign

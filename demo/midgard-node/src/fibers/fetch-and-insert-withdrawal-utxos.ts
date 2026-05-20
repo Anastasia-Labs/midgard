@@ -20,13 +20,13 @@ import { WithdrawalsDB } from "@/database/index.js";
 const fetchWithdrawalUTxOs = (
   lucid: LucidEvolution,
   config?: Pick<
-    SDK.WithdrawalFetchConfig,
+    SDK.UserEventFetchConfig,
     "inclusionTimeLowerBound" | "inclusionTimeUpperBound"
   >,
 ): Effect.Effect<SDK.WithdrawalUTxO[], SDK.LucidError, MidgardContracts> =>
   Effect.gen(function* () {
     const { withdrawal } = yield* MidgardContracts;
-    const fetchConfig: SDK.WithdrawalFetchConfig = {
+    const fetchConfig: SDK.UserEventFetchConfig = {
       eventAddress: withdrawal.spendingScriptAddress,
       eventPolicyId: withdrawal.policyId,
       ...config,
@@ -98,7 +98,7 @@ const withdrawalUTxOToEntry = (
 
 export const reconcileVisibleWithdrawalUTxOs = (
   config?: Pick<
-    SDK.WithdrawalFetchConfig,
+    SDK.UserEventFetchConfig,
     "inclusionTimeLowerBound" | "inclusionTimeUpperBound"
   >,
 ): Effect.Effect<

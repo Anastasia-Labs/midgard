@@ -91,7 +91,7 @@ trusted metadata through `readFrom(..., { trustedReferenceScripts })` or
 
 ## Partial Signing
 
-Signing verifies witnesses against `computeMidgardNativeTxIdFromFull(nativeTx)`,
+Signing verifies witnesses against `computeMidgardNativeTxId(nativeTx)`,
 the hash of the compact transaction body. Detached partial bundles are bound to
 one transaction id/body hash.
 

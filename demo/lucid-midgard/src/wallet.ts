@@ -6,7 +6,7 @@ import {
   ensureHash32,
   midgardAddressFromText,
   type Hash32,
-} from "./codec/index.js";
+} from "@al-ft/midgard-core/codec";
 
 export type VKeyWitness = InstanceType<typeof CML.Vkeywitness>;
 export type PrivateKey = InstanceType<typeof CML.PrivateKey>;
@@ -206,9 +206,6 @@ const resolveExternalIdentity = async (
 ): Promise<string> => {
   let addressKeyHash: string | undefined;
   if (signer.address !== undefined) {
-    if (signer.address === undefined) {
-      throw new SigningError("External signer does not expose an address");
-    }
     const address =
       typeof signer.address === "function"
         ? await signer.address()

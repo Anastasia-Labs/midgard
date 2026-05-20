@@ -1,4 +1,4 @@
-import { CML, Constr, Data } from "@lucid-evolution/lucid";
+import { Constr, Data } from "@lucid-evolution/lucid";
 import {
   decodeMidgardAddressBytes,
   hashMidgardVersionedScript,
@@ -10,9 +10,9 @@ import {
   DecodedMidgardRedeemer,
   midgardScriptPurposeData,
   MidgardScriptPurpose,
-  outputReferenceData,
   redeemerDataFromCborHex,
 } from "./midgard-redeemers.js";
+import { txOutRefData } from "./tx-out-ref.js";
 
 type ResolvedInput = {
   readonly outRefHex: string;
@@ -44,16 +44,6 @@ const none = new Constr(1, []);
 const some = (value: unknown) => new Constr(0, [value]);
 const bool = (value: boolean) => new Constr(value ? 1 : 0, []);
 
-const txOutRefData = (outRefHex: string): Constr<unknown> => {
-  const input = CML.TransactionInput.from_cbor_bytes(
-    Buffer.from(outRefHex, "hex"),
-  );
-  return new Constr(0, [
-    input.transaction_id().to_hex(),
-    BigInt(input.index()),
-  ]);
-};
-
 const credentialData = (credential: MidgardCredential): Constr<unknown> =>
   new Constr(credential.kind === "PubKey" ? 0 : 1, [
     credential.hash.toString("hex"),
@@ -76,37 +66,6 @@ const addressData = (
     credentialData(decoded.paymentCredential),
     stakingCredentialData(decoded.stakeCredential),
   ]);
-};
-
-const multiassetToData = (
-  multiasset: InstanceType<typeof CML.MultiAsset> | undefined,
-): Map<string, Map<string, bigint>> => {
-  const result = new Map<string, Map<string, bigint>>();
-  if (multiasset === undefined) {
-    return result;
-  }
-  const policies = multiasset.keys();
-  for (let i = 0; i < policies.len(); i += 1) {
-    const policy = policies.get(i);
-    const assets = multiasset.get_assets(policy);
-    if (assets === undefined) {
-      continue;
-    }
-    const assetMap = new Map<string, bigint>();
-    const names = assets.keys();
-    for (let j = 0; j < names.len(); j += 1) {
-      const name = names.get(j);
-      const quantity = assets.get(name);
-      if (quantity !== undefined) {
-        assetMap.set(
-          Buffer.from(name.to_raw_bytes()).toString("hex"),
-          quantity,
-        );
-      }
-    }
-    result.set(policy.to_hex(), assetMap);
-  }
-  return result;
 };
 
 const valueData = (
@@ -258,7 +217,7 @@ const cardanoScriptInfoData = (
       return new Constr(0, [purpose.policyId]);
     case "spend":
       return new Constr(1, [
-        outputReferenceData(purpose.outRefHex),
+        txOutRefData(purpose.outRefHex),
         spendDatumData(view, purpose),
       ]);
     case "observe":

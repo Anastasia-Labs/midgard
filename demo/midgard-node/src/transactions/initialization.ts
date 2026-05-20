@@ -14,6 +14,7 @@ import {
   toUnit,
   UTxO,
   LucidEvolution,
+  validatorToScriptHash,
   type TxBuilder,
   type TxSignBuilder,
 } from "@lucid-evolution/lucid";
@@ -26,10 +27,11 @@ import {
 import { ensureNodeRuntimeReferenceScriptsProgram } from "@/transactions/reference-scripts.js";
 import { slotToUnixTimeForLucidOrEmulatorFallback } from "@/lucid-time.js";
 import {
+  loadPhasMembershipWithdrawalScript,
   phasMembershipRewardAddress,
-  phasMembershipWithdrawalScriptHash,
 } from "@/phas-membership.js";
 import { ensurePhasMembershipRewardAccountRegisteredProgram } from "@/transactions/phas-membership-registration.js";
+import { outRefLabel } from "@/tx-context.js";
 
 import { MidgardMpf, MpfBatchOp, MpfError } from "@/workers/utils/mpf.js";
 
@@ -68,13 +70,11 @@ type IndexedFraudProof = readonly [
 export const fraudProofsToIndexedValidators = (
   fraudProofs: SDK.FraudProofs,
 ): IndexedFraudProof[] => {
-  return SDK.FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER.map(
-    (fraudProofTitle, i) => [
-      uint32ToFraudProofID(i),
-      fraudProofs[fraudProofTitle],
-      fraudProofTitle,
-    ],
-  );
+  return SDK.FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER.map((fraudProofTitle, i) => [
+    uint32ToFraudProofID(i),
+    fraudProofs[fraudProofTitle],
+    fraudProofTitle,
+  ]);
 };
 
 const encodeFraudProofCatalogueKey = (categoryId: Buffer): Buffer =>
@@ -146,11 +146,6 @@ export const buildFraudProofCatalogueDeploymentInfo = (
     };
   });
 
-/**
- * Formats a UTxO as `txHash#outputIndex` for diagnostics.
- */
-export const outRefLabel = (utxo: UTxO): string =>
-  `${utxo.txHash}#${utxo.outputIndex}`;
 const DEFAULT_DEPLOYMENT_VALIDITY_WINDOW_MS = 7n * 60n * 1000n;
 const DEPLOYMENT_VISIBILITY_REFRESH_MAX_RETRIES = 12;
 const DEPLOYMENT_VISIBILITY_REFRESH_DELAY = "2 seconds";
@@ -501,9 +496,10 @@ export const fetchProtocolDeploymentStatus = (
         }),
       );
     }
+    const phasMembershipScript = loadPhasMembershipWithdrawalScript();
     const phasMembershipReward = {
-      rewardAddress: phasMembershipRewardAddress(network),
-      scriptHash: phasMembershipWithdrawalScriptHash(),
+      rewardAddress: phasMembershipRewardAddress(network, phasMembershipScript),
+      scriptHash: validatorToScriptHash(phasMembershipScript),
     };
     const missingComponents = [
       ...(hubOracleWitness === null ? ["hub-oracle"] : []),
@@ -590,7 +586,7 @@ export const buildAtomicProtocolInitTxProgram = (
   Effect.gen(function* () {
     const validityRange = resolveDeploymentValidityBounds(lucid, validTo);
     const nonceUtxo = yield* fetchConfiguredNonceUtxo(lucid, nodeConfig);
-    return yield* SDK.unsignedInitializationTxProgram(lucid, {
+    return yield* SDK.incompleteInitializationTxProgram(lucid, {
       midgardValidators: contracts,
       fraudProofCatalogueMerkleRoot,
       oneShotNonceUTxO: nonceUtxo,

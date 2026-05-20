@@ -13,7 +13,6 @@ const expectedNamedExports = [
   "BuilderInvariantError",
   "BuilderScriptState",
   "BuilderSnapshot",
-  "ChainOptions",
   "ChainResult",
   "CmlValue",
   "CompleteOptions",
@@ -119,14 +118,12 @@ const expectedNamedExports = [
   "assertVKeyWitness",
   "assetQuantity",
   "assetsToCmlValue",
-  "assetsToLucidAssets",
   "authoredOutput",
   "cmlValueToAssets",
   "compareOutRefs",
   "decodeMidgardTxOutput",
   "decodeMidgardUtxo",
   "decodePartialWitnessBundle",
-  "dedupeOutRefs",
   "emptyBuilderScriptState",
   "encodeMidgardTxOutput",
   "encodePartialWitnessBundle",
@@ -136,7 +133,6 @@ const expectedNamedExports = [
   "makeVKeyWitness",
   "normalizeAssets",
   "normalizeOutRef",
-  "normalizeOutputDatum",
   "normalizePlutusData",
   "normalizeScriptRef",
   "normalizeTxHash",
@@ -197,7 +193,7 @@ describe("public API export snapshot", () => {
       resolve(import.meta.dirname, "../dist/index.d.ts"),
       "utf8",
     );
-    expect(declarationText).toContain(
+    expect(declarationText).not.toContain(
       "export * from '@al-ft/midgard-core/codec'",
     );
     expect(parseNamedExports(declarationText)).toEqual(expectedNamedExports);

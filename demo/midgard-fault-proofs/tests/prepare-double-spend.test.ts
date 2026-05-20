@@ -7,7 +7,7 @@ import {
   MIDGARD_NATIVE_TX_VERSION,
   MIDGARD_POSIX_TIME_NONE,
   computeHash32,
-  computeMidgardNativeTxIdFromFull,
+  computeMidgardNativeTxId,
   encodeCbor,
   encodeMidgardNativeTxFull,
   materializeMidgardNativeTxFromCanonical,
@@ -35,14 +35,12 @@ const inputCbor = (txHash: string, outputIndex: bigint): Buffer =>
     ).to_cbor_bytes(),
   );
 
-const byteList = (items: readonly Buffer[]): Buffer => encodeCbor(items);
-
 const makeNativeTx = (
   inputs: readonly Buffer[],
   fee: bigint,
 ): MidgardNativeTxFull => {
   const body = {
-    spendInputsPreimageCbor: byteList(inputs),
+    spendInputsPreimageCbor: encodeCbor(inputs),
     referenceInputsPreimageCbor: EMPTY_CBOR_LIST,
     outputsPreimageCbor: EMPTY_CBOR_LIST,
     fee,
@@ -69,7 +67,7 @@ const makeNativeTx = (
 };
 
 const payloadFromTx = (tx: MidgardNativeTxFull): NodeTransactionPayload => ({
-  nodeTxId: computeMidgardNativeTxIdFromFull(tx).toString("hex"),
+  nodeTxId: computeMidgardNativeTxId(tx).toString("hex"),
   txCbor: encodeMidgardNativeTxFull(tx).toString("hex"),
 });
 

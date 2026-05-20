@@ -1,4 +1,3 @@
-import { readFile } from "node:fs/promises";
 import { Effect } from "effect";
 import { Network, Data, type Script } from "@lucid-evolution/lucid";
 import { Store, Trie } from "@aiken-lang/merkle-patricia-forestry";
@@ -13,6 +12,11 @@ import {
   buildDoubleSpendFaultProofContracts,
   parseFaultProofBlueprint,
 } from "@al-ft/midgard-sdk";
+import {
+  parseSafeNonNegativeInteger,
+  parseStrictHex,
+  readJsonFile,
+} from "./json-file.js";
 
 export type ContractDeploymentInfoEntry = {
   readonly scriptHash: string;
@@ -88,7 +92,6 @@ export type InspectContractsStepOutput = {
 export const DEFAULT_FAULT_PROOF_NETWORK: Network = "Preprod";
 
 const NETWORKS = new Set<Network>(["Mainnet", "Preview", "Preprod"]);
-const HEX_PATTERN = /^[0-9a-fA-F]*$/;
 
 const FraudProofCatalogueIdSchema = Data.Bytes({
   minLength: FRAUD_PROOF_CATALOGUE_ID_BYTE_COUNT,
@@ -110,27 +113,18 @@ const normalizeHex = (
   value: unknown,
   label: string,
   byteLength: number,
-): string => {
-  if (typeof value !== "string") {
-    throw new Error(`${label} must be a hex string`);
-  }
-  const normalized = value.toLowerCase();
-  if (normalized.length !== byteLength * 2 || !HEX_PATTERN.test(normalized)) {
-    throw new Error(`${label} must be ${byteLength.toString()} bytes of hex`);
-  }
-  return normalized;
-};
+): string =>
+  parseStrictHex(value, {
+    byteCount: byteLength,
+    typeError: `${label} must be a hex string`,
+    invalidError: `${label} must be ${byteLength.toString()} bytes of hex`,
+  });
 
-const normalizeVariableHex = (value: unknown, label: string): string => {
-  if (typeof value !== "string") {
-    throw new Error(`${label} must be a hex string`);
-  }
-  const normalized = value.toLowerCase();
-  if (normalized.length % 2 !== 0 || !HEX_PATTERN.test(normalized)) {
-    throw new Error(`${label} must be even-length hex`);
-  }
-  return normalized;
-};
+const normalizeVariableHex = (value: unknown, label: string): string =>
+  parseStrictHex(value, {
+    typeError: `${label} must be a hex string`,
+    invalidError: `${label} must be even-length hex`,
+  });
 
 const parseCatalogueCategoryDeploymentInfo = (
   value: unknown,
@@ -226,32 +220,12 @@ const parseRefScriptUTxO = (
   return {
     txHash: normalizeHex(candidate.txHash, `${label}.txHash`, 32),
     outputIndex: Number(
-      normalizeSafeInteger(candidate.outputIndex, `${label}.outputIndex`),
+      parseSafeNonNegativeInteger(
+        candidate.outputIndex,
+        `${label}.outputIndex`,
+      ),
     ),
   };
-};
-
-const normalizeSafeInteger = (value: unknown, label: string): bigint => {
-  if (typeof value === "bigint") {
-    if (value < 0n || value > BigInt(Number.MAX_SAFE_INTEGER)) {
-      throw new Error(`${label} must be a safe non-negative integer`);
-    }
-    return value;
-  }
-  if (typeof value === "number") {
-    if (!Number.isSafeInteger(value) || value < 0) {
-      throw new Error(`${label} must be a safe non-negative integer`);
-    }
-    return BigInt(value);
-  }
-  if (typeof value === "string" && /^\d+$/.test(value)) {
-    const parsed = BigInt(value);
-    if (parsed > BigInt(Number.MAX_SAFE_INTEGER)) {
-      throw new Error(`${label} must be a safe non-negative integer`);
-    }
-    return parsed;
-  }
-  throw new Error(`${label} must be a safe non-negative integer`);
 };
 
 const parseDeploymentContract = (
@@ -551,11 +525,6 @@ export const inspectContracts = ({
       },
     };
   });
-
-const readJsonFile = async (path: string): Promise<unknown> => {
-  const raw = await readFile(path, "utf8");
-  return JSON.parse(raw) as unknown;
-};
 
 export const inspectContractsFromFiles = async ({
   blueprintPath,

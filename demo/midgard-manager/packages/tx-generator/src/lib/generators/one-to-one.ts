@@ -13,6 +13,7 @@ import {
 import { waitWritable } from '../../utils/common.js';
 import { MidgardNodeClient } from '../client/node-client.js';
 import { SerializedMidgardTransaction } from '../client/types.js';
+import { TRANSACTION_CONSTANTS } from '../types.js';
 
 /**
  * One-to-one transaction generator for local test workloads.
@@ -43,12 +44,12 @@ export interface OneToOneTransactionConfig {
  * Number of generated transactions between short pauses that give the runtime a
  * chance to release native resources.
  */
-const GC_PAUSE_INTERVAL = 1000; // Number of transactions before GC pause
+const GC_PAUSE_INTERVAL = TRANSACTION_CONSTANTS.GC_PAUSE_INTERVAL.ONE_TO_ONE;
 
 /**
  * Minimum lovelace value the generator is willing to place in an output.
  */
-const MIN_LOVELACE_OUTPUT = 1_000_000n; // Minimum lovelace per output
+const MIN_LOVELACE_OUTPUT = TRANSACTION_CONSTANTS.MIN_LOVELACE_OUTPUT;
 
 /**
  * Validates the user-supplied generator configuration before any emulator state
@@ -100,7 +101,7 @@ const initializeLucid = async (emulator: Emulator, network: Network): Promise<Lu
  * The produced transactions are serialized in Midgard's expected wire format so
  * higher-level tools can write them to disk or submit them directly.
  */
-const generateOneToOneTransactions = async (
+export const generateOneToOneTransactions = async (
   config: OneToOneTransactionConfig
 ): Promise<SerializedMidgardTransaction[]> => {
   const { network, initialUTxO, txsCount, writable, walletSeedOrPrivateKey } = config;
@@ -136,7 +137,7 @@ const generateOneToOneTransactions = async (
     for (let i = 0; i < txsCount; i++) {
       const txBuilder = lucid.newTx();
 
-      const [newWalletUTxOs, derivedOutputs, txSignBuilder] = await txBuilder.pay
+      const [newWalletUTxOs, , txSignBuilder] = await txBuilder.pay
         .ToAddress(initialUTxO.address, initialUTxO.assets)
         .chain();
 
@@ -180,5 +181,3 @@ const generateOneToOneTransactions = async (
 
   return transactions;
 };
-
-export { generateOneToOneTransactions };

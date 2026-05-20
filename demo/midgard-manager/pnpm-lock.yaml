@@ -195,18 +195,12 @@ importers:
       '@midgard-manager/tx-generator':
         specifier: workspace:*
         version: link:../tx-generator
-      '@types/node-cron':
-        specifier: ^3.0.11
-        version: 3.0.11
       chalk:
         specifier: ^4.1.2
         version: 4.1.2
       effect:
         specifier: latest
         version: 3.21.2
-      node-cron:
-        specifier: ^3.0.3
-        version: 3.0.3
       ora-classic:
         specifier: ^5.4.2
         version: 5.4.2
@@ -1337,9 +1331,6 @@ packages:
   '@types/json-bigint@1.0.4':
     resolution: {integrity: sha512-ydHooXLbOmxBbubnA7Eh+RpBzuaIiQjh8WGJYQB50JFGFrdxW7JzVlyEV7fAXw0T2sqJ1ysTneJbiyNLqZRAag==}
 
-  '@types/node-cron@3.0.11':
-    resolution: {integrity: sha512-0ikrnug3/IyneSHqCBeslAhlK2aBfYek1fGo4bP4QnZPmiqSGRK+Oy7ZMisLWkesffJvQ1cqAcBnJC+8+nxIAg==}
-
   '@types/node@20.17.19':
     resolution: {integrity: sha512-LEwC7o1ifqg/6r2gn9Dns0f1rhK+fPFDoMiceTJ6kWmVk6bgXBI/9IOWfVan4WiAavK9pIVWdX0/e3J+eEUh5A==}
 
@@ -2313,10 +2304,6 @@ packages:
   node-addon-api@7.1.1:
     resolution: {integrity: sha512-5m3bsyrjFWE1xf7nz7YXdN4udnVtXK6/Yfgn5qnahL6bCkf2yKt4k3nuTKAtT4r3IG8JNR2ncsIMdZuAzJjHQQ==}
 
-  node-cron@3.0.3:
-    resolution: {integrity: sha512-dOal67//nohNgYWb+nWmg5dkFdIwDm8EpeGYMekPMrngV3637lqnX0lbUcCtgibHTz6SEz7DAIjKvKDFYCnO1A==}
-    engines: {node: '>=6.0.0'}
-
   node-fetch@2.7.0:
     resolution: {integrity: sha512-c4FRfUm/dbcWZ7U+1Wq0AwCyFL+3nt2bEw05wfxSz+DWpWsitgmSgYmy2dQdWyKC1694ELPqMs/YzUSNozLt8A==}
     engines: {node: 4.x || >=6.0.0}
@@ -2927,10 +2914,6 @@ packages:
 
   uuid@11.1.1:
     resolution: {integrity: sha512-vIYxrBCC/N/K+Js3qSN88go7kIfNPssr/hHCesKCQNAjmgvYS2oqr69kIufEG+O4+PfezOH4EbIeHCfFov8ZgQ==}
-    hasBin: true
-
-  uuid@8.3.2:
-    resolution: {integrity: sha512-+NYs2QeMWy+GWFOEm9xnn6HCDp0l7QBD7ml8zLUmJ+93Q5NF0NocErnwkTkXVFNiX3/fpC6afS8Dhb/gz7R7eg==}
     hasBin: true
 
   vite-node@1.6.1:
@@ -3546,7 +3529,7 @@ snapshots:
 
   '@harmoniclabs/bytestring@1.0.0':
     dependencies:
-      '@harmoniclabs/uint8array-utils': 1.0.3
+      '@harmoniclabs/uint8array-utils': 1.0.4
 
   '@harmoniclabs/cardano-costmodels-ts@1.4.0':
     dependencies:
@@ -4191,8 +4174,6 @@ snapshots:
   '@types/estree@1.0.6': {}
 
   '@types/json-bigint@1.0.4': {}
-
-  '@types/node-cron@3.0.11': {}
 
   '@types/node@20.17.19':
     dependencies:
@@ -5263,10 +5244,6 @@ snapshots:
 
   node-addon-api@7.1.1: {}
 
-  node-cron@3.0.3:
-    dependencies:
-      uuid: 8.3.2
-
   node-fetch@2.7.0:
     dependencies:
       whatwg-url: 5.0.0
@@ -5763,8 +5740,6 @@ snapshots:
       which-typed-array: 1.1.18
 
   uuid@11.1.1: {}
-
-  uuid@8.3.2: {}
 
   vite-node@1.6.1(@types/node@20.17.19):
     dependencies:

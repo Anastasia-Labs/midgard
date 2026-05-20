@@ -319,6 +319,23 @@ export const encodeCbor = (value: unknown): Buffer => {
   }
 };
 
+export const assertCanonicalCborRoundTrip = <T>(
+  original: Uint8Array,
+  decoded: T,
+  encodeDecoded: (decoded: T) => Buffer,
+  message: string,
+): Buffer => {
+  const encoded = encodeDecoded(decoded);
+  // Callers keep field-specific trailing-byte checks before this byte comparison.
+  if (!encoded.equals(Buffer.from(original))) {
+    throw new MidgardTxCodecError(
+      MidgardTxCodecErrorCodes.CborDecode,
+      message,
+    );
+  }
+  return encoded;
+};
+
 const encodeArgument = (major: number, value: bigint): Buffer => {
   if (value < 0n) {
     throw new MidgardTxCodecError(
@@ -398,16 +415,6 @@ export const asArray = (value: unknown, fieldName: string): unknown[] => {
     throw new MidgardTxCodecError(
       MidgardTxCodecErrorCodes.InvalidFieldType,
       `${fieldName} must be a CBOR array`,
-    );
-  }
-  return value;
-};
-
-export const asBoolean = (value: unknown, fieldName: string): boolean => {
-  if (typeof value !== "boolean") {
-    throw new MidgardTxCodecError(
-      MidgardTxCodecErrorCodes.InvalidFieldType,
-      `${fieldName} must be a boolean`,
     );
   }
   return value;

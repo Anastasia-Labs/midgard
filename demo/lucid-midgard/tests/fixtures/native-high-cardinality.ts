@@ -2,15 +2,17 @@ import { blake2b } from "@noble/hashes/blake2.js";
 import { CML } from "@lucid-evolution/lucid";
 import {
   computeHash32,
-  computeMidgardNativeTxIdFromFull,
+  computeMidgardNativeTxId,
   decodeMidgardNativeTxFull,
-  decodeMidgardUtxo,
   decodeSingleCbor,
   encodeMidgardNativeTxBodyCompact,
   encodeMidgardNativeTxCompact,
+  MIDGARD_SUPPORTED_SCRIPT_LANGUAGES,
+} from "@al-ft/midgard-core/codec";
+import {
+  decodeMidgardUtxo,
   encodeMidgardTxOutput,
   LucidMidgard,
-  MIDGARD_SUPPORTED_SCRIPT_LANGUAGES,
   outRefToCbor,
   walletFromPrivateKey,
   walletFromSeedPhrase,
@@ -494,7 +496,7 @@ export const buildHighCardinalityNativeTxFixture =
 
     return {
       name: HIGH_CARDINALITY_FIXTURE_NAME,
-      txIdHex: hex(computeMidgardNativeTxIdFromFull(tx)),
+      txIdHex: hex(computeMidgardNativeTxId(tx)),
       fullTxCborHex: hex(signed.txCbor),
       compactTxCborHex: hex(compactTxCbor),
       compactBodyCborHex: hex(compactBodyCbor),
@@ -836,7 +838,7 @@ export const buildSizeBalancedNativeTxFixture =
 
     return {
       name: SIZE_BALANCED_FIXTURE_NAME,
-      txIdHex: hex(computeMidgardNativeTxIdFromFull(tx)),
+      txIdHex: hex(computeMidgardNativeTxId(tx)),
       fullTxCborHex: hex(signed.txCbor),
       compactTxCborHex: hex(compactTxCbor),
       compactBodyCborHex: hex(compactBodyCbor),

@@ -1,9 +1,13 @@
 import * as SDK from "@al-ft/midgard-sdk";
-import type { LucidEvolution, TxSignBuilder } from "@lucid-evolution/lucid";
+import {
+  validatorToScriptHash,
+  type LucidEvolution,
+  type TxSignBuilder,
+} from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 import {
+  loadPhasMembershipWithdrawalScript,
   phasMembershipRewardAddress,
-  phasMembershipWithdrawalScriptHash,
 } from "@/phas-membership.js";
 import {
   handleSignSubmit,
@@ -69,8 +73,9 @@ export const ensurePhasMembershipRewardAccountRegisteredProgram = (
         }),
       );
     }
-    const rewardAddress = phasMembershipRewardAddress(network);
-    const scriptHash = phasMembershipWithdrawalScriptHash();
+    const script = loadPhasMembershipWithdrawalScript();
+    const rewardAddress = phasMembershipRewardAddress(network, script);
+    const scriptHash = validatorToScriptHash(script);
     const unsignedTx = yield* Effect.tryPromise({
       try: () =>
         lucid.newTx().register.Stake(rewardAddress).complete({

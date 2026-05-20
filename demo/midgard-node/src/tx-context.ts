@@ -116,17 +116,18 @@ export const requireOutRefIndex = (
 ): bigint => {
   const index = findOutRefIndex(orderedOutRefs, target);
   if (index === undefined) {
-    throw new Error(`Failed to resolve ordered index for ${outRefLabel(target)}`);
+    throw new Error(
+      `Failed to resolve ordered index for ${outRefLabel(target)}`,
+    );
   }
   return BigInt(index);
 };
 
 /**
- * Resolves the canonical reference-input index for a target outref inside an
- * unordered reference-input set.
+ * Resolves the canonical ledger input/reference-input index for a target outref
+ * inside an unordered set.
  */
-export const resolveReferenceInputIndexFromSet = (
+export const resolveOutRefIndexFromSet = (
   target: OutRefLike,
-  referenceInputs: readonly OutRefLike[],
-): bigint =>
-  requireOutRefIndex([...referenceInputs].sort(compareOutRefs), target);
+  outRefs: readonly OutRefLike[],
+): bigint => requireOutRefIndex([...outRefs].sort(compareOutRefs), target);

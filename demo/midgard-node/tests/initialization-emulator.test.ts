@@ -11,6 +11,7 @@ import {
   generateEmulatorAccount,
   paymentCredentialOf,
   toUnit,
+  validatorToScriptHash,
 } from "@lucid-evolution/lucid";
 import { AlwaysSucceedsContract } from "@/services/always-succeeds.js";
 import {
@@ -27,7 +28,6 @@ import {
 import {
   loadPhasMembershipWithdrawalScript,
   phasMembershipRewardAddress,
-  phasMembershipWithdrawalScriptHash,
 } from "@/phas-membership.js";
 import {
   activateOperatorProgram,
@@ -128,7 +128,7 @@ const initEmulatorLucid = async () => {
 describe("initialization emulator", () => {
   it("derives the canonical PHAS membership reward address", () => {
     const script = loadPhasMembershipWithdrawalScript();
-    const scriptHash = phasMembershipWithdrawalScriptHash(script);
+    const scriptHash = validatorToScriptHash(script);
     const rewardAddress = phasMembershipRewardAddress("Preprod", script);
 
     expect(scriptHash).toEqual(
@@ -140,7 +140,7 @@ describe("initialization emulator", () => {
   it("builds PHAS registration as a script stake certificate without a Plutus certificate witness", async () => {
     const { lucid } = await initEmulatorLucid();
     const script = loadPhasMembershipWithdrawalScript();
-    const scriptHash = phasMembershipWithdrawalScriptHash(script);
+    const scriptHash = validatorToScriptHash(script);
     const rewardAddress = phasMembershipRewardAddress("Preprod", script);
 
     const unsigned = await lucid
@@ -259,7 +259,7 @@ describe("initialization emulator", () => {
 
     try {
       const initTx = await Effect.runPromise(
-        SDK.unsignedInitializationTxProgram(fakeLucid, {
+        SDK.incompleteInitializationTxProgram(fakeLucid, {
           midgardValidators: contracts,
           fraudProofCatalogueMerkleRoot: EMPTY_FRAUD_PROOF_CATALOGUE_ROOT,
           oneShotNonceUTxO: nonceUtxo,
@@ -338,7 +338,7 @@ describe("initialization emulator", () => {
       phasMembershipRewardAddress("Preprod"),
     );
     expect(status.phasMembershipScriptHash).toEqual(
-      phasMembershipWithdrawalScriptHash(),
+      validatorToScriptHash(loadPhasMembershipWithdrawalScript()),
     );
     expect(runtimeReferenceScriptNames).toContain("state-queue spending");
     expect(runtimeReferenceScriptNames).toContain("deposit minting");

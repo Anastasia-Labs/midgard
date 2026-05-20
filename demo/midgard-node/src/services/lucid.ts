@@ -1,6 +1,7 @@
 import { Effect, Schedule } from "effect";
 import { ConfigError, NodeConfig } from "./config.js";
 import * as LE from "@lucid-evolution/lucid";
+import { outRefLabel } from "@/tx-context.js";
 
 /**
  * Lucid-provider construction and fallback behavior for the Midgard node.
@@ -267,12 +268,6 @@ const evaluateTxViaBlockfrostUtxoEndpoint = async (
   }
   return evalRedeemers;
 };
-
-/**
- * Formats an outref as `txHash#outputIndex`.
- */
-const outRefLabel = (outRef: LE.OutRef): string =>
-  `${outRef.txHash}#${outRef.outputIndex}`;
 
 /**
  * Converts a UTxO into its outref-only view.

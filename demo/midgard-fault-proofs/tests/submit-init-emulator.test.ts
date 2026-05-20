@@ -36,7 +36,6 @@ import {
   ActiveOperatorSpendRedeemer,
   AddressData,
   ConfirmedState,
-  EMPTY_MERKLE_TREE_ROOT,
   FRAUD_PROOF_CATALOGUE_ASSET_NAME,
   FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER,
   FRAUD_PROOF_CATALOGUE_ID_BYTE_COUNT,
@@ -48,7 +47,7 @@ import {
   FraudProofTokenDatum,
   GENESIS_HEADER_HASH,
   GENESIS_PROTOCOL_VERSION,
-  GENESIS_UTXO_ROOT,
+  EMPTY_MERKLE_TREE_ROOT,
   HUB_ORACLE_ASSET_NAME,
   Header,
   HubOracleDatum,
@@ -85,7 +84,7 @@ import {
   EMPTY_NULL_ROOT,
   MIDGARD_NATIVE_TX_VERSION,
   MIDGARD_POSIX_TIME_NONE,
-  computeMidgardNativeTxIdFromFull,
+  computeMidgardNativeTxId,
   decodeMidgardNativeByteListPreimage,
   encodeCbor,
   encodeMidgardNativeTxCompact,
@@ -94,10 +93,9 @@ import {
 } from "@al-ft/midgard-core";
 import {
   nativeTxFromCoreCompact,
+  compareOutRefs,
+  parseSpendInputCbors,
   parseSubmitStep01TxInclusion,
-  parseSubmitStep02TxInclusion,
-  parseSubmitStep03Tx1Inputs,
-  parseSubmitStep04Tx2Inputs,
   resolveProverSigner,
   submitInit,
   submitStep01,
@@ -468,22 +466,17 @@ const trieRootHex = (trie: Trie): string =>
     ? EMPTY_MERKLE_TREE_ROOT
     : Buffer.from(trie.hash).toString("hex");
 
-const compareLedgerOutRefs = (left: UTxO, right: UTxO): number => {
-  const hashOrder = Buffer.from(left.txHash, "hex").compare(
-    Buffer.from(right.txHash, "hex"),
-  );
-  if (hashOrder !== 0) {
-    return hashOrder;
-  }
-  return left.outputIndex - right.outputIndex;
-};
-
 const ledgerOrderedIndex = (
   candidates: readonly UTxO[],
   target: UTxO,
   label: string,
 ): bigint => {
-  const sorted = [...candidates].sort(compareLedgerOutRefs);
+  const sorted = [...candidates].sort((left, right) =>
+    compareOutRefs(
+      { txHash: left.txHash, outputIndex: left.outputIndex },
+      { txHash: right.txHash, outputIndex: right.outputIndex },
+    ),
+  );
   const index = sorted.findIndex(
     (candidate) =>
       candidate.txHash === target.txHash &&
@@ -494,12 +487,6 @@ const ledgerOrderedIndex = (
   }
   return BigInt(index);
 };
-
-const spendRedeemerTxInfoIndex = (
-  scriptSpendInputs: readonly UTxO[],
-  target: UTxO,
-  label: string,
-): bigint => ledgerOrderedIndex(scriptSpendInputs, target, label);
 
 const alignUnixTimeToEmulatorSlotBoundary = (
   lucid: Awaited<ReturnType<typeof Lucid>>,
@@ -633,7 +620,7 @@ const compactTxEntry = (
   nativeTx: MidgardNativeTxFull,
 ): Omit<TransactionInclusionEntry, "inclusion"> => ({
   nativeTx: nativeTxFromCoreCompact(nativeTx.compact),
-  nativeTxId: computeMidgardNativeTxIdFromFull(nativeTx).toString("hex"),
+  nativeTxId: computeMidgardNativeTxId(nativeTx).toString("hex"),
   spendInputCbors: decodeSpendInputCbors(nativeTx),
 });
 
@@ -782,7 +769,7 @@ const makeHeader = (
   now: number,
   transactionsRoot = EMPTY_MERKLE_TREE_ROOT,
 ): Header => ({
-  prevUtxosRoot: GENESIS_UTXO_ROOT,
+  prevUtxosRoot: EMPTY_MERKLE_TREE_ROOT,
   utxosRoot: EMPTY_MERKLE_TREE_ROOT,
   transactionsRoot,
   depositsRoot: EMPTY_MERKLE_TREE_ROOT,
@@ -856,15 +843,11 @@ const submitSetupTx = async ({
   const confirmedState = {
     headerHash: GENESIS_HEADER_HASH,
     prevHeaderHash: GENESIS_HEADER_HASH,
-    utxoRoot: GENESIS_UTXO_ROOT,
+    utxoRoot: EMPTY_MERKLE_TREE_ROOT,
     startTime: header.startTime,
     endTime: header.startTime,
     protocolVersion: GENESIS_PROTOCOL_VERSION,
   };
-  const rootNodeDatum = (
-    data: Parameters<typeof encodeLinkedListNodeView>[0]["data"],
-  ): string => encodeLinkedListNodeView({ key: "Empty", next: "Empty", data });
-
   const unsigned = await lucid
     .newTx()
     .validFrom(Number(header.startTime - 120_000n))
@@ -904,7 +887,11 @@ const submitSetupTx = async ({
       contracts.stateQueue.spendingScriptAddress,
       {
         kind: "inline",
-        value: rootNodeDatum(Data.castTo(confirmedState, ConfirmedState)),
+        value: encodeLinkedListNodeView({
+          key: "Empty",
+          next: "Empty",
+          data: Data.castTo(confirmedState, ConfirmedState),
+        }),
       },
       { [stateQueueRootUnit]: 1n },
     )
@@ -917,13 +904,27 @@ const submitSetupTx = async ({
     )
     .pay.ToContract(
       contracts.activeOperators.spendingScriptAddress,
-      { kind: "inline", value: rootNodeDatum("") },
+      {
+        kind: "inline",
+        value: encodeLinkedListNodeView({
+          key: "Empty",
+          next: "Empty",
+          data: "",
+        }),
+      },
       { [activeOperatorsRootUnit]: 1n },
     )
     .mintAssets({ [registeredOperatorsRootUnit]: 1n }, Data.void())
     .pay.ToContract(
       contracts.registeredOperators.spendingScriptAddress,
-      { kind: "inline", value: rootNodeDatum("") },
+      {
+        kind: "inline",
+        value: encodeLinkedListNodeView({
+          key: "Empty",
+          next: "Empty",
+          data: "",
+        }),
+      },
       { [registeredOperatorsRootUnit]: 1n },
     )
     .mintAssets({ [fraudProofCatalogueUnit]: 1n }, Data.void())
@@ -1190,12 +1191,12 @@ const submitSetupTx = async ({
     activeOperatorNode,
     "active-operator input",
   );
-  const stateQueueSpendRedeemerIndex = spendRedeemerTxInfoIndex(
+  const stateQueueSpendRedeemerIndex = ledgerOrderedIndex(
     commitScriptInputs,
     stateQueueRoot.utxo,
     "state-queue spend redeemer",
   );
-  const activeOperatorSpendRedeemerIndex = spendRedeemerTxInfoIndex(
+  const activeOperatorSpendRedeemerIndex = ledgerOrderedIndex(
     commitScriptInputs,
     activeOperatorNode,
     "active-operator spend redeemer",
@@ -1522,7 +1523,7 @@ describe("submit-init emulator smoke", () => {
       }),
       threadOutRef: `${secondStepUtxos[0]!.txHash}#${secondStepUtxos[0]!.outputIndex.toString()}`,
       stateQueueBlockOutRef: fraudulentBlockOutRef,
-      txInclusion: parseSubmitStep02TxInclusion(
+      txInclusion: parseSubmitStep01TxInclusion(
         transactionInclusion.tx2.inclusion,
       ),
       awaitConfirmation: true,
@@ -1575,8 +1576,9 @@ describe("submit-init emulator smoke", () => {
         walletSeedPhrase: prover.seedPhrase,
       }),
       threadOutRef: `${thirdStepUtxos[0]!.txHash}#${thirdStepUtxos[0]!.outputIndex.toString()}`,
-      tx1SpendInputCbors: parseSubmitStep03Tx1Inputs(
+      tx1SpendInputCbors: parseSpendInputCbors(
         transactionInclusion.tx1SpendInputCbors,
+        "--tx1-inputs",
       ),
       doubleSpentInputIndex: 1n,
       awaitConfirmation: true,
@@ -1637,8 +1639,9 @@ describe("submit-init emulator smoke", () => {
         walletSeedPhrase: prover.seedPhrase,
       }),
       threadOutRef: `${fourthStepUtxos[0]!.txHash}#${fourthStepUtxos[0]!.outputIndex.toString()}`,
-      tx2SpendInputCbors: parseSubmitStep04Tx2Inputs(
+      tx2SpendInputCbors: parseSpendInputCbors(
         transactionInclusion.tx2SpendInputCbors,
+        "--tx2-inputs",
       ),
       doubleSpentInputIndex: 1n,
       awaitConfirmation: true,

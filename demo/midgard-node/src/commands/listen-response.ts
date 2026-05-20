@@ -7,12 +7,6 @@ import * as SDK from "@al-ft/midgard-sdk";
 import { Effect } from "effect";
 import { HttpServerResponse } from "@effect/platform";
 import type { HttpBodyError } from "@effect/platform/HttpBody";
-import { DatabaseError } from "@/database/utils/common.js";
-import {
-  TxConfirmError,
-  TxSignError,
-  TxSubmitError,
-} from "@/transactions/utils.js";
 
 const MERGE_ERROR_CODE_PATTERN = /^(E_MERGE_[A-Z0-9_]+):/;
 
@@ -50,23 +44,6 @@ export const extractStateQueueErrorCode = (
 };
 
 /**
- * Shared internal helper for 500 responses with logging.
- */
-const failWith500Helper = (
-  logLabel: string,
-  logMsg: string,
-  error: any,
-  msgOverride?: string,
-) =>
-  Effect.gen(function* () {
-    yield* Effect.logInfo(`${logLabel} - ${logMsg}: ${error}`);
-    return yield* HttpServerResponse.json(
-      { error: msgOverride ?? "Something went wrong" },
-      { status: 500 },
-    );
-  });
-
-/**
  * Emits a 500 JSON response for a failed route.
  */
 export const failWith500 = (
@@ -74,30 +51,14 @@ export const failWith500 = (
   endpoint: string,
   error: HttpBodyError | string | any,
   msgOverride?: string,
-) => failWith500Helper(`${method} /${endpoint}`, "failure", error, msgOverride);
-
-/**
- * Maps database lookup failures into a standardized 500 response.
- */
-export const handleDBGetFailure = (endpoint: string, e: DatabaseError) =>
-  failWith500("GET", endpoint, e.cause, `db failure with table ${e.table}`);
-
-/**
- * Maps transaction-building or submission failures into a standardized 500
- * response.
- */
-export const handleTxGetFailure = (
-  endpoint: string,
-  e: TxSignError | TxConfirmError | TxSubmitError,
-) => failWith500("GET", endpoint, e.cause, `${e._tag}: ${e.message}`);
-
-/**
- * Maps generic SDK failures into a standardized 500 response.
- */
-export const handleGenericGetFailure = (
-  endpoint: string,
-  e: SDK.GenericErrorFields,
-) => failWith500("GET", endpoint, e.cause, e.message);
+) =>
+  Effect.gen(function* () {
+    yield* Effect.logInfo(`${method} /${endpoint} - failure: ${error}`);
+    return yield* HttpServerResponse.json(
+      { error: msgOverride ?? "Something went wrong" },
+      { status: 500 },
+    );
+  });
 
 /**
  * Maps state-queue failures into a JSON response, preserving an extracted

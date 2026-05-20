@@ -21,10 +21,7 @@ import { mkdir, rename, writeFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { Lucid, MidgardContracts } from "@/services/index.js";
 import { compareOutRefs } from "@/tx-context.js";
-import {
-  loadPhasMembershipWithdrawalScript,
-  phasMembershipWithdrawalScriptHash,
-} from "@/phas-membership.js";
+import { loadPhasMembershipWithdrawalScript } from "@/phas-membership.js";
 import {
   buildFraudProofCatalogueDeploymentInfo,
   fraudProofsToIndexedValidators,
@@ -118,7 +115,7 @@ const phasMembershipDescriptor = (): ScriptDescriptor => {
   return {
     name: "phasMembershipWithdraw",
     script,
-    scriptHash: phasMembershipWithdrawalScriptHash(script),
+    scriptHash: validatorToScriptHash(script),
     contract: {
       type: script.type,
       cborHex: script.script,
@@ -282,8 +279,9 @@ export const resolveLiveContractDeploymentInfoProgram: Effect.Effect<
 > = Effect.gen(function* () {
   const contracts = yield* MidgardContracts;
   const referenceScriptWalletUtxos = yield* fetchReferenceScriptWalletUtxos;
-  const referenceScriptOutRefs =
-    buildReferenceScriptOutRefMap(referenceScriptWalletUtxos);
+  const referenceScriptOutRefs = buildReferenceScriptOutRefMap(
+    referenceScriptWalletUtxos,
+  );
   const fraudProofCatalogue = yield* buildFraudProofCatalogueDeploymentInfo(
     fraudProofsToIndexedValidators(contracts.fraudProofs),
   );
@@ -304,9 +302,7 @@ export const defaultContractDeploymentInfoOutputPath = (): string =>
 const normalizeOutputPath = (outputPath: string): string => {
   const normalized = outputPath.trim();
   if (normalized.length === 0) {
-    throw new Error(
-      "Contract deployment info output path must not be empty.",
-    );
+    throw new Error("Contract deployment info output path must not be empty.");
   }
   return resolvePath(normalized);
 };

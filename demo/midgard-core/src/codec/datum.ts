@@ -1,4 +1,5 @@
 import {
+  assertCanonicalCborRoundTrip,
   compareCborKeyBytes,
   encodeCborArrayRaw,
   encodeCborBytes,
@@ -192,13 +193,12 @@ export const decodeMidgardDatum = (bytes: Uint8Array): MidgardDatum => {
       `offset=${decoded.nextOffset}`,
     );
   }
-  const encoded = encodePlutusData(decoded.data);
-  if (!encoded.equals(Buffer.from(bytes))) {
-    throw new MidgardTxCodecError(
-      MidgardTxCodecErrorCodes.CborDecode,
-      "PlutusData datum is not canonical",
-    );
-  }
+  const encoded = assertCanonicalCborRoundTrip(
+    bytes,
+    decoded.data,
+    encodePlutusData,
+    "PlutusData datum is not canonical",
+  );
   return { kind: "inline", cbor: encoded };
 };
 

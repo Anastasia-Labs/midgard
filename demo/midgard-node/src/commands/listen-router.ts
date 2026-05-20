@@ -22,7 +22,7 @@ import {
   NodeConfig,
 } from "@/services/index.js";
 import { isHexString } from "@/utils.js";
-import { QueuedTxPayload } from "@/validation/index.js";
+import { QueuedTxPayload } from "@al-ft/midgard-validation";
 import {
   authorizeAdminRoute,
   isAdminRoutePath,
@@ -32,15 +32,16 @@ import {
 import { evaluateReadiness } from "@/commands/readiness.js";
 import {
   failWith500,
-  handleDBGetFailure,
-  handleGenericGetFailure,
   handleStateQueueGetFailure,
-  handleTxGetFailure,
 } from "@/commands/listen-response.js";
 import * as DepositStatusCommand from "@/commands/deposit-status.js";
 import * as ProtocolInfoCommand from "@/commands/protocol-info.js";
 import { resolveTxStatus } from "@/commands/tx-status.js";
 import * as UtxosCommand from "@/commands/utxos.js";
+import {
+  parseAddressArgument,
+  parseTxOutRefCborHex,
+} from "@/commands/command-utils.js";
 import * as SubmitDeposit from "@/transactions/submit-deposit.js";
 import {
   fetchReferenceScriptUtxosProgram,
@@ -57,7 +58,6 @@ import {
 } from "@effect/platform";
 import type { HttpBodyError } from "@effect/platform/HttpBody";
 import { ParsedSearchParams } from "@effect/platform/HttpServerRequest";
-import { DatabaseError } from "@/database/utils/common.js";
 import { SqlClient } from "@effect/sql/SqlClient";
 import { blockCommitmentAction, mergeAction } from "@/fibers/index.js";
 import { SerializedStateQueueUTxO } from "@/workers/utils/commit-block-header.js";
@@ -107,10 +107,7 @@ const submitQueueOfferFailureCounter = Metric.counter(
 );
 
 const isApplicationCbor = (contentType: string | undefined): boolean =>
-  contentType
-    ?.split(";")[0]
-    ?.trim()
-    .toLowerCase() === "application/cbor";
+  contentType?.split(";")[0]?.trim().toLowerCase() === "application/cbor";
 
 /**
  * Wraps a route handler with admin-key authorization when the path belongs to
@@ -192,7 +189,14 @@ const getTxHandler = Effect.gen(function* () {
   });
 }).pipe(
   Effect.catchTag("HttpBodyError", (e) => failWith500("GET", TX_ENDPOINT, e)),
-  Effect.catchTag("DatabaseError", (e) => handleDBGetFailure(TX_ENDPOINT, e)),
+  Effect.catchTag("DatabaseError", (e) =>
+    failWith500(
+      "GET",
+      TX_ENDPOINT,
+      e.cause,
+      `db failure with table ${e.table}`,
+    ),
+  ),
 );
 
 /**
@@ -212,11 +216,9 @@ const getUtxosHandler = Effect.gen(function* () {
     );
   }
   try {
-    const address = UtxosCommand.parseAddressArgument(addr);
+    const address = parseAddressArgument(addr);
 
-    const utxosWithAddress = yield* MempoolLedgerDB.retrieveByAddress(
-      address,
-    );
+    const utxosWithAddress = yield* MempoolLedgerDB.retrieveByAddress(address);
     const response = UtxosCommand.encodeStoredUtxos(
       utxosWithAddress.map((entry) => ({
         outref: entry.outref,
@@ -240,7 +242,12 @@ const getUtxosHandler = Effect.gen(function* () {
     failWith500("GET", UTXOS_ENDPOINT, e),
   ),
   Effect.catchTag("DatabaseError", (e) =>
-    handleDBGetFailure(UTXOS_ENDPOINT, e),
+    failWith500(
+      "GET",
+      UTXOS_ENDPOINT,
+      e.cause,
+      `db failure with table ${e.table}`,
+    ),
   ),
 );
 
@@ -254,7 +261,7 @@ const getUtxoHandler = Effect.gen(function* () {
 
   let txOutRef: Buffer;
   try {
-    txOutRef = UtxosCommand.parseTxOutRefCborHex(rawTxOutRef, "txOutRef");
+    txOutRef = parseTxOutRefCborHex(rawTxOutRef, "txOutRef");
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     yield* Effect.logInfo(
@@ -276,7 +283,14 @@ const getUtxoHandler = Effect.gen(function* () {
   });
 }).pipe(
   Effect.catchTag("HttpBodyError", (e) => failWith500("GET", UTXO_ENDPOINT, e)),
-  Effect.catchTag("DatabaseError", (e) => handleDBGetFailure(UTXO_ENDPOINT, e)),
+  Effect.catchTag("DatabaseError", (e) =>
+    failWith500(
+      "GET",
+      UTXO_ENDPOINT,
+      e.cause,
+      `db failure with table ${e.table}`,
+    ),
+  ),
 );
 
 /**
@@ -328,7 +342,12 @@ const postUtxosByTxOutRefsHandler = Effect.gen(function* () {
     failWith500("POST", UTXOS_ENDPOINT, e),
   ),
   Effect.catchTag("DatabaseError", (e) =>
-    handleDBGetFailure(UTXOS_ENDPOINT, e),
+    failWith500(
+      "GET",
+      UTXOS_ENDPOINT,
+      e.cause,
+      `db failure with table ${e.table}`,
+    ),
   ),
 );
 
@@ -388,7 +407,12 @@ const getTxStatusHandler = Effect.gen(function* () {
     failWith500("GET", TX_STATUS_ENDPOINT, e),
   ),
   Effect.catchTag("DatabaseError", (e) =>
-    handleDBGetFailure(TX_STATUS_ENDPOINT, e),
+    failWith500(
+      "GET",
+      TX_STATUS_ENDPOINT,
+      e.cause,
+      `db failure with table ${e.table}`,
+    ),
   ),
 );
 
@@ -423,7 +447,12 @@ const getDepositStatusHandler = Effect.gen(function* () {
     HttpServerResponse.json({ error: e.message }, { status: e.status }),
   ),
   Effect.catchTag("DatabaseError", (e) =>
-    handleDBGetFailure(DEPOSIT_STATUS_ENDPOINT, e),
+    failWith500(
+      "GET",
+      DEPOSIT_STATUS_ENDPOINT,
+      e.cause,
+      `db failure with table ${e.table}`,
+    ),
   ),
 );
 
@@ -602,7 +631,12 @@ const getBlockHandler = Effect.gen(function* () {
     failWith500("GET", BLOCK_ENDPOINT, e),
   ),
   Effect.catchTag("DatabaseError", (e) =>
-    handleDBGetFailure(BLOCK_ENDPOINT, e),
+    failWith500(
+      "GET",
+      BLOCK_ENDPOINT,
+      e.cause,
+      `db failure with table ${e.table}`,
+    ),
   ),
 );
 
@@ -695,29 +729,36 @@ const getMergeHandler = Effect.gen(function* () {
     failWith500("GET", MERGE_ENDPOINT, e),
   ),
   Effect.catchTag("DatabaseError", (e) =>
-    handleDBGetFailure(MERGE_ENDPOINT, e),
+    failWith500(
+      "GET",
+      MERGE_ENDPOINT,
+      e.cause,
+      `db failure with table ${e.table}`,
+    ),
   ),
   Effect.catchTag("TxSubmitError", (e) =>
-    handleTxGetFailure(MERGE_ENDPOINT, e),
+    failWith500("GET", MERGE_ENDPOINT, e.cause, `${e._tag}: ${e.message}`),
   ),
   Effect.catchTag("TxConfirmError", (e) =>
-    handleTxGetFailure(MERGE_ENDPOINT, e),
+    failWith500("GET", MERGE_ENDPOINT, e.cause, `${e._tag}: ${e.message}`),
   ),
-  Effect.catchTag("TxSignError", (e) => handleTxGetFailure(MERGE_ENDPOINT, e)),
+  Effect.catchTag("TxSignError", (e) =>
+    failWith500("GET", MERGE_ENDPOINT, e.cause, `${e._tag}: ${e.message}`),
+  ),
   Effect.catchTag("CmlDeserializationError", (e) =>
-    handleGenericGetFailure(MERGE_ENDPOINT, e),
+    failWith500("GET", MERGE_ENDPOINT, e.cause, e.message),
   ),
   Effect.catchTag("DataCoercionError", (e) =>
-    handleGenericGetFailure(MERGE_ENDPOINT, e),
+    failWith500("GET", MERGE_ENDPOINT, e.cause, e.message),
   ),
   Effect.catchTag("LinkedListError", (e) =>
-    handleGenericGetFailure(MERGE_ENDPOINT, e),
+    failWith500("GET", MERGE_ENDPOINT, e.cause, e.message),
   ),
   Effect.catchTag("HashingError", (e) =>
-    handleGenericGetFailure(MERGE_ENDPOINT, e),
+    failWith500("GET", MERGE_ENDPOINT, e.cause, e.message),
   ),
   Effect.catchTag("LucidError", (e) =>
-    handleGenericGetFailure(MERGE_ENDPOINT, e),
+    failWith500("GET", MERGE_ENDPOINT, e.cause, e.message),
   ),
   Effect.catchTag("StateQueueError", (e) =>
     handleStateQueueGetFailure(MERGE_ENDPOINT, e),
@@ -741,7 +782,7 @@ const getTxsOfAddressHandler = Effect.gen(function* () {
     );
   }
   try {
-    const address = UtxosCommand.parseAddressArgument(addr);
+    const address = parseAddressArgument(addr);
     const cbors = yield* AddressHistoryDB.retrieve(address);
     yield* Effect.logInfo(`Found ${cbors.length} CBORs with ${addr}`);
     return yield* HttpServerResponse.json({
@@ -757,7 +798,12 @@ const getTxsOfAddressHandler = Effect.gen(function* () {
 }).pipe(
   Effect.catchTag("HttpBodyError", (e) => failWith500("GET", "txs", e)),
   Effect.catchTag("DatabaseError", (e) =>
-    handleDBGetFailure(ADDRESS_HISTORY_ENDPOINT, e),
+    failWith500(
+      "GET",
+      ADDRESS_HISTORY_ENDPOINT,
+      e.cause,
+      `db failure with table ${e.table}`,
+    ),
   ),
 );
 
@@ -810,10 +856,10 @@ ${emoji} ${u.utxo.txHash}#${u.utxo.outputIndex}${info}`;
     failWith500("GET", "logStateQueue", e),
   ),
   Effect.catchTag("LinkedListError", (e) =>
-    handleGenericGetFailure("logStateQueue", e),
+    failWith500("GET", "logStateQueue", e.cause, e.message),
   ),
   Effect.catchTag("LucidError", (e) =>
-    handleGenericGetFailure("logStateQueue", e),
+    failWith500("GET", "logStateQueue", e.cause, e.message),
   ),
 );
 
@@ -850,7 +896,14 @@ ${bHex} -──▶ ${keyValues[bHex]} tx(s)`;
   });
 }).pipe(
   Effect.catchTag("HttpBodyError", (e) => failWith500("GET", "logBlocksDB", e)),
-  Effect.catchTag("DatabaseError", (e) => handleDBGetFailure("logBlocksDB", e)),
+  Effect.catchTag("DatabaseError", (e) =>
+    failWith500(
+      "GET",
+      "logBlocksDB",
+      e.cause,
+      `db failure with table ${e.table}`,
+    ),
+  ),
 );
 
 /**
@@ -1035,7 +1088,9 @@ const postSubmitHandler = (
 
       const bodyBytes = yield* Effect.either(request.arrayBuffer);
       if (bodyBytes._tag === "Left") {
-        yield* Effect.logInfo(`▫️ Submit rejected: failed to read request body`);
+        yield* Effect.logInfo(
+          `▫️ Submit rejected: failed to read request body`,
+        );
         yield* recordLatency();
         return yield* HttpServerResponse.json(
           { error: "Invalid transaction envelope CBOR payload" },

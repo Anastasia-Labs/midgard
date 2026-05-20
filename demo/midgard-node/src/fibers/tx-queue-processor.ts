@@ -12,7 +12,7 @@ import {
   applyUTxOStatePatch,
   runPhaseAValidation,
   runPhaseBValidationWithPatch,
-} from "@/validation/index.js";
+} from "@al-ft/midgard-validation";
 
 /**
  * Background validation loop for queued L2 transactions.

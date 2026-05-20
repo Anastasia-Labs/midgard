@@ -27,19 +27,11 @@ import { AuthenticUTxO } from "@/internals.js";
 import { Data as EffectData, Effect } from "effect";
 import { fetchHubOracleUTxOProgram, HubOracleError } from "@/hub-oracle.js";
 import { fetchSchedulerUTxOProgram, SchedulerError } from "@/scheduler.js";
-import {
-  DepositDatum,
-  DepositUTxO,
-  utxosToDepositUTxOs,
-} from "./user-events/deposit.js";
-import {
-  TxOrderDatum,
-  TxOrderUTxO,
-  utxosToTxOrderUTxOs,
-} from "./user-events/tx-order.js";
+import { completeTxWithLocalUPLCEvalProgram } from "@/tx-completion.js";
+import { DepositUTxO, utxosToDepositUTxOs } from "./user-events/deposit.js";
+import { TxOrderUTxO, utxosToTxOrderUTxOs } from "./user-events/tx-order.js";
 import {
   utxosToWithdrawalUTxOs,
-  WithdrawalOrderDatum,
   WithdrawalUTxO,
 } from "./user-events/withdrawal.js";
 import {
@@ -77,13 +69,6 @@ export const SettlementDatumSchema = Data.Object({
 export type SettlementDatum = Data.Static<typeof SettlementDatumSchema>;
 export const SettlementDatum =
   SettlementDatumSchema as unknown as SettlementDatum;
-
-export const OperatorStatusSchema = Data.Enum([
-  Data.Literal("ActiveOperator"),
-  Data.Literal("RetiredOperator"),
-]);
-export type OperatorStatus = Data.Static<typeof OperatorStatusSchema>;
-export const OperatorStatus = OperatorStatusSchema as unknown as OperatorStatus;
 
 export const EventTypeSchema = Data.Enum([
   Data.Literal("Deposit"),
@@ -376,14 +361,14 @@ export const unsignedAttachResolutionClaimTxProgram = (
     const composedTx = attachResolutionClaimTx.compose(
       updateBondHoldNewSettlementTx,
     );
-    const completedTx: TxSignBuilder = yield* Effect.tryPromise({
-      try: () => composedTx.complete({ localUPLCEval: true }),
-      catch: (e) =>
+    const completedTx: TxSignBuilder = yield* completeTxWithLocalUPLCEvalProgram(
+      composedTx,
+      (e) =>
         new SettlementError({
           message: `Failed to build the transaction: ${e}`,
           cause: e,
         }),
-    });
+    );
     return completedTx;
   });
 
@@ -722,14 +707,14 @@ export const unsignedDisproveResolutionClaimTxProgram = (
     const composedTx = disproveResolutionClaimTx.compose(
       removeOperatorBadSettlementTx,
     );
-    const completedTx: TxSignBuilder = yield* Effect.tryPromise({
-      try: () => composedTx.complete({ localUPLCEval: true }),
-      catch: (e) =>
+    const completedTx: TxSignBuilder = yield* completeTxWithLocalUPLCEvalProgram(
+      composedTx,
+      (e) =>
         new SettlementError({
           message: `Failed to build the transaction: ${e}`,
           cause: e,
         }),
-    });
+    );
     return completedTx;
   });
 
@@ -847,14 +832,14 @@ export const unsignedResolveSettlementTxProgram = (
       lucid,
       params,
     );
-    const completedTx: TxSignBuilder = yield* Effect.tryPromise({
-      try: () => resolveSettlementTx.complete({ localUPLCEval: true }),
-      catch: (e) =>
+    const completedTx: TxSignBuilder = yield* completeTxWithLocalUPLCEvalProgram(
+      resolveSettlementTx,
+      (e) =>
         new SettlementError({
           message: `Failed to build the transaction: ${e}`,
           cause: e,
         }),
-    });
+    );
     return completedTx;
   });
 

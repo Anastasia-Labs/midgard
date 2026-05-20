@@ -1,6 +1,6 @@
 import { confirm, number, select } from '@inquirer/prompts';
 import { generateEmulatorAccountFromPrivateKey } from '@lucid-evolution/lucid';
-import { getGeneratorStatus, startGenerator, stopGenerator } from '@midgard-manager/tx-generator';
+import { startGenerator, stopGenerator } from '@midgard-manager/tx-generator';
 import chalk from 'chalk';
 import { Effect } from 'effect';
 import ora from 'ora-classic';
@@ -418,9 +418,6 @@ export const toggleTxGenerator: Action = {
       process.once('SIGINT', parentAbortHandler);
 
       try {
-        // Check current status
-        const currentStatus = getGeneratorStatus();
-
         // Display current status with more detail
         if (context.config.generator.enabled) {
           console.log(chalk.green.bold('✓ Transaction generator is currently ENABLED'));

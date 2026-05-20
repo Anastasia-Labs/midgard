@@ -79,7 +79,6 @@ type _BuilderSupported = [
   Expect<HasKey<TxBuilder, "mintAssets">>,
   Expect<HasKey<TxBuilder, "mint">>,
   Expect<HasKey<TxBuilder, "observe">>,
-  Expect<HasKey<TxBuilder, "attachObserverScript">>,
   Expect<HasKey<TxBuilder, "receiveRedeemer">>,
   Expect<HasKey<TxBuilder, "compose">>,
   Expect<HasKey<TxBuilder, "setMinFee">>,
@@ -121,15 +120,12 @@ type _PartialSignSupported = [
   Expect<HasKey<CompleteTx["sign"], "withWallet">>,
   Expect<HasKey<CompleteTx["sign"], "withWalletSafe">>,
   Expect<HasKey<CompleteTx["sign"], "withWalletProgram">>,
-  Expect<HasKey<CompleteTx["sign"], "withWalletEffect">>,
   Expect<HasKey<CompleteTx["sign"], "withPrivateKey">>,
   Expect<HasKey<CompleteTx["sign"], "withPrivateKeySafe">>,
   Expect<HasKey<CompleteTx["sign"], "withPrivateKeyProgram">>,
-  Expect<HasKey<CompleteTx["sign"], "withPrivateKeyEffect">>,
   Expect<HasKey<CompleteTx["sign"], "withExternalSigner">>,
   Expect<HasKey<CompleteTx["sign"], "withExternalSignerSafe">>,
   Expect<HasKey<CompleteTx["sign"], "withExternalSignerProgram">>,
-  Expect<HasKey<CompleteTx["sign"], "withExternalSignerEffect">>,
   Expect<HasKey<CompleteTx["sign"], "withWitness">>,
   Expect<HasKey<CompleteTx["sign"], "withWitnesses">>,
   Expect<HasKey<TxPartialSignBuilder, "partial">>,
@@ -259,8 +255,9 @@ type _NoAuthCommitteeHot = TxBuilder["authCommitteeHot"];
 type _NoResignCommitteeHot = TxBuilder["resignCommitteeHot"];
 // @ts-expect-error Midgard does not support Cardano metadata attachment.
 type _NoAttachMetadata = TxBuilder["attachMetadata"];
+type _AttachApi = TxBuilder["attach"];
 // @ts-expect-error Midgard has no certificate validators.
-type _NoAttachCertificateValidator = TxBuilder["attach"]["CertificateValidator"];
+type _NoAttachCertificateValidator = _AttachApi["CertificateValidator"];
 // @ts-expect-error Midgard observers are not Cardano withdrawals.
 type _NoAttachWithdrawalValidator = TxBuilder["attach"]["WithdrawalValidator"];
 // @ts-expect-error Midgard has no vote validators.

@@ -1,13 +1,21 @@
-import { readFileSync, readdirSync, statSync } from "node:fs";
-import { join, resolve } from "node:path";
-import { describe, expect, it } from "vitest";
+import {
+  MIDGARD_SUPPORTED_SCRIPT_LANGUAGES,
+} from "@al-ft/midgard-core/codec";
+import {
+  readFileSync,
+  readdirSync,
+  statSync } from "node:fs";
+import { join,
+  resolve } from "node:path";
+import { describe,
+  expect,
+  it } from "vitest";
 import { Effect } from "effect";
 import {
   BuilderInvariantError,
   decodeMidgardUtxo,
   encodeMidgardTxOutput,
   LucidMidgard,
-  MIDGARD_SUPPORTED_SCRIPT_LANGUAGES,
   outRefToCbor,
   type Address,
   type MidgardProvider,

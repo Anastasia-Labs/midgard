@@ -8,41 +8,33 @@ import {
   DoubleSpendStep03Datum,
   DoubleSpendStep03SpendRedeemer,
   DoubleSpendStep04Datum,
-  buildDoubleSpendFaultProofContracts,
-  parseFaultProofBlueprint,
   type MidgardTxInput,
 } from "@al-ft/midgard-sdk";
 import { computeHash32, encodeCbor } from "@al-ft/midgard-core";
-import { Effect } from "effect";
-import { parseContractDeploymentInfo } from "./inspect-contracts.js";
 import {
-  compareOutRefs,
+  DEFAULT_CONFIRMATION_POLL_MS,
   fetchUtxoByOutRef,
-  makeLucidForSubmitInit,
+  makeLucidForSubmit,
   outRefLabel,
   parseOutRef,
   readJsonFile,
-  referenceInputIndex,
-  requireDeploymentScriptHash,
+  resolveDoubleSpendDeploymentContracts,
   resolveProverSigner,
   type ResolvedProverSigner,
   type SubmitProviderConfig,
-} from "./submit-init.js";
+} from "./runtime.js";
 import {
-  DEFAULT_CONFIRMATION_POLL_MS,
   inputIndex,
-  parsedOutRefFromUtxo,
-  parseHex,
-  parseInteger,
   requireComputationThreadToken,
-  requireMatchingScriptHash,
   selectFeeInput,
 } from "./submit-step-01.js";
+import { parseHex } from "./json-file.js";
 import {
   ensureSpendInputsReferenceWitness,
   excludeUtxo,
   spendInputsWitnessFromCbors,
 } from "./spend-input-witness.js";
+import { parseDoubleSpentInputIndex } from "./double-spend-inputs.js";
 
 const STEP_03_OUTPUT_INDEX = 0n;
 
@@ -85,16 +77,14 @@ export type SubmitStep03Result = {
   readonly awaitedConfirmation: boolean;
 };
 
-export const parseSubmitStep03Tx1Inputs = (
-  value: unknown,
-): readonly string[] => parseSpendInputCbors(value, "--tx1-inputs");
-
 export const parseSpendInputCbors = (
   value: unknown,
   label: string,
 ): readonly string[] => {
   if (!Array.isArray(value)) {
-    throw new Error(`${label} must be a JSON array of raw input CBOR hex strings.`);
+    throw new Error(
+      `${label} must be a JSON array of raw input CBOR hex strings.`,
+    );
   }
   return value.map((entry, index) =>
     parseHex(entry, `${label}[${index.toString()}]`),
@@ -105,22 +95,6 @@ export const hashSpendInputCbors = (inputCbors: readonly string[]): string =>
   computeHash32(
     encodeCbor(inputCbors.map((inputCbor) => Buffer.from(inputCbor, "hex"))),
   ).toString("hex");
-
-const parseDoubleSpentInputIndex = (
-  value: string,
-  inputCount: number,
-): bigint => {
-  const index = parseInteger(value, "--double-spent-input-index");
-  if (index >= BigInt(inputCount)) {
-    throw new Error(
-      `--double-spent-input-index ${index.toString()} is out of bounds for ${inputCount.toString()} tx1 inputs.`,
-    );
-  }
-  if (index > BigInt(Number.MAX_SAFE_INTEGER)) {
-    throw new Error("--double-spent-input-index exceeds the safe integer range.");
-  }
-  return index;
-};
 
 type Step03DatumWithState = DoubleSpendStep03Datum & {
   readonly data: NonNullable<DoubleSpendStep03Datum["data"]>;
@@ -169,50 +143,12 @@ export const submitStep03 = async ({
   readonly doubleSpentInputIndex: bigint;
   readonly awaitConfirmation?: boolean;
 }): Promise<SubmitStep03Result> => {
-  const parsedDeploymentInfo = parseContractDeploymentInfo(deploymentInfo);
-  const catalogue = parsedDeploymentInfo.fraudProofCatalogueMint?.fraudProofCatalogue;
-  const doubleSpendCategory = catalogue?.categories.doubleSpend;
-  if (doubleSpendCategory === undefined) {
-    throw new Error(
-      "Deployment info is missing fraudProofCatalogueMint.fraudProofCatalogue.categories.doubleSpend.",
-    );
-  }
-
-  const fraudProofCataloguePolicyId = requireDeploymentScriptHash(
-    parsedDeploymentInfo,
-    "fraudProofCatalogueMint",
-  );
-  const hubOraclePolicyId = requireDeploymentScriptHash(
-    parsedDeploymentInfo,
-    "hubOracleMint",
-  );
-  const deployedFraudProofPolicyId = requireDeploymentScriptHash(
-    parsedDeploymentInfo,
-    "fraudProofMint",
-  );
-  const deployedDoubleSpendHash = requireDeploymentScriptHash(
-    parsedDeploymentInfo,
-    "fraudProofDoubleSpend",
-  );
-
-  const contracts = await Effect.runPromise(
-    buildDoubleSpendFaultProofContracts({
-      blueprint: parseFaultProofBlueprint(blueprint),
+  const { doubleSpendCategory, contracts } =
+    await resolveDoubleSpendDeploymentContracts({
+      blueprint,
+      deploymentInfo,
       network,
-      hubOraclePolicyId,
-      fraudProofCataloguePolicyId,
-    }),
-  );
-  requireMatchingScriptHash({
-    label: "fraudProofMint policy",
-    deployed: deployedFraudProofPolicyId,
-    derived: contracts.fraudProof.policyId,
-  });
-  requireMatchingScriptHash({
-    label: "fraudProofDoubleSpend step-01 script",
-    deployed: deployedDoubleSpendHash,
-    derived: contracts.doubleSpend.firstStep.spendingScriptHash,
-  });
+    });
 
   const threadUtxo = await fetchUtxoByOutRef({
     lucid,
@@ -251,7 +187,8 @@ export const submitStep03 = async ({
     tx1SpendInputCbors,
     "--tx1-inputs",
   );
-  const doubleSpentInputCbor = tx1SpendInputCbors[Number(doubleSpentInputIndex)]!;
+  const doubleSpentInputCbor =
+    tx1SpendInputCbors[Number(doubleSpentInputIndex)]!;
   const doubleSpentInput =
     tx1SpendInputsWitness.inputs[Number(doubleSpentInputIndex)]!;
 
@@ -264,15 +201,9 @@ export const submitStep03 = async ({
       witness: tx1SpendInputsWitness,
       awaitConfirmation,
     });
-  const sortedReferenceInputs = [
-    tx1SpendInputsReferenceWitness.utxo,
-  ].sort((left, right) =>
-    compareOutRefs(parsedOutRefFromUtxo(left), parsedOutRefFromUtxo(right)),
-  );
-  const tx1SpendInputsRefInputIndex = referenceInputIndex(
-    sortedReferenceInputs,
-    tx1SpendInputsReferenceWitness.utxo,
-  );
+  const referenceInputs = [tx1SpendInputsReferenceWitness.utxo];
+  // This transaction adds exactly one reference input: the spend-input witness.
+  const tx1SpendInputsRefInputIndex = 0n;
   const walletUtxosWithoutWitness = excludeUtxo(
     await lucid.wallet().getUtxos(),
     tx1SpendInputsReferenceWitness.utxo,
@@ -319,7 +250,7 @@ export const submitStep03 = async ({
     .newTx()
     .collectFrom([feeInput])
     .collectFrom([threadUtxo], redeemer)
-    .readFrom(sortedReferenceInputs)
+    .readFrom(referenceInputs)
     .pay.ToContract(
       contracts.doubleSpend.steps[3].spendingScriptAddress,
       {
@@ -351,10 +282,8 @@ export const submitStep03 = async ({
     computationThreadUnit: threadToken.unit,
     thirdStepAddress: contracts.doubleSpend.steps[2].spendingScriptAddress,
     fourthStepAddress: contracts.doubleSpend.steps[3].spendingScriptAddress,
-    verifiedTx1SpendInputsHash:
-      inputDatum.data.verified_tx1_spend_inputs_hash,
-    verifiedTx2SpendInputsHash:
-      inputDatum.data.verified_tx2_spend_inputs_hash,
+    verifiedTx1SpendInputsHash: inputDatum.data.verified_tx1_spend_inputs_hash,
+    verifiedTx2SpendInputsHash: inputDatum.data.verified_tx2_spend_inputs_hash,
     doubleSpentInputIndex: Number(doubleSpentInputIndex),
     doubleSpentInput,
     doubleSpentInputCbor,
@@ -374,9 +303,12 @@ export const submitStep03FromFiles = async (
     readJsonFile(config.blueprintPath),
     readJsonFile(config.deploymentInfoPath),
     readJsonFile(config.tx1InputsPath),
-    makeLucidForSubmitInit(config),
+    makeLucidForSubmit(config),
   ]);
-  const tx1SpendInputCbors = parseSubmitStep03Tx1Inputs(tx1InputsJson);
+  const tx1SpendInputCbors = parseSpendInputCbors(
+    tx1InputsJson,
+    "--tx1-inputs",
+  );
   const signer = resolveProverSigner(config);
   return await submitStep03({
     lucid,
@@ -386,10 +318,11 @@ export const submitStep03FromFiles = async (
     signer,
     threadOutRef: config.threadOutRef,
     tx1SpendInputCbors,
-    doubleSpentInputIndex: parseDoubleSpentInputIndex(
-      config.doubleSpentInputIndex,
-      tx1SpendInputCbors.length,
-    ),
+    doubleSpentInputIndex: parseDoubleSpentInputIndex({
+      value: config.doubleSpentInputIndex,
+      inputCount: tx1SpendInputCbors.length,
+      inputLabel: "tx1",
+    }),
     awaitConfirmation: config.awaitConfirmation,
   });
 };

@@ -124,12 +124,6 @@ export type RegisteredOperatorInitParams = {
   lovelace?: bigint;
 };
 
-export type RegisteredOperatorDeinitParams = {};
-export type RegisteredOperatorRegisterParams = {};
-export type RegisteredOperatorDeregisterParams = {};
-export type RegisteredOperatorActivateParams = {};
-export type RegisteredOperatorRemoveDuplicateSlashBondParams = {};
-
 /**
  * Init
  *
@@ -155,78 +149,3 @@ export const incompleteRegisteredOperatorInitTxProgram = (
       lovelace: params.lovelace,
     });
   });
-
-/**
- * Deinit
- *
- * @param lucid - The LucidEvolution
- * @param params - The parameters
- * @returns {TxBuilder} A TxBuilder instance that can be used to build the transaction.
- */
-export const incompleteRegisteredOperatorDeinitTxProgram = (
-  lucid: LucidEvolution,
-  params: RegisteredOperatorDeinitParams,
-): TxBuilder => {
-  const tx = lucid.newTx();
-  return tx;
-};
-
-/**
- * Register
- *
- * @param lucid - The LucidEvolution
- * @param params - The parameters
- * @returns {TxBuilder} A TxBuilder instance that can be used to build the transaction.
- */
-export const incompleteRegisteredOperatorRegisterTxProgram = (
-  lucid: LucidEvolution,
-  params: RegisteredOperatorRegisterParams,
-): TxBuilder => {
-  const tx = lucid.newTx();
-  return tx;
-};
-
-/**
- * Deregister
- *
- * @param lucid - The LucidEvolution
- * @param params - The parameters
- * @returns {TxBuilder} A TxBuilder instance that can be used to build the transaction.
- */
-export const incompleteRegisteredOperatorDeregisterTxProgram = (
-  lucid: LucidEvolution,
-  params: RegisteredOperatorDeregisterParams,
-): TxBuilder => {
-  const tx = lucid.newTx();
-  return tx;
-};
-
-/**
- * Activate
- *
- * @param lucid - The LucidEvolution
- * @param params - The parameters
- * @returns {TxBuilder} A TxBuilder instance that can be used to build the transaction.
- */
-export const incompleteRegisteredOperatorActivateTxProgram = (
-  lucid: LucidEvolution,
-  params: RegisteredOperatorActivateParams,
-): TxBuilder => {
-  const tx = lucid.newTx();
-  return tx;
-};
-
-/**
- * RemoveDuplicate
- *
- * @param lucid - The LucidEvolution
- * @param params - The parameters
- * @returns {TxBuilder} A TxBuilder instance that can be used to build the transaction.
- */
-export const incompleteRegisteredOperatorRemoveDuplicateSlashBondTxProgram = (
-  lucid: LucidEvolution,
-  params: RegisteredOperatorRemoveDuplicateSlashBondParams,
-): TxBuilder => {
-  const tx = lucid.newTx();
-  return tx;
-};

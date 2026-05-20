@@ -3,7 +3,7 @@ import * as SDK from "@al-ft/midgard-sdk";
 import fs from "node:fs";
 import path from "node:path";
 import { Effect } from "effect";
-import { extractStateQueueErrorCode } from "@/commands/listen.js";
+import { extractStateQueueErrorCode } from "@/commands/listen-response.js";
 import {
   deriveInitialMergeRedeemerSeedIndexes,
   diagnoseMissingBlockTxs,
@@ -11,9 +11,9 @@ import {
 } from "@/transactions/state-queue/merge-to-confirmed-state.js";
 import {
   cardanoTxBytesToMidgardNativeTxFullBytes,
-  computeMidgardNativeTxIdFromFull,
+  computeMidgardNativeTxId,
   decodeMidgardNativeTxFull,
-} from "@/midgard-tx-codec/index.js";
+} from "@al-ft/midgard-core/codec";
 
 type TxFixture = {
   readonly cborHex: string;
@@ -119,7 +119,7 @@ describe("preflightDecodeBlockTxs", () => {
     const nativeTxCbor = cardanoTxBytesToMidgardNativeTxFullBytes(
       Buffer.from(txFixture.cborHex, "hex"),
     );
-    const txId = computeMidgardNativeTxIdFromFull(
+    const txId = computeMidgardNativeTxId(
       decodeMidgardNativeTxFull(nativeTxCbor),
     );
     return { txId, txCbor: nativeTxCbor };

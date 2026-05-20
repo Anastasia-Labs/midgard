@@ -1,4 +1,7 @@
-import { describe, expect, it } from "vitest";
+import {
+  describe,
+  expect,
+  it } from "vitest";
 import { CML } from "@lucid-evolution/lucid";
 import {
   addAssets,
@@ -16,6 +19,7 @@ import {
   outRefLabel,
   parseOutRefLabel,
   subtractAssets,
+  utxoOutRefCbor,
   utxoProtectedAddress,
   valueLikeToCmlValue,
   BuilderInvariantError,
@@ -209,6 +213,18 @@ describe("output helpers", () => {
         outRef: { txHash: "11".repeat(32), outputIndex: 0 },
         outRefCbor: outRefToCbor({ txHash: "22".repeat(32), outputIndex: 0 }),
         outputCbor,
+      }),
+    ).toThrow(BuilderInvariantError);
+  });
+
+  it("rejects cached UTxO outref CBOR that disagrees with the explicit outref", () => {
+    expect(() =>
+      utxoOutRefCbor({
+        txHash: "11".repeat(32),
+        outputIndex: 0,
+        cbor: {
+          outRef: outRefToCbor({ txHash: "22".repeat(32), outputIndex: 0 }),
+        },
       }),
     ).toThrow(BuilderInvariantError);
   });

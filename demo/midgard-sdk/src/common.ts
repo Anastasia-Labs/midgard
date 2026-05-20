@@ -1,9 +1,6 @@
 import {
-  AddressDetails,
-  credentialToAddress,
   Data,
   getAddressDetails,
-  Network,
   Script,
   ScriptHash,
 } from "@lucid-evolution/lucid";
@@ -107,15 +104,17 @@ export const utxosAtByNFTPolicyId = (
     ),
   );
 
-const blake2bHelper = (
+export const hashHexWithBlake2b = (
   msg: string,
-  dkLen: number,
-  functionName: string,
+  digestByteLength: 28 | 32,
 ): Effect.Effect<string, HashingError> => {
+  const functionName = digestByteLength === 28 ? "Blake2b224" : "Blake2b256";
   const errorMessage = `Failed to hash using ${functionName} function`;
   if (isHexString(msg)) {
     try {
-      return Effect.succeed(toHex(blake2b(fromHex(msg), { dkLen })));
+      return Effect.succeed(
+        toHex(blake2b(fromHex(msg), { dkLen: digestByteLength })),
+      );
     } catch (e) {
       return Effect.fail(
         new HashingError({
@@ -134,14 +133,6 @@ const blake2bHelper = (
   }
 };
 
-export const hashHexWithBlake2b224 = (
-  msg: string,
-): Effect.Effect<string, HashingError> => blake2bHelper(msg, 28, "Blake2b224");
-
-export const hashHexWithBlake2b256 = (
-  msg: string,
-): Effect.Effect<string, HashingError> => blake2bHelper(msg, 32, "Blake2b256");
-
 export const bufferToHex = (buf: Buffer): string => {
   try {
     return buf.toString("hex");
@@ -153,66 +144,6 @@ export const bufferToHex = (buf: Buffer): string => {
 export const H32Schema = Data.Bytes({ minLength: 32, maxLength: 32 });
 export type H32 = Data.Static<typeof H32Schema>;
 export const H32 = H32Schema as unknown as H32;
-
-/**
- * Assumes the given Bech32 string is that of a Cardano address (TODO).
- */
-export const midgardAddressFromBech32 = (
-  bechStr: string,
-): Effect.Effect<MidgardAddress, Bech32DeserializationError> =>
-  Effect.gen(function* () {
-    const addressDetails: AddressDetails = yield* Effect.try({
-      try: () => getAddressDetails(bechStr),
-      catch: (e) =>
-        new Bech32DeserializationError({
-          message: `Failed to break down ${bechStr} to its details.`,
-          cause: e,
-        }),
-    });
-    const cred = addressDetails.paymentCredential;
-    if (cred === undefined) {
-      return yield* new Bech32DeserializationError({
-        message: `Failed extracting the payment credential from ${bechStr}.`,
-        cause: "Unknown cause.",
-      });
-    } else {
-      if (cred.type === "Key") {
-        const midgardAddress: MidgardAddress = {
-          PublicKeyCredential: [cred.hash],
-        };
-        return midgardAddress;
-      } else {
-        const midgardAddress: MidgardAddress = {
-          ScriptCredential: [cred.hash],
-        };
-        return midgardAddress;
-      }
-    }
-  });
-
-/**
- * Taking Cardano `Network` as the first argument is temporary (TODO).
- */
-export const midgardAddressToBech32 = (
-  network: Network,
-  addr: MidgardAddress,
-): string => {
-  if ("PublicKeyCredential" in addr) {
-    const [pubKeyHex] = addr.PublicKeyCredential;
-    const cred: Credential = {
-      type: "Key",
-      hash: pubKeyHex,
-    };
-    return credentialToAddress(network, cred);
-  } else {
-    const [scriptHashHex] = addr.ScriptCredential;
-    const cred: Credential = {
-      type: "Script",
-      hash: scriptHashHex,
-    };
-    return credentialToAddress(network, cred);
-  }
-};
 
 export type MintingValidator = {
   mintingScriptCBOR: string;
@@ -303,8 +234,6 @@ export const PubKeyHashSchema = Data.Bytes({ minLength: 28, maxLength: 28 });
 
 export const ScriptHashSchema = Data.Bytes({ minLength: 28, maxLength: 28 });
 
-export const PolicyIdSchema = ScriptHashSchema;
-
 export const MerkleRootSchema = Data.Bytes({ minLength: 32, maxLength: 32 });
 export type MerkleRoot = Data.Static<typeof MerkleRootSchema>;
 export const MerkleRoot = MerkleRootSchema as unknown as MerkleRoot;
@@ -378,10 +307,6 @@ export const ProofSchema = Data.Array(ProofStepSchema);
 export type Proof = Data.Static<typeof ProofSchema>;
 export const Proof = ProofSchema as unknown as Proof;
 
-export const MidgardAddressSchema = CredentialSchema;
-export type MidgardAddress = CredentialD;
-export const MidgardAddress = MidgardAddressSchema as unknown as MidgardAddress;
-
 /**
  * TODO: Note that this function does not support pointer addresses.
  */
@@ -437,18 +362,16 @@ export const findOperatorByPKH = (
   | (RetiredOperatorUTxO & { isActive: false }),
   LucidError
 > => {
-  const activeOperatorMatch = EffectArray.findFirst(
-    activeOperators,
-    (utxo) => utxo.assetName.endsWith(operatorPKH),
+  const activeOperatorMatch = EffectArray.findFirst(activeOperators, (utxo) =>
+    utxo.assetName.endsWith(operatorPKH),
   );
 
   if (Option.isSome(activeOperatorMatch)) {
     return Effect.succeed({ ...activeOperatorMatch.value, isActive: true });
   }
 
-  const retiredOperatorMatch = EffectArray.findFirst(
-    retiredOperators,
-    (utxo) => utxo.assetName.endsWith(operatorPKH),
+  const retiredOperatorMatch = EffectArray.findFirst(retiredOperators, (utxo) =>
+    utxo.assetName.endsWith(operatorPKH),
   );
 
   if (Option.isSome(retiredOperatorMatch)) {

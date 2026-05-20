@@ -1,4 +1,5 @@
 import {
+  assertCanonicalCborRoundTrip,
   compareCborKeyBytes,
   encodeCborBytes,
   encodeCborMapRaw,
@@ -9,7 +10,6 @@ import {
   skipCborItem,
 } from "./cbor.js";
 import {
-  decodeMidgardAddressBytes,
   encodeMidgardAddressBytes,
   type MidgardAddress,
 } from "./address.js";
@@ -100,36 +100,24 @@ export const decodeMidgardTxOutput = (bytes: Uint8Array): MidgardTxOutput => {
     previousKey = key.value;
     switch (key.value) {
       case 0n: {
-        if (address !== undefined) {
-          fail("Duplicate output address key");
-        }
         const decodedAddress = readCborBytes(bytes, cursor, "output.address");
         cursor = decodedAddress.nextOffset;
         address = encodeMidgardAddressBytes(decodedAddress.value);
         break;
       }
       case 1n: {
-        if (value !== undefined) {
-          fail("Duplicate output value key");
-        }
         const raw = readRawValue(bytes, cursor);
         cursor = raw.nextOffset;
         value = decodeMidgardValue(raw.raw);
         break;
       }
       case 2n: {
-        if (datum !== undefined) {
-          fail("Duplicate output datum key");
-        }
         const rawDatum = readCborBytes(bytes, cursor, "output.datum");
         cursor = rawDatum.nextOffset;
         datum = decodeMidgardDatum(rawDatum.value);
         break;
       }
       case 3n: {
-        if (scriptRef !== undefined) {
-          fail("Duplicate output script_ref key");
-        }
         const raw = readRawValue(bytes, cursor);
         cursor = raw.nextOffset;
         scriptRef = decodeMidgardVersionedScript(raw.raw);
@@ -166,12 +154,11 @@ export const decodeMidgardTxOutput = (bytes: Uint8Array): MidgardTxOutput => {
     ...(datum === undefined ? {} : { datum }),
     ...(scriptRef === undefined ? {} : { script_ref: scriptRef }),
   };
-  const encoded = encodeMidgardTxOutput(output);
-  if (!encoded.equals(Buffer.from(bytes))) {
-    throw new MidgardTxCodecError(
-      MidgardTxCodecErrorCodes.CborDecode,
-      "Midgard output CBOR is not canonical",
-    );
-  }
+  assertCanonicalCborRoundTrip(
+    bytes,
+    output,
+    encodeMidgardTxOutput,
+    "Midgard output CBOR is not canonical",
+  );
   return output;
 };

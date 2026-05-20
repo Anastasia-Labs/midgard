@@ -16,10 +16,9 @@ import {
   fetchUserEventUTxOsProgram,
   findInclusionTimeForUserEvent,
   getNonceInputAndAssetName,
+  encodeUserEventAuthenticateMintRedeemer,
   UserEventExtraFields,
   UserEventFetchConfig,
-  UserEventMintRedeemer,
-  UserEventMintRedeemerSchema,
   userEventWitnessScriptHash,
 } from "./internals.js";
 import {
@@ -42,6 +41,7 @@ import {
   UTxO,
 } from "@lucid-evolution/lucid";
 import { Data as EffectData, Effect } from "effect";
+import { completeTxWithLocalUPLCEvalProgram } from "@/tx-completion.js";
 
 export const WithdrawalOrderDatumSchema = Data.Object({
   event: WithdrawalEventSchema,
@@ -55,10 +55,6 @@ export type WithdrawalOrderDatum = Data.Static<
 >;
 export const WithdrawalOrderDatum =
   WithdrawalOrderDatumSchema as unknown as WithdrawalOrderDatum;
-export const WithdrawalMintRedeemerSchema = UserEventMintRedeemerSchema;
-export type WithdrawalMintRedeemer = UserEventMintRedeemer;
-export const WithdrawalMintRedeemer =
-  UserEventMintRedeemer as unknown as WithdrawalMintRedeemer;
 export const WithdrawalSpendPurposeSchema = Data.Enum([
   Data.Literal("InitializePayout"),
   Data.Object({
@@ -94,8 +90,6 @@ export type WithdrawalUTxO = AuthenticUTxO<
   UserEventExtraFields
 >;
 
-export type WithdrawalFetchConfig = UserEventFetchConfig;
-
 /**
  * Silently drops invalid UTxOs.
  */
@@ -121,7 +115,7 @@ export const utxosToWithdrawalUTxOs = (
 
 export const fetchWithdrawalUTxOsProgram = (
   lucid: LucidEvolution,
-  config: WithdrawalFetchConfig,
+  config: UserEventFetchConfig,
 ): Effect.Effect<WithdrawalUTxO[], LucidError> =>
   fetchUserEventUTxOsProgram(lucid, config, (utxos: UTxO[]) =>
     utxosToWithdrawalUTxOs(utxos, config.eventPolicyId),
@@ -129,7 +123,7 @@ export const fetchWithdrawalUTxOsProgram = (
 
 export const fetchWithdrawalUTxOs = (
   lucid: LucidEvolution,
-  config: WithdrawalFetchConfig,
+  config: UserEventFetchConfig,
 ) => makeReturn(fetchWithdrawalUTxOsProgram(lucid, config));
 
 export type WithdrawalOrderParams = {
@@ -190,21 +184,16 @@ export const incompleteWithdrawalTxProgram = (
       WithdrawalOrderDatum,
     );
 
-    const mintRedeemer: UserEventMintRedeemer = {
-      AuthenticateEvent: {
-        nonce_input_index: 0n,
-        event_output_index: 0n,
-        hub_ref_input_index: 0n,
-        witness_registration_redeemer_index: 0n,
-      },
-    };
-    const mintRedeemerCBOR = Data.to(mintRedeemer, UserEventMintRedeemer);
-
     const tx = buildUserEventMintTransaction({
       lucid,
       inputUtxo,
       nft: withdrawalNFT,
-      mintRedeemer: mintRedeemerCBOR,
+      mintRedeemer: encodeUserEventAuthenticateMintRedeemer({
+        nonceInputIndex: 0n,
+        eventOutputIndex: 0n,
+        hubRefInputIndex: 0n,
+        witnessRegistrationRedeemerIndex: 0n,
+      }),
       scriptAddress: params.withdrawalScriptAddress,
       datum: withdrawalOrderDatumCBOR,
       validTo: inclusionTime,
@@ -234,14 +223,14 @@ export const unsignedWithdrawalTxProgram = (
       lucid,
       withdrawalParams,
     );
-    const completedTx: TxSignBuilder = yield* Effect.tryPromise({
-      try: () => commitTx.complete({ localUPLCEval: true }),
-      catch: (e) =>
+    const completedTx: TxSignBuilder = yield* completeTxWithLocalUPLCEvalProgram(
+      commitTx,
+      (e) =>
         new WithdrawalError({
           message: `Failed to build the transaction: ${e}`,
           cause: e,
         }),
-    });
+    );
     return completedTx;
   });
 

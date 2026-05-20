@@ -1,14 +1,16 @@
+import {
+  computeMidgardNativeTxId,
+  decodeMidgardNativeTxFull,
+  MIDGARD_SUPPORTED_SCRIPT_LANGUAGES,
+} from "@al-ft/midgard-core/codec";
 import { CML } from "@lucid-evolution/lucid";
 import { blake2b } from "@noble/hashes/blake2.js";
 import { Effect } from "effect";
 import {
-  computeMidgardNativeTxIdFromFull,
-  decodeMidgardNativeTxFull,
   decodeMidgardUtxo,
   encodeMidgardTxOutput,
   type LucidMidgardError,
   LucidMidgard,
-  MIDGARD_SUPPORTED_SCRIPT_LANGUAGES,
   makeVKeyWitness,
   outRefToCbor,
   walletFromExternalSigner,
@@ -101,7 +103,7 @@ const memoryProvider = (
   submitTx: async (txCborHex): Promise<SubmitTxResult> => {
     const tx = decodeMidgardNativeTxFull(Buffer.from(txCborHex, "hex"));
     return {
-      txId: computeMidgardNativeTxIdFromFull(tx).toString("hex"),
+      txId: computeMidgardNativeTxId(tx).toString("hex"),
       status: "queued",
       httpStatus: 202,
       duplicate: false,

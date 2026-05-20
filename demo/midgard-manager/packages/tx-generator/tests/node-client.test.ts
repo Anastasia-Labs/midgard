@@ -1,5 +1,5 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { CML } from '@lucid-evolution/lucid';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { MidgardNodeClient } from '../src/lib/client/node-client';
 
@@ -134,15 +134,38 @@ describe('MidgardNodeClient', () => {
     expect(String((result as { error?: unknown }).error)).toContain('error');
   });
 
+  it('should preserve single-submit failure behavior when retry attempts exceed one', async () => {
+    mockFetch
+      .mockResolvedValueOnce({
+        status: 404,
+      })
+      .mockRejectedValueOnce(new Error('first submit failure'));
+
+    const client = new MidgardNodeClient({
+      baseUrl: 'http://localhost:3000',
+      retryAttempts: 2,
+      retryDelay: 0,
+      enableLogs: false,
+    });
+
+    const result = await client.submitTransaction('test_cbor_hex');
+    expect(result).toEqual(
+      expect.objectContaining({
+        status: 'ERROR',
+      })
+    );
+    expect(mockFetch).toHaveBeenCalledTimes(2);
+  });
+
   it('should decode spendable utxos from node response', async () => {
     const txHash = CML.TransactionHash.from_hex('11'.repeat(32));
     const outRef = CML.TransactionInput.new(txHash, 0n);
-    const output = CML.TransactionOutput.new(
-      CML.Address.from_bech32(
-        'addr_test1qzyem8ex0v9v76q0u52x3t2xmj5rkhjd9rsd44kx3klsut4qga2669x30zsng46mhfrrk4ngylfnnlda7rkfvxq5fywqvurkrs'
-      ),
-      CML.Value.from_coin(1_500_000n)
+    const address =
+      'addr_test1qzyem8ex0v9v76q0u52x3t2xmj5rkhjd9rsd44kx3klsut4qga2669x30zsng46mhfrrk4ngylfnnlda7rkfvxq5fywqvurkrs';
+    const addressBytes = Buffer.from(CML.Address.from_bech32(address).to_raw_bytes()).toString(
+      'hex'
     );
+    const outputCbor = `a2005839${addressBytes}01821a0016e360a0`;
 
     mockFetch.mockResolvedValueOnce({
       ok: true,
@@ -151,7 +174,7 @@ describe('MidgardNodeClient', () => {
         utxos: [
           {
             outref: Buffer.from(outRef.to_cbor_bytes()).toString('hex'),
-            value: Buffer.from(output.to_cbor_bytes()).toString('hex'),
+            outputCbor,
           },
         ],
       }),
@@ -164,7 +187,7 @@ describe('MidgardNodeClient', () => {
     });
 
     const utxos = await client.getSpendableUtxos(
-      'addr_test1qzyem8ex0v9v76q0u52x3t2xmj5rkhjd9rsd44kx3klsut4qga2669x30zsng46mhfrrk4ngylfnnlda7rkfvxq5fywqvurkrs'
+      address
     );
     expect(utxos).toHaveLength(1);
     expect(utxos[0].txHash).toBe('11'.repeat(32));

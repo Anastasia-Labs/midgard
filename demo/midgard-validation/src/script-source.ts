@@ -4,8 +4,6 @@ import {
   type MidgardNativeScript,
 } from "@al-ft/midgard-core/codec";
 
-export const MIDGARD_V1_SCRIPT_TAG = 0x80;
-
 export type LocalScriptVersion = "NativeCardano" | "PlutusV3" | "MidgardV1";
 
 export type ScriptSource = {

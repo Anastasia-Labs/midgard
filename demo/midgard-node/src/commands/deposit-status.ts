@@ -1,9 +1,8 @@
 import * as DepositsDB from "@/database/deposits.js";
 import { DatabaseError } from "@/database/utils/common.js";
 import { Database } from "@/services/database.js";
-import { isHexString } from "@/utils.js";
+import { parseEventId, parseHexBytes } from "@/commands/command-utils.js";
 import * as SDK from "@al-ft/midgard-sdk";
-import { Data as LucidData } from "@lucid-evolution/lucid";
 import { Data as EffectData, Effect, Option } from "effect";
 
 /**
@@ -40,47 +39,6 @@ export class DepositStatusCommandError extends EffectData.TaggedError(
 }> {}
 
 /**
- * Parses a canonical OutputReference CBOR hex selector.
- */
-const parseEventId = (value: unknown): Buffer => {
-  if (typeof value !== "string") {
-    throw new Error("eventId must be a hex string.");
-  }
-
-  const normalized = value.trim().toLowerCase();
-  if (normalized.length === 0) {
-    throw new Error("eventId must not be empty.");
-  }
-  if (normalized.length % 2 !== 0 || !isHexString(normalized)) {
-    throw new Error("eventId must be an even-length hex string.");
-  }
-
-  try {
-    const decoded = LucidData.from(normalized, SDK.OutputReference);
-    return Buffer.from(LucidData.to(decoded, SDK.OutputReference), "hex");
-  } catch (cause) {
-    throw new Error(
-      `Invalid eventId: failed to decode OutputReference CBOR (${String(cause)}).`,
-    );
-  }
-};
-
-/**
- * Parses a Cardano L1 tx hash selector.
- */
-const parseCardanoTxHash = (value: unknown): Buffer => {
-  if (typeof value !== "string") {
-    throw new Error("cardanoTxHash must be a hex string.");
-  }
-
-  const normalized = value.trim().toLowerCase();
-  if (normalized.length !== 64 || !isHexString(normalized)) {
-    throw new Error("cardanoTxHash must be a 32-byte hex string.");
-  }
-  return Buffer.from(normalized, "hex");
-};
-
-/**
  * Parses `GET /deposit-status` selectors from query params.
  */
 export const parseDepositStatusLookup = (
@@ -101,7 +59,13 @@ export const parseDepositStatusLookup = (
       : { eventId: parseEventId(eventIdParam) }),
     ...(cardanoTxHashParam === undefined
       ? {}
-      : { cardanoTxHash: parseCardanoTxHash(cardanoTxHashParam) }),
+      : {
+          cardanoTxHash: parseHexBytes(
+            cardanoTxHashParam,
+            "cardanoTxHash",
+            32,
+          ),
+        }),
   };
 };
 

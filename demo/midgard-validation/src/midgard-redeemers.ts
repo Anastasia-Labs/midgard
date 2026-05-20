@@ -6,6 +6,7 @@ import {
   decodeSingleCbor,
   encodeCbor,
 } from "@al-ft/midgard-core/codec/cbor";
+import { txOutRefData } from "./tx-out-ref.js";
 
 export const MidgardRedeemerTag = {
   Spend: CML.RedeemerTag.Spend,
@@ -27,10 +28,10 @@ export type DecodedMidgardRedeemer = MidgardRedeemerPointer & {
   };
 };
 
-const pointerKey = (pointer: MidgardRedeemerPointer): string =>
+export const midgardRedeemerPointerKey = (
+  pointer: MidgardRedeemerPointer,
+): string =>
   `${pointer.tag}:${pointer.index.toString(10)}`;
-
-export const midgardRedeemerPointerKey = pointerKey;
 
 const ensureSupportedTag = (tag: number, fieldName: string): void => {
   if (
@@ -141,8 +142,8 @@ export const findRedeemerByPointer = (
   redeemers: readonly DecodedMidgardRedeemer[],
   pointer: MidgardRedeemerPointer,
 ): DecodedMidgardRedeemer | undefined => {
-  const key = pointerKey(pointer);
-  return redeemers.find((redeemer) => pointerKey(redeemer) === key);
+  const key = midgardRedeemerPointerKey(pointer);
+  return redeemers.find((redeemer) => midgardRedeemerPointerKey(redeemer) === key);
 };
 
 export const redeemerDataFromCborHex = (cborHex: string): unknown =>
@@ -162,16 +163,6 @@ export type MidgardScriptPurpose =
   | { readonly kind: "observe"; readonly scriptHash: string }
   | { readonly kind: "receive"; readonly scriptHash: string };
 
-export const outputReferenceData = (outRefHex: string): Constr<unknown> => {
-  const input = CML.TransactionInput.from_cbor_bytes(
-    Buffer.from(outRefHex, "hex"),
-  );
-  return new Constr(0, [
-    input.transaction_id().to_hex(),
-    BigInt(input.index()),
-  ]);
-};
-
 const scriptCredentialData = (scriptHash: string): Constr<unknown> =>
   new Constr(1, [scriptHash]);
 
@@ -182,7 +173,7 @@ export const cardanoScriptPurposeData = (
     case "mint":
       return new Constr(0, [purpose.policyId]);
     case "spend":
-      return new Constr(1, [outputReferenceData(purpose.outRefHex)]);
+      return new Constr(1, [txOutRefData(purpose.outRefHex)]);
     case "observe":
       return new Constr(2, [scriptCredentialData(purpose.scriptHash)]);
     case "receive":
@@ -199,7 +190,7 @@ export const midgardScriptPurposeData = (
     case "spend":
       return new Constr(1, [
         purpose.scriptHash,
-        outputReferenceData(purpose.outRefHex),
+        txOutRefData(purpose.outRefHex),
       ]);
     case "observe":
       return new Constr(2, [purpose.scriptHash]);

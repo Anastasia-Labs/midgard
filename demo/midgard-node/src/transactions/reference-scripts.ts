@@ -27,8 +27,6 @@ export type ReferenceScriptResolved = {
   readonly utxo: UTxO;
 };
 
-export type ReferenceScriptPublication = ReferenceScriptResolved;
-
 const SCRIPT_REF_OUTPUT_LOVELACE = 4_000_000n;
 const SCRIPT_REF_PUBLICATION_FUNDING_BUFFER_LOVELACE = 10_000_000n;
 const REFERENCE_SCRIPT_WALLET_WORKING_CAPITAL_LOVELACE = 50_000_000n;
@@ -445,7 +443,7 @@ const resolveExistingReferenceScriptPublication = (
   lucid: LucidEvolution,
   walletUtxos: readonly UTxO[],
   target: ReferenceScriptTarget,
-): Effect.Effect<ReferenceScriptPublication | undefined, SDK.StateQueueError> =>
+): Effect.Effect<ReferenceScriptResolved | undefined, SDK.StateQueueError> =>
   Effect.gen(function* () {
     const existingCandidates = walletUtxos
       .filter((utxo) => isSameScriptRef(utxo.scriptRef, target.script))
@@ -589,7 +587,7 @@ const publishMissingReferenceScriptTargets = (
   fundingCandidateUtxos: readonly UTxO[],
   missingTargets: readonly ReferenceScriptTarget[],
 ): Effect.Effect<
-  readonly ReferenceScriptPublication[],
+  readonly ReferenceScriptResolved[],
   | SDK.StateQueueError
   | SDK.LucidError
   | TxConfirmError
@@ -1042,7 +1040,7 @@ export const ensureReferenceScriptTargetsProgram = (
   targets: readonly ReferenceScriptTarget[],
   fundingLucid: LucidEvolution = referenceScriptsLucid,
 ): Effect.Effect<
-  readonly ReferenceScriptPublication[],
+  readonly ReferenceScriptResolved[],
   | SDK.StateQueueError
   | SDK.LucidError
   | TxConfirmError
@@ -1062,7 +1060,7 @@ export const ensureReferenceScriptTargetsProgram = (
     const publishMissingTargetsInBatches = (
       missingTargets: readonly ReferenceScriptTarget[],
     ): Effect.Effect<
-      readonly ReferenceScriptPublication[],
+      readonly ReferenceScriptResolved[],
       | SDK.StateQueueError
       | SDK.LucidError
       | TxConfirmError
@@ -1173,7 +1171,7 @@ export const ensureReferenceScriptTargetsProgram = (
     const existingByName = new Map(
       existingPublications
         .filter(
-          (publication): publication is ReferenceScriptPublication =>
+          (publication): publication is ReferenceScriptResolved =>
             publication !== undefined,
         )
         .map((publication) => [publication.name, publication]),
@@ -1181,7 +1179,7 @@ export const ensureReferenceScriptTargetsProgram = (
     const missingTargets = targets.filter(
       (target) => !existingByName.has(target.name),
     );
-    let createdByName = new Map<string, ReferenceScriptPublication>();
+    let createdByName = new Map<string, ReferenceScriptResolved>();
     if (missingTargets.length > 0) {
       createdByName = new Map(
         (yield* publishMissingTargetsInBatches(missingTargets)).map(
@@ -1189,7 +1187,7 @@ export const ensureReferenceScriptTargetsProgram = (
         ),
       );
     }
-    const resolvedPublications: ReferenceScriptPublication[] = [];
+    const resolvedPublications: ReferenceScriptResolved[] = [];
     for (const target of targets) {
       const publication =
         existingByName.get(target.name) ?? createdByName.get(target.name);
@@ -1212,7 +1210,7 @@ export const deployReferenceScriptCommandProgram = (
   commandName: ReferenceScriptCommandName,
   fundingLucid: LucidEvolution = referenceScriptsLucid,
 ): Effect.Effect<
-  readonly ReferenceScriptPublication[],
+  readonly ReferenceScriptResolved[],
   | SDK.StateQueueError
   | SDK.LucidError
   | TxConfirmError
@@ -1231,7 +1229,7 @@ export const ensureNodeRuntimeReferenceScriptsProgram = (
   contracts: SDK.MidgardValidators,
   fundingLucid: LucidEvolution = referenceScriptsLucid,
 ): Effect.Effect<
-  readonly ReferenceScriptPublication[],
+  readonly ReferenceScriptResolved[],
   | SDK.StateQueueError
   | SDK.LucidError
   | TxConfirmError
@@ -1249,7 +1247,7 @@ export const resolveReferenceScriptTargetsProgram = (
   referenceScriptsLucid: LucidEvolution,
   scopeName: string,
   targets: readonly ReferenceScriptTarget[],
-): Effect.Effect<readonly ReferenceScriptPublication[], SDK.StateQueueError> =>
+): Effect.Effect<readonly ReferenceScriptResolved[], SDK.StateQueueError> =>
   Effect.gen(function* () {
     const referenceScriptsAddress = yield* Effect.tryPromise({
       try: () => referenceScriptsLucid.wallet().address(),
@@ -1270,7 +1268,7 @@ export const verifyNodeRuntimeReferenceScriptsProgram = (
   lucid: LucidEvolution,
   referenceScriptsAddress: string,
   contracts: SDK.MidgardValidators,
-): Effect.Effect<readonly ReferenceScriptPublication[], SDK.StateQueueError> =>
+): Effect.Effect<readonly ReferenceScriptResolved[], SDK.StateQueueError> =>
   Effect.gen(function* () {
     const targets = nodeRuntimeReferenceScriptTargets(contracts);
     const referenceScriptUtxos = yield* Effect.tryPromise({
@@ -1281,7 +1279,7 @@ export const verifyNodeRuntimeReferenceScriptsProgram = (
           cause,
         }),
     });
-    const resolved: ReferenceScriptPublication[] = [];
+    const resolved: ReferenceScriptResolved[] = [];
     const missing: string[] = [];
     for (const target of targets) {
       const utxo = [...referenceScriptUtxos]

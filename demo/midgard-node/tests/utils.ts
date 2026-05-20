@@ -1,6 +1,11 @@
+import { createHash } from "node:crypto";
+import * as SDK from "@al-ft/midgard-sdk";
+import { Data as LucidData, type Address } from "@lucid-evolution/lucid";
+import * as LedgerUtils from "@/database/utils/ledger.js";
 import { NodeConfig } from "@/services/config.js";
 import { Database } from "@/services/database.js";
 import { Effect } from "effect";
+import { expect } from "vitest";
 
 const explicitPostgresDb =
   process.env.POSTGRES_DB !== undefined && process.env.POSTGRES_DB !== "";
@@ -54,3 +59,85 @@ if (
 
 export const provideDatabaseLayers = <A, E, R>(eff: Effect.Effect<A, E, R>) =>
   eff.pipe(Effect.provide(Database.layer), Effect.provide(NodeConfig.layer));
+
+export const deterministicFixtureBytes = (
+  label: string,
+  length: number,
+): Buffer => {
+  const chunks: Buffer[] = [];
+  let bytesGenerated = 0;
+  for (let counter = 0; bytesGenerated < length; counter += 1) {
+    const chunk = createHash("sha256")
+      .update("midgard-node-test-fixture")
+      .update("\0")
+      .update(label)
+      .update("\0")
+      .update(counter.toString())
+      .digest();
+    chunks.push(chunk);
+    bytesGenerated += chunk.length;
+  }
+  return Buffer.concat(chunks).subarray(0, length);
+};
+
+export const deterministicFixtureTxHash = (label: string): Buffer =>
+  deterministicFixtureBytes(`tx-hash:${label}`, 32);
+
+export const deterministicFixtureOutputReference = (
+  label: string,
+  outputIndex: number | bigint = 0n,
+): SDK.OutputReference => ({
+  transactionId: deterministicFixtureTxHash(
+    `output-reference:${label}`,
+  ).toString("hex"),
+  outputIndex: BigInt(outputIndex),
+});
+
+export const deterministicFixtureOutputReferenceId = (
+  label: string,
+  outputIndex: number | bigint = 0n,
+): Buffer =>
+  Buffer.from(
+    LucidData.to(
+      deterministicFixtureOutputReference(label, outputIndex),
+      SDK.OutputReference,
+    ),
+    "hex",
+  );
+
+type LedgerLikeEntry = {
+  readonly [LedgerUtils.Columns.TX_ID]: Buffer;
+  readonly [LedgerUtils.Columns.OUTREF]: Buffer;
+  readonly [LedgerUtils.Columns.OUTPUT]: Buffer;
+  readonly [LedgerUtils.Columns.ADDRESS]: Address;
+};
+
+const withoutLedgerTimestamp = (
+  entry: LedgerLikeEntry,
+): LedgerUtils.EntryNoTimeStamp => ({
+  [LedgerUtils.Columns.TX_ID]: entry[LedgerUtils.Columns.TX_ID],
+  [LedgerUtils.Columns.OUTREF]: entry[LedgerUtils.Columns.OUTREF],
+  [LedgerUtils.Columns.OUTPUT]: entry[LedgerUtils.Columns.OUTPUT],
+  [LedgerUtils.Columns.ADDRESS]: entry[LedgerUtils.Columns.ADDRESS],
+});
+
+const sortLedgerEntries = (
+  entries: readonly LedgerUtils.EntryNoTimeStamp[],
+): LedgerUtils.EntryNoTimeStamp[] =>
+  [...entries].sort((left, right) =>
+    Buffer.compare(
+      left[LedgerUtils.Columns.OUTREF],
+      right[LedgerUtils.Columns.OUTREF],
+    ),
+  );
+
+export const expectLedgerUtxos = (
+  actual: readonly LedgerLikeEntry[],
+  expected: readonly LedgerLikeEntry[],
+): void => {
+  expect(
+    sortLedgerEntries(actual.map((entry) => withoutLedgerTimestamp(entry))),
+  ).toStrictEqual(
+    sortLedgerEntries(expected.map((entry) => withoutLedgerTimestamp(entry))),
+  );
+};

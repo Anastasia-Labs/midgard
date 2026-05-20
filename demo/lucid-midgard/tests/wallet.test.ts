@@ -1,4 +1,7 @@
-import { describe, expect, it } from "vitest";
+import {
+  describe,
+  expect,
+  it } from "vitest";
 import { CML } from "@lucid-evolution/lucid";
 import {
   addressNetworkId,

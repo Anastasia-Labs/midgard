@@ -1,21 +1,18 @@
 import { Database } from "@/services/database.js";
 import { SqlClient } from "@effect/sql";
-import { decodeFirst, encode, rfc8949EncodeOptions } from "cborg";
 import { Effect } from "effect";
+import {
+  asArray,
+  asBytes,
+  decodeSingleCbor,
+  encodeCbor,
+} from "@al-ft/midgard-core/codec";
 import {
   DatabaseError,
   clearTable,
   sqlErrorToDatabaseError,
 } from "@/database/utils/common.js";
 import * as Ledger from "@/database/utils/ledger.js";
-
-const DECODER_OPTIONS = {
-  strict: true,
-  allowIndefinite: false,
-  allowUndefined: false,
-  useMaps: true,
-  rejectDuplicateMapKeys: true,
-};
 
 export const tableName = "mempool_tx_deltas";
 
@@ -35,31 +32,6 @@ export type TxDelta = {
   readonly txId: Buffer;
   readonly spent: readonly Buffer[];
   readonly produced: readonly Ledger.MinimalEntry[];
-};
-
-const decodeSingleCbor = (bytes: Uint8Array): unknown => {
-  const [value, remainder] = decodeFirst(bytes, DECODER_OPTIONS);
-  if (remainder.length !== 0) {
-    throw new Error("Trailing bytes after CBOR value");
-  }
-  return value;
-};
-
-const encodeCbor = (value: unknown): Buffer =>
-  Buffer.from(encode(value, rfc8949EncodeOptions));
-
-const asArray = (value: unknown, fieldName: string): unknown[] => {
-  if (!Array.isArray(value)) {
-    throw new Error(`${fieldName} must be an array`);
-  }
-  return value;
-};
-
-const asBytes = (value: unknown, fieldName: string): Buffer => {
-  if (value instanceof Uint8Array) {
-    return Buffer.from(value);
-  }
-  throw new Error(`${fieldName} must be bytes`);
 };
 
 const encodeSpentCbor = (spent: readonly Buffer[]): Buffer =>

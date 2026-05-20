@@ -4,9 +4,9 @@ import {
   GenericErrorFields,
   LucidError,
   MissingDatumError,
-  ValueSchema,
 } from "@/common.js";
 import { Data as EffectData, Effect } from "effect";
+import { completeTxWithLocalUPLCEvalProgram } from "@/tx-completion.js";
 import {
   Assets,
   Data,
@@ -65,10 +65,6 @@ export const LinkedListDatumSchema = Data.Object({
 export type LinkedListDatum = Data.Static<typeof LinkedListDatumSchema>;
 export const LinkedListDatum =
   LinkedListDatumSchema as unknown as LinkedListDatum;
-
-export const NodeDatumSchema = LinkedListDatumSchema;
-export type NodeDatum = LinkedListDatum;
-export const NodeDatum = LinkedListDatum;
 
 export const LinkedListNodeViewSchema = Data.Object({
   key: NodeKeySchema,
@@ -190,8 +186,6 @@ export const getLinkedListNodeViewFromUTxO = (
   }
 };
 
-export const getNodeDatumFromUTxO = getLinkedListNodeViewFromUTxO;
-
 export class LinkedListError extends EffectData.TaggedError(
   "LinkedListError",
 )<GenericErrorFields> {}
@@ -250,14 +244,14 @@ export const unsignedLinkedListTxProgram = (
       lucid,
       initParams,
     );
-    const completedTx: TxSignBuilder = yield* Effect.tryPromise({
-      try: () => commitTx.complete({ localUPLCEval: true }),
-      catch: (e) =>
+    const completedTx: TxSignBuilder = yield* completeTxWithLocalUPLCEvalProgram(
+      commitTx,
+      (e) =>
         new LucidError({
           message: `Failed to build the linked list initialization transaction: ${e}`,
           cause: e,
         }),
-    });
+    );
     return completedTx;
   });
 

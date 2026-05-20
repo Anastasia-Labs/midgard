@@ -3,9 +3,9 @@ import { BlocksDB, ImmutableDB, TxUtils } from "@/database/index.js";
 import { Database } from "@/services/index.js";
 import { DatabaseError } from "@/database/utils/common.js";
 import {
-  computeMidgardNativeTxIdFromFull,
+  computeMidgardNativeTxId,
   decodeMidgardNativeTxFull,
-} from "@/midgard-tx-codec/index.js";
+} from "@al-ft/midgard-core/codec";
 
 /**
  * Types of linkage/data-integrity issues the immutable audit can report.
@@ -121,7 +121,7 @@ export const auditBlocksImmutableProgram = (
       try {
         const decoded = decodeMidgardNativeTxFull(txPayload);
         const computedTxIdHex =
-          computeMidgardNativeTxIdFromFull(decoded).toString("hex");
+          computeMidgardNativeTxId(decoded).toString("hex");
         if (computedTxIdHex !== txIdHex) {
           issues.push({
             kind: "TX_ID_MISMATCH",

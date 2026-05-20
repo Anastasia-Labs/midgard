@@ -1,6 +1,6 @@
 import {
   HashingError,
-  hashHexWithBlake2b256,
+  hashHexWithBlake2b,
   LucidError,
   POSIXTime,
   UnspecifiedNetworkError,
@@ -123,36 +123,27 @@ export type UserEventAuthenticateMintRedeemerParams = {
   readonly witnessRegistrationRedeemerIndex: bigint;
 };
 
-export const makeUserEventAuthenticateMintRedeemer = (
-  params: UserEventAuthenticateMintRedeemerParams,
-): UserEventMintRedeemer => ({
-  AuthenticateEvent: {
-    nonce_input_index: params.nonceInputIndex,
-    event_output_index: params.eventOutputIndex,
-    hub_ref_input_index: params.hubRefInputIndex,
-    witness_registration_redeemer_index:
-      params.witnessRegistrationRedeemerIndex,
-  },
-});
-
 export const encodeUserEventAuthenticateMintRedeemer = (
   params: UserEventAuthenticateMintRedeemerParams,
 ): string =>
-  Data.to(makeUserEventAuthenticateMintRedeemer(params), UserEventMintRedeemer);
-
-export const makeUserEventWitnessMintOrBurnRedeemer = (
-  targetPolicy: PolicyId,
-): UserEventWitnessPublishRedeemer => ({
-  MintOrBurn: {
-    targetPolicy,
-  },
-});
+  Data.to(
+    {
+      AuthenticateEvent: {
+        nonce_input_index: params.nonceInputIndex,
+        event_output_index: params.eventOutputIndex,
+        hub_ref_input_index: params.hubRefInputIndex,
+        witness_registration_redeemer_index:
+          params.witnessRegistrationRedeemerIndex,
+      },
+    } satisfies UserEventMintRedeemer,
+    UserEventMintRedeemer,
+  );
 
 export const encodeUserEventWitnessMintOrBurnRedeemer = (
   targetPolicy: PolicyId,
 ): string =>
   Data.to(
-    makeUserEventWitnessMintOrBurnRedeemer(targetPolicy),
+    { MintOrBurn: { targetPolicy } } satisfies UserEventWitnessPublishRedeemer,
     UserEventWitnessPublishRedeemer,
   );
 
@@ -291,8 +282,9 @@ export const getNonceInputAndAssetName = (
       BigInt(inputUtxo.outputIndex),
     );
 
-    const assetName = yield* hashHexWithBlake2b256(
+    const assetName = yield* hashHexWithBlake2b(
       transactionInput.to_cbor_hex(),
+      32,
     );
 
     return { inputUtxo, assetName };

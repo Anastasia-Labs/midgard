@@ -18,6 +18,7 @@ import {
 } from '../../utils/common.js';
 import { MidgardNodeClient } from '../client/node-client.js';
 import { SerializedMidgardTransaction } from '../client/types.js';
+import { TRANSACTION_CONSTANTS } from '../types.js';
 
 /**
  * Multi-output transaction generator for more adversarial or operationally
@@ -49,12 +50,12 @@ const TOTAL_ACCOUNT_COUNT = 100;
 /**
  * Number of outputs created per distribution transaction.
  */
-const OUTPUT_UTXOS_CHUNK = 20;
+const OUTPUT_UTXOS_CHUNK = TRANSACTION_CONSTANTS.OUTPUTS_PER_DISTRIBUTION;
 
 /**
  * Number of generated transactions between short GC-friendly pauses.
  */
-const GC_PAUSE_INTERVAL = 250; // number of transactions before GC pause
+const GC_PAUSE_INTERVAL = TRANSACTION_CONSTANTS.GC_PAUSE_INTERVAL.MULTI_OUTPUT;
 
 /**
  * Maximum number of concurrent account-generation tasks.
@@ -64,7 +65,7 @@ const ACCOUNT_GENERATION_CONCURRENCY = 10;
 /**
  * Minimum lovelace value the generator is willing to place in an output.
  */
-const MIN_LOVELACE_OUTPUT = 1_000_000n; // Minimum lovelace per output
+const MIN_LOVELACE_OUTPUT = TRANSACTION_CONSTANTS.MIN_LOVELACE_OUTPUT;
 
 /**
  * Validates the generator configuration before any emulator state is derived.
@@ -160,7 +161,7 @@ const calculateOutputLovelace = (totalLovelace: bigint, utxosCount: number): big
 export const generateMultiOutputTransactions = async (
   config: MultiOutputTransactionConfig
 ): Promise<SerializedMidgardTransaction[]> => {
-  const { network, initialUTxO, utxosCount, finalUtxosCount, walletSeedOrPrivateKey, nodeClient } =
+  const { network, initialUTxO, utxosCount, finalUtxosCount, walletSeedOrPrivateKey } =
     config;
 
   validateConfig(config);

@@ -315,25 +315,6 @@ export const markFailed = (
     ),
   );
 
-export const withLease = <A, E, R>(
-  holder: string,
-  program: (token: string) => Effect.Effect<A, E, R>,
-  options: LeaseOptions = {},
-): Effect.Effect<A, E | DatabaseError, R | Database> =>
-  Effect.gen(function* () {
-    const result = yield* tryWithLease(holder, program, options);
-    if (result._tag === "Busy") {
-      return yield* Effect.fail(
-        new DatabaseError({
-          table: tableName,
-          message: "Failed to acquire state-queue mutation lease",
-          cause: `holder=${holder},${describeActiveLease(result.activeLease)}`,
-        }),
-      );
-    }
-    return result.value;
-  });
-
 export const tryWithLease = <A, E, R>(
   holder: string,
   program: (token: string) => Effect.Effect<A, E, R>,

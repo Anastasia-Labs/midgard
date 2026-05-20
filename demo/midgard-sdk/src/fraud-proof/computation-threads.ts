@@ -1,5 +1,4 @@
 import { Data } from "@lucid-evolution/lucid";
-import { LucidEvolution, TxBuilder } from "@lucid-evolution/lucid";
 import { ProofSchema, ScriptHashSchema } from "@/common.js";
 
 export const FraudProofComputationThreadStepDatumSchema = Data.Object({
@@ -39,52 +38,3 @@ export type FraudProofComputationThreadRedeemer = Data.Static<
 >;
 export const FraudProofComputationThreadRedeemer =
   FraudProofComputationThreadRedeemerSchema as unknown as FraudProofComputationThreadRedeemer;
-
-export type FraudProofComputationThreadInitParams = {};
-export type FraudProofComputationThreadSuccessParams = {};
-export type FraudProofComputationThreadCancelParams = {};
-
-/**
- * Init
- *
- * @param lucid - The LucidEvolution
- * @param params - The parameters
- * @returns {TxBuilder} A TxBuilder instance that can be used to build the transaction.
- */
-export const incompleteFraudProofComputationThreadInitTxProgram = (
-  lucid: LucidEvolution,
-  params: FraudProofComputationThreadInitParams,
-): TxBuilder => {
-  const tx = lucid.newTx();
-  return tx;
-};
-
-/**
- * Success
- *
- * @param lucid - The LucidEvolution
- * @param params - The parameters
- * @returns {TxBuilder} A TxBuilder instance that can be used to build the transaction.
- */
-export const incompleteFraudProofComputationThreadSuccessTxProgram = (
-  lucid: LucidEvolution,
-  params: FraudProofComputationThreadSuccessParams,
-): TxBuilder => {
-  const tx = lucid.newTx();
-  return tx;
-};
-
-/**
- * Cancel
- *
- * @param lucid - The LucidEvolution
- * @param params - The parameters
- * @returns {TxBuilder} A TxBuilder instance that can be used to build the transaction.
- */
-export const incompleteFraudProofComputationThreadCancelTxProgram = (
-  lucid: LucidEvolution,
-  params: FraudProofComputationThreadCancelParams,
-): TxBuilder => {
-  const tx = lucid.newTx();
-  return tx;
-};

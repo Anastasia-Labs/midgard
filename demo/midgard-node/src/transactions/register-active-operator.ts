@@ -26,7 +26,6 @@ import {
 } from "@/transactions/utils.js";
 import { compareOutRefs } from "@/tx-context.js";
 import {
-  alignUnixTimeToSlotBoundary,
   alignedUnixTimeStrictlyAfter,
 } from "@/workers/utils/commit-end-time.js";
 import {
@@ -302,18 +301,12 @@ const summarizeNodeSetForDiagnostics = (
     registeredDatum: decodeRegisteredOperatorDatumValue(datum.data) ?? null,
   }));
 
-const decodeRegisteredOperatorActivationTime = (
-  node: SDK.LinkedListNodeView,
-): bigint | undefined => nodeKeyToPosixTime(node.key);
-
 const mkRegisteredActivateRedeemer = ({
   operatorKeyHash,
   layout,
-  retiredOperatorAssetName,
 }: {
   readonly operatorKeyHash: string;
   readonly layout: ActivateRedeemerLayout;
-  readonly retiredOperatorAssetName: string;
 }): string => {
   return LucidData.to(
     {
@@ -338,13 +331,11 @@ const mkRegisteredActivateRedeemer = ({
 const mkRegisteredActivateRedeemerBuilder = ({
   operatorKeyHash,
   layout,
-  retiredOperatorAssetName,
   registeredNode,
   registeredAnchor,
 }: {
   readonly operatorKeyHash: string;
   readonly layout: ActivateRedeemerLayout;
-  readonly retiredOperatorAssetName: string;
   readonly registeredNode: UTxO;
   readonly registeredAnchor: UTxO;
 }): RedeemerBuilder => ({
@@ -365,7 +356,6 @@ const mkRegisteredActivateRedeemerBuilder = ({
         registeredOperatorsRemovedNodeInputIndex: removedNodeInputIndex,
         registeredOperatorsAnchorNodeInputIndex: anchorNodeInputIndex,
       },
-      retiredOperatorAssetName,
     });
   },
 });
@@ -1361,9 +1351,7 @@ const operatorLifecycleProgram = (
       );
     }
 
-    const activationTime = decodeRegisteredOperatorActivationTime(
-      registeredNode.datum,
-    );
+    const activationTime = nodeKeyToPosixTime(registeredNode.datum.key);
     if (activationTime === undefined) {
       return yield* Effect.fail(
         new SDK.StateQueueError({
@@ -1498,16 +1486,12 @@ const operatorLifecycleProgram = (
           ? mkRegisteredActivateRedeemerBuilder({
               operatorKeyHash,
               layout,
-              retiredOperatorAssetName:
-                retiredNotMemberWitnessForActivate.assetName,
               registeredNode: registeredNode.utxo,
               registeredAnchor: registeredAnchor.utxo,
             })
           : mkRegisteredActivateRedeemer({
               operatorKeyHash,
               layout,
-              retiredOperatorAssetName:
-                retiredNotMemberWitnessForActivate.assetName,
             });
       const activeActivateRedeemer = LucidData.to(
         {

@@ -7,26 +7,21 @@ import {
   parseDepositStatusLookup,
 } from "@/commands/deposit-status.js";
 
-const makeDepositEventId = (
-  transactionId: string,
-  outputIndex: bigint,
-): Buffer =>
-  Buffer.from(
-    LucidData.to(
-      {
-        transactionId,
-        outputIndex,
-      },
-      SDK.OutputReference,
-    ),
-    "hex",
-  );
-
 const makeDepositEntry = (
   overrides: Partial<DepositsDB.Entry> = {},
 ): DepositsDB.Entry => ({
   [DepositsDB.Columns.ID]:
-    overrides[DepositsDB.Columns.ID] ?? makeDepositEventId("11".repeat(32), 0n),
+    overrides[DepositsDB.Columns.ID] ??
+    Buffer.from(
+      LucidData.to(
+        {
+          transactionId: "11".repeat(32),
+          outputIndex: 0n,
+        },
+        SDK.OutputReference,
+      ),
+      "hex",
+    ),
   [DepositsDB.Columns.INFO]:
     overrides[DepositsDB.Columns.INFO] ?? Buffer.from("aa".repeat(48), "hex"),
   [DepositsDB.Columns.INCLUSION_TIME]:
@@ -52,7 +47,16 @@ const makeDepositEntry = (
 
 describe("deposit-status command helpers", () => {
   it("parses eventId and canonicalizes OutputReference CBOR", () => {
-    const eventId = makeDepositEventId("ab".repeat(32), 7n);
+    const eventId = Buffer.from(
+      LucidData.to(
+        {
+          transactionId: "ab".repeat(32),
+          outputIndex: 7n,
+        },
+        SDK.OutputReference,
+      ),
+      "hex",
+    );
 
     const parsed = parseDepositStatusLookup({
       eventId: eventId.toString("hex").toUpperCase(),

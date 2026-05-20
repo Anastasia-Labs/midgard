@@ -16,46 +16,48 @@ import {
   NativeTxCompact,
   Proof,
   STATE_QUEUE_NODE_ASSET_NAME_PREFIX,
-  buildDoubleSpendFaultProofContracts,
   getHeaderFromStateQueueDatum,
   getLinkedListNodeViewFromUTxO,
-  parseFaultProofBlueprint,
   type NativeTxCompact as NativeTxCompactData,
 } from "@al-ft/midgard-sdk";
 import {
   MidgardTxValidityCodes,
-  computeMidgardNativeTxIdFromCompact,
+  computeMidgardNativeTxId,
   decodeMidgardNativeTxCompact,
   encodeMidgardNativeTxCompact,
   type MidgardNativeTxCompact as CoreNativeTxCompact,
 } from "@al-ft/midgard-core";
 import { Effect } from "effect";
-import { parseContractDeploymentInfo } from "./inspect-contracts.js";
+import {
+  parseHex,
+  parseInteger,
+  parseSignedInteger,
+  requireRecord,
+} from "./json-file.js";
 import {
   compareOutRefs,
+  DEFAULT_CONFIRMATION_POLL_MS,
   encodeRawPhasMembershipProofRedeemer,
   fetchUtxoByOutRef,
   getCompiledScript,
-  makeLucidForSubmitInit,
+  makeLucidForSubmit,
   outRefLabel,
+  parsedOutRefFromUtxo,
   parseOutRef,
   phasMembershipRewardAddress,
   readJsonFile,
   referenceInputIndex,
-  requireDeploymentScriptHash,
   requireSingletonUtxo,
+  resolveDoubleSpendDeploymentContracts,
   resolveFraudulentHeaderHash,
   resolveProverSigner,
-  type ParsedOutRef,
-  type ProviderKind,
   type ResolvedProverSigner,
   type SubmitProviderConfig,
-} from "./submit-init.js";
+} from "./runtime.js";
 
 export const PHAS_MEMBERSHIP_WITHDRAW_TITLE = "phas.membership.withdraw";
 const STEP_01_OUTPUT_INDEX = 0n;
 export const PHAS_WITHDRAW_REDEEMER_INDEX = 0n;
-export const DEFAULT_CONFIRMATION_POLL_MS = 5_000;
 export const MIN_FEE_INPUT_LOVELACE = 10_000_000n;
 
 export type SubmitStep01CliConfig = SubmitProviderConfig & {
@@ -101,76 +103,8 @@ export type SubmitStep01Result = {
   readonly awaitedConfirmation: boolean;
 };
 
-const isRecord = (value: unknown): value is Record<string, unknown> =>
-  typeof value === "object" && value !== null && !Array.isArray(value);
-
-export const requireRecord = (
-  value: unknown,
-  label: string,
-): Record<string, unknown> => {
-  if (!isRecord(value)) {
-    throw new Error(`${label} must be a JSON object.`);
-  }
-  return value;
-};
-
-export const parseHex = (
-  value: unknown,
-  label: string,
-  byteCount?: number,
-): string => {
-  if (typeof value !== "string") {
-    throw new Error(`${label} must be a hex string.`);
-  }
-  const normalized = value.trim().toLowerCase();
-  const expectedLength = byteCount === undefined ? undefined : byteCount * 2;
-  if (
-    !/^[0-9a-f]*$/.test(normalized) ||
-    normalized.length % 2 !== 0 ||
-    (expectedLength !== undefined && normalized.length !== expectedLength)
-  ) {
-    const sizeMessage =
-      byteCount === undefined
-        ? "an even-length"
-        : `a ${byteCount.toString()}-byte`;
-    throw new Error(`${label} must be ${sizeMessage} hex string.`);
-  }
-  return normalized;
-};
-
-export const parseInteger = (value: unknown, label: string): bigint => {
-  if (typeof value === "bigint") {
-    return value;
-  }
-  if (typeof value === "number") {
-    if (!Number.isSafeInteger(value) || value < 0) {
-      throw new Error(`${label} must be a safe non-negative integer.`);
-    }
-    return BigInt(value);
-  }
-  if (typeof value === "string" && /^\d+$/.test(value)) {
-    return BigInt(value);
-  }
-  throw new Error(`${label} must be a non-negative integer.`);
-};
-
-export const parseSignedInteger = (value: unknown, label: string): bigint => {
-  if (typeof value === "bigint") {
-    return value;
-  }
-  if (typeof value === "number") {
-    if (!Number.isSafeInteger(value)) {
-      throw new Error(`${label} must be a safe integer.`);
-    }
-    return BigInt(value);
-  }
-  if (typeof value === "string" && /^-?\d+$/.test(value)) {
-    return BigInt(value);
-  }
-  throw new Error(`${label} must be an integer.`);
-};
-
-const bytesHex = (bytes: Uint8Array): string => Buffer.from(bytes).toString("hex");
+const bytesHex = (bytes: Uint8Array): string =>
+  Buffer.from(bytes).toString("hex");
 
 export const nativeTxFromCoreCompact = (
   tx: CoreNativeTxCompact,
@@ -246,7 +180,10 @@ export const parseNativeTxCompact = (
         `${label}.body.auxiliary_data_hash`,
         32,
       ),
-      network_id: parseInteger(bodyRecord.network_id, `${label}.body.network_id`),
+      network_id: parseInteger(
+        bodyRecord.network_id,
+        `${label}.body.network_id`,
+      ),
     },
     witness_set_hash: parseHex(
       record.witness_set_hash,
@@ -262,7 +199,11 @@ export const parseSubmitStep01TxInclusion = (
   value: unknown,
 ): SubmitStep01TxInclusion => {
   const record = requireRecord(value, "--tx-inclusion");
-  const nativeTxId = parseHex(record.nativeTxId, "--tx-inclusion.nativeTxId", 32);
+  const nativeTxId = parseHex(
+    record.nativeTxId,
+    "--tx-inclusion.nativeTxId",
+    32,
+  );
   const nativeTx = parseNativeTxCompact(
     record.nativeTx,
     "--tx-inclusion.nativeTx",
@@ -312,7 +253,7 @@ export const requireNativeTxMatchesCompactCbor = (
       "--tx-inclusion.nativeTx does not match nativeTxCompactCbor.",
     );
   }
-  const computedTxId = computeMidgardNativeTxIdFromCompact(decoded).toString("hex");
+  const computedTxId = computeMidgardNativeTxId(decoded).toString("hex");
   if (computedTxId !== inclusion.nativeTxId) {
     throw new Error(
       `--tx-inclusion.nativeTxId mismatch: provided=${inclusion.nativeTxId}, computed=${computedTxId}.`,
@@ -320,11 +261,6 @@ export const requireNativeTxMatchesCompactCbor = (
   }
   return decoded;
 };
-
-export const parsedOutRefFromUtxo = (utxo: UTxO): ParsedOutRef => ({
-  txHash: utxo.txHash.toLowerCase(),
-  outputIndex: utxo.outputIndex,
-});
 
 export const singlePositiveNonAdaAsset = (
   utxo: UTxO,
@@ -386,7 +322,10 @@ const requireInitialStepDatum = ({
   if (threadUtxo.datum == null) {
     throw new Error(`Thread UTxO ${outRefLabel(threadUtxo)} is missing datum.`);
   }
-  const datum = Data.from(threadUtxo.datum, FraudProofComputationThreadStepDatum);
+  const datum = Data.from(
+    threadUtxo.datum,
+    FraudProofComputationThreadStepDatum,
+  );
   if (datum.fraud_prover !== signer.paymentKeyHash) {
     throw new Error(
       `Thread UTxO fraud_prover ${datum.fraud_prover} does not match prover signer ${signer.paymentKeyHash}.`,
@@ -417,7 +356,10 @@ export const selectFeeInput = (walletUtxos: readonly UTxO[]): UTxO => {
       if (rightLovelace < leftLovelace) {
         return -1;
       }
-      return compareOutRefs(parsedOutRefFromUtxo(left), parsedOutRefFromUtxo(right));
+      return compareOutRefs(
+        parsedOutRefFromUtxo(left),
+        parsedOutRefFromUtxo(right),
+      );
     });
   const feeInput = candidates[0];
   if (feeInput === undefined) {
@@ -428,10 +370,7 @@ export const selectFeeInput = (walletUtxos: readonly UTxO[]): UTxO => {
   return feeInput;
 };
 
-export const inputIndex = (
-  threadUtxo: UTxO,
-  feeInput: UTxO,
-): bigint => {
+export const inputIndex = (threadUtxo: UTxO, feeInput: UTxO): bigint => {
   const ordered = [threadUtxo, feeInput].sort((left, right) =>
     compareOutRefs(parsedOutRefFromUtxo(left), parsedOutRefFromUtxo(right)),
   );
@@ -456,7 +395,9 @@ export const requireMatchingScriptHash = ({
   readonly derived: string;
 }): void => {
   if (deployed !== derived) {
-    throw new Error(`${label} mismatch: deployment=${deployed}, derived=${derived}.`);
+    throw new Error(
+      `${label} mismatch: deployment=${deployed}, derived=${derived}.`,
+    );
   }
 };
 
@@ -481,54 +422,15 @@ export const submitStep01 = async ({
   readonly txInclusion: SubmitStep01TxInclusion;
   readonly awaitConfirmation?: boolean;
 }): Promise<SubmitStep01Result> => {
-  const parsedDeploymentInfo = parseContractDeploymentInfo(deploymentInfo);
-  const catalogue = parsedDeploymentInfo.fraudProofCatalogueMint?.fraudProofCatalogue;
-  const doubleSpendCategory = catalogue?.categories.doubleSpend;
-  if (doubleSpendCategory === undefined) {
-    throw new Error(
-      "Deployment info is missing fraudProofCatalogueMint.fraudProofCatalogue.categories.doubleSpend.",
-    );
-  }
-
-  const stateQueuePolicyId = requireDeploymentScriptHash(
-    parsedDeploymentInfo,
-    "stateQueueMint",
-  );
-  const fraudProofCataloguePolicyId = requireDeploymentScriptHash(
-    parsedDeploymentInfo,
-    "fraudProofCatalogueMint",
-  );
-  const hubOraclePolicyId = requireDeploymentScriptHash(
-    parsedDeploymentInfo,
-    "hubOracleMint",
-  );
-  const deployedFraudProofPolicyId = requireDeploymentScriptHash(
-    parsedDeploymentInfo,
-    "fraudProofMint",
-  );
-  const deployedDoubleSpendHash = requireDeploymentScriptHash(
-    parsedDeploymentInfo,
-    "fraudProofDoubleSpend",
-  );
-
-  const contracts = await Effect.runPromise(
-    buildDoubleSpendFaultProofContracts({
-      blueprint: parseFaultProofBlueprint(blueprint),
-      network,
-      hubOraclePolicyId,
-      fraudProofCataloguePolicyId,
-    }),
-  );
-  requireMatchingScriptHash({
-    label: "fraudProofMint policy",
-    deployed: deployedFraudProofPolicyId,
-    derived: contracts.fraudProof.policyId,
+  const resolvedDeployment = await resolveDoubleSpendDeploymentContracts({
+    blueprint,
+    deploymentInfo,
+    network,
+    requireStateQueueMint: true,
   });
-  requireMatchingScriptHash({
-    label: "fraudProofDoubleSpend step-01 script",
-    deployed: deployedDoubleSpendHash,
-    derived: contracts.doubleSpend.firstStep.spendingScriptHash,
-  });
+  const { doubleSpendCategory, hubOraclePolicyId, contracts } =
+    resolvedDeployment;
+  const stateQueuePolicyId = resolvedDeployment.stateQueuePolicyId!;
 
   const parsedThreadOutRef = parseOutRef(threadOutRef, "--thread-out-ref");
   const parsedStateQueueBlockOutRef = parseOutRef(
@@ -557,8 +459,7 @@ export const submitStep01 = async ({
     }),
   ]);
   if (
-    threadUtxo.address !==
-    contracts.doubleSpend.firstStep.spendingScriptAddress
+    threadUtxo.address !== contracts.doubleSpend.firstStep.spendingScriptAddress
   ) {
     throw new Error(
       `Thread UTxO ${outRefLabel(threadUtxo)} is not locked at double-spend step 01.`,
@@ -702,13 +603,14 @@ export const submitStep01 = async ({
 export const submitStep01FromFiles = async (
   config: SubmitStep01CliConfig,
 ): Promise<SubmitStep01Result> => {
-  const [blueprint, deploymentInfo, txInclusionJson, lucid] =
-    await Promise.all([
+  const [blueprint, deploymentInfo, txInclusionJson, lucid] = await Promise.all(
+    [
       readJsonFile(config.blueprintPath),
       readJsonFile(config.deploymentInfoPath),
       readJsonFile(config.txInclusionPath),
-      makeLucidForSubmitInit(config),
-    ]);
+      makeLucidForSubmit(config),
+    ],
+  );
   const signer = resolveProverSigner(config);
   return await submitStep01({
     lucid,

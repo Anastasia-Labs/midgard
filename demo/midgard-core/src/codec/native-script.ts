@@ -1,5 +1,5 @@
-import { blake2b } from "@noble/hashes/blake2.js";
 import {
+  assertCanonicalCborRoundTrip,
   encodeCborArrayRaw,
   encodeCborBytes,
   encodeCborUnsigned,
@@ -176,26 +176,13 @@ export const decodeMidgardNativeScript = (
       `offset=${decoded.nextOffset}`,
     );
   }
-  const cbor = encodeMidgardNativeScript(decoded.script);
-  if (!cbor.equals(Buffer.from(bytes))) {
-    throw new MidgardTxCodecError(
-      MidgardTxCodecErrorCodes.CborDecode,
-      "Native script CBOR is not canonical",
-    );
-  }
+  const cbor = assertCanonicalCborRoundTrip(
+    bytes,
+    decoded.script,
+    encodeMidgardNativeScript,
+    "Native script CBOR is not canonical",
+  );
   return { script: decoded.script, cbor };
-};
-
-export const hashMidgardNativeScript = (
-  script: MidgardNativeScript | Uint8Array,
-): string => {
-  const cbor =
-    script instanceof Uint8Array
-      ? decodeMidgardNativeScript(script).cbor
-      : encodeMidgardNativeScript(script);
-  return Buffer.from(
-    blake2b(Buffer.concat([Buffer.from([0x00]), cbor]), { dkLen: 28 }),
-  ).toString("hex");
 };
 
 export const verifyMidgardNativeScript = (

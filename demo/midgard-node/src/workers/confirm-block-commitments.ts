@@ -1,7 +1,4 @@
-import {
-  reexportedParentPort as parentPort,
-  reexportedWorkerData as workerData,
-} from "@/utils.js";
+import { parentPort, workerData } from "worker_threads";
 import { Cause, Data, Effect, Option, pipe } from "effect";
 import { MidgardContracts } from "@/services/midgard-contracts.js";
 import { Lucid } from "@/services/lucid.js";

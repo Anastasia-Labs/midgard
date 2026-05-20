@@ -1,4 +1,4 @@
-import type { MidgardConfig } from '../../types/config.js';
+import type { MidgardConfig } from '../../config/schema.js';
 
 /**
  * Context object passed to interactive actions.

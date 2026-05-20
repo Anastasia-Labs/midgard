@@ -170,12 +170,6 @@ export type ActiveOperatorInitParams = {
   outputIndex?: bigint;
   lovelace?: bigint;
 };
-export type ActiveOperatorDeinitParams = {};
-export type ActiveOperatorActivateParams = {};
-export type ActiveOperatorRetireParams = {};
-export type ActiveOperatorListStateTransitionParams = {};
-export type ActiveOperatorRemoveSlashBondParams = {};
-export type ActiveOperatorUpdateCommitmentTimeParams = {};
 
 export type ActiveOperatorUTxO = AuthenticUTxO<ActiveOperatorDatum>;
 
@@ -238,92 +232,3 @@ export const incompleteActiveOperatorInitTxProgram = (
       lovelace: params.lovelace,
     });
   });
-
-/**
- * The program that performs the deinit of an operator.
- *
- * @param lucid - The LucidEvolution instance to use for the deinit.
- * @param params - The parameters required for deinit.
- * @returns {TxBuilder} A TxBuilder instance that can be used to build the transaction.
- */
-export const incompleteActiveOperatorDeinitTxProgram = (
-  lucid: LucidEvolution,
-  params: ActiveOperatorDeinitParams,
-): TxBuilder => {
-  const tx = lucid.newTx();
-  return tx;
-};
-/**
- * The program that performs the activation of an operator.
- *
- * @param lucid - The LucidEvolution instance to use for the activation.
- * @param params - The parameters required for activation.
- * @returns {TxBuilder} A TxBuilder instance that can be used to build the transaction.
- */
-export const incompleteActiveOperatorActivateTxProgram = (
-  lucid: LucidEvolution,
-  params: ActiveOperatorActivateParams,
-): TxBuilder => {
-  const tx = lucid.newTx();
-  return tx;
-};
-
-/**
- * Retire
- *
- * @param lucid - The LucidEvolution
- * @param params - The parameters
- * @returns {TxBuilder} A TxBuilder instance that can be used to build the transaction.
- */
-export const incompleteActiveOperatorRetireTxProgram = (
-  lucid: LucidEvolution,
-  params: ActiveOperatorRetireParams,
-): TxBuilder => {
-  const tx = lucid.newTx();
-  return tx;
-};
-
-/**
- * ListStateTransition
- *
- * @param lucid - The LucidEvolution
- * @param params - The parameters
- * @returns {TxBuilder} A TxBuilder instance that can be used to build the transaction.
- */
-export const incompleteActiveOperatorListStateTransitionTxProgram = (
-  lucid: LucidEvolution,
-  params: ActiveOperatorListStateTransitionParams,
-): TxBuilder => {
-  const tx = lucid.newTx();
-  return tx;
-};
-
-/**
- * Remove slash bond
- *
- * @param lucid - The LucidEvolution
- * @param params - The parameters
- * @returns {TxBuilder} A TxBuilder instance that can be used to build the transaction.
- */
-export const incompleteActiveOperatorRemoveSlashBondTxProgram = (
-  lucid: LucidEvolution,
-  params: ActiveOperatorRemoveSlashBondParams,
-): TxBuilder => {
-  const tx = lucid.newTx();
-  return tx;
-};
-
-/**
- * UpdateCommitmentTime
- *
- * @param lucid - The LucidEvolution
- * @param params - The parameters
- * @returns {TxBuilder} A TxBuilder instance that can be used to build the transaction.
- */
-export const incompleteActiveOperatorUpdateCommitmentTimeTxProgram = (
-  lucid: LucidEvolution,
-  params: ActiveOperatorUpdateCommitmentTimeParams,
-): TxBuilder => {
-  const tx = lucid.newTx();
-  return tx;
-};

@@ -2,8 +2,10 @@ import { getGeneratorStatus } from '@midgard-manager/tx-generator';
 import { MidgardNodeClient } from '@midgard-manager/tx-generator';
 import chalk from 'chalk';
 
-import type { MidgardConfig } from '../types/config.js';
+import type { MidgardConfig } from '../config/schema.js';
 import { displayLogo } from './logo.js';
+
+type StatusConfig = Pick<MidgardConfig, 'node' | 'generator'>;
 
 /**
  * Re-renders the CLI header from a clean terminal state.
@@ -17,7 +19,6 @@ export function displayHeader(title?: string) {
 
   // Display the Midgard logo with the title if provided
   displayLogo({
-    variant: 'small',
     headerText: title,
   });
 }
@@ -28,7 +29,7 @@ export function displayHeader(title?: string) {
  * The node availability probe intentionally uses a short timeout to keep the
  * TUI responsive even when the configured endpoint is down or slow.
  */
-export async function displayStatus(config: MidgardConfig) {
+export async function displayStatus(config: StatusConfig) {
   // Get the actual running status of the transaction generator
   const generatorStatus = getGeneratorStatus();
   const isRunning = generatorStatus.running;

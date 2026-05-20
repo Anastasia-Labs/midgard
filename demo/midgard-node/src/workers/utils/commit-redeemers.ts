@@ -5,11 +5,12 @@
  */
 import * as SDK from "@al-ft/midgard-sdk";
 import { Data } from "@lucid-evolution/lucid";
-
-type OutRefLike = {
-  readonly txHash: string;
-  readonly outputIndex: number;
-};
+import {
+  compareOutRefs,
+  findOutRefIndex,
+  outRefLabel,
+  type OutRefLike,
+} from "@/tx-context.js";
 
 export type StateQueueCommitRedeemer = {
   readonly CommitBlockHeader: {
@@ -58,17 +59,6 @@ export const DEFAULT_STATE_QUEUE_COMMIT_LAYOUT: StateQueueCommitLayout = {
   stateQueueSpendRedeemerIndex: 0n,
 } as const;
 
-const compareOutRefs = (a: OutRefLike, b: OutRefLike): number => {
-  const txHashComparison = a.txHash.localeCompare(b.txHash);
-  if (txHashComparison !== 0) {
-    return txHashComparison;
-  }
-  return a.outputIndex - b.outputIndex;
-};
-
-const outRefId = ({ txHash, outputIndex }: OutRefLike): string =>
-  `${txHash}#${outputIndex}`;
-
 export const deriveStateQueueCommitLayout = ({
   latestBlockInput,
   activeOperatorInput,
@@ -85,20 +75,19 @@ export const deriveStateQueueCommitLayout = ({
   readonly txInputs: readonly OutRefLike[];
 }): StateQueueCommitLayout => {
   const sortedInputs = [...txInputs].sort(compareOutRefs);
-  const latestOutRef = outRefId(latestBlockInput);
-  const latestBlockInputIndex = sortedInputs.findIndex(
-    (input) => outRefId(input) === latestOutRef,
-  );
-  if (latestBlockInputIndex < 0) {
+  const latestOutRef = outRefLabel(latestBlockInput);
+  const latestBlockInputIndex = findOutRefIndex(sortedInputs, latestBlockInput);
+  if (latestBlockInputIndex === undefined) {
     throw new Error(
       `Latest state-queue input ${latestOutRef} missing from tx input set`,
     );
   }
-  const activeOutRef = outRefId(activeOperatorInput);
-  const activeOperatorsInputIndex = sortedInputs.findIndex(
-    (input) => outRefId(input) === activeOutRef,
+  const activeOutRef = outRefLabel(activeOperatorInput);
+  const activeOperatorsInputIndex = findOutRefIndex(
+    sortedInputs,
+    activeOperatorInput,
   );
-  if (activeOperatorsInputIndex < 0) {
+  if (activeOperatorsInputIndex === undefined) {
     throw new Error(
       `Active operator input ${activeOutRef} missing from tx input set`,
     );
@@ -127,20 +116,22 @@ export const deriveStateQueueCommitLayout = ({
   const sortedReferenceInputs = [
     ...(txReferenceInputs ?? [schedulerRefInput, hubOracleRefInput]),
   ].sort(compareOutRefs);
-  const schedulerRefOutRef = outRefId(schedulerRefInput);
-  const hubOracleRefOutRef = outRefId(hubOracleRefInput);
-  const schedulerRefInputIndex = sortedReferenceInputs.findIndex(
-    (input) => outRefId(input) === schedulerRefOutRef,
+  const schedulerRefOutRef = outRefLabel(schedulerRefInput);
+  const hubOracleRefOutRef = outRefLabel(hubOracleRefInput);
+  const schedulerRefInputIndex = findOutRefIndex(
+    sortedReferenceInputs,
+    schedulerRefInput,
   );
-  if (schedulerRefInputIndex < 0) {
+  if (schedulerRefInputIndex === undefined) {
     throw new Error(
       `Scheduler reference input ${schedulerRefOutRef} missing from tx reference input set`,
     );
   }
-  const hubOracleRefInputIndex = sortedReferenceInputs.findIndex(
-    (input) => outRefId(input) === hubOracleRefOutRef,
+  const hubOracleRefInputIndex = findOutRefIndex(
+    sortedReferenceInputs,
+    hubOracleRefInput,
   );
-  if (hubOracleRefInputIndex < 0) {
+  if (hubOracleRefInputIndex === undefined) {
     throw new Error(
       `Hub-oracle reference input ${hubOracleRefOutRef} missing from tx reference input set`,
     );
@@ -155,10 +146,6 @@ export const deriveStateQueueCommitLayout = ({
     activeOperatorsRedeemerIndex,
   };
 };
-
-export type ActiveOperatorSpendRedeemer = unknown;
-export const ActiveOperatorSpendRedeemer =
-  SDK.ActiveOperatorSpendRedeemer as unknown;
 
 export const makeStateQueueCommitRedeemer = (
   operatorKeyHash: string,

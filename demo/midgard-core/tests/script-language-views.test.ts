@@ -8,7 +8,7 @@ import {
   computeHash32,
   computeScriptIntegrityHash,
   computeScriptIntegrityHashForLanguages,
-  EMPTY_SCRIPT_INTEGRITY_HASH,
+  EMPTY_NULL_ROOT,
   encodeCbor,
   MIDGARD_V1_CANONICAL_COST_MODEL_VIEW,
   PLUTUS_V3_CANONICAL_COST_MODEL_VIEW,
@@ -31,7 +31,7 @@ describe("script language views", () => {
   it("uses EMPTY_NULL_ROOT for an empty required language set", () => {
     expect(
       computeScriptIntegrityHashForLanguages(REDEEMER_TX_WITS_HASH, []),
-    ).toEqual(EMPTY_SCRIPT_INTEGRITY_HASH);
+    ).toEqual(EMPTY_NULL_ROOT);
   });
 
   it("matches canonical fixture hashes for initial language sets", () => {
@@ -39,24 +39,18 @@ describe("script language views", () => {
       computeScriptIntegrityHashForLanguages(REDEEMER_TX_WITS_HASH, [
         "PlutusV3",
       ]).toString("hex"),
-    ).toBe(
-      "e2ebd40127c1f2fc48fc46388895edf309bdda534dfc1b1a1c0fceb94a43c60e",
-    );
+    ).toBe("e2ebd40127c1f2fc48fc46388895edf309bdda534dfc1b1a1c0fceb94a43c60e");
     expect(
       computeScriptIntegrityHashForLanguages(REDEEMER_TX_WITS_HASH, [
         "MidgardV1",
       ]).toString("hex"),
-    ).toBe(
-      "6439e4fbfe80ed56da131bceafc2bcbdff24b59f69e84ed96507fe3725131442",
-    );
+    ).toBe("6439e4fbfe80ed56da131bceafc2bcbdff24b59f69e84ed96507fe3725131442");
     expect(
       computeScriptIntegrityHashForLanguages(REDEEMER_TX_WITS_HASH, [
         "MidgardV1",
         "PlutusV3",
       ]).toString("hex"),
-    ).toBe(
-      "907fec08d0de18a7da3449fa2b3a14d9898b8485e55f6112fcd184cffc9f93ff",
-    );
+    ).toBe("907fec08d0de18a7da3449fa2b3a14d9898b8485e55f6112fcd184cffc9f93ff");
   });
 
   it("changes when redeemer witness hash changes", () => {
@@ -103,12 +97,9 @@ describe("script language views", () => {
     ]);
 
     expect(
-      computeScriptIntegrityHash(
-        REDEEMER_TX_WITS_HASH,
-        changedViews,
-      ).toString("hex"),
-    ).toBe(
-      "e14cfabbe5ac419383fa63b095712f433a5e318d8b18e0e820d1361041a5fc39",
-    );
+      computeScriptIntegrityHash(REDEEMER_TX_WITS_HASH, changedViews).toString(
+        "hex",
+      ),
+    ).toBe("e14cfabbe5ac419383fa63b095712f433a5e318d8b18e0e820d1361041a5fc39");
   });
 });

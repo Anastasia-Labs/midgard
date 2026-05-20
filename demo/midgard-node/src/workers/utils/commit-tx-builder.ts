@@ -11,7 +11,7 @@ import {
   type TxSignBuilder,
   type UTxO,
 } from "@lucid-evolution/lucid";
-import { withStubbedProviderEvaluation } from "@/cml-redeemers.js";
+import { withStubbedProviderEvaluation } from "@al-ft/midgard-sdk";
 import { formatUnknownError } from "@/error-format.js";
 import { slotToUnixTimeForLucid } from "@/lucid-time.js";
 import { availableOperatorWalletUtxos } from "@/operator-wallet-view.js";

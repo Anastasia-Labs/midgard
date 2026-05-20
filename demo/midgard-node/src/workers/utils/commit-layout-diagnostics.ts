@@ -14,7 +14,7 @@ import {
   findRedeemerDataCbor,
   getRedeemerPointersInContextOrder,
   getTxInfoRedeemerIndexes,
-} from "@/cml-redeemers.js";
+} from "@al-ft/midgard-sdk";
 import {
   collectIndexedOutputs,
   collectSortedInputOutRefs,

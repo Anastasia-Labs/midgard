@@ -1,5 +1,5 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { CML } from '@lucid-evolution/lucid';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { MidgardNodeClient } from '../src/lib/client/node-client';
 import { getGeneratorStatus, startGenerator, stopGenerator } from '../src/lib/scheduler/scheduler';

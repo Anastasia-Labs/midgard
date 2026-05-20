@@ -192,7 +192,6 @@ const findMemberNode = (
 
 const findLastMemberNode = (
   nodes: readonly NodeUtxoWithDatum[],
-  label: string,
 ): NodeUtxoWithDatum | undefined =>
   nodes.find(
     (candidate) =>
@@ -218,7 +217,7 @@ export const resolveSchedulerRefreshWitnessSelection = ({
     "Active-operators",
   );
   const registeredWitnessNode =
-    findLastMemberNode(registeredNodes, "Registered-operators") ??
+    findLastMemberNode(registeredNodes) ??
     findRootNode(registeredNodes, "Registered-operators");
 
   if (allowGenesisRewind) {
@@ -295,7 +294,7 @@ const parseNodeSetUtxos = (
   label: string,
 ): Effect.Effect<readonly NodeUtxoWithDatum[], SDK.StateQueueError> =>
   Effect.forEach(utxos, (utxo) =>
-    SDK.getNodeDatumFromUTxO(utxo).pipe(
+    SDK.getLinkedListNodeViewFromUTxO(utxo).pipe(
       Effect.map((datum) => ({
         utxo,
         datum,
@@ -493,7 +492,7 @@ const selectActiveOperatorInput = (
   Effect.gen(function* () {
     for (const utxo of activeOperatorUtxos) {
       const nodeDatumEither = yield* Effect.either(
-        SDK.getNodeDatumFromUTxO(utxo),
+        SDK.getLinkedListNodeViewFromUTxO(utxo),
       );
       if (nodeDatumEither._tag === "Left") {
         continue;

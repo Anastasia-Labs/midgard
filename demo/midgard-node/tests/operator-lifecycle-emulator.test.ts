@@ -250,7 +250,7 @@ const assertOperatorActivatedState = async ({
   );
   expect(activeNodeUtxosAfterActivate.length).toBeGreaterThan(0);
   const activeNodeDatum = await Effect.runPromise(
-    SDK.getNodeDatumFromUTxO(activeNodeUtxosAfterActivate[0]),
+    SDK.getLinkedListNodeViewFromUTxO(activeNodeUtxosAfterActivate[0]),
   );
   expect(activeNodeDatum.key).toEqual({ Key: { key: operatorKeyHash } });
 

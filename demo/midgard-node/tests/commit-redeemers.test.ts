@@ -2,7 +2,6 @@ import { describe, expect, it } from "vitest";
 import * as SDK from "@al-ft/midgard-sdk";
 import { Data } from "@lucid-evolution/lucid";
 import {
-  ActiveOperatorSpendRedeemer,
   DEFAULT_STATE_QUEUE_COMMIT_LAYOUT,
   deriveStateQueueCommitLayout,
   encodeActiveOperatorCommitRedeemer,
@@ -62,7 +61,9 @@ describe("commit redeemer shapes", () => {
     });
     const encoded = encodeActiveOperatorCommitRedeemer(operator);
     expect(encoded).not.toEqual(Data.void());
-    expect(Data.from(encoded, ActiveOperatorSpendRedeemer)).toEqual(redeemer);
+    expect(Data.from(encoded, SDK.ActiveOperatorSpendRedeemer)).toEqual(
+      redeemer,
+    );
   });
 
   it("derives dynamic input/redeemer indexes from out-ref ordering", () => {
@@ -256,8 +257,8 @@ describe("commit redeemer shapes", () => {
     expect(Data.from(encodedStateQueue, SDK.StateQueueRedeemer)).toEqual(
       makeStateQueueCommitRedeemer(operator, customLayout),
     );
-    expect(Data.from(encodedActiveOperator, ActiveOperatorSpendRedeemer)).toEqual(
-      makeActiveOperatorCommitRedeemer(operator, customLayout),
-    );
+    expect(
+      Data.from(encodedActiveOperator, SDK.ActiveOperatorSpendRedeemer),
+    ).toEqual(makeActiveOperatorCommitRedeemer(operator, customLayout));
   });
 });

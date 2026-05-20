@@ -6,7 +6,7 @@ import path from "node:path";
 import { execSync } from "node:child_process";
 import {
   cardanoTxBytesToMidgardNativeTxFullBytes,
-  computeMidgardNativeTxIdFromFull,
+  computeMidgardNativeTxId,
   decodeMidgardNativeTxBodyCompact,
   decodeMidgardNativeTxCompact,
   decodeMidgardNativeTxFull,
@@ -17,7 +17,7 @@ import {
   encodeMidgardNativeTxCompact,
   encodeMidgardNativeTxFull,
   encodeMidgardNativeTxWitnessSetCompact,
-} from "@/midgard-tx-codec/index.js";
+} from "@al-ft/midgard-core/codec";
 
 type TxFixture = {
   readonly cborHex: string;
@@ -249,7 +249,7 @@ describe("midgard native tx codec benchmark", () => {
         "hash_midgard_native_tx_id",
         () => {
           for (const tx of nativeFullDecoded) {
-            computeMidgardNativeTxIdFromFull(tx);
+            computeMidgardNativeTxId(tx);
           }
         },
         txBytes.length,

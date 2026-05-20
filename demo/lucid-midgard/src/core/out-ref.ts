@@ -22,10 +22,7 @@ export const normalizeTxHash = (txHash: string): string => {
 };
 
 export const normalizeOutRef = (outRef: OutRef): OutRef => {
-  if (
-    !Number.isSafeInteger(outRef.outputIndex) ||
-    outRef.outputIndex < 0
-  ) {
+  if (!Number.isSafeInteger(outRef.outputIndex) || outRef.outputIndex < 0) {
     throw new BuilderInvariantError(
       "Invalid output index",
       `outputIndex=${outRef.outputIndex.toString()}`,
@@ -66,15 +63,4 @@ export const compareOutRefs = (left: OutRef, right: OutRef): number => {
     return hashComparison;
   }
   return normalizedLeft.outputIndex - normalizedRight.outputIndex;
-};
-
-export const dedupeOutRefs = <T extends OutRef>(outRefs: readonly T[]): T[] => {
-  const byLabel = new Map<string, T>();
-  for (const outRef of outRefs) {
-    const label = outRefLabel(outRef);
-    if (!byLabel.has(label)) {
-      byLabel.set(label, outRef);
-    }
-  }
-  return [...byLabel.values()];
 };

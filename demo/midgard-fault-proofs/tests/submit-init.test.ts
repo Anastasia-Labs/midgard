@@ -1,7 +1,10 @@
 import { describe, expect, it } from "vitest";
 import { CML, walletFromSeed, type UTxO } from "@lucid-evolution/lucid";
 import { STATE_QUEUE_NODE_ASSET_NAME_PREFIX } from "@al-ft/midgard-sdk";
-import { __submitInitTest, resolveProverSigner } from "../src/index.js";
+import {
+  resolveFraudulentHeaderHash,
+  resolveProverSigner,
+} from "../src/index.js";
 
 const seedPhrase =
   "test test test test test test test test test test test junk";
@@ -61,9 +64,7 @@ describe("submit-init signer resolution", () => {
     );
 
     expect(signer.source).toBe("direct-private-key");
-    expect(signer.paymentKeyHash).toBe(
-      privateKey.to_public().hash().to_hex(),
-    );
+    expect(signer.paymentKeyHash).toBe(privateKey.to_public().hash().to_hex());
     expect(signer.address).toContain("addr_test");
   });
 
@@ -88,7 +89,7 @@ describe("submit-init state queue header resolution", () => {
     const unit = `${stateQueuePolicyId}${STATE_QUEUE_NODE_ASSET_NAME_PREFIX}${headerHash}`;
 
     expect(
-      __submitInitTest.resolveFraudulentHeaderHash({
+      resolveFraudulentHeaderHash({
         stateQueuePolicyId,
         fraudulentBlockUtxo: makeUtxo({ lovelace: 5_000_000n, [unit]: 1n }),
       }),
@@ -101,7 +102,7 @@ describe("submit-init state queue header resolution", () => {
     const unit = `${stateQueuePolicyId}${STATE_QUEUE_NODE_ASSET_NAME_PREFIX}${headerHash}`;
 
     expect(() =>
-      __submitInitTest.resolveFraudulentHeaderHash({
+      resolveFraudulentHeaderHash({
         stateQueuePolicyId,
         fraudulentBlockUtxo: makeUtxo({ [unit]: 1n }),
         configuredHeaderHash: "55".repeat(28),

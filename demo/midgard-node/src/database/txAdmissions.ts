@@ -10,7 +10,7 @@ import {
 import * as MempoolDB from "@/database/mempool.js";
 import * as TxRejectionsDB from "@/database/txRejections.js";
 import { ProcessedTx } from "@/utils.js";
-import { RejectedTx } from "@/validation/types.js";
+import { RejectedTx } from "@al-ft/midgard-validation/types";
 
 export const tableName = "tx_admissions";
 

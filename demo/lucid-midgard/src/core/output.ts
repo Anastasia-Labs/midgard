@@ -16,14 +16,13 @@ import {
 } from "@al-ft/midgard-core/codec";
 import {
   assertNonNegativeAssets,
-  cmlValueToAssets,
   normalizeAssets,
   normalizeValueLike,
   type Assets,
   type ValueLike,
 } from "./assets.js";
 import { BuilderInvariantError } from "./errors.js";
-import { normalizeOutRef } from "./out-ref.js";
+import { normalizeOutRef, type OutRef } from "./out-ref.js";
 import type {
   Address,
   MidgardDatum,
@@ -79,16 +78,6 @@ const fromHex = (hex: string, fieldName: string): Buffer => {
     throw new BuilderInvariantError(`${fieldName} must be hex`, hex);
   }
   return Buffer.from(normalized, "hex");
-};
-
-const canonicalAddressText = (
-  address: Address | InstanceType<typeof CML.Address>,
-): Address => {
-  const bytes =
-    typeof address === "string"
-      ? midgardAddressFromText(address)
-      : Buffer.from(address.to_raw_bytes());
-  return encodeMidgardAddressText(bytes);
 };
 
 const addressBytesForOutput = (
@@ -230,8 +219,6 @@ const normalizeOutputDatum = (
   return { kind: "inline", data: datum };
 };
 
-export { normalizeOutputDatum };
-
 const authoredDatumToCore = (
   datum: OutputOptions["datum"],
 ): CoreMidgardDatum | undefined => {
@@ -240,7 +227,9 @@ const authoredDatumToCore = (
     return undefined;
   }
   if (normalized.kind === "hash") {
-    throw new BuilderInvariantError("Midgard outputs must not use datum hashes");
+    throw new BuilderInvariantError(
+      "Midgard outputs must not use datum hashes",
+    );
   }
   return {
     kind: "inline",
@@ -292,7 +281,10 @@ const assetsToMidgardValue = (value: ValueLike): CoreMidgardValue => {
       throw new BuilderInvariantError("Asset policy id must be 28 bytes", unit);
     }
     if (fromHex(assetName, "asset name").length > 32) {
-      throw new BuilderInvariantError("Asset name must be at most 32 bytes", unit);
+      throw new BuilderInvariantError(
+        "Asset name must be at most 32 bytes",
+        unit,
+      );
     }
     const policyAssets = assets.get(policyId) ?? new Map<string, bigint>();
     policyAssets.set(assetName, quantity);
@@ -354,7 +346,11 @@ export const makeMidgardTxOutput = (
       : { datum: publicDatumFromCore(authoredDatumToCore(options.datum)) }),
     ...(options.scriptRef === undefined
       ? {}
-      : { scriptRef: midgardScriptFromCore(normalizeScriptRef(options.scriptRef)) }),
+      : {
+          scriptRef: midgardScriptFromCore(
+            normalizeScriptRef(options.scriptRef),
+          ),
+        }),
   };
 };
 
@@ -436,7 +432,9 @@ export const authoredOutput = ({
 }): AuthoredOutput => {
   const normalizedDatum = normalizeOutputDatum(datum);
   if (normalizedDatum?.kind === "hash") {
-    throw new BuilderInvariantError("Midgard outputs must not use datum hashes");
+    throw new BuilderInvariantError(
+      "Midgard outputs must not use datum hashes",
+    );
   }
   const normalizedAddress = encodeMidgardAddressText(
     addressBytesForOutput(address, kind),
@@ -450,6 +448,40 @@ export const authoredOutput = ({
   };
 };
 
+export const outRefToCbor = (outRef: OutRef): Buffer => {
+  const normalized = normalizeOutRef(outRef);
+  return Buffer.from(
+    CML.TransactionInput.new(
+      CML.TransactionHash.from_hex(normalized.txHash),
+      BigInt(normalized.outputIndex),
+    ).to_cbor_bytes(),
+  );
+};
+
+const assertOutRefCborMatches = (
+  outRef: OutRef,
+  outRefCbor: Uint8Array,
+): void => {
+  const normalizedOutRef = normalizeOutRef(outRef);
+  const decodedInput = CML.TransactionInput.from_cbor_bytes(outRefCbor);
+  const decodedIndex = decodedInput.index();
+  if (decodedIndex > BigInt(Number.MAX_SAFE_INTEGER)) {
+    throw new Error(
+      `output index exceeds JavaScript safe integer range: ${decodedIndex.toString()}`,
+    );
+  }
+  const decodedOutRef = normalizeOutRef({
+    txHash: decodedInput.transaction_id().to_hex(),
+    outputIndex: Number(decodedIndex),
+  });
+  if (
+    decodedOutRef.txHash !== normalizedOutRef.txHash ||
+    decodedOutRef.outputIndex !== normalizedOutRef.outputIndex
+  ) {
+    throw new Error("CBOR does not match txHash/outputIndex");
+  }
+};
+
 export const decodeMidgardUtxo = ({
   outRef,
   outRefCbor,
@@ -461,23 +493,7 @@ export const decodeMidgardUtxo = ({
 }): MidgardUtxo => {
   const normalizedOutRef = normalizeOutRef(outRef);
   try {
-    const decodedInput = CML.TransactionInput.from_cbor_bytes(outRefCbor);
-    const decodedIndex = decodedInput.index();
-    if (decodedIndex > BigInt(Number.MAX_SAFE_INTEGER)) {
-      throw new Error(
-        `output index exceeds JavaScript safe integer range: ${decodedIndex.toString()}`,
-      );
-    }
-    const decodedOutRef = normalizeOutRef({
-      txHash: decodedInput.transaction_id().to_hex(),
-      outputIndex: Number(decodedIndex),
-    });
-    if (
-      decodedOutRef.txHash !== normalizedOutRef.txHash ||
-      decodedOutRef.outputIndex !== normalizedOutRef.outputIndex
-    ) {
-      throw new Error("CBOR does not match txHash/outputIndex");
-    }
+    assertOutRefCborMatches(normalizedOutRef, outRefCbor);
   } catch (cause) {
     throw new BuilderInvariantError(
       "Invalid UTxO outRefCbor",
@@ -495,15 +511,26 @@ export const decodeMidgardUtxo = ({
   };
 };
 
-export const utxoOutRefCbor = (utxo: MidgardUtxo): Buffer =>
-  utxo.cbor?.outRef === undefined
-    ? Buffer.from(
-        CML.TransactionInput.new(
-          CML.TransactionHash.from_hex(normalizeOutRef(utxo).txHash),
-          BigInt(normalizeOutRef(utxo).outputIndex),
-        ).to_cbor_bytes(),
-      )
-    : Buffer.from(utxo.cbor.outRef);
+type OutRefCborInput = OutRef & {
+  readonly cbor?: {
+    readonly outRef?: Uint8Array;
+  };
+};
+
+export const utxoOutRefCbor = (utxo: OutRefCborInput): Buffer => {
+  if (utxo.cbor?.outRef === undefined) {
+    return outRefToCbor(utxo);
+  }
+  try {
+    assertOutRefCborMatches(utxo, utxo.cbor.outRef);
+  } catch (cause) {
+    throw new BuilderInvariantError(
+      "Invalid UTxO outRefCbor",
+      cause instanceof Error ? cause.message : String(cause),
+    );
+  }
+  return Buffer.from(utxo.cbor.outRef);
+};
 
 export const utxoOutputCbor = (utxo: MidgardUtxo): Buffer =>
   utxo.cbor?.output === undefined
@@ -515,7 +542,8 @@ export const utxoAddress = (utxo: MidgardUtxo): Address => utxo.output.address;
 export const utxoAssets = (utxo: MidgardUtxo): Assets => utxo.output.assets;
 
 export const utxoProtectedAddress = (utxo: MidgardUtxo): boolean =>
-  decodeMidgardAddressBytes(midgardAddressFromText(utxo.output.address)).protected;
+  decodeMidgardAddressBytes(midgardAddressFromText(utxo.output.address))
+    .protected;
 
 export const outputAddressPaymentKeyHash = (
   address: Address,

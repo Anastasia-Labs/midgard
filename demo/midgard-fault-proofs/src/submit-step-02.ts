@@ -13,40 +13,36 @@ import {
   DoubleSpendStep02SpendRedeemer,
   DoubleSpendStep03Datum,
   HUB_ORACLE_ASSET_NAME,
-  buildDoubleSpendFaultProofContracts,
   getHeaderFromStateQueueDatum,
   getLinkedListNodeViewFromUTxO,
-  parseFaultProofBlueprint,
 } from "@al-ft/midgard-sdk";
 import { Effect } from "effect";
-import { parseContractDeploymentInfo } from "./inspect-contracts.js";
 import {
   compareOutRefs,
+  DEFAULT_CONFIRMATION_POLL_MS,
   encodeRawPhasMembershipProofRedeemer,
   fetchUtxoByOutRef,
   getCompiledScript,
-  makeLucidForSubmitInit,
+  makeLucidForSubmit,
   outRefLabel,
+  parsedOutRefFromUtxo,
   parseOutRef,
   phasMembershipRewardAddress,
   readJsonFile,
   referenceInputIndex,
-  requireDeploymentScriptHash,
   requireSingletonUtxo,
+  resolveDoubleSpendDeploymentContracts,
   resolveFraudulentHeaderHash,
   resolveProverSigner,
   type ResolvedProverSigner,
   type SubmitProviderConfig,
-} from "./submit-init.js";
+} from "./runtime.js";
 import {
-  DEFAULT_CONFIRMATION_POLL_MS,
   PHAS_MEMBERSHIP_WITHDRAW_TITLE,
   PHAS_WITHDRAW_REDEEMER_INDEX,
   inputIndex,
   parseSubmitStep01TxInclusion,
-  parsedOutRefFromUtxo,
   requireComputationThreadToken,
-  requireMatchingScriptHash,
   requireNativeTxMatchesCompactCbor,
   selectFeeInput,
   type SubmitStep01TxInclusion,
@@ -66,8 +62,6 @@ export type SubmitStep02CliConfig = SubmitProviderConfig & {
   readonly txInclusionPath: string;
   readonly awaitConfirmation?: boolean;
 };
-
-export type SubmitStep02TxInclusion = SubmitStep01TxInclusion;
 
 export type SubmitStep02Result = {
   readonly txHash: string;
@@ -93,8 +87,6 @@ export type SubmitStep02Result = {
   readonly stateQueueNodeRefInputIndex: number;
   readonly awaitedConfirmation: boolean;
 };
-
-export const parseSubmitStep02TxInclusion = parseSubmitStep01TxInclusion;
 
 type Step02DatumWithState = DoubleSpendStep02Datum & {
   readonly data: NonNullable<DoubleSpendStep02Datum["data"]>;
@@ -140,57 +132,18 @@ export const submitStep02 = async ({
   readonly signer: ResolvedProverSigner;
   readonly threadOutRef: string;
   readonly stateQueueBlockOutRef: string;
-  readonly txInclusion: SubmitStep02TxInclusion;
+  readonly txInclusion: SubmitStep01TxInclusion;
   readonly awaitConfirmation?: boolean;
 }): Promise<SubmitStep02Result> => {
-  const parsedDeploymentInfo = parseContractDeploymentInfo(deploymentInfo);
-  const catalogue = parsedDeploymentInfo.fraudProofCatalogueMint?.fraudProofCatalogue;
-  const doubleSpendCategory = catalogue?.categories.doubleSpend;
-  if (doubleSpendCategory === undefined) {
-    throw new Error(
-      "Deployment info is missing fraudProofCatalogueMint.fraudProofCatalogue.categories.doubleSpend.",
-    );
-  }
-
-  const stateQueuePolicyId = requireDeploymentScriptHash(
-    parsedDeploymentInfo,
-    "stateQueueMint",
-  );
-  const fraudProofCataloguePolicyId = requireDeploymentScriptHash(
-    parsedDeploymentInfo,
-    "fraudProofCatalogueMint",
-  );
-  const hubOraclePolicyId = requireDeploymentScriptHash(
-    parsedDeploymentInfo,
-    "hubOracleMint",
-  );
-  const deployedFraudProofPolicyId = requireDeploymentScriptHash(
-    parsedDeploymentInfo,
-    "fraudProofMint",
-  );
-  const deployedDoubleSpendHash = requireDeploymentScriptHash(
-    parsedDeploymentInfo,
-    "fraudProofDoubleSpend",
-  );
-
-  const contracts = await Effect.runPromise(
-    buildDoubleSpendFaultProofContracts({
-      blueprint: parseFaultProofBlueprint(blueprint),
-      network,
-      hubOraclePolicyId,
-      fraudProofCataloguePolicyId,
-    }),
-  );
-  requireMatchingScriptHash({
-    label: "fraudProofMint policy",
-    deployed: deployedFraudProofPolicyId,
-    derived: contracts.fraudProof.policyId,
+  const resolvedDeployment = await resolveDoubleSpendDeploymentContracts({
+    blueprint,
+    deploymentInfo,
+    network,
+    requireStateQueueMint: true,
   });
-  requireMatchingScriptHash({
-    label: "fraudProofDoubleSpend step-01 script",
-    deployed: deployedDoubleSpendHash,
-    derived: contracts.doubleSpend.firstStep.spendingScriptHash,
-  });
+  const { doubleSpendCategory, hubOraclePolicyId, contracts } =
+    resolvedDeployment;
+  const stateQueuePolicyId = resolvedDeployment.stateQueuePolicyId!;
 
   const parsedThreadOutRef = parseOutRef(threadOutRef, "--thread-out-ref");
   const parsedStateQueueBlockOutRef = parseOutRef(
@@ -218,7 +171,9 @@ export const submitStep02 = async ({
       label: "state-queue block UTxO",
     }),
   ]);
-  if (threadUtxo.address !== contracts.doubleSpend.steps[1].spendingScriptAddress) {
+  if (
+    threadUtxo.address !== contracts.doubleSpend.steps[1].spendingScriptAddress
+  ) {
     throw new Error(
       `Thread UTxO ${outRefLabel(threadUtxo)} is not locked at double-spend step 02.`,
     );
@@ -354,8 +309,7 @@ export const submitStep02 = async ({
     thirdStepAddress: contracts.doubleSpend.steps[2].spendingScriptAddress,
     verifiedTx1Id: inputDatum.data.verified_tx1_id,
     nativeTx2Id: txInclusion.nativeTxId,
-    verifiedTx1SpendInputsHash:
-      inputDatum.data.verified_tx1_spend_inputs_hash,
+    verifiedTx1SpendInputsHash: inputDatum.data.verified_tx1_spend_inputs_hash,
     verifiedTx2SpendInputsHash: txInclusion.nativeTx.body.spend_inputs_hash,
     inputIndex: Number(spendInputIndex),
     outputIndex: Number(STEP_02_OUTPUT_INDEX),
@@ -372,13 +326,14 @@ export const submitStep02 = async ({
 export const submitStep02FromFiles = async (
   config: SubmitStep02CliConfig,
 ): Promise<SubmitStep02Result> => {
-  const [blueprint, deploymentInfo, txInclusionJson, lucid] =
-    await Promise.all([
+  const [blueprint, deploymentInfo, txInclusionJson, lucid] = await Promise.all(
+    [
       readJsonFile(config.blueprintPath),
       readJsonFile(config.deploymentInfoPath),
       readJsonFile(config.txInclusionPath),
-      makeLucidForSubmitInit(config),
-    ]);
+      makeLucidForSubmit(config),
+    ],
+  );
   const signer = resolveProverSigner(config);
   return await submitStep02({
     lucid,
@@ -388,7 +343,7 @@ export const submitStep02FromFiles = async (
     signer,
     threadOutRef: config.threadOutRef,
     stateQueueBlockOutRef: config.stateQueueBlockOutRef,
-    txInclusion: parseSubmitStep02TxInclusion(txInclusionJson),
+    txInclusion: parseSubmitStep01TxInclusion(txInclusionJson),
     awaitConfirmation: config.awaitConfirmation,
   });
 };

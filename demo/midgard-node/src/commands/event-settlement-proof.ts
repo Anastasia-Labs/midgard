@@ -10,7 +10,7 @@ import {
   keyValuePhasRoot,
   MpfError,
 } from "@/workers/utils/mpf.js";
-import { formatJson, parseEventId } from "@/commands/withdrawal-utils.js";
+import { parseEventId } from "@/commands/command-utils.js";
 
 export type EventKind = "deposit" | "withdrawal";
 
@@ -280,7 +280,3 @@ export const serializeEventSettlementProofResolution = (
     ? { validity: resolution.validity }
     : {}),
 });
-
-export const formatEventSettlementProofResolution = (
-  resolution: EventSettlementProofResolution,
-): string => formatJson(serializeEventSettlementProofResolution(resolution));

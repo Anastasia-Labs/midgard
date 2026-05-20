@@ -21,11 +21,6 @@ export type LedgerEntryWithTimeStamp = LedgerEntryNoTimeStamp & {
 
 export type LedgerEntry = LedgerEntryNoTimeStamp | LedgerEntryWithTimeStamp;
 
-export type LedgerMinimalEntry = {
-  [LedgerColumns.OUTREF]: Buffer;
-  [LedgerColumns.OUTPUT]: Buffer;
-};
-
 export type ProcessedTx = {
   txId: Buffer;
   txCbor: Buffer;

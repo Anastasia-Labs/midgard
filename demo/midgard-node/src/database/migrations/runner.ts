@@ -797,9 +797,6 @@ export const assertCompatible: Effect.Effect<void, MigrationError, Database> =
       ),
     ),
   );
-
-export const verify = assertCompatible;
-
 export const formatStatus = (status: MigrationStatus): string =>
   JSON.stringify(
     {

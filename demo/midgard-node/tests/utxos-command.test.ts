@@ -3,15 +3,17 @@ import { CML } from "@lucid-evolution/lucid";
 import {
   decodeStoredUtxo,
   encodeStoredUtxo,
-  formatUtxosResult,
-  parseAddressArgument,
   requireByOutRefsSelector,
-  parseTxOutRefCborHex,
-  parseTxOutRefLabel,
   parseTxOutRefsRequest,
   orderStoredUtxosByOutRef,
   sumAssets,
 } from "@/commands/utxos.js";
+import {
+  formatJson,
+  parseAddressArgument,
+  parseTxOutRefCborHex,
+  parseTxOutRefLabel,
+} from "@/commands/command-utils.js";
 import { makeMidgardTxOutput } from "./midgard-output-helpers.js";
 import { Effect } from "effect";
 
@@ -28,7 +30,7 @@ describe("utxos command helpers", () => {
       parseAddressArgument(
         "stake_test1uqq7uu2uyy9drut7667w56x34n43kczafhvn8qe9nzcmc7q7unt22",
       ),
-    ).toThrow("Address must include a payment credential.");
+    ).toThrow("Unsupported Midgard address family");
   });
 
   it("decodes stored UTxOs from ledger records", async () => {
@@ -78,7 +80,7 @@ describe("utxos command helpers", () => {
         7n,
       ).to_cbor_bytes(),
     );
-    expect(parseTxOutRefLabel(` ${"33".repeat(32)}#7 `)).toEqual(expected);
+    expect(parseTxOutRefLabel(` ${"33".repeat(32)}#7 `).cbor).toEqual(expected);
   });
 
   it("rejects malformed textual txOutRefs", () => {
@@ -189,13 +191,13 @@ describe("utxos command helpers", () => {
       }),
     ).toEqual({
       outref: "abcd",
-      value: "0123",
+      outputCbor: "0123",
     });
   });
 
   it("formats output with bigint amounts preserved as decimal strings", () => {
     expect(
-      formatUtxosResult({
+      formatJson({
         address: VALID_ADDRESS,
         utxoCount: 1,
         totals: { lovelace: 1_500_000n },

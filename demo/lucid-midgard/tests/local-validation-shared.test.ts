@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 
@@ -20,45 +20,22 @@ describe("shared local validation source", () => {
     );
   });
 
-  it("keeps node Phase A and Phase B modules as shared-validation shims", () => {
-    const shims = [
-      ["../../midgard-node/src/validation/index.ts", "@al-ft/midgard-validation"],
-      [
-        "../../midgard-node/src/validation/phase-a.ts",
-        "@al-ft/midgard-validation/phase-a",
-      ],
-      [
-        "../../midgard-node/src/validation/phase-b.ts",
-        "@al-ft/midgard-validation/phase-b",
-      ],
-      [
-        "../../midgard-node/src/validation/types.ts",
-        "@al-ft/midgard-validation/types",
-      ],
-      [
-        "../../midgard-node/src/validation/local-script-eval.ts",
-        "@al-ft/midgard-validation/local-script-eval",
-      ],
-      [
-        "../../midgard-node/src/validation/midgard-output.ts",
-        "@al-ft/midgard-validation/midgard-output",
-      ],
-      [
-        "../../midgard-node/src/validation/midgard-redeemers.ts",
-        "@al-ft/midgard-validation/midgard-redeemers",
-      ],
-      [
-        "../../midgard-node/src/validation/script-context.ts",
-        "@al-ft/midgard-validation/script-context",
-      ],
-      [
-        "../../midgard-node/src/validation/script-source.ts",
-        "@al-ft/midgard-validation/script-source",
-      ],
+  it("does not keep node validation compatibility shims", () => {
+    const removedShimPaths = [
+      "../../midgard-node/src/validation/index.ts",
+      "../../midgard-node/src/validation/phase-a.ts",
+      "../../midgard-node/src/validation/phase-b.ts",
+      "../../midgard-node/src/validation/types.ts",
+      "../../midgard-node/src/validation/local-script-eval.ts",
+      "../../midgard-node/src/validation/midgard-redeemers.ts",
+      "../../midgard-node/src/validation/script-context.ts",
+      "../../midgard-node/src/validation/script-source.ts",
     ] as const;
 
-    for (const [path, specifier] of shims) {
-      expect(sourceText(path).trim()).toBe(`export * from "${specifier}";`);
+    for (const path of removedShimPaths) {
+      expect(existsSync(fileURLToPath(new URL(path, import.meta.url)))).toBe(
+        false,
+      );
     }
   });
 });

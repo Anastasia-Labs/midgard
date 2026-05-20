@@ -20,7 +20,7 @@ import { encodeMidgardTxOutput } from "@al-ft/lucid-midgard";
 import { DepositsDB, UserEventsUtils } from "@/database/index.js";
 import { DatabaseError } from "@/database/utils/common.js";
 import { Schedule } from "effect";
-import { computeHash32 } from "@/midgard-tx-codec/hash.js";
+import { computeHash32 } from "@al-ft/midgard-core/codec/hash";
 
 /**
  * Background ingestion for deposit UTxOs into the authoritative off-chain
@@ -140,13 +140,13 @@ const depositUTxOToEntry = (
 const fetchDepositUTxOs = (
   lucid: LucidEvolution,
   config?: Pick<
-    SDK.DepositFetchConfig,
+    SDK.UserEventFetchConfig,
     "inclusionTimeLowerBound" | "inclusionTimeUpperBound"
   >,
 ): Effect.Effect<SDK.DepositUTxO[], SDK.LucidError, MidgardContracts> =>
   Effect.gen(function* () {
     const { deposit: depositAuthValidator } = yield* MidgardContracts;
-    const fetchConfig: SDK.DepositFetchConfig = {
+    const fetchConfig: SDK.UserEventFetchConfig = {
       eventAddress: depositAuthValidator.spendingScriptAddress,
       eventPolicyId: depositAuthValidator.policyId,
       ...config,
@@ -156,7 +156,7 @@ const fetchDepositUTxOs = (
 
 const reconcileVisibleDepositUTxOs = (
   config?: Pick<
-    SDK.DepositFetchConfig,
+    SDK.UserEventFetchConfig,
     "inclusionTimeLowerBound" | "inclusionTimeUpperBound"
   >,
 ): Effect.Effect<

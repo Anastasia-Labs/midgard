@@ -20,12 +20,6 @@ const STALE_OPERATOR_WALLET_VIEW_ERROR_PATTERNS = [
 ] as const;
 
 /**
- * Normalizes an outref-like object into the canonical string key used by the
- * wallet overlay.
- */
-const toOutRefKey = (outRef: OutRefLike): string => outRefLabel(outRef);
-
-/**
  * Materializes the consumed-outref list into a set for efficient lookups.
  */
 const toConsumedSet = (view: OperatorWalletView): ReadonlySet<string> =>
@@ -64,7 +58,7 @@ export const availableOperatorWalletUtxos = (
 ): readonly UTxO[] => {
   const consumedOutRefs = toConsumedSet(view);
   return dedupeByOutRef(view.knownUtxos).filter(
-    (utxo) => !consumedOutRefs.has(toOutRefKey(utxo)),
+    (utxo) => !consumedOutRefs.has(outRefLabel(utxo)),
   );
 };
 
@@ -108,7 +102,7 @@ export const noteConsumedOperatorWalletInputs = (
   consumedOutRefs: [
     ...new Set([
       ...view.consumedOutRefs,
-      ...spentInputs.map((input) => toOutRefKey(input)),
+      ...spentInputs.map((input) => outRefLabel(input)),
     ]),
   ],
 });
@@ -125,7 +119,7 @@ export const noteProducedOperatorWalletOutputs = (
   const knownUtxos = dedupeByOutRef([
     ...view.knownUtxos,
     ...producedOutputs,
-  ]).filter((utxo) => !consumedOutRefs.has(toOutRefKey(utxo)));
+  ]).filter((utxo) => !consumedOutRefs.has(outRefLabel(utxo)));
   return {
     ...view,
     knownUtxos,
@@ -174,20 +168,13 @@ export const mergeOperatorWalletViews = (
   const knownUtxos = dedupeByOutRef([
     ...current.knownUtxos,
     ...previous.knownUtxos,
-  ]).filter((utxo) => !consumedSet.has(toOutRefKey(utxo)));
+  ]).filter((utxo) => !consumedSet.has(outRefLabel(utxo)));
   return {
     walletAddress: current.walletAddress,
     knownUtxos,
     consumedOutRefs,
   };
 };
-
-/**
- * Re-fetches the wallet view from Lucid.
- */
-export const reloadOperatorWalletView = async (
-  lucid: LucidEvolution,
-): Promise<OperatorWalletView> => fetchOperatorWalletView(lucid);
 
 /**
  * Heuristically detects errors that likely mean the local wallet overlay has

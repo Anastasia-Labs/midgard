@@ -25,8 +25,7 @@ import {
   validatorToScriptHash,
 } from "@lucid-evolution/lucid";
 import {
-  parseAdditionalAssetSpec as parseAdditionalAssetSpecShared,
-  parseAdditionalAssetSpecs as parseAdditionalAssetSpecsShared,
+  parseAdditionalAssetSpecs,
   parseLovelaceAmount,
 } from "@/asset-specs.js";
 import { slotToUnixTimeForLucidOrEmulatorFallback } from "@/lucid-time.js";
@@ -39,7 +38,7 @@ import {
 import {
   getRedeemerPointersInContextOrder,
   getTxInfoRedeemerIndexes,
-} from "@/cml-redeemers.js";
+} from "@al-ft/midgard-sdk";
 import {
   collectSortedInputOutRefs,
   compareOutRefs,
@@ -271,14 +270,6 @@ const addScriptStakeRegistrationCertificate = (
   return tx;
 };
 
-const canonicalUtxoOrder = (a: UTxO, b: UTxO): number => {
-  const hashOrder = a.txHash.localeCompare(b.txHash);
-  if (hashOrder !== 0) {
-    return hashOrder;
-  }
-  return a.outputIndex - b.outputIndex;
-};
-
 const fetchHubOracleReferenceProgram = (
   lucid: LucidEvolution,
   contracts: SDK.MidgardValidators,
@@ -382,7 +373,7 @@ const buildUnsignedDepositTxWithMetadataProgram = (
           cause,
         }),
     });
-    const sortedWalletUtxos = [...walletUtxos].sort(canonicalUtxoOrder);
+    const sortedWalletUtxos = [...walletUtxos].sort(compareOutRefs);
     const nonceInput = sortedWalletUtxos[0];
     if (nonceInput === undefined) {
       return yield* Effect.fail(
@@ -394,7 +385,7 @@ const buildUnsignedDepositTxWithMetadataProgram = (
     }
 
     const depositEventId = outputReferenceToPlutusDataCbor(nonceInput);
-    const nonceAssetName = yield* SDK.hashHexWithBlake2b256(depositEventId);
+    const nonceAssetName = yield* SDK.hashHexWithBlake2b(depositEventId, 32);
     const depositUnit = toUnit(contracts.deposit.policyId, nonceAssetName);
     if ((config.additionalAssets[depositUnit] ?? 0n) !== 0n) {
       return yield* Effect.fail(
@@ -658,25 +649,6 @@ export const buildUnsignedDepositTxFromFundingContextProgram = (
     });
   });
 
-export const submitDepositProgram = (
-  lucid: LucidEvolution,
-  contracts: SDK.MidgardValidators,
-  config: SubmitDepositConfig,
-): Effect.Effect<
-  string,
-  | SDK.HubOracleError
-  | SDK.LucidError
-  | SDK.Bech32DeserializationError
-  | SDK.HashingError
-  | SubmitDepositError
-  | TxSubmitError
-  | TxConfirmError
-  | TxSignError
-> =>
-  submitDepositWithMetadataProgram(lucid, contracts, config).pipe(
-    Effect.map((result) => result.txHash),
-  );
-
 export const submitDepositWithMetadataProgram = (
   lucid: LucidEvolution,
   contracts: SDK.MidgardValidators,
@@ -702,13 +674,6 @@ export const submitDepositWithMetadataProgram = (
     return { txHash, metadata };
   });
 
-export const parseLovelace = (value: string): bigint => {
-  return parseLovelaceAmount(
-    value,
-    "Deposit lovelace amount must be greater than zero.",
-  );
-};
-
 const normalizeHex = (value: string, field: string): string => {
   const normalized = value.trim();
   if (!HEX_PATTERN.test(normalized) || normalized.length % 2 !== 0) {
@@ -718,17 +683,6 @@ const normalizeHex = (value: string, field: string): string => {
   }
   return normalized.toLowerCase();
 };
-
-export const parseAdditionalAssetSpec = (
-  spec: string,
-): {
-  readonly unit: string;
-  readonly amount: bigint;
-} => parseAdditionalAssetSpecShared(spec);
-
-export const parseAdditionalAssetSpecs = (
-  specs: readonly string[],
-): Readonly<Assets> => parseAdditionalAssetSpecsShared(specs);
 
 type UnknownRecord = Record<string, unknown>;
 
@@ -1038,7 +992,10 @@ const buildSubmitDepositConfig = ({
   return {
     l2Address: normalizedL2Address,
     l2Datum: normalizedDatum,
-    lovelace: parseLovelace(lovelace),
+    lovelace: parseLovelaceAmount(
+      lovelace,
+      "Deposit lovelace amount must be greater than zero.",
+    ),
     additionalAssets,
   };
 };

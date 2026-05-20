@@ -157,7 +157,6 @@ const tx = await midgard
   .complete();
 ```
 
-`attachObserverScript(...)` is an alias for `attach.ObserverValidator(...)`.
 Supported observer validator languages are only `PlutusV3` and `MidgardV1`.
 
 ## Reference Script Metadata
@@ -169,13 +168,15 @@ outref:
 
 ```ts
 tx.readFrom([referenceUtxo], {
-  trustedReferenceScripts: [{
-    txHash,
-    outputIndex,
-    language: "MidgardV1",
-    scriptHash,
-    scriptCborHash,
-  }],
+  trustedReferenceScripts: [
+    {
+      txHash,
+      outputIndex,
+      language: "MidgardV1",
+      scriptHash,
+      scriptCborHash,
+    },
+  ],
 });
 ```
 

@@ -57,7 +57,7 @@ import {
   findRedeemerDataCbor,
   getRedeemerPointersInContextOrder,
   getTxInfoRedeemerIndexes,
-} from "@/cml-redeemers.js";
+} from "@al-ft/midgard-sdk";
 import {
   availableOperatorWalletUtxos,
   fetchOperatorWalletView,
@@ -626,7 +626,7 @@ export const buildAndSubmitMergeTx = (
         endTime: blockHeader.endTime,
         protocolVersion: blockHeader.protocolVersion,
       };
-      const updatedConfirmedNodeDatum: SDK.StateQueueNodeView = {
+      const updatedConfirmedNodeDatum: SDK.LinkedListNodeView = {
         ...confirmedUTxO.datum,
         data: SDK.castConfirmedStateToData(
           updatedConfirmedState,
@@ -985,52 +985,6 @@ export const buildAndSubmitMergeTx = (
             CML.Address.from_bech32(walletAddress),
           )
           .draft_tx();
-      };
-      const decodeRedeemerShape = (
-        redeemerCbor: string | undefined,
-      ): unknown => {
-        if (redeemerCbor === undefined) {
-          return "missing";
-        }
-        try {
-          return Data.from(redeemerCbor, SDK.StateQueueRedeemer);
-        } catch {
-          try {
-            return Data.from(redeemerCbor, SettlementMintRedeemer);
-          } catch {
-            return `decode-failed:${redeemerCbor}`;
-          }
-        }
-      };
-      const collectMergeDraftDiagnostics = (
-        draftTx: CML.Transaction,
-      ): unknown => {
-        const txBody = draftTx.body();
-        const referenceInputs = txBody.reference_inputs();
-        const pointers = getRedeemerPointersInContextOrder(draftTx);
-        return {
-          inputs: collectSortedInputOutRefs(txBody.inputs()).map(outRefLabel),
-          referenceInputs:
-            referenceInputs === undefined
-              ? []
-              : collectSortedInputOutRefs(referenceInputs).map(outRefLabel),
-          outputs: collectIndexedOutputs(txBody.outputs()).map((output) => ({
-            index: output.index,
-            address: output.address,
-            datum: output.datum,
-            assets: output.assets,
-          })),
-          redeemers: pointers.map((pointer, contextIndex) => {
-            const cbor = findRedeemerDataCbor(draftTx, pointer);
-            return {
-              contextIndex,
-              tag: pointer.tag,
-              index: pointer.index.toString(),
-              cbor,
-              shape: decodeRedeemerShape(cbor),
-            };
-          }),
-        };
       };
       const deriveMergeLayoutFromTx = (
         tx: CML.Transaction,

@@ -24,11 +24,8 @@ import {
   type EventSettlementProofResolution,
   resolveEventSettlementProofProgram,
 } from "@/commands/event-settlement-proof.js";
-import {
-  addressDataToBech32,
-  formatJson,
-  parseEventId,
-} from "@/commands/withdrawal-utils.js";
+import { formatJson, parseEventId } from "@/commands/command-utils.js";
+import { addressDataToBech32 } from "@/commands/withdrawal-utils.js";
 import {
   Database,
   Lucid,
@@ -47,8 +44,6 @@ export type PayoutCommandResult = {
   readonly eventId: string;
   readonly details: Record<string, unknown>;
 };
-
-const LOVELACE_UNIT = "lovelace";
 
 const normalizeAssets = (assets: Readonly<Assets>): Assets => {
   const normalized: Record<string, bigint> = {};
@@ -539,13 +534,3 @@ export const concludePayoutProgram = (
       },
     };
   });
-
-export const formatPayoutCommandResult = (
-  result: PayoutCommandResult,
-): string => formatJson(result);
-
-export const __reservePayoutCommandsTest = {
-  loadPhasMembershipWithdrawalScript,
-  normalizeAssets,
-  subtractAssets,
-};

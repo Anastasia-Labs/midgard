@@ -1,5 +1,4 @@
 import { Data } from "@lucid-evolution/lucid";
-import { LucidEvolution, TxBuilder } from "@lucid-evolution/lucid";
 
 export const FraudProofTokenDatumSchema = Data.Object({
   fraud_prover: Data.Bytes({ minLength: 28, maxLength: 28 }),
@@ -28,36 +27,3 @@ export type FraudProofTokenMintRedeemer = Data.Static<
 >;
 export const FraudProofTokenMintRedeemer =
   FraudProofTokenMintRedeemerSchema as unknown as FraudProofTokenMintRedeemer;
-
-export type FraudProofTokenMintParams = {};
-export type FraudProofTokenBurnParams = {};
-
-/**
- * Mint
- *
- * @param lucid - The LucidEvolution
- * @param params - The parameters
- * @returns {TxBuilder} A TxBuilder instance that can be used to build the transaction.
- */
-export const incompleteFraudProofTokenMintTxProgram = (
-  lucid: LucidEvolution,
-  params: FraudProofTokenMintParams,
-): TxBuilder => {
-  const tx = lucid.newTx();
-  return tx;
-};
-
-/**
- * Burn
- *
- * @param lucid - The LucidEvolution
- * @param params - The parameters
- * @returns {TxBuilder} A TxBuilder instance that can be used to build the transaction.
- */
-export const incompleteFraudProofTokenBurnTxProgram = (
-  lucid: LucidEvolution,
-  params: FraudProofTokenBurnParams,
-): TxBuilder => {
-  const tx = lucid.newTx();
-  return tx;
-};

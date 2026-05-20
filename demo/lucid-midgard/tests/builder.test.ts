@@ -1,10 +1,15 @@
-import { describe, expect, it } from "vitest";
+import {
+  MIDGARD_SUPPORTED_SCRIPT_LANGUAGES,
+} from "@al-ft/midgard-core/codec";
+import {
+  describe,
+  expect,
+  it } from "vitest";
 import { CML } from "@lucid-evolution/lucid";
 import {
   decodeMidgardUtxo,
   encodeMidgardTxOutput,
   LucidMidgard,
-  MIDGARD_SUPPORTED_SCRIPT_LANGUAGES,
   outputAddressProtected,
   outRefToCbor,
   BuilderInvariantError,

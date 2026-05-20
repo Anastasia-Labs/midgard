@@ -1,7 +1,7 @@
 import {
-  computeMidgardNativeTxIdFromFull,
+  computeMidgardNativeTxId,
   decodeMidgardNativeTxFull,
-} from "@/midgard-tx-codec/index.js";
+} from "@al-ft/midgard-core/codec";
 
 /**
  * Paths that require explicit admin-key authorization.
@@ -138,7 +138,7 @@ export const normalizeSubmitTxEnvelopeCborToNative = (
   const submittedTxEnvelopeCbor = Buffer.from(txEnvelopeCbor);
   try {
     const nativeTx = decodeMidgardNativeTxFull(submittedTxEnvelopeCbor);
-    const txId = computeMidgardNativeTxIdFromFull(nativeTx);
+    const txId = computeMidgardNativeTxId(nativeTx);
     return {
       ok: true,
       txId,

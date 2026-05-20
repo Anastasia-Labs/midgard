@@ -1,18 +1,15 @@
-import { parentPort, workerData } from "worker_threads";
 import { CML } from "@lucid-evolution/lucid";
 import * as chalk_ from "chalk";
 import { Data, Effect, pipe } from "effect";
 import * as Ledger from "@/database/utils/ledger.js";
 import * as SDK from "@al-ft/midgard-sdk";
 import {
-  computeMidgardNativeTxIdFromFull,
+  computeMidgardNativeTxId,
   decodeMidgardNativeByteListPreimage,
   decodeMidgardNativeTxFull,
-} from "@/midgard-tx-codec/index.js";
-import {
   decodeMidgardTxOutput,
-  midgardOutputAddressText,
-} from "@/validation/midgard-output.js";
+  encodeMidgardAddressText,
+} from "@al-ft/midgard-core/codec";
 
 export type ProcessedTx = {
   txId: Buffer;
@@ -21,42 +18,7 @@ export type ProcessedTx = {
   produced: Ledger.Entry[];
 };
 
-// For some reason importing these directly into the new confirmation worker
-// failed. This is probably a temporary workaround.
-export const reexportedParentPort = parentPort;
-export const reexportedWorkerData = workerData;
-
 export const chalk = new chalk_.Chalk();
-
-export type ProviderName = "Blockfrost" | "Koios" | "Kupmios" | "Maestro";
-
-/**
- * Logs a success message to the console.
- */
-export const logSuccess = (msg: string) => {
-  Effect.runSync(Effect.logInfo(`🎉 ${msg}`));
-};
-
-/**
- * Logs a warning message to the console.
- */
-export const logWarning = (msg: string) => {
-  Effect.runSync(Effect.logWarning(`⚠️  ${msg}`));
-};
-
-/**
- * Logs an abort message to the console.
- */
-export const logAbort = (msg: string) => {
-  Effect.runSync(Effect.logError(msg));
-};
-
-/**
- * Logs an informational message to the console.
- */
-export const logInfo = (msg: string) => {
-  Effect.runSync(Effect.logInfo(`ℹ️  ${msg}`));
-};
 
 export const isHexString = (str: string): boolean => {
   const hexRegex = /^[0-9A-Fa-f]+$/;
@@ -122,9 +84,7 @@ export const findSpentAndProducedUTxOs = (
 
     const produced: Ledger.MinimalEntry[] = [];
     const finalTxHash =
-      txHash === undefined
-        ? computeMidgardNativeTxIdFromFull(nativeTx)
-        : txHash;
+      txHash === undefined ? computeMidgardNativeTxId(nativeTx) : txHash;
     const txHashObj = CML.TransactionHash.from_raw_bytes(finalTxHash);
     for (let i = 0; i < nativeOutputs.length; i++) {
       const output = nativeOutputs[i];
@@ -151,7 +111,7 @@ export const breakDownTx = (
         }),
     });
 
-    const txHashBytes = computeMidgardNativeTxIdFromFull(nativeTx);
+    const txHashBytes = computeMidgardNativeTxId(nativeTx);
     const txHash = CML.TransactionHash.from_raw_bytes(txHashBytes);
     const spent = yield* Effect.try({
       try: () =>
@@ -190,7 +150,7 @@ export const breakDownTx = (
           CML.TransactionInput.new(txHash, BigInt(i)).to_cbor_bytes(),
         ),
         [Ledger.Columns.OUTPUT]: Buffer.from(outputBytes[i]),
-        [Ledger.Columns.ADDRESS]: midgardOutputAddressText(output),
+        [Ledger.Columns.ADDRESS]: encodeMidgardAddressText(output.address),
       });
     }
     return {

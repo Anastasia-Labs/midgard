@@ -1,8 +1,5 @@
 import { describe, expect, it } from "vitest";
-import {
-  compareOutRefs,
-  resolveReferenceInputIndexFromSet,
-} from "@/tx-context.js";
+import { compareOutRefs, resolveOutRefIndexFromSet } from "@/tx-context.js";
 
 describe("tx context ordering", () => {
   it("orders out refs lexicographically by tx hash then output index", () => {
@@ -35,14 +32,14 @@ describe("tx context ordering", () => {
 
     const referenceInputs = [schedulerRef, activeNodeRef, hubOracleRef];
 
-    expect(
-      resolveReferenceInputIndexFromSet(hubOracleRef, referenceInputs),
-    ).toEqual(0n);
-    expect(
-      resolveReferenceInputIndexFromSet(activeNodeRef, referenceInputs),
-    ).toEqual(1n);
-    expect(
-      resolveReferenceInputIndexFromSet(schedulerRef, referenceInputs),
-    ).toEqual(2n);
+    expect(resolveOutRefIndexFromSet(hubOracleRef, referenceInputs)).toEqual(
+      0n,
+    );
+    expect(resolveOutRefIndexFromSet(activeNodeRef, referenceInputs)).toEqual(
+      1n,
+    );
+    expect(resolveOutRefIndexFromSet(schedulerRef, referenceInputs)).toEqual(
+      2n,
+    );
   });
 });

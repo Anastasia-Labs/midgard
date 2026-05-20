@@ -90,10 +90,10 @@ support.
   - `sign.withWallet`
   - `sign.withPrivateKey`
   - `partialSign.withWallet`
-  - `partialSign.withWalletEffect`
+  - `partialSign.withWalletProgram`
   - `partialSign.withWalletSafe`
   - `partialSign.withPrivateKey`
-  - `partialSign.withPrivateKeyEffect`
+  - `partialSign.withPrivateKeyProgram`
   - `partialSign.withPrivateKeySafe`
   - `assemble`
   - `complete`

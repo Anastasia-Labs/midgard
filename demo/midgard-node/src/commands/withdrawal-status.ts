@@ -10,11 +10,11 @@ import {
   NodeConfig,
 } from "@/services/index.js";
 import {
-  addressDataToBech32,
   formatJson,
   parseEventId,
   parseHexBytes,
-} from "@/commands/withdrawal-utils.js";
+} from "@/commands/command-utils.js";
+import { addressDataToBech32 } from "@/commands/withdrawal-utils.js";
 import { valueToAssets } from "@/transactions/reserve-payout.js";
 
 export type WithdrawalStatusLookup = {
@@ -187,7 +187,3 @@ export const withdrawalStatusProgram = (
       payoutUtxoCount: payoutUtxos.length,
     };
   });
-
-export const formatWithdrawalStatusResult = (
-  result: WithdrawalStatusResult,
-): string => formatJson(result);

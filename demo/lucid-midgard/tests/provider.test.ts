@@ -1,12 +1,11 @@
+import { MIDGARD_SUPPORTED_SCRIPT_LANGUAGES } from "@al-ft/midgard-core/codec";
 import { describe, expect, it } from "vitest";
 import { CML } from "@lucid-evolution/lucid";
 import {
   encodeMidgardTxOutput,
-  MIDGARD_SUPPORTED_SCRIPT_LANGUAGES,
   MidgardNodeProvider,
   outRefToCbor,
   ProviderCapabilityError,
-  ProviderHttpError,
   ProviderPayloadError,
   ProviderTransportError,
   type MidgardFetch,

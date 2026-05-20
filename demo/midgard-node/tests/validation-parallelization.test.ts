@@ -6,20 +6,20 @@ import {
   MIDGARD_NATIVE_TX_VERSION,
   MIDGARD_POSIX_TIME_NONE,
   computeHash32,
-  computeMidgardNativeTxIdFromFull,
+  computeMidgardNativeTxId,
   deriveMidgardNativeTxCompact,
   encodeMidgardNativeTxFull,
   type MidgardNativeTxBodyCanonical,
   type MidgardNativeTxFull,
   type MidgardNativeTxWitnessSetCanonical,
-} from "@/midgard-tx-codec/index.js";
+} from "@al-ft/midgard-core/codec";
 import {
   PhaseAAccepted,
   QueuedTx,
   RejectCodes,
   runPhaseAValidation,
-  runPhaseBValidation,
-} from "@/validation/index.js";
+  runPhaseBValidationWithPatch,
+} from "@al-ft/midgard-validation";
 import { makeMidgardTxOutput } from "./midgard-output-helpers.js";
 
 /**
@@ -136,7 +136,7 @@ const makeCandidate = ({
     validityIntervalStart,
     validityIntervalEnd,
   });
-  const txId = computeMidgardNativeTxIdFromFull(tx);
+  const txId = computeMidgardNativeTxId(tx);
   const txCbor = encodeMidgardNativeTxFull(tx);
   const producedOutRef = outRefFromHash(txId.toString("hex"), 0n);
   return {
@@ -182,7 +182,7 @@ describe("validation parallelization", () => {
       });
       const nativeTxBytes = encodeMidgardNativeTxFull(nativeTx);
       return {
-        txId: computeMidgardNativeTxIdFromFull(nativeTx),
+        txId: computeMidgardNativeTxId(nativeTx),
         txCbor: nativeTxBytes,
         arrivalSeq: BigInt(index),
         createdAt: new Date(0),
@@ -248,23 +248,21 @@ describe("validation parallelization", () => {
       spent: [spentZ],
     });
 
-    const phaseB = await Effect.runPromise(
-      runPhaseBValidation([txA, txB, txC], preState, {
+    const { accepted, rejected } = await Effect.runPromise(
+      runPhaseBValidationWithPatch([txA, txB, txC], preState, {
         nowCardanoSlotNo: 0n,
         bucketConcurrency: 8,
       }),
     );
 
-    expect(phaseB.accepted.map((tx) => tx.txId.toString("hex"))).toStrictEqual([
+    expect(accepted.map((tx) => tx.txId.toString("hex"))).toStrictEqual([
       txA.txId.toString("hex"),
       txC.txId.toString("hex"),
     ]);
-    expect(phaseB.rejected).toHaveLength(1);
-    expect(phaseB.rejected[0].txId.toString("hex")).toBe(
-      txB.txId.toString("hex"),
-    );
+    expect(rejected).toHaveLength(1);
+    expect(rejected[0].txId.toString("hex")).toBe(txB.txId.toString("hex"));
     expect([RejectCodes.DoubleSpend, RejectCodes.InputNotFound]).toContain(
-      phaseB.rejected[0].code,
+      rejected[0].code,
     );
   });
 
@@ -288,28 +286,28 @@ describe("validation parallelization", () => {
       validityIntervalEnd: 121n,
     });
 
-    const expiredPhaseB = await Effect.runPromise(
-      runPhaseBValidation([expired], preState, {
-        nowCardanoSlotNo: 120n,
-        bucketConcurrency: 1,
-      }),
-    );
-    expect(expiredPhaseB.accepted).toHaveLength(0);
-    expect(expiredPhaseB.rejected).toHaveLength(1);
-    expect(expiredPhaseB.rejected[0].code).toBe(
-      RejectCodes.ValidityIntervalMismatch,
-    );
-    expect(expiredPhaseB.rejected[0].detail).toBe("120 > 119");
+    const { accepted: expiredAccepted, rejected: expiredRejected } =
+      await Effect.runPromise(
+        runPhaseBValidationWithPatch([expired], preState, {
+          nowCardanoSlotNo: 120n,
+          bucketConcurrency: 1,
+        }),
+      );
+    expect(expiredAccepted).toHaveLength(0);
+    expect(expiredRejected).toHaveLength(1);
+    expect(expiredRejected[0].code).toBe(RejectCodes.ValidityIntervalMismatch);
+    expect(expiredRejected[0].detail).toBe("120 > 119");
 
-    const activePhaseB = await Effect.runPromise(
-      runPhaseBValidation([active], preState, {
-        nowCardanoSlotNo: 120n,
-        bucketConcurrency: 1,
-      }),
-    );
-    expect(
-      activePhaseB.accepted.map((tx) => tx.txId.toString("hex")),
-    ).toStrictEqual([active.txId.toString("hex")]);
-    expect(activePhaseB.rejected).toHaveLength(0);
+    const { accepted: activeAccepted, rejected: activeRejected } =
+      await Effect.runPromise(
+        runPhaseBValidationWithPatch([active], preState, {
+          nowCardanoSlotNo: 120n,
+          bucketConcurrency: 1,
+        }),
+      );
+    expect(activeAccepted.map((tx) => tx.txId.toString("hex"))).toStrictEqual([
+      active.txId.toString("hex"),
+    ]);
+    expect(activeRejected).toHaveLength(0);
   });
 });

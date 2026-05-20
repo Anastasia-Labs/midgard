@@ -4,9 +4,9 @@ import * as SDK from "@al-ft/midgard-sdk";
 import { CML, Data, walletFromSeed } from "@lucid-evolution/lucid";
 import {
   midgardAddressFromText,
-  midgardAddressToText,
+  encodeMidgardAddressText,
   protectMidgardAddress,
-} from "@/midgard-tx-codec/index.js";
+} from "@al-ft/midgard-core/codec";
 import { assetsToValue } from "@/transactions/reserve-payout.js";
 import {
   publicKeyHashFromWithdrawalSignature,
@@ -15,10 +15,12 @@ import {
 } from "@/withdrawal-signature.js";
 import {
   parseCardanoDatum,
-  parseEventId,
-  parseTxOutRefLabel,
-  resolveWalletSeedPhrase,
+  parseWithdrawalTxOutRefLabel,
 } from "@/commands/withdrawal-utils.js";
+import {
+  parseEventId,
+  resolveWalletSeedPhrase,
+} from "@/commands/command-utils.js";
 import {
   __submitWithdrawalTest,
   withdrawalEventIdFromBuildMetadata,
@@ -121,7 +123,7 @@ describe("withdrawal CLI parsers", () => {
       .to_public()
       .hash()
       .to_hex();
-    const protectedAddress = midgardAddressToText(
+    const protectedAddress = encodeMidgardAddressText(
       protectMidgardAddress(midgardAddressFromText(wallet.address)),
     );
 
@@ -150,7 +152,7 @@ describe("withdrawal CLI parsers", () => {
   });
 
   it("parses tx out refs and event ids in canonical OutputReference CBOR form", () => {
-    const parsed = parseTxOutRefLabel(
+    const parsed = parseWithdrawalTxOutRefLabel(
       "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa#2",
     );
     expect(parsed.outputReference).toEqual({
@@ -196,8 +198,12 @@ describe("withdrawal CLI parsers", () => {
 
   it("parses absent and inline datum arguments", () => {
     expect(parseCardanoDatum(undefined)).toEqual("NoDatum");
+    expect(parseCardanoDatum("   ")).toEqual("NoDatum");
     const datum = parseCardanoDatum("d87980");
     expect(datum).toHaveProperty("InlineDatum");
+    expect(() => parseCardanoDatum("d8798")).toThrow(
+      "datum must be an even-length hex string.",
+    );
   });
 
   it("resolves seed phrases from direct input before env vars", () => {

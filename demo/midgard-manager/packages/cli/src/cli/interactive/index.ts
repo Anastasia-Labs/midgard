@@ -5,7 +5,7 @@ import { Effect, pipe } from 'effect';
 import ora from 'ora-classic';
 
 import { loadConfig } from '../../config/index.js';
-import type { MidgardConfig } from '../../types/config.js';
+import type { MidgardConfig } from '../../config/schema.js';
 import {
   displayContinuePrompt,
   displayError,
@@ -122,7 +122,7 @@ class ManualCommandImpl {
    * Runs the top-level interactive loop until the process exits.
    */
   async loop() {
-    while (true) {
+    for (;;) {
       try {
         displayHeader('Main Menu');
         await displayStatus(this._config);
@@ -144,7 +144,7 @@ class ManualCommandImpl {
         const sectionMenu = menu.sections.find((s) => s.name === section);
         if (!sectionMenu) continue;
 
-        while (true) {
+        for (;;) {
           displayHeader(`${sectionMenu.name}`);
           displayKeyboardHints();
 

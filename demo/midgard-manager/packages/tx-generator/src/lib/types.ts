@@ -47,16 +47,6 @@ export interface TransactionGeneratorConfig {
 }
 
 /**
- * JSON-serializable transaction record emitted by the generator.
- */
-export interface SerializedMidgardTransaction {
-  cborHex: string;
-  description: string;
-  txId: string;
-  type: string;
-}
-
-/**
  * Default tx-generator configuration used when callers omit optional fields.
  */
 export const DEFAULT_CONFIG: TransactionGeneratorConfig = {

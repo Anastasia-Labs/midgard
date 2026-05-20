@@ -49,9 +49,11 @@ import {
 } from "./inspect-contracts.js";
 import {
   compareOutRefs,
+  DEFAULT_CONFIRMATION_POLL_MS,
   fetchUtxoByOutRef,
-  makeLucidForSubmitInit,
+  makeLucidForSubmit,
   outRefLabel,
+  parsedOutRefFromUtxo,
   readJsonFile,
   requireDeploymentScriptHash,
   requireSingletonUtxo,
@@ -59,14 +61,9 @@ import {
   type ParsedOutRef,
   type ResolvedProverSigner,
   type SubmitProviderConfig,
-} from "./submit-init.js";
-import {
-  DEFAULT_CONFIRMATION_POLL_MS,
-  parseHex,
-  parsedOutRefFromUtxo,
-  requireMatchingScriptHash,
-  selectFeeInput,
-} from "./submit-step-01.js";
+} from "./runtime.js";
+import { requireMatchingScriptHash, selectFeeInput } from "./submit-step-01.js";
+import { parseHex } from "./json-file.js";
 
 const STATE_QUEUE_ANCHOR_OUTPUT_INDEX = 0n;
 const ACTIVE_OPERATORS_ANCHOR_OUTPUT_INDEX = 1n;
@@ -200,15 +197,13 @@ export type SubmitRemoveFraudulentBlockResult = {
   readonly awaitedConfirmation: boolean;
 };
 
-const outRefId = (utxo: UTxO): string => outRefLabel(utxo);
-
 const sortUtxosByLedgerOrder = (utxos: readonly UTxO[]): readonly UTxO[] =>
   [...utxos].sort((left, right) =>
     compareOutRefs(parsedOutRefFromUtxo(left), parsedOutRefFromUtxo(right)),
   );
 
 const dedupeUtxos = (utxos: readonly UTxO[]): readonly UTxO[] => [
-  ...new Map(utxos.map((utxo) => [outRefId(utxo), utxo])).values(),
+  ...new Map(utxos.map((utxo) => [outRefLabel(utxo), utxo])).values(),
 ];
 
 const orderedIndex = (
@@ -217,11 +212,10 @@ const orderedIndex = (
   label: string,
 ): bigint => {
   const sorted = sortUtxosByLedgerOrder(utxos);
-  const index = sorted.findIndex((utxo) => outRefId(utxo) === outRefId(target));
+  const targetLabel = outRefLabel(target);
+  const index = sorted.findIndex((utxo) => outRefLabel(utxo) === targetLabel);
   if (index < 0) {
-    throw new Error(
-      `Missing ${label} ${outRefId(target)} in transaction layout.`,
-    );
+    throw new Error(`Missing ${label} ${targetLabel} in transaction layout.`);
   }
   return BigInt(index);
 };
@@ -257,7 +251,7 @@ const findCmlInputIndex = (
   );
   if (index < 0) {
     throw new Error(
-      `Balanced transaction does not spend ${label} ${outRefId(target)}.`,
+      `Balanced transaction does not spend ${label} ${outRefLabel(target)}.`,
     );
   }
   return BigInt(index);
@@ -276,7 +270,7 @@ const findCmlReferenceInputIndex = (
   );
   if (index < 0) {
     throw new Error(
-      `Balanced transaction does not reference ${label} ${outRefId(target)}.`,
+      `Balanced transaction does not reference ${label} ${outRefLabel(target)}.`,
     );
   }
   return BigInt(index);
@@ -385,9 +379,6 @@ const requireDeploymentScript = (
   return script;
 };
 
-const spendingAddress = (network: Network, script: Script): string =>
-  validatorToAddress(network, script as SpendingValidator);
-
 const buildRemovalContracts = async ({
   blueprint,
   deploymentInfo,
@@ -470,24 +461,33 @@ const buildRemovalContracts = async ({
       deploymentInfo,
       "stateQueueMint",
     ),
-    stateQueueAddress: spendingAddress(network, stateQueueSpendingScript),
+    stateQueueAddress: validatorToAddress(
+      network,
+      stateQueueSpendingScript as SpendingValidator,
+    ),
     stateQueueSpendingScript,
     stateQueueMintingScript,
     activeOperatorsPolicyId,
-    activeOperatorsAddress: spendingAddress(
+    activeOperatorsAddress: validatorToAddress(
       network,
-      activeOperatorsSpendingScript,
+      activeOperatorsSpendingScript as SpendingValidator,
     ),
     activeOperatorsSpendingScript,
     activeOperatorsMintingScript,
     schedulerPolicyId,
-    schedulerAddress: spendingAddress(network, schedulerSpendingScript),
+    schedulerAddress: validatorToAddress(
+      network,
+      schedulerSpendingScript as SpendingValidator,
+    ),
     schedulerSpendingScript,
     hubOraclePolicyId,
     registeredOperatorsPolicyId,
-    registeredOperatorsAddress: spendingAddress(
+    registeredOperatorsAddress: validatorToAddress(
       network,
-      requireDeploymentScript(deploymentInfo, "registeredOperatorsSpend"),
+      requireDeploymentScript(
+        deploymentInfo,
+        "registeredOperatorsSpend",
+      ) as SpendingValidator,
     ),
     fraudProofPolicyId: doubleSpendContracts.fraudProof.policyId,
     fraudProofAddress: doubleSpendContracts.fraudProof.spendingScriptAddress,
@@ -527,7 +527,7 @@ const requireDeploymentReferenceScript = async ({
   });
   if (utxo.scriptRef == null) {
     throw new Error(
-      `${name} reference-script UTxO ${outRefId(utxo)} does not carry a reference script.`,
+      `${name} reference-script UTxO ${outRefLabel(utxo)} does not carry a reference script.`,
     );
   }
   const scriptRef = utxo.scriptRef;
@@ -585,23 +585,23 @@ const referenceScriptOutRefs = (
   stateQueueSpend:
     referenceScripts?.stateQueueSpend === undefined
       ? null
-      : outRefId(referenceScripts.stateQueueSpend),
+      : outRefLabel(referenceScripts.stateQueueSpend),
   stateQueueMint:
     referenceScripts?.stateQueueMint === undefined
       ? null
-      : outRefId(referenceScripts.stateQueueMint),
+      : outRefLabel(referenceScripts.stateQueueMint),
   activeOperatorsSpend:
     referenceScripts?.activeOperatorsSpend === undefined
       ? null
-      : outRefId(referenceScripts.activeOperatorsSpend),
+      : outRefLabel(referenceScripts.activeOperatorsSpend),
   activeOperatorsMint:
     referenceScripts?.activeOperatorsMint === undefined
       ? null
-      : outRefId(referenceScripts.activeOperatorsMint),
+      : outRefLabel(referenceScripts.activeOperatorsMint),
   schedulerSpend:
     referenceScripts?.schedulerSpend === undefined
       ? null
-      : outRefId(referenceScripts.schedulerSpend),
+      : outRefLabel(referenceScripts.schedulerSpend),
 });
 
 type SchedulerDatumValue =
@@ -616,7 +616,7 @@ type SchedulerDatumValue =
 const decodeSchedulerDatum = (schedulerUtxo: UTxO): SchedulerDatumValue => {
   if (schedulerUtxo.datum == null) {
     throw new Error(
-      `Scheduler UTxO ${outRefId(schedulerUtxo)} is missing datum.`,
+      `Scheduler UTxO ${outRefLabel(schedulerUtxo)} is missing datum.`,
     );
   }
   return Data.from(schedulerUtxo.datum, SchedulerDatum) as SchedulerDatumValue;
@@ -1243,16 +1243,16 @@ export const submitRemoveFraudulentBlock = async ({
     operator: fraudulentOperator,
   });
   if (
-    outRefId(activeOperatorRemoval.root.utxo) !==
-    outRefId(activeOperatorsRootUtxo)
+    outRefLabel(activeOperatorRemoval.root.utxo) !==
+    outRefLabel(activeOperatorsRootUtxo)
   ) {
     throw new Error(
       "Resolved active-operators root does not match root NFT lookup.",
     );
   }
   if (
-    outRefId(activeOperatorRemoval.node.utxo) !==
-    outRefId(activeOperatorNodeUtxo)
+    outRefLabel(activeOperatorRemoval.node.utxo) !==
+    outRefLabel(activeOperatorNodeUtxo)
   ) {
     throw new Error(
       "Resolved active-operator node does not match node NFT lookup.",
@@ -1283,7 +1283,7 @@ export const submitRemoveFraudulentBlock = async ({
 
   if (fraudProofUtxo.datum == null) {
     throw new Error(
-      `Fraud-proof token UTxO ${outRefId(fraudProofUtxo)} is missing datum.`,
+      `Fraud-proof token UTxO ${outRefLabel(fraudProofUtxo)} is missing datum.`,
     );
   }
   const fraudProofDatum = Data.from(fraudProofUtxo.datum, FraudProofTokenDatum);
@@ -1548,14 +1548,14 @@ export const submitRemoveFraudulentBlock = async ({
     proverAddress: signer.address,
     fraudProver: signer.paymentKeyHash,
     fraudulentHeaderHash: headerHash,
-    stateQueueBlockOutRef: outRefId(stateQueueBlock.utxo),
-    stateQueueRootOutRef: outRefId(stateQueueRoot.utxo),
-    fraudProofOutRef: outRefId(fraudProofUtxo),
-    activeOperatorsRootOutRef: outRefId(activeOperatorsRootUtxo),
-    activeOperatorNodeOutRef: outRefId(activeOperatorNodeUtxo),
-    schedulerOutRef: outRefId(schedulerUtxo),
-    hubOracleOutRef: outRefId(hubOracleUtxo),
-    registeredOperatorsRootOutRef: outRefId(registeredOperatorsRootUtxo),
+    stateQueueBlockOutRef: outRefLabel(stateQueueBlock.utxo),
+    stateQueueRootOutRef: outRefLabel(stateQueueRoot.utxo),
+    fraudProofOutRef: outRefLabel(fraudProofUtxo),
+    activeOperatorsRootOutRef: outRefLabel(activeOperatorsRootUtxo),
+    activeOperatorNodeOutRef: outRefLabel(activeOperatorNodeUtxo),
+    schedulerOutRef: outRefLabel(schedulerUtxo),
+    hubOracleOutRef: outRefLabel(hubOracleUtxo),
+    registeredOperatorsRootOutRef: outRefLabel(registeredOperatorsRootUtxo),
     referenceScriptOutRefs: referenceScriptOutRefs(referenceScripts),
     layout: layoutToJson(finalLayout),
     awaitedConfirmation: awaitConfirmation,
@@ -1566,7 +1566,7 @@ export const submitRemoveFraudulentBlockFromFiles = async (
   config: RemoveFraudulentBlockCliConfig,
 ): Promise<SubmitRemoveFraudulentBlockResult> => {
   const [lucid, blueprint, deploymentInfo] = await Promise.all([
-    makeLucidForSubmitInit(config),
+    makeLucidForSubmit(config),
     readJsonFile(config.blueprintPath),
     readJsonFile(config.deploymentInfoPath),
   ]);

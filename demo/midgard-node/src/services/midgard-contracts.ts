@@ -556,7 +556,6 @@ const buildRealStateQueueValidator = (
 const buildRealRegisteredOperatorsValidator = (
   network: Network,
   contracts: SDK.MidgardValidators,
-  operatorParams: OperatorContractParams,
 ): Effect.Effect<SDK.AuthenticatedValidator, Error> =>
   Effect.gen(function* () {
     const blueprint = yield* loadRealBlueprint();
@@ -601,7 +600,6 @@ const buildRealRegisteredOperatorsValidator = (
 const buildRealActiveOperatorsValidator = (
   network: Network,
   contracts: SDK.MidgardValidators,
-  operatorParams: OperatorContractParams,
 ): Effect.Effect<SDK.AuthenticatedValidator, Error> =>
   Effect.gen(function* () {
     const blueprint = yield* loadRealBlueprint();
@@ -650,7 +648,6 @@ const buildRealActiveOperatorsValidator = (
 const buildRealRetiredOperatorsValidator = (
   network: Network,
   contracts: SDK.MidgardValidators,
-  operatorParams: OperatorContractParams,
 ): Effect.Effect<SDK.AuthenticatedValidator, Error> =>
   Effect.gen(function* () {
     const blueprint = yield* loadRealBlueprint();
@@ -1050,7 +1047,6 @@ export const withRealStateQueueAndOperatorContracts = (
     const realRetiredOperators = yield* buildRealRetiredOperatorsValidator(
       network,
       withRealFraudProof,
-      operatorParams,
     );
     const withRealRetiredOperators: SDK.MidgardValidators = {
       ...withRealFraudProof,
@@ -1061,7 +1057,6 @@ export const withRealStateQueueAndOperatorContracts = (
       yield* buildRealRegisteredOperatorsValidator(
         network,
         withRealRetiredOperators,
-        operatorParams,
       );
     const withRealRegisteredOperators: SDK.MidgardValidators = {
       ...withRealRetiredOperators,
@@ -1071,7 +1066,6 @@ export const withRealStateQueueAndOperatorContracts = (
     const realActiveOperators = yield* buildRealActiveOperatorsValidator(
       network,
       withRealRegisteredOperators,
-      operatorParams,
     );
     const withRealOperatorSets: SDK.MidgardValidators = {
       ...withRealRegisteredOperators,

@@ -35,7 +35,7 @@ const parseParityRows = (markdown: string): readonly ParityRow[] =>
     .filter(
       (cells) =>
         cells.length >= 3 &&
-        cells[0] !== "---" &&
+        !/^-+$/.test(cells[0] ?? "") &&
         cells[0] !== "Lucid entry point" &&
         cells[0] !== "Lucid builder entry point",
     )
@@ -106,7 +106,6 @@ const expectedParityRows = [
   "`attach.MintingPolicy`::adapted",
   "`attach.ObserverValidator`::midgard-only",
   "`attach.ReferenceScriptMetadata`::midgard-only",
-  "`attachObserverScript`::midgard-only",
   "`attach.CertificateValidator`::unsupported",
   "`attach.WithdrawalValidator`::unsupported",
   "`attach.VoteValidator`::unsupported",
@@ -134,15 +133,12 @@ const expectedParityRows = [
   "`sign.withWitness`::midgard-only",
   "`sign.withWitnesses`::midgard-only",
   "`partialSign.withWallet`::adapted",
-  "`partialSign.withWalletEffect`::adapted",
   "`partialSign.withWalletProgram`::midgard-only",
   "`partialSign.withWalletSafe`::adapted",
   "`partialSign.withPrivateKey`::adapted",
-  "`partialSign.withPrivateKeyEffect`::adapted",
   "`partialSign.withPrivateKeyProgram`::midgard-only",
   "`partialSign.withPrivateKeySafe`::adapted",
   "`partialSign.withExternalSigner`::midgard-only",
-  "`partialSign.withExternalSignerEffect`::midgard-only",
   "`partialSign.withExternalSignerProgram`::midgard-only",
   "`partialSign.withExternalSignerSafe`::midgard-only",
   "`partialSign.withWitness`::midgard-only",
@@ -224,7 +220,7 @@ describe("API parity map", () => {
   });
 
   it("documents the non-Cardano semantics that callers must migrate around", () => {
-    expect(markdown).toContain("computeMidgardNativeTxIdFromFull(nativeTx)");
+    expect(markdown).toContain("computeMidgardNativeTxId(nativeTx)");
     expect(markdown).toContain("Midgard native transaction envelope bytes");
     expect(markdown).toContain("durable admission metadata");
     expect(markdown).toContain("complete({ localValidation");

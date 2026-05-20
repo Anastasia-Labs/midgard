@@ -54,7 +54,7 @@ const EMULATOR_PROTOCOL_PARAMETERS = {
 } as const;
 
 const hashHexBlake2b256 = (hex: string): Promise<string> =>
-  Effect.runPromise(SDK.hashHexWithBlake2b256(hex));
+  Effect.runPromise(SDK.hashHexWithBlake2b(hex, 32));
 
 const singletonMembershipRoot = async (
   keyCbor: string,
@@ -1165,18 +1165,99 @@ describe("reserve/payout transaction builder primitives", () => {
     }
   });
 
-  it("skips provider-visible wallet reference-script UTxOs during automatic fee selection", async () => {
+  it("rejects explicit fee inputs that carry datum payloads", async () => {
+    const inlineDatumFeeInput = {
+      ...mkUtxo("31", 0),
+      datum: "d87980",
+    };
+    const inlineDatumResult = await Effect.runPromise(
+      Effect.either(
+        __reservePayoutTest.selectFeeInputProgram(
+          {} as LucidEvolution,
+          inlineDatumFeeInput,
+          [],
+        ),
+      ),
+    );
+
+    expect(inlineDatumResult._tag).toBe("Left");
+    if (inlineDatumResult._tag === "Left") {
+      expect(inlineDatumResult.left.message).toContain("inline datum");
+    }
+
+    const datumHashFeeInput = {
+      ...mkUtxo("32", 0),
+      datumHash: "ab".repeat(32),
+    };
+    const datumHashResult = await Effect.runPromise(
+      Effect.either(
+        __reservePayoutTest.selectFeeInputProgram(
+          {} as LucidEvolution,
+          datumHashFeeInput,
+          [],
+        ),
+      ),
+    );
+
+    expect(datumHashResult._tag).toBe("Left");
+    if (datumHashResult._tag === "Left") {
+      expect(datumHashResult.left.message).toContain("datum hash");
+    }
+  });
+
+  it("rejects explicit fee inputs that do not belong to the selected wallet", async () => {
+    const feeInput = {
+      ...mkUtxo("33", 0),
+      address: "addr_test1other",
+    };
+    const lucid = {
+      wallet: () => ({
+        address: async () => "addr_test1operator",
+      }),
+    } as unknown as LucidEvolution;
+
+    const result = await Effect.runPromise(
+      Effect.either(
+        __reservePayoutTest.selectFeeInputProgram(lucid, feeInput, []),
+      ),
+    );
+
+    expect(result._tag).toBe("Left");
+    if (result._tag === "Left") {
+      expect(result.left.message).toContain("selected wallet");
+    }
+  });
+
+  it("filters unsafe wallet UTxOs out of automatic fee and completion candidates", async () => {
     const referenceScriptUtxo = {
       ...mkUtxo("30", 0, { lovelace: 20_000_000n }),
       scriptRef,
     };
+    const inlineDatumUtxo = {
+      ...mkUtxo("31", 0, { lovelace: 30_000_000n }),
+      datum: "d87980",
+    };
+    const datumHashUtxo = {
+      ...mkUtxo("32", 0, { lovelace: 40_000_000n }),
+      datumHash: "cd".repeat(32),
+    };
+    const nonAdaUtxo = mkUtxo("33", 0, {
+      lovelace: 50_000_000n,
+      [`${"ab".repeat(28)}${"cd".repeat(3)}`]: 1n,
+    });
     const plainUtxo = mkUtxo("40", 0, { lovelace: 3_000_000n });
     const lucid = {
       config: () => ({ provider: {} }),
       wallet: () => ({
         address: async () => "addr_test1operator",
       }),
-      utxosAt: async () => [referenceScriptUtxo, plainUtxo],
+      utxosAt: async () => [
+        referenceScriptUtxo,
+        inlineDatumUtxo,
+        datumHashUtxo,
+        nonAdaUtxo,
+        plainUtxo,
+      ],
     } as unknown as LucidEvolution;
 
     const selected = await Effect.runPromise(
@@ -1184,6 +1265,18 @@ describe("reserve/payout transaction builder primitives", () => {
     );
 
     expect(selected).toEqual(plainUtxo);
+    expect(
+      __reservePayoutTest.disposableFeeInputCandidates(
+        [
+          referenceScriptUtxo,
+          inlineDatumUtxo,
+          datumHashUtxo,
+          nonAdaUtxo,
+          plainUtxo,
+        ],
+        [],
+      ),
+    ).toEqual([plainUtxo]);
   });
 
   it("fails with missing reference-script diagnostics for refund builders", async () => {
@@ -1191,18 +1284,29 @@ describe("reserve/payout transaction builder primitives", () => {
       config: () => ({ network: "Preprod" }),
       utxosAt: async () => [],
     } as unknown as LucidEvolution;
-    const contracts = {
-      withdrawal: {
-        mintingScript: scriptRef,
-        spendingScript: scriptRef,
-      },
-    } as SDK.MidgardValidators;
+    const contracts = await loadRealContracts({
+      txHash: "00".repeat(32),
+      outputIndex: 0,
+    });
     const assetName = "aa".repeat(32);
+    const hubOracleUnit = toUnit(
+      contracts.hubOracle.policyId,
+      SDK.HUB_ORACLE_ASSET_NAME,
+    );
+    const hubOracleDatum = await Effect.runPromise(
+      SDK.makeHubOracleDatum(contracts),
+    );
 
     const result = await Effect.runPromise(
       Effect.either(
         buildRefundInvalidWithdrawalTxProgram(lucid, contracts, {
-          hubOracleRefInput: mkUtxo("50", 0),
+          hubOracleRefInput: {
+            ...mkUtxo("50", 0, {
+              lovelace: 5_000_000n,
+              [hubOracleUnit]: 1n,
+            }),
+            datum: Data.to(hubOracleDatum, SDK.HubOracleDatum),
+          },
           membershipProofWithdrawal: { script: scriptRef },
           referenceScriptsAddress: "addr_test1reference",
           withdrawal: {
@@ -1217,6 +1321,36 @@ describe("reserve/payout transaction builder primitives", () => {
     if (result._tag === "Left") {
       expect(String(result.left.cause)).toContain("withdrawal minting");
       expect(String(result.left.cause)).toContain("addr_test1reference");
+    }
+  });
+
+  it("validates explicit hub oracle reference inputs before builder assembly", async () => {
+    const lucid = {
+      config: () => ({ network: "Preprod" }),
+    } as unknown as LucidEvolution;
+    const contracts = await loadRealContracts({
+      txHash: "00".repeat(32),
+      outputIndex: 0,
+    });
+    const result = await Effect.runPromise(
+      Effect.either(
+        buildRefundInvalidWithdrawalTxProgram(lucid, contracts, {
+          hubOracleRefInput: mkUtxo("60", 0),
+          membershipProofWithdrawal: { script: scriptRef },
+          withdrawal: {
+            assetName: "bb".repeat(32),
+            utxo: mkUtxo("61", 0),
+          },
+        } as any),
+      ),
+    );
+
+    expect(result._tag).toBe("Left");
+    if (result._tag === "Left") {
+      expect(result.left.message).toContain("not authenticated");
+      expect(result.left.cause).toMatchObject({
+        hubOracleRefInput: `${"60".repeat(32)}#0`,
+      });
     }
   });
 });

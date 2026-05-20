@@ -1,19 +1,21 @@
+import {
+  computeHash32,
+  computeScriptIntegrityHashForLanguages,
+  decodeMidgardNativeTxFull,
+  decodeSingleCbor,
+  deriveMidgardNativeTxWitnessSetCompact,
+  EMPTY_CBOR_LIST,
+  EMPTY_NULL_ROOT,
+  MIDGARD_SUPPORTED_SCRIPT_LANGUAGES,
+} from "@al-ft/midgard-core/codec";
 import { describe, expect, it } from "vitest";
 import { blake2b } from "@noble/hashes/blake2.js";
 import { CML } from "@lucid-evolution/lucid";
 import {
   BuilderInvariantError,
-  computeHash32,
-  computeScriptIntegrityHashForLanguages,
-  decodeMidgardNativeTxFull,
   decodeMidgardUtxo,
-  decodeSingleCbor,
-  deriveMidgardNativeTxWitnessSetCompact,
-  EMPTY_CBOR_LIST,
-  EMPTY_NULL_ROOT,
   encodeMidgardTxOutput,
   LucidMidgard,
-  MIDGARD_SUPPORTED_SCRIPT_LANGUAGES,
   outRefToCbor,
   type MidgardProvider,
   type MidgardUtxo,
@@ -149,9 +151,11 @@ describe("script and redeemer builders", () => {
       "0:1",
     ]);
     expect(tx.body.scriptIntegrityHash).toEqual(
-      computeScriptIntegrityHashForLanguages(deriveMidgardNativeTxWitnessSetCompact(tx.witnessSet, tx.version).redeemerTxWitsHash, [
-        "PlutusV3",
-      ]),
+      computeScriptIntegrityHashForLanguages(
+        deriveMidgardNativeTxWitnessSetCompact(tx.witnessSet)
+          .redeemerTxWitsHash,
+        ["PlutusV3"],
+      ),
     );
   });
 
@@ -201,7 +205,7 @@ describe("script and redeemer builders", () => {
         language: "PlutusV3",
         script: scriptBytes,
       })
-      .attachObserverScript({
+      .attach.ObserverValidator({
         language: "MidgardV1",
         script: scriptBytes,
       })
@@ -223,10 +227,11 @@ describe("script and redeemer builders", () => {
       "3:1",
     ]);
     expect(tx.body.scriptIntegrityHash).toEqual(
-      computeScriptIntegrityHashForLanguages(deriveMidgardNativeTxWitnessSetCompact(tx.witnessSet, tx.version).redeemerTxWitsHash, [
-        "MidgardV1",
-        "PlutusV3",
-      ]),
+      computeScriptIntegrityHashForLanguages(
+        deriveMidgardNativeTxWitnessSetCompact(tx.witnessSet)
+          .redeemerTxWitsHash,
+        ["MidgardV1", "PlutusV3"],
+      ),
     );
   });
 
@@ -297,9 +302,11 @@ describe("script and redeemer builders", () => {
     const tx = decodeMidgardNativeTxFull(completed.txCbor);
 
     expect(tx.body.scriptIntegrityHash).toEqual(
-      computeScriptIntegrityHashForLanguages(deriveMidgardNativeTxWitnessSetCompact(tx.witnessSet, tx.version).redeemerTxWitsHash, [
-        "PlutusV3",
-      ]),
+      computeScriptIntegrityHashForLanguages(
+        deriveMidgardNativeTxWitnessSetCompact(tx.witnessSet)
+          .redeemerTxWitsHash,
+        ["PlutusV3"],
+      ),
     );
     expect(() =>
       midgard.newTx().attach.ObserverValidator({
@@ -364,9 +371,11 @@ describe("script and redeemer builders", () => {
       "0:0",
     ]);
     expect(tx.body.scriptIntegrityHash).toEqual(
-      computeScriptIntegrityHashForLanguages(deriveMidgardNativeTxWitnessSetCompact(tx.witnessSet, tx.version).redeemerTxWitsHash, [
-        "PlutusV3",
-      ]),
+      computeScriptIntegrityHashForLanguages(
+        deriveMidgardNativeTxWitnessSetCompact(tx.witnessSet)
+          .redeemerTxWitsHash,
+        ["PlutusV3"],
+      ),
     );
   });
 
@@ -405,9 +414,11 @@ describe("script and redeemer builders", () => {
 
     expect(tx.witnessSet.scriptTxWitsPreimageCbor).toEqual(EMPTY_CBOR_LIST);
     expect(tx.body.scriptIntegrityHash).toEqual(
-      computeScriptIntegrityHashForLanguages(deriveMidgardNativeTxWitnessSetCompact(tx.witnessSet, tx.version).redeemerTxWitsHash, [
-        "PlutusV3",
-      ]),
+      computeScriptIntegrityHashForLanguages(
+        deriveMidgardNativeTxWitnessSetCompact(tx.witnessSet)
+          .redeemerTxWitsHash,
+        ["PlutusV3"],
+      ),
     );
   });
 
@@ -612,9 +623,11 @@ describe("script and redeemer builders", () => {
       "6:0",
     ]);
     expect(tx.body.scriptIntegrityHash).toEqual(
-      computeScriptIntegrityHashForLanguages(deriveMidgardNativeTxWitnessSetCompact(tx.witnessSet, tx.version).redeemerTxWitsHash, [
-        "MidgardV1",
-      ]),
+      computeScriptIntegrityHashForLanguages(
+        deriveMidgardNativeTxWitnessSetCompact(tx.witnessSet)
+          .redeemerTxWitsHash,
+        ["MidgardV1"],
+      ),
     );
   });
 

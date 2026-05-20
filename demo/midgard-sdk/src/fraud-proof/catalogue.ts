@@ -73,10 +73,6 @@ export type FraudProofCatalogueInitParams = {
   mptRootHash: string;
 };
 
-export type FraudProofCatalogueDeinitParams = {};
-export type FraudProofCatalogueNewCategoryParams = {};
-export type FraudProofCatalogueRemoveCategoryParams = {};
-
 /**
  * Init
  *
@@ -107,47 +103,3 @@ export const incompleteFraudProofCatalogueInitTxProgram = (
 
     return tx;
   });
-/**
- * Deinit
- *
- * @param lucid - The LucidEvolution
- * @param params - The parameters
- * @returns {TxBuilder} A TxBuilder instance that can be used to build the transaction.
- */
-export const incompleteFraudProofDeinitTxProgram = (
-  lucid: LucidEvolution,
-  params: FraudProofCatalogueDeinitParams,
-): TxBuilder => {
-  const tx = lucid.newTx();
-  return tx;
-};
-
-/**
- * NewCategory
- *
- * @param lucid - The LucidEvolution
- * @param params - The parameters
- * @returns {TxBuilder} A TxBuilder instance that can be used to build the transaction.
- */
-export const incompleteFraudProofNewCategoryTxProgram = (
-  lucid: LucidEvolution,
-  params: FraudProofCatalogueNewCategoryParams,
-): TxBuilder => {
-  const tx = lucid.newTx();
-  return tx;
-};
-
-/**
- * RemoveCategory
- *
- * @param lucid - The LucidEvolution
- * @param params - The parameters
- * @returns {TxBuilder} A TxBuilder instance that can be used to build the transaction.
- */
-export const incompleteFraudProofRemoveCategoryTxProgram = (
-  lucid: LucidEvolution,
-  params: FraudProofCatalogueRemoveCategoryParams,
-): TxBuilder => {
-  const tx = lucid.newTx();
-  return tx;
-};

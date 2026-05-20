@@ -2,7 +2,6 @@ import {
   CML,
   assetsToValue as lucidAssetsToValue,
   valueToAssets as lucidValueToAssets,
-  type Assets as LucidAssets,
 } from "@lucid-evolution/lucid";
 import { InsufficientFundsError } from "./errors.js";
 
@@ -110,6 +109,3 @@ export const normalizeValueLike = (value: ValueLike): Assets => {
 
 export const valueLikeToCmlValue = (value: ValueLike): CmlValue =>
   assetsToCmlValue(normalizeValueLike(value));
-
-export const assetsToLucidAssets = (assets: Assets): LucidAssets =>
-  assertNonNegativeAssets(assets) as LucidAssets;

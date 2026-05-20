@@ -1,5 +1,3 @@
-import { Writable } from 'node:stream';
-
 import { Assets, CML, Data, walletFromSeed } from '@lucid-evolution/lucid';
 
 /**

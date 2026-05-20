@@ -1,3 +1,4 @@
+import { MIDGARD_SUPPORTED_SCRIPT_LANGUAGES } from "@al-ft/midgard-core/codec";
 import { describe, expect, it } from "vitest";
 import { CML } from "@lucid-evolution/lucid";
 import {
@@ -6,7 +7,6 @@ import {
   decodeMidgardUtxo,
   encodeMidgardTxOutput,
   LucidMidgard,
-  MIDGARD_SUPPORTED_SCRIPT_LANGUAGES,
   MidgardNodeProvider,
   outputAddressProtected,
   outRefToCbor,
@@ -22,8 +22,6 @@ import {
 
 const address =
   "addr_test1wzylc3gg4h37gt69yx057gkn4egefs5t9rsycmryecpsenswtdp58";
-const otherAddress =
-  "addr_test1wq5vz59jgr8e33lgn2ku2nv9y64t6q0dd6mc8gy44jz3ggqg7c2ms";
 const unit = `${"ab".repeat(28)}${"cd".repeat(2)}`;
 
 const makeOutRef = (byte: number, outputIndex = 0): OutRef => ({

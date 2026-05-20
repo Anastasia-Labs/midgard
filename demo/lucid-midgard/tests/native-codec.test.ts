@@ -1,4 +1,3 @@
-import { describe, expect, it } from "vitest";
 import {
   computeScriptIntegrityHashForLanguages,
   decodeMidgardNativeTxFull,
@@ -7,7 +6,7 @@ import {
   encodeMidgardNativeTxFull,
   materializeMidgardNativeTxFromCanonical,
   computeHash32,
-  computeMidgardNativeTxIdFromFull,
+  computeMidgardNativeTxId,
   EMPTY_CBOR_LIST,
   EMPTY_CBOR_NULL,
   EMPTY_NULL_ROOT,
@@ -18,7 +17,8 @@ import {
   ScriptLanguageTags,
   type MidgardNativeTxCanonical,
   type MidgardNativeTxFull,
-} from "../src/index.js";
+} from "@al-ft/midgard-core/codec";
+import { describe, expect, it } from "vitest";
 
 const makeCanonical = (): MidgardNativeTxCanonical => ({
   version: MIDGARD_NATIVE_TX_VERSION,
@@ -46,7 +46,7 @@ const makeCanonical = (): MidgardNativeTxCanonical => ({
 
 const compactValue = (tx: MidgardNativeTxFull): readonly unknown[] => [
   tx.compact.version,
-  computeMidgardNativeTxIdFromFull(tx),
+  computeMidgardNativeTxId(tx),
   tx.compact.transactionWitnessSetHash,
   0n,
 ];
@@ -106,8 +106,10 @@ describe("Midgard native v1 codec", () => {
   it("uses the compact body hash as the transaction id", () => {
     const tx = materializeMidgardNativeTxFromCanonical(makeCanonical());
 
-    expect(computeMidgardNativeTxIdFromFull(tx)).toEqual(
-      computeHash32(encodeMidgardNativeTxBodyCompact(tx.compact.transactionBody)),
+    expect(computeMidgardNativeTxId(tx)).toEqual(
+      computeHash32(
+        encodeMidgardNativeTxBodyCompact(tx.compact.transactionBody),
+      ),
     );
   });
 

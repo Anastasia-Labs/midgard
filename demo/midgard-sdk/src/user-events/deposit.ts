@@ -21,15 +21,15 @@ import { AuthenticUTxO, authenticateUTxOs } from "@/internals.js";
 import { Data as EffectData, Effect } from "effect";
 import { OutputReference, POSIXTimeSchema } from "@/common.js";
 import { DepositEventSchema, DepositInfo } from "@/ledger-state.js";
+import { completeTxWithLocalUPLCEvalProgram } from "@/tx-completion.js";
 import {
   buildUserEventMintTransaction,
   fetchUserEventUTxOsProgram,
   findInclusionTimeForUserEvent,
   getNonceInputAndAssetName,
+  encodeUserEventAuthenticateMintRedeemer,
   UserEventExtraFields,
   UserEventFetchConfig,
-  UserEventMintRedeemer,
-  UserEventMintRedeemerSchema,
   userEventWitnessScriptHash,
 } from "./internals.js";
 
@@ -40,10 +40,6 @@ export const DepositDatumSchema = Data.Object({
 });
 export type DepositDatum = Data.Static<typeof DepositDatumSchema>;
 export const DepositDatum = DepositDatumSchema as unknown as DepositDatum;
-export const DepositMintRedeemerSchema = UserEventMintRedeemerSchema;
-export type DepositMintRedeemer = UserEventMintRedeemer;
-export const DepositMintRedeemer =
-  UserEventMintRedeemer as unknown as DepositMintRedeemer;
 export const DepositSpendRedeemerSchema = Data.Object({
   input_index: Data.Integer(),
   output_index: Data.Integer(),
@@ -60,8 +56,6 @@ export const DepositSpendRedeemer =
   DepositSpendRedeemerSchema as unknown as DepositSpendRedeemer;
 
 export type DepositUTxO = AuthenticUTxO<DepositDatum, UserEventExtraFields>;
-
-export type DepositFetchConfig = UserEventFetchConfig;
 
 /**
  * Silently drops invalid UTxOs.
@@ -86,7 +80,7 @@ export const utxosToDepositUTxOs = (
 
 export const fetchDepositUTxOsProgram = (
   lucid: LucidEvolution,
-  config: DepositFetchConfig,
+  config: UserEventFetchConfig,
 ): Effect.Effect<DepositUTxO[], LucidError> =>
   fetchUserEventUTxOsProgram(lucid, config, (utxos: UTxO[]) =>
     utxosToDepositUTxOs(utxos, config.eventPolicyId),
@@ -94,7 +88,7 @@ export const fetchDepositUTxOsProgram = (
 
 export const fetchDepositUTxOs = (
   lucid: LucidEvolution,
-  config: DepositFetchConfig,
+  config: UserEventFetchConfig,
 ) => makeReturn(fetchDepositUTxOsProgram(lucid, config));
 
 export type DepositParams = {
@@ -144,15 +138,6 @@ export const incompleteDepositTxProgram = (
     };
     const depositDatumCBOR = Data.to(depositDatum, DepositDatum);
 
-    const mintRedeemer: UserEventMintRedeemer = {
-      AuthenticateEvent: {
-        nonce_input_index: 0n,
-        event_output_index: 0n,
-        hub_ref_input_index: 0n,
-        witness_registration_redeemer_index: 0n,
-      },
-    };
-    const mintRedeemerCBOR = Data.to(mintRedeemer, UserEventMintRedeemer);
     const assets = {
       lovelace: params.depositAmount,
     };
@@ -162,7 +147,12 @@ export const incompleteDepositTxProgram = (
       lucid,
       inputUtxo,
       nft: depositNFT,
-      mintRedeemer: mintRedeemerCBOR,
+      mintRedeemer: encodeUserEventAuthenticateMintRedeemer({
+        nonceInputIndex: 0n,
+        eventOutputIndex: 0n,
+        hubRefInputIndex: 0n,
+        witnessRegistrationRedeemerIndex: 0n,
+      }),
       scriptAddress: params.depositScriptAddress,
       datum: depositDatumCBOR,
       extraAssets: assets,
@@ -190,14 +180,14 @@ export const unsignedDepositTxProgram = (
 > =>
   Effect.gen(function* () {
     const commitTx = yield* incompleteDepositTxProgram(lucid, depositParams);
-    const completedTx: TxSignBuilder = yield* Effect.tryPromise({
-      try: () => commitTx.complete({ localUPLCEval: true }),
-      catch: (e) =>
+    const completedTx: TxSignBuilder = yield* completeTxWithLocalUPLCEvalProgram(
+      commitTx,
+      (e) =>
         new DepositError({
           message: `Failed to build the transaction: ${e}`,
           cause: e,
         }),
-    });
+    );
     return completedTx;
   });
 

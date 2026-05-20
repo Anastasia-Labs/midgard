@@ -129,7 +129,6 @@ export const finalizeCommittedBlockLocally = (
   transactionsMpf: MidgardMpf,
   mempoolTxs: readonly TxTable.EntryWithTimeStamp[],
   mempoolTxHashes: Buffer[],
-  includedDepositEventIds: readonly Buffer[],
   newHeaderHash: string,
   includedWithdrawalEventIds: readonly Buffer[] = [],
   options: {
@@ -266,69 +265,13 @@ export const finalizeCommittedBlockLocally = (
     ),
   );
 
-export const successfulSubmissionProgram = (
-  transactionsMpf: MidgardMpf,
-  mempoolTxs: readonly TxTable.EntryWithTimeStamp[],
-  mempoolTxHashes: Buffer[],
-  includedDepositEventIds: readonly Buffer[],
-  newHeaderHash: string,
-  workerInput: WorkerInput,
-  txSize: number,
-  sizeOfProcessedTxs: number,
-  txHash: string,
-  blockEndTimeMs: number,
-  includedWithdrawalEventIds: readonly Buffer[] = [],
-): Effect.Effect<WorkerOutput, DatabaseError | MpfError, Database> =>
-  withLocalBlockFinalizationJob(
-    {
-      headerHash: newHeaderHash,
-      mempoolTxCount: mempoolTxs.length,
-      includedDepositCount: includedDepositEventIds.length,
-      includedWithdrawalCount: includedWithdrawalEventIds.length,
-    },
-    Effect.gen(function* () {
-      yield* finalizeCommittedBlockLocally(
-        transactionsMpf,
-        mempoolTxs,
-        mempoolTxHashes,
-        includedDepositEventIds,
-        newHeaderHash,
-        includedWithdrawalEventIds,
-      );
-      yield* DepositsDB.markProjectedByEventIds(
-        includedDepositEventIds,
-        Buffer.from(fromHex(newHeaderHash)),
-      );
-      yield* WithdrawalsDB.markProjectedByEventIds(
-        includedWithdrawalEventIds,
-        Buffer.from(fromHex(newHeaderHash)),
-      );
-      yield* PendingBlockFinalizationsDB.markLocalFinalizationComplete(
-        Buffer.from(fromHex(newHeaderHash)),
-      );
-
-      return {
-        type: "SuccessfulSubmissionOutput",
-        submittedTxHash: txHash,
-        txSize,
-        mempoolTxsCount:
-          mempoolTxs.length + workerInput.data.mempoolTxsCountSoFar,
-        sizeOfBlocksTxs:
-          sizeOfProcessedTxs + workerInput.data.sizeOfProcessedTxsSoFar,
-        blockEndTimeMs,
-      };
-    }),
-  );
-
 export const successfulLocalFinalizationRecoveryProgram = (
   transactionsMpf: MidgardMpf,
   _mempoolTxs: readonly TxTable.EntryWithTimeStamp[],
   _mempoolTxHashes: Buffer[],
-  includedDepositEventIds: readonly Buffer[],
   confirmedHeaderHash: string,
   workerInput: WorkerInput,
   _sizeOfProcessedTxs: number,
-  includedWithdrawalEventIds: readonly Buffer[] = [],
 ): Effect.Effect<WorkerOutput, DatabaseError | MpfError, Database> =>
   Effect.gen(function* () {
     const confirmedHeaderHashBuffer = Buffer.from(fromHex(confirmedHeaderHash));
@@ -406,7 +349,6 @@ export const successfulLocalFinalizationRecoveryProgram = (
           transactionsMpf,
           journalMempoolTxs,
           journalMempoolTxHashes,
-          finalizedDepositEventIds,
           confirmedHeaderHash,
           finalizedWithdrawalEventIds,
           {

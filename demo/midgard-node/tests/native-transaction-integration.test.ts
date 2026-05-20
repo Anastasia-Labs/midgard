@@ -10,7 +10,7 @@ import {
   MIDGARD_POSIX_TIME_NONE,
   computeScriptIntegrityHashForLanguages,
   computeHash32,
-  computeMidgardNativeTxIdFromFull,
+  computeMidgardNativeTxId,
   deriveMidgardNativeTxBodyCompact,
   deriveMidgardNativeTxCompact,
   encodeCborArrayRaw,
@@ -24,24 +24,22 @@ import {
   type MidgardNativeTxFull,
   type MidgardNativeTxWitnessSetCanonical,
   type MidgardVersionedScript,
-} from "@/midgard-tx-codec/index.js";
+} from "@al-ft/midgard-core/codec";
 import { findSpentAndProducedUTxOs, breakDownTx } from "@/utils.js";
 import {
   RejectCodes,
   runPhaseAValidation,
-  runPhaseBValidation,
+  runPhaseBValidationWithPatch,
+  txOutRefData,
   type QueuedTx,
-} from "@/validation/index.js";
+} from "@al-ft/midgard-validation";
 import {
   makeMidgardTxOutput,
   protectOutputAddressBytes,
   hashMidgardV1Script,
   hashPlutusV3Script,
 } from "./midgard-output-helpers.js";
-import {
-  MidgardRedeemerTag,
-  outputReferenceData,
-} from "@/validation/midgard-redeemers.js";
+import { MidgardRedeemerTag } from "@al-ft/midgard-validation/midgard-redeemers";
 
 const EMPTY_CBOR_LIST = Buffer.from([0x80]);
 const EMPTY_CBOR_NULL = Buffer.from([0xf6]);
@@ -153,7 +151,9 @@ const cmlScriptToScriptWitness = (
       scriptBytes: Buffer.from(plutusV3.to_raw_bytes()),
     };
   }
-  throw new Error("native integration tests only support NativeCardano, PlutusV3, and MidgardV1 witnesses");
+  throw new Error(
+    "native integration tests only support NativeCardano, PlutusV3, and MidgardV1 witnesses",
+  );
 };
 
 const scriptWitnessItemToVersioned = (
@@ -188,10 +188,6 @@ const makeTypedPlutusV3Witness = (
   CML.Script.new_plutus_v3(
     CML.PlutusV3Script.from_raw_bytes(Buffer.from(scriptHex, "hex")),
   );
-
-const makeTypedPlutusV3ReferenceScript = (
-  scriptHex: string,
-): InstanceType<typeof CML.Script> => makeTypedPlutusV3Witness(scriptHex);
 
 const midgardV1Hash = (scriptHex: string): string =>
   hashMidgardV1Script(Buffer.from(scriptHex, "hex"));
@@ -409,7 +405,7 @@ const makePlutusDataBytes = (value: unknown): Buffer =>
   Buffer.from(Data.to(value as any), "hex");
 
 const makeOutRefDataBytes = (outRef: Buffer): Buffer =>
-  makePlutusDataBytes(outputReferenceData(outRef.toString("hex")));
+  makePlutusDataBytes(txOutRefData(outRef.toString("hex")));
 
 const makePlutusContextProbeRedeemer = (opts: {
   readonly expectedOutputReference: Buffer;
@@ -424,11 +420,11 @@ const makePlutusContextProbeRedeemer = (opts: {
 }): Buffer =>
   makePlutusDataBytes(
     new Constr(0, [
-      outputReferenceData(opts.expectedOutputReference.toString("hex")),
+      txOutRefData(opts.expectedOutputReference.toString("hex")),
       opts.expectedDatum,
       opts.expectedSigner,
-      outputReferenceData(opts.expectedFirstReference.toString("hex")),
-      outputReferenceData(opts.expectedSecondReference.toString("hex")),
+      txOutRefData(opts.expectedFirstReference.toString("hex")),
+      txOutRefData(opts.expectedSecondReference.toString("hex")),
       opts.expectedPolicy,
       opts.expectedAssetName.toString("hex"),
       opts.expectedMintQuantity,
@@ -458,11 +454,11 @@ const makeMidgardV1ContextProbeRedeemer = (opts: {
   makePlutusDataBytes(
     new Constr(0, [
       opts.expectedSpendScriptHash,
-      outputReferenceData(opts.expectedOwnRef.toString("hex")),
-      outputReferenceData(opts.expectedFirstInput.toString("hex")),
-      outputReferenceData(opts.expectedSecondInput.toString("hex")),
-      outputReferenceData(opts.expectedFirstReference.toString("hex")),
-      outputReferenceData(opts.expectedSecondReference.toString("hex")),
+      txOutRefData(opts.expectedOwnRef.toString("hex")),
+      txOutRefData(opts.expectedFirstInput.toString("hex")),
+      txOutRefData(opts.expectedSecondInput.toString("hex")),
+      txOutRefData(opts.expectedFirstReference.toString("hex")),
+      txOutRefData(opts.expectedSecondReference.toString("hex")),
       opts.expectedFirstOutputScriptHash,
       opts.expectedSecondOutputScriptHash,
       opts.expectedSigner,
@@ -483,12 +479,6 @@ const makePlutusIntegerData = (
   CML.PlutusData.new_integer(CML.BigInteger.from_str(value.toString(10)));
 
 const makeMintPreimage = (
-  policyId: Uint8Array,
-  assetName: Uint8Array,
-  quantity: bigint,
-): Buffer => makeMintPreimageFromEntries([{ policyId, assetName, quantity }]);
-
-const makeMintPreimageFromEntries = (
   entries: readonly {
     readonly policyId: Uint8Array;
     readonly assetName: Uint8Array;
@@ -608,9 +598,7 @@ const buildNativeTx = (opts?: {
   };
 
   const bodyHash = computeHash32(
-    encodeMidgardNativeTxBodyCompact(
-      deriveMidgardNativeTxBodyCompact(body),
-    ),
+    encodeMidgardNativeTxBodyCompact(deriveMidgardNativeTxBodyCompact(body)),
   );
   const signedBodyHash =
     witnessMode === "invalid" ? Buffer.alloc(32, 0x7f) : bodyHash;
@@ -646,7 +634,7 @@ const buildNativeTx = (opts?: {
   };
 
   const txCbor = encodeMidgardNativeTxFull(tx);
-  const txId = computeMidgardNativeTxIdFromFull(tx);
+  const txId = computeMidgardNativeTxId(tx);
 
   return {
     tx,
@@ -698,7 +686,7 @@ const attachComputedScriptIntegrityHash = (
   return {
     ...fixture,
     tx,
-    txId: computeMidgardNativeTxIdFromFull(tx),
+    txId: computeMidgardNativeTxId(tx),
     txCbor: encodeMidgardNativeTxFull(tx),
   };
 };
@@ -729,14 +717,14 @@ const runBothPhases = async (
   const phaseA = await Effect.runPromise(
     runPhaseAValidation([mkQueued(txId, txCbor)], phaseAConfig),
   );
-  const phaseB = await Effect.runPromise(
-    runPhaseBValidation(phaseA.accepted, preState, {
+  const { accepted, rejected } = await Effect.runPromise(
+    runPhaseBValidationWithPatch(phaseA.accepted, preState, {
       nowCardanoSlotNo: 0n,
       bucketConcurrency: 1,
       ...phaseBOptions,
     }),
   );
-  return { phaseA, phaseB };
+  return { phaseA, phaseB: { accepted, rejected } };
 };
 
 type MidgardV1ContextProbeRedeemerOverrides = Partial<{
@@ -775,7 +763,9 @@ const runMidgardV1ContextProbeScenario = async (opts?: {
   const base = buildNativeTx({
     spendInputOutRefs: [pubkeySpendOutRef, scriptSpendOutRef],
     referenceInputOutRefs: [secondReferenceOutRef, firstReferenceOutRef],
-    mintPreimageCbor: makeMintPreimage(mintPolicyId, assetName, 1n),
+    mintPreimageCbor: makeMintPreimage([
+      { policyId: mintPolicyId, assetName: assetName, quantity: 1n },
+    ]),
     scriptWitnessItems: [
       makeRawUplcWitness(MIDGARD_V1_CONTEXT_PROBE_SCRIPT_HEX),
       makeRawUplcWitness(ALWAYS_SUCCEEDS_MINT_SCRIPT_HEX),
@@ -932,7 +922,7 @@ describe("native transaction integration", () => {
         tx.version,
       ),
     };
-    const txId = computeMidgardNativeTxIdFromFull(fullTx);
+    const txId = computeMidgardNativeTxId(fullTx);
     const txCbor = encodeMidgardNativeTxFull(fullTx);
 
     const result = await Effect.runPromise(
@@ -1072,7 +1062,7 @@ describe("native transaction integration", () => {
         tx.version,
       ),
     };
-    const txId = computeMidgardNativeTxIdFromFull(fullTx);
+    const txId = computeMidgardNativeTxId(fullTx);
     const txCbor = encodeMidgardNativeTxFull(fullTx);
 
     const result = await Effect.runPromise(
@@ -1131,7 +1121,9 @@ describe("native transaction integration", () => {
     );
     const scriptHash = Buffer.from(script.hash().to_raw_bytes());
     const assetName = Buffer.from("61", "hex");
-    const mintPreimageCbor = makeMintPreimage(scriptHash, assetName, 1n);
+    const mintPreimageCbor = makeMintPreimage([
+      { policyId: scriptHash, assetName: assetName, quantity: 1n },
+    ]);
     const mintedOutput = makeValueOutput(
       TEST_ADDRESS,
       makeSingleAssetValue(3_000_000n, scriptHash, assetName, 1n),
@@ -1400,7 +1392,9 @@ describe("native transaction integration", () => {
     );
     const policyId = Buffer.from(mintScript.hash().to_raw_bytes());
     const assetName = Buffer.from("01", "hex");
-    const mintPreimageCbor = makeMintPreimage(policyId, assetName, 1n);
+    const mintPreimageCbor = makeMintPreimage([
+      { policyId: policyId, assetName: assetName, quantity: 1n },
+    ]);
     const mintedOutput = makeValueOutput(
       TEST_ADDRESS,
       makeSingleAssetValue(3_000_000n, policyId, assetName, 1n),
@@ -1446,7 +1440,9 @@ describe("native transaction integration", () => {
     );
     const policyId = Buffer.from(mintScript.hash().to_raw_bytes());
     const assetName = Buffer.from("02", "hex");
-    const mintPreimageCbor = makeMintPreimage(policyId, assetName, 1n);
+    const mintPreimageCbor = makeMintPreimage([
+      { policyId: policyId, assetName: assetName, quantity: 1n },
+    ]);
     const mintedOutput = makeValueOutput(
       TEST_ADDRESS,
       makeSingleAssetValue(3_000_000n, policyId, assetName, 1n),
@@ -1500,7 +1496,7 @@ describe("native transaction integration", () => {
     );
     const inlineAssetName = Buffer.from("0a", "hex");
     const referenceAssetName = Buffer.from("0b", "hex");
-    const mintPreimageCbor = makeMintPreimageFromEntries([
+    const mintPreimageCbor = makeMintPreimage([
       {
         policyId: inlinePolicyId,
         assetName: inlineAssetName,
@@ -1570,7 +1566,9 @@ describe("native transaction integration", () => {
     const signerKey = CML.PrivateKey.generate_ed25519();
     const policyId = Buffer.from("55".repeat(28), "hex");
     const assetName = Buffer.from("03", "hex");
-    const mintPreimageCbor = makeMintPreimage(policyId, assetName, 1n);
+    const mintPreimageCbor = makeMintPreimage([
+      { policyId: policyId, assetName: assetName, quantity: 1n },
+    ]);
     const mintedOutput = makeValueOutput(
       TEST_ADDRESS,
       makeSingleAssetValue(3_000_000n, policyId, assetName, 1n),
@@ -1611,7 +1609,9 @@ describe("native transaction integration", () => {
     );
     const policyId = Buffer.from(mintScript.hash().to_raw_bytes());
     const assetName = Buffer.from("04", "hex");
-    const mintPreimageCbor = makeMintPreimage(policyId, assetName, 1n);
+    const mintPreimageCbor = makeMintPreimage([
+      { policyId: policyId, assetName: assetName, quantity: 1n },
+    ]);
     const mintedOutput = makeValueOutput(
       TEST_ADDRESS,
       makeSingleAssetValue(3_000_000n, policyId, assetName, 1n),
@@ -1651,11 +1651,13 @@ describe("native transaction integration", () => {
 
   it("rejects malformed native mint preimages", async () => {
     const signerKey = CML.PrivateKey.generate_ed25519();
-    const malformedMintPreimageCbor = makeMintPreimage(
-      Buffer.alloc(27, 0x11),
-      Buffer.from("05", "hex"),
-      1n,
-    );
+    const malformedMintPreimageCbor = makeMintPreimage([
+      {
+        policyId: Buffer.alloc(27, 0x11),
+        assetName: Buffer.from("05", "hex"),
+        quantity: 1n,
+      },
+    ]);
     const { txId, txCbor } = buildNativeTx({
       mintPreimageCbor: malformedMintPreimageCbor,
       witnessMode: "valid",
@@ -1719,7 +1721,9 @@ describe("native transaction integration", () => {
     );
     const policyId = Buffer.from(mintScript.hash().to_raw_bytes());
     const assetName = Buffer.from("06", "hex");
-    const mintPreimageCbor = makeMintPreimage(policyId, assetName, 1n);
+    const mintPreimageCbor = makeMintPreimage([
+      { policyId: policyId, assetName: assetName, quantity: 1n },
+    ]);
     const { txId, txCbor, inputOutRef, referenceInputOutRef } = buildNativeTx({
       mintPreimageCbor,
       scriptWitnessItems: [
@@ -1757,7 +1761,9 @@ describe("native transaction integration", () => {
     );
     const policyId = Buffer.from(burnScript.hash().to_raw_bytes());
     const assetName = Buffer.from("07", "hex");
-    const burnPreimageCbor = makeMintPreimage(policyId, assetName, -1n);
+    const burnPreimageCbor = makeMintPreimage([
+      { policyId: policyId, assetName: assetName, quantity: -1n },
+    ]);
     const inputValue = makeSingleAssetValue(
       3_000_000n,
       policyId,
@@ -1838,7 +1844,9 @@ describe("native transaction integration", () => {
     const plutusScriptRef = CML.Script.new_plutus_v3(plutusScript);
     const policyId = Buffer.from(plutusScriptRef.hash().to_raw_bytes());
     const assetName = Buffer.from("08", "hex");
-    const mintPreimageCbor = makeMintPreimage(policyId, assetName, 1n);
+    const mintPreimageCbor = makeMintPreimage([
+      { policyId: policyId, assetName: assetName, quantity: 1n },
+    ]);
     const mintedOutput = makeValueOutput(
       TEST_ADDRESS,
       makeSingleAssetValue(3_000_000n, policyId, assetName, 1n),
@@ -1902,7 +1910,7 @@ describe("native transaction integration", () => {
       Buffer.from(
         CML.make_vkey_witness(
           CML.TransactionHash.from_raw_bytes(
-            computeMidgardNativeTxIdFromFull(withScriptDataHash.tx),
+            computeMidgardNativeTxId(withScriptDataHash.tx),
           ),
           signerKey,
         ).to_cbor_bytes(),
@@ -1922,7 +1930,7 @@ describe("native transaction integration", () => {
         withScriptDataHash.tx.version,
       ),
     };
-    const txId = computeMidgardNativeTxIdFromFull(tx);
+    const txId = computeMidgardNativeTxId(tx);
     const txCbor = encodeMidgardNativeTxFull(tx);
     const { inputOutRef, referenceInputOutRef } = withScriptDataHash;
 
@@ -2388,7 +2396,7 @@ describe("native transaction integration", () => {
         tx.validity,
         tx.version,
       );
-    const txId = computeMidgardNativeTxIdFromFull(tx);
+    const txId = computeMidgardNativeTxId(tx);
     const txCbor = encodeMidgardNativeTxFull(tx);
     const { inputOutRef, referenceInputOutRef } = withScriptDataHash;
 
@@ -2718,7 +2726,9 @@ describe("native transaction integration", () => {
       makeSingleAssetValue(3_000_000n, policyId, assetName, 1n),
     );
     const base = buildNativeTx({
-      mintPreimageCbor: makeMintPreimage(policyId, assetName, 1n),
+      mintPreimageCbor: makeMintPreimage([
+        { policyId: policyId, assetName: assetName, quantity: 1n },
+      ]),
       scriptWitnessItems: uniqueScriptWitnessItems([spendScript, mintScript]),
       redeemerTxWitsPreimageCbor: makeLegacyRedeemersCbor([
         { tag: CML.RedeemerTag.Spend, index: 0n },
@@ -2856,7 +2866,9 @@ describe("native transaction integration", () => {
     const base = buildNativeTx({
       spendInputOutRefs: [pubkeySpendOutRef, scriptSpendOutRef],
       referenceInputOutRefs: [secondReferenceOutRef, firstReferenceOutRef],
-      mintPreimageCbor: makeMintPreimage(policyId, assetName, 1n),
+      mintPreimageCbor: makeMintPreimage([
+        { policyId: policyId, assetName: assetName, quantity: 1n },
+      ]),
       scriptWitnessItems: uniqueScriptWitnessItems([
         probeScript,
         mintScript,
@@ -2943,7 +2955,9 @@ describe("native transaction integration", () => {
     const base = buildNativeTx({
       spendInputOutRefs: [pubkeySpendOutRef, scriptSpendOutRef],
       referenceInputOutRefs: [secondReferenceOutRef, firstReferenceOutRef],
-      mintPreimageCbor: makeMintPreimage(policyId, assetName, 1n),
+      mintPreimageCbor: makeMintPreimage([
+        { policyId: policyId, assetName: assetName, quantity: 1n },
+      ]),
       scriptWitnessItems: uniqueScriptWitnessItems([
         probeScript,
         mintScript,
@@ -3332,7 +3346,7 @@ describe("native transaction integration", () => {
 
   it("rejects MidgardV1 spends when only a typed PlutusV3 reference script is available", async () => {
     const scriptHash = midgardV1Hash(MIDGARD_V1_SPEND_GUARD_SCRIPT_HEX);
-    const referenceScript = makeTypedPlutusV3ReferenceScript(
+    const referenceScript = makeTypedPlutusV3Witness(
       MIDGARD_V1_SPEND_GUARD_SCRIPT_HEX,
     );
     const base = buildNativeTx({
@@ -3551,7 +3565,9 @@ describe("native transaction integration", () => {
     const policyId = Buffer.from(mintScript.hash().to_raw_bytes());
     const assetName = Buffer.from("0e", "hex");
     const base = buildNativeTx({
-      mintPreimageCbor: makeMintPreimage(policyId, assetName, 1n),
+      mintPreimageCbor: makeMintPreimage([
+        { policyId: policyId, assetName: assetName, quantity: 1n },
+      ]),
       scriptWitnessItems: [
         makeRawUplcWitness(MIDGARD_V1_SPEND_GUARD_SCRIPT_HEX),
         Buffer.from(mintScript.to_cbor_bytes()),
@@ -3714,7 +3730,9 @@ describe("native transaction integration", () => {
     const policyId = Buffer.from(mintScript.hash().to_raw_bytes());
     const assetName = Buffer.from("0f", "hex");
     const base = buildNativeTx({
-      mintPreimageCbor: makeMintPreimage(policyId, assetName, 1n),
+      mintPreimageCbor: makeMintPreimage([
+        { policyId: policyId, assetName: assetName, quantity: 1n },
+      ]),
       scriptWitnessItems: [
         makeRawUplcWitness(MIDGARD_V1_SPEND_GUARD_SCRIPT_HEX),
         Buffer.from(mintScript.to_cbor_bytes()),
@@ -3831,7 +3849,7 @@ describe("native transaction integration", () => {
         CML.Address.from_bech32(TEST_ADDRESS),
         CML.Value.from_coin(2_000_000n),
         undefined,
-        makeTypedPlutusV3ReferenceScript(scriptHex),
+        makeTypedPlutusV3Witness(scriptHex),
       ).to_cbor_bytes(),
     );
     const preState = new Map<string, Buffer>([
@@ -3878,7 +3896,7 @@ describe("native transaction integration", () => {
     };
     (tx as { compact: typeof tx.compact }).compact =
       deriveMidgardNativeTxCompact(tx.body, tx.witnessSet, "TxIsValid");
-    const txId = computeMidgardNativeTxIdFromFull(tx);
+    const txId = computeMidgardNativeTxId(tx);
     const txCbor = encodeMidgardNativeTxFull(tx);
 
     const result = await Effect.runPromise(
@@ -3904,7 +3922,7 @@ describe("native transaction integration", () => {
     };
     (tx as { compact: typeof tx.compact }).compact =
       deriveMidgardNativeTxCompact(tx.body, tx.witnessSet, "TxIsValid");
-    const txId = computeMidgardNativeTxIdFromFull(tx);
+    const txId = computeMidgardNativeTxId(tx);
     const txCbor = encodeMidgardNativeTxFull(tx);
 
     const result = await Effect.runPromise(

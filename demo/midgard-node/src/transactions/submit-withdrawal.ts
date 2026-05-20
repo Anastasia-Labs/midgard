@@ -24,7 +24,7 @@ import { slotToUnixTimeForLucidOrEmulatorFallback } from "@/lucid-time.js";
 import {
   getRedeemerPointersInContextOrder,
   getTxInfoRedeemerIndexes,
-} from "@/cml-redeemers.js";
+} from "@al-ft/midgard-sdk";
 import {
   collectSortedInputOutRefs,
   compareOutRefs,
@@ -241,14 +241,6 @@ const addScriptStakeRegistrationCertificate = (
   return tx;
 };
 
-const canonicalUtxoOrder = (a: UTxO, b: UTxO): number => {
-  const hashOrder = a.txHash.localeCompare(b.txHash);
-  if (hashOrder !== 0) {
-    return hashOrder;
-  }
-  return a.outputIndex - b.outputIndex;
-};
-
 const fetchHubOracleReferenceProgram = (
   lucid: LucidEvolution,
   contracts: SDK.MidgardValidators,
@@ -341,7 +333,7 @@ export const buildUnsignedWithdrawalTxWithMetadataProgram = (
           cause,
         }),
     });
-    const sortedWalletUtxos = [...walletUtxos].sort(canonicalUtxoOrder);
+    const sortedWalletUtxos = [...walletUtxos].sort(compareOutRefs);
     const nonceInput = sortedWalletUtxos[0];
     if (nonceInput === undefined) {
       return yield* Effect.fail(
@@ -353,8 +345,9 @@ export const buildUnsignedWithdrawalTxWithMetadataProgram = (
     }
 
     const withdrawalEventIdCbor = outputReferenceToPlutusDataCbor(nonceInput);
-    const nonceAssetName = yield* SDK.hashHexWithBlake2b256(
+    const nonceAssetName = yield* SDK.hashHexWithBlake2b(
       withdrawalEventIdCbor,
+      32,
     );
     const withdrawalUnit = toUnit(
       contracts.withdrawal.policyId,
@@ -550,22 +543,6 @@ export const buildUnsignedWithdrawalTxWithMetadataProgram = (
       },
     };
   });
-
-export const buildUnsignedWithdrawalTxProgram = (
-  lucid: LucidEvolution,
-  contracts: SDK.MidgardValidators,
-  config: SubmitWithdrawalConfig,
-): Effect.Effect<
-  TxSignBuilder,
-  | SDK.HubOracleError
-  | SDK.LucidError
-  | SDK.Bech32DeserializationError
-  | SDK.HashingError
-  | SubmitWithdrawalError
-> =>
-  buildUnsignedWithdrawalTxWithMetadataProgram(lucid, contracts, config).pipe(
-    Effect.map(({ tx }) => tx),
-  );
 
 export const submitWithdrawalProgram = (
   lucid: LucidEvolution,

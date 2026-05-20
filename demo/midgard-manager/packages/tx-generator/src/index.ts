@@ -19,7 +19,6 @@ export type {
   OneToOneTransactionConfig,
 } from './lib/generators/index.js';
 
-export type { SerializedMidgardTransaction } from './lib/client/types.js';
 export * from './lib/client/types.js';
 export { MidgardNodeClient } from './lib/client/node-client.js';
 
