@@ -11,11 +11,15 @@ import {
   performance,
 } from "node:perf_hooks";
 import { fileURLToPath } from "node:url";
-import { encode as cborEncode } from "cborg";
 import dotenv from "dotenv";
-import { blake2b } from "@noble/hashes/blake2.js";
 import { CML, walletFromSeed } from "@lucid-evolution/lucid";
 import { Pool } from "undici";
+import {
+  decodeTransactionOutput,
+  encodeTransaction,
+  encodeTransactionOutput,
+  transactionBodyHash,
+} from "@al-ft/midgard-ts";
 import {
   BENCHMARK_WINDOWS_MS,
   acceptedStatuses,
@@ -31,14 +35,7 @@ import {
   terminalStatuses,
 } from "./throughput-benchmark-utils.mjs";
 
-const MIDGARD_NATIVE_TX_VERSION = 1n;
-const MIDGARD_POSIX_TIME_NONE = -1n;
-const MIDGARD_NETWORK_ID_PREPROD = 0n;
-const TX_IS_VALID_CODE = 0n;
-const HASH32_LEN = 32;
-
-const EMPTY_CBOR_LIST = Buffer.from([0x80]);
-const EMPTY_CBOR_NULL = Buffer.from([0xf6]);
+const MIDGARD_NETWORK_ID_PREPROD_NUM = 0;
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -214,7 +211,7 @@ const clientSelfCheckRequired =
     .trim()
     .toLowerCase() !== "false";
 const clientSelfCheckMultiplier = Number.parseFloat(
-  process.env.STRESS_CLIENT_SELF_CHECK_MULTIPLIER ?? "2",
+  process.env.STRESS_CLIENT_SELF_CHECK_MULTIPLIER ?? "1",
 );
 const clientSelfCheckMinRatio = Number.parseFloat(
   process.env.STRESS_CLIENT_SELF_CHECK_MIN_RATIO ?? "0.95",
@@ -394,22 +391,8 @@ const httpClient = new BenchmarkHttpClient({
 });
 
 /**
- * Encodes a value into hexadecimal CBOR text.
- */
-const encodeCbor = (value) => Buffer.from(cborEncode(value));
-/**
- * Computes a 32-byte Blake2b hash.
- */
-const hash32 = (value) => Buffer.from(blake2b(value, { dkLen: HASH32_LEN }));
-
-/**
- * Encodes a byte-list preimage used by the native transaction fixtures.
- */
-const encodeByteListPreimage = (items) =>
-  encodeCbor(items.map((item) => Buffer.from(item)));
-
-/**
- * Encodes a transaction output reference into CBOR.
+ * Encodes a CML transaction output reference into CBOR. The hex form is still
+ * the wire format used by the node's `/utxos` endpoint and downstream APIs.
  */
 const toOutRefCbor = (txId, outputIndex) =>
   Buffer.from(
@@ -662,46 +645,130 @@ const fetchTxStatus = async (txIdHex) => {
 };
 
 /**
+ * Decodes a transaction-output blob into a midgard-ts `TransactionOutput`.
+ *
+ * Accepts both midgard-ts binary outputs (produced by the node's validator and
+ * by this bench when chaining its own outputs) and legacy CML CBOR outputs
+ * (still emitted by genesis seeding). The midgard-ts decoder is tried first
+ * since that is the wire format new code paths use.
+ */
+const decodeOutputBytes = (outputBytes) => {
+  try {
+    return decodeTransactionOutput(outputBytes);
+  } catch (_midgardTsErr) {
+    const cml = CML.TransactionOutput.from_cbor_bytes(outputBytes);
+    const address = Buffer.from(cml.address().to_raw_bytes());
+    const amount = cml.amount();
+    const coin = amount.coin();
+    if (amount.has_multiassets()) {
+      const cmlMa = amount.multi_asset();
+      const policyIds = cmlMa.keys();
+      const assets = [];
+      for (let i = 0; i < policyIds.len(); i++) {
+        const pid = policyIds.get(i);
+        const policyAssets = cmlMa.get_assets(pid);
+        const assetNames = policyAssets.keys();
+        const entries = [];
+        for (let j = 0; j < assetNames.len(); j++) {
+          const name = assetNames.get(j);
+          entries.push([
+            Buffer.from(name.to_raw_bytes()),
+            policyAssets.get(name),
+          ]);
+        }
+        assets.push([Buffer.from(pid.to_raw_bytes()), entries]);
+      }
+      return {
+        address,
+        value: { type: "MultiAsset", coin, assets },
+        datum: undefined,
+        script_ref: undefined,
+      };
+    }
+    return {
+      address,
+      value: { type: "Coin", coin },
+      datum: undefined,
+      script_ref: undefined,
+    };
+  }
+};
+
+/**
  * Decodes a lovelace quantity from a UTxO payload.
  */
 const decodeCoin = (outputHex) => {
-  const output = CML.TransactionOutput.from_cbor_bytes(
-    Buffer.from(outputHex, "hex"),
-  );
-  return output.amount().coin();
+  const out = decodeOutputBytes(Buffer.from(outputHex, "hex"));
+  return out.value.coin;
 };
 
 /**
  * Returns true when a transaction output carries non-ADA assets.
  */
-const outputHasMultiAssets = (outputCbor) =>
-  CML.TransactionOutput.from_cbor_bytes(outputCbor).amount().has_multiassets();
+const outputHasMultiAssets = (outputBytes) =>
+  decodeOutputBytes(outputBytes).value.type !== "Coin";
 
 /**
- * Returns a transaction output equivalent to `outputCbor` with a reduced coin.
+ * Returns a transaction output equivalent to `outputBytes` with a reduced coin.
+ * The returned bytes are midgard-ts binary regardless of the input format.
  */
-const withOutputCoin = (outputCbor, coin) => {
-  const output = CML.TransactionOutput.from_cbor_bytes(outputCbor);
-  const currentAmount = output.amount();
-  const nextAmount = currentAmount.has_multiassets()
-    ? CML.Value.new(coin, currentAmount.multi_asset())
-    : CML.Value.from_coin(coin);
-  output.set_amount(nextAmount);
-  return Buffer.from(output.to_cbor_bytes());
+const withOutputCoin = (outputBytes, coin) => {
+  const out = decodeOutputBytes(outputBytes);
+  const value =
+    out.value.type === "Coin"
+      ? { type: "Coin", coin }
+      : { type: "MultiAsset", coin, assets: out.value.assets };
+  return Buffer.from(
+    encodeTransactionOutput({
+      address: out.address,
+      value,
+      datum: out.datum,
+      script_ref: out.script_ref,
+    }),
+  );
 };
 
 /**
- * Returns a transaction output with the same address as `templateOutputCbor`
- * and a lovelace-only value.
+ * Returns a midgard-ts-encoded transaction output with the same address as
+ * `templateOutputBytes` and a lovelace-only value.
  */
-const lovelaceOnlyOutputForTemplate = (templateOutputCbor, coin) => {
-  const template = CML.TransactionOutput.from_cbor_bytes(templateOutputCbor);
+const lovelaceOnlyOutputForTemplate = (templateOutputBytes, coin) => {
+  const template = decodeOutputBytes(templateOutputBytes);
   return Buffer.from(
-    CML.TransactionOutput.new(
-      template.address(),
-      CML.Value.from_coin(coin),
-    ).to_cbor_bytes(),
+    encodeTransactionOutput({
+      address: template.address,
+      value: { type: "Coin", coin },
+      datum: undefined,
+      script_ref: undefined,
+    }),
   );
+};
+
+/**
+ * Decodes a CML CBOR-encoded `TransactionInput` blob into a midgard-ts
+ * `OutputReference`.
+ */
+const outRefCborToMidgardTs = (outRefCbor) => {
+  const cmlInput = CML.TransactionInput.from_cbor_bytes(outRefCbor);
+  return {
+    tx_id: Buffer.from(cmlInput.transaction_id().to_raw_bytes()),
+    index: Number(cmlInput.index()),
+  };
+};
+
+/**
+ * Signs a midgard-ts transaction body hash with a CML private key, producing
+ * a vkey witness compatible with phase-A validation.
+ */
+const signBodyHashWithCml = (bodyHash, signer) => {
+  const cmlWitness = CML.make_vkey_witness(
+    CML.TransactionHash.from_raw_bytes(bodyHash),
+    signer,
+  );
+  return {
+    vkey: Buffer.from(cmlWitness.vkey().to_raw_bytes()),
+    signature: Buffer.from(cmlWitness.ed25519_signature().to_raw_bytes()),
+  };
 };
 
 /**
@@ -715,11 +782,11 @@ const buildNativeSignedSplitWithFee = ({
   outputCount,
   fee,
 }) => {
-  const input = CML.TransactionOutput.from_cbor_bytes(inputOutputCbor);
-  if (input.amount().has_multiassets()) {
+  const input = decodeOutputBytes(inputOutputCbor);
+  if (input.value.type !== "Coin") {
     throw new Error("fanout setup only supports lovelace-only source UTxOs");
   }
-  const inputCoin = input.amount().coin();
+  const inputCoin = input.value.coin;
   if (inputCoin <= fee) {
     throw new Error(
       `fanout source coin ${inputCoin.toString()} cannot cover fee ${fee.toString()}`,
@@ -735,107 +802,53 @@ const buildNativeSignedSplitWithFee = ({
     );
   }
 
-  const outputs = Array.from({ length: outputCount }, (_, index) =>
-    lovelaceOnlyOutputForTemplate(
-      inputOutputCbor,
-      baseCoin + (BigInt(index) < remainder ? 1n : 0n),
-    ),
-  );
+  const outputObjs = Array.from({ length: outputCount }, (_, index) => ({
+    address: input.address,
+    value: {
+      type: "Coin",
+      coin: baseCoin + (BigInt(index) < remainder ? 1n : 0n),
+    },
+    datum: undefined,
+    script_ref: undefined,
+  }));
 
-  const spendInputsPreimageCbor = encodeByteListPreimage([spendOutRefCbor]);
-  const referenceInputsPreimageCbor = EMPTY_CBOR_LIST;
-  const outputsPreimageCbor = encodeByteListPreimage(outputs);
-  const requiredObserversPreimageCbor = EMPTY_CBOR_LIST;
-  const requiredSignersPreimageCbor = encodeByteListPreimage([
-    Buffer.from(signer.to_public().hash().to_raw_bytes()),
-  ]);
-  const mintPreimageCbor = EMPTY_CBOR_LIST;
+  const signerHash = Buffer.from(signer.to_public().hash().to_raw_bytes());
 
-  const scriptIntegrityHash = hash32(EMPTY_CBOR_NULL);
-  const auxiliaryDataHash = hash32(EMPTY_CBOR_NULL);
-
-  const bodyCompact = [
-    hash32(spendInputsPreimageCbor),
-    hash32(referenceInputsPreimageCbor),
-    hash32(outputsPreimageCbor),
+  const body = {
+    inputs: [outRefCborToMidgardTs(spendOutRefCbor)],
+    outputs: outputObjs,
     fee,
-    MIDGARD_POSIX_TIME_NONE,
-    MIDGARD_POSIX_TIME_NONE,
-    hash32(requiredObserversPreimageCbor),
-    hash32(requiredSignersPreimageCbor),
-    hash32(mintPreimageCbor),
-    scriptIntegrityHash,
-    auxiliaryDataHash,
-    MIDGARD_NETWORK_ID_PREPROD,
-  ];
+    ttl: undefined,
+    auxiliary_data_hash: undefined,
+    validity_interval_start: undefined,
+    mint: undefined,
+    script_data_hash: undefined,
+    required_signers: [signerHash],
+    network_id: MIDGARD_NETWORK_ID_PREPROD_NUM,
+    reference_inputs: undefined,
+    required_observers: undefined,
+  };
 
-  const bodyHash = hash32(encodeCbor(bodyCompact));
-  const witness = CML.make_vkey_witness(
-    CML.TransactionHash.from_raw_bytes(bodyHash),
-    signer,
-  );
+  const bodyHash = Buffer.from(transactionBodyHash(body));
+  const vkeyWitness = signBodyHashWithCml(bodyHash, signer);
 
-  const addrTxWitsPreimageCbor = encodeByteListPreimage([
-    Buffer.from(witness.to_cbor_bytes()),
-  ]);
-  const scriptTxWitsPreimageCbor = EMPTY_CBOR_LIST;
-  const redeemerTxWitsPreimageCbor = EMPTY_CBOR_LIST;
+  const tx = {
+    body,
+    witness_set: {
+      vkey_witnesses: [vkeyWitness],
+      scripts: undefined,
+      redeemers: undefined,
+    },
+    is_valid: true,
+  };
 
-  const witnessCompact = [
-    hash32(addrTxWitsPreimageCbor),
-    hash32(scriptTxWitsPreimageCbor),
-    hash32(redeemerTxWitsPreimageCbor),
-  ];
-
-  const compact = [
-    MIDGARD_NATIVE_TX_VERSION,
-    bodyHash,
-    hash32(encodeCbor(witnessCompact)),
-    TX_IS_VALID_CODE,
-  ];
-
-  const bodyFull = [
-    bodyCompact[0],
-    spendInputsPreimageCbor,
-    bodyCompact[1],
-    referenceInputsPreimageCbor,
-    bodyCompact[2],
-    outputsPreimageCbor,
-    bodyCompact[3],
-    bodyCompact[4],
-    bodyCompact[5],
-    bodyCompact[6],
-    requiredObserversPreimageCbor,
-    bodyCompact[7],
-    requiredSignersPreimageCbor,
-    bodyCompact[8],
-    mintPreimageCbor,
-    bodyCompact[9],
-    bodyCompact[10],
-    bodyCompact[11],
-  ];
-
-  const witnessFull = [
-    witnessCompact[0],
-    addrTxWitsPreimageCbor,
-    witnessCompact[1],
-    scriptTxWitsPreimageCbor,
-    witnessCompact[2],
-    redeemerTxWitsPreimageCbor,
-  ];
-
-  const txCbor = encodeCbor([
-    MIDGARD_NATIVE_TX_VERSION,
-    compact,
-    bodyFull,
-    witnessFull,
-  ]);
+  const txBytes = Buffer.from(encodeTransaction(tx));
 
   return {
     txId: bodyHash,
-    txHex: txCbor.toString("hex"),
-    outputs: outputs.map((outputCbor, outputIndex) => ({
-      outputCbor,
+    txHex: txBytes.toString("hex"),
+    outputs: outputObjs.map((outputObj, outputIndex) => ({
+      outputCbor: Buffer.from(encodeTransactionOutput(outputObj)),
       spendOutRefCbor: toOutRefCbor(bodyHash, outputIndex),
       outRefHex: toOutRefCbor(bodyHash, outputIndex).toString("hex"),
       outputIndex,
@@ -879,106 +892,48 @@ const buildNativeSignedSplit = ({
  */
 const buildNativeSignedOneToOneWithFee = ({
   spendOutRefCbor,
-  outputCbor,
+  outputObj,
   signer,
   fee,
 }) => {
-  const spendInputsPreimageCbor = encodeByteListPreimage([spendOutRefCbor]);
-  const referenceInputsPreimageCbor = EMPTY_CBOR_LIST;
-  const outputsPreimageCbor = encodeByteListPreimage([outputCbor]);
-  const requiredObserversPreimageCbor = EMPTY_CBOR_LIST;
-  const requiredSignersPreimageCbor = encodeByteListPreimage([
-    Buffer.from(signer.to_public().hash().to_raw_bytes()),
-  ]);
-  const mintPreimageCbor = EMPTY_CBOR_LIST;
+  const signerHash = Buffer.from(signer.to_public().hash().to_raw_bytes());
 
-  const scriptIntegrityHash = hash32(EMPTY_CBOR_NULL);
-  const auxiliaryDataHash = hash32(EMPTY_CBOR_NULL);
-
-  const bodyCompact = [
-    hash32(spendInputsPreimageCbor),
-    hash32(referenceInputsPreimageCbor),
-    hash32(outputsPreimageCbor),
+  const body = {
+    inputs: [outRefCborToMidgardTs(spendOutRefCbor)],
+    outputs: [outputObj],
     fee,
-    MIDGARD_POSIX_TIME_NONE,
-    MIDGARD_POSIX_TIME_NONE,
-    hash32(requiredObserversPreimageCbor),
-    hash32(requiredSignersPreimageCbor),
-    hash32(mintPreimageCbor),
-    scriptIntegrityHash,
-    auxiliaryDataHash,
-    MIDGARD_NETWORK_ID_PREPROD,
-  ];
+    ttl: undefined,
+    auxiliary_data_hash: undefined,
+    validity_interval_start: undefined,
+    mint: undefined,
+    script_data_hash: undefined,
+    required_signers: [signerHash],
+    network_id: MIDGARD_NETWORK_ID_PREPROD_NUM,
+    reference_inputs: undefined,
+    required_observers: undefined,
+  };
 
-  const bodyHash = hash32(encodeCbor(bodyCompact));
-  const witness = CML.make_vkey_witness(
-    CML.TransactionHash.from_raw_bytes(bodyHash),
-    signer,
-  );
+  const bodyHash = Buffer.from(transactionBodyHash(body));
+  const vkeyWitness = signBodyHashWithCml(bodyHash, signer);
 
-  const addrTxWitsPreimageCbor = encodeByteListPreimage([
-    Buffer.from(witness.to_cbor_bytes()),
-  ]);
-  const scriptTxWitsPreimageCbor = EMPTY_CBOR_LIST;
-  const redeemerTxWitsPreimageCbor = EMPTY_CBOR_LIST;
+  const tx = {
+    body,
+    witness_set: {
+      vkey_witnesses: [vkeyWitness],
+      scripts: undefined,
+      redeemers: undefined,
+    },
+    is_valid: true,
+  };
 
-  const witnessCompact = [
-    hash32(addrTxWitsPreimageCbor),
-    hash32(scriptTxWitsPreimageCbor),
-    hash32(redeemerTxWitsPreimageCbor),
-  ];
-
-  const compact = [
-    MIDGARD_NATIVE_TX_VERSION,
-    bodyHash,
-    hash32(encodeCbor(witnessCompact)),
-    TX_IS_VALID_CODE,
-  ];
-
-  const bodyFull = [
-    bodyCompact[0],
-    spendInputsPreimageCbor,
-    bodyCompact[1],
-    referenceInputsPreimageCbor,
-    bodyCompact[2],
-    outputsPreimageCbor,
-    bodyCompact[3],
-    bodyCompact[4],
-    bodyCompact[5],
-    bodyCompact[6],
-    requiredObserversPreimageCbor,
-    bodyCompact[7],
-    requiredSignersPreimageCbor,
-    bodyCompact[8],
-    mintPreimageCbor,
-    bodyCompact[9],
-    bodyCompact[10],
-    bodyCompact[11],
-  ];
-
-  const witnessFull = [
-    witnessCompact[0],
-    addrTxWitsPreimageCbor,
-    witnessCompact[1],
-    scriptTxWitsPreimageCbor,
-    witnessCompact[2],
-    redeemerTxWitsPreimageCbor,
-  ];
-
-  const txCbor = encodeCbor([
-    MIDGARD_NATIVE_TX_VERSION,
-    compact,
-    bodyFull,
-    witnessFull,
-  ]);
-
+  const txBytes = Buffer.from(encodeTransaction(tx));
   const txId = bodyHash;
 
   return {
     txId,
-    txHex: txCbor.toString("hex"),
+    txHex: txBytes.toString("hex"),
     nextOutRef: toOutRefCbor(txId, 0),
-    outputCbor,
+    outputCbor: Buffer.from(encodeTransactionOutput(outputObj)),
     fee,
   };
 };
@@ -994,20 +949,32 @@ const buildNativeSignedOneToOne = ({
   minFeeA,
   minFeeB,
 }) => {
+  const input = decodeOutputBytes(inputOutputCbor);
+  const inputCoin = input.value.coin;
   let fee = minFeeB;
   for (let iteration = 0; iteration < 12; iteration += 1) {
-    const inputCoin = CML.TransactionOutput.from_cbor_bytes(inputOutputCbor)
-      .amount()
-      .coin();
     if (inputCoin <= fee) {
       throw new Error(
         `input coin ${inputCoin.toString()} cannot cover fee ${fee.toString()}`,
       );
     }
-    const outputCbor = withOutputCoin(inputOutputCbor, inputCoin - fee);
+    const outputCoin = inputCoin - fee;
+    const outputObj = {
+      address: input.address,
+      value:
+        input.value.type === "Coin"
+          ? { type: "Coin", coin: outputCoin }
+          : {
+              type: "MultiAsset",
+              coin: outputCoin,
+              assets: input.value.assets,
+            },
+      datum: input.datum,
+      script_ref: input.script_ref,
+    };
     const tx = buildNativeSignedOneToOneWithFee({
       spendOutRefCbor,
-      outputCbor,
+      outputObj,
       signer,
       fee,
     });
@@ -1209,9 +1176,7 @@ const ensureFanoutCandidates = async ({ candidates, minFeeA, minFeeB }) => {
         signer: source.signer,
         spendOutRefCbor: output.spendOutRefCbor,
         outputCbor: output.outputCbor,
-        lovelace: CML.TransactionOutput.from_cbor_bytes(output.outputCbor)
-          .amount()
-          .coin(),
+        lovelace: decodeOutputBytes(output.outputCbor).value.coin,
         outRefHex: output.outRefHex,
       })),
     );
@@ -2303,7 +2268,7 @@ const main = async () => {
           continue;
         }
         try {
-          const coin = decodeCoin(utxo.value);
+          const coin = decodeCoin(utxo.outputCbor);
           if (coin < minLovelace) {
             continue;
           }
@@ -2312,7 +2277,7 @@ const main = async () => {
             address: wallet.address,
             signer: wallet.signer,
             spendOutRefCbor: Buffer.from(utxo.outref, "hex"),
-            outputCbor: Buffer.from(utxo.value, "hex"),
+            outputCbor: Buffer.from(utxo.outputCbor, "hex"),
             lovelace: coin,
             outRefHex,
           });

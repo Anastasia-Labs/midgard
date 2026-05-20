@@ -6,12 +6,20 @@ RUN corepack enable
 FROM base AS workspace
 WORKDIR /workspace/demo
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
+COPY midgard-ts/package.json ./midgard-ts/package.json
+COPY lucid-midgard/package.json ./lucid-midgard/package.json
+COPY midgard-core/package.json ./midgard-core/package.json
+COPY midgard-validation/package.json ./midgard-validation/package.json
 COPY midgard-sdk/package.json ./midgard-sdk/package.json
 COPY midgard-node/package.json ./midgard-node/package.json
 RUN --mount=type=cache,id=pnpm,target=/root/.local/share/pnpm/store \
   pnpm install --frozen-lockfile --filter midgard-node...
 
 FROM workspace AS build
+COPY midgard-ts ./midgard-ts
+COPY lucid-midgard ./lucid-midgard
+COPY midgard-core ./midgard-core
+COPY midgard-validation ./midgard-validation
 COPY midgard-sdk ./midgard-sdk
 COPY midgard-node ./midgard-node
 RUN pnpm --filter midgard-node build

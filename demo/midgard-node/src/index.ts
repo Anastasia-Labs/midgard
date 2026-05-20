@@ -565,7 +565,13 @@ program
         }).pipe(
           Effect.tap((result) =>
             Effect.sync(() => {
-              process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
+              process.stdout.write(
+                `${JSON.stringify(
+                  result,
+                  (_, v) => (typeof v === "bigint" ? v.toString() : v),
+                  2,
+                )}\n`,
+              );
             }),
           ),
           Effect.tap((result) =>
