@@ -53,7 +53,6 @@ import { FileSystemError } from "@/utils.js";
 import { Columns as TxColumns } from "@/database/utils/tx.js";
 import {
   rootsMatchConfirmedHeader,
-  shouldAttemptLocalFinalizationRecovery,
   shouldDeferCommitSubmission,
   selectCommitRoots,
 } from "@/workers/utils/commit-block-planner.js";
@@ -571,6 +570,8 @@ const submitDepositOnlyCommit = ({
     yield* PendingBlockFinalizationsDB.preparePendingSubmission({
       headerHash: headerHashBuffer,
       blockEndTime: new Date(blockEndTimeMs),
+      utxoRoot: roots.utxoRoot,
+      txRoot: roots.txRoot,
       depositEventIds: includedDepositEventIds,
       withdrawalEventIds: includedWithdrawalEventIds,
       mempoolTxIds: [],
@@ -688,6 +689,8 @@ const submitTxBackedCommit = ({
             return PendingBlockFinalizationsDB.preparePendingSubmission({
               headerHash: headerHashBuffer,
               blockEndTime: new Date(blockEndTimeMs),
+              utxoRoot,
+              txRoot,
               depositEventIds: includedDepositEventIds,
               withdrawalEventIds: includedWithdrawalEventIds,
               mempoolTxIds: processedMempoolTxs.map(
@@ -856,26 +859,12 @@ const deferProcessedCommitPayloadUntilConfirmation = ({
 
 const recoverLocalFinalizationAgainstConfirmedBlock = ({
   latestBlock,
-  utxoRoot,
-  txRoot,
   mempoolTrie,
-  processedMempoolTxs,
-  mempoolTxHashes,
-  includedDepositEventIds,
-  includedWithdrawalEventIds,
   workerInput,
-  sizeOfProcessedTxs,
 }: {
   readonly latestBlock: SDK.StateQueueUTxO;
-  readonly utxoRoot: string;
-  readonly txRoot: string;
   readonly mempoolTrie: MidgardMpt;
-  readonly processedMempoolTxs: readonly TxTable.EntryWithTimeStamp[];
-  readonly mempoolTxHashes: Buffer[];
-  readonly includedDepositEventIds: readonly Buffer[];
-  readonly includedWithdrawalEventIds: readonly Buffer[];
   readonly workerInput: WorkerInput;
-  readonly sizeOfProcessedTxs: number;
 }) =>
   Effect.gen(function* () {
     yield* Effect.logInfo(
@@ -889,32 +878,78 @@ const recoverLocalFinalizationAgainstConfirmedBlock = ({
           "Confirmed block datum does not contain a recoverable header for local finalization",
       } satisfies WorkerOutput;
     }
-    const rootsMatch = rootsMatchConfirmedHeader({
-      computedUtxoRoot: utxoRoot,
-      computedTxRoot: txRoot,
-      confirmedUtxoRoot: optHeaderRoots.value.utxoRoot,
-      confirmedTxRoot: optHeaderRoots.value.txRoot,
-    });
-    if (!rootsMatch) {
-      return {
-        type: "FailureOutput",
-        error:
-          "Local finalization recovery aborted: computed roots do not match the confirmed block header",
-      } satisfies WorkerOutput;
-    }
     const confirmedHeader = yield* getHeaderFromStateQueueDatumLocal(
       latestBlock.datum,
     );
     const confirmedHeaderHash = yield* hashBlockHeaderLocal(confirmedHeader);
+    const optPendingRecord =
+      yield* PendingBlockFinalizationsDB.retrieveByHeaderHash(
+        Buffer.from(fromHex(confirmedHeaderHash)),
+      );
+    if (Option.isNone(optPendingRecord)) {
+      return {
+        type: "FailureOutput",
+        error:
+          "Local finalization recovery aborted: no pending-finalization " +
+          `record found for confirmed block header ${confirmedHeaderHash}`,
+      } satisfies WorkerOutput;
+    }
+    const pendingRecord = optPendingRecord.value;
+    // The block roots are recorded at submission time, so the recovery check
+    // is a pure equality between the roots this node committed and the roots
+    // the confirmed L1 header carries — never a recompute over the live
+    // mempool, which drifts as new transactions are admitted post-submission.
+    const submittedUtxoRoot =
+      pendingRecord[PendingBlockFinalizationsDB.Columns.UTXO_ROOT];
+    const submittedTxRoot =
+      pendingRecord[PendingBlockFinalizationsDB.Columns.TX_ROOT];
+    const rootsMatch = rootsMatchConfirmedHeader({
+      computedUtxoRoot: submittedUtxoRoot,
+      computedTxRoot: submittedTxRoot,
+      confirmedUtxoRoot: optHeaderRoots.value.utxoRoot,
+      confirmedTxRoot: optHeaderRoots.value.txRoot,
+    });
+    if (!rootsMatch) {
+      yield* Effect.logWarning(
+        "🔹 Local finalization recovery root mismatch — " +
+          `submitted utxoRoot=${submittedUtxoRoot} ` +
+          `txRoot=${submittedTxRoot} | ` +
+          `confirmed utxoRoot=${optHeaderRoots.value.utxoRoot} ` +
+          `txRoot=${optHeaderRoots.value.txRoot}`,
+      );
+      return {
+        type: "FailureOutput",
+        error:
+          "Local finalization recovery aborted: the confirmed block header " +
+          "does not match the block this node submitted " +
+          `(submitted utxoRoot=${submittedUtxoRoot} ` +
+          `txRoot=${submittedTxRoot}; ` +
+          `confirmed utxoRoot=${optHeaderRoots.value.utxoRoot} ` +
+          `txRoot=${optHeaderRoots.value.txRoot})`,
+      } satisfies WorkerOutput;
+    }
+    // Finalize over the frozen tx set recorded at submission, not the live
+    // mempool. Entries already moved into ImmutableDB by a prior partial
+    // finalization are filtered downstream by `finalizeCommittedBlockLocally`.
+    const frozenMempoolTxs = yield* MempoolDB.retrieveByTxIds(
+      pendingRecord.mempoolTxIds,
+    );
+    const mempoolTxHashes = frozenMempoolTxs.map((entry) =>
+      Buffer.from(entry[TxColumns.TX_ID]),
+    );
+    const sizeOfProcessedTxs = frozenMempoolTxs.reduce(
+      (total, entry) => total + entry[TxColumns.TX].length,
+      0,
+    );
     return yield* successfulLocalFinalizationRecoveryProgram(
       mempoolTrie,
-      processedMempoolTxs,
+      frozenMempoolTxs,
       mempoolTxHashes,
-      includedDepositEventIds,
+      pendingRecord.depositEventIds,
       confirmedHeaderHash,
       workerInput,
       sizeOfProcessedTxs,
-      includedWithdrawalEventIds,
+      pendingRecord.withdrawalEventIds,
     );
   });
 
@@ -966,6 +1001,26 @@ const databaseOperationsProgram = (
       return {
         type: "NothingToCommitOutput",
       } satisfies WorkerOutput;
+    }
+
+    if (
+      workerInput.data.localFinalizationPending &&
+      hasAvailableLocalFinalizationBlock
+    ) {
+      // `shouldDeferCommitSubmission` already returned above when no
+      // recoverable block was available, so reaching here means a confirmed
+      // block is ready to finalize. Recover against it directly from the
+      // frozen pending-finalization snapshot, before `processMpts` runs:
+      // `processMpts` would otherwise mutate the persistent tries with the
+      // live (post-submission) mempool and make the block unrecoverable.
+      const recoverableConfirmedBlock = yield* deserializeStateQueueUTxO(
+        availableLocalFinalizationBlock,
+      );
+      return yield* recoverLocalFinalizationAgainstConfirmedBlock({
+        latestBlock: recoverableConfirmedBlock,
+        mempoolTrie,
+        workerInput,
+      });
     }
 
     const {
@@ -1046,34 +1101,6 @@ const databaseOperationsProgram = (
       const latestBlock = yield* deserializeStateQueueUTxO(
         availableConfirmedBlock,
       );
-
-      if (
-        shouldAttemptLocalFinalizationRecovery({
-          localFinalizationPending: workerInput.data.localFinalizationPending,
-          hasAvailableConfirmedBlock: hasAvailableLocalFinalizationBlock,
-        })
-      ) {
-        if (!hasAvailableLocalFinalizationBlock) {
-          return {
-            type: "NothingToCommitOutput",
-          } satisfies WorkerOutput;
-        }
-        const recoverableConfirmedBlock = yield* deserializeStateQueueUTxO(
-          availableLocalFinalizationBlock,
-        );
-        return yield* recoverLocalFinalizationAgainstConfirmedBlock({
-          latestBlock: recoverableConfirmedBlock,
-          utxoRoot,
-          txRoot,
-          mempoolTrie,
-          processedMempoolTxs,
-          mempoolTxHashes,
-          includedDepositEventIds,
-          includedWithdrawalEventIds,
-          workerInput,
-          sizeOfProcessedTxs,
-        });
-      }
 
       if (Option.isNone(optEndTime)) {
         // No transaction requests found (neither in `ProcessedMempoolDB`, nor

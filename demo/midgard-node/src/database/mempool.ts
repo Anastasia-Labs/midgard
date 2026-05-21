@@ -114,6 +114,39 @@ export const retrieveTxCborByHash = (txHash: Buffer) =>
 export const retrieveTxCborsByHashes = (txHashes: Buffer[]) =>
   Tx.retrieveValues(tableName, txHashes);
 
+/**
+ * Retrieves full mempool transaction entries for a set of transaction ids,
+ * returned in the same order as the input ids. Ids without a matching mempool
+ * row are omitted (e.g. already cleared by a prior partial finalization).
+ */
+export const retrieveByTxIds = (
+  txIds: readonly Buffer[],
+): Effect.Effect<readonly Tx.EntryWithTimeStamp[], DatabaseError, Database> =>
+  Effect.gen(function* () {
+    if (txIds.length <= 0) {
+      return [];
+    }
+    const sql = yield* SqlClient.SqlClient;
+    const rows = yield* sql<Tx.EntryWithTimeStamp>`SELECT ${sql(
+      Tx.Columns.TX_ID,
+    )}, ${sql(Tx.Columns.TX)}, ${sql(Tx.Columns.TIMESTAMPTZ)} FROM ${sql(
+      tableName,
+    )} WHERE ${sql.in(Tx.Columns.TX_ID, [...txIds])}`;
+    const rowsById = new Map(
+      rows.map((row) => [row[Tx.Columns.TX_ID].toString("hex"), row]),
+    );
+    return txIds.flatMap((txId) => {
+      const row = rowsById.get(txId.toString("hex"));
+      return row === undefined ? [] : [row];
+    });
+  }).pipe(
+    Effect.withLogSpan(`retrieveByTxIds ${tableName}`),
+    sqlErrorToDatabaseError(
+      tableName,
+      "Failed to retrieve mempool transactions by id",
+    ),
+  );
+
 export const retrieve: Effect.Effect<
   readonly Tx.EntryWithTimeStamp[],
   DatabaseError,

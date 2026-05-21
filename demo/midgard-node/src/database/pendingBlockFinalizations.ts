@@ -17,6 +17,8 @@ export enum Columns {
   SUBMITTED_TX_HASH = "submitted_tx_hash",
   BLOCK_END_TIME = "block_end_time",
   STATUS = "status",
+  UTXO_ROOT = "utxo_root",
+  TX_ROOT = "tx_root",
   OBSERVED_CONFIRMED_AT_MS = "observed_confirmed_at_ms",
   CREATED_AT = "created_at",
   UPDATED_AT = "updated_at",
@@ -51,6 +53,8 @@ export type Row = {
   [Columns.SUBMITTED_TX_HASH]: Buffer | null;
   [Columns.BLOCK_END_TIME]: Date;
   [Columns.STATUS]: Status;
+  [Columns.UTXO_ROOT]: string;
+  [Columns.TX_ROOT]: string;
   [Columns.OBSERVED_CONFIRMED_AT_MS]: bigint | null;
   [Columns.CREATED_AT]: Date;
   [Columns.UPDATED_AT]: Date;
@@ -65,6 +69,10 @@ export type Record = Row & {
 export type PrepareInput = {
   readonly headerHash: Buffer;
   readonly blockEndTime: Date;
+  /** UTxO Merkle root committed into the submitted block header. */
+  readonly utxoRoot: string;
+  /** Transaction Merkle root committed into the submitted block header. */
+  readonly txRoot: string;
   readonly depositEventIds: readonly Buffer[];
   readonly withdrawalEventIds?: readonly Buffer[];
   readonly mempoolTxIds: readonly Buffer[];
@@ -120,6 +128,8 @@ export const createTables: Effect.Effect<void, DatabaseError, Database> =
           ${sql(Columns.SUBMITTED_TX_HASH)} BYTEA UNIQUE,
           ${sql(Columns.BLOCK_END_TIME)} TIMESTAMPTZ NOT NULL,
           ${sql(Columns.STATUS)} TEXT NOT NULL,
+          ${sql(Columns.UTXO_ROOT)} TEXT NOT NULL DEFAULT '',
+          ${sql(Columns.TX_ROOT)} TEXT NOT NULL DEFAULT '',
           ${sql(Columns.OBSERVED_CONFIRMED_AT_MS)} BIGINT,
           ${sql(Columns.CREATED_AT)} TIMESTAMPTZ NOT NULL DEFAULT NOW(),
           ${sql(Columns.UPDATED_AT)} TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -282,6 +292,8 @@ export const preparePendingSubmission = (
           [Columns.SUBMITTED_TX_HASH]: null,
           [Columns.BLOCK_END_TIME]: input.blockEndTime,
           [Columns.STATUS]: Status.PendingSubmission,
+          [Columns.UTXO_ROOT]: input.utxoRoot,
+          [Columns.TX_ROOT]: input.txRoot,
           [Columns.OBSERVED_CONFIRMED_AT_MS]: null,
         })}`;
         if (depositEventIds.length > 0) {

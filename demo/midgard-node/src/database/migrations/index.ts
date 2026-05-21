@@ -3,6 +3,7 @@ import initialSchemaSql from "./sql/0001_initial_schema.sql";
 import durableTxAdmissionsSql from "./sql/0002_durable_tx_admissions.sql";
 import localMutationJobsSql from "./sql/0003_local_mutation_jobs.sql";
 import withdrawalEventsSql from "./sql/0004_withdrawal_events.sql";
+import pendingBlockFinalizationRootsSql from "./sql/0005_pending_block_finalization_roots.sql";
 
 export type Migration = {
   readonly version: number;
@@ -42,6 +43,13 @@ export const MIGRATIONS: readonly Migration[] = [
     name: "withdrawal_events",
     checksumSha256: sha256Hex(withdrawalEventsSql),
     sql: withdrawalEventsSql,
+    transactional: true,
+  },
+  {
+    version: 5,
+    name: "pending_block_finalization_roots",
+    checksumSha256: sha256Hex(pendingBlockFinalizationRootsSql),
+    sql: pendingBlockFinalizationRootsSql,
     transactional: true,
   },
 ] as const;
