@@ -1,14 +1,13 @@
-import { encodeCbor } from "./cbor.js";
 import { MidgardTxCodecError, MidgardTxCodecErrorCodes } from "./errors.js";
 import { ensureHashMatch } from "./hash.js";
 import {
   deriveNativeTxBodyCompact,
-  encodeNativeTxBodyCompactValue,
+  encodeNativeTxBodyCompact,
 } from "./native-body.js";
 import { MIDGARD_NATIVE_TX_VERSION } from "./native-constants.js";
 import {
   deriveNativeTxWitnessSetCompact,
-  encodeNativeTxWitnessSetCompactValue,
+  encodeNativeTxWitnessSetCompact,
 } from "./native-witness.js";
 import type { MidgardNativeTxFull } from "./native.js";
 
@@ -39,11 +38,11 @@ export const verifyNativeTxFullConsistency = (
     );
   }
 
-  const encodedBodyCompact = encodeCbor(
-    encodeNativeTxBodyCompactValue(deriveNativeTxBodyCompact(tx.body)),
+  const encodedBodyCompact = encodeNativeTxBodyCompact(
+    deriveNativeTxBodyCompact(tx.body),
   );
-  const encodedCompactBody = encodeCbor(
-    encodeNativeTxBodyCompactValue(tx.compact.transactionBody),
+  const encodedCompactBody = encodeNativeTxBodyCompact(
+    tx.compact.transactionBody,
   );
 
   if (!encodedBodyCompact.equals(encodedCompactBody)) {
@@ -55,10 +54,8 @@ export const verifyNativeTxFullConsistency = (
 
   ensureHashMatch(
     tx.compact.transactionWitnessSetHash,
-    encodeCbor(
-      encodeNativeTxWitnessSetCompactValue(
-        deriveNativeTxWitnessSetCompact(tx.witnessSet),
-      ),
+    encodeNativeTxWitnessSetCompact(
+      deriveNativeTxWitnessSetCompact(tx.witnessSet),
     ),
     "transaction_compact.transaction_witness_set_hash",
   );

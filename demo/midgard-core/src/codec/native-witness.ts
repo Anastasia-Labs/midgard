@@ -1,88 +1,173 @@
+/**
+ * Binary codec for the Midgard native transaction witness set
+ * (canonical/full and compact representations).
+ *
+ * Replaces the previous CBOR encoding with the fuel-vm-style static/dynamic
+ * binary layout (see ./binary.ts). The three witness fields stay opaque CBOR
+ * preimage blobs; only the surrounding witness-set structure is binary.
+ */
+
 import {
-  asBytes,
-  decodeSingleCbor,
-  encodeCbor,
-} from "./cbor.js";
-import { computeHash32, ensureHash32, type Hash32 } from "./hash.js";
-import { MIDGARD_NATIVE_TX_VERSION } from "./native-constants.js";
-import { asFixedArray } from "./native-validation.js";
+  BinaryReader,
+  BinaryWriter,
+  ensureNoTrailingBytes,
+  readHash32,
+  readVarBytesDynamic,
+  readVarBytesLen,
+  writeHash32,
+  writeVarBytesDynamic,
+  writeVarBytesStatic,
+} from "./binary.js";
+import { computeHash32, ensureHash32 } from "./hash.js";
 import type {
   MidgardNativeTxWitnessSetCanonical,
   MidgardNativeTxWitnessSetCompact,
 } from "./native.js";
 
-type NativeTxWitnessSetCompactValue = readonly [Hash32, Hash32, Hash32];
-type NativeTxWitnessSetCanonicalValue = readonly [Buffer, Buffer, Buffer];
+// ===========================================================================
+// Canonical (full) witness set — three opaque CBOR preimage blobs.
+//
+// Static:  addr / script / redeemer blob lengths (u64)
+// Dynamic: addr / script / redeemer blobs (bytes + alignment padding)
+// ===========================================================================
 
-const itemField = (fieldName: string, index: number): string =>
-  `${fieldName}[${index}]`;
+/** Static-phase decode state: the three blob lengths. */
+export interface NativeTxWitnessSetCanonicalPartial {
+  addrLen: number;
+  scriptLen: number;
+  redeemerLen: number;
+}
 
-const hashItem = (
-  value: readonly unknown[],
-  index: number,
-  fieldName: string,
-): Hash32 => {
-  const field = itemField(fieldName, index);
-  return ensureHash32(asBytes(value[index], field), field);
-};
-
-const bytesItem = (
-  value: readonly unknown[],
-  index: number,
-  fieldName: string,
-): Buffer => Buffer.from(asBytes(value[index], itemField(fieldName, index)));
-
-export const encodeNativeTxWitnessSetCompactValue = (
-  witnessSet: MidgardNativeTxWitnessSetCompact,
-): NativeTxWitnessSetCompactValue => [
-  ensureHash32(
-    witnessSet.addrTxWitsHash,
-    "transaction_witness_set_compact.addr_tx_wits_hash",
-  ),
-  ensureHash32(
-    witnessSet.scriptTxWitsHash,
-    "transaction_witness_set_compact.script_tx_wits_hash",
-  ),
-  ensureHash32(
-    witnessSet.redeemerTxWitsHash,
-    "transaction_witness_set_compact.redeemer_tx_wits_hash",
-  ),
-];
-
-export const decodeNativeTxWitnessSetCompactValue = (
-  value: unknown,
-  fieldName: string,
-  _version: bigint,
-): MidgardNativeTxWitnessSetCompact => {
-  const v = asFixedArray(value, 3, fieldName);
-  return {
-    addrTxWitsHash: hashItem(v, 0, fieldName),
-    scriptTxWitsHash: hashItem(v, 1, fieldName),
-    redeemerTxWitsHash: hashItem(v, 2, fieldName),
-  };
-};
-
-export const encodeNativeTxWitnessSetCanonicalValue = (
-  _version: bigint,
+export const writeNativeTxWitnessSetCanonicalStatic = (
+  w: BinaryWriter,
   witnessSet: MidgardNativeTxWitnessSetCanonical,
-): NativeTxWitnessSetCanonicalValue => [
-  Buffer.from(witnessSet.addrTxWitsPreimageCbor),
-  Buffer.from(witnessSet.scriptTxWitsPreimageCbor),
-  Buffer.from(witnessSet.redeemerTxWitsPreimageCbor),
-];
+): void => {
+  writeVarBytesStatic(w, witnessSet.addrTxWitsPreimageCbor);
+  writeVarBytesStatic(w, witnessSet.scriptTxWitsPreimageCbor);
+  writeVarBytesStatic(w, witnessSet.redeemerTxWitsPreimageCbor);
+};
 
-export const decodeNativeTxWitnessSetCanonicalValue = (
-  value: unknown,
-  fieldName: string,
-  _version: bigint,
+export const writeNativeTxWitnessSetCanonicalDynamic = (
+  w: BinaryWriter,
+  witnessSet: MidgardNativeTxWitnessSetCanonical,
+): void => {
+  writeVarBytesDynamic(w, witnessSet.addrTxWitsPreimageCbor);
+  writeVarBytesDynamic(w, witnessSet.scriptTxWitsPreimageCbor);
+  writeVarBytesDynamic(w, witnessSet.redeemerTxWitsPreimageCbor);
+};
+
+export const readNativeTxWitnessSetCanonicalStatic = (
+  r: BinaryReader,
+): NativeTxWitnessSetCanonicalPartial => {
+  const addrLen = readVarBytesLen(r);
+  const scriptLen = readVarBytesLen(r);
+  const redeemerLen = readVarBytesLen(r);
+  return { addrLen, scriptLen, redeemerLen };
+};
+
+export const readNativeTxWitnessSetCanonicalDynamic = (
+  r: BinaryReader,
+  p: NativeTxWitnessSetCanonicalPartial,
 ): MidgardNativeTxWitnessSetCanonical => {
-  const v = asFixedArray(value, 3, fieldName);
+  const addrTxWitsPreimageCbor = readVarBytesDynamic(r, p.addrLen);
+  const scriptTxWitsPreimageCbor = readVarBytesDynamic(r, p.scriptLen);
+  const redeemerTxWitsPreimageCbor = readVarBytesDynamic(r, p.redeemerLen);
   return {
-    addrTxWitsPreimageCbor: bytesItem(v, 0, fieldName),
-    scriptTxWitsPreimageCbor: bytesItem(v, 1, fieldName),
-    redeemerTxWitsPreimageCbor: bytesItem(v, 2, fieldName),
+    addrTxWitsPreimageCbor,
+    scriptTxWitsPreimageCbor,
+    redeemerTxWitsPreimageCbor,
   };
 };
+
+export const encodeNativeTxWitnessSetCanonical = (
+  witnessSet: MidgardNativeTxWitnessSetCanonical,
+): Buffer => {
+  const w = new BinaryWriter();
+  writeNativeTxWitnessSetCanonicalStatic(w, witnessSet);
+  writeNativeTxWitnessSetCanonicalDynamic(w, witnessSet);
+  return w.toBytes();
+};
+
+export const decodeNativeTxWitnessSetCanonical = (
+  bytes: Uint8Array,
+): MidgardNativeTxWitnessSetCanonical => {
+  const r = new BinaryReader(bytes);
+  const partial = readNativeTxWitnessSetCanonicalStatic(r);
+  const witnessSet = readNativeTxWitnessSetCanonicalDynamic(r, partial);
+  ensureNoTrailingBytes(r, "transaction_witness_set");
+  return witnessSet;
+};
+
+// ===========================================================================
+// Compact witness set — three 32-byte hashes, fully static.
+// ===========================================================================
+
+export const writeNativeTxWitnessSetCompact = (
+  w: BinaryWriter,
+  witnessSet: MidgardNativeTxWitnessSetCompact,
+): void => {
+  writeHash32(
+    w,
+    ensureHash32(
+      witnessSet.addrTxWitsHash,
+      "transaction_witness_set_compact.addr_tx_wits_hash",
+    ),
+  );
+  writeHash32(
+    w,
+    ensureHash32(
+      witnessSet.scriptTxWitsHash,
+      "transaction_witness_set_compact.script_tx_wits_hash",
+    ),
+  );
+  writeHash32(
+    w,
+    ensureHash32(
+      witnessSet.redeemerTxWitsHash,
+      "transaction_witness_set_compact.redeemer_tx_wits_hash",
+    ),
+  );
+};
+
+export const readNativeTxWitnessSetCompact = (
+  r: BinaryReader,
+): MidgardNativeTxWitnessSetCompact => {
+  const addrTxWitsHash = ensureHash32(
+    readHash32(r),
+    "transaction_witness_set_compact.addr_tx_wits_hash",
+  );
+  const scriptTxWitsHash = ensureHash32(
+    readHash32(r),
+    "transaction_witness_set_compact.script_tx_wits_hash",
+  );
+  const redeemerTxWitsHash = ensureHash32(
+    readHash32(r),
+    "transaction_witness_set_compact.redeemer_tx_wits_hash",
+  );
+  return { addrTxWitsHash, scriptTxWitsHash, redeemerTxWitsHash };
+};
+
+export const encodeNativeTxWitnessSetCompact = (
+  witnessSet: MidgardNativeTxWitnessSetCompact,
+): Buffer => {
+  const w = new BinaryWriter();
+  writeNativeTxWitnessSetCompact(w, witnessSet);
+  return w.toBytes();
+};
+
+export const decodeNativeTxWitnessSetCompact = (
+  bytes: Uint8Array,
+): MidgardNativeTxWitnessSetCompact => {
+  const r = new BinaryReader(bytes);
+  const witnessSet = readNativeTxWitnessSetCompact(r);
+  ensureNoTrailingBytes(r, "transaction_witness_set_compact");
+  return witnessSet;
+};
+
+// ===========================================================================
+// Derivation: compact witness set = canonical witness set with each preimage
+// blob replaced by its blake2b hash.
+// ===========================================================================
 
 export const deriveNativeTxWitnessSetCompact = (
   witnessSet: MidgardNativeTxWitnessSetCanonical,
@@ -91,30 +176,3 @@ export const deriveNativeTxWitnessSetCompact = (
   scriptTxWitsHash: computeHash32(witnessSet.scriptTxWitsPreimageCbor),
   redeemerTxWitsHash: computeHash32(witnessSet.redeemerTxWitsPreimageCbor),
 });
-
-export const encodeNativeTxWitnessSetCompactCbor = (
-  witnessSet: MidgardNativeTxWitnessSetCompact,
-): Buffer => encodeCbor(encodeNativeTxWitnessSetCompactValue(witnessSet));
-
-export const decodeNativeTxWitnessSetCompactCbor = (
-  bytes: Uint8Array,
-): MidgardNativeTxWitnessSetCompact =>
-  decodeNativeTxWitnessSetCompactValue(
-    decodeSingleCbor(bytes),
-    "transaction_witness_set",
-    MIDGARD_NATIVE_TX_VERSION,
-  );
-
-export const encodeNativeTxWitnessPreimagesCbor = (
-  witnessSet: MidgardNativeTxWitnessSetCanonical,
-  version = MIDGARD_NATIVE_TX_VERSION,
-): Buffer => encodeCbor(encodeNativeTxWitnessSetCanonicalValue(version, witnessSet));
-
-export const decodeNativeTxWitnessPreimagesCbor = (
-  bytes: Uint8Array,
-): MidgardNativeTxWitnessSetCanonical =>
-  decodeNativeTxWitnessSetCanonicalValue(
-    decodeSingleCbor(bytes),
-    "transaction_witness_preimages",
-    MIDGARD_NATIVE_TX_VERSION,
-  );

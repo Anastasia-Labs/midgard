@@ -164,20 +164,20 @@ describe("midgard native tx codec - strict roundtrip", () => {
     );
   });
 
-  it("rejects legacy witness-set compact encodings with a datum witness bucket", () => {
+  it("rejects witness-set compact encodings with an extra witness bucket", () => {
     const witnessCompact =
       deriveMidgardNativeTxWitnessSetCompact(mkWitnessSet());
-    const legacyShape = Buffer.from(
-      encode([
-        Buffer.from(witnessCompact.addrTxWitsHash),
-        Buffer.from(witnessCompact.scriptTxWitsHash),
-        Buffer.from(witnessCompact.redeemerTxWitsHash),
-        Buffer.from(mkHash("legacy-datum-wits")),
-      ]),
-    );
+    // A compact witness set is exactly three 32-byte hashes; appending a
+    // fourth must be rejected as trailing bytes by the binary decoder.
+    const overLongShape = Buffer.concat([
+      Buffer.from(witnessCompact.addrTxWitsHash),
+      Buffer.from(witnessCompact.scriptTxWitsHash),
+      Buffer.from(witnessCompact.redeemerTxWitsHash),
+      Buffer.from(mkHash("legacy-datum-wits")),
+    ]);
 
-    expect(() => decodeMidgardNativeTxWitnessSetCompact(legacyShape)).toThrow(
-      /exactly 3 elements/i,
+    expect(() => decodeMidgardNativeTxWitnessSetCompact(overLongShape)).toThrow(
+      /trailing bytes/i,
     );
   });
 });

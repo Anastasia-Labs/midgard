@@ -1,11 +1,14 @@
 import { CML } from "@lucid-evolution/lucid";
+import { asArray, asBytes, asMap, decodeSingleCbor } from "./cbor.js";
 import {
-  asArray,
-  asBytes,
-  asMap,
-  decodeSingleCbor,
-  encodeCbor,
-} from "./cbor.js";
+  BinaryReader,
+  BinaryWriter,
+  ensureNoTrailingBytes,
+  readBigU64,
+  readHash32,
+  writeBigU64,
+  writeHash32,
+} from "./binary.js";
 import { MidgardTxCodecError, MidgardTxCodecErrorCodes } from "./errors.js";
 import { computeHash32, ensureHash32, type Hash32 } from "./hash.js";
 import { decodeMidgardTxOutput } from "./output.js";
@@ -23,28 +26,33 @@ import {
   MIDGARD_POSIX_TIME_NONE,
 } from "./native-constants.js";
 import {
-  decodeNativeTxBodyCanonicalCbor,
-  decodeNativeTxBodyCanonicalValue,
-  decodeNativeTxBodyCompactCbor,
-  decodeNativeTxBodyCompactValue,
+  decodeNativeTxBodyCanonical,
+  decodeNativeTxBodyCompact,
   deriveNativeTxBodyCompact,
-  encodeNativeTxBodyCanonicalCbor,
-  encodeNativeTxBodyCanonicalValue,
-  encodeNativeTxBodyCompactCbor,
-  encodeNativeTxBodyCompactValue,
+  encodeNativeTxBodyCanonical,
+  encodeNativeTxBodyCompact,
+  readNativeTxBodyCanonicalDynamic,
+  readNativeTxBodyCanonicalStatic,
+  readNativeTxBodyCompact,
+  writeNativeTxBodyCanonicalDynamic,
+  writeNativeTxBodyCanonicalStatic,
+  writeNativeTxBodyCompact,
 } from "./native-body.js";
 import { verifyNativeTxFullConsistency } from "./native-consistency.js";
 import {
-  decodeNativeTxWitnessPreimagesCbor,
-  decodeNativeTxWitnessSetCanonicalValue,
-  decodeNativeTxWitnessSetCompactCbor,
+  decodeNativeTxWitnessSetCanonical,
+  decodeNativeTxWitnessSetCompact,
   deriveNativeTxWitnessSetCompact,
-  encodeNativeTxWitnessPreimagesCbor,
-  encodeNativeTxWitnessSetCanonicalValue,
-  encodeNativeTxWitnessSetCompactCbor,
+  encodeNativeTxWitnessSetCanonical,
+  encodeNativeTxWitnessSetCompact,
+  readNativeTxWitnessSetCanonicalDynamic,
+  readNativeTxWitnessSetCanonicalStatic,
+  readNativeTxWitnessSetCompact,
+  writeNativeTxWitnessSetCanonicalDynamic,
+  writeNativeTxWitnessSetCanonicalStatic,
+  writeNativeTxWitnessSetCompact,
 } from "./native-witness.js";
 import {
-  asFixedArray,
   asSigned,
   decodeValidityCode,
   decodeVersion,
@@ -128,37 +136,57 @@ export type MidgardNativeCodecOptions = {
   readonly enforceConsistency?: boolean;
 };
 
-const encodeNativeTxCompactValue = (
+// Compact tx envelope: version (u64) + compact body (fixed-size) +
+// witness-set hash (32) + validity code (u64). Fully static.
+const writeNativeTxCompact = (
+  w: BinaryWriter,
   tx: MidgardNativeTxCompact,
-): readonly [
-  bigint,
-  ReturnType<typeof encodeNativeTxBodyCompactValue>,
-  Hash32,
-  bigint,
-] => [
-  decodeVersion(tx.version, "transaction_compact.version"),
-  encodeNativeTxBodyCompactValue(tx.transactionBody),
-  ensureHash32(
-    tx.transactionWitnessSetHash,
-    "transaction_compact.transaction_witness_set",
-  ),
-  encodeValidityCode(tx.validity),
-];
-
-const decodeNativeTxCompactValue = (
-  value: unknown,
-  fieldName: string,
-): MidgardNativeTxCompact => {
-  const v = asFixedArray(value, 4, fieldName);
-  return {
-    version: decodeVersion(v[0], `${fieldName}[0]`),
-    transactionBody: decodeNativeTxBodyCompactValue(v[1], `${fieldName}[1]`),
-    transactionWitnessSetHash: ensureHash32(
-      asBytes(v[2], `${fieldName}[2]`),
-      `${fieldName}[2]`,
+): void => {
+  writeBigU64(w, decodeVersion(tx.version, "transaction_compact.version"));
+  writeNativeTxBodyCompact(w, tx.transactionBody);
+  writeHash32(
+    w,
+    ensureHash32(
+      tx.transactionWitnessSetHash,
+      "transaction_compact.transaction_witness_set",
     ),
-    validity: decodeValidityCode(v[3], `${fieldName}[3]`),
-  };
+  );
+  writeBigU64(w, encodeValidityCode(tx.validity));
+};
+
+const readNativeTxCompact = (r: BinaryReader): MidgardNativeTxCompact => {
+  const version = decodeVersion(readBigU64(r), "transaction_compact[0]");
+  const transactionBody = readNativeTxBodyCompact(r);
+  const transactionWitnessSetHash = ensureHash32(
+    readHash32(r),
+    "transaction_compact[2]",
+  );
+  const validity = decodeValidityCode(readBigU64(r), "transaction_compact[3]");
+  return { version, transactionBody, transactionWitnessSetHash, validity };
+};
+
+// Canonical tx envelope: version (u64) + validity code (u64), then the body
+// and witness-set static sections, then their dynamic sections.
+const writeNativeTxCanonical = (
+  w: BinaryWriter,
+  tx: MidgardNativeTxCanonical,
+): void => {
+  writeBigU64(w, decodeVersion(tx.version, "transaction.version"));
+  writeBigU64(w, encodeValidityCode(tx.validity));
+  writeNativeTxBodyCanonicalStatic(w, tx.body);
+  writeNativeTxWitnessSetCanonicalStatic(w, tx.witnessSet);
+  writeNativeTxBodyCanonicalDynamic(w, tx.body);
+  writeNativeTxWitnessSetCanonicalDynamic(w, tx.witnessSet);
+};
+
+const readNativeTxCanonical = (r: BinaryReader): MidgardNativeTxCanonical => {
+  const version = decodeVersion(readBigU64(r), "transaction[0]");
+  const validity = decodeValidityCode(readBigU64(r), "transaction[1]");
+  const bodyPartial = readNativeTxBodyCanonicalStatic(r);
+  const wsPartial = readNativeTxWitnessSetCanonicalStatic(r);
+  const body = readNativeTxBodyCanonicalDynamic(r, bodyPartial);
+  const witnessSet = readNativeTxWitnessSetCanonicalDynamic(r, wsPartial);
+  return { version, validity, body, witnessSet };
 };
 
 export const deriveMidgardNativeTxBodyCompact = (
@@ -247,47 +275,54 @@ export const verifyMidgardNativeTxFullConsistency = (
 
 export const encodeMidgardNativeTxCompact = (
   tx: MidgardNativeTxCompact,
-): Buffer => encodeCbor(encodeNativeTxCompactValue(tx));
+): Buffer => {
+  const w = new BinaryWriter();
+  writeNativeTxCompact(w, tx);
+  return w.toBytes();
+};
 
 export const decodeMidgardNativeTxCompact = (
   bytes: Uint8Array,
-): MidgardNativeTxCompact =>
-  decodeNativeTxCompactValue(decodeSingleCbor(bytes), "transaction_compact");
+): MidgardNativeTxCompact => {
+  const r = new BinaryReader(bytes);
+  const tx = readNativeTxCompact(r);
+  ensureNoTrailingBytes(r, "transaction_compact");
+  return tx;
+};
 
 export const encodeMidgardNativeTxBodyCompact = (
   body: MidgardNativeTxBodyCompact,
-): Buffer => encodeNativeTxBodyCompactCbor(body);
+): Buffer => encodeNativeTxBodyCompact(body);
 
 export const decodeMidgardNativeTxBodyCompact = (
   bytes: Uint8Array,
-): MidgardNativeTxBodyCompact => decodeNativeTxBodyCompactCbor(bytes);
+): MidgardNativeTxBodyCompact => decodeNativeTxBodyCompact(bytes);
 
 export const encodeMidgardNativeTxWitnessSetCompact = (
   witnessSet: MidgardNativeTxWitnessSetCompact,
-): Buffer => encodeNativeTxWitnessSetCompactCbor(witnessSet);
+): Buffer => encodeNativeTxWitnessSetCompact(witnessSet);
 
 export const decodeMidgardNativeTxWitnessSetCompact = (
   bytes: Uint8Array,
-): MidgardNativeTxWitnessSetCompact =>
-  decodeNativeTxWitnessSetCompactCbor(bytes);
+): MidgardNativeTxWitnessSetCompact => decodeNativeTxWitnessSetCompact(bytes);
 
 export const encodeMidgardNativeTxBodyCanonical = (
   body: MidgardNativeTxBodyCanonical,
-): Buffer => encodeNativeTxBodyCanonicalCbor(body);
+): Buffer => encodeNativeTxBodyCanonical(body);
 
 export const decodeMidgardNativeTxBodyCanonical = (
   bytes: Uint8Array,
-): MidgardNativeTxBodyCanonical => decodeNativeTxBodyCanonicalCbor(bytes);
+): MidgardNativeTxBodyCanonical => decodeNativeTxBodyCanonical(bytes);
 
 export const encodeMidgardNativeTxWitnessPreimages = (
   witnessSet: MidgardNativeTxWitnessSetCanonical,
-  version = MIDGARD_NATIVE_TX_VERSION,
-): Buffer => encodeNativeTxWitnessPreimagesCbor(witnessSet, version);
+  _version = MIDGARD_NATIVE_TX_VERSION,
+): Buffer => encodeNativeTxWitnessSetCanonical(witnessSet);
 
 export const decodeMidgardNativeTxWitnessPreimages = (
   bytes: Uint8Array,
 ): MidgardNativeTxWitnessSetCanonical =>
-  decodeNativeTxWitnessPreimagesCbor(bytes);
+  decodeNativeTxWitnessSetCanonical(bytes);
 
 export const encodeMidgardNativeTxFull = (
   tx: MidgardNativeTxFull,
@@ -296,31 +331,18 @@ export const encodeMidgardNativeTxFull = (
   if (options.enforceConsistency !== false) {
     verifyMidgardNativeTxFullConsistency(tx);
   }
-  return encodeCbor([
-    decodeVersion(tx.version, "transaction.version"),
-    encodeNativeTxBodyCanonicalValue(tx.body),
-    encodeNativeTxWitnessSetCanonicalValue(tx.version, tx.witnessSet),
-    encodeValidityCode(tx.validity),
-  ]);
+  const w = new BinaryWriter();
+  writeNativeTxCanonical(w, tx);
+  return w.toBytes();
 };
 
 export const decodeMidgardNativeTxFull = (
   bytes: Uint8Array,
   options: MidgardNativeCodecOptions = {},
 ): MidgardNativeTxFull => {
-  const decoded = decodeSingleCbor(bytes);
-  const v = asFixedArray(decoded, 4, "transaction");
-  const version = decodeVersion(v[0], "transaction[0]");
-  const canonical: MidgardNativeTxCanonical = {
-    version,
-    body: decodeNativeTxBodyCanonicalValue(v[1], "transaction[1]"),
-    witnessSet: decodeNativeTxWitnessSetCanonicalValue(
-      v[2],
-      "transaction[2]",
-      version,
-    ),
-    validity: decodeValidityCode(v[3], "transaction[3]"),
-  };
+  const r = new BinaryReader(bytes);
+  const canonical = readNativeTxCanonical(r);
+  ensureNoTrailingBytes(r, "transaction");
   const tx = materializeMidgardNativeTxFromCanonical(canonical);
   if (options.enforceConsistency !== false) {
     verifyMidgardNativeTxFullConsistency(tx);
