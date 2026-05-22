@@ -13,44 +13,41 @@ import {
   encodeBlock,
   decodeBlock,
   Block,
-  BlockBody,
-  // Transaction
-  encodeTransaction,
-  decodeTransaction,
-  Transaction,
-  encodeTransactionCompact,
-  decodeTransactionCompact,
-  TransactionCompact,
-  encodeTransactionBody,
-  decodeTransactionBody,
-  TransactionBody,
-  encodeTransactionBodyCompact,
-  decodeTransactionBodyCompact,
-  TransactionBodyCompact,
+  // Transaction (native)
+  MIDGARD_NATIVE_TX_VERSION,
+  MidgardTxValidity,
+  encodeMidgardNativeTxCanonical,
+  decodeMidgardNativeTxCanonical,
+  MidgardNativeTxCanonical,
+  encodeMidgardNativeTxCompact,
+  decodeMidgardNativeTxCompact,
+  MidgardNativeTxCompact,
+  encodeMidgardNativeTxBodyCanonical,
+  decodeMidgardNativeTxBodyCanonical,
+  MidgardNativeTxBodyCanonical,
+  encodeMidgardNativeTxBodyCompact,
+  decodeMidgardNativeTxBodyCompact,
+  MidgardNativeTxBodyCompact,
+  encodeMidgardNativeTxWitnessSetCanonical,
+  decodeMidgardNativeTxWitnessSetCanonical,
+  encodeMidgardNativeTxWitnessSetCompact,
+  decodeMidgardNativeTxWitnessSetCompact,
+  MidgardNativeTxWitnessSetCompact,
   // Output
   encodeTransactionOutput,
   decodeTransactionOutput,
   TransactionOutput,
   encodeTransactionOutputCompact,
   decodeTransactionOutputCompact,
-  TransactionOutputCompact,
   // Events
   encodeDepositInfo,
   decodeDepositInfo,
-  DepositInfo,
   encodeDepositInfoCompact,
   decodeDepositInfoCompact,
-  DepositInfoCompact,
   encodeWithdrawalInfo,
   decodeWithdrawalInfo,
-  WithdrawalInfo,
   encodeWithdrawalInfoCompact,
   decodeWithdrawalInfoCompact,
-  WithdrawalInfoCompact,
-  // Witness
-  encodeTransactionWitnessSetCompact,
-  decodeTransactionWitnessSetCompact,
-  TransactionWitnessSetCompact,
 } from "../src/index";
 
 // ---------------------------------------------------------------------------
@@ -141,95 +138,225 @@ describe("Header", () => {
 });
 
 // ===========================================================================
-// TransactionCompact
+// MidgardNativeTxCompact
 // ===========================================================================
 
-describe("TransactionCompact", () => {
-  const mk = (is_valid = true): TransactionCompact => ({
-    transaction_body_hash: bytes(32, 0xaa),
-    transaction_witness_set_hash: bytes(32, 0xbb),
-    is_valid,
+describe("MidgardNativeTxCompact", () => {
+  const mkBodyCompact = (): MidgardNativeTxBodyCompact => ({
+    spendInputsHash: bytes(32, 1),
+    referenceInputsHash: bytes(32, 2),
+    outputsHash: bytes(32, 3),
+    fee: 1_000_000n,
+    validityIntervalStart: -1n,
+    validityIntervalEnd: -1n,
+    requiredObserversHash: bytes(32, 4),
+    requiredSignersHash: bytes(32, 5),
+    mintHash: bytes(32, 6),
+    scriptIntegrityHash: bytes(32, 7),
+    auxiliaryDataHash: bytes(32, 8),
+    networkId: 255n,
   });
 
-  test("round-trip is_valid=true", () =>
+  const mk = (
+    validity: MidgardTxValidity = "TxIsValid",
+  ): MidgardNativeTxCompact => ({
+    version: MIDGARD_NATIVE_TX_VERSION,
+    transactionBody: mkBodyCompact(),
+    transactionWitnessSetHash: bytes(32, 0xbb),
+    validity,
+  });
+
+  test("round-trip validity=TxIsValid", () =>
     assertRoundTrip(
-      encodeTransactionCompact,
-      decodeTransactionCompact,
-      mk(true),
+      encodeMidgardNativeTxCompact,
+      decodeMidgardNativeTxCompact,
+      mk("TxIsValid"),
     ));
-  test("round-trip is_valid=false", () =>
+
+  test("round-trip validity=FailedScript", () =>
     assertRoundTrip(
-      encodeTransactionCompact,
-      decodeTransactionCompact,
-      mk(false),
+      encodeMidgardNativeTxCompact,
+      decodeMidgardNativeTxCompact,
+      mk("FailedScript"),
     ));
-  test("encodes to 72 bytes (32+32+8)", () =>
-    expect(encodeTransactionCompact(mk()).length).toBe(72));
+
+  test("encodes to 336 bytes (8 + 288 + 32 + 8)", () =>
+    expect(encodeMidgardNativeTxCompact(mk()).length).toBe(336));
+
+  test("decoded validity verdict preserved", () => {
+    const d = decodeMidgardNativeTxCompact(
+      encodeMidgardNativeTxCompact(mk("UnbalancedTx")),
+    );
+    expect(d.validity).toBe("UnbalancedTx");
+  });
 });
 
 // ===========================================================================
-// TransactionBodyCompact
+// MidgardNativeTxBodyCompact
 // ===========================================================================
 
-describe("TransactionBodyCompact", () => {
-  const base: TransactionBodyCompact = {
-    inputs_hash: bytes(32, 1),
-    outputs_hash: bytes(32, 2),
+describe("MidgardNativeTxBodyCompact", () => {
+  const base: MidgardNativeTxBodyCompact = {
+    spendInputsHash: bytes(32, 1),
+    referenceInputsHash: bytes(32, 2),
+    outputsHash: bytes(32, 3),
     fee: 1_000_000n,
-    ttl: undefined,
-    auxiliary_data_hash: undefined,
-    validity_interval_start: undefined,
-    mint_hash: undefined,
-    script_data_hash: undefined,
-    required_signers_hash: undefined,
-    network_id: undefined,
-    reference_inputs_hash: undefined,
-    required_observers_hash: undefined,
+    validityIntervalStart: -1n,
+    validityIntervalEnd: -1n,
+    requiredObserversHash: bytes(32, 4),
+    requiredSignersHash: bytes(32, 5),
+    mintHash: bytes(32, 6),
+    scriptIntegrityHash: bytes(32, 7),
+    auxiliaryDataHash: bytes(32, 8),
+    networkId: 255n,
   };
 
-  test("no optional fields", () =>
+  test("round-trips (unbounded intervals)", () =>
     assertRoundTrip(
-      encodeTransactionBodyCompact,
-      decodeTransactionBodyCompact,
+      encodeMidgardNativeTxBodyCompact,
+      decodeMidgardNativeTxBodyCompact,
       base,
     ));
-  test("encodes to 80 bytes when no opts (32+32+8+8)", () =>
-    expect(encodeTransactionBodyCompact(base).length).toBe(80));
 
-  test("all optional fields present", () => {
+  test("encodes to 288 bytes (8×32 + 4×8)", () =>
+    expect(encodeMidgardNativeTxBodyCompact(base).length).toBe(288));
+
+  test("bounded validity interval", () =>
     assertRoundTrip(
-      encodeTransactionBodyCompact,
-      decodeTransactionBodyCompact,
+      encodeMidgardNativeTxBodyCompact,
+      decodeMidgardNativeTxBodyCompact,
+      { ...base, validityIntervalStart: 100n, validityIntervalEnd: 9_999n },
+    ));
+
+  test("explicit network id and u64-max fee", () =>
+    assertRoundTrip(
+      encodeMidgardNativeTxBodyCompact,
+      decodeMidgardNativeTxBodyCompact,
+      { ...base, networkId: 1n, fee: 18_446_744_073_709_551_615n },
+    ));
+
+  test("decoded fee preserved", () => {
+    const d = decodeMidgardNativeTxBodyCompact(
+      encodeMidgardNativeTxBodyCompact({ ...base, fee: 42n }),
+    );
+    expect(d.fee).toBe(42n);
+  });
+});
+
+// ===========================================================================
+// MidgardNativeTxBodyCanonical
+// ===========================================================================
+
+describe("MidgardNativeTxBodyCanonical", () => {
+  const baseBody = (): MidgardNativeTxBodyCanonical => ({
+    spendInputsPreimageCbor: bytesSeq(20),
+    referenceInputsPreimageCbor: new Uint8Array(0),
+    outputsPreimageCbor: bytesSeq(40),
+    fee: 170_000n,
+    validityIntervalStart: -1n,
+    validityIntervalEnd: -1n,
+    requiredObserversPreimageCbor: new Uint8Array(0),
+    requiredSignersPreimageCbor: new Uint8Array(0),
+    mintPreimageCbor: new Uint8Array(0),
+    scriptIntegrityHash: bytes(32, 0),
+    auxiliaryDataHash: bytes(32, 0),
+    networkId: 255n,
+  });
+
+  test("round-trips with empty optional blobs", () =>
+    assertRoundTrip(
+      encodeMidgardNativeTxBodyCanonical,
+      decodeMidgardNativeTxBodyCanonical,
+      baseBody(),
+    ));
+
+  test("all preimage blobs populated", () =>
+    assertRoundTrip(
+      encodeMidgardNativeTxBodyCanonical,
+      decodeMidgardNativeTxBodyCanonical,
       {
-        ...base,
-        ttl: 500,
-        auxiliary_data_hash: bytes(32, 0xa),
-        validity_interval_start: 100,
-        mint_hash: bytes(32, 0xb),
-        script_data_hash: bytes(32, 0xc),
-        required_signers_hash: bytes(32, 0xd),
-        network_id: 1,
-        reference_inputs_hash: bytes(32, 0xe),
-        required_observers_hash: bytes(32, 0xf),
+        ...baseBody(),
+        referenceInputsPreimageCbor: bytesSeq(13),
+        requiredObserversPreimageCbor: bytesSeq(7),
+        requiredSignersPreimageCbor: bytesSeq(56),
+        mintPreimageCbor: bytesSeq(33),
       },
-    );
-  });
+    ));
 
-  test("some optional fields — ttl only", () => {
+  test("bounded validity interval and explicit hashes", () =>
     assertRoundTrip(
-      encodeTransactionBodyCompact,
-      decodeTransactionBodyCompact,
-      { ...base, ttl: 999 },
-    );
-  });
+      encodeMidgardNativeTxBodyCanonical,
+      decodeMidgardNativeTxBodyCanonical,
+      {
+        ...baseBody(),
+        validityIntervalStart: 1_000n,
+        validityIntervalEnd: 2_000n,
+        scriptIntegrityHash: bytes(32, 0xab),
+        auxiliaryDataHash: bytes(32, 0xcd),
+        networkId: 0n,
+      },
+    ));
 
-  test("some optional fields — auxiliary_data_hash only", () => {
-    assertRoundTrip(
-      encodeTransactionBodyCompact,
-      decodeTransactionBodyCompact,
-      { ...base, auxiliary_data_hash: bytes(32, 0x55) },
+  test("blob bytes preserved exactly (non-8-aligned length)", () => {
+    const blob = bytesSeq(45); // 45 % 8 !== 0 — exercises tail padding
+    const d = decodeMidgardNativeTxBodyCanonical(
+      encodeMidgardNativeTxBodyCanonical({
+        ...baseBody(),
+        outputsPreimageCbor: blob,
+      }),
     );
+    expect(d.outputsPreimageCbor).toEqual(blob);
   });
+});
+
+// ===========================================================================
+// MidgardNativeTxWitnessSetCanonical
+// ===========================================================================
+
+describe("MidgardNativeTxWitnessSetCanonical", () => {
+  test("round-trips with empty blobs", () =>
+    assertRoundTrip(
+      encodeMidgardNativeTxWitnessSetCanonical,
+      decodeMidgardNativeTxWitnessSetCanonical,
+      {
+        addrTxWitsPreimageCbor: new Uint8Array(0),
+        scriptTxWitsPreimageCbor: new Uint8Array(0),
+        redeemerTxWitsPreimageCbor: new Uint8Array(0),
+      },
+    ));
+
+  test("round-trips with populated blobs", () =>
+    assertRoundTrip(
+      encodeMidgardNativeTxWitnessSetCanonical,
+      decodeMidgardNativeTxWitnessSetCanonical,
+      {
+        addrTxWitsPreimageCbor: bytesSeq(96),
+        scriptTxWitsPreimageCbor: bytesSeq(11),
+        redeemerTxWitsPreimageCbor: bytesSeq(20),
+      },
+    ));
+});
+
+// ===========================================================================
+// MidgardNativeTxWitnessSetCompact
+// ===========================================================================
+
+describe("MidgardNativeTxWitnessSetCompact", () => {
+  const base: MidgardNativeTxWitnessSetCompact = {
+    addrTxWitsHash: bytes(32, 1),
+    scriptTxWitsHash: bytes(32, 2),
+    redeemerTxWitsHash: bytes(32, 3),
+  };
+
+  test("round-trips", () =>
+    assertRoundTrip(
+      encodeMidgardNativeTxWitnessSetCompact,
+      decodeMidgardNativeTxWitnessSetCompact,
+      base,
+    ));
+
+  test("encodes to 96 bytes (3×32)", () =>
+    expect(encodeMidgardNativeTxWitnessSetCompact(base).length).toBe(96));
 });
 
 // ===========================================================================
@@ -462,218 +589,97 @@ describe("TransactionOutputCompact", () => {
 });
 
 // ===========================================================================
-// TransactionWitnessSetCompact
+// MidgardNativeTxCanonical
 // ===========================================================================
 
-describe("TransactionWitnessSetCompact", () => {
-  test("all absent", () => {
-    assertRoundTrip(
-      encodeTransactionWitnessSetCompact,
-      decodeTransactionWitnessSetCompact,
-      {
-        vkey_witnesses_hash: undefined,
-        native_scripts_hash: undefined,
-        redeemers_hash: undefined,
-        plutus_v3_scripts_hash: undefined,
-      },
-    );
-  });
-
-  test("all present", () => {
-    assertRoundTrip(
-      encodeTransactionWitnessSetCompact,
-      decodeTransactionWitnessSetCompact,
-      {
-        vkey_witnesses_hash: bytes(32, 1),
-        native_scripts_hash: bytes(32, 2),
-        redeemers_hash: bytes(32, 3),
-        plutus_v3_scripts_hash: bytes(32, 4),
-      },
-    );
-  });
-
-  test("only redeemers_hash", () => {
-    assertRoundTrip(
-      encodeTransactionWitnessSetCompact,
-      decodeTransactionWitnessSetCompact,
-      {
-        vkey_witnesses_hash: undefined,
-        native_scripts_hash: undefined,
-        redeemers_hash: bytes(32, 0xaa),
-        plutus_v3_scripts_hash: undefined,
-      },
-    );
-  });
-});
-
-// ===========================================================================
-// TransactionBody (Full)
-// ===========================================================================
-
-describe("TransactionBody", () => {
-  const baseBody = (): TransactionBody => ({
-    inputs: [{ tx_id: bytes(32, 1), index: 0 }],
-    outputs: [
-      {
-        address: bytesSeq(29),
-        value: { type: "Coin", coin: 2_000_000n },
-        datum: undefined,
-        script_ref: undefined,
-      },
-    ],
-    fee: 170_000n,
-    ttl: undefined,
-    auxiliary_data_hash: undefined,
-    validity_interval_start: undefined,
-    mint: undefined,
-    script_data_hash: undefined,
-    required_signers: undefined,
-    network_id: undefined,
-    reference_inputs: undefined,
-    required_observers: undefined,
-  });
-
-  test("no optional fields", () => {
-    assertRoundTrip(encodeTransactionBody, decodeTransactionBody, baseBody());
-  });
-
-  test("with ttl", () => {
-    assertRoundTrip(encodeTransactionBody, decodeTransactionBody, {
-      ...baseBody(),
-      ttl: 9999,
-    });
-  });
-
-  test("with auxiliary_data_hash", () => {
-    assertRoundTrip(encodeTransactionBody, decodeTransactionBody, {
-      ...baseBody(),
-      auxiliary_data_hash: bytes(32, 0xad),
-    });
-  });
-
-  test("with mint", () => {
-    assertRoundTrip(encodeTransactionBody, decodeTransactionBody, {
-      ...baseBody(),
-      // Two policies: one minting, one burning
-      mint: [
-        [bytes(28, 0xaa), [[bytesSeq(4), 100n]]],   // mint 100
-        [bytes(28, 0xbb), [[bytesSeq(3), -50n]]],    // burn 50
-      ],
-    });
-  });
-
-  test("with required_signers", () => {
-    assertRoundTrip(encodeTransactionBody, decodeTransactionBody, {
-      ...baseBody(),
-      required_signers: [bytes(28, 0x55), bytes(28, 0x66)],
-    });
-  });
-
-  test("with reference_inputs", () => {
-    assertRoundTrip(encodeTransactionBody, decodeTransactionBody, {
-      ...baseBody(),
-      reference_inputs: [{ tx_id: bytes(32, 0xee), index: 1 }],
-    });
-  });
-
-  test("multiple inputs and outputs", () => {
-    assertRoundTrip(encodeTransactionBody, decodeTransactionBody, {
-      ...baseBody(),
-      inputs: [
-        { tx_id: bytes(32, 1), index: 0 },
-        { tx_id: bytes(32, 2), index: 1 },
-      ],
-      outputs: [
-        {
-          address: bytesSeq(29),
-          value: { type: "Coin", coin: 1_000_000n },
-          datum: undefined,
-          script_ref: undefined,
-        },
-        {
-          address: bytesSeq(32),
-          value: { type: "Coin", coin: 500_000n },
-          datum: bytesSeq(8),
-          script_ref: undefined,
-        },
-      ],
-    });
-  });
-});
-
-// ===========================================================================
-// Transaction (Full)
-// ===========================================================================
-
-describe("Transaction", () => {
-  const mkTx = (is_valid = true): Transaction => ({
+describe("MidgardNativeTxCanonical", () => {
+  const mkTx = (
+    validity: MidgardTxValidity = "TxIsValid",
+  ): MidgardNativeTxCanonical => ({
+    version: MIDGARD_NATIVE_TX_VERSION,
+    validity,
     body: {
-      inputs: [{ tx_id: bytes(32, 1), index: 0 }],
-      outputs: [
-        {
-          address: bytesSeq(29),
-          value: { type: "Coin", coin: 2_000_000n },
-          datum: undefined,
-          script_ref: undefined,
-        },
-      ],
+      spendInputsPreimageCbor: bytesSeq(20),
+      referenceInputsPreimageCbor: new Uint8Array(0),
+      outputsPreimageCbor: bytesSeq(40),
       fee: 170_000n,
-      ttl: undefined,
-      auxiliary_data_hash: undefined,
-      validity_interval_start: undefined,
-      mint: undefined,
-      script_data_hash: undefined,
-      required_signers: undefined,
-      network_id: undefined,
-      reference_inputs: undefined,
-      required_observers: undefined,
+      validityIntervalStart: -1n,
+      validityIntervalEnd: -1n,
+      requiredObserversPreimageCbor: new Uint8Array(0),
+      requiredSignersPreimageCbor: new Uint8Array(0),
+      mintPreimageCbor: new Uint8Array(0),
+      scriptIntegrityHash: bytes(32, 0),
+      auxiliaryDataHash: bytes(32, 0),
+      networkId: 255n,
     },
-    witness_set: {
-      vkey_witnesses: undefined,
-      native_scripts: undefined,
-      redeemers: undefined,
-      plutus_v3_scripts: undefined,
+    witnessSet: {
+      addrTxWitsPreimageCbor: new Uint8Array(0),
+      scriptTxWitsPreimageCbor: new Uint8Array(0),
+      redeemerTxWitsPreimageCbor: new Uint8Array(0),
     },
-    is_valid,
   });
 
-  test("minimal tx is_valid=true", () => {
-    assertRoundTrip(encodeTransaction, decodeTransaction, mkTx(true));
+  test("minimal tx validity=TxIsValid", () => {
+    assertRoundTrip(
+      encodeMidgardNativeTxCanonical,
+      decodeMidgardNativeTxCanonical,
+      mkTx("TxIsValid"),
+    );
   });
 
-  test("minimal tx is_valid=false", () => {
-    assertRoundTrip(encodeTransaction, decodeTransaction, mkTx(false));
+  test("minimal tx validity=UnbalancedTx", () => {
+    assertRoundTrip(
+      encodeMidgardNativeTxCanonical,
+      decodeMidgardNativeTxCanonical,
+      mkTx("UnbalancedTx"),
+    );
   });
 
-  test("tx with vkey_witnesses", () => {
-    const tx: Transaction = {
+  test("tx with populated witness preimages", () => {
+    const tx: MidgardNativeTxCanonical = {
       ...mkTx(),
-      witness_set: {
-        vkey_witnesses: [
-          {
-            vkey: bytes(32, 0xaa),
-            signature: bytes(64, 0xbb),
-          },
-        ],
-        native_scripts: undefined,
-        redeemers: undefined,
-        plutus_v3_scripts: undefined,
+      witnessSet: {
+        addrTxWitsPreimageCbor: bytesSeq(96),
+        scriptTxWitsPreimageCbor: bytesSeq(50),
+        redeemerTxWitsPreimageCbor: bytesSeq(20),
       },
     };
-    assertRoundTrip(encodeTransaction, decodeTransaction, tx);
+    assertRoundTrip(
+      encodeMidgardNativeTxCanonical,
+      decodeMidgardNativeTxCanonical,
+      tx,
+    );
   });
 
-  test("tx with redeemers", () => {
-    const tx: Transaction = {
-      ...mkTx(),
-      witness_set: {
-        vkey_witnesses: undefined,
-        native_scripts: undefined,
-        redeemers: bytesSeq(20),
-        plutus_v3_scripts: undefined,
+  test("tx with bounded validity interval and all body blobs", () => {
+    const base = mkTx();
+    const tx: MidgardNativeTxCanonical = {
+      ...base,
+      body: {
+        ...base.body,
+        validityIntervalStart: 500n,
+        validityIntervalEnd: 1_500n,
+        referenceInputsPreimageCbor: bytesSeq(15),
+        requiredObserversPreimageCbor: bytesSeq(7),
+        requiredSignersPreimageCbor: bytesSeq(28),
+        mintPreimageCbor: bytesSeq(33),
+        scriptIntegrityHash: bytes(32, 0xab),
+        auxiliaryDataHash: bytes(32, 0xcd),
+        networkId: 1n,
       },
     };
-    assertRoundTrip(encodeTransaction, decodeTransaction, tx);
+    assertRoundTrip(
+      encodeMidgardNativeTxCanonical,
+      decodeMidgardNativeTxCanonical,
+      tx,
+    );
+  });
+
+  test("decoded validity verdict preserved", () => {
+    const d = decodeMidgardNativeTxCanonical(
+      encodeMidgardNativeTxCanonical(mkTx("FeeTooLow")),
+    );
+    expect(d.validity).toBe("FeeTooLow");
   });
 });
 
@@ -737,6 +743,55 @@ describe("Block", () => {
           ],
         ],
         transactions: [],
+        deposits: [],
+        withdrawals: [],
+      },
+    };
+    assertRoundTrip(encodeBlock, decodeBlock, b);
+  });
+
+  test("block with one transaction", () => {
+    const tx: MidgardNativeTxCanonical = {
+      version: MIDGARD_NATIVE_TX_VERSION,
+      validity: "TxIsValid",
+      body: {
+        spendInputsPreimageCbor: bytesSeq(20),
+        referenceInputsPreimageCbor: new Uint8Array(0),
+        outputsPreimageCbor: bytesSeq(40),
+        fee: 170_000n,
+        validityIntervalStart: -1n,
+        validityIntervalEnd: -1n,
+        requiredObserversPreimageCbor: new Uint8Array(0),
+        requiredSignersPreimageCbor: new Uint8Array(0),
+        mintPreimageCbor: new Uint8Array(0),
+        scriptIntegrityHash: bytes(32, 0),
+        auxiliaryDataHash: bytes(32, 0),
+        networkId: 255n,
+      },
+      witnessSet: {
+        addrTxWitsPreimageCbor: bytesSeq(96),
+        scriptTxWitsPreimageCbor: new Uint8Array(0),
+        redeemerTxWitsPreimageCbor: new Uint8Array(0),
+      },
+    };
+    const b: Block = {
+      header_hash: bytes(28, 0x77),
+      header: {
+        prev_utxos_root: bytes(32, 1),
+        utxos_root: bytes(32, 2),
+        transactions_root: bytes(32, 3),
+        deposits_root: bytes(32, 4),
+        withdrawals_root: bytes(32, 5),
+        start_time: 10,
+        event_start_time: 20,
+        end_time: 30,
+        prev_header_hash: undefined,
+        operator_vkey: bytes(32, 6),
+        protocol_version: 1,
+      },
+      block_body: {
+        utxos: [],
+        transactions: [[bytes(32, 0x99), tx]],
         deposits: [],
         withdrawals: [],
       },
